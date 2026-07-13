@@ -73,6 +73,18 @@
       <div class="hint" id="wempty">Noch keine Wände. Lade ein Wandelement (aus Modul 1) oder erzeuge eine Wand aus einer Länge.</div>
     </div>
 
+    <div class="sec"><h2>Bauteil-Geometrie (OBJ)</h2>
+      <div class="hint">Für <b>„echte Geometrie (BREP)"</b> beim IFC-Export einmalig die Dateien
+        <b>i2_SEMBLA.obj</b> und <b>i3_SEMBLA.obj</b> laden — sie bleiben nur lokal in diesem Browser
+        (nichts wird hochgeladen) und sind beim nächsten Öffnen gemerkt.</div>
+      <div class="btnrow">
+        <label class="inl">i2 <input type="file" id="objI2" accept=".obj"></label>
+        <label class="inl">i3 <input type="file" id="objI3" accept=".obj"></label>
+        <button id="objClear">entfernen</button>
+      </div>
+      <div class="hint" id="objStatus"></div>
+    </div>
+
     <div class="sec"><h2>Projekt / Export</h2>
       <div class="btnrow">
         <button id="saveProj">Projekt speichern</button>
@@ -235,6 +247,7 @@ function chk(){ if(!PROJECT.walls.length){ alert('Projekt enthält keine Wände.
 window.__pm={ get PROJECT(){return PROJECT;}, set PROJECT(p){PROJECT=p;}, render, addWallFromElement, wallFromLength, buildWall,
   cad:{projectToDxfGrundriss,projectToDxfAnsichten,projectToIfc,dxfToSegments,aggregateBom} };
 render();
+/*__OBJLOADER__*/
 </script>
 </body>
 </html>

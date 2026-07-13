@@ -56,9 +56,16 @@ Einheiten: **mm**. `grid` = Rastereinheit (125 mm), `lage`/`course` = Lagenindex
 | `Modul-Stueckliste/` | 8 Stückliste & Kosten |
 | `Modul-Fertigung/` | 9 Fertigungszeichnung |
 
-Weitere: `Interop-CAD/` (DXF/IFC-Export, Python + web-ifc), `Bauteil-OBJ/` (i2/i3-Geometrie als
-OBJ + IFC FacetedBrep, wird in Tools eingebettet), `EtappeA-App-beta-sandbox/` (isolierter
+Weitere: `Interop-CAD/` (DXF/IFC-Export, Python + web-ifc), `EtappeA-App-beta-sandbox/` (isolierter
 Experimentierstand für die durchgängige Web-App — **nicht produktiv**), `_archiv/` (abgelöste Stände).
+
+**Bauteilgeometrie (i2/i3):** Die realen OBJ/IFC-Modelle liegen NICHT mehr im Repo (vertraulich,
+öffentliches Repo). Der Ordner `Bauteil-OBJ/` ist gitignored und nur lokal vorhanden. Die Werkzeuge
+**Modul-3D** und **Projekt-Manager** betten die Geometrie nicht mehr ein, sondern laden sie zur
+Laufzeit per Datei-Upload (lokal im Browser, in `localStorage` gemerkt). Der Loader ist Single Source
+in `sembla-obj-loader.js` (inline in Modul-3D gepflegt, in den Projekt-Manager via `build-manager.mjs`
+eingebettet). Die leeren Blöcke `<script id="obj-i2/i3">` bleiben erhalten. Lokale Builds/Smoke-Tests
+lesen die OBJ weiterhin aus `Bauteil-OBJ/`.
 
 Hinweis: Ordner `SEMBLA Tools/` (falls vorhanden) ist veraltet; maßgeblich ist nur `SEMBLA Werkzeuge/`.
 
@@ -102,8 +109,18 @@ mindestens beide Core-Paritätstests + `test-shared.mjs` fahren.
 
 ## Wichtige Randbedingungen
 
-- **Vertraulichkeit:** Repo ist privat. Code/Handbuch referenzieren das nicht öffentliche
-  Gutachten Prof. Schermer. `Uploads/` (PDF) ist per `.gitignore` ausgeschlossen — nicht committen.
+- ⚠️ **Dieses Repo ist ÖFFENTLICH** (`github.com/p0lycare/SEMBLA-planning-suite`, Stand 2026-07-13).
+  Alles, was committet/gepusht wird, ist sofort für jeden sichtbar — und bleibt es (Caches, Klone,
+  Forks) auch nach späterem Löschen.
+- **Mit sensiblen Daten äußerst vorsichtig sein.** Vor jedem `git add`/Commit prüfen, ob vertrauliche
+  Inhalte betroffen sind. Nicht committen: das nicht öffentliche **Gutachten Prof. Schermer** und daraus
+  abgeleitete Prüf-/Materialwerte, Zugangsdaten/Tokens, personenbezogene Daten, interne PDFs/Dokumente.
+  Im Zweifel **erst nachfragen**, nicht committen.
+- `Uploads/` ist per `.gitignore` ausgeschlossen (enthält vertrauliches PDF) — Ordner nie tracken.
+  Historie wurde am 2026-07-13 bereinigt (PDF via `git-filter-repo` entfernt).
+- **Hinweis Handbuch:** `SEMBLA_Handbuch.docx` (+ Kopie in `SEMBLA Werkzeuge/`) reproduziert Werte/
+  Formeln aus dem Schermer-Gutachten und liegt aktuell bewusst öffentlich im Repo — bei Änderungen
+  im Blick behalten, ob Vertrauliches hinzukommt.
 - **Nicht im OneDrive-/SharePoint-Ordner arbeiten** (beschädigt `.git`). Lokaler Klon ist die Arbeitskopie.
 - **OSS-Lizenzen gemischt** (web-ifc MPL-2.0, docx/ezdxf MIT, IfcOpenShell LGPL) — vor Weitergabe/
-  Produktisierung juristisch prüfen. Für internes Repo unkritisch.
+  Produktisierung juristisch prüfen.

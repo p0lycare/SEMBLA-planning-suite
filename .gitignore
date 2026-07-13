@@ -1,5 +1,7 @@
 # Vertraulich – NICHT ins (öffentliche) Repo
 Uploads/
+# Reale Bauteilgeometrie (nur lokal; Tools laden sie zur Laufzeit per Upload)
+Bauteil-OBJ/
 
 # Abhängigkeiten (regenerierbar via `npm install`)
 node_modules/
