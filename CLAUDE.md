@@ -27,11 +27,15 @@ Einheiten: **mm**. `grid` = Rastereinheit (125 mm), `lage`/`course` = Lagenindex
      (round-half-to-even via `pyRound`). Paritätstests laufen gegen goldene Fixtures.
    - Änderungen an der Rechenlogik **immer in beiden** Cores gleich halten.
 
-2. **Kern + Template → gebaute HTML.** Tools werden nicht von Hand editiert, sondern gebaut:
-   `<Modul>/build-*.mjs` liest den aktuellen Core (`../Phase-2/sembla-core.mjs`), Modul-Kern
-   (`sembla-*.mjs`) und `*.template.html`, ersetzt Platzhalter (`/*__CORE__*/`, `<!--__OBJ__-->` etc.),
-   schreibt die Single-File-HTML und prüft die Syntax (`node --check`).
-   **Nie die veraltete lokale Core-Kopie einbetten** — immer den Core aus `Phase-2/` ziehen.
+2. **Kern + Template → gebaute HTML.** Tools mit `<Modul>/build-*.mjs` werden **nicht von Hand
+   editiert, sondern gebaut**: das Skript liest den aktuellen Core (`../Phase-2/sembla-core.mjs`),
+   Modul-Kern (`sembla-*.mjs`) und `*.template.html`, ersetzt Platzhalter (`/*__CORE__*/`, `/*__CAD__*/`,
+   `/*__OBJLOADER__*/`, `<!--__OBJ__-->`), schreibt die Single-File-HTML und prüft die Syntax
+   (`node --check`). **Nie die veraltete lokale Core-Kopie einbetten** — immer den Core aus `Phase-2/` ziehen.
+   - **Ausnahme:** Tools **ohne** `build-*.mjs` (v. a. `Modul-3D/SEMBLA_3D_Vorschau.html`) werden direkt
+     als HTML gepflegt. Dort eingebettete Single-Source-Bausteine (z. B. der OBJ-Loader) müssen bei
+     Änderungen von Hand mit der Quelle (`sembla-obj-loader.js`) synchron gehalten werden.
+   - Nach jeder Tool-Änderung `node publish-werkzeuge.mjs` laufen lassen (spiegelt nach `SEMBLA Werkzeuge/`).
 
 3. **`sembla-shared.js` ist Single Source für die Stückliste/BOM.** NICHT direkt in den Tools editieren.
    `sync-shared.mjs` verteilt den Block zwischen `//__SEMBLA_SHARED_START__` und `//__SEMBLA_SHARED_END__`
