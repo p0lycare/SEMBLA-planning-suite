@@ -1,0 +1,11 @@
+import { readFileSync, writeFileSync } from "node:fs";
+let core=readFileSync("../Phase-2/sembla-core.mjs","utf8").replace(/^export\s+/gm,"");
+let statik=readFileSync("../Modul-3-Statik/sembla-statik.mjs","utf8").replace(/^export\s+/gm,"");
+let engine=readFileSync("../Auslegung-Engine/sembla-engine.mjs","utf8").replace(/^import .*$/gm,"").replace(/^export\s+/gm,"");
+const bundle="// ==== Core ====\n"+core+"\n// ==== Statik ====\n"+statik+"\n// ==== Engine ====\n"+engine;
+let tpl=readFileSync("./wandplanung.template.html","utf8");
+let html=tpl.replace("/*__BUNDLE__*/",()=>bundle);
+writeFileSync("./SEMBLA_Wandplanung.html",html);
+import { execSync } from "node:child_process";
+writeFileSync("/tmp/wp.js", html.match(/<script>([\s\S]*?)<\/script>/)[1]); execSync("node --check /tmp/wp.js");
+console.log("SEMBLA_Wandplanung.html gebaut, Syntax ok. Größe:",html.length);

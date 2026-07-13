@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA · Etappe-A App (Beta · Sandbox)</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --ok:#1f9d55; --warn:#c9461c; --amber:#c98a00; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  .beta{background:repeating-linear-gradient(45deg,#3a2a00,#3a2a00 12px,#4a3600 12px,#4a3600 24px);
+        color:#ffd479;padding:6px 22px;font-size:12px;font-weight:700;letter-spacing:.4px;text-align:center}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:340px;flex:0 0 340px}
+  .stage{flex:1 1 520px;min-width:420px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 8px}
+  .grp{margin-bottom:14px}
+  .grp h3{font-size:12.5px;margin:0 0 6px;font-weight:650;border-bottom:1px solid var(--line);padding-bottom:4px}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  input[type=number],input[type=text]{width:130px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;background:#fff}
+  input[type=text]{width:100%}
+  button{padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550;margin:3px 0}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%}
+  button.wide{width:100%}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700}
+  .b-gruen{background:#e3f5ea;color:var(--ok)} .b-gelb{background:#fff3d6;color:var(--amber)} .b-rot{background:#fbe6dd;color:var(--warn)} .b-none{background:#eceef1;color:var(--muted)}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:6px}
+  th,td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+  th{background:#eef2f7;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+  .kpi{border:1px solid var(--line);border-radius:9px;padding:8px 12px;min-width:96px}
+  .kpi .n{font-size:20px;font-weight:700} .kpi .l{font-size:11px;color:var(--muted)}
+  .note{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:8px}
+  .row{display:flex;gap:8px} .row>*{flex:1}
+</style>
+</head>
+<body>
+<div class="beta">BETA · SANDBOX — Experimentierstand (Etappe A). Nicht für produktive Nachweise. Die stabile Suite liegt im übergeordneten Ordner.</div>
+<header>
+  <h1>SEMBLA · Etappe-A App <span style="font-weight:400;color:#9fb0c0">· Projekt · Auto-Pilot · Ampel-Dashboard</span></h1>
+  <p>Ein Projekt, mehrere Wände, ein Klick „alle durchplanen“ — Tiling + Vorspannung + Schermer-Nachweis je Wand. Lokal-first, Projektdatei-Persistenz.</p>
+</header>
+
+<div class="wrap">
+  <div class="panel controls">
+    <h2>Projekt</h2>
+    <div class="grp">
+      <label><span>Name</span><input type="text" id="pName" value="Neues Projekt"></label>
+      <label><span>Bauherr</span><input type="text" id="pBauherr" value=""></label>
+      <label><span>Phase</span><input type="text" id="pPhase" value="LP 3"></label>
+      <label><span>Plan-Nr.</span><input type="text" id="pPlan" value=""></label>
+      <div class="row">
+        <button id="btnNew">Neu</button>
+        <button id="btnLoad">Laden</button>
+        <button id="btnSave">Speichern</button>
+      </div>
+      <input type="file" id="fileProj" accept=".json,.semblaproj.json,application/json" style="display:none">
+    </div>
+
+    <div class="grp"><h3 id="edTitle">Wand-Editor · neu</h3>
+      <label><span>Name</span><input type="text" id="wName" value=""></label>
+      <label><span>Länge</span><input type="number" id="wL" value="3000" step="125"><small>mm</small></label>
+      <label><span>Höhe</span><input type="number" id="wH" value="2600" step="200"><small>mm</small></label>
+      <label><span>Seite vorne</span><select id="fVorne"><option value="fassade">Fassadenaufbau</option><option value="innenausbau">Innenausbau</option><option value="sicht">Sichtseite</option><option value="installation">Installation</option></select></label>
+      <label><span>Seite hinten</span><select id="fHinten"><option value="fassade">Fassadenaufbau</option><option value="innenausbau" selected>Innenausbau</option><option value="sicht">Sichtseite</option><option value="installation">Installation</option></select></label>
+      <label><span>Platzierung x / y / °</span><span><input type="number" id="wX" value="0" style="width:44px"> <input type="number" id="wY" value="0" style="width:44px"> <input type="number" id="wR" value="0" style="width:38px"></span></label>
+      <label><span>Oberer Anschluss</span><select id="topConn"><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte je Strang</option></select></label>
+      <div style="font-size:11px;color:var(--muted);margin:-2px 0 4px">Fuß immer Bodenblech (15 mm).</div>
+      <div style="font-size:12px;color:var(--muted);margin:8px 0 2px">Öffnungen</div>
+      <div id="openList"></div>
+      <div class="row"><button id="btnAddTuer">+ Tür</button><button id="btnAddFenster">+ Fenster</button></div>
+      <div style="font-size:12px;color:var(--muted);margin:8px 0 2px">Staffelung (Stufe x0 / x1 / Höhe in m)</div>
+      <div class="row" style="gap:4px;align-items:center">
+        <input type="number" id="sX0" placeholder="x0" step="0.125" style="width:52px">
+        <input type="number" id="sX1" placeholder="x1" step="0.125" style="width:52px">
+        <input type="number" id="sH" placeholder="h" step="0.2" style="width:52px">
+        <button id="btnAddStep" title="Stufe hinzufügen">+</button>
+      </div>
+      <div id="stepList" class="note"></div>
+      <div class="row"><button id="btnSaveWall" class="primary">Wand speichern</button><button id="btnClearWall">Neu</button></div>
+      <div class="note" style="margin-top:8px">Schnell: <label style="display:inline-flex;gap:4px;margin:0"><input type="checkbox" id="wDoor"> Tür mittig</label> · <button id="btnQuick">Schnell-Wand</button></div>
+      <button class="wide" id="btnImport">Wandelement / Bundle laden</button>
+      <input type="file" id="fileWall" accept=".json,application/json" style="display:none">
+    </div>
+
+    <div class="grp"><h3>Auto-Pilot</h3>
+      <button class="primary" id="btnPlan">Alle Wände durchplanen</button>
+      <button class="wide" id="btnExport">Dashboard-CSV</button>
+      <div class="row"><button id="btnDxfG">DXF Grundriss</button><button id="btnDxfA">DXF Ansichten</button></div>
+      <button class="wide" id="btnIfc">IFC-Export (Projekt)</button>
+    </div>
+    <div class="note"><b>Ampel:</b> grün = geplant &amp; Nachweis erfüllt · gelb = Warnung (Versatz/Vorspannung prüfen) · rot = nicht baubar oder Nachweis nicht erfüllt.</div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Wand-Vorschau (Editor)</h2>
+    <div class="row" style="margin-bottom:6px;flex-wrap:wrap">
+      <button id="btnVoidMode">Durchbruch-Modus</button>
+      <button id="btnVoidClear">Durchbrüche leeren</button>
+      <button id="btnAxisMode">Achsen ziehen</button>
+      <button id="btnAxisAuto">Achsen auto</button>
+      <label style="display:inline-flex;gap:4px;align-items:center;margin-left:auto;font-size:12px"><input type="checkbox" id="showDim"> Maße</label>
+      <label style="display:inline-flex;gap:4px;align-items:center;font-size:12px"><input type="checkbox" id="showRaster"> Raster</label>
+    </div>
+    <div class="note" id="editHint" style="margin-bottom:6px">Durchbruch-Modus: Zelle klicken = Stein entfernen/auffüllen. Achsen ziehen: Griff verschieben, Klick = neue Achse, Doppelklick = löschen.</div>
+    <div id="wallPreview" style="margin-bottom:12px"></div>
+    <h2>Dashboard</h2>
+    <div class="kpis" id="kpis"></div>
+    <div id="dash"></div>
+    <div class="note" id="meta"></div>
+    <div id="wallDetail" style="margin-top:14px"></div>
+    <div id="costs" style="margin-top:14px"></div>
+  </div>
+</div>
+
+<script>
+/*__CORE__*/
+/*__STATIK__*/
+/*__CAD__*/
+/*__WANDAUFBAU__*/
+/*__WALLVIEW__*/
+
+// ==================== Etappe-A App ====================
+const $ = id => document.getElementById(id);
+const fmt = (n,d=2) => (isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const uid = () => 'w'+Math.random().toString(36).slice(2,8);
+const BOM_KEYS = ["i2","i3","gewindestangen","verbindungsmuttern","senkkopfschrauben","kopplungsmuttern_basis","spannplatten","spannmuttern","stahlblech_module","stossfugen","dichtstreifen_mm"];
+// Default-Einheitspreise (netto, editierbar in der App) — grobe Planungswerte
+const PRICES = { i2:9.5, i3:13.5, gewindestangen:3.2, verbindungsmuttern:0.9, senkkopfschrauben:0.6, kopplungsmuttern_basis:1.1, spannplatten:4.5, spannmuttern:0.8, stahlblech_module:22, stossfugen:0, dichtstreifen_mm:0, verbinder:2.5, latten_m:1.2, daemmung_m2:8.0 };
+const PRICE_UNIT = { i2:'Stk', i3:'Stk', gewindestangen:'Stk', verbindungsmuttern:'Stk', senkkopfschrauben:'Stk', kopplungsmuttern_basis:'Stk', spannplatten:'Stk', spannmuttern:'Stk', stahlblech_module:'Modul', stossfugen:'Stk', dichtstreifen_mm:'mm', verbinder:'Stk', latten_m:'m', daemmung_m2:'m²' };
+
+let PROJECT = null;
+
+function newProject(name){
+  PROJECT = { format:'SEMBLA-Projekt-App', version:'0.1', name:name||'Neues Projekt',
+    meta:{ bauherr:'', phase:'LP 3', plan_nr:'' }, walls:[] };
+  return PROJECT;
+}
+
+function metaFromUI(){ if(!PROJECT) return; PROJECT.name=$('pName').value; PROJECT.meta.bauherr=$('pBauherr').value; PROJECT.meta.phase=$('pPhase').value; PROJECT.meta.plan_nr=$('pPlan').value; }
+function metaToUI(){ $('pName').value=PROJECT.name||''; $('pBauherr').value=PROJECT.meta.bauherr||''; $('pPhase').value=PROJECT.meta.phase||''; $('pPlan').value=PROJECT.meta.plan_nr||''; }
+
+function addWall(wd, name){
+  const n = PROJECT.walls.length;
+  PROJECT.walls.push({ id:uid(), name:name||wd.name||('Wand '+(n+1)), x_mm:0, y_mm:0, rot_deg:0, wall:wd });
+}
+
+/** Schnell-Wand über den Core (Tiling, Vorspannung, BOM inklusive). */
+function quickWall(L, H, door){
+  let openings = [];
+  if(door){
+    const N = Math.round(L/GRID);
+    const g0 = Math.max(1, Math.floor(N/2)-2), g1 = Math.min(N-1, g0+4);
+    const l1 = Math.min(9, Math.floor(H/COURSE)-1);
+    if(g1>g0 && l1>0) openings = [new Opening(g0, g1, 0, l1, 'tuer')];
+  }
+  let wd;
+  try { wd = buildWall('Wand '+(PROJECT.walls.length+1), L, H, openings); }
+  catch(e){ wd = buildWall('Wand '+(PROJECT.walls.length+1), L, H, []); }
+  addWall(wd);
+  return wd;
+}
+
+/** Statik-Parameter aus Wandgeometrie + Schermer-Defaults. */
+function statParams(wd){
+  return Object.assign({}, DEFAULTS, {
+    h_m: wd.height_mm/1000, L_m: wd.length_mm/1000,
+    t_m: (wd.thickness_mm||THICK)/1000, n_oeff: (wd.openings||[]).length });
+}
+
+/** Ampel-Status + maßgebender Nachweis je Wand (Schermer-Kern). */
+function planWall(entry){
+  const wd = entry.wall;
+  const val = wd.validation || {};
+  const buildable = val.buildable !== false;
+  const versatz_ok = val.versatz_ok !== false;
+  const r = nachweise(statParams(wd));
+  const finfOk = r.wand.vor.F_inf_ok;
+  const parts = [['Biegung',r.wand.biegung.eta],['Schub',r.wand.schub.eta],['Druckrand',r.wand.druck.eta],['Boden',r.wand.boden.eta],['Spannsystem',r.spann.eta_max]];
+  const massg = parts.reduce((a,b)=> b[1]>a[1]?b:a);
+  let ampel;
+  if(!buildable || !r.ok) ampel='rot';
+  else if(!versatz_ok || !finfOk) ampel='gelb';
+  else ampel='gruen';
+  entry.plan = { eta:r.eta_max_gesamt, ampel, massg:massg[0], massgEta:massg[1], buildable, versatz_ok, finfOk,
+                 etaWand:r.wand.eta_max, etaSpann:r.spann.eta_max };
+  // Bekleidung je Seite (Modul 2): Verbinder + Latten/Dämmung über den geteilten Kern
+  entry.cladding = planCladding(wd);
+  return entry.plan;
+}
+
+/** Verbinder-/Latten-/Dämmungsplanung je Wandseite (Fassade/Innenausbau) über SW.planWandaufbau. */
+function planCladding(wd){
+  const sides = (wd.sides && Object.keys(wd.sides).length) ? Object.keys(wd.sides) : ['vorne','hinten'];
+  const out = {};
+  for(const s of sides){
+    const r = SW.planWandaufbau(wd, { side:s });
+    out[s] = { funktion:r.funktion, verbinder:r.layout.verbinder_typ, nVerbinder:r.pts.length,
+      latten_stk:r.batt.summary.latten_stuecke, latten_m:r.batt.summary.gesamtlaenge_m,
+      daemmung_m2:r.batt.daemmung?r.batt.daemmung.total.flaeche_m2:0, ohWarn:r.ohWarn, ok:r.ok, util:r.util };
+  }
+  return out;
+}
+
+function planAll(){ if(!PROJECT) return; for(const e of PROJECT.walls) planWall(e); render(); return PROJECT.walls.map(e=>e.plan); }
+
+// Bekleidungs-Mengen (Verbinder/Latten/Dämmung) über alle Wände + Seiten aggregieren.
+function aggregateCladding(){
+  const sum = { verbinder:0, latten_m:0, daemmung_m2:0 };
+  if(!PROJECT) return sum;
+  for(const e of PROJECT.walls){ const cl=e.cladding||{};
+    for(const s of Object.keys(cl)){ sum.verbinder+=cl[s].nVerbinder||0; sum.latten_m+=cl[s].latten_m||0; sum.daemmung_m2+=cl[s].daemmung_m2||0; } }
+  sum.latten_m=+sum.latten_m.toFixed(2); sum.daemmung_m2=+sum.daemmung_m2.toFixed(2);
+  return sum;
+}
+// Kostenmodell aus aggregierter BOM (aggregateBom aus sembla-cad) + Bekleidung.
+function costModel(){
+  const b = PROJECT ? aggregateBom(PROJECT) : {};
+  const rows = BOM_KEYS.filter(k=>(b[k]||0)>0).map(k=>{ const menge=b[k]||0, preis=+PRICES[k]||0, summe=menge*preis;
+    return { key:k, menge, unit:PRICE_UNIT[k]||'', preis, summe }; });
+  const cl = aggregateCladding();
+  [['verbinder','Stk'],['latten_m','m'],['daemmung_m2','m²']].forEach(([k,u])=>{ if((cl[k]||0)>0){ const preis=+PRICES[k]||0, summe=cl[k]*preis; rows.push({ key:k, menge:cl[k], unit:u, preis, summe }); } });
+  const total = rows.reduce((a,r)=>a+r.summe,0);
+  return { rows, total };
+}
+
+const AMPEL_LABEL = {gruen:'geplant', gelb:'Warnung', rot:'Konflikt'};
+function render(){
+  if(!PROJECT){ $('dash').innerHTML=''; $('kpis').innerHTML=''; return; }
+  const ws = PROJECT.walls;
+  const cnt = {gruen:0,gelb:0,rot:0,none:0};
+  for(const e of ws) cnt[e.plan?e.plan.ampel:'none']++;
+  $('kpis').innerHTML = [
+    ['Wände', ws.length, ''],
+    ['geplant', cnt.gruen, 'b-gruen'],
+    ['Warnung', cnt.gelb, 'b-gelb'],
+    ['Konflikt', cnt.rot, 'b-rot'],
+    ['offen', cnt.none, 'b-none'],
+  ].map(([l,n,c])=>`<div class="kpi"><div class="n ${c}" style="background:none">${n}</div><div class="l">${l}</div></div>`).join('');
+
+  const rows = ws.map((e,i)=>{
+    const p = e.plan, wd = e.wall;
+    const stones = (wd.bom?(wd.bom.i3||0):0)+' i3 / '+(wd.bom?(wd.bom.i2||0):0)+' i2';
+    const amp = p ? `<span class="badge b-${p.ampel}">${AMPEL_LABEL[p.ampel]}</span>` : `<span class="badge b-none">offen</span>`;
+    return `<tr>
+      <td class="num">${i+1}</td>
+      <td><a href="#" data-detail="${e.id}" style="text-decoration:none;color:var(--accent)">${e.name}</a></td>
+      <td>${fmt(wd.length_mm/1000,2)} × ${fmt(wd.height_mm/1000,2)} m</td>
+      <td>${stones}</td>
+      <td class="num">${p?fmt(p.eta*100,0)+' %':'–'}</td>
+      <td>${p?p.massg:'–'}</td>
+      <td>${amp}</td>
+      <td><button data-edit="${e.id}" title="Bearbeiten">✎</button> <button data-del="${e.id}" title="Entfernen">✕</button></td>
+    </tr>`;
+  }).join('');
+  $('dash').innerHTML = ws.length ? `<table><thead><tr>
+      <th>#</th><th>Wand</th><th>Maße</th><th>Steine</th><th>η_max</th><th>maßgebend</th><th>Status</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table>` : '<div class="note">Noch keine Wände. Lege eine Schnell-Wand an oder lade ein Wandelement/Bundle.</div>';
+
+  const b = aggregateBom(PROJECT);
+  $('meta').innerHTML = `Projekt „${PROJECT.name}“ · ${PROJECT.meta.phase||''} ${PROJECT.meta.plan_nr?('· '+PROJECT.meta.plan_nr):''}` +
+    (ws.length?` · Material gesamt: ${b.i3} i3, ${b.i2} i2, ${b.gewindestangen} Gewindestangen, ${b.spannplatten} Spannplatten`:'');
+  renderCosts();
+
+  const q=sel=>($('dash').querySelectorAll?$('dash').querySelectorAll(sel):[]);
+  for(const btn of q('button[data-del]'))
+    btn.addEventListener('click', ()=>{ const id=btn.getAttribute('data-del'); PROJECT.walls = PROJECT.walls.filter(w=>w.id!==id); if(EDIT_ID===id) clearEditor(); render(); });
+  for(const btn of q('button[data-edit]'))
+    btn.addEventListener('click', ()=>editWall(btn.getAttribute('data-edit')));
+  for(const a of q('a[data-detail]'))
+    a.addEventListener('click', ev=>{ ev.preventDefault&&ev.preventDefault(); wallDetail(a.getAttribute('data-detail')); });
+}
+
+// ---- Persistenz ----
+function saveJson(){ metaFromUI(); return JSON.stringify(PROJECT, null, 2); }
+function loadJson(obj){
+  if(obj && obj.format==='SEMBLA-Projekt-App'){ PROJECT = obj; }
+  else if(obj && obj.format==='SEMBLA-Projekt' && obj.wandelement){ newProject(obj.wandelement.name||'Projekt'); addWall(obj.wandelement); }
+  else if(obj && (obj.courses || obj.length_mm)){ newProject(obj.name||'Projekt'); addWall(obj); }
+  else throw new Error('Unbekanntes Format');
+  PROJECT.walls.forEach(e=>{ if(!e.id) e.id=uid(); });
+  metaToUI(); render();
+  return PROJECT;
+}
+function exportSummaryCsv(){
+  const rows = [["Nr","Wand","Laenge_m","Hoehe_m","i3","i2","eta_max_%","massgebend","status"]];
+  PROJECT.walls.forEach((e,i)=>{ const p=e.plan||{}, wd=e.wall;
+    rows.push([i+1, e.name, (wd.length_mm/1000).toFixed(2), (wd.height_mm/1000).toFixed(2),
+      wd.bom?wd.bom.i3:0, wd.bom?wd.bom.i2:0, p.eta!=null?Math.round(p.eta*100):'', p.massg||'', p.ampel||'offen']); });
+  return rows.map(r=>r.join(';')).join('\n')+'\n';
+}
+function download(name, text, mime){ const b=new Blob([text],{type:mime||'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+
+// ---- Wand-Editor (echte Wände inkl. Öffnungen, Staffelung, Anschluss — wie Modul 1) ----
+let editorOpenings = [];
+let editorSteps = [];
+let EDIT_ID = null;
+
+function renderStepList(){
+  const el=$('stepList'); if(!el) return;
+  el.innerHTML = editorSteps.length
+    ? editorSteps.map((s,i)=>`<span class="badge b-none" style="margin:2px 4px 2px 0">Stufe ${fmt(s.x0,2)}–${fmt(s.x1,2)} m · h ${fmt(s.h,2)} m <a href="#" data-st="${i}" style="text-decoration:none">✕</a></span>`).join('')
+    : '<span style="color:var(--muted)">keine Staffelung (Rechteck)</span>';
+  (el.querySelectorAll?el.querySelectorAll('a[data-st]'):[]).forEach(a=>a.addEventListener('click',ev=>{ ev.preventDefault&&ev.preventDefault(); editorSteps.splice(+a.getAttribute('data-st'),1); renderStepList(); previewSvg(); }));
+}
+function addStep(s){ editorSteps.push({ x0:+s.x0, x1:+s.x1, h:+s.h }); renderStepList(); previewSvg(); }
+
+// ---- Durchbrüche per Klick (Zellen) + Spannachsen ziehen (columns_grid) ----
+let editorVoids=new Set(), editorCols=null, voidMode=false, axisMode=false, dragK=null, PV=null;
+function opBlockers(N,Lg){ return openingGL(N,Lg).map(o=>[o.g0,o.g1,o.l0,o.l1]); }
+// zusammenhängende gevoidete Zellen -> rechteckige Durchbruch-Öffnungen (Flood-Fill, wie Modul 1)
+function voidOpenings(N,Lg){
+  const bl=opBlockers(N,Lg); const inB=(r,c)=>bl.some(([g0,g1,l0,l1])=>c>=g0&&c<g1&&r>=l0&&r<l1);
+  const cells=[...editorVoids].map(s=>s.split(',').map(Number)).filter(([r,c])=>r>=0&&r<Lg&&c>=0&&c<N&&!inB(r,c));
+  const set=new Set(cells.map(([r,c])=>r+','+c)); const seen=new Set(); const out=[];
+  for(const [r,c] of cells){ const key=r+','+c; if(seen.has(key))continue; let mr=r,Mr=r,mc=c,Mc=c; const st=[[r,c]]; seen.add(key);
+    while(st.length){ const [y,x]=st.pop(); mr=Math.min(mr,y);Mr=Math.max(Mr,y);mc=Math.min(mc,x);Mc=Math.max(Mc,x);
+      for(const [ny,nx] of [[y+1,x],[y-1,x],[y,x+1],[y,x-1]]){ const k2=ny+','+nx; if(set.has(k2)&&!seen.has(k2)){seen.add(k2);st.push([ny,nx]);} } }
+    try{ out.push(new Opening(mc,Mc+1,mr,Mr+1,'durchbruch')); }catch(e){} }
+  return out;
+}
+function toggleVoid(r,c){ const k=r+','+c; if(editorVoids.has(k))editorVoids.delete(k); else editorVoids.add(k); previewSvg(); }
+function clearVoids(){ editorVoids=new Set(); previewSvg(); }
+function ensureCols(){ if(!editorCols){ try{ editorCols=buildFromEditor().wd.tension_columns.map(c=>c.k); }catch(e){ editorCols=[]; } } }
+function addAxis(k){ ensureCols(); if(!editorCols.includes(k)){ editorCols.push(k); editorCols.sort((a,b)=>a-b); } previewSvg(); }
+function delAxis(k){ ensureCols(); const i=editorCols.indexOf(k); if(i>=0)editorCols.splice(i,1); previewSvg(); }
+function moveAxis(from,to){ ensureCols(); if(from===to||editorCols.includes(to))return; const i=editorCols.indexOf(from); if(i>=0){ editorCols[i]=to; editorCols.sort((a,b)=>a-b); } previewSvg(); }
+function autoAxes(){ editorCols=null; previewSvg(); }
+function syncModeBtns(){ const set=(id,on)=>{ const b=$(id); if(!b)return; b.style.background=on?'#1f6feb':''; b.style.color=on?'#fff':''; };
+  set('btnVoidMode',voidMode); set('btnAxisMode',axisMode); }
+function setVoidMode(on){ voidMode=!!on; if(voidMode)axisMode=false; syncModeBtns(); previewSvg(); }
+function setAxisMode(on){ axisMode=!!on; if(axisMode)voidMode=false; syncModeBtns(); previewSvg(); }
+function evToWall(ev){ const c=$('wallPreview'); const svg=(c&&c.querySelector)?c.querySelector('svg'):null; if(!svg||!PV||!svg.getBoundingClientRect)return null;
+  const r=svg.getBoundingClientRect(); if(!r.width)return null; const sx=(ev.clientX-r.left)/r.width*PV.W, sy=(ev.clientY-r.top)/r.height*PV.totalH;
+  return { x_mm:(sx-PV.pad)/PV.sc, y_mm:PV.H-(sy-PV.pad)/PV.sc }; }
+function pxToK(ev){ const p=evToWall(ev); if(!p)return null; return Math.max(0,Math.round((p.x_mm-CHAMBER_OFFSET)/GRID)); }
+
+function edSetTitle(){ if($('edTitle')) $('edTitle').textContent = EDIT_ID ? 'Wand-Editor · bearbeiten' : 'Wand-Editor · neu'; }
+// Öffnungen meter-basiert wie Modul 1: {art, x, w, sill, h} → Opening(g0,g1,l0,l1) via buildOpenings-Logik.
+function openingGL(N,Lg){
+  const out=[];
+  for(const o of editorOpenings){
+    const g0=Math.max(0,Math.round(o.x*1000/GRID)); const gw=Math.max(1,Math.round(o.w*1000/GRID)); const g1=Math.min(N,g0+gw);
+    let l0,l1; if(o.art==='fenster'){ l0=Math.max(0,Math.round((o.sill||0)*1000/COURSE)); l1=Math.min(Lg,l0+Math.max(1,Math.round(o.h*1000/COURSE))); }
+    else { l0=0; l1=Math.min(Lg,Math.max(1,Math.round(o.h*1000/COURSE))); }
+    if(g1>g0&&l1>l0) out.push({g0,g1,l0,l1,art:o.art});
+  }
+  return out;
+}
+function mapOpenings(N,Lg){ return openingGL(N,Lg).map(o=>{ try{ return new Opening(o.g0,o.g1,o.l0,o.l1,o.art); }catch(e){ return null; } }).filter(Boolean); }
+function renderOpenList(){
+  const el=$('openList'); if(!el) return;
+  if(!editorOpenings.length){ el.innerHTML='<div style="color:var(--muted);font-size:12px">Keine Öffnungen.</div>'; return; }
+  const fld=(i,field,txt,val,step)=>`<label style="margin:3px 0"><span>${txt}</span><input type="number" step="${step}" value="${val}" data-oi="${i}" data-of="${field}" style="width:88px"><small>m</small></label>`;
+  el.innerHTML=editorOpenings.map((o,i)=>{ const lab=o.art==='fenster'?'Fenster':'Tür';
+    return `<div style="border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;background:#fafbfc">
+      <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:12.5px">${lab} ${i+1}</b><button data-orm="${i}" style="padding:3px 9px">entfernen</button></div>
+      ${fld(i,'x','Position (links)',o.x,0.125)}${fld(i,'w','Breite',o.w,0.125)}${o.art==='fenster'?fld(i,'sill','Brüstung',o.sill,0.2):''}${fld(i,'h','Höhe',o.h,0.2)}
+    </div>`; }).join('');
+  const q=s=>(el.querySelectorAll?el.querySelectorAll(s):[]);
+  q('input[data-oi]').forEach(inp=>inp.addEventListener('input',()=>setOpening(+inp.getAttribute('data-oi'), inp.getAttribute('data-of'), +inp.value)));
+  q('button[data-orm]').forEach(b=>b.addEventListener('click',()=>{ editorOpenings.splice(+b.getAttribute('data-orm'),1); renderOpenList(); previewSvg(); }));
+}
+function setOpening(i,field,val){ if(editorOpenings[i]){ editorOpenings[i][field]=val; previewSvg(); } }
+function addOpening(art){ editorOpenings.push(art==='fenster'?{art:'fenster',x:0.75,w:1.00,sill:0.80,h:1.20}:{art:'tuer',x:0.625,w:0.75,sill:0,h:2.00}); renderOpenList(); previewSvg(); }
+function buildFromEditor(){
+  const name=($('wName')&&$('wName').value)||('Wand '+((PROJECT?PROJECT.walls.length:0)+1));
+  const L=+$('wL').value||3000, H=+$('wH').value||2600;
+  const N=Math.round(L/GRID), Lg=Math.round(H/COURSE);
+  const ops=mapOpenings(N,Lg).concat(voidOpenings(N,Lg));
+  const sides={ vorne:{funktion:($('fVorne')&&$('fVorne').value)||'fassade'}, hinten:{funktion:($('fHinten')&&$('fHinten').value)||'innenausbau'} };
+  const place={ x_mm:+(($('wX')&&$('wX').value))||0, y_mm:+(($('wY')&&$('wY').value))||0, rot_deg:+(($('wR')&&$('wR').value))||0 };
+  const steps=editorSteps.map(s=>({ x0_mm:Math.round(s.x0*1000), x1_mm:Math.round(s.x1*1000), height_mm:Math.round(s.h*1000) }));
+  const prestress={ top_connection: ($('topConn')&&$('topConn').value==='spannplatte')?'spannplatte':'blech' };
+  if(editorCols && editorCols.length) prestress.columns_grid=editorCols.slice();
+  return { wd: buildWall(name, L, H, ops, sides, prestress, steps), name, place };
+}
+function setEditor(w){
+  if($('wName')) $('wName').value=w.name||'';
+  $('wL').value=(w.L!=null?w.L:3000); $('wH').value=(w.H!=null?w.H:2600);
+  if($('wX'))$('wX').value=(w.x_mm!=null?w.x_mm:0); if($('wY'))$('wY').value=(w.y_mm!=null?w.y_mm:0); if($('wR'))$('wR').value=(w.rot_deg!=null?w.rot_deg:0);
+  if($('fVorne'))$('fVorne').value=w.fVorne||'fassade'; if($('fHinten'))$('fHinten').value=w.fHinten||'innenausbau';
+  if($('topConn'))$('topConn').value=w.topConn||'blech';
+  editorOpenings=(w.openings||[]).filter(o=>o.art!=='durchbruch').map(o=>({ art:o.art||'tuer',
+    x:o.g0*GRID/1000, w:(o.g1-o.g0)*GRID/1000, sill:(o.art==='fenster')?o.l0*COURSE/1000:0, h:(o.l1-o.l0)*COURSE/1000 }));
+  editorVoids=new Set(); (w.openings||[]).forEach(o=>{ if(o.art==='durchbruch') for(let c=o.g0;c<o.g1;c++)for(let r=o.l0;r<o.l1;r++) editorVoids.add(r+','+c); });
+  editorCols=(w.columns_grid&&w.columns_grid.length)?w.columns_grid.slice():null;
+  editorSteps=(w.steps||[]).map(s=>({ x0:s.x0_mm/1000, x1:s.x1_mm/1000, h:s.height_mm/1000 }));
+  renderOpenList(); renderStepList(); edSetTitle(); previewSvg();
+}
+function editWall(id){ const e=PROJECT.walls.find(x=>x.id===id); if(!e) return; EDIT_ID=id;
+  setEditor({ name:e.name, L:e.wall.length_mm, H:e.wall.height_mm, openings:e.wall.openings||[], steps:e.wall.steps||[],
+    x_mm:e.x_mm, y_mm:e.y_mm, rot_deg:e.rot_deg,
+    fVorne:(e.wall.sides&&e.wall.sides.vorne&&e.wall.sides.vorne.funktion)||'fassade',
+    fHinten:(e.wall.sides&&e.wall.sides.hinten&&e.wall.sides.hinten.funktion)||'innenausbau',
+    topConn:(e.wall.prestress&&e.wall.prestress.top_connection)||'blech',
+    columns_grid:(e.wall.prestress&&e.wall.prestress.columns_grid)||null });
+  wallDetail(id);
+}
+function saveWall(){
+  if(!PROJECT) newProject($('pName')?$('pName').value:'Projekt'); metaFromUI();
+  let b; try{ b=buildFromEditor(); }catch(err){ if(typeof alert==='function') alert('Wand ungültig: '+err.message); return null; }
+  let e;
+  if(EDIT_ID){ e=PROJECT.walls.find(x=>x.id===EDIT_ID); if(e){ e.wall=b.wd; e.name=b.name; e.plan=null; } EDIT_ID=null; }
+  else { addWall(b.wd, b.name); e=PROJECT.walls[PROJECT.walls.length-1]; }
+  if(e) Object.assign(e, b.place);
+  edSetTitle(); render(); return b.wd;
+}
+function clearEditor(){ EDIT_ID=null; editorOpenings=[]; editorSteps=[]; editorVoids=new Set(); editorCols=null; if($('wName'))$('wName').value=''; renderOpenList(); renderStepList(); edSetTitle(); previewSvg(); }
+
+/** Elevation einer Wand wie in Modul 1: Steine i2/i3, Öffnungen (Tür/Fenster/Durchbruch),
+ *  Staffelung, Vorspannstränge (segmentiert), Bodenblech + oberer Anschluss (Kopfblech/Spannplatte). */
+let showDimApp=false, showRasterApp=false;
+// Elevation über den geteilten Modul-1-Renderer (WV) — identische Qualität wie Modul 1.
+function svgForWall(wd, interactive){
+  const r=WV.drawWall(wd, { view:'vorne', showDim:showDimApp, showRaster:showRasterApp,
+    editMode:!!(interactive&&voidMode), axisEdit:!!(interactive&&axisMode), selAxis:null });
+  if(interactive){ const d=r.lastdraw; PV={ W:d.W, totalH:r.viewBoxH, pad:d.pad, sc:d.sc, H:wd.height_mm, L:wd.length_mm, N:d.N }; }
+  return `<svg viewBox="0 0 1000 ${r.viewBoxH}" width="100%" style="border:1px solid var(--line);border-radius:8px;background:#fff">${r.svg}</svg>`;
+}
+function previewSvg(){
+  let b; try{ b=buildFromEditor(); }
+  catch(err){ const s='<div class="note" style="color:var(--warn)">Vorschau: '+err.message+'</div>'; if($('wallPreview'))$('wallPreview').innerHTML=s; return s; }
+  const s=svgForWall(b.wd, true); if($('wallPreview'))$('wallPreview').innerHTML=s; return s;
+}
+
+// ---- Stückliste & Kosten ----
+function renderCosts(){
+  const el=$('costs'); if(!el) return;
+  if(!PROJECT || !PROJECT.walls.length){ el.innerHTML=''; return; }
+  const {rows,total}=costModel();
+  el.innerHTML = `<h2>Stückliste &amp; Kosten</h2><table><thead><tr><th>Position</th><th>Menge</th><th>Einheit</th><th>€/Einheit</th><th>Summe €</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td>${r.key}</td><td class="num">${r.menge}</td><td>${r.unit}</td>`+
+      `<td class="num"><input type="number" step="0.1" value="${r.preis}" data-price="${r.key}" style="width:72px;text-align:right"></td>`+
+      `<td class="num">${fmt(r.summe,2)}</td></tr>`).join('')+
+    `<tr><td colspan="4" style="text-align:right;font-weight:700">Gesamt netto</td><td class="num" style="font-weight:700">${fmt(total,2)} €</td></tr>`+
+    `</tbody></table><div class="row" style="margin-top:6px"><button id="btnCostCsv">Kosten-CSV</button></div>`;
+  (el.querySelectorAll?el.querySelectorAll('input[data-price]'):[]).forEach(inp=>inp.addEventListener('input',()=>{ PRICES[inp.getAttribute('data-price')]=+inp.value||0; renderCosts(); }));
+  if($('btnCostCsv')) $('btnCostCsv').addEventListener('click',()=>download((PROJECT.name||'projekt').replace(/\s+/g,'_')+'_kosten.csv', costsCsv(),'text/csv'));
+}
+function costsCsv(){ const {rows,total}=costModel();
+  const out=[["Position","Menge","Einheit","Preis_EUR","Summe_EUR"]];
+  rows.forEach(r=>out.push([r.key,r.menge,r.unit,r.preis,r.summe.toFixed(2)]));
+  out.push(["GESAMT","","","",total.toFixed(2)]);
+  return out.map(r=>r.join(';')).join('\n')+'\n';
+}
+
+// ---- Statik-Detail je Wand (Schermer-Aufschlüsselung) ----
+function wallDetail(id){
+  const e=PROJECT.walls.find(x=>x.id===id); const el=$('wallDetail'); if(!e||!el) return;
+  const wd=e.wall, r=nachweise(statParams(wd)), v=r.wand.vor;
+  const row=(l,eta,ok)=>`<tr><td>${l}</td><td class="num">${fmt(eta*100,1)} %</td><td>${ok?'OK':'—'}</td></tr>`;
+  const side=(k)=> (wd.sides&&wd.sides[k]&&wd.sides[k].funktion)||'–';
+  const cl = e.cladding || planCladding(wd);
+  const cladRows = Object.keys(cl).map(s=>{ const c=cl[s];
+    return `<tr><td>${s} · ${c.funktion}</td><td>${c.verbinder}</td><td class="num">${c.nVerbinder}</td><td class="num">${fmt(c.latten_m,1)} m</td><td class="num">${fmt(c.daemmung_m2,2)} m²</td><td>${c.ohWarn?'<span style="color:var(--warn)">Randüberstand!</span>':'ok'}</td></tr>`; }).join('');
+  const cladHtml = `<h2 style="margin-top:12px">Bekleidung (Verbinder / Latten / Dämmung)</h2>
+    <table><thead><tr><th>Seite · Aufbau</th><th>Verbinder</th><th>Anz.</th><th>Latten</th><th>Dämmung</th><th>Auskragung</th></tr></thead><tbody>${cladRows}</tbody></table>`;
+  el.innerHTML = `<h2>Detail · ${e.name}</h2>
+    <div class="row" style="align-items:flex-start">
+      <div style="flex:0 0 auto;max-width:360px">${svgForWall(wd)}</div>
+      <div style="flex:1">
+        <div class="note">Maße ${fmt(wd.length_mm/1000,2)}×${fmt(wd.height_mm/1000,2)} m · Seiten: vorne <b>${side('vorne')}</b> / hinten <b>${side('hinten')}</b> · Platzierung x=${e.x_mm} y=${e.y_mm} rot=${e.rot_deg}°</div>
+        <div class="note">Vorspannung: F∞ ${fmt(v.F_infty,2)} kN/Stab ${v.F_inf_ok?'✓':'⚠'} · N_v,fav ${fmt(v.Nv_fav,1)} · N_v,sup ${fmt(v.Nv_sup,1)} kN/m</div>
+        <table><thead><tr><th>Nachweis</th><th>η</th><th>Status</th></tr></thead><tbody>
+          ${row('Biegung',r.wand.biegung.eta,r.wand.biegung.ok)}
+          ${row('Schub',r.wand.schub.eta,r.wand.schub.ok)}
+          ${row('Druckrand',r.wand.druck.eta,r.wand.druck.ok)}
+          ${row('Bodenanschluss',r.wand.boden.eta,r.wand.boden.ok)}
+          ${row('Spannsystem',r.spann.eta_max,r.spann.ok)}
+          <tr><td style="font-weight:700">η_max,gesamt</td><td class="num" style="font-weight:700">${fmt(r.eta_max_gesamt*100,1)} %</td><td>${r.ok?'erfüllt':'NICHT erfüllt'}</td></tr>
+        </tbody></table>
+      </div></div>
+    ${cladHtml}`;
+}
+
+// ---- Projekt-Exporte (DXF/IFC über sembla-cad) ----
+function exportDxfGrundriss(){ if(!PROJECT||!PROJECT.walls.length) return; download((PROJECT.name||'projekt').replace(/\s+/g,'_')+'_grundriss.dxf', projectToDxfGrundriss(PROJECT), 'application/dxf'); }
+function exportDxfAnsichten(){ if(!PROJECT||!PROJECT.walls.length) return; download((PROJECT.name||'projekt').replace(/\s+/g,'_')+'_ansichten.dxf', projectToDxfAnsichten(PROJECT), 'application/dxf'); }
+function exportIfc(){ if(!PROJECT||!PROJECT.walls.length) return; download((PROJECT.name||'projekt').replace(/\s+/g,'_')+'.ifc', projectToIfc(PROJECT,{stones:true}), 'application/x-step'); }
+
+// ---- Events ----
+function bind(){
+  $('btnNew').addEventListener('click', ()=>{ newProject($('pName').value||'Neues Projekt'); metaToUI(); render(); });
+  $('btnQuick').addEventListener('click', ()=>{ if(!PROJECT) newProject($('pName').value); metaFromUI(); quickWall(+$('wL').value||3000, +$('wH').value||2600, $('wDoor').checked); render(); });
+  $('btnAddTuer').addEventListener('click', ()=>addOpening('tuer'));
+  $('btnAddFenster').addEventListener('click', ()=>addOpening('fenster'));
+  $('btnAddStep').addEventListener('click', ()=>addStep({ x0:$('sX0').value, x1:$('sX1').value, h:$('sH').value }));
+  $('topConn').addEventListener('change', previewSvg);
+  // Interaktive Vorschau: Durchbrüche per Klick, Spannachsen ziehen
+  $('btnVoidMode').addEventListener('click', ()=>setVoidMode(!voidMode));
+  $('btnVoidClear').addEventListener('click', clearVoids);
+  $('btnAxisMode').addEventListener('click', ()=>setAxisMode(!axisMode));
+  $('btnAxisAuto').addEventListener('click', autoAxes);
+  $('showDim').addEventListener('change', e=>{ showDimApp=e.target.checked; previewSvg(); });
+  $('showRaster').addEventListener('change', e=>{ showRasterApp=e.target.checked; previewSvg(); });
+  $('wallPreview').addEventListener('pointerdown', ev=>{ const t=ev.target;
+    if(voidMode && t && t.getAttribute && t.getAttribute('data-r')!=null){ toggleVoid(+t.getAttribute('data-r'), +t.getAttribute('data-c')); return; }
+    if(axisMode){ if(t && t.getAttribute && t.getAttribute('data-k')!=null){ dragK=+t.getAttribute('data-k'); } else { const k=pxToK(ev); if(k!=null){ addAxis(k); dragK=k; } } } });
+  $('wallPreview').addEventListener('pointermove', ev=>{ if(!axisMode||dragK==null)return; const k=pxToK(ev); if(k!=null&&k!==dragK){ moveAxis(dragK,k); dragK=k; } });
+  $('wallPreview').addEventListener('dblclick', ev=>{ const t=ev.target; if(axisMode && t && t.getAttribute && t.getAttribute('data-k')!=null) delAxis(+t.getAttribute('data-k')); });
+  window.addEventListener && window.addEventListener('pointerup', ()=>{ dragK=null; });
+  $('btnSaveWall').addEventListener('click', saveWall);
+  $('btnClearWall').addEventListener('click', clearEditor);
+  ['wL','wH','wName'].forEach(id=>$(id).addEventListener('input', previewSvg));
+  $('btnPlan').addEventListener('click', planAll);
+  $('btnSave').addEventListener('click', ()=>{ if(!PROJECT) return; download((PROJECT.name||'projekt').replace(/\s+/g,'_')+'.semblaproj.json', saveJson(), 'application/json'); });
+  $('btnExport').addEventListener('click', ()=>{ if(!PROJECT||!PROJECT.walls.length) return; download((PROJECT.name||'projekt').replace(/\s+/g,'_')+'_dashboard.csv', exportSummaryCsv(), 'text/csv'); });
+  $('btnDxfG').addEventListener('click', exportDxfGrundriss);
+  $('btnDxfA').addEventListener('click', exportDxfAnsichten);
+  $('btnIfc').addEventListener('click', exportIfc);
+  ['fVorne','fHinten','wX','wY','wR'].forEach(id=>$(id).addEventListener('change', previewSvg));
+  $('btnLoad').addEventListener('click', ()=>$('fileProj').click());
+  $('fileProj').addEventListener('change', ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ loadJson(JSON.parse(rd.result)); }catch(e){ alert('Laden fehlgeschlagen: '+e.message); } }; rd.readAsText(f); });
+  $('btnImport').addEventListener('click', ()=>$('fileWall').click());
+  $('fileWall').addEventListener('change', ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result); if(!PROJECT) newProject($('pName').value); metaFromUI(); const wd=(j&&j.format==='SEMBLA-Projekt'&&j.wandelement)?j.wandelement:j; addWall(wd); render(); }catch(e){ alert('Import fehlgeschlagen: '+e.message); } }; rd.readAsText(f); });
+}
+
+newProject('Neues Projekt');
+if(typeof document!=='undefined' && $('btnNew')){ bind(); metaToUI(); render(); renderOpenList(); renderStepList(); previewSvg(); }
+window.__app = { get project(){return PROJECT;}, get editorOpenings(){return editorOpenings;}, newProject, quickWall, addWall, planWall, planAll, render,
+  saveJson, loadJson, exportSummaryCsv, aggregateBom, statParams,
+  setEditor, addOpening, setOpening, addStep, buildFromEditor, saveWall, editWall, clearEditor, previewSvg, svgForWall,
+  toggleVoid, clearVoids, addAxis, delAxis, moveAxis, autoAxes, setVoidMode, setAxisMode,
+  get editorVoids(){return editorVoids;}, get editorCols(){return editorCols;}, get editorOpenings(){return editorOpenings;}, get editorSteps(){return editorSteps;},
+  costModel, costsCsv, renderCosts, wallDetail, exportDxfGrundriss, exportDxfAnsichten, exportIfc,
+  dxfGrundriss:()=>projectToDxfGrundriss(PROJECT), dxfAnsichten:()=>projectToDxfAnsichten(PROJECT), ifc:()=>projectToIfc(PROJECT,{stones:true}),
+  planCladding, aggregateCladding, SW,
+  get PRICES(){return PRICES;} };
+</script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Auslegung (Statik-Iteration)</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --ok:#1f9d55; --warn:#c9461c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:340px;flex:0 0 340px}
+  .stage{flex:1 1 560px;min-width:440px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  .grp{margin-bottom:13px}
+  .grp h3{font-size:12.5px;margin:0 0 6px;font-weight:650;border-bottom:1px solid var(--line);padding-bottom:4px}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  label small{color:var(--muted);font-size:11px}
+  input[type=number]{width:92px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;text-align:right;background:#fff}
+  select{padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;background:#fff;width:150px}
+  button{padding:9px 11px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%}
+  .btnrow{display:flex;gap:8px;margin-top:10px}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:#e3f5ea;color:var(--ok)} .badge.no{background:#fbe6dd;color:var(--warn)}
+  .res{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:13px}
+  .res .k{color:var(--muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  table.tb{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  table.tb th{font-size:11px;color:var(--muted);text-align:right;font-weight:600;padding:3px 6px;border-bottom:1px solid var(--line)}
+  table.tb th:first-child{text-align:left}
+  table.tb td{padding:3px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+  table.tb td:first-child{text-align:left}
+  tr.gov td{background:#eef2f7;font-weight:600}
+  tr.hit td{background:#e3f5ea;font-weight:600}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+  .pill.ok{background:#e3f5ea;color:var(--ok)} .pill.no{background:#fbe6dd;color:var(--warn)}
+  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;margin-top:6px}
+  .note{font-size:11.5px;color:var(--muted);margin-top:12px;border-top:1px solid var(--line);padding-top:10px;line-height:1.55}
+  #printdoc{display:none}
+  @media print{ header,.controls,svg{display:none!important} #app{display:none!important} #printdoc{display:block;padding:0 6mm} h2{color:#333} }
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-20003</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">e9633a89-88ff-472c-9f82-a7cae59dba98</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-20003, YZXVWT2JSZP3-499227272-20003</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Auslegung <span style="font-weight:400;color:#9fb0c0">· Statik-Iterationsschleife</span></h1>
+  <p>Engine: baut, prüft (Biegung · Randdruck · Schub) und optimiert Vorspannung (Strangabstand + Kraft N), bis alle Nachweise erfüllt sind. Ergebnis: geprüftes Wandelement.</p>
+</header>
+
+<div id="app" class="wrap">
+  <div class="panel controls">
+    <h2>Vorgaben</h2>
+    <div class="grp"><h3>Wand</h3>
+      <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125"><small>m</small></label>
+      <label><span>Höhe</span><input type="number" id="hgt" value="2.60" step="0.20"><small>m</small></label>
+    </div>
+    <div class="grp"><h3>Seiten</h3>
+      <label><span>Vorderseite</span><select id="sideVorne"><option value="fassade">Fassade</option><option value="innenausbau">Innenausbau</option><option value="sicht">Sichtfläche</option><option value="installation">Installation</option></select></label>
+      <label><span>Rückseite</span><select id="sideHinten"><option value="fassade">Fassade</option><option value="innenausbau" selected>Innenausbau</option><option value="sicht">Sichtfläche</option><option value="installation">Installation</option></select></label>
+    </div>
+    <div class="grp"><h3>Last (horizontal, Fläche)</h3>
+      <label><span>q<sub>k</sub></span><input type="number" id="qk" value="1.00" step="0.25"><small>kN/m²</small></label>
+      <label><span>γ<sub>Q</sub></span><input type="number" id="gammaQ" value="1.50" step="0.05"><small>–</small></label>
+    </div>
+    <div class="grp"><h3>Modus</h3>
+      <label><span>Vorgehen</span><select id="modus"><option value="auto" selected>Auto-Auslegung (optimieren)</option><option value="nachweis">Nachweis (feste Auslegung)</option></select></label>
+      <div id="manual" style="display:none">
+        <label><span>Strangabstand</span><select id="spacing"><option value="3">3 Raster (37,5 cm)</option><option value="2">2 Raster (25 cm)</option><option value="1">1 Raster (12,5 cm)</option></select></label>
+        <label><span>Vorspannkraft N</span><input type="number" id="force" value="60" step="5"><small>kN/Strang</small></label>
+      </div>
+    </div>
+    <div class="grp"><h3>Materialannahmen <small>(zu bestätigen)</small></h3>
+      <label><span>Druckfestigkeit f<sub>cd</sub></span><input type="number" id="fcd" value="20" step="1"><small>N/mm²</small></label>
+      <label><span>Haftreibung C<sub>f,d</sub></span><input type="number" id="cfd" value="0.60" step="0.05"><small>–</small></label>
+      <label><span>Wichte ρ</span><input type="number" id="rho" value="14" step="0.5"><small>kN/m³</small></label>
+    </div>
+    <button class="primary" id="run">Auslegen / Prüfen</button>
+    <div class="btnrow"><button id="print" style="flex:1">Nachweisprotokoll drucken</button><button id="exp" style="flex:1">JSON</button></div>
+    <div class="note"><b>Nachweise.</b> Biegung (klaffende Fuge): M<sub>Ed</sub>=q·L·H²/8 ≤ M<sub>R</sub>=σ·W. Randdruck: σ<sub>max</sub>=N/A+M/W ≤ f<sub>cd</sub>. Schub: V<sub>Ed</sub>=q·L·H/2 ≤ C<sub>f,d</sub>·(N+G). Planungshilfe — Material/Vorspannkraft mit Statiker bestätigen.</div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Ergebnis</h2>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <span class="badge" id="statusBadge">–</span>
+      <span class="k" id="statusText" style="color:var(--muted);font-size:13px"></span>
+    </div>
+    <div class="res">
+      <div class="k">Strangabstand</div><div class="v" id="rSp">–</div>
+      <div class="k">Vorspannstränge</div><div class="v" id="rStrands">–</div>
+      <div class="k">Vorspannkraft je Strang</div><div class="v" id="rN">–</div>
+    </div>
+
+    <h2 style="margin-top:14px">Nachweise</h2>
+    <table class="tb" id="nwTable"><thead><tr><th>Nachweis</th><th>Einwirkung</th><th>Widerstand</th><th>Auslastung</th><th></th></tr></thead><tbody></tbody></table>
+
+    <div id="itWrap"><h2 style="margin-top:14px">Iterationsprotokoll</h2>
+      <table class="tb" id="itTable"><thead><tr><th>Versuch</th><th>Strangabstand</th><th>Stränge</th><th>N [kN]</th><th>Auslastung</th><th></th></tr></thead><tbody></tbody></table></div>
+
+    <h2 style="margin-top:14px">Wandbild</h2>
+    <svg id="viz" viewBox="0 0 900 380" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+</div>
+<div id="printdoc"></div>
+
+<script>
+/*__BUNDLE__*/
+
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=u=>fmt(u*100,0)+' %';
+let RESULT=null;
+
+function vorgaben(){
+  const v={ name:"Auslegung",
+    length_mm: Math.max(250, Math.round(+$('len').value*1000/125)*125),
+    height_mm: Math.max(200, Math.round(+$('hgt').value*1000/200)*200),
+    openings: [], sides:{ vorne:{funktion:$('sideVorne').value}, hinten:{funktion:$('sideHinten').value} },
+    load:{ qk_area:+$('qk').value, gammaQ:+$('gammaQ').value },
+    material:{ fcd_Nmm2:+$('fcd').value, cfd:+$('cfd').value, rho:+$('rho').value } };
+  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value };
+  return v;
+}
+
+function run(){
+  const auto=$('modus').value==='auto';
+  $('manual').style.display = auto?'none':'block';
+  $('itWrap').style.display = auto?'block':'none';
+  RESULT = auto ? autoAuslegung(vorgaben()) : nachweisPruefen(vorgaben());
+  const w=RESULT.wandelement, v=w.verification, ok=v.status==='geprüft';
+  $('statusBadge').className='badge '+(ok?'ok':'no');
+  $('statusBadge').textContent = ok?'Alle Nachweise erfüllt':'Nachweis NICHT erfüllt';
+  $('statusText').textContent = auto
+    ? (ok?('Optimiert nach '+RESULT.iterationen.length+' Iteration(en).'):'Auch beim feinsten Raster & max. N nicht erfüllt.')
+    : (ok?'Vorgegebene Auslegung erfüllt.':'Vorgegebene Auslegung NICHT erfüllt.');
+  $('rSp').textContent = v.auslegung.max_span_grid+' Raster ('+fmt(v.auslegung.max_span_grid*12.5,1)+' cm)';
+  $('rStrands').textContent = v.auslegung.strands;
+  $('rN').textContent = fmt(v.auslegung.force_kN,0)+' kN';
+  renderNachweise(v);
+  renderIterationen(auto?RESULT.iterationen:[]);
+  draw(w);
+  buildPrint(w,v);
+}
+
+function nwRow(name, einw, wid, util, ok, gov){
+  return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀ maßgebend':''}</td><td>${einw}</td><td>${wid}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`;
+}
+function renderNachweise(v){
+  const n=v.nachweise, g=v.governing.name;
+  $('nwTable').querySelector('tbody').innerHTML =
+    nwRow('Biegung (klaffende Fuge)', 'M_Ed '+fmt(n.biegung.M_Ed,2), 'M_R '+fmt(n.biegung.M_R,2), n.biegung.util, n.biegung.ok, g==='biegung')+
+    nwRow('Randdruck', 'σ '+fmt(n.randdruck.sigma_Nmm2,2)+' N/mm²', 'f_cd '+fmt(n.randdruck.fcd,0), n.randdruck.util, n.randdruck.ok, g==='randdruck')+
+    nwRow('Schub / Reibung', 'V_Ed '+fmt(n.schub.V_Ed,1), 'V_R '+fmt(n.schub.V_R,1), n.schub.util, n.schub.ok, g==='schub');
+}
+function renderIterationen(its){
+  const tb=$('itTable').querySelector('tbody'); tb.innerHTML='';
+  its.forEach((it,i)=>{ const tr=document.createElement('tr'); if(it.ok) tr.className='hit';
+    tr.innerHTML=`<td>${i+1}</td><td>${it.max_span_grid} Raster</td><td>${it.strands}</td><td>${it.N!=null?fmt(it.N,0):'–'}</td><td>${it.util!=null?pct(it.util):'–'}</td><td><span class="pill ${it.ok?'ok':'no'}">${it.ok?'ok':'!'}</span></td>`;
+    tb.appendChild(tr); });
+}
+
+function draw(w){
+  const svg=$('viz'), W=900, H=380, pad=34;
+  const L=w.length_mm, Hm=w.height_mm, sc=Math.min((W-2*pad)/L,(H-2*pad)/Hm);
+  const wPx=L*sc, hPx=Hm*sc, X=x=>pad+x*sc, Y=y=>H-pad-y*sc; let s='';
+  for(const c of w.courses){ const y1=(c.lage+1)*200; for(const st of c.stones){ const fill=st.type==='i3'?'#cfd3d8':'#bcc2c9';
+    s+=`<rect x="${X(st.x0)}" y="${Y(y1)}" width="${(st.x1-st.x0)*sc}" height="${200*sc}" fill="${fill}" stroke="#aeb3ba" stroke-width="0.8"/>`; } }
+  for(const col of w.tension_columns){ const x=X(col.x_mm);
+    for(const g of (col.segments||[{z0_mm:0,z1_mm:Hm}])) s+=`<line x1="${x}" y1="${Y(g.z0_mm)}" x2="${x}" y2="${Y(g.z1_mm)}" stroke="#1f6feb" stroke-width="2"/>`; }
+  s+=`<rect x="${pad}" y="${Y(Hm)}" width="${wPx}" height="${hPx}" fill="none" stroke="#13202e" stroke-width="1.6"/>`;
+  s+=`<text x="${pad}" y="20" font-size="12" fill="#6b7682">${fmt(L/1000,3)} × ${fmt(Hm/1000,2)} m · ${w.tension_columns.length} Stränge · N=${fmt(w.prestress.force_kN,0)} kN</text>`;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=s;
+}
+
+function buildPrint(w,v){
+  const n=v.nachweise;
+  let h='<h1 style="font-size:18px">SEMBLA Nachweisprotokoll — Wand (nichttragend, vorgespannt)</h1>';
+  h+=`<p>${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m · Wandstärke ${fmt(w.thickness_mm/10,1)} cm · Seiten: vorne ${w.sides.vorne.funktion}, hinten ${w.sides.hinten.funktion}.</p>`;
+  h+=`<p><b>Status: ${v.status==='geprüft'?'Alle Nachweise erfüllt':'NICHT erfüllt'}</b> · maßgebend: ${v.governing.name} (Auslastung ${pct(v.governing.util)}).</p>`;
+  h+=`<h2>Auslegung Vorspannung</h2><p>Strangabstand ${v.auslegung.max_span_grid} Raster (${fmt(v.auslegung.max_span_grid*12.5,1)} cm) · ${v.auslegung.strands} Stränge · N = ${fmt(v.auslegung.force_kN,0)} kN/Strang.</p>`;
+  h+='<h2>Nachweise</h2><table class="tb"><thead><tr><th>Nachweis</th><th>Formel</th><th>Einwirkung</th><th>Widerstand</th><th>Auslastung</th></tr></thead><tbody>';
+  h+=`<tr><td>Biegung</td><td>M_Ed=q·L·H²/8 ≤ M_R=σ·W</td><td>${fmt(n.biegung.M_Ed,2)} kNm</td><td>${fmt(n.biegung.M_R,2)} kNm</td><td>${pct(n.biegung.util)}</td></tr>`;
+  h+=`<tr><td>Randdruck</td><td>σ=N/A+M/W ≤ f_cd</td><td>${fmt(n.randdruck.sigma_Nmm2,2)} N/mm²</td><td>${fmt(n.randdruck.fcd,0)} N/mm²</td><td>${pct(n.randdruck.util)}</td></tr>`;
+  h+=`<tr><td>Schub/Reibung</td><td>V_Ed=q·L·H/2 ≤ C·(N+G)</td><td>${fmt(n.schub.V_Ed,1)} kN</td><td>${fmt(n.schub.V_R,1)} kN</td><td>${pct(n.schub.util)}</td></tr>`;
+  h+='</tbody></table>';
+  h+=`<h2>Materialannahmen (zu bestätigen)</h2><p>f_cd = ${fmt(v.material.fcd_Nmm2,0)} N/mm² · C_f,d = ${fmt(v.material.cfd,2)} · ρ = ${fmt(v.material.rho,1)} kN/m³.</p>`;
+  h+='<p style="font-size:11px;color:#666">Planungshilfe — ersetzt keine geprüfte Statik. Vorspannkraft und Materialkennwerte sind projektspezifisch zu bestätigen.</p>';
+  $('printdoc').innerHTML=h;
+}
+
+function download(name,text,type){ const b=new Blob([text],{type:type||'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+$('run').addEventListener('click',run);
+$('modus').addEventListener('change',run);
+$('print').addEventListener('click',()=>{ if(!RESULT){alert('Bitte zuerst auslegen.');return;} window.print(); });
+$('exp').addEventListener('click',()=>{ if(!RESULT){alert('Bitte zuerst auslegen.');return;} download('SEMBLA_Wandelement_geprueft.json', JSON.stringify(RESULT.wandelement,null,2)); });
+window.__engine={ run, get RESULT(){return RESULT;}, autoAuslegung, nachweisPruefen };
+run();
+</script>
+</body>
+</html>

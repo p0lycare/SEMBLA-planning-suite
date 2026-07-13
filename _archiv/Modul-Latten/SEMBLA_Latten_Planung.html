@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Latten-Planung (Innenausbau-UK)</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --wood:#c9a063; --wood2:#b3884a; --ok:#1f9d55; --warn:#c9461c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:330px;flex:0 0 330px}
+  .stage{flex:1 1 560px;min-width:440px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  button{padding:9px 11px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%}
+  .btnrow{display:flex;gap:8px;margin-top:10px}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;font-size:13px}
+  label small{color:var(--muted);font-size:11px}
+  input[type=number]{width:90px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;text-align:right;background:#fff}
+  .res{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
+  .res .k{color:var(--muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  .big{font-size:26px;font-weight:700;color:var(--accent)}
+  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12.5px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .note{font-size:11.5px;color:var(--muted);margin-top:14px;border-top:1px solid var(--line);padding-top:10px;line-height:1.55}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-19928</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">a144fe6b-02a6-4df9-b1fe-356711c2a66f</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-19928, YZXVWT2JSZP3-499227272-19928</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Latten-Planung <span style="font-weight:400;color:#9fb0c0">· Innenausbau-UK · liest Verbinder-Layout</span></h1>
+  <p>Vertikale Holzlatten auf den Verbinderachsen (lastabhängige Verteilung aus Modul 2). Stöße auf Verbindern, Reststück-Optimierung, Stückliste.</p>
+</header>
+
+<div class="wrap">
+  <div class="panel controls">
+    <h2>Eingaben</h2>
+    <input type="file" id="layfile" accept=".json,application/json" style="display:none">
+    <button class="primary" id="loadlay">Layout / Bundle laden</button>
+    <div id="layinfo" class="hint">Projekt-Bundle aus Modul 2 (enthält das Verbinder-Layout) hier laden.</div>
+
+    <div style="margin-top:14px">
+      <label><span>Lattenbreite</span><input type="number" id="widthCm" value="4" step="0.5"><small>cm</small></label>
+      <label><span>Lattenlänge (Stange)</span><input type="number" id="stockCm" value="150" step="5"><small>cm</small></label>
+    </div>
+    <div style="margin-top:6px;border-top:1px solid var(--line);padding-top:8px">
+      <label><span>Dämmung aktiv (Fassade)</span><input type="checkbox" id="insAktiv" checked style="width:auto"></label>
+      <label><span>Dämmdicke</span><input type="number" id="insDicke" value="8" step="1"><small>cm</small></label>
+    </div>
+
+    <div class="btnrow">
+      <button id="expCut">Zuschnitt CSV</button>
+      <button id="expSum">Stückliste CSV</button>
+      <button id="expIns">Dämmung CSV</button>
+    </div>
+    <div class="note"><b>Modell.</b> Latten verlaufen vertikal auf den Verbinderachsen; jede Latte ist an mindestens zwei Verbindern fixiert, Stöße liegen auf einem Verbinder. Wandhöhe &gt; Lattenlänge → Stückelung. Reststücke werden über alle Achsen wiederverwendet (1D-Zuschnitt). Die Verbinderdichte kommt lastabhängig aus Modul 2.</div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Stückliste</h2>
+    <div style="display:flex;align-items:baseline;gap:16px;margin-bottom:8px">
+      <div><div class="big" id="bCount">–</div><div class="k" style="color:var(--muted)">1,5-m-Latten</div></div>
+      <div style="margin-left:auto;text-align:right"><div class="v" id="bWaste" style="font-size:18px">–</div><div class="k" style="color:var(--muted)">Verschnitt</div></div>
+    </div>
+    <div class="res">
+      <div class="k">Achsen</div><div class="v" id="rAxes">–</div>
+      <div class="k">Latten-Stücke (Schnitte)</div><div class="v" id="rPieces">–</div>
+      <div class="k">verbaute Länge</div><div class="v" id="rUsed">–</div>
+      <div class="k">Gesamtlänge (Bedarf)</div><div class="v" id="rTotal">–</div>
+      <div class="k">Lattenquerschnitt</div><div class="v" id="rDim">–</div>
+    </div>
+
+    <h2 style="margin-top:14px">Dämmung (Gefache)</h2>
+    <div class="res">
+      <div class="k">Dämmfläche</div><div class="v" id="dFlaeche">–</div>
+      <div class="k">Gefache</div><div class="v" id="dGefache">–</div>
+      <div class="k">Dämmdicke</div><div class="v" id="dDicke">–</div>
+    </div>
+
+    <h2 style="margin-top:16px">Lattenbild</h2>
+    <svg id="viz" viewBox="0 0 900 460" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span><i style="background:#c9a063"></i>Latte</span>
+      <span><i style="background:#13202e"></i>Stoß (auf Verbinder)</span>
+      <span><i style="background:#f2dca0"></i>Dämmung</span>
+      <span><i style="background:#1f6feb"></i>Verbinder</span>
+      <span><i style="background:#fff;border:1px dashed #c9461c"></i>Öffnung</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==== sembla-latten (generiert) ====
+// @ts-check
+/**
+ * SEMBLA Latten-Planung (Innenausbau-UK).
+ * Plant vertikale Holzlatten entlang der Verbinderachsen und erstellt eine Stückliste.
+ * Eingabe: Verbinder-Layout aus Modul 2 (lastabhängige Verteilung, inkl. Öffnungen).
+ *
+ * Regeln:
+ *  - Latten verlaufen vertikal auf den Verbinderachsen.
+ *  - Latten werden an Öffnungen ABGESCHNITTEN (nie über Tür/Fenster gezogen).
+ *  - Stöße liegen ZWISCHEN zwei Verbindern (mittig), nie auf einem Verbinder.
+ *  - Jede Latte ist an mindestens einem Verbinder fixiert; Stücklänge ≤ Lattenlänge.
+ *  - Reststücke werden über alle Achsen wiederverwendet (1D-Zuschnitt).
+ * Einheiten: cm.
+ */
+
+function cuttingStock(pieces, stock) {
+  const sorted = [...pieces].sort((a, b) => b - a);
+  const remn = []; let stockCount = 0;
+  for (const p of sorted) {
+    let bi = -1, bv = Infinity;
+    for (let i = 0; i < remn.length; i++) if (remn[i] >= p - 1e-6 && remn[i] < bv) { bv = remn[i]; bi = i; }
+    if (bi >= 0) remn[bi] = +(remn[bi] - p).toFixed(3);
+    else { stockCount++; remn.push(+(stock - p).toFixed(3)); }
+  }
+  const used = pieces.reduce((a, b) => a + b, 0);
+  const total = stockCount * stock;
+  return { stockCount, usedLen: +used.toFixed(3), totalLen: +total.toFixed(3), wasteLen: +(total - used).toFixed(3), remnants: remn.filter(r => r > 1e-6) };
+}
+
+/** Teilt ein solides Intervall [S,E] in Latten ≤ stock; Stöße mittig zwischen Verbindern. */
+function splitInterval(S, E, conns, stock) {
+  const segs = [];
+  if (E - S <= stock + 1e-6) { segs.push({ y0: S, y1: E }); return segs; }
+  let start = S, i = 0;
+  let guard = 0;
+  while (guard++ < 10000) {
+    if (E - start <= stock + 1e-6) { segs.push({ y0: start, y1: E }); break; }
+    let chosen = -1;
+    for (let j = i; j < conns.length - 1; j++) {
+      const joint = (conns[j] + conns[j + 1]) / 2;
+      if (joint - start <= stock + 1e-6) chosen = j; else break;
+    }
+    let joint;
+    if (chosen < 0) { joint = +(start + stock).toFixed(3); }      // Fallback: Schnitt ohne nahen Verbinder
+    else joint = +((conns[chosen] + conns[chosen + 1]) / 2).toFixed(3);
+    segs.push({ y0: start, y1: joint });
+    start = joint;
+    while (i < conns.length && conns[i] < joint) i++;
+  }
+  return segs;
+}
+
+/** Solide Höhen-Intervalle einer Achse x = [0,H] minus der dort aktiven Öffnungen. */
+function solidIntervals(x, ops, H) {
+  const blocks = (ops || []).filter(o => x > o.x0 + 1e-6 && x < o.x1 - 1e-6).map(o => [o.y0, o.y1]).sort((a, b) => a[0] - b[0]);
+  const iv = []; let cur = 0;
+  for (const [a, b] of blocks) { if (a > cur + 1e-6) iv.push([cur, a]); cur = Math.max(cur, b); }
+  if (H - cur > 1e-6) iv.push([cur, H]);
+  return iv;
+}
+
+/** Plant Latten aus einem Verbinder-Layout. opts: widthCm (4), stockCm (150), insulation (bool), thicknessCm. */
+function layoutToBattens(layout, opts = {}) {
+  const stock = opts.stockCm ?? 150;
+  const widthCm = opts.widthCm ?? 4;
+  const H = (layout.wall && layout.wall.H_cm) || 0;
+  const ops = layout.openings_cm || [];
+  const byX = new Map();
+  for (const p of layout.points || []) {
+    const k = +(+p.x_cm).toFixed(2);
+    if (!byX.has(k)) byX.set(k, new Set());
+    byX.get(k).add(+(+p.y_cm).toFixed(2));
+  }
+  const axes = []; const pieces = []; let warnings = 0;
+  for (const x of [...byX.keys()].sort((a, b) => a - b)) {
+    const ys = [...byX.get(x)].sort((a, b) => a - b);
+    // solide Intervalle = [0,H] minus der an dieser Achse aktiven Öffnungen
+    const intervals = solidIntervals(x, ops, H);
+    const segs = [];
+    for (const [S, E] of intervals) {
+      const conns = ys.filter(y => y > S + 1e-6 && y < E - 1e-6);
+      if (conns.length === 0) { warnings++; continue; }            // kein Verbinder -> keine fixierbare Latte
+      for (const sg of splitInterval(S, E, conns, stock)) {
+        const len = +(sg.y1 - sg.y0).toFixed(2);
+        const fix = conns.filter(y => y > sg.y0 - 1e-6 && y < sg.y1 + 1e-6).length;
+        segs.push({ y0_cm: +sg.y0.toFixed(2), y1_cm: +sg.y1.toFixed(2), len_cm: len, fixings: fix });
+        pieces.push(len);
+      }
+    }
+    axes.push({ x_cm: x, n_connectors: ys.length, segments: segs, runLen_cm: +segs.reduce((a, s) => a + s.len_cm, 0).toFixed(2) });
+  }
+  const cutting = cuttingStock(pieces, stock);
+  // Dämmpakete je Gefach (zwischen benachbarten Latten), an Öffnungen geschnitten
+  let daemmung = null;
+  if (opts.insulation) {
+    const th = opts.thicknessCm || 0;
+    const xs = axes.map(a => a.x_cm); const bays = [];
+    for (let i = 0; i < xs.length - 1; i++) {
+      const clear = +(xs[i + 1] - xs[i] - widthCm).toFixed(2);
+      if (clear <= 0.01) continue;
+      const midx = (xs[i] + xs[i + 1]) / 2;
+      const segs = solidIntervals(midx, ops, H).map(([S, E]) => ({ y0_cm: +S.toFixed(2), y1_cm: +E.toFixed(2), h_cm: +(E - S).toFixed(2) }));
+      const area = +segs.reduce((a, sg) => a + (clear / 100) * (sg.h_cm / 100), 0).toFixed(3);
+      bays.push({ x_left_cm: xs[i], x_right_cm: xs[i + 1], clear_cm: clear, segments: segs, area_m2: area });
+    }
+    daemmung = { thickness_cm: th, bays,
+      total: { flaeche_m2: +bays.reduce((a, b) => a + b.area_m2, 0).toFixed(2), gefache: bays.length, segmente: bays.reduce((a, b) => a + b.segments.length, 0) } };
+  }
+  const summary = {
+    achsen: axes.length,
+    latten_stuecke: pieces.length,
+    latten_15m_bedarf: cutting.stockCount,
+    gesamtlaenge_m: +(cutting.totalLen / 100).toFixed(2),
+    verbaute_laenge_m: +(cutting.usedLen / 100).toFixed(2),
+    verschnitt_m: +(cutting.wasteLen / 100).toFixed(2),
+    verschnitt_pct: cutting.totalLen ? +(100 * cutting.wasteLen / cutting.totalLen).toFixed(1) : 0,
+    lattenbreite_cm: widthCm, lattenlaenge_cm: stock, warnungen: warnings,
+  };
+  return { wall: layout.wall || {}, seite: layout.seite || null, seite_funktion: layout.seite_funktion || null, openings_cm: ops, widthCm, stockCm: stock, axes, pieces, cutting, summary, daemmung };
+}
+
+/** Zuschnittliste als CSV. */
+function daemmungCsv(res) {
+  const rows = [["gefach", "x_links_cm", "x_rechts_cm", "lichte_breite_cm", "dicke_cm", "flaeche_m2"]];
+  if (res.daemmung) res.daemmung.bays.forEach((b, i) => rows.push([i + 1, b.x_left_cm, b.x_right_cm, b.clear_cm, res.daemmung.thickness_cm, b.area_m2]));
+  return rows.map(r => r.join(";")).join("\n") + "\n";
+}
+
+function battenCutListCsv(res) {
+  const rows = [["achse_x_cm", "segment", "y0_cm", "y1_cm", "laenge_cm", "fixierungen"]];
+  res.axes.forEach(a => a.segments.forEach((s, i) => rows.push([a.x_cm, i + 1, s.y0_cm, s.y1_cm, s.len_cm, s.fixings])));
+  return rows.map(r => r.join(";")).join("\n") + "\n";
+}
+
+
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+let LAYOUT=null, RES=null;
+
+function recompute(){
+  if(!LAYOUT) return;
+  RES=layoutToBattens(LAYOUT,{widthCm:+$('widthCm').value, stockCm:+$('stockCm').value, insulation:$('insAktiv').checked, thicknessCm:+$('insDicke').value});
+  const s=RES.summary;
+  $('bCount').textContent=s.latten_15m_bedarf;
+  $('bWaste').textContent=fmt(s.verschnitt_m,2)+' m ('+fmt(s.verschnitt_pct,0)+' %)';
+  $('rAxes').textContent=s.achsen;
+  $('rPieces').textContent=s.latten_stuecke;
+  $('rUsed').textContent=fmt(s.verbaute_laenge_m,2)+' m';
+  $('rTotal').textContent=fmt(s.gesamtlaenge_m,2)+' m';
+  $('rDim').textContent=fmt(s.lattenbreite_cm,0)+' cm · Stange '+fmt(s.lattenlaenge_cm,0)+' cm';
+  const dd=RES.daemmung;
+  if(dd){ $('dFlaeche').textContent=fmt(dd.total.flaeche_m2,2)+' m²'; $('dGefache').textContent=dd.total.gefache; $('dDicke').textContent=fmt(dd.thickness_cm,0)+' cm'; }
+  else { $('dFlaeche').textContent='–'; $('dGefache').textContent='–'; $('dDicke').textContent='aus'; }
+  draw();
+}
+
+function draw(){
+  const svg=$('viz'), W=900, H=460, pad=36;
+  if(!RES){ svg.innerHTML=`<text x="${W/2}" y="${H/2}" font-size="13" fill="#6b7682" text-anchor="middle">Kein Layout geladen</text>`; return; }
+  const B=RES.wall.B_cm||100, Hm=RES.wall.H_cm||100, sc=Math.min((W-2*pad)/B,(H-2*pad)/Hm);
+  const wPx=B*sc, hPx=Hm*sc, X=x=>pad+x*sc, Y=y=>H-pad-y*sc;
+  let s='';
+  // Öffnungen
+  for(const o of RES.openings_cm) s+=`<rect x="${X(o.x0)}" y="${Y(o.y1)}" width="${(o.x1-o.x0)*sc}" height="${(o.y1-o.y0)*sc}" fill="#fff" stroke="#c9461c" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+  // Dämmung (Gefache) zwischen den Latten
+  if(RES.daemmung){ const hw=RES.widthCm/2;
+    for(const b of RES.daemmung.bays){ const x0=X(b.x_left_cm+hw), wcm=(b.clear_cm)*sc;
+      for(const sg of b.segments) s+=`<rect x="${x0}" y="${Y(sg.y1_cm)}" width="${wcm}" height="${(sg.y1_cm-sg.y0_cm)*sc}" fill="#f2dca0" fill-opacity="0.5"/>`; } }
+  // Latten
+  const wpx=Math.max(3, RES.widthCm*sc);
+  for(const a of RES.axes){
+    for(const seg of a.segments){
+      s+=`<rect x="${X(a.x_cm)-wpx/2}" y="${Y(seg.y1_cm)}" width="${wpx}" height="${(seg.y1_cm-seg.y0_cm)*sc}" fill="#c9a063" stroke="#9c7536" stroke-width="0.8"/>`;
+      // Stoß-Marker am oberen Ende (außer ganz oben)
+      s+=`<line x1="${X(a.x_cm)-wpx/2-2}" y1="${Y(seg.y1_cm)}" x2="${X(a.x_cm)+wpx/2+2}" y2="${Y(seg.y1_cm)}" stroke="#13202e" stroke-width="1.4"/>`;
+    }
+  }
+  // Verbinder
+  for(const p of LAYOUT.points) s+=`<circle cx="${X(p.x_cm)}" cy="${Y(p.y_cm)}" r="2.6" fill="#1f6feb"/>`;
+  s+=`<rect x="${X(0)}" y="${Y(Hm)}" width="${wPx}" height="${hPx}" fill="none" stroke="#13202e" stroke-width="1.6"/>`;
+  s+=`<text x="${pad}" y="20" font-size="12" fill="#6b7682">B = ${fmt(B/100,2)} m · H = ${fmt(Hm/100,2)} m · ${RES.axes.length} Achsen · ${RES.summary.latten_stuecke} Latten-Stücke</text>`;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=s;
+}
+
+function download(name,text,type){ const b=new Blob([text],{type:type||'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+function sumCsv(res){
+  const s=res.summary;
+  const rows=[["kennzahl","wert","einheit"],
+    ["Achsen",s.achsen,""],["Latten-Stuecke",s.latten_stuecke,""],["1,5m-Latten Bedarf",s.latten_15m_bedarf,"Stk"],
+    ["verbaute Laenge",fmt(s.verbaute_laenge_m,2),"m"],["Gesamtlaenge",fmt(s.gesamtlaenge_m,2),"m"],
+    ["Verschnitt",fmt(s.verschnitt_m,2),"m"],["Verschnitt",fmt(s.verschnitt_pct,1),"%"],
+    ["Lattenbreite",s.lattenbreite_cm,"cm"],["Lattenlaenge",s.lattenlaenge_cm,"cm"]];
+  return rows.map(r=>r.join(";")).join("\n")+"\n";
+}
+
+$('loadlay').addEventListener('click',()=>$('layfile').click());
+$('layfile').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ try{ let j=JSON.parse(rd.result);
+    if(j&&j.format==='SEMBLA-Projekt'&&j.verbinder_layout) j=j.verbinder_layout;   // Bundle -> Verbinder-Layout entpacken
+    if(!j || j.format!=="SEMBLA-VerbinderLayout") { if(!confirm('Datei ist kein SEMBLA-Verbinder-Layout. Trotzdem versuchen?')) return; }
+    LAYOUT=j; const seiteInfo=j.seite?(' · Seite: '+j.seite+(j.seite_funktion?(' ('+j.seite_funktion+')'):'')):'';
+    $('layinfo').textContent='Geladen: '+((j.wall&&j.wall.name)||'Layout')+' · '+(j.points?j.points.length:0)+' Verbinder · B='+((j.wall&&j.wall.B_cm)||'?')+' cm'+seiteInfo;
+    if(j.seite_funktion && j.seite_funktion!=='fassade') $('insAktiv').checked=false;
+    recompute();
+  }catch(e){ alert('Ungültiges Layout: '+e.message);} }; rd.readAsText(f); });
+['widthCm','stockCm','insDicke'].forEach(id=>$(id).addEventListener('input',recompute));
+$('insAktiv').addEventListener('change',recompute);
+$('expCut').addEventListener('click',()=>{ if(!RES){alert('Bitte Layout laden.');return;} download('SEMBLA_Latten_Zuschnitt.csv', battenCutListCsv(RES),'text/csv'); });
+$('expSum').addEventListener('click',()=>{ if(!RES){alert('Bitte Layout laden.');return;} download('SEMBLA_Latten_Stueckliste.csv', sumCsv(RES),'text/csv'); });
+$('expIns').addEventListener('click',()=>{ if(!RES||!RES.daemmung){alert('Keine Dämmung berechnet.');return;} download('SEMBLA_Daemmung_Gefache.csv', daemmungCsv(RES),'text/csv'); });
+window.__latten={ load:(j)=>{LAYOUT=j;recompute();}, get RES(){return RES;}, battenCutListCsv };
+draw();
+</script>
+</body>
+</html>

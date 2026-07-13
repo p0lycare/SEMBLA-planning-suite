@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Verbinder-Rechner für Fassaden-Unterkonstruktion</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --panel:#ffffff; --ink:#1c2430; --muted:#6b7682;
+    --line:#dfe3e8; --accent:#1f6feb; --accent2:#e8702a;
+    --ok:#1f9d55; --warn:#c9461c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650;letter-spacing:.2px}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:330px;flex:0 0 330px}
+  .stage{flex:1 1 520px;min-width:420px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  .grp{margin-bottom:16px}
+  .grp h3{font-size:12.5px;margin:0 0 8px;color:var(--ink);font-weight:650;
+          border-bottom:1px solid var(--line);padding-bottom:5px}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;font-size:13px}
+  label span{color:var(--ink)}
+  label small{color:var(--muted);font-size:11px}
+  input[type=number],select{width:96px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;
+       font-size:13px;text-align:right;background:#fff}
+  select{width:100%;text-align:left}
+  .full{flex-direction:column;align-items:stretch}
+  .full select{margin-top:5px}
+  .res{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
+  .res .k{color:var(--muted)}
+  .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  .big{font-size:26px;font-weight:700;color:var(--accent)}
+  .util{height:10px;border-radius:5px;background:#eceef1;overflow:hidden;margin-top:4px}
+  .util > div{height:100%;background:var(--ok);width:0%}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:600}
+  .badge.ok{background:#e3f5ea;color:var(--ok)}
+  .badge.no{background:#fbe6dd;color:var(--warn)}
+  .btnrow{display:flex;gap:8px;margin-top:12px}
+  button{flex:1;padding:9px;border:1px solid var(--line);background:#fff;border-radius:7px;
+         font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button:hover{filter:brightness(.97)}
+  svg{width:100%;height:auto;display:block;background:#fff;border-radius:8px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--ink)}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+  .note{font-size:11.5px;color:var(--muted);margin-top:14px;line-height:1.55;
+        border-top:1px solid var(--line);padding-top:10px}
+  .note b{color:var(--ink)}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-19931</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">16776288-2611-4bf8-b881-c1d02b8c0caa</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-19931, YZXVWT2JSZP3-499227272-19931</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Verbinder-Rechner <span style="font-weight:400;color:#9fb0c0">· Modul 2 · liest Wandelement</span></h1>
+  <p>Verbinder für die Fassaden-Unterkonstruktion — Geometrie, Verband &amp; Öffnungen aus dem in Modul 1 geplanten Wandelement.</p>
+</header>
+
+<div class="wrap">
+  <!-- ============ EINGABEN ============ -->
+  <div class="panel controls">
+    <h2>Eingaben</h2>
+
+    <div class="grp">
+      <h3>Wandelement</h3>
+      <input type="file" id="wandfile" accept="application/json,.json" style="display:none">
+      <button id="loadwand" style="width:100%">Wandelement / Bundle laden</button>
+      <div id="wandinfo" style="color:var(--muted);font-size:12px;margin-top:8px">Kein Wandelement geladen — manuelle Eingabe.</div>
+    </div>
+
+    <div class="grp">
+      <h3>Wandscheibe</h3>
+      <label><span>Breite B</span><input type="number" id="B" value="4.75" step="0.125" min="0.25"><small>m · ×12,5cm</small></label>
+      <label><span>Höhe H</span><input type="number" id="H" value="2.80" step="0.20" min="0.20"><small>m · ×20cm</small></label>
+    </div>
+
+    <div class="grp">
+      <h3>Lasten (charakteristisch)</h3>
+      <label><span>Windsog w<sub>k</sub></span><input type="number" id="wk" value="1.00" step="0.05" min="0"><small>kN/m²</small></label>
+      <label><span>· Teilsicherheit γ<sub>Q</sub></span><input type="number" id="gQ" value="1.50" step="0.05" min="1"><small>–</small></label>
+      <label><span>Fassadengewicht g<sub>k</sub></span><input type="number" id="gk" value="0.60" step="0.05" min="0"><small>kN/m²</small></label>
+      <label><span>· Teilsicherheit γ<sub>G</sub></span><input type="number" id="gG" value="1.35" step="0.05" min="1"><small>–</small></label>
+      <label><span>Exzentrizität e</span><input type="number" id="ecc" value="8" step="1" min="0"><small>cm</small></label>
+      <label><span>Hebelarm Konsole a</span><input type="number" id="lev" value="20" step="1" min="1"><small>cm</small></label>
+    </div>
+
+    <div class="grp">
+      <h3>Seite &amp; Verbinder-Typ</h3>
+      <label><span>Wand-Seite</span><select id="seite"><option value="vorne">Vorderseite</option><option value="hinten">Rückseite</option></select></label>
+      <div id="seiteFunktion" style="color:var(--muted);font-size:12px;margin:2px 0 6px">Funktion: –</div>
+      <label class="full"><span>Verbinder-Typ</span><select id="vtyp"></select></label>
+    </div>
+    <div class="grp">
+      <h3>Verbinder (geprüft)</h3>
+      <label><span>Auszugslast R<sub>k</sub></span><input type="number" id="Rk" value="0.50" step="0.05" min="0.01"><small>kN</small></label>
+      <label><span>Sicherheitsbeiwert γ<sub>M</sub></span><input type="number" id="gM" value="2.00" step="0.1" min="1"><small>–</small></label>
+    </div>
+
+    <div class="grp">
+      <h3>Nutenraster &amp; Layout</h3>
+      <label><span>Nut-Raster</span><input type="number" id="pc" value="12.5" readonly style="background:#f4f5f7"><small>cm</small></label>
+      <label><span>Steinhöhe (Lage)</span><input type="number" id="ph" value="20" readonly style="background:#f4f5f7"><small>cm</small></label>
+      <label><span>Abstand Unterkonstruktion</span><input type="number" id="uk" value="62.5" step="12.5" min="12.5"><small>cm</small></label>
+      <label class="full"><span>Vertikaler Verbinderabstand</span>
+        <select id="syMode">
+          <option value="auto">automatisch — min. Verbinder (empfohlen)</option>
+          <option value="20">20 cm (jede Lage)</option>
+          <option value="40">40 cm (jede 2. Lage)</option>
+          <option value="60">60 cm (jede 3. Lage)</option>
+          <option value="80">80 cm (jede 4. Lage)</option>
+          <option value="100">100 cm (jede 5. Lage)</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="btnrow">
+      <button class="primary" id="calc">Berechnen</button>
+      <button id="csv">CSV</button>
+      <button id="png">PNG</button>
+      <button id="vbundle">Projekt-Bundle (JSON)</button>
+    </div>
+  </div>
+
+  <!-- ============ ERGEBNIS ============ -->
+  <div class="panel stage">
+    <h2>Ergebnis</h2>
+    <div class="res">
+      <div class="k">Zul. Last je Verbinder R<sub>d</sub> = R<sub>k</sub>/γ<sub>M</sub></div><div class="v" id="rd">–</div>
+      <div class="k">Bem.-Zuglast je Verbinder T<sub>Ed</sub></div><div class="v" id="ted">–</div>
+      <div class="k">Max. Einzugsfläche je Verbinder A<sub>t,max</sub></div><div class="v" id="atmax">–</div>
+      <div class="k">UK-Achsabstand (gewünscht → ausgeführt)</div><div class="v" id="ukinfo">–</div>
+      <div class="k">Raster (horiz. × vert.)</div><div class="v" id="grid">–</div>
+      <div class="k">Latten × Verbinder je Latte</div><div class="v" id="breakdown">–</div>
+      <div class="k">Einzugsfläche je Verbinder A<sub>t</sub></div><div class="v" id="at">–</div>
+      <div class="k">Auslastung</div><div class="v" id="utilv">–</div>
+    </div>
+    <div class="util"><div id="utilbar"></div></div>
+
+    <div style="display:flex;align-items:baseline;gap:14px;margin:16px 0 4px">
+      <div><div class="big" id="count">–</div><div class="k" style="color:var(--muted)">Verbinder gesamt</div></div>
+      <div style="margin-left:auto;text-align:right">
+        <div class="v" id="dens" style="font-size:18px">–</div><div class="k" style="color:var(--muted)">Stück / m²</div>
+      </div>
+      <div style="text-align:right"><span class="badge" id="status">–</span></div>
+    </div>
+
+    <div style="display:flex;gap:14px;margin:4px 0 2px;font-size:12.5px">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="showDim" checked> Maße</label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="showRaster"> Raster</label>
+    </div>
+    <svg id="plan" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span><i style="background:#1f6feb"></i>Verbinder an durchgehender Nut</span>
+      <span><i style="background:#e8702a"></i>Verbinder an versetzter Nut</span>
+      <span><i style="background:#9cc0f3"></i>Lattenachse (UK)</span>
+      <span><i style="background:#aeb3ba"></i>Steinverband i2 / i3</span>
+    </div>
+
+    <div class="note">
+      <b>Rechenmodell.</b> Maßgebend für den Auszug ist der Windsog; das Fassaden-Eigengewicht wirkt
+      vertikal und erzeugt über die Exzentrizität e ein Kräftepaar, das je Verbinder mit
+      ΔT = γ<sub>G</sub>·g<sub>k</sub>·A<sub>t</sub>·(e/a) als zusätzliche Zugkraft angesetzt wird.
+      Bemessung: T<sub>Ed</sub> = (γ<sub>Q</sub>·w<sub>k</sub> + γ<sub>G</sub>·g<sub>k</sub>·e/a)·A<sub>t</sub> ≤ R<sub>d</sub> = R<sub>k</sub>/γ<sub>M</sub>,
+      mit A<sub>t</sub> = horiz. Raster × vert. Raster.
+      <br><b>Verband.</b> Steinhöhe 20 cm; Steine i3 (37,5×20) und i2 (25×20). Je Lage werden <b>0, 1 oder 2</b>
+      i2-Steine eingesetzt, sodass die Wandbreite in <b>12,5-cm-Schritten</b> frei wählbar ist (B = Vielfaches
+      von 12,5 cm; Höhe Vielfaches von 20 cm, keine Schnittsteine). Die i2-Steine wechseln reihenweise die
+      Position → versetzter Verband, seitlich bündig geschlossen.
+      <br><b>Unterkonstruktion.</b> Der UK-Abstand (z. B. 62,5 cm Holzlattung) wird auf das 12,5-cm-Nutenraster
+      gerundet, sodass jede Lattenachse eine Nut trifft; Randlatten sitzen 12,5 cm von beiden Kanten. Die Achsen
+      werden je Wandabschnitt <i>exakt</i> ab der Laibung/Wandkante im UK-Abstand gesetzt; das rechte Randfeld wird
+      ggf. kleiner. Verbinder sitzen auf halber Steinhöhe (Lagenmitte). Eine Nut wird nur dann als <b>durchgehend</b>
+      (blau) gezeichnet, wenn sie in <i>jeder</i> Lage als innenliegender Steg auftritt — an Steinfugen (z. B. zwischen
+      zwei i2-Steinen) liegt keine Nut, dort wird keine durchgehende Achse gezeigt. Auf einer durchgehenden Nut ist
+      der Verbinder in beliebiger Höhe fixierbar, auf einer versetzten Nut (orange) nur lagenweise.
+      <br><b>Optimierung.</b> Bei „automatisch“ wählt die Software den größtmöglichen vertikalen Verbinderabstand
+      (Vielfaches von 20 cm), bei dem die Auslastung ≤ 100 % bleibt — also die minimale Verbinderzahl je Latte.
+      <br><b>Hinweis:</b> Planungshilfe, ersetzt keine geprüfte Statik. Lokale Soglasten an Rändern/Ecken
+      (höhere c<sub>pe</sub>) sind ggf. gesondert zu berücksichtigen.
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Kernlogik (rein, testbar) ----------
+const GEO = {stepX:12.5, contX:37.5, course:20, inset:12.5, W3:37.5, W2:25};
+let showDim=true, showRaster=false;
+// ---- Bemaßungsschicht (cm), einheitlich über die Module ----
+function dimLayer(X,Y,pad,wPx,hPx,sc,Bcm,Hcm,openings){
+  if(!showDim && !showRaster) return '';
+  const C='#46505e', A='#c9461c', G='#9aa3ad';
+  const mC=v=>fmt(v,v%1!==0?1:0)+' cm', mM=v=>fmt(v/100,2)+' m';
+  const tk=(x,y,v)=>v?`<line x1="${x-3}" y1="${y-3}" x2="${x+3}" y2="${y+3}" stroke="${C}" stroke-width="1"/>`
+                     :`<line x1="${x-3}" y1="${y+3}" x2="${x+3}" y2="${y-3}" stroke="${C}" stroke-width="1"/>`;
+  const lab=(x,y,t,c)=>`<rect x="${x-(t.length*2.9+3)}" y="${y-9.6}" width="${t.length*5.8+6}" height="11" rx="1.5" fill="#fff" fill-opacity="0.82"/><text x="${x}" y="${y-1.5}" font-size="9" fill="${c||C}" text-anchor="middle">${t}</text>`;
+  const hD=(ax,bx,yp,t,c)=>{const cc=c||C;return `<line x1="${ax}" y1="${yp}" x2="${bx}" y2="${yp}" stroke="${cc}" stroke-width="1"/>`+tk(ax,yp)+tk(bx,yp)+lab((ax+bx)/2,yp,t,cc);};
+  const vD=(ay,by,xp,t,c)=>{const cc=c||C;const m=(ay+by)/2;return `<line x1="${xp}" y1="${ay}" x2="${xp}" y2="${by}" stroke="${cc}" stroke-width="1"/>`+tk(xp,ay,1)+tk(xp,by,1)+`<text x="${xp-3.5}" y="${m+3}" font-size="9" fill="${cc}" text-anchor="middle" transform="rotate(-90 ${xp-3.5} ${m+3})">${t}</text>`;};
+  let s=''; const left0=pad,right0=pad+wPx,top0=pad,bot0=pad+hPx;
+  if(showRaster){
+    for(let gx=0; gx<=Bcm+1e-6; gx+=GEO.stepX){ const x=X(gx); s+=`<line x1="${x}" y1="${top0}" x2="${x}" y2="${bot0}" stroke="${G}" stroke-width="0.6" stroke-opacity="0.3"/>`; }
+    for(let gy=0; gy<=Hcm+1e-6; gy+=GEO.course){ const y=Y(gy); s+=`<line x1="${left0}" y1="${y}" x2="${right0}" y2="${y}" stroke="${G}" stroke-width="0.6" stroke-opacity="0.3"/>`; }
+    s+=`<text x="${right0-2}" y="${top0+10}" font-size="8.5" fill="${G}" text-anchor="end">Raster 12,5 × 20 cm</text>`;
+  }
+  if(showDim){
+    s+=hD(left0,right0,bot0+24,mM(Bcm));
+    s+=vD(top0,bot0,left0-24,mM(Hcm));
+    for(const op of openings){
+      const L_=Math.min(X(op.x0),X(op.x1)), R_=Math.max(X(op.x0),X(op.x1)), T_=Y(op.y1), B_=Y(op.y0);
+      s+=hD(L_,R_,T_-7,mC(op.x1-op.x0),A);
+      s+=vD(T_,B_,L_-7,mC(op.y1-op.y0),A);
+      if(op.y0>1e-6) s+=vD(B_,bot0,L_-7,mC(op.y0),A);
+      s+=hD(left0,L_,bot0+10,mC((L_-left0)/sc),A);
+    }
+  }
+  return s;
+}
+
+// gültige Verbandsmaße erzwingen
+function snapB(Bcm){ return GEO.stepX*Math.max(2, Math.round(Bcm/GEO.stepX)); }       // Vielfaches von 12,5 (bis 2× i2/Lage)
+function snapH(Hcm){ return GEO.course*Math.max(1, Math.round(Hcm/GEO.course)); }     // Vielfaches von 20
+function snapUK(uk){ return GEO.stepX*Math.max(1, Math.round(uk/GEO.stepX)); }        // UK auf 12,5-Nutenraster
+
+// Steinbedarf je Lage für Breite B (in 12,5-Einheiten U): U mod 3 = 0/2/1 -> 0/1/2 i2-Steine
+function stoneCount(Bcm){
+  const U=Math.round(Bcm/GEO.stepX);
+  let i2=(U%3===0)?0:(U%3===2)?1:2;
+  let i3=Math.round((U-2*i2)/3);
+  if(i3<0){ i3=0; i2=Math.round(U/2); }   // Kleinstwände
+  return {i2,i3};
+}
+
+// Steinreihen in cm aus dem Wandelement (sonst Fallback-Verband): [{stones:[{x0,x1,t}]}]
+function stoneRows(Bcm,Hcm){
+  if(WALL && WALL.courses && WALL.courses.length){
+    return WALL.courses.map(c=>({stones:c.stones.map(st=>({x0:st.x0/10,x1:st.x1/10,t:st.type}))}));
+  }
+  return genStones(Bcm,Hcm).map(r=>({stones:r.stones.map(st=>({x0:st.x,x1:st.x+st.w,t:st.t}))}));
+}
+// Ist x in dieser Lage eine Nut? -> nur innenliegende 12,5-Stege eines Steins, NIE eine Steinkante/Fuge.
+// i3 (37,5) hat Nuten bei +12,5/+25; i2 (25) bei +12,5. Steinränder (+0/+Breite) sind Fugen, keine Nut.
+function nutInRow(x,row){
+  for(const st of row.stones){
+    if(x>st.x0+1e-6 && x<st.x1-1e-6){
+      const off=x-st.x0, k=Math.round(off/GEO.stepX);
+      return k>=1 && Math.abs(off-k*GEO.stepX)<1e-6;
+    }
+  }
+  return false;
+}
+// Nut-Status je x über alle Lagen: durchgehend (alle Lagen) / versetzt (einige) / keine.
+function nutMap(Bcm,Hcm){
+  const rows=stoneRows(Bcm,Hcm); const cont=new Set(), any=new Set();
+  for(let x=GEO.stepX; x<=Bcm-GEO.stepX+1e-6; x+=GEO.stepX){
+    const xr=Math.round(x*100)/100; let all=true, some=false;
+    for(const row of rows){ const n=nutInRow(xr,row); some=some||n; if(!n) all=false; }
+    if(some){ any.add(xr); if(all) cont.add(xr); }
+  }
+  return {cont,any};
+}
+// durchgehende Nut? -> nur wenn x in JEDER Lage ein innenliegender Steg ist (layout-abgeleitet)
+function isContinuous(x, Bcm, Hcm){ return nutMap(Bcm, Hcm!=null?Hcm:(LAST&&LAST.r?LAST.r.Hcm:GEO.course)).cont.has(Math.round(x*100)/100); }
+
+// Reihen-Layout: i3 (37,5) + bis zu 2 i2 (25); i2 an wechselnden Positionen für Versatz, möglichst nicht benachbart
+function buildRow(i3c,i2c,r){
+  const W3=GEO.W3, W2=GEO.W2, out=[];
+  if(i2c===0){ for(let i=0;i<i3c;i++) out.push(W3); return out; }
+  if(i2c===1){                                   // i2 wechselt links / rechts
+    if(r%2===0){ out.push(W2); for(let i=0;i<i3c;i++) out.push(W3); }
+    else       { for(let i=0;i<i3c;i++) out.push(W3); out.push(W2); }
+    return out;
+  }
+  // i2c===2: i2-Steine getrennt halten und reihenweise versetzen
+  if(i3c===0){ out.push(W2,W2); }                                  // B=50: zwei i2 (zwangsläufig)
+  else if(i3c===1){ out.push(W2,W3,W2); }                          // i2 | i3 | i2 (getrennt)
+  else if(r%2===0){ out.push(W2); for(let i=0;i<i3c;i++) out.push(W3); out.push(W2); }  // i2 an beiden Enden
+  else { out.push(W3,W2); for(let i=0;i<i3c-1;i++) out.push(W3); out.push(W2); }         // links versetzt, getrennt
+  return out;
+}
+
+// Steinverband: bündig, Breite in 12,5-Schritten über 0/1/2 i2-Steine je Lage
+function genStones(Bcm,Hcm){
+  const cH=GEO.course; const {i2,i3}=stoneCount(Bcm);
+  const rows=[]; const nR=Math.round(Hcm/cH);
+  for(let r=0;r<nR;r++){
+    const y0=r*cH, y1=(r+1)*cH, stones=[]; let x=0;
+    for(const w of buildRow(i3,i2,r)){ stones.push({x,w,t:(Math.abs(w-GEO.W3)<1e-6?'i3':'i2')}); x+=w; }
+    rows.push({y0,y1,stones});
+  }
+  return rows;
+}
+
+// ausgeführter Achsabstand: größter Wert auf dem 12,5-Raster, der ≤ UK ist UND die Spannweite
+// zwischen den Außenachsen (x0..xN) gleichmäßig teilt -> Randlatten inkl., keine Doppelspalte
+function axisSpacing(Bcm, ukcm){
+  const U=Math.max(1, Math.round((Bcm-2*GEO.inset)/GEO.stepX));  // Spannweite in 12,5-Einheiten
+  const ukU=Math.max(1, Math.round(ukcm/GEO.stepX));
+  let d=1; for(let k=1;k<=Math.min(ukU,U);k++){ if(U%k===0) d=k; } // größter Teiler ≤ ukU
+  return d*GEO.stepX;
+}
+
+// Lattenachsen (x). exact=true: UK genau ab linker Kante, rechte Kante schließt (Randfeld ggf. kleiner).
+// exact=false: gleichmäßige Felder (sx teilt die Spannweite), beide Ränder inkl.
+function genCols(Bcm,sx,exact){
+  const x0=GEO.inset, xN=Bcm-GEO.inset, cols=[];
+  if(xN<x0-1e-6) return cols;
+  if(exact){
+    for(let x=x0; x<=xN+1e-6; x+=sx) cols.push(Math.round(x*100)/100);
+    if(Math.abs(cols[cols.length-1]-xN)>1e-6) cols.push(Math.round(xN*100)/100); // Randlatte rechts
+  } else {
+    const nB=Math.max(1, Math.round((xN-x0)/sx));
+    for(let k=0;k<=nB;k++) cols.push(Math.round((x0+k*sx)*100)/100);
+  }
+  return cols;
+}
+
+// gleichmaessiger Achsabstand in einem Abschnitt: groesster 12,5-Teiler der Spannweite <= uk
+function evenSpacing(spanCm, ukCm){
+  const U=Math.max(1, Math.round(spanCm/GEO.stepX));
+  const ukU=Math.max(1, Math.round(ukCm/GEO.stepX));
+  let d=1; for(let k=1;k<=Math.min(ukU,U);k++){ if(U%k===0) d=k; }
+  return d*GEO.stepX;
+}
+// Achsen in einem Wandabschnitt [a,b] (beide auf Nut/Raster): gleichmaessig, beide Raender inkl.
+function genColsSeg(a,b,sx,exact){
+  a=Math.round(a*100)/100; b=Math.round(b*100)/100;
+  if(b<a-1e-6) return [];
+  if(b-a<1e-6) return [a];
+  const out=[];
+  if(exact){
+    for(let x=a; x<=b+1e-6; x+=sx) out.push(Math.round(x*100)/100);
+    if(Math.abs(out[out.length-1]-b)>1e-6) out.push(b);
+  } else {
+    const sp=evenSpacing(b-a, sx); const nB=Math.max(1, Math.round((b-a)/sp));
+    for(let k=0;k<=nB;k++) out.push(Math.round((a+k*sp)*100)/100);
+  }
+  return out;
+}
+
+// Lagenmitten-Reihen: deckt die volle Höhe ab (oberste & unterste Lage inkl.), max. Abstand ≤ syTargetCm
+function genRows(Hcm, syTargetCm){
+  const nC=Math.max(1, Math.round(Hcm/GEO.course));            // Lagenanzahl
+  if(nC===1) return {ys:[GEO.course/2], syAct:Hcm, capE:(syTargetCm<Hcm-1e-6)};
+  let stride=Math.floor(syTargetCm/GEO.course+1e-9), capE=false; // Lagen je Schritt
+  if(stride<1){ stride=1; capE=true; }                          // selbst jede Lage reicht nicht
+  const nB=Math.max(1, Math.ceil((nC-1)/stride));               // Felder über die Höhe
+  const idx=[]; for(let j=0;j<=nB;j++){ const i=Math.round(j*(nC-1)/nB); if(idx[idx.length-1]!==i) idx.push(i); }
+  const ys=idx.map(i=>(i+0.5)*GEO.course);
+  let maxGap=0; for(let k=1;k<idx.length;k++) maxGap=Math.max(maxGap,(idx[k]-idx[k-1])*GEO.course);
+  return {ys, syAct:maxGap, capE};
+}
+
+// Verbinderraster: Lattenachsen × Lagenmitten
+function genGrid(Bcm,cols,ys,contSet){
+  const pts=[];
+  for(const x of cols){ const ct=contSet.has(Math.round(x*100)/100)?'C':'I'; for(const y of ys) pts.push({x,y,type:ct}); }
+  return pts;
+}
+
+function computeLayout(p){
+  const Bcm=snapB(p.B*100), Hcm=snapH(p.H*100);
+  let area=(Bcm/100)*(Hcm/100);
+  area-=OPENINGS_CM.reduce((s,o)=>s+((o.x1-o.x0)/100)*((o.y1-o.y0)/100),0);
+  area=Math.max(0.01,area);
+  const Rd=p.Rk/p.gM;                                        // kN, zul. je Verbinder
+  const coeff=p.gQ*p.wk + p.gG*p.gk*(p.ecc/p.lev);           // Lastkoeffizient [kN/m²]
+  const Atmax=coeff>0 ? Rd/coeff : Infinity;                 // m² je Verbinder
+  const ukReq=snapUK(p.uk);                                  // gewünschter UK-Abstand (auf Nut gerundet)
+  const exact=true;                                          // nur noch exakte Verteilung (gleichmäßig entfernt)
+  const sx=ukReq;                                           // Ziel-Achsabstand je Wandabschnitt, exakt ab Laibung/Kante
+  const NM=nutMap(Bcm,Hcm);                                  // layout-abgeleitete Nut-Stati (durchgehend/versetzt)
+
+  // vertikaler Verbinderabstand: Zielwert (auto = größtmöglich für Auslastung ≤ 100%)
+  const syTargetCm = (p.syMode==='auto') ? (coeff>0 ? Atmax*1e4/sx : 200) : +p.syMode;
+  // UK-Achsen abschnittsweise: zwischen den Oeffnungen (und an den Wandenden) je gleichmaessig verteilen,
+  // verankert an Wandende (inset) bzw. Laibungsnut (1 Raster im Pfeiler). Keine Cluster, keine globale Verschiebung.
+  const ops=[...OPENINGS_CM].sort((a,b)=>a.x0-b.x0);
+  const segs=[]; let segL=GEO.inset;
+  for(const o of ops){ segs.push([segL, Math.round((o.x0-GEO.stepX)*100)/100]); segL=Math.round((o.x1+GEO.stepX)*100)/100; }
+  segs.push([segL, Bcm-GEO.inset]);
+  let colsAll=[];
+  for(const seg of segs) colsAll=colsAll.concat(genColsSeg(seg[0],seg[1],sx,exact));
+  colsAll=[...new Set(colsAll.map(x=>Math.round(x*100)/100))].filter(x=>x>=GEO.inset-1e-6 && x<=Bcm-GEO.inset+1e-6).sort((a,b)=>a-b);
+  const {ys, syAct, capE}=genRows(Hcm, syTargetCm);
+  const sy=syAct;                                            // maßgebender (größter) vertikaler Abstand
+  const pts0=genGrid(Bcm,colsAll,ys,NM.cont);
+  const inOpen=(x,y)=>OPENINGS_CM.some(o=>x>o.x0+1e-6&&x<o.x1-1e-6&&y>o.y0+1e-6&&y<o.y1-1e-6);
+  const ptsGrid=pts0.filter(pt=>!inOpen(pt.x,pt.y));
+  const removedCnt=colsAll.length*ys.length-ptsGrid.length;
+  // Pflicht-Verbinder ueber (Sturz) und unter (Bruestung, nur Fenster) den Oeffnungen fuer die UK-Montage
+  // Brückenraster für Pflicht-Verbinder über/unter Öffnungen (UK-Montage): 37,5-cm-Linien quer zur Öffnung
+  const bridgeLines=[]; for(let x=GEO.inset;x<=Bcm-GEO.inset+1e-6;x+=GEO.contX) bridgeLines.push(Math.round(x*100)/100);
+  const extra=[]; const seen=new Set(ptsGrid.map(p=>p.x+','+p.y));
+  for(const o of OPENINGS_CM){
+    const rows=new Set();
+    for(const y of ys) if(y>o.y1+1e-6) rows.add(y);     // ueber der Oeffnung bis zum oberen Wandende
+    if(o.y1+10<=Hcm-1e-6) rows.add(o.y1+10);            // Lagenmitte direkt ueber der Oeffnung (Sturz)
+    if(o.y0>1e-6){                                      // nur bei Bruestung (Fenster)
+      for(const y of ys) if(y<o.y0-1e-6) rows.add(y);   // unter der Oeffnung bis zum unteren Wandende
+      if(o.y0-10>1e-6) rows.add(o.y0-10);               // Lagenmitte direkt unter der Oeffnung (Bruestung)
+    }
+    for(const y of rows){
+      const xs=new Set();
+      for(const x of colsAll)      if(x>o.x0+1e-6&&x<o.x1-1e-6) xs.add(x);   // querende UK-Achsen
+      for(const x of bridgeLines)  if(x>o.x0+1e-6&&x<o.x1-1e-6) xs.add(x);   // Brückenraster über/unter Öffnung
+      for(const x of xs){ if(!inOpen(x,y)){ const k=x+','+y; if(!seen.has(k)){ seen.add(k); extra.push({x,y,type:NM.cont.has(Math.round(x*100)/100)?'C':'I'}); } } }
+    }
+  }
+  const pts=ptsGrid.concat(extra);
+  // Lagenweise auf die nächste tatsächliche Nut einrasten (nie auf eine Steinfuge).
+  // Die Lattenachse (axis_cm) bleibt nominal; der Verbinder (x) rastet auf die Nut der jeweiligen Lage.
+  const rowsArr=stoneRows(Bcm,Hcm);
+  const nutXByRow=rowsArr.map(row=>{ const xs=[]; for(let gx=GEO.stepX; gx<=Bcm-GEO.stepX+1e-6; gx+=GEO.stepX){ const xr=Math.round(gx*100)/100; if(nutInRow(xr,row)) xs.push(xr); } return xs; });
+  const snapNut=(x,r)=>{ const xs=nutXByRow[r]||[]; if(!xs.length) return x; let best=xs[0],bd=Math.abs(xs[0]-x); for(const c of xs){ const d=Math.abs(c-x); if(d<bd){bd=d;best=c;} } return best; };
+  let snapped=0;
+  for(const pt of pts){ const r=Math.max(0,Math.min(rowsArr.length-1,Math.floor(pt.y/GEO.course)));
+    pt.axis_cm=pt.x; const sx2=snapNut(pt.x,r);
+    if(Math.abs(sx2-pt.x)>1e-6) snapped++;
+    pt.x=sx2; pt.type=NM.cont.has(Math.round(sx2*100)/100)?'C':'I';
+  }
+  const at=(sx/100)*(sy/100);                                // Einzugsfläche je Verbinder = Achsabstand × sy
+  const Ted=coeff*at;
+  const capacityExceeded=(p.syMode==='auto') && capE;        // selbst jede Lage reicht nicht
+  return {Rd, coeff, Atmax, sx, sy, ukReq, exact, capacityExceeded,
+          nCols:colsAll.length, nRows:ys.length, removed:removedCnt, extra:extra.length, Nmin:(coeff>0?Math.ceil(coeff*area/Rd):0),
+          pts, axesX:colsAll, snapped, area, atReal:at, Ted,
+          util:(Rd>0?Ted/Rd:Infinity), Bcm, Hcm,
+          ok:(Ted<=Rd+1e-9)&&coeff>0&&pts.length>0};
+}
+
+// ---------- DOM ----------
+const $ = id => document.getElementById(id);
+const flds = ['B','H','wk','gQ','gk','gG','ecc','lev','Rk','gM','uk','syMode'];
+let LAST=null; let WALL=null; let OPENINGS_CM=[]; let SIDE='vorne'; let INBUNDLE=null;
+const VERBINDER_KATALOG=[
+  {id:'FA-1', name:'Fassadenanker FA-1', Rk:0.50, gM:2.0, fuer:'fassade'},
+  {id:'FA-2', name:'Fassadenanker FA-2 (schwer)', Rk:0.80, gM:2.0, fuer:'fassade'},
+  {id:'IA-1', name:'Innenanker IA-1 (leicht)', Rk:0.25, gM:2.0, fuer:'innenausbau'},
+  {id:'UNI', name:'Universal', Rk:0.50, gM:2.0, fuer:'alle'},
+];
+function applyTyp(id){ const t=VERBINDER_KATALOG.find(x=>x.id===id)||VERBINDER_KATALOG[0]; $('Rk').value=t.Rk; $('gM').value=t.gM; }
+function defaultTypFor(funktion){ const t=VERBINDER_KATALOG.find(x=>x.fuer===funktion); return (t||VERBINDER_KATALOG[VERBINDER_KATALOG.length-1]).id; }
+function sideFunktion(){ return (WALL && WALL.sides && WALL.sides[SIDE] && WALL.sides[SIDE].funktion) || null; }
+
+function readParams(){
+  return { B:+$('B').value, H:+$('H').value,
+    wk:+$('wk').value, gQ:+$('gQ').value, gk:+$('gk').value, gG:+$('gG').value,
+    ecc:+$('ecc').value, lev:+$('lev').value, Rk:+$('Rk').value, gM:+$('gM').value,
+    uk:+$('uk').value, ukMode:'exact', syMode:$('syMode').value };
+}
+function fmt(n,d=2){ return (isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+function run(){
+  const p=readParams(); const r=computeLayout(p); LAST={p,r};
+  $('rd').textContent   = fmt(r.Rd,3)+' kN';
+  $('ted').textContent  = fmt(r.Ted,3)+' kN';
+  $('atmax').textContent= isFinite(r.Atmax)? fmt(r.Atmax,3)+' m²' : '∞';
+  $('ukinfo').textContent= r.exact ? fmt(r.sx,1)+' cm (exakt)' : fmt(r.ukReq,1)+' → '+fmt(r.sx,1)+' cm';
+  $('grid').textContent = fmt(r.sx,1)+' × '+fmt(r.sy,0)+' cm';
+  $('breakdown').textContent = r.nCols+' × '+r.nRows+(r.removed>0?' − '+r.removed:'')+(r.extra>0?' + '+r.extra:'')+' = '+r.pts.length;
+  $('at').textContent   = fmt(r.atReal,3)+' m²';
+  const u=Math.round(r.util*100);
+  $('utilv').textContent= u+' %';
+  $('utilbar').style.width = Math.min(u,100)+'%';
+  $('utilbar').style.background = r.ok ? 'var(--ok)' : 'var(--warn)';
+  $('count').textContent= r.pts.length;
+  $('dens').textContent = fmt(r.pts.length/r.area,2);
+  const b=$('status');
+  if(!isFinite(r.coeff)||r.coeff<=0){ b.className='badge no'; b.textContent='Last = 0'; }
+  else if(r.ok){ b.className='badge ok'; b.textContent='Nachweis erfüllt'; }
+  else if(r.capacityExceeded){ b.className='badge no'; b.textContent='Last zu hoch — UK verringern'; }
+  else { b.className='badge no'; b.textContent='Auslastung > 100%'; }
+  draw(r);
+}
+
+function draw(r){
+  const svg=$('plan'); const pad=48;
+  const sc=(1000-2*pad)/r.Bcm;
+  const wPx=r.Bcm*sc, hPx=r.Hcm*sc;
+  svg.setAttribute('viewBox',`0 0 1000 ${Math.round(hPx+2*pad)}`);
+  const BACK=(SIDE==='hinten');
+  const Y=y=>pad+(hPx-y*sc), X=x=>pad+(BACK?(r.Bcm-x):x)*sc;  // y von unten; Rückseite x-gespiegelt
+  let s='';
+  // Steinverband — aus Wandelement, sonst eigener (Fallback)
+  if(WALL){
+    for(const c of WALL.courses){ const y0=c.lage*20, y1=(c.lage+1)*20;
+      for(const st of c.stones){ const x0=st.x0/10, x1=st.x1/10; const fill=st.type==='i3'?'#cfd3d8':'#bcc2c9';
+        s+=`<rect x="${Math.min(X(x0),X(x1))}" y="${Y(y1)}" width="${(x1-x0)*sc}" height="${20*sc}" fill="${fill}" stroke="#aeb3ba" stroke-width="1"/>`;
+        if((x1-x0)*sc>24 && 20*sc>13) s+=`<text x="${X((x0+x1)/2)}" y="${Y((y0+y1)/2)+3.5}" font-size="9.5" fill="#8f96a0" text-anchor="middle">${st.type}</text>`;
+      }
+    }
+  } else {
+    for(const row of genStones(r.Bcm,r.Hcm)){
+      for(const st of row.stones){
+        const fill = st.t==='i3' ? '#cfd3d8' : '#bcc2c9';
+        s+=`<rect x="${Math.min(X(st.x),X(st.x+st.w))}" y="${Y(row.y1)}" width="${st.w*sc}" height="${(row.y1-row.y0)*sc}" fill="${fill}" stroke="#aeb3ba" stroke-width="1"/>`;
+        if(st.w*sc>24 && (row.y1-row.y0)*sc>13){
+          s+=`<text x="${X(st.x+st.w/2)}" y="${Y((row.y0+row.y1)/2)+3.5}" font-size="9.5" fill="#8f96a0" text-anchor="middle">${st.t}</text>`;
+        }
+      }
+    }
+  }
+  // Nutenraster (layout-abgeleitet): durchgehende Nut kräftig, versetzte Nut dünn gestrichelt, Steinfugen gar nicht
+  const NM=nutMap(r.Bcm,r.Hcm);
+  for(let x=GEO.stepX; x<=r.Bcm-GEO.stepX+1e-6; x+=GEO.stepX){
+    const xr=Math.round(x*100)/100;
+    if(NM.cont.has(xr)){
+      s+=`<line x1="${X(xr)}" y1="${Y(0)}" x2="${X(xr)}" y2="${Y(r.Hcm)}" stroke="#5b6670" stroke-width="1.7"/>`;
+    } else if(NM.any.has(xr)){
+      s+=`<line x1="${X(xr)}" y1="${Y(0)}" x2="${X(xr)}" y2="${Y(r.Hcm)}" stroke="#cfd3d8" stroke-width="1" stroke-dasharray="3 4"/>`;
+    }
+  }
+  // Wandumriss
+  s+=`<rect x="${pad}" y="${Y(r.Hcm)}" width="${wPx}" height="${hPx}" fill="none" stroke="#13202e" stroke-width="2"/>`;
+  // Unterkonstruktion (Lattenachsen) als Hilfslinie – nominale Achsen (Latten laufen gerade)
+  const battenX=(r.axesX&&r.axesX.length)?r.axesX:[...new Set(r.pts.map(pt=>pt.axis_cm!=null?pt.axis_cm:pt.x))];
+  for(const x of battenX){
+    s+=`<line x1="${X(x)}" y1="${Y(0)}" x2="${X(x)}" y2="${Y(r.Hcm)}" stroke="#1f6feb" stroke-width="1" stroke-opacity="0.28"/>`;
+  }
+  // Öffnungen (aus Wandelement)
+  for(const o of OPENINGS_CM){
+    s+=`<rect x="${Math.min(X(o.x0),X(o.x1))}" y="${Y(o.y1)}" width="${(o.x1-o.x0)*sc}" height="${(o.y1-o.y0)*sc}" fill="#ffffff" stroke="#c9461c" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+    s+=`<text x="${X((o.x0+o.x1)/2)}" y="${Y((o.y0+o.y1)/2)+4}" font-size="11" fill="#c9461c" text-anchor="middle">${o.art==='fenster'?'Fenster':o.art==='durchbruch'?'Durchbruch':'Tür'}</text>`;
+  }
+  // Verbinder (auf Lagenmitte)
+  for(const pt of r.pts){
+    const col=pt.type==='C'?'#1f6feb':'#e8702a';
+    s+=`<circle cx="${X(pt.x)}" cy="${Y(pt.y)}" r="4.4" fill="${col}" stroke="#fff" stroke-width="1.2"/>`;
+  }
+  s+=`<text x="${pad}" y="22" font-size="13" fill="#6b7682">B = ${fmt(r.Bcm/100,3)} m · H = ${fmt(r.Hcm/100,2)} m · ${r.pts.length} Verbinder · Raster ${fmt(r.sx,1)}×${fmt(r.sy,0)} cm</text>`;
+  s+=dimLayer(X,Y,pad,wPx,hPx,sc,r.Bcm,r.Hcm,OPENINGS_CM);
+  svg.innerHTML=s;
+}
+
+function downloadCSV(){
+  if(!LAST) run();
+  const r=LAST.r;
+  let csv='Nr;x_cm;y_cm;Nut-Typ\n';
+  r.pts.forEach((pt,i)=> csv+=`${i+1};${fmt(pt.x,1)};${fmt(pt.y,1)};${pt.type==='C'?'durchgehend':'versetzt'}\n`);
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='SEMBLA_Verbinderpositionen.csv';a.click();
+}
+function downloadPNG(){
+  const svg=$('plan');
+  const xml=new XMLSerializer().serializeToString(svg);
+  const vb=svg.viewBox.baseVal;
+  const img=new Image();
+  const svg64=btoa(unescape(encodeURIComponent('<?xml version="1.0"?>'+xml)));
+  img.onload=()=>{
+    const c=document.createElement('canvas');c.width=vb.width*2;c.height=vb.height*2;
+    const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+    ctx.drawImage(img,0,0,c.width,c.height);
+    const a=document.createElement('a');a.href=c.toDataURL('image/png');
+    a.download='SEMBLA_Verbinderplan.png';a.click();
+  };
+  img.src='data:image/svg+xml;base64,'+svg64;
+}
+
+flds.forEach(f=>$(f).addEventListener('input',run));
+// Breite auf gültiges Verbandsmaß (25 + n·37,5 cm), Höhe auf Vielfaches von 20 cm runden
+$('B').addEventListener('change',()=>{ $('B').value=(snapB(+$('B').value*100)/100).toFixed(3); run(); });
+$('H').addEventListener('change',()=>{ $('H').value=(snapH(+$('H').value*100)/100).toFixed(2); run(); });
+// UK-Abstand auf das 12,5-cm-Nutenraster runden (Punkt-Notation für <input type=number>!)
+$('uk').addEventListener('change',()=>{ $('uk').value=String(snapUK(+$('uk').value)); run(); });
+$('calc').addEventListener('click',run);
+$('showDim').addEventListener('change',e=>{ showDim=e.target.checked; if(LAST) draw(LAST.r); });
+$('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; if(LAST) draw(LAST.r); });
+$('csv').addEventListener('click',downloadCSV);
+$('png').addEventListener('click',downloadPNG);
+
+// ---------- Verbinder-Layout exportieren (Modul 2 -> Lattenmodul) ----------
+function buildLayout(){
+  if(!LAST) run();
+  const r=LAST.r;
+  return { format:"SEMBLA-VerbinderLayout", version:"1.0",
+    wall:{ B_cm:r.Bcm, H_cm:r.Hcm, name:(WALL&&WALL.name)||null },
+    openings_cm:OPENINGS_CM.map(o=>({x0:o.x0,x1:o.x1,y0:o.y0,y1:o.y1,art:o.art})),
+    uk:{ sx_cm:r.sx, sy_cm:r.sy },
+    seite:SIDE, seite_funktion:sideFunktion(), verbinder_typ:$('vtyp').value,
+    // x_cm = nominale Lattenachse (Latten laufen gerade); nut_cm = eingerastete Nut des Verbinders in dieser Lage
+    points:r.pts.map(p=>({x_cm:Math.round((p.axis_cm!=null?p.axis_cm:p.x)*100)/100,nut_cm:Math.round(p.x*100)/100,y_cm:Math.round(p.y*100)/100,type:p.type})) };
+}
+function downloadJson(name,obj){ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click(); }
+function exportBundle(){ if(!WALL){alert('Bitte zuerst ein Wandelement laden.');return;}
+  const bundle=Object.assign({}, INBUNDLE||{}, {format:'SEMBLA-Projekt', version:'1.0', wandelement:WALL, verbinder_layout:buildLayout()});
+  downloadJson('SEMBLA_Projekt_Bundle.json', bundle); }
+$('vbundle').addEventListener('click',exportBundle);
+window.__verbinder={ buildLayout, exportBundle };
+
+// ---------- Wandelement laden (Modul 1 -> Modul 2) ----------
+function applyWand(w){
+  if(w&&w.format==='SEMBLA-Projekt'&&w.wandelement){ INBUNDLE=w; w=w.wandelement; } else { INBUNDLE=null; }
+  WALL=w;
+  OPENINGS_CM=(w.openings||[]).map(o=>({x0:o.g0*12.5,x1:o.g1*12.5,y0:o.l0*20,y1:o.l1*20,art:o.art}));
+  $('B').value=(w.length_mm/1000).toFixed(3); $('B').readOnly=true; $('B').style.background='#eef0f3';
+  $('H').value=(w.height_mm/1000).toFixed(2); $('H').readOnly=true; $('H').style.background='#eef0f3';
+  $('wandinfo').textContent='Geladen: '+(w.name||'Wandelement')+' · '+(w.length_mm/1000).toFixed(3)+' × '+(w.height_mm/1000).toFixed(2)+' m · '+((w.openings||[]).length)+' Öffnung(en)';
+  updateSeite();
+  run();
+}
+$('loadwand').addEventListener('click',()=>$('wandfile').click());
+$('wandfile').addEventListener('change',ev=>{
+  const f=ev.target.files&&ev.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ applyWand(JSON.parse(rd.result)); }catch(e){ alert('Ungültiges Wandelement: '+e.message); } };
+  rd.readAsText(f);
+});
+window.applyWand=applyWand;
+window.__verbinder={ buildLayout, get SIDE(){return SIDE;}, updateSeite };
+
+// ---------- Seite & Verbinder-Typ ----------
+function updateSeite(){
+  SIDE=$('seite').value;
+  const fn=sideFunktion();
+  const lbl={fassade:'Fassade',innenausbau:'Innenausbau',sicht:'Sichtfläche',installation:'Installation'};
+  $('seiteFunktion').textContent='Funktion: '+(fn?(lbl[fn]||fn):'– (kein Wandelement geladen)');
+  if(fn){ const id=defaultTypFor(fn); $('vtyp').value=id; applyTyp(id); }
+}
+$('vtyp').innerHTML=VERBINDER_KATALOG.map(t=>`<option value="${t.id}">${t.name} · R_k ${t.Rk} kN</option>`).join('');
+$('vtyp').addEventListener('change',()=>{ applyTyp($('vtyp').value); run(); });
+$('seite').addEventListener('change',()=>{ updateSeite(); run(); });
+updateSeite();
+run();
+</script>
+</body>
+</html>

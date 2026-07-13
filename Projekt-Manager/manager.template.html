@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Projekt-Manager</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --accent2:#e8702a; --ok:#1f9d55; --warn:#c9461c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:430px;flex:0 0 430px}
+  .stage{flex:1 1 480px;min-width:380px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  button{padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:12.5px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button:hover{filter:brightness(.97)}
+  .btnrow{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+  input[type=text],input[type=number]{padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;background:#fff}
+  input[type=number]{width:74px;text-align:right}
+  label.inl{display:inline-flex;align-items:center;gap:5px;font-size:12.5px}
+  table.walls{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
+  table.walls th{font-size:11px;color:var(--muted);text-align:left;font-weight:600;padding:3px 4px;border-bottom:1px solid var(--line)}
+  table.walls td{padding:3px 4px;border-bottom:1px solid var(--line)}
+  table.walls input{width:58px}
+  .x{cursor:pointer;color:var(--warn);font-weight:700}
+  table.bom{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  table.bom td{padding:4px 2px;border-bottom:1px solid var(--line)}
+  table.bom td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .hint{color:var(--muted);font-size:12px;margin-top:6px}
+  .sec{margin-top:16px}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-19980</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">2753a321-e130-4082-962f-dc47945e8381</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-19980, YZXVWT2JSZP3-499227272-19980</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Projekt-Manager <span style="font-weight:400;color:#9fb0c0">· Mehrwand · DXF/IFC</span></h1>
+  <p>Mehrere Wandelemente zu einem Projekt zusammenführen — Grundriss, Sammel-Stückliste, DXF-/IFC-Export, DXF-Grundriss-Import.</p>
+</header>
+
+<div class="wrap">
+  <div class="panel controls">
+    <h2>Projekt</h2>
+    <label class="inl">Name <input type="text" id="pname" value="SEMBLA Projekt" style="width:200px"></label>
+    <label class="inl" style="margin-left:10px">Standardhöhe <input type="number" id="defH" value="2.60" step="0.20" min="0.20"> m</label>
+
+    <div class="btnrow">
+      <button class="primary" id="addJson">+ Wandelement (JSON)</button>
+      <button id="addLen">+ Wand aus Länge</button>
+      <button id="impDxf">DXF-Grundriss importieren</button>
+    </div>
+    <input type="file" id="fJson" accept=".json,application/json" style="display:none">
+    <input type="file" id="fDxf" accept=".dxf,text/plain" style="display:none">
+    <input type="file" id="fProj" accept=".json,application/json" style="display:none">
+
+    <div class="sec"><h2>Wände</h2>
+      <table class="walls"><thead><tr><th>Name</th><th>L×H</th><th>x [m]</th><th>y [m]</th><th>↻°</th><th></th></tr></thead>
+        <tbody id="wbody"></tbody></table>
+      <div class="hint" id="wempty">Noch keine Wände. Lade ein Wandelement (aus Modul 1) oder erzeuge eine Wand aus einer Länge.</div>
+    </div>
+
+    <div class="sec"><h2>Projekt / Export</h2>
+      <div class="btnrow">
+        <button id="saveProj">Projekt speichern</button>
+        <button id="loadProj">Projekt laden</button>
+      </div>
+      <div class="btnrow">
+        <button id="expGrund">DXF Grundriss</button>
+        <button id="expAns">DXF Ansichten</button>
+        <button id="expIfc">IFC export</button>
+        <label class="inl"><input type="checkbox" id="ifcStones" checked> mit Einzelsteinen</label>
+        <label class="inl"><input type="checkbox" id="ifcReal"> echte Geometrie (BREP)</label>
+      </div>
+      <div class="btnrow"><button id="expJson">Projekt-JSON (für normnahen Export)</button></div>
+      <div class="note" style="font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.5">
+        Die obigen DXF/IFC laufen sofort im Browser. Für <b>normnahe, CAD-geprüfte</b> Dateien das
+        Projekt-JSON exportieren und im Suite-Ordner ausführen:<br>
+        <code>npm run dxf -- projekt.json plan.dxf</code> · <code>npm run dxf -- projekt.json ansichten.dxf --ansichten</code> (ezdxf)<br>
+        <code>npm run ifc -- projekt.json modell.ifc</code> (IfcOpenShell) · <code>npm run validate:ifc -- modell.ifc</code> (web-ifc-Prüfung)
+      </div>
+    </div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Grundriss</h2>
+    <svg id="plan" viewBox="0 0 900 520" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="sec"><h2>Sammel-Stückliste</h2>
+      <table class="bom" id="bom"></table>
+    </div>
+  </div>
+</div>
+
+<!--__OBJ__-->
+<script>
+/*__CORE__*/
+/*__CAD__*/
+
+// ================= Projekt-Manager-UI =================
+const $=id=>document.getElementById(id);
+const fmt=(n,d=0)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const snap=(v,s)=>Math.round(v/s)*s;
+let PROJECT={ name:"SEMBLA Projekt", walls:[] };
+let SEQ=1;
+
+function defHmm(){ return Math.max(200, snap(+$('defH').value*1000,200)); }
+function addWallFromElement(wall, name){
+  PROJECT.walls.push({ id:'w'+(SEQ++), name:name||wall.name||('Wand '+SEQ), x_mm:0, y_mm:0, rot_deg:0, wall });
+}
+function wallFromLength(Lmm,Hmm,name){ return buildWall(name||'Wand', Lmm, Hmm, []); }
+
+function render(){
+  PROJECT.name=$('pname').value;
+  // Wandliste
+  const tb=$('wbody'); tb.innerHTML='';
+  $('wempty').style.display=PROJECT.walls.length?'none':'block';
+  PROJECT.walls.forEach((w,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=
+      `<td><input type="text" data-i="${i}" data-f="name" value="${(w.name||'').replace(/"/g,'&quot;')}" style="width:90px"></td>`+
+      `<td>${fmt(w.wall.length_mm/1000,2)}×${fmt(w.wall.height_mm/1000,2)}${w.wall.validation&&w.wall.validation.buildable===false?' ⚠':''}</td>`+
+      `<td><input type="number" data-i="${i}" data-f="x" value="${(w.x_mm/1000).toFixed(2)}" step="0.125"></td>`+
+      `<td><input type="number" data-i="${i}" data-f="y" value="${(w.y_mm/1000).toFixed(2)}" step="0.125"></td>`+
+      `<td><input type="number" data-i="${i}" data-f="rot" value="${w.rot_deg}" step="15" style="width:46px"></td>`+
+      `<td><span class="x" data-rm="${i}">✕</span></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',e=>{
+    const i=+e.target.dataset.i, f=e.target.dataset.f, v=e.target.value;
+    if(f==='name') PROJECT.walls[i].name=v;
+    else if(f==='x') PROJECT.walls[i].x_mm=+v*1000;
+    else if(f==='y') PROJECT.walls[i].y_mm=+v*1000;
+    else if(f==='rot') PROJECT.walls[i].rot_deg=+v;
+    drawPlan();
+  }));
+  tb.querySelectorAll('.x').forEach(s=>s.addEventListener('click',e=>{ PROJECT.walls.splice(+e.target.dataset.rm,1); render(); }));
+  // BOM
+  const b=aggregateBom(PROJECT);
+  $('bom').innerHTML=
+    rowB('Steine i3',b.i3)+rowB('Steine i2',b.i2)+rowB('Gewindestangen',b.gewindestangen)+
+    rowB('Kopplungsmuttern (Stoß)',b.verbindungsmuttern)+rowB('Senkkopfschrauben (Fuß)',b.senkkopfschrauben)+
+    rowB('Spannplatten',b.spannplatten)+rowB('Spannmuttern',b.spannmuttern)+
+    rowB('Stahlblech-Module',b.stahlblech_module)+
+    rowB('Dichtstreifen 20 cm (Stück)', b.stossfugen||0)+
+    rowB('Dichtstreifen (Gesamtlänge)', fmt((b.dichtstreifen_mm||0)/1000,2)+' m');
+  drawPlan();
+}
+const rowB=(k,v)=>`<tr><td>${k}</td><td>${typeof v==='number'?fmt(v):v}</td></tr>`;
+
+function drawPlan(){
+  const svg=$('plan'), W=900, H=520, pad=40;
+  let pts=[];
+  for(const w of PROJECT.walls) pts=pts.concat(footprint(w));
+  let s='';
+  if(pts.length){
+    const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+    const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
+    const sc=Math.min((W-2*pad)/Math.max(1,maxx-minx),(H-2*pad)/Math.max(1,maxy-miny));
+    const X=x=>pad+(x-minx)*sc, Y=y=>H-pad-(y-miny)*sc;   // y nach oben
+    PROJECT.walls.forEach((w,i)=>{
+      const fp=footprint(w).map(p=>X(p[0])+','+Y(p[1])).join(' ');
+      s+=`<polygon points="${fp}" fill="#cfd3d8" stroke="#13202e" stroke-width="1.4"/>`;
+      // Öffnungen als rote Lücken-Marker
+      for(const o of (w.wall.openings||[])){
+        const a=projW(w,o.g0*125,0), b2=projW(w,o.g1*125,0), c=projW(w,o.g1*125,125), e=projW(w,o.g0*125,125);
+        s+=`<polygon points="${X(a[0])},${Y(a[1])} ${X(b2[0])},${Y(b2[1])} ${X(c[0])},${Y(c[1])} ${X(e[0])},${Y(e[1])}" fill="#fff" stroke="#c9461c" stroke-width="1" stroke-dasharray="4 3"/>`;
+      }
+      const m=projW(w,w.wall.length_mm/2,62.5);
+      s+=`<text x="${X(m[0])}" y="${Y(m[1])+4}" font-size="11" fill="#1c2430" text-anchor="middle">${(w.name||'Wand')}</text>`;
+    });
+  } else {
+    s=`<text x="${W/2}" y="${H/2}" font-size="13" fill="#6b7682" text-anchor="middle">Keine Wände im Projekt</text>`;
+  }
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=s;
+}
+function projW(w,lx,ly){ const a=(w.rot_deg||0)*Math.PI/180, c=Math.cos(a), s=Math.sin(a);
+  return [lx*c-ly*s+(w.x_mm||0), lx*s+ly*c+(w.y_mm||0)]; }
+
+function download(name,text,type){
+  const blob=new Blob([text],{type:type||'text/plain'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+}
+
+// ---------- Aktionen ----------
+$('pname').addEventListener('input',()=>{PROJECT.name=$('pname').value;});
+$('addJson').addEventListener('click',()=>$('fJson').click());
+$('fJson').addEventListener('change',ev=>{ const f=ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result); addWallFromElement(j&&j.format==='SEMBLA-Projekt'&&j.wandelement?j.wandelement:j); render(); }catch(e){ alert('Ungültig: '+e.message);} }; rd.readAsText(f); ev.target.value=''; });
+$('addLen').addEventListener('click',()=>{
+  const Lm=prompt('Wandlänge in Metern (×0,125):','2.00'); if(Lm===null) return;
+  const Lmm=Math.max(250, snap(+Lm*1000,125));
+  try{ addWallFromElement(wallFromLength(Lmm, defHmm(), 'Wand'+SEQ)); render(); }
+  catch(e){ alert('Konnte Wand nicht erzeugen: '+e.message); }
+});
+$('impDxf').addEventListener('click',()=>$('fDxf').click());
+$('fDxf').addEventListener('change',ev=>{ const f=ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{
+    const segs=dxfToSegments(rd.result); let ok=0, skip=0;
+    for(const sg of segs){ const Lmm=snap(sg.len,125);
+      if(Lmm<250){ skip++; continue; }
+      try{ const wall=wallFromLength(Lmm, defHmm(), 'Import'+SEQ);
+           PROJECT.walls.push({id:'w'+(SEQ++),name:'Import'+SEQ,x_mm:sg.x1,y_mm:sg.y1,rot_deg:+sg.rot_deg.toFixed(1),wall}); ok++; }
+      catch(e){ skip++; }
+    }
+    render(); alert('DXF importiert: '+ok+' Wände'+(skip?(', '+skip+' Segmente übersprungen'):''));
+  }; rd.readAsText(f); ev.target.value=''; });
+
+$('saveProj').addEventListener('click',()=>{ PROJECT.name=$('pname').value; download((PROJECT.name||'projekt')+'.json', JSON.stringify(PROJECT,null,2),'application/json'); });
+$('loadProj').addEventListener('click',()=>$('fProj').click());
+$('fProj').addEventListener('change',ev=>{ const f=ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ try{ PROJECT=JSON.parse(rd.result); $('pname').value=PROJECT.name||'SEMBLA Projekt';
+    SEQ=PROJECT.walls.length+1; render(); }catch(e){ alert('Ungültiges Projekt: '+e.message);} }; rd.readAsText(f); ev.target.value=''; });
+
+$('expGrund').addEventListener('click',()=>{ if(!chk())return; download((PROJECT.name||'projekt')+'_grundriss.dxf', projectToDxfGrundriss(PROJECT),'application/dxf'); });
+$('expAns').addEventListener('click',()=>{ if(!chk())return; download((PROJECT.name||'projekt')+'_ansichten.dxf', projectToDxfAnsichten(PROJECT),'application/dxf'); });
+$('expJson').addEventListener('click',()=>{ if(!chk())return; download((PROJECT.name||'projekt')+'.json', JSON.stringify(PROJECT,null,2),'application/json'); });
+$('expIfc').addEventListener('click',()=>{ if(!chk())return;
+  const objText={ i2:(document.getElementById('obj-i2')||{}).textContent||'', i3:(document.getElementById('obj-i3')||{}).textContent||'' };
+  download((PROJECT.name||'projekt')+'.ifc', projectToIfc(PROJECT,{stones:$('ifcStones').checked, realGeom:$('ifcReal').checked, objText}),'application/x-step'); });
+function chk(){ if(!PROJECT.walls.length){ alert('Projekt enthält keine Wände.'); return false; } return true; }
+
+window.__pm={ get PROJECT(){return PROJECT;}, set PROJECT(p){PROJECT=p;}, render, addWallFromElement, wallFromLength, buildWall,
+  cad:{projectToDxfGrundriss,projectToDxfAnsichten,projectToIfc,dxfToSegments,aggregateBom} };
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Freier Wand-Editor (Prototyp)</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8; --accent:#1f6feb; --ok:#1f9d55; --warn:#c9461c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650} header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:300px;flex:0 0 300px} .stage{flex:1 1 560px;min-width:440px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  .grp{margin-bottom:12px} .grp h3{font-size:12.5px;margin:0 0 6px;font-weight:650;border-bottom:1px solid var(--line);padding-bottom:4px}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  input[type=number]{width:80px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;text-align:right}
+  small{color:var(--muted);font-size:11px}
+  button{padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:12.5px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%}
+  .btnrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .tool{flex:1;text-align:center} .tool.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .res{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:13px} .res .k{color:var(--muted)} .res .v{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600} .badge.ok{background:#e3f5ea;color:var(--ok)} .badge.no{background:#fbe6dd;color:var(--warn)}
+  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .note{font-size:11.5px;color:var(--muted);margin-top:12px;border-top:1px solid var(--line);padding-top:10px;line-height:1.55}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-20075</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">6f293514-efaf-4548-8840-d26c91bc7750</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-20075, YZXVWT2JSZP3-499227272-20075</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Freier Wand-Editor <span style="font-weight:400;color:#9fb0c0">· Prototyp · rastergebunden</span></h1>
+  <p>Steine per Klick auf dem 12,5×20-cm-Raster setzen/löschen, Durchbrüche als leere Zellen. Start optional aus der Parametrik. Live-Versatzprüfung. Export = Wandelement.</p>
+</header>
+
+<div class="wrap">
+  <div class="controls panel">
+    <h2>Wand</h2>
+    <div class="grp">
+      <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125"><small>m</small></label>
+      <label><span>Höhe</span><input type="number" id="hgt" value="2.60" step="0.20"><small>m</small></label>
+      <div class="btnrow"><button id="resize">Raster setzen</button><button id="fill">aus Parametrik füllen</button></div>
+      <div class="btnrow"><button id="clear">leeren</button></div>
+    </div>
+    <div class="grp"><h3>Werkzeug</h3>
+      <div class="btnrow">
+        <button class="tool active" id="tool-i3" data-tool="i3">Stein i3</button>
+        <button class="tool" id="tool-i2" data-tool="i2">Stein i2</button>
+        <button class="tool" id="tool-radierer" data-tool="radierer">Durchbruch</button>
+      </div>
+      <div class="hint">Klick: Stein mit linker Kante an die Zelle setzen (i3=3, i2=2 Zellen) bzw. Stein/Durchbruch entfernen.</div>
+    </div>
+    <div class="grp"><h3>Seiten</h3>
+      <label><span>Vorderseite</span><select id="sideVorne"><option value="fassade">Fassade</option><option value="innenausbau">Innenausbau</option><option value="sicht">Sichtfläche</option><option value="installation">Installation</option></select></label>
+      <label><span>Rückseite</span><select id="sideHinten"><option value="fassade">Fassade</option><option value="innenausbau" selected>Innenausbau</option><option value="sicht">Sichtfläche</option><option value="installation">Installation</option></select></label>
+    </div>
+    <button class="primary" id="export">Wandelement (JSON)</button>
+    <div class="btnrow"><button id="load">Wandelement laden</button></div>
+    <input type="file" id="wandfile" accept=".json,application/json" style="display:none">
+    <div class="note"><b>Prototyp.</b> Rastergebunden frei: das Kammerraster bleibt erhalten, daher bleibt das Wandelement für die übrigen Module gültig. Durchbrüche werden beim Export als rechteckige Öffnungen (Bounding-Box leerer Zellgruppen) zusammengefasst.</div>
+  </div>
+
+  <div class="stage panel">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+      <span class="badge" id="vBadge">–</span>
+      <span class="k" id="counts" style="color:var(--muted);font-size:13px"></span>
+    </div>
+    <svg id="grid" viewBox="0 0 900 500" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="res" style="margin-top:12px">
+      <div class="k">Steine i3 / i2</div><div class="v" id="rStones">–</div>
+      <div class="k">Leere Zellen (Durchbruch)</div><div class="v" id="rEmpty">–</div>
+      <div class="k">Vorspannstränge (durchgehend)</div><div class="v" id="rStrands">–</div>
+      <div class="k">Versatz-Konflikte</div><div class="v" id="rConf">–</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==== Core (Parametrik-Startfüller) ====
+// @ts-check
+/**
+ * SEMBLA Core - Vanilla-JS-Portierung der Referenz-Implementierung (sembla_core.py).
+ * Erzeugt aus Laenge/Hoehe/Oeffnungen ein Wandelement (Single Source of Truth).
+ * Bit-genau identisch zum Python-Core (gepruefte Paritaet gegen die goldenen Fixtures).
+ *
+ * Einheiten: mm. 'grid' = Rastereinheit (125mm), 'lage' = Lagenindex (200mm).
+ */
+
+const GRID = 125;
+const COURSE = 200;
+const THICK = 125;
+const ROD = 1100;
+const CHAMBER_OFFSET = 62.5;     // Kammerzentrum -> Lattice x = 62.5 + 125k
+const MAX_SPAN_GRID = 3;         // Vorspannung max. alle 3 Raster (375mm)
+const FORBIDDEN_N = new Set([1, 4]);
+
+class SemblaError extends Error {}
+class InvalidDimensionError extends SemblaError {}
+class InvalidOpeningError extends SemblaError {}
+
+/**
+ * @typedef {{g0:number,g1:number,l0:number,l1:number,art:string}} OpeningLike
+ */
+
+/** Validiertes Oeffnungs-Objekt. */
+class Opening {
+  /** @param {number} g0 @param {number} g1 @param {number} l0 @param {number} l1 @param {string} [art] */
+  constructor(g0, g1, l0, l1, art = "tuer") {
+    if (g1 <= g0) throw new InvalidOpeningError(`g1<=g0 (${g0},${g1})`);
+    if (l1 <= l0) throw new InvalidOpeningError(`l1<=l0 (${l0},${l1})`);
+    if (g0 < 0 || l0 < 0) throw new InvalidOpeningError("negative Koordinate");
+    if (art !== "tuer" && art !== "fenster" && art !== "durchbruch") throw new InvalidOpeningError("unbekannte art " + art);
+    this.g0 = g0; this.g1 = g1; this.l0 = l0; this.l1 = l1; this.art = art;
+  }
+  asDict() { return { g0: this.g0, g1: this.g1, l0: this.l0, l1: this.l1, art: this.art }; }
+}
+
+/** Python-kompatibles Runden (round-half-to-even) — wichtig fuer Paritaet. */
+function pyRound(x) {
+  const f = Math.floor(x), d = x - f;
+  if (d < 0.5) return f;
+  if (d > 0.5) return f + 1;
+  return (f % 2 === 0) ? f : f + 1;
+}
+
+/** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
+function segJoints(startGrid, tiling) {
+  const js = new Set(); let c = startGrid;
+  for (let i = 0; i < tiling.length - 1; i++) { c += tiling[i]; js.add(c); }
+  return js;
+}
+
+/** i3-maximale Lagen-Varianten fuer Breite n (Raster). i2 immer nur an den Enden. */
+function candidates(n) {
+  if (n < 2) return [[]];
+  const r = n % 3;
+  if (r === 2) { const f = Array((n - 2) / 3).fill(3); return [[2, ...f], [...f, 2]]; }
+  if (r === 1) { const f = Array((n - 4) / 3).fill(3); return [[2, 2, ...f], [...f, 2, 2]]; }
+  const m = n / 3;
+  if (m === 1) return [[3]];
+  const f = Array(m - 2).fill(3);
+  return [Array(m).fill(3), [2, 2, ...f, 2], [2, ...f, 2, 2]];
+}
+
+/** Vergleich (notConflict, i3count, dist): >0 wenn a strikt groesser. */
+function keyCmp(a, b) {
+  if (a[0] !== b[0]) return (a[0] ? 1 : 0) - (b[0] ? 1 : 0);
+  if (a[1] !== b[1]) return a[1] - b[1];
+  return a[2] - b[2];
+}
+
+/** Waehlt unter den i3-maximalen Varianten die, die der Lage darunter ausweicht. */
+function pickTiling(startGrid, n, prev) {
+  let best = null;
+  for (const comp of candidates(n)) {
+    const js = segJoints(startGrid, comp);
+    const conflict = [...js].some(j => prev.has(j));
+    const i3 = comp.filter(b => b === 3).length;
+    let dist = 99;
+    if (js.size && prev.size) dist = Math.min(...[...js].flatMap(j => [...prev].map(f => Math.abs(j - f))));
+    const key = [!conflict, i3, dist];
+    if (best === null || keyCmp(key, best.key) > 0) best = { key, comp };
+  }
+  return best.comp;
+}
+
+function balancedFill(a, b, maxstep) {
+  if (b <= a) return [a];
+  const k = Math.ceil((b - a) / maxstep);
+  const out = [];
+  for (let i = 0; i <= k; i++) out.push(pyRound(a + (b - a) * i / k));
+  return out;
+}
+
+function validateInputs(lengthMm, heightMm, openings) {
+  if (!Number.isInteger(lengthMm) || lengthMm % GRID !== 0)
+    throw new InvalidDimensionError(`Wandlaenge ${lengthMm} ist kein Vielfaches von ${GRID} mm`);
+  if (lengthMm < 2 * GRID)
+    throw new InvalidDimensionError(`Wandlaenge ${lengthMm} < Mindestmass ${2 * GRID} mm`);
+  if (!Number.isInteger(heightMm) || heightMm % COURSE !== 0)
+    throw new InvalidDimensionError(`Wandhoehe ${heightMm} ist kein Vielfaches von ${COURSE} mm`);
+  if (heightMm < COURSE)
+    throw new InvalidDimensionError(`Wandhoehe ${heightMm} < ${COURSE} mm`);
+  const N = lengthMm / GRID, L = heightMm / COURSE;
+  for (const op of openings) {
+    if (op.g1 > N) throw new InvalidOpeningError(`Oeffnung ueber Wandlaenge (g1=${op.g1} > N=${N})`);
+    if (op.l1 > L) throw new InvalidOpeningError(`Oeffnung ueber Wandhoehe (l1=${op.l1} > L=${L})`);
+  }
+  for (let i = 0; i < openings.length; i++)
+    for (let j = i + 1; j < openings.length; j++) {
+      const a = openings[i], b = openings[j];
+      if (a.g0 < b.g1 && b.g0 < a.g1 && a.l0 < b.l1 && b.l0 < a.l1)
+        throw new InvalidOpeningError(`Oeffnungen ueberlappen: #${i} und #${j}`);
+    }
+}
+
+/**
+ * Baut ein Wandelement.
+ * @param {string} name
+ * @param {number} lengthMm Vielfaches von 125, >=250
+ * @param {number} heightMm Vielfaches von 200, >=200
+ * @param {Opening[]} [openings]
+ * @returns {object} Wandelement (siehe wandelement.schema.json)
+ */
+const SEITEN_FUNKTIONEN = ["fassade", "innenausbau", "sicht", "installation"];
+const DEFAULT_SIDES = { vorne: { funktion: "fassade" }, hinten: { funktion: "innenausbau" } };
+function normSides(s) {
+  const f = (v, d) => (v && SEITEN_FUNKTIONEN.includes(v.funktion)) ? v.funktion : d;
+  return { vorne: { funktion: f(s && s.vorne, "fassade") }, hinten: { funktion: f(s && s.hinten, "innenausbau") } };
+}
+
+const DEFAULT_PRESTRESS = { max_span_grid: MAX_SPAN_GRID, force_kN: null };
+function normPrestress(p) {
+  const m = (p && Number.isInteger(p.max_span_grid) && p.max_span_grid >= 1) ? p.max_span_grid : MAX_SPAN_GRID;
+  const fk = (p && p.force_kN != null) ? p.force_kN : null;
+  return { max_span_grid: m, force_kN: fk };
+}
+
+function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null) {
+  const PS = normPrestress(prestress);
+  const maxSpan = PS.max_span_grid;
+  validateInputs(lengthMm, heightMm, openings);
+  const N = lengthMm / GRID, L = heightMm / COURSE;
+
+  const courses = []; let prev = new Set();
+  const rigidLagen = []; const invalidSegments = [];
+  for (let li = 0; li < L; li++) {
+    let cuts = [[0, N]];
+    for (const op of openings) {
+      if (op.l0 <= li && li < op.l1) {
+        const nc = [];
+        for (const [s, e] of cuts) {
+          if (op.g1 <= s || op.g0 >= e) { nc.push([s, e]); continue; }
+          if (op.g0 > s) nc.push([s, op.g0]);
+          if (op.g1 < e) nc.push([op.g1, e]);
+        }
+        cuts = nc;
+      }
+    }
+    const stones = []; let joints = new Set(); let rig = false;
+    for (const [s, e] of cuts) {
+      const w = e - s;
+      if (FORBIDDEN_N.has(w)) {
+        rig = true;
+        const seg = { lage: li, start_grid: s, breite_grid: w };
+        if (!invalidSegments.some(x => x.lage === li && x.start_grid === s && x.breite_grid === w))
+          invalidSegments.push(seg);
+      }
+      const comp = pickTiling(s, w, prev);
+      for (const j of segJoints(s, comp)) joints.add(j);
+      let g = s;
+      for (const b of comp) {
+        stones.push({ type: b === 2 ? "i2" : "i3", x0: g * GRID, x1: (g + b) * GRID });
+        g += b;
+      }
+    }
+    if (rig) rigidLagen.push(li);
+    courses.push({ lage: li, stones, joints_grid: [...joints].sort((a, b) => a - b) });
+    prev = joints;
+  }
+
+  let versatzOk = true; const viol = [];
+  for (let li = 0; li < L - 1; li++) {
+    const a = new Set(courses[li].joints_grid);
+    const bad = courses[li + 1].joints_grid.filter(x => a.has(x));
+    if (bad.length) { versatzOk = false; viol.push({ zwischen_lagen: [li, li + 1], fugen_grid: bad.slice().sort((p, q) => p - q) }); }
+  }
+
+  // ---- Vorspannstränge: Segmente je durchgehend belegtem Bereich (über/unter Öffnungen) ----
+  const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
+  for (const c of courses) for (const st of c.stones) { const a = st.x0 / GRID, b = st.x1 / GRID; for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true; }
+  const colSet = new Set([0, N - 1]);
+  for (const c of balancedFill(0, N - 1, maxSpan)) colSet.add(c);
+  for (const op of openings) { if (op.g0 - 1 >= 0) colSet.add(op.g0 - 1); if (op.g1 <= N - 1) colSet.add(op.g1); }
+  const colArr = [...colSet].filter(k => k >= 0 && k < N).sort((a, b) => a - b);
+  const columns = [];
+  for (const k of colArr) {
+    const segs = []; let r = 0;
+    while (r < L) {
+      if (!occ[r][k]) { r++; continue; }
+      let r2 = r; while (r2 + 1 < L && occ[r2 + 1][k]) r2++;
+      const z0 = r * COURSE, z1 = (r2 + 1) * COURSE, h = z1 - z0, stueck = Math.ceil(h / ROD);
+      segs.push({ z0_mm: z0, z1_mm: z1, lage0: r, lage1: r2 + 1, gewindestangen: stueck,
+        letzte_stange_mm: h - (stueck - 1) * ROD, verschnitt_mm: stueck * ROD - h,
+        verbindungsmuttern: stueck - 1, stahlplatten: 2, spannmuttern: 2 });
+      r = r2 + 1;
+    }
+    if (!segs.length) continue;
+    const durch = segs.length === 1 && segs[0].z0_mm === 0 && segs[0].z1_mm === heightMm;
+    columns.push({ k, x_mm: CHAMBER_OFFSET + GRID * k, durchgehend: durch, segments: segs,
+      gewindestangen: segs.reduce((a, sg) => a + sg.gewindestangen, 0),
+      verbindungsmuttern: segs.reduce((a, sg) => a + sg.verbindungsmuttern, 0),
+      stahlplatten_strukturell: 2 * segs.length, spannmuttern: 2 * segs.length });
+  }
+  let spanOk = true;
+  for (let r = 0; r < L; r++) {
+    let c = 0;
+    while (c < N) {
+      if (!occ[r][c]) { c++; continue; }
+      let c2 = c; while (c2 + 1 < N && occ[r][c2 + 1]) c2++;   // gefüllter Bereich [c..c2]
+      const present = columns.filter(col => col.k >= c && col.k <= c2 && col.segments.some(sg => sg.lage0 <= r && r < sg.lage1)).map(col => col.k);
+      for (let i = 0; i < present.length - 1; i++) if (present[i + 1] - present[i] > maxSpan) spanOk = false;
+      c = c2 + 1;
+    }
+  }
+  const nSeg = columns.reduce((a, c) => a + c.segments.length, 0);
+  const bom = { i2: 0, i3: 0 };
+  for (const c of courses) for (const s of c.stones) bom[s.type] += 1;
+  bom.gewindestangen = columns.reduce((a, c) => a + c.gewindestangen, 0);
+  bom.verbindungsmuttern = columns.reduce((a, c) => a + c.verbindungsmuttern, 0);
+  bom.stahlplatten = 2 * nSeg;
+  bom.spannmuttern = 2 * nSeg;
+  bom.verschnitt_mm = columns.reduce((a, c) => a + c.segments.reduce((b, sg) => b + sg.verschnitt_mm, 0), 0);
+
+  const buildable = invalidSegments.length === 0;  // strukturell; Versatz separat
+  return {
+    name, length_mm: lengthMm, height_mm: heightMm,
+    grid_mm: GRID, course_mm: COURSE, thickness_mm: THICK, rod_mm: ROD,
+    N_grid: N, lagen: L,
+    openings: openings.map(op => op.asDict()),
+    sides: normSides(sides),
+    prestress: PS,
+    tension_columns: columns, bom,
+    validation: {
+      buildable, versatz_ok: versatzOk, versatz_violations: viol,
+      tension_span_ok: spanOk, rigid_lagen: rigidLagen, invalid_segments: invalidSegments,
+    },
+    courses,
+  };
+}
+
+const isBuildable = (w) => !!w.validation.buildable;
+
+const REFERENCE_WALLS = {
+  ref1_glatte_wand: ["ref1_glatte_wand", 1000, 2000, []],
+  ref2_wand_tuer: ["ref2_wand_tuer", 2000, 2600, [new Opening(5, 11, 0, 10, "tuer")]],
+  ref3_wand_fenster: ["ref3_wand_fenster", 2000, 2600, [new Opening(6, 10, 4, 10, "fenster")]],
+};
+function buildReference(key) {
+  const [name, l, h, ops] = REFERENCE_WALLS[key];
+  return buildWall(name, l, h, ops);
+}
+
+
+const $=id=>document.getElementById(id);
+const T=125;  // GRID, COURSE aus Core-Bundle
+let N=16, L=13, stones=[], nextId=1, grid=[], TOOL='i3';
+
+function initGrid(){ grid=[]; for(let r=0;r<L;r++) grid.push(new Array(N).fill(0)); }
+function setSize(){ N=Math.max(2,Math.round(+$('len').value*1000/GRID)); L=Math.max(1,Math.round(+$('hgt').value*1000/COURSE)); stones=[]; nextId=1; initGrid(); render(); }
+function place(r,c,w,type){ if(c<0||r<0||r>=L||c+w>N) return false; for(let i=0;i<w;i++) if(grid[r][c+i]) return false; const id=nextId++; stones.push({id,type,row:r,c0:c,w}); for(let i=0;i<w;i++) grid[r][c+i]=id; return true; }
+function erase(r,c){ const id=grid[r][c]; if(!id) return; const st=stones.find(s=>s.id===id); for(let i=0;i<st.w;i++) grid[st.row][st.c0+i]=0; stones=stones.filter(s=>s.id!==id); }
+function cellClick(r,c){ if(TOOL==='radierer') erase(r,c); else place(r,c,TOOL==='i3'?3:2,TOOL); render(); }
+function fillParam(){ try{ const w=buildWall('p',N*GRID,L*COURSE,[]); initGrid(); stones=[]; nextId=1;
+  for(const co of w.courses) for(const st of co.stones) place(co.lage, st.x0/GRID, (st.x1-st.x0)/GRID, st.type);
+  render(); }catch(e){ alert('Parametrik nicht möglich: '+e.message); } }
+
+// ---- Ableitungen ----
+function rowJoints(r){ const js=new Set(); for(const s of stones) if(s.row===r){ const e=s.c0+s.w; if(e<N) js.add(e); } return js; }
+function versatzConflicts(){ let n=0; for(let r=0;r<L-1;r++){ const a=rowJoints(r), b=rowJoints(r+1); for(const j of a) if(b.has(j)) n++; } return n; }
+function fullCols(){ const f=[]; for(let c=0;c<N;c++){ let full=true; for(let r=0;r<L;r++) if(!grid[r][c]){ full=false; break; } f.push(full); } return f; }
+function strandCols(){ const f=fullCols(); const cols=[]; let last=-99; for(let c=0;c<N;c++){ if(f[c] && (c-last>=3 || cols.length===0)){ cols.push(c); last=c; } }
+  // beide gefüllten Enden sichern
+  for(let c=0;c<N;c++) if(f[c]){ if(cols.indexOf(c)<0 && cols.every(k=>Math.abs(k-c)>=1)) {} break; }
+  return cols; }
+function emptyCells(){ let n=0; for(let r=0;r<L;r++) for(let c=0;c<N;c++) if(!grid[r][c]) n++; return n; }
+
+// Öffnungen = zusammenhängende leere Zellgruppen -> Bounding-Box
+function openingsFromEmpty(){
+  const seen=[]; for(let r=0;r<L;r++) seen.push(new Array(N).fill(false));
+  const ops=[];
+  for(let r=0;r<L;r++) for(let c=0;c<N;c++){
+    if(grid[r][c]||seen[r][c]) continue;
+    let minr=r,maxr=r,minc=c,maxc=c; const st=[[r,c]]; seen[r][c]=true;
+    while(st.length){ const [y,x]=st.pop(); minr=Math.min(minr,y);maxr=Math.max(maxr,y);minc=Math.min(minc,x);maxc=Math.max(maxc,x);
+      const nb=[[y+1,x],[y-1,x],[y,x+1],[y,x-1]];
+      for(const [ny,nx] of nb) if(ny>=0&&ny<L&&nx>=0&&nx<N&&!grid[ny][nx]&&!seen[ny][nx]){ seen[ny][nx]=true; st.push([ny,nx]); } }
+    ops.push({g0:minc,g1:maxc+1,l0:minr,l1:maxr+1,art:'durchbruch'});
+  }
+  return ops;
+}
+
+function render(){
+  const svg=$('grid'), W=900, H=500, pad=24;
+  const cw=Math.min((W-2*pad)/N,(H-2*pad)/L), gw=N*cw, gh=L*cw;
+  const X=c=>pad+c*cw, Y=r=>pad+gh-(r+1)*cw;
+  let s='';
+  // Rasterzellen (klickbar)
+  for(let r=0;r<L;r++) for(let c=0;c<N;c++){
+    s+=`<rect class="cell" data-r="${r}" data-c="${c}" x="${X(c)}" y="${Y(r)}" width="${cw}" height="${cw}" fill="#fbfcfd" stroke="#eceef1" stroke-width="0.6"/>`; }
+  // Steine
+  for(const st of stones){ const fill=st.type==='i3'?'#cfd3d8':'#bcc2c9';
+    s+=`<rect data-stone="1" data-r="${st.row}" data-c="${st.c0}" x="${X(st.c0)+1}" y="${Y(st.row)+1}" width="${st.w*cw-2}" height="${cw-2}" rx="2" fill="${fill}" stroke="#7d848c" stroke-width="1"/>`;
+    if(cw>16) s+=`<text x="${X(st.c0)+st.w*cw/2}" y="${Y(st.row)+cw/2+3.5}" font-size="10" fill="#5b6670" text-anchor="middle" pointer-events="none">${st.type}</text>`; }
+  // Versatz-Konflikte markieren (gemeinsame Fugen benachbarter Lagen)
+  for(let r=0;r<L-1;r++){ const a=rowJoints(r), b=rowJoints(r+1); for(const j of a) if(b.has(j)) s+=`<line x1="${X(j)}" y1="${Y(r)}" x2="${X(j)}" y2="${Y(r)+cw}" stroke="#c9461c" stroke-width="2.5" pointer-events="none"/>`; }
+  // Vorspannstränge (durchgehende Spalten)
+  for(const c of strandCols()){ const x=X(c)+cw/2; s+=`<line x1="${x}" y1="${Y(L-1)}" x2="${x}" y2="${Y(0)+cw}" stroke="#1f6feb" stroke-width="2" pointer-events="none"/>`; }
+  svg.setAttribute('viewBox',`0 0 ${Math.round(gw+2*pad)} ${Math.round(gh+2*pad)}`);
+  svg.innerHTML=s;
+  // Kennzahlen
+  const i3=stones.filter(s=>s.type==='i3').length, i2=stones.filter(s=>s.type==='i2').length, conf=versatzConflicts(), emp=emptyCells();
+  $('rStones').textContent=i3+' / '+i2; $('rEmpty').textContent=emp; $('rStrands').textContent=strandCols().length; $('rConf').textContent=conf;
+  $('counts').textContent=N+' × '+L+' Raster';
+  const vb=$('vBadge'); if(conf===0){ vb.className='badge ok'; vb.textContent='Versatz ok'; } else { vb.className='badge no'; vb.textContent=conf+' Versatz-Konflikt(e)'; }
+}
+
+function toWandelement(){
+  const courses=[]; for(let r=0;r<L;r++){ const row=stones.filter(s=>s.row===r).sort((a,b)=>a.c0-b.c0).map(s=>({type:s.type,x0:s.c0*GRID,x1:(s.c0+s.w)*GRID})); courses.push({lage:r,stones:row,joints_grid:[...rowJoints(r)].sort((a,b)=>a-b)}); }
+  const cols=strandCols(); const rods=Math.ceil(L*COURSE/1100); const nc=cols.length;
+  const tcs=cols.map(c=>({k:c,x_mm:62.5+GRID*c,gewindestangen:rods,letzte_stange_mm:(L*COURSE)-(rods-1)*1100,verschnitt_mm:rods*1100-L*COURSE,verbindungsmuttern:rods-1,stahlplatten_strukturell:2,spannmuttern:2}));
+  const i3=stones.filter(s=>s.type==='i3').length, i2=stones.filter(s=>s.type==='i2').length;
+  const bom={i2,i3,gewindestangen:rods*nc,verbindungsmuttern:(rods-1)*nc,stahlplatten:2*nc,spannmuttern:2*nc,verschnitt_mm:(rods*1100-L*COURSE)*nc};
+  return { name:'Freie Wand', length_mm:N*GRID, height_mm:L*COURSE, grid_mm:GRID, course_mm:COURSE, thickness_mm:T, rod_mm:1100,
+    N_grid:N, lagen:L, authoring:'frei',
+    sides:{vorne:{funktion:$('sideVorne').value},hinten:{funktion:$('sideHinten').value}},
+    openings:openingsFromEmpty(), tension_columns:tcs, bom,
+    validation:{buildable:versatzConflicts()===0, versatz_ok:versatzConflicts()===0, versatz_violations:[], tension_span_ok:true, rigid_lagen:[], invalid_segments:[]},
+    courses };
+}
+function download(name,text){ const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+function loadWand(w){ N=w.N_grid||Math.round(w.length_mm/GRID); L=w.lagen||Math.round(w.height_mm/COURSE);
+  $('len').value=(N*GRID/1000).toFixed(3); $('hgt').value=(L*COURSE/1000).toFixed(2);
+  if(w.sides){ $('sideVorne').value=(w.sides.vorne&&w.sides.vorne.funktion)||'fassade'; $('sideHinten').value=(w.sides.hinten&&w.sides.hinten.funktion)||'innenausbau'; }
+  initGrid(); stones=[]; nextId=1;
+  for(const co of (w.courses||[])) for(const st of co.stones) place(co.lage, st.x0/GRID, (st.x1-st.x0)/GRID, st.type);
+  render(); }
+
+// Events
+$('grid').addEventListener('click',e=>{ const t=e.target; if(t&&t.getAttribute&&t.getAttribute('data-r')!==null){ cellClick(+t.getAttribute('data-r'), +t.getAttribute('data-c')); } });
+$('resize').addEventListener('click',setSize);
+$('fill').addEventListener('click',fillParam);
+$('clear').addEventListener('click',()=>{ stones=[]; nextId=1; initGrid(); render(); });
+document.querySelectorAll('.tool').forEach(b=>b.addEventListener('click',()=>{ TOOL=b.getAttribute('data-tool'); document.querySelectorAll('.tool').forEach(x=>x.className='tool'); b.className='tool active'; }));
+$('export').addEventListener('click',()=>download('SEMBLA_Wandelement_frei.json', JSON.stringify(toWandelement(),null,2)));
+$('load').addEventListener('click',()=>$('wandfile').click());
+$('wandfile').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ loadWand(JSON.parse(rd.result)); }catch(e){ alert('Ungültig: '+e.message); } }; rd.readAsText(f); });
+window.__fe={ setSize, fillParam, cellClick, erase, toWandelement, loadWand, get stones(){return stones;}, get N(){return N;}, get L(){return L;}, setTool:(t)=>{TOOL=t;} };
+setSize(); fillParam();
+</script>
+</body>
+</html>

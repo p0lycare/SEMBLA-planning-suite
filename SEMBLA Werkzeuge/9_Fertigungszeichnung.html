@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Fertigungszeichnung (A3)</title>
+<style>
+  :root{ --bg:#eceef1; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8; --accent:#1f6feb; --ok:#1f9d55;
+         --rod:#1f6feb; --rodabl:#e8702a; --plate:#14559c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.4}
+  header{background:#13202e;color:#fff;padding:11px 20px}
+  header h1{margin:0;font-size:16px;font-weight:650}
+  header p{margin:2px 0 0;font-size:12px;color:#9fb0c0}
+  .bar{display:flex;gap:10px 14px;align-items:center;padding:11px 20px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .bar .grp{display:flex;gap:6px;align-items:center}
+  button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  label.f{display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer}
+  input[type=text],select{padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;background:#fff}
+  .fields{display:flex;gap:8px 12px;flex-wrap:wrap;padding:8px 20px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .fields label{display:flex;flex-direction:column;font-size:10.5px;color:var(--muted);gap:2px}
+  .fields input{width:150px}
+
+  /* A3-Blatt quer: 420 x 297 mm -> Seitenverhältnis */
+  .sheet{position:relative;background:#fff;margin:16px auto;width:1400px;max-width:96vw;aspect-ratio:420/297;border:1px solid #b9c0c8;box-shadow:0 3px 18px rgba(20,32,46,.10);
+         padding:14px;display:grid;grid-template-columns:1fr 300px;grid-template-rows:1fr auto;gap:10px}
+  body.fmt-a4 .sheet{aspect-ratio:297/210}
+  /* Vorabzug-Wasserzeichen */
+  .watermark{position:absolute;inset:0;display:none;align-items:center;justify-content:center;pointer-events:none;z-index:20;overflow:hidden}
+  body.wm .watermark{display:flex}
+  .watermark span{transform:rotate(-32deg);font-size:150px;font-weight:800;letter-spacing:8px;text-transform:uppercase;
+                  color:rgba(201,70,28,.14);white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .draw{grid-column:1;grid-row:1;border:1px solid var(--line);border-radius:3px;display:flex;flex-direction:column;min-height:0;overflow:auto}
+  .draw .cap{font-size:12px;font-weight:600;padding:5px 8px;border-bottom:1px solid var(--line);color:#33414f;flex:0 0 auto}
+  .draw .svgwrap{flex:1;display:flex;align-items:center;justify-content:center;padding:6px;min-height:0}
+  .draw svg{max-width:100%;max-height:100%;height:auto;display:block}
+  aside{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden}
+  .box{border:1px solid var(--line);border-radius:3px;padding:7px 9px}
+  .box h4{margin:0 0 5px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  td{padding:1.5px 2px;vertical-align:top} td.r{text-align:right;font-variant-numeric:tabular-nums}
+  .rules{font-size:10.5px;line-height:1.45} .rules div{display:flex;gap:6px;margin:3px 0}
+  .chip{flex:0 0 11px;height:11px;border-radius:2px;margin-top:1px}
+  .legend2{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10.5px;margin-top:2px}
+  .legend2 span{display:flex;align-items:center;gap:4px}
+  .legend2 i{width:14px;height:4px;border-radius:2px;display:inline-block}
+  .legend2 i.plate{height:9px;width:11px}
+  /* Schriftfeld */
+  .titleblock{grid-column:1 / span 2;grid-row:2;display:grid;grid-template-columns:2.2fr 1.2fr 0.9fr;border:1.5px solid #13202e;border-radius:3px;overflow:hidden;font-size:11px}
+  .titleblock .col{border-right:1px solid #cfd5db;padding:0}
+  .titleblock .col:last-child{border-right:none}
+  .tb-row{display:grid;grid-template-columns:96px 1fr;border-bottom:1px solid #e3e7ec}
+  .tb-row:last-child{border-bottom:none}
+  .tb-row .k{background:#f4f6f8;color:var(--muted);font-size:9.5px;text-transform:uppercase;letter-spacing:.3px;padding:4px 7px;border-right:1px solid #e3e7ec;display:flex;align-items:center}
+  .tb-row .v{padding:4px 7px;font-weight:600;display:flex;align-items:center}
+  .tb-logo{display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;letter-spacing:1px}
+  .tb-logo small{font-size:14px;vertical-align:super}
+  @media print{
+    header,.bar,.fields{display:none!important}
+    body{background:#fff}
+    /* Blatt exakt auf EINE Seite – Höhe = Seiten-Innenmaß (quer, abzgl. Rand) */
+    .sheet{margin:0;width:auto;max-width:none;box-shadow:none;border:none;aspect-ratio:auto;overflow:hidden}
+    body.fmt-a3 .sheet{height:277mm}   /* A3 quer: 297 - 2×10 mm */
+    body.fmt-a4 .sheet{height:194mm}   /* A4 quer: 210 - 2×8 mm  */
+    .watermark span{color:rgba(201,70,28,.22)}
+  }
+</style>
+<!-- Seitengröße wird per JS gesetzt (A3/A4), damit das Blatt exakt auf eine Seite passt -->
+<style id="pageStyle">@page{size:A3 landscape;margin:10mm}</style>
+<!-- Direkter PDF-Download (exakt A3/A4, eine Seite) – rein vektorbasiert via jsPDF, kein html2canvas -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-20089</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">15b06c0f-5851-4ee0-beb2-971984a7064a</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-20089, YZXVWT2JSZP3-499227272-20089</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Fertigungszeichnung (A3-Ausführungsplan)</h1>
+  <p>Wandabwicklung mit Verlege- & Vorspannplan, Stückliste, Spannregeln und Schriftfeld – druckbar als PDF (A3 quer, „Als PDF speichern“).</p>
+</header>
+<div class="bar">
+  <input type="file" id="file" accept="application/json,.json" style="display:none">
+  <button class="primary" id="load">Wandelement / Bundle laden</button>
+  <label class="f"><input type="checkbox" id="showDim" checked> Maße</label>
+  <label class="f"><input type="checkbox" id="showLabels" checked> Steintypen</label>
+  <label class="f">Format <select id="fmtSel"><option value="a3" selected>A3 quer</option><option value="a4">A4 quer</option></select></label>
+  <label class="f"><input type="checkbox" id="wm"> Vorabzug (Wasserzeichen)</label>
+  <button class="primary" id="pdf">PDF herunterladen</button>
+  <button id="print">Drucken</button>
+  <span id="info" style="font-size:12.5px;color:var(--muted)">Demo-Wand</span>
+</div>
+<div class="fields">
+  <label>Projekt<input type="text" id="fProjekt" value="SEMBLA-Musterwand"></label>
+  <label>Bauherrenschaft<input type="text" id="fBauherr" value=""></label>
+  <label>Planverfasser<input type="text" id="fPlanverf" value="Polycare Research Technology GmbH"></label>
+  <label>Phase<select id="fPhase"><option>Vorplanung</option><option>Entwurfsplanung</option><option>Genehmigungsplanung</option><option selected>Ausführungsplanung</option></select></label>
+  <label>Planinhalt<input type="text" id="fInhalt" value="Wandabwicklung"></label>
+  <label>Plan Nr.<input type="text" id="fPlanNr" value="" style="width:90px"></label>
+  <label>Index<input type="text" id="fIndex" value="0" style="width:50px"></label>
+  <label>Gez.<input type="text" id="fGez" value="" style="width:60px"></label>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="watermark" id="watermark"><span>Vorabzug</span></div>
+  <div class="draw">
+    <div class="cap" id="drawCap">Wandabwicklung</div>
+    <div class="svgwrap"><svg id="svgVerlege" viewBox="0 0 400 260" preserveAspectRatio="xMidYMid meet"></svg></div>
+  </div>
+  <aside>
+    <div class="box"><h4>Stückliste (BOM)</h4><table id="tBom"><tbody></tbody></table></div>
+    <div class="box"><h4>Spannstabregeln</h4><div class="rules" id="rules"></div>
+      <div class="legend2" id="rodleg"></div></div>
+    <div class="box"><h4>Vorspannung</h4><table id="tStrands2"><tbody></tbody></table></div>
+  </aside>
+  <div class="titleblock" id="titleblock"></div>
+</div>
+
+<!-- Vorspann-Detailtabelle (nur für Tests/Datenzugriff, nicht im Blatt sichtbar) -->
+<table id="tStrands" style="display:none"><tbody></tbody></table>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+let WALL=null, showDim=true, showLabels=true, curScale=25, curFmt='a3';
+const GRID=125, COURSE=200;
+const ROD_C='#1f6feb', ABL_C='#e8702a', PLATE_C='#14559c';
+const hex2rgb=h=>{ const n=parseInt(h.replace('#',''),16); return [(n>>16)&255,(n>>8)&255,n&255]; };
+//__SEMBLA_SHARED_START__
+/* SEMBLA – gemeinsame Bausteine (Single Source of Truth für die Stückliste/BOM).
+   NICHT direkt in den Tools editieren! Quelle: sembla-shared.js.
+   Verteilung in die Tools via `node sync-shared.mjs` (läuft auch in publish-werkzeuge.mjs).
+   Absicherung gegen Drift: test-shared.mjs vergleicht semblaBom() mit der Core-BOM. */
+function _semNum(n){ return (isFinite(n)?n:0).toLocaleString('de-DE'); }
+
+/* Kanonische Mengenermittlung – Steine aus courses, Vorspann-/Anschluss-Mengen aus der
+   Core-BOM (autoritativ), Sonderlängen aus tension_columns[].segments.
+   Fällt bei fehlenden Feldern auf w.bom / Defaults zurück (Alt-Bundles). */
+function semblaBom(w){
+  const bom = w.bom || {};
+  let i2=0, i3=0, haveStones=false;
+  for(const c of (w.courses||[])) for(const st of c.stones){ haveStones=true; if(st.type==='i2') i2++; else if(st.type==='i3') i3++; }
+  if(!haveStones){ i2=bom.i2||0; i3=bom.i3||0; }
+
+  let rodStd=0, haveSeg=false; const sonder={};
+  for(const col of (w.tension_columns||[])) for(const sg of (col.segments||[])){
+    haveSeg=true;
+    const st = (sg.gewindestangen!=null) ? sg.gewindestangen : (col.gewindestangen||1);
+    rodStd += Math.max(0, st-1);
+    if(sg.letzte_stange_mm!=null){ const k=Math.round(sg.letzte_stange_mm); sonder[k]=(sonder[k]||0)+1; }
+  }
+  const sonderList = Object.keys(sonder).map(k=>({len_mm:+k, anzahl:sonder[k]})).sort((a,b)=>a.len_mm-b.len_mm);
+  let rodSonder = sonderList.reduce((a,x)=>a+x.anzahl,0);
+  let gesamt = rodStd + rodSonder;
+  if(!haveSeg){ gesamt = bom.gewindestangen||0; rodStd=gesamt; rodSonder=0; }
+
+  // Anschluss & Bleche aus Core-BOM (autoritativ); Fallbacks für Alt-Bundles ohne diese Felder
+  const num=(v,d)=> (v!=null ? v : d);
+  const verbSplice   = num(bom.verbindungsmuttern, rodStd);
+  const senkkopf     = num(bom.senkkopfschrauben, 0);
+  const kopplBasis   = num(bom.kopplungsmuttern_basis, senkkopf);
+  const spannplatten = num(bom.spannplatten, bom.stahlplatten||0);
+  const spannmuttern = num(bom.spannmuttern, 0);
+  const blechModule  = num(bom.stahlblech_module, 0);
+  const blechMm      = num(bom.stahlblech_mm, 0);
+  const blechDicke   = num(bom.stahlblech_dicke_mm, 15);
+  const stossfugen   = num(bom.stossfugen, 0);
+  const dichtMm      = num(bom.dichtstreifen_mm, stossfugen*200);
+
+  return { i2, i3, rod_mm:(w.rod_mm||1100), rodStd, rodSonder, sonderList,
+           gewindestangen_gesamt:gesamt, verbindungsmuttern:verbSplice,
+           senkkopfschrauben:senkkopf, kopplungsmuttern_basis:kopplBasis,
+           spannplatten, spannmuttern,
+           stahlblech_module:blechModule, stahlblech_mm:blechMm, stahlblech_dicke_mm:blechDicke,
+           stossfugen, dichtstreifen_mm:dichtMm };
+}
+
+/* Kanonische Positions-Liste für die Stückliste – überall identisch.
+   unit 'Stk' = Stückzahl, 'm' = Länge in Metern (dezimal). */
+function semblaBomItems(w){
+  const b=semblaBom(w); const rc=b.rod_mm/10;
+  const sonderTxt = b.sonderList.length ? (' (L='+b.sonderList.map(x=>_semNum(x.len_mm/10)+' cm').join(' / ')+')') : '';
+  return [
+    {key:'i3',         label:'Stein i3 (37,5 cm)',                 unit:'Stk', menge:b.i3},
+    {key:'i2',         label:'Stein i2 (25 cm)',                   unit:'Stk', menge:b.i2},
+    {key:'rod_std',    label:'Gewindestange '+_semNum(rc)+' cm',   unit:'Stk', menge:b.rodStd},
+    {key:'rod_sonder', label:'Gewindestange Sonderlänge'+sonderTxt,unit:'Stk', menge:b.rodSonder},
+    {key:'kupplung',   label:'Kopplungsmutter (Stangenstoß)',      unit:'Stk', menge:b.verbindungsmuttern},
+    {key:'kuppl_basis',label:'Kopplungsmutter (Fuß)',              unit:'Stk', menge:b.kopplungsmuttern_basis},
+    {key:'senkkopf',   label:'Senkkopfschraube (Fuß)',             unit:'Stk', menge:b.senkkopfschrauben},
+    {key:'spannmutter',label:'Spannmutter',                        unit:'Stk', menge:b.spannmuttern},
+    {key:'spannplatte',label:'Spannplatte',                        unit:'Stk', menge:b.spannplatten},
+    {key:'blech',      label:'Stahlblech-Modul ('+_semNum(b.stahlblech_dicke_mm)+' mm)', unit:'Stk', menge:b.stahlblech_module},
+    {key:'dicht_stk',  label:'Dichtstreifen 20 cm (Schallschutz)', unit:'Stk', menge:b.stossfugen},
+    {key:'dicht',      label:'Dichtstreifen – Gesamtlänge',        unit:'m',   menge:+((b.dichtstreifen_mm/1000).toFixed(2))},
+  ];
+}
+
+/* Einheitliche Mengen-Formatierung für Zeilen (Stück vs. Meter). */
+function semblaBomMenge(it){
+  if(it && it.unit==='m') return _semNum(+(it.menge).toFixed(2))+' m';
+  return _semNum(it? it.menge : 0)+'×';
+}
+//__SEMBLA_SHARED_END__
+const SCALES=[5,10,15,20,25,30,40,50,75,100,150,200];   // Norm-Maßstäbe
+// nutzbares Zeichenfeld (Papier-mm) je Blattformat quer, nach Abzug von Rand/Schriftfeld/Stückliste
+const FIELDS={ a3:{w:345,h:200}, a4:{w:195,h:135} };
+// Größter Maßstab, bei dem die Wand (mm) ins Papierfeld (mm) passt
+function chooseScale(L,H){ const f=FIELDS[curFmt]||FIELDS.a3; const need=Math.max(L/f.w, H/f.h); return SCALES.find(s=>s>=need)||200; }
+
+// ---- Bemaßung (Papier-mm; Zeichnung 1:curScale) ----
+function dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H,openings){
+  if(!showDim) return '';
+  const C='#46505e', A='#c9461c', STP='#0a7f8c';
+  const mC=mm=>fmt(mm/10,(mm/10)%1!==0?1:0)+' cm', mM=mm=>fmt(mm/1000,2)+' m';
+  const T=1.3, F=2.4, LW=0.3;
+  const tk=(x,y,v)=>v?`<line x1="${x-T}" y1="${y-T}" x2="${x+T}" y2="${y+T}" stroke="${C}" stroke-width="${LW}"/>`
+                     :`<line x1="${x-T}" y1="${y+T}" x2="${x+T}" y2="${y-T}" stroke="${C}" stroke-width="${LW}"/>`;
+  const lab=(x,y,t,c)=>`<rect x="${x-(t.length*0.72+0.8)}" y="${y-2.7}" width="${t.length*1.44+1.6}" height="3.1" rx="0.5" fill="#fff" fill-opacity="0.85"/><text x="${x}" y="${y-0.4}" font-size="${F}" fill="${c||C}" text-anchor="middle">${t}</text>`;
+  const hD=(ax,bx,yp,t,c)=>{const cc=c||C;return `<line x1="${ax}" y1="${yp}" x2="${bx}" y2="${yp}" stroke="${cc}" stroke-width="${LW}"/>`+tk(ax,yp)+tk(bx,yp)+lab((ax+bx)/2,yp,t,cc);};
+  const vD=(ay,by,xp,t,c)=>{const cc=c||C;const m=(ay+by)/2;return `<line x1="${xp}" y1="${ay}" x2="${xp}" y2="${by}" stroke="${cc}" stroke-width="${LW}"/>`+tk(xp,ay,1)+tk(xp,by,1)+`<text x="${xp-1}" y="${m+1}" font-size="${F}" fill="${cc}" text-anchor="middle" transform="rotate(-90 ${xp-1} ${m+1})">${t}</text>`;};
+  let s=''; const left0=pad,right0=pad+wPx,bot0=Y(0),top0=Y(H);
+  s+=hD(left0,right0,bot0+7,mM(L));
+  s+=vD(top0,bot0,left0-7,mM(H));
+  for(const op of openings){
+    const L_=Math.min(X(op.x0),X(op.x1)), R_=Math.max(X(op.x0),X(op.x1)), T_=Y(op.y1), B_=Y(op.y0);
+    s+=hD(L_,R_,T_-2,mC(op.x1-op.x0),A);
+    s+=vD(T_,B_,L_-2,mC(op.y1-op.y0),A);
+    if(op.y0>1e-6) s+=vD(B_,bot0,L_-2,mC(op.y0),A);
+  }
+  for(const st of (w.steps||[])){
+    const L_=Math.min(X(st.x0_mm),X(st.x1_mm)), R_=Math.max(X(st.x0_mm),X(st.x1_mm)), T_=Y(st.height_mm);
+    s+=hD(L_,R_,T_-2,mC(st.x1_mm-st.x0_mm),STP);
+    s+=vD(T_,bot0,R_+2,mC(st.height_mm),STP);
+  }
+  return s;
+}
+
+function topHeight(w,xc){ for(const st of (w.steps||[])){ if(xc>=st.x0_mm && xc<st.x1_mm) return st.height_mm; } return w.height_mm; }
+
+function drawVerlege(w){
+  const svg=$('svgVerlege'); const L=w.length_mm,H=w.height_mm;
+  curScale=chooseScale(L,H);
+  const sc=1/curScale, pad=14;                       // sc: Papier-mm je Wand-mm; pad in Papier-mm
+  const wPx=L*sc, hPx=H*sc, vbW=wPx+2*pad, vbH=hPx+2*pad+4;
+  svg.setAttribute('viewBox',`0 0 ${vbW} ${vbH}`);
+  svg.setAttribute('width', vbW+'mm'); svg.setAttribute('height', vbH+'mm');  // 1:curScale mm-genau auf A3
+  const X=x=>pad+x*sc, Y=y=>pad+(hPx-y*sc);
+  const SW=0.22, LF=Math.min(3.2, COURSE*sc*0.55);   // Strichstärke / Steinlabel-Schrift in mm
+  let s='';
+  for(const c of (w.courses||[])){ const y0=c.lage*COURSE,y1=(c.lage+1)*COURSE;
+    for(const st of c.stones){ const fill=st.type==='i3'?'#e3e6ea':'#cbd0d6';
+      s+=`<rect x="${X(st.x0)}" y="${Y(y1)}" width="${(st.x1-st.x0)*sc}" height="${COURSE*sc}" fill="${fill}" stroke="#9aa1a9" stroke-width="${SW}"/>`;
+      if(showLabels && (st.x1-st.x0)*sc>7 && COURSE*sc>4.5) s+=`<text x="${X((st.x0+st.x1)/2)}" y="${Y((y0+y1)/2)+LF*0.35}" font-size="${LF}" fill="#7c838c" text-anchor="middle">${st.type}</text>`; } }
+  for(const op of (w.openings||[])){ const x0=op.g0*GRID,x1=op.g1*GRID,y0=op.l0*COURSE,y1=op.l1*COURSE;
+    s+=`<rect x="${X(x0)}" y="${Y(y1)}" width="${(x1-x0)*sc}" height="${(y1-y0)*sc}" fill="#fff" stroke="#c9461c" stroke-width="${SW*1.6}" stroke-dasharray="1.6 1.1"/>`;
+    s+=`<text x="${X((x0+x1)/2)}" y="${Y((y0+y1)/2)+1}" font-size="${Math.min(3.4,LF*1.2)}" fill="#c9461c" text-anchor="middle">${op.art==='fenster'?'Fenster':(op.art==='durchbruch'?'Durchbruch':'Tür')}</text>`; }
+  // Kontur (gestuft)
+  { const N2=L/GRID; const th=k=>topHeight(w,(k+0.5)*GRID); const pts=[[0,0],[0,th(0)]];
+    for(let k=0;k<N2;k++){ pts.push([(k+1)*GRID, th(k)]); if(k<N2-1 && th(k+1)!==th(k)) pts.push([(k+1)*GRID, th(k+1)]); }
+    pts.push([L,0]); pts.push([0,0]);
+    s+=`<polyline points="${pts.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="none" stroke="#13202e" stroke-width="${SW*2.4}"/>`; }
+  // Anschlüsse: Bodenblech (immer) + Kopfblech oder Spannplatten; Gewindestangen farblich
+  const rod=w.rod_mm||1100;
+  const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
+  const STEEL='#5b6673', bth=Math.max(1.2,15*sc), N2=L/GRID, thF=k=>topHeight(w,(k+0.5)*GRID);
+  s+=`<rect x="${X(0)}" y="${Y(0)}" width="${L*sc}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="${SW*0.5}"/>`;
+  if(topConn==='blech'){ for(let k=0;k<N2;k++){ const h=thF(k); if(h<=0) continue; s+=`<rect x="${X(k*GRID)}" y="${Y(h)-bth}" width="${GRID*sc}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="${SW*0.4}"/>`; } }
+  for(const col of (w.tension_columns||[])){ const x=X(col.x_mm); const lt=thF(col.k);
+    for(const sg of (col.segments||[{z0_mm:0,z1_mm:H}])){
+      let z=sg.z0_mm; const top=sg.z1_mm;
+      while(z<top-1e-6){ const zt=Math.min(z+rod, top); const isLast=zt>=top-1e-6;
+        s+=`<line x1="${x}" y1="${Y(z)}" x2="${x}" y2="${Y(zt)}" stroke="${isLast?ABL_C:ROD_C}" stroke-width="${SW*2.6}"/>`;
+        if(!isLast) s+=`<circle cx="${x}" cy="${Y(zt)}" r="${SW*3}" fill="#0b3a73"/>`;  // Kopplungsmutter (Stangenstoß)
+        z=zt; }
+      const pw=Math.max(2.2,110*sc);
+      const au=sg.anker_unten||(sg.z0_mm===0?'bodenblech':'spannplatte');
+      const ao=sg.anker_oben||(sg.z1_mm===lt?topConn:'spannplatte');
+      if(au==='bodenblech') s+=`<circle cx="${x}" cy="${Y(sg.z0_mm)}" r="${SW*3}" fill="#0b3a73"/>`;   // Senkkopf+Kopplung am Fuß
+      else s+=`<rect x="${x-pw/2}" y="${Y(sg.z0_mm)-1.8}" width="${pw}" height="1.8" rx="0.3" fill="${PLATE_C}"/>`;  // Spannplatte
+      if(ao==='spannplatte') s+=`<rect x="${x-pw/2}" y="${Y(sg.z1_mm)}" width="${pw}" height="1.8" rx="0.3" fill="${PLATE_C}"/>`;
+      else s+=`<circle cx="${x}" cy="${Y(sg.z1_mm)}" r="${SW*2.6}" fill="#0b3a73"/>`;   // im Kopfblech verankert
+    }
+  }
+  const ops=(w.openings||[]).map(o=>({x0:o.g0*GRID,x1:o.g1*GRID,y0:o.l0*COURSE,y1:o.l1*COURSE}));
+  s+=dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H,ops);
+  for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE); s+=`<text x="${pad-3}" y="${yc+1}" font-size="${Math.min(3,LF)}" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
+  svg.innerHTML=s;
+  $('drawCap').textContent='Wandabwicklung · '+(w.name||'Wand')+' · '+fmt(L/1000,3)+' × '+fmt(H/1000,2)+' m · M 1:'+curScale;
+}
+
+// Gewindestangen aus Segmenten aufsplitten
+function rodStats(w){
+  let segs=0, std=0, kupp=0; const sonder=new Set();
+  for(const col of (w.tension_columns||[])){ for(const sg of (col.segments||[])){
+    segs++; const st=sg.gewindestangen|| (col.gewindestangen||1); std+=Math.max(0,st-1); kupp+=Math.max(0,st-1);
+    if(sg.letzte_stange_mm) sonder.add(Math.round(sg.letzte_stange_mm)); } }
+  return { segs, std, kupp, sonderLen:[...sonder].sort((a,b)=>a-b) };
+}
+
+function bomRows(w){   // Positionen aus gemeinsamer Single Source (sembla-shared.js)
+  const items=semblaBomItems(w);
+  $('tBom').querySelector('tbody').innerHTML=items.map(it=>`<tr><td>${it.label}</td><td class="r">${semblaBomMenge(it)}</td></tr>`).join('');
+}
+
+function strandRows(w){
+  let html='';
+  for(const col of (w.tension_columns||[])){
+    const segs=(col.segments||[]).map(sg=>fmt(sg.z0_mm/10,0)+'–'+fmt(sg.z1_mm/10,0)).join(', ');
+    const gw=(col.segments||[]).reduce((a,sg)=>a+(sg.gewindestangen||0),0)||col.gewindestangen||0;
+    html+=`<tr><td>k${col.k} · x=${fmt(col.x_mm/10,0)} cm</td><td class="r">${gw}×</td></tr>`;
+  }
+  $('tStrands').querySelector('tbody').innerHTML=html;
+  // Kompaktzeile im Blatt
+  const ps=w.prestress||{};
+  $('tStrands2').querySelector('tbody').innerHTML=
+    `<tr><td>Stränge gesamt</td><td class="r">${(w.tension_columns||[]).length}</td></tr>`+
+    `<tr><td>Strangabstand</td><td class="r">${ps.max_span_grid!=null?ps.max_span_grid+' Raster':'–'}</td></tr>`+
+    `<tr><td>Vorspannkraft N</td><td class="r">${ps.force_kN!=null?fmt(ps.force_kN,0)+' kN':'–'}</td></tr>`+
+    `<tr><td>Gewindestange</td><td class="r">${fmt((w.rod_mm||1100)/10,0)} cm</td></tr>`;
+}
+
+function renderRules(){
+  const rules=[
+    ['#1f6feb','Jeder Stein muss von einer Spannachse gehalten werden.'],
+    ['#1f9d55','Die Spannachse soll mittig im i3-Stein der ersten oder letzten Steinreihe liegen.'],
+    ['#e8a01c','Bei Öffnungen &gt; 750 mm: auf jeder Seite zwei Spannachsen nebeneinander.'],
+    ['#8b5cc7','Jedes Blech muss von mindestens zwei Spannachsen gehalten werden.'],
+  ];
+  $('rules').innerHTML=rules.map((r,i)=>`<div><span class="chip" style="background:${r[0]}"></span><span>${i+1}. ${r[1]}</span></div>`).join('');
+  $('rodleg').innerHTML=
+    `<span><i style="background:${ROD_C}"></i>Gewindestange (Standard)</span>`+
+    `<span><i style="background:${ABL_C}"></i>abgelängt / Sonderlänge</span>`+
+    `<span><i class="plate" style="background:${PLATE_C}"></i>Spannplatte</span>`+
+    `<span><i class="plate" style="background:#5b6673"></i>Boden-/Kopfblech (15 mm)</span>`;
+}
+
+function renderTitleBlock(w){
+  const g=id=>$(id).value||'';
+  const st=w.verification&&w.verification.status;
+  const dim=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
+  const row=(k,v)=>`<div class="tb-row"><div class="k">${k}</div><div class="v">${v||'–'}</div></div>`;
+  $('titleblock').innerHTML=
+    `<div class="col">${row('Projekt',g('fProjekt'))}${row('Bauherrenschaft',g('fBauherr'))}${row('Planverfasser',g('fPlanverf'))}</div>`+
+    `<div class="col">${row('Phase',g('fPhase'))}${row('Planinhalt',g('fInhalt'))}${row('Wand',(w.name||'–')+' · '+dim)}</div>`+
+    `<div class="col">`+
+      `<div class="tb-row"><div class="k">Plan Nr.</div><div class="v">${g('fPlanNr')||'###'}</div></div>`+
+      `<div class="tb-row"><div class="k">Index / Datum</div><div class="v">${g('fIndex')} · ${new Date().toLocaleDateString('de-DE')}</div></div>`+
+      `<div class="tb-row"><div class="k">Maßstab</div><div class="v">1 : ${curScale}</div></div>`+
+      `<div class="tb-row"><div class="k">Gez. / Nachw.</div><div class="v">${g('fGez')||'–'} · ${st||'—'}</div></div>`+
+      `<div class="tb-logo">SEMBLA<small>®</small></div>`+
+    `</div>`;
+}
+
+function render(){ const w=WALL||demo(); drawVerlege(w); bomRows(w); strandRows(w); renderRules(); renderTitleBlock(w); }
+function applyWand(w){ if(!w||!w.length_mm||!w.courses) throw new Error('Kein gültiges Wandelement (courses/length_mm fehlen).'); WALL=w; $('info').textContent='Geladen: '+(w.name||'Wandelement'); render(); }
+
+// ---- Demo ----
+function demo(){ const L=3000,H=2600,N=24,Lg=13,courses=[];
+  const door={c0:4,c1:8,r1:10}, win={c0:12,c1:16,r0:4,r1:9};
+  for(let r=0;r<Lg;r++){ const stones=[]; let c=0;
+    while(c<N){ if((r<door.r1&&c>=door.c0&&c<door.c1)||(r>=win.r0&&r<win.r1&&c>=win.c0&&c<win.c1)){c++;continue;}
+      let span=3; if(c+3>N) span=N-c; let blocked=false; for(let k=c;k<c+span;k++){ if((k>=door.c0&&k<door.c1&&r<door.r1)||(k>=win.c0&&k<win.c1&&r>=win.r0&&r<win.r1)) blocked=true; }
+      if(blocked){c++;continue;} stones.push({x0:c*125,x1:(c+span)*125,type:span===3?'i3':'i2'}); c+=span; }
+    courses.push({lage:r,stones}); }
+  const cols=[]; for(let k=0;k<N;k+=3){ cols.push({k,x_mm:62.5+125*k,durchgehend:true,segments:[{z0_mm:0,z1_mm:H,gewindestangen:3,letzte_stange_mm:H-2*1100}]}); }
+  return {name:'Demo-Wand',length_mm:L,height_mm:H,thickness_mm:125,course_mm:200,rod_mm:1100,N_grid:N,lagen:Lg,
+    openings:[{g0:4,g1:8,l0:0,l1:10,art:'tuer'},{g0:12,g1:16,l0:4,l1:9,art:'fenster'}], steps:[],
+    sides:{vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}}, prestress:{max_span_grid:3,force_kN:60},
+    tension_columns:cols, bom:{i3:52,i2:48,gewindestangen:32,verbindungsmuttern:18,stahlplatten:28,spannmuttern:28},
+    verification:{status:'erfüllt'}, courses}; }
+
+// ---- Events ----
+$('load').addEventListener('click',()=>$('file').click());
+$('file').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result);
+    if(j&&j.format==='SEMBLA-Projekt'){ prefillProjekt(j.projekt); applyWand(j.wandelement||j); } else applyWand(j);
+  }catch(e){ alert('Ungültig: '+e.message); } }; rd.readAsText(f); });
+function prefillProjekt(p){ if(!p)return; const set=(id,v)=>{ if(v!=null&&v!=='') $(id).value=v; };
+  set('fProjekt',p.name); set('fBauherr',p.bauherr); set('fPlanverf',p.planverfasser); set('fPhase',p.phase); set('fPlanNr',p.plan_nr); set('fIndex',p.index); set('fGez',p.gez);
+  if(WALL) renderTitleBlock(WALL); }
+$('showDim').addEventListener('change',e=>{ showDim=e.target.checked; render(); });
+$('showLabels').addEventListener('change',e=>{ showLabels=e.target.checked; render(); });
+['fProjekt','fBauherr','fPlanverf','fPhase','fInhalt','fPlanNr','fIndex','fGez'].forEach(id=>$(id).addEventListener('input',()=>{ if(WALL||true) renderTitleBlock(WALL||demo()); }));
+$('print').addEventListener('click',()=>window.print());
+
+// Direkter PDF-Download: rendert das Blatt und legt es exakt (aspektwahrend) auf eine A3/A4-Seite.
+async function downloadPDF(){
+  const btn=$('pdf'), old=btn.textContent;
+  try{
+    if(!(window.jspdf&&window.jspdf.jsPDF))
+      throw new Error('PDF-Bibliothek nicht geladen – bitte Internetverbindung prüfen oder „Drucken“ nutzen.');
+    btn.disabled=true; btn.textContent='Erzeuge PDF …';
+    const w=WALL||demo();
+
+    // --- 1) Nur die Zeichnung als PNG rastern (Safari: explizite px-Maße am SVG + Base64) ---
+    const svgEl=$('svgVerlege'); const rect=svgEl.getBoundingClientRect();
+    const sW=Math.max(1,Math.round(rect.width)), sH=Math.max(1,Math.round(rect.height));
+    const clone=svgEl.cloneNode(true);
+    clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    clone.setAttribute('width',sW); clone.setAttribute('height',sH);
+    const xml=new XMLSerializer().serializeToString(clone);
+    const url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(xml)));
+    const im=new Image();
+    await new Promise((res,rej)=>{ im.onload=res; im.onerror=()=>rej(new Error('Zeichnung konnte nicht aufbereitet werden')); im.src=url; });
+    if(im.decode){ try{ await im.decode(); }catch(_){} }
+    const rc=3, cv=document.createElement('canvas'); cv.width=sW*rc; cv.height=sH*rc;
+    const cg=cv.getContext('2d'); cg.fillStyle='#ffffff'; cg.fillRect(0,0,cv.width,cv.height); cg.drawImage(im,0,0,cv.width,cv.height);
+    const drawPng=cv.toDataURL('image/png');
+
+    // --- 2) Seite + Layout (rein mit jsPDF gezeichnet – kein html2canvas) ---
+    const { jsPDF }=window.jspdf;
+    const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:(curFmt==='a4'?'a4':'a3'),compress:true});
+    const pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight();
+    const A4=curFmt==='a4';
+    const M=A4?7:9, gap=A4?3:4, tbH=A4?26:30, asideW=A4?64:88, capH=A4?5:6;
+    const cx0=M, cy0=M, cx1=pw-M, cy1=ph-M;
+    const contentBottom=cy1-tbH-gap;
+    const drawAreaX=cx0, drawAreaW=(cx1-asideW-gap)-cx0, asideX=cx1-asideW;
+    const INK=[19,32,46], LINE=[190,195,201], MUT=[110,120,130], HEADBG=[244,246,248];
+    const setInk=c=>pdf.setTextColor(c[0],c[1],c[2]), setDraw=c=>pdf.setDrawColor(c[0],c[1],c[2]), setFill=c=>pdf.setFillColor(c[0],c[1],c[2]);
+
+    // Zeichnungs-Überschrift + Rahmen + Bild
+    pdf.setFont('helvetica','bold'); pdf.setFontSize(A4?8:9); setInk(INK);
+    pdf.text('Wandabwicklung · '+(w.name||'Wand')+' · '+fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m · M 1:'+curScale, drawAreaX, cy0+capH-1.5);
+    const dbX=drawAreaX, dbY=cy0+capH, dbW=drawAreaW, dbH=contentBottom-(cy0+capH);
+    setDraw(LINE); pdf.setLineWidth(0.3); pdf.rect(dbX,dbY,dbW,dbH);
+    const ir=Math.min((dbW-4)/sW,(dbH-4)/sH), iw=sW*ir, ih=sH*ir;
+    pdf.addImage(drawPng,'PNG',dbX+(dbW-iw)/2,dbY+(dbH-ih)/2,iw,ih);
+
+    // Aside-Helfer
+    const boxTitle=(x,y,ww,t)=>{ setFill(HEADBG); setDraw(LINE); pdf.setLineWidth(0.3); pdf.rect(x,y,ww,5.2,'FD');
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(A4?6.5:7.2); setInk(MUT); pdf.text(t.toUpperCase(),x+1.8,y+3.6); return y+5.2; };
+    const rowLine=(x,y,ww,label,val)=>{ pdf.setFont('helvetica','normal'); pdf.setFontSize(A4?6.6:7.2); setInk(INK);
+      pdf.text(pdf.splitTextToSize(String(label),ww-15)[0],x+1.8,y+3.2); pdf.text(String(val),x+ww-1.8,y+3.2,{align:'right'}); return y+4.4; };
+    let ay=cy0;
+    // Stückliste
+    { const items=semblaBomItems(w); let y=boxTitle(asideX,ay,asideW,'Stückliste (BOM)'); const y0=y;
+      for(const it of items) y=rowLine(asideX,y,asideW,it.label,semblaBomMenge(it));
+      setDraw(LINE); pdf.setLineWidth(0.3); pdf.rect(asideX,y0,asideW,y-y0); ay=y+gap; }
+    // Spannstabregeln + Farblegende
+    { let y=boxTitle(asideX,ay,asideW,'Spannstabregeln'); const y0=y;
+      const rules=['Jeder Stein muss von einer Spannachse gehalten werden.',
+        'Spannachse mittig im i3-Stein der ersten/letzten Reihe.',
+        'Öffnung > 750 mm: je Seite zwei Spannachsen.',
+        'Jedes Blech von mind. zwei Spannachsen gehalten.'];
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(A4?6.2:6.8); setInk(INK); let yy=y+2.6;
+      rules.forEach((t,i)=>{ const ls=pdf.splitTextToSize((i+1)+'. '+t,asideW-3.6); pdf.text(ls,asideX+1.8,yy); yy+=ls.length*(A4?2.5:2.8)+1; });
+      yy+=0.5; [[ROD_C,'Gewindestange (Standard)'],[ABL_C,'abgelängt / Sonderlänge'],[PLATE_C,'Spannplatte'],['#5b6673','Boden-/Kopfblech (15 mm)']].forEach(l=>{
+        setFill(hex2rgb(l[0])); pdf.rect(asideX+1.8,yy-1.9,3,2.2,'F'); setInk(INK); pdf.setFontSize(A4?6:6.6); pdf.text(l[1],asideX+6,yy); yy+=3.4; });
+      setDraw(LINE); pdf.setLineWidth(0.3); pdf.rect(asideX,y0,asideW,yy+0.5-y0); ay=yy+0.5+gap; }
+    // Vorspannung
+    { let y=boxTitle(asideX,ay,asideW,'Vorspannung'); const y0=y; const ps=w.prestress||{};
+      y=rowLine(asideX,y,asideW,'Stränge gesamt',(w.tension_columns||[]).length);
+      y=rowLine(asideX,y,asideW,'Strangabstand',ps.max_span_grid!=null?ps.max_span_grid+' Raster':'–');
+      y=rowLine(asideX,y,asideW,'Vorspannkraft N',ps.force_kN!=null?fmt(ps.force_kN,0)+' kN':'–');
+      y=rowLine(asideX,y,asideW,'Gewindestange',fmt((w.rod_mm||1100)/10,0)+' cm');
+      setDraw(LINE); pdf.setLineWidth(0.3); pdf.rect(asideX,y0,asideW,y-y0); ay=y+gap; }
+
+    // --- 3) Schriftfeld unten (3 Spalten) ---
+    const gv=id=>($(id)&&$(id).value)||'';
+    const tbY=cy1-tbH, dim=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
+    const st=(w.verification&&w.verification.status)||'—';
+    setDraw(INK); pdf.setLineWidth(0.5); pdf.rect(cx0,tbY,cx1-cx0,tbH);
+    const cW=[(cx1-cx0)*0.42,(cx1-cx0)*0.32,(cx1-cx0)*0.26], cX=[cx0,cx0+ (cx1-cx0)*0.42, cx0+(cx1-cx0)*0.74];
+    setDraw(LINE); pdf.setLineWidth(0.3); pdf.line(cX[1],tbY,cX[1],tbY+tbH); pdf.line(cX[2],tbY,cX[2],tbY+tbH);
+    const tbField=(cx,cy,cw,k,v)=>{ pdf.setFont('helvetica','normal'); pdf.setFontSize(A4?5.6:6); setInk(MUT); pdf.text(k.toUpperCase(),cx+1.8,cy+2.6);
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(A4?7:7.6); setInk(INK); pdf.text(pdf.splitTextToSize(String(v||'–'),cw-3.4).slice(0,2),cx+1.8,cy+5.6); };
+    const rh=tbH/3;
+    tbField(cX[0],tbY,cW[0],'Projekt',gv('fProjekt')); tbField(cX[0],tbY+rh,cW[0],'Bauherrenschaft',gv('fBauherr')); tbField(cX[0],tbY+2*rh,cW[0],'Planverfasser',gv('fPlanverf'));
+    tbField(cX[1],tbY,cW[1],'Phase',gv('fPhase')); tbField(cX[1],tbY+rh,cW[1],'Planinhalt',gv('fInhalt')); tbField(cX[1],tbY+2*rh,cW[1],'Wand',(w.name||'–')+' · '+dim);
+    const r3=tbH/4;
+    tbField(cX[2],tbY,cW[2],'Plan Nr.',gv('fPlanNr')||'###'); tbField(cX[2],tbY+r3,cW[2],'Index / Datum',(gv('fIndex')||'0')+' · '+new Date().toLocaleDateString('de-DE'));
+    tbField(cX[2],tbY+2*r3,cW[2],'Maßstab','1 : '+curScale); tbField(cX[2],tbY+3*r3,cW[2],'Gez. / Nachw.',(gv('fGez')||'–')+' · '+st);
+
+    // --- 4) Vorabzug-Wasserzeichen ---
+    if(document.body.classList && document.body.classList.contains('wm')){
+      pdf.setFont('helvetica','bold'); pdf.setFontSize(A4?90:130); pdf.setTextColor(201,70,28);
+      let gs=null; try{ gs=new pdf.GState({opacity:0.16}); pdf.setGState(gs); }catch(_){}
+      pdf.text('VORABZUG', pw/2, ph/2, {align:'center', angle:30, baseline:'middle'});
+      try{ pdf.setGState(new pdf.GState({opacity:1})); }catch(_){}
+    }
+
+    const clean=s=>(s||'').trim().replace(/[^\wäöüÄÖÜß\-]+/g,'_').replace(/^_+|_+$/g,'');
+    const nm=clean($('fProjekt').value)||'Wand', pn=clean($('fPlanNr').value);
+    pdf.save('Fertigungszeichnung_'+nm+(pn?('_'+pn):'')+'.pdf');
+  }catch(e){
+    if(confirm('Direkter PDF-Export nicht möglich ('+e.message+').\n\nStattdessen den Druckdialog öffnen? Dort „Als PDF speichern“ wählen.'))
+      window.print();
+  }
+  finally{ btn.disabled=false; btn.textContent=old; }
+}
+$('pdf').addEventListener('click',downloadPDF);
+
+// Blattformat A3/A4: setzt Seitengröße + Blatthöhe (eine Seite) und wählt passenden Maßstab
+function setFormat(f){ curFmt=(f==='a4')?'a4':'a3';
+  document.body.classList.toggle('fmt-a4', curFmt==='a4');
+  document.body.classList.toggle('fmt-a3', curFmt==='a3');
+  const ps=$('pageStyle'); if(ps) ps.textContent = curFmt==='a4'
+    ? '@page{size:A4 landscape;margin:8mm}' : '@page{size:A3 landscape;margin:10mm}';
+  render(); }
+$('fmtSel').addEventListener('change',e=>setFormat(e.target.value));
+// Vorabzug-Wasserzeichen ein-/ausblenden
+function setWatermark(on){ document.body.classList.toggle('wm', !!on); }
+$('wm').addEventListener('change',e=>setWatermark(e.target.checked));
+
+setFormat('a3');
+window.__fz={applyWand,render,demo,drawVerlege,rodStats,setFormat,setWatermark,downloadPDF,get scale(){return curScale;},get fmt(){return curFmt;},get wall(){return WALL;}};
+</script>
+</body>
+</html>

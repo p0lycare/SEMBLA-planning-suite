@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Auslegung (Statik-Iteration)</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --ok:#1f9d55; --warn:#c9461c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:340px;flex:0 0 340px}
+  .stage{flex:1 1 560px;min-width:440px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  .grp{margin-bottom:13px}
+  .grp h3{font-size:12.5px;margin:0 0 6px;font-weight:650;border-bottom:1px solid var(--line);padding-bottom:4px}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  label small{color:var(--muted);font-size:11px}
+  input[type=number]{width:92px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;text-align:right;background:#fff}
+  select{padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;background:#fff;width:150px}
+  button{padding:9px 11px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%}
+  .btnrow{display:flex;gap:8px;margin-top:10px}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:#e3f5ea;color:var(--ok)} .badge.no{background:#fbe6dd;color:var(--warn)}
+  .res{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:13px}
+  .res .k{color:var(--muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  table.tb{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+  table.tb th{font-size:11px;color:var(--muted);text-align:right;font-weight:600;padding:3px 6px;border-bottom:1px solid var(--line)}
+  table.tb th:first-child{text-align:left}
+  table.tb td{padding:3px 6px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}
+  table.tb td:first-child{text-align:left}
+  tr.gov td{background:#eef2f7;font-weight:600}
+  tr.hit td{background:#e3f5ea;font-weight:600}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+  .pill.ok{background:#e3f5ea;color:var(--ok)} .pill.no{background:#fbe6dd;color:var(--warn)}
+  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;margin-top:6px}
+  .note{font-size:11.5px;color:var(--muted);margin-top:12px;border-top:1px solid var(--line);padding-top:10px;line-height:1.55}
+  #printdoc{display:none}
+  @media print{ header,.controls,svg{display:none!important} #app{display:none!important} #printdoc{display:block;padding:0 6mm} h2{color:#333} }
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-20006</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">f05b175e-52f2-49da-8ada-b195966c9a32</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-20006, YZXVWT2JSZP3-499227272-20006</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Auslegung <span style="font-weight:400;color:#9fb0c0">· Statik-Iterationsschleife</span></h1>
+  <p>Engine: baut, prüft (Biegung · Randdruck · Schub) und optimiert Vorspannung (Strangabstand + Kraft N), bis alle Nachweise erfüllt sind. Ergebnis: geprüftes Wandelement.</p>
+</header>
+
+<div id="app" class="wrap">
+  <div class="panel controls">
+    <h2>Vorgaben</h2>
+    <div class="grp"><h3>Wand</h3>
+      <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125"><small>m</small></label>
+      <label><span>Höhe</span><input type="number" id="hgt" value="2.60" step="0.20"><small>m</small></label>
+    </div>
+    <div class="grp"><h3>Seiten</h3>
+      <label><span>Vorderseite</span><select id="sideVorne"><option value="fassade">Fassade</option><option value="innenausbau">Innenausbau</option><option value="sicht">Sichtfläche</option><option value="installation">Installation</option></select></label>
+      <label><span>Rückseite</span><select id="sideHinten"><option value="fassade">Fassade</option><option value="innenausbau" selected>Innenausbau</option><option value="sicht">Sichtfläche</option><option value="installation">Installation</option></select></label>
+    </div>
+    <div class="grp"><h3>Last (horizontal, Fläche)</h3>
+      <label><span>q<sub>k</sub></span><input type="number" id="qk" value="1.00" step="0.25"><small>kN/m²</small></label>
+      <label><span>γ<sub>Q</sub></span><input type="number" id="gammaQ" value="1.50" step="0.05"><small>–</small></label>
+    </div>
+    <div class="grp"><h3>Modus</h3>
+      <label><span>Vorgehen</span><select id="modus"><option value="auto" selected>Auto-Auslegung (optimieren)</option><option value="nachweis">Nachweis (feste Auslegung)</option></select></label>
+      <div id="manual" style="display:none">
+        <label><span>Strangabstand</span><select id="spacing"><option value="3">3 Raster (37,5 cm)</option><option value="2">2 Raster (25 cm)</option><option value="1">1 Raster (12,5 cm)</option></select></label>
+        <label><span>Vorspannkraft N</span><input type="number" id="force" value="60" step="5"><small>kN/Strang</small></label>
+      </div>
+    </div>
+    <div class="grp"><h3>Materialannahmen <small>(zu bestätigen)</small></h3>
+      <label><span>Druckfestigkeit f<sub>cd</sub></span><input type="number" id="fcd" value="20" step="1"><small>N/mm²</small></label>
+      <label><span>Haftreibung C<sub>f,d</sub></span><input type="number" id="cfd" value="0.60" step="0.05"><small>–</small></label>
+      <label><span>Wichte ρ</span><input type="number" id="rho" value="14" step="0.5"><small>kN/m³</small></label>
+    </div>
+    <button class="primary" id="run">Auslegen / Prüfen</button>
+    <div class="btnrow"><button id="print" style="flex:1">Nachweisprotokoll drucken</button><button id="exp" style="flex:1">JSON</button></div>
+    <div class="note"><b>Nachweise.</b> Biegung (klaffende Fuge): M<sub>Ed</sub>=q·L·H²/8 ≤ M<sub>R</sub>=σ·W. Randdruck: σ<sub>max</sub>=N/A+M/W ≤ f<sub>cd</sub>. Schub: V<sub>Ed</sub>=q·L·H/2 ≤ C<sub>f,d</sub>·(N+G). Planungshilfe — Material/Vorspannkraft mit Statiker bestätigen.</div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Ergebnis</h2>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <span class="badge" id="statusBadge">–</span>
+      <span class="k" id="statusText" style="color:var(--muted);font-size:13px"></span>
+    </div>
+    <div class="res">
+      <div class="k">Strangabstand</div><div class="v" id="rSp">–</div>
+      <div class="k">Vorspannstränge</div><div class="v" id="rStrands">–</div>
+      <div class="k">Vorspannkraft je Strang</div><div class="v" id="rN">–</div>
+    </div>
+
+    <h2 style="margin-top:14px">Nachweise</h2>
+    <table class="tb" id="nwTable"><thead><tr><th>Nachweis</th><th>Einwirkung</th><th>Widerstand</th><th>Auslastung</th><th></th></tr></thead><tbody></tbody></table>
+
+    <div id="itWrap"><h2 style="margin-top:14px">Iterationsprotokoll</h2>
+      <table class="tb" id="itTable"><thead><tr><th>Versuch</th><th>Strangabstand</th><th>Stränge</th><th>N [kN]</th><th>Auslastung</th><th></th></tr></thead><tbody></tbody></table></div>
+
+    <h2 style="margin-top:14px">Wandbild</h2>
+    <svg id="viz" viewBox="0 0 900 380" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+</div>
+<div id="printdoc"></div>
+
+<script>
+// ==== Core ====
+// @ts-check
+/**
+ * SEMBLA Core - Vanilla-JS-Portierung der Referenz-Implementierung (sembla_core.py).
+ * Erzeugt aus Laenge/Hoehe/Oeffnungen ein Wandelement (Single Source of Truth).
+ * Bit-genau identisch zum Python-Core (gepruefte Paritaet gegen die goldenen Fixtures).
+ *
+ * Einheiten: mm. 'grid' = Rastereinheit (125mm), 'lage' = Lagenindex (200mm).
+ */
+
+const GRID = 125;
+const COURSE = 200;
+const THICK = 125;
+const ROD = 1100;
+const BLECH = 1000;              // Standard-Modullänge der Stahlbleche (Boden/Kopf)
+const BLECH_THICK = 15;          // Stahlblech-Dicke (mm)
+const CHAMBER_OFFSET = 62.5;     // Kammerzentrum -> Lattice x = 62.5 + 125k
+const MAX_SPAN_GRID = 3;         // Vorspannung max. alle 3 Raster (375mm)
+const FORBIDDEN_N = new Set([1, 4]);
+
+class SemblaError extends Error {}
+class InvalidDimensionError extends SemblaError {}
+class InvalidOpeningError extends SemblaError {}
+
+/**
+ * @typedef {{g0:number,g1:number,l0:number,l1:number,art:string}} OpeningLike
+ */
+
+/** Validiertes Oeffnungs-Objekt. */
+class Opening {
+  /** @param {number} g0 @param {number} g1 @param {number} l0 @param {number} l1 @param {string} [art] */
+  constructor(g0, g1, l0, l1, art = "tuer") {
+    if (g1 <= g0) throw new InvalidOpeningError(`g1<=g0 (${g0},${g1})`);
+    if (l1 <= l0) throw new InvalidOpeningError(`l1<=l0 (${l0},${l1})`);
+    if (g0 < 0 || l0 < 0) throw new InvalidOpeningError("negative Koordinate");
+    if (art !== "tuer" && art !== "fenster" && art !== "durchbruch") throw new InvalidOpeningError("unbekannte art " + art);
+    this.g0 = g0; this.g1 = g1; this.l0 = l0; this.l1 = l1; this.art = art;
+  }
+  asDict() { return { g0: this.g0, g1: this.g1, l0: this.l0, l1: this.l1, art: this.art }; }
+}
+
+/** Python-kompatibles Runden (round-half-to-even) — wichtig fuer Paritaet. */
+function pyRound(x) {
+  const f = Math.floor(x), d = x - f;
+  if (d < 0.5) return f;
+  if (d > 0.5) return f + 1;
+  return (f % 2 === 0) ? f : f + 1;
+}
+
+/** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
+function segJoints(startGrid, tiling) {
+  const js = new Set(); let c = startGrid;
+  for (let i = 0; i < tiling.length - 1; i++) { c += tiling[i]; js.add(c); }
+  return js;
+}
+
+/** i3-maximale Lagen-Varianten fuer Breite n (Raster). i2 immer nur an den Enden. */
+function candidates(n) {
+  if (n < 2) return [[]];
+  const r = n % 3;
+  if (r === 2) { const f = Array((n - 2) / 3).fill(3); return [[2, ...f], [...f, 2]]; }
+  if (r === 1) { const f = Array((n - 4) / 3).fill(3); return [[2, 2, ...f], [...f, 2, 2]]; }
+  const m = n / 3;
+  if (m === 1) return [[3]];
+  const f = Array(m - 2).fill(3);
+  return [Array(m).fill(3), [2, 2, ...f, 2], [2, ...f, 2, 2]];
+}
+
+/** Vergleich (notConflict, i3count, dist): >0 wenn a strikt groesser. */
+function keyCmp(a, b) {
+  if (a[0] !== b[0]) return (a[0] ? 1 : 0) - (b[0] ? 1 : 0);
+  if (a[1] !== b[1]) return a[1] - b[1];
+  return a[2] - b[2];
+}
+
+/** Waehlt unter den i3-maximalen Varianten die, die der Lage darunter ausweicht. */
+function pickTiling(startGrid, n, prev) {
+  let best = null;
+  for (const comp of candidates(n)) {
+    const js = segJoints(startGrid, comp);
+    const conflict = [...js].some(j => prev.has(j));
+    const i3 = comp.filter(b => b === 3).length;
+    let dist = 99;
+    if (js.size && prev.size) dist = Math.min(...[...js].flatMap(j => [...prev].map(f => Math.abs(j - f))));
+    const key = [!conflict, i3, dist];
+    if (best === null || keyCmp(key, best.key) > 0) best = { key, comp };
+  }
+  return best.comp;
+}
+
+function balancedFill(a, b, maxstep) {
+  if (b <= a) return [a];
+  const k = Math.ceil((b - a) / maxstep);
+  const out = [];
+  for (let i = 0; i <= k; i++) out.push(pyRound(a + (b - a) * i / k));
+  return out;
+}
+
+function validateInputs(lengthMm, heightMm, openings) {
+  if (!Number.isInteger(lengthMm) || lengthMm % GRID !== 0)
+    throw new InvalidDimensionError(`Wandlaenge ${lengthMm} ist kein Vielfaches von ${GRID} mm`);
+  if (lengthMm < 2 * GRID)
+    throw new InvalidDimensionError(`Wandlaenge ${lengthMm} < Mindestmass ${2 * GRID} mm`);
+  if (!Number.isInteger(heightMm) || heightMm % COURSE !== 0)
+    throw new InvalidDimensionError(`Wandhoehe ${heightMm} ist kein Vielfaches von ${COURSE} mm`);
+  if (heightMm < COURSE)
+    throw new InvalidDimensionError(`Wandhoehe ${heightMm} < ${COURSE} mm`);
+  const N = lengthMm / GRID, L = heightMm / COURSE;
+  for (const op of openings) {
+    if (op.g1 > N) throw new InvalidOpeningError(`Oeffnung ueber Wandlaenge (g1=${op.g1} > N=${N})`);
+    if (op.l1 > L) throw new InvalidOpeningError(`Oeffnung ueber Wandhoehe (l1=${op.l1} > L=${L})`);
+  }
+  for (let i = 0; i < openings.length; i++)
+    for (let j = i + 1; j < openings.length; j++) {
+      const a = openings[i], b = openings[j];
+      if (a.g0 < b.g1 && b.g0 < a.g1 && a.l0 < b.l1 && b.l0 < a.l1)
+        throw new InvalidOpeningError(`Oeffnungen ueberlappen: #${i} und #${j}`);
+    }
+}
+
+/**
+ * Baut ein Wandelement.
+ * @param {string} name
+ * @param {number} lengthMm Vielfaches von 125, >=250
+ * @param {number} heightMm Vielfaches von 200, >=200
+ * @param {Opening[]} [openings]
+ * @returns {object} Wandelement (siehe wandelement.schema.json)
+ */
+const SEITEN_FUNKTIONEN = ["fassade", "innenausbau", "sicht", "installation"];
+const DEFAULT_SIDES = { vorne: { funktion: "fassade" }, hinten: { funktion: "innenausbau" } };
+function normSides(s) {
+  const f = (v, d) => (v && SEITEN_FUNKTIONEN.includes(v.funktion)) ? v.funktion : d;
+  return { vorne: { funktion: f(s && s.vorne, "fassade") }, hinten: { funktion: f(s && s.hinten, "innenausbau") } };
+}
+
+const DEFAULT_PRESTRESS = { max_span_grid: MAX_SPAN_GRID, force_kN: null };
+function normPrestress(p) {
+  const m = (p && Number.isInteger(p.max_span_grid) && p.max_span_grid >= 1) ? p.max_span_grid : MAX_SPAN_GRID;
+  const fk = (p && p.force_kN != null) ? p.force_kN : null;
+  const rod = (p && p.rod_mm != null && +p.rod_mm > 0) ? +p.rod_mm : ROD;
+  const blech = (p && p.blech_mm != null && +p.blech_mm > 0) ? +p.blech_mm : BLECH;
+  const top = (p && (p.top_connection === "spannplatte" || p.top_connection === "blech")) ? p.top_connection : "blech";
+  // manuelle Spannachsen (Rasterindizes) – wenn gesetzt, exakt diese statt Auto-Verteilung
+  let cg = Array.isArray(p && p.columns_grid) ? p.columns_grid.map(Number).filter(k => Number.isInteger(k) && k >= 0) : null;
+  cg = (cg && cg.length) ? [...new Set(cg)].sort((a, b) => a - b) : null;
+  return { max_span_grid: m, force_kN: fk, rod_mm: rod, blech_mm: blech, top_connection: top, columns_grid: cg };
+}
+
+function normSteps(steps, lengthMm, heightMm) {
+  const out = [];
+  for (const s of (steps || [])) {
+    const x0 = Math.max(0, pyRound((s.x0_mm || 0) / GRID) * GRID);
+    const x1 = Math.min(lengthMm, pyRound((s.x1_mm || 0) / GRID) * GRID);
+    const h = Math.max(0, Math.min(heightMm, pyRound((s.height_mm || 0) / COURSE) * COURSE));
+    if (x1 > x0) out.push({ x0_mm: x0, x1_mm: x1, height_mm: h });
+  }
+  return out;
+}
+
+function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null, steps = []) {
+  const PS = normPrestress(prestress);
+  const maxSpan = PS.max_span_grid;
+  const ROD_ = PS.rod_mm;
+  const TOP = PS.top_connection;   // 'blech' (Kopfblech) | 'spannplatte'
+  validateInputs(lengthMm, heightMm, openings);
+  const N = lengthMm / GRID, L = heightMm / COURSE;
+
+  // Staffelung / getreppter Aufbau: je Spalte eine lokale Oberkante (Anzahl Lagen)
+  const STEPS = normSteps(steps, lengthMm, heightMm);
+  const topLage = new Array(N);
+  for (let k = 0; k < N; k++) {
+    const xc = (k + 0.5) * GRID; let h = heightMm;
+    for (const s of STEPS) { if (xc >= s.x0_mm && xc < s.x1_mm) { h = s.height_mm; break; } }
+    topLage[k] = Math.max(0, Math.min(L, pyRound(h / COURSE)));
+  }
+  const runsAt = (li) => { const runs = []; let s = null;
+    for (let k = 0; k < N; k++) { const present = topLage[k] > li; if (present) { if (s === null) s = k; } else if (s !== null) { runs.push([s, k]); s = null; } }
+    if (s !== null) runs.push([s, N]); return runs; };
+
+  const courses = []; let prev = new Set();
+  const rigidLagen = []; const invalidSegments = [];
+  for (let li = 0; li < L; li++) {
+    let cuts = runsAt(li);
+    for (const op of openings) {
+      if (op.l0 <= li && li < op.l1) {
+        const nc = [];
+        for (const [s, e] of cuts) {
+          if (op.g1 <= s || op.g0 >= e) { nc.push([s, e]); continue; }
+          if (op.g0 > s) nc.push([s, op.g0]);
+          if (op.g1 < e) nc.push([op.g1, e]);
+        }
+        cuts = nc;
+      }
+    }
+    const stones = []; let joints = new Set(); let rig = false;
+    for (const [s, e] of cuts) {
+      const w = e - s;
+      if (FORBIDDEN_N.has(w)) {
+        rig = true;
+        const seg = { lage: li, start_grid: s, breite_grid: w };
+        if (!invalidSegments.some(x => x.lage === li && x.start_grid === s && x.breite_grid === w))
+          invalidSegments.push(seg);
+      }
+      const comp = pickTiling(s, w, prev);
+      for (const j of segJoints(s, comp)) joints.add(j);
+      let g = s;
+      for (const b of comp) {
+        stones.push({ type: b === 2 ? "i2" : "i3", x0: g * GRID, x1: (g + b) * GRID });
+        g += b;
+      }
+    }
+    if (rig) rigidLagen.push(li);
+    courses.push({ lage: li, stones, joints_grid: [...joints].sort((a, b) => a - b) });
+    prev = joints;
+  }
+
+  let versatzOk = true; const viol = [];
+  for (let li = 0; li < L - 1; li++) {
+    const a = new Set(courses[li].joints_grid);
+    const bad = courses[li + 1].joints_grid.filter(x => a.has(x));
+    if (bad.length) { versatzOk = false; viol.push({ zwischen_lagen: [li, li + 1], fugen_grid: bad.slice().sort((p, q) => p - q) }); }
+  }
+
+  // ---- Vorspannstränge: Segmente je durchgehend belegtem Bereich (über/unter Öffnungen) ----
+  const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
+  for (const c of courses) for (const st of c.stones) { const a = st.x0 / GRID, b = st.x1 / GRID; for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true; }
+  let colArr;
+  if (PS.columns_grid) {
+    // Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden
+    colArr = PS.columns_grid.filter(k => k >= 0 && k < N).sort((a, b) => a - b);
+  } else {
+    const colSet = new Set([0, N - 1]);
+    for (const c of balancedFill(0, N - 1, maxSpan)) colSet.add(c);
+    for (const op of openings) { if (op.g0 - 1 >= 0) colSet.add(op.g0 - 1); if (op.g1 <= N - 1) colSet.add(op.g1); }
+    // Stufenkanten: an jeder Höhenstufe ein Strang beidseitig der Kante (Vorspannung läuft an der Treppe entlang)
+    for (let k = 0; k < N - 1; k++) { if (topLage[k] !== topLage[k + 1]) { colSet.add(k); colSet.add(k + 1); } }
+    colArr = [...colSet].filter(k => k >= 0 && k < N).sort((a, b) => a - b);
+  }
+  const columns = [];
+  let anchSenkkopf = 0, anchSpannmutter = 0, anchSpannplatten = 0;
+  for (const k of colArr) {
+    const localTop = topLage[k] * COURSE;
+    const segs = []; let r = 0;
+    while (r < L) {
+      if (!occ[r][k]) { r++; continue; }
+      let r2 = r; while (r2 + 1 < L && occ[r2 + 1][k]) r2++;
+      const z0 = r * COURSE, z1 = (r2 + 1) * COURSE, h = z1 - z0, stueck = Math.ceil(h / ROD_);
+      // Anschluss-Ausbildung je Segmentende:
+      //   Fuß der Wand (z0==0)      -> Bodenblech: Senkkopfschraube + Kopplungsmutter
+      //   Wandoberkante (z1==Top)   -> Kopfblech (Spannmutter) ODER Spannplatte (Platte + Spannmutter)
+      //   Zwischenende (an Öffnung) -> Spannplatte auf der Steinkante (Platte + Spannmutter)
+      const bottomBase = z0 === 0;
+      const topReach = z1 === localTop;
+      const ankerUnten = bottomBase ? "bodenblech" : "spannplatte";
+      const ankerOben = topReach ? (TOP === "blech" ? "kopfblech" : "spannplatte") : "spannplatte";
+      let segSenkkopf = 0, segSpannmutter = 0, segSpannplatten = 0;
+      if (bottomBase) segSenkkopf++; else { segSpannmutter++; segSpannplatten++; }
+      if (ankerOben === "kopfblech") segSpannmutter++; else { segSpannmutter++; segSpannplatten++; }
+      anchSenkkopf += segSenkkopf; anchSpannmutter += segSpannmutter; anchSpannplatten += segSpannplatten;
+      segs.push({ z0_mm: z0, z1_mm: z1, lage0: r, lage1: r2 + 1, gewindestangen: stueck,
+        letzte_stange_mm: h - (stueck - 1) * ROD_, verschnitt_mm: stueck * ROD_ - h,
+        verbindungsmuttern: stueck - 1, anker_unten: ankerUnten, anker_oben: ankerOben,
+        senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter });
+      r = r2 + 1;
+    }
+    if (!segs.length) continue;
+    const durch = segs.length === 1 && segs[0].z0_mm === 0 && segs[0].z1_mm === topLage[k] * COURSE;
+    columns.push({ k, x_mm: CHAMBER_OFFSET + GRID * k, durchgehend: durch, segments: segs,
+      gewindestangen: segs.reduce((a, sg) => a + sg.gewindestangen, 0),
+      verbindungsmuttern: segs.reduce((a, sg) => a + sg.verbindungsmuttern, 0),
+      senkkopfschrauben: segs.reduce((a, sg) => a + sg.senkkopfschrauben, 0),
+      spannplatten: segs.reduce((a, sg) => a + sg.spannplatten, 0),
+      spannmuttern: segs.reduce((a, sg) => a + sg.spannmuttern, 0) });
+  }
+  let spanOk = true;
+  for (let r = 0; r < L; r++) {
+    let c = 0;
+    while (c < N) {
+      if (!occ[r][c]) { c++; continue; }
+      let c2 = c; while (c2 + 1 < N && occ[r][c2 + 1]) c2++;   // gefüllter Bereich [c..c2]
+      const present = columns.filter(col => col.k >= c && col.k <= c2 && col.segments.some(sg => sg.lage0 <= r && r < sg.lage1)).map(col => col.k);
+      for (let i = 0; i < present.length - 1; i++) if (present[i + 1] - present[i] > maxSpan) spanOk = false;
+      c = c2 + 1;
+    }
+  }
+  // Stoßfugen (vertikale Fugen zwischen Steinen) -> Dichtstreifen (je 200 mm hoch = 1 Steinreihe)
+  const stossfugen = courses.reduce((a, c) => a + c.joints_grid.length, 0);
+
+  // Stahlbleche: Bodenblech immer über die volle Wandlänge; Kopfblech nur bei top_connection=='blech'
+  const occCols = topLage.filter(t => t > 0).length;
+  const topEdgeLen = occCols * GRID;
+  const bodenModule = Math.ceil(lengthMm / PS.blech_mm);
+  const kopfModule = (TOP === "blech") ? Math.ceil(topEdgeLen / PS.blech_mm) : 0;
+  const basePlate = { rolle: "bodenblech", laenge_mm: lengthMm, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: bodenModule };
+  const topPlate = (TOP === "blech")
+    ? { rolle: "kopfblech", laenge_mm: topEdgeLen, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: kopfModule }
+    : null;
+
+  const bom = { i2: 0, i3: 0 };
+  for (const c of courses) for (const s of c.stones) bom[s.type] += 1;
+  bom.gewindestangen = columns.reduce((a, c) => a + c.gewindestangen, 0);
+  bom.verbindungsmuttern = columns.reduce((a, c) => a + c.verbindungsmuttern, 0);
+  bom.senkkopfschrauben = anchSenkkopf;
+  bom.kopplungsmuttern_basis = anchSenkkopf;   // eine Kopplungsmutter je Fußanker
+  bom.spannplatten = anchSpannplatten;
+  bom.spannmuttern = anchSpannmutter;
+  bom.stahlblech_module = bodenModule + kopfModule;
+  bom.stahlblech_mm = lengthMm + (TOP === "blech" ? topEdgeLen : 0);
+  bom.stahlblech_dicke_mm = BLECH_THICK;
+  bom.stossfugen = stossfugen;
+  bom.dichtstreifen_mm = stossfugen * COURSE;
+  bom.verschnitt_mm = columns.reduce((a, c) => a + c.segments.reduce((b, sg) => b + sg.verschnitt_mm, 0), 0);
+
+  const buildable = invalidSegments.length === 0;  // strukturell; Versatz separat
+  return {
+    name, length_mm: lengthMm, height_mm: heightMm,
+    grid_mm: GRID, course_mm: COURSE, thickness_mm: THICK, rod_mm: ROD_,
+    N_grid: N, lagen: L,
+    openings: openings.map(op => op.asDict()),
+    steps: STEPS,
+    sides: normSides(sides),
+    prestress: PS,
+    base_plate: basePlate, top_plate: topPlate,
+    tension_columns: columns, bom,
+    validation: {
+      buildable, versatz_ok: versatzOk, versatz_violations: viol,
+      tension_span_ok: spanOk, rigid_lagen: rigidLagen, invalid_segments: invalidSegments,
+    },
+    courses,
+  };
+}
+
+const isBuildable = (w) => !!w.validation.buildable;
+
+const REFERENCE_WALLS = {
+  ref1_glatte_wand: ["ref1_glatte_wand", 1000, 2000, []],
+  ref2_wand_tuer: ["ref2_wand_tuer", 2000, 2600, [new Opening(5, 11, 0, 10, "tuer")]],
+  ref3_wand_fenster: ["ref3_wand_fenster", 2000, 2600, [new Opening(6, 10, 4, 10, "fenster")]],
+};
+function buildReference(key) {
+  const [name, l, h, ops] = REFERENCE_WALLS[key];
+  return buildWall(name, l, h, ops);
+}
+
+// ==== Statik ====
+// @ts-check
+/**
+ * SEMBLA Statik — Nachweise nichttragender Wände (nach Kempen Krause,
+ * "Statische Betrachtung nichttragender Mauerwerkswände", Proj. 20260304).
+ * Reine Funktionen (kein DOM). Einheiten wie in der Doku: kN, m, mm, N/mm².
+ *
+ * Drei Nachweise:
+ *  1) Bodenanschluss   — Reibung:  Fv,R = nEd · Cf,d  ≥  Fv,Ed = split·(γQ·qk)
+ *  2) Oberer Anschluss — Winkel-Biegung: σ = F·Hebel/W ≤ fy ; amax = bEinzug·fy/σ
+ *  3) Transport/Heben  — GEd = γG·dyn·nEd·L/nAnker ; Blech-Biegung σ = MEd/W ≤ fy
+ */
+
+/** Wand-Eigengewicht als Streckenlast nEd [kN/m] = ρ·t·h. Default ρ=14 kN/m³ (inkl. Stahl), t=0,125 m. */
+function eigengewichtLinie(h_m, rho = 14.0, t_m = 0.125) {
+  return rho * t_m * h_m;
+}
+
+/** 1) Bodenanschluss — Reibungsnachweis. */
+function bodenanschluss(p) {
+  const nEd = eigengewichtLinie(p.h_m, p.rho ?? 14.0, p.t_m ?? 0.125); // kN/m
+  const FvR = nEd * p.cfd;                                              // kN/m  (Cf,d: 0,60 Mörtel-Beton / 0,30 Stahl-Beton / 0,20 konservativ)
+  const FvEd = (p.split ?? 0.5) * (p.gammaQ ?? 1.5) * p.qk;             // kN/m  (Anteil der Holmlast am Wandfuß)
+  return { nEd, FvR, FvEd, util: FvEd / FvR, ok: FvEd <= FvR + 1e-9 };
+}
+
+/** 2) Oberer Wandanschluss — Biegung im überkreuzenden Winkel. */
+function obererAnschluss(p) {
+  const FEd = (p.split ?? 0.5) * (p.gammaQ ?? 1.5) * p.qk * p.bEinzug_m; // kN je Winkel
+  const W = p.winkelB_mm * p.winkelT_mm * p.winkelT_mm / 6;              // mm³
+  const sigma = (FEd * 1000 * p.hebel_mm) / W;                          // N/mm²
+  const amax = p.bEinzug_m * p.fy / sigma;                              // m  (max. Winkelabstand bei σ=fy)
+  return { FEd, W, sigma, amax, util: sigma / p.fy, ok: sigma <= p.fy + 1e-9 };
+}
+
+/** 3) Transport / Hebezustand — Last je Anschlagpunkt und Blech-Biegung. */
+function transport(p) {
+  const nEd = eigengewichtLinie(p.h_m, p.rho ?? 14.0, p.t_m ?? 0.125);  // kN/m
+  const GEk = nEd * p.L_m / p.nAnker;                                   // kN je Anschlagpunkt (charakteristisch)
+  const GEd = (p.gammaG ?? 1.35) * (p.dyn ?? 1.30) * GEk;               // kN (Design, inkl. dyn. Erhöhung)
+  const GEd_kg = GEd * 1000 / 9.81;                                     // kg (erf. Tragfähigkeit Anschlagmittel)
+  const W = p.blechB_mm * p.blechT_mm * p.blechT_mm / 6;                // mm³
+  const MEd = GEd * p.hebelBlech_m / 4;                                 // kNm
+  const sigma = MEd * 1e6 / W;                                          // N/mm²
+  return { nEd, GEk, GEd, GEd_kg, W, MEd, sigma, util: sigma / p.fy, ok: sigma <= p.fy + 1e-9 };
+}
+
+/** Komplettnachweis aus einem Parametersatz. */
+function nachweise(p) {
+  return {
+    boden: bodenanschluss(p),
+    oben: obererAnschluss(p),
+    transport: transport(p),
+  };
+}
+
+/** Standardwerte gemäß Doku (XPerience-Quartier, Kategorie A). */
+const DEFAULTS = {
+  h_m: 2.23, L_m: 4.5, rho: 14.0, t_m: 0.125, fy: 235,
+  qk: 0.50, gammaQ: 1.5, split: 0.5, cfd: 0.60,
+  bEinzug_m: 1.65, winkelB_mm: 70, winkelT_mm: 5, hebel_mm: 70,
+  gammaG: 1.35, dyn: 1.30, nAnker: 2, blechB_mm: 80, blechT_mm: 35, hebelBlech_m: 0.375,
+};
+
+/**
+ * Vorspann-abhängiger Biegenachweis (klaffende Fuge / Kernmoment) gegen Horizontallast.
+ * Vertikal spannende Wand, gelenkig; Vorspannung erzeugt Druck σ = N_ges/(L·t).
+ * Widerstand (keine Zugspannung in der Lagerfuge): M_R = σ·W, W = L·t²/6.
+ * Einwirkung (Flächenlast q über Höhe H, Einfeldträger): M_Ed = q·L·H²/8.
+ * p: H_m, L_m, t_m, qk_area (kN/m²), gammaQ, strands, force_kN (je Strang).
+ */
+function vorspannBiegung(p) {
+  const N_total = p.strands * (p.force_kN || 0);     // kN
+  const A = p.L_m * p.t_m;                            // m²
+  const sigma = A > 0 ? N_total / A : 0;             // kN/m² (Druckvorspannung)
+  const W = p.L_m * p.t_m * p.t_m / 6;               // m³
+  const M_R = sigma * W;                             // kNm
+  const q = (p.gammaQ ?? 1.5) * p.qk_area;           // kN/m² (Bemessung)
+  const M_Ed = q * p.L_m * p.H_m * p.H_m / 8;        // kNm
+  return { sigma_kNm2: +sigma.toFixed(1), M_R: +M_R.toFixed(3), M_Ed: +M_Ed.toFixed(3),
+           util: M_R > 0 ? +(M_Ed / M_R).toFixed(3) : Infinity, ok: M_Ed <= M_R + 1e-9 };
+}
+
+/** Randdruckspannung: σ_max = N/A + M/W ≤ f_cd. p zusätzlich: fcd_Nmm2. */
+function randDruck(p) {
+  const N = p.strands * (p.force_kN || 0);           // kN
+  const A = p.L_m * p.t_m;                            // m²
+  const W = p.L_m * p.t_m * p.t_m / 6;               // m³
+  const q = (p.gammaQ ?? 1.5) * p.qk_area;           // kN/m²
+  const M = q * p.L_m * p.H_m * p.H_m / 8;           // kNm
+  const sigma_kNm2 = (A > 0 ? N / A : 0) + (W > 0 ? M / W : 0);
+  const sigma = sigma_kNm2 / 1000;                   // N/mm²
+  const fcd = p.fcd_Nmm2 ?? 20.0;
+  return { sigma_Nmm2: +sigma.toFixed(2), fcd, util: +(sigma / fcd).toFixed(3), ok: sigma <= fcd + 1e-9 };
+}
+
+/** Schub/Reibung in der Lagerfuge: V_Ed = q·L·H/2 ≤ Cf,d·(N + Eigengewicht). p zusätzlich: cfd, rho. */
+function schubReibung(p) {
+  const N = p.strands * (p.force_kN || 0);
+  const G = (p.rho ?? 14.0) * p.t_m * p.L_m * p.H_m; // kN Eigengewicht
+  const cfd = p.cfd ?? 0.6;
+  const VR = cfd * (N + G);
+  const q = (p.gammaQ ?? 1.5) * p.qk_area;
+  const VEd = q * p.L_m * p.H_m / 2;
+  return { V_Ed: +VEd.toFixed(2), V_R: +VR.toFixed(2), util: VR > 0 ? +(VEd / VR).toFixed(3) : Infinity, ok: VEd <= VR + 1e-9 };
+}
+
+/** Alle vorspann-abhängigen Wandnachweise; liefert den maßgebenden. */
+function nachweiseWand(p) {
+  const biegung = vorspannBiegung(p), randdruck = randDruck(p), schub = schubReibung(p);
+  let gov = { name: "biegung", util: biegung.util };
+  if (randdruck.util > gov.util) gov = { name: "randdruck", util: randdruck.util };
+  if (schub.util > gov.util) gov = { name: "schub", util: schub.util };
+  return { checks: { biegung, randdruck, schub }, governing: gov, ok: biegung.ok && randdruck.ok && schub.ok };
+}
+
+// ==== Engine ====
+// @ts-check
+/**
+ * SEMBLA Auslegungs-Engine — schließt die Statik-Iterationsschleife.
+ * autoAuslegung: optimiert Strangabstand (grob→fein) UND Vorspannkraft N (min Material),
+ *   bis alle Nachweise erfüllt sind (maßgebender Nachweis treibt).
+ * nachweisPruefen: reiner Nachweis-Modus für eine fest vorgegebene Auslegung.
+ * Module bleiben rein/einbahnig; nur die Engine kennt die Schleife.
+ */
+
+
+
+const DEF_MAT = { fcd_Nmm2: 20.0, cfd: 0.6, rho: 14.0 };   // Platzhalter — vom Statiker/Polycare zu bestätigen
+
+function geomOf(w) { return { H_m: w.height_mm / 1000, L_m: w.length_mm / 1000, t_m: w.thickness_mm / 1000 }; }
+function pruefe(w, vorg, N) {
+  const m = { ...DEF_MAT, ...(vorg.material || {}) };
+  return nachweiseWand({ ...geomOf(w), qk_area: vorg.load.qk_area, gammaQ: vorg.load.gammaQ,
+    strands: w.tension_columns.filter(c => c.durchgehend).length, force_kN: N, ...m });
+}
+function rodOf(vorg) { return vorg.prestress && vorg.prestress.rod_mm; }
+function stepsOf(vorg) { return vorg.steps || []; }
+// Prestress-Durchreiche: Hardware-Felder (rod_mm, blech_mm, top_connection) bleiben erhalten
+function psOf(vorg, extra) { const p = vorg.prestress || {};
+  return { ...extra, rod_mm: p.rod_mm, blech_mm: p.blech_mm, top_connection: p.top_connection, columns_grid: p.columns_grid }; }
+function buildN(vorg, sp) {
+  return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg));
+}
+
+/** Optimierung: min. Material (zuerst Strangabstand grob, dann kleinste passende Kraft N). */
+function autoAuslegung(vorg) {
+  const kand = vorg.kandidaten || [3, 2, 1];
+  const fixedN = vorg.prestress && vorg.prestress.force_kN;
+  const Nr = vorg.Nrange || { min: 10, max: 150, step: 5 };
+  const Ns = fixedN != null ? [fixedN] : range(Nr.min, Nr.max, Nr.step);
+  const log = []; let last = null;
+  for (const sp of kand) {
+    const w = buildN(vorg, sp); const strands = w.tension_columns.filter(c => c.durchgehend).length;
+    let hit = null;
+    for (const N of Ns) { const c = pruefe(w, vorg, N); last = { sp, strands, N, c }; if (c.ok) { hit = { N, c }; break; } }
+    log.push({ max_span_grid: sp, strands, N: hit ? hit.N : null, util: hit ? hit.c.governing.util : (last ? last.c.governing.util : null), governing: hit ? hit.c.governing.name : null, ok: !!hit });
+    if (hit) {
+      const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: hit.N }), stepsOf(vorg));
+      wf.verification = { status: "geprüft", auslegung: { max_span_grid: sp, force_kN: hit.N, strands }, nachweise: hit.c.checks, governing: hit.c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, iterationen: log.length };
+      return { wandelement: wf, status: "konvergiert", iterationen: log };
+    }
+  }
+  const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: kand[kand.length - 1], force_kN: last.N }), stepsOf(vorg));
+  wf.verification = { status: "nicht erfüllt", auslegung: { max_span_grid: last.sp, force_kN: last.N, strands: last.strands }, nachweise: last.c.checks, governing: last.c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, iterationen: log.length };
+  return { wandelement: wf, status: "nicht erfüllt", iterationen: log };
+}
+
+/** Nachweis-Modus: feste Auslegung (max_span_grid + force_kN) nur prüfen. */
+function nachweisPruefen(vorg) {
+  const sp = (vorg.prestress && vorg.prestress.max_span_grid) || 3;
+  const N = (vorg.prestress && vorg.prestress.force_kN) || 0;
+  const w = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: N }), stepsOf(vorg));
+  const c = pruefe(w, vorg, N);
+  w.verification = { status: c.ok ? "geprüft" : "nicht erfüllt", auslegung: { max_span_grid: sp, force_kN: N, strands: w.tension_columns.filter(c => c.durchgehend).length }, nachweise: c.checks, governing: c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, modus: "nachweis" };
+  return { wandelement: w, status: c.ok ? "erfüllt" : "nicht erfüllt", nachweis: c };
+}
+
+function range(a, b, s) { const r = []; for (let v = a; v <= b + 1e-9; v += s) r.push(+v.toFixed(3)); return r; }
+
+
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=u=>fmt(u*100,0)+' %';
+let RESULT=null;
+
+function vorgaben(){
+  const v={ name:"Auslegung",
+    length_mm: Math.max(250, Math.round(+$('len').value*1000/125)*125),
+    height_mm: Math.max(200, Math.round(+$('hgt').value*1000/200)*200),
+    openings: [], sides:{ vorne:{funktion:$('sideVorne').value}, hinten:{funktion:$('sideHinten').value} },
+    load:{ qk_area:+$('qk').value, gammaQ:+$('gammaQ').value },
+    material:{ fcd_Nmm2:+$('fcd').value, cfd:+$('cfd').value, rho:+$('rho').value } };
+  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value };
+  return v;
+}
+
+function run(){
+  const auto=$('modus').value==='auto';
+  $('manual').style.display = auto?'none':'block';
+  $('itWrap').style.display = auto?'block':'none';
+  RESULT = auto ? autoAuslegung(vorgaben()) : nachweisPruefen(vorgaben());
+  const w=RESULT.wandelement, v=w.verification, ok=v.status==='geprüft';
+  $('statusBadge').className='badge '+(ok?'ok':'no');
+  $('statusBadge').textContent = ok?'Alle Nachweise erfüllt':'Nachweis NICHT erfüllt';
+  $('statusText').textContent = auto
+    ? (ok?('Optimiert nach '+RESULT.iterationen.length+' Iteration(en).'):'Auch beim feinsten Raster & max. N nicht erfüllt.')
+    : (ok?'Vorgegebene Auslegung erfüllt.':'Vorgegebene Auslegung NICHT erfüllt.');
+  $('rSp').textContent = v.auslegung.max_span_grid+' Raster ('+fmt(v.auslegung.max_span_grid*12.5,1)+' cm)';
+  $('rStrands').textContent = v.auslegung.strands;
+  $('rN').textContent = fmt(v.auslegung.force_kN,0)+' kN';
+  renderNachweise(v);
+  renderIterationen(auto?RESULT.iterationen:[]);
+  draw(w);
+  buildPrint(w,v);
+}
+
+function nwRow(name, einw, wid, util, ok, gov){
+  return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀ maßgebend':''}</td><td>${einw}</td><td>${wid}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`;
+}
+function renderNachweise(v){
+  const n=v.nachweise, g=v.governing.name;
+  $('nwTable').querySelector('tbody').innerHTML =
+    nwRow('Biegung (klaffende Fuge)', 'M_Ed '+fmt(n.biegung.M_Ed,2), 'M_R '+fmt(n.biegung.M_R,2), n.biegung.util, n.biegung.ok, g==='biegung')+
+    nwRow('Randdruck', 'σ '+fmt(n.randdruck.sigma_Nmm2,2)+' N/mm²', 'f_cd '+fmt(n.randdruck.fcd,0), n.randdruck.util, n.randdruck.ok, g==='randdruck')+
+    nwRow('Schub / Reibung', 'V_Ed '+fmt(n.schub.V_Ed,1), 'V_R '+fmt(n.schub.V_R,1), n.schub.util, n.schub.ok, g==='schub');
+}
+function renderIterationen(its){
+  const tb=$('itTable').querySelector('tbody'); tb.innerHTML='';
+  its.forEach((it,i)=>{ const tr=document.createElement('tr'); if(it.ok) tr.className='hit';
+    tr.innerHTML=`<td>${i+1}</td><td>${it.max_span_grid} Raster</td><td>${it.strands}</td><td>${it.N!=null?fmt(it.N,0):'–'}</td><td>${it.util!=null?pct(it.util):'–'}</td><td><span class="pill ${it.ok?'ok':'no'}">${it.ok?'ok':'!'}</span></td>`;
+    tb.appendChild(tr); });
+}
+
+function draw(w){
+  const svg=$('viz'), W=900, H=380, pad=34;
+  const L=w.length_mm, Hm=w.height_mm, sc=Math.min((W-2*pad)/L,(H-2*pad)/Hm);
+  const wPx=L*sc, hPx=Hm*sc, X=x=>pad+x*sc, Y=y=>H-pad-y*sc; let s='';
+  for(const c of w.courses){ const y1=(c.lage+1)*200; for(const st of c.stones){ const fill=st.type==='i3'?'#cfd3d8':'#bcc2c9';
+    s+=`<rect x="${X(st.x0)}" y="${Y(y1)}" width="${(st.x1-st.x0)*sc}" height="${200*sc}" fill="${fill}" stroke="#aeb3ba" stroke-width="0.8"/>`; } }
+  for(const col of w.tension_columns){ const x=X(col.x_mm);
+    for(const g of (col.segments||[{z0_mm:0,z1_mm:Hm}])) s+=`<line x1="${x}" y1="${Y(g.z0_mm)}" x2="${x}" y2="${Y(g.z1_mm)}" stroke="#1f6feb" stroke-width="2"/>`; }
+  s+=`<rect x="${pad}" y="${Y(Hm)}" width="${wPx}" height="${hPx}" fill="none" stroke="#13202e" stroke-width="1.6"/>`;
+  s+=`<text x="${pad}" y="20" font-size="12" fill="#6b7682">${fmt(L/1000,3)} × ${fmt(Hm/1000,2)} m · ${w.tension_columns.length} Stränge · N=${fmt(w.prestress.force_kN,0)} kN</text>`;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=s;
+}
+
+function buildPrint(w,v){
+  const n=v.nachweise;
+  let h='<h1 style="font-size:18px">SEMBLA Nachweisprotokoll — Wand (nichttragend, vorgespannt)</h1>';
+  h+=`<p>${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m · Wandstärke ${fmt(w.thickness_mm/10,1)} cm · Seiten: vorne ${w.sides.vorne.funktion}, hinten ${w.sides.hinten.funktion}.</p>`;
+  h+=`<p><b>Status: ${v.status==='geprüft'?'Alle Nachweise erfüllt':'NICHT erfüllt'}</b> · maßgebend: ${v.governing.name} (Auslastung ${pct(v.governing.util)}).</p>`;
+  h+=`<h2>Auslegung Vorspannung</h2><p>Strangabstand ${v.auslegung.max_span_grid} Raster (${fmt(v.auslegung.max_span_grid*12.5,1)} cm) · ${v.auslegung.strands} Stränge · N = ${fmt(v.auslegung.force_kN,0)} kN/Strang.</p>`;
+  h+='<h2>Nachweise</h2><table class="tb"><thead><tr><th>Nachweis</th><th>Formel</th><th>Einwirkung</th><th>Widerstand</th><th>Auslastung</th></tr></thead><tbody>';
+  h+=`<tr><td>Biegung</td><td>M_Ed=q·L·H²/8 ≤ M_R=σ·W</td><td>${fmt(n.biegung.M_Ed,2)} kNm</td><td>${fmt(n.biegung.M_R,2)} kNm</td><td>${pct(n.biegung.util)}</td></tr>`;
+  h+=`<tr><td>Randdruck</td><td>σ=N/A+M/W ≤ f_cd</td><td>${fmt(n.randdruck.sigma_Nmm2,2)} N/mm²</td><td>${fmt(n.randdruck.fcd,0)} N/mm²</td><td>${pct(n.randdruck.util)}</td></tr>`;
+  h+=`<tr><td>Schub/Reibung</td><td>V_Ed=q·L·H/2 ≤ C·(N+G)</td><td>${fmt(n.schub.V_Ed,1)} kN</td><td>${fmt(n.schub.V_R,1)} kN</td><td>${pct(n.schub.util)}</td></tr>`;
+  h+='</tbody></table>';
+  h+=`<h2>Materialannahmen (zu bestätigen)</h2><p>f_cd = ${fmt(v.material.fcd_Nmm2,0)} N/mm² · C_f,d = ${fmt(v.material.cfd,2)} · ρ = ${fmt(v.material.rho,1)} kN/m³.</p>`;
+  h+='<p style="font-size:11px;color:#666">Planungshilfe — ersetzt keine geprüfte Statik. Vorspannkraft und Materialkennwerte sind projektspezifisch zu bestätigen.</p>';
+  $('printdoc').innerHTML=h;
+}
+
+function download(name,text,type){ const b=new Blob([text],{type:type||'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+$('run').addEventListener('click',run);
+$('modus').addEventListener('change',run);
+$('print').addEventListener('click',()=>{ if(!RESULT){alert('Bitte zuerst auslegen.');return;} window.print(); });
+$('exp').addEventListener('click',()=>{ if(!RESULT){alert('Bitte zuerst auslegen.');return;} download('SEMBLA_Wandelement_geprueft.json', JSON.stringify(RESULT.wandelement,null,2)); });
+window.__engine={ run, get RESULT(){return RESULT;}, autoAuslegung, nachweisPruefen };
+run();
+</script>
+</body>
+</html>

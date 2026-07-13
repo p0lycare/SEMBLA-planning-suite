@@ -1,0 +1,617 @@
+{
+  "name": "ref3_wand_fenster",
+  "length_mm": 2000,
+  "height_mm": 2600,
+  "grid_mm": 125,
+  "course_mm": 200,
+  "thickness_mm": 125,
+  "rod_mm": 1100,
+  "N_grid": 16,
+  "lagen": 13,
+  "openings": [
+    {
+      "g0": 6,
+      "g1": 10,
+      "l0": 4,
+      "l1": 10,
+      "art": "fenster"
+    }
+  ],
+  "sides": {
+    "vorne": {
+      "funktion": "fassade"
+    },
+    "hinten": {
+      "funktion": "innenausbau"
+    }
+  },
+  "prestress": {
+    "max_span_grid": 3,
+    "force_kN": null
+  },
+  "tension_columns": [
+    {
+      "k": 0,
+      "x_mm": 62.5,
+      "gewindestangen": 3,
+      "letzte_stange_mm": 400,
+      "verschnitt_mm": 700,
+      "verbindungsmuttern": 2,
+      "stahlplatten_strukturell": 2,
+      "spannmuttern": 2
+    },
+    {
+      "k": 2,
+      "x_mm": 312.5,
+      "gewindestangen": 3,
+      "letzte_stange_mm": 400,
+      "verschnitt_mm": 700,
+      "verbindungsmuttern": 2,
+      "stahlplatten_strukturell": 2,
+      "spannmuttern": 2
+    },
+    {
+      "k": 5,
+      "x_mm": 687.5,
+      "gewindestangen": 3,
+      "letzte_stange_mm": 400,
+      "verschnitt_mm": 700,
+      "verbindungsmuttern": 2,
+      "stahlplatten_strukturell": 2,
+      "spannmuttern": 2
+    },
+    {
+      "k": 10,
+      "x_mm": 1312.5,
+      "gewindestangen": 3,
+      "letzte_stange_mm": 400,
+      "verschnitt_mm": 700,
+      "verbindungsmuttern": 2,
+      "stahlplatten_strukturell": 2,
+      "spannmuttern": 2
+    },
+    {
+      "k": 12,
+      "x_mm": 1562.5,
+      "gewindestangen": 3,
+      "letzte_stange_mm": 400,
+      "verschnitt_mm": 700,
+      "verbindungsmuttern": 2,
+      "stahlplatten_strukturell": 2,
+      "spannmuttern": 2
+    },
+    {
+      "k": 15,
+      "x_mm": 1937.5,
+      "gewindestangen": 3,
+      "letzte_stange_mm": 400,
+      "verschnitt_mm": 700,
+      "verbindungsmuttern": 2,
+      "stahlplatten_strukturell": 2,
+      "spannmuttern": 2
+    }
+  ],
+  "bom": {
+    "i2": 32,
+    "i3": 40,
+    "gewindestangen": 18,
+    "verbindungsmuttern": 12,
+    "stahlplatten": 12,
+    "spannmuttern": 12,
+    "verschnitt_mm": 4200
+  },
+  "validation": {
+    "buildable": true,
+    "versatz_ok": true,
+    "versatz_violations": [],
+    "tension_span_ok": true,
+    "rigid_lagen": [],
+    "invalid_segments": []
+  },
+  "courses": [
+    {
+      "lage": 0,
+      "stones": [
+        {
+          "type": "i2",
+          "x0": 0,
+          "x1": 250
+        },
+        {
+          "type": "i2",
+          "x0": 250,
+          "x1": 500
+        },
+        {
+          "type": "i3",
+          "x0": 500,
+          "x1": 875
+        },
+        {
+          "type": "i3",
+          "x0": 875,
+          "x1": 1250
+        },
+        {
+          "type": "i3",
+          "x0": 1250,
+          "x1": 1625
+        },
+        {
+          "type": "i3",
+          "x0": 1625,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        2,
+        4,
+        7,
+        10,
+        13
+      ]
+    },
+    {
+      "lage": 1,
+      "stones": [
+        {
+          "type": "i3",
+          "x0": 0,
+          "x1": 375
+        },
+        {
+          "type": "i3",
+          "x0": 375,
+          "x1": 750
+        },
+        {
+          "type": "i3",
+          "x0": 750,
+          "x1": 1125
+        },
+        {
+          "type": "i3",
+          "x0": 1125,
+          "x1": 1500
+        },
+        {
+          "type": "i2",
+          "x0": 1500,
+          "x1": 1750
+        },
+        {
+          "type": "i2",
+          "x0": 1750,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        3,
+        6,
+        9,
+        12,
+        14
+      ]
+    },
+    {
+      "lage": 2,
+      "stones": [
+        {
+          "type": "i2",
+          "x0": 0,
+          "x1": 250
+        },
+        {
+          "type": "i2",
+          "x0": 250,
+          "x1": 500
+        },
+        {
+          "type": "i3",
+          "x0": 500,
+          "x1": 875
+        },
+        {
+          "type": "i3",
+          "x0": 875,
+          "x1": 1250
+        },
+        {
+          "type": "i3",
+          "x0": 1250,
+          "x1": 1625
+        },
+        {
+          "type": "i3",
+          "x0": 1625,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        2,
+        4,
+        7,
+        10,
+        13
+      ]
+    },
+    {
+      "lage": 3,
+      "stones": [
+        {
+          "type": "i3",
+          "x0": 0,
+          "x1": 375
+        },
+        {
+          "type": "i3",
+          "x0": 375,
+          "x1": 750
+        },
+        {
+          "type": "i3",
+          "x0": 750,
+          "x1": 1125
+        },
+        {
+          "type": "i3",
+          "x0": 1125,
+          "x1": 1500
+        },
+        {
+          "type": "i2",
+          "x0": 1500,
+          "x1": 1750
+        },
+        {
+          "type": "i2",
+          "x0": 1750,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        3,
+        6,
+        9,
+        12,
+        14
+      ]
+    },
+    {
+      "lage": 4,
+      "stones": [
+        {
+          "type": "i2",
+          "x0": 0,
+          "x1": 250
+        },
+        {
+          "type": "i2",
+          "x0": 250,
+          "x1": 500
+        },
+        {
+          "type": "i2",
+          "x0": 500,
+          "x1": 750
+        },
+        {
+          "type": "i3",
+          "x0": 1250,
+          "x1": 1625
+        },
+        {
+          "type": "i3",
+          "x0": 1625,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        2,
+        4,
+        13
+      ]
+    },
+    {
+      "lage": 5,
+      "stones": [
+        {
+          "type": "i3",
+          "x0": 0,
+          "x1": 375
+        },
+        {
+          "type": "i3",
+          "x0": 375,
+          "x1": 750
+        },
+        {
+          "type": "i2",
+          "x0": 1250,
+          "x1": 1500
+        },
+        {
+          "type": "i2",
+          "x0": 1500,
+          "x1": 1750
+        },
+        {
+          "type": "i2",
+          "x0": 1750,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        3,
+        12,
+        14
+      ]
+    },
+    {
+      "lage": 6,
+      "stones": [
+        {
+          "type": "i2",
+          "x0": 0,
+          "x1": 250
+        },
+        {
+          "type": "i2",
+          "x0": 250,
+          "x1": 500
+        },
+        {
+          "type": "i2",
+          "x0": 500,
+          "x1": 750
+        },
+        {
+          "type": "i3",
+          "x0": 1250,
+          "x1": 1625
+        },
+        {
+          "type": "i3",
+          "x0": 1625,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        2,
+        4,
+        13
+      ]
+    },
+    {
+      "lage": 7,
+      "stones": [
+        {
+          "type": "i3",
+          "x0": 0,
+          "x1": 375
+        },
+        {
+          "type": "i3",
+          "x0": 375,
+          "x1": 750
+        },
+        {
+          "type": "i2",
+          "x0": 1250,
+          "x1": 1500
+        },
+        {
+          "type": "i2",
+          "x0": 1500,
+          "x1": 1750
+        },
+        {
+          "type": "i2",
+          "x0": 1750,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        3,
+        12,
+        14
+      ]
+    },
+    {
+      "lage": 8,
+      "stones": [
+        {
+          "type": "i2",
+          "x0": 0,
+          "x1": 250
+        },
+        {
+          "type": "i2",
+          "x0": 250,
+          "x1": 500
+        },
+        {
+          "type": "i2",
+          "x0": 500,
+          "x1": 750
+        },
+        {
+          "type": "i3",
+          "x0": 1250,
+          "x1": 1625
+        },
+        {
+          "type": "i3",
+          "x0": 1625,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        2,
+        4,
+        13
+      ]
+    },
+    {
+      "lage": 9,
+      "stones": [
+        {
+          "type": "i3",
+          "x0": 0,
+          "x1": 375
+        },
+        {
+          "type": "i3",
+          "x0": 375,
+          "x1": 750
+        },
+        {
+          "type": "i2",
+          "x0": 1250,
+          "x1": 1500
+        },
+        {
+          "type": "i2",
+          "x0": 1500,
+          "x1": 1750
+        },
+        {
+          "type": "i2",
+          "x0": 1750,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        3,
+        12,
+        14
+      ]
+    },
+    {
+      "lage": 10,
+      "stones": [
+        {
+          "type": "i2",
+          "x0": 0,
+          "x1": 250
+        },
+        {
+          "type": "i2",
+          "x0": 250,
+          "x1": 500
+        },
+        {
+          "type": "i3",
+          "x0": 500,
+          "x1": 875
+        },
+        {
+          "type": "i3",
+          "x0": 875,
+          "x1": 1250
+        },
+        {
+          "type": "i3",
+          "x0": 1250,
+          "x1": 1625
+        },
+        {
+          "type": "i3",
+          "x0": 1625,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        2,
+        4,
+        7,
+        10,
+        13
+      ]
+    },
+    {
+      "lage": 11,
+      "stones": [
+        {
+          "type": "i3",
+          "x0": 0,
+          "x1": 375
+        },
+        {
+          "type": "i3",
+          "x0": 375,
+          "x1": 750
+        },
+        {
+          "type": "i3",
+          "x0": 750,
+          "x1": 1125
+        },
+        {
+          "type": "i3",
+          "x0": 1125,
+          "x1": 1500
+        },
+        {
+          "type": "i2",
+          "x0": 1500,
+          "x1": 1750
+        },
+        {
+          "type": "i2",
+          "x0": 1750,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        3,
+        6,
+        9,
+        12,
+        14
+      ]
+    },
+    {
+      "lage": 12,
+      "stones": [
+        {
+          "type": "i2",
+          "x0": 0,
+          "x1": 250
+        },
+        {
+          "type": "i2",
+          "x0": 250,
+          "x1": 500
+        },
+        {
+          "type": "i3",
+          "x0": 500,
+          "x1": 875
+        },
+        {
+          "type": "i3",
+          "x0": 875,
+          "x1": 1250
+        },
+        {
+          "type": "i3",
+          "x0": 1250,
+          "x1": 1625
+        },
+        {
+          "type": "i3",
+          "x0": 1625,
+          "x1": 2000
+        }
+      ],
+      "joints_grid": [
+        2,
+        4,
+        7,
+        10,
+        13
+      ]
+    }
+  ]
+}

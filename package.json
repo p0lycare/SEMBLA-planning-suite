@@ -1,0 +1,20 @@
+{
+  "name": "sembla-planungs-suite",
+  "version": "1.0.0",
+  "description": "SEMBLA Planungs-Suite – Werkzeuge zur Planung vorgespannter Trockenmauerwerkswände (i2/i3).",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "handbuch": "node build-handbuch.mjs",
+    "publish": "node publish-werkzeuge.mjs",
+    "test:statik": "cd Modul-3-Statik && node test-statik.mjs && node smoke_statik.mjs",
+    "dxf": "python3 Interop-CAD/sembla_dxf.py",
+    "ifc": "python3 Interop-CAD/sembla_ifc.py",
+    "validate:ifc": "node Interop-CAD/webifc_validate.mjs",
+    "test:interop": "python3 Interop-CAD/test_sembla_dxf.py && python3 Interop-CAD/test_sembla_ifc.py && node Interop-CAD/test_webifc.mjs"
+  },
+  "dependencies": {
+    "docx": "^9.7.1",
+    "web-ifc": "^0.0.77"
+  }
+}

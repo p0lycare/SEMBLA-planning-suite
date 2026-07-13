@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Roboter-Export (Montagesequenz)</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --accent2:#e8702a; --ok:#1f9d55; --warn:#c9461c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:330px;flex:0 0 330px}
+  .stage{flex:1 1 560px;min-width:440px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 10px}
+  button{padding:9px 11px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%}
+  .btnrow{display:flex;gap:8px;margin-top:10px}
+  .res{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
+  .res .k{color:var(--muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .nav{display:flex;align-items:center;gap:10px;margin:10px 0 6px}
+  input[type=range]{flex:1}
+  .cur{font-size:13px;color:var(--ink);min-height:20px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:12.5px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .note{font-size:11.5px;color:var(--muted);margin-top:14px;border-top:1px solid var(--line);padding-top:10px;line-height:1.55}
+  pre{background:#0f1722;color:#cfe0f0;border-radius:8px;padding:10px;font-size:11px;max-height:180px;overflow:auto;margin-top:10px}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-19968</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">18166c2b-9b58-4bf5-b78f-1690605b9c96</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-19968, YZXVWT2JSZP3-499227272-19968</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Roboter-Export <span style="font-weight:400;color:#9fb0c0">· Montagesequenz · robotischer Aufbau</span></h1>
+  <p>Erzeugt aus dem Wandelement eine maschinenlesbare Aufbaureihenfolge (Pick &amp; Place + Vorspann-Schritte). Herstellerneutral — JSON &amp; CSV.</p>
+</header>
+
+<div class="wrap">
+  <div class="panel controls">
+    <h2>Wandelement</h2>
+    <input type="file" id="wandfile" accept=".json,application/json" style="display:none">
+    <button class="primary" id="loadwand">Wandelement (JSON) laden</button>
+    <div id="wandinfo" class="hint">Wandelement aus Modul 1 laden.</div>
+
+    <div style="margin-top:14px"><h2>Sequenz</h2>
+      <div class="res">
+        <div class="k">Schritte gesamt</div><div class="v" id="sSteps">–</div>
+        <div class="k">Steine setzen</div><div class="v" id="sStones">–</div>
+        <div class="k">Vorspannstränge</div><div class="v" id="sStrands">–</div>
+        <div class="k">Bleche / Spannplatten</div><div class="v" id="sPlates">–</div>
+        <div class="k">Kopplungen</div><div class="v" id="sCoup">–</div>
+      </div>
+    </div>
+
+    <div class="btnrow">
+      <button id="expJson">Export JSON</button>
+      <button id="expCsv">Export CSV</button>
+    </div>
+    <div class="note"><b>Format.</b> Ursprung Wand unten-links-vorne; x=Länge, y=Wandstärke, z=Höhe; Einheiten mm; Pose-Referenz = Stein-Ecke unten-links. Operationen: PLACE_BASE_PLATE, DRIVE_SCREW, INSERT_ROD, PLACE_STONE, COUPLE_NUT, PLACE_TOP_PLATE / PLACE_SPANNPLATTE_TOP, TENSION. Herstellerneutral — als Vorlage für einen Postprozessor (ABB/KUKA …).</div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Bau-Reihenfolge</h2>
+    <div class="nav">
+      <button id="bStart">⏮</button><button id="bPrev">‹</button>
+      <input type="range" id="slider" min="0" max="0" value="0">
+      <button id="bNext">›</button><button id="bEnd">⏭</button>
+    </div>
+    <div class="cur" id="cur">–</div>
+    <svg id="viz" viewBox="0 0 900 460" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span><i style="background:#1f6feb"></i>gesetzt</span>
+      <span><i style="background:#e8eaed;border:1px solid #c9cdd2"></i>noch offen</span>
+      <span><i style="background:#e8702a"></i>aktueller Stein</span>
+    </div>
+    <pre id="preview"></pre>
+  </div>
+</div>
+
+<script>
+// ==== sembla-robot (generiert) ====
+// @ts-check
+/**
+ * SEMBLA Roboter-Export — erzeugt aus einem Wandelement eine geordnete,
+ * maschinenlesbare Montagesequenz ("robotischer Aufbau"). Herstellerneutral.
+ *
+ * Reihenfolge: untere Stahlplatten → erste Gewindestangen → Steine lagenweise
+ * bottom-up (je Lage von links) → Verbindungsmuttern an den Kopplungshöhen →
+ * obere Stahlplatten → Vorspannen.
+ *
+ * Koordinaten: Ursprung Wand unten-links-vorne; x=Länge, y=Wandstärke, z=Höhe (oben);
+ * Einheiten mm. Platzierungs-Referenz = Stein-Ecke unten-links-vorne.
+ */
+
+function wallToSequence(wall, opts = {}) {
+  const approach = opts.approachClearance_mm ?? 150;
+  const T = wall.thickness_mm || 125;
+  const COURSE = wall.course_mm || 200;
+  const rod = wall.rod_mm || 1100;
+  const tc = wall.tension_columns || [];
+  const rods = tc.length ? tc[0].gewindestangen : 0;
+
+  const steps = []; let seq = 0;
+  const add = o => { steps.push(Object.assign({ seq: ++seq }, o)); };
+
+  const topConn = (wall.prestress && wall.prestress.top_connection) || "blech";
+  add({ op: "PLACE_BASE_PLATE", x_mm: 0, y_mm: T / 2, z_mm: 0, length_mm: wall.length_mm, width_mm: T, thickness_mm: 15, note: "Bodenblech (15 mm, Module)" });
+  for (const c of tc) add({ op: "DRIVE_SCREW", strand: c.k, x_mm: c.x_mm, y_mm: T / 2, z_mm: 0, note: "Senkkopfschraube von unten + Kopplungsmutter oben" });
+  for (const c of tc) add({ op: "INSERT_ROD", strand: c.k, x_mm: c.x_mm, y_mm: T / 2, z_mm: 0, segment: 1, note: "erste Gewindestange in Kopplungsmutter einschrauben" });
+
+  const coupH = []; for (let j = 1; j < rods; j++) coupH.push(j * rod);
+  let cIdx = 0;
+  for (const course of wall.courses) {
+    const li = course.lage;
+    const ordered = [...course.stones].sort((a, b) => a.x0 - b.x0);
+    ordered.forEach((st, idx) => add({
+      op: "PLACE_STONE", part: st.type, lage: li, idx,
+      pose: { x_mm: st.x0, y_mm: 0, z_mm: li * COURSE, rz_deg: 0 },
+      length_mm: st.x1 - st.x0, height_mm: COURSE, thickness_mm: T,
+    }));
+    const top = (li + 1) * COURSE;
+    while (cIdx < coupH.length && coupH[cIdx] <= top + 1e-6) {
+      for (const c of tc) add({ op: "COUPLE_NUT", strand: c.k, x_mm: c.x_mm, y_mm: T / 2, z_mm: coupH[cIdx], segment: cIdx + 2, note: "Verbindungsmutter (handfest)" });
+      cIdx++;
+    }
+  }
+  if (topConn === "blech") add({ op: "PLACE_TOP_PLATE", x_mm: 0, y_mm: T / 2, z_mm: wall.height_mm, length_mm: wall.length_mm, width_mm: T, thickness_mm: 15, note: "Kopfblech (15 mm, Module)" });
+  else for (const c of tc) add({ op: "PLACE_SPANNPLATTE_TOP", strand: c.k, x_mm: c.x_mm, y_mm: T / 2, z_mm: wall.height_mm, note: "Spannplatte auf Steinkante" });
+  add({ op: "TENSION", note: "Vorspannung aufbringen (Spannmuttern anziehen)" });
+
+  const placeStones = steps.filter(s => s.op === "PLACE_STONE").length;
+  return {
+    format: "SEMBLA-RobotSequence", version: "1.0",
+    wall: { name: wall.name || "Wandelement", length_mm: wall.length_mm, height_mm: wall.height_mm, thickness_mm: T, lagen: wall.lagen, N_grid: wall.N_grid },
+    frame: { origin: "Wand unten-links-vorne", x: "Länge", y: "Wandstärke", z: "Höhe (oben)", units: "mm", place_ref: "Stein-Ecke unten-links-vorne" },
+    config: { approach_clearance_mm: approach, course_height_mm: COURSE, rod_length_mm: rod,
+      stone_types: { i2: { length_mm: 250, height_mm: COURSE, thickness_mm: T }, i3: { length_mm: 375, height_mm: COURSE, thickness_mm: T } } },
+    summary: { steps: steps.length, place_stones: placeStones,
+      bleche: 1 + (topConn === "blech" ? 1 : 0), spannplatten: topConn === "blech" ? 0 : tc.length,
+      senkkopfschrauben: tc.length, strands: tc.length, rods_per_strand: rods, couplings: coupH.length * tc.length },
+    steps,
+  };
+}
+
+function sequenceToCsv(prog) {
+  const rows = [["seq", "op", "part", "lage", "idx", "x_mm", "y_mm", "z_mm", "rz_deg", "length_mm", "note"]];
+  for (const s of prog.steps) {
+    const p = s.pose || {};
+    rows.push([s.seq, s.op, s.part || "", s.lage ?? "", s.idx ?? "",
+      (p.x_mm ?? s.x_mm ?? ""), (p.y_mm ?? s.y_mm ?? ""), (p.z_mm ?? s.z_mm ?? ""),
+      (p.rz_deg ?? ""), (s.length_mm ?? ""), String(s.note || "").replace(/;/g, ",")]);
+  }
+  return rows.map(r => r.join(";")).join("\n") + "\n";
+}
+
+
+const $=id=>document.getElementById(id);
+let WALL=null, PROG=null, PLACE=[], K=0;
+
+function load(w){
+  WALL=w; PROG=wallToSequence(w);
+  PLACE=PROG.steps.filter(s=>s.op==="PLACE_STONE");
+  $('wandinfo').textContent='Geladen: '+(w.name||'Wandelement')+' · '+(w.length_mm/1000).toFixed(3)+' × '+(w.height_mm/1000).toFixed(2)+' m';
+  $('sSteps').textContent=PROG.summary.steps;
+  $('sStones').textContent=PROG.summary.place_stones;
+  $('sStrands').textContent=PROG.summary.strands;
+  $('sPlates').textContent=PROG.summary.bleche+' Blech(e) / '+PROG.summary.spannplatten+' Spannpl.';
+  $('sCoup').textContent=PROG.summary.couplings;
+  $('slider').max=PLACE.length; $('slider').value=PLACE.length; K=PLACE.length;
+  $('preview').textContent=JSON.stringify({format:PROG.format,version:PROG.version,wall:PROG.wall,summary:PROG.summary,steps:PROG.steps.slice(0,8).concat([{'…':'…'}])},null,1);
+  draw();
+}
+function setK(k){ if(!PROG)return; K=Math.max(0,Math.min(PLACE.length,k)); $('slider').value=K; draw(); }
+function draw(){
+  const svg=$('viz'), W=900, H=460, pad=40;
+  if(!WALL){ svg.innerHTML=`<text x="${W/2}" y="${H/2}" font-size="13" fill="#6b7682" text-anchor="middle">Kein Wandelement geladen</text>`; return; }
+  const L=WALL.length_mm, Hm=WALL.height_mm, sc=Math.min((W-2*pad)/L,(H-2*pad)/Hm);
+  const wPx=L*sc, hPx=Hm*sc, X=x=>pad+x*sc, Y=z=>H-pad-z*sc;
+  let s='';
+  PLACE.forEach((st,i)=>{
+    const x0=st.pose.x_mm, w=st.length_mm, z0=st.pose.z_mm;
+    let fill='#e8eaed', stroke='#c9cdd2';
+    if(i<K){ fill = st.part==='i3' ? '#9bc0f3' : '#1f6feb'; stroke='#13202e'; }
+    if(i===K-1){ fill='#e8702a'; stroke='#a8410f'; }
+    s+=`<rect x="${X(x0)}" y="${Y(z0+200)}" width="${w*sc}" height="${200*sc}" fill="${fill}" stroke="${stroke}" stroke-width="1"/>`;
+  });
+  // Vorspannstränge angedeutet
+  for(const c of (WALL.tension_columns||[])) s+=`<line x1="${X(c.x_mm)}" y1="${Y(0)}" x2="${X(c.x_mm)}" y2="${Y(Hm)}" stroke="#1f6feb" stroke-width="1" stroke-opacity="0.25"/>`;
+  s+=`<rect x="${X(0)}" y="${Y(Hm)}" width="${wPx}" height="${hPx}" fill="none" stroke="#13202e" stroke-width="1.6"/>`;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=s;
+  const cur=K>0?PLACE[K-1]:null;
+  $('cur').textContent = cur ? `Schritt ${cur.seq}: PLACE_STONE ${cur.part} · Lage ${cur.lage+1} · x=${(cur.pose.x_mm/10).toFixed(1)} cm · z=${(cur.pose.z_mm/10).toFixed(1)} cm`
+                             : (K===0?'Start — noch kein Stein gesetzt':'');
+}
+function download(name,text,type){ const b=new Blob([text],{type:type||'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+
+$('loadwand').addEventListener('click',()=>$('wandfile').click());
+$('wandfile').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ try{ load(JSON.parse(rd.result)); }catch(e){ alert('Ungültiges Wandelement: '+e.message);} }; rd.readAsText(f); });
+$('slider').addEventListener('input',e=>setK(+e.target.value));
+$('bStart').addEventListener('click',()=>setK(0));
+$('bPrev').addEventListener('click',()=>setK(K-1));
+$('bNext').addEventListener('click',()=>setK(K+1));
+$('bEnd').addEventListener('click',()=>setK(PLACE.length));
+$('expJson').addEventListener('click',()=>{ if(!PROG){alert('Bitte Wandelement laden.');return;} download((PROG.wall.name||'wand')+'_robotsequenz.json', JSON.stringify(PROG,null,2),'application/json'); });
+$('expCsv').addEventListener('click',()=>{ if(!PROG){alert('Bitte Wandelement laden.');return;} download((PROG.wall.name||'wand')+'_robotsequenz.csv', sequenceToCsv(PROG),'text/csv'); });
+window.__robot={ load, get PROG(){return PROG;}, sequenceToCsv };
+draw();
+</script>
+</body>
+</html>

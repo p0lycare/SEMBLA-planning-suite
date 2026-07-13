@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA Planungs-Suite – Übersicht</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --ink2:#13202e; --ok:#1f9d55; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
+  a{color:var(--accent);text-decoration:none}
+  header{background:var(--ink2);color:#fff;padding:26px 28px}
+  header h1{margin:0;font-size:24px;font-weight:700}
+  header p{margin:8px 0 0;font-size:14px;color:#9fb0c0;max-width:880px}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin:30px 0 12px}
+  .lead{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .lead b{color:var(--ink)}
+  .pill{display:inline-block;background:#eef2f7;color:#33415c;border-radius:20px;padding:3px 11px;font-size:12.5px;font-weight:600;margin:2px 4px 2px 0}
+  /* Ablauf-Schritte */
+  .steps{display:flex;flex-direction:column;gap:12px}
+  .step{display:flex;gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;align-items:flex-start;transition:box-shadow .15s,border-color .15s}
+  .step:hover{box-shadow:0 4px 16px rgba(20,32,46,.08);border-color:#c7d2e0}
+  .num{flex:0 0 38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:17px;display:flex;align-items:center;justify-content:center}
+  .num.alt{background:#5b8def}
+  .step .body{flex:1}
+  .step h3{margin:0 0 3px;font-size:16px}
+  .step .desc{font-size:13.5px;color:#42505e;margin:0 0 6px}
+  .io{font-size:12px;color:var(--muted)}
+  .io code{background:#f1efec;border-radius:4px;padding:1px 5px;font-size:11.5px;color:#33415c}
+  .open{flex:0 0 auto;align-self:center;background:var(--accent);color:#fff;border-radius:8px;padding:8px 14px;font-weight:600;font-size:13px;white-space:nowrap}
+  .open:hover{filter:brightness(.95)}
+  /* Modulkarten */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+  .card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;color:inherit;transition:box-shadow .15s,border-color .15s}
+  .card:hover{box-shadow:0 4px 16px rgba(20,32,46,.08);border-color:#c7d2e0}
+  .card .t{font-weight:650;font-size:14.5px;margin-bottom:3px}
+  .card .d{font-size:12.5px;color:#42505e}
+  .card .tag{font-size:11px;color:var(--muted);margin-top:6px}
+  svg{width:100%;height:auto;display:block;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  img.proc{width:100%;height:auto;border:1px solid var(--line);border-radius:12px;display:block}
+  .note{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.6}
+  .foot{color:var(--muted);font-size:12px;margin:28px 0 8px}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-20007</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">1204f6b4-d42f-4885-b29b-4cb310a1ab7a</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-20007, YZXVWT2JSZP3-499227272-20007</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA Planungs-Suite</h1>
+  <p>Digitale Planung des kreislauffähigen Massivbausystems — von der Wand bis zu Statik, Fassade, Montage, BIM und robotischem Aufbau. Alle Werkzeuge arbeiten auf einem gemeinsamen Datenmodell, dem <b>Wandelement</b>.</p>
+</header>
+
+<div class="wrap">
+
+  <div class="lead">
+    <b>Ein Datenmodell, viele Werkzeuge.</b> Schritt 1 (<b>Wand planen &amp; auslegen</b>) erzeugt das geprüfte <b>Wandelement</b> (Geometrie, Öffnungen, Seiten, ausgelegte Vorspannung). Alle weiteren Module lesen genau dieses Element — so passt die Planung über alle Gewerke zusammen, und die Ausführungstiefe entsteht schon in der Vorplanung.
+    <div style="margin-top:10px">
+      <span class="pill">i3-maximierter Verband</span><span class="pill">Vorspannung im Kammerraster</span>
+      <span class="pill">2 Seiten je Wand (Fassade / Innenausbau)</span><span class="pill">Statik-Iterationsschleife</span>
+      <span class="pill">DXF / IFC</span><span class="pill">Roboter-Export</span>
+    </div>
+  </div>
+
+  <h2>Geführter Ablauf</h2>
+  <div class="steps">
+
+    <a class="step" href="Modul-1-Wandplanung/SEMBLA_Wandplanung.html">
+      <div class="num">1</div>
+      <div class="body">
+        <h3>Wand planen &amp; auslegen</h3>
+        <div class="desc">Wand zeichnen (Länge/Höhe, Türen/Fenster, Funktion je Seite, gespiegelte Ansicht) <b>und im selben Schritt statisch auslegen</b>: Vorspannung wird optimiert, bis Biegung/Randdruck/Schub erfüllt sind — Iteration und Nachweisprotokoll sichtbar. (Vereint früheren Wand-Editor + Auslegung.)</div>
+        <div class="io">Ausgabe → <b>geprüftes</b> <code>Wandelement.json</code></div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Modul-Wandaufbau/SEMBLA_Wandaufbau.html">
+      <div class="num">2</div>
+      <div class="body">
+        <h3>Horizontaler Wandaufbau (Verbinder + Latten/Dämmung)</h3>
+        <div class="desc">Verbinder- und Latten-/Dämmungsplanung in einem Schritt: die Panelfugen (Standard 62,5 × 150 cm, änderbar) bestimmen die Verbinderachsen, plus Zwischenachsen nach Max-Abstand. Latten auf den Achsen (Stöße zwischen Verbindern, an Öffnungen geschnitten), Dämmpakete je Gefach.</div>
+        <div class="io">Eingang <code>Wandelement</code> · Ausgabe → <code>Verbinder-Layout</code> + Latten-/Dämm-Stückliste (CSV)</div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Modul-4-Montageplanung/SEMBLA_Montageplanung.html">
+      <div class="num">3</div>
+      <div class="body">
+        <h3>Montageplanung</h3>
+        <div class="desc">Lagenweise Aufbauanleitung mit Vorspann-Schritten und Gesamt-Stückliste; interaktiver Lagen-Viewer und druckbare Anleitung.</div>
+        <div class="io">Eingang <code>Wandelement</code> · Ausgabe → Montageanleitung (Druck)</div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Modul-Roboter/SEMBLA_Roboter_Export.html">
+      <div class="num">4</div>
+      <div class="body">
+        <h3>Roboter-Export</h3>
+        <div class="desc">Maschinenlesbare Montagesequenz (Pick &amp; Place + Vorspannung) für den robotischen Aufbau — herstellerneutral als JSON/CSV, mit Bau-Reihenfolge-Vorschau.</div>
+        <div class="io">Eingang <code>Wandelement</code> · Ausgabe → <code>Robotsequenz.json/.csv</code></div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Projekt-Manager/SEMBLA_Projekt_Manager.html">
+      <div class="num">5</div>
+      <div class="body">
+        <h3>Projekt-Manager &amp; CAD/BIM <span style="font-weight:400;color:var(--muted);font-size:13px">· übergreifend</span></h3>
+        <div class="desc">Mehrere Wände zu einem Projekt zusammenführen, im 2D-Grundriss platzieren, Sammel-Stückliste, Export nach <b>DXF</b> (Grundriss/Ansichten) und <b>IFC</b> (Wände + Einzelsteine).</div>
+        <div class="io">Eingang mehrere <code>Wandelement.json</code> · Ausgabe → DXF / IFC / Projekt.json</div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Modul-3-Statik/SEMBLA_Statik.html">
+      <div class="num">6</div>
+      <div class="body">
+        <h3>Statik – Anschlüsse &amp; Hebezustand <span style="font-weight:400;color:var(--muted);font-size:13px">· Nachweis</span></h3>
+        <div class="desc">Nachweise nichttragender Wände nach Kempen-Krause: Bodenanschluss (Reibung), oberer Wandanschluss (Winkel), Hebezustand/Transport.</div>
+        <div class="io">Eingang <code>Wandelement</code> (Maße) · Ausgabe → Nachweise</div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Modul-3D/SEMBLA_3D_Vorschau.html">
+      <div class="num">7</div>
+      <div class="body">
+        <h3>3D-Vorschau <span style="font-weight:400;color:var(--muted);font-size:13px">· Visualisierung</span></h3>
+        <div class="desc">Echtzeit-3D des Wandelements (Steine i2/i3, Vorspannstränge, Öffnungen) — drehbar, für Abstimmung mit Architekten und Bauherren.</div>
+        <div class="io">Eingang <code>Wandelement</code> · Ausgabe → 3D-Ansicht</div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Modul-Stueckliste/SEMBLA_Stueckliste_Kosten.html">
+      <div class="num">8</div>
+      <div class="body">
+        <h3>Stückliste &amp; Kosten <span style="font-weight:400;color:var(--muted);font-size:13px">· Kalkulation</span></h3>
+        <div class="desc">Material-Auszug mit editierbaren Preisen, Anzahl gleicher Wände, Summe und €/m² — Export als Excel (.xlsx) und CSV.</div>
+        <div class="io">Eingang <code>Wandelement</code> · Ausgabe → Excel / CSV</div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+    <a class="step" href="Modul-Fertigung/SEMBLA_Fertigungszeichnung.html">
+      <div class="num">9</div>
+      <div class="body">
+        <h3>Fertigungszeichnung <span style="font-weight:400;color:var(--muted);font-size:13px">· Fertigung</span></h3>
+        <div class="desc">Bemaßter Verlege-, Vorspann- und Verbinderplan mit Schriftfeld und Stückliste — druckbar als PDF (A3/A4 quer).</div>
+        <div class="io">Eingang <code>Wandelement</code> · Ausgabe → PDF (Druck)</div>
+      </div>
+      <span class="open">öffnen</span>
+    </a>
+
+  </div>
+
+  <h2>Wie die Module zusammenhängen</h2>
+  <svg viewBox="0 0 1040 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Datenfluss zwischen den Modulen">
+    <style>
+      .b{fill:#f4f3f1;stroke:#d6d4cf;stroke-width:1.4} .h{fill:#13202e} .e{fill:#1f6feb}
+      .tt{fill:#1c2430;font-weight:700;font-size:13px} .ts{fill:#6b6862;font-size:11px}
+      .tw{fill:#fff;font-weight:700;font-size:13px} .tw2{fill:#aebfd0;font-size:10.5px}
+      .ln{stroke:#8a8782;stroke-width:1.6;fill:none} .lb{fill:#6b6862;font-size:10px}
+    </style>
+    <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#8a8782"/></marker></defs>
+    <!-- Editor -->
+    <rect class="b" x="20" y="120" width="150" height="56" rx="9"/>
+    <text class="tt" x="95" y="143" text-anchor="middle">1 · Planen &amp; Auslegen</text>
+    <text class="ts" x="95" y="160" text-anchor="middle">erzeugt</text>
+    <!-- Engine loop -->
+    <rect class="b" x="200" y="40" width="150" height="52" rx="9" stroke="#1f6feb"/>
+    <text class="tt" x="275" y="62" text-anchor="middle">Auslegung ↻</text>
+    <text class="ts" x="275" y="79" text-anchor="middle">Statik-Schleife</text>
+    <path class="ln" d="M170,130 C190,110 190,90 200,72" marker-end="url(#ar)"/>
+    <path class="ln" d="M275,92 C275,108 200,110 175,128" marker-end="url(#ar)" stroke="#1f6feb" stroke-dasharray="5 4"/>
+    <text class="lb" x="150" y="104">geprüft ↩</text>
+    <!-- Wandelement hub -->
+    <rect class="h" x="200" y="120" width="200" height="56" rx="9"/>
+    <text class="tw" x="300" y="143" text-anchor="middle">Wandelement</text>
+    <text class="tw2" x="300" y="160" text-anchor="middle">Single Source of Truth (geprüft)</text>
+    <path class="ln" d="M170,148 L198,148" marker-end="url(#ar)"/>
+    <!-- consumers -->
+    <rect class="b" x="450" y="20" width="390" height="44" rx="9"/><text class="tt" x="645" y="40" text-anchor="middle">2 · Horizontaler Wandaufbau</text><text class="ts" x="645" y="55" text-anchor="middle">Verbinder + Latten/Dämmung (Panelfugen = Achsen)</text>
+    <rect class="b" x="450" y="80" width="170" height="40" rx="9"/><text class="tt" x="535" y="105" text-anchor="middle">3 · Montageplanung</text>
+    <rect class="b" x="450" y="135" width="170" height="40" rx="9"/><text class="tt" x="535" y="160" text-anchor="middle">4 · Roboter-Export</text>
+    <rect class="b" x="450" y="190" width="170" height="40" rx="9"/><text class="tt" x="535" y="215" text-anchor="middle">6 · Statik (Anschlüsse)</text>
+    <rect class="b" x="450" y="245" width="390" height="44" rx="9"/><text class="tt" x="645" y="266" text-anchor="middle">5 · Projekt-Manager → DXF / IFC</text><text class="ts" x="645" y="281" text-anchor="middle">mehrere Wände</text>
+    <!-- arrows hub -> consumers -->
+    <path class="ln" d="M400,140 C425,90 430,55 448,45" marker-end="url(#ar)"/>
+    <path class="ln" d="M400,150 L448,100" marker-end="url(#ar)"/>
+    <path class="ln" d="M400,150 L448,155" marker-end="url(#ar)"/>
+    <path class="ln" d="M400,158 L448,205" marker-end="url(#ar)"/>
+    <path class="ln" d="M400,170 C420,235 430,262 448,266" marker-end="url(#ar)"/>
+  </svg>
+  <div class="note">Modul 2 (Horizontaler Wandaufbau) plant Verbinder und Latten/Dämmung gemeinsam — die Panelfugen bestimmen die Verbinderachsen. Alle anderen Module lesen direkt das Wandelement. Die <b>Auslegungs-Engine</b> verfeinert die Vorspannung in einer Schleife und schreibt den Nachweis-Status zurück ins Wandelement.</div>
+
+  <h2>Planungstiefe verschiebt sich nach vorne</h2>
+  <img class="proc" src="SEMBLA_Planungsprozess_Leistungsphasen.png" alt="Module über die Leistungsphasen und Vorverlagerung der Planungstiefe">
+
+  <h2>Alle Werkzeuge</h2>
+  <div class="grid">
+    <a class="card" href="Modul-1-Wandplanung/SEMBLA_Wandplanung.html"><div class="t">Wand planen &amp; auslegen</div><div class="d">Wandelement zeichnen + statisch auslegen (Vorspannung optimiert, Nachweise, Protokoll).</div><div class="tag">Modul 1 · erzeugt das geprüfte Wandelement</div></a>
+    <a class="card" href="Modul-3-Statik/SEMBLA_Statik.html"><div class="t">Statik – Anschlüsse</div><div class="d">Bodenanschluss, oberer Anschluss, Hebezustand (Kempen-Krause).</div><div class="tag">Modul 6</div></a>
+    <a class="card" href="Modul-Wandaufbau/SEMBLA_Wandaufbau.html"><div class="t">Horizontaler Wandaufbau</div><div class="d">Verbinder + Latten/Dämmung in einem: Panelfugen bestimmen die Verbinderachsen, Latten- &amp; Dämm-Stückliste, Layout-Export.</div><div class="tag">Modul 2 · ersetzt Verbinder + Latten</div></a>
+    <a class="card" href="Modul-4-Montageplanung/SEMBLA_Montageplanung.html"><div class="t">Montageplanung</div><div class="d">Lagenweise Anleitung + Vorspannung + Stückliste.</div><div class="tag">Modul 3</div></a>
+    <a class="card" href="Modul-Roboter/SEMBLA_Roboter_Export.html"><div class="t">Roboter-Export</div><div class="d">Montagesequenz als JSON/CSV, herstellerneutral.</div><div class="tag">robotischer Aufbau</div></a>
+    <a class="card" href="Projekt-Manager/SEMBLA_Projekt_Manager.html"><div class="t">Projekt-Manager</div><div class="d">Mehrwand-Projekt, Grundriss, Sammel-Stückliste, DXF/IFC.</div><div class="tag">Modul 5 · CAD / BIM</div></a>
+    <a class="card" href="Modul-3D/SEMBLA_3D_Vorschau.html"><div class="t">3D-Vorschau</div><div class="d">Echtzeit-3D des Wandelements (Steine, Vorspannung, Öffnungen), drehbar.</div><div class="tag">Modul 7 · Visualisierung</div></a>
+    <a class="card" href="Modul-Stueckliste/SEMBLA_Stueckliste_Kosten.html"><div class="t">Stückliste &amp; Kosten</div><div class="d">Material-Auszug mit editierbaren Preisen, €/m², Excel-Export.</div><div class="tag">Modul 8 · Kalkulation</div></a>
+    <a class="card" href="Modul-Fertigung/SEMBLA_Fertigungszeichnung.html"><div class="t">Fertigungszeichnung</div><div class="d">Bemaßter Verlege-, Vorspann- und Verbinderplan als druckbares PDF.</div><div class="tag">Modul 9 · Fertigung</div></a>
+  </div>
+
+  <h2>Architektur &amp; Qualität</h2>
+  <div class="lead">
+    <b>Geteilte, getestete Kerne.</b> Die Logik liegt in reinen Bibliotheken (Wandaufbau, Statik, CAD, Roboter, Latten) — Python als Referenz, JavaScript für die Tools, bit-genaue Parität über goldene Fixtures. Die Werkzeuge sind eigenständige HTML-Dateien (per Doppelklick, ohne Server) und werden per Build-Schritt aus den Kernen zusammengesetzt — keine Code-Duplizierung. Jeder Kern und jede Oberfläche ist durch automatisierte Tests abgesichert.
+    <div class="note"><b>Hinweis:</b> Die Statik-Module sind nachvollziehbare Planungshilfen — Modellannahmen und Materialkennwerte sind mit dem Statiker zu bestätigen; sie ersetzen keine geprüfte Statik.</div>
+  </div>
+
+  <div class="foot">SEMBLA Planungs-Suite · Polycare · Übersicht über alle Module und den Planungsprozess.</div>
+</div>
+</body>
+</html>

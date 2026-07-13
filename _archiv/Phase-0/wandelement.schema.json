@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polycare.de/sembla/wandelement.schema.json",
+  "title": "SEMBLA Wandelement",
+  "description": "Kanonisches Datenmodell einer geplanten SEMBLA-Wand (2D, Einzelwand). Single Source of Truth fuer alle Suite-Module.",
+  "type": "object",
+  "required": ["length_mm", "height_mm", "N_grid", "lagen", "courses", "tension_columns", "bom", "validation"],
+  "properties": {
+    "name": { "type": "string" },
+    "length_mm": { "type": "integer", "multipleOf": 125, "minimum": 250, "description": "Wandlaenge, Vielfaches von 125mm" },
+    "height_mm": { "type": "integer", "multipleOf": 200, "minimum": 200, "description": "Wandhoehe, Vielfaches von 200mm" },
+    "grid_mm": { "const": 125 },
+    "course_mm": { "const": 200 },
+    "thickness_mm": { "const": 125 },
+    "rod_mm": { "const": 1100 },
+    "N_grid": { "type": "integer", "description": "Wandlaenge in Rastereinheiten (length_mm/125)" },
+    "lagen": { "type": "integer", "description": "Anzahl Steinlagen (height_mm/200)" },
+    "openings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["g0", "g1", "l0", "l1"],
+        "properties": {
+          "g0": { "type": "integer", "description": "linke Kante in Rastern" },
+          "g1": { "type": "integer", "description": "rechte Kante in Rastern (halboffen)" },
+          "l0": { "type": "integer", "description": "untere Lage (inkl.)" },
+          "l1": { "type": "integer", "description": "obere Lage (exkl.)" },
+          "art": { "type": "string", "enum": ["tuer", "fenster"] }
+        }
+      }
+    },
+    "courses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["lage", "stones", "joints_grid"],
+        "properties": {
+          "lage": { "type": "integer" },
+          "stones": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "x0", "x1"],
+              "properties": {
+                "type": { "type": "string", "enum": ["i2", "i3"] },
+                "x0": { "type": "integer", "description": "Steinanfang in mm" },
+                "x1": { "type": "integer", "description": "Steinende in mm" }
+              }
+            }
+          },
+          "joints_grid": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "innere Fugen dieser Lage in Rasterpositionen (ohne Wandenden/Oeffnungskanten)"
+          }
+        }
+      }
+    },
+    "sides": {
+      "type": "object",
+      "description": "Funktion je Wandseite (Vorder-/Rueckseite)",
+      "properties": {
+        "vorne": { "type": "object", "properties": { "funktion": { "type": "string", "enum": ["fassade", "innenausbau", "sicht", "installation"] } } },
+        "hinten": { "type": "object", "properties": { "funktion": { "type": "string", "enum": ["fassade", "innenausbau", "sicht", "installation"] } } }
+      }
+    },
+    "tension_columns": {
+      "type": "array",
+      "description": "Vorspannstraenge auf dem Kammer-Lattice x=62.5+125k",
+      "items": {
+        "type": "object",
+        "required": ["k", "x_mm", "gewindestangen", "verbindungsmuttern", "stahlplatten_strukturell", "spannmuttern"],
+        "properties": {
+          "k": { "type": "integer", "description": "Kammerindex" },
+          "x_mm": { "type": "number", "description": "62.5 + 125*k" },
+          "gewindestangen": { "type": "integer" },
+          "verbindungsmuttern": { "type": "integer", "description": "Kopplungen = Stangen-1 (Zwischensicherung, handfest)" },
+          "stahlplatten_strukturell": { "type": "integer", "description": "strukturelle Spannpunkte: oben + unten = 2" },
+          "spannmuttern": { "type": "integer" }
+        }
+      }
+    },
+    "rod_overhang_mm": { "type": "integer", "description": "Stangen*1100 - Hoehe (offener Punkt: Ablaengen?)" },
+    "bom": {
+      "type": "object",
+      "description": "Stueckliste, abgeleitet",
+      "required": ["i2", "i3", "gewindestangen", "verbindungsmuttern", "stahlplatten", "spannmuttern"],
+      "properties": {
+        "i2": { "type": "integer" },
+        "i3": { "type": "integer" },
+        "gewindestangen": { "type": "integer" },
+        "verbindungsmuttern": { "type": "integer" },
+        "stahlplatten": { "type": "integer" },
+        "spannmuttern": { "type": "integer" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["versatz_ok", "tension_span_ok", "rigid_lagen"],
+      "properties": {
+        "versatz_ok": { "type": "boolean" },
+        "versatz_violations": { "type": "array" },
+        "tension_span_ok": { "type": "boolean" },
+        "rigid_lagen": { "type": "array", "items": { "type": "integer" }, "description": "Lagen ohne moeglichen Versatz (z.B. starres Mass N=4)" }
+      }
+    }
+  }
+}

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA Planungs-Suite – Handbuch</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#e2e5ea; --accent:#1f6feb; --ok:#1f9d55; --warn:#c9461c; --code:#0b3a73; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.6}
+  .wrap{max-width:980px;margin:0 auto;padding:0 24px 80px}
+  header{background:#13202e;color:#fff;padding:30px 0 26px;margin-bottom:0}
+  header .wrap{padding-bottom:0}
+  header h1{margin:0;font-size:26px;font-weight:680}
+  header p{margin:8px 0 0;color:#aebfd0;font-size:14px;max-width:760px}
+  .toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 22px;margin:24px 0}
+  .toc h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+  .toc ol{margin:0;padding-left:22px;columns:2;column-gap:32px}
+  .toc a{color:var(--ink);text-decoration:none} .toc a:hover{color:var(--accent)}
+  h2.sec{font-size:21px;margin:38px 0 6px;padding-top:14px;border-top:2px solid #13202e}
+  h3{font-size:17px;margin:24px 0 6px;color:#13202e}
+  h4{font-size:14.5px;margin:18px 0 4px;color:#33414f;text-transform:uppercase;letter-spacing:.4px}
+  p,li{max-width:780px}
+  code{background:#eef2f7;color:var(--code);padding:1px 5px;border-radius:4px;font-size:13.5px;font-family:"SF Mono",Menlo,Consolas,monospace}
+  .formula{background:#f7f9fb;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:6px;padding:12px 16px;margin:12px 0;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:14px;color:#13202e;overflow-x:auto}
+  .formula b{color:var(--accent)}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#eef2f7;font-weight:650;font-size:12.5px;text-transform:uppercase;letter-spacing:.3px;color:#42505e}
+  td.var{font-family:"SF Mono",Menlo,Consolas,monospace;white-space:nowrap;color:var(--code)}
+  .note{background:#fff8e6;border:1px solid #f0e0a8;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .warnbox{background:#fbe9e2;border:1px solid #f0c4b2;border-radius:8px;padding:12px 16px;margin:16px 0;font-size:14px}
+  .ok-tag{color:var(--ok);font-weight:600}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 24px 18px;margin-top:-1px}
+  .lead{font-size:16px;color:#33414f}
+  .kv{display:grid;grid-template-columns:170px 1fr;gap:2px 14px;font-size:14px;margin:8px 0}
+  .kv .k{color:var(--muted)}
+  .crumb{font-size:12.5px;color:var(--muted);margin:2px 0 0}
+  footer{color:var(--muted);font-size:12.5px;margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+  @media print{ body{background:#fff;font-size:11pt} header{background:#13202e!important;-webkit-print-color-adjust:exact;print-color-adjust:exact} .toc{break-after:page} h2.sec{break-before:auto} .formula,th{-webkit-print-color-adjust:exact;print-color-adjust:exact} a{color:inherit;text-decoration:none} }
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-20110</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">e2388961-5fa5-4f57-9490-f3d5af8d9327</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-20110, YZXVWT2JSZP3-499227272-20110</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header><div class="wrap">
+  <h1>SEMBLA Planungs-Suite — Handbuch</h1>
+  <p>Funktionsbeschreibung aller Module und nachvollziehbare Aufbereitung der Berechnungen (Statik, Verbinder-Bemessung, Mengen). Für die interne Produktentwicklung und zur Prüfung durch Statiker.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="note">
+  <b>Zur Einordnung.</b> Die Suite ist eine <b>Planungshilfe</b>, kein prüffähiger Standsicherheitsnachweis. Alle Material- und Sicherheitswerte sind <b>Platzhalter</b> (siehe Kap. 5.6) und vom Tragwerksplaner / von Polycare zu bestätigen. Die Statik-Ansätze folgen der Doku <i>Kempen Krause – „Statische Betrachtung nichttragender Mauerwerkswände", Proj. 20260304</i> und vereinfachten Modellannahmen, die in Kap. 5 offengelegt sind.
+</div>
+
+<div class="toc">
+  <h2>Inhalt</h2>
+  <ol>
+    <li><a href="#ueberblick">Überblick & Zielgruppe</a></li>
+    <li><a href="#grundlagen">Grundlagen, Raster & Bausteine</a></li>
+    <li><a href="#datenmodell">Datenmodell „Wandelement" & Projekt-Bundle</a></li>
+    <li><a href="#architektur">Architektur, Kerne & Workflow</a></li>
+    <li><a href="#statik">Statik – Modell & Formeln</a></li>
+    <li><a href="#modul1">Modul 1 · Wand planen & auslegen</a></li>
+    <li><a href="#modul2">Modul 2 · Verbinder</a></li>
+    <li><a href="#modul3">Modul 3 · Latten + Dämmung</a></li>
+    <li><a href="#modul4">Modul 4 · Montageplanung</a></li>
+    <li><a href="#modul5">Modul 5 · Roboter-Export</a></li>
+    <li><a href="#modul6">Modul 6 · Projekt-Manager (DXF/IFC)</a></li>
+    <li><a href="#modul7">Modul 7 · Statik-Anschlüsse</a></li>
+    <li><a href="#modul8">Modul 8 · 3D-Vorschau</a></li>
+    <li><a href="#modul9">Modul 9 · Stückliste & Kosten</a></li>
+    <li><a href="#modul10">Modul 10 · Fertigungszeichnung</a></li>
+    <li><a href="#weiterentwicklung">Weiterentwicklung (für Nicht-Programmierer)</a></li>
+    <li><a href="#glossar">Glossar & Quellen</a></li>
+  </ol>
+</div>
+
+<!-- 1 -->
+<h2 class="sec" id="ueberblick">1 · Überblick & Zielgruppe</h2>
+<div class="panel">
+<p class="lead">Die SEMBLA Planungs-Suite plant vorgespannte Trockenmauerwerks-Wände aus den Systemsteinen <b>i2</b> und <b>i3</b> – vom ersten Entwurf bis zu Fertigung, Montage und BIM.</p>
+<p>Zehn Werkzeuge greifen auf <b>ein gemeinsames Datenmodell</b> zu (das „Wandelement"). Modul 1 erzeugt es; alle weiteren Module lesen es. So bleibt die Planung über alle Gewerke konsistent.</p>
+<p><b>Einstieg:</b> <code>00_Übersicht.html</code> im selben Ordner öffnen (Doppelklick). Jedes Tool ist eine eigenständige HTML-Datei und läuft ohne Installation/Server im Browser.</p>
+<p><b>Dieses Handbuch richtet sich an</b> (a) Statiker, die die Berechnungsansätze prüfen wollen (Kap. 5 + 7), und (b) das interne Entwicklungsteam, das die Suite ohne Programmier-Hintergrund weiterentwickelt (Kap. 4 + 16).</p>
+</div>
+
+<!-- 2 -->
+<h2 class="sec" id="grundlagen">2 · Grundlagen, Raster & Bausteine</h2>
+<div class="panel">
+<h3>2.1 Systemraster</h3>
+<table>
+  <tr><th>Größe</th><th>Wert</th><th>Bedeutung</th></tr>
+  <tr><td class="var">GRID</td><td>125 mm</td><td>Längsraster (Steine, Nuten, Verbinderachsen)</td></tr>
+  <tr><td class="var">COURSE</td><td>200 mm</td><td>Lagenhöhe (eine Steinreihe)</td></tr>
+  <tr><td class="var">THICK</td><td>125 mm</td><td>Wandstärke</td></tr>
+  <tr><td class="var">CHAMBER_OFFSET</td><td>62,5 mm</td><td>Kammer-/Strangmitte ab Steinanfang → Vorspann-Achsen liegen bei x = 62,5 + 125·k mm</td></tr>
+  <tr><td class="var">ROD</td><td>1100 mm</td><td>Standard-Gewindestange (ablängbar; in Modul 1 überschreibbar)</td></tr>
+  <tr><td class="var">MAX_SPAN_GRID</td><td>3</td><td>Vorspannung höchstens alle 3 Raster (375 mm)</td></tr>
+  <tr><td class="var">FORBIDDEN_N</td><td>{1, 4}</td><td>nicht baubare / nicht versetzbare Segmentbreiten (in Rastereinheiten)</td></tr>
+</table>
+
+<h3>2.2 Steine</h3>
+<table>
+  <tr><th>Stein</th><th>Länge</th><th>Raster</th><th>Kammern</th><th>Nuten</th><th>Rolle</th></tr>
+  <tr><td>i3</td><td>375 mm</td><td>3</td><td>3 Hohlkammern</td><td>2 (innenliegende Stege)</td><td>Regelstein – wird maximiert</td></tr>
+  <tr><td>i2</td><td>250 mm</td><td>2</td><td>2 Hohlkammern</td><td>1</td><td>nur zum Auffüllen der Wandenden</td></tr>
+</table>
+<p><b>Nuten</b> sind die innenliegenden Stege im 12,5-cm-Raster, in denen Fassaden-/UK-Verbinder befestigt werden – <i>nie</i> auf einer Steinkante/Stoßfuge. <b>Kammern</b> sind die durchgehenden Hohlräume (vertikal), die Gewindestangen/Lattice aufnehmen.</p>
+
+<h3>2.3 Aufbau-Regeln (Verband)</h3>
+<ul>
+  <li><b>i3-Maximierung:</b> jede Lage wird mit möglichst vielen i3 belegt; i2 nur als Endsteine.</li>
+  <li><b>Versatz (Verband):</b> Stoßfugen benachbarter Lagen müssen mindestens 1 Raster versetzt sein. Verstöße werden im Feld <code>validation.versatz_ok</code> gemeldet und in Modul 1 als Warnung angezeigt.</li>
+  <li><b>Öffnungen</b> (Tür, Fenster, Durchbruch) lassen die Steine an dieser Stelle aus; der Sturz darüber wird wieder mit Steinen aufgefüllt.</li>
+  <li><b>Maße:</b> Länge = Vielfaches von 125 mm, Höhe = Vielfaches von 200 mm. Segmentbreiten aus <code>FORBIDDEN_N</code> sind unzulässig.</li>
+</ul>
+
+<h3>2.4 Vorspannstränge (Bauteil-Logik)</h3>
+<p>Vorspannstränge sitzen auf den Kammerachsen (x = 62,5 + 125·k). Pro durchgehend gefülltem vertikalen Abschnitt entsteht ein <b>Strang-Segment</b>. Über und unter Öffnungen wird der Strang <b>unterbrochen</b> (mehrere Segmente je Achse). Ein Strang heißt <b>durchgehend</b>, wenn er über die volle Wandhöhe läuft – nur durchgehende Stränge zählen statisch als Vorspannstränge.</p>
+<p>Je Segment der Höhe <i>h</i> mit Stangenlänge <i>rod</i>:</p>
+<div class="formula">
+gewindestangen = <b>ceil</b>( h / rod ) &nbsp;·&nbsp; verbindungsmuttern = gewindestangen − 1<br>
+letzte_stange = h − (gewindestangen−1)·rod &nbsp;·&nbsp; verschnitt = gewindestangen·rod − h<br>
+stahlplatten = 2 je Segment (oben/unten) &nbsp;·&nbsp; spannmuttern = 2 je Segment
+</div>
+
+<h3>2.5 Staffelung (getreppter Aufbau)</h3>
+<p>Eine Wand muss nicht rechteckig sein: über <b>Stufen</b> lässt sich die Oberkante bereichsweise absenken (getreppte Kontur, z. B. für Musterwände). Jede Stufe ist ein Längsbereich <code>[x0, x1]</code> mit reduzierter Höhe; die eingegebene „Höhe" bleibt die Maximalhöhe. Intern erhält jede Rasterspalte so eine lokale Oberkante — Stufen sind <b>keine Öffnungen</b> (kein Loch), sondern Teil der Außenkontur, daher entstehen auch keine Öffnungs-Überlappungen.</p>
+<p>Regeln bei Staffelung:</p>
+<ul>
+  <li>Steine werden je Längsabschnitt nur bis zur lokalen Oberkante gemauert (i3-Maximierung, Versatz gelten weiter).</li>
+  <li><b>Vorspannung läuft an der Treppe entlang:</b> an jeder Höhenstufe wird beidseitig der Kante ein Strang gesetzt (an der hohen und an der niedrigen Seite) — analog zu den Laibungen an Öffnungen.</li>
+  <li>Stränge sind je Abschnitt nur so hoch wie die lokale Oberkante (segmentiert); nur volle-Höhe-Stränge zählen statisch als durchgehend.</li>
+  <li>In Modul 1 werden Stufen bemaßt: <b>Breite</b> an der Stufen-Oberkante und <b>Höhe</b> ab Boden (türkis, getrennt von Öffnungs- und Gesamtmaßen).</li>
+</ul>
+
+</div>
+
+<!-- 3 -->
+<h2 class="sec" id="datenmodell">3 · Datenmodell „Wandelement" & Projekt-Bundle</h2>
+<div class="panel">
+<p>Das <b>Wandelement</b> ist eine JSON-Struktur und die „Single Source of Truth". Wichtigste Felder:</p>
+<table>
+  <tr><th>Feld</th><th>Inhalt</th></tr>
+  <tr><td class="var">length_mm, height_mm</td><td>Wandmaße</td></tr>
+  <tr><td class="var">grid_mm, course_mm, thickness_mm, rod_mm</td><td>verwendete Raster/Stangenlänge</td></tr>
+  <tr><td class="var">N_grid, lagen</td><td>Raster- und Lagenanzahl</td></tr>
+  <tr><td class="var">courses[]</td><td>je Lage <code>{lage, stones:[{x0,x1,type}]}</code> (mm)</td></tr>
+  <tr><td class="var">openings[]</td><td><code>{g0,g1,l0,l1,art}</code> in Raster-/Lagenindex; art = tuer · fenster · durchbruch</td></tr>
+  <tr><td class="var">steps[]</td><td>Staffelung/getreppte Kontur: <code>{x0_mm,x1_mm,height_mm}</code> (bereichsweise reduzierte Oberkante)</td></tr>
+  <tr><td class="var">tension_columns[]</td><td>Stränge: <code>{k,x_mm,durchgehend,segments[],gewindestangen,...}</code></td></tr>
+  <tr><td class="var">sides</td><td>Vorder-/Rückseite je Funktion (fassade · innenausbau · sicht · installation)</td></tr>
+  <tr><td class="var">prestress</td><td><code>{max_span_grid, force_kN, rod_mm}</code></td></tr>
+  <tr><td class="var">bom</td><td>Steine i2/i3, Gewindestangen, Muttern, Platten, Verschnitt</td></tr>
+  <tr><td class="var">validation</td><td><code>{buildable, versatz_ok, versatz_violations, ...}</code></td></tr>
+  <tr><td class="var">verification</td><td>Statik-Status, Auslegung, Nachweise (von der Engine eingetragen)</td></tr>
+</table>
+<h3>3.1 Projekt-Bundle</h3>
+<p>Damit zwischen den Modulen keine einzelnen Dateien jongliert werden müssen, gibt es ein mitwachsendes Bundle:</p>
+<div class="formula">{ "format":"SEMBLA-Projekt", "wandelement":{…}, "verbinder_layout":{…} }</div>
+<p>Das Bundle ist das <b>einzige Austauschformat</b> der Suite. Modul 1 exportiert das Bundle (mit Wandelement), Modul 2 reichert es um das <code>verbinder_layout</code> an, Modul 9 (Stückliste) liest beides aus <i>einer</i> Datei. <b>Alle Module und der Revit-Import (pyRevit) akzeptieren wahlweise ein Bundle oder ein blankes Wandelement</b> und entpacken es selbst — es gibt daher nur je einen Export-Button (Projekt-Bundle) und einheitliche Lade-Buttons „… / Bundle laden".</p>
+<p>Prozess kompakt: <b>Modul 1 → Bundle → Modul 2 (reichert an) → Bundle → alle übrigen Module &amp; Revit.</b></p>
+</div>
+
+<!-- 4 -->
+<h2 class="sec" id="architektur">4 · Architektur, Kerne & Workflow</h2>
+<div class="panel">
+<p>Die fachliche Logik liegt in <b>getesteten Kernen</b> (reine Bibliotheken ohne Oberfläche). Die Werkzeuge sind eigenständige HTML-Dateien, die per Build-Schritt aus Kern + Vorlage zusammengesetzt werden – keine Code-Duplizierung.</p>
+<table>
+  <tr><th>Was</th><th>Datei(en)</th><th>Inhalt</th></tr>
+  <tr><td>Wandaufbau-Kern</td><td><code>Phase-1/sembla_core.py</code> (Referenz)<br><code>Phase-2/sembla-core.mjs</code></td><td>Verband, Stränge, BOM, Validierung. Python = Referenz, JavaScript = bit-genaue Portierung (Parität über goldene Fixtures).</td></tr>
+  <tr><td>Wand-Statik</td><td><code>Modul-3-Statik/sembla-statik.mjs</code></td><td>Vorspann-Nachweise (Biegung/Randdruck/Schub) und Anschluss-Nachweise (Boden/oben/Transport).</td></tr>
+  <tr><td>Auslegungs-Engine</td><td><code>Auslegung-Engine/sembla-engine.mjs</code></td><td>Iteration: optimiert Strangabstand & Vorspannkraft, bis alle Nachweise erfüllt sind.</td></tr>
+  <tr><td>Verbinder</td><td>in <code>Modul-2-Verbinder/…</code></td><td>lastabhängige Verteilung, Nut-Einrastung.</td></tr>
+  <tr><td>Latten</td><td><code>Modul-Latten/sembla-latten.mjs</code></td><td>UK-Latten + Dämmpakete, 1D-Zuschnitt.</td></tr>
+  <tr><td>CAD/BIM</td><td><code>Projekt-Manager/sembla-cad.mjs</code>, <code>obj-to-ifc.mjs</code></td><td>DXF, IFC4 (inkl. echter Steingeometrie als FacetedBrep).</td></tr>
+  <tr><td>Roboter</td><td><code>Modul-Roboter/sembla-robot.mjs</code></td><td>Montagesequenz (Pick&Place + Vorspannen).</td></tr>
+  <tr><td>Bauteilgeometrie</td><td><code>Bauteil-OBJ/i2_SEMBLA.obj · i3_SEMBLA.obj</code> (+ .ifc)</td><td>echte Steingeometrie (X=Länge, Y=Tiefe, Z=Höhe; Nullpunkt unten-vorne-links).</td></tr>
+</table>
+<h3>4.1 Bauen & Veröffentlichen</h3>
+<p>Tools mit Vorlage werden mit <code>node build-*.mjs</code> im jeweiligen Ordner neu gebaut. Danach spiegelt <code>node publish-werkzeuge.mjs</code> (im Suite-Stammordner) alle aktuellen Tools nach <code>SEMBLA Werkzeuge/</code> – so laufen Entwicklungs- und Auslieferungsstand nie auseinander.</p>
+<h3>4.2 Testen</h3>
+<p>Jeder Kern und jede Oberfläche ist durch automatisierte Tests abgesichert (<code>test-*.mjs</code> / <code>smoke_*.mjs</code>, Python: <code>Phase-1/test_sembla_core.py</code>). Vor jeder Übernahme einer Änderung sollten alle Tests grün sein.</p>
+</div>
+
+<!-- 5 STATIK -->
+<h2 class="sec" id="statik">5 · Statik – Modell & Formeln</h2>
+<div class="panel">
+<p class="lead">Dieses Kapitel legt alle Berechnungen offen, damit ein Statiker sie nachvollziehen und bestätigen kann. Es gibt zwei Gruppen: die <b>vorspann-abhängigen Wandnachweise</b> (5.2–5.4, treiben die Auslegung) und die <b>Anschluss-/Transportnachweise</b> (Kap. 7).</p>
+
+<h3>5.1 Modellannahmen</h3>
+<ul>
+  <li>Wand spannt <b>vertikal</b>, oben und unten <b>gelenkig</b> gehalten (Einfeldträger über die Höhe H).</li>
+  <li><b>Horizontallast</b> q (z. B. Wind/Nutzlast senkrecht zur Wand) wirkt als Flächenlast.</li>
+  <li>Die <b>Vorspannung</b> erzeugt eine gleichmäßige Druckspannung in der Lagerfuge. Tragwirkung beruht darauf, dass in der Fuge <b>keine Zugspannung</b> entsteht (klaffende Fuge / Kernmoment).</li>
+  <li>Querschnitt der Lagerfuge: Rechteck <i>L × t</i> (Wandlänge × Wandstärke). Widerstandsmoment <span class="formula" style="display:inline-block;margin:0;padding:3px 8px">W = L·t² / 6</span>, Fläche <span class="formula" style="display:inline-block;margin:0;padding:3px 8px">A = L·t</span>.</li>
+  <li>Statisch wirksam sind nur <b>durchgehende</b> Vorspannstränge.</li>
+</ul>
+
+<h3>5.2 Biegenachweis (klaffende Fuge / Kernmoment)</h3>
+<p class="crumb">Funktion <code>vorspannBiegung()</code> in <code>sembla-statik.mjs</code></p>
+<div class="formula">
+N<sub>ges</sub> = strands · force_kN &nbsp; [kN]<br>
+σ = N<sub>ges</sub> / A &nbsp; [kN/m²] &nbsp;&nbsp;(gleichmäßige Druckvorspannung)<br>
+<b>M<sub>R</sub></b> = σ · W &nbsp; [kNm] &nbsp;&nbsp;(aufnehmbares Moment ohne klaffende Fuge)<br>
+q = γ<sub>Q</sub> · q<sub>k</sub> &nbsp; [kN/m²] &nbsp;&nbsp; <b>M<sub>Ed</sub></b> = q · L · H² / 8 &nbsp; [kNm]<br>
+Auslastung = M<sub>Ed</sub> / M<sub>R</sub> &nbsp;→&nbsp; <span class="ok-tag">ok, wenn M<sub>Ed</sub> ≤ M<sub>R</sub></span>
+</div>
+<table>
+  <tr><th>Variable</th><th>Bedeutung</th><th>Einheit</th></tr>
+  <tr><td class="var">strands</td><td>Anzahl durchgehender Vorspannstränge</td><td>–</td></tr>
+  <tr><td class="var">force_kN</td><td>Vorspannkraft je Strang</td><td>kN</td></tr>
+  <tr><td class="var">L, H, t</td><td>Wandlänge, -höhe, -stärke</td><td>m</td></tr>
+  <tr><td class="var">q<sub>k</sub></td><td>charakteristische Horizontal-Flächenlast</td><td>kN/m²</td></tr>
+  <tr><td class="var">γ<sub>Q</sub></td><td>Teilsicherheitsbeiwert Last (Default 1,5)</td><td>–</td></tr>
+</table>
+
+<h3>5.3 Randdruckspannung</h3>
+<p class="crumb">Funktion <code>randDruck()</code> – Druckspannung am gedrückten Rand darf f<sub>cd</sub> nicht überschreiten.</p>
+<div class="formula">
+σ<sub>max</sub> = N/A + M/W &nbsp; [kN/m²] &nbsp; → &nbsp; in N/mm²: σ<sub>max</sub> / 1000<br>
+mit M = γ<sub>Q</sub>·q<sub>k</sub>·L·H²/8 &nbsp;&nbsp; → &nbsp; <span class="ok-tag">ok, wenn σ<sub>max</sub> ≤ f<sub>cd</sub></span>
+</div>
+<p class="note"><b>Einheitenhinweis:</b> intern wird in kN/m² gerechnet und für den Vergleich mit f<sub>cd</sub> in N/mm² umgerechnet (Faktor 1/1000).</p>
+
+<h3>5.4 Schub / Reibung in der Lagerfuge</h3>
+<p class="crumb">Funktion <code>schubReibung()</code> – horizontaler Lastabtrag über Reibung aus Vorspannung + Eigengewicht.</p>
+<div class="formula">
+G = ρ · t · L · H &nbsp; [kN] &nbsp;&nbsp;(Eigengewicht)<br>
+V<sub>R</sub> = C<sub>f,d</sub> · ( N + G ) &nbsp;&nbsp; V<sub>Ed</sub> = q · L · H / 2<br>
+<span class="ok-tag">ok, wenn V<sub>Ed</sub> ≤ V<sub>R</sub></span>
+</div>
+<table>
+  <tr><td class="var">ρ</td><td>Wichte (Default 14 kN/m³, inkl. Stahl)</td></tr>
+  <tr><td class="var">C<sub>f,d</sub></td><td>Reibbeiwert (Default 0,60)</td></tr>
+</table>
+
+<h3>5.5 Maßgebender Nachweis & Auslegungs-Iteration</h3>
+<p class="crumb">Funktionen <code>nachweiseWand()</code> + <code>autoAuslegung()</code></p>
+<p>Aus den drei Nachweisen 5.2–5.4 wird der mit der <b>höchsten Auslastung</b> als „maßgebend" ausgewiesen; erfüllt ist die Wand nur, wenn <i>alle drei</i> erfüllt sind.</p>
+<p>Die <b>Auto-Auslegung</b> sucht das Minimum an Material:</p>
+<ol>
+  <li>Strangabstand grob → fein durchprobieren: Kandidaten <code>[3, 2, 1]</code> Raster.</li>
+  <li>Je Abstand die <b>kleinste</b> Vorspannkraft N suchen (Raster 10…150 kN, Schrittweite 5), bei der alle Nachweise erfüllt sind.</li>
+  <li>Erste erfüllte Kombination gewinnt → Ergebnis wird als <code>verification</code> ins Wandelement geschrieben (Status, maßgebender Nachweis, Auslastung, Iterationsprotokoll).</li>
+</ol>
+<p>Im <b>Nachweis-Modus</b> wird stattdessen eine fest vorgegebene Auslegung (Strangabstand + N) nur geprüft.</p>
+
+<h3 id="material">5.6 Materialannahmen (Platzhalter – zu bestätigen)</h3>
+<div class="warnbox">Die folgenden Werte sind Vorbelegungen für die Funktionsfähigkeit der Suite und <b>müssen vom Tragwerksplaner bestätigt / ersetzt</b> werden.</div>
+<table>
+  <tr><th>Größe</th><th>Default</th><th>Bedeutung</th></tr>
+  <tr><td class="var">f<sub>cd</sub></td><td>20 N/mm²</td><td>Bemessungs-Druckfestigkeit</td></tr>
+  <tr><td class="var">C<sub>f,d</sub></td><td>0,60</td><td>Reibbeiwert Fuge (0,60 Mörtel-Beton · 0,30 Stahl-Beton · 0,20 konservativ)</td></tr>
+  <tr><td class="var">ρ</td><td>14 kN/m³</td><td>Wichte inkl. Stahlanteil</td></tr>
+  <tr><td class="var">γ<sub>Q</sub> / γ<sub>G</sub></td><td>1,5 / 1,35</td><td>Teilsicherheiten Last / Eigengewicht</td></tr>
+  <tr><td class="var">f<sub>y</sub></td><td>235 N/mm²</td><td>Streckgrenze Anschlussbleche/-winkel (Kap. 7)</td></tr>
+</table>
+</div>
+
+<!-- 6 Modul 1 -->
+<h2 class="sec" id="modul1">6 · Modul 1 · Wand planen & auslegen</h2>
+<div class="panel">
+<p><b>Zweck:</b> erzeugt das geprüfte Wandelement – zeichnen + statisch auslegen in einem Schritt.</p>
+<h4>Eingaben</h4>
+<p>Länge, Höhe, Seiten-Funktionen (Vorder-/Rückseite), Öffnungen (Tür/Fenster, sowie Durchbrüche per Klick-Werkzeug), Horizontallast q<sub>k</sub> + γ<sub>Q</sub>, Material (f<sub>cd</sub>, C<sub>f,d</sub>, ρ), <b>Gewindestangenlänge</b>, Modus (Auto/Nachweis).</p>
+<h4>Ablauf</h4>
+<p>Verband wird i3-maximiert aufgebaut, Stränge (mit Segmenten über/unter Öffnungen) abgeleitet, dann die Auslegungs-Engine (Kap. 5.5) ausgeführt. Ergebnis: Wandbild (maßstäblich, ohne Fugen, mit ein-/ausblendbarer Bemaßung), Nachweis-Tabelle, Stückliste, Iterationsprotokoll.</p>
+<h4>Hinweise</h4>
+<ul>
+  <li><b>Versatz-/Baubarkeits-Warnung:</b> verletzt der Verband den Mindestversatz oder ist ein Maß unzulässig, erscheint eine rote Warnung und das Status-Badge wird auf „Verband regelwidrig" gesetzt.</li>
+  <li><b>Durchbrüche:</b> Steine per Klick entfernen/auffüllen; über und unter <i>allen</i> Öffnungen wird die Vorspannung unterbrochen (Segmente).</li>
+  <li><b>Staffelung:</b> getreppte Wandkontur über Stufen (Abschnitt 2.5) inkl. Bemaßung.</li>
+  <li><b>Export:</b> ein Format – „Projekt-Bundle (JSON)".</li>
+</ul>
+</div>
+
+<!-- 7 Modul 2 -->
+<h2 class="sec" id="modul2">7 · Modul 2 · Verbinder</h2>
+<div class="panel">
+<p><b>Zweck:</b> lastabhängige Verteilung der Fassaden-/UK-Verbinder je Wandseite, auf den Nuten.</p>
+<h4>Bemessung je Verbinder</h4>
+<p class="crumb">Lastkoeffizient & zulässige Einzugsfläche:</p>
+<div class="formula">
+R<sub>d</sub> = R<sub>k</sub> / γ<sub>M</sub> &nbsp; [kN] &nbsp;&nbsp;(zulässige Zuglast je Verbinder)<br>
+coeff = γ<sub>Q</sub>·w<sub>k</sub> + γ<sub>G</sub>·g<sub>k</sub>·(e / a) &nbsp; [kN/m²]<br>
+A<sub>t,max</sub> = R<sub>d</sub> / coeff &nbsp; [m²] &nbsp;&nbsp;(max. Einzugsfläche je Verbinder)
+</div>
+<table>
+  <tr><th>Variable</th><th>Bedeutung</th></tr>
+  <tr><td class="var">R<sub>k</sub>, γ<sub>M</sub></td><td>charakt. Auszugslast und Sicherheitsbeiwert des gewählten Verbinder-Typs (Katalog)</td></tr>
+  <tr><td class="var">w<sub>k</sub></td><td>Windsog (charakteristisch), kN/m²</td></tr>
+  <tr><td class="var">g<sub>k</sub></td><td>Fassadengewicht, kN/m²</td></tr>
+  <tr><td class="var">e, a</td><td>Exzentrizität bzw. Hebelarm der Konsole</td></tr>
+</table>
+<p>Das Achsraster (horizontal) wird je Wandabschnitt im UK-Abstand <i>exakt</i> ab der Laibung/Wandkante gesetzt; der vertikale Abstand wird automatisch so groß gewählt, dass die Auslastung A<sub>t</sub>/A<sub>t,max</sub> ≤ 100 % bleibt (minimale Verbinderzahl).</p>
+<h4>Platzierungsregeln</h4>
+<ul>
+  <li>Verbinder sitzen <b>auf Nuten</b>, nie auf Stoßfugen. Jeder Verbinder rastet lagenweise auf die nächste tatsächliche Nut ein (die Lattenachse selbst bleibt gerade).</li>
+  <li>Neben Öffnungen sitzt je ein Verbinder ein Raster im Pfeiler (an der Laibung); über/unter Öffnungen werden Verbinder für die UK-Montage ergänzt.</li>
+  <li>Durchgehende Nut = blau (in jeder Höhe fixierbar), versetzte Nut = orange (lagenweise).</li>
+  <li>Verbinder-Katalog: FA-1 (R<sub>k</sub> 0,50), FA-2 schwer (0,80), IA-1 leicht (0,25), Universal (0,50); je γ<sub>M</sub> = 2,0.</li>
+</ul>
+<p><b>Export:</b> ein Format – „Projekt-Bundle (JSON)" (Wandelement + Verbinder-Layout).</p>
+</div>
+
+<!-- 8 Modul 3 (Latten) -->
+<h2 class="sec" id="modul3">8 · Modul 3 · Latten + Dämmung</h2>
+<div class="panel">
+<p><b>Zweck:</b> plant die Holz-Unterkonstruktion (UK) und Dämmpakete aus dem Verbinder-Layout.</p>
+<ul>
+  <li>Latten verlaufen <b>vertikal auf den Verbinderachsen</b>; an Öffnungen werden sie <b>abgeschnitten</b> (nie über Tür/Fenster gezogen).</li>
+  <li>Stöße liegen <b>zwischen</b> zwei Verbindern (mittig), nie auf einem Verbinder.</li>
+  <li>Wandhöhe &gt; Lattenlänge → Stückelung; Reststücke werden über alle Achsen wiederverwendet (1D-Zuschnitt, „first-fit decreasing").</li>
+  <li><b>Dämmung</b> je Gefach (lichter Abstand zwischen den Latten) × Höhe minus Öffnungen → Fläche je Paket.</li>
+</ul>
+<p><b>Eingaben:</b> Lattenbreite (Default 4 cm), Lattenlänge/Stange (150 cm), Dämmdicke. <b>Ausgaben:</b> Stückliste, Zuschnittliste, Dämmflächen (CSV).</p>
+</div>
+
+<!-- 9 Modul 4 -->
+<h2 class="sec" id="modul4">9 · Modul 4 · Montageplanung</h2>
+<div class="panel">
+<p><b>Zweck:</b> lagenweise Aufbauanleitung mit Vorspann-Schritten und Gesamt-Stückliste.</p>
+<p>Interaktiver Lagen-Viewer (Stein für Stein je Lage), Wandüberblick mit hervorgehobener Lage und Bemaßung, Vorspann-Hinweise (Stangenlänge, Kopplungshöhen aus <code>rod_mm</code>), druckbare Anleitung.</p>
+</div>
+
+<!-- 10 Modul 5 -->
+<h2 class="sec" id="modul5">10 · Modul 5 · Roboter-Export</h2>
+<div class="panel">
+<p><b>Zweck:</b> maschinenlesbare Montagesequenz für den robotischen Aufbau – herstellerneutral als JSON/CSV.</p>
+<p>Schrittfolge: Steine setzen (PLACE_STONE, Lage für Lage), Stahlplatten, Gewindestangen/Kopplungen, abschließend TENSION (Vorspannen). Referenz-/Koordinatensystem: Nullpunkt unten-links-vorne, X = Länge, Y = Wandstärke, Z = Höhe, Einheiten mm; Platzierungsbezug = Stein-Ecke unten-links-vorne.</p>
+</div>
+
+<!-- 11 Modul 6 -->
+<h2 class="sec" id="modul6">11 · Modul 6 · Projekt-Manager (DXF/IFC)</h2>
+<div class="panel">
+<p><b>Zweck:</b> mehrere Wände zu einem Projekt zusammenführen, im 2D-Grundriss platzieren, Sammel-Stückliste, CAD/BIM-Export.</p>
+<ul>
+  <li><b>DXF:</b> Grundriss und Ansichten (Layer für Steine, Vorspannung, Öffnungen).</li>
+  <li><b>IFC4:</b> jede Wand als <code>IfcWallStandardCase</code>, Öffnungen als Voids, Steine als <code>IfcBuildingElementProxy</code>. Wahlweise <b>echte Geometrie (BREP):</b> i2/i3 als <code>IfcFacetedBrep</code>, je Typ einmal als <code>IfcRepresentationMap</code> definiert und pro Stein per <code>IfcMappedItem</code> referenziert (schlanke Datei).</li>
+</ul>
+</div>
+
+<!-- 12 Modul 7 -->
+<h2 class="sec" id="modul7">12 · Modul 7 · Statik-Anschlüsse</h2>
+<div class="panel">
+<p class="lead">Nachweise der Wand-<b>Anschlüsse</b> und des <b>Transports</b> nach Kempen Krause. Eigengewicht als Streckenlast: <span class="formula" style="display:inline-block;margin:0;padding:3px 8px">n<sub>Ed</sub> = ρ · t · h</span> [kN/m].</p>
+
+<h3>12.1 Bodenanschluss (Reibung)</h3>
+<p class="crumb">Funktion <code>bodenanschluss()</code></p>
+<div class="formula">
+F<sub>v,R</sub> = n<sub>Ed</sub> · C<sub>f,d</sub> &nbsp;&nbsp; F<sub>v,Ed</sub> = split · γ<sub>Q</sub> · q<sub>k</sub> &nbsp;&nbsp; <span class="ok-tag">ok, wenn F<sub>v,Ed</sub> ≤ F<sub>v,R</sub></span>
+</div>
+<p><code>split</code> = Anteil der Holmlast am Wandfuß (Default 0,5).</p>
+
+<h3>12.2 Oberer Wandanschluss (Winkel-Biegung)</h3>
+<p class="crumb">Funktion <code>obererAnschluss()</code></p>
+<div class="formula">
+F<sub>Ed</sub> = split · γ<sub>Q</sub> · q<sub>k</sub> · b<sub>Einzug</sub> &nbsp; [kN je Winkel]<br>
+W = b · t² / 6 &nbsp; [mm³] &nbsp;&nbsp; σ = F<sub>Ed</sub>·1000·hebel / W &nbsp; [N/mm²]<br>
+a<sub>max</sub> = b<sub>Einzug</sub> · f<sub>y</sub> / σ &nbsp; [m] &nbsp;&nbsp; <span class="ok-tag">ok, wenn σ ≤ f<sub>y</sub></span>
+</div>
+<p>b, t = Breite/Dicke des Anschlusswinkels (mm); hebel = Lastexzentrizität (mm); a<sub>max</sub> = maximal zulässiger Winkelabstand.</p>
+
+<h3>12.3 Transport / Hebezustand</h3>
+<p class="crumb">Funktion <code>transport()</code></p>
+<div class="formula">
+G<sub>Ek</sub> = n<sub>Ed</sub> · L / n<sub>Anker</sub> &nbsp;&nbsp; G<sub>Ed</sub> = γ<sub>G</sub> · dyn · G<sub>Ek</sub> &nbsp; [kN]<br>
+erf. Tragfähigkeit Anschlagmittel = G<sub>Ed</sub>·1000 / 9,81 &nbsp; [kg]<br>
+M<sub>Ed</sub> = G<sub>Ed</sub> · hebelBlech / 4 &nbsp;&nbsp; W = b · t² / 6 &nbsp;&nbsp; σ = M<sub>Ed</sub>·10⁶ / W &nbsp; → &nbsp; <span class="ok-tag">σ ≤ f<sub>y</sub></span>
+</div>
+<p>dyn = dynamischer Erhöhungsfaktor beim Heben (Default 1,30); n<sub>Anker</sub> = Anzahl Anschlagpunkte.</p>
+</div>
+
+<!-- 13 Modul 8 -->
+<h2 class="sec" id="modul8">13 · Modul 8 · 3D-Vorschau</h2>
+<div class="panel">
+<p><b>Zweck:</b> Echtzeit-3D des Wandelements (Steine i2/i3, Vorspannstränge segmentiert, Öffnungen), drehbar – für die Abstimmung mit Architekten/Bauherren. Optional echte Steingeometrie (eingebettete OBJ) mit massiven Stegen und offenen Kammern.</p>
+</div>
+
+<!-- 14 Modul 9 -->
+<h2 class="sec" id="modul9">14 · Modul 9 · Stückliste & Kosten</h2>
+<div class="panel">
+<p><b>Zweck:</b> Material-Auszug mit editierbaren Preisen und Excel-Export. Aus dem Wandelement kommen Steine, Gewindestangen, Muttern, Platten; lädt man zusätzlich das Verbinder-Layout (oder ein Bundle), kommen <b>Verbinder, Latten und Dämmung</b> automatisch hinzu. Ausgabe: Summe netto, €/m² Wandfläche (Öffnungen abgezogen), Excel/CSV.</p>
+</div>
+
+<!-- 15 Modul 10 -->
+<h2 class="sec" id="modul10">15 · Modul 10 · Fertigungszeichnung</h2>
+<div class="panel">
+<p><b>Zweck:</b> bemaßter Verlege-, Vorspann- und Verbinderplan je Wand mit Schriftfeld und Stückliste – druckbar als PDF (A3/A4 quer über den Druckdialog).</p>
+</div>
+
+<!-- 16 -->
+<h2 class="sec" id="weiterentwicklung">16 · Weiterentwicklung (für Nicht-Programmierer)</h2>
+<div class="panel">
+<p>Die häufigsten Anpassungen lassen sich an klar benannten Stellen vornehmen. <b>Wichtig:</b> nach jeder Änderung die Tests laufen lassen und <code>publish-werkzeuge.mjs</code> ausführen.</p>
+<table>
+  <tr><th>Ich möchte ändern…</th><th>Stelle</th></tr>
+  <tr><td>System-Konstanten (Raster, Wandstärke, Stangen-Standard, max. Spannabstand, verbotene Breiten)</td><td>Konstantenblock oben in <code>Phase-1/sembla_core.py</code> <b>und</b> <code>Phase-2/sembla-core.mjs</code> (beide gleich halten!)</td></tr>
+  <tr><td>Material-/Sicherheitswerte der Statik</td><td><code>DEF_MAT</code> in <code>Auslegung-Engine/sembla-engine.mjs</code> und <code>DEFAULTS</code> in <code>Modul-3-Statik/sembla-statik.mjs</code></td></tr>
+  <tr><td>Statik-Formeln</td><td><code>Modul-3-Statik/sembla-statik.mjs</code> (Funktionen aus Kap. 5 & 12)</td></tr>
+  <tr><td>Auslegungs-Strategie (Kandidaten, N-Bereich)</td><td><code>autoAuslegung()</code> in <code>sembla-engine.mjs</code></td></tr>
+  <tr><td>Verbinder-Katalog / -Formel</td><td><code>VERBINDER_KATALOG</code> bzw. <code>computeLayout()</code> in <code>Modul-2-Verbinder/…</code></td></tr>
+  <tr><td>Latten-/Dämm-Regeln</td><td><code>Modul-Latten/sembla-latten.mjs</code></td></tr>
+  <tr><td>Preise der Stückliste</td><td>direkt im Tool editierbar; Default-Preise in <code>Modul-Stueckliste/…</code></td></tr>
+</table>
+<div class="note"><b>Goldene Regel zur Parität:</b> Der Wandaufbau-Kern existiert zweimal – Python (Referenz) und JavaScript (für die Tools). Wer eine Aufbau-Regel ändert, muss beide Dateien gleich halten; die Paritätstests vergleichen sie über „goldene Fixtures". Ändern sich Ausgaben bewusst, werden die Fixtures neu erzeugt.</div>
+</div>
+
+<!-- 17 -->
+<h2 class="sec" id="glossar">17 · Glossar & Quellen</h2>
+<div class="panel">
+<div class="kv">
+  <div class="k">Wandelement</div><div>parametrische JSON-Beschreibung einer Wand (Single Source of Truth)</div>
+  <div class="k">Lage (course)</div><div>eine Steinreihe, 200 mm hoch</div>
+  <div class="k">Raster (grid)</div><div>Längseinheit 125 mm</div>
+  <div class="k">Nut</div><div>innenliegender Steg im 12,5-cm-Raster zur Verbinder-Befestigung</div>
+  <div class="k">Kammer</div><div>durchgehender Hohlraum für Gewindestange/Lattice</div>
+  <div class="k">durchgehender Strang</div><div>Vorspannstrang über volle Wandhöhe – statisch wirksam</div>
+  <div class="k">Versatz</div><div>Mindest-Fugenversatz (1 Raster) benachbarter Lagen</div>
+  <div class="k">klaffende Fuge</div><div>Grenzzustand: keine Zugspannung in der Lagerfuge (Kernmoment)</div>
+  <div class="k">Auslastung (util)</div><div>Einwirkung / Widerstand; ≤ 1,0 bzw. ≤ 100 % = erfüllt</div>
+  <div class="k">UK</div><div>Unterkonstruktion (Holzlattung)</div>
+  <div class="k">BOM</div><div>Stückliste (bill of materials)</div>
+</div>
+<p style="margin-top:14px"><b>Quellen:</b> Kempen Krause, „Statische Betrachtung nichttragender Mauerwerkswände", Proj.-Nr. 20260304. SEMBLA-Systemparameter (Polycare).</p>
+</div>
+
+<footer>
+  SEMBLA Planungs-Suite · internes Handbuch · Stand: automatisch beim Erstellen. Berechnungen sind Planungshilfen und vom Tragwerksplaner zu bestätigen.
+</footer>
+
+</div>
+</body>
+</html>

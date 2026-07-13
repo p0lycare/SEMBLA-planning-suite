@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="de" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA – Statik vorgespannter Wände (Modul 6)</title>
+<style>
+  :root{ --bg:#f4f5f7; --panel:#fff; --ink:#1c2430; --muted:#6b7682; --line:#dfe3e8;
+         --accent:#1f6feb; --ok:#1f9d55; --warn:#c9461c; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  header{background:#13202e;color:#fff;padding:14px 22px}
+  header h1{margin:0;font-size:18px;font-weight:650}
+  header p{margin:3px 0 0;font-size:12.5px;color:#9fb0c0}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .controls{width:380px;flex:0 0 380px}
+  .stage{flex:1 1 460px;min-width:380px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 8px}
+  .grp{margin-bottom:14px}
+  .grp h3{font-size:12.5px;margin:0 0 6px;font-weight:650;border-bottom:1px solid var(--line);padding-bottom:4px}
+  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+  label small{color:var(--muted);font-size:11px}
+  input[type=number]{width:92px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;text-align:right;background:#fff}
+  select{padding:5px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px;background:#fff}
+  button{padding:9px;border:1px solid var(--line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);width:100%}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:#e3f5ea;color:var(--ok)} .badge.no{background:#fbe6dd;color:var(--warn)}
+  .sec{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:18px 0 8px;font-weight:700}
+  .sec:first-of-type{margin-top:4px}
+  .ctx{font-size:11.5px;color:var(--muted);margin:-2px 0 10px;line-height:1.5}
+  .card{border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:12px}
+  .card .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .card .top b{font-size:14px}
+  .res{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:12.5px}
+  .res .k{color:var(--muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  .util{height:8px;border-radius:5px;background:#eceef1;overflow:hidden;margin-top:8px}
+  .util>div{height:100%;background:var(--ok)}
+  .note{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
+  .summary{font-size:15px;font-weight:650;margin-bottom:6px}
+  .topnote{font-size:11.5px;color:var(--muted);margin-top:14px;border-top:1px solid var(--line);padding-top:10px;line-height:1.55}
+</style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:_dlc_DocId msdt:dt="string">YZXVWT2JSZP3-499227272-19988</mso:_dlc_DocId>
+<mso:_dlc_DocIdItemGuid msdt:dt="string">29bc4fb7-7b91-445f-b256-6ef86e7a0028</mso:_dlc_DocIdItemGuid>
+<mso:_dlc_DocIdUrl msdt:dt="string">https://polycare.sharepoint.com/sites/BuildingProjects235/_layouts/15/DocIdRedir.aspx?ID=YZXVWT2JSZP3-499227272-19988, YZXVWT2JSZP3-499227272-19988</mso:_dlc_DocIdUrl>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
+</head>
+<body>
+<header>
+  <h1>SEMBLA · Statik vorgespannter Wände <span style="font-weight:400;color:#9fb0c0">· Modul 6</span></h1>
+  <p>Nachweis nach Gutachten Prof. Schermer (Az. 2025_7001 Rev 01) · Z-3.15-2157 · DIN EN 1996-1-1 · DIN 4103-1 · DIN EN 1991-1-4</p>
+</header>
+
+<div class="wrap">
+  <div class="panel controls">
+    <h2>Eingaben</h2>
+    <input type="file" id="wandfile" accept=".json,application/json" style="display:none">
+    <button class="primary" id="loadwand">Wandelement / Bundle laden</button>
+    <div id="wandinfo" class="note" style="margin:6px 0 10px">Optional — füllt Geometrie &amp; Öffnungen. Sonst manuelle Eingabe.</div>
+
+    <div class="grp"><h3>Geometrie</h3>
+      <label><span>Wandhöhe h</span><input type="number" id="h_m" value="3.00" step="0.01"><small>m</small></label>
+      <label><span>Wandlänge l</span><input type="number" id="L_m" value="6.00" step="0.125"><small>m</small></label>
+      <label><span>Wanddicke t</span><input type="number" id="t_m" value="0.123" step="0.001"><small>m</small></label>
+      <label><span>Wandtyp</span><select id="mitWind"><option value="ja" selected>Innenwand mit Wind (Cpi)</option><option value="nein">Innenwand ohne Wind</option></select></label>
+      <label><span>Anzahl Öffnungen</span><input type="number" id="n_oeff" value="0" step="1" min="0"><small>Stk</small></label>
+    </div>
+
+    <div class="grp"><h3>Material / Bibliothek</h3>
+      <label><span>Wanddruckfestigkeit f<sub>k</sub></span><input type="number" id="f_k" value="20" step="0.5"><small>N/mm²</small></label>
+      <label><span>Wichte γ<sub>w</sub></span><input type="number" id="gamma_w" value="13.8" step="0.1"><small>kN/m³</small></label>
+      <label><span>γ<sub>M</sub> Wand</span><input type="number" id="gammaM_wand" value="2.0" step="0.05"><small>–</small></label>
+      <label><span>v<sub>Rd</sub> Plattenschub</span><input type="number" id="v_Rd" value="3.5" step="0.1"><small>kN/m</small></label>
+      <label><span>Reibbeiwert μ<sub>k</sub></span><input type="number" id="mu_k" value="0.5" step="0.05"><small>–</small></label>
+      <label><span>γ<sub>M,μ</sub> (Reibung)</span><input type="number" id="gamma_mu" value="1.5" step="0.05"><small>–</small></label>
+    </div>
+
+    <div class="grp"><h3>Gewindestange</h3>
+      <label><span>Auswahl</span><select id="stab">
+        <option value="M8">M8 · 8.8</option><option value="M10" selected>M10 · 8.8</option>
+        <option value="M12">M12 · 8.8</option><option value="M16">M16 · 8.8</option><option value="M20">M20 · 8.8</option></select></label>
+      <label><span>A<sub>s</sub></span><input type="number" id="As" value="58" step="0.1"><small>mm²</small></label>
+      <label><span>f<sub>yk</sub></span><input type="number" id="fyk_Stab" value="640" step="10"><small>N/mm²</small></label>
+      <label><span>f<sub>ub</sub></span><input type="number" id="fub_Stab" value="800" step="10"><small>N/mm²</small></label>
+      <label><span>γ<sub>s</sub></span><input type="number" id="gamma_s" value="1.25" step="0.05"><small>–</small></label>
+    </div>
+
+    <div class="grp"><h3>Lasten — Wind &amp; DIN 4103-1</h3>
+      <label><span>Windzone</span><select id="wlz"><option value="1">WLZ 1</option><option value="2" selected>WLZ 2</option><option value="3">WLZ 3</option><option value="4">WLZ 4</option></select></label>
+      <label><span>q<sub>p</sub>-Faktor</span><input type="number" id="qpFaktor" value="2.1" step="0.05"><small>–</small></label>
+      <label><span>c<sub>pe,10</sub></span><input type="number" id="cpe10" value="0.8" step="0.05"><small>–</small></label>
+      <label><span>Torsituation</span><select id="torDominant"><option value="dominant" selected>Dominante Öffnung (0,9·cpe)</option><option value="gering">geschlossen (±0,2)</option></select></label>
+      <label><span>γ<sub>Q</sub></span><input type="number" id="gammaQ" value="1.5" step="0.05"><small>–</small></label>
+      <label><span>q₁ Kat. I</span><input type="number" id="q1_I" value="0.5" step="0.1"><small>kN/m</small></label>
+      <label><span>q₁ Kat. II</span><input type="number" id="q1_II" value="1.0" step="0.1"><small>kN/m</small></label>
+      <label><span>Angriffshöhe a</span><input type="number" id="a_4103" value="0.9" step="0.05"><small>m</small></label>
+    </div>
+
+    <div class="grp"><h3>Vorspannung</h3>
+      <label><span>Regelraster e</span><input type="number" id="e_m" value="0.375" step="0.005"><small>m</small></label>
+      <label><span>Anfangskraft F<sub>0</sub></span><input type="number" id="F0" value="22" step="0.5"><small>kN/Stab</small></label>
+      <label><span>Verlust ΔF/F<sub>0</sub></span><input type="number" id="deltaF" value="0.33" step="0.01"><small>–</small></label>
+      <label><span>Untergrenze F<sub>inf</sub></span><input type="number" id="F_inf_min" value="11" step="0.5"><small>kN/Stab</small></label>
+      <label><span>γ<sub>P,fav</sub></span><select id="gammaP_fav"><option value="1.0">1,0 · Lidl</option><option value="1.1" selected>1,1 · EC-üblich</option><option value="1.35">1,35 · konservativ</option><option value="2.0">2,0 · worst case</option></select></label>
+      <label><span>γ<sub>P,sup</sub></span><input type="number" id="gammaP_sup" value="1.1" step="0.05"><small>–</small></label>
+    </div>
+
+    <div class="grp"><h3>Prüfwerte Biegung §6.2 (N<sub>v</sub> → m<sub>Rk</sub>)</h3>
+      <label><span>P1: N<sub>v</sub> / m<sub>Rk</sub></span><span><input type="number" id="Nv1" value="26.7" step="0.1" style="width:64px"> / <input type="number" id="mRk1" value="2.4" step="0.1" style="width:56px"></span></label>
+      <label><span>P2: N<sub>v</sub> / m<sub>Rk</sub></span><span><input type="number" id="Nv2" value="80" step="1" style="width:64px"> / <input type="number" id="mRk2" value="3.7" step="0.1" style="width:56px"></span></label>
+      <label><span>P3: N<sub>v</sub> / m<sub>Rk</sub></span><span><input type="number" id="Nv3" value="240" step="1" style="width:64px"> / <input type="number" id="mRk3" value="7.6" step="0.1" style="width:56px"></span></label>
+    </div>
+
+    <div class="grp"><h3>Spannsystem-Bauteile</h3>
+      <label><span>Steg-Breite b<sub>Steg</sub></span><input type="number" id="b_Steg" value="20" step="1"><small>mm</small></label>
+      <label><span>Kopfplatte b / t</span><span><input type="number" id="b_KpO" value="120" step="5" style="width:64px"> / <input type="number" id="t_KpO" value="15" step="1" style="width:52px"></span></label>
+      <label><span>Fußplatte b / t</span><span><input type="number" id="b_FpU" value="120" step="5" style="width:64px"> / <input type="number" id="t_FpU" value="15" step="1" style="width:52px"></span></label>
+      <label><span>f<sub>yk</sub> Platte (S235)</span><input type="number" id="fyk_Platte" value="235" step="5"><small>N/mm²</small></label>
+      <label><span>γ<sub>M0</sub> / γ<sub>M2</sub></span><span><input type="number" id="gammaM0" value="1.0" step="0.05" style="width:52px"> / <input type="number" id="gammaM2" value="1.25" step="0.05" style="width:52px"></span></label>
+      <label><span>k₂ Sechskant / Senk</span><span><input type="number" id="k2_SK" value="0.9" step="0.01" style="width:52px"> / <input type="number" id="k2_Senk" value="0.63" step="0.01" style="width:52px"></span></label>
+      <label><span>Mutter L<sub>min</sub> / L<sub>vorh</sub></span><span><input type="number" id="L_Mutter_min" value="30" step="1" style="width:52px"> / <input type="number" id="L_Mutter_vorh" value="35" step="1" style="width:52px"></span></label>
+      <label><span>Platten-Auflagerlänge l<sub>P</sub> je Stab</span><input type="number" id="l_Platte" value="375" step="5"><small>mm</small></label>
+    </div>
+
+    <div class="grp"><h3>Deckenanschluss (Winkel)</h3>
+      <label><span>Winkelabstand e<sub>W</sub></span><input type="number" id="eW_Winkel" value="1.5" step="0.25"><small>m</small></label>
+    </div>
+
+    <div class="grp"><h3>Transport / Hebezustand <small>(Zusatz, nicht Gutachten)</small></h3>
+      <label><span>Wichte ρ</span><input type="number" id="rho" value="13.8" step="0.5"><small>kN/m³</small></label>
+      <label><span>Streckgrenze f<sub>y</sub></span><input type="number" id="fy" value="235" step="5"><small>N/mm²</small></label>
+      <label><span>γ<sub>G</sub> / dyn.</span><span><input type="number" id="gammaG" value="1.35" step="0.05" style="width:52px"> / <input type="number" id="dyn" value="1.30" step="0.05" style="width:52px"></span></label>
+      <label><span>Anschlagpunkte</span><input type="number" id="nAnker" value="2" step="1" min="1"><small>Stk</small></label>
+      <label><span>Blech b / t</span><span><input type="number" id="blechB_mm" value="80" step="5" style="width:64px"> / <input type="number" id="blechT_mm" value="35" step="1" style="width:52px"></span></label>
+      <label><span>Hebelarm Blech</span><input type="number" id="hebelBlech_m" value="0.375" step="0.005"><small>m</small></label>
+    </div>
+
+    <div class="topnote"><b>Hinweis.</b> Rechenkern portiert aus der geprüften Arbeitsmappe „SEMBLA_Wand_Statik_v01“. Rechtliche Grundlage: Gutachten Prof. Schermer (Az. 2025_7001 Rev 01, nicht öffentlich). Ersetzt keine geprüfte Einzelstatik; Verankerung, Anschlagmittel und Deckenwinkel sind gesondert nachzuweisen.</div>
+  </div>
+
+  <div class="panel stage">
+    <div class="summary"><span class="badge" id="sumBadge">–</span> <span id="sumText"></span></div>
+
+    <div class="sec">Kompaktnachweis Wand</div>
+    <div class="ctx" id="ctxWand"></div>
+    <div class="card" id="cardBieg"></div>
+    <div class="card" id="cardSchub"></div>
+    <div class="card" id="cardDruck"></div>
+    <div class="card" id="cardBoden"></div>
+    <div class="card" id="cardWinkel"></div>
+
+    <div class="sec">Kompaktnachweis Spannsystem</div>
+    <div class="ctx" id="ctxSpann"></div>
+    <div class="card" id="cardStange"></div>
+    <div class="card" id="cardMStab"></div>
+    <div class="card" id="cardSpannO"></div>
+    <div class="card" id="cardUnten"></div>
+    <div class="card" id="cardKpO"></div>
+    <div class="card" id="cardFpU"></div>
+    <div class="card" id="cardStein"></div>
+    <div class="card" id="cardMutter"></div>
+
+    <div class="sec">Transport / Hebezustand <span style="text-transform:none;font-weight:400">(Planungshilfe)</span></div>
+    <div class="card" id="cardTrans"></div>
+  </div>
+</div>
+
+<script>
+// ==== sembla-statik (generiert) ====
+// @ts-check
+/**
+ * SEMBLA Statik — Nachweis vorgespannter, nicht-tragender Trockenmauerwerkswände.
+ * Grundlage: Gutachten Prof. Schermer (Az. 2025_7001 Rev 01 vom 18.05.2026),
+ * Z-3.15-2157, DIN EN 1996-1-1, DIN 4103-1, DIN EN 1991-1-4.
+ *
+ * Portiert 1:1 aus der geprüften Arbeitsmappe „SEMBLA_Wand_Statik_v01.xlsx“.
+ * Reine Funktionen (kein DOM). Einheiten: kN, m, mm, N/mm².
+ *
+ * Zwei Nachweiskomplexe:
+ *   A) Wand      — Biegung, Schub, Druckrand, Bodenanschluss (Reibung), Deckenwinkel
+ *   B) Spannsystem — Gewindestange, Kopplungsmutter, Spannschrauben, Kopf-/Fußplatte
+ * Zusätzlich (nicht im Gutachten): Transport-/Hebezustand (Planungshilfe).
+ */
+
+/** Lineare Regression (Excel FORECAST): Kleinste-Quadrate-Gerade y(x) durch (xs,ys), Vorhersage bei x. */
+function forecastLin(x, xs, ys) {
+  const n = xs.length;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxy = 0, sxx = 0;
+  for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; }
+  const slope = sxx === 0 ? 0 : sxy / sxx;
+  return my - slope * mx + slope * x;
+}
+
+/** Bezugsgeschwindigkeitsdruck qb aus Windzone 1–4 (DIN EN 1991-1-4/NA). */
+function qbAusWLZ(wlz) { return [0.32, 0.39, 0.47, 0.56][Math.max(1, Math.min(4, wlz)) - 1]; }
+
+/** A0) Lasten: Wind (qp, Innendruck Cpi) + Bemessungsflächenlast w_Ed. */
+function lasten(p) {
+  const qb = qbAusWLZ(p.wlz);
+  const qp = qb * (p.qpFaktor ?? 2.1);                 // Böengeschwindigkeitsdruck (vereinfacht)
+  const CpiFaktor = p.torDominant ? 0.9 : 0.2;         // dominante Öffnung → 0,9·cpe,10, sonst ±0,2
+  const Cpi = CpiFaktor * p.cpe10;
+  const w_i = qp * Cpi;                                // Innendruck auf Innenwand
+  const w_Ed = p.mitWind ? (p.gammaQ ?? 1.5) * w_i : 0;// Wind leitend
+  return { qb, qp, Cpi, w_i, w_Ed };
+}
+
+/** A1) Vorspannung: F∞, Bemessungs-Vorspannkraft je m (günstig/ungünstig), M-Stab-Nachweis (Fließen). */
+function vorspannung(p) {
+  const n = 1 / p.e_m;                                 // Stäbe je m
+  const F_infty = p.F0 * (1 - p.deltaF);               // Restvorspannkraft je Stab
+  const F_inf_ok = F_infty >= p.F_inf_min - 1e-9;
+  const Nv_fav = F_infty * n / p.gammaP_fav;           // günstig (Biegung/Druck-Interpolation)
+  const Nv_sup = p.F0 * n * p.gammaP_sup;              // ungünstig (Druckrand, Boden)
+  // M-Stab: Zug aus Fließen des Gewindequerschnitts (γs), Info-Nachweis wie Deckblatt
+  const Ft_Rd_yield = p.As * p.fyk_Stab / p.gamma_s / 1000;
+  const Ft_Ed = p.F0 * p.gammaP_sup;
+  const eta_Mstab = Ft_Ed / Ft_Rd_yield;
+  return { n, F_infty, F_inf_ok, Nv_fav, Nv_sup, Ft_Rd_yield, Ft_Ed, eta_Mstab };
+}
+
+/** A2) Schnittgrößen Einfeldträger (l = Wandhöhe h), drei Lastfälle Wind / DIN 4103 Kat I / Kat II. */
+function schnittgroessen(p, L, V) {
+  const h = p.h_m, a = p.a_4103, gQ = p.gammaQ ?? 1.5;
+  const mEd_W = L.w_Ed * h ** 2 / 8;
+  const vEd_W = L.w_Ed * h / 2;
+  const mEd_I = gQ * p.q1_I * a * (h - a) / h;
+  const vEd_I = gQ * p.q1_I * (h - a) / h;
+  const mEd_II = gQ * p.q1_II * a * (h - a) / h;
+  const vEd_II = gQ * p.q1_II * (h - a) / h;
+  const mEd = Math.max(mEd_W, mEd_I, mEd_II);
+  const vEd = Math.max(vEd_W, vEd_I, vEd_II);
+  const N_Ed_Boden = V.Nv_sup + p.gamma_w * p.t_m * h; // Fußnormalkraft = Vorspannung(ungünstig) + Eigengewicht
+  return { mEd_W, vEd_W, mEd_I, vEd_I, mEd_II, vEd_II, mEd, vEd, N_Ed_Boden };
+}
+
+/** A) Kompaktnachweis Wand. */
+function nachweisWand(p) {
+  const L = lasten(p);
+  const V = vorspannung(p);
+  const S = schnittgroessen(p, L, V);
+
+  // Biegung — m_Rk interpoliert aus Prüfwerten §6.2 über Nv,fav, γM=2,0.
+  // Extrapolation abgesichert: über Prüfbereich wird die Tragfähigkeit auf den obersten
+  // geprüften Punkt gekappt (kein Kredit jenseits der Versuche); unter Prüfbereich Warnung.
+  const xs = p.pruef.map(q => q.Nv), ys = p.pruef.map(q => q.mRk);
+  const NvMin = Math.min(...xs), NvMax = Math.max(...xs);
+  let interpol = 'ok', m_Rk;
+  if (V.Nv_fav > NvMax + 1e-9) { m_Rk = forecastLin(NvMax, xs, ys); interpol = 'above'; }
+  else { m_Rk = forecastLin(V.Nv_fav, xs, ys); if (V.Nv_fav < NvMin - 1e-9) interpol = 'below'; }
+  const m_Rd = m_Rk / p.gammaM_wand;
+  const eta_Biegung = S.mEd / m_Rd;
+
+  // Schub (Platte)
+  const v_Rd = p.v_Rd;
+  const eta_Schub = S.vEd / v_Rd;
+
+  // Druckrand-Spannung
+  const sig_Ed = V.Nv_sup / (p.t_m * 1000) + 6 * S.mEd / (p.t_m ** 2 * 1000);
+  const sig_Rd = p.f_k / p.gammaM_wand;
+  const eta_Druck = sig_Ed / sig_Rd;
+
+  // Bodenanschluss — Reibung Stahl/Beton
+  const mu_d = p.mu_k / p.gamma_mu;
+  const V_Rd_Boden = mu_d * S.N_Ed_Boden;
+  const eta_Boden = S.vEd / V_Rd_Boden;
+
+  // Deckenanschluss — Anschlusskraft Stahlwinkel (Nachweis Winkel separat)
+  const V_Winkel = S.vEd * p.eW_Winkel;
+  const n_Winkel = Math.ceil(p.L_m / p.eW_Winkel) + 1;
+
+  const eta_max = Math.max(eta_Biegung, eta_Schub, eta_Druck, eta_Boden);
+  return {
+    lasten: L, vor: V, schnitt: S,
+    biegung: { m_Ed: S.mEd, m_Rk, m_Rd, eta: eta_Biegung, ok: eta_Biegung <= 1 + 1e-9, Nv: V.Nv_fav, NvMin, NvMax, interpol },
+    schub: { v_Ed: S.vEd, v_Rd, eta: eta_Schub, ok: eta_Schub <= 1 + 1e-9 },
+    druck: { sig_Ed, sig_Rd, eta: eta_Druck, ok: eta_Druck <= 1 + 1e-9 },
+    boden: { mu_d, V_Ed: S.vEd, N_Ed: S.N_Ed_Boden, V_Rd: V_Rd_Boden, eta: eta_Boden, ok: eta_Boden <= 1 + 1e-9 },
+    winkel: { V_Winkel, n_Winkel, eW: p.eW_Winkel },
+    eta_max, ok: eta_max <= 1 + 1e-9,
+  };
+}
+
+/** B) Kompaktnachweis Spannsystem (Bauteile). */
+function nachweisSpannsystem(p) {
+  const L_span = p.t_m * 1000 - 2 * p.b_Steg;          // statische Spannweite Platte [mm]
+  const Ft_Ed = p.F0 * p.gammaP_sup;                   // kN je Stab (ungünstig)
+  const Rd_bolt = k2 => k2 * p.fub_Stab * p.As / p.gammaM2 / 1000; // kN
+
+  const stange = { Ft_Ed, Ft_Rd: Rd_bolt(p.k2_SK), eta: Ft_Ed / Rd_bolt(p.k2_SK) };
+  // M-Stab — Fließen des Gewindequerschnitts (A_s·f_yk/γ_s). Maßgebender Stangennachweis.
+  const Ft_Rd_yield = p.As * p.fyk_Stab / p.gamma_s / 1000;
+  const stangeYield = { Ft_Ed, Ft_Rd: Ft_Rd_yield, eta: Ft_Ed / Ft_Rd_yield };
+  const spannSK = { Ft_Ed, Ft_Rd: Rd_bolt(p.k2_SK), eta: Ft_Ed / Rd_bolt(p.k2_SK) };
+  const untenSK = { Ft_Ed, Ft_Rd: Rd_bolt(p.k2_SK), eta: Ft_Ed / Rd_bolt(p.k2_SK) };
+  const untenSenk = { Ft_Ed, Ft_Rd: Rd_bolt(p.k2_Senk), eta: Ft_Ed / Rd_bolt(p.k2_Senk) };
+  const mutter = { L_vorh: p.L_Mutter_vorh, L_min: p.L_Mutter_min, ok: p.L_Mutter_vorh >= p.L_Mutter_min };
+
+  // Kopf-/Fußplatte: Einfeldträger auf 2 Stegen, mittige Punktlast F = F0·γP,sup
+  const plattenNW = (b, t) => {
+    const M_Ed = p.F0 * p.gammaP_sup * 1000 * L_span / 4;  // Nmm
+    const W_el = b * t ** 2 / 6;                            // mm³
+    const sig_Ed = M_Ed / W_el;                            // N/mm²
+    const sig_Rd = p.fyk_Platte / p.gammaM0;
+    return { M_Ed, W_el, sig_Ed, sig_Rd, eta: sig_Ed / sig_Rd };
+  };
+  const kopfplatte = plattenNW(p.b_KpO, p.t_KpO);
+  const fussplatte = plattenNW(p.b_FpU, p.t_FpU);
+
+  // Teilflächenpressung Stein unter der Ankerplatte: konzentrierte Stabkraft F auf die
+  // Auflagerfläche der Platte über den Steinstegen (2 Stege × Auflagerlänge je Stab).
+  // A_Stein = 2·b_Steg·l_Platte ; σ_Rd = f_k/γ_M (β = 1,0, konservativ; EC6 §6.1.3 erlaubt ggf. Erhöhung).
+  const A_Stein = 2 * p.b_Steg * p.l_Platte;
+  const sig_Stein = p.F0 * p.gammaP_sup * 1000 / A_Stein;
+  const sigRd_Stein = p.f_k / p.gammaM_wand;
+  const steinPressung = { F: p.F0 * p.gammaP_sup, A: A_Stein, l_Platte: p.l_Platte, sig_Ed: sig_Stein, sig_Rd: sigRd_Stein, eta: sig_Stein / sigRd_Stein };
+
+  // η_max: maßgebender Stangennachweis (Fließen), SK-Schrauben, Platten, Steinpressung.
+  // Senkschraube bleibt Warn-Alternative (nicht im Max).
+  const eta_max = Math.max(stange.eta, stangeYield.eta, spannSK.eta, untenSK.eta, kopfplatte.eta, fussplatte.eta, steinPressung.eta);
+  return {
+    L_span, stange, stangeYield, mutter, spannSK, untenSK, untenSenk, kopfplatte, fussplatte, steinPressung,
+    eta_max, ok: eta_max <= 1 + 1e-9,
+  };
+}
+
+/** Wand-Eigengewicht als Streckenlast nEd [kN/m] = ρ·t·h. */
+function eigengewichtLinie(h_m, rho = 14.0, t_m = 0.125) { return rho * t_m * h_m; }
+
+/** Z) Transport / Hebezustand — Last je Anschlagpunkt und Blech-Biegung (Planungshilfe, nicht Gutachten). */
+function transport(p) {
+  const nEd = eigengewichtLinie(p.h_m, p.rho ?? 14.0, p.t_m ?? 0.125);
+  const GEk = nEd * p.L_m / p.nAnker;
+  const GEd = (p.gammaG ?? 1.35) * (p.dyn ?? 1.30) * GEk;
+  const GEd_kg = GEd * 1000 / 9.81;
+  const W = p.blechB_mm * p.blechT_mm * p.blechT_mm / 6;
+  const MEd = GEd * p.hebelBlech_m / 4;
+  const sigma = MEd * 1e6 / W;
+  return { nEd, GEk, GEd, GEd_kg, W, MEd, sigma, util: sigma / p.fy, ok: sigma <= p.fy + 1e-9 };
+}
+
+/** Öffnungen: Zusatzstäbe + Gesamtanzahl Gewindestangen (Regelbereich, Start 2. Achse). */
+function oeffnungen(p) {
+  const n_regel = Math.floor(p.L_m / p.e_m);
+  const n_zusatz = p.n_oeff * p.zusatz_je_seite * 2;
+  const n_gesamt = n_regel + n_zusatz;
+  return { n_regel, n_zusatz, n_gesamt, ankerplatten: 2 * n_gesamt, muttern: 2 * n_gesamt };
+}
+
+/** Komplettnachweis aus einem Parametersatz. */
+function nachweise(p) {
+  const wand = nachweisWand(p);
+  const spann = nachweisSpannsystem(p);
+  return {
+    wand, spann, transport: transport(p), oeffnungen: oeffnungen(p),
+    eta_max_gesamt: Math.max(wand.eta_max, spann.eta_max),
+    ok: Math.max(wand.eta_max, spann.eta_max) <= 1 + 1e-9,
+  };
+}
+
+/** Gewindestangen-Katalog (8.8): As [mm²], fyk/fub [N/mm²]. */
+const STAB_KATALOG = {
+  M8: { d: 8, As: 36.6, fyk: 640, fub: 800 },
+  M10: { d: 10, As: 58, fyk: 640, fub: 800 },
+  M12: { d: 12, As: 84.3, fyk: 640, fub: 800 },
+  M16: { d: 16, As: 157, fyk: 640, fub: 800 },
+  M20: { d: 20, As: 245, fyk: 640, fub: 800 },
+};
+
+/** Standardwerte gemäß Arbeitsmappe (Aschersleben — Rettungswache, IW-01). */
+const DEFAULTS = {
+  // Geometrie
+  h_m: 3.0, L_m: 6.0, t_m: 0.123, mitWind: true,
+  // Material / Bibliothek
+  f_k: 20, gamma_w: 13.8, gammaM_wand: 2.0,
+  // Gewindestange (M10 8.8)
+  As: 58, fyk_Stab: 640, fub_Stab: 800, gamma_s: 1.25,
+  // Lasten
+  wlz: 2, qpFaktor: 2.1, cpe10: 0.8, torDominant: true, gammaQ: 1.5,
+  q1_I: 0.5, q1_II: 1.0, a_4103: 0.9,
+  // Vorspannung
+  e_m: 0.375, F0: 22, deltaF: 0.33, F_inf_min: 11, gammaP_fav: 1.1, gammaP_sup: 1.1,
+  // Prüfwerte Biegung §6.2
+  pruef: [{ Nv: 26.7, mRk: 2.4 }, { Nv: 80, mRk: 3.7 }, { Nv: 240, mRk: 7.6 }],
+  v_Rd: 3.5,
+  // Bodenanschluss
+  mu_k: 0.5, gamma_mu: 1.5,
+  // Deckenwinkel
+  eW_Winkel: 1.5,
+  // Spannsystem-Bauteile
+  b_Steg: 20, b_KpO: 120, t_KpO: 15, b_FpU: 120, t_FpU: 15,
+  fyk_Platte: 235, gammaM0: 1.0, gammaM2: 1.25, k2_SK: 0.9, k2_Senk: 0.63,
+  L_Mutter_min: 30, L_Mutter_vorh: 35, l_Platte: 375,
+  // Öffnungen
+  n_oeff: 0, zusatz_je_seite: 2,
+  // Transport / Hebezustand
+  rho: 13.8, fy: 235, gammaG: 1.35, dyn: 1.30, nAnker: 2,
+  blechB_mm: 80, blechT_mm: 35, hebelBlech_m: 0.375,
+};
+
+
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const pct=u=>fmt((isFinite(u)?u:0)*100,1)+' %';
+
+const NUM=['h_m','L_m','t_m','n_oeff','f_k','gamma_w','gammaM_wand','v_Rd','mu_k','gamma_mu',
+ 'As','fyk_Stab','fub_Stab','gamma_s','qpFaktor','cpe10','gammaQ','q1_I','q1_II','a_4103',
+ 'e_m','F0','deltaF','F_inf_min','gammaP_sup',
+ 'Nv1','mRk1','Nv2','mRk2','Nv3','mRk3',
+ 'b_Steg','b_KpO','t_KpO','b_FpU','t_FpU','fyk_Platte','gammaM0','gammaM2','k2_SK','k2_Senk','L_Mutter_min','L_Mutter_vorh','l_Platte',
+ 'eW_Winkel','rho','fy','gammaG','dyn','nAnker','blechB_mm','blechT_mm','hebelBlech_m'];
+const SEL=['wlz','mitWind','torDominant','gammaP_fav','stab'];
+
+function readP(){
+  const p={};
+  for(const f of NUM) p[f]=+$(f).value;
+  p.wlz=+$('wlz').value;
+  p.mitWind=$('mitWind').value==='ja';
+  p.torDominant=$('torDominant').value==='dominant';
+  p.gammaP_fav=+$('gammaP_fav').value;
+  p.pruef=[{Nv:p.Nv1,mRk:p.mRk1},{Nv:p.Nv2,mRk:p.mRk2},{Nv:p.Nv3,mRk:p.mRk3}];
+  p.zusatz_je_seite=2;
+  return p;
+}
+
+function util(u){ const w=Math.min(100,Math.round((isFinite(u)?u:0)*100)); const ok=u<=1+1e-9;
+  return `<div class="util"><div style="width:${w}%;background:${ok?'var(--ok)':'var(--warn)'}"></div></div><div class="note">η = ${pct(u)}${ok?'':'  ·  Nachweis nicht erfüllt'}</div>`; }
+function card(el, ok, title, rows, extra){
+  el.innerHTML=`<div class="top"><b>${title}</b><span class="badge ${ok?'ok':'no'}">${ok?'OK':'NICHT OK'}</span></div>`+
+    `<div class="res">${rows.map(r=>`<div class="k">${r[0]}</div><div class="v">${r[1]}</div>`).join('')}</div>`+(extra||'');
+}
+
+function run(){
+  const p=readP();
+  const r=nachweise(p);
+  const w=r.wand, s=r.spann, tr=r.transport, o=r.oeffnungen, V=w.vor;
+
+  $('sumBadge').className='badge '+(r.ok?'ok':'no');
+  $('sumBadge').textContent=r.ok?'Nachweis erfüllt':'Nachweis NICHT erfüllt';
+  $('sumText').innerHTML=`η<sub>max,gesamt</sub> = <b>${pct(r.eta_max_gesamt)}</b> &nbsp;·&nbsp; Wand ${pct(w.eta_max)} &nbsp;·&nbsp; Spannsystem ${pct(s.eta_max)}`;
+
+  $('ctxWand').innerHTML=`w<sub>Ed</sub> = ${fmt(w.lasten.w_Ed)} kN/m² &nbsp;·&nbsp; N<sub>v,fav</sub> = ${fmt(V.Nv_fav,1)} · N<sub>v,sup</sub> = ${fmt(V.Nv_sup,1)} kN/m &nbsp;·&nbsp; F∞ = ${fmt(V.F_infty)} kN/Stab ${V.F_inf_ok?'✓ ≥ F,inf':'⚠ &lt; F,inf — F0 erhöhen'} &nbsp;·&nbsp; m<sub>Ed</sub> = ${fmt(w.biegung.m_Ed)} · v<sub>Ed</sub> = ${fmt(w.schub.v_Ed)}`;
+
+  const bWarn = w.biegung.interpol==='above'
+    ? `<div class="note" style="color:var(--warn)">⚠ N_v,fav = ${fmt(w.biegung.Nv,1)} kN/m über Prüfbereich (≤ ${fmt(w.biegung.NvMax,0)}); m_Rk auf obersten Prüfwert gekappt.</div>`
+    : w.biegung.interpol==='below'
+    ? `<div class="note" style="color:var(--warn)">⚠ N_v,fav = ${fmt(w.biegung.Nv,1)} kN/m unter Prüfbereich (≥ ${fmt(w.biegung.NvMin,0)}); Extrapolation — Wert prüfen.</div>` : '';
+  card($('cardBieg'), w.biegung.ok, '1 · Biegung Wandmitte',
+    [['m_Ed (maßg. Wind/DIN 4103)', fmt(w.biegung.m_Ed)+' kNm/m'],
+     ['m_Rk (interpol. §6.2 bei N_v,fav = '+fmt(w.biegung.Nv,1)+')', fmt(w.biegung.m_Rk)+' kNm/m'],
+     ['m_Rd = m_Rk / γ_M', fmt(w.biegung.m_Rd)+' kNm/m']], util(w.biegung.eta)+bWarn);
+  card($('cardSchub'), w.schub.ok, '2 · Schub (Platte)',
+    [['v_Ed', fmt(w.schub.v_Ed)+' kN/m'],
+     ['v_Rd (Gutachten §6.3)', fmt(w.schub.v_Rd)+' kN/m']], util(w.schub.eta));
+  card($('cardDruck'), w.druck.ok, '3 · Druckrand-Spannung',
+    [['σ_Ed = N_v,sup/(t·1000)+6·m_Ed/(t²·1000)', fmt(w.druck.sig_Ed)+' N/mm²'],
+     ['σ_Rd = f_k / γ_M', fmt(w.druck.sig_Rd)+' N/mm²']], util(w.druck.eta));
+  card($('cardBoden'), w.boden.ok, '4 · Bodenanschluss — Reibung',
+    [['μ_d = μ_k / γ_M,μ', fmt(w.boden.mu_d,3)],
+     ['N_Ed = N_v,sup + γ_w·t·h', fmt(w.boden.N_Ed)+' kN/m'],
+     ['V_Rd = μ_d · N_Ed', fmt(w.boden.V_Rd)+' kN/m'],
+     ['V_Ed', fmt(w.boden.V_Ed)+' kN/m']], util(w.boden.eta));
+  $('cardWinkel').innerHTML=`<div class="top"><b>5 · Deckenanschluss — Winkel</b><span class="badge ok">Übergabe Stahlbau</span></div>`+
+    `<div class="res"><div class="k">Winkelabstand e_W</div><div class="v">${fmt(w.winkel.eW)} m</div>`+
+    `<div class="k">V_Winkel = v_Ed · e_W</div><div class="v">${fmt(w.winkel.V_Winkel)} kN/Winkel</div>`+
+    `<div class="k">Anzahl Winkel je Wand</div><div class="v">${w.winkel.n_Winkel} Stk</div></div>`+
+    `<div class="note">Anschlusskraft wird an den Stahlbau übergeben; Nachweis Winkel + Verankerung separat.</div>`;
+
+  $('ctxSpann').innerHTML=`L<sub>span</sub> = ${fmt(s.L_span,0)} mm &nbsp;·&nbsp; F<sub>t,Ed</sub> = F₀·γ<sub>P,sup</sub> = ${fmt(s.stange.Ft_Ed)} kN/Stab &nbsp;·&nbsp; M-Stab (Fließen) η = ${pct(V.eta_Mstab)}`;
+  card($('cardStange'), s.stange.eta<=1, '1 · Gewindestange (Zug, EC3-Schraube)',
+    [['F_t,Ed = F₀·γ_P,sup', fmt(s.stange.Ft_Ed)+' kN'],
+     ['F_t,Rd = k₂,SK·f_ub·A_s/γ_M2', fmt(s.stange.Ft_Rd)+' kN']], util(s.stange.eta));
+  card($('cardMStab'), s.stangeYield.eta<=1, '1b · Gewindestange (Fließen, maßgebend)',
+    [['F_t,Ed = F₀·γ_P,sup', fmt(s.stangeYield.Ft_Ed)+' kN'],
+     ['F_t,Rd = A_s·f_yk/γ_s', fmt(s.stangeYield.Ft_Rd)+' kN']], util(s.stangeYield.eta));
+  card($('cardSpannO'), s.spannSK.eta<=1, '2 · Spannschraube oben (Sechskant)',
+    [['F_t,Ed', fmt(s.spannSK.Ft_Ed)+' kN'],
+     ['F_t,Rd (k₂ = '+fmt(p.k2_SK,2)+')', fmt(s.spannSK.Ft_Rd)+' kN']], util(s.spannSK.eta));
+  $('cardUnten').innerHTML=`<div class="top"><b>3 · Schraube unten — Variante</b><span class="badge ${s.untenSK.eta<=1?'ok':'no'}">Sechskant OK</span></div>`+
+    `<div class="res"><div class="k">Sechskant η (k₂=${fmt(p.k2_SK,2)})</div><div class="v">${pct(s.untenSK.eta)}${s.untenSK.eta<=1?' ✓':' ✗'}</div>`+
+    `<div class="k">Senkschraube η (k₂=${fmt(p.k2_Senk,2)})</div><div class="v" style="color:${s.untenSenk.eta<=1?'inherit':'var(--warn)'}">${pct(s.untenSenk.eta)}${s.untenSenk.eta<=1?' ✓':' ✗'}</div></div>`+
+    `<div class="note">Maßgebend ist die Sechskantschraube. Senkschraube nur zulässig, wenn η ≤ 100 %.</div>`;
+  card($('cardKpO'), s.kopfplatte.eta<=1, '4 · Kopfplatte oben (Biegung)',
+    [['M_Ed = F·L_span/4', fmt(s.kopfplatte.M_Ed,0)+' Nmm'],
+     ['W_el = b·t²/6', fmt(s.kopfplatte.W_el,0)+' mm³'],
+     ['σ_Ed', fmt(s.kopfplatte.sig_Ed)+' N/mm²'],
+     ['σ_Rd = f_yk / γ_M0', fmt(s.kopfplatte.sig_Rd)+' N/mm²']], util(s.kopfplatte.eta));
+  card($('cardFpU'), s.fussplatte.eta<=1, '5 · Fußplatte unten (Biegung)',
+    [['σ_Ed', fmt(s.fussplatte.sig_Ed)+' N/mm²'],
+     ['σ_Rd = f_yk / γ_M0', fmt(s.fussplatte.sig_Rd)+' N/mm²']], util(s.fussplatte.eta));
+  card($('cardStein'), s.steinPressung.eta<=1, '6 · Teilflächenpressung Stein unter Platte',
+    [['F = F₀·γ_P,sup', fmt(s.steinPressung.F)+' kN'],
+     ['A = 2·b_Steg·l_P', fmt(s.steinPressung.A,0)+' mm²'],
+     ['σ_Ed = F / A', fmt(s.steinPressung.sig_Ed)+' N/mm²'],
+     ['σ_Rd = f_k / γ_M (β=1,0)', fmt(s.steinPressung.sig_Rd)+' N/mm²']], util(s.steinPressung.eta));
+  $('cardMutter').innerHTML=`<div class="top"><b>7 · Kopplungsmutter</b><span class="badge ${s.mutter.ok?'ok':'no'}">${s.mutter.ok?'erfüllt':'NICHT erfüllt'}</span></div>`+
+    `<div class="res"><div class="k">L_vorh ≥ L_min</div><div class="v">${fmt(s.mutter.L_vorh,0)} ≥ ${fmt(s.mutter.L_min,0)} mm</div></div>`;
+
+  card($('cardTrans'), tr.ok, 'Hebezustand / Transport',
+    [['n_Ed = ρ·t·h', fmt(tr.nEd)+' kN/m'],
+     ['G_Ek = n_Ed·L/n', fmt(tr.GEk)+' kN'],
+     ['G_Ed = γ_G·dyn·G_Ek', fmt(tr.GEd)+' kN'],
+     ['erf. Anschlagmittel', '≥ '+fmt(tr.GEd_kg,0)+' kg'],
+     ['σ_Ed Blech = M_Ed/W', fmt(tr.sigma,0)+' N/mm²'],
+     ['Nachweis', 'σ_Ed ≤ f_y']], util(tr.util));
+}
+
+// Gewindestangen-Auswahl füllt A_s / f_yk / f_ub
+$('stab').addEventListener('change',()=>{ const k=STAB_KATALOG[$('stab').value]; if(k){ $('As').value=k.As; $('fyk_Stab').value=k.fyk; $('fub_Stab').value=k.fub; } run(); });
+NUM.forEach(f=>$(f).addEventListener('input',run));
+['wlz','mitWind','torDominant','gammaP_fav'].forEach(f=>$(f).addEventListener('change',run));
+
+$('loadwand').addEventListener('click',()=>$('wandfile').click());
+$('wandfile').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+  const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result);
+    const w=(j&&j.format==='SEMBLA-Projekt'&&j.wandelement)?j.wandelement:j;
+    if(w.height_mm) $('h_m').value=(w.height_mm/1000).toFixed(2);
+    if(w.length_mm) $('L_m').value=(w.length_mm/1000).toFixed(3);
+    if(w.thickness_mm) $('t_m').value=(w.thickness_mm/1000).toFixed(3);
+    const nO=Array.isArray(w.openings)?w.openings.filter(o=>((o.g1-o.g0)||(o.b)||0)>0).length:0;
+    $('n_oeff').value=nO;
+    $('wandinfo').textContent='Geladen: '+(w.name||'Wandelement')+' · '+((w.length_mm||0)/1000).toFixed(3)+' × '+((w.height_mm||0)/1000).toFixed(2)+' m · '+nO+' Öffnung(en)';
+    run();
+  }catch(e){ alert('Ungültiges Wandelement / Bundle: '+e.message);} }; rd.readAsText(f); });
+
+window.__statik={ run, readP, get nachweise(){return nachweise;}, get STAB_KATALOG(){return STAB_KATALOG;} };
+run();
+</script>
+</body>
+</html>
