@@ -1,0 +1,15 @@
+# Vertraulich – NICHT ins (öffentliche) Repo
+Uploads/
+
+# Abhängigkeiten (regenerierbar via `npm install`)
+node_modules/
+
+# macOS / OS-Müll
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editor/Temp
+*.log
+/tmp/
