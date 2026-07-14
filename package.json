@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "handbuch": "node build-handbuch.mjs",
-    "publish": "node publish-werkzeuge.mjs",
+    "test:core": "python3 Phase-1/test_sembla_core.py && node Phase-2/test-sembla-core.mjs && node test-shared.mjs",
     "test:statik": "cd Modul-3-Statik && node test-statik.mjs && node smoke_statik.mjs",
     "dxf": "python3 Interop-CAD/sembla_dxf.py",
     "ifc": "python3 Interop-CAD/sembla_ifc.py",

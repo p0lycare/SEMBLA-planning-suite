@@ -501,4 +501,4 @@ const doc = new Document({
   }],
 });
 
-Packer.toBuffer(doc).then(buf => { fs.writeFileSync("SEMBLA_Handbuch.docx", buf); console.log("OK", buf.length, "bytes"); });
+Packer.toBuffer(doc).then(buf => { fs.writeFileSync("doku/SEMBLA_Handbuch.docx", buf); console.log("OK", buf.length, "bytes"); });

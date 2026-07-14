@@ -4,6 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > Sprache: Dieses Projekt ist durchgängig deutsch (Code-Kommentare, Doku, UI). Antworte auf Deutsch.
 
+> ## 🚧 UMBAU IM GANG (seit 2026-07-14) — zuerst lesen
+> Die Suite wird auf eine gehostete **Minimalversion (MVP)** umgebaut. **Verbindlicher Plan:
+> [`doku/REFACTOR.md`](doku/REFACTOR.md)** — dort stehen Zielbild, Modul-Zuordnung, Session-Plan
+> und Fortschritt. Kernpunkte: GitHub Pages (Ordner `docs/`), Module als getrennte Dateien mit
+> gemeinsamem `docs/shared/`, **das alte Build-System entfällt** (`build-*.mjs`, `publish-werkzeuge.mjs`,
+> `sync-shared.mjs` → nach `legacy/`), Wandelement lebt im **localStorage**. Der doppelte Python-Boden
+> bleibt als Test-Strategie. **Vieles unten beschreibt noch den ALTEN Zustand** — es gilt für die
+> noch nicht migrierten Modul-Ordner, bis sie in ihrer Session umgebaut sind. Diese Datei bekommt
+> ihre finale, schlanke Fassung in Session 9.
+>
+> **Übergangszustand nach Session 1 (Aufräumen):**
+> - `legacy/` ← `_archiv`, `Revit-pyRevit`, `EtappeA-App-beta-sandbox`, `Modul-Roboter`,
+>   `Modul-Fertigung`, `Projekt-Manager`, `SEMBLA Werkzeuge` (altes Build-Produkt),
+>   `publish-werkzeuge.mjs`, `sync-shared.mjs`. Rückholbar; nicht Teil des MVP.
+> - `doku/` ← Handbuch, OSS-Matrix, Prozess-Grafiken, `_LIESMICH.md`, `GIT-SETUP.md`, `REFACTOR.md`.
+> - **Noch am alten Platz** (bis Session 2/ihrer Modul-Session): `Phase-1/`, `Phase-2/`, `Interop-CAD/`
+>   (→ Session 2 nach `tests/`) und die aktiven Modul-Ordner (`Modul-1-Wandplanung/`,
+>   `Modul-Wandaufbau/`, `Modul-3-Statik/`, `Modul-Stueckliste/`, `Modul-4-Montageplanung/`, `Modul-3D/`,
+>   `Auslegung-Engine/`) sowie `sembla-shared.js`, `sembla-obj-loader.js`, `SEMBLA_Uebersicht.html`.
+
 ## Was das ist
 
 SEMBLA Planungs-Suite — Werkzeuge zur Planung vorgespannter Trockenmauerwerkswände
@@ -79,15 +99,11 @@ Hinweis: Ordner `SEMBLA Tools/` (falls vorhanden) ist veraltet; maßgeblich ist 
 npm install                       # docx + web-ifc (JS-Abhängigkeiten)
 pip install ezdxf ifcopenshell --break-system-packages   # Python-Interop (optional)
 
-# Nach JEDER Änderung an einem Tool: alle HTMLs in "SEMBLA Werkzeuge/" spiegeln
-# (läuft intern zuerst sync-shared.mjs → verhindert Dev/Endnutzer-Drift)
-node publish-werkzeuge.mjs        # oder: npm run publish
+# ⚠️ ALTES Build-System (wird abgelöst, liegt in legacy/): publish-werkzeuge.mjs, sync-shared.mjs,
+#    <Modul>/build-*.mjs. Für noch nicht migrierte Module gilt es übergangsweise weiter, aber es
+#    wird KEIN neues Tool mehr damit gebaut. Ziel: getrennte Dateien in docs/ + docs/shared/.
 
-npm run handbuch                  # SEMBLA_Handbuch.docx neu bauen (build-handbuch.mjs)
-
-# Einzelnes Tool neu bauen:
-node <Modul>/build-*.mjs          # z.B. node Projekt-Manager/build-manager.mjs
-node sync-shared.mjs              # nur BOM-Baustein neu verteilen
+npm run handbuch                  # doku/SEMBLA_Handbuch.docx neu bauen (build-handbuch.mjs)
 ```
 
 ### Tests
@@ -104,6 +120,7 @@ node <Modul>/smoke_*.mjs
 node Auslegung-Engine/test-engine.mjs
 
 # npm-Shortcuts:
+npm run test:core                 # beide Core-Paritätstests + BOM-Drift (die wichtigsten)
 npm run test:statik               # Modul-3-Statik test + smoke
 npm run test:interop              # Interop-CAD (Python DXF/IFC + web-ifc)
 ```
