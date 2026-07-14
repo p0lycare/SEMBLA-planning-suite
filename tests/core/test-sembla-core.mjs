@@ -6,7 +6,7 @@ import {
   buildWall, buildReference, Opening, isBuildable, REFERENCE_WALLS,
   GRID, ROD, CHAMBER_OFFSET, MAX_SPAN_GRID, FORBIDDEN_N,
   InvalidDimensionError, InvalidOpeningError,
-} from "./sembla-core.mjs";
+} from "../../docs/shared/sembla-core.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 let pass = 0, fail = 0;

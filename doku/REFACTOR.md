@@ -135,8 +135,18 @@ Rutsch korrigiert werden. Session 1 hat nur das eindeutig Abgelöste (→ `legac
 (→ `doku/`) verschoben. **CLAUDE.md** wird in Session 1 nur auf den Übergangszustand aktualisiert;
 die finale, schlanke Fassung entsteht in Session 9.
 
+**Session 2 (2026-07-14) — Plumbing:** `docs/shared/` steht (Core → `sembla-core.js`, neu: `storage.js`,
+`navbar.js`), Modul 0 (`index.html`) mit Storage-Manager + Platzhalterseiten 1–6 (funktionierende Navbar +
+aktives Element auf jeder Seite). Test-Infrastruktur verschoben: `Phase-1`+`Phase-2` → `tests/core/`
+(Fixtures dedupliziert), `Interop-CAD` → `tests/interop/`, neuer `tests/module/smoke_storage.mjs`. Alle
+Import-Pfade der noch nicht migrierten Module + `test-shared.mjs` + Engine + `package.json` auf
+`docs/shared/sembla-core.js` umgestellt. **Vorbefund (nicht Session 2):** `Auslegung-Engine/test-engine.mjs`
+war schon vor Session 2 kaputt (importiert `nachweiseWand`, `sembla-statik.mjs` exportiert `nachweisWand`) —
+wird in Session 3 (Modul 1 + Engine) mitgezogen. Kern-Paritätstests, `test-shared`, Statik- und
+Storage-Smoke grün. GH Pages: Deploy `main` / `docs`.
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
-- [ ] Session 2 — Plumbing (Storage, Navbar, Modul 0, GH Pages live)
+- [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
 - [ ] Session 3 — Modul 1 Wandplanung
 - [ ] Session 4 — Modul 2 Wandaufbau
 - [ ] Session 5 — Modul 3 Statik
@@ -147,8 +157,14 @@ die finale, schlanke Fassung entsteht in Session 9.
 
 ## 9. Offene technische Detailfragen (werden in der jeweiligen Session entschieden)
 
-- Core-Einbindung: klassisches `<script>` vs. ES-Modul (`type="module"`) — Session 2, zusammen
-  mit der Frage, wie die Node-Tests dieselbe Datei importieren.
-- Genaues JSON-Format der Element-Liste inkl. Versionierungsfeld (Migration alter Dateien) — Session 2.
+- **[ENTSCHIEDEN Session 2] Core-Einbindung: ES-Modul (`<script type="module">`).** Dieselbe Datei
+  `docs/shared/sembla-core.js` läuft im Browser (über http bei GH Pages) *und* wird von den Node-Tests
+  per `import` geladen — genau eine Betriebskopie, kein Zweitweg. `storage.js`/`navbar.js` sind ebenfalls
+  ES-Module. Preis: `file://`-Doppelklick fällt (CORS bei Modulen) — war ohnehin abgekündigt (Abschnitt 2).
+- **[ENTSCHIEDEN Session 2] JSON-Format & Versionierung.** localStorage: `sembla:elemente` = Map
+  `{ id: { id, name, wandelement, erstellt, geaendert } }`, `sembla:aktiv` = id, `sembla:version` =
+  Schema-Version (aktuell `1`, `migrieren()` als Haken für spätere Datenmigration). **Datei-Export = reines
+  Wandelement-JSON** (kompatibel zu den Alt-Tools während der Übergangszeit). **Import** akzeptiert beide
+  Formen: reines Wandelement (`length_mm` + `courses`) und Wrapper `{ name?, wandelement }`.
 - Umfang "Montageanleitung" (heutiges Modul Montageplanung 1:1 oder reduziert?) — Session 7.
 - web-ifc einbetten vs. handgeschriebener IFC-Export als Zwischenschritt — Session 8.

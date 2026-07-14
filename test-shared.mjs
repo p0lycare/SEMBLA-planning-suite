@@ -1,6 +1,6 @@
 // Drift-Schutz: die gemeinsame semblaBom() muss mit der Core-BOM übereinstimmen.
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "./Phase-2/sembla-core.mjs";
+import { buildWall, Opening } from "./docs/shared/sembla-core.js";
 const src=readFileSync("./sembla-shared.js","utf8").replace(/\/\/__SEMBLA_SHARED_(START|END)__/g,"");
 eval(src + "\n;globalThis.__sb=semblaBom;globalThis.__sbi=semblaBomItems;");
 const semblaBom=globalThis.__sb, semblaBomItems=globalThis.__sbi;

@@ -6,7 +6,7 @@
 import path from "node:path";
 import { writeFileSync } from "node:fs";
 import { IfcAPI, IFCWALLSTANDARDCASE, IFCWALL, IFCBUILDINGELEMENTPROXY } from "web-ifc";
-import { buildWall, Opening } from "../Phase-2/sembla-core.mjs";
+import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { projectToIfc } from "../Projekt-Manager/sembla-cad.mjs";
 
 const log = (...a) => console.log(...a);

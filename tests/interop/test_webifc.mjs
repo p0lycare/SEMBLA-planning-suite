@@ -1,7 +1,7 @@
 // Test des web-ifc-Validators gegen (a) den JS-IFC-Export und (b) — falls vorhanden —
 // die von IfcOpenShell geschriebene Datei (Cross-Library-Interop).
 import { existsSync } from "node:fs";
-import { buildWall, Opening } from "../Phase-2/sembla-core.mjs";
+import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { projectToIfc } from "../Projekt-Manager/sembla-cad.mjs";
 import { validateIfc, validateIfcFile } from "./webifc_validate.mjs";
 

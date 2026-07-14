@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { buildWall } from "../Phase-2/sembla-core.mjs";
+import { buildWall } from "../docs/shared/sembla-core.js";
 const html = readFileSync("./SEMBLA_Wandaufbau.html","utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 

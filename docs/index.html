@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA Planungs-Suite</title>
+<style>
+  a{color:var(--sb-accent);text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  header.hero{background:var(--sb-ink2);color:#fff;padding:22px 28px}
+  header.hero h1{margin:0;font-size:22px}
+  header.hero p{margin:8px 0 0;font-size:14px;color:#9fb0c0;max-width:880px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.7px;color:var(--sb-muted);margin:30px 0 12px}
+  .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+  .card{display:block;background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;
+        padding:14px 16px;color:inherit;transition:box-shadow .15s,border-color .15s}
+  .card:hover{box-shadow:0 4px 16px rgba(20,32,46,.08);border-color:#c7d2e0}
+  .card .t{font-weight:650;font-size:14.5px;margin-bottom:3px}
+  .card .t .n{color:var(--sb-muted);font-variant-numeric:tabular-nums;margin-right:6px}
+  .card .d{font-size:12.5px;color:#42505e}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field label{font-size:11.5px;color:var(--sb-muted)}
+  .field input{border:1px solid var(--sb-line);border-radius:7px;padding:7px 9px;font-size:14px;width:150px}
+  button{border:0;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}
+  .btn-p{background:var(--sb-accent);color:#fff}
+  .btn-s{background:#eef2f7;color:#33415c}
+  .btn-d{background:#fdecec;color:#c0392b}
+  .btn-p:hover,.btn-s:hover,.btn-d:hover{filter:brightness(.97)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--sb-line)}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--sb-muted)}
+  td.actions{white-space:nowrap;text-align:right}
+  td.actions button{padding:5px 9px;margin-left:5px}
+  .badge{display:inline-block;background:#e6f4ea;color:var(--sb-ok);border-radius:20px;
+         padding:1px 9px;font-size:11px;font-weight:700}
+  .muted{color:var(--sb-muted)}
+  .msg{font-size:13px;margin-top:8px;min-height:18px}
+  .msg.err{color:#c0392b}
+  .msg.ok{color:var(--sb-ok)}
+  .empty{color:var(--sb-muted);font-size:13.5px;padding:10px 2px}
+  .hint{font-size:12px;color:var(--sb-muted);margin-top:6px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>SEMBLA Planungs-Suite</h1>
+  <p>Digitale Planung des kreislauffähigen Massivbausystems. Alle Werkzeuge arbeiten auf einem
+     gemeinsamen Datenmodell — dem <b>Wandelement</b>. Es wird hier angelegt/gewählt und lebt im
+     Browser; alle Module lesen genau das aktive Element.</p>
+</header>
+
+<div class="wrap">
+
+  <h2>Module</h2>
+  <div class="grid" id="modul-grid"></div>
+
+  <h2>Wandelement anlegen</h2>
+  <div class="panel">
+    <div class="row">
+      <div class="field">
+        <label for="f-name">Name</label>
+        <input id="f-name" type="text" placeholder="z. B. Wand A" value="Neue Wand">
+      </div>
+      <div class="field">
+        <label for="f-laenge">Länge (mm, Vielfaches 125)</label>
+        <input id="f-laenge" type="number" step="125" min="250" value="2000">
+      </div>
+      <div class="field">
+        <label for="f-hoehe">Höhe (mm, Vielfaches 200)</label>
+        <input id="f-hoehe" type="number" step="200" min="200" value="2600">
+      </div>
+      <button class="btn-p" id="btn-neu">Anlegen &amp; aktiv setzen</button>
+      <label class="btn-s" for="f-import" style="display:inline-block">Datei importieren…</label>
+      <input id="f-import" type="file" accept=".json,application/json" hidden>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="hint">Öffnungen, Auslegung usw. entstehen in Modul&nbsp;1 (Wandplanung). Hier wird
+      das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen.</div>
+  </div>
+
+  <h2>Gespeicherte Wandelemente</h2>
+  <div class="panel">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Maße (L×H)</th><th>Geändert</th><th></th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty" id="leer" hidden>Noch kein Wandelement gespeichert.</div>
+    <div class="hint">Der Zustand liegt im <b>localStorage dieses Browsers</b> (pro Gerät, weg bei
+      „Websitedaten löschen"). Exportiere wichtige Elemente als Datei zur Sicherung/Weitergabe.</div>
+  </div>
+
+  <div class="hint" style="margin:28px 0 12px">SEMBLA Planungs-Suite · Polycare</div>
+</div>
+
+<script type="module">
+  import { mountNavbar, MODULE } from './shared/navbar.js';
+  import * as store from './shared/storage.js';
+  import { buildWall } from './shared/sembla-core.js';
+
+  mountNavbar(0);
+
+  // --- Modulkarten ---
+  const grid = document.getElementById('modul-grid');
+  grid.innerHTML = MODULE.filter(m => m.nr !== 0).map(m =>
+    `<a class="card" href="${m.datei}"><div class="t"><span class="n">${m.nr}</span>${m.titel}</div>`
+    + `<div class="d">${_beschreibung(m.nr)}</div></a>`
+  ).join('');
+
+  function _beschreibung(nr){
+    return ({
+      1:'Wand zeichnen (Länge/Höhe, Öffnungen) und statisch auslegen — erzeugt das geprüfte Wandelement.',
+      2:'Lattung & Verbinderpositionen aus den Panelfugen.',
+      3:'Statischer Nachweis der Anschlüsse und des Hebezustands.',
+      4:'Material-Stückliste mit Preisen, Export als Excel/CSV.',
+      5:'Lagenweise Montageanleitung mit Vorspann-Schritten.',
+      6:'Experimentell: 3D-Vorschau und IFC-Viewer/-Export (OBJ-Upload).',
+    })[nr] || '';
+  }
+
+  // --- Anlegen ---
+  const msg = document.getElementById('msg');
+  function zeige(text, ok){ msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  document.getElementById('btn-neu').addEventListener('click', () => {
+    const name = document.getElementById('f-name').value.trim() || 'Neue Wand';
+    const l = Number(document.getElementById('f-laenge').value);
+    const h = Number(document.getElementById('f-hoehe').value);
+    try {
+      const we = buildWall(name, l, h, []);
+      const id = store.speichere(name, we);
+      store.setzeAktiv(id);
+      zeige('Angelegt und aktiv gesetzt: ' + name, true);
+    } catch (e) {
+      zeige('Fehler: ' + (e && e.message ? e.message : e), false);
+    }
+  });
+
+  // --- Import ---
+  document.getElementById('f-import').addEventListener('change', async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    try {
+      await store.importiereDatei(file);
+      zeige('Importiert und aktiv gesetzt: ' + file.name, true);
+    } catch (e) {
+      zeige('Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
+    }
+    ev.target.value = '';
+  });
+
+  // --- Liste ---
+  const tbody = document.getElementById('tbody');
+  const leer = document.getElementById('leer');
+
+  function fmtDatum(iso){
+    try { return new Date(iso).toLocaleString('de-DE', {dateStyle:'short', timeStyle:'short'}); }
+    catch { return iso || ''; }
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  function render(){
+    const liste = store.listeElemente();
+    const aktiv = store.aktivId();
+    leer.hidden = liste.length > 0;
+    tbody.innerHTML = liste.map(e => {
+      const w = e.wandelement || {};
+      const masse = (w.length_mm ?? '?') + ' × ' + (w.height_mm ?? '?') + ' mm';
+      const badge = e.id === aktiv ? ' <span class="badge">aktiv</span>' : '';
+      return `<tr data-id="${e.id}">
+        <td><b>${esc(e.name)}</b>${badge}</td>
+        <td class="muted">${masse}</td>
+        <td class="muted">${fmtDatum(e.geaendert)}</td>
+        <td class="actions">
+          ${e.id === aktiv ? '' : `<button class="btn-s" data-act="aktiv">Aktiv</button>`}
+          <button class="btn-s" data-act="export">Export</button>
+          <button class="btn-s" data-act="umbenennen">Umbenennen</button>
+          <button class="btn-d" data-act="loeschen">Löschen</button>
+        </td></tr>`;
+    }).join('');
+  }
+
+  tbody.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button'); if (!btn) return;
+    const id = ev.target.closest('tr').dataset.id;
+    const act = btn.dataset.act;
+    const e = store.holeElement(id); if (!e) return;
+    if (act === 'aktiv') store.setzeAktiv(id);
+    else if (act === 'export') store.exportiere(id);
+    else if (act === 'umbenennen') {
+      const name = prompt('Neuer Name:', e.name);
+      if (name != null && name.trim()) store.umbenennen(id, name.trim());
+    }
+    else if (act === 'loeschen') {
+      if (confirm(`Wandelement „${e.name}" wirklich löschen? Das kann nicht rückgängig gemacht werden.`))
+        store.loesche(id);
+    }
+  });
+
+  store.abonniere(render);
+  render();
+</script>
+</body>
+</html>

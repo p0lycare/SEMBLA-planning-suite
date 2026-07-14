@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
-let core=readFileSync("../Phase-2/sembla-core.mjs","utf8").replace(/^export\s+/gm,"");
+let core=readFileSync("../docs/shared/sembla-core.js","utf8").replace(/^export\s+/gm,"");
 let statik=readFileSync("../Modul-3-Statik/sembla-statik.mjs","utf8").replace(/^export\s+/gm,"");
 let engine=readFileSync("../Auslegung-Engine/sembla-engine.mjs","utf8").replace(/^import .*$/gm,"").replace(/^export\s+/gm,"");
 const bundle="// ==== Core ====\n"+core+"\n// ==== Statik ====\n"+statik+"\n// ==== Engine ====\n"+engine;

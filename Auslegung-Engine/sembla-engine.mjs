@@ -6,7 +6,7 @@
  * nachweisPruefen: reiner Nachweis-Modus für eine fest vorgegebene Auslegung.
  * Module bleiben rein/einbahnig; nur die Engine kennt die Schleife.
  */
-import { buildWall } from "../Phase-2/sembla-core.mjs";
+import { buildWall } from "../docs/shared/sembla-core.js";
 import { nachweiseWand } from "../Modul-3-Statik/sembla-statik.mjs";
 
 const DEF_MAT = { fcd_Nmm2: 20.0, cfd: 0.6, rho: 14.0 };   // Platzhalter — vom Statiker/Polycare zu bestätigen

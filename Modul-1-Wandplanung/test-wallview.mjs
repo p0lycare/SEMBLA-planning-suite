@@ -2,7 +2,7 @@
 // die draw()-Funktion im Alpha-Tool (Referenz). Das Tool wird NICHT verändert – es wird
 // nur evaluiert und über sein bestehendes window.__wp gelesen.
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "../Phase-2/sembla-core.mjs";
+import { buildWall, Opening } from "../docs/shared/sembla-core.js";
 import { drawWall } from "./sembla-wallview.mjs";
 
 const html = readFileSync("./SEMBLA_Wandplanung.html", "utf8");

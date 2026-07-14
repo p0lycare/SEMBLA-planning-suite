@@ -1,7 +1,7 @@
 // Paritätstest: das extrahierte Core-Modul planWandaufbau() muss identische Ergebnisse
 // liefern wie compute() im geprüften Tool SEMBLA_Wandaufbau.html (Referenz).
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "../Phase-2/sembla-core.mjs";
+import { buildWall, Opening } from "../docs/shared/sembla-core.js";
 import { planWandaufbau } from "./sembla-wandaufbau.mjs";
 
 // --- Tool-Skript mit DOM-Stub evaluieren (Referenz) ---

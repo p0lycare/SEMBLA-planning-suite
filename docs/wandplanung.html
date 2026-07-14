@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA · Wandplanung &amp; Auslegung</title>
+<style>
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:20px 22px}
+  h1{margin:0 0 6px;font-size:20px}
+  .nr{color:var(--sb-muted);font-variant-numeric:tabular-nums;margin-right:8px}
+  p{margin:8px 0;font-size:14px}
+  .muted{color:var(--sb-muted)}
+  .tag{display:inline-block;background:#eef2f7;color:#33415c;border-radius:20px;padding:2px 11px;
+       font-size:12px;font-weight:600}
+  code{background:#f1efec;border-radius:4px;padding:1px 5px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="panel">
+    <h1><span class="nr">1</span>Wandplanung &amp; Auslegung</h1>
+    <p class="tag">Umbau geplant · Session 3</p>
+    <p>Dieses Modul ist noch nicht auf die neue Suite umgebaut. Bis dahin steht hier ein Platzhalter,
+       die gemeinsame Kopfleiste und das aktive Wandelement funktionieren aber bereits.</p>
+    <p class="muted" id="aktiv">Aktives Wandelement: …</p>
+  </div>
+</div>
+<script type="module">
+  import { mountNavbar } from './shared/navbar.js';
+  import * as store from './shared/storage.js';
+  mountNavbar(1);
+  const we = store.aktivesWandelement();
+  const el = document.getElementById('aktiv');
+  el.textContent = we
+    ? `Aktives Wandelement: ${we.name || '(ohne Namen)'} — ${we.length_mm} × ${we.height_mm} mm`
+    : 'Kein aktives Wandelement — in „Start" anlegen oder wählen.';
+  store.abonniere(() => {
+    const w = store.aktivesWandelement();
+    el.textContent = w
+      ? `Aktives Wandelement: ${w.name || '(ohne Namen)'} — ${w.length_mm} × ${w.height_mm} mm`
+      : 'Kein aktives Wandelement — in „Start" anlegen oder wählen.';
+  });
+</script>
+</body>
+</html>

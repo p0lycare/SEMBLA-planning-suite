@@ -14,15 +14,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > noch nicht migrierten Modul-Ordner, bis sie in ihrer Session umgebaut sind. Diese Datei bekommt
 > ihre finale, schlanke Fassung in Session 9.
 >
-> **Übergangszustand nach Session 1 (Aufräumen):**
+> **Übergangszustand nach Session 2 (Plumbing):**
+> - `docs/` ist **die App** (GH Pages, Deploy `main`/`docs`): `index.html` (Modul 0 mit Storage-Manager)
+>   + Platzhalterseiten `wandplanung/wandaufbau/statik/stueckliste/montage/ifc-3d.html` (Module 1–6,
+>   werden in ihrer Session mit Inhalt gefüllt). Gemeinsamer Code in `docs/shared/`:
+>   `sembla-core.js` (einzige Betriebskopie des JS-Cores, **ES-Modul**), `storage.js` (localStorage-Schicht),
+>   `navbar.js` (Kopfleiste). Einbindung per `<script type="module">`.
+> - `tests/` ← `core/` (Python-Referenz `sembla_core.py` + Paritätstests py/mjs + Fixtures),
+>   `interop/` (ehem. `Interop-CAD`), `module/` (`smoke_storage.mjs`; Modul-Tests folgen je Session).
 > - `legacy/` ← `_archiv`, `Revit-pyRevit`, `EtappeA-App-beta-sandbox`, `Modul-Roboter`,
 >   `Modul-Fertigung`, `Projekt-Manager`, `SEMBLA Werkzeuge` (altes Build-Produkt),
 >   `publish-werkzeuge.mjs`, `sync-shared.mjs`. Rückholbar; nicht Teil des MVP.
 > - `doku/` ← Handbuch, OSS-Matrix, Prozess-Grafiken, `_LIESMICH.md`, `GIT-SETUP.md`, `REFACTOR.md`.
-> - **Noch am alten Platz** (bis Session 2/ihrer Modul-Session): `Phase-1/`, `Phase-2/`, `Interop-CAD/`
->   (→ Session 2 nach `tests/`) und die aktiven Modul-Ordner (`Modul-1-Wandplanung/`,
->   `Modul-Wandaufbau/`, `Modul-3-Statik/`, `Modul-Stueckliste/`, `Modul-4-Montageplanung/`, `Modul-3D/`,
->   `Auslegung-Engine/`) sowie `sembla-shared.js`, `sembla-obj-loader.js`, `SEMBLA_Uebersicht.html`.
+> - **Noch am alten Platz** (bis zu ihrer Modul-Session): die aktiven Modul-Ordner
+>   (`Modul-1-Wandplanung/`, `Modul-Wandaufbau/`, `Modul-3-Statik/`, `Modul-Stueckliste/`,
+>   `Modul-4-Montageplanung/`, `Modul-3D/`, `Auslegung-Engine/`) sowie `sembla-shared.js`,
+>   `sembla-obj-loader.js`, `SEMBLA_Uebersicht.html`. Ihre Core-Importe zeigen bereits auf
+>   `docs/shared/sembla-core.js`; ihre Tests laufen wie bisher aus dem jeweiligen Ordner.
 
 ## Was das ist
 
