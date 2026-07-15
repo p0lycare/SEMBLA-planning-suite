@@ -257,6 +257,22 @@ Einzelwand-API; validiert das erzeugte IFC4 via web-ifc: gültig, 1 Wand, 106 St
 `Modul-3D/` + `sembla-obj-loader.js` → `legacy/`. Kern-Parität, BOM-Drift, Modul-1/2/3/4/5-Tests weiter grün.
 `npm run test:modul6` ergänzt.
 
+**Session 9 (2026-07-15) — Abschluss:** Restaufräumen und Endfassung. **CLAUDE.md** neu geschrieben (schlanke
+Finalfassung: nur noch der MVP-Zustand — UMBAU-Banner + Übergangsblock raus, veraltete Ordnerstruktur/
+Build-System-Abschnitte ersetzt durch die 7 Module 0–6, `docs/shared/`-Liste inkl. `sembla-ifc.js`, Test- und
+Randbedingungs-Abschnitte auf `tests/` + „kein Build" umgestellt). **Reste → `legacy/`:** die letzte alte
+Modul-0-Quelle `SEMBLA_Uebersicht.html` und ein loses `test-wandelement.json` aus der Wurzel (die App nutzt sie
+nicht; Modul-3D-Testfixture liegt weiterhin in `legacy/Modul-3D/`). **package.json:** Gesamt-Shortcut
+`npm run test:all` ergänzt (Core + Modul 1–6 + Storage-Smoke). **Handbuch (`build-handbuch.mjs`) voll auf MVP
+angeglichen** [ENTSCHIEDEN Tibor]: Modul-Kapitel auf die neue Nummerierung 0–6 (Modul 0 Start/Verwaltung neu;
+Reihenfolge Statik → Stückliste → Montage → IFC/3D), Nicht-MVP-Kapitel **Roboter, Projekt-Manager (Mehrwand/DXF)
+und Fertigung entfernt**, IFC-Export ins neue Modul 6 (`sembla-ifc.js`, Einzelwand) verlagert, **Dämmung** aus
+Modul 2 raus, alle Pfade auf `docs/shared/` bzw. `tests/`, Build-System-Erwähnungen (`publish-werkzeuge.mjs`,
+`build-*.mjs`, Revit) getilgt, Zustand/localStorage + „kein Build, sofort live" ergänzt; `doku/SEMBLA_Handbuch.docx`
+neu gebaut (keine neuen vertraulichen Inhalte — die Schermer-Statik-Kapitel lagen inhaltlich schon vorher
+bewusst öffentlich vor). Prüfung: kein Treffer mehr auf tote Pfade/Nicht-MVP-Begriffe im Generator; `npm run
+test:all` grün. Die Suite ist damit vollständig auf die gehostete Minimalversion umgebaut.
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
 - [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
 - [x] Session 3 — Modul 1 Wandplanung *(docs/wandplanung.html + shared/sembla-engine.js live, Engine-Altbug behoben, Storage-Anbindung, alte Ordner → legacy, Tests grün)*
@@ -265,7 +281,7 @@ Einzelwand-API; validiert das erzeugte IFC4 via web-ifc: gültig, 1 Wand, 106 St
 - [x] Session 6 — Modul 4 Stückliste *(docs/stueckliste.html + shared/sembla-bom.js live, Storage liest aktives Wandelement, Dämmung entfernt, alter Ordner + sembla-shared.js → legacy, Tests grün)*
 - [x] Session 7 — Modul 5 Montage *(docs/montage.html live, 1:1-Umfang, Kurz-BOM aus shared/sembla-bom.js, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
 - [x] Session 8 — Modul 6 IFC/3D *(docs/ifc-3d.html + shared/sembla-ifc.js live, Three.js-Vorschau, OBJ-Loader auf storage.js, IFC4-Export + web-ifc-Prüfung, alter Ordner + sembla-obj-loader.js → legacy, gegen tests/interop geprüft, Tests grün)*
-- [ ] Session 9 — Abschluss  ← nächste
+- [x] Session 9 — Abschluss *(CLAUDE.md final schlank, Reste → legacy, package.json test:all, Handbuch voll auf MVP angeglichen, keine toten Pfade, Tests grün)*
 
 ## 9. Offene technische Detailfragen (werden in der jeweiligen Session entschieden)
 

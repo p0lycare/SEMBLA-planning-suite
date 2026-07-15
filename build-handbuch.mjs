@@ -69,10 +69,10 @@ push(new Paragraph({ children: [new PageBreak()] }));
 
 // ---------- 1 ----------
 push(H1("1 · Überblick & Zielgruppe"));
-push(lead("Die SEMBLA Planungs-Suite plant vorgespannte Trockenmauerwerks-Wände aus den Systemsteinen i2 und i3 – vom ersten Entwurf bis zu Fertigung, Montage und BIM."));
-push(P("Neun Werkzeuge (Module 1–9) greifen auf ein gemeinsames Datenmodell zu (das „Wandelement”). Modul 1 erzeugt es; alle weiteren Module lesen es. So bleibt die Planung über alle Gewerke konsistent."));
-push(P("Einstieg: 00_Übersicht.html im selben Ordner öffnen. Jedes Tool ist eine eigenständige HTML-Datei und läuft ohne Installation im Browser."));
-push(P("Dieses Handbuch richtet sich an (a) Statiker, die die Berechnungsansätze prüfen wollen (Kap. 5 + 11), und (b) das interne Entwicklungsteam, das die Suite ohne Programmier-Hintergrund weiterentwickelt (Kap. 4 + 15)."));
+push(lead("Die SEMBLA Planungs-Suite plant vorgespannte Trockenmauerwerks-Wände aus den Systemsteinen i2 und i3 – vom ersten Entwurf über Statik, Wandaufbau und Stückliste bis zu Montage, 3D und BIM."));
+push(P("Sieben Module (0–6) greifen auf ein gemeinsames Datenmodell zu (das „Wandelement”). Modul 1 erzeugt es; alle weiteren Module lesen es. So bleibt die Planung über alle Gewerke konsistent."));
+push(P("Die Suite ist eine gehostete Web-App (GitHub Pages): live unter p0lycare.github.io/SEMBLA-planning-suite. Einstieg ist Modul 0 (index.html). Jedes Modul ist eine eigenständige HTML-Seite und läuft ohne Installation im Browser; das aktive Wandelement liegt im localStorage und ist für alle Module sichtbar."));
+push(P("Dieses Handbuch richtet sich an (a) Statiker, die die Berechnungsansätze prüfen wollen (Kap. 5 + 9), und (b) das interne Entwicklungsteam, das die Suite ohne Programmier-Hintergrund weiterentwickelt (Kap. 4 + 13)."));
 
 // ---------- 2 ----------
 push(H1("2 · Grundlagen, Raster & Bausteine"));
@@ -136,32 +136,31 @@ push(table(["Feld", "Inhalt"], [
   [M("validation"), "{buildable, versatz_ok, versatz_violations, …}"],
   [M("verification"), "Statik-Status, Auslegung, Nachweise (von der Engine)"],
 ], [3400, 5960]));
-push(H2("3.1 Projekt-Bundle"));
-push(P("Damit zwischen den Modulen keine Einzeldateien jongliert werden, gibt es ein mitwachsendes Bundle:"));
+push(H2("3.1 Zustand (localStorage) & Projekt-Bundle"));
+push(P("Im laufenden Betrieb wird nichts hin- und hergeschoben: Das aktive Wandelement liegt im localStorage des Browsers, und alle Module lesen genau dieses eine Element (Modul 0 verwaltet die Liste). Für bewusstes Sichern/Weitergeben gibt es zusätzlich den Datei-Export – als reines Wandelement-JSON oder als mitwachsendes Bundle:"));
 push(formula(['{ "format":"SEMBLA-Projekt", "wandelement":{…}, "verbinder_layout":{…} }']));
-push(P("Das Bundle ist das einzige Austauschformat der Suite. Modul 1 exportiert das Bundle, Modul 2 (Horizontaler Wandaufbau) reichert es um verbinder_layout (inkl. Beplankungsfeld) an, die Stückliste liest beides aus einer Datei. Alle Module und der Revit-Import (pyRevit) akzeptieren wahlweise ein Bundle oder ein blankes Wandelement und entpacken es selbst – daher nur je ein Export-Button (Projekt-Bundle) und einheitliche Lade-Buttons „… / Bundle laden”."));
-push(P("Prozess kompakt: Modul 1 → Bundle → Modul 2 (Horizontaler Wandaufbau, reichert an) → Bundle → alle übrigen Module & Revit."));
+push(P("Das Bundle ist das Austausch-Dateiformat der Suite. Modul 1 exportiert es, Modul 2 (Horizontaler Wandaufbau) reichert es um verbinder_layout (inkl. Beplankungsfeld) an, die Stückliste (Modul 4) liest beides aus einer Datei. Alle Module akzeptieren beim Datei-Import wahlweise ein Bundle oder ein blankes Wandelement und entpacken es selbst – daher je ein Export-Button (Projekt-Bundle) und einheitliche Lade-Buttons „… / Bundle laden”. Der Datei-Import lädt nur in die Ansicht bzw. legt (in Modul 0) ein neues Element an; er verändert kein fremdes Element."));
 
 // ---------- 4 ----------
 push(H1("4 · Architektur, Kerne & Workflow"));
-push(P("Die fachliche Logik liegt in getesteten Kernen (reine Bibliotheken). Die Werkzeuge sind eigenständige HTML-Dateien, per Build-Schritt aus Kern + Vorlage zusammengesetzt – keine Code-Duplizierung."));
-push(table(["Was", "Datei(en)", "Inhalt"], [
-  ["Wandaufbau-Kern", M("Phase-1/sembla_core.py (Referenz) · Phase-2/sembla-core.mjs"), "Verband, Stränge, BOM, Validierung. Python = Referenz, JS = bit-genaue Portierung (Parität über Fixtures)."],
+push(P("Die fachliche Logik liegt in getesteten Kernen (reine Bibliotheken) in docs/shared/. Die Module sind handgepflegte HTML-Einzeldateien in docs/, die den gemeinsamen Code per <script type=\"module\"> laden – kein Build-Schritt, kein Kopieren, keine Duplizierung."));
+push(table(["Was", "Datei", "Inhalt"], [
+  ["Wandaufbau-Kern", M("docs/shared/sembla-core.js"), "Verband, Stränge, BOM, Validierung. Einzige Betriebskopie (ES-Modul); tests/core/sembla_core.py ist die bit-genaue Test-Referenz (Parität über Fixtures)."],
   ["Wand-Statik", M("docs/shared/sembla-statik.js"), "Schermer-Nachweis: Wand (Biegung via Prüfwert-Interpolation, Schub, Druckrand, Bodenreibung, Deckenwinkel) + Spannsystem (Stange, Schrauben, Platten, Steinpressung) + Transport (Zusatz)."],
-  ["Auslegungs-Engine", M("docs/shared/sembla-engine.js"), "Iteration: optimiert Strangabstand & Vorspannkraft bis alle Nachweise erfüllt sind."],
-  ["Horizontaler Wandaufbau", M("Modul-Wandaufbau/…"), "Verbinder (Panelfugen = Achsen) + Latten/Dämmung + Beplankungsfeld."],
-  ["CAD/BIM", M("Projekt-Manager/sembla-cad.mjs · obj-to-ifc.mjs"), "DXF, IFC4 (inkl. echter Steingeometrie als FacetedBrep)."],
-  ["Roboter", M("Modul-Roboter/sembla-robot.mjs"), "Montagesequenz (Pick&Place + Vorspannen)."],
-  ["Bauteilgeometrie", M("Bauteil-OBJ/i2_SEMBLA.obj · i3_SEMBLA.obj (+ .ifc)"), "echte Steingeometrie (X=Länge, Y=Tiefe, Z=Höhe; Nullpunkt unten-vorne-links)."],
+  ["Auslegungs-Engine", M("docs/shared/sembla-engine.js"), "Iteration: optimiert Strangabstand & Vorspannkraft bis alle Nachweise erfüllt sind (vereinfachtes Modell, getrennt von der Schermer-Statik)."],
+  ["Stückliste/BOM", M("docs/shared/sembla-bom.js"), "kanonische Mengen/Positionen aus dem Wandelement (Modul 4 + 5)."],
+  ["IFC-Export", M("docs/shared/sembla-ifc.js"), "Wandelement → IFC4 (Wand + Öffnungen + Steine, optional echte Steingeometrie als FacetedBrep)."],
+  ["Zustand & Kopfleiste", M("docs/shared/storage.js · navbar.js"), "localStorage-Schicht (Elemente, aktiv-Zeiger, OBJ) + gemeinsame Navigation."],
+  ["Bauteilgeometrie", M("Bauteil-OBJ/i2_SEMBLA.obj · i3_SEMBLA.obj (lokal, gitignored)"), "echte Steingeometrie (X=Länge, Y=Tiefe, Z=Höhe; Nullpunkt unten-vorne-links); zur Laufzeit per Upload."],
 ], [2100, 3400, 3860]));
-push(H2("4.1 Bauen & Veröffentlichen"));
-push(P("Tools mit Vorlage: node build-*.mjs im jeweiligen Ordner. Danach spiegelt node publish-werkzeuge.mjs (Suite-Stammordner) alle Tools nach SEMBLA Werkzeuge/ – so laufen Entwicklungs- und Auslieferungsstand nie auseinander."));
+push(H2("4.1 Betrieb & Veröffentlichung"));
+push(P("Es gibt keinen Build-/Publish-Schritt. docs/ wird direkt editiert; GitHub Pages liefert genau diesen Ordner aus (Deploy vom Branch main). Jeder Push ist sofort live – Qualitätssicherung ist Handdisziplin (Tests vor dem Push)."));
 push(H2("4.2 Testen"));
-push(P("Jeder Kern/jede Oberfläche ist durch automatisierte Tests abgesichert (test-*.mjs / smoke_*.mjs, Python: Phase-1/test_sembla_core.py). Vor jeder Übernahme sollten alle Tests grün sein."));
+push(P("Jeder Kern und jede Oberfläche ist durch automatisierte Tests abgesichert: Logik-Tests (tests/module/test-*.mjs), Smoke-Tests der HTML-Module unter DOM-Mock (tests/module/smoke_*.mjs), Core-Parität (tests/core/, Python + JS gegen goldene Fixtures) und BOM-Drift-Schutz (test-shared.mjs). npm run test:all fährt alles. Vor jedem Push sollten die betroffenen Tests grün sein."));
 
 // ---------- 5 STATIK ----------
 push(H1("5 · Statik – Modell, Herleitung & Beispiel"));
-push(lead("Dieses Kapitel legt den vollständigen Nachweis offen, damit ein Statiker ihn nachvollziehen und bestätigen kann. Grundlage ist das Gutachten Prof. Schermer (Az. 2025_7001 Rev 01 vom 18.05.2026) i. V. m. Z-3.15-2157, DIN EN 1996-1-1, DIN 4103-1 und DIN EN 1991-1-4. Der Rechenkern (Modul 6) ist 1:1 aus der geprüften Arbeitsmappe „SEMBLA_Wand_Statik_v01” portiert und gegen deren Zahlen verifiziert."));
+push(lead("Dieses Kapitel legt den vollständigen Nachweis offen, damit ein Statiker ihn nachvollziehen und bestätigen kann. Grundlage ist das Gutachten Prof. Schermer (Az. 2025_7001 Rev 01 vom 18.05.2026) i. V. m. Z-3.15-2157, DIN EN 1996-1-1, DIN 4103-1 und DIN EN 1991-1-4. Der Rechenkern (Modul 3, docs/shared/sembla-statik.js) ist 1:1 aus der geprüften Arbeitsmappe „SEMBLA_Wand_Statik_v01” portiert und gegen deren Zahlen verifiziert."));
 push(P("Der Nachweis gliedert sich in zwei Komplexe: **A) Wandnachweise** (Biegung, Schub, Druckrand, Bodenanschluss, Deckenwinkel) und **B) Bauteilnachweise Spannsystem** (Gewindestange, Schrauben, Kopf-/Fußplatte, Steinpressung). Abschnitt 5.13 rechnet ein vollständiges Beispiel."));
 
 push(H2("5.1 Modellannahmen"));
@@ -256,7 +255,7 @@ push(table(["γ_P,fav", "Ansatz", "Wann verwenden"], [
 ], [1300, 2900, 5160]));
 
 push(H2("5.12 Materialkennwerte & Prüfwerte (Bibliothek)"));
-push(warn("Die Werte stammen aus dem Gutachten bzw. der Bibliothek der Arbeitsmappe und sind projektbezogen vom Tragwerksplaner zu bestätigen. In Modul 6 sind sie editierbar."));
+push(warn("Die Werte stammen aus dem Gutachten bzw. der Bibliothek der Arbeitsmappe und sind projektbezogen vom Tragwerksplaner zu bestätigen. In Modul 3 sind sie editierbar."));
 push(table(["Größe", "Wert", "Quelle/Bedeutung"], [
   [M("f_k"), "20 N/mm²", "Wanddruckfestigkeit (§5.2)"],
   [M("γ_M"), "2,0", "Teilsicherheit Wand-Material"],
@@ -304,23 +303,29 @@ push(table(["Bauteil", "E_d", "R_d", "η", "Status"], [
 push(P("**η_max,Spannsystem = 0,815** (Gewindestange Fließen). Die Senkschraube überschreitet 100 % → nur Sechskantschraube zulässig."));
 push(box(["Ergebnis:  η_max,gesamt = MAX(0,759 ; 0,815) = 0,815  →  NACHWEIS ERFÜLLT"], "E3F5EA", "1F9D55"));
 
-// ---------- 6 Modul 1 ----------
-push(H1("6 · Modul 1 · Wand planen & auslegen"));
+// ---------- 6 Modul 0 ----------
+push(H1("6 · Modul 0 · Start & Verwaltung"));
+push(P("Einstieg der Suite (index.html): kurze Modulübersicht und Verwaltung der gespeicherten Wandelemente. Ein Element neu anlegen (leer oder aus Datei), das aktive Element wählen/umbenennen, als JSON exportieren oder löschen. Das aktive Wandelement liegt im localStorage des Browsers und ist für alle Module sichtbar; die gemeinsame Kopfleiste zeigt es auf jeder Seite und erlaubt den Wechsel."));
+push(note("localStorage ist pro Browser und Gerät und geht bei „Websitedaten löschen” verloren. Der Datei-Export (Modul 0/1) ist daher die Sicherung bzw. der Weg, ein Wandelement weiterzugeben."));
+
+// ---------- 7 Modul 1 ----------
+push(H1("7 · Modul 1 · Wand planen & auslegen"));
 push(P("Zweck: erzeugt das geprüfte Wandelement – zeichnen + statisch auslegen in einem Schritt."));
 push(P("Eingaben: Länge, Höhe, Seiten-Funktionen, Öffnungen (inkl. Durchbrüche per Klick), Horizontallast q_k + gamma_Q, Material (f_cd, C_fd, rho), Gewindestangenlänge, Modus (Auto/Nachweis).", {}));
 push(P("Ablauf: Verband i3-maximiert, Stränge (mit Segmenten über/unter Öffnungen) abgeleitet, dann Auslegungs-Engine (Kap. 4). Ergebnis: maßstäbliches Wandbild mit ein-/ausblendbarer Bemaßung, Nachweis-Tabelle, Stückliste, Iterationsprotokoll."));
 push(bullet("**Versatz-/Baubarkeits-Warnung:** bei Verstoß rote Warnung + Status-Badge „Verband regelwidrig”."));
 push(bullet("**Durchbrüche:** Steine per Klick entfernen/auffüllen; über/unter allen Öffnungen Vorspannung unterbrochen."));
 push(bullet("**Staffelung:** getreppte Wandkontur über Stufen (Abschnitt 2.7) inkl. Bemaßung."));
-push(bullet("**Export:** ein Format – „Projekt-Bundle (JSON)”."));
+push(bullet("**Speichern:** „In aktives Wandelement speichern” (localStorage, Single Source für alle Module) und Datei-Export „Projekt-Bundle (JSON)” zum Sichern/Weitergeben."));
 
-// ---------- 7 Modul 2 · Horizontaler Wandaufbau (Verbinder + Latten/Dämmung) ----------
-push(H1("7 · Modul 2 · Horizontaler Wandaufbau"));
-push(P("Zweck: Verbinder- UND Latten-/Dämmungsplanung in einem Schritt (ersetzt die früheren Module Verbinder und Latten). Die Panelfugen bestimmen die Verbinderachsen; daraus werden Latten und Dämmpakete abgeleitet."));
+// ---------- 8 Modul 2 · Horizontaler Wandaufbau (Verbinder + Latten) ----------
+push(H1("8 · Modul 2 · Horizontaler Wandaufbau"));
+push(P("Zweck: Verbinder- und Lattenplanung in einem Schritt. Die Panelfugen bestimmen die Verbinderachsen; daraus werden die Latten abgeleitet."));
+push(note("Im MVP ist die Wärmedämmung aus diesem Modul entfernt (Entscheidung Polycare). Die Latten-Logik bleibt unverändert; der Dichtstreifen aus den Stoßfugen (Schallschutz, Kap. 2.6) ist keine Wärmedämmung und bleibt erhalten."));
 push(H2("Verbinderachsen aus Panelfugen"));
 push(bullet("**Panelmaß** (Standard 62,5 × 150 cm, änderbar) legt die Verbinderachsen fest: vertikale Achsen an den Panel-Längsfugen, horizontale an den Panel-Höhenfugen – plus Zwischenachsen, wenn der Max-Abstand überschritten wird."));
 push(bullet("Zusätzlich an Wandkanten (Randabstand) und an den Öffnungskanten; keine Verbinder innerhalb von Öffnungen."));
-push(bullet("**Beplankungsfeld:** häufig wird nur ein Teil der Wand beplankt – ein rechteckiges Feld (aufziehen, rastet aufs Panelraster) begrenzt Verbinder, Latten und Dämmung; im Layout als feld_cm exportiert. Standard = ganze Wand."));
+push(bullet("**Beplankungsfeld:** häufig wird nur ein Teil der Wand beplankt – ein rechteckiges Feld (aufziehen, rastet aufs Panelraster) begrenzt Verbinder und Latten; im Layout als feld_cm exportiert. Standard = ganze Wand."));
 push(H2("Nachweis je Verbinder"));
 push(formula([
   "R_d    = R_k / gamma_M          [kN]   (zul. Zuglast je Verbinder)",
@@ -328,34 +333,19 @@ push(formula([
   "A_t    = Feldfläche / Anzahl    A_t / A_tmax ≤ 100 %  (A_tmax = R_d / coeff)",
 ]));
 push(bullet("Verbinder-Katalog: FA-1 (R_k 0,50), FA-2 schwer (0,80), IA-1 leicht (0,25), Universal (0,50); je gamma_M = 2,0."));
-push(H2("Latten & Dämmung"));
+push(H2("Latten"));
 push(bullet("Latten verlaufen vertikal auf den Verbinderachsen; an Öffnungen und am Feldrand abgeschnitten."));
 push(bullet("Stöße liegen zwischen zwei Verbindern (mittig); Wandhöhe > Lattenlänge → 1D-Zuschnitt mit Reststück-Wiederverwendung."));
-push(bullet("Dämmung je Gefach (lichter Abstand zwischen Latten) × Höhe minus Öffnungen → Fläche je Paket."));
-push(bullet("Eingaben: Lattenbreite (4 cm), Stangenlänge (150 cm), Dämmdicke. Ausgaben: Projekt-Bundle (Wandelement + Verbinder-Layout), Zuschnittliste (CSV)."));
+push(bullet("Eingaben: Lattenbreite (4 cm), Stangenlänge (150 cm). Ausgaben: Projekt-Bundle (Wandelement + Verbinder-Layout), Zuschnittliste (CSV). Reiner Konsument – schreibt das Wandelement nicht zurück."));
 
-// ---------- 9 Montage ----------
-push(H1("8 · Modul 3 · Montageplanung"));
-push(P("Zweck: lagenweise Aufbauanleitung mit Vorspann-Schritten und Gesamt-Stückliste. Interaktiver Lagen-Viewer, Wandüberblick mit Bemaßung, Vorspann-Hinweise (Stangenlänge, Kopplungshöhen aus rod_mm), druckbare Anleitung."));
-
-// ---------- 10 Roboter ----------
-push(H1("9 · Modul 4 · Roboter-Export"));
-push(P("Zweck: maschinenlesbare Montagesequenz für den robotischen Aufbau – herstellerneutral als JSON/CSV. Schrittfolge: Bodenblech + Senkkopfschrauben/Kopplungsmuttern am Fuß, PLACE_STONE (Lage für Lage), Gewindestangen/Kopplungen, Kopfblech bzw. Spannplatten, abschließend TENSION. Referenzsystem: Nullpunkt unten-links-vorne, X=Länge, Y=Wandstärke, Z=Höhe, mm; Platzierungsbezug Stein-Ecke unten-links-vorne."));
-
-// ---------- 11 Projekt-Manager ----------
-push(H1("10 · Modul 5 · Projekt-Manager (DXF/IFC)"));
-push(P("Zweck: mehrere Wände zu einem Projekt zusammenführen, im 2D-Grundriss platzieren, Sammel-Stückliste, CAD/BIM-Export."));
-push(bullet("**DXF:** Grundriss und Ansichten (Layer für Steine, Vorspannung, Öffnungen)."));
-push(bullet("**IFC4:** jede Wand als IfcWallStandardCase, Öffnungen als Voids, Steine als IfcBuildingElementProxy. Optional echte Geometrie (BREP): i2/i3 als IfcFacetedBrep, je Typ einmal als IfcRepresentationMap, pro Stein per IfcMappedItem referenziert (schlanke Datei)."));
-
-// ---------- 12 Statik-Modul (Werkzeug) ----------
-push(H1("11 · Modul 6 · Statik (Werkzeug)"));
-push(lead("Die Oberfläche zum Schermer-Nachweis aus Kapitel 5. Alle Formeln und die Beispielrechnung stehen dort; dieses Kapitel beschreibt Bedienung, Ein-/Ausgaben und die Bundle-Anbindung."));
+// ---------- 9 Modul 3 Statik (Werkzeug) ----------
+push(H1("9 · Modul 3 · Statik (Werkzeug)"));
+push(lead("Die Oberfläche zum Schermer-Nachweis aus Kapitel 5. Alle Formeln und die Beispielrechnung stehen dort; dieses Kapitel beschreibt Bedienung, Ein-/Ausgaben und die Wandelement-Anbindung."));
 push(P("Eingaben (editierbar wie die Bibliothek der Arbeitsmappe): Geometrie (h, l, t, Öffnungszahl), Material (f_k, γ_w, γ_M, v_Rd, μ_k, γ_M,μ), Gewindestange (Auswahl M8–M20 füllt A_s/f_yk/f_ub), Lasten (Windzone, q_p-Faktor, c_pe,10, Torsituation, γ_Q, DIN-4103-Werte), Vorspannung (Raster e, F0, ΔF, F,inf, γ_P,fav wählbar 1,0–2,0, γ_P,sup), Prüfwerte §6.2, Spannsystem-Bauteile (Steg, Kopf-/Fußplatte, k₂-Werte, Mutter, Auflagerlänge l_P), Deckenwinkel-Abstand."));
 push(P("Ausgaben: **Kompaktnachweis Wand** (Biegung, Schub, Druckrand, Boden, Deckenwinkel) und **Kompaktnachweis Spannsystem** (Stange EC3 + Fließen, Spannschraube, Schraube unten Sechskant/Senk, Kopf-/Fußplatte, Steinpressung, Mutter). Jede Karte zeigt E_d, R_d, Auslastung η und Status; oben die Gesamtausnutzung η_max,gesamt = MAX(Wand, Spannsystem)."));
-push(bullet("**Bundle-Anbindung:** Geometrie und Öffnungszahl werden aus dem Projekt-Bundle / Wandelement übernommen (Kap. 3)."));
+push(bullet("**Wandelement-Anbindung:** Geometrie und Öffnungszahl werden aus dem aktiven Wandelement (localStorage) übernommen bzw. aus einer geladenen Datei (Kap. 3). Alle Kennwerte sind eigene Ingenieur-Eingaben; das Modul schreibt das Wandelement nicht zurück."));
 push(bullet("**Interpolations-Absicherung:** Biege-Prüfwerte werden bei Überschreitung des Prüfbereichs gekappt und gewarnt (Kap. 5.5)."));
-push(H2("12.1 Transport / Hebezustand (Zusatz, nicht Gutachten)"));
+push(H2("9.1 Transport / Hebezustand (Zusatz, nicht Gutachten)"));
 push(P("Separater Spot-Check für das Anschlagblech beim Heben (vorübergehende Bemessungssituation, eigenes Faktorenregime γ_G·dyn). Eigengewicht als Streckenlast n_Ed = γ_w · t · h."));
 push(formula([
   "G_Ek = n_Ed · L / n_Anker      G_Ed = γ_G · dyn · G_Ek   [kN]",
@@ -364,33 +354,42 @@ push(formula([
 ]));
 push(warn("Der Hebe-Nachweis prüft nur das Stahlblech, nicht die Mauerwerksbiegung zwischen den Anschlagpunkten und nicht den Ankerauszug aus dem Mauerwerk — diese sind gesondert zu führen."));
 
-// ---------- 13 3D ----------
-push(H1("12 · Modul 7 · 3D-Vorschau"));
-push(P("Zweck: Echtzeit-3D des Wandelements (Steine i2/i3, Vorspannstränge segmentiert, Öffnungen), drehbar – für die Abstimmung mit Architekten/Bauherren. Optional echte Steingeometrie (eingebettete OBJ) mit massiven Stegen und offenen Kammern."));
+// ---------- 10 Modul 4 Stückliste ----------
+push(H1("10 · Modul 4 · Stückliste & Kosten"));
+push(P("Zweck: Material-Auszug mit editierbaren Preisen und Export. Kanonische Mengen aus dem aktiven Wandelement über den geteilten BOM-Baustein (docs/shared/sembla-bom.js): Steine, Gewindestangen, Muttern, Platten, Bleche, Dichtstreifen. Mit zusätzlich geladenem Verbinder-Layout/Bundle (aus Modul 2) kommen Verbinder und Latten hinzu. Ausgabe: Summe netto, Anzahl gleicher Wände, €/m² Wandfläche (Öffnungen abgezogen)."));
+push(bullet("**Export:** Excel (xlsx-Bibliothek per CDN – die einzige externe Laufzeit-Abhängigkeit; degradiert ohne Internet sauber auf CSV), CSV, Druck."));
+push(bullet("Reiner Konsument: liest das aktive Wandelement, schreibt es nicht zurück. Dieselbe BOM-Quelle nutzt auch die Kurz-Stückliste in der Montage (Modul 5) – konsistent und driftfrei."));
 
-// ---------- 14 Stückliste ----------
-push(H1("13 · Modul 8 · Stückliste & Kosten"));
-push(P("Zweck: Material-Auszug mit editierbaren Preisen und Excel-Export. Aus dem Wandelement: Steine, Gewindestangen, Muttern, Platten. Mit zusätzlichem Verbinder-Layout/Bundle kommen Verbinder, Latten und Dämmung automatisch hinzu. Ausgabe: Summe netto, €/m² Wandfläche (Öffnungen abgezogen), Excel/CSV."));
+// ---------- 11 Modul 5 Montage ----------
+push(H1("11 · Modul 5 · Montageplanung"));
+push(P("Zweck: lagenweise Aufbauanleitung mit Vorspann-Schritten und Kurz-Stückliste. Interaktiver Lagen-Viewer (Slider/Streifen mit Strang-Markern), Wandüberblick mit Bemaßung/Raster/Ankern, Vorspann-Hinweise (Stangenlänge, Kopplungshöhen aus rod_mm), komplette druckbare Anleitung. Die Kurz-Stückliste stammt aus demselben BOM-Baustein wie Modul 4. Reiner Konsument des aktiven Wandelements."));
 
-// ---------- 15 Fertigung ----------
-push(H1("14 · Modul 9 · Fertigungszeichnung"));
-push(P("Zweck: bemaßter Verlege-, Vorspann- und Verbinderplan je Wand mit Schriftfeld und Stückliste – druckbar als PDF (A3/A4 quer)."));
+// ---------- 12 Modul 6 IFC/3D ----------
+push(H1("12 · Modul 6 · 3D-Vorschau & IFC (experimentell)"));
+push(P("Zweck: Echtzeit-3D des aktiven Wandelements (Steine i2/i3, Vorspannstränge segmentiert, Bleche/Anker, Öffnungen), drehbar – für die Abstimmung mit Architekten/Bauherren – zusammengeführt mit dem IFC-Export/-Prüfen. Reiner Konsument; die 3D-Ansicht nutzt Three.js (per CDN, nur online) und degradiert sonst sauber."));
+push(H2("Bauteilgeometrie (OBJ)"));
+push(P("Die echte Steingeometrie liegt aus Vertraulichkeitsgründen nicht im (öffentlichen) Repo. Man lädt i2_SEMBLA.obj und i3_SEMBLA.obj einmalig per Datei-Upload; sie bleiben lokal im Browser (localStorage, über docs/shared/storage.js) und werden für massive Stege / offene Kammern in der 3D-Ansicht und im IFC-Export genutzt. Ohne OBJ werden die Steine als Quader dargestellt/exportiert."));
+push(H2("IFC4-Export"));
+push(P("Der Export (docs/shared/sembla-ifc.js) schreibt das Wandelement als eigenständige IFC4-Datei: die Wand als IfcWallStandardCase, Öffnungen als Voids (IfcRelVoidsElement), jeden Stein als IfcBuildingElementProxy. Mit geladener echter Geometrie werden die Steine als IfcFacetedBrep geschrieben – je Typ einmal als IfcRepresentationMap, pro Stein per IfcMappedItem referenziert (schlanke Datei)."));
+push(H2("IFC prüfen"));
+push(P("Eine fremde IFC-Datei kann geprüft werden (web-ifc per CDN, nur online): gemeldet werden Schema, Entity-Zahl, Anzahl Wände und Stein-Proxys. Dient als schnelle Gültigkeitskontrolle (auch für die selbst exportierte Datei)."));
 
-// ---------- 16 Weiterentwicklung ----------
-push(H1("15 · Weiterentwicklung (für Nicht-Programmierer)"));
-push(P("Die häufigsten Anpassungen lassen sich an klar benannten Stellen vornehmen. Wichtig: nach jeder Änderung Tests laufen lassen und publish-werkzeuge.mjs ausführen."));
+// ---------- 13 Weiterentwicklung ----------
+push(H1("13 · Weiterentwicklung (für Nicht-Programmierer)"));
+push(P("Die häufigsten Anpassungen lassen sich an klar benannten Stellen vornehmen. Es gibt keinen Build-Schritt: docs/ wird direkt editiert und ist nach dem Push sofort live. Wichtig: nach jeder Änderung die betroffenen Tests laufen lassen (npm run test:all)."));
 push(table(["Ich möchte ändern…", "Stelle"], [
-  ["System-Konstanten (Raster, Wandstärke, Stangen-Standard, max. Spannabstand, verbotene Breiten)", M("Konstantenblock in Phase-1/sembla_core.py UND Phase-2/sembla-core.mjs (gleich halten!)")],
-  ["Material-/Sicherheitswerte der Statik", M("DEF_MAT in sembla-engine.mjs; DEFAULTS in sembla-statik.mjs")],
+  ["System-Konstanten (Raster, Wandstärke, Stangen-Standard, max. Spannabstand, verbotene Breiten)", M("Konstantenblock in docs/shared/sembla-core.js UND tests/core/sembla_core.py (gleich halten!)")],
+  ["Material-/Sicherheitswerte der Statik", M("DEF_MAT in docs/shared/sembla-engine.js; DEFAULTS in docs/shared/sembla-statik.js")],
   ["Statik-Formeln", M("docs/shared/sembla-statik.js")],
-  ["Auslegungs-Strategie (Kandidaten, N-Bereich)", M("autoAuslegung() in sembla-engine.mjs")],
+  ["Auslegungs-Strategie (Kandidaten, N-Bereich)", M("autoAuslegung() in docs/shared/sembla-engine.js")],
   ["Verbinder + Latten", M("docs/wandaufbau.html (Panelfugen = Achsen, Beplankungsfeld; Dämmung im MVP entfernt)")],
   ["Preise der Stückliste", "direkt im Tool editierbar; Mengen/Positionen aus docs/shared/sembla-bom.js"],
+  ["IFC-Export", M("docs/shared/sembla-ifc.js (Einzelwand → IFC4)")],
 ], [4000, 5360]));
-push(note("Goldene Regel zur Parität: Der Wandaufbau-Kern existiert zweimal – Python (Referenz) und JavaScript (für die Tools). Wer eine Aufbau-Regel ändert, muss beide Dateien gleich halten; die Paritätstests vergleichen sie über goldene Fixtures. Bei bewussten Änderungen werden die Fixtures neu erzeugt."));
+push(note("Goldene Regel zur Parität: Der Wandaufbau-Kern läuft im Betrieb einmal (docs/shared/sembla-core.js); daneben steht die Python-Referenz tests/core/sembla_core.py nur für die Tests. Wer eine Aufbau-Regel ändert, muss beide Dateien gleich halten; die Paritätstests vergleichen sie über goldene Fixtures. Bei bewussten Änderungen werden die Fixtures neu erzeugt."));
 
-// ---------- 17 Glossar ----------
-push(H1("16 · Glossar & Quellen"));
+// ---------- 14 Glossar ----------
+push(H1("14 · Glossar & Quellen"));
 push(table(["Begriff", "Bedeutung"], [
   ["Wandelement", "parametrische JSON-Beschreibung einer Wand (Single Source of Truth)"],
   ["Lage (course)", "eine Steinreihe, 200 mm hoch"],
@@ -406,11 +405,11 @@ push(table(["Begriff", "Bedeutung"], [
 ], [2600, 6760]));
 push(P("Quellen: Kempen Krause, „Statische Betrachtung nichttragender Mauerwerkswände”, Proj.-Nr. 20260304. SEMBLA-Systemparameter (Polycare)."));
 
-// ---------- 18 Regelwerk (hierarchisch) ----------
-push(H1("17 · Regelwerk – alle Systemregeln hierarchisch"));
+// ---------- 15 Regelwerk (hierarchisch) ----------
+push(H1("15 · Regelwerk – alle Systemregeln hierarchisch"));
 push(lead("Vollständiger, nach Themen gegliederter Katalog der im System hinterlegten Regeln. Jede Regel trägt eine Kennung (z. B. [G-1]) zur Referenzierung. Die Regeln sind in den genannten Kernen/Modulen umgesetzt und durch Tests abgesichert."));
 
-push(H2("18.1 Geometrie & Verband  [G]"));
+push(H2("15.1 Geometrie & Verband  [G]"));
 push(bullet("**[G-1]** Längsraster GRID = 125 mm; Wandlänge = Vielfaches von 125 mm."));
 push(bullet("**[G-2]** Lagenhöhe COURSE = 200 mm; Wandhöhe = Vielfaches von 200 mm."));
 push(bullet("**[G-3]** Wandstärke THICK = 125 mm (Systemsteine i2/i3)."));
@@ -421,7 +420,7 @@ push(bullet("**[G-7]** Wandende: Beginn in der 2. Achse, nicht am Randstein."));
 push(bullet("**[G-8]** Öffnungen (Tür/Fenster/Durchbruch) lassen Steine aus; der Sturz darüber wird aufgefüllt."));
 push(bullet("**[G-9]** Staffelung: getreppte Oberkante über Stufen [x0, x1, height]; Stufen sind Außenkontur, keine Öffnungen."));
 
-push(H2("18.2 Kammern, Nuten & Vorspannstränge  [V]"));
+push(H2("15.2 Kammern, Nuten & Vorspannstränge  [V]"));
 push(bullet("**[V-1]** Kammer-/Strangmitte CHAMBER_OFFSET = 62,5 mm → Vorspannachsen bei x = 62,5 + 125·k mm."));
 push(bullet("**[V-2]** Vorspannung höchstens alle 3 Raster (MAX_SPAN_GRID = 3 = 375 mm); Regelraster e = 0,375 m."));
 push(bullet("**[V-3]** Nur durchgehende Stränge (volle Wandhöhe) sind statisch wirksam; über/unter Öffnungen wird der Strang in Segmente unterbrochen."));
@@ -430,7 +429,7 @@ push(bullet("**[V-5]** Öffnungen: je Seite +2 zusätzliche Spannstäbe."));
 push(bullet("**[V-6]** Manuelle Achsen (prestress.columns_grid) überschreiben das Regelraster exakt."));
 push(bullet("**[V-7]** Gewindestangen = ceil(h / rod), Verbindungsmuttern = Stangen − 1; ROD-Standard 1100 mm (überschreibbar)."));
 
-push(H2("18.3 Anschlüsse & Vorspann-Regime  [A]"));
+push(H2("15.3 Anschlüsse & Vorspann-Regime  [A]"));
 push(bullet("**[A-1]** Fuß immer Bodenblech (Stahl 15 mm, wandlang, in Blechmodulen); je Strang unten Senkkopfschraube, oben Kopplungsmutter."));
 push(bullet("**[A-2]** Oberer Anschluss: Kopfblech (Standard) oder Spannplatte je Strang (prestress.top_connection)."));
 push(bullet("**[A-3]** Zwischenanker an Segmentenden (Öffnungen) = Spannplatten auf der Steinkante."));
@@ -439,7 +438,7 @@ push(bullet("**[A-5]** Nachspann-Regime: F∞ ≥ 15 kN/Stab, Nachspann-Auslösu
 push(bullet("**[A-6]** Stoßfugen werden gezählt; Dichtstreifen je Fuge 20 cm (Schallschutz), Gesamtlänge in der BOM."));
 push(bullet("**[A-7]** Verzinkung nicht erforderlich (Umweltklasse C1/XC1 innen)."));
 
-push(H2("18.4 Horizontaler Wandaufbau – Verbinder & UK (Modul 2)  [U]"));
+push(H2("15.4 Horizontaler Wandaufbau – Verbinder & UK (Modul 2)  [U]"));
 push(bullet("**[U-1]** Verbinder-/UK-Nutenraster = 12,5·k cm (innenliegende Stege); Steinfugen auf diesem Raster sind Fugen, keine Nuten."));
 push(bullet("**[U-2]** Vorspannungsraster = 6,25 + 12,5·k cm (Kammermitte, immer innenliegend → durchgehend)."));
 push(bullet("**[U-3]** Verbinder horizontal nur auf einer innenliegenden Nut (nie in einer Stoßfuge)."));
@@ -450,7 +449,7 @@ push(bullet("**[U-7]** Beplankungsfeld begrenzt Verbinder/Latten/Dämmung, raste
 push(bullet("**[U-8]** Latten vertikal auf den Achsen, an Öffnungen/Feldrand geschnitten; Stöße mittig zwischen zwei Verbindern; 1D-Zuschnitt mit Reststück-Nutzung."));
 push(bullet("**[U-9]** Verbindertyp folgt Wand-Aufbau/Seite aus Modul 1 (fassade → FA, innenausbau → IA) und ist in Modul 2 nicht neu wählbar."));
 
-push(H2("18.5 Statik (Gutachten Schermer)  [S]"));
+push(H2("15.5 Statik (Gutachten Schermer)  [S]"));
 push(bullet("**[S-1]** Statisches System: Einfeldträger über die Höhe h, oben und unten gelenkig."));
 push(bullet("**[S-2]** Maßgebender Lastfall = MAX(Wind, DIN 4103-1 Kat. I, Kat. II)."));
 push(bullet("**[S-3]** Biegetragfähigkeit m_Rk aus Prüfwerten §6.2 über N_v interpoliert; über den Prüfbereich gekappt + Warnung."));
@@ -462,12 +461,12 @@ push(bullet("**[S-8]** η_max,gesamt = MAX(η_Wand, η_Spannsystem) ≤ 1,0 = Na
 push(bullet("**[S-9]** Deckenwinkel-Anschlusskraft wird an den Stahlbau übergeben (Winkel/Verankerung separat)."));
 push(bullet("**[S-10]** Transport/Hebezustand ist ein separater Spot-Check (nicht Teil des Gutachtens)."));
 
-push(H2("18.6 Prozess, Datenmodell & Fertigung  [P]"));
-push(bullet("**[P-1]** Das Wandelement ist die Single Source of Truth: Modul 1 erzeugt es, alle übrigen Module lesen es."));
-push(bullet("**[P-2]** Austauschformat = Projekt-Bundle {wandelement, verbinder_layout}; ein Export-Button, einheitliche Lade-Buttons."));
-push(bullet("**[P-3]** Wandaufbau-Kern doppelt (Python = Referenz, JS = Portierung); Parität über goldene Fixtures."));
+push(H2("15.6 Prozess & Datenmodell  [P]"));
+push(bullet("**[P-1]** Das Wandelement ist die Single Source of Truth: Modul 1 erzeugt es, alle übrigen Module lesen es (nur lesend). Es lebt im localStorage; genau ein Element ist aktiv."));
+push(bullet("**[P-2]** Austausch-Dateiformat = Projekt-Bundle {wandelement, verbinder_layout} oder reines Wandelement-JSON; ein Export-Button, einheitliche Lade-Buttons. Datei-Import verändert kein fremdes Element."));
+push(bullet("**[P-3]** Ein Rechenkern im Betrieb (docs/shared/sembla-core.js); die Python-Referenz (tests/core/) dient nur den Tests und wird bit-genau gleich gehalten (Parität über goldene Fixtures)."));
 push(bullet("**[P-4]** Referenzsystem: Nullpunkt unten-links-vorne; X = Länge, Y = Wandstärke, Z = Höhe (mm)."));
-push(bullet("**[P-5]** Nach jeder Änderung: Tests grün halten und publish-werkzeuge.mjs ausführen (Entwicklungs-/Auslieferungsstand konsistent)."));
+push(bullet("**[P-5]** Kein Build-Schritt: docs/ wird direkt editiert und ist nach dem Push sofort live (GitHub Pages). Nach jeder Änderung die betroffenen Tests grün halten (npm run test:all)."));
 
 // ---------- Dokument ----------
 const doc = new Document({

@@ -13,6 +13,7 @@
     "test:modul4": "node tests/module/smoke_stueckliste.mjs",
     "test:modul5": "node tests/module/smoke_montage.mjs",
     "test:modul6": "node tests/module/smoke_3d.mjs && node tests/interop/test_webifc.mjs",
+    "test:all": "npm run test:core && npm run test:modul1 && npm run test:modul2 && npm run test:modul3 && npm run test:modul4 && npm run test:modul5 && npm run test:modul6 && node tests/module/smoke_storage.mjs",
     "dxf": "python3 tests/interop/sembla_dxf.py",
     "ifc": "python3 tests/interop/sembla_ifc.py",
     "validate:ifc": "node tests/interop/webifc_validate.mjs",

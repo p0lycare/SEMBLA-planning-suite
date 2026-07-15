@@ -2,12 +2,12 @@
 //  1) SEMBLA-IFC über den bestehenden Exporter erzeugen
 //  2) mit web-ifc (WASM) laden und validieren (Schema, Wände, Steine)
 //  3) zurückschreiben (Round-Trip) und erneut laden
-// Aufruf (aus dem Suite-Stammordner):  node Interop-CAD/webifc_prototype.mjs
+// Aufruf (aus dem Suite-Stammordner):  node tests/interop/webifc_prototype.mjs
 import path from "node:path";
 import { writeFileSync } from "node:fs";
 import { IfcAPI, IFCWALLSTANDARDCASE, IFCWALL, IFCBUILDINGELEMENTPROXY } from "web-ifc";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { projectToIfc } from "../Projekt-Manager/sembla-cad.mjs";
+import { wandelementToIfc } from "../../docs/shared/sembla-ifc.js";
 
 const log = (...a) => console.log(...a);
 let fails = 0;
@@ -15,8 +15,7 @@ const ok = (name, cond) => { log((cond ? "  ok  " : "FAIL  ") + name); if (!cond
 
 // 1) echte SEMBLA-IFC erzeugen (mit Steinen als Proxys)
 const w = buildWall("IW-01", 3000, 2600, [new Opening(4, 8, 0, 9, "tuer")]);
-const project = { name: "Aschersleben", walls: [{ name: "IW-01", x_mm: 0, y_mm: 0, rot_deg: 0, wall: w }] };
-const ifcText = projectToIfc(project, { stones: true });
+const ifcText = wandelementToIfc(w, { stones: true });
 writeFileSync("/tmp/sembla_export.ifc", ifcText);
 ok("SEMBLA-IFC erzeugt (IFC4, > 2 KB)", ifcText.includes("FILE_SCHEMA(('IFC4'))") && ifcText.length > 2000);
 
