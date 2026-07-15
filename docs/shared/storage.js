@@ -310,6 +310,31 @@ export function standardEingaben() {
         verbinder: 1.20, latte: 3.50,
       },
     },
+    // Modul 3 — Statischer Nachweis (Schermer-Kennwerte; Geometrie/Oeffnungszahl
+    // kommen aus dem Wandelement und werden NICHT hier gespeichert). Flach nach
+    // Input-ID, damit der Projektstand des Nachweises reproduzierbar mitreist.
+    statik: {
+      // Material / Bibliothek
+      f_k: 20, gamma_w: 13.8, gammaM_wand: 2.0, v_Rd: 3.5, mu_k: 0.5, gamma_mu: 1.5,
+      // Gewindestange
+      stab: "M10", As: 58, fyk_Stab: 640, fub_Stab: 800, gamma_s: 1.25,
+      // Lasten — Wind & DIN 4103-1
+      wlz: "2", mitWind: "ja", qpFaktor: 2.1, cpe10: 0.8, torDominant: "dominant",
+      gammaQ: 1.5, q1_I: 0.5, q1_II: 1.0, a_4103: 0.9,
+      // Vorspannung
+      e_m: 0.375, F0: 22, deltaF: 0.33, F_inf_min: 11, gammaP_fav: "1.1", gammaP_sup: 1.1,
+      // Pruefwerte Biegung §6.2
+      Nv1: 26.7, mRk1: 2.4, Nv2: 80, mRk2: 3.7, Nv3: 240, mRk3: 7.6,
+      // Spannsystem-Bauteile
+      b_Steg: 20, b_KpO: 120, t_KpO: 15, b_FpU: 120, t_FpU: 15, fyk_Platte: 235,
+      gammaM0: 1.0, gammaM2: 1.25, k2_SK: 0.9, k2_Senk: 0.63,
+      L_Mutter_min: 30, L_Mutter_vorh: 35, l_Platte: 375,
+      // Deckenanschluss (Winkel)
+      eW_Winkel: 1.5,
+      // Transport / Hebezustand
+      rho: 13.8, fy: 235, gammaG: 1.35, dyn: 1.30, nAnker: 2,
+      blechB_mm: 80, blechT_mm: 35, hebelBlech_m: 0.375,
+    },
   };
 }
 
@@ -326,7 +351,7 @@ export function aktiveEingaben() { return holeEingaben(); }
  * Einen Eingabe-Abschnitt aktualisieren (Modul schreibt NUR seinen Teil zurueck).
  * Das Wandelement bleibt unberuehrt — nur Modul 1 aendert das Wandelement.
  * Ohne aktives/gewaehltes Element passiert nichts (return null).
- * @param {"projekt"|"aufbau"|"kosten"} teil @param {object} patch @param {string} [id]
+ * @param {"projekt"|"aufbau"|"kosten"|"statik"} teil @param {object} patch @param {string} [id]
  * @returns {string|null} id
  */
 export function mergeEingaben(teil, patch, id) {

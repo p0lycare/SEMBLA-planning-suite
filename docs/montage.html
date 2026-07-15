@@ -48,13 +48,11 @@
 <body>
 <p class="intro"><b>Montageanleitung.</b> Lagenweise Aufbauanleitung mit Vorspannung und Kurz-Stückliste
   aus dem <b>aktiven Wandelement</b> (aus „Wand planen"). Lagen durchklicken oder die komplette Anleitung
-  drucken. Ein Wandelement lässt sich auch per Datei laden. Dieses Modul liest das Wandelement und ändert es nicht.</p>
+  drucken. Dieses Modul liest das Wandelement und ändert es nicht.</p>
 
 <div id="app" class="wrap">
   <div class="panel controls">
     <h2>Wandelement</h2>
-    <input type="file" id="wandfile" accept="application/json,.json" style="display:none">
-    <button class="primary" id="loadwand">Wandelement / Bundle laden (Datei)</button>
     <div id="wandinfo" class="hint" style="margin-top:8px">–</div>
 
     <div style="margin-top:16px"><h2>Übersicht</h2>
@@ -298,16 +296,6 @@ function setupStoreSync(){
 
 // ---- Ereignis-Bindung ----
 function bindEvents(){
-  $('loadwand').addEventListener('click',()=>$('wandfile').click());
-  $('wandfile').addEventListener('change',ev=>{
-    const f=ev.target.files&&ev.target.files[0]; if(!f) return;
-    const rd=new FileReader();
-    rd.onload=()=>{ try{ const j=JSON.parse(rd.result); const we=(j&&j.format==='SEMBLA-Projekt'&&j.wandelement)?j.wandelement:j;
-      if(!we||!we.length_mm||!we.courses) throw new Error('Kein gültiges Wandelement.');
-      applyWand(we); $('wandinfo').innerHTML='Aus Datei geladen: <b>'+(we.name||'Wandelement')+'</b>';
-    }catch(e){ alert('Ungültiges Wandelement: '+e.message); } };
-    rd.readAsText(f);
-  });
   $('showDim').addEventListener('change',e=>{ showDim=e.target.checked; if(WALL) $('mapSvg').innerHTML=wallMap(WALL,CUR,900,260); });
   $('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; if(WALL) $('mapSvg').innerHTML=wallMap(WALL,CUR,900,260); });
   $('prev').addEventListener('click',()=>showLage(CUR-1));

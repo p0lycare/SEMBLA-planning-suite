@@ -48,9 +48,7 @@
 <div class="wrap">
   <div class="panel controls">
     <h2>Eingaben</h2>
-    <input type="file" id="wandfile" accept=".json,application/json" style="display:none">
-    <button class="primary" id="loadwand">Wandelement / Bundle aus Datei laden</button>
-    <div id="wandinfo" class="note" style="margin:6px 0 10px">Geometrie aus dem aktiven Wandelement. Datei-Import überschreibt die Ansicht (ohne den Storage anzufassen).</div>
+    <div id="wandinfo" class="note" style="margin:6px 0 10px">Geometrie &amp; Öffnungszahl aus dem aktiven Wandelement. Alle Kennwerte werden im Projekt gespeichert und im zentralen Export („Start") mit ausgegeben.</div>
 
     <div class="grp"><h3>Geometrie</h3>
       <label><span>Wandhöhe h</span><input type="number" id="h_m" value="3.00" step="0.01"><small>m</small></label>
@@ -178,6 +176,16 @@ const NUM=['h_m','L_m','t_m','n_oeff','f_k','gamma_w','gammaM_wand','v_Rd','mu_k
  'b_Steg','b_KpO','t_KpO','b_FpU','t_FpU','fyk_Platte','gammaM0','gammaM2','k2_SK','k2_Senk','L_Mutter_min','L_Mutter_vorh','l_Platte',
  'eW_Winkel','rho','fy','gammaG','dyn','nAnker','blechB_mm','blechT_mm','hebelBlech_m'];
 
+// Geometrie kommt aus dem Wandelement (nicht persistiert); alle anderen Felder
+// bilden den gespeicherten eingaben.statik-Abschnitt (flach nach Input-ID).
+const GEO=['h_m','L_m','t_m','n_oeff'];
+const SEL=['wlz','mitWind','torDominant','gammaP_fav','stab'];
+const STATIK_KEYS=NUM.filter(f=>!GEO.includes(f)).concat(SEL);
+
+function readStatik(){ const o={}; for(const k of STATIK_KEYS){ const el=$(k); if(!el) continue; o[k]=(el.tagName==='SELECT')?el.value:+el.value; } return o; }
+function persistStatik(){ if(store&&store.mergeEingaben) store.mergeEingaben('statik', readStatik()); }
+function applyStatikEingaben(s){ if(!s) return; for(const k of STATIK_KEYS){ if(s[k]==null) continue; const el=$(k); if(el) el.value=s[k]; } }
+
 function readP(){
   const p={};
   for(const f of NUM) p[f]=+$(f).value;
@@ -287,8 +295,10 @@ function applyWand(w, label){
 // ---------- Aktives Wandelement (localStorage) ----------
 function loadInitial(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
+  const eing = store&&store.aktiveEingaben ? store.aktiveEingaben() : null;
+  applyStatikEingaben(eing && eing.statik);      // gespeicherte Kennwerte des aktiven Elements
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  if(we){ applyWand(we,'Aktives Wandelement'); }
+  if(we){ applyWand(we,'Aktives Wandelement'); } // setzt Geometrie + run()
   else { $('wandinfo').textContent='Kein aktives Wandelement — Werte manuell eingeben (in „Start" anlegen/wählen).'; run(); }
 }
 function setupStoreSync(){
@@ -297,8 +307,10 @@ function setupStoreSync(){
     const id = store.aktivId ? store.aktivId() : null;
     if(id!==currentId){                          // aktives Element extern gewechselt (Kopfleiste/Startseite)
       currentId=id;
+      const eing = store.aktiveEingaben ? store.aktiveEingaben() : null;
+      applyStatikEingaben(eing && eing.statik);  // Kennwerte des neuen Elements laden
       const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
-      if(we) applyWand(we,'Aktives Wandelement geladen');
+      if(we) applyWand(we,'Aktives Wandelement geladen'); else run();
     }
   });
 }
@@ -306,16 +318,9 @@ function setupStoreSync(){
 // ---------- Ereignis-Bindung ----------
 function bindEvents(){
   // Gewindestangen-Auswahl füllt A_s / f_yk / f_ub
-  $('stab').addEventListener('change',()=>{ const k=STAB_KATALOG[$('stab').value]; if(k){ $('As').value=k.As; $('fyk_Stab').value=k.fyk; $('fub_Stab').value=k.fub; } run(); });
-  NUM.forEach(f=>$(f).addEventListener('input',run));
-  ['wlz','mitWind','torDominant','gammaP_fav'].forEach(f=>$(f).addEventListener('change',run));
-
-  $('loadwand').addEventListener('click',()=>$('wandfile').click());
-  $('wandfile').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-    const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result);
-      const w=(j&&j.format==='SEMBLA-Projekt'&&j.wandelement)?j.wandelement:j;
-      applyWand(w,'Aus Datei geladen');
-    }catch(e){ alert('Ungültiges Wandelement / Bundle: '+e.message);} }; rd.readAsText(f); });
+  $('stab').addEventListener('change',()=>{ const k=STAB_KATALOG[$('stab').value]; if(k){ $('As').value=k.As; $('fyk_Stab').value=k.fyk; $('fub_Stab').value=k.fub; } persistStatik(); run(); });
+  NUM.forEach(f=>$(f).addEventListener('input',()=>{ persistStatik(); run(); }));
+  ['wlz','mitWind','torDominant','gammaP_fav'].forEach(f=>$(f).addEventListener('change',()=>{ persistStatik(); run(); }));
 }
 
 window.__statik={ run, readP, applyWand, get nachweise(){return nachweise;}, get STAB_KATALOG(){return STAB_KATALOG;} };

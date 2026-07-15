@@ -1,12 +1,11 @@
 // Smoke-Test Modul 6 (docs/ifc-3d.html): evaluiert das klassische App-Skript unter einem
-// DOM- und THREE-Stub. Shared-Code (buildWall/Opening/store/wandelementToIfc) wird — wie im
-// Browser via window.SEMBLA — aus docs/shared/ bzw. per Mock bereitgestellt und vor __ifcInit()
+// DOM- und THREE-Stub. Shared-Code (buildWall/Opening/store) wird — wie im Browser via
+// window.SEMBLA — aus docs/shared/ bzw. per Mock bereitgestellt und vor __ifcInit()
 // gebunden. Reiner Konsument: lädt das aktive Wandelement, schreibt es nie zurück.
-// Prüft: Store-Anbindung, 3D-Aufbau (Stub), OBJ-Loader über storage.js, echte Steingeometrie,
-// IFC4-Export über den geteilten sembla-ifc-Baustein.
+// Prüft: Store-Anbindung, 3D-Aufbau (Stub), OBJ-Loader über storage.js, echte Steingeometrie.
+// (Der IFC4-Export läuft zentral über die Startseite, nicht mehr in Modul 6.)
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { wandelementToIfc } from "../../docs/shared/sembla-ifc.js";
 
 const html = readFileSync(new URL("../../docs/ifc-3d.html", import.meta.url), "utf8");
 // erstes attributloses <script> ist die App-Logik (obj-Halter=type, three=src, letztes=type=module)
@@ -59,11 +58,7 @@ const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we,
   holeObj:(t)=>_obj[t], setzeObj:(t,v)=>{_obj[t]=v;}, loescheObj:(t)=>{_obj[t]=null;} };
 const fireStore=()=>_subs.forEach(cb=>cb());
 
-// IFC-Export-Spion: reicht an den echten Baustein durch, merkt sich Aufruf
-let _ifcCall=null;
-const ifcSpy=(wall,opts)=>{ const out=wandelementToIfc(wall,opts); _ifcCall={wall,opts,out}; return out; };
-
-globalThis.window.SEMBLA={ buildWall, Opening, store:storeMock, wandelementToIfc:ifcSpy };
+globalThis.window.SEMBLA={ buildWall, Opening, store:storeMock };
 
 eval(script);
 globalThis.window.__ifcInit();
@@ -106,25 +101,9 @@ ok('stoneGeom cached (gleiche Instanz)', A.stoneGeom('i3')===g3);
 let realOk=true; try{ A.opt.real=true; A.build(W); }catch(e){ realOk=false; globalThis.__re=e.message; } finally { A.opt.real=false; A.build(W); }
 ok('Build mit echter Geometrie läuft', realOk);
 
-// IFC-Export: nutzt den geteilten Baustein, gibt gültiges IFC4 aus, löst Download aus
-$('ifcExport').dispatch('click');
-ok('IFC-Export: Baustein aufgerufen mit aktueller Wand', _ifcCall && _ifcCall.wall===A.wall);
-ok('IFC-Export: Einzelsteine (stones)', _ifcCall && _ifcCall.opts.stones===true);
-ok('IFC-Export: gültiges IFC4', _ifcCall && /FILE_SCHEMA\(\('IFC4'\)\)/.test(_ifcCall.out));
-ok('IFC-Export: genau 1 Wand', _ifcCall && (_ifcCall.out.match(/IFCWALLSTANDARDCASE/g)||[]).length===1);
-ok('IFC-Export: Steine als Proxy (>50)', _ifcCall && (_ifcCall.out.match(/IFCBUILDINGELEMENTPROXY/g)||[]).length>50);
-ok('IFC-Export: Öffnung ausgeschnitten', _ifcCall && /IFCOPENINGELEMENT/.test(_ifcCall.out) && /IFCRELVOIDSELEMENT/.test(_ifcCall.out));
-ok('IFC-Export: Download ausgelöst (.ifc)', $('ifcExport') && true);
-
-// IFC-Export mit echter Geometrie -> Brep + MappedRepresentation
-A.opt.real=true; $('ifcExport').dispatch('click'); A.opt.real=false;
-ok('IFC-Export echt: Brep-Geometrie', _ifcCall && /IFCFACETEDBREP/.test(_ifcCall.out) && /MappedRepresentation/.test(_ifcCall.out));
-
 // Storage-Sync: externer Wechsel auf neues aktives Element -> Ansicht folgt (ohne Datei)
 _aktiv='w-2'; _we=WF; fireStore();
 ok('Store-Sync: neues aktives Element geladen', A.wall && A.wall.length_mm===5000);
-$('ifcExport').dispatch('click');
-ok('IFC-Export folgt aktivem Element (Fensterwand)', _ifcCall && _ifcCall.wall.length_mm===5000);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`);

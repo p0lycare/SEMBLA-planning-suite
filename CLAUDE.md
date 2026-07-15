@@ -4,172 +4,140 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 > Sprache: Dieses Projekt ist durchgängig deutsch (Code-Kommentare, Doku, UI). Antworte auf Deutsch.
 
-> ## 🚧 UMBAU IM GANG (seit 2026-07-14) — zuerst lesen
-> Die Suite wird auf eine gehostete **Minimalversion (MVP)** umgebaut. **Verbindlicher Plan:
-> [`doku/REFACTOR.md`](doku/REFACTOR.md)** — dort stehen Zielbild, Modul-Zuordnung, Session-Plan
-> und Fortschritt. Kernpunkte: GitHub Pages (Ordner `docs/`), Module als getrennte Dateien mit
-> gemeinsamem `docs/shared/`, **das alte Build-System entfällt** (`build-*.mjs`, `publish-werkzeuge.mjs`,
-> `sync-shared.mjs` → nach `legacy/`), Wandelement lebt im **localStorage**. Der doppelte Python-Boden
-> bleibt als Test-Strategie. **Vieles unten beschreibt noch den ALTEN Zustand** — es gilt für die
-> noch nicht migrierten Modul-Ordner, bis sie in ihrer Session umgebaut sind. Diese Datei bekommt
-> ihre finale, schlanke Fassung in Session 9.
->
-> **Übergangszustand nach Session 2 (Plumbing):**
-> - `docs/` ist **die App** (GH Pages, Deploy `main`/`docs`): `index.html` (Modul 0 mit Storage-Manager),
->   `wandplanung.html` (Modul 1) + `wandaufbau.html` (Modul 2, fertig umgebaut — Dämmung entfernt,
->   reiner Konsument des aktiven Wandelements) + `statik.html` (Modul 3, fertig umgebaut — voller
->   Schermer-Nachweis, reiner Konsument: Geometrie/Öffnungen aus aktivem Wandelement) + `stueckliste.html`
->   (Modul 4, fertig umgebaut — Mengen aus aktivem Wandelement, reiner Konsument; Verbinder/Latten aus
->   Projekt-Bundle per Datei) + `montage.html` (Modul 5, fertig umgebaut — lagenweise Aufbauanleitung +
->   Vorspann-Schritte + druckbares Dokument, reiner Konsument; Kurz-Stückliste aus `sembla-bom.js`) +
->   `ifc-3d.html` (Modul 6, fertig umgebaut — experimentell: Three.js-3D-Vorschau des aktiven Wandelements +
->   IFC4-Export + web-ifc-Prüfung, reiner Konsument; OBJ-Bauteilgeometrie per Upload → localStorage via
->   `storage.js`).
->   Gemeinsamer Code in `docs/shared/`: `sembla-core.js` (einzige Betriebskopie des JS-Cores, **ES-Modul**),
->   `sembla-engine.js` (Auslegungs-Iteration + vereinfachtes Nachweismodell Biegung/Randdruck/Schub —
->   getrennt von der Schermer-Statik), `sembla-statik.js` (voller Schermer-Nachweis Modul 3,
->   ES-Modul, eigene Tests), `sembla-bom.js` (Stücklisten-Baustein Modul 4 — kanonische Mengen/Positionen,
->   ES-Modul, eigene Tests; löst `sembla-shared.js` ab), `sembla-ifc.js` (IFC4-Export Modul 6 —
->   `wandelementToIfc` + `parseObj`/`meshStats`, ES-Modul, eigene Tests; eingedampft aus dem Projekt-Manager),
->   `storage.js` (localStorage-Schicht), `navbar.js` (Kopfleiste). Einbindung per `<script type="module">`.
->   Module ohne Modulauflösung testbar: App-Logik im klassischen `<script>`, Shared-Code wird via
->   `window.SEMBLA` injiziert.
-> - `tests/` ← `core/` (Python-Referenz `sembla_core.py` + Paritätstests py/mjs + Fixtures),
->   `interop/` (ehem. `Interop-CAD`), `module/` (`smoke_storage.mjs`, `test-engine.mjs`, `smoke_wp.mjs`,
->   `smoke_wandaufbau.mjs`, `test-statik.mjs`, `smoke_statik.mjs`, `smoke_stueckliste.mjs`,
->   `smoke_montage.mjs`, `smoke_3d.mjs`). `interop/test_webifc.mjs` validiert den IFC4-Export
->   (`sembla-ifc.js`) via web-ifc. BOM-Drift-Schutz `test-shared.mjs` (Repo-Wurzel) prüft `sembla-bom.js`
->   gegen die Core-BOM.
-> - `legacy/` ← `_archiv`, `Revit-pyRevit`, `EtappeA-App-beta-sandbox`, `Modul-Roboter`,
->   `Modul-Fertigung`, `Projekt-Manager`, `SEMBLA Werkzeuge` (altes Build-Produkt),
->   `publish-werkzeuge.mjs`, `sync-shared.mjs`, `sembla-shared.js` (Session 6 durch `sembla-bom.js` abgelöst),
->   `Modul-1-Wandplanung`, `Auslegung-Engine`
->   (Session 3 abgelöst), `Modul-Wandaufbau` (Session 4 abgelöst), `Modul-3-Statik`
->   (Session 5 abgelöst), `Modul-Stueckliste` (Session 6 abgelöst), `Modul-4-Montageplanung`
->   (Session 7 abgelöst), `Modul-3D` + `sembla-obj-loader.js` (Session 8 abgelöst — IFC-Export lebt jetzt in
->   `docs/shared/sembla-ifc.js`, OBJ-Loader inline in Modul 6 auf `storage.js`). Rückholbar; nicht Teil des MVP.
-> - `doku/` ← Handbuch, OSS-Matrix, Prozess-Grafiken, `_LIESMICH.md`, `GIT-SETUP.md`, `REFACTOR.md`.
-> - **Noch am alten Platz** (Restaufräumen in Session 9): `SEMBLA_Uebersicht.html` (Modul-0-Quelle, in
->   Session 2 durch `docs/index.html` abgelöst). Alle Modul-Ordner sind migriert.
-
 ## Was das ist
 
 SEMBLA Planungs-Suite — Werkzeuge zur Planung vorgespannter Trockenmauerwerkswände
-(Steintypen **i2** = 25 cm, **i3** = 37,5 cm). Endprodukt sind **build-freie Single-File-HTML-Tools**,
-die per Doppelklick ohne Server laufen. Endnutzer (Planer/Architekten) öffnen ausschließlich
-`SEMBLA Werkzeuge/00_Übersicht.html` — den nummerierten Einstiegspunkt (Werkzeuge 1–9).
+(Steintypen **i2** = 25 cm, **i3** = 37,5 cm). Die Suite ist eine **gehostete Web-App** auf
+**GitHub Pages**: live unter `https://p0lycare.github.io/SEMBLA-planning-suite/` (Deploy direkt vom
+Branch `main`, Ordner `docs/`). Kein Build-Schritt, kein Server — jeder Push ist sofort live.
+
+Die App besteht aus **7 Modulen (0–6)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
+Code liegt **einmal** in `docs/shared/` und wird per `<script type="module">` geladen. Einstieg ist
+`docs/index.html` (Modul 0). Die Geschichte des Umbaus von der alten Single-File-Suite auf diesen
+MVP steht in [`doku/REFACTOR.md`](doku/REFACTOR.md); der abgelöste Alt-Stand liegt in `legacy/`.
 
 ## Roter Faden (Datenfluss)
 
 **Modul 1 (Wandplanung)** erzeugt das geprüfte **Wandelement** (JSON) — die *Single Source of Truth*.
-Alle anderen Module lesen genau dieses Element. Das Wandelement stammt aus dem Core (`buildWall`):
-Länge/Höhe/Öffnungen → Tiling (i3-maximal), Vorspannstränge (segmentiert), BOM/Stückliste.
+Es lebt im **localStorage des Browsers** (Schicht `docs/shared/storage.js`). Genau **ein** aktives
+Element ist gesetzt; **nur Modul 1 schreibt das Wandelement**, alle anderen Module lesen es.
 
-Einheiten: **mm**. `grid` = Rastereinheit (125 mm), `lage`/`course` = Lagenindex (200 mm).
+**Nutzereingaben ↔ ein Datenmodell (kein Drift).** Neben dem Wandelement hält jeder Eintrag einen
+`eingaben`-Block: `{ projekt, aufbau, kosten, statik }` (Standardwerte in `storage.standardEingaben()`).
+Jedes Modul schreibt **nur seinen eigenen Abschnitt** via `store.mergeEingaben(teil, patch)` zurück —
+Modul 1→`projekt`, Modul 2→`aufbau`, Modul 4→`kosten`, Modul 3→`statik`. Abgeleitete Werte (Stückliste,
+Layout, Nachweis) werden immer **neu gerechnet, nie gespeichert**. Modul 3 speichert nur seine Kennwerte;
+die Geometrie (h/L/t/Öffnungszahl) kommt aus dem Wandelement.
+
+**Export/Import ist zentral** (Modul 0, `docs/index.html`): ein Häkchen-Dialog baut über
+`sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
+Projekt-Datei = `{format:'SEMBLA-Projekt',version:2,name,wandelement,eingaben}` (`store.projektObjekt`);
+der Import versteht v2 + Alt-Bundle. Die einzelnen Module haben **keine eigenen Datei-Buttons** mehr.
+
+Das Wandelement stammt aus dem Core (`buildWall`): Länge/Höhe/Öffnungen → Tiling (i3-maximal),
+Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Rastereinheit (125 mm),
+`lage`/`course` = Lagenindex (200 mm).
 
 ## Zentrale Architektur-Regeln
 
-1. **Core ist doppelt implementiert und bit-genau paritätisch.**
-   - `Phase-1/sembla_core.py` = Referenz-Implementierung (Python).
-   - `Phase-2/sembla-core.mjs` = Vanilla-JS-Portierung, muss bit-genau identisch zum Python-Core sein
-     (round-half-to-even via `pyRound`). Paritätstests laufen gegen goldene Fixtures.
-   - Änderungen an der Rechenlogik **immer in beiden** Cores gleich halten.
+1. **Ein Core, eine Betriebskopie.** `docs/shared/sembla-core.js` (ES-Modul) ist der einzige
+   Rechenkern im Betrieb — er läuft im Browser *und* wird von den Node-Tests per `import` geladen.
+   `tests/core/sembla_core.py` (Python) ist **nur Test-Referenz/Orakel**, bit-genau paritätisch
+   (round-half-to-even via `pyRound`), geprüft gegen goldene Fixtures. Rechenlogik ändern heißt:
+   **beide** Cores gleich halten, Fixtures ggf. neu einfrieren, **beide** Paritätstests fahren.
 
-2. **Kern + Template → gebaute HTML.** Tools mit `<Modul>/build-*.mjs` werden **nicht von Hand
-   editiert, sondern gebaut**: das Skript liest den aktuellen Core (`../Phase-2/sembla-core.mjs`),
-   Modul-Kern (`sembla-*.mjs`) und `*.template.html`, ersetzt Platzhalter (`/*__CORE__*/`, `/*__CAD__*/`,
-   `/*__OBJLOADER__*/`, `<!--__OBJ__-->`), schreibt die Single-File-HTML und prüft die Syntax
-   (`node --check`). **Nie die veraltete lokale Core-Kopie einbetten** — immer den Core aus `Phase-2/` ziehen.
-   - **Ausnahme:** Tools **ohne** `build-*.mjs` (v. a. `Modul-3D/SEMBLA_3D_Vorschau.html`) werden direkt
-     als HTML gepflegt. Dort eingebettete Single-Source-Bausteine (z. B. der OBJ-Loader) müssen bei
-     Änderungen von Hand mit der Quelle (`sembla-obj-loader.js`) synchron gehalten werden.
-   - Nach jeder Tool-Änderung `node publish-werkzeuge.mjs` laufen lassen (spiegelt nach `SEMBLA Werkzeuge/`).
+2. **Kein Build-System.** Die Module sind **handgepflegte Einzeldateien** in `docs/` (kein
+   `build-*.mjs`, kein `publish-*.mjs`, kein Kopieren/Drift). Shared-Code wird per
+   `<script type="module">` importiert. Damit die App-Logik **ohne Modulauflösung testbar** bleibt,
+   liegt sie im klassischen `<script>` und bezieht den Shared-Code über ein injiziertes
+   `window.SEMBLA = { … }` (das Modul-Skript importiert und setzt es, dann `mountNavbar(nr)` +
+   `__init()`). Muster siehe jedes Modul in `docs/`.
 
-3. **`sembla-shared.js` ist Single Source für die Stückliste/BOM.** NICHT direkt in den Tools editieren.
-   `sync-shared.mjs` verteilt den Block zwischen `//__SEMBLA_SHARED_START__` und `//__SEMBLA_SHARED_END__`
-   in die Zieltools (Stückliste, Fertigung). `test-shared.mjs` schützt gegen Drift, indem es
-   `semblaBom()` mit der Core-BOM vergleicht.
+3. **shared/-Regel: eigene Datei nur bei (a) ≥ 2 nutzenden Modulen oder (b) eigenen Tests** — sonst
+   inline ins Modul. Deshalb liegen in `docs/shared/`:
+   - `sembla-core.js` — Rechenkern (Tiling, Stränge, BOM, Validierung).
+   - `sembla-engine.js` — Auslegungs-Iteration (optimiert Strangabstand + Vorspannkraft N) plus ein
+     **vereinfachtes** Nachweismodell (Biegung/Randdruck/Schub) — getrennt von der Schermer-Statik.
+   - `sembla-statik.js` — **voller Schermer-Nachweis** (Modul 3).
+   - `sembla-bom.js` — Stücklisten-Baustein (kanonische Mengen/Positionen, Modul 4/5).
+   - `sembla-aufbau.js` — horizontaler Wandaufbau (`berechneAufbau`, Verbinderachsen/Latten; Modul 2, DOM-frei).
+   - `sembla-ifc.js` — IFC4-Export (`wandelementToIfc` + `parseObj`/`meshStats`; genutzt vom zentralen Export).
+   - `sembla-export.js` — baut die Export-Dateien (Stückliste/Zuschnitt-CSV, Montage-HTML, IFC-Text) für Modul 0.
+   - `zip.js` — `zipSync`/`downloadZip` (STORE+CRC32, ohne Fremd-Lib) für den zentralen ZIP-Export.
+   - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie, Import/Export).
+   - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–6 + aktives Wandelement).
 
-4. **Module bleiben rein/einbahnig.** Nur die `Auslegung-Engine/sembla-engine.mjs` kennt die
-   Statik-Iterationsschleife (optimiert Strangabstand + Vorspannkraft N gegen die Nachweise aus
-   `Modul-3-Statik`). Materialkennwerte (`fcd`, `cfd`, `rho`) sind Platzhalter, vom Statiker zu bestätigen.
+   `engine`/`statik`/`bom`/`aufbau`/`ifc`/`export`/`zip` sind eigene Dateien **wegen eigener Tests bzw.
+   mehrerer Nutzer** (Regeln a/b). Reine Modul-Zeichen-/Rechenlogik mit nur einem Nutzer bleibt **inline**
+   im jeweiligen HTML.
 
-## Ordnerstruktur (Module → publizierte Nummer)
+4. **Module bleiben rein/einbahnig.** Nur **Modul 1** schreibt das Wandelement; alle anderen lesen es.
+   Nur `sembla-engine.js` kennt die Auslegungs-Iterationsschleife. Materialkennwerte (`fcd`, `cfd`,
+   `rho`) sind Platzhalter, vom Statiker zu bestätigen.
 
-| Quelle | publiziert als (`SEMBLA Werkzeuge/`) |
-|---|---|
-| `Modul-1-Wandplanung/` | 1 Wand-Planung & Auslegung |
-| `Modul-Wandaufbau/` | 2 Horizontaler Wandaufbau (Verbinder + Latten/Dämmung) |
-| `Modul-4-Montageplanung/` | 3 Montageplanung |
-| `Modul-Roboter/` | 4 Roboter-Export |
-| `Projekt-Manager/` | 5 Projekt-Manager (DXF/IFC) |
-| `Modul-3-Statik/` | 6 Statik-Anschlüsse |
-| `Modul-3D/` | 7 3D-Vorschau |
-| `Modul-Stueckliste/` | 8 Stückliste & Kosten |
-| `Modul-Fertigung/` | 9 Fertigungszeichnung |
+## Module (Datei in `docs/` → Inhalt)
 
-Weitere: `Interop-CAD/` (DXF/IFC-Export, Python + web-ifc), `EtappeA-App-beta-sandbox/` (isolierter
-Experimentierstand für die durchgängige Web-App — **nicht produktiv**), `_archiv/` (abgelöste Stände).
+| Nr. | Datei | Inhalt |
+|---|---|---|
+| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`) |
+| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`) — **erzeugt** das Wandelement; Projekt-Kopfdaten → `eingaben.projekt` |
+| 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau` |
+| 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie aus dem Wandelement |
+| 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); Preise/Anzahl → `eingaben.kosten` (Export läuft zentral über Modul 0) |
+| 5 | `montage.html` | Montageanleitung (lagenweise, Vorspann-Schritte, druckbar) |
+| 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 
-**Bauteilgeometrie (i2/i3):** Die realen OBJ/IFC-Modelle liegen NICHT mehr im Repo (vertraulich,
-öffentliches Repo). Der Ordner `Bauteil-OBJ/` ist gitignored und nur lokal vorhanden. Die Werkzeuge
-**Modul-3D** und **Projekt-Manager** betten die Geometrie nicht mehr ein, sondern laden sie zur
-Laufzeit per Datei-Upload (lokal im Browser, in `localStorage` gemerkt). Der Loader ist Single Source
-in `sembla-obj-loader.js` (inline in Modul-3D gepflegt, in den Projekt-Manager via `build-manager.mjs`
-eingebettet). Die leeren Blöcke `<script id="obj-i2/i3">` bleiben erhalten. Lokale Builds/Smoke-Tests
-lesen die OBJ weiterhin aus `Bauteil-OBJ/`.
+**Bauteilgeometrie (i2/i3):** Die realen OBJ/IFC-Modelle liegen **nicht** im Repo (vertraulich,
+öffentliches Repo). `Bauteil-OBJ/` ist gitignored und nur lokal vorhanden. Modul 6 bettet die
+Geometrie nicht ein, sondern lädt sie zur Laufzeit per Datei-Upload (lokal im Browser); sie wird über
+`storage.js` in `localStorage` (`sembla:obj:i2` / `:i3`) gemerkt. Der OBJ-Loader ist **inline** in
+Modul 6. Node-Smoke-Tests lesen die OBJ lokal aus `Bauteil-OBJ/`.
 
-Hinweis: Ordner `SEMBLA Tools/` (falls vorhanden) ist veraltet; maßgeblich ist nur `SEMBLA Werkzeuge/`.
+**Externe Laufzeit-Abhängigkeiten (nur online, degradieren sauber):** `ifc-3d.html` lädt Three.js (CDN)
+für die 3D-Ansicht (ohne Internet zeigt es einen Hinweis, alles andere läuft weiter). Der ZIP-Export
+kommt ohne Fremd-Lib aus (`zip.js`); web-ifc/xlsx-CDNs werden im Betrieb **nicht** mehr geladen (web-ifc
+nur noch in `tests/interop`).
 
 ## Häufige Befehle
 
 ```bash
-npm install                       # docx + web-ifc (JS-Abhängigkeiten)
-pip install ezdxf ifcopenshell --break-system-packages   # Python-Interop (optional)
-
-# ⚠️ ALTES Build-System (wird abgelöst, liegt in legacy/): publish-werkzeuge.mjs, sync-shared.mjs,
-#    <Modul>/build-*.mjs. Für noch nicht migrierte Module gilt es übergangsweise weiter, aber es
-#    wird KEIN neues Tool mehr damit gebaut. Ziel: getrennte Dateien in docs/ + docs/shared/.
-
+npm install                       # JS-Abhängigkeiten (docx für Handbuch, web-ifc für Tests)
+pip install ezdxf ifcopenshell --break-system-packages   # optional, nur für tests/interop
 npm run handbuch                  # doku/SEMBLA_Handbuch.docx neu bauen (build-handbuch.mjs)
 ```
 
-### Tests
+Es gibt **keinen** Build-/Publish-Schritt für die App — `docs/` wird direkt editiert und ist live.
+
+### Tests (laufen nie beim Nutzer — Handdisziplin, kein CI-Gate)
 
 ```bash
-# Core-Parität (die wichtigsten Tests):
-python3 Phase-1/test_sembla_core.py
-node Phase-2/test-sembla-core.mjs
-node test-shared.mjs              # BOM-Drift-Schutz
-
-# Pro Modul: test-*.mjs (Logik) und smoke_*.mjs (Rendering/Integration)
-node <Modul>/test-*.mjs
-node <Modul>/smoke_*.mjs
-node Auslegung-Engine/test-engine.mjs
-
-# npm-Shortcuts:
-npm run test:core                 # beide Core-Paritätstests + BOM-Drift (die wichtigsten)
-npm run test:statik               # Modul-3-Statik test + smoke
-npm run test:interop              # Interop-CAD (Python DXF/IFC + web-ifc)
+npm run test:core                 # Core-Parität (py + mjs) + BOM-Drift (test-shared.mjs) — die wichtigsten
+npm run test:modul1               # … bis test:modul6: Logik-/Smoke-Tests je Modul (tests/module/)
+npm run test:all                  # Core + alle Modultests + Storage-Smoke in einem Rutsch
+npm run test:interop              # tests/interop/: Python-DXF/IFC-Referenz + web-ifc-Validierung (Orakel Modul 6)
 ```
 
-Es gibt kein einzelnes Gesamt-Testkommando — Tests laufen pro Modul. Nach Core-Änderungen
-mindestens beide Core-Paritätstests + `test-shared.mjs` fahren.
+- `tests/core/` — Python-Referenz + Paritätstests (py/mjs) + Fixtures.
+- `tests/module/` — Logik- (`test-*.mjs`) und Smoke-Tests (`smoke_*.mjs`) je Modul, laufen gegen `docs/`.
+- `tests/interop/` — DXF/IFC-Referenz (ezdxf/ifcopenshell) + web-ifc-Validierung des IFC-Exports.
+- `test-shared.mjs` (Repo-Wurzel) — BOM-Drift-Schutz: vergleicht `sembla-bom.js` mit der Core-BOM.
+
+Nach Core-Änderungen mindestens `npm run test:core` fahren; vor jedem Push, der Rechenlogik berührt,
+zusätzlich die betroffenen Modultests.
 
 ## Wichtige Randbedingungen
 
-- ⚠️ **Dieses Repo ist ÖFFENTLICH** (`github.com/p0lycare/SEMBLA-planning-suite`, Stand 2026-07-13).
-  Alles, was committet/gepusht wird, ist sofort für jeden sichtbar — und bleibt es (Caches, Klone,
-  Forks) auch nach späterem Löschen.
+- ⚠️ **Dieses Repo ist ÖFFENTLICH** (`github.com/p0lycare/SEMBLA-planning-suite`). Alles Committete/
+  Gepushte ist sofort für jeden sichtbar — und bleibt es (Caches, Klone, Forks) auch nach späterem
+  Löschen. Jeder Push ist zudem sofort live (GH Pages).
 - **Mit sensiblen Daten äußerst vorsichtig sein.** Vor jedem `git add`/Commit prüfen, ob vertrauliche
   Inhalte betroffen sind. Nicht committen: das nicht öffentliche **Gutachten Prof. Schermer** und daraus
-  abgeleitete Prüf-/Materialwerte, Zugangsdaten/Tokens, personenbezogene Daten, interne PDFs/Dokumente.
-  Im Zweifel **erst nachfragen**, nicht committen.
-- `Uploads/` ist per `.gitignore` ausgeschlossen (enthält vertrauliches PDF) — Ordner nie tracken.
-  Historie wurde am 2026-07-13 bereinigt (PDF via `git-filter-repo` entfernt).
-- **Hinweis Handbuch:** `SEMBLA_Handbuch.docx` (+ Kopie in `SEMBLA Werkzeuge/`) reproduziert Werte/
-  Formeln aus dem Schermer-Gutachten und liegt aktuell bewusst öffentlich im Repo — bei Änderungen
-  im Blick behalten, ob Vertrauliches hinzukommt.
+  abgeleitete Prüf-/Materialwerte, Zugangsdaten/Tokens, personenbezogene Daten, interne PDFs, sowie die
+  reale **Bauteilgeometrie** (`Bauteil-OBJ/`). Im Zweifel **erst nachfragen**, nicht committen.
+- `Uploads/` und `Bauteil-OBJ/` sind per `.gitignore` ausgeschlossen — nie tracken. Die Historie wurde
+  am 2026-07-13 bereinigt (vertrauliches PDF via `git-filter-repo` entfernt).
+- **Hinweis Handbuch:** `doku/SEMBLA_Handbuch.docx` reproduziert Werte/Formeln aus dem Schermer-Gutachten
+  und liegt bewusst öffentlich im Repo — bei Änderungen im Blick behalten, ob Vertrauliches hinzukommt.
 - **Nicht im OneDrive-/SharePoint-Ordner arbeiten** (beschädigt `.git`). Lokaler Klon ist die Arbeitskopie.
 - **OSS-Lizenzen gemischt** (web-ifc MPL-2.0, docx/ezdxf MIT, IfcOpenShell LGPL) — vor Weitergabe/
   Produktisierung juristisch prüfen.

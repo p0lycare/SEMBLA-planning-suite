@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SEMBLA · 3D-Vorschau &amp; IFC (experimentell)</title>
+<title>SEMBLA · 3D-Vorschau (experimentell)</title>
 <style>
   .intro{max-width:1240px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:13px}
   .intro b{color:var(--sb-ink)}
@@ -33,16 +33,14 @@
 </style>
 </head>
 <body>
-<p class="intro"><b>3D-Vorschau &amp; IFC (experimentell).</b> Echtzeit-3D des <b>aktiven Wandelements</b>
+<p class="intro"><b>3D-Vorschau (experimentell).</b> Echtzeit-3D des <b>aktiven Wandelements</b>
   (aus „Wand planen") — Steine i2/i3, Vorspannstränge, Öffnungen. Optional mit echter Bauteilgeometrie (OBJ,
-  bleibt lokal im Browser). Zusätzlich: IFC4-Export der Wand und Prüfung fremder IFC-Dateien (web-ifc).
+  bleibt lokal im Browser). Der IFC4-Export läuft zentral über „Start".
   Ziehen = drehen · Scrollen = zoomen · Rechts-Ziehen = verschieben. Dieses Modul liest das Wandelement und ändert es nicht.</p>
 
 <div class="wrap">
   <div class="panel controls">
     <h2>Wandelement</h2>
-    <input type="file" id="file" accept="application/json,.json" style="display:none">
-    <div class="row"><button class="primary" id="load">Wandelement / Bundle laden (Datei)</button></div>
     <div class="row" id="info" style="font-size:12.5px;color:var(--sb-muted)">–</div>
     <div class="res">
       <div class="k">Maße</div><div class="v" id="ovDim">–</div>
@@ -65,18 +63,8 @@
     <div class="row"><button id="objClear">Geometrie entfernen</button></div>
     <div class="hint" id="objStatus"></div>
     <div class="hint">Echte Steingeometrie ist nicht im Werkzeug enthalten. Lade <b>i2_SEMBLA.obj</b> und
-      <b>i3_SEMBLA.obj</b> einmalig — sie bleiben nur lokal in diesem Browser (localStorage).</div>
-
-    <h2>IFC-Export</h2>
-    <div class="row"><button id="ifcExport">IFC4 exportieren (.ifc)</button></div>
-    <div class="hint">Exportiert die Wand als IFC4: Wand + Öffnungen + jeder Stein als Objekt. Ist „Echte
-      Steingeometrie" aktiv und geladen, werden die Steine mit echter Geometrie (Brep) geschrieben.</div>
-
-    <h2>IFC prüfen</h2>
-    <input type="file" id="ifcFile" accept=".ifc" style="display:none">
-    <div class="row"><button id="ifcCheck">IFC-Datei prüfen (web-ifc)</button></div>
-    <div class="hint" id="ifcInfo">Öffnet eine IFC-Datei und meldet Schema, Entities und Wände. web-ifc wird
-      online per CDN geladen (nur mit Internet).</div>
+      <b>i3_SEMBLA.obj</b> einmalig — sie bleiben nur lokal in diesem Browser (localStorage). Die geladene
+      Geometrie fließt auch in den zentralen IFC4-Export („Start") ein.</div>
   </div>
 
   <div class="stage">
@@ -99,8 +87,8 @@
 
 <script>
 // ===== Klassisches App-Skript (ohne Modulauflösung testbar) =====
-// Shared-Code (buildWall/Opening/store/wandelementToIfc) wird via window.SEMBLA injiziert.
-let buildWall, Opening, store, wandelementToIfc;
+// Shared-Code (buildWall/Opening/store) wird via window.SEMBLA injiziert.
+let buildWall, Opening, store;
 
 const $=id=>document.getElementById(id);
 const MM=0.001; // mm -> Szene (m)
@@ -281,68 +269,24 @@ function bindObj(){
   if(clr) clr.addEventListener('click',()=>{ for(const t of ['i2','i3']){ OBJTEXT[t]=null; try{ if(store&&store.loescheObj) store.loescheObj(t); }catch(e){} } delete OBJCACHE.i2; delete OBJCACHE.i3; objStatus(); if(WALL&&THREE_OK) build(WALL); });
 }
 
-// ---- IFC-Export ----
-function exportIfc(){
-  if(!WALL){ alert('Bitte zuerst ein Wandelement laden.'); return; }
-  if(!wandelementToIfc){ alert('IFC-Baustein nicht geladen.'); return; }
-  try{
-    const useReal=opt.real&&(OBJTEXT.i2||OBJTEXT.i3);
-    const ifc=wandelementToIfc(WALL,{stones:true,realGeom:!!useReal,objText:{i2:OBJTEXT.i2,i3:OBJTEXT.i3}});
-    const nm=(WALL.name||'sembla_wand').toString().trim().replace(/[^\wäöüÄÖÜß.-]+/g,'_')||'sembla_wand';
-    const blob=new Blob([ifc],{type:'application/x-step'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a'); a.href=url; a.download=nm+'.ifc';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),0);
-  }catch(e){ alert('IFC-Export fehlgeschlagen: '+(e&&e.message||e)); }
-}
-
-// ---- IFC prüfen (web-ifc via CDN, benötigt Internet) ----
-function bindIfcCheck(){
-  $('ifcCheck').addEventListener('click',()=>$('ifcFile').click());
-  $('ifcFile').addEventListener('change',async ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-    const info=$('ifcInfo'); info.textContent='Prüfe IFC …';
-    try{
-      const buf=new Uint8Array(await f.arrayBuffer());
-      const mod=await import('https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/web-ifc-api.js');
-      const api=new mod.IfcAPI(); api.SetWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/'); await api.Init();
-      const id=api.OpenModel(buf); const sz=v=>(v&&v.size?v.size():0);
-      const schema=api.GetModelSchema?api.GetModelSchema(id):'?';
-      const ent=sz(api.GetAllLines(id));
-      const walls=sz(api.GetLineIDsWithType(id,mod.IFCWALLSTANDARDCASE))+sz(api.GetLineIDsWithType(id,mod.IFCWALL));
-      const prox=sz(api.GetLineIDsWithType(id,mod.IFCBUILDINGELEMENTPROXY));
-      api.CloseModel(id);
-      info.innerHTML=`<b>${f.name}</b> · Schema ${schema} · ${ent} Entities · ${walls} Wände · ${prox} Steine — <span style="color:#1f9d55;font-weight:600">gültig</span>`;
-    }catch(e){ info.innerHTML='IFC-Prüfung fehlgeschlagen (web-ifc wird per Internet-CDN geladen): '+(e&&e.message||e); }
-  });
-}
-
 // ---- Ereignis-Bindung ----
 function bindEvents(){
-  $('load').addEventListener('click',()=>$('file').click());
-  $('file').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-    const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result);
-      const we=(j&&j.format==='SEMBLA-Projekt'&&j.wandelement)?j.wandelement:j; applyWand(we);
-      $('info').innerHTML='Aus Datei geladen: <b>'+(we.name||'Wandelement')+'</b>';
-    }catch(e){ alert('Ungültig: '+e.message); } }; rd.readAsText(f); });
   ['stones','edges','tension','labels','real'].forEach(k=>{ const id='c'+k[0].toUpperCase()+k.slice(1);
     $(id).addEventListener('change',e=>{ opt[k]=e.target.checked; if(WALL&&THREE_OK) build(WALL); }); });
   $('reset').addEventListener('click',()=>{ if(WALL&&THREE_OK){ orbit.theta=-0.9;orbit.phi=1.05;orbit.r=Math.max(WALL.length_mm,WALL.height_mm)*MM*1.5;orbit.tgt.set(WALL.length_mm/2*MM,WALL.height_mm/2*MM,(WALL.thickness_mm||125)/2*MM);updateCam(); } });
-  $('ifcExport').addEventListener('click',exportIfc);
   bindObj();
-  bindIfcCheck();
 }
 
-window.__ifc={applyWand,build,demo,parseObjScene,stoneGeom,exportIfc,opt,OBJTEXT,
+window.__ifc={applyWand,build,demo,parseObjScene,stoneGeom,opt,OBJTEXT,
   get wall(){return WALL;}};
 
 window.__ifcInit=function(){
   const S=window.SEMBLA||{};
-  buildWall=S.buildWall; Opening=S.Opening; store=S.store; wandelementToIfc=S.wandelementToIfc;
+  buildWall=S.buildWall; Opening=S.Opening; store=S.store;
   THREE_OK = (typeof THREE!=='undefined');
   if(THREE_OK){ try{ initThree(); }catch(e){ THREE_OK=false; } }
   if(!THREE_OK){ const m=$('stagemsg'); if(m){ m.style.display='flex';
-    m.textContent='3D-Ansicht nicht verfügbar (Three.js wird online per CDN geladen). IFC-Export und -Prüfung funktionieren dennoch.'; } }
+    m.textContent='3D-Ansicht nicht verfügbar (Three.js wird online per CDN geladen). Der IFC4-Export läuft unabhängig davon zentral über „Start".'; } }
   bindEvents();
   objRestore();
   setupStoreSync();
@@ -354,8 +298,7 @@ window.__ifcInit=function(){
   import { buildWall, Opening } from './shared/sembla-core.js';
   import * as store from './shared/storage.js';
   import { mountNavbar } from './shared/navbar.js';
-  import { wandelementToIfc } from './shared/sembla-ifc.js';
-  window.SEMBLA = { buildWall, Opening, store, wandelementToIfc };
+  window.SEMBLA = { buildWall, Opening, store };
   mountNavbar(6);
   window.__ifcInit();
 </script>
