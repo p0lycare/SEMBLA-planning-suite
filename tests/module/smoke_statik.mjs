@@ -24,8 +24,13 @@ const dv={
 };
 const document={ _e:{}, getElementById(id){ let e=this._e[id]; if(!e){ e=this._e[id]=new El(id); if(id in dv) e.value=dv[id]; } return e; } };
 globalThis.document=document; globalThis.window={}; globalThis.alert=()=>{};
-// Storage-Mock: kein aktives Element → manueller Modus (DOM-Defaults = Excel-Referenz).
-const storeMock={ aktivId:()=>null, aktivesWandelement:()=>null, abonniere:()=>()=>{} };
+// Storage-Mock: aktives Wandelement mit Referenz-Geometrie (h=3,0 · l=6,0 · t=0,123 · 0 Öffnungen)
+// — entspricht genau den DOM-Defaults/Excel-Prüfwerten. Ohne aktives Element rechnet Modul 3
+// bewusst NICHT mehr (kein fiktives Wandelement), siehe separater Leer-Test unten.
+let _subs=[];
+const storeMock={ aktivId:()=>'w-ref', aktiveEingaben:()=>null,
+  aktivesWandelement:()=>({name:'Referenz', length_mm:6000, height_mm:3000, thickness_mm:123, openings:[]}),
+  abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
 eval(script);
 
 globalThis.window.SEMBLA={ statik, store:storeMock };
@@ -76,6 +81,14 @@ ok('zurückgesetzt -> wieder erfüllt', /erfüllt/.test(document.getElementById(
 S.applyWand({name:'IW-Test',length_mm:2000,height_mm:2600,thickness_mm:125,openings:[{g0:5,g1:11,l0:0,l1:10}]},'Aktives Wandelement');
 ok('applyWand: h=2,60 · L=2,000 · t=0,125 · 1 Öffnung', document.getElementById('h_m').value==='2.60' && document.getElementById('L_m').value==='2.000' && document.getElementById('t_m').value==='0.125' && document.getElementById('n_oeff').value===1);
 ok('applyWand: Info nennt Wandelement', /IW-Test/.test(document.getElementById('wandinfo').textContent));
+
+// ---- Ohne aktives Element: kein (fiktiver) Nachweis, sondern klare Leer-Anzeige ----
+storeMock.aktivId=()=>null; storeMock.aktivesWandelement=()=>null;
+_subs.forEach(cb=>cb());   // externer Wechsel auf "kein aktives Element"
+ok('Leer: Summary geleert (Geometrie fehlt)', document.getElementById('sumBadge').textContent==='—' && /Geometrie fehlt/.test(document.getElementById('sumText').innerHTML));
+ok('Leer: Nachweis-Karten geleert', document.getElementById('cardBieg').innerHTML==='' && document.getElementById('cardStange').innerHTML==='');
+ok('Leer: Geometriefelder geblankt', document.getElementById('h_m').value==='' && document.getElementById('L_m').value==='' && document.getElementById('n_oeff').value==='');
+ok('Leer: Info nennt kein aktives Wandelement', /Kein aktives Wandelement/.test(document.getElementById('wandinfo').textContent));
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

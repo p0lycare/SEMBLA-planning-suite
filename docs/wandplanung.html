@@ -266,6 +266,18 @@ function run(){
   draw(w);
   persistAktiv(w);
 }
+// Ohne aktives Wandelement keine (fiktive) Vorschau: leere Zeichnung + Ergebnis.
+// Die erste echte Eingabe ruft run() und legt das Wandelement an (persistAktiv).
+function renderLeer(){
+  RESULT=null;
+  $('statusBadge').className='badge'; $('statusBadge').textContent='Neu';
+  $('warns').textContent='';
+  ['dims','rSp','rStrands','rN','rGrid','rSteine'].forEach(id=>$(id).textContent='—');
+  $('nwTable').querySelector('tbody').innerHTML='';
+  $('itTable').querySelector('tbody').innerHTML='';
+  $('plan').setAttribute('viewBox','0 0 1000 120');
+  $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — Werte eingeben; die erste Änderung legt es an.</text>';
+}
 function nwRow(name,e,wd,util,ok,gov){ return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀':''}</td><td>${e}</td><td>${wd}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`; }
 function renderNachweise(v){ const n=v.nachweise,g=v.governing.name;
   $('nwTable').querySelector('tbody').innerHTML=
@@ -394,6 +406,7 @@ function setupStoreSync(){
       const we=store.aktivesWandelement&&store.aktivesWandelement();
       aktName=(e&&e.name)||(we&&we.name)||'Wand';
       if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
+      else { renderLeer(); saveHint('Kein aktives Wandelement — die erste Änderung legt automatisch eins an.'); }
     }
   });
 }
@@ -403,7 +416,7 @@ function loadInitial(){
   if(e&&e.name) aktName=e.name;
   else if(we&&we.name) aktName=we.name;
   if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
-  else { renderSteps(); renderOps(); run(); saveHint('Kein aktives Wandelement — die erste Änderung legt automatisch eins an.'); }
+  else { renderSteps(); renderOps(); renderLeer(); saveHint('Kein aktives Wandelement — die erste Änderung legt automatisch eins an.'); }
 }
 
 // ---------- Laden / Export (Datei) ----------

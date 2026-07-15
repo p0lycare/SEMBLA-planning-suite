@@ -15,7 +15,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
 const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',rodCm:'110',blechCm:'100',topConn:'blech'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
-// Storage-Mock: kein aktives Element -> Modul rechnet mit Standard-Formular.
+// Storage-Mock: kein aktives Element -> Modul startet leer; erste Eingabe legt das Element an.
 let _subs=[];
 const storeMock={ aktivId:()=>null, aktivesElement:()=>null, aktivesWandelement:()=>null, speichereAktiv:()=>'w-test',
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
@@ -26,6 +26,9 @@ globalThis.window.__wpInit();
 const WP=globalThis.window.__wp;
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
+// Ohne aktives Element startet Modul 1 leer (kein fiktives Wandelement) — die erste Eingabe legt es an.
+ok('Start ohne aktives Element -> leere Vorschau', !WP.RESULT && /Kein aktives Wandelement/.test(document.getElementById('plan').innerHTML));
+WP.run();   // erste echte Eingabe simulieren -> Auslegung läuft und legt das Wandelement an
 ok('Auslegung läuft, konvergiert', WP.RESULT && WP.RESULT.status==='konvergiert');
 ok('Wandbild + Stränge', (document.getElementById('plan').innerHTML.match(/<rect/g)||[]).length>5 && document.getElementById('plan').innerHTML.includes('#1f6feb'));
 ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);

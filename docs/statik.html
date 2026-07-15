@@ -168,6 +168,7 @@ const pct=u=>fmt((isFinite(u)?u:0)*100,1)+' %';
 // aus window.SEMBLA (in __statikInit gebunden):
 let nachweise, STAB_KATALOG, store;
 let currentId=null;
+let hasWand=false;   // true nur bei aktivem Wandelement — sonst kein (fiktiver) Nachweis
 
 const NUM=['h_m','L_m','t_m','n_oeff','f_k','gamma_w','gammaM_wand','v_Rd','mu_k','gamma_mu',
  'As','fyk_Stab','fub_Stab','gamma_s','qpFaktor','cpe10','gammaQ','q1_I','q1_II','a_4103',
@@ -205,7 +206,20 @@ function card(el, ok, title, rows, extra){
     `<div class="res">${rows.map(r=>`<div class="k">${r[0]}</div><div class="v">${r[1]}</div>`).join('')}</div>`+(extra||'');
 }
 
+// Ohne aktives Wandelement fehlt die Geometrie (h/L/t/Öffnungszahl) — dann kein
+// (fiktiver) Nachweis, sondern eine klare Leer-Anzeige.
+const LEER_CARDS=['cardBieg','cardSchub','cardDruck','cardBoden','cardWinkel',
+  'cardStange','cardMStab','cardSpannO','cardUnten','cardKpO','cardFpU','cardStein','cardMutter','cardTrans'];
+function renderLeer(){
+  ['h_m','L_m','t_m','n_oeff'].forEach(id=>{ if($(id)) $(id).value=''; });
+  $('sumBadge').className='badge'; $('sumBadge').textContent='—';
+  $('sumText').innerHTML='Kein aktives Wandelement — Geometrie fehlt.';
+  $('ctxWand').innerHTML=''; $('ctxSpann').innerHTML='';
+  LEER_CARDS.forEach(id=>{ if($(id)) $(id).innerHTML=''; });
+}
+
 function run(){
+  if(!hasWand){ renderLeer(); return; }
   const p=readP();
   const r=nachweise(p);
   const w=r.wand, s=r.spann, tr=r.transport, o=r.oeffnungen, V=w.vor;
@@ -283,6 +297,7 @@ function run(){
 // ---------- Wandelement → Geometrie/Öffnungen übernehmen ----------
 function applyWand(w, label){
   if(!w) return;
+  hasWand=true;
   if(w.height_mm) $('h_m').value=(w.height_mm/1000).toFixed(2);
   if(w.length_mm) $('L_m').value=(w.length_mm/1000).toFixed(3);
   if(w.thickness_mm) $('t_m').value=(w.thickness_mm/1000).toFixed(3);
@@ -299,7 +314,7 @@ function loadInitial(){
   applyStatikEingaben(eing && eing.statik);      // gespeicherte Kennwerte des aktiven Elements
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
   if(we){ applyWand(we,'Aktives Wandelement'); } // setzt Geometrie + run()
-  else { $('wandinfo').textContent='Kein aktives Wandelement — Werte manuell eingeben (in „Start" anlegen/wählen).'; run(); }
+  else { hasWand=false; $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.'; run(); }
 }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
@@ -310,7 +325,8 @@ function setupStoreSync(){
       const eing = store.aktiveEingaben ? store.aktiveEingaben() : null;
       applyStatikEingaben(eing && eing.statik);  // Kennwerte des neuen Elements laden
       const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
-      if(we) applyWand(we,'Aktives Wandelement geladen'); else run();
+      if(we){ applyWand(we,'Aktives Wandelement geladen'); }
+      else { hasWand=false; $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.'; run(); }
     }
   });
 }
