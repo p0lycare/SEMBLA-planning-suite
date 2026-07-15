@@ -148,7 +148,7 @@ push(P("Die fachliche Logik liegt in getesteten Kernen (reine Bibliotheken). Die
 push(table(["Was", "Datei(en)", "Inhalt"], [
   ["Wandaufbau-Kern", M("Phase-1/sembla_core.py (Referenz) · Phase-2/sembla-core.mjs"), "Verband, Stränge, BOM, Validierung. Python = Referenz, JS = bit-genaue Portierung (Parität über Fixtures)."],
   ["Wand-Statik", M("Modul-3-Statik/sembla-statik.mjs"), "Schermer-Nachweis: Wand (Biegung via Prüfwert-Interpolation, Schub, Druckrand, Bodenreibung, Deckenwinkel) + Spannsystem (Stange, Schrauben, Platten, Steinpressung) + Transport (Zusatz)."],
-  ["Auslegungs-Engine", M("Auslegung-Engine/sembla-engine.mjs"), "Iteration: optimiert Strangabstand & Vorspannkraft bis alle Nachweise erfüllt sind."],
+  ["Auslegungs-Engine", M("docs/shared/sembla-engine.js"), "Iteration: optimiert Strangabstand & Vorspannkraft bis alle Nachweise erfüllt sind."],
   ["Horizontaler Wandaufbau", M("Modul-Wandaufbau/…"), "Verbinder (Panelfugen = Achsen) + Latten/Dämmung + Beplankungsfeld."],
   ["CAD/BIM", M("Projekt-Manager/sembla-cad.mjs · obj-to-ifc.mjs"), "DXF, IFC4 (inkl. echter Steingeometrie als FacetedBrep)."],
   ["Roboter", M("Modul-Roboter/sembla-robot.mjs"), "Montagesequenz (Pick&Place + Vorspannen)."],

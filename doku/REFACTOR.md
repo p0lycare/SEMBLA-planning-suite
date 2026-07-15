@@ -145,9 +145,25 @@ war schon vor Session 2 kaputt (importiert `nachweiseWand`, `sembla-statik.mjs` 
 wird in Session 3 (Modul 1 + Engine) mitgezogen. Kern-Paritätstests, `test-shared`, Statik- und
 Storage-Smoke grün. GH Pages: Deploy `main` / `docs`.
 
+**Session 3 (2026-07-15) — Modul 1 Wandplanung + Engine:** `docs/wandplanung.html` ist die neue Wandplanung
+(volles Tool: Verband, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung, Spannachsen-Editor, Protokoll),
+umgebaut auf shared-Architektur (ES-Module + `navbar.js` + `storage.js` + `sembla-core.js` + neu
+`sembla-engine.js`). **Storage-Anbindung:** lädt beim Öffnen das aktive Wandelement, hält es bei
+vorhandenem aktivem Element automatisch synchron und legt per Button „In aktives Wandelement speichern"
+eins an; Datei-Export (Projekt-Bundle) + -Import bleiben als bewusste Aktion. **Engine repariert &
+verselbständigt:** das vereinfachte Auslegungs-Nachweismodell (Biegung/Randdruck/Schub, Platzhalter-
+Materialwerte) lag bislang nur inline in der gebauten HTML — es lebt jetzt in `docs/shared/sembla-engine.js`.
+Damit ist der Altbug behoben (Engine importierte `nachweiseWand` aus `sembla-statik.mjs`, das dort gar nicht
+existiert); die Engine hängt **nicht** mehr an der Schermer-Statik (die bleibt Modul 3 / Session 5).
+Tests → `tests/module/`: `test-engine.mjs` (8/8), `smoke_wp.mjs` (39/39, DOM-Mock + injiziertes `window.SEMBLA`).
+Der geteilte Renderer `sembla-wallview.mjs` (+ Test) wurde nicht übernommen — die Zeichnung ist im Modul
+inline (einziger Nutzer war die Etappe-A-Sandbox = legacy), smoke-getestet über das gezeichnete SVG.
+Alte Ordner `Modul-1-Wandplanung/` + `Auslegung-Engine/` → `legacy/`. Kern-Parität, BOM-Drift, Storage-
+und (alte) Statik-Tests weiter grün. `npm run test:modul1` ergänzt.
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
 - [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
-- [ ] Session 3 — Modul 1 Wandplanung
+- [x] Session 3 — Modul 1 Wandplanung *(docs/wandplanung.html + shared/sembla-engine.js live, Engine-Altbug behoben, Storage-Anbindung, alte Ordner → legacy, Tests grün)*
 - [ ] Session 4 — Modul 2 Wandaufbau
 - [ ] Session 5 — Modul 3 Statik
 - [ ] Session 6 — Modul 4 Stückliste

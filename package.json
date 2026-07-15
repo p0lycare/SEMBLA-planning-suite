@@ -7,6 +7,7 @@
   "scripts": {
     "handbuch": "node build-handbuch.mjs",
     "test:core": "python3 tests/core/test_sembla_core.py && node tests/core/test-sembla-core.mjs && node test-shared.mjs",
+    "test:modul1": "node tests/module/test-engine.mjs && node tests/module/smoke_wp.mjs",
     "test:statik": "cd Modul-3-Statik && node test-statik.mjs && node smoke_statik.mjs",
     "dxf": "python3 tests/interop/sembla_dxf.py",
     "ifc": "python3 tests/interop/sembla_ifc.py",
