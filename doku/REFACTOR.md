@@ -176,12 +176,29 @@ Storage-Mock). Damit entfällt der bisherige py/mjs-Paritätstest gegen eine zwe
 noch eine Betriebskopie. Alter Ordner `Modul-Wandaufbau/` (samt `sembla-wandaufbau.mjs`, Alt-Tests) →
 `legacy/`. Kern-Parität, BOM-Drift, Modul-1- und Statik-Tests weiter grün. `npm run test:modul2` ergänzt.
 
+**Session 5 (2026-07-15) — Modul 3 Statik:** `docs/statik.html` ist das neue Statik-Tool (voller Schermer-
+Nachweis: Wand — Biegung via Prüfwert-Interpolation §6.2, Schub, Druckrand, Bodenreibung, Deckenwinkel;
+Spannsystem — Gewindestange Zug + Fließen, Spann-/Senkschrauben, Kopf-/Fußplatte, Steinpressung,
+Kopplungsmutter; Transport/Hebezustand als Planungshilfe), umgebaut auf shared-Architektur (klassisches
+App-Skript + Modul-Skript mit `window.SEMBLA = { statik, store }` + `navbar.js`, CSS auf `--sb-*`).
+**Rechenkern als shared-Datei:** `sembla-statik.mjs` → `docs/shared/sembla-statik.js` (ES-Modul, Logik
+unverändert) — eigene Datei wegen eigener Tests (shared/-Regel b), analog `sembla-engine.js`. **Storage:**
+Modul 3 ist reiner Konsument — lädt beim Öffnen Geometrie + Öffnungszahl aus dem aktiven Wandelement
+(sonst manuelle Eingabe), folgt externen Wechseln über `abonniere`; alle Kennwerte (Material, Prüfwerte,
+Sicherheitsbeiwerte, Windzone, Gewindestange) sind editierbar. Es schreibt das Wandelement **nicht**
+zurück — die Statik-Parameter sind eigene Ingenieur-Eingaben, kein SSOT. Datei-Import (Wandelement/Bundle)
+lädt in die Ansicht, ohne den Storage anzufassen. Tests → `tests/module/`: `test-statik.mjs` (22/22,
+Excel-Referenz `SEMBLA_Wand_Statik_v01.xlsx`, γP=1,1) + `smoke_statik.mjs` (26/26, DOM-Mock + injiziertes
+`window.SEMBLA` + Storage-Mock, inkl. applyWand-Übernahme). Alter Ordner `Modul-3-Statik/` → `legacy/`.
+`build-handbuch.mjs`-Labels auf `docs/shared/sembla-statik.js` umgestellt. Kern-Parität, BOM-Drift,
+Modul-1- und Modul-2-Tests weiter grün. `npm run test:statik` → `npm run test:modul3` (neue Pfade).
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
 - [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
 - [x] Session 3 — Modul 1 Wandplanung *(docs/wandplanung.html + shared/sembla-engine.js live, Engine-Altbug behoben, Storage-Anbindung, alte Ordner → legacy, Tests grün)*
 - [x] Session 4 — Modul 2 Wandaufbau *(docs/wandaufbau.html live, Dämmung entfernt, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
-- [ ] Session 5 — Modul 3 Statik  ← nächste
-- [ ] Session 6 — Modul 4 Stückliste
+- [x] Session 5 — Modul 3 Statik *(docs/statik.html + shared/sembla-statik.js live, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
+- [ ] Session 6 — Modul 4 Stückliste  ← nächste
 - [ ] Session 7 — Modul 5 Montage
 - [ ] Session 8 — Modul 6 IFC/3D (experimentell)
 - [ ] Session 9 — Abschluss

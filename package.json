@@ -9,7 +9,7 @@
     "test:core": "python3 tests/core/test_sembla_core.py && node tests/core/test-sembla-core.mjs && node test-shared.mjs",
     "test:modul1": "node tests/module/test-engine.mjs && node tests/module/smoke_wp.mjs",
     "test:modul2": "node tests/module/smoke_wandaufbau.mjs",
-    "test:statik": "cd Modul-3-Statik && node test-statik.mjs && node smoke_statik.mjs",
+    "test:modul3": "node tests/module/test-statik.mjs && node tests/module/smoke_statik.mjs",
     "dxf": "python3 tests/interop/sembla_dxf.py",
     "ifc": "python3 tests/interop/sembla_ifc.py",
     "validate:ifc": "node tests/interop/webifc_validate.mjs",

@@ -147,7 +147,7 @@ push(H1("4 · Architektur, Kerne & Workflow"));
 push(P("Die fachliche Logik liegt in getesteten Kernen (reine Bibliotheken). Die Werkzeuge sind eigenständige HTML-Dateien, per Build-Schritt aus Kern + Vorlage zusammengesetzt – keine Code-Duplizierung."));
 push(table(["Was", "Datei(en)", "Inhalt"], [
   ["Wandaufbau-Kern", M("Phase-1/sembla_core.py (Referenz) · Phase-2/sembla-core.mjs"), "Verband, Stränge, BOM, Validierung. Python = Referenz, JS = bit-genaue Portierung (Parität über Fixtures)."],
-  ["Wand-Statik", M("Modul-3-Statik/sembla-statik.mjs"), "Schermer-Nachweis: Wand (Biegung via Prüfwert-Interpolation, Schub, Druckrand, Bodenreibung, Deckenwinkel) + Spannsystem (Stange, Schrauben, Platten, Steinpressung) + Transport (Zusatz)."],
+  ["Wand-Statik", M("docs/shared/sembla-statik.js"), "Schermer-Nachweis: Wand (Biegung via Prüfwert-Interpolation, Schub, Druckrand, Bodenreibung, Deckenwinkel) + Spannsystem (Stange, Schrauben, Platten, Steinpressung) + Transport (Zusatz)."],
   ["Auslegungs-Engine", M("docs/shared/sembla-engine.js"), "Iteration: optimiert Strangabstand & Vorspannkraft bis alle Nachweise erfüllt sind."],
   ["Horizontaler Wandaufbau", M("Modul-Wandaufbau/…"), "Verbinder (Panelfugen = Achsen) + Latten/Dämmung + Beplankungsfeld."],
   ["CAD/BIM", M("Projekt-Manager/sembla-cad.mjs · obj-to-ifc.mjs"), "DXF, IFC4 (inkl. echter Steingeometrie als FacetedBrep)."],
@@ -382,7 +382,7 @@ push(P("Die häufigsten Anpassungen lassen sich an klar benannten Stellen vorneh
 push(table(["Ich möchte ändern…", "Stelle"], [
   ["System-Konstanten (Raster, Wandstärke, Stangen-Standard, max. Spannabstand, verbotene Breiten)", M("Konstantenblock in Phase-1/sembla_core.py UND Phase-2/sembla-core.mjs (gleich halten!)")],
   ["Material-/Sicherheitswerte der Statik", M("DEF_MAT in sembla-engine.mjs; DEFAULTS in sembla-statik.mjs")],
-  ["Statik-Formeln", M("Modul-3-Statik/sembla-statik.mjs")],
+  ["Statik-Formeln", M("docs/shared/sembla-statik.js")],
   ["Auslegungs-Strategie (Kandidaten, N-Bereich)", M("autoAuslegung() in sembla-engine.mjs")],
   ["Verbinder + Latten/Dämmung", M("Modul-Wandaufbau/SEMBLA_Wandaufbau.html (Panelfugen = Achsen, Beplankungsfeld)")],
   ["Preise der Stückliste", "direkt im Tool editierbar; Default-Preise in Modul-Stueckliste/…"],
