@@ -5,42 +5,359 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEMBLA · 3D-Vorschau &amp; IFC (experimentell)</title>
 <style>
-  .wrap{max-width:1080px;margin:0 auto;padding:22px}
-  .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:20px 22px}
-  h1{margin:0 0 6px;font-size:20px}
-  .nr{color:var(--sb-muted);font-variant-numeric:tabular-nums;margin-right:8px}
-  p{margin:8px 0;font-size:14px}
-  .muted{color:var(--sb-muted)}
-  .tag{display:inline-block;background:#eef2f7;color:#33415c;border-radius:20px;padding:2px 11px;
-       font-size:12px;font-weight:600}
-  code{background:#f1efec;border-radius:4px;padding:1px 5px;font-size:12.5px}
+  .intro{max-width:1240px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:13px}
+  .intro b{color:var(--sb-ink)}
+  .wrap{display:flex;gap:18px;padding:14px 20px 22px;align-items:stretch;flex-wrap:wrap;max-width:1240px;margin:0 auto}
+  .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
+  .controls{width:300px;flex:0 0 300px;overflow:auto}
+  .stage{flex:1 1 560px;min-width:440px;position:relative;background:linear-gradient(#f7f9fb,#e6eaef);
+         border:1px solid var(--sb-line);border-radius:12px;min-height:520px;overflow:hidden}
+  #cv{width:100%;height:100%;display:block}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);margin:16px 0 8px}
+  h2:first-child{margin-top:0}
+  button{padding:9px 11px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550;width:100%}
+  button:hover{filter:brightness(.97)}
+  button.primary{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
+  .row{margin:9px 0}
+  label.chk{display:flex;align-items:center;gap:7px;margin:7px 0;cursor:pointer;font-size:13px}
+  .res{display:grid;grid-template-columns:1fr auto;gap:5px 8px;font-size:12.5px;margin-top:6px}
+  .res .k{color:var(--sb-muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  .hint{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.5}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:#e3f5ea;color:var(--sb-ok)} .badge.no{background:#fbe6dd;color:#c9461c}
+  .legend{position:absolute;left:14px;bottom:12px;background:rgba(255,255,255,.9);border:1px solid var(--sb-line);border-radius:8px;padding:8px 11px;font-size:12px;line-height:1.7}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .stagemsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
+            padding:24px;color:var(--sb-muted);font-size:13px;line-height:1.6}
+  input[type=file]{font-size:12px;max-width:150px}
 </style>
 </head>
 <body>
+<p class="intro"><b>3D-Vorschau &amp; IFC (experimentell).</b> Echtzeit-3D des <b>aktiven Wandelements</b>
+  (aus „Wand planen") — Steine i2/i3, Vorspannstränge, Öffnungen. Optional mit echter Bauteilgeometrie (OBJ,
+  bleibt lokal im Browser). Zusätzlich: IFC4-Export der Wand und Prüfung fremder IFC-Dateien (web-ifc).
+  Ziehen = drehen · Scrollen = zoomen · Rechts-Ziehen = verschieben. Dieses Modul liest das Wandelement und ändert es nicht.</p>
+
 <div class="wrap">
-  <div class="panel">
-    <h1><span class="nr">6</span>3D-Vorschau &amp; IFC (experimentell)</h1>
-    <p class="tag">Umbau geplant · Session 8</p>
-    <p>Dieses Modul ist noch nicht auf die neue Suite umgebaut. Bis dahin steht hier ein Platzhalter,
-       die gemeinsame Kopfleiste und das aktive Wandelement funktionieren aber bereits.</p>
-    <p class="muted" id="aktiv">Aktives Wandelement: …</p>
+  <div class="panel controls">
+    <h2>Wandelement</h2>
+    <input type="file" id="file" accept="application/json,.json" style="display:none">
+    <div class="row"><button class="primary" id="load">Wandelement / Bundle laden (Datei)</button></div>
+    <div class="row" id="info" style="font-size:12.5px;color:var(--sb-muted)">–</div>
+    <div class="res">
+      <div class="k">Maße</div><div class="v" id="ovDim">–</div>
+      <div class="k">Steine i3 / i2</div><div class="v" id="ovStones">–</div>
+      <div class="k">Vorspannstränge</div><div class="v" id="ovCols">–</div>
+      <div class="k">Status</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
+    </div>
+
+    <h2>Anzeige</h2>
+    <label class="chk"><input type="checkbox" id="cStones" checked> Steine</label>
+    <label class="chk"><input type="checkbox" id="cEdges" checked> Steinkanten</label>
+    <label class="chk"><input type="checkbox" id="cTension" checked> Vorspannstränge</label>
+    <label class="chk"><input type="checkbox" id="cLabels" checked> Seiten-Beschriftung</label>
+    <label class="chk"><input type="checkbox" id="cReal"> Echte Steingeometrie (OBJ)</label>
+    <div class="row"><button id="reset">Ansicht zurücksetzen</button></div>
+
+    <h2>Bauteil-Geometrie (OBJ)</h2>
+    <label class="chk">i2 <input type="file" id="objI2" accept=".obj"></label>
+    <label class="chk">i3 <input type="file" id="objI3" accept=".obj"></label>
+    <div class="row"><button id="objClear">Geometrie entfernen</button></div>
+    <div class="hint" id="objStatus"></div>
+    <div class="hint">Echte Steingeometrie ist nicht im Werkzeug enthalten. Lade <b>i2_SEMBLA.obj</b> und
+      <b>i3_SEMBLA.obj</b> einmalig — sie bleiben nur lokal in diesem Browser (localStorage).</div>
+
+    <h2>IFC-Export</h2>
+    <div class="row"><button id="ifcExport">IFC4 exportieren (.ifc)</button></div>
+    <div class="hint">Exportiert die Wand als IFC4: Wand + Öffnungen + jeder Stein als Objekt. Ist „Echte
+      Steingeometrie" aktiv und geladen, werden die Steine mit echter Geometrie (Brep) geschrieben.</div>
+
+    <h2>IFC prüfen</h2>
+    <input type="file" id="ifcFile" accept=".ifc" style="display:none">
+    <div class="row"><button id="ifcCheck">IFC-Datei prüfen (web-ifc)</button></div>
+    <div class="hint" id="ifcInfo">Öffnet eine IFC-Datei und meldet Schema, Entities und Wände. web-ifc wird
+      online per CDN geladen (nur mit Internet).</div>
+  </div>
+
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <div class="stagemsg" id="stagemsg" style="display:none"></div>
+    <div class="legend">
+      <div><span class="sw" style="background:#cfd3d8"></span>i3 (37,5 cm)</div>
+      <div><span class="sw" style="background:#aab0b8"></span>i2 (25 cm)</div>
+      <div><span class="sw" style="background:#1f6feb"></span>Vorspannung</div>
+    </div>
   </div>
 </div>
-<script type="module">
-  import { mountNavbar } from './shared/navbar.js';
-  import * as store from './shared/storage.js';
-  mountNavbar(6);
-  const we = store.aktivesWandelement();
-  const el = document.getElementById('aktiv');
-  el.textContent = we
-    ? `Aktives Wandelement: ${we.name || '(ohne Namen)'} — ${we.length_mm} × ${we.height_mm} mm`
-    : 'Kein aktives Wandelement — in „Start" anlegen oder wählen.';
-  store.abonniere(() => {
-    const w = store.aktivesWandelement();
-    el.textContent = w
-      ? `Aktives Wandelement: ${w.name || '(ohne Namen)'} — ${w.length_mm} × ${w.height_mm} mm`
-      : 'Kein aktives Wandelement — in „Start" anlegen oder wählen.';
+
+<!-- OBJ-Text-Halter: werden zur Laufzeit aus dem Storage befüllt -->
+<script type="text/plain" id="obj-i2"></script>
+<script type="text/plain" id="obj-i3"></script>
+
+<!-- Three.js als klassisches Skript per CDN (nur online; experimentelles Modul) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ===== Klassisches App-Skript (ohne Modulauflösung testbar) =====
+// Shared-Code (buildWall/Opening/store/wandelementToIfc) wird via window.SEMBLA injiziert.
+let buildWall, Opening, store, wandelementToIfc;
+
+const $=id=>document.getElementById(id);
+const MM=0.001; // mm -> Szene (m)
+let scene, camera, renderer, group, WALL=null, currentId=null, THREE_OK=false;
+let orbit={tgt:null,r:6,theta:-0.9,phi:1.05};
+const opt={stones:true,edges:true,tension:true,labels:true,real:false};
+const OBJTEXT={i2:null,i3:null};   // OBJ-Quelltext je Steintyp (aus Storage)
+const OBJCACHE={};                 // geparste THREE-Geometrie je Steintyp
+
+// ---- Three.js-Aufbau ----
+function initThree(){
+  const cv=$('cv'); renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+  renderer.setPixelRatio(window.devicePixelRatio||1);
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(45,1,0.01,1000);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x9aa3ad,0.9));
+  const dir=new THREE.DirectionalLight(0xffffff,0.7); dir.position.set(3,6,4); scene.add(dir);
+  const dir2=new THREE.DirectionalLight(0xffffff,0.25); dir2.position.set(-4,2,-3); scene.add(dir2);
+  group=new THREE.Group(); scene.add(group);
+  orbit.tgt=new THREE.Vector3();
+  resize(); window.addEventListener('resize',resize);
+  bindOrbit(cv);
+  animate();
+}
+function resize(){
+  const cv=$('cv'); const w=cv.clientWidth||cv.parentElement.clientWidth, h=cv.clientHeight||cv.parentElement.clientHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+function updateCam(){
+  const o=orbit; o.phi=Math.max(0.15,Math.min(Math.PI-0.15,o.phi));
+  const x=o.tgt.x+o.r*Math.sin(o.phi)*Math.cos(o.theta);
+  const y=o.tgt.y+o.r*Math.cos(o.phi);
+  const z=o.tgt.z+o.r*Math.sin(o.phi)*Math.sin(o.theta);
+  camera.position.set(x,y,z); camera.lookAt(o.tgt);
+}
+function parseObjScene(text){ // -> {pos} in Szene-Koords (x=Länge, y=Höhe, z=Tiefe), bereits *MM
+  const V=[],P=[]; const lines=text.split("\n");
+  for(const ln of lines){
+    if(ln[0]==="v"&&ln[1]===" "){ const p=ln.split(/\s+/); V.push([+p[1],+p[2],+p[3]]); }
+    else if(ln[0]==="f"&&ln[1]===" "){ const toks=ln.trim().split(/\s+/).slice(1);
+      const idx=toks.map(t=>{const a=t.split("/");return {v:parseInt(a[0],10)-1};});
+      // Y/Z-Tausch ist eine Spiegelung -> Umlaufrichtung umdrehen (0,i+1,i), damit Außenflächen außen bleiben
+      for(let i=1;i<idx.length-1;i++){ for(const k of [0,i+1,i]){ const vv=V[idx[k].v];
+        P.push(vv[0]*MM, vv[2]*MM, vv[1]*MM);                 // length, height(objZ), depth(objY)
+      } }
+    }
+  }
+  return {pos:new Float32Array(P)};
+}
+function stoneGeom(type){ if(OBJCACHE[type]) return OBJCACHE[type];
+  const txt=OBJTEXT[type]; if(!txt||!txt.trim()) return null;
+  const d=parseObjScene(txt); const g=new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(d.pos,3));
+  g.computeVertexNormals();   // Normalen aus korrekt orientierter Geometrie -> saubere, massive Schattierung
+  OBJCACHE[type]=g; return g;
+}
+function bindOrbit(cv){
+  let drag=null,lx=0,ly=0;
+  cv.addEventListener('mousedown',e=>{drag=e.button===2?'pan':'rot';lx=e.clientX;ly=e.clientY;e.preventDefault();});
+  window.addEventListener('mouseup',()=>drag=null);
+  window.addEventListener('mousemove',e=>{
+    if(!drag)return; const dx=e.clientX-lx,dy=e.clientY-ly; lx=e.clientX;ly=e.clientY;
+    if(drag==='rot'){ orbit.theta-=dx*0.008; orbit.phi-=dy*0.008; }
+    else { const s=orbit.r*0.0016; const right=new THREE.Vector3(Math.sin(orbit.theta-Math.PI/2),0,-Math.cos(orbit.theta-Math.PI/2));
+      orbit.tgt.addScaledVector(right,-dx*s); orbit.tgt.y+=dy*s; }
+    updateCam();
   });
+  cv.addEventListener('wheel',e=>{ orbit.r*=(1+Math.sign(e.deltaY)*0.1); orbit.r=Math.max(0.6,Math.min(60,orbit.r)); updateCam(); e.preventDefault();},{passive:false});
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+}
+function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera); }
+
+function clearGroup(){ while(group.children.length) group.remove(group.children[0]); }
+function box(w,d,h,cx,cy,cz,mat){ const g=new THREE.BoxGeometry(w,h,d); const m=new THREE.Mesh(g,mat); m.position.set(cx,cz,cy); return m; }
+
+function build(w){
+  clearGroup(); WALL=w;
+  const L=w.length_mm,H=w.height_mm,T=w.thickness_mm||125,course=w.course_mm||200;
+  const matI3=new THREE.MeshStandardMaterial({color:0xcfd3d8,roughness:0.85,metalness:0.0,side:THREE.DoubleSide});
+  const matI2=new THREE.MeshStandardMaterial({color:0xaab0b8,roughness:0.85,metalness:0.0,side:THREE.DoubleSide});
+  const matSteel=new THREE.MeshStandardMaterial({color:0x1f6feb,roughness:0.35,metalness:0.6});
+  const matPlate=new THREE.MeshStandardMaterial({color:0x14559c,roughness:0.4,metalness:0.5});
+  const edgeMat=new THREE.LineBasicMaterial({color:0x8a9098,transparent:true,opacity:0.55});
+  if(opt.stones){
+    for(const c of (w.courses||[])){ const z0=c.lage*course;
+      for(const st of c.stones){ const wmm=st.x1-st.x0;
+        if(opt.real){ const g=stoneGeom(st.type); if(g){ const m=new THREE.Mesh(g, st.type==='i3'?matI3:matI2); m.position.set(st.x0*MM, z0*MM, 0); group.add(m); continue; } }
+        const cx=(st.x0+wmm/2)*MM, cy=(T/2)*MM, cz=(z0+course/2)*MM;
+        const mesh=box(wmm*MM,T*MM,course*MM,cx,cy,cz, st.type==='i3'?matI3:matI2); group.add(mesh);
+        if(opt.edges){ const eg=new THREE.EdgesGeometry(mesh.geometry); const ls=new THREE.LineSegments(eg,edgeMat); ls.position.copy(mesh.position); group.add(ls); }
+      }
+    }
+  }
+  if(opt.tension){
+    const matSteelPl=new THREE.MeshStandardMaterial({color:0x5b6673,roughness:0.5,metalness:0.5});
+    const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
+    const blTh=(w.bom&&w.bom.stahlblech_dicke_mm)||15;
+    group.add(box(L*MM,T*MM,blTh*MM,(L/2)*MM,(T/2)*MM,-(blTh/2)*MM,matSteelPl));                 // Bodenblech
+    if(topConn==='blech') group.add(box(L*MM,T*MM,blTh*MM,(L/2)*MM,(T/2)*MM,(H+blTh/2)*MM,matSteelPl)); // Kopfblech
+    const lt3d=k=>{ const xc=(k+0.5)*125; for(const st of (w.steps||[])){ if(xc>=st.x0_mm&&xc<st.x1_mm) return st.height_mm; } return H; };
+    for(const col of (w.tension_columns||[])){ const x=col.x_mm*MM; const lt=lt3d(col.k);
+      for(const sg of (col.segments||[])){ const h=(sg.z1_mm-sg.z0_mm); const cz=(sg.z0_mm+h/2)*MM;
+        group.add(box(34*MM,34*MM,h*MM,x,(T/2)*MM,cz,matSteel));
+        const au=sg.anker_unten||(sg.z0_mm===0?'bodenblech':'spannplatte');
+        const ao=sg.anker_oben||(sg.z1_mm===lt?topConn:'spannplatte');
+        if(au!=='bodenblech') group.add(box(120*MM,90*MM,16*MM,x,(T/2)*MM,sg.z0_mm*MM,matPlate));
+        if(ao==='spannplatte') group.add(box(120*MM,90*MM,16*MM,x,(T/2)*MM,sg.z1_mm*MM,matPlate));
+      }
+    }
+  }
+  if(opt.labels){
+    addLabel(w.sides&&w.sides.vorne?('Vorderseite: '+funk(w.sides.vorne.funktion)):'Vorderseite', (L/2)*MM, -0.18, (T)*MM+0.02);
+    addLabel(w.sides&&w.sides.hinten?('Rückseite: '+funk(w.sides.hinten.funktion)):'Rückseite', (L/2)*MM, -0.18, -0.02, true);
+  }
+  const grid=new THREE.GridHelper(Math.max(L,H)*MM*2, 20, 0xc2c8ce, 0xd8dde2); grid.position.set((L/2)*MM,0,(T/2)*MM); group.add(grid);
+  orbit.tgt.set((L/2)*MM,(H/2)*MM,(T/2)*MM); orbit.r=Math.max(L,H)*MM*1.5; orbit.theta=-0.9; orbit.phi=1.05; updateCam();
+  fillInfo(w);
+}
+function funk(f){ return ({fassade:'Fassade',innenausbau:'Innenausbau',sicht:'Sichtfläche',installation:'Installation'})[f]||f||'–'; }
+function addLabel(text,x,y,z,back){
+  const cnv=document.createElement('canvas'); cnv.width=512; cnv.height=64; const ctx=cnv.getContext('2d');
+  ctx.fillStyle='#13202e'; ctx.font='bold 34px sans-serif'; ctx.textBaseline='middle'; ctx.fillText(text,8,34);
+  const tex=new THREE.CanvasTexture(cnv); const mat=new THREE.SpriteMaterial({map:tex,transparent:true});
+  const sp=new THREE.Sprite(mat); sp.position.set(x,y,z); sp.scale.set(1.6,0.2,1); group.add(sp);
+}
+function fillInfo(w){
+  const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+  $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
+  $('ovStones').textContent=(w.bom?w.bom.i3:'?')+' / '+(w.bom?w.bom.i2:'?');
+  $('ovCols').textContent=(w.tension_columns||[]).length;
+  const st=w.verification&&w.verification.status; const b=$('ovBadge');
+  if(st){ b.textContent=st; b.className='badge '+(st==='erfüllt'||st==='konvergiert'?'ok':'no'); }
+  else { b.textContent='—'; b.className='badge'; }
+}
+
+function applyWand(w){ if(!w||!w.courses||!w.length_mm) throw new Error('Kein gültiges Wandelement (courses/length_mm fehlen).');
+  if(THREE_OK) build(w); else { WALL=w; fillInfo(w); } }
+
+// ---- Demo-Wand (Fallback ohne aktives Wandelement) ----
+function demo(){ if(buildWall && Opening) return buildWall('Demo-Wand', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}});
+  return null; }
+
+// ---- Aktives Wandelement (localStorage über store) ----
+function loadFromStore(we,label){ applyWand(we); $('info').innerHTML=label+' <b>'+(we.name||'Wandelement')+'</b>'; }
+function loadInitial(){
+  currentId = store&&store.aktivId ? store.aktivId() : null;
+  const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
+  if(we){ loadFromStore(we,'Aktives Wandelement:'); }
+  else { const d=demo(); if(d){ applyWand(d); $('info').textContent='Kein aktives Wandelement — Demo-Wand (in „Start" anlegen/wählen).'; }
+    else { $('info').textContent='Kein aktives Wandelement — in „Start" anlegen oder wählen.'; } }
+}
+function setupStoreSync(){
+  if(!store||!store.abonniere) return;
+  store.abonniere(()=>{
+    const id = store.aktivId ? store.aktivId() : null;
+    if(id!==currentId){ currentId=id;
+      const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
+      if(we){ loadFromStore(we,'Aktives Wandelement geladen:'); }
+    }
+  });
+}
+
+// ---- OBJ-Loader (inline, Speicherung über storage.js: sembla:obj:i2/i3) ----
+function objStatus(){ const s=$('objStatus'); if(!s) return;
+  const h=t=>!!(OBJTEXT[t]&&OBJTEXT[t].trim());
+  s.textContent='Geometrie geladen — i2: '+(h('i2')?'✓':'—')+'   ·   i3: '+(h('i3')?'✓':'—')
+    +(h('i2')&&h('i3')?'' : '   (i2_SEMBLA.obj / i3_SEMBLA.obj wählen)'); }
+function objRefresh(){ delete OBJCACHE.i2; delete OBJCACHE.i3;
+  const cr=$('cReal'); if(cr&&!cr.checked&&(OBJTEXT.i2||OBJTEXT.i3)){ cr.checked=true; opt.real=true; }
+  if(WALL&&THREE_OK) build(WALL); }
+function objSet(t,text){ OBJTEXT[t]=text; try{ if(store&&store.setzeObj) store.setzeObj(t,text); }catch(e){} objStatus(); objRefresh(); }
+function objRestore(){ for(const t of ['i2','i3']){ try{ const v=store&&store.holeObj?store.holeObj(t):null; if(v) OBJTEXT[t]=v; }catch(e){} } objStatus(); objRefresh(); }
+function bindObj(){
+  ['i2','i3'].forEach(t=>{ const inp=$('obj'+t.toUpperCase());
+    if(inp) inp.addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+      const rd=new FileReader(); rd.onload=()=>objSet(t,String(rd.result||'')); rd.readAsText(f); ev.target.value=''; }); });
+  const clr=$('objClear');
+  if(clr) clr.addEventListener('click',()=>{ for(const t of ['i2','i3']){ OBJTEXT[t]=null; try{ if(store&&store.loescheObj) store.loescheObj(t); }catch(e){} } delete OBJCACHE.i2; delete OBJCACHE.i3; objStatus(); if(WALL&&THREE_OK) build(WALL); });
+}
+
+// ---- IFC-Export ----
+function exportIfc(){
+  if(!WALL){ alert('Bitte zuerst ein Wandelement laden.'); return; }
+  if(!wandelementToIfc){ alert('IFC-Baustein nicht geladen.'); return; }
+  try{
+    const useReal=opt.real&&(OBJTEXT.i2||OBJTEXT.i3);
+    const ifc=wandelementToIfc(WALL,{stones:true,realGeom:!!useReal,objText:{i2:OBJTEXT.i2,i3:OBJTEXT.i3}});
+    const nm=(WALL.name||'sembla_wand').toString().trim().replace(/[^\wäöüÄÖÜß.-]+/g,'_')||'sembla_wand';
+    const blob=new Blob([ifc],{type:'application/x-step'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=nm+'.ifc';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),0);
+  }catch(e){ alert('IFC-Export fehlgeschlagen: '+(e&&e.message||e)); }
+}
+
+// ---- IFC prüfen (web-ifc via CDN, benötigt Internet) ----
+function bindIfcCheck(){
+  $('ifcCheck').addEventListener('click',()=>$('ifcFile').click());
+  $('ifcFile').addEventListener('change',async ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+    const info=$('ifcInfo'); info.textContent='Prüfe IFC …';
+    try{
+      const buf=new Uint8Array(await f.arrayBuffer());
+      const mod=await import('https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/web-ifc-api.js');
+      const api=new mod.IfcAPI(); api.SetWasmPath('https://cdn.jsdelivr.net/npm/web-ifc@0.0.77/'); await api.Init();
+      const id=api.OpenModel(buf); const sz=v=>(v&&v.size?v.size():0);
+      const schema=api.GetModelSchema?api.GetModelSchema(id):'?';
+      const ent=sz(api.GetAllLines(id));
+      const walls=sz(api.GetLineIDsWithType(id,mod.IFCWALLSTANDARDCASE))+sz(api.GetLineIDsWithType(id,mod.IFCWALL));
+      const prox=sz(api.GetLineIDsWithType(id,mod.IFCBUILDINGELEMENTPROXY));
+      api.CloseModel(id);
+      info.innerHTML=`<b>${f.name}</b> · Schema ${schema} · ${ent} Entities · ${walls} Wände · ${prox} Steine — <span style="color:#1f9d55;font-weight:600">gültig</span>`;
+    }catch(e){ info.innerHTML='IFC-Prüfung fehlgeschlagen (web-ifc wird per Internet-CDN geladen): '+(e&&e.message||e); }
+  });
+}
+
+// ---- Ereignis-Bindung ----
+function bindEvents(){
+  $('load').addEventListener('click',()=>$('file').click());
+  $('file').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
+    const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result);
+      const we=(j&&j.format==='SEMBLA-Projekt'&&j.wandelement)?j.wandelement:j; applyWand(we);
+      $('info').innerHTML='Aus Datei geladen: <b>'+(we.name||'Wandelement')+'</b>';
+    }catch(e){ alert('Ungültig: '+e.message); } }; rd.readAsText(f); });
+  ['stones','edges','tension','labels','real'].forEach(k=>{ const id='c'+k[0].toUpperCase()+k.slice(1);
+    $(id).addEventListener('change',e=>{ opt[k]=e.target.checked; if(WALL&&THREE_OK) build(WALL); }); });
+  $('reset').addEventListener('click',()=>{ if(WALL&&THREE_OK){ orbit.theta=-0.9;orbit.phi=1.05;orbit.r=Math.max(WALL.length_mm,WALL.height_mm)*MM*1.5;orbit.tgt.set(WALL.length_mm/2*MM,WALL.height_mm/2*MM,(WALL.thickness_mm||125)/2*MM);updateCam(); } });
+  $('ifcExport').addEventListener('click',exportIfc);
+  bindObj();
+  bindIfcCheck();
+}
+
+window.__ifc={applyWand,build,demo,parseObjScene,stoneGeom,exportIfc,opt,OBJTEXT,
+  get wall(){return WALL;}};
+
+window.__ifcInit=function(){
+  const S=window.SEMBLA||{};
+  buildWall=S.buildWall; Opening=S.Opening; store=S.store; wandelementToIfc=S.wandelementToIfc;
+  THREE_OK = (typeof THREE!=='undefined');
+  if(THREE_OK){ try{ initThree(); }catch(e){ THREE_OK=false; } }
+  if(!THREE_OK){ const m=$('stagemsg'); if(m){ m.style.display='flex';
+    m.textContent='3D-Ansicht nicht verfügbar (Three.js wird online per CDN geladen). IFC-Export und -Prüfung funktionieren dennoch.'; } }
+  bindEvents();
+  objRestore();
+  setupStoreSync();
+  loadInitial();
+};
+</script>
+
+<script type="module">
+  import { buildWall, Opening } from './shared/sembla-core.js';
+  import * as store from './shared/storage.js';
+  import { mountNavbar } from './shared/navbar.js';
+  import { wandelementToIfc } from './shared/sembla-ifc.js';
+  window.SEMBLA = { buildWall, Opening, store, wandelementToIfc };
+  mountNavbar(6);
+  window.__ifcInit();
 </script>
 </body>
 </html>

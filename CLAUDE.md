@@ -22,18 +22,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >   (Modul 4, fertig umgebaut — Mengen aus aktivem Wandelement, reiner Konsument; Verbinder/Latten aus
 >   Projekt-Bundle per Datei) + `montage.html` (Modul 5, fertig umgebaut — lagenweise Aufbauanleitung +
 >   Vorspann-Schritte + druckbares Dokument, reiner Konsument; Kurz-Stückliste aus `sembla-bom.js`) +
->   Platzhalterseite `ifc-3d.html` (Modul 6, wird in Session 8 gefüllt).
+>   `ifc-3d.html` (Modul 6, fertig umgebaut — experimentell: Three.js-3D-Vorschau des aktiven Wandelements +
+>   IFC4-Export + web-ifc-Prüfung, reiner Konsument; OBJ-Bauteilgeometrie per Upload → localStorage via
+>   `storage.js`).
 >   Gemeinsamer Code in `docs/shared/`: `sembla-core.js` (einzige Betriebskopie des JS-Cores, **ES-Modul**),
 >   `sembla-engine.js` (Auslegungs-Iteration + vereinfachtes Nachweismodell Biegung/Randdruck/Schub —
 >   getrennt von der Schermer-Statik), `sembla-statik.js` (voller Schermer-Nachweis Modul 3,
 >   ES-Modul, eigene Tests), `sembla-bom.js` (Stücklisten-Baustein Modul 4 — kanonische Mengen/Positionen,
->   ES-Modul, eigene Tests; löst `sembla-shared.js` ab), `storage.js` (localStorage-Schicht),
->   `navbar.js` (Kopfleiste). Einbindung per `<script type="module">`. Module ohne Modulauflösung
->   testbar: App-Logik im klassischen `<script>`, Shared-Code wird via `window.SEMBLA` injiziert.
+>   ES-Modul, eigene Tests; löst `sembla-shared.js` ab), `sembla-ifc.js` (IFC4-Export Modul 6 —
+>   `wandelementToIfc` + `parseObj`/`meshStats`, ES-Modul, eigene Tests; eingedampft aus dem Projekt-Manager),
+>   `storage.js` (localStorage-Schicht), `navbar.js` (Kopfleiste). Einbindung per `<script type="module">`.
+>   Module ohne Modulauflösung testbar: App-Logik im klassischen `<script>`, Shared-Code wird via
+>   `window.SEMBLA` injiziert.
 > - `tests/` ← `core/` (Python-Referenz `sembla_core.py` + Paritätstests py/mjs + Fixtures),
 >   `interop/` (ehem. `Interop-CAD`), `module/` (`smoke_storage.mjs`, `test-engine.mjs`, `smoke_wp.mjs`,
 >   `smoke_wandaufbau.mjs`, `test-statik.mjs`, `smoke_statik.mjs`, `smoke_stueckliste.mjs`,
->   `smoke_montage.mjs`; weitere Modul-Tests folgen je Session). BOM-Drift-Schutz `test-shared.mjs` (Repo-Wurzel) prüft `sembla-bom.js`
+>   `smoke_montage.mjs`, `smoke_3d.mjs`). `interop/test_webifc.mjs` validiert den IFC4-Export
+>   (`sembla-ifc.js`) via web-ifc. BOM-Drift-Schutz `test-shared.mjs` (Repo-Wurzel) prüft `sembla-bom.js`
 >   gegen die Core-BOM.
 > - `legacy/` ← `_archiv`, `Revit-pyRevit`, `EtappeA-App-beta-sandbox`, `Modul-Roboter`,
 >   `Modul-Fertigung`, `Projekt-Manager`, `SEMBLA Werkzeuge` (altes Build-Produkt),
@@ -41,11 +46,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >   `Modul-1-Wandplanung`, `Auslegung-Engine`
 >   (Session 3 abgelöst), `Modul-Wandaufbau` (Session 4 abgelöst), `Modul-3-Statik`
 >   (Session 5 abgelöst), `Modul-Stueckliste` (Session 6 abgelöst), `Modul-4-Montageplanung`
->   (Session 7 abgelöst). Rückholbar; nicht Teil des MVP.
+>   (Session 7 abgelöst), `Modul-3D` + `sembla-obj-loader.js` (Session 8 abgelöst — IFC-Export lebt jetzt in
+>   `docs/shared/sembla-ifc.js`, OBJ-Loader inline in Modul 6 auf `storage.js`). Rückholbar; nicht Teil des MVP.
 > - `doku/` ← Handbuch, OSS-Matrix, Prozess-Grafiken, `_LIESMICH.md`, `GIT-SETUP.md`, `REFACTOR.md`.
-> - **Noch am alten Platz** (bis zu ihrer Modul-Session): der aktive Modul-Ordner
->   `Modul-3D/` sowie `sembla-obj-loader.js`, `SEMBLA_Uebersicht.html`. Ihre Core-Importe zeigen bereits auf
->   `docs/shared/sembla-core.js`; ihre Tests laufen wie bisher aus dem jeweiligen Ordner.
+> - **Noch am alten Platz** (Restaufräumen in Session 9): `SEMBLA_Uebersicht.html` (Modul-0-Quelle, in
+>   Session 2 durch `docs/index.html` abgelöst). Alle Modul-Ordner sind migriert.
 
 ## Was das ist
 

@@ -12,6 +12,7 @@
     "test:modul3": "node tests/module/test-statik.mjs && node tests/module/smoke_statik.mjs",
     "test:modul4": "node tests/module/smoke_stueckliste.mjs",
     "test:modul5": "node tests/module/smoke_montage.mjs",
+    "test:modul6": "node tests/module/smoke_3d.mjs && node tests/interop/test_webifc.mjs",
     "dxf": "python3 tests/interop/sembla_dxf.py",
     "ifc": "python3 tests/interop/sembla_ifc.py",
     "validate:ifc": "node tests/interop/webifc_validate.mjs",

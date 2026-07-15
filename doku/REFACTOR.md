@@ -232,6 +232,31 @@ injiziertes `window.SEMBLA` + Storage-Mock; prüft u. a. BOM-Konsistenz gegen `s
 Store-Sync, Druckdokument). Alter Ordner `Modul-4-Montageplanung/` → `legacy/`. Kern-Parität, BOM-Drift,
 Modul-1/2/3/4-Tests weiter grün. `npm run test:modul5` ergänzt.
 
+**Session 8 (2026-07-15) — Modul 6 IFC/3D (experimentell):** `docs/ifc-3d.html` führt 3D-Vorschau und IFC
+zusammen, umgebaut auf shared-Architektur (klassisches App-Skript + Modul-Skript mit
+`window.SEMBLA = { buildWall, Opening, store, wandelementToIfc }` + `navbar.js`, CSS auf `--sb-*`).
+**3D:** Three.js-Echtzeitvorschau (weiterhin per CDN r128 — bewusste externe Laufzeit-Abhängigkeit des
+experimentellen Moduls; fällt es aus, degradiert die Seite sauber: 3D-Hinweis, IFC-Export/-Prüfung laufen
+dennoch), Steine i2/i3 als Box oder echte OBJ-Geometrie, Vorspannstränge/Bleche/Anker, Öffnungen,
+Seitenbeschriftung, Orbit/Zoom/Pan — Rechen-/Zeichenlogik **inline** (einziger Nutzer). **OBJ-Loader inline,
+aber auf `storage.js` umgestellt:** Bauteilgeometrie wird per Upload geladen und über `store.setzeObj/holeObj/
+loescheObj` in `sembla:obj:i2`/`:i3` gemerkt (statt roher localStorage-Keys des Alt-Tools) — der bisherige
+`sembla-obj-loader.js` entfällt als Betriebscode. **IFC-Baustein als shared-Datei:** neuer
+`docs/shared/sembla-ifc.js` (ES-Modul) mit `wandelementToIfc(wall, opts)` — Einzelwand → IFC4
+(IfcWallStandardCase + Öffnungen via IfcRelVoids + jeder Stein als IfcBuildingElementProxy, optional echte
+OBJ-Geometrie als Brep/RepresentationMap), plus `parseObj`/`meshStats`. Eingedampft aus dem Mehr-Wand-Projekt-
+Export `legacy/Projekt-Manager/{sembla-cad.mjs, obj-to-ifc.mjs}` auf den MVP-Fall (Einzelwand am Ursprung,
+kein Projekt/DXF/Weltplatzierung). Eigene Datei wegen eigener Tests (shared/-Regel b). Neu ist damit der
+**IFC-Export im Modul** (das Alt-3D-Tool konnte IFC nur *prüfen*). **web-ifc-Prüfung** (Schema/Entities/Wände)
+bleibt wie gehabt per CDN. **Storage:** reiner Konsument — lädt beim Öffnen das aktive Wandelement (sonst per
+`buildWall` erzeugte Demo-Wand), folgt externen Wechseln über `abonniere`, schreibt das Wandelement **nicht**
+zurück; Datei-Import lädt nur in die Ansicht. Tests → `tests/module/smoke_3d.mjs` (24/24, DOM- + THREE-Stub,
+injiziertes `window.SEMBLA`, Storage-Mock inkl. OBJ-Schicht, IFC-Export-Spion) und `tests/interop/test_webifc.mjs`
+**repariert** (importierte den nach `legacy/` verschobenen Projekt-Manager → jetzt `docs/shared/sembla-ifc.js`,
+Einzelwand-API; validiert das erzeugte IFC4 via web-ifc: gültig, 1 Wand, 106 Stein-Proxys). Alter Ordner
+`Modul-3D/` + `sembla-obj-loader.js` → `legacy/`. Kern-Parität, BOM-Drift, Modul-1/2/3/4/5-Tests weiter grün.
+`npm run test:modul6` ergänzt.
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
 - [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
 - [x] Session 3 — Modul 1 Wandplanung *(docs/wandplanung.html + shared/sembla-engine.js live, Engine-Altbug behoben, Storage-Anbindung, alte Ordner → legacy, Tests grün)*
@@ -239,8 +264,8 @@ Modul-1/2/3/4-Tests weiter grün. `npm run test:modul5` ergänzt.
 - [x] Session 5 — Modul 3 Statik *(docs/statik.html + shared/sembla-statik.js live, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
 - [x] Session 6 — Modul 4 Stückliste *(docs/stueckliste.html + shared/sembla-bom.js live, Storage liest aktives Wandelement, Dämmung entfernt, alter Ordner + sembla-shared.js → legacy, Tests grün)*
 - [x] Session 7 — Modul 5 Montage *(docs/montage.html live, 1:1-Umfang, Kurz-BOM aus shared/sembla-bom.js, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
-- [ ] Session 8 — Modul 6 IFC/3D (experimentell)  ← nächste
-- [ ] Session 9 — Abschluss
+- [x] Session 8 — Modul 6 IFC/3D *(docs/ifc-3d.html + shared/sembla-ifc.js live, Three.js-Vorschau, OBJ-Loader auf storage.js, IFC4-Export + web-ifc-Prüfung, alter Ordner + sembla-obj-loader.js → legacy, gegen tests/interop geprüft, Tests grün)*
+- [ ] Session 9 — Abschluss  ← nächste
 
 ## 9. Offene technische Detailfragen (werden in der jeweiligen Session entschieden)
 
@@ -255,4 +280,7 @@ Modul-1/2/3/4-Tests weiter grün. `npm run test:modul5` ergänzt.
   Formen: reines Wandelement (`length_mm` + `courses`) und Wrapper `{ name?, wandelement }`.
 - **[ENTSCHIEDEN Session 7]** Umfang "Montageanleitung": **1:1** zum alten Modul übernommen (nur
   Architektur gewechselt). Kurz-Stückliste kommt aus dem geteilten `sembla-bom.js` (Konsistenz zu Modul 4).
-- web-ifc einbetten vs. handgeschriebener IFC-Export als Zwischenschritt — Session 8.
+- **[ENTSCHIEDEN Session 8]** IFC: **web-ifc nur zum Prüfen** (per CDN, online), **Export handgeschrieben**
+  (`docs/shared/sembla-ifc.js`, kein WASM-Schreibpfad nötig). Umfang Modul 6 = 3D-Vorschau + IFC4-Export
+  (Einzelwand) + IFC-Prüfung; **DXF und Mehr-Wand-Projekt bleiben legacy** (nicht Teil des MVP). Three.js
+  weiter per CDN (experimentelles Modul, degradiert sauber offline).

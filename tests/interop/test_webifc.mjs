@@ -2,16 +2,15 @@
 // die von IfcOpenShell geschriebene Datei (Cross-Library-Interop).
 import { existsSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { projectToIfc } from "../Projekt-Manager/sembla-cad.mjs";
+import { wandelementToIfc } from "../../docs/shared/sembla-ifc.js";
 import { validateIfc, validateIfcFile } from "./webifc_validate.mjs";
 
 let fails = 0;
 const ok = (n, c) => { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fails++; };
 
-// (a) JS-Export prüfen
+// (a) JS-Export prüfen (Einzelwand-Export aus docs/shared/sembla-ifc.js)
 const w = buildWall("IW-01", 3000, 2600, [new Opening(4, 8, 0, 9, "tuer")]);
-const project = { name: "Aschersleben", walls: [{ name: "IW-01", x_mm: 0, y_mm: 0, rot_deg: 0, wall: w }] };
-const r = await validateIfc(projectToIfc(project, { stones: true }));
+const r = await validateIfc(wandelementToIfc(w, { stones: true }));
 console.log("  JS-IFC:", JSON.stringify(r));
 ok("JS-IFC gültig (IFC4)", r.ok && r.schema === "IFC4");
 ok("JS-IFC: >=1 Wand", r.walls >= 1);
