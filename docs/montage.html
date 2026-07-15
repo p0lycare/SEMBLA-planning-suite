@@ -269,18 +269,21 @@ function buildPrintDoc(w){
   $('printdoc').innerHTML=h;
 }
 
-// ---- Demo-Wand (Fallback ohne aktives Wandelement) ----
-function demo(){ if(buildWall && Opening) return buildWall('Demo-Wand', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}});
-  return null; }
-
 // ---- Aktives Wandelement (localStorage) ----
 function loadFromStore(we,label){ applyWand(we); $('wandinfo').innerHTML=label+' <b>'+(we.name||'Wandelement')+'</b>'; }
+// Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
+function clearWall(){
+  WALL=null; CUR=0;
+  $('ovDim').textContent='—'; $('ovGrid').textContent='—'; $('ovCols').textContent='—';
+  $('ovBadge').className='badge'; $('ovBadge').textContent='—';
+  $('bom').innerHTML=''; $('steps').innerHTML=''; $('printdoc').innerHTML='';
+  $('lageLab').textContent='—'; $('lageSvg').innerHTML=''; $('mapSvg').innerHTML='';
+  $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
+}
 function loadInitial(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  if(we){ loadFromStore(we,'Aktives Wandelement:'); }
-  else { const d=demo(); if(d){ applyWand(d); $('wandinfo').textContent='Kein aktives Wandelement — Demo-Wand (in „Start" anlegen/wählen).'; }
-    else { $('wandinfo').textContent='Kein aktives Wandelement — in „Start" anlegen oder wählen.'; } }
+  if(we){ loadFromStore(we,'Aktives Wandelement:'); } else { clearWall(); }
 }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
@@ -289,7 +292,7 @@ function setupStoreSync(){
     if(id!==currentId){                          // aktives Element extern gewechselt (Kopfleiste/Startseite)
       currentId=id;
       const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
-      if(we){ loadFromStore(we,'Aktives Wandelement geladen:'); }
+      if(we){ loadFromStore(we,'Aktives Wandelement geladen:'); } else { clearWall(); }
     }
   });
 }

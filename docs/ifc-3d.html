@@ -227,18 +227,19 @@ function fillInfo(w){
 function applyWand(w){ if(!w||!w.courses||!w.length_mm) throw new Error('Kein gültiges Wandelement (courses/length_mm fehlen).');
   if(THREE_OK) build(w); else { WALL=w; fillInfo(w); } }
 
-// ---- Demo-Wand (Fallback ohne aktives Wandelement) ----
-function demo(){ if(buildWall && Opening) return buildWall('Demo-Wand', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}});
-  return null; }
-
 // ---- Aktives Wandelement (localStorage über store) ----
 function loadFromStore(we,label){ applyWand(we); $('info').innerHTML=label+' <b>'+(we.name||'Wandelement')+'</b>'; }
+// Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
+function clearWall(){
+  WALL=null; if(THREE_OK && group) clearGroup();
+  $('ovDim').textContent='—'; $('ovStones').textContent='—'; $('ovCols').textContent='—';
+  $('ovBadge').className='badge'; $('ovBadge').textContent='—';
+  $('info').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
+}
 function loadInitial(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  if(we){ loadFromStore(we,'Aktives Wandelement:'); }
-  else { const d=demo(); if(d){ applyWand(d); $('info').textContent='Kein aktives Wandelement — Demo-Wand (in „Start" anlegen/wählen).'; }
-    else { $('info').textContent='Kein aktives Wandelement — in „Start" anlegen oder wählen.'; } }
+  if(we){ loadFromStore(we,'Aktives Wandelement:'); } else { clearWall(); }
 }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
@@ -246,7 +247,7 @@ function setupStoreSync(){
     const id = store.aktivId ? store.aktivId() : null;
     if(id!==currentId){ currentId=id;
       const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
-      if(we){ loadFromStore(we,'Aktives Wandelement geladen:'); }
+      if(we){ loadFromStore(we,'Aktives Wandelement geladen:'); } else { clearWall(); }
     }
   });
 }
@@ -277,7 +278,7 @@ function bindEvents(){
   bindObj();
 }
 
-window.__ifc={applyWand,build,demo,parseObjScene,stoneGeom,opt,OBJTEXT,
+window.__ifc={applyWand,build,clearWall,parseObjScene,stoneGeom,opt,OBJTEXT,
   get wall(){return WALL;}};
 
 window.__ifcInit=function(){

@@ -130,7 +130,7 @@ function readAufbau(){ return {
 }; }
 
 // Verbinder-/Latten-Layout kommt komplett aus dem geteilten Kern (identisch zu Modul 4 / Export).
-function compute(){ return berechneAufbau(WALL||demo(), readAufbau()); }
+function compute(){ return berechneAufbau(WALL, readAufbau()); }
 
 // Aufbau-Eingaben ins Datenmodell zurückschreiben (nur der eigene Teil dieses Moduls).
 function persistAufbau(){ if(store&&store.mergeEingaben) store.mergeEingaben('aufbau', readAufbau()); }
@@ -201,7 +201,17 @@ function draw(R){
   $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(+$('pB').value,1)} × ${fmt(+$('pH').value,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · Seite ${SIDE==='vorne'?'Vorderseite':'Rückseite'} (${FUNKTION_LABEL[curFunktion()]||curFunktion()})<span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span>`;
 }
 
+// Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
+function renderLeer(){
+  LAST=null; LASTDRAW=null;
+  ['ovGrid','ovCount','ovDens','ovAt','ovUtil','ovAxes','ovPieces','ovStock','ovLen','ovWaste'].forEach(id=>$(id).textContent='—');
+  $('ovBar').style.width='0%'; $('ovBadge').className='badge'; $('ovBadge').textContent='—';
+  $('plan').innerHTML='<text x="500" y="60" text-anchor="middle" fill="#8a9098">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</text>';
+  $('plan').setAttribute('viewBox','0 0 1000 120');
+}
+
 function render(){
+  if(!WALL){ renderLeer(); return; }
   const R=compute(); LAST=R;
   $('ovGrid').textContent=R.xs.length+' × '+R.ys.length;
   $('ovCount').textContent=R.pts.length;
@@ -217,10 +227,6 @@ function render(){
 }
 let LAST=null;
 function run(){ render(); }
-
-function demo(){ if(buildWall && Opening) return buildWall('Demo-Wand', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}});
-  return { name:'Demo-Wand', length_mm:3000, height_mm:2600, grid_mm:125, course_mm:200, thickness_mm:125,
-    openings:[{g0:4,g1:8,l0:0,l1:10,art:'tuer'}], sides:{vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}} }; }
 
 function applyWand(w){ if(!w||!w.length_mm||!w.height_mm) throw new Error('Kein gültiges Wandelement (length_mm/height_mm fehlen).');
   WALL=w; FELD=null;
@@ -244,12 +250,12 @@ function loadModel(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
   EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : null;
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  WALL = we || demo();
+  WALL = we || null;
   applyAufbauEingaben(EINGABEN && EINGABEN.aufbau);
-  if(!(WALL.sides&&WALL.sides[SIDE]) && WALL.sides) SIDE=Object.keys(WALL.sides)[0]||SIDE;
+  if(WALL && !(WALL.sides&&WALL.sides[SIDE]) && WALL.sides) SIDE=Object.keys(WALL.sides)[0]||SIDE;
   applyFunktion(curFunktion());   // Verbindertyp folgt der Seiten-Funktion aus Modul 1
   syncSideUI();
-  setInfo(we ? ('Aktives Wandelement'+(we.name?': '+we.name:'')) : 'Kein aktives Wandelement — Demo-Wand (in „Start" anlegen/wählen).');
+  setInfo(we ? ('Aktives Wandelement'+(we.name?': '+we.name:'')) : 'Kein aktives Wandelement — in „Start“ anlegen oder wählen.');
   run();
 }
 function setupStoreSync(){
@@ -273,7 +279,7 @@ function bindEvents(){
 }
 
 // ---------- Beplankungsfeld: mit Maus aufziehen (Snap auf Panelraster) ----------
-function wallDims(){ const w=WALL||demo(); return { B:w.length_mm/10, H:w.height_mm/10 }; }
+function wallDims(){ const w=WALL; if(!w) return {B:0,H:0}; return { B:w.length_mm/10, H:w.height_mm/10 }; }
 function snapArr(len, panel, off){ const a=[0,len]; for(let k=0;;k++){ const v=off+k*panel; if(v>len+1e-6) break; if(v>0&&v<len) a.push(+v.toFixed(2)); } return [...new Set(a)].sort((x,y)=>x-y); }
 function snap(v, arr){ let best=arr[0],bd=1e9; for(const a of arr){ const d=Math.abs(a-v); if(d<bd){bd=d;best=a;} } return best; }
 function evToCm(e){ if(!LASTDRAW) return {x:0,y:0}; const r=$('plan').getBoundingClientRect();

@@ -90,16 +90,20 @@ let stuecklistePositionen, wandflaeche, store;
 function eg(){ return EINGABEN || (EINGABEN={kosten:{anzahl:1,waehrung:'EUR',preise:{}},projekt:{},aufbau:{}}); }
 function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben(teil,patch); }
 
-// ---- Demo (Fallback ohne aktives Wandelement) ----
-function demo(){ return {name:'Demo (3,00 × 2,60 m)',length_mm:3000,height_mm:2600,grid_mm:125,course_mm:200,
-  openings:[{g0:4,g1:8,l0:0,l1:10,art:'tuer'}],
-  bom:{i3:52,i2:48,gewindestangen:32,verbindungsmuttern:18,stahlplatten:28,spannmuttern:28}}; }
-
 // Positionen zentral aus Wandelement + Eingaben (Steine/Vorspannung + Verbinder/Latten aus dem Aufbau).
-function rows(){ return stuecklistePositionen(WALL||demo(), eg()); }
+function rows(){ return WALL ? stuecklistePositionen(WALL, eg()) : []; }
+
+// Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
+function renderLeer(){
+  $('ovDim').textContent='—'; $('ovArea').textContent='—';
+  $('ovBadge').textContent='—'; $('ovBadge').className='badge';
+  $('tbody').innerHTML='<tr><td colspan="5" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>';
+  $('grand').textContent='—'; $('perm2').textContent='—';
+}
 
 function render(){
-  const w=WALL||demo(); const k=eg().kosten||{}; const cur=k.waehrung||'EUR';
+  if(!WALL){ renderLeer(); return; }
+  const w=WALL; const k=eg().kosten||{}; const cur=k.waehrung||'EUR';
   $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
   $('ovArea').textContent=fmt(wandflaeche(w),2)+' m²';
   const st=w.verification&&w.verification.status, b=$('ovBadge');
@@ -136,7 +140,7 @@ function loadModel(){
   EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : eg();
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
   if(we){ WALL=we; $('info').textContent='Aktives Wandelement: '+(we.name||''); }
-  else { WALL=null; $('info').textContent='Kein aktives Wandelement — Demo-Werte (in „Start" anlegen/wählen).'; }
+  else { WALL=null; $('info').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.'; }
   syncInputs(); render();
 }
 function setupStoreSync(){

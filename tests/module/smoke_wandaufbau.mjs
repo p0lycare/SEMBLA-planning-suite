@@ -27,7 +27,7 @@ function merge(base, patch){
   for(const k of Object.keys(patch)) out[k]=merge(out[k],patch[k]);
   return out;
 }
-// Storage-Mock: kein aktives Element -> Modul startet mit Demo-Wand. abonniere() speichert den Rückruf.
+// Storage-Mock: kein aktives Element -> Modul startet leer (kein Demo/Platzhalter). abonniere() speichert den Rückruf.
 let _subs=[]; let _aktiv=null; let _eg=null; let _merges=[];
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>null, aktivesElement:()=>null,
   aktiveEingaben:()=>_eg, mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); if(_eg){ _eg[teil]=merge(_eg[teil],patch); } return _aktiv; },
@@ -40,8 +40,9 @@ const WA=globalThis.window.__wa;
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 
-// Startet mit Demo-Wand (kein aktives Element)
-ok('Start ohne aktives Element -> Demo-Wand geladen', !!WA.wall && WA.wall.length_mm>0);
+// Startet leer (kein aktives Element -> kein Demo/Platzhalter, klare Leer-Anzeige)
+ok('Start ohne aktives Element -> keine Wand geladen (leer)', !WA.wall);
+ok('Start ohne aktives Element -> Leer-Hinweis in der Zeichnung', /Kein aktives Wandelement/.test(document.getElementById('plan').innerHTML));
 
 // Wand mit Tür laden (3,00 × 2,60 m)
 const W=buildWall('Testwand', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}});
