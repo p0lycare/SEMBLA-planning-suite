@@ -20,8 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >   reiner Konsument des aktiven Wandelements) + `statik.html` (Modul 3, fertig umgebaut — voller
 >   Schermer-Nachweis, reiner Konsument: Geometrie/Öffnungen aus aktivem Wandelement) + `stueckliste.html`
 >   (Modul 4, fertig umgebaut — Mengen aus aktivem Wandelement, reiner Konsument; Verbinder/Latten aus
->   Projekt-Bundle per Datei) + Platzhalterseiten `montage/ifc-3d.html` (Module 5–6, werden in ihrer
->   Session gefüllt).
+>   Projekt-Bundle per Datei) + `montage.html` (Modul 5, fertig umgebaut — lagenweise Aufbauanleitung +
+>   Vorspann-Schritte + druckbares Dokument, reiner Konsument; Kurz-Stückliste aus `sembla-bom.js`) +
+>   Platzhalterseite `ifc-3d.html` (Modul 6, wird in Session 8 gefüllt).
 >   Gemeinsamer Code in `docs/shared/`: `sembla-core.js` (einzige Betriebskopie des JS-Cores, **ES-Modul**),
 >   `sembla-engine.js` (Auslegungs-Iteration + vereinfachtes Nachweismodell Biegung/Randdruck/Schub —
 >   getrennt von der Schermer-Statik), `sembla-statik.js` (voller Schermer-Nachweis Modul 3,
@@ -31,19 +32,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 >   testbar: App-Logik im klassischen `<script>`, Shared-Code wird via `window.SEMBLA` injiziert.
 > - `tests/` ← `core/` (Python-Referenz `sembla_core.py` + Paritätstests py/mjs + Fixtures),
 >   `interop/` (ehem. `Interop-CAD`), `module/` (`smoke_storage.mjs`, `test-engine.mjs`, `smoke_wp.mjs`,
->   `smoke_wandaufbau.mjs`, `test-statik.mjs`, `smoke_statik.mjs`, `smoke_stueckliste.mjs`; weitere
->   Modul-Tests folgen je Session). BOM-Drift-Schutz `test-shared.mjs` (Repo-Wurzel) prüft `sembla-bom.js`
+>   `smoke_wandaufbau.mjs`, `test-statik.mjs`, `smoke_statik.mjs`, `smoke_stueckliste.mjs`,
+>   `smoke_montage.mjs`; weitere Modul-Tests folgen je Session). BOM-Drift-Schutz `test-shared.mjs` (Repo-Wurzel) prüft `sembla-bom.js`
 >   gegen die Core-BOM.
 > - `legacy/` ← `_archiv`, `Revit-pyRevit`, `EtappeA-App-beta-sandbox`, `Modul-Roboter`,
 >   `Modul-Fertigung`, `Projekt-Manager`, `SEMBLA Werkzeuge` (altes Build-Produkt),
 >   `publish-werkzeuge.mjs`, `sync-shared.mjs`, `sembla-shared.js` (Session 6 durch `sembla-bom.js` abgelöst),
 >   `Modul-1-Wandplanung`, `Auslegung-Engine`
 >   (Session 3 abgelöst), `Modul-Wandaufbau` (Session 4 abgelöst), `Modul-3-Statik`
->   (Session 5 abgelöst), `Modul-Stueckliste` (Session 6 abgelöst). Rückholbar; nicht Teil des MVP.
+>   (Session 5 abgelöst), `Modul-Stueckliste` (Session 6 abgelöst), `Modul-4-Montageplanung`
+>   (Session 7 abgelöst). Rückholbar; nicht Teil des MVP.
 > - `doku/` ← Handbuch, OSS-Matrix, Prozess-Grafiken, `_LIESMICH.md`, `GIT-SETUP.md`, `REFACTOR.md`.
-> - **Noch am alten Platz** (bis zu ihrer Modul-Session): die aktiven Modul-Ordner
->   (`Modul-4-Montageplanung/`, `Modul-3D/`) sowie
->   `sembla-obj-loader.js`, `SEMBLA_Uebersicht.html`. Ihre Core-Importe zeigen bereits auf
+> - **Noch am alten Platz** (bis zu ihrer Modul-Session): der aktive Modul-Ordner
+>   `Modul-3D/` sowie `sembla-obj-loader.js`, `SEMBLA_Uebersicht.html`. Ihre Core-Importe zeigen bereits auf
 >   `docs/shared/sembla-core.js`; ihre Tests laufen wie bisher aus dem jeweiligen Ordner.
 
 ## Was das ist

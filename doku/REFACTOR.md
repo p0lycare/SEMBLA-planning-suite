@@ -120,7 +120,7 @@ funktioniert. Dieses Dokument wird am Session-Ende fortgeschrieben (Fortschritt,
 | **4 — Modul 2** | Wandaufbau umbauen, **Dämmung entfernen** | dito |
 | **5 — Modul 3** | Statik umbauen | dito |
 | **6 — Modul 4** | Stückliste umbauen (BOM-Baustein aus `shared/sembla-bom.js`) | dito |
-| **7 — Modul 5** | Montageanleitung umbauen | dito |
+| **7 — Modul 5** | Montageanleitung umbauen | ✅ dito |
 | **8 — Modul 6** | Experimentell: 3D + IFC zusammenführen; OBJ-Upload → localStorage; OBJ-Loader inline | dito; gegen `tests/interop/` geprüft |
 | **9 — Abschluss** | Restaufräumen, package.json/Skripte bereinigen, CLAUDE.md final, Handbuch-Abgleich | keine toten Pfade; CLAUDE.md beschreibt nur noch den neuen Zustand |
 
@@ -215,14 +215,31 @@ importiert jetzt `docs/shared/sembla-bom.js` statt `sembla-shared.js` (52/52 Dri
 Ordner `Modul-Stueckliste/` + `sembla-shared.js` → `legacy/`. Kern-Parität, BOM-Drift, Modul-1/2/3-Tests
 weiter grün. `npm run test:modul4` ergänzt.
 
+**Session 7 (2026-07-15) — Modul 5 Montage:** `docs/montage.html` ist das neue Montage-Tool (Umfang **1:1**
+zum alten Modul: Übersicht, Kurz-Stückliste, Vorspannung Schritt-für-Schritt, interaktiver Lagen-Aufbau mit
+Slider/Streifen + Strang-Markern, Wandüberblick mit Bemaßung/Raster/Ankern, komplette druckbare Anleitung),
+umgebaut auf shared-Architektur (klassisches App-Skript + Modul-Skript mit
+`window.SEMBLA = { semblaBom, semblaBomItems, semblaBomMenge, buildWall, Opening, store }` + `navbar.js`,
+CSS auf `--sb-*`). **[ENTSCHIEDEN] Kurz-Stückliste aus dem geteilten BOM-Baustein** (`semblaBomItems`/
+`semblaBomMenge` aus `shared/sembla-bom.js`) statt aus `w.bom` direkt — dieselbe Quelle wie Modul 4, damit
+konsistent und driftfrei (nur Positionen mit Menge > 0). Die Roh-`w.bom` im JSON dient weiterhin als
+autoritative Quelle für Anschlussteile/Bleche *innerhalb* von `semblaBom`. **Storage:** Modul 5 ist reiner
+Konsument — lädt beim Öffnen das aktive Wandelement (sonst per `buildWall` erzeugte Demo-Wand), folgt
+externen Wechseln über `abonniere` und schreibt das Wandelement **nicht** zurück. Datei-Import
+(Wandelement/Projekt-Bundle) lädt nur in die Ansicht, ohne den Storage anzufassen. Rechen-/Zeichenlogik
+liegt **inline** im Modul (einziger Nutzer). Tests → `tests/module/`: `smoke_montage.mjs` (23/23, DOM-Mock +
+injiziertes `window.SEMBLA` + Storage-Mock; prüft u. a. BOM-Konsistenz gegen `semblaBomItems`, Lagen-Slider,
+Store-Sync, Druckdokument). Alter Ordner `Modul-4-Montageplanung/` → `legacy/`. Kern-Parität, BOM-Drift,
+Modul-1/2/3/4-Tests weiter grün. `npm run test:modul5` ergänzt.
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
 - [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
 - [x] Session 3 — Modul 1 Wandplanung *(docs/wandplanung.html + shared/sembla-engine.js live, Engine-Altbug behoben, Storage-Anbindung, alte Ordner → legacy, Tests grün)*
 - [x] Session 4 — Modul 2 Wandaufbau *(docs/wandaufbau.html live, Dämmung entfernt, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
 - [x] Session 5 — Modul 3 Statik *(docs/statik.html + shared/sembla-statik.js live, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
 - [x] Session 6 — Modul 4 Stückliste *(docs/stueckliste.html + shared/sembla-bom.js live, Storage liest aktives Wandelement, Dämmung entfernt, alter Ordner + sembla-shared.js → legacy, Tests grün)*
-- [ ] Session 7 — Modul 5 Montage  ← nächste
-- [ ] Session 8 — Modul 6 IFC/3D (experimentell)
+- [x] Session 7 — Modul 5 Montage *(docs/montage.html live, 1:1-Umfang, Kurz-BOM aus shared/sembla-bom.js, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
+- [ ] Session 8 — Modul 6 IFC/3D (experimentell)  ← nächste
 - [ ] Session 9 — Abschluss
 
 ## 9. Offene technische Detailfragen (werden in der jeweiligen Session entschieden)
@@ -236,5 +253,6 @@ weiter grün. `npm run test:modul4` ergänzt.
   Schema-Version (aktuell `1`, `migrieren()` als Haken für spätere Datenmigration). **Datei-Export = reines
   Wandelement-JSON** (kompatibel zu den Alt-Tools während der Übergangszeit). **Import** akzeptiert beide
   Formen: reines Wandelement (`length_mm` + `courses`) und Wrapper `{ name?, wandelement }`.
-- Umfang "Montageanleitung" (heutiges Modul Montageplanung 1:1 oder reduziert?) — Session 7.
+- **[ENTSCHIEDEN Session 7]** Umfang "Montageanleitung": **1:1** zum alten Modul übernommen (nur
+  Architektur gewechselt). Kurz-Stückliste kommt aus dem geteilten `sembla-bom.js` (Konsistenz zu Modul 4).
 - web-ifc einbetten vs. handgeschriebener IFC-Export als Zwischenschritt — Session 8.
