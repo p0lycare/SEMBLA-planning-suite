@@ -384,8 +384,8 @@ push(table(["Ich möchte ändern…", "Stelle"], [
   ["Material-/Sicherheitswerte der Statik", M("DEF_MAT in sembla-engine.mjs; DEFAULTS in sembla-statik.mjs")],
   ["Statik-Formeln", M("docs/shared/sembla-statik.js")],
   ["Auslegungs-Strategie (Kandidaten, N-Bereich)", M("autoAuslegung() in sembla-engine.mjs")],
-  ["Verbinder + Latten/Dämmung", M("Modul-Wandaufbau/SEMBLA_Wandaufbau.html (Panelfugen = Achsen, Beplankungsfeld)")],
-  ["Preise der Stückliste", "direkt im Tool editierbar; Default-Preise in Modul-Stueckliste/…"],
+  ["Verbinder + Latten", M("docs/wandaufbau.html (Panelfugen = Achsen, Beplankungsfeld; Dämmung im MVP entfernt)")],
+  ["Preise der Stückliste", "direkt im Tool editierbar; Mengen/Positionen aus docs/shared/sembla-bom.js"],
 ], [4000, 5360]));
 push(note("Goldene Regel zur Parität: Der Wandaufbau-Kern existiert zweimal – Python (Referenz) und JavaScript (für die Tools). Wer eine Aufbau-Regel ändert, muss beide Dateien gleich halten; die Paritätstests vergleichen sie über goldene Fixtures. Bei bewussten Änderungen werden die Fixtures neu erzeugt."));
 

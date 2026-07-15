@@ -193,13 +193,35 @@ Excel-Referenz `SEMBLA_Wand_Statik_v01.xlsx`, γP=1,1) + `smoke_statik.mjs` (26/
 `build-handbuch.mjs`-Labels auf `docs/shared/sembla-statik.js` umgestellt. Kern-Parität, BOM-Drift,
 Modul-1- und Modul-2-Tests weiter grün. `npm run test:statik` → `npm run test:modul3` (neue Pfade).
 
+**Session 6 (2026-07-15) — Modul 4 Stückliste:** `docs/stueckliste.html` ist das neue Stücklisten-Tool
+(kanonische Mengen aus dem Wandelement — Steine, Vorspannung, Anschlussteile, Dichtstreifen — mit
+editierbaren Netto-Einzelpreisen, Anzahl gleicher Wände, €/m²-Kennwert; Excel-/CSV-/Druck-Export),
+umgebaut auf shared-Architektur (klassisches App-Skript + Modul-Skript mit
+`window.SEMBLA = { semblaBom, semblaBomItems, semblaBomMenge, store }` + `navbar.js`, CSS auf `--sb-*`).
+**BOM-Baustein als shared-Datei:** der Block aus `sembla-shared.js` → `docs/shared/sembla-bom.js`
+(ES-Modul, Logik unverändert) — eigene Datei wegen eigener Tests (shared/-Regel b), analog
+`sembla-engine.js`/`sembla-statik.js`. Damit entfällt das alte Kopiersystem (`sync-shared.mjs`): es gibt
+nur noch diese eine Betriebskopie. **Dämmung entfernt** (MVP, wie Modul 2): die Dämmpaket-Berechnung in
+`layoutToBattens` (insulation) und die Dämmung-Position/-Preise sind weg; die Latten-Zuschnittlogik bleibt.
+Der Dichtstreifen (Schallschutz, aus Stoßfugen des Wandelements) bleibt — das ist keine Wärmedämmung.
+**Storage:** Modul 4 ist reiner Konsument — lädt beim Öffnen das aktive Wandelement (sonst Demo-Werte),
+folgt externen Wechseln über `abonniere` (setzt dabei ein geladenes Verbinder-Layout zurück) und schreibt
+das Wandelement **nicht** zurück. Verbinder/Latten stammen aus Modul 2 und kommen über ein Projekt-Bundle
+(oder separates Layout) per **Datei-Import** in die Liste — Modul 2 schreibt kein Layout in den Storage.
+Excel-Export nutzt weiterhin die xlsx-Bibliothek per CDN (nur online; degradiert sauber auf CSV, wenn
+nicht geladen) — die einzige externe Laufzeit-Abhängigkeit der Suite. Tests → `tests/module/`:
+`smoke_stueckliste.mjs` (27/27, DOM-Mock + injiziertes `window.SEMBLA` + Storage-Mock). `test-shared.mjs`
+importiert jetzt `docs/shared/sembla-bom.js` statt `sembla-shared.js` (52/52 Drift-Schutz grün). Alter
+Ordner `Modul-Stueckliste/` + `sembla-shared.js` → `legacy/`. Kern-Parität, BOM-Drift, Modul-1/2/3-Tests
+weiter grün. `npm run test:modul4` ergänzt.
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
 - [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
 - [x] Session 3 — Modul 1 Wandplanung *(docs/wandplanung.html + shared/sembla-engine.js live, Engine-Altbug behoben, Storage-Anbindung, alte Ordner → legacy, Tests grün)*
 - [x] Session 4 — Modul 2 Wandaufbau *(docs/wandaufbau.html live, Dämmung entfernt, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
 - [x] Session 5 — Modul 3 Statik *(docs/statik.html + shared/sembla-statik.js live, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
-- [ ] Session 6 — Modul 4 Stückliste  ← nächste
-- [ ] Session 7 — Modul 5 Montage
+- [x] Session 6 — Modul 4 Stückliste *(docs/stueckliste.html + shared/sembla-bom.js live, Storage liest aktives Wandelement, Dämmung entfernt, alter Ordner + sembla-shared.js → legacy, Tests grün)*
+- [ ] Session 7 — Modul 5 Montage  ← nächste
 - [ ] Session 8 — Modul 6 IFC/3D (experimentell)
 - [ ] Session 9 — Abschluss
 
