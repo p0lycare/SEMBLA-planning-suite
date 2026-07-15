@@ -97,9 +97,6 @@
       <label><span>ρ</span><input type="number" id="rho" value="14" step="0.5"><small>kN/m³</small></label>
     </div>
     <button class="primary" id="run">Auslegen</button>
-    <div class="btnrow">
-      <button id="save">In aktives Wandelement speichern</button>
-    </div>
     <div class="savehint" id="saveHint"></div>
     <div class="note"><b>Ein Datenmodell.</b> Dieses Modul erzeugt das geprüfte <b>Wandelement</b>, das
       Aufbau, Statik, Stückliste, Montage und 3D/IFC lesen. Es wird im <b>aktiven Wandelement</b> der Suite
@@ -150,7 +147,7 @@ const M=1000;
 // aus window.SEMBLA (in __wpInit gebunden):
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store;
 // Storage-Anbindung (aktives Wandelement):
-let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
+let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false, booting=true;
 const SIDE_LABEL={fassade:'Fassade',innenausbau:'Innenausbau',sicht:'Sichtfläche',installation:'Installation'};
 let openings=[], stepsArr=[], VIEW='vorne', RESULT=null;
 let showDim=true, showRaster=false;
@@ -371,20 +368,19 @@ function renderSteps(){ const c=$('stepsList'); c.innerHTML=''; if(!stepsArr.len
 function addStep(){ const {L}=dims(); const Bm=L/1000; stepsArr.push({x0:+(Bm/2).toFixed(3), x1:+Bm.toFixed(3), h:1.00}); renderSteps(); run(); }
 
 // ---------- Aktives Wandelement (localStorage) ----------
-function persistAktiv(w){                       // Auto-Sync: nur wenn bereits ein aktives Element existiert
-  if(!saveEnabled || !store || !store.aktivId || !store.aktivId()) return;
+// Auto-Speichern: jede Änderung fließt sofort ins aktive Wandelement. Existiert noch
+// keins, legt die erste echte Änderung eins an (nicht schon beim bloßen Laden der Seite).
+function persistAktiv(w){
+  if(!saveEnabled || !store || !store.speichereAktiv) return;
+  const hatAktiv = !!(store.aktivId && store.aktivId());
+  if(!hatAktiv && booting) return;              // beim Laden ohne aktives Element nichts anlegen
+  const neu = !hatAktiv;
   w.name=aktName; _selfSave=true;
   try{ currentId=store.speichereAktiv(w); } finally{ _selfSave=false; }
+  const e=store.aktivesElement&&store.aktivesElement(); if(e&&e.name) aktName=e.name;
+  saveHint(neu ? '✓ Neues Wandelement angelegt und aktiv gesetzt' : '✓ Automatisch gespeichert', true);
 }
 function saveHint(t,ok){ const el=$('saveHint'); if(!el) return; el.textContent=t||''; el.className='savehint'+(ok?' ok':''); }
-function speichern(){                            // explizit: legt bei Bedarf ein neues aktives Element an
-  if(!store){ return; }
-  if(!RESULT){ saveHint('Bitte zuerst auslegen.'); return; }
-  const w=RESULT.wandelement; w.name=aktName; _selfSave=true;
-  try{ currentId=store.speichereAktiv(w); } finally{ _selfSave=false; }
-  const e=store.aktivesElement&&store.aktivesElement(); if(e&&e.name) aktName=e.name;
-  saveHint('Gespeichert als aktives Wandelement: '+aktName, true);
-}
 function loadFromStore(we){ saveEnabled=false; try{ applyWand(we); } finally{ saveEnabled=true; } }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
@@ -407,7 +403,7 @@ function loadInitial(){
   if(e&&e.name) aktName=e.name;
   else if(we&&we.name) aktName=we.name;
   if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
-  else { renderSteps(); renderOps(); run(); saveHint('Kein aktives Wandelement — „Speichern" legt eins an.'); }
+  else { renderSteps(); renderOps(); run(); saveHint('Kein aktives Wandelement — die erste Änderung legt automatisch eins an.'); }
 }
 
 // ---------- Laden / Export (Datei) ----------
@@ -462,10 +458,9 @@ function bindEvents(){
   $('addStep').addEventListener('click',addStep);
   $('viewToggle').addEventListener('click',()=>{ VIEW=VIEW==='vorne'?'hinten':'vorne'; $('viewToggle').textContent='Ansicht: '+(VIEW==='vorne'?'Vorderseite':'Rückseite'); run(); });
   $('run').addEventListener('click',run);
-  $('save').addEventListener('click',speichern);
 }
 
-window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, speichern, setEdit:(v)=>{editMode=v;},
+window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},
   setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;} };
 
 window.__wpInit=function(){
@@ -475,6 +470,7 @@ window.__wpInit=function(){
   bindEvents();
   setupStoreSync();
   loadInitial();
+  booting=false;                                // ab jetzt: jede Änderung legt bei Bedarf ein Element an
 };
 </script>
 

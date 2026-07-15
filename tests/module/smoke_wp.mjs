@@ -120,10 +120,10 @@ WP.setAxisEdit(true); ok('Achsen-Editor an + Griffe gezeichnet', WP.axisEdit===t
 WP.setManualCols(null); ok('Zurück zu Auto (columns_grid null)', WP.RESULT.wandelement.prestress.columns_grid===null && WP.manualCols===null);
 WP.setAxisEdit(false);
 
-// Storage-Anbindung: explizites Speichern legt aktives Element an
+// Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element
 let saved=null; storeMock.speichereAktiv=(w)=>{ saved=w; return 'w-neu'; };
-WP.speichern();
-ok('Speichern übergibt Wandelement an Storage', saved && saved.length_mm>0 && !!saved.verification);
+document.getElementById('len').value='2.00'; document.getElementById('len').dispatch('input');
+ok('Auto-Speichern übergibt Wandelement an Storage', saved && saved.length_mm>0 && !!saved.verification);
 
 // Externer Wechsel des aktiven Elements lädt Geometrie (Kopfdaten jetzt in Modul 0)
 storeMock.aktivId=()=>'w-ext'; storeMock.aktivesElement=()=>({name:'Ext'}); storeMock.aktivesWandelement=()=>buildWall('Ext',2000,2600,[]);
