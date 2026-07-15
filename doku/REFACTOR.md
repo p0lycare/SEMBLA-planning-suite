@@ -161,11 +161,26 @@ inline (einziger Nutzer war die Etappe-A-Sandbox = legacy), smoke-getestet über
 Alte Ordner `Modul-1-Wandplanung/` + `Auslegung-Engine/` → `legacy/`. Kern-Parität, BOM-Drift, Storage-
 und (alte) Statik-Tests weiter grün. `npm run test:modul1` ergänzt.
 
+**Session 4 (2026-07-15) — Modul 2 Wandaufbau:** `docs/wandaufbau.html` ist das neue Wandaufbau-Tool
+(Verbinderachsen aus Panelfugen, Nutenraster aus Steinaufbau, 1D-Latten-Zuschnitt, Beplankungsfeld mit
+Maus-Anfassern, gestufte Wände), umgebaut auf shared-Architektur (klassisches App-Skript + Modul-Skript
+mit `window.SEMBLA = { buildWall, Opening, GRID, COURSE, store }` + `navbar.js`). **Dämmung entfernt**
+(MVP-Entscheidung): Dämmdicke/-Checkbox, `daemmung`-Berechnung in `layoutToBattens` und die Dämmung-
+Übersichtskarte sind weg; die Latten-Logik bleibt unverändert. **Storage:** Modul 2 ist reiner Konsument —
+lädt beim Öffnen das aktive Wandelement (sonst Demo-Wand) und folgt externen Wechseln über `abonniere`;
+es schreibt das Wandelement **nicht** zurück (SSOT bleibt Modul 1). Verbinder-Layout (Projekt-Bundle) und
+Latten-Zuschnittliste (CSV) bleiben als bewusster Datei-Export; Datei-Import (Bundle/Wandelement) lädt in
+die Ansicht, ohne den Storage anzufassen. Rechen-/Zeichenlogik liegt **inline** im Modul (einziger Nutzer),
+smoke-getestet: `tests/module/smoke_wandaufbau.mjs` (47/47, DOM-Mock + injiziertes `window.SEMBLA`,
+Storage-Mock). Damit entfällt der bisherige py/mjs-Paritätstest gegen eine zweite Kern-Kopie — es gibt nur
+noch eine Betriebskopie. Alter Ordner `Modul-Wandaufbau/` (samt `sembla-wandaufbau.mjs`, Alt-Tests) →
+`legacy/`. Kern-Parität, BOM-Drift, Modul-1- und Statik-Tests weiter grün. `npm run test:modul2` ergänzt.
+
 - [x] Session 1 — Aufräumen *(legacy/ + doku/ befüllt; Cores/Tests bleiben bis Session 2; alle Kern-Tests grün)*
 - [x] Session 2 — Plumbing *(docs/shared/ + Modul 0 live, Tests → tests/, alle Kern-/Modul-Tests grün)*
 - [x] Session 3 — Modul 1 Wandplanung *(docs/wandplanung.html + shared/sembla-engine.js live, Engine-Altbug behoben, Storage-Anbindung, alte Ordner → legacy, Tests grün)*
-- [ ] Session 4 — Modul 2 Wandaufbau
-- [ ] Session 5 — Modul 3 Statik
+- [x] Session 4 — Modul 2 Wandaufbau *(docs/wandaufbau.html live, Dämmung entfernt, Storage liest aktives Wandelement, alter Ordner → legacy, Tests grün)*
+- [ ] Session 5 — Modul 3 Statik  ← nächste
 - [ ] Session 6 — Modul 4 Stückliste
 - [ ] Session 7 — Modul 5 Montage
 - [ ] Session 8 — Modul 6 IFC/3D (experimentell)
