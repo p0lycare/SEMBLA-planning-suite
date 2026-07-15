@@ -286,7 +286,7 @@ function _merge(base, patch) {
  */
 export function standardEingaben() {
   return {
-    // Modul 1 — Projekt-Kopfdaten (reisen im Projekt-JSON mit)
+    // Modul 0 — Projekt-Kopfdaten (Startseite, am aktiven Element; reisen im Projekt-JSON mit)
     projekt: {
       name: "", bauherr: "", planverfasser: "Polycare Research Technology GmbH",
       phase: "Ausführungsplanung", plan_nr: "", index: "0", gez: "",

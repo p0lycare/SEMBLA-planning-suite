@@ -93,6 +93,29 @@
       das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen.</div>
   </div>
 
+  <h2>Projekt-Kopfdaten <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· aktives Wandelement</span></h2>
+  <div class="panel">
+    <div class="empty" id="pj-none" hidden>Kein aktives Wandelement — oben anlegen oder in der Liste „Aktiv setzen".</div>
+    <div id="pj-form">
+      <div class="row">
+        <div class="field"><label for="pj-name">Projekt</label><input id="pj-name" type="text"></div>
+        <div class="field"><label for="pj-bauherr">Bauherrenschaft</label><input id="pj-bauherr" type="text"></div>
+        <div class="field"><label for="pj-planverf">Planverfasser</label><input id="pj-planverf" type="text"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="field"><label for="pj-phase">Phase</label>
+          <select id="pj-phase" style="border:1px solid var(--sb-line);border-radius:7px;padding:7px 9px;font-size:14px;width:170px">
+            <option>Vorplanung</option><option>Entwurfsplanung</option><option>Genehmigungsplanung</option><option>Ausführungsplanung</option>
+          </select></div>
+        <div class="field"><label for="pj-plannr">Plan-Nr.</label><input id="pj-plannr" type="text" style="width:100px"></div>
+        <div class="field"><label for="pj-index">Index</label><input id="pj-index" type="text" style="width:60px"></div>
+        <div class="field"><label for="pj-gez">Gez.</label><input id="pj-gez" type="text" style="width:100px"></div>
+      </div>
+    </div>
+    <div class="hint">Diese Angaben gehören zum aktiven Wandelement und reisen im Projekt-Export mit
+      (Projekt-JSON). Änderungen werden sofort gespeichert.</div>
+  </div>
+
   <h2>Gespeicherte Wandelemente</h2>
   <div class="panel">
     <table>
@@ -235,6 +258,40 @@
 
   store.abonniere(render);
   render();
+
+  // --- Projekt-Kopfdaten (aktives Element -> eingaben.projekt) ---
+  const pjIds = { name:'pj-name', bauherr:'pj-bauherr', planverfasser:'pj-planverf',
+                  phase:'pj-phase', plan_nr:'pj-plannr', index:'pj-index', gez:'pj-gez' };
+  const pjForm = document.getElementById('pj-form');
+  const pjNone = document.getElementById('pj-none');
+  let pjAktivId = undefined;                       // undefined = noch nie geladen
+
+  function pjLaden(){
+    const aktiv = store.aktivId();
+    pjForm.hidden = !aktiv; pjNone.hidden = !!aktiv;
+    if (!aktiv) return;
+    const p = store.aktiveEingaben().projekt || {};
+    for (const [key, id] of Object.entries(pjIds)) {
+      const el = document.getElementById(id);
+      if (el) el.value = p[key] != null ? p[key] : '';
+    }
+  }
+  function pjSchreiben(){
+    if (!store.aktivId()) return;
+    const patch = {};
+    for (const [key, id] of Object.entries(pjIds)) {
+      const el = document.getElementById(id); if (el) patch[key] = el.value;
+    }
+    store.mergeEingaben('projekt', patch);         // löst abonniere aus; pjSync lädt nicht neu (id unverändert)
+  }
+  for (const id of Object.values(pjIds)) {
+    const el = document.getElementById(id);
+    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', pjSchreiben);
+  }
+  // Nur bei echtem Wechsel des aktiven Elements neu laden — sonst würde Tippen den Cursor stören.
+  function pjSync(){ const id = store.aktivId(); if (id !== pjAktivId) { pjAktivId = id; pjLaden(); } }
+  store.abonniere(pjSync);
+  pjSync();
 
   // --- Zentraler Export-Dialog ---
   const overlay = document.getElementById('exp-overlay');

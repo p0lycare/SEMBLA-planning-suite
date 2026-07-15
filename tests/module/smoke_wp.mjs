@@ -12,7 +12,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   setAttribute(){} getBoundingClientRect(){return {left:0,width:1000};} get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
-const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',rodCm:'110',blechCm:'100',topConn:'blech',pjProjekt:'',pjBauherr:'',pjPlanverf:'',pjPhase:'',pjPlanNr:'',pjIndex:'0',pjGez:''};
+const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',rodCm:'110',blechCm:'100',topConn:'blech'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
 // Storage-Mock: kein aktives Element -> Modul rechnet mit Standard-Formular.
@@ -29,7 +29,7 @@ const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 ok('Auslegung läuft, konvergiert', WP.RESULT && WP.RESULT.status==='konvergiert');
 ok('Wandbild + Stränge', (document.getElementById('plan').innerHTML.match(/<rect/g)||[]).length>5 && document.getElementById('plan').innerHTML.includes('#1f6feb'));
 ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);
-ok('Stückliste gefüllt', (document.getElementById('bom').innerHTML.match(/<tr>/g)||[]).length>=5);
+ok('Steine-Zusammenfassung gefüllt (BOM-Tabelle jetzt in Modul 4)', /\d/.test(document.getElementById('rSteine').textContent));
 ok('sides + verification im Ergebnis', WP.RESULT.wandelement.sides.vorne.funktion==='fassade' && WP.RESULT.wandelement.verification.status==='geprüft');
 // Öffnung hinzufügen
 WP.addOpening('tuer');
@@ -93,14 +93,7 @@ ok('getreppte Wand baubar (keine Überlappung)', wst.validation.buildable===true
 const untenc=wst.courses.find(c=>c.lage===0);
 ok('unterste Lage volle Breite (2,0 m)', Math.max(0,...untenc.stones.map(s=>s.x1))===2000);
 
-// Projekt-Kopfdaten: Eingabe -> projektData; prefill füllt Felder
-document.getElementById('pjProjekt').value='Kreislauffiliale Lidl';
-document.getElementById('pjBauherr').value='LIDL Dienstleistung GmbH & Co. KG';
-document.getElementById('pjIndex').value='2';
-const pj=WP.projektData();
-ok('projektData liest Kopfdaten', pj.name==='Kreislauffiliale Lidl' && pj.bauherr.startsWith('LIDL') && pj.index==='2');
-WP.prefillProjekt({name:'Projekt X', bauherr:'Bauherr Y', phase:'Genehmigungsplanung', plan_nr:'A-01'});
-ok('prefillProjekt setzt Felder', document.getElementById('pjProjekt').value==='Projekt X' && document.getElementById('pjPhase').value==='Genehmigungsplanung' && document.getElementById('pjPlanNr').value==='A-01');
+// Projekt-Kopfdaten wurden nach Modul 0 (Startseite) verschoben — hier nicht mehr getestet.
 
 // Feature-Requests: Anschluss-Modell + Reihennummern
 document.getElementById('len').value='2.00'; document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
@@ -132,17 +125,10 @@ let saved=null; storeMock.speichereAktiv=(w)=>{ saved=w; return 'w-neu'; };
 WP.speichern();
 ok('Speichern übergibt Wandelement an Storage', saved && saved.length_mm>0 && !!saved.verification);
 
-// Neues Datenmodell: Projekt-Kopfdaten <-> eingaben.projekt
-let _pm=[]; storeMock.mergeEingaben=(teil,patch)=>{ _pm.push([teil,patch]); return 'w-neu'; };
-document.getElementById('pjBauherr').value='Neuer Bauherr'; document.getElementById('pjBauherr').dispatch('input');
-ok('Kopfdaten-Eingabe -> mergeEingaben(projekt)', _pm.some(([t,p])=>t==='projekt' && p.bauherr==='Neuer Bauherr'));
-ok('Speichern sichert auch Kopfdaten (persistProjekt)', (WP.speichern(), _pm.some(([t])=>t==='projekt')));
-// Prefill aus dem Modell beim externen Wechsel des aktiven Elements
-storeMock.aktiveEingaben=()=>({projekt:{name:'Geladenes Projekt',phase:'Genehmigungsplanung'},kosten:{},aufbau:{}});
+// Externer Wechsel des aktiven Elements lädt Geometrie (Kopfdaten jetzt in Modul 0)
 storeMock.aktivId=()=>'w-ext'; storeMock.aktivesElement=()=>({name:'Ext'}); storeMock.aktivesWandelement=()=>buildWall('Ext',2000,2600,[]);
 _subs.forEach(cb=>cb());   // abonniere-Callback feuern (externer Wechsel)
-ok('Prefill Kopfdaten aus Modell (Name)', document.getElementById('pjProjekt').value==='Geladenes Projekt');
-ok('Prefill Kopfdaten aus Modell (Phase)', document.getElementById('pjPhase').value==='Genehmigungsplanung');
+ok('Externer Wechsel lädt Wandelement', document.getElementById('len').value==='2.000');
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

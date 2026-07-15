@@ -25,7 +25,7 @@ Element ist gesetzt; **nur Modul 1 schreibt das Wandelement**, alle anderen Modu
 **Nutzereingaben ↔ ein Datenmodell (kein Drift).** Neben dem Wandelement hält jeder Eintrag einen
 `eingaben`-Block: `{ projekt, aufbau, kosten, statik }` (Standardwerte in `storage.standardEingaben()`).
 Jedes Modul schreibt **nur seinen eigenen Abschnitt** via `store.mergeEingaben(teil, patch)` zurück —
-Modul 1→`projekt`, Modul 2→`aufbau`, Modul 4→`kosten`, Modul 3→`statik`. Abgeleitete Werte (Stückliste,
+Modul 0→`projekt` (Kopfdaten am aktiven Element), Modul 2→`aufbau`, Modul 4→`kosten`, Modul 3→`statik`. Abgeleitete Werte (Stückliste,
 Layout, Nachweis) werden immer **neu gerechnet, nie gespeichert**. Modul 3 speichert nur seine Kennwerte;
 die Geometrie (h/L/t/Öffnungszahl) kommt aus dem Wandelement.
 
@@ -79,8 +79,8 @@ Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Ras
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`) |
-| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`) — **erzeugt** das Wandelement; Projekt-Kopfdaten → `eingaben.projekt` |
+| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt` |
+| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`) — **erzeugt** das Wandelement |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie aus dem Wandelement |
 | 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); Preise/Anzahl → `eingaben.kosten` (Export läuft zentral über Modul 0) |

@@ -41,8 +41,6 @@
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
-  #printdoc{display:none}
-  @media print{ .sb-nav,.controls,.intro,svg{display:none!important} #app{display:none!important} #printdoc{display:block;padding:0 6mm} }
 </style>
 </head>
 <body>
@@ -98,18 +96,9 @@
       <label><span>C<sub>f,d</sub></span><input type="number" id="cfd" value="0.60" step="0.05"><small>–</small></label>
       <label><span>ρ</span><input type="number" id="rho" value="14" step="0.5"><small>kN/m³</small></label>
     </div>
-    <div class="grp"><h3>Projekt-Kopfdaten <small>(im Datenmodell gespeichert)</small></h3>
-      <label><span>Projekt</span><input type="text" id="pjProjekt" value="SEMBLA-Musterwand" style="width:150px"></label>
-      <label><span>Bauherrenschaft</span><input type="text" id="pjBauherr" value="" style="width:150px"></label>
-      <label><span>Planverfasser</span><input type="text" id="pjPlanverf" value="Polycare Research Technology GmbH" style="width:150px"></label>
-      <label><span>Phase</span><select id="pjPhase"><option>Vorplanung</option><option>Entwurfsplanung</option><option>Genehmigungsplanung</option><option selected>Ausführungsplanung</option></select></label>
-      <label><span>Plan-Nr. / Index</span><span><input type="text" id="pjPlanNr" value="" style="width:70px"> <input type="text" id="pjIndex" value="0" style="width:36px"></span></label>
-      <label><span>Gez.</span><input type="text" id="pjGez" value="" style="width:70px"></label>
-    </div>
     <button class="primary" id="run">Auslegen</button>
     <div class="btnrow">
       <button id="save">In aktives Wandelement speichern</button>
-      <button id="print">Protokoll</button>
     </div>
     <div class="savehint" id="saveHint"></div>
     <div class="note"><b>Ein Datenmodell.</b> Dieses Modul erzeugt das geprüfte <b>Wandelement</b>, das
@@ -137,11 +126,9 @@
           <div class="k">Vorspannstränge</div><div class="v" id="rStrands">–</div>
           <div class="k">Vorspannkraft N</div><div class="v" id="rN">–</div>
           <div class="k">Raster</div><div class="v" id="rGrid">–</div>
+          <div class="k">Steine (i3 · i2)</div><div class="v" id="rSteine">–</div>
         </div>
-      </div>
-      <div style="flex:1 1 220px">
-        <h2>Stückliste</h2>
-        <table class="tb" id="bom"></table>
+        <div class="note" style="margin-top:8px">Vollständige Mengen &amp; Kosten in Modul 4 (Stückliste).</div>
       </div>
     </div>
 
@@ -151,7 +138,6 @@
       <table class="tb" id="itTable"><thead><tr><th>Versuch</th><th>Strangabstand</th><th>Stränge</th><th>N [kN]</th><th>Auslastung</th><th></th></tr></thead><tbody></tbody></table></div>
   </div>
 </div>
-<div id="printdoc"></div>
 
 <script>
 /* App-Logik (klassisches Skript). Rechenkern/Engine/Storage werden vom Modul-Skript
@@ -269,15 +255,7 @@ function run(){
   $('rStrands').textContent=v.auslegung.strands;
   $('rN').textContent=fmt(v.auslegung.force_kN,0)+' kN';
   $('rGrid').textContent=w.N_grid+' × '+w.lagen+' Lagen';
-  const b=w.bom; $('bom').innerHTML=
-    bomRow('Steine i3',b.i3)+bomRow('Steine i2',b.i2)+bomRow('Gewindestangen',b.gewindestangen)+
-    bomRow('Kopplungsmuttern (Stoß)',b.verbindungsmuttern)+
-    (b.senkkopfschrauben!=null?bomRow('Senkkopfschrauben (Fuß)',b.senkkopfschrauben):'')+
-    (b.spannplatten!=null?bomRow('Spannplatten',b.spannplatten):'')+
-    bomRow('Spannmuttern',b.spannmuttern)+
-    (b.stahlblech_module!=null?bomRow('Stahlblech-Module (15 mm)',b.stahlblech_module):'')+
-    (b.stossfugen!=null?bomRow('Dichtstreifen 20 cm (Stück)',b.stossfugen):'')+
-    (b.dichtstreifen_mm!=null?bomRow('Dichtstreifen (Gesamtlänge)',fmt(b.dichtstreifen_mm/1000,2)+' m'):'');
+  const b=w.bom; $('rSteine').textContent=fmt((b.i3||0)+(b.i2||0),0)+' ('+fmt(b.i3||0,0)+' · '+fmt(b.i2||0,0)+')';
   renderNachweise(v); renderIter(auto?RESULT.iterationen:[]);
   const warns=[];
   if(vv.invalid_segments.length) warns.push('⚠ Ungültiges Maß: Abschnitt mit '+vv.invalid_segments[0].breite_grid+' Rastern.');
@@ -288,10 +266,9 @@ function run(){
   }
   if(!vv.buildable) warns.push('⚠ Wand strukturell nicht baubar (ungültige Vorspann-Segmente).');
   $('warns').textContent=warns.join('   ');
-  draw(w); buildPrint(w,v);
+  draw(w);
   persistAktiv(w);
 }
-const bomRow=(k,val)=>`<tr><td>${k}</td><td>${typeof val==='number'?fmt(val,0):val}</td></tr>`;
 function nwRow(name,e,wd,util,ok,gov){ return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀':''}</td><td>${e}</td><td>${wd}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`; }
 function renderNachweise(v){ const n=v.nachweise,g=v.governing.name;
   $('nwTable').querySelector('tbody').innerHTML=
@@ -370,18 +347,6 @@ function draw(w){
   svg.innerHTML=s;
 }
 
-function buildPrint(w,v){ const n=v.nachweise;
-  let h='<h1 style="font-size:18px">SEMBLA Wand – Planung &amp; Nachweis</h1>';
-  h+=`<p>${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m · t ${fmt(w.thickness_mm/10,1)} cm · Seiten vorne ${w.sides.vorne.funktion}, hinten ${w.sides.hinten.funktion}.</p>`;
-  h+=`<p><b>Status: ${v.status==='geprüft'?'erfüllt':'NICHT erfüllt'}</b> · maßgebend ${v.governing.name} (${pct(v.governing.util)}) · Vorspannung ${v.auslegung.max_span_grid} Raster, ${v.auslegung.strands} Stränge, N=${fmt(v.auslegung.force_kN,0)} kN.</p>`;
-  h+='<h2>Nachweise</h2><table class="tb"><thead><tr><th>Nachweis</th><th>Einwirkung</th><th>Widerstand</th><th>Auslastung</th></tr></thead><tbody>';
-  h+=`<tr><td>Biegung</td><td>${fmt(n.biegung.M_Ed,2)} kNm</td><td>${fmt(n.biegung.M_R,2)} kNm</td><td>${pct(n.biegung.util)}</td></tr>`;
-  h+=`<tr><td>Randdruck</td><td>${fmt(n.randdruck.sigma_Nmm2,2)} N/mm²</td><td>${fmt(n.randdruck.fcd,0)} N/mm²</td><td>${pct(n.randdruck.util)}</td></tr>`;
-  h+=`<tr><td>Schub/Reibung</td><td>${fmt(n.schub.V_Ed,1)} kN</td><td>${fmt(n.schub.V_R,1)} kN</td><td>${pct(n.schub.util)}</td></tr></tbody></table>`;
-  h+=`<p style="font-size:11px;color:#666">Materialannahmen f_cd=${fmt(v.material.fcd_Nmm2,0)} N/mm², C=${fmt(v.material.cfd,2)}, ρ=${fmt(v.material.rho,1)} kN/m³. Planungshilfe — keine geprüfte Statik.</p>`;
-  $('printdoc').innerHTML=h;
-}
-
 // ---------- Öffnungs-UI ----------
 function renderOps(){ const c=$('ops'); c.innerHTML=''; if(!openings.length) c.innerHTML='<div style="color:var(--sb-muted);font-size:12.5px">Keine Öffnungen.</div>';
   openings.forEach((o,i)=>{ const isF=o.art==='fenster'; const d=document.createElement('div'); d.className='op';
@@ -417,7 +382,6 @@ function speichern(){                            // explizit: legt bei Bedarf ei
   if(!RESULT){ saveHint('Bitte zuerst auslegen.'); return; }
   const w=RESULT.wandelement; w.name=aktName; _selfSave=true;
   try{ currentId=store.speichereAktiv(w); } finally{ _selfSave=false; }
-  persistProjekt();                               // Kopfdaten am (nun aktiven) Element sichern
   const e=store.aktivesElement&&store.aktivesElement(); if(e&&e.name) aktName=e.name;
   saveHint('Gespeichert als aktives Wandelement: '+aktName, true);
 }
@@ -433,7 +397,7 @@ function setupStoreSync(){
       const e=store.aktivesElement&&store.aktivesElement();
       const we=store.aktivesWandelement&&store.aktivesWandelement();
       aktName=(e&&e.name)||(we&&we.name)||'Wand';
-      if(we){ loadFromStore(we); loadProjekt(); saveHint('Aktives Wandelement geladen: '+aktName); }
+      if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
     }
   });
 }
@@ -442,7 +406,7 @@ function loadInitial(){
   const we=store&&store.aktivesWandelement?store.aktivesWandelement():null;
   if(e&&e.name) aktName=e.name;
   else if(we&&we.name) aktName=we.name;
-  if(we){ loadFromStore(we); loadProjekt(); saveHint('Aktives Wandelement geladen: '+aktName); }
+  if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
   else { renderSteps(); renderOps(); run(); saveHint('Kein aktives Wandelement — „Speichern" legt eins an.'); }
 }
 
@@ -461,12 +425,6 @@ function applyWand(w){
   if(w.name) aktName=w.name;
   renderSteps(); renderOps(); run();
 }
-function projektData(){ return { name:$('pjProjekt').value, bauherr:$('pjBauherr').value, planverfasser:$('pjPlanverf').value, phase:$('pjPhase').value, plan_nr:$('pjPlanNr').value, index:$('pjIndex').value, gez:$('pjGez').value }; }
-function prefillProjekt(p){ if(!p)return; const set=(id,v)=>{ if(v!=null&&v!=='') $(id).value=v; }; set('pjProjekt',p.name); set('pjBauherr',p.bauherr); set('pjPlanverf',p.planverfasser); set('pjPhase',p.phase); set('pjPlanNr',p.plan_nr); set('pjIndex',p.index); set('pjGez',p.gez); }
-// Projekt-Kopfdaten ins Datenmodell (eingaben.projekt) schreiben; braucht ein aktives Element.
-function persistProjekt(){ if(store&&store.mergeEingaben) store.mergeEingaben('projekt', projektData()); }
-// Kopfdaten des aktiven Elements in die Felder laden.
-function loadProjekt(){ if(store&&store.aktiveEingaben) prefillProjekt(store.aktiveEingaben().projekt); }
 
 // ---- Spannachsen-Editor (Feature: manuelle Achsen für Sonderkonstruktionen) ----
 function pxToK(e){ if(!LASTDRAW) return 0; const r=$('plan').getBoundingClientRect();
@@ -505,13 +463,9 @@ function bindEvents(){
   $('viewToggle').addEventListener('click',()=>{ VIEW=VIEW==='vorne'?'hinten':'vorne'; $('viewToggle').textContent='Ansicht: '+(VIEW==='vorne'?'Vorderseite':'Rückseite'); run(); });
   $('run').addEventListener('click',run);
   $('save').addEventListener('click',speichern);
-  $('print').addEventListener('click',()=>{ if(!RESULT){alert('Bitte zuerst auslegen.');return;} window.print(); });
-  // Projekt-Kopfdaten ins Datenmodell (eingaben.projekt) zurückschreiben
-  ['pjProjekt','pjBauherr','pjPlanverf','pjPlanNr','pjIndex','pjGez'].forEach(id=>$(id).addEventListener('input',persistProjekt));
-  $('pjPhase').addEventListener('change',persistProjekt);
 }
 
-window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, projektData, prefillProjekt, speichern, setEdit:(v)=>{editMode=v;},
+window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, speichern, setEdit:(v)=>{editMode=v;},
   setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;} };
 
 window.__wpInit=function(){
