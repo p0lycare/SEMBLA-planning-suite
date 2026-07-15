@@ -29,10 +29,10 @@
 <body>
 <p class="intro"><b>Horizontaler Wandaufbau.</b> Verbinder- und Lattenplanung in einem Schritt — die
   Panelfugen bestimmen die Verbinderachsen. Grundlage ist das <b>aktive Wandelement</b> (aus „Wand
-  planen"); dieses Modul liest es und ändert es nicht. Layout/Zuschnitt können als Datei exportiert werden.</p>
+  planen"); dieses Modul liest es und ändert es nicht. Deine Aufbau-Einstellungen (Panel, Achsen,
+  Beplankungsfeld, Latten) werden im Datenmodell gespeichert; Verbinder-/Zuschnittliste liefert der zentrale
+  Export auf der Startseite.</p>
 <div class="bar">
-  <input type="file" id="file" accept="application/json,.json" style="display:none">
-  <button id="load">Wandelement / Bundle laden (Datei)</button>
   <label style="width:auto">Seite&nbsp;<select id="side"><option value="vorne">Vorderseite</option><option value="hinten">Rückseite</option></select></label>
   <label style="width:auto">Aufbau (aus Modul 1)&nbsp;<b id="aufbau" style="font-weight:600">–</b></label>
   <button id="fieldMode">Beplankungsfeld aufziehen</button>
@@ -40,8 +40,6 @@
   <label style="width:auto"><input type="checkbox" id="showNut" checked> Nutenraster</label>
   <label style="width:auto"><input type="checkbox" id="showStones" checked> Steine i2/i3</label>
   <label style="width:auto"><input type="checkbox" id="showMasse" checked> Maße</label>
-  <button id="expBundle">Projekt-Bundle exportieren</button>
-  <button id="expCut">Zuschnittliste (CSV)</button>
   <span id="info" style="font-size:12.5px;color:var(--sb-muted)">–</span>
 </div>
 <div class="wrap">
@@ -68,9 +66,9 @@
       <label>Lattenbreite <span><input type="number" id="lw" value="4" step="0.5"><small>cm</small></span></label>
       <label>Stangenlänge <span><input type="number" id="stock" value="150" step="10"><small>cm</small></span></label>
     </div>
-    <div class="note"><b>Ein Datenmodell.</b> Dieses Modul liest das aktive Wandelement der Suite
-      (localStorage) und schreibt es nicht zurück. Wechsel/Neuanlage in der Kopfleiste bzw. auf der
-      Startseite. Verbinder-Layout und Zuschnittliste gibt es als bewussten Datei-Export.</div>
+    <div class="note"><b>Ein Datenmodell.</b> Dieses Modul liest das aktive Wandelement (localStorage) und
+      ändert es nicht; nur die Aufbau-Eingaben dieses Moduls werden gespeichert. Wechsel/Neuanlage in der
+      Kopfleiste bzw. auf der Startseite. Verbinder-Layout und Zuschnittliste kommen über den zentralen Export.</div>
   </div>
 
   <div class="card">
@@ -103,17 +101,11 @@
    Node-Smoke-Test ohne Modul-Auflösung evaluierbar. */
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
-let WALL=null, INBUNDLE=null, SIDE='vorne', FELD=null, LASTDRAW=null, fieldArm=false;
+let WALL=null, EINGABEN=null, SIDE='vorne', FELD=null, LASTDRAW=null, fieldArm=false;
 // aus window.SEMBLA (in __waInit gebunden):
-let buildWall, Opening, store;
+let buildWall, Opening, store, berechneAufbau, VERBINDER_KATALOG;
 let currentId=null;
 
-const VERBINDER_KATALOG=[
-  {id:'FA-1', name:'Fassadenanker FA-1', Rk:0.50, gM:2.0, fuer:'fassade'},
-  {id:'FA-2', name:'Fassadenanker FA-2 (schwer)', Rk:0.80, gM:2.0, fuer:'fassade'},
-  {id:'IA-1', name:'Innenanker IA-1 (leicht)', Rk:0.25, gM:2.0, fuer:'innenausbau'},
-  {id:'UNI', name:'Universal', Rk:0.50, gM:2.0, fuer:'alle'},
-];
 const FUNKTION_LABEL={fassade:'Fassadenaufbau',innenausbau:'Innenausbau',alle:'Universal',sicht:'Sichtfläche',installation:'Installationsebene'};
 const SIDE_LABEL={vorne:'Vorderseite',hinten:'Rückseite'};
 // Aufbau/Funktion wird aus Modul 1 (Wandelement.sides) übernommen – in Modul 2 nicht neu wählbar.
@@ -127,120 +119,21 @@ function syncSideUI(){ const w=WALL;
   $('side').innerHTML=keys.map(opt).join(''); $('side').value=SIDE;
   const fn=curFunktion(); $('aufbau').textContent=FUNKTION_LABEL[fn]||fn; }
 
-// ---------- Latten-Logik ----------
-function cuttingStock(pieces, stock){ const sorted=[...pieces].sort((a,b)=>b-a); const remn=[]; let sc=0;
-  for(const p of sorted){ let bi=-1,bv=Infinity; for(let i=0;i<remn.length;i++) if(remn[i]>=p-1e-6&&remn[i]<bv){bv=remn[i];bi=i;}
-    if(bi>=0) remn[bi]=+(remn[bi]-p).toFixed(3); else { sc++; remn.push(+(stock-p).toFixed(3)); } }
-  const used=pieces.reduce((a,b)=>a+b,0), total=sc*stock;
-  return { stockCount:sc, usedLen:+used.toFixed(3), totalLen:+total.toFixed(3), wasteLen:+(total-used).toFixed(3) }; }
-function splitInterval(S,E,conns,stock){ const segs=[]; if(E-S<=stock+1e-6){segs.push({y0:S,y1:E});return segs;}
-  let start=S,i=0,guard=0; while(guard++<10000){ if(E-start<=stock+1e-6){segs.push({y0:start,y1:E});break;}
-    let chosen=-1; for(let j=i;j<conns.length-1;j++){ const joint=(conns[j]+conns[j+1])/2; if(joint-start<=stock+1e-6) chosen=j; else break; }
-    let joint; if(chosen<0) joint=+(start+stock).toFixed(3); else joint=+((conns[chosen]+conns[chosen+1])/2).toFixed(3);
-    segs.push({y0:start,y1:joint}); start=joint; while(i<conns.length&&conns[i]<joint) i++; } return segs; }
-function solidIntervals(x,ops,H){ const blocks=(ops||[]).filter(o=>x>o.x0+1e-6&&x<o.x1-1e-6).map(o=>[o.y0,o.y1]).sort((a,b)=>a[0]-b[0]);
-  const iv=[]; let cur=0; for(const [a,b] of blocks){ if(a>cur+1e-6) iv.push([cur,a]); cur=Math.max(cur,b);} if(H-cur>1e-6) iv.push([cur,H]); return iv; }
-// Latten je Verbinderachse (1D-Zuschnitt). Dämmung entfällt (MVP-Entscheidung).
-function layoutToBattens(layout,opts={}){ const stock=opts.stockCm??150, H=(layout.wall&&layout.wall.H_cm)||0, ops=layout.openings_cm||[];
-  const cy=opts.clipY||[0,H];   // Latten auf das Beplankungsfeld (Höhe) begrenzen
-  const at=opts.axisTop||(()=>H);   // lokale Oberkante je Achse (Staffelung): Latte läuft bis zur höheren angrenzenden Kante
-  const clip=(iv,x)=>iv.map(([S,E])=>[Math.max(S,cy[0]),Math.min(E,cy[1],at(x))]).filter(([S,E])=>E-S>1e-6);
-  const byX=new Map(); for(const p of layout.points||[]){ const k=+(+p.x_cm).toFixed(2); if(!byX.has(k)) byX.set(k,new Set()); byX.get(k).add(+(+p.y_cm).toFixed(2)); }
-  const axes=[],pieces=[]; let warnings=0;
-  for(const x of [...byX.keys()].sort((a,b)=>a-b)){ const ys=[...byX.get(x)].sort((a,b)=>a-b); const intervals=clip(solidIntervals(x,ops,H),x); const segs=[];
-    for(const [S,E] of intervals){ const conns=ys.filter(y=>y>S+1e-6&&y<E-1e-6); if(conns.length===0){warnings++;continue;}
-      for(const sg of splitInterval(S,E,conns,stock)){ const len=+(sg.y1-sg.y0).toFixed(2); segs.push({y0_cm:+sg.y0.toFixed(2),y1_cm:+sg.y1.toFixed(2),len_cm:len}); pieces.push(len); } }
-    axes.push({x_cm:x,n_connectors:ys.length,segments:segs}); }
-  const cutting=cuttingStock(pieces,stock);
-  const summary={ achsen:axes.length, latten_stuecke:pieces.length, latten_15m_bedarf:cutting.stockCount,
-    gesamtlaenge_m:+(cutting.totalLen/100).toFixed(2), verschnitt_m:+(cutting.wasteLen/100).toFixed(2),
-    verschnitt_pct:cutting.totalLen?+(100*cutting.wasteLen/cutting.totalLen).toFixed(1):0, warnungen:warnings };
-  return { wall:layout.wall||{}, openings_cm:ops, axes, summary, cutting }; }
+// ---------- Aufbau-Eingaben aus dem Formular lesen (Datenmodell: eingaben.aufbau) ----------
+function readAufbau(){ return {
+  seite: SIDE,
+  panel: { b_cm:+$('pB').value||62.5, h_cm:+$('pH').value||150, off_x_cm:+$('oX').value||0, off_y_cm:+$('oY').value||0 },
+  achsen: { max_x_cm:+$('maxX').value||62.5, max_y_cm:+$('maxY').value||75, ohang_cm:+$('ohang').value||12.5 },
+  verbinder: { typ:$('vtyp').value, Rk:+$('Rk').value||0.5, gM:+$('gM').value||2.0, wk:+$('wk').value||0.8, gQ:+$('gQ').value||1.5 },
+  latten: { breite_cm:+$('lw').value||4, stange_cm:+$('stock').value||150 },
+  feld_cm: FELD ? { x0:FELD.x0, x1:FELD.x1, y0:FELD.y0, y1:FELD.y1 } : null,
+}; }
 
-// ---------- Achsen aus Panelfugen + Zwischenachsen ----------
-function axesRange(lo_cm, hi_cm, panel_cm, off_cm, max_cm, edges_cm){
-  if(hi_cm-lo_cm<0.01) return [lo_cm];
-  const set=new Set([+lo_cm.toFixed(2), +hi_cm.toFixed(2)]);
-  for(const e of (edges_cm||[])) if(e>lo_cm-1e-6 && e<hi_cm+1e-6) set.add(+e.toFixed(2));
-  for(let k=0; ; k++){ const x=off_cm + k*panel_cm; if(x>hi_cm+1e-6) break; if(x>lo_cm-1e-6) set.add(+x.toFixed(2)); }
-  let arr=[...set].sort((a,b)=>a-b);
-  const out=[arr[0]];
-  for(let i=1;i<arr.length;i++){ const gap=arr[i]-arr[i-1]; if(gap>max_cm+1e-6){ const n=Math.ceil(gap/max_cm); for(let j=1;j<n;j++) out.push(+(arr[i-1]+gap*j/n).toFixed(2)); } out.push(arr[i]); }
-  return [...new Set(out.map(x=>+x.toFixed(2)))].sort((a,b)=>a-b);
-}
+// Verbinder-/Latten-Layout kommt komplett aus dem geteilten Kern (identisch zu Modul 4 / Export).
+function compute(){ return berechneAufbau(WALL||demo(), readAufbau()); }
 
-// ---------- Nutenraster (cm): innenliegende Stege im 12,5-cm-Raster (x = 12,5·k, 0<x<B). Steinkanten = Fugen (keine Nut). ----------
-const NUTS=12.5;
-// Steinhöhe 20 cm → Verbinder in Steinmitte (10 + 20·m), nie auf Lagerfuge. Snap + Clamp + Dedupe.
-const COURSE=20, HALF=COURSE/2;
-function snapCourses(ys, lo, hi){
-  const mids=[]; for(let m=0;;m++){ const s=+(m*COURSE+HALF).toFixed(2); if(s>hi+1e-6) break; if(s>=lo-1e-6) mids.push(s); }
-  if(!mids.length){ const m=Math.round(((lo+hi)/2-HALF)/COURSE); mids.push(+(m*COURSE+HALF).toFixed(2)); }
-  const near=y=>mids.reduce((b,c)=>Math.abs(c-y)<Math.abs(b-y)-1e-9?c:b, mids[0]);
-  const seen=new Set(), out=[];
-  for(const y of ys){ const s=near(y); const k=s.toFixed(2); if(!seen.has(k)){ seen.add(k); out.push(s); } }
-  return out.sort((a,b)=>a-b); }
-const snapNut=x=>+(Math.round(x/NUTS)*NUTS).toFixed(2);
-function nutStatus(w, xcm){ const xmm=xcm*10; let cov=0, inter=0;
-  for(const c of (w.courses||[])){ let isCov=false, isInt=false;
-    for(const st of c.stones){ if(xmm>=st.x0-1e-6 && xmm<=st.x1+1e-6){ isCov=true; if(xmm>st.x0+1e-6 && xmm<st.x1-1e-6) isInt=true; } }
-    if(isCov){ cov++; if(isInt) inter++; } }
-  if(cov===0) return 'none';
-  if(inter===cov) return 'cont'; if(inter===0) return 'joint'; return 'stagger'; }
-function nutAxes(lo, hi, panel, off, max, edges, B, w){
-  const grid=[]; for(let x=NUTS; x<=B-NUTS+1e-6; x+=NUTS) if(x>=lo-1e-6 && x<=hi+1e-6) grid.push(+x.toFixed(2));
-  if(!grid.length) return [snapNut((lo+hi)/2)];
-  const interior = grid.filter(x=>{ const st=nutStatus(w,x); return st==='cont'||st==='stagger'; });
-  const usable = interior.length ? interior : grid;   // ohne Steinaufbau (courses): ganzes 12,5-Raster
-  const near=x=>usable.reduce((b,c)=>Math.abs(c-x)<Math.abs(b-x)-1e-9?c:b, usable[0]);
-  const L=usable[0], R=usable[usable.length-1]; const set=new Set([L,R]);
-  for(let k=0;;k++){ const x=off+k*panel; if(x>hi+1e-6) break; if(x>lo-1e-6) set.add(near(x)); }
-  for(const e of (edges||[])) if(e>lo-1e-6&&e<hi+1e-6) set.add(near(e));
-  let arr=[...set].sort((a,b)=>a-b);
-  const out=[arr[0]];
-  for(let i=1;i<arr.length;i++){ const gap=arr[i]-arr[i-1];
-    if(gap>max+1e-6){ const n=Math.ceil(gap/max); for(let j=1;j<n;j++){ const t=near(arr[i-1]+gap*j/n); if(t>arr[i-1]+1e-6&&t<arr[i]-1e-6) out.push(t); } }
-    out.push(arr[i]); }
-  return [...new Set(out)].sort((a,b)=>a-b);
-}
-
-function compute(){
-  const w=WALL||demo();
-  const B=w.length_mm/10, H=w.height_mm/10;   // cm
-  const ops=(w.openings||[]).map(o=>({x0:o.g0*12.5,x1:o.g1*12.5,y0:o.l0*20,y1:o.l1*20,art:o.art}));
-  const ovl=(a0,a1,b0,b1)=>Math.max(0,Math.min(a1,b1)-Math.max(a0,b0));
-  const fx0=FELD?Math.max(0,FELD.x0):0, fx1=FELD?Math.min(B,FELD.x1):B;
-  const fy0=FELD?Math.max(0,FELD.y0):0, fy1=FELD?Math.min(H,FELD.y1):H;
-  const relSteps=(w.steps||[]).filter(st => (st.height_mm/10) < fy1-1e-6 && ovl(st.x0_mm/10, st.x1_mm/10, fx0, fx1) > 1e-6);
-  const steps=relSteps.map(st=>({x0:st.x0_mm/10-0.1,x1:st.x1_mm/10,y0:st.height_mm/10,y1:H,art:'_step'}));
-  const opsEff=ops.concat(steps);
-  const localTop=x=>{ for(const st of relSteps){ const a=st.x0_mm/10,b=st.x1_mm/10; if(x>=a-1e-6&&x<b-1e-6) return st.height_mm/10; } return H; };
-  const axisTop=x=>Math.max(localTop(x-0.5), localTop(x), localTop(x+0.5));
-  const xEdges=[]; ops.forEach(o=>{ xEdges.push(o.x0,o.x1); }); relSteps.forEach(st=>{ xEdges.push(st.x0_mm/10, st.x1_mm/10); });
-  const yEdges=[]; ops.forEach(o=>{ if(o.y0>0) yEdges.push(o.y0); if(o.y1<H) yEdges.push(o.y1); }); relSteps.forEach(st=>{ const t=st.height_mm/10; if(t>0&&t<H) yEdges.push(t); });
-  const xs=nutAxes(fx0, fx1, +$('pB').value||62.5, +$('oX').value||0, +$('maxX').value||62.5, xEdges, B, w);
-  const ys=snapCourses(axesRange(fy0, fy1, +$('pH').value||150, +$('oY').value||0, +$('maxY').value||75, yEdges), fy0, fy1);
-  const maxOh=+$('ohang').value||12.5;
-  const ohL=+(xs[0]-fx0).toFixed(2), ohR=+(fx1-xs[xs.length-1]).toFixed(2);
-  const ohWarn = ohL>maxOh+1e-6 || ohR>maxOh+1e-6;
-  const inOpen=(x,y)=>ops.some(o=>x>o.x0+1e-6&&x<o.x1-1e-6&&y>o.y0+1e-6&&y<o.y1-1e-6);
-  const stat=x=>nutStatus(w,x);
-  const pts=[]; for(const x of xs){ const t=stat(x)==='cont'?'C':'I'; for(const y of ys) if(y<=axisTop(x)+1e-6 && !inOpen(x,y)) pts.push({x_cm:x,nut_cm:x,y_cm:y,type:t}); }
-  const nutRaster=[]; for(let x=NUTS; x<=B-NUTS+1e-6; x+=NUTS){ const t=stat(+x.toFixed(2)); if(t==='cont'||t==='stagger') nutRaster.push({x_cm:+x.toFixed(2), status:t}); }
-  const Rd=(+$('Rk').value||0.5)/(+$('gM').value||2.0);
-  const coeff=(+$('gQ').value||1.5)*(+$('wk').value||0.8);
-  let area=((fx1-fx0)/100)*((fy1-fy0)/100)-opsEff.reduce((s,o)=>s+(ovl(o.x0,o.x1,fx0,fx1)/100)*(ovl(o.y0,o.y1,fy0,fy1)/100),0); area=Math.max(0.01,area);
-  const atReal=area/Math.max(1,pts.length); const util=coeff>0? coeff*atReal/Rd : 0; const ok=util<=1+1e-9;
-  const layout={ format:'SEMBLA-VerbinderLayout', version:'2.0',
-    wall:{ B_cm:B, H_cm:H, name:(w.name||null) }, openings_cm:ops,
-    uk:{ sx_cm:null, sy_cm:null }, seite:SIDE,
-    seite_funktion:(w.sides&&w.sides[SIDE]&&w.sides[SIDE].funktion)||null,
-    verbinder_typ:$('vtyp').value, panel:{ b_cm:+$('pB').value, h_cm:+$('pH').value },
-    feld_cm: FELD?{x0:fx0,x1:fx1,y0:fy0,y1:fy1}:null,
-    points:pts };
-  return { w,B,H,fx0,fx1,fy0,fy1,xs,ys,pts,nutRaster,layout,steps,localTop,axisTop,atReal,util,ok,ohL,ohR,maxOh,ohWarn,
-    batt:layoutToBattens(layout,{widthCm:+$('lw').value,stockCm:+$('stock').value,clipY:[fy0,fy1],axisTop}) };
-}
+// Aufbau-Eingaben ins Datenmodell zurückschreiben (nur der eigene Teil dieses Moduls).
+function persistAufbau(){ if(store&&store.mergeEingaben) store.mergeEingaben('aufbau', readAufbau()); }
 
 function draw(R){
   const {B,H,xs,ys,pts,layout}=R; const pad=44, sc=Math.min((1000-2*pad)/(B*10),(600-2*pad)/(H*10))*10; // px per cm
@@ -335,48 +228,45 @@ function applyWand(w){ if(!w||!w.length_mm||!w.height_mm) throw new Error('Kein 
   applyFunktion(curFunktion()); syncSideUI(); run(); }
 function setInfo(t){ $('info').textContent=t||''; }
 
-function exportBundle(){ const R=compute();
-  const bundle=Object.assign({}, INBUNDLE||{}, {format:'SEMBLA-Projekt', version:'1.0', wandelement:WALL, verbinder_layout:R.layout});
-  download((WALL&&WALL.name?WALL.name.replace(/\s+/g,'_'):'Wand')+'_Wandaufbau.json', JSON.stringify(bundle,null,2)); }
-function cutCsv(){ const R=compute(); const rows=[["achse_x_cm","segment","y0_cm","y1_cm","laenge_cm"]];
-  R.batt.axes.forEach(a=>a.segments.forEach((sg,i)=>rows.push([a.x_cm,i+1,sg.y0_cm,sg.y1_cm,sg.len_cm])));
-  download('Zuschnittliste_Latten.csv', rows.map(r=>r.join(';')).join('\n')+'\n'); }
-function download(name,text){ const b=new Blob([text],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
-
-// ---------- Aktives Wandelement (localStorage) ----------
-function loadFromStore(we,label){ applyWand(we); setInfo(label+(we.name?': '+we.name:'')); }
-function loadInitial(){
+// ---------- Aktives Wandelement + Aufbau-Eingaben (localStorage) ----------
+// Aufbau-Eingaben aus dem Datenmodell in die Formularfelder + Zustand (SIDE/FELD) laden.
+function applyAufbauEingaben(a){
+  if(!a) return;
+  const set=(id,v)=>{ if(v!=null&&v!=='') $(id).value=v; };
+  if(a.panel){ set('pB',a.panel.b_cm); set('pH',a.panel.h_cm); set('oX',a.panel.off_x_cm); set('oY',a.panel.off_y_cm); }
+  if(a.achsen){ set('maxX',a.achsen.max_x_cm); set('maxY',a.achsen.max_y_cm); set('ohang',a.achsen.ohang_cm); }
+  if(a.verbinder){ set('vtyp',a.verbinder.typ); set('Rk',a.verbinder.Rk); set('gM',a.verbinder.gM); set('wk',a.verbinder.wk); set('gQ',a.verbinder.gQ); }
+  if(a.latten){ set('lw',a.latten.breite_cm); set('stock',a.latten.stange_cm); }
+  if(a.seite) SIDE=a.seite;
+  FELD = a.feld_cm ? { x0:a.feld_cm.x0, x1:a.feld_cm.x1, y0:a.feld_cm.y0, y1:a.feld_cm.y1 } : null;
+}
+function loadModel(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
+  EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : null;
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  if(we){ loadFromStore(we,'Aktives Wandelement'); }
-  else { applyWand(demo()); setInfo('Kein aktives Wandelement — Demo-Wand (in „Start" anlegen/wählen).'); }
+  WALL = we || demo();
+  applyAufbauEingaben(EINGABEN && EINGABEN.aufbau);
+  if(!(WALL.sides&&WALL.sides[SIDE]) && WALL.sides) SIDE=Object.keys(WALL.sides)[0]||SIDE;
+  applyFunktion(curFunktion());   // Verbindertyp folgt der Seiten-Funktion aus Modul 1
+  syncSideUI();
+  setInfo(we ? ('Aktives Wandelement'+(we.name?': '+we.name:'')) : 'Kein aktives Wandelement — Demo-Wand (in „Start" anlegen/wählen).');
+  run();
 }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
   store.abonniere(()=>{
     const id = store.aktivId ? store.aktivId() : null;
-    if(id!==currentId){                          // aktives Element extern gewechselt (Kopfleiste/Startseite)
-      currentId=id;
-      const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
-      if(we){ INBUNDLE=null; loadFromStore(we,'Aktives Wandelement geladen'); }
-    }
+    if(id!==currentId){ loadModel(); }           // aktives Element extern gewechselt (Kopfleiste/Startseite)
   });
 }
 
 // ---------- Ereignis-Bindung + Start ----------
 function bindEvents(){
   $('vtyp').innerHTML=VERBINDER_KATALOG.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
-  $('vtyp').addEventListener('change',()=>{ const t=VERBINDER_KATALOG.find(x=>x.id===$('vtyp').value); if(t){ $('Rk').value=t.Rk; $('gM').value=t.gM; } run(); });
-  $('load').addEventListener('click',()=>$('file').click());
-  $('file').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return; const rd=new FileReader();
-    rd.onload=()=>{ try{ const j=JSON.parse(rd.result); if(j&&j.format==='SEMBLA-Projekt'&&j.wandelement){ INBUNDLE=j; applyWand(j.wandelement); setInfo('Aus Datei geladen (Bundle)'+(j.wandelement.name?': '+j.wandelement.name:''));
-      if(j.verbinder_layout&&j.verbinder_layout.feld_cm){ FELD=Object.assign({},j.verbinder_layout.feld_cm); run(); } } else { INBUNDLE=null; applyWand(j); setInfo('Aus Datei geladen'+(j.name?': '+j.name:'')); } }catch(e){ alert('Ungültig: '+e.message); } };
-    rd.readAsText(f); });
-  $('side').addEventListener('change',e=>{ SIDE=e.target.value; applyFunktion(curFunktion()); syncSideUI(); run(); });
-  $('expBundle').addEventListener('click',exportBundle);
-  $('expCut').addEventListener('click',cutCsv);
-  ['pB','pH','oX','oY','maxX','maxY','ohang','Rk','gM','wk','gQ','lw','stock'].forEach(id=>$(id).addEventListener('input',run));
-  $('showNut').addEventListener('change',run);
+  $('vtyp').addEventListener('change',()=>{ const t=VERBINDER_KATALOG.find(x=>x.id===$('vtyp').value); if(t){ $('Rk').value=t.Rk; $('gM').value=t.gM; } persistAufbau(); run(); });
+  $('side').addEventListener('change',e=>{ SIDE=e.target.value; applyFunktion(curFunktion()); syncSideUI(); persistAufbau(); run(); });
+  ['pB','pH','oX','oY','maxX','maxY','ohang','Rk','gM','wk','gQ','lw','stock'].forEach(id=>$(id).addEventListener('input',()=>{ persistAufbau(); run(); }));
+  $('showNut').addEventListener('change',run);       // reine Anzeige-Umschaltung (nicht gespeichert)
   $('showStones').addEventListener('change',run);
   $('showMasse').addEventListener('change',run);
   bindFieldEvents();
@@ -390,8 +280,8 @@ function evToCm(e){ if(!LASTDRAW) return {x:0,y:0}; const r=$('plan').getBoundin
   const sx=(e.clientX-r.left)/r.width*1000, sy=(e.clientY-r.top)/r.height*LASTDRAW.vbH;
   const {pad,sc,hPx}=LASTDRAW; return { x:(sx-pad)/sc, y:(hPx-(sy-pad))/sc }; }
 function setFeld(x0,x1,y0,y1){ const {B,H}=wallDims(); x0=Math.max(0,Math.min(B,x0));x1=Math.max(0,Math.min(B,x1));y0=Math.max(0,Math.min(H,y0));y1=Math.max(0,Math.min(H,y1));
-  if(Math.abs(x1-x0)<5||Math.abs(y1-y0)<5){ FELD=null; } else { FELD={x0:Math.min(x0,x1),x1:Math.max(x0,x1),y0:Math.min(y0,y1),y1:Math.max(y0,y1)}; } run(); }
-function clearFeld(){ FELD=null; fieldArm=false; $('fieldMode').style.background='';$('fieldMode').style.color=''; run(); }
+  if(Math.abs(x1-x0)<5||Math.abs(y1-y0)<5){ FELD=null; } else { FELD={x0:Math.min(x0,x1),x1:Math.max(x0,x1),y0:Math.min(y0,y1),y1:Math.max(y0,y1)}; } persistAufbau(); run(); }
+function clearFeld(){ FELD=null; fieldArm=false; $('fieldMode').style.background='';$('fieldMode').style.color=''; persistAufbau(); run(); }
 const MINFELD=12.5;   // Mindestkantenlänge cm (1 Raster)
 function grids(){ const {B,H}=wallDims(); return { gx:snapArr(B,+$('pB').value||62.5,+$('oX').value||0), gy:snapArr(H,+$('pH').value||150,+$('oY').value||0), B, H }; }
 function resizeFeld(edge, cm){ if(!FELD) return; const g=grids(); const f={...FELD};
@@ -425,26 +315,28 @@ function bindFieldEvents(){
       let nx0=snap(s0.x0+(p.x-fedit.grabX),fedit.gx); nx0=Math.max(0,Math.min(fedit.B-w0,nx0));
       let ny0=snap(s0.y0+(p.y-fedit.grabY),fedit.gy); ny0=Math.max(0,Math.min(fedit.H-h0,ny0));
       FELD={x0:nx0,x1:nx0+w0,y0:ny0,y1:ny0+h0}; run(); } });
-  window.addEventListener('pointerup',()=>{ fedit=null; });
+  window.addEventListener('pointerup',()=>{ if(fedit) persistAufbau(); fedit=null; });
 }
 
-window.__wa={ applyWand, compute, exportBundle, cutCsv, layoutToBattens, setFeld, resizeFeld, clearFeld, run,
+window.__wa={ applyWand, compute, readAufbau, setFeld, resizeFeld, clearFeld, run,
   get wall(){return WALL;}, get side(){return SIDE;}, get feld(){return FELD;}, get LAST(){return LAST;} };
 
 window.__waInit=function(){
   const S=window.SEMBLA||{};
   buildWall=S.buildWall; Opening=S.Opening; store=S.store;
+  berechneAufbau=S.berechneAufbau; VERBINDER_KATALOG=S.VERBINDER_KATALOG;
   bindEvents();
   setupStoreSync();
-  loadInitial();
+  loadModel();
 };
 </script>
 
 <script type="module">
   import { buildWall, Opening, GRID, COURSE } from './shared/sembla-core.js';
+  import { berechneAufbau, VERBINDER_KATALOG } from './shared/sembla-aufbau.js';
   import * as store from './shared/storage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, GRID, COURSE, store };
+  window.SEMBLA = { buildWall, Opening, GRID, COURSE, store, berechneAufbau, VERBINDER_KATALOG };
   mountNavbar(2);
   window.__waInit();
 </script>

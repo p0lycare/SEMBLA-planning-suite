@@ -35,19 +35,14 @@
 </style>
 </head>
 <body>
-<p class="intro"><b>Stückliste &amp; Kosten.</b> Material-Auszug aus dem <b>aktiven Wandelement</b>
-  (aus „Wand planen") — Steine und Vorspannung mit editierbaren Preisen und Excel-Export. Verbinder und
-  Latten kommen aus einem <b>Projekt-Bundle</b> (Modul 2, „Aufbau") und lassen sich per Datei laden.
-  Dieses Modul liest das Wandelement und ändert es nicht.</p>
+<p class="intro"><b>Stückliste &amp; Kosten.</b> Vollständiger Material-Auszug aus dem <b>aktiven Wandelement</b>
+  (aus „Wand planen") — Steine, Vorspannung sowie Verbinder und Latten (aus dem Wandaufbau, Modul 2). Preise,
+  Anzahl Wände und Währung sind editierbar und werden im <b>Datenmodell</b> gespeichert. Der Datei-Export
+  (Stückliste/ZIP) sitzt zentral auf der Startseite.</p>
 <div class="wrap">
   <div class="panel controls">
     <h2>Wandelement</h2>
     <div id="info" style="font-size:12.5px;color:var(--sb-muted);margin-top:2px">–</div>
-    <input type="file" id="file" accept="application/json,.json" style="display:none">
-    <button id="load" style="margin-top:10px;width:100%">Wandelement / Bundle laden (Datei)</button>
-    <input type="file" id="fileLay" accept="application/json,.json" style="display:none">
-    <button id="loadLay" style="margin-top:8px;width:100%">+ Verbinder-Layout separat (optional)</button>
-    <div id="infoLay" style="font-size:12.5px;color:var(--sb-muted);margin-top:6px">Aus einem Projekt-Bundle wird das Verbinder-Layout automatisch übernommen. Dieser Button ist nur für ein separat exportiertes Layout nötig.</div>
     <div class="grp" style="margin-top:14px">
       <h2>Projekt</h2>
       <label><span>Projektname</span><input type="text" id="proj" value="SEMBLA-Projekt"></label>
@@ -59,11 +54,10 @@
       <div class="k">Wandfläche (je Wand)</div><div class="v" id="ovArea">–</div>
       <div class="k">Nachweis</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
     </div>
-    <div class="btnrow"><button class="primary" id="xlsx">Excel exportieren</button></div>
-    <div class="btnrow"><button id="csv">CSV</button><button id="print">Drucken</button></div>
-    <div class="hint"><b>Ein Datenmodell.</b> Mengen ergeben sich aus dem aktiven Wandelement × Anzahl Wände.
-      Preise sind Platzhalter und frei editierbar (Netto-Einzelpreise). Verbinder/Latten stammen aus Modul 2
-      (Aufbau) und werden über ein Projekt-Bundle geladen.</div>
+    <div class="btnrow"><button id="print">Drucken</button></div>
+    <div class="hint"><b>Ein Datenmodell.</b> Mengen ergeben sich aus dem aktiven Wandelement × Anzahl Wände;
+      Verbinder/Latten aus dem Wandaufbau (Modul 2). Preise, Anzahl und Währung werden im Datenmodell
+      gespeichert (Netto-Einzelpreise, frei editierbar). Datei-Export zentral auf der Startseite.</div>
   </div>
 
   <div class="panel stage">
@@ -81,176 +75,105 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-/* App-Logik (klassisches Skript). Der BOM-Baustein (semblaBom/semblaBomItems) + Storage werden vom
-   Modul-Skript unten als window.SEMBLA bereitgestellt und in __slInit() gebunden — so bleibt diese
-   Logik auch im Node-Smoke-Test ohne Modul-Auflösung evaluierbar. */
+/* App-Logik (klassisches Skript). Die Stückliste rechnet zentral (stuecklistePositionen aus
+   sembla-export) aus Wandelement + Eingaben; Verbinder/Latten kommen aus dem Wandaufbau
+   (eingaben.aufbau). Preise/Anzahl/Währung leben im Datenmodell (eingaben.kosten) und werden bei
+   Änderung via store.mergeEingaben zurückgeschrieben. Reiner Konsument des Wandelements — nur der
+   Eingaben-Teil dieses Moduls wird gespeichert. window.SEMBLA wird unten gebunden (Node-Test). */
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
-let WALL=null, LAYOUT=null, currentId=null;
+let WALL=null, EINGABEN=null, currentId=null;
 // aus window.SEMBLA (in __slInit gebunden):
-let semblaBom, semblaBomItems, store;
+let stuecklistePositionen, wandflaeche, store;
 
-// ==== Latten-Core (1D-Zuschnitt, für vollständige Stückliste; Dämmung entfällt – MVP) ====
-function cuttingStock(pieces, stock){ const sorted=[...pieces].sort((a,b)=>b-a); const remn=[]; let sc=0;
-  for(const p of sorted){ let bi=-1,bv=Infinity; for(let i=0;i<remn.length;i++) if(remn[i]>=p-1e-6&&remn[i]<bv){bv=remn[i];bi=i;}
-    if(bi>=0) remn[bi]=+(remn[bi]-p).toFixed(3); else { sc++; remn.push(+(stock-p).toFixed(3)); } }
-  const used=pieces.reduce((a,b)=>a+b,0), total=sc*stock;
-  return { stockCount:sc, usedLen:+used.toFixed(3), totalLen:+total.toFixed(3), wasteLen:+(total-used).toFixed(3) }; }
-function splitInterval(S,E,conns,stock){ const segs=[]; if(E-S<=stock+1e-6){segs.push({y0:S,y1:E});return segs;}
-  let start=S,i=0,guard=0; while(guard++<10000){ if(E-start<=stock+1e-6){segs.push({y0:start,y1:E});break;}
-    let chosen=-1; for(let j=i;j<conns.length-1;j++){ const joint=(conns[j]+conns[j+1])/2; if(joint-start<=stock+1e-6) chosen=j; else break; }
-    let joint; if(chosen<0) joint=+(start+stock).toFixed(3); else joint=+((conns[chosen]+conns[chosen+1])/2).toFixed(3);
-    segs.push({y0:start,y1:joint}); start=joint; while(i<conns.length&&conns[i]<joint) i++; } return segs; }
-function solidIntervals(x,ops,H){ const blocks=(ops||[]).filter(o=>x>o.x0+1e-6&&x<o.x1-1e-6).map(o=>[o.y0,o.y1]).sort((a,b)=>a[0]-b[0]);
-  const iv=[]; let cur=0; for(const [a,b] of blocks){ if(a>cur+1e-6) iv.push([cur,a]); cur=Math.max(cur,b);} if(H-cur>1e-6) iv.push([cur,H]); return iv; }
-function layoutToBattens(layout,opts={}){ const stock=opts.stockCm??150, H=(layout.wall&&layout.wall.H_cm)||0, ops=layout.openings_cm||[];
-  const byX=new Map(); for(const p of layout.points||[]){ const k=+(+p.x_cm).toFixed(2); if(!byX.has(k)) byX.set(k,new Set()); byX.get(k).add(+(+p.y_cm).toFixed(2)); }
-  const axes=[],pieces=[]; let warnings=0;
-  for(const x of [...byX.keys()].sort((a,b)=>a-b)){ const ys=[...byX.get(x)].sort((a,b)=>a-b); const intervals=solidIntervals(x,ops,H); const segs=[];
-    for(const [S,E] of intervals){ const conns=ys.filter(y=>y>S+1e-6&&y<E-1e-6); if(conns.length===0){warnings++;continue;}
-      for(const sg of splitInterval(S,E,conns,stock)){ const len=+(sg.y1-sg.y0).toFixed(2); segs.push({y0_cm:+sg.y0.toFixed(2),y1_cm:+sg.y1.toFixed(2),len_cm:len}); pieces.push(len); } }
-    axes.push({x_cm:x,n_connectors:ys.length,segments:segs}); }
-  const cutting=cuttingStock(pieces,stock);
-  const summary={ achsen:axes.length, latten_stuecke:pieces.length, latten_15m_bedarf:cutting.stockCount,
-    gesamtlaenge_m:+(cutting.totalLen/100).toFixed(2), verschnitt_m:+(cutting.wasteLen/100).toFixed(2), warnungen:warnings };
-  return { wall:layout.wall||{}, openings_cm:ops, axes, cutting, summary }; }
-// ==== Ende Latten-Core ====
+function eg(){ return EINGABEN || (EINGABEN={kosten:{anzahl:1,waehrung:'EUR',preise:{}},projekt:{},aufbau:{}}); }
+function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben(teil,patch); }
 
-// Netto-Einzelpreise (Platzhalter, frei editierbar). Dämmung entfällt (MVP).
-const PRICES={ i3:9.50, i2:7.20, rod_std:3.80, rod_sonder:3.80,
-  kupplung:0.65, kuppl_basis:0.65, senkkopf:0.45, spannmutter:0.90, spannplatte:2.40,
-  blech:18.00, dicht_stk:0.30, dicht:0, verbinder:1.20, latte:3.50 };
-
-function rows(){
-  const w=WALL||demo(); const q=Math.max(1, Math.round(+$('qty').value||1));
-  const line=(key,label,unit,menge)=>{ const ep=+PRICES[key]||0; return {key,label,unit,menge,ep,gp:menge*ep}; };
-  const out=semblaBomItems(w).map(it=>line(it.key,it.label,it.unit,it.menge*q));   // Wandelement-Positionen aus Single Source
-  if(LAYOUT && LAYOUT.points){
-    out.push(line('verbinder','Verbinder'+(LAYOUT.verbinder_typ?' '+LAYOUT.verbinder_typ:''),'Stk', LAYOUT.points.length*q));
-    try{ const res=layoutToBattens(LAYOUT,{stockCm:150});
-      out.push(line('latte','Holzlatte 4 cm · Stange 150 cm','Stk', (res.summary.latten_15m_bedarf||0)*q));
-    }catch(e){}
-  }
-  return out;
-}
-function area(w){ const a=(w.length_mm/1000)*(w.height_mm/1000);
-  const op=(w.openings||[]).reduce((s,o)=>{ const gw=((o.g1-o.g0)*(w.grid_mm||125))/1000, gh=((o.l1-o.l0)*(w.course_mm||200))/1000; return s+gw*gh; },0);
-  return Math.max(0.01, a-op); }
-
-function render(){
-  const w=WALL||demo();
-  $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
-  $('ovArea').textContent=fmt(area(w),2)+' m²';
-  const st=w.verification&&w.verification.status, b=$('ovBadge');
-  if(st){ b.textContent=st; b.className='badge '+(st==='erfüllt'||st==='konvergiert'?'ok':'no'); } else { b.textContent='—'; b.className='badge'; }
-  const rs=rows(); let html='', grand=0;
-  rs.forEach((r,i)=>{ grand+=r.gp;
-    html+=`<tr><td>${r.label}</td><td>${r.unit}</td><td>${fmt(r.menge, (r.unit==='m²'||r.unit==='m')?2:0)}</td>`
-        +`<td><input type="number" step="0.01" data-key="${r.key}" value="${r.ep.toFixed(2)}"></td>`
-        +`<td>${fmt(r.gp,2)}</td></tr>`; });
-  html+=`<tr class="sum"><td>Summe netto</td><td></td><td></td><td></td><td>${fmt(grand,2)} ${$('cur').value}</td></tr>`;
-  $('tbody').innerHTML=html;
-  const q=Math.max(1,Math.round(+$('qty').value||1));
-  $('grand').textContent=fmt(grand,2)+' '+$('cur').value;
-  $('perm2').textContent=fmt(grand/(area(w)*q),2);
-  $('tbody').querySelectorAll('input[data-key]').forEach(inp=>inp.addEventListener('input',e=>{
-    PRICES[e.target.dataset.key]=+e.target.value||0; render(); }));
-}
-
-function applyWand(w){
-  let lay=null;
-  if(w&&w.format==='SEMBLA-Projekt'&&w.wandelement){ lay=w.verbinder_layout||null; w=w.wandelement; }
-  if(!w||!w.length_mm||!(w.bom||w.courses)) throw new Error('Kein gültiges Wandelement.');
-  WALL=w; $('info').textContent='Geladen: '+(w.name||'Wandelement');
-  if(lay){ try{ applyLayout(lay); return; }catch(e){} }
-  render();
-}
-function applyLayout(L){ if(!L||!L.points) throw new Error('Kein gültiges Verbinder-Layout (points fehlen).'); LAYOUT=L; if($('infoLay')) $('infoLay').textContent='Verbinder-Layout: '+L.points.length+' Verbinder'+(L.verbinder_typ?' ('+L.verbinder_typ+')':''); render(); }
-
-function exportRows(){ const w=WALL||demo(); const rs=rows(); const grand=rs.reduce((a,r)=>a+r.gp,0); const cur=$('cur').value;
-  const aoa=[
-    ['SEMBLA – Stückliste & Kosten'],
-    ['Projekt', $('proj').value],
-    ['Wand', w.name||'Wandelement'],
-    ['Maße', fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m'],
-    ['Anzahl Wände', Math.max(1,Math.round(+$('qty').value||1))],
-    ['Datum', new Date().toLocaleDateString('de-DE')],
-    [],
-    ['Position','Einheit','Menge','EP ('+cur+')','GP ('+cur+')'],
-    ...rs.map(r=>[r.label,r.unit,r.menge,+r.ep.toFixed(2),+r.gp.toFixed(2)]),
-    [],
-    ['Summe netto','','','',+grand.toFixed(2)],
-    ['€/m² Wandfläche','','','',+(grand/(area(w)*Math.max(1,Math.round(+$('qty').value||1)))).toFixed(2)],
-  ];
-  return {aoa, name:(w.name||'Wandelement')};
-}
-function toCsv(){ const {aoa}=exportRows(); return aoa.map(r=>r.map(c=>{const s=String(c==null?'':c); return /[";\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}).join(';')).join('\n'); }
-function download(name,text,type){ const b=new Blob([text],{type:type||'text/plain'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u;a.download=name;a.click(); setTimeout(()=>URL.revokeObjectURL(u),1500); }
-
-// ---- Demo ----
+// ---- Demo (Fallback ohne aktives Wandelement) ----
 function demo(){ return {name:'Demo (3,00 × 2,60 m)',length_mm:3000,height_mm:2600,grid_mm:125,course_mm:200,
   openings:[{g0:4,g1:8,l0:0,l1:10,art:'tuer'}],
   bom:{i3:52,i2:48,gewindestangen:32,verbindungsmuttern:18,stahlplatten:28,spannmuttern:28}}; }
 
-// ---- Aktives Wandelement (localStorage) ----
-function loadFromStore(we,label){ LAYOUT=null; applyWand(we); $('info').textContent=label+(we.name?': '+we.name:''); }
-function loadInitial(){
+// Positionen zentral aus Wandelement + Eingaben (Steine/Vorspannung + Verbinder/Latten aus dem Aufbau).
+function rows(){ return stuecklistePositionen(WALL||demo(), eg()); }
+
+function render(){
+  const w=WALL||demo(); const k=eg().kosten||{}; const cur=k.waehrung||'EUR';
+  $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
+  $('ovArea').textContent=fmt(wandflaeche(w),2)+' m²';
+  const st=w.verification&&w.verification.status, b=$('ovBadge');
+  if(st){ b.textContent=st; b.className='badge '+(st==='erfüllt'||st==='konvergiert'?'ok':'no'); } else { b.textContent='—'; b.className='badge'; }
+  const rs=rows(); let html='', grand=0;
+  rs.forEach(r=>{ grand+=r.gp;
+    html+=`<tr><td>${r.label}</td><td>${r.unit}</td><td>${fmt(r.menge, (r.unit==='m²'||r.unit==='m')?2:0)}</td>`
+        +`<td><input type="number" step="0.01" data-key="${r.key}" value="${r.ep.toFixed(2)}"></td>`
+        +`<td>${fmt(r.gp,2)}</td></tr>`; });
+  html+=`<tr class="sum"><td>Summe netto</td><td></td><td></td><td></td><td>${fmt(grand,2)} ${cur}</td></tr>`;
+  $('tbody').innerHTML=html;
+  const q=Math.max(1,Math.round(+k.anzahl||1));
+  $('grand').textContent=fmt(grand,2)+' '+cur;
+  $('perm2').textContent=fmt(grand/(wandflaeche(w)*q),2);
+  $('tbody').querySelectorAll('input[data-key]').forEach(inp=>inp.addEventListener('input',e=>{
+    const key=e.target.dataset.key, v=+e.target.value||0;
+    eg().kosten.preise[key]=v; persist('kosten',{preise:{[key]:v}}); render(); }));
+}
+
+function applyWand(w){
+  if(!w||!w.length_mm||!(w.bom||w.courses)) throw new Error('Kein gültiges Wandelement.');
+  WALL=w; $('info').textContent='Geladen: '+(w.name||'Wandelement'); render();
+}
+
+// ---- Eingabefelder aus dem Datenmodell füllen ----
+function syncInputs(){ const k=eg().kosten||{}, p=eg().projekt||{};
+  $('proj').value=p.name||(WALL&&WALL.name)||'SEMBLA-Projekt';
+  $('qty').value=Math.max(1,Math.round(+k.anzahl||1));
+  $('cur').value=k.waehrung||'EUR'; }
+
+// ---- Aktives Wandelement + Eingaben (localStorage) ----
+function loadModel(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
+  EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : eg();
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  if(we){ loadFromStore(we,'Aktives Wandelement'); }
-  else { applyWand(demo()); $('info').textContent='Kein aktives Wandelement — Demo-Werte (in „Start" anlegen/wählen).'; }
+  if(we){ WALL=we; $('info').textContent='Aktives Wandelement: '+(we.name||''); }
+  else { WALL=null; $('info').textContent='Kein aktives Wandelement — Demo-Werte (in „Start" anlegen/wählen).'; }
+  syncInputs(); render();
 }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
   store.abonniere(()=>{
     const id = store.aktivId ? store.aktivId() : null;
-    if(id!==currentId){                          // aktives Element extern gewechselt (Kopfleiste/Startseite)
-      currentId=id;
-      const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
-      if(we){ loadFromStore(we,'Aktives Wandelement geladen'); }
-    }
+    if(id!==currentId){ loadModel(); }   // aktives Element extern gewechselt (Kopfleiste/Startseite)
   });
 }
 
 // ---- Ereignis-Bindung ----
 function bindEvents(){
-  $('load').addEventListener('click',()=>$('file').click());
-  $('file').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-    const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result);
-      if(j&&j.format==='SEMBLA-Projekt'&&j.wandelement){ if(j.projekt&&j.projekt.name) $('proj').value=j.projekt.name; LAYOUT=null; applyWand(j.wandelement); if(j.verbinder_layout) applyLayout(j.verbinder_layout); }
-      else { LAYOUT=null; applyWand(j); }
-    }catch(e){ alert('Ungültig: '+e.message); } }; rd.readAsText(f); });
-  ['qty','cur','proj'].forEach(id=>$(id).addEventListener('input',render));
-  $('xlsx').addEventListener('click',()=>{ if(typeof XLSX==='undefined'){ alert('Excel-Bibliothek nicht geladen (offline?). CSV nutzen.'); return; }
-    const {aoa,name}=exportRows();
-    const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:34},{wch:8},{wch:10},{wch:12},{wch:14}];
-    XLSX.utils.book_append_sheet(wb,ws,'Stückliste'); XLSX.writeFile(wb,'SEMBLA_Stueckliste_'+name.replace(/[^\w-]+/g,'_')+'.xlsx'); });
-  $('csv').addEventListener('click',()=>{ const {name}=exportRows(); download('SEMBLA_Stueckliste_'+name.replace(/[^\w-]+/g,'_')+'.csv', toCsv(),'text/csv'); });
+  $('proj').addEventListener('input',()=>{ persist('projekt',{name:$('proj').value}); });
+  $('qty').addEventListener('input',()=>{ const v=Math.max(1,Math.round(+$('qty').value||1)); eg().kosten.anzahl=v; persist('kosten',{anzahl:v}); render(); });
+  $('cur').addEventListener('input',()=>{ eg().kosten.waehrung=$('cur').value; persist('kosten',{waehrung:$('cur').value}); render(); });
   $('print').addEventListener('click',()=>window.print());
-  $('loadLay').addEventListener('click',()=>$('fileLay').click());
-  $('fileLay').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return;
-    const rd=new FileReader(); rd.onload=()=>{ try{ applyLayout(JSON.parse(rd.result)); }catch(e){ alert('Ungültig: '+e.message); } }; rd.readAsText(f); });
 }
 
-window.__sl={applyWand,applyLayout,rows,exportRows,area,layoutToBattens,
-  get wall(){return WALL;}, get layout(){return LAYOUT;}, setPrice:(k,v)=>{PRICES[k]=v;render();}};
+window.__sl={ applyWand, rows, render, area:(w)=>wandflaeche(w),
+  get wall(){return WALL;}, get eingaben(){return eg();},
+  setPrice:(key,v)=>{ eg().kosten.preise[key]=v; persist('kosten',{preise:{[key]:v}}); render(); },
+  setAnzahl:(v)=>{ const n=Math.max(1,Math.round(+v||1)); eg().kosten.anzahl=n; persist('kosten',{anzahl:n}); render(); } };
 
 window.__slInit=function(){
   const S=window.SEMBLA||{};
-  semblaBom=S.semblaBom; semblaBomItems=S.semblaBomItems; store=S.store;
+  stuecklistePositionen=S.stuecklistePositionen; wandflaeche=S.wandflaeche; store=S.store;
   bindEvents();
   setupStoreSync();
-  loadInitial();
+  loadModel();
 };
 </script>
 
 <script type="module">
-  import { semblaBom, semblaBomItems, semblaBomMenge } from './shared/sembla-bom.js';
+  import { stuecklistePositionen, wandflaeche } from './shared/sembla-export.js';
   import * as store from './shared/storage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { semblaBom, semblaBomItems, semblaBomMenge, store };
+  window.SEMBLA = { stuecklistePositionen, wandflaeche, store };
   mountNavbar(4);
   window.__slInit();
 </script>

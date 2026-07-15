@@ -41,6 +41,18 @@
   .msg.ok{color:var(--sb-ok)}
   .empty{color:var(--sb-muted);font-size:13.5px;padding:10px 2px}
   .hint{font-size:12px;color:var(--sb-muted);margin-top:6px}
+  /* Export-Dialog */
+  .overlay{position:fixed;inset:0;background:rgba(20,32,46,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .overlay[hidden]{display:none}
+  .modal{background:#fff;border-radius:14px;padding:20px 22px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(20,32,46,.25)}
+  .modal h3{margin:0 0 4px;font-size:16px}
+  .modal .sub{font-size:12.5px;color:var(--sb-muted);margin:0 0 14px}
+  .modal .opt{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border:1px solid var(--sb-line);border-radius:9px;margin:7px 0;cursor:pointer}
+  .modal .opt:hover{border-color:#c7d2e0;background:#f9fbfd}
+  .modal .opt input{margin-top:2px}
+  .modal .opt .t{font-size:13.5px;font-weight:600}
+  .modal .opt .d{font-size:11.5px;color:var(--sb-muted)}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
 </style>
 </head>
 <body>
@@ -97,10 +109,30 @@
   <div class="hint" style="margin:28px 0 12px">SEMBLA Planungs-Suite · Polycare</div>
 </div>
 
+<!-- Zentraler Export-Dialog: erzeugt alle Ausgaben frisch aus dem Datenmodell -->
+<div class="overlay" id="exp-overlay" hidden>
+  <div class="modal">
+    <h3>Projekt exportieren</h3>
+    <p class="sub">Auswahl wird als <b>ZIP</b> heruntergeladen und komplett aus dem aktuellen
+      Datenmodell (Wandelement + Eingaben) neu erzeugt — kein Drift. Projekt: <b id="exp-name">–</b></p>
+    <label class="opt"><input type="checkbox" value="projekt" checked><span><span class="t">Projekt-Datei (JSON)</span><br><span class="d">Vollständiges Datenmodell — hier auf der Startseite wieder importierbar.</span></span></label>
+    <label class="opt"><input type="checkbox" value="stueckliste" checked><span><span class="t">Stückliste &amp; Kosten (CSV)</span><br><span class="d">Mengen × Anzahl Wände, mit Preisen aus dem Modell.</span></span></label>
+    <label class="opt"><input type="checkbox" value="zuschnitt" checked><span><span class="t">Zuschnittliste Latten (CSV)</span><br><span class="d">Lattenschnitt je Verbinderachse aus dem Wandaufbau.</span></span></label>
+    <label class="opt"><input type="checkbox" value="montage" checked><span><span class="t">Montageanleitung (HTML)</span><br><span class="d">Lagenweise, druckbar — im Browser öffnen und drucken.</span></span></label>
+    <label class="opt"><input type="checkbox" value="ifc" checked><span><span class="t">3D-Modell (IFC4)</span><br><span class="d">Wand als IFC4 für CAD/BIM-Programme.</span></span></label>
+    <div class="modal-actions">
+      <button class="btn-s" id="exp-cancel">Abbrechen</button>
+      <button class="btn-p" id="exp-go">ZIP herunterladen</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { mountNavbar, MODULE } from './shared/navbar.js';
   import * as store from './shared/storage.js';
   import { buildWall } from './shared/sembla-core.js';
+  import { baueDateien } from './shared/sembla-export.js';
+  import { downloadZip } from './shared/zip.js';
 
   mountNavbar(0);
 
@@ -190,7 +222,7 @@
     const act = btn.dataset.act;
     const e = store.holeElement(id); if (!e) return;
     if (act === 'aktiv') store.setzeAktiv(id);
-    else if (act === 'export') store.exportiere(id);
+    else if (act === 'export') oeffneExport(id);
     else if (act === 'umbenennen') {
       const name = prompt('Neuer Name:', e.name);
       if (name != null && name.trim()) store.umbenennen(id, name.trim());
@@ -203,6 +235,34 @@
 
   store.abonniere(render);
   render();
+
+  // --- Zentraler Export-Dialog ---
+  const overlay = document.getElementById('exp-overlay');
+  let expId = null;
+  function oeffneExport(id){
+    const e = store.holeElement(id); if (!e) return;
+    expId = id;
+    document.getElementById('exp-name').textContent = e.name;
+    overlay.hidden = false;
+  }
+  function schliesseExport(){ overlay.hidden = true; expId = null; }
+  document.getElementById('exp-cancel').addEventListener('click', schliesseExport);
+  overlay.addEventListener('click', (ev) => { if (ev.target === overlay) schliesseExport(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !overlay.hidden) schliesseExport(); });
+  document.getElementById('exp-go').addEventListener('click', () => {
+    if (!expId) return;
+    const auswahl = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    if (!auswahl.length) { zeige('Bitte mindestens eine Datei auswählen.', false); return; }
+    try {
+      const projekt = store.projektObjekt(expId);
+      const files = baueDateien(projekt, auswahl);
+      downloadZip('SEMBLA_' + store.sicherName(projekt.name) + '.zip', files);
+      schliesseExport();
+      zeige('Exportiert: ' + files.length + ' Datei(en) im ZIP.', true);
+    } catch (e) {
+      zeige('Export fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
+    }
+  });
 </script>
 </body>
 </html>

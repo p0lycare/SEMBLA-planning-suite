@@ -4,6 +4,7 @@
 // Dämmung ist in Modul 2 bewusst entfernt (MVP) — dafür gibt es keine Prüfungen mehr.
 import { readFileSync } from "node:fs";
 import { buildWall, Opening, GRID, COURSE } from "../../docs/shared/sembla-core.js";
+import { berechneAufbau, VERBINDER_KATALOG } from "../../docs/shared/sembla-aufbau.js";
 
 const html = readFileSync(new URL("../../docs/wandaufbau.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische (attributlose) Skript
@@ -19,11 +20,19 @@ globalThis.document=document; globalThis.window={addEventListener:()=>{}}; globa
 globalThis.URL={createObjectURL:()=>'blob:x',revokeObjectURL(){}}; globalThis.Blob=class{constructor(){}};
 globalThis.FileReader=class{readAsText(){}};
 
+// Deep-Merge wie in storage.js (für den mergeEingaben-Mock).
+function merge(base, patch){
+  if(patch===null||typeof patch!=='object'||Array.isArray(patch)) return patch;
+  const out=(base&&typeof base==='object'&&!Array.isArray(base))?{...base}:{};
+  for(const k of Object.keys(patch)) out[k]=merge(out[k],patch[k]);
+  return out;
+}
 // Storage-Mock: kein aktives Element -> Modul startet mit Demo-Wand. abonniere() speichert den Rückruf.
-let _subs=[]; let _aktiv=null;
+let _subs=[]; let _aktiv=null; let _eg=null; let _merges=[];
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>null, aktivesElement:()=>null,
+  aktiveEingaben:()=>_eg, mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); if(_eg){ _eg[teil]=merge(_eg[teil],patch); } return _aktiv; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
-globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, store:storeMock };
+globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, store:storeMock, berechneAufbau, VERBINDER_KATALOG };
 
 eval(script);
 globalThis.window.__waInit();
@@ -121,11 +130,25 @@ ok('Aufbau-Anzeige folgt Modul-1-Definition (Innenausbau)', document.getElementB
 ok('Aufbau nicht neu wählbar (keine option im Aufbau-Element)', !/<option/.test(document.getElementById('aufbau').innerHTML||''));
 ok('Seiten-Dropdown aus Modul 1 (Fassadenaufbau + Innenausbau)', /Fassadenaufbau/.test(document.getElementById('side').innerHTML) && /Innenausbau/.test(document.getElementById('side').innerHTML));
 
-// Storage-Anbindung: externer Wechsel des aktiven Elements -> Modul lädt es
+// Neues Datenmodell: Aufbau-Eingaben werden ins Modell zurückgeschrieben
+WA.applyWand(W);
+_merges=[]; _eg={aufbau:{}};
+document.getElementById('maxY').value='50'; document.getElementById('maxY').dispatch('input');
+ok('Eingabe -> mergeEingaben(aufbau)', _merges.some(([t,p])=>t==='aufbau' && p.achsen && p.achsen.max_y_cm===50));
+WA.setFeld(0,125,0,150);
+ok('Beplankungsfeld -> ins Modell persistiert', _eg.aufbau.feld_cm && _eg.aufbau.feld_cm.x1===125);
+WA.clearFeld();
+ok('Feld löschen -> feld_cm null im Modell', _eg.aufbau.feld_cm===null);
+document.getElementById('maxY').value='75'; document.getElementById('maxY').dispatch('input');
+
+// Storage-Anbindung: externer Wechsel lädt neues Wandelement UND dessen Aufbau-Eingaben in die UI
 const W2=buildWall('Fremdwand', 2500, 2000, []);
 _aktiv='w-neu'; storeMock.aktivesWandelement=()=>W2;
+_eg={aufbau:{seite:'vorne',panel:{b_cm:125,h_cm:150,off_x_cm:0,off_y_cm:0},achsen:{max_x_cm:62.5,max_y_cm:75,ohang_cm:12.5},verbinder:{typ:'FA-1',Rk:0.5,gM:2,wk:0.8,gQ:1.5},latten:{breite_cm:4,stange_cm:150},feld_cm:{x0:0,x1:125,y0:0,y1:150}}};
 _subs.forEach(cb=>cb());   // abonniere-Callback feuern (wie storage._benachrichtige)
 ok('externer Wechsel: Modul lädt neues aktives Wandelement', WA.wall && WA.wall.length_mm===2500 && WA.wall.name==='Fremdwand');
+ok('externer Wechsel: Aufbau-Eingaben in UI übernommen (pB=125)', +document.getElementById('pB').value===125);
+ok('externer Wechsel: Beplankungsfeld aus Modell übernommen', WA.feld && WA.feld.x1===125);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

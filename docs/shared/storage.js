@@ -14,7 +14,14 @@
  *   sembla:obj:i2    <string>                     hochgeladene Bauteilgeometrie i2
  *   sembla:obj:i3    <string>                     hochgeladene Bauteilgeometrie i3
  *
- * Ein Eintrag: { id, name, wandelement, erstellt, geaendert }   (ISO-Zeitstempel)
+ * Ein Eintrag: { id, name, wandelement, eingaben?, erstellt, geaendert }  (ISO-Zeitstempel)
+ *
+ * Datenmodell: Das `wandelement` (Ergebnis von buildWall) traegt die physischen
+ * Modul-1-Eingaben (Laenge/Hoehe/Oeffnungen/…) UND das Berechnete. `eingaben`
+ * traegt die uebrigen, modeluebergreifenden Nutzereingaben (Projekt-Kopfdaten,
+ * Wandaufbau, Preise) — alles, was NICHT aus dem Wandelement ableitbar ist. So
+ * liegt das komplette Projekt in EINEM JSON; abgeleitete Werte (Stueckliste,
+ * Nachweise) werden nie gespeichert, sondern immer neu gerechnet (kein Drift).
  *
  * ES-Modul: wird im Browser per <script type="module"> geladen. Kein Node-Betrieb.
  */
@@ -24,8 +31,11 @@ const K_AKTIV = "sembla:aktiv";
 const K_VERSION = "sembla:version";
 const K_OBJ = (typ) => `sembla:obj:${typ}`;
 
-/** Aktuelle Schema-Version. Aeltere Staende werden beim Lesen migriert. */
-export const SCHEMA_VERSION = 1;
+/** Aktuelle Schema-Version. Aeltere Staende werden beim Lesen migriert.
+ *  v2: Eintrag kann `eingaben` (projekt/aufbau/kosten) tragen. Alt-Elemente
+ *  ohne `eingaben` funktionieren weiter — fehlende Felder werden beim Lesen mit
+ *  Standardwerten aufgefuellt (holeEingaben), nichts wird zerstoerend umgeschrieben. */
+export const SCHEMA_VERSION = 2;
 
 // --- interne Helfer -------------------------------------------------------
 
@@ -116,10 +126,13 @@ export function setzeAktiv(id) {
 
 /**
  * Element speichern (neu anlegen oder bestehendes ueberschreiben).
+ * `eingaben` bleibt erhalten (Modul 1 schreibt nur das Wandelement zurueck) und
+ * kann optional gesetzt/gemergt werden (z. B. beim Projekt-Import).
  * @param {string} name @param {object} wandelement @param {string} [id]
+ * @param {object} [eingaben] optionaler Eingaben-Patch (wird gemergt)
  * @returns {string} die id
  */
-export function speichere(name, wandelement, id) {
+export function speichere(name, wandelement, id, eingaben) {
   const map = _lesenMap();
   const jetzt = _jetzt();
   const eid = id && map[id] ? id : (id || _neueId());
@@ -128,9 +141,11 @@ export function speichere(name, wandelement, id) {
     id: eid,
     name: (name || wandelement?.name || "Wandelement").toString(),
     wandelement,
+    eingaben: eingaben ? _merge(vorher?.eingaben || {}, eingaben) : (vorher?.eingaben || undefined),
     erstellt: vorher?.erstellt || jetzt,
     geaendert: jetzt,
   };
+  if (map[eid].eingaben == null) delete map[eid].eingaben;
   _schreibenMap(map);
   return eid;
 }
@@ -194,30 +209,36 @@ export function exportiere(id) {
 }
 
 /**
- * JSON-Text zu {name, wandelement} deuten. Akzeptiert:
+ * JSON-Text zu {name, wandelement, eingaben?} deuten. Akzeptiert:
+ *  - Projekt v2 { format:'SEMBLA-Projekt', version:2, wandelement, eingaben }
+ *  - Alt-Bundle { format:'SEMBLA-Projekt', wandelement, projekt?, verbinder_layout? }
  *  - reines Wandelement (length_mm + courses)
  *  - Wrapper { name?, wandelement }
- *  - Wrapper { typ:'sembla-wandelement', ... }
- * @param {string} text @returns {{name:string, wandelement:object}}
+ * @param {string} text @returns {{name:string, wandelement:object, eingaben?:object}}
  */
 export function parseImport(text) {
   let obj;
   try { obj = JSON.parse(text); } catch { throw new Error("Datei ist kein gueltiges JSON."); }
-  let we = null, name = null;
-  if (_istWandelement(obj)) { we = obj; name = obj.name; }
+  let we = null, name = null, eingaben;
+  if (obj && obj.format === "SEMBLA-Projekt" && _istWandelement(obj.wandelement)) {
+    we = obj.wandelement; name = obj.name || obj.wandelement.name;
+    if (obj.eingaben && typeof obj.eingaben === "object") eingaben = obj.eingaben;   // Projekt v2
+    else if (obj.projekt && typeof obj.projekt === "object") eingaben = { projekt: obj.projekt };  // Alt-Bundle
+  }
+  else if (_istWandelement(obj)) { we = obj; name = obj.name; }
   else if (obj && _istWandelement(obj.wandelement)) { we = obj.wandelement; name = obj.name || obj.wandelement.name; }
   if (!we) throw new Error("Kein Wandelement in der Datei erkannt (length_mm/courses fehlen).");
-  return { name: (name || "Importiert").toString(), wandelement: we };
+  return { name: (name || "Importiert").toString(), wandelement: we, eingaben };
 }
 
 /**
- * Text importieren: als neues Element ablegen und aktiv setzen.
+ * Text importieren: als neues Element ablegen (mit Eingaben) und aktiv setzen.
  * @param {string} text @param {string} [dateiname] @returns {string} id
  */
 export function importiereText(text, dateiname) {
-  const { name, wandelement } = parseImport(text);
+  const { name, wandelement, eingaben } = parseImport(text);
   const finalName = wandelement?.name || name || (dateiname ? dateiname.replace(/\.json$/i, "") : "Importiert");
-  const id = speichere(finalName, wandelement);
+  const id = speichere(finalName, wandelement, undefined, eingaben);
   setzeAktiv(id);
   return id;
 }
@@ -244,6 +265,118 @@ export function setzeObj(typ, inhalt) {
 export function loescheObj(typ) {
   localStorage.removeItem(K_OBJ(typ));
   _benachrichtige();
+}
+
+// --- Eingaben (modeluebergreifende Nutzereingaben, Teil des Datenmodells) --
+
+/** Tiefes Zusammenfuehren (Patch gewinnt; Arrays/null/Primitive ersetzen). */
+function _merge(base, patch) {
+  if (patch === undefined) return base;
+  if (patch === null || typeof patch !== "object" || Array.isArray(patch)) return patch;
+  const out = (base && typeof base === "object" && !Array.isArray(base)) ? { ...base } : {};
+  for (const k of Object.keys(patch)) out[k] = _merge(out[k], patch[k]);
+  return out;
+}
+
+/**
+ * Standard-Eingaben (Startwerte des Datenmodells). Sobald der Nutzer in einem
+ * Modul etwas aendert, schreibt dieses Modul seinen Abschnitt via `mergeEingaben`
+ * zurueck — so bleibt alles im einen Projekt-JSON und es gibt keinen Drift.
+ * Die Werte entsprechen den bisherigen Modul-Vorgaben (Modul 1/2/4).
+ */
+export function standardEingaben() {
+  return {
+    // Modul 1 — Projekt-Kopfdaten (reisen im Projekt-JSON mit)
+    projekt: {
+      name: "", bauherr: "", planverfasser: "Polycare Research Technology GmbH",
+      phase: "Ausführungsplanung", plan_nr: "", index: "0", gez: "",
+    },
+    // Modul 2 — Horizontaler Wandaufbau (Verbinder-/Lattenplanung)
+    aufbau: {
+      seite: "vorne",
+      panel: { b_cm: 62.5, h_cm: 150, off_x_cm: 0, off_y_cm: 0 },
+      achsen: { max_x_cm: 62.5, max_y_cm: 75, ohang_cm: 12.5 },
+      verbinder: { typ: "FA-1", Rk: 0.5, gM: 2.0, wk: 0.8, gQ: 1.5 },
+      latten: { breite_cm: 4, stange_cm: 150 },
+      feld_cm: null,           // null = ganze Wand; sonst {x0,x1,y0,y1} in cm
+    },
+    // Modul 4 — Stueckliste & Kosten
+    kosten: {
+      anzahl: 1, waehrung: "EUR",
+      preise: {
+        i3: 9.50, i2: 7.20, rod_std: 3.80, rod_sonder: 3.80,
+        kupplung: 0.65, kuppl_basis: 0.65, senkkopf: 0.45, spannmutter: 0.90,
+        spannplatte: 2.40, blech: 18.00, dicht_stk: 0.30, dicht: 0,
+        verbinder: 1.20, latte: 3.50,
+      },
+    },
+  };
+}
+
+/** Eingaben eines Elements (Standardwerte + gespeicherte Aenderungen). @param {string} [id] */
+export function holeEingaben(id) {
+  const e = id ? holeElement(id) : aktivesElement();
+  return _merge(standardEingaben(), (e && e.eingaben) || {});
+}
+
+/** @returns {object} Eingaben des aktiven Elements (mit Standardwerten aufgefuellt). */
+export function aktiveEingaben() { return holeEingaben(); }
+
+/**
+ * Einen Eingabe-Abschnitt aktualisieren (Modul schreibt NUR seinen Teil zurueck).
+ * Das Wandelement bleibt unberuehrt — nur Modul 1 aendert das Wandelement.
+ * Ohne aktives/gewaehltes Element passiert nichts (return null).
+ * @param {"projekt"|"aufbau"|"kosten"} teil @param {object} patch @param {string} [id]
+ * @returns {string|null} id
+ */
+export function mergeEingaben(teil, patch, id) {
+  const map = _lesenMap();
+  const eid = (id && map[id]) ? id : aktivId();
+  if (!eid || !map[eid]) return null;
+  const cur = map[eid].eingaben || {};
+  cur[teil] = _merge(cur[teil], patch);
+  map[eid].eingaben = cur;
+  map[eid].geaendert = _jetzt();
+  _schreibenMap(map);
+  return eid;
+}
+
+// --- Projekt-Export / -Import (JSON: Wandelement + Eingaben in einem) ------
+
+/**
+ * Vollstaendiges Projekt-Objekt (Single Source of Truth) fuer Datei/ZIP-Export.
+ * @param {string} [id] @returns {{format:string,version:number,name:string,wandelement:object,eingaben:object}}
+ */
+export function projektObjekt(id) {
+  const e = id ? holeElement(id) : aktivesElement();
+  if (!e) throw new Error("Kein Element fuer den Export gewaehlt.");
+  return {
+    format: "SEMBLA-Projekt", version: SCHEMA_VERSION, name: e.name,
+    wandelement: e.wandelement, eingaben: holeEingaben(e.id),
+  };
+}
+
+/** Sicherer Basisname (ohne Endung) aus einem Elementnamen. */
+export function sicherName(name) {
+  const s = (name || "Wandelement").toString().trim()
+    .replace(/[^\wäöüÄÖÜß .-]+/g, "_").replace(/\s+/g, "_");
+  return s || "Wandelement";
+}
+
+/**
+ * Projekt (Wandelement + Eingaben) als JSON herunterladen. @param {string} [id]
+ */
+export function exportiereProjekt(id) {
+  const p = projektObjekt(id);
+  const blob = new Blob([JSON.stringify(p, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "SEMBLA_Projekt_" + sicherName(p.name) + ".json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 // --- Benachrichtigung (Navbar / UI auffrischen) --------------------------

@@ -98,7 +98,7 @@
       <label><span>C<sub>f,d</sub></span><input type="number" id="cfd" value="0.60" step="0.05"><small>–</small></label>
       <label><span>ρ</span><input type="number" id="rho" value="14" step="0.5"><small>kN/m³</small></label>
     </div>
-    <div class="grp"><h3>Projekt-Kopfdaten <small>(reisen im Bundle mit)</small></h3>
+    <div class="grp"><h3>Projekt-Kopfdaten <small>(im Datenmodell gespeichert)</small></h3>
       <label><span>Projekt</span><input type="text" id="pjProjekt" value="SEMBLA-Musterwand" style="width:150px"></label>
       <label><span>Bauherrenschaft</span><input type="text" id="pjBauherr" value="" style="width:150px"></label>
       <label><span>Planverfasser</span><input type="text" id="pjPlanverf" value="Polycare Research Technology GmbH" style="width:150px"></label>
@@ -109,14 +109,9 @@
     <button class="primary" id="run">Auslegen</button>
     <div class="btnrow">
       <button id="save">In aktives Wandelement speichern</button>
-    </div>
-    <div class="savehint" id="saveHint"></div>
-    <div class="btnrow">
-      <button id="load">Laden (Bundle/JSON)</button>
-      <button id="bundle">Projekt-Bundle (JSON)</button>
       <button id="print">Protokoll</button>
     </div>
-    <input type="file" id="wandfile" accept=".json,application/json" style="display:none">
+    <div class="savehint" id="saveHint"></div>
     <div class="note"><b>Ein Datenmodell.</b> Dieses Modul erzeugt das geprüfte <b>Wandelement</b>, das
       Aufbau, Statik, Stückliste, Montage und 3D/IFC lesen. Es wird im <b>aktiven Wandelement</b> der Suite
       gespeichert (localStorage); Wechsel/Neuanlage in der Kopfleiste bzw. auf der Startseite.</div>
@@ -422,6 +417,7 @@ function speichern(){                            // explizit: legt bei Bedarf ei
   if(!RESULT){ saveHint('Bitte zuerst auslegen.'); return; }
   const w=RESULT.wandelement; w.name=aktName; _selfSave=true;
   try{ currentId=store.speichereAktiv(w); } finally{ _selfSave=false; }
+  persistProjekt();                               // Kopfdaten am (nun aktiven) Element sichern
   const e=store.aktivesElement&&store.aktivesElement(); if(e&&e.name) aktName=e.name;
   saveHint('Gespeichert als aktives Wandelement: '+aktName, true);
 }
@@ -437,7 +433,7 @@ function setupStoreSync(){
       const e=store.aktivesElement&&store.aktivesElement();
       const we=store.aktivesWandelement&&store.aktivesWandelement();
       aktName=(e&&e.name)||(we&&we.name)||'Wand';
-      if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
+      if(we){ loadFromStore(we); loadProjekt(); saveHint('Aktives Wandelement geladen: '+aktName); }
     }
   });
 }
@@ -446,7 +442,7 @@ function loadInitial(){
   const we=store&&store.aktivesWandelement?store.aktivesWandelement():null;
   if(e&&e.name) aktName=e.name;
   else if(we&&we.name) aktName=we.name;
-  if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
+  if(we){ loadFromStore(we); loadProjekt(); saveHint('Aktives Wandelement geladen: '+aktName); }
   else { renderSteps(); renderOps(); run(); saveHint('Kein aktives Wandelement — „Speichern" legt eins an.'); }
 }
 
@@ -465,9 +461,12 @@ function applyWand(w){
   if(w.name) aktName=w.name;
   renderSteps(); renderOps(); run();
 }
-function download(name,text){ const b=new Blob([text],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
 function projektData(){ return { name:$('pjProjekt').value, bauherr:$('pjBauherr').value, planverfasser:$('pjPlanverf').value, phase:$('pjPhase').value, plan_nr:$('pjPlanNr').value, index:$('pjIndex').value, gez:$('pjGez').value }; }
 function prefillProjekt(p){ if(!p)return; const set=(id,v)=>{ if(v!=null&&v!=='') $(id).value=v; }; set('pjProjekt',p.name); set('pjBauherr',p.bauherr); set('pjPlanverf',p.planverfasser); set('pjPhase',p.phase); set('pjPlanNr',p.plan_nr); set('pjIndex',p.index); set('pjGez',p.gez); }
+// Projekt-Kopfdaten ins Datenmodell (eingaben.projekt) schreiben; braucht ein aktives Element.
+function persistProjekt(){ if(store&&store.mergeEingaben) store.mergeEingaben('projekt', projektData()); }
+// Kopfdaten des aktiven Elements in die Felder laden.
+function loadProjekt(){ if(store&&store.aktiveEingaben) prefillProjekt(store.aktiveEingaben().projekt); }
 
 // ---- Spannachsen-Editor (Feature: manuelle Achsen für Sonderkonstruktionen) ----
 function pxToK(e){ if(!LASTDRAW) return 0; const r=$('plan').getBoundingClientRect();
@@ -507,9 +506,9 @@ function bindEvents(){
   $('run').addEventListener('click',run);
   $('save').addEventListener('click',speichern);
   $('print').addEventListener('click',()=>{ if(!RESULT){alert('Bitte zuerst auslegen.');return;} window.print(); });
-  $('load').addEventListener('click',()=>$('wandfile').click());
-  $('bundle').addEventListener('click',()=>{ if(!RESULT){alert('Bitte zuerst auslegen.');return;} download('SEMBLA_Projekt_Bundle.json', JSON.stringify({format:'SEMBLA-Projekt', version:'1.0', projekt:projektData(), wandelement:RESULT.wandelement, verbinder_layout:null},null,2)); });
-  $('wandfile').addEventListener('change',ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f)return; const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(rd.result); if(j&&j.format==='SEMBLA-Projekt'){ prefillProjekt(j.projekt); applyWand(j.wandelement||j); } else applyWand(j); saveHint('Aus Datei geladen — „Speichern" übernimmt ins aktive Wandelement.'); }catch(e){ alert('Ungültig: '+e.message); } }; rd.readAsText(f); });
+  // Projekt-Kopfdaten ins Datenmodell (eingaben.projekt) zurückschreiben
+  ['pjProjekt','pjBauherr','pjPlanverf','pjPlanNr','pjIndex','pjGez'].forEach(id=>$(id).addEventListener('input',persistProjekt));
+  $('pjPhase').addEventListener('change',persistProjekt);
 }
 
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, projektData, prefillProjekt, speichern, setEdit:(v)=>{editMode=v;},

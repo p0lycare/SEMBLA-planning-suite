@@ -16,7 +16,9 @@ const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
 // Storage-Mock: kein aktives Element -> Modul rechnet mit Standard-Formular.
-const storeMock={ aktivId:()=>null, aktivesElement:()=>null, aktivesWandelement:()=>null, speichereAktiv:()=>'w-test', abonniere:()=>(()=>{}) };
+let _subs=[];
+const storeMock={ aktivId:()=>null, aktivesElement:()=>null, aktivesWandelement:()=>null, speichereAktiv:()=>'w-test',
+  abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store:storeMock };
 
 eval(script);
@@ -129,6 +131,18 @@ WP.setAxisEdit(false);
 let saved=null; storeMock.speichereAktiv=(w)=>{ saved=w; return 'w-neu'; };
 WP.speichern();
 ok('Speichern übergibt Wandelement an Storage', saved && saved.length_mm>0 && !!saved.verification);
+
+// Neues Datenmodell: Projekt-Kopfdaten <-> eingaben.projekt
+let _pm=[]; storeMock.mergeEingaben=(teil,patch)=>{ _pm.push([teil,patch]); return 'w-neu'; };
+document.getElementById('pjBauherr').value='Neuer Bauherr'; document.getElementById('pjBauherr').dispatch('input');
+ok('Kopfdaten-Eingabe -> mergeEingaben(projekt)', _pm.some(([t,p])=>t==='projekt' && p.bauherr==='Neuer Bauherr'));
+ok('Speichern sichert auch Kopfdaten (persistProjekt)', (WP.speichern(), _pm.some(([t])=>t==='projekt')));
+// Prefill aus dem Modell beim externen Wechsel des aktiven Elements
+storeMock.aktiveEingaben=()=>({projekt:{name:'Geladenes Projekt',phase:'Genehmigungsplanung'},kosten:{},aufbau:{}});
+storeMock.aktivId=()=>'w-ext'; storeMock.aktivesElement=()=>({name:'Ext'}); storeMock.aktivesWandelement=()=>buildWall('Ext',2000,2600,[]);
+_subs.forEach(cb=>cb());   // abonniere-Callback feuern (externer Wechsel)
+ok('Prefill Kopfdaten aus Modell (Name)', document.getElementById('pjProjekt').value==='Geladenes Projekt');
+ok('Prefill Kopfdaten aus Modell (Phase)', document.getElementById('pjPhase').value==='Genehmigungsplanung');
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);
