@@ -16,7 +16,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);} dispatch(e){(this.listeners[e]||[]).forEach(f=>f({target:this}));}
   get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelectorAll(){return [];} appendChild(){} click(){}}
-const dv={proj:'SEMBLA-Projekt',qty:'1',cur:'EUR'};
+const dv={proj:'SEMBLA-Projekt',cur:'EUR'};
 const _e={}; const document={getElementById:id=>{let e=_e[id];if(!e){e=_e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement:()=>new El('a')};
 globalThis.document=document; globalThis.window={}; globalThis.alert=m=>{globalThis.__alert=m;};
 globalThis.URL={createObjectURL:()=>'blob:x',revokeObjectURL(){}}; globalThis.Blob=class{constructor(){}};
@@ -47,6 +47,10 @@ const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 ok('Start mit aktivem Element -> Wandelement geladen', SL.wall && SL.wall.length_mm===2000);
 ok('Eingaben aus Storage geladen (Preise vorhanden)', SL.eingaben.kosten.preise.i3===9.5);
 
+// MVP: genau ein aktives Wandelement — keine Mehrfachwand-Eingabe mehr
+ok('Kein Anzahl-Wände-Eingabefeld (#qty) im Modul', !/id="qty"/.test(html));
+ok('setAnzahl-API entfernt (keine Mehrfachwand-Steuerung)', typeof SL.setAnzahl==='undefined');
+
 const rs=SL.rows();
 const find=l=>rs.find(r=>r.label.includes(l));
 ok('i3-Menge = bom.i3', find('i3').menge===W.bom.i3);
@@ -74,12 +78,13 @@ ok('Preisänderung -> mergeEingaben(kosten)', _merges.some(([t,p])=>t==='kosten'
 ok('Preis im Datenmodell gespeichert', _eg.kosten.preise.i3===100);
 SL.setPrice('i3', 9.5);
 
-// Anzahl Wände multipliziert + persistiert
-SL.setAnzahl(3);
-const r3=SL.rows();
-ok('Anzahl Wände ×3', r3.find(r=>r.label.includes('i3')).menge===W.bom.i3*3);
-ok('Anzahl im Datenmodell', _eg.kosten.anzahl===3);
-SL.setAnzahl(1);
+// Legacy gespeicherte eingaben.kosten.anzahl wird robust ignoriert (Mengen immer ×1)
+_eg.kosten.anzahl=7;
+const rLegacy=SL.rows();
+ok('Legacy-Anzahl ignoriert: i3-Menge = bom.i3 (×1)', rLegacy.find(r=>r.label.includes('i3')).menge===W.bom.i3);
+ok('Legacy-Anzahl ignoriert: Verbinder-Menge unabhängig von anzahl', rLegacy.find(r=>r.label.startsWith('Verbinder')).menge>0
+  && rLegacy.find(r=>r.label.startsWith('Verbinder')).menge===SL.rows().find(r=>r.label.startsWith('Verbinder')).menge);
+delete _eg.kosten.anzahl;
 
 // Währung persistiert (über Eingabefeld)
 document.getElementById('cur').value='CHF'; document.getElementById('cur').dispatch('input');
@@ -100,10 +105,10 @@ ok('ungültiges Wandelement wirft', threw);
 
 // Storage-Anbindung: externer Wechsel des aktiven Elements -> Modul lädt es + neue Eingaben
 const W2=buildWall('Fremdwand', 2500, 2000, []);
-_aktiv='w-2'; _we=W2; _eg=standardEingaben(); _eg.kosten.anzahl=5;
+_aktiv='w-2'; _we=W2; _eg=standardEingaben(); _eg.kosten.anzahl=5;   // Legacy-Wert bewusst gesetzt
 _subs.forEach(cb=>cb());   // abonniere-Callback feuern (wie storage._benachrichtige)
 ok('externer Wechsel: Modul lädt neues aktives Wandelement', SL.wall && SL.wall.length_mm===2500);
-ok('externer Wechsel: neue Eingaben übernommen (Anzahl 5)', SL.eingaben.kosten.anzahl===5);
+ok('externer Wechsel: Legacy-Anzahl ignoriert (Mengen ×1)', SL.rows().find(r=>r.label.includes('i3')).menge===W2.bom.i3);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

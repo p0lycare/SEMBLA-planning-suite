@@ -41,15 +41,14 @@ export function wandflaeche(w) {
 export function stuecklistePositionen(w, eingaben) {
   const kosten = eingaben.kosten || {};
   const preise = kosten.preise || {};
-  const q = Math.max(1, Math.round(+kosten.anzahl || 1));
   const line = (key, label, unit, menge) => { const ep = +preise[key] || 0; return { key, label, unit, menge, ep, gp: menge * ep }; };
-  const out = semblaBomItems(w).map(it => line(it.key, it.label, it.unit, it.menge * q));
+  const out = semblaBomItems(w).map(it => line(it.key, it.label, it.unit, it.menge));
   const A = berechneAufbau(w, eingaben.aufbau || {});
   if (A.pts.length) {
     const typ = A.layout.verbinder_typ;
     const latten = eingaben.aufbau && eingaben.aufbau.latten || {};
-    out.push(line("verbinder", "Verbinder" + (typ ? " " + typ : ""), "Stk", A.pts.length * q));
-    out.push(line("latte", "Holzlatte " + (latten.breite_cm ?? 4) + " cm · Stange " + (latten.stange_cm ?? 150) + " cm", "Stk", (A.batt.summary.latten_15m_bedarf || 0) * q));
+    out.push(line("verbinder", "Verbinder" + (typ ? " " + typ : ""), "Stk", A.pts.length));
+    out.push(line("latte", "Holzlatte " + (latten.breite_cm ?? 4) + " cm · Stange " + (latten.stange_cm ?? 150) + " cm", "Stk", (A.batt.summary.latten_15m_bedarf || 0)));
   }
   return out;
 }
@@ -61,7 +60,6 @@ export function stuecklistePositionen(w, eingaben) {
 export function stuecklisteAoa(w, eingaben, opts = {}) {
   const kosten = eingaben.kosten || {}, projekt = eingaben.projekt || {};
   const cur = kosten.waehrung || "EUR";
-  const q = Math.max(1, Math.round(+kosten.anzahl || 1));
   const rs = stuecklistePositionen(w, eingaben);
   const grand = rs.reduce((a, r) => a + r.gp, 0);
   const datum = opts.datum || _heute();
@@ -70,14 +68,13 @@ export function stuecklisteAoa(w, eingaben, opts = {}) {
     ["Projekt", projekt.name || w.name || "SEMBLA-Projekt"],
     ["Wand", w.name || "Wandelement"],
     ["Maße", _fmt(w.length_mm / 1000, 3) + " × " + _fmt(w.height_mm / 1000, 2) + " m"],
-    ["Anzahl Wände", q],
     ["Datum", datum],
     [],
     ["Position", "Einheit", "Menge", "EP (" + cur + ")", "GP (" + cur + ")"],
     ...rs.map(r => [r.label, r.unit, r.menge, +r.ep.toFixed(2), +r.gp.toFixed(2)]),
     [],
     ["Summe netto", "", "", "", +grand.toFixed(2)],
-    ["€/m² Wandfläche", "", "", "", +(grand / (wandflaeche(w) * q)).toFixed(2)],
+    ["€/m² Wandfläche", "", "", "", +(grand / wandflaeche(w)).toFixed(2)],
   ];
 }
 

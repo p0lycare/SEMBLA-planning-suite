@@ -302,7 +302,7 @@ export function standardEingaben() {
     },
     // Modul 4 — Stueckliste & Kosten
     kosten: {
-      anzahl: 1, waehrung: "EUR",
+      waehrung: "EUR",
       preise: {
         i3: 9.50, i2: 7.20, rod_std: 3.80, rod_sonder: 3.80,
         kupplung: 0.65, kuppl_basis: 0.65, senkkopf: 0.45, spannmutter: 0.90,

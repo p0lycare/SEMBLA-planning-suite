@@ -36,8 +36,8 @@
 </head>
 <body>
 <p class="intro"><b>Stückliste &amp; Kosten.</b> Vollständiger Material-Auszug aus dem <b>aktiven Wandelement</b>
-  (aus „Wand planen") — Steine, Vorspannung sowie Verbinder und Latten (aus dem Wandaufbau, Modul 2). Preise,
-  Anzahl Wände und Währung sind editierbar und werden im <b>Datenmodell</b> gespeichert. Der Datei-Export
+  (aus „Wand planen") — Steine, Vorspannung sowie Verbinder und Latten (aus dem Wandaufbau, Modul 2). Preise
+  und Währung sind editierbar und werden im <b>Datenmodell</b> gespeichert. Der Datei-Export
   (Stückliste/ZIP) sitzt zentral auf der Startseite.</p>
 <div class="wrap">
   <div class="panel controls">
@@ -46,17 +46,16 @@
     <div class="grp" style="margin-top:14px">
       <h2>Projekt</h2>
       <label><span>Projektname</span><input type="text" id="proj" value="SEMBLA-Projekt"></label>
-      <label><span>Anzahl gleicher Wände</span><input type="number" id="qty" value="1" min="1" step="1"></label>
       <label><span>Währung</span><input type="text" id="cur" value="EUR" style="width:80px"></label>
     </div>
     <div class="res">
       <div class="k">Wandmaße</div><div class="v" id="ovDim">–</div>
-      <div class="k">Wandfläche (je Wand)</div><div class="v" id="ovArea">–</div>
+      <div class="k">Wandfläche</div><div class="v" id="ovArea">–</div>
       <div class="k">Nachweis</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
     </div>
     <div class="btnrow"><button id="print">Drucken</button></div>
-    <div class="hint"><b>Ein Datenmodell.</b> Mengen ergeben sich aus dem aktiven Wandelement × Anzahl Wände;
-      Verbinder/Latten aus dem Wandaufbau (Modul 2). Preise, Anzahl und Währung werden im Datenmodell
+    <div class="hint"><b>Ein Datenmodell.</b> Mengen ergeben sich aus dem aktiven Wandelement;
+      Verbinder/Latten aus dem Wandaufbau (Modul 2). Preise und Währung werden im Datenmodell
       gespeichert (Netto-Einzelpreise, frei editierbar). Datei-Export zentral auf der Startseite.</div>
   </div>
 
@@ -87,7 +86,7 @@ let WALL=null, EINGABEN=null, currentId=null;
 // aus window.SEMBLA (in __slInit gebunden):
 let stuecklistePositionen, wandflaeche, store;
 
-function eg(){ return EINGABEN || (EINGABEN={kosten:{anzahl:1,waehrung:'EUR',preise:{}},projekt:{},aufbau:{}}); }
+function eg(){ return EINGABEN || (EINGABEN={kosten:{waehrung:'EUR',preise:{}},projekt:{},aufbau:{}}); }
 function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben(teil,patch); }
 
 // Positionen zentral aus Wandelement + Eingaben (Steine/Vorspannung + Verbinder/Latten aus dem Aufbau).
@@ -115,9 +114,8 @@ function render(){
         +`<td>${fmt(r.gp,2)}</td></tr>`; });
   html+=`<tr class="sum"><td>Summe netto</td><td></td><td></td><td></td><td>${fmt(grand,2)} ${cur}</td></tr>`;
   $('tbody').innerHTML=html;
-  const q=Math.max(1,Math.round(+k.anzahl||1));
   $('grand').textContent=fmt(grand,2)+' '+cur;
-  $('perm2').textContent=fmt(grand/(wandflaeche(w)*q),2);
+  $('perm2').textContent=fmt(grand/wandflaeche(w),2);
   $('tbody').querySelectorAll('input[data-key]').forEach(inp=>inp.addEventListener('input',e=>{
     const key=e.target.dataset.key, v=+e.target.value||0;
     eg().kosten.preise[key]=v; persist('kosten',{preise:{[key]:v}}); render(); }));
@@ -131,7 +129,6 @@ function applyWand(w){
 // ---- Eingabefelder aus dem Datenmodell füllen ----
 function syncInputs(){ const k=eg().kosten||{}, p=eg().projekt||{};
   $('proj').value=p.name||(WALL&&WALL.name)||'SEMBLA-Projekt';
-  $('qty').value=Math.max(1,Math.round(+k.anzahl||1));
   $('cur').value=k.waehrung||'EUR'; }
 
 // ---- Aktives Wandelement + Eingaben (localStorage) ----
@@ -154,15 +151,13 @@ function setupStoreSync(){
 // ---- Ereignis-Bindung ----
 function bindEvents(){
   $('proj').addEventListener('input',()=>{ persist('projekt',{name:$('proj').value}); });
-  $('qty').addEventListener('input',()=>{ const v=Math.max(1,Math.round(+$('qty').value||1)); eg().kosten.anzahl=v; persist('kosten',{anzahl:v}); render(); });
   $('cur').addEventListener('input',()=>{ eg().kosten.waehrung=$('cur').value; persist('kosten',{waehrung:$('cur').value}); render(); });
   $('print').addEventListener('click',()=>window.print());
 }
 
 window.__sl={ applyWand, rows, render, area:(w)=>wandflaeche(w),
   get wall(){return WALL;}, get eingaben(){return eg();},
-  setPrice:(key,v)=>{ eg().kosten.preise[key]=v; persist('kosten',{preise:{[key]:v}}); render(); },
-  setAnzahl:(v)=>{ const n=Math.max(1,Math.round(+v||1)); eg().kosten.anzahl=n; persist('kosten',{anzahl:n}); render(); } };
+  setPrice:(key,v)=>{ eg().kosten.preise[key]=v; persist('kosten',{preise:{[key]:v}}); render(); } };
 
 window.__slInit=function(){
   const S=window.SEMBLA||{};

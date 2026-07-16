@@ -356,7 +356,7 @@ push(warn("Der Hebe-Nachweis prüft nur das Stahlblech, nicht die Mauerwerksbieg
 
 // ---------- 10 Modul 4 Stückliste ----------
 push(H1("10 · Modul 4 · Stückliste & Kosten"));
-push(P("Zweck: Material-Auszug mit editierbaren Preisen und Export. Kanonische Mengen aus dem aktiven Wandelement über den geteilten BOM-Baustein (docs/shared/sembla-bom.js): Steine, Gewindestangen, Muttern, Platten, Bleche, Dichtstreifen. Mit zusätzlich geladenem Verbinder-Layout/Bundle (aus Modul 2) kommen Verbinder und Latten hinzu. Ausgabe: Summe netto, Anzahl gleicher Wände, €/m² Wandfläche (Öffnungen abgezogen)."));
+push(P("Zweck: Material-Auszug mit editierbaren Preisen und Export. Kanonische Mengen aus dem aktiven Wandelement über den geteilten BOM-Baustein (docs/shared/sembla-bom.js): Steine, Gewindestangen, Muttern, Platten, Bleche, Dichtstreifen. Mit zusätzlich geladenem Verbinder-Layout/Bundle (aus Modul 2) kommen Verbinder und Latten hinzu. Ausgabe: Summe netto, €/m² Wandfläche (Öffnungen abgezogen)."));
 push(bullet("**Export:** Excel (xlsx-Bibliothek per CDN – die einzige externe Laufzeit-Abhängigkeit; degradiert ohne Internet sauber auf CSV), CSV, Druck."));
 push(bullet("Reiner Konsument: liest das aktive Wandelement, schreibt es nicht zurück. Dieselbe BOM-Quelle nutzt auch die Kurz-Stückliste in der Montage (Modul 5) – konsistent und driftfrei."));
 

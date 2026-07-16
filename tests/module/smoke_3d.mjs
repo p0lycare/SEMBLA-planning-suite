@@ -77,10 +77,20 @@ ok('Vorspannstränge-Zahl gesetzt', String($('ovCols').textContent)===String(W.t
 let threw=false; try{ A.applyWand({foo:1}); }catch(e){ threw=true; } A.applyWand(W);
 ok('ungültiges Wandelement wirft Fehler', threw);
 
-// OBJ-Loader über storage.js: OBJ-Texte einspeisen, echte Geometrie bauen
-const objDir=new URL("../../Bauteil-OBJ/", import.meta.url);
-const objI2=readFileSync(new URL("i2_SEMBLA.obj",objDir),'utf8');
-const objI3=readFileSync(new URL("i3_SEMBLA.obj",objDir),'utf8');
+// OBJ-Loader über storage.js: OBJ-Texte einspeisen, echte Geometrie bauen.
+// Die realen Bauteil-Modelle (Bauteil-OBJ/) sind vertraulich, gitignored und NICHT im Repo — der
+// Test darf sie nicht benötigen. Stattdessen eine minimale synthetische Quader-Geometrie je Steintyp:
+// OBJ-Koords x=Länge, y=Tiefe (125 mm), z=Höhe (200 mm). Der Parser tauscht Y/Z ->
+// Szene-Koords x=Länge, y=Höhe (0,200 m), z=Tiefe (0,125 m). So bleiben Parser, Dreiecksgeometrie,
+// erwartete i3-Abmessungen, stoneGeom/Caching und der Real-Geometrie-Build sinnvoll geprüft.
+function boxObj(laenge_mm){
+  const x=laenge_mm, y=125, z=200;   // objY -> Szene-Tiefe, objZ -> Szene-Höhe
+  const v=[[0,0,0],[x,0,0],[x,y,0],[0,y,0],[0,0,z],[x,0,z],[x,y,z],[0,y,z]];  // 8 Ecken (mm)
+  const f=[[1,2,3,4],[5,6,7,8],[1,2,6,5],[4,3,7,8],[1,4,8,5],[2,3,7,6]];      // 6 Quads -> 12 Dreiecke
+  return v.map(p=>'v '+p.join(' ')).join('\n')+'\n'+f.map(q=>'f '+q.join(' ')).join('\n')+'\n';
+}
+const objI3=boxObj(375);   // i3 = 37,5 cm
+const objI2=boxObj(250);   // i2 = 25 cm
 A.OBJTEXT.i2=objI2; A.OBJTEXT.i3=objI3;
 
 const d3=A.parseObjScene(objI3);
