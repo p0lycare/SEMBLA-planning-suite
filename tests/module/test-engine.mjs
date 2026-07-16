@@ -45,20 +45,6 @@ t("Materialannahmen übersteuerbar (fcd senkt Randdruck-Reserve)", ()=>{
   const r=autoAuslegung({...base, load:{qk_area:0.5,gammaQ:1.5}, material:{fcd_Nmm2:5}});
   A(r.wandelement.verification.material.fcd_Nmm2===5, "fcd übernommen");
 });
-t("Wandtyp: aus Vorgaben ins Wandelement übernommen (auto + nachweis)", ()=>{
-  const a=autoAuslegung({...base, wandtyp:"ohne_wind", load:{qk_area:0.5,gammaQ:1.5}});
-  A(a.wandelement.wandtyp==="ohne_wind", "auto: "+a.wandelement.wandtyp);
-  const n=nachweisPruefen({...base, wandtyp:"ohne_wind", prestress:{max_span_grid:3,force_kN:60}, load:{qk_area:1.0,gammaQ:1.5}});
-  A(n.wandelement.wandtyp==="ohne_wind", "nachweis: "+n.wandelement.wandtyp);
-});
-t("Wandtyp: fehlend/ungültig -> kompatibler Standard 'mit_wind'", ()=>{
-  const d=autoAuslegung({...base, load:{qk_area:0.5,gammaQ:1.5}});
-  A(d.wandelement.wandtyp==="mit_wind", "default: "+d.wandelement.wandtyp);
-  const x=autoAuslegung({...base, wandtyp:"quatsch", load:{qk_area:0.5,gammaQ:1.5}});
-  A(x.wandelement.wandtyp==="mit_wind", "normalisiert: "+x.wandelement.wandtyp);
-  const nf=autoAuslegung({...base, load:{qk_area:20.0,gammaQ:1.5}});   // "nicht erfüllt"-Pfad
-  A(nf.wandelement.wandtyp==="mit_wind", "auch im nicht-erfüllt-Pfad gesetzt");
-});
 
 const demo=autoAuslegung({...base, load:{qk_area:3.0,gammaQ:1.5}});
 console.log("\nOptimierung (qk=3,0): sp="+demo.wandelement.verification.auslegung.max_span_grid+

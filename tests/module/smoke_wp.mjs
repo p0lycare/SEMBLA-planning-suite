@@ -34,11 +34,6 @@ ok('Wandbild + Stränge', (document.getElementById('plan').innerHTML.match(/<rec
 ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);
 ok('Steine-Zusammenfassung gefüllt (BOM-Tabelle jetzt in Modul 4)', /\d/.test(document.getElementById('rSteine').textContent));
 ok('sides + verification im Ergebnis', WP.RESULT.wandelement.sides.vorne.funktion==='fassade' && WP.RESULT.wandelement.verification.status==='geprüft');
-// Wandtyp: in Modul 1 gewählt, als Feld im Wandelement geführt (Default = mit_wind)
-ok('Wandtyp-Default mit_wind im Wandelement', WP.RESULT.wandelement.wandtyp==='mit_wind');
-document.getElementById('wandtyp').value='ohne_wind'; document.getElementById('wandtyp').dispatch('change');
-ok('Wandtyp-Wechsel wirkt aufs Wandelement', WP.RESULT.wandelement.wandtyp==='ohne_wind');
-document.getElementById('wandtyp').value='mit_wind'; document.getElementById('wandtyp').dispatch('change');
 // Öffnung hinzufügen
 WP.addOpening('tuer');
 ok('Tür im Wandbild', /Tür/.test(document.getElementById('plan').innerHTML));
@@ -47,11 +42,6 @@ ok('mit Tür weiterhin geprüft', WP.RESULT.wandelement.verification.status==='g
 const exported=WP.RESULT.wandelement;
 WP.applyWand(exported);
 ok('Roundtrip: lädt eigenes Ergebnis', document.getElementById('len').value==='2.000');
-// Wandtyp überlebt den Roundtrip (Wandelement -> UI -> Wandelement)
-document.getElementById('wandtyp').value='ohne_wind'; document.getElementById('wandtyp').dispatch('change');
-WP.applyWand(WP.RESULT.wandelement);
-ok('Roundtrip: Wandtyp erhalten', document.getElementById('wandtyp').value==='ohne_wind' && WP.RESULT.wandelement.wandtyp==='ohne_wind');
-document.getElementById('wandtyp').value='mit_wind'; document.getElementById('wandtyp').dispatch('change');
 // Ansicht spiegeln
 const xB=(document.getElementById('plan').innerHTML.match(/<rect x="([\d.]+)"/)||[])[1];
 document.getElementById('viewToggle').dispatch('click');

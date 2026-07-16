@@ -79,17 +79,6 @@ t("loeschen: Element weg", store.listeElemente().length === 2);
 store.loesche(id1);
 t("loeschen des aktiven: Auswahl aufgehoben", store.aktivId() === null || store.aktivId() !== id1);
 
-// 8b) Wandtyp reist im Wandelement; eingaben.statik trägt keinen Wandtyp -----
-const weTyp = buildWall("Typ-Wand", 2000, 2600, []);
-weTyp.wandtyp = "ohne_wind";                       // von Modul 1/Engine gesetztes Feld
-const idTyp = store.speichere("Typ-Wand", weTyp);
-store.setzeAktiv(idTyp);
-const projTyp = store.projektObjekt();
-t("projekt: Wandtyp im Wandelement erhalten", projTyp.wandelement.wandtyp === "ohne_wind");
-t("standardEingaben.statik ohne mitWind (Wandtyp nur im Wandelement)", !("mitWind" in store.standardEingaben().statik));
-t("aktive eingaben.statik trägt kein mitWind default", !("mitWind" in store.aktiveEingaben().statik));
-store.loesche(idTyp);
-
 // 9) OBJ-Speicher ----------------------------------------------------------
 store.setzeObj("i2", "OBJDATEN");
 t("obj: gespeichert/gelesen", store.holeObj("i2") === "OBJDATEN");

@@ -18,18 +18,6 @@
  */
 import { buildWall } from "./sembla-core.js";
 
-// ==== Wandtyp (Fachmerkmal der Wand, Single Source of Truth) ==============
-// Der Wandtyp klassifiziert die Windsituation (Modul 3 leitet daraus Cpi ab).
-// Er ist ein reines Fachmerkmal ohne Einfluss auf Tiling/BOM/Straenge und wird
-// darum NICHT im Core (buildWall/Python-Referenz) berechnet, sondern hier —
-// analog zur `verification` — an das Wandelement angehaengt. Gewaehlt wird er in
-// Modul 1 ("Wand planen"); alle anderen Module lesen ihn nur.
-export const WANDTYPEN = ["mit_wind", "ohne_wind"];
-/** Standard = bisheriges Verhalten (Innenwand mit Wind, altes mitWind='ja'). */
-export const WANDTYP_DEFAULT = "mit_wind";
-/** Normalisiert einen Wandtyp; unbekannt/fehlend -> kompatibler Standard. */
-export function normWandtyp(t) { return WANDTYPEN.includes(t) ? t : WANDTYP_DEFAULT; }
-
 // ==== Vereinfachtes Auslegungs-Nachweismodell ============================
 
 /**
@@ -116,13 +104,11 @@ export function autoAuslegung(vorg) {
     log.push({ max_span_grid: sp, strands, N: hit ? hit.N : null, util: hit ? hit.c.governing.util : (last ? last.c.governing.util : null), governing: hit ? hit.c.governing.name : null, ok: !!hit });
     if (hit) {
       const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: hit.N }), stepsOf(vorg));
-      wf.wandtyp = normWandtyp(vorg.wandtyp);
       wf.verification = { status: "geprüft", auslegung: { max_span_grid: sp, force_kN: hit.N, strands }, nachweise: hit.c.checks, governing: hit.c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, iterationen: log.length };
       return { wandelement: wf, status: "konvergiert", iterationen: log };
     }
   }
   const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: kand[kand.length - 1], force_kN: last.N }), stepsOf(vorg));
-  wf.wandtyp = normWandtyp(vorg.wandtyp);
   wf.verification = { status: "nicht erfüllt", auslegung: { max_span_grid: last.sp, force_kN: last.N, strands: last.strands }, nachweise: last.c.checks, governing: last.c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, iterationen: log.length };
   return { wandelement: wf, status: "nicht erfüllt", iterationen: log };
 }
@@ -133,7 +119,6 @@ export function nachweisPruefen(vorg) {
   const N = (vorg.prestress && vorg.prestress.force_kN) || 0;
   const w = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: N }), stepsOf(vorg));
   const c = pruefe(w, vorg, N);
-  w.wandtyp = normWandtyp(vorg.wandtyp);
   w.verification = { status: c.ok ? "geprüft" : "nicht erfüllt", auslegung: { max_span_grid: sp, force_kN: N, strands: w.tension_columns.filter(c => c.durchgehend).length }, nachweise: c.checks, governing: c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, modus: "nachweis" };
   return { wandelement: w, status: c.ok ? "erfüllt" : "nicht erfüllt", nachweis: c };
 }

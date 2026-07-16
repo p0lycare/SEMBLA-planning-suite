@@ -54,7 +54,6 @@
     <div class="grp">
       <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125"><small>m · ×12,5cm</small></label>
       <label><span>Höhe</span><input type="number" id="hgt" value="2.60" step="0.20"><small>m · ×20cm</small></label>
-      <label><span>Wandtyp</span><select id="wandtyp"><option value="mit_wind" selected>Innenwand mit Wind (Cpi)</option><option value="ohne_wind">Innenwand ohne Wind</option></select></label>
     </div>
     <div class="grp"><h3>Öffnungen</h3>
       <div id="ops"></div>
@@ -145,10 +144,6 @@ const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const pct=u=>fmt(u*100,0)+' %';
 const M=1000;
-// Wandtyp: Fachmerkmal der Wand (Windsituation). Kanonische Werte + kompatibler
-// Standard (= bisheriges Verhalten). Die Engine normalisiert zusaetzlich.
-const WANDTYP_DEF='mit_wind';
-const normWandtyp=t=>(t==='mit_wind'||t==='ohne_wind')?t:WANDTYP_DEF;
 // aus window.SEMBLA (in __wpInit gebunden):
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store;
 // Storage-Anbindung (aktives Wandelement):
@@ -223,7 +218,6 @@ function toggleVoid(r,c){ const k=r+','+c; if(voids.has(k))voids.delete(k); else
 function vorgaben(){
   const {L,H,N,Lg}=dims();
   const v={ name:aktName, length_mm:L, height_mm:H, openings:buildOpenings(N,Lg), sides:readSides(),
-    wandtyp: normWandtyp($('wandtyp').value),   // Fachmerkmal der Wand -> Engine haengt es ans Wandelement
     steps: stepsArr.map(s=>({x0_mm:Math.round(s.x0*1000), x1_mm:Math.round(s.x1*1000), height_mm:Math.round(s.h*1000)})),
     load:{ qk_area:+$('qk').value, gammaQ:+$('gammaQ').value },
     material:{ fcd_Nmm2:+$('fcd').value, cfd:+$('cfd').value, rho:+$('rho').value } };
@@ -428,7 +422,6 @@ function loadInitial(){
 // ---------- Laden / Export (Datei) ----------
 function applyWand(w){
   $('len').value=(w.length_mm/1000).toFixed(3); $('hgt').value=(w.height_mm/1000).toFixed(2);
-  $('wandtyp').value=normWandtyp(w.wandtyp);   // Wandtyp aus dem Wandelement uebernehmen (Alt-Elemente ohne Feld -> Standard)
   if(w.sides){ $('sideVorne').value=(w.sides.vorne&&w.sides.vorne.funktion)||'fassade'; $('sideHinten').value=(w.sides.hinten&&w.sides.hinten.funktion)||'innenausbau'; }
   openings=(w.openings||[]).map(o=>({art:o.art||'tuer',x:o.g0*125/1000,w:(o.g1-o.g0)*125/1000,sill:(o.art==='fenster')?o.l0*200/1000:0,h:(o.l1-o.l0)*200/1000}));
   stepsArr=(w.steps||[]).map(s=>({x0:s.x0_mm/1000, x1:s.x1_mm/1000, h:s.height_mm/1000}));
@@ -458,7 +451,7 @@ function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchHin
 let axisDragging=false;
 function bindEvents(){
   ['len','hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','rodCm','blechCm'].forEach(id=>$(id).addEventListener('input',run));
-  ['sideVorne','sideHinten','modus','topConn','wandtyp'].forEach(id=>$(id).addEventListener('change',run));
+  ['sideVorne','sideHinten','modus','topConn'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; $('durchHint').style.display=editMode?'block':'none'; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });

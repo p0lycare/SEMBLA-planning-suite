@@ -50,11 +50,12 @@
     <h2>Eingaben</h2>
     <div id="wandinfo" class="note" style="margin:6px 0 10px">Geometrie &amp; Öffnungszahl aus dem aktiven Wandelement. Alle Kennwerte werden im Projekt gespeichert und im zentralen Export („Start") mit ausgegeben.</div>
 
-    <div class="grp"><h3>Wand (aus Wandelement)</h3>
-      <div id="geomSummary" class="res" style="font-size:12.5px"></div>
-      <div class="note" style="margin-top:8px">Wandhöhe, -länge, -dicke, Öffnungszahl und <b>Wandtyp</b> stammen
-        unveränderlich aus dem aktiven Wandelement (Modul „Wand planen"). Hier nur Anzeige — der Wandtyp
-        (Windsituation) wird beim Planen der Wand festgelegt, nicht im Statik-Nachweis.</div>
+    <div class="grp"><h3>Geometrie</h3>
+      <label><span>Wandhöhe h</span><input type="number" id="h_m" value="3.00" step="0.01"><small>m</small></label>
+      <label><span>Wandlänge l</span><input type="number" id="L_m" value="6.00" step="0.125"><small>m</small></label>
+      <label><span>Wanddicke t</span><input type="number" id="t_m" value="0.123" step="0.001"><small>m</small></label>
+      <label><span>Wandtyp</span><select id="mitWind"><option value="ja" selected>Innenwand mit Wind (Cpi)</option><option value="nein">Innenwand ohne Wind</option></select></label>
+      <label><span>Anzahl Öffnungen</span><input type="number" id="n_oeff" value="0" step="1" min="0"><small>Stk</small></label>
     </div>
 
     <div class="grp"><h3>Material / Bibliothek</h3>
@@ -168,27 +169,19 @@ const pct=u=>fmt((isFinite(u)?u:0)*100,1)+' %';
 let nachweise, STAB_KATALOG, store;
 let currentId=null;
 let hasWand=false;   // true nur bei aktivem Wandelement — sonst kein (fiktiver) Nachweis
-// Geometrie/Öffnungszahl/Wandtyp kommen AUSSCHLIESSLICH aus dem aktiven Wandelement
-// (Single Source of Truth). Dieser interne Zustand wird bei Laden/Wechsel gesetzt und
-// von readP() gelesen — NICHT aus (manipulierbaren) DOM-Feldern.
-let activeWand=null;   // { height_mm, length_mm, thickness_mm, n_oeff, wandtyp }
 
-// Wandtyp: Fachmerkmal aus dem Wandelement (Alt-Elemente ohne Feld -> kompatibler
-// Standard 'mit_wind' = bisheriges Verhalten, altes mitWind='ja').
-const normWandtyp=t=>(t==='mit_wind'||t==='ohne_wind')?t:'mit_wind';
-const WANDTYP_LABEL={mit_wind:'Innenwand mit Wind (Cpi)', ohne_wind:'Innenwand ohne Wind'};
-
-// NUR editierbare Kennwerte (Geometrie/Öffnungszahl/Wandtyp sind NICHT dabei —
-// sie stammen aus dem Wandelement und werden nicht in eingaben.statik gespeichert).
-const NUM=['f_k','gamma_w','gammaM_wand','v_Rd','mu_k','gamma_mu',
+const NUM=['h_m','L_m','t_m','n_oeff','f_k','gamma_w','gammaM_wand','v_Rd','mu_k','gamma_mu',
  'As','fyk_Stab','fub_Stab','gamma_s','qpFaktor','cpe10','gammaQ','q1_I','q1_II','a_4103',
  'e_m','F0','deltaF','F_inf_min','gammaP_sup',
  'Nv1','mRk1','Nv2','mRk2','Nv3','mRk3',
  'b_Steg','b_KpO','t_KpO','b_FpU','t_FpU','fyk_Platte','gammaM0','gammaM2','k2_SK','k2_Senk','L_Mutter_min','L_Mutter_vorh','l_Platte',
  'eW_Winkel','rho','fy','gammaG','dyn','nAnker','blechB_mm','blechT_mm','hebelBlech_m'];
 
-const SEL=['wlz','torDominant','gammaP_fav','stab'];   // mitWind (Wandtyp) NICHT mehr hier
-const STATIK_KEYS=NUM.concat(SEL);
+// Geometrie kommt aus dem Wandelement (nicht persistiert); alle anderen Felder
+// bilden den gespeicherten eingaben.statik-Abschnitt (flach nach Input-ID).
+const GEO=['h_m','L_m','t_m','n_oeff'];
+const SEL=['wlz','mitWind','torDominant','gammaP_fav','stab'];
+const STATIK_KEYS=NUM.filter(f=>!GEO.includes(f)).concat(SEL);
 
 function readStatik(){ const o={}; for(const k of STATIK_KEYS){ const el=$(k); if(!el) continue; o[k]=(el.tagName==='SELECT')?el.value:+el.value; } return o; }
 function persistStatik(){ if(store&&store.mergeEingaben) store.mergeEingaben('statik', readStatik()); }
@@ -198,30 +191,12 @@ function readP(){
   const p={};
   for(const f of NUM) p[f]=+$(f).value;
   p.wlz=+$('wlz').value;
-  // Geometrie/Öffnungszahl/Wandtyp AUS dem aktiven Wandelement (nicht aus dem DOM):
-  const aw=activeWand||{};
-  p.h_m=(aw.height_mm||0)/1000;
-  p.L_m=(aw.length_mm||0)/1000;
-  p.t_m=(aw.thickness_mm||0)/1000;
-  p.n_oeff=aw.n_oeff||0;
-  p.mitWind=normWandtyp(aw.wandtyp)==='mit_wind';   // Wandtyp -> Windsituation
+  p.mitWind=$('mitWind').value==='ja';
   p.torDominant=$('torDominant').value==='dominant';
   p.gammaP_fav=+$('gammaP_fav').value;
   p.pruef=[{Nv:p.Nv1,mRk:p.mRk1},{Nv:p.Nv2,mRk:p.mRk2},{Nv:p.Nv3,mRk:p.mRk3}];
   p.zusatz_je_seite=2;
   return p;
-}
-
-// Read-only-Zusammenfassung der Wand-Kennwerte (Geometrie/Öffnungszahl/Wandtyp).
-function renderGeomSummary(){
-  const aw=activeWand;
-  if(!aw){ $('geomSummary').innerHTML='<div class="k">Kein aktives Wandelement</div><div class="v">—</div>'; return; }
-  $('geomSummary').innerHTML=
-    `<div class="k">Wandhöhe h</div><div class="v">${fmt(aw.height_mm/1000)} m</div>`+
-    `<div class="k">Wandlänge l</div><div class="v">${fmt(aw.length_mm/1000,3)} m</div>`+
-    `<div class="k">Wanddicke t</div><div class="v">${fmt(aw.thickness_mm/1000,3)} m</div>`+
-    `<div class="k">Anzahl Öffnungen</div><div class="v">${aw.n_oeff}</div>`+
-    `<div class="k">Wandtyp</div><div class="v">${WANDTYP_LABEL[normWandtyp(aw.wandtyp)]}</div>`;
 }
 
 function util(u){ const w=Math.min(100,Math.round((isFinite(u)?u:0)*100)); const ok=u<=1+1e-9;
@@ -236,7 +211,7 @@ function card(el, ok, title, rows, extra){
 const LEER_CARDS=['cardBieg','cardSchub','cardDruck','cardBoden','cardWinkel',
   'cardStange','cardMStab','cardSpannO','cardUnten','cardKpO','cardFpU','cardStein','cardMutter','cardTrans'];
 function renderLeer(){
-  activeWand=null; renderGeomSummary();   // kein aktives Wandelement -> Summary leert sich
+  ['h_m','L_m','t_m','n_oeff'].forEach(id=>{ if($(id)) $(id).value=''; });
   $('sumBadge').className='badge'; $('sumBadge').textContent='—';
   $('sumText').innerHTML='Kein aktives Wandelement — Geometrie fehlt.';
   $('ctxWand').innerHTML=''; $('ctxSpann').innerHTML='';
@@ -319,15 +294,15 @@ function run(){
      ['Nachweis', 'σ_Ed ≤ f_y']], util(tr.util));
 }
 
-// ---------- Wandelement → interner Geometrie-/Wandtyp-Zustand (read-only) ----------
+// ---------- Wandelement → Geometrie/Öffnungen übernehmen ----------
 function applyWand(w, label){
   if(!w) return;
   hasWand=true;
+  if(w.height_mm) $('h_m').value=(w.height_mm/1000).toFixed(2);
+  if(w.length_mm) $('L_m').value=(w.length_mm/1000).toFixed(3);
+  if(w.thickness_mm) $('t_m').value=(w.thickness_mm/1000).toFixed(3);
   const nO=Array.isArray(w.openings)?w.openings.filter(o=>(((o.g1-o.g0)||o.b)||0)>0).length:0;
-  // Single Source of Truth: Geometrie/Öffnungszahl/Wandtyp NUR intern halten (kein DOM-Input).
-  activeWand={ height_mm:w.height_mm||0, length_mm:w.length_mm||0, thickness_mm:w.thickness_mm||0,
-    n_oeff:nO, wandtyp:normWandtyp(w.wandtyp) };
-  renderGeomSummary();
+  $('n_oeff').value=nO;
   $('wandinfo').textContent=(label||'Geladen')+': '+(w.name||'Wandelement')+' · '+((w.length_mm||0)/1000).toFixed(3)+' × '+((w.height_mm||0)/1000).toFixed(2)+' m · '+nO+' Öffnung(en)';
   run();
 }
@@ -361,7 +336,7 @@ function bindEvents(){
   // Gewindestangen-Auswahl füllt A_s / f_yk / f_ub
   $('stab').addEventListener('change',()=>{ const k=STAB_KATALOG[$('stab').value]; if(k){ $('As').value=k.As; $('fyk_Stab').value=k.fyk; $('fub_Stab').value=k.fub; } persistStatik(); run(); });
   NUM.forEach(f=>$(f).addEventListener('input',()=>{ persistStatik(); run(); }));
-  ['wlz','torDominant','gammaP_fav'].forEach(f=>$(f).addEventListener('change',()=>{ persistStatik(); run(); }));
+  ['wlz','mitWind','torDominant','gammaP_fav'].forEach(f=>$(f).addEventListener('change',()=>{ persistStatik(); run(); }));
 }
 
 window.__statik={ run, readP, applyWand, get nachweise(){return nachweise;}, get STAB_KATALOG(){return STAB_KATALOG;} };
