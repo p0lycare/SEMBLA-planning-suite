@@ -27,9 +27,10 @@ globalThis.document=document; globalThis.window={}; globalThis.alert=()=>{};
 // Storage-Mock: aktives Wandelement mit Referenz-Geometrie (h=3,0 · l=6,0 · t=0,123 · 0 Öffnungen)
 // — entspricht genau den DOM-Defaults/Excel-Prüfwerten. Ohne aktives Element rechnet Modul 3
 // bewusst NICHT mehr (kein fiktives Wandelement), siehe separater Leer-Test unten.
-let _subs=[];
+let _subs=[]; let lastMerge=null;
 const storeMock={ aktivId:()=>'w-ref', aktiveEingaben:()=>null,
   aktivesWandelement:()=>({name:'Referenz', length_mm:6000, height_mm:3000, thickness_mm:123, openings:[]}),
+  mergeEingaben:(teil,patch)=>{ lastMerge={teil,patch}; return 'w-ref'; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
 eval(script);
 
@@ -77,18 +78,53 @@ const q=document.getElementById('q1_II'); q.value='80'; q.dispatch('input');
 ok('hohe DIN-Last -> Summary NICHT erfüllt', /NICHT/.test(document.getElementById('sumBadge').textContent));
 q.value='1.0'; q.dispatch('input');
 ok('zurückgesetzt -> wieder erfüllt', /erfüllt/.test(document.getElementById('sumBadge').textContent)&&!/NICHT/.test(document.getElementById('sumBadge').textContent));
-// ---- Storage: aktives Wandelement füllt Geometrie/Öffnungen ----
-S.applyWand({name:'IW-Test',length_mm:2000,height_mm:2600,thickness_mm:125,openings:[{g0:5,g1:11,l0:0,l1:10}]},'Aktives Wandelement');
-ok('applyWand: h=2,60 · L=2,000 · t=0,125 · 1 Öffnung', document.getElementById('h_m').value==='2.60' && document.getElementById('L_m').value==='2.000' && document.getElementById('t_m').value==='0.125' && document.getElementById('n_oeff').value===1);
+// ---- Storage: aktives Wandelement liefert Geometrie/Öffnungszahl/Wandtyp (read-only) ----
+S.applyWand({name:'IW-Test',length_mm:2000,height_mm:2600,thickness_mm:125,openings:[{g0:5,g1:11,l0:0,l1:10}],wandtyp:'ohne_wind'},'Aktives Wandelement');
+const pIW=S.readP();
+ok('applyWand: Geometrie aus Wandelement in readP (h=2,60·L=2,00·t=0,125·1 Öffnung)',
+  near(pIW.h_m,2.60,1e-9)&&near(pIW.L_m,2.000,1e-9)&&near(pIW.t_m,0.125,1e-9)&&pIW.n_oeff===1);
+ok('applyWand: Wandtyp ohne_wind -> mitWind=false in readP', pIW.mitWind===false);
 ok('applyWand: Info nennt Wandelement', /IW-Test/.test(document.getElementById('wandinfo').textContent));
 
+// ---- REGRESSION: manipulierte DOM-Werte entkoppeln die Nachweisgeometrie NICHT ----
+// Das Wandelement bleibt Single Source of Truth. Selbst wenn (versteckte) DOM-Felder
+// gesetzt werden, liest readP() Geometrie/Öffnungszahl/Wandtyp ausschließlich aus dem
+// intern gehaltenen aktiven Wandelement-Zustand.
+['h_m','L_m','t_m','n_oeff'].forEach(id=>{ document.getElementById(id).value='999'; });
+document.getElementById('mitWind').value='ja';
+const pManip=S.readP();
+ok('DOM-Manipulation ignoriert: h_m aus Wandelement (2,60)', near(pManip.h_m,2.60,1e-9));
+ok('DOM-Manipulation ignoriert: L_m aus Wandelement (2,00)', near(pManip.L_m,2.000,1e-9));
+ok('DOM-Manipulation ignoriert: t_m aus Wandelement (0,125)', near(pManip.t_m,0.125,1e-9));
+ok('DOM-Manipulation ignoriert: n_oeff aus Wandelement (1)', pManip.n_oeff===1);
+ok('DOM-Manipulation ignoriert: mitWind aus Wandtyp (false)', pManip.mitWind===false);
+
+// ---- Modul 3 speichert Wandtyp NICHT unter eingaben.statik ----
+lastMerge=null; document.getElementById('f_k').value='21'; document.getElementById('f_k').dispatch('input');
+ok('persist: eingaben.statik geschrieben (Teil=statik)', lastMerge && lastMerge.teil==='statik');
+ok('persist: kein mitWind/Geometrie in eingaben.statik', lastMerge && !('mitWind' in lastMerge.patch) && !('h_m' in lastMerge.patch) && !('n_oeff' in lastMerge.patch));
+
+// ---- Wechsel des aktiven Elements: alle fünf Werte + Alt-eingaben.statik.mitWind ohne Wirkung ----
+storeMock.aktivId=()=>'w-alt';
+storeMock.aktiveEingaben=()=>({statik:{f_k:25, mitWind:'ja'}});   // Alt-Bundle mit gespeichertem mitWind
+storeMock.aktivesWandelement=()=>({name:'Alt', length_mm:3000, height_mm:2400, thickness_mm:123, openings:[], wandtyp:'ohne_wind'});
+_subs.forEach(cb=>cb());
+const pAlt=S.readP();
+ok('Wechsel lädt eingaben.statik.f_k (25)', +document.getElementById('f_k').value===25);
+ok('Wechsel aktualisiert alle fünf Werte aus Wandelement',
+  near(pAlt.L_m,3.0,1e-9)&&near(pAlt.h_m,2.40,1e-9)&&near(pAlt.t_m,0.123,1e-9)&&pAlt.n_oeff===0);
+ok('Alt eingaben.statik.mitWind überschreibt Wandtyp NICHT (ohne_wind -> false)', pAlt.mitWind===false);
+
 // ---- Ohne aktives Element: kein (fiktiver) Nachweis, sondern klare Leer-Anzeige ----
-storeMock.aktivId=()=>null; storeMock.aktivesWandelement=()=>null;
+storeMock.aktivId=()=>null; storeMock.aktiveEingaben=()=>null; storeMock.aktivesWandelement=()=>null;
 _subs.forEach(cb=>cb());   // externer Wechsel auf "kein aktives Element"
 ok('Leer: Summary geleert (Geometrie fehlt)', document.getElementById('sumBadge').textContent==='—' && /Geometrie fehlt/.test(document.getElementById('sumText').innerHTML));
 ok('Leer: Nachweis-Karten geleert', document.getElementById('cardBieg').innerHTML==='' && document.getElementById('cardStange').innerHTML==='');
-ok('Leer: Geometriefelder geblankt', document.getElementById('h_m').value==='' && document.getElementById('L_m').value==='' && document.getElementById('n_oeff').value==='');
 ok('Leer: Info nennt kein aktives Wandelement', /Kein aktives Wandelement/.test(document.getElementById('wandinfo').textContent));
+
+// ---- HTML enthält keine editierbaren Geometrie-/Wandtyp-Felder mehr ----
+ok('HTML: keine <input> für h_m/L_m/t_m/n_oeff', !/<input[^>]*id="(h_m|L_m|t_m|n_oeff)"/.test(html));
+ok('HTML: kein <select> für mitWind (Wandtyp nicht editierbar)', !/<select[^>]*id="mitWind"/.test(html));
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

@@ -27,7 +27,10 @@ Element ist gesetzt; **nur Modul 1 schreibt das Wandelement**, alle anderen Modu
 Jedes Modul schreibt **nur seinen eigenen Abschnitt** via `store.mergeEingaben(teil, patch)` zurück —
 Modul 0→`projekt` (Kopfdaten am aktiven Element), Modul 2→`aufbau`, Modul 4→`kosten`, Modul 3→`statik`. Abgeleitete Werte (Stückliste,
 Layout, Nachweis) werden immer **neu gerechnet, nie gespeichert**. Modul 3 speichert nur seine Kennwerte;
-die Geometrie (h/L/t/Öffnungszahl) kommt aus dem Wandelement.
+die Geometrie (h/L/t/Öffnungszahl) **und der `wandtyp`** (Windsituation, `mit_wind`/`ohne_wind`) kommen
+aus dem Wandelement. Der Wandtyp wird **in Modul 1** gewählt (Feld am Wandelement, von der Engine
+angehängt, Default `mit_wind`); Modul 3 liest ihn nur (read-only) und persistiert ihn **nicht** in
+`eingaben.statik`. Alt-Bundles mit gespeichertem `mitWind` werden ignoriert — das Wandelement gewinnt.
 
 **Export/Import ist zentral** (Modul 0, `docs/index.html`): ein Häkchen-Dialog baut über
 `sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
@@ -80,7 +83,7 @@ Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Ras
 | Nr. | Datei | Inhalt |
 |---|---|---|
 | 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt` |
-| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`) — **erzeugt** das Wandelement |
+| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, **Wandtyp** (Windsituation), Auslegung (+ `sembla-engine.js`) — **erzeugt** das Wandelement (inkl. `wandtyp`) |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie aus dem Wandelement |
 | 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); Preise/Anzahl → `eingaben.kosten` (Export läuft zentral über Modul 0) |

@@ -311,15 +311,16 @@ export function standardEingaben() {
       },
     },
     // Modul 3 — Statischer Nachweis (Schermer-Kennwerte; Geometrie/Oeffnungszahl
-    // kommen aus dem Wandelement und werden NICHT hier gespeichert). Flach nach
-    // Input-ID, damit der Projektstand des Nachweises reproduzierbar mitreist.
+    // UND der Wandtyp/Windsituation kommen aus dem Wandelement und werden NICHT hier
+    // gespeichert). Flach nach Input-ID, damit der Projektstand des Nachweises
+    // reproduzierbar mitreist.
     statik: {
       // Material / Bibliothek
       f_k: 20, gamma_w: 13.8, gammaM_wand: 2.0, v_Rd: 3.5, mu_k: 0.5, gamma_mu: 1.5,
       // Gewindestange
       stab: "M10", As: 58, fyk_Stab: 640, fub_Stab: 800, gamma_s: 1.25,
-      // Lasten — Wind & DIN 4103-1
-      wlz: "2", mitWind: "ja", qpFaktor: 2.1, cpe10: 0.8, torDominant: "dominant",
+      // Lasten — Wind & DIN 4103-1 (Wandtyp/mitWind steckt jetzt im Wandelement)
+      wlz: "2", qpFaktor: 2.1, cpe10: 0.8, torDominant: "dominant",
       gammaQ: 1.5, q1_I: 0.5, q1_II: 1.0, a_4103: 0.9,
       // Vorspannung
       e_m: 0.375, F0: 22, deltaF: 0.33, F_inf_min: 11, gammaP_fav: "1.1", gammaP_sup: 1.1,
