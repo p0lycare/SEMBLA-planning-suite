@@ -85,5 +85,34 @@ t("obj: gespeichert/gelesen", store.holeObj("i2") === "OBJDATEN");
 store.loescheObj("i2");
 t("obj: geloescht", store.holeObj("i2") === null);
 
+// 10) Preis-Roundtrip: geaenderter Einzelpreis ueberlebt Speichern -> v2-JSON
+//     -> Import (Issue #11 / Praezisierung: nur Legacy-`anzahl` wird ignoriert,
+//     `preise`/`waehrung` bleiben erhalten). Nutzt echtes storage.js, kein Mock.
+const wPreis = buildWall("Preiswand", 2000, 2600, []);
+const idP = store.speichere("Preiswand", wPreis);
+store.setzeAktiv(idP);
+const NEUER_PREIS = 12.5;   // bewusst != Standardpreis i3 (9.50)
+store.mergeEingaben("kosten", { preise: { i3: NEUER_PREIS } });
+t("roundtrip: geaenderter Preis im aktiven Element geladen",
+  store.aktiveEingaben().kosten.preise.i3 === NEUER_PREIS);
+
+// projektObjekt() -> Version 2 + exakt dieser Preis im eingaben-Block
+const proj = store.projektObjekt(idP);
+t("roundtrip: Export ist v2", proj.format === "SEMBLA-Projekt" && proj.version === 2);
+t("roundtrip: Preis im Export-eingaben-Block", proj.eingaben.kosten.preise.i3 === NEUER_PREIS);
+
+// serialisieren -> exakt derselbe JSON-Text -> importieren
+const jsonText = JSON.stringify(proj);
+t("roundtrip: JSON-Text enthaelt Preis", JSON.parse(jsonText).eingaben.kosten.preise.i3 === NEUER_PREIS);
+const idImport = store.importiereText(jsonText, "Preiswand.json");
+t("roundtrip: Import legt Element an + aktiv", store.aktivId() === idImport && idImport !== idP);
+
+// importiertes aktives Element liefert exakt den geaenderten Preis zurueck
+t("roundtrip: Preis nach Import wieder geladen",
+  store.holeEingaben(idImport).kosten.preise.i3 === NEUER_PREIS);
+// Nicht-Ziel-Absicherung: Legacy `anzahl` wird nicht eingefuehrt
+t("roundtrip: keine Mehrfachwand-Anzahl im Modell",
+  store.holeEingaben(idImport).kosten.anzahl === undefined);
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);
