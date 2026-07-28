@@ -31,11 +31,70 @@ const K_AKTIV = "sembla:aktiv";
 const K_VERSION = "sembla:version";
 const K_OBJ = (typ) => `sembla:obj:${typ}`;
 
-/** Aktuelle Schema-Version. Aeltere Staende werden beim Lesen migriert.
+/** Aktuelle Schema-Version des INTERNEN localStorage-Stands. Aeltere Staende
+ *  werden beim Laden einmalig migriert.
  *  v2: Eintrag kann `eingaben` (projekt/aufbau/kosten) tragen. Alt-Elemente
  *  ohne `eingaben` funktionieren weiter — fehlende Felder werden beim Lesen mit
- *  Standardwerten aufgefuellt (holeEingaben), nichts wird zerstoerend umgeschrieben. */
-export const SCHEMA_VERSION = 2;
+ *  Standardwerten aufgefuellt (holeEingaben), nichts wird zerstoerend umgeschrieben.
+ *  v3: `wandelement.wandtyp` wird einmalig aus dem Alt-Feld `eingaben.statik.mitWind`
+ *  abgeleitet (siehe `_migriereWandtyp`). */
+export const SCHEMA_VERSION = 3;
+
+/** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
+ *  Bleibt 2: `wandtyp` ist ein optionales Zusatzfeld im Wandelement, das aeltere
+ *  Staende einfach ignorieren — kein Bruch, daher kein Versionssprung. */
+export const PROJEKT_VERSION = 2;
+
+// --- Wandtyp (Fachmerkmal der Wand) --------------------------------------
+// Der Wandtyp klassifiziert die Windsituation; Modul 3 leitet daraus ab, ob Wind
+// als leitende Einwirkung angesetzt wird. Er gehoert an das WANDELEMENT (Single
+// Source of Truth) und wird beim Anlegen in Modul 0 gewaehlt. Modul 1 fuehrt ihn
+// unveraendert mit, Modul 3 liest ihn nur. Er hat keinen Einfluss auf
+// Tiling/BOM/Straenge und ist darum bewusst NICHT Teil des Cores/der Engine.
+
+/** @type {ReadonlyArray<'mit_wind'|'ohne_wind'>} */
+export const WANDTYPEN = ["mit_wind", "ohne_wind"];
+
+/** Standard = bisheriges Verhalten (Innenwand mit Wind, altes mitWind='ja'). */
+export const WANDTYP_DEFAULT = "mit_wind";
+
+/** Normalisiert einen Wandtyp; unbekannt/fehlend -> kompatibler Standard. */
+export function normWandtyp(t) {
+  return WANDTYPEN.includes(t) ? t : WANDTYP_DEFAULT;
+}
+
+/**
+ * Wandtyp eines Altbestands ableiten: aus dem ROHEN (nicht mit Standardwerten
+ * aufgefuellten) Alt-Feld `eingaben.statik.mitWind`.
+ *   true / 'ja'   -> 'mit_wind'
+ *   false / 'nein' -> 'ohne_wind'
+ *   fehlt          -> 'mit_wind' (kompatibler bisheriger Standard)
+ * @param {any} eingabenRoh die gespeicherten Eingaben OHNE standardEingaben()-Auffuellung
+ */
+export function wandtypAusLegacy(eingabenRoh) {
+  const mw = eingabenRoh && eingabenRoh.statik ? eingabenRoh.statik.mitWind : undefined;
+  if (mw === undefined || mw === null || mw === "") return WANDTYP_DEFAULT;
+  if (mw === false || mw === "nein") return "ohne_wind";
+  return WANDTYP_DEFAULT;
+}
+
+/**
+ * Einen Eintrag/ein Projekt-Objekt normalisieren: fehlt `wandelement.wandtyp`,
+ * wird er einmalig aus dem Alt-Feld abgeleitet, sonst nur normalisiert. Das
+ * Alt-Feld selbst bleibt unangetastet (Datenerhalt), wird aber nirgends mehr
+ * fachlich angewendet.
+ * @param {{wandelement?:any, eingaben?:any}} eintrag
+ * @returns {boolean} true, wenn das Wandelement veraendert wurde
+ */
+function _normalisiereWandtyp(eintrag) {
+  const w = eintrag && eintrag.wandelement;
+  if (!w || typeof w !== "object") return false;
+  const vorher = w.wandtyp;
+  w.wandtyp = (vorher === undefined || vorher === null)
+    ? wandtypAusLegacy(eintrag.eingaben)
+    : normWandtyp(vorher);
+  return w.wandtyp !== vorher;
+}
 
 // --- interne Helfer -------------------------------------------------------
 
@@ -73,15 +132,31 @@ function _istWandelement(o) {
 
 // --- Migration ------------------------------------------------------------
 
-/** Setzt/aktualisiert die Schema-Version. Platz fuer spaetere Datenmigration. */
+/** Setzt/aktualisiert die Schema-Version und fuehrt faellige Datenmigrationen aus. */
 export function migrieren() {
   let v = 0;
   try { v = Number(localStorage.getItem(K_VERSION)) || 0; } catch { /* ignore */ }
   if (v < SCHEMA_VERSION) {
-    // (v === 0): Erstinstallation oder Stand vor Versionierung — nichts umzuschreiben.
+    // (v === 0): Erstinstallation oder Stand vor Versionierung.
+    if (v < 3) _migriereWandtyp();
     localStorage.setItem(K_VERSION, String(SCHEMA_VERSION));
   }
   return SCHEMA_VERSION;
+}
+
+/**
+ * v3-Migration: jedes gespeicherte Wandelement ohne `wandtyp` bekommt ihn
+ * einmalig aus dem Alt-Feld `eingaben.statik.mitWind` abgeleitet. Laeuft genau
+ * einmal (danach steht das Feld am Wandelement) und schreibt nichts anderes um —
+ * insbesondere bleibt das Alt-Feld erhalten.
+ */
+function _migriereWandtyp() {
+  const map = _lesenMap();
+  let dirty = false;
+  for (const e of Object.values(map)) {
+    if (_normalisiereWandtyp(e)) dirty = true;
+  }
+  if (dirty) localStorage.setItem(K_ELEM, JSON.stringify(map));   // still: laeuft vor den Hoerern
 }
 
 // --- Lesen ----------------------------------------------------------------
@@ -228,6 +303,8 @@ export function parseImport(text) {
   else if (_istWandelement(obj)) { we = obj; name = obj.name; }
   else if (obj && _istWandelement(obj.wandelement)) { we = obj.wandelement; name = obj.name || obj.wandelement.name; }
   if (!we) throw new Error("Kein Wandelement in der Datei erkannt (length_mm/courses fehlen).");
+  // Alt-Dateien liefen nie durch migrieren() -> Wandtyp hier genauso einmalig ableiten.
+  _normalisiereWandtyp({ wandelement: we, eingaben });
   return { name: (name || "Importiert").toString(), wandelement: we, eingaben };
 }
 
@@ -310,16 +387,18 @@ export function standardEingaben() {
         verbinder: 1.20, latte: 3.50,
       },
     },
-    // Modul 3 — Statischer Nachweis (Schermer-Kennwerte; Geometrie/Oeffnungszahl
-    // kommen aus dem Wandelement und werden NICHT hier gespeichert). Flach nach
-    // Input-ID, damit der Projektstand des Nachweises reproduzierbar mitreist.
+    // Modul 3 — Statischer Nachweis (Schermer-Kennwerte; Geometrie, Oeffnungszahl
+    // UND Wandtyp/Windsituation kommen aus dem Wandelement und werden NICHT hier
+    // gespeichert). Flach nach Input-ID, damit der Projektstand des Nachweises
+    // reproduzierbar mitreist. Das Alt-Feld `mitWind` wird bewusst NICHT mehr als
+    // Standard erzeugt (ersetzt durch `wandelement.wandtyp`).
     statik: {
       // Material / Bibliothek
       f_k: 20, gamma_w: 13.8, gammaM_wand: 2.0, v_Rd: 3.5, mu_k: 0.5, gamma_mu: 1.5,
       // Gewindestange
       stab: "M10", As: 58, fyk_Stab: 640, fub_Stab: 800, gamma_s: 1.25,
-      // Lasten — Wind & DIN 4103-1
-      wlz: "2", mitWind: "ja", qpFaktor: 2.1, cpe10: 0.8, torDominant: "dominant",
+      // Lasten — Wind & DIN 4103-1 (Windsituation steckt im Wandtyp des Wandelements)
+      wlz: "2", qpFaktor: 2.1, cpe10: 0.8, torDominant: "dominant",
       gammaQ: 1.5, q1_I: 0.5, q1_II: 1.0, a_4103: 0.9,
       // Vorspannung
       e_m: 0.375, F0: 22, deltaF: 0.33, F_inf_min: 11, gammaP_fav: "1.1", gammaP_sup: 1.1,
@@ -376,7 +455,7 @@ export function projektObjekt(id) {
   const e = id ? holeElement(id) : aktivesElement();
   if (!e) throw new Error("Kein Element fuer den Export gewaehlt.");
   return {
-    format: "SEMBLA-Projekt", version: SCHEMA_VERSION, name: e.name,
+    format: "SEMBLA-Projekt", version: PROJEKT_VERSION, name: e.name,
     wandelement: e.wandelement, eingaben: holeEingaben(e.id),
   };
 }

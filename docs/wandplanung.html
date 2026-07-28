@@ -147,7 +147,14 @@ const M=1000;
 // aus window.SEMBLA (in __wpInit gebunden):
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store;
 // Storage-Anbindung (aktives Wandelement):
-let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false, booting=true;
+let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
+// hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
+// wird ausschliesslich in Modul 0 („Start"), dort wird auch der Wandtyp gewaehlt.
+let hatWand=false;
+// Wandtyp: Fachmerkmal des Wandelements. Modul 1 waehlt ihn nicht, sondern fuehrt ihn
+// unveraendert mit — buildWall() erzeugt das Wandelement neu, darum wird er nach jeder
+// Auslegung wieder angehaengt.
+let aktWandtyp=null;
 const SIDE_LABEL={fassade:'Fassade',innenausbau:'Innenausbau',sicht:'Sichtfläche',installation:'Installation'};
 let openings=[], stepsArr=[], VIEW='vorne', RESULT=null;
 let showDim=true, showRaster=false;
@@ -231,6 +238,7 @@ function vorgaben(){
 }
 
 function run(){
+  if(!hatWand){ renderLeer(); return; }        // ohne aktives Wandelement kein (fiktives) Ergebnis
   const auto=$('modus').value==='auto';
   $('manual').style.display=auto?'none':'block';
   $('itWrap').style.display=auto?'block':'none';
@@ -238,6 +246,7 @@ function run(){
   try{ RESULT = auto ? autoAuslegung(vorgaben()) : nachweisPruefen(vorgaben()); }
   catch(e){ err=e.message; }
   if(err){ $('statusBadge').className='badge no'; $('statusBadge').textContent='Eingabe ungültig'; $('warns').textContent=err; return; }
+  RESULT.wandelement.wandtyp=aktWandtyp;       // Wandtyp des Elements unveraendert mitfuehren
   const w=RESULT.wandelement, v=w.verification, nwOk=v.status==='geprüft';
   const vv=w.validation; const verbandOk = vv.versatz_ok && vv.buildable;
   const ok = nwOk && verbandOk;
@@ -267,7 +276,8 @@ function run(){
   persistAktiv(w);
 }
 // Ohne aktives Wandelement keine (fiktive) Vorschau: leere Zeichnung + Ergebnis.
-// Die erste echte Eingabe ruft run() und legt das Wandelement an (persistAktiv).
+// Angelegt wird das Wandelement ausschliesslich in Modul 0 („Start") — dort wird
+// auch der Wandtyp gewaehlt. Modul 1 verweist nur darauf.
 function renderLeer(){
   RESULT=null;
   $('statusBadge').className='badge'; $('statusBadge').textContent='Neu';
@@ -276,7 +286,7 @@ function renderLeer(){
   $('nwTable').querySelector('tbody').innerHTML='';
   $('itTable').querySelector('tbody').innerHTML='';
   $('plan').setAttribute('viewBox','0 0 1000 120');
-  $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — Werte eingeben; die erste Änderung legt es an.</text>';
+  $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.</text>';
 }
 function nwRow(name,e,wd,util,ok,gov){ return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀':''}</td><td>${e}</td><td>${wd}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`; }
 function renderNachweise(v){ const n=v.nachweise,g=v.governing.name;
@@ -380,20 +390,21 @@ function renderSteps(){ const c=$('stepsList'); c.innerHTML=''; if(!stepsArr.len
 function addStep(){ const {L}=dims(); const Bm=L/1000; stepsArr.push({x0:+(Bm/2).toFixed(3), x1:+Bm.toFixed(3), h:1.00}); renderSteps(); run(); }
 
 // ---------- Aktives Wandelement (localStorage) ----------
-// Auto-Speichern: jede Änderung fließt sofort ins aktive Wandelement. Existiert noch
-// keins, legt die erste echte Änderung eins an (nicht schon beim bloßen Laden der Seite).
+// Auto-Speichern: jede Änderung fließt sofort ins aktive Wandelement. Ohne aktives
+// Element wird hier NICHTS angelegt — Anlage (und Wandtyp-Wahl) gehören zu Modul 0.
 function persistAktiv(w){
   if(!saveEnabled || !store || !store.speichereAktiv) return;
-  const hatAktiv = !!(store.aktivId && store.aktivId());
-  if(!hatAktiv && booting) return;              // beim Laden ohne aktives Element nichts anlegen
-  const neu = !hatAktiv;
+  if(!(store.aktivId && store.aktivId())){
+    saveHint('Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.');
+    return;
+  }
   w.name=aktName; _selfSave=true;
   try{ currentId=store.speichereAktiv(w); } finally{ _selfSave=false; }
   const e=store.aktivesElement&&store.aktivesElement(); if(e&&e.name) aktName=e.name;
-  saveHint(neu ? '✓ Neues Wandelement angelegt und aktiv gesetzt' : '✓ Automatisch gespeichert', true);
+  saveHint('✓ Automatisch gespeichert', true);
 }
 function saveHint(t,ok){ const el=$('saveHint'); if(!el) return; el.textContent=t||''; el.className='savehint'+(ok?' ok':''); }
-function loadFromStore(we){ saveEnabled=false; try{ applyWand(we); } finally{ saveEnabled=true; } }
+function loadFromStore(we){ saveEnabled=false; hatWand=true; try{ applyWand(we); } finally{ saveEnabled=true; } }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
   currentId = store.aktivId ? store.aktivId() : null;
@@ -406,7 +417,7 @@ function setupStoreSync(){
       const we=store.aktivesWandelement&&store.aktivesWandelement();
       aktName=(e&&e.name)||(we&&we.name)||'Wand';
       if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
-      else { renderLeer(); saveHint('Kein aktives Wandelement — die erste Änderung legt automatisch eins an.'); }
+      else { hatWand=false; aktWandtyp=null; renderLeer(); saveHint('Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.'); }
     }
   });
 }
@@ -416,11 +427,13 @@ function loadInitial(){
   if(e&&e.name) aktName=e.name;
   else if(we&&we.name) aktName=we.name;
   if(we){ loadFromStore(we); saveHint('Aktives Wandelement geladen: '+aktName); }
-  else { renderSteps(); renderOps(); renderLeer(); saveHint('Kein aktives Wandelement — die erste Änderung legt automatisch eins an.'); }
+  else { hatWand=false; aktWandtyp=null; renderSteps(); renderOps(); renderLeer(); saveHint('Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.'); }
 }
 
 // ---------- Laden / Export (Datei) ----------
 function applyWand(w){
+  hatWand=true;
+  aktWandtyp=w.wandtyp;                          // read-only mitgefuehrt (keine Auswahl in Modul 1)
   $('len').value=(w.length_mm/1000).toFixed(3); $('hgt').value=(w.height_mm/1000).toFixed(2);
   if(w.sides){ $('sideVorne').value=(w.sides.vorne&&w.sides.vorne.funktion)||'fassade'; $('sideHinten').value=(w.sides.hinten&&w.sides.hinten.funktion)||'innenausbau'; }
   openings=(w.openings||[]).map(o=>({art:o.art||'tuer',x:o.g0*125/1000,w:(o.g1-o.g0)*125/1000,sill:(o.art==='fenster')?o.l0*200/1000:0,h:(o.l1-o.l0)*200/1000}));
@@ -483,7 +496,6 @@ window.__wpInit=function(){
   bindEvents();
   setupStoreSync();
   loadInitial();
-  booting=false;                                // ab jetzt: jede Änderung legt bei Bedarf ein Element an
 };
 </script>
 

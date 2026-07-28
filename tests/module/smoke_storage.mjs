@@ -114,5 +114,58 @@ t("roundtrip: Preis nach Import wieder geladen",
 t("roundtrip: keine Mehrfachwand-Anzahl im Modell",
   store.holeEingaben(idImport).kosten.anzahl === undefined);
 
+// 11) Wandtyp (Issue #6): zentrale Ableitung fuer Altbestaende ------------
+// Semantik: mitWind true/'ja' -> mit_wind, false/'nein' -> ohne_wind, fehlt -> mit_wind.
+t("legacy: 'ja' -> mit_wind", store.wandtypAusLegacy({ statik: { mitWind: "ja" } }) === "mit_wind");
+t("legacy: true -> mit_wind", store.wandtypAusLegacy({ statik: { mitWind: true } }) === "mit_wind");
+t("legacy: 'nein' -> ohne_wind", store.wandtypAusLegacy({ statik: { mitWind: "nein" } }) === "ohne_wind");
+t("legacy: false -> ohne_wind", store.wandtypAusLegacy({ statik: { mitWind: false } }) === "ohne_wind");
+t("legacy: fehlt -> Standard mit_wind", store.wandtypAusLegacy({ statik: {} }) === "mit_wind");
+t("legacy: gar keine Eingaben -> Standard", store.wandtypAusLegacy(undefined) === "mit_wind");
+t("normWandtyp: Unsinn -> Standard", store.normWandtyp("quatsch") === "mit_wind"
+  && store.normWandtyp("ohne_wind") === "ohne_wind");
+
+// Alt-Stand direkt in den localStorage legen (wie ihn ein v2-Browser hinterlassen haette)
+// und die einmalige Migration fahren.
+const altWand = (n, mitWind) => {
+  const w = buildWall(n, 2000, 2600, []);
+  delete w.wandtyp;
+  const e = { id: "alt-" + n, name: n, wandelement: w, erstellt: "x", geaendert: "x" };
+  if (mitWind !== undefined) e.eingaben = { statik: { mitWind } };
+  return e;
+};
+const altMap = {};
+for (const e of [altWand("AltJa", "ja"), altWand("AltNein", "nein"), altWand("AltOhneFeld", undefined)]) altMap[e.id] = e;
+localStorage.setItem("sembla:elemente", JSON.stringify(altMap));
+localStorage.setItem("sembla:version", "2");
+store.migrieren();
+
+const nachM = JSON.parse(localStorage.getItem("sembla:elemente"));
+t("migration: 'ja' -> mit_wind", nachM["alt-AltJa"].wandelement.wandtyp === "mit_wind");
+t("migration: 'nein' -> ohne_wind", nachM["alt-AltNein"].wandelement.wandtyp === "ohne_wind");
+t("migration: ohne Feld -> mit_wind", nachM["alt-AltOhneFeld"].wandelement.wandtyp === "mit_wind");
+t("migration: Alt-Feld bleibt erhalten (kein Datenverlust)",
+  nachM["alt-AltNein"].eingaben.statik.mitWind === "nein");
+t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "3");
+
+// idempotent: erneutes migrieren aendert nichts mehr
+nachM["alt-AltNein"].wandelement.wandtyp = "ohne_wind";
+store.migrieren();
+t("migration: laeuft nur einmal / idempotent",
+  JSON.parse(localStorage.getItem("sembla:elemente"))["alt-AltNein"].wandelement.wandtyp === "ohne_wind");
+
+// Import einer Alt-Datei (lief nie durch migrieren()) -> gleiche Ableitung
+const altProjekt = JSON.stringify({
+  format: "SEMBLA-Projekt", version: 2, name: "AltDatei",
+  wandelement: (() => { const w = buildWall("AltDatei", 2000, 2600, []); delete w.wandtyp; return w; })(),
+  eingaben: { statik: { mitWind: "nein" } },
+});
+const idAlt = store.importiereText(altProjekt, "AltDatei.json");
+t("import Altdatei: Wandtyp abgeleitet", store.holeElement(idAlt).wandelement.wandtyp === "ohne_wind");
+t("import Altdatei: Alt-Feld unangetastet", store.holeElement(idAlt).eingaben.statik.mitWind === "nein");
+t("import Altdatei: mitWind nicht in den Standardwerten", !("mitWind" in store.standardEingaben().statik));
+// Neues Feld ist im v2-Format optional -> Export bleibt v2
+t("export: Projektformat bleibt v2", store.projektObjekt(idAlt).version === 2);
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

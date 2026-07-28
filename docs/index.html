@@ -84,13 +84,21 @@
         <label for="f-hoehe">Höhe (mm, Vielfaches 200)</label>
         <input id="f-hoehe" type="number" step="200" min="200" value="2600">
       </div>
+      <div class="field">
+        <label for="f-wandtyp">Wandtyp (Windsituation)</label>
+        <select id="f-wandtyp" style="border:1px solid var(--sb-line);border-radius:7px;padding:7px 9px;font-size:14px;width:220px">
+          <option value="mit_wind" selected>Innenwand mit Wind (Cpi)</option>
+          <option value="ohne_wind">Innenwand ohne Wind</option>
+        </select>
+      </div>
       <button class="btn-p" id="btn-neu">Anlegen &amp; aktiv setzen</button>
       <label class="btn-s" for="f-import">Datei importieren…</label>
       <input id="f-import" type="file" accept=".json,application/json" hidden>
     </div>
     <div class="msg" id="msg"></div>
     <div class="hint">Öffnungen, Auslegung usw. entstehen in Modul&nbsp;1 (Wandplanung). Hier wird
-      das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen.</div>
+      das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen. Der <b>Wandtyp</b>
+      gehört zum Wandelement und wird nur hier beim Anlegen festgelegt; die übrigen Module lesen ihn.</div>
   </div>
 
   <h2>Projekt-Kopfdaten <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· aktives Wandelement</span></h2>
@@ -187,6 +195,8 @@
     const h = Number(document.getElementById('f-hoehe').value);
     try {
       const we = buildWall(name, l, h, []);
+      // Wandtyp ist ein Fachmerkmal der Wand und wird NUR hier (bei der Anlage) gewaehlt.
+      we.wandtyp = store.normWandtyp(document.getElementById('f-wandtyp').value);
       const id = store.speichere(name, we);
       store.setzeAktiv(id);
       zeige('Angelegt und aktiv gesetzt: ' + name, true);

@@ -15,9 +15,12 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
 const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',rodCm:'110',blechCm:'100',topConn:'blech'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
-// Storage-Mock: kein aktives Element -> Modul startet leer; erste Eingabe legt das Element an.
-let _subs=[];
-const storeMock={ aktivId:()=>null, aktivesElement:()=>null, aktivesWandelement:()=>null, speichereAktiv:()=>'w-test',
+// Storage-Mock: aktives Element ist in Modul 0 angelegt worden (inkl. Wandtyp) — Modul 1
+// legt selbst KEINS an. Der Leerfall wird am Ende separat geprüft.
+let _subs=[]; let gespeichert=null;
+const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
+const storeMock={ aktivId:()=>'w-start', aktivesElement:()=>({name:'Wand A'}), aktivesWandelement:()=>startWand,
+  speichereAktiv:(w)=>{ gespeichert=w; return 'w-start'; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store:storeMock };
 
@@ -26,10 +29,14 @@ globalThis.window.__wpInit();
 const WP=globalThis.window.__wp;
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
-// Ohne aktives Element startet Modul 1 leer (kein fiktives Wandelement) — die erste Eingabe legt es an.
-ok('Start ohne aktives Element -> leere Vorschau', !WP.RESULT && /Kein aktives Wandelement/.test(document.getElementById('plan').innerHTML));
-WP.run();   // erste echte Eingabe simulieren -> Auslegung läuft und legt das Wandelement an
-ok('Auslegung läuft, konvergiert', WP.RESULT && WP.RESULT.status==='konvergiert');
+// Mit aktivem Element rechnet Modul 1 direkt beim Laden.
+ok('aktives Element geladen -> Auslegung läuft, konvergiert', WP.RESULT && WP.RESULT.status==='konvergiert');
+// Issue #6 (M2): Modul 1 wählt keinen Wandtyp, führt den des Elements aber unverändert mit —
+// auch über den kompletten Neuaufbau durch buildWall() hinweg.
+ok('kein Wandtyp-Eingabefeld in Modul 1', !/id="wandtyp"/.test(html));
+ok('Wandtyp aus dem Wandelement mitgeführt', WP.RESULT.wandelement.wandtyp==='ohne_wind');
+WP.run();
+ok('Wandtyp überlebt erneuten Neuaufbau', WP.RESULT.wandelement.wandtyp==='ohne_wind');
 ok('Wandbild + Stränge', (document.getElementById('plan').innerHTML.match(/<rect/g)||[]).length>5 && document.getElementById('plan').innerHTML.includes('#1f6feb'));
 ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);
 ok('Steine-Zusammenfassung gefüllt (BOM-Tabelle jetzt in Modul 4)', /\d/.test(document.getElementById('rSteine').textContent));
@@ -129,9 +136,21 @@ document.getElementById('len').value='2.00'; document.getElementById('len').disp
 ok('Auto-Speichern übergibt Wandelement an Storage', saved && saved.length_mm>0 && !!saved.verification);
 
 // Externer Wechsel des aktiven Elements lädt Geometrie (Kopfdaten jetzt in Modul 0)
-storeMock.aktivId=()=>'w-ext'; storeMock.aktivesElement=()=>({name:'Ext'}); storeMock.aktivesWandelement=()=>buildWall('Ext',2000,2600,[]);
+storeMock.aktivId=()=>'w-ext'; storeMock.aktivesElement=()=>({name:'Ext'});
+storeMock.aktivesWandelement=()=>Object.assign(buildWall('Ext',2000,2600,[]),{wandtyp:'mit_wind'});
 _subs.forEach(cb=>cb());   // abonniere-Callback feuern (externer Wechsel)
 ok('Externer Wechsel lädt Wandelement', document.getElementById('len').value==='2.000');
+ok('Externer Wechsel übernimmt dessen Wandtyp', WP.RESULT.wandelement.wandtyp==='mit_wind');
+
+// Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.
+storeMock.aktivId=()=>null; storeMock.aktivesElement=()=>null; storeMock.aktivesWandelement=()=>null;
+saved=null;
+_subs.forEach(cb=>cb());   // externer Wechsel auf "kein aktives Element"
+ok('ohne aktives Element: leere Vorschau + Verweis auf Modul 0',
+  !WP.RESULT && /Kein aktives Wandelement/.test(document.getElementById('plan').innerHTML)
+  && /Start/.test(document.getElementById('saveHint').textContent));
+document.getElementById('len').value='3.00'; document.getElementById('len').dispatch('input');
+ok('ohne aktives Element: keine stille Neuanlage', saved===null && !WP.RESULT);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);
