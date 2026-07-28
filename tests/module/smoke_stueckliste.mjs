@@ -5,7 +5,8 @@
 // werden via store.mergeEingaben zurueckgeschrieben; Verbinder/Latten kommen aus dem Wandaufbau.
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { stuecklistePositionen, wandflaeche } from "../../docs/shared/sembla-export.js";
+import { stuecklistePositionen, wandflaeche, zuschnittCsv } from "../../docs/shared/sembla-export.js";
+import { berechneAufbau } from "../../docs/shared/sembla-aufbau.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 
 const html = readFileSync(new URL("../../docs/stueckliste.html", import.meta.url), "utf8");
@@ -109,6 +110,19 @@ _aktiv='w-2'; _we=W2; _eg=standardEingaben(); _eg.kosten.anzahl=5;   // Legacy-W
 _subs.forEach(cb=>cb());   // abonniere-Callback feuern (wie storage._benachrichtige)
 ok('externer Wechsel: Modul lädt neues aktives Wandelement', SL.wall && SL.wall.length_mm===2500);
 ok('externer Wechsel: Legacy-Anzahl ignoriert (Mengen ×1)', SL.rows().find(r=>r.label.includes('i3')).menge===W2.bom.i3);
+
+// Export nutzt dieselbe kanonische Aufbau-Berechnung wie Modul 2 (Issue #12): die an den
+// Türlaibungen verschobenen Achsen müssen 1:1 in Zuschnittliste und Verbindermenge ankommen.
+const WT=buildWall('Tuerwand', 3750, 3000, [new Opening(6,12,0,10,'tuer')]);
+const eg=standardEingaben();
+const AB=berechneAufbau(WT, eg.aufbau);
+const csvX=[...new Set(zuschnittCsv(WT, eg).trim().split('\n').slice(1).map(r=>+r.split(';')[0]))].sort((a,b)=>a-b);
+ok('Export: Zuschnittliste enthält genau die Achsen der Aufbau-Berechnung',
+   JSON.stringify(csvX)===JSON.stringify(AB.batt.axes.map(a=>a.x_cm)));
+ok('Export: keine Zuschnitt-Achse in der Öffnungs-Sperrzone (12,5 cm um 75/150)',
+   csvX.every(x=>Math.min(Math.abs(x-75),Math.abs(x-150))>=12.5-0.01));
+ok('Export: Verbindermenge in der Stückliste = Verbinder des Aufbaus',
+   stuecklistePositionen(WT, eg).find(r=>r.key==='verbinder').menge===AB.pts.length);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

@@ -151,5 +151,71 @@ ok('externer Wechsel: Modul lädt neues aktives Wandelement', WA.wall && WA.wall
 ok('externer Wechsel: Aufbau-Eingaben in UI übernommen (pB=125)', +document.getElementById('pB').value===125);
 ok('externer Wechsel: Beplankungsfeld aus Modell übernommen', WA.feld && WA.feld.x1===125);
 
+// ---------------------------------------------------------------------------
+// Öffnungslaibungen sperren Verbinderachsen (Issue #12).
+// An der linken/rechten Türlaibung ist der Stein geschnitten — dort gibt es keinen tragfähigen
+// Nutgrund. Mindestabstand ist der bestehende "max. Randüberstand" (12,5 cm), die Achse ist
+// global (durchgehende Latten): sie wandert über die ganze Wandhöhe von der Öffnung weg.
+// Alle Werte sind fachliche Sollwerte, keine Spiegelung der Implementierung.
+function setUI(v){ for(const [id,val] of Object.entries(v)){ const e=document.getElementById(id); e.value=String(val); e.dispatch('input'); } }
+const nahe=(a,b)=>Math.abs(a-b)<0.01;
+
+// --- A: Standard-Türfall aus dem Issue (3,75 × 3,00 m, Tür x 75–150 cm, Panel 62,5 × 150) ---
+WA.clearFeld();
+setUI({pB:62.5,pH:150,oX:0,oY:0,maxX:62.5,maxY:75,ohang:12.5,stock:150});
+WA.applyWand(buildWall('Tuerwand', 3750, 3000, [new Opening(6,12,0,10,'tuer')]));
+const T=WA.compute();
+const distKante=x=>Math.min(Math.abs(x-75),Math.abs(x-150));
+ok('A Tür: keine Achse näher als 12,5 cm an einer Laibung (75/150)', T.xs.every(x=>distKante(x)>=12.5-0.01));
+ok('A Tür: kein Verbinder näher als 12,5 cm an einer Laibung', T.pts.every(p=>distKante(p.x_cm)>=12.5-0.01));
+ok('A Tür: die gemeldeten Fehlpositionen (75|150 cm, y=150/190) existieren nicht mehr',
+   !T.pts.some(p=>(nahe(p.x_cm,75)||nahe(p.x_cm,150)) && (nahe(p.y_cm,150)||nahe(p.y_cm,190))));
+ok('A Tür: linke Laibung wandert nach links auf 62,5 (nicht nach innen auf 87,5)',
+   T.xs.some(x=>nahe(x,62.5)) && !T.xs.some(x=>nahe(x,87.5)));
+ok('A Tür: rechte Laibung wandert nach rechts auf 162,5 (nicht nach innen auf 137,5)',
+   T.xs.some(x=>nahe(x,162.5)) && !T.xs.some(x=>nahe(x,137.5)));
+ok('A Tür: Achsen dedupliziert und streng steigend',
+   T.xs.length===new Set(T.xs).size && T.xs.every((x,i)=>i===0||x>T.xs[i-1]+1e-9));
+ok('A Tür: Achsen sitzen auf gültigen Nuten (12,5-Raster, durchgehend/versetzt)',
+   T.xs.every(x=>T.nutRaster.some(n=>nahe(n.x_cm,x))));
+ok('A Tür: max. X-Abstand ≤ 62,5 cm trotz Verschiebung eingehalten',
+   T.xs.every((x,i)=>i===0||x-T.xs[i-1]<=62.5+0.01) && T.xGapWarn===false);
+ok('A Tür: Randüberstand weiterhin ≤ 12,5 cm', T.ohL<=12.5+1e-6 && T.ohR<=12.5+1e-6 && !T.ohWarn);
+ok('A Tür: Verbinder oberhalb der Tür bleiben erhalten (Wand bleibt beplankt)',
+   T.pts.some(p=>p.x_cm>75 && p.x_cm<150 && p.y_cm>200) && T.batt.summary.achsen===T.xs.length);
+ok('A Tür: Latten weiterhin durchgehend geplant (keine Segmentierung nach Höhe)', T.batt.summary.latten_stuecke>0);
+
+// --- B: Wand ohne Öffnung — unverändert gegenüber dem Stand vor der Laibungsregel ---
+// Sollwerte vor der Änderung gemessen und hier eingefroren (echtes Orakel, kein Selbstabgleich).
+WA.applyWand(buildWall('Ohnetuer', 3750, 3000, []));
+const O=WA.compute();
+ok('B ohne Öffnung: X-Achsen unverändert', JSON.stringify(O.xs)===JSON.stringify([12.5,62.5,125,187.5,250,312.5,362.5]));
+ok('B ohne Öffnung: Y-Reihen unverändert', JSON.stringify(O.ys)===JSON.stringify([10,70,150,230,290]));
+ok('B ohne Öffnung: Verbinderzahl unverändert (35)', O.pts.length===35);
+ok('B ohne Öffnung: Lattenbilanz unverändert (7 Achsen / 21 Stücke / 14 Stangen / 21,0 m)',
+   O.batt.summary.achsen===7 && O.batt.summary.latten_stuecke===21 && O.batt.summary.latten_15m_bedarf===14 && O.batt.summary.gesamtlaenge_m===21);
+ok('B ohne Öffnung: keine Warnungen', !O.ohWarn && !O.xGapWarn && O.batt.summary.warnungen===0);
+
+// --- C: geometrisch unlösbar → sicher bleiben und warnen, nicht kaschieren ---
+setUI({maxX:20});
+// Ohne Öffnung ändert die Laibungsregel nichts — auch nicht bei engem maxX. Dass das 12,5-Raster
+// 20 cm nicht exakt trifft (Rest 25 cm), ist bestehendes Verhalten und wird nur jetzt sichtbar.
+const X=WA.compute();
+ok('C ohne Öffnung: enges maxX liefert unverändert die bisherigen Achsen',
+   JSON.stringify(X.xs)===JSON.stringify([12.5,25,50,62.5,75,87.5,112.5,125,137.5,150,175,187.5,200,212.5,237.5,250,262.5,275,300,312.5,325,350,362.5]));
+WA.applyWand(buildWall('Tuerwand', 3750, 3000, [new Opening(6,12,0,10,'tuer')]));
+const K=WA.compute();
+ok('C Konflikt: Sperrzone bleibt auch bei maxX = 20 cm unverletzt', K.xs.every(x=>distKante(x)>=12.5-0.01));
+ok('C Konflikt: unerfüllbarer X-Abstand wird gemeldet statt kaschiert', K.xGapWarn===true && K.xGapMax>20+1e-6);
+ok('C Konflikt: Warnung ist in der Zeichnung sichtbar', /X-Abstand/.test(document.getElementById('cap').innerHTML));
+setUI({maxX:62.5});
+// Entartet: schmale Wand, deren gesamtes Nutraster in der Sperrzone liegt → lieber keine Achse als eine unsichere
+WA.applyWand(buildWall('Engpass', 375, 1000, [new Opening(1,2,0,5,'durchbruch')]));
+const E=WA.compute();
+ok('C entartet: keine unsichere Achse als Notlösung', E.xs.length===0 && E.pts.length===0);
+ok('C entartet: Zustand wird gemeldet und stürzt nicht ab', E.xGapWarn===true && E.ohL===null && !E.ohWarn && isFinite(E.util));
+ok('C entartet: Hinweis in der Zeichnung', /keine zulässige Verbinderachse/.test(document.getElementById('cap').innerHTML));
+WA.applyWand(W);
+
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

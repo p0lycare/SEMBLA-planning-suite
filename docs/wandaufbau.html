@@ -198,7 +198,9 @@ function draw(R){
   if(fieldArm) s+=`<text x="${X(0)}" y="16" font-size="12" fill="#c9461c">Feld aufziehen: klicken & ziehen …</text>`;
   $('plan').innerHTML=s;
   const ohTxt = (R.ohL!=null) ? ` · Randüberstand li/re ${fmt(R.ohL,1)}/${fmt(R.ohR,1)} cm${R.ohWarn?' ⚠ > '+fmt(R.maxOh,1)+' cm':''}` : '';
-  $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(+$('pB').value,1)} × ${fmt(+$('pH').value,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · Seite ${SIDE==='vorne'?'Vorderseite':'Rückseite'} (${FUNKTION_LABEL[curFunktion()]||curFunktion()})<span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span>`;
+  // Öffnungslaibungen sperren Achsen (durchtrennte Nut); bleibt dadurch eine Lücke, wird sie gemeldet statt kaschiert.
+  const gapTxt = R.xGapWarn ? (xs.length ? ` · ⚠ X-Abstand ${fmt(R.xGapMax,1)} cm > ${fmt(R.maxX,1)} cm (Öffnungslaibung sperrt Nutachse)` : ' · ⚠ keine zulässige Verbinderachse (Öffnungslaibungen sperren das Nutraster)') : '';
+  $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(+$('pB').value,1)} × ${fmt(+$('pH').value,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · Seite ${SIDE==='vorne'?'Vorderseite':'Rückseite'} (${FUNKTION_LABEL[curFunktion()]||curFunktion()})<span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span><span style="color:#c9461c">${gapTxt}</span>`;
 }
 
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).

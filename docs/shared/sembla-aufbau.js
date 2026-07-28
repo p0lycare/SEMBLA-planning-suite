@@ -112,12 +112,39 @@ function nutStatus(w, xcm) {
   if (cov === 0) return "none";
   if (inter === cov) return "cont"; if (inter === 0) return "joint"; return "stagger";
 }
-function nutAxes(lo, hi, panel, off, max, edges, B, w) {
+function nutAxes(lo, hi, panel, off, max, edges, B, w, ops, clr) {
   const grid = []; for (let x = NUTS; x <= B - NUTS + 1e-6; x += NUTS) if (x >= lo - 1e-6 && x <= hi + 1e-6) grid.push(+x.toFixed(2));
-  if (!grid.length) return [snapNut((lo + hi) / 2)];
+  // Sperrzone an den seitlichen Oeffnungslaibungen: dort ist der Stein geschnitten, die Nut
+  // also durchtrennt. Mindestabstand ist der bestehende "max. Randueberstand" (clr) — keine
+  // eigene Eingabe. Nur linke/rechte Kante (keine Sturzregel); die Achse ist global, gilt also
+  // ueber die ganze Wandhoehe. Sicherheit hat Vorrang: es gibt KEINEN Fallback, der eine Achse
+  // innerhalb der Sperrzone zulaesst — im Konflikt bleibt die Achsenmenge lieber leer/luecken-
+  // behaftet, was ueber die abgeleiteten Warnungen (ohWarn/xGapWarn) sichtbar wird.
+  const kanten = clr > 0 ? (ops || []).flatMap(o => [o.x0, o.x1]) : [];
+  const frei = x => kanten.every(e => Math.abs(x - e) > clr - 1e-6);
+  // Richtung "von der Oeffnung weg" (nur als Tie-Break bei gleich weiten Kandidaten):
+  // an der linken Laibung nach links, an der rechten nach rechts.
+  const wegDir = x => {
+    let best = null, bd = Infinity;
+    for (const o of (ops || [])) {
+      if (Math.abs(x - o.x0) < bd) { bd = Math.abs(x - o.x0); best = -1; }
+      if (Math.abs(x - o.x1) < bd) { bd = Math.abs(x - o.x1); best = +1; }
+    }
+    return kanten.length ? best : 0;
+  };
+  if (!grid.length) { const c = snapNut((lo + hi) / 2); return frei(c) ? [c] : []; }
   const interior = grid.filter(x => { const st = nutStatus(w, x); return st === "cont" || st === "stagger"; });
-  const usable = interior.length ? interior : grid;
-  const near = x => usable.reduce((b, c) => Math.abs(c - x) < Math.abs(b - x) - 1e-9 ? c : b, usable[0]);
+  const usable = (interior.length ? interior : grid).filter(frei);
+  if (!usable.length) return [];
+  const near = x => {
+    const dir = wegDir(x);
+    return usable.reduce((b, c) => {
+      const dc = Math.abs(c - x), db = Math.abs(b - x);
+      if (dc < db - 1e-9) return c;
+      if (dc > db + 1e-9) return b;
+      return (dir && (c - x) * dir > (b - x) * dir + 1e-9) ? c : b;   // gleich weit -> von der Oeffnung weg
+    }, usable[0]);
+  };
   const L = usable[0], R = usable[usable.length - 1]; const set = new Set([L, R]);
   for (let k = 0; ; k++) { const x = off + k * panel; if (x > hi + 1e-6) break; if (x > lo - 1e-6) set.add(near(x)); }
   for (const e of (edges || [])) if (e > lo - 1e-6 && e < hi + 1e-6) set.add(near(e));
@@ -162,11 +189,17 @@ export function berechneAufbau(w, a) {
   const xEdges = []; ops.forEach(o => { xEdges.push(o.x0, o.x1); }); relSteps.forEach(st => { xEdges.push(st.x0_mm / 10, st.x1_mm / 10); });
   const yEdges = []; ops.forEach(o => { if (o.y0 > 0) yEdges.push(o.y0); if (o.y1 < H) yEdges.push(o.y1); }); relSteps.forEach(st => { const t = st.height_mm / 10; if (t > 0 && t < H) yEdges.push(t); });
   const pB = +panel.b_cm || 62.5, pH = +panel.h_cm || 150, oX = +panel.off_x_cm || 0, oY = +panel.off_y_cm || 0;
-  const xs = nutAxes(fx0, fx1, pB, oX, +achsen.max_x_cm || 62.5, xEdges, B, w);
+  const maxOh = +achsen.ohang_cm || 12.5, maxX = +achsen.max_x_cm || 62.5;
+  const xs = nutAxes(fx0, fx1, pB, oX, maxX, xEdges, B, w, ops, maxOh);
   const ys = snapCourses(axesRange(fy0, fy1, pH, oY, +achsen.max_y_cm || 75, yEdges), fy0, fy1);
-  const maxOh = +achsen.ohang_cm || 12.5;
-  const ohL = +(xs[0] - fx0).toFixed(2), ohR = +(fx1 - xs[xs.length - 1]).toFixed(2);
-  const ohWarn = ohL > maxOh + 1e-6 || ohR > maxOh + 1e-6;
+  // Abgeleitete Warnungen (nie gespeichert): Randueberstand wie bisher, dazu der X-Abstand.
+  // Laesst die Sperrzone keine sichere Achse zu, bleibt die Luecke bestehen und wird gemeldet —
+  // statt sie mit einem Verbinder auf durchtrennter Nut zu kaschieren.
+  const ohL = xs.length ? +(xs[0] - fx0).toFixed(2) : null, ohR = xs.length ? +(fx1 - xs[xs.length - 1]).toFixed(2) : null;
+  const ohWarn = ohL != null && (ohL > maxOh + 1e-6 || ohR > maxOh + 1e-6);
+  let xGapMax = 0; for (let i = 1; i < xs.length; i++) xGapMax = Math.max(xGapMax, xs[i] - xs[i - 1]);
+  xGapMax = +xGapMax.toFixed(2);
+  const xGapWarn = xs.length === 0 || xGapMax > maxX + 1e-6;
   const inOpen = (x, y) => ops.some(o => x > o.x0 + 1e-6 && x < o.x1 - 1e-6 && y > o.y0 + 1e-6 && y < o.y1 - 1e-6);
   const stat = x => nutStatus(w, x);
   const pts = [];
@@ -190,6 +223,6 @@ export function berechneAufbau(w, a) {
   const batt = layoutToBattens(layout, { stockCm: +latten.stange_cm || 150, clipY: [fy0, fy1], axisTop });
   return {
     w, B, H, fx0, fx1, fy0, fy1, xs, ys, pts, nutRaster, steps, relSteps, localTop, axisTop,
-    layout, batt, atReal, util, ok, ohL, ohR, maxOh, ohWarn,
+    layout, batt, atReal, util, ok, ohL, ohR, maxOh, ohWarn, maxX, xGapMax, xGapWarn,
   };
 }
