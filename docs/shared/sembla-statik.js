@@ -230,3 +230,68 @@ export const DEFAULTS = {
   rho: 13.8, fy: 235, gammaG: 1.35, dyn: 1.30, nAnker: 2,
   blechB_mm: 80, blechT_mm: 35, hebelBlech_m: 0.375,
 };
+
+// ---------- Datenmodell → Nachweis-Parameter (DOM-frei) ----------
+// Das gespeicherte `eingaben.statik` (flach nach Input-ID, siehe storage.js) und das
+// Wandelement (Single Source of Truth fuer Geometrie/Oeffnungszahl/Wandtyp) muessen auf
+// den Parametersatz von nachweise() abgebildet werden. Diese Abbildung liegt hier
+// ZENTRAL — genutzt von Modul 3 (readP) UND vom zentralen Export (sembla-export.js),
+// damit beide bit-genau denselben Nachweis rechnen (kein Drift).
+
+/** Numerische Kennwerte des `eingaben.statik`-Abschnitts. */
+export const KENNWERT_NUM = [
+  "f_k", "gamma_w", "gammaM_wand", "v_Rd", "mu_k", "gamma_mu",
+  "As", "fyk_Stab", "fub_Stab", "gamma_s", "qpFaktor", "cpe10", "gammaQ", "q1_I", "q1_II", "a_4103",
+  "e_m", "F0", "deltaF", "F_inf_min", "gammaP_sup",
+  "Nv1", "mRk1", "Nv2", "mRk2", "Nv3", "mRk3",
+  "b_Steg", "b_KpO", "t_KpO", "b_FpU", "t_FpU", "fyk_Platte", "gammaM0", "gammaM2",
+  "k2_SK", "k2_Senk", "L_Mutter_min", "L_Mutter_vorh", "l_Platte",
+  "eW_Winkel", "rho", "fy", "gammaG", "dyn", "nAnker", "blechB_mm", "blechT_mm", "hebelBlech_m",
+];
+
+/** Auswahl-Kennwerte (im Modell als Zeichenkette gespeichert). */
+export const KENNWERT_SEL = ["wlz", "torDominant", "gammaP_fav", "stab"];
+
+/** Alle Schluessel des `eingaben.statik`-Abschnitts (keine Geometrie, kein Wandtyp). */
+export const KENNWERT_KEYS = KENNWERT_NUM.concat(KENNWERT_SEL);
+
+/**
+ * Wandtyp → Windsituation. Die kanonische Normalisierung/Migration liegt in
+ * storage.js; hier nur die abhaengigkeitsfreie Wiederholung der Regel
+ * (alles ausser 'ohne_wind' → mit Wind, wie WANDTYP_DEFAULT).
+ */
+export function mitWindAusWandtyp(wandtyp) { return wandtyp !== "ohne_wind"; }
+
+/** Oeffnungen mit echter Breite zaehlen (aus dem Wandelement). */
+export function zaehleOeffnungen(w) {
+  if (w && Array.isArray(w.openings)) return w.openings.filter(o => (((o.g1 - o.g0) || o.b) || 0) > 0).length;
+  return +((w && w.n_oeff) || 0) || 0;
+}
+
+/**
+ * Nachweis-Parameter aus Wandelement + gespeicherten Kennwerten bauen.
+ * Geometrie (h/L/t), Oeffnungszahl und Wandtyp kommen AUSSCHLIESSLICH aus dem
+ * Wandelement; die Kennwerte ausschliesslich aus `eingaben.statik`.
+ * @param {object|null} wandelement Wandelement (oder {height_mm,length_mm,thickness_mm,n_oeff,wandtyp})
+ * @param {object|null} kennwerte `eingaben.statik`
+ */
+export function nachweisParams(wandelement, kennwerte) {
+  const w = wandelement || {}, s = kennwerte || {};
+  const p = {};
+  for (const k of KENNWERT_NUM) { const v = +s[k]; p[k] = Number.isFinite(v) ? v : DEFAULTS[k]; }
+  p.wlz = Number.isFinite(+s.wlz) ? +s.wlz : DEFAULTS.wlz;
+  p.gammaP_fav = Number.isFinite(+s.gammaP_fav) ? +s.gammaP_fav : DEFAULTS.gammaP_fav;
+  p.torDominant = (typeof s.torDominant === "boolean") ? s.torDominant : s.torDominant === "dominant";
+  p.stab = s.stab;
+  // Prüfwerte §6.2 → Stützstellen der Interpolation
+  const pr = [{ Nv: p.Nv1, mRk: p.mRk1 }, { Nv: p.Nv2, mRk: p.mRk2 }, { Nv: p.Nv3, mRk: p.mRk3 }];
+  p.pruef = pr.every(q => Number.isFinite(q.Nv) && Number.isFinite(q.mRk)) ? pr : DEFAULTS.pruef;
+  // Single Source of Truth: Wandelement
+  p.h_m = (+w.height_mm || 0) / 1000;
+  p.L_m = (+w.length_mm || 0) / 1000;
+  p.t_m = (+w.thickness_mm || 0) / 1000;
+  p.n_oeff = zaehleOeffnungen(w);
+  p.mitWind = mitWindAusWandtyp(w.wandtyp);
+  p.zusatz_je_seite = 2;
+  return p;
+}

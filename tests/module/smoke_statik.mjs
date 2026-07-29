@@ -6,8 +6,11 @@ const html = readFileSync(new URL("../../docs/statik.html", import.meta.url), "u
 // und wird von diesem Muster nicht erfasst — es enthält import und liefe in eval nicht).
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
+// Auswahlfelder (im HTML <select>) — readStatik() liefert dafür Zeichenketten wie im Browser.
+const SELECTS=['stab','wlz','torDominant','gammaP_fav'];
 class El {
-  constructor(id){ this.id=id; this.value=undefined; this.textContent=''; this._h=''; this.className=''; this.style={}; this.files=[]; this.listeners={}; }
+  constructor(id){ this.id=id; this.tagName=SELECTS.includes(id)?'SELECT':'INPUT';
+    this.value=undefined; this.textContent=''; this._h=''; this.className=''; this.style={}; this.files=[]; this.listeners={}; }
   addEventListener(e,f){ (this.listeners[e]||(this.listeners[e]=[])).push(f); }
   dispatch(e){ (this.listeners[e]||[]).forEach(f=>f({target:this})); }
   get innerHTML(){ return this._h; } set innerHTML(v){ this._h=v; }
@@ -122,6 +125,21 @@ ok('persistStatik schreibt nur Statik-Kennwerte',
 
 // zurück auf die Referenzwand für die restlichen Prüfungen
 S.applyWand({name:'Referenz',length_mm:6000,height_mm:3000,thickness_mm:123,openings:[],wandtyp:'mit_wind'},'Aktiv');
+
+// ---- Issue #3: Modul 3 und der zentrale Export teilen dasselbe Mapping ------------
+// readP() delegiert an das zentrale nachweisParams(); damit rechnet der Export-Nachweis
+// bit-genau dasselbe wie die Oberfläche (kein Drift, keine Formeländerung).
+const pUI=S.readP();
+const pZentral=statik.nachweisParams(
+  {name:'Referenz',length_mm:6000,height_mm:3000,thickness_mm:123,openings:[],wandtyp:'mit_wind'},
+  S.readStatik());
+ok('readP() == nachweisParams(Wandelement, eingaben.statik)',
+  JSON.stringify(pUI)===JSON.stringify(pZentral));
+ok('zentrale Params ergeben identische Nachweiswerte',
+  near(S.nachweise(pZentral).eta_max_gesamt, S.nachweise(pUI).eta_max_gesamt, 1e-12));
+ok('readStatik() liefert nur Kennwerte (keine Geometrie/kein Wandtyp)',
+  !('h_m' in S.readStatik()) && !('L_m' in S.readStatik()) && !('t_m' in S.readStatik())
+  && !('n_oeff' in S.readStatik()) && !('wandtyp' in S.readStatik()) && !('mitWind' in S.readStatik()));
 
 // ---- Ohne aktives Element: kein (fiktiver) Nachweis, sondern klare Leer-Anzeige ----
 storeMock.aktivId=()=>null; storeMock.aktivesWandelement=()=>null;

@@ -165,7 +165,7 @@ const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigi
 const pct=u=>fmt((isFinite(u)?u:0)*100,1)+' %';
 
 // aus window.SEMBLA (in __statikInit gebunden):
-let nachweise, STAB_KATALOG, store;
+let nachweise, nachweisParams, STAB_KATALOG, store;
 let currentId=null;
 let hasWand=false;   // true nur bei aktivem Wandelement — sonst kein (fiktiver) Nachweis
 // Geometrie, Öffnungszahl und Wandtyp kommen AUSSCHLIESSLICH aus dem aktiven Wandelement
@@ -196,23 +196,11 @@ function readStatik(){ const o={}; for(const k of STATIK_KEYS){ const el=$(k); i
 function persistStatik(){ if(store&&store.mergeEingaben) store.mergeEingaben('statik', readStatik()); }
 function applyStatikEingaben(s){ if(!s) return; for(const k of STATIK_KEYS){ if(s[k]==null) continue; const el=$(k); if(el) el.value=s[k]; } }
 
-function readP(){
-  const p={};
-  for(const f of NUM) p[f]=+$(f).value;
-  p.wlz=+$('wlz').value;
-  // Geometrie/Öffnungszahl/Wandtyp AUS dem aktiven Wandelement (nicht aus dem DOM):
-  const aw=activeWand||{};
-  p.h_m=(aw.height_mm||0)/1000;
-  p.L_m=(aw.length_mm||0)/1000;
-  p.t_m=(aw.thickness_mm||0)/1000;
-  p.n_oeff=aw.n_oeff||0;
-  p.mitWind=normWandtyp(aw.wandtyp)==='mit_wind';   // Wandtyp -> Windsituation
-  p.torDominant=$('torDominant').value==='dominant';
-  p.gammaP_fav=+$('gammaP_fav').value;
-  p.pruef=[{Nv:p.Nv1,mRk:p.mRk1},{Nv:p.Nv2,mRk:p.mRk2},{Nv:p.Nv3,mRk:p.mRk3}];
-  p.zusatz_je_seite=2;
-  return p;
-}
+// Kennwerte aus dem DOM (= eingaben.statik), Geometrie/Öffnungszahl/Wandtyp AUS dem
+// aktiven Wandelement (nicht aus dem DOM). Die Abbildung auf die Nachweis-Parameter
+// liegt zentral in sembla-statik.js (nachweisParams) — dieselbe Funktion nutzt der
+// zentrale Export in Modul 0, damit beide denselben Nachweis rechnen (kein Drift).
+function readP(){ return nachweisParams(activeWand, readStatik()); }
 
 // Read-only-Zusammenfassung der Wandwerte (Geometrie/Öffnungszahl/Wandtyp).
 function renderGeomSummary(){
@@ -365,11 +353,13 @@ function bindEvents(){
   ['wlz','torDominant','gammaP_fav'].forEach(f=>$(f).addEventListener('change',()=>{ persistStatik(); run(); }));
 }
 
-window.__statik={ run, readP, applyWand, get nachweise(){return nachweise;}, get STAB_KATALOG(){return STAB_KATALOG;} };
+window.__statik={ run, readP, readStatik, applyWand, get nachweise(){return nachweise;},
+  get nachweisParams(){return nachweisParams;}, get STAB_KATALOG(){return STAB_KATALOG;} };
 
 window.__statikInit=function(){
   const S=window.SEMBLA||{};
-  nachweise=S.statik&&S.statik.nachweise; STAB_KATALOG=S.statik&&S.statik.STAB_KATALOG; store=S.store;
+  nachweise=S.statik&&S.statik.nachweise; nachweisParams=S.statik&&S.statik.nachweisParams;
+  STAB_KATALOG=S.statik&&S.statik.STAB_KATALOG; store=S.store;
   bindEvents();
   setupStoreSync();
   loadInitial();
