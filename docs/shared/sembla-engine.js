@@ -85,7 +85,8 @@ function pruefe(w, vorg, N) {
 function stepsOf(vorg) { return vorg.steps || []; }
 // Prestress-Durchreiche: Hardware-Felder (rod_mm, blech_mm, top_connection) bleiben erhalten
 function psOf(vorg, extra) { const p = vorg.prestress || {};
-  return { ...extra, rod_mm: p.rod_mm, blech_mm: p.blech_mm, top_connection: p.top_connection, columns_grid: p.columns_grid }; }
+  return { ...extra, rod_mm: p.rod_mm, blech_mm: p.blech_mm, top_connection: p.top_connection, columns_grid: p.columns_grid,
+           start_axis_grid: p.start_axis_grid }; }
 function buildN(vorg, sp) {
   return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg));
 }

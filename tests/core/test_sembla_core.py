@@ -116,6 +116,38 @@ class TensionRules(unittest.TestCase):
         self.assertIn(op["g0"] - 1, ks)   # links der Tuer
         self.assertIn(op["g1"], ks)       # rechts der Tuer
 
+    # Issue #13: Startachse der Auto-Verteilung (1. oder 2. Rasterachse), danach balanciert
+    # mit Abstaenden <= max_span_grid weiter. N=16 ist bewusst NICHT glatt durch 3 teilbar.
+    @staticmethod
+    def _ks(**ps):
+        return [c["k"] for c in build_wall("sa", 2000, 2600, [], prestress=ps)["tension_columns"]]
+
+    def test_start_axis_default_is_first_axis(self):
+        ks = self._ks(max_span_grid=3)
+        self.assertEqual(ks[0], 0)
+        self.assertEqual(ks, self._ks(max_span_grid=3, start_axis_grid=0))
+        self.assertEqual(ks, [0, 3, 6, 9, 12, 15])
+
+    def test_start_axis_second_axis(self):
+        N, x = 16, 3
+        ks = self._ks(max_span_grid=x, start_axis_grid=1)
+        self.assertEqual(ks[0], 1)              # Startanker
+        self.assertEqual(ks[-1], N - 1)         # Endanker
+        self.assertNotIn(0, ks)
+        for a, b in zip(ks, ks[1:]):
+            self.assertLessEqual(b - a, x, f"Abstand {a}->{b}")
+        self.assertEqual(ks, [1, 4, 7, 9, 12, 15])   # 3,3,2,3,3 (nicht glatt teilbar)
+
+    def test_start_axis_extras_and_manual_precedence(self):
+        op = [Opening(5, 11, 0, 10, "tuer")]
+        ks = {c["k"] for c in build_wall("sa", 2000, 2600, op,
+                                         prestress={"max_span_grid": 3, "start_axis_grid": 1})["tension_columns"]}
+        self.assertIn(4, ks); self.assertIn(11, ks)      # Oeffnungskanten additiv
+        self.assertNotIn(0, ks); self.assertIn(15, ks)
+        m = build_wall("sa", 2000, 2600, [], prestress={"max_span_grid": 3, "start_axis_grid": 1,
+                                                        "columns_grid": [0, 8, 15]})
+        self.assertEqual([c["k"] for c in m["tension_columns"]], [0, 8, 15])
+
     def test_max_span_within_runs(self):
         # innerhalb durchgehender Steinfelder <= 375 mm (3 Raster)
         for key in REFERENCE_WALLS:

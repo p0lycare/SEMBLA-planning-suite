@@ -40,6 +40,16 @@ Ort der Anlage ist, legt **Modul 1 kein Wandelement mehr selbst an** — ohne ak
 darauf. Achtung: `SCHEMA_VERSION` (interner localStorage-Stand) ist bewusst getrennt von
 `PROJEKT_VERSION` (öffentliches Dateiformat, bleibt 2 — `wandtyp` ist dort ein optionales Feld).
 
+**Spannachsen-Verteilung (`wandelement.prestress`).** `max_span_grid` bleibt der **maximale**
+Achsabstand („jede x-te Achse"); die Achsen werden von der Startachse bis zur letzten Achse `N-1`
+**balanciert** verteilt (gleiche Schritte ≤ x), nicht strikt periodisch. `start_axis_grid` legt die
+**Startachse** fest: `0` = 1. Rasterachse (**Default**, auch bei fehlendem Feld in Altständen), `1` =
+2. Rasterachse. **Gewählt wird sie ausschließlich in Modul 1**; gerechnet wird sie im Core
+(`sembla-core.js`/Python-Orakel), die Engine reicht sie nur durch. Zusatzachsen an Öffnungs- und
+Stufenkanten bleiben **additiv**; manuell gesetzte Achsen (`columns_grid`, Sonderkonstruktion) haben
+**Vorrang** vor der Auto-Verteilung. Das Feld ist optional/abwärtskompatibel — kein Schema-/
+Projektformat-Bruch.
+
 **Export/Import ist zentral** (Modul 0, `docs/index.html`): ein Häkchen-Dialog baut über
 `sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
 Projekt-Datei = `{format:'SEMBLA-Projekt',version:2,name,wandelement,eingaben}` (`store.projektObjekt`);
@@ -96,7 +106,7 @@ Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Ras
 | Nr. | Datei | Inhalt |
 |---|---|---|
 | 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)** |
-| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`) — **erzeugt** das Wandelement |
+| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
 | 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); Preise/Anzahl → `eingaben.kosten` (Export läuft zentral über Modul 0) |

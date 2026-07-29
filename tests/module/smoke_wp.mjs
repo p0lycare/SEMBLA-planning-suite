@@ -12,7 +12,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   setAttribute(){} getBoundingClientRect(){return {left:0,width:1000};} get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
-const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',rodCm:'110',blechCm:'100',topConn:'blech'};
+const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',rodCm:'110',blechCm:'100',topConn:'blech'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
 // Storage-Mock: aktives Element ist in Modul 0 angelegt worden (inkl. Wandtyp) — Modul 1
@@ -129,6 +129,42 @@ WP.delAxis(8); ok('Achse löschen (k=8)', !WP.manualCols.includes(8));
 WP.setAxisEdit(true); ok('Achsen-Editor an + Griffe gezeichnet', WP.axisEdit===true && /cursor:grab/.test(document.getElementById('plan').innerHTML));
 WP.setManualCols(null); ok('Zurück zu Auto (columns_grid null)', WP.RESULT.wandelement.prestress.columns_grid===null && WP.manualCols===null);
 WP.setAxisEdit(false);
+
+// Issue #13: Startachse der Vorspannung (1./2. Rasterachse) über den echten Handler.
+// N=16 (2,00 m) ist bewusst nicht glatt durch den Strangabstand teilbar.
+// Sauberer Ausgangszustand: glatte 2,00-m-Wand laden (setzt Öffnungen/Staffelung zurück),
+// fester Nachweis-Modus mit Strangabstand 3 -> deterministische Achsen.
+WP.applyWand(Object.assign(buildWall('T13',2000,2600,[]),{wandtyp:'mit_wind'}));
+document.getElementById('modus').value='nachweis'; document.getElementById('spacing').value='3';
+document.getElementById('force').value='60'; WP.run();
+ok('Auswahlfeld Startachse in Modul 1 vorhanden', /id="startAchse"/.test(html));
+const ks0=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
+ok('Default = 1. Rasterachse (Bestand)', WP.RESULT.wandelement.prestress.start_axis_grid===0 && ks0[0]===0);
+document.getElementById('startAchse').value='1'; document.getElementById('startAchse').dispatch('change');
+const w13=WP.RESULT.wandelement, ks1=w13.tension_columns.map(c=>c.k), x13=w13.prestress.max_span_grid;
+ok('Auswahl wirkt bis ins Wandelement (prestress)', w13.prestress.start_axis_grid===1);
+ok('Startanker auf 2. Rasterachse (k=1), keine Achse auf k=0', ks1[0]===1 && !ks1.includes(0));
+ok('Endanker bleibt letzte Achse N-1', ks1[ks1.length-1]===w13.N_grid-1);
+ok('alle Abstände <= Strangabstand x', ks1.every((k,i)=>i===0||k-ks1[i-1]<=x13));
+ok('Fortführung ab Startachse (nicht glatt teilbar)', JSON.stringify(ks1)==='[1,4,7,9,12,15]' && x13===3);
+document.getElementById('startAchse').value='0'; document.getElementById('startAchse').dispatch('change');
+ok('Zurück auf 1. Rasterachse', WP.RESULT.wandelement.prestress.start_axis_grid===0 &&
+   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[0,3,6,9,12,15]');
+// auch im Auto-Modus (Strangabstand von der Engine optimiert) wirkt die Startachse
+document.getElementById('modus').value='auto'; document.getElementById('startAchse').value='1';
+document.getElementById('startAchse').dispatch('change');
+const wA=WP.RESULT.wandelement, ksA=wA.tension_columns.map(c=>c.k);
+ok('Auto-Modus: Startachse 2 wirkt, Abstände <= optimiertem x', wA.prestress.start_axis_grid===1 &&
+   ksA[0]===1 && ksA[ksA.length-1]===wA.N_grid-1 && ksA.every((k,i)=>i===0||k-ksA[i-1]<=wA.prestress.max_span_grid));
+document.getElementById('modus').value='nachweis'; document.getElementById('startAchse').value='0';
+document.getElementById('startAchse').dispatch('change');
+// Wiederherstellung beim Laden eines gespeicherten Wandelements
+WP.applyWand(Object.assign(buildWall('Gespeichert',2000,2600,[],null,{start_axis_grid:1}),{wandtyp:'mit_wind'}));
+ok('Startachse aus gespeichertem Wandelement wiederhergestellt',
+   document.getElementById('startAchse').value==='1' && WP.RESULT.wandelement.prestress.start_axis_grid===1);
+const alt=buildWall('Alt',2000,2600,[]); delete alt.prestress.start_axis_grid;   // Altstand ohne Feld
+WP.applyWand(Object.assign(alt,{wandtyp:'mit_wind'}));
+ok('Altstand ohne Feld -> 1. Rasterachse', document.getElementById('startAchse').value==='0' && WP.RESULT.wandelement.tension_columns[0].k===0);
 
 // Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element
 let saved=null; storeMock.speichereAktiv=(w)=>{ saved=w; return 'w-neu'; };

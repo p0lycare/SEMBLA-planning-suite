@@ -175,8 +175,12 @@ def _norm_prestress(p):
         cg = cg or None
     else:
         cg = None
+    # Startachse der Auto-Verteilung: 0 = 1. Rasterachse (Standard/Bestand), 1 = 2. Rasterachse
+    _sa = p.get("start_axis_grid")
+    sa = 1 if (_sa == 1 and not isinstance(_sa, bool)) or _sa == "1" else 0
     return {"max_span_grid": m, "force_kN": fk if fk is not None else None,
-            "rod_mm": rod, "blech_mm": bl, "top_connection": top, "columns_grid": cg}
+            "rod_mm": rod, "blech_mm": bl, "top_connection": top, "columns_grid": cg,
+            "start_axis_grid": sa}
 
 def _norm_steps(steps, length_mm, height_mm):
     out = []
@@ -276,8 +280,11 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         # Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden
         col_ks = sorted(k for k in _PS["columns_grid"] if 0 <= k < N)
     else:
-        colset = {0, N - 1}
-        for c in _balanced_fill(0, N - 1, _maxspan):
+        # Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse); ab da balanciert
+        # weiterverteilt mit Abstaenden <= max_span_grid bis zur letzten Achse N-1.
+        a0 = min(_PS["start_axis_grid"], N - 1)
+        colset = {a0, N - 1}
+        for c in _balanced_fill(a0, N - 1, _maxspan):
             colset.add(c)
         for op in openings:
             if op.g0 - 1 >= 0: colset.add(op.g0 - 1)

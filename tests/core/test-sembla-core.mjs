@@ -101,6 +101,33 @@ t("kein Segment in der Oeffnung; über/unter Öffnung vorhanden; Abstand<=375 ok
   assert(span.some(c => c.segments.some(g => g.lage0 >= op.l1)), "keine Vorspannung über Fenster");
   assert(w.validation.tension_span_ok);
 });
+// Issue #13: Startachse der Auto-Verteilung (1. oder 2. Rasterachse), danach balanciert
+// mit Abstaenden <= max_span_grid weiter. N=16 ist bewusst NICHT glatt durch 3 teilbar.
+const ksOf = (ps) => buildWall("sa", 2000, 2600, [], null, ps).tension_columns.map(c => c.k);
+t("Startachse: Default = 1. Achse (Bestand, k=0)", () => {
+  const ks = ksOf({ max_span_grid: 3 });
+  assert(ks[0] === 0, `Startanker ${ks[0]}`);
+  assert(JSON.stringify(ks) === JSON.stringify(ksOf({ max_span_grid: 3, start_axis_grid: 0 })), "explizit 0 == Default");
+  assert(JSON.stringify(ks) === "[0,3,6,9,12,15]", JSON.stringify(ks));
+});
+t("Startachse 2 (k=1): Startanker, Endanker N-1, alle Abstaende <= x", () => {
+  const N = 16, x = 3;
+  const ks = ksOf({ max_span_grid: x, start_axis_grid: 1 });
+  assert(ks[0] === 1, `Startanker ${ks[0]}`);
+  assert(ks[ks.length - 1] === N - 1, `Endanker ${ks[ks.length - 1]}`);
+  assert(!ks.includes(0), "keine Achse auf der 1. Rasterachse");
+  for (let i = 0; i < ks.length - 1; i++) assert(ks[i + 1] - ks[i] <= x, `Abstand ${ks[i]}->${ks[i + 1]}`);
+  assert(JSON.stringify(ks) === "[1,4,7,9,12,15]", JSON.stringify(ks));   // 3,3,2,3,3 (nicht glatt teilbar)
+});
+t("Startachse: Oeffnungskanten bleiben additiv, columns_grid hat Vorrang", () => {
+  const op = [new Opening(5, 11, 0, 10, "tuer")];
+  const w = buildWall("sa", 2000, 2600, op, null, { max_span_grid: 3, start_axis_grid: 1 });
+  const ks = new Set(w.tension_columns.map(c => c.k));
+  assert(ks.has(4) && ks.has(11), "Oeffnungskanten");
+  assert(!ks.has(0) && ks.has(15), "Startachse 2 + Endachse");
+  const m = buildWall("sa", 2000, 2600, [], null, { max_span_grid: 3, start_axis_grid: 1, columns_grid: [0, 8, 15] });
+  assert(JSON.stringify(m.tension_columns.map(c => c.k)) === "[0,8,15]", "manuelle Achsen haben Vorrang");
+});
 t("Ablaengen: 2600mm -> 3 Stangen (durchgehendes Segment)", () => {
   const c = buildWall("t", 1000, 2600, []).tension_columns[0];
   assert(c.durchgehend, "durchgehend");

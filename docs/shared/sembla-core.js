@@ -132,7 +132,7 @@ function normSides(s) {
   return { vorne: { funktion: f(s && s.vorne, "fassade") }, hinten: { funktion: f(s && s.hinten, "innenausbau") } };
 }
 
-export const DEFAULT_PRESTRESS = { max_span_grid: MAX_SPAN_GRID, force_kN: null };
+export const DEFAULT_PRESTRESS = { max_span_grid: MAX_SPAN_GRID, force_kN: null, start_axis_grid: 0 };
 function normPrestress(p) {
   const m = (p && Number.isInteger(p.max_span_grid) && p.max_span_grid >= 1) ? p.max_span_grid : MAX_SPAN_GRID;
   const fk = (p && p.force_kN != null) ? p.force_kN : null;
@@ -142,7 +142,9 @@ function normPrestress(p) {
   // manuelle Spannachsen (Rasterindizes) – wenn gesetzt, exakt diese statt Auto-Verteilung
   let cg = Array.isArray(p && p.columns_grid) ? p.columns_grid.map(Number).filter(k => Number.isInteger(k) && k >= 0) : null;
   cg = (cg && cg.length) ? [...new Set(cg)].sort((a, b) => a - b) : null;
-  return { max_span_grid: m, force_kN: fk, rod_mm: rod, blech_mm: blech, top_connection: top, columns_grid: cg };
+  // Startachse der Auto-Verteilung: 0 = 1. Rasterachse (Standard/Bestand), 1 = 2. Rasterachse
+  const sa = (p && (p.start_axis_grid === 1 || p.start_axis_grid === "1")) ? 1 : 0;
+  return { max_span_grid: m, force_kN: fk, rod_mm: rod, blech_mm: blech, top_connection: top, columns_grid: cg, start_axis_grid: sa };
 }
 
 function normSteps(steps, lengthMm, heightMm) {
@@ -228,8 +230,11 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     // Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden
     colArr = PS.columns_grid.filter(k => k >= 0 && k < N).sort((a, b) => a - b);
   } else {
-    const colSet = new Set([0, N - 1]);
-    for (const c of balancedFill(0, N - 1, maxSpan)) colSet.add(c);
+    // Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse); ab da balanciert
+    // weiterverteilt mit Abstaenden <= max_span_grid bis zur letzten Achse N-1.
+    const a0 = Math.min(PS.start_axis_grid, N - 1);
+    const colSet = new Set([a0, N - 1]);
+    for (const c of balancedFill(a0, N - 1, maxSpan)) colSet.add(c);
     for (const op of openings) { if (op.g0 - 1 >= 0) colSet.add(op.g0 - 1); if (op.g1 <= N - 1) colSet.add(op.g1); }
     // Stufenkanten: an jeder Höhenstufe ein Strang beidseitig der Kante (Vorspannung läuft an der Treppe entlang)
     for (let k = 0; k < N - 1; k++) { if (topLage[k] !== topLage[k + 1]) { colSet.add(k); colSet.add(k + 1); } }

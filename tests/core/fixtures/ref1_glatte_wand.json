@@ -24,7 +24,8 @@
     "rod_mm": 1100,
     "blech_mm": 1000,
     "top_connection": "blech",
-    "columns_grid": null
+    "columns_grid": null,
+    "start_axis_grid": 0
   },
   "base_plate": {
     "rolle": "bodenblech",

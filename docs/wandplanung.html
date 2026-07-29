@@ -85,6 +85,10 @@
         <label><span>Vorspannkraft N</span><input type="number" id="force" value="60" step="5"><small>kN/Strang</small></label>
       </div>
     </div>
+    <div class="grp"><h3>Spannachsen</h3>
+      <label><span>Erste Vorspannung</span><select id="startAchse"><option value="0" selected>1. Rasterachse (Standard)</option><option value="1">2. Rasterachse</option></select></label>
+      <small style="color:var(--sb-muted)">Ab dieser Achse werden die weiteren Spannachsen im gewählten Strangabstand (max. jede x-te Achse) fortgeführt. Achsen an Öffnungs- und Stufenkanten kommen zusätzlich hinzu; manuelle Achsen (Sonderkonstruktion) haben Vorrang.</small>
+    </div>
     <div class="grp"><h3>Vorspann-Hardware</h3>
       <label><span>Gewindestangenlänge</span><input type="number" id="rodCm" value="110" step="5" min="20"><small>cm</small></label>
       <label><span>Blechlänge (Module)</span><input type="number" id="blechCm" value="100" step="10" min="20"><small>cm</small></label>
@@ -231,8 +235,9 @@ function vorgaben(){
   const rod_mm=Math.max(200, Math.round((+$('rodCm').value||110)*10));   // cm -> mm, min 20 cm
   const blech_mm=Math.max(200, Math.round((+$('blechCm').value||100)*10));
   const top_connection=($('topConn').value==='spannplatte')?'spannplatte':'blech';
-  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, rod_mm, blech_mm, top_connection };
-  else v.prestress={ rod_mm, blech_mm, top_connection };                // Auto-Modus: N/Abstand optimiert die Engine
+  const start_axis_grid=(+$('startAchse').value===1)?1:0;               // 1. (Standard) oder 2. Rasterachse
+  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, rod_mm, blech_mm, top_connection, start_axis_grid };
+  else v.prestress={ rod_mm, blech_mm, top_connection, start_axis_grid };   // Auto-Modus: N/Abstand optimiert die Engine
   if(manualCols && manualCols.length) v.prestress.columns_grid=manualCols.slice();   // Sonderkonstruktion: feste Achsen
   return v;
 }
@@ -442,7 +447,8 @@ function applyWand(w){
   else { $('modus').value='auto'; }
   if(w.rod_mm) $('rodCm').value=Math.round(w.rod_mm/10);
   if(w.prestress){ if(w.prestress.blech_mm) $('blechCm').value=Math.round(w.prestress.blech_mm/10);
-    if(w.prestress.top_connection) $('topConn').value=w.prestress.top_connection; }
+    if(w.prestress.top_connection) $('topConn').value=w.prestress.top_connection;
+    $('startAchse').value=(+w.prestress.start_axis_grid===1)?'1':'0'; }   // fehlt (Altstand) -> 1. Achse
   manualCols=(w.prestress&&Array.isArray(w.prestress.columns_grid)&&w.prestress.columns_grid.length)?w.prestress.columns_grid.slice():null;
   if(w.name) aktName=w.name;
   renderSteps(); renderOps(); run();
@@ -464,7 +470,7 @@ function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchHin
 let axisDragging=false;
 function bindEvents(){
   ['len','hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','rodCm','blechCm'].forEach(id=>$(id).addEventListener('input',run));
-  ['sideVorne','sideHinten','modus','topConn'].forEach(id=>$(id).addEventListener('change',run));
+  ['sideVorne','sideHinten','modus','topConn','startAchse'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; $('durchHint').style.display=editMode?'block':'none'; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });
