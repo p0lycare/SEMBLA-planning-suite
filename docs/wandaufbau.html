@@ -11,13 +11,20 @@
   .bar{display:flex;gap:10px 14px;align-items:center;padding:11px 20px;flex-wrap:wrap}
   button{padding:8px 12px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
   button.primary{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  /* Auswahlmodus „Beplankungsfeld“: Zustand am Button und an der Zeichenfläche sichtbar */
+  button#fieldMode.active{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
+  .pickhint{font-size:12.5px;color:var(--sb-accent);font-weight:600}
   .wrap{display:grid;grid-template-columns:280px 1fr 260px;gap:14px;padding:6px 20px 20px}
   .card{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:10px;padding:14px}
   .grp{margin-bottom:12px} .grp h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--sb-muted)}
   label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;margin:5px 0}
   label input,label select{width:110px;padding:5px 7px;border:1px solid var(--sb-line);border-radius:6px;background:#fff}
   label small{color:var(--sb-muted)}
-  svg{width:100%;height:auto;background:#fbfcfd;border:1px solid var(--sb-line);border-radius:8px}
+  /* touch-action/user-select: kein Scroll-Abbruch und keine Textmarkierung der i2/i3-Labels beim Ziehen */
+  svg{width:100%;height:auto;background:#fbfcfd;border:1px solid var(--sb-line);border-radius:8px;
+      -webkit-user-select:none;user-select:none;touch-action:none}
+  svg#plan.picking{cursor:crosshair;border-color:var(--sb-accent);box-shadow:0 0 0 3px rgba(31,111,235,.18)}
   .ov{font-size:13px} .ov .r{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #e7eaee}
   .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600}
   .badge.ok{background:#e6f5ec;color:#1f7a3d} .badge.no{background:#fdece4;color:#b8460f}
@@ -35,8 +42,9 @@
 <div class="bar">
   <label style="width:auto">Seite&nbsp;<select id="side"><option value="vorne">Vorderseite</option><option value="hinten">Rückseite</option></select></label>
   <label style="width:auto">Aufbau (aus Modul 1)&nbsp;<b id="aufbau" style="font-weight:600">–</b></label>
-  <button id="fieldMode">Beplankungsfeld aufziehen</button>
+  <button id="fieldMode" aria-pressed="false">Beplankungsfeld aufziehen</button>
   <button id="fieldClear">ganze Wand</button>
+  <span id="fieldHint" class="pickhint" style="display:none"></span>
   <label style="width:auto"><input type="checkbox" id="showNut" checked> Nutenraster</label>
   <label style="width:auto"><input type="checkbox" id="showStones" checked> Steine i2/i3</label>
   <label style="width:auto"><input type="checkbox" id="showMasse" checked> Maße</label>
@@ -102,6 +110,9 @@
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 let WALL=null, EINGABEN=null, SIDE='vorne', FELD=null, LASTDRAW=null, fieldArm=false;
+let PREVIEW=null, HOVER=null;   // nur Anzeige (Auswahlmodus), nie gespeichert
+// Kurze Bedienerklärung — im Kopf der Leiste und als Banner in der Zeichenfläche (SVG-sicher, kein &/").
+const PICK_HINT='Auswahlmodus: Rasterpunkt anklicken, ziehen, loslassen · Escape oder Auswahl beenden bricht ab';
 // aus window.SEMBLA (in __waInit gebunden):
 let buildWall, Opening, store, berechneAufbau, VERBINDER_KATALOG;
 let currentId=null;
@@ -178,6 +189,24 @@ function draw(R){
     for(const [gx,gy] of [[fx0,fy0],[hx,fy0],[fx1,fy0],[fx1,hy],[fx1,fy1],[hx,fy1],[fx0,fy1],[fx0,hy]])
       s+=`<rect x="${X(gx)-4}" y="${Y(gy)-4}" width="8" height="8" fill="#fff" stroke="#1f7a3d" stroke-width="1.5" style="cursor:pointer"/>`;
   }
+  // Auswahlmodus: erlaubte Rasterpunkte, anvisierter Punkt und live gesnappte Vorschau.
+  // Gezeichnet werden genau die nach der bestehenden Snap-Regel (grids()/snapArr) erlaubten
+  // Eckpunkte — auch solche, die wegen einer Abtreppung optisch über der Wandfläche liegen.
+  // Die sind weiterhin wählbar (keine neue Regel), nur etwas schwächer gezeichnet.
+  if(fieldArm){
+    const g=grids();
+    for(const gxv of g.gx) for(const gyv of g.gy){
+      const inFlaeche = gyv <= th(Math.max(0,Math.min(N2-1,Math.floor(gxv/gcm))))+1e-6;
+      s+=`<circle class="snapdot" cx="${X(gxv)}" cy="${Y(gyv)}" r="${inFlaeche?2.7:2.3}" fill="#1f6feb" fill-opacity="${inFlaeche?0.85:0.42}"/>`;
+    }
+    if(PREVIEW){ const px0=Math.min(PREVIEW.x0,PREVIEW.x1), px1=Math.max(PREVIEW.x0,PREVIEW.x1);
+      const py0=Math.min(PREVIEW.y0,PREVIEW.y1), py1=Math.max(PREVIEW.y0,PREVIEW.y1);
+      s+=`<rect class="fieldpreview" x="${X(px0)}" y="${Y(py1)}" width="${(px1-px0)*sc}" height="${(py1-py0)*sc}" fill="#1f9d55" fill-opacity="0.12" stroke="#1f9d55" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+      s+=`<text x="${X((px0+px1)/2)}" y="${Y(py1)-4}" font-size="11" fill="#1f7a3d" text-anchor="middle">${fmt(px1-px0,1)} × ${fmt(py1-py0,1)} cm</text>`; }
+    if(HOVER){ s+=`<circle class="snaphover" cx="${X(HOVER.x)}" cy="${Y(HOVER.y)}" r="6.5" fill="none" stroke="#1f6feb" stroke-width="2"/>`+
+      `<circle cx="${X(HOVER.x)}" cy="${Y(HOVER.y)}" r="2.7" fill="#1f6feb"/>`+
+      `<text x="${X(HOVER.x)+9}" y="${Y(HOVER.y)-8}" font-size="10" fill="#1f6feb">${fmt(HOVER.x,1)} / ${fmt(HOVER.y,1)} cm</text>`; }
+  }
   // Maße der Verbinderpositionen (x ab linker Wandkante) + Achsabstände
   if(mass && xs.length){ const yB=Y(0)+16, C='#46505e';
     s+=`<line x1="${X(xs[0])}" y1="${yB}" x2="${X(xs[xs.length-1])}" y2="${yB}" stroke="${C}" stroke-width="0.6"/>`;
@@ -195,7 +224,7 @@ function draw(R){
      `<circle cx="${X(0)+4}" cy="${vbH-8}" r="3.4" fill="#1f6feb"/><text x="${X(0)+12}" y="${vbH-5}">durchgehende Nut</text>`+
      `<circle cx="${X(0)+150}" cy="${vbH-8}" r="3.4" fill="#e8702a"/><text x="${X(0)+158}" y="${vbH-5}">versetzte Nut (lagenweise)</text>`+
      `</g>`;
-  if(fieldArm) s+=`<text x="${X(0)}" y="16" font-size="12" fill="#c9461c">Feld aufziehen: klicken & ziehen …</text>`;
+  if(fieldArm) s+=`<text class="pickbanner" x="${X(0)}" y="16" font-size="12" fill="#1f6feb">${PICK_HINT}</text>`;
   $('plan').innerHTML=s;
   const ohTxt = (R.ohL!=null) ? ` · Randüberstand li/re ${fmt(R.ohL,1)}/${fmt(R.ohR,1)} cm${R.ohWarn?' ⚠ > '+fmt(R.maxOh,1)+' cm':''}` : '';
   // Öffnungslaibungen sperren Achsen (durchtrennte Nut); bleibt dadurch eine Lücke, wird sie gemeldet statt kaschiert.
@@ -228,10 +257,12 @@ function render(){
   draw(R);
 }
 let LAST=null;
-function run(){ render(); }
+// Ohne aktives Wandelement gibt es keine Fläche zum Aufziehen: Button sperren, Modus beenden
+// (kein Ersatz-Wandelement, der Leer-Hinweis bleibt).
+function run(){ $('fieldMode').disabled=!WALL; if(fieldArm && !WALL) setFieldModeState(false); render(); }
 
 function applyWand(w){ if(!w||!w.length_mm||!w.height_mm) throw new Error('Kein gültiges Wandelement (length_mm/height_mm fehlen).');
-  WALL=w; FELD=null;
+  WALL=w; FELD=null; setFieldModeState(false);   // neue Wand -> laufende Auswahl verwerfen
   if(!(w.sides&&w.sides[SIDE]) && w.sides) SIDE=Object.keys(w.sides)[0]||SIDE;
   applyFunktion(curFunktion()); syncSideUI(); run(); }
 function setInfo(t){ $('info').textContent=t||''; }
@@ -289,7 +320,22 @@ function evToCm(e){ if(!LASTDRAW) return {x:0,y:0}; const r=$('plan').getBoundin
   const {pad,sc,hPx}=LASTDRAW; return { x:(sx-pad)/sc, y:(hPx-(sy-pad))/sc }; }
 function setFeld(x0,x1,y0,y1){ const {B,H}=wallDims(); x0=Math.max(0,Math.min(B,x0));x1=Math.max(0,Math.min(B,x1));y0=Math.max(0,Math.min(H,y0));y1=Math.max(0,Math.min(H,y1));
   if(Math.abs(x1-x0)<5||Math.abs(y1-y0)<5){ FELD=null; } else { FELD={x0:Math.min(x0,x1),x1:Math.max(x0,x1),y0:Math.min(y0,y1),y1:Math.max(y0,y1)}; } persistAufbau(); run(); }
-function clearFeld(){ FELD=null; fieldArm=false; $('fieldMode').style.background='';$('fieldMode').style.color=''; persistAufbau(); run(); }
+// „ganze Wand“ setzt nur das Feld zurück — der Auswahlmodus bleibt, wie er ist (kein Zustandssprung).
+function clearFeld(){ FELD=null; PREVIEW=null; persistAufbau(); run(); }
+// ---------- Auswahlmodus (eigener Modus, explizit an/aus) ----------
+// setFieldModeState() schaltet nur den Zustand (ohne Re-Render, damit run() es aufrufen kann),
+// setFieldMode() ist der Weg für Button/Escape/Commit.
+function setFieldModeState(on){
+  fieldArm = !!on && !!WALL;
+  if(!fieldArm){ fdrag=null; PREVIEW=null; HOVER=null; }
+  const b=$('fieldMode');
+  b.textContent = fieldArm ? 'Auswahl beenden' : 'Beplankungsfeld aufziehen';
+  b.setAttribute('aria-pressed', fieldArm?'true':'false');
+  b.classList[fieldArm?'add':'remove']('active');
+  $('plan').classList[fieldArm?'add':'remove']('picking');
+  const h=$('fieldHint'); h.textContent = fieldArm ? PICK_HINT : ''; h.style.display = fieldArm ? '' : 'none';
+}
+function setFieldMode(on){ setFieldModeState(on); run(); }
 const MINFELD=12.5;   // Mindestkantenlänge cm (1 Raster)
 function grids(){ const {B,H}=wallDims(); return { gx:snapArr(B,+$('pB').value||62.5,+$('oX').value||0), gy:snapArr(H,+$('pH').value||150,+$('oY').value||0), B, H }; }
 function resizeFeld(edge, cm){ if(!FELD) return; const g=grids(); const f={...FELD};
@@ -302,32 +348,72 @@ function handleAt(p){ if(!FELD||!LASTDRAW) return null; const tol=9/LASTDRAW.sc;
   const H=[['x0','y0',x0,y0],['','y0',mx,y0],['x1','y0',x1,y0],['x1','',x1,my],['x1','y1',x1,y1],['','y1',mx,y1],['x0','y1',x0,y1],['x0','',x0,my]];
   for(const [ex,ey,hx,hy] of H) if(Math.abs(p.x-hx)<tol && Math.abs(p.y-hy)<tol) return {ex,ey}; return null; }
 let fdrag=null, fedit=null;
+// Pointer-Capture auf #plan: alle folgenden Pointer-Ereignisse landen hier, auch wenn der Zeiger die
+// Fläche verlässt. #plan selbst wird beim Neuzeichnen nicht ersetzt (nur innerHTML), die Capture hält.
+function capOn(e){ const p=$('plan'); if(p.setPointerCapture && e.pointerId!=null){ try{ p.setPointerCapture(e.pointerId); }catch(_){} } }
+function capOff(e){ const p=$('plan'); if(p.releasePointerCapture && e.pointerId!=null){ try{ p.releasePointerCapture(e.pointerId); }catch(_){} } }
 function bindFieldEvents(){
-  $('fieldMode').addEventListener('click',()=>{ fieldArm=!fieldArm; $('fieldMode').style.background=fieldArm?'#c9461c':''; $('fieldMode').style.color=fieldArm?'#fff':''; run(); });
+  $('fieldMode').addEventListener('click',()=>{ if(!WALL) return; setFieldMode(!fieldArm); });
   $('fieldClear').addEventListener('click',clearFeld);
-  $('plan').addEventListener('pointerdown',e=>{ if(!fieldArm) return; const {B,H}=wallDims(); const p=evToCm(e);
-    const gx=snapArr(B,+$('pB').value||62.5,+$('oX').value||0), gy=snapArr(H,+$('pH').value||150,+$('oY').value||0);
-    fdrag={x0:snap(p.x,gx),y0:snap(p.y,gy),gx,gy}; });
-  $('plan').addEventListener('pointermove',e=>{ if(!fieldArm||!fdrag) return; const p=evToCm(e);
-    fdrag.x1=snap(p.x,fdrag.gx); fdrag.y1=snap(p.y,fdrag.gy); });
-  window.addEventListener('pointerup',e=>{ if(!fieldArm||!fdrag) return; const p=evToCm(e);
-    const x1=snap(p.x,fdrag.gx), y1=snap(p.y,fdrag.gy); const d=fdrag; fdrag=null; fieldArm=false; $('fieldMode').style.background='';$('fieldMode').style.color='';
-    setFeld(d.x0,x1,d.y0,y1); });
-  // Bestehendes Feld nachträglich ziehen/verkleinern (Anfasser, wie PowerPoint)
-  $('plan').addEventListener('pointerdown',e=>{ if(fieldArm||!FELD) return; const p=evToCm(e); const h=handleAt(p); const g=grids();
+  // Beenden per Escape (zweiter Ausstieg neben dem Button)
+  window.addEventListener('keydown',e=>{ if(fieldArm && e.key==='Escape') setFieldMode(false); });
+  const plan=$('plan');
+  plan.addEventListener('pointerdown',e=>{
+    if(fieldArm){
+      if(e.preventDefault) e.preventDefault();     // keine Textmarkierung der i2/i3-Labels
+      capOn(e);
+      const g=grids(), p=evToCm(e);
+      const x0=snap(p.x,g.gx), y0=snap(p.y,g.gy);
+      fdrag={x0,y0,x1:x0,y1:y0,gx:g.gx,gy:g.gy};
+      HOVER={x:x0,y:y0}; PREVIEW={x0,y0,x1:x0,y1:y0};
+      run(); return;
+    }
+    // Bestehendes Feld nachträglich ziehen/verkleinern (Anfasser, wie PowerPoint)
+    if(!FELD) return; const p=evToCm(e); const h=handleAt(p); const g=grids();
     if(h){ fedit={mode:'resize',ex:h.ex,ey:h.ey}; }
-    else if(p.x>FELD.x0 && p.x<FELD.x1 && p.y>FELD.y0 && p.y<FELD.y1){ fedit={mode:'move',gx:g.gx,gy:g.gy,B:g.B,H:g.H,grabX:p.x,grabY:p.y,start:{...FELD}}; } });
-  $('plan').addEventListener('pointermove',e=>{ if(!fedit) return; const p=evToCm(e);
+    else if(p.x>FELD.x0 && p.x<FELD.x1 && p.y>FELD.y0 && p.y<FELD.y1){ fedit={mode:'move',gx:g.gx,gy:g.gy,B:g.B,H:g.H,grabX:p.x,grabY:p.y,start:{...FELD}}; }
+    if(fedit){ if(e.preventDefault) e.preventDefault(); capOn(e); } });
+  plan.addEventListener('pointermove',e=>{
+    if(fieldArm){
+      const p=evToCm(e), g=fdrag||grids();
+      const hx=snap(p.x,g.gx), hy=snap(p.y,g.gy);
+      if(!fdrag && HOVER && HOVER.x===hx && HOVER.y===hy) return;   // gleicher Rasterpunkt -> nicht neu zeichnen
+      HOVER={x:hx,y:hy};
+      if(fdrag){ fdrag.x1=hx; fdrag.y1=hy; PREVIEW={x0:fdrag.x0,y0:fdrag.y0,x1:hx,y1:hy}; }
+      run(); return;
+    }
+    if(!fedit) return; const p=evToCm(e);
     if(fedit.mode==='resize'){ if(fedit.ex) resizeFeld(fedit.ex,p.x); if(fedit.ey) resizeFeld(fedit.ey,p.y); }
     else { const s0=fedit.start, w0=s0.x1-s0.x0, h0=s0.y1-s0.y0;
       let nx0=snap(s0.x0+(p.x-fedit.grabX),fedit.gx); nx0=Math.max(0,Math.min(fedit.B-w0,nx0));
       let ny0=snap(s0.y0+(p.y-fedit.grabY),fedit.gy); ny0=Math.max(0,Math.min(fedit.H-h0,ny0));
       FELD={x0:nx0,x1:nx0+w0,y0:ny0,y1:ny0+h0}; run(); } });
-  window.addEventListener('pointerup',()=>{ if(fedit) persistAufbau(); fedit=null; });
+  // Abschluss des Aufziehens: nur ein tatsächlich gesetztes Feld beendet den Modus. Ein bloßer Klick
+  // oder ein zu kleines Feld (5-cm-Regel in setFeld, unverändert) lässt den Modus aktiv.
+  function endPick(e){
+    if(!fieldArm) return; capOff(e);
+    if(!fdrag) return;
+    const d=fdrag; fdrag=null; const p=evToCm(e);
+    const x1=snap(p.x,d.gx), y1=snap(p.y,d.gy);
+    PREVIEW=null; HOVER={x:x1,y:y1};
+    setFeld(d.x0,x1,d.y0,y1);                       // rechnet, persistiert und zeichnet
+    if(FELD) setFieldMode(false); else run();       // FELD gesetzt = erfolgreicher Commit
+  }
+  function endEdit(e){ if(!fedit) return; capOff(e); fedit=null; persistAufbau(); }
+  plan.addEventListener('pointerup',e=>{ if(fieldArm) endPick(e); else endEdit(e); });
+  plan.addEventListener('pointerleave',()=>{ if(fieldArm && !fdrag && HOVER){ HOVER=null; run(); } });
+  // Abbruch durch das System (z. B. Touch-Geste): laufendes Ziehen verwerfen, Modus bleibt aktiv.
+  plan.addEventListener('pointercancel',e=>{ capOff(e);
+    if(fieldArm){ fdrag=null; PREVIEW=null; run(); return; }
+    if(fedit){ fedit=null; persistAufbau(); } });
+  // Sicherheitsnetz, falls die Capture nicht greift (altes/kein Pointer-Capture): identische Abschlüsse.
+  window.addEventListener('pointerup',e=>{ if(fieldArm) endPick(e); else endEdit(e); });
 }
 
-window.__wa={ applyWand, compute, readAufbau, setFeld, resizeFeld, clearFeld, run,
-  get wall(){return WALL;}, get side(){return SIDE;}, get feld(){return FELD;}, get LAST(){return LAST;} };
+window.__wa={ applyWand, compute, readAufbau, setFeld, resizeFeld, clearFeld, run, setFieldMode,
+  get wall(){return WALL;}, get side(){return SIDE;}, get feld(){return FELD;}, get LAST(){return LAST;},
+  get fieldArm(){return fieldArm;}, get preview(){return PREVIEW;}, get hover(){return HOVER;},
+  get view(){return LASTDRAW;} };
 
 window.__waInit=function(){
   const S=window.SEMBLA||{};
