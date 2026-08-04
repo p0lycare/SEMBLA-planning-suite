@@ -252,10 +252,43 @@ export function berechneAufbau(w, a) {
       if (y <= kTop + 1e-6) { nutBlocked++; thin.add(x); }   // Material vorhanden, aber keine Nut
     }
   }
+  // ---------- [U-12] Endverbinder je realem Lattensegment (MUSS, unter [U-11]) ----------
+  // Das globale Kreuzraster xs × ys sichert einen Verbinder nur an Wandfuss/Wandkrone, nicht an den
+  // Enden der TATSAECHLICHEN Lattensegmente (Issue #30: ueber einer Tuer blieb nur der obere
+  // Verbinder, weil das untere Lattenende die Tuer-Oberkante ist, das Raster aber vom Wandfuss aus
+  // gebildet wird). Jedes reale Segment bekommt daher zusaetzlich seine erste und letzte zulaessige
+  // Lage. Die Segmente entstehen aus GENAU derselben Quelle wie in layoutToBattens
+  // (solidIntervals + Clip auf [fy0, fy1] und axisTop) — kein zweites Modell, kein Drift; fiktive
+  // Stuecke durch eine Oeffnung entstehen dadurch nicht.
+  // Scope ([U-12.1]): je SEGMENT, nicht je physischem Zuschnittstueck — dafuer bleibt [U-8]
+  // zustaendig (Stoss mittig zwischen zwei Verbindern).
+  // [U-11] hat Vorrang: Kandidaten sind ausschliesslich Steinmitten mit in GENAU dieser Lage
+  // innenliegender Nut. Gibt es im Segment keine, entsteht KEIN Ersatzpunkt — das Segment bleibt
+  // ungeplant (layoutToBattens zaehlt es als Warnung) und wird ueber nutEndLeerSegmente gemeldet.
+  const segLagen = (x, S, E) => {
+    const out = [];
+    for (let m = 0; ; m++) { const y = +(m * COURSE + HALF).toFixed(2); if (y >= E - 1e-6) break; if (y > S + 1e-6 && nutInLage(w, x, y)) out.push(y); }
+    return out;
+  };
+  let nutEndZusatz = 0; const nutEndLeerSegmente = [];
+  for (const x of xs) {
+    const oben = Math.min(fy1, axisTop(x)), t = stat(x) === "cont" ? "C" : "I";
+    for (const [S0, E0] of solidIntervals(x, ops, H)) {
+      const S = Math.max(S0, fy0), E = Math.min(E0, oben);
+      if (E - S <= 1e-6) continue;                        // kein reales Segment auf dieser Achse
+      const cand = segLagen(x, S, E);
+      if (!cand.length) { nutEndLeerSegmente.push({ x_cm: x, y0_cm: +S.toFixed(2), y1_cm: +E.toFixed(2) }); continue; }
+      for (const y of [cand[0], cand[cand.length - 1]]) {   // ein Kandidat erfuellt beide Enden
+        if (pts.some(p => p.x_cm === x && Math.abs(p.y_cm - y) < 0.01)) continue;
+        pts.push({ x_cm: x, nut_cm: x, y_cm: y, type: t }); nutEndZusatz++;
+      }
+    }
+  }
+  pts.sort((a, b) => a.x_cm - b.x_cm || a.y_cm - b.y_cm);   // Reihenfolge bleibt deterministisch
   const nutGeoWarn = !((w.courses || []).length);
   const nutLeerAchsen = xs.filter(x => !pts.some(p => p.x_cm === x));
   const nutThinAxes = [...thin].sort((a, b) => a - b);
-  const nutWarn = nutGeoWarn || nutBlocked > 0 || nutLeerAchsen.length > 0;
+  const nutWarn = nutGeoWarn || nutBlocked > 0 || nutLeerAchsen.length > 0 || nutEndLeerSegmente.length > 0;
   const nutRaster = [];
   for (let x = NUTS; x <= B - NUTS + 1e-6; x += NUTS) { const t = stat(+x.toFixed(2)); if (t === "cont" || t === "stagger") nutRaster.push({ x_cm: +x.toFixed(2), status: t }); }
   const Rd = (+verb.Rk || 0.5) / (+verb.gM || 2.0);
@@ -277,5 +310,6 @@ export function berechneAufbau(w, a) {
     w, B, H, fx0, fx1, fy0, fy1, xs, ys, pts, nutRaster, steps, relSteps, localTop, axisTop,
     layout, batt, atReal, util, ok, ohL, ohR, maxOh, ohWarn, maxX, xGapMax, xGapWarn,
     nutBlocked, nutThinAxes, nutLeerAchsen, nutGeoWarn, nutWarn,
+    nutEndZusatz, nutEndLeerSegmente,
   };
 }

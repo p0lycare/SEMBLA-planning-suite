@@ -242,8 +242,11 @@ function draw(R){
   // [U-11] Verbinder nur auf einer lagenweise innenliegenden Nut. Verworfene Positionen werden
   // gemeldet statt durch Ersatzpunkte kaschiert; fehlende Lagengeometrie ist ein sicherer Leerfall.
   const nutTxt = R.nutWarn ? (R.nutGeoWarn ? ' · ⚠ keine Lagengeometrie im Wandelement — keine Verbinder ableitbar'
-    : ` · ⚠ ${R.nutBlocked} Position(en) ohne innenliegende Nut entfallen${R.nutThinAxes.length?' (Achsen '+R.nutThinAxes.map(x=>fmt(x,1)).join('/')+' cm)':''}${R.nutLeerAchsen.length?', Achsen ohne Verbinder: '+R.nutLeerAchsen.map(x=>fmt(x,1)).join('/')+' cm':''}`) : '';
-  $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(+$('pB').value,1)} × ${fmt(+$('pH').value,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · Seite ${SIDE==='vorne'?'Vorderseite':'Rückseite'} (${FUNKTION_LABEL[curFunktion()]||curFunktion()})<span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span><span style="color:#c9461c">${gapTxt}</span><span style="color:#c9461c">${nutTxt}</span>`;
+    : ` · ⚠ ${R.nutBlocked} Position(en) ohne innenliegende Nut entfallen${R.nutThinAxes.length?' (Achsen '+R.nutThinAxes.map(x=>fmt(x,1)).join('/')+' cm)':''}${R.nutLeerAchsen.length?', Achsen ohne Verbinder: '+R.nutLeerAchsen.map(x=>fmt(x,1)).join('/')+' cm':''}${(R.nutEndLeerSegmente||[]).length?', Lattensegment(e) ohne befestigbare Lage nicht beplankt: '+R.nutEndLeerSegmente.map(s=>fmt(s.x_cm,1)+' cm ('+fmt(s.y0_cm,0)+'–'+fmt(s.y1_cm,0)+' cm)').join(', '):''}`) : '';
+  // [U-12] Endverbinder je realem Lattensegment: additive Pflichtpunkte an den echten Lattenenden
+  // (z. B. erste befestigbare Lage ueber einer Tuer). Nur gezaehlt — keine eigene Warnung.
+  const endTxt = R.nutEndZusatz ? ` · ${R.nutEndZusatz} Endverbinder an Lattenenden [U-12]` : '';
+  $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(+$('pB').value,1)} × ${fmt(+$('pH').value,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · Seite ${SIDE==='vorne'?'Vorderseite':'Rückseite'} (${FUNKTION_LABEL[curFunktion()]||curFunktion()})<span style="color:#5a6470">${endTxt}</span><span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span><span style="color:#c9461c">${gapTxt}</span><span style="color:#c9461c">${nutTxt}</span>`;
 }
 
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).

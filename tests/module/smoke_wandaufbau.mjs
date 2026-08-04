@@ -425,13 +425,22 @@ ok('B ohne Öffnung: Y-Reihen unverändert', JSON.stringify(O.ys)===JSON.stringi
 // einer Stoßfuge dieser Lage (x=125 in Lage 3/7/11, x=312,5 in Lage 3/7/11, x=187,5 in Lage 0/14).
 // Sie entfallen — gewollte Regelfolge, deshalb neu eingefroren. Zusätzlich gegen w.courses geprüft,
 // damit die Zahl nicht bloß die Implementierung spiegelt.
-ok('B ohne Öffnung: Verbinderzahl nach [U-11] = 27 (8 Fugenpositionen entfallen)', O.pts.length===27);
-ok('B ohne Öffnung: alle 27 Verbinder liegen strikt im Stein ihrer Lage',
+// [U-12] (Issue #30): dazu kommen 2 Endverbinder auf der Achse x=187,5 cm. Dort ist nach [U-11]
+// sowohl die unterste (Lage 0) als auch die oberste Lage (Lage 14) eine Stoßfuge; das reale
+// Lattensegment endet deshalb erst bei der ersten/letzten zulässigen Lage y=30 bzw. y=270 cm, und
+// genau dort muss ein Verbinder sitzen. 27 → 29 ist damit gewollte Regelfolge, kein Drift.
+ok('B ohne Öffnung: Verbinderzahl nach [U-11]+[U-12] = 29 (8 Fugenpositionen entfallen, 2 Endverbinder dazu)',
+   O.pts.length===29 && O.nutEndZusatz===2);
+ok('B ohne Öffnung: die 2 Endverbinder sitzen auf x=187,5 cm bei y=30/270 cm',
+   JSON.stringify(O.pts.filter(p=>nahe(p.x_cm,187.5)).map(p=>p.y_cm).sort((a,b)=>a-b))===JSON.stringify([30,70,150,230,270]));
+ok('B ohne Öffnung: alle 29 Verbinder liegen strikt im Stein ihrer Lage',
    (()=>{ const Wb=WA.wall, li=y=>Math.round((y-10)/20);
      return O.pts.every(p=>{ const c=Wb.courses.find(c=>c.lage===li(p.y_cm));
        return !!c && c.stones.some(s=>p.x_cm*10>s.x0+1e-6 && p.x_cm*10<s.x1-1e-6); }); })());
-ok('B ohne Öffnung: Lattenbilanz nach [U-11] (7 Achsen / 19 Stücke / 15 Stangen / 22,5 m)',
-   O.batt.summary.achsen===7 && O.batt.summary.latten_stuecke===19 && O.batt.summary.latten_15m_bedarf===15 && O.batt.summary.gesamtlaenge_m===22.5);
+// Die 19 Stücke bleiben; durch die 2 zusätzlichen Verbinder wandern die Stöße ([U-8] mittig zwischen
+// zwei Verbindern), wodurch der 1D-Zuschnitt eine Stange weniger braucht (15 → 14 / 22,5 → 21,0 m).
+ok('B ohne Öffnung: Lattenbilanz nach [U-11]+[U-12] (7 Achsen / 19 Stücke / 14 Stangen / 21,0 m)',
+   O.batt.summary.achsen===7 && O.batt.summary.latten_stuecke===19 && O.batt.summary.latten_15m_bedarf===14 && O.batt.summary.gesamtlaenge_m===21);
 ok('B ohne Öffnung: keine Warnungen', !O.ohWarn && !O.xGapWarn && O.batt.summary.warnungen===0);
 
 // --- C: geometrisch unlösbar → sicher bleiben und warnen, nicht kaschieren ---
@@ -527,6 +536,121 @@ ok('D4 [U-11]: ohne Lagengeometrie entstehen keine Verbinder (sicher statt unsic
 ok('D4 [U-11]: ohne Lagengeometrie keine Latten geplant', D4.batt.summary.latten_stuecke===0);
 ok('D4 [U-11]: Zustand wird gemeldet und stürzt nicht ab', D4.nutGeoWarn===true && D4.nutWarn===true && isFinite(D4.util));
 ok('D4 [U-11]: Hinweis in der Zeichnung', /keine Lagengeometrie/.test(document.getElementById('cap').innerHTML));
+
+// ================= E: [U-12] Endverbinder je realem Lattensegment (Issue #30) =================
+// Fachlicher Regressionstest auf ECHTEN Lattensegmenten: die Segmente werden hier unabhaengig von
+// sembla-aufbau.js nachgebildet (Oeffnungen + Feldgrenzen + Lagengeometrie aus w.courses) und die
+// erste/letzte nach [U-11] zulaessige Lage selbst bestimmt. Geprueft wird, dass genau dort ein
+// Verbinder sitzt — kein Vergleich von Summen und kein Blick in Helper-Interna.
+// Scope-Grenze ([U-12.1]): geprueft wird die Segmentebene. Fuer die Einzelstuecke eines Segments
+// bleibt [U-8] zustaendig (Stoss mittig zwischen zwei Verbindern); das wird nur als Erbe geprueft.
+WA.clearFeld();
+const nutInnenT=(Wx,x,y)=>{ const c=(Wx.courses||[]).find(c=>c.lage===Math.round((y-10)/20));
+  return !!c && (c.stones||[]).some(s=>x*10>s.x0+1e-6 && x*10<s.x1-1e-6); };
+const nutTopT=(Wx,x)=>{ let t=0; for(const c of (Wx.courses||[]))
+  if((c.stones||[]).some(s=>x*10>s.x0+1e-6 && x*10<s.x1-1e-6)) t=Math.max(t,(c.lage+1)*20); return t; };
+// Reale Segmente je Achse: an Oeffnungen getrennt, auf Feld und tragende Geometrie geclippt.
+function realeSegmenteT(R,Wx){
+  const ops=(Wx.openings||[]).map(o=>({x0:o.g0*12.5,x1:o.g1*12.5,y0:o.l0*20,y1:o.l1*20}));
+  const out=[];
+  for(const x of R.xs){
+    const oben=Math.min(R.fy1, nutTopT(Wx,x));
+    const blocks=ops.filter(o=>x>o.x0+1e-6 && x<o.x1-1e-6).map(o=>[o.y0,o.y1]).sort((p,q)=>p[0]-q[0]);
+    const iv=[]; let cur=0;
+    for(const [s,e] of blocks){ if(s>cur+1e-6) iv.push([cur,s]); cur=Math.max(cur,e); }
+    if(R.H-cur>1e-6) iv.push([cur,R.H]);
+    for(const [S0,E0] of iv){ const S=Math.max(S0,R.fy0), E=Math.min(E0,oben); if(E-S<=1e-6) continue;
+      const cand=[]; for(let m=0;;m++){ const y=m*20+10; if(y>=E-1e-6) break; if(y>S+1e-6 && nutInnenT(Wx,x,y)) cand.push(y); }
+      out.push({x,S,E,cand}); } }
+  return out;
+}
+// Prueft je Segment: Verbinder auf erster UND letzter zulaessiger Lage; Leerfall ohne Ersatzpunkt
+// und ohne geplante Latte; zusaetzlich, dass jedes Zuschnittstueck einen Verbinder erbt ([U-8]).
+function endPruefungT(R,Wx){
+  const res={segmente:0, fehlend:[], leer:[], leerBeplankt:[], ersatzpunkt:[], stueckOhne:[]};
+  for(const sg of realeSegmenteT(R,Wx)){
+    const ys=R.pts.filter(p=>nahe(p.x_cm,sg.x)).map(p=>p.y_cm);
+    const ax=R.batt.axes.find(a=>nahe(a.x_cm,sg.x));
+    const stuecke=(ax?ax.segments:[]).filter(s=>s.y0_cm>=sg.S-0.01 && s.y1_cm<=sg.E+0.01);
+    if(!sg.cand.length){
+      res.leer.push(sg);
+      if(stuecke.length) res.leerBeplankt.push(sg);                                  // darf nicht sein
+      if(ys.some(y=>y>sg.S+1e-6 && y<sg.E-1e-6)) res.ersatzpunkt.push(sg);           // darf nicht sein
+      continue; }
+    res.segmente++;
+    const u=sg.cand[0], o=sg.cand[sg.cand.length-1];
+    if(!ys.some(y=>nahe(y,u)) || !ys.some(y=>nahe(y,o))) res.fehlend.push({x:sg.x,S:sg.S,E:sg.E,u,o,ys});
+    for(const st of stuecke) if(!ys.some(y=>y>st.y0_cm+1e-6 && y<st.y1_cm-1e-6)) res.stueckOhne.push({x:sg.x,st});
+  }
+  return res;
+}
+// --- E1: der gemeldete Fall — Tuer 75–150 cm bis 200 cm Hoehe, Wand 3,75 × 2,60 m ---
+// Die Latte auf x=125 cm laeuft ueber der Tuer weiter: reales Segment [200, 260] cm. Vor dem Fix
+// gab es dort NUR y=250 (oberes Ende); das untere Ende blieb unbefestigt, weil das Raster vom
+// Wandfuss in der ausgesparten Tuer aus gebildet wurde.
+setUI({pB:62.5,pH:150,oX:0,oY:0,maxX:62.5,maxY:75,ohang:12.5,stock:150});
+const E1W=buildWall('U12-Tuer', 3750, 2600, [new Opening(6,12,0,10,'tuer')]);
+WA.applyWand(E1W); const E1=WA.compute();
+const E1ax=E1.batt.axes.find(a=>nahe(a.x_cm,125));
+const E1y=E1.pts.filter(p=>nahe(p.x_cm,125)).map(p=>p.y_cm).sort((a,b)=>a-b);
+ok('E1 [U-12]: die Latte ueber der Tuer ist ein reales Segment [200, 260] cm',
+   !!E1ax && E1ax.segments.length===1 && nahe(E1ax.segments[0].y0_cm,200) && nahe(E1ax.segments[0].y1_cm,260));
+ok('E1 [U-12]: dieses Segment hat unten UND oben einen Verbinder (y=210 und y=250)',
+   JSON.stringify(E1y)===JSON.stringify([210,250]));
+ok('E1 [U-12]: y=210 ist die erste, y=250 die letzte im Segment zulaessige Lage',
+   nutInnenT(E1W,125,210) && nutInnenT(E1W,125,250) && !nutInnenT(E1W,125,190) && nutTopT(E1W,125)===260);
+ok('E1 [U-12]: der untere Endverbinder liegt auf der Tuer-Oberkante, nicht am Wandfuss',
+   !E1.pts.some(p=>nahe(p.x_cm,125) && p.y_cm<200) && E1.ys.some(y=>y<200));
+ok('E1 [U-12]: kein Verbinder in der Tueroeffnung',
+   !E1.pts.some(p=>p.x_cm>75.01 && p.x_cm<149.99 && p.y_cm>0.01 && p.y_cm<199.99));
+ok('E1 [U-12]: Zusatzpunkte sind additiv — alle globalen Rasterpunkte bleiben erhalten',
+   E1.nutEndZusatz===3 && E1.ys.filter(y=>nutInnenT(E1W,125,y) && y>200).every(y=>E1y.some(v=>nahe(v,y))));
+ok('E1 [U-12]: jeder Endverbinder liegt strikt im Stein seiner Lage ([U-11] hat Vorrang)',
+   (()=>{ const P=nutPruefung(E1,E1W); return P.innen===E1.pts.length && P.aussen.length===0 && P.fehlt.length===0; })());
+ok('E1 [U-12]: Anzahl der Endverbinder steht in der Bildunterschrift',
+   /Endverbinder an Lattenenden/.test(document.getElementById('cap').innerHTML));
+
+// --- E2: strukturell ueber alle realen Segmente mehrerer Wandformen (Tuer, Fenster, Staffelung) ---
+const E2F=[
+  ['Tuer 3,75 × 3,00 m', buildWall('U12-a', 3750, 3000, [new Opening(6,12,0,10,'tuer')])],
+  ['ohne Oeffnung 3,75 × 3,00 m', buildWall('U12-b', 3750, 3000, [])],
+  ['Fenster mittig', buildWall('U12-c', 3750, 3000, [new Opening(8,14,4,9,'fenster')])],
+  ['Tuer + Fenster', buildWall('U12-d', 5000, 3000, [new Opening(4,10,0,10,'tuer'), new Opening(20,26,4,9,'fenster')])],
+  ['Tuer + Staffelung', buildWall('U12-e', 3750, 3000, [new Opening(6,12,0,10,'tuer')], {vorne:{funktion:'fassade'}}, null, [{x0_mm:2500,x1_mm:3750,height_mm:1600}])],
+  ['mehrstufig', buildWall('U12-f', 3000, 2600, [], {vorne:{funktion:'fassade'}}, null, [{x0_mm:1250,x1_mm:2000,height_mm:1000},{x0_mm:2000,x1_mm:3000,height_mm:1800}])],
+];
+for(const [name, Wx] of E2F){
+  WA.applyWand(Wx); const R=WA.compute(); const P=endPruefungT(R,Wx);
+  ok(`E2 [U-12] ${name}: jedes reale Segment hat Endverbinder unten und oben (${P.segmente} Segmente)`,
+     P.segmente>0 && P.fehlend.length===0);
+  ok(`E2 [U-12] ${name}: kein Endverbinder auf Fuge/Kante/steinfrei ([U-11])`,
+     (()=>{ const Q=nutPruefung(R,Wx); return R.pts.length>0 && Q.innen===R.pts.length && Q.aussen.length===0 && Q.fehlt.length===0 && Q.oberhalb.length===0; })());
+  ok(`E2 [U-12] ${name}: jedes Zuschnittstueck erbt einen Verbinder ([U-8]/[U-12.1])`, P.stueckOhne.length===0);
+}
+// --- E3: kurzes Segment mit genau einer zulaessigen Lage — ein Verbinder erfuellt beide Enden ---
+// Fenster bis 180 cm, Wand 200 cm: ueber dem Fenster bleibt genau die Lage 9 (Mitte 190 cm).
+const E3W=buildWall('U12-kurz', 2500, 2000, [new Opening(4,10,0,9,'fenster')]);
+WA.applyWand(E3W); const E3=WA.compute(); const P3E=endPruefungT(E3,E3W);
+const E3seg=realeSegmenteT(E3,E3W).filter(s=>s.S>179.99);
+ok('E3 [U-12]: kurzes Segment ueber der Oeffnung hat genau eine zulaessige Lage',
+   E3seg.length>0 && E3seg.every(s=>s.cand.length===1 && nahe(s.cand[0],190)));
+ok('E3 [U-12]: dieser eine Verbinder erfuellt beide Enden (kein zweiter Punkt erzwungen)',
+   P3E.fehlend.length===0 && E3seg.every(s=>E3.pts.filter(p=>nahe(p.x_cm,s.x) && p.y_cm>s.S+1e-6 && p.y_cm<s.E-1e-6).length===1));
+
+// --- E4: Segment ohne jede zulaessige Lage — sicherer Leerfall, kein Ersatzpunkt, keine Latte ---
+// Feldunterkante 212,5 cm liegt in der letzten befestigbaren Lage (Wand 220 cm): im Feld [212,5; 220]
+// gibt es keine Steinmitte. [U-11] verbietet einen Ersatzpunkt, also wird nicht beplankt + gewarnt.
+const E4W=buildWall('U12-leer', 2500, 2200, []);
+WA.applyWand(E4W); WA.setFeld(0, 250, 212.5, 220); const E4=WA.compute(); const P4E=endPruefungT(E4,E4W);
+ok('E4 [U-12]: Segment ohne befestigbare Lage wird als Leerfall gemeldet',
+   E4.nutEndLeerSegmente.length>0 && E4.nutEndLeerSegmente.every(s=>nahe(s.y0_cm,212.5) && nahe(s.y1_cm,220)) && E4.nutWarn===true);
+ok('E4 [U-12]: es wird keine Latte darauf geplant und kein Ersatzpunkt gesetzt',
+   E4.batt.summary.latten_stuecke===0 && P4E.leerBeplankt.length===0 && P4E.ersatzpunkt.length===0);
+ok('E4 [U-12]: der Leerfall steht in der Bildunterschrift',
+   /ohne befestigbare Lage nicht beplankt/.test(document.getElementById('cap').innerHTML));
+ok('E4 [U-12]: keine unzulaessigen Punkte trotz Leerfall ([U-11] bleibt gewahrt)',
+   (()=>{ const Q=nutPruefung(E4,E4W); return Q.aussen.length===0 && Q.fehlt.length===0; })());
+WA.clearFeld();
 WA.applyWand(W);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
