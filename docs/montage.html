@@ -36,13 +36,17 @@
   .map{margin-top:10px}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:14px;line-height:1.55;border-top:1px solid var(--sb-line);padding-top:10px}
   .hint{color:var(--sb-muted);font-size:12.5px}
-  /* Druck: nur das aus sembla-montage.js erzeugte Dokument (identisch zum zentralen Export) */
+  /* Druck: nur das aus sembla-montage.js erzeugte Dokument (identisch zum zentralen Export).
+     Die Kopfleiste aus navbar.js heisst `.sb-nav` (sticky, z-index 50) — sie MUSS hier
+     ausgeblendet werden, sonst schwebt sie samt Wandelement-Auswahlfeld ueber dem PDF. */
   #printdoc{display:none}
   @media print{
-    .sb-navbar,.intro{display:none!important}
-    body{background:#fff}
-    #app{display:none!important}
+    .sb-nav,.intro,#app{display:none!important}
+    body{background:#fff;margin:0}
     #printdoc{display:block}
+    /* keine schwebenden/klebenden Bedienelemente im Druck */
+    input,select,textarea,button{display:none!important}
+    *{position:static!important;box-shadow:none!important}
   }
 </style>
 </head>
@@ -50,7 +54,9 @@
 <p class="intro"><b>Montageanleitung.</b> Ereignis- und baugruppenbasierte Anleitung aus dem
   <b>aktiven Wandelement</b> (aus „Wand planen"): je Abschnitt das auslösende Ereignis
   (erste Gewindestange, Kopplung/neue Stange, oberer Abschluss) und die anschließend zu montierenden,
-  durchgehend nummerierten Steinreihen. Abschnitte durchklicken oder die komplette Anleitung drucken —
+  durchgehend nummerierten Steinreihen. Voran steht <b>Schnitt 0</b>: nur Bodenblech/Grundplatte und die
+  ersten Gewindestangen, noch ohne Steine. Alle Baugruppenbilder haben denselben Maßstab.
+  Abschnitte durchklicken oder die komplette Anleitung drucken —
   Vorschau und zentraler Export nutzen dieselbe Ableitung. Dieses Modul liest das Wandelement und ändert es nicht.</p>
 
 <div id="app" class="wrap">
@@ -130,7 +136,8 @@ function applyWand(w){
   $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
   $('ovGrid').textContent=w.N_grid+' Raster · '+w.lagen+' Steinreihen';
   $('ovCols').textContent=w.tension_columns.length;
-  $('ovAbs').textContent=ABS.length;
+  const echte=ABS.filter(a=>a.art!=='schnitt0').length;
+  $('ovAbs').textContent=echte+(echte!==ABS.length?' (+ Schnitt 0)':'');
   const b=$('ovBadge'); if(w.validation && w.validation.buildable===false){ b.className='badge no'; b.textContent='Nicht baubar'; } else { b.className='badge ok'; b.textContent='Baubar'; }
   $('bom').innerHTML=bomRows(w);
   $('slider').max=Math.max(1,ABS.length); $('slider').value=1;
@@ -142,17 +149,23 @@ function showAbschnitt(i){
   if(!WALL || !ABS.length) return;
   CUR=Math.max(0,Math.min(ABS.length-1,i));
   const ab=ABS[CUR];
-  $('absLab').textContent='Abschnitt '+ab.nr+' von '+ABS.length;
+  const s0=ab.art==='schnitt0';
+  $('absLab').textContent=(s0?'Schnitt 0':'Abschnitt '+ab.nr)+' · Bild '+(CUR+1)+' von '+ABS.length;
   $('slider').value=CUR+1;
   $('absTitel').textContent=ab.titel;
-  $('absSub').textContent=ab.reihen_text+' · Höhe '+posCm(ab.z_von_mm)+' bis '+posCm(ab.z_bis_mm)
-    +' · '+ab.straenge.length+' Stränge in diesem Abschnitt';
+  $('absSub').textContent=s0
+    ? 'Vorbereitende Fuß-Baugruppe · ohne Steinreihen · '+ab.straenge.length+' Stränge'
+    : ab.reihen_text+' · Höhe '+posCm(ab.z_von_mm)+' bis '+posCm(ab.z_bis_mm)
+      +' · '+ab.straenge.length+' Stränge in diesem Abschnitt';
   $('ereignisse').innerHTML=ab.ereignisse.map(e=>
     '<li><span class="art">'+(ART_LABEL[e.art]||e.art)+' · '+posCm(e.z_mm)+'</span>'+e.text+'</li>').join('');
   $('absSvg').innerHTML=abschnittSvg(WALL,ab,900,430);
   drawMap();
 }
-function drawMap(){ if(WALL && ABS.length) $('mapSvg').innerHTML=konturSvg(WALL,ABS[CUR],900,250,{masse:showDim,raster:showRaster}); }
+// Schnitt 0 hat keine Steinreihen -> im Wandüberblick nichts hervorheben.
+function drawMap(){ if(!WALL || !ABS.length) return;
+  const ab=ABS[CUR], hl=(ab.art==='schnitt0')?null:ab;
+  $('mapSvg').innerHTML=konturSvg(WALL,hl,900,250,{masse:showDim,raster:showRaster}); }
 
 // Druckdokument = exakt die Seiten des zentralen Exports (gleiche Ableitung, gleiche Bausteine).
 function buildPrintDoc(w){

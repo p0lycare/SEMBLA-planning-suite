@@ -13,7 +13,10 @@
 //   * gestaffelte Waende: getrennte Stangenendhoehen/Wandabschluesse,
 //   * Kopplungsregel: Ereignis bei z liegt nach floor(z/200) Reihen und vor der naechsten,
 //     Stange ragt sichtbar ueber die letzte dargestellte Reihe,
-//   * wenige, paginierte A4-Seiten statt einer Seite pro Steinreihe.
+//   * wenige, paginierte A4-Seiten statt einer Seite pro Steinreihe,
+//   * Schnitt 0 nach [A-9]: steinfreie Fuss-Baugruppe als zusaetzliche erste
+//     Darstellung, streng additiv (die regulaeren Abschnitte bleiben unveraendert),
+//   * global konstanter Massstab/Viewport ueber ALLE Baugruppenbilder.
 //
 // Testwaende sind synthetisch aus dem Core gebaut -> checkout-autark, keine realen
 // oder gitignorierten Geometrien.
@@ -42,7 +45,11 @@ const eingaben = standardEingaben();
 eingaben.projekt.name = "Rettungswache";
 eingaben.projekt.plan_nr = "A-12";
 
-const absR = montageAbschnitte(WR), absA = montageAbschnitte(WAWG), absT = montageAbschnitte(WT);
+const alleR = montageAbschnitte(WR), alleA = montageAbschnitte(WAWG), alleT = montageAbschnitte(WT);
+// Schnitt 0 ([A-9]) ist additiv vorangestellt; die regulaeren Baugruppenabschnitte
+// sind die uebrigen — alle Alt-Zusicherungen gelten unveraendert fuer diese.
+const echte = abs => abs.filter(a => a.art !== "schnitt0");
+const absR = echte(alleR), absA = echte(alleA), absT = echte(alleT);
 
 // --- 1) Erste Darstellung: Bodenblech + erste Stangen + mehrere Reihen -----
 for (const [name, w, abs] of [["Rechteck", WR, absR], ["AWG", WAWG, absA]]) {
@@ -88,7 +95,7 @@ const wManip = JSON.parse(JSON.stringify(WAWG));
 wManip.tension_columns[0].gewindestangen = 99;
 ok("kein Hochrechnen aus tension_columns[0]: Aggregat des ersten Strangs bleibt wirkungslos",
   JSON.stringify(montageAbschnitte(wManip).map(a => [a.reihen, a.ereignisse.map(e => e.art + e.z_mm)]))
-  === JSON.stringify(absA.map(a => [a.reihen, a.ereignisse.map(e => e.art + e.z_mm)])));
+  === JSON.stringify(alleA.map(a => [a.reihen, a.ereignisse.map(e => e.art + e.z_mm)])));
 // Ein zusaetzliches Segment eines einzelnen Strangs erzeugt ein zusaetzliches Ereignis
 const wExtra = JSON.parse(JSON.stringify(WR));
 wExtra.tension_columns[2].segments = [{ z0_mm: 0, z1_mm: 1000, lage0: 0, lage1: 5, gewindestangen: 1, anker_unten: "bodenblech", anker_oben: "spannplatte" },
@@ -114,7 +121,7 @@ for (const [name, w, abs] of [["Rechteck", WR, absR], ["AWG", WAWG, absA], ["Tue
       ? "Reihe " + a.reihen.von : "Reihen " + a.reihen.von + "–" + a.reihen.bis)));
   const seiten = montageSeiten(w, eingaben);
   ok(`${name}: jede Abschnittsseite zeigt Ereignis-Label und Reihenbereich`,
-    seiten.slice(1).every((s, i) => s.html.includes(abs[i].reihen_text)
+    seiten.filter(s => s.art === "abschnitt").every((s, i) => s.html.includes(abs[i].reihen_text)
       && abs[i].ereignisse.every(e => s.html.includes(posCm(e.z_mm)))));
 }
 
@@ -150,7 +157,8 @@ ok("Tuerwand: neue Stange ueber der Oeffnung als eigenes Ereignis (Spannplatte)"
 for (const [name, w, abs] of [["Rechteck", WR, absR], ["AWG", WAWG, absA], ["Tuer", WT, absT]]) {
   const seiten = montageSeiten(w, eingaben);
   ok(`${name}: Seitenzahl = Uebersicht + Abschnitte und deutlich unter der Reihenzahl`,
-    seiten.length === abs.length + 1 && seiten.length < w.lagen);
+    seiten.length === echte(montageAbschnitte(w)).length + 1 + (seiten.some(s => s.art === "schnitt0") ? 1 : 0)
+    && seiten.length < w.lagen);
   const doc = montageDokument(w, eingaben);
   ok(`${name}: A4-Paginierung im Dokument, keine Seite pro Steinreihe`,
     /@page\{size:A4 portrait/.test(doc) && /page-break-after:always/.test(doc)
@@ -174,7 +182,7 @@ ok("Kopplung bei 1100 mm eroeffnet den Abschnitt, der mit Reihe 6 beginnt",
   && absR.some(a => a.reihen.bis === 5 && !a.ereignisse.includes(k1100)));
 // Randfall: Ereignishoehe genau auf einer Reihengrenze (Stangenlaenge 1200 mm)
 const W12 = buildWall("Rod1200", 3000, 2600, [], null, { rod_mm: 1200 });
-const abs12 = montageAbschnitte(W12);
+const abs12 = echte(montageAbschnitte(W12));
 const k1200 = abs12.flatMap(a => a.ereignisse).find(e => e.art === "kopplung" && e.z_mm === 1200);
 const ab12 = abs12.find(a => a.ereignisse.includes(k1200));
 ok("Randfall 1200 mm (genau Reihengrenze): nach Reihe 6, vor Reihe 7",
@@ -218,7 +226,7 @@ ok("Uebersichtsseite: Masse, Reihen, Straenge, Ablauftabelle, Kurz-Stueckliste",
   && /Ablauf der Baugruppenabschnitte/.test(seitenR[0].html)
   && /Stückliste \(Kurzform\)/.test(seitenR[0].html) && /Stein i3/.test(seitenR[0].html));
 ok("Abschnittsseiten: Orientierung + Bauteilpositionen der Straenge",
-  seitenR.slice(1).every((s, i) => /Blick von vorne, x ab links/.test(s.html)
+  seitenR.filter(s => s.art === "abschnitt").every((s, i) => /Blick von vorne, x ab links/.test(s.html)
     && /Bauteilpositionen dieses Abschnitts/.test(s.html)
     && absR[i].straenge.every(st => s.html.includes(posCm(st.x_mm)))));
 ok("Anschluss oben je Strang benannt (Kopfblech/Spannplatte/Kopplung)",
@@ -248,6 +256,103 @@ const exportSrc = readFileSync(new URL("../../docs/shared/sembla-export.js", imp
 ok("sembla-export.js hat keine eigene Montage-Zeichenlogik mehr (kein Duplikat)",
   /from "\.\/sembla-montage\.js"/.test(exportSrc)
   && !/_courseStrip/.test(exportSrc) && !/vorspannSteps/.test(exportSrc));
+
+// --- 10) Schnitt 0: steinfreie Fuss-Baugruppe, additiv ([A-9]) ------------
+for (const [name, w, alle, abs] of [["Rechteck", WR, alleR, absR], ["AWG", WAWG, alleA, absA], ["Tuer", WT, alleT, absT]]) {
+  const s0 = alle[0];
+  ok(`${name}: Schnitt 0 ist die ALLERERSTE Darstellung`,
+    s0.art === "schnitt0" && s0.nr === 0 && alle.slice(1).every(a => a.art !== "schnitt0"));
+  ok(`${name}: Schnitt 0 fuehrt keine Steinreihen`,
+    s0.reihen.bis < s0.reihen.von && s0.z_von_mm === 0 && s0.z_bis_mm === 0 && s0.reihen_text === "ohne Steinreihen");
+  // Nur die Fuss-Segmente, nur die ERSTE Stange je Strang
+  const fussSeg = w.tension_columns.flatMap(c => c.segments.filter(sg => sg.z0_mm === 0).map(sg => ({ c, sg })));
+  ok(`${name}: Schnitt 0 zeigt genau die Straenge auf dem Bodenblech`,
+    s0.straenge.length === fussSeg.length
+    && s0.straenge.every(st => st.z_unten_mm === 0 && st.anker_unten === "bodenblech"));
+  ok(`${name}: Schnitt 0 zeigt je Strang nur die erste Gewindestange`,
+    s0.straenge.every(st => {
+      const sg = fussSeg.find(x => x.c.x_mm === st.x_mm).sg;
+      const ersteOK = sg.gewindestangen > 1 ? Math.min(sg.z1_mm, w.rod_mm) : sg.z1_mm;
+      return st.z_oben_real_mm === ersteOK && st.zeichen_oben_mm === ersteOK && st.kopplungen_mm.length === 0;
+    }));
+  ok(`${name}: Schnitt 0 nennt nur Fuss-Ereignisse`,
+    s0.ereignisse.length >= 1 && s0.ereignisse.every(e => e.art === "fuss" && e.z_mm === 0));
+  // Bild: Bodenblech + Stangen, aber KEINE Steine, KEINE Reihennummern, KEINE Kontur/Oeffnung
+  const svg0 = abschnittSvg(w, s0, 900, 430);
+  ok(`${name}: Schnitt-0-Bild zeigt Bodenblech und Gewindestangen`,
+    svg0.includes(`fill="#5b6673"`) && /stroke="#1f6feb" stroke-width="2.4"/.test(svg0)
+    && /Bodenblech und erste Gewindestangen/.test(svg0));
+  ok(`${name}: Schnitt-0-Bild zeigt KEINE Steine, Reihennummern, Kontur oder Oeffnungen`,
+    !/stroke="#7d848c"/.test(svg0)              // Steinreihen dieses Abschnitts
+    && !/fill="#e9ebee"/.test(svg0)             // bereits montierte Reihen
+    && !/font-weight="600"/.test(svg0)          // Reihennummern
+    && !/<polyline/.test(svg0)                  // Wandkontur
+    && !/stroke-dasharray="5 4"/.test(svg0));   // Oeffnungen
+  // ADDITIV: die regulaeren Abschnitte sind unveraendert (Ereignisse bleiben dort)
+  ok(`${name}: Abschnitt 1 behaelt sein Fuss-Ereignis (nichts herausgezogen)`,
+    abs[0].ereignisse.some(e => e.art === "fuss" && e.z_mm === 0)
+    && s0.ereignisse.every(e => abs[0].ereignisse.includes(e)));
+  ok(`${name}: Abschnitt 1 bleibt selbsterklaerend (Titel, Reihen, Ereignistext)`,
+    abs[0].nr === 1 && abs[0].reihen.von === 1 && /^Abschnitt 1 · /.test(abs[0].titel)
+    && abs[0].ereignisse[0].text.length > 0);
+  // Seiten: Schnitt 0 als eigene erste Abschnittsseite, danach die Abschnitte
+  const seiten = montageSeiten(w, eingaben);
+  ok(`${name}: Seite 2 ist Schnitt 0, danach folgen die Abschnitte`,
+    seiten[0].art === "uebersicht" && seiten[1].art === "schnitt0"
+    && seiten.slice(2).every(s => s.art === "abschnitt")
+    && seiten.length === alle.length + 1);
+  ok(`${name}: Schnitt-0-Seite nennt sich so und fuehrt keine Steinreihen`,
+    /Schnitt 0/.test(seiten[1].html) && /keine Steinreihen<\/b>/.test(seiten[1].html)
+    && !/Danach montieren/.test(seiten[1].html));
+  ok(`${name}: Uebersichtstabelle listet Schnitt 0 ohne Reihenbereich`,
+    /<td>Schnitt 0<\/td>/.test(seiten[0].html) && /<td>—<\/td>/.test(seiten[0].html));
+  ok(`${name}: Seitenzaehlung bleibt luecken- und dublettenfrei`,
+    seiten.every((s, i) => s.html.includes(`Seite ${i + 1} von ${seiten.length}`)));
+}
+// Sicherer Leerfall: ohne Fussereignis KEIN Schnitt 0 und keine leere Seite
+const wOhneFuss = JSON.parse(JSON.stringify(WR));
+for (const c of wOhneFuss.tension_columns)
+  c.segments = c.segments.map(sg => ({ ...sg, z0_mm: 200, anker_unten: "spannplatte" }));
+const absOhneFuss = montageAbschnitte(wOhneFuss);
+ok("ohne Fussereignis entsteht KEIN Schnitt 0 (sicherer Leerfall, keine leere Seite)",
+  absOhneFuss.every(a => a.art !== "schnitt0")
+  && montageSeiten(wOhneFuss, eingaben).every(s => s.art !== "schnitt0"));
+
+// --- 11) Global konstanter Massstab/Viewport ueber alle Bilder ------------
+// Bezugspunkt: Oberkante von Steinreihe 1 (identische Weltkoordinate 200 mm) muss in
+// JEDEM Baugruppenbild auf derselben y-Position liegen; ebenso Bodenblech und Skalierung.
+const yBoden = svg => +(/<rect x="[\d.]+" y="([\d.]+)"[^>]*fill="#5b6673"/.exec(svg) || [])[1];
+const bodenBreite = svg => +(/<rect x="[\d.]+" y="[\d.]+" width="([\d.]+)"[^>]*fill="#5b6673"/.exec(svg) || [])[1];
+for (const [name, w, alle] of [["Rechteck", WR, alleR], ["AWG", WAWG, alleA], ["Tuer", WT, alleT]]) {
+  const bilder = alle.map(a => abschnittSvg(w, a, 900, 430));
+  const yB = bilder.map(yBoden), bB = bilder.map(bodenBreite);
+  ok(`${name}: Wandfuss liegt in ALLEN Bildern auf derselben y-Position`,
+    yB.every(v => isFinite(v)) && new Set(yB.map(v => v.toFixed(4))).size === 1);
+  ok(`${name}: Massstab (Bodenblechbreite = Wandlaenge) ist in ALLEN Bildern identisch`,
+    bB.every(v => isFinite(v)) && new Set(bB.map(v => v.toFixed(4))).size === 1);
+  const yOben = alle.map(a => a.z_top_mm);
+  ok(`${name}: alle Abschnitte tragen denselben globalen Viewport-Oberrand`,
+    yOben.every(v => v === yOben[0]) && yOben[0] >= w.height_mm);
+  // EINE gemeinsame Abbildung Y(z) = yBoden − z·sc: die Oberkante der jeweils obersten
+  // Reihe muss in jedem Bild exakt auf ihrer echten Welthoehe liegen (kein Verschieben/Zoomen).
+  const sc = bB[0] / w.length_mm, C = w.course_mm || 200;
+  const treffer = alle.filter(a => a.art !== "schnitt0").map(a => {
+    const ys = [...abschnittSvg(w, a, 900, 430)
+      .matchAll(/<rect x="[\d.]+" y="([\d.]+)"[^>]*stroke="#7d848c"/g)].map(m => +m[1]);
+    return Math.abs(Math.min(...ys) - (yB[0] - a.reihen.bis * C * sc)) < 1e-6;
+  });
+  ok(`${name}: Steinreihen liegen in JEDEM Bild auf ihrer echten Welthoehe (eine Abbildung)`,
+    treffer.length > 1 && treffer.every(Boolean));
+  // Der Fortschritt darf die Wanddarstellung nicht wachsen lassen: gleiche Reihe -> gleiche Hoehe
+  const hoehe = a => { const m = [...abschnittSvg(w, a, 900, 430).matchAll(/<rect x="[\d.]+" y="[\d.]+" width="[\d.]+" height="([\d.]+)"[^>]*stroke="#7d848c"/g)].map(x => +x[1]); return m.length ? m[0] : null; };
+  const hs = alle.map(hoehe).filter(v => v != null);
+  ok(`${name}: eine Steinreihe ist in jedem Abschnitt gleich hoch gezeichnet`,
+    hs.length > 1 && new Set(hs.map(v => v.toFixed(4))).size === 1);
+}
+// Staffelwand: der globale Oberrand richtet sich nach der HOECHSTEN Stelle, nicht nach der Stufe
+ok("AWG (Staffelwand): globaler Oberrand deckt die volle Wandhoehe ab",
+  alleA.every(a => a.z_top_mm >= WAWG.height_mm)
+  && alleA.every(a => a.z_top_mm >= a.stange_oberkante_mm));
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`); process.exit(fail ? 1 : 0);

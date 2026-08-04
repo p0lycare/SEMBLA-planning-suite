@@ -129,7 +129,11 @@ nicht mehr alleinige Verteilungsregel.
      `montageAbschnitte`, `abschnittSvg`/`konturSvg`, `montageSeiten`/`montageDokument`; DOM-frei).
      Quelle sind die **realen** `tension_columns[].segments` + Wandkontur — nie eine pauschale
      Stangenhöhe und nie ein Repräsentanten-Strang. Genutzt von Modul 5 (Vorschau + Druck) **und**
-     vom zentralen Export; beide Wege liefern dieselben Seiten (Regel a+b).
+     vom zentralen Export; beide Wege liefern dieselben Seiten (Regel a+b). Voran steht der
+     steinfreie **Schnitt 0** (Regel **[A-9]**): nur Bodenblech/Grundplatte + erste Gewindestangen,
+     rein **additiv** (die regulären Abschnitte bleiben unverändert), ohne Fußereignis entfällt er
+     ersatzlos. Alle Baugruppenbilder nutzen denselben **globalen Maßstab** (`abschnitt.z_top_mm`),
+     damit die Vorschau mit dem Montagefortschritt nicht wächst.
    - `sembla-ifc.js` — IFC4-Export (`wandelementToIfc` + `parseObj`/`meshStats`; genutzt vom zentralen Export).
    - `sembla-export.js` — baut die Export-Dateien (Stückliste/Zuschnitt-CSV, Montage-HTML,
      **Statischer-Nachweis-HTML**, IFC-Text) für Modul 0. Das Nachweis-Dokument kommt aus dem

@@ -6,6 +6,12 @@
  * Montageereignissen (erste Gewindestange, Kopplung/neue Stange, oberer Abschluss)
  * und den dazugehoerigen, durchgehend nummerierten Steinreihen.
  *
+ * Voran steht der steinfreie **Schnitt 0** ([A-9]): nur Bodenblech/Grundplatte und
+ * die ersten Gewindestangen. Er ist rein additiv — die Fussereignisse bleiben
+ * zusaetzlich in ihrem regulaeren Abschnitt, es wird nichts verschoben. Alle
+ * Baugruppenbilder nutzen denselben globalen Massstab (`abschnitt.z_top_mm`), damit
+ * die Darstellung mit fortschreitendem Montagestand nicht waechst oder schrumpft.
+ *
  * Quelle ist AUSSCHLIESSLICH das Wandelement (Single Source of Truth):
  *   * `tension_columns[].segments[]` — je Strang die realen Segmente mit
  *     `z0_mm/z1_mm`, `gewindestangen`, `anker_unten`, `anker_oben`,
@@ -224,6 +230,7 @@ export function montageAbschnitte(w) {
   // 3) Kennwerte je Abschnitt (Straenge, Hoehen, Titel)
   const C = _course(w);
   abschnitte.forEach((ab, i) => {
+    ab.art = "abschnitt";
     ab.nr = i + 1;
     ab.z_von_mm = (ab.reihen.von - 1) * C;
     ab.z_bis_mm = ab.reihen.bis * C;
@@ -234,7 +241,67 @@ export function montageAbschnitte(w) {
     ab.reihen_text = ab.reihen.von === ab.reihen.bis ? "Reihe " + ab.reihen.von : "Reihen " + ab.reihen.von + "–" + ab.reihen.bis;
     ab.titel = "Abschnitt " + ab.nr + " · " + ab.ereignisse[0].titel;
   });
+  // 4) Schnitt 0 ([A-9]) additiv voranstellen — die bestehenden Abschnitte bleiben unveraendert
+  const s0 = _schnittNull(w, evs);
+  if (s0) abschnitte.unshift(s0);
+  // 5) globaler Massstab/Viewport fuer ALLE Baugruppenbilder (auch Schnitt 0)
+  const zTop = Math.max(w.height_mm, C, ...abschnitte.map(a => a.stange_oberkante_mm));
+  abschnitte.forEach(ab => { ab.z_top_mm = zTop; });
   return abschnitte;
+}
+
+/**
+ * Schnitt 0 nach [A-9]: steinfreie Fuss-Baugruppe (Bodenblech/Grundplatte + erste
+ * Gewindestangen) als zusaetzliche, vorgelagerte Darstellung.
+ *
+ * Streng additiv: die Fussereignisse bleiben zusaetzlich in ihrem regulaeren
+ * Abschnitt; hier werden dieselben Ereignisobjekte nur ein weiteres Mal gezeigt.
+ * Ohne Fussereignis (kein Segment auf dem Bodenblech) entsteht KEIN Schnitt 0 und
+ * damit keine leere Seite (sicherer Leerfall, [P-9]).
+ * @param {any} w @param {any[]} evs Ereignisse aus montageEreignisse()
+ */
+function _schnittNull(w, evs) {
+  const fuss = evs.filter(e => e.art === "fuss");
+  if (!fuss.length) return null;
+  const straenge = _fussZustand(w);
+  if (!straenge.length) return null;
+  return {
+    art: "schnitt0", nr: 0, anker_reihe: 0,
+    ereignisse: fuss,                               // dieselben Objekte, nicht verschoben
+    reihen: { von: 1, bis: 0 },                     // leerer Bereich = keine Steinreihen
+    z_von_mm: 0, z_bis_mm: 0,
+    straenge,
+    stange_oberkante_mm: Math.max(0, ...straenge.map(s => s.zeichen_oben_mm)),
+    stange_weiter_mm: null,
+    reihen_text: "ohne Steinreihen",
+    titel: "Schnitt 0 · Bodenblech und erste Gewindestangen",
+  };
+}
+
+/**
+ * Strangzustand des Schnitts 0: je Segment auf dem Bodenblech nur die ERSTE
+ * Gewindestange, bis zu ihrer ersten Kopplungs- bzw. Segmentoberkante. Noch keine
+ * Kopplungsmutter gesetzt; oben abgeschlossen nur, wenn das Segment aus genau
+ * einer Stange besteht.
+ */
+function _fussZustand(w) {
+  const out = [];
+  for (const col of (w.tension_columns || [])) {
+    for (const sg of _segmente(w, col)) {
+      const ankerU = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
+      if (ankerU !== "bodenblech") continue;
+      const enden = _stangenEnden(w, sg);
+      const eins = enden.length === 1;                // einzige Stange = zugleich Segmentende
+      out.push({
+        k: col.k, x_mm: col.x_mm,
+        z_unten_mm: sg.z0_mm, seg_z1_mm: sg.z1_mm,
+        z_oben_real_mm: enden[0], zeichen_oben_mm: enden[0], abgeschlossen: eins,
+        anker_unten: ankerU, anker_oben: sg.anker_oben || "spannplatte",
+        stangen: _stueck(w, sg), kopplungen_mm: [],
+      });
+    }
+  }
+  return out.sort((a, b) => a.x_mm - b.x_mm);
 }
 
 /** Schluessel eines Segments (Strang + Segmentgrenzen) — verbindet Ereignis und Zeichnung. */
@@ -318,7 +385,9 @@ function _konturPunkte(w) {
 export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   const C = _course(w), G = _grid(w), L = w.length_mm;
   const padL = 52, padR = 34, padT = 34, padB = 26;
-  const zTop = Math.max(ab.stange_oberkante_mm, ab.z_bis_mm, C);
+  // Massstab: global konstant ueber alle Baugruppenbilder ([A-9]); `z_top_mm` setzt
+  // montageAbschnitte(). Fallback nur fuer direkt gebaute Abschnitte ohne dieses Feld.
+  const zTop = ab.z_top_mm != null ? ab.z_top_mm : Math.max(ab.stange_oberkante_mm, ab.z_bis_mm, C);
   const sc = Math.min((vbW - padL - padR) / L, (vbH - padT - padB) / zTop);
   const yBase = padT + zTop * sc;
   const X = x => padL + x * sc, Y = z => yBase - z * sc;
@@ -355,9 +424,10 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
     if (ow > 46) s += `<text x="${ox + ow / 2}" y="${Y(o.l0 * C) - 6}" font-size="9.5" fill="${FARBE.oeffnung}" `
       + `text-anchor="middle">${o.art === "fenster" ? "Fenster" : o.art === "durchbruch" ? "Durchbruch" : "Tür"}</text>`;
   }
-  // Wandkontur (Staffelung sichtbar)
-  s += `<polyline points="${_konturPunkte(w).map(p => X(p[0]) + "," + Y(Math.min(p[1], zTop))).join(" ")}" `
-    + `fill="none" stroke="${FARBE.kontur}" stroke-width="1.2" stroke-opacity="0.55"/>`;
+  // Wandkontur (Staffelung sichtbar) — in Schnitt 0 nicht: dort nur die Fuss-Baugruppe ([A-9])
+  if (ab.art !== "schnitt0")
+    s += `<polyline points="${_konturPunkte(w).map(p => X(p[0]) + "," + Y(Math.min(p[1], zTop))).join(" ")}" `
+      + `fill="none" stroke="${FARBE.kontur}" stroke-width="1.2" stroke-opacity="0.55"/>`;
   // Bodenblech
   const bth = Math.max(3, 15 * sc);
   s += `<rect x="${X(0)}" y="${Y(0)}" width="${L * sc}" height="${bth}" fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="0.6"/>`;
@@ -410,11 +480,19 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   }
 
   // Kopfzeile
-  s += `<text x="${padL - 6}" y="14" font-size="11" fill="${FARBE.text}">`
-    + `Abschnitt ${ab.nr} · ${ab.reihen_text} · Höhe ${posCm(ab.z_von_mm)}–${posCm(ab.z_bis_mm)} · `
-    + `${ab.straenge.length} Vorspannstränge · Blick von vorne, x ab links · Raster 12,5 cm</text>`;
-  s += `<text x="${padL - 6}" y="26" font-size="9" fill="${FARBE.text}">`
-    + `Zahl links = Steinreihe · Zahl im Chip = Strangposition ab links (cm) · offenes Stangenende = Kopplung folgt</text>`;
+  if (ab.art === "schnitt0") {
+    s += `<text x="${padL - 6}" y="14" font-size="11" fill="${FARBE.text}">`
+      + `Schnitt 0 · Bodenblech und erste Gewindestangen · ohne Steinreihen · `
+      + `${ab.straenge.length} Vorspannstränge · Blick von vorne, x ab links · Raster 12,5 cm</text>`;
+    s += `<text x="${padL - 6}" y="26" font-size="9" fill="${FARBE.text}">`
+      + `Zahl im Chip = Strangposition ab links (cm) · offenes Stangenende = Kopplung folgt · Maßstab wie in allen Abschnitten</text>`;
+  } else {
+    s += `<text x="${padL - 6}" y="14" font-size="11" fill="${FARBE.text}">`
+      + `Abschnitt ${ab.nr} · ${ab.reihen_text} · Höhe ${posCm(ab.z_von_mm)}–${posCm(ab.z_bis_mm)} · `
+      + `${ab.straenge.length} Vorspannstränge · Blick von vorne, x ab links · Raster 12,5 cm</text>`;
+    s += `<text x="${padL - 6}" y="26" font-size="9" fill="${FARBE.text}">`
+      + `Zahl links = Steinreihe · Zahl im Chip = Strangposition ab links (cm) · offenes Stangenende = Kopplung folgt</text>`;
+  }
   return s;
 }
 
@@ -560,12 +638,14 @@ export function montageSeiten(w, eingaben = {}) {
     + `${projekt.index ? " · Index " + _esc(projekt.index) : ""}. Maße `
     + `${_fmt(w.length_mm / 1000, 3)} × ${_fmt(w.height_mm / 1000, 2)} m · ${w.N_grid} Raster · `
     + `${_lagen(w)} Steinreihen · ${(w.tension_columns || []).length} Vorspannstränge · `
-    + `${abschnitte.length} Baugruppenabschnitte.</p>`;
+    + `${abschnitte.filter(ab => ab.art !== "schnitt0").length} Baugruppenabschnitte`
+    + `${abschnitte.some(ab => ab.art === "schnitt0") ? " (zzgl. Schnitt 0)" : ""}.</p>`;
   u += `<div class="mbild"><svg viewBox="0 0 900 250" preserveAspectRatio="xMidYMid meet">${konturSvg(w, null, 900, 250)}</svg></div>`;
   u += "<h2>Ablauf der Baugruppenabschnitte</h2><table class=\"mtab\">"
     + "<tr><th>Abschnitt</th><th>Ereignis(se)</th><th>Steinreihen</th></tr>"
-    + abschnitte.map(ab => `<tr><td>${ab.nr}</td><td>${ab.ereignisse.map(e => _esc(e.titel)).join("<br>")}</td>`
-      + `<td>${ab.reihen.von}–${ab.reihen.bis}</td></tr>`).join("")
+    + abschnitte.map(ab => `<tr><td>${ab.art === "schnitt0" ? "Schnitt 0" : ab.nr}</td>`
+      + `<td>${ab.ereignisse.map(e => _esc(e.titel)).join("<br>")}</td>`
+      + `<td>${ab.art === "schnitt0" ? "—" : ab.reihen.von + "–" + ab.reihen.bis}</td></tr>`).join("")
     + "</table>";
   u += `<h2>Stückliste (Kurzform)</h2><table class="mtab">${_bomRows(w)}</table>`;
   u += `<div class="mhinweis"><b>Hinweis.</b> Aufbau von unten, Steinreihen durchgehend nummeriert
@@ -576,25 +656,30 @@ export function montageSeiten(w, eingaben = {}) {
     zugänglich. Die vollständige Stückliste mit Preisen liefert Modul „Stückliste“.</div>`;
   seiten.push({ art: "uebersicht", titel: "Übersicht", abschnitt: null, html: `<section class="mseite">${u}</section>` });
 
-  // --- Folgeseiten: je Abschnitt eine Seite
-  abschnitte.forEach(ab => {
-    let b = kopf(ab.nr + 1);
+  // --- Folgeseiten: Schnitt 0 (falls vorhanden) und je Abschnitt eine Seite
+  abschnitte.forEach((ab, i) => {
+    const s0 = ab.art === "schnitt0";
+    let b = kopf(i + 2);
     b += `<h1>${_esc(ab.titel)}</h1>`;
-    b += `<p><b>${ab.reihen_text}</b> · Höhe ${posCm(ab.z_von_mm)} bis ${posCm(ab.z_bis_mm)} · `
-      + `${ab.straenge.length} Stränge in diesem Abschnitt.</p>`;
-    b += "<h3>Ereignisse in diesem Abschnitt</h3><ol class=\"mev\">"
+    b += s0
+      ? `<p><b>Vorbereitende Fuß-Baugruppe</b> · ${ab.straenge.length} Stränge · noch <b>keine Steinreihen</b>. `
+        + `Diese Darstellung zeigt ausschließlich Bodenblech/Grundplatte und die ersten Gewindestangen; `
+        + `die Steinreihen folgen ab Abschnitt 1.</p>`
+      : `<p><b>${ab.reihen_text}</b> · Höhe ${posCm(ab.z_von_mm)} bis ${posCm(ab.z_bis_mm)} · `
+        + `${ab.straenge.length} Stränge in diesem Abschnitt.</p>`;
+    b += `<h3>Ereignisse in ${s0 ? "Schnitt 0" : "diesem Abschnitt"}</h3><ol class="mev">`
       + ab.ereignisse.map(e => `<li><span class="art">${ART_LABEL[e.art]} · ${posCm(e.z_mm)}</span>${e.text}</li>`).join("")
       + "</ol>";
-    b += `<h3>Danach montieren: ${ab.reihen_text}</h3>`;
+    b += s0 ? "<h3>Fuß-Baugruppe ohne Steinreihen</h3>" : `<h3>Danach montieren: ${ab.reihen_text}</h3>`;
     b += `<div class="mbild"><svg viewBox="0 0 900 430" preserveAspectRatio="xMidYMid meet">${abschnittSvg(w, ab, 900, 430)}</svg></div>`;
-    b += `<div class="mbild"><svg viewBox="0 0 900 210" preserveAspectRatio="xMidYMid meet">${konturSvg(w, ab, 900, 210)}</svg></div>`;
-    b += "<h3>Bauteilpositionen dieses Abschnitts</h3><table class=\"mtab\">"
+    if (!s0) b += `<div class="mbild"><svg viewBox="0 0 900 210" preserveAspectRatio="xMidYMid meet">${konturSvg(w, ab, 900, 210)}</svg></div>`;
+    b += `<h3>Bauteilpositionen ${s0 ? "in Schnitt 0" : "dieses Abschnitts"}</h3><table class="mtab">`
       + "<tr><th>Strang x (ab links)</th><th>Stange von–bis</th><th>Anschluss oben</th></tr>"
       + ab.straenge.map(st => `<tr><td>${posCm(st.x_mm)}</td>`
         + `<td>${posCm(st.z_unten_mm)} – ${posCm(st.z_oben_real_mm)}</td>`
         + `<td>${st.abgeschlossen ? (st.anker_oben === "kopfblech" ? "Kopfblech + Spannmutter" : "Spannplatte + Spannmutter") : "Kopplungsmutter (Stange läuft weiter)"}</td></tr>`).join("")
       + "</table>";
-    seiten.push({ art: "abschnitt", titel: ab.titel, abschnitt: ab, html: `<section class="mseite">${b}</section>` });
+    seiten.push({ art: s0 ? "schnitt0" : "abschnitt", titel: ab.titel, abschnitt: ab, html: `<section class="mseite">${b}</section>` });
   });
   return seiten;
 }

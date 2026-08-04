@@ -55,10 +55,12 @@ ok('Status baubar', $('ovBadge').textContent==='Baubar');
 ok('Vorspannstränge-Zahl gesetzt', +$('ovCols').textContent===W.tension_columns.length);
 
 // Abschnitte kommen aus der geteilten Ableitung (kein eigener Rechenweg im Modul)
-const absW=montageAbschnitte(W);
-ok('Baugruppenabschnitte aus sembla-montage.js', M.abschnitte.length===absW.length && absW.length>0);
-ok('Abschnittszahl angezeigt', +$('ovAbs').textContent===absW.length);
-ok('deutlich weniger Abschnitte als Steinreihen', absW.length < W.lagen);
+const alleW=montageAbschnitte(W);                 // inkl. Schnitt 0 ([A-9])
+const absW=alleW.filter(a=>a.art!=='schnitt0');   // regulaere Baugruppenabschnitte
+ok('Baugruppenabschnitte aus sembla-montage.js', M.abschnitte.length===alleW.length && absW.length>0);
+ok('Abschnittszahl angezeigt (Schnitt 0 separat ausgewiesen)',
+  $('ovAbs').textContent===absW.length+' (+ Schnitt 0)');
+ok('deutlich weniger Abschnitte als Steinreihen', alleW.length < W.lagen);
 
 // Kurz-Stückliste kommt aus dem geteilten BOM-Baustein (Single Source) — konsistent zu Modul „Stückliste"
 const bomHtml=$('bom').innerHTML;
@@ -68,10 +70,30 @@ ok('Stückliste: Zeilenzahl = BOM-Baustein (menge>0)', (bomHtml.match(/<tr>/g)||
 const i3It=expItems.find(it=>it.key==='i3');
 ok('Stückliste: i3-Menge = semblaBom (Konsistenz)', bomHtml.includes('<td>'+i3It.label+'</td><td>'+semblaBomMenge(i3It)+'</td>'));
 
-// Abschnitt 1: Bodenblech + erste Gewindestangen + mehrere erste Steinreihen
+// --- MUSS 1: erste Darstellung ist Schnitt 0 (nur Bodenblech + erste Stangen) ---
+ok('Vorschau startet auf Schnitt 0', M.cur===0 && M.abschnitte[0].art==='schnitt0');
+ok('Schnitt 0: Titel nennt Bodenblech und erste Gewindestangen',
+  /^Schnitt 0 · /.test($('absTitel').textContent)
+  && /Bodenblech/.test($('absTitel').textContent) && /Gewindestange/.test($('absTitel').textContent));
+ok('Schnitt 0: Untertitel weist die Fuß-Baugruppe ohne Steinreihen aus',
+  /ohne Steinreihen/.test($('absSub').textContent) && !/Reihen 1/.test($('absSub').textContent));
+ok('Schnitt 0: Ereignistext mit Senkkopfschraube + Kopplungsmutter',
+  /Senkkopfschraube/.test($('ereignisse').innerHTML) && /Kopplungsmutter/.test($('ereignisse').innerHTML));
+ok('Schnitt 0: Navigations-Label', /^Schnitt 0 · Bild 1 von /.test($('absLab').textContent));
+const svg0=$('absSvg').innerHTML;
+ok('Schnitt-0-Bild: Bodenblech + Gewindestangen', /#5b6673/.test(svg0) && /#1f6feb/.test(svg0)
+  && /Schnitt 0 · Bodenblech und erste Gewindestangen/.test(svg0));
+ok('Schnitt-0-Bild: KEINE Steine, Reihennummern, Kontur oder Öffnungen',
+  !/stroke="#7d848c"/.test(svg0) && !/fill="#e9ebee"/.test(svg0)
+  && !/font-weight="600"/.test(svg0) && !/<polyline/.test(svg0) && !/stroke-dasharray="5 4"/.test(svg0));
+ok('Schnitt 0: Wandüberblick ohne Hervorhebung', $('mapSvg').innerHTML.length>400
+  && !/hervorgehoben:/.test($('mapSvg').innerHTML));
+
+// Abschnitt 1 folgt unverändert: Bodenblech + erste Gewindestangen + mehrere erste Steinreihen
+$('next').dispatch('click');
 ok('Abschnitt 1 nennt Bodenblech und erste Gewindestangen',
   /Bodenblech/.test($('absTitel').textContent) && /Gewindestange/.test($('absTitel').textContent));
-ok('Abschnitt 1: Ereignistext mit Senkkopfschraube + Kopplungsmutter',
+ok('Abschnitt 1: Ereignistext mit Senkkopfschraube + Kopplungsmutter (additiv, nicht verschoben)',
   /Senkkopfschraube/.test($('ereignisse').innerHTML) && /Kopplungsmutter/.test($('ereignisse').innerHTML));
 ok('Abschnitt 1: mehrere erste Steinreihen', /Reihen 1–5/.test($('absSub').textContent));
 ok('Ereignisliste hat Art-Label + Höhe', /class="art">Erste Stange · 0 cm/.test($('ereignisse').innerHTML));
@@ -84,14 +106,14 @@ ok('Wandüberblick gezeichnet', $('mapSvg').innerHTML.length>400);
 ok('Wandüberblick: hervorgehobener Reihenbereich', /hervorgehoben: Reihen 1–5/.test($('mapSvg').innerHTML));
 
 // Navigation über Abschnitte (nicht mehr über Lagen)
-ok('Navigations-Label nennt Abschnitt', /Abschnitt 1 von /.test($('absLab').textContent));
-ok('Slider max = Abschnittszahl', +$('slider').max===absW.length);
+ok('Navigations-Label nennt Abschnitt', /Abschnitt 1 · Bild 2 von /.test($('absLab').textContent));
+ok('Slider max = Zahl der Bilder inkl. Schnitt 0', +$('slider').max===alleW.length);
 $('next').dispatch('click');
-ok('Navigation: Abschnitt 2', /Abschnitt 2 von /.test($('absLab').textContent));
+ok('Navigation: Abschnitt 2', /Abschnitt 2 · Bild 3 von /.test($('absLab').textContent));
 ok('Abschnitt 2 ist die Kopplung auf 110 cm', /Kopplung auf 110 cm/.test($('absTitel').textContent));
 ok('Kopplung nennt Reihe 5 / vor Reihe 6', /nach Reihe 5 und <b>vor<\/b> Reihe 6/.test($('ereignisse').innerHTML));
-$('slider').value=String(absW.length); $('slider').dispatch('input');
-ok('Slider springt auf letzten Abschnitt', M.cur===absW.length-1);
+$('slider').value=String(alleW.length); $('slider').dispatch('input');
+ok('Slider springt auf letzten Abschnitt', M.cur===alleW.length-1);
 ok('letzter Abschnitt enthält den oberen Abschluss', /Oberer Abschluss/.test($('ereignisse').innerHTML));
 ok('letzter Abschnitt endet auf Reihe 13', /Reihen 12–13/.test($('absSub').textContent));
 
@@ -101,11 +123,13 @@ ok('Raster-Umschalter zeichnet neu', $('mapSvg').innerHTML.length>400);
 
 // Druckdokument: paginierte Abschnittsseiten (KEINE Seite pro Steinreihe)
 const pd=$('printdoc').innerHTML;
-ok('Druckdoc: A4-Seiten statt Lagenkacheln',
-  (pd.match(/class="mseite"/g)||[]).length===absW.length+1 && !/pcourse/.test(pd));
+ok('Druckdoc: A4-Seiten statt Lagenkacheln (Übersicht + Schnitt 0 + Abschnitte)',
+  (pd.match(/class="mseite"/g)||[]).length===alleW.length+1 && !/pcourse/.test(pd));
 ok('Druckdoc: A4-Stylesheet aus sembla-montage.js', /@page\{size:A4 portrait/.test(pd));
 ok('Druckdoc: Projekt-/Wandbezug je Seite',
-  (pd.match(/Rettungswache · Wand Testwand/g)||[]).length===absW.length+1);
+  (pd.match(/Rettungswache · Wand Testwand/g)||[]).length===alleW.length+1);
+ok('Druckdoc: Schnitt 0 ist die erste Abschnittsseite',
+  pd.indexOf('Schnitt 0 · Bodenblech')>0 && pd.indexOf('Schnitt 0 · Bodenblech')<pd.indexOf('Abschnitt 1 · '));
 
 // --- MUSS 7: Vorschau (dieses Modul) und zentraler Export sind deckungsgleich ---
 const mdoc = s => s.slice(s.indexOf('<div class="mdoc">'), s.lastIndexOf('</div>')+6);
@@ -116,12 +140,12 @@ ok('Vorschau-Druckdokument == zentral exportierte Montageanleitung',
 _aktiv='w-2'; _we=WS; fireStore();
 const absS=montageAbschnitte(WS);
 ok('Store-Sync: gestaffeltes Element geladen', M.wall && M.wall.name==='Musterwand AWG');
-ok('gestaffelte Wand: mehr Abschnitte durch verschiedene Stangenendhöhen', absS.length>absW.length);
+ok('gestaffelte Wand: mehr Abschnitte durch verschiedene Stangenendhöhen', absS.length>alleW.length);
 ok('gestaffelte Wand: Abschnitte aus der geteilten Ableitung', M.abschnitte.length===absS.length);
 ok('gestaffelte Wand: Vorschau == Export',
   mdoc($('printdoc').innerHTML) === mdoc(montageHtml(WS, EING)));
 // Oberer Abschluss der 140-cm-Stufe erscheint als eigenes Ereignis in der Vorschau
-$('slider').value='3'; $('slider').dispatch('input');
+$('slider').value='4'; $('slider').dispatch('input');
 ok('gestaffelte Wand: Abschluss auf 140 cm sichtbar',
   /Oberer Abschluss auf 140 cm/.test($('ereignisse').innerHTML) || /Abschluss 140 cm/.test($('absSvg').innerHTML));
 
@@ -134,6 +158,47 @@ ok('montage.html importiert die geteilte Ableitung',
   /from '\.\/shared\/sembla-montage\.js'/.test(html));
 ok('montage.html enthält keine eigene Lagen-Zeichnung mehr',
   !/function courseStrip/.test(html) && !/function wallMap/.test(html) && !/function vorspannSteps/.test(html));
+
+// --- MUSS 2: die Vorschau behaelt ueber ALLE Bearbeitungsschritte dieselbe Groesse ---
+// Geprueft am echten Vorschau-Renderer des Moduls: das SVG-Element hat einen festen
+// viewBox, und der Inhalt nutzt in jedem Schritt denselben Massstab/Nullpunkt.
+ok('Vorschau-SVG hat festen viewBox (Elementgröße konstant)',
+  /<svg id="absSvg" viewBox="0 0 900 430"/.test(html) && /<svg id="mapSvg" viewBox="0 0 900 250"/.test(html));
+for (const [name, w] of [['Rechteck', W], ['gestaffelt', WS]]) {
+  _we=w; _aktiv='w-'+name; fireStore();
+  const n=M.abschnitte.length, yB=[], bB=[];
+  for (let i=0;i<n;i++){
+    $('slider').value=String(i+1); $('slider').dispatch('input');
+    const s=$('absSvg').innerHTML;
+    yB.push((/<rect x="[\d.]+" y="([\d.]+)"[^>]*fill="#5b6673"/.exec(s)||[])[1]);
+    bB.push((/<rect x="[\d.]+" y="[\d.]+" width="([\d.]+)"[^>]*fill="#5b6673"/.exec(s)||[])[1]);
+  }
+  ok(`${name}: Wandfuß bleibt über alle ${n} Schritte auf derselben y-Position`,
+    yB.length===n && yB.every(v=>v!==undefined) && new Set(yB).size===1);
+  ok(`${name}: Maßstab bleibt über alle Schritte identisch (Vorschau wächst nicht)`,
+    bB.length===n && bB.every(v=>v!==undefined) && new Set(bB).size===1);
+}
+
+// --- MUSS 3: Druck-CSS blendet alle schwebenden Bedienelemente aus ---
+const navCss = readFileSync(new URL("../../docs/shared/navbar.js", import.meta.url), "utf8");
+const navKlasse = /\.(sb-nav)\{[^}]*position:sticky/.exec(navCss);
+ok('navbar.js liefert eine sticky Kopfleiste namens .sb-nav (Bezug des Druck-CSS)', !!navKlasse);
+const printCss = /@media print\{([\s\S]*?)\n  \}/.exec(html);
+ok('montage.html hat einen @media-print-Block', !!printCss);
+const pc = printCss ? printCss[1] : '';
+ok('Druck: die ECHTE Kopfleiste .sb-nav wird ausgeblendet (nicht der frühere Tippfehler .sb-navbar)',
+  new RegExp('(^|[,{\\s])\\.'+navKlasse[1]+'([,\\s{])').test(pc) && !/\.sb-navbar/.test(html));
+ok('Druck: Bedienpanel und Intro ausgeblendet', /#app/.test(pc) && /\.intro/.test(pc)
+  && /display:none!important/.test(pc));
+ok('Druck: schwebende Eingabe-/Bedienelemente ausgeblendet',
+  /input[^}]*display:none!important/.test(pc.replace(/\s+/g,''))
+  || /input,select,textarea,button\{display:none!important\}/.test(pc.replace(/\s+/g,'')));
+ok('Druck: nichts bleibt sticky/fixed stehen', /position:static!important/.test(pc.replace(/\s+/g,'')));
+ok('Druck: nur das Montagedokument wird gedruckt', /#printdoc\{display:block\}/.test(pc.replace(/\s+/g,'')));
+ok('Druck: A4-Paginierung des Dokuments bleibt erhalten',
+  /@page\{size:A4 portrait/.test($('printdoc').innerHTML)
+  && /page-break-after:always/.test($('printdoc').innerHTML)
+  && !/@page/.test(pc));
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`);
