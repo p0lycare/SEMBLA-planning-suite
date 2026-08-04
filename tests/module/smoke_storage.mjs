@@ -25,6 +25,7 @@ globalThis.window = { addEventListener() {} };
 
 const store = await import("../../docs/shared/storage.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
+const KAT = await import("../../docs/shared/sembla-katalog.js");
 
 let pass = 0, fail = 0;
 const t = (n, c) => { if (c) { pass++; } else { fail++; console.log("FAIL  " + n); } };
@@ -166,6 +167,114 @@ t("import Altdatei: Alt-Feld unangetastet", store.holeElement(idAlt).eingaben.st
 t("import Altdatei: mitWind nicht in den Standardwerten", !("mitWind" in store.standardEingaben().statik));
 // Neues Feld ist im v2-Format optional -> Export bleibt v2
 t("export: Projektformat bleibt v2", store.projektObjekt(idAlt).version === 2);
+
+// 12) Bauteilkatalog (Issue #21): eigene Ressource + Auswahl als Referenz ---
+// Synthetische Fantasiedaten, keine realen Produkt-/Preisangaben.
+const KATALOG = {
+  format: "SEMBLA-Bauteilkatalog", version: 1, name: "Katalog Musterlieferant",
+  produkte: [
+    { id: "rod-m10-1100", kategorie: "gewindestange", bezeichnung: "Gewindestange M10 1100 mm",
+      einheit: "Stk", preis: 3.8, gewinde: "M10", laenge_mm: 1100 },
+    { id: "latte-40-60-3000", kategorie: "latte", bezeichnung: "Latte 40×60, 3,0 m",
+      einheit: "m", preis: 1.25, breite_mm: 40, dicke_mm: 60, laenge_mm: 3000 },
+    { id: "latte-40-60-5000", kategorie: "latte", bezeichnung: "Latte 40×60, 5,0 m",
+      einheit: "m", preis: 1.19, breite_mm: 40, dicke_mm: 60, laenge_mm: 5000 },
+    { id: "platte-12-1250-2000", kategorie: "beplankung", bezeichnung: "Platte 12,5 mm 1250×2000",
+      einheit: "m2", preis: 6.9, breite_mm: 1250, hoehe_mm: 2000, dicke_mm: 12.5 },
+  ],
+};
+
+t("katalog: anfangs keiner geladen", store.holeKatalog() === null);
+store.setzeKatalog(KATALOG);
+t("katalog: gespeichert und gelesen", store.holeKatalog().produkte.length === 4);
+t("katalog: eigener localStorage-Schluessel (nicht im Projektstand)",
+  !!localStorage.getItem("sembla:katalog")
+  && !localStorage.getItem("sembla:elemente").includes("rod-m10-1100"));
+t("katalog: Zeitstempel intern, nicht im oeffentlichen Format",
+  typeof store.holeKatalog().geaendert === "string");
+
+// „Reload": frisch aus dem localStorage lesen (storage.js haelt keinen Cache)
+t("katalog: ueberlebt Reload (Rohwert im Speicher)",
+  JSON.parse(localStorage.getItem("sembla:katalog")).produkte[0].id === "rod-m10-1100");
+
+let warfK = false;
+try { store.setzeKatalog({ name: "", produkte: [{ id: "x" }] }); } catch { warfK = true; }
+t("katalog: ungueltiger Katalog wird abgelehnt", warfK && store.holeKatalog().produkte.length === 4);
+
+// Export = eigene Datei im oeffentlichen Katalogformat (nicht im Projekt-ZIP)
+store.exportiereKatalog();
+const kExp = JSON.parse(letzterDownload);
+t("katalog-export: eigenes Format v1",
+  kExp.format === "SEMBLA-Bauteilkatalog" && kExp.version === 1 && kExp.produkte.length === 4);
+t("katalog-export: kein Wandelement/keine Eingaben in der Datei",
+  !("wandelement" in kExp) && !("eingaben" in kExp) && !("geaendert" in kExp));
+
+// Separater Import (ersetzt den Slot)
+store.loescheKatalog();
+t("katalog: entfernt", store.holeKatalog() === null);
+const kImp = store.importiereKatalogText(JSON.stringify(kExp));
+t("katalog-import: separat wieder eingelesen", kImp.produkte.length === 4 && store.holeKatalog() !== null);
+
+// Formatverwechslung wird in BEIDEN Richtungen klar benannt
+let warfV1 = "", warfV2 = "";
+try { store.importiereText(JSON.stringify(kExp)); } catch (e) { warfV1 = e.message; }
+t("verwechslung: Katalog im Projektimport -> klare Meldung", /Bauteilkatalog/.test(warfV1));
+const idV = store.speichere("Verwechslung", buildWall("Verwechslung", 2000, 2600, []));
+try { store.importiereKatalogText(JSON.stringify(store.projektObjekt(idV))); } catch (e) { warfV2 = e.message; }
+t("verwechslung: Projekt im Katalogimport -> klare Meldung", /Projekt-\/Wandelement-Datei/.test(warfV2));
+
+// Projektauswahl: Mehrfachauswahl je Kategorie, nur IDs, am aktiven Element
+const wK = buildWall("Katalogwand", 2000, 2600, []);
+const idK = store.speichere("Katalogwand", wK);
+store.setzeAktiv(idK);
+t("auswahl: Altstand ohne eingaben.katalog -> leer und warnungsfrei",
+  JSON.stringify(store.katalogAuswahl()) === "{}"
+  && KAT.pruefeAuswahl(store.holeKatalog(), store.katalogAuswahl()).warnungen.length === 0);
+
+store.setzeKatalogAuswahl("latte", ["latte-40-60-3000", "latte-40-60-5000"]);
+store.setzeKatalogAuswahl("gewindestange", ["rod-m10-1100"]);
+t("auswahl: mehrere Standardgroessen derselben Kategorie",
+  store.katalogAuswahl().latte.length === 2 && store.katalogAuswahl().gewindestange.length === 1);
+t("auswahl: Herkunftsnotiz ohne Preise",
+  store.aktiveEingaben().katalog.quelle.name === "Katalog Musterlieferant"
+  && !JSON.stringify(store.aktiveEingaben().katalog).includes("1.25"));
+t("auswahl: Wandelement bleibt frei von Katalogdaten",
+  !JSON.stringify(store.aktivesWandelement()).includes("latte-40-60-3000"));
+
+// Roundtrip Projekt-JSON: nur IDs reisen mit, Version bleibt 2
+const pK = store.projektObjekt(idK);
+t("auswahl: reist im Projekt-JSON mit (nur IDs)",
+  pK.eingaben.katalog.auswahl.latte.join(",") === "latte-40-60-3000,latte-40-60-5000"
+  && !JSON.stringify(pK.eingaben.katalog).includes("Latte 40×60"));
+t("auswahl: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
+t("auswahl: interne Schema-Version bleibt 3", store.SCHEMA_VERSION === 3);
+const idKimp = store.importiereText(JSON.stringify(pK), "Katalogwand.json");
+t("auswahl: nach Projekt-Import wieder geladen",
+  store.holeEingaben(idKimp).katalog.auswahl.latte.length === 2);
+
+// Fehlende Referenz -> sichtbare Warnung, keine stille Bereinigung
+const ohneLatte = { ...store.holeKatalog(), produkte: store.holeKatalog().produkte.filter(p => p.id !== "latte-40-60-5000") };
+store.setzeKatalog(ohneLatte);
+const prS = KAT.pruefeAuswahl(store.holeKatalog(), store.katalogAuswahl());
+t("referenz: geloeschtes Produkt warnt", prS.warnungen.some(w => w.typ === "fehlt" && w.id === "latte-40-60-5000"));
+t("referenz: Auswahl bleibt unveraendert (nicht still bereinigt)",
+  store.katalogAuswahl().latte.length === 2);
+store.loescheKatalog();
+t("referenz: ohne Katalog warnt die gesamte Auswahl",
+  KAT.pruefeAuswahl(store.holeKatalog(), store.katalogAuswahl()).warnungen[0].typ === "kein_katalog");
+
+// Altprojekt-Datei ohne eingaben.katalog laedt sauber und warnungsfrei
+const altOhneKatalog = JSON.stringify({
+  format: "SEMBLA-Projekt", version: 2, name: "AltOhneKatalog",
+  wandelement: buildWall("AltOhneKatalog", 2000, 2600, []),
+  eingaben: { projekt: { name: "Alt" }, kosten: { preise: { i3: 9.5 } } },
+});
+const idAltK = store.importiereText(altOhneKatalog, "AltOhneKatalog.json");
+t("altprojekt: Fallback = leere Auswahl",
+  JSON.stringify(store.holeEingaben(idAltK).katalog) === JSON.stringify({ quelle: null, auswahl: {} }));
+t("altprojekt: keine Warnung", KAT.pruefeAuswahl(null, store.holeEingaben(idAltK).katalog.auswahl).warnungen.length === 0);
+t("altprojekt: bestehende Preisfelder unveraendert wirksam",
+  store.holeEingaben(idAltK).kosten.preise.i3 === 9.5);
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

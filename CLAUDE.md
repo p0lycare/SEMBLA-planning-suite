@@ -23,9 +23,9 @@ Es lebt im **localStorage des Browsers** (Schicht `docs/shared/storage.js`). Gen
 Element ist gesetzt; **nur Modul 1 schreibt das Wandelement**, alle anderen Module lesen es.
 
 **Nutzereingaben ↔ ein Datenmodell (kein Drift).** Neben dem Wandelement hält jeder Eintrag einen
-`eingaben`-Block: `{ projekt, aufbau, kosten, statik }` (Standardwerte in `storage.standardEingaben()`).
+`eingaben`-Block: `{ projekt, aufbau, kosten, statik, katalog }` (Standardwerte in `storage.standardEingaben()`).
 Jedes Modul schreibt **nur seinen eigenen Abschnitt** via `store.mergeEingaben(teil, patch)` zurück —
-Modul 0→`projekt` (Kopfdaten am aktiven Element), Modul 2→`aufbau`, Modul 4→`kosten`, Modul 3→`statik`. Abgeleitete Werte (Stückliste,
+Modul 0→`projekt` (Kopfdaten am aktiven Element) **und `katalog`** (Produktauswahl), Modul 2→`aufbau`, Modul 4→`kosten`, Modul 3→`statik`. Abgeleitete Werte (Stückliste,
 Layout, Nachweis) werden immer **neu gerechnet, nie gespeichert**. Modul 3 speichert nur seine Kennwerte;
 Geometrie (h/L/t/Öffnungszahl) **und Wandtyp** kommen aus dem Wandelement.
 
@@ -49,6 +49,23 @@ Achsabstand („jede x-te Achse"); die Achsen werden von der Startachse bis zur 
 Stufenkanten bleiben **additiv**; manuell gesetzte Achsen (`columns_grid`, Sonderkonstruktion) haben
 **Vorrang** vor der Auto-Verteilung. Das Feld ist optional/abwärtskompatibel — kein Schema-/
 Projektformat-Bruch.
+
+**Bauteilkatalog (`sembla:katalog`, Format `SEMBLA-Bauteilkatalog` v1).** Der Produktstamm (Steine,
+Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder, Verbrauchsmaterial) ist
+eine **eigene Ressource** — technisch und fachlich getrennt vom Wand-/Projekt-JSON: **ein** aktiver
+Katalog-Slot im localStorage, eigene Datei, eigene Formatversion (`KATALOG_VERSION`), Logik in
+`docs/shared/sembla-katalog.js` (rein/DOM-frei, validiert). **Modul 0 besitzt** Katalogpflege (Produkte
+anlegen/bearbeiten/duplizieren/löschen), **separaten** Katalogimport/-export **und** die Projektauswahl;
+Katalogimport/-export laufen bewusst **nicht** über den Projekt-Import/das Projekt-ZIP (verwechselte
+Formate werden benannt). Im Projekt steht nur `eingaben.katalog = { quelle, auswahl }` — **Produkt-IDs
+je Kategorie** (Mehrfachauswahl möglich, z. B. mehrere Lattenlängen), **niemals** Preise/Maße und
+**nichts davon im Wandelement**. Unauflösbare Referenzen (gelöscht/anderer Katalog/kein Katalog) werden
+in Modul 0 **sichtbar gewarnt**, nie still bereinigt und nie auf Nullpreis/Ersatzprodukt abgebildet
+(`pruefeAuswahl`). Altprojekte ohne `eingaben.katalog` laden über `standardEingaben()` als **leere
+Auswahl** — warnungsfrei, ohne Verhaltensänderung; `eingaben.kosten.preise` bleibt die wirksame
+Preisquelle für Modul 4 (**keine** Katalog→BOM/Kosten/Zuschnitt-Integration, das ist Folgeausbau).
+Versionsachsen strikt getrennt: `KATALOG_VERSION`=1 (Katalogdatei) ≠ `PROJEKT_VERSION`=2 (`eingaben.katalog`
+ist dort ein optionales Feld, kein Bruch) ≠ `SCHEMA_VERSION`=3 (eigener Schlüssel ⇒ keine Migration nötig).
 
 **Export/Import ist zentral** (Modul 0, `docs/index.html`): ein Häkchen-Dialog baut über
 `sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
@@ -90,10 +107,13 @@ Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Ras
      **vollen** Schermer-Nachweis (`sembla-statik.js`) — nie aus dem vereinfachten Engine-Modell —
      und ist als prüfpflichtige Planungshilfe gekennzeichnet.
    - `zip.js` — `zipSync`/`downloadZip` (STORE+CRC32, ohne Fremd-Lib) für den zentralen ZIP-Export.
-   - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie, Import/Export).
+   - `sembla-katalog.js` — **Bauteilkatalog**: Kategorien/Einheiten, Validierung, Austauschformat
+     (`parseKatalog`/`katalogObjekt`) und Referenzprüfung der Projektauswahl (`pruefeAuswahl`); rein/DOM-frei.
+   - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
+     **Katalog-Slot + Projektauswahl**, Import/Export).
    - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–6 + aktives Wandelement).
 
-   `engine`/`statik`/`bom`/`aufbau`/`ifc`/`export`/`zip` sind eigene Dateien **wegen eigener Tests bzw.
+   `engine`/`statik`/`bom`/`aufbau`/`ifc`/`export`/`zip`/`katalog` sind eigene Dateien **wegen eigener Tests bzw.
    mehrerer Nutzer** (Regeln a/b). Reine Modul-Zeichen-/Rechenlogik mit nur einem Nutzer bleibt **inline**
    im jeweiligen HTML.
 
@@ -105,7 +125,7 @@ Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Ras
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)** |
+| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** pflegen (Produkte anlegen/bearbeiten), separat im-/exportieren und Produkte für das Projekt freigeben → `eingaben.katalog` (`sembla-katalog.js`) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

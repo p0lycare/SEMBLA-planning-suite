@@ -13,6 +13,7 @@
  *   sembla:version   <Zahl>                       Schema-Version (Migration)
  *   sembla:obj:i2    <string>                     hochgeladene Bauteilgeometrie i2
  *   sembla:obj:i3    <string>                     hochgeladene Bauteilgeometrie i3
+ *   sembla:katalog   { …SEMBLA-Bauteilkatalog }    EIN aktiver Bauteilkatalog (eigene Ressource)
  *
  * Ein Eintrag: { id, name, wandelement, eingaben?, erstellt, geaendert }  (ISO-Zeitstempel)
  *
@@ -23,13 +24,21 @@
  * liegt das komplette Projekt in EINEM JSON; abgeleitete Werte (Stueckliste,
  * Nachweise) werden nie gespeichert, sondern immer neu gerechnet (kein Drift).
  *
+ * AUSNAHME Bauteilkatalog: Der Produktstamm ist eine eigene Ressource (eigener
+ * Schluessel, eigenes Dateiformat `SEMBLA-Bauteilkatalog`, siehe sembla-katalog.js).
+ * Im Projekt liegt davon nur die AUSWAHL (`eingaben.katalog`: Produkt-IDs je
+ * Kategorie + Herkunftsnotiz) — keine Preise, keine Maße, nichts im Wandelement.
+ *
  * ES-Modul: wird im Browser per <script type="module"> geladen. Kein Node-Betrieb.
  */
+
+import { katalogObjekt, parseKatalog, validiereKatalog } from "./sembla-katalog.js";
 
 const K_ELEM = "sembla:elemente";
 const K_AKTIV = "sembla:aktiv";
 const K_VERSION = "sembla:version";
 const K_OBJ = (typ) => `sembla:obj:${typ}`;
+const K_KATALOG = "sembla:katalog";
 
 /** Aktuelle Schema-Version des INTERNEN localStorage-Stands. Aeltere Staende
  *  werden beim Laden einmalig migriert.
@@ -37,12 +46,17 @@ const K_OBJ = (typ) => `sembla:obj:${typ}`;
  *  ohne `eingaben` funktionieren weiter — fehlende Felder werden beim Lesen mit
  *  Standardwerten aufgefuellt (holeEingaben), nichts wird zerstoerend umgeschrieben.
  *  v3: `wandelement.wandtyp` wird einmalig aus dem Alt-Feld `eingaben.statik.mitWind`
- *  abgeleitet (siehe `_migriereWandtyp`). */
+ *  abgeleitet (siehe `_migriereWandtyp`).
+ *  Bleibt 3 mit dem Bauteilkatalog: der Katalog liegt in einem EIGENEN Schluessel
+ *  (`sembla:katalog`; fehlt er, gibt es keinen Katalog) und `eingaben.katalog` wird
+ *  beim Lesen aus `standardEingaben()` aufgefuellt — es gibt nichts zu migrieren. */
 export const SCHEMA_VERSION = 3;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
- *  Bleibt 2: `wandtyp` ist ein optionales Zusatzfeld im Wandelement, das aeltere
- *  Staende einfach ignorieren — kein Bruch, daher kein Versionssprung. */
+ *  Bleibt 2: `wandtyp` (Wandelement) und `eingaben.katalog` (Produktauswahl) sind
+ *  optionale Zusatzfelder, die aeltere Staende einfach ignorieren — kein Bruch,
+ *  daher kein Versionssprung. Das Katalog-Dateiformat ist davon getrennt
+ *  versioniert (KATALOG_VERSION in sembla-katalog.js). */
 export const PROJEKT_VERSION = 2;
 
 // --- Wandtyp (Fachmerkmal der Wand) --------------------------------------
@@ -294,6 +308,10 @@ export function exportiere(id) {
 export function parseImport(text) {
   let obj;
   try { obj = JSON.parse(text); } catch { throw new Error("Datei ist kein gueltiges JSON."); }
+  // Verwechseltes Format klar benennen statt „kein Wandelement erkannt“.
+  if (obj && obj.format === "SEMBLA-Bauteilkatalog") {
+    throw new Error("Das ist ein Bauteilkatalog — bitte im Abschnitt „Bauteilkatalog“ mit „Katalog importieren…“ laden.");
+  }
   let we = null, name = null, eingaben;
   if (obj && obj.format === "SEMBLA-Projekt" && _istWandelement(obj.wandelement)) {
     we = obj.wandelement; name = obj.name || obj.wandelement.name;
@@ -344,6 +362,93 @@ export function loescheObj(typ) {
   _benachrichtige();
 }
 
+// --- Bauteilkatalog (eigene Ressource, EIN aktiver Slot) ------------------
+// Der Katalog gehoert NICHT ins Projekt: er liegt in `sembla:katalog`, wird als
+// eigene Datei (`SEMBLA-Bauteilkatalog`) getrennt vom Projekt/ZIP aus- und
+// eingelesen und von Modul 0 gepflegt. Im Projekt steht nur `eingaben.katalog`
+// (Produkt-IDs je Kategorie + Herkunftsnotiz).
+
+/** @returns {object|null} der geladene Katalog (null = keiner geladen). */
+export function holeKatalog() {
+  try {
+    const raw = localStorage.getItem(K_KATALOG);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    return (o && typeof o === "object" && Array.isArray(o.produkte)) ? o : null;
+  } catch { return null; }
+}
+
+/**
+ * Katalog setzen/ueberschreiben. Ungueltige Kataloge werden abgelehnt (Fehler),
+ * nie stillschweigend zurechtgebogen.
+ * @param {object} katalog @returns {object} der gespeicherte Katalog
+ */
+export function setzeKatalog(katalog) {
+  const fehler = validiereKatalog(katalog);
+  if (fehler.length) throw new Error("Katalog ungueltig:\n– " + fehler.join("\n– "));
+  const gespeichert = { ...katalogObjekt(katalog), geaendert: _jetzt() };
+  localStorage.setItem(K_KATALOG, JSON.stringify(gespeichert));
+  _benachrichtige();
+  return gespeichert;
+}
+
+/** Katalog-Slot leeren (die Projektauswahl bleibt bewusst stehen -> Warnung). */
+export function loescheKatalog() {
+  localStorage.removeItem(K_KATALOG);
+  _benachrichtige();
+}
+
+/**
+ * Katalog-Datei-Text importieren (streng geprueft, getrennt vom Projektimport).
+ * @param {string} text @returns {object} der gespeicherte Katalog
+ */
+export function importiereKatalogText(text) {
+  return setzeKatalog(parseKatalog(text));
+}
+
+/** Katalog-Datei (File) importieren. @param {File} file @returns {Promise<object>} */
+export function importiereKatalogDatei(file) {
+  return file.text().then((text) => importiereKatalogText(text));
+}
+
+/** Geladenen Katalog als eigene JSON-Datei herunterladen (nicht im Projekt-ZIP). */
+export function exportiereKatalog() {
+  const k = holeKatalog();
+  if (!k) throw new Error("Kein Bauteilkatalog geladen.");
+  const obj = katalogObjekt(k);
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "SEMBLA_Bauteilkatalog_" + sicherName(obj.name) + ".json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  return obj;
+}
+
+/** Projektauswahl (Produkt-IDs je Kategorie) des aktiven/gewaehlten Elements. @param {string} [id] */
+export function katalogAuswahl(id) {
+  const k = holeEingaben(id).katalog || {};
+  return k.auswahl || {};
+}
+
+/**
+ * Auswahl EINER Kategorie am aktiven Element setzen (Mehrfachauswahl: Liste von
+ * Produkt-IDs). Schreibt nur `eingaben.katalog` — das Wandelement bleibt unberuehrt.
+ * @param {string} kategorie @param {string[]} ids @param {string} [id]
+ * @returns {string|null} id des Elements
+ */
+export function setzeKatalogAuswahl(kategorie, ids, id) {
+  const liste = [...new Set((ids || []).filter((x) => x != null && String(x) !== "").map(String))];
+  const k = holeKatalog();
+  return mergeEingaben("katalog", {
+    auswahl: { [kategorie]: liste },
+    quelle: k ? { name: k.name, version: k.version } : null,
+  }, id);
+}
+
 // --- Eingaben (modeluebergreifende Nutzereingaben, Teil des Datenmodells) --
 
 /** Tiefes Zusammenfuehren (Patch gewinnt; Arrays/null/Primitive ersetzen). */
@@ -377,7 +482,12 @@ export function standardEingaben() {
       latten: { breite_cm: 4, stange_cm: 150 },
       feld_cm: null,           // null = ganze Wand; sonst {x0,x1,y0,y1} in cm
     },
-    // Modul 4 — Stueckliste & Kosten
+    // Modul 0 — Bauteilkatalog: NUR die Auswahl (Referenzen), keine Produktdaten.
+    // `quelle` ist eine reine Herkunftsnotiz des Katalogs, aus dem gewaehlt wurde.
+    // Altprojekte ohne diesen Block laden hierdurch als LEERE Auswahl — warnungsfrei.
+    katalog: { quelle: null, auswahl: {} },
+    // Modul 4 — Stueckliste & Kosten. Bleibt die wirksame Preisquelle: die
+    // Katalog-Freigabe wird (noch) NICHT in Mengen/Kosten uebernommen (Folgeausbau).
     kosten: {
       waehrung: "EUR",
       preise: {
@@ -430,7 +540,7 @@ export function aktiveEingaben() { return holeEingaben(); }
  * Einen Eingabe-Abschnitt aktualisieren (Modul schreibt NUR seinen Teil zurueck).
  * Das Wandelement bleibt unberuehrt — nur Modul 1 aendert das Wandelement.
  * Ohne aktives/gewaehltes Element passiert nichts (return null).
- * @param {"projekt"|"aufbau"|"kosten"|"statik"} teil @param {object} patch @param {string} [id]
+ * @param {"projekt"|"aufbau"|"kosten"|"statik"|"katalog"} teil @param {object} patch @param {string} [id]
  * @returns {string|null} id
  */
 export function mergeEingaben(teil, patch, id) {
