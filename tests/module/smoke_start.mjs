@@ -24,6 +24,8 @@ class MemStorage {
 globalThis.localStorage = new MemStorage();
 globalThis.window = { addEventListener(){} };
 
+// Echte scrollIntoView-Aufrufe am gerenderten Datensatz (Import-Feedback, Issue #28).
+const scrollAufrufe = [];
 class El {
   constructor(id){ this.id=id; this.value=''; this.textContent=''; this._h=''; this.className='';
     this.hidden=false; this.checked=false; this.style={}; this.dataset={}; this.listeners={}; this.files=[]; }
@@ -32,6 +34,15 @@ class El {
   dispatch(e,ev){ let r; (this.listeners[e]||[]).forEach(f=>{ r=f(ev||{target:this}); }); return r; }
   get innerHTML(){ return this._h; } set innerHTML(v){ this._h=v; }
   querySelectorAll(){ return this._sel || []; }   // _sel: vom Test gestellte Treffer (Export-Haekchen)
+  /** Sucht im gerenderten Markup — nur was der Produktcode braucht ('tr.neu').
+   *  Der Treffer ist ein echtes Element-Double: sein scrollIntoView wird protokolliert. */
+  querySelector(sel){
+    if (sel !== 'tr.neu') return null;
+    const m = /<tr data-id="([^"]+)" class="neu">/.exec(this._h);
+    if (!m) return null;
+    return { dataset:{ id:m[1] },
+             scrollIntoView(opts){ scrollAufrufe.push({ id:m[1], opts }); } };
+  }
   closest(){ return null; }
   remove(){}
 }
@@ -41,7 +52,9 @@ const document = {
   getElementById(id){ let e=this._e[id]; if(!e) e=this._e[id]=new El(id); return e; },
   createElement(){ letzterAnker = new El('_'); return letzterAnker; },
   querySelector(){ return null; },
-  addEventListener(){},
+  _l:{},
+  addEventListener(e,f){ (this._l[e]||(this._l[e]=[])).push(f); },
+  dispatch(e,ev){ (this._l[e]||[]).forEach(f=>f(ev)); },
   head:{ appendChild(){} }, body:{ appendChild(){}, insertBefore(){}, firstChild:null },
 };
 globalThis.document = document;
@@ -356,6 +369,163 @@ ok('Projekt-Datei traegt nur die Auswahl-IDs',
   (() => { const p = JSON.parse(projektDateien[0].data);
            return p.eingaben.katalog.auswahl.latte.length === 2
              && !JSON.stringify(p.eingaben.katalog).includes('Latte 40'); })());
+
+// --- 6) Projekt-/Wandimport mit Bestaetigung (Issue #28) -------------------
+// Alles ueber den ECHTEN Modul-0-Handler: Dateiauswahl an #f-import, Dialogfelder,
+// #imp-go/#imp-cancel. Kern: vor der Bestaetigung wird NICHTS persistiert.
+const anzahl = () => store.listeElemente().length;
+const stand = () => localStorage.getItem('sembla:elemente');
+/** Datei an der echten Oberflaeche auswaehlen (async-Handler abwarten). */
+const impWaehle = (text, name) =>
+  $('f-import').dispatch('change', { target: { files:[kFile(text, name)], value:'x' } });
+const impInfo = () => $('imp-info').innerHTML;
+const impFehler = () => $('imp-msg').className === 'msg err';
+const msgTxt = () => $('msg').textContent;
+/** v2-Projekt aus dem vorhandenen Stand ableiten und gezielt verbiegen. */
+function v2Projekt(patch){
+  const p = JSON.parse(JSON.stringify(store.projektObjekt(aktivKat)));
+  if (patch.projektName !== undefined) p.eingaben.projekt.name = patch.projektName;
+  if (patch.name !== undefined) p.name = patch.name;
+  if (patch.weName !== undefined) p.wandelement.name = patch.weName;
+  if (patch.wandtyp !== undefined) p.wandelement.wandtyp = patch.wandtyp;
+  return JSON.stringify(p);
+}
+
+// 6a) Bestaetigungsdialog ist an der echten Oberflaeche vorhanden
+ok('Import-Dialog mit Overlay vorhanden', /<div class="overlay" id="imp-overlay" hidden>/.test(html));
+ok('Feld ist exakt „Name des Wandelements" beschriftet',
+  /<label for="imp-name">Name des Wandelements<\/label>/.test(html) && /<input id="imp-name"/.test(html));
+ok('Buttons „Importieren & aktiv setzen" und „Abbrechen"',
+  /id="imp-go">Importieren &amp; aktiv setzen</.test(html) && /id="imp-cancel">Abbrechen</.test(html));
+
+// 6b) Dateiauswahl parst nur — kein Element, kein aktiver Zeiger, aber sichtbarer Dialog
+const anzahlVor = anzahl(), aktivVor = store.aktivId(), standVor = stand();
+await impWaehle(v2Projekt({ projektName:'Musterprojekt Nord', weName:'Wand' }), 'export-2026.json');
+ok('Dialog ist nach der Dateiauswahl sichtbar', $('imp-overlay').hidden === false);
+ok('vor der Bestaetigung wird KEIN Element gespeichert', anzahl() === anzahlVor && stand() === standVor);
+ok('vor der Bestaetigung bleibt der aktive Zeiger unveraendert', store.aktivId() === aktivVor);
+ok('Namensvorschlag ist der Projektname aus der Datei', $('imp-name').value === 'Musterprojekt Nord');
+ok('Dialog nennt die gelesene Datei', $('imp-datei').textContent === 'export-2026.json');
+ok('Zusammenfassung zeigt die echten Wandmaße',
+  impInfo().includes(store.holeElement(aktivKat).wandelement.length_mm + ' × '
+                     + store.holeElement(aktivKat).wandelement.height_mm + ' mm'));
+ok('Zusammenfassung zeigt den kanonisch beschrifteten Wandtyp',
+  /Wandtyp \(Windsituation\)/.test(impInfo()) && /Innenwand mit Wind \(Cpi\)/.test(impInfo()));
+ok('Zusammenfassung nennt die Öffnungszahl aus der Datei',
+  /Öffnungen:<\/b> 0/.test(impInfo()));
+
+// 6c) Abbrechen wirkt nicht und gibt die Dateiauswahl wieder frei
+$('imp-cancel').dispatch('click');
+ok('Abbrechen schliesst den Dialog', $('imp-overlay').hidden === true);
+ok('Abbrechen legt kein Element an', anzahl() === anzahlVor && stand() === standVor);
+ok('Abbrechen laesst den aktiven Zeiger unveraendert', store.aktivId() === aktivVor);
+ok('Dateiauswahl ist zurueckgesetzt (dieselbe Datei erneut waehlbar)', $('f-import').value === '');
+
+// 6d) Leerer Name wird sichtbar abgelehnt — weiterhin ohne Persistenz
+await impWaehle(v2Projekt({ projektName:'Musterprojekt Nord', weName:'Wand' }), 'export-2026.json');
+$('imp-name').value = '   ';
+$('imp-go').dispatch('click');
+ok('Whitespace-Name wird sichtbar abgelehnt', impFehler() && /Namen/.test($('imp-msg').textContent));
+ok('abgelehnter Name speichert nichts', anzahl() === anzahlVor && stand() === standVor);
+ok('Dialog bleibt zur Korrektur offen', $('imp-overlay').hidden === false);
+
+// 6e) Bestaetigung: genau einmal speichern, aktiv setzen, Feedback, Hervorhebung, Scroll
+const scrollVor = scrollAufrufe.length;
+$('imp-name').value = '  Halle Ost  ';
+$('imp-go').dispatch('click');
+const neu = store.aktivesElement();
+ok('Bestaetigung legt genau ein Element an', anzahl() === anzahlVor + 1);
+ok('der editierte Name wird verwendet (getrimmt)', neu.name === 'Halle Ost');
+ok('das importierte Element ist aktiv', store.aktivId() === neu.id && neu.id !== aktivVor);
+ok('Dialog ist geschlossen', $('imp-overlay').hidden === true);
+ok('sichtbares Erfolgsfeedback nennt Name, Import und aktiv',
+  /Halle Ost/.test(msgTxt()) && /importiert/.test(msgTxt()) && /jetzt aktiv/.test(msgTxt())
+  && $('msg').className === 'msg ok');
+ok('neue Zeile ist in der Liste hervorgehoben',
+  new RegExp('<tr data-id="' + neu.id + '" class="neu">').test($('tbody').innerHTML));
+ok('scrollIntoView wurde am neu gerenderten Datensatz aufgerufen',
+  scrollAufrufe.length === scrollVor + 1 && scrollAufrufe[scrollAufrufe.length-1].id === neu.id);
+ok('Import erhaelt die Eingaben der v2-Datei (Preise/Katalogauswahl)',
+  store.holeEingaben(neu.id).kosten.preise.i3 === store.holeEingaben(aktivKat).kosten.preise.i3
+  && store.holeEingaben(neu.id).katalog.auswahl.latte.length === 2);
+ok('Projektname der Datei bleibt in den Eingaben stehen',
+  store.holeEingaben(neu.id).projekt.name === 'Musterprojekt Nord');
+ok('Wandelement kommt unveraendert aus der Datei',
+  store.aktivesWandelement().length_mm === store.holeElement(aktivKat).wandelement.length_mm);
+
+// Nochmals klicken darf nicht ein zweites Mal speichern
+$('imp-go').dispatch('click');
+ok('erneuter Klick speichert nicht doppelt', anzahl() === anzahlVor + 1);
+
+// Spaetere Aenderungen scrollen nicht erneut (nur der Import holt die Zeile in den Blick)
+const scrollNachImport = scrollAufrufe.length;
+$('pj-bauherr').value = 'Bauherr X'; $('pj-bauherr').dispatch('input');
+ok('Hervorhebung bleibt, aber es wird nicht erneut gescrollt',
+  scrollAufrufe.length === scrollNachImport
+  && new RegExp('data-id="' + neu.id + '" class="neu"').test($('tbody').innerHTML));
+
+// 6f) Namensfallback: generischer Elementname -> Dateiname ohne .json
+await impWaehle(v2Projekt({ projektName:'', name:'Wand', weName:'Wandelement' }), 'Kellerwand West.json');
+ok('generische Namen werden verworfen -> Dateiname ohne .json',
+  $('imp-name').value === 'Kellerwand West');
+$('imp-cancel').dispatch('click');
+
+// Sinnvoller expliziter Elementname schlaegt den Dateinamen
+await impWaehle(v2Projekt({ projektName:'   ', name:'Wand C', weName:'Wand' }), 'irgendwas.json');
+ok('expliziter Elementname wird vor dem Dateinamen vorgeschlagen', $('imp-name').value === 'Wand C');
+$('imp-cancel').dispatch('click');
+
+// 6g) Wandtyp „ohne Wind" wird kanonisch beschriftet
+await impWaehle(v2Projekt({ projektName:'Wand ohne Wind Nord', wandtyp:'ohne_wind' }), 'ohnewind.json');
+ok('Wandtyp ohne_wind kanonisch beschriftet', /Innenwand ohne Wind/.test(impInfo()));
+$('imp-cancel').dispatch('click');
+
+// 6h) Rohes Wandelement (aeltestes Format) laeuft weiter durch den Dialog
+const rohWe = JSON.parse(JSON.stringify(store.holeElement(aktivKat).wandelement));
+rohWe.name = 'Wand';
+await impWaehle(JSON.stringify(rohWe), 'Rohwand.json');
+ok('rohes Wandelement oeffnet den Dialog mit Dateinamen-Vorschlag',
+  $('imp-overlay').hidden === false && $('imp-name').value === 'Rohwand');
+$('imp-go').dispatch('click');
+ok('rohes Wandelement wird nach Bestaetigung gespeichert und aktiv',
+  anzahl() === anzahlVor + 2 && store.aktivesElement().name === 'Rohwand');
+
+// 6i) Alt-Bundle (format ohne version, projekt-Block) bleibt unterstuetzt
+const altBundle = JSON.stringify({
+  format:'SEMBLA-Projekt', wandelement: rohWe,
+  projekt:{ name:'Altprojekt Süd', bauherr:'Alt-Bauherr' },
+});
+await impWaehle(altBundle, 'alt-bundle.json');
+ok('Alt-Bundle: Projektname aus dem projekt-Block vorgeschlagen', $('imp-name').value === 'Altprojekt Süd');
+$('imp-go').dispatch('click');
+const altNeu = store.aktivesElement();
+ok('Alt-Bundle importiert und aktiv', anzahl() === anzahlVor + 3 && altNeu.name === 'Altprojekt Süd');
+ok('Alt-Bundle: Kopfdaten bleiben erhalten',
+  store.holeEingaben(altNeu.id).projekt.bauherr === 'Alt-Bauherr');
+ok('Alt-Bundle: Wandtyp wird beim Import normalisiert',
+  store.WANDTYPEN.includes(store.aktivesWandelement().wandtyp));
+
+// 6j) Overlay-Klick und Escape brechen ab, ohne etwas zu schreiben
+const anzahlN = anzahl(), aktivN = store.aktivId(), standN = stand();
+await impWaehle(v2Projekt({ projektName:'Verworfen A' }), 'verworfen-a.json');
+$('imp-overlay').dispatch('click', { target: $('imp-overlay') });
+ok('Klick auf das Overlay bricht ab', $('imp-overlay').hidden === true
+  && anzahl() === anzahlN && store.aktivId() === aktivN && standN === stand());
+
+await impWaehle(v2Projekt({ projektName:'Verworfen B' }), 'verworfen-b.json');
+document.dispatch('keydown', { key:'Escape' });
+ok('Escape bricht ab', $('imp-overlay').hidden === true
+  && anzahl() === anzahlN && store.aktivId() === aktivN && standN === stand());
+
+// 6k) Unlesbare/falsche Dateien: Fehler an der Startseite, kein Dialog, kein Element
+await impWaehle('{ kein json', 'kaputt.json');
+ok('kaputte Datei -> Fehlermeldung, kein Dialog',
+  $('imp-overlay').hidden === true && $('msg').className === 'msg err'
+  && /Import fehlgeschlagen/.test(msgTxt()) && anzahl() === anzahlN);
+await impWaehle(JSON.stringify({ foo:1 }), 'fremd.json');
+ok('Datei ohne Wandelement -> Fehlermeldung, kein Dialog',
+  $('imp-overlay').hidden === true && /Wandelement/.test(msgTxt()) && anzahl() === anzahlN);
+ok('nach Fehler ist die Dateiauswahl wieder frei', $('f-import').value === '');
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

@@ -64,6 +64,12 @@
   .modal .opt .t{font-size:13.5px;font-weight:600}
   .modal .opt .d{font-size:11.5px;color:var(--sb-muted)}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+  /* Import-Bestaetigung: neu importierte Zeile hervorheben */
+  #tbody tr.neu td{background:#e6f4ea}
+  #tbody tr.neu td:first-child{box-shadow:inset 3px 0 0 var(--sb-ok)}
+  .modal .zus{font-size:12.5px;color:#42505e;background:#f9fbfd;border:1px solid var(--sb-line);
+              border-radius:9px;padding:9px 11px;margin:12px 0 0}
+  .modal .zus div{margin:2px 0}
 </style>
 </head>
 <body>
@@ -212,6 +218,26 @@
   <div class="hint" style="margin:28px 0 12px">SEMBLA Planungs-Suite · Polycare</div>
 </div>
 
+<!-- Import-Bestaetigung: Name und Inhalt werden VOR dem Anlegen bestaetigt.
+     Bis „Importieren & aktiv setzen" liegt die geparste Datei nur im Speicher der Seite. -->
+<div class="overlay" id="imp-overlay" hidden>
+  <div class="modal">
+    <h3>Wandelement importieren</h3>
+    <p class="sub">Die Datei <b id="imp-datei">–</b> wurde gelesen, aber <b>noch nicht gespeichert</b>.
+      Name prüfen und bestätigen — „Abbrechen" legt kein Element an.</p>
+    <div class="field" style="width:100%">
+      <label for="imp-name">Name des Wandelements</label>
+      <input id="imp-name" type="text" style="width:100%">
+    </div>
+    <div class="zus" id="imp-info"></div>
+    <div class="msg" id="imp-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="imp-cancel">Abbrechen</button>
+      <button class="btn-p" id="imp-go">Importieren &amp; aktiv setzen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Zentraler Export-Dialog: erzeugt alle Ausgaben frisch aus dem Datenmodell -->
 <div class="overlay" id="exp-overlay" hidden>
   <div class="modal">
@@ -279,22 +305,111 @@
     }
   });
 
-  // --- Import ---
+  // --- Import (Bestaetigung VOR der Persistenz) ---
+  // Ablauf: Datei lesen -> store.parseImport (schreibt nichts) -> Dialog mit Namensvorschlag
+  // und echter Inhaltszusammenfassung -> erst „Importieren & aktiv setzen" speichert.
+  // Abbrechen laesst gespeicherte Elemente und den aktiven Zeiger unberuehrt.
+  const impOverlay = document.getElementById('imp-overlay');
+  const impMsg = document.getElementById('imp-msg');
+  let impOffen = null;          // { parse, dateiname } — nur im Speicher der Seite
+
+  /** Kanonische Beschriftung des Wandtyps (wie Modul 0 beim Anlegen / Modul 3). */
+  const WANDTYP_LABEL = { mit_wind:'Innenwand mit Wind (Cpi)', ohne_wind:'Innenwand ohne Wind' };
+
+  /** Generische Platzhalternamen taugen nicht als Vorschlag. */
+  const IMP_PLATZHALTER = new Set(['wand', 'wandelement', 'importiert']);
+  function impBrauchbar(name){
+    const s = String(name == null ? '' : name).trim();
+    return (s && !IMP_PLATZHALTER.has(s.toLowerCase())) ? s : null;
+  }
+  /** Dateiname ohne die letzte .json-Endung. */
+  function impDateiBasis(dateiname){
+    return String(dateiname || '').replace(/\.json$/i, '').trim();
+  }
+  /**
+   * Namensvorschlag: sinnvoller Projektname aus der Datei zuerst, dann ein sinnvoller
+   * expliziter Elementname, sonst der Dateiname ohne .json.
+   */
+  function impNameVorschlag(parse, dateiname){
+    const projekt = parse.eingaben && parse.eingaben.projekt ? parse.eingaben.projekt.name : null;
+    return impBrauchbar(projekt)
+      || impBrauchbar(parse.name)
+      || impBrauchbar(parse.wandelement && parse.wandelement.name)
+      || impDateiBasis(dateiname)
+      || 'Importiert';
+  }
+  /** Kurze Zusammenfassung — ausschliesslich aus den geparsten/normalisierten Werten. */
+  function impZusammenfassung(we){
+    const zahl = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
+    const l = zahl(we.length_mm), h = zahl(we.height_mm), t = zahl(we.thickness_mm);
+    const zeilen = [
+      ['Maße (L×H)', (l != null && h != null) ? `${l} × ${h} mm` : '–'],
+      ['Wanddicke', t != null ? `${t} mm` : '–'],
+      ['Wandtyp (Windsituation)', WANDTYP_LABEL[we.wandtyp] || '–'],
+      ['Öffnungen', Array.isArray(we.openings) ? String(we.openings.length) : '–'],
+    ];
+    return zeilen.map(([k, v]) => `<div><b>${esc(k)}:</b> ${esc(v)}</div>`).join('');
+  }
+
+  function impSchliesse(){
+    impOffen = null;
+    impOverlay.hidden = true;
+    impMsg.textContent = ''; impMsg.className = 'msg';
+    // Erst hier leeren: so laesst sich dieselbe Datei nach „Abbrechen" erneut waehlen.
+    document.getElementById('f-import').value = '';
+  }
+
   document.getElementById('f-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
     try {
-      await store.importiereDatei(file);
-      zeige('Importiert und aktiv gesetzt: ' + file.name, true);
+      const parse = store.parseImport(await file.text());     // parst nur, speichert nichts
+      impOffen = { parse, dateiname: file.name };
+      document.getElementById('imp-datei').textContent = file.name;
+      document.getElementById('imp-name').value = impNameVorschlag(parse, file.name);
+      document.getElementById('imp-info').innerHTML = impZusammenfassung(parse.wandelement);
+      impMsg.textContent = ''; impMsg.className = 'msg';
+      impOverlay.hidden = false;
+      msg.textContent = ''; msg.className = 'msg';
     } catch (e) {
+      impOffen = null;
+      ev.target.value = '';
       zeige('Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
     }
-    ev.target.value = '';
   });
+
+  document.getElementById('imp-go').addEventListener('click', () => {
+    if (!impOffen) return;                                   // Doppelklick-/Leerlauf-Schutz
+    const name = String(document.getElementById('imp-name').value || '').trim();
+    if (!name) {
+      impMsg.textContent = 'Bitte einen Namen für das Wandelement eingeben.';
+      impMsg.className = 'msg err';
+      return;                                                // Dialog bleibt offen, nichts gespeichert
+    }
+    const { parse } = impOffen;
+    try {
+      const id = store.speichere(name, parse.wandelement, undefined, parse.eingaben);
+      store.setzeAktiv(id);
+      // Hervorhebung/Scroll erst nach dem Schreiben setzen und die Tabelle bewusst
+      // neu zeichnen — die Renderlaeufe der Schreibvorgaenge liegen davor.
+      neuId = id; neuScroll = true;
+      render();
+      impSchliesse();
+      zeige(`„${name}" wurde importiert und ist jetzt aktiv.`, true);
+    } catch (e) {
+      impMsg.textContent = 'Import fehlgeschlagen: ' + (e && e.message ? e.message : e);
+      impMsg.className = 'msg err';
+    }
+  });
+
+  document.getElementById('imp-cancel').addEventListener('click', impSchliesse);
+  impOverlay.addEventListener('click', (ev) => { if (ev.target === impOverlay) impSchliesse(); });
 
   // --- Liste ---
   const tbody = document.getElementById('tbody');
   const leer = document.getElementById('leer');
+  let neuId = null;          // gerade importiertes Element: Zeile bleibt hervorgehoben
+  let neuScroll = false;     // nur EINMAL scrollen (sonst springt jede spaetere Aenderung)
 
   function fmtDatum(iso){
     try { return new Date(iso).toLocaleString('de-DE', {dateStyle:'short', timeStyle:'short'}); }
@@ -310,7 +425,7 @@
       const w = e.wandelement || {};
       const masse = (w.length_mm ?? '?') + ' × ' + (w.height_mm ?? '?') + ' mm';
       const badge = e.id === aktiv ? ' <span class="badge">aktiv</span>' : '';
-      return `<tr data-id="${e.id}">
+      return `<tr data-id="${e.id}"${e.id === neuId ? ' class="neu"' : ''}>
         <td><b>${esc(e.name)}</b>${badge}</td>
         <td class="muted">${masse}</td>
         <td class="muted">${fmtDatum(e.geaendert)}</td>
@@ -321,6 +436,12 @@
           <button class="btn-d" data-act="loeschen">Löschen</button>
         </td></tr>`;
     }).join('');
+    // Neu importierte Zeile in den sichtbaren Bereich holen (nach dem Neuaufbau der Tabelle).
+    if (neuId && neuScroll) {
+      neuScroll = false;
+      const tr = tbody.querySelector('tr.neu');
+      if (tr && tr.scrollIntoView) tr.scrollIntoView({ block: 'center' });
+    }
   }
 
   tbody.addEventListener('click', (ev) => {
@@ -667,7 +788,11 @@
   function schliesseExport(){ overlay.hidden = true; expId = null; }
   document.getElementById('exp-cancel').addEventListener('click', schliesseExport);
   overlay.addEventListener('click', (ev) => { if (ev.target === overlay) schliesseExport(); });
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !overlay.hidden) schliesseExport(); });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    if (!overlay.hidden) schliesseExport();
+    if (!impOverlay.hidden) impSchliesse();
+  });
   document.getElementById('exp-go').addEventListener('click', () => {
     if (!expId) return;
     const auswahl = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
