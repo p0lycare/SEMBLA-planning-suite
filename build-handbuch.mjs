@@ -334,6 +334,7 @@ push(H2("Verbinderachsen aus Panelfugen"));
 push(bullet("**Panelmaß** (Standard 62,5 × 150 cm, änderbar) legt die Verbinderachsen fest: vertikale Achsen an den Panel-Längsfugen, horizontale an den Panel-Höhenfugen – plus Zwischenachsen, wenn der Max-Abstand überschritten wird."));
 push(bullet("Zusätzlich an Wandkanten; keine Verbinder innerhalb von Öffnungen. An linken/rechten Öffnungskanten wird der bestehende Randabstand eingehalten: Achsen werden auf eine sichere Nut von der Öffnung weg verschoben, dedupliziert und bei unlösbaren Abstandskonflikten sichtbar gewarnt. Oberkanten von Öffnungen sind keine Sperrzone."));
 push(bullet("**Beplankungsfeld:** häufig wird nur ein Teil der Wand beplankt – ein rechteckiges Feld begrenzt Verbinder und Latten. Ein sichtbarer Bearbeitungsmodus zeigt Rasterpunkte, Hover und Vorschau; erst „Übernehmen & berechnen” speichert das Feld und stößt die Berechnung an. Standard = ganze Wand."));
+push(bullet("**Nutprüfung je Lage ([U-11]):** Aus jeder Achse entsteht ein Verbinder nur in den Lagen, in denen ein tatsächlich vorhandener Stein die Nut strikt innen führt. Stein-Außenkanten (auch an Staffelungs-/Treppenkanten), Stoßfugen und steinfreie Positionen bleiben leer; entfallene Positionen und Achsen ohne Verbinder werden in der Bildunterschrift gewarnt statt durch Ersatzpunkte ersetzt. Fehlt die Lagengeometrie im Wandelement, entstehen keine Verbinder (sicherer Leerfall mit Warnung)."));
 push(H2("Nachweis je Verbinder"));
 push(formula([
   "R_d    = R_k / gamma_M          [kN]   (zul. Zuglast je Verbinder)",
@@ -342,7 +343,7 @@ push(formula([
 ]));
 push(bullet("Verbinder-Katalog: FA-1 (R_k 0,50), FA-2 schwer (0,80), IA-1 leicht (0,25), Universal (0,50); je gamma_M = 2,0."));
 push(H2("Latten"));
-push(bullet("Latten verlaufen vertikal auf den Verbinderachsen; an Öffnungen und am Feldrand abgeschnitten."));
+push(bullet("Latten verlaufen vertikal auf den Verbinderachsen; an Öffnungen und am Feldrand abgeschnitten. Sie enden an der obersten nach [U-11] befestigbaren Lage – über eine Staffelungskante hinaus wird nicht weitergeplant."));
 push(bullet("Stöße liegen zwischen zwei Verbindern (mittig); Wandhöhe > Lattenlänge → 1D-Zuschnitt mit Reststück-Wiederverwendung."));
 push(bullet("Eingaben werden in eingaben.aufbau gespeichert. Die Berechnung ist kanonisch in sembla-aufbau.js; Exportdokumente werden zentral in Modul 0 erzeugt. Modul 2 schreibt das Wandelement nicht zurück."));
 
@@ -454,14 +455,17 @@ push(bullet("**[A-8 · ZIEL – OFFEN]** Der obere Anschluss muss regional entla
 push(H2("15.4 Horizontaler Wandaufbau – Verbinder & UK (Modul 2)  [U]"));
 push(bullet("**[U-1]** Verbinder-/UK-Nutenraster = 12,5·k cm (innenliegende Stege); Steinfugen auf diesem Raster sind Fugen, keine Nuten."));
 push(bullet("**[U-2]** Vorspannungsraster = 6,25 + 12,5·k cm (Kammermitte, immer innenliegend → durchgehend)."));
-push(bullet("**[U-3]** Verbinder horizontal nur auf einer innenliegenden Nut (nie in einer Stoßfuge)."));
+push(bullet("**[U-3]** Verbinder horizontal nur auf einer innenliegenden Nut (nie in einer Stoßfuge). Die Prüfung gilt **lagenweise**, nicht wandglobal: eine Achse als Ganzes darf nicht als gültig gelten, wenn sie nur in einem Teil der Lagen innenliegend ist."));
 push(bullet("**[U-4]** Verbinder vertikal in Steinmitte (10 + 20·k cm bei 20-cm-Steinen; nie auf einer Lagerfuge)."));
 push(bullet("**[U-5]** Panelfugen = Verbinderachsen; Zwischenachsen bei Überschreitung des Max-Abstands; keine Verbinder in Öffnungen."));
 push(bullet("**[U-6]** Beplankung volle Wandbreite über Auskragung: äußerste Achse auf nächster Nut, max. Randüberstand 12,5 cm (1 Nut)."));
 push(bullet("**[U-7]** Das Beplankungsfeld begrenzt Verbinder und Latten und rastet aufs Panelraster. Änderungen werden in einem sichtbaren Bearbeitungsmodus erst mit „Übernehmen & berechnen” wirksam."));
-push(bullet("**[U-8]** Latten vertikal auf den Achsen, an Öffnungen/Feldrand geschnitten; Stöße mittig zwischen zwei Verbindern; 1D-Zuschnitt mit Reststück-Nutzung."));
+push(bullet("**[U-8]** Latten vertikal auf den Achsen, an Öffnungen/Feldrand geschnitten; Stöße mittig zwischen zwei Verbindern; 1D-Zuschnitt mit Reststück-Nutzung. Eine Latte endet an der obersten Lage, die nach [U-11] befestigbar ist – sie wird nicht über die tragende Geometrie hinaus fortgesetzt (keine Latte „in der Luft“ über einer Staffelungskante)."));
 push(bullet("**[U-9]** Verbindertyp folgt Wand-Aufbau/Seite aus Modul 1 (fassade → FA, innenausbau → IA) und ist in Modul 2 nicht neu wählbar."));
 push(bullet("**[U-10]** An linken/rechten Öffnungskanten gilt der bestehende Randabstand. Betroffene globale Lattenachsen werden auf die nächste sichere Nut von der Öffnung weg verschoben und dedupliziert; die obere Öffnungskante ist keine Sperrzone. Ein unlösbarer Konflikt mit dem Maximalabstand wird sichtbar gemeldet."));
+
+push(bullet("**[U-11 · MUSS]** Ein Verbinder darf nur an einer Position (Nut x, Lage y) sitzen, an der **in genau dieser Lage** ein Stein liegt, der die Nut **strikt innen** führt. Verboten sind Stein-Außenkanten, Stoßfugen und steinfreie Positionen – insbesondere die vertikalen Kanten einer Staffelung/Treppe und Positionen oberhalb der lokalen Wandoberkante. Diese Muss-Regel hat **Vorrang** vor [U-5], [U-6] und vor dem Komfortziel, eine Achse/Latte über eine Staffelungskante durchzuziehen. Entfallene Positionen werden **nicht** durch Ersatzpunkte kompensiert: ausgedünnte Achsen, Achsen ohne Verbinder und eine fehlende Lagengeometrie im Wandelement führen zu einem sicheren Zustand (keine unsicheren Punkte) mit sichtbarer Warnung in Modul 2 ([P-9])."));
+push(note("Herkunft [U-11]: Issue #29 (AWG-Wand). Verbinder wurden bei getreppten Wänden an der Stein-Außenkante der Staffelung platziert, weil die Nut nur wandglobal klassifiziert war ([U-3] war lagenweise falsch umgesetzt). Die Regel gilt gleichermaßen für Stoßfugen ohne Staffelung; die Verbinder- und Lattenmengen solcher Wände können dadurch sinken."));
 
 push(H2("15.5 Statik (Gutachten Schermer)  [S]"));
 push(bullet("**[S-1]** Statisches System: Einfeldträger über die Höhe h, oben und unten gelenkig."));

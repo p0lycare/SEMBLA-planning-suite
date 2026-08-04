@@ -239,7 +239,11 @@ function draw(R){
   const ohTxt = (R.ohL!=null) ? ` · Randüberstand li/re ${fmt(R.ohL,1)}/${fmt(R.ohR,1)} cm${R.ohWarn?' ⚠ > '+fmt(R.maxOh,1)+' cm':''}` : '';
   // Öffnungslaibungen sperren Achsen (durchtrennte Nut); bleibt dadurch eine Lücke, wird sie gemeldet statt kaschiert.
   const gapTxt = R.xGapWarn ? (xs.length ? ` · ⚠ X-Abstand ${fmt(R.xGapMax,1)} cm > ${fmt(R.maxX,1)} cm (Öffnungslaibung sperrt Nutachse)` : ' · ⚠ keine zulässige Verbinderachse (Öffnungslaibungen sperren das Nutraster)') : '';
-  $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(+$('pB').value,1)} × ${fmt(+$('pH').value,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · Seite ${SIDE==='vorne'?'Vorderseite':'Rückseite'} (${FUNKTION_LABEL[curFunktion()]||curFunktion()})<span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span><span style="color:#c9461c">${gapTxt}</span>`;
+  // [U-11] Verbinder nur auf einer lagenweise innenliegenden Nut. Verworfene Positionen werden
+  // gemeldet statt durch Ersatzpunkte kaschiert; fehlende Lagengeometrie ist ein sicherer Leerfall.
+  const nutTxt = R.nutWarn ? (R.nutGeoWarn ? ' · ⚠ keine Lagengeometrie im Wandelement — keine Verbinder ableitbar'
+    : ` · ⚠ ${R.nutBlocked} Position(en) ohne innenliegende Nut entfallen${R.nutThinAxes.length?' (Achsen '+R.nutThinAxes.map(x=>fmt(x,1)).join('/')+' cm)':''}${R.nutLeerAchsen.length?', Achsen ohne Verbinder: '+R.nutLeerAchsen.map(x=>fmt(x,1)).join('/')+' cm':''}`) : '';
+  $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(+$('pB').value,1)} × ${fmt(+$('pH').value,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · Seite ${SIDE==='vorne'?'Vorderseite':'Rückseite'} (${FUNKTION_LABEL[curFunktion()]||curFunktion()})<span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span><span style="color:#c9461c">${gapTxt}</span><span style="color:#c9461c">${nutTxt}</span>`;
 }
 
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).

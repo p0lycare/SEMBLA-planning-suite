@@ -102,6 +102,41 @@ function snapCourses(ys, lo, hi) {
   return out.sort((a, b) => a - b);
 }
 const snapNut = x => +(Math.round(x / NUTS) * NUTS).toFixed(2);
+
+// ---------- [U-11] Lagenweise Nutpruefung (Muss-Regel) ----------
+// Ein Verbinder ist nur dort moeglich, wo in GENAU DIESER Lage ein Stein liegt, der die Nut
+// strikt innen fuehrt. Damit sind Stein-Aussenkanten (auch die vertikalen Kanten einer
+// Staffelung/Treppe), Stossfugen und steinfreie Bereiche ausgeschlossen. `nutStatus` klassifiziert
+// nur wandglobal ("stagger" = lagenweise gemischt) und genuegt dafuer nicht.
+// Sicherheit hat Vorrang: es gibt keinen Ersatzpunkt und keinen Fallback — fehlt die
+// Lagengeometrie (`w.courses`), entstehen keine Punkte, der Zustand wird gemeldet.
+const lageIndex = ycm => Math.round((ycm - HALF) / COURSE);
+function nutFrei(c, xcm) {
+  const xmm = xcm * 10;
+  return ((c && c.stones) || []).some(st => xmm > st.x0 + 1e-6 && xmm < st.x1 - 1e-6);
+}
+function nutInLage(w, xcm, ycm) {
+  const cs = (w && w.courses) || null;
+  if (!cs || !cs.length) return false;
+  return nutFrei(cs.find(c => c.lage === lageIndex(ycm)), xcm);
+}
+/** Oberkante der hoechsten Lage, die die Nut x strikt innen fuehrt (cm; 0 = keine). [U-8]/[U-11] */
+function nutTop(w, xcm) {
+  let top = 0;
+  for (const c of ((w && w.courses) || [])) if (nutFrei(c, xcm)) top = Math.max(top, (c.lage + 1) * COURSE);
+  return +top.toFixed(2);
+}
+/**
+ * Oberkante der hoechsten Lage, in der an x ueberhaupt Material liegt (Kante eingeschlossen).
+ * Bezugsgroesse fuer die Warnung: bis hierher waere ein Verbinder erwartbar, fehlt dort die
+ * innenliegende Nut, ist die Achse ausgeduennt. Oberhalb ist planmaessig kein Verbinder.
+ */
+function konturTop(w, xcm) {
+  const xmm = xcm * 10; let top = 0;
+  for (const c of ((w && w.courses) || []))
+    if ((c.stones || []).some(st => xmm >= st.x0 - 1e-6 && xmm <= st.x1 + 1e-6)) top = Math.max(top, (c.lage + 1) * COURSE);
+  return +top.toFixed(2);
+}
 function nutStatus(w, xcm) {
   const xmm = xcm * 10; let cov = 0, inter = 0;
   for (const c of (w.courses || [])) {
@@ -185,7 +220,10 @@ export function berechneAufbau(w, a) {
   const steps = relSteps.map(st => ({ x0: st.x0_mm / 10 - 0.1, x1: st.x1_mm / 10, y0: st.height_mm / 10, y1: H, art: "_step" }));
   const opsEff = ops.concat(steps);
   const localTop = x => { for (const st of relSteps) { const A = st.x0_mm / 10, Bx = st.x1_mm / 10; if (x >= A - 1e-6 && x < Bx - 1e-6) return st.height_mm / 10; } return H; };
-  const axisTop = x => Math.max(localTop(x - 0.5), localTop(x), localTop(x + 0.5));
+  // Obergrenze einer Achse = letzte Lage, die die Nut x strikt innen fuehrt ([U-11]). Fruehere
+  // Variante zog die Achse an einer Stufenkante auf die hoehere Nachbar-Oberkante hoch — dort ist
+  // x aber die Wand-Aussenkante. Latten enden damit an der letzten tragbaren Lage ([U-8]).
+  const axisTop = x => nutTop(w, x);
   const xEdges = []; ops.forEach(o => { xEdges.push(o.x0, o.x1); }); relSteps.forEach(st => { xEdges.push(st.x0_mm / 10, st.x1_mm / 10); });
   const yEdges = []; ops.forEach(o => { if (o.y0 > 0) yEdges.push(o.y0); if (o.y1 < H) yEdges.push(o.y1); }); relSteps.forEach(st => { const t = st.height_mm / 10; if (t > 0 && t < H) yEdges.push(t); });
   const pB = +panel.b_cm || 62.5, pH = +panel.h_cm || 150, oX = +panel.off_x_cm || 0, oY = +panel.off_y_cm || 0;
@@ -202,8 +240,22 @@ export function berechneAufbau(w, a) {
   const xGapWarn = xs.length === 0 || xGapMax > maxX + 1e-6;
   const inOpen = (x, y) => ops.some(o => x > o.x0 + 1e-6 && x < o.x1 - 1e-6 && y > o.y0 + 1e-6 && y < o.y1 - 1e-6);
   const stat = x => nutStatus(w, x);
-  const pts = [];
-  for (const x of xs) { const t = stat(x) === "cont" ? "C" : "I"; for (const y of ys) if (y <= axisTop(x) + 1e-6 && !inOpen(x, y)) pts.push({ x_cm: x, nut_cm: x, y_cm: y, type: t }); }
+  // Punktweise Pruefung nach [U-11]: oberhalb der tragenden Geometrie und in Oeffnungen ist
+  // planmaessig kein Verbinder (keine Warnung). Eine Position, die innerhalb der tragenden Lagen
+  // auf einer Stossfuge/Kante liegt, wird verworfen und als ausgeduennte Achse gemeldet.
+  const pts = []; let nutBlocked = 0; const thin = new Set();
+  for (const x of xs) {
+    const t = stat(x) === "cont" ? "C" : "I", kTop = konturTop(w, x);
+    for (const y of ys) {
+      if (inOpen(x, y)) continue;
+      if (nutInLage(w, x, y)) { pts.push({ x_cm: x, nut_cm: x, y_cm: y, type: t }); continue; }
+      if (y <= kTop + 1e-6) { nutBlocked++; thin.add(x); }   // Material vorhanden, aber keine Nut
+    }
+  }
+  const nutGeoWarn = !((w.courses || []).length);
+  const nutLeerAchsen = xs.filter(x => !pts.some(p => p.x_cm === x));
+  const nutThinAxes = [...thin].sort((a, b) => a - b);
+  const nutWarn = nutGeoWarn || nutBlocked > 0 || nutLeerAchsen.length > 0;
   const nutRaster = [];
   for (let x = NUTS; x <= B - NUTS + 1e-6; x += NUTS) { const t = stat(+x.toFixed(2)); if (t === "cont" || t === "stagger") nutRaster.push({ x_cm: +x.toFixed(2), status: t }); }
   const Rd = (+verb.Rk || 0.5) / (+verb.gM || 2.0);
@@ -224,5 +276,6 @@ export function berechneAufbau(w, a) {
   return {
     w, B, H, fx0, fx1, fy0, fy1, xs, ys, pts, nutRaster, steps, relSteps, localTop, axisTop,
     layout, batt, atReal, util, ok, ohL, ohR, maxOh, ohWarn, maxX, xGapMax, xGapWarn,
+    nutBlocked, nutThinAxes, nutLeerAchsen, nutGeoWarn, nutWarn,
   };
 }

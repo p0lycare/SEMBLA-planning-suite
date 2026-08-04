@@ -327,9 +327,13 @@ WA.applyWand(buildWall('Treppe', 3000, 2600, [], {vorne:{funktion:'fassade'}}, n
 const S=WA.compute();
 ok('Staffelung: keine Verbinder über der niedrigen Seite (x>150 → y≤140)', S.pts.every(p=> p.x_cm<=150.01 ? true : p.y_cm<=140.01));
 ok('Staffelung: hohe Seite hat volle Höhe (Punkt y>140 bei x<150)', S.pts.some(p=>p.x_cm<150 && p.y_cm>140));
-ok('Staffelung: Stufenkanten-Achse wird durchgezogen (Punkt bei x=150, y>140)', S.pts.some(p=>Math.abs(p.x_cm-150)<0.01 && p.y_cm>140));
+// [U-11] (Issue #29): An der Stufenkante x=150 ist oberhalb von 140 cm die Wand-Außenkante — dort
+// gibt es keine Nut. Die frühere Erwartung "Achse/Latte wird durchgezogen" war der Bug und ist
+// bewusst umgekehrt: die Achse endet an der letzten befestigbaren Lage ([U-8]).
+ok('Staffelung: kein Verbinder auf der Stufen-Außenkante (x=150, y>140)', !S.pts.some(p=>Math.abs(p.x_cm-150)<0.01 && p.y_cm>140));
 ok('Staffelung: Latten rechts der Kante enden ≤ 140 cm', S.batt.axes.filter(a=>a.x_cm>150.01).every(a=>a.segments.every(sg=>sg.y1_cm<=140.01)));
-ok('Staffelung: Latte auf Stufenkante läuft über 140 hinaus (durchgezogen)', S.batt.axes.some(a=>Math.abs(a.x_cm-150)<0.01 && a.segments.some(sg=>sg.y1_cm>140.01)));
+ok('Staffelung: Latte auf Stufenkante endet an der tragenden Geometrie (≤ 140 cm)',
+   S.batt.axes.filter(a=>Math.abs(a.x_cm-150)<0.01).every(a=>a.segments.every(sg=>sg.y1_cm<=140.01)));
 ok('Staffelung: gestufte Kontur gezeichnet (polygon)', /<polygon/.test(document.getElementById('plan').innerHTML));
 WA.applyWand(W);
 
@@ -417,9 +421,17 @@ WA.applyWand(buildWall('Ohnetuer', 3750, 3000, []));
 const O=WA.compute();
 ok('B ohne Öffnung: X-Achsen unverändert', JSON.stringify(O.xs)===JSON.stringify([12.5,62.5,125,187.5,250,312.5,362.5]));
 ok('B ohne Öffnung: Y-Reihen unverändert', JSON.stringify(O.ys)===JSON.stringify([10,70,150,230,290]));
-ok('B ohne Öffnung: Verbinderzahl unverändert (35)', O.pts.length===35);
-ok('B ohne Öffnung: Lattenbilanz unverändert (7 Achsen / 21 Stücke / 14 Stangen / 21,0 m)',
-   O.batt.summary.achsen===7 && O.batt.summary.latten_stuecke===21 && O.batt.summary.latten_15m_bedarf===14 && O.batt.summary.gesamtlaenge_m===21);
+// [U-11] (Issue #29): Achsen/Reihen bleiben unverändert, aber 8 der 35 Rasterpositionen lagen auf
+// einer Stoßfuge dieser Lage (x=125 in Lage 3/7/11, x=312,5 in Lage 3/7/11, x=187,5 in Lage 0/14).
+// Sie entfallen — gewollte Regelfolge, deshalb neu eingefroren. Zusätzlich gegen w.courses geprüft,
+// damit die Zahl nicht bloß die Implementierung spiegelt.
+ok('B ohne Öffnung: Verbinderzahl nach [U-11] = 27 (8 Fugenpositionen entfallen)', O.pts.length===27);
+ok('B ohne Öffnung: alle 27 Verbinder liegen strikt im Stein ihrer Lage',
+   (()=>{ const Wb=WA.wall, li=y=>Math.round((y-10)/20);
+     return O.pts.every(p=>{ const c=Wb.courses.find(c=>c.lage===li(p.y_cm));
+       return !!c && c.stones.some(s=>p.x_cm*10>s.x0+1e-6 && p.x_cm*10<s.x1-1e-6); }); })());
+ok('B ohne Öffnung: Lattenbilanz nach [U-11] (7 Achsen / 19 Stücke / 15 Stangen / 22,5 m)',
+   O.batt.summary.achsen===7 && O.batt.summary.latten_stuecke===19 && O.batt.summary.latten_15m_bedarf===15 && O.batt.summary.gesamtlaenge_m===22.5);
 ok('B ohne Öffnung: keine Warnungen', !O.ohWarn && !O.xGapWarn && O.batt.summary.warnungen===0);
 
 // --- C: geometrisch unlösbar → sicher bleiben und warnen, nicht kaschieren ---
@@ -441,6 +453,80 @@ const E=WA.compute();
 ok('C entartet: keine unsichere Achse als Notlösung', E.xs.length===0 && E.pts.length===0);
 ok('C entartet: Zustand wird gemeldet und stürzt nicht ab', E.xGapWarn===true && E.ohL===null && !E.ohWarn && isFinite(E.util));
 ok('C entartet: Hinweis in der Zeichnung', /keine zulässige Verbinderachse/.test(document.getElementById('cap').innerHTML));
+WA.applyWand(W);
+
+// ---------------------------------------------------------------------------
+// [U-11] Verbinder nur auf lagenweise innenliegender Nut (Issue #29, getreppte Wände).
+// Orakel ist ausschließlich w.courses aus dem Rechenkern — NICHT nutRaster/nutStatus (dieselbe
+// Quelle wie die Implementierung wäre Selbstbestätigung). Autark: nur buildWall, keine Dateien.
+function nutPruefung(R, W){
+  const lage=y=>Math.round((y-10)/20);
+  const res={innen:0, aussen:[], fehlt:[], oberhalb:[]};
+  for(const p of R.pts){
+    const c=(W.courses||[]).find(c=>c.lage===lage(p.y_cm));
+    const xmm=p.x_cm*10;
+    if(!c){ res.fehlt.push(p); continue; }
+    const innen=c.stones.some(s=>xmm>s.x0+1e-6 && xmm<s.x1-1e-6);
+    const kante=c.stones.some(s=>Math.abs(xmm-s.x0)<1e-6 || Math.abs(xmm-s.x1)<1e-6);
+    if(innen) res.innen++; else if(kante) res.aussen.push(p); else res.fehlt.push(p);
+    // Punkt oberhalb der lokalen Wandoberkante (Staffelung): gar kein Stein in dieser Lage an x
+    const lokalTop=(()=>{ let t=W.height_mm/10; for(const st of (W.steps||[])){ const a=st.x0_mm/10,b=st.x1_mm/10; if(p.x_cm>=a-1e-6&&p.x_cm<b-1e-6) t=st.height_mm/10; } return t; })();
+    if(p.y_cm>lokalTop+1e-6 && !innen) res.oberhalb.push(p);
+  }
+  return res;
+}
+WA.clearFeld();
+setUI({pB:62.5,pH:150,oX:0,oY:0,maxX:62.5,maxY:75,ohang:12.5,stock:150});
+
+// --- D1: gemeldeter Fall — eine Stufe, rechte Hälfte ab x=150 cm auf 140 cm ---
+const D1W=buildWall('U11-1Stufe', 3000, 2600, [], {vorne:{funktion:'fassade'}}, null, [{x0_mm:1500,x1_mm:3000,height_mm:1400}]);
+WA.applyWand(D1W); const D1=WA.compute(); const P1=nutPruefung(D1,D1W);
+ok('D1 [U-11]: jeder Verbinder liegt strikt innerhalb eines Steins dieser Lage',
+   D1.pts.length>0 && P1.innen===D1.pts.length && P1.aussen.length===0 && P1.fehlt.length===0);
+ok('D1 [U-11]: kein Verbinder auf einer Steinkante x0/x1', P1.aussen.length===0);
+ok('D1 [U-11]: der gemeldete Fehlerfall (x=150 cm oberhalb 140 cm) existiert nicht',
+   !D1.pts.some(p=>Math.abs(p.x_cm-150)<0.01 && p.y_cm>140.01));
+ok('D1 [U-11]: kein Verbinder oberhalb der lokalen Wandoberkante', P1.oberhalb.length===0);
+ok('D1 [U-11]: Achse auf der Stufenkante ist vorhanden, aber nur bis zur tragenden Lage',
+   D1.xs.some(x=>nahe(x,150)) && D1.pts.filter(p=>nahe(p.x_cm,150)).every(p=>p.y_cm<=140.01));
+ok('D1 [U-11]: Latten enden an der letzten tragbaren Lage (keine Latte in der Luft)',
+   D1.batt.axes.every(a=>a.segments.every(sg=>sg.y1_cm<=D1.axisTop(a.x_cm)+1e-6)));
+ok('D1 [U-11]: Ausdünnung wird sichtbar gemeldet', D1.nutWarn===true && D1.nutBlocked>0 && D1.nutThinAxes.length>0);
+ok('D1 [U-11]: Warnung steht in der Bildunterschrift', /ohne innenliegende Nut/.test(document.getElementById('cap').innerHTML));
+ok('D1 [U-11]: Einheiten/Raster unverändert (x auf 12,5·k, y auf 10+20·k)',
+   D1.pts.every(p=>Math.abs(p.x_cm/12.5-Math.round(p.x_cm/12.5))<1e-6 && Math.abs(((p.y_cm-10)%20+20)%20)<0.01));
+
+// --- D2: mehrstufige Kontur mit unterschiedlichen Höhen entlang der Wand ---
+const D2W=buildWall('U11-mehrstufig', 3000, 2600, [], {vorne:{funktion:'fassade'}}, null,
+  [{x0_mm:1250,x1_mm:2000,height_mm:1000},{x0_mm:2000,x1_mm:3000,height_mm:1800}]);
+WA.applyWand(D2W); const D2=WA.compute(); const P2=nutPruefung(D2,D2W);
+ok('D2 [U-11]: mehrstufig — jeder Verbinder strikt innerhalb eines Steins dieser Lage',
+   D2.pts.length>0 && P2.innen===D2.pts.length && P2.aussen.length===0 && P2.fehlt.length===0);
+ok('D2 [U-11]: mehrstufig — kein Verbinder auf einer Steinkante', P2.aussen.length===0);
+ok('D2 [U-11]: mehrstufig — kein Verbinder oberhalb der jeweiligen lokalen Oberkante',
+   P2.oberhalb.length===0 &&
+   D2.pts.every(p=>p.y_cm <= (p.x_cm<125?260 : p.x_cm<200?100 : 180)+0.01));
+ok('D2 [U-11]: mehrstufig — Latten bleiben unter der tragenden Geometrie',
+   D2.batt.axes.every(a=>a.segments.every(sg=>sg.y1_cm<=D2.axisTop(a.x_cm)+1e-6)));
+ok('D2 [U-11]: mehrstufig — Achse ohne befestigbare Lage wird gemeldet, nicht ersetzt',
+   D2.nutWarn===true && D2.nutLeerAchsen.every(x=>!D2.pts.some(p=>nahe(p.x_cm,x))));
+
+// --- D3: Öffnung + Staffelung gemeinsam (Laibungsregel [U-10] bleibt gültig) ---
+const D3W=buildWall('U11-Tuer+Stufe', 3750, 3000, [new Opening(6,12,0,10,'tuer')], {vorne:{funktion:'fassade'}}, null, [{x0_mm:2500,x1_mm:3750,height_mm:1600}]);
+WA.applyWand(D3W); const D3=WA.compute(); const P3=nutPruefung(D3,D3W);
+ok('D3 [U-11]: Öffnung + Staffelung — alle Verbinder auf gültiger Nut',
+   D3.pts.length>0 && P3.innen===D3.pts.length && P3.aussen.length===0 && P3.fehlt.length===0);
+ok('D3 [U-11]: Laibungs-Sperrzone ([U-10]) bleibt eingehalten',
+   D3.pts.every(p=>Math.min(Math.abs(p.x_cm-75),Math.abs(p.x_cm-150))>=12.5-0.01));
+ok('D3 [U-11]: kein Verbinder in der Öffnung', !D3.pts.some(p=>p.x_cm>75.01&&p.x_cm<149.99&&p.y_cm>0.01&&p.y_cm<199.99));
+
+// --- D4: fehlende Lagengeometrie → sicherer Leerfall mit sichtbarer Warnung (kein Fallback) ---
+const D4W={...buildWall('U11-ohneCourses', 3000, 2600, []), courses:[]};
+WA.applyWand(D4W); const D4=WA.compute();
+ok('D4 [U-11]: ohne Lagengeometrie entstehen keine Verbinder (sicher statt unsicher)', D4.pts.length===0);
+ok('D4 [U-11]: ohne Lagengeometrie keine Latten geplant', D4.batt.summary.latten_stuecke===0);
+ok('D4 [U-11]: Zustand wird gemeldet und stürzt nicht ab', D4.nutGeoWarn===true && D4.nutWarn===true && isFinite(D4.util));
+ok('D4 [U-11]: Hinweis in der Zeichnung', /keine Lagengeometrie/.test(document.getElementById('cap').innerHTML));
 WA.applyWand(W);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
