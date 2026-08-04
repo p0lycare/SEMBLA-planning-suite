@@ -1037,6 +1037,70 @@
   "eingaben": {
     "projekt": {
       "name": "SEMBLA Musterwand (AWG)"
+    },
+    "planung": {
+      "produkte": {
+        "quelle": {
+          "name": "SEMBLA Standardkatalog (Beispieldaten, teils vorläufig — fachlich unbestätigt)",
+          "version": 1
+        },
+        "rollen": {
+          "i3": [
+            "stein-i3-375"
+          ],
+          "i2": [
+            "stein-i2-250"
+          ],
+          "rod_std": [
+            "gewindestange-m10-1000"
+          ],
+          "rod_sonder": [
+            "gewindestange-m10-1000"
+          ],
+          "kupplung": [
+            "verbrauch-kopplungsmutter-stoss"
+          ],
+          "spannmutter": [
+            "verbrauch-spannmutter"
+          ],
+          "kuppl_basis": [
+            "verbrauch-kopplungsmutter-fuss"
+          ],
+          "senkkopf": [
+            "verbrauch-senkkopfschraube-fuss"
+          ],
+          "spannplatte": [
+            "blech-spannplatte"
+          ],
+          "blech_boden": [
+            "blech-bodenblech-1000"
+          ],
+          "blech_kopf": [
+            "blech-kopfblech-1000"
+          ],
+          "dicht_stk": [
+            "verbrauch-dichtstreifen-200"
+          ],
+          "dicht": []
+        }
+      }
+    },
+    "aufbau": {
+      "produkte": {
+        "quelle": {
+          "name": "SEMBLA Standardkatalog (Beispieldaten, teils vorläufig — fachlich unbestätigt)",
+          "version": 1
+        },
+        "rollen": {
+          "latte": [
+            "latte-40-60-1500"
+          ],
+          "beplankung": [
+            "beplankung-625-1500"
+          ],
+          "verbinder": []
+        }
+      }
     }
   }
 }

@@ -14,6 +14,7 @@
  */
 
 import { semblaBomItems } from "./sembla-bom.js";
+import { EINHEIT_LABEL, loesePreis, preisKontext, produktRollen } from "./sembla-katalog.js";
 import { berechneAufbau } from "./sembla-aufbau.js";
 import { montageDokument } from "./sembla-montage.js";
 import { wandelementToIfc } from "./sembla-ifc.js";
@@ -36,47 +37,90 @@ export function wandflaeche(w) {
 
 /**
  * Stücklisten-Positionen aus Wandelement + Eingaben. Wandpositionen aus der
- * Core-BOM, Verbinder/Latten aus dem Aufbau-Layout (berechneAufbau) — alles
- * neu gerechnet. @param {object} w @param {object} eingaben
- * @returns {Array<{key,label,unit,menge,ep,gp}>}
+ * Core-BOM, Verbinder/Latten aus dem Aufbau-Layout (berechneAufbau) — alles neu
+ * gerechnet. Die MENGEN sind allein Sache der BOM/des Aufbaus und werden von der
+ * Preisauflösung nie veraendert.
+ *
+ * Preise kommen ausschliesslich aus dem uebergebenen Bauteilkatalog, aufgeloest
+ * ueber die in Modul 1/2 gewaehlten Produkte je Verwendungsrolle ([P-13]/[P-14]).
+ * `ep`/`gp` sind `null`, wenn die Zuordnung nicht eindeutig ist — es gibt keinen
+ * Nullpreis- oder Ersatzproduktpfad. `status`/`statusText` benennen den Grund.
+ * @param {object} w @param {object} eingaben @param {object|null} [katalog]
+ * @returns {Array<{key,label,unit,menge,ep:number|null,gp:number|null,status:string,
+ *   statusText:string,produkt:any|null,produktId:string|null,preisbasis:string|null,
+ *   bepreisbar:boolean,hinweis:string|null,kandidaten:any[],fehlend:string[],vorgemerkt:any[]}>}
  */
-export function stuecklistePositionen(w, eingaben) {
-  const kosten = eingaben.kosten || {};
-  const preise = kosten.preise || {};
-  const line = (key, label, unit, menge) => { const ep = +preise[key] || 0; return { key, label, unit, menge, ep, gp: menge * ep }; };
-  const out = semblaBomItems(w).map(it => line(it.key, it.label, it.unit, it.menge));
+export function stuecklistePositionen(w, eingaben, katalog = null) {
+  const rollenIdsMap = produktRollen(eingaben);
+  const kontext = preisKontext(w, eingaben);
+  const items = semblaBomItems(w).slice();
   const A = berechneAufbau(w, eingaben.aufbau || {});
   if (A.pts.length) {
     const typ = A.layout.verbinder_typ;
-    const latten = eingaben.aufbau && eingaben.aufbau.latten || {};
-    out.push(line("verbinder", "Verbinder" + (typ ? " " + typ : ""), "Stk", A.pts.length));
-    out.push(line("latte", "Holzlatte " + (latten.breite_cm ?? 4) + " cm · Stange " + (latten.stange_cm ?? 150) + " cm", "Stk", (A.batt.summary.latten_15m_bedarf || 0)));
+    const latten = (eingaben.aufbau && eingaben.aufbau.latten) || {};
+    items.push({ key: "verbinder", label: "Verbinder" + (typ ? " " + typ : ""), unit: "Stk", menge: A.pts.length });
+    items.push({ key: "latte", label: "Holzlatte " + (latten.breite_cm ?? 4) + " cm · Stange " + (latten.stange_cm ?? 150) + " cm",
+                 unit: "Stk", menge: (A.batt.summary.latten_15m_bedarf || 0) });
   }
-  return out;
+  return items.map(it => {
+    const r = loesePreis(it, rollenIdsMap, katalog, kontext);
+    const p = r.produkt;
+    return {
+      key: it.key, label: it.label, unit: it.unit, menge: it.menge,
+      ep: r.ep, gp: (r.ep == null ? null : it.menge * r.ep),
+      status: r.status, statusText: r.text, bepreisbar: r.bepreisbar,
+      produkt: p, produktId: p ? String(p.id) : null,
+      preisbasis: p ? (EINHEIT_LABEL[p.einheit] || p.einheit) : null,
+      hinweis: (p && p.hinweis) || r.hinweis || null,
+      kandidaten: r.kandidaten, fehlend: r.fehlend, vorgemerkt: r.vorgemerkt,
+    };
+  });
 }
 
 /**
- * Stückliste als AoA (Array-of-Arrays) — Basis fuer CSV/Excel.
- * @param {object} w @param {object} eingaben @param {{datum?:string}} [opts]
+ * Summe + Vollstaendigkeit der Stückliste ([P-14]): unaufgeloeste Positionen gehen
+ * NICHT in die Summe ein und werden gezaehlt, damit die Summe nie vollstaendig
+ * aussieht, wenn sie es nicht ist.
+ * @param {Array<{ep:number|null,gp:number|null,bepreisbar:boolean}>} rs
  */
-export function stuecklisteAoa(w, eingaben, opts = {}) {
+export function stuecklisteSumme(rs) {
+  const zu = rs.filter(r => r.bepreisbar);
+  const ok = zu.filter(r => r.gp != null);
+  return {
+    summe: ok.reduce((a, r) => a + r.gp, 0),
+    bepreist: ok.length, bepreisbar: zu.length,
+    vollstaendig: ok.length === zu.length,
+    offen: zu.length - ok.length,
+  };
+}
+
+/**
+ * Stückliste als AoA (Array-of-Arrays) — Basis fuer CSV/Excel. Enthaelt Produkt und
+ * Auflösungsstatus je Position, damit die Datei dieselbe Aussage traegt wie die
+ * Anzeige in Modul 4 (kein Preis ohne eindeutige Zuordnung).
+ * @param {object} w @param {object} eingaben @param {{datum?:string}} [opts] @param {object|null} [katalog]
+ */
+export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
   const kosten = eingaben.kosten || {}, projekt = eingaben.projekt || {};
   const cur = kosten.waehrung || "EUR";
-  const rs = stuecklistePositionen(w, eingaben);
-  const grand = rs.reduce((a, r) => a + r.gp, 0);
+  const rs = stuecklistePositionen(w, eingaben, katalog);
+  const s = stuecklisteSumme(rs);
   const datum = opts.datum || _heute();
+  const n2 = v => (v == null ? "" : +v.toFixed(2));
   return [
     ["SEMBLA – Stückliste & Kosten"],
     ["Projekt", projekt.name || w.name || "SEMBLA-Projekt"],
     ["Wand", w.name || "Wandelement"],
     ["Maße", _fmt(w.length_mm / 1000, 3) + " × " + _fmt(w.height_mm / 1000, 2) + " m"],
     ["Datum", datum],
+    ["Katalog", katalog ? (katalog.name || "Bauteilkatalog") : "kein Bauteilkatalog geladen"],
     [],
-    ["Position", "Einheit", "Menge", "EP (" + cur + ")", "GP (" + cur + ")"],
-    ...rs.map(r => [r.label, r.unit, r.menge, +r.ep.toFixed(2), +r.gp.toFixed(2)]),
+    ["Position", "Einheit", "Menge", "EP (" + cur + ")", "GP (" + cur + ")", "Produkt (Katalog)", "Preisbasis", "Zuordnung"],
+    ...rs.map(r => [r.label, r.unit, r.menge, n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText]),
     [],
-    ["Summe netto", "", "", "", +grand.toFixed(2)],
-    ["€/m² Wandfläche", "", "", "", +(grand / wandflaeche(w)).toFixed(2)],
+    ["Summe netto", "", "", "", +s.summe.toFixed(2), "", "",
+      s.vollstaendig ? "alle Positionen bepreist" : `unvollständig – ${s.bepreist} von ${s.bepreisbar} Positionen bepreist`],
+    ["€/m² Wandfläche", "", "", "", +(s.summe / wandflaeche(w)).toFixed(2)],
   ];
 }
 
@@ -88,9 +132,9 @@ export function aoaToCsv(aoa) {
   }).join(";")).join("\n");
 }
 
-/** Stückliste direkt als CSV-Text. */
-export function stuecklisteCsv(w, eingaben, opts) {
-  return aoaToCsv(stuecklisteAoa(w, eingaben, opts));
+/** Stückliste direkt als CSV-Text. @param {object|null} [katalog] */
+export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
+  return aoaToCsv(stuecklisteAoa(w, eingaben, opts, katalog));
 }
 
 // ---------- Zuschnittliste (Latten) ----------
@@ -370,15 +414,18 @@ function _heute() { try { return new Date().toLocaleDateString("de-DE"); } catch
  * Alle waehlbaren Ausgabe-Dateien fuer ein Projekt bauen.
  * @param {{name:string,wandelement:object,eingaben:object}} projekt (aus store.projektObjekt)
  * @param {string[]} auswahl Schluessel: 'projekt','stueckliste','montage','nachweis','ifc','zuschnitt'
+ * @param {object|null} [katalog] geladener Bauteilkatalog — Preisquelle der Stückliste
+ *   ([P-14]). Ohne Katalog entsteht die Datei weiterhin, aber ohne Preise und mit
+ *   benanntem Grund je Position (nie mit Nullpreisen).
  * @returns {Array<{name:string,data:string}>}
  */
-export function baueDateien(projekt, auswahl) {
+export function baueDateien(projekt, auswahl, katalog = null) {
   const w = projekt.wandelement, eingaben = projekt.eingaben;
   const base = sicherName(projekt.name || w.name);
   const set = new Set(auswahl);
   const files = [];
   if (set.has("projekt")) files.push({ name: "Projekt_" + base + ".json", data: JSON.stringify(projekt, null, 2) });
-  if (set.has("stueckliste")) files.push({ name: "Stueckliste_" + base + ".csv", data: stuecklisteCsv(w, eingaben) });
+  if (set.has("stueckliste")) files.push({ name: "Stueckliste_" + base + ".csv", data: stuecklisteCsv(w, eingaben, undefined, katalog) });
   if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben) });
   if (set.has("montage")) files.push({ name: "Montageanleitung_" + base + ".html", data: montageHtml(w, eingaben) });
   if (set.has("nachweis")) files.push({ name: "Statischer_Nachweis_" + base + ".html", data: nachweisHtml(w, eingaben) });

@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { buildWall, Opening, GRID, COURSE } from "../../docs/shared/sembla-core.js";
 import { berechneAufbau, VERBINDER_KATALOG } from "../../docs/shared/sembla-aufbau.js";
+import * as KAT from "../../docs/shared/sembla-katalog.js";
 
 const html = readFileSync(new URL("../../docs/wandaufbau.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische (attributlose) Skript
@@ -38,11 +39,21 @@ function merge(base, patch){
   return out;
 }
 // Storage-Mock: kein aktives Element -> Modul startet leer (kein Demo/Platzhalter). abonniere() speichert den Rückruf.
-let _subs=[]; let _aktiv=null; let _eg=null; let _merges=[];
+let _subs=[]; let _aktiv=null; let _eg=null; let _merges=[]; let _kat=null;
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>null, aktivesElement:()=>null,
   aktiveEingaben:()=>_eg, mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); if(_eg){ _eg[teil]=merge(_eg[teil],patch); } return _aktiv; },
-  abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
-globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, store:storeMock, berechneAufbau, VERBINDER_KATALOG };
+  abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; },
+  // Bauteilkatalog + wandbezogene Produktreferenzen (Issue #35). Die Schreibfunktion spiegelt
+  // die echte Ownership-Regel: die Rolle bestimmt den Eingaben-Abschnitt, geschrieben wird
+  // ueber denselben mergeEingaben-Weg wie in storage.js.
+  holeKatalog:()=>_kat,
+  holeProdukte:(modul)=>{ const t=(+modul===1)?'planung':'aufbau';
+    return (_eg && _eg[t] && _eg[t].produkte) || KAT.leereProdukte(); },
+  setzeProduktrolle:(rolleId, ids)=>{ const r=KAT.rolle(rolleId); if(!r) throw new Error('unbekannte Rolle');
+    const t=(r.modul===1)?'planung':'aufbau';
+    return storeMock.mergeEingaben(t, { produkte:{ rollen:{ [rolleId]: ids },
+      quelle: _kat ? { name:_kat.name, version:_kat.version } : null } }); } };
+globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, store:storeMock, berechneAufbau, VERBINDER_KATALOG, KAT };
 
 eval(script);
 globalThis.window.__waInit();
@@ -652,6 +663,110 @@ ok('E4 [U-12]: keine unzulaessigen Punkte trotz Leerfall ([U-11] bleibt gewahrt)
    (()=>{ const Q=nutPruefung(E4,E4W); return Q.aussen.length===0 && Q.fehlt.length===0; })());
 WA.clearFeld();
 WA.applyWand(W);
+
+// --- Issue #35: Produkte dieses Aufbaus an der echten Modul-2-Oberflaeche ----------------
+// Modul 2 waehlt DIREKT aus dem vollstaendigen Katalog (kein Freigabepool in Modul 0) und
+// besitzt genau die Rollen Latte, Beplankung und Verbinderprodukt. Nur Fantasiedaten.
+_aktiv='w-prod'; storeMock.aktivesWandelement=()=>W;
+_eg={aufbau:{latten:{breite_cm:4, stange_cm:150}}};
+const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M2', produkte:[
+  { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1,5 m', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
+  { id:'latte-3000', kategorie:'latte', bezeichnung:'Latte 3,0 m', einheit:'Stk', preis:7.0, breite_mm:40, dicke_mm:60, laenge_mm:3000 },
+  { id:'latte-1500b', kategorie:'latte', bezeichnung:'Latte 1,5 m Zweitquelle', einheit:'Stk', preis:3.9, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
+  { id:'platte-625', kategorie:'beplankung', bezeichnung:'Platte 625×1500', einheit:'m2', preis:8.9, breite_mm:625, hoehe_mm:1500, dicke_mm:12.5 },
+  { id:'verb-fa1', kategorie:'verbinder', bezeichnung:'Verbinder FA-1', einheit:'Stk', preis:1.2 },
+  { id:'verb-ia1', kategorie:'verbinder', bezeichnung:'Verbinder IA-1', einheit:'Stk', preis:0.9 },
+  { id:'rod-1100', kategorie:'gewindestange', bezeichnung:'Stange 1100', einheit:'Stk', preis:3.8, gewinde:'M10', laenge_mm:1100 },
+]};
+ok('Modul-2-Rollen: genau Latte, Beplankung und Verbinder', (()=>{
+  const ids=KAT.rollenVonModul(2).map(r=>r.id).sort().join(',');
+  return ids==='beplankung,latte,verbinder'; })());
+ok('Produktabschnitt in Modul 2 vorhanden', /id="prodRollen"/.test(html) && /Produkte \(Bauteilkatalog\)/.test(html));
+WA.renderProdukte();
+ok('ohne Katalog: Hinweis statt Auswahl', /Kein Bauteilkatalog/.test(document.getElementById('prodInfo').innerHTML)
+  && document.getElementById('prodRollen').innerHTML==='');
+
+_kat=KATALOG; WA.run();
+const pHtml=()=>document.getElementById('prodRollen').innerHTML;
+const pSetzen=(rolle,pid,checked)=>document.getElementById('prodRollen')
+  .dispatch('change',{target:{dataset:{prolle:rolle,pid},checked}});
+ok('je Unterpunkt eine eigene Mehrfachauswahl gerendert',
+  /data-prol="latte"/.test(pHtml()) && /data-prol="beplankung"/.test(pHtml()) && /data-prol="verbinder"/.test(pHtml()));
+ok('nur Produkte der passenden Kategorie (keine Gewindestange bei Latte)', !/data-pid="rod-1100"/.test(pHtml()));
+
+pSetzen('latte','latte-1500',true);
+ok('Lattenauswahl über den echten Handler gespeichert (nur IDs)',
+  JSON.stringify(_eg.aufbau.produkte.rollen.latte)==='["latte-1500"]');
+ok('Auswahl liegt in eingaben.aufbau.produkte (Ownership Modul 2)',
+  !!_eg.aufbau.produkte && !_eg.planung);
+ok('Status an der Rolle: zugeordnet (1500 mm = eingestellte Stangenlänge)',
+  WA.prodStatus('latte').status==='ok' && WA.prodStatus('latte').produkt.id==='latte-1500');
+ok('Herkunftsnotiz mitgeschrieben', _eg.aufbau.produkte.quelle.name==='Testkatalog M2');
+
+// Mehrere Standardlängen sind erlaubt (Vorleistung fuer Zuschnitt/Einkauf) und bleiben eindeutig,
+// solange nur eine zur eingestellten Stangenlänge passt.
+pSetzen('latte','latte-3000',true);
+ok('mehrere Standardlängen je Kategorie wählbar', _eg.aufbau.produkte.rollen.latte.length===2);
+ok('abweichende Länge bleibt vorgemerkt, Preis bleibt eindeutig', (()=>{
+  const st=WA.prodStatus('latte');
+  return st.status==='ok' && st.produkt.id==='latte-1500' && st.vorgemerkt.map(p=>p.id).join()==='latte-3000'; })());
+ok('programmgesteuert lesbar für #19/#22 (beide Produkte mit Maßen)', (()=>{
+  const r=KAT.produkteZuRolle({aufbau:_eg.aufbau}, KATALOG, 'latte');
+  return r.produkte.length===2 && r.produkte.some(p=>p.laenge_mm===3000) && r.fehlend.length===0; })());
+// Stangenlänge umstellen -> maßgebend ist jetzt die andere Länge (deterministisch, kein „erstes Produkt")
+document.getElementById('stock').value='300'; document.getElementById('stock').dispatch('input');
+ok('Stangenlänge 300 cm -> jetzt ist die 3-m-Latte maßgebend',
+  WA.prodStatus('latte').produkt.id==='latte-3000');
+document.getElementById('stock').value='150'; document.getElementById('stock').dispatch('input');
+// zwei Produkte mit demselben maßgebenden Maß -> mehrdeutig, kein Preis
+pSetzen('latte','latte-1500b',true);
+ok('gleiche Länge zweifach -> mehrdeutig, kein Produkt', (()=>{
+  const st=WA.prodStatus('latte'); return st.status==='mehrdeutig' && st.produkt===null; })());
+ok('Mehrdeutigkeit schon in Modul 2 sichtbar', /Mehrdeutig/.test(pHtml()));
+pSetzen('latte','latte-1500b',false); pSetzen('latte','latte-3000',false);
+
+// Beplankung: Auswahl wird gespeichert und programmgesteuert bereitgestellt, aber NICHT bepreist
+pSetzen('beplankung','platte-625',true);
+ok('Beplankungsauswahl gespeichert', JSON.stringify(_eg.aufbau.produkte.rollen.beplankung)==='["platte-625"]');
+ok('Beplankung erzeugt keine Kostenzeile (ohne #19/#22)', (()=>{
+  const r=KAT.rolle('beplankung'); return r.bepreist===false; })());
+ok('Beplankung wird als vorgemerkt/nicht bepreist benannt', /vorgemerkt/.test(pHtml()));
+
+// Verbinder: Produktwahl ja, Typwahl nein ([U-9]) — fehlende maschinelle Typprüfung sichtbar
+pSetzen('verbinder','verb-fa1',true);
+ok('Verbinderprodukt wählbar', JSON.stringify(_eg.aufbau.produkte.rollen.verbinder)==='["verb-fa1"]');
+ok('Verbindertyp bleibt aus Modul 1 (nur ein Typ-Select, unverändert)',
+  document.getElementById('vtyp').value==='FA-1' && WA.compute().layout.verbinder_typ==='FA-1');
+ok('fehlende maschinelle Typprüfung sichtbar gemeldet',
+  /nicht maschinell prüfbar/.test(pHtml()) && /folgt unveränderlich aus Modul 1/.test(pHtml()));
+ok('zwei Verbinderprodukte -> mehrdeutig (kein Namens-Rateschluss)', (()=>{
+  pSetzen('verbinder','verb-ia1',true);
+  const st=WA.prodStatus('verbinder');
+  const m=st.status==='mehrdeutig';
+  pSetzen('verbinder','verb-ia1',false);
+  return m; })());
+
+// Fehlende Referenz: Produkt aus dem Katalog entfernen -> sichtbar, nie still bereinigt
+_kat={...KATALOG, produkte:KATALOG.produkte.filter(p=>p.id!=='latte-1500')};
+WA.renderProdukte();
+ok('gelöschtes Produkt: Referenz bleibt + Status fehlt + Warnung',
+  JSON.stringify(_eg.aufbau.produkte.rollen.latte)==='["latte-1500"]'
+  && WA.prodStatus('latte').status==='fehlt' && /nicht auflösbar/.test(pHtml()));
+_kat=KATALOG;
+
+// Aufbau-Eingaben speichern darf den Produkt-Block NICHT verlieren (tiefer Merge)
+document.getElementById('pB').value='125'; document.getElementById('pB').dispatch('input');
+ok('persistAufbau() löscht die Produktauswahl nicht',
+  _eg.aufbau.panel.b_cm===125 && _eg.aufbau.produkte.rollen.latte.length===1);
+ok('readAufbau() enthält keine Produkte (eigener Schreibweg)', WA.readAufbau().produkte===undefined);
+ok('berechneAufbau ignoriert den Produkt-Block (keine Mengenänderung)', (()=>{
+  const ohne={...WA.readAufbau()}; const mit={...ohne, produkte:_eg.aufbau.produkte};
+  return berechneAufbau(W, ohne).pts.length===berechneAufbau(W, mit).pts.length; })());
+
+// Reload: das Modul liest alles frisch aus dem Datenmodell
+globalThis.window.__waInit();
+ok('Reload: Auswahl bleibt erhalten und ist angehakt',
+  /data-prolle="latte" data-pid="latte-1500" checked/.test(document.getElementById('prodRollen').innerHTML));
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

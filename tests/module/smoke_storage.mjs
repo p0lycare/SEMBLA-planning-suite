@@ -223,58 +223,89 @@ const idV = store.speichere("Verwechslung", buildWall("Verwechslung", 2000, 2600
 try { store.importiereKatalogText(JSON.stringify(store.projektObjekt(idV))); } catch (e) { warfV2 = e.message; }
 t("verwechslung: Projekt im Katalogimport -> klare Meldung", /Projekt-\/Wandelement-Datei/.test(warfV2));
 
-// Projektauswahl: Mehrfachauswahl je Kategorie, nur IDs, am aktiven Element
+// --- Wandbezogene Produktreferenzen ([P-13]) --------------------------------------------
+// Nur Produkt-IDs je Verwendungsrolle, geschrieben vom besitzenden Modul. Modul 0 hat KEINEN
+// Schreibweg mehr (die frueher zentrale Auswahl ist unwirksamer Altbestand, [P-15]).
 const wK = buildWall("Katalogwand", 2000, 2600, []);
 const idK = store.speichere("Katalogwand", wK);
 store.setzeAktiv(idK);
-t("auswahl: Altstand ohne eingaben.katalog -> leer und warnungsfrei",
-  JSON.stringify(store.katalogAuswahl()) === "{}"
-  && KAT.pruefeAuswahl(store.holeKatalog(), store.katalogAuswahl()).warnungen.length === 0);
+t("produkte: zentrale Modul-0-Auswahl hat keinen Schreibweg mehr",
+  typeof store.setzeKatalogAuswahl === "undefined");
+t("produkte: Altstand -> leere Rollen, warnungsfrei",
+  JSON.stringify(store.holeProdukte(1).rollen) === "{}" && JSON.stringify(store.holeProdukte(2).rollen) === "{}"
+  && JSON.stringify(store.katalogAuswahl()) === "{}");
 
-store.setzeKatalogAuswahl("latte", ["latte-40-60-3000", "latte-40-60-5000"]);
-store.setzeKatalogAuswahl("gewindestange", ["rod-m10-1100"]);
-t("auswahl: mehrere Standardgroessen derselben Kategorie",
-  store.katalogAuswahl().latte.length === 2 && store.katalogAuswahl().gewindestange.length === 1);
-t("auswahl: Herkunftsnotiz ohne Preise",
-  store.aktiveEingaben().katalog.quelle.name === "Katalog Musterlieferant"
-  && !JSON.stringify(store.aktiveEingaben().katalog).includes("1.25"));
-t("auswahl: Wandelement bleibt frei von Katalogdaten",
+store.setzeProduktrolle("latte", ["latte-40-60-3000", "latte-40-60-5000"]);
+store.setzeProduktrolle("rod_std", ["rod-m10-1100"]);
+t("produkte: mehrere Standardgroessen derselben Rolle",
+  store.holeProdukte(2).rollen.latte.length === 2 && store.holeProdukte(1).rollen.rod_std.length === 1);
+t("produkte: Rolle landet im Abschnitt ihres Eigentuemer-Moduls",
+  store.aktiveEingaben().aufbau.produkte.rollen.latte.length === 2
+  && store.aktiveEingaben().planung.produkte.rollen.rod_std.length === 1
+  && store.aktiveEingaben().planung.produkte.rollen.latte === undefined);
+t("produkte: Herkunftsnotiz ohne Preise/Maße",
+  store.holeProdukte(1).quelle.name === "Katalog Musterlieferant"
+  && !JSON.stringify(store.aktiveEingaben().planung).includes("1.25")
+  && !JSON.stringify(store.aktiveEingaben().aufbau.produkte).includes("breite_mm"));
+t("produkte: Wandelement bleibt frei von Katalogdaten",
   !JSON.stringify(store.aktivesWandelement()).includes("latte-40-60-3000"));
+t("produkte: unbekannte Rolle wird abgelehnt (kein stilles Schreiben)", (() => {
+  try { store.setzeProduktrolle("gibtsnicht", ["x"]); return false; } catch { return true; }
+})());
+
+// Reload (frisches Lesen aus dem localStorage) haelt die Auswahl
+t("produkte: nach Reload aus dem Speicher wieder da",
+  JSON.parse(localStorage.getItem("sembla:elemente"))[idK].eingaben.aufbau.produkte.rollen.latte.length === 2
+  && store.holeProdukte(2, idK).rollen.latte.length === 2);
 
 // Roundtrip Projekt-JSON: nur IDs reisen mit, Version bleibt 2
 const pK = store.projektObjekt(idK);
-t("auswahl: reist im Projekt-JSON mit (nur IDs)",
-  pK.eingaben.katalog.auswahl.latte.join(",") === "latte-40-60-3000,latte-40-60-5000"
-  && !JSON.stringify(pK.eingaben.katalog).includes("Latte 40×60"));
-t("auswahl: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
-t("auswahl: interne Schema-Version bleibt 3", store.SCHEMA_VERSION === 3);
+t("produkte: reisen im Projekt-JSON mit (nur IDs)",
+  pK.eingaben.aufbau.produkte.rollen.latte.join(",") === "latte-40-60-3000,latte-40-60-5000"
+  && pK.eingaben.planung.produkte.rollen.rod_std.join(",") === "rod-m10-1100"
+  && !JSON.stringify(pK.eingaben.planung).includes("Latte 40×60"));
+t("produkte: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
+t("produkte: interne Schema-Version bleibt 3", store.SCHEMA_VERSION === 3);
+t("produkte: Katalog-Formatversion getrennt", KAT.KATALOG_VERSION === 1);
 const idKimp = store.importiereText(JSON.stringify(pK), "Katalogwand.json");
-t("auswahl: nach Projekt-Import wieder geladen",
-  store.holeEingaben(idKimp).katalog.auswahl.latte.length === 2);
+t("produkte: nach Projekt-Import wieder geladen",
+  store.holeProdukte(2, idKimp).rollen.latte.length === 2
+  && store.holeProdukte(1, idKimp).rollen.rod_std.join(",") === "rod-m10-1100");
+t("produkte: v2-Parser traegt den optionalen Zusatzteil unveraendert",
+  JSON.stringify(store.projektObjekt(idKimp).eingaben.planung) === JSON.stringify(pK.eingaben.planung));
 
-// Fehlende Referenz -> sichtbare Warnung, keine stille Bereinigung
+// Fehlende Referenz -> sichtbar, keine stille Bereinigung
 const ohneLatte = { ...store.holeKatalog(), produkte: store.holeKatalog().produkte.filter(p => p.id !== "latte-40-60-5000") };
 store.setzeKatalog(ohneLatte);
-const prS = KAT.pruefeAuswahl(store.holeKatalog(), store.katalogAuswahl());
-t("referenz: geloeschtes Produkt warnt", prS.warnungen.some(w => w.typ === "fehlt" && w.id === "latte-40-60-5000"));
+const aufl = KAT.produkteZuRolle(store.aktiveEingaben(), store.holeKatalog(), "latte");
+t("referenz: geloeschtes Produkt wird als fehlend gemeldet", aufl.fehlend.join() === "latte-40-60-5000");
 t("referenz: Auswahl bleibt unveraendert (nicht still bereinigt)",
-  store.katalogAuswahl().latte.length === 2);
+  store.holeProdukte(2).rollen.latte.length === 2);
 store.loescheKatalog();
-t("referenz: ohne Katalog warnt die gesamte Auswahl",
-  KAT.pruefeAuswahl(store.holeKatalog(), store.katalogAuswahl()).warnungen[0].typ === "kein_katalog");
+t("referenz: ohne Katalog ist keine Rolle aufloesbar",
+  KAT.rollenStatus("latte", store.aktiveEingaben(), store.holeKatalog(), {}).status === "kein_katalog");
 
-// Altprojekt-Datei ohne eingaben.katalog laedt sauber und warnungsfrei
+// Altprojekt-Datei ohne Produkt-Bloecke laedt sauber und warnungsfrei; Alt-Preise bleiben erhalten,
+// sind aber nicht mehr die Preisquelle ([P-14]) und werden nicht mehr als Standard erzeugt.
 const altOhneKatalog = JSON.stringify({
   format: "SEMBLA-Projekt", version: 2, name: "AltOhneKatalog",
   wandelement: buildWall("AltOhneKatalog", 2000, 2600, []),
-  eingaben: { projekt: { name: "Alt" }, kosten: { preise: { i3: 9.5 } } },
+  eingaben: { projekt: { name: "Alt" }, kosten: { preise: { i3: 9.5 } },
+              katalog: { quelle: { name: "Alt-Katalog", version: 1 }, auswahl: { latte: ["alt-latte"] } } },
 });
 const idAltK = store.importiereText(altOhneKatalog, "AltOhneKatalog.json");
-t("altprojekt: Fallback = leere Auswahl",
-  JSON.stringify(store.holeEingaben(idAltK).katalog) === JSON.stringify({ quelle: null, auswahl: {} }));
-t("altprojekt: keine Warnung", KAT.pruefeAuswahl(null, store.holeEingaben(idAltK).katalog.auswahl).warnungen.length === 0);
-t("altprojekt: bestehende Preisfelder unveraendert wirksam",
+t("altprojekt: Fallback = leere Rollen",
+  JSON.stringify(store.holeProdukte(1, idAltK).rollen) === "{}"
+  && JSON.stringify(store.holeProdukte(2, idAltK).rollen) === "{}");
+t("altprojekt: bestehende Preisfelder bleiben im Projekt erhalten",
   store.holeEingaben(idAltK).kosten.preise.i3 === 9.5);
+t("altprojekt: keine Preis-Standardwerte mehr", store.standardEingaben().kosten.preise === undefined);
+t("altbestand: alte Modul-0-Auswahl bleibt lesbar und wird NICHT in Rollen uebersetzt",
+  store.katalogAuswahl(idAltK).latte.join() === "alt-latte"
+  && KAT.anzahlAuswahl(store.katalogAuswahl(idAltK)) === 1
+  && JSON.stringify(KAT.produktRollen(store.holeEingaben(idAltK))) === "{}");
+t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
+  store.projektObjekt(idAltK).eingaben.katalog.auswahl.latte.join() === "alt-latte");
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

@@ -23,11 +23,14 @@ Es lebt im **localStorage des Browsers** (Schicht `docs/shared/storage.js`). Gen
 Element ist gesetzt; **nur Modul 1 schreibt das Wandelement**, alle anderen Module lesen es.
 
 **Nutzereingaben ↔ ein Datenmodell (kein Drift).** Neben dem Wandelement hält jeder Eintrag einen
-`eingaben`-Block: `{ projekt, aufbau, kosten, statik, katalog }` (Standardwerte in `storage.standardEingaben()`).
-Jedes Modul schreibt **nur seinen eigenen Abschnitt** via `store.mergeEingaben(teil, patch)` zurück —
-Modul 0→`projekt` (Kopfdaten am aktiven Element) **und `katalog`** (Produktauswahl), Modul 2→`aufbau`, Modul 4→`kosten`, Modul 3→`statik`. Abgeleitete Werte (Stückliste,
-Layout, Nachweis) werden immer **neu gerechnet, nie gespeichert**. Modul 3 speichert nur seine Kennwerte;
-Geometrie (h/L/t/Öffnungszahl) **und Wandtyp** kommen aus dem Wandelement.
+`eingaben`-Block: `{ projekt, planung, aufbau, kosten, statik, katalog }` (Standardwerte in
+`storage.standardEingaben()`). Jedes Modul schreibt **nur seinen eigenen Abschnitt** via
+`store.mergeEingaben(teil, patch)` zurück — Modul 0→`projekt` (Kopfdaten am aktiven Element),
+Modul 1→`planung`, Modul 2→`aufbau`, Modul 4→`kosten` (nur noch `waehrung`), Modul 3→`statik`.
+Abgeleitete Werte (Stückliste, Layout, Nachweis) werden immer **neu gerechnet, nie gespeichert**.
+Modul 3 speichert nur seine Kennwerte; Geometrie (h/L/t/Öffnungszahl) **und Wandtyp** kommen aus dem
+Wandelement. `eingaben.katalog` ist **unwirksamer Altbestand** (s. u.) und wird von niemandem mehr
+geschrieben.
 
 **Wandtyp (`wandelement.wandtyp`, `mit_wind`/`ohne_wind`).** Fachmerkmal der Wand (Windsituation).
 **Gewählt wird er ausschließlich in Modul 0 beim Anlegen** des Wandelements; Modul 1 führt ihn beim
@@ -54,18 +57,47 @@ Projektformat-Bruch.
 Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder, Verbrauchsmaterial) ist
 eine **eigene Ressource** — technisch und fachlich getrennt vom Wand-/Projekt-JSON: **ein** aktiver
 Katalog-Slot im localStorage, eigene Datei, eigene Formatversion (`KATALOG_VERSION`), Logik in
-`docs/shared/sembla-katalog.js` (rein/DOM-frei, validiert). **Modul 0 besitzt** Katalogpflege (Produkte
-anlegen/bearbeiten/duplizieren/löschen), **separaten** Katalogimport/-export **und** die Projektauswahl;
-Katalogimport/-export laufen bewusst **nicht** über den Projekt-Import/das Projekt-ZIP (verwechselte
-Formate werden benannt). Im Projekt steht nur `eingaben.katalog = { quelle, auswahl }` — **Produkt-IDs
-je Kategorie** (Mehrfachauswahl möglich, z. B. mehrere Lattenlängen), **niemals** Preise/Maße und
-**nichts davon im Wandelement**. Unauflösbare Referenzen (gelöscht/anderer Katalog/kein Katalog) werden
-in Modul 0 **sichtbar gewarnt**, nie still bereinigt und nie auf Nullpreis/Ersatzprodukt abgebildet
-(`pruefeAuswahl`). Altprojekte ohne `eingaben.katalog` laden über `standardEingaben()` als **leere
-Auswahl** — warnungsfrei, ohne Verhaltensänderung; `eingaben.kosten.preise` bleibt die wirksame
-Preisquelle für Modul 4 (**keine** Katalog→BOM/Kosten/Zuschnitt-Integration, das ist Folgeausbau).
-Versionsachsen strikt getrennt: `KATALOG_VERSION`=1 (Katalogdatei) ≠ `PROJEKT_VERSION`=2 (`eingaben.katalog`
-ist dort ein optionales Feld, kein Bruch) ≠ `SCHEMA_VERSION`=3 (eigener Schlüssel ⇒ keine Migration nötig).
+`docs/shared/sembla-katalog.js` (rein/DOM-frei, validiert). **Modul 0 ist der alleinige Pflegeort**
+für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) sowie für den **separaten**
+Katalogimport/-export — der bewusst **nicht** über den Projekt-Import/das Projekt-ZIP läuft
+(verwechselte Formate werden benannt). Modul 0 hat **keine** wand-/projektbezogene Produktauswahl.
+
+**Wandbezogene Produktwahl (`eingaben.planung.produkte` / `eingaben.aufbau.produkte`, Regel [P-13]).**
+*Welche* Produkte eine Wand verwendet, wählt das fachlich zuständige Modul **direkt aus dem
+vollständigen aktiven Katalog** (kein Freigabepool dazwischen): **Modul 1** für Steine, Vorspannung,
+Anschluss (inkl. getrennter Boden-/Kopfbleche) und Fugen, **Modul 2** für Lattenstange,
+Beplankungsplatte und Verbinderprodukt. Beide Blöcke haben dieselbe Form
+`{ quelle, rollen: { <bom-key>: [produktId, …] } }` — **nur Produkt-IDs je Verwendungsrolle**, niemals
+Preise/Maße und **nichts davon im Wandelement**. Der Rollenschlüssel *ist* der Stücklistenschlüssel
+(`sembla-bom.js`), es gibt also keine zweite Zuordnungsachse. Mehrere Produkte je Rolle sind erlaubt
+(mehrere Standardlängen/-formate) und über `produkteZuRolle()` für #19/#22 programmgesteuert lesbar.
+`store.setzeProduktrolle(rolle, ids)` schreibt anhand der Rolle in den Abschnitt ihres Eigentümers;
+eine fremde/unbekannte Rolle wird abgelehnt statt still einsortiert.
+
+**Preise (Regel [P-14]).** Modul 4 hat **keine** Preisfelder mehr; jeder Einzelpreis wird pro Position
+frisch aufgelöst (`loesePreis`, genutzt von `stuecklistePositionen` und damit von Modul 4 **und** dem
+ZIP-Export). Eingegrenzt wird nur über echte Daten: passende Kategorie, zur Positionseinheit
+kompatible Preisbasis (`Stk↔Stk`, `m↔m`, **keine** Umrechnung) und — wo definiert — Gleichheit eines
+realen Maßfelds mit dem maßgebenden Wandwert (`preisKontext`: Stangenlänge, Blech-Modullänge,
+Lattenstangenlänge, Steinbreite). Genau **ein** Kandidat ⇒ Preis; **mehrere** ⇒ `mehrdeutig` ohne
+Preis. Fehlend/kategoriefremd/einheitenfremd/maßfremd/kein Katalog ⇒ ebenfalls **kein** Preis, aber
+sichtbar begründet; Menge 0 braucht kein Produkt. **Verboten:** erster Kandidat, Mittelwert, Minimum,
+Ersatzprodukt, Nullpreis, Einheitenumrechnung, Änderung der Einbaumenge. Unvollständige Summen werden
+als *n von m bepreist* gekennzeichnet; der Auswahlstatus ist schon in Modul 1/2 sichtbar.
+`eingaben.kosten.preise` ist damit **keine Preisquelle mehr** (bleibt in Altprojekten erhalten, wird
+weder gelesen noch geschrieben, ist kein Standardwert mehr).
+
+**Altbestand (`eingaben.katalog`, Regel [P-15]).** Die früher zentral in Modul 0 gepflegte
+`auswahl` je Kategorie ist **unwirksam**: sie wird nicht mehr geschrieben, nicht als Filter angewendet
+und **nicht** in Verwendungsrollen übersetzt (eine Kategorie→Rolle-Übersetzung wäre mehrdeutig). Sie
+bleibt zur Nachvollziehbarkeit im Projekt und wird in Modul 0 sichtbar als unwirksam gemeldet;
+`pruefeAuswahl`/`normAuswahl`/`anzahlAuswahl` sind dafür reine Lese-/Meldepfade.
+
+Altprojekte ohne Produkt-Blöcke laden über `standardEingaben()` als **leere Rollen** — warnungsfrei.
+Versionsachsen strikt getrennt: `KATALOG_VERSION`=1 (Katalogdatei) ≠ `PROJEKT_VERSION`=2 (die
+Produkt-Blöcke sind dort optionale Zusatzfelder; der v2-Parser übernimmt `eingaben` ohne Whitelist,
+`holeEingaben` füllt auf, `projektObjekt` exportiert alles ⇒ kein Bruch) ≠ `SCHEMA_VERSION`=3
+(fehlende Felder werden beim Lesen aufgefüllt ⇒ keine Migration nötig).
 
 **Export/Import ist zentral** (Modul 0, `docs/index.html`): ein Häkchen-Dialog baut über
 `sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
@@ -123,7 +155,12 @@ nicht mehr alleinige Verteilungsregel.
    - `sembla-statik.js` — **voller Schermer-Nachweis** (Modul 3) plus `nachweisParams()`: die
      zentrale, DOM-freie Abbildung Wandelement + `eingaben.statik` → Nachweis-Parameter. Modul 3
      (`readP`) **und** der zentrale Nachweis-Export nutzen sie, damit beide dasselbe rechnen.
-   - `sembla-bom.js` — Stücklisten-Baustein (kanonische Mengen/Positionen, Modul 4/5).
+   - `sembla-bom.js` — Stücklisten-Baustein (kanonische Mengen/Positionen, Modul 4/5). Boden- und
+     Kopfblech sind **getrennte Positionen** (`blech_boden`/`blech_kopf`, Regel **[A-1]**), abgeleitet aus
+     den realen `base_plate`/`top_plate` des Wandelements — der Core bleibt unverändert und die Summe
+     beider Positionen bleibt exakt `bom.stahlblech_module` (`test-shared.mjs` sichert das ab). Die
+     Dichtstreifen-Gesamtlänge in m ist `nachrichtlich: true` (Regel **[A-6]**) und wird **nie** bepreist,
+     damit dieselbe Ware nicht doppelt in einer Summe steht.
    - `sembla-aufbau.js` — horizontaler Wandaufbau (`berechneAufbau`, Verbinderachsen/Latten; Modul 2, DOM-frei).
    - `sembla-montage.js` — **ereignis-/baugruppenbasierte Montageableitung** (`montageEreignisse`,
      `montageAbschnitte`, `abschnittSvg`/`konturSvg`, `montageSeiten`/`montageDokument`; DOM-frei).
@@ -142,9 +179,12 @@ nicht mehr alleinige Verteilungsregel.
      Delegation an `sembla-montage.js` (keine eigene Zeichenlogik, kein Duplikat zu Modul 5).
    - `zip.js` — `zipSync`/`downloadZip` (STORE+CRC32, ohne Fremd-Lib) für den zentralen ZIP-Export.
    - `sembla-katalog.js` — **Bauteilkatalog**: Kategorien/Einheiten, Validierung, Austauschformat
-     (`parseKatalog`/`katalogObjekt`) und Referenzprüfung der Projektauswahl (`pruefeAuswahl`); rein/DOM-frei.
+     (`parseKatalog`/`katalogObjekt`), **Verwendungsrollen** (`ROLLEN`, `rollenVonModul`, `produktRollen`,
+     `produkteZuRolle`, `rollenStatus`) und die **deterministische Preisauflösung** (`loesePreis`,
+     `preisKontext`, `STATUS_TEXT`) nach **[P-14]**; `pruefeAuswahl` bleibt nur als Meldepfad für den
+     Altbestand **[P-15]**. Rein/DOM-frei, genutzt von Modul 0/1/2 und `sembla-export.js`.
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
-     **Katalog-Slot + Projektauswahl**, Import/Export).
+     **Katalog-Slot**, **Produktrollen** (`holeProdukte`/`setzeProduktrolle`), Import/Export).
    - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–6 + aktives Wandelement).
 
    `engine`/`statik`/`bom`/`aufbau`/`montage`/`ifc`/`export`/`zip`/`katalog` sind eigene Dateien **wegen eigener Tests bzw.
@@ -159,11 +199,11 @@ nicht mehr alleinige Verteilungsregel.
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** pflegen (Produkte anlegen/bearbeiten), separat im-/exportieren und Produkte für das Projekt freigeben → `eingaben.katalog` (`sembla-katalog.js`) |
-| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement |
-| 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau` |
+| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
+| 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
-| 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); Preise/Anzahl → `eingaben.kosten` (Export läuft zentral über Modul 0) |
+| 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only**: Preise werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar nur `waehrung` → `eingaben.kosten`. Nicht eindeutige Zuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
 | 5 | `montage.html` | Montageanleitung: **Baugruppenabschnitte nach Montageereignissen** (erste Stange, Kopplung/neue Stange, oberer Abschluss) mit durchgehend nummerierten Steinreihen, A4-paginiert druckbar (`sembla-montage.js`; identisch zum zentralen Export) |
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 

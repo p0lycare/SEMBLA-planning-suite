@@ -185,14 +185,14 @@
 
     <div class="subh">Produkte
       <span class="muted" style="text-transform:none;letter-spacing:0">
-        · Häkchen „Für Projekt“ = Freigabe am aktiven Wandelement (Mehrfachauswahl je Kategorie)</span>
+        · Produktstamm und Preise — die Auswahl für eine Wand treffen Modul 1 und Modul 2</span>
     </div>
     <div class="row" style="margin-bottom:6px">
       <div class="field"><label for="k-filter">Filter</label><select id="k-filter" style="width:250px"></select></div>
     </div>
     <table>
       <thead>
-        <tr><th>Für Projekt</th><th>Produkt</th><th>Kategorie</th><th>Maße</th><th>Preisbasis</th><th>Preis</th><th></th></tr>
+        <tr><th>Produkt</th><th>Kategorie</th><th>Maße</th><th>Preisbasis</th><th>Preis</th><th></th></tr>
       </thead>
       <tbody id="k-tbody"></tbody>
     </table>
@@ -200,18 +200,23 @@
     <div class="hint">Der Katalog ist eine <b>eigene Ressource</b>: er liegt getrennt vom Projekt im
       localStorage dieses Browsers und wird als eigene Datei
       (<b>SEMBLA-Bauteilkatalog</b>, Format-Version 1) importiert/exportiert — <b>nicht</b> über den
-      Projekt-Export (ZIP). Im Projekt selbst stehen nur die freigegebenen <b>Produkt-IDs</b>, keine
+      Projekt-Export (ZIP). Im Projekt selbst stehen nur <b>Produkt-IDs</b> je Verwendungsstelle, keine
       Preise und keine Maße.<br>
+      <b>Modul 0 ist der alleinige Pflegeort</b> für Produkte und Preise. <b>Welche</b> Produkte eine
+      konkrete Wand verwendet, wird dort gewählt, wo es fachlich hingehört: in
+      <b>Modul&nbsp;1</b> (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) und
+      <b>Modul&nbsp;2</b> (Lattenstange, Beplankungsplatte, Verbinderprodukt) — jeweils direkt aus dem
+      vollständigen Katalog.<br>
       „<b>Standardkatalog laden</b>" liest die mitgelieferte Repo-Vorlage
       (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) — bewusst auf Klick,
       nie automatisch. Ein bereits geladener Katalog wird erst <b>nach Bestätigung</b> ersetzt.
       Der Standardkatalog enthält neben den Produktvorgaben aus dieser Suite auch
       <b>vorläufige, fachlich unbestätigte Beispielwerte</b>; sie sind im Katalognamen und je
       betroffenem Produkt gekennzeichnet und vor der Verwendung zu prüfen.<br>
-      Die Freigabe ist die <b>Grundlage für die nachgelagerte Planung</b> (Einkauf, Zuschnitt,
-      Ausbau). <b>Sie rechnet noch nicht mit:</b> Stückliste und Kosten (Modul&nbsp;4) verwenden bis
-      zur Folgeintegration unverändert die dort gepflegten Einzelpreise — Katalogpreise werden derzeit
-      nicht in die Kostenrechnung übernommen.</div>
+      <b>Diese Preise rechnen mit:</b> Stückliste und Kosten (Modul&nbsp;4) lösen jeden Einzelpreis
+      read-only aus diesem Katalog auf. Ist die Zuordnung einer Position nicht eindeutig, bleibt sie
+      dort <b>ohne Preis</b> mit benanntem Grund — es wird kein Nullpreis und kein Ersatzprodukt
+      angesetzt und keine Einbaumenge verändert.</div>
   </div>
 
   <h2>Gespeicherte Wandelemente</h2>
@@ -548,10 +553,14 @@
   store.abonniere(pjSync);
   pjSync();
 
-  // --- Bauteilkatalog (eigene Ressource; Modul 0 ist die Pflegeoberfläche) ---
+  // --- Bauteilkatalog (eigene Ressource; Modul 0 ist der ALLEINIGE Pflegeort) ---
   // Katalogdaten leben in EINEM Katalog-Slot (store.holeKatalog/setzeKatalog) und werden
   // als eigene Datei importiert/exportiert — getrennt vom Projektimport und vom ZIP.
-  // Am Projekt landen ausschließlich Produkt-IDs (store.setzeKatalogAuswahl).
+  // Modul 0 pflegt AUSSCHLIESSLICH den Produktstamm samt Preisen ([P-13]); eine wand-/
+  // projektbezogene Produktauswahl gibt es hier nicht mehr — sie liegt in Modul 1
+  // (eingaben.planung.produkte) und Modul 2 (eingaben.aufbau.produkte). Referenzen aus dem
+  // früheren zentralen Auswahlweg bleiben im Projekt erhalten, sind aber unwirksam und
+  // werden unten als solche gemeldet ([P-15]).
   const kMsg = document.getElementById('k-msg');
   function kZeige(text, ok){ kMsg.textContent = text; kMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
   const kEuro = n => (Number(n) || 0).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -775,50 +784,44 @@
     }
   });
 
-  // Freigabe für das aktive Projekt (Mehrfachauswahl je Kategorie) -> nur IDs
-  document.getElementById('k-tbody').addEventListener('change', (ev) => {
-    const t = ev.target;
-    if (!t || !t.dataset || t.dataset.act !== 'auswahl') return;
-    if (!store.aktivId()) { kZeige('Kein aktives Wandelement — Freigabe nicht möglich.', false); return; }
-    const p = KAT.produkt(store.holeKatalog(), t.dataset.pid);
-    if (!p) { kZeige('Produkt ist nicht mehr im Katalog.', false); return; }
-    const ids = new Set((store.katalogAuswahl()[p.kategorie] || []).map(String));
-    if (t.checked) ids.add(String(p.id)); else ids.delete(String(p.id));
-    store.setzeKatalogAuswahl(p.kategorie, [...ids]);
-    kZeige((t.checked ? 'Für das Projekt freigegeben: ' : 'Freigabe entfernt: ') + p.bezeichnung, true);
-  });
-
-  function katWarnungen(kat, auswahl, aktiv){
+  // ALTBESTAND ([P-15]): die frühere zentrale „Für Projekt“-Freigabe ist entfallen. Vorhandene
+  // Referenzen werden weder angewendet noch bereinigt noch übersetzt — nur sichtbar als
+  // unwirksam gemeldet, mit Verweis auf den heutigen Ort der Auswahl.
+  function katWarnungen(kat, aktiv){
     const box = document.getElementById('k-warn');
-    if (!aktiv) {
-      box.hidden = false;
-      box.innerHTML = '<b>Kein aktives Wandelement.</b> Katalogpflege ist möglich, die Produktfreigabe '
-        + 'für ein Projekt nicht — oben ein Wandelement anlegen oder in der Liste „Aktiv setzen“.';
-      return;
+    const teile = [];
+    if (aktiv) {
+      const alt = store.katalogAuswahl();
+      const n = KAT.anzahlAuswahl(alt);
+      if (n > 0) {
+        teile.push('<b>Unwirksamer Altbestand:</b> dieses Projekt enthält ' + n + ' Produktreferenz(en) aus '
+          + 'der früheren zentralen Freigabe in Modul 0. Sie werden <b>nicht mehr angewendet</b> und bleiben '
+          + 'nur zur Nachvollziehbarkeit erhalten. Die wandbezogene Produktwahl liegt jetzt in '
+          + '<b>Modul 1</b> (Steine, Vorspannung, Anschluss, Fugen) und <b>Modul 2</b> (Latten, Beplankung, '
+          + 'Verbinder).');
+      }
     }
-    const pr = KAT.pruefeAuswahl(kat, auswahl);
-    box.hidden = pr.warnungen.length === 0;
-    box.innerHTML = pr.warnungen.length
-      ? '<b>Katalogreferenzen dieses Projekts prüfen:</b><ul>'
-        + pr.warnungen.map(w => `<li>${esc(w.text)}</li>`).join('') + '</ul>'
-      : '';
+    if (kat) {
+      const vorl = kat.produkte.filter(p => p && p.hinweis);
+      if (vorl.length) {
+        teile.push('<b>' + vorl.length + ' Produkt(e) mit vorläufigen, fachlich unbestätigten Werten</b> '
+          + 'im Katalog — vor der Verwendung prüfen (im Feld „hinweis“ des Produkts benannt).');
+      }
+    }
+    box.hidden = teile.length === 0;
+    box.innerHTML = teile.map(t => '<div style="margin:2px 0">' + t + '</div>').join('');
   }
 
   function katRender(){
     const kat = store.holeKatalog();
     const aktiv = store.aktivId();
-    const auswahl = aktiv ? store.katalogAuswahl() : {};
     const liste = kat ? kat.produkte : [];
     document.getElementById('k-info').textContent = kat
       ? `Geladen: „${kat.name}“ · ${liste.length} Produkt(e) · Katalogformat v${KAT.KATALOG_VERSION}`
       : 'Kein Katalog geladen — neu anlegen, ein Produkt anlegen oder eine Katalog-Datei importieren.';
-    const gewaehlt = new Set();
-    for (const [k, ids] of Object.entries(auswahl)) for (const id of (ids || [])) gewaehlt.add(k + '|' + id);
     const sicht = liste.filter(p => kFilter === 'alle' || p.kategorie === kFilter);
     document.getElementById('k-leer').hidden = sicht.length > 0;
     document.getElementById('k-tbody').innerHTML = sicht.map(p => `<tr data-pid="${esc(p.id)}">
-        <td><input type="checkbox" data-act="auswahl" data-pid="${esc(p.id)}"
-             ${gewaehlt.has(p.kategorie + '|' + p.id) ? 'checked' : ''} ${aktiv ? '' : 'disabled'}></td>
         <td><b>${esc(p.bezeichnung)}</b><br><span class="muted" style="font-size:11.5px">${esc(p.id)}</span></td>
         <td class="muted">${esc(KAT.kategorieLabel(p.kategorie))}</td>
         <td class="muted">${esc(KAT.massText(p))}</td>
@@ -829,7 +832,7 @@
           <button class="btn-s" data-act="duplizieren" data-pid="${esc(p.id)}">Duplizieren</button>
           <button class="btn-d" data-act="produkt-loeschen" data-pid="${esc(p.id)}">Löschen</button>
         </td></tr>`).join('');
-    katWarnungen(kat, auswahl, aktiv);
+    katWarnungen(kat, aktiv);
   }
 
   /** Katalog neu in die Oberfläche laden (Name + Tabelle) — nach Anlegen/Import/Entfernen. */
@@ -866,7 +869,8 @@
     if (!auswahl.length) { zeige('Bitte mindestens eine Datei auswählen.', false); return; }
     try {
       const projekt = store.projektObjekt(expId);
-      const files = baueDateien(projekt, auswahl);
+      // Katalog ist Preisquelle der Stückliste ([P-14]) — dieselbe Auflösung wie in Modul 4.
+      const files = baueDateien(projekt, auswahl, store.holeKatalog());
       downloadZip('SEMBLA_' + store.sicherName(projekt.name) + '.zip', files);
       schliesseExport();
       zeige('Exportiert: ' + files.length + ' Datei(en) im ZIP.', true);

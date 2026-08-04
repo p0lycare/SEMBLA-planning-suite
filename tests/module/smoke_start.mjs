@@ -8,9 +8,11 @@
 //  - Ownership des Wandtyps (Issue #6) — er wird beim Anlegen HIER gewaehlt und landet
 //    am Wandelement.
 //  - Bauteilkatalog (Issue #21) — Anlegen/Bearbeiten/Duplizieren/Loeschen einzelner
-//    Produkte (v. a. Gewindestangen, Latten, Platten), separater Katalogimport/-export
-//    und die Mehrfach-Freigabe je Kategorie am aktiven Projekt. Alles ueber die echten
-//    Bedienelemente der Startseite. Nur synthetische Fantasiedaten.
+//    Produkte (v. a. Gewindestangen, Latten, Platten) und separater Katalogimport/-export.
+//    Alles ueber die echten Bedienelemente der Startseite. Nur synthetische Fantasiedaten.
+//  - Issue #35 — Modul 0 ist ALLEINIGER Pflegeort fuer Produkte und Preise und hat KEINE
+//    wand-/projektbezogene Produktauswahl mehr ([P-13]); die frueheren zentralen Freigaben
+//    sind unwirksamer Altbestand und werden nur noch sichtbar gemeldet ([P-15]).
 
 import { readFileSync } from "node:fs";
 
@@ -73,7 +75,7 @@ URL.revokeObjectURL = () => {};
 const store = await import("../../docs/shared/storage.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
 const { MODULE } = await import("../../docs/shared/navbar.js");
-const { baueDateien } = await import("../../docs/shared/sembla-export.js");
+const { baueDateien, stuecklistePositionen } = await import("../../docs/shared/sembla-export.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
 
 // --- Produktcode aus docs/index.html laden --------------------------------
@@ -162,8 +164,6 @@ function kSetze(werte){
 }
 /** Zeilenaktion der Produkttabelle (Ereignisdelegation wie im Browser). */
 function kZeile(act, pid){ $('k-tbody').dispatch('click', { target: { dataset:{ act, pid } } }); }
-/** Freigabe-Haekchen einer Zeile umschalten. */
-function kHaken(pid, an){ $('k-tbody').dispatch('change', { target: { dataset:{ act:'auswahl', pid }, checked:an } }); }
 
 // 5a) Oberflaeche ist vorhanden und kommuniziert die Trennung/Nicht-Wirksamkeit
 ok('Katalog-Abschnitt in Modul 0 vorhanden', /<h2>Bauteilkatalog/.test(html));
@@ -178,8 +178,17 @@ ok('Projekt-ZIP-Dialog hat KEIN Katalog-Haekchen (Formate nicht verwechseln)',
   !/type="checkbox" value="katalog"/.test(html));
 ok('Hinweis nennt eigenes Dateiformat und Trennung vom Projekt',
   /SEMBLA-Bauteilkatalog/.test(html) && /nicht<\/b> über den\s+Projekt-Export/.test(html));
-ok('Hinweis stellt klar, dass die Freigabe noch nicht in die Kosten rechnet',
-  /rechnet noch nicht mit/.test(html) && /Grundlage für die nachgelagerte Planung/.test(html));
+ok('Hinweis nennt Modul 0 als alleinigen Pflegeort und Modul 1/2 als Auswahlort',
+  /Modul 0 ist der alleinige Pflegeort/.test(html)
+  && /<b>Modul&nbsp;1<\/b>/.test(html) && /<b>Modul&nbsp;2<\/b>/.test(html));
+ok('Hinweis stellt klar, dass die Katalogpreise jetzt mitrechnen (kein Nullpreis)',
+  /Diese Preise rechnen mit/.test(html) && /ohne Preis<\/b> mit benanntem Grund/.test(html)
+  && !/rechnet noch nicht mit/.test(html));
+ok('keine zentrale Produktauswahl-UI mehr in Modul 0 ([P-13])',
+  !/data-act="auswahl"/.test(html) && !/<th>Für Projekt<\/th>/.test(html)
+  && !/Häkchen „Für Projekt/.test(html));
+ok('Modul 0 hat keinen Schreibweg fuer die alte Auswahl mehr',
+  typeof store.setzeKatalogAuswahl === 'undefined' && !/setzeKatalogAuswahl/.test(html));
 
 // 5b) Katalog neu anlegen
 ok('vor der Anlage ist kein Katalog geladen', kat() === null);
@@ -268,37 +277,37 @@ confirmAntwort = true;
 kZeile('produkt-loeschen', 'latte-40-60-3000-kopie');
 ok('Loeschen mit Bestaetigung entfernt das Produkt', kAnzahl() === 4 && !kProd('latte-40-60-3000-kopie'));
 
-// 5j) Mehrfach-Freigabe je Kategorie am aktiven Projekt (nur IDs)
+// 5j) Modul 0 pflegt NUR den Produktstamm — die wandbezogene Auswahl gehoert Modul 1/2 ([P-13]).
+// Hier wird sie nur vorbereitet (ueber die Storage-Schicht, wie Modul 1/2 sie aufrufen), damit
+// die Persistenz-, Export- und Altbestandspruefungen darunter einen realistischen Stand haben.
 const aktivKat = store.aktivId();
-ok('Ausgangslage: leere Auswahl am aktiven Element', KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);
-kHaken('latte-40-60-3000', true);
-kHaken('latte-40-60-5000', true);
-kHaken('gewindestange-m10-1100', true);
-kHaken('platte-gk-125', true);
-ok('mehrere Produkte derselben Kategorie freigegeben',
-  store.katalogAuswahl().latte.length === 2
-  && store.katalogAuswahl().latte.includes('latte-40-60-3000')
-  && store.katalogAuswahl().latte.includes('latte-40-60-5000'));
-ok('Freigabe je Kategorie getrennt',
-  store.katalogAuswahl().gewindestange.length === 1 && store.katalogAuswahl().beplankung.length === 1);
-ok('Freigabe speichert nur IDs, keine Preise/Maße',
-  !JSON.stringify(store.aktiveEingaben().katalog).includes('1.35')
-  && !JSON.stringify(store.aktiveEingaben().katalog).includes('breite_mm'));
+ok('Ausgangslage: keine Produktauswahl am aktiven Element',
+  KAT.anzahlAuswahl(KAT.produktRollen(store.aktiveEingaben())) === 0);
+ok('Produkttabelle in Modul 0 zeigt keine Auswahlspalte',
+  !/data-act="auswahl"/.test($('k-tbody').innerHTML) && /data-act="bearbeiten"/.test($('k-tbody').innerHTML));
+store.setzeProduktrolle('latte', ['latte-40-60-3000', 'latte-40-60-5000']);
+store.setzeProduktrolle('rod_std', ['gewindestange-m10-1100']);
+store.setzeProduktrolle('beplankung', ['platte-gk-125']);
+ok('Auswahl liegt in den Abschnitten der besitzenden Module',
+  store.holeProdukte(2, aktivKat).rollen.latte.length === 2
+  && store.holeProdukte(1, aktivKat).rollen.rod_std.length === 1
+  && store.holeProdukte(2, aktivKat).rollen.beplankung.length === 1);
+ok('Auswahl speichert nur IDs, keine Preise/Maße',
+  !JSON.stringify(store.aktiveEingaben().planung).includes('1.35')
+  && !JSON.stringify(store.aktiveEingaben().aufbau.produkte).includes('breite_mm'));
 ok('Wandelement bleibt frei von Katalogdaten (Ownership Modul 1)',
   !JSON.stringify(store.aktivesWandelement()).includes('latte-40-60-3000'));
-kHaken('latte-40-60-5000', false);
-ok('Haekchen entfernen loest die Freigabe', store.katalogAuswahl().latte.length === 1);
-kHaken('latte-40-60-5000', true);
 
 // 5k) Persistenz „nach Reload": alles steht im localStorage, nichts nur im DOM
 ok('Katalog liegt im eigenen localStorage-Schluessel',
   JSON.parse(localStorage.getItem('sembla:katalog')).produkte.length === 4);
 ok('Auswahl liegt am Element im Projektstand',
-  JSON.parse(localStorage.getItem('sembla:elemente'))[aktivKat].eingaben.katalog.auswahl.latte.length === 2);
+  JSON.parse(localStorage.getItem('sembla:elemente'))[aktivKat].eingaben.aufbau.produkte.rollen.latte.length === 2);
 ok('Auswahl ist nach erneutem Laden wieder da (store liest frisch)',
-  store.holeEingaben(aktivKat).katalog.auswahl.beplankung[0] === 'platte-gk-125');
+  store.holeProdukte(2, aktivKat).rollen.beplankung[0] === 'platte-gk-125');
 ok('Projekt-JSON traegt die Auswahl, Format bleibt v2',
-  store.projektObjekt(aktivKat).eingaben.katalog.auswahl.latte.length === 2
+  store.projektObjekt(aktivKat).eingaben.aufbau.produkte.rollen.latte.length === 2
+  && store.projektObjekt(aktivKat).eingaben.planung.produkte.rollen.rod_std.length === 1
   && store.projektObjekt(aktivKat).version === 2);
 
 // 5l) Separater Katalog-Export (eigene Datei, nicht im Projekt-ZIP)
@@ -335,22 +344,32 @@ await $('f-import').dispatch('change', { target: { files:[kFile(fremdKatalog, 'f
 ok('Katalogdatei im Projekt-Import -> klare Meldung',
   /Bauteilkatalog/.test($('msg').textContent) && $('msg').className === 'msg err');
 
-// 5n) Referenzwarnungen: fehlende/unbekannte Produkte werden sichtbar gemeldet
+// 5n) Referenzen bleiben beim Katalogwechsel stehen (nie stille Bereinigung); die Meldung der
+// unaufloesbaren Referenzen gehoert jetzt an die waehlenden Oberflaechen (Modul 1/2) und in
+// Modul 4 — Modul 0 pflegt nur den Stamm.
 ok('Auswahl wurde durch den Katalogwechsel NICHT bereinigt',
-  store.holeEingaben(aktivKat).katalog.auswahl.latte.length === 2);
-ok('Warnbox zeigt die unaufloesbaren Referenzen',
-  $('k-warn').hidden === false && /latte-40-60-3000/.test($('k-warn').innerHTML)
-  && /fehlt im geladenen Katalog/.test($('k-warn').innerHTML));
-ok('Warnbox meldet jede fehlende Referenz einzeln',
-  ($('k-warn').innerHTML.match(/<li>/g) || []).length === 4);
+  store.holeProdukte(2, aktivKat).rollen.latte.length === 2);
+ok('unaufloesbare Referenz ist nachweisbar (Meldung in Modul 1/2/4)',
+  KAT.produkteZuRolle(store.holeEingaben(aktivKat), kat(), 'latte').fehlend.length === 2);
 
 confirmAntwort = true;
 $('k-entfernen').dispatch('click');
 ok('Katalog entfernt, Referenzen bleiben stehen',
-  kat() === null && store.holeEingaben(aktivKat).katalog.auswahl.latte.length === 2);
-ok('ohne Katalog warnt die gesamte Auswahl (kein stiller Nullpreis)',
-  $('k-warn').hidden === false && /4 Produkt\(e\)/.test($('k-warn').innerHTML)
-  && /kein Bauteilkatalog geladen/.test($('k-warn').innerHTML));
+  kat() === null && store.holeProdukte(2, aktivKat).rollen.latte.length === 2);
+ok('ohne Katalog ist keine Rolle aufloesbar (kein stiller Nullpreis)',
+  KAT.rollenStatus('latte', store.holeEingaben(aktivKat), null, {}).status === 'kein_katalog');
+
+// 5n2) Altbestand der frueheren zentralen Freigabe wird sichtbar als UNWIRKSAM gemeldet ([P-15])
+store.mergeEingaben('katalog', { auswahl: { latte: ['alt-latte-1', 'alt-latte-2'] },
+                                 quelle: { name: 'Alt-Katalog', version: 1 } }, aktivKat);
+ok('Altbestand: Warnbox nennt ihn unwirksam und verweist auf Modul 1/2',
+  $('k-warn').hidden === false && /Unwirksamer Altbestand/.test($('k-warn').innerHTML)
+  && /2 Produktreferenz\(en\)/.test($('k-warn').innerHTML)
+  && /Modul 1<\/b>/.test($('k-warn').innerHTML) && /Modul 2<\/b>/.test($('k-warn').innerHTML));
+ok('Altbestand wird nicht angewendet und nicht in Rollen uebersetzt',
+  !JSON.stringify(KAT.produktRollen(store.holeEingaben(aktivKat))).includes('alt-latte'));
+ok('Altbestand bleibt zur Nachvollziehbarkeit erhalten',
+  store.katalogAuswahl(aktivKat).latte.length === 2);
 
 // 5o) Erstes Produkt ohne vorher angelegten Katalog legt einen Katalog an
 $('k-name').value = 'Direktkatalog';
@@ -361,14 +380,21 @@ $('k-add').dispatch('click');
 ok('Produktanlage ohne bestehenden Katalog erzeugt ihn',
   !!kat() && kat().name === 'Direktkatalog' && kAnzahl() === 1);
 
-// 5p) Zentraler Projekt-ZIP-Export bleibt unveraendert katalogfrei
-const projektDateien = baueDateien(store.projektObjekt(aktivKat), ['projekt','stueckliste']);
+// 5p) Zentraler Projekt-ZIP-Export bleibt unveraendert katalogfrei, nutzt den Katalog aber als
+// Preisquelle der Stueckliste ([P-14]) — dieselbe Auflösung wie Modul 4.
+const projektDateien = baueDateien(store.projektObjekt(aktivKat), ['projekt','stueckliste'], kat());
 ok('Projekt-ZIP enthaelt keine Katalog-Datei',
   projektDateien.length === 2 && !projektDateien.some(f => /Bauteilkatalog/.test(f.name)));
-ok('Projekt-Datei traegt nur die Auswahl-IDs',
+ok('Projekt-Datei traegt nur Produkt-IDs (keine Preise/Bezeichnungen)',
   (() => { const p = JSON.parse(projektDateien[0].data);
-           return p.eingaben.katalog.auswahl.latte.length === 2
-             && !JSON.stringify(p.eingaben.katalog).includes('Latte 40'); })());
+           return p.eingaben.aufbau.produkte.rollen.latte.length === 2
+             && p.eingaben.planung.produkte.rollen.rod_std.length === 1
+             && !JSON.stringify(p.eingaben.aufbau.produkte).includes('Latte 40')
+             && !JSON.stringify(p.eingaben.planung.produkte).includes('preis'); })());
+ok('Stueckliste-CSV traegt Produktzuordnung und Grund statt Nullpreisen',
+  (() => { const csv = projektDateien[1].data;
+           return /Produkt \(Katalog\);Preisbasis;Zuordnung/.test(csv)
+             && /Bodenblech-Modul/.test(csv) && /Kopfblech-Modul/.test(csv); })());
 
 // --- 6) Projekt-/Wandimport mit Bestaetigung (Issue #28) -------------------
 // Alles ueber den ECHTEN Modul-0-Handler: Dateiauswahl an #f-import, Dialogfelder,
@@ -445,9 +471,12 @@ ok('neue Zeile ist in der Liste hervorgehoben',
   new RegExp('<tr data-id="' + neu.id + '" class="neu">').test($('tbody').innerHTML));
 ok('scrollIntoView wurde am neu gerenderten Datensatz aufgerufen',
   scrollAufrufe.length === scrollVor + 1 && scrollAufrufe[scrollAufrufe.length-1].id === neu.id);
-ok('Import erhaelt die Eingaben der v2-Datei (Preise/Katalogauswahl)',
-  store.holeEingaben(neu.id).kosten.preise.i3 === store.holeEingaben(aktivKat).kosten.preise.i3
-  && store.holeEingaben(neu.id).katalog.auswahl.latte.length === 2);
+ok('Import erhaelt die Eingaben der v2-Datei (Produktreferenzen je Rolle)',
+  store.holeProdukte(2, neu.id).rollen.latte.length === 2
+  && store.holeProdukte(1, neu.id).rollen.rod_std.length === 1
+  && store.holeEingaben(neu.id).kosten.waehrung === store.holeEingaben(aktivKat).kosten.waehrung);
+ok('Import erhaelt auch den unwirksamen Altbestand unveraendert ([P-15])',
+  store.katalogAuswahl(neu.id).latte.length === 2);
 ok('Projektname der Datei bleibt in den Eingaben stehen',
   store.holeEingaben(neu.id).projekt.name === 'Musterprojekt Nord');
 ok('Wandelement kommt unveraendert aus der Datei',
@@ -608,8 +637,13 @@ ok('veraltete abgeleitete Daten NICHT uebernommen (keine gespeicherte verificati
 ok('heutige abgeleitete Struktur vorhanden (base_plate/top_plate, neue BOM-Felder)',
   ('base_plate' in wv) && ('top_plate' in wv) && ('stahlblech_module' in wv.bom) && ('stossfugen' in wv.bom));
 ok('Wandvorlage friert keine Statik-/Nachweiskennwerte ein',
-  Object.keys(wandRoh.eingaben).join(',') === 'projekt' && !('statik' in wandRoh.eingaben)
+  Object.keys(wandRoh.eingaben).join(',') === 'projekt,planung,aufbau' && !('statik' in wandRoh.eingaben)
   && !/\bmRk1\b|\bNv1\b|f_k|gamma_w/.test(JSON.stringify(wandRoh)));
+ok('Wandvorlage traegt nur Produkt-IDs, keine Preise/Maße/Kosten',
+  !('kosten' in wandRoh.eingaben)
+  && !/"preis"|"breite_mm"|"laenge_mm"/.test(JSON.stringify(wandRoh.eingaben))
+  && Object.keys(wandRoh.eingaben.planung).join() === 'produkte'
+  && Object.keys(wandRoh.eingaben.aufbau).join() === 'produkte');
 
 // 7d) Standardkatalog laden: belegter Slot wird nur nach Bestaetigung ersetzt
 const katVorher = JSON.stringify(store.holeKatalog());
@@ -678,10 +712,44 @@ ok('Erfolgsmeldung nennt Name, Import und aktiv',
   /SEMBLA Musterwand \(AWG\)/.test(msgTxt()) && /importiert/.test(msgTxt()) && /jetzt aktiv/.test(msgTxt()));
 ok('Projekt-Kopfdaten der Vorlage kommen mit',
   store.holeEingaben(mw.id).projekt.name === 'SEMBLA Musterwand (AWG)');
-ok('Vorlage friert keine Preise ein — Standardpreise wirken weiter',
-  store.holeEingaben(mw.id).kosten.preise.i3 === 9.5);
+ok('Vorlage friert keine Preise ein — nur Produkt-IDs und Herkunftsnotiz',
+  (() => { const e = store.holeEingaben(mw.id);
+           const s = JSON.stringify([e.planung.produkte, e.aufbau.produkte]);
+           return e.kosten.preise === undefined && !/preis|breite_mm|laenge_mm/.test(s); })());
 ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
   (() => { $('imp-go').dispatch('click'); return anzahl() === wAnzahlVor + 1; })());
+
+// 7e2) Vorlage bleibt mit der Umstellung funktionsfaehig: die Rollen der AWG-Vorlage loesen
+// gegen den mitgelieferten Standardkatalog auf; ungeklaerte Zuordnung bleibt LEER und wird
+// gemeldet statt geraten (Verbinderprodukt: Katalog v1 hat kein Typfeld, [U-9]).
+{
+  const eMw = store.holeEingaben(mw.id);
+  const rollen = KAT.produktRollen(eMw);
+  ok('Vorlage bringt Rollen fuer Modul 1 und Modul 2 mit',
+    rollen.i3.join() === 'stein-i3-375' && rollen.rod_std.join() === 'gewindestange-m10-1000'
+    && rollen.blech_boden.join() === 'blech-bodenblech-1000' && rollen.blech_kopf.join() === 'blech-kopfblech-1000'
+    && rollen.latte.join() === 'latte-40-60-1500' && rollen.beplankung.join() === 'beplankung-625-1500');
+  ok('Vorlage laesst das Verbinderprodukt bewusst leer (kein Rateschluss)',
+    rollen.verbinder === undefined && eMw.aufbau.produkte.rollen.verbinder.length === 0);
+  ok('Vorlage laesst die nachrichtliche Dicht-Gesamtlänge leer ([A-6])',
+    eMw.planung.produkte.rollen.dicht.length === 0);
+  const rsMw = stuecklistePositionen(mw.wandelement, eMw, kat());
+  const offen = rsMw.filter(r => r.bepreisbar && r.gp == null);
+  ok('Vorlage + Standardkatalog: alle Wandpositionen loesen auf',
+    rsMw.filter(r => r.key !== 'verbinder').every(r => !r.bepreisbar || r.gp != null));
+  ok('einzig offene Position ist das Verbinderprodukt, sichtbar begruendet',
+    offen.length === 1 && offen[0].key === 'verbinder' && offen[0].status === 'keine_auswahl');
+  ok('Vorlage nutzt die zur Wand passende Stangenlänge (1000 mm)',
+    rsMw.find(r => r.key === 'rod_std').produktId === 'gewindestange-m10-1000');
+  ok('Vorlage: Boden- und Kopfblech getrennt bepreist',
+    rsMw.find(r => r.key === 'blech_boden').ep === 18 && rsMw.find(r => r.key === 'blech_kopf').ep === 18
+    && rsMw.find(r => r.key === 'blech_boden').menge + rsMw.find(r => r.key === 'blech_kopf').menge
+       === mw.wandelement.bom.stahlblech_module);
+  ok('Vorlage: vorläufige Katalogwerte bleiben gekennzeichnet',
+    rsMw.some(r => r.produkt && /vorläufig/.test(r.produkt.hinweis || '')));
+  ok('Vorlage bleibt im oeffentlichen Projektformat v2 (kein Bruch)',
+    store.projektObjekt(mw.id).version === 2 && JSON.parse(vorlageDatei(V_WAND)).version === 2);
+}
 
 // 7f) Ressourcen-/Formattrennung bleibt auch fuer die Vorlagen bestehen
 await $('k-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_WAND), V_WAND)], value:'x' } });

@@ -132,7 +132,154 @@ ok("vorschlagBezeichnung Platte nennt Dicke und Format",
 ok("massText nennt Querschnitt und Laenge",
   /40 b × 60 d mm/.test(KAT.massText(P_LATTE)) && /L 3000 mm/.test(KAT.massText(P_LATTE)));
 
-// --- 8) Projektauswahl: Referenzpruefung -------------------------------
+// --- 8) Verwendungsrollen + deterministische Preisauflösung ([P-13]/[P-14]) --------------
+// Reine Funktionspruefung ohne DOM/Storage: welche Rolle gehoert welchem Modul, und welchen
+// Preis liefert sie unter welchen Bedingungen. Nur Fantasiedaten.
+const R_KAT = { format: KAT.KATALOG_FORMAT, version: 1, name: "Rollenkatalog", produkte: [
+  { id: "i3", kategorie: "stein", bezeichnung: "Stein i3", einheit: "Stk", preis: 9.5, breite_mm: 375 },
+  { id: "i2", kategorie: "stein", bezeichnung: "Stein i2", einheit: "Stk", preis: 7.2, breite_mm: 250 },
+  { id: "rod-1100", kategorie: "gewindestange", bezeichnung: "Stange 1100", einheit: "Stk", preis: 3.8, gewinde: "M10", laenge_mm: 1100 },
+  { id: "rod-1100b", kategorie: "gewindestange", bezeichnung: "Stange 1100 b", einheit: "Stk", preis: 4.1, gewinde: "M10", laenge_mm: 1100 },
+  { id: "rod-1000", kategorie: "gewindestange", bezeichnung: "Stange 1000", einheit: "Stk", preis: 3.5, gewinde: "M10", laenge_mm: 1000 },
+  { id: "rod-m", kategorie: "gewindestange", bezeichnung: "Stange Meterware", einheit: "m", preis: 2.9, gewinde: "M10", laenge_mm: 1100 },
+  { id: "mutter", kategorie: "verbrauch", bezeichnung: "Kopplungsmutter", einheit: "Stk", preis: 0.65 },
+  { id: "boden-1000", kategorie: "blech_platte", bezeichnung: "Bodenblech 1000", einheit: "Stk", preis: 18, breite_mm: 1000, hoehe_mm: 125, dicke_mm: 15 },
+  { id: "kopf-1000", kategorie: "blech_platte", bezeichnung: "Kopfblech 1000", einheit: "Stk", preis: 21, breite_mm: 1000, hoehe_mm: 125, dicke_mm: 15 },
+]};
+const KTX = { rod_mm: 1100, blech_mm: 1000, stange_mm: 1500, stein_i3_mm: 375, stein_i2_mm: 250 };
+const eingabenMit = (m1, m2) => ({ planung: { produkte: { rollen: m1 || {} } },
+                                   aufbau: { produkte: { rollen: m2 || {} } } });
+const loese = (key, ids, unit = "Stk", menge = 5, ktx = KTX) =>
+  KAT.loesePreis({ key, unit, menge }, { [key]: ids }, R_KAT, ktx);
+
+// Rollen und Eigentuemer
+ok("Rollen: Modul 1 besitzt Wand/Vorspannung/Anschluss/Fugen", (() => {
+  const ids = KAT.rollenVonModul(1).map(r => r.id);
+  return ["i3","i2","rod_std","rod_sonder","kupplung","kuppl_basis","senkkopf","spannmutter",
+          "spannplatte","blech_boden","blech_kopf","dicht_stk","dicht"].every(x => ids.includes(x));
+})());
+ok("Rollen: Modul 2 besitzt genau Latte/Beplankung/Verbinder",
+  KAT.rollenVonModul(2).map(r => r.id).sort().join() === "beplankung,latte,verbinder");
+ok("Rollen: kein Schluessel gehoert zwei Modulen",
+  new Set(KAT.ROLLEN.map(r => r.id)).size === KAT.ROLLEN.length);
+ok("Rollen: Rollenschluessel = Stuecklistenschluessel (keine zweite Achse)",
+  KAT.rolle("blech_boden").einheit === "Stk" && KAT.rolle("dicht").einheit === "m");
+ok("Rollen: Gruppen fuer die Modul-1-Oberflaeche",
+  KAT.rollenGruppen(1).join() === "Steine,Vorspannung,Anschluss,Fugen");
+ok("produktRollen liest je Rolle nur den Block ihres Eigentuemers", (() => {
+  const r = KAT.produktRollen(eingabenMit({ rod_std: ["rod-1100"], latte: ["x"] }, { latte: ["latte-1"] }));
+  return r.rod_std.join() === "rod-1100" && r.latte.join() === "latte-1";
+})());
+ok("rollenIds entdoppelt und verwirft Leerwerte",
+  KAT.rollenIds({ rollen: { latte: ["a", "a", "", null] } }, "latte").join() === "a");
+
+// Eindeutige Auflösung
+ok("Auflösung: genau ein Kandidat -> Preis", (() => {
+  const r = loese("rod_std", ["rod-1100"]);
+  return r.status === "ok" && r.ep === 3.8 && r.produkt.id === "rod-1100" && r.bepreisbar === true;
+})());
+ok("Auflösung: Maß-Diskriminator engt ein, Rest bleibt vorgemerkt", (() => {
+  const r = loese("rod_std", ["rod-1100", "rod-1000"]);
+  return r.status === "ok" && r.produkt.id === "rod-1100" && r.vorgemerkt.map(p => p.id).join() === "rod-1000";
+})());
+ok("Auflösung: Steinbreite unterscheidet i3 von i2",
+  loese("i3", ["i3", "i2"]).produkt.id === "i3" && loese("i2", ["i3", "i2"]).produkt.id === "i2");
+ok("Auflösung: Blech-Modullänge trifft auch ueber hoehe_mm/laenge_mm", (() => {
+  const kat = { ...R_KAT, produkte: [{ id: "b2", kategorie: "blech_platte", bezeichnung: "Blech", einheit: "Stk",
+                                       preis: 17, breite_mm: 125, hoehe_mm: 1000, dicke_mm: 15 }] };
+  const r = KAT.loesePreis({ key: "blech_boden", unit: "Stk", menge: 3 }, { blech_boden: ["b2"] }, kat, KTX);
+  return r.status === "ok" && r.ep === 17;
+})());
+ok("Auflösung: Boden- und Kopfblech getrennt, je eigener Preis",
+  loese("blech_boden", ["boden-1000"]).ep === 18 && loese("blech_kopf", ["kopf-1000"]).ep === 21);
+ok("Auflösung: Rolle ohne Diskriminator ist mit einem Produkt eindeutig",
+  loese("kupplung", ["mutter"]).status === "ok");
+
+// Kein Preis ohne Eindeutigkeit — und niemals ein Ersatzwert
+ok("mehrdeutig: gleiches Maß zweifach -> kein Preis, kein erster Kandidat", (() => {
+  const r = loese("rod_std", ["rod-1100", "rod-1100b"]);
+  return r.status === "mehrdeutig" && r.ep === null && r.produkt === null && r.kandidaten.length === 2;
+})());
+ok("mehrdeutig: Rolle ohne Diskriminator mit zwei Produkten", (() => {
+  const kat = { ...R_KAT, produkte: R_KAT.produkte.concat(
+    [{ id: "mutter2", kategorie: "verbrauch", bezeichnung: "Mutter 2", einheit: "Stk", preis: 0.7 }]) };
+  const r = KAT.loesePreis({ key: "kupplung", unit: "Stk", menge: 2 }, { kupplung: ["mutter", "mutter2"] }, kat, KTX);
+  return r.status === "mehrdeutig" && r.ep === null;
+})());
+ok("fehlt: unbekannte ID -> kein Preis, ID benannt", (() => {
+  const r = loese("rod_std", ["weg"]);
+  return r.status === "fehlt" && r.ep === null && r.fehlend.join() === "weg";
+})());
+ok("fehlt: eine gueltige + eine fehlende Referenz ergibt KEINEN Teilpreis", (() => {
+  const r = loese("rod_std", ["rod-1100", "weg"]);
+  return r.status === "fehlt" && r.ep === null && r.fehlend.join() === "weg";
+})());
+ok("kategorie_abweichend: Produkt der falschen Kategorie -> kein Preis",
+  loese("i3", ["rod-1100"]).status === "kategorie_abweichend" && loese("i3", ["rod-1100"]).ep === null);
+ok("einheit_unpassend: m-Ware auf Stk-Position, keine Umrechnung", (() => {
+  const r = loese("rod_std", ["rod-m"]);
+  return r.status === "einheit_unpassend" && r.ep === null;
+})());
+ok("einheit_unpassend: Stk-Ware auf m-Position", (() => {
+  const kat = { ...R_KAT, produkte: [{ id: "rolle", kategorie: "verbrauch", bezeichnung: "Rollenware", einheit: "Stk", preis: 1.5 }] };
+  const r = KAT.loesePreis({ key: "dicht_stk", unit: "m", menge: 4 }, { dicht_stk: ["rolle"] }, kat, KTX);
+  return r.status === "einheit_unpassend";
+})());
+ok("mass_abweichend: kein gewaehltes Produkt passt zum Wandmaß", (() => {
+  const r = loese("rod_std", ["rod-1000"]);
+  return r.status === "mass_abweichend" && r.ep === null;
+})());
+ok("keine_auswahl: Rolle ohne Produkt -> kein Preis", loese("rod_std", []).status === "keine_auswahl");
+ok("kein_katalog: ohne Katalog kein Preis", (() => {
+  const r = KAT.loesePreis({ key: "rod_std", unit: "Stk", menge: 5 }, { rod_std: ["rod-1100"] }, null, KTX);
+  return r.status === "kein_katalog" && r.ep === null;
+})());
+ok("Menge 0 braucht kein Produkt und zaehlt nicht als offen", (() => {
+  const r = KAT.loesePreis({ key: "blech_kopf", unit: "Stk", menge: 0 }, {}, R_KAT, KTX);
+  return r.status === "nicht_erforderlich" && r.bepreisbar === false && r.ep === null;
+})());
+ok("nachrichtliche Position wird nie bepreist ([A-6])", (() => {
+  const r = KAT.loesePreis({ key: "dicht", unit: "m", menge: 15.4, nachrichtlich: true },
+    { dicht: ["mutter"] }, R_KAT, KTX);
+  return r.status === "nachrichtlich" && r.bepreisbar === false && r.ep === null;
+})());
+ok("Rolle ohne Mengenposition (Beplankung) erzeugt keine Kostenzeile",
+  KAT.rolle("beplankung").bepreist === false && KAT.rolle("dicht").bepreist === false);
+ok("fehlender Kontextwert deaktiviert nur die Eingrenzung, erfindet nichts", (() => {
+  const r = loese("rod_std", ["rod-1100", "rod-1000"], "Stk", 5, {});
+  return r.status === "mehrdeutig" && r.ep === null;
+})());
+ok("Verbinderrolle nennt die fehlende maschinelle Typpruefung ([U-9])",
+  /nicht maschinell prüfbar/i.test(KAT.rolle("verbinder").hinweis));
+ok("rod_sonder verweist auf das Ausgangsprodukt ohne Zuschnittlogik",
+  /Zuschnitt/.test(KAT.rolle("rod_sonder").hinweis) && loese("rod_sonder", ["rod-1100"]).ep === 3.8);
+
+// preisKontext: nur reale Wandwerte
+ok("preisKontext liest Stangen-/Blechmaß und Steinbreiten aus der Wand", (() => {
+  const k = KAT.preisKontext({ rod_mm: 900, grid_mm: 125, prestress: { blech_mm: 2000 } },
+    { aufbau: { latten: { stange_cm: 300 } } });
+  return k.rod_mm === 900 && k.blech_mm === 2000 && k.stange_mm === 3000
+    && k.stein_i3_mm === 375 && k.stein_i2_mm === 250;
+})());
+
+// Auswahlstatus fuer die waehlende Oberflaeche (Modul 1/2)
+ok("rollenStatus spiegelt den Preisstatus einer bepreisten Rolle", (() => {
+  const st = KAT.rollenStatus("rod_std", eingabenMit({ rod_std: ["rod-1100", "rod-1100b"] }), R_KAT, KTX);
+  return st.status === "mehrdeutig" && st.ids.length === 2;
+})());
+ok("rollenStatus meldet bei nicht bepreisten Rollen nur die Aufloesbarkeit", (() => {
+  const a = KAT.rollenStatus("beplankung", eingabenMit(null, { beplankung: ["weg"] }), R_KAT, KTX);
+  const b = KAT.rollenStatus("beplankung", eingabenMit(null, { beplankung: [] }), R_KAT, KTX);
+  return a.status === "fehlt" && b.status === "keine_auswahl";
+})());
+ok("produkteZuRolle liefert vollstaendige Produkte fuer die Folgeplanung (#19/#22)", (() => {
+  const r = KAT.produkteZuRolle(eingabenMit({ rod_std: ["rod-1100", "rod-1000", "weg"] }), R_KAT, "rod_std");
+  return r.produkte.length === 2 && r.produkte.some(p => p.laenge_mm === 1000) && r.fehlend.join() === "weg";
+})());
+ok("leereProdukte ist ein leerer, gueltiger Block",
+  JSON.stringify(KAT.leereProdukte()) === JSON.stringify({ quelle: null, rollen: {} }));
+
+// --- 9) Altbestand der frueheren zentralen Auswahl ([P-15]) -------------
 const AUSWAHL_OK = { gewindestange: ["rod-m10-1100"], latte: ["latte-40-60-3000"], beplankung: ["platte-12-1250-2000"] };
 let pr = KAT.pruefeAuswahl(KATALOG, AUSWAHL_OK);
 ok("Auswahl vollstaendig aufloesbar -> keine Warnung", pr.ok && pr.warnungen.length === 0 && pr.anzahl === 3);

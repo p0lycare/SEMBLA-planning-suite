@@ -21,9 +21,45 @@ for(const [name,l,h,ops] of cases){
   t(name+" · Spannmuttern",    b.spannmuttern===w.bom.spannmuttern);
   t(name+" · Stahlblech-Module",b.stahlblech_module===w.bom.stahlblech_module);
   t(name+" · Dichtstreifen mm",b.dichtstreifen_mm===w.bom.dichtstreifen_mm);
-  t(name+" · Items = 12",      semblaBomItems(w).length===12);
+  t(name+" · Items = 13",      semblaBomItems(w).length===13);
   t(name+" · Dichtstreifen-Stück = Stoßfugen", semblaBomItems(w).find(it=>it.key==='dicht_stk').menge===w.bom.stossfugen);
   t(name+" · rodStd+Sonder = gesamt", b.rodStd+b.rodSonder===b.gewindestangen_gesamt);
+  // [A-1]: Boden-/Kopfblech getrennt bepreisbar — abgeleitet aus den REALEN Platten des
+  // Wandelements. Die Summe muss exakt die Core-Gesamtzahl bleiben (keine Doppelzählung,
+  // keine Fehlmenge), und je Position muss die reale Modulzahl der Platte stehen.
+  const items=semblaBomItems(w);
+  const bo=items.find(it=>it.key==='blech_boden'), ko=items.find(it=>it.key==='blech_kopf');
+  t(name+" · Blech getrennt (boden+kopf)", !!bo && !!ko && !items.find(it=>it.key==='blech'));
+  t(name+" · Blech Summe = Core-Gesamtzahl", bo.menge+ko.menge===w.bom.stahlblech_module);
+  t(name+" · Bodenblech = base_plate.module", bo.menge===w.base_plate.module);
+  t(name+" · Kopfblech = top_plate.module",  ko.menge===(w.top_plate?w.top_plate.module:0));
+  t(name+" · Blech-Split auch in semblaBom", b.stahlblech_module_boden===bo.menge && b.stahlblech_module_kopf===ko.menge);
+  // [A-6]: Dichtstreifen-Gesamtlänge ist nachrichtlich (nie bepreist) — die Einbauposition nicht.
+  t(name+" · Dicht-Gesamtlänge nachrichtlich", items.find(it=>it.key==='dicht').nachrichtlich===true
+    && !items.find(it=>it.key==='dicht_stk').nachrichtlich);
+}
+
+// Oberer Anschluss „Spannplatte": kein Kopfblech -> Kopfblech-Position bleibt 0 (und wird nicht
+// still weggelassen), Bodenblech unverändert, Summe weiter gleich der Core-Gesamtzahl.
+{
+  const w=buildWall("spannplatte_top",2000,2600,[],null,{top_connection:"spannplatte"});
+  const items=semblaBomItems(w);
+  const bo=items.find(it=>it.key==='blech_boden'), ko=items.find(it=>it.key==='blech_kopf');
+  t("spannplatte_top · top_plate ist null", w.top_plate===null);
+  t("spannplatte_top · Kopfblech-Position = 0", ko.menge===0);
+  t("spannplatte_top · Bodenblech > 0", bo.menge>0);
+  t("spannplatte_top · Summe = Core-Gesamtzahl", bo.menge+ko.menge===w.bom.stahlblech_module);
+}
+
+// Alt-Bundle ohne base_plate/top_plate: der Split wird aus Wandlänge/Modullänge nachgerechnet,
+// die Summe bleibt exakt die gespeicherte Core-Gesamtzahl (kein Verlust, keine Doppelzählung).
+{
+  const w=buildWall("alt_bundle",4000,2600,[]);
+  const alt=JSON.parse(JSON.stringify(w)); delete alt.base_plate; delete alt.top_plate;
+  const items=semblaBomItems(alt);
+  const bo=items.find(it=>it.key==='blech_boden'), ko=items.find(it=>it.key==='blech_kopf');
+  t("alt_bundle · Summe = gespeicherte Gesamtzahl", bo.menge+ko.menge===w.bom.stahlblech_module);
+  t("alt_bundle · Bodenblech = ceil(L/Modul)", bo.menge===Math.ceil(alt.length_mm/alt.prestress.blech_mm));
 }
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail?1:0);

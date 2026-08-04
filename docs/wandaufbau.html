@@ -31,14 +31,26 @@
   .bar-fill{height:8px;border-radius:5px;background:#e7eaee;overflow:hidden;margin-top:3px}
   .bar-fill > i{display:block;height:100%;background:var(--sb-ok)}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
+  /* Produktauswahl (Bauteilkatalog) */
+  .prodinfo{font-size:11.5px;color:var(--sb-muted);margin-bottom:6px;line-height:1.45}
+  .prol{border:1px solid var(--sb-line);border-radius:7px;padding:6px 8px;margin:5px 0;background:#fbfcfd}
+  .prol .ptop{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12.5px}
+  .prol .plist label{display:flex;justify-content:flex-start;align-items:baseline;gap:6px;margin:2px 0;font-size:12px;width:auto}
+  .prol .plist label input{width:auto}
+  .pnote{font-size:11px;color:var(--sb-muted);margin-top:3px;line-height:1.45}
+  .pwarn{font-size:11px;color:var(--sb-warn);margin-top:3px;line-height:1.45}
+  .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
+  .pill.ok{background:#e6f5ec;color:#1f7a3d} .pill.no{background:#fdece4;color:var(--sb-warn)}
+  .pill.warn{background:#fdf3e6;color:#8a5300} .pill.mute{background:#eef2f7;color:#5b6673}
 </style>
 </head>
 <body>
 <p class="intro"><b>Horizontaler Wandaufbau.</b> Verbinder- und Lattenplanung in einem Schritt — die
   Panelfugen bestimmen die Verbinderachsen. Grundlage ist das <b>aktive Wandelement</b> (aus „Wand
   planen"); dieses Modul liest es und ändert es nicht. Deine Aufbau-Einstellungen (Panel, Achsen,
-  Beplankungsfeld, Latten) werden im Datenmodell gespeichert; Verbinder-/Zuschnittliste liefert der zentrale
-  Export auf der Startseite.</p>
+  Beplankungsfeld, Latten) sowie die <b>Katalogprodukte des Aufbaus</b> (Lattenstange, Beplankungsplatte,
+  Verbinderprodukt — nur Produkt-IDs) werden im Datenmodell gespeichert; Verbinder-/Zuschnittliste liefert
+  der zentrale Export auf der Startseite.</p>
 <div class="bar">
   <label style="width:auto">Seite&nbsp;<select id="side"><option value="vorne">Vorderseite</option><option value="hinten">Rückseite</option></select></label>
   <label style="width:auto">Aufbau (aus Modul 1)&nbsp;<b id="aufbau" style="font-weight:600">–</b></label>
@@ -74,6 +86,14 @@
     <div class="grp"><h3>Latten (Unterkonstruktion)</h3>
       <label>Lattenbreite <span><input type="number" id="lw" value="4" step="0.5"><small>cm</small></span></label>
       <label>Stangenlänge <span><input type="number" id="stock" value="150" step="10"><small>cm</small></span></label>
+    </div>
+    <div class="grp"><h3>Produkte (Bauteilkatalog)</h3>
+      <div class="prodinfo" id="prodInfo">–</div>
+      <div id="prodRollen"></div>
+      <div class="pnote" style="margin-top:6px">Auswahl direkt aus dem <b>vollständigen aktiven
+        Bauteilkatalog</b> (gepflegt in Modul 0, dort auch die Preise). Mehrere Standardformate je
+        Unterpunkt sind erlaubt; für die Kostenanzeige muss die Zuordnung eindeutig sein. Gespeichert
+        werden nur <b>Produkt-IDs</b>.</div>
     </div>
     <div class="note"><b>Ein Datenmodell.</b> Dieses Modul liest das aktive Wandelement (localStorage) und
       ändert es nicht; nur die Aufbau-Eingaben dieses Moduls werden gespeichert. Wechsel/Neuanlage in der
@@ -120,7 +140,7 @@ const PICK_HINT='Bearbeitungsmodus: Rasterpunkt anklicken, ziehen, loslassen · 
 const DRAFT_HINT='Entwurf: Ecken ziehen, verschieben oder neu aufziehen · mit Übernehmen und berechnen bestätigen · Escape verwirft';
 function hintText(){ return (ENTWURF||PREVIEW) ? DRAFT_HINT : PICK_HINT; }
 // aus window.SEMBLA (in __waInit gebunden):
-let buildWall, Opening, store, berechneAufbau, VERBINDER_KATALOG;
+let buildWall, Opening, store, berechneAufbau, VERBINDER_KATALOG, KAT;
 let currentId=null;
 
 const FUNKTION_LABEL={fassade:'Fassadenaufbau',innenausbau:'Innenausbau',alle:'Universal',sicht:'Sichtfläche',installation:'Installationsebene'};
@@ -150,7 +170,73 @@ function readAufbau(){ return {
 function compute(){ return berechneAufbau(WALL, readAufbau()); }
 
 // Aufbau-Eingaben ins Datenmodell zurückschreiben (nur der eigene Teil dieses Moduls).
+// readAufbau() enthält bewusst KEIN `produkte`: der tiefe Merge in storage.js lässt den
+// Produkt-Block dadurch unangetastet — er hat seinen eigenen Schreibweg (setzeProduktrolle).
 function persistAufbau(){ if(store&&store.mergeEingaben) store.mergeEingaben('aufbau', readAufbau()); }
+
+// ---------- Produkte für diesen Aufbau (Bauteilkatalog · [P-13]/[P-14]) ----------
+// Modul 2 besitzt die Rollen Latte, Beplankung und Verbinder und schreibt AUSSCHLIESSLICH
+// eingaben.aufbau.produkte — nur Produkt-IDs. Der Verbindertyp bleibt unveränderlich aus
+// Modul 1 ([U-9]); hier wird nur das ausführende Produkt gewählt.
+const escP=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PILL={ok:'ok',mehrdeutig:'no',fehlt:'no',kategorie_abweichend:'no',einheit_unpassend:'no',
+  mass_abweichend:'no',keine_auswahl:'warn',kein_katalog:'warn',nachrichtlich:'mute',ohne_position:'mute',
+  nicht_erforderlich:'mute'};
+function prodKatalog(){ return (store&&store.holeKatalog)?store.holeKatalog():null; }
+function prodEingaben(){
+  const e=((store&&store.aktiveEingaben)?store.aktiveEingaben():null)||{};
+  // Maßgebend für die Latten-Zuordnung ist die AKTUELL eingestellte Stangenlänge, nicht der
+  // zuletzt gespeicherte Stand — sonst zeigte der Status einen veralteten Bezug.
+  return {...e, aufbau:{...(e.aufbau||{}), latten: readAufbau().latten}};
+}
+function prodKontext(){ return WALL ? KAT.preisKontext(WALL, prodEingaben()) : {}; }
+function renderProdukte(){
+  const box=$('prodRollen'), info=$('prodInfo');
+  const kat=prodKatalog(), eing=prodEingaben(), ktx=prodKontext();
+  const hatWandEl=!!(store&&store.aktivId&&store.aktivId());
+  info.innerHTML = !kat
+    ? 'Kein Bauteilkatalog geladen — in Modul 0 („Start“) anlegen oder importieren.'
+    : (!hatWandEl ? 'Kein aktives Wandelement — Produkte können erst an einer Wand gewählt werden.'
+      : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`);
+  if(!kat || !hatWandEl){ box.innerHTML=''; return; }
+  const typ=(LAST&&LAST.layout&&LAST.layout.verbinder_typ)||($('vtyp')&&$('vtyp').value)||'';
+  let h='';
+  for(const r of KAT.rollenVonModul(2)){
+    const st=KAT.rollenStatus(r.id, eing, kat, ktx);
+    const gew=new Set(st.ids);
+    const kandidaten=kat.produkte.filter(p=>p.kategorie===r.kategorie);
+    h+=`<div class="prol" data-prol="${escP(r.id)}"><div class="ptop"><b>${escP(r.label)}</b>`
+      +`<span class="pill ${PILL[st.status]||'mute'}">${escP(st.text)}</span></div>`;
+    h+='<div class="plist">'+(kandidaten.length
+      ? kandidaten.map(p=>`<label><input type="checkbox" data-prolle="${escP(r.id)}" data-pid="${escP(p.id)}"`
+          +`${gew.has(String(p.id))?' checked':''}> <span>${escP(p.bezeichnung)}`
+          +`<small> · ${escP(KAT.massText(p))} · ${escP(KAT.EINHEIT_LABEL[p.einheit]||p.einheit)}</small></span></label>`).join('')
+      : `<div class="pnote">Kein Produkt der Kategorie „${escP(KAT.kategorieLabel(r.kategorie))}“ im Katalog — in Modul 0 anlegen.</div>`)
+      +'</div>';
+    if(r.id==='verbinder') h+=`<div class="pwarn">Verbindertyp <b>${escP(typ||'–')}</b> folgt unveränderlich aus Modul 1 `
+      +'(Seiten-Funktion) und ist hier nicht wählbar. Katalogformat v1 führt kein Typfeld — die Übereinstimmung '
+      +'Produkt ↔ Typ ist <b>nicht maschinell prüfbar</b> und manuell zu prüfen.</div>';
+    for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — bleibt erhalten, wird aber nicht bepreist.</div>`;
+    if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig: ${st.kandidaten.map(p=>escP(p.id)).join(', ')} — Modul 4 weist hierfür keinen Preis aus.</div>`;
+    if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zur eingestellten Stangenlänge (${escP($('stock').value)} cm) — Modul 4 weist keinen Preis aus.</div>`;
+    if(st.vorgemerkt.length) h+=`<div class="pnote">Für den Zuschnitt vorgemerkt (passt nicht zur eingestellten Stangenlänge, daher nicht bepreist): ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
+    if(r.hinweis) h+=`<div class="pnote">${escP(r.hinweis)}</div>`;
+    if(st.produkt&&st.produkt.hinweis) h+=`<div class="pwarn">${escP(st.produkt.hinweis)}</div>`;
+    h+='</div>';
+  }
+  box.innerHTML=h;
+}
+function bindProdukte(){
+  $('prodRollen').addEventListener('change',ev=>{
+    const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prolle) return;
+    if(!(store&&store.aktivId&&store.aktivId())){ renderProdukte(); return; }
+    const rolleId=t.dataset.prolle, pid=String(t.dataset.pid);
+    const ids=new Set(KAT.rollenIds(store.holeProdukte(2), rolleId));
+    if(t.checked) ids.add(pid); else ids.delete(pid);
+    store.setzeProduktrolle(rolleId,[...ids]);
+    renderProdukte();
+  });
+}
 
 function draw(R){
   const {B,H,xs,ys,pts,layout}=R; const pad=44, sc=Math.min((1000-2*pad)/(B*10),(600-2*pad)/(H*10))*10; // px per cm
@@ -279,7 +365,9 @@ let LAST=null;
 function run(){ $('fieldMode').disabled=!WALL; if(fieldArm && !WALL) setFieldModeState(false);
   const ap=$('fieldApply'); ap.style.display = fieldArm ? '' : 'none'; ap.disabled = !fieldArm;
   if(fieldArm) $('fieldHint').textContent = hintText();
-  render(); }
+  render();
+  // Stangenlänge/Verbindertyp können sich geändert haben -> Auswahlstatus frisch anzeigen.
+  if(KAT) renderProdukte(); }
 
 function applyWand(w){ if(!w||!w.length_mm||!w.height_mm) throw new Error('Kein gültiges Wandelement (length_mm/height_mm fehlen).');
   WALL=w; FELD=null; setFieldModeState(false);   // neue Wand -> laufende Bearbeitung verwerfen
@@ -457,7 +545,8 @@ function bindFieldEvents(){
 }
 
 window.__wa={ applyWand, compute, readAufbau, setFeld, resizeFeld, clearFeld, run, setFieldMode,
-  uebernehmen, entwurfSetzen, resizeEntwurf,
+  uebernehmen, entwurfSetzen, resizeEntwurf, renderProdukte,
+  prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
   get wall(){return WALL;}, get side(){return SIDE;}, get feld(){return FELD;}, get LAST(){return LAST;},
   get fieldArm(){return fieldArm;}, get entwurf(){return ENTWURF;}, get preview(){return PREVIEW;}, get hover(){return HOVER;},
   get view(){return LASTDRAW;} };
@@ -465,10 +554,12 @@ window.__wa={ applyWand, compute, readAufbau, setFeld, resizeFeld, clearFeld, ru
 window.__waInit=function(){
   const S=window.SEMBLA||{};
   buildWall=S.buildWall; Opening=S.Opening; store=S.store;
-  berechneAufbau=S.berechneAufbau; VERBINDER_KATALOG=S.VERBINDER_KATALOG;
+  berechneAufbau=S.berechneAufbau; VERBINDER_KATALOG=S.VERBINDER_KATALOG; KAT=S.KAT;
   bindEvents();
+  bindProdukte();
   setupStoreSync();
   loadModel();
+  renderProdukte();
 };
 </script>
 
@@ -476,8 +567,9 @@ window.__waInit=function(){
   import { buildWall, Opening, GRID, COURSE } from './shared/sembla-core.js';
   import { berechneAufbau, VERBINDER_KATALOG } from './shared/sembla-aufbau.js';
   import * as store from './shared/storage.js';
+  import * as KAT from './shared/sembla-katalog.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, GRID, COURSE, store, berechneAufbau, VERBINDER_KATALOG };
+  window.SEMBLA = { buildWall, Opening, GRID, COURSE, store, berechneAufbau, VERBINDER_KATALOG, KAT };
   mountNavbar(2);
   window.__waInit();
 </script>

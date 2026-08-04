@@ -7,6 +7,10 @@
  * Sonderlängen aus `tension_columns[].segments`. Fällt bei fehlenden Feldern
  * auf `w.bom` / Defaults zurück (Alt-Bundles).
  *
+ * Boden- und Kopfblech werden hier aus den realen Platten (`base_plate`/`top_plate`)
+ * in getrennte Positionen aufgeteilt ([A-1]); der Rechenkern bleibt unverändert und
+ * aggregiert sie weiter in `bom.stahlblech_module` (Summe bleibt identisch).
+ *
  * Eigene Datei (shared/-Regel b): mehrere mögliche Nutzer (Modul 4 Stückliste)
  * und eigene Tests (`test-shared.mjs` prüft gegen die Core-BOM). Früher lag der
  * Block in `sembla-shared.js` und wurde per `sync-shared.mjs` in die Tools kopiert —
@@ -54,22 +58,46 @@ export function semblaBom(w) {
   const stossfugen   = num(bom.stossfugen, 0);
   const dichtMm      = num(bom.dichtstreifen_mm, stossfugen * 200);
 
+  // Boden- und Kopfblech sind PHYSISCH GETRENNTE Bauteile ([A-1]) und werden hier — in der
+  // gemeinsamen Ausgabeschicht — aus den REAL vorhandenen Platten des Wandelements getrennt.
+  // Der Rechenkern bleibt unveraendert; er fuehrt `base_plate`/`top_plate` (je mit `module`)
+  // bereits einzeln und aggregiert sie nur in `bom.stahlblech_module`. Fehlen die Platten
+  // (Alt-Bundle), wird das Bodenblech aus Wandlaenge/Modullaenge nachgerechnet und der Rest
+  // dem Kopfblech zugeordnet — die SUMME bleibt in jedem Fall die Core-Gesamtzahl, es kann
+  // also weder eine Doppelzaehlung noch eine Fehlmenge entstehen.
+  const blechModulMm = (w.prestress && +w.prestress.blech_mm > 0) ? +w.prestress.blech_mm : 1000;
+  const bpModule = (w.base_plate && Number.isFinite(+w.base_plate.module)) ? +w.base_plate.module : null;
+  const blechBoden = bpModule != null
+    ? bpModule
+    : Math.min(blechModule, Math.ceil((w.length_mm || 0) / blechModulMm));
+  const blechKopf = ("top_plate" in (w || {}))
+    ? ((w.top_plate && Number.isFinite(+w.top_plate.module)) ? +w.top_plate.module : 0)
+    : Math.max(0, blechModule - blechBoden);
+
   return { i2, i3, rod_mm: (w.rod_mm || 1100), rodStd, rodSonder, sonderList,
            gewindestangen_gesamt: gesamt, verbindungsmuttern: verbSplice,
            senkkopfschrauben: senkkopf, kopplungsmuttern_basis: kopplBasis,
            spannplatten, spannmuttern,
-           stahlblech_module: blechModule, stahlblech_mm: blechMm, stahlblech_dicke_mm: blechDicke,
+           stahlblech_module: blechModule, stahlblech_module_boden: blechBoden,
+           stahlblech_module_kopf: blechKopf,
+           stahlblech_mm: blechMm, stahlblech_dicke_mm: blechDicke,
            stossfugen, dichtstreifen_mm: dichtMm };
 }
 
 /**
  * Kanonische Positions-Liste für die Stückliste — überall identisch.
  * unit 'Stk' = Stückzahl, 'm' = Länge in Metern (dezimal).
+ *
+ * `nachrichtlich: true` kennzeichnet eine Position, die eine bereits als Einbauposition
+ * gezählte Ware nur noch anders ausdrückt (Dichtstreifen-Gesamtlänge, [A-6]). Sie ist
+ * eine Mengenangabe zur Information und wird NIE bepreist — sonst stünde dieselbe Ware
+ * zweimal in einer Summe.
  * @param {any} w Wandelement
  */
 export function semblaBomItems(w) {
   const b = semblaBom(w); const rc = b.rod_mm / 10;
   const sonderTxt = b.sonderList.length ? (" (L=" + b.sonderList.map(x => _semNum(x.len_mm / 10) + " cm").join(" / ") + ")") : "";
+  const bd = _semNum(b.stahlblech_dicke_mm);
   return [
     { key: "i3",          label: "Stein i3 (37,5 cm)",                unit: "Stk", menge: b.i3 },
     { key: "i2",          label: "Stein i2 (25 cm)",                  unit: "Stk", menge: b.i2 },
@@ -80,9 +108,11 @@ export function semblaBomItems(w) {
     { key: "senkkopf",    label: "Senkkopfschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
     { key: "spannmutter", label: "Spannmutter",                       unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
-    { key: "blech",       label: "Stahlblech-Modul (" + _semNum(b.stahlblech_dicke_mm) + " mm)", unit: "Stk", menge: b.stahlblech_module },
+    { key: "blech_boden", label: "Bodenblech-Modul (" + bd + " mm)",  unit: "Stk", menge: b.stahlblech_module_boden },
+    { key: "blech_kopf",  label: "Kopfblech-Modul (" + bd + " mm)",   unit: "Stk", menge: b.stahlblech_module_kopf },
     { key: "dicht_stk",   label: "Dichtstreifen 20 cm (Schallschutz)", unit: "Stk", menge: b.stossfugen },
-    { key: "dicht",       label: "Dichtstreifen – Gesamtlänge",       unit: "m",   menge: +((b.dichtstreifen_mm / 1000).toFixed(2)) },
+    { key: "dicht",       label: "Dichtstreifen – Gesamtlänge",       unit: "m",   menge: +((b.dichtstreifen_mm / 1000).toFixed(2)),
+      nachrichtlich: true },
   ];
 }
 

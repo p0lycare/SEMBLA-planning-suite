@@ -41,12 +41,26 @@
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
+  /* Produktauswahl (Bauteilkatalog) */
+  .prodinfo{font-size:11.5px;color:var(--sb-muted);margin-bottom:6px}
+  .pgrp{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--sb-muted);margin:9px 0 3px;font-weight:650}
+  .prol{border:1px solid var(--sb-line);border-radius:7px;padding:6px 8px;margin:5px 0;background:#fbfcfd}
+  .prol .ptop{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12.5px}
+  .prol .ptop b{font-weight:600}
+  .prol .plist{margin-top:4px}
+  .prol .plist label{display:flex;justify-content:flex-start;align-items:baseline;gap:6px;margin:2px 0;font-size:12px}
+  .prol .plist small{color:var(--sb-muted)}
+  .prol .pnote{font-size:11px;color:var(--sb-muted);margin-top:3px;line-height:1.45}
+  .prol .pwarn{font-size:11px;color:var(--sb-warn);margin-top:3px;line-height:1.45}
+  .pill.warn{background:#fdf3e6;color:#8a5300} .pill.mute{background:#eef2f7;color:#5b6673}
 </style>
 </head>
 <body>
 <p class="intro"><b>Wand planen &amp; auslegen.</b> Wand zeichnen (Verband, Öffnungen, Seiten) und in
   einem Schritt statisch auslegen (Vorspannung optimiert, Nachweise). Ergebnis ist das geprüfte
-  <b>Wandelement</b>, das alle weiteren Module lesen — es wird im aktiven Wandelement der Suite gespeichert.</p>
+  <b>Wandelement</b>, das alle weiteren Module lesen — es wird im aktiven Wandelement der Suite gespeichert.
+  Zusätzlich werden hier die <b>Katalogprodukte dieser Wand</b> gewählt (Steine, Vorspannung, Anschluss,
+  Fugen): nur Produkt-IDs, gepflegt wird der Katalog samt Preisen in Modul 0.</p>
 
 <div id="app" class="wrap">
   <div class="controls panel">
@@ -100,6 +114,17 @@
       <label><span>C<sub>f,d</sub></span><input type="number" id="cfd" value="0.60" step="0.05"><small>–</small></label>
       <label><span>ρ</span><input type="number" id="rho" value="14" step="0.5"><small>kN/m³</small></label>
     </div>
+    <h2 style="margin-top:6px">3 · Produkte (Bauteilkatalog)</h2>
+    <div class="grp">
+      <div class="prodinfo" id="prodInfo">–</div>
+      <div id="prodRollen"></div>
+      <div class="hint" style="color:var(--sb-muted);font-size:11.5px;margin-top:8px">Auswahl direkt aus dem
+        <b>vollständigen aktiven Bauteilkatalog</b> (gepflegt in Modul 0 — dort werden auch die Preise
+        gesetzt). Mehrere Produkte je Verwendungsstelle sind erlaubt; für die Kostenanzeige muss die
+        Zuordnung eindeutig sein. Gespeichert werden nur <b>Produkt-IDs</b> — keine Preise, keine Maße,
+        nichts davon im Wandelement.</div>
+    </div>
+
     <button class="primary" id="run">Auslegen</button>
     <div class="savehint" id="saveHint"></div>
     <div class="note"><b>Ein Datenmodell.</b> Dieses Modul erzeugt das geprüfte <b>Wandelement</b>, das
@@ -149,7 +174,7 @@ const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigi
 const pct=u=>fmt(u*100,0)+' %';
 const M=1000;
 // aus window.SEMBLA (in __wpInit gebunden):
-let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store;
+let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store, KAT;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
 // hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
@@ -279,6 +304,9 @@ function run(){
   $('warns').textContent=warns.join('   ');
   draw(w);
   persistAktiv(w);
+  // Maßgebende Werte der Preis-Zuordnung (Stangenlänge, Blech-Modullänge) können sich mit
+  // jeder Auslegung ändern -> Auswahlstatus frisch anzeigen, nie zwischenspeichern.
+  if(KAT) renderProdukte();
 }
 // Ohne aktives Wandelement keine (fiktive) Vorschau: leere Zeichnung + Ergebnis.
 // Angelegt wird das Wandelement ausschliesslich in Modul 0 („Start") — dort wird
@@ -292,6 +320,7 @@ function renderLeer(){
   $('itTable').querySelector('tbody').innerHTML='';
   $('plan').setAttribute('viewBox','0 0 1000 120');
   $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.</text>';
+  if(KAT) renderProdukte();
 }
 function nwRow(name,e,wd,util,ok,gov){ return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀':''}</td><td>${e}</td><td>${wd}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`; }
 function renderNachweise(v){ const n=v.nachweise,g=v.governing.name;
@@ -454,6 +483,71 @@ function applyWand(w){
   renderSteps(); renderOps(); run();
 }
 
+// ---------- Produkte für diese Wand (Bauteilkatalog · [P-13]/[P-14]) ----------
+// Gewählt wird DIREKT aus dem vollständigen aktiven Katalog — es gibt keinen zentralen
+// Freigabepool in Modul 0 mehr. Modul 1 besitzt die Rollen für Steine, Vorspannung,
+// Anschluss (Boden-/Kopfblech getrennt, [A-1]) und Fugen und schreibt AUSSCHLIESSLICH
+// eingaben.planung.produkte — nur Produkt-IDs, nie Preise/Maße, nie ins Wandelement.
+const escP=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PILL={ok:'ok',mehrdeutig:'no',fehlt:'no',kategorie_abweichend:'no',einheit_unpassend:'no',
+  mass_abweichend:'no',keine_auswahl:'warn',kein_katalog:'warn',nachrichtlich:'mute',ohne_position:'mute',
+  nicht_erforderlich:'mute'};
+function prodKatalog(){ return (store&&store.holeKatalog)?store.holeKatalog():null; }
+function prodEingaben(){ return ((store&&store.aktiveEingaben)?store.aktiveEingaben():null)||{}; }
+// Maßgebende Wandwerte: aus dem gerechneten Wandelement, sonst aus dem gespeicherten.
+function prodKontext(){
+  const w = (RESULT&&RESULT.wandelement) || (store&&store.aktivesWandelement&&store.aktivesWandelement()) || null;
+  return w ? KAT.preisKontext(w, prodEingaben()) : {};
+}
+function renderProdukte(){
+  const box=$('prodRollen'), info=$('prodInfo');
+  const kat=prodKatalog(), eing=prodEingaben(), ktx=prodKontext();
+  const hatWandEl = !!(store&&store.aktivId&&store.aktivId());
+  info.innerHTML = !kat
+    ? 'Kein Bauteilkatalog geladen — in Modul 0 („Start") anlegen oder importieren. Ohne Katalog gibt es keine Preise.'
+    : (!hatWandEl
+      ? 'Kein aktives Wandelement — Produkte können erst an einer Wand gewählt werden.'
+      : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`);
+  if(!kat || !hatWandEl){ box.innerHTML=''; return; }
+  let h='';
+  for(const gruppe of KAT.rollenGruppen(1)){
+    h+=`<div class="pgrp">${escP(gruppe)}</div>`;
+    for(const r of KAT.rollenVonModul(1).filter(x=>x.gruppe===gruppe)){
+      const st=KAT.rollenStatus(r.id, eing, kat, ktx);
+      const gew=new Set(st.ids);
+      const kandidaten=kat.produkte.filter(p=>p.kategorie===r.kategorie);
+      h+=`<div class="prol" data-prol="${escP(r.id)}"><div class="ptop"><b>${escP(r.label)}</b>`
+        +`<span class="pill ${PILL[st.status]||'mute'}">${escP(st.text)}</span></div>`;
+      h+='<div class="plist">'+(kandidaten.length
+        ? kandidaten.map(p=>`<label><input type="checkbox" data-prolle="${escP(r.id)}" data-pid="${escP(p.id)}"`
+            +`${gew.has(String(p.id))?' checked':''}> <span>${escP(p.bezeichnung)}`
+            +`<small> · ${escP(KAT.massText(p))} · ${escP(KAT.EINHEIT_LABEL[p.einheit]||p.einheit)}</small></span></label>`).join('')
+        : `<div class="pnote">Kein Produkt der Kategorie „${escP(KAT.kategorieLabel(r.kategorie))}“ im Katalog — in Modul 0 anlegen.</div>`)
+        +'</div>';
+      // Fehlende Referenzen und vorgemerkte (maßfremde) Produkte werden benannt, nie still entfernt.
+      for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — bleibt erhalten, wird aber nicht bepreist.</div>`;
+      if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig: ${st.kandidaten.map(p=>escP(p.id)).join(', ')} — Modul 4 weist hierfür keinen Preis aus.</div>`;
+      if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand — Modul 4 weist keinen Preis aus.</div>`;
+      if(st.vorgemerkt.length) h+=`<div class="pnote">Für den Zuschnitt vorgemerkt (passt nicht zum maßgebenden Maß, daher nicht bepreist): ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
+      if(r.hinweis) h+=`<div class="pnote">${escP(r.hinweis)}</div>`;
+      if(st.produkt&&st.produkt.hinweis) h+=`<div class="pwarn">${escP(st.produkt.hinweis)}</div>`;
+      h+='</div>';
+    }
+  }
+  box.innerHTML=h;
+}
+function bindProdukte(){
+  $('prodRollen').addEventListener('change',ev=>{
+    const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prolle) return;
+    if(!(store&&store.aktivId&&store.aktivId())){ renderProdukte(); return; }
+    const rolleId=t.dataset.prolle, pid=String(t.dataset.pid);
+    const ids=new Set(KAT.rollenIds(store.holeProdukte(1), rolleId));
+    if(t.checked) ids.add(pid); else ids.delete(pid);
+    store.setzeProduktrolle(rolleId,[...ids]);
+    renderProdukte();
+  });
+}
+
 // ---- Spannachsen-Editor (Feature: manuelle Achsen für Sonderkonstruktionen) ----
 function pxToK(e){ if(!LASTDRAW) return 0; const r=$('plan').getBoundingClientRect();
   const sx=(e.clientX-r.left)/r.width*1000; const {pad,sc,L,back,N}=LASTDRAW;
@@ -493,15 +587,18 @@ function bindEvents(){
 }
 
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},
-  setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;} };
+  setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;},
+  renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()) };
 
 window.__wpInit=function(){
   const S=window.SEMBLA||{};
   GRID=S.GRID; COURSE=S.COURSE; Opening=S.Opening; buildWall=S.buildWall;
-  autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store;
+  autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store; KAT=S.KAT;
   bindEvents();
+  bindProdukte();
   setupStoreSync();
   loadInitial();
+  renderProdukte();
 };
 </script>
 
@@ -509,8 +606,9 @@ window.__wpInit=function(){
   import { buildWall, Opening, GRID, COURSE } from './shared/sembla-core.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import * as store from './shared/storage.js';
+  import * as KAT from './shared/sembla-katalog.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store };
+  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT };
   mountNavbar(1);
   window.__wpInit();
 </script>

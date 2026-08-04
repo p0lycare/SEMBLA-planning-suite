@@ -20,19 +20,27 @@
  * Datenmodell: Das `wandelement` (Ergebnis von buildWall) traegt die physischen
  * Modul-1-Eingaben (Laenge/Hoehe/Oeffnungen/…) UND das Berechnete. `eingaben`
  * traegt die uebrigen, modeluebergreifenden Nutzereingaben (Projekt-Kopfdaten,
- * Wandaufbau, Preise) — alles, was NICHT aus dem Wandelement ableitbar ist. So
+ * Wandaufbau, Produktreferenzen, Statik-Kennwerte, Waehrung) — alles, was NICHT
+ * aus dem Wandelement ableitbar ist. So
  * liegt das komplette Projekt in EINEM JSON; abgeleitete Werte (Stueckliste,
  * Nachweise) werden nie gespeichert, sondern immer neu gerechnet (kein Drift).
  *
  * AUSNAHME Bauteilkatalog: Der Produktstamm ist eine eigene Ressource (eigener
- * Schluessel, eigenes Dateiformat `SEMBLA-Bauteilkatalog`, siehe sembla-katalog.js).
- * Im Projekt liegt davon nur die AUSWAHL (`eingaben.katalog`: Produkt-IDs je
- * Kategorie + Herkunftsnotiz) — keine Preise, keine Maße, nichts im Wandelement.
+ * Schluessel, eigenes Dateiformat `SEMBLA-Bauteilkatalog`, siehe sembla-katalog.js)
+ * und wird ausschliesslich in Modul 0 gepflegt. Im Projekt liegen davon nur
+ * REFERENZEN — Produkt-IDs je Verwendungsrolle plus Herkunftsnotiz, geschrieben
+ * vom jeweils fachlich zustaendigen Modul ([P-13]):
+ *   eingaben.planung.produkte  — Modul 1 (Wand, Vorspannung, Anschluss, Fugen)
+ *   eingaben.aufbau.produkte   — Modul 2 (Latten, Beplankung, Verbinder)
+ * Keine Preise, keine Maße, nichts im Wandelement. `eingaben.katalog.auswahl` ist
+ * unwirksamer Altbestand des abgeloesten zentralen Auswahlwegs ([P-15]): sie wird
+ * hier nur noch GELESEN (fuer die Unwirksamkeits-Meldung in Modul 0), nie neu
+ * geschrieben und nie in Verwendungsrollen uebersetzt.
  *
  * ES-Modul: wird im Browser per <script type="module"> geladen. Kein Node-Betrieb.
  */
 
-import { katalogObjekt, parseKatalog, validiereKatalog } from "./sembla-katalog.js";
+import { katalogObjekt, leereProdukte, parseKatalog, rolle, validiereKatalog } from "./sembla-katalog.js";
 
 const K_ELEM = "sembla:elemente";
 const K_AKTIV = "sembla:aktiv";
@@ -49,13 +57,20 @@ const K_KATALOG = "sembla:katalog";
  *  abgeleitet (siehe `_migriereWandtyp`).
  *  Bleibt 3 mit dem Bauteilkatalog: der Katalog liegt in einem EIGENEN Schluessel
  *  (`sembla:katalog`; fehlt er, gibt es keinen Katalog) und `eingaben.katalog` wird
- *  beim Lesen aus `standardEingaben()` aufgefuellt — es gibt nichts zu migrieren. */
+ *  beim Lesen aus `standardEingaben()` aufgefuellt — es gibt nichts zu migrieren.
+ *  Bleibt 3 auch mit den wandbezogenen Produktreferenzen: `eingaben.planung.produkte`
+ *  und `eingaben.aufbau.produkte` werden beim Lesen ebenfalls aus `standardEingaben()`
+ *  aufgefuellt (leere Rollen). Der Altbestand `eingaben.katalog.auswahl` wird bewusst
+ *  NICHT migriert — eine Kategorie->Rollen-Uebersetzung waere mehrdeutig ([P-15]). */
 export const SCHEMA_VERSION = 3;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
- *  Bleibt 2: `wandtyp` (Wandelement) und `eingaben.katalog` (Produktauswahl) sind
- *  optionale Zusatzfelder, die aeltere Staende einfach ignorieren — kein Bruch,
- *  daher kein Versionssprung. Das Katalog-Dateiformat ist davon getrennt
+ *  Bleibt 2: `wandtyp` (Wandelement) sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
+ *  `eingaben.planung` und `eingaben.aufbau.produkte` sind OPTIONAL. Der v2-Parser
+ *  (`parseImport`) uebernimmt `obj.eingaben` unveraendert und ohne Feld-Whitelist,
+ *  `holeEingaben` fuellt fehlende Felder auf und `projektObjekt` exportiert alles
+ *  wieder — unbekannte/neue Teile reisen also in beide Richtungen verlustfrei mit.
+ *  Kein Bruch, daher kein Versionssprung. Das Katalog-Dateiformat ist davon getrennt
  *  versioniert (KATALOG_VERSION in sembla-katalog.js). */
 export const PROJEKT_VERSION = 2;
 
@@ -428,24 +443,52 @@ export function exportiereKatalog() {
   return obj;
 }
 
-/** Projektauswahl (Produkt-IDs je Kategorie) des aktiven/gewaehlten Elements. @param {string} [id] */
+/**
+ * ALTBESTAND, unwirksam ([P-15]): die frueher in Modul 0 gepflegte Produktauswahl je
+ * Kategorie. Nur noch LESEN — fuer die Unwirksamkeits-Meldung in Modul 0. Es gibt
+ * bewusst KEINE Schreibfunktion mehr und keine Uebersetzung in Verwendungsrollen.
+ * @param {string} [id]
+ */
 export function katalogAuswahl(id) {
   const k = holeEingaben(id).katalog || {};
   return k.auswahl || {};
 }
 
+// --- Wandbezogene Produktreferenzen ([P-13]) ------------------------------
+// Nur Produkt-IDs je Verwendungsrolle + Herkunftsnotiz des Katalogs. Eigentuemer ist
+// das jeweils fachlich zustaendige Modul; jedes schreibt ausschliesslich seinen
+// eigenen Eingaben-Abschnitt. Das Wandelement bleibt in jedem Fall unberuehrt.
+
+/** Eingaben-Abschnitt eines Produkt-Blocks: Modul 1 -> 'planung', Modul 2 -> 'aufbau'. */
+function _produktTeil(modul) {
+  if (+modul === 1) return "planung";
+  if (+modul === 2) return "aufbau";
+  throw new Error("Produktreferenzen gehoeren zu Modul 1 oder 2.");
+}
+
+/** Produkt-Block eines Moduls lesen (`{quelle, rollen}`). @param {1|2} modul @param {string} [id] */
+export function holeProdukte(modul, id) {
+  const teil = holeEingaben(id)[_produktTeil(modul)] || {};
+  return teil.produkte || leereProdukte();
+}
+
 /**
- * Auswahl EINER Kategorie am aktiven Element setzen (Mehrfachauswahl: Liste von
- * Produkt-IDs). Schreibt nur `eingaben.katalog` — das Wandelement bleibt unberuehrt.
- * @param {string} kategorie @param {string[]} ids @param {string} [id]
+ * Produkte EINER Verwendungsrolle setzen (Mehrfachauswahl: Liste von Produkt-IDs).
+ * Schreibt nur den Produkt-Block des besitzenden Moduls; die Rolle muss diesem Modul
+ * gehoeren (sonst Fehler statt stillem Schreiben in den falschen Abschnitt).
+ * @param {string} rolleId @param {string[]} ids @param {string} [id]
  * @returns {string|null} id des Elements
  */
-export function setzeKatalogAuswahl(kategorie, ids, id) {
+export function setzeProduktrolle(rolleId, ids, id) {
+  const r = rolle(rolleId);
+  if (!r) throw new Error(`Unbekannte Verwendungsrolle „${rolleId}“.`);
   const liste = [...new Set((ids || []).filter((x) => x != null && String(x) !== "").map(String))];
   const k = holeKatalog();
-  return mergeEingaben("katalog", {
-    auswahl: { [kategorie]: liste },
-    quelle: k ? { name: k.name, version: k.version } : null,
+  return mergeEingaben(_produktTeil(r.modul), {
+    produkte: {
+      rollen: { [rolleId]: liste },
+      quelle: k ? { name: k.name, version: k.version } : null,
+    },
   }, id);
 }
 
@@ -473,6 +516,10 @@ export function standardEingaben() {
       name: "", bauherr: "", planverfasser: "Polycare Research Technology GmbH",
       phase: "Ausführungsplanung", plan_nr: "", index: "0", gez: "",
     },
+    // Modul 1 — eigene Eingaben des Planungsmoduls, die NICHT ins Wandelement gehoeren.
+    // Derzeit nur die wandbezogenen Produktreferenzen (Steine, Vorspannung, Anschluss,
+    // Fugen): Produkt-IDs je Verwendungsrolle + Herkunftsnotiz, sonst nichts ([P-13]).
+    planung: { produkte: leereProdukte() },
     // Modul 2 — Horizontaler Wandaufbau (Verbinder-/Lattenplanung)
     aufbau: {
       seite: "vorne",
@@ -481,22 +528,18 @@ export function standardEingaben() {
       verbinder: { typ: "FA-1", Rk: 0.5, gM: 2.0, wk: 0.8, gQ: 1.5 },
       latten: { breite_cm: 4, stange_cm: 150 },
       feld_cm: null,           // null = ganze Wand; sonst {x0,x1,y0,y1} in cm
+      // Produktreferenzen dieses Moduls (Latten, Beplankung, Verbinder) — nur IDs.
+      produkte: leereProdukte(),
     },
-    // Modul 0 — Bauteilkatalog: NUR die Auswahl (Referenzen), keine Produktdaten.
-    // `quelle` ist eine reine Herkunftsnotiz des Katalogs, aus dem gewaehlt wurde.
-    // Altprojekte ohne diesen Block laden hierdurch als LEERE Auswahl — warnungsfrei.
+    // ALTBESTAND — frueher zentrale Produktauswahl in Modul 0, heute UNWIRKSAM ([P-15]).
+    // Bleibt als leerer Block erhalten, damit Altprojekte unveraendert laden; er wird
+    // nicht mehr geschrieben und nicht mehr angewendet.
     katalog: { quelle: null, auswahl: {} },
-    // Modul 4 — Stueckliste & Kosten. Bleibt die wirksame Preisquelle: die
-    // Katalog-Freigabe wird (noch) NICHT in Mengen/Kosten uebernommen (Folgeausbau).
-    kosten: {
-      waehrung: "EUR",
-      preise: {
-        i3: 9.50, i2: 7.20, rod_std: 3.80, rod_sonder: 3.80,
-        kupplung: 0.65, kuppl_basis: 0.65, senkkopf: 0.45, spannmutter: 0.90,
-        spannplatte: 2.40, blech: 18.00, dicht_stk: 0.30, dicht: 0,
-        verbinder: 1.20, latte: 3.50,
-      },
-    },
+    // Modul 4 — Stueckliste & Kosten. Preise liegen NICHT mehr hier: sie werden je
+    // Position aus dem Bauteilkatalog aufgeloest ([P-14]). Editierbar bleibt nur die
+    // Waehrung. Gespeicherte Alt-Preise (`kosten.preise`) bleiben in Altprojekten
+    // erhalten, werden aber nicht mehr gelesen und nicht mehr geschrieben.
+    kosten: { waehrung: "EUR" },
     // Modul 3 — Statischer Nachweis (Schermer-Kennwerte; Geometrie, Oeffnungszahl
     // UND Wandtyp/Windsituation kommen aus dem Wandelement und werden NICHT hier
     // gespeichert). Flach nach Input-ID, damit der Projektstand des Nachweises
@@ -540,7 +583,7 @@ export function aktiveEingaben() { return holeEingaben(); }
  * Einen Eingabe-Abschnitt aktualisieren (Modul schreibt NUR seinen Teil zurueck).
  * Das Wandelement bleibt unberuehrt — nur Modul 1 aendert das Wandelement.
  * Ohne aktives/gewaehltes Element passiert nichts (return null).
- * @param {"projekt"|"aufbau"|"kosten"|"statik"|"katalog"} teil @param {object} patch @param {string} [id]
+ * @param {"projekt"|"planung"|"aufbau"|"kosten"|"statik"|"katalog"} teil @param {object} patch @param {string} [id]
  * @returns {string|null} id
  */
 export function mergeEingaben(teil, patch, id) {
