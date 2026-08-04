@@ -111,11 +111,16 @@
       <button class="btn-p" id="btn-neu">Anlegen &amp; aktiv setzen</button>
       <label class="btn-s" for="f-import">Datei importieren…</label>
       <input id="f-import" type="file" accept=".json,application/json" hidden>
+      <button class="btn-s" id="btn-vorlage-wand">Musterwand laden…</button>
     </div>
     <div class="msg" id="msg"></div>
     <div class="hint">Öffnungen, Auslegung usw. entstehen in Modul&nbsp;1 (Wandplanung). Hier wird
       das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen. Der <b>Wandtyp</b>
-      gehört zum Wandelement und wird nur hier beim Anlegen festgelegt; die übrigen Module lesen ihn.</div>
+      gehört zum Wandelement und wird nur hier beim Anlegen festgelegt; die übrigen Module lesen ihn.<br>
+      „<b>Musterwand laden…</b>" liest die mitgelieferte Repo-Vorlage
+      (<code>vorlagen/SEMBLA_Musterwand.json</code>, Projektformat&nbsp;v2) — bewusst auf Klick, nie
+      automatisch. Sie läuft durch denselben Bestätigungsdialog wie ein Dateiimport und wird als
+      <b>neues</b> Wandelement angelegt; bestehende Elemente bleiben unangetastet.</div>
   </div>
 
   <h2>Projekt-Kopfdaten <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· aktives Wandelement</span></h2>
@@ -151,6 +156,7 @@
       <button class="btn-s" id="k-neu">Neuer Katalog</button>
       <label class="btn-s" for="k-import">Katalog importieren…</label>
       <input id="k-import" type="file" accept=".json,application/json" hidden>
+      <button class="btn-s" id="k-vorlage">Standardkatalog laden</button>
       <button class="btn-s" id="k-export">Katalog exportieren (JSON)</button>
       <button class="btn-d" id="k-entfernen">Katalog entfernen</button>
     </div>
@@ -196,6 +202,12 @@
       (<b>SEMBLA-Bauteilkatalog</b>, Format-Version 1) importiert/exportiert — <b>nicht</b> über den
       Projekt-Export (ZIP). Im Projekt selbst stehen nur die freigegebenen <b>Produkt-IDs</b>, keine
       Preise und keine Maße.<br>
+      „<b>Standardkatalog laden</b>" liest die mitgelieferte Repo-Vorlage
+      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) — bewusst auf Klick,
+      nie automatisch. Ein bereits geladener Katalog wird erst <b>nach Bestätigung</b> ersetzt.
+      Der Standardkatalog enthält neben den Produktvorgaben aus dieser Suite auch
+      <b>vorläufige, fachlich unbestätigte Beispielwerte</b>; sie sind im Katalognamen und je
+      betroffenem Produkt gekennzeichnet und vor der Verwendung zu prüfen.<br>
       Die Freigabe ist die <b>Grundlage für die nachgelagerte Planung</b> (Einkauf, Zuschnitt,
       Ausbau). <b>Sie rechnet noch nicht mit:</b> Stückliste und Kosten (Modul&nbsp;4) verwenden bis
       zur Folgeintegration unverändert die dort gepflegten Einzelpreise — Katalogpreise werden derzeit
@@ -359,22 +371,60 @@
     document.getElementById('f-import').value = '';
   }
 
+  /**
+   * Gelesenen Text deuten und den Bestaetigungsdialog oeffnen — schreibt NICHTS.
+   * Gemeinsamer Weg fuer Dateiimport und Repo-Vorlage (identische Pruefung/Bestaetigung).
+   * @param {string} text @param {string} quelle Dateiname bzw. Vorlagenbezeichnung
+   */
+  function impOeffne(text, quelle){
+    const parse = store.parseImport(text);                   // parst nur, speichert nichts
+    impOffen = { parse, dateiname: quelle };
+    document.getElementById('imp-datei').textContent = quelle;
+    document.getElementById('imp-name').value = impNameVorschlag(parse, quelle);
+    document.getElementById('imp-info').innerHTML = impZusammenfassung(parse.wandelement);
+    impMsg.textContent = ''; impMsg.className = 'msg';
+    impOverlay.hidden = false;
+    msg.textContent = ''; msg.className = 'msg';
+  }
+
   document.getElementById('f-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
     try {
-      const parse = store.parseImport(await file.text());     // parst nur, speichert nichts
-      impOffen = { parse, dateiname: file.name };
-      document.getElementById('imp-datei').textContent = file.name;
-      document.getElementById('imp-name').value = impNameVorschlag(parse, file.name);
-      document.getElementById('imp-info').innerHTML = impZusammenfassung(parse.wandelement);
-      impMsg.textContent = ''; impMsg.className = 'msg';
-      impOverlay.hidden = false;
-      msg.textContent = ''; msg.className = 'msg';
+      impOeffne(await file.text(), file.name);
     } catch (e) {
       impOffen = null;
       ev.target.value = '';
       zeige('Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
+    }
+  });
+
+  // --- Repo-Vorlagen (bewusste Wahl, KEIN Autoload) ------------------------
+  // Beide Vorlagen sind gewoehnliche, mit ausgelieferte Dateien unter docs/vorlagen/.
+  // Sie laufen durch dieselben Pruef-/Bestaetigungswege wie fremde Dateien:
+  //   Wand    -> store.parseImport + Bestaetigungsdialog (legt ein NEUES Element an)
+  //   Katalog -> store.importiereKatalogText in den eigenen Katalog-Slot, Ersetzen nur
+  //              nach ausdruecklicher Bestaetigung.
+  const VORLAGE = {
+    wand:    { pfad: './vorlagen/SEMBLA_Musterwand.json',      quelle: 'SEMBLA_Musterwand.json (Repo-Vorlage)' },
+    katalog: { pfad: './vorlagen/SEMBLA_Standardkatalog.json', quelle: 'SEMBLA_Standardkatalog.json (Repo-Vorlage)' },
+  };
+
+  /** Vorlagentext holen. Fehler werden benannt, nicht stillschweigend geschluckt. */
+  async function vorlageText(pfad){
+    let r;
+    try { r = await fetch(pfad, { cache: 'no-store' }); }
+    catch (e) { throw new Error(`Vorlage „${pfad}" nicht erreichbar (${e && e.message ? e.message : e}).`); }
+    if (!r || !r.ok) throw new Error(`Vorlage „${pfad}" nicht ladbar (HTTP ${r ? r.status : '?'}).`);
+    return await r.text();
+  }
+
+  document.getElementById('btn-vorlage-wand').addEventListener('click', async () => {
+    try {
+      impOeffne(await vorlageText(VORLAGE.wand.pfad), VORLAGE.wand.quelle);
+    } catch (e) {
+      impOffen = null;
+      zeige('Musterwand nicht geladen: ' + (e && e.message ? e.message : e), false);
     }
   });
 
@@ -651,6 +701,23 @@
       kZeige('Katalog-Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
     }
     ev.target.value = '';
+  });
+
+  document.getElementById('k-vorlage').addEventListener('click', async () => {
+    const alt = store.holeKatalog();
+    if (alt && alt.produkte.length && !confirm(`Standardkatalog aus der Repo-Vorlage laden? Der geladene `
+        + `Katalog „${alt.name}“ mit ${alt.produkte.length} Produkt(en) wird ersetzt — vorher exportieren!`)) {
+      kZeige('Abgebrochen — der geladene Katalog bleibt unverändert.', true);
+      return;                                            // Abbruch schreibt nichts
+    }
+    try {
+      const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
+      kFormReset(); katLaden();
+      kZeige(`Standardkatalog geladen: ${k.name} (${k.produkte.length} Produkt(e)). `
+        + 'Vorläufige, fachlich unbestätigte Beispielwerte sind je Produkt gekennzeichnet.', true);
+    } catch (e) {
+      kZeige('Standardkatalog nicht geladen: ' + (e && e.message ? e.message : e), false);
+    }
   });
 
   document.getElementById('k-export').addEventListener('click', () => {

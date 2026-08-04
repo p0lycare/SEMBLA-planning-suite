@@ -1,0 +1,186 @@
+{
+  "format": "SEMBLA-Bauteilkatalog",
+  "version": 1,
+  "name": "SEMBLA Standardkatalog (Beispieldaten, teils vorläufig — fachlich unbestätigt)",
+  "hinweis": "Übernimmt die im Produkt vorhandenen öffentlichen Preis-/Maßvorgaben (Preise aus eingaben.kosten.preise, Maße aus sembla-core.js und eingaben.aufbau). Produkte mit dem Feld „hinweis“ tragen vorläufige, frei angenommene Beispielwerte und sind KEINE bestätigten Kennwerte.",
+  "produkte": [
+    {
+      "id": "stein-i3-375",
+      "kategorie": "stein",
+      "bezeichnung": "Stein i3 (37,5 cm)",
+      "einheit": "Stk",
+      "preis": 9.5,
+      "breite_mm": 375,
+      "hoehe_mm": 200,
+      "dicke_mm": 125
+    },
+    {
+      "id": "stein-i2-250",
+      "kategorie": "stein",
+      "bezeichnung": "Stein i2 (25 cm)",
+      "einheit": "Stk",
+      "preis": 7.2,
+      "breite_mm": 250,
+      "hoehe_mm": 200,
+      "dicke_mm": 125
+    },
+    {
+      "id": "gewindestange-m10-1100",
+      "kategorie": "gewindestange",
+      "bezeichnung": "Gewindestange M10 1100 mm (8.8)",
+      "einheit": "Stk",
+      "preis": 3.8,
+      "gewinde": "M10",
+      "guete": "8.8",
+      "laenge_mm": 1100
+    },
+    {
+      "id": "gewindestange-m10-1000",
+      "kategorie": "gewindestange",
+      "bezeichnung": "Gewindestange M10 1000 mm (8.8)",
+      "einheit": "Stk",
+      "preis": 3.8,
+      "gewinde": "M10",
+      "guete": "8.8",
+      "laenge_mm": 1000
+    },
+    {
+      "id": "latte-40-60-1500",
+      "kategorie": "latte",
+      "bezeichnung": "Latte 40×60 mm, 1,5 m (vorläufig)",
+      "einheit": "Stk",
+      "preis": 3.5,
+      "breite_mm": 40,
+      "dicke_mm": 60,
+      "laenge_mm": 1500,
+      "hinweis": "vorläufig — fachlich unbestätigt: Lattendicke 60 mm ist ein angenommener Beispielwert (das Produkt kennt nur Lattenbreite 40 mm und Stangenlänge 1500 mm)."
+    },
+    {
+      "id": "latte-40-60-3000",
+      "kategorie": "latte",
+      "bezeichnung": "Latte 40×60 mm, 3,0 m (vorläufig)",
+      "einheit": "Stk",
+      "preis": 7.0,
+      "breite_mm": 40,
+      "dicke_mm": 60,
+      "laenge_mm": 3000,
+      "hinweis": "vorläufig — fachlich unbestätigt: zweite Standardlänge samt Dicke und Preis sind angenommene Beispielwerte."
+    },
+    {
+      "id": "beplankung-625-1500",
+      "kategorie": "beplankung",
+      "bezeichnung": "Beplankungsplatte 625×1500 mm, 12,5 mm (vorläufig)",
+      "einheit": "m2",
+      "preis": 8.9,
+      "breite_mm": 625,
+      "hoehe_mm": 1500,
+      "dicke_mm": 12.5,
+      "hinweis": "vorläufig — fachlich unbestätigt: Plattenformat folgt dem Panelraster aus eingaben.aufbau (62,5×150 cm); Dicke und Preis sind angenommene Beispielwerte."
+    },
+    {
+      "id": "blech-bodenblech-1000",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech-Modul 1000×125 mm, 15 mm",
+      "einheit": "Stk",
+      "preis": 18.0,
+      "breite_mm": 1000,
+      "hoehe_mm": 125,
+      "dicke_mm": 15
+    },
+    {
+      "id": "blech-kopfblech-1000",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Kopfblech-Modul 1000×125 mm, 15 mm",
+      "einheit": "Stk",
+      "preis": 18.0,
+      "breite_mm": 1000,
+      "hoehe_mm": 125,
+      "dicke_mm": 15
+    },
+    {
+      "id": "blech-spannplatte",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Spannplatte 120×120 mm, 15 mm (vorläufig)",
+      "einheit": "Stk",
+      "preis": 2.4,
+      "breite_mm": 120,
+      "hoehe_mm": 120,
+      "dicke_mm": 15,
+      "hinweis": "vorläufig — fachlich unbestätigt: Plattenmaße sind angenommene Beispielwerte; die Nachweiskennwerte des Spannsystems sind bewusst NICHT hierher übernommen. Nur der Preis stammt aus den Produktvorgaben."
+    },
+    {
+      "id": "verbinder-fa-1",
+      "kategorie": "verbinder",
+      "bezeichnung": "Verbinder FA-1",
+      "einheit": "Stk",
+      "preis": 1.2
+    },
+    {
+      "id": "verbinder-fa-2",
+      "kategorie": "verbinder",
+      "bezeichnung": "Verbinder FA-2 schwer (vorläufig)",
+      "einheit": "Stk",
+      "preis": 1.8,
+      "hinweis": "vorläufig — fachlich unbestätigt: Typ ist im Verbinder-Katalog des Handbuchs geführt, der Preis ist ein angenommener Beispielwert."
+    },
+    {
+      "id": "verbinder-ia-1",
+      "kategorie": "verbinder",
+      "bezeichnung": "Verbinder IA-1 leicht (vorläufig)",
+      "einheit": "Stk",
+      "preis": 0.9,
+      "hinweis": "vorläufig — fachlich unbestätigt: Typ ist im Verbinder-Katalog des Handbuchs geführt, der Preis ist ein angenommener Beispielwert."
+    },
+    {
+      "id": "verbinder-universal",
+      "kategorie": "verbinder",
+      "bezeichnung": "Verbinder Universal (vorläufig)",
+      "einheit": "Stk",
+      "preis": 1.4,
+      "hinweis": "vorläufig — fachlich unbestätigt: Typ ist im Verbinder-Katalog des Handbuchs geführt, der Preis ist ein angenommener Beispielwert."
+    },
+    {
+      "id": "verbrauch-kopplungsmutter-stoss",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Kopplungsmutter (Stangenstoß)",
+      "einheit": "Stk",
+      "preis": 0.65
+    },
+    {
+      "id": "verbrauch-kopplungsmutter-fuss",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Kopplungsmutter (Fuß)",
+      "einheit": "Stk",
+      "preis": 0.65
+    },
+    {
+      "id": "verbrauch-senkkopfschraube-fuss",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Senkkopfschraube (Fuß)",
+      "einheit": "Stk",
+      "preis": 0.45
+    },
+    {
+      "id": "verbrauch-spannmutter",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Spannmutter",
+      "einheit": "Stk",
+      "preis": 0.9
+    },
+    {
+      "id": "verbrauch-dichtstreifen-200",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Dichtstreifen 20 cm (Schallschutz)",
+      "einheit": "Stk",
+      "preis": 0.3
+    },
+    {
+      "id": "verbrauch-dichtstreifen-rolle",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Dichtstreifen Rollenware (vorläufig)",
+      "einheit": "m",
+      "preis": 1.5,
+      "hinweis": "vorläufig — fachlich unbestätigt: Meterpreis der Rollenware ist ein angenommener Beispielwert (das Produkt führt bisher nur den Stückpreis je 20-cm-Streifen)."
+    }
+  ]
+}

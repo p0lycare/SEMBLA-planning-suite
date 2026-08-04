@@ -527,5 +527,209 @@ ok('Datei ohne Wandelement -> Fehlermeldung, kein Dialog',
   $('imp-overlay').hidden === true && /Wandelement/.test(msgTxt()) && anzahl() === anzahlN);
 ok('nach Fehler ist die Dateiauswahl wieder frei', $('f-import').value === '');
 
+// --- 7) Repo-Vorlagen: Standardkatalog + AWG-Musterwand (Issue #33) --------
+// Geuebt werden die ECHTEN Modul-0-Handler (#k-vorlage, #btn-vorlage-wand) gegen die
+// ECHTEN Dateien unter docs/vorlagen/. Kein Fixture, keine vertraulichen Daten:
+// beide Vorlagen liegen als gewoehnliche, oeffentliche Repo-Dateien im Checkout.
+const vorlagenBasis = new URL("../../docs/vorlagen/", import.meta.url);
+const vorlageDatei = (name) => readFileSync(new URL(name, vorlagenBasis), "utf8");
+const V_WAND = "SEMBLA_Musterwand.json", V_KAT = "SEMBLA_Standardkatalog.json";
+
+/** fetch-Ersatz: liefert genau die Repo-Vorlagen (wie der Browser von GitHub Pages). */
+const fetchLog = [];
+function installFetch(){
+  globalThis.fetch = async (pfad) => {
+    fetchLog.push(String(pfad));
+    const m = /^\.\/vorlagen\/(.+)$/.exec(String(pfad));
+    if (!m) return { ok:false, status:404, text: async () => "" };
+    try { const t = vorlageDatei(m[1]); return { ok:true, status:200, text: async () => t }; }
+    catch { return { ok:false, status:404, text: async () => "" }; }
+  };
+}
+installFetch();
+
+// 7a) Bedienelemente sind an der echten Oberflaeche vorhanden
+ok('Button „Standardkatalog laden" im Katalog-Abschnitt',
+  /<button class="btn-s" id="k-vorlage">Standardkatalog laden<\/button>/.test(html));
+ok('Button „Musterwand laden…" im Abschnitt „Wandelement anlegen"',
+  /<button class="btn-s" id="btn-vorlage-wand">Musterwand laden…<\/button>/.test(html));
+ok('Hinweis nennt beide Vorlagen als bewusst zu ladende Repo-Dateien',
+  /vorlagen\/SEMBLA_Musterwand\.json/.test(html) && /vorlagen\/SEMBLA_Standardkatalog\.json/.test(html)
+  && /bewusst auf Klick, nie/.test(html));
+ok('Hinweis kennzeichnet die vorlaeufigen Katalogwerte',
+  /vorläufige, fachlich unbestätigte Beispielwerte/.test(html));
+
+// 7b) Die Vorlagendateien selbst: valide, versioniert, Ressourcen getrennt
+const katRoh = JSON.parse(vorlageDatei(V_KAT));
+const wandRoh = JSON.parse(vorlageDatei(V_WAND));
+ok('Katalogvorlage traegt Katalogformat v1',
+  katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === KAT.KATALOG_VERSION);
+ok('Katalogvorlage ist gegen den echten Validator fehlerfrei',
+  KAT.validiereKatalog(katRoh).length === 0 && KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length === 20);
+ok('Katalogvorlage enthaelt kein Wandelement/Projekt (Ressourcentrennung)',
+  !('wandelement' in katRoh) && !('eingaben' in katRoh) && !('courses' in katRoh));
+ok('jede Katalogkategorie ist belegt',
+  KAT.KATEGORIEN.every(k => katRoh.produkte.some(p => p.kategorie === k.id)));
+ok('Katalogname weist die vorlaeufigen Werte aus', /vorläufig — fachlich unbestätigt/.test(katRoh.name));
+ok('jedes vorlaeufige Produkt ist einzeln gekennzeichnet',
+  katRoh.produkte.filter(p => p.hinweis).length === 8
+  && katRoh.produkte.filter(p => p.hinweis).every(p => p.hinweis.startsWith('vorläufig — fachlich unbestätigt'))
+  && katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 8);
+ok('Wandvorlage traegt Projektformat v2 (kein Formatbump)',
+  wandRoh.format === 'SEMBLA-Projekt' && wandRoh.version === store.PROJEKT_VERSION);
+ok('Wandvorlage enthaelt keinen Produktstamm (Ressourcentrennung)',
+  !('produkte' in wandRoh) && !JSON.stringify(wandRoh).includes('SEMBLA-Bauteilkatalog'));
+
+// 7c) Kanonische AWG-Geometrie: heutiger Core aus denselben fachlichen Eingaben
+const wv = wandRoh.wandelement;
+const neuGebaut = buildWall(wandRoh.name, wv.length_mm, wv.height_mm, wv.openings, wv.sides, wv.prestress, wv.steps);
+ok('Wandelement der Vorlage ist exakt die Ausgabe des heutigen Cores',
+  JSON.stringify(neuGebaut) === JSON.stringify(wv));
+// Harte Erwartungswerte aus dem freigegebenen AWG-Anhang (Identitaetsnachweis ohne Anhangdatei)
+ok('AWG-Maße/Raster unveraendert',
+  wv.length_mm === 3000 && wv.height_mm === 2600 && wv.thickness_mm === 125
+  && wv.grid_mm === 125 && wv.course_mm === 200 && wv.N_grid === 24 && wv.lagen === 13);
+ok('AWG-Vorspannvorgaben unveraendert',
+  wv.rod_mm === 1000 && wv.prestress.max_span_grid === 3 && wv.prestress.force_kN === 50
+  && wv.prestress.rod_mm === 1000);
+ok('AWG-Staffelung (3 Stufen) unveraendert',
+  wv.steps.length === 3 && wv.steps[0].height_mm === 2200 && wv.steps[1].height_mm === 1800
+  && wv.steps[2].height_mm === 1400 && wv.openings.length === 0);
+ok('AWG-Spannachsen unveraendert (12 Achsen, gleiche Lage)',
+  wv.tension_columns.map(c => c.x_mm).join(',')
+  === '62.5,437.5,812.5,1187.5,1312.5,1562.5,1687.5,1812.5,2187.5,2312.5,2562.5,2937.5'
+  && wv.tension_columns.map(c => c.k).join(',') === '0,3,6,9,10,12,13,14,17,18,20,23');
+ok('AWG-Tiling unveraendert (Kernmengen des Anhangs)',
+  wv.bom.i2 === 20 && wv.bom.i3 === 70 && wv.bom.gewindestangen === 30
+  && wv.bom.verbindungsmuttern === 18 && wv.bom.verschnitt_mm === 5600);
+ok('AWG-Wand ist baubar geprueft', wv.validation.buildable === true && wv.validation.tension_span_ok === true);
+ok('veraltete abgeleitete Daten NICHT uebernommen (keine gespeicherte verification)',
+  !('verification' in wv) && !JSON.stringify(wandRoh).includes('"stahlplatten"'));
+ok('heutige abgeleitete Struktur vorhanden (base_plate/top_plate, neue BOM-Felder)',
+  ('base_plate' in wv) && ('top_plate' in wv) && ('stahlblech_module' in wv.bom) && ('stossfugen' in wv.bom));
+ok('Wandvorlage friert keine Statik-/Nachweiskennwerte ein',
+  Object.keys(wandRoh.eingaben).join(',') === 'projekt' && !('statik' in wandRoh.eingaben)
+  && !/\bmRk1\b|\bNv1\b|f_k|gamma_w/.test(JSON.stringify(wandRoh)));
+
+// 7d) Standardkatalog laden: belegter Slot wird nur nach Bestaetigung ersetzt
+const katVorher = JSON.stringify(store.holeKatalog());
+ok('Ausgangslage: ein anderer Katalog ist geladen',
+  store.holeKatalog() && store.holeKatalog().name === 'Direktkatalog');
+confirmAntwort = false;
+await $('k-vorlage').dispatch('click');
+ok('Abbruch der Bestaetigung ersetzt den Katalog NICHT',
+  JSON.stringify(store.holeKatalog()) === katVorher && kAnzahl() === 1);
+ok('Abbruch wird sichtbar gemeldet', /Abgebrochen/.test(kMsgTxt()) && !kFehler());
+confirmAntwort = true;
+await $('k-vorlage').dispatch('click');
+ok('Bestaetigung laedt den Standardkatalog', kAnzahl() === 20 && /Standardkatalog/.test(kat().name));
+ok('Erfolgsmeldung nennt die vorlaeufigen Werte',
+  /Standardkatalog geladen/.test(kMsgTxt()) && /[Vv]orläufige/.test(kMsgTxt())
+  && /gekennzeichnet/.test(kMsgTxt()) && !kFehler());
+ok('Katalogname erscheint im Eingabefeld', $('k-name').value === kat().name);
+ok('Standardkatalog liegt im eigenen localStorage-Slot',
+  JSON.parse(localStorage.getItem('sembla:katalog')).produkte.length === 20);
+ok('Kennzeichnung „vorläufig" ueberlebt die Persistenz',
+  KAT.produkt(kat(), 'latte-40-60-1500').hinweis.startsWith('vorläufig — fachlich unbestätigt'));
+ok('geladene Produkte tragen die Produktvorgaben der Suite',
+  KAT.produkt(kat(), 'stein-i3-375').preis === 9.5 && KAT.produkt(kat(), 'stein-i2-250').preis === 7.2
+  && KAT.produkt(kat(), 'gewindestange-m10-1100').laenge_mm === 1100);
+ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
+  !JSON.stringify(store.aktivesWandelement()).includes('stein-i3-375')
+  && KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);
+
+// leerer Slot: kein Ersetzen-Dialog noetig
+confirmAntwort = true;
+$('k-entfernen').dispatch('click');
+confirmAntwort = false;                                   // wuerde ein confirm ablehnen
+await $('k-vorlage').dispatch('click');
+ok('ohne geladenen Katalog laedt die Vorlage ohne Rueckfrage', kAnzahl() === 20);
+
+// 7e) Musterwand laden: bestehender Bestaetigungsdialog, kein stilles Schreiben
+const wAnzahlVor = anzahl(), wAktivVor = store.aktivId(), wStandVor = stand();
+await $('btn-vorlage-wand').dispatch('click');
+ok('Vorlage oeffnet den bestehenden Import-Dialog', $('imp-overlay').hidden === false);
+ok('Dialog nennt die Vorlage als Quelle',
+  $('imp-datei').textContent === 'SEMBLA_Musterwand.json (Repo-Vorlage)');
+ok('Namensvorschlag kommt aus der Vorlage', $('imp-name').value === 'SEMBLA Musterwand (AWG)');
+ok('Zusammenfassung zeigt die AWG-Maße und den Wandtyp',
+  /3000 × 2600 mm/.test(impInfo()) && /Innenwand mit Wind \(Cpi\)/.test(impInfo()));
+ok('vor der Bestaetigung wird NICHTS gespeichert',
+  anzahl() === wAnzahlVor && stand() === wStandVor && store.aktivId() === wAktivVor);
+$('imp-cancel').dispatch('click');
+ok('Abbrechen legt kein Element an und aendert den aktiven Zeiger nicht',
+  $('imp-overlay').hidden === true && anzahl() === wAnzahlVor && stand() === wStandVor
+  && store.aktivId() === wAktivVor);
+
+const vorherAktivStand = JSON.stringify(store.holeElement(wAktivVor));
+await $('btn-vorlage-wand').dispatch('click');
+$('imp-go').dispatch('click');
+const mw = store.aktivesElement();
+ok('Bestaetigung legt genau EIN neues Element an', anzahl() === wAnzahlVor + 1);
+ok('Musterwand ist aktiv und traegt den Vorlagennamen',
+  store.aktivId() === mw.id && mw.id !== wAktivVor && mw.name === 'SEMBLA Musterwand (AWG)');
+ok('gespeichertes Wandelement ist die kanonische AWG-Wand',
+  mw.wandelement.length_mm === 3000 && mw.wandelement.height_mm === 2600
+  && mw.wandelement.tension_columns.length === 12 && mw.wandelement.lagen === 13);
+ok('Wandtyp wird beim Import normalisiert', store.WANDTYPEN.includes(mw.wandelement.wandtyp));
+ok('bestehendes Element wurde NICHT ueberschrieben',
+  JSON.stringify(store.holeElement(wAktivVor)) === vorherAktivStand);
+ok('Erfolgsmeldung nennt Name, Import und aktiv',
+  /SEMBLA Musterwand \(AWG\)/.test(msgTxt()) && /importiert/.test(msgTxt()) && /jetzt aktiv/.test(msgTxt()));
+ok('Projekt-Kopfdaten der Vorlage kommen mit',
+  store.holeEingaben(mw.id).projekt.name === 'SEMBLA Musterwand (AWG)');
+ok('Vorlage friert keine Preise ein — Standardpreise wirken weiter',
+  store.holeEingaben(mw.id).kosten.preise.i3 === 9.5);
+ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
+  (() => { $('imp-go').dispatch('click'); return anzahl() === wAnzahlVor + 1; })());
+
+// 7f) Ressourcen-/Formattrennung bleibt auch fuer die Vorlagen bestehen
+await $('k-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_WAND), V_WAND)], value:'x' } });
+ok('Wandvorlage im Katalog-Import -> klare Meldung, Katalog unveraendert',
+  kFehler() && /Projekt-\/Wandelement-Datei/.test(kMsgTxt()) && kAnzahl() === 20);
+await $('f-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_KAT), V_KAT)], value:'x' } });
+ok('Katalogvorlage im Projekt-Import -> klare Meldung, kein Dialog',
+  /Bauteilkatalog/.test(msgTxt()) && $('msg').className === 'msg err' && $('imp-overlay').hidden === true);
+
+// 7g) Nicht erreichbare Vorlage: sichtbarer Fehler, kein Schreiben
+const echtesFetch = globalThis.fetch;
+globalThis.fetch = async () => ({ ok:false, status:404, text: async () => '' });
+const standVorFehler = stand(), katVorFehler = JSON.stringify(store.holeKatalog());
+await $('btn-vorlage-wand').dispatch('click');
+ok('fehlende Wandvorlage -> Fehlermeldung, kein Dialog, kein Element',
+  $('imp-overlay').hidden === true && $('msg').className === 'msg err'
+  && /Musterwand nicht geladen/.test(msgTxt()) && /HTTP 404/.test(msgTxt()) && stand() === standVorFehler);
+confirmAntwort = true;
+await $('k-vorlage').dispatch('click');
+ok('fehlende Katalogvorlage -> Fehlermeldung, Katalog unveraendert',
+  kFehler() && /Standardkatalog nicht geladen/.test(kMsgTxt())
+  && JSON.stringify(store.holeKatalog()) === katVorFehler);
+globalThis.fetch = echtesFetch;
+
+// 7h) KEIN Autoload: ein frisch initialisiertes Modul 0 laedt keine Vorlage
+// Frischer Sandkasten (eigenes localStorage, eigenes DOM-Double, eigener fetch-Zaehler):
+// der echte Modul-0-Code wird erneut initialisiert und darf dabei nichts laden/schreiben.
+const altStorage = globalThis.localStorage, altDocument = globalThis.document;
+const frischeAufrufe = [];
+globalThis.localStorage = new MemStorage();
+globalThis.document = {
+  _e:{}, getElementById(id){ return this._e[id] || (this._e[id] = new El(id)); },
+  createElement(){ return new El('_'); }, querySelector(){ return null; },
+  addEventListener(){}, head:{ appendChild(){} },
+  body:{ appendChild(){}, insertBefore(){}, firstChild:null },
+};
+globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return { ok:true, status:200, text: async () => '{}' }; };
+new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT", src)(
+  () => {}, MODULE, store, buildWall, baueDateien, () => {}, KAT);
+const frischKatalog = globalThis.localStorage.getItem('sembla:katalog');
+const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
+globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
+ok('Initialisierung ruft KEIN fetch auf (kein Autoload)', frischeAufrufe.length === 0);
+ok('Initialisierung legt keinen Katalog an', frischKatalog === null);
+ok('Initialisierung legt kein Wandelement an', frischElemente === null);
+ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
+  (src.match(/vorlageText\(/g) || []).length === 3           // 1 Definition + 2 Aufrufe
+  && (src.match(/fetch\(/g) || []).length === 1);
+
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);
