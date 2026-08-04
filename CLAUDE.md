@@ -76,6 +76,30 @@ Das Wandelement stammt aus dem Core (`buildWall`): Länge/Höhe/Öffnungen → T
 Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Rastereinheit (125 mm),
 `lage`/`course` = Lagenindex (200 mm).
 
+## Fachregelwerk und Änderungsprozess
+
+Die Planung muss **vollständig regelbasiert und deterministisch** erfolgen. Verbindliche fachliche
+Grundlage ist das hierarchische Regelwerk in Kapitel 15 des Handbuchs; seine editierbare Quelle ist
+`build-handbuch.mjs`, das erzeugte Dokument `doku/SEMBLA_Handbuch.docx`. Code, Tests und Handbuch
+dürfen fachlich nicht auseinanderlaufen.
+
+- Jede fachliche Änderung benennt die betroffenen Regel-IDs und ergänzt oder ändert zuerst das
+  Regelwerk. Neue Regeln erhalten eine dauerhafte ID und eine klare Priorität gegenüber eventuell
+  konkurrierenden Regeln.
+- Bei jedem Bug ist ausdrücklich zu klären: **Welche Regel fehlt, ist unklar oder wurde falsch
+  umgesetzt?** Der Fix muss Regelwerk, Implementierung und Regressionstest gemeinsam korrigieren.
+- Regeln sind hierarchisch: Sicherheit/Baubarkeit und explizite Muss-Regeln schlagen Optimierungs-
+  und Komfortregeln. Ein Konflikt darf nicht still durch eine Heuristik aufgelöst werden.
+- Das Handbuch ist bei jeder produktrelevanten Änderung mitzuprüfen und regelmäßig gegen den realen
+  Produktstand zu auditieren. Nicht implementierte Zielregeln werden als solche gekennzeichnet und
+  dürfen nicht als bereits getestet dargestellt werden.
+
+**Neu bestätigte Vorspann-Grundregeln (Umsetzung noch per Issue/Tests abzusichern):** Jeder Stein muss
+von mindestens einer Spannachse gehalten werden. In der untersten Steinreihe sollen automatisch
+gesetzte Spannachsen möglichst mittig in den i3-Steinen liegen. Diese Regeln bestimmen die
+Achsenverteilung vorrangig; `max_span_grid` bleibt zusätzlich eine einzuhaltende Obergrenze und ist
+nicht mehr alleinige Verteilungsregel.
+
 ## Zentrale Architektur-Regeln
 
 1. **Ein Core, eine Betriebskopie.** `docs/shared/sembla-core.js` (ES-Modul) ist der einzige
