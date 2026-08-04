@@ -53,10 +53,11 @@ const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 // Startet leer (kein aktives Element -> kein Demo/Platzhalter, klare Leer-Anzeige)
 ok('Start ohne aktives Element -> keine Wand geladen (leer)', !WA.wall);
 ok('Start ohne aktives Element -> Leer-Hinweis in der Zeichnung', /Kein aktives Wandelement/.test(document.getElementById('plan').innerHTML));
-// Ohne Wandelement gibt es keine Fläche zum Aufziehen: Auswahl gesperrt, Klick bleibt wirkungslos.
-ok('ohne aktives Element -> Auswahlbutton gesperrt', document.getElementById('fieldMode').disabled===true);
+// Ohne Wandelement gibt es keine Fläche zum Bearbeiten: Einstieg gesperrt, Klick bleibt wirkungslos.
+ok('ohne aktives Element -> Bearbeiten-Button gesperrt', document.getElementById('fieldMode').disabled===true);
+ok('ohne aktives Element -> Abschluss-Button verborgen', document.getElementById('fieldApply').style.display==='none');
 document.getElementById('fieldMode').dispatch('click');
-ok('ohne aktives Element -> Klick aktiviert keinen Auswahlmodus',
+ok('ohne aktives Element -> Klick aktiviert keinen Bearbeitungsmodus',
    WA.fieldArm===false && !document.getElementById('plan').classList.contains('picking'));
 
 // Wand mit Tür laden (3,00 × 2,60 m)
@@ -112,9 +113,12 @@ ok('Feld-Rechteck gezeichnet', /Beplankungsfeld/.test(document.getElementById('p
 WA.clearFeld();
 
 // ---------------------------------------------------------------------------
-// Auswahlmodus für das Beplankungsfeld (Issue #4): echter Bedienweg über Button + Pointer-Events.
-// Geprüft werden die sichtbaren DOM/SVG-Zustände, nicht nur die Test-API.
-const planEl=document.getElementById('plan'), modeBtn=document.getElementById('fieldMode'), hintEl=document.getElementById('fieldHint');
+// Bearbeitungsmodus für das Beplankungsfeld (Issues #4 + #17, Variante A): echter Bedienweg über
+// die Buttons der Leiste + Pointer-Events auf der Zeichenfläche. Geprüft werden die sichtbaren
+// DOM/SVG-Zustände und der reale Handlerpfad, nicht die Test-API.
+const planEl=document.getElementById('plan'), modeBtn=document.getElementById('fieldMode'),
+      applyBtn=document.getElementById('fieldApply'), clearBtn=document.getElementById('fieldClear'),
+      hintEl=document.getElementById('fieldHint');
 const f1=n=>n.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1});
 const anzahl=(s,re)=>(s.match(re)||[]).length;
 // cm -> Client-Koordinaten (Umkehrung der Zeichen-Abbildung; Mock-Rect ist 1000×600)
@@ -126,102 +130,177 @@ function ptr(kind,xcm,ycm,pid=7){ const v=WA.view; const st={prevented:false};
 function winPtr(kind,xcm,ycm,pid=7){ const v=WA.view;
   winFire(kind,{ clientX: v.pad+xcm*v.sc, clientY: (v.pad+v.hPx-ycm*v.sc)*600/v.vbH, pointerId:pid, preventDefault(){} }); }
 
+// Die Bedienelemente tragen im echten Markup die vereinbarten Namen (Variante A).
+ok('UI: Einstieg heißt „Beplankungsfeld bearbeiten“', /id="fieldMode"[^>]*>Beplankungsfeld bearbeiten</.test(html));
+ok('UI: Abschluss-Button „Übernehmen & berechnen“ existiert', /id="fieldApply"[^>]*>Übernehmen &amp; berechnen</.test(html));
+
 WA.applyWand(W); WA.clearFeld();          // Wand 300 × 260 cm, Panel 62,5 × 150 -> gx=[0;62,5;125;187,5;250;300], gy=[0;150;260]
 _merges=[]; _eg={aufbau:{}};
-ok('vor Aktivierung: kein Auswahlmodus (kein Raster, keine Anweisung)',
-   WA.fieldArm===false && !planEl.classList.contains('picking') && !/snapdot/.test(planEl.innerHTML) && hintEl.textContent==='');
-modeBtn.dispatch('click');
-ok('Aktivierung: Modus an, Button zeigt aktiven Zustand + Ausstieg',
-   WA.fieldArm===true && modeBtn.classList.contains('active') &&
-   modeBtn['__aria-pressed']==='true' && /beenden/i.test(modeBtn.textContent));
-ok('Aktivierung: Zeichenfläche markiert (picking)', planEl.classList.contains('picking'));
-ok('Aktivierung: kurze Bedienerklärung sichtbar (Leiste + Banner in der Zeichnung)',
-   /Rasterpunkt/.test(hintEl.textContent) && hintEl.style.display==='' && /pickbanner/.test(planEl.innerHTML) && /Rasterpunkt/.test(planEl.innerHTML));
-ok('Aktivierung: alle erlaubten Rasterpunkte gezeichnet (6 × 3 = 18)', anzahl(planEl.innerHTML,/class="snapdot"/g)===18);
+ok('vor Aktivierung: kein Bearbeitungsmodus (kein Raster, keine Anweisung, kein Abschluss-Button)',
+   WA.fieldArm===false && !planEl.classList.contains('picking') && !/snapdot/.test(planEl.innerHTML) &&
+   hintEl.textContent==='' && applyBtn.style.display==='none' && applyBtn.disabled===true);
 
-// Hover: anvisierter Rasterpunkt wird betont (ohne dass etwas ausgewählt wird)
+// --- #17 MUSS 2: außerhalb des sichtbaren Modus ist ein bestehendes Feld NICHT editierbar ---
+WA.setFeld(0,125,0,150);                  // übernommenes Feld (programmatische Test-API, unverändert)
+_merges=[]; const festJson=JSON.stringify(WA.feld), festPts=WA.compute().pts.length;
+ok('außerhalb des Modus: keine Anfasser gezeichnet', !/drafthandle/.test(planEl.innerHTML));
+ptr('pointerdown',125,150); ptr('pointermove',190,260); ptr('pointerup',190,260);
+ok('außerhalb des Modus: Ziehen am Eckpunkt verändert das Feld nicht',
+   JSON.stringify(WA.feld)===festJson && planEl.capturedPointer===null);
+ptr('pointerdown',60,60); ptr('pointermove',120,60); ptr('pointerup',120,60);
+ok('außerhalb des Modus: Verschieben in der Fläche verändert das Feld nicht', JSON.stringify(WA.feld)===festJson);
+ok('außerhalb des Modus: nichts persistiert, Ergebnis unverändert',
+   _merges.length===0 && _eg.aufbau.feld_cm.x1===125 && WA.compute().pts.length===festPts);
+
+// --- Einstieg in den sichtbaren Modus (MUSS 1 + 2) ---
+modeBtn.dispatch('click');
+ok('Aktivierung: Modus an, Button zeigt aktiven Zustand + Abbruch',
+   WA.fieldArm===true && modeBtn.classList.contains('active') &&
+   modeBtn['__aria-pressed']==='true' && /abbrechen/i.test(modeBtn.textContent));
+ok('Aktivierung: Zeichenfläche markiert (picking)', planEl.classList.contains('picking'));
+ok('Aktivierung: Abschluss-Button „Übernehmen & berechnen“ sichtbar + bedienbar',
+   applyBtn.style.display==='' && applyBtn.disabled===false);
+ok('Aktivierung: bestehendes Feld wird als Entwurf gespiegelt (Feld selbst unberührt)',
+   WA.entwurf && WA.entwurf.x1===125 && WA.entwurf.y1===150 && WA.feld.x1===125);
+ok('Aktivierung: Rasterpunkte (6 × 3 = 18) + Anfasser des Entwurfs sichtbar',
+   anzahl(planEl.innerHTML,/class="snapdot"/g)===18 && anzahl(planEl.innerHTML,/class="drafthandle"/g)===8);
+ok('Aktivierung: Bedienerklärung nennt den Abschluss (Leiste + Banner in der Zeichnung)',
+   /Übernehmen/.test(hintEl.textContent) && hintEl.style.display==='' &&
+   /pickbanner/.test(planEl.innerHTML) && /Übernehmen/.test(planEl.innerHTML));
+
+// --- #17 MUSS 3: Anpassen im Modus ist reine Vorschau ---
+_merges=[];
+ptr('pointerdown',125,150);                       // Anfasser rechts oben des Entwurfs
+ptr('pointermove',190,260);
+ok('Anpassen: Entwurf rastet auf erlaubte Rasterposition (187,5 / 260)',
+   WA.entwurf.x1===187.5 && WA.entwurf.y1===260);
+ok('Anpassen: Modus bleibt sichtbar (Rasterpunkte + picking)',
+   /snapdot/.test(planEl.innerHTML) && planEl.classList.contains('picking'));
+ok('Anpassen: übernommenes Feld unverändert', WA.feld.x1===125 && WA.feld.y1===150);
+ok('Anpassen: nichts persistiert (kein mergeEingaben, Modell unverändert)',
+   _merges.length===0 && _eg.aufbau.feld_cm.x1===125);
+ok('Anpassen: Latten/Verbinder rechnen weiter mit dem übernommenen Feld',
+   WA.compute().pts.length===festPts && WA.compute().pts.every(p=>p.x_cm<=125.01 && p.y_cm<=150.01));
+ptr('pointerup',190,260);
+ok('Loslassen beendet den Modus nicht und übernimmt nichts',
+   WA.fieldArm===true && WA.feld.x1===125 && _merges.length===0 && planEl.capturedPointer===null);
+// Verschieben des Entwurfs (Griff in der Fläche) — ebenfalls nur Vorschau
+ptr('pointerdown',90,60);
+ptr('pointermove',152.5,60);
+ok('Verschieben: Entwurf rastet und behält die Größe', WA.entwurf.x0===62.5 && WA.entwurf.x1===250);
+ok('Verschieben: weiterhin nichts persistiert, Feld unverändert', _merges.length===0 && WA.feld.x1===125);
+ptr('pointerup',152.5,60);
+
+// --- Neu aufziehen im Modus (Snap-/Vorschau-Verhalten aus #4 bleibt erhalten) ---
+const down=ptr('pointerdown',280,130);            // außerhalb des Entwurfs -> neues Rechteck
+ok('Ziehen: Textauswahl unterbunden (preventDefault) + Pointer-Capture auf der Zeichenfläche',
+   down.prevented===true && planEl.capturedPointer===7);
+ptr('pointermove',60,10);
+ok('Ziehen: Vorschau rastet live auf erlaubte Rasterpositionen (300/150 -> 62,5/0)',
+   WA.preview && WA.preview.x0===300 && WA.preview.y0===150 && WA.preview.x1===62.5 && WA.preview.y1===0);
+ok('Ziehen: Vorschau-Rechteck im SVG sichtbar (mit Maß)',
+   /class="fieldpreview"/.test(planEl.innerHTML) && new RegExp(`${f1(237.5)} × ${f1(150)} cm`).test(planEl.innerHTML));
+const vorschauTag=(planEl.innerHTML.match(/<rect class="fieldpreview"[^>]*>/)||[''])[0];
+ok('Ziehen: Vorschau ist neutral/grün, kein rotes Ungültig-Modell',
+   /#1f9d55/.test(vorschauTag) && !/#c9461c/.test(vorschauTag));
+ok('Ziehen: weiterhin kein Feld übernommen', WA.feld.x1===125 && _merges.length===0);
+ptr('pointerup',60,10);
+ok('Loslassen: Entwurf gesetzt, Feld/Modell/Ergebnis unverändert',
+   WA.entwurf.x0===62.5 && WA.entwurf.x1===300 && WA.entwurf.y0===0 && WA.entwurf.y1===150 &&
+   WA.feld.x1===125 && _eg.aufbau.feld_cm.x1===125 && WA.compute().pts.length===festPts);
+
+// Hover: anvisierter Rasterpunkt wird betont (ohne dass etwas übernommen wird)
 ptr('pointermove',60,140);
 ok('Hover: rastet auf den nächsten erlaubten Punkt (62,5 / 150)', WA.hover && WA.hover.x===62.5 && WA.hover.y===150);
 ok('Hover: Punkt im SVG betont + beschriftet',
    /class="snaphover"/.test(planEl.innerHTML) && new RegExp(`${f1(62.5)} / ${f1(150)} cm`).test(planEl.innerHTML));
-ok('Hover allein wählt nichts aus', WA.feld===null && WA.preview===null);
+ok('Hover allein übernimmt nichts', WA.feld.x1===125 && _merges.length===0);
 
-// Ziehen: Pointer-Capture, keine Textmarkierung, live gesnappte Vorschau
-const down=ptr('pointerdown',5,5);
-ok('Ziehen: Textauswahl unterbunden (preventDefault) + Pointer-Capture auf der Zeichenfläche',
-   down.prevented===true && planEl.capturedPointer===7);
-ptr('pointermove',130,160);
-ok('Ziehen: Vorschau rastet live auf erlaubte Rasterpositionen (0/0 -> 125/150)',
-   WA.preview && WA.preview.x0===0 && WA.preview.y0===0 && WA.preview.x1===125 && WA.preview.y1===150);
-ok('Ziehen: Vorschau-Rechteck im SVG sichtbar (mit Maß)',
-   /class="fieldpreview"/.test(planEl.innerHTML) && new RegExp(`${f1(125)} × ${f1(150)} cm`).test(planEl.innerHTML));
-ok('Ziehen: noch kein Feld übernommen', WA.feld===null && _eg.aufbau.feld_cm==null);
-const vorschauTag=(planEl.innerHTML.match(/<rect class="fieldpreview"[^>]*>/)||[''])[0];
-ok('Ziehen: Vorschau ist neutral/grün, kein rotes Ungültig-Modell',
-   /#1f9d55/.test(vorschauTag) && !/#c9461c/.test(vorschauTag));
-ptr('pointerup',130,160);
-ok('Commit: Feld gesetzt auf gesnappte Werte', WA.feld && WA.feld.x0===0 && WA.feld.x1===125 && WA.feld.y0===0 && WA.feld.y1===150);
-ok('Commit: in eingaben.aufbau übernommen', _eg.aufbau.feld_cm && _eg.aufbau.feld_cm.x1===125 && _eg.aufbau.feld_cm.y1===150 &&
-   _merges.some(([t,p])=>t==='aufbau' && p.feld_cm && p.feld_cm.x1===125));
-ok('Commit: Rechnung folgt dem Feld', WA.compute().pts.every(p=>p.x_cm<=125.01 && p.y_cm<=150.01));
-ok('Commit: Modus beendet (Button, Zeichenfläche, Anweisung zurückgesetzt)',
-   WA.fieldArm===false && !modeBtn.classList.contains('active') && modeBtn['__aria-pressed']==='false' &&
-   !planEl.classList.contains('picking') && hintEl.textContent==='' && !/snapdot/.test(planEl.innerHTML));
-ok('Commit: Pointer-Capture freigegeben', planEl.capturedPointer===null);
-ok('Commit: Feld sichtbar gezeichnet', /Beplankungsfeld/.test(planEl.innerHTML));
+// --- #17 MUSS 4: „Übernehmen & berechnen“ ---
+applyBtn.dispatch('click');
+ok('Übernehmen: Entwurf ist das übernommene Feld',
+   WA.feld && WA.feld.x0===62.5 && WA.feld.x1===300 && WA.feld.y0===0 && WA.feld.y1===150);
+ok('Übernehmen: in eingaben.aufbau persistiert',
+   _eg.aufbau.feld_cm.x0===62.5 && _eg.aufbau.feld_cm.x1===300 &&
+   _merges.some(([t,p])=>t==='aufbau' && p.feld_cm && p.feld_cm.x0===62.5));
+ok('Übernehmen: Latten + Verbinder folgen dem übernommenen Feld',
+   WA.compute().pts.length>0 && WA.compute().pts.every(p=>p.x_cm>=62.49 && p.y_cm<=150.01) &&
+   WA.compute().batt.axes.every(a=>a.x_cm>=62.49 && a.segments.every(sg=>sg.y1_cm<=150.01)));
+ok('Übernehmen: Modus beendet (Button, Zeichenfläche, Anweisung, Raster, Abschluss-Button)',
+   WA.fieldArm===false && WA.entwurf===null && !modeBtn.classList.contains('active') &&
+   modeBtn['__aria-pressed']==='false' && /bearbeiten/i.test(modeBtn.textContent) &&
+   !planEl.classList.contains('picking') && hintEl.textContent==='' &&
+   !/snapdot/.test(planEl.innerHTML) && applyBtn.style.display==='none');
+ok('Übernehmen: Feld sichtbar gezeichnet, keine Anfasser mehr',
+   /Beplankungsfeld/.test(planEl.innerHTML) && !/drafthandle/.test(planEl.innerHTML));
+ok('Übernehmen: Pointer-Capture freigegeben', planEl.capturedPointer===null);
+
+// --- Abbruchwege verwerfen nur den Entwurf ---
+modeBtn.dispatch('click');
+ptr('pointerdown',0,0); ptr('pointermove',130,160); ptr('pointerup',130,160);
+ok('Abbruch-Vorbereitung: Entwurf weicht vom Feld ab', WA.entwurf.x1===125 && WA.feld.x1===300);
+_merges=[];
+winFire('keydown',{key:'Escape'});
+ok('Escape: Entwurf verworfen, Feld + Modell unverändert, Modus beendet',
+   WA.entwurf===null && WA.feld.x0===62.5 && WA.feld.x1===300 && _eg.aufbau.feld_cm.x1===300 &&
+   _merges.length===0 && WA.fieldArm===false && !/snapdot/.test(planEl.innerHTML) && hintEl.textContent==='');
+modeBtn.dispatch('click'); ok('Button: Modus wieder an', WA.fieldArm===true);
+ptr('pointerdown',0,0); ptr('pointermove',130,160); ptr('pointerup',130,160);
+modeBtn.dispatch('click');
+ok('Abbrechen-Button: Entwurf verworfen, Feld unverändert',
+   WA.fieldArm===false && WA.entwurf===null && WA.feld.x1===300 && _merges.length===0 &&
+   !modeBtn.classList.contains('active') && !/snapdot/.test(planEl.innerHTML));
+
+// --- „ganze Wand“ im Modus betrifft nur den Entwurf (Präzisierung 1) ---
+modeBtn.dispatch('click');
+_merges=[]; const ganzPts=WA.compute().pts.length;
+clearBtn.dispatch('click');
+ok('ganze Wand im Modus: nur der Entwurf ist leer, Modus bleibt aktiv',
+   WA.entwurf===null && WA.fieldArm===true && planEl.classList.contains('picking'));
+ok('ganze Wand im Modus: Feld, Modell und Ergebnis unverändert',
+   WA.feld.x1===300 && _merges.length===0 && _eg.aufbau.feld_cm.x1===300 && WA.compute().pts.length===ganzPts);
+ok('ganze Wand im Modus: Rasterpunkte sichtbar, Anweisung wieder zum Aufziehen',
+   /snapdot/.test(planEl.innerHTML) && /Rasterpunkt/.test(hintEl.textContent));
+applyBtn.dispatch('click');
+ok('Übernehmen nach „ganze Wand“: Feld gelöscht + persistiert, Modus beendet',
+   WA.feld===null && _eg.aufbau.feld_cm===null && WA.compute().layout.feld_cm===null && WA.fieldArm===false);
+// außerhalb des Modus bleibt „ganze Wand“ beim bisherigen Verhalten (sofort wirksam)
+WA.setFeld(0,125,0,150); _merges=[];
+clearBtn.dispatch('click');
+ok('ganze Wand außerhalb des Modus: Feld sofort zurückgesetzt + persistiert',
+   WA.feld===null && _eg.aufbau.feld_cm===null && _merges.some(([t,p])=>t==='aufbau' && p.feld_cm===null));
+
+// --- Randfälle des Aufziehens (unverändert aus #4) ---
+modeBtn.dispatch('click');
+ptr('pointerdown',62.5,150); ptr('pointerup',62.5,150);
+ok('bloßer Klick: kein Entwurf, Modus bleibt aktiv',
+   WA.entwurf===null && WA.fieldArm===true && planEl.classList.contains('picking'));
+ptr('pointerdown',0,0); ptr('pointermove',3,3); ptr('pointerup',3,3);
+ok('zu kleines Rechteck (5-cm-Regel): kein Entwurf, Modus bleibt aktiv', WA.entwurf===null && WA.fieldArm===true);
+// pointercancel verwirft nur das laufende Ziehen
+ptr('pointerdown',0,0); ptr('pointermove',130,160);
+ok('pointercancel: vorher läuft eine Vorschau', WA.preview!==null);
+planEl.dispatch('pointercancel',{pointerId:7});
+ok('pointercancel: Vorschau verworfen, Modus bleibt aktiv, kein Entwurf',
+   WA.preview===null && WA.fieldArm===true && WA.entwurf===null && planEl.capturedPointer===null);
+// Sicherheitsnetz: Loslassen außerhalb der Fläche (window) schließt das Aufziehen genauso ab
+_merges=[];
+ptr('pointerdown',0,0); ptr('pointermove',130,160); winPtr('pointerup',130,160);
+ok('Loslassen außerhalb der Zeichenfläche: Entwurf gesetzt, Modus aktiv, nichts persistiert',
+   WA.entwurf && WA.entwurf.x1===125 && WA.entwurf.y1===150 && WA.fieldArm===true &&
+   _merges.length===0 && _eg.aufbau.feld_cm==null);
+applyBtn.dispatch('click');
+ok('Abschluss danach: übernommen, gerechnet, Modus beendet',
+   WA.feld.x1===125 && _eg.aufbau.feld_cm.x1===125 && WA.fieldArm===false &&
+   WA.compute().pts.every(p=>p.x_cm<=125.01 && p.y_cm<=150.01));
 
 // Konsistenz nach erneutem Laden/Rendern (externer Reload über die Storage-Anbindung)
 _aktiv='w-auswahl'; storeMock.aktivesWandelement=()=>W;
 _subs.forEach(cb=>cb());
 ok('Reload: Feld aus eingaben.aufbau wiederhergestellt', WA.feld && WA.feld.x0===0 && WA.feld.x1===125 && WA.feld.y1===150);
-ok('Reload: Feld wieder gezeichnet, kein Auswahlmodus aktiv',
-   /Beplankungsfeld/.test(planEl.innerHTML) && WA.fieldArm===false && !planEl.classList.contains('picking'));
-
-// Bestehendes Knob-Resizing über den echten Pointer-Weg (Anfasser rechts oben: 125/150)
-_merges=[];
-ptr('pointerdown',125,150);
-ptr('pointermove',190,260);
-ok('Knob-Resize: rastet auf erlaubte Rasterposition (187,5 / 260)', Math.abs(WA.feld.x1-187.5)<0.01 && Math.abs(WA.feld.y1-260)<0.01);
-ptr('pointerup',190,260);
-ok('Knob-Resize: Ergebnis persistiert', _eg.aufbau.feld_cm.x1===187.5 && _merges.some(([t,p])=>t==='aufbau' && p.feld_cm && p.feld_cm.x1===187.5));
-// Verschieben eines bestehenden Feldes (Griff in der Fläche)
-ptr('pointerdown',90,60);
-ptr('pointermove',152.5,60);
-ok('Feld verschieben: rastet und behält die Größe', Math.abs(WA.feld.x0-62.5)<0.01 && Math.abs(WA.feld.x1-250)<0.01);
-ptr('pointerup',152.5,60);
-ok('Feld verschieben: Ergebnis persistiert', _eg.aufbau.feld_cm.x0===62.5);
-WA.clearFeld();
-
-// Bloßer Klick darf den Modus nicht beenden
-modeBtn.dispatch('click');
-ptr('pointerdown',62.5,150); ptr('pointerup',62.5,150);
-ok('bloßer Klick: kein Feld, Modus bleibt aktiv', WA.feld===null && WA.fieldArm===true && planEl.classList.contains('picking'));
-// Zu kleines Feld (5-cm-Regel in setFeld, unverändert) beendet den Modus ebenfalls nicht
-ptr('pointerdown',0,0); ptr('pointermove',3,3); ptr('pointerup',3,3);
-ok('zu kleines Feld: nicht übernommen, Modus bleibt aktiv', WA.feld===null && WA.fieldArm===true);
-// pointercancel verwirft nur das laufende Ziehen
-ptr('pointerdown',0,0); ptr('pointermove',130,160);
-ok('pointercancel: vorher läuft eine Vorschau', WA.preview!==null);
-planEl.dispatch('pointercancel',{pointerId:7});
-ok('pointercancel: Vorschau verworfen, Modus bleibt aktiv, kein Feld',
-   WA.preview===null && WA.fieldArm===true && WA.feld===null && planEl.capturedPointer===null);
-// Sicherheitsnetz: Loslassen außerhalb der Fläche (window) schließt die Auswahl genauso ab
-ptr('pointerdown',0,0); ptr('pointermove',130,160); winPtr('pointerup',130,160);
-ok('Loslassen außerhalb der Zeichenfläche: Feld übernommen, Modus beendet',
-   WA.feld && WA.feld.x1===125 && WA.feld.y1===150 && WA.fieldArm===false && _eg.aufbau.feld_cm.x1===125);
-WA.clearFeld(); modeBtn.dispatch('click');
-// Escape beendet den Modus
-winFire('keydown',{key:'Escape'});
-ok('Escape: Modus beendet (Raster + Anweisung weg)',
-   WA.fieldArm===false && !planEl.classList.contains('picking') && hintEl.textContent==='' && !/snapdot/.test(planEl.innerHTML));
-// Button beendet den Modus ebenfalls
-modeBtn.dispatch('click'); ok('Button: Modus wieder an', WA.fieldArm===true);
-modeBtn.dispatch('click');
-ok('Button: Modus explizit beendet', WA.fieldArm===false && !modeBtn.classList.contains('active') && !/snapdot/.test(planEl.innerHTML));
-// „ganze Wand“ verändert den Modus nicht (kein unbeabsichtigter Zustandswechsel)
-modeBtn.dispatch('click'); document.getElementById('fieldClear').dispatch('click');
-ok('ganze Wand: Feld zurückgesetzt, Modus unverändert aktiv', WA.feld===null && WA.fieldArm===true);
-modeBtn.dispatch('click');
+ok('Reload: Feld gezeichnet, kein Bearbeitungsmodus, keine Anfasser',
+   /Beplankungsfeld/.test(planEl.innerHTML) && WA.fieldArm===false &&
+   !planEl.classList.contains('picking') && !/drafthandle/.test(planEl.innerHTML));
 
 // Abtreppung: es werden weiterhin ALLE nach der Snap-Regel erlaubten Punkte angeboten
 // (nur schwächer gezeichnet, wenn sie über der abgetreppten Kontur liegen) — keine neue Filterregel.
@@ -233,10 +312,14 @@ ok('Abtreppung: Punkte über der Kontur bleiben wählbar, nur schwächer gezeich
    /class="snapdot"[^>]*fill-opacity="0.42"/.test(trep) && /class="snapdot"[^>]*fill-opacity="0.85"/.test(trep));
 // Feld rechts der Stufe (x 250–300) bis zur vollen Wandhöhe 260 cm — Punkte über der Kontur bleiben wählbar
 ptr('pointerdown',250,140); ptr('pointermove',300,255); ptr('pointerup',300,255);
-ok('Abtreppung: Feld über der niedrigen Seite ist auswählbar',
-   WA.feld && WA.feld.x0===250 && WA.feld.x1===300 && WA.feld.y0===150 && WA.feld.y1===260);
-WA.clearFeld(); WA.applyWand(W);
-ok('Wandwechsel beendet einen laufenden Auswahlmodus', WA.fieldArm===false);
+ok('Abtreppung: Bereich über der niedrigen Seite ist auswählbar (Entwurf)',
+   WA.entwurf && WA.entwurf.x0===250 && WA.entwurf.x1===300 && WA.entwurf.y0===150 && WA.entwurf.y1===260);
+applyBtn.dispatch('click');
+ok('Abtreppung: Entwurf übernommen und gerechnet',
+   WA.feld && WA.feld.x0===250 && WA.feld.y1===260 && WA.compute().layout.feld_cm.x0===250);
+WA.clearFeld(); modeBtn.dispatch('click');
+WA.applyWand(W);
+ok('Wandwechsel beendet eine laufende Bearbeitung', WA.fieldArm===false && WA.entwurf===null);
 _merges=[]; _eg={aufbau:{}};
 
 // Getreppte Wand: rechte Hälfte (x≥150 cm) auf 140 cm abgesenkt
