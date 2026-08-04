@@ -1,0 +1,613 @@
+// @ts-check
+/**
+ * SEMBLA Montage — ereignis-/baugruppenbasierte Ableitung der Montageanleitung.
+ *
+ * Gliedert den Wandaufbau nicht mehr lagenweise, sondern nach den tatsaechlichen
+ * Montageereignissen (erste Gewindestange, Kopplung/neue Stange, oberer Abschluss)
+ * und den dazugehoerigen, durchgehend nummerierten Steinreihen.
+ *
+ * Quelle ist AUSSCHLIESSLICH das Wandelement (Single Source of Truth):
+ *   * `tension_columns[].segments[]` — je Strang die realen Segmente mit
+ *     `z0_mm/z1_mm`, `gewindestangen`, `anker_unten`, `anker_oben`,
+ *   * `courses[].stones` + `steps` — Steinreihen und Wandkontur.
+ * Es wird NIE aus einer globalen/pauschalen Stangenhoehe oder aus einem
+ * Repraesentanten-Strang hochgerechnet: Straenge duerfen unterschiedlich viele
+ * Stangen und unterschiedliche Endhoehen haben (gestaffelte Waende).
+ *
+ * Kopplungshoehen innerhalb eines Segments liegen bei `z0_mm + j·rod_mm`
+ * (Vollstangen zuerst, Reststange oben) — genau die Arithmetik, aus der der Core
+ * `letzte_stange_mm = h − (stueck−1)·rod_mm` bildet. Der Core wird dafuer nicht
+ * geaendert; hier wird nur gelesen.
+ *
+ * Eigene Datei (shared/-Regel a+b): genutzt von Modul 5 (Vorschau/Druck) UND vom
+ * zentralen Export (`sembla-export.js`), mit eigenen Tests
+ * (`tests/module/test-montage.mjs`). Rein/DOM-frei: die Funktionen liefern Daten
+ * bzw. SVG-/HTML-Zeichenketten, greifen aber nie auf `document`/`window` zu.
+ *
+ * Einheiten: mm (intern), Ausgabe in cm/m (Labels).
+ */
+
+import { semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
+
+const COURSE_FALLBACK = 200;
+const GRID_FALLBACK = 125;
+const ROD_FALLBACK = 1100;
+
+/** Sichtbarer Stangenueberstand ueber die letzte dargestellte Steinreihe (mm). */
+export const UEBERSTAND_MM = 80;
+
+/** Reihenfolge mehrerer Ereignisse auf derselben Hoehe: erst schliessen, dann koppeln, dann neu ansetzen. */
+const ART_RANG = { abschluss: 0, kopplung: 1, fuss: 2, neustart: 3 };
+
+const _fmt = (n, d = 0) => (isFinite(n) ? n : 0).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
+const _esc = s => String(s == null ? "" : s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+/** Hoehe/Position in cm, ohne unnoetige Nullen (z. B. 62,5 mm -> "6,25 cm"). */
+export function posCm(mm) {
+  let t = (mm / 10).toFixed(2).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  return t.replace(".", ",") + " cm";
+}
+
+const _course = w => w.course_mm || COURSE_FALLBACK;
+const _grid = w => w.grid_mm || GRID_FALLBACK;
+const _rod = w => w.rod_mm || ROD_FALLBACK;
+const _lagen = w => w.lagen || Math.round(w.height_mm / _course(w));
+
+/** Segmente eines Strangs (Fallback fuer Alt-Bundles ohne `segments`). */
+function _segmente(w, col) {
+  if (Array.isArray(col.segments) && col.segments.length) return col.segments;
+  return [{ z0_mm: 0, z1_mm: w.height_mm, gewindestangen: col.gewindestangen, anker_unten: "bodenblech", anker_oben: "kopfblech" }];
+}
+
+/** Stangenzahl eines Segments (aus dem Segment, nie aus einem anderen Strang). */
+function _stueck(w, sg) {
+  if (sg.gewindestangen != null) return Math.max(1, sg.gewindestangen);
+  return Math.max(1, Math.ceil((sg.z1_mm - sg.z0_mm) / _rod(w)));
+}
+
+/** Oberkanten der einzelnen Stangen eines Segments (letzter Wert = Segmentende). */
+function _stangenEnden(w, sg) {
+  const rod = _rod(w), st = _stueck(w, sg), out = [];
+  for (let j = 1; j < st; j++) out.push(sg.z0_mm + j * rod);
+  out.push(sg.z1_mm);
+  return out;
+}
+
+/** Lokale Oberkante je Rasterspalte (Lagenzahl) — Wandkontur inkl. Staffelung. */
+export function topLagen(w) {
+  const G = _grid(w), C = _course(w), L = _lagen(w);
+  const N = w.N_grid || Math.round(w.length_mm / G);
+  const out = [];
+  for (let k = 0; k < N; k++) {
+    const xc = (k + 0.5) * G; let h = w.height_mm;
+    for (const s of (w.steps || [])) { if (xc >= s.x0_mm && xc < s.x1_mm) { h = s.height_mm; break; } }
+    out.push(Math.max(0, Math.min(L, Math.round(h / C))));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- Ereignisse
+
+/**
+ * Alle Montageereignisse der Wand, aufsteigend nach Hoehe.
+ *
+ * Ereignisarten:
+ *   `fuss`      — Segmentbeginn auf dem Bodenblech (erste Gewindestange),
+ *   `neustart`  — Segmentbeginn oberhalb des Bodens (Spannplatte, neue Stange),
+ *   `kopplung`  — Stangenstoss innerhalb eines Segments,
+ *   `abschluss` — Segmentende (Kopfblech an der Wandoberkante oder Spannplatte).
+ *
+ * Ereignisse gleicher Art auf gleicher Hoehe werden zu EINEM Ereignis mit allen
+ * betroffenen Straengen zusammengefasst; jeder Strang bleibt einzeln sichtbar.
+ * `reihe_vor` = Zahl der vollstaendig darunterliegenden Steinreihen
+ * (`floor(z/COURSE)`): das Ereignis liegt NACH dieser Reihe und VOR der naechsten.
+ * @param {any} w Wandelement
+ */
+export function montageEreignisse(w) {
+  const C = _course(w);
+  const roh = [];
+  for (const col of (w.tension_columns || [])) {
+    for (const sg of _segmente(w, col)) {
+      const st = _stueck(w, sg);
+      const ankerU = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
+      const ankerO = sg.anker_oben || "spannplatte";
+      roh.push({ art: ankerU === "bodenblech" ? "fuss" : "neustart", z_mm: sg.z0_mm, col, sg, anker: ankerU });
+      for (const [i, z] of _stangenEnden(w, sg).slice(0, -1).entries())
+        roh.push({ art: "kopplung", z_mm: z, col, sg, stange_nr: i + 1, anker: "kopplungsmutter" });
+      roh.push({ art: "abschluss", z_mm: sg.z1_mm, col, sg, anker: ankerO });
+    }
+  }
+  /** @type {Map<string, any>} */
+  const map = new Map();
+  for (const r of roh) {
+    const key = r.art + "@" + r.z_mm;
+    let e = map.get(key);
+    if (!e) { e = { art: r.art, z_mm: r.z_mm, reihe_vor: Math.floor(r.z_mm / C), straenge: [] }; map.set(key, e); }
+    e.straenge.push({
+      k: r.col.k, x_mm: r.col.x_mm, anker: r.anker, stange_nr: r.stange_nr || null,
+      seg_z0_mm: r.sg.z0_mm, seg_z1_mm: r.sg.z1_mm, stangen: _stueck(w, r.sg),
+      letzte_stange_mm: r.sg.letzte_stange_mm != null ? r.sg.letzte_stange_mm : null,
+    });
+  }
+  const evs = [...map.values()].sort((a, b) => (a.z_mm - b.z_mm) || (ART_RANG[a.art] - ART_RANG[b.art]));
+  for (const e of evs) {
+    e.straenge.sort((p, q) => p.x_mm - q.x_mm);
+    Object.assign(e, _ereignisTexte(e));
+  }
+  return evs;
+}
+
+/** Titel + erklaerender Text eines Ereignisses (nennt Hoehe und alle Straenge). */
+function _ereignisTexte(e) {
+  const n = e.straenge.length;
+  const xs = e.straenge.map(s => posCm(s.x_mm)).join(", ");
+  const h = posCm(e.z_mm);
+  const straenge = n === 1 ? "1 Strang" : n + " Stränge";
+  if (e.art === "fuss") {
+    return {
+      titel: "Bodenblech und erste Gewindestangen",
+      text: `<b>Bodenblech</b> (15 mm, in Modulen) auf Höhe ${h} verlegen und ausrichten. An `
+        + `${straenge} je eine <b>Senkkopfschraube von unten</b> und eine <b>Kopplungsmutter oben</b> `
+        + `setzen, dann die erste <b>Gewindestange</b> einschrauben. Strangpositionen x = ${xs}.`,
+    };
+  }
+  if (e.art === "neustart") {
+    return {
+      titel: "Neue Gewindestange ansetzen auf " + h,
+      text: `Auf ${h} je Strang eine <b>Spannplatte</b> auf die Steinkante legen und eine <b>neue `
+        + `Gewindestange</b> ansetzen (Segmentbeginn über Öffnung/Aussparung). ${straenge} · x = ${xs}.`,
+    };
+  }
+  if (e.art === "kopplung") {
+    return {
+      titel: "Kopplung auf " + h,
+      text: `Auf ${h} — also nach Reihe ${e.reihe_vor} und <b>vor</b> Reihe ${e.reihe_vor + 1} — die `
+        + `Gewindestangen mit <b>Kopplungsmuttern</b> verlängern und handfest sichern `
+        + `(Zwischenspannpunkt, Lagesicherung). ${straenge} · x = ${xs}.`,
+    };
+  }
+  const kopf = e.straenge.filter(s => s.anker === "kopfblech");
+  const platte = e.straenge.filter(s => s.anker !== "kopfblech");
+  const teile = [];
+  if (kopf.length) teile.push(`<b>Kopfblech</b> (15 mm, in Modulen) auflegen und die <b>Spannmuttern</b> `
+    + `anziehen (Endvorspannung) — x = ${kopf.map(s => posCm(s.x_mm)).join(", ")}`);
+  if (platte.length) teile.push(`je Strang die <b>Spannplatte</b> auf die obere Steinkante legen und die `
+    + `<b>Spannmutter</b> anziehen — x = ${platte.map(s => posCm(s.x_mm)).join(", ")}`);
+  return {
+    titel: "Oberer Abschluss auf " + h,
+    text: `Oberkante ${h} erreicht (${straenge}): ` + teile.join("; ") + ".",
+  };
+}
+
+// -------------------------------------------------------------- Abschnitte
+
+/**
+ * Baugruppenabschnitte: je Abschnitt die Ereignisse einer Ankerreihe und der
+ * anschliessend zu montierende Steinreihenbereich.
+ *
+ * Regeln:
+ *   * Ereignisse derselben Ankerreihe bilden EINEN Abschnitt (keine unnoetigen
+ *     Seiten); jede Hoehe und jeder Strang bleibt darin einzeln sichtbar.
+ *   * Ein Abschnitt beginnt mit seinen Ereignissen und endet vor den Ereignissen
+ *     des naechsten Abschnitts.
+ *   * Ereignisgruppen ohne eigene Steinreihen (typisch: oberer Abschluss nach der
+ *     letzten Reihe) erzeugen KEINEN eigenen Abschnitt, sondern gehen sichtbar in
+ *     den letzten Abschnitt ein.
+ *   * Die Reihenbereiche decken 1..w.lagen lueckenlos und ohne Ueberlappung ab.
+ * @param {any} w Wandelement
+ */
+export function montageAbschnitte(w) {
+  const lagen = _lagen(w);
+  const evs = montageEreignisse(w);
+  // 1) nach Ankerreihe gruppieren (Ereignisse sind nach Hoehe sortiert, also auch nach Ankerreihe)
+  const gruppen = [];
+  for (const e of evs) {
+    const g = gruppen[gruppen.length - 1];
+    if (g && g.anker === e.reihe_vor) g.ereignisse.push(e);
+    else gruppen.push({ anker: e.reihe_vor, ereignisse: [e] });
+  }
+  // 2) Reihenbereiche zuordnen — lueckenlos, ohne leere Abschnitte
+  const abschnitte = []; let cursor = 1; let offen = [];
+  gruppen.forEach((g, i) => {
+    const bis = (i + 1 < gruppen.length) ? gruppen[i + 1].anker : lagen;
+    const von = cursor;
+    const ereignisse = offen.concat(g.ereignisse); offen = [];
+    if (bis < von) {                                  // keine eigenen Reihen -> nicht als Seite fuehren
+      if (abschnitte.length) abschnitte[abschnitte.length - 1].ereignisse.push(...ereignisse);
+      else offen = ereignisse;                        // ganz unten: dem ersten Abschnitt voranstellen
+      return;
+    }
+    abschnitte.push({ anker_reihe: g.anker, ereignisse, reihen: { von, bis } });
+    cursor = bis + 1;
+  });
+  if (offen.length && abschnitte.length) abschnitte[0].ereignisse.unshift(...offen);
+  // 3) Kennwerte je Abschnitt (Straenge, Hoehen, Titel)
+  const C = _course(w);
+  abschnitte.forEach((ab, i) => {
+    ab.nr = i + 1;
+    ab.z_von_mm = (ab.reihen.von - 1) * C;
+    ab.z_bis_mm = ab.reihen.bis * C;
+    ab.straenge = _strangZustand(w, ab);
+    const weiter = ab.straenge.filter(s => !s.abgeschlossen);
+    ab.stange_oberkante_mm = Math.max(ab.z_bis_mm, ...ab.straenge.map(s => s.zeichen_oben_mm));
+    ab.stange_weiter_mm = weiter.length ? Math.max(...weiter.map(s => s.zeichen_oben_mm)) : null;
+    ab.reihen_text = ab.reihen.von === ab.reihen.bis ? "Reihe " + ab.reihen.von : "Reihen " + ab.reihen.von + "–" + ab.reihen.bis;
+    ab.titel = "Abschnitt " + ab.nr + " · " + ab.ereignisse[0].titel;
+  });
+  return abschnitte;
+}
+
+/** Schluessel eines Segments (Strang + Segmentgrenzen) — verbindet Ereignis und Zeichnung. */
+const _segKey = (k, z0, z1) => k + ":" + z0 + "-" + z1;
+
+/**
+ * Zustand der Vorspannstraenge in einem Abschnitt — je Segment, das Reihen dieses
+ * Abschnitts belegt oder in einem seiner Ereignisse vorkommt.
+ *
+ * `abgeschlossen` ist genau dann wahr, wenn das Abschluss-Ereignis des Segments in
+ * DIESEM Abschnitt liegt — dann wird die Stange bis zur Segmentoberkante mit
+ * Kopfblech/Spannplatte gezeichnet. Andernfalls laeuft die Stange weiter und wird
+ * sichtbar ueber die letzte dargestellte Steinreihe hinaus gezeichnet
+ * (offenes Stangenende, Kopplung folgt).
+ */
+function _strangZustand(w, ab) {
+  const zVon = ab.z_von_mm, zBis = ab.z_bis_mm;
+  const beteiligt = new Map();                       // segKey -> {abschluss:boolean}
+  for (const e of ab.ereignisse) for (const st of e.straenge) {
+    const key = _segKey(st.k, st.seg_z0_mm, st.seg_z1_mm);
+    const v = beteiligt.get(key) || { abschluss: false };
+    if (e.art === "abschluss") v.abschluss = true;
+    beteiligt.set(key, v);
+  }
+  const out = [];
+  for (const col of (w.tension_columns || [])) {
+    for (const sg of _segmente(w, col)) {
+      const key = _segKey(col.k, sg.z0_mm, sg.z1_mm);
+      const bet = beteiligt.get(key);
+      const belegt = sg.z0_mm < zBis && sg.z1_mm > zVon;
+      if (!belegt && !bet) continue;
+      const enden = _stangenEnden(w, sg);
+      const abgeschlossen = !!(bet && bet.abschluss);
+      const echt = abgeschlossen ? sg.z1_mm : (enden.find(z => z >= zBis) != null ? enden.find(z => z >= zBis) : sg.z1_mm);
+      const oben = abgeschlossen ? sg.z1_mm : Math.max(echt, zBis + UEBERSTAND_MM);
+      out.push({
+        k: col.k, x_mm: col.x_mm,
+        z_unten_mm: sg.z0_mm, seg_z1_mm: sg.z1_mm,
+        z_oben_real_mm: echt, zeichen_oben_mm: oben, abgeschlossen,
+        anker_unten: sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte"),
+        anker_oben: sg.anker_oben || "spannplatte",
+        stangen: _stueck(w, sg),
+        // bereits gesetzte Kopplungsmuttern = Stangenstoesse unterhalb der aktuellen Oberkante
+        kopplungen_mm: enden.slice(0, -1).filter(z => z < echt),
+      });
+    }
+  }
+  return out.sort((a, b) => a.x_mm - b.x_mm);
+}
+
+// ------------------------------------------------------------ Zeichenbausteine
+
+const FARBE = {
+  i3: "#cfd3d8", i2: "#bcc2c9", stein_rand: "#7d848c",
+  fertig: "#e9ebee", fertig_rand: "#c3c8cf",
+  stange: "#1f6feb", stahl: "#5b6673", stahl_rand: "#3a4350",
+  platte: "#e8702a", mutter: "#0b3a73", kontur: "#13202e",
+  raster: "#8a93a0", oeffnung: "#c9461c", text: "#6b7682",
+};
+
+/** Konturzug der Wand (Aussenkante inkl. Staffelung) als Punktliste in mm. */
+function _konturPunkte(w) {
+  const G = _grid(w), C = _course(w), tl = topLagen(w);
+  const pts = [[0, 0], [0, tl[0] * C]];
+  for (let k = 0; k < tl.length; k++) {
+    pts.push([(k + 1) * G, tl[k] * C]);
+    if (k < tl.length - 1 && tl[k + 1] !== tl[k]) pts.push([(k + 1) * G, tl[k + 1] * C]);
+  }
+  pts.push([w.length_mm, 0], [0, 0]);
+  return pts;
+}
+
+/**
+ * Baugruppenbild eines Abschnitts (reines SVG-Innere, mm-basiert).
+ * Zeigt: bereits montierte Reihen (blass), die Reihen dieses Abschnitts mit
+ * Nummern, Bodenblech/Kopfblech/Spannplatten, die Gewindestangen mit
+ * Positionsangabe und die Ereignishoehen.
+ * @param {any} w @param {any} ab Abschnitt aus montageAbschnitte()
+ * @param {number} [vbW] @param {number} [vbH]
+ */
+export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
+  const C = _course(w), G = _grid(w), L = w.length_mm;
+  const padL = 52, padR = 34, padT = 34, padB = 26;
+  const zTop = Math.max(ab.stange_oberkante_mm, ab.z_bis_mm, C);
+  const sc = Math.min((vbW - padL - padR) / L, (vbH - padT - padB) / zTop);
+  const yBase = padT + zTop * sc;
+  const X = x => padL + x * sc, Y = z => yBase - z * sc;
+  const li0 = ab.reihen.von - 1, li1 = ab.reihen.bis - 1;
+  let s = "";
+
+  // bereits montierte Reihen (Orientierung, blass)
+  for (const c of (w.courses || [])) {
+    if (c.lage >= li0) continue;
+    for (const st of c.stones)
+      s += `<rect x="${X(st.x0)}" y="${Y((c.lage + 1) * C)}" width="${(st.x1 - st.x0) * sc}" height="${C * sc}" `
+        + `fill="${FARBE.fertig}" stroke="${FARBE.fertig_rand}" stroke-width="0.6"/>`;
+  }
+  // Reihen dieses Abschnitts
+  for (const c of (w.courses || [])) {
+    if (c.lage < li0 || c.lage > li1) continue;
+    for (const st of c.stones) {
+      const bw = (st.x1 - st.x0) * sc;
+      s += `<rect x="${X(st.x0)}" y="${Y((c.lage + 1) * C)}" width="${bw}" height="${C * sc}" `
+        + `fill="${st.type === "i3" ? FARBE.i3 : FARBE.i2}" stroke="${FARBE.stein_rand}" stroke-width="1.1"/>`;
+      if (bw > 24) s += `<text x="${X((st.x0 + st.x1) / 2)}" y="${Y(c.lage * C) - C * sc / 2 + 3.5}" `
+        + `font-size="9.5" fill="#5b6670" text-anchor="middle">${st.type}</text>`;
+    }
+    // Reihennummer (durchgehende Nummerierung, 1-basiert)
+    const yc = Y(c.lage * C) - C * sc / 2 + 3.5;
+    s += `<text x="${X(0) - 8}" y="${yc}" font-size="10" font-weight="600" fill="#46505e" text-anchor="end">${c.lage + 1}</text>`;
+  }
+  // Öffnungen im dargestellten Bereich
+  for (const o of (w.openings || [])) {
+    if (o.l1 <= 0 || o.l0 > li1) continue;
+    const oy1 = Math.min(o.l1, li1 + 1), ox = X(o.g0 * G), ow = (o.g1 - o.g0) * G * sc;
+    s += `<rect x="${ox}" y="${Y(oy1 * C)}" width="${ow}" height="${(oy1 - o.l0) * C * sc}" fill="#fff" `
+      + `stroke="${FARBE.oeffnung}" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+    if (ow > 46) s += `<text x="${ox + ow / 2}" y="${Y(o.l0 * C) - 6}" font-size="9.5" fill="${FARBE.oeffnung}" `
+      + `text-anchor="middle">${o.art === "fenster" ? "Fenster" : o.art === "durchbruch" ? "Durchbruch" : "Tür"}</text>`;
+  }
+  // Wandkontur (Staffelung sichtbar)
+  s += `<polyline points="${_konturPunkte(w).map(p => X(p[0]) + "," + Y(Math.min(p[1], zTop))).join(" ")}" `
+    + `fill="none" stroke="${FARBE.kontur}" stroke-width="1.2" stroke-opacity="0.55"/>`;
+  // Bodenblech
+  const bth = Math.max(3, 15 * sc);
+  s += `<rect x="${X(0)}" y="${Y(0)}" width="${L * sc}" height="${bth}" fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="0.6"/>`;
+
+  // Kopfblech-Abschnitte der in diesem Abschnitt abgeschlossenen Straenge
+  for (const e of ab.ereignisse) {
+    if (e.art !== "abschluss") continue;
+    const kopf = e.straenge.filter(x => x.anker === "kopfblech");
+    if (!kopf.length) continue;
+    const x0 = Math.max(0, Math.min(...kopf.map(x => x.x_mm)) - G / 2);
+    const x1 = Math.min(L, Math.max(...kopf.map(x => x.x_mm)) + G / 2);
+    s += `<rect x="${X(x0)}" y="${Y(e.z_mm) - bth}" width="${(x1 - x0) * sc}" height="${bth}" `
+      + `fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`;
+  }
+
+  // Gewindestangen
+  const pw = Math.max(6, 110 * sc);
+  ab.straenge.forEach((st, i) => {
+    const x = X(st.x_mm);
+    s += `<line x1="${x}" y1="${Y(st.z_unten_mm)}" x2="${x}" y2="${Y(st.zeichen_oben_mm)}" `
+      + `stroke="${FARBE.stange}" stroke-width="2.4"/>`;
+    // Fussanschluss
+    if (st.anker_unten === "bodenblech") s += `<circle cx="${x}" cy="${Y(st.z_unten_mm)}" r="2.8" fill="${FARBE.mutter}"/>`;
+    else s += `<rect x="${x - pw / 2}" y="${Y(st.z_unten_mm) - 3}" width="${pw}" height="3" fill="${FARBE.platte}"/>`;
+    // Kopplungen in diesem Abschnitt
+    for (const zk of st.kopplungen_mm)
+      s += `<rect x="${x - 4.5}" y="${Y(zk) - 3}" width="9" height="6" rx="1.5" fill="${FARBE.mutter}"/>`;
+    // Kopf: abgeschlossen -> Platte/Mutter, sonst offenes Stangenende (ueberstehend)
+    if (st.abgeschlossen) {
+      if (st.anker_oben === "kopfblech") s += `<circle cx="${x}" cy="${Y(st.seg_z1_mm)}" r="2.6" fill="${FARBE.mutter}"/>`;
+      else s += `<rect x="${x - pw / 2}" y="${Y(st.seg_z1_mm)}" width="${pw}" height="3" fill="${FARBE.platte}"/>`;
+    } else {
+      s += `<circle cx="${x}" cy="${Y(st.zeichen_oben_mm)}" r="2.2" fill="#fff" stroke="${FARBE.stange}" stroke-width="1.4"/>`;
+    }
+    // Positions-Chip (gestaffelt gegen Überlappung)
+    const cy = Y(st.zeichen_oben_mm) - ((i % 2) ? 8 : 19);
+    const lbl = posCm(st.x_mm).replace(" cm", "");
+    s += `<rect x="${x - 17}" y="${cy - 9}" width="34" height="11" rx="2" fill="${FARBE.stange}"/>`
+      + `<text x="${x}" y="${cy - 0.8}" font-size="8" fill="#fff" text-anchor="middle">${lbl}</text>`;
+  });
+
+  // Ereignishoehen als gestrichelte Linie mit Beschriftung
+  for (const e of ab.ereignisse) {
+    const y = Y(Math.min(e.z_mm, zTop));
+    s += `<line x1="${X(0) - 6}" y1="${y}" x2="${X(L) + 6}" y2="${y}" stroke="${FARBE.oeffnung}" `
+      + `stroke-width="0.8" stroke-dasharray="4 3" stroke-opacity="0.75"/>`;
+    const t = _kurzEreignis(e);
+    s += `<rect x="${X(L) + 6 - (t.length * 4.6 + 6)}" y="${y - 12}" width="${t.length * 4.6 + 6}" height="10.5" fill="#fff" fill-opacity="0.85"/>`
+      + `<text x="${X(L) + 4}" y="${y - 3.8}" font-size="8" fill="${FARBE.oeffnung}" text-anchor="end">${t}</text>`;
+  }
+
+  // Kopfzeile
+  s += `<text x="${padL - 6}" y="14" font-size="11" fill="${FARBE.text}">`
+    + `Abschnitt ${ab.nr} · ${ab.reihen_text} · Höhe ${posCm(ab.z_von_mm)}–${posCm(ab.z_bis_mm)} · `
+    + `${ab.straenge.length} Vorspannstränge · Blick von vorne, x ab links · Raster 12,5 cm</text>`;
+  s += `<text x="${padL - 6}" y="26" font-size="9" fill="${FARBE.text}">`
+    + `Zahl links = Steinreihe · Zahl im Chip = Strangposition ab links (cm) · offenes Stangenende = Kopplung folgt</text>`;
+  return s;
+}
+
+/** Kurzlabel eines Ereignisses fuer die Zeichnung. */
+function _kurzEreignis(e) {
+  const h = posCm(e.z_mm);
+  if (e.art === "fuss") return "Bodenblech + 1. Stange " + h;
+  if (e.art === "neustart") return "neue Stange " + h;
+  if (e.art === "kopplung") return "Kopplung " + h;
+  return "Abschluss " + h;
+}
+
+/**
+ * Bemaßungsschicht (mm) — einheitlich mit den anderen Modulen: Wandlänge/-höhe und
+ * Öffnungsmaße, optional das 12,5-cm-/20-cm-Raster.
+ */
+function _dimLayer(X, Y, w, opts) {
+  const G = _grid(w), C = _course(w), L = w.length_mm, H = w.height_mm;
+  if (!opts.masse && !opts.raster) return "";
+  const CO = "#46505e", A = FARBE.oeffnung, GR = "#9aa3ad";
+  const mC = mm => _fmt(mm / 10, (mm / 10) % 1 !== 0 ? 1 : 0) + " cm", mM = mm => _fmt(mm / 1000, 2) + " m";
+  const tk = (x, y, v) => v ? `<line x1="${x - 3}" y1="${y - 3}" x2="${x + 3}" y2="${y + 3}" stroke="${CO}" stroke-width="1"/>`
+    : `<line x1="${x - 3}" y1="${y + 3}" x2="${x + 3}" y2="${y - 3}" stroke="${CO}" stroke-width="1"/>`;
+  const lab = (x, y, t, c) => `<rect x="${x - (t.length * 2.9 + 3)}" y="${y - 9.6}" width="${t.length * 5.8 + 6}" height="11" rx="1.5" fill="#fff" fill-opacity="0.82"/>`
+    + `<text x="${x}" y="${y - 1.5}" font-size="9" fill="${c || CO}" text-anchor="middle">${t}</text>`;
+  const hD = (ax, bx, yp, t, c) => { const cc = c || CO; return `<line x1="${ax}" y1="${yp}" x2="${bx}" y2="${yp}" stroke="${cc}" stroke-width="1"/>` + tk(ax, yp) + tk(bx, yp) + lab((ax + bx) / 2, yp, t, cc); };
+  const vD = (ay, by, xp, t, c) => { const cc = c || CO; const m = (ay + by) / 2; return `<line x1="${xp}" y1="${ay}" x2="${xp}" y2="${by}" stroke="${cc}" stroke-width="1"/>` + tk(xp, ay, 1) + tk(xp, by, 1)
+    + `<text x="${xp - 3.5}" y="${m + 3}" font-size="9" fill="${cc}" text-anchor="middle" transform="rotate(-90 ${xp - 3.5} ${m + 3})">${t}</text>`; };
+  let s = "";
+  if (opts.raster) {
+    for (let gx = 0; gx <= L + 1e-6; gx += G) s += `<line x1="${X(gx)}" y1="${Y(H)}" x2="${X(gx)}" y2="${Y(0)}" stroke="${GR}" stroke-width="0.6" stroke-opacity="0.3"/>`;
+    for (let gy = 0; gy <= H + 1e-6; gy += C) s += `<line x1="${X(0)}" y1="${Y(gy)}" x2="${X(L)}" y2="${Y(gy)}" stroke="${GR}" stroke-width="0.6" stroke-opacity="0.3"/>`;
+  }
+  if (opts.masse) {
+    s += hD(X(0), X(L), Y(0) + 20, mM(L));
+    s += vD(Y(H), Y(0), X(0) - 20, mM(H));
+    for (const o of (w.openings || [])) {
+      const l = X(o.g0 * G), r = X(o.g1 * G), t = Y(o.l1 * C), b = Y(o.l0 * C);
+      s += hD(l, r, t - 6, mC((o.g1 - o.g0) * G), A);
+      s += vD(t, b, l - 6, mC((o.l1 - o.l0) * C), A);
+      if (o.l0 > 0) s += vD(b, Y(0), l - 6, mC(o.l0 * C), A);
+    }
+  }
+  return s;
+}
+
+/**
+ * Wandueberblick (Kontur, Öffnungen, Reihennummern) — Orientierungsbild.
+ * Mit `ab` wird der Reihenbereich dieses Abschnitts hervorgehoben.
+ * @param {any} w @param {any} [ab] @param {number} [vbW] @param {number} [vbH]
+ * @param {{masse?:boolean,raster?:boolean}} [opts]
+ */
+export function konturSvg(w, ab = null, vbW = 900, vbH = 250, opts = {}) {
+  const C = _course(w), G = _grid(w), L = w.length_mm, H = w.height_mm;
+  const zeig_masse = opts.masse !== false, zeig_raster = !!opts.raster;
+  const padL = zeig_masse ? 62 : 44, padR = 24, padT = 16, padB = zeig_masse ? 40 : 26;
+  const sc = Math.min((vbW - padL - padR) / L, (vbH - padT - padB) / H);
+  const yBase = padT + H * sc;
+  const X = x => padL + x * sc, Y = z => yBase - z * sc;
+  const von = ab ? ab.reihen.von : 0, bis = ab ? ab.reihen.bis : -1;
+  let s = "";
+  for (const c of (w.courses || [])) {
+    const hi = (c.lage + 1 >= von && c.lage + 1 <= bis);
+    for (const st of c.stones)
+      s += `<rect x="${X(st.x0)}" y="${Y((c.lage + 1) * C)}" width="${(st.x1 - st.x0) * sc}" height="${C * sc}" `
+        + `fill="${hi ? FARBE.stange : (st.type === "i3" ? "#dfe2e6" : FARBE.i3)}" fill-opacity="${hi ? 0.8 : 1}" `
+        + `stroke="#aeb3ba" stroke-width="0.6"/>`;
+  }
+  for (const o of (w.openings || []))
+    s += `<rect x="${X(o.g0 * G)}" y="${Y(o.l1 * C)}" width="${(o.g1 - o.g0) * G * sc}" height="${(o.l1 - o.l0) * C * sc}" `
+      + `fill="#fff" stroke="${FARBE.oeffnung}" stroke-width="1.1" stroke-dasharray="4 3"/>`;
+  s += `<polyline points="${_konturPunkte(w).map(p => X(p[0]) + "," + Y(p[1])).join(" ")}" fill="none" `
+    + `stroke="${FARBE.kontur}" stroke-width="1.3"/>`;
+  const bth = Math.max(2.5, 15 * sc);
+  s += `<rect x="${X(0)}" y="${Y(0)}" width="${L * sc}" height="${bth}" fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`;
+  for (const col of (w.tension_columns || [])) for (const sg of _segmente(w, col))
+    s += `<line x1="${X(col.x_mm)}" y1="${Y(sg.z0_mm)}" x2="${X(col.x_mm)}" y2="${Y(sg.z1_mm)}" `
+      + `stroke="${FARBE.stange}" stroke-width="0.9" stroke-opacity="0.55"/>`;
+  const L_ = _lagen(w);
+  for (let r = 0; r < L_; r++) {
+    const yc = Y(r * C) - C * sc / 2 + 3;
+    const zeig = (C * sc >= 9) || (r === 0) || (r === L_ - 1) || ((r + 1) % 5 === 0) || (r + 1 === von) || (r + 1 === bis);
+    if (zeig) s += `<text x="${X(0) - 6}" y="${yc}" font-size="8.5" fill="${(r + 1 >= von && r + 1 <= bis) ? "#1f6feb" : "#8f96a0"}" text-anchor="end">${r + 1}</text>`;
+  }
+  s += _dimLayer(X, Y, w, { masse: zeig_masse, raster: zeig_raster });
+  s += `<text x="${padL}" y="${vbH - 4}" font-size="9.5" fill="${FARBE.text}">`
+    + `Wand ${_fmt(L / 1000, 3)} × ${_fmt(H / 1000, 2)} m · ${L_} Steinreihen · Blick von vorne, x ab links`
+    + (ab ? ` · hervorgehoben: ${ab.reihen_text}` : "") + "</text>";
+  return s;
+}
+
+// ------------------------------------------------------------------- Seiten
+
+/** Gemeinsames Stylesheet der Montageanleitung (Vorschau-Druck UND Export). */
+export const MONTAGE_CSS = `
+  @page{size:A4 portrait;margin:12mm}
+  .mdoc{font-family:system-ui,Arial,sans-serif;color:#1c2430;font-size:12px;line-height:1.45}
+  .mseite{page-break-after:always;break-after:page;page-break-inside:avoid;padding:0 0 6px}
+  .mseite:last-child{page-break-after:auto;break-after:auto}
+  .mkopf{display:flex;justify-content:space-between;font-size:10px;color:#6b7682;border-bottom:1px solid #e5e7eb;padding-bottom:3px;margin-bottom:8px}
+  .mdoc h1{font-size:17px;margin:0 0 6px} .mdoc h2{font-size:13.5px;margin:12px 0 6px;color:#333}
+  .mdoc h3{font-size:12px;margin:10px 0 4px;color:#46505e}
+  .mdoc p{margin:4px 0}
+  .mbild{border:1px solid #e5e7eb;border-radius:6px;margin:8px 0;page-break-inside:avoid}
+  .mbild svg{width:100%;height:auto;display:block}
+  ol.mev{margin:6px 0;padding-left:18px} ol.mev li{margin:5px 0}
+  .mev .art{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#1f6feb;margin-right:5px}
+  table.mtab{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.mtab td,table.mtab th{padding:3px 4px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}
+  table.mtab td:last-child,table.mtab th:last-child{text-align:right;font-variant-numeric:tabular-nums}
+  .mhinweis{font-size:10.5px;color:#6b7682;border-top:1px solid #e5e7eb;margin-top:10px;padding-top:6px;line-height:1.5}
+`;
+
+/** Kurzlabel der Ereignisarten (Vorschau UND Dokument). */
+export const ART_LABEL = { fuss: "Erste Stange", neustart: "Neue Stange", kopplung: "Kopplung", abschluss: "Oberer Abschluss" };
+
+/** Kurz-Stückliste (nur Menge > 0) als HTML-Zeilen — Mengen aus sembla-bom.js. */
+function _bomRows(w) {
+  return semblaBomItems(w).filter(it => it.menge > 0)
+    .map(it => `<tr><td>${it.label}</td><td>${semblaBomMenge(it)}</td></tr>`).join("");
+}
+
+/**
+ * Seiten der Montageanleitung: Übersichtsseite + je Baugruppenabschnitt eine Seite.
+ * Dieselbe Ableitung/Zeichnung nutzen die Vorschau in Modul 5 und der zentrale Export.
+ * @param {any} w Wandelement @param {any} [eingaben] Eingaben-Modell (genutzt: `projekt`)
+ * @returns {Array<{art:string,titel:string,html:string,abschnitt:any}>}
+ */
+export function montageSeiten(w, eingaben = {}) {
+  const projekt = (eingaben && eingaben.projekt) || {};
+  const abschnitte = montageAbschnitte(w);
+  const anzahl = abschnitte.length + 1;
+  const pName = projekt.name || w.name || "SEMBLA-Projekt";
+  const wName = w.name || "Wandelement";
+  const kopf = nr => `<div class="mkopf"><span>${_esc(pName)} · Wand ${_esc(wName)}</span>`
+    + `<span>Montageanleitung · Seite ${nr} von ${anzahl}</span></div>`;
+  const seiten = [];
+
+  // --- Seite 1: Übersicht (Wand-/Projektbezug, Kontur, Ablauf, Kurz-Stückliste)
+  let u = kopf(1);
+  u += `<h1>Montageanleitung — ${_esc(wName)}</h1>`;
+  u += `<p>Projekt <b>${_esc(pName)}</b>${projekt.plan_nr ? " · Plan-Nr. " + _esc(projekt.plan_nr) : ""}`
+    + `${projekt.index ? " · Index " + _esc(projekt.index) : ""}. Maße `
+    + `${_fmt(w.length_mm / 1000, 3)} × ${_fmt(w.height_mm / 1000, 2)} m · ${w.N_grid} Raster · `
+    + `${_lagen(w)} Steinreihen · ${(w.tension_columns || []).length} Vorspannstränge · `
+    + `${abschnitte.length} Baugruppenabschnitte.</p>`;
+  u += `<div class="mbild"><svg viewBox="0 0 900 250" preserveAspectRatio="xMidYMid meet">${konturSvg(w, null, 900, 250)}</svg></div>`;
+  u += "<h2>Ablauf der Baugruppenabschnitte</h2><table class=\"mtab\">"
+    + "<tr><th>Abschnitt</th><th>Ereignis(se)</th><th>Steinreihen</th></tr>"
+    + abschnitte.map(ab => `<tr><td>${ab.nr}</td><td>${ab.ereignisse.map(e => _esc(e.titel)).join("<br>")}</td>`
+      + `<td>${ab.reihen.von}–${ab.reihen.bis}</td></tr>`).join("")
+    + "</table>";
+  u += `<h2>Stückliste (Kurzform)</h2><table class="mtab">${_bomRows(w)}</table>`;
+  u += `<div class="mhinweis"><b>Hinweis.</b> Aufbau von unten, Steinreihen durchgehend nummeriert
+    (Reihe 1 = unterste Reihe, je 20 cm). i3-Steine maximiert, i2 nur als Abschluss an den Enden,
+    Versatz beachten. Vorspannung in den durchgehenden Hohlkammern; Zwischenkopplungen handfest
+    (Lagesicherung), Endvorspannung über die Stahlbleche/Spannplatten. Eine Kopplung wird immer
+    <b>vor</b> der Steinreihe gesetzt, die die Stangenoberkante überschneidet — die Mutter bleibt
+    zugänglich. Die vollständige Stückliste mit Preisen liefert Modul „Stückliste“.</div>`;
+  seiten.push({ art: "uebersicht", titel: "Übersicht", abschnitt: null, html: `<section class="mseite">${u}</section>` });
+
+  // --- Folgeseiten: je Abschnitt eine Seite
+  abschnitte.forEach(ab => {
+    let b = kopf(ab.nr + 1);
+    b += `<h1>${_esc(ab.titel)}</h1>`;
+    b += `<p><b>${ab.reihen_text}</b> · Höhe ${posCm(ab.z_von_mm)} bis ${posCm(ab.z_bis_mm)} · `
+      + `${ab.straenge.length} Stränge in diesem Abschnitt.</p>`;
+    b += "<h3>Ereignisse in diesem Abschnitt</h3><ol class=\"mev\">"
+      + ab.ereignisse.map(e => `<li><span class="art">${ART_LABEL[e.art]} · ${posCm(e.z_mm)}</span>${e.text}</li>`).join("")
+      + "</ol>";
+    b += `<h3>Danach montieren: ${ab.reihen_text}</h3>`;
+    b += `<div class="mbild"><svg viewBox="0 0 900 430" preserveAspectRatio="xMidYMid meet">${abschnittSvg(w, ab, 900, 430)}</svg></div>`;
+    b += `<div class="mbild"><svg viewBox="0 0 900 210" preserveAspectRatio="xMidYMid meet">${konturSvg(w, ab, 900, 210)}</svg></div>`;
+    b += "<h3>Bauteilpositionen dieses Abschnitts</h3><table class=\"mtab\">"
+      + "<tr><th>Strang x (ab links)</th><th>Stange von–bis</th><th>Anschluss oben</th></tr>"
+      + ab.straenge.map(st => `<tr><td>${posCm(st.x_mm)}</td>`
+        + `<td>${posCm(st.z_unten_mm)} – ${posCm(st.z_oben_real_mm)}</td>`
+        + `<td>${st.abgeschlossen ? (st.anker_oben === "kopfblech" ? "Kopfblech + Spannmutter" : "Spannplatte + Spannmutter") : "Kopplungsmutter (Stange läuft weiter)"}</td></tr>`).join("")
+      + "</table>";
+    seiten.push({ art: "abschnitt", titel: ab.titel, abschnitt: ab, html: `<section class="mseite">${b}</section>` });
+  });
+  return seiten;
+}
+
+/** Seiten-HTML (ohne Dokumenthülle) — identisch in Vorschau-Druck und Export. */
+export function montageSeitenHtml(w, eingaben) {
+  return `<div class="mdoc">${montageSeiten(w, eingaben).map(s => s.html).join("")}</div>`;
+}
+
+/** Vollstaendiges, selbsttragendes Dokument (A4, druckbar). */
+export function montageDokument(w, eingaben) {
+  const titel = "SEMBLA Montageanleitung — " + (w.name || "Wandelement");
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>${_esc(titel)}</title>`
+    + `<style>body{margin:0 auto;max-width:190mm;padding:10mm}${MONTAGE_CSS}</style></head>`
+    + `<body>${montageSeitenHtml(w, eingaben)}</body></html>`;
+}

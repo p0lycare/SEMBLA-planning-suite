@@ -26,29 +26,32 @@
   table.bom td{padding:4px 2px;border-bottom:1px solid var(--sb-line)}
   table.bom td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
   ol.steps{margin:0;padding-left:20px;font-size:13px} ol.steps li{margin:6px 0}
+  ol.steps .art{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#1f6feb;margin-right:5px}
   .nav{display:flex;align-items:center;gap:10px;margin:8px 0 4px}
   .nav .lab{font-weight:650;font-size:14px}
   input[type=range]{flex:1}
   .lagebox{border:1px solid var(--sb-line);border-radius:8px;padding:10px;background:#fff}
+  .abstitel{font-weight:650;font-size:14px;margin:0 0 2px}
+  .abssub{color:var(--sb-muted);font-size:12.5px;margin:0 0 8px}
   .map{margin-top:10px}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:14px;line-height:1.55;border-top:1px solid var(--sb-line);padding-top:10px}
   .hint{color:var(--sb-muted);font-size:12.5px}
-  /* Druck */
+  /* Druck: nur das aus sembla-montage.js erzeugte Dokument (identisch zum zentralen Export) */
   #printdoc{display:none}
   @media print{
-    .sb-navbar,.intro,.controls,.nav,.map{display:none!important}
+    .sb-navbar,.intro{display:none!important}
     body{background:#fff}
     #app{display:none!important}
-    #printdoc{display:block;padding:0 6mm}
-    .pcourse{page-break-inside:avoid;margin:6px 0;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
-    h2{color:#333}
+    #printdoc{display:block}
   }
 </style>
 </head>
 <body>
-<p class="intro"><b>Montageanleitung.</b> Lagenweise Aufbauanleitung mit Vorspannung und Kurz-Stückliste
-  aus dem <b>aktiven Wandelement</b> (aus „Wand planen"). Lagen durchklicken oder die komplette Anleitung
-  drucken. Dieses Modul liest das Wandelement und ändert es nicht.</p>
+<p class="intro"><b>Montageanleitung.</b> Ereignis- und baugruppenbasierte Anleitung aus dem
+  <b>aktiven Wandelement</b> (aus „Wand planen"): je Abschnitt das auslösende Ereignis
+  (erste Gewindestange, Kopplung/neue Stange, oberer Abschluss) und die anschließend zu montierenden,
+  durchgehend nummerierten Steinreihen. Abschnitte durchklicken oder die komplette Anleitung drucken —
+  Vorschau und zentraler Export nutzen dieselbe Ableitung. Dieses Modul liest das Wandelement und ändert es nicht.</p>
 
 <div id="app" class="wrap">
   <div class="panel controls">
@@ -58,8 +61,9 @@
     <div style="margin-top:16px"><h2>Übersicht</h2>
       <div class="res">
         <div class="k">Maße</div><div class="v" id="ovDim">–</div>
-        <div class="k">Raster / Lagen</div><div class="v" id="ovGrid">–</div>
+        <div class="k">Raster / Steinreihen</div><div class="v" id="ovGrid">–</div>
         <div class="k">Vorspannstränge</div><div class="v" id="ovCols">–</div>
+        <div class="k">Baugruppenabschnitte</div><div class="v" id="ovAbs">–</div>
         <div class="k">Status</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
       </div>
     </div>
@@ -69,166 +73,52 @@
     </div>
 
     <div class="btnrow"><button id="print">Komplette Anleitung drucken</button></div>
-    <div class="note"><b>Hinweis.</b> Aufbau lagenweise von unten. i3-Steine maximiert, i2 nur als Abschluss an den Enden. Vorspannung in den durchgehenden Hohlkammern; Zwischenkopplungen handfest (Lagesicherung), Endvorspannung über die Stahlplatten oben und unten. Die vollständige Stückliste mit Preisen liefert Modul „Stückliste".</div>
+    <div class="note"><b>Hinweis.</b> Aufbau von unten, Steinreihen durchgehend nummeriert (Reihe 1 = unterste
+      Reihe, je 20 cm). i3-Steine maximiert, i2 nur als Abschluss an den Enden. Vorspannung in den
+      durchgehenden Hohlkammern; eine Kopplung wird immer <b>vor</b> der Steinreihe gesetzt, die die
+      Stangenoberkante überschneidet — die Mutter bleibt zugänglich. Endvorspannung über die
+      Stahlbleche/Spannplatten. Die vollständige Stückliste mit Preisen liefert Modul „Stückliste".</div>
   </div>
 
   <div class="panel stage">
-    <h2>Vorspannung — Schritt für Schritt</h2>
-    <ol class="steps" id="steps"></ol>
-
-    <h2 style="margin-top:18px">Lagen-Aufbau</h2>
+    <h2>Baugruppenabschnitte</h2>
     <div class="nav">
       <button class="mini" id="prev">‹</button>
-      <span class="lab" id="lageLab">–</span>
+      <span class="lab" id="absLab">–</span>
       <input type="range" id="slider" min="1" max="1" value="1">
       <button class="mini" id="next">›</button>
     </div>
-    <div class="lagebox"><svg id="lageSvg" viewBox="0 0 900 140" preserveAspectRatio="xMidYMid meet"></svg></div>
-    <div class="map"><div class="hint" style="display:flex;align-items:center;gap:14px">Lage im Wandüberblick:
+    <div class="lagebox">
+      <p class="abstitel" id="absTitel">–</p>
+      <p class="abssub" id="absSub"></p>
+      <ol class="steps" id="ereignisse"></ol>
+      <svg id="absSvg" viewBox="0 0 900 430" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="map"><div class="hint" style="display:flex;align-items:center;gap:14px">Abschnitt im Wandüberblick:
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-left:auto"><input type="checkbox" id="showDim" checked> Maße</label>
       <label style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="showRaster"> Raster</label></div>
-      <svg id="mapSvg" viewBox="0 0 900 260" preserveAspectRatio="xMidYMid meet"></svg></div>
+      <svg id="mapSvg" viewBox="0 0 900 250" preserveAspectRatio="xMidYMid meet"></svg></div>
   </div>
 </div>
 
 <div id="printdoc"></div>
 
 <script>
-/* App-Logik (klassisches Skript). BOM-Baustein (semblaBomItems/semblaBomMenge), Rechenkern
-   (buildWall/Opening für die Demo-Wand) + Storage werden vom Modul-Skript unten als window.SEMBLA
-   bereitgestellt und in __mInit() gebunden — so bleibt diese Logik auch im Node-Smoke-Test ohne
-   Modul-Auflösung evaluierbar. Reiner Konsument: liest das aktive Wandelement, schreibt es nie zurück. */
+/* App-Logik (klassisches Skript). Die gesamte Montage-Ableitung UND die Zeichenbausteine kommen aus
+   docs/shared/sembla-montage.js (DOM-frei) — dieselben Funktionen nutzt der zentrale Export in Modul 0
+   (sembla-export.js/montageHtml). Hier steht keine eigene Ableitung und keine eigene Zeichenlogik.
+   BOM-Baustein + Storage werden vom Modul-Skript unten als window.SEMBLA bereitgestellt und in
+   __mInit() gebunden — so bleibt diese Logik im Node-Smoke-Test ohne Modulauflösung evaluierbar.
+   Reiner Konsument: liest das aktive Wandelement, schreibt es nie zurück. */
 const $ = id => document.getElementById(id);
 const fmt = (n,d=0)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
-let WALL=null, CUR=0, currentId=null;
+let WALL=null, ABS=[], CUR=0, currentId=null, EING={};
 let showDim=true, showRaster=false;
 // aus window.SEMBLA (in __mInit gebunden):
-let semblaBomItems, semblaBomMenge, buildWall, Opening, store;
-
-// ---- Bemaßungsschicht (mm), einheitlich über die Module ----
-function dimLayer(X,Y,pad,wPx,hPx,sc,L,H,openings){
-  if(!showDim && !showRaster) return '';
-  const C='#46505e', A='#c9461c', G='#9aa3ad';
-  const mC=mm=>fmt(mm/10,(mm/10)%1!==0?1:0)+' cm', mM=mm=>fmt(mm/1000,2)+' m';
-  const tk=(x,y,v)=>v?`<line x1="${x-3}" y1="${y-3}" x2="${x+3}" y2="${y+3}" stroke="${C}" stroke-width="1"/>`
-                     :`<line x1="${x-3}" y1="${y+3}" x2="${x+3}" y2="${y-3}" stroke="${C}" stroke-width="1"/>`;
-  const lab=(x,y,t,c)=>`<rect x="${x-(t.length*2.9+3)}" y="${y-9.6}" width="${t.length*5.8+6}" height="11" rx="1.5" fill="#fff" fill-opacity="0.82"/><text x="${x}" y="${y-1.5}" font-size="9" fill="${c||C}" text-anchor="middle">${t}</text>`;
-  const hD=(ax,bx,yp,t,c)=>{const cc=c||C;return `<line x1="${ax}" y1="${yp}" x2="${bx}" y2="${yp}" stroke="${cc}" stroke-width="1"/>`+tk(ax,yp)+tk(bx,yp)+lab((ax+bx)/2,yp,t,cc);};
-  const vD=(ay,by,xp,t,c)=>{const cc=c||C;const m=(ay+by)/2;return `<line x1="${xp}" y1="${ay}" x2="${xp}" y2="${by}" stroke="${cc}" stroke-width="1"/>`+tk(xp,ay,1)+tk(xp,by,1)+`<text x="${xp-3.5}" y="${m+3}" font-size="9" fill="${cc}" text-anchor="middle" transform="rotate(-90 ${xp-3.5} ${m+3})">${t}</text>`;};
-  let s=''; const left0=pad,right0=pad+wPx,top0=Y(H),bot0=Y(0);
-  if(showRaster){
-    for(let gx=0; gx<=L+1e-6; gx+=125){ const x=X(gx); s+=`<line x1="${x}" y1="${top0}" x2="${x}" y2="${bot0}" stroke="${G}" stroke-width="0.6" stroke-opacity="0.3"/>`; }
-    for(let gy=0; gy<=H+1e-6; gy+=200){ const y=Y(gy); s+=`<line x1="${left0}" y1="${y}" x2="${right0}" y2="${y}" stroke="${G}" stroke-width="0.6" stroke-opacity="0.3"/>`; }
-  }
-  if(showDim){
-    s+=hD(left0,right0,bot0+20,mM(L));
-    s+=vD(top0,bot0,left0-20,mM(H));
-    for(const op of openings){
-      const L_=Math.min(X(op.x0),X(op.x1)), R_=Math.max(X(op.x0),X(op.x1)), T_=Y(op.y1), B_=Y(op.y0);
-      s+=hD(L_,R_,T_-6,mC(op.x1-op.x0),A);
-      s+=vD(T_,B_,L_-6,mC(op.y1-op.y0),A);
-      if(op.y0>1e-6) s+=vD(B_,bot0,L_-6,mC(op.y0),A);
-    }
-  }
-  return s;
-}
-
-function openingsAt(w, li){ return (w.openings||[]).filter(o=>o.l0<=li && li<o.l1); }
-
-// Einzelne Lage als Streifen (volle Wandbreite, eine Lage hoch)
-function courseStrip(w, li, vbW, vbH){
-  const L=w.length_mm, pad=46, sc=(vbW-2*pad)/L, top=52, hPx=Math.min(66,(vbH-top-14));
-  const X=x=>pad+x*sc;
-  const c=w.courses[li]; let s='';
-  // Steine
-  for(const st of c.stones){
-    const fill=st.type==='i3'?'#cfd3d8':'#bcc2c9';
-    s+=`<rect x="${X(st.x0)}" y="${top}" width="${(st.x1-st.x0)*sc}" height="${hPx}" fill="${fill}" stroke="#7d848c" stroke-width="1.3"/>`;
-    if((st.x1-st.x0)*sc>22) s+=`<text x="${X((st.x0+st.x1)/2)}" y="${top+hPx/2+4}" font-size="11" fill="#5b6670" text-anchor="middle">${st.type}</text>`;
-  }
-  // 12,5-cm-Raster zur Orientierung (dünn, über den Steinen)
-  for(let gx=0; gx<=L+1e-6; gx+=125){ const x=X(gx); const major=(Math.round(gx/125)%3===0);
-    s+=`<line x1="${x}" y1="${top}" x2="${x}" y2="${top+hPx}" stroke="#8a93a0" stroke-width="${major?0.7:0.4}" stroke-opacity="${major?0.5:0.3}"/>`; }
-  { const yb=top+hPx; for(let gx=0; gx<=L+1e-6; gx+=125){ const x=X(gx); s+=`<line x1="${x}" y1="${yb}" x2="${x}" y2="${yb+3}" stroke="#8a93a0" stroke-width="0.6"/>`; } }
-  // Öffnungen (Lücken in dieser Lage)
-  for(const o of openingsAt(w,li)){
-    const ox=X(o.g0*125), ow=(o.g1-o.g0)*125*sc;
-    s+=`<rect x="${ox}" y="${top}" width="${ow}" height="${hPx}" fill="#fff" stroke="#c9461c" stroke-width="1.3" stroke-dasharray="5 4"/>`;
-    s+=`<text x="${ox+ow/2}" y="${top+hPx/2+4}" font-size="10.5" fill="#c9461c" text-anchor="middle">${o.art==='fenster'?'Fenster':o.art==='durchbruch'?'Durchbruch':'Tür'}</text>`;
-  }
-  // Vorspannstränge IN DIESER LAGE: senkrechter Marker durch den Streifen + Positions-Label (cm)
-  const inLage=sg=> (sg.lage0!=null) ? (sg.lage0<=li && li<sg.lage1) : (sg.z0_mm<=li*200+1 && (li+1)*200<=sg.z1_mm+1);
-  const posLbl=mm=>{ let t=(mm/10).toFixed(2); if(t.endsWith('0')) t=t.slice(0,-1); if(t.endsWith('.0')) t=t.slice(0,-2); else if(t.endsWith('.')) t=t.slice(0,-1); return t.replace('.',','); };
-  const present=w.tension_columns.filter(col=>(col.segments||[{z0_mm:0,z1_mm:w.height_mm}]).some(inLage));
-  present.forEach((col,i)=>{ const x=X(col.x_mm); const cy=(i%2)?top-16:top-30;   // Chips gestaffelt gegen Überlappung
-    s+=`<line x1="${x}" y1="${cy+11}" x2="${x}" y2="${top+hPx}" stroke="#1f6feb" stroke-width="2.4"/>`;
-    s+=`<circle cx="${x}" cy="${top+hPx/2}" r="3.6" fill="#1f6feb" stroke="#fff" stroke-width="1"/>`;
-    s+=`<rect x="${x-19}" y="${cy}" width="38" height="12" rx="2" fill="#1f6feb"/><text x="${x}" y="${cy+9}" font-size="8.5" fill="#fff" text-anchor="middle">${posLbl(col.x_mm)}</text>`;
-  });
-  s+=`<text x="${pad}" y="16" font-size="12" fill="#6b7682">Lage ${li+1} · Höhe ${fmt(li*20)}–${fmt((li+1)*20)} cm · ${present.length} Vorspannstränge · Zahl = Position ab links (cm, exakt) · Raster 12,5 cm</text>`;
-  return s;
-}
-
-// Wandüberblick mit hervorgehobener Lage
-function wallMap(w, li, vbW, vbH){
-  const L=w.length_mm, H=w.height_mm, pad=40, sc=Math.min((vbW-2*pad)/L,(vbH-2*pad)/H);
-  const wPx=L*sc, hPx=H*sc, X=x=>pad+x*sc, Y=y=>pad+(hPx-y*sc);
-  let s='';
-  for(const c of w.courses){
-    const hi=(c.lage===li); const y0=c.lage*200, y1=(c.lage+1)*200;
-    for(const st of c.stones){
-      const base=st.type==='i3'?'#dfe2e6':'#cfd3d8';
-      s+=`<rect x="${X(st.x0)}" y="${Y(y1)}" width="${(st.x1-st.x0)*sc}" height="${200*sc}" fill="${hi?'#1f6feb':base}" fill-opacity="${hi?0.85:1}" stroke="#aeb3ba" stroke-width="0.7"/>`;
-    }
-  }
-  for(const o of (w.openings||[])){
-    s+=`<rect x="${X(o.g0*125)}" y="${Y(o.l1*200)}" width="${(o.g1-o.g0)*125*sc}" height="${(o.l1-o.l0)*200*sc}" fill="#fff" stroke="#c9461c" stroke-width="1.2" stroke-dasharray="4 3"/>`;
-  }
-  const N2=L/125; const th=k=>{ const xc=(k+0.5)*125; for(const st of (w.steps||[])){ if(xc>=st.x0_mm&&xc<st.x1_mm) return st.height_mm; } return H; };
-  // Anschlüsse: Bodenblech (immer), Kopfblech (Standard) oder Spannplatten
-  const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
-  const STEEL='#5b6673', SPANN='#e8702a', NUT='#0b3a73'; const bth=Math.max(3,15*sc);
-  s+=`<rect x="${X(0)}" y="${Y(0)}" width="${wPx}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.6"/>`;
-  if(topConn==='blech'){ for(let k=0;k<N2;k++){ const h=th(k); if(h<=0) continue; s+=`<rect x="${X(k*125)}" y="${Y(h)-bth}" width="${125*sc}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.5"/>`; } }
-  for(const col of w.tension_columns){ const x=X(col.x_mm);
-    for(const sg of (col.segments||[{z0_mm:0,z1_mm:H}])){
-      s+=`<line x1="${x}" y1="${Y(sg.z0_mm)}" x2="${x}" y2="${Y(sg.z1_mm)}" stroke="#1f6feb" stroke-width="1" stroke-opacity="0.6"/>`;
-      const pw=110*sc; const au=sg.anker_unten||(sg.z0_mm===0?'bodenblech':'spannplatte'); const ao=sg.anker_oben||(sg.z1_mm===th(col.k)?topConn:'spannplatte');
-      if(au==='bodenblech') s+=`<circle cx="${x}" cy="${Y(sg.z0_mm)}" r="2.4" fill="${NUT}"/>`; else s+=`<rect x="${x-pw/2}" y="${Y(sg.z0_mm)-3}" width="${pw}" height="3" fill="${SPANN}"/>`;
-      if(ao==='spannplatte') s+=`<rect x="${x-pw/2}" y="${Y(sg.z1_mm)}" width="${pw}" height="3" fill="${SPANN}"/>`; else s+=`<circle cx="${x}" cy="${Y(sg.z1_mm)}" r="2" fill="${NUT}"/>`;
-    } }
-  { const pts=[[0,0],[0,th(0)]];
-    for(let k=0;k<N2;k++){ pts.push([(k+1)*125, th(k)]); if(k<N2-1 && th(k+1)!==th(k)) pts.push([(k+1)*125, th(k+1)]); }
-    pts.push([L,0]); pts.push([0,0]);
-    s+=`<polyline points="${pts.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="none" stroke="#13202e" stroke-width="1.5"/>`; }
-  for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*200); s+=`<text x="${pad-6}" y="${yc+3}" font-size="8.5" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
-  s+=dimLayer(X,Y,pad,wPx,hPx,sc,L,H,(w.openings||[]).map(o=>({x0:o.g0*125,x1:o.g1*125,y0:o.l0*200,y1:o.l1*200})));
-  return s;
-}
-
-function vorspannSteps(w){
-  const tc=w.tension_columns, n=tc.length;
-  const rods=n?tc[0].gewindestangen:0, rod=w.rod_mm||1100;
-  const coups=[]; for(let j=1;j<rods;j++) coups.push(fmt(j*rod/10)+' cm');
-  const xs=tc.map(c=>fmt(c.x_mm/10,1)+' cm').join(', ');
-  const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
-  const oben = topConn==='blech'
-    ? `Nach der obersten Lage das <b>Kopfblech</b> (15 mm, in Modulen) auflegen.`
-    : `Nach der obersten Lage je Strang die <b>Spannplatte</b> auf die obere Steinkante auflegen.`;
-  const steps=[
-    `<b>Bodenblech</b> (15 mm, in Modulen) verlegen und ausrichten; an den ${n} Strangpositionen (x = ${xs}) je eine <b>Senkkopfschraube von unten</b> und eine <b>Kopplungsmutter oben</b> setzen.`,
-    `Je Strang die erste <b>Gewindestange</b> in die Kopplungsmutter einschrauben.`,
-    `Wand <b>lagenweise von unten</b> aufbauen (siehe Lagen-Aufbau): i3 maximiert, i2 als Abschluss an den Enden, Versatz beachten.`,
-    coups.length? `An den <b>Kopplungshöhen</b> (${coups.join(', ')}) die Gewindestangen mit <b>Kopplungsmuttern</b> verlängern und handfest sichern (Zwischenspannpunkte).`
-               : `Keine Stangenkopplung nötig (Wandhöhe ≤ Stangenlänge).`,
-    oben,
-    `<b>Vorspannung aufbringen</b>: Spannmuttern anziehen (${rods} Stange(n) je Strang).`,
-  ];
-  return steps;
-}
+let semblaBomItems, semblaBomMenge, store,
+    montageAbschnitte, abschnittSvg, konturSvg, montageSeitenHtml, MONTAGE_CSS, ART_LABEL, posCm;
 
 // Kurz-Stückliste aus dem BOM-Baustein (Single Source, identisch zu Modul „Stückliste").
-// Nur Positionen mit Menge > 0; Formatierung über semblaBomMenge (Stück / Meter).
 function bomRows(w){
   return semblaBomItems(w).filter(it=>it.menge>0)
     .map(it=>`<tr><td>${it.label}</td><td>${semblaBomMenge(it)}</td></tr>`).join('');
@@ -236,48 +126,52 @@ function bomRows(w){
 
 function applyWand(w){
   WALL=w; CUR=0;
-  const dim=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
-  $('ovDim').textContent=dim;
-  $('ovGrid').textContent=w.N_grid+' Raster · '+w.lagen+' Lagen';
+  ABS=montageAbschnitte(w);
+  $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
+  $('ovGrid').textContent=w.N_grid+' Raster · '+w.lagen+' Steinreihen';
   $('ovCols').textContent=w.tension_columns.length;
+  $('ovAbs').textContent=ABS.length;
   const b=$('ovBadge'); if(w.validation && w.validation.buildable===false){ b.className='badge no'; b.textContent='Nicht baubar'; } else { b.className='badge ok'; b.textContent='Baubar'; }
   $('bom').innerHTML=bomRows(w);
-  $('steps').innerHTML=vorspannSteps(w).map(t=>'<li>'+t+'</li>').join('');
-  $('slider').max=w.lagen; $('slider').value=1;
-  showLage(0);
+  $('slider').max=Math.max(1,ABS.length); $('slider').value=1;
+  showAbschnitt(0);
   buildPrintDoc(w);
 }
 
-function showLage(li){
-  if(!WALL) return;
-  CUR=Math.max(0,Math.min(WALL.lagen-1,li));
-  $('lageLab').textContent='Lage '+(CUR+1)+' von '+WALL.lagen;
+function showAbschnitt(i){
+  if(!WALL || !ABS.length) return;
+  CUR=Math.max(0,Math.min(ABS.length-1,i));
+  const ab=ABS[CUR];
+  $('absLab').textContent='Abschnitt '+ab.nr+' von '+ABS.length;
   $('slider').value=CUR+1;
-  $('lageSvg').innerHTML=courseStrip(WALL,CUR,900,140);
-  $('mapSvg').innerHTML=wallMap(WALL,CUR,900,260);
+  $('absTitel').textContent=ab.titel;
+  $('absSub').textContent=ab.reihen_text+' · Höhe '+posCm(ab.z_von_mm)+' bis '+posCm(ab.z_bis_mm)
+    +' · '+ab.straenge.length+' Stränge in diesem Abschnitt';
+  $('ereignisse').innerHTML=ab.ereignisse.map(e=>
+    '<li><span class="art">'+(ART_LABEL[e.art]||e.art)+' · '+posCm(e.z_mm)+'</span>'+e.text+'</li>').join('');
+  $('absSvg').innerHTML=abschnittSvg(WALL,ab,900,430);
+  drawMap();
 }
+function drawMap(){ if(WALL && ABS.length) $('mapSvg').innerHTML=konturSvg(WALL,ABS[CUR],900,250,{masse:showDim,raster:showRaster}); }
 
+// Druckdokument = exakt die Seiten des zentralen Exports (gleiche Ableitung, gleiche Bausteine).
 function buildPrintDoc(w){
-  let h='<h1 style="font-size:18px">SEMBLA Montageanleitung — '+(w.name||'Wandelement')+'</h1>';
-  h+='<p>Maße '+fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m · '+w.N_grid+' Raster · '+w.lagen+' Lagen · '+w.tension_columns.length+' Vorspannstränge.</p>';
-  h+='<h2>Stückliste (Kurzform)</h2><table class="bom">'+bomRows(w)+'</table>';
-  h+='<h2>Vorspannung — Schritt für Schritt</h2><ol class="steps">'+vorspannSteps(w).map(t=>'<li>'+t+'</li>').join('')+'</ol>';
-  h+='<h2>Lagen (von oben nach unten)</h2>';
-  for(let li=w.lagen-1; li>=0; li--){
-    h+='<div class="pcourse"><svg viewBox="0 0 900 120" preserveAspectRatio="xMidYMid meet" style="width:100%">'+courseStrip(w,li,900,120)+'</svg></div>';
-  }
-  $('printdoc').innerHTML=h;
+  $('printdoc').innerHTML='<style>'+MONTAGE_CSS+'</style>'+montageSeitenHtml(w,EING);
 }
 
 // ---- Aktives Wandelement (localStorage) ----
-function loadFromStore(we,label){ applyWand(we); $('wandinfo').innerHTML=label+' <b>'+(we.name||'Wandelement')+'</b>'; }
+function loadFromStore(we,label){
+  EING=(store&&store.aktiveEingaben)?store.aktiveEingaben():{};
+  applyWand(we); $('wandinfo').innerHTML=label+' <b>'+(we.name||'Wandelement')+'</b>';
+}
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
 function clearWall(){
-  WALL=null; CUR=0;
-  $('ovDim').textContent='—'; $('ovGrid').textContent='—'; $('ovCols').textContent='—';
+  WALL=null; ABS=[]; CUR=0;
+  $('ovDim').textContent='—'; $('ovGrid').textContent='—'; $('ovCols').textContent='—'; $('ovAbs').textContent='—';
   $('ovBadge').className='badge'; $('ovBadge').textContent='—';
-  $('bom').innerHTML=''; $('steps').innerHTML=''; $('printdoc').innerHTML='';
-  $('lageLab').textContent='—'; $('lageSvg').innerHTML=''; $('mapSvg').innerHTML='';
+  $('bom').innerHTML=''; $('ereignisse').innerHTML=''; $('printdoc').innerHTML='';
+  $('absLab').textContent='—'; $('absTitel').textContent='—'; $('absSub').textContent='';
+  $('absSvg').innerHTML=''; $('mapSvg').innerHTML='';
   $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
 }
 function loadInitial(){
@@ -299,21 +193,23 @@ function setupStoreSync(){
 
 // ---- Ereignis-Bindung ----
 function bindEvents(){
-  $('showDim').addEventListener('change',e=>{ showDim=e.target.checked; if(WALL) $('mapSvg').innerHTML=wallMap(WALL,CUR,900,260); });
-  $('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; if(WALL) $('mapSvg').innerHTML=wallMap(WALL,CUR,900,260); });
-  $('prev').addEventListener('click',()=>showLage(CUR-1));
-  $('next').addEventListener('click',()=>showLage(CUR+1));
-  $('slider').addEventListener('input',e=>showLage(+e.target.value-1));
+  $('showDim').addEventListener('change',e=>{ showDim=e.target.checked; drawMap(); });
+  $('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; drawMap(); });
+  $('prev').addEventListener('click',()=>showAbschnitt(CUR-1));
+  $('next').addEventListener('click',()=>showAbschnitt(CUR+1));
+  $('slider').addEventListener('input',e=>showAbschnitt(+e.target.value-1));
   $('print').addEventListener('click',()=>{ if(!WALL){ alert('Bitte zuerst ein Wandelement laden.'); return; } window.print(); });
 }
 
-window.__m={applyWand,showLage,bomRows,vorspannSteps,courseStrip,wallMap,
-  get wall(){return WALL;}, get cur(){return CUR;}};
+window.__m={applyWand,showAbschnitt,bomRows,buildPrintDoc,
+  get wall(){return WALL;}, get abschnitte(){return ABS;}, get cur(){return CUR;}};
 
 window.__mInit=function(){
   const S=window.SEMBLA||{};
-  semblaBomItems=S.semblaBomItems; semblaBomMenge=S.semblaBomMenge;
-  buildWall=S.buildWall; Opening=S.Opening; store=S.store;
+  semblaBomItems=S.semblaBomItems; semblaBomMenge=S.semblaBomMenge; store=S.store;
+  montageAbschnitte=S.montageAbschnitte; abschnittSvg=S.abschnittSvg; konturSvg=S.konturSvg;
+  montageSeitenHtml=S.montageSeitenHtml; MONTAGE_CSS=S.MONTAGE_CSS; ART_LABEL=S.ART_LABEL||{};
+  posCm=S.posCm;
   bindEvents();
   setupStoreSync();
   loadInitial();
@@ -322,10 +218,11 @@ window.__mInit=function(){
 
 <script type="module">
   import { semblaBom, semblaBomItems, semblaBomMenge } from './shared/sembla-bom.js';
-  import { buildWall, Opening } from './shared/sembla-core.js';
+  import { montageAbschnitte, abschnittSvg, konturSvg, montageSeitenHtml, MONTAGE_CSS, ART_LABEL, posCm } from './shared/sembla-montage.js';
   import * as store from './shared/storage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { semblaBom, semblaBomItems, semblaBomMenge, buildWall, Opening, store };
+  window.SEMBLA = { semblaBom, semblaBomItems, semblaBomMenge, store,
+    montageAbschnitte, abschnittSvg, konturSvg, montageSeitenHtml, MONTAGE_CSS, ART_LABEL, posCm };
   mountNavbar(5);
   window.__mInit();
 </script>
