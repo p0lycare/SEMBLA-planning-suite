@@ -164,30 +164,12 @@
     <div class="msg" id="k-msg"></div>
     <div class="warn" id="k-warn" hidden></div>
 
-    <div class="subh" id="k-form-titel">Produkt anlegen</div>
-    <div class="row">
-      <div class="field"><label for="k-kat">Kategorie</label><select id="k-kat" style="width:250px"></select></div>
-      <div class="field"><label for="k-bez">Bezeichnung</label><input id="k-bez" type="text" style="width:250px" placeholder="leer = Vorschlag"></div>
-      <div class="field"><label for="k-id">Produkt-ID</label><input id="k-id" type="text" style="width:180px" placeholder="leer = Vorschlag"></div>
-      <div class="field"><label for="k-einheit">Preisbasis</label><select id="k-einheit" style="width:110px"></select></div>
-      <div class="field"><label for="k-preis">Preis</label><input id="k-preis" class="s" type="number" step="0.01" min="0" value="0"></div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <div class="field" id="kf-gewinde"><label for="k-gewinde">Gewinde</label><input id="k-gewinde" class="s" type="text" placeholder="M10"></div>
-      <div class="field" id="kf-guete"><label for="k-guete">Güte</label><input id="k-guete" class="s" type="text" placeholder="8.8"></div>
-      <div class="field" id="kf-breite"><label for="k-breite">Breite (mm)</label><input id="k-breite" class="s" type="number" step="0.1" min="0"></div>
-      <div class="field" id="kf-hoehe"><label for="k-hoehe">Höhe (mm)</label><input id="k-hoehe" class="s" type="number" step="0.1" min="0"></div>
-      <div class="field" id="kf-dicke"><label for="k-dicke">Dicke (mm)</label><input id="k-dicke" class="s" type="number" step="0.1" min="0"></div>
-      <div class="field" id="kf-laenge"><label for="k-laenge">Standardlänge (mm)</label><input id="k-laenge" class="s" type="number" step="1" min="0"></div>
-      <button class="btn-p" id="k-add">Produkt hinzufügen</button>
-      <button class="btn-s" id="k-cancel" hidden>Abbrechen</button>
-    </div>
-
     <div class="subh">Produkte
       <span class="muted" style="text-transform:none;letter-spacing:0">
         · Produktstamm und Preise — die Auswahl für eine Wand treffen Modul 1 und Modul 2</span>
     </div>
     <div class="row" style="margin-bottom:6px">
+      <button class="btn-p" id="k-produkt-neu">Produkt anlegen…</button>
       <div class="field"><label for="k-filter">Filter</label><select id="k-filter" style="width:250px"></select></div>
     </div>
     <table>
@@ -216,7 +198,12 @@
       <b>Diese Preise rechnen mit:</b> Stückliste und Kosten (Modul&nbsp;4) lösen jeden Einzelpreis
       read-only aus diesem Katalog auf. Ist die Zuordnung einer Position nicht eindeutig, bleibt sie
       dort <b>ohne Preis</b> mit benanntem Grund — es wird kein Nullpreis und kein Ersatzprodukt
-      angesetzt und keine Einbaumenge verändert.</div>
+      angesetzt und keine Einbaumenge verändert.<br>
+      <b>Produkte pflegen</b> geschieht in einem eigenen Dialog mit den <b>fachlich passenden Feldern
+      der jeweiligen Kategorie</b> ([P-16]) — Gewindestange mit Gewinde/Güte/Stangenlänge, Latte mit
+      Querschnitt und Standardlänge, Platte/Blech mit Breite/Höhe/Dicke. <b>Nur „Speichern" schreibt</b>:
+      Abbrechen, Escape und ein Klick neben den Dialog lassen den Katalog unverändert, auch beim
+      Duplizieren.</div>
   </div>
 
   <h2>Gespeicherte Wandelemente</h2>
@@ -270,6 +257,39 @@
     <div class="modal-actions">
       <button class="btn-s" id="exp-cancel">Abbrechen</button>
       <button class="btn-p" id="exp-go">ZIP herunterladen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Produktpflege ([P-16]): klar von der Produktübersicht getrennter Dialog fuer Anlegen,
+     Bearbeiten und Duplizieren. Die Felder unter #kp-felder werden je Kategorie aus der
+     zentralen Maske (sembla-katalog.js) gerendert. Geschrieben wird AUSSCHLIESSLICH ueber
+     „Speichern" — Abbrechen/Escape/Overlay-Klick lassen die Katalogdaten unveraendert. -->
+<div class="overlay" id="kp-overlay" hidden>
+  <div class="modal" style="max-width:560px">
+    <h3 id="kp-titel">Produkt anlegen</h3>
+    <p class="sub" id="kp-sub">Die Felder richten sich nach der Kategorie. Gespeichert wird erst mit
+      „Speichern" — „Abbrechen" ändert den Katalog nicht.</p>
+    <div class="row">
+      <div class="field"><label for="kp-kat">Kategorie</label><select id="kp-kat" style="width:250px"></select></div>
+      <div class="field"><label for="kp-einheit">Preisbasis</label><select id="kp-einheit" style="width:110px"></select></div>
+      <div class="field"><label for="kp-preis">Preis <span class="muted">· Pflicht</span></label>
+        <input id="kp-preis" class="s" type="number" step="0.01" min="0" value="0"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label for="kp-bez">Bezeichnung</label>
+        <input id="kp-bez" type="text" style="width:250px" placeholder="leer = Vorschlag"></div>
+      <div class="field"><label for="kp-id">Produkt-ID</label>
+        <input id="kp-id" type="text" style="width:180px" placeholder="leer = Vorschlag"></div>
+    </div>
+    <div class="row" id="kp-felder" style="margin-top:10px"></div>
+    <div class="hint" id="kp-leer" hidden>Diese Kategorie hat keine weiteren fachlichen Merkmale —
+      Bezeichnung, Preisbasis und Preis genügen.</div>
+    <div class="zus" id="kp-extra" hidden></div>
+    <div class="msg" id="kp-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="kp-cancel">Abbrechen</button>
+      <button class="btn-p" id="kp-speichern">Speichern</button>
     </div>
   </div>
 </div>
@@ -565,85 +585,16 @@
   function kZeige(text, ok){ kMsg.textContent = text; kMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
   const kEuro = n => (Number(n) || 0).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2});
 
-  const kIds = { kategorie:'k-kat', bezeichnung:'k-bez', id:'k-id', einheit:'k-einheit', preis:'k-preis',
-                 gewinde:'k-gewinde', guete:'k-guete',
-                 breite_mm:'k-breite', hoehe_mm:'k-hoehe', dicke_mm:'k-dicke', laenge_mm:'k-laenge' };
-  const $k = f => document.getElementById(kIds[f]);
-  const kWrap = { gewinde:'kf-gewinde', guete:'kf-guete',
-                  breite_mm:'kf-breite', hoehe_mm:'kf-hoehe', dicke_mm:'kf-dicke', laenge_mm:'kf-laenge' };
-  // Sichtbare Zusatzfelder je Kategorie (Pflichtfelder + sinnvolle Optionen).
-  const kSicht = {
-    gewindestange: ['gewinde','guete','laenge_mm'],
-    latte:         ['breite_mm','dicke_mm','laenge_mm'],
-    beplankung:    ['breite_mm','hoehe_mm','dicke_mm'],
-    blech_platte:  ['breite_mm','hoehe_mm','dicke_mm'],
-  };
-  const kSichtFelder = kat => new Set(kSicht[kat] || ['breite_mm','hoehe_mm','dicke_mm','laenge_mm']);
-
-  let kEditId = null;        // null = Anlage, sonst id des bearbeiteten Produkts
   let kFilter = 'alle';
 
-  document.getElementById('k-kat').innerHTML =
-    KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
   document.getElementById('k-filter').innerHTML = '<option value="alle">alle Kategorien</option>'
     + KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
 
-  function kFormFelder(){
-    const an = kSichtFelder($k('kategorie').value);
-    for (const [f, wid] of Object.entries(kWrap)) document.getElementById(wid).hidden = !an.has(f);
-  }
-  function kEinheiten(){
-    const k = KAT.kategorie($k('kategorie').value); if (!k) return;
-    const sel = $k('einheit'), vorher = sel.value;
-    sel.innerHTML = k.einheiten.map(u => `<option value="${u}">${esc(KAT.EINHEIT_LABEL[u])}</option>`).join('');
-    sel.value = k.einheiten.includes(vorher) ? vorher : k.einheiten[0];
-  }
   function kZahl(v){
     const s = String(v == null ? '' : v).trim();
     if (!s) return undefined;
     const n = Number(s.replace(',', '.'));
     return Number.isFinite(n) ? n : NaN;
-  }
-
-  /** Formular -> Produkt (Bezeichnung/ID werden bei Bedarf vorgeschlagen). */
-  function kFormProdukt(){
-    const kat = $k('kategorie').value;
-    const p = { id:'', kategorie:kat, bezeichnung:String($k('bezeichnung').value || '').trim(),
-                einheit:$k('einheit').value, preis:kZahl($k('preis').value) };
-    const an = kSichtFelder(kat);
-    if (an.has('gewinde')) { const g = String($k('gewinde').value || '').trim(); if (g) p.gewinde = g; }
-    if (an.has('guete'))   { const g = String($k('guete').value   || '').trim(); if (g) p.guete   = g; }
-    for (const f of ['breite_mm','hoehe_mm','dicke_mm','laenge_mm']) {
-      if (!an.has(f)) continue;
-      const v = kZahl($k(f).value); if (v !== undefined) p[f] = v;
-    }
-    if (!p.bezeichnung) p.bezeichnung = KAT.vorschlagBezeichnung(p);
-    // ID ist die stabile Referenz: frei setzbar, leer = Vorschlag aus Kategorie + Maßen.
-    p.id = String($k('id').value || '').trim() || KAT.vorschlagId(p);
-    return p;
-  }
-  function kFormFuellen(p){
-    $k('kategorie').value = p.kategorie; kEinheiten(); kFormFelder();
-    $k('bezeichnung').value = p.bezeichnung || '';
-    $k('id').value = p.id || '';
-    $k('einheit').value = p.einheit || '';
-    $k('preis').value = p.preis != null ? String(p.preis) : '';
-    $k('gewinde').value = p.gewinde || ''; $k('guete').value = p.guete || '';
-    for (const f of ['breite_mm','hoehe_mm','dicke_mm','laenge_mm']) $k(f).value = p[f] != null ? String(p[f]) : '';
-  }
-  function kFormReset(){
-    kEditId = null;
-    kFormFuellen(KAT.neuesProdukt($k('kategorie').value || 'gewindestange'));
-    document.getElementById('k-add').textContent = 'Produkt hinzufügen';
-    document.getElementById('k-cancel').hidden = true;
-    document.getElementById('k-form-titel').textContent = 'Produkt anlegen';
-  }
-  function kEditModus(p){
-    kEditId = p.id;
-    kFormFuellen(p);
-    document.getElementById('k-add').textContent = 'Änderungen speichern';
-    document.getElementById('k-cancel').hidden = false;
-    document.getElementById('k-form-titel').textContent = 'Produkt bearbeiten: ' + p.bezeichnung;
   }
 
   /** Geladener Katalog oder ein frischer (erste Produktanlage ohne Katalog). */
@@ -652,37 +603,189 @@
       || KAT.leererKatalog(document.getElementById('k-name').value.trim() || 'Neuer Katalog');
   }
 
-  document.getElementById('k-add').addEventListener('click', () => {
+  // --- Produktpflege-Dialog ([P-16]) --------------------------------------
+  // Der Dialog ist der EINZIGE Ort, an dem ein Produkt entsteht oder sich aendert; er ist
+  // klar von der Produktuebersicht getrennt. Seine Felder kommen je Kategorie aus der
+  // zentralen, DOM-freien Maske (KAT.maskeVonKategorie) — Pflicht wird dort NICHT erneut
+  // definiert, sondern aus KATEGORIEN[].pflicht gelesen. Bis „Speichern" liegt alles nur
+  // im DOM des Dialogs: Abbrechen/Escape/Overlay-Klick schreiben NICHTS, auch beim
+  // Duplizieren (die Kopie entsteht erst mit dem Speichern).
+  const kpOverlay = document.getElementById('kp-overlay');
+  const kpMsg = document.getElementById('kp-msg');
+  let kEditId = null;      // null = Anlage, sonst ID des bearbeiteten Produkts
+  let kpModus = 'neu';     // 'neu' | 'bearbeiten' | 'duplizieren' (nur fuer Titel/Meldung)
+  let kpMaskeKat = null;   // Kategorie, deren Maske gerade im Dialog steht
+  // Alle je in einer Maske vorkommenden Felder — Grundlage der Fachfremd-Erkennung.
+  const kMaskenFelder = new Set(KAT.KATEGORIEN.flatMap(k => KAT.maskeFelder(k.id)));
+  const kGrundFelder = ['id','kategorie','bezeichnung','einheit','preis'];
+
+  document.getElementById('kp-kat').innerHTML =
+    KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
+
+  const kpFeldId = feld => 'kp-f-' + feld;
+  const $kp = id => document.getElementById(id);
+  function kpZeige(text, ok){ kpMsg.textContent = text; kpMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  /** Kategorieauswahl -> Preisbasen dieser Kategorie (bestehende Wahl bleibt, wenn zulaessig). */
+  function kpEinheiten(){
+    const k = KAT.kategorie($kp('kp-kat').value); if (!k) return;
+    const sel = $kp('kp-einheit'), vorher = sel.value;
+    sel.innerHTML = k.einheiten.map(u => `<option value="${u}">${esc(KAT.EINHEIT_LABEL[u])}</option>`).join('');
+    sel.value = k.einheiten.includes(vorher) ? vorher : k.einheiten[0];
+  }
+
+  /** Kategoriespezifische Felder aus der zentralen Maske rendern und aus `p` fuellen. */
+  function kpFelder(p){
+    const maske = KAT.maskeVonKategorie($kp('kp-kat').value);
+    document.getElementById('kp-felder').innerHTML = maske.map(f => {
+      const wert = p && p[f.feld] != null ? String(p[f.feld]) : '';
+      const bez = esc(f.label) + (f.einheit ? ' (' + f.einheit + ')' : '')
+        + (f.pflicht ? ' <span class="muted">· Pflicht</span>' : '');
+      const feld = f.typ === 'mm'
+        ? `<input id="${kpFeldId(f.feld)}" class="s" type="number" step="0.1" min="0" value="${esc(wert)}">`
+        : `<input id="${kpFeldId(f.feld)}" class="s" type="text" value="${esc(wert)}"`
+          + (f.platzhalter ? ` placeholder="${esc(f.platzhalter)}"` : '') + '>';
+      return `<div class="field"><label for="${kpFeldId(f.feld)}">${bez}</label>${feld}`
+        + (f.hinweis ? `<span class="muted" style="font-size:11px">${esc(f.hinweis)}</span>` : '')
+        + '</div>';
+    }).join('');
+    // Das DOM-Feld ist nach dem Rendern die Wahrheit; bei Neurendern gesetzte Werte mitnehmen.
+    for (const f of maske) {
+      const el = $kp(kpFeldId(f.feld));
+      if (el) el.value = p && p[f.feld] != null ? String(p[f.feld]) : '';
+    }
+    document.getElementById('kp-leer').hidden = maske.length > 0;
+    kpExtras(p);
+  }
+
+  /** Felder am Produkt, die nicht in die Maske dieser Kategorie gehoeren — sichtbar benennen. */
+  function kpExtras(p){
+    const box = document.getElementById('kp-extra');
+    const eigene = new Set(KAT.maskeFelder($kp('kp-kat').value));
+    const entfernt = [], erhalten = [];
+    for (const key of Object.keys(p || {})) {
+      if (kGrundFelder.includes(key) || eigene.has(key)) continue;
+      (kMaskenFelder.has(key) ? entfernt : erhalten).push(key);
+    }
+    const teile = [];
+    if (entfernt.length) {
+      teile.push('<div>Für diese Kategorie fachfremde Felder werden beim Speichern <b>entfernt</b>: '
+        + esc(entfernt.join(', ')) + '.</div>');
+    }
+    if (erhalten.length) {
+      teile.push('<div>Zusatzfelder dieses Produkts bleiben unverändert <b>erhalten</b>: '
+        + esc(erhalten.join(', ')) + '.</div>');
+    }
+    box.hidden = teile.length === 0;
+    box.innerHTML = teile.join('');
+  }
+
+  /**
+   * Dialogfelder -> Produkt (Bezeichnung/ID werden bei Bedarf vorgeschlagen).
+   * `maskeKat` = Kategorie, deren Maske aktuell im DOM steht; sie kann beim
+   * Kategoriewechsel noch von der neu gewaehlten Kategorie abweichen.
+   */
+  function kpProdukt(maskeKat){
+    const kat = $kp('kp-kat').value;
+    const p = { id:'', kategorie:kat, bezeichnung:String($kp('kp-bez').value || '').trim(),
+                einheit:$kp('kp-einheit').value, preis:kZahl($kp('kp-preis').value) };
+    for (const f of KAT.maskeVonKategorie(maskeKat || kat)) {
+      const el = $kp(kpFeldId(f.feld));
+      const roh = el ? el.value : '';
+      if (f.typ === 'mm') { const v = kZahl(roh); if (v !== undefined) p[f.feld] = v; }
+      else { const s = String(roh == null ? '' : roh).trim(); if (s) p[f.feld] = s; }
+    }
+    if (!p.bezeichnung) p.bezeichnung = KAT.vorschlagBezeichnung(p);
+    // ID ist die stabile Referenz: frei setzbar, leer = Vorschlag aus Kategorie + Maßen.
+    p.id = String($kp('kp-id').value || '').trim() || KAT.vorschlagId(p);
+    return p;
+  }
+
+  /** Dialog mit einem Entwurf oeffnen — es wird nichts gespeichert. */
+  function kpOeffne(p, modus, editId){
+    kpModus = modus;
+    kEditId = editId != null ? editId : null;
+    $kp('kp-kat').value = p.kategorie;
+    kpEinheiten();
+    $kp('kp-einheit').value = p.einheit || '';
+    $kp('kp-preis').value = p.preis != null ? String(p.preis) : '';
+    $kp('kp-bez').value = p.bezeichnung || '';
+    $kp('kp-id').value = p.id || '';
+    kpMaskeKat = p.kategorie;
+    kpFelder(p);
+    document.getElementById('kp-titel').textContent =
+      modus === 'bearbeiten' ? 'Produkt bearbeiten: ' + p.bezeichnung
+      : modus === 'duplizieren' ? 'Produkt duplizieren: ' + p.bezeichnung
+      : 'Produkt anlegen';
+    document.getElementById('kp-sub').innerHTML = modus === 'duplizieren'
+      ? 'Kopie mit neuer Produkt-ID — sie wird <b>erst mit „Speichern"</b> angelegt. '
+        + '„Abbrechen" legt nichts an.'
+      : 'Die Felder richten sich nach der Kategorie. Gespeichert wird erst mit „Speichern" — '
+        + '„Abbrechen" ändert den Katalog nicht.';
+    kpZeige('', true);
+    kpOverlay.hidden = false;
+  }
+  /** Dialog schliessen — reiner Anzeigevorgang, nie ein Schreibvorgang. */
+  function kpSchliesse(){ kpOverlay.hidden = true; kEditId = null; kpModus = 'neu'; }
+
+  document.getElementById('kp-kat').addEventListener('change', () => {
+    // Eingaben der bisher gezeigten Maske in den Entwurf uebernehmen, damit Werte der
+    // weiterhin vorhandenen Felder stehen bleiben und fachfremd gewordene Felder benannt
+    // werden koennen, statt still zu verschwinden.
+    const entwurf = kpProdukt(kpMaskeKat);
+    kpEinheiten();
+    kpMaskeKat = $kp('kp-kat').value;
+    kpFelder(entwurf);
+  });
+
+  document.getElementById('k-produkt-neu').addEventListener('click', () => {
+    const startKat = KAT.kategorie($kp('kp-kat').value) ? $kp('kp-kat').value : 'gewindestange';
+    kpOeffne(KAT.neuesProdukt(startKat), 'neu', null);
+  });
+
+  /** Abbruch (Button, Escape, Klick neben den Dialog): schliesst und meldet — schreibt nichts. */
+  function kpAbbruch(){
+    const war = kpModus;
+    kpSchliesse();
+    kZeige(war === 'duplizieren' ? 'Duplizieren abgebrochen — es wurde kein Produkt angelegt.'
+      : war === 'bearbeiten' ? 'Bearbeitung abgebrochen — der Katalog ist unverändert.'
+      : 'Anlage abgebrochen — es wurde kein Produkt angelegt.', true);
+  }
+  document.getElementById('kp-cancel').addEventListener('click', kpAbbruch);
+  kpOverlay.addEventListener('click', (ev) => { if (ev.target === kpOverlay) kpAbbruch(); });
+
+  document.getElementById('kp-speichern').addEventListener('click', () => {
     const kat = kKatalog();
-    const p = kFormProdukt();
+    const p = kpProdukt();
     const andere = kat.produkte.filter(x => String(x.id) !== String(kEditId)).map(x => String(x.id));
     const fehler = KAT.validiereProdukt(p, { ids: andere });
-    if (fehler.length) { kZeige('Produkt nicht gespeichert — ' + fehler.join(' '), false); return; }
+    if (fehler.length) { kpZeige('Nicht gespeichert — ' + fehler.join(' '), false); return; }
     if (kEditId != null) {
       const i = kat.produkte.findIndex(x => String(x.id) === String(kEditId));
-      if (i < 0) { kZeige('Produkt ist nicht mehr im Katalog.', false); return; }
-      // Vom Formular verwaltete Felder werden ersetzt, unbekannte Zusatzfelder bleiben erhalten.
-      const verwaltet = new Set(['id','kategorie','bezeichnung','einheit','preis','gewinde','guete', ...KAT.MASSFELDER]);
+      if (i < 0) { kpZeige('Produkt ist nicht mehr im Katalog.', false); return; }
+      // Von der Maske verwaltete Felder werden ersetzt; fachfremde Maßfelder fallen weg
+      // (im Dialog benannt), unbekannte Zusatzfelder (z. B. „hinweis") bleiben erhalten.
+      const eigene = new Set(KAT.maskeFelder(p.kategorie));
       const rest = {};
-      for (const key of Object.keys(kat.produkte[i])) if (!verwaltet.has(key)) rest[key] = kat.produkte[i][key];
+      for (const [key, wert] of Object.entries(kat.produkte[i])) {
+        if (kGrundFelder.includes(key) || eigene.has(key) || kMaskenFelder.has(key)) continue;
+        rest[key] = wert;
+      }
       kat.produkte[i] = { ...rest, ...p };
     } else {
       kat.produkte.push(p);
     }
     kat.name = document.getElementById('k-name').value.trim() || kat.name;
     try { store.setzeKatalog(kat); }
-    catch (e) { kZeige('Katalog nicht gespeichert: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { kpZeige('Katalog nicht gespeichert: ' + (e && e.message ? e.message : e), false); return; }
     const war = kEditId != null, umbenannt = war && String(kEditId) !== String(p.id);
-    const alteId = kEditId;
-    kFormReset();
-    kZeige((war ? 'Produkt geändert: ' : 'Produkt angelegt: ') + p.bezeichnung + ' (' + p.id + ')'
+    const alteId = kEditId, modus = kpModus;
+    kpSchliesse();
+    kZeige((war ? 'Produkt geändert: ' : modus === 'duplizieren' ? 'Kopie angelegt: ' : 'Produkt angelegt: ')
+      + p.bezeichnung + ' (' + p.id + ')'
       + (umbenannt ? ` — ID von „${alteId}“ geändert; Projekte mit der alten Referenz warnen jetzt.` : ''), true);
   });
 
-  document.getElementById('k-cancel').addEventListener('click', () => {
-    kFormReset(); kZeige('Bearbeitung abgebrochen.', true);
-  });
-  $k('kategorie').addEventListener('change', () => { kEinheiten(); kFormFelder(); });
   document.getElementById('k-filter').addEventListener('change', (ev) => {
     kFilter = (ev.target && ev.target.value) || document.getElementById('k-filter').value || 'alle';
     katRender();
@@ -695,7 +798,7 @@
     const name = document.getElementById('k-name').value.trim() || 'Neuer Katalog';
     try { store.setzeKatalog(KAT.leererKatalog(name)); }
     catch (e) { kZeige('Fehler: ' + (e && e.message ? e.message : e), false); return; }
-    kFormReset(); katLaden();
+    kpSchliesse(); katLaden();
     kZeige('Neuer Katalog angelegt: ' + name, true);
   });
 
@@ -704,7 +807,7 @@
     if (!file) return;
     try {
       const k = await store.importiereKatalogDatei(file);
-      kFormReset(); katLaden();
+      kpSchliesse(); katLaden();
       kZeige(`Katalog importiert: ${k.name} (${k.produkte.length} Produkt(e)).`, true);
     } catch (e) {
       kZeige('Katalog-Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
@@ -721,7 +824,7 @@
     }
     try {
       const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
-      kFormReset(); katLaden();
+      kpSchliesse(); katLaden();
       kZeige(`Standardkatalog geladen: ${k.name} (${k.produkte.length} Produkt(e)). `
         + 'Vorläufige, fachlich unbestätigte Beispielwerte sind je Produkt gekennzeichnet.', true);
     } catch (e) {
@@ -743,7 +846,7 @@
     if (!alt) { kZeige('Kein Katalog geladen.', false); return; }
     if (!confirm(`Katalog „${alt.name}“ aus diesem Browser entfernen? Projektauswahlen bleiben `
       + 'als Referenz stehen und werden danach als Warnung angezeigt.')) return;
-    store.loescheKatalog(); kFormReset(); katLaden();
+    store.loescheKatalog(); kpSchliesse(); katLaden();
     kZeige('Katalog entfernt. Projektreferenzen bleiben erhalten.', true);
   });
 
@@ -763,23 +866,21 @@
     const p = KAT.produkt(kat, el.dataset.pid);
     if (!p) { kZeige('Produkt ist nicht mehr im Katalog.', false); return; }
     if (act === 'bearbeiten') {
-      kEditModus(p); kZeige('Bearbeiten: ' + p.bezeichnung, true);
+      kpOeffne(p, 'bearbeiten', p.id);
+      kZeige('Bearbeiten: ' + p.bezeichnung + ' — Änderungen wirken erst mit „Speichern".', true);
     } else if (act === 'duplizieren') {
+      // Die Kopie entsteht NUR im Dialog; erst „Speichern" legt sie an ([P-16]).
       let neu = p.id + '-kopie', n = 2;
       while (KAT.produkt(kat, neu)) neu = p.id + '-kopie' + (n++);
-      const kopie = { ...p, id: neu, bezeichnung: p.bezeichnung + ' (Kopie)' };
-      kat.produkte.push(kopie);
-      try { store.setzeKatalog(kat); }
-      catch (e) { kZeige('Fehler: ' + (e && e.message ? e.message : e), false); return; }
-      kEditModus(kopie);
-      kZeige('Dupliziert: ' + neu + ' — Maße/Preis anpassen und speichern.', true);
+      kpOeffne({ ...p, id: neu, bezeichnung: p.bezeichnung + ' (Kopie)' }, 'duplizieren', null);
+      kZeige('Duplizieren: Kopie „' + neu + '" vorbereitet — Maße/Preis anpassen und speichern.', true);
     } else if (act === 'produkt-loeschen') {
       if (!confirm(`Produkt „${p.bezeichnung}“ aus dem Katalog löschen? Projekte, die es referenzieren, `
         + 'zeigen danach eine Warnung — die Auswahl wird nicht automatisch bereinigt.')) return;
       kat.produkte = kat.produkte.filter(x => String(x.id) !== String(p.id));
       try { store.setzeKatalog(kat); }
       catch (e) { kZeige('Fehler: ' + (e && e.message ? e.message : e), false); return; }
-      if (String(kEditId) === String(p.id)) kFormReset();
+      if (String(kEditId) === String(p.id)) kpSchliesse();
       kZeige('Gelöscht: ' + p.bezeichnung + '. Projektauswahl wurde nicht bereinigt.', true);
     }
   });
@@ -842,7 +943,6 @@
     katRender();
   }
 
-  kFormReset();
   katLaden();
   store.abonniere(katRender);
 
@@ -862,6 +962,7 @@
     if (ev.key !== 'Escape') return;
     if (!overlay.hidden) schliesseExport();
     if (!impOverlay.hidden) impSchliesse();
+    if (!kpOverlay.hidden) kpAbbruch();         // Produktpflege: Abbruch schreibt nichts ([P-16])
   });
   document.getElementById('exp-go').addEventListener('click', () => {
     if (!expId) return;

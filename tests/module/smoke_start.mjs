@@ -154,24 +154,48 @@ const kProd = (id) => KAT.produkt(kat(), id);
 const kAnzahl = () => (kat() ? kat().produkte.length : 0);
 const kMsgTxt = () => $('k-msg').textContent;
 const kFehler = () => $('k-msg').className === 'msg err';
-/** Kategorie waehlen (loest das echte change-Ereignis aus: Felder + Preisbasis). */
-function kWaehleKategorie(id){ $('k-kat').value = id; $('k-kat').dispatch('change'); }
-/** Formularfelder setzen (leere Felder werden geleert). */
-function kSetze(werte){
-  const alle = { 'k-bez':'', 'k-id':'', 'k-preis':'', 'k-gewinde':'', 'k-guete':'',
-                 'k-breite':'', 'k-hoehe':'', 'k-dicke':'', 'k-laenge':'' };
-  for (const [id, v] of Object.entries({ ...alle, ...werte })) $(id).value = String(v);
-}
+/** Byte-Stand des Katalog-Slots — Grundlage aller Abbruchpruefungen ([P-16]). */
+const kSlot = () => localStorage.getItem('sembla:katalog');
 /** Zeilenaktion der Produkttabelle (Ereignisdelegation wie im Browser). */
 function kZeile(act, pid){ $('k-tbody').dispatch('click', { target: { dataset:{ act, pid } } }); }
+
+// --- Produktpflege-Dialog ([P-16], Issue #34) ------------------------------
+// Alles laeuft ueber die echten Bedienelemente: „Produkt anlegen…" bzw. eine Zeilenaktion
+// oeffnet den Dialog, die Maske wird vom Produktcode je Kategorie gerendert, gespeichert
+// wird nur ueber #kp-speichern.
+const kpOffen = () => $('kp-overlay').hidden === false;
+const kpMsgTxt = () => $('kp-msg').textContent;
+const kpFehler = () => $('kp-msg').className === 'msg err';
+const kpTitel = () => $('kp-titel').textContent;
+const kpMarkup = () => $('kp-felder').innerHTML;
+/** Tatsaechlich gerenderte Maskenfelder in Reihenfolge (aus dem echten Dialogmarkup). */
+const kpFelder = () => [...kpMarkup().matchAll(/id="kp-f-([a-z_]+)"/g)].map(m => m[1]);
+const kpNeu = () => $('k-produkt-neu').dispatch('click');
+const kpSpeichern = () => $('kp-speichern').dispatch('click');
+const kpAbbrechen = () => $('kp-cancel').dispatch('click');
+/** Kategorie im Dialog waehlen (echtes change-Ereignis: Maske + Preisbasen neu). */
+function kpKategorie(id){ $('kp-kat').value = id; $('kp-kat').dispatch('change'); }
+/** Grundfelder + Maskenfelder setzen; nicht genannte Maskenfelder werden geleert. */
+function kpSetze({ bez = '', id = '', preis = '', einheit = null, ...felder }){
+  $('kp-bez').value = String(bez); $('kp-id').value = String(id); $('kp-preis').value = String(preis);
+  if (einheit) $('kp-einheit').value = einheit;
+  for (const f of kpFelder()) $('kp-f-' + f).value = String(felder[f] != null ? felder[f] : '');
+}
 
 // 5a) Oberflaeche ist vorhanden und kommuniziert die Trennung/Nicht-Wirksamkeit
 ok('Katalog-Abschnitt in Modul 0 vorhanden', /<h2>Bauteilkatalog/.test(html));
 ok('Kategorie-, Preisbasis- und Filterauswahl vorhanden',
-  /<select id="k-kat"/.test(html) && /<select id="k-einheit"/.test(html) && /<select id="k-filter"/.test(html));
-ok('Anlage-Felder fuer Gewindestange/Latte/Platte vorhanden',
-  /id="k-gewinde"/.test(html) && /id="k-breite"/.test(html) && /id="k-hoehe"/.test(html)
-  && /id="k-dicke"/.test(html) && /id="k-laenge"/.test(html) && /id="k-preis"/.test(html));
+  /<select id="kp-kat"/.test(html) && /<select id="kp-einheit"/.test(html) && /<select id="k-filter"/.test(html));
+ok('Produktpflege liegt in einem eigenen Dialog/Overlay ([P-16])',
+  /<div class="overlay" id="kp-overlay" hidden>/.test(html) && /id="kp-felder"/.test(html)
+  && /id="kp-speichern">Speichern</.test(html) && /id="kp-cancel">Abbrechen</.test(html)
+  && /id="k-produkt-neu">Produkt anlegen…</.test(html));
+ok('keine generische Inline-Eingabezeile mehr in der Produktuebersicht',
+  !/id="k-gewinde"/.test(html) && !/id="k-add"/.test(html) && !/id="k-form-titel"/.test(html)
+  && !/id="kf-breite"/.test(html) && !/Breite \(mm\)/.test(html));
+ok('Hinweis nennt Dialog, kategoriegerechte Felder und „nur Speichern schreibt"',
+  /eigenen Dialog/.test(html) && /fachlich passenden Feldern/.test(html)
+  && /Nur „Speichern" schreibt/.test(html) && /\[P-16\]/.test(html));
 ok('separater Katalog-Import und -Export als eigene Bedienelemente',
   /id="k-import"[^>]*type="file"/.test(html) && /id="k-export"/.test(html) && /id="k-neu"/.test(html));
 ok('Projekt-ZIP-Dialog hat KEIN Katalog-Haekchen (Formate nicht verwechseln)',
@@ -197,16 +221,24 @@ $('k-neu').dispatch('click');
 ok('Katalog angelegt (leer, mit Namen)', !!kat() && kat().name === 'Katalog Musterlieferant' && kAnzahl() === 0);
 ok('Kopfzeile meldet Katalogformat v1', /Katalogformat v1/.test($('k-info').textContent));
 
-// 5c) Gewindestange anlegen — kategorieabhaengige Felder + Vorschlags-ID
-kWaehleKategorie('gewindestange');
-ok('Gewindestange: Gewinde-Feld sichtbar, Hoehe/Breite ausgeblendet',
-  $('kf-gewinde').hidden === false && $('kf-laenge').hidden === false
-  && $('kf-hoehe').hidden === true && $('kf-breite').hidden === true);
-kSetze({ 'k-gewinde':'M10', 'k-guete':'8.8', 'k-laenge':'1100', 'k-preis':'3.80' });
-$('k-einheit').value = 'Stk';
-$('k-add').dispatch('click');
+// 5c) Gewindestange anlegen — kategoriegerechte Maske + Vorschlags-ID ([P-16])
+const slotVorAnlage = kSlot();
+kpNeu();
+ok('„Produkt anlegen…" oeffnet den getrennten Dialog',
+  kpOffen() && kpTitel() === 'Produkt anlegen' && kpMsgTxt() === '');
+kpKategorie('gewindestange');
+ok('Gewindestange: Maske ist Gewinde/Güte/Stangenlänge — keine Breite/Höhe/Dicke',
+  kpFelder().join() === 'gewinde,guete,laenge_mm');
+ok('Gewindestange: fachliche Beschriftung, Einheit und Pflichtkennzeichen',
+  /<label for="kp-f-gewinde">Gewinde <span class="muted">· Pflicht<\/span><\/label>/.test(kpMarkup())
+  && /Stangenlänge \(mm\) <span class="muted">· Pflicht<\/span>/.test(kpMarkup())
+  && /placeholder="M10"/.test(kpMarkup()) && />Güte</.test(kpMarkup()));
+ok('offener Dialog hat noch nichts geschrieben', kSlot() === slotVorAnlage && kAnzahl() === 0);
+kpSetze({ einheit:'Stk', preis:'3.80', gewinde:'M10', guete:'8.8', laenge_mm:'1100' });
+kpSpeichern();
 const rod = kProd('gewindestange-m10-1100');
-ok('Gewindestange ueber das echte Formular angelegt', kAnzahl() === 1 && !!rod);
+ok('Gewindestange ueber den echten Dialog angelegt', kAnzahl() === 1 && !!rod);
+ok('Dialog schliesst nach dem Speichern', !kpOffen());
 ok('Gewindestange: Gewinde/Laenge/Preisbasis/Preis gespeichert',
   rod.gewinde === 'M10' && rod.guete === '8.8' && rod.laenge_mm === 1100
   && rod.einheit === 'Stk' && rod.preis === 3.8);
@@ -214,60 +246,149 @@ ok('Gewindestange: Bezeichnung vorgeschlagen', /Gewindestange M10 1100 mm/.test(
 ok('Rueckmeldung bestaetigt die Anlage', /Produkt angelegt/.test(kMsgTxt()) && !kFehler());
 
 // 5d) Zwei Latten (zwei Standardlaengen derselben Kategorie), Preisbasis €/m
-kWaehleKategorie('latte');
-ok('Latte: Querschnitt + Standardlaenge sichtbar, Hoehe ausgeblendet',
-  $('kf-breite').hidden === false && $('kf-dicke').hidden === false
-  && $('kf-laenge').hidden === false && $('kf-hoehe').hidden === true);
-kSetze({ 'k-breite':'40', 'k-dicke':'60', 'k-laenge':'3000', 'k-preis':'1.25' });
-$('k-einheit').value = 'm';
-$('k-add').dispatch('click');
-kSetze({ 'k-breite':'40', 'k-dicke':'60', 'k-laenge':'5000', 'k-preis':'1.19' });
-$('k-einheit').value = 'm';
-$('k-add').dispatch('click');
+kpNeu();
+kpKategorie('latte');
+ok('Latte: Maske ist Querschnitt + Standardlänge — keine Höhe',
+  kpFelder().join() === 'breite_mm,dicke_mm,laenge_mm');
+ok('Latte: Querschnitt und Standardlänge fachlich beschriftet',
+  /Querschnitt Breite \(mm\)/.test(kpMarkup()) && /Querschnitt Dicke \(mm\)/.test(kpMarkup())
+  && /Standardlänge \(mm\)/.test(kpMarkup()) && !/kp-f-hoehe_mm/.test(kpMarkup())
+  && !/kp-f-gewinde/.test(kpMarkup()));
+kpSetze({ einheit:'m', preis:'1.25', breite_mm:'40', dicke_mm:'60', laenge_mm:'3000' });
+kpSpeichern();
+kpNeu();
+kpKategorie('latte');
+kpSetze({ einheit:'m', preis:'1.19', breite_mm:'40', dicke_mm:'60', laenge_mm:'5000' });
+kpSpeichern();
 ok('zwei Latten angelegt', kAnzahl() === 3 && !!kProd('latte-40-60-3000') && !!kProd('latte-40-60-5000'));
 ok('Latte: Preisbasis €/m und Querschnitt gespeichert',
   kProd('latte-40-60-3000').einheit === 'm' && kProd('latte-40-60-3000').breite_mm === 40
   && kProd('latte-40-60-3000').dicke_mm === 60 && kProd('latte-40-60-5000').laenge_mm === 5000);
 
-// 5e) Platte (Beplankung) mit Preisbasis €/m²
-kWaehleKategorie('beplankung');
-kSetze({ 'k-breite':'1250', 'k-hoehe':'2000', 'k-dicke':'12.5', 'k-preis':'6.90', 'k-id':'platte-gk-125' });
-$('k-einheit').value = 'm2';
-$('k-add').dispatch('click');
+// 5e) Platte (Beplankung) mit Preisbasis €/m² — dritte, klar andere Maske
+kpNeu();
+kpKategorie('beplankung');
+ok('Beplankung: Plattenmaße ohne Gewinde- und Längenfeld',
+  kpFelder().join() === 'breite_mm,hoehe_mm,dicke_mm'
+  && /Plattenbreite \(mm\)/.test(kpMarkup()) && /Plattenhöhe \(mm\)/.test(kpMarkup())
+  && /Plattendicke \(mm\)/.test(kpMarkup()) && !/kp-f-gewinde/.test(kpMarkup())
+  && !/kp-f-laenge_mm/.test(kpMarkup()));
+kpSetze({ id:'platte-gk-125', einheit:'m2', preis:'6.90',
+          breite_mm:'1250', hoehe_mm:'2000', dicke_mm:'12.5' });
+kpSpeichern();
 const platte = kProd('platte-gk-125');
 ok('Platte mit eigener ID angelegt', kAnzahl() === 4 && !!platte);
 ok('Platte: Flaechenmaße + €/m² gespeichert',
   platte.breite_mm === 1250 && platte.hoehe_mm === 2000 && platte.dicke_mm === 12.5 && platte.einheit === 'm2');
 
-// 5f) Unvollstaendige Eingabe wird sichtbar abgelehnt (nichts gespeichert)
-kWaehleKategorie('latte');
-kSetze({ 'k-breite':'40', 'k-dicke':'60', 'k-preis':'1.00' });   // Standardlaenge fehlt
-$('k-add').dispatch('click');
-ok('Latte ohne Standardlaenge wird abgelehnt', kAnzahl() === 4 && kFehler() && /laenge_mm/.test(kMsgTxt()));
-kSetze({ 'k-breite':'40', 'k-dicke':'60', 'k-laenge':'3000', 'k-preis':'1.00' });
-$('k-einheit').value = 'm2';                                      // €/m² ist fuer Latten unzulaessig
-$('k-add').dispatch('click');
-ok('unzulaessige Preisbasis wird abgelehnt', kAnzahl() === 4 && kFehler() && /nicht zulässig/.test(kMsgTxt()));
+// 5e2) Weitere Kategorien: Stein mit Preiszuordnungsmaß, Verbinder/Verbrauch ohne Maße
+kpNeu();
+kpKategorie('stein');
+ok('Stein: Maße optional, Steinbreite als Preiszuordnungsmaß benannt',
+  kpFelder().join() === 'breite_mm,hoehe_mm,dicke_mm'
+  && /Steinbreite \(mm\)<\/label>/.test(kpMarkup())
+  && /maßgebend für die Preiszuordnung der Steinpositionen/.test(kpMarkup())
+  && !/Pflicht/.test(kpMarkup()));
+kpKategorie('verbinder');
+ok('Verbinder: keine fachfremden Maßfelder', kpFelder().length === 0 && $('kp-leer').hidden === false);
+kpKategorie('verbrauch');
+ok('Verbrauchsmaterial: keine fachfremden Maßfelder', kpFelder().length === 0);
+ok('Verbrauchsmaterial: kein Gewinde-/Güte-Feld (bewusst ausserhalb #34)',
+  !/kp-f-gewinde/.test(kpMarkup()) && !/kp-f-guete/.test(kpMarkup()));
+kpAbbrechen();
+ok('Abbruch nach Kategoriewechseln legt nichts an', kAnzahl() === 4 && !kpOffen());
 
-// 5g) Bearbeiten ueber die Tabelle
+// 5f) Unvollstaendige/unzulaessige Eingabe: Meldung IM Dialog, nichts gespeichert
+const slotVorFehler = kSlot();
+kpNeu();
+kpKategorie('latte');
+kpSetze({ einheit:'m', preis:'1.00', breite_mm:'40', dicke_mm:'60' });   // Standardlaenge fehlt
+kpSpeichern();
+ok('Latte ohne Standardlaenge wird abgelehnt',
+  kAnzahl() === 4 && kpFehler() && /laenge_mm/.test(kpMsgTxt()) && kSlot() === slotVorFehler);
+ok('Dialog bleibt zur Korrektur offen', kpOffen());
+kpSetze({ einheit:'m2', preis:'1.00', breite_mm:'40', dicke_mm:'60', laenge_mm:'3000' });
+kpSpeichern();                                                    // €/m² ist fuer Latten unzulaessig
+ok('unzulaessige Preisbasis wird abgelehnt',
+  kAnzahl() === 4 && kpFehler() && /nicht zulässig/.test(kpMsgTxt()) && kSlot() === slotVorFehler);
+kpSetze({ id:'latte-40-60-5000', einheit:'m', preis:'1.00',
+          breite_mm:'40', dicke_mm:'60', laenge_mm:'3000' });
+kpSpeichern();
+ok('bereits vergebene ID wird abgelehnt',
+  kAnzahl() === 4 && kpFehler() && /bereits vergeben/.test(kpMsgTxt()) && kSlot() === slotVorFehler);
+kpAbbrechen();
+ok('Abbrechen nach Fehlern laesst den Katalog unveraendert',
+  kSlot() === slotVorFehler && !kpOffen() && /kein Produkt angelegt/.test(kMsgTxt()) && !kFehler());
+
+// 5g) Bearbeiten ueber die Tabelle — Dialog vorbelegt, Speichern ist der einzige Schreibweg
 kZeile('bearbeiten', 'latte-40-60-3000');
-ok('Bearbeiten fuellt das Formular', $('k-bez').value === kProd('latte-40-60-3000').bezeichnung
-  && $('k-preis').value === '1.25' && $('k-id').value === 'latte-40-60-3000');
-ok('Formular schaltet in den Bearbeitungsmodus',
-  $('k-add').textContent === 'Änderungen speichern' && $('k-cancel').hidden === false);
-$('k-preis').value = '1.35';
-$('k-add').dispatch('click');
+ok('Bearbeiten oeffnet den Dialog mit dem Produkt',
+  kpOffen() && kpTitel() === 'Produkt bearbeiten: ' + kProd('latte-40-60-3000').bezeichnung
+  && $('kp-bez').value === kProd('latte-40-60-3000').bezeichnung
+  && $('kp-preis').value === '1.25' && $('kp-id').value === 'latte-40-60-3000');
+ok('Bearbeiten fuellt auch die kategoriespezifischen Felder',
+  $('kp-f-breite_mm').value === '40' && $('kp-f-dicke_mm').value === '60'
+  && $('kp-f-laenge_mm').value === '3000');
+// Abbruch im Bearbeitungsmodus: geaenderte Werte werden verworfen
+const slotVorEdit = kSlot();
+$('kp-preis').value = '99.00';
+kpAbbrechen();
+ok('Abbrechen verwirft die Aenderung vollstaendig',
+  kSlot() === slotVorEdit && kProd('latte-40-60-3000').preis === 1.25 && !kpOffen()
+  && /Bearbeitung abgebrochen/.test(kMsgTxt()));
+kZeile('bearbeiten', 'latte-40-60-3000');
+$('kp-preis').value = '1.35';
+kpSpeichern();
 ok('Preisaenderung gespeichert (kein neues Produkt)',
-  kAnzahl() === 4 && kProd('latte-40-60-3000').preis === 1.35);
-ok('Formular ist zurueck im Anlagemodus',
-  $('k-add').textContent === 'Produkt hinzufügen' && $('k-cancel').hidden === true);
+  kAnzahl() === 4 && kProd('latte-40-60-3000').preis === 1.35 && !kpOffen());
+ok('Bearbeiten laesst die uebrigen Felder unveraendert',
+  kProd('latte-40-60-3000').breite_mm === 40 && kProd('latte-40-60-3000').dicke_mm === 60
+  && kProd('latte-40-60-3000').laenge_mm === 3000 && kProd('latte-40-60-3000').einheit === 'm');
 
-// 5h) Duplizieren + Abbrechen
+// 5g2) Escape und Klick neben den Dialog brechen ebenfalls ohne Schreibvorgang ab
+kZeile('bearbeiten', 'latte-40-60-3000');
+const slotVorEsc = kSlot();
+$('kp-preis').value = '77.00';
+document.dispatch('keydown', { key:'Escape' });
+ok('Escape bricht die Bearbeitung ohne Schreibvorgang ab',
+  !kpOffen() && kSlot() === slotVorEsc && kProd('latte-40-60-3000').preis === 1.35);
+kZeile('bearbeiten', 'latte-40-60-3000');
+$('kp-preis').value = '88.00';
+$('kp-overlay').dispatch('click', { target: $('kp-overlay') });
+ok('Klick neben den Dialog bricht ohne Schreibvorgang ab',
+  !kpOffen() && kSlot() === slotVorEsc && kProd('latte-40-60-3000').preis === 1.35);
+
+// 5h) Duplizieren: die Kopie entsteht ERST beim Speichern ([P-16])
+const slotVorDup = kSlot();
 kZeile('duplizieren', 'latte-40-60-3000');
-ok('Duplikat angelegt und zur Bearbeitung geoeffnet',
-  kAnzahl() === 5 && !!kProd('latte-40-60-3000-kopie') && $('k-id').value === 'latte-40-60-3000-kopie');
-$('k-cancel').dispatch('click');
-ok('Abbrechen verlaesst den Bearbeitungsmodus', $('k-add').textContent === 'Produkt hinzufügen');
+ok('Duplizieren oeffnet nur den vorbelegten Dialog',
+  kpOffen() && kpTitel() === 'Produkt duplizieren: ' + kProd('latte-40-60-3000').bezeichnung + ' (Kopie)'
+  && $('kp-id').value === 'latte-40-60-3000-kopie' && /\(Kopie\)/.test($('kp-bez').value));
+ok('Duplizieren schreibt noch NICHTS in den Katalog',
+  kAnzahl() === 4 && !kProd('latte-40-60-3000-kopie') && kSlot() === slotVorDup);
+kpAbbrechen();
+ok('Abbrechen nach Duplizieren legt keine Kopie an',
+  kAnzahl() === 4 && !kProd('latte-40-60-3000-kopie') && kSlot() === slotVorDup
+  && /Duplizieren abgebrochen/.test(kMsgTxt()));
+kZeile('duplizieren', 'latte-40-60-3000');
+kpSpeichern();
+ok('erst Speichern legt die Kopie an',
+  kAnzahl() === 5 && !!kProd('latte-40-60-3000-kopie') && !kpOffen()
+  && /Kopie angelegt/.test(kMsgTxt()));
+ok('die Kopie traegt die Werte des Originals',
+  kProd('latte-40-60-3000-kopie').preis === 1.35 && kProd('latte-40-60-3000-kopie').laenge_mm === 3000
+  && kProd('latte-40-60-3000-kopie').einheit === 'm');
+
+// 5h2) Kategoriewechsel im Dialog: fachfremde Maßfelder werden benannt und beim Speichern entfernt
+kZeile('bearbeiten', 'latte-40-60-3000-kopie');
+kpKategorie('verbinder');
+ok('Kategoriewechsel benennt die fachfremden Felder sichtbar',
+  $('kp-extra').hidden === false && /fachfremde Felder/.test($('kp-extra').innerHTML)
+  && /breite_mm/.test($('kp-extra').innerHTML) && /laenge_mm/.test($('kp-extra').innerHTML));
+kpAbbrechen();
+ok('Abbruch nach Kategoriewechsel aendert das Produkt nicht',
+  kProd('latte-40-60-3000-kopie').kategorie === 'latte'
+  && kProd('latte-40-60-3000-kopie').laenge_mm === 3000);
 
 // 5i) Loeschen (nur mit Bestaetigung)
 confirmAntwort = false;
@@ -373,10 +494,10 @@ ok('Altbestand bleibt zur Nachvollziehbarkeit erhalten',
 
 // 5o) Erstes Produkt ohne vorher angelegten Katalog legt einen Katalog an
 $('k-name').value = 'Direktkatalog';
-kWaehleKategorie('gewindestange');
-kSetze({ 'k-gewinde':'M16', 'k-laenge':'2000', 'k-preis':'9.90' });
-$('k-einheit').value = 'Stk';
-$('k-add').dispatch('click');
+kpNeu();
+kpKategorie('gewindestange');
+kpSetze({ einheit:'Stk', preis:'9.90', gewinde:'M16', laenge_mm:'2000' });
+kpSpeichern();
 ok('Produktanlage ohne bestehenden Katalog erzeugt ihn',
   !!kat() && kat().name === 'Direktkatalog' && kAnzahl() === 1);
 
@@ -668,6 +789,35 @@ ok('Kennzeichnung „vorläufig" ueberlebt die Persistenz',
 ok('geladene Produkte tragen die Produktvorgaben der Suite',
   KAT.produkt(kat(), 'stein-i3-375').preis === 9.5 && KAT.produkt(kat(), 'stein-i2-250').preis === 7.2
   && KAT.produkt(kat(), 'gewindestange-m10-1100').laenge_mm === 1100);
+// 7d2) Katalog-v1-Kompatibilitaet der Maske ([P-16]): jedes Produkt der v1-Vorlage laesst sich
+// im Dialog oeffnen und unveraendert wieder speichern — kein Feld faellt weg, Zusatzfelder
+// (hinweis nach [P-12]) bleiben erhalten, die Formatversion bleibt 1.
+{
+  /** Produkt schluesselunabhaengig vergleichen (die Reihenfolge darf sich aendern). */
+  const kanon = (p) => JSON.stringify(Object.keys(p).sort().map(k => [k, p[k]]));
+  const vorher = kanon(KAT.produkt(kat(), 'latte-40-60-1500'));
+  kZeile('bearbeiten', 'latte-40-60-1500');
+  ok('Vorlagenprodukt oeffnet mit gefuellter Lattenmaske',
+    kpFelder().join() === 'breite_mm,dicke_mm,laenge_mm' && $('kp-f-laenge_mm').value === '1500'
+    && $('kp-f-breite_mm').value === '40' && $('kp-f-dicke_mm').value === '60');
+  ok('Zusatzfeld „hinweis" wird als erhalten benannt, nicht als fachfremd',
+    $('kp-extra').hidden === false && /erhalten/.test($('kp-extra').innerHTML)
+    && /hinweis/.test($('kp-extra').innerHTML) && !/fachfremd/.test($('kp-extra').innerHTML));
+  kpSpeichern();
+  ok('unveraendertes Speichern laesst das v1-Produkt inhaltlich identisch',
+    kanon(KAT.produkt(kat(), 'latte-40-60-1500')) === vorher && kAnzahl() === 20);
+  ok('alle 20 Vorlagenprodukte bleiben gegen den echten Validator fehlerfrei',
+    kat().produkte.every(p => KAT.validiereProdukt(p, { ids: [] }).length === 0));
+  ok('jedes Pflichtfeld einer Kategorie ist in ihrer Maske pflegbar (eine Pflichtquelle)',
+    KAT.KATEGORIEN.every(k => (k.pflicht || []).every(f => KAT.maskeFelder(k.id).includes(f))));
+  ok('kein Vorlagenprodukt traegt ein fuer seine Kategorie fachfremdes Maßfeld',
+    kat().produkte.every(p => KAT.MASSFELDER.every(f =>
+      p[f] === undefined || KAT.maskeFelder(p.kategorie).includes(f))));
+  ok('Katalog-Formatversion bleibt 1 (kein Bruch durch [P-16])',
+    KAT.KATALOG_VERSION === 1 && KAT.katalogObjekt(kat()).version === 1
+    && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === 20);
+}
+
 ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
   !JSON.stringify(store.aktivesWandelement()).includes('stein-i3-375')
   && KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);

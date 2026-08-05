@@ -314,6 +314,67 @@ ok("normAuswahl entdoppelt und verwirft Leerlisten",
 ok("anzahlAuswahl zaehlt Mehrfachauswahl je Kategorie",
   KAT.anzahlAuswahl({ latte: ["a", "b", "c"], beplankung: ["d", "e"] }) === 5);
 
+// --- 9) Kategoriegerechte Produktmaske ([P-16], Issue #34) ----------------
+// Die Maske ist die einzige Quelle der kategoriespezifischen Felder in Modul 0. Getestet
+// wird DOM-frei: Zusammensetzung, Beschriftung, Einheit und — vor allem — dass die Pflicht
+// nicht zweitdefiniert ist und die Diskriminatoren der Preisauflösung pflegbar bleiben.
+const maskeVon = (k) => KAT.maskeVonKategorie(k);
+
+ok("Gewindestange: Maske = Gewinde/Güte/Stangenlänge",
+  KAT.maskeFelder("gewindestange").join(",") === "gewinde,guete,laenge_mm");
+ok("Latte: Maske = Querschnitt + Standardlänge (keine Höhe)",
+  KAT.maskeFelder("latte").join(",") === "breite_mm,dicke_mm,laenge_mm");
+ok("Beplankung: Maske = Plattenmaße (kein Gewinde, keine Länge)",
+  KAT.maskeFelder("beplankung").join(",") === "breite_mm,hoehe_mm,dicke_mm");
+ok("Blech/Platte: Maske = Blechmaße",
+  KAT.maskeFelder("blech_platte").join(",") === "breite_mm,hoehe_mm,dicke_mm");
+ok("Stein: Steinbreite/-höhe/-tiefe, alle optional",
+  KAT.maskeFelder("stein").join(",") === "breite_mm,hoehe_mm,dicke_mm"
+  && maskeVon("stein").every((f) => f.pflicht === false));
+ok("Verbinder und Verbrauchsmaterial ohne fachfremde Maße",
+  KAT.maskeFelder("verbinder").length === 0 && KAT.maskeFelder("verbrauch").length === 0);
+ok("die drei geforderten Masken sind klar unterschiedlich",
+  new Set(["gewindestange", "latte", "beplankung"].map((k) => KAT.maskeFelder(k).join(","))).size === 3);
+
+ok("Beschriftungen sind fachlich, nicht generisch",
+  maskeVon("latte").map((f) => f.label).join(" | ")
+    === "Querschnitt Breite | Querschnitt Dicke | Standardlänge"
+  && maskeVon("beplankung").map((f) => f.label).join(" | ")
+    === "Plattenbreite | Plattenhöhe | Plattendicke"
+  && maskeVon("gewindestange")[0].label === "Gewinde"
+  && maskeVon("stein")[0].label === "Steinbreite");
+ok("Steinbreite ist als Preiszuordnungsmaß gekennzeichnet ([P-14])",
+  /Preiszuordnung/.test(maskeVon("stein")[0].hinweis || ""));
+ok("Maßfelder tragen die Einheit mm, Kennungen keine Einheit",
+  maskeVon("latte").every((f) => f.typ === "mm" && f.einheit === "mm")
+  && maskeVon("gewindestange")[0].typ === "text" && maskeVon("gewindestange")[0].einheit === null);
+ok("Gewinde hat einen fachlichen Platzhalter (M10)",
+  maskeVon("gewindestange")[0].platzhalter === "M10");
+
+// Pflicht kommt AUS KATEGORIEN[].pflicht — keine zweite Definition, kein Drift.
+ok("Pflichtkennzeichen der Maske stimmt fuer jede Kategorie mit KATEGORIEN[].pflicht",
+  KAT.KATEGORIEN.every((k) => {
+    const pflichtInMaske = maskeVon(k.id).filter((f) => f.pflicht).map((f) => f.feld).sort().join(",");
+    return pflichtInMaske === [...(k.pflicht || [])].sort().join(",");
+  }));
+ok("jedes Pflichtfeld ist in der Maske seiner Kategorie ueberhaupt pflegbar",
+  KAT.KATEGORIEN.every((k) => (k.pflicht || []).every((f) => KAT.maskeFelder(k.id).includes(f))));
+ok("jedes Maskenfeld ist ein kanonischer Produktschluessel (keine neuen Felder)",
+  KAT.KATEGORIEN.every((k) => KAT.maskeFelder(k.id)
+    .every((f) => [...KAT.MASSFELDER, "gewinde", "guete"].includes(f))));
+ok("Maskenreihenfolge ist ohne Doppelte",
+  KAT.KATEGORIEN.every((k) => new Set(KAT.maskeFelder(k.id)).size === KAT.maskeFelder(k.id).length));
+ok("unbekannte Kategorie -> leere Maske (kein Rateschluss)",
+  KAT.maskeVonKategorie("daemmung").length === 0 && KAT.maskeFelder(undefined).length === 0);
+
+// Die Maß-Diskriminatoren der Preisauflösung muessen pflegbar bleiben ([P-14]).
+ok("jede Rolle mit Maß-Diskriminator hat mindestens ein Diskriminatorfeld in ihrer Maske",
+  KAT.ROLLEN.filter((r) => r.mass).every((r) =>
+    r.mass.felder.some((f) => KAT.maskeFelder(r.kategorie).includes(f))));
+ok("Maske veraendert nichts an Kategorien, Rollen oder Formatversion",
+  KAT.KATEGORIEN.length === 7 && KAT.KATALOG_VERSION === 1
+  && typeof KAT.loesePreis === "function");
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

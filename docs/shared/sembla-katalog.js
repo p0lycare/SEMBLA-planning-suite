@@ -65,6 +65,82 @@ export const KATEGORIEN = [
 /** Alle Maßfelder (mm), immer optional erlaubt, je Kategorie teils pflichtig. */
 export const MASSFELDER = ["breite_mm", "hoehe_mm", "dicke_mm", "laenge_mm"];
 
+// --- Kategoriegerechte Produktmaske ([P-16]) -------------------------------
+// Welche Felder eine Kategorie fachlich hat, welche Beschriftung sie tragen und in
+// welcher Reihenfolge sie erscheinen — an EINER Stelle, DOM-frei und damit testbar.
+// Modul 0 rendert daraus seinen Pflegedialog; die PFLICHT-Angabe wird NICHT hier
+// wiederholt, sondern aus KATEGORIEN[].pflicht gelesen (eine Quelle, kein Drift).
+//
+// Die Feldschlüssel bleiben die kanonischen (`breite_mm` …): die Maß-Diskriminatoren
+// der Preisauflösung ([P-14], ROLLEN[].mass) zeigen darauf. Kategoriespezifisch sind
+// nur Auswahl, Reihenfolge, Beschriftung und Hinweis.
+//
+// `typ` "text" = freie Kennung, "mm" = Maß in Millimetern (Zahl > 0).
+
+/** @type {Readonly<Record<string, ReadonlyArray<{feld:string,label:string,typ:"text"|"mm",platzhalter?:string,hinweis?:string}>>>} */
+const _MASKEN = {
+  stein: [
+    { feld: "breite_mm", label: "Steinbreite", typ: "mm",
+      hinweis: "maßgebend für die Preiszuordnung der Steinpositionen" },
+    { feld: "hoehe_mm", label: "Steinhöhe (Lagenhöhe)", typ: "mm" },
+    { feld: "dicke_mm", label: "Steintiefe (Wandstärke)", typ: "mm" },
+  ],
+  gewindestange: [
+    { feld: "gewinde", label: "Gewinde", typ: "text", platzhalter: "M10" },
+    { feld: "guete", label: "Güte", typ: "text", platzhalter: "8.8" },
+    { feld: "laenge_mm", label: "Stangenlänge", typ: "mm",
+      hinweis: "maßgebend für die Preiszuordnung der Vorspannpositionen" },
+  ],
+  latte: [
+    { feld: "breite_mm", label: "Querschnitt Breite", typ: "mm" },
+    { feld: "dicke_mm", label: "Querschnitt Dicke", typ: "mm" },
+    { feld: "laenge_mm", label: "Standardlänge", typ: "mm",
+      hinweis: "maßgebend für die Preiszuordnung der Lattenstangen" },
+  ],
+  beplankung: [
+    { feld: "breite_mm", label: "Plattenbreite", typ: "mm" },
+    { feld: "hoehe_mm", label: "Plattenhöhe", typ: "mm" },
+    { feld: "dicke_mm", label: "Plattendicke", typ: "mm" },
+  ],
+  blech_platte: [
+    { feld: "breite_mm", label: "Blechbreite (Modullänge)", typ: "mm",
+      hinweis: "maßgebend für die Preiszuordnung der Boden-/Kopfbleche" },
+    { feld: "hoehe_mm", label: "Blechhöhe", typ: "mm" },
+    { feld: "dicke_mm", label: "Blechdicke", typ: "mm" },
+  ],
+  verbinder: [],            // bewusst ohne Maße: Katalog v1 führt kein Typ-/Maßmerkmal ([U-9])
+  verbrauch: [],            // Kleinteile/Meterware: Preisbasis genügt, keine fachfremden Maße
+};
+
+/**
+ * Fachliche Eingabemaske einer Kategorie ([P-16]) — geordnete Feldliste mit
+ * Beschriftung, Einheit und Pflichtkennzeichen. Die Pflicht kommt aus
+ * KATEGORIEN[].pflicht, damit Maske und `validiereProdukt` dieselbe Quelle nutzen.
+ * Unbekannte Kategorie -> leere Maske (nur die Grundfelder sind dann pflegbar).
+ * @param {string} katId
+ * @returns {Array<{feld:string,label:string,typ:"text"|"mm",einheit:string|null,
+ *                  pflicht:boolean,platzhalter:string|null,hinweis:string|null}>}
+ */
+export function maskeVonKategorie(katId) {
+  const k = kategorie(katId);
+  if (!k) return [];
+  const pflicht = k.pflicht || [];
+  return (_MASKEN[k.id] || []).map((f) => ({
+    feld: f.feld,
+    label: f.label,
+    typ: f.typ,
+    einheit: f.typ === "mm" ? "mm" : null,
+    pflicht: pflicht.includes(f.feld),
+    platzhalter: f.platzhalter || null,
+    hinweis: f.hinweis || null,
+  }));
+}
+
+/** Feldschlüssel der Maske einer Kategorie (Reihenfolge der Maske). @param {string} katId */
+export function maskeFelder(katId) {
+  return maskeVonKategorie(katId).map((f) => f.feld);
+}
+
 /** @param {string} id @returns {{id:string,label:string,einheiten:string[],pflicht:string[]}|null} */
 export function kategorie(id) {
   return KATEGORIEN.find((k) => k.id === id) || null;
