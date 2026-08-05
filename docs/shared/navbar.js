@@ -2,7 +2,7 @@
 /**
  * SEMBLA Navbar — gemeinsame Kopfleiste aller Module.
  *
- * Zeigt die Reiter der Module 0-6 (aktiver hervorgehoben) und das aktive
+ * Zeigt die Reiter der Module 0-7 (aktiver hervorgehoben) und das aktive
  * Wandelement mit Wechsel-Moeglichkeit. Der Zustand lebt im localStorage
  * (storage.js) und ueberlebt Seitenwechsel — kein stehender Rahmen/iframe noetig.
  *
@@ -24,6 +24,7 @@ export const MODULE = [
   { nr: 4, datei: "stueckliste.html", kurz: "Stückliste", titel: "Stückliste & Kosten" },
   { nr: 5, datei: "montage.html",     kurz: "Montage",    titel: "Montageanleitung" },
   { nr: 6, datei: "ifc-3d.html",      kurz: "3D / IFC",   titel: "3D-Vorschau & IFC (experimentell)" },
+  { nr: 7, datei: "zeichnung.html",   kurz: "Zeichnung",  titel: "Technische Zeichnung (Wandabwicklung)" },
 ];
 
 const CSS = `
@@ -55,7 +56,7 @@ let _unsub = null;
 
 /**
  * Kopfleiste in die Seite einhaengen.
- * @param {number} activeIndex Modul-Nummer der aktuellen Seite (0-6)
+ * @param {number} activeIndex Modul-Nummer der aktuellen Seite (0-7)
  */
 export function mountNavbar(activeIndex = 0) {
   store.migrieren();

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA · Technische Zeichnung</title>
+<style>
+  .intro{max-width:1320px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:13px}
+  .intro b{color:var(--sb-ink)}
+  .wrap{display:flex;gap:18px;padding:14px 20px 22px;align-items:flex-start;flex-wrap:wrap;max-width:1320px;margin:0 auto}
+  .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
+  .controls{width:320px;flex:0 0 320px}
+  .stage{flex:1 1 700px;min-width:520px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);margin:0 0 10px}
+  .btnrow{display:flex;gap:8px;margin-top:14px}
+  button{flex:1;padding:9px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
+  button:hover{filter:brightness(.97)}
+  .feld{display:flex;flex-direction:column;gap:3px;margin:8px 0;font-size:12px;color:var(--sb-muted)}
+  .feld input[type=text],.feld select{padding:6px 8px;border:1px solid var(--sb-line);border-radius:6px;font-size:13px;background:#fff;color:var(--sb-ink)}
+  label.f{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;margin:7px 0}
+  .res{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
+  .res .k{color:var(--sb-muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:#e3f5ea;color:var(--sb-ok)} .badge.no{background:#fbe6dd;color:#c9461c}
+  .note{font-size:11.5px;color:var(--sb-muted);margin-top:14px;line-height:1.55;border-top:1px solid var(--sb-line);padding-top:10px}
+  .hint{color:var(--sb-muted);font-size:12.5px}
+  /* Blattvorschau: das Blatt selbst wird von sembla-zeichnung.js (ZEICHNUNG_CSS) gestaltet. */
+  #blattwrap{max-width:100%;overflow:auto}
+  #blattwrap .zsheet{box-shadow:0 3px 18px rgba(20,32,46,.10)}
+  /* Druck: nur das Blatt (dieselbe Ableitung wie der zentrale Export). Die Kopfleiste aus
+     navbar.js (.sb-nav, sticky) MUSS ausgeblendet werden, sonst schwebt sie über dem PDF.
+     Das @page-Format kommt aus druckCss() und wird in #pagestyle eingehängt. */
+  @media print{
+    .sb-nav,.intro,.controls{display:none!important}
+    .wrap{display:block;padding:0;margin:0;max-width:none}
+    .stage{min-width:0}
+    .panel{border:none;border-radius:0;padding:0;background:#fff}
+    .stage h2{display:none}
+    #blattwrap{overflow:visible}
+    #blattwrap .zsheet{box-shadow:none}
+    input,select,textarea,button{display:none!important}
+  }
+</style>
+<style id="zcss"></style>
+<style id="pagestyle"></style>
+</head>
+<body>
+<p class="intro"><b>Technische Zeichnung.</b> Maßstabsgetreue <b>Wandabwicklung</b> des
+  <b>aktiven Wandelements</b> (aus „Wand planen"): Verlege- und Vorspannplan mit Steinen (i2/i3),
+  Öffnungen, Staffelung, Boden-/Kopfblech, Gewindestangen mit Kopplungen und Sonderlängen,
+  Bemaßung, Blatttabellen, Legende und Schriftfeld — als A3-/A4-Blatt druckbar
+  („Als PDF speichern"). Die Kopfdaten des Schriftfelds pflegst du in <b>„Start"</b>
+  (Projekt-Kopfdaten); die Zeichnungsdateien liegen im <b>zentralen Export</b> in „Start".
+  Vorschau und Export nutzen dieselbe Zeichenableitung. Dieses Modul liest das Wandelement
+  und ändert es nicht.</p>
+
+<div id="app" class="wrap">
+  <div class="panel controls">
+    <h2>Wandelement</h2>
+    <div id="wandinfo" class="hint" style="margin-top:8px">–</div>
+
+    <div style="margin-top:16px"><h2>Blatt &amp; Darstellung</h2>
+      <label class="feld">Blattformat
+        <select id="fmt">
+          <option value="a3">A3 quer</option>
+          <option value="a4">A4 quer</option>
+        </select>
+      </label>
+      <label class="feld">Planinhalt
+        <input type="text" id="planinhalt" placeholder="Wandabwicklung">
+      </label>
+      <label class="f"><input type="checkbox" id="masse" checked> Bemaßung</label>
+      <label class="f"><input type="checkbox" id="steintypen" checked> Steintypen beschriften</label>
+      <label class="f"><input type="checkbox" id="wm"> Vorabzug (Wasserzeichen)</label>
+    </div>
+
+    <div style="margin-top:16px"><h2>Übersicht</h2>
+      <div class="res">
+        <div class="k">Maße</div><div class="v" id="ovDim">–</div>
+        <div class="k">Raster / Steinreihen</div><div class="v" id="ovGrid">–</div>
+        <div class="k">Spannachsen</div><div class="v" id="ovCols">–</div>
+        <div class="k">Maßstab</div><div class="v" id="ovScale">–</div>
+        <div class="k">Blattgröße</div><div class="v" id="ovSheet">–</div>
+        <div class="k">Status</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
+      </div>
+    </div>
+
+    <div class="btnrow"><button class="primary" id="print">Blatt drucken</button></div>
+    <div class="note"><b>Hinweis.</b> Die Zeichnung stellt den <b>berechneten</b> Zustand des
+      Wandelements dar. Die Vorspann-Zielregeln im Blatt sind <b>Planungshinweise und werden nicht
+      automatisch geprüft</b>. Der statische Nachweis ist <b>nicht Bestandteil dieser Zeichnung</b> —
+      er entsteht in Modul „Statik" und liegt als eigenes Dokument im zentralen Export.
+      Dateien (SVG maßstabsgetreu + druckbares HTML) gibt es ausschließlich über den
+      <b>Export in „Start"</b> — dieses Modul lädt keine Dateien herunter.</div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Blattvorschau</h2>
+    <div id="blattwrap"></div>
+    <p class="hint" id="leer" style="display:none">Kein aktives Wandelement — in „Start" anlegen oder wählen.</p>
+  </div>
+</div>
+
+<script>
+/* App-Logik (klassisches Skript). Die gesamte Zeichnung, das Blatt, das CSS und das Druck-CSS
+   kommen aus docs/shared/sembla-zeichnung.js (DOM-frei) — genau dieselben Funktionen nutzt der
+   zentrale Export in Modul 0 (sembla-export.js/zeichnungHtml/zeichnungSvgText), es gibt also nur
+   EINE Zeichenableitung ([D-6]). Storage wird vom Modul-Skript unten als window.SEMBLA
+   bereitgestellt und in __zInit() gebunden — so bleibt diese Logik im Node-Smoke-Test ohne
+   Modulauflösung evaluierbar.
+   Reiner Konsument: liest das aktive Wandelement + eingaben.projekt, schreibt das Wandelement NIE.
+   Geschrieben wird ausschließlich der eigene Abschnitt eingaben.zeichnung (Darstellungsoptionen). */
+const $ = id => document.getElementById(id);
+const fmt = (n,d=0)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+let WALL=null, EING={}, OPT=null, currentId=null, MASSSTAB=null;
+// aus window.SEMBLA (in __zInit gebunden):
+let store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT;
+
+/** Darstellungsoptionen aus den Bedienelementen lesen (normalisiert). */
+function optionenAusUi(){
+  return normOptionen({
+    format: $('fmt').value,
+    masse: $('masse').checked,
+    steintypen: $('steintypen').checked,
+    planinhalt: $('planinhalt').value,
+    wasserzeichen: $('wm').checked,
+  });
+}
+
+/** Bedienelemente aus den Optionen setzen (beim Laden/Elementwechsel). */
+function uiAusOptionen(o){
+  $('fmt').value=o.format;
+  $('masse').checked=o.masse;
+  $('steintypen').checked=o.steintypen;
+  $('planinhalt').value=o.planinhalt;
+  $('wm').checked=o.wasserzeichen;
+}
+
+/** Blatt neu zeichnen — Vorschau UND Druck sind dasselbe Blatt (kein zweites Rendering). */
+function render(){
+  if(!WALL){ $('blattwrap').innerHTML=''; return; }
+  const b=blattHtml(WALL,EING,OPT);
+  MASSSTAB=b.masstab;
+  $('blattwrap').innerHTML=b.html;
+  $('pagestyle').textContent=druckCss(OPT.format);
+  $('ovScale').textContent='1 : '+b.masstab;
+  const bl=BLATT[OPT.format]||BLATT.a3;
+  $('ovSheet').textContent=bl.label+' · Feld '+bl.feld_mm.w+' × '+bl.feld_mm.h+' mm';
+}
+
+function applyWand(w){
+  WALL=w;
+  $('leer').style.display='none';
+  $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
+  $('ovGrid').textContent=w.N_grid+' Raster · '+w.lagen+' Steinreihen';
+  $('ovCols').textContent=String((w.tension_columns||[]).length);
+  const b=$('ovBadge');
+  if(w.validation && w.validation.buildable===false){ b.className='badge no'; b.textContent='Nicht baubar'; }
+  else { b.className='badge ok'; b.textContent='Baubar'; }
+  render();
+}
+
+/** Darstellungsoption geändert: eigenen Abschnitt speichern und neu zeichnen. */
+function optionGeaendert(){
+  OPT=optionenAusUi();
+  if(store && store.mergeEingaben) store.mergeEingaben('zeichnung', OPT);
+  render();
+}
+
+// ---- Aktives Wandelement (localStorage) ----
+function loadFromStore(we,label){
+  EING=(store&&store.aktiveEingaben)?store.aktiveEingaben():{};
+  OPT=normOptionen(EING.zeichnung);
+  uiAusOptionen(OPT);
+  applyWand(we);
+  // Der Wandelementname ist nutzereingegeben und wird deshalb NIE als Markup gesetzt:
+  // Beschriftung als Textknoten, Name als textContent eines <b>-Knotens (kein innerHTML,
+  // kein eigener Escaping-Nachbau).
+  const info=$('wandinfo');
+  info.textContent=label+' ';
+  const stark=document.createElement('b');
+  stark.textContent=we.name||'Wandelement';
+  info.appendChild(stark);
+}
+// Anzeige leeren, wenn kein aktives Wandelement vorliegt — kein Demo-/Platzhalter-Wandelement.
+function clearWall(){
+  WALL=null; MASSSTAB=null;
+  $('blattwrap').innerHTML=''; $('leer').style.display='';
+  $('ovDim').textContent='—'; $('ovGrid').textContent='—'; $('ovCols').textContent='—';
+  $('ovScale').textContent='—'; $('ovSheet').textContent='—';
+  $('ovBadge').className='badge'; $('ovBadge').textContent='—';
+  $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
+}
+function loadInitial(){
+  currentId = store&&store.aktivId ? store.aktivId() : null;
+  const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
+  if(we){ loadFromStore(we,'Aktives Wandelement:'); }
+  else { OPT=standardOptionen(); uiAusOptionen(OPT); clearWall(); }
+}
+function setupStoreSync(){
+  if(!store||!store.abonniere) return;
+  store.abonniere(()=>{
+    const id = store.aktivId ? store.aktivId() : null;
+    if(id!==currentId){                          // aktives Element extern gewechselt (Kopfleiste/Startseite)
+      currentId=id;
+      const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
+      if(we){ loadFromStore(we,'Aktives Wandelement geladen:'); } else { clearWall(); }
+    }
+  });
+}
+
+function bindEvents(){
+  $('fmt').addEventListener('change',optionGeaendert);
+  $('masse').addEventListener('change',optionGeaendert);
+  $('steintypen').addEventListener('change',optionGeaendert);
+  $('wm').addEventListener('change',optionGeaendert);
+  $('planinhalt').addEventListener('change',optionGeaendert);
+  $('print').addEventListener('click',()=>{ if(!WALL){ alert('Kein aktives Wandelement — in „Start“ anlegen oder wählen.'); return; } window.print(); });
+}
+
+window.__z={applyWand,render,optionGeaendert,optionenAusUi,
+  get wall(){return WALL;}, get opt(){return OPT;}, get masstab(){return MASSSTAB;}};
+
+window.__zInit=function(){
+  const S=window.SEMBLA||{};
+  store=S.store; blattHtml=S.blattHtml; normOptionen=S.normOptionen;
+  standardOptionen=S.standardOptionen; druckCss=S.druckCss;
+  ZEICHNUNG_CSS=S.ZEICHNUNG_CSS; BLATT=S.BLATT;
+  $('zcss').textContent=ZEICHNUNG_CSS;      // Blatt-CSS aus dem gemeinsamen Baustein
+  bindEvents();
+  setupStoreSync();
+  loadInitial();
+};
+</script>
+
+<script type="module">
+  import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT }
+    from './shared/sembla-zeichnung.js';
+  import * as store from './shared/storage.js';
+  import { mountNavbar } from './shared/navbar.js';
+  window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT };
+  mountNavbar(7);
+  window.__zInit();
+</script>
+</body>
+</html>

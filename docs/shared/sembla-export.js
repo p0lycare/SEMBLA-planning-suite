@@ -3,7 +3,8 @@
  * SEMBLA Export — zentrale, DOM-freie Datei-Generatoren.
  *
  * Erzeugt die Ausgabe-Dateien der Suite (Stueckliste, Zuschnittliste,
- * Montageanleitung, IFC, Projekt-JSON) ausschliesslich aus dem Datenmodell:
+ * Montageanleitung, technische Zeichnung, Nachweis, IFC, Projekt-JSON)
+ * ausschliesslich aus dem Datenmodell:
  * Wandelement (Single Source of Truth) + Eingaben (`eingaben`, siehe storage.js).
  * Keine Modul-Zeichenlogik, kein DOM — dieselben Funktionen nutzen der zentrale
  * Export auf der Startseite UND (kuenftig) die Vorschau in den Modulen.
@@ -17,6 +18,7 @@ import { semblaBomItems } from "./sembla-bom.js";
 import { EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation } from "./sembla-katalog.js";
 import { berechneAufbau } from "./sembla-aufbau.js";
 import { montageDokument } from "./sembla-montage.js";
+import { optionenAusEingaben, zeichnungDokument, zeichnungSvgDatei } from "./sembla-zeichnung.js";
 import { wandelementToIfc } from "./sembla-ifc.js";
 import { nachweise, nachweisParams } from "./sembla-statik.js";
 import { sicherName } from "./storage.js";
@@ -182,6 +184,29 @@ export function ifcText(w, opts) { return wandelementToIfc(w, opts); }
  * @param {object} [eingaben] Eingaben-Modell (genutzt: `projekt` fuer den Projektbezug)
  */
 export function montageHtml(w, eingaben = {}) { return montageDokument(w, eingaben); }
+
+// ---------- Technische Zeichnung (SVG + druckbares HTML) ----------
+// Reine Delegation an sembla-zeichnung.js: dieselbe Zeichen-/Blattableitung nutzt die
+// Vorschau in Modul 7 ([D-6]). Hier steht KEINE eigene Zeichenlogik, und es gibt kein
+// jsPDF/Fremd-Lib — das druckbare HTML liefert per „Als PDF speichern" das A3-/A4-Blatt.
+// Die Darstellungsoptionen kommen aus `eingaben.zeichnung` (Modul 7, [D-7]).
+
+/**
+ * Wandabwicklung als eigenstaendige, masstabsgetreue SVG-Datei (mm-Masse, 1:x).
+ * @param {object} w Wandelement (Single Source of Truth) @param {object} [eingaben]
+ */
+export function zeichnungSvgText(w, eingaben = {}) {
+  return zeichnungSvgDatei(w, eingaben, optionenAusEingaben(eingaben));
+}
+
+/**
+ * Komplettes Zeichnungsblatt (Zeichnung, Tabellen, Legende, Planungshinweise,
+ * Schriftfeld) als selbsttragendes, druckbares HTML-Dokument.
+ * @param {object} w Wandelement @param {object} [eingaben]
+ */
+export function zeichnungHtml(w, eingaben = {}) {
+  return zeichnungDokument(w, eingaben, optionenAusEingaben(eingaben));
+}
 
 // ---------- Statischer Nachweis (selbsttragendes HTML) ----------
 // Quelle ist AUSSCHLIESSLICH der volle Schermer-Nachweis (sembla-statik.js): Geometrie,
@@ -432,7 +457,7 @@ function _heute() { try { return new Date().toLocaleDateString("de-DE"); } catch
 /**
  * Alle waehlbaren Ausgabe-Dateien fuer ein Projekt bauen.
  * @param {{name:string,wandelement:object,eingaben:object}} projekt (aus store.projektObjekt)
- * @param {string[]} auswahl Schluessel: 'projekt','stueckliste','montage','nachweis','ifc','zuschnitt'
+ * @param {string[]} auswahl Schluessel: 'projekt','stueckliste','montage','zeichnung','nachweis','ifc','zuschnitt'
  * @param {object|null} [katalog] geladener Bauteilkatalog — Preisquelle der Stückliste
  *   ([P-14]). Ohne Katalog entsteht die Datei weiterhin, aber ohne Preise und mit
  *   benanntem Grund je Position (nie mit Nullpreisen).
@@ -447,6 +472,11 @@ export function baueDateien(projekt, auswahl, katalog = null) {
   if (set.has("stueckliste")) files.push({ name: "Stueckliste_" + base + ".csv", data: stuecklisteCsv(w, eingaben, undefined, katalog) });
   if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben, katalog) });
   if (set.has("montage")) files.push({ name: "Montageanleitung_" + base + ".html", data: montageHtml(w, eingaben) });
+  if (set.has("zeichnung")) {
+    // Zwei Dateien aus EINER Ableitung: masstabsgetreues SVG + druckbares Blatt ([D-6]).
+    files.push({ name: "Zeichnung_" + base + ".svg", data: zeichnungSvgText(w, eingaben) });
+    files.push({ name: "Zeichnung_" + base + ".html", data: zeichnungHtml(w, eingaben) });
+  }
   if (set.has("nachweis")) files.push({ name: "Statischer_Nachweis_" + base + ".html", data: nachweisHtml(w, eingaben) });
   if (set.has("ifc")) files.push({ name: base + ".ifc", data: ifcText(w) });
   return files;

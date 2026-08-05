@@ -80,8 +80,12 @@ function _stueck(w, sg) {
  * Standardlaengen sein koennen, gibt es hier bewusst keine Rechnung „z0 + j·rod" mehr —
  * sonst entstuende ein zweites Stueckmodell neben dem Core ([P-6]). Alt-Bundles ohne
  * `stuecke` behalten die gleichmaessige Aufteilung ueber eine Pauschallaenge.
+ *
+ * Exportiert, weil auch die technische Zeichnung (`sembla-zeichnung.js`, [D-4]) die
+ * Stangenstoesse zeichnet — beide Ausgaben teilen dieselbe Ableitung statt sie zu
+ * verdoppeln.
  */
-function _stangenEnden(w, sg) {
+export function stangenEnden(w, sg) {
   const out = [];
   if (Array.isArray(sg.stuecke) && sg.stuecke.length) {
     let z = sg.z0_mm;
@@ -134,7 +138,7 @@ export function montageEreignisse(w) {
       const ankerU = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
       const ankerO = sg.anker_oben || "spannplatte";
       roh.push({ art: ankerU === "bodenblech" ? "fuss" : "neustart", z_mm: sg.z0_mm, col, sg, anker: ankerU });
-      for (const [i, z] of _stangenEnden(w, sg).slice(0, -1).entries())
+      for (const [i, z] of stangenEnden(w, sg).slice(0, -1).entries())
         roh.push({ art: "kopplung", z_mm: z, col, sg, stange_nr: i + 1, anker: "kopplungsmutter" });
       roh.push({ art: "abschluss", z_mm: sg.z1_mm, col, sg, anker: ankerO });
     }
@@ -306,7 +310,7 @@ function _fussZustand(w) {
     for (const sg of _segmente(w, col)) {
       const ankerU = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
       if (ankerU !== "bodenblech") continue;
-      const enden = _stangenEnden(w, sg);
+      const enden = stangenEnden(w, sg);
       const eins = enden.length === 1;                // einzige Stange = zugleich Segmentende
       out.push({
         k: col.k, x_mm: col.x_mm,
@@ -349,7 +353,7 @@ function _strangZustand(w, ab) {
       const bet = beteiligt.get(key);
       const belegt = sg.z0_mm < zBis && sg.z1_mm > zVon;
       if (!belegt && !bet) continue;
-      const enden = _stangenEnden(w, sg);
+      const enden = stangenEnden(w, sg);
       const abgeschlossen = !!(bet && bet.abschluss);
       const echt = abgeschlossen ? sg.z1_mm : (enden.find(z => z >= zBis) != null ? enden.find(z => z >= zBis) : sg.z1_mm);
       const oben = abgeschlossen ? sg.z1_mm : Math.max(echt, zBis + UEBERSTAND_MM);

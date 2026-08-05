@@ -111,9 +111,10 @@ ok("Dateiinhalt ist der Generator-Output (kein Stub)",
   nurNachweis[0].data === nachweisHtml(w, eingaben));   // beide mit heutigem Datum
 const ohneNachweis = baueDateien(projekt, ["projekt", "stueckliste", "montage", "ifc"]);
 ok("ohne Auswahl kein Nachweis-Dokument", !ohneNachweis.some(f => /Statischer_Nachweis/.test(f.name)));
-const alle = baueDateien(projekt, ["projekt", "stueckliste", "zuschnitt", "montage", "nachweis", "ifc"]);
-ok("Vollauswahl enthaelt alle sechs Dateien inkl. Nachweis",
-  alle.length === 6 && alle.some(f => /^Statischer_Nachweis_/.test(f.name)));
+// Vollauswahl: 'zeichnung' liefert zwei Dateien (SVG + HTML), alle anderen je eine.
+const alle = baueDateien(projekt, ["projekt", "stueckliste", "zuschnitt", "montage", "zeichnung", "nachweis", "ifc"]);
+ok("Vollauswahl enthaelt alle Dateien inkl. Nachweis",
+  alle.length === 8 && alle.some(f => /^Statischer_Nachweis_/.test(f.name)));
 
 // --- 7) Keine Engine-Abhaengigkeit ---------------------------------------
 const exportSrc = readFileSync(new URL("../../docs/shared/sembla-export.js", import.meta.url), "utf8");

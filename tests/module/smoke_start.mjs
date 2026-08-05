@@ -147,6 +147,36 @@ ok('Dokument ist als pruefpflichtige Planungshilfe gekennzeichnet',
   /Planungshilfe/.test(nwDatei.data) && /prüfpflichtig/i.test(nwDatei.data));
 ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
 
+// --- 4b) Zentraler Export: Zeichnungs-Haekchen an der echten Oberflaeche (Issue #36) ---
+ok('Export-Dialog hat das Zeichnungs-Haekchen (checked)',
+  /<input type="checkbox" value="zeichnung" checked>/.test(html));
+ok('Beschriftung nennt „Technische Zeichnung (SVG + HTML)"',
+  /Technische Zeichnung \(SVG \+ HTML\)/.test(html));
+ok('Modulkarte fuer Modul 7 vorhanden', /7:'Technische Zeichnung/.test(html));
+
+// Derselbe Produktpfad, nur mit dem Zeichnungs-Haekchen.
+zipCalls.length = 0;
+$('tbody').dispatch('click', { target: { closest: sel => sel === 'button' ? btnEl : trEl } });
+$('exp-overlay')._sel = [{ value: 'zeichnung' }];
+$('exp-go').dispatch('click');
+const zBase = store.sicherName(store.projektObjekt(aktivId).name);
+const zFiles = zipCalls.length ? zipCalls[0].files : [];
+ok('Zeichnungs-Haekchen erzeugt genau zwei Dateien (SVG + HTML)', zFiles.length === 2);
+const zSvg = zFiles.find(f => f.name.endsWith('.svg')) || { name: '', data: '' };
+const zHtml = zFiles.find(f => f.name.endsWith('.html')) || { name: '', data: '' };
+ok('Dateiname Zeichnung_<Projekt>.svg', zSvg.name === 'Zeichnung_' + zBase + '.svg');
+ok('Dateiname Zeichnung_<Projekt>.html', zHtml.name === 'Zeichnung_' + zBase + '.html');
+ok('SVG ist masstabsgetreu (mm-Masse im Wurzelelement)',
+  /^<\?xml/.test(zSvg.data) && /<svg[^>]*width="[\d.]+mm"/.test(zSvg.data) && /height="[\d.]+mm"/.test(zSvg.data));
+ok('HTML ist ein selbsttragendes, druckbares Blatt',
+  /^<!DOCTYPE html>/.test(zHtml.data) && /@page\{size:A[34] landscape/.test(zHtml.data) && /ztitleblock/.test(zHtml.data));
+ok('Blatt kennzeichnet die Vorspann-Zielregeln als ungeprueft',
+  /nicht automatisch geprüft/.test(zHtml.data));
+ok('Blatt behauptet keinen Nachweis',
+  /separat prüfen/.test(zHtml.data) && !/bestanden/i.test(zHtml.data));
+ok('kein jsPDF/Fremd-Lib im Zeichnungspfad', !/jspdf/i.test(zHtml.data) && !/html2canvas/i.test(zHtml.data));
+ok('Dialog schliesst nach dem Zeichnungs-Export', $('exp-overlay').hidden === true);
+
 // --- 5) Bauteilkatalog (Issue #21) an der echten Modul-0-Oberflaeche -------
 // Bedienhilfen: genau die Wege, die ein Nutzer nimmt (Felder setzen -> Button klicken).
 const kat = () => store.holeKatalog();

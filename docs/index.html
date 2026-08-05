@@ -252,6 +252,7 @@
     <label class="opt"><input type="checkbox" value="stueckliste" checked><span><span class="t">Stückliste &amp; Kosten (CSV)</span><br><span class="d">Mengen aus dem aktiven Wandelement, mit Preisen aus dem Modell.</span></span></label>
     <label class="opt"><input type="checkbox" value="zuschnitt" checked><span><span class="t">Zuschnittliste Latten (CSV)</span><br><span class="d">Lattenschnitt je Verbinderachse aus dem Wandaufbau.</span></span></label>
     <label class="opt"><input type="checkbox" value="montage" checked><span><span class="t">Montageanleitung (HTML)</span><br><span class="d">Baugruppenabschnitte nach Montageereignissen mit nummerierten Steinreihen, A4-druckbar — im Browser öffnen und drucken.</span></span></label>
+    <label class="opt"><input type="checkbox" value="zeichnung" checked><span><span class="t">Technische Zeichnung (SVG + HTML)</span><br><span class="d">Wandabwicklung mit Verlege-/Vorspannplan, Bemaßung, Tabellen und Schriftfeld aus Modul&nbsp;7 — maßstabsgetreues SVG (1:x, mm) plus druckbares A3-/A4-Blatt.</span></span></label>
     <label class="opt"><input type="checkbox" value="nachweis" checked><span><span class="t">Statischer Nachweis (HTML/PDF-fähig)</span><br><span class="d">Voller Schermer-Nachweis aus Modul&nbsp;3 mit Geometrie, Kennwerten und Auslastungen — druckbare, prüfpflichtige Planungshilfe.</span></span></label>
     <label class="opt"><input type="checkbox" value="ifc" checked><span><span class="t">3D-Modell (IFC4)</span><br><span class="d">Wand als IFC4 für CAD/BIM-Programme.</span></span></label>
     <div class="modal-actions">
@@ -319,6 +320,7 @@
       4:'Material-Stückliste mit Preisen, Export als Excel/CSV.',
       5:'Lagenweise Montageanleitung mit Vorspann-Schritten.',
       6:'Experimentell: 3D-Vorschau und IFC-Viewer/-Export (OBJ-Upload).',
+      7:'Technische Zeichnung: maßstabsgetreue Wandabwicklung mit Bemaßung und Schriftfeld (A3/A4).',
     })[nr] || '';
   }
 

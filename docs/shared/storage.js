@@ -61,12 +61,16 @@ const K_KATALOG = "sembla:katalog";
  *  Bleibt 3 auch mit den wandbezogenen Produktreferenzen: `eingaben.planung.produkte`
  *  und `eingaben.aufbau.produkte` werden beim Lesen ebenfalls aus `standardEingaben()`
  *  aufgefuellt (leere Rollen). Der Altbestand `eingaben.katalog.auswahl` wird bewusst
- *  NICHT migriert — eine Kategorie->Rollen-Uebersetzung waere mehrdeutig ([P-15]). */
+ *  NICHT migriert — eine Kategorie->Rollen-Uebersetzung waere mehrdeutig ([P-15]).
+ *  Bleibt 3 auch mit den Darstellungsoptionen der Zeichnung (`eingaben.zeichnung`,
+ *  Modul 7): reine Ansichtsoptionen, beim Lesen aus `standardEingaben()` aufgefuellt
+ *  ([D-7]) — nichts zu migrieren. */
 export const SCHEMA_VERSION = 3;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
  *  Bleibt 2: `wandtyp` (Wandelement) sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
- *  `eingaben.planung` und `eingaben.aufbau.produkte` sind OPTIONAL. Der v2-Parser
+ *  `eingaben.planung`, `eingaben.aufbau.produkte` und `eingaben.zeichnung` sind
+ *  OPTIONAL (Darstellungsoptionen, [D-7]). Der v2-Parser
  *  (`parseImport`) uebernimmt `obj.eingaben` unveraendert und ohne Feld-Whitelist,
  *  `holeEingaben` fuellt fehlende Felder auf und `projektObjekt` exportiert alles
  *  wieder — unbekannte/neue Teile reisen also in beide Richtungen verlustfrei mit.
@@ -535,6 +539,11 @@ export function standardEingaben() {
     // Bleibt als leerer Block erhalten, damit Altprojekte unveraendert laden; er wird
     // nicht mehr geschrieben und nicht mehr angewendet.
     katalog: { quelle: null, auswahl: {} },
+    // Modul 7 — Technische Zeichnung: AUSSCHLIESSLICH Darstellungsoptionen des
+    // Blattes ([D-7]). Keine Geometrie-, Statik- oder Produktwerte — die stehen im
+    // Wandelement bzw. in den Abschnitten ihrer Eigentuemer und werden hier NICHT
+    // gedoppelt. Kanonische Werte/Normalisierung: sembla-zeichnung.js.
+    zeichnung: { format: "a3", masse: true, steintypen: true, planinhalt: "Wandabwicklung", wasserzeichen: false },
     // Modul 4 — Stueckliste & Kosten. Preise liegen NICHT mehr hier: sie werden je
     // Position aus dem Bauteilkatalog aufgeloest ([P-14]). Editierbar bleibt nur die
     // Waehrung. Gespeicherte Alt-Preise (`kosten.preise`) bleiben in Altprojekten
@@ -583,7 +592,7 @@ export function aktiveEingaben() { return holeEingaben(); }
  * Einen Eingabe-Abschnitt aktualisieren (Modul schreibt NUR seinen Teil zurueck).
  * Das Wandelement bleibt unberuehrt — nur Modul 1 aendert das Wandelement.
  * Ohne aktives/gewaehltes Element passiert nichts (return null).
- * @param {"projekt"|"planung"|"aufbau"|"kosten"|"statik"|"katalog"} teil @param {object} patch @param {string} [id]
+ * @param {"projekt"|"planung"|"aufbau"|"kosten"|"statik"|"katalog"|"zeichnung"} teil @param {object} patch @param {string} [id]
  * @returns {string|null} id
  */
 export function mergeEingaben(teil, patch, id) {

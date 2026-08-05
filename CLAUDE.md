@@ -11,7 +11,7 @@ SEMBLA Planungs-Suite — Werkzeuge zur Planung vorgespannter Trockenmauerwerksw
 **GitHub Pages**: live unter `https://p0lycare.github.io/SEMBLA-planning-suite/` (Deploy direkt vom
 Branch `main`, Ordner `docs/`). Kein Build-Schritt, kein Server — jeder Push ist sofort live.
 
-Die App besteht aus **7 Modulen (0–6)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
+Die App besteht aus **8 Modulen (0–7)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
 Code liegt **einmal** in `docs/shared/` und wird per `<script type="module">` geladen. Einstieg ist
 `docs/index.html` (Modul 0). Die Geschichte des Umbaus von der alten Single-File-Suite auf diesen
 MVP steht in [`doku/REFACTOR.md`](doku/REFACTOR.md); der abgelöste Alt-Stand liegt in `legacy/`.
@@ -111,7 +111,7 @@ Vorspannstränge (segmentiert), BOM/Stückliste. Einheiten: **mm**. `grid` = Ras
 ## Fachregelwerk und Änderungsprozess
 
 Die Planung muss **vollständig regelbasiert und deterministisch** erfolgen. Verbindliche fachliche
-Grundlage ist das hierarchische Regelwerk in Kapitel 15 des Handbuchs; seine editierbare Quelle ist
+Grundlage ist das hierarchische Regelwerk in Kapitel 16 des Handbuchs; seine editierbare Quelle ist
 `build-handbuch.mjs`, das erzeugte Dokument `doku/SEMBLA_Handbuch.docx`. Code, Tests und Handbuch
 dürfen fachlich nicht auseinanderlaufen.
 
@@ -171,12 +171,23 @@ nicht mehr alleinige Verteilungsregel.
      rein **additiv** (die regulären Abschnitte bleiben unverändert), ohne Fußereignis entfällt er
      ersatzlos. Alle Baugruppenbilder nutzen denselben **globalen Maßstab** (`abschnitt.z_top_mm`),
      damit die Vorschau mit dem Montagefortschritt nicht wächst.
+   - `sembla-zeichnung.js` — **technische Zeichnung** (Modul 7): maßstabsgetreue Wandabwicklung
+     (`zeichnungSvg`), Blatt mit Tabellen/Legende/Schriftfeld (`blattHtml`), `ZEICHNUNG_CSS`,
+     `druckCss`, `zeichnungDokument`/`zeichnungSvgDatei`, Optionen (`normOptionen`/`standardOptionen`);
+     DOM-frei. **Norm-Maßstab** inkl. Bemaßungsrand ⇒ Druck ist echt 1:x (**[D-2]**). Genutzt von
+     Modul 7 (Vorschau + Druck) **und** vom zentralen Export — eine Zeichenableitung (**[D-6]**),
+     kein jsPDF/CDN. Stangenstöße kommen aus `stangenEnden()` (`sembla-montage.js`), Mengen aus
+     `sembla-bom.js` — kein zweites Stück-/Mengenmodell. Die vier Vorspann-Zielregeln stehen nur
+     als **ungeprüfte Planungshinweise** auf dem Blatt (**[D-5]**), der statische Nachweis ist
+     ausdrücklich **nicht** Bestandteil der Zeichnung (**[D-8]**).
    - `sembla-ifc.js` — IFC4-Export (`wandelementToIfc` + `parseObj`/`meshStats`; genutzt vom zentralen Export).
    - `sembla-export.js` — baut die Export-Dateien (Stückliste/Zuschnitt-CSV, Montage-HTML,
-     **Statischer-Nachweis-HTML**, IFC-Text) für Modul 0. Das Nachweis-Dokument kommt aus dem
-     **vollen** Schermer-Nachweis (`sembla-statik.js`) — nie aus dem vereinfachten Engine-Modell —
+     **Zeichnung als SVG + druckbares HTML**, **Statischer-Nachweis-HTML**, IFC-Text) für Modul 0. Das
+     Nachweis-Dokument kommt aus dem **vollen** Schermer-Nachweis (`sembla-statik.js`) — nie aus dem vereinfachten Engine-Modell —
      und ist als prüfpflichtige Planungshilfe gekennzeichnet. Die Montageanleitung ist reine
-     Delegation an `sembla-montage.js` (keine eigene Zeichenlogik, kein Duplikat zu Modul 5).
+     Delegation an `sembla-montage.js` (keine eigene Zeichenlogik, kein Duplikat zu Modul 5); die
+     Zeichnung ebenso an `sembla-zeichnung.js` (Häkchen `zeichnung` ⇒ zwei Dateien, kein Duplikat zu
+     Modul 7).
    - `zip.js` — `zipSync`/`downloadZip` (STORE+CRC32, ohne Fremd-Lib) für den zentralen ZIP-Export.
    - `sembla-katalog.js` — **Bauteilkatalog**: Kategorien/Einheiten, Validierung, Austauschformat
      (`parseKatalog`/`katalogObjekt`), **Verwendungsrollen** (`ROLLEN`, `rollenVonModul`, `produktRollen`,
@@ -199,13 +210,14 @@ nicht mehr alleinige Verteilungsregel.
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
 | 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only**: Preise werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar nur `waehrung` → `eingaben.kosten`. Nicht eindeutige Zuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
 | 5 | `montage.html` | Montageanleitung: **Baugruppenabschnitte nach Montageereignissen** (erste Stange, Kopplung/neue Stange, oberer Abschluss) mit durchgehend nummerierten Steinreihen, A4-paginiert druckbar (`sembla-montage.js`; identisch zum zentralen Export) |
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
+| 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 
 **Bauteilgeometrie (i2/i3):** Die realen OBJ/IFC-Modelle liegen **nicht** im Repo (vertraulich,
 öffentliches Repo). `Bauteil-OBJ/` ist gitignored und nur lokal vorhanden. Modul 6 bettet die
@@ -235,7 +247,7 @@ Es gibt **keinen** Build-/Publish-Schritt für die App — `docs/` wird direkt e
 
 ```bash
 npm run test:core                 # Core-Parität (py + mjs) + BOM-Drift (test-shared.mjs) — die wichtigsten
-npm run test:modul0               # … bis test:modul6: Logik-/Smoke-Tests je Modul (tests/module/)
+npm run test:modul0               # … bis test:modul7: Logik-/Smoke-Tests je Modul (tests/module/)
 npm run test:all                  # Core + alle Modultests + Storage-Smoke in einem Rutsch
 npm run test:interop              # tests/interop/: Python-DXF/IFC-Referenz + web-ifc-Validierung (Orakel Modul 6)
 ```
