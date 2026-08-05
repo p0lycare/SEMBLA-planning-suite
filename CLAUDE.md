@@ -11,7 +11,7 @@ SEMBLA Planungs-Suite — Werkzeuge zur Planung vorgespannter Trockenmauerwerksw
 **GitHub Pages**: live unter `https://p0lycare.github.io/SEMBLA-planning-suite/` (Deploy direkt vom
 Branch `main`, Ordner `docs/`). Kein Build-Schritt, kein Server — jeder Push ist sofort live.
 
-Die App besteht aus **8 Modulen (0–7)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
+Die App besteht aus **9 Modulen (0–8)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
 Code liegt **einmal** in `docs/shared/` und wird per `<script type="module">` geladen. Einstieg ist
 `docs/index.html` (Modul 0). Die Geschichte des Umbaus von der alten Single-File-Suite auf diesen
 MVP steht in [`doku/REFACTOR.md`](doku/REFACTOR.md); der abgelöste Alt-Stand liegt in `legacy/`.
@@ -196,7 +196,13 @@ nicht mehr alleinige Verteilungsregel.
      Altbestand **[P-15]**. Rein/DOM-frei, genutzt von Modul 0/1/2 und `sembla-export.js`.
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
      **Katalog-Slot**, **Produktrollen** (`holeProdukte`/`setzeProduktrolle`), Import/Export).
-   - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–6 + aktives Wandelement).
+   - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–8 + aktives Wandelement).
+   - `sembla-blog.js` — **Projektblog** (Modul 8): Validator der Änderungsliste, Karten-HTML,
+     Filterung/Gruppierung der GitHub-Issues, Fehler-Fallback, Deep-Link-Anker. Rein/DOM-frei,
+     eigene Tests (`tests/module/test-blog.mjs`).
+   - `blog-eintraege.js` — **Datensatz** der Änderungsliste (Format `SEMBLA-Blog` v1): reine
+     Daten, keine Logik. Öffentlich sichtbar ⇒ der Validator verbietet E-Mails, Tokens,
+     absolute lokale Pfade und kopierte Issue-Bodies.
 
    `engine`/`statik`/`bom`/`aufbau`/`montage`/`ifc`/`export`/`zip`/`katalog` sind eigene Dateien **wegen eigener Tests bzw.
    mehrerer Nutzer** (Regeln a/b). Reine Modul-Zeichen-/Rechenlogik mit nur einem Nutzer bleibt **inline**
@@ -218,6 +224,26 @@ nicht mehr alleinige Verteilungsregel.
 | 5 | `montage.html` | Montageanleitung: **Baugruppenabschnitte nach Montageereignissen** (erste Stange, Kopplung/neue Stange, oberer Abschluss) mit durchgehend nummerierten Steinreihen, A4-paginiert druckbar (`sembla-montage.js`; identisch zum zentralen Export) |
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
+| 8 | `blog.html` | **Projektblog & Status** (mobile-first, read-only): Ansicht „Was ist neu?" aus `blog-eintraege.js` und Ansicht „Projektstatus" aus der öffentlichen GitHub-Issue-API (`sembla-blog.js`). Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben`, kein Login/Backend |
+
+**Modul 8 (Blog) und der Datenfluss.** Der Blog ist bewusst vom Planungsmodell entkoppelt: er
+liest weder Wandelement noch `eingaben` und schreibt nirgendwo hin. Seine beiden Quellen sind
+(a) die im Repo versionierte Änderungsliste `docs/shared/blog-eintraege.js` — statisch, also auch
+offline lesbar — und (b) die **öffentliche** GitHub-Issue-API, zur Laufzeit ohne Authentifizierung
+abgerufen. Gruppiert wird **ausschließlich** nach den expliziten Labels `status: blocked`,
+`status: decision needed`, `status: in progress`, `status: ready`; alles andere landet sichtbar in
+„Ohne Status" — es gibt **keine** Statusheuristik aus Titeln oder Texten und **kein** zweites
+Statussystem neben GitHub. Angezeigt (und gespeichert) werden nur Nummer, Titel, Labels und
+Meilenstein — nie Bodies, Kommentare oder Autoren. Der einzige localStorage-Zugriff ist der
+**Anzeigecache** `sembla:blog:issues` (letzter erfolgreicher Abruf + „Stand"); er gehört **nicht**
+zum Projektmodell und läuft deshalb bewusst nicht über `storage.js`. Bei Netz-/API-Fehler zeigt das
+Modul einen benannten Hinweis (inkl. GitHubs 60-Abrufe-Limit) und höchstens den als veraltet
+gekennzeichneten Cache — **nie** einen geratenen Status.
+
+**Commit-Regel (Änderungsliste).** Ab jetzt enthält jeder produktive SEMBLA-Commit **genau einen**
+neuen referenzierbaren `chg-*`-Eintrag in `docs/shared/blog-eintraege.js` für denselben
+Issue-Scope; Begleitdoku zählt nicht zweit. Reihenfolge neu → alt, ID-Muster `chg-YYYYMMDD-NN`,
+Pflichtfelder `id/datum/typ/issue/titel` (optional `testbitte`) — `npm run test:modul8` prüft das.
 
 **Bauteilgeometrie (i2/i3):** Die realen OBJ/IFC-Modelle liegen **nicht** im Repo (vertraulich,
 öffentliches Repo). `Bauteil-OBJ/` ist gitignored und nur lokal vorhanden. Modul 6 bettet die
@@ -247,7 +273,7 @@ Es gibt **keinen** Build-/Publish-Schritt für die App — `docs/` wird direkt e
 
 ```bash
 npm run test:core                 # Core-Parität (py + mjs) + BOM-Drift (test-shared.mjs) — die wichtigsten
-npm run test:modul0               # … bis test:modul7: Logik-/Smoke-Tests je Modul (tests/module/)
+npm run test:modul0               # … bis test:modul8: Logik-/Smoke-Tests je Modul (tests/module/)
 npm run test:all                  # Core + alle Modultests + Storage-Smoke in einem Rutsch
 npm run test:interop              # tests/interop/: Python-DXF/IFC-Referenz + web-ifc-Validierung (Orakel Modul 6)
 ```
