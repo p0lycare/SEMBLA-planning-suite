@@ -109,11 +109,14 @@ const rohIssue = {
   assignee: { login: "p0lycare" },
 };
 const gefiltert = B.filterIssue(rohIssue);
-ok("Filter behaelt nur Nummer/Titel/Labels/Meilenstein/URL",
-  JSON.stringify(Object.keys(gefiltert).sort()) === JSON.stringify(["labels", "milestone", "number", "title", "url"]));
+ok("Filter behaelt nur Nummer/Titel/Labels/Meilenstein/URL/Entscheidung",
+  JSON.stringify(Object.keys(gefiltert).sort())
+  === JSON.stringify(["entscheidung", "labels", "milestone", "number", "title", "url"]));
 const gefiltertJson = JSON.stringify(gefiltert);
 ok("Filter uebernimmt weder Body noch Autor, Zuweisung oder Kommentarzahl",
   !gefiltertJson.includes("GEHEIMER") && !/"(body|user|login|assignee|comments|state)"/.test(gefiltertJson));
+ok("bei in-progress bleibt das Entscheidungsfeld leer (Body wird nicht gelesen)",
+  gefiltert.entscheidung === "");
 ok("Filter setzt die GitHub-URL", gefiltert.url === `https://github.com/${B.REPO}/issues/31`);
 ok("Pull Requests werden verworfen",
   B.filterIssue({ number: 99, title: "PR", pull_request: { url: "…" } }) === null);
@@ -122,6 +125,102 @@ ok("kaputte Eintraege werden verworfen",
 ok("filterIssues verwirft PRs aus der Liste",
   B.filterIssues([rohIssue, { number: 99, title: "PR", pull_request: {} }, null]).length === 1);
 ok("filterIssues ist robust gegen Nicht-Listen", B.filterIssues({}).length === 0);
+
+// --- 5b) Entscheidungsabsatz: nur explizit ausgezeichnet, nur decision/blocked ---
+//
+// Quelle ist AUSSCHLIESSLICH der vom Maintainer ausgezeichnete Abschnitt des Issue-Bodys
+// (inline aus der Listen-API, kein Zusatzabruf). Kein Freitext-Ratepfad, und fuer alle
+// anderen Statusgruppen wird der Body nicht einmal angesehen.
+
+const BODY_DECISION = [
+  "Kontext: GEHEIME interne Vorbemerkung, die niemand sehen darf.",
+  "",
+  "### Aktuelle Entscheidung",
+  "**Brauche Entscheidung:** Sollen Bot-Kommentare als Quelle dienen?",
+  "**Empfehlung:** Nein — nur der Issue-Body, sonst reisst das Abruflimit.",
+  "",
+  "### Umsetzung",
+  "GEHEIMER Umsetzungsplan mit internen Notizen.",
+].join("\n");
+
+const rohDecision = {
+  number: 48, title: "Blog: Entscheidungen einblenden",
+  labels: [{ name: "status: decision needed" }], milestone: null,
+  body: BODY_DECISION, user: { login: "p0lycare" }, comments: 3,
+};
+const fDecision = B.filterIssue(rohDecision);
+ok("decision-Issue mit Absatz: Extrakt wird gesetzt",
+  /^Brauche Entscheidung: Sollen Bot-Kommentare als Quelle dienen\?/.test(fDecision.entscheidung)
+  && /– Empfehlung: Nein — nur der Issue-Body/.test(fDecision.entscheidung));
+ok("Markdown-Inline wird gestrippt (kein ** im Extrakt)",
+  !/[*`\[\]]|<[a-z]/i.test(fDecision.entscheidung));
+ok("Zeilenumbrueche werden zu Leerzeichen", !/[\r\n]/.test(fDecision.entscheidung));
+ok("nur der ausgezeichnete Abschnitt landet im Extrakt — kein Rest des Bodys",
+  !/GEHEIM/i.test(JSON.stringify(fDecision)));
+ok("roh.body taucht nicht in der gefilterten Struktur auf",
+  !("body" in fDecision) && !JSON.stringify(fDecision).includes("Kontext:"));
+
+ok("decision-Issue ohne Absatz: Extrakt bleibt leer",
+  B.filterIssue({ number: 49, title: "Ohne Absatz", labels: [{ name: "status: decision needed" }],
+    body: "Nur Prosa. Brauche irgendwann eine Entscheidung, aber ohne Abschnitt." }).entscheidung === "");
+ok("kein Body ⇒ Extrakt leer, kein Absturz",
+  B.filterIssue({ number: 50, title: "x", labels: [{ name: "status: decision needed" }] }).entscheidung === ""
+  && B.filterIssue({ number: 51, title: "x", labels: [{ name: "status: decision needed" }], body: null }).entscheidung === "");
+ok("Ueberschrift wird case-insensitive und ab drei Rauten erkannt",
+  B.filterIssue({ number: 52, title: "x", labels: [{ name: "status: decision needed" }],
+    body: "#### OFFENE ENTSCHEIDUNG\nBrauche Entscheidung: A oder B?" }).entscheidung
+    === "Brauche Entscheidung: A oder B?");
+ok("zwei Rauten sind keine gueltige Auszeichnung",
+  B.filterIssue({ number: 53, title: "x", labels: [{ name: "status: decision needed" }],
+    body: "## Aktuelle Entscheidung\nBrauche Entscheidung: A oder B?" }).entscheidung === "");
+ok("der Abschnitt endet an der naechsten Ueberschrift",
+  !/GEHEIM/i.test(B.filterIssue({ number: 54, title: "x", labels: [{ name: "status: decision needed" }],
+    body: "### Offene Entscheidung\nBrauche Entscheidung: A?\n### Notizen\nEmpfehlung: GEHEIM" }).entscheidung));
+
+ok("blocked-Issue: Abschnitt Blockiert wird gelesen und praefixiert",
+  B.filterIssue({ number: 55, title: "x", labels: [{ name: "status: blocked" }],
+    body: "### Blockiert\nWartet auf die Freigabe des Statikers." }).entscheidung
+    === "Blockiert: Wartet auf die Freigabe des Statikers.");
+ok("blocked-Issue: Marker „Blockiert durch" + "\" wird uebernommen",
+  B.filterIssue({ number: 56, title: "x", labels: [{ name: "status: blocked" }],
+    body: "### Blockiert durch\nBlockiert durch: #35 (Kataloggroessen)" }).entscheidung
+    === "Blockiert: #35 (Kataloggroessen)");
+ok("blocked-Issue ohne Absatz: Extrakt bleibt leer",
+  B.filterIssue({ number: 57, title: "x", labels: [{ name: "status: blocked" }],
+    body: "Freitext, der nach Blockade klingt, aber nicht ausgezeichnet ist." }).entscheidung === "");
+
+// Der Body darf bei anderen Gruppen nicht einmal GELESEN werden (Zugriff protokolliert).
+function rohMitBodyWaechter(labelName) {
+  let gelesen = false;
+  const o = { number: 60, title: "x", labels: [{ name: labelName }], milestone: null };
+  Object.defineProperty(o, "body", {
+    enumerable: true,
+    get() { gelesen = true; return "### Aktuelle Entscheidung\nBrauche Entscheidung: GEHEIM?"; },
+  });
+  return { o, war: () => gelesen };
+}
+for (const label of ["status: ready", "status: in progress", "kein status"]) {
+  const w = rohMitBodyWaechter(label);
+  const f = B.filterIssue(w.o);
+  ok(`bei "${label}" wird der Body gar nicht gelesen`, !w.war() && f.entscheidung === "");
+}
+const wDecision = rohMitBodyWaechter("status: decision needed");
+ok("bei decision wird der Body gelesen (genau dort ist es erwuenscht)",
+  B.filterIssue(wDecision.o).entscheidung !== "" && wDecision.war());
+
+ok("Extrakt wird auf ENTSCHEIDUNG_MAX gekappt",
+  (() => {
+    const lang = "Wort ".repeat(200).trim();
+    const e = B.filterIssue({ number: 61, title: "x", labels: [{ name: "status: decision needed" }],
+      body: `### Aktuelle Entscheidung\nBrauche Entscheidung: ${lang}` }).entscheidung;
+    return e.length <= B.ENTSCHEIDUNG_MAX && e.endsWith("…") && B.ENTSCHEIDUNG_MAX === 280;
+  })());
+
+// Was gecacht wird, ist genau `filterIssues(...)` — hier derselbe Serialisierungspfad.
+const cacheAbbild = JSON.stringify({ issues: B.filterIssues([rohIssue, rohDecision]), stand: "…" });
+ok("der Cache-Abbild enthaelt nur das Extrakt, nie den vollen Body",
+  !/GEHEIM/i.test(cacheAbbild) && !/"body"/.test(cacheAbbild)
+  && cacheAbbild.includes("Brauche Entscheidung: Sollen Bot-Kommentare"));
 
 // --- 6) Gruppierung: strikt nach Labels, dringend zuerst -----------------
 const I = (nr, labels, ms, title) => ({ number: nr, title: title || ("Issue " + nr),
@@ -162,6 +261,23 @@ ok("Statuskarte zeigt Nummer, Titel, Labels und Meilenstein",
   && shtml.includes("status: in progress") && shtml.includes("AWG Musterwand"));
 ok("Statuskarte verlinkt auf GitHub", shtml.includes(`href="https://github.com/${B.REPO}/issues/12"`));
 ok("Gruppen tragen Titel und Anzahl", /Entscheidung nötig/.test(shtml) && /class="anzahl"/.test(shtml));
+ok("ohne Extrakt gibt es keinen Entscheidungsblock", !/class="entscheidung"/.test(shtml));
+const kDecision = B.issueKarte(fDecision);
+ok("Statuskarte zeigt das Extrakt als eigenen Block unter dem Titel",
+  /<h3 class="titel">[^<]*<\/h3><p class="entscheidung">/.test(kDecision)
+  && kDecision.includes("<b>Brauche Entscheidung:</b> Sollen Bot-Kommentare")
+  && kDecision.includes("<b>Empfehlung:</b> Nein"));
+ok("Blockade-Extrakt wird mit fettem Praefix ausgewiesen",
+  B.issueKarte({ number: 55, labels: [], entscheidung: "Blockiert: Wartet auf #35" })
+    .includes('<p class="entscheidung"><b>Blockiert:</b> Wartet auf #35</p>'));
+ok("das Extrakt wird escaped (kein Fremd-Markup)",
+  (() => {
+    const h = B.issueKarte({ number: 62, labels: [],
+      entscheidung: 'Brauche Entscheidung: <img src=x onerror="alert(1)">' });
+    return !/<img src=x/.test(h) && /&lt;img src=x/.test(h);
+  })());
+ok("leeres Extrakt erzeugt keinen leeren Block",
+  !/entscheidung/.test(B.issueKarte({ number: 63, labels: [], entscheidung: "   " })));
 const boeseIssue = B.issueKarten(B.gruppiereIssues([
   I(30, ['<img src=x onerror="alert(1)">'], '<script>alert(2)</' + 'script>', '<b>roh</b>')]));
 ok("Titel, Labels und Meilenstein werden escaped",

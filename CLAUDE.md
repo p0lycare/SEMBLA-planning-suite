@@ -234,11 +234,25 @@ abgerufen. Gruppiert wird **ausschließlich** nach den expliziten Labels `status
 `status: decision needed`, `status: in progress`, `status: ready`; alles andere landet sichtbar in
 „Ohne Status" — es gibt **keine** Statusheuristik aus Titeln oder Texten und **kein** zweites
 Statussystem neben GitHub. Angezeigt (und gespeichert) werden nur Nummer, Titel, Labels und
-Meilenstein — nie Bodies, Kommentare oder Autoren. Der einzige localStorage-Zugriff ist der
+Meilenstein — nie Kommentare oder Autoren, und aus dem Body **einzig** der Entscheidungsabsatz
+(s. u.). Der einzige localStorage-Zugriff ist der
 **Anzeigecache** `sembla:blog:issues` (letzter erfolgreicher Abruf + „Stand"); er gehört **nicht**
 zum Projektmodell und läuft deshalb bewusst nicht über `storage.js`. Bei Netz-/API-Fehler zeigt das
 Modul einen benannten Hinweis (inkl. GitHubs 60-Abrufe-Limit) und höchstens den als veraltet
 gekennzeichneten Cache — **nie** einen geratenen Status.
+
+**Entscheidungsabsatz (`entscheidung`).** Nur für die Gruppen `decision` und `blocked` zeigt die
+Karte zusätzlich die offene Frage („Brauche Entscheidung: … – Empfehlung: …", bei blockiert
+„Blockiert: …"). Quelle ist **ausschließlich** ein im Issue-Body **ausdrücklich ausgezeichneter**
+Abschnitt (`### Aktuelle Entscheidung` / `### Offene Entscheidung` / `### Blockiert`, ≥ 3 Rauten,
+Gross/Klein egal) bis zur nächsten Überschrift; daraus werden die Marker-Zeilen
+`Brauche Entscheidung:` / `Empfehlung:` / `Blockiert durch:` gelesen, Markdown-Inline gestrippt und
+auf 280 Zeichen gekappt. Es gibt **keinen** Freitext-Ratepfad: fehlt der Abschnitt, bleibt das Feld
+leer und die Karte zeigt nichts — nie einen erfundenen Text. Der Body kommt **inline** aus der
+Listen-API (**kein** zusätzlicher Abruf, Ratelimit unverändert), wird bei allen anderen Gruppen
+**gar nicht gelesen** und nach der Extraktion verworfen; nur das Extrakt geht in den Anzeigecache.
+Das Issue bleibt die Single Source of Truth, der Blog ist nur eine Ansicht davon — das Pflegen des
+Absatzes beim Statuswechsel ist Maintainer-Aufgabe.
 
 **Commit-Regel (Änderungsliste).** Ab jetzt enthält jeder produktive SEMBLA-Commit **genau einen**
 neuen referenzierbaren `chg-*`-Eintrag in `docs/shared/blog-eintraege.js` für denselben

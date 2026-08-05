@@ -37,6 +37,12 @@
   .karte .testbitte{font-size:13px;line-height:1.5;color:#42505e;margin:8px 0 0;
                     background:#f3f7fd;border-left:3px solid var(--sb-accent);
                     border-radius:0 7px 7px 0;padding:8px 10px}
+  /* Entscheidungs-/Blockade-Absatz aus dem Issue (nur decision/blocked, nur wenn
+     im Issue ausdruecklich hinterlegt) — neutral gehalten, es ist ein Zitat. */
+  .karte .entscheidung{font-size:13px;line-height:1.5;color:#42505e;margin:6px 0 0;
+                       background:#f4f5f7;border-left:3px solid var(--sb-line);
+                       border-radius:0 7px 7px 0;padding:8px 10px}
+  .karte .entscheidung b{color:var(--sb-ink)}
   .karte .labels{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
   .karte .fuss{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px}
   .karte .fuss a{display:inline-flex;align-items:center;min-height:44px;

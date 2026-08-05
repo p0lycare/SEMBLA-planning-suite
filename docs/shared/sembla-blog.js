@@ -12,8 +12,11 @@
  *   2. „Projektstatus" — offene Issues der oeffentlichen GitHub-API. Gruppiert wird
  *      AUSSCHLIESSLICH nach expliziten `status:`-Labels — es gibt KEINE Heuristik aus
  *      Titeln oder Texten. Was kein Statuslabel traegt, landet sichtbar in „Ohne Status".
- *      Angezeigt werden nur Nummer, Titel, Labels und Meilenstein; Bodies und Kommentare
- *      werden nicht einmal uebernommen (`filterIssue`).
+ *      Angezeigt werden nur Nummer, Titel, Labels, Meilenstein und — ausschliesslich bei
+ *      `decision`/`blocked` — der EXPLIZIT ausgezeichnete Entscheidungsabsatz des Bodys
+ *      (Feld `entscheidung`). Alles andere aus dem Body sowie Kommentare, Autoren und
+ *      Zuweisungen werden nicht einmal uebernommen (`filterIssue`). Es gibt dafuer KEINEN
+ *      zusaetzlichen Abruf — der Body kommt inline aus der Listen-API.
  *
  * Read-only: kein Login, kein Backend, kein Schreibpfad. Der Blog liest NICHTS aus dem
  * Wandelement und schreibt NICHTS in das Eingaben-Modell.
@@ -216,11 +219,118 @@ export function blogKarten(eintraege = EINTRAEGE) {
 // 3) Ansicht „Projektstatus"
 // --------------------------------------------------------------------------
 
+// --- Entscheidungsabsatz („Brauche Entscheidung / Empfehlung") -------------
+//
+// Das Issue bleibt die einzige Quelle der Wahrheit; der Blog zeigt nur EINE Ansicht
+// davon. Gelesen wird ausschliesslich ein vom Maintainer AUSDRUECKLICH ausgezeichneter
+// Abschnitt des Issue-Bodys — es gibt keinen Freitext-Ratepfad („erster Absatz",
+// „Satz mit Fragezeichen"). Fehlt der Abschnitt, bleibt das Extrakt leer und die Karte
+// benennt das sichtbar, statt etwas zu erfinden.
+
+/** Hoechstlaenge des Extrakts (1–2 Saetze); darueber wird hart gekappt. */
+export const ENTSCHEIDUNG_MAX = 280;
+
+/** Zulaessige Abschnittsueberschriften je Statusgruppe (>= 3 Rauten, Gross/Klein egal). */
+const ABSCHNITT_RE = {
+  decision: [/^#{3,}\s*(?:aktuelle|offene)\s+entscheidung\s*:?\s*$/i],
+  blocked: [/^#{3,}\s*blockiert\b.*$/i, /^#{3,}\s*(?:aktuelle|offene)\s+entscheidung\s*:?\s*$/i],
+};
+
+/** Beliebige Markdown-Ueberschrift — sie beendet den Abschnitt. */
+const UEBERSCHRIFT_RE = /^#{1,6}\s/;
+
+/**
+ * Marker innerhalb des Abschnitts. Nur diese Zeilen werden gelesen; `praefix` ist der
+ * kanonische Text, den `issueKarte` fett setzt (er stammt aus dieser Tabelle, nicht
+ * aus dem Fremdtext).
+ */
+const MARKER = [
+  { re: /^brauche\s+entscheidung\s*:?\s*/i, praefix: "Brauche Entscheidung:" },
+  { re: /^empfehlung\s*:?\s*/i,             praefix: "Empfehlung:" },
+  { re: /^blockiert\s+durch\s*:?\s*/i,      praefix: "Blockiert:" },
+];
+
+/** Markdown-Inline entschaerfen: kein Markup, keine Links/Bilder, kein HTML. */
+function strippMarkdown(s) {
+  return String(s == null ? "" : s)
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")   // Bild -> Alternativtext
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")    // Link -> Linktext
+    .replace(/<[^>]*>/g, " ")                   // HTML-Reste
+    .replace(/`+/g, "")                         // Code
+    .replace(/\*\*|__|~~/g, "")                 // Fett/Durchgestrichen
+    .replace(/(^|\s)[*_](\S)/g, "$1$2")         // Kursiv (nur am Wortanfang)
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+|>\s*|#{1,6}\s+)/gm, "")  // Listen/Zitat/Rauten
+    .replace(/\s+/g, " ")                       // Zeilenumbrueche -> Leerzeichen
+    .trim();
+}
+
+/** Auf ENTSCHEIDUNG_MAX kappen (an der Wortgrenze, mit Auslassungszeichen). */
+function kappe(s) {
+  if (s.length <= ENTSCHEIDUNG_MAX) return s;
+  const kurz = s.slice(0, ENTSCHEIDUNG_MAX - 1);
+  const luecke = kurz.lastIndexOf(" ");
+  return (luecke > ENTSCHEIDUNG_MAX * 0.6 ? kurz.slice(0, luecke) : kurz).replace(/[\s,;:.–-]+$/, "") + "…";
+}
+
+/**
+ * Den ausgezeichneten Abschnitt aus einem Issue-Body extrahieren.
+ *
+ * Gelesen wird der Abschnitt von der passenden Ueberschrift bis zur naechsten
+ * Ueberschrift; daraus werden die Marker-Zeilen zusammengesetzt. Traegt der Abschnitt
+ * keine Marker, wird sein (ebenfalls ausdruecklich gesetzter) Prosatext genommen — bei
+ * `blocked` mit dem Praefix „Blockiert:".
+ *
+ * @param {string} body Issue-Body (roh, Markdown)
+ * @param {"decision"|"blocked"|string} gruppe Statusgruppe des Issues
+ * @returns {string} Extrakt oder "" (Abschnitt fehlt / leer / Gruppe ohne Absatz)
+ */
+export function entscheidungAbsatz(body, gruppe) {
+  const muster = ABSCHNITT_RE[gruppe];
+  if (!muster || typeof body !== "string" || body === "") return "";
+
+  const zeilen = body.split(/\r\n|\r|\n/);
+  let start = -1;
+  for (let i = 0; i < zeilen.length && start < 0; i++) {
+    const z = zeilen[i].trim();
+    if (muster.some((re) => re.test(z))) start = i + 1;
+  }
+  if (start < 0) return "";                       // kein ausgezeichneter Abschnitt
+
+  const block = [];
+  for (let i = start; i < zeilen.length; i++) {
+    if (UEBERSCHRIFT_RE.test(zeilen[i].trim())) break;
+    block.push(zeilen[i]);
+  }
+
+  // 1) Marker-Zeilen in kanonischer Reihenfolge (MARKER), je Marker die erste Fundstelle.
+  const teile = [];
+  for (const m of MARKER) {
+    for (const zeile of block) {
+      const rein = strippMarkdown(zeile);
+      if (!m.re.test(rein)) continue;
+      const wert = rein.replace(m.re, "").trim();
+      if (wert) teile.push(`${m.praefix} ${wert}`);
+      break;
+    }
+  }
+  if (teile.length) return kappe(teile.join(" – "));
+
+  // 2) Kein Marker: der Prosatext des ausgezeichneten Abschnitts.
+  const prosa = strippMarkdown(block.join("\n"));
+  if (!prosa) return "";
+  return kappe(gruppe === "blocked" && !/^blockiert/i.test(prosa) ? `Blockiert: ${prosa}` : prosa);
+}
+
 /**
  * Ein API-Issue auf die anzeigbaren Felder eindampfen.
- * Pull Requests werden verworfen (`pull_request`), Bodies/Kommentare/Autoren gar nicht
- * erst uebernommen — sie koennen damit auch nicht in den Cache geraten.
- * @returns {{number:number,title:string,labels:string[],milestone:string|null,url:string}|null}
+ *
+ * Pull Requests werden verworfen (`pull_request`); Kommentare, Autoren und Zuweisungen
+ * werden gar nicht erst uebernommen. Der Body wird NUR bei den Statusgruppen `decision`
+ * und `blocked` ueberhaupt angesehen, und auch dort bleibt allein der ausgezeichnete
+ * Abschnitt uebrig (`entscheidung`) — `roh.body` selbst wird verworfen und kann damit
+ * auch nicht in den Anzeigecache geraten.
+ *
+ * @returns {{number:number,title:string,labels:string[],milestone:string|null,url:string,entscheidung:string}|null}
  */
 export function filterIssue(roh) {
   if (!roh || typeof roh !== "object") return null;
@@ -231,12 +341,18 @@ export function filterIssue(roh) {
     ? roh.labels.map((l) => String(l && typeof l === "object" ? l.name : l || "")).filter(Boolean)
     : [];
   const ms = roh.milestone && roh.milestone.title ? String(roh.milestone.title) : null;
+  const gruppe = gruppeVon({ labels });
+  // Datensparsamkeit: fuer alle anderen Gruppen wird roh.body nicht einmal gelesen.
+  const entscheidung = (gruppe === "decision" || gruppe === "blocked")
+    ? entscheidungAbsatz(roh.body, gruppe)
+    : "";
   return {
     number: nr,
     title: String(roh.title == null ? "" : roh.title),
     labels,
     milestone: ms,
     url: issueUrl(nr),
+    entscheidung,
   };
 }
 
@@ -292,6 +408,21 @@ export function gruppiereIssues(issues) {
   })).filter((g) => g.issues.length);
 }
 
+/**
+ * Das Extrakt als Textblock. Fett gesetzt werden nur die KANONISCHEN Praefixe aus
+ * `MARKER` — sie stammen aus dem eigenen Code, nicht aus dem Issue-Text; der ganze
+ * Text laeuft vorher durch `esc()`.
+ */
+export function entscheidungBlock(text) {
+  const t = String(text == null ? "" : text).trim();
+  if (!t) return "";
+  let html = esc(t);
+  for (const m of MARKER) {
+    html = html.split(m.praefix).join(`<b>${m.praefix}</b>`);
+  }
+  return `<p class="entscheidung">${html}</p>`;
+}
+
 /** Eine Issue-Karte. Anker `#issue-<nr>`. */
 export function issueKarte(issue) {
   const chips = (issue.labels || [])
@@ -302,6 +433,7 @@ export function issueKarte(issue) {
     + (issue.milestone ? `<span class="chip ms${istAwg(issue) ? " awg" : ""}">${esc(issue.milestone)}</span>` : "")
     + `</div>`
     + `<h3 class="titel">${esc(issue.title)}</h3>`
+    + entscheidungBlock(issue.entscheidung)
     + (chips ? `<div class="labels">${chips}</div>` : "")
     + `<div class="fuss">`
     + `<a class="ref" href="${esc(issue.url || issueUrl(issue.number))}" target="_blank" rel="noopener">Auf GitHub öffnen</a>`

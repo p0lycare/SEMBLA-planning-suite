@@ -77,8 +77,14 @@ const API = [
     milestone: { title: "AWG Musterwand" }, body: "GEHEIMER BODY", user: { login: "jemand" }, comments: 4 },
   { number: 32, title: "Preisauflösung dokumentieren", labels: [{ name: "status: ready" }], milestone: null, body: "…" },
   { number: 33, title: "Blockiert klingt der Titel", labels: [], milestone: null, body: "…" },
-  { number: 34, title: "Kopfblech getrennt ausweisen", labels: [{ name: "status: blocked" }], milestone: null, body: "…" },
+  { number: 34, title: "Kopfblech getrennt ausweisen", labels: [{ name: "status: blocked" }], milestone: null,
+    body: "GEHEIMER BODY 34\n\n### Blockiert\nBlockiert durch: #35 (Kataloggroessen)\n\n### Notizen\nGEHEIME Notiz" },
   { number: 35, title: "Pull Request", labels: [], pull_request: { url: "…" }, body: "…" },
+  { number: 36, title: "Bot-Kommentare als Quelle?", labels: [{ name: "status: decision needed" }], milestone: null,
+    body: "GEHEIMER Vorlauf im Body\n\n### Aktuelle Entscheidung\n"
+      + "**Brauche Entscheidung:** Kommentare zusaetzlich abrufen?\n"
+      + "**Empfehlung:** Nein, nur der Body — sonst reisst das Abruflimit.\n\n"
+      + "### Umsetzung\nGEHEIMER Umsetzungsplan", user: { login: "jemand" }, comments: 9 },
 ];
 
 globalThis.window = {};
@@ -131,14 +137,31 @@ ok("nur Nummer/Titel/Labels/Meilenstein — kein Body, kein Autor",
   && /AWG Musterwand/.test(sHtml) && /status: in progress/.test(sHtml));
 ok("Statuskarte verlinkt auf GitHub",
   sHtml.includes(`href="https://github.com/${B.REPO}/issues/31"`));
-ok("Stand wird ausgewiesen", /4 offene Issues · Stand: /.test($("statusstand").textContent));
+ok("Entscheidungsabsatz erscheint bei decision — mit fettem Praefix, ohne Restbody",
+  /class="entscheidung"/.test(sHtml)
+  && sHtml.includes("<b>Brauche Entscheidung:</b> Kommentare zusaetzlich abrufen?")
+  && sHtml.includes("<b>Empfehlung:</b> Nein, nur der Body")
+  && !/GEHEIM/i.test(sHtml));
+ok("Blockade-Absatz erscheint bei blocked", sHtml.includes("<b>Blockiert:</b> #35 (Kataloggroessen)"));
+ok("Issues ohne decision/blocked tragen keinen Entscheidungsblock",
+  (sHtml.match(/class="entscheidung"/g) || []).length === 2);
+ok("Stand wird ausgewiesen", /5 offene Issues · Stand: /.test($("statusstand").textContent));
 ok("kein Fehlerhinweis nach erfolgreichem Abruf",
   $("statusfehler").innerHTML === "" && A().fehler === null);
 
 // --- 3) Cache: nur die gefilterten Felder werden gespeichert -------------
 const roh = _ls[B.CACHE_KEY];
 ok("erfolgreicher Abruf landet im Anzeigecache", typeof roh === "string" && roh.length > 10);
-ok("der Cache enthaelt keine Bodies/Autoren", !/GEHEIMER BODY|jemand|"body"/.test(roh));
+ok("der Cache enthaelt keine Bodies/Autoren", !/GEHEIM|jemand|"body"/i.test(roh));
+ok("der Cache enthaelt das Extrakt des ausgezeichneten Absatzes",
+  roh.includes("Brauche Entscheidung: Kommentare zusaetzlich abrufen?")
+  && roh.includes("Blockiert: #35 (Kataloggroessen)"));
+ok("bei Nicht-decision-Issues landet kein Bodyinhalt im Cache",
+  (() => {
+    const c = JSON.parse(roh).issues;
+    const nicht = c.filter((i) => i.number === 31 || i.number === 32 || i.number === 33);
+    return nicht.length === 3 && nicht.every((i) => i.entscheidung === "" && !("body" in i));
+  })());
 ok("der Cache traegt einen Stand", typeof JSON.parse(roh).stand === "string");
 
 // --- 4) Umschalten zwischen den Ansichten --------------------------------
