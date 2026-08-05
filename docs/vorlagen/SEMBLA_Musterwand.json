@@ -42,6 +42,9 @@
       "max_span_grid": 3,
       "force_kN": 50,
       "rod_mm": 1000,
+      "rod_lengths_mm": [
+        1000
+      ],
       "blech_mm": 1000,
       "top_connection": "blech",
       "columns_grid": null,
@@ -75,6 +78,24 @@
             "lage0": 0,
             "lage1": 13,
             "gewindestangen": 3,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 600,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 600,
             "verschnitt_mm": 400,
             "verbindungsmuttern": 2,
@@ -102,6 +123,24 @@
             "lage0": 0,
             "lage1": 13,
             "gewindestangen": 3,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 600,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 600,
             "verschnitt_mm": 400,
             "verbindungsmuttern": 2,
@@ -129,6 +168,24 @@
             "lage0": 0,
             "lage1": 13,
             "gewindestangen": 3,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 600,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 600,
             "verschnitt_mm": 400,
             "verbindungsmuttern": 2,
@@ -156,6 +213,24 @@
             "lage0": 0,
             "lage1": 13,
             "gewindestangen": 3,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 600,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 600,
             "verschnitt_mm": 400,
             "verbindungsmuttern": 2,
@@ -183,6 +258,24 @@
             "lage0": 0,
             "lage1": 11,
             "gewindestangen": 3,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 200,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 200,
             "verschnitt_mm": 800,
             "verbindungsmuttern": 2,
@@ -210,6 +303,24 @@
             "lage0": 0,
             "lage1": 11,
             "gewindestangen": 3,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 200,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 200,
             "verschnitt_mm": 800,
             "verbindungsmuttern": 2,
@@ -237,6 +348,19 @@
             "lage0": 0,
             "lage1": 9,
             "gewindestangen": 2,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 800,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 800,
             "verschnitt_mm": 200,
             "verbindungsmuttern": 1,
@@ -264,6 +388,19 @@
             "lage0": 0,
             "lage1": 9,
             "gewindestangen": 2,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 800,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 800,
             "verschnitt_mm": 200,
             "verbindungsmuttern": 1,
@@ -291,6 +428,19 @@
             "lage0": 0,
             "lage1": 9,
             "gewindestangen": 2,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 800,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 800,
             "verschnitt_mm": 200,
             "verbindungsmuttern": 1,
@@ -318,6 +468,19 @@
             "lage0": 0,
             "lage1": 7,
             "gewindestangen": 2,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 400,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 400,
             "verschnitt_mm": 600,
             "verbindungsmuttern": 1,
@@ -345,6 +508,19 @@
             "lage0": 0,
             "lage1": 7,
             "gewindestangen": 2,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 400,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 400,
             "verschnitt_mm": 600,
             "verbindungsmuttern": 1,
@@ -372,6 +548,19 @@
             "lage0": 0,
             "lage1": 7,
             "gewindestangen": 2,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 400,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": null,
             "letzte_stange_mm": 400,
             "verschnitt_mm": 600,
             "verbindungsmuttern": 1,
@@ -411,7 +600,8 @@
       "versatz_violations": [],
       "tension_span_ok": true,
       "rigid_lagen": [],
-      "invalid_segments": []
+      "invalid_segments": [],
+      "zuschnitt_konflikte": []
     },
     "courses": [
       {

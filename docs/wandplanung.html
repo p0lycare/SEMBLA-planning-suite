@@ -41,18 +41,30 @@
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
-  /* Produktauswahl (Bauteilkatalog) */
+  /* Produktauswahl (Bauteilkatalog) — kompakte Zeile je Verwendungsrolle + Multi-Select-Dropdown [P-17] */
   .prodinfo{font-size:11.5px;color:var(--sb-muted);margin-bottom:6px}
-  .pgrp{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--sb-muted);margin:9px 0 3px;font-weight:650}
-  .prol{border:1px solid var(--sb-line);border-radius:7px;padding:6px 8px;margin:5px 0;background:#fbfcfd}
-  .prol .ptop{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12.5px}
+  .prol{padding:3px 0;margin:0}
+  .prol .ptop{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:12px}
   .prol .ptop b{font-weight:600}
-  .prol .plist{margin-top:4px}
-  .prol .plist label{display:flex;justify-content:flex-start;align-items:baseline;gap:6px;margin:2px 0;font-size:12px}
-  .prol .plist small{color:var(--sb-muted)}
-  .prol .pnote{font-size:11px;color:var(--sb-muted);margin-top:3px;line-height:1.45}
-  .prol .pwarn{font-size:11px;color:var(--sb-warn);margin-top:3px;line-height:1.45}
+  .pdd{margin-top:2px}
+  .pdd>summary{list-style:none;cursor:pointer;padding:4px 8px;border:1px solid var(--sb-line);border-radius:6px;
+    background:#fff;font-size:12px;display:flex;justify-content:space-between;gap:6px;align-items:center}
+  .pdd>summary::-webkit-details-marker{display:none}
+  .pdd>summary::after{content:'▾';color:var(--sb-muted);font-size:10px}
+  .pdd[open]>summary{border-radius:6px 6px 0 0}
+  .pdd[open]>summary::after{content:'▴'}
+  .pdd>summary:focus-visible{outline:2px solid var(--sb-accent);outline-offset:1px}
+  .pmenu{border:1px solid var(--sb-line);border-top:none;border-radius:0 0 6px 6px;background:#fff;
+    max-height:210px;overflow:auto;padding:4px 7px}
+  .pmenu label{display:flex;align-items:flex-start;gap:6px;margin:3px 0;font-size:12px;cursor:pointer;justify-content:flex-start}
+  .pmenu .pname{font-weight:600}
+  .pmenu .pmerk{display:block;color:var(--sb-muted);font-size:11px;font-weight:400}
+  .prol .pnote{font-size:11px;color:var(--sb-muted);margin-top:2px;line-height:1.45}
+  .prol .pwarn{font-size:11px;color:var(--sb-warn);margin-top:2px;line-height:1.45}
   .pill.warn{background:#fdf3e6;color:#8a5300} .pill.mute{background:#eef2f7;color:#5b6673}
+  .pill.komb{background:#e8effb;color:#1a4d99}
+  .lockhint{font-size:11px;color:var(--sb-muted);margin:-2px 0 4px;line-height:1.45}
+  input:disabled{background:#f2f4f7;color:#5b6673;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -105,6 +117,7 @@
     </div>
     <div class="grp"><h3>Vorspann-Hardware</h3>
       <label><span>Gewindestangenlänge</span><input type="number" id="rodCm" value="110" step="5" min="20"><small>cm</small></label>
+      <div class="lockhint" id="rodQuelle"></div>
       <label><span>Blechlänge (Module)</span><input type="number" id="blechCm" value="100" step="10" min="20"><small>cm</small></label>
       <label><span>Oberer Anschluss</span><select id="topConn"><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte</option></select></label>
       <small style="color:var(--sb-muted)">Fuß immer Bodenblech (15 mm). Kopf wahlweise Kopfblech-Module oder Spannplatten auf der Steinkante.</small>
@@ -118,11 +131,12 @@
     <div class="grp">
       <div class="prodinfo" id="prodInfo">–</div>
       <div id="prodRollen"></div>
-      <div class="hint" style="color:var(--sb-muted);font-size:11.5px;margin-top:8px">Auswahl direkt aus dem
-        <b>vollständigen aktiven Bauteilkatalog</b> (gepflegt in Modul 0 — dort werden auch die Preise
-        gesetzt). Mehrere Produkte je Verwendungsstelle sind erlaubt; für die Kostenanzeige muss die
-        Zuordnung eindeutig sein. Gespeichert werden nur <b>Produkt-IDs</b> — keine Preise, keine Maße,
-        nichts davon im Wandelement.</div>
+      <div class="hint" style="color:var(--sb-muted);font-size:11.5px;margin-top:8px">Je Verwendungsstelle
+        eine Zeile mit <b>Mehrfachauswahl</b> aus dem <b>vollständigen aktiven Bauteilkatalog</b> (gepflegt
+        in Modul 0 — dort auch die Preise). <b>Mehrere gewählte Standardgrößen werden kombiniert</b>
+        ([Z-2]): größte geeignete zuerst, mit kleineren auffüllen, das Restmaß als gekennzeichneter
+        Sonderzuschnitt. Ein gewähltes Produkt ist die <b>alleinige Quelle</b> seiner Maße ([Z-1]).
+        Gespeichert werden nur <b>Produkt-IDs</b> — keine Preise, keine Maße.</div>
     </div>
 
     <button class="primary" id="run">Auslegen</button>
@@ -257,12 +271,17 @@ function vorgaben(){
     steps: stepsArr.map(s=>({x0_mm:Math.round(s.x0*1000), x1_mm:Math.round(s.x1*1000), height_mm:Math.round(s.h*1000)})),
     load:{ qk_area:+$('qk').value, gammaQ:+$('gammaQ').value },
     material:{ fcd_Nmm2:+$('fcd').value, cfd:+$('cfd').value, rho:+$('rho').value } };
-  const rod_mm=Math.max(200, Math.round((+$('rodCm').value||110)*10));   // cm -> mm, min 20 cm
+  // Gewindestangen-Standardlängen: bei gewähltem Produkt AUSSCHLIESSLICH aus dem Katalog
+  // ([Z-1]); das Legacy-Feld wird dann nicht gelesen (DOM-Manipulation wirkungslos).
+  const rodL=rodLaengenMm();
+  const hw = rodL.length
+    ? { rod_lengths_mm: rodL }
+    : { rod_mm: Math.max(200, Math.round((+$('rodCm').value||110)*10)) };   // Fallback, min 20 cm
   const blech_mm=Math.max(200, Math.round((+$('blechCm').value||100)*10));
   const top_connection=($('topConn').value==='spannplatte')?'spannplatte':'blech';
   const start_axis_grid=(+$('startAchse').value===1)?1:0;               // 1. (Standard) oder 2. Rasterachse
-  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, rod_mm, blech_mm, top_connection, start_axis_grid };
-  else v.prestress={ rod_mm, blech_mm, top_connection, start_axis_grid };   // Auto-Modus: N/Abstand optimiert die Engine
+  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, ...hw, blech_mm, top_connection, start_axis_grid };
+  else v.prestress={ ...hw, blech_mm, top_connection, start_axis_grid };   // Auto-Modus: N/Abstand optimiert die Engine
   if(manualCols && manualCols.length) v.prestress.columns_grid=manualCols.slice();   // Sonderkonstruktion: feste Achsen
   return v;
 }
@@ -301,6 +320,12 @@ function run(){
       +(vo.zwischen_lagen[0]+1)+' und '+(vo.zwischen_lagen[1]+1)+' (Stoßfuge im selben Raster, Mindestversatz 1 Raster unterschritten).');
   }
   if(!vv.buildable) warns.push('⚠ Wand strukturell nicht baubar (ungültige Vorspann-Segmente).');
+  // [Z-5] Zuschnitt-Konflikt: der Vorratssatz lässt kein einbaubares Fertigmaß zu. Sichtbar
+  // gemeldet statt still ein nicht einbaubares Kurzstück auszugeben.
+  const zk=vv.zuschnitt_konflikte||[];
+  if(zk.length) warns.push('⚠ Zuschnitt [Z-5]: '+zk.length+' Segment(e) mit Fertigmaß unter '
+    +'20 cm (z. B. '+fmt(zk[0].fertigmass_mm/10,1)+' cm) — weitere Standardlänge wählen, '
+    +'damit die Kombination ein einbaubares Restmaß ergibt.');
   $('warns').textContent=warns.join('   ');
   draw(w);
   persistAktiv(w);
@@ -491,13 +516,34 @@ function applyWand(w){
 const escP=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const PILL={ok:'ok',mehrdeutig:'no',fehlt:'no',kategorie_abweichend:'no',einheit_unpassend:'no',
   mass_abweichend:'no',keine_auswahl:'warn',kein_katalog:'warn',nachrichtlich:'mute',ohne_position:'mute',
-  nicht_erforderlich:'mute'};
+  nicht_erforderlich:'mute',kombiniert:'komb'};
 function prodKatalog(){ return (store&&store.holeKatalog)?store.holeKatalog():null; }
 function prodEingaben(){ return ((store&&store.aktiveEingaben)?store.aktiveEingaben():null)||{}; }
+// Produktspezifikation der Wand ([Z-1]): einzige Quelle der Gewindestangen-Standardlängen.
+function prodSpez(){ const k=prodKatalog(); return k?KAT.produktSpezifikation(prodEingaben(),k):null; }
+// Standardlängen aus dem Katalog (leer = keine Auswahl -> kompatibler Fallback erlaubt).
+function rodLaengenMm(){ const s=prodSpez(); return s?s.rod.laengen_mm.slice():[]; }
 // Maßgebende Wandwerte: aus dem gerechneten Wandelement, sonst aus dem gespeicherten.
 function prodKontext(){
   const w = (RESULT&&RESULT.wandelement) || (store&&store.aktivesWandelement&&store.aktivesWandelement()) || null;
-  return w ? KAT.preisKontext(w, prodEingaben()) : {};
+  return w ? KAT.preisKontext(w, prodEingaben(), prodKatalog()) : {};
+}
+// ---- Legacy-Maßfelder ([Z-1]) ----------------------------------------------
+// Ist ein Gewindestangenprodukt gewählt, ist der Katalog die ALLEINIGE Quelle der
+// Standardlänge: das Feld wird gesperrt UND von vorgaben() nicht mehr gelesen. Eine
+// DOM-Manipulation bleibt damit wirkungslos. Ohne Auswahl bleibt es als klar
+// gekennzeichneter, rückwärtskompatibler Fallback editierbar.
+function syncLegacyFelder(){
+  const L=rodLaengenMm(), el=$('rodCm'), hint=$('rodQuelle');
+  if(L.length){
+    el.disabled=true; el.readOnly=true; el.value=Math.round(L[0]/10);
+    hint.innerHTML='Aus dem Katalog: '+L.map(x=>fmt(x/10,0)+' cm').join(' · ')
+      +(L.length>1?' — werden kombiniert ([Z-2])':'')+'. Feld gesperrt ([Z-1]).';
+  } else {
+    el.disabled=false; el.readOnly=false;
+    hint.innerHTML='<b>Kein Gewindestangenprodukt gewählt</b> — Altwert dieses Feldes wird als '
+      +'rückwärtskompatibler Fallback verwendet ([Z-1]).';
+  }
 }
 function renderProdukte(){
   const box=$('prodRollen'), info=$('prodInfo');
@@ -508,33 +554,40 @@ function renderProdukte(){
     : (!hatWandEl
       ? 'Kein aktives Wandelement — Produkte können erst an einer Wand gewählt werden.'
       : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`);
-  if(!kat || !hatWandEl){ box.innerHTML=''; return; }
+  if(!kat || !hatWandEl){ box.innerHTML=''; syncLegacyFelder(); return; }
+  // Eine kompakte Zeile je Verwendungsrolle — KEINE Kategorieblöcke, die nur Bezeichnungen
+  // wiederholen ([P-17]). Die Gruppen bleiben im Datenmodell, erscheinen aber nicht als UI-Hierarchie.
   let h='';
-  for(const gruppe of KAT.rollenGruppen(1)){
-    h+=`<div class="pgrp">${escP(gruppe)}</div>`;
-    for(const r of KAT.rollenVonModul(1).filter(x=>x.gruppe===gruppe)){
-      const st=KAT.rollenStatus(r.id, eing, kat, ktx);
-      const gew=new Set(st.ids);
-      const kandidaten=kat.produkte.filter(p=>p.kategorie===r.kategorie);
-      h+=`<div class="prol" data-prol="${escP(r.id)}"><div class="ptop"><b>${escP(r.label)}</b>`
-        +`<span class="pill ${PILL[st.status]||'mute'}">${escP(st.text)}</span></div>`;
-      h+='<div class="plist">'+(kandidaten.length
-        ? kandidaten.map(p=>`<label><input type="checkbox" data-prolle="${escP(r.id)}" data-pid="${escP(p.id)}"`
-            +`${gew.has(String(p.id))?' checked':''}> <span>${escP(p.bezeichnung)}`
-            +`<small> · ${escP(KAT.massText(p))} · ${escP(KAT.EINHEIT_LABEL[p.einheit]||p.einheit)}</small></span></label>`).join('')
-        : `<div class="pnote">Kein Produkt der Kategorie „${escP(KAT.kategorieLabel(r.kategorie))}“ im Katalog — in Modul 0 anlegen.</div>`)
-        +'</div>';
-      // Fehlende Referenzen und vorgemerkte (maßfremde) Produkte werden benannt, nie still entfernt.
-      for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — bleibt erhalten, wird aber nicht bepreist.</div>`;
-      if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig: ${st.kandidaten.map(p=>escP(p.id)).join(', ')} — Modul 4 weist hierfür keinen Preis aus.</div>`;
-      if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand — Modul 4 weist keinen Preis aus.</div>`;
-      if(st.vorgemerkt.length) h+=`<div class="pnote">Für den Zuschnitt vorgemerkt (passt nicht zum maßgebenden Maß, daher nicht bepreist): ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
-      if(r.hinweis) h+=`<div class="pnote">${escP(r.hinweis)}</div>`;
-      if(st.produkt&&st.produkt.hinweis) h+=`<div class="pwarn">${escP(st.produkt.hinweis)}</div>`;
-      h+='</div>';
-    }
-  }
+  for(const r of KAT.rollenVonModul(1)) h+=rolleZeile(r, KAT.rollenStatus(r.id, eing, kat, ktx), kat);
   box.innerHTML=h;
+  syncLegacyFelder();
+}
+// Kompakte Rollenzeile mit Mehrfachauswahl-Dropdown ([P-17]). Angeboten werden ausschließlich
+// katalogseitig zur Rolle passende Produkte; jede Option zeigt Produktnamen PLUS
+// unterscheidende Merkmale (Maße, Preisbasis, Kennung) — nie erneut nur die Rollenbezeichnung.
+function rolleZeile(r, st, kat){
+  const opts=KAT.rollenOptionen(kat, r.id, st.ids);
+  const summ=KAT.auswahlZusammenfassung(opts);
+  let h=`<div class="prol" data-prol="${escP(r.id)}"><div class="ptop"><b>${escP(KAT.rollenLabel(r.id))}</b>`
+    +`<span class="pill ${PILL[st.status]||'mute'}">${escP(st.text)}</span></div>`;
+  h+=`<details class="pdd" data-pdd="${escP(r.id)}">`
+    +`<summary aria-haspopup="listbox" title="${escP(KAT.rollenLabel(r.id))} — Produkte wählen">`
+    +`<span class="psum">${escP(summ)}</span></summary>`
+    +`<div class="pmenu" role="group" aria-label="${escP(KAT.rollenLabel(r.id))}">`
+    +(opts.length
+      ? opts.map(o=>`<label><input type="checkbox" data-prolle="${escP(r.id)}" data-pid="${escP(o.id)}"`
+          +`${o.gewaehlt?' checked':''}> <span class="pname">${escP(o.name)}`
+          +`<span class="pmerk">${escP(o.merkmale)}</span></span></label>`).join('')
+      : `<div class="pnote">Kein Produkt der Kategorie „${escP(KAT.kategorieLabel(r.kategorie))}“ im Katalog — in Modul 0 anlegen.</div>`)
+    +'</div></details>';
+  for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — bleibt erhalten, wird aber nicht bepreist.</div>`;
+  if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig – gleiches maßgebendes Maß: ${st.kandidaten.map(p=>escP(p.id)).join(', ')} — Modul 4 weist hierfür keinen Preis aus.</div>`;
+  if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand — Modul 4 weist keinen Preis aus.</div>`;
+  if(st.status==='kombiniert') h+=`<div class="pnote">Standardgrößen ${(st.laengen_mm||[]).map(x=>fmt(x/10,0)+' cm').join(' · ')} werden nach [Z-2] kombiniert; jede Größe wird in Modul 4 als eigene Position bepreist.</div>`;
+  if(st.vorgemerkt.length) h+=`<div class="pnote">Für den Zuschnitt vorgemerkt (passt nicht zum maßgebenden Maß, daher nicht bepreist): ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
+  if(r.hinweis) h+=`<div class="pnote">${escP(r.hinweis)}</div>`;
+  if(st.produkt&&st.produkt.hinweis) h+=`<div class="pwarn">${escP(st.produkt.hinweis)}</div>`;
+  return h+'</div>';
 }
 function bindProdukte(){
   $('prodRollen').addEventListener('change',ev=>{
@@ -544,7 +597,14 @@ function bindProdukte(){
     const ids=new Set(KAT.rollenIds(store.holeProdukte(1), rolleId));
     if(t.checked) ids.add(pid); else ids.delete(pid);
     store.setzeProduktrolle(rolleId,[...ids]);
-    renderProdukte();
+    // Die Auswahl ändert die maßgebenden Standardlängen -> Wandelement neu rechnen ([Z-1]).
+    run();
+  });
+  // Schließen per Tastatur (Öffnen/Umschalten macht <summary> selbst mit Enter/Leertaste).
+  $('prodRollen').addEventListener('keydown',ev=>{
+    if(!ev || ev.key!=='Escape') return;
+    const box=$('prodRollen'); const offen=box.querySelectorAll?box.querySelectorAll('details[open]'):[];
+    (offen||[]).forEach(d=>{ d.open=false; });
   });
 }
 
@@ -588,7 +648,8 @@ function bindEvents(){
 
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},
   setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;},
-  renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()) };
+  renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
+  vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();}, syncLegacyFelder };
 
 window.__wpInit=function(){
   const S=window.SEMBLA||{};

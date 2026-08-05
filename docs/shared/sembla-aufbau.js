@@ -19,16 +19,22 @@
 const NUTS = 12.5;          // Nutenraster (cm)
 const COURSE = 20, HALF = COURSE / 2;   // Steinhoehe (cm) → Verbinder in Steinmitte
 
-// ---------- Latten-Zuschnitt (1D) ----------
-function cuttingStock(pieces, stock) {
-  const sorted = [...pieces].sort((a, b) => b - a); const remn = []; let sc = 0;
-  for (const p of sorted) {
-    let bi = -1, bv = Infinity;
-    for (let i = 0; i < remn.length; i++) if (remn[i] >= p - 1e-6 && remn[i] < bv) { bv = remn[i]; bi = i; }
-    if (bi >= 0) remn[bi] = +(remn[bi] - p).toFixed(3); else { sc++; remn.push(+(stock - p).toFixed(3)); }
-  }
-  const used = pieces.reduce((a, b) => a + b, 0), total = sc * stock;
-  return { stockCount: sc, usedLen: +used.toFixed(3), totalLen: +total.toFixed(3), wasteLen: +(total - used).toFixed(3) };
+// ---------- Latten-Zuschnitt aus den ausgewaehlten Standardlaengen ([Z-2]/[Z-4]) ----------
+// Bei Latten ist die Stueckgrenze GEOMETRIE: sie folgt [U-8]/[U-12] (Stoss mittig zwischen
+// zwei Verbindern) — diese Baubarkeits-/Befestigungsregeln haben Vorrang vor der
+// Zuschnittoptimierung ([P-9]). Die ausgewaehlten Standardlaengen wirken daher als
+// OBERGRENZE (groesste gewaehlte Groesse) und als AUSGANGSPRODUKT je Stueck: jedes Stueck
+// wird aus der kleinsten geeigneten gewaehlten Groesse geschnitten. Trifft ein Stueck genau
+// eine Standardlaenge, ist es ein Standardteil, sonst ein sichtbar gekennzeichneter
+// Sonderzuschnitt. Keine Saegefuge, keine Reststueck-Wiederverwendung, keine Einkaufs-/
+// Verschnittoptimierung — es gibt darum bewusst KEIN Bin-Packing mehr.
+import { quelleFuerMass, normLaengen, MIN_FERTIGMASS_MM } from "./sembla-core.js";
+
+/** Ausgangsprodukt + Art eines geometrisch bestimmten Lattenstuecks (cm). */
+function stueckQuelle(lenCm, laengenCm) {
+  const q = quelleFuerMass(lenCm, laengenCm);
+  if (q == null) return { quelle_cm: null, art: "konflikt" };
+  return { quelle_cm: q, art: Math.abs(q - lenCm) < 1e-6 ? "standard" : "sonder" };
 }
 function splitInterval(S, E, conns, stock) {
   const segs = []; if (E - S <= stock + 1e-6) { segs.push({ y0: S, y1: E }); return segs; }
@@ -51,33 +57,56 @@ function solidIntervals(x, ops, H) {
 }
 
 /**
- * Latten je Verbinderachse (1D-Zuschnitt). Daemmung entfaellt (MVP).
+ * Latten je Verbinderachse. Stueckgrenzen aus der Geometrie ([U-8]/[U-12]), Ausgangsprodukt
+ * je Stueck aus den ausgewaehlten Standardlaengen ([Z-2]/[Z-4]). Daemmung entfaellt (MVP).
  * @param {object} layout Verbinder-Layout (points/openings_cm/wall)
- * @param {object} [opts] { stockCm, clipY:[lo,hi], axisTop:(x)=>hi }
+ * @param {object} [opts] { laengenCm:number[], stockCm, clipY:[lo,hi], axisTop:(x)=>hi }
  */
 export function layoutToBattens(layout, opts = {}) {
-  const stock = opts.stockCm ?? 150, H = (layout.wall && layout.wall.H_cm) || 0, ops = layout.openings_cm || [];
+  // Obergrenze = groesste ausgewaehlte Standardlaenge; ohne Auswahl der kompatible Altwert.
+  const laengen = normLaengen(opts.laengenCm && opts.laengenCm.length ? opts.laengenCm : [opts.stockCm ?? 150]);
+  const stock = laengen[0];
+  const H = (layout.wall && layout.wall.H_cm) || 0, ops = layout.openings_cm || [];
   const cy = opts.clipY || [0, H];
   const at = opts.axisTop || (() => H);
   const clip = (iv, x) => iv.map(([S, E]) => [Math.max(S, cy[0]), Math.min(E, cy[1], at(x))]).filter(([S, E]) => E - S > 1e-6);
   const byX = new Map();
   for (const p of layout.points || []) { const k = +(+p.x_cm).toFixed(2); if (!byX.has(k)) byX.set(k, new Set()); byX.get(k).add(+(+p.y_cm).toFixed(2)); }
   const axes = [], pieces = []; let warnings = 0;
+  const quellMap = new Map();                 // Ausgangsprodukt -> Anzahl Zuschnitte
+  let standardStuecke = 0, sonderStuecke = 0;
+  const kurzStuecke = [], ohneQuelle = [];    // [Z-5] / kein geeignetes Ausgangsprodukt
   for (const x of [...byX.keys()].sort((a, b) => a - b)) {
     const ys = [...byX.get(x)].sort((a, b) => a - b); const intervals = clip(solidIntervals(x, ops, H), x); const segs = [];
     for (const [S, E] of intervals) {
       const conns = ys.filter(y => y > S + 1e-6 && y < E - 1e-6); if (conns.length === 0) { warnings++; continue; }
-      for (const sg of splitInterval(S, E, conns, stock)) { const len = +(sg.y1 - sg.y0).toFixed(2); segs.push({ y0_cm: +sg.y0.toFixed(2), y1_cm: +sg.y1.toFixed(2), len_cm: len }); pieces.push(len); }
+      for (const sg of splitInterval(S, E, conns, stock)) {
+        const len = +(sg.y1 - sg.y0).toFixed(2);
+        const q = stueckQuelle(len, laengen);
+        // Keine Reststueck-Wiederverwendung: je Zuschnitt genau ein Ausgangsprodukt.
+        if (q.quelle_cm != null) {
+          quellMap.set(q.quelle_cm, (quellMap.get(q.quelle_cm) || 0) + 1);
+          if (q.art === "standard") standardStuecke++; else sonderStuecke++;
+        } else ohneQuelle.push({ x_cm: x, len_cm: len });
+        if (len < MIN_FERTIGMASS_MM / 10 - 1e-6) kurzStuecke.push({ x_cm: x, len_cm: len });
+        segs.push({ y0_cm: +sg.y0.toFixed(2), y1_cm: +sg.y1.toFixed(2), len_cm: len,
+                    quelle_cm: q.quelle_cm, art: q.art });
+        pieces.push(len);
+      }
     }
     axes.push({ x_cm: x, n_connectors: ys.length, segments: segs });
   }
-  const cutting = cuttingStock(pieces, stock);
+  const gesamt = pieces.reduce((a, b) => a + b, 0);
+  const ausgang = [...quellMap.entries()].map(([laenge_cm, anzahl]) => ({ laenge_cm, anzahl }))
+    .sort((a, b) => b.laenge_cm - a.laenge_cm);
   const summary = {
-    achsen: axes.length, latten_stuecke: pieces.length, latten_15m_bedarf: cutting.stockCount,
-    gesamtlaenge_m: +(cutting.totalLen / 100).toFixed(2), verschnitt_m: +(cutting.wasteLen / 100).toFixed(2),
-    verschnitt_pct: cutting.totalLen ? +(100 * cutting.wasteLen / cutting.totalLen).toFixed(1) : 0, warnungen: warnings,
+    achsen: axes.length, latten_stuecke: pieces.length,
+    standard_stuecke: standardStuecke, sonder_stuecke: sonderStuecke,
+    gesamtlaenge_m: +(gesamt / 100).toFixed(2),
+    laengen_cm: laengen, ausgang, warnungen: warnings,
+    kurz_stuecke: kurzStuecke, ohne_quelle: ohneQuelle,
   };
-  return { wall: layout.wall || {}, openings_cm: ops, axes, summary, cutting };
+  return { wall: layout.wall || {}, openings_cm: ops, axes, summary, laengen_cm: laengen };
 }
 
 // ---------- Achsen aus Panelfugen + Zwischenachsen ----------
@@ -205,9 +234,13 @@ export const VERBINDER_KATALOG = [
  * Vollstaendige Aufbau-Berechnung aus Wandelement + Aufbau-Eingaben.
  * @param {object} w Wandelement (Single Source of Truth)
  * @param {object} a Aufbau-Eingaben (eingaben.aufbau; siehe storage.standardEingaben)
+ * @param {object} [spec] Produktspezifikation aus dem Katalog ([Z-1]):
+ *   `{ laengen_mm:number[], breite_mm:number|null }` der gewaehlten Lattenprodukte.
+ *   Ist sie gesetzt, ist sie die ALLEINIGE Quelle der Standardlaengen — `a.latten.stange_cm`
+ *   wird dann nicht mehr gelesen. Fehlt sie, gilt der kompatible Altwert.
  * @returns {object} { B,H, feld, xs, ys, pts, nutRaster, layout, batt, auslastung }
  */
-export function berechneAufbau(w, a) {
+export function berechneAufbau(w, a, spec = null) {
   const panel = a.panel || {}, achsen = a.achsen || {}, verb = a.verbinder || {}, latten = a.latten || {};
   const seite = a.seite || "vorne";
   const B = w.length_mm / 10, H = w.height_mm / 10;   // cm
@@ -305,9 +338,16 @@ export function berechneAufbau(w, a) {
     feld_cm: F ? { x0: fx0, x1: fx1, y0: fy0, y1: fy1 } : null,
     points: pts,
   };
-  const batt = layoutToBattens(layout, { stockCm: +latten.stange_cm || 150, clipY: [fy0, fy1], axisTop });
+  // [Z-1] Katalog schlaegt Altwert: nur ohne Produktauswahl wird `latten.stange_cm` gelesen.
+  const specL = (spec && Array.isArray(spec.laengen_mm)) ? spec.laengen_mm.map(mm => mm / 10) : [];
+  const lattenQuelle = specL.length ? "katalog" : "fallback";
+  const batt = layoutToBattens(layout, specL.length
+    ? { laengenCm: specL, clipY: [fy0, fy1], axisTop }
+    : { stockCm: +latten.stange_cm || 150, clipY: [fy0, fy1], axisTop });
+  const lattenBreiteCm = (spec && +spec.breite_mm > 0) ? +spec.breite_mm / 10 : (+latten.breite_cm || null);
   return {
     w, B, H, fx0, fx1, fy0, fy1, xs, ys, pts, nutRaster, steps, relSteps, localTop, axisTop,
+    lattenQuelle, lattenBreiteCm, lattenLaengenCm: batt.laengen_cm,
     layout, batt, atReal, util, ok, ohL, ohR, maxOh, ohWarn, maxX, xGapMax, xGapWarn,
     nutBlocked, nutThinAxes, nutLeerAchsen, nutGeoWarn, nutWarn,
     nutEndZusatz, nutEndLeerSegmente,

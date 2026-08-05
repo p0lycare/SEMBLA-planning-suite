@@ -21,7 +21,18 @@ for(const [name,l,h,ops] of cases){
   t(name+" · Spannmuttern",    b.spannmuttern===w.bom.spannmuttern);
   t(name+" · Stahlblech-Module",b.stahlblech_module===w.bom.stahlblech_module);
   t(name+" · Dichtstreifen mm",b.dichtstreifen_mm===w.bom.dichtstreifen_mm);
-  t(name+" · Items = 13",      semblaBomItems(w).length===13);
+  // Positionsliste: 11 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
+  // Sonderzuschnitt-Ausgangsprodukt eine eigene Position ([Z-2]/[Z-4]). Nie weniger als 13,
+  // damit keine Position still verschwindet, wenn eine Gruppe leer ist.
+  t(name+" · Positionen = 11 + Stangengruppen",
+    semblaBomItems(w).length === 11 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length));
+  // Die Einbaumenge bleibt unverändert: Summe aller Stangenpositionen = Core-Gesamtzahl.
+  t(name+" · Stangenpositionen summieren zur Core-Zahl",
+    semblaBomItems(w).filter(it=>it.key==='rod_std'||it.key==='rod_sonder')
+      .reduce((a,it)=>a+it.menge,0)===w.bom.gewindestangen);
+  // Jede Stangenposition trägt ihr eigenes maßgebendes Maß -> in Modul 4 eindeutig bepreisbar.
+  t(name+" · jede Stangenposition hat mass_mm",
+    semblaBomItems(w).filter(it=>it.key==='rod_std'||it.key==='rod_sonder').every(it=>+it.mass_mm>0));
   t(name+" · Dichtstreifen-Stück = Stoßfugen", semblaBomItems(w).find(it=>it.key==='dicht_stk').menge===w.bom.stossfugen);
   t(name+" · rodStd+Sonder = gesamt", b.rodStd+b.rodSonder===b.gewindestangen_gesamt);
   // [A-1]: Boden-/Kopfblech getrennt bepreisbar — abgeleitet aus den REALEN Platten des

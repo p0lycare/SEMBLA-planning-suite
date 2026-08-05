@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Testsuite fuer den SEMBLA Core. Lauf: python3 -m unittest -v  (oder pytest)."""
-import json, os, unittest
+import json, math, os, unittest
 import sembla_core as sc
 from sembla_core import (build_wall, build_reference, Opening, is_buildable,
                          InvalidDimensionError, InvalidOpeningError,
@@ -189,6 +189,68 @@ class TensionRules(unittest.TestCase):
         # ungültige Werte -> Default
         self.assertEqual(build_wall("a", 1000, 2600, [], prestress={"rod_mm": 0})["rod_mm"], 1100)
         self.assertEqual(build_wall("a", 1000, 2600, [], prestress={"rod_mm": -5})["rod_mm"], 1100)
+
+
+class ZuschnittKombination(unittest.TestCase):
+    """Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]).
+
+    DIESELBEN Faelle stehen wortgleich in test-sembla-core.mjs — sie sind der
+    Paritaetsvertrag der Kombinationsregel zwischen Orakel und Betriebskopie.
+    """
+    @staticmethod
+    def kurz(r):
+        return "+".join(str(s["len_mm"]) + ("S/" + str(s["quelle_mm"]) if s["art"] == "sonder" else "")
+                        for s in r["stuecke"])
+
+    def test_170cm_aus_100_50(self):
+        r = sc.kombiniere_laengen(1700, [1000, 500])
+        self.assertEqual(self.kurz(r), "1000+500+200S/500")
+        self.assertIsNone(r["konflikt"])
+
+    def test_reihenfolge_und_doppelte_ohne_wirkung(self):
+        self.assertEqual(self.kurz(sc.kombiniere_laengen(1700, [500, 1000, 500])), "1000+500+200S/500")
+
+    def test_exakt_teilbar(self):
+        self.assertEqual(self.kurz(sc.kombiniere_laengen(3000, [1000])), "1000+1000+1000")
+
+    def test_bedarf_kleiner_als_kleinste_groesse(self):
+        self.assertEqual(self.kurz(sc.kombiniere_laengen(400, [1000, 600])), "400S/600")
+
+    def test_mindestmass_wird_gemeldet(self):
+        r = sc.kombiniere_laengen(1200, [1100])
+        self.assertEqual(self.kurz(r), "1100+100S/1100")
+        self.assertEqual(r["konflikt"], "mindestmass")
+        alt = sc.kombiniere_laengen(1200, [1100, 500])
+        self.assertIsNone(alt["konflikt"])
+        self.assertTrue(all(s["len_mm"] >= sc.MIN_FERTIGMASS_MM for s in alt["stuecke"]))
+
+    def test_ohne_standardlaenge(self):
+        r = sc.kombiniere_laengen(1700, [])
+        self.assertEqual(r["stuecke"], [])
+        self.assertEqual(r["konflikt"], "keine_standardlaenge")
+
+    def test_quelle_fuer_mass(self):
+        self.assertEqual(sc.quelle_fuer_mass(400, [1000, 500, 300]), 500)
+        self.assertIsNone(sc.quelle_fuer_mass(1500, [1000, 500]))
+
+    def test_laengensatz_im_wandelement(self):
+        w = build_wall("z", 1000, 2600, [], prestress={"rod_lengths_mm": [600, 1000]})
+        self.assertEqual(w["prestress"]["rod_lengths_mm"], [1000, 600])
+        self.assertEqual(w["rod_mm"], 1000)
+        sg = w["tension_columns"][0]["segments"][0]
+        self.assertEqual(self.kurz({"stuecke": sg["stuecke"]}), "1000+1000+600")
+        self.assertEqual(sg["gewindestangen"], 3)
+        self.assertEqual(sg["verbindungsmuttern"], 2)
+        self.assertEqual(sg["verschnitt_mm"], 0)
+
+    def test_fallback_bitgenau_wie_altstand(self):
+        for h in (2000, 2200, 2400, 2600, 3000, 3400):
+            with self.subTest(h=h):
+                sg = build_wall("f", 1000, h, [])["tension_columns"][0]["segments"][0]
+                st = math.ceil(h / ROD)
+                self.assertEqual(sg["gewindestangen"], st)
+                self.assertEqual(sg["letzte_stange_mm"], h - (st - 1) * ROD)
+                self.assertEqual(sg["verschnitt_mm"], st * ROD - h)
 
 
 class InvalidInputs(unittest.TestCase):

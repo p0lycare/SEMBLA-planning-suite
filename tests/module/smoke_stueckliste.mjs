@@ -98,8 +98,13 @@ const find=l=>rs.find(r=>r.label.includes(l));
 const byKey=k=>rs.find(r=>r.key===k);
 ok('i3-Menge = bom.i3', find('i3').menge===W.bom.i3);
 ok('i2-Menge = bom.i2', find('i2').menge===W.bom.i2);
-const rodStd=byKey('rod_std').menge, rodSonder=byKey('rod_sonder').menge;
+// [Z-2]/[Z-4]: es kann je Standardlänge und je Sonderzuschnitt-Fertigmaß eine eigene Position
+// geben — maßgebend ist die SUMME aller Stangenpositionen (Einbaumenge bleibt unverändert).
+const rodStd=rs.filter(r=>r.key==='rod_std').reduce((a,r)=>a+r.menge,0);
+const rodSonder=rs.filter(r=>r.key==='rod_sonder').reduce((a,r)=>a+r.menge,0);
 ok('Gewindestangen Standard+Sonderlänge = bom', rodStd+rodSonder===W.bom.gewindestangen);
+ok('[Z-2] Sonderzuschnitte nennen Fertigmaß und Ausgangsprodukt',
+  rs.filter(r=>r.key==='rod_sonder'&&r.menge>0).every(r=>/Sonderzuschnitt .* \(aus .*\)/.test(r.label)));
 ok('Spannplatten = bom', byKey('spannplatte').menge===W.bom.spannplatten);
 ok('Senkkopfschrauben = bom', byKey('senkkopf').menge===W.bom.senkkopfschrauben);
 const dicht=byKey('dicht');
@@ -125,18 +130,30 @@ ok('Mengen bleiben unverändert (nachrichtliche Zeile behält ihre Menge)',
 
 // Verbinder/Latten jetzt IMMER aus dem Wandaufbau (kein Bundle mehr noetig)
 ok('Verbinder-Position vorhanden (aus Aufbau)', !!find('Verbinder') && find('Verbinder').menge>0);
-ok('Latten-Position vorhanden (aus Aufbau)', !!find('Holzlatte') && find('Holzlatte').menge>0);
+ok('Latten-Position vorhanden (aus Aufbau)', !!find('Lattenstange') && find('Lattenstange').menge>0);
 ok('KEINE Dämmung-Position (MVP)', !rs.find(r=>r.label.includes('Dämmung')));
-ok('15 Positionen (13 Wand + Verbinder + Latte)', rs.length===15);
+// [Z-4]: 11 feste Wandpositionen + je Gewindestangen-Standardlänge und je Sonderzuschnitt-
+// Ausgangsprodukt eine Position + Verbinder + je Latten-Ausgangsprodukt eine Position.
+const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
+const nLatte=rs.filter(r=>r.key==='latte').length;
+ok('Positionen = 11 Wand + Stangengruppen + Verbinder + Lattengruppen',
+  rs.length===11+nRod+nSonder+1+nLatte && rs.length>=15);
+ok('[Z-4] jede Stangen-/Lattengruppe traegt ihr maßgebendes Maß',
+  rs.filter(r=>['rod_std','rod_sonder','latte'].includes(r.key)).every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
+ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
+  rs.filter(r=>r.key==='rod_std'||r.key==='rod_sonder').reduce((a,r)=>a+r.menge,0)===W.bom.gewindestangen);
 ok('keine Beplankungs-Kostenzeile (ohne #19/#22)', !byKey('beplankung'));
 
-// Vollständige Zuordnung -> Summe vollständig, 14 von 14 bepreisbaren Positionen
+// Vollständige Zuordnung -> Summe vollständig (Nenner = alle bepreisbaren Positionen)
 {
   const s=SL.summe();
+  const nBepreisbar=rs.filter(r=>r.bepreisbar).length;
   ok('vollständige Zuordnung -> Summe vollständig', s.vollstaendig===true && s.offen===0);
-  ok('nachrichtliche Zeile zählt nicht in den Nenner', s.bepreisbar===14 && s.bepreist===14);
-  ok('Summenanzeige nennt die Vollständigkeit', /alle 14 Positionen bepreist/.test(document.getElementById('grandNote').textContent));
-  ok('Zähler in der Kopfspalte', document.getElementById('ovPreise').textContent==='14 / 14');
+  ok('nachrichtliche Zeile zählt nicht in den Nenner',
+    s.bepreisbar===nBepreisbar && s.bepreist===nBepreisbar && nBepreisbar===rs.length-1);
+  ok('Summenanzeige nennt die Vollständigkeit',
+    new RegExp('alle '+nBepreisbar+' Positionen bepreist').test(document.getElementById('grandNote').textContent));
+  ok('Zähler in der Kopfspalte', document.getElementById('ovPreise').textContent===nBepreisbar+' / '+nBepreisbar);
   const erwartet=rs.filter(r=>r.gp!=null).reduce((a,r)=>a+r.gp,0);
   ok('Summe = Σ der bepreisten Positionen', Math.abs(s.summe-erwartet)<1e-9);
 }
@@ -174,8 +191,9 @@ const mengenVoll=SL.rows().map(r=>r.key+':'+r.menge).join('|');
   ok('keine Auswahl -> Status keine_auswahl, kein Preis', r.status==='keine_auswahl' && r.ep===null && r.gp===null);
   ok('keine Auswahl -> kein Nullpreis in der Anzeige', /keine_auswahl|kein Produkt gewählt/.test(document.getElementById('tbody').innerHTML));
   ok('keine Auswahl -> Summe unvollständig mit n/m', (()=>{ const s=SL.summe();
-    return s.vollstaendig===false && s.bepreist===13 && s.bepreisbar===14
-      && /13 von 14 Positionen bepreist/.test(document.getElementById('grandNote').textContent); })());
+    return s.vollstaendig===false && s.bepreist===s.bepreisbar-1
+      && new RegExp(s.bepreist+' von '+s.bepreisbar+' Positionen bepreist')
+           .test(document.getElementById('grandNote').textContent); })());
   ok('keine Auswahl -> Position wird in der Warnbox benannt',
     /ohne Preis/.test(document.getElementById('warnbox').innerHTML) && /Stein i3/.test(document.getElementById('warnbox').innerHTML));
   ok('Mengen bleiben unverändert', SL.rows().map(x=>x.key+':'+x.menge).join('|')===mengenVoll);
@@ -244,7 +262,8 @@ const mengenVoll=SL.rows().map(r=>r.key+':'+r.menge).join('|');
   ok('CSV: vollständige Summe wird als solche benannt', /alle Positionen bepreist/.test(csv));
   const csvOhne=stuecklisteCsv(W1, egVoll(), {datum:'01.01.2026'}, null);
   ok('CSV ohne Katalog: keine Nullpreise, sondern benannter Grund',
-    /kein Bauteilkatalog geladen/.test(csvOhne) && /unvollständig – 0 von 14/.test(csvOhne)); }
+    /kein Bauteilkatalog geladen/.test(csvOhne) && /unvollständig – 0 von \d+ Positionen bepreist/.test(csvOhne)
+    && !/;0,00;/.test(csvOhne)); }
 
 // Storage-Anbindung: externer Wechsel des aktiven Elements -> Modul lädt es + neue Eingaben
 const W2=buildWall('Fremdwand', 2500, 2000, []);

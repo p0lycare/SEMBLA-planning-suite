@@ -16,6 +16,7 @@ export const BLECH_THICK = 15;          // Stahlblech-Dicke (mm)
 export const CHAMBER_OFFSET = 62.5;     // Kammerzentrum -> Lattice x = 62.5 + 125k
 export const MAX_SPAN_GRID = 3;         // Vorspannung max. alle 3 Raster (375mm)
 export const FORBIDDEN_N = new Set([1, 4]);
+export const MIN_FERTIGMASS_MM = 200;   // kleinstes einbaubares Fertigmass eines Zuschnitts ([Z-5])
 
 export class SemblaError extends Error {}
 export class InvalidDimensionError extends SemblaError {}
@@ -44,6 +45,74 @@ function pyRound(x) {
   if (d < 0.5) return f;
   if (d > 0.5) return f + 1;
   return (f % 2 === 0) ? f : f + 1;
+}
+
+// ---------- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----------
+// Die ausgewaehlten Katalogprodukte sind ein VORRATSSATZ an Standardlaengen, die tatsaechlich
+// KOMBINIERT werden: groesste geeignete Groesse zuerst, mit kleineren ausgewaehlten Groessen
+// auffuellen, das verbleibende Fertigmass als sichtbar gekennzeichneter Sonderzuschnitt aus dem
+// kleinsten geeigneten Ausgangsprodukt. Keine Saegefuge, keine Reststueck-Wiederverwendung,
+// keine Einkaufs-/Verschnittoptimierung.
+//
+// [Z-5] (Mindest-Fertigmass) steht als Baubarkeitsregel UEBER der Groessenpraeferenz: eine
+// Standardgroesse wird nur gewaehlt, wenn der danach verbleibende Rest 0, mindestens das
+// Mindest-Fertigmass oder mit einer weiteren ausgewaehlten Groesse auffuellbar ist. Laesst der
+// Vorratssatz keine solche Wahl zu (z. B. nur EINE Standardlaenge), wird die Groessenpraeferenz
+// beibehalten und der Konflikt SICHTBAR gemeldet (`konflikt: "mindestmass"`) — es entsteht nie
+// still ein nicht einbaubares Kurzstueck und nie eine erfundene Laenge ([P-6]/[P-9]).
+
+/** Rundungsschutz fuer mm-Arithmetik (Katalogmasse sind ganzzahlige mm). */
+function _mm(x) { return Math.round(x * 1e6) / 1e6; }
+
+/** Standardlaengen normalisieren: nur > 0, dedupliziert, ABSTEIGEND. @param {number[]} l */
+export function normLaengen(l) {
+  const arr = (Array.isArray(l) ? l : []).map(Number).filter((x) => Number.isFinite(x) && x > 0);
+  return [...new Set(arr)].sort((a, b) => b - a);
+}
+
+/**
+ * Kleinstes Ausgangsprodukt, aus dem ein Fertigmass geschnitten werden kann
+ * (kleinste ausgewaehlte Standardlaenge >= Mass). Keine passende -> null.
+ * @param {number} massMm @param {number[]} laengenMm
+ */
+export function quelleFuerMass(massMm, laengenMm) {
+  let out = null;
+  for (const l of normLaengen(laengenMm)) if (l >= massMm - 1e-9) out = l;   // absteigend -> letzter Treffer = kleinster
+  return out;
+}
+
+/**
+ * Bedarf deterministisch aus den ausgewaehlten Standardlaengen kombinieren ([Z-2]).
+ * @param {number} bedarfMm benoetigte Gesamtlaenge (Geometrie, wird NIE veraendert)
+ * @param {number[]} laengenMm ausgewaehlte Standardlaengen
+ * @param {number} [minMm] Mindest-Fertigmass ([Z-5])
+ * @returns {{stuecke:Array<{len_mm:number,art:"standard"|"sonder",quelle_mm:number}>,
+ *            konflikt:string|null}}
+ */
+export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM) {
+  const L = normLaengen(laengenMm);
+  const stuecke = [];
+  if (!L.length) return { stuecke, konflikt: "keine_standardlaenge" };
+  let rest = _mm(bedarfMm), konflikt = null, guard = 0;
+  while (rest > 1e-9 && guard++ < 10000) {
+    const passend = L.filter((l) => l <= rest + 1e-9);            // absteigend
+    if (!passend.length) break;                                   // Rest < kleinste Standardgroesse
+    // [Z-5] vor Groessenpraeferenz: Rest danach 0, >= Mindestmass oder weiter auffuellbar
+    let pick = passend.find((l) => {
+      const r2 = _mm(rest - l);
+      return r2 <= 1e-9 || r2 >= minMm - 1e-9 || L.some((x) => x <= r2 + 1e-9);
+    });
+    if (pick == null) { pick = passend[0]; konflikt = "mindestmass"; }   // sichtbar, nie still
+    stuecke.push({ len_mm: pick, art: "standard", quelle_mm: pick });
+    rest = _mm(rest - pick);
+  }
+  if (rest > 1e-9) {
+    const q = quelleFuerMass(rest, L);
+    if (q == null) return { stuecke: [], konflikt: "kein_ausgangsprodukt" };
+    if (rest < minMm - 1e-9) konflikt = "mindestmass";
+    stuecke.push({ len_mm: rest, art: "sonder", quelle_mm: q });
+  }
+  return { stuecke, konflikt };
 }
 
 /** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
@@ -136,7 +205,13 @@ export const DEFAULT_PRESTRESS = { max_span_grid: MAX_SPAN_GRID, force_kN: null,
 function normPrestress(p) {
   const m = (p && Number.isInteger(p.max_span_grid) && p.max_span_grid >= 1) ? p.max_span_grid : MAX_SPAN_GRID;
   const fk = (p && p.force_kN != null) ? p.force_kN : null;
-  const rod = (p && p.rod_mm != null && +p.rod_mm > 0) ? +p.rod_mm : ROD;
+  // Gewindestangen-Standardlaengen ([Z-1]): der VORRATSSATZ der in Modul 1 gewaehlten
+  // Katalogprodukte ist die verbindliche Quelle. Fehlt er (Altstand/keine Auswahl), gilt der
+  // kompatible Fallback aus dem Einzelwert `rod_mm` bzw. ROD — dann ist der Satz einelementig
+  // und die Kombination liefert bit-genau das bisherige Ergebnis.
+  let rodL = normLaengen(p && p.rod_lengths_mm);
+  const rod = rodL.length ? rodL[0] : ((p && p.rod_mm != null && +p.rod_mm > 0) ? +p.rod_mm : ROD);
+  if (!rodL.length) rodL = [rod];
   const blech = (p && p.blech_mm != null && +p.blech_mm > 0) ? +p.blech_mm : BLECH;
   const top = (p && (p.top_connection === "spannplatte" || p.top_connection === "blech")) ? p.top_connection : "blech";
   // manuelle Spannachsen (Rasterindizes) – wenn gesetzt, exakt diese statt Auto-Verteilung
@@ -144,7 +219,8 @@ function normPrestress(p) {
   cg = (cg && cg.length) ? [...new Set(cg)].sort((a, b) => a - b) : null;
   // Startachse der Auto-Verteilung: 0 = 1. Rasterachse (Standard/Bestand), 1 = 2. Rasterachse
   const sa = (p && (p.start_axis_grid === 1 || p.start_axis_grid === "1")) ? 1 : 0;
-  return { max_span_grid: m, force_kN: fk, rod_mm: rod, blech_mm: blech, top_connection: top, columns_grid: cg, start_axis_grid: sa };
+  return { max_span_grid: m, force_kN: fk, rod_mm: rod, rod_lengths_mm: rodL, blech_mm: blech,
+           top_connection: top, columns_grid: cg, start_axis_grid: sa };
 }
 
 function normSteps(steps, lengthMm, heightMm) {
@@ -248,7 +324,14 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     while (r < L) {
       if (!occ[r][k]) { r++; continue; }
       let r2 = r; while (r2 + 1 < L && occ[r2 + 1][k]) r2++;
-      const z0 = r * COURSE, z1 = (r2 + 1) * COURSE, h = z1 - z0, stueck = Math.ceil(h / ROD_);
+      const z0 = r * COURSE, z1 = (r2 + 1) * COURSE, h = z1 - z0;
+      // [Z-2]/[Z-3] Die Stuecke eines Segments sind ECHTE Standardlaengen aus dem Vorratssatz
+      // plus hoechstens ein Sonderzuschnitt. Diese Stueckliste ist die KANONISCHE Ableitung —
+      // Stueckzahl, Kopplungen (Montage) und Mengen (BOM) lesen ausschliesslich sie, es gibt
+      // keine zweite Rechnung aus einer pauschalen Stangenlaenge.
+      const kombi = kombiniereLaengen(h, PS.rod_lengths_mm);
+      const stuecke = kombi.stuecke, stueck = stuecke.length;
+      const quelleSumme = stuecke.reduce((a, s) => a + s.quelle_mm, 0);
       // Anschluss-Ausbildung je Segmentende:
       //   Fuß der Wand (z0==0)      -> Bodenblech: Senkkopfschraube + Kopplungsmutter
       //   Wandoberkante (z1==Top)   -> Kopfblech (Spannmutter) ODER Spannplatte (Platte + Spannmutter)
@@ -262,7 +345,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       if (ankerOben === "kopfblech") segSpannmutter++; else { segSpannmutter++; segSpannplatten++; }
       anchSenkkopf += segSenkkopf; anchSpannmutter += segSpannmutter; anchSpannplatten += segSpannplatten;
       segs.push({ z0_mm: z0, z1_mm: z1, lage0: r, lage1: r2 + 1, gewindestangen: stueck,
-        letzte_stange_mm: h - (stueck - 1) * ROD_, verschnitt_mm: stueck * ROD_ - h,
+        stuecke, zuschnitt_konflikt: kombi.konflikt,
+        letzte_stange_mm: stueck ? stuecke[stueck - 1].len_mm : h, verschnitt_mm: quelleSumme - h,
         verbindungsmuttern: stueck - 1, anker_unten: ankerUnten, anker_oben: ankerOben,
         senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter });
       r = r2 + 1;
@@ -315,6 +399,17 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   bom.dichtstreifen_mm = stossfugen * COURSE;
   bom.verschnitt_mm = columns.reduce((a, c) => a + c.segments.reduce((b, sg) => b + sg.verschnitt_mm, 0), 0);
 
+  // [Z-5] Zuschnitt-Konflikte sichtbar machen (nie still): je betroffenes Segment ein Eintrag.
+  // Sie sind KEIN Baubarkeitsausschluss (die Mengen bleiben unveraendert), sondern eine
+  // ausdrueckliche Meldung, dass der Vorratssatz kein einbaubares Fertigmass zulaesst.
+  const zuschnittKonflikte = [];
+  for (const col of columns) for (const sg of col.segments) {
+    if (sg.zuschnitt_konflikt) {
+      zuschnittKonflikte.push({ k: col.k, z0_mm: sg.z0_mm, z1_mm: sg.z1_mm,
+        grund: sg.zuschnitt_konflikt, fertigmass_mm: sg.letzte_stange_mm });
+    }
+  }
+
   const buildable = invalidSegments.length === 0;  // strukturell; Versatz separat
   return {
     name, length_mm: lengthMm, height_mm: heightMm,
@@ -329,6 +424,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     validation: {
       buildable, versatz_ok: versatzOk, versatz_violations: viol,
       tension_span_ok: spanOk, rigid_lagen: rigidLagen, invalid_segments: invalidSegments,
+      zuschnitt_konflikte: zuschnittKonflikte,
     },
     courses,
   };

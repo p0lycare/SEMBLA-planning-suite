@@ -22,6 +22,9 @@
     "max_span_grid": 3,
     "force_kN": null,
     "rod_mm": 1100,
+    "rod_lengths_mm": [
+      1100
+    ],
     "blech_mm": 1000,
     "top_connection": "blech",
     "columns_grid": null,
@@ -55,6 +58,19 @@
           "lage0": 0,
           "lage1": 10,
           "gewindestangen": 2,
+          "stuecke": [
+            {
+              "len_mm": 1100,
+              "art": "standard",
+              "quelle_mm": 1100
+            },
+            {
+              "len_mm": 900,
+              "art": "sonder",
+              "quelle_mm": 1100
+            }
+          ],
+          "zuschnitt_konflikt": null,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -82,6 +98,19 @@
           "lage0": 0,
           "lage1": 10,
           "gewindestangen": 2,
+          "stuecke": [
+            {
+              "len_mm": 1100,
+              "art": "standard",
+              "quelle_mm": 1100
+            },
+            {
+              "len_mm": 900,
+              "art": "sonder",
+              "quelle_mm": 1100
+            }
+          ],
+          "zuschnitt_konflikt": null,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -109,6 +138,19 @@
           "lage0": 0,
           "lage1": 10,
           "gewindestangen": 2,
+          "stuecke": [
+            {
+              "len_mm": 1100,
+              "art": "standard",
+              "quelle_mm": 1100
+            },
+            {
+              "len_mm": 900,
+              "art": "sonder",
+              "quelle_mm": 1100
+            }
+          ],
+          "zuschnitt_konflikt": null,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -136,6 +178,19 @@
           "lage0": 0,
           "lage1": 10,
           "gewindestangen": 2,
+          "stuecke": [
+            {
+              "len_mm": 1100,
+              "art": "standard",
+              "quelle_mm": 1100
+            },
+            {
+              "len_mm": 900,
+              "art": "sonder",
+              "quelle_mm": 1100
+            }
+          ],
+          "zuschnitt_konflikt": null,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -175,7 +230,8 @@
     "versatz_violations": [],
     "tension_span_ok": true,
     "rigid_lagen": [],
-    "invalid_segments": []
+    "invalid_segments": [],
+    "zuschnitt_konflikte": []
   },
   "courses": [
     {

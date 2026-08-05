@@ -14,7 +14,7 @@
  */
 
 import { semblaBomItems } from "./sembla-bom.js";
-import { EINHEIT_LABEL, loesePreis, preisKontext, produktRollen } from "./sembla-katalog.js";
+import { EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation } from "./sembla-katalog.js";
 import { berechneAufbau } from "./sembla-aufbau.js";
 import { montageDokument } from "./sembla-montage.js";
 import { wandelementToIfc } from "./sembla-ifc.js";
@@ -52,15 +52,26 @@ export function wandflaeche(w) {
  */
 export function stuecklistePositionen(w, eingaben, katalog = null) {
   const rollenIdsMap = produktRollen(eingaben);
-  const kontext = preisKontext(w, eingaben);
+  const kontext = preisKontext(w, eingaben, katalog);
   const items = semblaBomItems(w).slice();
-  const A = berechneAufbau(w, eingaben.aufbau || {});
+  const spec = katalog ? produktSpezifikation(eingaben, katalog) : null;
+  const A = berechneAufbau(w, eingaben.aufbau || {}, spec ? spec.latte : null);
   if (A.pts.length) {
     const typ = A.layout.verbinder_typ;
-    const latten = (eingaben.aufbau && eingaben.aufbau.latten) || {};
     items.push({ key: "verbinder", label: "Verbinder" + (typ ? " " + typ : ""), unit: "Stk", menge: A.pts.length });
-    items.push({ key: "latte", label: "Holzlatte " + (latten.breite_cm ?? 4) + " cm · Stange " + (latten.stange_cm ?? 150) + " cm",
-                 unit: "Stk", menge: (A.batt.summary.latten_15m_bedarf || 0) });
+    // Latten: je AUSGANGSPRODUKT eine Position ([Z-4]) — Menge = Zahl der daraus geschnittenen
+    // Einbaustuecke (keine Reststueck-Wiederverwendung, keine Bestellmengenoptimierung).
+    // `mass_mm` macht die Position auch bei mehreren Standardlaengen eindeutig bepreisbar.
+    const br = A.lattenBreiteCm != null ? A.lattenBreiteCm + " cm · " : "";
+    const aus = A.batt.summary.ausgang || [];
+    if (aus.length) {
+      for (const g of aus) {
+        items.push({ key: "latte", label: "Lattenstange " + br + g.laenge_cm + " cm (Ausgangsprodukt für "
+          + g.anzahl + " Zuschnitt(e))", unit: "Stk", menge: g.anzahl, mass_mm: g.laenge_cm * 10 });
+      }
+    } else {
+      items.push({ key: "latte", label: "Lattenstange " + br + "–", unit: "Stk", menge: 0 });
+    }
   }
   return items.map(it => {
     const r = loesePreis(it, rollenIdsMap, katalog, kontext);
@@ -139,11 +150,19 @@ export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
 
 // ---------- Zuschnittliste (Latten) ----------
 
-/** Latten-Zuschnittliste als CSV aus dem Aufbau-Layout. */
-export function zuschnittCsv(w, eingaben) {
-  const A = berechneAufbau(w, eingaben.aufbau || {});
-  const rows = [["achse_x_cm", "segment", "y0_cm", "y1_cm", "laenge_cm"]];
-  A.batt.axes.forEach(a => a.segments.forEach((sg, i) => rows.push([a.x_cm, i + 1, sg.y0_cm, sg.y1_cm, sg.len_cm])));
+/**
+ * Latten-Zuschnittliste als CSV aus dem Aufbau-Layout. Je Einbaustueck stehen Fertigmaß,
+ * Ausgangsprodukt und die Art (`standard`/`sonder`) in der Zeile ([Z-2]/[Z-4]) — ein
+ * Sonderzuschnitt ist damit auch in der Datei sichtbar gekennzeichnet.
+ * @param {object} w @param {object} eingaben @param {object|null} [katalog]
+ */
+export function zuschnittCsv(w, eingaben, katalog = null) {
+  const spec = katalog ? produktSpezifikation(eingaben, katalog) : null;
+  const A = berechneAufbau(w, eingaben.aufbau || {}, spec ? spec.latte : null);
+  const rows = [["achse_x_cm", "segment", "y0_cm", "y1_cm", "fertigmass_cm", "ausgangsprodukt_cm", "art"]];
+  A.batt.axes.forEach(a => a.segments.forEach((sg, i) => rows.push(
+    [a.x_cm, i + 1, sg.y0_cm, sg.y1_cm, sg.len_cm, sg.quelle_cm == null ? "" : sg.quelle_cm,
+     sg.art === "sonder" ? "Sonderzuschnitt" : (sg.art === "standard" ? "Standard" : "kein Ausgangsprodukt")])));
   return rows.map(r => r.join(";")).join("\n") + "\n";
 }
 
@@ -426,7 +445,7 @@ export function baueDateien(projekt, auswahl, katalog = null) {
   const files = [];
   if (set.has("projekt")) files.push({ name: "Projekt_" + base + ".json", data: JSON.stringify(projekt, null, 2) });
   if (set.has("stueckliste")) files.push({ name: "Stueckliste_" + base + ".csv", data: stuecklisteCsv(w, eingaben, undefined, katalog) });
-  if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben) });
+  if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben, katalog) });
   if (set.has("montage")) files.push({ name: "Montageanleitung_" + base + ".html", data: montageHtml(w, eingaben) });
   if (set.has("nachweis")) files.push({ name: "Statischer_Nachweis_" + base + ".html", data: nachweisHtml(w, eingaben) });
   if (set.has("ifc")) files.push({ name: base + ".ifc", data: ifcText(w) });

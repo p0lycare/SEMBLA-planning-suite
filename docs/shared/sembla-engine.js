@@ -83,9 +83,12 @@ function pruefe(w, vorg, N) {
     strands: w.tension_columns.filter(c => c.durchgehend).length, force_kN: N, ...m });
 }
 function stepsOf(vorg) { return vorg.steps || []; }
-// Prestress-Durchreiche: Hardware-Felder (rod_mm, blech_mm, top_connection) bleiben erhalten
+// Prestress-Durchreiche: Hardware-Felder bleiben erhalten. `rod_lengths_mm` (der Satz der in
+// Modul 1 gewaehlten Standardlaengen, [Z-1]) MUSS mitreisen — sonst fiele der Core bei jeder
+// Auslegungs-Iteration auf den Einzelwert/Default zurueck und die Kombination waere unwirksam.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
-  return { ...extra, rod_mm: p.rod_mm, blech_mm: p.blech_mm, top_connection: p.top_connection, columns_grid: p.columns_grid,
+  return { ...extra, rod_mm: p.rod_mm, rod_lengths_mm: p.rod_lengths_mm, blech_mm: p.blech_mm,
+           top_connection: p.top_connection, columns_grid: p.columns_grid,
            start_axis_grid: p.start_axis_grid }; }
 function buildN(vorg, sp) {
   return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg));

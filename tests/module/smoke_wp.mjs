@@ -235,14 +235,23 @@ ok('kein Produktdatum im Wandelement (Ownership)', (()=>{
   const s=JSON.stringify(store.aktivesWandelement());
   return !s.includes('rod-1100') && !s.includes('Testkatalog') && !s.includes('preis'); })());
 
-// Mehrfachauswahl ist erlaubt (mehrere Standardlängen, Vorleistung fuer Zuschnitt/Einkauf) …
+// Mehrere Standardlängen sind der REGELFALL ([Z-2]): sie werden kombiniert, nicht „vorgemerkt“
+// und auch nicht als mehrdeutig behandelt. Nur gleiche maßgebende Maße bleiben mehrdeutig.
 setzen('rod_std','rod-1000',true);
 ok('Mehrfachauswahl je Rolle möglich', store.holeProdukte(1).rollen.rod_std.length===2);
-ok('maßfremdes Produkt bleibt vorgemerkt, Preis bleibt eindeutig', (()=>{
+ok('[Z-2] zwei Standardlängen -> Status kombiniert (kein „vorgemerkt“)', (()=>{
   const st=WP.prodStatus('rod_std');
-  return st.status==='ok' && st.produkt.id==='rod-1100' && st.vorgemerkt.map(p=>p.id).join()==='rod-1000'; })());
-ok('vorgemerkte Produkte werden benannt (nicht still verworfen)', /vorgemerkt/.test(prodHtml()));
-// … zwei Produkte mit demselben maßgebenden Maß bleiben aber mehrdeutig (kein erstes Produkt!)
+  return st.status==='kombiniert' && st.vorgemerkt.length===0
+    && JSON.stringify(st.laengen_mm)==='[1100,1000]'; })());
+ok('[Z-2] Kombination ist in Modul 1 sichtbar benannt', /kombiniert/.test(prodHtml()));
+ok('[Z-1] beide Standardlängen gehen in das Wandelement', (()=>{
+  WP.run(); return JSON.stringify(WP.RESULT.wandelement.prestress.rod_lengths_mm)==='[1100,1000]'; })());
+ok('[Z-2] Segmente kombinieren echte Standardlängen', (()=>{
+  const sg=WP.RESULT.wandelement.tension_columns[0].segments[0];
+  return Array.isArray(sg.stuecke) && sg.stuecke.length===sg.gewindestangen
+    && sg.stuecke.reduce((a,s)=>a+s.len_mm,0)===sg.z1_mm-sg.z0_mm
+    && sg.stuecke.every(s=>s.art==='standard'?s.len_mm===s.quelle_mm:s.quelle_mm>=s.len_mm); })());
+// … zwei Produkte mit demselben maßgebenden Maß bleiben mehrdeutig (kein erstes Produkt!)
 setzen('rod_std','rod-1100b',true);
 ok('gleiches Maß zweifach -> mehrdeutig, kein Preis', (()=>{
   const st=WP.prodStatus('rod_std'); return st.status==='mehrdeutig' && st.produkt===null; })());
@@ -250,11 +259,72 @@ ok('Mehrdeutigkeit schon in Modul 1 sichtbar', /Mehrdeutig/.test(prodHtml()));
 setzen('rod_std','rod-1100b',false); setzen('rod_std','rod-1000',false);
 ok('Häkchen entfernen löst die Auswahl', JSON.stringify(store.holeProdukte(1).rollen.rod_std)==='["rod-1100"]');
 
-// Maß-Eingrenzung folgt der WAND: kürzere Stange -> das gewählte Produkt passt nicht mehr
-document.getElementById('rodCm').value='100'; WP.run();
-ok('Maßwechsel der Wand -> mass_abweichend statt falschem Preis', WP.prodStatus('rod_std').status==='mass_abweichend');
+// ---- [P-17] Kompakte Multi-Select-Zeile je Verwendungsrolle -----------------
+ok('[P-17] Dropdown statt ausgebreiteter Checkboxliste',
+  /<details class="pdd" data-pdd="rod_std"/.test(prodHtml()) && /<summary/.test(prodHtml()));
+ok('[P-17] keine wiederholenden Kategorieblöcke mehr', !/class="pgrp"/.test(prodHtml()));
+ok('[P-17] geschlossen: Zusammenfassung der Auswahl', /1 Produkt: Stange 1100/.test(prodHtml()));
+ok('[P-17] Zusammenfassung „keine Auswahl“ bei leerer Rolle',
+  /data-prol="spannplatte"[\s\S]*?keine Auswahl/.test(prodHtml()));
+ok('[P-17] Rollenbeschriftung ist der Verwendungszweck, nicht der Produktname',
+  KAT.rollenLabel('i3')==='i3-Stein' && KAT.rollenLabel('blech_boden')==='Bodenblech');
+ok('[P-17] Option zeigt Produktname PLUS unterscheidende Merkmale', (()=>{
+  const o=KAT.rollenOptionen(KATALOG,'rod_std',[]).find(x=>x.id==='rod-1100');
+  return o.name==='Stange 1100' && /M10/.test(o.merkmale) && /rod-1100/.test(o.merkmale)
+    && o.merkmale!==KAT.rollenLabel('rod_std'); })());
+ok('[P-17] keine tautologische Rollen-/Optionsbeschriftung', (()=>{
+  for(const r of KAT.rollenVonModul(1)) for(const o of KAT.rollenOptionen(KATALOG,r.id,[])){
+    if(!o.merkmale) return false;
+    if((o.name+' '+o.merkmale).trim().toLowerCase()===KAT.rollenLabel(r.id).trim().toLowerCase()) return false;
+  }
+  return true; })());
+ok('[P-17] Escape schließt das Dropdown (Tastaturbedienung)', (()=>{
+  let zu=false; const box=document.getElementById('prodRollen');
+  box.querySelectorAll=()=>[{ set open(v){ zu = (v===false); } }];
+  box.dispatch('keydown',{key:'Escape'}); box.querySelectorAll=()=>[];
+  return zu; })());
+
+// ---- [Z-1] Legacy-Maßfeld: gesperrt UND wirkungslos ------------------------
+ok('[Z-1] Feld gesperrt, sobald ein Gewindestangenprodukt gewählt ist',
+  document.getElementById('rodCm').disabled===true
+  && /Aus dem Katalog/.test(document.getElementById('rodQuelle').innerHTML));
+ok('[Z-1] Katalogwert steht im gesperrten Feld', document.getElementById('rodCm').value===110);
+ok('[Z-1] manipulierter DOM-Wert bleibt wirkungslos', (()=>{
+  document.getElementById('rodCm').value='42';           // Manipulation trotz disabled
+  const v=WP.vorgaben();
+  return v.prestress.rod_mm===undefined
+    && JSON.stringify(v.prestress.rod_lengths_mm)==='[1100]'
+    && WP.RESULT.wandelement.rod_mm===1100; })());
+ok('[Z-1] auch nach erneuter Rechnung kein Durchschlagen des Altwerts', (()=>{
+  WP.run(); return WP.RESULT.wandelement.rod_mm===1100
+    && JSON.stringify(WP.RESULT.wandelement.prestress.rod_lengths_mm)==='[1100]'; })());
+ok('[Z-1] die Sperre setzt den manipulierten Wert wieder auf den Katalogwert',
+  document.getElementById('rodCm').value===110);
+ok('[Z-1] ohne Auswahl: Fallback wieder editierbar und gekennzeichnet', (()=>{
+  setzen('rod_std','rod-1100',false);
+  const el=document.getElementById('rodCm');
+  return el.disabled===false && /Fallback/.test(document.getElementById('rodQuelle').innerHTML)
+    && WP.vorgaben().prestress.rod_lengths_mm===undefined
+    && WP.vorgaben().prestress.rod_mm===1100; })());   // jetzt wirkt wieder das Feld
+// Der Fallback ist ohne Auswahl weiterhin voll wirksam (Rueckwaertskompatibilitaet).
+document.getElementById('rodCm').value='60'; WP.run();
+ok('[Z-1] ohne Auswahl wirkt das Feld unveraendert (60 cm)', WP.RESULT.wandelement.rod_mm===600);
 document.getElementById('rodCm').value='110'; WP.run();
-ok('zurück auf 110 cm -> wieder zugeordnet', WP.prodStatus('rod_std').status==='ok');
+setzen('rod_std','rod-1100',true);
+
+// [Z-1] Die Maß-Eingrenzung folgt jetzt dem KATALOG, nicht mehr dem Eingabefeld: ein Wechsel
+// des gesperrten Feldes kann keine Maßabweichung mehr erzeugen (frueher: mass_abweichend).
+document.getElementById('rodCm').value='100'; WP.run();
+ok('[Z-1] gesperrtes Feld erzeugt keine Maßabweichung mehr',
+  WP.prodStatus('rod_std').status==='ok' && WP.RESULT.wandelement.rod_mm===1100);
+// Maßfremd bleibt maßfremd, wo die WAND das Maß vorgibt (Blech-Modullaenge): dort gibt es keine
+// Kombination mehrerer Groessen — die Rolle ist bewusst NICHT `kombinierbar`.
+setzen('blech_boden','blech-boden',true);
+ok('[P-14] Blech bei passender Modullaenge zugeordnet', WP.prodStatus('blech_boden').status==='ok');
+document.getElementById('blechCm').value='80'; WP.run();
+ok('[P-14] maßfremdes Blechprodukt bleibt ohne Preis', WP.prodStatus('blech_boden').status==='mass_abweichend');
+document.getElementById('blechCm').value='100'; WP.run();
+ok('zurück auf 100 cm -> Blech wieder zugeordnet', WP.prodStatus('blech_boden').status==='ok');
 
 // Rolle des falschen Moduls darf hier nicht geschrieben werden (Ownership Modul 2)
 ok('Modul-2-Rolle landet nicht im Modul-1-Block', (()=>{

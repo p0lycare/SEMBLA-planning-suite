@@ -366,41 +366,43 @@ export function produkt(k, id) {
  */
 export const ROLLEN = [
   // --- Modul 1 ---
-  { id: "i3", label: "Stein i3 (37,5 cm)", kategorie: "stein", modul: 1, gruppe: "Steine", einheit: "Stk",
+  { id: "i3", label: "i3-Stein", kategorie: "stein", modul: 1, gruppe: "Steine", einheit: "Stk",
     mass: { felder: ["breite_mm"], kontext: "stein_i3_mm" }, bepreist: true },
-  { id: "i2", label: "Stein i2 (25 cm)", kategorie: "stein", modul: 1, gruppe: "Steine", einheit: "Stk",
+  { id: "i2", label: "i2-Stein", kategorie: "stein", modul: 1, gruppe: "Steine", einheit: "Stk",
     mass: { felder: ["breite_mm"], kontext: "stein_i2_mm" }, bepreist: true },
-  { id: "rod_std", label: "Gewindestange (Standardlänge)", kategorie: "gewindestange", modul: 1, einheit: "Stk",
-    gruppe: "Vorspannung", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true },
-  { id: "rod_sonder", label: "Gewindestange Sonderlänge (Ausgangsprodukt)", kategorie: "gewindestange",
+  { id: "rod_std", label: "Gewindestange", kategorie: "gewindestange", modul: 1, einheit: "Stk",
+    gruppe: "Vorspannung", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true,
+    kombinierbar: true },
+  { id: "rod_sonder", label: "Gewindestange – Ausgangsprodukt für Sonderzuschnitte", kategorie: "gewindestange",
     modul: 1, gruppe: "Vorspannung", einheit: "Stk", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true,
+    kombinierbar: true,
     hinweis: "Sonderlängen werden aus diesem Ausgangsprodukt zugeschnitten. Zuschnitt, Verschnitt "
       + "und Einkaufsmengen werden hier bewusst NICHT gerechnet (Zuschnittverfahren offen)." },
-  { id: "kupplung", label: "Kopplungsmutter (Stangenstoß)", kategorie: "verbrauch", modul: 1,
+  { id: "kupplung", label: "Kopplungsmutter Stangenstoß", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannmutter", label: "Spannmutter", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
-  { id: "kuppl_basis", label: "Kopplungsmutter (Fuß)", kategorie: "verbrauch", modul: 1,
+  { id: "kuppl_basis", label: "Kopplungsmutter Fuß", kategorie: "verbrauch", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
-  { id: "senkkopf", label: "Senkkopfschraube (Fuß)", kategorie: "verbrauch", modul: 1,
+  { id: "senkkopf", label: "Senkkopfschraube Fuß", kategorie: "verbrauch", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
-  { id: "blech_boden", label: "Bodenblech-Modul", kategorie: "blech_platte", modul: 1,
+  { id: "blech_boden", label: "Bodenblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true },
-  { id: "blech_kopf", label: "Kopfblech-Modul", kategorie: "blech_platte", modul: 1,
+  { id: "blech_kopf", label: "Kopfblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true },
-  { id: "dicht_stk", label: "Dichtstreifen 20 cm (Einbauposition)", kategorie: "verbrauch", modul: 1,
+  { id: "dicht_stk", label: "Dichtstreifen Einbauposition", kategorie: "verbrauch", modul: 1,
     gruppe: "Fugen", einheit: "Stk", mass: null, bepreist: true },
-  { id: "dicht", label: "Dichtstreifen – Gesamtlänge", kategorie: "verbrauch", modul: 1,
+  { id: "dicht", label: "Dichtstreifen Gesamtlänge", kategorie: "verbrauch", modul: 1,
     gruppe: "Fugen", einheit: "m", mass: null, bepreist: false,
     hinweis: "Nachrichtliche Menge derselben Ware wie die Einbauposition ([A-6]) — bewusst nicht "
       + "bepreist, damit die Dichtstreifen nicht doppelt in der Summe stehen." },
   // --- Modul 2 ---
   { id: "latte", label: "Lattenstange", kategorie: "latte", modul: 2, gruppe: "Latten", einheit: "Stk",
-    mass: { felder: ["laenge_mm"], kontext: "stange_mm" }, bepreist: true },
+    mass: { felder: ["laenge_mm"], kontext: "stange_mm" }, bepreist: true, kombinierbar: true },
   { id: "verbinder", label: "Verbinderprodukt", kategorie: "verbinder", modul: 2, gruppe: "Verbinder",
     einheit: "Stk", mass: null, bepreist: true,
     hinweis: "Der Verbindertyp folgt unveränderlich aus Modul 1 ([U-9]); hier wird nur das "
@@ -415,6 +417,70 @@ export const ROLLEN = [
 /** @param {string} id @returns {{id:string,label:string,kategorie:string,modul:1|2,gruppe:string,mass:any,bepreist:boolean,hinweis?:string}|null} */
 export function rolle(id) {
   return ROLLEN.find((r) => r.id === id) || null;
+}
+
+/**
+ * Beschriftung der VERWENDUNGSROLLE (Zeilenkopf der Auswahl, [P-17]) — benennt die
+ * Verwendungsstelle am Bauwerk, nie ein Produkt. Unbekannte Rolle -> die rohe Kennung.
+ * @param {string} id
+ */
+export function rollenLabel(id) {
+  const r = rolle(id);
+  return r ? r.label : String(id);
+}
+
+// --- Kompakte Rollenauswahl (Bedienschicht, DOM-frei · [P-17]) --------------
+// Modul 1 und Modul 2 zeigen je Verwendungsrolle EINE Zeile mit einem Mehrfachauswahl-
+// Dropdown. Damit Rollen- und Optionsbeschriftung nie derselbe generische Text sind,
+// liefert `optionMerkmale` zu jedem Produkt die UNTERSCHEIDENDEN Merkmale (Maße, Gewinde,
+// Preisbasis, Kennung). Die Zeichenketten sind hier zentral und damit testbar.
+
+/**
+ * Unterscheidende Merkmale eines Produkts als Klartext (nie leer — im Zweifel die ID).
+ * @param {any} p
+ */
+export function optionMerkmale(p) {
+  const t = [];
+  const m = massText(p);
+  if (m && m !== "–") t.push(m);
+  const eh = p && (EINHEIT_LABEL[p.einheit] || p.einheit);
+  if (eh) t.push(String(eh));
+  const id = p && p.id != null ? String(p.id) : "";
+  if (id) t.push(id);
+  return t.join(" · ");
+}
+
+/**
+ * Optionen EINER Rolle: ausschliesslich katalogseitig zur Rolle passende Produkte
+ * (fremde Kategorien werden nicht angeboten), in Katalogreihenfolge.
+ * @param {any} katalog @param {string} rolleId @param {string[]} [gewaehlt]
+ * @returns {Array<{id:string,name:string,merkmale:string,gewaehlt:boolean,hinweis:string|null}>}
+ */
+export function rollenOptionen(katalog, rolleId, gewaehlt = []) {
+  const r = rolle(rolleId);
+  if (!r || !katalog || !Array.isArray(katalog.produkte)) return [];
+  const gew = new Set((gewaehlt || []).map(String));
+  return katalog.produkte
+    .filter((p) => p.kategorie === r.kategorie)
+    .map((p) => ({
+      id: String(p.id),
+      name: String(p.bezeichnung || "").trim() || String(p.id),
+      merkmale: optionMerkmale(p),
+      gewaehlt: gew.has(String(p.id)),
+      hinweis: p.hinweis || null,
+    }));
+}
+
+/**
+ * Zusammenfassung des geschlossenen Steuerelements ([P-17]): keine Auswahl /
+ * EIN Produkt (mit Namen) / n Produkte.
+ * @param {Array<{name:string,gewaehlt:boolean}>} optionen
+ */
+export function auswahlZusammenfassung(optionen) {
+  const gew = (optionen || []).filter((o) => o.gewaehlt);
+  if (!gew.length) return "keine Auswahl";
+  if (gew.length === 1) return "1 Produkt: " + gew[0].name;
+  return gew.length + " Produkte";
 }
 
 /** Alle Rollen eines Moduls, in Anzeigereihenfolge. @param {1|2} modul */
@@ -476,6 +542,65 @@ export function produkteZuRolle(eingaben, katalog, rolleId) {
   return { rolle: rolleId, ids, produkte, fehlend };
 }
 
+// --- Produktspezifikation der Wand ([Z-1]) ---------------------------------
+// Ein ausgewaehltes Katalogprodukt ist die ALLEINIGE Quelle seiner Produktspezifikation.
+// Diese Schicht liest sie aus dem Katalog und ist damit die einzige Stelle, aus der Modul 1
+// (Gewindestangen-Standardlaengen) und Modul 2 (Latten-Querschnitt/Standardlaengen) ihre
+// Masse beziehen. Ohne Auswahl bleibt `quelle: "fallback"` und `laengen_mm` LEER — dann
+// (und nur dann) darf der Aufrufer seinen kompatiblen Altwert verwenden ([Z-1]).
+// Widersprueche werden GEMELDET, nie still aufgeloest ([P-6]/[P-9]).
+
+/** Ein Maßfeld aller aufloesbaren Produkte einer Rolle (ohne Doppelte, absteigend). */
+function _masse(produkte, feld) {
+  const v = produkte.map((p) => +p[feld]).filter((x) => Number.isFinite(x) && x > 0);
+  return [...new Set(v)].sort((a, b) => b - a);
+}
+
+/**
+ * Standardlaengen einer Rolle aus der wandbezogenen Auswahl ([Z-1]).
+ * @param {any} eingaben @param {any} katalog @param {string} rolleId
+ * @returns {{laengen_mm:number[],produkte:any[],fehlend:string[],ids:string[],quelle:"katalog"|"fallback"}}
+ */
+export function standardLaengen(eingaben, katalog, rolleId) {
+  const auf = produkteZuRolle(eingaben, katalog, rolleId);
+  const laengen = _masse(auf.produkte, "laenge_mm");
+  return { laengen_mm: laengen, produkte: auf.produkte, fehlend: auf.fehlend, ids: auf.ids,
+           quelle: laengen.length ? "katalog" : "fallback" };
+}
+
+/**
+ * Vollstaendige Produktspezifikation der aktiven Wand ([Z-1]) — die einzige Abbildung
+ * Auswahl -> maßgebende Produktmaße. `konflikte` benennt widersprüchliche Angaben
+ * (z. B. zwei Lattenprodukte mit unterschiedlicher Breite); es wird nichts geraten.
+ * @param {any} eingaben @param {any} katalog
+ */
+export function produktSpezifikation(eingaben, katalog) {
+  const rod = standardLaengen(eingaben, katalog, "rod_std");
+  const rodSonder = standardLaengen(eingaben, katalog, "rod_sonder");
+  const latte = standardLaengen(eingaben, katalog, "latte");
+  const breiten = _masse(latte.produkte, "breite_mm");
+  const dicken = _masse(latte.produkte, "dicke_mm");
+  const konflikte = [];
+  if (breiten.length > 1) {
+    konflikte.push({ rolle: "latte", feld: "breite_mm", werte: breiten,
+      text: "Die gewählten Lattenprodukte haben unterschiedliche Querschnittsbreiten ("
+        + breiten.map((x) => x + " mm").join(", ") + "). Der Querschnitt bleibt offen, "
+        + "bis genau eine Breite gewählt ist — es wird keine Breite geraten." });
+  }
+  if (dicken.length > 1) {
+    konflikte.push({ rolle: "latte", feld: "dicke_mm", werte: dicken,
+      text: "Die gewählten Lattenprodukte haben unterschiedliche Querschnittsdicken ("
+        + dicken.map((x) => x + " mm").join(", ") + ")." });
+  }
+  return {
+    rod: { ...rod, sonder_laengen_mm: rodSonder.laengen_mm, sonder_ids: rodSonder.ids },
+    latte: { ...latte,
+             breite_mm: breiten.length === 1 ? breiten[0] : null,
+             dicke_mm: dicken.length === 1 ? dicken[0] : null },
+    konflikte,
+  };
+}
+
 // --- Preisauflösung ([P-14]) ----------------------------------------------
 
 /** Einheit der Stücklistenposition -> zulaessige Katalog-Preisbasis (KEINE Umrechnung). */
@@ -488,15 +613,22 @@ const _EINHEIT_ZU_BASIS = { Stk: "Stk", m: "m", "m²": "m2", m2: "m2" };
  * @param {any} w Wandelement @param {any} [eingaben]
  * @returns {Record<string,number>}
  */
-export function preisKontext(w, eingaben = {}) {
+export function preisKontext(w, eingaben = {}, katalog = null) {
   const ww = w || {};
   const ps = ww.prestress || {};
   const grid = +ww.grid_mm > 0 ? +ww.grid_mm : 125;
   const latten = (eingaben && eingaben.aufbau && eingaben.aufbau.latten) || {};
+  // [Z-1]: Ist ein Produkt gewaehlt, ist der Katalog die Quelle des maßgebenden Maßes —
+  // der Altwert aus den Eingaben wird dann NICHT mehr herangezogen. Positionen mit eigenem
+  // `mass_mm` (mehrere Standardlaengen gleichzeitig) haengen ohnehin nicht an diesem Kontext.
+  const spec = katalog ? produktSpezifikation(eingaben, katalog) : null;
+  const rodKat = spec && spec.rod.laengen_mm.length ? spec.rod.laengen_mm[0] : null;
+  const stangeKat = spec && spec.latte.laengen_mm.length ? spec.latte.laengen_mm[0] : null;
   return {
-    rod_mm: +ww.rod_mm > 0 ? +ww.rod_mm : (+ps.rod_mm > 0 ? +ps.rod_mm : 1100),
+    rod_mm: rodKat != null ? rodKat
+      : (+ww.rod_mm > 0 ? +ww.rod_mm : (+ps.rod_mm > 0 ? +ps.rod_mm : 1100)),
     blech_mm: +ps.blech_mm > 0 ? +ps.blech_mm : 1000,
-    stange_mm: (+latten.stange_cm > 0 ? +latten.stange_cm : 150) * 10,
+    stange_mm: stangeKat != null ? stangeKat : (+latten.stange_cm > 0 ? +latten.stange_cm : 150) * 10,
     stein_i3_mm: grid * 3,
     stein_i2_mm: grid * 2,
   };
@@ -512,6 +644,7 @@ export const STATUS_TEXT = {
   einheit_unpassend: "Preisbasis passt nicht zur Positionseinheit",
   mass_abweichend: "kein gewähltes Produkt passt zum maßgebenden Maß",
   mehrdeutig: "mehrdeutig – mehrere Produkte bleiben möglich",
+  kombiniert: "mehrere Standardgrößen – werden kombiniert",
   nicht_erforderlich: "Menge 0 – kein Produkt erforderlich",
   nachrichtlich: "nachrichtliche Menge – nicht bepreist",
   ohne_position: "keine Mengenposition – nur vorgemerkt",
@@ -571,9 +704,13 @@ export function loesePreis(item, rollenIdsMap, katalog, kontext = {}) {
   const passend = kand.filter((p) => p.einheit === basis);
   if (!passend.length) return fertig("einheit_unpassend");
 
-  // 5) Maß-Diskriminator, nur wenn die Rolle einen hat UND der Wandwert bekannt ist
+  // 5) Maß-Diskriminator, nur wenn die Rolle einen hat UND der Wandwert bekannt ist.
+  //    `item.mass_mm` hat Vorrang vor dem Wandkontext: bei kombinierten Standardgrößen
+  //    ([Z-2]) traegt JEDE Position ihr eigenes maßgebendes Maß, sodass sie wieder auf
+  //    genau ein Produkt trifft. Ohne eigenes Maß gilt weiterhin der Wandkontext.
   let eng = passend;
-  const kv = r.mass ? +kontext[r.mass.kontext] : NaN;
+  const kv = (item.mass_mm != null && +item.mass_mm > 0) ? +item.mass_mm
+    : (r.mass ? +kontext[r.mass.kontext] : NaN);
   if (r.mass && Number.isFinite(kv) && kv > 0) {
     eng = passend.filter((p) => r.mass.felder.some((f) => Number.isFinite(+p[f]) && Math.abs(+p[f] - kv) < 1e-6));
     if (!eng.length) return fertig("mass_abweichend");
@@ -608,8 +745,38 @@ export function rollenStatus(rolleId, eingaben, katalog, kontext = {}) {
              kandidaten: auf.produkte, fehlend: auf.fehlend, vorgemerkt: [], hinweis: r.hinweis || null };
   }
   const res = loesePreis({ key: rolleId, unit: r.einheit || "Stk", menge: 1 }, { [rolleId]: ids }, katalog, kontext);
-  return { rolle: rolleId, ids, status: res.status, text: res.text, produkt: res.produkt,
-           kandidaten: res.kandidaten, fehlend: res.fehlend, vorgemerkt: res.vorgemerkt, hinweis: res.hinweis };
+  // [Z-2]: Mehrere ausgewaehlte Standardgroessen sind bei Rollen mit Maß-Diskriminator der
+  // REGELFALL — sie werden kombiniert und je Groesse getrennt bepreist (Position traegt ihr
+  // eigenes `mass_mm`). Das ist KEINE Mehrdeutigkeit und auch kein „nur vorgemerkt". Echt
+  // mehrdeutig bleibt nur, wenn zwei Produkte DASSELBE maßgebende Maß tragen; harte
+  // Zuordnungsfehler behalten in jedem Fall Vorrang.
+  // Nur `kombinierbar`-Rollen (Gewindestange, Latte) verbrauchen mehrere Standardgroessen
+  // gleichzeitig. Bei Stein/Blech gibt es genau EIN maßgebendes Wandmaß — dort bleibt ein
+  // abweichendes Produkt weiterhin „vorgemerkt" bzw. maßfremd.
+  const HART = ["kein_katalog", "keine_auswahl", "fehlt", "kategorie_abweichend", "einheit_unpassend"];
+  let status = res.status, produkt = res.produkt, kandidaten = res.kandidaten;
+  let vorgemerkt = res.vorgemerkt, laengen = [];
+  if (r.mass && r.kombinierbar && !HART.includes(status)) {
+    const auf = produkteZuRolle(eingaben, katalog, rolleId);
+    // Je maßgebendem Maß eine Gruppe: zwei Produkte mit DEMSELBEN Maß bleiben echt
+    // mehrdeutig (dann ist nicht entscheidbar, welches diese Groesse ausfuehrt); mehrere
+    // VERSCHIEDENE Maße sind der Regelfall der Kombination ([Z-2]).
+    const grp = new Map();
+    for (const p of auf.produkte) {
+      const v = r.mass.felder.map((f) => +p[f]).find((x) => Number.isFinite(x) && x > 0);
+      const key = v != null ? String(v) : "?";
+      if (!grp.has(key)) grp.set(key, []);
+      grp.get(key).push(p);
+    }
+    laengen = [...grp.keys()].filter((k) => k !== "?").map(Number).sort((a, b) => b - a);
+    const doppelt = [...grp.values()].filter((l) => l.length > 1);
+    if (doppelt.length) {
+      status = "mehrdeutig"; produkt = null; kandidaten = doppelt.flat(); vorgemerkt = [];
+    } else if (grp.size > 1) { status = "kombiniert"; vorgemerkt = []; }
+  }
+  return { rolle: rolleId, ids, status, text: STATUS_TEXT[status] || res.text, produkt,
+           kandidaten, fehlend: res.fehlend, vorgemerkt,
+           hinweis: res.hinweis, laengen_mm: laengen };
 }
 
 // --- Projektauswahl (Altbestand, unwirksam — [P-15]) ----------------------

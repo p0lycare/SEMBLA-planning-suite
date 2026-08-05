@@ -449,9 +449,14 @@ ok('B ohne Öffnung: alle 29 Verbinder liegen strikt im Stein ihrer Lage',
      return O.pts.every(p=>{ const c=Wb.courses.find(c=>c.lage===li(p.y_cm));
        return !!c && c.stones.some(s=>p.x_cm*10>s.x0+1e-6 && p.x_cm*10<s.x1-1e-6); }); })());
 // Die 19 Stücke bleiben; durch die 2 zusätzlichen Verbinder wandern die Stöße ([U-8] mittig zwischen
-// zwei Verbindern), wodurch der 1D-Zuschnitt eine Stange weniger braucht (15 → 14 / 22,5 → 21,0 m).
-ok('B ohne Öffnung: Lattenbilanz nach [U-11]+[U-12] (7 Achsen / 19 Stücke / 14 Stangen / 21,0 m)',
-   O.batt.summary.achsen===7 && O.batt.summary.latten_stuecke===19 && O.batt.summary.latten_15m_bedarf===14 && O.batt.summary.gesamtlaenge_m===21);
+// zwei Verbindern). Ausgewiesen wird jetzt die EINBAU-Bilanz ([Z-4]): 19 Fertigteile mit 20,8 m
+// Gesamtlänge, je Stück ein Ausgangsprodukt (150 cm) — keine bin-gepackte Bestellmenge mehr und
+// damit auch keine Reststück-Wiederverwendung.
+ok('B ohne Öffnung: Einbaubilanz nach [U-11]+[U-12]+[Z-4] (7 Achsen / 19 Stücke / 20,8 m)',
+   O.batt.summary.achsen===7 && O.batt.summary.latten_stuecke===19
+   && O.batt.summary.gesamtlaenge_m===20.8
+   && O.batt.summary.standard_stuecke+O.batt.summary.sonder_stuecke===19
+   && JSON.stringify(O.batt.summary.ausgang)==='[{"laenge_cm":150,"anzahl":19}]');
 ok('B ohne Öffnung: keine Warnungen', !O.ohWarn && !O.xGapWarn && O.batt.summary.warnungen===0);
 
 // --- C: geometrisch unlösbar → sicher bleiben und warnen, nicht kaschieren ---
@@ -703,27 +708,70 @@ ok('Status an der Rolle: zugeordnet (1500 mm = eingestellte Stangenlänge)',
   WA.prodStatus('latte').status==='ok' && WA.prodStatus('latte').produkt.id==='latte-1500');
 ok('Herkunftsnotiz mitgeschrieben', _eg.aufbau.produkte.quelle.name==='Testkatalog M2');
 
-// Mehrere Standardlängen sind erlaubt (Vorleistung fuer Zuschnitt/Einkauf) und bleiben eindeutig,
-// solange nur eine zur eingestellten Stangenlänge passt.
+// Mehrere Standardlängen sind der REGELFALL ([Z-2]/[Z-4]): sie werden kombiniert — die groesste
+// ist die Obergrenze der Stueckbildung, jedes Stueck wird aus der kleinsten geeigneten geschnitten.
 pSetzen('latte','latte-3000',true);
 ok('mehrere Standardlängen je Kategorie wählbar', _eg.aufbau.produkte.rollen.latte.length===2);
-ok('abweichende Länge bleibt vorgemerkt, Preis bleibt eindeutig', (()=>{
+ok('[Z-2] zwei Standardlängen -> Status kombiniert (kein „vorgemerkt“)', (()=>{
   const st=WA.prodStatus('latte');
-  return st.status==='ok' && st.produkt.id==='latte-1500' && st.vorgemerkt.map(p=>p.id).join()==='latte-3000'; })());
+  return st.status==='kombiniert' && st.vorgemerkt.length===0
+    && JSON.stringify(st.laengen_mm)==='[3000,1500]'; })());
+ok('[Z-2] Kombination in Modul 2 sichtbar benannt', /kombiniert/.test(pHtml()));
 ok('programmgesteuert lesbar für #19/#22 (beide Produkte mit Maßen)', (()=>{
   const r=KAT.produkteZuRolle({aufbau:_eg.aufbau}, KATALOG, 'latte');
   return r.produkte.length===2 && r.produkte.some(p=>p.laenge_mm===3000) && r.fehlend.length===0; })());
-// Stangenlänge umstellen -> maßgebend ist jetzt die andere Länge (deterministisch, kein „erstes Produkt")
-document.getElementById('stock').value='300'; document.getElementById('stock').dispatch('input');
-ok('Stangenlänge 300 cm -> jetzt ist die 3-m-Latte maßgebend',
-  WA.prodStatus('latte').produkt.id==='latte-3000');
-document.getElementById('stock').value='150'; document.getElementById('stock').dispatch('input');
+ok('[Z-4] Katalog ist die Laengenquelle des Zuschnitts', (()=>{
+  const A=WA.compute();
+  return A.lattenQuelle==='katalog' && JSON.stringify(A.lattenLaengenCm)==='[300,150]'; })());
+ok('[Z-4] jedes Einbaustueck kennt Ausgangsprodukt und Art', (()=>{
+  const st=WA.compute().batt.axes.flatMap(a=>a.segments);
+  return st.length>0 && st.every(s=>s.quelle_cm!=null && (s.art==='standard'||s.art==='sonder')
+    && s.quelle_cm>=s.len_cm-1e-6); })());
+ok('[Z-4] Summary nennt Ausgangsprodukte statt Bestellmengen', (()=>{
+  const su=WA.compute().batt.summary;
+  return Array.isArray(su.ausgang) && su.standard_stuecke+su.sonder_stuecke===su.latten_stuecke
+    && su.latten_15m_bedarf===undefined && su.verschnitt_m===undefined; })());
+// [Z-1] Das gesperrte Feld ist wirkungslos: DOM-Manipulation aendert weder Zuschnitt noch Modell.
+ok('[Z-1] Latten-Felder gesperrt und als Katalogquelle gekennzeichnet',
+  document.getElementById('stock').disabled===true && document.getElementById('lw').disabled===true
+  && /Aus dem Katalog/.test(document.getElementById('lattenQuelle').innerHTML));
+ok('[Z-1] manipulierte Stangenlänge bleibt wirkungslos', (()=>{
+  document.getElementById('stock').value='42';
+  const A=WA.compute();
+  return JSON.stringify(A.lattenLaengenCm)==='[300,150]'
+    && WA.readAufbau().latten.stange_cm!==42; })());
+ok('[Z-1] manipulierte Lattenbreite bleibt wirkungslos', (()=>{
+  document.getElementById('lw').value='99';
+  return WA.compute().lattenBreiteCm===4 && WA.readAufbau().latten.breite_cm!==99; })());
 // zwei Produkte mit demselben maßgebenden Maß -> mehrdeutig, kein Preis
 pSetzen('latte','latte-1500b',true);
 ok('gleiche Länge zweifach -> mehrdeutig, kein Produkt', (()=>{
   const st=WA.prodStatus('latte'); return st.status==='mehrdeutig' && st.produkt===null; })());
 ok('Mehrdeutigkeit schon in Modul 2 sichtbar', /Mehrdeutig/.test(pHtml()));
 pSetzen('latte','latte-1500b',false); pSetzen('latte','latte-3000',false);
+ok('[Z-1] ohne Auswahl: Felder wieder frei und als Fallback gekennzeichnet', (()=>{
+  pSetzen('latte','latte-1500',false);
+  const frei=document.getElementById('stock').disabled===false && document.getElementById('lw').disabled===false;
+  document.getElementById('stock').value='150'; document.getElementById('lw').value='4';
+  document.getElementById('stock').dispatch('input');
+  return frei && /Fallback/.test(document.getElementById('lattenQuelle').innerHTML)
+    && WA.compute().lattenQuelle==='fallback'; })());
+pSetzen('latte','latte-1500',true);
+
+// ---- [P-17] Kompakte Multi-Select-Zeile, identisches Muster wie Modul 1 ----
+ok('[P-17] Dropdown je Rolle mit Zusammenfassung',
+  /<details class="pdd" data-pdd="latte"/.test(pHtml()) && /<summary/.test(pHtml())
+  && /1 Produkt: Latte 1,5 m/.test(pHtml()));
+ok('[P-17] Zusammenfassung „keine Auswahl“ bei leerer Rolle',
+  /data-prol="beplankung"[\s\S]*?keine Auswahl/.test(pHtml()));
+ok('[P-17] Rollenbeschriftung ist der Verwendungszweck',
+  KAT.rollenLabel('latte')==='Lattenstange' && KAT.rollenLabel('beplankung')==='Beplankungsplatte');
+ok('[P-17] keine tautologische Rollen-/Optionsbeschriftung', (()=>{
+  for(const r of KAT.rollenVonModul(2)) for(const o of KAT.rollenOptionen(KATALOG,r.id,[])){
+    if(!o.merkmale) return false;
+    if((o.name+' '+o.merkmale).trim().toLowerCase()===KAT.rollenLabel(r.id).trim().toLowerCase()) return false;
+  }
+  return true; })());
 
 // Beplankung: Auswahl wird gespeichert und programmgesteuert bereitgestellt, aber NICHT bepreist
 pSetzen('beplankung','platte-625',true);

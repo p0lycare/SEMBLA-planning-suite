@@ -67,13 +67,29 @@ function _segmente(w, col) {
 
 /** Stangenzahl eines Segments (aus dem Segment, nie aus einem anderen Strang). */
 function _stueck(w, sg) {
+  if (Array.isArray(sg.stuecke) && sg.stuecke.length) return sg.stuecke.length;
   if (sg.gewindestangen != null) return Math.max(1, sg.gewindestangen);
   return Math.max(1, Math.ceil((sg.z1_mm - sg.z0_mm) / _rod(w)));
 }
 
-/** Oberkanten der einzelnen Stangen eines Segments (letzter Wert = Segmentende). */
+/**
+ * Oberkanten der einzelnen Stangen eines Segments (letzter Wert = Segmentende).
+ *
+ * Quelle ist die KANONISCHE Stueckliste des Segments (`stuecke`, [Z-2]/[Z-3]): die
+ * Kopplungshoehen sind deren Kumulativsummen. Weil die Stuecke echte, unterschiedliche
+ * Standardlaengen sein koennen, gibt es hier bewusst keine Rechnung „z0 + j·rod" mehr —
+ * sonst entstuende ein zweites Stueckmodell neben dem Core ([P-6]). Alt-Bundles ohne
+ * `stuecke` behalten die gleichmaessige Aufteilung ueber eine Pauschallaenge.
+ */
 function _stangenEnden(w, sg) {
-  const rod = _rod(w), st = _stueck(w, sg), out = [];
+  const out = [];
+  if (Array.isArray(sg.stuecke) && sg.stuecke.length) {
+    let z = sg.z0_mm;
+    for (const st of sg.stuecke) { z += st.len_mm; out.push(z); }
+    out[out.length - 1] = sg.z1_mm;           // Rundungsschutz: letztes Ende ist das Segmentende
+    return out;
+  }
+  const rod = _rod(w), st = _stueck(w, sg);
   for (let j = 1; j < st; j++) out.push(sg.z0_mm + j * rod);
   out.push(sg.z1_mm);
   return out;

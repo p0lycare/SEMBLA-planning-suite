@@ -6,6 +6,7 @@ import {
   buildWall, buildReference, Opening, isBuildable, REFERENCE_WALLS,
   GRID, ROD, CHAMBER_OFFSET, MAX_SPAN_GRID, FORBIDDEN_N,
   InvalidDimensionError, InvalidOpeningError,
+  kombiniereLaengen, quelleFuerMass,
 } from "../../docs/shared/sembla-core.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -158,6 +159,57 @@ t("Gewindestangenlänge: Default 1100, parametrisierbar", () => {
 t("Gewindestangenlänge: ungültig -> Default", () => {
   assert(buildWall("a", 1000, 2600, [], null, { rod_mm: 0 }).rod_mm === 1100);
   assert(buildWall("a", 1000, 2600, [], null, { rod_mm: -5 }).rod_mm === 1100);
+});
+
+// ---- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----
+// DIESELBEN Faelle stehen wortgleich in test_sembla_core.py — sie sind der Paritaetsvertrag
+// der Kombinationsregel zwischen Betriebskopie und Python-Orakel.
+console.log("ZUSCHNITT [Z-2]/[Z-5] (Paritaetsvertrag mit dem Python-Orakel):");
+const kurz = (r) => r.stuecke.map(s => s.len_mm + (s.art === "sonder" ? "S/" + s.quelle_mm : "")).join("+");
+t("170 cm aus 100/50 -> 100+50+20 (Sonderzuschnitt aus 50)", () => {
+  const r = kombiniereLaengen(1700, [1000, 500]);
+  assert(kurz(r) === "1000+500+200S/500", kurz(r));
+  assert(r.konflikt === null);
+});
+t("Eingabereihenfolge und Doppelte ohne Wirkung", () => {
+  assert(kurz(kombiniereLaengen(1700, [500, 1000, 500])) === "1000+500+200S/500");
+});
+t("exakt teilbar -> nur Standardstuecke", () => {
+  assert(kurz(kombiniereLaengen(3000, [1000])) === "1000+1000+1000");
+});
+t("Bedarf < kleinste Groesse -> Sonderzuschnitt aus kleinstem geeigneten Produkt", () => {
+  assert(kurz(kombiniereLaengen(400, [1000, 600])) === "400S/600");
+});
+t("[Z-5] unloesbares Restmaß wird gemeldet, nie still ausgegeben", () => {
+  const r = kombiniereLaengen(1200, [1100]);
+  assert(kurz(r) === "1100+100S/1100", kurz(r));
+  assert(r.konflikt === "mindestmass");
+  const alt = kombiniereLaengen(1200, [1100, 500]);
+  assert(alt.konflikt === null && alt.stuecke.every(s => s.len_mm >= 200), kurz(alt));
+});
+t("ohne Standardlaenge: Konflikt statt erfundener Laenge", () => {
+  const r = kombiniereLaengen(1700, []);
+  assert(r.stuecke.length === 0 && r.konflikt === "keine_standardlaenge");
+});
+t("quelleFuerMass = kleinstes geeignetes Ausgangsprodukt", () => {
+  assert(quelleFuerMass(400, [1000, 500, 300]) === 500);
+  assert(quelleFuerMass(1500, [1000, 500]) === null);
+});
+t("Laengensatz reist im Wandelement mit, rod_mm = groesste Groesse", () => {
+  const w = buildWall("z", 1000, 2600, [], null, { rod_lengths_mm: [600, 1000] });
+  assert(JSON.stringify(w.prestress.rod_lengths_mm) === "[1000,600]");
+  assert(w.rod_mm === 1000);
+  const sg = w.tension_columns[0].segments[0];
+  assert(kurz({ stuecke: sg.stuecke }) === "1000+1000+600", kurz({ stuecke: sg.stuecke }));
+  assert(sg.gewindestangen === 3 && sg.verbindungsmuttern === 2 && sg.verschnitt_mm === 0);
+});
+t("Fallback ohne Laengensatz ist bit-genau der Altstand", () => {
+  for (const h of [2000, 2200, 2400, 2600, 3000, 3400]) {
+    const sg = buildWall("f", 1000, h, []).tension_columns[0].segments[0];
+    const st = Math.ceil(h / ROD);
+    assert(sg.gewindestangen === st && sg.letzte_stange_mm === h - (st - 1) * ROD
+      && sg.verschnitt_mm === st * ROD - h, "h=" + h);
+  }
 });
 
 console.log(`\n${pass} ok, ${fail} fail`);

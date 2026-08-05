@@ -23,6 +23,7 @@ __all__ = [
     "GRID", "COURSE", "THICK", "ROD", "BLECH", "BLECH_THICK", "CHAMBER_OFFSET", "MAX_SPAN_GRID", "FORBIDDEN_N",
     "Opening", "SemblaError", "InvalidDimensionError", "InvalidOpeningError",
     "build_wall", "is_buildable", "save",
+    "MIN_FERTIGMASS_MM", "norm_laengen", "quelle_fuer_mass", "kombiniere_laengen",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -35,6 +36,74 @@ BLECH_THICK   = 15     # mm Stahlblech-Dicke
 CHAMBER_OFFSET = 62.5  # mm Kammerzentrum ab Steinanfang -> Lattice x=62.5+125k
 MAX_SPAN_GRID = 3      # Vorspannung max. alle 3 Raster (375 mm)
 FORBIDDEN_N   = frozenset({1, 4})  # nicht baubare / nicht versetzbare Segmentbreiten
+MIN_FERTIGMASS_MM = 200  # kleinstes einbaubares Fertigmass eines Zuschnitts ([Z-5])
+
+
+# ---- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----
+# Bit-genaues Gegenstueck zu kombiniereLaengen()/quelleFuerMass() in docs/shared/sembla-core.js.
+# Die ausgewaehlten Katalogprodukte sind ein Vorratssatz an Standardlaengen, die tatsaechlich
+# kombiniert werden: groesste geeignete zuerst, mit kleineren auffuellen, Restmass als sichtbar
+# gekennzeichneter Sonderzuschnitt aus dem kleinsten geeigneten Ausgangsprodukt. [Z-5]
+# (Mindest-Fertigmass) steht ueber der Groessenpraeferenz; laesst der Vorratssatz keine
+# einbaubare Wahl zu, bleibt die Praeferenz und der Konflikt wird SICHTBAR gemeldet.
+
+def _mm(x):
+    # JS kennt nur EINEN Zahlentyp: ganzzahlige Ergebnisse bleiben dort ganzzahlig. Damit die
+    # Stueckliste bit-genau paritaetisch bleibt (und im Fixture-JSON nicht "200.0" statt "200"
+    # steht), wird hier ebenso auf int reduziert, sobald der Wert ganzzahlig ist.
+    v = round(float(x) * 1e6) / 1e6
+    return int(v) if float(v).is_integer() else v
+
+
+def norm_laengen(l):
+    """Standardlaengen normalisieren: nur > 0, dedupliziert, ABSTEIGEND."""
+    arr = [float(x) for x in (l or []) if isinstance(x, (int, float)) and float(x) > 0]
+    arr = [int(x) if float(x) == int(x) else x for x in arr]
+    return sorted(set(arr), reverse=True)
+
+
+def quelle_fuer_mass(mass_mm, laengen_mm):
+    """Kleinste ausgewaehlte Standardlaenge >= Mass (Ausgangsprodukt) oder None."""
+    out = None
+    for l in norm_laengen(laengen_mm):
+        if l >= mass_mm - 1e-9:
+            out = l
+    return out
+
+
+def kombiniere_laengen(bedarf_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM):
+    """Bedarf deterministisch aus den ausgewaehlten Standardlaengen kombinieren ([Z-2])."""
+    L = norm_laengen(laengen_mm)
+    stuecke = []
+    if not L:
+        return {"stuecke": stuecke, "konflikt": "keine_standardlaenge"}
+    rest = _mm(bedarf_mm)
+    konflikt = None
+    guard = 0
+    while rest > 1e-9 and guard < 10000:
+        guard += 1
+        passend = [l for l in L if l <= rest + 1e-9]          # absteigend
+        if not passend:
+            break                                             # Rest < kleinste Standardgroesse
+        pick = None
+        for l in passend:                                     # [Z-5] vor Groessenpraeferenz
+            r2 = _mm(rest - l)
+            if r2 <= 1e-9 or r2 >= min_mm - 1e-9 or any(x <= r2 + 1e-9 for x in L):
+                pick = l
+                break
+        if pick is None:                                      # sichtbar, nie still
+            pick = passend[0]
+            konflikt = "mindestmass"
+        stuecke.append({"len_mm": pick, "art": "standard", "quelle_mm": pick})
+        rest = _mm(rest - pick)
+    if rest > 1e-9:
+        q = quelle_fuer_mass(rest, L)
+        if q is None:
+            return {"stuecke": [], "konflikt": "kein_ausgangsprodukt"}
+        if rest < min_mm - 1e-9:
+            konflikt = "mindestmass"
+        stuecke.append({"len_mm": rest, "art": "sonder", "quelle_mm": q})
+    return {"stuecke": stuecke, "konflikt": konflikt}
 
 
 # ---- Fehlertypen ----
@@ -157,11 +226,19 @@ def _norm_prestress(p):
     m = p.get("max_span_grid")
     m = m if isinstance(m, int) and m >= 1 else MAX_SPAN_GRID
     fk = p.get("force_kN")
-    rod = p.get("rod_mm")
-    if rod is None or float(rod) <= 0:
-        rod = ROD
+    # Gewindestangen-Standardlaengen ([Z-1]): Vorratssatz der gewaehlten Katalogprodukte.
+    # Fehlt er, gilt der kompatible Fallback aus `rod_mm`/ROD (einelementiger Satz ->
+    # bit-genau das bisherige Ergebnis).
+    rod_l = norm_laengen(p.get("rod_lengths_mm"))
+    if rod_l:
+        rod = rod_l[0]
     else:
-        rod = int(rod) if float(rod) == int(float(rod)) else float(rod)
+        rod = p.get("rod_mm")
+        if rod is None or float(rod) <= 0:
+            rod = ROD
+        else:
+            rod = int(rod) if float(rod) == int(float(rod)) else float(rod)
+        rod_l = [rod]
     bl = p.get("blech_mm")
     if bl is None or float(bl) <= 0:
         bl = BLECH
@@ -179,8 +256,8 @@ def _norm_prestress(p):
     _sa = p.get("start_axis_grid")
     sa = 1 if (_sa == 1 and not isinstance(_sa, bool)) or _sa == "1" else 0
     return {"max_span_grid": m, "force_kN": fk if fk is not None else None,
-            "rod_mm": rod, "blech_mm": bl, "top_connection": top, "columns_grid": cg,
-            "start_axis_grid": sa}
+            "rod_mm": rod, "rod_lengths_mm": rod_l, "blech_mm": bl, "top_connection": top,
+            "columns_grid": cg, "start_axis_grid": sa}
 
 def _norm_steps(steps, length_mm, height_mm):
     out = []
@@ -308,7 +385,12 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                 r2 += 1
             z0, z1 = r * COURSE, (r2 + 1) * COURSE
             h = z1 - z0
-            stueck = math.ceil(h / _rod)
+            # [Z-2]/[Z-3] kanonische Stueckliste des Segments (echte Standardlaengen +
+            # hoechstens ein Sonderzuschnitt) — keine zweite Rechnung aus einer Pauschallaenge.
+            _kombi = kombiniere_laengen(h, _PS["rod_lengths_mm"])
+            _stuecke = _kombi["stuecke"]
+            stueck = len(_stuecke)
+            _quelle_summe = sum(s["quelle_mm"] for s in _stuecke)
             # Anschluss-Ausbildung je Segmentende (Fuss=Bodenblech, oben=Kopfblech/Spannplatte, sonst Spannplatte)
             bottom_base = z0 == 0
             top_reach = z1 == local_top
@@ -325,7 +407,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                 seg_spannmutter += 1; seg_spannplatten += 1
             anch_senkkopf += seg_senkkopf; anch_spannmutter += seg_spannmutter; anch_spannplatten += seg_spannplatten
             segs.append({"z0_mm": z0, "z1_mm": z1, "lage0": r, "lage1": r2 + 1, "gewindestangen": stueck,
-                         "letzte_stange_mm": h - (stueck - 1) * _rod, "verschnitt_mm": stueck * _rod - h,
+                         "stuecke": _stuecke, "zuschnitt_konflikt": _kombi["konflikt"],
+                         "letzte_stange_mm": (_stuecke[stueck - 1]["len_mm"] if stueck else h),
+                         "verschnitt_mm": _quelle_summe - h,
                          "verbindungsmuttern": stueck - 1, "anker_unten": anker_unten, "anker_oben": anker_oben,
                          "senkkopfschrauben": seg_senkkopf, "spannplatten": seg_spannplatten, "spannmuttern": seg_spannmutter})
             r = r2 + 1
@@ -382,6 +466,13 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                stossfugen=stossfugen, dichtstreifen_mm=stossfugen * COURSE,
                verschnitt_mm=sum(g["verschnitt_mm"] for c in columns for g in c["segments"]))
 
+    # [Z-5] Zuschnitt-Konflikte sichtbar machen (nie still); kein Baubarkeitsausschluss.
+    zuschnitt_konflikte = [
+        {"k": c["k"], "z0_mm": g["z0_mm"], "z1_mm": g["z1_mm"],
+         "grund": g["zuschnitt_konflikt"], "fertigmass_mm": g["letzte_stange_mm"]}
+        for c in columns for g in c["segments"] if g["zuschnitt_konflikt"]
+    ]
+
     buildable = not invalid_segments  # strukturell; Versatz separat in 'validation'
     return {
         "name": name, "length_mm": length_mm, "height_mm": height_mm,
@@ -395,7 +486,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         "tension_columns": columns, "bom": bom,
         "validation": {"buildable": buildable, "versatz_ok": versatz_ok,
                        "versatz_violations": viol, "tension_span_ok": span_ok,
-                       "rigid_lagen": rigid_lagen, "invalid_segments": invalid_segments},
+                       "rigid_lagen": rigid_lagen, "invalid_segments": invalid_segments,
+                       "zuschnitt_konflikte": zuschnitt_konflikte},
         "courses": courses,
     }
 
