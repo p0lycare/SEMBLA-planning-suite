@@ -120,6 +120,49 @@ export function normWand(w) {
   };
 }
 
+/**
+ * Den Planblock eines Geschosses normalisieren ([L-8]/[L-9]).
+ *
+ * In der Mappe steht AUSSCHLIESSLICH die Beschreibung des Plans — Dateiname,
+ * Bildmasse in Pixeln, Massstab und Versatz. Das BILD selbst liegt nie hier und
+ * nie im localStorage, sondern in der eigenen Plan-Datenbank (`sembla-plan.js`).
+ * Ein fehlender Massstab bleibt `null`: es wird keiner geschaetzt ([L-9]).
+ */
+export function normPlan(p) {
+  if (p == null || typeof p !== "object") return null;
+  return {
+    datei: (p.datei == null || p.datei === "") ? null : String(p.datei),
+    typ: (p.typ == null || p.typ === "") ? null : String(p.typ),
+    breite_px: _zahlOderNull(p.breite_px),
+    hoehe_px: _zahlOderNull(p.hoehe_px),
+    mm_je_pixel: _zahlOderNull(p.mm_je_pixel),
+    versatz_x_mm: _zahlOderNull(p.versatz_x_mm) || 0,
+    versatz_y_mm: _zahlOderNull(p.versatz_y_mm) || 0,
+  };
+}
+
+/**
+ * Fehler EINES Planblocks ([L-8]/[L-9]). `null` (kein Plan) ist gueltig, ebenso
+ * ein noch NICHT kalibrierter Plan (`mm_je_pixel: null`) — er wird dann ohne
+ * Raster gezeigt, statt einen Massstab zu erfinden.
+ * @param {any} plan @param {string} [bezeichnung] @returns {string[]}
+ */
+export function planFehler(plan, bezeichnung) {
+  if (plan == null) return [];
+  const wo = bezeichnung ? `Geschoss „${bezeichnung}“: ` : "";
+  /** @type {string[]} */
+  const f = [];
+  if (typeof plan !== "object") return [`${wo}Planangabe ist kein Objekt.`];
+  const p = normPlan(plan);
+  if (p.mm_je_pixel != null && !(p.mm_je_pixel > 0)) {
+    f.push(`${wo}Maßstab muss positiv sein (mm je Pixel) oder leer bleiben ([L-9]).`);
+  }
+  for (const [feld, wert] of [["Breite", p.breite_px], ["Höhe", p.hoehe_px]]) {
+    if (wert != null && !(wert > 0)) f.push(`${wo}Bild${feld.toLowerCase()} muss positiv sein (Pixel).`);
+  }
+  return f;
+}
+
 /** Ein Geschoss normalisieren. */
 export function normGeschoss(g) {
   const o = (g && typeof g === "object") ? g : {};
@@ -127,12 +170,7 @@ export function normGeschoss(g) {
     id: o.id == null ? "" : String(o.id),
     name: (o.name == null ? "" : String(o.name)),
     hoehe_mm: _zahlOderNull(o.hoehe_mm),
-    plan: (o.plan && typeof o.plan === "object") ? {
-      datei: o.plan.datei == null ? null : String(o.plan.datei),
-      mm_je_pixel: _zahlOderNull(o.plan.mm_je_pixel),
-      versatz_x_mm: _zahlOderNull(o.plan.versatz_x_mm) || 0,
-      versatz_y_mm: _zahlOderNull(o.plan.versatz_y_mm) || 0,
-    } : null,
+    plan: normPlan(o.plan),
     waende: Array.isArray(o.waende) ? o.waende.map(normWand) : [],
   };
 }
@@ -200,6 +238,7 @@ export function validiereMappe(m) {
       if (gs?.hoehe_mm != null && !(gs.hoehe_mm > 0)) {
         f.push(`Geschoss „${gs.name || gs.id}“: Geschosshöhe muss positiv sein.`);
       }
+      f.push(...planFehler(gs?.plan, gs?.name || gs?.id));
       if (!Array.isArray(gs?.waende)) { f.push(`Geschoss „${gs?.name || gs?.id}“ ohne Wandliste.`); continue; }
       for (const w of gs.waende) {
         merke(w && w.id, "Wand");
@@ -434,6 +473,47 @@ export function setzeGeschossHoehe(m, geschossId, hoehe_mm) {
   if (!gs) throw new Error(`Unbekanntes Geschoss „${geschossId}“.`);
   gs.hoehe_mm = h;
   return n;
+}
+
+/**
+ * Planbeschreibung eines Geschosses setzen oder aufheben (`null` = kein Plan)
+ * ([L-8]/[L-9]).
+ *
+ * Gesetzt wird hier NUR die Beschreibung — Dateiname, Bildmasse, Massstab,
+ * Versatz. Das Bild liegt in der eigenen Plan-Datenbank und wird von dieser
+ * reinen Funktion nicht angefasst. Ein ungueltiger Massstab wird abgewiesen,
+ * nicht zurechtgebogen; die WANDLAGEN des Geschosses bleiben unberuehrt — ein
+ * Planwechsel oder eine Neukalibrierung verschiebt keine Wand ([L-9]).
+ *
+ * @param {any} m @param {string} geschossId @param {any} plan
+ * @returns {object} neue Mappe
+ */
+export function setzePlan(m, geschossId, plan) {
+  const p = plan == null ? null : normPlan(plan);
+  const n = _klon(m);
+  const gs = n.gebaeude.flatMap((g) => g.geschosse).find((x) => x.id === String(geschossId));
+  if (!gs) throw new Error(`Unbekanntes Geschoss „${geschossId}“.`);
+  const fehler = planFehler(p, gs.name || gs.id);
+  if (fehler.length) throw new Error(fehler.join("\n"));
+  gs.plan = p;
+  return n;
+}
+
+/**
+ * Massstab und/oder Versatz eines vorhandenen Plans aendern ([L-9]) — ohne die
+ * uebrigen Planangaben (Datei, Bildmasse) anzutasten. Ohne hinterlegten Plan
+ * wird das gemeldet statt einer angelegt.
+ * @param {any} m @param {string} geschossId
+ * @param {{mm_je_pixel?:number|null, versatz_x_mm?:number, versatz_y_mm?:number}} patch
+ * @returns {object} neue Mappe
+ */
+export function setzePlanAnsicht(m, geschossId, patch) {
+  const treffer = findeGeschoss(m, geschossId);
+  if (!treffer) throw new Error(`Unbekanntes Geschoss „${geschossId}“.`);
+  if (!treffer.geschoss.plan) {
+    throw new Error(`Geschoss „${treffer.geschoss.name}“ hat keinen hinterlegten Plan.`);
+  }
+  return setzePlan(m, geschossId, { ...treffer.geschoss.plan, ...(patch || {}) });
 }
 
 /** Umbenennen (Projekt/Gebaeude/Geschoss/Wand) anhand der Kennung. */

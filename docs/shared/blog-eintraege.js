@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-10",
+    datum: "2026-08-06",
+    typ: "feature",
+    issue: 26,
+    titel: "Modul 0: Geschossplan hochladen, mit einer Kalibrierlinie maßstäblich setzen und unter das 125-mm-Raster schieben",
+    testbitte: "Reiter 0: Grundriss als PNG/JPG hochladen, „Kalibrierlinie setzen“, zwei Punkte mit "
+      + "bekanntem Abstand anklicken, Länge in mm eintragen. Passt das Raster? Plan mit der Maus "
+      + "schieben, neu laden — liegt er richtig? Ein PDF wird abgewiesen.",
+  },
+  {
     id: "chg-20260806-09",
     datum: "2026-08-06",
     typ: "feature",

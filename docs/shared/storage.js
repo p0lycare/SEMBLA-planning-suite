@@ -49,6 +49,11 @@
  * Wandeintrags ([L-4]) — die Wandliste (`sembla:elemente`) bleibt unveraendert
  * der Wandspeicher.
  *
+ * NICHT hier: das PLANBILD eines Geschosses ([L-8]). Ein Grundriss sprengt den
+ * localStorage und riss dabei den ganzen Projektstand mit; die Bilder liegen
+ * deshalb in einer eigenen IndexedDB (docs/shared/sembla-plan.js). In der Mappe
+ * steht nur die Beschreibung: Dateiname, Bildmasse, Massstab, Versatz.
+ *
  * ES-Modul: wird im Browser per <script type="module"> geladen. Kein Node-Betrieb.
  */
 
@@ -56,7 +61,8 @@ import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rol
          rollenIds, rollenVonModul, validiereKatalog } from "./sembla-katalog.js";
 import { alleGeschosse, benenneUm as benenneInMappeUm, entferneWand as entferneWandAusMappe,
          findeGebaeude, findeGeschoss, findeWand,
-         leereMappe, mappeObjekt, normMappe, parseMappe, pruefeReferenzen, setzeWand,
+         leereMappe, mappeObjekt, normMappe, parseMappe, pruefeReferenzen,
+         setzePlan, setzePlanAnsicht, setzeWand,
          uebernehmeElemente, validiereMappe } from "./sembla-projektmappe.js";
 
 const K_ELEM = "sembla:elemente";
@@ -690,6 +696,38 @@ export function verorteWand(wandId, geschossId, daten) {
     datei: d.datei,
     lage: d.lage,
   }));
+}
+
+// --- Geschossplan ([L-8]/[L-9]) -------------------------------------------
+// Hier steht AUSSCHLIESSLICH die Beschreibung des Plans (Dateiname, Bildmasse,
+// Massstab, Versatz). Das BILD liegt nie im localStorage, sondern in der eigenen
+// Plan-Datenbank (docs/shared/sembla-plan.js) — sonst risse ein 5-MB-Grundriss
+// den gesamten Projektstand mit ([L-8]).
+
+/**
+ * Planbeschreibung eines Geschosses setzen oder aufheben (`null` = kein Plan).
+ * @param {string} geschossId @param {any} plan @returns {object} die gespeicherte Mappe
+ */
+export function setzeGeschossPlan(geschossId, plan) {
+  return aendereMappe((m) => setzePlan(m, geschossId, plan));
+}
+
+/**
+ * Massstab/Versatz eines vorhandenen Plans aendern ([L-9]). Wandlagen bleiben
+ * dabei unberuehrt — eine Neukalibrierung verschiebt keine Wand ([L-1]).
+ * @param {string} geschossId
+ * @param {{mm_je_pixel?:number|null, versatz_x_mm?:number, versatz_y_mm?:number}} patch
+ * @returns {object} die gespeicherte Mappe
+ */
+export function setzeGeschossPlanAnsicht(geschossId, patch) {
+  return aendereMappe((m) => setzePlanAnsicht(m, geschossId, patch));
+}
+
+/** Planbeschreibung eines Geschosses (null = keiner hinterlegt). @param {string} geschossId */
+export function geschossPlan(geschossId) {
+  const m = holeMappe();
+  const treffer = m ? findeGeschoss(m, geschossId) : null;
+  return treffer ? treffer.geschoss.plan : null;
 }
 
 /** Lage-Eintrag einer Wand (null = nicht in der Mappe). @param {string} wandId */

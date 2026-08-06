@@ -108,7 +108,7 @@ zurückgeschrieben ([L-5]); passt sie nicht ins 200-mm-Lagenraster, wird das ben
 Schema **v3→v4** übernimmt bestehende Wände einmalig und verlustfrei in ein „Projekt ohne Plan“ —
 **ohne** Lagedaten, die es nie gab ([L-7]); der aktive-Wand-Zeiger und die Module 1–7 bleiben
 unberührt. Verwaiste Einträge und unverortete Wände werden **gemeldet, nie still bereinigt**
-([L-4]). Planbilder gehören **nicht** in den localStorage ([L-8], noch offen — Etappe C3).
+([L-4]). Planbilder gehören **nicht** in den localStorage ([L-8], s. „Geschossplan“).
 Aktive Zeiger: `sembla:aktiv:gebaeude` / `:geschoss`; einen `:projekt`-Zeiger gibt es bewusst
 **nicht** (eine Mappe = ein Projekt, ein zweiter Zeiger wäre eine zweite Wahrheit). Gehört das
 aktive Geschoss nicht zum aktiven Gebäude, wird sein Zeiger **aufgehoben**, nie auf ein fremdes
@@ -125,7 +125,26 @@ Längenabweichung nach [L-3]) und lässt sich auf das aktive Geschoss bzw. auf n
 Wände einschränken — der Filter ändert nur die **Anzeige**. Das **Umbenennen** einer Wand führt den
 Anzeigenamen der Mappe mit (die Referenz bleibt die `id`); das **Löschen eines Geschosses/Gebäudes**
 entfernt nur die Struktur — die Wandelemente bleiben erhalten und stehen danach als „nicht
-eingetragen“. Das **Einzeichnen der Lage** im Geschossplan folgt erst in C3/C4.
+eingetragen“. Das **Einzeichnen der Lage** im Geschossplan folgt erst in C4.
+
+**Geschossplan (IndexedDB `sembla-plaene`, Regeln [L-8]/[L-9], Etappe C3).** Der Plan eines
+Geschosses ist der **Hintergrund** der Verortung und **keine Datenquelle** ([L-9]): aus dem Bild wird
+nichts abgeleitet — keine Wand, keine Länge und vor allem **kein Maßstab**. `mm_je_pixel` und
+`versatz_x_mm`/`versatz_y_mm` sind **ausdrücklich gesetzte Anzeigeparameter**, wahlweise über eine
+**Kalibrierlinie** (zwei Bildpunkte + reale Strecke in mm) oder als **Zahleneingabe** — beide Wege
+gleichwertig. Ohne Kalibrierung liegt **kein Raster** über dem Plan, und es wird keines erfunden; ein
+**neues Bild setzt Maßstab und Versatz zurück** statt sie zu übernehmen. Umgekehrt ändert weder
+Kalibrierung noch Versatz noch Planwechsel **irgendeine Wandlage** ([L-1]) — die Lage lebt in
+Rastereinheiten. Das **Bild** liegt nie im localStorage ([L-8]: ein Grundriss sprengt ihn und nähme
+den ganzen Projektstand mit), sondern in einer **eigenen IndexedDB** (ein Datensatz je
+Geschoss-Kennung, Logik in `docs/shared/sembla-plan.js`); in der Mappe stehen nur `datei`, `typ`,
+`breite_px`, `hoehe_px`, Maßstab und Versatz (optionale Zusatzfelder — `MAPPE_VERSION` bleibt 1).
+Zulässig sind **PNG/JPEG/WebP bis 20 MB**; ein **PDF wird benannt abgewiesen** (es zu rendern
+verlangte eine Fremdbibliothek im Betrieb — Format-Spike aus #26, negativ entschieden). Fehlt das
+Bild (anderer Browser, gelöschte Websitedaten), bleiben Maßstab und Versatz erhalten und der fehlende
+Plan wird **gemeldet**. Beim Löschen eines Geschosses/Gebäudes wird sein Planbild **mit** entfernt und
+das gesagt. Der `viewBox` des Plan-SVG liegt in **Bildpixeln**, damit ein noch nicht kalibrierter Plan
+bedienbar ist. Das **Einzeichnen der Wände** im Raster folgt in C4.
 
 **Bauteilkatalog (`sembla:katalog`, Format `SEMBLA-Bauteilkatalog` v1).** Der Produktstamm (Steine,
 Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder, Verbrauchsmaterial) ist
@@ -294,7 +313,12 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      Altbestand **[P-15]**. Rein/DOM-frei, genutzt von Modul 0/1/2 und `sembla-export.js`.
    - `sembla-projektmappe.js` — **Projektstruktur und Wandlagen** (Modul 0, Etappe C1 von #26):
      Format `SEMBLA-Projektmappe` v1, Struktur-Operationen, Validierung, Referenzabgleich,
-     Übernahme bestehender Stände. Rein/DOM-frei, eigene Tests (`tests/module/test-projektmappe.mjs`).
+     Übernahme bestehender Stände, **Planbeschreibung** (`normPlan`/`planFehler`/`setzePlan`/
+     `setzePlanAnsicht`). Rein/DOM-frei, eigene Tests (`tests/module/test-projektmappe.mjs`).
+   - `sembla-plan.js` — **Geschossplan** (Modul 0, Etappe C3 von #26, [L-8]/[L-9]): Formatprüfung
+     (PNG/JPEG/WebP, 20 MB, PDF abgewiesen), Kalibrierung, Umrechnung Bildpixel ↔ Raster-mm,
+     Rasterlinien, `planSvg()` und die **eigene IndexedDB** für die Bilder (Fabrik für Tests
+     einschleusbar). Rein/DOM-frei, eigene Tests (`tests/module/test-plan.mjs`).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
      **Katalog-Slot**, **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
      **Projektmappen-Slot** (`holeMappe`/`setzeMappe`/`aendereMappe`/`verorteWand`/`mappeReferenzen`),
@@ -319,7 +343,7 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Plan in `doku/PLAN-Projektplaner.md`; Datenmodell + Struktur-Oberfläche stehen (C1/C2), Planupload und Einzeichnen folgen in C3/C4): **Projekt → Gebäude → Geschoss** anlegen/wählen, Geschosshöhe als Vorgabe, Wandliste je Geschoss mit Lage. Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | **Projektplaner** (#26, Plan in `doku/PLAN-Projektplaner.md`; Datenmodell, Struktur-Oberfläche und Geschossplan stehen (C1/C2/C3), das Einzeichnen folgt in C4): **Projekt → Gebäude → Geschoss** anlegen/wählen, Geschosshöhe als Vorgabe, Wandliste je Geschoss mit Lage, **Geschossplan** hochladen/kalibrieren/verschieben mit 125-mm-Rasteroverlay ([L-8]/[L-9]). Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

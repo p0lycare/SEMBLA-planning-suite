@@ -52,6 +52,13 @@
   .field select{border:1px solid var(--sb-line);border-radius:7px;padding:7px 9px;font-size:14px;width:150px}
   #k-tbody td{vertical-align:top}
   #k-tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
+  /* Geschossplan (C3): Buehne mit Plan + Rasteroverlay */
+  .buehne{margin-top:12px;border:1px solid var(--sb-line);border-radius:9px;background:#f7f9fc;
+          overflow:auto;max-height:520px;position:relative}
+  .buehne svg{display:block}
+  .buehne.zieht{cursor:grabbing}
+  .buehne.misst{cursor:crosshair}
+  .buehne .leer{color:var(--sb-muted);font-size:13.5px;padding:22px 14px}
   /* Export-Dialog */
   .overlay{position:fixed;inset:0;background:rgba(20,32,46,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   .overlay[hidden]{display:none}
@@ -153,6 +160,70 @@
       benannt statt gerundet. Eine neu angelegte oder importierte Wand wird im <b>aktiven
       Geschoss eingetragen</b> — ohne Lage, denn gezeichnet ist noch nichts ([L-4]). Das
       <b>Einzeichnen im Geschossplan</b> kommt in den nächsten Etappen.</div>
+  </div>
+
+  <h2>Geschossplan <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· Hintergrund für die Verortung — keine Datenquelle ([L-9])</span></h2>
+  <div class="panel">
+    <div class="empty" id="pn-none">Kein aktives Geschoss — oben eines wählen oder anlegen. Der Plan
+      hängt am Geschoss, nicht am Wandelement.</div>
+    <div id="pn-form" hidden>
+      <div class="row">
+        <label class="btn-s" for="pn-import">Plan hochladen…</label>
+        <input id="pn-import" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+        <button class="btn-d" id="pn-entfernen">Plan entfernen</button>
+        <div class="muted" id="pn-info" style="font-size:12.5px;padding-bottom:8px">–</div>
+      </div>
+
+      <div class="subh">Maßstab <span class="muted" style="text-transform:none;letter-spacing:0">
+        · ausdrücklich setzen — geschätzt wird keiner ([L-9])</span></div>
+      <div class="row">
+        <div class="field">
+          <label for="pn-mmjepx">mm je Bildpixel</label>
+          <input id="pn-mmjepx" class="s" type="number" step="0.001" min="0" placeholder="z. B. 12,5">
+        </div>
+        <button class="btn-s" id="pn-mass-uebernehmen">Maßstab übernehmen</button>
+        <button class="btn-s" id="pn-kalibrieren">Kalibrierlinie setzen</button>
+        <div class="field">
+          <label for="pn-kal-mm">reale Länge der Linie (mm)</label>
+          <input id="pn-kal-mm" class="s" type="number" step="1" min="1" placeholder="z. B. 5000">
+        </div>
+        <button class="btn-s" id="pn-kal-uebernehmen">Aus Linie übernehmen</button>
+      </div>
+      <div class="hint" id="pn-kal-status">–</div>
+
+      <div class="subh">Versatz &amp; Ansicht <span class="muted" style="text-transform:none;letter-spacing:0">
+        · der Plan wird ans Raster geschoben, nie umgekehrt ([L-1])</span></div>
+      <div class="row">
+        <div class="field"><label for="pn-vx">Versatz X (mm)</label>
+          <input id="pn-vx" class="s" type="number" step="125" value="0"></div>
+        <div class="field"><label for="pn-vy">Versatz Y (mm)</label>
+          <input id="pn-vy" class="s" type="number" step="125" value="0"></div>
+        <button class="btn-s" id="pn-versatz-uebernehmen">Versatz übernehmen</button>
+        <button class="btn-s" id="pn-versatz-null">Auf 0 / 0</button>
+        <div class="field"><label for="pn-zoom">Zoom (%)</label>
+          <input id="pn-zoom" class="s" type="number" step="10" min="5" max="400" value="100"></div>
+      </div>
+      <div class="msg" id="pn-msg"></div>
+      <div class="buehne" id="pn-buehne"></div>
+    </div>
+    <div class="hint">Der Plan ist <b>Hintergrund, keine Datenquelle</b>: aus dem Bild wird nichts
+      abgeleitet — keine Wand, keine Länge und vor allem kein Maßstab ([L-9]). <b>Maßstab</b> und
+      <b>Versatz</b> werden ausdrücklich gesetzt: entweder als Zahl (mm je Bildpixel) oder über eine
+      <b>Kalibrierlinie</b> (zwei Punkte im Plan anklicken, reale Länge in mm eintragen) — beide
+      Wege sind gleichwertig. Ohne Kalibrierung liegt <b>kein Raster</b> über dem Plan; das wird
+      benannt statt geraten.<br>
+      Das <b>Rasteroverlay</b> zeigt das 125-mm-Längsraster ([G-1]), jede achte Linie (= 1 m) ist
+      hervorgehoben. Verschieben geht über die Felder oder durch <b>Ziehen mit der Maus</b> im Plan.
+      Die <b>Wandlagen ändern sich dabei nie</b> — sie stehen in Rastereinheiten und überstehen
+      Planwechsel, Neukalibrierung und Versatz unverändert ([L-1]).<br>
+      Das <b>Planbild liegt nicht im localStorage</b>, sondern in einem eigenen Browserspeicher
+      (IndexedDB) — ein Grundriss würde den Projektstand sonst sprengen ([L-8]). In der Projektmappe
+      stehen nur Dateiname, Bildmaße, Maßstab und Versatz. Zulässig sind <b>PNG, JPEG und WebP</b> bis
+      20 MB; ein <b>PDF wird abgewiesen</b> (es zu rendern verlangte eine Fremdbibliothek — bitte
+      vorher als Bild exportieren). Der Plan ist an dieses Gerät gebunden: in einem anderen Browser
+      bleiben Maßstab und Versatz erhalten, das Bild fehlt und wird gemeldet.<br>
+      Das <b>Einzeichnen der Wände</b> im Raster (Wand-Werkzeug, Radierer) kommt in der nächsten
+      Etappe.</div>
   </div>
 
   <h2>Wandelement anlegen</h2>
@@ -395,6 +466,7 @@
   import { downloadZip } from './shared/zip.js';
   import * as KAT from './shared/sembla-katalog.js';
   import * as MAPPE from './shared/sembla-projektmappe.js';
+  import * as PLAN from './shared/sembla-plan.js';
 
   mountNavbar(0);
 
@@ -689,9 +761,12 @@
     if (!confirm(`Gebäude „${geb.name}" aus der Projektstruktur löschen?`
       + (anzGs ? ` Es enthält ${anzGs} Geschoss(e) mit ${anzW} eingetragenen Wand/Wänden.` : '')
       + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
+    const mitPlan = geb.geschosse.filter(gs => gs.plan);
     if (plAendere((m) => MAPPE.entferneGebaeude(m, geb.id, { mitInhalt: true }),
-        `Gebäude „${geb.name}" entfernt. ${anzW} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`))
-      { try { store.setzeAktivesGebaeude(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
+        `Gebäude „${geb.name}" entfernt. ${anzW} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`
+        + (mitPlan.length ? ` ${mitPlan.length} hinterlegte(r) Geschossplan/-pläne wurden mit entfernt.` : '')))
+      { for (const gs of geb.geschosse) PLAN.loeschePlan(gs.id).catch(() => {});
+        try { store.setzeAktivesGebaeude(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
   });
 
   // --- Geschosse ------------------------------------------------------------
@@ -755,9 +830,14 @@
     if (!confirm(`Geschoss „${gs.name}" aus der Projektstruktur löschen?`
       + (gs.waende.length ? ` Es enthält ${gs.waende.length} eingetragene Wand/Wände.` : '')
       + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
+    // Das Planbild des Geschosses wird MIT entfernt — es haengt an dessen Kennung und
+    // waere sonst ein unerreichbarer Rest in der Plan-Datenbank. Gesagt wird es ([L-8]).
+    const hattePlan = !!gs.plan;
     if (plAendere((m) => MAPPE.entferneGeschoss(m, gs.id, { mitWaenden: true }),
-        `Geschoss „${gs.name}" entfernt. ${gs.waende.length} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`))
-      { try { store.setzeAktivesGeschoss(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
+        `Geschoss „${gs.name}" entfernt. ${gs.waende.length} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`
+        + (hattePlan ? ' Der hinterlegte Plan wurde mit entfernt.' : '')))
+      { PLAN.loeschePlan(gs.id).catch(() => {});
+        try { store.setzeAktivesGeschoss(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
   });
 
   /**
@@ -875,6 +955,317 @@
     if (gs && gs.hoehe_mm != null) document.getElementById('f-hoehe').value = String(gs.hoehe_mm);
   }
 
+  // --- Geschossplan (Etappe C3, [L-8]/[L-9]) --------------------------------
+  // Der Plan ist HINTERGRUND, keine Datenquelle: aus dem Bild wird nichts abgeleitet.
+  // Massstab (mm je Bildpixel) und Versatz sind ausdruecklich gesetzte Anzeigewerte —
+  // ohne Kalibrierung gibt es kein Raster und keinen geschaetzten Ersatzwert ([L-9]).
+  // Das BILD liegt in einer eigenen IndexedDB (sembla-plan.js), in der Mappe stehen nur
+  // Dateiname, Bildmasse, Massstab und Versatz ([L-8]). Wandlagen werden hier nie
+  // angefasst: sie stehen in Rastereinheiten und ueberstehen jede Kalibrierung ([L-1]).
+  const pnMsg = document.getElementById('pn-msg');
+  function pnZeige(text, ok){ pnMsg.textContent = text; pnMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  const PN = {
+    zoom: 1,
+    kalibrieren: false,      // Kalibriermodus: Klicks setzen die beiden Linienpunkte
+    punkte: [],              // [{x,y}] in BILDPIXELN
+    bild: null,              // Datensatz aus der Plan-Datenbank (mit Blob) oder null
+    bildUrl: null,           // Objekt-URL des geladenen Bildes
+    bildFuer: undefined,     // Geschoss-Kennung, fuer die `bild` geladen wurde
+    ziehen: null,            // laufendes Verschieben {startX,startY,vx,vy}
+  };
+
+  /** Planbeschreibung des aktiven Geschosses (null = keiner hinterlegt). */
+  function pnPlan(){ const gs = plGeschoss(); return gs ? gs.plan : null; }
+
+  /** Bildmasse einer Datei lesen — ohne Deutung, nur die tatsaechliche Pixelgroesse. */
+  async function pnBildMasse(blob){
+    if (typeof createImageBitmap !== 'function') {
+      throw new Error('Dieser Browser kann die Bildmaße nicht lesen (createImageBitmap fehlt).');
+    }
+    const bm = await createImageBitmap(blob);
+    const masse = { breite: bm.width, hoehe: bm.height };
+    if (bm.close) bm.close();
+    if (!(masse.breite > 0) || !(masse.hoehe > 0)) throw new Error('Das Bild hat keine lesbaren Maße.');
+    return masse;
+  }
+
+  /**
+   * Bild des Geschosses aus der Plan-Datenbank holen — nur bei echtem Wechsel des
+   * Geschosses, sonst wuerde jede Anzeigeaktualisierung neu laden.
+   * @param {string|null} gsId @param {boolean} [erzwingen] nach Upload/Loeschen
+   */
+  async function pnBildLaden(gsId, erzwingen){
+    if (!erzwingen && PN.bildFuer === gsId) return;
+    PN.bildFuer = gsId;
+    if (PN.bildUrl) { try { URL.revokeObjectURL(PN.bildUrl); } catch { /* egal */ } PN.bildUrl = null; }
+    PN.bild = null;
+    PN.punkte = [];
+    if (!gsId) return;
+    PN.bild = await PLAN.holePlan(gsId);
+    if (PN.bild && PN.bild.blob) {
+      try { PN.bildUrl = URL.createObjectURL(PN.bild.blob); } catch { PN.bildUrl = null; }
+    }
+  }
+
+  /** Plan + Rasteroverlay zeichnen (reine Anzeige — schreibt nichts). */
+  function pnZeichne(){
+    const buehne = document.getElementById('pn-buehne');
+    const plan = pnPlan();
+    if (!plan) {
+      buehne.innerHTML = '<div class="leer">Für dieses Geschoss ist kein Plan hinterlegt — '
+        + 'oben hochladen. Wände lassen sich auch ohne Plan verwalten; der Plan hilft nur beim '
+        + 'Einzeichnen der Lage.</div>';
+      return;
+    }
+    const b = plan.breite_px || (PN.bild && PN.bild.breite_px);
+    const h = plan.hoehe_px || (PN.bild && PN.bild.hoehe_px);
+    if (!(b > 0) || !(h > 0)) {
+      buehne.innerHTML = '<div class="leer">Die Bildmaße dieses Plans sind nicht bekannt — '
+        + 'bitte den Plan erneut hochladen.</div>';
+      return;
+    }
+    buehne.innerHTML = PLAN.planSvg(plan, {
+      bildUrl: PN.bildUrl, breite_px: b, hoehe_px: h, zoom: PN.zoom,
+      kalibrierpunkte: PN.punkte,
+    });
+    buehne.className = 'buehne' + (PN.kalibrieren ? ' misst' : '');
+  }
+
+  /** Kopfzeile/Status des Planabschnitts (Datei, Maßstab, fehlendes Bild). */
+  function pnStatus(){
+    const plan = pnPlan();
+    const info = document.getElementById('pn-info');
+    if (!plan) { info.textContent = 'Kein Plan hinterlegt.'; return; }
+    const teile = [];
+    teile.push(plan.datei || 'Plan');
+    if (plan.breite_px && plan.hoehe_px) teile.push(`${plan.breite_px} × ${plan.hoehe_px} px`);
+    if (PN.bild && PN.bild.groesse != null) teile.push(PLAN.bytesText(PN.bild.groesse));
+    teile.push(PLAN.massstabText(plan.mm_je_pixel));
+    // Bild fehlt (anderer Browser, Websitedaten geloescht): melden, nicht erfinden ([L-9]).
+    if (!PN.bild) teile.push('⚠ Bild in diesem Browser nicht hinterlegt — Maßstab und Versatz sind erhalten');
+    else if (PLAN.planKalibriert(plan) && !PLAN.rasterLesbar(plan))
+      teile.push('⚠ Raster bei diesem Maßstab feiner als 2 Bildpixel — es wird nicht gezeichnet');
+    info.textContent = teile.join(' · ');
+  }
+
+  /** Ganzen Planabschnitt neu aufbauen (Bild wird nur bei Geschosswechsel neu geholt). */
+  async function pnRender(erzwingen){
+    const gs = plGeschoss();
+    document.getElementById('pn-none').hidden = !!gs;
+    document.getElementById('pn-form').hidden = !gs;
+    try { await pnBildLaden(gs ? gs.id : null, erzwingen); }
+    catch (e) { pnZeige('Planspeicher nicht lesbar: ' + (e && e.message ? e.message : e), false); }
+    if (!gs) { pnZeichne(); return; }
+    const plan = gs.plan;
+    document.getElementById('pn-mmjepx').value = plan && plan.mm_je_pixel != null ? String(plan.mm_je_pixel) : '';
+    document.getElementById('pn-vx').value = String(plan ? plan.versatz_x_mm : 0);
+    document.getElementById('pn-vy').value = String(plan ? plan.versatz_y_mm : 0);
+    document.getElementById('pn-kal-status').textContent = pnKalText();
+    pnStatus();
+    pnZeichne();
+  }
+
+  function pnKalText(){
+    const plan = pnPlan();
+    if (!plan) return 'Erst einen Plan hochladen.';
+    if (PN.kalibrieren) {
+      return PN.punkte.length === 0 ? 'Kalibriermodus: ersten Punkt im Plan anklicken.'
+        : PN.punkte.length === 1 ? 'Kalibriermodus: zweiten Punkt anklicken.'
+        : `Linie gesetzt (${Math.round(PLAN.pixelAbstand(PN.punkte[0], PN.punkte[1]))} Bildpixel) — `
+          + 'reale Länge in mm eintragen und „Aus Linie übernehmen" klicken.';
+    }
+    return PLAN.planKalibriert(plan)
+      ? 'Maßstab gesetzt — das Raster liegt über dem Plan. Eine Neukalibrierung ändert keine Wandlage ([L-1]).'
+      : 'Noch kein Maßstab gesetzt: es liegt bewusst KEIN Raster über dem Plan, und es wird keiner geschätzt ([L-9]).';
+  }
+
+  /** Zahl aus einem Feld — leer/unsinnig wird gemeldet, nie geraten. */
+  function pnZahl(id, was){
+    const s = String(document.getElementById(id).value || '').trim();
+    if (!s) return null;
+    const n = Number(s.replace(',', '.'));
+    if (!Number.isFinite(n)) throw new Error(`${was} muss eine Zahl sein.`);
+    return n;
+  }
+
+  document.getElementById('pn-import').addEventListener('change', async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    const gs = plGeschoss();
+    if (!gs) { pnZeige('Kein aktives Geschoss — der Plan hängt am Geschoss.', false); ev.target.value = ''; return; }
+    const fehler = PLAN.pruefePlanDatei(file);
+    if (fehler.length) { pnZeige(fehler.join(' '), false); ev.target.value = ''; return; }
+    try {
+      const masse = await pnBildMasse(file);
+      await PLAN.speicherePlan(gs.id, file, {
+        name: file.name, typ: file.type, groesse: file.size,
+        breite_px: masse.breite, hoehe_px: masse.hoehe,
+      });
+      // Ein NEUES Bild hat einen neuen Massstab: Kalibrierung und Versatz werden
+      // zurueckgesetzt statt stillschweigend uebernommen — das waere ein geratener
+      // Massstab ([L-9]). Die Wandlagen bleiben davon unberuehrt ([L-1]).
+      store.setzeGeschossPlan(gs.id, {
+        datei: file.name, typ: file.type,
+        breite_px: masse.breite, hoehe_px: masse.hoehe,
+        mm_je_pixel: null, versatz_x_mm: 0, versatz_y_mm: 0,
+      });
+      PN.kalibrieren = false; PN.punkte = [];
+      await pnRender(true);
+      pnZeige(`Plan „${file.name}" hinterlegt (${masse.breite} × ${masse.hoehe} px). `
+        + 'Maßstab und Versatz sind zurückgesetzt — bitte den Plan ausdrücklich kalibrieren ([L-9]). '
+        + 'Die Lagen bereits verorteter Wände bleiben unverändert ([L-1]).', true);
+    } catch (e) {
+      pnZeige('Plan nicht hinterlegt: ' + (e && e.message ? e.message : e), false);
+    } finally {
+      ev.target.value = '';
+    }
+  });
+
+  document.getElementById('pn-entfernen').addEventListener('click', async () => {
+    const gs = plGeschoss(); if (!gs) { pnZeige('Kein aktives Geschoss.', false); return; }
+    if (!gs.plan) { pnZeige('Für dieses Geschoss ist kein Plan hinterlegt.', false); return; }
+    if (!confirm(`Plan „${gs.plan.datei || ''}" aus Geschoss „${gs.name}" entfernen? `
+      + 'Bild, Maßstab und Versatz gehen verloren. Die Wände und ihre Lagen bleiben erhalten.')) return;
+    await PLAN.loeschePlan(gs.id);
+    try { store.setzeGeschossPlan(gs.id, null); }
+    catch (e) { pnZeige('Nicht entfernt: ' + (e && e.message ? e.message : e), false); return; }
+    PN.kalibrieren = false; PN.punkte = [];
+    await pnRender(true);
+    pnZeige('Plan entfernt. Die Wandlagen dieses Geschosses sind unverändert ([L-1]).', true);
+  });
+
+  document.getElementById('pn-mass-uebernehmen').addEventListener('click', () => {
+    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+    let v;
+    try { v = pnZahl('pn-mmjepx', 'Der Maßstab'); }
+    catch (e) { pnZeige('Nicht übernommen: ' + e.message, false); return; }
+    if (v != null && !(v > 0)) { pnZeige('Nicht übernommen: der Maßstab muss größer als 0 sein (mm je Bildpixel).', false); return; }
+    try { store.setzeGeschossPlanAnsicht(gs.id, { mm_je_pixel: v }); }
+    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    PN.kalibrieren = false; PN.punkte = [];
+    pnRender();
+    pnZeige(v == null ? 'Maßstab aufgehoben — es liegt jetzt kein Raster über dem Plan ([L-9]).'
+      : `Maßstab gesetzt: ${PLAN.massstabText(v)}. Wandlagen unverändert ([L-1]).`, true);
+  });
+
+  document.getElementById('pn-kalibrieren').addEventListener('click', () => {
+    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+    PN.kalibrieren = !PN.kalibrieren;
+    PN.punkte = [];
+    pnRender();
+    pnZeige(PN.kalibrieren
+      ? 'Kalibriermodus: zwei Punkte im Plan anklicken, deren realen Abstand du kennst.'
+      : 'Kalibriermodus beendet.', true);
+  });
+
+  document.getElementById('pn-kal-uebernehmen').addEventListener('click', () => {
+    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+    if (PN.punkte.length < 2) { pnZeige('Erst zwei Punkte im Plan anklicken („Kalibrierlinie setzen").', false); return; }
+    let mm;
+    try { mm = pnZahl('pn-kal-mm', 'Die Länge der Kalibrierlinie'); }
+    catch (e) { pnZeige('Nicht übernommen: ' + e.message, false); return; }
+    let k;
+    try { k = PLAN.kalibriere(PN.punkte[0], PN.punkte[1], mm); }
+    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    try { store.setzeGeschossPlanAnsicht(gs.id, { mm_je_pixel: k.mm_je_pixel }); }
+    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    PN.kalibrieren = false; PN.punkte = [];
+    pnRender();
+    pnZeige(`Maßstab aus der Kalibrierlinie: ${k.strecke_mm} mm auf ${Math.round(k.pixel)} Bildpixel `
+      + `⇒ ${PLAN.massstabText(k.mm_je_pixel)}. Wandlagen unverändert ([L-1]).`, true);
+  });
+
+  function pnVersatzSetzen(x, y){
+    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+    try { store.setzeGeschossPlanAnsicht(gs.id, { versatz_x_mm: x, versatz_y_mm: y }); }
+    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    pnRender();
+    pnZeige(`Versatz gesetzt: X ${Math.round(x)} mm / Y ${Math.round(y)} mm. `
+      + 'Der Plan wurde verschoben, keine Wandlage ([L-1]).', true);
+  }
+
+  document.getElementById('pn-versatz-uebernehmen').addEventListener('click', () => {
+    let x, y;
+    try { x = pnZahl('pn-vx', 'Der Versatz X') || 0; y = pnZahl('pn-vy', 'Der Versatz Y') || 0; }
+    catch (e) { pnZeige('Nicht übernommen: ' + e.message, false); return; }
+    pnVersatzSetzen(x, y);
+  });
+
+  document.getElementById('pn-versatz-null').addEventListener('click', () => pnVersatzSetzen(0, 0));
+
+  document.getElementById('pn-zoom').addEventListener('change', () => {
+    const n = Number(String(document.getElementById('pn-zoom').value || '').replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0) { pnZeige('Zoom muss eine positive Prozentzahl sein.', false); return; }
+    PN.zoom = Math.min(4, Math.max(0.05, n / 100));
+    pnZeichne();
+  });
+
+  // Klicks/Ziehen auf der Buehne. Beides arbeitet in BILDPIXELN — der viewBox des SVG
+  // liegt in Bildpixeln, damit auch ein noch nicht kalibrierter Plan bedienbar ist.
+  const pnBuehne = document.getElementById('pn-buehne');
+
+  /** Fensterkoordinaten eines Ereignisses in einen Bildpunkt umrechnen. */
+  function pnPunktAus(ev){
+    const svg = pnBuehne.querySelector ? pnBuehne.querySelector('svg') : null;
+    if (!svg || typeof svg.getBoundingClientRect !== 'function') return null;
+    const r = svg.getBoundingClientRect();
+    return PLAN.svgPunktZuPixel({ links: r.left, oben: r.top, zoom: PN.zoom },
+      { x: ev.clientX, y: ev.clientY });
+  }
+
+  pnBuehne.addEventListener('click', (ev) => {
+    if (!PN.kalibrieren) return;
+    const p = pnPunktAus(ev); if (!p) return;
+    if (PN.punkte.length >= 2) PN.punkte = [];
+    PN.punkte.push(p);
+    document.getElementById('pn-kal-status').textContent = pnKalText();
+    pnZeichne();
+  });
+
+  pnBuehne.addEventListener('mousedown', (ev) => {
+    if (PN.kalibrieren) return;                       // im Kalibriermodus wird gemessen, nicht geschoben
+    const plan = pnPlan();
+    if (!plan || !PLAN.planKalibriert(plan)) return;  // ohne Maßstab gibt es kein mm — nichts zu schieben
+    PN.ziehen = { x: ev.clientX, y: ev.clientY, vx: plan.versatz_x_mm, vy: plan.versatz_y_mm };
+    pnBuehne.className = 'buehne zieht';
+    if (ev.preventDefault) ev.preventDefault();
+  });
+
+  pnBuehne.addEventListener('mousemove', (ev) => {
+    if (!PN.ziehen) return;
+    const plan = pnPlan(); if (!plan) return;
+    // Bild nach rechts ziehen = die linke obere Bildecke liegt weiter rechts im Raster.
+    const dx = ev.clientX - PN.ziehen.x;
+    const dy = ev.clientY - PN.ziehen.y;
+    document.getElementById('pn-vx').value = String(Math.round(PN.ziehen.vx + (dx / PN.zoom) * plan.mm_je_pixel));
+    document.getElementById('pn-vy').value = String(Math.round(PN.ziehen.vy + (dy / PN.zoom) * plan.mm_je_pixel));
+    // Waehrend des Ziehens wird nur das BILD verschoben (kein Neuzeichnen je Bewegung).
+    // Das Raster bleibt stehen — genau das ist der Sinn des Versatzes: der Plan wird
+    // ans Raster geschoben, nie umgekehrt ([L-1]).
+    const svg = pnBuehne.querySelector ? pnBuehne.querySelector('svg') : null;
+    const bild = svg && svg.querySelector ? svg.querySelector('image') : null;
+    if (bild && bild.setAttribute) {
+      bild.setAttribute('transform', `translate(${dx / PN.zoom} ${dy / PN.zoom})`);
+    }
+  });
+
+  /** Ziehen beenden: erst hier wird der Versatz WIRKLICH gespeichert. */
+  function pnZiehenEnde(){
+    if (!PN.ziehen) return;
+    PN.ziehen = null;
+    pnBuehne.className = 'buehne' + (PN.kalibrieren ? ' misst' : '');
+    let x, y;
+    try { x = pnZahl('pn-vx', 'Der Versatz X') || 0; y = pnZahl('pn-vy', 'Der Versatz Y') || 0; }
+    catch { pnZeichne(); return; }
+    const plan = pnPlan();
+    // Unveraendert (bloss geklickt): nur neu zeichnen, damit die Ziehvorschau verschwindet.
+    if (!plan || (plan.versatz_x_mm === x && plan.versatz_y_mm === y)) { pnZeichne(); return; }
+    pnVersatzSetzen(x, y);
+  }
+  pnBuehne.addEventListener('mouseup', pnZiehenEnde);
+  pnBuehne.addEventListener('mouseleave', pnZiehenEnde);
+
   let wFilter = 'alle';       // Ansicht der Wandliste (siehe #w-filter)
   $pl('w-filter').addEventListener('change', () => {
     wFilter = $pl('w-filter').value || 'alle';
@@ -974,8 +1365,12 @@
 
   store.abonniere(render);
   store.abonniere(plRender);
+  // Der Planabschnitt liest sein Bild asynchron aus der eigenen Plan-Datenbank; ein
+  // Fehler dort darf die uebrigen Hoerer nicht aufhalten (er steht in #pn-msg).
+  store.abonniere(() => { pnRender().catch(() => {}); });
   plRender();
   render();
+  pnRender().catch(() => {});
 
   // --- Projekt-Kopfdaten (aktives Element -> eingaben.projekt) ---
   const pjIds = { name:'pj-name', bauherr:'pj-bauherr', planverfasser:'pj-planverf',

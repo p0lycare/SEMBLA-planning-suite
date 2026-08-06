@@ -206,6 +206,65 @@ t("datei: ungueltige Lage in der Datei wird abgewiesen, nicht repariert",
   })), /ungültig/));
 t("datei: Versionsachse eigenstaendig (1)", M.MAPPE_VERSION === 1);
 
+// --- [L-8]/[L-9] Planbeschreibung im Geschoss ------------------------------
+// In der Mappe steht NUR die Beschreibung des Plans — nie das Bild ([L-8]) — und
+// Massstab/Versatz sind Anzeigewerte, die keine Wandlage veraendern ([L-9]/[L-1]).
+{
+  let mp = M.leereMappe("Planprojekt");
+  const g = mp.gebaeude[0].geschosse[0].id;
+  mp = M.setzeWand(mp, g, { id: "w1", name: "W1", lage: { start_grid: { x: 4, y: 2 }, richtung: "x", laenge_grid: 8 } });
+
+  t("[L-8] frisches Geschoss hat keinen Plan", mp.gebaeude[0].geschosse[0].plan === null);
+  const mitPlan = M.setzePlan(mp, g, { datei: "eg.png", typ: "image/png", breite_px: 800, hoehe_px: 600 });
+  const p = mitPlan.gebaeude[0].geschosse[0].plan;
+  t("[L-8] Plan wird als Beschreibung gesetzt", p.datei === "eg.png" && p.breite_px === 800);
+  t("[L-9] ohne ausdrueckliche Kalibrierung bleibt der Massstab leer", p.mm_je_pixel === null);
+  t("[L-9] Versatz beginnt bei 0/0", p.versatz_x_mm === 0 && p.versatz_y_mm === 0);
+  t("[L-8] die Mappe traegt KEIN Bild", !JSON.stringify(mitPlan).includes("blob"));
+  t("[L-8] Plan setzen laesst die Ausgangsmappe unveraendert (reine Funktion)",
+    mp.gebaeude[0].geschosse[0].plan === null);
+  t("[L-1] das Setzen des Plans ruehrt die Wandlage nicht an",
+    mitPlan.gebaeude[0].geschosse[0].waende[0].lage.start_grid.x === 4);
+
+  const kalibriert = M.setzePlanAnsicht(mitPlan, g, { mm_je_pixel: 12.5, versatz_x_mm: 250 });
+  t("[L-9] Kalibrierung setzt nur Massstab/Versatz",
+    kalibriert.gebaeude[0].geschosse[0].plan.mm_je_pixel === 12.5
+    && kalibriert.gebaeude[0].geschosse[0].plan.datei === "eg.png"
+    && kalibriert.gebaeude[0].geschosse[0].plan.versatz_x_mm === 250);
+  t("[L-1] Kalibrierung veraendert keine Wandlage",
+    kalibriert.gebaeude[0].geschosse[0].waende[0].lage.laenge_grid === 8);
+  t("[L-9] negativer Massstab wird abgewiesen, nicht gerundet",
+    wirft(() => M.setzePlan(mitPlan, g, { datei: "x.png", mm_je_pixel: -3 }), /positiv/));
+  t("[L-9] Massstab 0 wird abgewiesen",
+    wirft(() => M.setzePlan(mitPlan, g, { datei: "x.png", mm_je_pixel: 0 }), /positiv/));
+  t("[L-8] unsinnige Bildmasse werden abgewiesen",
+    wirft(() => M.setzePlan(mitPlan, g, { datei: "x.png", breite_px: -1 }), /positiv/));
+  t("[L-9] Ansicht ohne hinterlegten Plan wird gemeldet statt angelegt",
+    wirft(() => M.setzePlanAnsicht(mp, g, { mm_je_pixel: 10 }), /keinen hinterlegten Plan/));
+  t("Plan an unbekanntem Geschoss wird abgewiesen",
+    wirft(() => M.setzePlan(mp, "gs-fremd", { datei: "x.png" }), /Unbekanntes Geschoss/));
+
+  const ohnePlan = M.setzePlan(kalibriert, g, null);
+  t("[L-8] Plan entfernen setzt die Beschreibung zurueck", ohnePlan.gebaeude[0].geschosse[0].plan === null);
+  t("[L-1] Plan entfernen laesst die Wandlage stehen",
+    ohnePlan.gebaeude[0].geschosse[0].waende[0].lage.start_grid.y === 2);
+
+  t("[L-8] Plan ueberlebt den Datei-Roundtrip",
+    M.parseMappe(JSON.stringify(M.mappeObjekt(kalibriert)))
+      .gebaeude[0].geschosse[0].plan.mm_je_pixel === 12.5);
+  t("[L-9] ein ungueltiger Massstab in der Datei wird abgewiesen, nicht repariert",
+    wirft(() => M.parseMappe(JSON.stringify({
+      ...M.mappeObjekt(mitPlan),
+      gebaeude: [{ id: "g", name: "G", geschosse: [{ id: "s", name: "S", hoehe_mm: null,
+        plan: { datei: "x.png", mm_je_pixel: -1 }, waende: [] }] }],
+    })), /ungültig/));
+  t("[L-8] Altstand ohne Planfeld bleibt warnungsfrei",
+    M.validiereMappe(M.normMappe({ projekt: { id: "p" },
+      gebaeude: [{ id: "g", geschosse: [{ id: "s", waende: [] }] }] })).length === 0);
+  t("[L-9] planFehler: kein Plan ist gueltig", M.planFehler(null).length === 0);
+  t("[L-9] planFehler: unkalibrierter Plan ist gueltig", M.planFehler({ datei: "x.png" }).length === 0);
+}
+
 // --- Normalisierung --------------------------------------------------------
 const roh = M.normMappe({ projekt: { name: "Ohne Kennungen" } });
 t("norm: fehlende Projektkennung wird ergaenzt", !!roh.projekt.id && roh.gebaeude.length === 0);

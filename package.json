@@ -8,7 +8,7 @@
     "handbuch": "node build-handbuch.mjs",
     "test:core": "python3 tests/core/test_sembla_core.py && node tests/core/test-sembla-core.mjs && node test-shared.mjs",
     "test:zuschnitt": "node tests/module/test-zuschnitt.mjs",
-    "test:modul0": "node tests/module/smoke_start.mjs && node tests/module/test-katalog.mjs && node tests/module/test-projektmappe.mjs && node tests/module/test-nachweis-export.mjs && node tests/module/smoke_storage.mjs",
+    "test:modul0": "node tests/module/smoke_start.mjs && node tests/module/test-katalog.mjs && node tests/module/test-projektmappe.mjs && node tests/module/test-plan.mjs && node tests/module/test-nachweis-export.mjs && node tests/module/smoke_storage.mjs",
     "test:modul1": "node tests/module/test-engine.mjs && node tests/module/smoke_wp.mjs",
     "test:modul2": "node tests/module/smoke_wandaufbau.mjs",
     "test:modul3": "node tests/module/test-statik.mjs && node tests/module/smoke_statik.mjs",

@@ -515,6 +515,33 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   t("mappe: eigener Speicherschluessel (nicht im Wandspeicher)",
     !!localStorage.getItem("sembla:projektmappe")
     && !localStorage.getItem("sembla:elemente").includes("start_grid"));
+
+  // 13f) Geschossplan ([L-8]/[L-9]): nur die BESCHREIBUNG liegt hier ---------
+  const gsP = store.wandVerortung("w-b1").geschoss.id;
+  t("[L-8] Geschoss ohne Plan meldet null", store.geschossPlan(gsP) === null);
+  store.setzeGeschossPlan(gsP, { datei: "eg.png", typ: "image/png", breite_px: 1600, hoehe_px: 1200 });
+  t("[L-8] Planbeschreibung wird gespeichert",
+    store.geschossPlan(gsP).datei === "eg.png" && store.geschossPlan(gsP).breite_px === 1600);
+  t("[L-9] ohne Kalibrierung bleibt der Massstab leer", store.geschossPlan(gsP).mm_je_pixel === null);
+  t("[L-8] kein Bild im localStorage — nur die Beschreibung",
+    !localStorage.getItem("sembla:projektmappe").includes("blob")
+    && !localStorage.getItem("sembla:projektmappe").includes("base64"));
+  const lageVorher = JSON.stringify(store.wandVerortung("w-b1").wand.lage);
+  store.setzeGeschossPlanAnsicht(gsP, { mm_je_pixel: 12.5, versatz_x_mm: 375, versatz_y_mm: -125 });
+  t("[L-9] Kalibrierung/Versatz werden uebernommen",
+    store.geschossPlan(gsP).mm_je_pixel === 12.5 && store.geschossPlan(gsP).versatz_y_mm === -125);
+  t("[L-1] Kalibrierung veraendert keine Wandlage",
+    JSON.stringify(store.wandVerortung("w-b1").wand.lage) === lageVorher);
+  t("[L-9] unsinniger Massstab wird abgewiesen, der Stand bleibt", (() => {
+    try { store.setzeGeschossPlanAnsicht(gsP, { mm_je_pixel: -5 }); return false; }
+    catch { return store.geschossPlan(gsP).mm_je_pixel === 12.5; }
+  })());
+  t("[L-8] Plan uebersteht einen Reload (Beschreibung liegt in der Mappe)",
+    PM.findeGeschoss(store.holeMappe(), gsP).geschoss.plan.mm_je_pixel === 12.5);
+  store.setzeGeschossPlan(gsP, null);
+  t("[L-8] Plan entfernen laesst Struktur und Lagen unberuehrt",
+    store.geschossPlan(gsP) === null
+    && JSON.stringify(store.wandVerortung("w-b1").wand.lage) === lageVorher);
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);
