@@ -139,6 +139,33 @@ ok("Legende erklaert den Darstellungsschluessel",
   /Gewindestange \(Standardlänge\)/.test(blatt.html) && /Sonderlänge/.test(blatt.html)
   && /Boden-\/Kopfblech/.test(blatt.html));
 
+// [D-4]/[Z-6] Das Reststueck am oberen Wandabschluss ist ein EIGENES Bauteil und muss auf dem
+// Blatt als solches erkennbar sein: eigene Farbe, eigener Legendeneintrag, eigene Kennzahl.
+// Es darf weder wie eine Standardlaenge aussehen noch unter den Sonderlaengen mitlaufen.
+{
+  const WR = buildWall("IW-Rest", 2000, 2600, [], null, { rod_lengths_mm: [1000], rod_rest_mm: 100 });
+  const stuecke = WR.tension_columns.flatMap(c => c.segments).flatMap(g => g.stuecke || []);
+  ok("[Z-6] Referenzwand traegt Reststuecke im Wandelement (Slicing steht im JSON)",
+    stuecke.some(s => s.art === "rest"));
+  const svg = Z.zeichnungSvg(WR, {}).svg;
+  ok("[D-4] Reststueck wird in eigener Farbe gezeichnet",
+    svg.includes(Z.FARBE.stange_rest) && Z.FARBE.stange_rest !== Z.FARBE.stange
+    && Z.FARBE.stange_rest !== Z.FARBE.stange_sonder);
+  ok("[D-4] Legende benennt das Reststueck", /Reststück oberer Abschluss/.test(Z.legendeHtml()));
+  const zr = Z.vorspannZeilen(WR).find(r => r.label === "Reststück oben");
+  ok("[Z-6] Reststueck als eigene Kennzahl mit Laenge und Anzahl",
+    !!zr && /10,0 cm/.test(zr.wert) && zr.wert.includes(stuecke.filter(s => s.art === "rest").length + "×"));
+  ok("[Z-6] Reststueck laeuft NICHT unter den Sonderlaengen mit", (() => {
+    const so = Z.vorspannZeilen(WR).find(r => r.label === "Sonderlängen").wert;
+    return !/10,0 cm/.test(so) && !/^10 cm/.test(so);
+  })());
+  ok("[Z-6] ohne Reststueck bleibt die Kennzahl leer (keine ersatzweise Standardlaenge)", (() => {
+    const WO = buildWall("IW-ohne", 2000, 2600, [], null, { rod_lengths_mm: [1000] });
+    return Z.vorspannZeilen(WO).find(r => r.label === "Reststück oben").wert === "–"
+      && !Z.zeichnungSvg(WO, {}).svg.includes(Z.FARBE.stange_rest);
+  })());
+}
+
 // [D-5] Zielregeln: vorhanden, aber ausdruecklich ungeprueft
 ok("alle vier Vorspann-Zielregeln stehen im Blatt", Z.PLANUNGSHINWEISE.length === 4
   && Z.PLANUNGSHINWEISE.every(r => blatt.html.includes(r.text)));

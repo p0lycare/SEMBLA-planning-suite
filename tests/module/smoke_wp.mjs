@@ -377,6 +377,23 @@ store.setzeKatalog(KATALOG);
     return store.holeProdukte(1,idVb).rollen.i3.length===0; })());
   ok('[P-18] keine Auswahl fuer Rollen ohne Standardprodukt (nichts geraten)',
     store.holeProdukte(1,idVb).rollen.blech_boden===undefined);
+  // [P-18]/[Z-1]: Eine maßwirksame Vorbelegung (Standardlaengen/Reststueck) MUSS das
+  // Wandelement neu rechnen — sonst stuende im gespeicherten JSON weiter die alte Zerlegung
+  // und Modul 5/7 und der Export zeigten sie ebenfalls (Reststueck fehlt im Bild).
+  ok('[P-18] maßwirksame Vorbelegung rechnet das Wandelement neu ([Z-1])', (()=>{
+    const idM=store.speichere('Vorbeleg-Mass', buildWall('Vorbeleg-Mass',2000,2600,[]));
+    const katM={ ...KATALOG, produkte:KATALOG.produkte.map(p =>
+      p.id==='rod-1000' ? { ...p, rollen:['rod_std'] } : p)
+      .concat([{ id:'rod-rest-100', kategorie:'gewindestange', bezeichnung:'Reststueck 100',
+                 einheit:'Stk', preis:0.9, gewinde:'M10', laenge_mm:100, rollen:['rod_rest'] }]) };
+    store.setzeKatalog(katM); store.setzeAktiv(idM);
+    globalThis.window.__wpInit();                       // frischer Seitenaufruf
+    const w=store.aktivesWandelement();
+    const stuecke=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
+    return JSON.stringify(w.prestress.rod_lengths_mm)==='[1000]'
+      && w.prestress.rod_rest_mm===100
+      && stuecke.some(s=>s.art==='rest');               // Slicing steht im gespeicherten JSON
+  })());
   store.setzeKatalog(KATALOG); store.setzeAktiv(idA); WP.renderProdukte();
 }
 

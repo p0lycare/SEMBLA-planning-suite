@@ -510,7 +510,10 @@ function persistAktiv(w){
   saveHint('✓ Automatisch gespeichert', true);
 }
 function saveHint(t,ok){ const el=$('saveHint'); if(!el) return; el.textContent=t||''; el.className='savehint'+(ok?' ok':''); }
-function loadFromStore(we){ saveEnabled=false; hatWand=true; try{ applyWand(we); } finally{ saveEnabled=true; } }
+// Bloßes Laden darf das gespeicherte Element NICHT anfassen -> Speichern ist waehrend
+// applyWand() aus. Eine dabei entstandene maßwirksame Vorbelegung ([P-18]/[Z-1]) ist dagegen
+// eine echte Datenaenderung und wird direkt danach nachgetragen.
+function loadFromStore(we){ saveEnabled=false; hatWand=true; try{ applyWand(we); } finally{ saveEnabled=true; } vbNachtragen(); }
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
   currentId = store.aktivId ? store.aktivId() : null;
@@ -614,17 +617,41 @@ function syncLegacyFelder(){
 // Vorbelegt wird GENAU EINMAL je Wandelement und Seitenaufruf: wer eine Rolle bewusst leer
 // raeumt, soll sie nicht beim naechsten Rendern wieder vorbelegt bekommen.
 let VORBELEGT=null; const VB_ERLEDIGT=new Set();
+// Maßwirksame Vorbelegung, die noch nicht im gespeicherten Wandelement steht. Sie kann
+// waehrend loadFromStore() entstehen — dort ist das Speichern bewusst aus (bloßes Laden darf
+// das Element nicht anfassen). Der Merker traegt sie nach, sobald gespeichert werden darf.
+let VB_MASS_OFFEN=false;
 function vorbelegeProdukte(){
   const id=(store&&store.aktivId)?store.aktivId():null;
-  if(!id || !store.vorbelegeProduktrollen || !prodKatalog() || VB_ERLEDIGT.has(id)) return;
+  if(!id || !store.vorbelegeProduktrollen || !prodKatalog() || VB_ERLEDIGT.has(id)) return false;
   VB_ERLEDIGT.add(id);
   const vb=store.vorbelegeProduktrollen();
   const gesetzt=Object.keys(vb.gesetzt).filter(r=>KAT.rolle(r)&&KAT.rolle(r).modul===1);
   VORBELEGT=gesetzt.length?gesetzt:null;
+  // Die Vorbelegung ist eine echte Produktwahl und damit die maßgebende Maßquelle ([Z-1]):
+  // Standardlängen und Reststück ändern die Zerlegung der Stränge. Wie bei der Wahl per Hand
+  // muss das Wandelement deshalb NEU GERECHNET UND GESPEICHERT werden — sonst stünde im JSON
+  // weiter die alte Zerlegung (ohne Reststück), und alle lesenden Module (5/7, Export) zeigten
+  // sie ebenfalls. Nur Rollen mit Maßwirkung loesen das aus; das Neurechnen ist idempotent.
+  const massWirksam=gesetzt.some(r=>r==='rod_std'||r==='rod_rest');
+  if(massWirksam) VB_MASS_OFFEN=true;
+  return massWirksam;
+}
+/** Offene maßwirksame Vorbelegung nachtragen, sobald gespeichert werden darf ([Z-1]). */
+function vbNachtragen(){
+  if(!VB_MASS_OFFEN || !saveEnabled || !hatWand) return;
+  VB_MASS_OFFEN=false;
+  run();
 }
 function renderProdukte(){
   const box=$('prodRollen'), info=$('prodInfo');
-  vorbelegeProdukte();
+  // Hat die Vorbelegung maßwirksame Rollen gesetzt, wird die Wand neu gerechnet und dabei
+  // erneut gerendert — dieser Durchlauf endet hier, sonst wuerde doppelt gezeichnet.
+  // Ein zweiter Aufruf von vorbelegeProdukte() setzt nichts mehr (VB_ERLEDIGT), also
+  // gibt es keine Rekursion.
+  // Waehrend loadFromStore() ist Speichern aus — dann uebernimmt vbNachtragen() das
+  // Neurechnen, statt hier ein Ergebnis zu erzeugen, das nirgends landet.
+  if(vorbelegeProdukte() && saveEnabled){ VB_MASS_OFFEN=false; run(); return; }
   const kat=prodKatalog(), eing=prodEingaben(), ktx=prodKontext();
   const hatWandEl = !!(store&&store.aktivId&&store.aktivId());
   info.innerHTML = !kat
@@ -738,7 +765,12 @@ window.__wpInit=function(){
   bindEvents();
   bindProdukte();
   setupStoreSync();
+  // [P-18]/[Z-1]: Die Vorbelegung MUSS vor der ersten Berechnung stehen — sie liefert die
+  // maßgebenden Standardlängen und das Reststück. Sonst rechnete loadInitial() noch mit der
+  // leeren Auswahl und das gespeicherte Wandelement traege eine Zerlegung ohne Reststück.
+  vorbelegeProdukte();
   loadInitial();
+  vbNachtragen();                 // Sicherheitsnetz, falls loadInitial() nichts geladen hat
   renderProdukte();
 };
 </script>

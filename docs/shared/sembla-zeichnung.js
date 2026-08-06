@@ -116,7 +116,7 @@ export function waehleMasstab(L, H, format = "a3") {
 export const FARBE = {
   i3: "#e3e6ea", i2: "#cbd0d6", stein_rand: "#9aa1a9", stein_text: "#7c838c",
   oeffnung: "#c9461c", kontur: "#13202e", stahl: "#5b6673", stahl_rand: "#3a4350",
-  stange: "#1f6feb", stange_sonder: "#e8702a", platte: "#14559c", mutter: "#0b3a73",
+  stange: "#1f6feb", stange_sonder: "#e8702a", stange_rest: "#8a5cd6", platte: "#14559c", mutter: "#0b3a73",
   mass: "#46505e", staffel: "#0a7f8c", reihe: "#8f96a0",
 };
 
@@ -159,6 +159,18 @@ function _stueckArt(w, sg, i, letzter) {
   // Alt-Bundle ohne `stuecke`: nur das letzte Stueck kann eine Sonderlaenge sein.
   if (letzter && sg.letzte_stange_mm != null && Math.round(sg.letzte_stange_mm) !== Math.round(_rod(w))) return "sonder";
   return "standard";
+}
+
+/**
+ * Farbe eines Stangenstuecks ([D-4]). Die drei Arten der kanonischen `stuecke` sind
+ * OPTISCH UNTERSCHEIDBAR — auch das Reststueck am oberen Wandabschluss ([Z-6]), sonst
+ * waere auf dem Blatt nicht erkennbar, dass dort ein eigenes Bauteil sitzt.
+ * @param {string} art
+ */
+function _stueckFarbe(art) {
+  if (art === "sonder") return FARBE.stange_sonder;
+  if (art === "rest") return FARBE.stange_rest;
+  return FARBE.stange;
 }
 
 /** Lokale Wandoberkante an der x-Position (Staffelung, mm). */
@@ -295,7 +307,7 @@ export function zeichnungSvg(w, opts = {}) {
         const zt = enden[i], letzter = i === enden.length - 1;
         const art = _stueckArt(w, sg, i, letzter);
         s += `<line x1="${_n(x)}" y1="${_n(Y(z))}" x2="${_n(x)}" y2="${_n(Y(zt))}" `
-          + `stroke="${art === "sonder" ? FARBE.stange_sonder : FARBE.stange}" stroke-width="${_n(SW * 2.6)}"/>`;
+          + `stroke="${_stueckFarbe(art)}" stroke-width="${_n(SW * 2.6)}"/>`;
         if (!letzter) s += `<circle cx="${_n(x)}" cy="${_n(Y(zt))}" r="${_n(SW * 3)}" fill="${FARBE.mutter}"/>`;
         z = zt;
       }
@@ -336,14 +348,22 @@ export function bomZeilen(w) {
 export function vorspannZeilen(w) {
   const ps = w.prestress || {};
   const cols = w.tension_columns || [];
-  let stangen = 0, sonder = new Set();
+  let stangen = 0, sonder = new Set(), rest = new Set(), restAnz = 0;
   for (const col of cols) {
     for (const sg of _segmente(w, col)) {
       const enden = stangenEnden(w, sg);
       stangen += enden.length;
       for (let i = 0; i < enden.length; i++) {
-        if (_stueckArt(w, sg, i, i === enden.length - 1) !== "sonder") continue;
+        const art = _stueckArt(w, sg, i, i === enden.length - 1);
         const st = Array.isArray(sg.stuecke) ? sg.stuecke[i] : null;
+        // [Z-6] Reststuecke werden GETRENNT ausgewiesen: eigenes Bauteil, eigene Katalogrolle —
+        // sie duerfen nicht unter den Sonderlaengen mitlaufen.
+        if (art === "rest") {
+          restAnz++;
+          if (st && st.len_mm != null) rest.add(Math.round(st.len_mm));
+          continue;
+        }
+        if (art !== "sonder") continue;
         const len = st && st.len_mm != null ? st.len_mm : sg.letzte_stange_mm;
         if (len != null) sonder.add(Math.round(len));
       }
@@ -357,6 +377,11 @@ export function vorspannZeilen(w) {
     { label: "Gewindestange", wert: _fmt(_rod(w) / 10, 0) + " cm" },
     { label: "Stangenstücke", wert: stangen + "×" },
     { label: "Sonderlängen", wert: sonder.size ? [...sonder].sort((a, b) => a - b).map(m => _fmt(m / 10, 0) + " cm").join(", ") : "–" },
+    // [Z-6]: Ohne Reststueck ist der obere Abschluss offen — das steht als „–" auf dem Blatt
+    // und wird nicht durch eine Standardlaenge ersetzt.
+    { label: "Reststück oben", wert: rest.size
+        ? [...rest].sort((a, b) => a - b).map(m => _fmt(m / 10, 1) + " cm").join(", ") + " · " + restAnz + "×"
+        : "–" },
     { label: "oberer Anschluss", wert: ((w.prestress && w.prestress.top_connection) || "blech") === "blech" ? "Kopfblech" : "Spannplatte" },
   ];
   return rows;
@@ -405,6 +430,7 @@ export function legendeHtml() {
   return `<div class="zlegende">`
     + `<span>${i(FARBE.stange)}Gewindestange (Standardlänge)</span>`
     + `<span>${i(FARBE.stange_sonder)}Sonderlänge / abgelängt</span>`
+    + `<span>${i(FARBE.stange_rest)}Reststück oberer Abschluss ([Z-6])</span>`
     + `<span>${i(FARBE.mutter, "dot")}Kopplung / Verankerung</span>`
     + `<span>${i(FARBE.platte, "plate")}Spannplatte</span>`
     + `<span>${i(FARBE.stahl, "plate")}Boden-/Kopfblech</span>`

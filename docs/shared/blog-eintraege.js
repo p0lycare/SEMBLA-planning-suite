@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-04",
+    datum: "2026-08-06",
+    typ: "fix",
+    issue: 19,
+    titel: "Reststück und Zuschnitt sind jetzt auch in der technischen Zeichnung sichtbar",
+    testbitte: "Reiter 7: die Stränge zeigen Standardlänge, Sonderzuschnitt und Reststück in "
+      + "drei Farben (Legende darunter), und die Vorspann-Tabelle nennt „Reststück oben“ "
+      + "getrennt von den Sonderlängen.",
+  },
+  {
     id: "chg-20260806-03",
     datum: "2026-08-06",
     typ: "feature",
