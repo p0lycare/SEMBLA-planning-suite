@@ -45,6 +45,28 @@
       "laenge_mm": 1000
     },
     {
+      "id": "gewindestange-m10-850",
+      "kategorie": "gewindestange",
+      "bezeichnung": "Gewindestange M10 850 mm (8.8) (vorläufig)",
+      "einheit": "Stk",
+      "preis": 3.3,
+      "gewinde": "M10",
+      "guete": "8.8",
+      "laenge_mm": 850,
+      "hinweis": "vorläufig — fachlich unbestätigt: zweite Standardlänge des Vorratssatzes, Preis frei angenommen."
+    },
+    {
+      "id": "gewindestange-m10-100-rest",
+      "kategorie": "gewindestange",
+      "bezeichnung": "Gewindestange M10 100 mm (8.8) – Reststück oberer Abschluss (vorläufig)",
+      "einheit": "Stk",
+      "preis": 0.9,
+      "gewinde": "M10",
+      "guete": "8.8",
+      "laenge_mm": 100,
+      "hinweis": "vorläufig — fachlich unbestätigt: für die Rolle „Gewindestange – Reststück oberer Abschluss“ ([Z-6]). Weil die Wände im Innenraum montiert werden, schließt jeder Strang an der Wandoberkante mit diesem kurzen Stück ab. Preis frei angenommen."
+    },
+    {
       "id": "latte-40-60-1500",
       "kategorie": "latte",
       "bezeichnung": "Latte 40×60 mm, 1,5 m (vorläufig)",

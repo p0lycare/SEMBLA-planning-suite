@@ -17,6 +17,7 @@ export const CHAMBER_OFFSET = 62.5;     // Kammerzentrum -> Lattice x = 62.5 + 1
 export const MAX_SPAN_GRID = 3;         // Vorspannung max. alle 3 Raster (375mm)
 export const FORBIDDEN_N = new Set([1, 4]);
 export const MIN_FERTIGMASS_MM = 200;   // kleinstes einbaubares Fertigmass eines Zuschnitts ([Z-5])
+export const ROD_OVERHANG = 10;         // Ueberstand des Reststuecks ueber die Wandoberkante ([Z-6])
 
 export class SemblaError extends Error {}
 export class InvalidDimensionError extends SemblaError {}
@@ -113,6 +114,51 @@ export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM
     stuecke.push({ len_mm: rest, art: "sonder", quelle_mm: q });
   }
   return { stuecke, konflikt };
+}
+
+// ---------- Reststueck am oberen Wandabschluss ([Z-6]) ----------
+// Die Waende werden im Innenraum montiert: unter der Decke ist kein Platz mehr, um eine lange
+// Gewindestange einzufaedeln. Das OBERSTE Stueck eines Stranges, der an der Wandoberkante endet,
+// ist deshalb IMMER ein kurzes, im Katalog eigens als Reststueck gewaehltes Produkt.
+//
+// Geometrie: das Reststueck ragt um `ueberstandMm` ueber die Wandoberkante hinaus (Platz fuer
+// Kopfblech/Spannplatte + Spannmutter), sein unteres Ende liegt darunter. Zu bestuecken ist
+// also `h + ueberstand`, nicht `h`. Fuer Segmente, die NICHT an der Wandoberkante enden
+// (Bruestung/Sturz an einer Oeffnung), gilt die Regel nicht — dort ist der Einbau nicht beengt.
+//
+// Hierarchie unterhalb des Reststuecks unveraendert ([Z-2]): von unten immer die groesste noch
+// passende Standardlaenge, dann kleinere, und erst wenn keine mehr passt genau EIN
+// Sonderzuschnitt — der damit direkt unter dem Reststueck sitzt.
+
+/**
+ * Stueckliste eines Strangsegments ([Z-2] + [Z-6]).
+ * @param {number} hMm Segmenthoehe (Geometrie, wird NIE veraendert)
+ * @param {number[]} laengenMm ausgewaehlte Standardlaengen
+ * @param {boolean} obenAnOk true, wenn das Segment an der Wandoberkante endet
+ * @param {number} restMm Laenge des gewaehlten Reststueck-Produkts (0/null = keins gewaehlt)
+ * @param {number} ueberstandMm Ueberstand des Reststuecks ueber die Wandoberkante
+ * @param {number} [minMm] Mindest-Fertigmass ([Z-5])
+ * @returns {{stuecke:Array<{len_mm:number,art:"standard"|"sonder"|"rest",quelle_mm:number}>,
+ *            konflikt:string|null, bedarf_mm:number}}
+ */
+export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm, minMm = MIN_FERTIGMASS_MM) {
+  const R = (+restMm > 0) ? _mm(+restMm) : 0;
+  const UE = (+ueberstandMm > 0) ? _mm(+ueberstandMm) : 0;
+  // Ohne Oberkantenbezug oder ohne gewaehltes Reststueck bleibt alles wie bisher ([Z-2]).
+  if (!obenAnOk || !R) {
+    const k = kombiniereLaengen(hMm, laengenMm, minMm);
+    // Fehlendes Reststueck an der Oberkante ist ein SICHTBARER Konflikt, keine stille Ausnahme.
+    if (obenAnOk && !R) return { ...k, konflikt: k.konflikt || "kein_reststueck", bedarf_mm: _mm(hMm) };
+    return { ...k, bedarf_mm: _mm(hMm) };
+  }
+  const bedarf = _mm(hMm + UE);
+  const unten = _mm(bedarf - R);
+  if (unten < -1e-9) return { stuecke: [], konflikt: "reststueck_zu_lang", bedarf_mm: bedarf };
+  const restStueck = { len_mm: R, art: "rest", quelle_mm: R };
+  if (unten <= 1e-9) return { stuecke: [restStueck], konflikt: null, bedarf_mm: bedarf };
+  const k = kombiniereLaengen(unten, laengenMm, minMm);
+  if (!k.stuecke.length) return { stuecke: [], konflikt: k.konflikt || "kein_ausgangsprodukt", bedarf_mm: bedarf };
+  return { stuecke: [...k.stuecke, restStueck], konflikt: k.konflikt, bedarf_mm: bedarf };
 }
 
 /** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
@@ -219,8 +265,15 @@ function normPrestress(p) {
   cg = (cg && cg.length) ? [...new Set(cg)].sort((a, b) => a - b) : null;
   // Startachse der Auto-Verteilung: 0 = 1. Rasterachse (Standard/Bestand), 1 = 2. Rasterachse
   const sa = (p && (p.start_axis_grid === 1 || p.start_axis_grid === "1")) ? 1 : 0;
+  // Reststueck am oberen Wandabschluss ([Z-6]). `rod_rest_mm` ist das in Modul 1 als Reststueck
+  // gewaehlte Katalogprodukt (genau eins); fehlt es, bleibt die Zerlegung wie bisher und der
+  // Konflikt wird je Segment sichtbar gemeldet. `rod_overhang_mm` ist der Ueberstand ueber die
+  // Wandoberkante — konfigurierbar, weil er von Kopfblech/Spannplatte + Spannmutter abhaengt.
+  const rr = (p && p.rod_rest_mm != null && +p.rod_rest_mm > 0) ? +p.rod_rest_mm : 0;
+  const ue = (p && p.rod_overhang_mm != null && +p.rod_overhang_mm >= 0) ? +p.rod_overhang_mm : ROD_OVERHANG;
   return { max_span_grid: m, force_kN: fk, rod_mm: rod, rod_lengths_mm: rodL, blech_mm: blech,
-           top_connection: top, columns_grid: cg, start_axis_grid: sa };
+           top_connection: top, columns_grid: cg, start_axis_grid: sa,
+           rod_rest_mm: rr, rod_overhang_mm: ue };
 }
 
 function normSteps(steps, lengthMm, heightMm) {
@@ -325,19 +378,21 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       if (!occ[r][k]) { r++; continue; }
       let r2 = r; while (r2 + 1 < L && occ[r2 + 1][k]) r2++;
       const z0 = r * COURSE, z1 = (r2 + 1) * COURSE, h = z1 - z0;
-      // [Z-2]/[Z-3] Die Stuecke eines Segments sind ECHTE Standardlaengen aus dem Vorratssatz
-      // plus hoechstens ein Sonderzuschnitt. Diese Stueckliste ist die KANONISCHE Ableitung —
-      // Stueckzahl, Kopplungen (Montage) und Mengen (BOM) lesen ausschliesslich sie, es gibt
-      // keine zweite Rechnung aus einer pauschalen Stangenlaenge.
-      const kombi = kombiniereLaengen(h, PS.rod_lengths_mm);
-      const stuecke = kombi.stuecke, stueck = stuecke.length;
-      const quelleSumme = stuecke.reduce((a, s) => a + s.quelle_mm, 0);
       // Anschluss-Ausbildung je Segmentende:
       //   Fuß der Wand (z0==0)      -> Bodenblech: Senkkopfschraube + Kopplungsmutter
       //   Wandoberkante (z1==Top)   -> Kopfblech (Spannmutter) ODER Spannplatte (Platte + Spannmutter)
       //   Zwischenende (an Öffnung) -> Spannplatte auf der Steinkante (Platte + Spannmutter)
       const bottomBase = z0 === 0;
       const topReach = z1 === localTop;
+      // [Z-2]/[Z-3]/[Z-6] Die Stuecke eines Segments sind ECHTE Standardlaengen aus dem
+      // Vorratssatz plus hoechstens ein Sonderzuschnitt; an der Wandoberkante sitzt darueber
+      // zwingend das Reststueck. Diese Stueckliste ist die KANONISCHE Ableitung — Stueckzahl,
+      // Kopplungen (Montage) und Mengen (BOM) lesen ausschliesslich sie, es gibt keine zweite
+      // Rechnung aus einer pauschalen Stangenlaenge. Nur SEGMENTE MIT OBERKANTENBEZUG erhalten
+      // Reststueck und Ueberstand — Bruestung/Sturz an einer Oeffnung bleiben unveraendert.
+      const kombi = kombiniereSegment(h, PS.rod_lengths_mm, topReach, PS.rod_rest_mm, PS.rod_overhang_mm);
+      const stuecke = kombi.stuecke, stueck = stuecke.length;
+      const quelleSumme = stuecke.reduce((a, s) => a + s.quelle_mm, 0);
       const ankerUnten = bottomBase ? "bodenblech" : "spannplatte";
       const ankerOben = topReach ? (TOP === "blech" ? "kopfblech" : "spannplatte") : "spannplatte";
       let segSenkkopf = 0, segSpannmutter = 0, segSpannplatten = 0;
@@ -346,7 +401,12 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       anchSenkkopf += segSenkkopf; anchSpannmutter += segSpannmutter; anchSpannplatten += segSpannplatten;
       segs.push({ z0_mm: z0, z1_mm: z1, lage0: r, lage1: r2 + 1, gewindestangen: stueck,
         stuecke, zuschnitt_konflikt: kombi.konflikt,
-        letzte_stange_mm: stueck ? stuecke[stueck - 1].len_mm : h, verschnitt_mm: quelleSumme - h,
+        // `bedarf_mm` = tatsaechlich zu bestueckende Stanglaenge (an der Oberkante h + Ueberstand,
+        // sonst h). Der Verschnitt misst sich daran, damit der Ueberstand NICHT als Verschnitt
+        // erscheint — er ist eingebautes Material.
+        bedarf_mm: kombi.bedarf_mm, ueberstand_mm: kombi.bedarf_mm - h,
+        letzte_stange_mm: stueck ? stuecke[stueck - 1].len_mm : h,
+        verschnitt_mm: quelleSumme - kombi.bedarf_mm,
         verbindungsmuttern: stueck - 1, anker_unten: ankerUnten, anker_oben: ankerOben,
         senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter });
       r = r2 + 1;
@@ -399,9 +459,13 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   bom.dichtstreifen_mm = stossfugen * COURSE;
   bom.verschnitt_mm = columns.reduce((a, c) => a + c.segments.reduce((b, sg) => b + sg.verschnitt_mm, 0), 0);
 
-  // [Z-5] Zuschnitt-Konflikte sichtbar machen (nie still): je betroffenes Segment ein Eintrag.
-  // Sie sind KEIN Baubarkeitsausschluss (die Mengen bleiben unveraendert), sondern eine
-  // ausdrueckliche Meldung, dass der Vorratssatz kein einbaubares Fertigmass zulaesst.
+  // [Z-5]/[Z-6] Zuschnitt-Konflikte sichtbar machen (nie still): je betroffenes Segment ein
+  // Eintrag. Sie sind KEIN Baubarkeitsausschluss (die Mengen bleiben unveraendert), sondern eine
+  // ausdrueckliche Meldung, dass der Vorratssatz kein einbaubares Fertigmass zulaesst
+  // (`mindestmass`/`kein_ausgangsprodukt`/`keine_standardlaenge`) bzw. dass fuer den oberen
+  // Wandabschluss kein Reststueck gewaehlt ist (`kein_reststueck`) oder das gewaehlte laenger
+  // ist als das ganze Segment (`reststueck_zu_lang`). Ohne Katalogauswahl ist das der
+  // Regelfall — gemeldet statt still ein Mass zu erfinden.
   const zuschnittKonflikte = [];
   for (const col of columns) for (const sg of col.segments) {
     if (sg.zuschnitt_konflikt) {

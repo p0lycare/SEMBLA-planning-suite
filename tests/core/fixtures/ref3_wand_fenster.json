@@ -36,7 +36,9 @@
     "blech_mm": 1000,
     "top_connection": "blech",
     "columns_grid": null,
-    "start_axis_grid": 0
+    "start_axis_grid": 0,
+    "rod_rest_mm": 0,
+    "rod_overhang_mm": 10
   },
   "base_plate": {
     "rolle": "bodenblech",
@@ -83,7 +85,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 400,
           "verschnitt_mm": 700,
           "verbindungsmuttern": 2,
@@ -128,7 +132,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 400,
           "verschnitt_mm": 700,
           "verbindungsmuttern": 2,
@@ -173,7 +179,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 400,
           "verschnitt_mm": 700,
           "verbindungsmuttern": 2,
@@ -209,6 +217,8 @@
             }
           ],
           "zuschnitt_konflikt": null,
+          "bedarf_mm": 800,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 800,
           "verschnitt_mm": 300,
           "verbindungsmuttern": 0,
@@ -231,7 +241,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 600,
           "verschnitt_mm": 500,
           "verbindungsmuttern": 0,
@@ -267,6 +279,8 @@
             }
           ],
           "zuschnitt_konflikt": null,
+          "bedarf_mm": 800,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 800,
           "verschnitt_mm": 300,
           "verbindungsmuttern": 0,
@@ -289,7 +303,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 600,
           "verschnitt_mm": 500,
           "verbindungsmuttern": 0,
@@ -334,7 +350,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 400,
           "verschnitt_mm": 700,
           "verbindungsmuttern": 2,
@@ -379,7 +397,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 400,
           "verschnitt_mm": 700,
           "verbindungsmuttern": 2,
@@ -424,7 +444,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2600,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 400,
           "verschnitt_mm": 700,
           "verbindungsmuttern": 2,
@@ -465,7 +487,64 @@
     "tension_span_ok": true,
     "rigid_lagen": [],
     "invalid_segments": [],
-    "zuschnitt_konflikte": []
+    "zuschnitt_konflikte": [
+      {
+        "k": 0,
+        "z0_mm": 0,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 400
+      },
+      {
+        "k": 3,
+        "z0_mm": 0,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 400
+      },
+      {
+        "k": 5,
+        "z0_mm": 0,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 400
+      },
+      {
+        "k": 6,
+        "z0_mm": 2000,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 600
+      },
+      {
+        "k": 9,
+        "z0_mm": 2000,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 600
+      },
+      {
+        "k": 10,
+        "z0_mm": 0,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 400
+      },
+      {
+        "k": 12,
+        "z0_mm": 0,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 400
+      },
+      {
+        "k": 15,
+        "z0_mm": 0,
+        "z1_mm": 2600,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 400
+      }
+    ]
   },
   "courses": [
     {

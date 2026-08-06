@@ -41,7 +41,7 @@ export function semblaBom(w) {
   // Alt-Bundles ohne `stuecke` fallen auf die frühere Ableitung zurück (Stangen − 1 Standard,
   // letztes Stück als Sonderlänge) — dieselbe Gesamtzahl, nur ohne Längenaufschlüsselung.
   const rodFallback = (w.rod_mm || 1100);
-  const stdMap = new Map(), sonderMap = new Map();
+  const stdMap = new Map(), sonderMap = new Map(), restMap = new Map();
   const zaehl = (m, key, obj) => m.set(key, { ...obj, anzahl: (m.get(key)?.anzahl || 0) + 1 });
   let haveSeg = false, haveStuecke = false;
   for (const col of (w.tension_columns || [])) for (const sg of (col.segments || [])) {
@@ -50,7 +50,11 @@ export function semblaBom(w) {
       haveStuecke = true;
       for (const s of sg.stuecke) {
         const len = Math.round(s.len_mm), q = Math.round(s.quelle_mm != null ? s.quelle_mm : s.len_mm);
-        if (s.art === "sonder") zaehl(sonderMap, len + "/" + q, { len_mm: len, quelle_mm: q });
+        // [Z-6] Das Reststueck ist ein EIGENES Katalogprodukt (eigene Rolle `rod_rest`) und
+        // damit eine eigene Position — es darf nicht unter den Standardlaengen verschwinden,
+        // sonst waere die Preisauflösung wieder mehrdeutig und die Bestellmenge falsch.
+        if (s.art === "rest") zaehl(restMap, String(len), { len_mm: len });
+        else if (s.art === "sonder") zaehl(sonderMap, len + "/" + q, { len_mm: len, quelle_mm: q });
         else zaehl(stdMap, String(len), { len_mm: len });
       }
       continue;
@@ -64,10 +68,12 @@ export function semblaBom(w) {
   }
   const stangenStd = [...stdMap.values()].sort((a, b) => b.len_mm - a.len_mm);
   const stangenSonder = [...sonderMap.values()].sort((a, b) => a.len_mm - b.len_mm || a.quelle_mm - b.quelle_mm);
+  const stangenRest = [...restMap.values()].sort((a, b) => b.len_mm - a.len_mm);
   const sonderList = stangenSonder.map(x => ({ len_mm: x.len_mm, anzahl: x.anzahl }));
   let rodStd = stangenStd.reduce((a, x) => a + x.anzahl, 0);
   let rodSonder = stangenSonder.reduce((a, x) => a + x.anzahl, 0);
-  let gesamt = rodStd + rodSonder;
+  const rodRest = stangenRest.reduce((a, x) => a + x.anzahl, 0);
+  let gesamt = rodStd + rodSonder + rodRest;
   if (!haveSeg) { gesamt = bom.gewindestangen || 0; rodStd = gesamt; rodSonder = 0; }
 
   // Anschluss & Bleche aus Core-BOM (autoritativ); Fallbacks für Alt-Bundles ohne diese Felder
@@ -99,8 +105,8 @@ export function semblaBom(w) {
     ? ((w.top_plate && Number.isFinite(+w.top_plate.module)) ? +w.top_plate.module : 0)
     : Math.max(0, blechModule - blechBoden);
 
-  return { i2, i3, rod_mm: rodFallback, rodStd, rodSonder, sonderList,
-           stangenStd, stangenSonder, stueckAbleitung: haveStuecke,
+  return { i2, i3, rod_mm: rodFallback, rodStd, rodSonder, rodRest, sonderList,
+           stangenStd, stangenSonder, stangenRest, stueckAbleitung: haveStuecke,
            gewindestangen_gesamt: gesamt, verbindungsmuttern: verbSplice,
            senkkopfschrauben: senkkopf, kopplungsmuttern_basis: kopplBasis,
            spannplatten, spannmuttern,
@@ -136,11 +142,18 @@ export function semblaBomItems(w) {
     .map(x => ({ key: "rod_sonder",
                  label: "Gewindestange Sonderzuschnitt " + cm(x.len_mm) + " cm (aus " + cm(x.quelle_mm) + " cm)",
                  unit: "Stk", menge: x.anzahl, mass_mm: x.quelle_mm }));
+  // [Z-6] Reststueck am oberen Wandabschluss: eigene Rolle, eigene Position, eigenes Maß.
+  // Ohne gewaehltes Reststueck existiert die Position gar nicht (Menge 0 waere eine
+  // Behauptung ueber ein Produkt, das niemand gewaehlt hat).
+  const rodRestItems = b.stangenRest.map(x => ({
+    key: "rod_rest", label: "Gewindestange Reststück " + cm(x.len_mm) + " cm (oberer Abschluss)",
+    unit: "Stk", menge: x.anzahl, mass_mm: x.len_mm }));
   return [
     { key: "i3",          label: "Stein i3 (37,5 cm)",                unit: "Stk", menge: b.i3 },
     { key: "i2",          label: "Stein i2 (25 cm)",                  unit: "Stk", menge: b.i2 },
     ...rodStdItems,
     ...rodSonderItems,
+    ...rodRestItems,
     { key: "kupplung",    label: "Kopplungsmutter (Stangenstoß)",     unit: "Stk", menge: b.verbindungsmuttern },
     { key: "kuppl_basis", label: "Kopplungsmutter (Fuß)",             unit: "Stk", menge: b.kopplungsmuttern_basis },
     { key: "senkkopf",    label: "Senkkopfschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },

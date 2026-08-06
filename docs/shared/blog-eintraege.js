@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-01",
+    datum: "2026-08-06",
+    typ: "feature",
+    issue: 19,
+    titel: "Gewindestangen enden oben mit einem kurzen Reststück aus dem Katalog",
+    testbitte: "Reiter 1: im Bauteilkatalog ein Reststück-Produkt für die Rolle „Gewindestange – "
+      + "Reststück\" wählen. Jeder Strang an der Wandoberkante endet dann damit; ohne Auswahl wird "
+      + "der obere Abschluss als offen gemeldet statt eine Länge zu erfinden.",
+  },
+  {
     id: "chg-20260805-02",
     datum: "2026-08-05",
     typ: "feature",

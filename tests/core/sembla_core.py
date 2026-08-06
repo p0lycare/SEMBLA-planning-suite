@@ -23,7 +23,8 @@ __all__ = [
     "GRID", "COURSE", "THICK", "ROD", "BLECH", "BLECH_THICK", "CHAMBER_OFFSET", "MAX_SPAN_GRID", "FORBIDDEN_N",
     "Opening", "SemblaError", "InvalidDimensionError", "InvalidOpeningError",
     "build_wall", "is_buildable", "save",
-    "MIN_FERTIGMASS_MM", "norm_laengen", "quelle_fuer_mass", "kombiniere_laengen",
+    "MIN_FERTIGMASS_MM", "ROD_OVERHANG", "norm_laengen", "quelle_fuer_mass",
+    "kombiniere_laengen", "kombiniere_segment",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -37,6 +38,7 @@ CHAMBER_OFFSET = 62.5  # mm Kammerzentrum ab Steinanfang -> Lattice x=62.5+125k
 MAX_SPAN_GRID = 3      # Vorspannung max. alle 3 Raster (375 mm)
 FORBIDDEN_N   = frozenset({1, 4})  # nicht baubare / nicht versetzbare Segmentbreiten
 MIN_FERTIGMASS_MM = 200  # kleinstes einbaubares Fertigmass eines Zuschnitts ([Z-5])
+ROD_OVERHANG  = 10     # mm Ueberstand des Reststuecks ueber die Wandoberkante ([Z-6])
 
 
 # ---- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----
@@ -104,6 +106,40 @@ def kombiniere_laengen(bedarf_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM):
             konflikt = "mindestmass"
         stuecke.append({"len_mm": rest, "art": "sonder", "quelle_mm": q})
     return {"stuecke": stuecke, "konflikt": konflikt}
+
+
+# ---- Reststueck am oberen Wandabschluss ([Z-6]) ----
+# Bit-genaues Gegenstueck zu kombiniereSegment() in docs/shared/sembla-core.js.
+# Waende werden im Innenraum montiert: unter der Decke ist kein Platz, eine lange Gewindestange
+# einzufaedeln. Das oberste Stueck eines Stranges, der an der Wandoberkante endet, ist deshalb
+# immer ein kurzes, im Katalog eigens als Reststueck gewaehltes Produkt. Es ragt um
+# `ueberstand_mm` ueber die Oberkante (Kopfblech/Spannplatte + Spannmutter), zu bestuecken ist
+# also h + ueberstand. Segmente ohne Oberkantenbezug (Bruestung/Sturz) bleiben unveraendert.
+def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
+                       min_mm=MIN_FERTIGMASS_MM):
+    """Stueckliste eines Strangsegments ([Z-2] + [Z-6])."""
+    R = _mm(float(rest_mm)) if rest_mm and float(rest_mm) > 0 else 0
+    UE = _mm(float(ueberstand_mm)) if ueberstand_mm and float(ueberstand_mm) > 0 else 0
+    if not oben_an_ok or not R:
+        k = kombiniere_laengen(h_mm, laengen_mm, min_mm)
+        out = {"stuecke": k["stuecke"], "konflikt": k["konflikt"], "bedarf_mm": _mm(h_mm)}
+        # Fehlendes Reststueck an der Oberkante ist ein sichtbarer Konflikt, keine stille Ausnahme.
+        if oben_an_ok and not R:
+            out["konflikt"] = k["konflikt"] or "kein_reststueck"
+        return out
+    bedarf = _mm(h_mm + UE)
+    unten = _mm(bedarf - R)
+    if unten < -1e-9:
+        return {"stuecke": [], "konflikt": "reststueck_zu_lang", "bedarf_mm": bedarf}
+    rest_stueck = {"len_mm": R, "art": "rest", "quelle_mm": R}
+    if unten <= 1e-9:
+        return {"stuecke": [rest_stueck], "konflikt": None, "bedarf_mm": bedarf}
+    k = kombiniere_laengen(unten, laengen_mm, min_mm)
+    if not k["stuecke"]:
+        return {"stuecke": [], "konflikt": k["konflikt"] or "kein_ausgangsprodukt",
+                "bedarf_mm": bedarf}
+    return {"stuecke": k["stuecke"] + [rest_stueck], "konflikt": k["konflikt"],
+            "bedarf_mm": bedarf}
 
 
 # ---- Fehlertypen ----
@@ -255,9 +291,20 @@ def _norm_prestress(p):
     # Startachse der Auto-Verteilung: 0 = 1. Rasterachse (Standard/Bestand), 1 = 2. Rasterachse
     _sa = p.get("start_axis_grid")
     sa = 1 if (_sa == 1 and not isinstance(_sa, bool)) or _sa == "1" else 0
+    # Reststueck am oberen Wandabschluss ([Z-6]): `rod_rest_mm` ist das in Modul 1 gewaehlte
+    # Reststueck-Produkt (genau eins), `rod_overhang_mm` der konfigurierbare Ueberstand.
+    _rr = p.get("rod_rest_mm")
+    rr = 0
+    if _rr is not None and float(_rr) > 0:
+        rr = int(_rr) if float(_rr) == int(float(_rr)) else float(_rr)
+    _ue = p.get("rod_overhang_mm")
+    ue = ROD_OVERHANG
+    if _ue is not None and float(_ue) >= 0:
+        ue = int(_ue) if float(_ue) == int(float(_ue)) else float(_ue)
     return {"max_span_grid": m, "force_kN": fk if fk is not None else None,
             "rod_mm": rod, "rod_lengths_mm": rod_l, "blech_mm": bl, "top_connection": top,
-            "columns_grid": cg, "start_axis_grid": sa}
+            "columns_grid": cg, "start_axis_grid": sa,
+            "rod_rest_mm": rr, "rod_overhang_mm": ue}
 
 def _norm_steps(steps, length_mm, height_mm):
     out = []
@@ -385,15 +432,17 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                 r2 += 1
             z0, z1 = r * COURSE, (r2 + 1) * COURSE
             h = z1 - z0
-            # [Z-2]/[Z-3] kanonische Stueckliste des Segments (echte Standardlaengen +
-            # hoechstens ein Sonderzuschnitt) — keine zweite Rechnung aus einer Pauschallaenge.
-            _kombi = kombiniere_laengen(h, _PS["rod_lengths_mm"])
-            _stuecke = _kombi["stuecke"]
-            stueck = len(_stuecke)
-            _quelle_summe = sum(s["quelle_mm"] for s in _stuecke)
             # Anschluss-Ausbildung je Segmentende (Fuss=Bodenblech, oben=Kopfblech/Spannplatte, sonst Spannplatte)
             bottom_base = z0 == 0
             top_reach = z1 == local_top
+            # [Z-2]/[Z-3]/[Z-6] kanonische Stueckliste des Segments (echte Standardlaengen +
+            # hoechstens ein Sonderzuschnitt, an der Oberkante darueber das Reststueck) —
+            # keine zweite Rechnung aus einer Pauschallaenge.
+            _kombi = kombiniere_segment(h, _PS["rod_lengths_mm"], top_reach,
+                                        _PS["rod_rest_mm"], _PS["rod_overhang_mm"])
+            _stuecke = _kombi["stuecke"]
+            stueck = len(_stuecke)
+            _quelle_summe = sum(s["quelle_mm"] for s in _stuecke)
             anker_unten = "bodenblech" if bottom_base else "spannplatte"
             anker_oben = ("kopfblech" if _top == "blech" else "spannplatte") if top_reach else "spannplatte"
             seg_senkkopf = 0; seg_spannmutter = 0; seg_spannplatten = 0
@@ -408,8 +457,13 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             anch_senkkopf += seg_senkkopf; anch_spannmutter += seg_spannmutter; anch_spannplatten += seg_spannplatten
             segs.append({"z0_mm": z0, "z1_mm": z1, "lage0": r, "lage1": r2 + 1, "gewindestangen": stueck,
                          "stuecke": _stuecke, "zuschnitt_konflikt": _kombi["konflikt"],
+                         # `bedarf_mm` = tatsaechlich zu bestueckende Stanglaenge (an der
+                         # Oberkante h + Ueberstand, sonst h). Der Verschnitt misst sich daran,
+                         # damit der Ueberstand nicht als Verschnitt erscheint.
+                         "bedarf_mm": _kombi["bedarf_mm"],
+                         "ueberstand_mm": _kombi["bedarf_mm"] - h,
                          "letzte_stange_mm": (_stuecke[stueck - 1]["len_mm"] if stueck else h),
-                         "verschnitt_mm": _quelle_summe - h,
+                         "verschnitt_mm": _quelle_summe - _kombi["bedarf_mm"],
                          "verbindungsmuttern": stueck - 1, "anker_unten": anker_unten, "anker_oben": anker_oben,
                          "senkkopfschrauben": seg_senkkopf, "spannplatten": seg_spannplatten, "spannmuttern": seg_spannmutter})
             r = r2 + 1
@@ -466,7 +520,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                stossfugen=stossfugen, dichtstreifen_mm=stossfugen * COURSE,
                verschnitt_mm=sum(g["verschnitt_mm"] for c in columns for g in c["segments"]))
 
-    # [Z-5] Zuschnitt-Konflikte sichtbar machen (nie still); kein Baubarkeitsausschluss.
+    # [Z-5]/[Z-6] Zuschnitt-Konflikte sichtbar machen (nie still); kein Baubarkeitsausschluss.
+    # Neben den Zuschnittgruenden auch `kein_reststueck` (oberer Abschluss ohne gewaehltes
+    # Reststueck) und `reststueck_zu_lang`.
     zuschnitt_konflikte = [
         {"k": c["k"], "z0_mm": g["z0_mm"], "z1_mm": g["z1_mm"],
          "grund": g["zuschnitt_konflikt"], "fertigmass_mm": g["letzte_stange_mm"]}

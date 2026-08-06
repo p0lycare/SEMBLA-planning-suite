@@ -28,7 +28,9 @@
     "blech_mm": 1000,
     "top_connection": "blech",
     "columns_grid": null,
-    "start_axis_grid": 0
+    "start_axis_grid": 0,
+    "rod_rest_mm": 0,
+    "rod_overhang_mm": 10
   },
   "base_plate": {
     "rolle": "bodenblech",
@@ -70,7 +72,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2000,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -110,7 +114,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2000,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -150,7 +156,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2000,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -190,7 +198,9 @@
               "quelle_mm": 1100
             }
           ],
-          "zuschnitt_konflikt": null,
+          "zuschnitt_konflikt": "kein_reststueck",
+          "bedarf_mm": 2000,
+          "ueberstand_mm": 0,
           "letzte_stange_mm": 900,
           "verschnitt_mm": 200,
           "verbindungsmuttern": 1,
@@ -231,7 +241,36 @@
     "tension_span_ok": true,
     "rigid_lagen": [],
     "invalid_segments": [],
-    "zuschnitt_konflikte": []
+    "zuschnitt_konflikte": [
+      {
+        "k": 0,
+        "z0_mm": 0,
+        "z1_mm": 2000,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 900
+      },
+      {
+        "k": 2,
+        "z0_mm": 0,
+        "z1_mm": 2000,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 900
+      },
+      {
+        "k": 5,
+        "z0_mm": 0,
+        "z1_mm": 2000,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 900
+      },
+      {
+        "k": 7,
+        "z0_mm": 0,
+        "z1_mm": 2000,
+        "grund": "kein_reststueck",
+        "fertigmass_mm": 900
+      }
+    ]
   },
   "courses": [
     {

@@ -121,6 +121,9 @@
       <label><span>Blechlänge (Module)</span><input type="number" id="blechCm" value="100" step="10" min="20"><small>cm</small></label>
       <label><span>Oberer Anschluss</span><select id="topConn"><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte</option></select></label>
       <small style="color:var(--sb-muted)">Fuß immer Bodenblech (15 mm). Kopf wahlweise Kopfblech-Module oder Spannplatten auf der Steinkante.</small>
+      <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"><small>mm</small></label>
+      <div class="lockhint" id="rodRestQuelle"></div>
+      <small style="color:var(--sb-muted)">Die Wände werden im Innenraum montiert — jeder Strang an der Wandoberkante endet mit dem im Katalog gewählten <b>Reststück</b> ([Z-6]). Es ragt um diesen Überstand über die Oberkante hinaus (Platz für Kopfblech/Spannplatte + Spannmutter); sein unteres Ende liegt darunter.</small>
     </div>
     <div class="grp"><h3>Materialannahmen <small>(zu bestätigen)</small></h3>
       <label><span>f<sub>cd</sub></span><input type="number" id="fcd" value="20" step="1"><small>N/mm²</small></label>
@@ -277,6 +280,11 @@ function vorgaben(){
   const hw = rodL.length
     ? { rod_lengths_mm: rodL }
     : { rod_mm: Math.max(200, Math.round((+$('rodCm').value||110)*10)) };   // Fallback, min 20 cm
+  // [Z-6] Reststück am oberen Wandabschluss: die Länge kommt AUSSCHLIESSLICH aus dem eindeutig
+  // gewählten Katalogprodukt (kein Eingabefeld, kein Default) — ohne Auswahl bleibt sie 0 und
+  // der Core meldet den offenen oberen Abschluss je Strang. Konfigurierbar ist nur der Überstand.
+  hw.rod_rest_mm = rodRestMm();
+  hw.rod_overhang_mm = Math.max(0, Math.round(+$('rodUeber').value||0));
   const blech_mm=Math.max(200, Math.round((+$('blechCm').value||100)*10));
   const top_connection=($('topConn').value==='spannplatte')?'spannplatte':'blech';
   const start_axis_grid=(+$('startAchse').value===1)?1:0;               // 1. (Standard) oder 2. Rasterachse
@@ -502,7 +510,9 @@ function applyWand(w){
   if(w.rod_mm) $('rodCm').value=Math.round(w.rod_mm/10);
   if(w.prestress){ if(w.prestress.blech_mm) $('blechCm').value=Math.round(w.prestress.blech_mm/10);
     if(w.prestress.top_connection) $('topConn').value=w.prestress.top_connection;
-    $('startAchse').value=(+w.prestress.start_axis_grid===1)?'1':'0'; }   // fehlt (Altstand) -> 1. Achse
+    $('startAchse').value=(+w.prestress.start_axis_grid===1)?'1':'0';     // fehlt (Altstand) -> 1. Achse
+    // Ueberstand ([Z-6]): fehlt er im Altstand, bleibt der Default des Feldes stehen.
+    if(w.prestress.rod_overhang_mm!=null) $('rodUeber').value=Math.round(w.prestress.rod_overhang_mm); }
   manualCols=(w.prestress&&Array.isArray(w.prestress.columns_grid)&&w.prestress.columns_grid.length)?w.prestress.columns_grid.slice():null;
   if(w.name) aktName=w.name;
   renderSteps(); renderOps(); run();
@@ -523,6 +533,8 @@ function prodEingaben(){ return ((store&&store.aktiveEingaben)?store.aktiveEinga
 function prodSpez(){ const k=prodKatalog(); return k?KAT.produktSpezifikation(prodEingaben(),k):null; }
 // Standardlängen aus dem Katalog (leer = keine Auswahl -> kompatibler Fallback erlaubt).
 function rodLaengenMm(){ const s=prodSpez(); return s?s.rod.laengen_mm.slice():[]; }
+// Reststücklänge ([Z-6]): nur bei EINDEUTIG gewähltem Produkt, sonst 0 (sichtbarer Konflikt).
+function rodRestMm(){ const s=prodSpez(); return (s&&s.rod.rest_mm!=null)?s.rod.rest_mm:0; }
 // Maßgebende Wandwerte: aus dem gerechneten Wandelement, sonst aus dem gespeicherten.
 function prodKontext(){
   const w = (RESULT&&RESULT.wandelement) || (store&&store.aktivesWandelement&&store.aktivesWandelement()) || null;
@@ -543,6 +555,20 @@ function syncLegacyFelder(){
     el.disabled=false; el.readOnly=false;
     hint.innerHTML='<b>Kein Gewindestangenprodukt gewählt</b> — Altwert dieses Feldes wird als '
       +'rückwärtskompatibler Fallback verwendet ([Z-1]).';
+  }
+  // [Z-6] Reststück: es gibt bewusst KEIN Eingabefeld für die Länge — sie kommt allein aus dem
+  // eindeutig gewählten Katalogprodukt. Der Zustand wird hier benannt, nie ersatzweise geraten.
+  const rr=rodRestMm(), rh=$('rodRestQuelle');
+  if(rr>0){
+    rh.innerHTML='Reststück aus dem Katalog: <b>'+fmt(rr/10,1)+' cm</b>. Jeder Strang an der '
+      +'Wandoberkante endet damit ([Z-6]).';
+  } else {
+    const s=prodSpez(), mehrere=!!(s&&s.rod.rest_ids&&s.rod.rest_ids.length>1);
+    rh.innerHTML=mehrere
+      ? '<b>Reststück mehrdeutig</b> — es sind mehrere Produkte gewählt. Es wird genau eines '
+        +'eingebaut; die Stränge bleiben oben offen, bis die Auswahl eindeutig ist ([Z-6]).'
+      : '<b>Kein Reststück gewählt</b> — der obere Wandabschluss wird je Strang als offen '
+        +'gemeldet. Produkt unten in der Rolle „Gewindestange – Reststück" wählen ([Z-6]).';
   }
 }
 function renderProdukte(){
@@ -623,7 +649,7 @@ function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchHin
 // ---------- Ereignis-Bindung + Start ----------
 let axisDragging=false;
 function bindEvents(){
-  ['len','hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','rodCm','blechCm'].forEach(id=>$(id).addEventListener('input',run));
+  ['len','hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','rodCm','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
   ['sideVorne','sideHinten','modus','topConn','startAchse'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; $('durchHint').style.display=editMode?'block':'none'; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });

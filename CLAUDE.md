@@ -43,6 +43,22 @@ Ort der Anlage ist, legt **Modul 1 kein Wandelement mehr selbst an** — ohne ak
 darauf. Achtung: `SCHEMA_VERSION` (interner localStorage-Stand) ist bewusst getrennt von
 `PROJEKT_VERSION` (öffentliches Dateiformat, bleibt 2 — `wandtyp` ist dort ein optionales Feld).
 
+**Reststück am oberen Wandabschluss (Regel [Z-6]).** Die Wände werden **im Innenraum** montiert —
+unter der Decke lässt sich keine lange Gewindestange mehr einfädeln. Jedes Vorspannsegment, das an
+der **Wandoberkante** endet, schließt deshalb zwingend mit einem kurzen **Reststück** ab. Dessen
+Länge kommt **allein** aus dem Katalog (eigene Verwendungsrolle `rod_rest`, **genau ein** Produkt —
+mehrere ⇒ Länge bleibt offen, Konflikt benannt); konfigurierbar ist nur der **Überstand** über die
+Oberkante (`prestress.rod_overhang_mm`, Default `ROD_OVERHANG` = 10 mm, Feld in Modul 1). Zu
+bestücken ist also `h + Überstand`; der Überstand ist eingebautes Material und **kein** Verschnitt
+(`segment.bedarf_mm`/`ueberstand_mm`). Darunter gilt [Z-2] unverändert: von unten die größte noch
+passende Standardlänge, dann kleinere, zuletzt **ein** Sonderzuschnitt direkt unter dem Reststück.
+Segmente **ohne** Oberkantenbezug (Brüstung/Sturz an einer Öffnung) sind ausgenommen und bleiben
+bit-genau wie zuvor. Gerechnet wird das in `kombiniereSegment()` (Core + Python-Orakel); fehlendes
+oder zu langes Reststück ⇒ `validation.zuschnitt_konflikte` (`kein_reststueck` /
+`reststueck_zu_lang`) — sichtbar gemeldet, **kein** Baubarkeitsausschluss, nie eine erfundene Länge.
+In der Stückliste ist das Reststück eine **eigene Position** mit eigenem `mass_mm` (`art:"rest"` in
+`stuecke`), damit [P-14] eindeutig bleibt; der Stoß dorthin ist eine reguläre Kopplung.
+
 **Spannachsen-Verteilung (`wandelement.prestress`).** `max_span_grid` bleibt der **maximale**
 Achsabstand („jede x-te Achse"); die Achsen werden von der Startachse bis zur letzten Achse `N-1`
 **balanciert** verteilt (gleiche Schritte ≤ x), nicht strikt periodisch. `start_axis_grid` legt die

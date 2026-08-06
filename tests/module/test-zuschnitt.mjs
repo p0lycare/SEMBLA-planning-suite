@@ -7,14 +7,16 @@
 // Leitfall aus dem Live-Feedback zu #35: eine Strecke von 170 cm bei gewaehlten Standardgroessen
 // 100 cm und 50 cm ergibt 100 + 50 + 20, wobei die 20 cm ein gekennzeichneter Sonderzuschnitt
 // aus dem kleinsten geeigneten Ausgangsprodukt (50 cm) sind.
+import { readFileSync } from "node:fs";
 import {
-  buildWall, Opening, kombiniereLaengen, quelleFuerMass, normLaengen, MIN_FERTIGMASS_MM,
+  buildWall, Opening, kombiniereLaengen, kombiniereSegment, quelleFuerMass, normLaengen,
+  MIN_FERTIGMASS_MM,
 } from "../../docs/shared/sembla-core.js";
 import { semblaBom, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { berechneAufbau } from "../../docs/shared/sembla-aufbau.js";
 import { montageEreignisse } from "../../docs/shared/sembla-montage.js";
 import { stuecklistePositionen, stuecklisteSumme, zuschnittCsv } from "../../docs/shared/sembla-export.js";
-import { produktSpezifikation, rollenStatus, preisKontext } from "../../docs/shared/sembla-katalog.js";
+import { produktSpezifikation, rollenStatus, preisKontext, parseKatalog } from "../../docs/shared/sembla-katalog.js";
 
 let pass = 0, fail = 0;
 const ok = (n, c) => { if (c) pass++; else { fail++; console.log("FAIL  " + n); } };
@@ -89,7 +91,12 @@ console.log("[Z-3] Segment-Stueckliste im Wandelement:");
     sg.stuecke.reduce((a, s) => a + s.len_mm, 0) === sg.z1_mm - sg.z0_mm);
   ok("Verschnitt = Ausgangsprodukte − Bedarf",
     sg.verschnitt_mm === sg.stuecke.reduce((a, s) => a + s.quelle_mm, 0) - (sg.z1_mm - sg.z0_mm));
-  ok("keine Zuschnitt-Konflikte bei loesbarer Kombination", w.validation.zuschnitt_konflikte.length === 0);
+  // [Z-6]: Diese Wand waehlt kein Reststueck. Die Zerlegung bleibt bit-genau wie zuvor, der
+  // offene obere Abschluss wird aber sichtbar gemeldet — statt still eine Laenge zu erfinden.
+  ok("ohne Reststueck: Zerlegung unveraendert, oberer Abschluss gemeldet",
+    w.validation.zuschnitt_konflikte.length === w.tension_columns.length
+    && w.validation.zuschnitt_konflikte.every(k => k.grund === "kein_reststueck"));
+  ok("ohne Reststueck: weiterhin baubar (Meldung, kein Ausschluss)", w.validation.buildable === true);
 }
 {
   // Rueckwaertskompatibilitaet: ein einelementiger Satz muss bit-genau das Altergebnis liefern.
@@ -270,6 +277,143 @@ console.log("[Z-3] Montage koppelt aus derselben Stueckableitung:");
   ok("keine pauschale Stangenhoehe mehr (ungleiche Abstaende moeglich)",
     erwartet.length > 1 && erwartet[erwartet.length - 1] - erwartet[erwartet.length - 2] === 1000);
   ok("Kopplungszahl = Stuecke − 1", kopp.length === sg.stuecke.length - 1);
+}
+
+// ------------------------------------------------------- [Z-6] Reststueck oberer Abschluss
+// Die Waende werden im Innenraum montiert: unter der Decke laesst sich keine lange Stange mehr
+// einfaedeln. Jeder Strang, der an der WANDOBERKANTE endet, schliesst deshalb mit dem eigens
+// gewaehlten Reststueck ab; es ragt um den konfigurierbaren Ueberstand darueber hinaus.
+console.log("\n[Z-6] Reststueck am oberen Wandabschluss:");
+{
+  const PS = { rod_lengths_mm: [1000, 500], rod_rest_mm: 100, rod_overhang_mm: 10 };
+
+  // -- reine Kombinationsregel (Paritaetsvertrag mit dem Python-Orakel)
+  const a = kombiniereSegment(1700, [1000, 500], true, 100, 10);
+  ok("Bedarf = h + Ueberstand", a.bedarf_mm === 1710);
+  ok("oberstes Stueck ist das Reststueck", a.stuecke[a.stuecke.length - 1].art === "rest"
+    && a.stuecke[a.stuecke.length - 1].len_mm === 100);
+  ok("darunter groesste Standardlaenge zuerst, dann genau ein Sonderzuschnitt",
+    kurz(a) === "1000+500+110S/500+100");
+  ok("Summe der Stuecke = h + Ueberstand",
+    a.stuecke.reduce((s, x) => s + x.len_mm, 0) === 1710);
+  ok("genau EIN Sonderzuschnitt", a.stuecke.filter(s => s.art === "sonder").length === 1);
+
+  // -- Segmente OHNE Oberkantenbezug bleiben unveraendert ([Z-2])
+  const b = kombiniereSegment(1700, [1000, 500], false, 100, 10);
+  ok("ohne Oberkantenbezug: kein Reststueck, kein Ueberstand",
+    b.bedarf_mm === 1700 && kurz(b) === "1000+500+200S/500"
+    && !b.stuecke.some(s => s.art === "rest"));
+  ok("ohne Oberkantenbezug bit-genau wie kombiniereLaengen",
+    JSON.stringify(b.stuecke) === JSON.stringify(kombiniereLaengen(1700, [1000, 500]).stuecke));
+
+  // -- fehlendes/unpassendes Reststueck wird gemeldet, nie still ersetzt
+  const c = kombiniereSegment(1700, [1000, 500], true, 0, 10);
+  ok("kein Reststueck gewaehlt -> sichtbarer Konflikt", c.konflikt === "kein_reststueck");
+  ok("kein Reststueck gewaehlt -> keine erfundene Laenge, Zerlegung wie bisher",
+    !c.stuecke.some(s => s.art === "rest") && c.bedarf_mm === 1700);
+  const d = kombiniereSegment(150, [1000], true, 400, 10);
+  ok("Reststueck laenger als das Segment -> gemeldet statt gekuerzt",
+    d.konflikt === "reststueck_zu_lang" && d.stuecke.length === 0);
+  const e = kombiniereSegment(90, [1000], true, 100, 10);
+  ok("Segment genau so hoch wie das Reststueck -> nur das Reststueck",
+    e.stuecke.length === 1 && e.stuecke[0].art === "rest" && e.konflikt === null);
+
+  // -- Wirkung im echten Wandelement: nur Straenge an der Oberkante
+  const w = buildWall("rest", 1000, 2000, [], null, PS);
+  for (const col of w.tension_columns) {
+    const sg = col.segments[col.segments.length - 1];
+    ok(`Strang k=${col.k}: oberstes Stueck ist das Reststueck`,
+      sg.stuecke[sg.stuecke.length - 1].art === "rest");
+    ok(`Strang k=${col.k}: Stuecke summieren auf h + Ueberstand`,
+      sg.stuecke.reduce((s, x) => s + x.len_mm, 0) === sg.z1_mm - sg.z0_mm + 10);
+    ok(`Strang k=${col.k}: Ueberstand zaehlt nicht als Verschnitt`, sg.ueberstand_mm === 10);
+  }
+  ok("kein Zuschnitt-Konflikt bei vollstaendiger Auswahl",
+    w.validation.zuschnitt_konflikte.length === 0);
+  ok("Reststueck ist KEIN Baubarkeitsausschluss", w.validation.buildable === true);
+
+  // -- Bruestung/Sturz an einer Oeffnung: dort gilt die Regel NICHT
+  const wo = buildWall("fenster", 2000, 2600, [new Opening(6, 10, 4, 10, "fenster")], null, PS);
+  const unten = wo.tension_columns.flatMap(c => c.segments).filter(s => s.z1_mm < 2600);
+  ok("Oeffnungssegmente existieren im Testfall", unten.length > 0);
+  ok("Segmente unter der Oeffnung tragen kein Reststueck",
+    unten.every(s => !s.stuecke.some(x => x.art === "rest") && s.ueberstand_mm === 0));
+
+  // -- Stueckliste: eigene Position, nicht unter den Standardlaengen versteckt
+  const items = semblaBomItems(w);
+  const restPos = items.filter(i => i.key === "rod_rest");
+  const stdPos = items.filter(i => i.key === "rod_std");
+  ok("Stueckliste hat eine eigene Reststueck-Position", restPos.length === 1);
+  ok("Reststueck-Menge = Zahl der Straenge an der Oberkante",
+    restPos[0].menge === w.tension_columns.length);
+  ok("Reststueck traegt sein eigenes maßgebendes Maß (Preisauflösung bleibt eindeutig)",
+    restPos[0].mass_mm === 100);
+  ok("Reststueck steckt NICHT in den Standardlaengen-Positionen",
+    stdPos.every(p => p.mass_mm !== 100));
+  const bom = semblaBom(w);
+  ok("Gesamtzahl Gewindestangen enthaelt die Reststuecke",
+    bom.gewindestangen_gesamt === bom.rodStd + bom.rodSonder + bom.rodRest);
+
+  // -- Montage: die Kopplung zum Reststueck ist eine echte Kopplung
+  const sg0 = w.tension_columns[0].segments[0];
+  const ev = montageEreignisse(w);
+  const k0 = w.tension_columns[0].k;
+  const kopp = ev.filter(x => x.art === "kopplung" && x.straenge.some(s => s.k === k0));
+  ok("Kopplungszahl = Stuecke − 1 (Reststueck eingerechnet)",
+    kopp.length === sg0.stuecke.length - 1);
+}
+
+// -------------------------------------------- [Z-6] Reststueck-Rolle im Bauteilkatalog
+console.log("\n[Z-6] Reststueck als eigene Katalogrolle:");
+{
+  const KATR = {
+    format: "SEMBLA-Bauteilkatalog", version: 1, name: "T",
+    produkte: [
+      { id: "r1000", kategorie: "gewindestange", bezeichnung: "GS 1000", einheit: "Stk", preis: 3.8, laenge_mm: 1000 },
+      { id: "r850", kategorie: "gewindestange", bezeichnung: "GS 850", einheit: "Stk", preis: 3.3, laenge_mm: 850 },
+      { id: "r100", kategorie: "gewindestange", bezeichnung: "GS 100 Rest", einheit: "Stk", preis: 0.9, laenge_mm: 100 },
+      { id: "r120", kategorie: "gewindestange", bezeichnung: "GS 120 Rest", einheit: "Stk", preis: 1.0, laenge_mm: 120 },
+    ],
+  };
+  const eing = (restIds) => ({ planung: { produkte: { quelle: "katalog",
+    rollen: { rod_std: ["r1000", "r850"], rod_rest: restIds } } } });
+
+  const s1 = produktSpezifikation(eing(["r100"]), KATR);
+  ok("eindeutig gewaehlt -> rest_mm ist die Produktlaenge", s1.rod.rest_mm === 100);
+  ok("Standardlaengen bleiben davon unberuehrt",
+    JSON.stringify(s1.rod.laengen_mm) === "[1000,850]");
+
+  const s2 = produktSpezifikation(eing(["r100", "r120"]), KATR);
+  ok("mehrere Reststuecke -> rest_mm bleibt offen (keines wird bevorzugt)", s2.rod.rest_mm === null);
+  ok("mehrere Reststuecke -> benannter Konflikt",
+    s2.konflikte.some(k => k.rolle === "rod_rest"));
+
+  const s3 = produktSpezifikation(eing([]), KATR);
+  ok("keine Auswahl -> rest_mm null, kein geratenes Maß", s3.rod.rest_mm === null);
+
+  const st1 = rollenStatus("rod_rest", eing(["r100"]), KATR, {});
+  ok("Rollenstatus eindeutig gewaehlt = ok", st1.status === "ok" && st1.produkt.id === "r100");
+  const st2 = rollenStatus("rod_rest", eing(["r100", "r120"]), KATR, {});
+  ok("Rollenstatus mehrere gewaehlt = mehrdeutig", st2.status === "mehrdeutig" && !st2.produkt);
+  const st3 = rollenStatus("rod_rest", eing([]), KATR, {});
+  ok("Rollenstatus ohne Auswahl = keine_auswahl", st3.status === "keine_auswahl");
+
+  // Preiskontext fuehrt das Reststueckmaß getrennt von der Standardlaenge.
+  const w = buildWall("k", 1000, 2000, [], null, { rod_lengths_mm: [1000, 850], rod_rest_mm: 100 });
+  const ktx = preisKontext(w, eing(["r100"]), KATR);
+  ok("preisKontext trennt rod_mm und rod_rest_mm", ktx.rod_mm === 1000 && ktx.rod_rest_mm === 100);
+}
+
+// ---------------------------------------- [Z-6] Standardkatalog deckt die Rolle ab
+console.log("\n[Z-6] Standardkatalog:");
+{
+  const roh = readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const kat = parseKatalog(roh);
+  const gs = kat.produkte.filter(p => p.kategorie === "gewindestange");
+  ok("Standardkatalog laesst sich unveraendert parsen", kat.produkte.length > 0);
+  ok("enthaelt ein Reststueck-Produkt (100 mm)", gs.some(p => +p.laenge_mm === 100));
+  ok("enthaelt die Standardlaengen 1000 und 850 mm",
+    gs.some(p => +p.laenge_mm === 1000) && gs.some(p => +p.laenge_mm === 850));
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

@@ -373,6 +373,13 @@ export const ROLLEN = [
   { id: "rod_std", label: "Gewindestange", kategorie: "gewindestange", modul: 1, einheit: "Stk",
     gruppe: "Vorspannung", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true,
     kombinierbar: true },
+  { id: "rod_rest", label: "Gewindestange – Reststück oberer Abschluss", kategorie: "gewindestange",
+    modul: 1, gruppe: "Vorspannung", einheit: "Stk", mass: { felder: ["laenge_mm"], kontext: "rod_rest_mm" },
+    bepreist: true, einzeln: true,
+    hinweis: "Die Wände werden im Innenraum montiert — unter der Decke ist kein Platz mehr, eine "
+      + "lange Gewindestange einzufädeln. Jeder Strang, der an der Wandoberkante endet, schließt "
+      + "deshalb mit genau diesem kurzen Reststück ab ([Z-6]). Es wird EIN Produkt gewählt; ohne "
+      + "Auswahl wird der obere Abschluss sichtbar als offen gemeldet, es wird keine Länge geraten." },
   { id: "rod_sonder", label: "Gewindestange – Ausgangsprodukt für Sonderzuschnitte", kategorie: "gewindestange",
     modul: 1, gruppe: "Vorspannung", einheit: "Stk", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true,
     kombinierbar: true,
@@ -577,6 +584,7 @@ export function standardLaengen(eingaben, katalog, rolleId) {
 export function produktSpezifikation(eingaben, katalog) {
   const rod = standardLaengen(eingaben, katalog, "rod_std");
   const rodSonder = standardLaengen(eingaben, katalog, "rod_sonder");
+  const rodRest = standardLaengen(eingaben, katalog, "rod_rest");
   const latte = standardLaengen(eingaben, katalog, "latte");
   const breiten = _masse(latte.produkte, "breite_mm");
   const dicken = _masse(latte.produkte, "dicke_mm");
@@ -592,8 +600,18 @@ export function produktSpezifikation(eingaben, katalog) {
       text: "Die gewählten Lattenprodukte haben unterschiedliche Querschnittsdicken ("
         + dicken.map((x) => x + " mm").join(", ") + ")." });
   }
+  // [Z-6]: Das Reststueck fuehrt GENAU EIN Produkt. Sind mehrere gewaehlt, bleibt `rest_mm`
+  // bewusst null (Konflikt) — es wird keines bevorzugt und keine Laenge geraten.
+  if (rodRest.laengen_mm.length > 1) {
+    konflikte.push({ rolle: "rod_rest", feld: "laenge_mm", werte: rodRest.laengen_mm,
+      text: "Für das Reststück am oberen Wandabschluss sind mehrere Produkte gewählt ("
+        + rodRest.laengen_mm.map((x) => x + " mm").join(", ") + "). Es wird genau eines "
+        + "eingebaut — die Länge bleibt offen, bis die Auswahl eindeutig ist." });
+  }
   return {
-    rod: { ...rod, sonder_laengen_mm: rodSonder.laengen_mm, sonder_ids: rodSonder.ids },
+    rod: { ...rod, sonder_laengen_mm: rodSonder.laengen_mm, sonder_ids: rodSonder.ids,
+           rest_mm: rodRest.laengen_mm.length === 1 ? rodRest.laengen_mm[0] : null,
+           rest_ids: rodRest.ids },
     latte: { ...latte,
              breite_mm: breiten.length === 1 ? breiten[0] : null,
              dicke_mm: dicken.length === 1 ? dicken[0] : null },
@@ -627,6 +645,10 @@ export function preisKontext(w, eingaben = {}, katalog = null) {
   return {
     rod_mm: rodKat != null ? rodKat
       : (+ww.rod_mm > 0 ? +ww.rod_mm : (+ps.rod_mm > 0 ? +ps.rod_mm : 1100)),
+    // Reststueck ([Z-6]): maßgebend ist das eindeutig gewaehlte Produkt, ersatzweise der im
+    // Wandelement mitgereiste Wert. Ohne beides bleibt der Kontext leer (kein erfundenes Maß).
+    rod_rest_mm: (spec && spec.rod.rest_mm != null) ? spec.rod.rest_mm
+      : (+ps.rod_rest_mm > 0 ? +ps.rod_rest_mm : NaN),
     blech_mm: +ps.blech_mm > 0 ? +ps.blech_mm : 1000,
     stange_mm: stangeKat != null ? stangeKat : (+latten.stange_cm > 0 ? +latten.stange_cm : 150) * 10,
     stein_i3_mm: grid * 3,
@@ -756,6 +778,26 @@ export function rollenStatus(rolleId, eingaben, katalog, kontext = {}) {
   const HART = ["kein_katalog", "keine_auswahl", "fehlt", "kategorie_abweichend", "einheit_unpassend"];
   let status = res.status, produkt = res.produkt, kandidaten = res.kandidaten;
   let vorgemerkt = res.vorgemerkt, laengen = [];
+  // `einzeln`-Rollen (Reststueck, [Z-6]) fuehren GENAU EIN Produkt: mehrere Auswahlen sind
+  // echt mehrdeutig, weil nicht entscheidbar ist, welches den oberen Abschluss ausfuehrt.
+  // Das steht VOR der Maß-Eingrenzung — sonst wuerde der Wandkontext (der seinerseits aus der
+  // Auswahl stammt) die Mehrdeutigkeit stillschweigend aufloesen.
+  if (r.einzeln && !HART.includes(status)) {
+    const auf = produkteZuRolle(eingaben, katalog, rolleId);
+    if (auf.produkte.length > 1) {
+      return { rolle: rolleId, ids, status: "mehrdeutig", text: STATUS_TEXT.mehrdeutig,
+               produkt: null, kandidaten: auf.produkte, fehlend: auf.fehlend, vorgemerkt: [],
+               hinweis: r.hinweis || null,
+               laengen_mm: _masse(auf.produkte, "laenge_mm") };
+    }
+    if (auf.produkte.length === 1) {
+      // Eindeutig gewaehlt: das Maß dieses Produkts IST der maßgebende Wert der Rolle —
+      // eine Maß-Eingrenzung gegen den Kontext waere hier zirkulaer.
+      return { rolle: rolleId, ids, status: "ok", text: STATUS_TEXT.ok, produkt: auf.produkte[0],
+               kandidaten: auf.produkte, fehlend: auf.fehlend, vorgemerkt: [],
+               hinweis: r.hinweis || null, laengen_mm: _masse(auf.produkte, "laenge_mm") };
+    }
+  }
   if (r.mass && r.kombinierbar && !HART.includes(status)) {
     const auf = produkteZuRolle(eingaben, katalog, rolleId);
     // Je maßgebendem Maß eine Gruppe: zwei Produkte mit DEMSELBEN Maß bleiben echt
