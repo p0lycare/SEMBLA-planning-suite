@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-02",
+    datum: "2026-08-06",
+    typ: "feature",
+    issue: 19,
+    titel: "Modul 1 zeigt den Zuschnitt direkt in der Wandansicht; Feld für die Stangenlänge ist weg",
+    testbitte: "Reiter 1: die Vorspannstränge sind jetzt in ihre echten Stücke zerlegt "
+      + "(Standardlänge, Sonderzuschnitt, Reststück, Kopplungen) — beim Ändern der Wandhöhe sieht "
+      + "man die Zerlegung sofort mitwandern.",
+  },
+  {
     id: "chg-20260806-01",
     datum: "2026-08-06",
     typ: "feature",

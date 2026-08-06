@@ -43,6 +43,15 @@ Ort der Anlage ist, legt **Modul 1 kein Wandelement mehr selbst an** — ohne ak
 darauf. Achtung: `SCHEMA_VERSION` (interner localStorage-Stand) ist bewusst getrennt von
 `PROJEKT_VERSION` (öffentliches Dateiformat, bleibt 2 — `wandtyp` ist dort ein optionales Feld).
 
+**Stangenlänge nur aus dem Katalog — kein Eingabefeld ([Z-1]).** Modul 1 hat **kein** Feld für die
+Gewindestangenlänge mehr (ersatzlos entfernt, nicht nur gesperrt): es gibt keinen zweiten Weg, die
+Vorspann-Geometrie zu setzen. Die **unterste** Stange ist immer die **größte** gewählte
+Standardlänge — das folgt aus [Z-2] und ist nicht wählbar. Ohne Auswahl gibt Modul 1 gar nichts vor
+(der Core nutzt seinen Altstand-Fallback) und meldet die fehlende Auswahl sichtbar. Der **Zuschnitt
+ist Feedback in der Wandansicht**: gezeichnet werden die realen `stuecke` je Segment (Standard /
+Sonderzuschnitt / Reststück farblich getrennt, Kopplungsmarke `class="kop"` an jedem Stoß, Legende),
+nicht ein Strich je Strang.
+
 **Reststück am oberen Wandabschluss (Regel [Z-6]).** Die Wände werden **im Innenraum** montiert —
 unter der Decke lässt sich keine lange Gewindestange mehr einfädeln. Jedes Vorspannsegment, das an
 der **Wandoberkante** endet, schließt deshalb zwingend mit einem kurzen **Reststück** ab. Dessen

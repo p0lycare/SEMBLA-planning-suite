@@ -116,7 +116,6 @@
       <small style="color:var(--sb-muted)">Ab dieser Achse werden die weiteren Spannachsen im gewählten Strangabstand (max. jede x-te Achse) fortgeführt. Achsen an Öffnungs- und Stufenkanten kommen zusätzlich hinzu; manuelle Achsen (Sonderkonstruktion) haben Vorrang.</small>
     </div>
     <div class="grp"><h3>Vorspann-Hardware</h3>
-      <label><span>Gewindestangenlänge</span><input type="number" id="rodCm" value="110" step="5" min="20"><small>cm</small></label>
       <div class="lockhint" id="rodQuelle"></div>
       <label><span>Blechlänge (Module)</span><input type="number" id="blechCm" value="100" step="10" min="20"><small>cm</small></label>
       <label><span>Oberer Anschluss</span><select id="topConn"><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte</option></select></label>
@@ -274,12 +273,13 @@ function vorgaben(){
     steps: stepsArr.map(s=>({x0_mm:Math.round(s.x0*1000), x1_mm:Math.round(s.x1*1000), height_mm:Math.round(s.h*1000)})),
     load:{ qk_area:+$('qk').value, gammaQ:+$('gammaQ').value },
     material:{ fcd_Nmm2:+$('fcd').value, cfd:+$('cfd').value, rho:+$('rho').value } };
-  // Gewindestangen-Standardlängen: bei gewähltem Produkt AUSSCHLIESSLICH aus dem Katalog
-  // ([Z-1]); das Legacy-Feld wird dann nicht gelesen (DOM-Manipulation wirkungslos).
+  // Gewindestangen-Standardlängen kommen AUSSCHLIESSLICH aus dem Bauteilkatalog ([Z-1]).
+  // Es gibt kein Eingabefeld mehr: welche Standardlängen es gibt, entscheidet der Katalog,
+  // und die unterste Stange ist immer die größte gewählte davon ([Z-2]) — nicht wählbar.
+  // Ohne Auswahl wird gar nichts mitgegeben; der Core nutzt dann seinen dokumentierten
+  // Altstand-Fallback und Modul 1 meldet die fehlende Auswahl sichtbar.
   const rodL=rodLaengenMm();
-  const hw = rodL.length
-    ? { rod_lengths_mm: rodL }
-    : { rod_mm: Math.max(200, Math.round((+$('rodCm').value||110)*10)) };   // Fallback, min 20 cm
+  const hw = rodL.length ? { rod_lengths_mm: rodL } : {};
   // [Z-6] Reststück am oberen Wandabschluss: die Länge kommt AUSSCHLIESSLICH aus dem eindeutig
   // gewählten Katalogprodukt (kein Eingabefeld, kein Default) — ohne Auswahl bleibt sie 0 und
   // der Core meldet den offenen oberen Abschluss je Strang. Konfigurierbar ist nur der Überstand.
@@ -403,9 +403,27 @@ function draw(w){
       s+=`<rect x="${lx}" y="${Y(h)-bth}" width="${GRID*sc}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.6"/>`; } }
 
   // ---- Vorspannstränge + Anker ----
+  // Das SLICING ist hier direktes Feedback: gezeichnet werden nicht „Stränge", sondern die
+  // realen Stücke aus segment.stuecke ([Z-2]/[Z-3]/[Z-6]) — Standardlänge, Sonderzuschnitt und
+  // Reststück getrennt, mit einer Marke an jeder Kopplung. So sieht man beim Ändern von Höhe
+  // oder Produktauswahl sofort, wie sich die Zerlegung verschiebt.
+  const C_STD='#1f6feb', C_SOND='#c9461c', C_REST='#7a3fd6';
+  const stueckFarbe=a=>(a==='sonder'?C_SOND:(a==='rest'?C_REST:C_STD));
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
-      s+=`<line x1="${x}" y1="${Y(g.z0_mm)}" x2="${x}" y2="${Y(g.z1_mm)}" stroke="#1f6feb" stroke-width="2"/>`;
+      const st=Array.isArray(g.stuecke)&&g.stuecke.length?g.stuecke:null;
+      if(!st){
+        s+=`<line x1="${x}" y1="${Y(g.z0_mm)}" x2="${x}" y2="${Y(g.z1_mm)}" stroke="${C_STD}" stroke-width="2"/>`;
+      } else {
+        let z=g.z0_mm;
+        st.forEach((p,i)=>{
+          const z2=z+p.len_mm;
+          s+=`<line x1="${x}" y1="${Y(z)}" x2="${x}" y2="${Y(z2)}" stroke="${stueckFarbe(p.art)}" stroke-width="${p.art==='rest'?3:2.4}"/>`;
+          // Kopplung an jedem inneren Stoß (Stücke − 1) — quer zur Achse, damit sie sichtbar ist
+          if(i<st.length-1) s+=`<line class="kop" x1="${x-4}" y1="${Y(z2)}" x2="${x+4}" y2="${Y(z2)}" stroke="#0b3a73" stroke-width="2"/>`;
+          z=z2;
+        });
+      }
       const pw=110*sc;
       const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
       const ao=g.anker_oben||((g.z1_mm===topH(col.k)*1)?topConn:'spannplatte');
@@ -421,6 +439,22 @@ function draw(w){
   for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
     s+=`<text x="${pad-10}" y="${yc+3}" font-size="9" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
   s+=`<text x="${pad}" y="22" font-size="13" fill="#6b7682">${back?'Rückseite (gespiegelt)':'Vorderseite'} · ${fmt(L/1000,3)} × ${fmt(H/1000,2)} m · ${w.tension_columns.length} Stränge · N=${fmt(w.prestress.force_kN,0)} kN${editMode?' · Durchbruch-Modus':''}</text>`;
+  // Legende des Slicings — nur wenn wirklich Stücke gezeichnet wurden ([Z-2]/[Z-6]).
+  { const alle=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
+    if(alle.length){
+      const hat=a=>alle.some(p=>p.art===a);
+      const teile=[['Standardlänge',C_STD,true],['Sonderzuschnitt',C_SOND,hat('sonder')],
+                   ['Reststück oben',C_REST,hat('rest')]].filter(t=>t[2]);
+      let lx=pad;
+      s+=`<text x="${lx}" y="38" font-size="10" fill="#8f96a0">Zuschnitt:</text>`; lx+=58;
+      for(const [txt,col] of teile){
+        s+=`<line x1="${lx}" y1="35" x2="${lx+14}" y2="35" stroke="${col}" stroke-width="2.6"/>`;
+        s+=`<text x="${lx+18}" y="38" font-size="10" fill="#8f96a0">${txt}</text>`;
+        lx+=28+txt.length*5.4;
+      }
+      s+=`<line x1="${lx}" y1="31" x2="${lx}" y2="39" stroke="#0b3a73" stroke-width="2"/>`;
+      s+=`<text x="${lx+6}" y="38" font-size="10" fill="#8f96a0">Kopplung</text>`;
+    } }
   if(editMode){ const Ng=w.N_grid, Lg=w.lagen;
     for(let r=0;r<Lg;r++) for(let c=0;c<Ng;c++){ const lx=Math.min(X(c*GRID),X((c+1)*GRID));
       s+=`<rect class="cell" data-r="${r}" data-c="${c}" x="${lx}" y="${Y((r+1)*COURSE)}" width="${GRID*sc}" height="${COURSE*sc}" fill="transparent" stroke="#1f6feb" stroke-opacity="0.18" stroke-width="0.6" style="cursor:pointer"/>`; } }
@@ -507,7 +541,6 @@ function applyWand(w){
   stepsArr=(w.steps||[]).map(s=>({x0:s.x0_mm/1000, x1:s.x1_mm/1000, h:s.height_mm/1000}));
   if(w.prestress && w.prestress.force_kN){ $('modus').value='nachweis'; $('spacing').value=String(w.prestress.max_span_grid||3); $('force').value=w.prestress.force_kN; }
   else { $('modus').value='auto'; }
-  if(w.rod_mm) $('rodCm').value=Math.round(w.rod_mm/10);
   if(w.prestress){ if(w.prestress.blech_mm) $('blechCm').value=Math.round(w.prestress.blech_mm/10);
     if(w.prestress.top_connection) $('topConn').value=w.prestress.top_connection;
     $('startAchse').value=(+w.prestress.start_axis_grid===1)?'1':'0';     // fehlt (Altstand) -> 1. Achse
@@ -540,21 +573,19 @@ function prodKontext(){
   const w = (RESULT&&RESULT.wandelement) || (store&&store.aktivesWandelement&&store.aktivesWandelement()) || null;
   return w ? KAT.preisKontext(w, prodEingaben(), prodKatalog()) : {};
 }
-// ---- Legacy-Maßfelder ([Z-1]) ----------------------------------------------
-// Ist ein Gewindestangenprodukt gewählt, ist der Katalog die ALLEINIGE Quelle der
-// Standardlänge: das Feld wird gesperrt UND von vorgaben() nicht mehr gelesen. Eine
-// DOM-Manipulation bleibt damit wirkungslos. Ohne Auswahl bleibt es als klar
-// gekennzeichneter, rückwärtskompatibler Fallback editierbar.
+// ---- Stangenlängen: reine Anzeige ([Z-1]) -----------------------------------
+// Es gibt KEIN Eingabefeld für die Gewindestangenlänge mehr — der Bauteilkatalog ist die
+// alleinige Quelle. Hier wird nur noch gezeigt, was daraus folgt: welche Standardlängen im
+// Vorratssatz sind und welche davon die unterste Stange bildet (immer die größte, [Z-2]).
 function syncLegacyFelder(){
-  const L=rodLaengenMm(), el=$('rodCm'), hint=$('rodQuelle');
+  const L=rodLaengenMm(), hint=$('rodQuelle');
   if(L.length){
-    el.disabled=true; el.readOnly=true; el.value=Math.round(L[0]/10);
-    hint.innerHTML='Aus dem Katalog: '+L.map(x=>fmt(x/10,0)+' cm').join(' · ')
-      +(L.length>1?' — werden kombiniert ([Z-2])':'')+'. Feld gesperrt ([Z-1]).';
+    hint.innerHTML='Standardlängen aus dem Katalog: '+L.map(x=>'<b>'+fmt(x/10,0)+' cm</b>').join(' · ')
+      +'. Unterste Stange ist immer die größte davon ('+fmt(L[0]/10,0)+' cm), darüber wird mit '
+      +'kleineren aufgefüllt ([Z-2]).';
   } else {
-    el.disabled=false; el.readOnly=false;
-    hint.innerHTML='<b>Kein Gewindestangenprodukt gewählt</b> — Altwert dieses Feldes wird als '
-      +'rückwärtskompatibler Fallback verwendet ([Z-1]).';
+    hint.innerHTML='<b>Kein Gewindestangenprodukt gewählt</b> — bis dahin rechnet der Core mit '
+      +'seinem Altstand-Fallback (110 cm). Produkte unten in der Rolle „Gewindestange" wählen ([Z-1]).';
   }
   // [Z-6] Reststück: es gibt bewusst KEIN Eingabefeld für die Länge — sie kommt allein aus dem
   // eindeutig gewählten Katalogprodukt. Der Zustand wird hier benannt, nie ersatzweise geraten.
@@ -649,7 +680,7 @@ function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchHin
 // ---------- Ereignis-Bindung + Start ----------
 let axisDragging=false;
 function bindEvents(){
-  ['len','hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','rodCm','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
+  ['len','hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
   ['sideVorne','sideHinten','modus','topConn','startAchse'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; $('durchHint').style.display=editMode?'block':'none'; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });

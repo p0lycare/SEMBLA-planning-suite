@@ -26,7 +26,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   setAttribute(){} getBoundingClientRect(){return {left:0,width:1000};} get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
-const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',rodCm:'110',blechCm:'100',topConn:'blech'};
+const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
 
@@ -52,6 +52,21 @@ ok('Wandtyp aus dem Wandelement mitgeführt', WP.RESULT.wandelement.wandtyp==='o
 WP.run();
 ok('Wandtyp überlebt erneuten Neuaufbau', WP.RESULT.wandelement.wandtyp==='ohne_wind');
 ok('Wandbild + Stränge', (document.getElementById('plan').innerHTML.match(/<rect/g)||[]).length>5 && document.getElementById('plan').innerHTML.includes('#1f6feb'));
+// Das Slicing muss SICHTBARES Feedback in der Wandansicht sein ([Z-2]/[Z-3]/[Z-6]):
+// nicht ein Strich je Strang, sondern ein Strich je realem Stueck plus Kopplungsmarken.
+ok('Wandansicht zeichnet die einzelnen Stuecke, nicht einen Strich je Strang', (()=>{
+  const svg=document.getElementById('plan').innerHTML;
+  const w=WP.RESULT.wandelement;
+  const stuecke=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
+  const kopplungen=w.tension_columns.flatMap(c=>c.segments)
+    .reduce((a,g)=>a+Math.max(0,(g.stuecke||[]).length-1),0);
+  const striche=(svg.match(/stroke="#1f6feb" stroke-width="2\.4"/g)||[]).length;
+  const marken=(svg.match(/<line class="kop"/g)||[]).length;   // Klasse trennt sie vom Legendenmuster
+  return stuecke.length>w.tension_columns.length      // es gibt ueberhaupt mehrere Stuecke
+    && striche===stuecke.filter(p=>p.art==='standard').length
+    && marken===kopplungen; })());
+ok('Legende benennt den Zuschnitt', /Zuschnitt:/.test(document.getElementById('plan').innerHTML)
+  && /Standardlänge/.test(document.getElementById('plan').innerHTML));
 ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);
 ok('Steine-Zusammenfassung gefüllt (BOM-Tabelle jetzt in Modul 4)', /\d/.test(document.getElementById('rSteine').textContent));
 ok('sides + verification im Ergebnis', WP.RESULT.wandelement.sides.vorne.funktion==='fassade' && WP.RESULT.wandelement.verification.status==='geprüft');
@@ -97,14 +112,17 @@ ok('Badge zeigt Verband regelwidrig', /regelwidrig/.test(document.getElementById
 ok('Badge ist rot (Klasse no)', /badge no/.test(document.getElementById('statusBadge').className));
 document.getElementById('len').value='2.00'; document.getElementById('modus').value='auto'; WP.run();
 
-// Gewindestangenlänge als Eingabe
-document.getElementById('rodCm').value='110'; WP.run();
-const g110=WP.RESULT.wandelement.bom.gewindestangen;
-document.getElementById('rodCm').value='60'; WP.run();
-const w60=WP.RESULT.wandelement;
-ok('rod_mm aus Eingabe (60 cm -> 600 mm)', w60.rod_mm===600);
-ok('kürzere Stange -> mehr Gewindestangen', w60.bom.gewindestangen>g110);
-document.getElementById('rodCm').value='110'; WP.run();
+// [Z-1] Es gibt KEIN Eingabefeld fuer die Gewindestangenlaenge mehr — der Bauteilkatalog ist
+// die alleinige Quelle. Ohne Katalog rechnet der Core mit seinem dokumentierten Altstand-Wert.
+// Gegen die echte HTML-Quelle geprueft, nicht gegen den DOM-Stub: der legt unbekannte
+// Elemente bei Bedarf an und koennte ein entferntes Feld nie als fehlend melden.
+ok('kein Eingabefeld fuer die Stangenlaenge mehr im Modul', !/id="rodCm"/.test(html));
+WP.run();
+ok('ohne Katalogauswahl: Altstand-Fallback des Cores (1100 mm)', WP.RESULT.wandelement.rod_mm===1100);
+ok('ohne Auswahl gibt Modul 1 keine Stangenlaenge vor', (()=>{ const p=WP.vorgaben().prestress;
+  return p.rod_mm===undefined && p.rod_lengths_mm===undefined; })());
+ok('fehlende Auswahl wird sichtbar gemeldet',
+  /Kein Gewindestangenprodukt gewählt/.test(document.getElementById('rodQuelle').innerHTML));
 
 // Staffelung / getreppter Aufbau: rechte Hälfte niedriger -> keine Öffnungs-Überlappung, oben rechts keine Steine
 document.getElementById('len').value='2.00'; document.getElementById('hgt').value='2.60'; WP.run();
@@ -212,7 +230,7 @@ ok('ohne Katalog: Hinweis statt Auswahl', (()=>{ WP.renderProdukte();
     && document.getElementById('prodRollen').innerHTML===''; })());
 
 store.setzeKatalog(KATALOG);
-document.getElementById('rodCm').value='110'; WP.run();   // maßgebende Stangenlänge = 1100 mm
+WP.run();   // maßgebende Stangenlänge kommt aus dem gewählten Produkt (1100 mm)
 WP.renderProdukte();
 const prodHtml=()=>document.getElementById('prodRollen').innerHTML;
 ok('Katalog geladen: Rollen mit Kandidaten gerendert',
@@ -284,38 +302,29 @@ ok('[P-17] Escape schließt das Dropdown (Tastaturbedienung)', (()=>{
   box.dispatch('keydown',{key:'Escape'}); box.querySelectorAll=()=>[];
   return zu; })());
 
-// ---- [Z-1] Legacy-Maßfeld: gesperrt UND wirkungslos ------------------------
-ok('[Z-1] Feld gesperrt, sobald ein Gewindestangenprodukt gewählt ist',
-  document.getElementById('rodCm').disabled===true
-  && /Aus dem Katalog/.test(document.getElementById('rodQuelle').innerHTML));
-ok('[Z-1] Katalogwert steht im gesperrten Feld', document.getElementById('rodCm').value===110);
-ok('[Z-1] manipulierter DOM-Wert bleibt wirkungslos', (()=>{
-  document.getElementById('rodCm').value='42';           // Manipulation trotz disabled
+// ---- [Z-1] Stangenlaenge ausschliesslich aus dem Katalog --------------------
+// Das frühere Eingabefeld ist ERSATZLOS entfernt: es gibt keinen zweiten Weg mehr, die
+// Stangenlaenge zu setzen, und damit auch nichts mehr zu sperren oder zu manipulieren.
+ok('[Z-1] Stangenlaenge kommt allein aus dem gewaehlten Produkt', (()=>{
   const v=WP.vorgaben();
   return v.prestress.rod_mm===undefined
     && JSON.stringify(v.prestress.rod_lengths_mm)==='[1100]'
     && WP.RESULT.wandelement.rod_mm===1100; })());
-ok('[Z-1] auch nach erneuter Rechnung kein Durchschlagen des Altwerts', (()=>{
-  WP.run(); return WP.RESULT.wandelement.rod_mm===1100
-    && JSON.stringify(WP.RESULT.wandelement.prestress.rod_lengths_mm)==='[1100]'; })());
-ok('[Z-1] die Sperre setzt den manipulierten Wert wieder auf den Katalogwert',
-  document.getElementById('rodCm').value===110);
-ok('[Z-1] ohne Auswahl: Fallback wieder editierbar und gekennzeichnet', (()=>{
+ok('[Z-1] Anzeige nennt die Standardlaengen und die unterste Stange',
+  /Standardlängen aus dem Katalog/.test(document.getElementById('rodQuelle').innerHTML)
+  && /Unterste Stange ist immer die größte/.test(document.getElementById('rodQuelle').innerHTML));
+ok('[Z-1] ohne Auswahl: Hinweis statt Ersatzwert, keine Vorgabe aus Modul 1', (()=>{
   setzen('rod_std','rod-1100',false);
-  const el=document.getElementById('rodCm');
-  return el.disabled===false && /Fallback/.test(document.getElementById('rodQuelle').innerHTML)
+  return /Kein Gewindestangenprodukt gewählt/.test(document.getElementById('rodQuelle').innerHTML)
     && WP.vorgaben().prestress.rod_lengths_mm===undefined
-    && WP.vorgaben().prestress.rod_mm===1100; })());   // jetzt wirkt wieder das Feld
-// Der Fallback ist ohne Auswahl weiterhin voll wirksam (Rueckwaertskompatibilitaet).
-document.getElementById('rodCm').value='60'; WP.run();
-ok('[Z-1] ohne Auswahl wirkt das Feld unveraendert (60 cm)', WP.RESULT.wandelement.rod_mm===600);
-document.getElementById('rodCm').value='110'; WP.run();
+    && WP.vorgaben().prestress.rod_mm===undefined; })());
 setzen('rod_std','rod-1100',true);
+WP.run();
 
 // [Z-1] Die Maß-Eingrenzung folgt jetzt dem KATALOG, nicht mehr dem Eingabefeld: ein Wechsel
 // des gesperrten Feldes kann keine Maßabweichung mehr erzeugen (frueher: mass_abweichend).
-document.getElementById('rodCm').value='100'; WP.run();
-ok('[Z-1] gesperrtes Feld erzeugt keine Maßabweichung mehr',
+WP.run();
+ok('[Z-1] ohne zweites Feld gibt es keine Maßabweichung mehr',
   WP.prodStatus('rod_std').status==='ok' && WP.RESULT.wandelement.rod_mm===1100);
 // Maßfremd bleibt maßfremd, wo die WAND das Maß vorgibt (Blech-Modullaenge): dort gibt es keine
 // Kombination mehrerer Groessen — die Rolle ist bewusst NICHT `kombinierbar`.
