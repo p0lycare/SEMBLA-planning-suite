@@ -15,6 +15,10 @@ node_modules/
 # Editor/Temp
 *.log
 /tmp/
+# Word-Sperrdateien (entstehen, solange doku/*.docx geoeffnet ist)
+~$*
+# Lokale Debug-/Seed-Helfer in docs/ (Unterstrich-Praefix, gehoeren nicht auf GH Pages)
+docs/_*.html
 
 # Python-Cache (regenerierbar)
 __pycache__/
