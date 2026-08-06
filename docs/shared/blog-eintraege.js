@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-09",
+    datum: "2026-08-06",
+    typ: "feature",
+    issue: 26,
+    titel: "Modul 0: Projekt, Gebäude und Geschosse anlegen und wählen — Wände gehören jetzt zu einem Geschoss",
+    testbitte: "Reiter 0: Projekt anlegen, zwei Geschosse mit Höhe anlegen, in jedem eine Wand. Prüfen: "
+      + "steht die Höhe als Vorgabe im Feld „Höhe“, zeigt die Wandliste das richtige Geschoss, ist nach "
+      + "dem Neuladen alles noch da?",
+  },
+  {
     id: "chg-20260806-08",
     datum: "2026-08-06",
     typ: "intern",

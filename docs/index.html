@@ -86,6 +86,75 @@
   <h2>Module</h2>
   <div class="grid" id="modul-grid"></div>
 
+  <h2>Projektplanung <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· Projekt → Gebäude → Geschoss → Wand</span></h2>
+  <div class="panel">
+    <div class="empty" id="pl-none">Noch kein Projekt angelegt. Die Projektstruktur ist eine
+      <b>eigene Ressource</b> neben den Wänden — sie hält nur Struktur und Lage, nie Geometrie.</div>
+    <div class="row" id="pl-anlegen">
+      <div class="field">
+        <label for="pl-projekt-neu">Projektname</label>
+        <input id="pl-projekt-neu" type="text" placeholder="z. B. Aschersleben AWG" style="width:230px">
+      </div>
+      <button class="btn-p" id="pl-neu">Projekt anlegen</button>
+    </div>
+
+    <div id="pl-form" hidden>
+      <div class="row">
+        <div class="field">
+          <label for="pl-projekt">Projekt</label>
+          <input id="pl-projekt" type="text" style="width:230px">
+        </div>
+        <div class="muted" id="pl-stand" style="font-size:12.5px;padding-bottom:8px">–</div>
+      </div>
+
+      <div class="subh">Gebäude</div>
+      <div class="row">
+        <div class="field">
+          <label for="pl-geb">Aktives Gebäude</label>
+          <select id="pl-geb" style="width:230px"></select>
+        </div>
+        <div class="field">
+          <label for="pl-geb-name">Name</label>
+          <input id="pl-geb-name" type="text" placeholder="z. B. Haus A" style="width:170px">
+        </div>
+        <button class="btn-s" id="pl-geb-neu">Gebäude anlegen</button>
+        <button class="btn-s" id="pl-geb-umbenennen">Umbenennen</button>
+        <button class="btn-d" id="pl-geb-loeschen">Löschen</button>
+      </div>
+
+      <div class="subh">Geschosse <span class="muted" style="text-transform:none;letter-spacing:0">
+        · des aktiven Gebäudes</span></div>
+      <div class="row">
+        <div class="field">
+          <label for="pl-gs">Aktives Geschoss</label>
+          <select id="pl-gs" style="width:230px"></select>
+        </div>
+        <div class="field">
+          <label for="pl-gs-name">Name</label>
+          <input id="pl-gs-name" type="text" placeholder="z. B. EG" style="width:110px">
+        </div>
+        <div class="field">
+          <label for="pl-gs-hoehe">Geschosshöhe (mm)</label>
+          <input id="pl-gs-hoehe" class="s" type="number" step="200" min="200" placeholder="leer = keine">
+        </div>
+        <button class="btn-s" id="pl-gs-neu">Geschoss anlegen</button>
+        <button class="btn-s" id="pl-gs-uebernehmen">Änderung übernehmen</button>
+        <button class="btn-d" id="pl-gs-loeschen">Löschen</button>
+      </div>
+      <div class="hint" id="pl-hoehe-hinweis"></div>
+      <div class="msg" id="pl-msg"></div>
+      <div class="warn" id="pl-warn" hidden></div>
+    </div>
+    <div class="hint">Die Projektstruktur und die <b>Lage</b> der Wände im 125-mm-Raster liegen in
+      einer <b>eigenen Ressource</b> (Projektmappe) — getrennt vom Wandelement, damit
+      Modul&nbsp;1 die Lagedaten gar nicht überschreiben kann ([L-3]). Die
+      <b>Geschosshöhe ist nur eine Vorgabe</b> für neu angelegte Wände und wird nie aus dem
+      Wandelement zurückgeschrieben ([L-5]); passt sie nicht ins 200-mm-Lagenraster, wird das
+      benannt statt gerundet. Eine neu angelegte oder importierte Wand wird im <b>aktiven
+      Geschoss eingetragen</b> — ohne Lage, denn gezeichnet ist noch nichts ([L-4]). Das
+      <b>Einzeichnen im Geschossplan</b> kommt in den nächsten Etappen.</div>
+  </div>
+
   <h2>Wandelement anlegen</h2>
   <div class="panel">
     <div class="row">
@@ -114,7 +183,11 @@
       <button class="btn-s" id="btn-vorlage-wand">Musterwand laden…</button>
     </div>
     <div class="msg" id="msg"></div>
-    <div class="hint">Öffnungen, Auslegung usw. entstehen in Modul&nbsp;1 (Wandplanung). Hier wird
+    <div class="hint">Die neue Wand wird im <b>aktiven Geschoss</b> der Projektstruktur eingetragen
+      (oben wählbar) — <b>ohne Lage im Raster</b>, denn gezeichnet ist noch nichts ([L-4]). Ist eine
+      Geschosshöhe gesetzt, steht sie oben als <b>Vorgabe</b> im Feld „Höhe" und bleibt frei
+      änderbar ([L-5]).<br>
+      Öffnungen, Auslegung usw. entstehen in Modul&nbsp;1 (Wandplanung). Hier wird
       das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen. Der <b>Wandtyp</b>
       gehört zum Wandelement und wird nur hier beim Anlegen festgelegt; die übrigen Module lesen ihn.<br>
       „<b>Musterwand laden…</b>" liest die mitgelieferte Repo-Vorlage
@@ -215,15 +288,27 @@
 
   <h2>Gespeicherte Wandelemente</h2>
   <div class="panel">
+    <div class="row" style="margin-bottom:8px">
+      <div class="field"><label for="w-filter">Ansicht</label>
+        <select id="w-filter" style="width:250px">
+          <option value="alle">alle Wände</option>
+          <option value="aktiv">nur aktives Geschoss</option>
+          <option value="unverortet">nur nicht eingetragene Wände</option>
+        </select></div>
+    </div>
     <table>
       <thead>
-        <tr><th>Name</th><th>Maße (L×H)</th><th>Geändert</th><th></th></tr>
+        <tr><th>Name</th><th>Maße (L×H)</th><th>Geschoss / Lage</th><th>Geändert</th><th></th></tr>
       </thead>
       <tbody id="tbody"></tbody>
     </table>
     <div class="empty" id="leer" hidden>Noch kein Wandelement gespeichert.</div>
     <div class="hint">Der Zustand liegt im <b>localStorage dieses Browsers</b> (pro Gerät, weg bei
-      „Websitedaten löschen"). Exportiere wichtige Elemente als Datei zur Sicherung/Weitergabe.</div>
+      „Websitedaten löschen"). Exportiere wichtige Elemente als Datei zur Sicherung/Weitergabe.<br>
+      Die Spalte <b>Geschoss / Lage</b> kommt aus der Projektmappe: sie zeigt, wo die Wand in der
+      Projektstruktur steht und ob sie im Raster verortet ist. <b>Maßgebend für Länge und Höhe
+      bleibt das Wandelement</b> — weicht es von der gezeichneten Lage ab, wird das hier
+      <b>gemeldet und nicht angeglichen</b> ([L-3]).</div>
   </div>
 
   <div class="hint" style="margin:28px 0 12px">SEMBLA Planungs-Suite · Polycare</div>
@@ -309,6 +394,7 @@
   import { baueDateien } from './shared/sembla-export.js';
   import { downloadZip } from './shared/zip.js';
   import * as KAT from './shared/sembla-katalog.js';
+  import * as MAPPE from './shared/sembla-projektmappe.js';
 
   mountNavbar(0);
 
@@ -345,7 +431,9 @@
       we.wandtyp = store.normWandtyp(document.getElementById('f-wandtyp').value);
       const id = store.speichere(name, we);
       store.setzeAktiv(id);
-      zeige('Angelegt und aktiv gesetzt: ' + name, true);
+      // Die neue Wand gehoert in die Projektstruktur — aber ohne erfundene Lage ([L-4]).
+      const ort = plTrageWandEin(id, name);
+      zeige('Angelegt und aktiv gesetzt: ' + name + ort, true);
       // [P-18] Startklar statt leer — laeuft NACH der Erfolgsmeldung und kann das Anlegen
       // nicht mehr gefaehrden: Ist noch KEIN Katalog geladen, wird der mitgelieferte
       // Standardkatalog geholt (ein vorhandener Katalog wird niemals angetastet). Danach
@@ -364,7 +452,7 @@
       const n = Object.keys(vb.gesetzt).length;
       if (n) nach.push(`${n} Verwendungsstelle(n) aus dem Katalog vorbelegt`);
       if (vb.offen.length) nach.push(`ohne Standardprodukt: ${vb.offen.join(', ')}`);
-      if (nach.length) zeige('Angelegt und aktiv gesetzt: ' + name + ' · ' + nach.join(' · '), true);
+      if (nach.length) zeige('Angelegt und aktiv gesetzt: ' + name + ort + ' · ' + nach.join(' · '), true);
     } catch (e) {
       zeige('Fehler: ' + (e && e.message ? e.message : e), false);
     }
@@ -493,12 +581,15 @@
     try {
       const id = store.speichere(name, parse.wandelement, undefined, parse.eingaben);
       store.setzeAktiv(id);
+      // Auch importierte Waende gehoeren in die Projektstruktur — die Datei bringt keine
+      // Lage mit, also bleibt sie leer ([L-4]): es wird keine erfunden.
+      const ort = plTrageWandEin(id, name);
       // Hervorhebung/Scroll erst nach dem Schreiben setzen und die Tabelle bewusst
       // neu zeichnen — die Renderlaeufe der Schreibvorgaenge liegen davor.
       neuId = id; neuScroll = true;
       render();
       impSchliesse();
-      zeige(`„${name}" wurde importiert und ist jetzt aktiv.`, true);
+      zeige(`„${name}" wurde importiert und ist jetzt aktiv.` + ort, true);
     } catch (e) {
       impMsg.textContent = 'Import fehlgeschlagen: ' + (e && e.message ? e.message : e);
       impMsg.className = 'msg err';
@@ -507,6 +598,288 @@
 
   document.getElementById('imp-cancel').addEventListener('click', impSchliesse);
   impOverlay.addEventListener('click', (ev) => { if (ev.target === impOverlay) impSchliesse(); });
+
+  // --- Projektplanung: Projekt -> Gebaeude -> Geschoss ([L-1]…[L-7]) -------
+  // Die Projektmappe ist eine EIGENE Ressource (store.holeMappe/setzeMappe); alle
+  // Struktur-Operationen kommen REIN aus sembla-projektmappe.js und liefern eine neue
+  // Mappe, die hier gepruefte gespeichert wird. Modul 0 haelt ausschliesslich Struktur
+  // und Lage — das Wandelement wird dabei NIE angefasst ([L-3]), und eine Lage wird
+  // niemals erfunden ([L-4]/[L-7]).
+  const plMsg = document.getElementById('pl-msg');
+  function plZeige(text, ok){ plMsg.textContent = text; plMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+  const $pl = id => document.getElementById(id);
+
+  /** Vorhandene Mappe (nie eine anlegen — das Anlegen ist eine ausdrueckliche Aktion). */
+  const plMappe = () => store.holeMappe();
+  /** Aktives Gebaeude bzw. aktives Geschoss (null = keins eindeutig bestimmbar). */
+  const plGebaeude = () => store.aktivesGebaeude();
+  /**
+   * Aktives Geschoss — aber nur, wenn es zum aktiven Gebaeude gehoert. Der Rueckfall der
+   * Speicherschicht auf ein einzelnes Geschoss darf die Gebaeudewahl nicht uebergehen:
+   * ein Geschoss eines ANDEREN Gebaeudes waere hier eine geratene Auswahl ([P-9]).
+   */
+  const plGeschoss = () => {
+    const t = store.aktivesGeschoss();
+    if (!t) return null;
+    const geb = plGebaeude();
+    return (geb && t.gebaeude.id !== geb.id) ? null : t.geschoss;
+  };
+
+  /**
+   * Eine reine Struktur-Operation anwenden und das Ergebnis speichern. Wirft die
+   * Operation (ungueltige Lage, belegtes Geschoss, unbekannte Kennung), bleibt der
+   * Speicher unveraendert und der Grund wird sichtbar gemeldet — nie still korrigiert.
+   * @param {(m:object) => object} fn @param {string} erfolg
+   */
+  function plAendere(fn, erfolg){
+    const m = plMappe();
+    if (!m) { plZeige('Es ist kein Projekt angelegt.', false); return false; }
+    try { store.setzeMappe(fn(m)); }
+    catch (e) { plZeige('Nicht geändert: ' + (e && e.message ? e.message : e), false); return false; }
+    if (erfolg) plZeige(erfolg, true);
+    return true;
+  }
+
+  $pl('pl-neu').addEventListener('click', () => {
+    if (plMappe()) { plZeige('Es gibt bereits ein Projekt — eine Mappe ist genau ein Projekt ([L-6]).', false); return; }
+    const name = $pl('pl-projekt-neu').value.trim() || 'Neues Projekt';
+    try {
+      const m = store.setzeMappe(MAPPE.leereMappe(name));
+      store.setzeAktivesGeschoss(m.gebaeude[0].geschosse[0].id);
+      plZeige(`Projekt „${name}" angelegt — mit einem Gebäude und einem Geschoss.`, true);
+    } catch (e) { plZeige('Nicht angelegt: ' + (e && e.message ? e.message : e), false); }
+  });
+
+  // Projektname: der Projektknoten der Mappe, nicht die Kopfdaten des Wandelements.
+  $pl('pl-projekt').addEventListener('change', () => {
+    const m = plMappe(); if (!m) return;
+    const name = $pl('pl-projekt').value.trim();
+    if (!name) { $pl('pl-projekt').value = m.projekt.name; plZeige('Ein leerer Projektname wird nicht gespeichert.', false); return; }
+    plAendere((mm) => MAPPE.benenneUm(mm, mm.projekt.id, name), 'Projekt umbenannt: ' + name);
+  });
+
+  // --- Gebaeude -------------------------------------------------------------
+  $pl('pl-geb').addEventListener('change', () => {
+    try { store.setzeAktivesGebaeude($pl('pl-geb').value); plZeige('', true); }
+    catch (e) { plZeige('Gebäude nicht gewechselt: ' + (e && e.message ? e.message : e), false); }
+  });
+
+  $pl('pl-geb-neu').addEventListener('click', () => {
+    const m = plMappe(); if (!m) { plZeige('Erst ein Projekt anlegen.', false); return; }
+    const name = $pl('pl-geb-name').value.trim() || 'Gebäude ' + (m.gebaeude.length + 1);
+    const r = MAPPE.fuegeGebaeudeHinzu(m, name);
+    try { store.setzeMappe(r.mappe); store.setzeAktivesGebaeude(r.id); }
+    catch (e) { plZeige('Nicht angelegt: ' + (e && e.message ? e.message : e), false); return; }
+    $pl('pl-geb-name').value = '';
+    plZeige(`Gebäude „${name}" angelegt und aktiv — es hat noch kein Geschoss.`, true);
+  });
+
+  $pl('pl-geb-umbenennen').addEventListener('click', () => {
+    const geb = plGebaeude(); if (!geb) { plZeige('Kein Gebäude gewählt.', false); return; }
+    const name = $pl('pl-geb-name').value.trim();
+    if (!name) { plZeige('Bitte im Feld „Name" den neuen Gebäudenamen eingeben.', false); return; }
+    if (plAendere((m) => MAPPE.benenneUm(m, geb.id, name), `Gebäude umbenannt: „${geb.name}" → „${name}".`))
+      $pl('pl-geb-name').value = '';
+  });
+
+  $pl('pl-geb-loeschen').addEventListener('click', () => {
+    const geb = plGebaeude(); if (!geb) { plZeige('Kein Gebäude gewählt.', false); return; }
+    const anzGs = geb.geschosse.length;
+    const anzW = geb.geschosse.reduce((s, gs) => s + gs.waende.length, 0);
+    if (!confirm(`Gebäude „${geb.name}" aus der Projektstruktur löschen?`
+      + (anzGs ? ` Es enthält ${anzGs} Geschoss(e) mit ${anzW} eingetragenen Wand/Wänden.` : '')
+      + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
+    if (plAendere((m) => MAPPE.entferneGebaeude(m, geb.id, { mitInhalt: true }),
+        `Gebäude „${geb.name}" entfernt. ${anzW} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`))
+      { try { store.setzeAktivesGebaeude(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
+  });
+
+  // --- Geschosse ------------------------------------------------------------
+  $pl('pl-gs').addEventListener('change', () => {
+    try { store.setzeAktivesGeschoss($pl('pl-gs').value || null); plZeige('', true); }
+    catch (e) { plZeige('Geschoss nicht gewechselt: ' + (e && e.message ? e.message : e), false); }
+  });
+
+  /** Eingegebene Geschosshoehe: leer = keine Vorgabe, unsinnig = Fehler (nie geraten). */
+  function plHoeheEingabe(){
+    const s = String($pl('pl-gs-hoehe').value || '').trim();
+    if (!s) return null;
+    const n = Number(s.replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0) throw new Error('Geschosshöhe muss eine positive Zahl in mm sein (oder leer bleiben).');
+    return n;
+  }
+
+  $pl('pl-gs-neu').addEventListener('click', () => {
+    const geb = plGebaeude();
+    if (!geb) { plZeige('Erst ein Gebäude anlegen bzw. wählen.', false); return; }
+    let hoehe;
+    try { hoehe = plHoeheEingabe(); }
+    catch (e) { plZeige('Nicht angelegt: ' + e.message, false); return; }
+    const name = $pl('pl-gs-name').value.trim() || 'Geschoss ' + (geb.geschosse.length + 1);
+    const m = plMappe();
+    let r;
+    try { r = MAPPE.fuegeGeschossHinzu(m, geb.id, name, hoehe == null ? undefined : hoehe); store.setzeMappe(r.mappe); store.setzeAktivesGeschoss(r.id); }
+    catch (e) { plZeige('Nicht angelegt: ' + (e && e.message ? e.message : e), false); return; }
+    $pl('pl-gs-name').value = '';
+    const vg = MAPPE.hoehenVorgabe(hoehe);
+    plZeige(`Geschoss „${name}" angelegt und aktiv.`
+      + (vg.hoehe_mm == null ? ' Ohne Geschosshöhe — neue Wände erhalten keine Höhenvorgabe.'
+         : vg.passt ? ` Geschosshöhe ${vg.hoehe_mm} mm = ${vg.lagen} Lagen.` : ' ' + vg.hinweis), true);
+  });
+
+  $pl('pl-gs-uebernehmen').addEventListener('click', () => {
+    const gs = plGeschoss(); if (!gs) { plZeige('Kein Geschoss gewählt.', false); return; }
+    let hoehe;
+    try { hoehe = plHoeheEingabe(); }
+    catch (e) { plZeige('Nicht geändert: ' + e.message, false); return; }
+    const name = $pl('pl-gs-name').value.trim();
+    const teile = [];
+    const ok = plAendere((m) => {
+      let n = MAPPE.setzeGeschossHoehe(m, gs.id, hoehe);
+      if (name && name !== gs.name) n = MAPPE.benenneUm(n, gs.id, name);
+      return n;
+    }, null);
+    if (!ok) return;
+    if (name && name !== gs.name) teile.push(`umbenannt in „${name}"`);
+    const vg = MAPPE.hoehenVorgabe(hoehe);
+    teile.push(vg.hoehe_mm == null ? 'ohne Geschosshöhe (keine Vorgabe für neue Wände)'
+      : `Geschosshöhe ${vg.hoehe_mm} mm`);
+    $pl('pl-gs-name').value = '';
+    plZeige('Geschoss geändert: ' + teile.join(', ')
+      + '. Bestehende Wandelemente bleiben unverändert ([L-5]).'
+      + (vg.hinweis ? ' ' + vg.hinweis : ''), true);
+  });
+
+  $pl('pl-gs-loeschen').addEventListener('click', () => {
+    const gs = plGeschoss(); if (!gs) { plZeige('Kein Geschoss gewählt.', false); return; }
+    if (!confirm(`Geschoss „${gs.name}" aus der Projektstruktur löschen?`
+      + (gs.waende.length ? ` Es enthält ${gs.waende.length} eingetragene Wand/Wände.` : '')
+      + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
+    if (plAendere((m) => MAPPE.entferneGeschoss(m, gs.id, { mitWaenden: true }),
+        `Geschoss „${gs.name}" entfernt. ${gs.waende.length} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`))
+      { try { store.setzeAktivesGeschoss(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
+  });
+
+  /**
+   * Neu angelegte/importierte Wand im AKTIVEN Geschoss eintragen — ohne Lage, denn
+   * gezeichnet ist noch nichts ([L-4]/[L-7]): eine Lage wird nie erfunden. Ohne
+   * Projekt/Geschoss passiert nichts; das Wandelement steht dann als „nicht
+   * eingetragen" in der Liste und wird dort gemeldet.
+   * @param {string} wandId @param {string} name @returns {string} Zusatz zur Meldung
+   */
+  function plTrageWandEin(wandId, name){
+    const gs = plGeschoss();
+    if (!gs) {
+      return plMappe() ? ' · kein aktives Geschoss — die Wand ist noch keinem Geschoss zugeordnet'
+                       : ' · kein Projekt angelegt — die Wand ist noch keinem Geschoss zugeordnet';
+    }
+    try { store.verorteWand(wandId, gs.id, { name, lage: null }); }
+    catch (e) { return ' · nicht eingetragen (' + (e && e.message ? e.message : e) + ')'; }
+    return ` · eingetragen in Geschoss „${gs.name}" (noch ohne Lage im Raster)`;
+  }
+
+  /** Lage-/Geschosszelle einer Wandzeile — reine Anzeige aus der Mappe. */
+  function plWandZelle(el){
+    const treffer = store.wandVerortung(el.id);
+    if (!treffer) return '<span class="muted">nicht eingetragen</span>';
+    const mehrGeb = (plMappe()?.gebaeude.length || 0) > 1;
+    const ort = esc((mehrGeb ? treffer.gebaeude.name + ' · ' : '') + treffer.geschoss.name);
+    const lage = treffer.wand.lage;
+    if (!lage) return ort + '<br><span class="muted">unverortet</span>';
+    const ab = MAPPE.laengenAbgleich(lage, el.wandelement ? el.wandelement.length_mm : null);
+    const text = `${ort}<br><span class="muted">Raster ${lage.start_grid.x}/${lage.start_grid.y} · `
+      + `Richtung ${esc(lage.richtung)} · ${lage.laenge_grid}×125 = ${ab.lage_mm} mm</span>`;
+    return ab.abweichung
+      ? text + `<br><span style="color:#c0392b">Wandelement ${ab.wand_mm} mm ≠ Lage ${ab.lage_mm} mm ([L-3])</span>`
+      : text;
+  }
+
+  /** Referenzabgleich Mappe ↔ Wandspeicher ([L-4]): nur melden, nie bereinigen. */
+  function plWarnungen(){
+    const box = $pl('pl-warn');
+    const m = plMappe();
+    if (!m) { box.hidden = true; box.innerHTML = ''; return; }
+    const ref = store.mappeReferenzen();
+    const teile = [];
+    if (ref.verwaist.length) {
+      teile.push('<b>Verwaiste Einträge:</b> ' + ref.verwaist.length + ' Wand/Wände stehen in der '
+        + 'Projektstruktur, es gibt aber kein Wandelement mehr dazu ('
+        + esc(ref.verwaist.map(w => (w.name || w.id) + ' / ' + w.geschoss).join(', '))
+        + '). Sie werden <b>gemeldet, nicht still entfernt</b> ([L-4]).');
+    }
+    if (ref.unverortet.length) {
+      teile.push('<b>' + ref.unverortet.length + ' Wandelement(e) sind keinem Geschoss zugeordnet.</b> '
+        + 'Das ist der Normalfall vor dem Einzeichnen — in der Wandliste unten „Zuordnen" nutzt das '
+        + 'aktive Geschoss.');
+    }
+    if (ref.ohneLage.length) {
+      teile.push(ref.ohneLage.length + ' eingetragene Wand/Wände sind noch <b>nicht im Raster '
+        + 'verortet</b> — das Einzeichnen kommt in einer späteren Etappe.');
+    }
+    box.hidden = teile.length === 0;
+    box.innerHTML = teile.map(t => '<div style="margin:2px 0">' + t + '</div>').join('');
+  }
+
+  /** Ganzen Planerabschnitt neu zeichnen (Struktur ist im Speicher die Wahrheit). */
+  function plRender(){
+    const m = plMappe();
+    $pl('pl-none').hidden = !!m;
+    $pl('pl-anlegen').hidden = !!m;
+    $pl('pl-form').hidden = !m;
+    if (!m) { plWarnungen(); return; }
+    $pl('pl-projekt').value = m.projekt.name;
+
+    const geb = plGebaeude();
+    $pl('pl-geb').innerHTML = m.gebaeude.map(g =>
+      `<option value="${esc(g.id)}">${esc(g.name)} (${g.geschosse.length} Geschoss(e))</option>`).join('');
+    $pl('pl-geb').value = geb ? geb.id : '';
+
+    const gs = plGeschoss();
+    const liste = geb ? geb.geschosse : [];
+    $pl('pl-gs').innerHTML = (liste.length ? '' : '<option value="">– kein Geschoss –</option>')
+      + liste.map(x => `<option value="${esc(x.id)}">${esc(x.name)}`
+        + (x.hoehe_mm != null ? ` · ${x.hoehe_mm} mm` : ' · ohne Höhe')
+        + ` · ${x.waende.length} Wand/Wände</option>`).join('');
+    $pl('pl-gs').value = gs ? gs.id : '';
+    $pl('pl-gs-hoehe').value = gs && gs.hoehe_mm != null ? String(gs.hoehe_mm) : '';
+    plHoeheVorgeben(gs);
+
+    const vg = MAPPE.hoehenVorgabe(gs ? gs.hoehe_mm : null);
+    $pl('pl-hoehe-hinweis').innerHTML = !gs
+      ? 'Kein Geschoss gewählt — neue Wände werden keinem Geschoss zugeordnet.'
+      : vg.hoehe_mm == null
+        ? 'Ohne Geschosshöhe: neue Wände erhalten hier keine Höhenvorgabe ([L-5]).'
+        : vg.passt
+          ? `Höhenvorgabe für neue Wände: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm. `
+            + 'In Modul 1 jederzeit überschreibbar; sie wird nie zurückgeschrieben ([L-5]).'
+          : esc(vg.hinweis);
+
+    const anzW = MAPPE.alleWaende(m).length;
+    $pl('pl-stand').textContent = `${m.gebaeude.length} Gebäude · `
+      + `${MAPPE.alleGeschosse(m).length} Geschoss(e) · ${anzW} eingetragene Wand/Wände · `
+      + `Mappenformat v${MAPPE.MAPPE_VERSION}`;
+    plWarnungen();
+  }
+
+  /**
+   * Geschosshoehe als VORGABE in das Hoehenfeld von „Wandelement anlegen" schreiben ([L-5]).
+   * Nur bei echtem Wechsel des Geschosses oder seiner Hoehe — sonst wuerde jede Anzeige-
+   * aktualisierung eine bewusste Eingabe des Nutzers ueberschreiben. Sie ist ausdruecklich
+   * nur eine Vorgabe: sie bleibt frei aenderbar und wird nie zurueckgeschrieben.
+   */
+  let plHoeheStand = undefined;                     // undefined = noch nie angewandt
+  function plHoeheVorgeben(gs){
+    const stand = gs ? gs.id + ':' + (gs.hoehe_mm == null ? '' : gs.hoehe_mm) : null;
+    if (stand === plHoeheStand) return;
+    plHoeheStand = stand;
+    if (gs && gs.hoehe_mm != null) document.getElementById('f-hoehe').value = String(gs.hoehe_mm);
+  }
+
+  let wFilter = 'alle';       // Ansicht der Wandliste (siehe #w-filter)
+  $pl('w-filter').addEventListener('change', () => {
+    wFilter = $pl('w-filter').value || 'alle';
+    render();
+  });
 
   // --- Liste ---
   const tbody = document.getElementById('tbody');
@@ -521,19 +894,38 @@
   function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
   function render(){
-    const liste = store.listeElemente();
+    const alle = store.listeElemente();
     const aktiv = store.aktivId();
+    const gsAktiv = plGeschoss();
+    // Die Ansicht filtert nur die DARSTELLUNG; gespeichert wird nichts umsortiert.
+    const liste = alle.filter(e => {
+      if (wFilter === 'aktiv') {
+        const t = store.wandVerortung(e.id);
+        return !!(gsAktiv && t && t.geschoss.id === gsAktiv.id);
+      }
+      if (wFilter === 'unverortet') return !store.wandVerortung(e.id);
+      return true;
+    });
     leer.hidden = liste.length > 0;
+    leer.textContent = alle.length === 0 ? 'Noch kein Wandelement gespeichert.'
+      : wFilter === 'aktiv' ? (gsAktiv ? `Im Geschoss „${gsAktiv.name}" ist noch keine Wand eingetragen.`
+                                       : 'Kein aktives Geschoss gewählt.')
+      : 'Alle Wandelemente sind einem Geschoss zugeordnet.';
     tbody.innerHTML = liste.map(e => {
       const w = e.wandelement || {};
       const masse = (w.length_mm ?? '?') + ' × ' + (w.height_mm ?? '?') + ' mm';
       const badge = e.id === aktiv ? ' <span class="badge">aktiv</span>' : '';
+      const treffer = store.wandVerortung(e.id);
+      const imAktiven = !!(gsAktiv && treffer && treffer.geschoss.id === gsAktiv.id);
       return `<tr data-id="${e.id}"${e.id === neuId ? ' class="neu"' : ''}>
         <td><b>${esc(e.name)}</b>${badge}</td>
         <td class="muted">${masse}</td>
+        <td>${plWandZelle(e)}</td>
         <td class="muted">${fmtDatum(e.geaendert)}</td>
         <td class="actions">
           ${e.id === aktiv ? '' : `<button class="btn-s" data-act="aktiv">Aktiv setzen</button>`}
+          <button class="btn-s" data-act="planen">In Modul 1 planen</button>
+          ${(gsAktiv && !imAktiven) ? `<button class="btn-s" data-act="zuordnen">Zuordnen</button>` : ''}
           <button class="btn-s" data-act="export">Export</button>
           <button class="btn-s" data-act="umbenennen">Umbenennen</button>
           <button class="btn-d" data-act="loeschen">Löschen</button>
@@ -553,6 +945,22 @@
     const act = btn.dataset.act;
     const e = store.holeElement(id); if (!e) return;
     if (act === 'aktiv') store.setzeAktiv(id);
+    else if (act === 'planen') {
+      // Roundtrip: dieselbe Wand wird in Modul 1 detailliert geplant. Modul 1 bleibt der
+      // einzige Schreiber des Wandelements; die Lage in der Mappe bleibt unberuehrt ([L-3]).
+      store.setzeAktiv(id);
+      try { window.location.href = 'wandplanung.html'; } catch { /* Navigation nicht moeglich */ }
+    }
+    else if (act === 'zuordnen') {
+      const gs = plGeschoss();
+      if (!gs) { plZeige('Kein aktives Geschoss — oben eines wählen.', false); return; }
+      // Eine bereits vorhandene Lage wird beim Verschieben NICHT uebernommen: sie gilt im
+      // Raster eines anderen Geschosses und darf nicht stillschweigend weiterreisen ([L-1]).
+      try {
+        store.verorteWand(id, gs.id, { name: e.name, lage: null });
+        plZeige(`„${e.name}" ist jetzt in Geschoss „${gs.name}" eingetragen (ohne Lage im Raster).`, true);
+      } catch (err) { plZeige('Nicht eingetragen: ' + (err && err.message ? err.message : err), false); }
+    }
     else if (act === 'export') oeffneExport(id);
     else if (act === 'umbenennen') {
       const name = prompt('Neuer Name:', e.name);
@@ -565,6 +973,8 @@
   });
 
   store.abonniere(render);
+  store.abonniere(plRender);
+  plRender();
   render();
 
   // --- Projekt-Kopfdaten (aktives Element -> eingaben.projekt) ---

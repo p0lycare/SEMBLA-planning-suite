@@ -54,7 +54,8 @@
 
 import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rolle,
          rollenIds, rollenVonModul, validiereKatalog } from "./sembla-katalog.js";
-import { alleGeschosse, entferneWand as entferneWandAusMappe, findeGeschoss, findeWand,
+import { alleGeschosse, benenneUm as benenneInMappeUm, entferneWand as entferneWandAusMappe,
+         findeGebaeude, findeGeschoss, findeWand,
          leereMappe, mappeObjekt, normMappe, parseMappe, pruefeReferenzen, setzeWand,
          uebernehmeElemente, validiereMappe } from "./sembla-projektmappe.js";
 
@@ -334,13 +335,22 @@ export function loesche(id) {
   } catch { /* Mappe kaputt/fehlend: das Wandelement ist trotzdem geloescht */ }
 }
 
-/** @param {string} id @param {string} name */
+/**
+ * Wandelement umbenennen. Ist die Wand in der Projektmappe eingetragen, wird der
+ * NAME dort mitgefuehrt — er ist nach [L-4] reine Anzeige (die Referenz ist die id),
+ * und ein veralteter Name in der Mappendatei waere eine zweite, falsche Wahrheit.
+ * Lage und Wandelement bleiben unberuehrt.
+ * @param {string} id @param {string} name
+ */
 export function umbenennen(id, name) {
   const map = _lesenMap();
   if (!map[id]) return;
   map[id].name = (name || map[id].name).toString();
   map[id].geaendert = _jetzt();
   _schreibenMap(map);
+  try {
+    if (wandVerortung(id)) aendereMappe((m) => benenneInMappeUm(m, id, map[id].name));
+  } catch { /* Mappe kaputt/fehlend: das Wandelement ist trotzdem umbenannt */ }
 }
 
 // --- Datei-Export / -Import ----------------------------------------------
@@ -584,6 +594,44 @@ export function aktivesGebaeudeId() {
 /** @returns {string|null} */
 export function aktivesGeschossId() {
   try { return localStorage.getItem(K_AKTIV_GS) || null; } catch { return null; }
+}
+
+/**
+ * Aktives Gebaeude setzen (null = Auswahl aufheben). Gehoert das aktive Geschoss
+ * nicht zu diesem Gebaeude, wird sein Zeiger AUFGEHOBEN statt auf ein fremdes
+ * Geschoss gebogen — es wird kein Geschoss geraten ([P-9]).
+ * @param {string|null} id
+ */
+export function setzeAktivesGebaeude(id) {
+  if (id == null) {
+    localStorage.removeItem(K_AKTIV_GEB);
+    localStorage.removeItem(K_AKTIV_GS);
+    _benachrichtige();
+    return;
+  }
+  const m = holeMappe();
+  const geb = m ? findeGebaeude(m, id) : null;
+  if (!geb) throw new Error(`Unbekanntes Gebäude „${id}“.`);
+  localStorage.setItem(K_AKTIV_GEB, String(id));
+  const gsId = aktivesGeschossId();
+  if (gsId && !geb.geschosse.some((gs) => gs.id === gsId)) localStorage.removeItem(K_AKTIV_GS);
+  _benachrichtige();
+}
+
+/**
+ * Aktives Gebaeude. Fehlt der Zeiger oder ist er verwaist, wird NICHT geraten:
+ * es wird nur zurueckgefallen, wenn die Mappe genau EIN Gebaeude hat ([L-6]).
+ * @returns {object|null}
+ */
+export function aktivesGebaeude() {
+  const m = holeMappe();
+  if (!m) return null;
+  const id = aktivesGebaeudeId();
+  if (id) {
+    const geb = findeGebaeude(m, id);
+    if (geb) return geb;
+  }
+  return m.gebaeude.length === 1 ? m.gebaeude[0] : null;
 }
 
 /**

@@ -110,7 +110,22 @@ Schema **v3→v4** übernimmt bestehende Wände einmalig und verlustfrei in ein 
 unberührt. Verwaiste Einträge und unverortete Wände werden **gemeldet, nie still bereinigt**
 ([L-4]). Planbilder gehören **nicht** in den localStorage ([L-8], noch offen — Etappe C3).
 Aktive Zeiger: `sembla:aktiv:gebaeude` / `:geschoss`; einen `:projekt`-Zeiger gibt es bewusst
-**nicht** (eine Mappe = ein Projekt, ein zweiter Zeiger wäre eine zweite Wahrheit).
+**nicht** (eine Mappe = ein Projekt, ein zweiter Zeiger wäre eine zweite Wahrheit). Gehört das
+aktive Geschoss nicht zum aktiven Gebäude, wird sein Zeiger **aufgehoben**, nie auf ein fremdes
+Geschoss gebogen.
+
+**Bedienung der Struktur (Etappe C2, Modul 0).** Die Oberfläche pflegt Projekt/Gebäude/Geschoss
+(anlegen, wählen, umbenennen, Geschosshöhe setzen, löschen) über die **reinen** Operationen aus
+`sembla-projektmappe.js`; jeder Fehlschlag wird benannt und lässt den Speicher unverändert. Eine
+**neu angelegte oder importierte** Wand wird im **aktiven Geschoss eingetragen** — mit `lage: null`,
+denn gezeichnet ist noch nichts ([L-4]); ohne aktives Geschoss bleibt sie nicht eingetragen und wird
+als solche gemeldet. Die Geschosshöhe steht als **Vorgabe** im Höhenfeld des Anlegen-Formulars und
+bleibt frei änderbar ([L-5]). Die Wandliste zeigt je Wand **Geschoss und Lage** (mit gemeldeter
+Längenabweichung nach [L-3]) und lässt sich auf das aktive Geschoss bzw. auf nicht eingetragene
+Wände einschränken — der Filter ändert nur die **Anzeige**. Das **Umbenennen** einer Wand führt den
+Anzeigenamen der Mappe mit (die Referenz bleibt die `id`); das **Löschen eines Geschosses/Gebäudes**
+entfernt nur die Struktur — die Wandelemente bleiben erhalten und stehen danach als „nicht
+eingetragen“. Das **Einzeichnen der Lage** im Geschossplan folgt erst in C3/C4.
 
 **Bauteilkatalog (`sembla:katalog`, Format `SEMBLA-Bauteilkatalog` v1).** Der Produktstamm (Steine,
 Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder, Verbrauchsmaterial) ist
@@ -304,7 +319,7 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **wird zum Projektplaner** (#26, Plan in `doku/PLAN-Projektplaner.md`; Datenmodell steht, Oberfläche folgt in Etappe C2). Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | **Projektplaner** (#26, Plan in `doku/PLAN-Projektplaner.md`; Datenmodell + Struktur-Oberfläche stehen (C1/C2), Planupload und Einzeichnen folgen in C3/C4): **Projekt → Gebäude → Geschoss** anlegen/wählen, Geschosshöhe als Vorgabe, Wandliste je Geschoss mit Lage. Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

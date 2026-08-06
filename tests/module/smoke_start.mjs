@@ -77,14 +77,15 @@ const { buildWall } = await import("../../docs/shared/sembla-core.js");
 const { MODULE } = await import("../../docs/shared/navbar.js");
 const { baueDateien, stuecklistePositionen } = await import("../../docs/shared/sembla-export.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
+const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
 
 // --- Produktcode aus docs/index.html laden --------------------------------
 const html = readFileSync(new URL("../../docs/index.html", import.meta.url), "utf8");
 const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
-new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT", src)(
-  () => {}, MODULE, store, buildWall, baueDateien, (name, files) => zipCalls.push({ name, files }), KAT
+new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT","MAPPE", src)(
+  () => {}, MODULE, store, buildWall, baueDateien, (name, files) => zipCalls.push({ name, files }), KAT, MAPPE
 );
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
@@ -980,8 +981,8 @@ globalThis.document = {
   body:{ appendChild(){}, insertBefore(){}, firstChild:null },
 };
 globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return { ok:true, status:200, text: async () => '{}' }; };
-new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT", src)(
-  () => {}, MODULE, store, buildWall, baueDateien, () => {}, KAT);
+new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT","MAPPE", src)(
+  () => {}, MODULE, store, buildWall, baueDateien, () => {}, KAT, MAPPE);
 const frischKatalog = globalThis.localStorage.getItem('sembla:katalog');
 const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
 globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
@@ -993,6 +994,237 @@ ok('Initialisierung legt kein Wandelement an', frischElemente === null);
 ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
+
+// --- 8) Projektplaner-Oberflaeche (Etappe C2, Issue #26, [L-1]…[L-7]) ------
+// Geuebt wird die ECHTE Modul-0-Oberflaeche: Projekt/Gebaeude/Geschoss anlegen und
+// waehlen, Wandliste je Geschoss, Roundtrip zu Modul 1. Kern der Etappe: die
+// Projektstruktur ist eine eigene Ressource — das Wandelement wird nie angefasst
+// ([L-3]) und eine Lage im Raster wird niemals erfunden ([L-4]/[L-7]).
+{
+  const plMsgTxt = () => $('pl-msg').textContent;
+  const plFehler = () => $('pl-msg').className === 'msg err';
+  const mappe = () => store.holeMappe();
+  const mappeSlot = () => localStorage.getItem('sembla:projektmappe');
+  const wZeile = (act, id) => $('tbody').dispatch('click', { target: {
+    closest: sel => sel === 'button' ? { closest: () => null, dataset: { act } } : { dataset: { id } } } });
+  /** Auswahl in einem <select> setzen und das echte change-Ereignis feuern. */
+  const plWaehle = (id, wert) => { $(id).value = wert; $(id).dispatch('change'); };
+
+  // 8a) Bedienelemente sind an der echten Oberflaeche vorhanden
+  ok('Abschnitt „Projektplanung" mit der Hierarchie im Titel',
+    /<h2>Projektplanung/.test(html) && /Projekt → Gebäude → Geschoss → Wand/.test(html));
+  ok('Bedienelemente fuer Projekt/Gebaeude/Geschoss vorhanden',
+    /id="pl-neu">Projekt anlegen</.test(html) && /<select id="pl-geb"/.test(html)
+    && /<select id="pl-gs"/.test(html) && /id="pl-geb-neu">Gebäude anlegen</.test(html)
+    && /id="pl-gs-neu">Geschoss anlegen</.test(html) && /<input id="pl-gs-hoehe"/.test(html));
+  ok('Wandliste hat Geschoss-/Lagespalte und eine Ansichtsauswahl',
+    /<th>Geschoss \/ Lage<\/th>/.test(html) && /<select id="w-filter"/.test(html)
+    && /value="unverortet"/.test(html));
+  ok('Hinweis nennt die Trennung von Struktur und Wandelement ([L-3]/[L-4]/[L-5])',
+    /\[L-3\]/.test(html) && /\[L-4\]/.test(html) && /\[L-5\]/.test(html)
+    && /eigenen Ressource<\/b> \(Projektmappe\)/.test(html));
+
+  // 8b) Ohne Projekt: Formular verborgen, nichts angelegt
+  ok('Ausgangslage: keine Projektmappe im Speicher', mappe() === null && mappeSlot() === null);
+  ok('ohne Projekt ist nur das Anlegen sichtbar',
+    $('pl-form').hidden === true && $('pl-anlegen').hidden === false && $('pl-none').hidden === false);
+  ok('ohne Projekt bleibt die Warnbox stumm', $('pl-warn').hidden === true);
+
+  // 8c) Projekt anlegen — genau eine Mappe, vollstaendige Hierarchie ([L-6])
+  $('pl-projekt-neu').value = 'Aschersleben AWG';
+  $('pl-neu').dispatch('click');
+  const m1 = mappe();
+  ok('Projekt angelegt, Struktur vollstaendig',
+    !!m1 && m1.projekt.name === 'Aschersleben AWG'
+    && m1.gebaeude.length === 1 && m1.gebaeude[0].geschosse.length === 1);
+  ok('Formular ist jetzt sichtbar, Anlegen verborgen',
+    $('pl-form').hidden === false && $('pl-anlegen').hidden === true && $('pl-none').hidden === true);
+  ok('das angelegte Geschoss ist aktiv',
+    store.aktivesGeschossId() === m1.gebaeude[0].geschosse[0].id
+    && store.aktivesGebaeudeId() === m1.gebaeude[0].id);
+  ok('Stand nennt Struktur und Mappenformat v1',
+    /1 Gebäude/.test($('pl-stand').textContent) && /Mappenformat v1/.test($('pl-stand').textContent));
+  ok('Projektmappe liegt im eigenen localStorage-Slot', JSON.parse(mappeSlot()).projekt.name === 'Aschersleben AWG');
+  ok('Projektmappe traegt keine Wandgeometrie ([L-3])',
+    !mappeSlot().includes('courses') && !mappeSlot().includes('length_mm'));
+
+  // ein zweites Projekt ist ausgeschlossen — eine Mappe ist genau ein Projekt ([L-6])
+  const slotVorZweit = mappeSlot();
+  $('pl-projekt-neu').value = 'Zweitprojekt';
+  $('pl-neu').dispatch('click');
+  ok('zweites Projekt wird sichtbar abgewiesen, Mappe unveraendert',
+    plFehler() && /bereits ein Projekt/.test(plMsgTxt()) && mappeSlot() === slotVorZweit);
+
+  // 8d) Projekt umbenennen; leerer Name wird nicht gespeichert
+  plWaehle('pl-projekt', 'Aschersleben AWG · Haus 1');
+  ok('Projekt umbenannt', mappe().projekt.name === 'Aschersleben AWG · Haus 1' && !plFehler());
+  plWaehle('pl-projekt', '   ');
+  ok('leerer Projektname wird abgewiesen und das Feld zurueckgesetzt',
+    plFehler() && mappe().projekt.name === 'Aschersleben AWG · Haus 1'
+    && $('pl-projekt').value === 'Aschersleben AWG · Haus 1');
+
+  // 8e) Gebaeude anlegen und wechseln
+  $('pl-geb-name').value = 'Haus A';
+  $('pl-geb-neu').dispatch('click');
+  const gebA = mappe().gebaeude.find(g => g.name === 'Haus A');
+  ok('Gebaeude angelegt und aktiv',
+    !!gebA && store.aktivesGebaeudeId() === gebA.id && gebA.geschosse.length === 0);
+  ok('Gebaeudewechsel hebt den Geschosszeiger auf (kein geratenes Geschoss)',
+    store.aktivesGeschossId() === null);
+  ok('Geschossauswahl zeigt „kein Geschoss"', /– kein Geschoss –/.test($('pl-gs').innerHTML));
+  ok('ohne Geschoss wird die fehlende Zuordnung benannt',
+    /keinem Geschoss zugeordnet/.test($('pl-hoehe-hinweis').innerHTML));
+
+  // 8f) Geschosse mit Hoehenvorgabe ([L-5]) — nichts wird gerundet
+  $('pl-gs-name').value = 'EG'; $('pl-gs-hoehe').value = '2600';
+  $('pl-gs-neu').dispatch('click');
+  const gsEG = mappe().gebaeude.find(g => g.id === gebA.id).geschosse.find(x => x.name === 'EG');
+  ok('Geschoss EG angelegt, aktiv, mit Geschosshoehe',
+    !!gsEG && gsEG.hoehe_mm === 2600 && store.aktivesGeschossId() === gsEG.id);
+  ok('Hoehenvorgabe wird als Lagenzahl erklaert',
+    /2600 mm<\/b> = 13 Lagen/.test($('pl-hoehe-hinweis').innerHTML) && /\[L-5\]/.test($('pl-hoehe-hinweis').innerHTML));
+  ok('Geschosshoehe steht als Vorgabe im Hoehenfeld von „Wandelement anlegen"',
+    $('f-hoehe').value === '2600');
+
+  $('pl-gs-name').value = 'OG'; $('pl-gs-hoehe').value = '2500';
+  $('pl-gs-neu').dispatch('click');
+  const gsOG = () => store.holeMappe().gebaeude.find(g => g.id === gebA.id).geschosse.find(x => x.name === 'OG');
+  ok('krumme Geschosshoehe wird ANGENOMMEN, aber benannt statt gerundet',
+    gsOG().hoehe_mm === 2500 && /kein Vielfaches/.test(plMsgTxt())
+    && /2400 mm oder 2600 mm/.test(plMsgTxt()) && /nichts gerundet/.test(plMsgTxt()));
+  ok('krumme Vorgabe wird NICHT ins Hoehenfeld uebernommen und nicht gerundet',
+    $('f-hoehe').value === '2500' && gsOG().hoehe_mm === 2500);
+
+  // 8g) Wand im aktiven Geschoss anlegen -> eingetragen, aber OHNE erfundene Lage ([L-4])
+  $('f-name').value = 'OG-W01'; $('f-laenge').value = '3000'; $('f-hoehe').value = '2400';
+  $('f-wandtyp').value = 'mit_wind';
+  $('btn-neu').dispatch('click');
+  const w01 = store.aktivId();
+  ok('Meldung nennt das Geschoss der Eintragung',
+    /eingetragen in Geschoss „OG"/.test($('msg').textContent) && /ohne Lage/.test($('msg').textContent));
+  ok('Wand steht im aktiven Geschoss der Mappe',
+    store.wandVerortung(w01)?.geschoss.id === gsOG().id);
+  ok('KEINE Lage erfunden ([L-4])', store.wandVerortung(w01).wand.lage === null);
+  ok('Wandelement bleibt frei von Struktur-/Lagedaten ([L-3])',
+    !JSON.stringify(store.aktivesWandelement()).includes('start_grid')
+    && !JSON.stringify(store.aktivesWandelement()).includes(gsOG().id));
+  ok('Wandliste zeigt Geschoss und „unverortet"',
+    /OG<br><span class="muted">unverortet<\/span>/.test($('tbody').innerHTML));
+
+  // 8h) Geschoss wechseln: Hoehenvorgabe folgt, neue Wand landet im gewaehlten Geschoss
+  plWaehle('pl-gs', gsEG.id);
+  ok('Geschosswechsel setzt den Zeiger und die Hoehenvorgabe',
+    store.aktivesGeschossId() === gsEG.id && $('f-hoehe').value === '2600');
+  $('f-name').value = 'EG-W01'; $('f-laenge').value = '2000';
+  $('btn-neu').dispatch('click');
+  const wEG = store.aktivId();
+  ok('zweite Wand liegt im anderen Geschoss', store.wandVerortung(wEG)?.geschoss.id === gsEG.id);
+  ok('erste Wand bleibt in ihrem Geschoss', store.wandVerortung(w01)?.geschoss.id === gsOG().id);
+  ok('Wandelement uebernimmt die Hoehenvorgabe als gewoehnliche Eingabe',
+    store.holeElement(wEG).wandelement.height_mm === 2600);
+
+  // 8i) Ansicht der Wandliste: aktives Geschoss / nicht eingetragen / alle
+  const zeilen = () => [...$('tbody').innerHTML.matchAll(/<tr data-id="([^"]+)"/g)].map(x => x[1]);
+  const alleIds = store.listeElemente().map(e => e.id);
+  plWaehle('w-filter', 'aktiv');
+  ok('Ansicht „aktives Geschoss" zeigt genau dessen Wand', zeilen().join() === wEG);
+  plWaehle('w-filter', 'unverortet');
+  ok('Ansicht „nicht eingetragen" zeigt die Waende ohne Zuordnung',
+    zeilen().length === alleIds.length - 2 && !zeilen().includes(wEG) && !zeilen().includes(w01));
+  plWaehle('w-filter', 'alle');
+  ok('Ansicht „alle" zeigt wieder alles (Filter aendert nur die Anzeige)',
+    zeilen().length === alleIds.length && JSON.parse(mappeSlot()) && store.listeElemente().length === alleIds.length);
+
+  // 8j) Nachtraeglich zuordnen — die Aktion nutzt das aktive Geschoss
+  const frei = alleIds.find(id => !store.wandVerortung(id));
+  wZeile('zuordnen', frei);
+  ok('unverortete Wand ins aktive Geschoss eingetragen',
+    store.wandVerortung(frei)?.geschoss.id === gsEG.id && store.wandVerortung(frei).wand.lage === null);
+  ok('Zuordnen wird sichtbar gemeldet', /ist jetzt in Geschoss „EG"/.test(plMsgTxt()) && !plFehler());
+
+  // 8k) Umbenennen haelt den Anzeigenamen der Mappe mit (id bleibt die Referenz, [L-4])
+  store.umbenennen(wEG, 'EG-W01 Nord');
+  ok('Mappenname folgt dem Wandnamen, die Kennung bleibt',
+    store.wandVerortung(wEG).wand.name === 'EG-W01 Nord' && store.wandVerortung(wEG).wand.id === wEG);
+
+  // 8l) [L-3] Abweichung Lage ↔ Wandelement wird GEMELDET, nicht angeglichen
+  store.aendereMappe((m) => MAPPE.setzeLage(m, wEG, { start_grid: { x: 4, y: 12 }, richtung: 'x', laenge_grid: 24 }));
+  ok('verortete Wand zeigt Rasterlage und Laenge',
+    /Raster 4\/12 · Richtung x · 24×125 = 3000 mm/.test($('tbody').innerHTML));
+  ok('[L-3] Abweichung wird benannt statt angeglichen',
+    /Wandelement 2000 mm ≠ Lage 3000 mm \(\[L-3\]\)/.test($('tbody').innerHTML)
+    && store.holeElement(wEG).wandelement.length_mm === 2000
+    && store.wandVerortung(wEG).wand.lage.laenge_grid === 24);
+
+  // 8m) Roundtrip nach Modul 1: aktiv setzen + Neuaufbau des Wandelements laesst die Lage stehen
+  wZeile('planen', w01);
+  ok('„In Modul 1 planen" setzt die Wand aktiv', store.aktivId() === w01);
+  const neuGebaut = buildWall('OG-W01', 3000, 2400, []);
+  store.speichereAktiv(neuGebaut);
+  ok('Modul-1-Rueckschreiben laesst Struktur und Lage unberuehrt ([L-3])',
+    store.wandVerortung(w01)?.geschoss.id === gsOG().id
+    && store.holeElement(w01).wandelement.height_mm === 2400);
+
+  // 8n) Geschosshoehe nachtraeglich aendern — bestehende Waende bleiben unveraendert ([L-5])
+  plWaehle('pl-gs', gsEG.id);
+  const hoeheVorher = store.holeElement(wEG).wandelement.height_mm;
+  $('pl-gs-name').value = ''; $('pl-gs-hoehe').value = '2800';
+  $('pl-gs-uebernehmen').dispatch('click');
+  ok('Geschosshoehe geaendert, bestehende Wand unveraendert',
+    store.aktivesGeschoss().geschoss.hoehe_mm === 2800
+    && store.holeElement(wEG).wandelement.height_mm === hoeheVorher
+    && /Bestehende Wandelemente bleiben unverändert/.test(plMsgTxt()));
+  const slotVorUnsinn = mappeSlot();
+  $('pl-gs-hoehe').value = '-5';
+  $('pl-gs-uebernehmen').dispatch('click');
+  ok('unsinnige Geschosshoehe wird abgewiesen, Mappe unveraendert',
+    plFehler() && /positive Zahl/.test(plMsgTxt()) && mappeSlot() === slotVorUnsinn);
+  $('pl-gs-hoehe').value = '';
+  $('pl-gs-uebernehmen').dispatch('click');
+  ok('Geschosshoehe kann ausdruecklich leer bleiben (keine Vorgabe)',
+    store.aktivesGeschoss().geschoss.hoehe_mm === null && !plFehler());
+
+  // 8o) Loeschen: Struktur wird entfernt, Wandelemente bleiben ([L-4] — nie stille Bereinigung)
+  const anzahlWaende = store.listeElemente().length;
+  confirmAntwort = false;
+  $('pl-gs-loeschen').dispatch('click');
+  ok('Geschoss loeschen ohne Bestaetigung passiert nicht',
+    !!store.aktivesGeschoss() && mappeSlot().includes(gsEG.id));
+  confirmAntwort = true;
+  $('pl-gs-loeschen').dispatch('click');
+  ok('Geschoss entfernt, Wandelemente bleiben erhalten',
+    !mappeSlot().includes(gsEG.id) && store.listeElemente().length === anzahlWaende
+    && !!store.holeElement(wEG) && store.wandVerortung(wEG) === null);
+  ok('Meldung stellt klar, dass keine Wand geloescht wurde',
+    /nicht mehr eingetragen/.test(plMsgTxt()) && /nicht gelöscht/.test(plMsgTxt()));
+  ok('Warnbox meldet die jetzt unverorteten Waende ([L-4])',
+    $('pl-warn').hidden === false && /keinem Geschoss zugeordnet/.test($('pl-warn').innerHTML));
+
+  // 8p) Verwaister Eintrag wird gemeldet, nie still bereinigt ([L-4])
+  store.aendereMappe((m) => MAPPE.setzeWand(m, gsOG().id, { id: 'gibt-es-nicht', name: 'Geisterwand', lage: null }));
+  ok('verwaister Mappeneintrag wird benannt',
+    /Verwaiste Einträge/.test($('pl-warn').innerHTML) && /Geisterwand/.test($('pl-warn').innerHTML)
+    && store.mappeReferenzen().verwaist.length === 1);
+  ok('verwaister Eintrag wird NICHT entfernt', mappeSlot().includes('gibt-es-nicht'));
+
+  // 8q) Wand loeschen raeumt ihren Mappeneintrag mit ab (ausdrueckliche Nutzeraktion)
+  confirmAntwort = true;
+  wZeile('loeschen', w01);
+  ok('geloeschte Wand hinterlaesst keinen verwaisten Eintrag',
+    store.holeElement(w01) === null && store.wandVerortung(w01) === null);
+
+  // 8r) Reload-Fest: alles steht im Speicher, nichts nur im DOM
+  ok('Struktur ueberlebt einen Reload (frisch aus dem Rohwert gelesen)',
+    (() => { const roh = JSON.parse(mappeSlot());
+             return roh.format === 'SEMBLA-Projektmappe' && roh.version === 1
+               && MAPPE.validiereMappe(MAPPE.normMappe(roh)).length === 0
+               && roh.gebaeude.some(g => g.geschosse.some(x => x.name === 'OG')); })());
+  ok('Mappen-Datei-Roundtrip verlustfrei (eigene Formatachse)',
+    JSON.stringify(MAPPE.mappeObjekt(MAPPE.parseMappe(JSON.stringify(MAPPE.mappeObjekt(mappe())))))
+    === JSON.stringify(MAPPE.mappeObjekt(mappe())));
+  ok('Projektformat der Wanddateien bleibt v2 (kein Bruch durch die Mappe)',
+    store.projektObjekt(store.listeElemente()[0].id).version === 2);
+}
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

@@ -417,6 +417,25 @@ export function entferneGebaeude(m, gebaeudeId, { mitInhalt = false } = {}) {
   return n;
 }
 
+/**
+ * Geschosshoehe setzen oder aufheben (`null` = keine Vorgabe). Sie ist nach [L-5]
+ * nur eine VORGABE fuer neue Waende und wird nie ins Wandelement zurueckgeschrieben;
+ * bestehende Waende des Geschosses bleiben unberuehrt. Ein nicht ins Lagenraster
+ * passender Wert wird ANGENOMMEN und getrennt gemeldet (`hoehenVorgabe`) — gerundet
+ * wird nichts. Nicht positive Werte sind unzulaessig und werden abgewiesen.
+ * @param {any} m @param {string} geschossId @param {number|null} hoehe_mm
+ * @returns {object} neue Mappe
+ */
+export function setzeGeschossHoehe(m, geschossId, hoehe_mm) {
+  const h = _zahlOderNull(hoehe_mm);
+  if (h != null && !(h > 0)) throw new Error("Geschosshöhe muss positiv sein (oder leer bleiben).");
+  const n = _klon(m);
+  const gs = n.gebaeude.flatMap((g) => g.geschosse).find((x) => x.id === String(geschossId));
+  if (!gs) throw new Error(`Unbekanntes Geschoss „${geschossId}“.`);
+  gs.hoehe_mm = h;
+  return n;
+}
+
 /** Umbenennen (Projekt/Gebaeude/Geschoss/Wand) anhand der Kennung. */
 export function benenneUm(m, id, name) {
   const n = _klon(m);

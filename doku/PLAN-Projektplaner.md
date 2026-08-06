@@ -1,6 +1,6 @@
 # Plan: Modul 0 wird Projektplaner (Issues #26, #37, #42, #43)
 
-> Stand: 2026-08-06 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappe C1 umgesetzt**, C2 ist der nächste Schritt
+> Stand: 2026-08-06 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappen C1 + C2 umgesetzt**, C3 ist der nächste Schritt
 
 Dieses Dokument umreißt den Umbau von Modul 0 zum Projektplaner mit Geschosslayout. Es ist die
 Arbeitsgrundlage über mehrere Sessions. Jede Etappe wird einzeln umgesetzt, getestet und committet.
@@ -173,7 +173,7 @@ UI-Konvention, keine strukturelle mehr.
 | Etappe | Inhalt | Fertig, wenn |
 |---|---|---|
 | **C1 ✅** | Datenmodell + Speicherschicht + Migration (§2.3), ohne UI | **erledigt** (s. §7) |
-| **C2** | Modul-0-UI: Projekt/Gebäude/Geschoss anlegen & wählen, Wandliste je Geschoss, Roundtrip nach Modul 1 | Mehrere Wände über mehrere Geschosse, Reload verlustfrei — **deckt den Großteil von #26 ab** |
+| **C2 ✅** | Modul-0-UI: Projekt/Gebäude/Geschoss anlegen & wählen, Wandliste je Geschoss, Roundtrip nach Modul 1 | **erledigt** (s. §8) |
 | **C3** | Planupload, Kalibrierung, x/y-Versatz, 125-mm-Rasteroverlay (reine Anzeige) | Plan liegt passgenau unter dem Raster, überlebt Reload |
 | **C4** | Wand-Werkzeug + Radierer + „Wand hinzufügen" | Gezeichnete Wand landet mit korrekter Länge in der Wandliste |
 | **C5** | Projektmappe Export/Import (ZIP + Ordner, §3) | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
@@ -248,3 +248,40 @@ Festgelegt in **Kapitel 16.9 „Projektstruktur & Geschosslayout (Modul 0) [L]"*
 genau eine Mappe und damit genau ein Projekt, ein zweiter Zeiger wäre eine zweite Wahrheit ([P-6]).
 Und die Lage steht als **ein `lage`-Objekt** am Wandeintrag statt als drei flache Felder, damit
 „unverortet" sauber als `lage: null` darstellbar ist ([L-7]).
+
+---
+
+## 8. Umsetzungsstand C2 (2026-08-06)
+
+**Kein neues Regelwerk:** C2 setzt ausschließlich die bereits festgeschriebenen Regeln
+`[L-1]`…`[L-7]` in der Oberfläche um — es gibt keine neue Regel-ID und keine Änderung an Kapitel 16.
+
+- **Modul 0 (`docs/index.html`)** hat einen Abschnitt **„Projektplanung"** über dem Anlegen-Formular:
+  Projekt anlegen/umbenennen, Gebäude anlegen/wählen/umbenennen/löschen, Geschosse ebenso plus
+  **Geschosshöhe** setzen/aufheben. Alle Struktur-Änderungen laufen über die **reinen** Operationen
+  aus `sembla-projektmappe.js`; ein Fehlschlag wird benannt und lässt den Speicher unverändert.
+- **Wände gehören zu einem Geschoss:** neu angelegte *und* importierte Wände werden im **aktiven
+  Geschoss** eingetragen — mit `lage: null` ([L-4], es wird keine Lage erfunden). Ohne aktives
+  Geschoss bleibt die Wand nicht eingetragen und wird als solche gemeldet. Nachträglich zuordnen
+  geht über die Zeilenaktion **„Zuordnen"**.
+- **Wandliste** trägt die Spalte **Geschoss / Lage** (inkl. gemeldeter Längenabweichung nach [L-3])
+  und eine **Ansichtsauswahl** (alle / aktives Geschoss / nicht eingetragen) — der Filter ändert nur
+  die Anzeige. Neu: **„In Modul 1 planen"** (aktiv setzen + Sprung) als Roundtrip.
+- **Höhenvorgabe [L-5]:** die Geschosshöhe wird beim Geschosswechsel in das Feld „Höhe" des
+  Anlegen-Formulars geschrieben, bleibt frei änderbar und wird nie zurückgeschrieben. Eine Höhe
+  außerhalb des 200-mm-Lagenrasters wird **angenommen und benannt**, nie gerundet.
+- **Löschen** von Geschoss/Gebäude entfernt nur die Struktur; die Wandelemente bleiben erhalten und
+  gelten danach als „nicht eingetragen" ([L-4] — keine stille Bereinigung). Verwaiste Einträge und
+  unverortete Wände stehen sichtbar in der Warnbox.
+- **Neu in `sembla-projektmappe.js`:** `setzeGeschossHoehe` (rein, weist nicht positive Werte ab).
+  **Neu in `storage.js`:** `setzeAktivesGebaeude`/`aktivesGebaeude` (ein Gebäudewechsel hebt einen
+  fremden Geschosszeiger auf, statt ihn umzubiegen) und `umbenennen` führt den **Anzeigenamen** der
+  Mappe mit — die Referenz bleibt die `id` ([L-4]).
+- **Tests:** neuer Abschnitt 8 in `tests/module/smoke_start.mjs` (57 Prüfungen an der echten
+  Oberfläche: Struktur, Höhenvorgabe, Filter, Zuordnen, [L-3]-Abweichung, Roundtrip, Reload-Festigkeit),
+  erweitert `test-projektmappe.mjs` (Geschosshöhe) und `smoke_storage.mjs` (Gebäudezeiger,
+  Namenspflege). `npm run test:all` ist grün.
+
+**Offen (bewusst nicht in C2):** Planupload/Kalibrierung/Rasteroverlay (C3), Wand-Werkzeug und
+Einzeichnen der Lage (C4), Mappen-Export/-Import als ZIP (C5), Katalogwahl je Projekt + Pflege-Popup
+(C6). Bis C4 sind alle Wände **eingetragen, aber unverortet** — das ist der dokumentierte Normalfall.

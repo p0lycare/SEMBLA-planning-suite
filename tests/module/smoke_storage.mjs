@@ -414,6 +414,23 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     try { store.setzeAktivesGeschoss("gs-gibtsnicht"); return false; } catch { return true; }
   })());
 
+  // Gebaeudezeiger eigenstaendig setzbar (Modul 0 waehlt ein Gebaeude ohne Geschoss)
+  const gebLeer = store.aendereMappe((m) => PM.fuegeGebaeudeHinzu(m, "Haus B").mappe);
+  const gebLeerId = gebLeer.gebaeude[gebLeer.gebaeude.length - 1].id;
+  store.setzeAktivesGebaeude(gebLeerId);
+  t("[L-6] aktives Gebaeude gesetzt", store.aktivesGebaeude()?.id === gebLeerId);
+  t("[L-6] fremdes Geschoss wird beim Gebaeudewechsel aufgehoben, nicht umgebogen",
+    store.aktivesGeschossId() === null);
+  t("[L-6] unbekanntes Gebaeude wird abgewiesen", (() => {
+    try { store.setzeAktivesGebaeude("geb-gibtsnicht"); return false; } catch { return true; }
+  })());
+  t("[L-6] mehrere Gebaeude ohne Zeiger -> kein geratenes Gebaeude", (() => {
+    store.setzeAktivesGebaeude(null);
+    return store.aktivesGebaeude() === null && store.aktivesGeschossId() === null;
+  })());
+  store.setzeMappe(PM.entferneGebaeude(store.holeMappe(), gebLeerId));
+  store.setzeAktivesGeschoss(gsId);
+
   // 13c) Verortung ([L-1]/[L-3]) --------------------------------------------
   store.verorteWand("w-b1", gsId, { lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 16 } });
   t("[L-1] Lage gespeichert", store.wandVerortung("w-b1")?.wand.lage.laenge_grid === 16);
@@ -441,6 +458,14 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
       return false;
     } catch { return true; }
   })());
+  // Anzeigename der Mappe folgt dem Wandnamen; die Referenz bleibt die id ([L-4])
+  store.umbenennen("w-b1", "Bestand A Nord");
+  t("[L-4] Umbenennen fuehrt den Anzeigenamen der Mappe mit",
+    store.wandVerortung("w-b1")?.wand.name === "Bestand A Nord"
+    && store.wandVerortung("w-b1").wand.id === "w-b1");
+  t("[L-3] Umbenennen laesst Lage und Wandelement unberuehrt",
+    store.wandVerortung("w-b1").wand.lage.laenge_grid === 16
+    && store.holeElement("w-b1").wandelement.length_mm === 2000);
   t("[L-4] Wand steht nach dem Umtragen nur einmal in der Mappe",
     PM.alleWaende(store.holeMappe()).filter((e) => e.wand.id === "w-b1").length === 1);
 

@@ -144,6 +144,26 @@ t("[L-5] negative Geschosshoehe wird abgewiesen",
     { id: "s", name: "S", hoehe_mm: -1, plan: null, waende: [] }] }] })
     .some((f) => /positiv/.test(f)));
 
+// Geschosshoehe aendern: reine Operation, nur Vorgabe — nie ein Eingriff in Waende
+const mitWand = M.setzeWand(leer, gs0, { id: "w-h1", name: "W", lage: lageOk });
+const hGesetzt = M.setzeGeschossHoehe(mitWand, gs0, 2600);
+t("[L-5] Geschosshoehe gesetzt", hGesetzt.gebaeude[0].geschosse[0].hoehe_mm === 2600);
+t("[L-5] Ausgangsmappe unveraendert (reine Funktion)",
+  mitWand.gebaeude[0].geschosse[0].hoehe_mm === null);
+t("[L-5] Waende des Geschosses bleiben unberuehrt",
+  JSON.stringify(hGesetzt.gebaeude[0].geschosse[0].waende)
+  === JSON.stringify(mitWand.gebaeude[0].geschosse[0].waende));
+t("[L-5] krumme Hoehe wird angenommen und nicht gerundet (Meldung getrennt)",
+  M.setzeGeschossHoehe(mitWand, gs0, 2537).gebaeude[0].geschosse[0].hoehe_mm === 2537);
+t("[L-5] Hoehe kann ausdruecklich aufgehoben werden",
+  M.setzeGeschossHoehe(hGesetzt, gs0, null).gebaeude[0].geschosse[0].hoehe_mm === null);
+t("[L-5] nicht positive Hoehe wird abgewiesen, nicht korrigiert",
+  wirft(() => M.setzeGeschossHoehe(mitWand, gs0, 0), /positiv/)
+  && wirft(() => M.setzeGeschossHoehe(mitWand, gs0, -100), /positiv/));
+t("[L-5] unbekanntes Geschoss wird abgewiesen",
+  wirft(() => M.setzeGeschossHoehe(mitWand, "gibt-es-nicht", 2600), /Unbekanntes Geschoss/));
+t("[L-5] Ergebnis bleibt gueltig", M.validiereMappe(hGesetzt).length === 0);
+
 // --- [L-7] Uebernahme bestehender Staende ----------------------------------
 const alt = [{ id: "w-alt1", name: "Wand A" }, { id: "w-alt2", name: "Wand B" }];
 const uebernommen = M.uebernehmeElemente(alt);
