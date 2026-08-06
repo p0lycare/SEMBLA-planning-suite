@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-08",
+    datum: "2026-08-06",
+    typ: "intern",
+    issue: 26,
+    titel: "Grundlage für den Projektplaner: Projekt, Gebäude, Geschosse und Wandlagen im Datenmodell",
+    testbitte: "Zu sehen ist noch nichts — die Oberfläche kommt im nächsten Schritt. Bitte nur "
+      + "einmal Reiter 0 öffnen und prüfen, ob alle Wände und der Bauteilkatalog unverändert da sind.",
+  },
+  {
     id: "chg-20260806-07",
     datum: "2026-08-06",
     typ: "feature",

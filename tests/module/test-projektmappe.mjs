@@ -1,0 +1,200 @@
+// Logik-Test der Projektmappe (docs/shared/sembla-projektmappe.js).
+// Prueft das Regelwerk Kapitel 16.9: [L-1] Rasterbindung, [L-2] Orthogonalitaet,
+// [L-3] Trennung Lage/Wandelement, [L-4] Referenzintegritaet, [L-5] Hoehenvorgabe,
+// [L-6] Struktur, [L-7] verlustfreie Uebernahme.
+//
+// Aufruf:  node tests/module/test-projektmappe.mjs
+
+const M = await import("../../docs/shared/sembla-projektmappe.js");
+
+let pass = 0, fail = 0;
+const t = (n, c) => { if (c) { pass++; } else { fail++; console.log("FAIL  " + n); } };
+const wirft = (fn, muster) => {
+  try { fn(); return false; } catch (e) { return muster ? muster.test(e.message) : true; }
+};
+
+// --- [L-6] Struktur --------------------------------------------------------
+const leer = M.leereMappe("Aschersleben AWG");
+t("[L-6] leere Mappe: Format + Version", leer.format === "SEMBLA-Projektmappe" && leer.version === 1);
+t("[L-6] leere Mappe: vollstaendige Hierarchie mit einem Gebaeude/Geschoss",
+  leer.gebaeude.length === 1 && leer.gebaeude[0].geschosse.length === 1
+  && leer.gebaeude[0].geschosse[0].waende.length === 0);
+t("[L-6] leere Mappe: gueltig", M.validiereMappe(leer).length === 0);
+t("[L-6] leere Mappe: kein Plan erfunden", leer.gebaeude[0].geschosse[0].plan === null);
+
+const gs0 = leer.gebaeude[0].geschosse[0].id;
+const geb0 = leer.gebaeude[0].id;
+
+// --- [L-1] Rasterbindung ---------------------------------------------------
+const lageOk = { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 24 };
+t("[L-1] gueltige Lage", M.lageGueltig(lageOk));
+t("[L-1] unverortet (null) ist gueltig", M.lageGueltig(null));
+t("[L-1] Laenge aus dem Raster = 24 × 125 mm", M.laengeAusLage(lageOk) === 3000);
+t("[L-1] unverortet hat keine Laenge", M.laengeAusLage(null) === null);
+t("[L-1] gebrochener Startpunkt wird abgewiesen, nicht gerundet",
+  !M.lageGueltig({ ...lageOk, start_grid: { x: 4.5, y: 12 } })
+  && /Raster/.test(M.lageFehler({ ...lageOk, start_grid: { x: 4.5, y: 12 } })[0]));
+t("[L-1] gebrochene Laenge wird abgewiesen",
+  !M.lageGueltig({ ...lageOk, laenge_grid: 3.7 }));
+t("[L-1] Laenge 0 ist unzulaessig", !M.lageGueltig({ ...lageOk, laenge_grid: 0 }));
+t("[L-1] negativer Startpunkt ist zulaessig (Raster reicht in alle Richtungen)",
+  M.lageGueltig({ ...lageOk, start_grid: { x: -8, y: -2 } }));
+t("[L-1] setzeWand rundet eine krumme Lage NICHT, sondern wirft",
+  wirft(() => M.setzeWand(leer, gs0, { id: "w-1", lage: { ...lageOk, laenge_grid: 3.7 } }), /Länge/));
+
+// --- [L-2] Orthogonalitaet -------------------------------------------------
+t("[L-2] Richtung y ist gueltig", M.lageGueltig({ ...lageOk, richtung: "y" }));
+t("[L-2] schraege/unbekannte Richtung wird abgewiesen",
+  !M.lageGueltig({ ...lageOk, richtung: "diagonal" })
+  && /schräge Lagen sind unzulässig/.test(M.lageFehler({ ...lageOk, richtung: "diagonal" })[0]));
+t("[L-2] Endpunkt x: nur Darstellung, keine Eckenlogik",
+  JSON.stringify(M.endpunktGrid(lageOk)) === JSON.stringify({ x: 28, y: 12 }));
+t("[L-2] Endpunkt y", JSON.stringify(M.endpunktGrid({ ...lageOk, richtung: "y" }))
+  === JSON.stringify({ x: 4, y: 36 }));
+
+// --- Struktur-Operationen (rein) ------------------------------------------
+const a = M.fuegeGebaeudeHinzu(leer, "Haus B");
+t("Gebaeude anlegen: neue Mappe hat zwei", a.mappe.gebaeude.length === 2);
+t("Gebaeude anlegen: Ausgangsmappe unveraendert (reine Funktion)", leer.gebaeude.length === 1);
+
+const b = M.fuegeGeschossHinzu(a.mappe, a.id, "EG", 2500);
+t("Geschoss anlegen", M.findeGeschoss(b.mappe, b.id)?.geschoss.name === "EG");
+t("Geschoss anlegen: unbekanntes Gebaeude wirft",
+  wirft(() => M.fuegeGeschossHinzu(leer, "geb-gibtsnicht", "EG"), /Unbekanntes Gebäude/));
+
+let m = M.setzeWand(b.mappe, b.id, { id: "w-1", name: "EG-W01", lage: lageOk });
+m = M.setzeWand(m, b.id, { id: "w-2", name: "EG-W02", lage: null });
+t("Wand eintragen: beide im Geschoss", M.findeGeschoss(m, b.id).geschoss.waende.length === 2);
+t("Wand eintragen: Lage erhalten", M.findeWand(m, "w-1").wand.lage.laenge_grid === 24);
+t("Wand eintragen: unverortet bleibt null (nichts erfunden)", M.findeWand(m, "w-2").wand.lage === null);
+t("Wand eintragen: ohne Kennung wirft", wirft(() => M.setzeWand(m, b.id, { name: "X" }), /ohne Kennung/));
+t("Wand eintragen: unbekanntes Geschoss wirft",
+  wirft(() => M.setzeWand(m, "gs-gibtsnicht", { id: "w-9" }), /Unbekanntes Geschoss/));
+
+// Umtragen in ein anderes Geschoss: nie doppelt in der Mappe ([L-4] Eindeutigkeit)
+const umgetragen = M.setzeWand(m, gs0, { id: "w-1" });
+t("Wand umtragen: steht genau einmal in der Mappe",
+  M.alleWaende(umgetragen).filter((e) => e.wand.id === "w-1").length === 1);
+t("Wand umtragen: landet im Zielgeschoss", M.findeWand(umgetragen, "w-1").geschoss.id === gs0);
+t("Wand umtragen: Name und Lage bleiben erhalten (kein Datenverlust)",
+  M.findeWand(umgetragen, "w-1").wand.name === "EG-W01"
+  && M.findeWand(umgetragen, "w-1").wand.lage.laenge_grid === 24);
+t("Mappe nach Umtragen weiterhin gueltig", M.validiereMappe(umgetragen).length === 0);
+
+// Lage aendern / aufheben
+const ohneLage = M.setzeLage(m, "w-1", null);
+t("Lage aufheben: Wand bleibt eingetragen", M.findeWand(ohneLage, "w-1").wand.lage === null);
+t("Lage setzen: unbekannte Wand wirft",
+  wirft(() => M.setzeLage(m, "w-gibtsnicht", lageOk), /nicht in der Projektmappe/));
+
+// Entfernen
+t("Wandeintrag entfernen", M.findeWand(M.entferneWand(m, "w-1"), "w-1") === null);
+t("Geschoss mit Waenden wird nicht still geloescht",
+  wirft(() => M.entferneGeschoss(m, b.id), /enthält noch 2/));
+t("Geschoss mit ausdruecklicher Bestaetigung entfernbar",
+  M.findeGeschoss(M.entferneGeschoss(m, b.id, { mitWaenden: true }), b.id) === null);
+t("Gebaeude mit Geschossen wird nicht still geloescht",
+  wirft(() => M.entferneGebaeude(m, geb0), /enthält noch 1/));
+
+// Umbenennen
+t("umbenennen: Geschoss", M.findeGeschoss(M.benenneUm(m, b.id, "1. OG"), b.id).geschoss.name === "1. OG");
+t("umbenennen: Wand", M.findeWand(M.benenneUm(m, "w-1", "Neu"), "w-1").wand.name === "Neu");
+t("umbenennen: Projekt", M.benenneUm(m, m.projekt.id, "Neu AWG").projekt.name === "Neu AWG");
+t("umbenennen: unbekannte Kennung wirft", wirft(() => M.benenneUm(m, "nix", "X"), /Unbekannte Kennung/));
+
+// --- [L-4] Eindeutigkeit + Referenzintegritaet -----------------------------
+const doppelt = JSON.parse(JSON.stringify(m));
+doppelt.gebaeude[0].geschosse[0].id = doppelt.gebaeude[1].geschosse[0].id;
+t("[L-4] doppelte Kennung wird gemeldet",
+  M.validiereMappe(doppelt).some((f) => /kommt mehrfach vor/.test(f)));
+
+const ref = M.pruefeReferenzen(m, [{ id: "w-2", name: "EG-W02" }, { id: "w-3", name: "Neu" }]);
+t("[L-4] verwaister Eintrag wird gemeldet", ref.verwaist.length === 1 && ref.verwaist[0].id === "w-1");
+t("[L-4] unverortete Wand wird gemeldet", ref.unverortet.join() === "w-3");
+t("[L-4] eingetragen aber ungezeichnet wird getrennt gemeldet",
+  ref.ohneLage.length === 1 && ref.ohneLage[0].id === "w-2");
+t("[L-4] Pruefung bereinigt nichts", M.alleWaende(m).length === 2);
+t("[L-4] Referenz laeuft ueber die id, nicht ueber den Dateinamen",
+  M.pruefeReferenzen(M.setzeWand(m, b.id, { id: "w-1", datei: "waende/ganz-anders.json" }),
+    ["w-1", "w-2"]).verwaist.length === 0);
+
+// --- [L-3] Trennung Lage / Wandelement -------------------------------------
+t("[L-3] Mappe enthaelt keine Wandgeometrie",
+  !JSON.stringify(m).includes("courses") && !JSON.stringify(m).includes("length_mm"));
+const ab = M.laengenAbgleich(lageOk, 3000);
+t("[L-3] Laengenabgleich: gleich -> keine Abweichung", ab.abweichung === false && ab.lage_mm === 3000);
+const ab2 = M.laengenAbgleich(lageOk, 2875);
+t("[L-3] Laengenabgleich: Abweichung wird gemeldet, nicht angeglichen",
+  ab2.abweichung === true && ab2.lage_mm === 3000 && ab2.wand_mm === 2875);
+t("[L-3] Laengenabgleich ohne Lage meldet keine Abweichung",
+  M.laengenAbgleich(null, 2875).abweichung === false);
+
+// --- [L-5] Hoehenvorgabe ---------------------------------------------------
+const h1 = M.hoehenVorgabe(2600);
+t("[L-5] passende Geschosshoehe -> 13 Lagen", h1.passt && h1.lagen === 13 && h1.hinweis === null);
+const h2 = M.hoehenVorgabe(2500);
+t("[L-5] 2500 mm passt nicht ins Lagenraster und wird NICHT gerundet",
+  !h2.passt && h2.lagen === null && h2.hoehe_mm === 2500);
+t("[L-5] Hinweis nennt beide zulaessigen Wandhoehen",
+  /2400 mm/.test(h2.hinweis) && /2600 mm/.test(h2.hinweis));
+t("[L-5] keine Geschosshoehe -> keine Vorgabe, kein Hinweis",
+  M.hoehenVorgabe(null).hoehe_mm === null && M.hoehenVorgabe(null).hinweis === null);
+t("[L-5] negative Geschosshoehe wird abgewiesen",
+  M.validiereMappe({ ...M.leereMappe("X"), gebaeude: [{ id: "g", name: "G", geschosse: [
+    { id: "s", name: "S", hoehe_mm: -1, plan: null, waende: [] }] }] })
+    .some((f) => /positiv/.test(f)));
+
+// --- [L-7] Uebernahme bestehender Staende ----------------------------------
+const alt = [{ id: "w-alt1", name: "Wand A" }, { id: "w-alt2", name: "Wand B" }];
+const uebernommen = M.uebernehmeElemente(alt);
+t("[L-7] Projektname „Projekt ohne Plan“", uebernommen.projekt.name === "Projekt ohne Plan");
+t("[L-7] alle Waende uebernommen", M.alleWaende(uebernommen).length === 2);
+t("[L-7] Namen erhalten", M.findeWand(uebernommen, "w-alt2").wand.name === "Wand B");
+t("[L-7] KEINE Lagedaten erfunden",
+  M.alleWaende(uebernommen).every((e) => e.wand.lage === null));
+t("[L-7] Ergebnis ist gueltig", M.validiereMappe(uebernommen).length === 0);
+const nochmal = M.uebernehmeElemente(alt, uebernommen);
+t("[L-7] idempotent: zweiter Lauf legt nichts doppelt an", M.alleWaende(nochmal).length === 2);
+const dazu = M.uebernehmeElemente([...alt, { id: "w-alt3", name: "Wand C" }], uebernommen);
+t("[L-7] neue Wand wird ergaenzt, bestehende bleiben", M.alleWaende(dazu).length === 3);
+t("[L-7] bestehende Lage wird beim Ergaenzen nicht angetastet", (() => {
+  const mitLage = M.setzeLage(uebernommen, "w-alt1", lageOk);
+  return M.findeWand(M.uebernehmeElemente(alt, mitLage), "w-alt1").wand.lage.laenge_grid === 24;
+})());
+t("[L-7] leere Elementliste -> leere, gueltige Mappe",
+  M.alleWaende(M.uebernehmeElemente([])).length === 0
+  && M.validiereMappe(M.uebernehmeElemente([])).length === 0);
+
+// --- Austauschformat -------------------------------------------------------
+const datei = JSON.stringify(M.mappeObjekt(m));
+const zurueck = M.parseMappe(datei);
+t("datei: Roundtrip verlustfrei",
+  JSON.stringify(M.mappeObjekt(zurueck)) === JSON.stringify(M.mappeObjekt(m)));
+t("datei: kein Zeitstempel im oeffentlichen Format", !("geaendert" in M.mappeObjekt(m)));
+t("datei: kaputtes JSON wirft", wirft(() => M.parseMappe("{ kein json"), /JSON/));
+t("datei: Katalog im Mappenimport wird benannt",
+  wirft(() => M.parseMappe(JSON.stringify({ format: "SEMBLA-Bauteilkatalog", version: 1 })), /Bauteilkatalog/));
+t("datei: einzelne Wanddatei im Mappenimport wird benannt",
+  wirft(() => M.parseMappe(JSON.stringify({ format: "SEMBLA-Projekt", version: 2 })), /Wanddatei/));
+t("datei: fremdes JSON wird abgewiesen",
+  wirft(() => M.parseMappe(JSON.stringify({ foo: 1 })), /Keine Projektmappe/));
+t("datei: ungueltige Lage in der Datei wird abgewiesen, nicht repariert",
+  wirft(() => M.parseMappe(JSON.stringify({
+    ...M.mappeObjekt(m),
+    gebaeude: [{ id: "g", name: "G", geschosse: [{ id: "s", name: "S", hoehe_mm: null, plan: null,
+      waende: [{ id: "w", name: "W", datei: null, lage: { start_grid: { x: 1.5, y: 0 }, richtung: "x", laenge_grid: 2 } }] }] }],
+  })), /ungültig/));
+t("datei: Versionsachse eigenstaendig (1)", M.MAPPE_VERSION === 1);
+
+// --- Normalisierung --------------------------------------------------------
+const roh = M.normMappe({ projekt: { name: "Ohne Kennungen" } });
+t("norm: fehlende Projektkennung wird ergaenzt", !!roh.projekt.id && roh.gebaeude.length === 0);
+t("norm: Kopfdaten reisen unveraendert mit",
+  M.normMappe({ projekt: { id: "p", kopfdaten: { bauherr: "AWG" } } }).projekt.kopfdaten.bauherr === "AWG");
+t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
+  M.normMappe({ projekt: { id: "p" }, gebaeude: [{ id: "g", geschosse: [{ id: "s",
+    waende: [{ id: "w", lage: { start_grid: { x: "abc" }, richtung: "z", laenge_grid: "x" } }] }] }] })
+    .gebaeude[0].geschosse[0].waende[0].lage.start_grid.x === null);
+
+console.log(`\n${pass} ok, ${fail} fail`);
+process.exit(fail ? 1 : 0);

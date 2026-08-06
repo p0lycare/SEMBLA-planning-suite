@@ -147,7 +147,7 @@ t("migration: 'nein' -> ohne_wind", nachM["alt-AltNein"].wandelement.wandtyp ===
 t("migration: ohne Feld -> mit_wind", nachM["alt-AltOhneFeld"].wandelement.wandtyp === "mit_wind");
 t("migration: Alt-Feld bleibt erhalten (kein Datenverlust)",
   nachM["alt-AltNein"].eingaben.statik.mitWind === "nein");
-t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "3");
+t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "4");
 
 // idempotent: erneutes migrieren aendert nichts mehr
 nachM["alt-AltNein"].wandelement.wandtyp = "ohne_wind";
@@ -265,7 +265,7 @@ t("produkte: reisen im Projekt-JSON mit (nur IDs)",
   && pK.eingaben.planung.produkte.rollen.rod_std.join(",") === "rod-m10-1100"
   && !JSON.stringify(pK.eingaben.planung).includes("Latte 40×60"));
 t("produkte: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
-t("produkte: interne Schema-Version bleibt 3", store.SCHEMA_VERSION === 3);
+t("produkte: interne Schema-Version ist 4 (Projektstruktur)", store.SCHEMA_VERSION === 4);
 t("produkte: Katalog-Formatversion getrennt", KAT.KATALOG_VERSION === 1);
 const idKimp = store.importiereText(JSON.stringify(pK), "Katalogwand.json");
 t("produkte: nach Projekt-Import wieder geladen",
@@ -348,6 +348,148 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     return Object.keys(r.gesetzt).length === 0 && r.offen.length > 0
       && JSON.stringify(store.holeProdukte(1, idLeer).rollen) === "{}";
   })());
+}
+
+// 13) Projektmappe (Issue #26, [L-1]…[L-7]): eigene Ressource neben dem Wandspeicher
+{
+  const PM = await import("../../docs/shared/sembla-projektmappe.js");
+
+  // 13a) Migration v3 -> v4 auf einem frischen, „alten" Stand -----------------
+  // Alles zuruecksetzen und einen Stand hinstellen, wie ihn ein v3-Browser hinterlassen haette.
+  localStorage.m.clear();
+  const w1 = buildWall("Bestand A", 2000, 2600, []);
+  const w2 = buildWall("Bestand B", 3000, 2600, []);
+  const altStand = {
+    "w-b1": { id: "w-b1", name: "Bestand A", wandelement: w1, eingaben: { projekt: { name: "Alt" } },
+              erstellt: "x", geaendert: "x" },
+    "w-b2": { id: "w-b2", name: "Bestand B", wandelement: w2, erstellt: "x", geaendert: "y" },
+  };
+  localStorage.setItem("sembla:elemente", JSON.stringify(altStand));
+  localStorage.setItem("sembla:aktiv", "w-b2");
+  localStorage.setItem("sembla:version", "3");
+  t("[L-7] vor der Migration gibt es keine Mappe", store.holeMappe() === null);
+
+  store.migrieren();
+  const mig = store.holeMappe();
+  t("[L-7] Migration legt „Projekt ohne Plan“ an", mig?.projekt.name === "Projekt ohne Plan");
+  t("[L-6] vollstaendige Hierarchie mit genau einem Gebaeude/Geschoss",
+    mig.gebaeude.length === 1 && mig.gebaeude[0].geschosse.length === 1);
+  t("[L-7] beide Bestandswaende uebernommen", PM.alleWaende(mig).length === 2);
+  t("[L-7] Namen erhalten", PM.findeWand(mig, "w-b1").wand.name === "Bestand A");
+  t("[L-7] KEINE Lagedaten erfunden", PM.alleWaende(mig).every((e) => e.wand.lage === null));
+  t("[L-7] Wandelemente unveraendert (kein Datenverlust)",
+    store.holeElement("w-b1").wandelement.length_mm === 2000
+    && store.holeEingaben("w-b1").projekt.name === "Alt");
+  t("[L-3] Mappe traegt keine Wandgeometrie",
+    !localStorage.getItem("sembla:projektmappe").includes("courses"));
+  t("[L-7] Zeiger auf die aktive Wand bleibt bestehen", store.aktivId() === "w-b2");
+  t("migration: Schema-Version auf 4", localStorage.getItem("sembla:version") === "4");
+
+  // idempotent
+  const vorher = localStorage.getItem("sembla:projektmappe");
+  store.migrieren();
+  t("[L-7] Migration laeuft nur einmal (idempotent)",
+    localStorage.getItem("sembla:projektmappe") === vorher);
+
+  // 13b) Struktur anlegen + aktive Zeiger ------------------------------------
+  const gebEG = store.aendereMappe((m) => PM.fuegeGebaeudeHinzu(m, "Haus A").mappe);
+  const gebId = gebEG.gebaeude[gebEG.gebaeude.length - 1].id;
+  let gsId = null;
+  store.aendereMappe((m) => {
+    const r = PM.fuegeGeschossHinzu(m, gebId, "EG", 2600);
+    gsId = r.id;
+    return r.mappe;
+  });
+  t("[L-6] Geschoss angelegt und gespeichert",
+    PM.findeGeschoss(store.holeMappe(), gsId)?.geschoss.name === "EG");
+  t("[L-6] Mappe ueberlebt Reload (Rohwert im Speicher)",
+    JSON.parse(localStorage.getItem("sembla:projektmappe")).gebaeude.length === 2);
+
+  store.setzeAktivesGeschoss(gsId);
+  t("[L-6] aktives Geschoss gesetzt", store.aktivesGeschossId() === gsId);
+  t("[L-6] Gebaeudezeiger laeuft mit (nie auseinander)", store.aktivesGebaeudeId() === gebId);
+  t("[L-6] aktivesGeschoss() liefert Geschoss samt Gebaeude",
+    store.aktivesGeschoss()?.gebaeude.id === gebId);
+  t("[L-6] unbekanntes Geschoss wird abgewiesen", (() => {
+    try { store.setzeAktivesGeschoss("gs-gibtsnicht"); return false; } catch { return true; }
+  })());
+
+  // 13c) Verortung ([L-1]/[L-3]) --------------------------------------------
+  store.verorteWand("w-b1", gsId, { lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 16 } });
+  t("[L-1] Lage gespeichert", store.wandVerortung("w-b1")?.wand.lage.laenge_grid === 16);
+  t("[L-3] Wandelement bleibt unberuehrt",
+    store.holeElement("w-b1").wandelement.length_mm === 2000
+    && !JSON.stringify(store.holeElement("w-b1")).includes("start_grid"));
+  const abgleich = (id) => PM.laengenAbgleich(store.wandVerortung(id).wand.lage,
+    store.holeElement(id).wandelement.length_mm);
+  t("[L-3] passende Lage: keine Abweichung",
+    abgleich("w-b1").abweichung === false && abgleich("w-b1").lage_mm === 2000);
+  store.verorteWand("w-b1", gsId, { lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 20 } });
+  t("[L-3] Laengenabweichung wird gemeldet, nicht angeglichen",
+    abgleich("w-b1").abweichung === true && abgleich("w-b1").lage_mm === 2500
+    && store.holeElement("w-b1").wandelement.length_mm === 2000);
+  store.verorteWand("w-b1", gsId, { lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 16 } });
+  t("[L-1] krumme Lage wird abgewiesen, nicht gerundet", (() => {
+    try {
+      store.verorteWand("w-b2", gsId, { lage: { start_grid: { x: 0.5, y: 0 }, richtung: "x", laenge_grid: 4 } });
+      return false;
+    } catch { return store.wandVerortung("w-b2").wand.lage === null; }
+  })());
+  t("[L-2] schraege Lage wird abgewiesen", (() => {
+    try {
+      store.verorteWand("w-b2", gsId, { lage: { start_grid: { x: 0, y: 0 }, richtung: "diagonal", laenge_grid: 4 } });
+      return false;
+    } catch { return true; }
+  })());
+  t("[L-4] Wand steht nach dem Umtragen nur einmal in der Mappe",
+    PM.alleWaende(store.holeMappe()).filter((e) => e.wand.id === "w-b1").length === 1);
+
+  // 13d) Referenzintegritaet ([L-4]) ----------------------------------------
+  const idNeu = store.speichere("Unverortet", buildWall("Unverortet", 1000, 2000, []));
+  const ref = store.mappeReferenzen();
+  t("[L-4] neue, noch nicht verortete Wand wird als unverortet gemeldet",
+    ref.unverortet.includes(idNeu));
+  t("[L-4] verortete Wand gilt nicht als unverortet", !ref.unverortet.includes("w-b1"));
+  t("[L-4] eingetragen aber ungezeichnet wird getrennt gemeldet",
+    ref.ohneLage.some((w) => w.id === "w-b2"));
+  t("[L-4] keine verwaisten Eintraege in diesem Stand", ref.verwaist.length === 0);
+
+  // Wandelement loeschen -> Eintrag geht mit (kein dauerhaft verwaister Eintrag)
+  store.loesche("w-b2");
+  t("[L-4] Loeschen der Wand entfernt ihren Mappen-Eintrag",
+    store.wandVerortung("w-b2") === null && store.mappeReferenzen().verwaist.length === 0);
+  t("[L-4] verwaister Eintrag loescht umgekehrt NIE ein Wandelement", (() => {
+    store.setzeMappe(PM.setzeWand(store.holeMappe(), gsId, { id: "w-gibtsnicht", name: "Geist" }));
+    const r = store.mappeReferenzen();
+    return r.verwaist.some((w) => w.id === "w-gibtsnicht") && store.listeElemente().length === 2;
+  })());
+  store.setzeMappe(PM.entferneWand(store.holeMappe(), "w-gibtsnicht"));
+
+  // 13e) Datei-Roundtrip + Formattrennung -----------------------------------
+  const mDatei = JSON.stringify(PM.mappeObjekt(store.holeMappe()));
+  store.loescheMappe();
+  t("mappe: Slot geleert", store.holeMappe() === null && store.aktivesGeschossId() === null);
+  t("mappe: Waende bleiben beim Leeren des Slots erhalten", store.listeElemente().length === 2);
+  const wieder = store.importiereMappeText(mDatei);
+  t("mappe: Import stellt die Struktur wieder her",
+    PM.findeWand(store.holeMappe(), "w-b1").wand.lage.laenge_grid === 16
+    && wieder.gebaeude.length === 2);
+  t("mappe: Wandimport lehnt eine Mappe ab", (() => {
+    try { store.importiereText(mDatei); return false; } catch { return true; }
+  })());
+  t("mappe: Mappenimport lehnt eine Wanddatei ab", (() => {
+    try { store.importiereMappeText(JSON.stringify(store.projektObjekt(idNeu))); return false; }
+    catch (e) { return /Wanddatei/.test(e.message); }
+  })());
+  t("mappe: ungueltige Mappe wird abgelehnt (nicht zurechtgebogen)", (() => {
+    try { store.setzeMappe({ format: "SEMBLA-Projektmappe", version: 1, projekt: { id: "p" },
+      gebaeude: [{ id: "g", geschosse: [{ id: "g", waende: [] }] }] }); return false; } catch { return true; }
+  })());
+  t("mappe: eigene Formatversion, getrennt von Projekt/Katalog/Schema",
+    PM.MAPPE_VERSION === 1 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 4);
+  t("mappe: eigener Speicherschluessel (nicht im Wandspeicher)",
+    !!localStorage.getItem("sembla:projektmappe")
+    && !localStorage.getItem("sembla:elemente").includes("start_grid"));
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

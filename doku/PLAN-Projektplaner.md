@@ -1,6 +1,6 @@
 # Plan: Modul 0 wird Projektplaner (Issues #26, #37, #42, #43)
 
-> Stand: 2026-08-06 · Zyklus: Aschersleben/AWG (#20) · Status: **Entwurf, noch nichts implementiert**
+> Stand: 2026-08-06 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappe C1 umgesetzt**, C2 ist der nächste Schritt
 
 Dieses Dokument umreißt den Umbau von Modul 0 zum Projektplaner mit Geschosslayout. Es ist die
 Arbeitsgrundlage über mehrere Sessions. Jede Etappe wird einzeln umgesetzt, getestet und committet.
@@ -172,7 +172,7 @@ UI-Konvention, keine strukturelle mehr.
 
 | Etappe | Inhalt | Fertig, wenn |
 |---|---|---|
-| **C1** | Datenmodell + Speicherschicht + Migration (§2.3), ohne UI | Tests grün: Anlegen/Lesen/Reload/Migration alter Stände |
+| **C1 ✅** | Datenmodell + Speicherschicht + Migration (§2.3), ohne UI | **erledigt** (s. §7) |
 | **C2** | Modul-0-UI: Projekt/Gebäude/Geschoss anlegen & wählen, Wandliste je Geschoss, Roundtrip nach Modul 1 | Mehrere Wände über mehrere Geschosse, Reload verlustfrei — **deckt den Großteil von #26 ab** |
 | **C3** | Planupload, Kalibrierung, x/y-Versatz, 125-mm-Rasteroverlay (reine Anzeige) | Plan liegt passgenau unter dem Raster, überlebt Reload |
 | **C4** | Wand-Werkzeug + Radierer + „Wand hinzufügen" | Gezeichnete Wand landet mit korrekter Länge in der Wandliste |
@@ -193,15 +193,17 @@ Erst wenn C steht. Braucht zusätzlich die fachliche Freigabe der 20 Fälle durc
 *Entschieden:* Katalog = Popup in Modul 0 (kein eigenes Modul) · Maßstab = Kalibrierlinie **und**
 Zahleneingabe. Beides oben in §0 eingetragen.
 
-Offen, aber mit Vorschlag — wird zu Beginn der jeweiligen Etappe festgeklopft:
+*Zu Beginn von C1 entschieden (2026-08-06) und als Regeln festgeschrieben:*
 
-1. **Nur orthogonale Wände?** Vorschlag: ja, erst mal nur waagerecht/senkrecht im Raster. Schrägen
-   und Ecken/Anschlüsse später und ausdrücklich — #26 verbietet, Ecken heuristisch zu erfinden.
-2. **Wandhöhe je Geschoss** als Vorgabe (Vorschlag: ja, in Modul 1 überschreibbar).
-3. **Mehrere Gebäude** — im Modell vorgesehen, in der UI zunächst „ein Gebäude", ohne dass das
-   Format sich später ändern muss.
+1. **Nur orthogonale Wände** — waagerecht/senkrecht im Raster. Schrägen und Ecken/Anschlüsse später
+   und ausdrücklich; es werden keine Ecken erfunden. → **[L-2]**
+2. **Wandhöhe je Geschoss** als Vorgabe, in Modul 1 überschreibbar, nie zurückgeschrieben. → **[L-5]**
+3. **Mehrere Gebäude** — Ebene im Modell vollständig vorhanden, UI zeigt zunächst ein Gebäude. → **[L-6]**
+
+Weiterhin offen:
+
 4. **Planformate** — PNG/JPG sicher; PDF erst nach einem Spike (#26 verlangt dafür ausdrücklich
-   einen belastbaren Format-Spike vor der Festlegung).
+   einen belastbaren Format-Spike vor der Festlegung). Gehört zu Etappe C3.
 
 ---
 
@@ -209,5 +211,40 @@ Offen, aber mit Vorschlag — wird zu Beginn der jeweiligen Etappe festgeklopft:
 
 Der Planer bringt neue Fachregeln (Rasterbindung, Lage/Orientierung, Referenzintegrität
 Projektmappe↔Wanddatei). Nach Projektregel gilt: **erst Regel-IDs vergeben und ins Handbuch
-(Kapitel 16, `build-handbuch.mjs`), dann implementieren, dann Regressionstest.** Vorgesehener neuer
-Präfix: **[L-…]** (Layout). Wird zu Beginn von C1 festgelegt.
+(Kapitel 16, `build-handbuch.mjs`), dann implementieren, dann Regressionstest.**
+
+Festgelegt in **Kapitel 16.9 „Projektstruktur & Geschosslayout (Modul 0) [L]"**:
+
+| ID | Kurz |
+|---|---|
+| **[L-1 · MUSS]** | Rasterkoordinaten sind die Wahrheit — ganzzahlig im 125-mm-Raster, nie Pixel; krumme Lagen werden abgewiesen, nicht gerundet |
+| **[L-2 · MUSS]** | Nur orthogonale Wandlagen (x/y); keine Schrägen, keine erfundenen Ecken/Anschlüsse |
+| **[L-3 · MUSS]** | Lage und Wandelement bleiben getrennt; Länge nur als Vorgabe beim Anlegen, Abweichung wird gemeldet statt angeglichen |
+| **[L-4 · MUSS]** | Referenz über die stabile `id`, Dateiname nur Fundort; verwaiste Einträge und unverortete Wände werden gemeldet, nie still bereinigt |
+| **[L-5]** | Geschosshöhe ist Vorgabe, nicht Wahrheit; kein stilles Runden aufs Lagenraster |
+| **[L-6]** | Struktur Projekt→Gebäude→Geschoss→Wand vollständig, Oberfläche zunächst mit einem Gebäude; genau eine Mappe, ein aktives Geschoss |
+| **[L-7 · MUSS]** | Verlustfreie, idempotente Übernahme bestehender Stände ohne erfundene Lagedaten |
+| **[L-8 · ZIEL – OFFEN]** | Planbild nicht in den localStorage; Mappe hält nur Dateiname + Kalibrierung (Etappe C3) |
+
+---
+
+## 7. Umsetzungsstand C1 (2026-08-06)
+
+- **Regelwerk:** Kapitel 16.9 `[L-1]`…`[L-8]` in `build-handbuch.mjs`, Handbuch neu gebaut.
+- **Neuer Baustein `docs/shared/sembla-projektmappe.js`** (rein/DOM-frei, shared-Regel b): Format
+  `SEMBLA-Projektmappe` v1 (`MAPPE_VERSION`, eigene Versionsachse), Normalisierung, Validierung,
+  Struktur-Operationen (alle rein — sie liefern eine neue Mappe), Lage-Prüfung, `hoehenVorgabe`,
+  `laengenAbgleich`, `pruefeReferenzen`, `uebernehmeElemente`.
+- **`docs/shared/storage.js`:** `SCHEMA_VERSION` **3 → 4**, Slot `sembla:projektmappe`, Zeiger
+  `sembla:aktiv:gebaeude`/`:geschoss`, Funktionen `holeMappe`/`setzeMappe`/`mappeOderNeu`/
+  `aendereMappe`/`verorteWand`/`wandVerortung`/`mappeReferenzen`/`importiereMappeText`, Migration
+  `_migriereProjektmappe`. `loesche()` räumt den Mappen-Eintrag der gelöschten Wand mit ab
+  (umgekehrt nie).
+- **Tests:** `tests/module/test-projektmappe.mjs` (75 Prüfungen, je Regel benannt) und Abschnitt 13
+  in `tests/module/smoke_storage.mjs` (Migration, Persistenz, Verortung, Referenzabgleich,
+  Datei-Roundtrip). Beide hängen an `npm run test:modul0`; `npm run test:all` ist grün.
+
+**Abweichung von §2.3 (bewusst):** es gibt **keinen** Schlüssel `sembla:aktiv:projekt` — es existiert
+genau eine Mappe und damit genau ein Projekt, ein zweiter Zeiger wäre eine zweite Wahrheit ([P-6]).
+Und die Lage steht als **ein `lage`-Objekt** am Wandeintrag statt als drei flache Felder, damit
+„unverortet" sauber als `lage: null` darstellbar ist ([L-7]).

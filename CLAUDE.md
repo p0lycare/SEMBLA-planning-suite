@@ -92,6 +92,26 @@ ergänzt (auch nicht um [V-2]/[V-4]); ihre Verletzungen stehen sichtbar in
 eine stille Korrektur. Im Auto-Pfad ist die Liste konstruktionsbedingt leer und dient als
 Selbstkontrolle. Die Felder sind optional/abwärtskompatibel — kein Schema-/Projektformat-Bruch.
 
+**Projektmappe (`sembla:projektmappe`, Format `SEMBLA-Projektmappe` v1, Regeln [L-1]…[L-8]).**
+Projektstruktur (**Projekt → Gebäude → Geschoss → Wand**) und die **Lage** der Wände im
+125-mm-Raster sind — wie der Katalog — eine **eigene Ressource**: eigener localStorage-Slot, eigene
+Datei, eigene Formatversion, Logik in `docs/shared/sembla-projektmappe.js` (rein/DOM-frei). Sie
+liegen bewusst **nicht** im Wandelement und nicht in `eingaben`, damit Modul 1 die Lagedaten gar
+nicht überschreiben kann und die Einbahnstraße aus [P-1] heil bleibt. `sembla:elemente` bleibt
+unverändert der **Wandspeicher**; verknüpft wird über die **stabile `id`** des Wandeintrags — der
+Dateiname ist nur der Fundort ([L-4]). Lage ist **ganzzahlig im Raster** ([L-1]) und ausschließlich
+**orthogonal** ([L-2]): `{ start_grid:{x,y}, richtung:"x"|"y", laenge_grid }` oder `null`
+(unverortet — der Normalfall vor dem Zeichnen). Aus der Lage wird beim **Anlegen** nur die **Länge
+als Vorgabe** abgeleitet; danach ist das Wandelement maßgebend, eine Abweichung wird **gemeldet,
+nie still angeglichen** ([L-3]). Die **Geschosshöhe** ist ebenfalls nur Vorgabe und wird nie
+zurückgeschrieben ([L-5]); passt sie nicht ins 200-mm-Lagenraster, wird das benannt statt gerundet.
+Schema **v3→v4** übernimmt bestehende Wände einmalig und verlustfrei in ein „Projekt ohne Plan“ —
+**ohne** Lagedaten, die es nie gab ([L-7]); der aktive-Wand-Zeiger und die Module 1–7 bleiben
+unberührt. Verwaiste Einträge und unverortete Wände werden **gemeldet, nie still bereinigt**
+([L-4]). Planbilder gehören **nicht** in den localStorage ([L-8], noch offen — Etappe C3).
+Aktive Zeiger: `sembla:aktiv:gebaeude` / `:geschoss`; einen `:projekt`-Zeiger gibt es bewusst
+**nicht** (eine Mappe = ein Projekt, ein zweiter Zeiger wäre eine zweite Wahrheit).
+
 **Bauteilkatalog (`sembla:katalog`, Format `SEMBLA-Bauteilkatalog` v1).** Der Produktstamm (Steine,
 Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder, Verbrauchsmaterial) ist
 eine **eigene Ressource** — technisch und fachlich getrennt vom Wand-/Projekt-JSON: **ein** aktiver
@@ -151,10 +171,11 @@ bleibt zur Nachvollziehbarkeit im Projekt und wird in Modul 0 sichtbar als unwir
 `pruefeAuswahl`/`normAuswahl`/`anzahlAuswahl` sind dafür reine Lese-/Meldepfade.
 
 Altprojekte ohne Produkt-Blöcke laden über `standardEingaben()` als **leere Rollen** — warnungsfrei.
-Versionsachsen strikt getrennt: `KATALOG_VERSION`=1 (Katalogdatei) ≠ `PROJEKT_VERSION`=2 (die
+Versionsachsen strikt getrennt: `MAPPE_VERSION`=1 (Projektmappe) ≠ `KATALOG_VERSION`=1 (Katalogdatei) ≠ `PROJEKT_VERSION`=2 (die
 Produkt-Blöcke sind dort optionale Zusatzfelder; der v2-Parser übernimmt `eingaben` ohne Whitelist,
-`holeEingaben` füllt auf, `projektObjekt` exportiert alles ⇒ kein Bruch) ≠ `SCHEMA_VERSION`=3
-(fehlende Felder werden beim Lesen aufgefüllt ⇒ keine Migration nötig).
+`holeEingaben` füllt auf, `projektObjekt` exportiert alles ⇒ kein Bruch) ≠ `SCHEMA_VERSION`=4
+(interner localStorage-Stand; fehlende `eingaben`-Felder werden beim Lesen aufgefüllt, echte
+Migrationen gibt es nur für den Wandtyp (v3) und die Projektmappe (v4)).
 
 **Export/Import ist zentral** (Modul 0, `docs/index.html`): ein Häkchen-Dialog baut über
 `sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
@@ -256,8 +277,12 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      und die **deterministische Preisauflösung** (`loesePreis`,
      `preisKontext`, `STATUS_TEXT`) nach **[P-14]**; `pruefeAuswahl` bleibt nur als Meldepfad für den
      Altbestand **[P-15]**. Rein/DOM-frei, genutzt von Modul 0/1/2 und `sembla-export.js`.
+   - `sembla-projektmappe.js` — **Projektstruktur und Wandlagen** (Modul 0, Etappe C1 von #26):
+     Format `SEMBLA-Projektmappe` v1, Struktur-Operationen, Validierung, Referenzabgleich,
+     Übernahme bestehender Stände. Rein/DOM-frei, eigene Tests (`tests/module/test-projektmappe.mjs`).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
      **Katalog-Slot**, **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
+     **Projektmappen-Slot** (`holeMappe`/`setzeMappe`/`aendereMappe`/`verorteWand`/`mappeReferenzen`),
      Import/Export).
    - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–8 + aktives Wandelement).
    - `sembla-blog.js` — **Projektblog** (Modul 8): Validator der Änderungsliste, Karten-HTML,
@@ -279,7 +304,7 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | **wird zum Projektplaner** (#26, Plan in `doku/PLAN-Projektplaner.md`; Datenmodell steht, Oberfläche folgt in Etappe C2). Einstieg, Modulübersicht, Storage-Manager + **zentraler Export/Import** (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7); **Projekt-Kopfdaten** des aktiven Elements → `eingaben.projekt`; **legt das Wandelement an (inkl. Wandtyp-Wahl)**; **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) + separater Katalogim-/-export. **Keine** wand-/projektbezogene Produktauswahl mehr ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
