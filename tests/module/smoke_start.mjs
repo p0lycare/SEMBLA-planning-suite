@@ -745,16 +745,16 @@ const wandRoh = JSON.parse(vorlageDatei(V_WAND));
 ok('Katalogvorlage traegt Katalogformat v1',
   katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === KAT.KATALOG_VERSION);
 ok('Katalogvorlage ist gegen den echten Validator fehlerfrei',
-  KAT.validiereKatalog(katRoh).length === 0 && KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length === 22);
+  KAT.validiereKatalog(katRoh).length === 0 && KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length === 20);
 ok('Katalogvorlage enthaelt kein Wandelement/Projekt (Ressourcentrennung)',
   !('wandelement' in katRoh) && !('eingaben' in katRoh) && !('courses' in katRoh));
 ok('jede Katalogkategorie ist belegt',
   KAT.KATEGORIEN.every(k => katRoh.produkte.some(p => p.kategorie === k.id)));
 ok('Katalogname weist die vorlaeufigen Werte aus', /vorläufig — fachlich unbestätigt/.test(katRoh.name));
 ok('jedes vorlaeufige Produkt ist einzeln gekennzeichnet',
-  katRoh.produkte.filter(p => p.hinweis).length === 10
-  && katRoh.produkte.filter(p => p.hinweis).every(p => p.hinweis.startsWith('vorläufig — fachlich unbestätigt'))
-  && katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 10);
+  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 10
+  && katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung))
+       .every(p => (p.hinweis || '').startsWith('vorläufig — fachlich unbestätigt')));
 ok('Wandvorlage traegt Projektformat v2 (kein Formatbump)',
   wandRoh.format === 'SEMBLA-Projekt' && wandRoh.version === store.PROJEKT_VERSION);
 ok('Wandvorlage enthaelt keinen Produktstamm (Ressourcentrennung)',
@@ -807,18 +807,25 @@ ok('Abbruch der Bestaetigung ersetzt den Katalog NICHT',
 ok('Abbruch wird sichtbar gemeldet', /Abgebrochen/.test(kMsgTxt()) && !kFehler());
 confirmAntwort = true;
 await $('k-vorlage').dispatch('click');
-ok('Bestaetigung laedt den Standardkatalog', kAnzahl() === 22 && /Standardkatalog/.test(kat().name));
+ok('Bestaetigung laedt den Standardkatalog', kAnzahl() === 20 && /Standardkatalog/.test(kat().name));
 ok('Erfolgsmeldung nennt die vorlaeufigen Werte',
   /Standardkatalog geladen/.test(kMsgTxt()) && /[Vv]orläufige/.test(kMsgTxt())
   && /gekennzeichnet/.test(kMsgTxt()) && !kFehler());
 ok('Katalogname erscheint im Eingabefeld', $('k-name').value === kat().name);
 ok('Standardkatalog liegt im eigenen localStorage-Slot',
-  JSON.parse(localStorage.getItem('sembla:katalog')).produkte.length === 22);
+  JSON.parse(localStorage.getItem('sembla:katalog')).produkte.length === 20);
 ok('Kennzeichnung „vorläufig" ueberlebt die Persistenz',
   KAT.produkt(kat(), 'latte-40-60-1500').hinweis.startsWith('vorläufig — fachlich unbestätigt'));
 ok('geladene Produkte tragen die Produktvorgaben der Suite',
   KAT.produkt(kat(), 'stein-i3-375').preis === 9.5 && KAT.produkt(kat(), 'stein-i2-250').preis === 7.2
-  && KAT.produkt(kat(), 'gewindestange-m10-1100').laenge_mm === 1100);
+  && KAT.produkt(kat(), 'gewindestange-m10-1000').laenge_mm === 1000);
+// [P-18] Der Standardkatalog macht die Suite startklar: Standardlaengen 1000/850, EIN Reststueck
+// 100 mm, EINE Kopplungsmutter fuer Stoß und Fuß, und jede waehlbare Rolle ist vorbelegt.
+ok('Standardkatalog belegt jede waehlbare Verwendungsstelle vor ([P-18])',
+  KAT.rollenOhneVorschlag(kat()).length === 0);
+ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
+  kat().produkte.filter(p => /kopplungsmutter/i.test(p.id)).length === 1
+  && KAT.produktrollenVorschlag(kat()).kupplung.length === 1);
 // 7d2) Katalog-v1-Kompatibilitaet der Maske ([P-16]): jedes Produkt der v1-Vorlage laesst sich
 // im Dialog oeffnen und unveraendert wieder speichern — kein Feld faellt weg, Zusatzfelder
 // (hinweis nach [P-12]) bleiben erhalten, die Formatversion bleibt 1.
@@ -835,8 +842,8 @@ ok('geladene Produkte tragen die Produktvorgaben der Suite',
     && /hinweis/.test($('kp-extra').innerHTML) && !/fachfremd/.test($('kp-extra').innerHTML));
   kpSpeichern();
   ok('unveraendertes Speichern laesst das v1-Produkt inhaltlich identisch',
-    kanon(KAT.produkt(kat(), 'latte-40-60-1500')) === vorher && kAnzahl() === 22);
-  ok('alle 22 Vorlagenprodukte bleiben gegen den echten Validator fehlerfrei',
+    kanon(KAT.produkt(kat(), 'latte-40-60-1500')) === vorher && kAnzahl() === 20);
+  ok('alle 20 Vorlagenprodukte bleiben gegen den echten Validator fehlerfrei',
     kat().produkte.every(p => KAT.validiereProdukt(p, { ids: [] }).length === 0));
   ok('jedes Pflichtfeld einer Kategorie ist in ihrer Maske pflegbar (eine Pflichtquelle)',
     KAT.KATEGORIEN.every(k => (k.pflicht || []).every(f => KAT.maskeFelder(k.id).includes(f))));
@@ -845,7 +852,7 @@ ok('geladene Produkte tragen die Produktvorgaben der Suite',
       p[f] === undefined || KAT.maskeFelder(p.kategorie).includes(f))));
   ok('Katalog-Formatversion bleibt 1 (kein Bruch durch [P-16])',
     KAT.KATALOG_VERSION === 1 && KAT.katalogObjekt(kat()).version === 1
-    && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === 22);
+    && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === 20);
 }
 
 ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
@@ -857,7 +864,7 @@ confirmAntwort = true;
 $('k-entfernen').dispatch('click');
 confirmAntwort = false;                                   // wuerde ein confirm ablehnen
 await $('k-vorlage').dispatch('click');
-ok('ohne geladenen Katalog laedt die Vorlage ohne Rueckfrage', kAnzahl() === 22);
+ok('ohne geladenen Katalog laedt die Vorlage ohne Rueckfrage', kAnzahl() === 20);
 
 // 7e) Musterwand laden: bestehender Bestaetigungsdialog, kein stilles Schreiben
 const wAnzahlVor = anzahl(), wAktivVor = store.aktivId(), wStandVor = stand();
@@ -934,7 +941,7 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
 // 7f) Ressourcen-/Formattrennung bleibt auch fuer die Vorlagen bestehen
 await $('k-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_WAND), V_WAND)], value:'x' } });
 ok('Wandvorlage im Katalog-Import -> klare Meldung, Katalog unveraendert',
-  kFehler() && /Projekt-\/Wandelement-Datei/.test(kMsgTxt()) && kAnzahl() === 22);
+  kFehler() && /Projekt-\/Wandelement-Datei/.test(kMsgTxt()) && kAnzahl() === 20);
 await $('f-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_KAT), V_KAT)], value:'x' } });
 ok('Katalogvorlage im Projekt-Import -> klare Meldung, kein Dialog',
   /Bauteilkatalog/.test(msgTxt()) && $('msg').className === 'msg err' && $('imp-overlay').hidden === true);
@@ -975,8 +982,10 @@ globalThis.localStorage = altStorage; globalThis.document = altDocument; install
 ok('Initialisierung ruft KEIN fetch auf (kein Autoload)', frischeAufrufe.length === 0);
 ok('Initialisierung legt keinen Katalog an', frischKatalog === null);
 ok('Initialisierung legt kein Wandelement an', frischElemente === null);
+// [P-18]: dritter Aufruf im Anlegen-Handler — Standardkatalog nachladen, wenn GAR KEINER da ist.
+// Auch das ist ein Klick-Handler; beim Initialisieren wird weiterhin nichts geholt.
 ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
-  (src.match(/vorlageText\(/g) || []).length === 3           // 1 Definition + 2 Aufrufe
+  (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }

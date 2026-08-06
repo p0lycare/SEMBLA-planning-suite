@@ -130,7 +130,7 @@ const KAT = {
   ],
 };
 const EING = {
-  planung: { produkte: { quelle: null, rollen: { rod_std: ["rod-1000", "rod-600"], rod_sonder: ["rod-600"] } } },
+  planung: { produkte: { quelle: null, rollen: { rod_std: ["rod-1000", "rod-600"] } } },
   aufbau: {
     seite: "vorne", panel: { b_cm: 62.5, h_cm: 150, off_x_cm: 0, off_y_cm: 0 },
     achsen: { max_x_cm: 62.5, max_y_cm: 75, ohang_cm: 12.5 },
@@ -167,11 +167,13 @@ const EING = {
   // 3,40 m aus {100 cm, 60 cm} -> 3×100 + 40 cm Sonderzuschnitt aus der 60er.
   const w = buildWall("sonder", 1000, 3400, [], null, { rod_lengths_mm: [1000, 600] });
   const so = semblaBomItems(w).filter(i => i.key === "rod_sonder");
-  ok("Sonderposition wird ueber ihr AUSGANGSPRODUKT bepreist", so.every(i => i.mass_mm === 600));
-  ok("Sonder-Bezeichnung nennt Fertigmaß und Herkunft", /40 cm \(aus 60 cm\)/.test(so[0].label));
+  // [P-18]: Fertigmaß ist das maßgebende Maß der Position, es gibt kein Ausgangsprodukt mehr.
+  ok("Sonderposition traegt ihr FERTIGMASS", so.every(i => i.mass_mm === 400));
+  ok("Sonder-Bezeichnung nennt nur das Fertigmaß", /40 cm/.test(so[0].label) && !/\(aus /.test(so[0].label));
   const rs = stuecklistePositionen(w, EING, KAT);
-  ok("Sonderzuschnitt bepreist das Ausgangsprodukt",
-    rs.filter(r => r.key === "rod_sonder").every(r => r.status === "ok" && r.produktId === "rod-600"));
+  ok("Sonderzuschnitt wird nicht bepreist (Beschaffung, [P-18])",
+    rs.filter(r => r.key === "rod_sonder").every(r =>
+      r.status === "beschaffung" && r.ep === null && r.bepreisbar === false));
 }
 {
   // Fehlt das Ausgangsprodukt fuer eine Groesse, bleibt genau DIESE Position unbepreist —

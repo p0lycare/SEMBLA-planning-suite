@@ -307,5 +307,48 @@ t("altbestand: alte Modul-0-Auswahl bleibt lesbar und wird NICHT in Rollen ueber
 t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   store.projektObjekt(idAltK).eingaben.katalog.auswahl.latte.join() === "alt-latte");
 
+// --- Vorbelegung aus der Katalog-Standardauswahl ([P-18]) -------------------
+// Nur LEERE Rollen werden belegt, jede in den Abschnitt ihres Eigentuemers; eine bereits
+// getroffene Wahl bleibt unangetastet und das Wandelement bleibt unberuehrt.
+{
+  const KAT_VB = {
+    format: "SEMBLA-Bauteilkatalog", version: 1, name: "Katalog mit Standardauswahl",
+    produkte: [
+      { id: "vb-rod", kategorie: "gewindestange", bezeichnung: "Stange", einheit: "Stk",
+        preis: 3, gewinde: "M10", laenge_mm: 1000, rollen: ["rod_std"] },
+      { id: "vb-latte", kategorie: "latte", bezeichnung: "Latte", einheit: "Stk", preis: 3,
+        breite_mm: 40, dicke_mm: 60, laenge_mm: 1500, rollen: ["latte"] },
+      { id: "vb-i3", kategorie: "stein", bezeichnung: "i3", einheit: "Stk", preis: 9, breite_mm: 375, rollen: ["i3"] },
+    ],
+  };
+  store.setzeKatalog(KAT_VB);
+  const idVb = store.speichere("Vorbelegwand", buildWall("Vorbelegwand", 2000, 2600, []));
+  store.setzeAktiv(idVb);
+  store.setzeProduktrolle("i3", ["eigene-wahl"]);          // bewusst gesetzt -> unantastbar
+  const vb = store.vorbelegeProduktrollen();
+  t("vorbelegen: leere Rollen uebernehmen die Standardauswahl des Katalogs",
+    store.holeProdukte(1).rollen.rod_std.join() === "vb-rod"
+    && store.holeProdukte(2).rollen.latte.join() === "vb-latte");
+  t("vorbelegen: bestehende Wahl wird NIE ueberschrieben",
+    store.holeProdukte(1).rollen.i3.join() === "eigene-wahl" && vb.gesetzt.i3 === undefined);
+  t("vorbelegen: Rollen ohne Standardprodukt werden benannt, nicht geraten",
+    vb.offen.includes("spannplatte") && !vb.offen.includes("rod_std")
+    && store.holeProdukte(1).rollen.spannplatte === undefined);
+  t("vorbelegen: Rolle landet im Abschnitt ihres Eigentuemers",
+    store.aktiveEingaben().planung.produkte.rollen.latte === undefined
+    && store.aktiveEingaben().aufbau.produkte.rollen.rod_std === undefined);
+  t("vorbelegen: Wandelement bleibt unberuehrt",
+    !JSON.stringify(store.aktivesWandelement()).includes("vb-rod"));
+  t("vorbelegen: zweiter Aufruf aendert nichts mehr (idempotent)",
+    Object.keys(store.vorbelegeProduktrollen().gesetzt).length === 0);
+  t("vorbelegen: ohne Katalog wird nichts erfunden", (() => {
+    const idLeer = store.speichere("Ohne Katalog", buildWall("Ohne Katalog", 2000, 2600, []));
+    store.loescheKatalog();
+    const r = store.vorbelegeProduktrollen(undefined, idLeer);
+    return Object.keys(r.gesetzt).length === 0 && r.offen.length > 0
+      && JSON.stringify(store.holeProdukte(1, idLeer).rollen) === "{}";
+  })());
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

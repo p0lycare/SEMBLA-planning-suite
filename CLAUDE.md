@@ -99,6 +99,24 @@ Preise/Maße und **nichts davon im Wandelement**. Der Rollenschlüssel *ist* der
 `store.setzeProduktrolle(rolle, ids)` schreibt anhand der Rolle in den Abschnitt ihres Eigentümers;
 eine fremde/unbekannte Rolle wird abgelehnt statt still einsortiert.
 
+**Startklare Standardauswahl, keine Zuschnittplanung (Regel [P-18]).** Die Planung startet **nicht
+leer**: jedes Katalogprodukt darf im optionalen Feld `rollen: [rolleId, …]` **ausdrücklich** benennen,
+welche Verwendungsstelle es im Regelfall ausführt. Daraus baut `produktrollenVorschlag()` die
+Standardauswahl; `store.vorbelegeProduktrollen()` übernimmt sie **nur für leere Rollen** (Modul 0 beim
+Anlegen/Katalogladen, Modul 1/2 beim Rendern — dort **einmal je Element und Seitenaufruf**, damit eine
+bewusst leergeräumte Rolle leer bleibt). Eine getroffene Wahl wird **nie** überschrieben; danach ist die
+Vorbelegung eine ganz normale, sichtbare, umwählbare Auswahl — **kein** zweiter unsichtbarer
+Auswahlpfad. Fachfremde oder nicht wählbare Rollenangaben sind ein **Katalogfehler**
+(`validiereProdukt`), keine Heuristik. Ohne geladenen Katalog lädt **das Anlegen einer Wand** in Modul 0
+den mitgelieferten Standardkatalog nach (ein vorhandener wird nie ersetzt).
+Weiter gilt: **Kopplungsmuttern sind bauteilgleich** — Rolle `kuppl_basis` ist entfallen, Stangenstoß
+und Fuß nutzen `kupplung` und stehen als **eine** Stücklistenposition mit der Gesamtmenge (die getrennte
+Herkunft bleibt in `semblaBom()` lesbar). Und **es gibt keine Zuschnittplanung**: die Stückliste ist die
+**Baustellenliste**, Sonderzuschnitte nennen nur **Fertigmaß + Stückzahl** (`mass_mm` = Fertigmaß). Die
+Rolle `rod_sonder` ist deshalb `waehlbar: false` und `bepreist: false` (Status `beschaffung`) — kein
+Ausgangsprodukt, keine Auswahlzeile, kein Preis, keine Verschnitt-/Einkaufsrechnung. `[Z-1]`/`[Z-2]`/
+`[Z-6]` und der Core bleiben davon unberührt.
+
 **Preise (Regel [P-14]).** Modul 4 hat **keine** Preisfelder mehr; jeder Einzelpreis wird pro Position
 frisch aufgelöst (`loesePreis`, genutzt von `stuecklistePositionen` und damit von Modul 4 **und** dem
 ZIP-Export). Eingegrenzt wird nur über echte Daten: passende Kategorie, zur Positionseinheit
@@ -180,7 +198,9 @@ nicht mehr alleinige Verteilungsregel.
    - `sembla-statik.js` — **voller Schermer-Nachweis** (Modul 3) plus `nachweisParams()`: die
      zentrale, DOM-freie Abbildung Wandelement + `eingaben.statik` → Nachweis-Parameter. Modul 3
      (`readP`) **und** der zentrale Nachweis-Export nutzen sie, damit beide dasselbe rechnen.
-   - `sembla-bom.js` — Stücklisten-Baustein (kanonische Mengen/Positionen, Modul 4/5). Boden- und
+   - `sembla-bom.js` — Stücklisten-Baustein (kanonische Mengen/Positionen, Modul 4/5) — die
+     **Baustellenliste** nach **[P-18]**: bauteilgleiche Einbaustellen stehen als **eine** Position
+     (Kopplungsmutter für Stoß **und** Fuß), Sonderzuschnitte nur mit Fertigmaß (kein Ausgangsprodukt). Boden- und
      Kopfblech sind **getrennte Positionen** (`blech_boden`/`blech_kopf`, Regel **[A-1]**), abgeleitet aus
      den realen `base_plate`/`top_plate` des Wandelements — der Core bleibt unverändert und die Summe
      beider Positionen bleibt exakt `bom.stahlblech_module` (`test-shared.mjs` sichert das ab). Die
@@ -216,11 +236,13 @@ nicht mehr alleinige Verteilungsregel.
    - `zip.js` — `zipSync`/`downloadZip` (STORE+CRC32, ohne Fremd-Lib) für den zentralen ZIP-Export.
    - `sembla-katalog.js` — **Bauteilkatalog**: Kategorien/Einheiten, Validierung, Austauschformat
      (`parseKatalog`/`katalogObjekt`), **Verwendungsrollen** (`ROLLEN`, `rollenVonModul`, `produktRollen`,
-     `produkteZuRolle`, `rollenStatus`) und die **deterministische Preisauflösung** (`loesePreis`,
+     `produkteZuRolle`, `rollenStatus`) die **Standardauswahl** (`produktrollenVorschlag`/`rollenOhneVorschlag`, **[P-18]**)
+     und die **deterministische Preisauflösung** (`loesePreis`,
      `preisKontext`, `STATUS_TEXT`) nach **[P-14]**; `pruefeAuswahl` bleibt nur als Meldepfad für den
      Altbestand **[P-15]**. Rein/DOM-frei, genutzt von Modul 0/1/2 und `sembla-export.js`.
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
-     **Katalog-Slot**, **Produktrollen** (`holeProdukte`/`setzeProduktrolle`), Import/Export).
+     **Katalog-Slot**, **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
+     Import/Export).
    - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–8 + aktives Wandelement).
    - `sembla-blog.js` — **Projektblog** (Modul 8): Validator der Änderungsliste, Karten-HTML,
      Filterung/Gruppierung der GitHub-Issues, Fehler-Fallback, Deep-Link-Anker. Rein/DOM-frei,

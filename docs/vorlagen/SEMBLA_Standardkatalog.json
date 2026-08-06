@@ -2,7 +2,7 @@
   "format": "SEMBLA-Bauteilkatalog",
   "version": 1,
   "name": "SEMBLA Standardkatalog (Beispieldaten, teils vorläufig — fachlich unbestätigt)",
-  "hinweis": "Übernimmt die im Produkt vorhandenen öffentlichen Preis-/Maßvorgaben (Preise aus eingaben.kosten.preise, Maße aus sembla-core.js und eingaben.aufbau). Produkte mit dem Feld „hinweis“ tragen vorläufige, frei angenommene Beispielwerte und sind KEINE bestätigten Kennwerte.",
+  "hinweis": "Übernimmt die im Produkt vorhandenen öffentlichen Preis-/Maßvorgaben (Preise aus eingaben.kosten.preise, Maße aus sembla-core.js und eingaben.aufbau). Produkte mit dem Feld „hinweis“ tragen vorläufige, frei angenommene Beispielwerte und sind KEINE bestätigten Kennwerte. Das Feld „rollen“ benennt je Produkt die Verwendungsstelle, die es im Regelfall ausführt — daraus belegen Modul 0/1/2 leere Auswahlen vor ([P-18]); umwählen ist jederzeit möglich.",
   "produkte": [
     {
       "id": "stein-i3-375",
@@ -12,7 +12,8 @@
       "preis": 9.5,
       "breite_mm": 375,
       "hoehe_mm": 200,
-      "dicke_mm": 125
+      "dicke_mm": 125,
+      "rollen": ["i3"]
     },
     {
       "id": "stein-i2-250",
@@ -22,17 +23,8 @@
       "preis": 7.2,
       "breite_mm": 250,
       "hoehe_mm": 200,
-      "dicke_mm": 125
-    },
-    {
-      "id": "gewindestange-m10-1100",
-      "kategorie": "gewindestange",
-      "bezeichnung": "Gewindestange M10 1100 mm (8.8)",
-      "einheit": "Stk",
-      "preis": 3.8,
-      "gewinde": "M10",
-      "guete": "8.8",
-      "laenge_mm": 1100
+      "dicke_mm": 125,
+      "rollen": ["i2"]
     },
     {
       "id": "gewindestange-m10-1000",
@@ -42,7 +34,8 @@
       "preis": 3.8,
       "gewinde": "M10",
       "guete": "8.8",
-      "laenge_mm": 1000
+      "laenge_mm": 1000,
+      "rollen": ["rod_std"]
     },
     {
       "id": "gewindestange-m10-850",
@@ -53,6 +46,7 @@
       "gewinde": "M10",
       "guete": "8.8",
       "laenge_mm": 850,
+      "rollen": ["rod_std"],
       "hinweis": "vorläufig — fachlich unbestätigt: zweite Standardlänge des Vorratssatzes, Preis frei angenommen."
     },
     {
@@ -64,6 +58,7 @@
       "gewinde": "M10",
       "guete": "8.8",
       "laenge_mm": 100,
+      "rollen": ["rod_rest"],
       "hinweis": "vorläufig — fachlich unbestätigt: für die Rolle „Gewindestange – Reststück oberer Abschluss“ ([Z-6]). Weil die Wände im Innenraum montiert werden, schließt jeder Strang an der Wandoberkante mit diesem kurzen Stück ab. Preis frei angenommen."
     },
     {
@@ -75,6 +70,7 @@
       "breite_mm": 40,
       "dicke_mm": 60,
       "laenge_mm": 1500,
+      "rollen": ["latte"],
       "hinweis": "vorläufig — fachlich unbestätigt: Lattendicke 60 mm ist ein angenommener Beispielwert (das Produkt kennt nur Lattenbreite 40 mm und Stangenlänge 1500 mm)."
     },
     {
@@ -86,6 +82,7 @@
       "breite_mm": 40,
       "dicke_mm": 60,
       "laenge_mm": 3000,
+      "rollen": ["latte"],
       "hinweis": "vorläufig — fachlich unbestätigt: zweite Standardlänge samt Dicke und Preis sind angenommene Beispielwerte."
     },
     {
@@ -97,6 +94,7 @@
       "breite_mm": 625,
       "hoehe_mm": 1500,
       "dicke_mm": 12.5,
+      "rollen": ["beplankung"],
       "hinweis": "vorläufig — fachlich unbestätigt: Plattenformat folgt dem Panelraster aus eingaben.aufbau (62,5×150 cm); Dicke und Preis sind angenommene Beispielwerte."
     },
     {
@@ -107,7 +105,8 @@
       "preis": 18.0,
       "breite_mm": 1000,
       "hoehe_mm": 125,
-      "dicke_mm": 15
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"]
     },
     {
       "id": "blech-kopfblech-1000",
@@ -117,7 +116,8 @@
       "preis": 18.0,
       "breite_mm": 1000,
       "hoehe_mm": 125,
-      "dicke_mm": 15
+      "dicke_mm": 15,
+      "rollen": ["blech_kopf"]
     },
     {
       "id": "blech-spannplatte",
@@ -128,6 +128,7 @@
       "breite_mm": 120,
       "hoehe_mm": 120,
       "dicke_mm": 15,
+      "rollen": ["spannplatte"],
       "hinweis": "vorläufig — fachlich unbestätigt: Plattenmaße sind angenommene Beispielwerte; die Nachweiskennwerte des Spannsystems sind bewusst NICHT hierher übernommen. Nur der Preis stammt aus den Produktvorgaben."
     },
     {
@@ -135,7 +136,8 @@
       "kategorie": "verbinder",
       "bezeichnung": "Verbinder FA-1",
       "einheit": "Stk",
-      "preis": 1.2
+      "preis": 1.2,
+      "rollen": ["verbinder"]
     },
     {
       "id": "verbinder-fa-2",
@@ -162,39 +164,37 @@
       "hinweis": "vorläufig — fachlich unbestätigt: Typ ist im Verbinder-Katalog des Handbuchs geführt, der Preis ist ein angenommener Beispielwert."
     },
     {
-      "id": "verbrauch-kopplungsmutter-stoss",
+      "id": "verbrauch-kopplungsmutter",
       "kategorie": "verbrauch",
-      "bezeichnung": "Kopplungsmutter (Stangenstoß)",
+      "bezeichnung": "Kopplungsmutter M10 (Stangenstoß und Fuß)",
       "einheit": "Stk",
-      "preis": 0.65
-    },
-    {
-      "id": "verbrauch-kopplungsmutter-fuss",
-      "kategorie": "verbrauch",
-      "bezeichnung": "Kopplungsmutter (Fuß)",
-      "einheit": "Stk",
-      "preis": 0.65
+      "preis": 0.65,
+      "rollen": ["kupplung"],
+      "hinweis": "Bauteilgleich für alle Kopplungen: es gibt keine gesonderte Fuß- oder Kopf-Kopplungsmutter ([P-18])."
     },
     {
       "id": "verbrauch-senkkopfschraube-fuss",
       "kategorie": "verbrauch",
       "bezeichnung": "Senkkopfschraube (Fuß)",
       "einheit": "Stk",
-      "preis": 0.45
+      "preis": 0.45,
+      "rollen": ["senkkopf"]
     },
     {
       "id": "verbrauch-spannmutter",
       "kategorie": "verbrauch",
       "bezeichnung": "Spannmutter",
       "einheit": "Stk",
-      "preis": 0.9
+      "preis": 0.9,
+      "rollen": ["spannmutter"]
     },
     {
       "id": "verbrauch-dichtstreifen-200",
       "kategorie": "verbrauch",
       "bezeichnung": "Dichtstreifen 20 cm (Schallschutz)",
       "einheit": "Stk",
-      "preis": 0.3
+      "preis": 0.3,
+      "rollen": ["dicht_stk"]
     },
     {
       "id": "verbrauch-dichtstreifen-rolle",
@@ -202,6 +202,7 @@
       "bezeichnung": "Dichtstreifen Rollenware (vorläufig)",
       "einheit": "m",
       "preis": 1.5,
+      "rollen": ["dicht"],
       "hinweis": "vorläufig — fachlich unbestätigt: Meterpreis der Rollenware ist ein angenommener Beispielwert (das Produkt führt bisher nur den Stückpreis je 20-cm-Streifen)."
     }
   ]

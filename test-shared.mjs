@@ -21,11 +21,16 @@ for(const [name,l,h,ops] of cases){
   t(name+" · Spannmuttern",    b.spannmuttern===w.bom.spannmuttern);
   t(name+" · Stahlblech-Module",b.stahlblech_module===w.bom.stahlblech_module);
   t(name+" · Dichtstreifen mm",b.dichtstreifen_mm===w.bom.dichtstreifen_mm);
-  // Positionsliste: 11 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
-  // Sonderzuschnitt-Ausgangsprodukt eine eigene Position ([Z-2]/[Z-4]). Nie weniger als 13,
-  // damit keine Position still verschwindet, wenn eine Gruppe leer ist.
-  t(name+" · Positionen = 11 + Stangengruppen",
-    semblaBomItems(w).length === 11 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length));
+  // Positionsliste: 10 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
+  // Sonderzuschnitt-Fertigmaß eine eigene Position ([Z-2]/[Z-4]). Kopplungsmuttern sind
+  // bauteilgleich und stehen als EINE Position ([P-18]).
+  t(name+" · Positionen = 10 + Stangengruppen",
+    semblaBomItems(w).length === 10 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length));
+  // [P-18] Kopplungsmutter: eine Position, Menge = Stangenstöße + Fußkopplungen.
+  t(name+" · Kopplungsmutter als EINE Position mit Gesamtmenge", (()=>{
+    const its=semblaBomItems(w), k=its.filter(it=>it.key==='kupplung');
+    return k.length===1 && !its.find(it=>it.key==='kuppl_basis')
+      && k[0].menge===b.verbindungsmuttern+b.kopplungsmuttern_basis; })());
   // Die Einbaumenge bleibt unverändert: Summe aller Stangenpositionen = Core-Gesamtzahl.
   t(name+" · Stangenpositionen summieren zur Core-Zahl",
     semblaBomItems(w).filter(it=>it.key==='rod_std'||it.key==='rod_sonder')

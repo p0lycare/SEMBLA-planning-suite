@@ -52,7 +52,16 @@ const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>null, aktivesElemen
   setzeProduktrolle:(rolleId, ids)=>{ const r=KAT.rolle(rolleId); if(!r) throw new Error('unbekannte Rolle');
     const t=(r.modul===1)?'planung':'aufbau';
     return storeMock.mergeEingaben(t, { produkte:{ rollen:{ [rolleId]: ids },
-      quelle: _kat ? { name:_kat.name, version:_kat.version } : null } }); } };
+      quelle: _kat ? { name:_kat.name, version:_kat.version } : null } }); },
+  // [P-18] Vorbelegung: nur LEERE Rollen uebernehmen die Standardauswahl des Katalogs —
+  // gleiche Semantik wie storage.vorbelegeProduktrollen (dort eigene Tests).
+  vorbelegeProduktrollen:()=>{ const v=_kat?KAT.produktrollenVorschlag(_kat):{}; const gesetzt={}, offen=[];
+    if(!_aktiv) return { gesetzt, offen };
+    for(const r of [...KAT.rollenVonModul(1), ...KAT.rollenVonModul(2)]){
+      if(KAT.rollenIds(storeMock.holeProdukte(r.modul), r.id).length) continue;
+      const ids=v[r.id]||[]; if(!ids.length){ offen.push(r.id); continue; }
+      storeMock.setzeProduktrolle(r.id, ids); gesetzt[r.id]=ids; }
+    return { gesetzt, offen }; } };
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, store:storeMock, berechneAufbau, VERBINDER_KATALOG, KAT };
 
 eval(script);
@@ -793,6 +802,33 @@ ok('zwei Verbinderprodukte -> mehrdeutig (kein Namens-Rateschluss)', (()=>{
   const m=st.status==='mehrdeutig';
   pSetzen('verbinder','verb-ia1',false);
   return m; })());
+
+// ---- [P-18] Vorbelegung aus der Katalog-Standardauswahl ---------------------
+// Der Testkatalog oben traegt bewusst KEIN `rollen`-Feld — bis hierher wurde also nichts
+// vorbelegt. Traegt der Katalog die Angabe, uebernimmt Modul 2 sie fuer die noch leeren Rollen.
+{
+  // Frisches Element: nur so laeuft die Vorbelegung (sie greift genau EINMAL je Wandelement).
+  const egVorher=_eg, katVorher=_kat, aktivVorher=_aktiv;
+  _aktiv='w-vorbeleg';
+  _eg={ aufbau:{ latten:{breite_cm:4, stange_cm:150},
+                 produkte:{ quelle:null, rollen:{ latte:['latte-1500'] } } } };   // bewusste Wahl
+  const eigene=JSON.stringify(_eg.aufbau.produkte.rollen.latte);
+  _kat={ ...KATALOG, produkte:KATALOG.produkte.map(p =>
+    p.id==='verb-fa1' ? { ...p, rollen:['verbinder'] } : (p.id==='latte-3000' ? { ...p, rollen:['latte'] } : p)) };
+  WA.renderProdukte();
+  ok('[P-18] leere Rolle wird aus dem Katalog vorbelegt',
+    _eg.aufbau.produkte.rollen.verbinder.join()==='verb-fa1');
+  ok('[P-18] bestehende Lattenwahl bleibt unangetastet',
+    JSON.stringify(_eg.aufbau.produkte.rollen.latte)===eigene);
+  ok('[P-18] Vorbelegung ist in Modul 2 sichtbar benannt',
+    /vorbelegt/.test(document.getElementById('prodInfo').innerHTML));
+  ok('[P-18] Vorbelegung erscheint als normale, angehakte Auswahl',
+    /data-prolle="verbinder" data-pid="verb-fa1" checked/.test(pHtml()));
+  ok('[P-18] bewusst leergeraeumte Rolle bleibt leer (kein Wiedervorbelegen)', (()=>{
+    pSetzen('verbinder','verb-fa1',false); WA.renderProdukte();
+    return _eg.aufbau.produkte.rollen.verbinder.length===0; })());
+  _aktiv=aktivVorher; _eg=egVorher; _kat=katVorher; WA.renderProdukte();
+}
 
 // Fehlende Referenz: Produkt aus dem Katalog entfernen -> sichtbar, nie still bereinigt
 _kat={...KATALOG, produkte:KATALOG.produkte.filter(p=>p.id!=='latte-1500')};

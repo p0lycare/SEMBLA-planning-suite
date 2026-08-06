@@ -1355,17 +1355,11 @@
           "rod_std": [
             "gewindestange-m10-1000"
           ],
-          "rod_sonder": [
-            "gewindestange-m10-1000"
-          ],
           "kupplung": [
-            "verbrauch-kopplungsmutter-stoss"
+            "verbrauch-kopplungsmutter"
           ],
           "spannmutter": [
             "verbrauch-spannmutter"
-          ],
-          "kuppl_basis": [
-            "verbrauch-kopplungsmutter-fuss"
           ],
           "senkkopf": [
             "verbrauch-senkkopfschraube-fuss"

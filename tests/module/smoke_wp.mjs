@@ -220,9 +220,11 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
 // Modul-1-Rollen decken die bestehenden Wand-/Vorspann-/Anschluss-/Fugen-Positionen ab.
 ok('Modul-1-Rollen: Vorspannung, Anschluss (Blech getrennt) und Fugen abgedeckt', (()=>{
   const ids=KAT.rollenVonModul(1).map(r=>r.id);
-  return ['i3','i2','rod_std','rod_sonder','kupplung','kuppl_basis','senkkopf','spannmutter',
+  return ['i3','i2','rod_std','rod_rest','kupplung','senkkopf','spannmutter',
           'spannplatte','blech_boden','blech_kopf','dicht_stk','dicht'].every(x=>ids.includes(x))
-    && !ids.includes('latte') && !ids.includes('verbinder') && !ids.includes('beplankung');
+    && !ids.includes('latte') && !ids.includes('verbinder') && !ids.includes('beplankung')
+    // [P-18]: Sonderzuschnitt-Ausgangsprodukt und Fuß-Kopplungsmutter sind entfallen.
+    && !ids.includes('rod_sonder') && !ids.includes('kuppl_basis');
 })());
 ok('Produktabschnitt in Modul 1 vorhanden', /id="prodRollen"/.test(html) && /Produkte \(Bauteilkatalog\)/.test(html));
 ok('ohne Katalog: Hinweis statt Auswahl', (()=>{ WP.renderProdukte();
@@ -349,6 +351,34 @@ ok('gelöschtes Produkt: Referenz bleibt erhalten', JSON.stringify(store.holePro
 ok('gelöschtes Produkt: Status fehlt + sichtbare Warnung',
   WP.prodStatus('rod_std').status==='fehlt' && /nicht auflösbar/.test(prodHtml()));
 store.setzeKatalog(KATALOG);
+
+// ---- [P-18] Vorbelegung aus der Katalog-Standardauswahl ---------------------
+// Produkte ohne `rollen` haben oben nie etwas vorbelegt (das erste „Ausgangslage: keine
+// Produktauswahl" belegt das). Traegt der Katalog die Angabe, uebernimmt Modul 1 sie beim
+// Rendern fuer die noch LEEREN Rollen — sichtbar gemeldet und weiter frei umwaehlbar.
+{
+  const KAT_VB={ ...KATALOG, produkte: KATALOG.produkte.map(p =>
+    p.id==='stein-i3' ? { ...p, rollen:['i3'] } : (p.id==='dicht-stk' ? { ...p, rollen:['dicht_stk'] } : p)) };
+  const idVb=store.speichere('Vorbeleg', buildWall('Vorbeleg',2000,2600,[]));
+  store.setzeKatalog(KAT_VB); store.setzeAktiv(idVb);
+  store.setzeProduktrolle('rod_std',['rod-1100']);        // bewusste Wahl -> unantastbar
+  WP.renderProdukte();
+  ok('[P-18] leere Rollen werden aus dem Katalog vorbelegt',
+    store.holeProdukte(1,idVb).rollen.i3.join()==='stein-i3'
+    && store.holeProdukte(1,idVb).rollen.dicht_stk.join()==='dicht-stk');
+  ok('[P-18] die Vorbelegung ist in Modul 1 sichtbar benannt',
+    /vorbelegt/.test(document.getElementById('prodInfo').innerHTML));
+  ok('[P-18] Vorbelegung erscheint als normale, angehakte Auswahl',
+    /data-prolle="i3" data-pid="stein-i3" checked/.test(prodHtml()));
+  ok('[P-18] bestehende Wahl bleibt unangetastet',
+    store.holeProdukte(1,idVb).rollen.rod_std.join()==='rod-1100');
+  ok('[P-18] bewusst leergeraeumte Rolle bleibt leer (kein Wiedervorbelegen)', (()=>{
+    setzen('i3','stein-i3',false); WP.renderProdukte();
+    return store.holeProdukte(1,idVb).rollen.i3.length===0; })());
+  ok('[P-18] keine Auswahl fuer Rollen ohne Standardprodukt (nichts geraten)',
+    store.holeProdukte(1,idVb).rollen.blech_boden===undefined);
+  store.setzeKatalog(KATALOG); store.setzeAktiv(idA); WP.renderProdukte();
+}
 
 // Reload (erneutes __wpInit(): das Modul liest alles frisch aus dem Storage)
 globalThis.window.__wpInit();

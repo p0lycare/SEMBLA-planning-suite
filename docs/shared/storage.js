@@ -40,7 +40,8 @@
  * ES-Modul: wird im Browser per <script type="module"> geladen. Kein Node-Betrieb.
  */
 
-import { katalogObjekt, leereProdukte, parseKatalog, rolle, validiereKatalog } from "./sembla-katalog.js";
+import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rolle,
+         rollenIds, rollenVonModul, validiereKatalog } from "./sembla-katalog.js";
 
 const K_ELEM = "sembla:elemente";
 const K_AKTIV = "sembla:aktiv";
@@ -494,6 +495,43 @@ export function setzeProduktrolle(rolleId, ids, id) {
       quelle: k ? { name: k.name, version: k.version } : null,
     },
   }, id);
+}
+
+/**
+ * Standardauswahl aus dem Katalog uebernehmen ([P-18]) — nur fuer LEERE Rollen.
+ *
+ * Der Katalog benennt je Produkt ausdruecklich, welche Verwendungsstelle es im Regelfall
+ * ausfuehrt (`produkt.rollen`). Diese Funktion setzt daraus die Auswahl fuer alle Rollen,
+ * die noch KEINE Auswahl haben. Bereits gewaehlte Rollen bleiben unangetastet — eine
+ * Vorbelegung darf eine Entscheidung des Nutzers nie ueberschreiben.
+ *
+ * Geschrieben wird pro Eigentuemer-Abschnitt (Modul 1 -> `planung`, Modul 2 -> `aufbau`),
+ * genau wie bei `setzeProduktrolle`; das Wandelement bleibt unberuehrt.
+ *
+ * @param {object} [katalog] Katalog (Default: der geladene)
+ * @param {string} [id] Wandelement (Default: das aktive)
+ * @returns {{gesetzt:Record<string,string[]>,offen:string[]}} vorbelegte Rollen + Rollen, fuer
+ *   die der Katalog keine Standardauswahl kennt (und die weiterhin leer sind)
+ */
+export function vorbelegeProduktrollen(katalog, id) {
+  const k = katalog || holeKatalog();
+  const ziel = id || aktivId();
+  const gesetzt = {}, offen = [];
+  if (!ziel) return { gesetzt, offen };
+  const vorschlag = k ? produktrollenVorschlag(k) : {};
+  /** @type {Record<string,{quelle:any,rollen:Record<string,string[]>}>} */
+  const patch = {};
+  for (const r of [...rollenVonModul(1), ...rollenVonModul(2)]) {
+    if (rollenIds(holeProdukte(r.modul, ziel), r.id).length) continue;   // schon gewaehlt
+    const ids = vorschlag[r.id] || [];
+    if (!ids.length) { offen.push(r.id); continue; }
+    const teil = _produktTeil(r.modul);
+    if (!patch[teil]) patch[teil] = { quelle: k ? { name: k.name, version: k.version } : null, rollen: {} };
+    patch[teil].rollen[r.id] = ids;
+    gesetzt[r.id] = ids;
+  }
+  for (const [teil, produkte] of Object.entries(patch)) mergeEingaben(teil, { produkte }, ziel);
+  return { gesetzt, offen };
 }
 
 // --- Eingaben (modeluebergreifende Nutzereingaben, Teil des Datenmodells) --

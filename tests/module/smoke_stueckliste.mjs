@@ -55,8 +55,9 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1,5 m', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
 ]};
 // Vollständige Zuordnung: Modul 1 besitzt planung.produkte, Modul 2 aufbau.produkte.
-const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'], rod_sonder:['rod-1100'],
-  kupplung:['kuppl-stoss'], kuppl_basis:['kuppl-fuss'], senkkopf:['senkkopf'], spannmutter:['spannmutter'],
+// [P-18] rod_sonder wird nicht mehr gewaehlt (Beschaffung), Kopplungsmuttern sind bauteilgleich.
+const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'],
+  kupplung:['kuppl-stoss'], senkkopf:['senkkopf'], spannmutter:['spannmutter'],
   spannplatte:['spannplatte'], blech_boden:['blech-boden'], blech_kopf:['blech-kopf'], dicht_stk:['dicht-stk'] };
 function egVoll(){
   const e=standardEingaben();
@@ -103,8 +104,17 @@ ok('i2-Menge = bom.i2', find('i2').menge===W.bom.i2);
 const rodStd=rs.filter(r=>r.key==='rod_std').reduce((a,r)=>a+r.menge,0);
 const rodSonder=rs.filter(r=>r.key==='rod_sonder').reduce((a,r)=>a+r.menge,0);
 ok('Gewindestangen Standard+Sonderlänge = bom', rodStd+rodSonder===W.bom.gewindestangen);
-ok('[Z-2] Sonderzuschnitte nennen Fertigmaß und Ausgangsprodukt',
-  rs.filter(r=>r.key==='rod_sonder'&&r.menge>0).every(r=>/Sonderzuschnitt .* \(aus .*\)/.test(r.label)));
+// [P-18]: Die Stueckliste ist die Baustellenliste — Sonderzuschnitte nennen NUR das Fertigmaß
+// und werden nie bepreist (aus welcher Lagerlaenge geschnitten wird, entscheidet der Einkauf).
+ok('[P-18] Sonderzuschnitte nennen nur das Fertigmaß, keine Herkunft',
+  rs.filter(r=>r.key==='rod_sonder'&&r.menge>0).length>0
+  && rs.filter(r=>r.key==='rod_sonder').every(r=>/Sonderzuschnitt \d/.test(r.label) && !/\(aus /.test(r.label)));
+ok('[P-18] Sonderzuschnitte sind nicht bepreisbar und melden Beschaffung',
+  rs.filter(r=>r.key==='rod_sonder').every(r=>r.bepreisbar===false && r.ep===null && r.status==='beschaffung'));
+ok('[P-18] Kopplungsmuttern sind EINE Position mit der Gesamtmenge',
+  !byKey('kuppl_basis')
+  && byKey('kupplung').menge===W.bom.verbindungsmuttern+W.bom.kopplungsmuttern_basis
+  && byKey('kupplung').ep===0.65);
 ok('Spannplatten = bom', byKey('spannplatte').menge===W.bom.spannplatten);
 ok('Senkkopfschrauben = bom', byKey('senkkopf').menge===W.bom.senkkopfschrauben);
 const dicht=byKey('dicht');
@@ -136,10 +146,11 @@ ok('KEINE Dämmung-Position (MVP)', !rs.find(r=>r.label.includes('Dämmung')));
 // Ausgangsprodukt eine Position + Verbinder + je Latten-Ausgangsprodukt eine Position.
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
 const nLatte=rs.filter(r=>r.key==='latte').length;
-ok('Positionen = 11 Wand + Stangengruppen + Verbinder + Lattengruppen',
-  rs.length===11+nRod+nSonder+1+nLatte && rs.length>=15);
+// [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
+ok('Positionen = 10 Wand + Stangengruppen + Verbinder + Lattengruppen',
+  rs.length===10+nRod+nSonder+1+nLatte && rs.length>=14);
 ok('[Z-4] jede Stangen-/Lattengruppe traegt ihr maßgebendes Maß',
-  rs.filter(r=>['rod_std','rod_sonder','latte'].includes(r.key)).every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
+  rs.filter(r=>['rod_std','latte'].includes(r.key)).every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
   rs.filter(r=>r.key==='rod_std'||r.key==='rod_sonder').reduce((a,r)=>a+r.menge,0)===W.bom.gewindestangen);
 ok('keine Beplankungs-Kostenzeile (ohne #19/#22)', !byKey('beplankung'));
@@ -149,8 +160,10 @@ ok('keine Beplankungs-Kostenzeile (ohne #19/#22)', !byKey('beplankung'));
   const s=SL.summe();
   const nBepreisbar=rs.filter(r=>r.bepreisbar).length;
   ok('vollständige Zuordnung -> Summe vollständig', s.vollstaendig===true && s.offen===0);
-  ok('nachrichtliche Zeile zählt nicht in den Nenner',
-    s.bepreisbar===nBepreisbar && s.bepreist===nBepreisbar && nBepreisbar===rs.length-1);
+  // Nicht bepreisbar sind die nachrichtliche Dicht-Gesamtlänge ([A-6]) und die
+  // Sonderzuschnitt-Positionen ([P-18], Beschaffung) — sie stehen in keinem Nenner.
+  ok('nachrichtliche und Beschaffungs-Zeilen zählen nicht in den Nenner',
+    s.bepreisbar===nBepreisbar && s.bepreist===nBepreisbar && nBepreisbar===rs.length-1-nSonder);
   ok('Summenanzeige nennt die Vollständigkeit',
     new RegExp('alle '+nBepreisbar+' Positionen bepreist').test(document.getElementById('grandNote').textContent));
   ok('Zähler in der Kopfspalte', document.getElementById('ovPreise').textContent===nBepreisbar+' / '+nBepreisbar);
@@ -239,7 +252,10 @@ const mengenVoll=SL.rows().map(r=>r.key+':'+r.menge).join('|');
   _we=wSp; _subs.forEach(cb=>cb());
   const r=SL.rows().find(x=>x.key==='blech_kopf');
   ok('Menge 0 -> nicht_erforderlich (keine Falschwarnung)', r.menge===0 && r.status==='nicht_erforderlich' && r.bepreisbar===false);
-  ok('Menge 0 zählt nicht in den Nenner', SL.summe().bepreisbar===13);
+  ok('Menge 0 zählt nicht in den Nenner', (()=>{
+    const r0=SL.rows();
+    return SL.summe().bepreisbar===r0.filter(x=>x.bepreisbar).length
+      && !r0.find(x=>x.key==='blech_kopf').bepreisbar; })());
   _we=W1; _eg=egVoll(); _subs.forEach(cb=>cb()); }
 
 // Reload: das Modul liest Wandelement, Eingaben und Katalog frisch (kein Zwischenspeicher)

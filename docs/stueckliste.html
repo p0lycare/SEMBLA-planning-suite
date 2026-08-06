@@ -120,7 +120,7 @@ function rows(){ return WALL ? stuecklistePositionen(WALL, eg(), KATALOG) : []; 
 // Klasse der Status-Pille: harte Zuordnungsfehler rot, offene Auswahl gelb, „nicht nötig“ grau.
 const ST={fehlt:'no',kategorie_abweichend:'no',einheit_unpassend:'no',mass_abweichend:'no',mehrdeutig:'no',
   keine_auswahl:'warn',kein_katalog:'warn',nachrichtlich:'mute',ohne_position:'mute',nicht_erforderlich:'mute',
-  kombiniert:'mute'};
+  kombiniert:'mute',beschaffung:'mute'};   // [P-18] Zuschnitt/Beschaffung: bewusst kein Preis
 
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
 function renderLeer(){

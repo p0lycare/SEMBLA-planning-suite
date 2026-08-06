@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-03",
+    datum: "2026-08-06",
+    typ: "feature",
+    issue: 21,
+    titel: "Bauteilkatalog belegt die Produkte selbst vor; keine Zuschnitt-Auswahl, eine Kopplungsmutter",
+    testbitte: "Reiter 0: eine neue Wand anlegen — der Standardkatalog wird bei Bedarf geladen und "
+      + "alle Verwendungsstellen sind vorbelegt. In Reiter 1/2 ist alles frei umwählbar; die Auswahl "
+      + "für das Ausgangsprodukt der Sonderzuschnitte ist weg.",
+  },
+  {
     id: "chg-20260806-02",
     datum: "2026-08-06",
     typ: "feature",

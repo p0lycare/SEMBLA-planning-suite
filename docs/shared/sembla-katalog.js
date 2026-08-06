@@ -266,6 +266,21 @@ export function validiereProdukt(p, opts = {}) {
     else if (v <= 0) e.push(`${f} muss größer als 0 sein.`);
   }
 
+  // Standardrollen ([P-18]): optionales Feld. Es wird streng geprueft, damit eine
+  // Vorbelegung niemals ein fachfremdes Produkt an eine Verwendungsstelle setzt.
+  if (p.rollen !== undefined) {
+    if (!Array.isArray(p.rollen)) e.push("Feld „rollen“ muss eine Liste von Verwendungsrollen sein.");
+    else for (const rid of p.rollen) {
+      const r = rolle(String(rid));
+      if (!r) e.push(`Unbekannte Verwendungsrolle „${rid}“ in „rollen“.`);
+      else if (!_waehlbar(r)) e.push(`Verwendungsrolle „${rid}“ ist nicht wählbar und kann nicht vorbelegt werden.`);
+      else if (k && r.kategorie !== k.id) {
+        e.push(`Verwendungsrolle „${rid}“ erwartet Kategorie ${kategorieLabel(r.kategorie)}, `
+          + `das Produkt ist ${k.label}.`);
+      }
+    }
+  }
+
   for (const f of (k ? k.pflicht : [])) {
     if (f === "gewinde") {
       if (!String(p.gewinde == null ? "" : p.gewinde).trim()) e.push(`Gewinde ist für ${k.label} erforderlich.`);
@@ -359,10 +374,17 @@ export function produkt(k, id) {
 //            allein die Anzahl der ausgewaehlten Produkte ueber Eindeutigkeit).
 // `bepreist` = false: die Rolle erzeugt keine Kostenzeile (nachrichtliche Menge nach
 //            [A-6]) oder hat gar keine Mengenposition (Beplankung, offen bis #19/#22).
+// `waehlbar` = false: die Rolle wird NICHT zur Auswahl angeboten (Modul 1/2 zeigen sie
+//            nicht). Ihr Stuecklistenschluessel bleibt bestehen — die Menge ist Bedarf der
+//            Baustelle, das ausfuehrende Produkt aber bewusst nicht Sache der Planung
+//            (Sonderzuschnitte, [P-18]). Default = waehlbar.
+// `status_frei` = Statuskennung, die eine nicht bepreiste Rolle statt „ohne_position"
+//            melden soll (Klartext in STATUS_TEXT).
 
 /**
  * @type {ReadonlyArray<{id:string,label:string,kategorie:string,modul:1|2,gruppe:string,
- *   mass:{felder:string[],kontext:string}|null,bepreist:boolean,hinweis?:string}>}
+ *   mass:{felder:string[],kontext:string}|null,bepreist:boolean,waehlbar?:boolean,
+ *   status_frei?:string,hinweis?:string}>}
  */
 export const ROLLEN = [
   // --- Modul 1 ---
@@ -373,6 +395,12 @@ export const ROLLEN = [
   { id: "rod_std", label: "Gewindestange", kategorie: "gewindestange", modul: 1, einheit: "Stk",
     gruppe: "Vorspannung", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true,
     kombinierbar: true },
+  { id: "rod_sonder", label: "Gewindestange – Sonderzuschnitt", kategorie: "gewindestange",
+    modul: 1, gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: false,
+    waehlbar: false, status_frei: "beschaffung",
+    hinweis: "Sonderlängen stehen als Bedarf der Baustelle in der Stückliste. AUS WELCHER "
+      + "Lagerlänge sie geschnitten werden, ist Sache des Einkaufs — dazu wird hier kein Produkt "
+      + "gewählt und keine Zuschnitt-/Verschnittplanung gerechnet ([P-18])." },
   { id: "rod_rest", label: "Gewindestange – Reststück oberer Abschluss", kategorie: "gewindestange",
     modul: 1, gruppe: "Vorspannung", einheit: "Stk", mass: { felder: ["laenge_mm"], kontext: "rod_rest_mm" },
     bepreist: true, einzeln: true,
@@ -380,17 +408,13 @@ export const ROLLEN = [
       + "lange Gewindestange einzufädeln. Jeder Strang, der an der Wandoberkante endet, schließt "
       + "deshalb mit genau diesem kurzen Reststück ab ([Z-6]). Es wird EIN Produkt gewählt; ohne "
       + "Auswahl wird der obere Abschluss sichtbar als offen gemeldet, es wird keine Länge geraten." },
-  { id: "rod_sonder", label: "Gewindestange – Ausgangsprodukt für Sonderzuschnitte", kategorie: "gewindestange",
-    modul: 1, gruppe: "Vorspannung", einheit: "Stk", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true,
-    kombinierbar: true,
-    hinweis: "Sonderlängen werden aus diesem Ausgangsprodukt zugeschnitten. Zuschnitt, Verschnitt "
-      + "und Einkaufsmengen werden hier bewusst NICHT gerechnet (Zuschnittverfahren offen)." },
-  { id: "kupplung", label: "Kopplungsmutter Stangenstoß", kategorie: "verbrauch", modul: 1,
-    gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
+  { id: "kupplung", label: "Kopplungsmutter", kategorie: "verbrauch", modul: 1,
+    gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Kopplungsmuttern sind bauteilgleich: Stangenstoß und Fußanschluss verwenden DASSELBE "
+      + "Produkt. Es gibt bewusst keine gesonderte Fuß-Kopplungsmutter mehr, und in der Stückliste "
+      + "stehen beide Einbaustellen als eine Position mit einer Menge ([P-18])." },
   { id: "spannmutter", label: "Spannmutter", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
-  { id: "kuppl_basis", label: "Kopplungsmutter Fuß", kategorie: "verbrauch", modul: 1,
-    gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "senkkopf", label: "Senkkopfschraube Fuß", kategorie: "verbrauch", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,
@@ -490,9 +514,17 @@ export function auswahlZusammenfassung(optionen) {
   return gew.length + " Produkte";
 }
 
-/** Alle Rollen eines Moduls, in Anzeigereihenfolge. @param {1|2} modul */
+/** Wird diese Rolle zur Auswahl angeboten? (Default ja, [P-18]). @param {any} r */
+function _waehlbar(r) { return !!r && r.waehlbar !== false; }
+
+/**
+ * Alle WAEHLBAREN Rollen eines Moduls, in Anzeigereihenfolge. Nicht waehlbare Rollen
+ * ([P-18]: Sonderzuschnitte) sind hier bewusst nicht enthalten — sie haben kein
+ * Auswahl-Steuerelement, ihre Stuecklistenposition bleibt davon unberuehrt.
+ * @param {1|2} modul
+ */
 export function rollenVonModul(modul) {
-  return ROLLEN.filter((r) => r.modul === modul);
+  return ROLLEN.filter((r) => r.modul === modul && _waehlbar(r));
 }
 
 /** Gruppennamen eines Moduls in Anzeigereihenfolge (ohne Doppelte). @param {1|2} modul */
@@ -549,6 +581,44 @@ export function produkteZuRolle(eingaben, katalog, rolleId) {
   return { rolle: rolleId, ids, produkte, fehlend };
 }
 
+// --- Standardauswahl aus dem Katalog ([P-18]) ------------------------------
+// Der Katalog darf sagen, WELCHE Verwendungsstelle ein Produkt im Regelfall ausfuehrt:
+// jedes Produkt kann ein optionales Feld `rollen: [rolleId, …]` tragen. Das ist keine
+// Heuristik und keine Namensaehnlichkeit, sondern eine ausdrueckliche Angabe des
+// Katalogpflegers — und sie ist beim Validieren an Kategorie und Waehlbarkeit gebunden.
+//
+// Daraus baut `produktrollenVorschlag` die Standardauswahl. Sie wird NUR fuer LEERE Rollen
+// verwendet (storage.vorbelegeProduktrollen) und danach wie jede andere Auswahl gespeichert
+// und angezeigt — es gibt also keinen unsichtbaren zweiten Auswahlpfad. Wer etwas anderes
+// will, waehlt es in Modul 1/2 um; die Vorbelegung ueberschreibt das nie.
+
+/**
+ * Standardauswahl eines Katalogs: Rolle -> Produkt-IDs (Katalogreihenfolge, ohne Doppelte).
+ * Beruecksichtigt nur waehlbare Rollen und nur kategoriegerechte Produkte.
+ * @param {any} katalog @returns {Record<string,string[]>}
+ */
+export function produktrollenVorschlag(katalog) {
+  /** @type {Record<string,string[]>} */
+  const out = {};
+  for (const p of ((katalog && katalog.produkte) || [])) {
+    if (!Array.isArray(p.rollen)) continue;
+    for (const rid of p.rollen) {
+      const r = rolle(String(rid));
+      if (!r || !_waehlbar(r) || r.kategorie !== p.kategorie) continue;
+      const id = String(p.id);
+      if (!out[r.id]) out[r.id] = [];
+      if (!out[r.id].includes(id)) out[r.id].push(id);
+    }
+  }
+  return out;
+}
+
+/** Rollen, die im Katalog gar keine Standardauswahl haben (Modul 0 meldet sie). @param {any} katalog */
+export function rollenOhneVorschlag(katalog) {
+  const v = produktrollenVorschlag(katalog);
+  return ROLLEN.filter((r) => _waehlbar(r) && !(v[r.id] || []).length).map((r) => r.id);
+}
+
 // --- Produktspezifikation der Wand ([Z-1]) ---------------------------------
 // Ein ausgewaehltes Katalogprodukt ist die ALLEINIGE Quelle seiner Produktspezifikation.
 // Diese Schicht liest sie aus dem Katalog und ist damit die einzige Stelle, aus der Modul 1
@@ -583,7 +653,6 @@ export function standardLaengen(eingaben, katalog, rolleId) {
  */
 export function produktSpezifikation(eingaben, katalog) {
   const rod = standardLaengen(eingaben, katalog, "rod_std");
-  const rodSonder = standardLaengen(eingaben, katalog, "rod_sonder");
   const rodRest = standardLaengen(eingaben, katalog, "rod_rest");
   const latte = standardLaengen(eingaben, katalog, "latte");
   const breiten = _masse(latte.produkte, "breite_mm");
@@ -609,7 +678,9 @@ export function produktSpezifikation(eingaben, katalog) {
         + "eingebaut — die Länge bleibt offen, bis die Auswahl eindeutig ist." });
   }
   return {
-    rod: { ...rod, sonder_laengen_mm: rodSonder.laengen_mm, sonder_ids: rodSonder.ids,
+    // [P-18]: Es gibt kein Ausgangsprodukt fuer Sonderzuschnitte mehr — woraus geschnitten
+    // wird, entscheidet der Einkauf, nicht die Planung. Daher auch keine `sonder_*`-Angaben.
+    rod: { ...rod,
            rest_mm: rodRest.laengen_mm.length === 1 ? rodRest.laengen_mm[0] : null,
            rest_ids: rodRest.ids },
     latte: { ...latte,
@@ -670,6 +741,7 @@ export const STATUS_TEXT = {
   nicht_erforderlich: "Menge 0 – kein Produkt erforderlich",
   nachrichtlich: "nachrichtliche Menge – nicht bepreist",
   ohne_position: "keine Mengenposition – nur vorgemerkt",
+  beschaffung: "Bedarf der Baustelle – Zuschnitt/Beschaffung, nicht bepreist",
 };
 
 /**
@@ -696,7 +768,7 @@ export function loesePreis(item, rollenIdsMap, katalog, kontext = {}) {
   // 1) Rollen ohne Kostenzeile (nachrichtliche Menge / keine Mengenposition)
   if (item.nachrichtlich || (r && !r.bepreist)) {
     res.bepreisbar = false;
-    return fertig(item.nachrichtlich ? "nachrichtlich" : "ohne_position");
+    return fertig(item.nachrichtlich ? "nachrichtlich" : ((r && r.status_frei) || "ohne_position"));
   }
   if (!r) { res.bepreisbar = false; return fertig("ohne_position"); }
 
@@ -760,6 +832,13 @@ export function rollenStatus(rolleId, eingaben, katalog, kontext = {}) {
   if (!r) return { rolle: rolleId, ids, status: "ohne_position", text: STATUS_TEXT.ohne_position, produkt: null, kandidaten: [], fehlend: [], vorgemerkt: [], hinweis: null };
   // Rollen ohne Kostenzeile: nur Aufloesbarkeit melden, nie einen Preisstatus erfinden.
   if (!r.bepreist) {
+    // Nicht waehlbare Rollen ([P-18]) haben gar keine Auswahl — dort ist „keine Auswahl" kein
+    // Mangel, sondern der Regelfall; gemeldet wird ihr eigener Status_frei-Klartext.
+    if (!_waehlbar(r)) {
+      const s = r.status_frei || "ohne_position";
+      return { rolle: rolleId, ids: [], status: s, text: STATUS_TEXT[s] || s, produkt: null,
+               kandidaten: [], fehlend: [], vorgemerkt: [], hinweis: r.hinweis || null };
+    }
     const auf = produkteZuRolle(eingaben, katalog, rolleId);
     const status = !ids.length ? "keine_auswahl"
       : (!katalog ? "kein_katalog" : (auf.fehlend.length ? "fehlt" : (rolleId === "dicht" ? "nachrichtlich" : "ohne_position")));

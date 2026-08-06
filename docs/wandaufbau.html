@@ -254,14 +254,29 @@ function syncLegacyFelder(){
       +'rückwärtskompatibler Fallback verwendet ([Z-1]).';
   }
 }
+// [P-18] Startklar statt leer — gleiches Muster wie Modul 1: noch leere Verwendungsstellen
+// uebernehmen EINMAL je Wandelement und Seitenaufruf die Standardauswahl des Katalogs. Eine
+// getroffene Wahl wird nie ueberschrieben, ein bewusst leergeraeumtes Feld bleibt leer.
+let VORBELEGT=null; const VB_ERLEDIGT=new Set();
+function vorbelegeProdukte(){
+  const id=(store&&store.aktivId)?store.aktivId():null;
+  if(!id || !store.vorbelegeProduktrollen || !prodKatalog() || VB_ERLEDIGT.has(id)) return;
+  VB_ERLEDIGT.add(id);
+  const vb=store.vorbelegeProduktrollen();
+  const gesetzt=Object.keys(vb.gesetzt).filter(r=>KAT.rolle(r)&&KAT.rolle(r).modul===2);
+  VORBELEGT=gesetzt.length?gesetzt:null;
+}
 function renderProdukte(){
   const box=$('prodRollen'), info=$('prodInfo');
+  vorbelegeProdukte();
   const kat=prodKatalog(), eing=prodEingaben(), ktx=prodKontext();
   const hatWandEl=!!(store&&store.aktivId&&store.aktivId());
   info.innerHTML = !kat
     ? 'Kein Bauteilkatalog geladen — in Modul 0 („Start“) anlegen oder importieren.'
     : (!hatWandEl ? 'Kein aktives Wandelement — Produkte können erst an einer Wand gewählt werden.'
-      : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`);
+      : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`
+        + (VORBELEGT ? ` · <b>${VORBELEGT.length} Verwendungsstelle(n) aus dem Katalog vorbelegt</b>`
+            + ' ([P-18]) — unten frei umwählbar' : ''));
   if(!kat || !hatWandEl){ box.innerHTML=''; syncLegacyFelder(); return; }
   const typ=(LAST&&LAST.layout&&LAST.layout.verbinder_typ)||($('vtyp')&&$('vtyp').value)||'';
   // Eine kompakte Zeile je Verwendungsrolle, gleiches Muster wie Modul 1 ([P-17]).

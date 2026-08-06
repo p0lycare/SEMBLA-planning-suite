@@ -7,6 +7,7 @@
 //
 // Aufruf:  node tests/module/test-katalog.mjs
 
+import { readFileSync } from "node:fs";
 import * as KAT from "../../docs/shared/sembla-katalog.js";
 
 const checks = [];
@@ -155,8 +156,9 @@ const loese = (key, ids, unit = "Stk", menge = 5, ktx = KTX) =>
 // Rollen und Eigentuemer
 ok("Rollen: Modul 1 besitzt Wand/Vorspannung/Anschluss/Fugen", (() => {
   const ids = KAT.rollenVonModul(1).map(r => r.id);
-  return ["i3","i2","rod_std","rod_sonder","kupplung","kuppl_basis","senkkopf","spannmutter",
-          "spannplatte","blech_boden","blech_kopf","dicht_stk","dicht"].every(x => ids.includes(x));
+  return ["i3","i2","rod_std","rod_rest","kupplung","senkkopf","spannmutter",
+          "spannplatte","blech_boden","blech_kopf","dicht_stk","dicht"].every(x => ids.includes(x))
+    && !ids.includes("rod_sonder") && !ids.includes("kuppl_basis");
 })());
 ok("Rollen: Modul 2 besitzt genau Latte/Beplankung/Verbinder",
   KAT.rollenVonModul(2).map(r => r.id).sort().join() === "beplankung,latte,verbinder");
@@ -251,8 +253,19 @@ ok("fehlender Kontextwert deaktiviert nur die Eingrenzung, erfindet nichts", (()
 })());
 ok("Verbinderrolle nennt die fehlende maschinelle Typpruefung ([U-9])",
   /nicht maschinell prüfbar/i.test(KAT.rolle("verbinder").hinweis));
-ok("rod_sonder verweist auf das Ausgangsprodukt ohne Zuschnittlogik",
-  /Zuschnitt/.test(KAT.rolle("rod_sonder").hinweis) && loese("rod_sonder", ["rod-1100"]).ep === 3.8);
+// [P-18] Sonderzuschnitte: kein Ausgangsprodukt, keine Auswahl, kein Preis.
+ok("rod_sonder ist nicht waehlbar und wird nie bepreist ([P-18])", (() => {
+  const r = KAT.rolle("rod_sonder");
+  const p = loese("rod_sonder", ["rod-1100"]);
+  return r.waehlbar === false && r.bepreist === false
+    && p.status === "beschaffung" && p.ep === null && p.bepreisbar === false;
+})());
+ok("rod_sonder-Status meldet Beschaffung statt fehlender Auswahl ([P-18])", (() => {
+  const st = KAT.rollenStatus("rod_sonder", eingabenMit({}), R_KAT, KTX);
+  return st.status === "beschaffung" && st.ids.length === 0 && /Einkauf/.test(st.hinweis);
+})());
+ok("kuppl_basis ist entfallen — Kopplungsmuttern sind bauteilgleich ([P-18])",
+  KAT.rolle("kuppl_basis") === null && /bauteilgleich/i.test(KAT.rolle("kupplung").hinweis));
 
 // preisKontext: nur reale Wandwerte
 ok("preisKontext liest Stangen-/Blechmaß und Steinbreiten aus der Wand", (() => {
@@ -374,6 +387,71 @@ ok("jede Rolle mit Maß-Diskriminator hat mindestens ein Diskriminatorfeld in ih
 ok("Maske veraendert nichts an Kategorien, Rollen oder Formatversion",
   KAT.KATEGORIEN.length === 7 && KAT.KATALOG_VERSION === 1
   && typeof KAT.loesePreis === "function");
+
+// --- Standardauswahl aus dem Katalog ([P-18]) ------------------------------
+// Der Katalog benennt je Produkt ausdruecklich seine Verwendungsstelle (`rollen`). Geprueft
+// wird, dass daraus nur kategoriegerechte, waehlbare Rollen entstehen und dass eine falsche
+// Angabe als Katalogfehler auffaellt statt still zu wirken.
+const V_PROD = (extra) => ({
+  format: "SEMBLA-Bauteilkatalog", version: 1, name: "V", produkte: [
+    { id: "s3", kategorie: "stein", bezeichnung: "i3", einheit: "Stk", preis: 9, breite_mm: 375, rollen: ["i3"] },
+    { id: "s2", kategorie: "stein", bezeichnung: "i2", einheit: "Stk", preis: 7, breite_mm: 250, rollen: ["i2"] },
+    { id: "r1", kategorie: "gewindestange", bezeichnung: "R1", einheit: "Stk", preis: 3,
+      gewinde: "M10", laenge_mm: 1000, rollen: ["rod_std"] },
+    { id: "r2", kategorie: "gewindestange", bezeichnung: "R2", einheit: "Stk", preis: 3,
+      gewinde: "M10", laenge_mm: 850, rollen: ["rod_std"] },
+    { id: "l1", kategorie: "latte", bezeichnung: "L", einheit: "Stk", preis: 3,
+      breite_mm: 40, dicke_mm: 60, laenge_mm: 1500, rollen: ["latte"] },
+    { id: "frei", kategorie: "verbinder", bezeichnung: "ohne Rolle", einheit: "Stk", preis: 1 },
+    ...(extra || []),
+  ],
+});
+ok("produktrollenVorschlag sammelt mehrere Produkte je Rolle in Katalogreihenfolge", (() => {
+  const v = KAT.produktrollenVorschlag(V_PROD());
+  return v.rod_std.join() === "r1,r2" && v.i3.join() === "s3" && v.latte.join() === "l1";
+})());
+ok("produktrollenVorschlag laesst Produkte ohne `rollen` unberuecksichtigt",
+  !Object.values(KAT.produktrollenVorschlag(V_PROD())).flat().includes("frei"));
+ok("produktrollenVorschlag ignoriert kategoriefremde Angaben (kein Rateschluss)", (() => {
+  const v = KAT.produktrollenVorschlag({ produkte: [
+    { id: "x", kategorie: "verbrauch", bezeichnung: "X", einheit: "Stk", preis: 1, rollen: ["i3"] }] });
+  return !(v.i3 || []).length;
+})());
+ok("validiereProdukt lehnt eine kategoriefremde Standardrolle ab", (() => {
+  const e = KAT.validiereProdukt({ id: "x", kategorie: "verbrauch", bezeichnung: "X",
+    einheit: "Stk", preis: 1, rollen: ["i3"] });
+  return e.some((m) => /Verwendungsrolle „i3“ erwartet Kategorie/.test(m));
+})());
+ok("validiereProdukt lehnt unbekannte und nicht waehlbare Standardrollen ab", (() => {
+  const un = KAT.validiereProdukt({ id: "x", kategorie: "stein", bezeichnung: "X",
+    einheit: "Stk", preis: 1, rollen: ["gibtsnicht"] });
+  const nw = KAT.validiereProdukt({ id: "y", kategorie: "gewindestange", bezeichnung: "Y",
+    einheit: "Stk", preis: 1, gewinde: "M10", laenge_mm: 900, rollen: ["rod_sonder"] });
+  return un.some((m) => /Unbekannte Verwendungsrolle/.test(m))
+    && nw.some((m) => /nicht wählbar/.test(m));
+})());
+ok("Produkte ohne `rollen` bleiben gueltig (Feld ist optional)",
+  KAT.validiereKatalog(V_PROD()).length === 0);
+ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
+  const offen = KAT.rollenOhneVorschlag(V_PROD());
+  return !offen.includes("rod_std") && offen.includes("verbinder") && !offen.includes("rod_sonder");
+})());
+
+// Der mitgelieferte Standardkatalog muss die Suite startklar machen ([P-18]).
+{
+  const roh = readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const std = KAT.parseKatalog(roh);
+  const v = KAT.produktrollenVorschlag(std);
+  ok("Standardkatalog ist gueltig und belegt JEDE waehlbare Rolle vor ([P-18])",
+    KAT.rollenOhneVorschlag(std).length === 0);
+  ok("Standardkatalog fuehrt die Standardlaengen 1000 und 850 mm",
+    (v.rod_std || []).map((id) => KAT.produkt(std, id).laenge_mm).sort((a, b) => b - a).join() === "1000,850");
+  ok("Standardkatalog fuehrt genau EIN Reststueck mit 100 mm ([Z-6])",
+    (v.rod_rest || []).length === 1 && KAT.produkt(std, v.rod_rest[0]).laenge_mm === 100);
+  ok("Standardkatalog fuehrt nur EINE Kopplungsmutter (keine Fuß-Sonderausfuehrung)",
+    (v.kupplung || []).length === 1
+    && std.produkte.filter((p) => /kopplungsmutter/i.test(p.id)).length === 1);
+}
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

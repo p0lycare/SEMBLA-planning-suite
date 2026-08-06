@@ -7,6 +7,11 @@
  * Sonderlängen aus `tension_columns[].segments`. Fällt bei fehlenden Feldern
  * auf `w.bom` / Defaults zurück (Alt-Bundles).
  *
+ * Die Positionsliste ist die BAUSTELLENLISTE ([P-18]): sie nennt, WAS in welcher Menge
+ * verbaut wird. Bauteilgleiche Einbaustellen stehen als EINE Position (Kopplungsmutter für
+ * Stangenstöße und Fuß), und Sonderzuschnitte tragen nur ihr Fertigmaß — aus welcher
+ * Lagerlänge sie geschnitten werden, ist Sache des Einkaufs und wird hier nicht geplant.
+ *
  * Boden- und Kopfblech werden hier aus den realen Platten (`base_plate`/`top_plate`)
  * in getrennte Positionen aufgeteilt ([A-1]); der Rechenkern bleibt unverändert und
  * aggregiert sie weiter in `bom.stahlblech_module` (Summe bleibt identisch).
@@ -49,12 +54,14 @@ export function semblaBom(w) {
     if (Array.isArray(sg.stuecke) && sg.stuecke.length) {
       haveStuecke = true;
       for (const s of sg.stuecke) {
-        const len = Math.round(s.len_mm), q = Math.round(s.quelle_mm != null ? s.quelle_mm : s.len_mm);
+        const len = Math.round(s.len_mm);
         // [Z-6] Das Reststueck ist ein EIGENES Katalogprodukt (eigene Rolle `rod_rest`) und
         // damit eine eigene Position — es darf nicht unter den Standardlaengen verschwinden,
         // sonst waere die Preisauflösung wieder mehrdeutig und die Bestellmenge falsch.
         if (s.art === "rest") zaehl(restMap, String(len), { len_mm: len });
-        else if (s.art === "sonder") zaehl(sonderMap, len + "/" + q, { len_mm: len, quelle_mm: q });
+        // [P-18] Sonderzuschnitte werden allein nach FERTIGMASS gruppiert — das Ausgangsmaß
+        // (`quelle_mm`) ist Beschaffungssache und darf keine zweite Position aufspannen.
+        else if (s.art === "sonder") zaehl(sonderMap, String(len), { len_mm: len });
         else zaehl(stdMap, String(len), { len_mm: len });
       }
       continue;
@@ -63,11 +70,11 @@ export function semblaBom(w) {
     for (let i = 0; i < Math.max(0, st - 1); i++) zaehl(stdMap, String(rodFallback), { len_mm: rodFallback });
     if (sg.letzte_stange_mm != null) {
       const len = Math.round(sg.letzte_stange_mm);
-      zaehl(sonderMap, len + "/" + rodFallback, { len_mm: len, quelle_mm: rodFallback });
+      zaehl(sonderMap, String(len), { len_mm: len });
     }
   }
   const stangenStd = [...stdMap.values()].sort((a, b) => b.len_mm - a.len_mm);
-  const stangenSonder = [...sonderMap.values()].sort((a, b) => a.len_mm - b.len_mm || a.quelle_mm - b.quelle_mm);
+  const stangenSonder = [...sonderMap.values()].sort((a, b) => a.len_mm - b.len_mm);
   const stangenRest = [...restMap.values()].sort((a, b) => b.len_mm - a.len_mm);
   const sonderList = stangenSonder.map(x => ({ len_mm: x.len_mm, anzahl: x.anzahl }));
   let rodStd = stangenStd.reduce((a, x) => a + x.anzahl, 0);
@@ -136,12 +143,14 @@ export function semblaBomItems(w) {
   const rodStdItems = (b.stangenStd.length ? b.stangenStd : [{ len_mm: b.rod_mm, anzahl: 0 }])
     .map(x => ({ key: "rod_std", label: "Gewindestange " + cm(x.len_mm) + " cm", unit: "Stk",
                  menge: x.anzahl, mass_mm: x.len_mm }));
-  // Sonderzuschnitte: bepreist wird das AUSGANGSPRODUKT (`mass_mm = quelle_mm`), aus dem das
-  // Fertigmaß geschnitten wird — Fertigmaß und Herkunft stehen beide in der Bezeichnung.
-  const rodSonderItems = (b.stangenSonder.length ? b.stangenSonder : [{ len_mm: b.rod_mm, quelle_mm: b.rod_mm, anzahl: 0 }])
+  // Sonderzuschnitte ([P-18]): Die Stückliste ist die BAUSTELLENLISTE — sie nennt das
+  // Fertigmaß und die Stückzahl, die verbaut werden. Aus welcher Lagerlänge geschnitten wird,
+  // ist Sache des Einkaufs: es gibt kein Ausgangsprodukt, keine Herkunftsangabe im Label und
+  // keinen Preis (die Rolle ist nicht bepreist). `mass_mm` ist deshalb das FERTIGMASS.
+  const rodSonderItems = (b.stangenSonder.length ? b.stangenSonder : [{ len_mm: b.rod_mm, anzahl: 0 }])
     .map(x => ({ key: "rod_sonder",
-                 label: "Gewindestange Sonderzuschnitt " + cm(x.len_mm) + " cm (aus " + cm(x.quelle_mm) + " cm)",
-                 unit: "Stk", menge: x.anzahl, mass_mm: x.quelle_mm }));
+                 label: "Gewindestange Sonderzuschnitt " + cm(x.len_mm) + " cm",
+                 unit: "Stk", menge: x.anzahl, mass_mm: x.len_mm }));
   // [Z-6] Reststueck am oberen Wandabschluss: eigene Rolle, eigene Position, eigenes Maß.
   // Ohne gewaehltes Reststueck existiert die Position gar nicht (Menge 0 waere eine
   // Behauptung ueber ein Produkt, das niemand gewaehlt hat).
@@ -154,8 +163,12 @@ export function semblaBomItems(w) {
     ...rodStdItems,
     ...rodSonderItems,
     ...rodRestItems,
-    { key: "kupplung",    label: "Kopplungsmutter (Stangenstoß)",     unit: "Stk", menge: b.verbindungsmuttern },
-    { key: "kuppl_basis", label: "Kopplungsmutter (Fuß)",             unit: "Stk", menge: b.kopplungsmuttern_basis },
+    // Kopplungsmuttern sind bauteilgleich ([P-18]): Stangenstoß und Fußanschluss verwenden
+    // dasselbe Produkt, also EINE Position mit der Gesamtmenge. Die beiden Einbaustellen
+    // bleiben in `semblaBom()` getrennt nachvollziehbar (verbindungsmuttern /
+    // kopplungsmuttern_basis) — nur die Bestellzeile ist eine.
+    { key: "kupplung",    label: "Kopplungsmutter (Stangenstöße und Fuß)", unit: "Stk",
+      menge: b.verbindungsmuttern + b.kopplungsmuttern_basis },
     { key: "senkkopf",    label: "Senkkopfschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
     { key: "spannmutter", label: "Spannmutter",                       unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },

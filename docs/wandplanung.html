@@ -138,7 +138,12 @@
         in Modul 0 — dort auch die Preise). <b>Mehrere gewählte Standardgrößen werden kombiniert</b>
         ([Z-2]): größte geeignete zuerst, mit kleineren auffüllen, das Restmaß als gekennzeichneter
         Sonderzuschnitt. Ein gewähltes Produkt ist die <b>alleinige Quelle</b> seiner Maße ([Z-1]).
-        Gespeichert werden nur <b>Produkt-IDs</b> — keine Preise, keine Maße.</div>
+        Gespeichert werden nur <b>Produkt-IDs</b> — keine Preise, keine Maße.<br>
+        <b>Vorbelegt aus dem Katalog ([P-18]):</b> Noch leere Verwendungsstellen übernehmen beim
+        Öffnen die Standardauswahl des Katalogs — jede Zeile bleibt frei umwählbar, und was du
+        bewusst leer räumst, bleibt leer. Für <b>Sonderzuschnitte</b> wird hier bewusst
+        <b>kein</b> Ausgangsprodukt mehr gewählt: die Stückliste nennt nur das Fertigmaß der
+        Baustelle, aus welcher Lagerlänge geschnitten wird, entscheidet der Einkauf.</div>
     </div>
 
     <button class="primary" id="run">Auslegen</button>
@@ -559,7 +564,7 @@ function applyWand(w){
 const escP=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const PILL={ok:'ok',mehrdeutig:'no',fehlt:'no',kategorie_abweichend:'no',einheit_unpassend:'no',
   mass_abweichend:'no',keine_auswahl:'warn',kein_katalog:'warn',nachrichtlich:'mute',ohne_position:'mute',
-  nicht_erforderlich:'mute',kombiniert:'komb'};
+  nicht_erforderlich:'mute',kombiniert:'komb',beschaffung:'mute'};
 function prodKatalog(){ return (store&&store.holeKatalog)?store.holeKatalog():null; }
 function prodEingaben(){ return ((store&&store.aktiveEingaben)?store.aktiveEingaben():null)||{}; }
 // Produktspezifikation der Wand ([Z-1]): einzige Quelle der Gewindestangen-Standardlängen.
@@ -602,15 +607,33 @@ function syncLegacyFelder(){
         +'gemeldet. Produkt unten in der Rolle „Gewindestange – Reststück" wählen ([Z-6]).';
   }
 }
+// [P-18] Startklar statt leer: bevor die Auswahl gezeigt wird, uebernehmen ALLE noch leeren
+// Verwendungsstellen die Standardauswahl des Katalogs (Produktfeld `rollen`). Eine bereits
+// getroffene Wahl bleibt unberuehrt; danach ist die Vorbelegung eine ganz normale, sichtbare
+// und umwaehlbare Auswahl — es gibt keinen unsichtbaren zweiten Auswahlpfad.
+// Vorbelegt wird GENAU EINMAL je Wandelement und Seitenaufruf: wer eine Rolle bewusst leer
+// raeumt, soll sie nicht beim naechsten Rendern wieder vorbelegt bekommen.
+let VORBELEGT=null; const VB_ERLEDIGT=new Set();
+function vorbelegeProdukte(){
+  const id=(store&&store.aktivId)?store.aktivId():null;
+  if(!id || !store.vorbelegeProduktrollen || !prodKatalog() || VB_ERLEDIGT.has(id)) return;
+  VB_ERLEDIGT.add(id);
+  const vb=store.vorbelegeProduktrollen();
+  const gesetzt=Object.keys(vb.gesetzt).filter(r=>KAT.rolle(r)&&KAT.rolle(r).modul===1);
+  VORBELEGT=gesetzt.length?gesetzt:null;
+}
 function renderProdukte(){
   const box=$('prodRollen'), info=$('prodInfo');
+  vorbelegeProdukte();
   const kat=prodKatalog(), eing=prodEingaben(), ktx=prodKontext();
   const hatWandEl = !!(store&&store.aktivId&&store.aktivId());
   info.innerHTML = !kat
     ? 'Kein Bauteilkatalog geladen — in Modul 0 („Start") anlegen oder importieren. Ohne Katalog gibt es keine Preise.'
     : (!hatWandEl
       ? 'Kein aktives Wandelement — Produkte können erst an einer Wand gewählt werden.'
-      : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`);
+      : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`
+        + (VORBELEGT ? ` · <b>${VORBELEGT.length} Verwendungsstelle(n) aus dem Katalog vorbelegt</b>`
+            + ' ([P-18]) — unten frei umwählbar' : ''));
   if(!kat || !hatWandEl){ box.innerHTML=''; syncLegacyFelder(); return; }
   // Eine kompakte Zeile je Verwendungsrolle — KEINE Kategorieblöcke, die nur Bezeichnungen
   // wiederholen ([P-17]). Die Gruppen bleiben im Datenmodell, erscheinen aber nicht als UI-Hierarchie.

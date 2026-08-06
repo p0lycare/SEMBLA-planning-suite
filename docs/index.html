@@ -190,8 +190,15 @@
       <b>Modul&nbsp;2</b> (Lattenstange, Beplankungsplatte, Verbinderprodukt) — jeweils direkt aus dem
       vollständigen Katalog.<br>
       „<b>Standardkatalog laden</b>" liest die mitgelieferte Repo-Vorlage
-      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) — bewusst auf Klick,
-      nie automatisch. Ein bereits geladener Katalog wird erst <b>nach Bestätigung</b> ersetzt.
+      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1).
+      Ein bereits geladener Katalog wird <b>nur nach Bestätigung</b> ersetzt; ist noch <b>gar
+      kein</b> Katalog geladen, holt ihn das Anlegen eines Wandelements automatisch, damit man
+      nicht mit einer leeren Planung startet.<br>
+      <b>Startklar statt leer ([P-18]):</b> Jedes Produkt kann im Feld <code>rollen</code> die
+      Verwendungsstelle nennen, die es im Regelfall ausführt. Beim Anlegen einer Wand und beim
+      Laden/Importieren eines Katalogs übernehmen <b>nur noch leere</b> Verwendungsstellen diese
+      Standardauswahl — eine bereits getroffene Wahl wird nie überschrieben, und in Modul&nbsp;1/2
+      ist alles jederzeit umwählbar.<br>
       Der Standardkatalog enthält neben den Produktvorgaben aus dieser Suite auch
       <b>vorläufige, fachlich unbestätigte Beispielwerte</b>; sie sind im Katalognamen und je
       betroffenem Produkt gekennzeichnet und vor der Verwendung zu prüfen.<br>
@@ -328,7 +335,7 @@
   const msg = document.getElementById('msg');
   function zeige(text, ok){ msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
-  document.getElementById('btn-neu').addEventListener('click', () => {
+  document.getElementById('btn-neu').addEventListener('click', async () => {
     const name = document.getElementById('f-name').value.trim() || 'Neue Wand';
     const l = Number(document.getElementById('f-laenge').value);
     const h = Number(document.getElementById('f-hoehe').value);
@@ -339,6 +346,25 @@
       const id = store.speichere(name, we);
       store.setzeAktiv(id);
       zeige('Angelegt und aktiv gesetzt: ' + name, true);
+      // [P-18] Startklar statt leer — laeuft NACH der Erfolgsmeldung und kann das Anlegen
+      // nicht mehr gefaehrden: Ist noch KEIN Katalog geladen, wird der mitgelieferte
+      // Standardkatalog geholt (ein vorhandener Katalog wird niemals angetastet). Danach
+      // uebernehmen alle noch LEEREN Verwendungsrollen die Standardauswahl des Katalogs.
+      const nach = [];
+      if (!store.holeKatalog()) {
+        try {
+          const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
+          nach.push(`Standardkatalog geladen (${k.produkte.length} Produkte)`);
+          katLaden();
+        } catch (e) {
+          nach.push('Standardkatalog nicht ladbar (' + (e && e.message ? e.message : e) + ')');
+        }
+      }
+      const vb = store.vorbelegeProduktrollen(undefined, id);
+      const n = Object.keys(vb.gesetzt).length;
+      if (n) nach.push(`${n} Verwendungsstelle(n) aus dem Katalog vorbelegt`);
+      if (vb.offen.length) nach.push(`ohne Standardprodukt: ${vb.offen.join(', ')}`);
+      if (nach.length) zeige('Angelegt und aktiv gesetzt: ' + name + ' · ' + nach.join(' · '), true);
     } catch (e) {
       zeige('Fehler: ' + (e && e.message ? e.message : e), false);
     }
@@ -804,13 +830,29 @@
     kZeige('Neuer Katalog angelegt: ' + name, true);
   });
 
+  /**
+   * Standardauswahl des Katalogs auf das aktive Wandelement uebernehmen ([P-18]) und das
+   * Ergebnis als Zusatz zur Katalogmeldung formulieren. Es werden AUSSCHLIESSLICH leere
+   * Verwendungsrollen belegt — eine bestehende Wahl bleibt unangetastet. Ohne aktives
+   * Wandelement passiert nichts (dann belegt Modul 1/2 beim Aufruf vor).
+   */
+  function vorbelegText(){
+    if (!store.aktivId()) return '';
+    const vb = store.vorbelegeProduktrollen();
+    const n = Object.keys(vb.gesetzt).length;
+    if (!n) return ' Alle Verwendungsstellen sind bereits gewählt — nichts vorbelegt.';
+    return ` ${n} noch leere Verwendungsstelle(n) mit der Standardauswahl des Katalogs vorbelegt`
+      + (vb.offen.length ? ` (ohne Standardprodukt: ${vb.offen.join(', ')})` : '')
+      + ' — in Modul 1/2 jederzeit umwählbar.';
+  }
+
   document.getElementById('k-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
     try {
       const k = await store.importiereKatalogDatei(file);
       kpSchliesse(); katLaden();
-      kZeige(`Katalog importiert: ${k.name} (${k.produkte.length} Produkt(e)).`, true);
+      kZeige(`Katalog importiert: ${k.name} (${k.produkte.length} Produkt(e)).` + vorbelegText(), true);
     } catch (e) {
       kZeige('Katalog-Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
     }
@@ -828,7 +870,8 @@
       const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
       kpSchliesse(); katLaden();
       kZeige(`Standardkatalog geladen: ${k.name} (${k.produkte.length} Produkt(e)). `
-        + 'Vorläufige, fachlich unbestätigte Beispielwerte sind je Produkt gekennzeichnet.', true);
+        + 'Vorläufige, fachlich unbestätigte Beispielwerte sind je Produkt gekennzeichnet.'
+        + vorbelegText(), true);
     } catch (e) {
       kZeige('Standardkatalog nicht geladen: ' + (e && e.message ? e.message : e), false);
     }
