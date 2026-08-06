@@ -68,15 +68,29 @@ oder zu langes Reststück ⇒ `validation.zuschnitt_konflikte` (`kein_reststueck
 In der Stückliste ist das Reststück eine **eigene Position** mit eigenem `mass_mm` (`art:"rest"` in
 `stuecke`), damit [P-14] eindeutig bleibt; der Stoß dorthin ist eine reguläre Kopplung.
 
-**Spannachsen-Verteilung (`wandelement.prestress`).** `max_span_grid` bleibt der **maximale**
-Achsabstand („jede x-te Achse"); die Achsen werden von der Startachse bis zur letzten Achse `N-1`
-**balanciert** verteilt (gleiche Schritte ≤ x), nicht strikt periodisch. `start_axis_grid` legt die
-**Startachse** fest: `0` = 1. Rasterachse (**Default**, auch bei fehlendem Feld in Altständen), `1` =
-2. Rasterachse. **Gewählt wird sie ausschließlich in Modul 1**; gerechnet wird sie im Core
-(`sembla-core.js`/Python-Orakel), die Engine reicht sie nur durch. Zusatzachsen an Öffnungs- und
-Stufenkanten bleiben **additiv**; manuell gesetzte Achsen (`columns_grid`, Sonderkonstruktion) haben
-**Vorrang** vor der Auto-Verteilung. Das Feld ist optional/abwärtskompatibel — kein Schema-/
-Projektformat-Bruch.
+**Spannachsen-Verteilung (`wandelement.prestress`).** Maßgebend ist die **Steinabdeckung**, nicht
+mehr der Abstand: **jeder Stein jeder Lage** wird von mindestens einer Spannachse durchgangen
+(**[V-2]**, Muss). Gerechnet wird das im Core (`sembla-core.js`/Python-Orakel) als Stabbing-Verfahren
+über alle Steine; die Engine reicht die Felder nur durch. Rangfolge: **[V-1]** Kammerraster →
+**[V-9]** manuelle Achsen → **[V-5]** Start-/Endachse → **[V-2]** Steinabdeckung → **[V-7]/[V-8]**
+Zusatzachsen an Stufen-/Öffnungskanten (additiv) → **[V-3]** Mitte der i3-Steine der untersten Lage
+→ **[V-4]** `max_span_grid` als **Obergrenze**.
+
+`start_axis_grid` legt die **Startachse** fest: `0` = 1. Rasterachse (**Default**, auch bei fehlendem
+Feld in Altständen), `1` = 2. Rasterachse; **gewählt wird sie ausschließlich in Modul 1** und nie
+zugunsten von [V-2] verschoben. **[V-3]** ist ein reiner *Positions*vorrang: muss für [V-2] ohnehin
+eine Achse gesetzt werden und enthält der Stein eine i3-Mitte der untersten Lage, wird diese Position
+genommen — das kostet je Wand höchstens **eine** Achse und nie die Abdeckung. Ein i2 hat keine
+Rastermitte und liefert keine Wunschposition (es wird keine erfunden). **[V-4]** greift zuletzt und
+füllt nur verbleibende Lücken balanciert auf; die Regel bleibt zwingend, weil sie ein **Statik-**
+Parameter ist (die Auslegung variiert 3→2→1 Raster) und aus [V-2] **nicht** folgt — allein mit [V-2]
+entstehen nachweislich Abstände bis 5 Raster (625 mm).
+
+Manuell gesetzte Achsen (`columns_grid`, Sonderkonstruktion) haben **Vorrang** und werden **nicht**
+ergänzt (auch nicht um [V-2]/[V-4]); ihre Verletzungen stehen sichtbar in
+`validation.ungehaltene_steine` (Lage/Rasterlage/Breite/Typ) — **kein** Baubarkeitsausschluss, nie
+eine stille Korrektur. Im Auto-Pfad ist die Liste konstruktionsbedingt leer und dient als
+Selbstkontrolle. Die Felder sind optional/abwärtskompatibel — kein Schema-/Projektformat-Bruch.
 
 **Bauteilkatalog (`sembla:katalog`, Format `SEMBLA-Bauteilkatalog` v1).** Der Produktstamm (Steine,
 Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder, Verbrauchsmaterial) ist
@@ -169,11 +183,13 @@ dürfen fachlich nicht auseinanderlaufen.
   Produktstand zu auditieren. Nicht implementierte Zielregeln werden als solche gekennzeichnet und
   dürfen nicht als bereits getestet dargestellt werden.
 
-**Neu bestätigte Vorspann-Grundregeln (Umsetzung noch per Issue/Tests abzusichern):** Jeder Stein muss
-von mindestens einer Spannachse gehalten werden. In der untersten Steinreihe sollen automatisch
-gesetzte Spannachsen möglichst mittig in den i3-Steinen liegen. Diese Regeln bestimmen die
-Achsenverteilung vorrangig; `max_span_grid` bleibt zusätzlich eine einzuhaltende Obergrenze und ist
-nicht mehr alleinige Verteilungsregel.
+**Vorspann-Grundregeln [V-2]/[V-3] sind umgesetzt und regressionsgetestet** (Core + Python-Orakel,
+`tests/core/`): Steinabdeckung als Muss, i3-Mitte der untersten Lage als Soll, `max_span_grid` nur
+noch als Obergrenze (s. „Spannachsen-Verteilung"). **Noch offen** sind zwei bestätigte Zielregeln
+ohne eigene Regel-ID: bei Öffnungen über 750 mm beidseitig **zwei** Achsen, und jedes Blech von
+mindestens **zwei** Achsen gehalten. Sie stehen in Modul 7 ausschließlich als ungeprüfter
+Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getrennt in
+`GEPRUEFTE_REGELN` — **[D-5]** verbietet beides zu vermischen, in beide Richtungen.
 
 ## Zentrale Architektur-Regeln
 

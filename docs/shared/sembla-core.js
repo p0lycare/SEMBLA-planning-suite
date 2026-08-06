@@ -354,20 +354,73 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // ---- Vorspannstränge: Segmente je durchgehend belegtem Bereich (über/unter Öffnungen) ----
   const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
   for (const c of courses) for (const st of c.stones) { const a = st.x0 / GRID, b = st.x1 / GRID; for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true; }
+  // ---- Spannachsen ----------------------------------------------------------------
+  // Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-2] Steinabdeckung (MUSS)
+  // > [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-3] Mitte i3 unterste Lage
+  // > [V-4] Maximalabstand als OBERGRENZE.
+  //
+  // [V-4] ist bewusst die LETZTE Stufe und nicht mehr die Verteilungsregel: die Steinabdeckung
+  // [V-2] impliziert den Abstand NICHT (nachweisbar entstehen sonst Luecken bis 5 Raster =
+  // 625 mm, obwohl jeder Stein gehalten ist), und umgekehrt beweist ein eingehaltenes
+  // Maximalraster die Abdeckung nicht. Beide Regeln sind unabhaengig und beide gelten.
+  const steinIv = [];
+  for (const c of courses) for (const st of c.stones) steinIv.push([st.x0 / GRID, st.x1 / GRID]);
+  // Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
+  steinIv.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
+  /** Wird das Rasterintervall [a,b) von mindestens einer Achse aus `S` durchgangen? */
+  const gehalten = (S, a, b) => { for (let k = a; k < b; k++) if (S.has(k)) return true; return false; };
+
   let colArr;
   if (PS.columns_grid) {
-    // Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden
+    // [V-9] Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden. Sie werden NICHT
+    // ergaenzt (auch nicht um [V-2]/[V-4]) — der Anwender uebernimmt die Verteilung ganz.
+    // Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
     colArr = PS.columns_grid.filter(k => k >= 0 && k < N).sort((a, b) => a - b);
   } else {
-    // Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse); ab da balanciert
-    // weiterverteilt mit Abstaenden <= max_span_grid bis zur letzten Achse N-1.
+    // [V-5] Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse) und letzte Achse N-1.
     const a0 = Math.min(PS.start_axis_grid, N - 1);
     const colSet = new Set([a0, N - 1]);
-    for (const c of balancedFill(a0, N - 1, maxSpan)) colSet.add(c);
+    // [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
     for (const op of openings) { if (op.g0 - 1 >= 0) colSet.add(op.g0 - 1); if (op.g1 <= N - 1) colSet.add(op.g1); }
-    // Stufenkanten: an jeder Höhenstufe ein Strang beidseitig der Kante (Vorspannung läuft an der Treppe entlang)
+    // [V-7] Stufenkanten: an jeder Höhenstufe ein Strang beidseitig der Kante.
     for (let k = 0; k < N - 1; k++) { if (topLage[k] !== topLage[k + 1]) { colSet.add(k); colSet.add(k + 1); } }
-    colArr = [...colSet].filter(k => k >= 0 && k < N).sort((a, b) => a - b);
+    // [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage. Ein i2 hat keine
+    // Rastermitte (zwei Zellen) und liefert deshalb keine Wunschposition — es wird geraten nicht.
+    const wunsch = new Set();
+    for (const st of (courses[0] ? courses[0].stones : [])) {
+      const a = st.x0 / GRID, b = st.x1 / GRID;
+      if (b - a === 3) wunsch.add(a + 1);
+    }
+    // [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
+    // Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
+    // die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Liegt im Stein eine
+    // Wunschposition nach [V-3], hat diese Vorrang vor der Reichweite — sie kostet hoechstens
+    // zusaetzliche Achsen, nie die Abdeckung.
+    for (const [a, b] of steinIv) {
+      if (gehalten(colSet, a, b)) continue;
+      let pos = b - 1;
+      for (let k = b - 1; k >= a; k--) if (wunsch.has(k)) { pos = k; break; }
+      colSet.add(pos);
+    }
+    // [V-4] Obergrenze: verbleibende Luecken > max_span_grid balanciert auffuellen (rein additiv,
+    // die Abdeckung aus [V-2] bleibt dabei zwingend erhalten).
+    const roh = [...colSet].filter(k => k >= 0 && k < N).sort((a, b) => a - b);
+    const fin = new Set(roh);
+    for (let i = 0; i + 1 < roh.length; i++) {
+      if (roh[i + 1] - roh[i] > maxSpan) for (const c of balancedFill(roh[i], roh[i + 1], maxSpan)) fin.add(c);
+    }
+    colArr = [...fin].filter(k => k >= 0 && k < N).sort((a, b) => a - b);
+  }
+  // [V-2] Nachweis der Steinabdeckung. Im Auto-Pfad ist die Liste konstruktionsbedingt leer und
+  // dient als Selbstkontrolle; bei manuellen Achsen ([V-9]) ist sie der geforderte Abgleich gegen
+  // die Muss-Regel. Sichtbar gemeldet, aber KEIN Baubarkeitsausschluss: die Sonderkonstruktion
+  // ist eine bewusste Anwenderentscheidung und wird nie still korrigiert.
+  const achsSet = new Set(colArr);
+  const ungehalteneSteine = [];
+  for (const c of courses) for (const st of c.stones) {
+    const a = st.x0 / GRID, b = st.x1 / GRID;
+    if (!gehalten(achsSet, a, b))
+      ungehalteneSteine.push({ lage: c.lage, start_grid: a, breite_grid: b - a, typ: st.type });
   }
   const columns = [];
   let anchSenkkopf = 0, anchSpannmutter = 0, anchSpannplatten = 0;
@@ -489,6 +542,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       buildable, versatz_ok: versatzOk, versatz_violations: viol,
       tension_span_ok: spanOk, rigid_lagen: rigidLagen, invalid_segments: invalidSegments,
       zuschnitt_konflikte: zuschnittKonflikte,
+      // [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuelle Achsen: echter Befund.
+      ungehaltene_steine: ungehalteneSteine,
     },
     courses,
   };

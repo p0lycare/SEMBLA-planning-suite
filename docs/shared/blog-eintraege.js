@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-07",
+    datum: "2026-08-06",
+    typ: "feature",
+    issue: 31,
+    titel: "Spannachsen halten jetzt jeden Stein; Maximalabstand ist nur noch Obergrenze",
+    testbitte: "Reiter 1: bei verschiedenen Längen und Öffnungen prüfen, ob jeder Stein von einer "
+      + "Spannachse durchgangen wird und die Achsen der untersten Lage mittig in den i3-Steinen "
+      + "sitzen. Die Achsen liegen dichter als früher — das ist gewollt.",
+  },
+  {
     id: "chg-20260806-06",
     datum: "2026-08-06",
     typ: "intern",

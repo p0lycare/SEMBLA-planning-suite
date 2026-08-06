@@ -128,16 +128,31 @@ export const FARBE = {
 // ------------------------------------------------------- Planungshinweise [D-5]
 
 /**
- * Vorspann-Zielregeln aus dem Legacy-Blatt. Sie sind PLANUNGSHINWEISE und werden
- * von der Suite NICHT automatisch geprueft — das Blatt darf sie darum nie als
- * erfuellte Tatsache ausgeben ([D-5]). Titel und Fussnote sind Teil dieser Regel.
+ * Vorspann-Zielregeln aus dem Legacy-Blatt, die die Suite NOCH NICHT rechnet. Sie sind
+ * PLANUNGSHINWEISE und werden NICHT automatisch geprueft — das Blatt darf sie darum nie
+ * als erfuellte Tatsache ausgeben ([D-5]). Titel und Fussnote sind Teil dieser Regel.
+ *
+ * [V-2] (jeder Stein von einer Spannachse gehalten) und [V-3] (Achsen mittig im i3 der
+ * untersten Lage) sind seit der Umstellung der Achsverteilung im Rechenkern umgesetzt und
+ * durch Regressionstests gedeckt. Sie stehen deshalb NICHT mehr hier, sondern in
+ * GEPRUEFTE_REGELN — sie als ungeprueft auszuweisen waere ebenso unwahr wie umgekehrt.
  */
 export const PLANUNGSHINWEISE = [
-  { farbe: "#1f6feb", text: "Jeder Stein muss von mindestens einer Spannachse gehalten werden." },
-  { farbe: "#1f9d55", text: "Automatisch gesetzte Spannachsen sollen möglichst mittig im i3-Stein der untersten Steinreihe liegen." },
   { farbe: "#e8a01c", text: "Bei Öffnungen &gt; 750 mm: auf jeder Seite zwei Spannachsen nebeneinander." },
   { farbe: "#8b5cc7", text: "Jedes Blech muss von mindestens zwei Spannachsen gehalten werden." },
 ];
+
+/**
+ * Vorspann-Regeln, die der Rechenkern tatsaechlich einhaelt und die am gezeichneten
+ * Wandelement nachweisbar sind. Nur solche duerfen als erfuellt dargestellt werden ([D-5]).
+ */
+export const GEPRUEFTE_REGELN = [
+  { farbe: "#1f6feb", text: "Jeder Stein wird von mindestens einer Spannachse gehalten ([V-2])." },
+  { farbe: "#1f9d55", text: "Automatisch gesetzte Spannachsen liegen möglichst mittig im i3-Stein der untersten Steinreihe ([V-3])." },
+];
+
+/** Ueberschrift der Liste der eingehaltenen Regeln ([D-5]). */
+export const GEPRUEFT_TITEL = "Vom Rechenkern eingehaltene Vorspannregeln";
 
 /** Ueberschrift der Hinweisliste — unmissverstaendlich als ungeprueft gekennzeichnet ([D-5]). */
 export const HINWEIS_TITEL = "Planungshinweise / Zielregeln – nicht automatisch geprüft";
@@ -423,11 +438,18 @@ export function legendeHtml() {
     + `</div>`;
 }
 
-/** Hinweisliste der Vorspann-Zielregeln — ausdruecklich ungeprueft ([D-5]). */
+/** Hinweisliste der noch ungerechneten Vorspann-Zielregeln — ausdruecklich ungeprueft ([D-5]). */
 export function hinweiseHtml() {
   return `<div class="zregeln">`
     + PLANUNGSHINWEISE.map((r, i) => `<div><span class="chip" style="background:${r.farbe}"></span><span>${i + 1}. ${r.text}</span></div>`).join("")
     + `</div><div class="zfuss">${HINWEIS_FUSS}</div>`;
+}
+
+/** Liste der vom Rechenkern eingehaltenen Vorspannregeln ([D-5]). */
+export function gepruefteHtml() {
+  return `<div class="zregeln">`
+    + GEPRUEFTE_REGELN.map((r, i) => `<div><span class="chip" style="background:${r.farbe}"></span><span>${i + 1}. ${r.text}</span></div>`).join("")
+    + `</div>`;
 }
 
 /**
@@ -449,6 +471,7 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
     + `<div class="zbox"><h4>Stückliste (Mengen)</h4>${_tab(bomZeilen(w))}</div>`
     + `<div class="zbox"><h4>Vorspannung</h4>${_tab(vorspannZeilen(w))}</div>`
     + `<div class="zbox"><h4>Darstellung</h4>${legendeHtml()}</div>`
+    + `<div class="zbox"><h4>${GEPRUEFT_TITEL}</h4>${gepruefteHtml()}</div>`
     + `<div class="zbox"><h4>${HINWEIS_TITEL}</h4>${hinweiseHtml()}</div>`
     + `</aside>`
     + schriftfeldHtml(w, eingaben, z.masstab, o)

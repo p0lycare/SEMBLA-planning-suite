@@ -193,16 +193,29 @@ ok("Legende erklaert den Darstellungsschluessel",
   })());
 }
 
-// [D-5] Zielregeln: vorhanden, aber ausdruecklich ungeprueft
-ok("alle vier Vorspann-Zielregeln stehen im Blatt", Z.PLANUNGSHINWEISE.length === 4
+// [D-5] Trennung: was der Kern rechnet, steht als eingehalten; der Rest bleibt ungeprueft.
+// [V-2]/[V-3] sind seit der Umstellung der Achsverteilung implementiert und regressionsgetestet,
+// die beiden restlichen Zielregeln (750-mm-Oeffnung, Blech von zwei Achsen) nicht.
+ok("beide offenen Vorspann-Zielregeln stehen im Blatt", Z.PLANUNGSHINWEISE.length === 2
   && Z.PLANUNGSHINWEISE.every(r => blatt.html.includes(r.text)));
-ok("Zielregeln sind als nicht automatisch geprueft gekennzeichnet",
+ok("offene Zielregeln sind als nicht automatisch geprueft gekennzeichnet",
   /nicht automatisch geprüft/.test(blatt.html) && blatt.html.includes(Z.HINWEIS_FUSS));
-// Keine bejahende Aussage: "erfüllt" faellt ganz weg, "eingehalten" kommt nur in der
-// offen formulierten Pruefaufforderung vor ("ob die Regeln eingehalten sind …").
-ok("Blatt behauptet nirgends, die Zielregeln seien erfuellt/geprueft",
+ok("[V-2]/[V-3] stehen als eingehaltene Regeln, nicht mehr als Zielregeln",
+  Z.GEPRUEFTE_REGELN.length === 2
+  && Z.GEPRUEFTE_REGELN.every(r => blatt.html.includes(r.text))
+  && blatt.html.includes(Z.GEPRUEFT_TITEL)
+  && Z.PLANUNGSHINWEISE.every(r => !/\[V-2\]|\[V-3\]/.test(r.text)));
+// Die eingehaltenen Regeln sind am Wandelement tatsaechlich nachweisbar — das Blatt behauptet
+// nichts, was der Kern nicht liefert.
+ok("[V-2] ist am gezeichneten Wandelement wirklich erfuellt",
+  W.validation.ungehaltene_steine.length === 0);
+// Keine bejahende Aussage ueber die OFFENEN Regeln: "erfüllt" faellt ganz weg, "eingehalten"
+// kommt nur im Titel der gepruefen Liste und in der offenen Pruefaufforderung vor.
+ok("Blatt behauptet nirgends, die offenen Zielregeln seien erfuellt/geprueft",
   !/erfüllt/i.test(blatt.html)
-  && (blatt.html.match(/eingehalten/g) || []).length === (blatt.html.match(/ob die Regeln eingehalten sind/g) || []).length);
+  && (blatt.html.match(/eingehalten/g) || []).length
+     === (blatt.html.match(/ob die Regeln eingehalten sind/g) || []).length
+       + (blatt.html.match(/eingehaltene Vorspannregeln/g) || []).length);
 
 // [D-8] Schriftfeld: Kopfdaten aus eingaben.projekt, kein Nachweis-Ergebnis
 ok("Schriftfeld nutzt die Projekt-Kopfdaten aus Modul 0",

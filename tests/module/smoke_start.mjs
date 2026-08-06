@@ -775,13 +775,19 @@ ok('AWG-Vorspannvorgaben unveraendert',
 ok('AWG-Staffelung (3 Stufen) unveraendert',
   wv.steps.length === 3 && wv.steps[0].height_mm === 2200 && wv.steps[1].height_mm === 1800
   && wv.steps[2].height_mm === 1400 && wv.openings.length === 0);
-ok('AWG-Spannachsen unveraendert (12 Achsen, gleiche Lage)',
+// Die Spannachsen folgen seit [V-2]/[V-3] der Steinabdeckung statt der reinen Abstands-
+// verteilung: aus 12 Achsen des AWG-Anhangs werden 14. Die AWG-EINGABEN (Geometrie, Staffelung,
+// Vorspannvorgaben) sind unveraendert — nur die abgeleitete Achsenlage folgt dem neuen Regelstand.
+ok('AWG-Spannachsen nach [V-2]/[V-3] (14 Achsen, jeder Stein gehalten)',
   wv.tension_columns.map(c => c.x_mm).join(',')
-  === '62.5,437.5,812.5,1187.5,1312.5,1562.5,1687.5,1812.5,2187.5,2312.5,2562.5,2937.5'
-  && wv.tension_columns.map(c => c.k).join(',') === '0,3,6,9,10,12,13,14,17,18,20,23');
+  === '62.5,437.5,562.5,937.5,1187.5,1312.5,1562.5,1687.5,1937.5,2187.5,2312.5,2437.5,2687.5,2937.5'
+  && wv.tension_columns.map(c => c.k).join(',') === '0,3,4,7,9,10,12,13,15,17,18,19,21,23');
 ok('AWG-Tiling unveraendert (Kernmengen des Anhangs)',
-  wv.bom.i2 === 20 && wv.bom.i3 === 70 && wv.bom.gewindestangen === 30
-  && wv.bom.verbindungsmuttern === 18 && wv.bom.verschnitt_mm === 5600);
+  wv.bom.i2 === 20 && wv.bom.i3 === 70);
+ok('AWG-Vorspannmengen folgen den 14 Achsen',
+  wv.bom.gewindestangen === 35 && wv.bom.verbindungsmuttern === 21 && wv.bom.verschnitt_mm === 6600);
+ok('AWG-Wand erfuellt die Muss-Regel [V-2] (kein ungehaltener Stein)',
+  wv.validation.ungehaltene_steine.length === 0);
 ok('AWG-Wand ist baubar geprueft', wv.validation.buildable === true && wv.validation.tension_span_ok === true);
 ok('veraltete abgeleitete Daten NICHT uebernommen (keine gespeicherte verification)',
   !('verification' in wv) && !JSON.stringify(wandRoh).includes('"stahlplatten"'));
@@ -891,7 +897,7 @@ ok('Musterwand ist aktiv und traegt den Vorlagennamen',
   store.aktivId() === mw.id && mw.id !== wAktivVor && mw.name === 'SEMBLA Musterwand (AWG)');
 ok('gespeichertes Wandelement ist die kanonische AWG-Wand',
   mw.wandelement.length_mm === 3000 && mw.wandelement.height_mm === 2600
-  && mw.wandelement.tension_columns.length === 12 && mw.wandelement.lagen === 13);
+  && mw.wandelement.tension_columns.length === 14 && mw.wandelement.lagen === 13);
 ok('Wandtyp wird beim Import normalisiert', store.WANDTYPEN.includes(mw.wandelement.wandtyp));
 ok('bestehendes Element wurde NICHT ueberschrieben',
   JSON.stringify(store.holeElement(wAktivVor)) === vorherAktivStand);

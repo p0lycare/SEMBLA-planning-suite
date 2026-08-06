@@ -102,16 +102,37 @@ document.getElementById('modus').value='auto'; document.getElementById('modus').
 document.getElementById('qk').value='3.0'; document.getElementById('qk').dispatch('input'); const Nhi=WP.RESULT.wandelement.verification.auslegung.force_kN;
 document.getElementById('qk').value='0.5'; document.getElementById('qk').dispatch('input'); const Nlo=WP.RESULT.wandelement.verification.auslegung.force_kN;
 ok('höhere Last -> höhere N', Nhi>Nlo);
-// Durchbruch (zwei Zellen in Spalte 3, Lagen 5-6) -> Öffnung + segmentierte Vorspannung
+// Durchbruch: auf einer SAUBEREN Wand ohne die Tür von oben. Sonst bliebe zwischen Tür und
+// Durchbruch ein 1-Raster-Streifen, der sich mit i2/i3 gar nicht belegen laesst — der Strang
+// dort waere dann wegen des unbelegbaren Streifens segmentiert, nicht wegen der Öffnung.
+WP.applyWand(buildWall('Wand A',2000,2600,[]));
 document.getElementById('modus').value='auto'; document.getElementById('modus').dispatch('change');
+// (a) schmaler Durchbruch (eine Zelle, Spalte 3, Lagen 5-6)
 WP.toggleVoid(5,3); WP.toggleVoid(6,3);
 const wd=WP.RESULT.wandelement;
 ok('Durchbruch als Öffnung (art durchbruch)', wd.openings.some(o=>o.art==='durchbruch'));
-const c9=wd.tension_columns.find(c=>c.k===3);
-ok('Spalte k=3 segmentiert (über/unter Durchbruch)', !!c9 && c9.segments.length>=2 && !c9.durchgehend);
-ok('Segmente meiden die Öffnung', c9.segments.every(g=>g.lage1<=5 || g.lage0>=7));
+// Eine Achse "bei k" liegt INNERHALB der Rasterzelle k (so pruefen es sowohl die Steinabdeckung
+// [V-2] als auch die Segmentbildung). Der schmale Durchbruch belegt genau Zelle 3; [V-8] setzt
+// deshalb beidseitig DANEBEN eine Achse (2 und 4) und nicht in die Öffnung hinein.
+const kd=new Set(wd.tension_columns.map(c=>c.k));
+ok('[V-8] Achsen flankieren den Durchbruch (2 und 4)', kd.has(2) && kd.has(4));
+ok('keine Achse in der Öffnungszelle 3', !kd.has(3));
+ok('schmaler Durchbruch zerteilt keinen Strang', wd.tension_columns.every(c=>c.durchgehend));
 WP.toggleVoid(5,3); WP.toggleVoid(6,3);
 ok('Auffüllen entfernt Durchbruch', !WP.RESULT.wandelement.openings.some(o=>o.art==='durchbruch'));
+
+// (b) breiter Durchbruch (Zellen 3-7): hier MUSS [V-2] die Steine ueber/unter der Öffnung halten,
+// eine Achse liegt also zwangslaeufig in der Öffnung -> genau dort wird der Strang segmentiert.
+for(const c of [3,4,5,6,7]){ WP.toggleVoid(5,c); WP.toggleVoid(6,c); }
+const wb=WP.RESULT.wandelement;
+const opb=wb.openings.find(o=>o.art==='durchbruch');
+ok('breiter Durchbruch als eine Öffnung', !!opb && opb.g0===3 && opb.g1===8);
+const cs=wb.tension_columns.filter(c=>!c.durchgehend);
+ok('Strang in der Öffnung ist segmentiert', cs.length>=1 && cs.every(c=>c.segments.length>=2));
+ok('Segmente meiden die Öffnung', cs.every(c=>c.segments.every(g=>g.lage1<=opb.l0 || g.lage0>=opb.l1)));
+ok('nur Stränge in der Öffnung sind segmentiert', cs.every(c=>c.k>=opb.g0 && c.k<opb.g1));
+for(const c of [3,4,5,6,7]){ WP.toggleVoid(5,c); WP.toggleVoid(6,c); }
+ok('Auffüllen entfernt breiten Durchbruch', !WP.RESULT.wandelement.openings.some(o=>o.art==='durchbruch'));
 
 // Versatz-Warnung: 0,50 m (zwei i2) verletzt den Mindestversatz -> sichtbare Warnung + rotes Badge
 WP.voids.clear();
@@ -191,10 +212,15 @@ ok('Auswahl wirkt bis ins Wandelement (prestress)', w13.prestress.start_axis_gri
 ok('Startanker auf 2. Rasterachse (k=1), keine Achse auf k=0', ks1[0]===1 && !ks1.includes(0));
 ok('Endanker bleibt letzte Achse N-1', ks1[ks1.length-1]===w13.N_grid-1);
 ok('alle Abstände <= Strangabstand x', ks1.every((k,i)=>i===0||k-ks1[i-1]<=x13));
-ok('Fortführung ab Startachse (nicht glatt teilbar)', JSON.stringify(ks1)==='[1,4,7,9,12,15]' && x13===3);
+// Eingefrorene Verteilung: NICHT mehr die glatt balancierte Reihe von frueher — seit [V-2] setzt
+// die Steinabdeckung (Muss) die Achsen, [V-4] fuellt danach nur noch Luecken > x auf. Die Reihe
+// haelt trotzdem alle Regeln ein: Start bei 1, Ende bei N-1, jeder Abstand <= x, Abdeckung
+// lueckenlos (validation.ungehaltene_steine leer, unten geprueft).
+ok('Fortführung ab Startachse (nicht glatt teilbar)', JSON.stringify(ks1)==='[1,3,5,8,11,13,15]' && x13===3);
+ok('[V-2] Steinabdeckung dabei lückenlos', w13.validation.ungehaltene_steine.length===0);
 document.getElementById('startAchse').value='0'; document.getElementById('startAchse').dispatch('change');
 ok('Zurück auf 1. Rasterachse', WP.RESULT.wandelement.prestress.start_axis_grid===0 &&
-   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[0,3,6,9,12,15]');
+   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[0,3,5,8,11,13,15]');
 // auch im Auto-Modus (Strangabstand von der Engine optimiert) wirkt die Startachse
 document.getElementById('modus').value='auto'; document.getElementById('startAchse').value='1';
 document.getElementById('startAchse').dispatch('change');

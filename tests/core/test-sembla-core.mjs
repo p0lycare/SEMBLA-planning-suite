@@ -109,7 +109,9 @@ t("Startachse: Default = 1. Achse (Bestand, k=0)", () => {
   const ks = ksOf({ max_span_grid: 3 });
   assert(ks[0] === 0, `Startanker ${ks[0]}`);
   assert(JSON.stringify(ks) === JSON.stringify(ksOf({ max_span_grid: 3, start_axis_grid: 0 })), "explizit 0 == Default");
-  assert(JSON.stringify(ks) === "[0,3,6,9,12,15]", JSON.stringify(ks));
+  // [V-2]+[V-3]: 3 der 4 i3-Mitten der untersten Lage (5/8/11/14) sind getroffen;
+  // 3 deckt den i2 [2,4), 13 den i3 [13,16) neben dem Endanker 15 ab.
+  assert(JSON.stringify(ks) === "[0,3,5,8,11,13,15]", JSON.stringify(ks));
 });
 t("Startachse 2 (k=1): Startanker, Endanker N-1, alle Abstaende <= x", () => {
   const N = 16, x = 3;
@@ -118,7 +120,54 @@ t("Startachse 2 (k=1): Startanker, Endanker N-1, alle Abstaende <= x", () => {
   assert(ks[ks.length - 1] === N - 1, `Endanker ${ks[ks.length - 1]}`);
   assert(!ks.includes(0), "keine Achse auf der 1. Rasterachse");
   for (let i = 0; i < ks.length - 1; i++) assert(ks[i + 1] - ks[i] <= x, `Abstand ${ks[i]}->${ks[i + 1]}`);
-  assert(JSON.stringify(ks) === "[1,4,7,9,12,15]", JSON.stringify(ks));   // 3,3,2,3,3 (nicht glatt teilbar)
+  assert(JSON.stringify(ks) === "[1,3,5,8,11,13,15]", JSON.stringify(ks));
+});
+// [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Spannachse durchgangen.
+const ungehalten = (w) => {
+  const ks = new Set(w.tension_columns.map(c => c.k));
+  const out = [];
+  for (const c of w.courses) for (const st of c.stones) {
+    const a = st.x0 / 125, b = st.x1 / 125;
+    let hit = false; for (let k = a; k < b; k++) if (ks.has(k)) { hit = true; break; }
+    if (!hit) out.push([c.lage, a, b]);
+  }
+  return out;
+};
+t("[V-2] jeder Stein wird von einer Spannachse gehalten (Referenzwaende)", () => {
+  for (const key of Object.keys(REFERENCE_WALLS)) {
+    const w = buildReference(key);
+    assert(ungehalten(w).length === 0, `${key}: ${JSON.stringify(ungehalten(w))}`);
+    assert(w.validation.ungehaltene_steine.length === 0, key);
+  }
+});
+t("[V-2] traegt auch ohne Maximalabstand ([V-4] abgeschaltet)", () => {
+  for (const [L, H] of [[2000, 2400], [2500, 2400], [3000, 2600], [5000, 3000], [10000, 2800]])
+    for (const sa of [0, 1]) {
+      const w = buildWall("v2", L, H, [], null, { max_span_grid: 999, start_axis_grid: sa });
+      assert(ungehalten(w).length === 0, `${L}x${H} sa=${sa}: ${JSON.stringify(ungehalten(w))}`);
+    }
+});
+t("[V-2] gilt bei Oeffnungen und Staffelung", () => {
+  const a = buildWall("v2o", 4000, 2600, [new Opening(8, 16, 0, 11, "tuer")], null, { max_span_grid: 3 });
+  assert(ungehalten(a).length === 0, JSON.stringify(ungehalten(a)));
+  const b = buildWall("v2s", 3000, 2600, [], null, { max_span_grid: 3 }, [{ x0_mm: 1500, x1_mm: 3000, height_mm: 1600 }]);
+  assert(ungehalten(b).length === 0, JSON.stringify(ungehalten(b)));
+});
+t("[V-9] manuelle Achsen: [V-2]-Verletzung wird gemeldet, nicht still korrigiert", () => {
+  const w = buildWall("v9", 2000, 2600, [], null, { columns_grid: [0, 15] });
+  assert(JSON.stringify(w.tension_columns.map(c => c.k)) === "[0,15]", "Vorrang der manuellen Achsen");
+  assert(w.validation.ungehaltene_steine.length > 0, "Verletzung muss gemeldet werden");
+  assert(w.validation.buildable, "kein Baubarkeitsausschluss");
+});
+// [V-3] SOLL: automatisch gesetzte Achsen moeglichst mittig in den i3 der untersten Lage.
+t("[V-3] Achsen liegen ueberwiegend mittig in den i3 der untersten Lage", () => {
+  for (const L of [2000, 5000]) {
+    const w = buildWall("v3", L, 2600, [], null, { max_span_grid: 3 });
+    const ks = new Set(w.tension_columns.map(c => c.k));
+    const mitten = w.courses[0].stones.filter(s => (s.x1 - s.x0) / 125 === 3).map(s => s.x0 / 125 + 1);
+    const treffer = mitten.filter(m => ks.has(m)).length;
+    assert(treffer * 4 >= mitten.length * 3, `L=${L}: nur ${treffer}/${mitten.length} mittig`);
+  }
 });
 t("Startachse: Oeffnungskanten bleiben additiv, columns_grid hat Vorrang", () => {
   const op = [new Opening(5, 11, 0, 10, "tuer")];

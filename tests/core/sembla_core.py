@@ -400,24 +400,81 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             a, b = st["x0"] // GRID, st["x1"] // GRID
             for cc in range(a, b):
                 occ[c["lage"]][cc] = True
+    # ---- Spannachsen ---------------------------------------------------------------
+    # Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-2] Steinabdeckung (MUSS)
+    # > [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-3] Mitte i3 unterste Lage
+    # > [V-4] Maximalabstand als OBERGRENZE.
+    #
+    # [V-4] ist bewusst die LETZTE Stufe und nicht mehr die Verteilungsregel: die Steinabdeckung
+    # [V-2] impliziert den Abstand NICHT (sonst entstehen Luecken bis 5 Raster = 625 mm, obwohl
+    # jeder Stein gehalten ist), und umgekehrt beweist ein eingehaltenes Maximalraster die
+    # Abdeckung nicht. Beide Regeln sind unabhaengig und beide gelten.
+    stein_iv = [(st["x0"] // GRID, st["x1"] // GRID) for c in courses for st in c["stones"]]
+    # Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
+    stein_iv.sort(key=lambda p: (p[1], p[0]))
+
+    def _gehalten(S, a, b):
+        """Wird das Rasterintervall [a,b) von mindestens einer Achse aus S durchgangen?"""
+        return any(k in S for k in range(a, b))
+
     if _PS["columns_grid"]:
-        # Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden
+        # [V-9] Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden. Sie werden NICHT
+        # ergaenzt (auch nicht um [V-2]/[V-4]) — der Anwender uebernimmt die Verteilung ganz.
+        # Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
         col_ks = sorted(k for k in _PS["columns_grid"] if 0 <= k < N)
     else:
-        # Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse); ab da balanciert
-        # weiterverteilt mit Abstaenden <= max_span_grid bis zur letzten Achse N-1.
+        # [V-5] Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse) und letzte Achse N-1.
         a0 = min(_PS["start_axis_grid"], N - 1)
         colset = {a0, N - 1}
-        for c in _balanced_fill(a0, N - 1, _maxspan):
-            colset.add(c)
+        # [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
         for op in openings:
             if op.g0 - 1 >= 0: colset.add(op.g0 - 1)
             if op.g1 <= N - 1: colset.add(op.g1)
-        # Stufenkanten: an jeder Hoehenstufe ein Strang beidseitig der Kante (Vorspannung laeuft an der Treppe entlang)
+        # [V-7] Stufenkanten: an jeder Hoehenstufe ein Strang beidseitig der Kante.
         for k in range(N - 1):
             if _top_lage[k] != _top_lage[k + 1]:
                 colset.add(k); colset.add(k + 1)
-        col_ks = sorted(k for k in colset if 0 <= k < N)
+        # [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage. Ein i2 hat keine
+        # Rastermitte (zwei Zellen) und liefert deshalb keine Wunschposition — es wird nicht geraten.
+        wunsch = set()
+        for st in (courses[0]["stones"] if courses else []):
+            a, b = st["x0"] // GRID, st["x1"] // GRID
+            if b - a == 3:
+                wunsch.add(a + 1)
+        # [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
+        # Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
+        # die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Liegt im Stein eine
+        # Wunschposition nach [V-3], hat diese Vorrang vor der Reichweite — sie kostet hoechstens
+        # zusaetzliche Achsen, nie die Abdeckung.
+        for a, b in stein_iv:
+            if _gehalten(colset, a, b):
+                continue
+            pos = b - 1
+            for k in range(b - 1, a - 1, -1):
+                if k in wunsch:
+                    pos = k
+                    break
+            colset.add(pos)
+        # [V-4] Obergrenze: verbleibende Luecken > max_span_grid balanciert auffuellen (rein
+        # additiv, die Abdeckung aus [V-2] bleibt dabei zwingend erhalten).
+        roh = sorted(k for k in colset if 0 <= k < N)
+        fin = set(roh)
+        for i in range(len(roh) - 1):
+            if roh[i + 1] - roh[i] > _maxspan:
+                for c in _balanced_fill(roh[i], roh[i + 1], _maxspan):
+                    fin.add(c)
+        col_ks = sorted(k for k in fin if 0 <= k < N)
+    # [V-2] Nachweis der Steinabdeckung. Im Auto-Pfad ist die Liste konstruktionsbedingt leer und
+    # dient als Selbstkontrolle; bei manuellen Achsen ([V-9]) ist sie der geforderte Abgleich gegen
+    # die Muss-Regel. Sichtbar gemeldet, aber KEIN Baubarkeitsausschluss: die Sonderkonstruktion
+    # ist eine bewusste Anwenderentscheidung und wird nie still korrigiert.
+    _achs_set = set(col_ks)
+    ungehaltene_steine = [
+        {"lage": c["lage"], "start_grid": st["x0"] // GRID,
+         "breite_grid": (st["x1"] - st["x0"]) // GRID, "typ": st["type"]}
+        for c in courses for st in c["stones"]
+        if not _gehalten(_achs_set, st["x0"] // GRID, st["x1"] // GRID)
+    ]
     columns = []
     anch_senkkopf = 0; anch_spannmutter = 0; anch_spannplatten = 0
     for k in col_ks:
@@ -543,7 +600,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         "validation": {"buildable": buildable, "versatz_ok": versatz_ok,
                        "versatz_violations": viol, "tension_span_ok": span_ok,
                        "rigid_lagen": rigid_lagen, "invalid_segments": invalid_segments,
-                       "zuschnitt_konflikte": zuschnitt_konflikte},
+                       "zuschnitt_konflikte": zuschnitt_konflikte,
+                       # [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuell: echter Befund.
+                       "ungehaltene_steine": ungehaltene_steine},
         "courses": courses,
     }
 

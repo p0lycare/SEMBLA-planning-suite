@@ -236,8 +236,8 @@
       "spannmuttern": 2
     },
     {
-      "k": 9,
-      "x_mm": 1187.5,
+      "k": 8,
+      "x_mm": 1062.5,
       "durchgehend": false,
       "segments": [
         {
@@ -320,8 +320,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 12,
-      "x_mm": 1562.5,
+      "k": 13,
+      "x_mm": 1687.5,
       "durchgehend": true,
       "segments": [
         {
@@ -467,7 +467,7 @@
         "fertigmass_mm": 600
       },
       {
-        "k": 9,
+        "k": 8,
         "z0_mm": 2000,
         "z1_mm": 2600,
         "grund": "kein_reststueck",
@@ -481,7 +481,7 @@
         "fertigmass_mm": 400
       },
       {
-        "k": 12,
+        "k": 13,
         "z0_mm": 0,
         "z1_mm": 2600,
         "grund": "kein_reststueck",
@@ -494,7 +494,8 @@
         "grund": "kein_reststueck",
         "fertigmass_mm": 400
       }
-    ]
+    ],
+    "ungehaltene_steine": []
   },
   "courses": [
     {

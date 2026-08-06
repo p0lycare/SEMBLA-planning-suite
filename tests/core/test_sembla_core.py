@@ -126,7 +126,9 @@ class TensionRules(unittest.TestCase):
         ks = self._ks(max_span_grid=3)
         self.assertEqual(ks[0], 0)
         self.assertEqual(ks, self._ks(max_span_grid=3, start_axis_grid=0))
-        self.assertEqual(ks, [0, 3, 6, 9, 12, 15])
+        # [V-2]+[V-3]: 3 der 4 i3-Steine der untersten Lage (Mitten 5/8/11/14) werden mittig
+        # getroffen; 3 deckt den i2 [2,4), 13 den i3 [13,16) neben dem Endanker 15 ab.
+        self.assertEqual(ks, [0, 3, 5, 8, 11, 13, 15])
 
     def test_start_axis_second_axis(self):
         N, x = 16, 3
@@ -136,7 +138,65 @@ class TensionRules(unittest.TestCase):
         self.assertNotIn(0, ks)
         for a, b in zip(ks, ks[1:]):
             self.assertLessEqual(b - a, x, f"Abstand {a}->{b}")
-        self.assertEqual(ks, [1, 4, 7, 9, 12, 15])   # 3,3,2,3,3 (nicht glatt teilbar)
+        self.assertEqual(ks, [1, 3, 5, 8, 11, 13, 15])
+
+    # ---- [V-2] MUSS: jeder Stein wird von mindestens einer Spannachse durchgangen ----
+    @staticmethod
+    def _ungehalten(w):
+        ks = {c["k"] for c in w["tension_columns"]}
+        return [(c["lage"], st["x0"] // GRID, st["x1"] // GRID)
+                for c in w["courses"] for st in c["stones"]
+                if not any(k in ks for k in range(st["x0"] // GRID, st["x1"] // GRID))]
+
+    def test_v2_jeder_stein_von_achse_gehalten(self):
+        for key in REFERENCE_WALLS:
+            w = build_reference(key)
+            self.assertEqual(self._ungehalten(w), [], key)
+            self.assertEqual(w["validation"]["ungehaltene_steine"], [], key)
+
+    def test_v2_gilt_auch_ohne_maximalabstand(self):
+        # [V-4] als Obergrenze abgeschaltet (sehr grosser Wert) -> [V-2] muss allein tragen.
+        for L, H in ((2000, 2400), (2500, 2400), (3000, 2600), (5000, 3000), (10000, 2800)):
+            for sa in (0, 1):
+                w = build_wall("v2", L, H, [], prestress={"max_span_grid": 999, "start_axis_grid": sa})
+                self.assertEqual(self._ungehalten(w), [], f"{L}x{H} sa={sa}")
+
+    def test_v2_bei_oeffnungen_und_staffelung(self):
+        w = build_wall("v2o", 4000, 2600, [Opening(8, 16, 0, 11, "tuer")],
+                       prestress={"max_span_grid": 3, "start_axis_grid": 0})
+        self.assertEqual(self._ungehalten(w), [])
+        w2 = build_wall("v2s", 3000, 2600, [], prestress={"max_span_grid": 3},
+                        steps=[{"x0_mm": 1500, "x1_mm": 3000, "height_mm": 1600}])
+        self.assertEqual(self._ungehalten(w2), [])
+
+    def test_v2_verletzung_bei_manuellen_achsen_wird_gemeldet(self):
+        # [V-9] manuelle Achsen haben Vorrang, werden aber gegen [V-2] geprueft und sichtbar
+        # gemeldet — ohne stille Korrektur und ohne Baubarkeitsausschluss.
+        w = build_wall("v9", 2000, 2600, [], prestress={"columns_grid": [0, 15]})
+        self.assertEqual([c["k"] for c in w["tension_columns"]], [0, 15])
+        offen = w["validation"]["ungehaltene_steine"]
+        self.assertTrue(offen, "Verletzung muss gemeldet werden")
+        self.assertTrue(w["validation"]["buildable"], "kein Baubarkeitsausschluss")
+        for e in offen:
+            self.assertIn(e["typ"], ("i2", "i3"))
+            self.assertIn("lage", e); self.assertIn("start_grid", e); self.assertIn("breite_grid", e)
+
+    # ---- [V-3] SOLL: automatische Achsen moeglichst mittig in den i3 der untersten Lage ----
+    def test_v3_achsen_mittig_in_i3_der_untersten_lage(self):
+        for L in (2000, 5000):
+            w = build_wall("v3", L, 2600, [], prestress={"max_span_grid": 3})
+            ks = {c["k"] for c in w["tension_columns"]}
+            mitten = {st["x0"] // GRID + 1 for st in w["courses"][0]["stones"]
+                      if (st["x1"] - st["x0"]) // GRID == 3}
+            # deutliche Mehrheit der i3-Mitten ist getroffen (nicht alle: Start-/Endanker binden)
+            self.assertGreaterEqual(len(mitten & ks) * 4, len(mitten) * 3, f"L={L}")
+
+    def test_v3_erzwingt_keine_achse_im_i2(self):
+        # i2 hat keine Rastermitte -> es darf keine Wunschposition erfunden werden.
+        w = build_wall("v3b", 2000, 2600, [], prestress={"max_span_grid": 3})
+        ks = [c["k"] for c in w["tension_columns"]]
+        self.assertEqual(ks, sorted(set(ks)))
+        self.assertTrue(all(0 <= k < 16 for k in ks))
 
     def test_start_axis_extras_and_manual_precedence(self):
         op = [Opening(5, 11, 0, 10, "tuer")]

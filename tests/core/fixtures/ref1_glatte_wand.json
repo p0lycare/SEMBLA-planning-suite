@@ -92,8 +92,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 2,
-      "x_mm": 312.5,
+      "k": 3,
+      "x_mm": 437.5,
       "durchgehend": true,
       "segments": [
         {
@@ -250,7 +250,7 @@
         "fertigmass_mm": 900
       },
       {
-        "k": 2,
+        "k": 3,
         "z0_mm": 0,
         "z1_mm": 2000,
         "grund": "kein_reststueck",
@@ -270,7 +270,8 @@
         "grund": "kein_reststueck",
         "fertigmass_mm": 900
       }
-    ]
+    ],
+    "ungehaltene_steine": []
   },
   "courses": [
     {

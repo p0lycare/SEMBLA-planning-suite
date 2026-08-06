@@ -199,70 +199,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 6,
-      "x_mm": 812.5,
-      "durchgehend": false,
-      "segments": [
-        {
-          "z0_mm": 0,
-          "z1_mm": 800,
-          "lage0": 0,
-          "lage1": 4,
-          "gewindestangen": 1,
-          "stuecke": [
-            {
-              "len_mm": 800,
-              "art": "sonder",
-              "quelle_mm": 1100
-            }
-          ],
-          "zuschnitt_konflikt": null,
-          "bedarf_mm": 800,
-          "ueberstand_mm": 0,
-          "letzte_stange_mm": 800,
-          "verschnitt_mm": 300,
-          "verbindungsmuttern": 0,
-          "anker_unten": "bodenblech",
-          "anker_oben": "spannplatte",
-          "senkkopfschrauben": 1,
-          "spannplatten": 1,
-          "spannmuttern": 1
-        },
-        {
-          "z0_mm": 2000,
-          "z1_mm": 2600,
-          "lage0": 10,
-          "lage1": 13,
-          "gewindestangen": 1,
-          "stuecke": [
-            {
-              "len_mm": 600,
-              "art": "sonder",
-              "quelle_mm": 1100
-            }
-          ],
-          "zuschnitt_konflikt": "kein_reststueck",
-          "bedarf_mm": 600,
-          "ueberstand_mm": 0,
-          "letzte_stange_mm": 600,
-          "verschnitt_mm": 500,
-          "verbindungsmuttern": 0,
-          "anker_unten": "spannplatte",
-          "anker_oben": "kopfblech",
-          "senkkopfschrauben": 0,
-          "spannplatten": 1,
-          "spannmuttern": 2
-        }
-      ],
-      "gewindestangen": 2,
-      "verbindungsmuttern": 0,
-      "senkkopfschrauben": 1,
-      "spannplatten": 2,
-      "spannmuttern": 3
-    },
-    {
-      "k": 9,
-      "x_mm": 1187.5,
+      "k": 8,
+      "x_mm": 1062.5,
       "durchgehend": false,
       "segments": [
         {
@@ -370,8 +308,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 12,
-      "x_mm": 1562.5,
+      "k": 13,
+      "x_mm": 1687.5,
       "durchgehend": true,
       "segments": [
         {
@@ -467,18 +405,18 @@
   "bom": {
     "i2": 32,
     "i3": 40,
-    "gewindestangen": 22,
+    "gewindestangen": 20,
     "verbindungsmuttern": 12,
-    "senkkopfschrauben": 8,
-    "kopplungsmuttern_basis": 8,
-    "spannplatten": 4,
-    "spannmuttern": 12,
+    "senkkopfschrauben": 7,
+    "kopplungsmuttern_basis": 7,
+    "spannplatten": 2,
+    "spannmuttern": 9,
     "stahlblech_module": 4,
     "stahlblech_mm": 4000,
     "stahlblech_dicke_mm": 15,
     "stossfugen": 53,
     "dichtstreifen_mm": 10600,
-    "verschnitt_mm": 5800
+    "verschnitt_mm": 5000
   },
   "validation": {
     "buildable": true,
@@ -510,14 +448,7 @@
         "fertigmass_mm": 400
       },
       {
-        "k": 6,
-        "z0_mm": 2000,
-        "z1_mm": 2600,
-        "grund": "kein_reststueck",
-        "fertigmass_mm": 600
-      },
-      {
-        "k": 9,
+        "k": 8,
         "z0_mm": 2000,
         "z1_mm": 2600,
         "grund": "kein_reststueck",
@@ -531,7 +462,7 @@
         "fertigmass_mm": 400
       },
       {
-        "k": 12,
+        "k": 13,
         "z0_mm": 0,
         "z1_mm": 2600,
         "grund": "kein_reststueck",
@@ -544,7 +475,8 @@
         "grund": "kein_reststueck",
         "fertigmass_mm": 400
       }
-    ]
+    ],
+    "ungehaltene_steine": []
   },
   "courses": [
     {

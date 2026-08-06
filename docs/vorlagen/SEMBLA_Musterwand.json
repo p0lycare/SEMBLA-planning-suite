@@ -164,8 +164,55 @@
         "spannmuttern": 1
       },
       {
-        "k": 6,
-        "x_mm": 812.5,
+        "k": 4,
+        "x_mm": 562.5,
+        "durchgehend": true,
+        "segments": [
+          {
+            "z0_mm": 0,
+            "z1_mm": 2600,
+            "lage0": 0,
+            "lage1": 13,
+            "gewindestangen": 3,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 600,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": "kein_reststueck",
+            "bedarf_mm": 2600,
+            "ueberstand_mm": 0,
+            "letzte_stange_mm": 600,
+            "verschnitt_mm": 400,
+            "verbindungsmuttern": 2,
+            "anker_unten": "bodenblech",
+            "anker_oben": "kopfblech",
+            "senkkopfschrauben": 1,
+            "spannplatten": 0,
+            "spannmuttern": 1
+          }
+        ],
+        "gewindestangen": 3,
+        "verbindungsmuttern": 2,
+        "senkkopfschrauben": 1,
+        "spannplatten": 0,
+        "spannmuttern": 1
+      },
+      {
+        "k": 7,
+        "x_mm": 937.5,
         "durchgehend": true,
         "segments": [
           {
@@ -394,8 +441,8 @@
         "spannmuttern": 1
       },
       {
-        "k": 14,
-        "x_mm": 1812.5,
+        "k": 15,
+        "x_mm": 1937.5,
         "durchgehend": true,
         "segments": [
           {
@@ -520,8 +567,50 @@
         "spannmuttern": 1
       },
       {
-        "k": 20,
-        "x_mm": 2562.5,
+        "k": 19,
+        "x_mm": 2437.5,
+        "durchgehend": true,
+        "segments": [
+          {
+            "z0_mm": 0,
+            "z1_mm": 1400,
+            "lage0": 0,
+            "lage1": 7,
+            "gewindestangen": 2,
+            "stuecke": [
+              {
+                "len_mm": 1000,
+                "art": "standard",
+                "quelle_mm": 1000
+              },
+              {
+                "len_mm": 400,
+                "art": "sonder",
+                "quelle_mm": 1000
+              }
+            ],
+            "zuschnitt_konflikt": "kein_reststueck",
+            "bedarf_mm": 1400,
+            "ueberstand_mm": 0,
+            "letzte_stange_mm": 400,
+            "verschnitt_mm": 600,
+            "verbindungsmuttern": 1,
+            "anker_unten": "bodenblech",
+            "anker_oben": "kopfblech",
+            "senkkopfschrauben": 1,
+            "spannplatten": 0,
+            "spannmuttern": 1
+          }
+        ],
+        "gewindestangen": 2,
+        "verbindungsmuttern": 1,
+        "senkkopfschrauben": 1,
+        "spannplatten": 0,
+        "spannmuttern": 1
+      },
+      {
+        "k": 21,
+        "x_mm": 2687.5,
         "durchgehend": true,
         "segments": [
           {
@@ -607,18 +696,18 @@
     "bom": {
       "i2": 20,
       "i3": 70,
-      "gewindestangen": 30,
-      "verbindungsmuttern": 18,
-      "senkkopfschrauben": 12,
-      "kopplungsmuttern_basis": 12,
+      "gewindestangen": 35,
+      "verbindungsmuttern": 21,
+      "senkkopfschrauben": 14,
+      "kopplungsmuttern_basis": 14,
       "spannplatten": 0,
-      "spannmuttern": 12,
+      "spannmuttern": 14,
       "stahlblech_module": 6,
       "stahlblech_mm": 6000,
       "stahlblech_dicke_mm": 15,
       "stossfugen": 77,
       "dichtstreifen_mm": 15400,
-      "verschnitt_mm": 5600
+      "verschnitt_mm": 6600
     },
     "validation": {
       "buildable": true,
@@ -643,7 +732,14 @@
           "fertigmass_mm": 600
         },
         {
-          "k": 6,
+          "k": 4,
+          "z0_mm": 0,
+          "z1_mm": 2600,
+          "grund": "kein_reststueck",
+          "fertigmass_mm": 600
+        },
+        {
+          "k": 7,
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
@@ -678,7 +774,7 @@
           "fertigmass_mm": 800
         },
         {
-          "k": 14,
+          "k": 15,
           "z0_mm": 0,
           "z1_mm": 1800,
           "grund": "kein_reststueck",
@@ -699,7 +795,14 @@
           "fertigmass_mm": 400
         },
         {
-          "k": 20,
+          "k": 19,
+          "z0_mm": 0,
+          "z1_mm": 1400,
+          "grund": "kein_reststueck",
+          "fertigmass_mm": 400
+        },
+        {
+          "k": 21,
           "z0_mm": 0,
           "z1_mm": 1400,
           "grund": "kein_reststueck",
@@ -712,7 +815,8 @@
           "grund": "kein_reststueck",
           "fertigmass_mm": 400
         }
-      ]
+      ],
+      "ungehaltene_steine": []
     },
     "courses": [
       {
