@@ -1,0 +1,47 @@
+# Auslieferung der Planungs-Suite auf GitHub Pages.
+#
+# Warum es diesen Workflow gibt: der alte („legacy") Pages-Builder schickt docs/
+# durch Jekyll und ist an diesem Repo dreimal hintereinander gescheitert bzw.
+# haengen geblieben (9,8 min knapp am Limit, dann zwei Abbrueche mit „Page build
+# failed", ein Lauf ueber eine Stunde auf „building"). docs/ ist reines statisches
+# HTML/JS ohne Front Matter und ohne Liquid — es gibt nichts zu generieren, die
+# Dateien werden nur kopiert.
+#
+# Dieser Workflow ist AUSDRUECKLICH nur Auslieferung: er fuehrt KEINE Tests aus.
+# Die Tests bleiben Handdisziplin (npm run test:all vor dem Push) und sind
+# bewusst kein CI-Gate — siehe CLAUDE.md.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # Auslieferung auch ohne neuen Commit ausloesbar
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Eine Auslieferung zur Zeit; ein neuerer Push loest den laufenden ab.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Arbeitskopie holen
+        uses: actions/checkout@v4
+      - name: Pages vorbereiten
+        uses: actions/configure-pages@v5
+      - name: docs/ als Artefakt packen
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - name: Auf Pages veroeffentlichen
+        id: deployment
+        uses: actions/deploy-pages@v4
