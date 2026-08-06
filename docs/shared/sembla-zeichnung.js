@@ -29,7 +29,7 @@
  */
 
 import { semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
-import { stangenEnden, topLagen } from "./sembla-montage.js";
+import { stangenEnden, topLagen, stueckArt, stueckFarbe, STUECK_FARBE, STUECK_LABEL } from "./sembla-montage.js";
 
 const GRID_FALLBACK = 125, COURSE_FALLBACK = 200, ROD_FALLBACK = 1100;
 
@@ -112,11 +112,16 @@ export function waehleMasstab(L, H, format = "a3") {
 
 // ------------------------------------------------------------------- Farben
 
-/** Darstellungsschluessel der Zeichnung ([D-4]) — identisch in Vorschau und Export. */
+/**
+ * Darstellungsschluessel der Zeichnung ([D-4]) — identisch in Vorschau und Export.
+ * Die Stangenfarben kommen aus `STUECK_FARBE` (`sembla-montage.js`), damit Wandansicht
+ * (Modul 1), Baugruppenbild (Modul 5) und Zeichnung denselben Zuschnitt gleich zeigen.
+ */
 export const FARBE = {
   i3: "#e3e6ea", i2: "#cbd0d6", stein_rand: "#9aa1a9", stein_text: "#7c838c",
   oeffnung: "#c9461c", kontur: "#13202e", stahl: "#5b6673", stahl_rand: "#3a4350",
-  stange: "#1f6feb", stange_sonder: "#e8702a", stange_rest: "#8a5cd6", platte: "#14559c", mutter: "#0b3a73",
+  stange: STUECK_FARBE.standard, stange_sonder: STUECK_FARBE.sonder, stange_rest: STUECK_FARBE.rest,
+  platte: "#14559c", mutter: "#0b3a73",
   mass: "#46505e", staffel: "#0a7f8c", reihe: "#8f96a0",
 };
 
@@ -150,27 +155,6 @@ export const NACHWEIS_TEXT = "nicht Bestandteil dieser Zeichnung – separat pr�
 function _segmente(w, col) {
   if (Array.isArray(col.segments) && col.segments.length) return col.segments;
   return [{ z0_mm: 0, z1_mm: w.height_mm, gewindestangen: col.gewindestangen, anker_unten: "bodenblech", anker_oben: "kopfblech" }];
-}
-
-/** Art des i-ten Stangenstuecks eines Segments (aus den kanonischen `stuecke`). */
-function _stueckArt(w, sg, i, letzter) {
-  const st = Array.isArray(sg.stuecke) ? sg.stuecke[i] : null;
-  if (st && st.art) return st.art;
-  // Alt-Bundle ohne `stuecke`: nur das letzte Stueck kann eine Sonderlaenge sein.
-  if (letzter && sg.letzte_stange_mm != null && Math.round(sg.letzte_stange_mm) !== Math.round(_rod(w))) return "sonder";
-  return "standard";
-}
-
-/**
- * Farbe eines Stangenstuecks ([D-4]). Die drei Arten der kanonischen `stuecke` sind
- * OPTISCH UNTERSCHEIDBAR — auch das Reststueck am oberen Wandabschluss ([Z-6]), sonst
- * waere auf dem Blatt nicht erkennbar, dass dort ein eigenes Bauteil sitzt.
- * @param {string} art
- */
-function _stueckFarbe(art) {
-  if (art === "sonder") return FARBE.stange_sonder;
-  if (art === "rest") return FARBE.stange_rest;
-  return FARBE.stange;
 }
 
 /** Lokale Wandoberkante an der x-Position (Staffelung, mm). */
@@ -305,9 +289,9 @@ export function zeichnungSvg(w, opts = {}) {
       let z = sg.z0_mm;
       for (let i = 0; i < enden.length; i++) {
         const zt = enden[i], letzter = i === enden.length - 1;
-        const art = _stueckArt(w, sg, i, letzter);
+        const art = stueckArt(w, sg, i, letzter);
         s += `<line x1="${_n(x)}" y1="${_n(Y(z))}" x2="${_n(x)}" y2="${_n(Y(zt))}" `
-          + `stroke="${_stueckFarbe(art)}" stroke-width="${_n(SW * 2.6)}"/>`;
+          + `stroke="${stueckFarbe(art)}" stroke-width="${_n(SW * 2.6)}"/>`;
         if (!letzter) s += `<circle cx="${_n(x)}" cy="${_n(Y(zt))}" r="${_n(SW * 3)}" fill="${FARBE.mutter}"/>`;
         z = zt;
       }
@@ -354,7 +338,7 @@ export function vorspannZeilen(w) {
       const enden = stangenEnden(w, sg);
       stangen += enden.length;
       for (let i = 0; i < enden.length; i++) {
-        const art = _stueckArt(w, sg, i, i === enden.length - 1);
+        const art = stueckArt(w, sg, i, i === enden.length - 1);
         const st = Array.isArray(sg.stuecke) ? sg.stuecke[i] : null;
         // [Z-6] Reststuecke werden GETRENNT ausgewiesen: eigenes Bauteil, eigene Katalogrolle —
         // sie duerfen nicht unter den Sonderlaengen mitlaufen.
@@ -428,9 +412,9 @@ export function schriftfeldHtml(w, eingaben = {}, masstab = 25, opts = {}) {
 export function legendeHtml() {
   const i = (c, cls) => `<i class="${cls || ""}" style="background:${c}"></i>`;
   return `<div class="zlegende">`
-    + `<span>${i(FARBE.stange)}Gewindestange (Standardlänge)</span>`
-    + `<span>${i(FARBE.stange_sonder)}Sonderlänge / abgelängt</span>`
-    + `<span>${i(FARBE.stange_rest)}Reststück oberer Abschluss ([Z-6])</span>`
+    + `<span>${i(FARBE.stange)}Gewindestange (${STUECK_LABEL.standard})</span>`
+    + `<span>${i(FARBE.stange_sonder)}${STUECK_LABEL.sonder} / abgelängt</span>`
+    + `<span>${i(FARBE.stange_rest)}${STUECK_LABEL.rest} ([Z-6])</span>`
     + `<span>${i(FARBE.mutter, "dot")}Kopplung / Verankerung</span>`
     + `<span>${i(FARBE.platte, "plate")}Spannplatte</span>`
     + `<span>${i(FARBE.stahl, "plate")}Boden-/Kopfblech</span>`

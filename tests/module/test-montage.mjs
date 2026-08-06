@@ -27,7 +27,9 @@ import { standardEingaben } from "../../docs/shared/storage.js";
 import {
   montageEreignisse, montageAbschnitte, abschnittSvg, konturSvg,
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
+  STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt,
 } from "../../docs/shared/sembla-montage.js";
+import { FARBE as Z_FARBE } from "../../docs/shared/sembla-zeichnung.js";
 import { montageHtml, baueDateien } from "../../docs/shared/sembla-export.js";
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
@@ -353,6 +355,77 @@ for (const [name, w, alle] of [["Rechteck", WR, alleR], ["AWG", WAWG, alleA], ["
 ok("AWG (Staffelwand): globaler Oberrand deckt die volle Wandhoehe ab",
   alleA.every(a => a.z_top_mm >= WAWG.height_mm)
   && alleA.every(a => a.z_top_mm >= a.stange_oberkante_mm));
+
+// --- 12) Zuschnitt im Baugruppenbild: EIN Farbschluessel fuer Modul 1/5/7 ([D-4]) ---
+// Testwand mit allen drei Stueckarten: Standardlaengen 100/50 cm, Reststueck 30 cm,
+// Ueberstand 1 cm -> 2610 mm zu bestuecken = 100 + 100 + 31 (Sonder) + 30 (Rest).
+const WZ = buildWall("Zuschnitt", 3000, 2600, [], null,
+  { rod_lengths_mm: [1000, 500], rod_rest_mm: 300, rod_overhang_mm: 10 });
+const alleZ = montageAbschnitte(WZ);
+const arten = new Set(WZ.tension_columns.flatMap(c => c.segments).flatMap(g => g.stuecke || []).map(p => p.art));
+ok("Testwand enthaelt alle drei Stueckarten (Voraussetzung des Tests)",
+  arten.has("standard") && arten.has("sonder") && arten.has("rest"));
+
+ok("Farbschluessel hat genau die drei Stueckarten mit unterschiedlichen Farben",
+  Object.keys(STUECK_FARBE).sort().join(",") === "rest,sonder,standard"
+  && new Set(Object.values(STUECK_FARBE)).size === 3);
+ok("unbekannte/fehlende Stueckart gilt als Standardlaenge (keine erfundene Farbe)",
+  stueckFarbe("quatsch") === STUECK_FARBE.standard && stueckFarbe(undefined) === STUECK_FARBE.standard
+  && stueckFarbe("hasOwnProperty") === STUECK_FARBE.standard);
+ok("Modul 7 verdrahtet genau diesen Schluessel (kein zweiter Farbsatz)",
+  Z_FARBE.stange === STUECK_FARBE.standard && Z_FARBE.stange_sonder === STUECK_FARBE.sonder
+  && Z_FARBE.stange_rest === STUECK_FARBE.rest);
+ok("Spannplatte ist NICHT mehr die Sonderzuschnittsfarbe (Bauteil != Zuschnitt)",
+  Z_FARBE.platte !== STUECK_FARBE.sonder
+  && !Object.values(STUECK_FARBE).includes(Z_FARBE.platte));
+ok("stueckArt liest die kanonischen `stuecke` (Art des letzten Stuecks = rest)",
+  (() => { const sg = WZ.tension_columns[0].segments[0]; const n = sg.stuecke.length;
+    return stueckArt(WZ, sg, n - 1, true) === "rest" && stueckArt(WZ, sg, 0, false) === "standard"; })());
+
+// stuecke_sicht deckt die gezeichnete Stange lueckenlos ab und endet an ihrer Oberkante
+let sichtOk = true, kopplungOk = true, restZuOben = true;
+for (const ab of alleZ) for (const st of ab.straenge) {
+  const ps = st.stuecke_sicht;
+  if (!ps.length) { sichtOk = false; continue; }
+  if (Math.abs(ps[0].z0_mm - st.z_unten_mm) > 1e-9) sichtOk = false;
+  if (Math.abs(ps[ps.length - 1].z1_mm - st.zeichen_oben_mm) > 1e-9) sichtOk = false;
+  if (ps.some((p, i) => i > 0 && Math.abs(p.z0_mm - ps[i - 1].z1_mm) > 1e-9)) sichtOk = false;
+  if (ps.some(p => p.z1_mm < p.z0_mm - 1e-9)) sichtOk = false;
+  // Der Ueberstand gehoert dem LETZTEN gesetzten Stueck — nicht dem noch nicht montierten
+  if (ps.length !== st.kopplungen_mm.length + 1) kopplungOk = false;
+  if (st.abgeschlossen && ps[ps.length - 1].art !== "rest") restZuOben = false;
+}
+ok("stuecke_sicht deckt die gezeichnete Stange lueckenlos von unten bis zur Oberkante ab", sichtOk);
+ok("Ueberstand zaehlt zum letzten gesetzten Stueck (Stuecke = Kopplungen + 1)", kopplungOk);
+ok("abgeschlossene Straenge schliessen mit dem Reststueck ab ([Z-6])", restZuOben);
+
+// Bild: ein Strich je Stueck in der Farbe seiner Art (kein Strich je Strang)
+const abZ = alleZ[alleZ.length - 1];
+const svgZ = abschnittSvg(WZ, abZ, 900, 430);
+const striche = f => (svgZ.match(new RegExp(`<line x1="([\\d.]+)" y1="[\\d.]+" x2="\\1" y2="[\\d.]+" stroke="${f}" stroke-width="2.4"`, "g")) || []).length;
+const sollJeArt = a => abZ.straenge.reduce((n, st) => n + st.stuecke_sicht.filter(p => p.art === a).length, 0);
+ok("Baugruppenbild zeichnet je Stueck einen Strich in der Farbe seiner Art",
+  ["standard", "sonder", "rest"].every(a => sollJeArt(a) > 0 && striche(STUECK_FARBE[a]) === sollJeArt(a)));
+ok("Baugruppenbild traegt die Zuschnitt-Legende mit den gezeichneten Arten",
+  /Zuschnitt:/.test(svgZ) && ["standard", "sonder", "rest"].every(a => svgZ.includes(STUECK_LABEL[a])));
+ok("die Legende nennt nur Arten, die auch gezeichnet wurden",
+  (() => { const s0 = abschnittSvg(WZ, alleZ[0], 900, 430);   // Schnitt 0: nur die erste Stange
+    return !s0.includes(STUECK_LABEL.rest) && s0.includes(STUECK_LABEL.standard); })());
+ok("Vorschau == Export: die Legende steckt im geteilten SVG, nicht im Modul",
+  montageSeitenHtml(WZ, eingaben).includes(svgZ) && montageDokument(WZ, eingaben).includes("Zuschnitt:"));
+
+// Alt-Bundle ohne `stuecke`: leere Sichtliste, Einzellinie, keine Stueckart-Legende (Entscheidung 5)
+const wAlt = JSON.parse(JSON.stringify(WZ));
+for (const col of wAlt.tension_columns) for (const sg of col.segments) delete sg.stuecke;
+const alleAlt = montageAbschnitte(wAlt);
+const svgAlt = abschnittSvg(wAlt, alleAlt[alleAlt.length - 1], 900, 430);
+ok("Alt-Bundle ohne `stuecke`: stuecke_sicht bleibt leer",
+  alleAlt.every(a => a.straenge.every(st => Array.isArray(st.stuecke_sicht) && st.stuecke_sicht.length === 0)));
+ok("Alt-Bundle faellt auf die Einzellinie je Strang zurueck (kein Zeichenfehler)",
+  (svgAlt.match(new RegExp(`stroke="${STUECK_FARBE.standard}" stroke-width="2.4"`, "g")) || []).length
+    === alleAlt[alleAlt.length - 1].straenge.length);
+ok("Alt-Bundle zeigt KEINE Zuschnitt-Legende (nichts erfinden)",
+  !/Zuschnitt:/.test(svgAlt) && !svgAlt.includes(STUECK_LABEL.rest));
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`); process.exit(fail ? 1 : 0);

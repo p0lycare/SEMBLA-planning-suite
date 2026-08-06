@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-05",
+    datum: "2026-08-06",
+    typ: "feature",
+    issue: 49,
+    titel: "Zuschnitt-Farben überall gleich: Baugruppenbilder zeigen die Stückarten jetzt mit",
+    testbitte: "Reiter 5: die Gewindestangen der Baugruppenbilder sind stückweise gefärbt "
+      + "(Standardlänge, Sonderzuschnitt, Reststück) und haben eine Zuschnitt-Legende — dieselben "
+      + "Farben wie in der Wandansicht (Reiter 1) und der Zeichnung (Reiter 7)?",
+  },
+  {
     id: "chg-20260806-04",
     datum: "2026-08-06",
     typ: "fix",

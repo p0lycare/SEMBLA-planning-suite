@@ -32,11 +32,15 @@ globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;
 
 const store = await import("../../docs/shared/storage.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
+// Farbschluessel des Zuschnitts ([D-4]): Modul 1 fuehrt keine eigenen Hex-Werte, sondern
+// bezieht ihn — wie Modul 5/7 — aus sembla-montage.js.
+const MONT = await import("../../docs/shared/sembla-montage.js");
 // Aktives Element ist in Modul 0 angelegt worden (inkl. Wandtyp) — Modul 1 legt selbst KEINS an.
 // Der Leerfall wird am Ende separat geprüft.
 const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
 const idA=store.speichere('Wand A', startWand); store.setzeAktiv(idA);
-globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT };
+globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+  STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL, stueckFarbe: MONT.stueckFarbe };
 
 eval(script);
 globalThis.window.__wpInit();
@@ -67,6 +71,15 @@ ok('Wandansicht zeichnet die einzelnen Stuecke, nicht einen Strich je Strang', (
     && marken===kopplungen; })());
 ok('Legende benennt den Zuschnitt', /Zuschnitt:/.test(document.getElementById('plan').innerHTML)
   && /Standardlänge/.test(document.getElementById('plan').innerHTML));
+// [D-4]: EIN Farbschluessel fuer Modul 1/5/7 — Modul 1 fuehrt keine eigenen Hex-Werte
+// und keine eigenen Klartexte der Stueckarten mehr.
+ok('Zuschnitt-Farben/-Texte kommen aus sembla-montage.js (keine lokalen Werte)',
+  /STUECK_FARBE/.test(html) && /STUECK_LABEL/.test(html) && /sembla-montage\.js/.test(html)
+  && !/C_SOND|C_REST/.test(html)
+  && !new RegExp(MONT.STUECK_FARBE.sonder+'|'+MONT.STUECK_FARBE.rest).test(html));
+ok('Legende nutzt genau die geteilten Farben', (()=>{
+  const svg=document.getElementById('plan').innerHTML;
+  return svg.includes(MONT.STUECK_FARBE.standard) && svg.includes(MONT.STUECK_LABEL.standard); })());
 ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);
 ok('Steine-Zusammenfassung gefüllt (BOM-Tabelle jetzt in Modul 4)', /\d/.test(document.getElementById('rSteine').textContent));
 ok('sides + verification im Ergebnis', WP.RESULT.wandelement.sides.vorne.funktion==='fassade' && WP.RESULT.wandelement.verification.status==='geprüft');

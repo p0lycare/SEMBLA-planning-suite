@@ -42,6 +42,22 @@ const ROD_FALLBACK = 1100;
 /** Sichtbarer Stangenueberstand ueber die letzte dargestellte Steinreihe (mm). */
 export const UEBERSTAND_MM = 80;
 
+/**
+ * Farbschluessel der Stangenstuecke ([D-4]) — EINE Quelle fuer alle Ausgaben, die den
+ * Zuschnitt zeigen: Modul 1 (Wandansicht), Modul 5 (Baugruppenbilder) und Modul 7
+ * (technische Zeichnung). Er liegt hier, weil dieselbe Datei schon die Stueckableitung
+ * (`stangenEnden`/`stueckArt`) haelt — ein zweiter Farbschluessel waere Drift.
+ */
+export const STUECK_FARBE = { standard: "#1f6feb", sonder: "#e8702a", rest: "#7a3fd6" };
+
+/** Klartext der Stueckarten — identisch in Wandansicht, Baugruppenbild und Zeichnungslegende. */
+export const STUECK_LABEL = { standard: "Standardlänge", sonder: "Sonderzuschnitt", rest: "Reststück oben" };
+
+/** Farbe einer Stueckart; unbekannt/fehlend gilt als Standardlaenge (nie eine erfundene Farbe). */
+export function stueckFarbe(art) {
+  return Object.prototype.hasOwnProperty.call(STUECK_FARBE, art) ? STUECK_FARBE[art] : STUECK_FARBE.standard;
+}
+
 /** Reihenfolge mehrerer Ereignisse auf derselben Hoehe: erst schliessen, dann koppeln, dann neu ansetzen. */
 const ART_RANG = { abschluss: 0, kopplung: 1, fuss: 2, neustart: 3 };
 
@@ -96,6 +112,47 @@ export function stangenEnden(w, sg) {
   const rod = _rod(w), st = _stueck(w, sg);
   for (let j = 1; j < st; j++) out.push(sg.z0_mm + j * rod);
   out.push(sg.z1_mm);
+  return out;
+}
+
+/**
+ * Art des i-ten Stangenstuecks eines Segments (`standard`/`sonder`/`rest`) aus den
+ * kanonischen `stuecke` ([Z-2]/[Z-3]/[Z-6]).
+ *
+ * Hier — und nicht in den einzelnen Ausgaben — weil Modul 1, Modul 5 und Modul 7 die
+ * Stuecke gleich einfaerben muessen ([D-4]). Alt-Bundles ohne `stuecke` behalten den
+ * bisherigen Fallback: nur das LETZTE Stueck kann eine Sonderlaenge sein, ein Reststueck
+ * wird nie erraten.
+ * @param {any} w @param {any} sg Segment @param {number} i Stueckindex @param {boolean} letzter
+ */
+export function stueckArt(w, sg, i, letzter) {
+  const st = Array.isArray(sg.stuecke) ? sg.stuecke[i] : null;
+  if (st && st.art) return st.art;
+  if (letzter && sg.letzte_stange_mm != null && Math.round(sg.letzte_stange_mm) !== Math.round(_rod(w))) return "sonder";
+  return "standard";
+}
+
+/**
+ * Sichtbare Stangenstuecke eines Segments bis zum aktuellen Montagestand.
+ *
+ * `echtMm` = reale Oberkante des zuletzt gesetzten Stuecks, `obenMm` = gezeichnete
+ * Oberkante (kann den Ueberstand nach [A-9]/UEBERSTAND_MM enthalten). Der Ueberstand
+ * wird dem LETZTEN wirklich gesetzten Stueck zugeschlagen — nie dem naechsten, das
+ * noch nicht montiert ist. Alt-Bundles ohne `stuecke` liefern eine leere Liste; die
+ * Zeichnung faellt dann auf die Einzellinie zurueck.
+ */
+function _stueckeSicht(w, sg, echtMm, obenMm) {
+  if (!Array.isArray(sg.stuecke) || !sg.stuecke.length) return [];
+  const out = [];
+  let z = sg.z0_mm;
+  for (let i = 0; i < sg.stuecke.length; i++) {
+    const art = stueckArt(w, sg, i, i === sg.stuecke.length - 1);
+    const z1 = z + sg.stuecke[i].len_mm;
+    out.push({ z0_mm: z, z1_mm: Math.min(z1, echtMm), art });
+    z = z1;
+    if (z >= echtMm - 1e-9) break;
+  }
+  if (out.length) out[out.length - 1].z1_mm = obenMm;
   return out;
 }
 
@@ -318,6 +375,7 @@ function _fussZustand(w) {
         z_oben_real_mm: enden[0], zeichen_oben_mm: enden[0], abgeschlossen: eins,
         anker_unten: ankerU, anker_oben: sg.anker_oben || "spannplatte",
         stangen: _stueck(w, sg), kopplungen_mm: [],
+        stuecke_sicht: _stueckeSicht(w, sg, enden[0], enden[0]),
       });
     }
   }
@@ -366,6 +424,8 @@ function _strangZustand(w, ab) {
         stangen: _stueck(w, sg),
         // bereits gesetzte Kopplungsmuttern = Stangenstoesse unterhalb der aktuellen Oberkante
         kopplungen_mm: enden.slice(0, -1).filter(z => z < echt),
+        // reale Stuecke bis zum Montagestand — Zeichenfeedback des Zuschnitts ([D-4])
+        stuecke_sicht: _stueckeSicht(w, sg, echt, oben),
       });
     }
   }
@@ -374,11 +434,15 @@ function _strangZustand(w, ab) {
 
 // ------------------------------------------------------------ Zeichenbausteine
 
+// Stangenfarben kommen aus STUECK_FARBE ([D-4]) — kein zweiter Farbschluessel.
+// `platte` ist bewusst NICHT mehr die Sonderzuschnittsfarbe: die Spannplatte ist ein
+// Bauteil, kein Zuschnitt, und darf mit ihm nicht verwechselt werden.
 const FARBE = {
   i3: "#cfd3d8", i2: "#bcc2c9", stein_rand: "#7d848c",
   fertig: "#e9ebee", fertig_rand: "#c3c8cf",
-  stange: "#1f6feb", stahl: "#5b6673", stahl_rand: "#3a4350",
-  platte: "#e8702a", mutter: "#0b3a73", kontur: "#13202e",
+  stange: STUECK_FARBE.standard, stange_sonder: STUECK_FARBE.sonder, stange_rest: STUECK_FARBE.rest,
+  stahl: "#5b6673", stahl_rand: "#3a4350",
+  platte: "#14559c", mutter: "#0b3a73", kontur: "#13202e",
   raster: "#8a93a0", oeffnung: "#c9461c", text: "#6b7682",
 };
 
@@ -467,8 +531,17 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   const pw = Math.max(6, 110 * sc);
   ab.straenge.forEach((st, i) => {
     const x = X(st.x_mm);
-    s += `<line x1="${x}" y1="${Y(st.z_unten_mm)}" x2="${x}" y2="${Y(st.zeichen_oben_mm)}" `
-      + `stroke="${FARBE.stange}" stroke-width="2.4"/>`;
+    // Stueckweise nach dem gemeinsamen Farbschluessel ([D-4]): Standardlaenge,
+    // Sonderzuschnitt und Reststueck sind auch im Baugruppenbild unterscheidbar.
+    // Alt-Bundles ohne `stuecke` fallen auf die Einzellinie zurueck.
+    if (st.stuecke_sicht && st.stuecke_sicht.length) {
+      for (const p of st.stuecke_sicht)
+        s += `<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" `
+          + `stroke="${stueckFarbe(p.art)}" stroke-width="2.4"/>`;
+    } else {
+      s += `<line x1="${x}" y1="${Y(st.z_unten_mm)}" x2="${x}" y2="${Y(st.zeichen_oben_mm)}" `
+        + `stroke="${FARBE.stange}" stroke-width="2.4"/>`;
+    }
     // Fussanschluss
     if (st.anker_unten === "bodenblech") s += `<circle cx="${x}" cy="${Y(st.z_unten_mm)}" r="2.8" fill="${FARBE.mutter}"/>`;
     else s += `<rect x="${x - pw / 2}" y="${Y(st.z_unten_mm) - 3}" width="${pw}" height="3" fill="${FARBE.platte}"/>`;
@@ -499,6 +572,11 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
       + `<text x="${X(L) + 4}" y="${y - 3.8}" font-size="8" fill="${FARBE.oeffnung}" text-anchor="end">${t}</text>`;
   }
 
+  // Zuschnitt-Legende — Teil des SVG, damit Vorschau (Modul 5) und Export garantiert
+  // dasselbe Bild zeigen. Nur die Arten, die in DIESEM Abschnitt gezeichnet wurden;
+  // ohne `stuecke` (Alt-Bundle) entfaellt sie ersatzlos ([D-4]).
+  s += _zuschnittLegende(ab, padL, vbH - 6);
+
   // Kopfzeile
   if (ab.art === "schnitt0") {
     s += `<text x="${padL - 6}" y="14" font-size="11" fill="${FARBE.text}">`
@@ -512,6 +590,26 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
       + `${ab.straenge.length} Vorspannstränge · Blick von vorne, x ab links · Raster 12,5 cm</text>`;
     s += `<text x="${padL - 6}" y="26" font-size="9" fill="${FARBE.text}">`
       + `Zahl links = Steinreihe · Zahl im Chip = Strangposition ab links (cm) · offenes Stangenende = Kopplung folgt</text>`;
+  }
+  return s;
+}
+
+/**
+ * Legende des Zuschnitts (Stueckarten) fuer ein Baugruppenbild — dieselbe Reihenfolge
+ * und dieselben Texte wie in Modul 1 und Modul 7 ([D-4]). Leer, wenn nichts stueckweise
+ * gezeichnet wurde.
+ */
+function _zuschnittLegende(ab, x0, y) {
+  const arten = ["standard", "sonder", "rest"]
+    .filter(a => (ab.straenge || []).some(st => (st.stuecke_sicht || []).some(p => p.art === a)));
+  if (!arten.length) return "";
+  let lx = x0;
+  let s = `<text x="${lx}" y="${y}" font-size="9" fill="${FARBE.text}">Zuschnitt:</text>`;
+  lx += 52;
+  for (const a of arten) {
+    s += `<line x1="${lx}" y1="${y - 3}" x2="${lx + 14}" y2="${y - 3}" stroke="${stueckFarbe(a)}" stroke-width="2.6"/>`
+      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${STUECK_LABEL[a]}</text>`;
+    lx += 26 + STUECK_LABEL[a].length * 5;
   }
   return s;
 }

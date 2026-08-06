@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import { semblaBomItems } from "../../docs/shared/sembla-bom.js";
-import { stangenEnden } from "../../docs/shared/sembla-montage.js";
+import { stangenEnden, STUECK_FARBE, STUECK_LABEL } from "../../docs/shared/sembla-montage.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
 
@@ -112,6 +112,33 @@ ok("Stangen werden stueckweise aus den realen `stuecke` gezeichnet",
 ok("Sonderlaengen sind eigens gekennzeichnet", sonderSoll > 0 && sonderLinien === sonderSoll);
 ok("Kopplungen/Verankerungen sind markiert", svg.includes(Z.FARBE.mutter) && /<circle/.test(svg));
 
+// [D-4] gemeinsamer Farbschluessel: Modul 1, 5 und 7 einfaerben denselben Zuschnitt gleich.
+ok("Stangenfarben kommen aus STUECK_FARBE (sembla-montage.js), kein eigener Farbsatz",
+  Z.FARBE.stange === STUECK_FARBE.standard && Z.FARBE.stange_sonder === STUECK_FARBE.sonder
+  && Z.FARBE.stange_rest === STUECK_FARBE.rest);
+ok("die Zeichnung leitet die Stueckart nicht selbst ab (stueckArt kommt geteilt)",
+  /import \{[^}]*stueckArt[^}]*\} from "\.\/sembla-montage\.js"/.test(
+    readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8"))
+  && !/function _stueckArt/.test(readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8")));
+
+// Reststueck am oberen Wandabschluss ([Z-6]) ist in der Zeichnung eigens erkennbar.
+// Standardlaengen 100/50 cm, Reststueck 30 cm, Ueberstand 1 cm -> 100+100+31(Sonder)+30(Rest).
+const WR6 = buildWall("IW-04", 3000, 2600, [], null,
+  { rod_lengths_mm: [1000, 500], rod_rest_mm: 300, rod_overhang_mm: 10 });
+const svgR6 = Z.zeichnungSvg(WR6, {}).svg;
+const zaehl = (t, f) => (t.match(new RegExp(`stroke="${f}"`, "g")) || []).length;
+const sollArt = a => WR6.tension_columns.flatMap(c => c.segments)
+  .reduce((n, sg) => n + (sg.stuecke || []).filter(p => p.art === a).length, 0);
+ok("Testwand enthaelt alle drei Stueckarten (Voraussetzung des Tests)",
+  ["standard", "sonder", "rest"].every(a => sollArt(a) > 0));
+ok("Reststueck, Sonderzuschnitt und Standardlaenge sind getrennt eingefaerbt",
+  ["standard", "sonder", "rest"].every(a => zaehl(svgR6, STUECK_FARBE[a]) === sollArt(a)));
+ok("Legende erklaert auch das Reststueck am oberen Abschluss",
+  Z.legendeHtml().includes(STUECK_LABEL.rest) && /\[Z-6\]/.test(Z.legendeHtml())
+  && Z.blattHtml(WR6, eingaben, {}).html.includes(STUECK_LABEL.rest));
+ok("ohne Reststueck steht die Reststueck-Farbe nicht im Blatt-SVG (nichts erfinden)",
+  !Z.zeichnungSvg(W, {}).svg.includes(STUECK_FARBE.rest));
+
 // --- 4) [D-3] Bemassung ----------------------------------------------------
 ok("Gesamtlaenge und -hoehe in m bemasst", / m<\/text>/.test(svg));
 ok("Oeffnungsmasse in cm bemasst", / cm<\/text>/.test(svg));
@@ -151,7 +178,7 @@ ok("Legende erklaert den Darstellungsschluessel",
   ok("[D-4] Reststueck wird in eigener Farbe gezeichnet",
     svg.includes(Z.FARBE.stange_rest) && Z.FARBE.stange_rest !== Z.FARBE.stange
     && Z.FARBE.stange_rest !== Z.FARBE.stange_sonder);
-  ok("[D-4] Legende benennt das Reststueck", /Reststück oberer Abschluss/.test(Z.legendeHtml()));
+  ok("[D-4] Legende benennt das Reststueck", /Reststück oben/.test(Z.legendeHtml()));
   const zr = Z.vorspannZeilen(WR).find(r => r.label === "Reststück oben");
   ok("[Z-6] Reststueck als eigene Kennzahl mit Laenge und Anzahl",
     !!zr && /10,0 cm/.test(zr.wert) && zr.wert.includes(stuecke.filter(s => s.art === "rest").length + "×"));

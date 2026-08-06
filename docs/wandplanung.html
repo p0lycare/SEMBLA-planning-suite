@@ -196,6 +196,8 @@ const pct=u=>fmt(u*100,0)+' %';
 const M=1000;
 // aus window.SEMBLA (in __wpInit gebunden):
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store, KAT;
+// Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
+let STUECK_FARBE, STUECK_LABEL, stueckFarbe;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
 // hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
@@ -396,7 +398,9 @@ function draw(w){
   // ---- Anschlüsse: Bodenblech (immer), Kopfblech oder Spannplatten ----
   const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
   const blMm=(w.prestress&&w.prestress.blech_mm)||1000;
-  const STEEL='#5b6673', SPANN='#e8702a', NUT='#0b3a73';
+  // SPANN (Spannplatte) ist bewusst NICHT die Sonderzuschnittsfarbe ([D-4]): das Bauteil
+  // darf mit dem Zuschnitt nicht verwechselt werden — gleicher Wert wie in Modul 5/7.
+  const STEEL='#5b6673', SPANN='#14559c', NUT='#0b3a73';
   const bth=Math.max(4, 15*sc);   // 15 mm Blechdicke, skaliert (min 4px sichtbar)
   const xL=Math.min(X(0),X(L)), xR=Math.max(X(0),X(L));
   // Bodenblech als durchgehender Balken unter dem Wandfuß
@@ -412,8 +416,9 @@ function draw(w){
   // realen Stücke aus segment.stuecke ([Z-2]/[Z-3]/[Z-6]) — Standardlänge, Sonderzuschnitt und
   // Reststück getrennt, mit einer Marke an jeder Kopplung. So sieht man beim Ändern von Höhe
   // oder Produktauswahl sofort, wie sich die Zerlegung verschiebt.
-  const C_STD='#1f6feb', C_SOND='#c9461c', C_REST='#7a3fd6';
-  const stueckFarbe=a=>(a==='sonder'?C_SOND:(a==='rest'?C_REST:C_STD));
+  // Farbschlüssel und Klartext kommen aus sembla-montage.js ([D-4]) — dieselbe Quelle wie
+  // Baugruppenbild (Modul 5) und technische Zeichnung (Modul 7), keine lokalen Hex-Werte.
+  const C_STD=STUECK_FARBE.standard;
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
       const st=Array.isArray(g.stuecke)&&g.stuecke.length?g.stuecke:null;
@@ -448,8 +453,8 @@ function draw(w){
   { const alle=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
     if(alle.length){
       const hat=a=>alle.some(p=>p.art===a);
-      const teile=[['Standardlänge',C_STD,true],['Sonderzuschnitt',C_SOND,hat('sonder')],
-                   ['Reststück oben',C_REST,hat('rest')]].filter(t=>t[2]);
+      const teile=[['standard',true],['sonder',hat('sonder')],['rest',hat('rest')]]
+        .filter(t=>t[1]).map(t=>[STUECK_LABEL[t[0]],stueckFarbe(t[0])]);
       let lx=pad;
       s+=`<text x="${lx}" y="38" font-size="10" fill="#8f96a0">Zuschnitt:</text>`; lx+=58;
       for(const [txt,col] of teile){
@@ -762,6 +767,7 @@ window.__wpInit=function(){
   const S=window.SEMBLA||{};
   GRID=S.GRID; COURSE=S.COURSE; Opening=S.Opening; buildWall=S.buildWall;
   autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store; KAT=S.KAT;
+  STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   bindEvents();
   bindProdukte();
   setupStoreSync();
@@ -780,8 +786,10 @@ window.__wpInit=function(){
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
+  import { STUECK_FARBE, STUECK_LABEL, stueckFarbe } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT };
+  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+                    STUECK_FARBE, STUECK_LABEL, stueckFarbe };
   mountNavbar(1);
   window.__wpInit();
 </script>
