@@ -314,7 +314,7 @@
 
   // --- Modulkarten ---
   const grid = document.getElementById('modul-grid');
-  grid.innerHTML = MODULE.filter(m => m.nr !== 0).map(m =>
+  grid.innerHTML = MODULE.filter(m => m.nr !== 0 && !m.versteckt).map(m =>
     `<a class="card" href="${m.datei}"><div class="t"><span class="n">${m.nr}</span>${m.titel}</div>`
     + `<div class="d">${_beschreibung(m.nr)}</div></a>`
   ).join('');

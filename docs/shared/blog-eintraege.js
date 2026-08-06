@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260806-06",
+    datum: "2026-08-06",
+    typ: "intern",
+    issue: 20,
+    titel: "Reiter 2, 3 und 5 vorübergehend ausgeblendet — Fokus auf den AWG-Zyklus",
+    testbitte: "Die Kopfleiste zeigt nur noch 0, 1, 4, 6, 7 und 8. Aufbau, Statik und Montage sind "
+      + "fachlich unverändert und weiter per direkter Adresse erreichbar; auch im ZIP-Export bleibt "
+      + "alles wählbar.",
+  },
+  {
     id: "chg-20260806-05",
     datum: "2026-08-06",
     typ: "feature",

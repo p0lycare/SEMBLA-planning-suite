@@ -15,14 +15,20 @@
 
 import * as store from "./storage.js";
 
-/** Modul-Register: Nummer, Datei, Kurzname (Reiter), Titel. */
+/**
+ * Modul-Register: Nummer, Datei, Kurzname (Reiter), Titel.
+ *
+ * `versteckt: true` blendet das Modul nur aus der Navigation und der
+ * Modulübersicht aus (Zyklus-Fokus, s. Issue #20) — die Seite bleibt per
+ * direkter URL erreichbar, Code/Tests/Export bleiben unberührt.
+ */
 export const MODULE = [
   { nr: 0, datei: "index.html",       kurz: "Start",      titel: "Übersicht & Verwaltung" },
   { nr: 1, datei: "wandplanung.html", kurz: "Wand",       titel: "Wandplanung & Auslegung" },
-  { nr: 2, datei: "wandaufbau.html",  kurz: "Aufbau",     titel: "Horizontaler Wandaufbau" },
-  { nr: 3, datei: "statik.html",      kurz: "Statik",     titel: "Statischer Nachweis" },
+  { nr: 2, datei: "wandaufbau.html",  kurz: "Aufbau",     titel: "Horizontaler Wandaufbau", versteckt: true },
+  { nr: 3, datei: "statik.html",      kurz: "Statik",     titel: "Statischer Nachweis", versteckt: true },
   { nr: 4, datei: "stueckliste.html", kurz: "Stückliste", titel: "Stückliste & Kosten" },
-  { nr: 5, datei: "montage.html",     kurz: "Montage",    titel: "Montageanleitung" },
+  { nr: 5, datei: "montage.html",     kurz: "Montage",    titel: "Montageanleitung", versteckt: true },
   { nr: 6, datei: "ifc-3d.html",      kurz: "3D / IFC",   titel: "3D-Vorschau & IFC (experimentell)" },
   { nr: 7, datei: "zeichnung.html",   kurz: "Zeichnung",  titel: "Technische Zeichnung (Wandabwicklung)" },
   { nr: 8, datei: "blog.html",        kurz: "Blog",       titel: "Projektblog & Status" },
@@ -76,7 +82,8 @@ export function mountNavbar(activeIndex = 0) {
     document.body.insertBefore(nav, document.body.firstChild);
   }
 
-  const tabs = MODULE.map((m) => {
+  // Versteckte Module erscheinen nicht als Reiter — ausser man steht gerade darauf.
+  const tabs = MODULE.filter((m) => !m.versteckt || m.nr === activeIndex).map((m) => {
     const active = m.nr === activeIndex ? " active" : "";
     return `<a class="sb-tab${active}" href="${m.datei}" title="${m.titel}">`
       + `<span class="n">${m.nr}</span> ${m.kurz}</a>`;

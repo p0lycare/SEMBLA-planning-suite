@@ -273,6 +273,16 @@ nicht mehr alleinige Verteilungsregel.
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 | 8 | `blog.html` | **Projektblog & Status** (mobile-first, read-only): Ansicht „Was ist neu?" aus `blog-eintraege.js` und Ansicht „Projektstatus" aus der öffentlichen GitHub-Issue-API (`sembla-blog.js`). Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben`, kein Login/Backend |
 
+**Module 2, 3 und 5 sind vorübergehend ausgeblendet (Zyklus-Fokus, Issue #20).** Der laufende
+AWG-Zyklus nimmt Statik-Ausbau (Modul 3), Modul-2-Ausbau und die stückweise Montageanleitung
+(Modul 5) ausdrücklich **aus dem Scope**. Damit die Oberfläche das abbildet, tragen diese drei
+Einträge in `docs/shared/navbar.js` das Feld **`versteckt: true`**: sie erscheinen weder als Reiter
+noch in der Modulübersicht von Modul 0 (`docs/index.html`). Das ist **reine Navigation** —
+die Seiten bleiben per direkter URL erreichbar (und ihr Reiter erscheint wieder, sobald man auf
+ihnen steht), Datenfluss, `eingaben`-Abschnitte, Shared-Code, Tests und die Export-Häkchen bleiben
+**unverändert wirksam**. Rückgängig = Flag entfernen. Kein Modul wurde umnummeriert; die
+Nummerierung 0–8 bleibt stabil, damit sie zu den GitHub-Issues passt.
+
 **Modul 8 (Blog) und der Datenfluss.** Der Blog ist bewusst vom Planungsmodell entkoppelt: er
 liest weder Wandelement noch `eingaben` und schreibt nirgendwo hin. Seine beiden Quellen sind
 (a) die im Repo versionierte Änderungsliste `docs/shared/blog-eintraege.js` — statisch, also auch
