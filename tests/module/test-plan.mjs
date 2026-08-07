@@ -98,6 +98,52 @@ t("[L-9] Strecke 0 wird abgewiesen",
 t("[L-9] fehlende Strecke wird abgewiesen",
   await wirft(() => P.kalibriere({ x: 0, y: 0 }, { x: 10, y: 0 }, null), /positive Zahl/));
 
+// --- [L-9] Orthogonal gezwungene Kalibrierlinie (Feinschliff Etappe C4a) ---
+// Gemessen wird an Grundrissen waagerecht oder senkrecht; eine schiefe Linie ist ein
+// Ablesefehler, der den Massstab still verfaelschte. Gewaehlt wird die Achse mit der
+// groesseren Pixeldifferenz — geraten wird nichts.
+t("[L-9] orthogonal: ueberwiegend waagerecht ⇒ y des ersten Punkts gilt",
+  P.orthogonalPunkt({ x: 100, y: 100 }, { x: 400, y: 140 }).x === 400
+  && P.orthogonalPunkt({ x: 100, y: 100 }, { x: 400, y: 140 }).y === 100);
+t("[L-9] orthogonal: ueberwiegend senkrecht ⇒ x des ersten Punkts gilt",
+  P.orthogonalPunkt({ x: 100, y: 100 }, { x: 140, y: 400 }).x === 100
+  && P.orthogonalPunkt({ x: 100, y: 100 }, { x: 140, y: 400 }).y === 400);
+t("[L-9] orthogonal: bei gleicher Differenz gewinnt fest die Waagerechte (deterministisch)",
+  P.orthogonalPunkt({ x: 0, y: 0 }, { x: 50, y: 50 }).y === 0);
+t("[L-9] orthogonal: unbrauchbare Punkte liefern null statt eines geratenen Punkts",
+  P.orthogonalPunkt(null, { x: 1, y: 1 }) === null
+  && P.orthogonalPunkt({ x: 0, y: 0 }, { x: "a", y: 1 }) === null);
+t("[L-9] die gezwungene Linie ergibt genau den Massstab der Achse",
+  P.kalibriere({ x: 100, y: 100 }, P.orthogonalPunkt({ x: 100, y: 100 }, { x: 400, y: 140 }), 3000)
+    .mm_je_pixel === 10);
+
+// --- Kreuzmarker mit ausgesparter Mitte (Feinschliff Etappe C4a) -----------
+const kreuz = P.kreuzPfad(100, 50, 1);
+t("Kreuzmarker besteht aus vier Armen (die Mitte bleibt frei)",
+  (kreuz.match(/M/g) || []).length === 4 && !kreuz.includes("M100 50"));
+t("Kreuzmarker skaliert mit der Bezugsgroesse",
+  P.kreuzPfad(0, 0, 2).includes(String(-2 * P.KREUZ_ARM)));
+t("SVG: der Kalibrierpunkt ist ein Kreuz, kein deckender Punkt",
+  /class="kalpunkt"/.test(P.planSvg(ohne, { breite_px: 100, hoehe_px: 100, kalibrierpunkte: [{x:5,y:5}] }))
+  && !/<circle[^>]*kalpunkt/.test(P.planSvg(ohne, { breite_px: 100, hoehe_px: 100, kalibrierpunkte: [{x:5,y:5}] })));
+t("SVG: die Kalibrierlinie ist gestrichelt (Messhilfe, keine Zeichnungskante)",
+  /class="kallinie"/.test(P.planSvg(ohne, { breite_px: 100, hoehe_px: 100, kalibrierpunkte: [{x:1,y:1},{x:9,y:1}] }))
+  && /stroke-dasharray/.test(P.planSvg(ohne, { breite_px: 100, hoehe_px: 100, kalibrierpunkte: [{x:1,y:1},{x:9,y:1}] })));
+
+// --- [L-9] Planlage in Millimetern (Hintergrund des Layout-Editors) --------
+t("[L-9] ohne Kalibrierung gibt es keine mm-Lage des Bildes — und keine geschaetzte",
+  P.planRahmenMm(ohne) === null);
+{
+  const p = { ...ohne, mm_je_pixel: 12.5, breite_px: 1600, hoehe_px: 1200,
+              versatz_x_mm: 375, versatz_y_mm: -125 };
+  const rm = P.planRahmenMm(p);
+  t("[L-9] mit Kalibrierung liegt das Bild in mm am Versatz",
+    rm.x === 375 && rm.y === -125 && rm.breite === 20000 && rm.hoehe === 15000);
+  t("[L-9] fehlende Bildmasse ⇒ keine mm-Lage (Ersatzmasse ausdruecklich uebergeben)",
+    P.planRahmenMm({ ...p, breite_px: null }) === null
+    && P.planRahmenMm({ ...p, breite_px: null }, { breite_px: 1600 }).breite === 20000);
+}
+
 // --- [L-1] Umrechnung Bild ↔ Raster ---------------------------------------
 const plan = { ...ohne, mm_je_pixel: 12.5, versatz_x_mm: 1000, versatz_y_mm: -500 };
 t("[L-1] Bildpunkt → mm beruecksichtigt den Versatz",

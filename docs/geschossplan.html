@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA · Geschossplan (Layout-Editor)</title>
+<style>
+  a{color:var(--sb-accent);text-decoration:none}
+  .gp-app{display:flex;align-items:stretch;gap:0;height:calc(100vh - 46px);min-height:520px}
+  .gp-tools{width:290px;flex:0 0 290px;background:var(--sb-panel);border-right:1px solid var(--sb-line);
+            overflow:auto;padding:12px 14px}
+  .gp-main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .gp-buehne{flex:1;position:relative;overflow:hidden;background:#eef1f5;min-height:320px}
+  .gp-buehne svg{display:block;width:100%;height:100%;touch-action:none}
+  .gp-buehne.zieht{cursor:grabbing}
+  .gp-buehne.zeichnet{cursor:crosshair}
+  .gp-buehne.schiebt{cursor:move}
+  .gp-status{border-top:1px solid var(--sb-line);background:var(--sb-panel);padding:7px 12px;
+             font-size:12.5px;color:#42505e;display:flex;gap:14px;flex-wrap:wrap}
+  .gp-status b{font-weight:650}
+  .gp-status .err{color:#c0392b}
+
+  .gp-tools h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);
+               margin:16px 0 7px;border-top:1px solid var(--sb-line);padding-top:11px}
+  .gp-tools h3:first-of-type{border-top:0;margin-top:8px;padding-top:0}
+  .gp-zurueck{font-size:12.5px}
+  .gp-ort{font-size:13px;font-weight:650;margin:6px 0 2px}
+  .gp-ort span{font-weight:400;color:var(--sb-muted)}
+  .wz{display:flex;flex-direction:column;gap:5px}
+  .wz button{text-align:left;background:#eef2f7;color:#33415c;border:1px solid transparent;
+             border-radius:8px;padding:7px 10px;font-size:13px;font-weight:600;cursor:pointer}
+  .wz button .k{display:inline-block;min-width:20px;color:var(--sb-muted);font-weight:700}
+  .wz button.an{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
+  .wz button.an .k{color:#cfe0ff}
+  .wz button[disabled]{opacity:.5;cursor:not-allowed}
+  button,.btn-p,.btn-s,.btn-d{border:0;border-radius:8px;padding:7px 11px;font-size:12.5px;
+        font-weight:600;line-height:1.15;cursor:pointer}
+  .btn-p{background:var(--sb-accent);color:#fff}
+  .btn-s{background:#eef2f7;color:#33415c}
+  .btn-d{background:#fdecec;color:#c0392b}
+  button[disabled]{opacity:.45;cursor:not-allowed}
+  .row{display:flex;flex-wrap:wrap;gap:7px;align-items:flex-end;margin:6px 0}
+  .field{display:flex;flex-direction:column;gap:3px}
+  .field label{font-size:11px;color:var(--sb-muted)}
+  .field input,.field select{border:1px solid var(--sb-line);border-radius:7px;padding:6px 8px;font-size:13px;width:118px}
+  .field input.s{width:78px}
+  .field.voll,.field.voll select,.field.voll input{width:100%}
+  .chk{display:flex;align-items:center;gap:7px;font-size:12.5px;margin:7px 0}
+  .msg{font-size:12px;margin-top:8px;min-height:16px;word-break:break-word}
+  .msg.err{color:#c0392b}
+  .msg.ok{color:var(--sb-ok)}
+  .hint{font-size:11.5px;color:var(--sb-muted);margin-top:8px;line-height:1.45}
+  .leer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+        text-align:center;padding:24px;color:#42505e;font-size:14px}
+  .leer div{max-width:520px}
+  .legende{font-size:11.5px;color:var(--sb-muted);margin-top:7px}
+  .legende span{display:inline-flex;align-items:center;gap:5px;margin-right:9px}
+  .legende i{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  .overlay{position:fixed;inset:0;background:rgba(20,32,46,.5);display:flex;align-items:center;
+           justify-content:center;z-index:60;padding:16px}
+  .overlay[hidden]{display:none}
+  .modal{background:#fff;border-radius:14px;padding:18px 20px;max-width:1000px;width:100%;
+         max-height:92vh;overflow:auto;box-shadow:0 12px 40px rgba(20,32,46,.25)}
+  .modal h3{margin:0 0 4px;font-size:16px}
+  .modal .sub{font-size:12.5px;color:var(--sb-muted);margin:0 0 12px}
+  .modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:14px}
+  .kalbuehne{border:1px solid var(--sb-line);border-radius:9px;background:#f7f9fc;overflow:auto;
+             max-height:56vh;cursor:crosshair}
+  .kalbuehne svg{display:block}
+</style>
+</head>
+<body>
+
+<div class="gp-app">
+  <aside class="gp-tools">
+    <div class="gp-zurueck"><a href="index.html">‹ Projektplaner (Modul&nbsp;0)</a></div>
+    <div class="gp-ort" id="gp-ort">–</div>
+
+    <h3>Werkzeuge</h3>
+    <div class="wz">
+      <button id="wz-auswahl" data-wz="auswahl"><span class="k">Esc</span> Auswählen &amp; ziehen</button>
+      <button id="wz-wand" data-wz="wand"><span class="k">W</span> Wand zeichnen</button>
+      <button id="wz-plan" data-wz="plan"><span class="k">P</span> Plan verschieben</button>
+      <button id="wz-bemassen" disabled title="Kommt in Etappe C4b (Bemaßen, Fixieren, Farben, Undo)."><span class="k">D</span> Bemaßen <span class="k">· C4b</span></button>
+      <button id="wz-fixieren" disabled title="Kommt in Etappe C4b (Bemaßen, Fixieren, Farben, Undo)."><span class="k">F</span> Fixieren <span class="k">· C4b</span></button>
+    </div>
+    <div class="hint" id="wz-hinweis">–</div>
+
+    <h3>Neue Wand</h3>
+    <div class="field voll"><label for="gp-ziel">Gezeichnet wird</label>
+      <select id="gp-ziel"></select></div>
+    <div class="row">
+      <div class="field"><label for="gp-hoehe">Höhe (mm)</label>
+        <input id="gp-hoehe" class="s" type="number" step="200" min="200" value="2600"></div>
+      <div class="field"><label for="gp-wandtyp">Wandtyp</label>
+        <select id="gp-wandtyp" style="width:130px">
+          <option value="mit_wind" selected>mit Wind (Cpi)</option>
+          <option value="ohne_wind">ohne Wind</option>
+        </select></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="gp-fang" checked>
+      <span>Fang auf 125-mm-Raster</span></label>
+    <div class="hint" id="gp-hoehe-hinweis"></div>
+
+    <h3>Auswahl</h3>
+    <div id="gp-auswahl-info" class="hint">Keine Wand ausgewählt.</div>
+    <div class="row">
+      <button class="btn-s" id="gp-planen" disabled>In Modul&nbsp;1 planen</button>
+      <button class="btn-d" id="gp-lage-weg" disabled>Lage aufheben</button>
+    </div>
+
+    <h3>Ansicht</h3>
+    <div class="row">
+      <button class="btn-s" id="gp-zoom-minus" title="Herauszoomen">–</button>
+      <button class="btn-s" id="gp-zoom-plus" title="Hineinzoomen">+</button>
+      <button class="btn-s" id="gp-zoom-alles">Alles zeigen</button>
+    </div>
+    <div class="hint">Zoom auf den Zeiger mit dem Mausrad · Verschieben mit <b>Leertaste</b> oder
+      mittlerer Maustaste. Das ist nur der <b>Blick</b> — der Planversatz bleibt unberührt ([L-9]).</div>
+
+    <h3>Geschossplan</h3>
+    <div class="hint" id="gp-plan-info">–</div>
+    <label class="chk"><input type="checkbox" id="gp-plan-lock" checked>
+      <span>Plan gesperrt (Ziehen bewegt ihn nicht)</span></label>
+    <div class="row">
+      <button class="btn-s" id="gp-kalibrieren">Kalibrieren…</button>
+      <div class="field"><label for="gp-mmjepx">mm je Bildpixel</label>
+        <input id="gp-mmjepx" class="s" type="number" step="0.001" min="0" placeholder="z. B. 12,5"></div>
+      <button class="btn-s" id="gp-mass-uebernehmen">Setzen</button>
+    </div>
+    <div class="row">
+      <div class="field"><label for="gp-vx">Versatz X (mm)</label>
+        <input id="gp-vx" class="s" type="number" step="125" value="0"></div>
+      <div class="field"><label for="gp-vy">Versatz Y (mm)</label>
+        <input id="gp-vy" class="s" type="number" step="125" value="0"></div>
+    </div>
+    <div class="row">
+      <button class="btn-s" id="gp-versatz-uebernehmen">Versatz setzen</button>
+      <button class="btn-s" id="gp-versatz-null">Auf 0 / 0</button>
+    </div>
+
+    <div class="msg" id="gp-msg"></div>
+    <div class="legende">
+      <span><i style="background:#7fb6e6"></i>frei</span>
+      <span><i style="background:#1a1a1a"></i>bestimmt</span>
+      <span><i style="background:#1f9d4d"></i>ausgewählt</span>
+      <span><i style="background:#d92b2b"></i>Fehler</span>
+    </div>
+    <div class="hint">Die <b>Lage</b> lebt im Geschoss der Projektmappe, nie im Wandelement ([K-10]).
+      Positionen stehen in <b>Millimetern</b>, die Länge im 125-mm-Raster, die Breite ist konstant
+      125&nbsp;mm ([L-1]). <b>Überlappungen</b> werden rot gemeldet und <b>nie</b> selbsttätig
+      korrigiert ([K-13]); eine Ecke ist ein <b>Stoß</b>. Der Plan ist <b>Hintergrund, keine
+      Datenquelle</b> ([L-9]) — hochgeladen wird er im Projektplaner beim Geschoss.</div>
+  </aside>
+
+  <div class="gp-main">
+    <div class="gp-buehne" id="gp-buehne"></div>
+    <div class="gp-status" id="gp-status"></div>
+  </div>
+</div>
+
+<!-- Kalibrieren: eigene Ansicht in BILDPIXELN. Nur hier lassen sich zwei Punkte im Bild
+     anklicken, solange es noch keinen Maßstab gibt — die Zeichenfläche selbst rechnet in
+     Millimetern und kann einen unkalibrierten Plan gar nicht verorten ([L-9]). -->
+<div class="overlay" id="kal-overlay" hidden>
+  <div class="modal">
+    <h3>Plan kalibrieren</h3>
+    <p class="sub">Zwei Punkte im Plan anklicken, deren realen Abstand du kennst, und die Strecke in
+      mm eintragen. Der zweite Punkt wird <b>orthogonal</b> zum ersten gezwungen — schief gemessen
+      verfälscht den Maßstab. Es wird <b>kein</b> Maßstab geschätzt ([L-9]).</p>
+    <div class="row">
+      <div class="field"><label for="kal-mm">reale Länge der Linie (mm)</label>
+        <input id="kal-mm" type="number" step="1" min="1" placeholder="z. B. 5000"></div>
+      <button class="btn-s" id="kal-zuruecksetzen">Punkte verwerfen</button>
+      <div class="hint" id="kal-status" style="margin:0">–</div>
+    </div>
+    <div class="kalbuehne" id="kal-buehne"></div>
+    <div class="msg" id="kal-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="kal-cancel">Abbrechen</button>
+      <button class="btn-p" id="kal-go">Maßstab übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Layout-Editor des Geschossplans (Etappe C4a, Issue #26, Regeln [K-1]…[K-13]).
+   App-Logik als klassisches Skript: Shared-Code kommt vom Modul-Skript unten als
+   window.SEMBLA und wird in __gpInit() gebunden — so bleibt diese Logik ohne
+   Modulauflösung im Node-Smoke-Test evaluierbar (Architektur-Regel 2).
+
+   WELTKOORDINATEN sind MILLIMETER ([L-1]). Der viewBox der Zeichenfläche liegt
+   deshalb in mm; das Planbild wird über seinen Maßstab in mm eingehängt und ist
+   ohne Kalibrierung gar nicht darstellbar — geschätzt wird nichts ([L-9]).
+
+   Diese Seite ist kein neues Modul: die Nummerierung 0–8 bleibt stabil, fachlich
+   gehört die Verortung zu Modul 0. Aufruf dort über „Geschoss öffnen“. */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+  c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const fehlerText = e => (e && e.message ? e.message : String(e));
+const r2 = v => Math.round(Number(v) * 100) / 100;
+
+// aus window.SEMBLA (in __gpInit gebunden):
+let store, MAPPE, CON, PLAN, buildWall;
+
+/** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
+const GP = {
+  werkzeug: 'auswahl',        // 'auswahl' | 'wand' | 'plan'
+  auswahl: null,              // Kennung der ausgewählten Wand
+  fang: true,                 // Fang auf 125 mm (aus: 0,5 mm — [L-1])
+  planLock: true,             // gesperrt = Ziehen bewegt den Plan nicht (§4.4)
+  ziel: '',                   // '' = neue Wand anlegen, sonst Kennung einer unverorteten Wand
+  zeichnen: null,             // { start:{x,y}, zeiger:{x,y} } während „Wand zeichnen“
+  ziehen: null,               // { id, von:{x,y}, delta:{x,y} } während des Verschiebens
+  pan: null,                  // { x, y, x0, y0 } Blickverschiebung
+  planZieh: null,             // { x, y, vx, vy } Planversatz
+  raumTaste: false,           // Leertaste gedrückt (Pan)
+  bild: null, bildUrl: null, bildFuer: undefined,
+  hoeheFuer: undefined,       // Geschoss, dessen Höhenvorgabe im Feld steht ([L-5])
+  kal: { punkte: [], zoom: 1 },
+};
+
+/** Blickfeld: linke obere Ecke in mm und der Maßstab (mm je Schirmpixel). */
+const V = { x0: -1000, y0: -1000, mm: 12 };
+
+const MM_JE_PX_MIN = 0.5, MM_JE_PX_MAX = 400;
+
+function zeige(text, ok){ const m = $('gp-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+// ---------------------------------------------------------------------------
+//  Datenzugriff — gelesen wird ausschließlich das AKTIVE Geschoss ([L-10])
+// ---------------------------------------------------------------------------
+function ort(){ return store.aktivesGeschoss(); }
+function geschoss(){ const o = ort(); return o ? o.geschoss : null; }
+function waende(){ const gs = geschoss(); return gs ? gs.waende : []; }
+function bemassungen(){ const gs = geschoss(); return gs ? (gs.bemassungen || []) : []; }
+function plan(){ const gs = geschoss(); return gs ? gs.plan : null; }
+function wand(id){ return waende().find(w => w.id === id) || null; }
+
+/** Lösen + Kollisionsprüfung — nach jeder Änderung frisch, nie gespeichert ([K-5]). */
+function loesen(){ return CON.pruefeGeschoss(waende(), bemassungen()); }
+
+/** Position einer Wand: das Lösungsergebnis, sonst die gespeicherte Lage. */
+function position(id, erg){
+  const p = erg && erg.positionen ? erg.positionen[id] : null;
+  if (p) return p;
+  const l = CON.normLage(wand(id)?.lage);
+  return l ? l.start_mm : null;
+}
+
+// ---------------------------------------------------------------------------
+//  Umrechnung Schirm ↔ Welt (mm)
+// ---------------------------------------------------------------------------
+function flaeche(){
+  const b = $('gp-buehne');
+  const r = b && b.getBoundingClientRect ? b.getBoundingClientRect() : null;
+  const breite = r && r.width > 0 ? r.width : 1000;
+  const hoehe = r && r.height > 0 ? r.height : 600;
+  return { links: r ? r.left : 0, oben: r ? r.top : 0, breite, hoehe };
+}
+
+/** Fensterpunkt → Weltpunkt in mm. */
+function weltPunkt(clientX, clientY){
+  const f = flaeche();
+  return { x: V.x0 + (Number(clientX) - f.links) * V.mm, y: V.y0 + (Number(clientY) - f.oben) * V.mm };
+}
+
+/** Weltpunkt → Fensterpunkt (nur für die Bedienhilfen der Tests). */
+function schirmPunkt(p){
+  const f = flaeche();
+  return { x: f.links + (Number(p.x) - V.x0) / V.mm, y: f.oben + (Number(p.y) - V.y0) / V.mm };
+}
+
+/**
+ * Fang eines Weltpunkts ([L-1]): auf das 125-mm-Raster, oder — ohne Fang — auf
+ * halbe Millimeter. Kleiner als 0,5 mm wird nie gerundet, denn genau das ist das
+ * zulässige Positionsraster.
+ */
+function fange(p){
+  const q = GP.fang ? CON.GRID_MM : 0.5;
+  return { x: Math.round(Number(p.x) / q) * q, y: Math.round(Number(p.y) / q) * q };
+}
+
+/** Zoomen, ohne den Weltpunkt unter dem Zeiger zu verlieren. */
+function zoomeAuf(faktor, clientX, clientY){
+  const f = flaeche();
+  const cx = clientX == null ? f.links + f.breite / 2 : clientX;
+  const cy = clientY == null ? f.oben + f.hoehe / 2 : clientY;
+  const vor = weltPunkt(cx, cy);
+  const neu = Math.min(MM_JE_PX_MAX, Math.max(MM_JE_PX_MIN, V.mm * faktor));
+  if (neu === V.mm) return;
+  V.mm = neu;
+  const nach = weltPunkt(cx, cy);
+  V.x0 += vor.x - nach.x;
+  V.y0 += vor.y - nach.y;
+  render();
+}
+
+/** Blick auf alles Vorhandene setzen (Wände + Planbild). Ohne Inhalt: Ursprung zeigen. */
+function zeigeAlles(){
+  const erg = loesen();
+  let min = { x: Infinity, y: Infinity }, max = { x: -Infinity, y: -Infinity };
+  const dazu = (x0, y0, x1, y1) => {
+    min.x = Math.min(min.x, x0); min.y = Math.min(min.y, y0);
+    max.x = Math.max(max.x, x1); max.y = Math.max(max.y, y1);
+  };
+  for (const w of waende()) {
+    const r = CON.wandRechteck(w.lage, position(w.id, erg));
+    if (r) dazu(r.x_min, r.y_min, r.x_max, r.y_max);
+  }
+  const rahmen = PLAN.planRahmenMm(plan(), GP.bild);
+  if (rahmen) dazu(rahmen.x, rahmen.y, rahmen.x + rahmen.breite, rahmen.y + rahmen.hoehe);
+  const f = flaeche();
+  if (!Number.isFinite(min.x)) {
+    // Nichts verortet: Ursprung mittig, 10 m Blickbreite — das ist eine Ansicht,
+    // keine erfundene Geometrie.
+    V.mm = Math.min(MM_JE_PX_MAX, Math.max(MM_JE_PX_MIN, 10000 / f.breite));
+    V.x0 = -f.breite * V.mm / 2; V.y0 = -f.hoehe * V.mm / 2;
+    render();
+    return;
+  }
+  const breite = Math.max(1000, (max.x - min.x) * 1.15);
+  const hoehe = Math.max(1000, (max.y - min.y) * 1.15);
+  V.mm = Math.min(MM_JE_PX_MAX, Math.max(MM_JE_PX_MIN, Math.max(breite / f.breite, hoehe / f.hoehe)));
+  V.x0 = (min.x + max.x) / 2 - f.breite * V.mm / 2;
+  V.y0 = (min.y + max.y) / 2 - f.hoehe * V.mm / 2;
+  render();
+}
+
+// ---------------------------------------------------------------------------
+//  Zeichnen (SVG, Weltkoordinaten in mm)
+// ---------------------------------------------------------------------------
+/** Strichbreite in mm, damit sie auf dem Schirm konstant dünn bleibt. */
+function strich(px){ return (px || 1) * V.mm; }
+
+function rasterSvg(f){
+  const s = CON.GRID_MM;
+  const pxJe = s / V.mm;
+  if (pxJe < 3) return '';                       // unter 3 Schirmpixeln nur graue Fläche
+  const x1 = V.x0 + f.breite * V.mm, y1 = V.y0 + f.hoehe * V.mm;
+  const fein = [], haupt = [];
+  for (let g = Math.ceil(V.x0 / s); g * s <= x1; g++) {
+    (g % 8 === 0 ? haupt : fein).push(`M${r2(g * s)} ${r2(V.y0)}V${r2(y1)}`);
+  }
+  for (let g = Math.ceil(V.y0 / s); g * s <= y1; g++) {
+    (g % 8 === 0 ? haupt : fein).push(`M${r2(V.x0)} ${r2(g * s)}H${r2(x1)}`);
+  }
+  return (fein.length ? `<path class="rasterfein" d="${fein.join('')}" fill="none" stroke="#2f6fb3"`
+      + ` stroke-opacity=".22" stroke-width="${r2(strich(1))}"/>` : '')
+    + (haupt.length ? `<path class="rasterhaupt" d="${haupt.join('')}" fill="none" stroke="#2f6fb3"`
+      + ` stroke-opacity=".45" stroke-width="${r2(strich(1.2))}"/>` : '');
+}
+
+/** Geschossursprung — der einzige Grundbezug ([K-4]), als Kreuzmarker mit Aussparung. */
+function ursprungSvg(){
+  return `<path class="ursprung" d="${PLAN.kreuzPfad(0, 0, V.mm)}" fill="none" stroke="#33415c"`
+    + ` stroke-width="${r2(strich(1.4))}"/>`
+    + `<text x="${r2(14 * V.mm)}" y="${r2(-8 * V.mm)}" font-size="${r2(11 * V.mm)}" fill="#33415c">0/0</text>`;
+}
+
+function planSvgTeil(){
+  const p = plan();
+  if (!p) return '';
+  const rahmen = PLAN.planRahmenMm(p, GP.bild);
+  if (!rahmen || !GP.bildUrl) return '';
+  return `<image class="planbild" href="${esc(GP.bildUrl)}" x="${r2(rahmen.x)}" y="${r2(rahmen.y)}"`
+    + ` width="${r2(rahmen.breite)}" height="${r2(rahmen.hoehe)}" preserveAspectRatio="none"`
+    + ` opacity=".85"/>`;
+}
+
+/** Eine Wand als Rechteck samt Mittellinie ([K-2]) und Zustandsfarbe ([K-8]). */
+function wandSvg(w, erg, koll){
+  const pos = position(w.id, erg);
+  const rect = CON.wandRechteck(w.lage, pos);
+  if (!rect) return '';
+  const zustand = CON.zustand(w.id, erg, { aktiv: GP.auswahl, kollisionen: koll });
+  const farbe = CON.FARBEN[zustand];
+  const l = CON.normLage(w.lage);
+  const b = rect.x_max - rect.x_min, h = rect.y_max - rect.y_min;
+  const teile = [`<g class="wand z-${zustand}" data-wand="${esc(w.id)}">`,
+    `<rect x="${r2(rect.x_min)}" y="${r2(rect.y_min)}" width="${r2(b)}" height="${r2(h)}"`
+    + ` fill="${farbe}" fill-opacity="${zustand === 'frei' ? '.20' : '.28'}" stroke="${farbe}"`
+    + ` stroke-width="${r2(strich(zustand === 'aktiv' ? 2.2 : 1.6))}"><title>${esc(w.name || w.id)}</title></rect>`];
+  // Mittellinie gestrichelt: sie ist Bezug ([K-2]), keine Bauteilkante.
+  const mx1 = l.richtung === 'x' ? rect.x_min : (rect.x_min + rect.x_max) / 2;
+  const mx2 = l.richtung === 'x' ? rect.x_max : mx1;
+  const my1 = l.richtung === 'x' ? (rect.y_min + rect.y_max) / 2 : rect.y_min;
+  const my2 = l.richtung === 'x' ? my1 : rect.y_max;
+  teile.push(`<line class="mittellinie" x1="${r2(mx1)}" y1="${r2(my1)}" x2="${r2(mx2)}" y2="${r2(my2)}"`
+    + ` stroke="${farbe}" stroke-width="${r2(strich(1))}"`
+    + ` stroke-dasharray="${r2(strich(8))} ${r2(strich(5))}"/>`);
+  if (GP.auswahl === w.id) {
+    // Griffe an den Stirnkanten — die Auswahl bleibt auch in Fehlerrot erkennbar ([K-8]).
+    const g = 5 * V.mm;
+    for (const p of [{ x: mx1, y: my1 }, { x: mx2, y: my2 }]) {
+      teile.push(`<rect class="griff" x="${r2(p.x - g)}" y="${r2(p.y - g)}" width="${r2(2 * g)}"`
+        + ` height="${r2(2 * g)}" fill="#fff" stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(1.6))}"/>`);
+    }
+  }
+  const laenge = CON.laengeMm(w.lage);
+  if (laenge / V.mm > 46) {
+    const cx = (rect.x_min + rect.x_max) / 2, cy = (rect.y_min + rect.y_max) / 2;
+    const dreh = l.richtung === 'y' ? ` transform="rotate(-90 ${r2(cx)} ${r2(cy)})"` : '';
+    teile.push(`<text x="${r2(cx)}" y="${r2(cy + 4 * V.mm)}" font-size="${r2(11 * V.mm)}"`
+      + ` text-anchor="middle" fill="#1c2430"${dreh}>${esc(w.name || w.id)}</text>`);
+  }
+  teile.push('</g>');
+  return teile.join('');
+}
+
+/** Vorschau der Wand, die gerade gezeichnet wird (nichts davon ist gespeichert). */
+function entwurfSvg(){
+  const e = GP.zeichnen;
+  if (!e || !e.zeiger) return '';
+  const v = entwurfLage(e.start, e.zeiger);
+  if (!v) {
+    return `<circle cx="${r2(e.start.x)}" cy="${r2(e.start.y)}" r="${r2(4 * V.mm)}"`
+      + ` fill="none" stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(1.6))}"/>`;
+  }
+  const rect = CON.wandRechteck(v.lage);
+  return `<rect class="entwurf" x="${r2(rect.x_min)}" y="${r2(rect.y_min)}"`
+    + ` width="${r2(rect.x_max - rect.x_min)}" height="${r2(rect.y_max - rect.y_min)}"`
+    + ` fill="${CON.FARBEN.aktiv}" fill-opacity=".18" stroke="${CON.FARBEN.aktiv}"`
+    + ` stroke-width="${r2(strich(1.6))}" stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"/>`
+    + `<text x="${r2((rect.x_min + rect.x_max) / 2)}" y="${r2(rect.y_min - 6 * V.mm)}"`
+    + ` font-size="${r2(11 * V.mm)}" text-anchor="middle" fill="#1f9d4d">`
+    + `${v.lage.laenge_grid} × 125 = ${v.laenge_mm} mm</text>`;
+}
+
+/**
+ * Gerasterter Zugversatz, um bestimmte Achsen bereinigt — dieselbe Regel wie beim
+ * Abschluss ([K-9]), damit die Vorschau nicht mehr verspricht als das Verschieben hält.
+ */
+function zugVersatz(erg){
+  const z = GP.ziehen;
+  if (!z) return null;
+  const q = GP.fang ? CON.GRID_MM : 1;                        // ganzzahlige mm ([K-12])
+  const d = { x: Math.round(z.delta.x / q) * q, y: Math.round(z.delta.y / q) * q };
+  for (const a of CON.ACHSEN) if (erg.bestimmt[z.id] && erg.bestimmt[z.id][a]) d[a] = 0;
+  return d;
+}
+
+/** Vorschau des Ziehens: die ganze starre Gruppe, gestrichelt ([K-9]). Nichts gespeichert. */
+function zugSvg(erg){
+  const z = GP.ziehen;
+  if (!z) return '';
+  const d = zugVersatz(erg);
+  if (!d.x && !d.y) return '';
+  const teile = [];
+  for (const w of waende()) {
+    const mit = { x: erg.gruppen.x[w.id] === erg.gruppen.x[z.id],
+                  y: erg.gruppen.y[w.id] === erg.gruppen.y[z.id] };
+    if (!mit.x && !mit.y) continue;
+    const p = position(w.id, erg);
+    if (!p) continue;
+    const r = CON.wandRechteck(w.lage, { x: p.x + (mit.x ? d.x : 0), y: p.y + (mit.y ? d.y : 0) });
+    if (!r) continue;
+    teile.push(`<rect class="zug" x="${r2(r.x_min)}" y="${r2(r.y_min)}" width="${r2(r.x_max - r.x_min)}"`
+      + ` height="${r2(r.y_max - r.y_min)}" fill="${CON.FARBEN.aktiv}" fill-opacity=".14"`
+      + ` stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(1.6))}"`
+      + ` stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"/>`);
+  }
+  return teile.join('');
+}
+
+function render(){
+  const gs = geschoss();
+  const buehne = $('gp-buehne');
+  if (!gs) {
+    buehne.innerHTML = '<div class="leer"><div>Kein aktives Geschoss. Der Editor arbeitet immer am '
+      + '<b>aktiven</b> Geschoss des aktiven Projekts ([L-10]) — im '
+      + '<a href="index.html">Projektplaner</a> ein Geschoss aktiv setzen und „Geschoss öffnen“ '
+      + 'wählen.</div></div>';
+    $('gp-status').innerHTML = '<span>Kein aktives Geschoss.</span>';
+    kopfSync();
+    return;
+  }
+  const f = flaeche();
+  const erg = loesen();
+  const koll = erg.kollisionen || [];
+  const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
+    + `${r2(f.breite * V.mm)} ${r2(f.hoehe * V.mm)}">`,
+    `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
+    planSvgTeil(), rasterSvg(f), ursprungSvg()];
+  for (const w of waende()) teile.push(wandSvg(w, erg, koll));
+  teile.push(zugSvg(erg), entwurfSvg(), '</svg>');
+  buehne.innerHTML = teile.join('');
+  buehne.className = 'gp-buehne'
+    + (GP.pan ? ' zieht' : GP.werkzeug === 'wand' ? ' zeichnet'
+      : GP.werkzeug === 'plan' ? ' schiebt' : '');
+  statusSync(erg, koll);
+  kopfSync();
+}
+
+// ---------------------------------------------------------------------------
+//  Oberfläche außerhalb der Zeichenfläche
+// ---------------------------------------------------------------------------
+function statusSync(erg, koll){
+  const verortet = waende().filter(w => w.lage != null).length;
+  const teile = [
+    `<span><b>${waende().length}</b> Wand/Wände · <b>${verortet}</b> verortet</span>`,
+    `<span><b>${erg.offen.length}</b> ohne vollständige Bestimmung ([K-8])</span>`,
+  ];
+  if (koll.length) {
+    teile.push(`<span class="err"><b>${koll.length}</b> Kollision(en): `
+      + esc(koll.map(k => `${namen(k.a)} ↔ ${namen(k.b)} (${k.ueberlappung_mm.x} × `
+        + `${k.ueberlappung_mm.y} mm)`).join(', ')) + ' — [K-13]</span>');
+  }
+  if (erg.widersprueche.length) {
+    teile.push(`<span class="err"><b>${erg.widersprueche.length}</b> Widerspruch/Widersprüche ([K-6])</span>`);
+  }
+  if (erg.fehler.length) teile.push(`<span class="err">${esc(erg.fehler[0])}</span>`);
+  teile.push(`<span>Maßstab: 1 Pixel ≈ ${r2(V.mm)} mm</span>`);
+  const abw = waende().filter(w => {
+    const el = store.holeElement(w.id);
+    return el && MAPPE.laengenAbgleich(w.lage, el.wandelement ? el.wandelement.length_mm : null).abweichung;
+  });
+  if (abw.length) {
+    teile.push(`<span class="err">${abw.length} Längenabweichung(en) Wandelement ↔ Lage — `
+      + 'gemeldet, nicht angeglichen ([L-3])</span>');
+  }
+  $('gp-status').innerHTML = teile.join('');
+}
+
+function namen(id){ const w = wand(id); return esc(w ? (w.name || id) : id); }
+
+/** Werkzeugleiste an den Zustand angleichen (reine Anzeige). */
+function kopfSync(){
+  const o = ort();
+  const gs = o ? o.geschoss : null;
+  const m = store.holeMappe();
+  $('gp-ort').innerHTML = o
+    ? `${esc(gs.name)}<span> · ${esc(o.gebaeude.name)} · Projekt ${esc(m ? m.projekt.name : '–')}`
+      + (gs.hoehe_mm != null ? ` · Geschosshöhe ${gs.hoehe_mm} mm` : ' · ohne Geschosshöhe') + '</span>'
+    : '<span>kein aktives Geschoss</span>';
+
+  for (const b of ['auswahl', 'wand', 'plan']) {
+    $('wz-' + b).className = GP.werkzeug === b ? 'an' : '';
+  }
+  $('wz-hinweis').innerHTML = GP.werkzeug === 'wand'
+    ? 'Startpunkt anklicken, dann den Endpunkt: die Wand liegt <b>orthogonal</b> ([L-2]), die Länge '
+      + 'rastet auf 125 mm ([L-1]). <b>Escape</b> verwirft.'
+    : GP.werkzeug === 'plan'
+      ? (GP.planLock ? 'Der Plan ist <b>gesperrt</b> — erst die Sperre unten lösen.'
+        : 'Plan mit der Maus ziehen. Verschoben wird der <b>Plan</b>, keine Wandlage ([L-1]/[L-9]).')
+      : 'Wand anklicken und ziehen. Bewegt wird die ganze starre Gruppe; eine in einer Achse '
+        + '<b>bestimmte</b> Wand lässt sich dort nicht ziehen ([K-9]).';
+
+  // Ziel des Wand-Werkzeugs: neu anlegen oder eine eingetragene, aber unverortete Wand.
+  const ohneLage = waende().filter(w => w.lage == null && store.holeElement(w.id));
+  const sel = $('gp-ziel');
+  const bisher = GP.ziel;
+  sel.innerHTML = '<option value="">neue Wand anlegen</option>'
+    + ohneLage.map(w => `<option value="${esc(w.id)}">verorten: ${esc(w.name || w.id)}</option>`).join('');
+  sel.value = ohneLage.some(w => w.id === bisher) ? bisher : '';
+  GP.ziel = sel.value;
+  const neu = !GP.ziel;
+  $('gp-hoehe').disabled = !neu;
+  $('gp-wandtyp').disabled = !neu;
+  const vg = MAPPE.hoehenVorgabe(gs ? gs.hoehe_mm : null);
+  // Die Geschosshöhe ist VORGABE ([L-5]): einmal je Geschoss ins Feld, danach frei
+  // änderbar — eine getroffene Eingabe wird nie überschrieben und nie zurückgeschrieben.
+  if (gs && GP.hoeheFuer !== gs.id) {
+    GP.hoeheFuer = gs.id;
+    if (vg.hoehe_mm != null) $('gp-hoehe').value = String(vg.hoehe_mm);
+  }
+  $('gp-hoehe-hinweis').innerHTML = !neu
+    ? 'Diese Wand hat schon ein Wandelement — Höhe und Wandtyp bleiben unverändert; gezeichnet wird '
+      + 'nur ihre <b>Lage</b>. Eine Längenabweichung wird gemeldet, nie angeglichen ([L-3]).'
+    : vg.hoehe_mm == null
+      ? 'Das Geschoss hat keine Geschosshöhe — die Höhe ist hier zu wählen ([L-5]).'
+      : vg.passt
+        ? `Vorgabe aus dem Geschoss: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm — frei `
+          + 'änderbar und nie zurückgeschrieben ([L-5]).'
+        : esc(vg.hinweis);
+
+  const aus = GP.auswahl ? wand(GP.auswahl) : null;
+  const el = aus ? store.holeElement(aus.id) : null;
+  $('gp-auswahl-info').innerHTML = !aus
+    ? 'Keine Wand ausgewählt.'
+    : `<b>${esc(aus.name || aus.id)}</b><br>`
+      + (aus.lage
+        ? `Lage ${r2(aus.lage.start_mm.x)} / ${r2(aus.lage.start_mm.y)} mm · Richtung `
+          + `${esc(aus.lage.richtung)} · ${aus.lage.laenge_grid} × 125 = ${CON.laengeMm(aus.lage)} mm`
+        : 'unverortet')
+      + (el && el.wandelement
+        ? `<br>Wandelement: ${el.wandelement.length_mm} × ${el.wandelement.height_mm} mm`
+        : '<br>⚠ kein Wandelement (verwaister Eintrag, [L-4])');
+  $('gp-planen').disabled = !(aus && el);
+  $('gp-lage-weg').disabled = !(aus && aus.lage);
+
+  planKopfSync();
+}
+
+function planKopfSync(){
+  const p = plan();
+  const info = $('gp-plan-info');
+  for (const id of ['gp-kalibrieren', 'gp-mass-uebernehmen', 'gp-versatz-uebernehmen',
+                    'gp-versatz-null', 'gp-mmjepx', 'gp-vx', 'gp-vy', 'gp-plan-lock']) {
+    $(id).disabled = !p;
+  }
+  if (!p) {
+    info.innerHTML = 'Kein Plan hinterlegt. Hochgeladen wird er im <a href="index.html">Projektplaner</a> '
+      + 'beim Geschoss („Bearbeiten“) — es gibt bewusst nur <b>einen</b> Upload-Weg.';
+    return;
+  }
+  const teile = [esc(p.datei || 'Plan')];
+  if (p.breite_px && p.hoehe_px) teile.push(`${p.breite_px} × ${p.hoehe_px} px`);
+  teile.push(esc(PLAN.massstabText(p.mm_je_pixel)));
+  if (!GP.bild) teile.push('⚠ Bild in diesem Browser nicht hinterlegt — Maßstab und Versatz sind erhalten');
+  else if (!PLAN.planKalibriert(p)) teile.push('⚠ nicht kalibriert — der Plan liegt deshalb <b>nicht</b> '
+    + 'unter der Zeichnung; es wird kein Maßstab geschätzt ([L-9])');
+  info.innerHTML = teile.join(' · ');
+  $('gp-mmjepx').value = p.mm_je_pixel != null ? String(p.mm_je_pixel) : '';
+  $('gp-vx').value = String(p.versatz_x_mm);
+  $('gp-vy').value = String(p.versatz_y_mm);
+}
+
+// ---------------------------------------------------------------------------
+//  Wand zeichnen ([L-1]/[L-2], Länge im 125-mm-Raster)
+// ---------------------------------------------------------------------------
+/**
+ * Aus zwei Weltpunkten eine gültige Lage ableiten: Richtung = Achse mit dem
+ * größeren Abstand ([L-2] — schräg gibt es nicht), Länge auf 125 mm gerundet,
+ * Anker auf der Mittellinie am Ende mit der kleineren Koordinate ([L-1]).
+ * `null`, wenn die Strecke für weniger als eine Rastereinheit reicht.
+ * @returns {{lage:object, laenge_mm:number}|null}
+ */
+function entwurfLage(a, b){
+  const dx = Number(b.x) - Number(a.x), dy = Number(b.y) - Number(a.y);
+  const richtung = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+  const roh = Math.abs(richtung === 'x' ? dx : dy);
+  const grid = Math.round(roh / CON.GRID_MM);
+  if (grid < 1) return null;
+  const laenge_mm = grid * CON.GRID_MM;
+  const start = richtung === 'x'
+    ? { x: dx >= 0 ? a.x : a.x - laenge_mm, y: a.y }
+    : { x: a.x, y: dy >= 0 ? a.y : a.y - laenge_mm };
+  return { lage: { start_mm: start, richtung, laenge_grid: grid }, laenge_mm };
+}
+
+/** Höhe für eine neu angelegte Wand — Vorgabe, nie erzwungen ([L-5]). */
+function neueHoehe(){
+  const s = String($('gp-hoehe').value || '').trim();
+  const n = Number(s.replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) throw new Error('Höhe muss eine positive Zahl in mm sein.');
+  return n;
+}
+
+/** Zeichnen abschließen: Wandelement anlegen (oder vorhandenes verorten) + Lage setzen. */
+function wandFertig(a, b){
+  const gs = geschoss();
+  if (!gs) { zeige('Kein aktives Geschoss.', false); return null; }
+  const v = entwurfLage(a, b);
+  if (!v) {
+    zeige(`Zu kurz: eine Wand ist mindestens ${CON.GRID_MM} mm lang ([L-1]). Nichts angelegt.`, false);
+    return null;
+  }
+  const fehler = CON.lageFehler(v.lage);
+  if (fehler.length) { zeige('Nicht gezeichnet: ' + fehler.join(' '), false); return null; }
+
+  if (GP.ziel) {
+    const w = wand(GP.ziel);
+    if (!w) { zeige('Die zu verortende Wand ist nicht mehr im Geschoss.', false); return null; }
+    try { store.verorteWand(w.id, gs.id, { lage: v.lage }); }
+    catch (e) { zeige('Nicht verortet: ' + fehlerText(e), false); return null; }
+    GP.auswahl = w.id; GP.ziel = '';
+    const el = store.holeElement(w.id);
+    const ab = MAPPE.laengenAbgleich(v.lage, el && el.wandelement ? el.wandelement.length_mm : null);
+    zeige(`„${w.name || w.id}“ verortet: ${v.laenge_mm} mm in Richtung ${v.lage.richtung}.`
+      + (ab.abweichung ? ` Achtung: das Wandelement ist ${ab.wand_mm} mm lang — die Abweichung wird `
+        + 'gemeldet, nicht angeglichen ([L-3]).' : ''), !ab.abweichung);
+    return w.id;
+  }
+
+  let hoehe, id;
+  try { hoehe = neueHoehe(); } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
+  const name = naechsterName();
+  try {
+    const we = buildWall(name, v.laenge_mm, hoehe, []);
+    // Wandtyp ist ein Fachmerkmal der Wand und wird ausdrücklich hier bei der Anlage
+    // gewählt — Modul 1 führt ihn nur mit.
+    we.wandtyp = store.normWandtyp($('gp-wandtyp').value);
+    id = store.speichere(name, we);
+  } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
+  try { store.verorteWand(id, gs.id, { name, lage: v.lage }); }
+  catch (e) { zeige(`„${name}“ angelegt, aber nicht eingetragen: ${fehlerText(e)}`, false); return id; }
+  GP.auswahl = id;
+  try { store.setzeAktiv(id); } catch { /* nicht aktivierbar: wird unten benannt */ }
+
+  // [P-18] Startklar statt leer: nur LEERE Verwendungsstellen übernehmen die
+  // Standardauswahl des Katalogs. Ohne zugeordneten Katalog wird das gesagt, nie geraten.
+  const nach = [];
+  if (!store.holeKatalog()) {
+    nach.push('kein Bauteilkatalog zugeordnet — im Projektplaner zuordnen ([L-12])');
+  } else {
+    const vb = store.vorbelegeProduktrollen(undefined, id);
+    const n = Object.keys(vb.gesetzt).length;
+    if (n) nach.push(`${n} Verwendungsstelle(n) vorbelegt`);
+  }
+  zeige(`„${name}“ angelegt und verortet: ${v.laenge_mm} × ${hoehe} mm, Richtung ${v.lage.richtung}.`
+    + (nach.length ? ' · ' + nach.join(' · ') : ''), true);
+  return id;
+}
+
+/** Fortlaufender Name für neu gezeichnete Wände (nur ein Vorschlag, umbenennbar in Modul 0). */
+function naechsterName(){
+  const vorhanden = new Set(store.listeElemente().map(e => e.name));
+  for (let i = 1; i < 999; i++) {
+    const n = 'Wand ' + i;
+    if (!vorhanden.has(n)) return n;
+  }
+  return 'Wand';
+}
+
+// ---------------------------------------------------------------------------
+//  Auswahl und Ziehen ([K-9])
+// ---------------------------------------------------------------------------
+/** Wand unter einem Weltpunkt (die zuletzt gezeichnete gewinnt, sie liegt oben). */
+function treffer(p){
+  const erg = loesen();
+  const luft = 2 * V.mm;                        // 2 Schirmpixel Toleranz
+  const liste = waende();
+  for (let i = liste.length - 1; i >= 0; i--) {
+    const r = CON.wandRechteck(liste[i].lage, position(liste[i].id, erg));
+    if (!r) continue;
+    if (p.x >= r.x_min - luft && p.x <= r.x_max + luft
+      && p.y >= r.y_min - luft && p.y <= r.y_max + luft) return liste[i].id;
+  }
+  return null;
+}
+
+/**
+ * Verschieben abschließen. Gerechnet wird über `verschiebe()` — dort wohnt [K-9]:
+ * bewegt wird die ganze starre Gruppe, eine bestimmte Achse ist gesperrt, und kein
+ * Maß wird angefasst. Gespeichert wird ausschließlich die LAGE ([K-10]).
+ */
+function ziehenFertig(id, delta){
+  const gs = geschoss();
+  if (!gs) return;
+  const q = GP.fang ? CON.GRID_MM : 1;          // ganzzahlige mm ([K-12])
+  const d = { x: Math.round(delta.x / q) * q, y: Math.round(delta.y / q) * q };
+  if (!d.x && !d.y) { render(); return; }
+  const alt = waende();
+  const r = CON.verschiebe(alt, bemassungen(), id, d);
+  const geaendert = r.waende.filter((w, i) => {
+    const a = CON.normLage(alt[i] && alt[i].lage), b = CON.normLage(w.lage);
+    return a && b && (a.start_mm.x !== b.start_mm.x || a.start_mm.y !== b.start_mm.y);
+  });
+  if (!geaendert.length) {
+    zeige(r.meldungen.length ? r.meldungen.join(' ') : 'Nichts verschoben.', !r.meldungen.length);
+    render();
+    return;
+  }
+  try {
+    store.aendereMappe(m => {
+      let n = m;
+      for (const w of geaendert) n = MAPPE.setzeLage(n, w.id, w.lage);
+      return n;
+    });
+  } catch (e) { zeige('Nicht verschoben: ' + fehlerText(e), false); render(); return; }
+  const koll = loesen().kollisionen || [];
+  zeige(`Verschoben: ${geaendert.length} Wand/Wände um ${d.x} / ${d.y} mm.`
+    + (r.meldungen.length ? ' ' + r.meldungen.join(' ') : '')
+    + (koll.length ? ` ⚠ ${koll.length} Kollision(en) — gemeldet, nicht korrigiert ([K-13]).` : ''),
+    !r.meldungen.length && !koll.length);
+}
+
+// ---------------------------------------------------------------------------
+//  Zeigerbedienung der Zeichenfläche
+// ---------------------------------------------------------------------------
+function beiKlick(ev){
+  if (!geschoss()) return;
+  const p = fange(weltPunkt(ev.clientX, ev.clientY));
+  if (GP.werkzeug === 'wand') {
+    if (!GP.zeichnen) {
+      GP.zeichnen = { start: p, zeiger: p };
+      zeige('Startpunkt gesetzt — jetzt den Endpunkt anklicken (Escape verwirft).', true);
+      render();
+      return;
+    }
+    const start = GP.zeichnen.start;
+    GP.zeichnen = null;
+    wandFertig(start, p);
+    render();
+    return;
+  }
+  if (GP.werkzeug === 'auswahl' && !GP.ziehen) {
+    GP.auswahl = treffer(weltPunkt(ev.clientX, ev.clientY));
+    render();
+  }
+}
+
+function beiZeigerAb(ev){
+  if (!geschoss()) return;
+  const mitte = ev.button === 1;
+  if (mitte || GP.raumTaste) {
+    GP.pan = { x: ev.clientX, y: ev.clientY, x0: V.x0, y0: V.y0 };
+    if (ev.preventDefault) ev.preventDefault();
+    render();
+    return;
+  }
+  if (GP.werkzeug === 'plan') {
+    const p = plan();
+    if (!p) { zeige('Kein Plan hinterlegt.', false); return; }
+    if (GP.planLock) { zeige('Der Plan ist gesperrt — Ziehen bewegt ihn nicht. Sperre unten lösen.', false); return; }
+    if (!PLAN.planKalibriert(p)) { zeige('Ohne Maßstab gibt es kein Millimetermaß zum Verschieben — erst kalibrieren ([L-9]).', false); return; }
+    GP.planZieh = { x: ev.clientX, y: ev.clientY, vx: p.versatz_x_mm, vy: p.versatz_y_mm };
+    if (ev.preventDefault) ev.preventDefault();
+    return;
+  }
+  if (GP.werkzeug !== 'auswahl') return;
+  const welt = weltPunkt(ev.clientX, ev.clientY);
+  const id = treffer(welt);
+  if (!id) return;
+  GP.auswahl = id;
+  GP.ziehen = { id, von: welt, delta: { x: 0, y: 0 } };
+  if (ev.preventDefault) ev.preventDefault();
+  render();
+}
+
+function beiZeigerBewegung(ev){
+  if (GP.pan) {
+    V.x0 = GP.pan.x0 - (ev.clientX - GP.pan.x) * V.mm;
+    V.y0 = GP.pan.y0 - (ev.clientY - GP.pan.y) * V.mm;
+    render();
+    return;
+  }
+  if (GP.planZieh) {
+    const p = plan();
+    if (!p) return;
+    $('gp-vx').value = String(Math.round(GP.planZieh.vx + (ev.clientX - GP.planZieh.x) * V.mm));
+    $('gp-vy').value = String(Math.round(GP.planZieh.vy + (ev.clientY - GP.planZieh.y) * V.mm));
+    return;
+  }
+  if (GP.ziehen) {
+    const welt = weltPunkt(ev.clientX, ev.clientY);
+    GP.ziehen.delta = { x: welt.x - GP.ziehen.von.x, y: welt.y - GP.ziehen.von.y };
+    render();                                   // Vorschau der starren Gruppe
+    return;
+  }
+  if (GP.werkzeug === 'wand' && GP.zeichnen) {
+    GP.zeichnen.zeiger = fange(weltPunkt(ev.clientX, ev.clientY));
+    render();
+  }
+}
+
+function beiZeigerAuf(){
+  if (GP.pan) { GP.pan = null; render(); return; }
+  if (GP.planZieh) {
+    GP.planZieh = null;
+    versatzUebernehmen();
+    return;
+  }
+  if (GP.ziehen) {
+    const { id, delta } = GP.ziehen;
+    GP.ziehen = null;
+    ziehenFertig(id, delta);
+    render();
+  }
+}
+
+// ---------------------------------------------------------------------------
+//  Plan: Maßstab und Versatz ([L-9]) — Wandlagen bleiben unberührt ([L-1])
+// ---------------------------------------------------------------------------
+function zahlAus(id, was){
+  const s = String($(id).value || '').trim();
+  if (!s) return null;
+  const n = Number(s.replace(',', '.'));
+  if (!Number.isFinite(n)) throw new Error(`${was} muss eine Zahl sein.`);
+  return n;
+}
+
+function versatzUebernehmen(){
+  const gs = geschoss();
+  if (!gs || !gs.plan) { zeige('Kein Plan hinterlegt.', false); return; }
+  let x, y;
+  try { x = zahlAus('gp-vx', 'Der Versatz X') || 0; y = zahlAus('gp-vy', 'Der Versatz Y') || 0; }
+  catch (e) { zeige('Nicht übernommen: ' + fehlerText(e), false); render(); return; }
+  if (gs.plan.versatz_x_mm === x && gs.plan.versatz_y_mm === y) { render(); return; }
+  try { store.setzeGeschossPlanAnsicht(gs.id, { versatz_x_mm: x, versatz_y_mm: y }); }
+  catch (e) { zeige('Nicht übernommen: ' + fehlerText(e), false); render(); return; }
+  zeige(`Versatz gesetzt: X ${Math.round(x)} mm / Y ${Math.round(y)} mm. Verschoben wurde der Plan, `
+    + 'keine Wandlage ([L-1]).', true);
+}
+
+// ---------------------------------------------------------------------------
+//  Kalibrieransicht (Bildpixel) — der einzige Weg zu einem Maßstab ohne Zahl
+// ---------------------------------------------------------------------------
+function kalZeige(text, ok){ const m = $('kal-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+function kalOeffne(){
+  const p = plan();
+  if (!p) { zeige('Kein Plan hinterlegt.', false); return; }
+  if (!GP.bild) { zeige('Das Planbild liegt nicht in diesem Browser — kalibrieren ist ohne Bild nicht möglich ([L-9]).', false); return; }
+  GP.kal.punkte = [];
+  const b = p.breite_px || GP.bild.breite_px || 0;
+  GP.kal.zoom = b > 0 ? Math.min(1, 900 / b) : 1;
+  $('kal-mm').value = '';
+  kalZeige('', true);
+  $('kal-overlay').hidden = false;
+  kalRender();
+}
+
+function kalSchliesse(){ $('kal-overlay').hidden = true; GP.kal.punkte = []; }
+
+function kalRender(){
+  const p = plan();
+  if (!p) return;
+  const b = p.breite_px || (GP.bild && GP.bild.breite_px) || 0;
+  const h = p.hoehe_px || (GP.bild && GP.bild.hoehe_px) || 0;
+  $('kal-buehne').innerHTML = PLAN.planSvg(p, {
+    bildUrl: GP.bildUrl, breite_px: b, hoehe_px: h, zoom: GP.kal.zoom,
+    kalibrierpunkte: GP.kal.punkte, beschriftung: false,
+  });
+  const n = GP.kal.punkte.length;
+  $('kal-status').innerHTML = n === 0 ? 'Ersten Punkt im Plan anklicken.'
+    : n === 1 ? 'Zweiten Punkt anklicken — er wird orthogonal gezwungen.'
+    : `Linie gesetzt: ${Math.round(PLAN.pixelAbstand(GP.kal.punkte[0], GP.kal.punkte[1]))} Bildpixel `
+      + '· reale Länge eintragen und übernehmen.';
+}
+
+function kalKlick(ev){
+  const svg = $('kal-buehne').querySelector ? $('kal-buehne').querySelector('svg') : null;
+  if (!svg || typeof svg.getBoundingClientRect !== 'function') return;
+  const r = svg.getBoundingClientRect();
+  const p = PLAN.svgPunktZuPixel({ links: r.left, oben: r.top, zoom: GP.kal.zoom },
+    { x: ev.clientX, y: ev.clientY });
+  if (GP.kal.punkte.length >= 2) GP.kal.punkte = [];
+  if (GP.kal.punkte.length === 1) {
+    // Orthogonal gezwungen: schief gemessen verfälscht den Maßstab still ([L-9]).
+    GP.kal.punkte.push(PLAN.orthogonalPunkt(GP.kal.punkte[0], p));
+  } else {
+    GP.kal.punkte.push(p);
+  }
+  kalRender();
+}
+
+function kalUebernehmen(){
+  const gs = geschoss();
+  if (!gs || !gs.plan) { kalZeige('Kein Plan hinterlegt.', false); return; }
+  if (GP.kal.punkte.length < 2) { kalZeige('Erst zwei Punkte im Plan anklicken.', false); return; }
+  let mm, k;
+  try { mm = zahlAus('kal-mm', 'Die Länge der Kalibrierlinie'); }
+  catch (e) { kalZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+  try { k = PLAN.kalibriere(GP.kal.punkte[0], GP.kal.punkte[1], mm); }
+  catch (e) { kalZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+  try { store.setzeGeschossPlanAnsicht(gs.id, { mm_je_pixel: k.mm_je_pixel }); }
+  catch (e) { kalZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+  kalSchliesse();
+  zeige(`Maßstab aus der Kalibrierlinie: ${k.strecke_mm} mm auf ${Math.round(k.pixel)} Bildpixel ⇒ `
+    + `${PLAN.massstabText(k.mm_je_pixel)}. Wandlagen unverändert ([L-1]).`, true);
+}
+
+// ---------------------------------------------------------------------------
+//  Planbild aus der eigenen Datenbank ([L-8])
+// ---------------------------------------------------------------------------
+async function bildLaden(gsId, erzwingen){
+  if (!erzwingen && GP.bildFuer === gsId) return;
+  GP.bildFuer = gsId;
+  if (GP.bildUrl) { try { URL.revokeObjectURL(GP.bildUrl); } catch { /* egal */ } GP.bildUrl = null; }
+  GP.bild = null;
+  if (!gsId) return;
+  GP.bild = await PLAN.holePlan(gsId);
+  if (GP.bild && GP.bild.blob) {
+    try { GP.bildUrl = URL.createObjectURL(GP.bild.blob); } catch { GP.bildUrl = null; }
+  }
+}
+
+async function auffrischen(erzwingen){
+  const gs = geschoss();
+  try { await bildLaden(gs ? gs.id : null, erzwingen); }
+  catch (e) { zeige('Planspeicher nicht lesbar: ' + fehlerText(e), false); }
+  render();
+}
+
+// ---------------------------------------------------------------------------
+//  Ereignisse binden
+// ---------------------------------------------------------------------------
+function werkzeug(name){
+  GP.werkzeug = name;
+  GP.zeichnen = null;
+  render();
+}
+
+function binde(){
+  for (const b of ['auswahl', 'wand', 'plan']) {
+    $('wz-' + b).addEventListener('click', () => werkzeug(b));
+  }
+  const buehne = $('gp-buehne');
+  buehne.addEventListener('click', beiKlick);
+  buehne.addEventListener('pointerdown', beiZeigerAb);
+  buehne.addEventListener('pointermove', beiZeigerBewegung);
+  buehne.addEventListener('pointerup', beiZeigerAuf);
+  buehne.addEventListener('pointerleave', beiZeigerAuf);
+  buehne.addEventListener('wheel', (ev) => {
+    if (ev.preventDefault) ev.preventDefault();
+    zoomeAuf(ev.deltaY > 0 ? 1.15 : 1 / 1.15, ev.clientX, ev.clientY);
+  });
+
+  $('gp-fang').addEventListener('change', () => {
+    GP.fang = !!$('gp-fang').checked;
+    zeige(GP.fang ? 'Fang auf 125 mm.' : 'Fang aus — Positionen rasten auf halbe Millimeter ([L-1]).', true);
+    render();
+  });
+  $('gp-ziel').addEventListener('change', () => { GP.ziel = $('gp-ziel').value; render(); });
+  $('gp-plan-lock').addEventListener('change', () => {
+    GP.planLock = !!$('gp-plan-lock').checked;
+    render();
+  });
+  $('gp-zoom-plus').addEventListener('click', () => zoomeAuf(1 / 1.3));
+  $('gp-zoom-minus').addEventListener('click', () => zoomeAuf(1.3));
+  $('gp-zoom-alles').addEventListener('click', zeigeAlles);
+
+  $('gp-planen').addEventListener('click', () => {
+    if (!GP.auswahl) return;
+    try { store.setzeAktiv(GP.auswahl); }
+    catch (e) { zeige('Nicht aktiviert: ' + fehlerText(e), false); return; }
+    try { window.location.href = 'wandplanung.html'; } catch { /* Navigation nicht möglich */ }
+  });
+  $('gp-lage-weg').addEventListener('click', () => {
+    const gs = geschoss(), w = GP.auswahl ? wand(GP.auswahl) : null;
+    if (!gs || !w) return;
+    // Nur die LAGE geht — das Wandelement und der Eintrag im Geschoss bleiben ([K-10]).
+    try { store.verorteWand(w.id, gs.id, { lage: null }); }
+    catch (e) { zeige('Nicht aufgehoben: ' + fehlerText(e), false); return; }
+    zeige(`Lage von „${w.name || w.id}“ aufgehoben — die Wand bleibt im Geschoss eingetragen ([L-4]).`, true);
+    render();
+  });
+
+  $('gp-mass-uebernehmen').addEventListener('click', () => {
+    const gs = geschoss();
+    if (!gs || !gs.plan) { zeige('Kein Plan hinterlegt.', false); return; }
+    let v;
+    try { v = zahlAus('gp-mmjepx', 'Der Maßstab'); }
+    catch (e) { zeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+    if (v != null && !(v > 0)) { zeige('Nicht übernommen: der Maßstab muss größer als 0 sein (mm je Bildpixel).', false); return; }
+    try { store.setzeGeschossPlanAnsicht(gs.id, { mm_je_pixel: v }); }
+    catch (e) { zeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+    zeige(v == null ? 'Maßstab aufgehoben — der Plan liegt jetzt nicht mehr unter der Zeichnung ([L-9]).'
+      : `Maßstab gesetzt: ${PLAN.massstabText(v)}. Wandlagen unverändert ([L-1]).`, true);
+    render();
+  });
+  $('gp-versatz-uebernehmen').addEventListener('click', versatzUebernehmen);
+  $('gp-versatz-null').addEventListener('click', () => {
+    $('gp-vx').value = '0'; $('gp-vy').value = '0';
+    versatzUebernehmen();
+  });
+  $('gp-kalibrieren').addEventListener('click', kalOeffne);
+  $('kal-buehne').addEventListener('click', kalKlick);
+  $('kal-zuruecksetzen').addEventListener('click', () => { GP.kal.punkte = []; kalRender(); });
+  $('kal-cancel').addEventListener('click', () => { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); });
+  $('kal-go').addEventListener('click', kalUebernehmen);
+  $('kal-overlay').addEventListener('click', (ev) => {
+    if (ev.target === $('kal-overlay')) { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); }
+  });
+
+  document.addEventListener('keydown', beiTaste);
+  document.addEventListener('keyup', (ev) => { if (ev.key === ' ') GP.raumTaste = false; });
+  window.addEventListener('resize', () => render());
+}
+
+function beiTaste(ev){
+  if (ev.key === ' ') { GP.raumTaste = true; return; }
+  if (ev.key === 'Escape') {
+    if (!$('kal-overlay').hidden) { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); return; }
+    if (GP.zeichnen) { GP.zeichnen = null; zeige('Zeichnen verworfen — nichts angelegt.', true); render(); return; }
+    werkzeug('auswahl');
+    return;
+  }
+  // Tastenkürzel nur außerhalb von Eingabefeldern
+  const tag = ev.target && ev.target.tagName ? String(ev.target.tagName).toLowerCase() : '';
+  if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+  const k = String(ev.key || '').toLowerCase();
+  if (k === 'w') werkzeug('wand');
+  else if (k === 'p') werkzeug('plan');
+  else if (k === '0') zeigeAlles();
+  else if (k === '+') zoomeAuf(1 / 1.3);
+  else if (k === '-') zoomeAuf(1.3);
+}
+
+// --- Prüfhilfen (Smoke-Test): dieselben Pfade wie die echte Bedienung -------
+window.__gp = {
+  render, werkzeug, zeigeAlles, auffrischen,
+  entwurfLage, fange, weltPunkt, schirmPunkt, treffer, loesen,
+  /** Klick an einem WELTpunkt (mm) — läuft durch die echten Ereignisbehandler. */
+  tippe(welt){ const p = schirmPunkt(welt); beiKlick({ clientX: p.x, clientY: p.y }); },
+  /** Einzelschritte des Ziehens an WELTpunkten — dieselben Behandler wie im Browser. */
+  zeigerAb(welt){ const p = schirmPunkt(welt); beiZeigerAb({ clientX: p.x, clientY: p.y, button: 0, preventDefault(){} }); },
+  zeigerBewegung(welt){ const p = schirmPunkt(welt); beiZeigerBewegung({ clientX: p.x, clientY: p.y }); },
+  zeigerAuf: () => beiZeigerAuf(),
+  /** Ziehen von Welt- zu Weltpunkt (pointerdown/move/up wie im Browser). */
+  ziehe(von, nach){
+    window.__gp.zeigerAb(von);
+    window.__gp.zeigerBewegung(nach);
+    beiZeigerAuf();
+  },
+  taste(key, target){ beiTaste({ key, target: target || {} }); },
+  get zustand(){ return GP; },
+  get blick(){ return V; },
+  get svg(){ return $('gp-buehne').innerHTML; },
+};
+
+window.__gpInit = function(){
+  const S = window.SEMBLA || {};
+  store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; buildWall = S.buildWall;
+  binde();
+  store.abonniere(() => { auffrischen().catch(() => {}); });
+  zeigeAlles();
+  auffrischen(true).catch(() => {});
+};
+</script>
+
+<script type="module">
+  import { mountNavbar } from './shared/navbar.js';
+  import * as store from './shared/storage.js';
+  import * as MAPPE from './shared/sembla-projektmappe.js';
+  import * as CON from './shared/sembla-constraints.js';
+  import * as PLAN from './shared/sembla-plan.js';
+  import { buildWall } from './shared/sembla-core.js';
+  window.SEMBLA = { store, MAPPE, CON, PLAN, buildWall };
+  // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul —
+  // die Nummerierung 0–8 bleibt stabil.
+  mountNavbar(0);
+  window.__gpInit();
+</script>
+</body>
+</html>

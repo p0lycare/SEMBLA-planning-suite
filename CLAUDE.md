@@ -197,7 +197,8 @@ Längenabweichung nach [L-3]) und lässt sich auf das aktive Geschoss bzw. auf n
 Wände einschränken — der Filter ändert nur die **Anzeige**. Das **Umbenennen** einer Wand führt den
 Anzeigenamen der Mappe mit (die Referenz bleibt die `id`); das **Löschen eines Geschosses/Gebäudes**
 entfernt nur die Struktur — die Wandelemente bleiben erhalten und stehen danach als „nicht
-eingetragen“. Das **Einzeichnen der Lage** im Geschossplan folgt erst in C4.
+eingetragen“. Das **Einzeichnen der Lage** geschieht seit Etappe C4a im Layout-Editor
+(`docs/geschossplan.html`, s. u.).
 
 **Geschossplan (IndexedDB `sembla-plaene`, Regeln [L-8]/[L-9], Etappe C3).** Der Plan eines
 Geschosses ist der **Hintergrund** der Verortung und **keine Datenquelle** ([L-9]): aus dem Bild wird
@@ -207,10 +208,10 @@ nichts abgeleitet — keine Wand, keine Länge und vor allem **kein Maßstab**. 
 gleichwertig. Ohne Kalibrierung liegt **kein Raster** über dem Plan, und es wird keines erfunden; ein
 **neues Bild setzt Maßstab und Versatz zurück** statt sie zu übernehmen. Umgekehrt ändert weder
 Kalibrierung noch Versatz noch Planwechsel **irgendeine Wandlage** ([L-1]) — die Lage lebt in
-Rastereinheiten. Das **Bild** liegt nie im localStorage ([L-8]: ein Grundriss sprengt ihn und nähme
+Millimetern und ist vom Plan unabhängig. Das **Bild** liegt nie im localStorage ([L-8]: ein Grundriss sprengt ihn und nähme
 den ganzen Projektstand mit), sondern in einer **eigenen IndexedDB** (ein Datensatz je
 Geschoss-Kennung, Logik in `docs/shared/sembla-plan.js`); in der Mappe stehen nur `datei`, `typ`,
-`breite_px`, `hoehe_px`, Maßstab und Versatz (optionale Zusatzfelder — `MAPPE_VERSION` bleibt 1).
+`breite_px`, `hoehe_px`, Maßstab und Versatz (optionale Zusatzfelder — keine eigene Formatachse).
 Zulässig sind **PNG/JPEG/WebP bis 20 MB**; ein **PDF wird benannt abgewiesen** — das ist der
 **Ist-Stand**, aber die **Begründung ist entfallen**: abgewiesen wurde es im Format-Spike aus #26,
 weil das Rendern eine Fremdbibliothek im Betrieb verlangt hätte, und genau dieses Argument gilt
@@ -219,8 +220,18 @@ entscheidende Frage** (pdf.js), kein abgeschlossenes Nein — bis dahin bleibt d
 unverändert und wird nicht nebenbei geändert. Fehlt das
 Bild (anderer Browser, gelöschte Websitedaten), bleiben Maßstab und Versatz erhalten und der fehlende
 Plan wird **gemeldet**. Beim Löschen eines Geschosses/Gebäudes wird sein Planbild **mit** entfernt und
-das gesagt. Der `viewBox` des Plan-SVG liegt in **Bildpixeln**, damit ein noch nicht kalibrierter Plan
-bedienbar ist. Das **Einzeichnen der Wände** im Raster folgt in C4.
+das gesagt.
+
+**Zwei getrennte Ansichten seit C4a.** Der `viewBox` von `planSvg()` liegt in **Bildpixeln** — das ist
+die **Kalibrieransicht**, und nur dort lassen sich zwei Bildpunkte anklicken, solange es noch keinen
+Maßstab gibt. Die **Zeichenfläche** des Layout-Editors rechnet dagegen in **Millimetern** ([L-1]);
+ein **nicht kalibrierter Plan liegt dort gar nicht erst unter der Zeichnung**, weil es für ihn kein
+Millimetermaß gibt — das wird benannt statt geschätzt ([L-9]). Die Umrechnung dafür ist
+`planRahmenMm()`. Die Kalibrierlinie ist **gestrichelt** und ihr zweiter Punkt wird über
+`orthogonalPunkt()` auf die Achse mit der größeren Pixeldifferenz **gezwungen** (schief gemessen
+verfälscht den Maßstab still); die Marker sind **Kreuze mit ausgesparter Mitte** (`kreuzPfad()`).
+**Hochgeladen** wird ein Plan ausschließlich im **Geschoss-Popup von Modul 0** — genau ein
+Upload-Weg.
 
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
@@ -328,8 +339,12 @@ C3.2 die neue Fassung** (Position in mm).
 
 **Layout-Editor-Regeln [K-1]…[K-13]** (Kapitel 16.10, Plan in `doku/PLAN-Layout-Editor.md`):
 **Löser, Datenmodell und Migration stehen und sind regressionsgetestet** (Etappe C3.2,
-`tests/module/test-constraints.mjs`); die **Oberfläche** dazu — eigene Seite `docs/geschossplan.html`
-mit Skizzenmodus, Bemaßungswerkzeug und Bauteilliste — folgt in C4a/C4b/C4c. Das frühere
+`tests/module/test-constraints.mjs`). Die **Oberfläche** dazu ist die eigene Seite
+`docs/geschossplan.html`: mit **Etappe C4a** stehen Zeichnen, Auswählen/Ziehen ([K-9]), Farben
+([K-8]), Kollisionsmeldung ([K-13]) und der Plan als Hintergrund ([L-9]) —
+`tests/module/smoke_geschossplan.mjs`. **Noch nicht bedienbar** sind **Bemaßen und Fixieren** und
+damit alles, was erst daran sichtbar wird ([K-3]/[K-6]/[K-7]/[K-11] und die Eingabeeinheit [K-12]);
+sie kommen in C4b, die Bauteilliste in C4c. Das frühere
 „Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
 Wandabstände lägen im Raster.
 
@@ -423,8 +438,10 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      **geprüft und verworfen**: die ersten beiden lösen iterativ und damit startwertabhängig, der
      dritte liefert immer eine gewichtete Lösung statt „unterbestimmt“ zu melden. Rein/DOM-frei,
      eigene Tests (`tests/module/test-constraints.mjs`).
-   - `sembla-plan.js` — **Geschossplan** (Modul 0, Etappe C3 von #26, [L-8]/[L-9]): Formatprüfung
-     (PNG/JPEG/WebP, 20 MB, PDF abgewiesen), Kalibrierung, Umrechnung Bildpixel ↔ Raster-mm,
+   - `sembla-plan.js` — **Geschossplan** (Modul 0 + Layout-Editor, Etappen C3/C4a von #26,
+     [L-8]/[L-9]): Formatprüfung (PNG/JPEG/WebP, 20 MB, PDF abgewiesen), Kalibrierung inkl.
+     **orthogonal gezwungenem** zweiten Punkt (`orthogonalPunkt`) und **Kreuzmarker mit ausgesparter
+     Mitte** (`kreuzPfad`), Umrechnung Bildpixel ↔ Raster-mm samt Bildlage in mm (`planRahmenMm`),
      Rasterlinien, `planSvg()` und die **eigene IndexedDB** für die Bilder (Fabrik für Tests
      einschleusbar). Rein/DOM-frei, eigene Tests (`tests/module/test-plan.mjs`).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
@@ -454,7 +471,8 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Plan in `doku/PLAN-Projektplaner.md`; C1/C2/C3/C3.1 stehen, Feinschliff des Editors folgt in C3.2, das Einzeichnen in C4): Die Seite besteht aus **zwei** Dingen — der **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) und dem **Layout-Editor** (Geschossplan hochladen/kalibrieren/verschieben mit 125-mm-Rasteroverlay, [L-8]/[L-9]). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5]), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a stehen, Bemaßen folgt in C4b): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappe C4a, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). Schreibt **nur** die Lage im Geschoss ([K-10]); Bemaßen/Fixieren/Undo folgen in C4b |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

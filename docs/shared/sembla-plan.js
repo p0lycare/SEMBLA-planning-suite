@@ -115,6 +115,26 @@ export function pixelAbstand(a, b) {
 }
 
 /**
+ * Den zweiten Punkt der Kalibrierlinie ORTHOGONAL zum ersten zwingen (Feinschliff
+ * Etappe C4a). Gemessen wird an Grundrissen praktisch immer waagerecht oder
+ * senkrecht; eine leicht schiefe Linie ist dabei ein Ablesefehler, der den
+ * Massstab still verfaelscht. Gewaehlt wird die Achse mit der GROESSEREN
+ * Pixeldifferenz — geraten wird nichts, die Vorgabe ist rein geometrisch.
+ *
+ * Bei genau gleichen Differenzen gewinnt die waagerechte Achse (feste Regel,
+ * damit dieselbe Eingabe stets dasselbe Ergebnis liefert).
+ *
+ * @param {{x:number,y:number}} p1 @param {{x:number,y:number}} p2
+ * @returns {{x:number,y:number}|null} `null`, wenn ein Punkt unbrauchbar ist
+ */
+export function orthogonalPunkt(p1, p2) {
+  if (!p1 || !p2) return null;
+  const x1 = _zahl(p1.x), y1 = _zahl(p1.y), x2 = _zahl(p2.x), y2 = _zahl(p2.y);
+  if (x1 == null || y1 == null || x2 == null || y2 == null) return null;
+  return Math.abs(x2 - x1) >= Math.abs(y2 - y1) ? { x: x2, y: y1 } : { x: x1, y: y2 };
+}
+
+/**
  * Massstab aus einer Kalibrierlinie ([L-9]): zwei Bildpunkte plus die reale
  * Strecke in mm. Unbrauchbare Angaben (Punkte zu dicht, Strecke ≤ 0) werden
  * ABGEWIESEN — es wird kein Ersatzmassstab geschaetzt.
@@ -196,6 +216,28 @@ export function pixelZuGrid(plan, px, py) {
 }
 
 /**
+ * Lage und Groesse des Planbildes in RASTER-MM ([L-9]) — das, was ein in
+ * Millimetern gezeichneter Grundriss (Layout-Editor, Etappe C4a) als Hintergrund
+ * braucht. `null`, wenn der Plan nicht kalibriert ist oder die Bildmasse fehlen:
+ * dann gibt es keine mm-Groesse, und es wird keine geschaetzt.
+ *
+ * @param {any} plan @param {{breite_px?:number, hoehe_px?:number}} [masse] Ersatzmasse (Bilddatensatz)
+ * @returns {{x:number, y:number, breite:number, hoehe:number, mm_je_pixel:number}|null}
+ */
+export function planRahmenMm(plan, masse) {
+  if (!planKalibriert(plan)) return null;
+  const k = +plan.mm_je_pixel;
+  const b = _zahl(plan.breite_px) ?? _zahl(masse && masse.breite_px);
+  const h = _zahl(plan.hoehe_px) ?? _zahl(masse && masse.hoehe_px);
+  if (b == null || h == null || !(b > 0) || !(h > 0)) return null;
+  return {
+    x: _zahl(plan.versatz_x_mm) || 0,
+    y: _zahl(plan.versatz_y_mm) || 0,
+    breite: b * k, hoehe: h * k, mm_je_pixel: k,
+  };
+}
+
+/**
  * Die im Bild sichtbaren Rasterlinien ([L-9]) — als Bildpixel-Koordinaten.
  * Ohne Kalibrierung ist die Liste LEER: es wird kein Raster erfunden.
  *
@@ -250,6 +292,25 @@ function _esc(s) {
   ));
 }
 function _r(v) { return Math.round(Number(v) * 100) / 100; }
+
+/** Armlaenge und Mittelluecke eines Kreuzmarkers, in Vielfachen der Strichbreite. */
+export const KREUZ_ARM = 9;
+export const KREUZ_LUECKE = 3;
+
+/**
+ * Pfad eines Kreuzmarkers mit AUSGESPARTER MITTE — die anzuklickende Stelle bleibt
+ * sichtbar. `mass` ist die Bezugsgroesse (1 Schirmpixel in Bildpixeln, also 1/zoom),
+ * damit der Marker bei jedem Zoom gleich gross erscheint.
+ * @param {number} x @param {number} y @param {number} mass
+ * @returns {string} SVG-Pfaddaten
+ */
+export function kreuzPfad(x, y, mass) {
+  const m = Number(mass) > 0 ? Number(mass) : 1;
+  const a = KREUZ_ARM * m, g = KREUZ_LUECKE * m;
+  const cx = _r(x), cy = _r(y);
+  return `M${_r(x - a)} ${cy}H${_r(x - g)}M${_r(x + g)} ${cy}H${_r(x + a)}`
+    + `M${cx} ${_r(y - a)}V${_r(y - g)}M${cx} ${_r(y + g)}V${_r(y + a)}`;
+}
 
 /**
  * Plan mit Rasteroverlay als SVG ([L-9], reine Anzeige).
@@ -319,16 +380,20 @@ export function planSvg(plan, opt) {
     }
   }
 
-  // Kalibrierlinie: die beiden gesetzten Punkte und ihre Verbindung.
+  // Kalibrierlinie: die beiden gesetzten Punkte und ihre Verbindung. Die Linie ist
+  // GESTRICHELT (sie ist Messhilfe, keine Zeichnungskante), die Punkte sind
+  // KREUZMARKER MIT AUSGESPARTER MITTE — ein voller Punkt verdeckt genau die Stelle,
+  // die man treffen will (Feinschliff Etappe C4a).
   const kp = Array.isArray(o.kalibrierpunkte) ? o.kalibrierpunkte.filter(Boolean) : [];
   if (kp.length) {
     if (kp.length >= 2) {
       teile.push(`<line x1="${_r(kp[0].x)}" y1="${_r(kp[0].y)}" x2="${_r(kp[1].x)}" y2="${_r(kp[1].y)}"`
-        + ` stroke="#c0392b" stroke-width="${_r(s * 2)}" class="kallinie"/>`);
+        + ` stroke="#c0392b" stroke-width="${_r(s * 1.6)}"`
+        + ` stroke-dasharray="${_r(s * 7)} ${_r(s * 5)}" class="kallinie"/>`);
     }
     for (const p of kp.slice(0, 2)) {
-      teile.push(`<circle cx="${_r(p.x)}" cy="${_r(p.y)}" r="${_r(s * 4)}" fill="#c0392b"`
-        + ` class="kalpunkt"/>`);
+      teile.push(`<path d="${kreuzPfad(p.x, p.y, s)}" fill="none" stroke="#c0392b"`
+        + ` stroke-width="${_r(s * 1.6)}" class="kalpunkt"/>`);
     }
   }
 

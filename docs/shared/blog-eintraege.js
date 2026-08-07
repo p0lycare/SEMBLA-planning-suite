@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260807-05",
+    datum: "2026-08-07",
+    typ: "feature",
+    issue: 26,
+    titel: "Layout-Editor: Wände im Geschossplan zeichnen und verschieben — auf einer eigenen Seite",
+    testbitte: "Reiter 0 → beim Geschoss auf „Geschoss öffnen“, dort mit „W“ Wände zeichnen und ziehen. "
+      + "Erwartet: Überlappungen werden rot gemeldet, aber nie von selbst korrigiert.",
+  },
+  {
     id: "chg-20260807-04",
     datum: "2026-08-07",
     typ: "intern",

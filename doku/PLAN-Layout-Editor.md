@@ -1,7 +1,8 @@
 # Plan: Layout-Editor mit Constraints (Issue #26, Etappen C3.2 / C4)
 
-> Stand: 2026-08-07 · **Etappe C3.2 umgesetzt** (Regelwerk, Löser, Datenmodell, Migration — s. §7);
-> die Oberfläche folgt in C4a/C4b/C4c · löst den bisherigen §11 („Feinschliff Layout-Editor") in
+> Stand: 2026-08-07 · **Etappen C3.2 und C4a umgesetzt** (Regelwerk, Löser, Datenmodell, Migration
+> — s. §7; Editor-Seite mit Zeichnen/Ziehen/Plan — s. §8); Bemaßen und Fixieren folgen in C4b ·
+> löst den bisherigen §11 („Feinschliff Layout-Editor") in
 > [`PLAN-Projektplaner.md`](PLAN-Projektplaner.md) ab.
 
 ## 0. Anlass
@@ -269,7 +270,7 @@ Projektieren-Werkzeug aus dem Plan.
 | Etappe | Inhalt | Fertig, wenn |
 |---|---|---|
 | **C3.2 ✅** | Regelwerk (Kap. 16.10, [L-1] neu gefasst), `sembla-constraints.js`, Datenmodell + Migration `MAPPE_VERSION` 1→2 / `SCHEMA_VERSION` 5→6, Tests — **kein UI** | **erledigt** (s. §7) |
-| **C4a** | Neue Seite `docs/geschossplan.html`: Plan-Hintergrund, Zoom/Pan, Plan-Lock, Kalibrier-Feinschliff (§4.4), Wand zeichnen, Auswahl + Ziehen | Wände lassen sich setzen und frei verschieben, der Plan rutscht nicht |
+| **C4a ✅** | Neue Seite `docs/geschossplan.html`: Plan-Hintergrund, Zoom/Pan, Plan-Lock, Kalibrier-Feinschliff (§4.4), Wand zeichnen, Auswahl + Ziehen | **erledigt** (s. §8) |
 | **C4b** | Bemaßen, Fixieren, Farbcodierung, Widerspruchsmeldung, Undo/Redo | Ein Geschoss ist vollständig bemaßbar; alle Wände werden schwarz |
 | **C4c** | Schwebende Bauteilliste mit Kurzbeschreibung; Referenzgeschoss mit einstellbarer Deckkraft | Auswahl in beiden Richtungen synchron; das Geschoss darunter ist blass sichtbar |
 | **C5** | Projektmappe Export/Import als ZIP inkl. Planbild und Bemaßungen | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
@@ -342,3 +343,61 @@ Verweis auf [K-13] ergänzt. Das Handbuch ist neu gebaut.
 **Offen (bewusst nicht in C3.2):** die gesamte Oberfläche — eigene Seite `docs/geschossplan.html`
 mit Skizzenmodus (C4a), Bemaßen/Fixieren/Farben/Undo (C4b), schwebende Bauteilliste und
 Referenzgeschoss (C4c), Mappen-ZIP inklusive Bemaßungen (C5).
+
+---
+
+## 8. Umsetzungsstand C4a (2026-08-07)
+
+**Neue Seite `docs/geschossplan.html`** — kein neues Modul, kein Reiter in `navbar.js`
+(`mountNavbar(0)`, Rücklink auf Modul 0). Aufruf aus der Baumliste über **„Geschoss öffnen"**; der
+Knopf setzt das Geschoss zuerst **aktiv** und ist außerhalb des aktiven Projekts gesperrt, mit
+benanntem Grund ([L-10]). Aufbau wie in §4.1: Werkzeugleiste links, vollflächige Zeichenfläche,
+Statuszeile unten. Die Seite folgt Architektur-Regel 2 (klassisches App-Skript + `window.SEMBLA`,
+`__gpInit()`), damit sie ohne Modulauflösung testbar ist.
+
+- **Weltkoordinaten sind Millimeter.** Der `viewBox` der Zeichenfläche liegt in mm ([L-1]) — anders
+  als der Planupload in Modul 0, dessen SVG in Bildpixeln rechnet. Daraus folgt unmittelbar: ein
+  **nicht kalibrierter Plan liegt gar nicht erst unter der Zeichnung**, weil es ohne Maßstab kein
+  Millimetermaß für ihn gibt; das wird benannt statt geschätzt ([L-9]). Zum Kalibrieren gibt es
+  deshalb eine **eigene Ansicht in Bildpixeln** (Popup) — der einzige Ort, an dem man zwei Punkte im
+  Bild anklicken kann, solange kein Maßstab existiert.
+- **Werkzeuge:** Auswählen/Ziehen (Esc), Wand zeichnen (W), Plan verschieben (P). **Bemaßen (D)** und
+  **Fixieren (F)** stehen sichtbar und **gesperrt** als „C4b" in der Leiste — sie werden nicht
+  versteckt, damit der Ausbaustand ablesbar bleibt. Zoom auf den Zeiger (Mausrad), Pan mit Leertaste
+  oder mittlerer Maustaste, „Alles zeigen" (0). **Pan ≠ Versatz**: der Planversatz bleibt unberührt.
+- **Wand zeichnen** setzt Start- und Endpunkt. Richtung = Achse mit der größeren Differenz ([L-2]),
+  Länge auf 125 mm gerundet, Anker auf der Mittellinie am Ende mit der kleineren Koordinate. Der
+  **Fang** rastet auf 125 mm; ausgeschaltet auf **0,5 mm** — nie feiner, denn das ist das zulässige
+  Positionsraster ([L-1]). Eine zu kurze Strecke wird **abgewiesen**, nicht auf eine Rastereinheit
+  aufgerundet.
+- **Zwei Ziele je Zeichnung:** entweder eine **neue Wand** (Wandelement über `buildWall`, Höhe als
+  Vorgabe aus der Geschosshöhe [L-5], Wandtyp ausdrücklich gewählt, danach [P-18]-Vorbelegung der
+  Verwendungsstellen) oder das **Verorten einer vorhandenen, unverorteten Wand** des Geschosses.
+  Ohne den zweiten Weg wären in Modul 0 angelegte Wände nie verortbar. Eine Abweichung zwischen
+  gezeichneter Länge und Wandelement wird **gemeldet, nie angeglichen** ([L-3]) — in der Meldung
+  und dauerhaft in der Statuszeile.
+- **Auswählen und Ziehen** läuft über `verschiebe()` aus `sembla-constraints.js`: es bewegt die ganze
+  starre Gruppe, sperrt eine durch Bemaßungen **bestimmte** Achse und benennt den Grund ([K-9]).
+  Gespeichert wird ausschließlich die **Lage** im Geschoss ([K-10]) — in **einem** `aendereMappe`,
+  über `setzeLage` geprüft. Das Wandelement wird nie angefasst ([P-1]).
+- **Farben nach [K-8]** (hellblau/schwarz/grün/rot) samt Griffen an der Auswahl; **Kollisionen** nach
+  [K-13] werden mit Wandpaar und Überlappungsmaß in der Statuszeile genannt und **nichts** wird
+  verschoben. Ebenfalls sichtbar: Anzahl der Wände ohne vollständige Bestimmung.
+- **Plan:** Maßstab als Zahl **oder** über die Kalibrierlinie (gleichwertig, [L-9]), Versatz über
+  Felder oder Ziehen, **Plan-Lock** (Standard: gesperrt). Der Kalibrier-Feinschliff aus §4.4 steckt
+  in `sembla-plan.js`: `orthogonalPunkt()` zwingt den zweiten Punkt auf die Achse mit der größeren
+  Pixeldifferenz, die Linie ist **gestrichelt**, die Marker sind **Kreuze mit ausgesparter Mitte**
+  (`kreuzPfad()`). Neu ist außerdem `planRahmenMm()` — die Lage des Bildes in Raster-mm.
+- **Modul 0 verliert den Editor.** Kalibrieren, Versatz, Zoom und die Bühne sind ersatzlos aus
+  `docs/index.html` entfernt; geblieben ist der **Planupload**, der ins **Geschoss-Popup** gewandert
+  ist (§4.4) — es gibt weiterhin genau **einen** Upload-Weg. Die Baumliste hat den neuen Knopf
+  „Geschoss öffnen".
+- **Tests:** neu `tests/module/smoke_geschossplan.mjs` (60 Prüfungen an der echten Seitenlogik:
+  Zeichnen, Fang, Ziehen samt gesperrter Achse, Kollision, Verorten mit Längenabweichung, Plan ohne
+  und mit Kalibrierung, Plan-Lock, orthogonale Kalibrierlinie, Determinismus). `test-plan.mjs` um
+  `orthogonalPunkt`/`kreuzPfad`/`planRahmenMm` erweitert (77 Prüfungen), `smoke_start.mjs` auf den
+  ausgezogenen Editor umgestellt. `npm run test:all` ist grün; der neue Test hängt an
+  `npm run test:modul0`.
+
+**Offen (bewusst nicht in C4a):** Bemaßen, Fixieren, Widerspruchsanzeige und Undo/Redo (C4b),
+schwebende Bauteilliste und Referenzgeschoss (C4c), Mappen-ZIP inklusive Bemaßungen (C5).

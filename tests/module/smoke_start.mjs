@@ -24,7 +24,9 @@ class MemStorage {
   removeItem(k){ this.m.delete(k); }
 }
 globalThis.localStorage = new MemStorage();
-globalThis.window = { addEventListener(){} };
+// `location` ist Teil des Doubles, damit die echten Navigationspfade des Moduls
+// („In Modul 1 planen", „Geschoss öffnen") prueffbar sind statt im catch zu landen.
+globalThis.window = { addEventListener(){}, location: { href: '' } };
 
 // Echte scrollIntoView-Aufrufe am gerenderten Datensatz (Import-Feedback, Issue #28).
 const scrollAufrufe = [];
@@ -1343,31 +1345,29 @@ globalThis.fetch = echtesFetch;
     !localStorage.getItem('sembla:elemente').includes('start_mm'));
 }
 
-// --- 9) Geschossplan (Etappe C3, Issue #26, [L-8]/[L-9]) -------------------
-// Geuebt wird die ECHTE Modul-0-Oberflaeche: Plan hochladen, Massstab per Zahl UND per
-// Kalibrierlinie setzen, Versatz aendern, Plan entfernen. Kern der Etappe: das Bild
-// liegt in der eigenen Plan-Datenbank ([L-8]), Massstab/Versatz sind ausdrueckliche
-// Anzeigewerte ([L-9]) und keine Wandlage aendert sich dabei ([L-1]).
+// --- 9) Geschossplan im Geschoss-Popup (Etappen C3/C4a, Issue #26, [L-8]/[L-9]) ---
+// Modul 0 haelt seit C4a nur noch das BILD: hochladen und entfernen — im Geschoss-Popup.
+// Kalibrieren, Versatz und das Einzeichnen sind in den Layout-Editor gezogen (eigene
+// Seite docs/geschossplan.html, eigener Smoke-Test). Geprueft wird hier deshalb: der
+// Editor ist WEG, „Geschoss oeffnen" verweist korrekt, und der Upload wirkt unveraendert.
 {
-  const pnMsgTxt = () => $('pn-msg').textContent;
-  const pnFehler = () => $('pn-msg').className === 'msg err';
+  const gpMsgTxt = () => $('gp-msg').textContent;
+  const gpFehler = () => $('gp-msg').className === 'msg err';
   const mappeSlot = () => localStorage.getItem('sembla:projekte');
   const alleLagen = () => JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage));
 
-  // 9a) Bedienelemente an der echten Oberflaeche
-  ok('Abschnitt „Geschossplan" vorhanden und als Hintergrund benannt ([L-9])',
-    /<h2>Geschossplan/.test(html) && /keine Datenquelle \(\[L-9\]\)/.test(html));
-  ok('Planupload nimmt nur Rasterbilder an ([L-8])',
-    /<input id="pn-import" type="file" accept="image\/png,image\/jpeg,image\/webp"/.test(html));
-  ok('Massstab per Zahl UND per Kalibrierlinie bedienbar ([L-9])',
-    /<input id="pn-mmjepx"/.test(html) && /id="pn-kalibrieren">Kalibrierlinie setzen</.test(html)
-    && /<input id="pn-kal-mm"/.test(html) && /id="pn-kal-uebernehmen"/.test(html));
-  ok('Versatz- und Zoomfelder vorhanden',
-    /<input id="pn-vx"/.test(html) && /<input id="pn-vy"/.test(html) && /<input id="pn-zoom"/.test(html));
+  // 9a) Der Editor ist aus Modul 0 ausgezogen (Etappe C4a)
+  ok('[C4a] Modul 0 hat keine Zeichenflaeche und keine Kalibrier-/Versatzfelder mehr',
+    !/id="pn-buehne"/.test(html) && !/id="pn-mmjepx"/.test(html) && !/id="pn-vx"/.test(html)
+    && !/id="pn-kalibrieren"/.test(html) && !/<h2>Geschossplan/.test(html));
+  ok('[C4a] „Geschoss oeffnen" fuehrt auf die eigene Editor-Seite',
+    /geschossplan\.html/.test(html) && /gs-oeffnen/.test(html));
+  ok('Planupload liegt im Geschoss-Popup und nimmt nur Rasterbilder an ([L-8])',
+    /<input id="gp-plan-import" type="file" accept="image\/png,image\/jpeg,image\/webp"/.test(html));
   ok('Hinweis nennt IndexedDB, die 20-MB-Grenze und die PDF-Abweisung ([L-8])',
     /IndexedDB/.test(html) && /20 MB/.test(html) && /PDF wird abgewiesen/.test(html));
   ok('Hinweis stellt klar, dass Wandlagen unberuehrt bleiben ([L-1])',
-    /Wandlagen ändern sich dabei nie/.test(html));
+    /Lagen bereits verorteter Wände bleiben davon unberührt \(\[L-1\]\)/.test(html));
 
   // 9b) Planspeicher einschleusen (im Browser: IndexedDB des Geraets)
   PLAN.setzeIndexedDB(fakeIndexedDB());
@@ -1375,90 +1375,56 @@ globalThis.fetch = echtesFetch;
 
   const gsPlan = MAPPE.alleGeschosse(store.holeMappe())[0].geschoss;
   store.setzeAktivesGeschoss(gsPlan.id);
-  await new Promise(r => setTimeout(r, 0));
-  ok('mit aktivem Geschoss ist der Planabschnitt bedienbar',
-    $('pn-form').hidden === false && $('pn-none').hidden === true);
-  ok('ohne Plan sagt die Buehne genau das (kein erfundener Plan)',
-    /kein Plan hinterlegt/.test($('pn-buehne').innerHTML));
 
-  // 9c) PDF wird benannt abgewiesen — nichts gespeichert ([L-8])
+  // 9c) „Geschoss oeffnen" setzt das Geschoss aktiv und wechselt auf die Editor-Seite
+  globalThis.window.location.href = '';
+  baum('gs-oeffnen', gsPlan.id);
+  ok('[C4a] „Geschoss oeffnen" navigiert auf docs/geschossplan.html',
+    globalThis.window.location.href === 'geschossplan.html');
+  ok('[L-10] und setzt dabei genau dieses Geschoss aktiv', store.aktivesGeschossId() === gsPlan.id);
+
+  // Popup oeffnen — nur DORT liegt der Planupload.
+  baum('gs-bearbeiten', gsPlan.id);
+  await new Promise(r => setTimeout(r, 0));
+  ok('Geschoss-Popup zeigt den Planblock', $('gp-overlay').hidden === false && $('gp-plan-block').hidden === false);
+  ok('ohne Plan sagt die Zeile genau das (kein erfundener Plan)',
+    /Kein Plan hinterlegt/.test($('gp-plan-info').textContent));
+
+  // 9d) PDF wird benannt abgewiesen — nichts gespeichert ([L-8])
   const slotVorPdf = mappeSlot();
-  await $('pn-import').dispatch('change', { target: { files: [
+  await $('gp-plan-import').dispatch('change', { target: { files: [
     { name: 'grundriss.pdf', type: 'application/pdf', size: 400000 }], value: '' } });
   ok('PDF wird abgewiesen und der Grund genannt ([L-8])',
-    pnFehler() && /PDF/.test(pnMsgTxt()) && mappeSlot() === slotVorPdf);
-  await $('pn-import').dispatch('change', { target: { files: [
+    gpFehler() && /PDF/.test(gpMsgTxt()) && mappeSlot() === slotVorPdf);
+  await $('gp-plan-import').dispatch('change', { target: { files: [
     { name: 'zu-gross.png', type: 'image/png', size: 25 * 1048576 }], value: '' } });
   ok('zu grosser Plan wird abgewiesen statt verkleinert',
-    pnFehler() && /20 MB/.test(pnMsgTxt()) && mappeSlot() === slotVorPdf);
+    gpFehler() && /20 MB/.test(gpMsgTxt()) && mappeSlot() === slotVorPdf);
 
-  // 9d) Plan hochladen — Bild in die Plan-Datenbank, Beschreibung in die Mappe
+  // 9e) Plan hochladen — Bild in die Plan-Datenbank, Beschreibung in die Mappe
   const lageVorher = alleLagen();
-  await $('pn-import').dispatch('change', { target: { files: [
+  await $('gp-plan-import').dispatch('change', { target: { files: [
     { name: 'eg.png', type: 'image/png', size: 123456, _w: 1600, _h: 1200 }], value: '' } });
   const plan1 = store.geschossPlan(gsPlan.id);
   ok('Plan hinterlegt: Beschreibung steht in der Mappe',
-    !pnFehler() && !!plan1 && plan1.datei === 'eg.png'
+    !gpFehler() && !!plan1 && plan1.datei === 'eg.png'
     && plan1.breite_px === 1600 && plan1.hoehe_px === 1200);
   ok('[L-8] das BILD liegt in der Plan-Datenbank, nicht im localStorage',
     !!(await PLAN.holePlan(gsPlan.id)) && !mappeSlot().includes('_w')
     && !mappeSlot().includes('blob') && !mappeSlot().includes('base64'));
   ok('[L-9] ein neuer Plan ist unkalibriert — es wird kein Massstab geraten',
-    plan1.mm_je_pixel === null && /kalibrieren/.test(pnMsgTxt()));
-  ok('[L-9] ohne Massstab liegt bewusst KEIN Raster ueber dem Plan',
-    /rasterfein/.test($('pn-buehne').innerHTML) === false
-    && /KEIN Raster/.test($('pn-kal-status').textContent));
-  ok('Buehne zeigt den Plan als SVG in Bildpixeln',
-    /viewBox="0 0 1600 1200"/.test($('pn-buehne').innerHTML));
-  ok('Kopfzeile nennt Datei, Bildmasse und den fehlenden Massstab',
-    /eg\.png/.test($('pn-info').textContent) && /1600 × 1200 px/.test($('pn-info').textContent)
-    && /kein Maßstab gesetzt/.test($('pn-info').textContent));
+    plan1.mm_je_pixel === null && /kalibrieren/.test(gpMsgTxt()));
+  ok('Planzeile nennt Datei, Bildmasse und den fehlenden Massstab',
+    /eg\.png/.test($('gp-plan-info').textContent)
+    && /1600 × 1200 px/.test($('gp-plan-info').textContent)
+    && /kein Maßstab gesetzt/.test($('gp-plan-info').textContent));
 
-  // 9e) Massstab als Zahl ([L-9], gleichwertiger Weg)
-  $('pn-mmjepx').value = '12,5';
-  $('pn-mass-uebernehmen').dispatch('click');
-  await new Promise(r => setTimeout(r, 0));
-  ok('Massstab per Zahleneingabe uebernommen',
-    store.geschossPlan(gsPlan.id).mm_je_pixel === 12.5 && !pnFehler());
-  ok('mit Massstab liegt das Raster ueber dem Plan',
-    /rasterfein/.test($('pn-buehne').innerHTML) && /rasterhaupt/.test($('pn-buehne').innerHTML));
-  $('pn-mmjepx').value = '-3';
-  $('pn-mass-uebernehmen').dispatch('click');
-  ok('unsinniger Massstab wird abgewiesen, der Stand bleibt',
-    pnFehler() && store.geschossPlan(gsPlan.id).mm_je_pixel === 12.5);
+  // 9f) Der Massstab wird im Editor gesetzt — hier nur nachgestellt, um den
+  //     Ruecksetz-Fall bei einem NEUEN Bild pruefen zu koennen ([L-9]).
+  store.setzeGeschossPlanAnsicht(gsPlan.id, { mm_je_pixel: 10, versatz_x_mm: 375, versatz_y_mm: -125 });
+  ok('[L-1] Massstab und Versatz haben KEINE Wandlage veraendert', alleLagen() === lageVorher);
 
-  // 9f) Massstab aus der Kalibrierlinie ([L-9])
-  $('pn-kal-uebernehmen').dispatch('click');
-  ok('Kalibrierung ohne gesetzte Punkte wird abgewiesen',
-    pnFehler() && /zwei Punkte/.test(pnMsgTxt()));
-  $('pn-kalibrieren').dispatch('click');
-  await new Promise(r => setTimeout(r, 0));
-  ok('Kalibriermodus fordert den ersten Punkt', /ersten Punkt/.test($('pn-kal-status').textContent));
-  $('pn-buehne').dispatch('click', { clientX: 100, clientY: 100 });
-  $('pn-buehne').dispatch('click', { clientX: 400, clientY: 100 });
-  ok('zwei Punkte gesetzt: die Linie steht mit ihrer Pixellaenge im Status',
-    /300 Bildpixel/.test($('pn-kal-status').textContent)
-    && /kallinie/.test($('pn-buehne').innerHTML));
-  $('pn-kal-mm').value = '3000';
-  $('pn-kal-uebernehmen').dispatch('click');
-  await new Promise(r => setTimeout(r, 0));
-  ok('Massstab aus der Kalibrierlinie: 3000 mm / 300 px = 10 mm je Pixel',
-    store.geschossPlan(gsPlan.id).mm_je_pixel === 10 && !pnFehler());
-  ok('Kalibriermodus endet nach der Übernahme', /Maßstab gesetzt/.test($('pn-kal-status').textContent));
-
-  // 9g) Versatz ([L-1]: der Plan wird geschoben, nie eine Wandlage)
-  $('pn-vx').value = '375'; $('pn-vy').value = '-125';
-  $('pn-versatz-uebernehmen').dispatch('click');
-  await new Promise(r => setTimeout(r, 0));
-  ok('Versatz uebernommen',
-    store.geschossPlan(gsPlan.id).versatz_x_mm === 375
-    && store.geschossPlan(gsPlan.id).versatz_y_mm === -125);
-  ok('[L-1] Kalibrierung und Versatz haben KEINE Wandlage veraendert', alleLagen() === lageVorher);
-  $('pn-versatz-null').dispatch('click');
-  await new Promise(r => setTimeout(r, 0));
-  ok('Versatz zurueck auf 0/0', store.geschossPlan(gsPlan.id).versatz_x_mm === 0);
-
-  // 9h) Reload-Fest: Beschreibung liegt in der Mappe, Bild in der Plan-Datenbank
+  // 9g) Reload-Fest: Beschreibung liegt in der Mappe, Bild in der Plan-Datenbank
   ok('[L-8] Plan uebersteht einen Reload (Beschreibung im Mappen-Slot)',
     (() => { const roh = JSON.parse(mappeSlot());
              const g = roh.flatMap(m => m.gebaeude).flatMap(x => x.geschosse)
@@ -1468,29 +1434,32 @@ globalThis.fetch = echtesFetch;
     MAPPE.validiereMappe(store.holeMappe()).length === 0
     && JSON.parse(mappeSlot()).every(m => m.version === 2));
 
-  // 9i) Ein zweiter Plan setzt Massstab und Versatz zurueck statt sie zu raten ([L-9])
-  await $('pn-import').dispatch('change', { target: { files: [
+  // 9h) Ein zweiter Plan setzt Massstab und Versatz zurueck statt sie zu raten ([L-9])
+  await $('gp-plan-import').dispatch('change', { target: { files: [
     { name: 'og.jpg', type: 'image/jpeg', size: 99999, _w: 800, _h: 600 }], value: '' } });
   const plan2 = store.geschossPlan(gsPlan.id);
   ok('[L-9] neues Bild ⇒ Massstab und Versatz ausdruecklich zurueckgesetzt',
     plan2.datei === 'og.jpg' && plan2.mm_je_pixel === null && plan2.versatz_x_mm === 0
-    && /zurückgesetzt/.test(pnMsgTxt()));
+    && /zurückgesetzt/.test(gpMsgTxt()));
   ok('[L-1] der Planwechsel hat keine Wandlage angetastet', alleLagen() === lageVorher);
 
-  // 9j) Plan entfernen — Bild und Beschreibung, aber keine Wand
+  // 9i) Plan entfernen — Bild und Beschreibung, aber keine Wand
   confirmAntwort = true;
-  await $('pn-entfernen').dispatch('click');
+  await $('gp-plan-entfernen').dispatch('click');
   ok('Plan entfernt: Beschreibung und Bild sind weg',
     store.geschossPlan(gsPlan.id) === null && (await PLAN.holePlan(gsPlan.id)) === null);
-  ok('Meldung stellt klar, dass die Wandlagen bleiben', /Wandlagen .* unverändert/.test(pnMsgTxt()));
+  ok('Meldung stellt klar, dass die Wandlagen bleiben', /Wandlagen .* unverändert/.test(gpMsgTxt()));
   ok('[L-1] Wandlagen unveraendert nach dem Entfernen', alleLagen() === lageVorher);
+  $('gp-cancel').dispatch('click');
 
-  // 9k) Ein geloeschtes Geschoss hinterlaesst kein unerreichbares Bild ([L-8])
+  // 9j) Ein geloeschtes Geschoss hinterlaesst kein unerreichbares Bild ([L-8])
   const gsProbe = geschossAnlegen(store.holeMappe().projekt.id, 'Planprobe');
+  baum('gs-bearbeiten', gsProbe);
   await new Promise(r => setTimeout(r, 0));
-  await $('pn-import').dispatch('change', { target: { files: [
+  await $('gp-plan-import').dispatch('change', { target: { files: [
     { name: 'probe.png', type: 'image/png', size: 1000, _w: 100, _h: 100 }], value: '' } });
   ok('Probegeschoss hat ein Planbild', !!(await PLAN.holePlan(gsProbe)));
+  $('gp-cancel').dispatch('click');
   confirmAntwort = true;
   baum('gs-loeschen', gsProbe);
   await new Promise(r => setTimeout(r, 0));
