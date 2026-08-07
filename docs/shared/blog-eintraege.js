@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260807-01",
+    datum: "2026-08-07",
+    typ: "fix",
+    issue: 26,
+    titel: "Auslieferung reparieren: die Suite ging tagelang nicht live, obwohl die Arbeit fertig war",
+    testbitte: "Reiter 0 neu laden (ggf. Shift+Neuladen): sind Projekt/Gebäude/Geschoss und der "
+      + "Geschossplan mit Kalibrierung da? Genau die beiden Ausbaustufen waren zwar fertig, aber "
+      + "nie ausgeliefert.",
+  },
+  {
     id: "chg-20260806-10",
     datum: "2026-08-06",
     typ: "feature",

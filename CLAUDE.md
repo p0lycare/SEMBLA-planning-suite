@@ -8,13 +8,62 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SEMBLA Planungs-Suite — Werkzeuge zur Planung vorgespannter Trockenmauerwerkswände
 (Steintypen **i2** = 25 cm, **i3** = 37,5 cm). Die Suite ist eine **gehostete Web-App** auf
-**GitHub Pages**: live unter `https://p0lycare.github.io/SEMBLA-planning-suite/` (Deploy direkt vom
-Branch `main`, Ordner `docs/`). Kein Build-Schritt, kein Server — jeder Push ist sofort live.
+**GitHub Pages**: live unter `https://p0lycare.github.io/SEMBLA-planning-suite/`. Kein Build-Schritt,
+kein Server — jeder Push auf `main` ist nach ~20 s live (Auslieferung s. „Deploy").
 
 Die App besteht aus **9 Modulen (0–8)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
 Code liegt **einmal** in `docs/shared/` und wird per `<script type="module">` geladen. Einstieg ist
 `docs/index.html` (Modul 0). Die Geschichte des Umbaus von der alten Single-File-Suite auf diesen
 MVP steht in [`doku/REFACTOR.md`](doku/REFACTOR.md); der abgelöste Alt-Stand liegt in `legacy/`.
+
+## Deploy (Auslieferung nach GitHub Pages)
+
+Ausgeliefert wird über den **eigenen Actions-Workflow** `.github/workflows/pages.yml`: er packt
+`docs/` als Artefakt und veröffentlicht es (Laufzeit ~20 s). Die Pages-Quelle des Repos steht auf
+**GitHub Actions** (`build_type: workflow`) — **nicht** mehr auf „Branch `main`/`docs`". Auslösbar
+ist der Workflow per Push auf `main` **oder** ohne neuen Commit per `workflow_dispatch`
+(`gh workflow run Pages`).
+
+**Warum nicht der eingebaute Weg:** der alte („legacy") Pages-Builder schickt `docs/` durch Jekyll
+und ist an diesem Repo reproduzierbar gescheitert — mehrfach Timeout am 10-Minuten-Limit, ein Lauf
+hing über 11 Stunden auf „building". Folge war der schlimmste Fehlermodus überhaupt: **grüner
+Commit, alter Stand live** (C3 lag auf GitHub, ausgeliefert war C2, und die Live-`index.html`
+referenzierte eine Datei, die es online nicht gab → Modul 0 wäre beim Laden gestorben).
+`docs/.nojekyll` allein hat das **nicht** behoben. Nicht auf „Branch/Ordner" zurückstellen.
+
+Der Workflow führt **ausdrücklich keine Tests** aus. Die bleiben Handdisziplin vor dem Push und sind
+bewusst **kein** CI-Gate (s. „Tests").
+
+**Nach einem Deploy nicht auf grün vertrauen, sondern live gegenprüfen** — grüner Workflow ≠ neuer
+Stand im Browser-Cache/CDN:
+
+```bash
+gh run list --limit 3                     # Workflow "Pages" erfolgreich?
+shasum -a 256 docs/index.html             # lokal …
+curl -s https://p0lycare.github.io/SEMBLA-planning-suite/index.html | shasum -a 256   # … == live?
+```
+
+Neue Datei unter `docs/shared/`? Zusätzlich prüfen, dass sie online **200** liefert und nicht 404 —
+ein fehlender ES-Modul-Import nimmt die ganze Seite mit.
+
+### Push-Rechte und Token-Scopes (auch für den Bot „Nemo")
+
+Am Projekt arbeiten mehrere Agenten von verschiedenen Rechnern und Accounts (Tibor als
+`schlagzeilen`, der Bot **Nemo**). Dabei gilt:
+
+- **Scopes sind pro Token und pro Rechner**, nicht pro Repo. Eine Anmeldung lässt sich **nicht** von
+  einem Rechner auf einen anderen übertragen — `gh auth login` muss lokal laufen.
+- Ein Token mit nur `repo` genügt für das Tagesgeschäft in `docs/`, **nicht** aber für Änderungen an
+  `.github/workflows/`. GitHub lehnt dann den **ganzen** Push ab, auch wenn alle anderen Dateien
+  harmlos sind: *„refusing to allow an OAuth App to create or update workflow … without `workflow`
+  scope"*. Behebung einmalig, interaktiv (Browser):
+  ```bash
+  gh auth refresh -h github.com -s workflow
+  ```
+- **Beide pushen direkt auf `main`** (Solo-Projekt, keine Branches). Vor dem Push `git pull --rebase`,
+  damit die Historie nicht auseinanderläuft. Der Workflow hat `concurrency: pages` mit
+  `cancel-in-progress` — bei zwei kurz aufeinanderfolgenden Pushes gewinnt der neuere, der ältere
+  Deploy wird abgebrochen. Das ist gewollt und kein Fehler.
 
 ## Roter Faden (Datenfluss)
 
@@ -139,8 +188,12 @@ Rastereinheiten. Das **Bild** liegt nie im localStorage ([L-8]: ein Grundriss sp
 den ganzen Projektstand mit), sondern in einer **eigenen IndexedDB** (ein Datensatz je
 Geschoss-Kennung, Logik in `docs/shared/sembla-plan.js`); in der Mappe stehen nur `datei`, `typ`,
 `breite_px`, `hoehe_px`, Maßstab und Versatz (optionale Zusatzfelder — `MAPPE_VERSION` bleibt 1).
-Zulässig sind **PNG/JPEG/WebP bis 20 MB**; ein **PDF wird benannt abgewiesen** (es zu rendern
-verlangte eine Fremdbibliothek im Betrieb — Format-Spike aus #26, negativ entschieden). Fehlt das
+Zulässig sind **PNG/JPEG/WebP bis 20 MB**; ein **PDF wird benannt abgewiesen** — das ist der
+**Ist-Stand**, aber die **Begründung ist entfallen**: abgewiesen wurde es im Format-Spike aus #26,
+weil das Rendern eine Fremdbibliothek im Betrieb verlangt hätte, und genau dieses Argument gilt
+nicht mehr (s. „Externe Laufzeit-Abhängigkeiten"). PDF-Upload ist damit eine **offene, neu zu
+entscheidende Frage** (pdf.js), kein abgeschlossenes Nein — bis dahin bleibt das Verhalten aber
+unverändert und wird nicht nebenbei geändert. Fehlt das
 Bild (anderer Browser, gelöschte Websitedaten), bleiben Maßstab und Versatz erhalten und der fehlende
 Plan wird **gemeldet**. Beim Löschen eines Geschosses/Gebäudes wird sein Planbild **mit** entfernt und
 das gesagt. Der `viewBox` des Plan-SVG liegt in **Bildpixeln**, damit ein noch nicht kalibrierter Plan
@@ -291,8 +344,9 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      (`zeichnungSvg`), Blatt mit Tabellen/Legende/Schriftfeld (`blattHtml`), `ZEICHNUNG_CSS`,
      `druckCss`, `zeichnungDokument`/`zeichnungSvgDatei`, Optionen (`normOptionen`/`standardOptionen`);
      DOM-frei. **Norm-Maßstab** inkl. Bemaßungsrand ⇒ Druck ist echt 1:x (**[D-2]**). Genutzt von
-     Modul 7 (Vorschau + Druck) **und** vom zentralen Export — eine Zeichenableitung (**[D-6]**),
-     kein jsPDF/CDN. Stangenstöße kommen aus `stangenEnden()` (`sembla-montage.js`), Mengen aus
+     Modul 7 (Vorschau + Druck) **und** vom zentralen Export — **eine** Zeichenableitung (**[D-6]**;
+     der Punkt ist „kein zweiter Zeichenpfad", nicht „keine Fremd-Lib"). Ausgegeben wird SVG + Druck-HTML
+     statt PDF-Erzeugung im Code. Stangenstöße kommen aus `stangenEnden()` (`sembla-montage.js`), Mengen aus
      `sembla-bom.js` — kein zweites Stück-/Mengenmodell. Die vier Vorspann-Zielregeln stehen nur
      als **ungeprüfte Planungshinweise** auf dem Blatt (**[D-5]**), der statische Nachweis ist
      ausdrücklich **nicht** Bestandteil der Zeichnung (**[D-8]**).
@@ -405,10 +459,19 @@ Tests. **Node-Smoke-Tests sind autark und lesen keine Dateien aus `Bauteil-OBJ/`
 gebraucht wird (`tests/module/smoke_3d.mjs`), definiert der Test eine minimale synthetische OBJ-Zeichenkette
 inline. So läuft `npm run test:all` auch in einer sauberen Arbeitskopie ohne die vertraulichen Modelle grün.
 
-**Externe Laufzeit-Abhängigkeiten (nur online, degradieren sauber):** `ifc-3d.html` lädt Three.js (CDN)
-für die 3D-Ansicht (ohne Internet zeigt es einen Hinweis, alles andere läuft weiter). Der ZIP-Export
-kommt ohne Fremd-Lib aus (`zip.js`); web-ifc/xlsx-CDNs werden im Betrieb **nicht** mehr geladen (web-ifc
-nur noch in `tests/interop`).
+**Externe Laufzeit-Abhängigkeiten sind erlaubt.** Die Suite ist eine **gehostete** Web-App — sie wird
+über GitHub Pages aus dem Netz geladen und läuft nicht als Offline-Werkzeug. Die frühere Vorgabe
+„keine Fremdbibliotheken im Betrieb, damit alles offline funktioniert" ist damit **hinfällig** und
+kein Ablehnungsgrund mehr. Wo bestehender Code ohne Fremd-Lib auskommt (`zip.js`,
+`sembla-zeichnung.js`), ist das eine **Beschreibung des Ist-Stands**, keine Regel — es gibt keinen
+Grund, das nachzubauen statt eine passende Bibliothek zu nehmen.
+
+Weiterhin gültig bleiben die Gründe, die **nichts** mit Offline-Fähigkeit zu tun haben:
+**kein Build-System** (Architektur-Regel 2 — eine Lib muss sich per `<script type="module">` bzw.
+ESM-Import von einem CDN einbinden lassen), **Lizenzen prüfen** (s. Randbedingungen) und
+**sauberes Degradieren**, wo es billig ist. Stand heute lädt `ifc-3d.html` Three.js per CDN für die
+3D-Ansicht (ohne Netz ein Hinweis, alles andere läuft weiter); web-ifc/xlsx werden im Betrieb nicht
+geladen (web-ifc nur in `tests/interop`).
 
 ## Häufige Befehle
 
