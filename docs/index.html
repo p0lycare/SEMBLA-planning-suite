@@ -525,7 +525,7 @@
     const lage = wandEintrag.lage;
     if (!lage) return '<span class="muted">unverortet</span>';
     const ab = MAPPE.laengenAbgleich(lage, el && el.wandelement ? el.wandelement.length_mm : null);
-    const t = `<span class="muted">Raster ${lage.start_grid.x}/${lage.start_grid.y} · Richtung `
+    const t = `<span class="muted">Lage ${lage.start_mm.x}/${lage.start_mm.y} mm · Richtung `
       + `${esc(lage.richtung)} · ${lage.laenge_grid}×125 = ${ab.lage_mm} mm</span>`;
     return ab.abweichung
       ? t + ` <span class="abw">· Wandelement ${ab.wand_mm} mm ≠ Lage ${ab.lage_mm} mm ([L-3])</span>`

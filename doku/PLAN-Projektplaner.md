@@ -2,7 +2,9 @@
 
 > Stand: 2026-08-07 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappen C1 + C2 + C3 umgesetzt**;
 > nach Nutzerrückmeldung zum C3-Stand sind **C3.1** (Oberfläche Projektplanung) und **C3.2**
-> (Feinschliff Layout-Editor) vorgezogen — sie laufen **vor** C4 (s. §10/§11)
+> (Feinschliff Layout-Editor) vorgezogen — sie laufen **vor** C4 (s. §10/§11).
+> **Achtung:** §11 (C3.2) und C4 sind seit dem 2026-08-07 überholt — die Wandabstände sind **nicht**
+> rastergebunden. Maßgeblich ist ab dort [`PLAN-Layout-Editor.md`](PLAN-Layout-Editor.md).
 
 Dieses Dokument umreißt den Umbau von Modul 0 zum Projektplaner mit Geschosslayout. Es ist die
 Arbeitsgrundlage über mehrere Sessions. Jede Etappe wird einzeln umgesetzt, getestet und committet.
@@ -196,9 +198,9 @@ UI-Konvention, keine strukturelle mehr.
 | **C2 ✅** | Modul-0-UI: Projekt/Gebäude/Geschoss anlegen & wählen, Wandliste je Geschoss, Roundtrip nach Modul 1 | **erledigt** (s. §8) |
 | **C3 ✅** | Planupload, Kalibrierung, x/y-Versatz, 125-mm-Rasteroverlay (reine Anzeige) | **erledigt** (s. §9) |
 | ~~**C3.1**~~ | Oberfläche Projektplanung: Baumliste Projekt→Geschoss→Wand, alle Formulare als Popup, mehrere Projekte, Kopfdaten am Projekt, Katalog-Popup (§10) | **erledigt** (s. §12) — die Seite besteht aus **einer** Baumliste plus Editor; kein Formularblock mehr auf der Hauptfläche |
-| **C3.2** | Feinschliff Layout-Editor: Plan-Lock, Zoom/Pan, Kreuzmarker, gestrichelte + orthogonal gezwungene Kalibrierlinie (§11) | Plan lässt sich präzise kalibrieren und rutscht nicht versehentlich |
-| **C4** | Wand-Werkzeug + Radierer + „Wand hinzufügen" | Gezeichnete Wand landet mit korrekter Länge in der Wandliste |
-| **C5** | Projektmappe Export/Import (ZIP + Ordner, §3) | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
+| **C3.2** *(neu geschnitten)* | Regelwerk [K], Constraint-Löser `sembla-constraints.js`, Lage in mm, Migration — kein UI → **`PLAN-Layout-Editor.md`** | Solver löst, meldet Widersprüche und Bestimmtheit; `test:all` grün |
+| ~~**C4**~~ | ~~Wand-Werkzeug + Radierer~~ — **entfällt** (beruhte auf der widerlegten Rasterannahme); ersetzt durch **C4a/C4b/C4c**: eigene Seite `docs/geschossplan.html` mit Skizzenmodus, Bemaßen, Bauteilliste | s. `PLAN-Layout-Editor.md` §5 |
+| **C5** | Projektmappe Export/Import (ZIP + Ordner, §3) inkl. Bemaßungen | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
 | ~~**C6**~~ | Katalogwahl je Projekt + Pflege-Popup | **geht in C3.1 auf** — das Popup entsteht dort ohnehin, und die Zuordnung hängt am neuen Projekt-Datensatz |
 
 **C2 ist der Punkt, ab dem der Planer echten Nutzen bringt** — C3/C4 sind der Komfort obendrauf.
@@ -434,7 +436,16 @@ Elternwechsel). Je Prüfung wird die Regel-ID benannt.
 
 ---
 
-## 11. Etappe C3.2 — Feinschliff Layout-Editor *(offen, nächster Schritt)*
+## 11. Etappe C3.2 — Feinschliff Layout-Editor *(überholt — s. `PLAN-Layout-Editor.md`)*
+
+> **Abgelöst am 2026-08-07.** Neue fachliche Information: die Abstände der Wände zueinander sind
+> **nicht** rastergebunden (von Wandmitte zu Wandmitte treten Maße auf, die kein Vielfaches von
+> 125 mm sind). Damit fällt **[L-1]** für die *Position* — Länge und Breite bleiben im Raster. Aus
+> dem Editor wird ein **Skizzenmodus nach CAD-Vorbild** mit Bemaßungen und einem eigenen kleinen
+> Constraint-Löser; der bisherige C4-Inhalt („Kästchen einfärben + Radierer") entfällt ersatzlos.
+> Neuer Zuschnitt, Datenmodell und Regelwerk **[K-1]…[K-12]** stehen in
+> [`PLAN-Layout-Editor.md`](PLAN-Layout-Editor.md). Die fünf Punkte unten bleiben inhaltlich gültig,
+> wandern aber in die neue Seite `docs/geschossplan.html` (dort §4.4).
 
 Der Editor bleibt in seiner Mechanik wie er ist (Kalibrierlinie, Versatz, Ziehen, Rasteroverlay
 funktionieren). Geändert werden fünf Punkte:

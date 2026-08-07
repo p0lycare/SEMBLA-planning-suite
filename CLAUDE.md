@@ -141,18 +141,28 @@ ergänzt (auch nicht um [V-2]/[V-4]); ihre Verletzungen stehen sichtbar in
 eine stille Korrektur. Im Auto-Pfad ist die Liste konstruktionsbedingt leer und dient als
 Selbstkontrolle. Die Felder sind optional/abwärtskompatibel — kein Schema-/Projektformat-Bruch.
 
-**Projektmappen (`sembla:projekte`, Format `SEMBLA-Projektmappe` v1, Regeln [L-1]…[L-12]).**
-Projektstruktur (**Projekt → Gebäude → Geschoss → Wand**) und die **Lage** der Wände im
-125-mm-Raster sind — wie der Katalog — eine **eigene Ressource**: eigener localStorage-Slot, eigene
+**Projektmappen (`sembla:projekte`, Format `SEMBLA-Projektmappe` v2, Regeln [L-1]…[L-12]).**
+Projektstruktur (**Projekt → Gebäude → Geschoss → Wand**) und die **Lage** der Wände
+sind — wie der Katalog — eine **eigene Ressource**: eigener localStorage-Slot, eigene
 Datei, eigene Formatversion, Logik in `docs/shared/sembla-projektmappe.js` (rein/DOM-frei). Sie
 liegen bewusst **nicht** im Wandelement und nicht in `eingaben`, damit Modul 1 die Lagedaten gar
 nicht überschreiben kann und die Einbahnstraße aus [P-1] heil bleibt. Der Speicher hält seit C3.1
-**mehrere** solcher Mappen — je Projekt eine, in der Form **unverändert** (`MAPPE_VERSION` bleibt 1) —
-als Liste in `sembla:projekte`; genau eine davon ist über `sembla:aktiv:projekt` aktiv ([L-6]). `sembla:elemente` bleibt
+**mehrere** solcher Mappen — je Projekt eine — als Liste in `sembla:projekte`; genau eine davon ist
+über `sembla:aktiv:projekt` aktiv ([L-6]). `sembla:elemente` bleibt
 unverändert der **Wandspeicher**; verknüpft wird über die **stabile `id`** des Wandeintrags — der
-Dateiname ist nur der Fundort ([L-4]). Lage ist **ganzzahlig im Raster** ([L-1]) und ausschließlich
-**orthogonal** ([L-2]): `{ start_grid:{x,y}, richtung:"x"|"y", laenge_grid }` oder `null`
-(unverortet — der Normalfall vor dem Zeichnen). Aus der Lage wird beim **Anlegen** nur die **Länge
+Dateiname ist nur der Fundort ([L-4]).
+
+**Lage in Millimetern, Länge im Raster ([L-1], Fassung ab C3.2).** Die realen Wandabstände sind
+**nicht** rastergebunden — von Wandmitte zu Wandmitte treten Maße auf, die kein Vielfaches von
+125 mm sind. Die Position steht deshalb in **mm** (`{ start_mm:{x,y}, richtung:"x"|"y", laenge_grid }`
+oder `null` = unverortet), zulässig sind **Vielfache von 0,5 mm**: die 125 mm breite Wand legt jede
+Längskante genau 62,5 mm neben ihre Mittellinie, ein Maß Kante→Mittellinie landet also zwangsläufig
+auf einem halben Millimeter (exakt in IEEE-754, kein Drift). **Länge** bleibt ganzzahlig im
+125-mm-Raster, **Breite** konstant 125 mm, die Richtung weiter **orthogonal** ([L-2]). `start_mm`
+liegt auf der **Mittellinie**, am Ende mit der kleineren Koordinate. Die Umstellung ist
+`MAPPE_VERSION` **1 → 2** (Migration `migriereMappe`, `x_mm = x_grid × 125`) und `SCHEMA_VERSION`
+**5 → 6** — verlustfrei und praktisch leer, weil das Einzeichnen nie umgesetzt war und im Bestand
+jede Lage `null` ist. Aus der Lage wird beim **Anlegen** nur die **Länge
 als Vorgabe** abgeleitet; danach ist das Wandelement maßgebend, eine Abweichung wird **gemeldet,
 nie still angeglichen** ([L-3]). Die **Geschosshöhe** ist ebenfalls nur Vorgabe und wird nie
 zurückgeschrieben ([L-5]); passt sie nicht ins 200-mm-Lagenraster, wird das benannt statt gerundet.
@@ -278,12 +288,12 @@ bleibt zur Nachvollziehbarkeit im Projekt und wird in Modul 0 sichtbar als unwir
 `pruefeAuswahl`/`normAuswahl`/`anzahlAuswahl` sind dafür reine Lese-/Meldepfade.
 
 Altprojekte ohne Produkt-Blöcke laden über `standardEingaben()` als **leere Rollen** — warnungsfrei.
-Versionsachsen strikt getrennt: `MAPPE_VERSION`=1 (Projektmappe) ≠ `KATALOG_VERSION`=1 (Katalogdatei) ≠ `PROJEKT_VERSION`=2 (die
+Versionsachsen strikt getrennt: `MAPPE_VERSION`=2 (Projektmappe) ≠ `KATALOG_VERSION`=1 (Katalogdatei) ≠ `PROJEKT_VERSION`=2 (die
 Produkt-Blöcke sind dort optionale Zusatzfelder; der v2-Parser übernimmt `eingaben` ohne Whitelist,
-`holeEingaben` füllt auf, `projektObjekt` exportiert alles ⇒ kein Bruch) ≠ `SCHEMA_VERSION`=5
+`holeEingaben` füllt auf, `projektObjekt` exportiert alles ⇒ kein Bruch) ≠ `SCHEMA_VERSION`=6
 (interner localStorage-Stand; fehlende `eingaben`-Felder werden beim Lesen aufgefüllt, echte
-Migrationen gibt es nur für den Wandtyp (v3), die Projektmappe (v4) und die Mehrfachhaltung von
-Projekten samt Katalogspeicher (v5)).
+Migrationen gibt es nur für den Wandtyp (v3), die Projektmappe (v4), die Mehrfachhaltung von
+Projekten samt Katalogspeicher (v5) und die Lage in Millimetern (v6)).
 
 **Export/Import ist zentral** (Modul 0, `docs/index.html`): ein Häkchen-Dialog baut über
 `sembla-export.js` die gewählten Dateien und packt sie via `zip.js` (STORE+CRC32, keine Lib) in ein ZIP.
@@ -313,7 +323,15 @@ dürfen fachlich nicht auseinanderlaufen.
   dürfen nicht als bereits getestet dargestellt werden.
 
 **Projektplaner-Regeln [L-1]…[L-12] sind umgesetzt und regressionsgetestet** (Etappe C3.1,
-`tests/module/test-projektmappe.mjs`, `smoke_storage.mjs`, `smoke_start.mjs`).
+`tests/module/test-projektmappe.mjs`, `smoke_storage.mjs`, `smoke_start.mjs`); **[L-1] trägt seit
+C3.2 die neue Fassung** (Position in mm).
+
+**Layout-Editor-Regeln [K-1]…[K-13]** (Kapitel 16.10, Plan in `doku/PLAN-Layout-Editor.md`):
+**Löser, Datenmodell und Migration stehen und sind regressionsgetestet** (Etappe C3.2,
+`tests/module/test-constraints.mjs`); die **Oberfläche** dazu — eigene Seite `docs/geschossplan.html`
+mit Skizzenmodus, Bemaßungswerkzeug und Bauteilliste — folgt in C4a/C4b/C4c. Das frühere
+„Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
+Wandabstände lägen im Raster.
 
 **Vorspann-Grundregeln [V-2]/[V-3] sind umgesetzt und regressionsgetestet** (Core + Python-Orakel,
 `tests/core/`): Steinabdeckung als Muss, i3-Mitte der untersten Lage als Soll, `max_span_grid` nur
@@ -395,6 +413,16 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      `setzePlanAnsicht`), **Projekt-Kopfdaten** (`setzeKopfdaten`/`kopfdaten`, [L-11]) und die
      **Katalogzuordnung** (`setzeKatalogRef`, [L-12]). Rein/DOM-frei, eigene Tests
      (`tests/module/test-projektmappe.mjs`).
+   - `sembla-constraints.js` — **Bemaßungen und Löser des Layout-Editors** (Kapitel 16.10,
+     [K-1]…[K-13]): Lage-Mathematik (`normLage`/`lageFehler`/`bezugsWert`/`wandRechteck`),
+     Bemaßungsvalidierung, der **Löser** (`loese`/`pruefeGeschoss`), **Kollisionsprüfung**
+     (`kollisionen`, [K-13]), Zustand/Farbe ([K-8]) und Ziehen ([K-9]). Weil alle Wände
+     achsparallel sind, zerfällt die Verortung in zwei unabhängige 1D-Aufgaben; gelöst wird
+     **direkt** mit einer Vereinigungssuche samt Offset — **keine Iteration, keine Toleranz, keine
+     Startwerte** ([K-5]). Ein fertiger geometrischer Löser (planegcs/SolveSpace/kiwi.js) wurde
+     **geprüft und verworfen**: die ersten beiden lösen iterativ und damit startwertabhängig, der
+     dritte liefert immer eine gewichtete Lösung statt „unterbestimmt“ zu melden. Rein/DOM-frei,
+     eigene Tests (`tests/module/test-constraints.mjs`).
    - `sembla-plan.js` — **Geschossplan** (Modul 0, Etappe C3 von #26, [L-8]/[L-9]): Formatprüfung
      (PNG/JPEG/WebP, 20 MB, PDF abgewiesen), Kalibrierung, Umrechnung Bildpixel ↔ Raster-mm,
      Rasterlinien, `planSvg()` und die **eigene IndexedDB** für die Bilder (Fabrik für Tests

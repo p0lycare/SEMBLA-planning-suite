@@ -64,7 +64,7 @@ import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rol
 import { alleGeschosse, alleWaende, benenneUm as benenneInMappeUm,
          entferneWand as entferneWandAusMappe,
          findeGebaeude, findeGeschoss, findeWand, kopfdaten as mappeKopfdaten,
-         leereMappe, mappeObjekt, neueId as neueMappenId, normMappe, parseMappe, pruefeReferenzen,
+         leereMappe, mappeObjekt, migriereMappe, neueId as neueMappenId, normMappe, parseMappe, pruefeReferenzen,
          setzeKatalogRef, setzeKopfdaten as setzeMappenKopfdaten,
          setzePlan, setzePlanAnsicht, setzeWand,
          uebernehmeElemente, validiereMappe } from "./sembla-projektmappe.js";
@@ -112,8 +112,16 @@ const K_AKTIV_GS = "sembla:aktiv:geschoss";
  *  Einzel-Slot `sembla:katalog` wird der Katalogspeicher `sembla:kataloge`; der
  *  vorhandene Katalog wird dem uebernommenen Projekt zugeordnet ([L-12]). Beides
  *  laeuft verlustfrei und ohne Rueckfrage; Wandelemente, Eingaben, Lagen und der
- *  Zeiger auf die aktive Wand bleiben unangetastet ([L-7]). */
-export const SCHEMA_VERSION = 5;
+ *  Zeiger auf die aktive Wand bleiben unangetastet ([L-7]).
+ *  v6: Layout-Editor ([L-1] neue Fassung, [K-1]…[K-13], Etappe C3.2). Die
+ *  gespeicherten Mappen wandern von `MAPPE_VERSION` 1 auf 2: Wandlagen stehen in
+ *  MILLIMETERN statt in Rastereinheiten, und ein Geschoss traegt `bemassungen`.
+ *  Die Umrechnung macht `migriereMappe` in `sembla-projektmappe.js` (x_mm =
+ *  x_grid × 125) — verlustfrei und idempotent ([L-7]). In der Praxis ist nichts
+ *  umzurechnen: das Einzeichnen der Lage war nie umgesetzt, im Bestand ist jede
+ *  Lage `null`. Wandelemente, Eingaben, Kataloge und alle aktiven Zeiger bleiben
+ *  unangetastet. */
+export const SCHEMA_VERSION = 6;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
  *  Bleibt 2: `wandtyp` (Wandelement) sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
@@ -222,6 +230,7 @@ export function migrieren() {
     if (v < 3) _migriereWandtyp();
     if (v < 4) _migriereProjektmappe();
     if (v < 5) _migriereProjekte();
+    if (v < 6) _migriereLageMm();
     localStorage.setItem(K_VERSION, String(SCHEMA_VERSION));
   }
   return SCHEMA_VERSION;
@@ -302,6 +311,18 @@ function _migriereProjekte() {
   localStorage.setItem(K_PROJEKTE, JSON.stringify([mappeObjekt(m)]));
   localStorage.setItem(K_AKTIV_PRJ, m.projekt.id);
   localStorage.removeItem(K_MAPPE);                 // kein zweiter Stand derselben Daten
+}
+
+/**
+ * v6-Migration: gespeicherte Mappen von `MAPPE_VERSION` 1 auf 2 heben —
+ * Wandlage in Millimetern, Bemassungsliste je Geschoss ([L-1]/[K-10]).
+ * Idempotent: eine Mappe, die schon Version 2 traegt, bleibt unberuehrt ([L-7]).
+ */
+function _migriereLageMm() {
+  const roh = _leseProjekteRoh();
+  if (!roh.length) return;
+  const neu = roh.map((m) => mappeObjekt(normMappe(migriereMappe(m))));
+  localStorage.setItem(K_PROJEKTE, JSON.stringify(neu));
 }
 
 /** Der Katalog des Altstands (Schluessel `sembla:katalog`) — nur fuer die Migration. */

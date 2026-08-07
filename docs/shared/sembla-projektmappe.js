@@ -11,11 +11,15 @@
  * Wand der Mappe verweist ueber ihre stabile `id` auf den Eintrag im
  * Wandspeicher (`storage.js`) — der Dateiname ist nur der Fundort ([L-4]).
  *
- * Lage ist immer GANZZAHLIG im 125-mm-Raster ([L-1]) und ausschliesslich
- * orthogonal ([L-2]):
+ * Lage ist seit Formatversion 2 in MILLIMETERN ([L-1]) und ausschliesslich
+ * orthogonal ([L-2]); die LAENGE bleibt im 125-mm-Raster:
  *
- *   lage = { start_grid: {x, y}, richtung: "x"|"y", laenge_grid: n }
+ *   lage = { start_mm: {x, y}, richtung: "x"|"y", laenge_grid: n }
  *   lage = null                      // unverortet — der Normalfall vor dem Zeichnen
+ *
+ * Die Lage-/Bemassungsmathematik selbst liegt in `sembla-constraints.js`
+ * (Kapitel 16.10, [K-*]); hier steht nur die Struktur drumherum. Bemassungen
+ * gehoeren dem GESCHOSS ([K-10]).
  *
  * Dieses Modul ist REIN und DOM-frei (keine Datei-, keine localStorage-, keine
  * DOM-Zugriffe). Alle Struktur-Operationen liefern eine NEUE Mappe zurueck und
@@ -25,9 +29,16 @@
  * Eigene Datei nach shared-Regel (b): eigene Tests (tests/module/test-projektmappe.mjs).
  */
 
+import {
+  normLage, lageFehler, laengeMm,
+  normBemassung, bemassungenFehler,
+} from "./sembla-constraints.js";
+
 /** Version des OEFFENTLICHEN Projektmappen-Dateiformats (eigene Achse, getrennt
- *  von PROJEKT_VERSION, KATALOG_VERSION und SCHEMA_VERSION). */
-export const MAPPE_VERSION = 1;
+ *  von PROJEKT_VERSION, KATALOG_VERSION und SCHEMA_VERSION).
+ *  v1 → v2 (Etappe C3.2): Lage in Millimetern statt Rastereinheiten ([L-1]) und
+ *  Bemassungen je Geschoss ([K-10]). `migriereMappe` rechnet v1 verlustfrei um. */
+export const MAPPE_VERSION = 2;
 
 /** Dateiformat-Kennung (wie bei Projekt/Katalog: Verwechslungen werden benannt). */
 export const MAPPE_FORMAT = "SEMBLA-Projektmappe";
@@ -94,6 +105,7 @@ export function neuesGeschossObjekt(name, hoehe_mm) {
     hoehe_mm: (hoehe_mm == null || !Number.isFinite(+hoehe_mm)) ? null : +hoehe_mm,
     plan: null,
     waende: [],
+    bemassungen: [],
   };
 }
 
@@ -104,20 +116,11 @@ function _zahlOderNull(v) {
 }
 
 /**
- * Eine Lage normalisieren. Nicht ganzzahlige oder nicht orthogonale Angaben
- * werden NICHT gerundet oder zurechtgebogen ([L-1]/[L-2]) — sie bleiben so
- * stehen, wie sie kamen, und fallen in `validiereMappe` als Fehler auf.
- * Fehlt die Lage ganz, bleibt sie `null` (unverortet, [L-4]).
+ * Lage-Bausteine kommen aus `sembla-constraints.js` — dort wohnt seit C3.2 die
+ * ganze Lage-/Bemassungsmathematik ([L-1], [K-*]). Hier nur weitergereicht,
+ * damit die bisherigen Aufrufer der Mappe unveraendert weiterarbeiten.
  */
-export function normLage(lage) {
-  if (lage == null || typeof lage !== "object") return null;
-  const sg = lage.start_grid || {};
-  return {
-    start_grid: { x: _zahlOderNull(sg.x), y: _zahlOderNull(sg.y) },
-    richtung: lage.richtung,
-    laenge_grid: _zahlOderNull(lage.laenge_grid),
-  };
-}
+export { normLage, lageFehler, normBemassung };
 
 /** Einen Wandeintrag normalisieren (Struktur/Lage — nie Geometrie). */
 export function normWand(w) {
@@ -182,6 +185,9 @@ export function normGeschoss(g) {
     hoehe_mm: _zahlOderNull(o.hoehe_mm),
     plan: normPlan(o.plan),
     waende: Array.isArray(o.waende) ? o.waende.map(normWand) : [],
+    // Bemassungen leben im GESCHOSS, nie am Wandelement ([K-10]). Fehlt das
+    // Feld (Altstand v1), ist es schlicht leer — es wird keines erfunden.
+    bemassungen: Array.isArray(o.bemassungen) ? o.bemassungen.map(normBemassung) : [],
   };
 }
 
@@ -250,33 +256,22 @@ export function validiereMappe(m) {
       }
       f.push(...planFehler(gs?.plan, gs?.name || gs?.id));
       if (!Array.isArray(gs?.waende)) { f.push(`Geschoss „${gs?.name || gs?.id}“ ohne Wandliste.`); continue; }
+      /** @type {Map<string,any>} */
+      const lagen = new Map();
       for (const w of gs.waende) {
         merke(w && w.id, "Wand");
         f.push(...lageFehler(w?.lage, w?.name || w?.id));
+        if (w && w.id) lagen.set(String(w.id), w.lage ?? null);
+      }
+      if (gs.bemassungen != null) {
+        for (const m2 of bemassungenFehler(gs.bemassungen, lagen)) {
+          f.push(`Geschoss „${gs.name || gs.id}“: ${m2}`);
+        }
+        for (const bm of (Array.isArray(gs.bemassungen) ? gs.bemassungen : [])) {
+          merke(bm && bm.id, "Bemaßung");
+        }
       }
     }
-  }
-  return f;
-}
-
-/**
- * Fehler EINER Lage ([L-1]/[L-2]). `null` (unverortet) ist ausdruecklich gueltig.
- * @param {any} lage @param {string} [bezeichnung] @returns {string[]}
- */
-export function lageFehler(lage, bezeichnung) {
-  const wo = bezeichnung ? `Wand „${bezeichnung}“: ` : "";
-  if (lage == null) return [];
-  /** @type {string[]} */
-  const f = [];
-  const sg = lage.start_grid;
-  if (!sg || !_istGanzzahl(sg.x) || !_istGanzzahl(sg.y)) {
-    f.push(`${wo}Startpunkt muss ganzzahlig im 125-mm-Raster liegen ([L-1]).`);
-  }
-  if (!RICHTUNGEN.includes(lage.richtung)) {
-    f.push(`${wo}Richtung muss „x“ oder „y“ sein — schräge Lagen sind unzulässig ([L-2]).`);
-  }
-  if (!_istGanzzahl(lage.laenge_grid) || lage.laenge_grid < 1) {
-    f.push(`${wo}Länge muss eine ganze Zahl ≥ 1 Rastereinheiten sein ([L-1]).`);
   }
   return f;
 }
@@ -308,12 +303,12 @@ export function parseMappe(text) {
   if (obj && obj.format === "SEMBLA-Projekt") {
     throw new Error("Das ist eine einzelne Wanddatei (SEMBLA-Projekt) — bitte über den Wandimport laden.");
   }
-  const m = normMappe(obj);
   // Nach der Normalisierung gegen das ROHE Objekt pruefen, damit ein fehlendes
   // Format nicht durch die Normalisierung „repariert“ wirkt.
   if (!obj || obj.format !== MAPPE_FORMAT) {
     throw new Error(`Keine Projektmappe erkannt (format „${MAPPE_FORMAT}“ fehlt).`);
   }
+  const m = normMappe(migriereMappe(obj));
   const fehler = validiereMappe(m);
   if (fehler.length) throw new Error("Projektmappe ungültig:\n– " + fehler.join("\n– "));
   return m;
@@ -588,21 +583,136 @@ export function benenneUm(m, id, name) {
   throw new Error(`Unbekannte Kennung „${id}“.`);
 }
 
+// --- Migration v1 → v2 ----------------------------------------------------
+
+/**
+ * Eine Mappe der Formatversion 1 auf Version 2 heben ([L-7]: verlustfrei und
+ * idempotent). Geaendert hat sich mit Etappe C3.2 genau zweierlei:
+ *
+ *   1. Die Lage steht in MILLIMETERN statt in Rastereinheiten ([L-1]) —
+ *      `start_grid: {x,y}` wird zu `start_mm: {x*125, y*125}`. Die LAENGE
+ *      bleibt unveraendert `laenge_grid`.
+ *   2. Ein Geschoss traegt `bemassungen` ([K-10]) — in v1 gab es die nicht,
+ *      also bleibt die Liste leer. Es wird keine erfunden.
+ *
+ * In der Praxis ist das eine Leer-Migration: das Einzeichnen der Lage war nie
+ * umgesetzt, im Bestand ist jede Lage `null`. Die Umrechnung existiert
+ * trotzdem, damit eine exportierte v1-Datei verlustfrei laedt.
+ *
+ * @param {any} m @returns {any} Mappe in Formatversion 2
+ */
+export function migriereMappe(m) {
+  if (!m || typeof m !== "object") return m;
+  const v = +m.version;
+  if (!(v >= 1) || v >= MAPPE_VERSION) return m;      // schon aktuell (oder unlesbar)
+  const rasterZuMm = (lage) => {
+    if (lage == null || typeof lage !== "object") return null;
+    if (lage.start_mm) return lage;                    // bereits mm — nichts anfassen
+    const sg = lage.start_grid || {};
+    const zahl = (x) => (x == null || x === "" || !Number.isFinite(+x)) ? null : +x * GRID_MM;
+    return { start_mm: { x: zahl(sg.x), y: zahl(sg.y) }, richtung: lage.richtung, laenge_grid: lage.laenge_grid };
+  };
+  return {
+    ...m,
+    version: MAPPE_VERSION,
+    gebaeude: (Array.isArray(m.gebaeude) ? m.gebaeude : []).map((g) => ({
+      ...g,
+      geschosse: (Array.isArray(g?.geschosse) ? g.geschosse : []).map((gs) => ({
+        ...gs,
+        waende: (Array.isArray(gs?.waende) ? gs.waende : []).map((w) => ({ ...w, lage: rasterZuMm(w?.lage) })),
+        bemassungen: Array.isArray(gs?.bemassungen) ? gs.bemassungen : [],
+      })),
+    })),
+  };
+}
+
+// --- Bemassungen ([K-10]) -------------------------------------------------
+
+/** Bemassungen eines Geschosses. @param {any} m @param {string} geschossId */
+export function bemassungen(m, geschossId) {
+  const gs = alleGeschosse(m).find((x) => x.geschoss.id === geschossId);
+  return gs ? gs.geschoss.bemassungen : [];
+}
+
+/**
+ * Eine Bemassung setzen (neu oder ersetzen). Rein: liefert eine NEUE Mappe.
+ * Eine ungueltige Bemassung wird ABGEWIESEN — der Speicher bleibt unveraendert
+ * ([P-9]); insbesondere wird ein krummes Laengenmass nicht gerundet ([K-11]).
+ * @param {any} m @param {string} geschossId @param {any} bem
+ */
+export function setzeBemassung(m, geschossId, bem) {
+  const n = normMappe(m);
+  const treffer = alleGeschosse(n).find((x) => x.geschoss.id === geschossId);
+  if (!treffer) throw new Error(`Geschoss „${geschossId}“ gibt es nicht.`);
+  const b = normBemassung(bem);
+  if (!b.id) throw new Error("Bemaßung ohne Kennung ([L-4]).");
+  const lagen = new Map(treffer.geschoss.waende.map((w) => [w.id, w.lage]));
+  const fehler = bemassungenFehler([b], lagen);
+  if (fehler.length) throw new Error(fehler.join("\n"));
+  return _mitGeschoss(n, geschossId, (gs) => {
+    const rest = gs.bemassungen.filter((x) => x.id !== b.id);
+    const idx = gs.bemassungen.findIndex((x) => x.id === b.id);
+    return { ...gs, bemassungen: idx < 0 ? [...rest, b] : gs.bemassungen.map((x) => (x.id === b.id ? b : x)) };
+  });
+}
+
+/** Eine Bemassung entfernen. Unbekannte Kennung = unveraendert. */
+export function loescheBemassung(m, geschossId, bemassungId) {
+  return _mitGeschoss(normMappe(m), geschossId,
+    (gs) => ({ ...gs, bemassungen: gs.bemassungen.filter((x) => x.id !== String(bemassungId)) }));
+}
+
+/**
+ * Bemassungen entfernen, die auf eine (geloeschte) Wand verweisen. Wird beim
+ * Entfernen einer Wand gebraucht: ein Mass ohne Bezugspunkt waere stiller Muell.
+ * Liefert die neue Mappe und die Kennungen der entfernten Masse ([P-9]: der
+ * Aufrufer sagt es).
+ * @param {any} m @param {string} geschossId @param {string} wandId
+ */
+export function bemassungenOhneWand(m, geschossId, wandId) {
+  const n = normMappe(m);
+  const betroffen = bemassungen(n, geschossId)
+    .filter((b) => b?.von?.wand === wandId || b?.bis?.wand === wandId)
+    .map((b) => b.id);
+  const neu = _mitGeschoss(n, geschossId,
+    (gs) => ({ ...gs, bemassungen: gs.bemassungen.filter((b) => !betroffen.includes(b.id)) }));
+  return { mappe: neu, entfernt: betroffen };
+}
+
+/** Ein Geschoss ersetzen (rein). @param {any} n @param {string} geschossId @param {(gs:any)=>any} fn */
+function _mitGeschoss(n, geschossId, fn) {
+  let gefunden = false;
+  const out = {
+    ...n,
+    gebaeude: n.gebaeude.map((g) => ({
+      ...g,
+      geschosse: g.geschosse.map((gs) => {
+        if (gs.id !== geschossId) return gs;
+        gefunden = true;
+        return fn(gs);
+      }),
+    })),
+  };
+  if (!gefunden) throw new Error(`Geschoss „${geschossId}“ gibt es nicht.`);
+  return out;
+}
+
 // --- Ableitungen ----------------------------------------------------------
 
 /** Wandlaenge in mm aus der Lage ([L-3]): laenge_grid × 125. `null` = unverortet. */
-export function laengeAusLage(lage) {
-  const l = normLage(lage);
-  return (l && Number.isInteger(l.laenge_grid)) ? l.laenge_grid * GRID_MM : null;
-}
+export function laengeAusLage(lage) { return laengeMm(lage); }
 
-/** Endrasterpunkt einer Lage (nur zur Darstellung; keine Ecken-/Anschlusslogik, [L-2]). */
-export function endpunktGrid(lage) {
+/**
+ * Endpunkt einer Lage in mm (nur zur Darstellung; keine Ecken-/Anschlusslogik,
+ * [L-2] — eine Ueberlappung wird nach [K-13] gemeldet, nie verrechnet).
+ */
+export function endpunktMm(lage) {
   const l = normLage(lage);
-  if (!l || !Number.isInteger(l.laenge_grid) || !RICHTUNGEN.includes(l.richtung)) return null;
-  const { x, y } = l.start_grid;
-  if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
-  return l.richtung === "x" ? { x: x + l.laenge_grid, y } : { x, y: y + l.laenge_grid };
+  const L = laengeMm(l);
+  if (!l || L == null || !RICHTUNGEN.includes(l.richtung)) return null;
+  const { x, y } = l.start_mm;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return l.richtung === "x" ? { x: x + L, y } : { x, y: y + L };
 }
 
 /**

@@ -147,7 +147,7 @@ t("migration: 'nein' -> ohne_wind", nachM["alt-AltNein"].wandelement.wandtyp ===
 t("migration: ohne Feld -> mit_wind", nachM["alt-AltOhneFeld"].wandelement.wandtyp === "mit_wind");
 t("migration: Alt-Feld bleibt erhalten (kein Datenverlust)",
   nachM["alt-AltNein"].eingaben.statik.mitWind === "nein");
-t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "5");
+t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "6");
 
 // idempotent: erneutes migrieren aendert nichts mehr
 nachM["alt-AltNein"].wandelement.wandtyp = "ohne_wind";
@@ -265,7 +265,7 @@ t("produkte: reisen im Projekt-JSON mit (nur IDs)",
   && pK.eingaben.planung.produkte.rollen.rod_std.join(",") === "rod-m10-1100"
   && !JSON.stringify(pK.eingaben.planung).includes("Latte 40×60"));
 t("produkte: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
-t("produkte: interne Schema-Version ist 5 (mehrere Projekte)", store.SCHEMA_VERSION === 5);
+t("produkte: interne Schema-Version ist 6 (Lage in mm)", store.SCHEMA_VERSION === 6);
 t("produkte: Katalog-Formatversion getrennt", KAT.KATALOG_VERSION === 1);
 const idKimp = store.importiereText(JSON.stringify(pK), "Katalogwand.json");
 t("produkte: nach Projekt-Import wieder geladen",
@@ -383,7 +383,7 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   t("[L-3] Mappe traegt keine Wandgeometrie",
     !localStorage.getItem("sembla:projekte").includes("courses"));
   t("[L-7] Zeiger auf die aktive Wand bleibt bestehen", store.aktivId() === "w-b2");
-  t("migration: Schema-Version auf 5", localStorage.getItem("sembla:version") === "5");
+  t("migration: Schema-Version auf 6", localStorage.getItem("sembla:version") === "6");
   t("[L-6] die Mappe liegt als LISTE mit genau einem Projekt vor",
     JSON.parse(localStorage.getItem("sembla:projekte")).length === 1
     && localStorage.getItem("sembla:projektmappe") === null);
@@ -437,29 +437,29 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   store.setzeAktivesGeschoss(gsId);
 
   // 13c) Verortung ([L-1]/[L-3]) --------------------------------------------
-  store.verorteWand("w-b1", gsId, { lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 16 } });
+  store.verorteWand("w-b1", gsId, { lage: { start_mm: { x: 500, y: 1500 }, richtung: "x", laenge_grid: 16 } });
   t("[L-1] Lage gespeichert", store.wandVerortung("w-b1")?.wand.lage.laenge_grid === 16);
   t("[L-3] Wandelement bleibt unberuehrt",
     store.holeElement("w-b1").wandelement.length_mm === 2000
-    && !JSON.stringify(store.holeElement("w-b1")).includes("start_grid"));
+    && !JSON.stringify(store.holeElement("w-b1")).includes("start_mm"));
   const abgleich = (id) => PM.laengenAbgleich(store.wandVerortung(id).wand.lage,
     store.holeElement(id).wandelement.length_mm);
   t("[L-3] passende Lage: keine Abweichung",
     abgleich("w-b1").abweichung === false && abgleich("w-b1").lage_mm === 2000);
-  store.verorteWand("w-b1", gsId, { lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 20 } });
+  store.verorteWand("w-b1", gsId, { lage: { start_mm: { x: 500, y: 1500 }, richtung: "x", laenge_grid: 20 } });
   t("[L-3] Laengenabweichung wird gemeldet, nicht angeglichen",
     abgleich("w-b1").abweichung === true && abgleich("w-b1").lage_mm === 2500
     && store.holeElement("w-b1").wandelement.length_mm === 2000);
-  store.verorteWand("w-b1", gsId, { lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 16 } });
+  store.verorteWand("w-b1", gsId, { lage: { start_mm: { x: 500, y: 1500 }, richtung: "x", laenge_grid: 16 } });
   t("[L-1] krumme Lage wird abgewiesen, nicht gerundet", (() => {
     try {
-      store.verorteWand("w-b2", gsId, { lage: { start_grid: { x: 0.5, y: 0 }, richtung: "x", laenge_grid: 4 } });
+      store.verorteWand("w-b2", gsId, { lage: { start_mm: { x: 0.25, y: 0 }, richtung: "x", laenge_grid: 4 } });
       return false;
     } catch { return store.wandVerortung("w-b2").wand.lage === null; }
   })());
   t("[L-2] schraege Lage wird abgewiesen", (() => {
     try {
-      store.verorteWand("w-b2", gsId, { lage: { start_grid: { x: 0, y: 0 }, richtung: "diagonal", laenge_grid: 4 } });
+      store.verorteWand("w-b2", gsId, { lage: { start_mm: { x: 0, y: 0 }, richtung: "diagonal", laenge_grid: 4 } });
       return false;
     } catch { return true; }
   })());
@@ -516,10 +516,10 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
       gebaeude: [{ id: "g", geschosse: [{ id: "g", waende: [] }] }] }); return false; } catch { return true; }
   })());
   t("mappe: eigene Formatversion, getrennt von Projekt/Katalog/Schema",
-    PM.MAPPE_VERSION === 1 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 5);
+    PM.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6);
   t("mappe: eigener Speicherschluessel (nicht im Wandspeicher)",
     !!localStorage.getItem("sembla:projekte")
-    && !localStorage.getItem("sembla:elemente").includes("start_grid"));
+    && !localStorage.getItem("sembla:elemente").includes("start_mm"));
 
   // 13f) Geschossplan ([L-8]/[L-9]): nur die BESCHREIBUNG liegt hier ---------
   const gsP = store.wandVerortung("w-b1").geschoss.id;

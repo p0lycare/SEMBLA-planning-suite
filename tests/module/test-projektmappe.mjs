@@ -15,7 +15,7 @@ const wirft = (fn, muster) => {
 
 // --- [L-6] Struktur --------------------------------------------------------
 const leer = M.leereMappe("Aschersleben AWG");
-t("[L-6] leere Mappe: Format + Version", leer.format === "SEMBLA-Projektmappe" && leer.version === 1);
+t("[L-6] leere Mappe: Format + Version", leer.format === "SEMBLA-Projektmappe" && leer.version === 2);
 t("[L-6] leere Mappe: vollstaendige Hierarchie mit einem Gebaeude/Geschoss",
   leer.gebaeude.length === 1 && leer.gebaeude[0].geschosse.length === 1
   && leer.gebaeude[0].geschosse[0].waende.length === 0);
@@ -25,20 +25,22 @@ t("[L-6] leere Mappe: kein Plan erfunden", leer.gebaeude[0].geschosse[0].plan ==
 const gs0 = leer.gebaeude[0].geschosse[0].id;
 const geb0 = leer.gebaeude[0].id;
 
-// --- [L-1] Rasterbindung ---------------------------------------------------
-const lageOk = { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 24 };
+// --- [L-1] Position in mm, Laenge im Raster (Fassung ab C3.2) --------------
+const lageOk = { start_mm: { x: 500, y: 1500 }, richtung: "x", laenge_grid: 24 };
 t("[L-1] gueltige Lage", M.lageGueltig(lageOk));
 t("[L-1] unverortet (null) ist gueltig", M.lageGueltig(null));
 t("[L-1] Laenge aus dem Raster = 24 × 125 mm", M.laengeAusLage(lageOk) === 3000);
 t("[L-1] unverortet hat keine Laenge", M.laengeAusLage(null) === null);
-t("[L-1] gebrochener Startpunkt wird abgewiesen, nicht gerundet",
-  !M.lageGueltig({ ...lageOk, start_grid: { x: 4.5, y: 12 } })
-  && /Raster/.test(M.lageFehler({ ...lageOk, start_grid: { x: 4.5, y: 12 } })[0]));
+t("[L-1] halbe Millimeter sind zulaessig (Kante ↔ Mittellinie)",
+  M.lageGueltig({ ...lageOk, start_mm: { x: 562.5, y: 1500 } }));
+t("[L-1] Viertelmillimeter wird abgewiesen, nicht gerundet",
+  !M.lageGueltig({ ...lageOk, start_mm: { x: 500.25, y: 1500 } })
+  && /0,5 mm/.test(M.lageFehler({ ...lageOk, start_mm: { x: 500.25, y: 1500 } })[0]));
 t("[L-1] gebrochene Laenge wird abgewiesen",
   !M.lageGueltig({ ...lageOk, laenge_grid: 3.7 }));
 t("[L-1] Laenge 0 ist unzulaessig", !M.lageGueltig({ ...lageOk, laenge_grid: 0 }));
-t("[L-1] negativer Startpunkt ist zulaessig (Raster reicht in alle Richtungen)",
-  M.lageGueltig({ ...lageOk, start_grid: { x: -8, y: -2 } }));
+t("[L-1] negative Position ist zulaessig (das Koordinatensystem reicht in alle Richtungen)",
+  M.lageGueltig({ ...lageOk, start_mm: { x: -1000, y: -250 } }));
 t("[L-1] setzeWand rundet eine krumme Lage NICHT, sondern wirft",
   wirft(() => M.setzeWand(leer, gs0, { id: "w-1", lage: { ...lageOk, laenge_grid: 3.7 } }), /Länge/));
 
@@ -46,11 +48,11 @@ t("[L-1] setzeWand rundet eine krumme Lage NICHT, sondern wirft",
 t("[L-2] Richtung y ist gueltig", M.lageGueltig({ ...lageOk, richtung: "y" }));
 t("[L-2] schraege/unbekannte Richtung wird abgewiesen",
   !M.lageGueltig({ ...lageOk, richtung: "diagonal" })
-  && /schräge Lagen sind unzulässig/.test(M.lageFehler({ ...lageOk, richtung: "diagonal" })[0]));
-t("[L-2] Endpunkt x: nur Darstellung, keine Eckenlogik",
-  JSON.stringify(M.endpunktGrid(lageOk)) === JSON.stringify({ x: 28, y: 12 }));
-t("[L-2] Endpunkt y", JSON.stringify(M.endpunktGrid({ ...lageOk, richtung: "y" }))
-  === JSON.stringify({ x: 4, y: 36 }));
+  && /L-2/.test(M.lageFehler({ ...lageOk, richtung: "diagonal" })[0]));
+t("[L-2] Endpunkt x in mm: nur Darstellung, keine Eckenlogik",
+  JSON.stringify(M.endpunktMm(lageOk)) === JSON.stringify({ x: 3500, y: 1500 }));
+t("[L-2] Endpunkt y", JSON.stringify(M.endpunktMm({ ...lageOk, richtung: "y" }))
+  === JSON.stringify({ x: 500, y: 4500 }));
 
 // --- Struktur-Operationen (rein) ------------------------------------------
 const a = M.fuegeGebaeudeHinzu(leer, "Haus B");
@@ -202,9 +204,9 @@ t("datei: ungueltige Lage in der Datei wird abgewiesen, nicht repariert",
   wirft(() => M.parseMappe(JSON.stringify({
     ...M.mappeObjekt(m),
     gebaeude: [{ id: "g", name: "G", geschosse: [{ id: "s", name: "S", hoehe_mm: null, plan: null,
-      waende: [{ id: "w", name: "W", datei: null, lage: { start_grid: { x: 1.5, y: 0 }, richtung: "x", laenge_grid: 2 } }] }] }],
+      waende: [{ id: "w", name: "W", datei: null, lage: { start_mm: { x: 1.25, y: 0 }, richtung: "x", laenge_grid: 2 } }] }] }],
   })), /ungültig/));
-t("datei: Versionsachse eigenstaendig (1)", M.MAPPE_VERSION === 1);
+t("datei: Versionsachse eigenstaendig (2 seit C3.2)", M.MAPPE_VERSION === 2);
 
 // --- [L-8]/[L-9] Planbeschreibung im Geschoss ------------------------------
 // In der Mappe steht NUR die Beschreibung des Plans — nie das Bild ([L-8]) — und
@@ -212,7 +214,7 @@ t("datei: Versionsachse eigenstaendig (1)", M.MAPPE_VERSION === 1);
 {
   let mp = M.leereMappe("Planprojekt");
   const g = mp.gebaeude[0].geschosse[0].id;
-  mp = M.setzeWand(mp, g, { id: "w1", name: "W1", lage: { start_grid: { x: 4, y: 2 }, richtung: "x", laenge_grid: 8 } });
+  mp = M.setzeWand(mp, g, { id: "w1", name: "W1", lage: { start_mm: { x: 500, y: 250 }, richtung: "x", laenge_grid: 8 } });
 
   t("[L-8] frisches Geschoss hat keinen Plan", mp.gebaeude[0].geschosse[0].plan === null);
   const mitPlan = M.setzePlan(mp, g, { datei: "eg.png", typ: "image/png", breite_px: 800, hoehe_px: 600 });
@@ -224,7 +226,7 @@ t("datei: Versionsachse eigenstaendig (1)", M.MAPPE_VERSION === 1);
   t("[L-8] Plan setzen laesst die Ausgangsmappe unveraendert (reine Funktion)",
     mp.gebaeude[0].geschosse[0].plan === null);
   t("[L-1] das Setzen des Plans ruehrt die Wandlage nicht an",
-    mitPlan.gebaeude[0].geschosse[0].waende[0].lage.start_grid.x === 4);
+    mitPlan.gebaeude[0].geschosse[0].waende[0].lage.start_mm.x === 500);
 
   const kalibriert = M.setzePlanAnsicht(mitPlan, g, { mm_je_pixel: 12.5, versatz_x_mm: 250 });
   t("[L-9] Kalibrierung setzt nur Massstab/Versatz",
@@ -247,7 +249,7 @@ t("datei: Versionsachse eigenstaendig (1)", M.MAPPE_VERSION === 1);
   const ohnePlan = M.setzePlan(kalibriert, g, null);
   t("[L-8] Plan entfernen setzt die Beschreibung zurueck", ohnePlan.gebaeude[0].geschosse[0].plan === null);
   t("[L-1] Plan entfernen laesst die Wandlage stehen",
-    ohnePlan.gebaeude[0].geschosse[0].waende[0].lage.start_grid.y === 2);
+    ohnePlan.gebaeude[0].geschosse[0].waende[0].lage.start_mm.y === 250);
 
   t("[L-8] Plan ueberlebt den Datei-Roundtrip",
     M.parseMappe(JSON.stringify(M.mappeObjekt(kalibriert)))
@@ -272,8 +274,8 @@ t("norm: Kopfdaten reisen unveraendert mit",
   M.normMappe({ projekt: { id: "p", kopfdaten: { bauherr: "AWG" } } }).projekt.kopfdaten.bauherr === "AWG");
 t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
   M.normMappe({ projekt: { id: "p" }, gebaeude: [{ id: "g", geschosse: [{ id: "s",
-    waende: [{ id: "w", lage: { start_grid: { x: "abc" }, richtung: "z", laenge_grid: "x" } }] }] }] })
-    .gebaeude[0].geschosse[0].waende[0].lage.start_grid.x === null);
+    waende: [{ id: "w", lage: { start_mm: { x: "abc" }, richtung: "z", laenge_grid: "x" } }] }] }] })
+    .gebaeude[0].geschosse[0].waende[0].lage.start_mm.x === null);
 
 // --- Kopfdaten am Projekt ([L-11]) und Katalogzuordnung ([L-12]) ------------
 {
@@ -309,6 +311,83 @@ t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
     M.parseMappe(JSON.stringify(M.mappeObjekt(mitKat))).projekt.kopfdaten.bauherr === "AWG eG");
 }
 
+
+// --- Migration MAPPE_VERSION 1 → 2 ([L-1]/[L-7], Etappe C3.2) --------------
+{
+  const v1 = {
+    format: "SEMBLA-Projektmappe", version: 1,
+    projekt: { id: "prj-alt", name: "Altstand", kopfdaten: { bauherr: "AWG eG" } },
+    katalog: "kat-1",
+    gebaeude: [{ id: "geb", name: "Haus", geschosse: [{
+      id: "gs", name: "EG", hoehe_mm: 2400, plan: { datei: "eg.png", mm_je_pixel: 12.5 },
+      waende: [
+        { id: "w1", name: "W1", datei: null, lage: { start_grid: { x: 4, y: 12 }, richtung: "x", laenge_grid: 24 } },
+        { id: "w2", name: "W2", datei: null, lage: null },
+      ],
+    }] }],
+  };
+  const v2 = M.migriereMappe(v1);
+  t("[L-7] Migration hebt die Formatversion auf 2", v2.version === 2);
+  t("[L-1] Rasterlage wird zu Millimetern (× 125)",
+    v2.gebaeude[0].geschosse[0].waende[0].lage.start_mm.x === 500
+    && v2.gebaeude[0].geschosse[0].waende[0].lage.start_mm.y === 1500);
+  t("[L-1] die Laenge bleibt in Rastereinheiten",
+    v2.gebaeude[0].geschosse[0].waende[0].lage.laenge_grid === 24);
+  t("[L-7] eine unverortete Wand bleibt unverortet (es wird keine Lage erfunden)",
+    v2.gebaeude[0].geschosse[0].waende[1].lage === null);
+  t("[K-10] das Geschoss bekommt eine leere Bemassungsliste, keine erfundene",
+    Array.isArray(v2.gebaeude[0].geschosse[0].bemassungen) && v2.gebaeude[0].geschosse[0].bemassungen.length === 0);
+  t("[L-7] Kopfdaten, Katalog, Plan und Geschosshoehe bleiben unveraendert",
+    v2.projekt.kopfdaten.bauherr === "AWG eG" && v2.katalog === "kat-1"
+    && v2.gebaeude[0].geschosse[0].plan.datei === "eg.png"
+    && v2.gebaeude[0].geschosse[0].hoehe_mm === 2400);
+  t("[L-7] Migration ist idempotent",
+    JSON.stringify(M.migriereMappe(v2)) === JSON.stringify(v2));
+  t("[L-7] die Ausgangsmappe bleibt unveraendert (reine Funktion)",
+    v1.gebaeude[0].geschosse[0].waende[0].lage.start_grid.x === 4);
+  t("[L-7] eine v1-Datei laedt ueber parseMappe verlustfrei",
+    M.parseMappe(JSON.stringify(v1)).gebaeude[0].geschosse[0].waende[0].lage.start_mm.x === 500);
+}
+
+// --- Bemassungen im Geschoss ([K-10]) --------------------------------------
+{
+  let mp = M.leereMappe("Bemassung");
+  const g = mp.gebaeude[0].geschosse[0].id;
+  mp = M.setzeWand(mp, g, { id: "wA", name: "A", lage: { start_mm: { x: 0, y: 0 }, richtung: "x", laenge_grid: 8 } });
+  mp = M.setzeWand(mp, g, { id: "wB", name: "B", lage: { start_mm: { x: 3000, y: 0 }, richtung: "x", laenge_grid: 8 } });
+
+  t("[K-10] frisches Geschoss hat keine Bemassungen", M.bemassungen(mp, g).length === 0);
+
+  const bm = { id: "bm-1", achse: "x", von: { wand: "wA", bezug: "max" }, bis: { wand: "wB", bezug: "min" }, mass_mm: 2000 };
+  const mitBm = M.setzeBemassung(mp, g, bm);
+  t("[K-10] Bemassung wird im Geschoss abgelegt", M.bemassungen(mitBm, g).length === 1);
+  t("[K-10] setzeBemassung ist rein", M.bemassungen(mp, g).length === 0);
+  t("[K-10] die Bemassung steht NICHT an der Wand",
+    !JSON.stringify(mitBm.gebaeude[0].geschosse[0].waende).includes("bm-1"));
+  t("[K-10] dieselbe Kennung ersetzt, statt zu doppeln",
+    M.bemassungen(M.setzeBemassung(mitBm, g, { ...bm, mass_mm: 2500 }), g).length === 1
+    && M.bemassungen(M.setzeBemassung(mitBm, g, { ...bm, mass_mm: 2500 }), g)[0].mass_mm === 2500);
+  t("[K-11] ein krummes Laengenmass wird abgewiesen, der Speicher bleibt unveraendert",
+    wirft(() => M.setzeBemassung(mp, g, {
+      id: "bm-L", achse: "x", von: { wand: "wA", bezug: "min" }, bis: { wand: "wA", bezug: "max" }, mass_mm: 1010,
+    }), /K-11/));
+  t("[K-3] eine Bemassung ohne Mass wird abgewiesen",
+    wirft(() => M.setzeBemassung(mp, g, { id: "bm-x", achse: "x", von: { wand: "wA", bezug: "min" }, bis: { wand: "wB", bezug: "min" } }), /K-3/));
+  t("[K-10] ein Verweis auf eine unbekannte Wand wird abgewiesen",
+    wirft(() => M.setzeBemassung(mp, g, { ...bm, id: "bm-z", bis: { wand: "wZ", bezug: "min" } }), /K-10/));
+  t("[K-10] Loeschen entfernt genau eine Bemassung",
+    M.bemassungen(M.loescheBemassung(mitBm, g, "bm-1"), g).length === 0);
+  t("[K-10] unbekannte Kennung loeschen aendert nichts",
+    M.bemassungen(M.loescheBemassung(mitBm, g, "bm-fremd"), g).length === 1);
+
+  const ohneWand = M.bemassungenOhneWand(mitBm, g, "wB");
+  t("[K-10] Masse einer entfernten Wand werden mit entfernt und benannt",
+    ohneWand.entfernt.join(",") === "bm-1" && M.bemassungen(ohneWand.mappe, g).length === 0);
+  t("[K-10] Bemassungen ueberstehen den Datei-Roundtrip",
+    M.bemassungen(M.parseMappe(JSON.stringify(M.mappeObjekt(mitBm))), g)[0].mass_mm === 2000);
+  t("[K-6] eine widerspruechliche Bemassung ist KEIN Validierungsfehler (sie wird beim Lösen gemeldet)",
+    M.validiereMappe(M.setzeBemassung(mitBm, g, { ...bm, id: "bm-2", mass_mm: 2400 })).length === 0);
+}
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

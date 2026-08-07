@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260807-04",
+    datum: "2026-08-07",
+    typ: "intern",
+    issue: 26,
+    titel: "Geschosslayout: Wandlagen jetzt in Millimetern statt im Raster, dazu Bemaßungen und ein Constraint-Löser",
+    testbitte: "Nichts zu klicken — der Editor kommt als eigene Seite. Wichtig ist nur, dass Reiter 0 nach dem Update "
+      + "alle Projekte, Geschosse, Wände und Pläne unverändert zeigt.",
+  },
+  {
     id: "chg-20260807-03",
     datum: "2026-08-07",
     typ: "feature",

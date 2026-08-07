@@ -1100,10 +1100,10 @@ globalThis.fetch = echtesFetch;
   ok('[L-6] die Mappen liegen als Liste im eigenen Speicherschluessel',
     Array.isArray(JSON.parse(prjSlot())) && JSON.parse(prjSlot()).length === projekte().length
     && localStorage.getItem('sembla:projektmappe') === null);
-  ok('[L-6] jede Mappe behaelt ihre eigene Formatversion v1',
+  ok('[L-6] jede Mappe behaelt ihre eigene Formatversion v2',
     JSON.parse(prjSlot()).every(m => m.version === MAPPE.MAPPE_VERSION));
   ok('Stand nennt Projekte, Geschosse und Waende',
-    /2 Projekt\(e\)/.test($('tr-stand').textContent) && /Mappenformat v1/.test($('tr-stand').textContent));
+    /2 Projekt\(e\)/.test($('tr-stand').textContent) && /Mappenformat v2/.test($('tr-stand').textContent));
 
   // 8c) Kopfdaten leben am Projekt ([L-11]) ---------------------------------
   const gsB = store.aktivesGeschossId();
@@ -1234,9 +1234,9 @@ globalThis.fetch = echtesFetch;
     && store.holeElement(idOg).wandelement.height_mm === 2400);
 
   // 8g) Lage: Abweichung wird gemeldet, nie angeglichen ([L-3]) -------------
-  store.verorteWand(idOg, gsNeu, { lage: { start_grid:{ x:2, y:5 }, richtung:'x', laenge_grid: 20 } });
+  store.verorteWand(idOg, gsNeu, { lage: { start_mm:{ x:250, y:625 }, richtung:'x', laenge_grid: 20 } });
   ok('[L-3] die Baumliste meldet die Laengenabweichung sichtbar',
-    /Raster 2\/5/.test(baumHtml()) && /2500 mm/.test(baumHtml())
+    /Lage 250\/625 mm/.test(baumHtml()) && /2500 mm/.test(baumHtml())
     && /class="abw"/.test(baumHtml()) && /\[L-3\]/.test(baumHtml()));
   ok('[L-3] das Wandelement wurde dabei nicht angeglichen',
     store.holeElement(idOg).wandelement.length_mm === 2000);
@@ -1319,9 +1319,9 @@ globalThis.fetch = echtesFetch;
   store.setzeAktivesProjekt(prj0.projekt.id);
   baum('prj-export', prj0.projekt.id);
   const mappeDatei = letzterDownload;
-  ok('Projekt-Export erzeugt eine Projektmappen-Datei v1',
+  ok('Projekt-Export erzeugt eine Projektmappen-Datei v2',
     JSON.parse(mappeDatei).format === 'SEMBLA-Projektmappe'
-    && JSON.parse(mappeDatei).version === 1
+    && JSON.parse(mappeDatei).version === 2
     && /^SEMBLA_Projektmappe_/.test(letzterAnker.download));
   ok('die Mappen-Datei traegt keine Wandgeometrie ([L-3])',
     !mappeDatei.includes('courses') && !mappeDatei.includes('length_mm'));
@@ -1340,7 +1340,7 @@ globalThis.fetch = echtesFetch;
   ok('Projektformat der Wanddateien bleibt v2 (kein Bruch durch die Mappen-Liste)',
     store.projektObjekt(idOg).version === 2);
   ok('[L-3] der Wandspeicher traegt keine Lagedaten',
-    !localStorage.getItem('sembla:elemente').includes('start_grid'));
+    !localStorage.getItem('sembla:elemente').includes('start_mm'));
 }
 
 // --- 9) Geschossplan (Etappe C3, Issue #26, [L-8]/[L-9]) -------------------
@@ -1464,9 +1464,9 @@ globalThis.fetch = echtesFetch;
              const g = roh.flatMap(m => m.gebaeude).flatMap(x => x.geschosse)
                .find(x => x.id === gsPlan.id);
              return g && g.plan && g.plan.datei === 'eg.png' && g.plan.mm_je_pixel === 10; })());
-  ok('[L-8] Mappe bleibt gueltig und formatstabil (v1)',
+  ok('[L-8] Mappe bleibt gueltig und formatstabil (v2)',
     MAPPE.validiereMappe(store.holeMappe()).length === 0
-    && JSON.parse(mappeSlot()).every(m => m.version === 1));
+    && JSON.parse(mappeSlot()).every(m => m.version === 2));
 
   // 9i) Ein zweiter Plan setzt Massstab und Versatz zurueck statt sie zu raten ([L-9])
   await $('pn-import').dispatch('change', { target: { files: [
