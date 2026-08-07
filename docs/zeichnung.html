@@ -170,7 +170,11 @@ function optionGeaendert(){
 
 // ---- Aktives Wandelement (localStorage) ----
 function loadFromStore(we,label){
-  EING=(store&&store.aktiveEingaben)?store.aktiveEingaben():{};
+  // Kopfdaten des Schriftfelds kommen nach [L-11] aus dem PROJEKT (Rueckfall: der
+  // Altbestand `eingaben.projekt`, wenn die Wand keinem Projekt zugeordnet ist).
+  // `eingabenMitKopfdaten` ersetzt genau diesen Abschnitt — es fuehrt nichts zusammen.
+  EING=(store&&store.eingabenMitKopfdaten)?store.eingabenMitKopfdaten()
+      :(store&&store.aktiveEingaben)?store.aktiveEingaben():{};
   OPT=normOptionen(EING.zeichnung);
   uiAusOptionen(OPT);
   applyWand(we);

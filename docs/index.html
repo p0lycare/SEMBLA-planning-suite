@@ -28,6 +28,7 @@
   .btn-s{background:#eef2f7;color:#33415c}
   .btn-d{background:#fdecec;color:#c0392b}
   .btn-p:hover,.btn-s:hover,.btn-d:hover{filter:brightness(.97)}
+  button[disabled]{opacity:.45;cursor:not-allowed;filter:none}
   table{width:100%;border-collapse:collapse;font-size:13.5px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--sb-line)}
   th{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--sb-muted)}
@@ -41,7 +42,6 @@
   .msg.ok{color:var(--sb-ok)}
   .empty{color:var(--sb-muted);font-size:13.5px;padding:10px 2px}
   .hint{font-size:12px;color:var(--sb-muted);margin-top:6px}
-  /* Bauteilkatalog */
   .warn{background:#fdf4e3;border:1px solid #e8cf9a;color:#7a5312;border-radius:9px;
         padding:9px 12px;font-size:12.5px;margin-top:10px}
   .warn[hidden]{display:none}
@@ -52,6 +52,24 @@
   .field select{border:1px solid var(--sb-line);border-radius:7px;padding:7px 9px;font-size:14px;width:150px}
   #k-tbody td{vertical-align:top}
   #k-tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+  /* --- Baumliste Projekt -> Geschoss -> Wand (C3.1) --------------------- */
+  .knoten{border:1px solid var(--sb-line);border-radius:10px;margin:8px 0;background:#fff}
+  .knoten.gs{border-style:dashed}
+  .knoten.wand{border:0;border-top:1px solid var(--sb-line);border-radius:0;margin:0}
+  .kopf{display:flex;align-items:center;gap:9px;padding:9px 11px;flex-wrap:wrap}
+  .knoten.aktiv > .kopf{background:#f2f7ff;border-radius:9px}
+  .kopf .klapp{background:none;color:var(--sb-muted);padding:2px 6px;font-size:13px;width:26px}
+  .kopf .titel{font-weight:650;font-size:14px}
+  .knoten.wand .kopf .titel{font-weight:600;font-size:13.5px}
+  .kopf .meta{font-size:12px;color:var(--sb-muted)}
+  .kopf .akt{margin-left:auto;white-space:nowrap;display:flex;gap:5px}
+  .kopf .akt button{padding:5px 9px}
+  .kinder{padding:0 11px 9px 30px}
+  .kinder .knoten.wand:first-child{border-top:0}
+  .plus{background:none;color:var(--sb-accent);padding:5px 6px;font-size:12.5px}
+  .abw{color:#c0392b}
+
   /* Geschossplan (C3): Buehne mit Plan + Rasteroverlay */
   .buehne{margin-top:12px;border:1px solid var(--sb-line);border-radius:9px;background:#f7f9fc;
           overflow:auto;max-height:520px;position:relative}
@@ -59,10 +77,13 @@
   .buehne.zieht{cursor:grabbing}
   .buehne.misst{cursor:crosshair}
   .buehne .leer{color:var(--sb-muted);font-size:13.5px;padding:22px 14px}
-  /* Export-Dialog */
+
+  /* Dialoge */
   .overlay{position:fixed;inset:0;background:rgba(20,32,46,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   .overlay[hidden]{display:none}
-  .modal{background:#fff;border-radius:14px;padding:20px 22px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(20,32,46,.25)}
+  .modal{background:#fff;border-radius:14px;padding:20px 22px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(20,32,46,.25);
+         max-height:88vh;overflow:auto}
+  .modal.breit{max-width:940px}
   .modal h3{margin:0 0 4px;font-size:16px}
   .modal .sub{font-size:12.5px;color:var(--sb-muted);margin:0 0 14px}
   .modal .opt{display:flex;align-items:flex-start;gap:9px;padding:8px 10px;border:1px solid var(--sb-line);border-radius:9px;margin:7px 0;cursor:pointer}
@@ -71,21 +92,21 @@
   .modal .opt .t{font-size:13.5px;font-weight:600}
   .modal .opt .d{font-size:11.5px;color:var(--sb-muted)}
   .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
-  /* Import-Bestaetigung: neu importierte Zeile hervorheben */
-  #tbody tr.neu td{background:#e6f4ea}
-  #tbody tr.neu td:first-child{box-shadow:inset 3px 0 0 var(--sb-ok)}
   .modal .zus{font-size:12.5px;color:#42505e;background:#f9fbfd;border:1px solid var(--sb-line);
               border-radius:9px;padding:9px 11px;margin:12px 0 0}
   .modal .zus div{margin:2px 0}
+  /* Import-Bestaetigung: neu importierte Wand hervorheben */
+  .knoten.wand.neu > .kopf{background:#e6f4ea;box-shadow:inset 3px 0 0 var(--sb-ok)}
 </style>
 </head>
 <body>
 
 <header class="hero">
   <h1>SEMBLA Planungs-Suite</h1>
-  <p>Digitale Planung des kreislauffähigen Massivbausystems. Alle Werkzeuge arbeiten auf einem
-     gemeinsamen Datenmodell — dem <b>Wandelement</b>. Es wird hier angelegt/gewählt und lebt im
-     Browser; alle Module lesen genau das aktive Element.</p>
+  <p>Digitale Planung des kreislauffähigen Massivbausystems. Modul&nbsp;0 ist der
+     <b>Projektplaner</b>: hier entstehen Projekte, Geschosse und Wände. Alle anderen Module arbeiten
+     auf dem <b>aktiven Wandelement</b> — der Pfad Projekt · Geschoss · Wand steht oben in der
+     Kopfleiste.</p>
 </header>
 
 <div class="wrap">
@@ -93,78 +114,39 @@
   <h2>Module</h2>
   <div class="grid" id="modul-grid"></div>
 
-  <h2>Projektplanung <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· Projekt → Gebäude → Geschoss → Wand</span></h2>
+  <h2>Projekte <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· Projekt → Geschoss → Wand</span></h2>
   <div class="panel">
-    <div class="empty" id="pl-none">Noch kein Projekt angelegt. Die Projektstruktur ist eine
-      <b>eigene Ressource</b> neben den Wänden — sie hält nur Struktur und Lage, nie Geometrie.</div>
-    <div class="row" id="pl-anlegen">
-      <div class="field">
-        <label for="pl-projekt-neu">Projektname</label>
-        <input id="pl-projekt-neu" type="text" placeholder="z. B. Aschersleben AWG" style="width:230px">
-      </div>
-      <button class="btn-p" id="pl-neu">Projekt anlegen</button>
+    <div class="row">
+      <button class="btn-p" id="tr-projekt-neu">Projekt anlegen…</button>
+      <label class="btn-s" for="tr-mappe-import">Projekt hochladen…</label>
+      <input id="tr-mappe-import" type="file" accept=".json,application/json" hidden>
+      <div class="muted" id="tr-stand" style="font-size:12.5px;padding-bottom:8px">–</div>
     </div>
-
-    <div id="pl-form" hidden>
-      <div class="row">
-        <div class="field">
-          <label for="pl-projekt">Projekt</label>
-          <input id="pl-projekt" type="text" style="width:230px">
-        </div>
-        <div class="muted" id="pl-stand" style="font-size:12.5px;padding-bottom:8px">–</div>
-      </div>
-
-      <div class="subh">Gebäude</div>
-      <div class="row">
-        <div class="field">
-          <label for="pl-geb">Aktives Gebäude</label>
-          <select id="pl-geb" style="width:230px"></select>
-        </div>
-        <div class="field">
-          <label for="pl-geb-name">Name</label>
-          <input id="pl-geb-name" type="text" placeholder="z. B. Haus A" style="width:170px">
-        </div>
-        <button class="btn-s" id="pl-geb-neu">Gebäude anlegen</button>
-        <button class="btn-s" id="pl-geb-umbenennen">Umbenennen</button>
-        <button class="btn-d" id="pl-geb-loeschen">Löschen</button>
-      </div>
-
-      <div class="subh">Geschosse <span class="muted" style="text-transform:none;letter-spacing:0">
-        · des aktiven Gebäudes</span></div>
-      <div class="row">
-        <div class="field">
-          <label for="pl-gs">Aktives Geschoss</label>
-          <select id="pl-gs" style="width:230px"></select>
-        </div>
-        <div class="field">
-          <label for="pl-gs-name">Name</label>
-          <input id="pl-gs-name" type="text" placeholder="z. B. EG" style="width:110px">
-        </div>
-        <div class="field">
-          <label for="pl-gs-hoehe">Geschosshöhe (mm)</label>
-          <input id="pl-gs-hoehe" class="s" type="number" step="200" min="200" placeholder="leer = keine">
-        </div>
-        <button class="btn-s" id="pl-gs-neu">Geschoss anlegen</button>
-        <button class="btn-s" id="pl-gs-uebernehmen">Änderung übernehmen</button>
-        <button class="btn-d" id="pl-gs-loeschen">Löschen</button>
-      </div>
-      <div class="hint" id="pl-hoehe-hinweis"></div>
-      <div class="msg" id="pl-msg"></div>
-      <div class="warn" id="pl-warn" hidden></div>
-    </div>
-    <div class="hint">Die Projektstruktur und die <b>Lage</b> der Wände im 125-mm-Raster liegen in
-      einer <b>eigenen Ressource</b> (Projektmappe) — getrennt vom Wandelement, damit
-      Modul&nbsp;1 die Lagedaten gar nicht überschreiben kann ([L-3]). Die
-      <b>Geschosshöhe ist nur eine Vorgabe</b> für neu angelegte Wände und wird nie aus dem
-      Wandelement zurückgeschrieben ([L-5]); passt sie nicht ins 200-mm-Lagenraster, wird das
-      benannt statt gerundet. Eine neu angelegte oder importierte Wand wird im <b>aktiven
-      Geschoss eingetragen</b> — ohne Lage, denn gezeichnet ist noch nichts ([L-4]). Das
-      <b>Einzeichnen im Geschossplan</b> kommt in den nächsten Etappen.</div>
+    <div class="msg" id="tr-msg"></div>
+    <div class="empty" id="tr-leer" hidden>Noch kein Projekt angelegt. Ein Projekt hält
+      <b>Struktur und Lage</b> (Geschosse, Wände im 125-mm-Raster) sowie die
+      <b>Projekt-Kopfdaten</b> und den zugeordneten <b>Bauteilkatalog</b> — die Wandgeometrie selbst
+      bleibt im Wandelement.</div>
+    <div id="tr-baum"></div>
+    <div class="warn" id="tr-warn" hidden></div>
+    <div class="hint">Die Karten lassen sich <b>unabhängig auf- und zuklappen</b>; das ist reine
+      Anzeige und ändert <b>keinen</b> aktiven Zeiger ([L-10]). <b>Aktivsetzen ist streng
+      hierarchisch</b>: ein Geschoss nur im aktiven Projekt, eine Wand nur in ihrem aktiven Geschoss
+      — der gesperrte Weg wird benannt, nichts wird still mitaktiviert. Umgekehrt hebt ein
+      Projektwechsel die Zeiger darunter <b>auf</b>, statt sie auf Fremdes zu biegen.<br>
+      Die <b>Geschosshöhe</b> ist nur eine <b>Vorgabe</b> für neu angelegte Wände und wird nie aus dem
+      Wandelement zurückgeschrieben ([L-5]). Eine neue oder importierte Wand wird im Geschoss
+      <b>ohne Lage</b> eingetragen — gezeichnet ist noch nichts ([L-4]); maßgebend für Länge und Höhe
+      bleibt das Wandelement, eine Abweichung zur gezeichneten Lage wird <b>gemeldet, nicht
+      angeglichen</b> ([L-3]). Das <b>Löschen</b> eines Projekts oder Geschosses entfernt nur die
+      Struktur; die Wandelemente bleiben erhalten und gelten danach als „nicht eingetragen“.<br>
+      Der Zustand liegt im <b>localStorage dieses Browsers</b> (pro Gerät, weg bei „Websitedaten
+      löschen“) — wichtige Stände als Datei exportieren.</div>
   </div>
 
   <h2>Geschossplan <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· Hintergrund für die Verortung — keine Datenquelle ([L-9])</span></h2>
   <div class="panel">
-    <div class="empty" id="pn-none">Kein aktives Geschoss — oben eines wählen oder anlegen. Der Plan
+    <div class="empty" id="pn-none">Kein aktives Geschoss — oben eines aktiv setzen oder anlegen. Der Plan
       hängt am Geschoss, nicht am Wandelement.</div>
     <div id="pn-form" hidden>
       <div class="row">
@@ -219,79 +201,133 @@
       Das <b>Planbild liegt nicht im localStorage</b>, sondern in einem eigenen Browserspeicher
       (IndexedDB) — ein Grundriss würde den Projektstand sonst sprengen ([L-8]). In der Projektmappe
       stehen nur Dateiname, Bildmaße, Maßstab und Versatz. Zulässig sind <b>PNG, JPEG und WebP</b> bis
-      20 MB; ein <b>PDF wird abgewiesen</b> (es zu rendern verlangte eine Fremdbibliothek — bitte
-      vorher als Bild exportieren). Der Plan ist an dieses Gerät gebunden: in einem anderen Browser
-      bleiben Maßstab und Versatz erhalten, das Bild fehlt und wird gemeldet.<br>
+      20 MB; ein <b>PDF wird abgewiesen</b> (bitte vorher als Bild exportieren). Der Plan ist an
+      dieses Gerät gebunden: in einem anderen Browser bleiben Maßstab und Versatz erhalten, das Bild
+      fehlt und wird gemeldet.<br>
       Das <b>Einzeichnen der Wände</b> im Raster (Wand-Werkzeug, Radierer) kommt in der nächsten
       Etappe.</div>
   </div>
 
-  <h2>Wandelement anlegen</h2>
-  <div class="panel">
+  <div class="hint" style="margin:28px 0 12px">SEMBLA Planungs-Suite · Polycare</div>
+</div>
+
+<!-- ===================== Dialoge ===================== -->
+
+<!-- Projekt anlegen/bearbeiten: Name, Kopfdaten ([L-11]), Bauteilkatalog ([L-12]).
+     Geschrieben wird AUSSCHLIESSLICH mit „Speichern“. -->
+<div class="overlay" id="pp-overlay" hidden>
+  <div class="modal">
+    <h3 id="pp-titel">Projekt anlegen</h3>
+    <p class="sub">Die <b>Kopfdaten</b> gehören zum Projekt und werden hier einmal gepflegt —
+      Zeichnung, Schriftfeld und Export lesen sie von dort ([L-11]).</p>
     <div class="row">
-      <div class="field">
-        <label for="f-name">Name</label>
-        <input id="f-name" type="text" placeholder="z. B. Wand A" value="Neue Wand">
-      </div>
-      <div class="field">
-        <label for="f-laenge">Länge (mm, Vielfaches 125)</label>
-        <input id="f-laenge" type="number" step="125" min="250" value="2000">
-      </div>
-      <div class="field">
-        <label for="f-hoehe">Höhe (mm, Vielfaches 200)</label>
-        <input id="f-hoehe" type="number" step="200" min="200" value="2600">
-      </div>
-      <div class="field">
-        <label for="f-wandtyp">Wandtyp (Windsituation)</label>
-        <select id="f-wandtyp" style="border:1px solid var(--sb-line);border-radius:7px;padding:7px 9px;font-size:14px;width:220px">
+      <div class="field" style="flex:1"><label for="pp-name">Projektname</label>
+        <input id="pp-name" type="text" style="width:100%" placeholder="z. B. Aschersleben AWG"></div>
+    </div>
+    <div class="subh">Kopfdaten</div>
+    <div class="row">
+      <div class="field"><label for="pp-bauherr">Bauherrenschaft</label><input id="pp-bauherr" type="text"></div>
+      <div class="field"><label for="pp-planverf">Planverfasser</label><input id="pp-planverf" type="text"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label for="pp-phase">Phase</label>
+        <select id="pp-phase" style="width:170px">
+          <option value="">–</option>
+          <option>Vorplanung</option><option>Entwurfsplanung</option>
+          <option>Genehmigungsplanung</option><option>Ausführungsplanung</option>
+        </select></div>
+      <div class="field"><label for="pp-plannr">Plan-Nr.</label><input id="pp-plannr" type="text" style="width:100px"></div>
+      <div class="field"><label for="pp-index">Index</label><input id="pp-index" type="text" style="width:60px"></div>
+      <div class="field"><label for="pp-gez">Gez.</label><input id="pp-gez" type="text" style="width:100px"></div>
+    </div>
+    <div class="subh">Bauteilkatalog <span class="muted" style="text-transform:none;letter-spacing:0">
+      · genau einer je Projekt ([L-12])</span></div>
+    <div class="row">
+      <div class="field"><label for="pp-katalog">Zugeordneter Katalog</label>
+        <select id="pp-katalog" style="width:250px"></select></div>
+      <button class="btn-s" id="pp-katalog-pflege">Katalog bearbeiten…</button>
+    </div>
+    <div class="hint" id="pp-katalog-hinweis"></div>
+    <div class="msg" id="pp-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="pp-cancel">Abbrechen</button>
+      <button class="btn-p" id="pp-speichern">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Geschoss anlegen/bearbeiten -->
+<div class="overlay" id="gp-overlay" hidden>
+  <div class="modal">
+    <h3 id="gp-titel">Geschoss anlegen</h3>
+    <p class="sub">Die <b>Geschosshöhe ist nur eine Vorgabe</b> für neu angelegte Wände; sie wird in
+      Modul&nbsp;1 frei überschrieben und nie zurückgeschrieben ([L-5]).</p>
+    <div class="row">
+      <div class="field"><label for="gp-name">Bezeichnung</label>
+        <input id="gp-name" type="text" style="width:200px" placeholder="z. B. EG"></div>
+      <div class="field"><label for="gp-hoehe">Geschosshöhe (mm)</label>
+        <input id="gp-hoehe" class="s" type="number" step="200" min="200" placeholder="leer = keine"></div>
+    </div>
+    <div class="hint" id="gp-hinweis"></div>
+    <div class="msg" id="gp-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="gp-cancel">Abbrechen</button>
+      <button class="btn-p" id="gp-speichern">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Wand anlegen/bearbeiten. Beim Anlegen entsteht das Wandelement (buildWall);
+     beim Bearbeiten ist NUR der Name änderbar — Länge/Höhe/Öffnungen gehören
+     Modul 1, dem einzigen Schreiber des Wandelements ([P-1]). -->
+<div class="overlay" id="wp-overlay" hidden>
+  <div class="modal">
+    <h3 id="wp-titel">Wand hinzufügen</h3>
+    <p class="sub" id="wp-sub">Die Wand wird im gewählten Geschoss eingetragen — <b>ohne Lage im
+      Raster</b>, denn gezeichnet ist noch nichts ([L-4]).</p>
+    <div class="row">
+      <div class="field"><label for="f-name">Name</label>
+        <input id="f-name" type="text" placeholder="z. B. Wand A" value="Neue Wand"></div>
+      <div class="field"><label for="f-laenge">Länge (mm, Vielfaches 125)</label>
+        <input id="f-laenge" type="number" step="125" min="250" value="2000"></div>
+      <div class="field"><label for="f-hoehe">Höhe (mm, Vielfaches 200)</label>
+        <input id="f-hoehe" type="number" step="200" min="200" value="2600"></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="field"><label for="f-wandtyp">Wandtyp (Windsituation)</label>
+        <select id="f-wandtyp" style="width:230px">
           <option value="mit_wind" selected>Innenwand mit Wind (Cpi)</option>
           <option value="ohne_wind">Innenwand ohne Wind</option>
-        </select>
-      </div>
-      <button class="btn-p" id="btn-neu">Anlegen &amp; aktiv setzen</button>
+        </select></div>
+    </div>
+    <div class="row" style="margin-top:12px" id="wp-quellen">
       <label class="btn-s" for="f-import">Datei importieren…</label>
       <input id="f-import" type="file" accept=".json,application/json" hidden>
       <button class="btn-s" id="btn-vorlage-wand">Musterwand laden…</button>
     </div>
-    <div class="msg" id="msg"></div>
-    <div class="hint">Die neue Wand wird im <b>aktiven Geschoss</b> der Projektstruktur eingetragen
-      (oben wählbar) — <b>ohne Lage im Raster</b>, denn gezeichnet ist noch nichts ([L-4]). Ist eine
-      Geschosshöhe gesetzt, steht sie oben als <b>Vorgabe</b> im Feld „Höhe" und bleibt frei
-      änderbar ([L-5]).<br>
-      Öffnungen, Auslegung usw. entstehen in Modul&nbsp;1 (Wandplanung). Hier wird
-      das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen. Der <b>Wandtyp</b>
-      gehört zum Wandelement und wird nur hier beim Anlegen festgelegt; die übrigen Module lesen ihn.<br>
-      „<b>Musterwand laden…</b>" liest die mitgelieferte Repo-Vorlage
+    <div class="hint">Öffnungen, Auslegung usw. entstehen in <b>Modul&nbsp;1</b> (Wandplanung). Hier
+      wird das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen. Der
+      <b>Wandtyp</b> gehört zum Wandelement und wird nur hier beim Anlegen festgelegt; die übrigen
+      Module lesen ihn.<br>
+      „<b>Musterwand laden…</b>“ liest die mitgelieferte Repo-Vorlage
       (<code>vorlagen/SEMBLA_Musterwand.json</code>, Projektformat&nbsp;v2) — bewusst auf Klick, nie
       automatisch. Sie läuft durch denselben Bestätigungsdialog wie ein Dateiimport und wird als
       <b>neues</b> Wandelement angelegt; bestehende Elemente bleiben unangetastet.</div>
-  </div>
-
-  <h2>Projekt-Kopfdaten <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· aktives Wandelement</span></h2>
-  <div class="panel">
-    <div class="empty" id="pj-none" hidden>Kein aktives Wandelement — oben anlegen oder in der Liste „Aktiv setzen".</div>
-    <div id="pj-form">
-      <div class="row">
-        <div class="field"><label for="pj-name">Projekt</label><input id="pj-name" type="text"></div>
-        <div class="field"><label for="pj-bauherr">Bauherrenschaft</label><input id="pj-bauherr" type="text"></div>
-        <div class="field"><label for="pj-planverf">Planverfasser</label><input id="pj-planverf" type="text"></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <div class="field"><label for="pj-phase">Phase</label>
-          <select id="pj-phase" style="border:1px solid var(--sb-line);border-radius:7px;padding:7px 9px;font-size:14px;width:170px">
-            <option>Vorplanung</option><option>Entwurfsplanung</option><option>Genehmigungsplanung</option><option>Ausführungsplanung</option>
-          </select></div>
-        <div class="field"><label for="pj-plannr">Plan-Nr.</label><input id="pj-plannr" type="text" style="width:100px"></div>
-        <div class="field"><label for="pj-index">Index</label><input id="pj-index" type="text" style="width:60px"></div>
-        <div class="field"><label for="pj-gez">Gez.</label><input id="pj-gez" type="text" style="width:100px"></div>
-      </div>
+    <div class="hint" id="wp-hinweis"></div>
+    <div class="msg" id="msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="wp-cancel">Abbrechen</button>
+      <button class="btn-p" id="btn-neu">Anlegen</button>
     </div>
-    <div class="hint">Diese Angaben gehören zum aktiven Wandelement und reisen im Projekt-Export mit
-      (Projekt-JSON). Änderungen werden sofort gespeichert.</div>
   </div>
+</div>
 
-  <h2>Bauteilkatalog <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· eigene Ressource, getrennt vom Projekt</span></h2>
-  <div class="panel">
+<!-- Bauteilkatalog: die Katalogpflege 1:1 als Popup (Modul 0 ist der alleinige Pflegeort). -->
+<div class="overlay" id="kat-overlay" hidden>
+  <div class="modal breit">
+    <h3>Bauteilkatalog</h3>
+    <p class="sub">Eigene Ressource mit eigener Datei (<b>SEMBLA-Bauteilkatalog</b>, Format-Version&nbsp;1)
+      — getrennt vom Projekt-Export. Zugeordnet wird genau <b>ein Katalog je Projekt</b> ([L-12]).</p>
     <div class="row">
       <div class="field">
         <label for="k-name">Katalogname</label>
@@ -302,7 +338,7 @@
       <input id="k-import" type="file" accept=".json,application/json" hidden>
       <button class="btn-s" id="k-vorlage">Standardkatalog laden</button>
       <button class="btn-s" id="k-export">Katalog exportieren (JSON)</button>
-      <button class="btn-d" id="k-entfernen">Katalog entfernen</button>
+      <button class="btn-d" id="k-entfernen">Zuordnung aufheben</button>
     </div>
     <div class="muted" id="k-info" style="font-size:12.5px;margin-top:8px">–</div>
     <div class="msg" id="k-msg"></div>
@@ -323,26 +359,21 @@
       <tbody id="k-tbody"></tbody>
     </table>
     <div class="empty" id="k-leer" hidden>Noch kein Produkt im Katalog — oben anlegen oder einen Katalog importieren.</div>
-    <div class="hint">Der Katalog ist eine <b>eigene Ressource</b>: er liegt getrennt vom Projekt im
-      localStorage dieses Browsers und wird als eigene Datei
-      (<b>SEMBLA-Bauteilkatalog</b>, Format-Version 1) importiert/exportiert — <b>nicht</b> über den
-      Projekt-Export (ZIP). Im Projekt selbst stehen nur <b>Produkt-IDs</b> je Verwendungsstelle, keine
-      Preise und keine Maße.<br>
-      <b>Modul 0 ist der alleinige Pflegeort</b> für Produkte und Preise. <b>Welche</b> Produkte eine
-      konkrete Wand verwendet, wird dort gewählt, wo es fachlich hingehört: in
+    <div class="hint">Im Projekt stehen nur <b>Produkt-IDs</b> je Verwendungsstelle, keine Preise und
+      keine Maße. <b>Modul 0 ist der alleinige Pflegeort</b> für Produkte und Preise. <b>Welche</b>
+      Produkte eine konkrete Wand verwendet, wird dort gewählt, wo es fachlich hingehört: in
       <b>Modul&nbsp;1</b> (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) und
       <b>Modul&nbsp;2</b> (Lattenstange, Beplankungsplatte, Verbinderprodukt) — jeweils direkt aus dem
       vollständigen Katalog.<br>
-      „<b>Standardkatalog laden</b>" liest die mitgelieferte Repo-Vorlage
-      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1).
-      Ein bereits geladener Katalog wird <b>nur nach Bestätigung</b> ersetzt; ist noch <b>gar
-      kein</b> Katalog geladen, holt ihn das Anlegen eines Wandelements automatisch, damit man
-      nicht mit einer leeren Planung startet.<br>
+      „<b>Standardkatalog laden</b>“ liest die mitgelieferte Repo-Vorlage
+      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) als <b>neuen</b> Katalog
+      und ordnet ihn dem aktiven Projekt zu; der bisherige Katalog bleibt erhalten und lässt sich
+      oben im Projekt-Dialog wieder auswählen. Ist noch <b>gar kein</b> Katalog zugeordnet, holt ihn
+      das Anlegen einer Wand automatisch, damit man nicht mit einer leeren Planung startet.<br>
       <b>Startklar statt leer ([P-18]):</b> Jedes Produkt kann im Feld <code>rollen</code> die
       Verwendungsstelle nennen, die es im Regelfall ausführt. Beim Anlegen einer Wand und beim
       Laden/Importieren eines Katalogs übernehmen <b>nur noch leere</b> Verwendungsstellen diese
-      Standardauswahl — eine bereits getroffene Wahl wird nie überschrieben, und in Modul&nbsp;1/2
-      ist alles jederzeit umwählbar.<br>
+      Standardauswahl — eine bereits getroffene Wahl wird nie überschrieben.<br>
       Der Standardkatalog enthält neben den Produktvorgaben aus dieser Suite auch
       <b>vorläufige, fachlich unbestätigte Beispielwerte</b>; sie sind im Katalognamen und je
       betroffenem Produkt gekennzeichnet und vor der Verwendung zu prüfen.<br>
@@ -351,47 +382,21 @@
       dort <b>ohne Preis</b> mit benanntem Grund — es wird kein Nullpreis und kein Ersatzprodukt
       angesetzt und keine Einbaumenge verändert.<br>
       <b>Produkte pflegen</b> geschieht in einem eigenen Dialog mit den <b>fachlich passenden Feldern
-      der jeweiligen Kategorie</b> ([P-16]) — Gewindestange mit Gewinde/Güte/Stangenlänge, Latte mit
-      Querschnitt und Standardlänge, Platte/Blech mit Breite/Höhe/Dicke. <b>Nur „Speichern" schreibt</b>:
-      Abbrechen, Escape und ein Klick neben den Dialog lassen den Katalog unverändert, auch beim
-      Duplizieren.</div>
-  </div>
-
-  <h2>Gespeicherte Wandelemente</h2>
-  <div class="panel">
-    <div class="row" style="margin-bottom:8px">
-      <div class="field"><label for="w-filter">Ansicht</label>
-        <select id="w-filter" style="width:250px">
-          <option value="alle">alle Wände</option>
-          <option value="aktiv">nur aktives Geschoss</option>
-          <option value="unverortet">nur nicht eingetragene Wände</option>
-        </select></div>
+      der jeweiligen Kategorie</b> ([P-16]). <b>Nur „Speichern“ schreibt</b>: Abbrechen, Escape und ein
+      Klick neben den Dialog lassen den Katalog unverändert, auch beim Duplizieren.</div>
+    <div class="modal-actions">
+      <button class="btn-s" id="kat-close">Schließen</button>
     </div>
-    <table>
-      <thead>
-        <tr><th>Name</th><th>Maße (L×H)</th><th>Geschoss / Lage</th><th>Geändert</th><th></th></tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
-    <div class="empty" id="leer" hidden>Noch kein Wandelement gespeichert.</div>
-    <div class="hint">Der Zustand liegt im <b>localStorage dieses Browsers</b> (pro Gerät, weg bei
-      „Websitedaten löschen"). Exportiere wichtige Elemente als Datei zur Sicherung/Weitergabe.<br>
-      Die Spalte <b>Geschoss / Lage</b> kommt aus der Projektmappe: sie zeigt, wo die Wand in der
-      Projektstruktur steht und ob sie im Raster verortet ist. <b>Maßgebend für Länge und Höhe
-      bleibt das Wandelement</b> — weicht es von der gezeichneten Lage ab, wird das hier
-      <b>gemeldet und nicht angeglichen</b> ([L-3]).</div>
   </div>
-
-  <div class="hint" style="margin:28px 0 12px">SEMBLA Planungs-Suite · Polycare</div>
 </div>
 
 <!-- Import-Bestaetigung: Name und Inhalt werden VOR dem Anlegen bestaetigt.
-     Bis „Importieren & aktiv setzen" liegt die geparste Datei nur im Speicher der Seite. -->
+     Bis „Importieren“ liegt die geparste Datei nur im Speicher der Seite. -->
 <div class="overlay" id="imp-overlay" hidden>
   <div class="modal">
     <h3>Wandelement importieren</h3>
     <p class="sub">Die Datei <b id="imp-datei">–</b> wurde gelesen, aber <b>noch nicht gespeichert</b>.
-      Name prüfen und bestätigen — „Abbrechen" legt kein Element an.</p>
+      Name prüfen und bestätigen — „Abbrechen“ legt kein Element an.</p>
     <div class="field" style="width:100%">
       <label for="imp-name">Name des Wandelements</label>
       <input id="imp-name" type="text" style="width:100%">
@@ -408,9 +413,10 @@
 <!-- Zentraler Export-Dialog: erzeugt alle Ausgaben frisch aus dem Datenmodell -->
 <div class="overlay" id="exp-overlay" hidden>
   <div class="modal">
-    <h3>Projekt exportieren</h3>
+    <h3>Wand exportieren</h3>
     <p class="sub">Auswahl wird als <b>ZIP</b> heruntergeladen und komplett aus dem aktuellen
-      Datenmodell (Wandelement + Eingaben) neu erzeugt — kein Drift. Projekt: <b id="exp-name">–</b></p>
+      Datenmodell (Wandelement + Eingaben + Projekt-Kopfdaten) neu erzeugt — kein Drift.
+      Wand: <b id="exp-name">–</b></p>
     <label class="opt"><input type="checkbox" value="projekt" checked><span><span class="t">Projekt-Datei (JSON)</span><br><span class="d">Vollständiges Datenmodell — hier auf der Startseite wieder importierbar.</span></span></label>
     <label class="opt"><input type="checkbox" value="stueckliste" checked><span><span class="t">Stückliste &amp; Kosten (CSV)</span><br><span class="d">Mengen aus dem aktiven Wandelement, mit Preisen aus dem Modell.</span></span></label>
     <label class="opt"><input type="checkbox" value="zuschnitt" checked><span><span class="t">Zuschnittliste Latten (CSV)</span><br><span class="d">Lattenschnitt je Verbinderachse aus dem Wandaufbau.</span></span></label>
@@ -428,12 +434,12 @@
 <!-- Produktpflege ([P-16]): klar von der Produktübersicht getrennter Dialog fuer Anlegen,
      Bearbeiten und Duplizieren. Die Felder unter #kp-felder werden je Kategorie aus der
      zentralen Maske (sembla-katalog.js) gerendert. Geschrieben wird AUSSCHLIESSLICH ueber
-     „Speichern" — Abbrechen/Escape/Overlay-Klick lassen die Katalogdaten unveraendert. -->
+     „Speichern“ — Abbrechen/Escape/Overlay-Klick lassen die Katalogdaten unveraendert. -->
 <div class="overlay" id="kp-overlay" hidden>
   <div class="modal" style="max-width:560px">
     <h3 id="kp-titel">Produkt anlegen</h3>
     <p class="sub" id="kp-sub">Die Felder richten sich nach der Kategorie. Gespeichert wird erst mit
-      „Speichern" — „Abbrechen" ändert den Katalog nicht.</p>
+      „Speichern“ — „Abbrechen“ ändert den Katalog nicht.</p>
     <div class="row">
       <div class="field"><label for="kp-kat">Kategorie</label><select id="kp-kat" style="width:250px"></select></div>
       <div class="field"><label for="kp-einheit">Preisbasis</label><select id="kp-einheit" style="width:110px"></select></div>
@@ -470,8 +476,12 @@
 
   mountNavbar(0);
 
+  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  const $ = id => document.getElementById(id);
+  const fehlerText = e => (e && e.message ? e.message : String(e));
+
   // --- Modulkarten ---
-  const grid = document.getElementById('modul-grid');
+  const grid = $('modul-grid');
   grid.innerHTML = MODULE.filter(m => m.nr !== 0 && !m.versteckt).map(m =>
     `<a class="card" href="${m.datei}"><div class="t"><span class="n">${m.nr}</span>${m.titel}</div>`
     + `<div class="d">${_beschreibung(m.nr)}</div></a>`
@@ -489,57 +499,621 @@
     })[nr] || '';
   }
 
-  // --- Anlegen ---
-  const msg = document.getElementById('msg');
+  // =====================================================================
+  //  Baumliste Projekt -> Geschoss -> Wand ([L-6]/[L-10])
+  // =====================================================================
+  // Die Struktur kommt aus den REINEN Operationen von sembla-projektmappe.js; das
+  // Ergebnis wird geprueft gespeichert. Ein Fehlschlag laesst den Speicher unveraendert
+  // und wird benannt — nie still korrigiert. Der Klappzustand ist REINE ANZEIGE: er
+  // lebt nur hier im Seitenspeicher und beruehrt keinen aktiven Zeiger ([L-10]).
+  const trMsg = $('tr-msg');
+  function trZeige(text, ok){ trMsg.textContent = text; trMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  /** Kennungen der AUFGEKLAPPTEN Knoten (reine Anzeige). */
+  const KLAPP = new Set();
+  let klappVorbelegt = false;
+  let neuId = null;            // gerade angelegte/importierte Wand: Zeile hervorheben
+  let neuScroll = false;
+
+  const aktGeschoss = () => { const t = store.aktivesGeschoss(); return t ? t.geschoss : null; };
+
+  /** Kanonische Beschriftung des Wandtyps (wie Modul 3). */
+  const WANDTYP_LABEL = { mit_wind:'Innenwand mit Wind (Cpi)', ohne_wind:'Innenwand ohne Wind' };
+
+  /** Lage-/Abweichungstext einer Wand — reine Anzeige aus der Mappe ([L-3]). */
+  function trLageText(wandEintrag, el){
+    const lage = wandEintrag.lage;
+    if (!lage) return '<span class="muted">unverortet</span>';
+    const ab = MAPPE.laengenAbgleich(lage, el && el.wandelement ? el.wandelement.length_mm : null);
+    const t = `<span class="muted">Raster ${lage.start_grid.x}/${lage.start_grid.y} · Richtung `
+      + `${esc(lage.richtung)} · ${lage.laenge_grid}×125 = ${ab.lage_mm} mm</span>`;
+    return ab.abweichung
+      ? t + ` <span class="abw">· Wandelement ${ab.wand_mm} mm ≠ Lage ${ab.lage_mm} mm ([L-3])</span>`
+      : t;
+  }
+
+  const knopf = (act, id, text, klasse, gesperrt, grund) =>
+    `<button class="${klasse || 'btn-s'}" data-act="${act}" data-id="${esc(id)}"`
+    + (gesperrt ? ` disabled title="${esc(grund || '')}"` : '') + `>${text}</button>`;
+
+  function trBaumHtml(){
+    const projekte = store.listeProjekte();
+    const aktivPrj = store.holeMappe();
+    const gsAktiv = aktGeschoss();
+    const wAktiv = store.aktivId();
+
+    // Beim ersten Zeichnen den aktiven Pfad aufklappen — danach entscheidet der Nutzer.
+    if (!klappVorbelegt) {
+      klappVorbelegt = true;
+      if (aktivPrj) KLAPP.add(aktivPrj.projekt.id);
+      if (gsAktiv) KLAPP.add(gsAktiv.id);
+    }
+
+    return projekte.map(m => {
+      const istAktivPrj = !!(aktivPrj && aktivPrj.projekt.id === m.projekt.id);
+      const offen = KLAPP.has(m.projekt.id);
+      const gsListe = m.gebaeude.flatMap(g => g.geschosse);
+      const anzW = gsListe.reduce((s, gs) => s + gs.waende.length, 0);
+      const katName = m.katalog ? (store.katalogNachId(m.katalog)?.name || '⚠ Katalog fehlt') : 'kein Katalog';
+      const kopf = `<div class="kopf">`
+        + `<button class="klapp" data-act="klapp" data-id="${esc(m.projekt.id)}">${offen ? '▾' : '▸'}</button>`
+        + `<span class="titel">${esc(m.projekt.name)}</span>`
+        + (istAktivPrj ? ' <span class="badge">aktiv</span>' : '')
+        + `<span class="meta">${gsListe.length} Geschoss(e) · ${anzW} Wand/Wände · ${esc(katName)}</span>`
+        + `<span class="akt">`
+        + (istAktivPrj ? '' : knopf('prj-aktiv', m.projekt.id, 'Aktiv setzen'))
+        + knopf('prj-bearbeiten', m.projekt.id, 'Bearbeiten')
+        + knopf('prj-export', m.projekt.id, 'Export')
+        + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d')
+        + `</span></div>`;
+      if (!offen) return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}</div>`;
+
+      const kinder = gsListe.map(gs => trGeschossHtml(m, gs, istAktivPrj, gsAktiv, wAktiv)).join('')
+        + `<button class="plus" data-act="gs-neu" data-id="${esc(m.projekt.id)}">+ Geschoss hinzufügen</button>`;
+      return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}<div class="kinder">${kinder}</div></div>`;
+    }).join('');
+  }
+
+  function trGeschossHtml(m, gs, istAktivPrj, gsAktiv, wAktiv){
+    const istAktiv = !!(gsAktiv && gsAktiv.id === gs.id);
+    const offen = KLAPP.has(gs.id);
+    const vg = MAPPE.hoehenVorgabe(gs.hoehe_mm);
+    const meta = (gs.hoehe_mm != null ? `${gs.hoehe_mm} mm` + (vg.passt ? ` = ${vg.lagen} Lagen` : ' ⚠ kein Vielfaches von 200 mm')
+                                      : 'ohne Geschosshöhe')
+      + ` · ${gs.waende.length} Wand/Wände · ` + (gs.plan ? 'Plan hinterlegt' : 'kein Plan');
+    const kopf = `<div class="kopf">`
+      + `<button class="klapp" data-act="klapp" data-id="${esc(gs.id)}">${offen ? '▾' : '▸'}</button>`
+      + `<span class="titel">${esc(gs.name)}</span>`
+      + (istAktiv ? ' <span class="badge">aktiv</span>' : '')
+      + `<span class="meta">${esc(meta)}</span>`
+      + `<span class="akt">`
+      + (istAktiv ? '' : knopf('gs-aktiv', gs.id, 'Aktiv setzen', 'btn-s', !istAktivPrj,
+          `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`))
+      + knopf('gs-bearbeiten', gs.id, 'Bearbeiten')
+      + knopf('gs-loeschen', gs.id, 'Löschen', 'btn-d')
+      + `</span></div>`;
+    if (!offen) return `<div class="knoten gs${istAktiv ? ' aktiv' : ''}">${kopf}</div>`;
+
+    const waende = gs.waende.map(w => trWandHtml(m, gs, w, istAktiv, wAktiv)).join('')
+      || '<div class="empty">Noch keine Wand in diesem Geschoss.</div>';
+    const kinder = waende
+      + `<button class="plus" data-act="wand-neu" data-id="${esc(gs.id)}">+ Wand hinzufügen</button>`;
+    return `<div class="knoten gs${istAktiv ? ' aktiv' : ''}">${kopf}<div class="kinder">${kinder}</div></div>`;
+  }
+
+  function trWandHtml(m, gs, w, gsIstAktiv, wAktiv){
+    const el = store.holeElement(w.id);
+    const istAktiv = wAktiv === w.id;
+    const masse = el && el.wandelement
+      ? `${el.wandelement.length_mm ?? '?'} × ${el.wandelement.height_mm ?? '?'} mm`
+      : '⚠ kein Wandelement (verwaister Eintrag, [L-4])';
+    return `<div class="knoten wand${istAktiv ? ' aktiv' : ''}${w.id === neuId ? ' neu' : ''}" data-wand="${esc(w.id)}"><div class="kopf">`
+      + `<span style="width:26px"></span>`
+      + `<span class="titel">${esc(w.name || w.id)}</span>`
+      + (istAktiv ? ' <span class="badge">aktiv</span>' : '')
+      + `<span class="meta">${esc(masse)} · </span>${trLageText(w, el)}`
+      + `<span class="akt">`
+      + (istAktiv || !el ? '' : knopf('wand-aktiv', w.id, 'Aktiv setzen', 'btn-s', !gsIstAktiv,
+          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`))
+      + (el ? knopf('wand-planen', w.id, 'In Modul 1 planen', 'btn-s', !gsIstAktiv,
+          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`) : '')
+      + (el ? knopf('wand-bearbeiten', w.id, 'Bearbeiten') : '')
+      + (el ? knopf('wand-export', w.id, 'Export') : '')
+      + knopf('wand-loeschen', w.id, 'Löschen', 'btn-d')
+      + `</span></div></div>`;
+  }
+
+  /** Wandelemente ohne Eintrag in irgendeinem Projekt — gemeldet, nie still bereinigt ([L-4]). */
+  function trWarnungen(){
+    const box = $('tr-warn');
+    const ref = store.mappeReferenzen();
+    const teile = [];
+    if (ref.verwaist.length) {
+      teile.push('<b>Verwaiste Einträge:</b> ' + ref.verwaist.length + ' Wand/Wände stehen in einem '
+        + 'Projekt, es gibt aber kein Wandelement mehr dazu ('
+        + esc(ref.verwaist.map(w => (w.name || w.id) + ' / ' + w.geschoss).join(', '))
+        + '). Sie werden <b>gemeldet, nicht still entfernt</b> ([L-4]).');
+    }
+    if (ref.unverortet.length) {
+      const namen = ref.unverortet.map(id => (store.holeElement(id)?.name) || id);
+      teile.push('<b>' + ref.unverortet.length + ' Wandelement(e) gehören zu keinem Projekt:</b> '
+        + esc(namen.join(', ')) + '. Sie bleiben erhalten und lassen sich über „+ Wand hinzufügen“ → '
+        + '„vorhandene Wand eintragen“ einem Geschoss zuordnen — bereinigt wird nichts ([L-4]).'
+        + trZuordnenHtml(ref.unverortet));
+    }
+    if (ref.ohneLage.length) {
+      teile.push(ref.ohneLage.length + ' eingetragene Wand/Wände sind noch <b>nicht im Raster '
+        + 'verortet</b> — das Einzeichnen kommt in einer späteren Etappe.');
+    }
+    box.hidden = teile.length === 0;
+    box.innerHTML = teile.map(t => '<div style="margin:4px 0">' + t + '</div>').join('');
+  }
+
+  /** Direktweg „ins aktive Geschoss eintragen“ für nicht zugeordnete Wände. */
+  function trZuordnenHtml(ids){
+    const gs = aktGeschoss();
+    if (!gs) return '';
+    return '<div style="margin-top:5px">' + ids.map(id =>
+      `<button class="btn-s" data-act="wand-zuordnen" data-id="${esc(id)}" style="margin:2px 4px 2px 0">`
+      + `„${esc((store.holeElement(id)?.name) || id)}“ → ${esc(gs.name)}</button>`).join('') + '</div>';
+  }
+
+  function trRender(){
+    const projekte = store.listeProjekte();
+    $('tr-leer').hidden = projekte.length > 0;
+    $('tr-baum').innerHTML = trBaumHtml();
+    const gesamtGs = projekte.reduce((s, m) => s + MAPPE.alleGeschosse(m).length, 0);
+    const gesamtW = projekte.reduce((s, m) => s + MAPPE.alleWaende(m).length, 0);
+    $('tr-stand').textContent = `${projekte.length} Projekt(e) · ${gesamtGs} Geschoss(e) · `
+      + `${gesamtW} eingetragene Wand/Wände · ${store.listeElemente().length} Wandelement(e) · `
+      + `Mappenformat v${MAPPE.MAPPE_VERSION}`;
+    trWarnungen();
+    if (neuId && neuScroll) {
+      neuScroll = false;
+      const el = $('tr-baum').querySelector('.knoten.wand.neu');
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+    }
+  }
+
+  // --- Aktionen der Baumliste ---------------------------------------------
+  $('tr-baum').addEventListener('click', (ev) => {
+    const btn = ev.target.closest ? ev.target.closest('button[data-act]') : null;
+    if (!btn) return;
+    trAktion(btn.dataset.act, btn.dataset.id);
+  });
+  $('tr-warn').addEventListener('click', (ev) => {
+    const btn = ev.target.closest ? ev.target.closest('button[data-act]') : null;
+    if (!btn) return;
+    trAktion(btn.dataset.act, btn.dataset.id);
+  });
+
+  function trAktion(act, id){
+    if (act === 'klapp') {
+      // Reine Anzeige: kein Zeiger wird angefasst ([L-10]).
+      if (KLAPP.has(id)) KLAPP.delete(id); else KLAPP.add(id);
+      trRender();
+      return;
+    }
+    if (act === 'prj-aktiv') {
+      try { store.setzeAktivesProjekt(id); trZeige('Projekt aktiv gesetzt. Geschoss- und Wandzeiger wurden aufgehoben ([L-10]).', true); }
+      catch (e) { trZeige('Nicht gewechselt: ' + fehlerText(e), false); }
+      return;
+    }
+    if (act === 'prj-bearbeiten') { ppOeffne(id); return; }
+    if (act === 'prj-export') { trMappeExport(id); return; }
+    if (act === 'prj-loeschen') { trProjektLoeschen(id); return; }
+    if (act === 'gs-neu') { gpOeffne(id, null); return; }
+    if (act === 'gs-aktiv') {
+      try { store.setzeAktivesGeschoss(id); trZeige('Geschoss aktiv gesetzt.', true); }
+      catch (e) { trZeige('Nicht gewechselt: ' + fehlerText(e), false); }
+      return;
+    }
+    if (act === 'gs-bearbeiten') { gpOeffne(null, id); return; }
+    if (act === 'gs-loeschen') { trGeschossLoeschen(id); return; }
+    if (act === 'wand-neu') { wpOeffne(id, null); return; }
+    if (act === 'wand-aktiv') {
+      try { store.setzeAktiv(id); trZeige('Wand aktiv gesetzt.', true); }
+      catch (e) { trZeige('Nicht aktiviert: ' + fehlerText(e), false); }
+      return;
+    }
+    if (act === 'wand-planen') {
+      try { store.setzeAktiv(id); } catch (e) { trZeige('Nicht aktiviert: ' + fehlerText(e), false); return; }
+      try { window.location.href = 'wandplanung.html'; } catch { /* Navigation nicht moeglich */ }
+      return;
+    }
+    if (act === 'wand-bearbeiten') { wpOeffne(null, id); return; }
+    if (act === 'wand-export') { oeffneExport(id); return; }
+    if (act === 'wand-loeschen') {
+      const e = store.holeElement(id);
+      const name = e ? e.name : id;
+      if (!confirm(`Wandelement „${name}“ wirklich löschen? Das kann nicht rückgängig gemacht werden.`)) return;
+      if (e) store.loesche(id);
+      else {
+        // Verwaister Eintrag: es gibt kein Wandelement mehr — nur der Eintrag geht.
+        const ort = store.wandVerortung(id);
+        if (ort) { try { store.setzeMappe(MAPPE.entferneWand(ort.mappe, id)); } catch (err) { trZeige('Nicht entfernt: ' + fehlerText(err), false); return; } }
+      }
+      trZeige(`„${name}“ gelöscht.`, true);
+      return;
+    }
+    if (act === 'wand-zuordnen') {
+      const gs = aktGeschoss();
+      if (!gs) { trZeige('Kein aktives Geschoss.', false); return; }
+      const e = store.holeElement(id);
+      try {
+        store.verorteWand(id, gs.id, { name: e ? e.name : id, lage: null });
+        trZeige(`„${e ? e.name : id}“ ist jetzt in Geschoss „${gs.name}“ eingetragen (ohne Lage im Raster).`, true);
+      } catch (err) { trZeige('Nicht eingetragen: ' + fehlerText(err), false); }
+    }
+  }
+
+  function trProjektLoeschen(id){
+    const m = store.projektMappe(id);
+    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
+    const gsListe = MAPPE.alleGeschosse(m).map(x => x.geschoss);
+    const anzW = MAPPE.alleWaende(m).length;
+    if (!confirm(`Projekt „${m.projekt.name}“ löschen?`
+      + (gsListe.length ? ` Es enthält ${gsListe.length} Geschoss(e) mit ${anzW} eingetragenen Wand/Wänden.` : '')
+      + ' Die Wandelemente selbst bleiben erhalten — nur Struktur, Lage und Kopfdaten gehen verloren.'
+      + ' Das kann nicht rückgängig gemacht werden.')) return;
+    const mitPlan = gsListe.filter(gs => gs.plan);
+    store.loescheProjekt(id);
+    for (const gs of gsListe) PLAN.loeschePlan(gs.id).catch(() => {});
+    trZeige(`Projekt „${m.projekt.name}“ entfernt. ${anzW} Wandelement(e) sind jetzt keinem Projekt `
+      + 'mehr zugeordnet — sie sind nicht gelöscht.'
+      + (mitPlan.length ? ` ${mitPlan.length} hinterlegte(r) Geschossplan/-pläne wurden mit entfernt ([L-8]).` : ''), true);
+  }
+
+  function trGeschossLoeschen(id){
+    const ort = trFindeGeschoss(id);
+    if (!ort) { trZeige('Unbekanntes Geschoss.', false); return; }
+    const gs = ort.geschoss;
+    if (!confirm(`Geschoss „${gs.name}“ aus Projekt „${ort.mappe.projekt.name}“ löschen?`
+      + (gs.waende.length ? ` Es enthält ${gs.waende.length} eingetragene Wand/Wände.` : '')
+      + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
+    const hattePlan = !!gs.plan;
+    try { store.setzeMappe(MAPPE.entferneGeschoss(ort.mappe, id, { mitWaenden: true })); }
+    catch (e) { trZeige('Nicht gelöscht: ' + fehlerText(e), false); return; }
+    // Das Planbild haengt an der Geschoss-Kennung und waere sonst unerreichbarer Rest ([L-8]).
+    PLAN.loeschePlan(id).catch(() => {});
+    if (store.aktivesGeschossId() === id) { try { store.setzeAktivesGeschoss(null); } catch { /* Zeiger verwaist */ } }
+    trZeige(`Geschoss „${gs.name}“ entfernt. ${gs.waende.length} Wandelement(e) sind jetzt nicht mehr `
+      + 'eingetragen — sie sind nicht gelöscht.'
+      + (hattePlan ? ' Der hinterlegte Plan wurde mit entfernt.' : ''), true);
+  }
+
+  /** Ein Geschoss ueber ALLE Projekte finden (die Baumliste zeigt auch nicht aktive). */
+  function trFindeGeschoss(gsId){
+    for (const m of store.listeProjekte()) {
+      const t = MAPPE.findeGeschoss(m, gsId);
+      if (t) return { mappe: m, ...t };
+    }
+    return null;
+  }
+
+  /** Die Projektmappe eines Projekts als eigene JSON-Datei sichern. */
+  function trMappeExport(id){
+    const m = store.projektMappe(id);
+    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
+    try {
+      const obj = MAPPE.mappeObjekt(m);
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'SEMBLA_Projektmappe_' + store.sicherName(m.projekt.name) + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      trZeige(`Projektmappe „${m.projekt.name}“ als JSON gesichert (Struktur, Lage, Kopfdaten, `
+        + 'Katalogverweis). Wandelemente, Planbilder und der Katalog selbst sind eigene Dateien.', true);
+    } catch (e) { trZeige('Export fehlgeschlagen: ' + fehlerText(e), false); }
+  }
+
+  $('tr-mappe-import').addEventListener('change', async (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    try {
+      const m = store.importiereMappeText(await file.text());
+      store.setzeAktivesProjekt(m.projekt.id);
+      KLAPP.add(m.projekt.id);
+      trZeige(`Projekt „${m.projekt.name}“ importiert und aktiv gesetzt. Verwaiste Einträge werden `
+        + 'unten gemeldet, nicht bereinigt ([L-4]).', true);
+    } catch (e) { trZeige('Import fehlgeschlagen: ' + fehlerText(e), false); }
+    ev.target.value = '';
+  });
+
+  // =====================================================================
+  //  Popup Projekt (Name, Kopfdaten [L-11], Bauteilkatalog [L-12])
+  // =====================================================================
+  const ppOverlay = $('pp-overlay');
+  let ppId = null;                       // null = Anlage, sonst Projekt-Kennung
+  const PP_FELDER = { bauherr:'pp-bauherr', planverfasser:'pp-planverf', phase:'pp-phase',
+                      plan_nr:'pp-plannr', index:'pp-index', gez:'pp-gez' };
+  function ppZeige(text, ok){ $('pp-msg').textContent = text; $('pp-msg').className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  function ppKatalogListe(gewaehlt){
+    const alle = store.listeKataloge();
+    $('pp-katalog').innerHTML = '<option value="">– kein Katalog zugeordnet –</option>'
+      + alle.map(k => `<option value="${esc(k.id)}"${k.id === gewaehlt ? ' selected' : ''}>`
+        + `${esc(k.name)} (${(k.produkte || []).length} Produkte)</option>`).join('');
+    $('pp-katalog').value = gewaehlt || '';
+    $('pp-katalog-hinweis').innerHTML = alle.length
+      ? 'Der zugeordnete Katalog ist die Preisquelle dieses Projekts ([P-14]). Ohne Zuordnung wird '
+        + 'das in Modul 1/2/4 <b>gemeldet</b> — es wird kein Katalog geraten ([L-12]).'
+      : 'Noch kein Katalog vorhanden — über „Katalog bearbeiten…“ anlegen, importieren oder den '
+        + 'Standardkatalog laden.';
+  }
+
+  function ppOeffne(id){
+    ppId = id || null;
+    const m = id ? store.projektMappe(id) : null;
+    const kd = m ? (m.projekt.kopfdaten || {}) : {};
+    $('pp-titel').textContent = m ? 'Projekt bearbeiten: ' + m.projekt.name : 'Projekt anlegen';
+    $('pp-name').value = m ? m.projekt.name : '';
+    for (const [key, feld] of Object.entries(PP_FELDER)) $(feld).value = kd[key] != null ? kd[key] : '';
+    ppKatalogListe(m ? (m.katalog || '') : '');
+    ppZeige('', true);
+    ppOverlay.hidden = false;
+  }
+  function ppSchliesse(){ ppOverlay.hidden = true; ppId = null; }
+
+  /** Abbruch (Button, Escape, Klick neben den Dialog): schliesst und meldet — schreibt nichts. */
+  function ppAbbruch(){ ppSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
+  $('pp-cancel').addEventListener('click', ppAbbruch);
+  ppOverlay.addEventListener('click', (ev) => { if (ev.target === ppOverlay) ppAbbruch(); });
+  $('pp-katalog-pflege').addEventListener('click', () => katOeffne());
+
+  $('pp-speichern').addEventListener('click', () => {
+    const name = String($('pp-name').value || '').trim();
+    if (!name) { ppZeige('Bitte einen Projektnamen eingeben.', false); return; }
+    const patch = {};
+    for (const [key, feld] of Object.entries(PP_FELDER)) patch[key] = $(feld).value;
+    const katalogId = $('pp-katalog').value || null;
+    try {
+      let m = ppId ? store.projektMappe(ppId) : MAPPE.leereMappe(name);
+      if (!m) throw new Error('Projekt ist nicht mehr vorhanden.');
+      if (m.projekt.name !== name) m = MAPPE.benenneUm(m, m.projekt.id, name);
+      m = MAPPE.setzeKopfdaten(m, patch);
+      m = MAPPE.setzeKatalogRef(m, katalogId);
+      const g = store.setzeMappe(m);
+      if (!ppId) {
+        store.setzeAktivesProjekt(g.projekt.id);
+        KLAPP.add(g.projekt.id);
+        // Das mitangelegte Geschoss wird aktiv — sein Projekt ist es gerade geworden,
+        // also ist der Pfad nach [L-10] vollstaendig und nichts wird still mitgezogen.
+        const erstes = g.gebaeude[0] && g.gebaeude[0].geschosse[0];
+        if (erstes) { KLAPP.add(erstes.id); try { store.setzeAktivesGeschoss(erstes.id); } catch { /* bleibt inaktiv */ } }
+      }
+      const war = ppId;
+      ppSchliesse();
+      trZeige(war ? `Projekt „${name}“ gespeichert.`
+        : `Projekt „${name}“ angelegt und aktiv gesetzt — mit einem Geschoss.`, true);
+    } catch (e) { ppZeige('Nicht gespeichert: ' + fehlerText(e), false); }
+  });
+
+  $('tr-projekt-neu').addEventListener('click', () => ppOeffne(null));
+
+  // =====================================================================
+  //  Popup Geschoss
+  // =====================================================================
+  const gpOverlay = $('gp-overlay');
+  let gpProjektId = null, gpGeschossId = null;
+  function gpZeige(text, ok){ $('gp-msg').textContent = text; $('gp-msg').className = 'msg ' + (ok ? 'ok' : 'err'); }
+
+  function gpOeffne(projektId, geschossId){
+    gpProjektId = projektId || null; gpGeschossId = geschossId || null;
+    const ort = geschossId ? trFindeGeschoss(geschossId) : null;
+    const m = ort ? ort.mappe : store.projektMappe(projektId);
+    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
+    gpProjektId = m.projekt.id;
+    $('gp-titel').textContent = ort ? 'Geschoss bearbeiten: ' + ort.geschoss.name
+      : 'Geschoss anlegen in „' + m.projekt.name + '“';
+    $('gp-name').value = ort ? ort.geschoss.name : '';
+    $('gp-hoehe').value = ort && ort.geschoss.hoehe_mm != null ? String(ort.geschoss.hoehe_mm) : '';
+    $('gp-hinweis').innerHTML = '';
+    gpZeige('', true);
+    gpOverlay.hidden = false;
+  }
+  function gpSchliesse(){ gpOverlay.hidden = true; gpProjektId = null; gpGeschossId = null; }
+
+  function gpAbbruch(){ gpSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
+  $('gp-cancel').addEventListener('click', gpAbbruch);
+  gpOverlay.addEventListener('click', (ev) => { if (ev.target === gpOverlay) gpAbbruch(); });
+
+  /** Eingegebene Geschosshoehe: leer = keine Vorgabe, unsinnig = Fehler (nie geraten). */
+  function gpHoehe(){
+    const s = String($('gp-hoehe').value || '').trim();
+    if (!s) return null;
+    const n = Number(s.replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0) throw new Error('Geschosshöhe muss eine positive Zahl in mm sein (oder leer bleiben).');
+    return n;
+  }
+
+  $('gp-speichern').addEventListener('click', () => {
+    let hoehe;
+    try { hoehe = gpHoehe(); } catch (e) { gpZeige('Nicht gespeichert: ' + e.message, false); return; }
+    const m = store.projektMappe(gpProjektId);
+    if (!m) { gpZeige('Projekt ist nicht mehr vorhanden.', false); return; }
+    const vg = MAPPE.hoehenVorgabe(hoehe);
+    try {
+      let n = m, id = gpGeschossId;
+      if (!id) {
+        const name = String($('gp-name').value || '').trim()
+          || 'Geschoss ' + (MAPPE.alleGeschosse(m).length + 1);
+        const r = MAPPE.fuegeGeschossHinzu(m, m.gebaeude[0].id, name, hoehe == null ? undefined : hoehe);
+        n = r.mappe; id = r.id;
+      } else {
+        const name = String($('gp-name').value || '').trim();
+        n = MAPPE.setzeGeschossHoehe(m, id, hoehe);
+        if (name) n = MAPPE.benenneUm(n, id, name);
+      }
+      store.setzeMappe(n);
+      const neu = !gpGeschossId;
+      if (neu) {
+        KLAPP.add(id);
+        // Nur im AKTIVEN Projekt darf ein Geschoss aktiv werden ([L-10]).
+        if (store.holeMappe() && store.holeMappe().projekt.id === m.projekt.id) {
+          try { store.setzeAktivesGeschoss(id); } catch { /* bleibt inaktiv, wird unten benannt */ }
+        }
+      }
+      gpSchliesse();
+      trZeige((neu ? 'Geschoss angelegt' : 'Geschoss geändert') + '. '
+        + (vg.hoehe_mm == null ? 'Ohne Geschosshöhe — neue Wände erhalten keine Höhenvorgabe ([L-5]).'
+           : vg.passt ? `Geschosshöhe ${vg.hoehe_mm} mm = ${vg.lagen} Lagen à 200 mm.` : vg.hinweis)
+        + ' Bestehende Wandelemente bleiben unverändert ([L-5]).', true);
+    } catch (e) { gpZeige('Nicht gespeichert: ' + fehlerText(e), false); }
+  });
+
+  // =====================================================================
+  //  Popup Wand (Anlegen / Umbenennen / Import)
+  // =====================================================================
+  // Beim ANLEGEN entsteht das Wandelement hier (buildWall) und wandert sofort in das
+  // gewaehlte Geschoss — ohne Lage ([L-4]). Beim BEARBEITEN ist ausschliesslich der
+  // Name aenderbar: Laenge, Hoehe, Oeffnungen und Auslegung gehoeren Modul 1, dem
+  // einzigen Schreiber des Wandelements ([P-1]).
+  const wpOverlay = $('wp-overlay');
+  let wpGeschossId = null, wpWandId = null;
+  const msg = $('msg');
   function zeige(text, ok){ msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
-  document.getElementById('btn-neu').addEventListener('click', async () => {
-    const name = document.getElementById('f-name').value.trim() || 'Neue Wand';
-    const l = Number(document.getElementById('f-laenge').value);
-    const h = Number(document.getElementById('f-hoehe').value);
+  function wpOeffne(geschossId, wandId){
+    wpGeschossId = geschossId || null; wpWandId = wandId || null;
+    const bearbeiten = !!wandId;
+    const el = wandId ? store.holeElement(wandId) : null;
+    const ort = wandId ? store.wandVerortung(wandId) : (geschossId ? trFindeGeschoss(geschossId) : null);
+    if (!bearbeiten && !ort) { trZeige('Unbekanntes Geschoss.', false); return; }
+    const gs = ort ? ort.geschoss : null;
+
+    $('wp-titel').textContent = bearbeiten ? 'Wand bearbeiten: ' + (el ? el.name : wandId)
+      : 'Wand hinzufügen' + (gs ? ' in „' + gs.name + '“' : '');
+    $('wp-sub').innerHTML = bearbeiten
+      ? 'Hier ist nur der <b>Name</b> änderbar. Länge, Höhe, Öffnungen und Auslegung gehören in '
+        + '<b>Modul&nbsp;1</b> — dem einzigen Schreiber des Wandelements ([P-1]).'
+      : 'Die Wand wird im Geschoss eingetragen — <b>ohne Lage im Raster</b>, denn gezeichnet ist noch '
+        + 'nichts ([L-4]).';
+    $('wp-quellen').hidden = bearbeiten;
+    for (const id of ['f-laenge', 'f-hoehe', 'f-wandtyp']) $(id).disabled = bearbeiten;
+    $('btn-neu').textContent = bearbeiten ? 'Namen speichern' : 'Anlegen';
+
+    if (bearbeiten) {
+      const w = el ? el.wandelement : null;
+      $('f-name').value = el ? el.name : '';
+      if (w) {
+        $('f-laenge').value = String(w.length_mm ?? '');
+        $('f-hoehe').value = String(w.height_mm ?? '');
+        $('f-wandtyp').value = store.normWandtyp(w.wandtyp);
+      }
+      $('wp-hinweis').innerHTML = w
+        ? `Wandtyp: <b>${esc(WANDTYP_LABEL[store.normWandtyp(w.wandtyp)])}</b> · Öffnungen: `
+          + `${Array.isArray(w.openings) ? w.openings.length : 0}`
+        : 'Zu diesem Eintrag gibt es kein Wandelement (verwaister Eintrag, [L-4]).';
+    } else {
+      $('f-name').value = 'Neue Wand';
+      $('f-laenge').value = '2000';
+      // Geschosshoehe ist VORGABE ([L-5]) — frei aenderbar, nie zurueckgeschrieben.
+      const vg = MAPPE.hoehenVorgabe(gs ? gs.hoehe_mm : null);
+      $('f-hoehe').value = vg.hoehe_mm != null ? String(vg.hoehe_mm) : '2600';
+      $('f-wandtyp').value = 'mit_wind';
+      $('wp-hinweis').innerHTML = vg.hoehe_mm == null
+        ? 'Das Geschoss hat keine Geschosshöhe — die Höhe ist hier frei zu wählen ([L-5]).'
+        : vg.passt
+          ? `Höhenvorgabe aus dem Geschoss: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm — `
+            + 'frei änderbar und nie zurückgeschrieben ([L-5]).'
+          : esc(vg.hinweis);
+    }
+    zeige('', true);
+    wpOverlay.hidden = false;
+  }
+  function wpSchliesse(){ wpOverlay.hidden = true; wpGeschossId = null; wpWandId = null; }
+
+  function wpAbbruch(){ wpSchliesse(); trZeige('Abgebrochen — es wurde nichts angelegt.', true); }
+  $('wp-cancel').addEventListener('click', wpAbbruch);
+  wpOverlay.addEventListener('click', (ev) => { if (ev.target === wpOverlay) wpAbbruch(); });
+
+  $('btn-neu').addEventListener('click', async () => {
+    // Bearbeiten: ausschliesslich umbenennen.
+    if (wpWandId) {
+      const name = String($('f-name').value || '').trim();
+      if (!name) { zeige('Bitte einen Namen eingeben.', false); return; }
+      try { store.umbenennen(wpWandId, name); }
+      catch (e) { zeige('Nicht gespeichert: ' + fehlerText(e), false); return; }
+      wpSchliesse();
+      trZeige(`Wand umbenannt: „${name}“.`, true);
+      return;
+    }
+    const gsId = wpGeschossId;
+    const name = String($('f-name').value || '').trim() || 'Neue Wand';
+    const l = Number($('f-laenge').value);
+    const h = Number($('f-hoehe').value);
+    let id;
     try {
       const we = buildWall(name, l, h, []);
       // Wandtyp ist ein Fachmerkmal der Wand und wird NUR hier (bei der Anlage) gewaehlt.
-      we.wandtyp = store.normWandtyp(document.getElementById('f-wandtyp').value);
-      const id = store.speichere(name, we);
-      store.setzeAktiv(id);
-      // Die neue Wand gehoert in die Projektstruktur — aber ohne erfundene Lage ([L-4]).
-      const ort = plTrageWandEin(id, name);
-      zeige('Angelegt und aktiv gesetzt: ' + name + ort, true);
-      // [P-18] Startklar statt leer — laeuft NACH der Erfolgsmeldung und kann das Anlegen
-      // nicht mehr gefaehrden: Ist noch KEIN Katalog geladen, wird der mitgelieferte
-      // Standardkatalog geholt (ein vorhandener Katalog wird niemals angetastet). Danach
-      // uebernehmen alle noch LEEREN Verwendungsrollen die Standardauswahl des Katalogs.
-      const nach = [];
-      if (!store.holeKatalog()) {
-        try {
-          const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
-          nach.push(`Standardkatalog geladen (${k.produkte.length} Produkte)`);
-          katLaden();
-        } catch (e) {
-          nach.push('Standardkatalog nicht ladbar (' + (e && e.message ? e.message : e) + ')');
-        }
-      }
-      const vb = store.vorbelegeProduktrollen(undefined, id);
-      const n = Object.keys(vb.gesetzt).length;
-      if (n) nach.push(`${n} Verwendungsstelle(n) aus dem Katalog vorbelegt`);
-      if (vb.offen.length) nach.push(`ohne Standardprodukt: ${vb.offen.join(', ')}`);
-      if (nach.length) zeige('Angelegt und aktiv gesetzt: ' + name + ort + ' · ' + nach.join(' · '), true);
-    } catch (e) {
-      zeige('Fehler: ' + (e && e.message ? e.message : e), false);
+      we.wandtyp = store.normWandtyp($('f-wandtyp').value);
+      id = store.speichere(name, we);
+    } catch (e) { zeige('Fehler: ' + fehlerText(e), false); return; }
+
+    // Erst eintragen, dann aktiv setzen: nach [L-10] ist eine eingetragene Wand nur in
+    // ihrem AKTIVEN Geschoss aktivierbar.
+    const ort = wandEintragen(id, name, gsId);
+    wpSchliesse();
+    trZeige('Angelegt: ' + name + ort, true);
+    neuId = id; neuScroll = true;
+    trRender();
+
+    // [P-18] Startklar statt leer — laeuft NACH der Erfolgsmeldung und kann das Anlegen
+    // nicht mehr gefaehrden: Ist dem Projekt noch KEIN Katalog zugeordnet, wird der
+    // mitgelieferte Standardkatalog geholt. Danach uebernehmen alle noch LEEREN
+    // Verwendungsrollen die Standardauswahl des Katalogs.
+    const nach = [];
+    if (!store.holeKatalog()) {
+      try {
+        const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
+        nach.push(`Standardkatalog geladen und dem Projekt zugeordnet (${k.produkte.length} Produkte)`);
+        katLaden();
+      } catch (e) { nach.push('Standardkatalog nicht ladbar (' + fehlerText(e) + ')'); }
     }
+    const vb = store.vorbelegeProduktrollen(undefined, id);
+    const n = Object.keys(vb.gesetzt).length;
+    if (n) nach.push(`${n} Verwendungsstelle(n) aus dem Katalog vorbelegt`);
+    if (vb.offen.length) nach.push(`ohne Standardprodukt: ${vb.offen.join(', ')}`);
+    if (nach.length) trZeige('Angelegt: ' + name + ort + ' · ' + nach.join(' · '), true);
   });
 
-  // --- Import (Bestaetigung VOR der Persistenz) ---
-  // Ablauf: Datei lesen -> store.parseImport (schreibt nichts) -> Dialog mit Namensvorschlag
-  // und echter Inhaltszusammenfassung -> erst „Importieren & aktiv setzen" speichert.
-  // Abbrechen laesst gespeicherte Elemente und den aktiven Zeiger unberuehrt.
-  const impOverlay = document.getElementById('imp-overlay');
-  const impMsg = document.getElementById('imp-msg');
-  let impOffen = null;          // { parse, dateiname } — nur im Speicher der Seite
+  /**
+   * Neu angelegte/importierte Wand im Geschoss eintragen — ohne Lage, denn gezeichnet
+   * ist noch nichts ([L-4]/[L-7]). Danach wird sie aktiv gesetzt, sofern ihr Geschoss
+   * aktiv ist ([L-10]); sonst wird das benannt statt still mitaktiviert.
+   * @param {string} wandId @param {string} name @param {string|null} geschossId
+   * @returns {string} Zusatz zur Meldung
+   */
+  function wandEintragen(wandId, name, geschossId){
+    const gsId = geschossId || (aktGeschoss() ? aktGeschoss().id : null);
+    if (!gsId) {
+      // Ohne Geschoss bleibt die Wand unverortet — sie ist jederzeit aktivierbar.
+      try { store.setzeAktiv(wandId); } catch { /* nicht aktivierbar: wird gemeldet */ }
+      return ' · keinem Geschoss zugeordnet (in der Warnbox unten zuordenbar)';
+    }
+    try { store.verorteWand(wandId, gsId, { name, lage: null }); }
+    catch (e) { return ' · nicht eingetragen (' + fehlerText(e) + ')'; }
+    const gsAktiv = aktGeschoss();
+    if (gsAktiv && gsAktiv.id === gsId) {
+      try { store.setzeAktiv(wandId); } catch (e) { return ' · eingetragen, aber nicht aktiviert (' + fehlerText(e) + ')'; }
+      const ort = store.wandVerortung(wandId);
+      return ` · eingetragen in Geschoss „${ort.geschoss.name}“ und aktiv gesetzt (noch ohne Lage im Raster)`;
+    }
+    const ort = store.wandVerortung(wandId);
+    return ` · eingetragen in Geschoss „${ort ? ort.geschoss.name : gsId}“ — dieses Geschoss ist nicht `
+      + 'aktiv, die Wand wurde deshalb nicht aktiv gesetzt ([L-10])';
+  }
 
-  /** Kanonische Beschriftung des Wandtyps (wie Modul 0 beim Anlegen / Modul 3). */
-  const WANDTYP_LABEL = { mit_wind:'Innenwand mit Wind (Cpi)', ohne_wind:'Innenwand ohne Wind' };
+  // --- Wandimport (Bestaetigung VOR der Persistenz) ------------------------
+  // Ablauf: Datei lesen -> store.parseImport (schreibt nichts) -> Dialog mit Namensvorschlag
+  // und echter Inhaltszusammenfassung -> erst „Importieren“ speichert. Abbrechen laesst
+  // gespeicherte Elemente und den aktiven Zeiger unberuehrt.
+  const impOverlay = $('imp-overlay');
+  const impMsg = $('imp-msg');
+  let impOffen = null;          // { parse, dateiname, geschossId } — nur im Speicher der Seite
 
   /** Generische Platzhalternamen taugen nicht als Vorschlag. */
   const IMP_PLATZHALTER = new Set(['wand', 'wandelement', 'importiert']);
@@ -547,14 +1121,7 @@
     const s = String(name == null ? '' : name).trim();
     return (s && !IMP_PLATZHALTER.has(s.toLowerCase())) ? s : null;
   }
-  /** Dateiname ohne die letzte .json-Endung. */
-  function impDateiBasis(dateiname){
-    return String(dateiname || '').replace(/\.json$/i, '').trim();
-  }
-  /**
-   * Namensvorschlag: sinnvoller Projektname aus der Datei zuerst, dann ein sinnvoller
-   * expliziter Elementname, sonst der Dateiname ohne .json.
-   */
+  function impDateiBasis(dateiname){ return String(dateiname || '').replace(/\.json$/i, '').trim(); }
   function impNameVorschlag(parse, dateiname){
     const projekt = parse.eingaben && parse.eingaben.projekt ? parse.eingaben.projekt.name : null;
     return impBrauchbar(projekt)
@@ -580,44 +1147,29 @@
     impOffen = null;
     impOverlay.hidden = true;
     impMsg.textContent = ''; impMsg.className = 'msg';
-    // Erst hier leeren: so laesst sich dieselbe Datei nach „Abbrechen" erneut waehlen.
-    document.getElementById('f-import').value = '';
+    $('f-import').value = '';
   }
 
-  /**
-   * Gelesenen Text deuten und den Bestaetigungsdialog oeffnen — schreibt NICHTS.
-   * Gemeinsamer Weg fuer Dateiimport und Repo-Vorlage (identische Pruefung/Bestaetigung).
-   * @param {string} text @param {string} quelle Dateiname bzw. Vorlagenbezeichnung
-   */
+  /** Gelesenen Text deuten und den Bestaetigungsdialog oeffnen — schreibt NICHTS. */
   function impOeffne(text, quelle){
     const parse = store.parseImport(text);                   // parst nur, speichert nichts
-    impOffen = { parse, dateiname: quelle };
-    document.getElementById('imp-datei').textContent = quelle;
-    document.getElementById('imp-name').value = impNameVorschlag(parse, quelle);
-    document.getElementById('imp-info').innerHTML = impZusammenfassung(parse.wandelement);
+    impOffen = { parse, dateiname: quelle, geschossId: wpGeschossId };
+    $('imp-datei').textContent = quelle;
+    $('imp-name').value = impNameVorschlag(parse, quelle);
+    $('imp-info').innerHTML = impZusammenfassung(parse.wandelement);
     impMsg.textContent = ''; impMsg.className = 'msg';
     impOverlay.hidden = false;
-    msg.textContent = ''; msg.className = 'msg';
+    zeige('', true);
   }
 
-  document.getElementById('f-import').addEventListener('change', async (ev) => {
+  $('f-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
-    try {
-      impOeffne(await file.text(), file.name);
-    } catch (e) {
-      impOffen = null;
-      ev.target.value = '';
-      zeige('Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
-    }
+    try { impOeffne(await file.text(), file.name); }
+    catch (e) { impOffen = null; ev.target.value = ''; zeige('Import fehlgeschlagen: ' + fehlerText(e), false); }
   });
 
   // --- Repo-Vorlagen (bewusste Wahl, KEIN Autoload) ------------------------
-  // Beide Vorlagen sind gewoehnliche, mit ausgelieferte Dateien unter docs/vorlagen/.
-  // Sie laufen durch dieselben Pruef-/Bestaetigungswege wie fremde Dateien:
-  //   Wand    -> store.parseImport + Bestaetigungsdialog (legt ein NEUES Element an)
-  //   Katalog -> store.importiereKatalogText in den eigenen Katalog-Slot, Ersetzen nur
-  //              nach ausdruecklicher Bestaetigung.
   const VORLAGE = {
     wand:    { pfad: './vorlagen/SEMBLA_Musterwand.json',      quelle: 'SEMBLA_Musterwand.json (Repo-Vorlage)' },
     katalog: { pfad: './vorlagen/SEMBLA_Standardkatalog.json', quelle: 'SEMBLA_Standardkatalog.json (Repo-Vorlage)' },
@@ -627,342 +1179,54 @@
   async function vorlageText(pfad){
     let r;
     try { r = await fetch(pfad, { cache: 'no-store' }); }
-    catch (e) { throw new Error(`Vorlage „${pfad}" nicht erreichbar (${e && e.message ? e.message : e}).`); }
-    if (!r || !r.ok) throw new Error(`Vorlage „${pfad}" nicht ladbar (HTTP ${r ? r.status : '?'}).`);
+    catch (e) { throw new Error(`Vorlage „${pfad}“ nicht erreichbar (${fehlerText(e)}).`); }
+    if (!r || !r.ok) throw new Error(`Vorlage „${pfad}“ nicht ladbar (HTTP ${r ? r.status : '?'}).`);
     return await r.text();
   }
 
-  document.getElementById('btn-vorlage-wand').addEventListener('click', async () => {
-    try {
-      impOeffne(await vorlageText(VORLAGE.wand.pfad), VORLAGE.wand.quelle);
-    } catch (e) {
-      impOffen = null;
-      zeige('Musterwand nicht geladen: ' + (e && e.message ? e.message : e), false);
-    }
+  $('btn-vorlage-wand').addEventListener('click', async () => {
+    try { impOeffne(await vorlageText(VORLAGE.wand.pfad), VORLAGE.wand.quelle); }
+    catch (e) { impOffen = null; zeige('Musterwand nicht geladen: ' + fehlerText(e), false); }
   });
 
-  document.getElementById('imp-go').addEventListener('click', () => {
+  $('imp-go').addEventListener('click', () => {
     if (!impOffen) return;                                   // Doppelklick-/Leerlauf-Schutz
-    const name = String(document.getElementById('imp-name').value || '').trim();
+    const name = String($('imp-name').value || '').trim();
     if (!name) {
       impMsg.textContent = 'Bitte einen Namen für das Wandelement eingeben.';
       impMsg.className = 'msg err';
       return;                                                // Dialog bleibt offen, nichts gespeichert
     }
-    const { parse } = impOffen;
+    const { parse, geschossId } = impOffen;
     try {
       const id = store.speichere(name, parse.wandelement, undefined, parse.eingaben);
-      store.setzeAktiv(id);
-      // Auch importierte Waende gehoeren in die Projektstruktur — die Datei bringt keine
-      // Lage mit, also bleibt sie leer ([L-4]): es wird keine erfunden.
-      const ort = plTrageWandEin(id, name);
-      // Hervorhebung/Scroll erst nach dem Schreiben setzen und die Tabelle bewusst
-      // neu zeichnen — die Renderlaeufe der Schreibvorgaenge liegen davor.
+      // Auch importierte Waende gehoeren in die Struktur — die Datei bringt keine Lage
+      // mit, also bleibt sie leer ([L-4]): es wird keine erfunden.
+      const ort = wandEintragen(id, name, geschossId);
       neuId = id; neuScroll = true;
-      render();
       impSchliesse();
-      zeige(`„${name}" wurde importiert und ist jetzt aktiv.` + ort, true);
+      wpSchliesse();
+      trRender();
+      trZeige(`„${name}“ wurde importiert.` + ort, true);
     } catch (e) {
-      impMsg.textContent = 'Import fehlgeschlagen: ' + (e && e.message ? e.message : e);
+      impMsg.textContent = 'Import fehlgeschlagen: ' + fehlerText(e);
       impMsg.className = 'msg err';
     }
   });
 
-  document.getElementById('imp-cancel').addEventListener('click', impSchliesse);
+  $('imp-cancel').addEventListener('click', impSchliesse);
   impOverlay.addEventListener('click', (ev) => { if (ev.target === impOverlay) impSchliesse(); });
 
-  // --- Projektplanung: Projekt -> Gebaeude -> Geschoss ([L-1]…[L-7]) -------
-  // Die Projektmappe ist eine EIGENE Ressource (store.holeMappe/setzeMappe); alle
-  // Struktur-Operationen kommen REIN aus sembla-projektmappe.js und liefern eine neue
-  // Mappe, die hier gepruefte gespeichert wird. Modul 0 haelt ausschliesslich Struktur
-  // und Lage — das Wandelement wird dabei NIE angefasst ([L-3]), und eine Lage wird
-  // niemals erfunden ([L-4]/[L-7]).
-  const plMsg = document.getElementById('pl-msg');
-  function plZeige(text, ok){ plMsg.textContent = text; plMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
-  const $pl = id => document.getElementById(id);
-
-  /** Vorhandene Mappe (nie eine anlegen — das Anlegen ist eine ausdrueckliche Aktion). */
-  const plMappe = () => store.holeMappe();
-  /** Aktives Gebaeude bzw. aktives Geschoss (null = keins eindeutig bestimmbar). */
-  const plGebaeude = () => store.aktivesGebaeude();
-  /**
-   * Aktives Geschoss — aber nur, wenn es zum aktiven Gebaeude gehoert. Der Rueckfall der
-   * Speicherschicht auf ein einzelnes Geschoss darf die Gebaeudewahl nicht uebergehen:
-   * ein Geschoss eines ANDEREN Gebaeudes waere hier eine geratene Auswahl ([P-9]).
-   */
-  const plGeschoss = () => {
-    const t = store.aktivesGeschoss();
-    if (!t) return null;
-    const geb = plGebaeude();
-    return (geb && t.gebaeude.id !== geb.id) ? null : t.geschoss;
-  };
-
-  /**
-   * Eine reine Struktur-Operation anwenden und das Ergebnis speichern. Wirft die
-   * Operation (ungueltige Lage, belegtes Geschoss, unbekannte Kennung), bleibt der
-   * Speicher unveraendert und der Grund wird sichtbar gemeldet — nie still korrigiert.
-   * @param {(m:object) => object} fn @param {string} erfolg
-   */
-  function plAendere(fn, erfolg){
-    const m = plMappe();
-    if (!m) { plZeige('Es ist kein Projekt angelegt.', false); return false; }
-    try { store.setzeMappe(fn(m)); }
-    catch (e) { plZeige('Nicht geändert: ' + (e && e.message ? e.message : e), false); return false; }
-    if (erfolg) plZeige(erfolg, true);
-    return true;
-  }
-
-  $pl('pl-neu').addEventListener('click', () => {
-    if (plMappe()) { plZeige('Es gibt bereits ein Projekt — eine Mappe ist genau ein Projekt ([L-6]).', false); return; }
-    const name = $pl('pl-projekt-neu').value.trim() || 'Neues Projekt';
-    try {
-      const m = store.setzeMappe(MAPPE.leereMappe(name));
-      store.setzeAktivesGeschoss(m.gebaeude[0].geschosse[0].id);
-      plZeige(`Projekt „${name}" angelegt — mit einem Gebäude und einem Geschoss.`, true);
-    } catch (e) { plZeige('Nicht angelegt: ' + (e && e.message ? e.message : e), false); }
-  });
-
-  // Projektname: der Projektknoten der Mappe, nicht die Kopfdaten des Wandelements.
-  $pl('pl-projekt').addEventListener('change', () => {
-    const m = plMappe(); if (!m) return;
-    const name = $pl('pl-projekt').value.trim();
-    if (!name) { $pl('pl-projekt').value = m.projekt.name; plZeige('Ein leerer Projektname wird nicht gespeichert.', false); return; }
-    plAendere((mm) => MAPPE.benenneUm(mm, mm.projekt.id, name), 'Projekt umbenannt: ' + name);
-  });
-
-  // --- Gebaeude -------------------------------------------------------------
-  $pl('pl-geb').addEventListener('change', () => {
-    try { store.setzeAktivesGebaeude($pl('pl-geb').value); plZeige('', true); }
-    catch (e) { plZeige('Gebäude nicht gewechselt: ' + (e && e.message ? e.message : e), false); }
-  });
-
-  $pl('pl-geb-neu').addEventListener('click', () => {
-    const m = plMappe(); if (!m) { plZeige('Erst ein Projekt anlegen.', false); return; }
-    const name = $pl('pl-geb-name').value.trim() || 'Gebäude ' + (m.gebaeude.length + 1);
-    const r = MAPPE.fuegeGebaeudeHinzu(m, name);
-    try { store.setzeMappe(r.mappe); store.setzeAktivesGebaeude(r.id); }
-    catch (e) { plZeige('Nicht angelegt: ' + (e && e.message ? e.message : e), false); return; }
-    $pl('pl-geb-name').value = '';
-    plZeige(`Gebäude „${name}" angelegt und aktiv — es hat noch kein Geschoss.`, true);
-  });
-
-  $pl('pl-geb-umbenennen').addEventListener('click', () => {
-    const geb = plGebaeude(); if (!geb) { plZeige('Kein Gebäude gewählt.', false); return; }
-    const name = $pl('pl-geb-name').value.trim();
-    if (!name) { plZeige('Bitte im Feld „Name" den neuen Gebäudenamen eingeben.', false); return; }
-    if (plAendere((m) => MAPPE.benenneUm(m, geb.id, name), `Gebäude umbenannt: „${geb.name}" → „${name}".`))
-      $pl('pl-geb-name').value = '';
-  });
-
-  $pl('pl-geb-loeschen').addEventListener('click', () => {
-    const geb = plGebaeude(); if (!geb) { plZeige('Kein Gebäude gewählt.', false); return; }
-    const anzGs = geb.geschosse.length;
-    const anzW = geb.geschosse.reduce((s, gs) => s + gs.waende.length, 0);
-    if (!confirm(`Gebäude „${geb.name}" aus der Projektstruktur löschen?`
-      + (anzGs ? ` Es enthält ${anzGs} Geschoss(e) mit ${anzW} eingetragenen Wand/Wänden.` : '')
-      + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
-    const mitPlan = geb.geschosse.filter(gs => gs.plan);
-    if (plAendere((m) => MAPPE.entferneGebaeude(m, geb.id, { mitInhalt: true }),
-        `Gebäude „${geb.name}" entfernt. ${anzW} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`
-        + (mitPlan.length ? ` ${mitPlan.length} hinterlegte(r) Geschossplan/-pläne wurden mit entfernt.` : '')))
-      { for (const gs of geb.geschosse) PLAN.loeschePlan(gs.id).catch(() => {});
-        try { store.setzeAktivesGebaeude(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
-  });
-
-  // --- Geschosse ------------------------------------------------------------
-  $pl('pl-gs').addEventListener('change', () => {
-    try { store.setzeAktivesGeschoss($pl('pl-gs').value || null); plZeige('', true); }
-    catch (e) { plZeige('Geschoss nicht gewechselt: ' + (e && e.message ? e.message : e), false); }
-  });
-
-  /** Eingegebene Geschosshoehe: leer = keine Vorgabe, unsinnig = Fehler (nie geraten). */
-  function plHoeheEingabe(){
-    const s = String($pl('pl-gs-hoehe').value || '').trim();
-    if (!s) return null;
-    const n = Number(s.replace(',', '.'));
-    if (!Number.isFinite(n) || n <= 0) throw new Error('Geschosshöhe muss eine positive Zahl in mm sein (oder leer bleiben).');
-    return n;
-  }
-
-  $pl('pl-gs-neu').addEventListener('click', () => {
-    const geb = plGebaeude();
-    if (!geb) { plZeige('Erst ein Gebäude anlegen bzw. wählen.', false); return; }
-    let hoehe;
-    try { hoehe = plHoeheEingabe(); }
-    catch (e) { plZeige('Nicht angelegt: ' + e.message, false); return; }
-    const name = $pl('pl-gs-name').value.trim() || 'Geschoss ' + (geb.geschosse.length + 1);
-    const m = plMappe();
-    let r;
-    try { r = MAPPE.fuegeGeschossHinzu(m, geb.id, name, hoehe == null ? undefined : hoehe); store.setzeMappe(r.mappe); store.setzeAktivesGeschoss(r.id); }
-    catch (e) { plZeige('Nicht angelegt: ' + (e && e.message ? e.message : e), false); return; }
-    $pl('pl-gs-name').value = '';
-    const vg = MAPPE.hoehenVorgabe(hoehe);
-    plZeige(`Geschoss „${name}" angelegt und aktiv.`
-      + (vg.hoehe_mm == null ? ' Ohne Geschosshöhe — neue Wände erhalten keine Höhenvorgabe.'
-         : vg.passt ? ` Geschosshöhe ${vg.hoehe_mm} mm = ${vg.lagen} Lagen.` : ' ' + vg.hinweis), true);
-  });
-
-  $pl('pl-gs-uebernehmen').addEventListener('click', () => {
-    const gs = plGeschoss(); if (!gs) { plZeige('Kein Geschoss gewählt.', false); return; }
-    let hoehe;
-    try { hoehe = plHoeheEingabe(); }
-    catch (e) { plZeige('Nicht geändert: ' + e.message, false); return; }
-    const name = $pl('pl-gs-name').value.trim();
-    const teile = [];
-    const ok = plAendere((m) => {
-      let n = MAPPE.setzeGeschossHoehe(m, gs.id, hoehe);
-      if (name && name !== gs.name) n = MAPPE.benenneUm(n, gs.id, name);
-      return n;
-    }, null);
-    if (!ok) return;
-    if (name && name !== gs.name) teile.push(`umbenannt in „${name}"`);
-    const vg = MAPPE.hoehenVorgabe(hoehe);
-    teile.push(vg.hoehe_mm == null ? 'ohne Geschosshöhe (keine Vorgabe für neue Wände)'
-      : `Geschosshöhe ${vg.hoehe_mm} mm`);
-    $pl('pl-gs-name').value = '';
-    plZeige('Geschoss geändert: ' + teile.join(', ')
-      + '. Bestehende Wandelemente bleiben unverändert ([L-5]).'
-      + (vg.hinweis ? ' ' + vg.hinweis : ''), true);
-  });
-
-  $pl('pl-gs-loeschen').addEventListener('click', () => {
-    const gs = plGeschoss(); if (!gs) { plZeige('Kein Geschoss gewählt.', false); return; }
-    if (!confirm(`Geschoss „${gs.name}" aus der Projektstruktur löschen?`
-      + (gs.waende.length ? ` Es enthält ${gs.waende.length} eingetragene Wand/Wände.` : '')
-      + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
-    // Das Planbild des Geschosses wird MIT entfernt — es haengt an dessen Kennung und
-    // waere sonst ein unerreichbarer Rest in der Plan-Datenbank. Gesagt wird es ([L-8]).
-    const hattePlan = !!gs.plan;
-    if (plAendere((m) => MAPPE.entferneGeschoss(m, gs.id, { mitWaenden: true }),
-        `Geschoss „${gs.name}" entfernt. ${gs.waende.length} Wandelement(e) sind jetzt nicht mehr eingetragen — sie sind nicht gelöscht.`
-        + (hattePlan ? ' Der hinterlegte Plan wurde mit entfernt.' : '')))
-      { PLAN.loeschePlan(gs.id).catch(() => {});
-        try { store.setzeAktivesGeschoss(null); } catch { /* Zeiger ist ohnehin verwaist */ } }
-  });
-
-  /**
-   * Neu angelegte/importierte Wand im AKTIVEN Geschoss eintragen — ohne Lage, denn
-   * gezeichnet ist noch nichts ([L-4]/[L-7]): eine Lage wird nie erfunden. Ohne
-   * Projekt/Geschoss passiert nichts; das Wandelement steht dann als „nicht
-   * eingetragen" in der Liste und wird dort gemeldet.
-   * @param {string} wandId @param {string} name @returns {string} Zusatz zur Meldung
-   */
-  function plTrageWandEin(wandId, name){
-    const gs = plGeschoss();
-    if (!gs) {
-      return plMappe() ? ' · kein aktives Geschoss — die Wand ist noch keinem Geschoss zugeordnet'
-                       : ' · kein Projekt angelegt — die Wand ist noch keinem Geschoss zugeordnet';
-    }
-    try { store.verorteWand(wandId, gs.id, { name, lage: null }); }
-    catch (e) { return ' · nicht eingetragen (' + (e && e.message ? e.message : e) + ')'; }
-    return ` · eingetragen in Geschoss „${gs.name}" (noch ohne Lage im Raster)`;
-  }
-
-  /** Lage-/Geschosszelle einer Wandzeile — reine Anzeige aus der Mappe. */
-  function plWandZelle(el){
-    const treffer = store.wandVerortung(el.id);
-    if (!treffer) return '<span class="muted">nicht eingetragen</span>';
-    const mehrGeb = (plMappe()?.gebaeude.length || 0) > 1;
-    const ort = esc((mehrGeb ? treffer.gebaeude.name + ' · ' : '') + treffer.geschoss.name);
-    const lage = treffer.wand.lage;
-    if (!lage) return ort + '<br><span class="muted">unverortet</span>';
-    const ab = MAPPE.laengenAbgleich(lage, el.wandelement ? el.wandelement.length_mm : null);
-    const text = `${ort}<br><span class="muted">Raster ${lage.start_grid.x}/${lage.start_grid.y} · `
-      + `Richtung ${esc(lage.richtung)} · ${lage.laenge_grid}×125 = ${ab.lage_mm} mm</span>`;
-    return ab.abweichung
-      ? text + `<br><span style="color:#c0392b">Wandelement ${ab.wand_mm} mm ≠ Lage ${ab.lage_mm} mm ([L-3])</span>`
-      : text;
-  }
-
-  /** Referenzabgleich Mappe ↔ Wandspeicher ([L-4]): nur melden, nie bereinigen. */
-  function plWarnungen(){
-    const box = $pl('pl-warn');
-    const m = plMappe();
-    if (!m) { box.hidden = true; box.innerHTML = ''; return; }
-    const ref = store.mappeReferenzen();
-    const teile = [];
-    if (ref.verwaist.length) {
-      teile.push('<b>Verwaiste Einträge:</b> ' + ref.verwaist.length + ' Wand/Wände stehen in der '
-        + 'Projektstruktur, es gibt aber kein Wandelement mehr dazu ('
-        + esc(ref.verwaist.map(w => (w.name || w.id) + ' / ' + w.geschoss).join(', '))
-        + '). Sie werden <b>gemeldet, nicht still entfernt</b> ([L-4]).');
-    }
-    if (ref.unverortet.length) {
-      teile.push('<b>' + ref.unverortet.length + ' Wandelement(e) sind keinem Geschoss zugeordnet.</b> '
-        + 'Das ist der Normalfall vor dem Einzeichnen — in der Wandliste unten „Zuordnen" nutzt das '
-        + 'aktive Geschoss.');
-    }
-    if (ref.ohneLage.length) {
-      teile.push(ref.ohneLage.length + ' eingetragene Wand/Wände sind noch <b>nicht im Raster '
-        + 'verortet</b> — das Einzeichnen kommt in einer späteren Etappe.');
-    }
-    box.hidden = teile.length === 0;
-    box.innerHTML = teile.map(t => '<div style="margin:2px 0">' + t + '</div>').join('');
-  }
-
-  /** Ganzen Planerabschnitt neu zeichnen (Struktur ist im Speicher die Wahrheit). */
-  function plRender(){
-    const m = plMappe();
-    $pl('pl-none').hidden = !!m;
-    $pl('pl-anlegen').hidden = !!m;
-    $pl('pl-form').hidden = !m;
-    if (!m) { plWarnungen(); return; }
-    $pl('pl-projekt').value = m.projekt.name;
-
-    const geb = plGebaeude();
-    $pl('pl-geb').innerHTML = m.gebaeude.map(g =>
-      `<option value="${esc(g.id)}">${esc(g.name)} (${g.geschosse.length} Geschoss(e))</option>`).join('');
-    $pl('pl-geb').value = geb ? geb.id : '';
-
-    const gs = plGeschoss();
-    const liste = geb ? geb.geschosse : [];
-    $pl('pl-gs').innerHTML = (liste.length ? '' : '<option value="">– kein Geschoss –</option>')
-      + liste.map(x => `<option value="${esc(x.id)}">${esc(x.name)}`
-        + (x.hoehe_mm != null ? ` · ${x.hoehe_mm} mm` : ' · ohne Höhe')
-        + ` · ${x.waende.length} Wand/Wände</option>`).join('');
-    $pl('pl-gs').value = gs ? gs.id : '';
-    $pl('pl-gs-hoehe').value = gs && gs.hoehe_mm != null ? String(gs.hoehe_mm) : '';
-    plHoeheVorgeben(gs);
-
-    const vg = MAPPE.hoehenVorgabe(gs ? gs.hoehe_mm : null);
-    $pl('pl-hoehe-hinweis').innerHTML = !gs
-      ? 'Kein Geschoss gewählt — neue Wände werden keinem Geschoss zugeordnet.'
-      : vg.hoehe_mm == null
-        ? 'Ohne Geschosshöhe: neue Wände erhalten hier keine Höhenvorgabe ([L-5]).'
-        : vg.passt
-          ? `Höhenvorgabe für neue Wände: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm. `
-            + 'In Modul 1 jederzeit überschreibbar; sie wird nie zurückgeschrieben ([L-5]).'
-          : esc(vg.hinweis);
-
-    const anzW = MAPPE.alleWaende(m).length;
-    $pl('pl-stand').textContent = `${m.gebaeude.length} Gebäude · `
-      + `${MAPPE.alleGeschosse(m).length} Geschoss(e) · ${anzW} eingetragene Wand/Wände · `
-      + `Mappenformat v${MAPPE.MAPPE_VERSION}`;
-    plWarnungen();
-  }
-
-  /**
-   * Geschosshoehe als VORGABE in das Hoehenfeld von „Wandelement anlegen" schreiben ([L-5]).
-   * Nur bei echtem Wechsel des Geschosses oder seiner Hoehe — sonst wuerde jede Anzeige-
-   * aktualisierung eine bewusste Eingabe des Nutzers ueberschreiben. Sie ist ausdruecklich
-   * nur eine Vorgabe: sie bleibt frei aenderbar und wird nie zurueckgeschrieben.
-   */
-  let plHoeheStand = undefined;                     // undefined = noch nie angewandt
-  function plHoeheVorgeben(gs){
-    const stand = gs ? gs.id + ':' + (gs.hoehe_mm == null ? '' : gs.hoehe_mm) : null;
-    if (stand === plHoeheStand) return;
-    plHoeheStand = stand;
-    if (gs && gs.hoehe_mm != null) document.getElementById('f-hoehe').value = String(gs.hoehe_mm);
-  }
-
-  // --- Geschossplan (Etappe C3, [L-8]/[L-9]) --------------------------------
+  // =====================================================================
+  //  Geschossplan (Etappe C3, [L-8]/[L-9]) — Layout-Editor des aktiven Geschosses
+  // =====================================================================
   // Der Plan ist HINTERGRUND, keine Datenquelle: aus dem Bild wird nichts abgeleitet.
   // Massstab (mm je Bildpixel) und Versatz sind ausdruecklich gesetzte Anzeigewerte —
   // ohne Kalibrierung gibt es kein Raster und keinen geschaetzten Ersatzwert ([L-9]).
   // Das BILD liegt in einer eigenen IndexedDB (sembla-plan.js), in der Mappe stehen nur
   // Dateiname, Bildmasse, Massstab und Versatz ([L-8]). Wandlagen werden hier nie
   // angefasst: sie stehen in Rastereinheiten und ueberstehen jede Kalibrierung ([L-1]).
-  const pnMsg = document.getElementById('pn-msg');
+  const pnMsg = $('pn-msg');
   function pnZeige(text, ok){ pnMsg.textContent = text; pnMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
   const PN = {
@@ -976,7 +1240,7 @@
   };
 
   /** Planbeschreibung des aktiven Geschosses (null = keiner hinterlegt). */
-  function pnPlan(){ const gs = plGeschoss(); return gs ? gs.plan : null; }
+  function pnPlan(){ const gs = aktGeschoss(); return gs ? gs.plan : null; }
 
   /** Bildmasse einer Datei lesen — ohne Deutung, nur die tatsaechliche Pixelgroesse. */
   async function pnBildMasse(blob){
@@ -990,11 +1254,7 @@
     return masse;
   }
 
-  /**
-   * Bild des Geschosses aus der Plan-Datenbank holen — nur bei echtem Wechsel des
-   * Geschosses, sonst wuerde jede Anzeigeaktualisierung neu laden.
-   * @param {string|null} gsId @param {boolean} [erzwingen] nach Upload/Loeschen
-   */
+  /** Bild des Geschosses aus der Plan-Datenbank holen — nur bei echtem Wechsel. */
   async function pnBildLaden(gsId, erzwingen){
     if (!erzwingen && PN.bildFuer === gsId) return;
     PN.bildFuer = gsId;
@@ -1010,7 +1270,7 @@
 
   /** Plan + Rasteroverlay zeichnen (reine Anzeige — schreibt nichts). */
   function pnZeichne(){
-    const buehne = document.getElementById('pn-buehne');
+    const buehne = $('pn-buehne');
     const plan = pnPlan();
     if (!plan) {
       buehne.innerHTML = '<div class="leer">Für dieses Geschoss ist kein Plan hinterlegt — '
@@ -1035,7 +1295,7 @@
   /** Kopfzeile/Status des Planabschnitts (Datei, Maßstab, fehlendes Bild). */
   function pnStatus(){
     const plan = pnPlan();
-    const info = document.getElementById('pn-info');
+    const info = $('pn-info');
     if (!plan) { info.textContent = 'Kein Plan hinterlegt.'; return; }
     const teile = [];
     teile.push(plan.datei || 'Plan');
@@ -1051,17 +1311,17 @@
 
   /** Ganzen Planabschnitt neu aufbauen (Bild wird nur bei Geschosswechsel neu geholt). */
   async function pnRender(erzwingen){
-    const gs = plGeschoss();
-    document.getElementById('pn-none').hidden = !!gs;
-    document.getElementById('pn-form').hidden = !gs;
+    const gs = aktGeschoss();
+    $('pn-none').hidden = !!gs;
+    $('pn-form').hidden = !gs;
     try { await pnBildLaden(gs ? gs.id : null, erzwingen); }
-    catch (e) { pnZeige('Planspeicher nicht lesbar: ' + (e && e.message ? e.message : e), false); }
+    catch (e) { pnZeige('Planspeicher nicht lesbar: ' + fehlerText(e), false); }
     if (!gs) { pnZeichne(); return; }
     const plan = gs.plan;
-    document.getElementById('pn-mmjepx').value = plan && plan.mm_je_pixel != null ? String(plan.mm_je_pixel) : '';
-    document.getElementById('pn-vx').value = String(plan ? plan.versatz_x_mm : 0);
-    document.getElementById('pn-vy').value = String(plan ? plan.versatz_y_mm : 0);
-    document.getElementById('pn-kal-status').textContent = pnKalText();
+    $('pn-mmjepx').value = plan && plan.mm_je_pixel != null ? String(plan.mm_je_pixel) : '';
+    $('pn-vx').value = String(plan ? plan.versatz_x_mm : 0);
+    $('pn-vy').value = String(plan ? plan.versatz_y_mm : 0);
+    $('pn-kal-status').textContent = pnKalText();
     pnStatus();
     pnZeichne();
   }
@@ -1073,7 +1333,7 @@
       return PN.punkte.length === 0 ? 'Kalibriermodus: ersten Punkt im Plan anklicken.'
         : PN.punkte.length === 1 ? 'Kalibriermodus: zweiten Punkt anklicken.'
         : `Linie gesetzt (${Math.round(PLAN.pixelAbstand(PN.punkte[0], PN.punkte[1]))} Bildpixel) — `
-          + 'reale Länge in mm eintragen und „Aus Linie übernehmen" klicken.';
+          + 'reale Länge in mm eintragen und „Aus Linie übernehmen“ klicken.';
     }
     return PLAN.planKalibriert(plan)
       ? 'Maßstab gesetzt — das Raster liegt über dem Plan. Eine Neukalibrierung ändert keine Wandlage ([L-1]).'
@@ -1082,17 +1342,17 @@
 
   /** Zahl aus einem Feld — leer/unsinnig wird gemeldet, nie geraten. */
   function pnZahl(id, was){
-    const s = String(document.getElementById(id).value || '').trim();
+    const s = String($(id).value || '').trim();
     if (!s) return null;
     const n = Number(s.replace(',', '.'));
     if (!Number.isFinite(n)) throw new Error(`${was} muss eine Zahl sein.`);
     return n;
   }
 
-  document.getElementById('pn-import').addEventListener('change', async (ev) => {
+  $('pn-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
-    const gs = plGeschoss();
+    const gs = aktGeschoss();
     if (!gs) { pnZeige('Kein aktives Geschoss — der Plan hängt am Geschoss.', false); ev.target.value = ''; return; }
     const fehler = PLAN.pruefePlanDatei(file);
     if (fehler.length) { pnZeige(fehler.join(' '), false); ev.target.value = ''; return; }
@@ -1112,45 +1372,45 @@
       });
       PN.kalibrieren = false; PN.punkte = [];
       await pnRender(true);
-      pnZeige(`Plan „${file.name}" hinterlegt (${masse.breite} × ${masse.hoehe} px). `
+      pnZeige(`Plan „${file.name}“ hinterlegt (${masse.breite} × ${masse.hoehe} px). `
         + 'Maßstab und Versatz sind zurückgesetzt — bitte den Plan ausdrücklich kalibrieren ([L-9]). '
         + 'Die Lagen bereits verorteter Wände bleiben unverändert ([L-1]).', true);
     } catch (e) {
-      pnZeige('Plan nicht hinterlegt: ' + (e && e.message ? e.message : e), false);
+      pnZeige('Plan nicht hinterlegt: ' + fehlerText(e), false);
     } finally {
       ev.target.value = '';
     }
   });
 
-  document.getElementById('pn-entfernen').addEventListener('click', async () => {
-    const gs = plGeschoss(); if (!gs) { pnZeige('Kein aktives Geschoss.', false); return; }
+  $('pn-entfernen').addEventListener('click', async () => {
+    const gs = aktGeschoss(); if (!gs) { pnZeige('Kein aktives Geschoss.', false); return; }
     if (!gs.plan) { pnZeige('Für dieses Geschoss ist kein Plan hinterlegt.', false); return; }
-    if (!confirm(`Plan „${gs.plan.datei || ''}" aus Geschoss „${gs.name}" entfernen? `
+    if (!confirm(`Plan „${gs.plan.datei || ''}“ aus Geschoss „${gs.name}“ entfernen? `
       + 'Bild, Maßstab und Versatz gehen verloren. Die Wände und ihre Lagen bleiben erhalten.')) return;
     await PLAN.loeschePlan(gs.id);
     try { store.setzeGeschossPlan(gs.id, null); }
-    catch (e) { pnZeige('Nicht entfernt: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { pnZeige('Nicht entfernt: ' + fehlerText(e), false); return; }
     PN.kalibrieren = false; PN.punkte = [];
     await pnRender(true);
     pnZeige('Plan entfernt. Die Wandlagen dieses Geschosses sind unverändert ([L-1]).', true);
   });
 
-  document.getElementById('pn-mass-uebernehmen').addEventListener('click', () => {
-    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+  $('pn-mass-uebernehmen').addEventListener('click', () => {
+    const gs = aktGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
     let v;
     try { v = pnZahl('pn-mmjepx', 'Der Maßstab'); }
     catch (e) { pnZeige('Nicht übernommen: ' + e.message, false); return; }
     if (v != null && !(v > 0)) { pnZeige('Nicht übernommen: der Maßstab muss größer als 0 sein (mm je Bildpixel).', false); return; }
     try { store.setzeGeschossPlanAnsicht(gs.id, { mm_je_pixel: v }); }
-    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { pnZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
     PN.kalibrieren = false; PN.punkte = [];
     pnRender();
     pnZeige(v == null ? 'Maßstab aufgehoben — es liegt jetzt kein Raster über dem Plan ([L-9]).'
       : `Maßstab gesetzt: ${PLAN.massstabText(v)}. Wandlagen unverändert ([L-1]).`, true);
   });
 
-  document.getElementById('pn-kalibrieren').addEventListener('click', () => {
-    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+  $('pn-kalibrieren').addEventListener('click', () => {
+    const gs = aktGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
     PN.kalibrieren = !PN.kalibrieren;
     PN.punkte = [];
     pnRender();
@@ -1159,17 +1419,17 @@
       : 'Kalibriermodus beendet.', true);
   });
 
-  document.getElementById('pn-kal-uebernehmen').addEventListener('click', () => {
-    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
-    if (PN.punkte.length < 2) { pnZeige('Erst zwei Punkte im Plan anklicken („Kalibrierlinie setzen").', false); return; }
+  $('pn-kal-uebernehmen').addEventListener('click', () => {
+    const gs = aktGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+    if (PN.punkte.length < 2) { pnZeige('Erst zwei Punkte im Plan anklicken („Kalibrierlinie setzen“).', false); return; }
     let mm;
     try { mm = pnZahl('pn-kal-mm', 'Die Länge der Kalibrierlinie'); }
     catch (e) { pnZeige('Nicht übernommen: ' + e.message, false); return; }
     let k;
     try { k = PLAN.kalibriere(PN.punkte[0], PN.punkte[1], mm); }
-    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { pnZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
     try { store.setzeGeschossPlanAnsicht(gs.id, { mm_je_pixel: k.mm_je_pixel }); }
-    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { pnZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
     PN.kalibrieren = false; PN.punkte = [];
     pnRender();
     pnZeige(`Maßstab aus der Kalibrierlinie: ${k.strecke_mm} mm auf ${Math.round(k.pixel)} Bildpixel `
@@ -1177,25 +1437,25 @@
   });
 
   function pnVersatzSetzen(x, y){
-    const gs = plGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
+    const gs = aktGeschoss(); if (!gs || !gs.plan) { pnZeige('Erst einen Plan hochladen.', false); return; }
     try { store.setzeGeschossPlanAnsicht(gs.id, { versatz_x_mm: x, versatz_y_mm: y }); }
-    catch (e) { pnZeige('Nicht übernommen: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { pnZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
     pnRender();
     pnZeige(`Versatz gesetzt: X ${Math.round(x)} mm / Y ${Math.round(y)} mm. `
       + 'Der Plan wurde verschoben, keine Wandlage ([L-1]).', true);
   }
 
-  document.getElementById('pn-versatz-uebernehmen').addEventListener('click', () => {
+  $('pn-versatz-uebernehmen').addEventListener('click', () => {
     let x, y;
     try { x = pnZahl('pn-vx', 'Der Versatz X') || 0; y = pnZahl('pn-vy', 'Der Versatz Y') || 0; }
     catch (e) { pnZeige('Nicht übernommen: ' + e.message, false); return; }
     pnVersatzSetzen(x, y);
   });
 
-  document.getElementById('pn-versatz-null').addEventListener('click', () => pnVersatzSetzen(0, 0));
+  $('pn-versatz-null').addEventListener('click', () => pnVersatzSetzen(0, 0));
 
-  document.getElementById('pn-zoom').addEventListener('change', () => {
-    const n = Number(String(document.getElementById('pn-zoom').value || '').replace(',', '.'));
+  $('pn-zoom').addEventListener('change', () => {
+    const n = Number(String($('pn-zoom').value || '').replace(',', '.'));
     if (!Number.isFinite(n) || n <= 0) { pnZeige('Zoom muss eine positive Prozentzahl sein.', false); return; }
     PN.zoom = Math.min(4, Math.max(0.05, n / 100));
     pnZeichne();
@@ -1203,9 +1463,8 @@
 
   // Klicks/Ziehen auf der Buehne. Beides arbeitet in BILDPIXELN — der viewBox des SVG
   // liegt in Bildpixeln, damit auch ein noch nicht kalibrierter Plan bedienbar ist.
-  const pnBuehne = document.getElementById('pn-buehne');
+  const pnBuehne = $('pn-buehne');
 
-  /** Fensterkoordinaten eines Ereignisses in einen Bildpunkt umrechnen. */
   function pnPunktAus(ev){
     const svg = pnBuehne.querySelector ? pnBuehne.querySelector('svg') : null;
     if (!svg || typeof svg.getBoundingClientRect !== 'function') return null;
@@ -1219,7 +1478,7 @@
     const p = pnPunktAus(ev); if (!p) return;
     if (PN.punkte.length >= 2) PN.punkte = [];
     PN.punkte.push(p);
-    document.getElementById('pn-kal-status').textContent = pnKalText();
+    $('pn-kal-status').textContent = pnKalText();
     pnZeichne();
   });
 
@@ -1238,16 +1497,12 @@
     // Bild nach rechts ziehen = die linke obere Bildecke liegt weiter rechts im Raster.
     const dx = ev.clientX - PN.ziehen.x;
     const dy = ev.clientY - PN.ziehen.y;
-    document.getElementById('pn-vx').value = String(Math.round(PN.ziehen.vx + (dx / PN.zoom) * plan.mm_je_pixel));
-    document.getElementById('pn-vy').value = String(Math.round(PN.ziehen.vy + (dy / PN.zoom) * plan.mm_je_pixel));
+    $('pn-vx').value = String(Math.round(PN.ziehen.vx + (dx / PN.zoom) * plan.mm_je_pixel));
+    $('pn-vy').value = String(Math.round(PN.ziehen.vy + (dy / PN.zoom) * plan.mm_je_pixel));
     // Waehrend des Ziehens wird nur das BILD verschoben (kein Neuzeichnen je Bewegung).
-    // Das Raster bleibt stehen — genau das ist der Sinn des Versatzes: der Plan wird
-    // ans Raster geschoben, nie umgekehrt ([L-1]).
     const svg = pnBuehne.querySelector ? pnBuehne.querySelector('svg') : null;
     const bild = svg && svg.querySelector ? svg.querySelector('image') : null;
-    if (bild && bild.setAttribute) {
-      bild.setAttribute('transform', `translate(${dx / PN.zoom} ${dy / PN.zoom})`);
-    }
+    if (bild && bild.setAttribute) bild.setAttribute('transform', `translate(${dx / PN.zoom} ${dy / PN.zoom})`);
   });
 
   /** Ziehen beenden: erst hier wird der Versatz WIRKLICH gespeichert. */
@@ -1259,169 +1514,39 @@
     try { x = pnZahl('pn-vx', 'Der Versatz X') || 0; y = pnZahl('pn-vy', 'Der Versatz Y') || 0; }
     catch { pnZeichne(); return; }
     const plan = pnPlan();
-    // Unveraendert (bloss geklickt): nur neu zeichnen, damit die Ziehvorschau verschwindet.
     if (!plan || (plan.versatz_x_mm === x && plan.versatz_y_mm === y)) { pnZeichne(); return; }
     pnVersatzSetzen(x, y);
   }
   pnBuehne.addEventListener('mouseup', pnZiehenEnde);
   pnBuehne.addEventListener('mouseleave', pnZiehenEnde);
 
-  let wFilter = 'alle';       // Ansicht der Wandliste (siehe #w-filter)
-  $pl('w-filter').addEventListener('change', () => {
-    wFilter = $pl('w-filter').value || 'alle';
-    render();
-  });
-
-  // --- Liste ---
-  const tbody = document.getElementById('tbody');
-  const leer = document.getElementById('leer');
-  let neuId = null;          // gerade importiertes Element: Zeile bleibt hervorgehoben
-  let neuScroll = false;     // nur EINMAL scrollen (sonst springt jede spaetere Aenderung)
-
-  function fmtDatum(iso){
-    try { return new Date(iso).toLocaleString('de-DE', {dateStyle:'short', timeStyle:'short'}); }
-    catch { return iso || ''; }
-  }
-  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-  function render(){
-    const alle = store.listeElemente();
-    const aktiv = store.aktivId();
-    const gsAktiv = plGeschoss();
-    // Die Ansicht filtert nur die DARSTELLUNG; gespeichert wird nichts umsortiert.
-    const liste = alle.filter(e => {
-      if (wFilter === 'aktiv') {
-        const t = store.wandVerortung(e.id);
-        return !!(gsAktiv && t && t.geschoss.id === gsAktiv.id);
-      }
-      if (wFilter === 'unverortet') return !store.wandVerortung(e.id);
-      return true;
-    });
-    leer.hidden = liste.length > 0;
-    leer.textContent = alle.length === 0 ? 'Noch kein Wandelement gespeichert.'
-      : wFilter === 'aktiv' ? (gsAktiv ? `Im Geschoss „${gsAktiv.name}" ist noch keine Wand eingetragen.`
-                                       : 'Kein aktives Geschoss gewählt.')
-      : 'Alle Wandelemente sind einem Geschoss zugeordnet.';
-    tbody.innerHTML = liste.map(e => {
-      const w = e.wandelement || {};
-      const masse = (w.length_mm ?? '?') + ' × ' + (w.height_mm ?? '?') + ' mm';
-      const badge = e.id === aktiv ? ' <span class="badge">aktiv</span>' : '';
-      const treffer = store.wandVerortung(e.id);
-      const imAktiven = !!(gsAktiv && treffer && treffer.geschoss.id === gsAktiv.id);
-      return `<tr data-id="${e.id}"${e.id === neuId ? ' class="neu"' : ''}>
-        <td><b>${esc(e.name)}</b>${badge}</td>
-        <td class="muted">${masse}</td>
-        <td>${plWandZelle(e)}</td>
-        <td class="muted">${fmtDatum(e.geaendert)}</td>
-        <td class="actions">
-          ${e.id === aktiv ? '' : `<button class="btn-s" data-act="aktiv">Aktiv setzen</button>`}
-          <button class="btn-s" data-act="planen">In Modul 1 planen</button>
-          ${(gsAktiv && !imAktiven) ? `<button class="btn-s" data-act="zuordnen">Zuordnen</button>` : ''}
-          <button class="btn-s" data-act="export">Export</button>
-          <button class="btn-s" data-act="umbenennen">Umbenennen</button>
-          <button class="btn-d" data-act="loeschen">Löschen</button>
-        </td></tr>`;
-    }).join('');
-    // Neu importierte Zeile in den sichtbaren Bereich holen (nach dem Neuaufbau der Tabelle).
-    if (neuId && neuScroll) {
-      neuScroll = false;
-      const tr = tbody.querySelector('tr.neu');
-      if (tr && tr.scrollIntoView) tr.scrollIntoView({ block: 'center' });
-    }
-  }
-
-  tbody.addEventListener('click', (ev) => {
-    const btn = ev.target.closest('button'); if (!btn) return;
-    const id = ev.target.closest('tr').dataset.id;
-    const act = btn.dataset.act;
-    const e = store.holeElement(id); if (!e) return;
-    if (act === 'aktiv') store.setzeAktiv(id);
-    else if (act === 'planen') {
-      // Roundtrip: dieselbe Wand wird in Modul 1 detailliert geplant. Modul 1 bleibt der
-      // einzige Schreiber des Wandelements; die Lage in der Mappe bleibt unberuehrt ([L-3]).
-      store.setzeAktiv(id);
-      try { window.location.href = 'wandplanung.html'; } catch { /* Navigation nicht moeglich */ }
-    }
-    else if (act === 'zuordnen') {
-      const gs = plGeschoss();
-      if (!gs) { plZeige('Kein aktives Geschoss — oben eines wählen.', false); return; }
-      // Eine bereits vorhandene Lage wird beim Verschieben NICHT uebernommen: sie gilt im
-      // Raster eines anderen Geschosses und darf nicht stillschweigend weiterreisen ([L-1]).
-      try {
-        store.verorteWand(id, gs.id, { name: e.name, lage: null });
-        plZeige(`„${e.name}" ist jetzt in Geschoss „${gs.name}" eingetragen (ohne Lage im Raster).`, true);
-      } catch (err) { plZeige('Nicht eingetragen: ' + (err && err.message ? err.message : err), false); }
-    }
-    else if (act === 'export') oeffneExport(id);
-    else if (act === 'umbenennen') {
-      const name = prompt('Neuer Name:', e.name);
-      if (name != null && name.trim()) store.umbenennen(id, name.trim());
-    }
-    else if (act === 'loeschen') {
-      if (confirm(`Wandelement „${e.name}" wirklich löschen? Das kann nicht rückgängig gemacht werden.`))
-        store.loesche(id);
-    }
-  });
-
-  store.abonniere(render);
-  store.abonniere(plRender);
-  // Der Planabschnitt liest sein Bild asynchron aus der eigenen Plan-Datenbank; ein
-  // Fehler dort darf die uebrigen Hoerer nicht aufhalten (er steht in #pn-msg).
-  store.abonniere(() => { pnRender().catch(() => {}); });
-  plRender();
-  render();
-  pnRender().catch(() => {});
-
-  // --- Projekt-Kopfdaten (aktives Element -> eingaben.projekt) ---
-  const pjIds = { name:'pj-name', bauherr:'pj-bauherr', planverfasser:'pj-planverf',
-                  phase:'pj-phase', plan_nr:'pj-plannr', index:'pj-index', gez:'pj-gez' };
-  const pjForm = document.getElementById('pj-form');
-  const pjNone = document.getElementById('pj-none');
-  let pjAktivId = undefined;                       // undefined = noch nie geladen
-
-  function pjLaden(){
-    const aktiv = store.aktivId();
-    pjForm.hidden = !aktiv; pjNone.hidden = !!aktiv;
-    if (!aktiv) return;
-    const p = store.aktiveEingaben().projekt || {};
-    for (const [key, id] of Object.entries(pjIds)) {
-      const el = document.getElementById(id);
-      if (el) el.value = p[key] != null ? p[key] : '';
-    }
-  }
-  function pjSchreiben(){
-    if (!store.aktivId()) return;
-    const patch = {};
-    for (const [key, id] of Object.entries(pjIds)) {
-      const el = document.getElementById(id); if (el) patch[key] = el.value;
-    }
-    store.mergeEingaben('projekt', patch);         // löst abonniere aus; pjSync lädt nicht neu (id unverändert)
-  }
-  for (const id of Object.values(pjIds)) {
-    const el = document.getElementById(id);
-    el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', pjSchreiben);
-  }
-  // Nur bei echtem Wechsel des aktiven Elements neu laden — sonst würde Tippen den Cursor stören.
-  function pjSync(){ const id = store.aktivId(); if (id !== pjAktivId) { pjAktivId = id; pjLaden(); } }
-  store.abonniere(pjSync);
-  pjSync();
-
-  // --- Bauteilkatalog (eigene Ressource; Modul 0 ist der ALLEINIGE Pflegeort) ---
-  // Katalogdaten leben in EINEM Katalog-Slot (store.holeKatalog/setzeKatalog) und werden
-  // als eigene Datei importiert/exportiert — getrennt vom Projektimport und vom ZIP.
+  // =====================================================================
+  //  Bauteilkatalog (Popup; Modul 0 ist der ALLEINIGE Pflegeort, [L-12])
+  // =====================================================================
+  // Kataloge liegen in einem eigenen Speicher und werden als eigene Datei
+  // importiert/exportiert — getrennt vom Projektimport und vom ZIP. Die ZUORDNUNG
+  // haengt am Projekt: der wirksame Katalog folgt dem aktiven Projekt ([L-12]).
   // Modul 0 pflegt AUSSCHLIESSLICH den Produktstamm samt Preisen ([P-13]); eine wand-/
-  // projektbezogene Produktauswahl gibt es hier nicht mehr — sie liegt in Modul 1
-  // (eingaben.planung.produkte) und Modul 2 (eingaben.aufbau.produkte). Referenzen aus dem
-  // früheren zentralen Auswahlweg bleiben im Projekt erhalten, sind aber unwirksam und
-  // werden unten als solche gemeldet ([P-15]).
-  const kMsg = document.getElementById('k-msg');
+  // projektbezogene Produktauswahl gibt es hier nicht — sie liegt in Modul 1
+  // (eingaben.planung.produkte) und Modul 2 (eingaben.aufbau.produkte).
+  const katOverlay = $('kat-overlay');
+  const kMsg = $('k-msg');
   function kZeige(text, ok){ kMsg.textContent = text; kMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
   const kEuro = n => (Number(n) || 0).toLocaleString('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2});
 
   let kFilter = 'alle';
 
-  document.getElementById('k-filter').innerHTML = '<option value="alle">alle Kategorien</option>'
+  $('k-filter').innerHTML = '<option value="alle">alle Kategorien</option>'
     + KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
+
+  function katOeffne(){ katLaden(); katOverlay.hidden = false; }
+  function katSchliesse(){
+    katOverlay.hidden = true;
+    // Die Katalogzuordnung kann sich geaendert haben -> Projekt-Dialog nachziehen.
+    if (!ppOverlay.hidden) ppKatalogListe(store.holeMappe()?.katalog || '');
+  }
+  $('kat-close').addEventListener('click', katSchliesse);
+  katOverlay.addEventListener('click', (ev) => { if (ev.target === katOverlay) katSchliesse(); });
 
   function kZahl(v){
     const s = String(v == null ? '' : v).trim();
@@ -1430,47 +1555,38 @@
     return Number.isFinite(n) ? n : NaN;
   }
 
-  /** Geladener Katalog oder ein frischer (erste Produktanlage ohne Katalog). */
+  /** Wirksamer Katalog oder ein frischer (erste Produktanlage ohne Katalog). */
   function kKatalog(){
     return store.holeKatalog()
-      || KAT.leererKatalog(document.getElementById('k-name').value.trim() || 'Neuer Katalog');
+      || KAT.leererKatalog($('k-name').value.trim() || 'Neuer Katalog');
   }
 
   // --- Produktpflege-Dialog ([P-16]) --------------------------------------
-  // Der Dialog ist der EINZIGE Ort, an dem ein Produkt entsteht oder sich aendert; er ist
-  // klar von der Produktuebersicht getrennt. Seine Felder kommen je Kategorie aus der
-  // zentralen, DOM-freien Maske (KAT.maskeVonKategorie) — Pflicht wird dort NICHT erneut
-  // definiert, sondern aus KATEGORIEN[].pflicht gelesen. Bis „Speichern" liegt alles nur
-  // im DOM des Dialogs: Abbrechen/Escape/Overlay-Klick schreiben NICHTS, auch beim
-  // Duplizieren (die Kopie entsteht erst mit dem Speichern).
-  const kpOverlay = document.getElementById('kp-overlay');
-  const kpMsg = document.getElementById('kp-msg');
+  const kpOverlay = $('kp-overlay');
+  const kpMsg = $('kp-msg');
   let kEditId = null;      // null = Anlage, sonst ID des bearbeiteten Produkts
   let kpModus = 'neu';     // 'neu' | 'bearbeiten' | 'duplizieren' (nur fuer Titel/Meldung)
   let kpMaskeKat = null;   // Kategorie, deren Maske gerade im Dialog steht
-  // Alle je in einer Maske vorkommenden Felder — Grundlage der Fachfremd-Erkennung.
   const kMaskenFelder = new Set(KAT.KATEGORIEN.flatMap(k => KAT.maskeFelder(k.id)));
   const kGrundFelder = ['id','kategorie','bezeichnung','einheit','preis'];
 
-  document.getElementById('kp-kat').innerHTML =
-    KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
+  $('kp-kat').innerHTML = KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
 
   const kpFeldId = feld => 'kp-f-' + feld;
-  const $kp = id => document.getElementById(id);
   function kpZeige(text, ok){ kpMsg.textContent = text; kpMsg.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
   /** Kategorieauswahl -> Preisbasen dieser Kategorie (bestehende Wahl bleibt, wenn zulaessig). */
   function kpEinheiten(){
-    const k = KAT.kategorie($kp('kp-kat').value); if (!k) return;
-    const sel = $kp('kp-einheit'), vorher = sel.value;
+    const k = KAT.kategorie($('kp-kat').value); if (!k) return;
+    const sel = $('kp-einheit'), vorher = sel.value;
     sel.innerHTML = k.einheiten.map(u => `<option value="${u}">${esc(KAT.EINHEIT_LABEL[u])}</option>`).join('');
     sel.value = k.einheiten.includes(vorher) ? vorher : k.einheiten[0];
   }
 
   /** Kategoriespezifische Felder aus der zentralen Maske rendern und aus `p` fuellen. */
   function kpFelder(p){
-    const maske = KAT.maskeVonKategorie($kp('kp-kat').value);
-    document.getElementById('kp-felder').innerHTML = maske.map(f => {
+    const maske = KAT.maskeVonKategorie($('kp-kat').value);
+    $('kp-felder').innerHTML = maske.map(f => {
       const wert = p && p[f.feld] != null ? String(p[f.feld]) : '';
       const bez = esc(f.label) + (f.einheit ? ' (' + f.einheit + ')' : '')
         + (f.pflicht ? ' <span class="muted">· Pflicht</span>' : '');
@@ -1482,19 +1598,18 @@
         + (f.hinweis ? `<span class="muted" style="font-size:11px">${esc(f.hinweis)}</span>` : '')
         + '</div>';
     }).join('');
-    // Das DOM-Feld ist nach dem Rendern die Wahrheit; bei Neurendern gesetzte Werte mitnehmen.
     for (const f of maske) {
-      const el = $kp(kpFeldId(f.feld));
+      const el = $(kpFeldId(f.feld));
       if (el) el.value = p && p[f.feld] != null ? String(p[f.feld]) : '';
     }
-    document.getElementById('kp-leer').hidden = maske.length > 0;
+    $('kp-leer').hidden = maske.length > 0;
     kpExtras(p);
   }
 
   /** Felder am Produkt, die nicht in die Maske dieser Kategorie gehoeren — sichtbar benennen. */
   function kpExtras(p){
-    const box = document.getElementById('kp-extra');
-    const eigene = new Set(KAT.maskeFelder($kp('kp-kat').value));
+    const box = $('kp-extra');
+    const eigene = new Set(KAT.maskeFelder($('kp-kat').value));
     const entfernt = [], erhalten = [];
     for (const key of Object.keys(p || {})) {
       if (kGrundFelder.includes(key) || eigene.has(key)) continue;
@@ -1513,24 +1628,18 @@
     box.innerHTML = teile.join('');
   }
 
-  /**
-   * Dialogfelder -> Produkt (Bezeichnung/ID werden bei Bedarf vorgeschlagen).
-   * `maskeKat` = Kategorie, deren Maske aktuell im DOM steht; sie kann beim
-   * Kategoriewechsel noch von der neu gewaehlten Kategorie abweichen.
-   */
   function kpProdukt(maskeKat){
-    const kat = $kp('kp-kat').value;
-    const p = { id:'', kategorie:kat, bezeichnung:String($kp('kp-bez').value || '').trim(),
-                einheit:$kp('kp-einheit').value, preis:kZahl($kp('kp-preis').value) };
+    const kat = $('kp-kat').value;
+    const p = { id:'', kategorie:kat, bezeichnung:String($('kp-bez').value || '').trim(),
+                einheit:$('kp-einheit').value, preis:kZahl($('kp-preis').value) };
     for (const f of KAT.maskeVonKategorie(maskeKat || kat)) {
-      const el = $kp(kpFeldId(f.feld));
+      const el = $(kpFeldId(f.feld));
       const roh = el ? el.value : '';
       if (f.typ === 'mm') { const v = kZahl(roh); if (v !== undefined) p[f.feld] = v; }
       else { const s = String(roh == null ? '' : roh).trim(); if (s) p[f.feld] = s; }
     }
     if (!p.bezeichnung) p.bezeichnung = KAT.vorschlagBezeichnung(p);
-    // ID ist die stabile Referenz: frei setzbar, leer = Vorschlag aus Kategorie + Maßen.
-    p.id = String($kp('kp-id').value || '').trim() || KAT.vorschlagId(p);
+    p.id = String($('kp-id').value || '').trim() || KAT.vorschlagId(p);
     return p;
   }
 
@@ -1538,41 +1647,37 @@
   function kpOeffne(p, modus, editId){
     kpModus = modus;
     kEditId = editId != null ? editId : null;
-    $kp('kp-kat').value = p.kategorie;
+    $('kp-kat').value = p.kategorie;
     kpEinheiten();
-    $kp('kp-einheit').value = p.einheit || '';
-    $kp('kp-preis').value = p.preis != null ? String(p.preis) : '';
-    $kp('kp-bez').value = p.bezeichnung || '';
-    $kp('kp-id').value = p.id || '';
+    $('kp-einheit').value = p.einheit || '';
+    $('kp-preis').value = p.preis != null ? String(p.preis) : '';
+    $('kp-bez').value = p.bezeichnung || '';
+    $('kp-id').value = p.id || '';
     kpMaskeKat = p.kategorie;
     kpFelder(p);
-    document.getElementById('kp-titel').textContent =
+    $('kp-titel').textContent =
       modus === 'bearbeiten' ? 'Produkt bearbeiten: ' + p.bezeichnung
       : modus === 'duplizieren' ? 'Produkt duplizieren: ' + p.bezeichnung
       : 'Produkt anlegen';
-    document.getElementById('kp-sub').innerHTML = modus === 'duplizieren'
-      ? 'Kopie mit neuer Produkt-ID — sie wird <b>erst mit „Speichern"</b> angelegt. '
-        + '„Abbrechen" legt nichts an.'
-      : 'Die Felder richten sich nach der Kategorie. Gespeichert wird erst mit „Speichern" — '
-        + '„Abbrechen" ändert den Katalog nicht.';
+    $('kp-sub').innerHTML = modus === 'duplizieren'
+      ? 'Kopie mit neuer Produkt-ID — sie wird <b>erst mit „Speichern“</b> angelegt. '
+        + '„Abbrechen“ legt nichts an.'
+      : 'Die Felder richten sich nach der Kategorie. Gespeichert wird erst mit „Speichern“ — '
+        + '„Abbrechen“ ändert den Katalog nicht.';
     kpZeige('', true);
     kpOverlay.hidden = false;
   }
-  /** Dialog schliessen — reiner Anzeigevorgang, nie ein Schreibvorgang. */
   function kpSchliesse(){ kpOverlay.hidden = true; kEditId = null; kpModus = 'neu'; }
 
-  document.getElementById('kp-kat').addEventListener('change', () => {
-    // Eingaben der bisher gezeigten Maske in den Entwurf uebernehmen, damit Werte der
-    // weiterhin vorhandenen Felder stehen bleiben und fachfremd gewordene Felder benannt
-    // werden koennen, statt still zu verschwinden.
+  $('kp-kat').addEventListener('change', () => {
     const entwurf = kpProdukt(kpMaskeKat);
     kpEinheiten();
-    kpMaskeKat = $kp('kp-kat').value;
+    kpMaskeKat = $('kp-kat').value;
     kpFelder(entwurf);
   });
 
-  document.getElementById('k-produkt-neu').addEventListener('click', () => {
-    const startKat = KAT.kategorie($kp('kp-kat').value) ? $kp('kp-kat').value : 'gewindestange';
+  $('k-produkt-neu').addEventListener('click', () => {
+    const startKat = KAT.kategorie($('kp-kat').value) ? $('kp-kat').value : 'gewindestange';
     kpOeffne(KAT.neuesProdukt(startKat), 'neu', null);
   });
 
@@ -1584,10 +1689,10 @@
       : war === 'bearbeiten' ? 'Bearbeitung abgebrochen — der Katalog ist unverändert.'
       : 'Anlage abgebrochen — es wurde kein Produkt angelegt.', true);
   }
-  document.getElementById('kp-cancel').addEventListener('click', kpAbbruch);
+  $('kp-cancel').addEventListener('click', kpAbbruch);
   kpOverlay.addEventListener('click', (ev) => { if (ev.target === kpOverlay) kpAbbruch(); });
 
-  document.getElementById('kp-speichern').addEventListener('click', () => {
+  $('kp-speichern').addEventListener('click', () => {
     const kat = kKatalog();
     const p = kpProdukt();
     const andere = kat.produkte.filter(x => String(x.id) !== String(kEditId)).map(x => String(x.id));
@@ -1596,8 +1701,6 @@
     if (kEditId != null) {
       const i = kat.produkte.findIndex(x => String(x.id) === String(kEditId));
       if (i < 0) { kpZeige('Produkt ist nicht mehr im Katalog.', false); return; }
-      // Von der Maske verwaltete Felder werden ersetzt; fachfremde Maßfelder fallen weg
-      // (im Dialog benannt), unbekannte Zusatzfelder (z. B. „hinweis") bleiben erhalten.
       const eigene = new Set(KAT.maskeFelder(p.kategorie));
       const rest = {};
       for (const [key, wert] of Object.entries(kat.produkte[i])) {
@@ -1608,9 +1711,9 @@
     } else {
       kat.produkte.push(p);
     }
-    kat.name = document.getElementById('k-name').value.trim() || kat.name;
+    kat.name = $('k-name').value.trim() || kat.name;
     try { store.setzeKatalog(kat); }
-    catch (e) { kpZeige('Katalog nicht gespeichert: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { kpZeige('Katalog nicht gespeichert: ' + fehlerText(e), false); return; }
     const war = kEditId != null, umbenannt = war && String(kEditId) !== String(p.id);
     const alteId = kEditId, modus = kpModus;
     kpSchliesse();
@@ -1619,27 +1722,25 @@
       + (umbenannt ? ` — ID von „${alteId}“ geändert; Projekte mit der alten Referenz warnen jetzt.` : ''), true);
   });
 
-  document.getElementById('k-filter').addEventListener('change', (ev) => {
-    kFilter = (ev.target && ev.target.value) || document.getElementById('k-filter').value || 'alle';
+  $('k-filter').addEventListener('change', (ev) => {
+    kFilter = (ev.target && ev.target.value) || $('k-filter').value || 'alle';
     katRender();
   });
 
-  document.getElementById('k-neu').addEventListener('click', () => {
-    const alt = store.holeKatalog();
-    if (alt && alt.produkte.length && !confirm(`Neuen, leeren Katalog anlegen? Der geladene Katalog „${alt.name}“ `
-        + `mit ${alt.produkte.length} Produkt(en) wird aus diesem Browser entfernt — vorher exportieren!`)) return;
-    const name = document.getElementById('k-name').value.trim() || 'Neuer Katalog';
+  $('k-neu').addEventListener('click', () => {
+    const name = $('k-name').value.trim() || 'Neuer Katalog';
+    // Ein neuer Katalog tritt NEBEN den bisherigen und wird dem Projekt zugeordnet —
+    // der alte bleibt erhalten und ist im Projekt-Dialog wieder waehlbar ([L-12]).
     try { store.setzeKatalog(KAT.leererKatalog(name)); }
-    catch (e) { kZeige('Fehler: ' + (e && e.message ? e.message : e), false); return; }
+    catch (e) { kZeige('Fehler: ' + fehlerText(e), false); return; }
     kpSchliesse(); katLaden();
-    kZeige('Neuer Katalog angelegt: ' + name, true);
+    kZeige('Neuer Katalog angelegt und zugeordnet: ' + name
+      + '. Der bisherige Katalog bleibt erhalten und ist im Projekt-Dialog wieder wählbar.', true);
   });
 
   /**
-   * Standardauswahl des Katalogs auf das aktive Wandelement uebernehmen ([P-18]) und das
-   * Ergebnis als Zusatz zur Katalogmeldung formulieren. Es werden AUSSCHLIESSLICH leere
-   * Verwendungsrollen belegt — eine bestehende Wahl bleibt unangetastet. Ohne aktives
-   * Wandelement passiert nichts (dann belegt Modul 1/2 beim Aufruf vor).
+   * Standardauswahl des Katalogs auf das aktive Wandelement uebernehmen ([P-18]).
+   * Es werden AUSSCHLIESSLICH leere Verwendungsrollen belegt.
    */
   function vorbelegText(){
     if (!store.aktivId()) return '';
@@ -1651,64 +1752,59 @@
       + ' — in Modul 1/2 jederzeit umwählbar.';
   }
 
-  document.getElementById('k-import').addEventListener('change', async (ev) => {
+  $('k-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
     try {
       const k = await store.importiereKatalogDatei(file);
       kpSchliesse(); katLaden();
-      kZeige(`Katalog importiert: ${k.name} (${k.produkte.length} Produkt(e)).` + vorbelegText(), true);
+      kZeige(`Katalog importiert und zugeordnet: ${k.name} (${k.produkte.length} Produkt(e)).` + vorbelegText(), true);
     } catch (e) {
-      kZeige('Katalog-Import fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
+      kZeige('Katalog-Import fehlgeschlagen: ' + fehlerText(e), false);
     }
     ev.target.value = '';
   });
 
-  document.getElementById('k-vorlage').addEventListener('click', async () => {
-    const alt = store.holeKatalog();
-    if (alt && alt.produkte.length && !confirm(`Standardkatalog aus der Repo-Vorlage laden? Der geladene `
-        + `Katalog „${alt.name}“ mit ${alt.produkte.length} Produkt(en) wird ersetzt — vorher exportieren!`)) {
-      kZeige('Abgebrochen — der geladene Katalog bleibt unverändert.', true);
-      return;                                            // Abbruch schreibt nichts
-    }
+  $('k-vorlage').addEventListener('click', async () => {
     try {
       const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
       kpSchliesse(); katLaden();
-      kZeige(`Standardkatalog geladen: ${k.name} (${k.produkte.length} Produkt(e)). `
+      kZeige(`Standardkatalog geladen und zugeordnet: ${k.name} (${k.produkte.length} Produkt(e)). `
         + 'Vorläufige, fachlich unbestätigte Beispielwerte sind je Produkt gekennzeichnet.'
         + vorbelegText(), true);
     } catch (e) {
-      kZeige('Standardkatalog nicht geladen: ' + (e && e.message ? e.message : e), false);
+      kZeige('Standardkatalog nicht geladen: ' + fehlerText(e), false);
     }
   });
 
-  document.getElementById('k-export').addEventListener('click', () => {
+  $('k-export').addEventListener('click', () => {
     try {
       const k = store.exportiereKatalog();
       kZeige(`Katalog exportiert: ${k.produkte.length} Produkt(e) als eigene JSON-Datei.`, true);
     } catch (e) {
-      kZeige('Katalog-Export fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
+      kZeige('Katalog-Export fehlgeschlagen: ' + fehlerText(e), false);
     }
   });
 
-  document.getElementById('k-entfernen').addEventListener('click', () => {
-    const alt = store.holeKatalog();
-    if (!alt) { kZeige('Kein Katalog geladen.', false); return; }
-    if (!confirm(`Katalog „${alt.name}“ aus diesem Browser entfernen? Projektauswahlen bleiben `
-      + 'als Referenz stehen und werden danach als Warnung angezeigt.')) return;
+  $('k-entfernen').addEventListener('click', () => {
+    const st = store.katalogStatus();
+    if (!st.katalog) { kZeige('Diesem Projekt ist kein Katalog zugeordnet.', false); return; }
+    if (!confirm(`Zuordnung des Katalogs „${st.katalog.name}“ zu diesem Projekt aufheben? `
+      + 'Verwendet ihn kein anderes Projekt, wird er aus diesem Browser entfernt — vorher exportieren! '
+      + 'Produktreferenzen in den Wänden bleiben als Referenz stehen und werden danach als Warnung angezeigt.')) return;
     store.loescheKatalog(); kpSchliesse(); katLaden();
-    kZeige('Katalog entfernt. Projektreferenzen bleiben erhalten.', true);
+    kZeige('Zuordnung aufgehoben. Produktreferenzen bleiben erhalten.', true);
   });
 
-  document.getElementById('k-name').addEventListener('input', () => {
+  $('k-name').addEventListener('input', () => {
     const k = store.holeKatalog(); if (!k) return;
-    const name = document.getElementById('k-name').value.trim();
+    const name = $('k-name').value.trim();
     if (!name) return;                                  // leerer Name wird nicht gespeichert
     try { store.setzeKatalog({ ...k, name }); } catch { /* Meldung erst beim Speichern eines Produkts */ }
   });
 
   // Zeilenaktionen (Ereignisdelegation: Bearbeiten/Duplizieren/Löschen)
-  document.getElementById('k-tbody').addEventListener('click', (ev) => {
+  $('k-tbody').addEventListener('click', (ev) => {
     const el = (ev.target.closest && ev.target.closest('button[data-act]')) || ev.target;
     const act = el && el.dataset ? el.dataset.act : null;
     if (!act || act === 'auswahl') return;
@@ -1717,19 +1813,18 @@
     if (!p) { kZeige('Produkt ist nicht mehr im Katalog.', false); return; }
     if (act === 'bearbeiten') {
       kpOeffne(p, 'bearbeiten', p.id);
-      kZeige('Bearbeiten: ' + p.bezeichnung + ' — Änderungen wirken erst mit „Speichern".', true);
+      kZeige('Bearbeiten: ' + p.bezeichnung + ' — Änderungen wirken erst mit „Speichern“.', true);
     } else if (act === 'duplizieren') {
-      // Die Kopie entsteht NUR im Dialog; erst „Speichern" legt sie an ([P-16]).
       let neu = p.id + '-kopie', n = 2;
       while (KAT.produkt(kat, neu)) neu = p.id + '-kopie' + (n++);
       kpOeffne({ ...p, id: neu, bezeichnung: p.bezeichnung + ' (Kopie)' }, 'duplizieren', null);
-      kZeige('Duplizieren: Kopie „' + neu + '" vorbereitet — Maße/Preis anpassen und speichern.', true);
+      kZeige('Duplizieren: Kopie „' + neu + '“ vorbereitet — Maße/Preis anpassen und speichern.', true);
     } else if (act === 'produkt-loeschen') {
       if (!confirm(`Produkt „${p.bezeichnung}“ aus dem Katalog löschen? Projekte, die es referenzieren, `
         + 'zeigen danach eine Warnung — die Auswahl wird nicht automatisch bereinigt.')) return;
       kat.produkte = kat.produkte.filter(x => String(x.id) !== String(p.id));
       try { store.setzeKatalog(kat); }
-      catch (e) { kZeige('Fehler: ' + (e && e.message ? e.message : e), false); return; }
+      catch (e) { kZeige('Fehler: ' + fehlerText(e), false); return; }
       if (String(kEditId) === String(p.id)) kpSchliesse();
       kZeige('Gelöscht: ' + p.bezeichnung + '. Projektauswahl wurde nicht bereinigt.', true);
     }
@@ -1739,13 +1834,25 @@
   // Referenzen werden weder angewendet noch bereinigt noch übersetzt — nur sichtbar als
   // unwirksam gemeldet, mit Verweis auf den heutigen Ort der Auswahl.
   function katWarnungen(kat, aktiv){
-    const box = document.getElementById('k-warn');
+    const box = $('k-warn');
     const teile = [];
+    const st = store.katalogStatus();
+    if (st.status === 'nicht_zugeordnet') {
+      teile.push('<b>Diesem Projekt ist kein Bauteilkatalog zugeordnet</b> ([L-12]). Modul 1/2/4 '
+        + 'melden das und lösen keine Preise auf — es wird kein Katalog geraten. Unten einen anlegen, '
+        + 'importieren oder den Standardkatalog laden.');
+    } else if (st.status === 'fehlt') {
+      teile.push('<b>Der zugeordnete Katalog fehlt in diesem Browser</b> (Kennung ' + esc(st.id || '')
+        + '). Die Zuordnung bleibt erhalten und wird gemeldet, nicht stillschweigend ersetzt ([L-12]).');
+    } else if (st.status === 'mehrdeutig') {
+      teile.push('<b>Kein aktives Projekt, aber mehrere Kataloge</b> — es wird keiner geraten ([L-12]). '
+        + 'Oben ein Projekt aktiv setzen.');
+    }
     if (aktiv) {
       const alt = store.katalogAuswahl();
       const n = KAT.anzahlAuswahl(alt);
       if (n > 0) {
-        teile.push('<b>Unwirksamer Altbestand:</b> dieses Projekt enthält ' + n + ' Produktreferenz(en) aus '
+        teile.push('<b>Unwirksamer Altbestand:</b> diese Wand enthält ' + n + ' Produktreferenz(en) aus '
           + 'der früheren zentralen Freigabe in Modul 0. Sie werden <b>nicht mehr angewendet</b> und bleiben '
           + 'nur zur Nachvollziehbarkeit erhalten. Die wandbezogene Produktwahl liegt jetzt in '
           + '<b>Modul 1</b> (Steine, Vorspannung, Anschluss, Fugen) und <b>Modul 2</b> (Latten, Beplankung, '
@@ -1764,15 +1871,20 @@
   }
 
   function katRender(){
-    const kat = store.holeKatalog();
+    const st = store.katalogStatus();
+    const kat = st.katalog;
     const aktiv = store.aktivId();
+    const m = store.holeMappe();
     const liste = kat ? kat.produkte : [];
-    document.getElementById('k-info').textContent = kat
+    $('k-info').textContent = kat
       ? `Geladen: „${kat.name}“ · ${liste.length} Produkt(e) · Katalogformat v${KAT.KATALOG_VERSION}`
-      : 'Kein Katalog geladen — neu anlegen, ein Produkt anlegen oder eine Katalog-Datei importieren.';
+        + (m ? ` · zugeordnet zu Projekt „${m.projekt.name}“` : ' · keinem Projekt zugeordnet')
+      : st.status === 'fehlt' ? 'Der zugeordnete Katalog fehlt in diesem Browser.'
+      : st.status === 'mehrdeutig' ? 'Mehrere Kataloge, kein aktives Projekt — es wird keiner geraten ([L-12]).'
+      : 'Kein Katalog zugeordnet — neu anlegen, ein Produkt anlegen oder eine Katalog-Datei importieren.';
     const sicht = liste.filter(p => kFilter === 'alle' || p.kategorie === kFilter);
-    document.getElementById('k-leer').hidden = sicht.length > 0;
-    document.getElementById('k-tbody').innerHTML = sicht.map(p => `<tr data-pid="${esc(p.id)}">
+    $('k-leer').hidden = sicht.length > 0;
+    $('k-tbody').innerHTML = sicht.map(p => `<tr data-pid="${esc(p.id)}">
         <td><b>${esc(p.bezeichnung)}</b><br><span class="muted" style="font-size:11.5px">${esc(p.id)}</span></td>
         <td class="muted">${esc(KAT.kategorieLabel(p.kategorie))}</td>
         <td class="muted">${esc(KAT.massText(p))}</td>
@@ -1789,46 +1901,60 @@
   /** Katalog neu in die Oberfläche laden (Name + Tabelle) — nach Anlegen/Import/Entfernen. */
   function katLaden(){
     const k = store.holeKatalog();
-    document.getElementById('k-name').value = k ? k.name : '';
+    $('k-name').value = k ? k.name : '';
     katRender();
   }
 
-  katLaden();
-  store.abonniere(katRender);
-
-  // --- Zentraler Export-Dialog ---
-  const overlay = document.getElementById('exp-overlay');
+  // =====================================================================
+  //  Zentraler Export-Dialog (eine Wand)
+  // =====================================================================
+  const overlay = $('exp-overlay');
   let expId = null;
   function oeffneExport(id){
     const e = store.holeElement(id); if (!e) return;
     expId = id;
-    document.getElementById('exp-name').textContent = e.name;
+    $('exp-name').textContent = e.name;
     overlay.hidden = false;
   }
   function schliesseExport(){ overlay.hidden = true; expId = null; }
-  document.getElementById('exp-cancel').addEventListener('click', schliesseExport);
+  $('exp-cancel').addEventListener('click', schliesseExport);
   overlay.addEventListener('click', (ev) => { if (ev.target === overlay) schliesseExport(); });
   document.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape') return;
     if (!overlay.hidden) schliesseExport();
     if (!impOverlay.hidden) impSchliesse();
     if (!kpOverlay.hidden) kpAbbruch();         // Produktpflege: Abbruch schreibt nichts ([P-16])
+    else if (!katOverlay.hidden) katSchliesse();
+    if (!wpOverlay.hidden) wpAbbruch();
+    if (!gpOverlay.hidden) gpAbbruch();
+    if (!ppOverlay.hidden) ppAbbruch();
   });
-  document.getElementById('exp-go').addEventListener('click', () => {
+  $('exp-go').addEventListener('click', () => {
     if (!expId) return;
     const auswahl = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
-    if (!auswahl.length) { zeige('Bitte mindestens eine Datei auswählen.', false); return; }
+    if (!auswahl.length) { trZeige('Bitte mindestens eine Datei auswählen.', false); return; }
     try {
+      // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
       const projekt = store.projektObjekt(expId);
       // Katalog ist Preisquelle der Stückliste ([P-14]) — dieselbe Auflösung wie in Modul 4.
       const files = baueDateien(projekt, auswahl, store.holeKatalog());
       downloadZip('SEMBLA_' + store.sicherName(projekt.name) + '.zip', files);
       schliesseExport();
-      zeige('Exportiert: ' + files.length + ' Datei(en) im ZIP.', true);
+      trZeige('Exportiert: ' + files.length + ' Datei(en) im ZIP.', true);
     } catch (e) {
-      zeige('Export fehlgeschlagen: ' + (e && e.message ? e.message : e), false);
+      trZeige('Export fehlgeschlagen: ' + fehlerText(e), false);
     }
   });
+
+  // --- Auffrischen ---------------------------------------------------------
+  store.abonniere(trRender);
+  store.abonniere(katRender);
+  // Der Planabschnitt liest sein Bild asynchron aus der eigenen Plan-Datenbank; ein
+  // Fehler dort darf die uebrigen Hoerer nicht aufhalten (er steht in #pn-msg).
+  store.abonniere(() => { pnRender().catch(() => {}); });
+  katLaden();
+  trRender();
+  pnRender().catch(() => {});
 </script>
 </body>
 </html>

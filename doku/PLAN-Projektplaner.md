@@ -195,7 +195,7 @@ UI-Konvention, keine strukturelle mehr.
 | **C1 ✅** | Datenmodell + Speicherschicht + Migration (§2.3), ohne UI | **erledigt** (s. §7) |
 | **C2 ✅** | Modul-0-UI: Projekt/Gebäude/Geschoss anlegen & wählen, Wandliste je Geschoss, Roundtrip nach Modul 1 | **erledigt** (s. §8) |
 | **C3 ✅** | Planupload, Kalibrierung, x/y-Versatz, 125-mm-Rasteroverlay (reine Anzeige) | **erledigt** (s. §9) |
-| **C3.1** | Oberfläche Projektplanung: Baumliste Projekt→Geschoss→Wand, alle Formulare als Popup, mehrere Projekte, Kopfdaten am Projekt, Katalog-Popup (§10) | Die Seite besteht aus **einer** Baumliste plus Editor; kein Formularblock mehr auf der Hauptfläche |
+| ~~**C3.1**~~ | Oberfläche Projektplanung: Baumliste Projekt→Geschoss→Wand, alle Formulare als Popup, mehrere Projekte, Kopfdaten am Projekt, Katalog-Popup (§10) | **erledigt** (s. §12) — die Seite besteht aus **einer** Baumliste plus Editor; kein Formularblock mehr auf der Hauptfläche |
 | **C3.2** | Feinschliff Layout-Editor: Plan-Lock, Zoom/Pan, Kreuzmarker, gestrichelte + orthogonal gezwungene Kalibrierlinie (§11) | Plan lässt sich präzise kalibrieren und rutscht nicht versehentlich |
 | **C4** | Wand-Werkzeug + Radierer + „Wand hinzufügen" | Gezeichnete Wand landet mit korrekter Länge in der Wandliste |
 | **C5** | Projektmappe Export/Import (ZIP + Ordner, §3) | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
@@ -204,7 +204,7 @@ UI-Konvention, keine strukturelle mehr.
 **C2 ist der Punkt, ab dem der Planer echten Nutzen bringt** — C3/C4 sind der Komfort obendrauf.
 Wenn die Zeit knapp wird, ist hier die Sollbruchstelle.
 
-**Reihenfolge nach der Rückmeldung vom 2026-08-07:** C3.1 → C3.2 → C4 → C5. C3.1 zuerst, weil es das
+**Reihenfolge nach der Rückmeldung vom 2026-08-07:** C3.1 (erledigt) → C3.2 → C4 → C5. C3.1 zuerst, weil es das
 Datenmodell (mehrere Projekte, Kopfdaten am Projekt) anfasst — C4 würde sonst auf einem Stand
 gebaut, den C3.1 gleich wieder umbaut.
 
@@ -367,7 +367,7 @@ Normalfall.
 
 ---
 
-## 10. Etappe C3.1 — Oberfläche Projektplanung *(offen, nächster Schritt)*
+## 10. Etappe C3.1 — Oberfläche Projektplanung *(umgesetzt, s. §12)*
 
 Grundlage ist die Nutzerrückmeldung zum C3-Stand vom **2026-08-07**: die Projektplanung ist als
 Sammlung nebeneinanderstehender Formularblöcke unübersichtlich, mehrere Blöcke sind redundant.
@@ -434,7 +434,7 @@ Elternwechsel). Je Prüfung wird die Regel-ID benannt.
 
 ---
 
-## 11. Etappe C3.2 — Feinschliff Layout-Editor *(offen, nach C3.1)*
+## 11. Etappe C3.2 — Feinschliff Layout-Editor *(offen, nächster Schritt)*
 
 Der Editor bleibt in seiner Mechanik wie er ist (Kalibrierlinie, Versatz, Ziehen, Rasteroverlay
 funktionieren). Geändert werden fünf Punkte:
@@ -457,3 +457,57 @@ Alles davon ist **Bedienung**; Format, Regeln [L-8]/[L-9] und die gespeicherten 
 unverändert. Tests: Abschnitt 9 in `smoke_start.mjs` wird um Lock, Pan-vs-Versatz und
 Orthogonal-Rastung erweitert; die Kreuz-/Strichdarstellung wird in `test-plan.mjs` an `planSvg()`
 geprüft.
+
+---
+
+## 12. Umsetzungsstand C3.1 (2026-08-07)
+
+**Regelwerk:** `[L-10]`, `[L-11]`, `[L-12]` sind von Zielregeln zu **umgesetzten** Regeln geworden,
+`[L-6]` trägt die neue Fassung (mehrere Projektmappen). Kapitel 16.9 in `build-handbuch.mjs` ist
+entsprechend nachgezogen, das Handbuch neu gebaut.
+
+- **Datenmodell (`storage.js`), Schema 4 → 5:** aus `sembla:projektmappe` (genau eine Mappe) wird
+  die Liste **`sembla:projekte`** (je Projekt eine Mappe, Form **unverändert** — `MAPPE_VERSION`
+  bleibt 1), dazu der Zeiger **`sembla:aktiv:projekt`**. Aus dem Einzelslot `sembla:katalog` wird der
+  Katalogspeicher **`sembla:kataloge`** (Kennung → Katalog). Die Migration hängt den bestehenden
+  Stand verlustfrei als **erstes** Projekt ein, setzt ihn aktiv und ordnet ihm den vorhandenen
+  Katalog zu — ohne Rückfrage, ohne erfundene Daten ([L-7]). `sembla:elemente` und der
+  aktive-Wand-Zeiger bleiben unangetastet.
+- **Zeigerhierarchie ([L-10]):** ein Geschoss ist nur im **aktiven Projekt** aktivierbar, eine Wand
+  nur in ihrem **aktiven Geschoss**; der gesperrte Weg wird benannt (Knopf gesperrt + Grund), nichts
+  wird still mitaktiviert. Umgekehrt hebt ein Projektwechsel Geschoss- **und** Wandzeiger auf, ein
+  Geschosswechsel den Wandzeiger. `sembla:aktiv:gebaeude` bleibt als **interner** Zeiger auf das eine
+  Gebäude bestehen und taucht in der Oberfläche nicht mehr auf ([L-6]).
+- **Kopfdaten am Projekt ([L-11]):** `mappe.projekt.kopfdaten` ist die einzige Quelle;
+  `store.wirksameKopfdaten()` löst sie samt **benannter Quelle** auf, `eingabenMitKopfdaten()`
+  ersetzt damit den Abschnitt `eingaben.projekt` für Zeichnung (Modul 7), Schriftfeld und Export —
+  **ersetzt, nie zusammengeführt**. Modul 0 hat keinen Schreibweg mehr dorthin; die früheren
+  Standardwerte in `standardEingaben().projekt` sind entfallen (der Block ist leer), damit kein
+  scheinbar echter Rückfall neben dem Projekt steht. Altprojekte behalten ihre Angaben und werden
+  nur als Rückfall gelesen, wenn die Wand keinem Projekt zugeordnet ist.
+- **Ein Katalog je Projekt ([L-12]):** die Zuordnung ist eine **Kennung am Projekt**
+  (`mappe.katalog`), der wirksame Katalog folgt dem aktiven Projekt (`holeKatalog`/`katalogStatus`).
+  Ohne Zuordnung: **kein** Katalog und eine Meldung, nie ein geratener. Ein neu angelegter oder
+  importierter Katalog **überschreibt den bisherigen nicht mehr**, sondern tritt neben ihn und wird
+  zugeordnet. Solange **gar kein** Projekt existiert, gilt der zuletzt ausdrücklich gesetzte Katalog
+  (`sembla:aktiv:katalog`) — das ist kein Raten, sondern der zuletzt bewusst gesetzte Stand.
+- **Oberfläche (`docs/index.html`), vollständig neu:** die Hauptfläche besteht nur noch aus der
+  **Baumliste** (Projekt → Geschoss → Wand) und dem **Layout-Editor** (Geschossplan). Alle Formulare
+  liegen in Popups: **Projekt** (Name, Kopfdaten, Katalogwahl + „Katalog bearbeiten…“), **Geschoss**
+  (Bezeichnung, Geschosshöhe), **Wand** (Anlegen mit Länge/Höhe/Wandtyp bzw. Bearbeiten = nur der
+  Name, weil Geometrie Modul 1 gehört) und **Katalog** (die bisherige Katalogpflege 1:1). Entfallen
+  sind die Blöcke „Projektplanung“, „Wandelement anlegen“, „Projekt-Kopfdaten“, „Bauteilkatalog“ und
+  „Gespeicherte Wandelemente“; die **Gebäude-Ebene** ist aus der Oberfläche verschwunden. Jede Karte
+  klappt unabhängig auf und zu — reine Anzeige, kein Zeiger ([L-10]). Neu ist außerdem ein
+  **Projektmappen-Export/-Import** als eigene JSON-Datei je Projekt (das ZIP mit Plänen und Wänden
+  bleibt C5). Die Kopfleiste (`navbar.js`) zeigt den aktiven Pfad **Projekt · Geschoss · Wand** und
+  bietet in der Wandauswahl nur an, was nach [L-10] auch aktivierbar ist.
+- **Tests:** `smoke_start.mjs` auf die neue Oberfläche umgeschrieben (345 Prüfungen, neuer
+  Abschnitt 8 zur Baumliste inkl. gesperrter Aktivierung, Klappzustand, Kopfdaten, Katalog je
+  Projekt, Projektlöschung und Mappen-Datei), `smoke_storage.mjs` um Abschnitt 14 erweitert
+  (Migration 4 → 5, [L-10]/[L-11]/[L-12]), `test-projektmappe.mjs` um Kopfdaten und
+  Katalogzuordnung. `npm run test:all` ist grün.
+
+**Offen (bewusst nicht in C3.1):** Feinschliff des Layout-Editors (C3.2 — Plan-Lock, Zoom/Pan,
+Kreuzmarker, orthogonale Kalibrierlinie; der Planupload wandert dort ins Geschoss-Popup),
+Wand-Werkzeug und Einzeichnen der Lage (C4), Projektmappe als ZIP/Ordner inklusive Planbild (C5).

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260807-03",
+    datum: "2026-08-07",
+    typ: "feature",
+    issue: 26,
+    titel: "Projektplaner neu: aufklappbare Liste Projekt → Geschoss → Wand, alle Formulare im Popup, mehrere Projekte",
+    testbitte: "Reiter 0: mehrere Projekte anlegen, auf- und zuklappen, Kopfdaten im Popup pflegen. "
+      + "Erwartet: Aufklappen ändert nie, was aktiv ist; ein Geschoss wird erst aktiv, wenn sein "
+      + "Projekt es ist — der Knopf sagt sonst warum.",
+  },
+  {
     id: "chg-20260807-02",
     datum: "2026-08-07",
     typ: "doku",

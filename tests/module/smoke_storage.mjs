@@ -147,7 +147,7 @@ t("migration: 'nein' -> ohne_wind", nachM["alt-AltNein"].wandelement.wandtyp ===
 t("migration: ohne Feld -> mit_wind", nachM["alt-AltOhneFeld"].wandelement.wandtyp === "mit_wind");
 t("migration: Alt-Feld bleibt erhalten (kein Datenverlust)",
   nachM["alt-AltNein"].eingaben.statik.mitWind === "nein");
-t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "4");
+t("migration: Schema-Version hochgesetzt", localStorage.getItem("sembla:version") === "5");
 
 // idempotent: erneutes migrieren aendert nichts mehr
 nachM["alt-AltNein"].wandelement.wandtyp = "ohne_wind";
@@ -188,14 +188,14 @@ t("katalog: anfangs keiner geladen", store.holeKatalog() === null);
 store.setzeKatalog(KATALOG);
 t("katalog: gespeichert und gelesen", store.holeKatalog().produkte.length === 4);
 t("katalog: eigener localStorage-Schluessel (nicht im Projektstand)",
-  !!localStorage.getItem("sembla:katalog")
+  !!localStorage.getItem("sembla:kataloge")
   && !localStorage.getItem("sembla:elemente").includes("rod-m10-1100"));
 t("katalog: Zeitstempel intern, nicht im oeffentlichen Format",
   typeof store.holeKatalog().geaendert === "string");
 
 // „Reload": frisch aus dem localStorage lesen (storage.js haelt keinen Cache)
 t("katalog: ueberlebt Reload (Rohwert im Speicher)",
-  JSON.parse(localStorage.getItem("sembla:katalog")).produkte[0].id === "rod-m10-1100");
+  Object.values(JSON.parse(localStorage.getItem("sembla:kataloge")))[0].produkte[0].id === "rod-m10-1100");
 
 let warfK = false;
 try { store.setzeKatalog({ name: "", produkte: [{ id: "x" }] }); } catch { warfK = true; }
@@ -265,7 +265,7 @@ t("produkte: reisen im Projekt-JSON mit (nur IDs)",
   && pK.eingaben.planung.produkte.rollen.rod_std.join(",") === "rod-m10-1100"
   && !JSON.stringify(pK.eingaben.planung).includes("Latte 40×60"));
 t("produkte: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
-t("produkte: interne Schema-Version ist 4 (Projektstruktur)", store.SCHEMA_VERSION === 4);
+t("produkte: interne Schema-Version ist 5 (mehrere Projekte)", store.SCHEMA_VERSION === 5);
 t("produkte: Katalog-Formatversion getrennt", KAT.KATALOG_VERSION === 1);
 const idKimp = store.importiereText(JSON.stringify(pK), "Katalogwand.json");
 t("produkte: nach Projekt-Import wieder geladen",
@@ -381,15 +381,20 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     store.holeElement("w-b1").wandelement.length_mm === 2000
     && store.holeEingaben("w-b1").projekt.name === "Alt");
   t("[L-3] Mappe traegt keine Wandgeometrie",
-    !localStorage.getItem("sembla:projektmappe").includes("courses"));
+    !localStorage.getItem("sembla:projekte").includes("courses"));
   t("[L-7] Zeiger auf die aktive Wand bleibt bestehen", store.aktivId() === "w-b2");
-  t("migration: Schema-Version auf 4", localStorage.getItem("sembla:version") === "4");
+  t("migration: Schema-Version auf 5", localStorage.getItem("sembla:version") === "5");
+  t("[L-6] die Mappe liegt als LISTE mit genau einem Projekt vor",
+    JSON.parse(localStorage.getItem("sembla:projekte")).length === 1
+    && localStorage.getItem("sembla:projektmappe") === null);
+  t("[L-10] der Projektzeiger zeigt auf das uebernommene Projekt",
+    store.aktivesProjektId() === mig.projekt.id);
 
   // idempotent
-  const vorher = localStorage.getItem("sembla:projektmappe");
+  const vorher = localStorage.getItem("sembla:projekte");
   store.migrieren();
   t("[L-7] Migration laeuft nur einmal (idempotent)",
-    localStorage.getItem("sembla:projektmappe") === vorher);
+    localStorage.getItem("sembla:projekte") === vorher);
 
   // 13b) Struktur anlegen + aktive Zeiger ------------------------------------
   const gebEG = store.aendereMappe((m) => PM.fuegeGebaeudeHinzu(m, "Haus A").mappe);
@@ -403,7 +408,7 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   t("[L-6] Geschoss angelegt und gespeichert",
     PM.findeGeschoss(store.holeMappe(), gsId)?.geschoss.name === "EG");
   t("[L-6] Mappe ueberlebt Reload (Rohwert im Speicher)",
-    JSON.parse(localStorage.getItem("sembla:projektmappe")).gebaeude.length === 2);
+    JSON.parse(localStorage.getItem("sembla:projekte"))[0].gebaeude.length === 2);
 
   store.setzeAktivesGeschoss(gsId);
   t("[L-6] aktives Geschoss gesetzt", store.aktivesGeschossId() === gsId);
@@ -493,8 +498,8 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   // 13e) Datei-Roundtrip + Formattrennung -----------------------------------
   const mDatei = JSON.stringify(PM.mappeObjekt(store.holeMappe()));
   store.loescheMappe();
-  t("mappe: Slot geleert", store.holeMappe() === null && store.aktivesGeschossId() === null);
-  t("mappe: Waende bleiben beim Leeren des Slots erhalten", store.listeElemente().length === 2);
+  t("mappe: aktives Projekt entfernt", store.holeMappe() === null && store.aktivesGeschossId() === null);
+  t("mappe: Waende bleiben beim Loeschen des Projekts erhalten", store.listeElemente().length === 2);
   const wieder = store.importiereMappeText(mDatei);
   t("mappe: Import stellt die Struktur wieder her",
     PM.findeWand(store.holeMappe(), "w-b1").wand.lage.laenge_grid === 16
@@ -511,9 +516,9 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
       gebaeude: [{ id: "g", geschosse: [{ id: "g", waende: [] }] }] }); return false; } catch { return true; }
   })());
   t("mappe: eigene Formatversion, getrennt von Projekt/Katalog/Schema",
-    PM.MAPPE_VERSION === 1 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 4);
+    PM.MAPPE_VERSION === 1 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 5);
   t("mappe: eigener Speicherschluessel (nicht im Wandspeicher)",
-    !!localStorage.getItem("sembla:projektmappe")
+    !!localStorage.getItem("sembla:projekte")
     && !localStorage.getItem("sembla:elemente").includes("start_grid"));
 
   // 13f) Geschossplan ([L-8]/[L-9]): nur die BESCHREIBUNG liegt hier ---------
@@ -524,8 +529,8 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     store.geschossPlan(gsP).datei === "eg.png" && store.geschossPlan(gsP).breite_px === 1600);
   t("[L-9] ohne Kalibrierung bleibt der Massstab leer", store.geschossPlan(gsP).mm_je_pixel === null);
   t("[L-8] kein Bild im localStorage — nur die Beschreibung",
-    !localStorage.getItem("sembla:projektmappe").includes("blob")
-    && !localStorage.getItem("sembla:projektmappe").includes("base64"));
+    !localStorage.getItem("sembla:projekte").includes("blob")
+    && !localStorage.getItem("sembla:projekte").includes("base64"));
   const lageVorher = JSON.stringify(store.wandVerortung("w-b1").wand.lage);
   store.setzeGeschossPlanAnsicht(gsP, { mm_je_pixel: 12.5, versatz_x_mm: 375, versatz_y_mm: -125 });
   t("[L-9] Kalibrierung/Versatz werden uebernommen",
@@ -543,6 +548,170 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     store.geschossPlan(gsP) === null
     && JSON.stringify(store.wandVerortung("w-b1").wand.lage) === lageVorher);
 }
+
+// 14) Etappe C3.1: mehrere Projekte, Zeigerhierarchie, Kopfdaten, Katalog je Projekt
+//     ([L-6]/[L-10]/[L-11]/[L-12])
+{
+  const PM = await import("../../docs/shared/sembla-projektmappe.js");
+  localStorage.m.clear();
+
+  // 14a) mehrere Projekte nebeneinander ([L-6]) ------------------------------
+  const pA = store.fuegeProjektHinzu("Projekt A", { geschoss: "EG", hoehe_mm: 2600 });
+  const pB = store.fuegeProjektHinzu("Projekt B", { geschoss: "OG" });
+  t("[L-6] zwei Projekte liegen nebeneinander", store.listeProjekte().length === 2);
+  t("[L-6] das zuletzt angelegte ist aktiv", store.holeMappe().projekt.id === pB.projekt.id);
+  t("[L-6] je Projekt bleibt die Mappenform unveraendert (v1, ein Gebaeude)",
+    pA.version === PM.MAPPE_VERSION && pA.gebaeude.length === 1);
+  t("[L-6] Projekte sind ueber ihre Kennung einzeln lesbar",
+    store.projektMappe(pA.projekt.id).projekt.name === "Projekt A");
+
+  const gsA = pA.gebaeude[0].geschosse[0].id;
+  const gsB = pB.gebaeude[0].geschosse[0].id;
+
+  // 14b) Aktivierung ist streng hierarchisch ([L-10]) ------------------------
+  t("[L-10] Geschoss eines fremden Projekts wird abgewiesen (Weg wird benannt)", (() => {
+    try { store.setzeAktivesGeschoss(gsA); return false; }
+    catch (e) { return /Projekt A/.test(e.message) && store.aktivesGeschossId() !== gsA; }
+  })());
+  t("[L-10] das fremde Projekt wird dabei NICHT still mitaktiviert",
+    store.holeMappe().projekt.id === pB.projekt.id);
+
+  store.setzeAktivesProjekt(pA.projekt.id);
+  store.setzeAktivesGeschoss(gsA);
+  t("[L-10] im aktiven Projekt laesst sich das Geschoss setzen", store.aktivesGeschossId() === gsA);
+
+  const wA = store.speichere("Wand A1", buildWall("Wand A1", 2000, 2600, []));
+  store.verorteWand(wA, gsA, { name: "Wand A1", lage: null });
+  store.setzeAktiv(wA);
+  t("[L-10] Wand im aktiven Geschoss ist aktivierbar", store.aktivId() === wA);
+
+  const wB = store.speichere("Wand B1", buildWall("Wand B1", 1000, 2000, []));
+  store.verorteWand(wB, gsB, { name: "Wand B1", lage: null });
+  t("[L-10] Wand eines nicht aktiven Geschosses wird abgewiesen", (() => {
+    try { store.setzeAktiv(wB); return false; }
+    catch (e) { return /OG/.test(e.message) && store.aktivId() === wA; }
+  })());
+  t("[L-10] eine unverortete Wand hat keine Eltern und bleibt aktivierbar", (() => {
+    const frei = store.speichere("Frei", buildWall("Frei", 1000, 2000, []));
+    store.setzeAktiv(frei);
+    const ok = store.aktivId() === frei;
+    store.setzeAktiv(wA);
+    return ok;
+  })());
+
+  t("[L-10] Projektwechsel hebt Geschoss- und Wandzeiger auf, statt sie umzubiegen", (() => {
+    store.setzeAktivesProjekt(pB.projekt.id);
+    return store.aktivesGeschossId() === null && store.aktivId() === null
+      && store.aktivesGebaeudeId() === null;
+  })());
+  t("[L-10] Geschosswechsel hebt einen fremden Wandzeiger auf", (() => {
+    store.setzeAktivesGeschoss(gsB);
+    store.setzeAktiv(wB);
+    store.setzeAktivesProjekt(pA.projekt.id);
+    store.setzeAktivesGeschoss(gsA);
+    return store.aktivId() === null;
+  })());
+  t("[L-10] Verorten setzt von sich aus KEINEN Zeiger um", (() => {
+    const vorherPrj = store.aktivesProjektId(), vorherGs = store.aktivesGeschossId();
+    const w = store.speichere("Fremdeintrag", buildWall("Fremdeintrag", 1000, 2000, []));
+    store.verorteWand(w, gsB, { name: "Fremdeintrag", lage: null });
+    return store.aktivesProjektId() === vorherPrj && store.aktivesGeschossId() === vorherGs
+      && store.wandVerortung(w).mappe.projekt.id === pB.projekt.id;
+  })());
+
+  // 14c) Kopfdaten leben am Projekt ([L-11]) ---------------------------------
+  store.setzeAktivesProjekt(pA.projekt.id);
+  store.setzeAktivesGeschoss(gsA);
+  store.setzeAktiv(wA);
+  store.setzeKopfdaten({ bauherr: "AWG eG", planverfasser: "Polycare", plan_nr: "07" });
+  t("[L-11] Kopfdaten liegen am Projekt", store.holeMappe().projekt.kopfdaten.bauherr === "AWG eG");
+  t("[L-11] Kopfdaten wirken auf die Wand des Projekts", (() => {
+    const k = store.wirksameKopfdaten(wA);
+    return k.quelle === "projekt" && k.kopfdaten.bauherr === "AWG eG"
+      && k.kopfdaten.name === "Projekt A";
+  })());
+  t("[L-11] das Wandelement traegt die Kopfdaten NICHT",
+    !JSON.stringify(store.holeElement(wA)).includes("AWG eG"));
+  t("[L-11] leeres Feld loescht, unbekanntes Feld wird abgewiesen", (() => {
+    store.setzeKopfdaten({ plan_nr: "" });
+    let warf = false;
+    try { store.setzeKopfdaten({ erfunden: "x" }); } catch { warf = true; }
+    return store.holeMappe().projekt.kopfdaten.plan_nr === undefined && warf;
+  })());
+  t("[L-11] Altbestand nur als RUECKFALL fuer eine Wand ohne Projekt", (() => {
+    const frei = store.speichere("Alt", buildWall("Alt", 1000, 2000, []),
+      undefined, { projekt: { name: "Altprojekt", bauherr: "Alt-Bauherr" } });
+    const k = store.wirksameKopfdaten(frei);
+    return k.quelle === "wandelement" && k.kopfdaten.bauherr === "Alt-Bauherr";
+  })());
+  t("[L-11] es wird NIE zusammengefuehrt — genau eine Quelle gilt", (() => {
+    store.mergeEingaben("projekt", { bauherr: "Alt am Element" }, wA);
+    const k = store.wirksameKopfdaten(wA);
+    return k.quelle === "projekt" && k.kopfdaten.bauherr === "AWG eG"
+      && store.holeEingaben(wA).projekt.bauherr === "Alt am Element";
+  })());
+  t("[L-11] der Export traegt die wirksamen Kopfdaten",
+    store.projektObjekt(wA).eingaben.projekt.bauherr === "AWG eG");
+
+  // 14d) Ein Bauteilkatalog je Projekt ([L-12]) ------------------------------
+  const K1 = { format: "SEMBLA-Bauteilkatalog", version: 1, name: "Katalog 1",
+    produkte: [{ id: "p1", kategorie: "gewindestange", bezeichnung: "M10", einheit: "Stk",
+                 preis: 1, gewinde: "M10", guete: "8.8", laenge_mm: 1100 }] };
+  t("[L-12] ohne Zuordnung gibt es keinen Katalog — und keinen geratenen",
+    store.holeKatalog() === null && store.katalogStatus().status === "nicht_zugeordnet");
+  const k1 = store.setzeKatalog(K1);
+  t("[L-12] gespeicherter Katalog wird dem aktiven Projekt zugeordnet",
+    store.holeMappe().katalog === k1.id && store.holeKatalog().name === "Katalog 1");
+  t("[L-12] das andere Projekt bekommt ihn NICHT", (() => {
+    store.setzeAktivesProjekt(pB.projekt.id);
+    return store.holeKatalog() === null && store.projektMappe(pB.projekt.id).katalog === null;
+  })());
+  const k2 = store.setzeKatalog({ ...K1, name: "Katalog 2" });
+  t("[L-12] ein zweiter Katalog tritt neben den ersten (kein Ueberschreiben)",
+    store.listeKataloge().length === 2 && k2.id !== k1.id
+    && store.katalogNachId(k1.id).name === "Katalog 1");
+  t("[L-12] der wirksame Katalog folgt dem aktiven Projekt", (() => {
+    store.setzeAktivesProjekt(pA.projekt.id);
+    const a = store.holeKatalog().name;
+    store.setzeAktivesProjekt(pB.projekt.id);
+    return a === "Katalog 1" && store.holeKatalog().name === "Katalog 2";
+  })());
+  t("[L-12] Zuordnung auf einen vorhandenen Katalog umhaengen", (() => {
+    store.setzeProjektKatalog(k1.id);
+    return store.holeKatalog().name === "Katalog 1" && store.listeKataloge().length === 2;
+  })());
+  t("[L-12] unbekannte Katalogkennung wird abgewiesen", (() => {
+    try { store.setzeProjektKatalog("kat-gibtsnicht"); return false; }
+    catch { return store.holeKatalog().name === "Katalog 1"; }
+  })());
+  t("[L-12] Zuordnung aufheben laesst einen noch genutzten Katalog stehen", (() => {
+    store.loescheKatalog();                     // Katalog 1 haengt noch an Projekt A
+    return store.holeKatalog() === null && store.katalogNachId(k1.id) !== null;
+  })());
+  t("[L-12] fehlender Katalog wird gemeldet, nicht ersetzt", (() => {
+    store.setzeProjektKatalog(k2.id);
+    const speicher = JSON.parse(localStorage.getItem("sembla:kataloge"));
+    delete speicher[k2.id];
+    localStorage.setItem("sembla:kataloge", JSON.stringify(speicher));
+    const st = store.katalogStatus();
+    return st.status === "fehlt" && st.katalog === null
+      && store.projektMappe(pB.projekt.id).katalog === k2.id;
+  })());
+  t("[L-12] Katalog liegt in einem eigenen Speicher, nicht in der Mappe",
+    !localStorage.getItem("sembla:projekte").includes("Katalog 1")
+    && !!localStorage.getItem("sembla:kataloge"));
+
+  // 14e) Projekt loeschen laesst Wandelemente stehen ([L-4]) -----------------
+  const vorherElemente = store.listeElemente().length;
+  store.loescheProjekt(pB.projekt.id);
+  t("[L-4] geloeschtes Projekt: Wandelemente bleiben erhalten",
+    store.listeElemente().length === vorherElemente && store.holeElement(wB) !== null);
+  t("[L-4] die Waende gelten danach als nicht eingetragen",
+    store.wandVerortung(wB) === null && store.mappeReferenzen().unverortet.includes(wB));
+  t("[L-10] die Zeiger des geloeschten Projekts sind aufgehoben",
+    store.aktivesProjektId() === null && store.aktivesGeschossId() === null);
+}
+
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

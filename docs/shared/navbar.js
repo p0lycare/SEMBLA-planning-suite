@@ -57,6 +57,10 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
 .sb-active select{background:#0e1a26;color:#fff;border:1px solid #2b3d50;border-radius:6px;
                   padding:4px 6px;font-size:13px;max-width:220px}
 .sb-active .empty{font-size:12.5px;color:#e0a54c}
+.sb-pfad{display:flex;align-items:center;gap:6px;font-size:12px;color:#9fb0c0;white-space:nowrap;
+         padding:4px 8px;background:rgba(255,255,255,.05);border-radius:8px}
+.sb-pfad b{color:#dbe6f2;font-weight:600}
+.sb-pfad .k{color:#7fa9ef}
 `;
 
 let _unsub = null;
@@ -92,6 +96,7 @@ export function mountNavbar(activeIndex = 0) {
   nav.innerHTML =
     `<a class="sb-brand" href="index.html">SEMBLA<span>Planungs-Suite</span></a>`
     + `<div class="sb-tabs">${tabs}</div>`
+    + `<div class="sb-pfad" id="sb-pfad"></div>`
     + `<div class="sb-active" id="sb-active"></div>`;
 
   const abmelden = _renderAktiv();
@@ -102,19 +107,34 @@ export function mountNavbar(activeIndex = 0) {
   return abmelden;
 }
 
-/** Bereich "aktives Element" neu zeichnen (Auswahl/Wechsel). */
+/**
+ * Bereich "aktives Element" neu zeichnen (Auswahl/Wechsel) plus den aktiven Pfad
+ * Projekt · Geschoss · Wand ([L-10]).
+ *
+ * Die Auswahl bietet nur an, was sich nach [L-10] auch aktivieren LAESST: die Waende
+ * des aktiven Geschosses und die (noch) keinem Geschoss zugeordneten. Waende fremder
+ * Geschosse fehlen bewusst — sie werden in Modul 0 aktiviert, wo sich ihr Geschoss
+ * ausdruecklich aktiv setzen laesst. Es wird nie ein Eltern-Zeiger still mitgesetzt.
+ */
 function _renderAktiv() {
+  _renderPfad();
   const host = document.getElementById("sb-active");
   if (!host) return () => {};
-  const liste = store.listeElemente();
   const aktiv = store.aktivId();
+  const gs = store.aktivesGeschoss();
+  const waehlbar = store.listeElemente().filter((e) => {
+    const ort = store.wandVerortung(e.id);
+    return !ort || (gs && ort.geschoss.id === gs.geschoss.id);
+  });
 
-  if (!liste.length) {
-    host.innerHTML = `<span class="empty">kein Wandelement · in „Start" anlegen</span>`;
+  if (!waehlbar.length) {
+    host.innerHTML = store.listeElemente().length
+      ? `<span class="empty">keine Wand im aktiven Geschoss · in „Start" wählen</span>`
+      : `<span class="empty">kein Wandelement · in „Start" anlegen</span>`;
     return () => {};
   }
 
-  const opts = liste.map((e) =>
+  const opts = waehlbar.map((e) =>
     `<option value="${e.id}"${e.id === aktiv ? " selected" : ""}>${_esc(e.name)}</option>`
   ).join("");
 
@@ -122,8 +142,25 @@ function _renderAktiv() {
     + `<select id="sb-sel" title="Aktives Wandelement wählen">${opts}</select>`;
 
   const sel = /** @type {HTMLSelectElement} */ (document.getElementById("sb-sel"));
-  sel.addEventListener("change", () => store.setzeAktiv(sel.value));
+  sel.addEventListener("change", () => {
+    try { store.setzeAktiv(sel.value); }
+    catch (e) { sel.title = e && e.message ? e.message : String(e); _renderAktiv(); }
+  });
   return () => {};
+}
+
+/** Aktiver Pfad Projekt · Geschoss · Wand — reine Anzeige der drei Zeiger ([L-10]). */
+function _renderPfad() {
+  const host = document.getElementById("sb-pfad");
+  if (!host) return;
+  const m = store.holeMappe();
+  const gs = store.aktivesGeschoss();
+  const w = store.aktivesElement();
+  const teil = (label, wert) => `<span><span class="k">${label}</span> `
+    + (wert ? `<b>${_esc(wert)}</b>` : "–") + "</span>";
+  host.innerHTML = teil("Projekt", m ? m.projekt.name : null)
+    + teil("Geschoss", gs ? gs.geschoss.name : null)
+    + teil("Wand", w ? w.name : null);
 }
 
 function _esc(s) {

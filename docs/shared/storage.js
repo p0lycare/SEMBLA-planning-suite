@@ -13,10 +13,12 @@
  *   sembla:version   <Zahl>                       Schema-Version (Migration)
  *   sembla:obj:i2    <string>                     hochgeladene Bauteilgeometrie i2
  *   sembla:obj:i3    <string>                     hochgeladene Bauteilgeometrie i3
- *   sembla:katalog   { …SEMBLA-Bauteilkatalog }    EIN aktiver Bauteilkatalog (eigene Ressource)
- *   sembla:projektmappe        { …SEMBLA-Projektmappe }  EINE aktive Projektmappe (Struktur + Lage, [L-6])
- *   sembla:aktiv:gebaeude      "<id>"                    aktives Gebaeude in der Mappe
- *   sembla:aktiv:geschoss      "<id>"                    aktives Geschoss in der Mappe
+ *   sembla:kataloge  { [id]: …SEMBLA-Bauteilkatalog } Bauteilkataloge (eigene Ressource, [L-12])
+ *   sembla:aktiv:katalog       "<id>"                    Rueckfall, solange KEIN Projekt aktiv ist
+ *   sembla:projekte  [ …SEMBLA-Projektmappe ]      MEHRERE Projektmappen — je Projekt eine ([L-6])
+ *   sembla:aktiv:projekt       "<id>"                    aktives Projekt ([L-10])
+ *   sembla:aktiv:gebaeude      "<id>"                    aktives Gebaeude im aktiven Projekt
+ *   sembla:aktiv:geschoss      "<id>"                    aktives Geschoss im aktiven Projekt
  *
  * Ein Eintrag: { id, name, wandelement, eingaben?, erstellt, geaendert }  (ISO-Zeitstempel)
  *
@@ -59,9 +61,11 @@
 
 import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rolle,
          rollenIds, rollenVonModul, validiereKatalog } from "./sembla-katalog.js";
-import { alleGeschosse, benenneUm as benenneInMappeUm, entferneWand as entferneWandAusMappe,
-         findeGebaeude, findeGeschoss, findeWand,
-         leereMappe, mappeObjekt, normMappe, parseMappe, pruefeReferenzen,
+import { alleGeschosse, alleWaende, benenneUm as benenneInMappeUm,
+         entferneWand as entferneWandAusMappe,
+         findeGebaeude, findeGeschoss, findeWand, kopfdaten as mappeKopfdaten,
+         leereMappe, mappeObjekt, neueId as neueMappenId, normMappe, parseMappe, pruefeReferenzen,
+         setzeKatalogRef, setzeKopfdaten as setzeMappenKopfdaten,
          setzePlan, setzePlanAnsicht, setzeWand,
          uebernehmeElemente, validiereMappe } from "./sembla-projektmappe.js";
 
@@ -69,8 +73,12 @@ const K_ELEM = "sembla:elemente";
 const K_AKTIV = "sembla:aktiv";
 const K_VERSION = "sembla:version";
 const K_OBJ = (typ) => `sembla:obj:${typ}`;
-const K_KATALOG = "sembla:katalog";
-const K_MAPPE = "sembla:projektmappe";
+const K_KATALOG = "sembla:katalog";          // Altbestand vor v5 (Einzel-Slot) — nur Migration
+const K_KATALOGE = "sembla:kataloge";
+const K_AKTIV_KAT = "sembla:aktiv:katalog";   // nur wirksam, solange KEIN Projekt aktiv ist
+const K_MAPPE = "sembla:projektmappe";       // Altbestand vor v5 (EINE Mappe) — nur Migration
+const K_PROJEKTE = "sembla:projekte";
+const K_AKTIV_PRJ = "sembla:aktiv:projekt";
 const K_AKTIV_GEB = "sembla:aktiv:gebaeude";
 const K_AKTIV_GS = "sembla:aktiv:geschoss";
 
@@ -97,8 +105,15 @@ const K_AKTIV_GS = "sembla:aktiv:geschoss";
  *  ein automatisch angelegtes „Projekt ohne Plan“ — OHNE Lagedaten, denn die gab es
  *  nie und werden nicht erfunden ([L-7]). `sembla:elemente`/`sembla:aktiv` bleiben
  *  unveraendert der Wandspeicher; Wandelement, Eingaben und Katalog werden dabei
- *  NICHT angefasst, die Module 1–7 merken von der Migration nichts. */
-export const SCHEMA_VERSION = 4;
+ *  NICHT angefasst, die Module 1–7 merken von der Migration nichts.
+ *  v5: MEHRERE Projekte ([L-6], Etappe C3.1). Aus `sembla:projektmappe` (genau eine
+ *  Mappe) wird die Liste `sembla:projekte` (je Projekt eine Mappe, Form UNVERAENDERT —
+ *  `MAPPE_VERSION` bleibt 1), dazu der Zeiger `sembla:aktiv:projekt`. Aus dem
+ *  Einzel-Slot `sembla:katalog` wird der Katalogspeicher `sembla:kataloge`; der
+ *  vorhandene Katalog wird dem uebernommenen Projekt zugeordnet ([L-12]). Beides
+ *  laeuft verlustfrei und ohne Rueckfrage; Wandelemente, Eingaben, Lagen und der
+ *  Zeiger auf die aktive Wand bleiben unangetastet ([L-7]). */
+export const SCHEMA_VERSION = 5;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
  *  Bleibt 2: `wandtyp` (Wandelement) sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
@@ -206,6 +221,7 @@ export function migrieren() {
     // (v === 0): Erstinstallation oder Stand vor Versionierung.
     if (v < 3) _migriereWandtyp();
     if (v < 4) _migriereProjektmappe();
+    if (v < 5) _migriereProjekte();
     localStorage.setItem(K_VERSION, String(SCHEMA_VERSION));
   }
   return SCHEMA_VERSION;
@@ -238,10 +254,64 @@ function _migriereWandtyp() {
  */
 function _migriereProjektmappe() {
   const elemente = Object.values(_lesenMap()).map((e) => ({ id: e.id, name: e.name }));
-  const vorhandene = _leseMappeRoh();
+  const vorhandene = _leseAltMappeRoh();
   if (!elemente.length && !vorhandene) return;
   const m = uebernehmeElemente(elemente, vorhandene || undefined);
   localStorage.setItem(K_MAPPE, JSON.stringify(mappeObjekt(m)));   // still: laeuft vor den Hoerern
+}
+
+/** Die EINE Mappe des Altstands (Schluessel `sembla:projektmappe`) — nur fuer die Migration. */
+function _leseAltMappeRoh() {
+  try {
+    const raw = localStorage.getItem(K_MAPPE);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    return (o && typeof o === "object" && Array.isArray(o.gebaeude)) ? o : null;
+  } catch { return null; }
+}
+
+/**
+ * v5-Migration ([L-6]/[L-7]/[L-12]): aus EINER Mappe wird eine LISTE von Mappen und
+ * aus dem Einzel-Katalogslot ein Katalogspeicher.
+ *
+ * Verlustfrei und ohne Rueckfrage: die vorhandene Mappe wird unveraendert (Form nach
+ * MAPPE_VERSION 1) das ERSTE Projekt und aktiv gesetzt; ein vorhandener Katalog wird
+ * in den Speicher uebernommen und genau diesem Projekt zugeordnet — geraten wird
+ * nichts, denn es gab bisher nur eines von beidem. Wandelemente, Eingaben, Lagen und
+ * der Zeiger auf die aktive Wand bleiben unberuehrt. Gibt es weder Mappe noch Katalog,
+ * entsteht kein leerer Stand auf Vorrat.
+ */
+function _migriereProjekte() {
+  const alt = _leseAltMappeRoh();
+  const altKatalog = _leseAltKatalogRoh();
+  if (!alt && !altKatalog) return;
+
+  let katalogId = null;
+  if (altKatalog) {
+    katalogId = String(altKatalog.id || neueMappenId("kat"));
+    const speicher = _leseKataloge();
+    speicher[katalogId] = { ...katalogObjekt(altKatalog), id: katalogId };
+    localStorage.setItem(K_KATALOGE, JSON.stringify(speicher));
+    localStorage.setItem(K_AKTIV_KAT, katalogId);
+    localStorage.removeItem(K_KATALOG);
+  }
+  if (!alt) return;
+
+  const m = normMappe(alt);
+  if (katalogId) m.katalog = katalogId;
+  localStorage.setItem(K_PROJEKTE, JSON.stringify([mappeObjekt(m)]));
+  localStorage.setItem(K_AKTIV_PRJ, m.projekt.id);
+  localStorage.removeItem(K_MAPPE);                 // kein zweiter Stand derselben Daten
+}
+
+/** Der Katalog des Altstands (Schluessel `sembla:katalog`) — nur fuer die Migration. */
+function _leseAltKatalogRoh() {
+  try {
+    const raw = localStorage.getItem(K_KATALOG);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    return (o && typeof o === "object" && Array.isArray(o.produkte)) ? o : null;
+  } catch { return null; }
 }
 
 // --- Lesen ----------------------------------------------------------------
@@ -277,10 +347,28 @@ export function aktivesWandelement() {
 
 // --- Schreiben ------------------------------------------------------------
 
-/** Aktives Element setzen (oder Auswahl aufheben mit null). @param {string|null} id */
+/**
+ * Aktives Element setzen (oder Auswahl aufheben mit null).
+ *
+ * Nach [L-10] ist die Aktivierung streng hierarchisch: ist die Wand in einem
+ * Geschoss eingetragen, muss GENAU DIESES Geschoss aktiv sein. Der Weg dorthin wird
+ * benannt statt still mitaktiviert. Eine Wand ohne Eintrag (unverortet) hat keine
+ * Eltern und ist jederzeit aktivierbar.
+ * @param {string|null} id
+ */
 export function setzeAktiv(id) {
   if (id == null) { localStorage.removeItem(K_AKTIV); }
-  else { localStorage.setItem(K_AKTIV, String(id)); }
+  else {
+    const ort = wandVerortung(id);
+    if (ort) {
+      const aktiv = aktivesGeschoss();
+      if (!aktiv || aktiv.geschoss.id !== ort.geschoss.id) {
+        throw new Error(`Wand „${ort.wand.name || id}“ liegt in Geschoss „${ort.geschoss.name}“ `
+          + `des Projekts „${ort.mappe.projekt.name}“ — erst dieses Geschoss aktiv setzen ([L-10]).`);
+      }
+    }
+    localStorage.setItem(K_AKTIV, String(id));
+  }
   _benachrichtige();
 }
 
@@ -337,7 +425,8 @@ export function loesche(id) {
   _schreibenMap(map);
   if (aktivId() === id) setzeAktiv(null);
   try {
-    if (wandVerortung(id)) aendereMappe((m) => entferneWandAusMappe(m, id));
+    const ort = wandVerortung(id);
+    if (ort) setzeMappe(entferneWandAusMappe(ort.mappe, id));
   } catch { /* Mappe kaputt/fehlend: das Wandelement ist trotzdem geloescht */ }
 }
 
@@ -355,7 +444,8 @@ export function umbenennen(id, name) {
   map[id].geaendert = _jetzt();
   _schreibenMap(map);
   try {
-    if (wandVerortung(id)) aendereMappe((m) => benenneInMappeUm(m, id, map[id].name));
+    const ort = wandVerortung(id);
+    if (ort) setzeMappe(benenneInMappeUm(ort.mappe, id, map[id].name));
   } catch { /* Mappe kaputt/fehlend: das Wandelement ist trotzdem umbenannt */ }
 }
 
@@ -451,39 +541,125 @@ export function loescheObj(typ) {
   _benachrichtige();
 }
 
-// --- Bauteilkatalog (eigene Ressource, EIN aktiver Slot) ------------------
-// Der Katalog gehoert NICHT ins Projekt: er liegt in `sembla:katalog`, wird als
-// eigene Datei (`SEMBLA-Bauteilkatalog`) getrennt vom Projekt/ZIP aus- und
-// eingelesen und von Modul 0 gepflegt. Im Projekt steht nur `eingaben.katalog`
-// (Produkt-IDs je Kategorie + Herkunftsnotiz).
+// --- Bauteilkatalog (eigene Ressource, EIN Katalog JE PROJEKT [L-12]) -----
+// Der Katalog gehoert NICHT ins Projekt-JSON: er liegt im eigenen Speicher
+// `sembla:kataloge` (Kennung -> Katalog), wird als eigene Datei
+// (`SEMBLA-Bauteilkatalog`) getrennt vom Projekt/ZIP aus- und eingelesen und von
+// Modul 0 gepflegt. Die ZUORDNUNG haengt am Projekt (`mappe.katalog` = Kennung);
+// der wirksame Katalog folgt dem AKTIVEN Projekt. Ohne Zuordnung wird das gemeldet
+// und KEIN Katalog geraten — insbesondere nicht der eines anderen Projekts.
 
-/** @returns {object|null} der geladene Katalog (null = keiner geladen). */
-export function holeKatalog() {
+/** Der ganze Katalogspeicher als { id: Katalog }. */
+function _leseKataloge() {
   try {
-    const raw = localStorage.getItem(K_KATALOG);
-    if (!raw) return null;
+    const raw = localStorage.getItem(K_KATALOGE);
+    if (!raw) return {};
     const o = JSON.parse(raw);
-    return (o && typeof o === "object" && Array.isArray(o.produkte)) ? o : null;
-  } catch { return null; }
+    return (o && typeof o === "object" && !Array.isArray(o)) ? o : {};
+  } catch { return {}; }
+}
+
+function _schreibeKataloge(map) {
+  localStorage.setItem(K_KATALOGE, JSON.stringify(map));
+}
+
+/** Alle gespeicherten Kataloge (Reihenfolge = Einfuegereihenfolge). */
+export function listeKataloge() {
+  return Object.values(_leseKataloge()).filter((k) => k && Array.isArray(k.produkte));
+}
+
+/** Einen Katalog per Kennung lesen (null = unbekannt). @param {string} id */
+export function katalogNachId(id) {
+  const k = _leseKataloge()[String(id)];
+  return (k && Array.isArray(k.produkte)) ? k : null;
 }
 
 /**
- * Katalog setzen/ueberschreiben. Ungueltige Kataloge werden abgelehnt (Fehler),
- * nie stillschweigend zurechtgebogen.
+ * Zuordnungsstatus des wirksamen Katalogs ([L-12]) — die Begruendung zu `holeKatalog`.
+ * @returns {{status:'ok'|'kein_projekt'|'nicht_zugeordnet'|'fehlt'|'mehrdeutig', katalog:object|null, id:string|null}}
+ */
+export function katalogStatus() {
+  const m = holeMappe();
+  if (!m) {
+    // Ohne Projekt gibt es keine Zuordnungsfrage nach [L-12]. Dann gilt der zuletzt
+    // AUSDRUECKLICH gesetzte Katalog (`sembla:aktiv:katalog`) — geraten wird auch hier
+    // nichts: fehlt der Zeiger oder ist er verwaist, gibt es keinen Katalog. Sobald ein
+    // Projekt aktiv ist, zaehlt ausschliesslich dessen Zuordnung.
+    let zeiger = null;
+    try { zeiger = localStorage.getItem(K_AKTIV_KAT); } catch { /* ignore */ }
+    const k = zeiger ? katalogNachId(zeiger) : null;
+    return k ? { status: "ok", katalog: k, id: String(zeiger) }
+             : { status: "kein_projekt", katalog: null, id: null };
+  }
+  if (!m.katalog) return { status: "nicht_zugeordnet", katalog: null, id: null };
+  const k = katalogNachId(m.katalog);
+  return k ? { status: "ok", katalog: k, id: String(m.katalog) }
+           : { status: "fehlt", katalog: null, id: String(m.katalog) };
+}
+
+/** @returns {object|null} der wirksame Katalog des aktiven Projekts ([L-12]). */
+export function holeKatalog() {
+  return katalogStatus().katalog;
+}
+
+/**
+ * Katalog speichern und — sofern ein Projekt aktiv ist — diesem zuordnen ([L-12]).
+ * Ungueltige Kataloge werden abgelehnt (Fehler), nie stillschweigend zurechtgebogen.
+ * Die Kennung bleibt stabil: ein Katalog MIT Kennung wird an ihr fortgeschrieben,
+ * einer ohne bekommt eine neue. So ueberschreibt ein neu angelegter oder
+ * importierter Katalog nie den bisherigen — er tritt neben ihn und wird zugeordnet.
  * @param {object} katalog @returns {object} der gespeicherte Katalog
  */
 export function setzeKatalog(katalog) {
   const fehler = validiereKatalog(katalog);
   if (fehler.length) throw new Error("Katalog ungueltig:\n– " + fehler.join("\n– "));
-  const gespeichert = { ...katalogObjekt(katalog), geaendert: _jetzt() };
-  localStorage.setItem(K_KATALOG, JSON.stringify(gespeichert));
+  const m = holeMappe();
+  const id = String((katalog && katalog.id) || neueMappenId("kat"));
+  const gespeichert = { ...katalogObjekt(katalog), id, geaendert: _jetzt() };
+  const speicher = _leseKataloge();
+  speicher[id] = gespeichert;
+  _schreibeKataloge(speicher);
+  localStorage.setItem(K_AKTIV_KAT, id);          // greift nur ohne aktives Projekt
+  if (m && m.katalog !== id) _schreibeMappe(setzeKatalogRef(m, id));
   _benachrichtige();
   return gespeichert;
 }
 
-/** Katalog-Slot leeren (die Projektauswahl bleibt bewusst stehen -> Warnung). */
+/**
+ * Dem aktiven Projekt einen vorhandenen Katalog zuordnen oder die Zuordnung
+ * aufheben (`null`). Der Katalog selbst bleibt unberuehrt ([L-12]).
+ * @param {string|null} id
+ */
+export function setzeProjektKatalog(id) {
+  const m = holeMappe();
+  if (!m) throw new Error("Kein aktives Projekt — ein Katalog wird immer einem Projekt zugeordnet ([L-12]).");
+  if (id != null && id !== "" && !katalogNachId(id)) throw new Error(`Unbekannter Bauteilkatalog „${id}“.`);
+  if (id) localStorage.setItem(K_AKTIV_KAT, String(id));
+  const gespeichert = _schreibeMappe(setzeKatalogRef(m, id == null || id === "" ? null : String(id)));
+  _benachrichtige();
+  return gespeichert;
+}
+
+/**
+ * Zuordnung des aktiven Projekts aufheben und den Katalog entfernen, sofern ihn
+ * kein anderes Projekt mehr verwendet. Produktreferenzen in den Projekten bleiben
+ * bewusst stehen -> Warnung statt stiller Bereinigung.
+ */
 export function loescheKatalog() {
-  localStorage.removeItem(K_KATALOG);
+  const st = katalogStatus();
+  const m = holeMappe();
+  if (m && m.katalog) _schreibeMappe(setzeKatalogRef(m, null));
+  const id = st.id;
+  if (id) {
+    const nochGenutzt = listeProjekte().some((p) => p.katalog === id);
+    if (!nochGenutzt) {
+      const speicher = _leseKataloge();
+      delete speicher[id];
+      _schreibeKataloge(speicher);
+    }
+    try { if (localStorage.getItem(K_AKTIV_KAT) === id) localStorage.removeItem(K_AKTIV_KAT); }
+    catch { /* ignore */ }
+  }
   _benachrichtige();
 }
 
@@ -528,67 +704,223 @@ export function katalogAuswahl(id) {
   return k.auswahl || {};
 }
 
-// --- Projektmappe (Struktur + Lage, eigene Ressource) ---------------------
-// Projekt -> Gebaeude -> Geschoss -> Wandeintrag ([L-6]). Genau EINE aktive Mappe
-// im Slot `sembla:projektmappe`, dazu die aktiven Zeiger auf Gebaeude/Geschoss.
-// Verknuepft wird ueber die stabile id des Wandeintrags ([L-4]); die Wandliste
-// bleibt unveraendert der Wandspeicher, das Wandelement wird NIE angefasst ([L-3]).
+// --- Projektmappen (Struktur + Lage, eigene Ressource) --------------------
+// Projekt -> Gebaeude -> Geschoss -> Wandeintrag ([L-6]). Der Speicher haelt seit
+// Schema v5 MEHRERE Mappen — je Projekt eine, in der Form voellig unveraendert
+// (MAPPE_VERSION bleibt 1) — in der Liste `sembla:projekte`; genau eine davon ist
+// aktiv (`sembla:aktiv:projekt`). Verknuepft wird ueber die stabile id des
+// Wandeintrags ([L-4]); die Wandliste bleibt unveraendert der Wandspeicher, das
+// Wandelement wird NIE angefasst ([L-3]).
 //
-// Bewusste Abweichung von der Planskizze: es gibt KEINEN Schluessel
-// `sembla:aktiv:projekt`. Es existiert genau eine Mappe und damit genau ein
-// Projekt — ein zweiter Zeiger darauf waere eine zweite Wahrheit ([P-6]).
+// Die drei Zeiger Projekt -> Geschoss -> Wand bilden nach [L-10] einen PFAD: ein
+// Geschoss laesst sich nur im AKTIVEN Projekt aktiv setzen, eine Wand nur in ihrem
+// AKTIVEN Geschoss. Kein Aktivsetzen zieht die Ebenen darueber still mit; umgekehrt
+// hebt ein Wechsel oben die Zeiger darunter AUF, statt sie auf Fremdes zu biegen.
+// `sembla:aktiv:gebaeude` bleibt der interne Zeiger auf das eine Gebaeude des
+// aktiven Projekts ([L-6]) und taucht in der Oberflaeche nicht mehr auf.
 
-/** Rohe Mappe aus dem Speicher (null = keine angelegt). Ohne Normalisierung. */
-function _leseMappeRoh() {
+/** Rohe Mappenliste aus dem Speicher (ohne Normalisierung). @returns {any[]} */
+function _leseProjekteRoh() {
   try {
-    const raw = localStorage.getItem(K_MAPPE);
-    if (!raw) return null;
+    const raw = localStorage.getItem(K_PROJEKTE);
+    if (!raw) return [];
     const o = JSON.parse(raw);
-    return (o && typeof o === "object" && Array.isArray(o.gebaeude)) ? o : null;
-  } catch { return null; }
+    return Array.isArray(o) ? o.filter((m) => m && typeof m === "object" && Array.isArray(m.gebaeude)) : [];
+  } catch { return []; }
 }
 
-/** @returns {object|null} die aktive Projektmappe (normalisiert) oder null. */
-export function holeMappe() {
-  const roh = _leseMappeRoh();
-  return roh ? normMappe(roh) : null;
+function _schreibeProjekte(liste) {
+  localStorage.setItem(K_PROJEKTE, JSON.stringify(liste.map((m) => mappeObjekt(m))));
+}
+
+/** Alle Projektmappen in Anzeigereihenfolge (normalisiert). @returns {object[]} */
+export function listeProjekte() {
+  return _leseProjekteRoh().map(normMappe);
+}
+
+/** Eine Projektmappe per Projekt-Kennung (null = unbekannt). @param {string} id */
+export function projektMappe(id) {
+  return listeProjekte().find((m) => m.projekt.id === String(id)) || null;
+}
+
+/** @returns {string|null} Kennung des aktiven Projekts ([L-10]). */
+export function aktivesProjektId() {
+  try { return localStorage.getItem(K_AKTIV_PRJ) || null; } catch { return null; }
 }
 
 /**
- * Mappe setzen/ueberschreiben. Ungueltige Mappen werden abgelehnt (Fehler), nie
- * stillschweigend zurechtgebogen ([P-9]).
+ * Die Mappe des AKTIVEN Projekts (null = keines aktiv/angelegt).
+ *
+ * Fehlt der Zeiger oder ist er verwaist, wird NICHT geraten: es wird nur
+ * zurueckgefallen, wenn es genau EIN Projekt gibt — dann ist die Wahl eindeutig.
+ * @returns {object|null}
+ */
+export function holeMappe() {
+  const alle = listeProjekte();
+  if (!alle.length) return null;
+  const id = aktivesProjektId();
+  if (id) {
+    const m = alle.find((x) => x.projekt.id === id);
+    if (m) return m;
+  }
+  return alle.length === 1 ? alle[0] : null;
+}
+
+/** Alias mit sprechendem Namen — dieselbe Mappe wie `holeMappe`. */
+export function aktivesProjekt() { return holeMappe(); }
+
+/**
+ * Aktives Projekt setzen (null = Auswahl aufheben). Nach [L-10] hebt ein
+ * Projektwechsel die Zeiger DARUNTER auf — Geschoss und aktive Wand —, statt sie
+ * auf einen fremden Eintrag zu biegen. Gehoerte die aktive Wand schon zum neuen
+ * Projekt, bleibt sie erhalten: dann wird nichts gebogen.
+ * @param {string|null} id
+ */
+export function setzeAktivesProjekt(id) {
+  const vorher = aktivesProjektId();
+  if (id == null || id === "") {
+    localStorage.removeItem(K_AKTIV_PRJ);
+  } else {
+    if (!projektMappe(id)) throw new Error(`Unbekanntes Projekt „${id}“.`);
+    localStorage.setItem(K_AKTIV_PRJ, String(id));
+  }
+  if (String(vorher || "") !== String(id || "")) {
+    localStorage.removeItem(K_AKTIV_GEB);
+    localStorage.removeItem(K_AKTIV_GS);
+    const w = aktivId();
+    const bleibt = w && id && (() => {
+      const m = projektMappe(id);
+      return !!(m && findeWand(m, w));
+    })();
+    if (!bleibt) localStorage.removeItem(K_AKTIV);
+  }
+  _benachrichtige();
+}
+
+/**
+ * Eine Mappe in die Liste schreiben — STILL (ohne Benachrichtigung) und ohne
+ * Pruefung der Zeiger. Interner Weg fuer `setzeMappe` und die Katalogzuordnung.
+ * @param {object} mappe @returns {object} die gespeicherte Mappe
+ */
+function _schreibeMappe(mappe) {
+  const m = normMappe(mappe);
+  const gespeichert = { ...mappeObjekt(m), geaendert: _jetzt() };
+  const liste = _leseProjekteRoh();
+  const i = liste.findIndex((x) => x && x.projekt && String(x.projekt.id) === m.projekt.id);
+  if (i >= 0) liste[i] = gespeichert; else liste.push(gespeichert);
+  localStorage.setItem(K_PROJEKTE, JSON.stringify(liste));
+  return gespeichert;
+}
+
+/**
+ * Mappe setzen/ueberschreiben (anhand ihrer Projekt-Kennung). Ungueltige Mappen
+ * werden abgelehnt (Fehler), nie stillschweigend zurechtgebogen ([P-9]). Eine noch
+ * unbekannte Mappe wird angehaengt; ist noch kein Projekt aktiv, wird sie es.
  * @param {object} mappe @returns {object} die gespeicherte Mappe
  */
 export function setzeMappe(mappe) {
   const m = normMappe(mappe);
   const fehler = validiereMappe(m);
   if (fehler.length) throw new Error("Projektmappe ungueltig:\n– " + fehler.join("\n– "));
-  const gespeichert = { ...mappeObjekt(m), geaendert: _jetzt() };
-  localStorage.setItem(K_MAPPE, JSON.stringify(gespeichert));
+  const neu = !projektMappe(m.projekt.id);
+  const gespeichert = _schreibeMappe(m);
+  if (neu && !aktivesProjektId()) localStorage.setItem(K_AKTIV_PRJ, m.projekt.id);
   _benachrichtige();
   return gespeichert;
 }
 
-/** Vorhandene Mappe liefern oder eine neue anlegen (Struktur nach [L-6]). */
-export function mappeOderNeu(name) {
-  return holeMappe() || setzeMappe(leereMappe(name));
-}
-
-/** Mappen-Slot leeren. Waende, Eingaben und Katalog bleiben unberuehrt. */
-export function loescheMappe() {
-  localStorage.removeItem(K_MAPPE);
-  localStorage.removeItem(K_AKTIV_GEB);
-  localStorage.removeItem(K_AKTIV_GS);
-  _benachrichtige();
+/**
+ * Neues Projekt anlegen (mit einem Gebaeude und einem Geschoss nach [L-6]) und
+ * aktiv setzen. Bestehende Projekte bleiben unberuehrt.
+ * @param {string} [name] @param {{geschoss?:string, hoehe_mm?:number}} [opt]
+ * @returns {object} die gespeicherte Mappe
+ */
+export function fuegeProjektHinzu(name, opt) {
+  const m = setzeMappe(leereMappe(name, opt));
+  setzeAktivesProjekt(m.projekt.id);
+  return m;
 }
 
 /**
- * Die Mappe mit einer REINEN Funktion aendern (lesen → anwenden → pruefen →
+ * Ein Projekt samt Struktur entfernen. Die WANDELEMENTE bleiben erhalten und gelten
+ * danach als „nicht eingetragen“ ([L-4] — keine stille Bereinigung); Planbilder haengen
+ * an der Geschoss-Kennung und werden von der Oberflaeche getrennt entfernt ([L-8]).
+ * War das Projekt aktiv, werden die Zeiger darunter nach [L-10] aufgehoben.
+ * @param {string} id @returns {object|null} die entfernte Mappe
+ */
+export function loescheProjekt(id) {
+  const weg = projektMappe(id);
+  if (!weg) return null;
+  const liste = _leseProjekteRoh().filter((m) => String(m?.projekt?.id) !== String(id));
+  localStorage.setItem(K_PROJEKTE, JSON.stringify(liste));
+  if (aktivesProjektId() === String(id)) {
+    localStorage.removeItem(K_AKTIV_PRJ);
+    localStorage.removeItem(K_AKTIV_GEB);
+    localStorage.removeItem(K_AKTIV_GS);
+  }
+  _benachrichtige();
+  return weg;
+}
+
+/** Aktive Mappe liefern oder ein neues Projekt anlegen (Struktur nach [L-6]). */
+export function mappeOderNeu(name) {
+  return holeMappe() || fuegeProjektHinzu(name);
+}
+
+/** Das aktive Projekt entfernen. Waende, Eingaben und Kataloge bleiben unberuehrt. */
+export function loescheMappe() {
+  const id = holeMappe()?.projekt?.id;
+  if (id) loescheProjekt(id); else _benachrichtige();
+}
+
+/**
+ * Die AKTIVE Mappe mit einer REINEN Funktion aendern (lesen → anwenden → pruefen →
  * schreiben). Wirft die Funktion, bleibt der Speicher unveraendert.
  * @param {(m:object) => object} fn @returns {object} die gespeicherte Mappe
  */
 export function aendereMappe(fn) {
   return setzeMappe(fn(mappeOderNeu()));
+}
+
+// --- Projekt-Kopfdaten ([L-11]) -------------------------------------------
+// Die Kopfdaten leben AM PROJEKT und nirgends sonst. `eingaben.projekt` am
+// Wandelement wird nicht mehr geschrieben und nur noch als RUECKFALL gelesen,
+// wenn die Wand keinem Projekt zugeordnet ist — zusammengefuehrt wird nie.
+
+/** Kopfdaten des aktiven Projekts setzen (Patch, leerer Wert loescht das Feld). */
+export function setzeKopfdaten(patch) {
+  const m = holeMappe();
+  if (!m) throw new Error("Kein aktives Projekt — Kopfdaten gehören zum Projekt ([L-11]).");
+  const gespeichert = setzeMappe(setzeMappenKopfdaten(m, patch));
+  return gespeichert;
+}
+
+/**
+ * Wirksame Kopfdaten einer Wand ([L-11]) samt benannter Quelle. Genau EINE Quelle
+ * gilt: das Projekt, in dem die Wand eingetragen ist. Nur wenn sie keinem Projekt
+ * zugeordnet ist, gilt der Altbestand `eingaben.projekt` als Rueckfall.
+ * @param {string} [id] Wandkennung (Default: aktive Wand)
+ * @returns {{kopfdaten:Record<string,any>, quelle:'projekt'|'wandelement', projekt:string|null}}
+ */
+export function wirksameKopfdaten(id) {
+  const wid = id || aktivId();
+  const ort = wid ? wandVerortung(wid) : null;
+  if (ort && ort.mappe) {
+    return { kopfdaten: mappeKopfdaten(ort.mappe), quelle: "projekt", projekt: ort.mappe.projekt.name };
+  }
+  const alt = (wid ? holeEingaben(wid) : holeEingaben()).projekt || {};
+  return { kopfdaten: { ...alt }, quelle: "wandelement", projekt: null };
+}
+
+/**
+ * Eingaben einer Wand mit den WIRKSAMEN Kopfdaten ([L-11]) — fuer Zeichnung,
+ * Schriftfeld und Export. Der Abschnitt `projekt` wird vollstaendig ERSETZT, nie
+ * gemischt; der gespeicherte Altbestand bleibt davon unberuehrt.
+ * @param {string} [id]
+ */
+export function eingabenMitKopfdaten(id) {
+  const e = holeEingaben(id);
+  return { ...e, projekt: wirksameKopfdaten(id).kopfdaten };
 }
 
 // --- aktive Zeiger --------------------------------------------------------
@@ -603,9 +935,10 @@ export function aktivesGeschossId() {
 }
 
 /**
- * Aktives Gebaeude setzen (null = Auswahl aufheben). Gehoert das aktive Geschoss
- * nicht zu diesem Gebaeude, wird sein Zeiger AUFGEHOBEN statt auf ein fremdes
- * Geschoss gebogen — es wird kein Geschoss geraten ([P-9]).
+ * Aktives Gebaeude setzen (null = Auswahl aufheben). Interner Zeiger: die Oberflaeche
+ * zeigt die Gebaeude-Ebene nach [L-6] nicht. Das Gebaeude muss zum AKTIVEN Projekt
+ * gehoeren ([L-10]). Gehoert das aktive Geschoss nicht zu diesem Gebaeude, wird sein
+ * Zeiger AUFGEHOBEN statt auf ein fremdes Geschoss gebogen.
  * @param {string|null} id
  */
 export function setzeAktivesGebaeude(id) {
@@ -617,7 +950,7 @@ export function setzeAktivesGebaeude(id) {
   }
   const m = holeMappe();
   const geb = m ? findeGebaeude(m, id) : null;
-  if (!geb) throw new Error(`Unbekanntes Gebäude „${id}“.`);
+  if (!geb) throw new Error(`Unbekanntes Gebäude „${id}“ im aktiven Projekt.`);
   localStorage.setItem(K_AKTIV_GEB, String(id));
   const gsId = aktivesGeschossId();
   if (gsId && !geb.geschosse.some((gs) => gs.id === gsId)) localStorage.removeItem(K_AKTIV_GS);
@@ -641,8 +974,11 @@ export function aktivesGebaeude() {
 }
 
 /**
- * Aktives Geschoss setzen (null = Auswahl aufheben). Das zugehoerige Gebaeude
- * wird mitgesetzt, damit beide Zeiger nie auseinanderlaufen.
+ * Aktives Geschoss setzen (null = Auswahl aufheben). Nach [L-10] geht das NUR im
+ * aktiven Projekt: ein Geschoss eines anderen Projekts wird abgewiesen und der Weg
+ * dorthin benannt — das Projekt wird nicht still mitaktiviert. Das zugehoerige
+ * Gebaeude wird als interner Zeiger mitgesetzt, damit beide nie auseinanderlaufen;
+ * eine aktive Wand ausserhalb des neuen Geschosses verliert ihren Zeiger.
  * @param {string|null} id
  */
 export function setzeAktivesGeschoss(id) {
@@ -651,17 +987,28 @@ export function setzeAktivesGeschoss(id) {
   } else {
     const m = holeMappe();
     const treffer = m ? findeGeschoss(m, id) : null;
-    if (!treffer) throw new Error(`Unbekanntes Geschoss „${id}“.`);
+    if (!treffer) {
+      const fremd = listeProjekte().find((p) => findeGeschoss(p, id));
+      throw new Error(fremd
+        ? `Geschoss „${findeGeschoss(fremd, id).geschoss.name}“ gehört zum Projekt „${fremd.projekt.name}“ — `
+          + "erst dieses Projekt aktiv setzen ([L-10])."
+        : `Unbekanntes Geschoss „${id}“.`);
+    }
+    const vorher = aktivesGeschossId();
     localStorage.setItem(K_AKTIV_GS, String(id));
     localStorage.setItem(K_AKTIV_GEB, treffer.gebaeude.id);
+    if (String(vorher || "") !== String(id)) {
+      const w = aktivId();
+      if (w && !treffer.geschoss.waende.some((x) => x.id === w)) localStorage.removeItem(K_AKTIV);
+    }
   }
   _benachrichtige();
 }
 
 /**
- * Aktives Geschoss samt Gebaeude. Fehlt der Zeiger oder ist er verwaist, wird
- * NICHT geraten: es wird auf das erste Geschoss der Mappe zurueckgefallen, sofern
- * es genau eine eindeutige Struktur gibt — sonst null.
+ * Aktives Geschoss samt Gebaeude — immer innerhalb des aktiven Projekts. Fehlt der
+ * Zeiger oder ist er verwaist, wird NICHT geraten: es wird nur zurueckgefallen, wenn
+ * das Projekt genau EIN Geschoss hat.
  * @returns {{gebaeude:object, geschoss:object}|null}
  */
 export function aktivesGeschoss() {
@@ -690,7 +1037,17 @@ export function aktivesGeschoss() {
 export function verorteWand(wandId, geschossId, daten) {
   const e = holeElement(wandId);
   const d = daten || {};
-  return aendereMappe((m) => setzeWand(m, geschossId, {
+  // Das Zielgeschoss bestimmt das Projekt — nicht der aktive Zeiger. So laesst sich
+  // eine Wand auch in einem gerade nicht aktiven Projekt eintragen, ohne dass dafuer
+  // still ein Zeiger umgesetzt wuerde ([L-10]).
+  const ziel = listeProjekte().find((m) => findeGeschoss(m, geschossId)) || mappeOderNeu();
+  // Steht die Wand bereits in einem ANDEREN Projekt, wird der alte Eintrag entfernt —
+  // eine Wand gehoert zu genau einem Projekt (sonst gaebe es zwei Lagen fuer dieselbe Wand).
+  const vorher = wandVerortung(wandId);
+  if (vorher && vorher.mappe.projekt.id !== ziel.projekt.id) {
+    setzeMappe(entferneWandAusMappe(vorher.mappe, wandId));
+  }
+  return setzeMappe(setzeWand(ziel, geschossId, {
     id: String(wandId),
     name: d.name !== undefined ? d.name : (e?.name || String(wandId)),
     datei: d.datei,
@@ -730,21 +1087,45 @@ export function geschossPlan(geschossId) {
   return treffer ? treffer.geschoss.plan : null;
 }
 
-/** Lage-Eintrag einer Wand (null = nicht in der Mappe). @param {string} wandId */
+/**
+ * Lage-Eintrag einer Wand — ueber ALLE Projekte hinweg gesucht, denn eine Wand
+ * gehoert zu genau einem Projekt und muss auch aus einem anderen heraus benennbar
+ * bleiben ([L-4]). `null` = in keinem Projekt eingetragen.
+ * @param {string} wandId
+ * @returns {{mappe:object, gebaeude:object, geschoss:object, wand:object}|null}
+ */
 export function wandVerortung(wandId) {
-  const m = holeMappe();
-  return m ? findeWand(m, wandId) : null;
+  for (const m of listeProjekte()) {
+    const treffer = findeWand(m, wandId);
+    if (treffer) return { mappe: m, ...treffer };
+  }
+  return null;
 }
 
 /**
- * Referenzabgleich Mappe ↔ Wandspeicher ([L-4]). Meldet nur, bereinigt nie.
+ * Referenzabgleich Projekte ↔ Wandspeicher ([L-4]). Meldet nur, bereinigt nie.
+ * Gezaehlt wird ueber ALLE Projekte: eine Wand gilt erst dann als unverortet, wenn
+ * sie in keinem einzigen Projekt eingetragen ist.
  * @returns {{verwaist:Array<object>, unverortet:string[], ohneLage:Array<object>}}
  */
 export function mappeReferenzen() {
-  const m = holeMappe();
   const elemente = listeElemente().map((e) => ({ id: e.id, name: e.name }));
-  if (!m) return { verwaist: [], unverortet: elemente.map((e) => e.id), ohneLage: [] };
-  return pruefeReferenzen(m, elemente);
+  const alle = listeProjekte();
+  if (!alle.length) return { verwaist: [], unverortet: elemente.map((e) => e.id), ohneLage: [] };
+  const verwaist = [], ohneLage = [];
+  const inMappe = new Set();
+  for (const m of alle) {
+    for (const { wand } of alleWaende(m)) inMappe.add(wand.id);
+    const r = pruefeReferenzen(m, elemente);
+    verwaist.push(...r.verwaist);
+    ohneLage.push(...r.ohneLage);
+  }
+  const vorhanden = new Set(elemente.map((e) => e.id));
+  return {
+    verwaist,
+    unverortet: [...vorhanden].filter((id) => !inMappe.has(id)),
+    ohneLage,
+  };
 }
 
 // --- Mappen-Datei ---------------------------------------------------------
@@ -853,11 +1234,12 @@ function _merge(base, patch) {
  */
 export function standardEingaben() {
   return {
-    // Modul 0 — Projekt-Kopfdaten (Startseite, am aktiven Element; reisen im Projekt-JSON mit)
-    projekt: {
-      name: "", bauherr: "", planverfasser: "Polycare Research Technology GmbH",
-      phase: "Ausführungsplanung", plan_nr: "", index: "0", gez: "",
-    },
+    // ALTBESTAND — Projekt-Kopfdaten am Wandelement. Sie leben seit [L-11] am PROJEKT
+    // (`mappe.projekt.kopfdaten`) und werden hier nicht mehr geschrieben. Der Block bleibt
+    // leer, damit Altprojekte unveraendert laden und ihre Angaben als RUECKFALL lesbar
+    // bleiben; vorbelegte Standardwerte gaebe es hier nicht mehr — sie waeren eine zweite,
+    // scheinbar echte Quelle neben dem Projekt.
+    projekt: {},
     // Modul 1 — eigene Eingaben des Planungsmoduls, die NICHT ins Wandelement gehoeren.
     // Derzeit nur die wandbezogenen Produktreferenzen (Steine, Vorspannung, Anschluss,
     // Fugen): Produkt-IDs je Verwendungsrolle + Herkunftsnotiz, sonst nichts ([P-13]).
@@ -954,9 +1336,12 @@ export function mergeEingaben(teil, patch, id) {
 export function projektObjekt(id) {
   const e = id ? holeElement(id) : aktivesElement();
   if (!e) throw new Error("Kein Element fuer den Export gewaehlt.");
+  // Kopfdaten kommen nach [L-11] aus dem PROJEKT (Rueckfall: der Altbestand am
+  // Wandelement). Die Exportdatei muss ihr Schriftfeld selbst tragen, also reisen sie
+  // im v2-Feld `eingaben.projekt` mit — der gespeicherte Stand bleibt unberuehrt.
   return {
     format: "SEMBLA-Projekt", version: PROJEKT_VERSION, name: e.name,
-    wandelement: e.wandelement, eingaben: holeEingaben(e.id),
+    wandelement: e.wandelement, eingaben: eingabenMitKopfdaten(e.id),
   };
 }
 

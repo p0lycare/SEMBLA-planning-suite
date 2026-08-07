@@ -44,10 +44,10 @@ class El {
     if (sel === 'svg') {
       return this._h.includes('<svg') ? { getBoundingClientRect: () => ({ left: 0, top: 0 }) } : null;
     }
-    if (sel !== 'tr.neu') return null;
-    const m = /<tr data-id="([^"]+)" class="neu">/.exec(this._h);
+    if (sel !== '.knoten.wand.neu') return null;
+    const m = /<div class="knoten wand[^"]*\bneu\b[^"]*" data-wand="([^"]+)">/.exec(this._h);
     if (!m) return null;
-    return { dataset:{ id:m[1] },
+    return { dataset:{ wand:m[1] },
              scrollIntoView(opts){ scrollAufrufe.push({ id:m[1], opts }); } };
   }
   closest(){ return null; }
@@ -121,29 +121,73 @@ new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZ
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 const $=id=>document.getElementById(id);
 
+// --- Bedienhilfen der neuen Baumliste (Etappe C3.1) -----------------------
+// Alle Aktionen laufen ueber die ECHTE Ereignisdelegation von #tr-baum bzw. #tr-warn:
+// der Test stellt nur das <button data-act data-id> nach, das der Produktcode rendert.
+function baum(act, id, host = 'tr-baum'){
+  const btn = new El('b'); btn.dataset = { act, id: id == null ? '' : String(id) };
+  $(host).dispatch('click', { target: { closest: sel => sel === 'button[data-act]' ? btn : null } });
+}
+const trMsgTxt = () => $('tr-msg').textContent;
+const trFehler = () => $('tr-msg').className === 'msg err';
+/** Projekt ueber den echten Dialog anlegen (und aktiv setzen). */
+function projektAnlegen(name, kopf = {}){
+  $('tr-projekt-neu').dispatch('click');
+  $('pp-name').value = name;
+  for (const [feld, wert] of Object.entries(kopf)) $('pp-' + feld).value = wert;
+  $('pp-speichern').dispatch('click');
+  return store.holeMappe();
+}
+/** Geschoss ueber den echten Dialog anlegen. */
+function geschossAnlegen(projektId, name, hoehe){
+  baum('gs-neu', projektId);
+  $('gp-name').value = name;
+  $('gp-hoehe').value = hoehe == null ? '' : String(hoehe);
+  $('gp-speichern').dispatch('click');
+  return store.aktivesGeschossId();
+}
+/** Wand ueber den echten Dialog anlegen (Popup oeffnen -> Felder -> „Anlegen"). */
+function wandAnlegen(geschossId, { name, laenge = 2000, hoehe = 2600, wandtyp = 'mit_wind' }){
+  baum('wand-neu', geschossId);
+  $('f-name').value = name;
+  $('f-laenge').value = String(laenge);
+  $('f-hoehe').value = String(hoehe);
+  $('f-wandtyp').value = wandtyp;
+  $('btn-neu').dispatch('click');
+  return store.aktivId();
+}
+
+// Ausgangslage: ein Projekt mit einem Geschoss — Waende leben nach [L-6] immer in
+// einem Geschoss, und nach [L-10] ist nur die Wand des AKTIVEN Geschosses aktivierbar.
+const prj0 = projektAnlegen('Testprojekt');
+const gs0 = store.aktivesGeschossId();
+ok('[L-6] Anlegen erzeugt Projekt samt Gebaeude und Geschoss',
+  !!prj0 && prj0.gebaeude.length === 1 && prj0.gebaeude[0].geschosse.length === 1 && !!gs0);
+
 // --- 1) Wandtyp-Auswahl existiert an der echten Oberflaeche ----------------
 ok('Wandtyp-Auswahl in Modul 0 vorhanden', /<select[^>]*id="f-wandtyp"/.test(html));
 ok('Auswahl bietet genau mit_wind/ohne_wind',
   /value="mit_wind"[^>]*selected/.test(html) && /value="ohne_wind"/.test(html));
 
 // --- 2) Anlegen mit gewaehltem Wandtyp -> steht am Wandelement (M1) --------
-$('f-name').value='Wand ohne Wind'; $('f-laenge').value='2000'; $('f-hoehe').value='2600';
-$('f-wandtyp').value='ohne_wind';
-$('btn-neu').dispatch('click');
+const idOhneWind = wandAnlegen(gs0, { name:'Wand ohne Wind', wandtyp:'ohne_wind' });
 const we1=store.aktivesWandelement();
 ok('Anlegen setzt aktives Wandelement', !!we1 && we1.length_mm===2000);
 ok('gewaehlter Wandtyp am Wandelement gespeichert', we1.wandtyp==='ohne_wind');
-ok('Rueckmeldung an den Nutzer', /Angelegt/.test($('msg').textContent) && $('msg').className==='msg ok');
+ok('Rueckmeldung an den Nutzer', /Angelegt/.test(trMsgTxt()) && !trFehler());
+ok('[L-4] die neue Wand ist im Geschoss eingetragen — ohne erfundene Lage',
+  store.wandVerortung(idOhneWind)?.geschoss.id === gs0
+  && store.wandVerortung(idOhneWind).wand.lage === null);
+ok('[L-10] die Wand des aktiven Geschosses wird dabei aktiv gesetzt', store.aktivId() === idOhneWind);
+ok('Wand-Dialog schliesst nach dem Anlegen', $('wp-overlay').hidden === true);
 
-$('f-name').value='Wand mit Wind'; $('f-wandtyp').value='mit_wind';
-$('btn-neu').dispatch('click');
+wandAnlegen(gs0, { name:'Wand mit Wind', wandtyp:'mit_wind' });
 ok('zweites Element mit eigenem Wandtyp', store.aktivesWandelement().wandtyp==='mit_wind');
 ok('erstes Element behaelt seinen Wandtyp',
   store.listeElemente().find(e=>e.name==='Wand ohne Wind').wandelement.wandtyp==='ohne_wind');
 
 // unsinnige Auswahl faellt auf den kompatiblen Standard zurueck
-$('f-name').value='Wand kaputt'; $('f-wandtyp').value='quatsch';
-$('btn-neu').dispatch('click');
+wandAnlegen(gs0, { name:'Wand kaputt', wandtyp:'quatsch' });
 ok('unbekannter Wert -> Standard mit_wind', store.aktivesWandelement().wandtyp==='mit_wind');
 
 // --- 3) Wandtyp reist im Projekt-Export mit, Format bleibt v2 (M8/N4) ------
@@ -160,9 +204,7 @@ ok('Beschriftung nennt „Statischer Nachweis (HTML/PDF-fähig)"',
 
 // Export ueber den echten Produktpfad ausloesen: Tabellen-Klick "Export" -> Dialog -> ZIP-Button.
 const aktivId = store.aktivId();
-const btnEl = new El('b'); btnEl.dataset = { act: 'export' };
-const trEl = new El('tr'); trEl.dataset = { id: aktivId };
-$('tbody').dispatch('click', { target: { closest: sel => sel === 'button' ? btnEl : trEl } });
+baum('wand-export', aktivId);
 ok('Klick auf „Export" oeffnet den Dialog', $('exp-overlay').hidden === false);
 
 // Nur das Nachweis-Haekchen ist gesetzt (wie ein Nutzer, der die uebrigen abwaehlt).
@@ -187,7 +229,7 @@ ok('Modulkarte fuer Modul 7 vorhanden', /7:'Technische Zeichnung/.test(html));
 
 // Derselbe Produktpfad, nur mit dem Zeichnungs-Haekchen.
 zipCalls.length = 0;
-$('tbody').dispatch('click', { target: { closest: sel => sel === 'button' ? btnEl : trEl } });
+baum('wand-export', aktivId);
 $('exp-overlay')._sel = [{ value: 'zeichnung' }];
 $('exp-go').dispatch('click');
 const zBase = store.sicherName(store.projektObjekt(aktivId).name);
@@ -216,7 +258,7 @@ const kAnzahl = () => (kat() ? kat().produkte.length : 0);
 const kMsgTxt = () => $('k-msg').textContent;
 const kFehler = () => $('k-msg').className === 'msg err';
 /** Byte-Stand des Katalog-Slots — Grundlage aller Abbruchpruefungen ([P-16]). */
-const kSlot = () => localStorage.getItem('sembla:katalog');
+const kSlot = () => localStorage.getItem('sembla:kataloge');
 /** Zeilenaktion der Produkttabelle (Ereignisdelegation wie im Browser). */
 function kZeile(act, pid){ $('k-tbody').dispatch('click', { target: { dataset:{ act, pid } } }); }
 
@@ -244,7 +286,9 @@ function kpSetze({ bez = '', id = '', preis = '', einheit = null, ...felder }){
 }
 
 // 5a) Oberflaeche ist vorhanden und kommuniziert die Trennung/Nicht-Wirksamkeit
-ok('Katalog-Abschnitt in Modul 0 vorhanden', /<h2>Bauteilkatalog/.test(html));
+ok('Katalogpflege liegt als Popup in Modul 0 ([L-12])',
+  /<div class="overlay" id="kat-overlay" hidden>/.test(html) && /<h3>Bauteilkatalog<\/h3>/.test(html)
+  && !/<h2>Bauteilkatalog/.test(html));
 ok('Kategorie-, Preisbasis- und Filterauswahl vorhanden',
   /<select id="kp-kat"/.test(html) && /<select id="kp-einheit"/.test(html) && /<select id="k-filter"/.test(html));
 ok('Produktpflege liegt in einem eigenen Dialog/Overlay ([P-16])',
@@ -256,13 +300,14 @@ ok('keine generische Inline-Eingabezeile mehr in der Produktuebersicht',
   && !/id="kf-breite"/.test(html) && !/Breite \(mm\)/.test(html));
 ok('Hinweis nennt Dialog, kategoriegerechte Felder und „nur Speichern schreibt"',
   /eigenen Dialog/.test(html) && /fachlich passenden Feldern/.test(html)
-  && /Nur „Speichern" schreibt/.test(html) && /\[P-16\]/.test(html));
+  && /Nur „Speichern“ schreibt/.test(html) && /\[P-16\]/.test(html));
 ok('separater Katalog-Import und -Export als eigene Bedienelemente',
   /id="k-import"[^>]*type="file"/.test(html) && /id="k-export"/.test(html) && /id="k-neu"/.test(html));
 ok('Projekt-ZIP-Dialog hat KEIN Katalog-Haekchen (Formate nicht verwechseln)',
   !/type="checkbox" value="katalog"/.test(html));
 ok('Hinweis nennt eigenes Dateiformat und Trennung vom Projekt',
-  /SEMBLA-Bauteilkatalog/.test(html) && /nicht<\/b> über den\s+Projekt-Export/.test(html));
+  /SEMBLA-Bauteilkatalog<\/b>, Format-Version&nbsp;1/.test(html)
+  && /getrennt vom Projekt-Export/.test(html));
 ok('Hinweis nennt Modul 0 als alleinigen Pflegeort und Modul 1/2 als Auswahlort',
   /Modul 0 ist der alleinige Pflegeort/.test(html)
   && /<b>Modul&nbsp;1<\/b>/.test(html) && /<b>Modul&nbsp;2<\/b>/.test(html));
@@ -481,8 +526,9 @@ ok('Wandelement bleibt frei von Katalogdaten (Ownership Modul 1)',
   !JSON.stringify(store.aktivesWandelement()).includes('latte-40-60-3000'));
 
 // 5k) Persistenz „nach Reload": alles steht im localStorage, nichts nur im DOM
-ok('Katalog liegt im eigenen localStorage-Schluessel',
-  JSON.parse(localStorage.getItem('sembla:katalog')).produkte.length === 4);
+ok('Katalog liegt im eigenen localStorage-Schluessel ([L-12]: Speicher je Kennung)',
+  Object.values(JSON.parse(localStorage.getItem('sembla:kataloge')))
+    .find(k => k.id === kat().id).produkte.length === 4);
 ok('Auswahl liegt am Element im Projektstand',
   JSON.parse(localStorage.getItem('sembla:elemente'))[aktivKat].eingaben.aufbau.produkte.rollen.latte.length === 2);
 ok('Auswahl ist nach erneutem Laden wieder da (store liest frisch)',
@@ -644,13 +690,16 @@ $('imp-go').dispatch('click');
 const neu = store.aktivesElement();
 ok('Bestaetigung legt genau ein Element an', anzahl() === anzahlVor + 1);
 ok('der editierte Name wird verwendet (getrimmt)', neu.name === 'Halle Ost');
-ok('das importierte Element ist aktiv', store.aktivId() === neu.id && neu.id !== aktivVor);
+ok('[L-10] das importierte Element ist aktiv (sein Geschoss ist aktiv)',
+  store.aktivId() === neu.id && neu.id !== aktivVor);
 ok('Dialog ist geschlossen', $('imp-overlay').hidden === true);
-ok('sichtbares Erfolgsfeedback nennt Name, Import und aktiv',
-  /Halle Ost/.test(msgTxt()) && /importiert/.test(msgTxt()) && /jetzt aktiv/.test(msgTxt())
-  && $('msg').className === 'msg ok');
-ok('neue Zeile ist in der Liste hervorgehoben',
-  new RegExp('<tr data-id="' + neu.id + '" class="neu">').test($('tbody').innerHTML));
+ok('sichtbares Erfolgsfeedback nennt Name, Import und den Ort in der Struktur',
+  /Halle Ost/.test(trMsgTxt()) && /importiert/.test(trMsgTxt())
+  && /eingetragen in Geschoss/.test(trMsgTxt()) && !trFehler());
+ok('[L-4] die importierte Wand ist im Geschoss eingetragen — ohne erfundene Lage',
+  store.wandVerortung(neu.id)?.geschoss.id === gs0 && store.wandVerortung(neu.id).wand.lage === null);
+ok('neue Wand ist in der Baumliste hervorgehoben',
+  new RegExp('class="knoten wand[^"]*neu" data-wand="' + neu.id + '"').test($('tr-baum').innerHTML));
 ok('scrollIntoView wurde am neu gerenderten Datensatz aufgerufen',
   scrollAufrufe.length === scrollVor + 1 && scrollAufrufe[scrollAufrufe.length-1].id === neu.id);
 ok('Import erhaelt die Eingaben der v2-Datei (Produktreferenzen je Rolle)',
@@ -670,10 +719,10 @@ ok('erneuter Klick speichert nicht doppelt', anzahl() === anzahlVor + 1);
 
 // Spaetere Aenderungen scrollen nicht erneut (nur der Import holt die Zeile in den Blick)
 const scrollNachImport = scrollAufrufe.length;
-$('pj-bauherr').value = 'Bauherr X'; $('pj-bauherr').dispatch('input');
+store.mergeEingaben('kosten', { waehrung: 'CHF' }, neu.id);
 ok('Hervorhebung bleibt, aber es wird nicht erneut gescrollt',
   scrollAufrufe.length === scrollNachImport
-  && new RegExp('data-id="' + neu.id + '" class="neu"').test($('tbody').innerHTML));
+  && new RegExp('data-wand="' + neu.id + '"').test($('tr-baum').innerHTML));
 
 // 6f) Namensfallback: generischer Elementname -> Dateiname ohne .json
 await impWaehle(v2Projekt({ projektName:'', name:'Wand', weName:'Wandelement' }), 'Kellerwand West.json');
@@ -762,7 +811,7 @@ installFetch();
 // 7a) Bedienelemente sind an der echten Oberflaeche vorhanden
 ok('Button „Standardkatalog laden" im Katalog-Abschnitt',
   /<button class="btn-s" id="k-vorlage">Standardkatalog laden<\/button>/.test(html));
-ok('Button „Musterwand laden…" im Abschnitt „Wandelement anlegen"',
+ok('Button „Musterwand laden…" im Wand-Dialog',
   /<button class="btn-s" id="btn-vorlage-wand">Musterwand laden…<\/button>/.test(html));
 ok('Hinweis nennt beide Vorlagen als bewusst zu ladende Repo-Dateien',
   /vorlagen\/SEMBLA_Musterwand\.json/.test(html) && /vorlagen\/SEMBLA_Standardkatalog\.json/.test(html)
@@ -833,24 +882,22 @@ ok('Wandvorlage traegt nur Produkt-IDs, keine Preise/Maße/Kosten',
   && Object.keys(wandRoh.eingaben.planung).join() === 'produkte'
   && Object.keys(wandRoh.eingaben.aufbau).join() === 'produkte');
 
-// 7d) Standardkatalog laden: belegter Slot wird nur nach Bestaetigung ersetzt
-const katVorher = JSON.stringify(store.holeKatalog());
-ok('Ausgangslage: ein anderer Katalog ist geladen',
+// 7d) Standardkatalog laden: er tritt NEBEN den bisherigen und wird zugeordnet ([L-12])
+const katVorherId = store.holeKatalog().id;
+ok('Ausgangslage: ein anderer Katalog ist zugeordnet',
   store.holeKatalog() && store.holeKatalog().name === 'Direktkatalog');
-confirmAntwort = false;
 await $('k-vorlage').dispatch('click');
-ok('Abbruch der Bestaetigung ersetzt den Katalog NICHT',
-  JSON.stringify(store.holeKatalog()) === katVorher && kAnzahl() === 1);
-ok('Abbruch wird sichtbar gemeldet', /Abgebrochen/.test(kMsgTxt()) && !kFehler());
-confirmAntwort = true;
-await $('k-vorlage').dispatch('click');
-ok('Bestaetigung laedt den Standardkatalog', kAnzahl() === 20 && /Standardkatalog/.test(kat().name));
+ok('Standardkatalog geladen und dem Projekt zugeordnet',
+  kAnzahl() === 20 && /Standardkatalog/.test(kat().name));
+ok('[L-12] der bisherige Katalog bleibt erhalten und ist wieder waehlbar',
+  store.katalogNachId(katVorherId)?.name === 'Direktkatalog' && store.listeKataloge().length >= 2);
 ok('Erfolgsmeldung nennt die vorlaeufigen Werte',
   /Standardkatalog geladen/.test(kMsgTxt()) && /[Vv]orläufige/.test(kMsgTxt())
   && /gekennzeichnet/.test(kMsgTxt()) && !kFehler());
 ok('Katalogname erscheint im Eingabefeld', $('k-name').value === kat().name);
-ok('Standardkatalog liegt im eigenen localStorage-Slot',
-  JSON.parse(localStorage.getItem('sembla:katalog')).produkte.length === 20);
+ok('Standardkatalog liegt im eigenen localStorage-Speicher',
+  Object.values(JSON.parse(localStorage.getItem('sembla:kataloge')))
+    .find(k => k.id === kat().id).produkte.length === 20);
 ok('Kennzeichnung „vorläufig" ueberlebt die Persistenz',
   KAT.produkt(kat(), 'latte-40-60-1500').hinweis.startsWith('vorläufig — fachlich unbestätigt'));
 ok('geladene Produkte tragen die Produktvorgaben der Suite',
@@ -932,8 +979,9 @@ ok('gespeichertes Wandelement ist die kanonische AWG-Wand',
 ok('Wandtyp wird beim Import normalisiert', store.WANDTYPEN.includes(mw.wandelement.wandtyp));
 ok('bestehendes Element wurde NICHT ueberschrieben',
   JSON.stringify(store.holeElement(wAktivVor)) === vorherAktivStand);
-ok('Erfolgsmeldung nennt Name, Import und aktiv',
-  /SEMBLA Musterwand \(AWG\)/.test(msgTxt()) && /importiert/.test(msgTxt()) && /jetzt aktiv/.test(msgTxt()));
+ok('Erfolgsmeldung nennt Name, Import und den Ort in der Struktur',
+  /SEMBLA Musterwand \(AWG\)/.test(trMsgTxt()) && /importiert/.test(trMsgTxt())
+  && /eingetragen in Geschoss/.test(trMsgTxt()));
 ok('Projekt-Kopfdaten der Vorlage kommen mit',
   store.holeEingaben(mw.id).projekt.name === 'SEMBLA Musterwand (AWG)');
 ok('Vorlage friert keine Preise ein — nur Produkt-IDs und Herkunftsnotiz',
@@ -991,269 +1039,308 @@ await $('btn-vorlage-wand').dispatch('click');
 ok('fehlende Wandvorlage -> Fehlermeldung, kein Dialog, kein Element',
   $('imp-overlay').hidden === true && $('msg').className === 'msg err'
   && /Musterwand nicht geladen/.test(msgTxt()) && /HTTP 404/.test(msgTxt()) && stand() === standVorFehler);
-confirmAntwort = true;
 await $('k-vorlage').dispatch('click');
 ok('fehlende Katalogvorlage -> Fehlermeldung, Katalog unveraendert',
   kFehler() && /Standardkatalog nicht geladen/.test(kMsgTxt())
   && JSON.stringify(store.holeKatalog()) === katVorFehler);
 globalThis.fetch = echtesFetch;
 
-// 7h) KEIN Autoload: ein frisch initialisiertes Modul 0 laedt keine Vorlage
-// Frischer Sandkasten (eigenes localStorage, eigenes DOM-Double, eigener fetch-Zaehler):
-// der echte Modul-0-Code wird erneut initialisiert und darf dabei nichts laden/schreiben.
-const altStorage = globalThis.localStorage, altDocument = globalThis.document;
-const frischeAufrufe = [];
-globalThis.localStorage = new MemStorage();
-globalThis.document = {
-  _e:{}, getElementById(id){ return this._e[id] || (this._e[id] = new El(id)); },
-  createElement(){ return new El('_'); }, querySelector(){ return null; },
-  addEventListener(){}, head:{ appendChild(){} },
-  body:{ appendChild(){}, insertBefore(){}, firstChild:null },
-};
-globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return { ok:true, status:200, text: async () => '{}' }; };
-new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT","MAPPE", src)(
-  () => {}, MODULE, store, buildWall, baueDateien, () => {}, KAT, MAPPE);
-const frischKatalog = globalThis.localStorage.getItem('sembla:katalog');
-const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
-globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
-ok('Initialisierung ruft KEIN fetch auf (kein Autoload)', frischeAufrufe.length === 0);
-ok('Initialisierung legt keinen Katalog an', frischKatalog === null);
-ok('Initialisierung legt kein Wandelement an', frischElemente === null);
-// [P-18]: dritter Aufruf im Anlegen-Handler — Standardkatalog nachladen, wenn GAR KEINER da ist.
-// Auch das ist ein Klick-Handler; beim Initialisieren wird weiterhin nichts geholt.
-ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
-  (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
-  && (src.match(/fetch\(/g) || []).length === 1);
-
-// --- 8) Projektplaner-Oberflaeche (Etappe C2, Issue #26, [L-1]…[L-7]) ------
-// Geuebt wird die ECHTE Modul-0-Oberflaeche: Projekt/Gebaeude/Geschoss anlegen und
-// waehlen, Wandliste je Geschoss, Roundtrip zu Modul 1. Kern der Etappe: die
-// Projektstruktur ist eine eigene Ressource — das Wandelement wird nie angefasst
-// ([L-3]) und eine Lage im Raster wird niemals erfunden ([L-4]/[L-7]).
+// --- 8) Projektplaner-Baumliste (Etappe C3.1, Issue #26, [L-6]/[L-10]/[L-11]/[L-12]) ---
+// Geuebt wird die ECHTE Modul-0-Oberflaeche: Baumliste Projekt -> Geschoss -> Wand,
+// alle Formulare als Popup. Kern der Etappe: mehrere Projekte nebeneinander, Kopfdaten
+// am Projekt, ein Bauteilkatalog je Projekt — und eine streng hierarchische Aktivierung,
+// bei der Auf-/Zuklappen reine Anzeige bleibt.
 {
-  const plMsgTxt = () => $('pl-msg').textContent;
-  const plFehler = () => $('pl-msg').className === 'msg err';
-  const mappe = () => store.holeMappe();
-  const mappeSlot = () => localStorage.getItem('sembla:projektmappe');
-  const wZeile = (act, id) => $('tbody').dispatch('click', { target: {
-    closest: sel => sel === 'button' ? { closest: () => null, dataset: { act } } : { dataset: { id } } } });
-  /** Auswahl in einem <select> setzen und das echte change-Ereignis feuern. */
-  const plWaehle = (id, wert) => { $(id).value = wert; $(id).dispatch('change'); };
+  const projekte = () => store.listeProjekte();
+  const prjSlot = () => localStorage.getItem('sembla:projekte');
+  const baumHtml = () => $('tr-baum').innerHTML;
+  /** Ist im gerenderten Baum ein bestimmter Knopf gesperrt (mit Begruendung)? */
+  const gesperrt = (act, id) => new RegExp(
+    '<button[^>]*data-act="' + act + '" data-id="' + id + '" disabled title="[^"]+"').test(baumHtml());
+  const sichtbar = (act, id) => new RegExp(
+    'data-act="' + act + '" data-id="' + id + '"').test(baumHtml());
+  /** Ist der Knoten aufgeklappt? (Der Klapp-Knopf traegt ▾ bzw. ▸.) */
+  const offen = (id) => new RegExp('data-act="klapp" data-id="' + id + '">▾').test(baumHtml());
+  const aufklappen = (id) => { if (!offen(id)) baum('klapp', id); };
 
-  // 8a) Bedienelemente sind an der echten Oberflaeche vorhanden
-  ok('Abschnitt „Projektplanung" mit der Hierarchie im Titel',
-    /<h2>Projektplanung/.test(html) && /Projekt → Gebäude → Geschoss → Wand/.test(html));
-  ok('Bedienelemente fuer Projekt/Gebaeude/Geschoss vorhanden',
-    /id="pl-neu">Projekt anlegen</.test(html) && /<select id="pl-geb"/.test(html)
-    && /<select id="pl-gs"/.test(html) && /id="pl-geb-neu">Gebäude anlegen</.test(html)
-    && /id="pl-gs-neu">Geschoss anlegen</.test(html) && /<input id="pl-gs-hoehe"/.test(html));
-  ok('Wandliste hat Geschoss-/Lagespalte und eine Ansichtsauswahl',
-    /<th>Geschoss \/ Lage<\/th>/.test(html) && /<select id="w-filter"/.test(html)
-    && /value="unverortet"/.test(html));
-  ok('Hinweis nennt die Trennung von Struktur und Wandelement ([L-3]/[L-4]/[L-5])',
-    /\[L-3\]/.test(html) && /\[L-4\]/.test(html) && /\[L-5\]/.test(html)
-    && /eigenen Ressource<\/b> \(Projektmappe\)/.test(html));
+  // 8a) Die Oberflaeche besteht aus Baumliste + Layout-Editor — kein Formularblock mehr
+  ok('Abschnitt „Projekte" mit der Hierarchie im Titel',
+    /<h2>Projekte /.test(html) && /Projekt → Geschoss → Wand/.test(html));
+  ok('die Hauptflaeche traegt nur Baumliste und Layout-Editor',
+    /<div id="tr-baum"><\/div>/.test(html)
+    && !/<h2>Wandelement anlegen/.test(html) && !/<h2>Projekt-Kopfdaten/.test(html)
+    && !/<h2>Gespeicherte Wandelemente/.test(html) && !/<h2>Projektplanung/.test(html));
+  ok('alle Formulare liegen in Popups (Projekt/Geschoss/Wand/Katalog)',
+    /<div class="overlay" id="pp-overlay" hidden>/.test(html)
+    && /<div class="overlay" id="gp-overlay" hidden>/.test(html)
+    && /<div class="overlay" id="wp-overlay" hidden>/.test(html)
+    && /<div class="overlay" id="kat-overlay" hidden>/.test(html));
+  ok('die alten Formularfelder der Projektplanung sind verschwunden',
+    !/id="pl-geb"/.test(html) && !/id="pl-gs"/.test(html) && !/id="pl-neu"/.test(html)
+    && !/id="w-filter"/.test(html) && !/id="tbody"/.test(html));
+  ok('die Gebaeude-Ebene taucht in der Oberflaeche nicht mehr auf ([L-6])',
+    !/Gebäude anlegen/.test(html) && !/Aktives Gebäude/.test(html));
+  ok('Hinweis nennt Klappzustand, Hierarchie und Vorgabecharakter ([L-3]/[L-5]/[L-10])',
+    /\[L-10\]/.test(html) && /\[L-5\]/.test(html) && /\[L-3\]/.test(html)
+    && /unabhängig auf- und zuklappen/.test(html));
+  ok('Projekt-Popup fuehrt Kopfdaten und Katalogzuordnung ([L-11]/[L-12])',
+    /<input id="pp-bauherr"/.test(html) && /<input id="pp-planverf"/.test(html)
+    && /<select id="pp-phase"/.test(html) && /<input id="pp-plannr"/.test(html)
+    && /<select id="pp-katalog"/.test(html) && /\[L-11\]/.test(html) && /\[L-12\]/.test(html));
 
-  // 8b) Ohne Projekt: Formular verborgen, nichts angelegt
-  ok('Ausgangslage: keine Projektmappe im Speicher', mappe() === null && mappeSlot() === null);
-  ok('ohne Projekt ist nur das Anlegen sichtbar',
-    $('pl-form').hidden === true && $('pl-anlegen').hidden === false && $('pl-none').hidden === false);
-  ok('ohne Projekt bleibt die Warnbox stumm', $('pl-warn').hidden === true);
+  // 8b) Mehrere Projekte nebeneinander ([L-6]) ------------------------------
+  const vorher = projekte().length;
+  const pB = projektAnlegen('Halle Süd', { bauherr:'AWG eG', planverf:'Polycare', plannr:'07' });
+  ok('[L-6] zweites Projekt liegt neben dem ersten', projekte().length === vorher + 1);
+  ok('[L-6] das neu angelegte Projekt ist aktiv und bringt ein Geschoss mit',
+    store.holeMappe().projekt.id === pB.projekt.id
+    && pB.gebaeude.length === 1 && pB.gebaeude[0].geschosse.length === 1);
+  ok('Projekt-Dialog schliesst und meldet die Anlage',
+    $('pp-overlay').hidden === true && /angelegt/.test(trMsgTxt()) && !trFehler());
+  ok('[L-6] die Mappen liegen als Liste im eigenen Speicherschluessel',
+    Array.isArray(JSON.parse(prjSlot())) && JSON.parse(prjSlot()).length === projekte().length
+    && localStorage.getItem('sembla:projektmappe') === null);
+  ok('[L-6] jede Mappe behaelt ihre eigene Formatversion v1',
+    JSON.parse(prjSlot()).every(m => m.version === MAPPE.MAPPE_VERSION));
+  ok('Stand nennt Projekte, Geschosse und Waende',
+    /2 Projekt\(e\)/.test($('tr-stand').textContent) && /Mappenformat v1/.test($('tr-stand').textContent));
 
-  // 8c) Projekt anlegen — genau eine Mappe, vollstaendige Hierarchie ([L-6])
-  $('pl-projekt-neu').value = 'Aschersleben AWG';
-  $('pl-neu').dispatch('click');
-  const m1 = mappe();
-  ok('Projekt angelegt, Struktur vollstaendig',
-    !!m1 && m1.projekt.name === 'Aschersleben AWG'
-    && m1.gebaeude.length === 1 && m1.gebaeude[0].geschosse.length === 1);
-  ok('Formular ist jetzt sichtbar, Anlegen verborgen',
-    $('pl-form').hidden === false && $('pl-anlegen').hidden === true && $('pl-none').hidden === true);
-  ok('das angelegte Geschoss ist aktiv',
-    store.aktivesGeschossId() === m1.gebaeude[0].geschosse[0].id
-    && store.aktivesGebaeudeId() === m1.gebaeude[0].id);
-  ok('Stand nennt Struktur und Mappenformat v1',
-    /1 Gebäude/.test($('pl-stand').textContent) && /Mappenformat v1/.test($('pl-stand').textContent));
-  ok('Projektmappe liegt im eigenen localStorage-Slot', JSON.parse(mappeSlot()).projekt.name === 'Aschersleben AWG');
-  ok('Projektmappe traegt keine Wandgeometrie ([L-3])',
-    !mappeSlot().includes('courses') && !mappeSlot().includes('length_mm'));
+  // 8c) Kopfdaten leben am Projekt ([L-11]) ---------------------------------
+  const gsB = store.aktivesGeschossId();
+  ok('[L-11] Kopfdaten stehen am Projekt, nicht am Wandelement',
+    store.holeMappe().projekt.kopfdaten.bauherr === 'AWG eG'
+    && store.holeMappe().projekt.kopfdaten.plan_nr === '07');
+  const idB = wandAnlegen(gsB, { name:'Wand Süd 1' });
+  await new Promise(r => setTimeout(r, 0));      // [P-18]-Nachlauf des Anlege-Handlers abwarten
+  ok('[L-11] die Wand des Projekts bekommt dessen Kopfdaten', (() => {
+    const k = store.wirksameKopfdaten(idB);
+    return k.quelle === 'projekt' && k.kopfdaten.bauherr === 'AWG eG' && k.kopfdaten.name === 'Halle Süd';
+  })());
+  ok('[L-11] Modul 0 schreibt eingaben.projekt nicht mehr — es gibt keinen Weg dorthin',
+    JSON.stringify(store.holeEingaben(idB).projekt) === '{}'
+    && !/mergeEingaben\('projekt'/.test(src) && !/id="pj-/.test(html));
+  ok('[L-11] der Export traegt die wirksamen Kopfdaten',
+    store.projektObjekt(idB).eingaben.projekt.bauherr === 'AWG eG'
+    && store.projektObjekt(idB).eingaben.projekt.name === 'Halle Süd');
+  // Bearbeiten fuellt den Dialog aus dem Projekt und schreibt nur mit „Speichern"
+  baum('prj-bearbeiten', pB.projekt.id);
+  ok('Projekt bearbeiten: Dialog ist aus dem Projekt vorbelegt',
+    $('pp-overlay').hidden === false && $('pp-name').value === 'Halle Süd'
+    && $('pp-bauherr').value === 'AWG eG' && $('pp-plannr').value === '07');
+  const prjVorAbbruch = prjSlot();
+  $('pp-bauherr').value = 'Verworfen';
+  ppAbbruchTest();
+  function ppAbbruchTest(){ $('pp-cancel').dispatch('click'); }
+  ok('Abbrechen im Projekt-Dialog schreibt nichts',
+    prjSlot() === prjVorAbbruch && store.holeMappe().projekt.kopfdaten.bauherr === 'AWG eG');
+  baum('prj-bearbeiten', pB.projekt.id);
+  $('pp-gez').value = 'TB';
+  $('pp-plannr').value = '';
+  $('pp-speichern').dispatch('click');
+  ok('[L-11] Speichern uebernimmt Aenderungen, leeres Feld loescht',
+    store.holeMappe().projekt.kopfdaten.gez === 'TB'
+    && store.holeMappe().projekt.kopfdaten.plan_nr === undefined);
 
-  // ein zweites Projekt ist ausgeschlossen — eine Mappe ist genau ein Projekt ([L-6])
-  const slotVorZweit = mappeSlot();
-  $('pl-projekt-neu').value = 'Zweitprojekt';
-  $('pl-neu').dispatch('click');
-  ok('zweites Projekt wird sichtbar abgewiesen, Mappe unveraendert',
-    plFehler() && /bereits ein Projekt/.test(plMsgTxt()) && mappeSlot() === slotVorZweit);
+  // 8d) Aktivierung ist streng hierarchisch ([L-10]) ------------------------
+  ok('[L-10] das Geschoss des nicht aktiven Projekts ist gesperrt und nennt den Grund',
+    gesperrt('gs-aktiv', gs0)
+    && new RegExp('data-act="gs-aktiv" data-id="' + gs0 + '" disabled title="[^"]*Testprojekt')
+         .test(baumHtml()));
+  ok('[L-10] das Geschoss des aktiven Projekts ist nicht gesperrt',
+    !gesperrt('gs-aktiv', gsB) || store.aktivesGeschossId() === gsB);
+  baum('gs-aktiv', gs0);
+  ok('[L-10] ein gesperrter Weg wird abgewiesen und benannt',
+    trFehler() && /Testprojekt/.test(trMsgTxt()) && store.aktivesGeschossId() === gsB);
+  ok('[L-10] dabei wurde das fremde Projekt NICHT still mitaktiviert',
+    store.holeMappe().projekt.id === pB.projekt.id);
 
-  // 8d) Projekt umbenennen; leerer Name wird nicht gespeichert
-  plWaehle('pl-projekt', 'Aschersleben AWG · Haus 1');
-  ok('Projekt umbenannt', mappe().projekt.name === 'Aschersleben AWG · Haus 1' && !plFehler());
-  plWaehle('pl-projekt', '   ');
-  ok('leerer Projektname wird abgewiesen und das Feld zurueckgesetzt',
-    plFehler() && mappe().projekt.name === 'Aschersleben AWG · Haus 1'
-    && $('pl-projekt').value === 'Aschersleben AWG · Haus 1');
+  // Auf-/Zuklappen ist reine Anzeige und aendert keinen Zeiger
+  const zeiger = () => [store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()].join('|');
+  const zeigerVor = zeiger();
+  aufklappen(prj0.projekt.id);
+  baum('klapp', prj0.projekt.id);
+  ok('[L-10] Zuklappen ist reine Anzeige und aendert keinen Zeiger',
+    !offen(prj0.projekt.id) && !sichtbar('gs-aktiv', gs0) && zeiger() === zeigerVor);
+  baum('klapp', prj0.projekt.id);
+  ok('[L-10] ein nicht aktives Projekt laesst sich aufklappen und ansehen',
+    offen(prj0.projekt.id) && sichtbar('gs-aktiv', gs0) && zeiger() === zeigerVor);
 
-  // 8e) Gebaeude anlegen und wechseln
-  $('pl-geb-name').value = 'Haus A';
-  $('pl-geb-neu').dispatch('click');
-  const gebA = mappe().gebaeude.find(g => g.name === 'Haus A');
-  ok('Gebaeude angelegt und aktiv',
-    !!gebA && store.aktivesGebaeudeId() === gebA.id && gebA.geschosse.length === 0);
-  ok('Gebaeudewechsel hebt den Geschosszeiger auf (kein geratenes Geschoss)',
-    store.aktivesGeschossId() === null);
-  ok('Geschossauswahl zeigt „kein Geschoss"', /– kein Geschoss –/.test($('pl-gs').innerHTML));
-  ok('ohne Geschoss wird die fehlende Zuordnung benannt',
-    /keinem Geschoss zugeordnet/.test($('pl-hoehe-hinweis').innerHTML));
+  // Wand eines fremden Geschosses: gesperrt, und der Direktaufruf wird abgewiesen
+  aufklappen(prj0.projekt.id);
+  aufklappen(gs0);
+  ok('[L-10] Wand in fremdem Geschoss ist gesperrt', gesperrt('wand-aktiv', idOhneWind));
+  baum('wand-aktiv', idOhneWind);
+  ok('[L-10] Direktaufruf wird abgewiesen und nennt das Geschoss',
+    trFehler() && /Geschoss/.test(trMsgTxt()) && store.aktivId() === idB);
 
-  // 8f) Geschosse mit Hoehenvorgabe ([L-5]) — nichts wird gerundet
-  $('pl-gs-name').value = 'EG'; $('pl-gs-hoehe').value = '2600';
-  $('pl-gs-neu').dispatch('click');
-  const gsEG = mappe().gebaeude.find(g => g.id === gebA.id).geschosse.find(x => x.name === 'EG');
-  ok('Geschoss EG angelegt, aktiv, mit Geschosshoehe',
-    !!gsEG && gsEG.hoehe_mm === 2600 && store.aktivesGeschossId() === gsEG.id);
-  ok('Hoehenvorgabe wird als Lagenzahl erklaert',
-    /2600 mm<\/b> = 13 Lagen/.test($('pl-hoehe-hinweis').innerHTML) && /\[L-5\]/.test($('pl-hoehe-hinweis').innerHTML));
-  ok('Geschosshoehe steht als Vorgabe im Hoehenfeld von „Wandelement anlegen"',
-    $('f-hoehe').value === '2600');
+  // Projektwechsel hebt die Zeiger darunter auf, statt sie umzubiegen
+  baum('prj-aktiv', prj0.projekt.id);
+  ok('[L-10] Projektwechsel hebt Geschoss- und Wandzeiger auf',
+    store.holeMappe().projekt.id === prj0.projekt.id
+    && store.aktivesGeschossId() === null && store.aktivId() === null);
+  baum('gs-aktiv', gs0);
+  baum('wand-aktiv', idOhneWind);
+  ok('[L-10] im aktiven Pfad greifen beide Aktivierungen',
+    store.aktivesGeschossId() === gs0 && store.aktivId() === idOhneWind);
 
-  $('pl-gs-name').value = 'OG'; $('pl-gs-hoehe').value = '2500';
-  $('pl-gs-neu').dispatch('click');
-  const gsOG = () => store.holeMappe().gebaeude.find(g => g.id === gebA.id).geschosse.find(x => x.name === 'OG');
-  ok('krumme Geschosshoehe wird ANGENOMMEN, aber benannt statt gerundet',
-    gsOG().hoehe_mm === 2500 && /kein Vielfaches/.test(plMsgTxt())
-    && /2400 mm oder 2600 mm/.test(plMsgTxt()) && /nichts gerundet/.test(plMsgTxt()));
-  ok('krumme Vorgabe wird NICHT ins Hoehenfeld uebernommen und nicht gerundet',
-    $('f-hoehe').value === '2500' && gsOG().hoehe_mm === 2500);
-
-  // 8g) Wand im aktiven Geschoss anlegen -> eingetragen, aber OHNE erfundene Lage ([L-4])
-  $('f-name').value = 'OG-W01'; $('f-laenge').value = '3000'; $('f-hoehe').value = '2400';
-  $('f-wandtyp').value = 'mit_wind';
+  // 8e) Geschoss-Popup: Hoehe ist Vorgabe ([L-5]) ---------------------------
+  const gsNeu = geschossAnlegen(prj0.projekt.id, 'OG', 2600);
+  ok('Geschoss ueber den Dialog angelegt und aktiv',
+    MAPPE.findeGeschoss(store.holeMappe(), gsNeu)?.geschoss.name === 'OG'
+    && store.aktivesGeschossId() === gsNeu);
+  ok('[L-5] die Geschosshoehe wird als Lagenzahl benannt',
+    /2600 mm = 13 Lagen/.test(trMsgTxt()));
+  ok('[L-10] das Anlegen hebt den Wandzeiger des alten Geschosses auf', store.aktivId() === null);
+  baum('wand-neu', gsNeu);
+  ok('[L-5] die Geschosshoehe steht als VORGABE im Hoehenfeld',
+    $('wp-overlay').hidden === false && $('f-hoehe').value === '2600'
+    && /Höhenvorgabe aus dem Geschoss/.test($('wp-hinweis').innerHTML));
+  $('f-hoehe').value = '2400';
+  $('f-name').value = 'Wand OG 1';
   $('btn-neu').dispatch('click');
-  const w01 = store.aktivId();
-  ok('Meldung nennt das Geschoss der Eintragung',
-    /eingetragen in Geschoss „OG"/.test($('msg').textContent) && /ohne Lage/.test($('msg').textContent));
-  ok('Wand steht im aktiven Geschoss der Mappe',
-    store.wandVerortung(w01)?.geschoss.id === gsOG().id);
-  ok('KEINE Lage erfunden ([L-4])', store.wandVerortung(w01).wand.lage === null);
-  ok('Wandelement bleibt frei von Struktur-/Lagedaten ([L-3])',
-    !JSON.stringify(store.aktivesWandelement()).includes('start_grid')
-    && !JSON.stringify(store.aktivesWandelement()).includes(gsOG().id));
-  ok('Wandliste zeigt Geschoss und „unverortet"',
-    /OG<br><span class="muted">unverortet<\/span>/.test($('tbody').innerHTML));
+  const idOg = store.aktivId();
+  ok('[L-5] die Vorgabe bleibt frei aenderbar und wird nie zurueckgeschrieben',
+    store.holeElement(idOg).wandelement.height_mm === 2400
+    && MAPPE.findeGeschoss(store.holeMappe(), gsNeu).geschoss.hoehe_mm === 2600);
+  // krumme Geschosshoehe wird angenommen und benannt, nie gerundet
+  const gsKrumm = geschossAnlegen(prj0.projekt.id, 'Zwischengeschoss', 2550);
+  ok('[L-5] krumme Geschosshoehe wird angenommen und benannt, nicht gerundet',
+    MAPPE.findeGeschoss(store.holeMappe(), gsKrumm).geschoss.hoehe_mm === 2550
+    && /kein Vielfaches/.test(trMsgTxt()));
+  baum('gs-bearbeiten', gsKrumm);
+  $('gp-hoehe').value = 'abc';
+  $('gp-speichern').dispatch('click');
+  ok('unsinnige Geschosshoehe wird abgewiesen, der Dialog bleibt offen',
+    $('gp-overlay').hidden === false && $('gp-msg').className === 'msg err'
+    && MAPPE.findeGeschoss(store.holeMappe(), gsKrumm).geschoss.hoehe_mm === 2550);
+  $('gp-hoehe').value = '';
+  $('gp-name').value = 'ZG';
+  $('gp-speichern').dispatch('click');
+  ok('Geschoss umbenennen und Hoehe aufheben in einem Zug',
+    MAPPE.findeGeschoss(store.holeMappe(), gsKrumm).geschoss.name === 'ZG'
+    && MAPPE.findeGeschoss(store.holeMappe(), gsKrumm).geschoss.hoehe_mm === null);
 
-  // 8h) Geschoss wechseln: Hoehenvorgabe folgt, neue Wand landet im gewaehlten Geschoss
-  plWaehle('pl-gs', gsEG.id);
-  ok('Geschosswechsel setzt den Zeiger und die Hoehenvorgabe',
-    store.aktivesGeschossId() === gsEG.id && $('f-hoehe').value === '2600');
-  $('f-name').value = 'EG-W01'; $('f-laenge').value = '2000';
+  // 8f) Wand-Popup „Bearbeiten": nur der Name, nie die Geometrie ([P-1]) ----
+  baum('wand-bearbeiten', idOg);
+  ok('Bearbeiten sperrt Länge/Höhe/Wandtyp und verweist auf Modul 1',
+    $('f-laenge').disabled === true && $('f-hoehe').disabled === true
+    && $('f-wandtyp').disabled === true && /Modul&nbsp;1/.test($('wp-sub').innerHTML));
+  ok('Bearbeiten blendet die Importwege aus', $('wp-quellen').hidden === true);
+  $('f-name').value = 'Wand OG Nord';
   $('btn-neu').dispatch('click');
-  const wEG = store.aktivId();
-  ok('zweite Wand liegt im anderen Geschoss', store.wandVerortung(wEG)?.geschoss.id === gsEG.id);
-  ok('erste Wand bleibt in ihrem Geschoss', store.wandVerortung(w01)?.geschoss.id === gsOG().id);
-  ok('Wandelement uebernimmt die Hoehenvorgabe als gewoehnliche Eingabe',
-    store.holeElement(wEG).wandelement.height_mm === 2600);
+  ok('[L-4] Umbenennen fuehrt den Anzeigenamen der Mappe mit, Geometrie bleibt',
+    store.holeElement(idOg).name === 'Wand OG Nord'
+    && store.wandVerortung(idOg).wand.name === 'Wand OG Nord'
+    && store.holeElement(idOg).wandelement.height_mm === 2400);
 
-  // 8i) Ansicht der Wandliste: aktives Geschoss / nicht eingetragen / alle
-  const zeilen = () => [...$('tbody').innerHTML.matchAll(/<tr data-id="([^"]+)"/g)].map(x => x[1]);
-  const alleIds = store.listeElemente().map(e => e.id);
-  plWaehle('w-filter', 'aktiv');
-  ok('Ansicht „aktives Geschoss" zeigt genau dessen Wand', zeilen().join() === wEG);
-  plWaehle('w-filter', 'unverortet');
-  ok('Ansicht „nicht eingetragen" zeigt die Waende ohne Zuordnung',
-    zeilen().length === alleIds.length - 2 && !zeilen().includes(wEG) && !zeilen().includes(w01));
-  plWaehle('w-filter', 'alle');
-  ok('Ansicht „alle" zeigt wieder alles (Filter aendert nur die Anzeige)',
-    zeilen().length === alleIds.length && JSON.parse(mappeSlot()) && store.listeElemente().length === alleIds.length);
+  // 8g) Lage: Abweichung wird gemeldet, nie angeglichen ([L-3]) -------------
+  store.verorteWand(idOg, gsNeu, { lage: { start_grid:{ x:2, y:5 }, richtung:'x', laenge_grid: 20 } });
+  ok('[L-3] die Baumliste meldet die Laengenabweichung sichtbar',
+    /Raster 2\/5/.test(baumHtml()) && /2500 mm/.test(baumHtml())
+    && /class="abw"/.test(baumHtml()) && /\[L-3\]/.test(baumHtml()));
+  ok('[L-3] das Wandelement wurde dabei nicht angeglichen',
+    store.holeElement(idOg).wandelement.length_mm === 2000);
 
-  // 8j) Nachtraeglich zuordnen — die Aktion nutzt das aktive Geschoss
-  const frei = alleIds.find(id => !store.wandVerortung(id));
-  wZeile('zuordnen', frei);
-  ok('unverortete Wand ins aktive Geschoss eingetragen',
-    store.wandVerortung(frei)?.geschoss.id === gsEG.id && store.wandVerortung(frei).wand.lage === null);
-  ok('Zuordnen wird sichtbar gemeldet', /ist jetzt in Geschoss „EG"/.test(plMsgTxt()) && !plFehler());
+  // 8h) Nicht zugeordnete Waende werden gemeldet, nie bereinigt ([L-4]) -----
+  const idFrei = store.speichere('Streuner', buildWall('Streuner', 1000, 2000, []));
+  store.setzeAktivesGeschoss(gsNeu);
+  ok('[L-4] eine Wand ohne Projekt steht in der Warnbox mit Zuordnen-Weg',
+    $('tr-warn').hidden === false && /keinem Projekt/.test($('tr-warn').innerHTML)
+    && /Streuner/.test($('tr-warn').innerHTML)
+    && new RegExp('data-act="wand-zuordnen" data-id="' + idFrei + '"').test($('tr-warn').innerHTML));
+  baum('wand-zuordnen', idFrei, 'tr-warn');
+  ok('[L-4] Zuordnen traegt sie ohne erfundene Lage ins aktive Geschoss ein',
+    store.wandVerortung(idFrei)?.geschoss.id === gsNeu
+    && store.wandVerortung(idFrei).wand.lage === null
+    && !store.mappeReferenzen().unverortet.includes(idFrei));
+  ok('[L-4] verwaister Eintrag wird gemeldet, loescht aber nie ein Wandelement', (() => {
+    store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsNeu, { id:'w-geist', name:'Geist' }));
+    return /Verwaiste Einträge/.test($('tr-warn').innerHTML)
+      && /Geist/.test($('tr-warn').innerHTML) && store.holeElement(idFrei) !== null;
+  })());
+  confirmAntwort = true;
+  baum('wand-loeschen', 'w-geist');
+  ok('[L-4] ein verwaister Eintrag laesst sich ausdruecklich entfernen',
+    store.wandVerortung('w-geist') === null && store.mappeReferenzen().verwaist.length === 0);
 
-  // 8k) Umbenennen haelt den Anzeigenamen der Mappe mit (id bleibt die Referenz, [L-4])
-  store.umbenennen(wEG, 'EG-W01 Nord');
-  ok('Mappenname folgt dem Wandnamen, die Kennung bleibt',
-    store.wandVerortung(wEG).wand.name === 'EG-W01 Nord' && store.wandVerortung(wEG).wand.id === wEG);
+  // 8i) Ein Bauteilkatalog je Projekt ([L-12]) ------------------------------
+  ok('[L-12] das aktive Projekt kennt seinen Katalog', (() => {
+    const st = store.katalogStatus();
+    return st.status === 'ok' && st.id === store.holeMappe().katalog
+      && st.katalog.id === store.holeKatalog().id;
+  })());
+  ok('[L-12] das andere Projekt haengt an einem EIGENEN Katalog',
+    !!store.projektMappe(pB.projekt.id).katalog
+    && store.projektMappe(pB.projekt.id).katalog !== store.holeMappe().katalog);
+  // Zuordnung ausdruecklich aufheben — danach wird das gemeldet, nicht geraten
+  baum('prj-aktiv', pB.projekt.id);
+  baum('prj-bearbeiten', pB.projekt.id);
+  $('pp-katalog').value = '';
+  $('pp-speichern').dispatch('click');
+  ok('[L-12] ohne Zuordnung wird das gemeldet, kein Katalog geraten',
+    store.holeKatalog() === null && store.katalogStatus().status === 'nicht_zugeordnet'
+    && /kein Bauteilkatalog zugeordnet/.test($('k-warn').innerHTML));
+  baum('prj-bearbeiten', pB.projekt.id);
+  ok('Projekt-Dialog bietet die vorhandenen Kataloge zur Wahl',
+    /kein Katalog zugeordnet/.test($('pp-katalog').innerHTML)
+    && store.listeKataloge().every(k => $('pp-katalog').innerHTML.includes(k.id)));
+  $('pp-katalog').value = store.listeKataloge()[0].id;
+  $('pp-speichern').dispatch('click');
+  ok('[L-12] die Zuordnung haengt danach am Projekt',
+    store.holeMappe().katalog === store.listeKataloge()[0].id
+    && store.holeKatalog().id === store.listeKataloge()[0].id);
+  ok('[L-12] der wirksame Katalog folgt dem aktiven Projekt', (() => {
+    const hier = store.holeKatalog().id;
+    baum('prj-aktiv', prj0.projekt.id);
+    const dort = store.holeKatalog().id;
+    baum('prj-aktiv', pB.projekt.id);
+    return hier !== dort;
+  })());
 
-  // 8l) [L-3] Abweichung Lage ↔ Wandelement wird GEMELDET, nicht angeglichen
-  store.aendereMappe((m) => MAPPE.setzeLage(m, wEG, { start_grid: { x: 4, y: 12 }, richtung: 'x', laenge_grid: 24 }));
-  ok('verortete Wand zeigt Rasterlage und Laenge',
-    /Raster 4\/12 · Richtung x · 24×125 = 3000 mm/.test($('tbody').innerHTML));
-  ok('[L-3] Abweichung wird benannt statt angeglichen',
-    /Wandelement 2000 mm ≠ Lage 3000 mm \(\[L-3\]\)/.test($('tbody').innerHTML)
-    && store.holeElement(wEG).wandelement.length_mm === 2000
-    && store.wandVerortung(wEG).wand.lage.laenge_grid === 24);
-
-  // 8m) Roundtrip nach Modul 1: aktiv setzen + Neuaufbau des Wandelements laesst die Lage stehen
-  wZeile('planen', w01);
-  ok('„In Modul 1 planen" setzt die Wand aktiv', store.aktivId() === w01);
-  const neuGebaut = buildWall('OG-W01', 3000, 2400, []);
-  store.speichereAktiv(neuGebaut);
-  ok('Modul-1-Rueckschreiben laesst Struktur und Lage unberuehrt ([L-3])',
-    store.wandVerortung(w01)?.geschoss.id === gsOG().id
-    && store.holeElement(w01).wandelement.height_mm === 2400);
-
-  // 8n) Geschosshoehe nachtraeglich aendern — bestehende Waende bleiben unveraendert ([L-5])
-  plWaehle('pl-gs', gsEG.id);
-  const hoeheVorher = store.holeElement(wEG).wandelement.height_mm;
-  $('pl-gs-name').value = ''; $('pl-gs-hoehe').value = '2800';
-  $('pl-gs-uebernehmen').dispatch('click');
-  ok('Geschosshoehe geaendert, bestehende Wand unveraendert',
-    store.aktivesGeschoss().geschoss.hoehe_mm === 2800
-    && store.holeElement(wEG).wandelement.height_mm === hoeheVorher
-    && /Bestehende Wandelemente bleiben unverändert/.test(plMsgTxt()));
-  const slotVorUnsinn = mappeSlot();
-  $('pl-gs-hoehe').value = '-5';
-  $('pl-gs-uebernehmen').dispatch('click');
-  ok('unsinnige Geschosshoehe wird abgewiesen, Mappe unveraendert',
-    plFehler() && /positive Zahl/.test(plMsgTxt()) && mappeSlot() === slotVorUnsinn);
-  $('pl-gs-hoehe').value = '';
-  $('pl-gs-uebernehmen').dispatch('click');
-  ok('Geschosshoehe kann ausdruecklich leer bleiben (keine Vorgabe)',
-    store.aktivesGeschoss().geschoss.hoehe_mm === null && !plFehler());
-
-  // 8o) Loeschen: Struktur wird entfernt, Wandelemente bleiben ([L-4] — nie stille Bereinigung)
-  const anzahlWaende = store.listeElemente().length;
+  // 8j) Projekt loeschen: Struktur weg, Wandelemente bleiben ([L-4]/[L-10]) -
   confirmAntwort = false;
-  $('pl-gs-loeschen').dispatch('click');
-  ok('Geschoss loeschen ohne Bestaetigung passiert nicht',
-    !!store.aktivesGeschoss() && mappeSlot().includes(gsEG.id));
+  const anzahlPrjVor = projekte().length;
+  baum('prj-loeschen', pB.projekt.id);
+  ok('Loeschen ohne Bestaetigung passiert nicht', projekte().length === anzahlPrjVor);
   confirmAntwort = true;
-  $('pl-gs-loeschen').dispatch('click');
-  ok('Geschoss entfernt, Wandelemente bleiben erhalten',
-    !mappeSlot().includes(gsEG.id) && store.listeElemente().length === anzahlWaende
-    && !!store.holeElement(wEG) && store.wandVerortung(wEG) === null);
-  ok('Meldung stellt klar, dass keine Wand geloescht wurde',
-    /nicht mehr eingetragen/.test(plMsgTxt()) && /nicht gelöscht/.test(plMsgTxt()));
-  ok('Warnbox meldet die jetzt unverorteten Waende ([L-4])',
-    $('pl-warn').hidden === false && /keinem Geschoss zugeordnet/.test($('pl-warn').innerHTML));
+  const elementeVor = store.listeElemente().length;
+  baum('prj-loeschen', pB.projekt.id);
+  ok('[L-4] Projekt entfernt, Wandelemente bleiben erhalten',
+    projekte().length === anzahlPrjVor - 1 && store.listeElemente().length === elementeVor
+    && store.holeElement(idB) !== null);
+  ok('[L-4] die Waende gelten danach als nicht eingetragen und werden gemeldet',
+    store.wandVerortung(idB) === null && /keinem Projekt/.test($('tr-warn').innerHTML));
+  ok('[L-10] die Zeiger des geloeschten Projekts sind aufgehoben',
+    store.aktivesProjektId() === null && store.aktivesGeschossId() === null);
+  ok('Loeschmeldung nennt den Verbleib der Wandelemente',
+    /nicht gelöscht/.test(trMsgTxt()) && !trFehler());
 
-  // 8p) Verwaister Eintrag wird gemeldet, nie still bereinigt ([L-4])
-  store.aendereMappe((m) => MAPPE.setzeWand(m, gsOG().id, { id: 'gibt-es-nicht', name: 'Geisterwand', lage: null }));
-  ok('verwaister Mappeneintrag wird benannt',
-    /Verwaiste Einträge/.test($('pl-warn').innerHTML) && /Geisterwand/.test($('pl-warn').innerHTML)
-    && store.mappeReferenzen().verwaist.length === 1);
-  ok('verwaister Eintrag wird NICHT entfernt', mappeSlot().includes('gibt-es-nicht'));
+  // 8k) Mappen-Datei: Sichern und Wiedereinlesen ----------------------------
+  store.setzeAktivesProjekt(prj0.projekt.id);
+  baum('prj-export', prj0.projekt.id);
+  const mappeDatei = letzterDownload;
+  ok('Projekt-Export erzeugt eine Projektmappen-Datei v1',
+    JSON.parse(mappeDatei).format === 'SEMBLA-Projektmappe'
+    && JSON.parse(mappeDatei).version === 1
+    && /^SEMBLA_Projektmappe_/.test(letzterAnker.download));
+  ok('die Mappen-Datei traegt keine Wandgeometrie ([L-3])',
+    !mappeDatei.includes('courses') && !mappeDatei.includes('length_mm'));
+  ok('die Mappen-Datei traegt die Kopfdaten des Projekts ([L-11])',
+    'kopfdaten' in JSON.parse(mappeDatei).projekt);
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [kFile(mappeDatei, 'mappe.json')], value: 'x' } });
+  ok('Mappen-Import stellt dasselbe Projekt wieder her (Kennung bleibt)',
+    store.holeMappe().projekt.id === prj0.projekt.id && projekte().length === anzahlPrjVor - 1);
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [kFile(JSON.stringify(store.projektObjekt(idOg)), 'wand.json')], value: 'x' } });
+  ok('eine Wanddatei im Mappen-Import wird benannt abgewiesen',
+    trFehler() && /Wanddatei/.test(trMsgTxt()));
 
-  // 8q) Wand loeschen raeumt ihren Mappeneintrag mit ab (ausdrueckliche Nutzeraktion)
-  confirmAntwort = true;
-  wZeile('loeschen', w01);
-  ok('geloeschte Wand hinterlaesst keinen verwaisten Eintrag',
-    store.holeElement(w01) === null && store.wandVerortung(w01) === null);
-
-  // 8r) Reload-Fest: alles steht im Speicher, nichts nur im DOM
-  ok('Struktur ueberlebt einen Reload (frisch aus dem Rohwert gelesen)',
-    (() => { const roh = JSON.parse(mappeSlot());
-             return roh.format === 'SEMBLA-Projektmappe' && roh.version === 1
-               && MAPPE.validiereMappe(MAPPE.normMappe(roh)).length === 0
-               && roh.gebaeude.some(g => g.geschosse.some(x => x.name === 'OG')); })());
-  ok('Mappen-Datei-Roundtrip verlustfrei (eigene Formatachse)',
-    JSON.stringify(MAPPE.mappeObjekt(MAPPE.parseMappe(JSON.stringify(MAPPE.mappeObjekt(mappe())))))
-    === JSON.stringify(MAPPE.mappeObjekt(mappe())));
-  ok('Projektformat der Wanddateien bleibt v2 (kein Bruch durch die Mappe)',
-    store.projektObjekt(store.listeElemente()[0].id).version === 2);
+  // 8l) Das Projektformat der Wanddateien bleibt unberuehrt
+  ok('Projektformat der Wanddateien bleibt v2 (kein Bruch durch die Mappen-Liste)',
+    store.projektObjekt(idOg).version === 2);
+  ok('[L-3] der Wandspeicher traegt keine Lagedaten',
+    !localStorage.getItem('sembla:elemente').includes('start_grid'));
 }
 
 // --- 9) Geschossplan (Etappe C3, Issue #26, [L-8]/[L-9]) -------------------
@@ -1263,9 +1350,9 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
 // Anzeigewerte ([L-9]) und keine Wandlage aendert sich dabei ([L-1]).
 {
   const pnMsgTxt = () => $('pn-msg').textContent;
-  const plMsgTxt2 = () => $('pl-msg').textContent;
   const pnFehler = () => $('pn-msg').className === 'msg err';
-  const mappeSlot = () => localStorage.getItem('sembla:projektmappe');
+  const mappeSlot = () => localStorage.getItem('sembla:projekte');
+  const alleLagen = () => JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage));
 
   // 9a) Bedienelemente an der echten Oberflaeche
   ok('Abschnitt „Geschossplan" vorhanden und als Hintergrund benannt ([L-9])',
@@ -1286,7 +1373,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   PLAN.setzeIndexedDB(fakeIndexedDB());
   globalThis.createImageBitmap = async (b) => ({ width: b._w, height: b._h, close(){} });
 
-  const gsPlan = store.holeMappe().gebaeude.flatMap(g => g.geschosse)[0];
+  const gsPlan = MAPPE.alleGeschosse(store.holeMappe())[0].geschoss;
   store.setzeAktivesGeschoss(gsPlan.id);
   await new Promise(r => setTimeout(r, 0));
   ok('mit aktivem Geschoss ist der Planabschnitt bedienbar',
@@ -1306,8 +1393,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
     pnFehler() && /20 MB/.test(pnMsgTxt()) && mappeSlot() === slotVorPdf);
 
   // 9d) Plan hochladen — Bild in die Plan-Datenbank, Beschreibung in die Mappe
-  const lageVorher = JSON.stringify(store.holeMappe().gebaeude.flatMap(g => g.geschosse)
-    .flatMap(g => g.waende).map(w => w.lage));
+  const lageVorher = alleLagen();
   await $('pn-import').dispatch('change', { target: { files: [
     { name: 'eg.png', type: 'image/png', size: 123456, _w: 1600, _h: 1200 }], value: '' } });
   const plan1 = store.geschossPlan(gsPlan.id);
@@ -1367,9 +1453,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   ok('Versatz uebernommen',
     store.geschossPlan(gsPlan.id).versatz_x_mm === 375
     && store.geschossPlan(gsPlan.id).versatz_y_mm === -125);
-  ok('[L-1] Kalibrierung und Versatz haben KEINE Wandlage veraendert',
-    JSON.stringify(store.holeMappe().gebaeude.flatMap(g => g.geschosse)
-      .flatMap(g => g.waende).map(w => w.lage)) === lageVorher);
+  ok('[L-1] Kalibrierung und Versatz haben KEINE Wandlage veraendert', alleLagen() === lageVorher);
   $('pn-versatz-null').dispatch('click');
   await new Promise(r => setTimeout(r, 0));
   ok('Versatz zurueck auf 0/0', store.geschossPlan(gsPlan.id).versatz_x_mm === 0);
@@ -1377,10 +1461,12 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   // 9h) Reload-Fest: Beschreibung liegt in der Mappe, Bild in der Plan-Datenbank
   ok('[L-8] Plan uebersteht einen Reload (Beschreibung im Mappen-Slot)',
     (() => { const roh = JSON.parse(mappeSlot());
-             const g = roh.gebaeude.flatMap(x => x.geschosse).find(x => x.id === gsPlan.id);
+             const g = roh.flatMap(m => m.gebaeude).flatMap(x => x.geschosse)
+               .find(x => x.id === gsPlan.id);
              return g && g.plan && g.plan.datei === 'eg.png' && g.plan.mm_je_pixel === 10; })());
   ok('[L-8] Mappe bleibt gueltig und formatstabil (v1)',
-    MAPPE.validiereMappe(store.holeMappe()).length === 0 && JSON.parse(mappeSlot()).version === 1);
+    MAPPE.validiereMappe(store.holeMappe()).length === 0
+    && JSON.parse(mappeSlot()).every(m => m.version === 1));
 
   // 9i) Ein zweiter Plan setzt Massstab und Versatz zurueck statt sie zu raten ([L-9])
   await $('pn-import').dispatch('change', { target: { files: [
@@ -1389,9 +1475,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   ok('[L-9] neues Bild ⇒ Massstab und Versatz ausdruecklich zurueckgesetzt',
     plan2.datei === 'og.jpg' && plan2.mm_je_pixel === null && plan2.versatz_x_mm === 0
     && /zurückgesetzt/.test(pnMsgTxt()));
-  ok('[L-1] der Planwechsel hat keine Wandlage angetastet',
-    JSON.stringify(store.holeMappe().gebaeude.flatMap(g => g.geschosse)
-      .flatMap(g => g.waende).map(w => w.lage)) === lageVorher);
+  ok('[L-1] der Planwechsel hat keine Wandlage angetastet', alleLagen() === lageVorher);
 
   // 9j) Plan entfernen — Bild und Beschreibung, aber keine Wand
   confirmAntwort = true;
@@ -1399,25 +1483,52 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   ok('Plan entfernt: Beschreibung und Bild sind weg',
     store.geschossPlan(gsPlan.id) === null && (await PLAN.holePlan(gsPlan.id)) === null);
   ok('Meldung stellt klar, dass die Wandlagen bleiben', /Wandlagen .* unverändert/.test(pnMsgTxt()));
-  ok('[L-1] Wandlagen unveraendert nach dem Entfernen',
-    JSON.stringify(store.holeMappe().gebaeude.flatMap(g => g.geschosse)
-      .flatMap(g => g.waende).map(w => w.lage)) === lageVorher);
+  ok('[L-1] Wandlagen unveraendert nach dem Entfernen', alleLagen() === lageVorher);
 
   // 9k) Ein geloeschtes Geschoss hinterlaesst kein unerreichbares Bild ([L-8])
-  $('pl-gs-name').value = 'Planprobe';
-  $('pl-gs-neu').dispatch('click');
-  const gsProbe = store.aktivesGeschossId();
+  const gsProbe = geschossAnlegen(store.holeMappe().projekt.id, 'Planprobe');
   await new Promise(r => setTimeout(r, 0));
   await $('pn-import').dispatch('change', { target: { files: [
     { name: 'probe.png', type: 'image/png', size: 1000, _w: 100, _h: 100 }], value: '' } });
   ok('Probegeschoss hat ein Planbild', !!(await PLAN.holePlan(gsProbe)));
   confirmAntwort = true;
-  $('pl-gs-loeschen').dispatch('click');
+  baum('gs-loeschen', gsProbe);
   await new Promise(r => setTimeout(r, 0));
   ok('[L-8] mit dem Geschoss verschwindet auch sein Planbild',
     (await PLAN.holePlan(gsProbe)) === null && !mappeSlot().includes(gsProbe));
-  ok('Loeschmeldung nennt den mitentfernten Plan', /Plan wurde mit entfernt/.test(plMsgTxt2()));
+  ok('Loeschmeldung nennt den mitentfernten Plan', /Plan wurde mit entfernt/.test(trMsgTxt()));
 }
+
+// --- 10) KEIN Autoload beim Initialisieren (Issue #33) --------------------
+// Steht bewusst am ENDE: der Block erzeugt eine ZWEITE Instanz des Modul-0-Codes.
+// Die haengt sich ebenfalls an store.abonniere und wuerde die Baumliste der ersten
+// Instanz ueberschreiben — nach allen Oberflaechenpruefungen ist das folgenlos.
+// Frischer Sandkasten (eigenes localStorage, eigenes DOM-Double, eigener fetch-Zaehler):
+// der echte Modul-0-Code wird erneut initialisiert und darf dabei nichts laden/schreiben.
+const altStorage = globalThis.localStorage, altDocument = globalThis.document;
+const frischeAufrufe = [];
+globalThis.localStorage = new MemStorage();
+globalThis.document = {
+  _e:{}, getElementById(id){ return this._e[id] || (this._e[id] = new El(id)); },
+  createElement(){ return new El('_'); }, querySelector(){ return null; },
+  addEventListener(){}, head:{ appendChild(){} },
+  body:{ appendChild(){}, insertBefore(){}, firstChild:null },
+};
+globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return { ok:true, status:200, text: async () => '{}' }; };
+new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT","MAPPE","PLAN", src)(
+  () => {}, MODULE, store, buildWall, baueDateien, () => {}, KAT, MAPPE, PLAN);
+const frischKatalog = globalThis.localStorage.getItem('sembla:kataloge');
+const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
+globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
+ok('Initialisierung ruft KEIN fetch auf (kein Autoload)', frischeAufrufe.length === 0);
+ok('Initialisierung legt keinen Katalog an', frischKatalog === null);
+ok('Initialisierung legt kein Wandelement an', frischElemente === null);
+// [P-18]: dritter Aufruf im Anlegen-Handler — Standardkatalog nachladen, wenn GAR KEINER da ist.
+// Auch das ist ein Klick-Handler; beim Initialisieren wird weiterhin nichts geholt.
+ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
+  (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
+  && (src.match(/fetch\(/g) || []).length === 1);
+
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

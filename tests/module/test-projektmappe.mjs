@@ -275,5 +275,40 @@ t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
     waende: [{ id: "w", lage: { start_grid: { x: "abc" }, richtung: "z", laenge_grid: "x" } }] }] }] })
     .gebaeude[0].geschosse[0].waende[0].lage.start_grid.x === null);
 
+// --- Kopfdaten am Projekt ([L-11]) und Katalogzuordnung ([L-12]) ------------
+{
+  const basis = M.leereMappe("Aschersleben AWG");
+  const mitKd = M.setzeKopfdaten(basis, { bauherr: "AWG eG", planverfasser: "Polycare", gez: "TB" });
+  t("[L-11] Kopfdaten landen am Projektknoten",
+    mitKd.projekt.kopfdaten.bauherr === "AWG eG" && mitKd.projekt.kopfdaten.gez === "TB");
+  t("[L-11] rein: die uebergebene Mappe bleibt unveraendert",
+    Object.keys(basis.projekt.kopfdaten).length === 0);
+  t("[L-11] Patch aendert nur genannte Felder",
+    M.setzeKopfdaten(mitKd, { gez: "MM" }).projekt.kopfdaten.bauherr === "AWG eG");
+  t("[L-11] leerer Wert loescht das Feld",
+    M.setzeKopfdaten(mitKd, { gez: "" }).projekt.kopfdaten.gez === undefined);
+  t("[L-11] unbekanntes Feld wird abgewiesen statt still einsortiert",
+    wirft(() => M.setzeKopfdaten(mitKd, { erfunden: "x" }), /Unbekannte Kopfdatenfelder/));
+  t("[L-11] kopfdaten() liefert Projektname + Felder in der Form von eingaben.projekt", (() => {
+    const k = M.kopfdaten(mitKd);
+    return k.name === "Aschersleben AWG" && k.bauherr === "AWG eG" && k.planverfasser === "Polycare";
+  })());
+  t("[L-11] Kopfdaten beruehren die Struktur nicht",
+    M.alleGeschosse(mitKd).length === 1 && M.validiereMappe(mitKd).length === 0);
+
+  const mitKat = M.setzeKatalogRef(mitKd, "kat-7");
+  t("[L-12] Katalogzuordnung haengt am Projekt (nur die Kennung)", mitKat.katalog === "kat-7");
+  t("[L-12] Zuordnung aufheben ist ausdruecklich moeglich",
+    M.setzeKatalogRef(mitKat, null).katalog === null);
+  t("[L-12] die Zuordnung reist im Dateiformat mit (Version unveraendert)", (() => {
+    const obj = M.mappeObjekt(mitKat);
+    return obj.katalog === "kat-7" && obj.version === M.MAPPE_VERSION
+      && M.parseMappe(JSON.stringify(obj)).katalog === "kat-7";
+  })());
+  t("[L-11] Kopfdaten ueberstehen den Datei-Roundtrip",
+    M.parseMappe(JSON.stringify(M.mappeObjekt(mitKat))).projekt.kopfdaten.bauherr === "AWG eG");
+}
+
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

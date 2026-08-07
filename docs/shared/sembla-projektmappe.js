@@ -44,6 +44,16 @@ export const RICHTUNGEN = /** @type {ReadonlyArray<'x'|'y'>} */ (["x", "y"]);
 /** Name des bei der Uebernahme bestehender Staende angelegten Projekts ([L-7]). */
 export const MIGRATIONS_PROJEKT = "Projekt ohne Plan";
 
+/**
+ * Felder der Projekt-Kopfdaten ([L-11]). Sie leben AM PROJEKT und nirgends sonst;
+ * der Projektname ist kein Kopfdatenfeld, sondern der Name des Projektknotens.
+ * Die Schluessel sind bewusst dieselben wie im Alt-Feld `eingaben.projekt`, damit
+ * Zeichnung/Export dieselbe Form lesen — zusammengefuehrt wird trotzdem nie.
+ */
+export const KOPFDATEN_FELDER = /** @type {ReadonlyArray<string>} */ ([
+  "bauherr", "planverfasser", "phase", "plan_nr", "index", "gez",
+]);
+
 // --- Kennungen ------------------------------------------------------------
 
 /** Neue, kollisionsarme Kennung mit sprechendem Praefix. @param {string} praefix */
@@ -514,6 +524,53 @@ export function setzePlanAnsicht(m, geschossId, patch) {
     throw new Error(`Geschoss „${treffer.geschoss.name}“ hat keinen hinterlegten Plan.`);
   }
   return setzePlan(m, geschossId, { ...treffer.geschoss.plan, ...(patch || {}) });
+}
+
+/**
+ * Projekt-Kopfdaten setzen ([L-11]). Sie leben AM PROJEKT; `eingaben.projekt` am
+ * Wandelement wird dabei nie angefasst und nie zusammengefuehrt. Uebergeben wird
+ * ein Patch: nur genannte Felder aendern sich, ein leerer String loescht das Feld.
+ * Unbekannte Felder werden abgewiesen statt still einsortiert ([P-9]).
+ * @param {any} m @param {Record<string,string>} patch @returns {object} neue Mappe
+ */
+export function setzeKopfdaten(m, patch) {
+  const p = (patch && typeof patch === "object") ? patch : {};
+  const fremd = Object.keys(p).filter((k) => !KOPFDATEN_FELDER.includes(k));
+  if (fremd.length) {
+    throw new Error(`Unbekannte Kopfdatenfelder: ${fremd.join(", ")} (zulässig: ${KOPFDATEN_FELDER.join(", ")}).`);
+  }
+  const n = _klon(m);
+  const kd = { ...(n.projekt.kopfdaten || {}) };
+  for (const [k, v] of Object.entries(p)) {
+    const s = v == null ? "" : String(v).trim();
+    if (s) kd[k] = s; else delete kd[k];
+  }
+  n.projekt.kopfdaten = kd;
+  return n;
+}
+
+/**
+ * Dem Projekt einen Bauteilkatalog zuordnen oder die Zuordnung aufheben ([L-12]).
+ * Gespeichert wird ausschliesslich die KENNUNG des Katalogs — der Katalog selbst
+ * bleibt eine eigene Ressource mit eigener Versionsachse.
+ * @param {any} m @param {string|null} katalogId @returns {object} neue Mappe
+ */
+export function setzeKatalogRef(m, katalogId) {
+  const n = _klon(m);
+  const id = (katalogId == null || katalogId === "") ? null : String(katalogId);
+  n.katalog = id;
+  return n;
+}
+
+/**
+ * Wirksame Kopfdaten eines Projekts fuer Zeichnung/Schriftfeld/Export ([L-11]).
+ * Der Projektname reist als `name` mit, damit die Form der frueheren Quelle
+ * `eingaben.projekt` entspricht — zusammengefuehrt wird nichts.
+ * @param {any} m @returns {Record<string,string>}
+ */
+export function kopfdaten(m) {
+  const n = normMappe(m);
+  return { name: n.projekt.name, ...(n.projekt.kopfdaten || {}) };
 }
 
 /** Umbenennen (Projekt/Gebaeude/Geschoss/Wand) anhand der Kennung. */
