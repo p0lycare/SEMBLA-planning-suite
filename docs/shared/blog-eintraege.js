@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260807-02",
+    datum: "2026-08-07",
+    typ: "doku",
+    issue: 26,
+    titel: "Projektplaner: Umbau der Bedienung beschlossen — mehrere Projekte, aufklappbare Liste, Formulare im Popup",
+    testbitte: "Noch nichts zu testen — das ist die Festlegung vor dem Umbau. Rückmeldung erwünscht: "
+      + "fehlt in Projekt → Geschoss → Wand eine Ebene oder eine Schaltfläche, die du brauchst?",
+  },
+  {
     id: "chg-20260807-01",
     datum: "2026-08-07",
     typ: "fix",

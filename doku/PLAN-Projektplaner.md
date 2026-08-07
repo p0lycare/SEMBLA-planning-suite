@@ -1,6 +1,8 @@
 # Plan: Modul 0 wird Projektplaner (Issues #26, #37, #42, #43)
 
-> Stand: 2026-08-06 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappen C1 + C2 + C3 umgesetzt**, C4 ist der nächste Schritt
+> Stand: 2026-08-07 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappen C1 + C2 + C3 umgesetzt**;
+> nach Nutzerrückmeldung zum C3-Stand sind **C3.1** (Oberfläche Projektplanung) und **C3.2**
+> (Feinschliff Layout-Editor) vorgezogen — sie laufen **vor** C4 (s. §10/§11)
 
 Dieses Dokument umreißt den Umbau von Modul 0 zum Projektplaner mit Geschosslayout. Es ist die
 Arbeitsgrundlage über mehrere Sessions. Jede Etappe wird einzeln umgesetzt, getestet und committet.
@@ -16,6 +18,9 @@ Arbeitsgrundlage über mehrere Sessions. Jede Etappe wird einzeln umgesetzt, get
 | **Modul 0** | wird der **Projektplaner**: Projekt → Geschosse → Wände, Geschosslayout auf Plangrundlage. |
 | **Bauteilkatalog** | **bleibt in Modul 0**, aber als **Popup** — kein eigenes Katalogmodul. #37 wird entsprechend umgeschrieben (s. §4, Schritt B). |
 | **Planmaßstab** | **Kalibrierlinie** als Standardweg **plus** direkte Maßstabseingabe für saubere Scans. |
+| **Mehrere Projekte** *(2026-08-07)* | Der Speicher hält **mehrere Projekte**, nicht mehr genau eines. Es gibt einen **aktiven Projekt-Zeiger**; Schema **4 → 5** mit Migration des bestehenden Einzelprojekts. |
+| **Projekt = Gebäude** *(2026-08-07)* | Die Gebäude-Ebene bleibt **im Datenmodell** (Format v1 unverändert), verschwindet aber **vollständig aus der Oberfläche**: jedes Projekt hat implizit **genau ein** Gebäude. Mehrere Gebäude sind später reine UI-Arbeit, kein Formatbruch. |
+| **Projekt-Kopfdaten** *(2026-08-07)* | leben **am Projekt**, nicht mehr am Wandelement. `eingaben.projekt` wird von Modul 0 **nicht mehr gepflegt**; Zeichnung/Export beziehen die Kopfdaten aus dem Projekt (s. **[L-11]**). |
 | **Reihenfolge** | Schritt A (Nummerierung, erledigt) → Schritt B (#37/#42 umschreiben, kein Code) → Schritt C (Planer, eigene Session) → zuletzt #38 (20 AWG-Wände). |
 
 ---
@@ -93,6 +98,12 @@ unbeschadet.
 voneinander ab, wird das **sichtbar gemeldet** — nichts wird geraten (Projektregel: keine stille
 Heuristik).
 
+> **Nachtrag C3.1 (2026-08-07):** Der Speicher hält künftig **eine Liste solcher Mappen** statt einer
+> einzelnen — je Projekt eine, Struktur je Mappe **unverändert**. `projekt.kopfdaten` ist damit die
+> **einzige** Quelle der Projekt-Kopfdaten (**[L-11]**), und `katalog` verweist auf den dem Projekt
+> zugeordneten Bauteilkatalog. `MAPPE_VERSION` bleibt **1**: die einzelne Mappe behält ihre Form,
+> es ändert sich nur, wie viele davon im Speicher liegen (`SCHEMA_VERSION` 4 → 5).
+
 ### 2.2 Ableitung Zeichnung → Wandelement
 
 | Aus der Zeichnung | Ergebnis |
@@ -115,6 +126,13 @@ gäbe es zwei Wahrheiten für dieselbe Größe.
   werden nicht erfunden). Kein Datenverlust, keine Rückfrage nötig.
 - Der **aktive-Wand-Zeiger bleibt bestehen** — Modul 1/4/7 funktionieren unverändert weiter, sie
   merken vom Planer nichts.
+
+> **Nachtrag C3.1 (2026-08-07):** `SCHEMA_VERSION` **4 → 5**. `sembla:projektmappe` (eine Mappe)
+> wird zu `sembla:projekte` (Liste von Mappen), dazu der Zeiger `sembla:aktiv:projekt`. Die
+> Migration hängt den bestehenden Stand **verlustfrei als erstes Projekt** ein und setzt ihn aktiv —
+> keine Rückfrage, keine erfundenen Daten ([L-7] gilt unverändert). `sembla:aktiv:gebaeude` entfällt
+> in der Oberfläche, bleibt intern als Zeiger auf das eine Gebäude des aktiven Projekts.
+> `sembla:elemente` und der aktive-Wand-Zeiger bleiben **unangetastet**.
 
 ### 2.4 Planbild — nicht in den localStorage
 
@@ -177,12 +195,18 @@ UI-Konvention, keine strukturelle mehr.
 | **C1 ✅** | Datenmodell + Speicherschicht + Migration (§2.3), ohne UI | **erledigt** (s. §7) |
 | **C2 ✅** | Modul-0-UI: Projekt/Gebäude/Geschoss anlegen & wählen, Wandliste je Geschoss, Roundtrip nach Modul 1 | **erledigt** (s. §8) |
 | **C3 ✅** | Planupload, Kalibrierung, x/y-Versatz, 125-mm-Rasteroverlay (reine Anzeige) | **erledigt** (s. §9) |
+| **C3.1** | Oberfläche Projektplanung: Baumliste Projekt→Geschoss→Wand, alle Formulare als Popup, mehrere Projekte, Kopfdaten am Projekt, Katalog-Popup (§10) | Die Seite besteht aus **einer** Baumliste plus Editor; kein Formularblock mehr auf der Hauptfläche |
+| **C3.2** | Feinschliff Layout-Editor: Plan-Lock, Zoom/Pan, Kreuzmarker, gestrichelte + orthogonal gezwungene Kalibrierlinie (§11) | Plan lässt sich präzise kalibrieren und rutscht nicht versehentlich |
 | **C4** | Wand-Werkzeug + Radierer + „Wand hinzufügen" | Gezeichnete Wand landet mit korrekter Länge in der Wandliste |
 | **C5** | Projektmappe Export/Import (ZIP + Ordner, §3) | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
-| **C6** | Katalogwahl je Projekt + Pflege-Popup (setzt Schritt B um) | Katalog hängt am Projekt, Pflege liegt im Popup, Hauptfläche bleibt Projektplanung |
+| ~~**C6**~~ | Katalogwahl je Projekt + Pflege-Popup | **geht in C3.1 auf** — das Popup entsteht dort ohnehin, und die Zuordnung hängt am neuen Projekt-Datensatz |
 
 **C2 ist der Punkt, ab dem der Planer echten Nutzen bringt** — C3/C4 sind der Komfort obendrauf.
 Wenn die Zeit knapp wird, ist hier die Sollbruchstelle.
+
+**Reihenfolge nach der Rückmeldung vom 2026-08-07:** C3.1 → C3.2 → C4 → C5. C3.1 zuerst, weil es das
+Datenmodell (mehrere Projekte, Kopfdaten am Projekt) anfasst — C4 würde sonst auf einem Stand
+gebaut, den C3.1 gleich wieder umbaut.
 
 ### Danach — #38: 20 AWG-Wände
 Erst wenn C steht. Braucht zusätzlich die fachliche Freigabe der 20 Fälle durch das Projektteam
@@ -229,10 +253,13 @@ Festgelegt in **Kapitel 16.9 „Projektstruktur & Geschosslayout (Modul 0) [L]"*
 | **[L-3 · MUSS]** | Lage und Wandelement bleiben getrennt; Länge nur als Vorgabe beim Anlegen, Abweichung wird gemeldet statt angeglichen |
 | **[L-4 · MUSS]** | Referenz über die stabile `id`, Dateiname nur Fundort; verwaiste Einträge und unverortete Wände werden gemeldet, nie still bereinigt |
 | **[L-5]** | Geschosshöhe ist Vorgabe, nicht Wahrheit; kein stilles Runden aufs Lagenraster |
-| **[L-6]** | Struktur Projekt→Gebäude→Geschoss→Wand vollständig, Oberfläche zunächst mit einem Gebäude; genau eine Mappe, ein aktives Geschoss |
+| **[L-6]** | Struktur Projekt→Gebäude→Geschoss→Wand vollständig; die Gebäude-Ebene ist in der Oberfläche **nicht sichtbar** (ein Gebäude je Projekt). *Geändert 2026-08-07:* der Speicher hält **mehrere Projekte** mit **einem** aktiven Projekt-Zeiger — vorher genau eine Mappe |
 | **[L-7 · MUSS]** | Verlustfreie, idempotente Übernahme bestehender Stände ohne erfundene Lagedaten |
 | **[L-8 · MUSS]** | Planbild nicht in den localStorage (IndexedDB); Mappe hält nur Dateiname, Bildmaße, Maßstab, Versatz; PNG/JPEG/WebP bis 20 MB, PDF wird abgewiesen |
 | **[L-9 · MUSS]** | Der Plan ist Hintergrund, keine Datenquelle: Maßstab/Versatz ausdrücklich gesetzt, ohne Kalibrierung kein Raster, Planwechsel ändert keine Wandlage |
+| **[L-10 · MUSS]** *(neu, C3.1)* | **Aktivierung ist streng hierarchisch.** Eine Wand ist nur aktivierbar, wenn ihr Geschoss aktiv ist; ein Geschoss nur, wenn sein Projekt aktiv ist. Kein Aktivsetzen zieht Eltern still mit. Umgekehrt hebt ein Elternwechsel die Kind-Zeiger **auf**, statt sie auf Fremdes zu biegen. Auf-/Zuklappen ist reine Anzeige und ändert **nie** einen Zeiger |
+| **[L-11 · MUSS]** *(neu, C3.1)* | **Projekt-Kopfdaten leben am Projekt** und nirgends sonst. Modul 0 schreibt `eingaben.projekt` nicht mehr; Zeichnung/Export/Schriftfeld lesen aus dem aktiven Projekt. Der Altbestand `eingaben.projekt` bleibt in Altprojekten erhalten und wird nur als **Rückfall** gelesen, wenn kein Projekt zugeordnet ist — nie beschrieben, nie zusammengeführt |
+| **[L-12]** *(neu, C3.1)* | **Ein Bauteilkatalog je Projekt.** Die Zuordnung hängt am Projekt; der aktive Katalog folgt dem aktiven Projekt. Ohne Zuordnung wird das gemeldet, kein Katalog geraten |
 
 ---
 
@@ -334,5 +361,99 @@ keine Datenquelle.* Beide stehen in Kapitel 16.9 (`build-handbuch.mjs`), das Han
   13f). `npm run test:all` ist grün; `test-plan.mjs` hängt an `npm run test:modul0`.
 
 **Offen (bewusst nicht in C3):** Wand-Werkzeug/Radierer und das Einzeichnen der Lage (C4),
-Mappen-Export/-Import als ZIP inklusive Planbild (C5), Katalogwahl je Projekt + Pflege-Popup (C6).
-Bis C4 sind alle Wände **eingetragen, aber unverortet** — das bleibt der dokumentierte Normalfall.
+Mappen-Export/-Import als ZIP inklusive Planbild (C5), Katalogwahl je Projekt + Pflege-Popup
+(jetzt C3.1). Bis C4 sind alle Wände **eingetragen, aber unverortet** — das bleibt der dokumentierte
+Normalfall.
+
+---
+
+## 10. Etappe C3.1 — Oberfläche Projektplanung *(offen, nächster Schritt)*
+
+Grundlage ist die Nutzerrückmeldung zum C3-Stand vom **2026-08-07**: die Projektplanung ist als
+Sammlung nebeneinanderstehender Formularblöcke unübersichtlich, mehrere Blöcke sind redundant.
+
+### 10.1 Zielbild der Oberfläche
+
+Modul 0 besteht künftig aus **zwei** Dingen: der **Baumliste** und dem **Layout-Editor**. Alle
+Formulare liegen in **Popups**; auf der Hauptfläche steht kein Eingabeblock mehr.
+
+```
+▸ Projekt A                    [Aktiv setzen] [Bearbeiten] [Löschen] [Export]
+▾ Projekt B   ● aktiv                         [Bearbeiten] [Löschen] [Export]
+   ▸ EG                        [Aktiv setzen] [Bearbeiten] [Löschen]
+   ▾ OG      ● aktiv                          [Bearbeiten] [Löschen]
+        Wand W01  ● aktiv                     [Bearbeiten] [Löschen] [In Modul 1 planen]
+        Wand W02               [Aktiv setzen] [Bearbeiten] [Löschen]
+        + Wand hinzufügen
+   + Geschoss hinzufügen
+▸ Projekt C                    [Aktiv setzen] …
++ Projekt anlegen  ·  Projekt hochladen
+```
+
+- Jede Karte ist **unabhängig auf-/zuklappbar**, auch eine **nicht aktive** — Aufklappen ist reines
+  Ansehen (**[L-10]**).
+- **Aktivsetzen ist streng hierarchisch** (**[L-10]**): der Knopf einer Wand in einem nicht aktiven
+  Geschoss ist gesperrt und nennt den Grund („erst Geschoss OG aktiv setzen"). Es gibt **keine**
+  stille Mitaktivierung der Eltern und keine Umbiegung fremder Zeiger.
+- Der aktive Pfad **Projekt · Geschoss · Wand** steht zusätzlich in der Kopfleiste (`navbar.js`).
+
+### 10.2 Popups
+
+| Popup | Inhalt |
+|---|---|
+| **Projekt** neu/bearbeiten | Name, **Kopfdaten** (Bauherrschaft, Planverfasser, Phase, Plan-Nr., Index, Gez.), **Bauteilkatalog** wählen + „Katalog bearbeiten…" |
+| **Geschoss** neu/bearbeiten | Bezeichnung, Geschosshöhe ([L-5] unverändert Vorgabe), **Geschossplan hochladen**, optional Maßstab |
+| **Wand** neu/bearbeiten | Name, Länge, Höhe (Vorgabe aus dem Geschoss), Wandtyp — das heutige Anlegen-Formular. Bleibt auch nach C4 als Weg für Wände ohne Plan |
+| **Katalog** | die heutige Katalogpflege **1:1** als Popup (Produktliste, anlegen/bearbeiten/duplizieren/löschen, Im-/Export) |
+| **Projekt hochladen** | Datei-Import |
+
+### 10.3 Was von der heutigen Seite verschwindet
+
+Die Blöcke „Projektplanung" (Formularfelder), „Wandelement anlegen", „Projekt-Kopfdaten",
+„Bauteilkatalog" und „Gespeicherte Wandelemente" entfallen als eigenständige Bereiche — ihr Inhalt
+geht in Baumliste bzw. Popups auf. **Gebäude** taucht in der Oberfläche gar nicht mehr auf (§0).
+
+### 10.4 Datenmodell-Arbeit
+
+1. **Mehrere Projekte:** `sembla:projekte` (Liste von Mappen) + `sembla:aktiv:projekt`,
+   `SCHEMA_VERSION` **4 → 5**, verlustfreie Migration des bestehenden Einzelprojekts (§2.3-Nachtrag).
+   `MAPPE_VERSION` bleibt **1**.
+2. **Kopfdaten am Projekt** (**[L-11]**): Modul 0 schreibt `eingaben.projekt` nicht mehr;
+   `sembla-zeichnung.js`/`sembla-export.js` beziehen die Kopfdaten aus dem aktiven Projekt, mit
+   Rückfall auf `eingaben.projekt` für Altstände. Bewusste Entscheidung: **kein** Zusammenführen
+   beider Quellen — es gibt genau eine gültige, und welche das war, ist immer benennbar.
+3. **Katalog je Projekt** (**[L-12]**): der Verweis hängt am Projekt, der aktive Katalog folgt dem
+   aktiven Projekt. Damit ist die frühere Etappe C6 erledigt.
+
+### 10.5 Tests
+
+Erweiterung von `tests/module/smoke_start.mjs` (Baumliste, Klappzustand ändert keinen Zeiger,
+gesperrte Aktivierung, Popup-Roundtrips), `test-projektmappe.mjs` (mehrere Projekte, Kopfdaten,
+Katalogzuordnung) und `smoke_storage.mjs` (Migration 4 → 5, Projekt-Zeiger, Zeiger-Aufhebung beim
+Elternwechsel). Je Prüfung wird die Regel-ID benannt.
+
+---
+
+## 11. Etappe C3.2 — Feinschliff Layout-Editor *(offen, nach C3.1)*
+
+Der Editor bleibt in seiner Mechanik wie er ist (Kalibrierlinie, Versatz, Ziehen, Rasteroverlay
+funktionieren). Geändert werden fünf Punkte:
+
+1. **Planupload wandert ins Geschoss-Popup** (§10.2). Im Editor bleibt: anzeigen, kalibrieren,
+   ausrichten. `setzeGeschossPlan` ändert sich nicht, nur der Aufrufort.
+2. **Lock-Knopf für den Plan.** Gesperrt (Standard, sobald ausgerichtet) = Ziehen bewegt nichts;
+   entsperrt = verschiebbar. Der Sperrzustand ist reine Bedienung und wird **nicht** Teil des
+   Datenmodells der Mappe.
+3. **Zoom und Pan als echte Werkzeuge.** Mausrad zoomt auf den Cursor, Hand-Werkzeug (bzw.
+   Leertaste/mittlere Maustaste) schiebt die Ansicht. **Pan ≠ Versatz**: Pan bewegt nur den Blick,
+   `versatz_x_mm`/`versatz_y_mm` bleiben unberührt. Ohne diese Trennung wäre [L-9] verwässert.
+4. **Kalibriermarker als Kreuz** mit **ausgesparter Mitte**, damit die Planlinie darunter sichtbar
+   bleibt; die Kalibrierlinie wird **gestrichelt** gezeichnet.
+5. **Kalibrierlinie orthogonal gezwungen.** Der zweite Punkt rastet auf die dominante Achse —
+   schräge Kalibrierlinien sind nicht zeichenbar. Passt zu [L-2] (nur orthogonale Lagen) und
+   verhindert einen unbemerkt schrägen Maßstab.
+
+Alles davon ist **Bedienung**; Format, Regeln [L-8]/[L-9] und die gespeicherten Plandaten bleiben
+unverändert. Tests: Abschnitt 9 in `smoke_start.mjs` wird um Lock, Pan-vs-Versatz und
+Orthogonal-Rastung erweitert; die Kreuz-/Strichdarstellung wird in `test-plan.mjs` an `planSvg()`
+geprüft.
