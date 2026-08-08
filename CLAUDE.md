@@ -359,15 +359,40 @@ dürfen fachlich nicht auseinanderlaufen.
 C3.2 die neue Fassung** (Position in mm).
 
 **Layout-Editor-Regeln [K-1]…[K-13]** (Kapitel 16.10, Plan in `doku/PLAN-Layout-Editor.md`):
-**Löser, Datenmodell und Migration stehen und sind regressionsgetestet** (Etappe C3.2,
-`tests/module/test-constraints.mjs`). Die **Oberfläche** dazu ist die eigene Seite
-`docs/geschossplan.html`: mit **Etappe C4a** stehen Zeichnen, Auswählen/Ziehen ([K-9]), Farben
-([K-8]), Kollisionsmeldung ([K-13]) und der Plan als Hintergrund ([L-9]) —
-`tests/module/smoke_geschossplan.mjs`. **Noch nicht bedienbar** sind **Bemaßen und Fixieren** und
-damit alles, was erst daran sichtbar wird ([K-3]/[K-6]/[K-7]/[K-11] und die Eingabeeinheit [K-12]);
-sie kommen in C4b, die Bauteilliste in C4c. Das frühere
+**vollständig umgesetzt und regressionsgetestet** — Löser, Datenmodell und Migration mit Etappe C3.2
+(`tests/module/test-constraints.mjs`), die **Oberfläche** dazu als eigene Seite
+`docs/geschossplan.html` mit C4a (Zeichnen, Auswählen/Ziehen [K-9], Farben [K-8], Kollisionsmeldung
+[K-13], Plan als Hintergrund [L-9]) und **C4b** (Bemaßen, Fixieren, sichtbarer Widerspruch [K-6] und
+Redundanz [K-7], Längenmaß [K-11], Millimetereingabe [K-12], Undo/Redo) —
+`tests/module/smoke_geschossplan.mjs`. **Offen sind nur noch Bedienzugaben:** schwebende
+Bauteilliste und Referenzgeschoss (C4c) sowie das Mappen-ZIP (C5); beide berühren keine [K]-Regel.
+C4b kam **ohne neue Regel, ohne neue Shared-Datei und ohne Versionsbump** aus. Das frühere
 „Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
 Wandabstände lägen im Raster.
+
+**Bemaßen, Fixieren und Rückgängig (Etappe C4b, alles in `docs/geschossplan.html`).**
+**(a) Die Achse folgt dem Bezug.** Jeder der sechs kanonischen Bezüge einer Wand (drei je Achse,
+[K-2]) gehört genau einer Achse; mit dem ersten Klick steht sie fest, danach werden **nur noch
+parallele** Bezüge angeboten — [K-1] ist damit konstruktiv erfüllt und nicht nachträglich geprüft.
+Der Ist-Abstand ist ein **Vorschlag im Feld**, treibend ist erst der gesetzte Wert ([K-3]); ein
+krummer Ist-Abstand lässt das Feld leer statt zu runden.
+**(b) Fixieren ist eine ganz normale Bemaßung** `von: null` gegen den **einzigen** Geschossursprung
+([K-4]) — keine zweite Fixierungsstruktur. Es setzt **genau die Achse des angeklickten Bezugs**
+fest; für die andere ist ein zweites Mal zu fixieren, und es wird **kein zweiter Bezug erfunden**.
+Nicht ganzzahlige oder negative Abstände werden **benannt abgewiesen**, nie gerundet oder gedreht
+([K-12]/[K-3]) — eine Längskante liegt 62,5 mm neben der Mittellinie, das trifft also regelmäßig zu.
+**(c) Kein Rückschreiben gelöster Positionen.** `lage.start_mm` bleibt der letzte gültige
+**gespeicherte** Stand; wo Maße bestimmen, ist beim Lesen und Zeichnen das Lösungsergebnis
+maßgebend, und ein Export muss denselben Weg gehen. Damit das trägt, schreibt das Ziehen nur die
+Wände, die der Zug **wirklich bewegt** (`verschiebe().bewegt`) — sonst legte jeder Zug nebenbei die
+gelösten Positionen aller Wände in die Mappe und damit eine zweite Wahrheit an.
+**(d) Undo/Redo umfasst genau die Projektmappe** — Lagen und Bemaßungen ([K-10]) — und
+**ausdrücklich nicht** Planbild/IndexedDB ([L-8]), Maßstab/Kalibrierung/Versatz ([L-9]), Blick,
+Auswahl, Werkzeug und Plan-Lock; beim Zurücksetzen wird die **aktuelle** Planansicht aufgepfropft.
+Eine im Editor **neu gezeichnete** Wand ist ein **atomarer** Schritt (Geschosseintrag **und** genau
+das dabei erzeugte Wandelement); das Verorten einer bestehenden Wand ändert nur die Mappe, fremde
+Wandelemente werden nie angefasst. Eine neue Änderung verwirft den Redo-Stapel, ein Geschosswechsel
+beide.
 
 **Vorspann-Grundregeln [V-2]/[V-3] sind umgesetzt und regressionsgetestet** (Core + Python-Orakel,
 `tests/core/`): Steinabdeckung als Muss, i3-Mitte der untersten Lage als Soll, `max_span_grid` nur
@@ -492,8 +517,8 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a stehen, Bemaßen folgt in C4b): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
-| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappe C4a, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Schreibt **nur** die Lage im Geschoss ([K-10]); Bemaßen/Fixieren/Undo folgen in C4b |
+| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b stehen, offen sind C4c und C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]) und **Undo/Redo**. Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

@@ -117,8 +117,9 @@ ok('ohne aktives Geschoss wird das benannt statt etwas erfunden ([L-10])',
   && /Projektplaner/.test($('gp-buehne').innerHTML));
 ok('die Seite ist kein neues Modul (kein Reiter, Ruecklink auf Modul 0)',
   /mountNavbar\(0\)/.test(html) && /index\.html">‹ Projektplaner/.test(html));
-ok('Bemassen und Fixieren sind sichtbar als C4b gekennzeichnet, nicht bedienbar',
-  /id="wz-bemassen" disabled/.test(html) && /id="wz-fixieren" disabled/.test(html));
+ok('Bemassen (D) und Fixieren (F) sind bedienbare Werkzeuge (Etappe C4b)',
+  /id="wz-bemassen" data-wz="bemassen"/.test(html) && /id="wz-fixieren" data-wz="fixieren"/.test(html)
+  && !/id="wz-bemassen" disabled/.test(html) && !/id="wz-fixieren" disabled/.test(html));
 
 // --- 1) Projekt/Geschoss anlegen ------------------------------------------
 const mappe = store.fuegeProjektHinzu('Testprojekt', { geschoss: 'EG', hoehe_mm: 2800 });
@@ -452,6 +453,274 @@ ok('mit Fang rastet sie auf 125 mm', GP.fange({ x: 1234.3, y: 60 }).x === 1250);
 // --- 10) Determinismus ([K-5]) -------------------------------------------
 const a = JSON.stringify(GP.loesen()), b = JSON.stringify(GP.loesen());
 ok('[K-5] gleicher Stand ⇒ bit-genau gleiches Ergebnis', a === b);
+
+// ==========================================================================
+//  Etappe C4b — Bemassen (D), Fixieren (F), Widerspruch/Redundanz, Undo/Redo
+// ==========================================================================
+// Eigenes, frisches Projekt: die Geometrie der Etappe C4a ist oben absichtlich
+// verwinkelt, hier soll sie nachrechenbar sein.
+const prj2 = store.fuegeProjektHinzu('C4b-Pruefprojekt', { geschoss: 'EG', hoehe_mm: 2600 });
+const gs2 = MAPPE.alleGeschosse(prj2)[0].geschoss.id;
+store.setzeAktivesGeschoss(gs2);
+await warte();
+GP.zeigeAlles();
+ok('[K-10] der Rueckgaengig-Stapel gehoert zum Geschoss und startet leer',
+  GP.undoStand.undo === 0 && GP.undoStand.redo === 0);
+
+// Zwei parallele Waende in Richtung x, 3000 mm auseinander.
+GP.werkzeug('wand');
+GP.zeichne({ x: 0, y: 1000 }, { x: 2000, y: 1000 });
+await warte();
+GP.zeichne({ x: 0, y: 4000 }, { x: 2000, y: 4000 });
+await warte();
+const wA = MAPPE.alleGeschosse(store.holeMappe()).find(x => x.geschoss.id === gs2).geschoss.waende;
+const idA = wA[0].id, idB = wA[1].id;
+const lageVon = id => MAPPE.findeWand(store.holeMappe(), id).wand.lage;
+/**
+ * Mittelpunkt einer Wand in WELTkoordinaten — aus dem LOESUNGSERGEBNIS, also genau
+ * dort, wo die Zeichenflaeche die Wand auch zeichnet und trifft.
+ *
+ * Die GESPEICHERTE Lage taugt dafuer nicht: sobald eine Bemassung zwei Waende zu
+ * einer freien Gruppe verbindet, verankert der Loeser diese Gruppe deterministisch
+ * an der lexikographisch KLEINSTEN Wandkennung ([K-5]). Die Kennungen sind echte
+ * Zufalls-UUIDs (`crypto.randomUUID`), also von Lauf zu Lauf verschieden — je nach
+ * Ausgang liegt die geloeste Position der einen oder der anderen Wand neben ihrem
+ * gespeicherten Wert. Ein Klick auf eine fest eingetragene Zahl traefe die Wand
+ * deshalb nur in etwa der Haelfte der Laeufe. Das ist KEIN Fehler des Loesers,
+ * sondern genau das, was [K-5] zusagt; der Test muss dieselbe Quelle lesen wie die
+ * Oberflaeche.
+ */
+const mitteVon = (id) => {
+  const r = CON.wandRechteck(lageVon(id), GP.loesen().positionen[id]);
+  return { x: (r.x_min + r.x_max) / 2, y: (r.y_min + r.y_max) / 2 };
+};
+ok('Pruefaufbau: zwei Waende in x, Mittellinien auf 1062,5 und 4062,5 mm',
+  wA.length === 2 && lageVon(idA).start_mm.y === 1062.5 && lageVon(idB).start_mm.y === 4062.5
+  && lageVon(idA).laenge_grid === 16);
+
+// --- 11) Undo/Redo: eine neu angelegte Wand ist ein ATOMARER Schritt ------
+ok('jede Zeichnung ist ein Rueckgaengig-Schritt', GP.undoStand.undo === 2);
+const elementeVorUndo = store.listeElemente().length;
+const elBVorUndo = JSON.stringify(store.holeElement(idB).wandelement);
+const eingBVorUndo = JSON.stringify(store.holeElement(idB).eingaben ?? null);
+GP.undo();
+await warte();
+ok('Rueckgaengig nimmt Geschosseintrag UND das in diesem Schritt angelegte Wandelement zurueck',
+  !store.holeElement(idB) && !MAPPE.findeWand(store.holeMappe(), idB));
+ok('fremde Wandelemente bleiben dabei unberuehrt — genau EINES verschwindet',
+  !!store.holeElement(idA) && !!MAPPE.findeWand(store.holeMappe(), idA)
+  && store.listeElemente().length === elementeVorUndo - 1);
+GP.redo();
+await warte();
+const zurueck = store.holeElement(idB);
+ok('Wiederholen legt dasselbe Wandelement unter derselben Kennung wieder an',
+  !!zurueck && zurueck.id === idB && zurueck.wandelement.length_mm === 2000
+  && zurueck.wandelement.height_mm === 2600);
+ok('… und zwar bit-genau — Wandelement und Eingaben unveraendert ([P-1])',
+  JSON.stringify(zurueck.wandelement) === elBVorUndo
+  && JSON.stringify(zurueck.eingaben ?? null) === eingBVorUndo);
+ok('… und traegt es wieder mit derselben Lage ins Geschoss ein',
+  !!MAPPE.findeWand(store.holeMappe(), idB) && lageVon(idB).start_mm.y === 4062.5);
+
+// --- 12) Bemassen (D): Achse folgt dem Bezug ([K-1]/[K-2]) ----------------
+GP.werkzeug('bemassen');
+ok('im Bemassen-Werkzeug sind alle sechs Bezuege je Wand sichtbar ([K-2])',
+  (GP.svg.match(/class="bezug/g) || []).length === 12
+  && /data-achse="x" data-bezug="mitte"/.test(GP.svg) && /data-achse="y" data-bezug="min"/.test(GP.svg));
+GP.tippe(GP.bezugsPunkt(idA, 'y', 'mitte'));
+ok('der erste Klick legt Startbezug UND Achse fest — sie wird nicht getrennt gewaehlt',
+  GP.zustand.bem && GP.zustand.bem.achse === 'y'
+  && GP.zustand.bem.von.wand === idA && GP.zustand.bem.von.bezug === 'mitte'
+  && GP.zustand.bem.bis === null);
+ok('[K-1] danach werden nur noch PARALLELE Bezuege angeboten',
+  /data-achse="y"/.test(GP.svg) && !/data-achse="x"/.test(GP.svg));
+GP.tippe(GP.bezugsPunkt(idA, 'y', 'mitte'));
+ok('[K-3] derselbe Punkt zweimal ist kein Mass',
+  /derselbe Punkt/.test($('gp-msg').textContent) && GP.zustand.bem.bis === null);
+GP.tippe(GP.bezugsPunkt(idB, 'y', 'mitte'));
+ok('der zweite Klick schlaegt den aktuellen Abstand vor (3000 mm), gespeichert ist nichts',
+  $('gp-bem-wert').value === '3000' && GP.bemassungen().length === 0);
+$('gp-bem-wert').value = '2500';
+$('gp-bem-setzen').dispatch('click');
+await warte();
+const bm1 = GP.bemassungen()[0];
+ok('[K-3] „Mass setzen" speichert ein treibendes Mass im GESCHOSS ([K-10])',
+  GP.bemassungen().length === 1 && bm1.achse === 'y' && bm1.mass_mm === 2500
+  && bm1.von.wand === idA && bm1.bis.wand === idB
+  && localStorage.getItem('sembla:projekte').includes(bm1.id));
+const pos12 = GP.loesen().positionen;
+ok('das Mass ist wirksam: der geloeste Abstand betraegt 2500 mm',
+  pos12[idB].y - pos12[idA].y === 2500);
+ok('die gespeicherte Lage bleibt der letzte gueltige Stand — kein Rueckschreiben, keine zweite Wahrheit',
+  lageVon(idB).start_mm.y === 4062.5);
+ok('das Mass wird gezeichnet und ist anklickbar',
+  GP.svg.includes(`data-bemassung="${bm1.id}"`) && /2500 mm/.test(GP.svg)
+  && GP.bemTreffer(GP.bemPunkt(bm1.id)) === bm1.id);
+ok('[K-12] ein nicht ganzzahliges Mass wird benannt abgewiesen, nicht gerundet',
+  (() => { $('gp-bem-wert').value = '2500.5'; $('gp-bem-setzen').dispatch('click');
+    return /nicht ganzzahlig/.test($('gp-msg').textContent) && GP.bemassungen()[0].mass_mm === 2500; })());
+
+// --- 13) Laengenmass treibt die Laenge ([K-11]), nie das Wandelement ([L-3]) ---
+GP.werkzeug('bemassen');
+GP.tippe(GP.bezugsPunkt(idA, 'x', 'min'));
+GP.tippe(GP.bezugsPunkt(idA, 'x', 'max'));
+ok('zwei Stirnkanten derselben Wand sind ein Laengenmass', $('gp-bem-wert').value === '2000');
+$('gp-bem-wert').value = '1300';
+$('gp-bem-setzen').dispatch('click');
+ok('[K-11] ein krummes Laengenmass wird abgewiesen und nennt die Nachbarmasse',
+  /1250 mm oder 1375 mm/.test($('gp-msg').textContent)
+  && GP.bemassungen().length === 1 && lageVon(idA).laenge_grid === 16);
+$('gp-bem-wert').value = '1000';
+$('gp-bem-setzen').dispatch('click');
+await warte();
+ok('[K-11] ein gueltiges Laengenmass treibt laenge_grid …',
+  GP.bemassungen().length === 2 && lageVon(idA).laenge_grid === 8);
+ok('… laesst den Anker stehen (die min-Stirnkante bleibt)', lageVon(idA).start_mm.x === 0);
+ok('[L-3] das Wandelement bleibt unberuehrt, die Abweichung wird gemeldet',
+  store.holeElement(idA).wandelement.length_mm === 2000
+  && /Längenabweichung/.test($('gp-status').innerHTML));
+ok('[K-11] die Laenge gilt nicht als geloest — „bestimmt" meint nur die Position',
+  GP.loesen().bestimmt[idA].x === false);
+GP.werkzeug('auswahl');
+GP.tippe(mitteVon(idA));
+const griffMax = GP.griffe().find(g => g.ende === 'max');
+ok('die bemasste Wand ist anklickbar und traegt ihre drei Griffe',
+  GP.zustand.aktiv === idA && GP.griffe().length === 3 && !!griffMax);
+GP.ziehe(griffMax, { x: griffMax.x + 500, y: griffMax.y });
+await warte();
+ok('[K-11] am Endgriff wird die bemasste Laenge nicht ueberschrieben, das Mass wird genannt',
+  lageVon(idA).laenge_grid === 8 && /Längenmaß/.test($('gp-msg').textContent));
+
+// --- 14) Widerspruch wird benannt, nie aufgeloest ([K-6]/[K-8]) -----------
+GP.werkzeug('bemassen');
+GP.tippe(GP.bezugsPunkt(idA, 'y', 'max'));
+GP.tippe(GP.bezugsPunkt(idB, 'y', 'max'));
+$('gp-bem-wert').value = '3000';                     // muesste 2500 sein
+$('gp-bem-setzen').dispatch('click');
+await warte();
+const streit = GP.loesen().widersprueche;
+ok('[K-6] das widerspruechliche Mass wird GESPEICHERT und gemeldet',
+  GP.bemassungen().length === 3 && streit.length === 1 && streit[0].differenz_mm === 500);
+ok('[K-6] gemeldet werden beide Masse und die Differenz in mm',
+  /500 mm/.test(streit[0].meldung) && !!streit[0].konflikt_mit
+  && /Widerspruch/.test($('gp-status').innerHTML) && /500 mm/.test($('gp-status').innerHTML));
+ok('[K-6] die Positionen behalten den letzten widerspruchsfreien Stand',
+  GP.loesen().positionen[idB].y - GP.loesen().positionen[idA].y === 2500);
+ok('[K-8] beide beteiligten Waende sind rot', GP.svg.includes(CON.FARBEN.fehler));
+const streitId = GP.bemassungen()[2].id;
+GP.werkzeug('auswahl');
+GP.tippe(GP.bemPunkt(streitId));
+ok('ein vorhandenes Mass ist anklickbar und zeigt seinen Wert zum Aendern',
+  GP.zustand.bemAktiv === streitId && $('gp-bem-wert').value === '3000');
+$('gp-bem-weg').dispatch('click');
+await warte();
+ok('[K-6] geloescht wird nur auf Ansage des Anwenders — danach ist der Widerspruch weg',
+  GP.bemassungen().length === 2 && GP.loesen().widersprueche.length === 0);
+
+// --- 15) Redundanz ist ein Hinweis, kein Fehler ([K-7]) -------------------
+GP.werkzeug('bemassen');
+GP.tippe(GP.bezugsPunkt(idA, 'y', 'min'));
+GP.tippe(GP.bezugsPunkt(idB, 'y', 'min'));
+$('gp-bem-wert').value = '2500';
+$('gp-bem-setzen').dispatch('click');
+await warte();
+ok('[K-7] ein widerspruchsfrei wiederholtes Mass bleibt wirksam und wird als redundant gemeldet',
+  GP.bemassungen().length === 3 && GP.loesen().redundanzen.length === 1
+  && GP.loesen().widersprueche.length === 0
+  && /redundant/.test($('gp-status').innerHTML));
+
+// --- 16) Fixieren (F) gegen den EINZIGEN Geschossursprung ([K-4]) ---------
+GP.werkzeug('fixieren');
+// Die Mittellinie liegt 62,5 mm neben der Laengskante und ist damit in JEDEM Lauf krumm.
+GP.tippe(GP.bezugsPunkt(idA, 'y', 'mitte'));
+ok('[K-12] ein nicht ganzzahliger Abstand zum Ursprung wird benannt abgewiesen, nicht gerundet',
+  /nicht ganzzahlig/.test($('gp-msg').textContent) && GP.bemassungen().length === 3);
+// Erwartet wird der IST-Abstand aus dem Loeser, nicht eine feste Zahl: A haengt ueber
+// das Mass aus Abschnitt 12 in einer freien Gruppe, deren Anker die lexikographisch
+// kleinste Wandkennung ist ([K-5]) — und die Kennungen sind Zufalls-UUIDs. Genau
+// diesen Ist-Abstand sagt „Fixieren" zu (ganzzahlig, [K-12]).
+const yMinIst = CON.bezugsWert(lageVon(idA), 'y', 'min', GP.loesen().positionen[idA]);
+GP.tippe(GP.bezugsPunkt(idA, 'y', 'min'));
+await warte();
+const fix1 = GP.bemassungen().find(b => b.von === null);
+ok('[K-4] Fixieren speichert eine ganz normale Bemassung mit von:null — keine zweite Struktur',
+  !!fix1 && fix1.von === null && fix1.bis.wand === idA && fix1.bis.bezug === 'min'
+  && fix1.achse === 'y' && Number.isInteger(yMinIst) && fix1.mass_mm === yMinIst);
+ok('[K-4] das fixierte Mass haelt die Wand genau dort, wo sie stand',
+  GP.loesen().positionen[idA].y === yMinIst + CON.HALB_BREITE_MM);
+ok('[K-4] fixiert wird GENAU die Achse des Bezugs — die andere bleibt frei',
+  GP.loesen().bestimmt[idA].y === true && GP.loesen().bestimmt[idA].x === false);
+ok('[K-4] ueber die Kette gilt auch die zweite Wand in dieser Achse als bestimmt',
+  GP.loesen().bestimmt[idB].y === true);
+ok('die Oberflaeche sagt, dass fuer die andere Achse ein zweites Mal zu fixieren ist',
+  /zweites Mal fixieren/.test($('wz-hinweis').innerHTML));
+GP.werkzeug('fixieren');
+GP.tippe(GP.bezugsPunkt(idA, 'x', 'min'));
+GP.tippe(GP.bezugsPunkt(idB, 'x', 'min'));
+await warte();
+ok('nach dem Fixieren beider Achsen sind beide Waende vollstaendig bestimmt ([K-8])',
+  GP.loesen().offen.length === 0);
+GP.werkzeug('auswahl');
+GP.tippe({ x: 40000, y: 40000 });
+ok('[K-8] vollstaendig bestimmte Waende sind schwarz, keine mehr hellblau',
+  GP.svg.includes(CON.FARBEN.bestimmt) && !GP.svg.includes(CON.FARBEN.frei));
+const alleLagenVorZug = JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage));
+const undoVorZug = GP.undoStand.undo;
+ok('[K-9] eine bestimmte Wand laesst sich nicht mehr ziehen',
+  (() => { const vorher = JSON.stringify(lageVon(idA));
+    const m = mitteVon(idA);
+    GP.tippe(m); GP.ziehe(m, { x: m.x + 1000, y: m.y + 1000 });
+    return GP.zustand.aktiv === idA && JSON.stringify(lageVon(idA)) === vorher
+      && /bestimmt/.test($('gp-msg').textContent); })());
+ok('ein gesperrter Zug schreibt GAR NICHTS — auch nicht die geloeste Position anderer Waende',
+  JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage)) === alleLagenVorZug
+  && GP.undoStand.undo === undoVorZug);
+
+// --- 17) Undo/Redo der Bemassungen; Grenze des Stapels --------------------
+const masseVorher = GP.bemassungen().length;
+GP.undo();
+await warte();
+ok('Rueckgaengig nimmt auch eine Bemassung zurueck',
+  GP.bemassungen().length === masseVorher - 1);
+GP.redo();
+await warte();
+ok('Wiederholen setzt sie wieder ein', GP.bemassungen().length === masseVorher);
+GP.undo();
+await warte();
+ok('nach dem Rueckgaengigmachen steht ein Wiederholen bereit', GP.undoStand.redo >= 1);
+GP.werkzeug('fixieren');
+GP.tippe(GP.bezugsPunkt(idB, 'x', 'mitte'));         // neue Aenderung
+await warte();
+ok('eine neue Aenderung verwirft den Wiederholen-Stapel', GP.undoStand.redo === 0);
+
+// Planbild, Kalibrierung, Massstab und Versatz gehoeren NICHT in den Stapel ([L-8]/[L-9]).
+await PLAN.speicherePlan(gs2, new Blob(['bild2']), { name: 'eg2.png', typ: 'image/png',
+  groesse: 900, breite_px: 800, hoehe_px: 600 });
+store.setzeGeschossPlan(gs2, { datei: 'eg2.png', typ: 'image/png', breite_px: 800, hoehe_px: 600,
+  mm_je_pixel: 5, versatz_x_mm: 250, versatz_y_mm: 0 });
+await warte();
+// Eine Layout-Aenderung, die GARANTIERT bucht: beide Waende sind an dieser Stelle in
+// x und y bestimmt, ein Zug bewegt also nichts und wuerde still nichts eintragen —
+// dann pruefte der Undo darunter etwas anderes als gemeint. Eine neu gezeichnete Wand
+// bucht dagegen immer (und nimmt zugleich den atomaren Pfad mit).
+const undoVorPlan = GP.undoStand.undo;
+GP.werkzeug('wand');
+GP.zeichne({ x: 6000, y: 6000 }, { x: 7000, y: 6000 });
+await warte();
+ok('die Vorbereitung ist wirklich eine gebuchte Layout-Aenderung',
+  GP.undoStand.undo === undoVorPlan + 1);
+store.setzeGeschossPlanAnsicht(gs2, { versatz_x_mm: 875 });
+await warte();
+GP.undo();
+await warte();
+ok('[L-9] Rueckgaengig laesst Massstab und Planversatz unberuehrt — sie sind Bedienung, keine Daten',
+  store.geschossPlan(gs2).mm_je_pixel === 5 && store.geschossPlan(gs2).versatz_x_mm === 875);
+ok('[L-8] das Planbild in der eigenen Datenbank fasst der Stapel gar nicht an',
+  !!(await PLAN.holePlan(gs2)) && store.geschossPlan(gs2).datei === 'eg2.png');
+
+// --- 18) Determinismus mit Bemassungen ([K-5]) ---------------------------
+const c = JSON.stringify(GP.loesen()), d = JSON.stringify(GP.loesen());
+ok('[K-5] auch mit Bemassungen gilt: gleiche Eingabe ⇒ bit-genau gleiches Ergebnis', c === d);
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }

@@ -1,9 +1,9 @@
 # Plan: Layout-Editor mit Constraints (Issue #26, Etappen C3.2 / C4)
 
-> Stand: 2026-08-08 · **Etappen C3.2 und C4a umgesetzt** (Regelwerk, Löser, Datenmodell, Migration
-> — s. §7; Editor-Seite mit Zeichnen/Ziehen/Plan — s. §8; am 2026-08-08 nachgeschärft: Zeichnen ab
-> dem Drücken, Wandkanten auf dem Raster, aktiv ≠ ausgewählt, Größengriffe, 90° drehen);
-> Bemaßen und Fixieren folgen in C4b ·
+> Stand: 2026-08-08 · **Etappen C3.2, C4a und C4b umgesetzt** (Regelwerk, Löser, Datenmodell,
+> Migration — s. §7; Editor-Seite mit Zeichnen/Ziehen/Plan — s. §8; am 2026-08-08 nachgeschärft:
+> Zeichnen ab dem Drücken, Wandkanten auf dem Raster, aktiv ≠ ausgewählt, Größengriffe, 90° drehen;
+> Bemaßen, Fixieren, Widerspruch/Redundanz und Undo/Redo — s. §9) · offen bleiben **C4c** und **C5** ·
 > löst den bisherigen §11 („Feinschliff Layout-Editor") in
 > [`PLAN-Projektplaner.md`](PLAN-Projektplaner.md) ab.
 
@@ -193,7 +193,7 @@ Nach Projektregel gilt: erst Handbuch, dann Implementierung, dann Regressionstes
 | **[K-1 · MUSS]** | **Getrennte Achsen.** Bemaßungen wirken je Achse (x/y) getrennt und unabhängig. Es gibt keine Regel, die beide Achsen koppelt |
 | **[K-2 · MUSS]** | **Drei Bezüge je Achse:** `min`-Kante, `mitte` (Mittellinie), `max`-Kante — für Längs- **und** Stirnkanten identisch benannt. Weitere Bezugspunkte gibt es nicht |
 | **[K-3 · MUSS]** | **Bemaßungen sind treibend.** Ein Maß ohne Zahlenwert existiert nicht; es gibt kein rein messendes Maß, das nachträglich zum treibenden wird |
-| **[K-4 · MUSS]** | **Ein Grundbezug.** Einziger Grundbezug ist der Geschossursprung (`bis: null`). Ohne Kette dorthin ist keine Wand bestimmt — es wird kein Ersatzbezug erfunden, insbesondere nicht „die erste Wand" |
+| **[K-4 · MUSS]** | **Ein Grundbezug.** Einziger Grundbezug ist der Geschossursprung, und zwar als **Startbezug** (`von: null`) — als Ziel gelesen kehrte sich das Vorzeichen um (s. §2.3/§7). Ohne Kette dorthin ist keine Wand bestimmt — es wird kein Ersatzbezug erfunden, insbesondere nicht „die erste Wand" |
 | **[K-5 · MUSS]** | **Deterministische Lösung.** Lineares Differenzsystem, exakte Arithmetik in 0,5-mm-Schritten, keine Iteration, keine Toleranz, keine Startwertabhängigkeit. Gleiche Eingabe ⇒ bit-genau gleiche Ausgabe |
 | **[K-6 · MUSS]** | **Widerspruch wird benannt, nie aufgelöst.** Ein widersprüchliches Maß wird gespeichert und rot markiert; genannt werden beide beteiligten Maße und die Differenz in mm. Die Positionen behalten den letzten widerspruchsfreien Stand. Kein Gewichten, kein Mitteln, kein automatisches Löschen |
 | **[K-7]** | **Redundanz ist ein Hinweis, kein Fehler.** Ein Maß, das widerspruchsfrei etwas bereits Bestimmtes wiederholt, wird als redundant gemeldet und bleibt wirksam |
@@ -232,7 +232,7 @@ Nach Projektregel gilt: erst Handbuch, dann Implementierung, dann Regressionstes
 | **Esc** | Auswahl/Ziehen (Standard) | Wand wählen, frei in x/y ziehen; die starre Gruppe wandert mit; bestimmte Achsen sind gesperrt ([K-9]) |
 | **W** | Wand zeichnen | Startpunkt → Richtung → Länge; orthogonal ([L-2]), Länge rastet auf 125 mm |
 | **D** | Bemaßen | zwei parallele Bezüge anklicken → Maß erscheint → Zahl in mm eintippen |
-| **F** | Fixieren | Wand gegen den Geschossursprung festsetzen (= Bemaßung mit `bis: null`) |
+| **F** | Fixieren | Wand gegen den Geschossursprung festsetzen (= Bemaßung mit `von: null`), **je Achse einzeln** |
 
 Dazu **Undo/Redo** (der Zustand ist ein JSON-Objekt, also billig — ohne fühlt sich ein Skizzenmodus
 kaputt an), Zoom auf den Cursor, Pan mit Leertaste/mittlerer Maustaste. **Pan ≠ Versatz:** Pan
@@ -273,7 +273,7 @@ Projektieren-Werkzeug aus dem Plan.
 |---|---|---|
 | **C3.2 ✅** | Regelwerk (Kap. 16.10, [L-1] neu gefasst), `sembla-constraints.js`, Datenmodell + Migration `MAPPE_VERSION` 1→2 / `SCHEMA_VERSION` 5→6, Tests — **kein UI** | **erledigt** (s. §7) |
 | **C4a ✅** | Neue Seite `docs/geschossplan.html`: Plan-Hintergrund, Zoom/Pan, Plan-Lock, Kalibrier-Feinschliff (§4.4), Wand zeichnen, Auswahl + Ziehen | **erledigt** (s. §8) |
-| **C4b** | Bemaßen, Fixieren, Farbcodierung, Widerspruchsmeldung, Undo/Redo | Ein Geschoss ist vollständig bemaßbar; alle Wände werden schwarz |
+| **C4b ✅** | Bemaßen, Fixieren, Farbcodierung, Widerspruchsmeldung, Undo/Redo | **erledigt** (s. §9) |
 | **C4c** | Schwebende Bauteilliste mit Kurzbeschreibung; Referenzgeschoss mit einstellbarer Deckkraft | Auswahl in beiden Richtungen synchron; das Geschoss darunter ist blass sichtbar |
 | **C5** | Projektmappe Export/Import als ZIP inkl. Planbild und Bemaßungen | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
 
@@ -430,3 +430,77 @@ Statuszeile unten. Die Seite folgt Architektur-Regel 2 (klassisches App-Skript +
 
 **Offen (bewusst nicht in C4a):** Bemaßen, Fixieren, Widerspruchsanzeige und Undo/Redo (C4b),
 schwebende Bauteilliste und Referenzgeschoss (C4c), Mappen-ZIP inklusive Bemaßungen (C5).
+
+---
+
+## 9. Umsetzungsstand C4b (2026-08-08)
+
+**Kein neues Datenmodell, keine neue Formatversion, keine neue Shared-Datei.** C4b ist reine
+Bedienung über dem, was C3.2 schon konnte: `bemassungen` liegt seit `MAPPE_VERSION` 2 im Geschoss,
+und `sembla-constraints.js` liefert Löser, Widerspruch, Redundanz, Farben und Kollision unverändert.
+Gebaut wurde ausschließlich in `docs/geschossplan.html`; geschrieben wird über die vorhandenen reinen
+Operationen `setzeBemassung`/`loescheBemassung`/`setzeLage` in einem `store.aendereMappe`.
+`MAPPE_VERSION`, `SCHEMA_VERSION`, `PROJEKT_VERSION` und `KATALOG_VERSION` bleiben **unberührt**, und
+das Regelwerk brauchte **keine neue Regel** — [K-1]…[K-13] decken den Ausbau vollständig ab.
+
+- **Bemaßen (D).** Über der Zeichnung liegen die **sechs** kanonischen Bezüge je Wand (drei je
+  Achse, [K-2]) als Geraden senkrecht zu ihrer Achse; sie leuchten beim Überfahren auf (§4.3),
+  Mittellinien gestrichelt, Kanten durchgezogen. **Die Achse folgt dem Bezug** — sie ist keine
+  zusätzliche Wahl: mit dem ersten Klick steht sie fest, und danach werden **nur noch parallele**
+  Bezüge angeboten, womit [K-1] konstruktiv erfüllt ist statt nachträglich geprüft. Der zweite Klick
+  schlägt den aktuellen Abstand als Zahl vor — ein **Vorschlag im Feld**, treibend ist erst der
+  gesetzte Wert ([K-3]). Ist der Ist-Abstand krumm, bleibt das Feld leer und der Grund steht da;
+  gerundet wird nichts. Die beiden Bezüge sind ein **ungeordnetes Paar**, die Richtung wird deshalb
+  so gewählt, dass das Maß positiv läuft ([K-3] verbietet negative Maße).
+- **Maße sind sichtbare, anklickbare Objekte** (Maßlinie, Hilfslinien, Wert in mm, je Maß gestaffelt
+  angeordnet): Wert ändern oder löschen. Gelöscht wird nur auf Ansage — nie vom Werkzeug ([K-6]).
+- **Fixieren (F) ist minimal und modelltreu achsweise.** Ein Klick auf einen Bezug speichert seinen
+  Abstand zum **einzigen** Geschossursprung als ganz normale Bemaßung `von: null` ([K-4]) — es gibt
+  **keine zweite Fixierungsstruktur** und kein eigenes Feld. Festgesetzt wird **genau die Achse
+  dieses Bezugs**; für die andere ist ein zweites Mal zu fixieren, und es wird **kein zweiter Bezug
+  erfunden**. Das sagt die Oberfläche ausdrücklich. Ein **nicht ganzzahliger** Ist-Abstand wird
+  benannt abgewiesen ([K-12]) — eine Längskante liegt 62,5 mm neben der Mittellinie, das trifft also
+  regelmäßig zu, und der Hinweis nennt die Mittellinie als passenden Bezug. Ein Bezug **vor** dem
+  Ursprung wird ebenfalls abgewiesen statt ins Negative gedreht ([K-3]/[K-4]).
+- **Längenmaß.** Zwei Stirnkanten derselben Wand treiben `laenge_grid` (§2.4). Ein krummer Wert wird
+  abgewiesen und nennt **beide** Nachbarmaße ([K-11]); ein gültiger Wert schreibt Maß **und** Länge
+  in **einem** `aendereMappe`, damit die beiden nie auseinanderlaufen. Der Anker bleibt stehen, nur
+  die max-Stirnkante wandert. Das **Wandelement bleibt unberührt**, die Abweichung wird gemeldet
+  ([L-3]); der Endgriff aus C4a weist das Ziehen weiterhin ab und nennt das Maß.
+- **Widerspruch und Redundanz sind jetzt sichtbar.** Ein widersprüchliches Maß wird **gespeichert**,
+  rot gezeichnet und mit **beiden** Maßen und der Differenz in mm in der Statuszeile benannt; die
+  Positionen behalten den letzten widerspruchsfreien Stand ([K-6]). Ein redundantes Maß bleibt
+  wirksam und wird als Hinweis gemeldet ([K-7]).
+- **Kein Rückschreiben gelöster Positionen.** `lage.start_mm` bleibt der letzte gültige
+  **gespeicherte** Stand; wo Maße bestimmen, ist beim Lesen und Zeichnen das deterministische
+  Lösungsergebnis maßgebend ([K-5]). Damit das trägt, schreibt das Ziehen jetzt **nur noch die
+  Wände, die der Zug wirklich bewegt** (`verschiebe().bewegt`) — vorher hätte jeder Zug nebenbei die
+  gelösten Positionen **aller** Wände in die Mappe zurückgeschrieben und damit eine zweite Wahrheit
+  erzeugt. Ein vollständig gesperrter Zug schreibt jetzt gar nichts. Ein späterer Export muss
+  denselben Weg gehen und den Löser benutzen.
+- **Undo/Redo** (Knöpfe, **Strg+Z** / **Strg+Umschalt+Z** bzw. **Strg+Y**). Gegenstand des Stapels
+  ist **ausschließlich die Projektmappe** — also genau das, was der Editor schreibt: Lagen und
+  Bemaßungen ([K-10]). **Nicht** im Stapel: Planbild und Plandatenbank ([L-8]), Maßstab, Kalibrierung
+  und Versatz ([L-9]), Blick, Auswahl, Werkzeug und Plan-Lock. Beim Zurücksetzen wird die
+  **aktuelle** Planansicht auf den alten Stand aufgepfropft, damit ein Undo keine Kalibrierung
+  zurückdreht. Eine im Editor **neu gezeichnete** Wand ist ein **atomarer** Schritt: Rückgängig
+  entfernt Geschosseintrag **und** genau das in diesem Schritt erzeugte Wandelement, Wiederholen legt
+  beides unter derselben Kennung wieder an (Zeitstempel ausgenommen). Das **Verorten** einer
+  bestehenden Wand ändert nur die Mappe — fremde Wandelemente werden nie angefasst. Eine neue
+  Änderung verwirft den Wiederholen-Stapel; ein Geschosswechsel verwirft beide.
+- **Nicht neu eingeführt** wurde ein Löschweg für Wände oder Maße außerhalb der schon vorhandenen
+  Bedienung. Maße, deren Wand unverortet wurde, bleiben stehen und werden in der Statuszeile als
+  **unwirksam gemeldet** — nicht still bereinigt ([L-4]).
+- **Tests:** `smoke_geschossplan.mjs` auf **135 Prüfungen** erweitert (Bezüge und Achsenbindung,
+  Maß setzen/ändern/löschen, Längenmaß mit Nachbarmaßen und gesperrtem Griff, Widerspruch mit
+  Differenz, Redundanz, Fixieren inkl. beider Abweisungen, „alle Wände schwarz", Undo/Redo samt
+  Atomarität — Wandelement und Eingaben kommen bit-genau zurück —, unberührter Kalibrierung und
+  unberührtem Planbild, Determinismus mit Bemaßungen). Der Test klickt Wände dabei an ihrer
+  **gelösten** Position und liest Erwartungswerte aus dem Löser statt aus festen Zahlen: eine freie
+  Gruppe verankert [K-5] an der lexikographisch kleinsten Wandkennung, und die Kennungen sind
+  Zufalls-UUIDs — feste Koordinaten träfen die Wand nur in etwa der Hälfte der Läufe;
+  `test-constraints.mjs` auf **118 Prüfungen** (die Zusagen, auf die die Bedienung aufsetzt, und das
+  Anwenden des Längenmaßes über die reinen Mappen-Operationen). `npm run test:all` ist grün.
+
+**Offen (bewusst nicht in C4b):** schwebende Bauteilliste und Referenzgeschoss (C4c), Mappen-ZIP
+inklusive Bemaßungen (C5). Issue #26 bleibt als Umbrella offen.

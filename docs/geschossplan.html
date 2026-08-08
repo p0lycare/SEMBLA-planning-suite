@@ -82,10 +82,35 @@
       <button id="wz-auswahl" data-wz="auswahl"><span class="k">Esc</span> Auswählen &amp; ziehen</button>
       <button id="wz-wand" data-wz="wand"><span class="k">W</span> Wand zeichnen</button>
       <button id="wz-plan" data-wz="plan"><span class="k">P</span> Plan verschieben</button>
-      <button id="wz-bemassen" disabled title="Kommt in Etappe C4b (Bemaßen, Fixieren, Farben, Undo)."><span class="k">D</span> Bemaßen <span class="k">· C4b</span></button>
-      <button id="wz-fixieren" disabled title="Kommt in Etappe C4b (Bemaßen, Fixieren, Farben, Undo)."><span class="k">F</span> Fixieren <span class="k">· C4b</span></button>
+      <button id="wz-bemassen" data-wz="bemassen" title="Zwei parallele Bezüge anklicken und das Maß in mm eintragen."><span class="k">D</span> Bemaßen</button>
+      <button id="wz-fixieren" data-wz="fixieren" title="Einen Bezug anklicken — er wird gegen den Geschossursprung festgesetzt (je Achse einzeln)."><span class="k">F</span> Fixieren</button>
     </div>
     <div class="hint" id="wz-hinweis">–</div>
+
+    <h3>Bemaßung</h3>
+    <div class="hint" id="gp-bem-info">–</div>
+    <div class="row">
+      <div class="field"><label for="gp-bem-wert">Maß (mm, ganzzahlig)</label>
+        <input id="gp-bem-wert" class="s" type="number" step="1"></div>
+      <button class="btn-p" id="gp-bem-setzen" disabled>Maß setzen</button>
+    </div>
+    <div class="row">
+      <button class="btn-d" id="gp-bem-weg" disabled>Maß löschen</button>
+      <button class="btn-s" id="gp-bem-abbrechen" disabled>Abbrechen</button>
+    </div>
+    <div class="hint">Jeder Bezug gehört genau <b>einer</b> Achse ([K-2]) — mit dem ersten Klick steht
+      sie fest, danach sind nur noch <b>parallele</b> Bezüge wählbar ([K-1]). Ein Maß hat immer einen
+      Wert ([K-3]) und ist <b>ganzzahlig in Millimetern</b> ([K-12]). <b>Fixieren</b> setzt genau eine
+      Achse gegen den Geschossursprung fest — für beide Achsen zweimal anwenden ([K-4]). Ein
+      <b>Längenmaß</b> zwischen den Stirnkanten derselben Wand treibt die Länge und muss ein
+      Vielfaches von 125&nbsp;mm sein ([K-11]); das Wandelement bleibt unberührt ([L-3]).</div>
+
+    <h3>Rückgängig</h3>
+    <div class="row">
+      <button class="btn-s" id="gp-undo" disabled title="Strg+Z">↶ Rückgängig</button>
+      <button class="btn-s" id="gp-redo" disabled title="Strg+Umschalt+Z">↷ Wiederholen</button>
+    </div>
+    <div class="hint" id="gp-undo-info">–</div>
 
     <h3>Neue Wand</h3>
     <div class="field voll"><label for="gp-ziel">Gezeichnet wird</label>
@@ -212,7 +237,7 @@ let store, MAPPE, CON, PLAN, buildWall;
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
-  werkzeug: 'auswahl',        // 'auswahl' | 'wand' | 'plan'
+  werkzeug: 'auswahl',        // 'auswahl' | 'wand' | 'plan' | 'bemassen' | 'fixieren'
   // AKTIV und AUSGEWÄHLT sind zwei verschiedene Dinge: ausgewählt sein können
   // mehrere Wände (Mehrfachauswahl mit Umschalt/Strg), AKTIV — also in Bearbeitung,
   // mit Griffen und grün nach [K-8] — ist immer genau EINE davon.
@@ -230,12 +255,26 @@ const GP = {
   bild: null, bildUrl: null, bildFuer: undefined,
   hoeheFuer: undefined,       // Geschoss, dessen Höhenvorgabe im Feld steht ([L-5])
   kal: { punkte: [], zoom: 1 },
+  // Bemaßen (D) und Fixieren (F): `bem` hält die LAUFENDE Eingabe, `bemAktiv` das
+  // angeklickte, schon gespeicherte Maß. Beides ist Bedienung — gespeichert wird
+  // erst mit „Maß setzen“ ([K-3]).
+  bem: null,                  // { achse, von:{wand,bezug}, bis:{wand,bezug}|null }
+  bemHover: null,             // Bezug unter dem Zeiger (nur Rückmeldung, §4.3)
+  bemAktiv: null,             // Kennung eines gewählten, vorhandenen Maßes
+  undo: [], redo: [],         // Rückgängig-Stapel (nur Projektmappe, s. `buchen`)
+  undoFuer: undefined,        // Geschoss, zu dem die Stapel gehören
 };
+
+/** Obergrenze des Rückgängig-Stapels — ein Skizzenzustand ist billig, aber nicht gratis. */
+const UNDO_MAX = 200;
 
 /** Blickfeld: linke obere Ecke in mm und der Maßstab (mm je Schirmpixel). */
 const V = { x0: -1000, y0: -1000, mm: 12 };
 
 const MM_JE_PX_MIN = 0.5, MM_JE_PX_MAX = 400;
+
+/** Die Werkzeuge der Leiste (§4.2). */
+const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen', 'fixieren'];
 
 function zeige(text, ok){ const m = $('gp-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
@@ -258,6 +297,103 @@ function position(id, erg){
   if (p) return p;
   const l = CON.normLage(wand(id)?.lage);
   return l ? l.start_mm : null;
+}
+
+// ---------------------------------------------------------------------------
+//  Rückgängig / Wiederholen
+// ---------------------------------------------------------------------------
+// Gegenstand des Stapels ist AUSSCHLIESSLICH die Projektmappe — also genau das,
+// was der Editor überhaupt schreibt ([K-10]): Lagen und Bemaßungen. Ausdrücklich
+// NICHT dazu gehören Planbild und Plandatenbank ([L-8]), Maßstab und Versatz
+// ([L-9]), Blick (Zoom/Pan), Auswahl, Werkzeug und Plan-Lock — das ist Bedienung
+// und wäre als Undo-Gegenstand eine zweite Datenwahrheit.
+//
+// Einzige Ausnahme in die andere Richtung: eine in DIESEM Editor neu gezeichnete
+// Wand legt zusätzlich ein Wandelement an (außerhalb der Mappe). Der Schritt wird
+// deshalb ATOMAR behandelt — Rückgängig nimmt Geschosseintrag UND genau dieses
+// Wandelement zurück, Wiederholen legt beides wieder an. Fremde Wandelemente
+// werden nie angefasst.
+
+/** Der rückgängig-fähige Stand: die aktive Projektmappe als Text. */
+function mappenStand(){
+  const m = store.holeMappe();
+  return m ? JSON.stringify(m) : null;
+}
+
+/** Die aktuellen Planbeschreibungen je Geschoss — sie bleiben vom Undo unberührt. */
+function planBloecke(){
+  const m = store.holeMappe();
+  const map = {};
+  if (m) for (const e of MAPPE.alleGeschosse(m)) map[e.geschoss.id] = e.geschoss.plan;
+  return map;
+}
+
+/**
+ * Einen Mappenstand wieder einsetzen. Die Planansicht (Bild, Maßstab, Versatz)
+ * wird dabei aus dem AKTUELLEN Stand übernommen: sie ist Bedienung und gehört
+ * nicht in den Rückgängig-Stapel ([L-8]/[L-9]).
+ */
+function wendeStandAn(json){
+  if (!json) return;
+  const plaene = planBloecke();
+  const m = JSON.parse(json);
+  for (const g of (m.gebaeude || [])) {
+    for (const gs of (g.geschosse || [])) {
+      if (Object.prototype.hasOwnProperty.call(plaene, gs.id)) gs.plan = plaene[gs.id];
+    }
+  }
+  store.setzeMappe(m);
+}
+
+/**
+ * Einen abgeschlossenen Schritt buchen. `vor` ist der Stand VOR der Änderung,
+ * `angelegt` sind die Wandelemente, die dieser Schritt selbst erzeugt hat.
+ * Eine neue Änderung verwirft den Wiederholen-Stapel.
+ */
+function buchen(vor, angelegt){
+  const ids = angelegt || [];
+  GP.undo.push({
+    vor, nach: mappenStand(), angelegt: ids,
+    elemente: ids.map(id => store.holeElement(id)).filter(Boolean)
+      .map(e => ({ id: e.id, name: e.name, wandelement: e.wandelement, eingaben: e.eingaben })),
+  });
+  if (GP.undo.length > UNDO_MAX) GP.undo.shift();
+  GP.redo = [];
+}
+
+/** Stapel verwerfen, sobald ein anderes Geschoss bearbeitet wird. */
+function undoPruefen(){
+  const gs = geschoss();
+  const id = gs ? gs.id : null;
+  if (GP.undoFuer === id) return;
+  GP.undoFuer = id;
+  GP.undo = []; GP.redo = [];
+}
+
+function undo(){
+  const e = GP.undo.pop();
+  if (!e) { zeige('Nichts rückgängig zu machen.', true); return; }
+  // Erst das in diesem Schritt angelegte Wandelement, dann der Mappenstand davor.
+  for (const id of e.angelegt) { try { store.loesche(id); } catch { /* schon weg */ } }
+  try { wendeStandAn(e.vor); }
+  catch (err) { GP.undo.push(e); zeige('Nicht rückgängig gemacht: ' + fehlerText(err), false); return; }
+  GP.redo.push(e);
+  zeige('Rückgängig gemacht'
+    + (e.angelegt.length ? ` — samt ${e.angelegt.length} in diesem Schritt angelegten Wandelement(en).` : '.')
+    + ` (${GP.undo.length} weitere Schritte)`, true);
+  render();
+}
+
+function redo(){
+  const e = GP.redo.pop();
+  if (!e) { zeige('Nichts zu wiederholen.', true); return; }
+  for (const el of e.elemente) store.speichere(el.name, el.wandelement, el.id, el.eingaben);
+  try { wendeStandAn(e.nach); }
+  catch (err) { GP.redo.push(e); zeige('Nicht wiederholt: ' + fehlerText(err), false); return; }
+  GP.undo.push(e);
+  zeige('Wiederholt'
+    + (e.elemente.length ? ` — samt ${e.elemente.length} Wandelement(en).` : '.'), true);
+  render();
 }
 
 // ---------------------------------------------------------------------------
@@ -507,6 +643,179 @@ function wandSvg(w, erg, koll){
   return teile.join('');
 }
 
+// ---------------------------------------------------------------------------
+//  Bezüge ([K-2]) — drei je Wand und Achse, mehr gibt es nicht
+// ---------------------------------------------------------------------------
+/**
+ * Ein Bezug ist eine GERADE senkrecht zu seiner Achse, nicht ein Punkt: für die
+ * Achse x liegt er bei x = `wert` und reicht über die Wandtiefe, für y umgekehrt.
+ * Damit gehört jeder anklickbare Bezug eindeutig zu genau einer Achse ([K-1]/[K-2])
+ * — die Achse folgt dem Bezug und ist keine zusätzliche Wahl.
+ * @returns {{wand:string, achse:'x'|'y', bezug:'min'|'mitte'|'max', wert:number, a:number, b:number}[]}
+ */
+function bezugsLinien(w, erg){
+  const l = CON.normLage(w.lage);
+  const pos = position(w.id, erg);
+  const r = CON.wandRechteck(w.lage, pos);
+  if (!l || !r) return [];
+  const out = [];
+  for (const achse of CON.ACHSEN) {
+    for (const bezug of CON.BEZUEGE) {
+      const wert = CON.bezugsWert(w.lage, achse, bezug, pos);
+      if (wert == null) continue;
+      out.push(achse === 'x'
+        ? { wand: w.id, achse, bezug, wert, a: r.y_min, b: r.y_max }
+        : { wand: w.id, achse, bezug, wert, a: r.x_min, b: r.x_max });
+    }
+  }
+  return out;
+}
+
+/** Alle Bezüge des Geschosses — Reihenfolge Wand × Achse × Bezug, also deterministisch. */
+function alleBezuege(erg){
+  const out = [];
+  for (const w of waende()) out.push(...bezugsLinien(w, erg));
+  return out;
+}
+
+/** Halber Fangradius für Bezüge und Maßlinien, in Schirmpixeln. */
+const FANG_PX = 7;
+
+/** Abstand eines Weltpunkts zu einem Bezug, oder `null` außerhalb seiner Ausdehnung. */
+function bezugAbstand(p, b, luft){
+  const laengs = b.achse === 'x' ? p.y : p.x;
+  if (laengs < b.a - luft || laengs > b.b + luft) return null;
+  return Math.abs((b.achse === 'x' ? p.x : p.y) - b.wert);
+}
+
+/**
+ * Bezug unter einem Weltpunkt. Ist die Achse schon festgelegt (zweiter Klick einer
+ * Bemaßung), kommen nur PARALLELE Bezüge in Frage — [K-1] ist damit konstruktiv
+ * erfüllt und nicht erst nachträglich geprüft.
+ */
+function bezugTreffer(p, erg, achse){
+  const luft = FANG_PX * V.mm;
+  let best = null, bd = Infinity;
+  for (const b of alleBezuege(erg)) {
+    if (achse && b.achse !== achse) continue;
+    const d = bezugAbstand(p, b, luft);
+    if (d == null || d > luft || d >= bd) continue;
+    bd = d; best = b;
+  }
+  return best;
+}
+
+function gleicherBezug(a, b){
+  return !!a && !!b && a.wand === b.wand && a.bezug === b.bezug;
+}
+
+/** Bezüge einblenden, solange bemaßt oder fixiert wird (§4.3). */
+function bezuegeSvg(erg){
+  if (GP.werkzeug !== 'bemassen' && GP.werkzeug !== 'fixieren') return '';
+  const achse = GP.bem ? GP.bem.achse : null;
+  const luft = FANG_PX * V.mm;
+  const teile = [];
+  for (const b of alleBezuege(erg)) {
+    if (achse && b.achse !== achse) continue;
+    const hover = GP.bemHover && GP.bemHover.achse === b.achse && gleicherBezug(GP.bemHover, b);
+    const gewaehlt = GP.bem && GP.bem.achse === b.achse && gleicherBezug(GP.bem.von, b);
+    const x1 = b.achse === 'x' ? b.wert : b.a - luft, x2 = b.achse === 'x' ? b.wert : b.b + luft;
+    const y1 = b.achse === 'x' ? b.a - luft : b.wert, y2 = b.achse === 'x' ? b.b + luft : b.wert;
+    // Mittellinien gestrichelt, Kanten durchgezogen (§4.3).
+    const strichel = b.bezug === 'mitte'
+      ? ` stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"` : '';
+    teile.push(`<line class="bezug${hover ? ' hover' : ''}${gewaehlt ? ' gewaehlt' : ''}"`
+      + ` data-wand="${esc(b.wand)}" data-achse="${b.achse}" data-bezug="${b.bezug}"`
+      + ` x1="${r2(x1)}" y1="${r2(y1)}" x2="${r2(x2)}" y2="${r2(y2)}"`
+      + ` stroke="${gewaehlt || hover ? CON.FARBEN.aktiv : '#2f6fb3'}"`
+      + ` stroke-opacity="${gewaehlt ? '1' : hover ? '.9' : '.45'}"`
+      + ` stroke-width="${r2(strich(gewaehlt ? 3 : hover ? 2.6 : 1.2))}"${strichel}/>`);
+  }
+  return teile.join('');
+}
+
+// ---------------------------------------------------------------------------
+//  Bemaßungen zeichnen und treffen ([K-3], [K-6], [K-7])
+// ---------------------------------------------------------------------------
+/** Abstand der Maßlinie vom Bauteil, je Maß gestaffelt, damit sich Maße nicht decken. */
+const MASS_ABSTAND_MM = 250;
+
+/** Lage eines Bemaßungs-Endpunkts: Wert auf der Achse und Mitte quer dazu. */
+function bemEndpunkt(p, achse, erg){
+  if (p == null) return { wert: 0, quer: 0 };            // Geschossursprung ([K-4])
+  const w = wand(p.wand);
+  if (!w || w.lage == null) return null;
+  const pos = position(p.wand, erg);
+  const wert = CON.bezugsWert(w.lage, achse, p.bezug, pos);
+  const r = CON.wandRechteck(w.lage, pos);
+  if (wert == null || !r) return null;
+  return { wert, quer: achse === 'x' ? (r.y_min + r.y_max) / 2 : (r.x_min + r.x_max) / 2 };
+}
+
+/** Geometrie einer Bemaßung in Weltkoordinaten. `null` = nicht darstellbar. */
+function bemGeometrie(bm, idx, erg){
+  const n = CON.normBemassung(bm);
+  if (!CON.ACHSEN.includes(n.achse) || !n.bis) return null;
+  const v = bemEndpunkt(n.von, n.achse, erg), b = bemEndpunkt(n.bis, n.achse, erg);
+  if (!v || !b) return null;
+  const versatz = (n.text_mm ? Number(n.text_mm[CON.andereAchse(n.achse)]) || 0 : 0)
+    + MASS_ABSTAND_MM * (idx + 1);
+  return { id: n.id, achse: n.achse, v1: v.wert, v2: b.wert, q1: v.quer, q2: b.quer,
+           q: Math.max(v.quer, b.quer) + versatz, mass: n.mass_mm };
+}
+
+/** Bemaßung unter einem Weltpunkt (die zuletzt gezeichnete gewinnt). */
+function bemTreffer(p, erg){
+  const luft = FANG_PX * V.mm;
+  const liste = bemassungen();
+  for (let i = liste.length - 1; i >= 0; i--) {
+    const g = bemGeometrie(liste[i], i, erg);
+    if (!g) continue;
+    const laengs = g.achse === 'x' ? p.x : p.y, quer = g.achse === 'x' ? p.y : p.x;
+    if (laengs >= Math.min(g.v1, g.v2) - luft && laengs <= Math.max(g.v1, g.v2) + luft
+      && Math.abs(quer - g.q) <= luft) return liste[i].id;
+  }
+  return null;
+}
+
+/** Ein Maß als Maßlinie mit Hilfslinien und Text. Rot bei Widerspruch ([K-6]/[K-8]). */
+function bemassungSvg(bm, idx, erg){
+  const g = bemGeometrie(bm, idx, erg);
+  if (!g) return '';
+  const streit = (erg.widersprueche || []).some(w => w.bemassung === g.id || w.konflikt_mit === g.id);
+  const doppelt = (erg.redundanzen || []).some(w => w.bemassung === g.id);
+  const gewaehlt = GP.bemAktiv === g.id;
+  const farbe = streit ? CON.FARBEN.fehler : gewaehlt ? CON.FARBEN.aktiv : '#33415c';
+  const pt = (laengs, quer) => (g.achse === 'x' ? `${r2(laengs)} ${r2(quer)}` : `${r2(quer)} ${r2(laengs)}`);
+  const tick = 5 * V.mm;
+  const d = [
+    `M${pt(g.v1, g.q1)}L${pt(g.v1, g.q + tick)}`,          // Hilfslinie am Start
+    `M${pt(g.v2, g.q2)}L${pt(g.v2, g.q + tick)}`,          // Hilfslinie am Ziel
+    `M${pt(g.v1, g.q)}L${pt(g.v2, g.q)}`,                  // Maßlinie
+  ].join('');
+  const mitte = (g.v1 + g.v2) / 2;
+  const tx = g.achse === 'x' ? mitte : g.q, ty = g.achse === 'x' ? g.q : mitte;
+  const dreh = g.achse === 'y' ? ` transform="rotate(-90 ${r2(tx)} ${r2(ty)})"` : '';
+  return `<g class="bemassung${streit ? ' streit' : ''}${doppelt ? ' redundant' : ''}`
+    + `${gewaehlt ? ' gewaehlt' : ''}" data-bemassung="${esc(g.id)}">`
+    + `<path d="${d}" fill="none" stroke="${farbe}" stroke-width="${r2(strich(gewaehlt ? 2.2 : 1.3))}"`
+    + (doppelt && !streit ? ` stroke-dasharray="${r2(strich(7))} ${r2(strich(4))}"` : '') + `/>`
+    + `<text x="${r2(tx)}" y="${r2(ty - 5 * V.mm)}" font-size="${r2(12 * V.mm)}" text-anchor="middle"`
+    + ` fill="${farbe}"${dreh}>${g.mass} mm${streit ? ' ⚠' : ''}</text></g>`;
+}
+
+/** Vorschau der laufenden Bemaßung: der schon gewählte Startbezug, noch nichts gespeichert. */
+function bemEntwurfSvg(erg){
+  if (!GP.bem || !GP.bem.von || !GP.bem.bis) return '';
+  const g = bemGeometrie({ id: '@entwurf', achse: GP.bem.achse, von: GP.bem.von, bis: GP.bem.bis,
+                           mass_mm: 0 }, bemassungen().length, erg);
+  if (!g) return '';
+  const pt = (laengs, quer) => (g.achse === 'x' ? `${r2(laengs)} ${r2(quer)}` : `${r2(quer)} ${r2(laengs)}`);
+  return `<path class="bementwurf" d="M${pt(g.v1, g.q)}L${pt(g.v2, g.q)}" fill="none"`
+    + ` stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(2))}"`
+    + ` stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"/>`;
+}
+
 /** Vorschau der Wand, die gerade gezeichnet wird (nichts davon ist gespeichert). */
 function entwurfSvg(){
   const e = GP.zeichnen;
@@ -611,6 +920,7 @@ function zugSvg(erg){
 
 function render(){
   const gs = geschoss();
+  undoPruefen();
   const buehne = $('gp-buehne');
   if (!gs) {
     buehne.innerHTML = '<div class="leer"><div>Kein aktives Geschoss. Der Editor arbeitet immer am '
@@ -630,11 +940,14 @@ function render(){
     `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
     planSvgTeil(), rasterSvg(f), ursprungSvg()];
   for (const w of waende()) teile.push(wandSvg(w, erg, koll));
+  bemassungen().forEach((bm, i) => teile.push(bemassungSvg(bm, i, erg)));
+  teile.push(bezuegeSvg(erg), bemEntwurfSvg(erg));
   teile.push(zugSvg(erg), groesseSvg(erg), entwurfSvg(), '</svg>');
   buehne.innerHTML = teile.join('');
   buehne.className = 'gp-buehne'
     + (GP.pan ? ' zieht' : GP.werkzeug === 'wand' ? ' zeichnet'
-      : GP.werkzeug === 'plan' ? ' schiebt' : '');
+      : GP.werkzeug === 'plan' ? ' schiebt'
+      : (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') ? ' zeichnet' : '');
   statusSync(erg, koll);
   kopfSync();
 }
@@ -654,7 +967,26 @@ function statusSync(erg, koll){
         + `${k.ueberlappung_mm.y} mm)`).join(', ')) + ' — [K-13]</span>');
   }
   if (erg.widersprueche.length) {
-    teile.push(`<span class="err"><b>${erg.widersprueche.length}</b> Widerspruch/Widersprüche ([K-6])</span>`);
+    // [K-6]: benannt wird das beteiligte Maß und die Differenz in mm — nie gemittelt,
+    // nie gelöscht, und die Positionen behalten den letzten widerspruchsfreien Stand.
+    teile.push(`<span class="err"><b>${erg.widersprueche.length}</b> Widerspruch/Widersprüche: `
+      + esc(erg.widersprueche.map(w => w.meldung).join(' ')) + '</span>');
+  }
+  if (erg.redundanzen.length) {
+    // [K-7]: Hinweis, kein Fehler — das Maß bleibt wirksam.
+    teile.push(`<span><b>${erg.redundanzen.length}</b> redundante(s) Maß(e) — Hinweis, kein `
+      + 'Fehler; sie bleiben wirksam ([K-7])</span>');
+  }
+  const lahm = bemassungen().filter(b => {
+    const n = CON.normBemassung(b);
+    for (const p of [n.von, n.bis]) {
+      if (p && !(wand(p.wand) && wand(p.wand).lage != null)) return true;
+    }
+    return false;
+  });
+  if (lahm.length) {
+    teile.push(`<span class="err">${lahm.length} Maß(e) ohne verortete Wand — unwirksam, `
+      + 'gemeldet statt still entfernt ([L-4])</span>');
   }
   if (erg.fehler.length) teile.push(`<span class="err">${esc(erg.fehler[0])}</span>`);
   teile.push(`<span>Maßstab: 1 Pixel ≈ ${r2(V.mm)} mm</span>`);
@@ -681,10 +1013,18 @@ function kopfSync(){
       + (gs.hoehe_mm != null ? ` · Geschosshöhe ${gs.hoehe_mm} mm` : ' · ohne Geschosshöhe') + '</span>'
     : '<span>kein aktives Geschoss</span>';
 
-  for (const b of ['auswahl', 'wand', 'plan']) {
+  for (const b of WERKZEUGE) {
     $('wz-' + b).className = GP.werkzeug === b ? 'an' : '';
   }
-  $('wz-hinweis').innerHTML = GP.werkzeug === 'wand'
+  $('wz-hinweis').innerHTML = GP.werkzeug === 'bemassen'
+    ? 'Zwei <b>parallele</b> Bezüge anklicken — mit dem ersten Klick steht die <b>Achse</b> fest '
+      + '([K-1]/[K-2]), danach den Wert in mm eintragen und „Maß setzen“ ([K-3]/[K-12]). Ein '
+      + 'vorhandenes Maß lässt sich anklicken und ändern oder löschen.'
+    : GP.werkzeug === 'fixieren'
+    ? 'Einen Bezug anklicken: sein Abstand zum <b>Geschossursprung</b> wird als normales Maß '
+      + '<code>von: null</code> gespeichert ([K-4]). Das setzt <b>genau die Achse dieses Bezugs</b> '
+      + 'fest — für die andere Achse ein zweites Mal fixieren. Es wird kein zweiter Bezug erfunden.'
+    : GP.werkzeug === 'wand'
     ? 'Maustaste am Startpunkt <b>drücken</b>, halten und zum Endpunkt ziehen — die Vorschau läuft '
       + 'mit. Die Wand liegt <b>orthogonal</b> ([L-2]), die Länge rastet auf 125 mm und die '
       + '<b>Wandkanten</b> liegen auf dem Raster ([L-1]). <b>Escape</b> verwirft.'
@@ -741,7 +1081,34 @@ function kopfSync(){
   $('gp-lage-weg').disabled = !(aus && aus.lage);
   $('gp-drehen').disabled = !(aus && aus.lage);
 
+  bemKopfSync();
+  $('gp-undo').disabled = !GP.undo.length;
+  $('gp-redo').disabled = !GP.redo.length;
+  $('gp-undo-info').innerHTML = `${GP.undo.length} Schritt(e) rückgängig · ${GP.redo.length} `
+    + 'wiederholbar. Zurückgenommen werden nur <b>Lagen und Bemaßungen</b> ([K-10]) — Planbild, '
+    + 'Maßstab, Versatz, Blick und Auswahl bleiben unberührt ([L-8]/[L-9]).';
   planKopfSync();
+}
+
+/** Der Bemaßungsteil der Leiste — reine Anzeige des Bedienstands. */
+function bemKopfSync(){
+  const vorhanden = GP.bemAktiv ? bemassungen().find(b => b.id === GP.bemAktiv) : null;
+  if (GP.bemAktiv && !vorhanden) GP.bemAktiv = null;
+  const laeuft = !!GP.bem;
+  $('gp-bem-setzen').disabled = !(vorhanden || (laeuft && GP.bem.bis));
+  $('gp-bem-weg').disabled = !vorhanden;
+  $('gp-bem-abbrechen').disabled = !(vorhanden || laeuft);
+  $('gp-bem-info').innerHTML = vorhanden
+    ? `Maß gewählt: <b>${vorhanden.mass_mm} mm</b> in Achse <b>${esc(vorhanden.achse)}</b>`
+      + (vorhanden.von ? '' : ' (fixiert gegen den Geschossursprung)')
+      + ' — Wert ändern oder löschen.'
+    : laeuft
+      ? (GP.bem.bis
+        ? `Achse <b>${GP.bem.achse}</b> · beide Bezüge gewählt — Maß in mm eintragen und setzen ([K-3]).`
+        : `Achse <b>${GP.bem.achse}</b> steht fest — jetzt einen <b>parallelen</b> Bezug anklicken ([K-1]).`)
+      : (GP.werkzeug === 'bemassen' ? 'Ersten Bezug anklicken — die Achse folgt ihm ([K-2]).'
+        : GP.werkzeug === 'fixieren' ? 'Bezug anklicken — er wird gegen den Geschossursprung festgesetzt ([K-4]).'
+        : `${bemassungen().length} Maß(e) im Geschoss. Werkzeug <b>D</b> bemaßt, <b>F</b> fixiert.`);
 }
 
 function planKopfSync(){
@@ -816,12 +1183,16 @@ function wandFertig(a, b){
   }
   const fehler = CON.lageFehler(v.lage);
   if (fehler.length) { zeige('Nicht gezeichnet: ' + fehler.join(' '), false); return null; }
+  const vor = mappenStand();
 
   if (GP.ziel) {
     const w = wand(GP.ziel);
     if (!w) { zeige('Die zu verortende Wand ist nicht mehr im Geschoss.', false); return null; }
     try { store.verorteWand(w.id, gs.id, { lage: v.lage }); }
     catch (e) { zeige('Nicht verortet: ' + fehlerText(e), false); return null; }
+    // Eine BESTEHENDE Wand wird nur verortet: rückgängig geht allein die Mappe,
+    // das fremde Wandelement bleibt in jedem Fall unangetastet.
+    buchen(vor, []);
     waehle(w.id); GP.ziel = '';
     const el = store.holeElement(w.id);
     const ab = MAPPE.laengenAbgleich(v.lage, el && el.wandelement ? el.wandelement.length_mm : null);
@@ -842,7 +1213,11 @@ function wandFertig(a, b){
     id = store.speichere(name, we);
   } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
   try { store.verorteWand(id, gs.id, { name, lage: v.lage }); }
-  catch (e) { zeige(`„${name}“ angelegt, aber nicht eingetragen: ${fehlerText(e)}`, false); return id; }
+  catch (e) {
+    buchen(vor, [id]);
+    zeige(`„${name}“ angelegt, aber nicht eingetragen: ${fehlerText(e)}`, false);
+    return id;
+  }
   waehle(id);
   try { store.setzeAktiv(id); } catch { /* nicht aktivierbar: wird unten benannt */ }
 
@@ -856,6 +1231,9 @@ function wandFertig(a, b){
     const n = Object.keys(vb.gesetzt).length;
     if (n) nach.push(`${n} Verwendungsstelle(n) vorbelegt`);
   }
+  // Erst jetzt buchen: das Wandelement ist samt vorbelegten Verwendungsstellen fertig,
+  // und genau dieser Stand wird beim Wiederholen wiederhergestellt.
+  buchen(vor, [id]);
   zeige(`„${name}“ angelegt und verortet: ${v.laenge_mm} × ${hoehe} mm, Richtung ${v.lage.richtung}.`
     + (nach.length ? ' · ' + nach.join(' · ') : ''), true);
   return id;
@@ -901,7 +1279,14 @@ function ziehenFertig(id, delta){
   if (!d.x && !d.y) { render(); return; }
   const alt = waende();
   const r = CON.verschiebe(alt, bemassungen(), id, d);
+  // Geschrieben werden AUSSCHLIESSLICH die Wände, die dieser Zug wirklich bewegt
+  // (`r.bewegt` = die starre Gruppe der freien Achsen). Ohne diese Schranke würde
+  // jeder Zug nebenbei die gelöste Position ALLER Wände in die Mappe zurückschreiben —
+  // die gespeicherte Lage ist aber der letzte gültige Stand, und wo Maße bestimmen,
+  // ist das Lösungsergebnis beim Lesen maßgebend. Zwei Wahrheiten entstehen so nicht.
+  const bewegt = new Set(r.bewegt);
   const geaendert = r.waende.filter((w, i) => {
+    if (!bewegt.has(w.id)) return false;
     const a = CON.normLage(alt[i] && alt[i].lage), b = CON.normLage(w.lage);
     return a && b && (a.start_mm.x !== b.start_mm.x || a.start_mm.y !== b.start_mm.y);
   });
@@ -910,6 +1295,7 @@ function ziehenFertig(id, delta){
     render();
     return;
   }
+  const vor = mappenStand();
   try {
     store.aendereMappe(m => {
       let n = m;
@@ -917,6 +1303,7 @@ function ziehenFertig(id, delta){
       return n;
     });
   } catch (e) { zeige('Nicht verschoben: ' + fehlerText(e), false); render(); return; }
+  buchen(vor, []);
   const koll = loesen().kollisionen || [];
   zeige(`Verschoben: ${geaendert.length} Wand/Wände um ${d.x} / ${d.y} mm.`
     + (r.meldungen.length ? ' ' + r.meldungen.join(' ') : '')
@@ -943,8 +1330,10 @@ function speichereLage(id, lage, was){
   if (!gs) { zeige('Kein aktives Geschoss.', false); return false; }
   const f = CON.lageFehler(lage);
   if (f.length) { zeige(`${was} nicht möglich: ` + f.join(' '), false); return false; }
+  const vor = mappenStand();
   try { store.verorteWand(id, gs.id, { lage }); }
   catch (e) { zeige(`${was} nicht möglich: ` + fehlerText(e), false); return false; }
+  buchen(vor, []);
   return true;
 }
 
@@ -1011,6 +1400,207 @@ function drehe(){
 }
 
 // ---------------------------------------------------------------------------
+//  Bemaßen (D) und Fixieren (F) — [K-1]…[K-4], [K-11], [K-12]
+// ---------------------------------------------------------------------------
+/**
+ * Ist-Abstand zwischen zwei Bezügen derselben Achse, aus dem GELÖSTEN Stand.
+ * Nur ein Vorschlag für das Eingabefeld — treibend ist immer der eingetragene
+ * Wert ([K-3]). `null` = nicht berechenbar.
+ */
+function istAbstand(achse, von, bis, erg){
+  const a = bemEndpunkt(von, achse, erg), b = bemEndpunkt(bis, achse, erg);
+  return (a && b) ? b.wert - a.wert : null;
+}
+
+/** Laufende Bemaßung und Maßauswahl verwerfen (ohne etwas zu speichern). */
+function bemAbbrechen(still){
+  const gab = !!(GP.bem || GP.bemAktiv);
+  GP.bem = null; GP.bemAktiv = null;
+  $('gp-bem-wert').value = '';
+  if (gab && !still) zeige('Bemaßung abgebrochen — nichts gespeichert.', true);
+  return gab;
+}
+
+/** Ein vorhandenes Maß zum Ändern/Löschen wählen (§4.3). */
+function waehleBemassung(id){
+  const b = bemassungen().find(x => x.id === id);
+  if (!b) return false;
+  GP.bem = null;
+  GP.bemAktiv = id;
+  $('gp-bem-wert').value = String(b.mass_mm);
+  zeige(`Maß „${b.id}“ gewählt: ${b.mass_mm} mm in Achse ${b.achse}. Wert ändern oder löschen.`, true);
+  return true;
+}
+
+/**
+ * Eine Bemaßung speichern — der zweite Schreibweg des Editors neben der Lage,
+ * beide im Geschoss der Projektmappe ([K-10]).
+ *
+ * Ein LÄNGENMASS treibt zusätzlich `laenge_grid` (§2.4): das geschieht in EINEM
+ * `aendereMappe`, damit Maß und Länge nie auseinanderlaufen. Ein krummer Wert
+ * wird abgewiesen und nennt die Nachbarmaße — gerundet wird nichts ([K-11]).
+ * Das Wandelement bleibt unberührt, eine Abweichung wird gemeldet ([L-3]).
+ */
+function speichereBemassung(bem, was){
+  const gs = geschoss();
+  if (!gs) { zeige('Kein aktives Geschoss.', false); return false; }
+  const lagen = new Map(waende().map(w => [w.id, w.lage]));
+  const laengenmass = CON.istLaengenmass(bem, lagen);
+  if (laengenmass) {
+    const p = CON.pruefeLaengenmass(bem.mass_mm);
+    if (!p.ok) { zeige(`${was} nicht möglich: ${p.meldung}`, false); return false; }
+  }
+  const vor = mappenStand();
+  try {
+    store.aendereMappe(m => {
+      let n = MAPPE.setzeBemassung(m, gs.id, bem);
+      if (laengenmass) {
+        const l = CON.normLage(wand(bem.bis.wand).lage);
+        n = MAPPE.setzeLage(n, bem.bis.wand, { ...l, laenge_grid: bem.mass_mm / CON.GRID_MM });
+      }
+      return n;
+    });
+  } catch (e) { zeige(`${was} nicht möglich: ` + fehlerText(e), false); return false; }
+  buchen(vor, []);
+  GP.bem = null;
+  GP.bemAktiv = bem.id;
+  const erg = loesen();
+  const streit = erg.widersprueche.filter(w => w.bemassung === bem.id || w.konflikt_mit === bem.id);
+  const doppelt = erg.redundanzen.some(w => w.bemassung === bem.id);
+  zeige(`${was}: ${bem.mass_mm} mm in Achse ${bem.achse}.`
+    + (laengenmass ? ` Die Länge steht jetzt auf ${bem.mass_mm / CON.GRID_MM} × 125 mm`
+      + folgen(bem.bis.wand, wand(bem.bis.wand).lage) : '')
+    + (streit.length ? ' ⚠ ' + streit.map(w => w.meldung).join(' ') : '')
+    + (doppelt ? ' Hinweis: das Maß wiederholt einen bereits bestimmten Abstand widerspruchsfrei '
+      + '(redundant) und bleibt wirksam ([K-7]).' : ''), !streit.length);
+  render();
+  return true;
+}
+
+/** Ein Maß löschen — der Nutzer entscheidet, nie das Werkzeug ([K-6]). */
+function loescheBemassungJetzt(id){
+  const gs = geschoss();
+  if (!gs) return false;
+  const vor = mappenStand();
+  try { store.aendereMappe(m => MAPPE.loescheBemassung(m, gs.id, id)); }
+  catch (e) { zeige('Nicht gelöscht: ' + fehlerText(e), false); return false; }
+  buchen(vor, []);
+  GP.bemAktiv = null;
+  $('gp-bem-wert').value = '';
+  zeige(`Maß „${id}“ gelöscht. Die Lage bleibt auf ihrem letzten Stand stehen.`, true);
+  render();
+  return true;
+}
+
+/**
+ * Fixieren: der Abstand des angeklickten Bezugs zum EINZIGEN Geschossursprung wird
+ * als ganz normale Bemaßung `von: null` gespeichert ([K-4]) — es gibt keine zweite
+ * Fixierungsstruktur. Festgesetzt wird genau die Achse dieses Bezugs; für die
+ * andere Achse ist ein zweites Mal zu fixieren, und es wird kein zweiter Bezug
+ * erfunden.
+ */
+function fixiere(b, erg){
+  const w = wand(b.wand);
+  const wert = istAbstand(b.achse, null, { wand: b.wand, bezug: b.bezug }, erg);
+  const wo = `„${w ? (w.name || w.id) : b.wand}“ (${b.bezug}, Achse ${b.achse})`;
+  if (wert == null) { zeige(`Fixieren nicht möglich: der Bezug ${wo} ist nicht berechenbar.`, false); return false; }
+  if (!Number.isInteger(wert)) {
+    // Gerundet wird nichts ([K-12]/[P-9]) — eine Längskante liegt 62,5 mm neben der
+    // Mittellinie und ist deshalb regelmäßig krumm; die Mittellinie ist der Bezug,
+    // der hier passt.
+    zeige(`Nicht fixiert: der Abstand von ${wo} zum Geschossursprung ist ${wert} mm und damit nicht `
+      + 'ganzzahlig — ein Maß ist ganzzahlig in Millimetern ([K-12]). Gerundet wird nichts. Entweder '
+      + 'die Mittellinie als Bezug wählen oder die Wand vorher auf ein ganzzahliges Maß setzen.', false);
+    return false;
+  }
+  if (wert < 0) {
+    zeige(`Nicht fixiert: ${wo} liegt ${-wert} mm VOR dem Geschossursprung. Der Ursprung ist der `
+      + 'Start einer Bemaßung, ein Maß darf nicht negativ sein ([K-3]/[K-4]). Die Wand auf die '
+      + 'andere Seite des Ursprungs legen oder von einer anderen Wand aus bemaßen.', false);
+    return false;
+  }
+  return speichereBemassung({
+    id: MAPPE.neueId('bm'), achse: b.achse, von: null,
+    bis: { wand: b.wand, bezug: b.bezug }, mass_mm: wert,
+  }, `${wo} gegen den Geschossursprung fixiert`);
+}
+
+/** Klick der Werkzeuge D und F auf die Zeichenfläche. */
+function bemKlick(p){
+  const erg = loesen();
+  const achse = GP.bem ? GP.bem.achse : null;
+  const b = bezugTreffer(p, erg, achse);
+  if (!b) {
+    // Kein Bezug getroffen: erst ein vorhandenes Maß versuchen, sonst abbrechen.
+    const bid = bemTreffer(p, erg);
+    if (bid) { waehleBemassung(bid); render(); return; }
+    if (!bemAbbrechen()) {
+      zeige(achse
+        ? `Kein paralleler Bezug getroffen. In Achse ${achse} sind nur Bezüge derselben Achse `
+          + 'wählbar ([K-1]).'
+        : 'Kein Bezug getroffen — auf eine Kante oder Mittellinie einer Wand klicken ([K-2]).', false);
+    }
+    render();
+    return;
+  }
+  if (GP.werkzeug === 'fixieren') { fixiere(b, erg); return; }
+  const punkt = { wand: b.wand, bezug: b.bezug };
+  if (!GP.bem) {
+    GP.bem = { achse: b.achse, von: punkt, bis: null };
+    GP.bemAktiv = null;
+    $('gp-bem-wert').value = '';
+    zeige(`Startbezug gesetzt: ${b.bezug} von „${namenRoh(b.wand)}“ — Achse ${b.achse} steht damit `
+      + 'fest ([K-2]). Jetzt einen parallelen Bezug anklicken.', true);
+    render();
+    return;
+  }
+  if (gleicherBezug(GP.bem.von, punkt)) {
+    zeige('Start- und Zielbezug sind derselbe Punkt — ein Maß braucht zwei verschiedene Bezüge ([K-3]).', false);
+    return;
+  }
+  GP.bem.bis = punkt;
+  // Ein Maß ist nicht negativ ([K-3]); die beiden Bezüge sind ein ungeordnetes Paar,
+  // also wird die Richtung so gewählt, dass das Maß positiv läuft.
+  let ist = istAbstand(GP.bem.achse, GP.bem.von, GP.bem.bis, erg);
+  if (ist != null && ist < 0) {
+    GP.bem = { achse: GP.bem.achse, von: GP.bem.bis, bis: GP.bem.von };
+    ist = -ist;
+  }
+  $('gp-bem-wert').value = (ist != null && Number.isInteger(ist)) ? String(ist) : '';
+  zeige(ist == null
+    ? 'Zielbezug gesetzt — jetzt das Maß in mm eintragen ([K-3]).'
+    : Number.isInteger(ist)
+      ? `Zielbezug gesetzt. Aktueller Abstand: ${ist} mm — als Vorschlag eingetragen, treibend ist `
+        + 'erst der gesetzte Wert ([K-3]).'
+      : `Zielbezug gesetzt. Der aktuelle Abstand ist ${ist} mm und damit nicht ganzzahlig — es wird `
+        + 'nichts gerundet; bitte das gewünschte ganzzahlige Maß eintragen ([K-12]).', true);
+  render();
+}
+
+function namenRoh(id){ const w = wand(id); return w ? (w.name || id) : id; }
+
+/** „Maß setzen“: entweder ein gewähltes Maß ändern oder die laufende Bemaßung abschließen. */
+function bemSetzen(){
+  const s = String($('gp-bem-wert').value || '').trim();
+  const v = Number(s.replace(',', '.'));
+  if (!s || !Number.isFinite(v)) { zeige('Das Maß muss eine Zahl in Millimetern sein ([K-12]).', false); return; }
+  if (!Number.isInteger(v)) {
+    zeige(`${v} mm ist nicht ganzzahlig — Bemaßungen stehen ganzzahlig in Millimetern ([K-12]). `
+      + 'Gerundet wird nichts.', false);
+    return;
+  }
+  const gewaehlt = GP.bemAktiv ? bemassungen().find(b => b.id === GP.bemAktiv) : null;
+  if (gewaehlt) {
+    speichereBemassung({ ...CON.normBemassung(gewaehlt), mass_mm: v }, `Maß „${gewaehlt.id}“ geändert`);
+    return;
+  }
+  if (!GP.bem || !GP.bem.bis) { zeige('Erst zwei parallele Bezüge anklicken ([K-2]).', false); return; }
+  speichereBemassung({
+    id: MAPPE.neueId('bm'), achse: GP.bem.achse, von: GP.bem.von, bis: GP.bem.bis, mass_mm: v,
+  }, 'Maß gesetzt');
+}
+
+// ---------------------------------------------------------------------------
 //  Zeigerbedienung der Zeichenfläche
 // ---------------------------------------------------------------------------
 function beiKlick(ev){
@@ -1019,8 +1609,9 @@ function beiKlick(ev){
   // hier bleibt nur das Abwählen mit einem Klick ins Leere.
   if (GP.werkzeug === 'auswahl' && !GP.ziehen && !GP.groesse) {
     const welt = weltPunkt(ev.clientX, ev.clientY);
-    if (!griffTreffer(welt) && !treffer(welt)) {
+    if (!griffTreffer(welt) && !treffer(welt) && !bemTreffer(welt, loesen())) {
       waehle(null, ev.shiftKey || ev.ctrlKey || ev.metaKey);
+      GP.bemAktiv = null;
       render();
     }
   }
@@ -1060,6 +1651,11 @@ function beiZeigerAb(ev){
     if (ev.preventDefault) ev.preventDefault();
     return;
   }
+  if (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') {
+    bemKlick(weltPunkt(ev.clientX, ev.clientY));
+    if (ev.preventDefault) ev.preventDefault();
+    return;
+  }
   if (GP.werkzeug !== 'auswahl') return;
   const welt = weltPunkt(ev.clientX, ev.clientY);
   // Die Griffe der aktiven Wand haben Vorrang vor ihrem Körper: die beiden
@@ -1075,7 +1671,12 @@ function beiZeigerAb(ev){
     return;
   }
   const id = g ? GP.aktiv : treffer(welt);
-  if (!id) return;
+  if (!id) {
+    // Keine Wand getroffen: dann vielleicht ein Maß — anklickbar zum Ändern/Löschen (§4.3).
+    const bid = bemTreffer(welt, loesen());
+    if (bid) { waehleBemassung(bid); render(); }
+    return;
+  }
   if (!g) waehle(id, dazu);
   if (GP.aktiv === id) GP.ziehen = { id, von: welt, delta: { x: 0, y: 0 } };
   if (ev.preventDefault) ev.preventDefault();
@@ -1110,6 +1711,17 @@ function beiZeigerBewegung(ev){
   if (GP.werkzeug === 'wand' && GP.zeichnen && !GP.zeichnen.wartet) {
     GP.zeichnen.zeiger = weltPunkt(ev.clientX, ev.clientY);
     render();
+    return;
+  }
+  if (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') {
+    // Bezüge leuchten beim Überfahren auf, damit klar ist, worauf bemaßt wird (§4.3).
+    const b = bezugTreffer(weltPunkt(ev.clientX, ev.clientY), loesen(),
+      GP.bem ? GP.bem.achse : null);
+    const vorher = GP.bemHover;
+    GP.bemHover = b ? { wand: b.wand, achse: b.achse, bezug: b.bezug } : null;
+    const gleich = (!b && !vorher)
+      || (!!b && !!vorher && vorher.wand === b.wand && vorher.achse === b.achse && vorher.bezug === b.bezug);
+    if (!gleich) render();
   }
 }
 
@@ -1264,13 +1876,20 @@ function werkzeug(name){
   GP.werkzeug = name;
   GP.zeichnen = null;
   GP.groesse = null;
+  GP.bemHover = null;
+  bemAbbrechen(true);                           // eine laufende Bemaßung überlebt den Werkzeugwechsel nicht
   render();
 }
 
 function binde(){
-  for (const b of ['auswahl', 'wand', 'plan']) {
+  for (const b of WERKZEUGE) {
     $('wz-' + b).addEventListener('click', () => werkzeug(b));
   }
+  $('gp-bem-setzen').addEventListener('click', bemSetzen);
+  $('gp-bem-weg').addEventListener('click', () => { if (GP.bemAktiv) loescheBemassungJetzt(GP.bemAktiv); });
+  $('gp-bem-abbrechen').addEventListener('click', () => { bemAbbrechen(); render(); });
+  $('gp-undo').addEventListener('click', undo);
+  $('gp-redo').addEventListener('click', redo);
   const buehne = $('gp-buehne');
   buehne.addEventListener('click', beiKlick);
   buehne.addEventListener('pointerdown', beiZeigerAb);
@@ -1307,8 +1926,9 @@ function binde(){
     const gs = geschoss(), w = GP.aktiv ? wand(GP.aktiv) : null;
     if (!gs || !w) return;
     // Nur die LAGE geht — das Wandelement und der Eintrag im Geschoss bleiben ([K-10]).
-    try { store.verorteWand(w.id, gs.id, { lage: null }); }
-    catch (e) { zeige('Nicht aufgehoben: ' + fehlerText(e), false); return; }
+    // Maße auf diese Wand bleiben ebenfalls stehen: sie werden als unwirksam gemeldet,
+    // nicht still entfernt ([L-4]).
+    if (!speichereLage(w.id, null, 'Lage aufheben')) { render(); return; }
     zeige(`Lage von „${w.name || w.id}“ aufgehoben — die Wand bleibt im Geschoss eingetragen ([L-4]).`, true);
     render();
   });
@@ -1351,6 +1971,7 @@ function beiTaste(ev){
     if (!$('kal-overlay').hidden) { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); return; }
     if (GP.zeichnen) { GP.zeichnen = null; zeige('Zeichnen verworfen — nichts angelegt.', true); render(); return; }
     if (GP.groesse) { GP.groesse = null; zeige('Größenänderung verworfen — die Länge bleibt.', true); render(); return; }
+    if (bemAbbrechen()) { render(); return; }
     werkzeug('auswahl');
     return;
   }
@@ -1358,8 +1979,15 @@ function beiTaste(ev){
   const tag = ev.target && ev.target.tagName ? String(ev.target.tagName).toLowerCase() : '';
   if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
   const k = String(ev.key || '').toLowerCase();
+  if (ev.ctrlKey || ev.metaKey) {
+    if (k === 'z' && !ev.shiftKey) { if (ev.preventDefault) ev.preventDefault(); undo(); }
+    else if ((k === 'z' && ev.shiftKey) || k === 'y') { if (ev.preventDefault) ev.preventDefault(); redo(); }
+    return;
+  }
   if (k === 'w') werkzeug('wand');
   else if (k === 'p') werkzeug('plan');
+  else if (k === 'd') werkzeug('bemassen');
+  else if (k === 'f') werkzeug('fixieren');
   else if (k === 'r') drehe();
   else if (k === '0') zeigeAlles();
   else if (k === '+') zoomeAuf(1 / 1.3);
@@ -1368,8 +1996,35 @@ function beiTaste(ev){
 
 // --- Prüfhilfen (Smoke-Test): dieselben Pfade wie die echte Bedienung -------
 window.__gp = {
-  render, werkzeug, zeigeAlles, auffrischen, drehe,
+  render, werkzeug, zeigeAlles, auffrischen, drehe, undo, redo,
   entwurfLage, fange, fangeQuer, weltPunkt, schirmPunkt, treffer, griffTreffer, loesen,
+  bezugTreffer: (welt, achse) => bezugTreffer(welt, loesen(), achse),
+  bemTreffer: (welt) => bemTreffer(welt, loesen()),
+  /** Weltpunkt eines Bezugs — damit klickt der Test dieselben Stellen wie die Maus. */
+  bezugsPunkt(wandId, achse, bezug){
+    const erg = loesen();
+    const b = bezugsLinien(wand(wandId) || {}, erg)
+      .find(x => x.achse === achse && x.bezug === bezug);
+    if (!b) return null;
+    // Viertelpunkt statt Mitte: die Mitte einer Bezugslinie ist zugleich der
+    // „mitte“-Bezug der ANDEREN Achse, dort läge ein Klick auf zwei Bezügen
+    // gleichzeitig. Auf dem Viertelpunkt liegt genau einer.
+    const q = b.a + (b.b - b.a) / 4;
+    return achse === 'x' ? { x: b.wert, y: q } : { x: q, y: b.wert };
+  },
+  /** Maßlinie eines gespeicherten Maßes als Weltpunkt (zum Anklicken). */
+  bemPunkt(id){
+    const erg = loesen();
+    const liste = bemassungen();
+    const i = liste.findIndex(b => b.id === id);
+    if (i < 0) return null;
+    const g = bemGeometrie(liste[i], i, erg);
+    if (!g) return null;
+    const m = (g.v1 + g.v2) / 2;
+    return g.achse === 'x' ? { x: m, y: g.q } : { x: g.q, y: m };
+  },
+  bemassungen: () => bemassungen(),
+  get undoStand(){ return { undo: GP.undo.length, redo: GP.redo.length }; },
   /**
    * Klick an einem WELTpunkt (mm) — wie im Browser pointerdown, pointerup, click,
    * damit auch das Zeichnen ab dem Drücken durch dieselben Behandler läuft.

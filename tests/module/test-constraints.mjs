@@ -333,5 +333,144 @@ t("[K-11] krummes Laengenmass faellt in der Validierung auf",
   })());
 }
 
+// --- Was die Bedienung von C4b braucht ------------------------------------
+// Die Oberflaeche (docs/geschossplan.html) baut D und F ausschliesslich auf
+// diesen reinen Funktionen auf; hier stehen die Zusagen, auf die sie sich stuetzt.
+
+{
+  // [K-2]/[K-1]: Jeder Bezug gehoert genau EINER Achse — deshalb kann die Achse
+  // dem Bezug folgen und muss nicht getrennt gewaehlt werden.
+  t("[K-2] es gibt genau sechs Bezuege je Wand, drei je Achse", (() => {
+    const l = w("A", 0, 1062.5, "x", 16).lage;
+    const werte = [];
+    for (const a of K.ACHSEN) for (const bz of K.BEZUEGE) werte.push(K.bezugsWert(l, a, bz));
+    return werte.length === 6 && werte.every(v => v != null)
+      && K.ACHSEN.length === 2 && K.BEZUEGE.length === 3;
+  })());
+  t("[K-2] die Bezuege einer Achse sind paarweise verschieden (eindeutig anklickbar)", (() => {
+    const l = w("A", 0, 1062.5, "x", 16).lage;
+    const x = K.BEZUEGE.map(bz => K.bezugsWert(l, "x", bz));
+    const y = K.BEZUEGE.map(bz => K.bezugsWert(l, "y", bz));
+    return new Set(x).size === 3 && new Set(y).size === 3
+      && x.join() === "0,1000,2000" && y.join() === "1000,1062.5,1125";
+  })());
+
+  // [K-4]: Der Ursprung ist der START einer Bemassung. Genau darauf setzt das
+  // Werkzeug „Fixieren" auf — eine zweite Fixierungsstruktur gibt es nicht.
+  t("[K-4] der Ursprung ist als Startbezug zulaessig (Fixieren)", (() => {
+    const e = K.loese([w("A", 700, 0, "x", 8)], [b("f", "x", null, p("A", "min"), 1500)]);
+    return e.fehler.length === 0 && e.bestimmt.A.x === true && e.positionen.A.x === 1500;
+  })());
+  t("[K-4] der Ursprung als ZIEL wird abgewiesen (Vorzeichen kehrte sich um)", (() => {
+    const f = K.bemassungFehler(b("f", "x", p("A", "min"), null, 1500));
+    return f.some(m => /Zielbezug fehlt/.test(m) && /K-4/.test(m));
+  })());
+  t("[K-4] Fixieren setzt GENAU eine Achse fest — die andere bleibt frei", (() => {
+    const e = K.loese([w("A", 700, 300, "x", 8)], [b("f", "x", null, p("A", "min"), 1500)]);
+    return e.bestimmt.A.x === true && e.bestimmt.A.y === false && e.offen.length === 1;
+  })());
+  t("[K-4] zwei Fixierungen — je Achse eine — machen die Wand vollstaendig bestimmt", (() => {
+    const e = K.loese([w("A", 700, 300, "x", 8)],
+      [b("fx", "x", null, p("A", "min"), 1500), b("fy", "y", null, p("A", "mitte"), 800)]);
+    return e.offen.length === 0 && e.positionen.A.x === 1500 && e.positionen.A.y === 800;
+  })());
+  t("[K-3] ein negatives Mass wird abgewiesen (auch beim Fixieren)",
+    K.bemassungFehler(b("f", "x", null, p("A", "min"), -100)).some(m => /nicht negativ/.test(m)));
+
+  // [K-11]: Die Oberflaeche rechnet aus dem geprueften Mass die neue Laenge —
+  // gerundet wird dabei nie, und das Wandelement bleibt aussen vor ([L-3]).
+  t("[K-11] ein krummes Laengenmass nennt beide Nachbarmasse", (() => {
+    const p1 = K.pruefeLaengenmass(1300);
+    return !p1.ok && p1.naechste[0] === 1250 && p1.naechste[1] === 1375
+      && /1250 mm oder 1375 mm/.test(p1.meldung);
+  })());
+  t("[K-11] ein gueltiges Laengenmass geht glatt in Rastereinheiten auf", (() => {
+    const p1 = K.pruefeLaengenmass(1000);
+    return p1.ok && 1000 / K.GRID_MM === 8;
+  })());
+  t("[K-11] die Laenge bleibt getrieben: das Mass macht die Position nicht bestimmt", (() => {
+    const e = K.loese([w("A", 0, 0, "x", 16)], [b("L", "x", p("A", "min"), p("A", "max"), 2000)]);
+    return e.bestimmt.A.x === false && e.fehler.length === 0;
+  })());
+  t("[K-2] zwei Bezuege derselben Wand quer zur Laengsachse sind kein Mass (Wanddicke)", (() => {
+    const lagen = new Map([["A", w("A", 0, 0, "x", 16).lage]]);
+    return K.bemassungFehler(b("q", "y", p("A", "min"), p("A", "max"), 125), lagen)
+      .some(m => /Wanddicke/.test(m));
+  })());
+}
+
+// --- Laengenmass anwenden: Mass und Laenge in EINEM Mappenstand ------------
+// Die Oberflaeche setzt Bemassung und neue Laenge zusammen; hier steht, dass die
+// beiden reinen Operationen dabei zusammenpassen und nichts stillschweigend
+// zurechtgebogen wird ([K-11]/[L-3]).
+
+{
+  const mappe = () => {
+    let m = M.leereMappe("Test", { geschoss: "EG", hoehe_mm: 2600 });
+    const gs = M.alleGeschosse(m)[0].geschoss.id;
+    m = M.setzeWand(m, gs, { id: "A", name: "A",
+      lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 16 } });
+    return { m, gs };
+  };
+  const laengenmass = (mass) => b("L", "x", p("A", "min"), p("A", "max"), mass);
+
+  t("[K-11] ein krummes Laengenmass wird schon von setzeBemassung abgewiesen", (() => {
+    const { m, gs } = mappe();
+    try { M.setzeBemassung(m, gs, laengenmass(1300)); return false; }
+    catch (e) { return /1250 mm oder 1375 mm/.test(e.message); }
+  })());
+  t("[K-11] der Speicher bleibt bei einem abgewiesenen Mass unveraendert ([P-9])", (() => {
+    const { m, gs } = mappe();
+    const vorher = JSON.stringify(m);
+    try { M.setzeBemassung(m, gs, laengenmass(1300)); } catch { /* erwartet */ }
+    return JSON.stringify(m) === vorher;
+  })());
+  t("[K-11] Mass und neue Laenge stehen in EINEM Mappenstand", (() => {
+    const { m, gs } = mappe();
+    let n = M.setzeBemassung(m, gs, laengenmass(1000));
+    const l = M.normLage(M.findeWand(n, "A").wand.lage);
+    n = M.setzeLage(n, "A", { ...l, laenge_grid: 1000 / M.GRID_MM });
+    const wand = M.findeWand(n, "A").wand;
+    return M.validiereMappe(n).length === 0 && wand.lage.laenge_grid === 8
+      && wand.lage.start_mm.x === 0 && M.bemassungen(n, gs).length === 1
+      && M.bemassungen(n, gs)[0].mass_mm === 1000;
+  })());
+  t("[K-11] der Anker bleibt stehen — nur die max-Stirnkante wandert", (() => {
+    const { m, gs } = mappe();
+    let n = M.setzeBemassung(m, gs, laengenmass(1000));
+    n = M.setzeLage(n, "A", { ...M.normLage(M.findeWand(n, "A").wand.lage), laenge_grid: 8 });
+    const r = K.wandRechteck(M.findeWand(n, "A").wand.lage);
+    return r.x_min === 0 && r.x_max === 1000;
+  })());
+  t("[K-10] Mass und Lage liegen beide im Geschoss, nichts davon am Wandelement", (() => {
+    const { m, gs } = mappe();
+    const n = M.setzeBemassung(m, gs, laengenmass(1000));
+    const geschoss = M.alleGeschosse(n)[0].geschoss;
+    return Array.isArray(geschoss.bemassungen) && geschoss.bemassungen.length === 1
+      && geschoss.waende[0].lage != null;
+  })());
+  t("[K-6] ein widerspruechliches Mass wird gespeichert, nicht abgewiesen", (() => {
+    const { m, gs } = mappe();
+    let n = M.setzeWand(m, gs, { id: "B", name: "B",
+      lage: { start_mm: { x: 0, y: 2062.5 }, richtung: "x", laenge_grid: 16 } });
+    n = M.setzeBemassung(n, gs, b("d1", "y", p("A", "mitte"), p("B", "mitte"), 2000));
+    n = M.setzeBemassung(n, gs, b("d2", "y", p("A", "min"), p("B", "min"), 2500));
+    const e = K.loese(M.alleGeschosse(n)[0].geschoss.waende, M.bemassungen(n, gs));
+    return M.bemassungen(n, gs).length === 2 && e.widersprueche.length === 1
+      && e.widersprueche[0].differenz_mm === 500
+      && e.positionen.B.y - e.positionen.A.y === 2000;      // letzter widerspruchsfreier Stand
+  })());
+  t("[K-7] ein redundantes Mass bleibt gespeichert und wirksam", (() => {
+    const { m, gs } = mappe();
+    let n = M.setzeWand(m, gs, { id: "B", name: "B",
+      lage: { start_mm: { x: 0, y: 2062.5 }, richtung: "x", laenge_grid: 16 } });
+    n = M.setzeBemassung(n, gs, b("d1", "y", p("A", "mitte"), p("B", "mitte"), 2000));
+    n = M.setzeBemassung(n, gs, b("d2", "y", p("A", "min"), p("B", "min"), 2000));
+    const e = K.loese(M.alleGeschosse(n)[0].geschoss.waende, M.bemassungen(n, gs));
+    return M.bemassungen(n, gs).length === 2 && e.redundanzen.length === 1
+      && e.widersprueche.length === 0;
+  })());
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

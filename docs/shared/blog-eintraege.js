@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260808-02",
+    datum: "2026-08-08",
+    typ: "feature",
+    issue: 26,
+    titel: "Layout-Editor: Wände bemaßen und fixieren — mit Widerspruchsmeldung und Rückgängig",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: mit „D“ zwei parallele Bezüge anklicken und ein Maß in mm "
+      + "setzen, mit „F“ gegen den Geschossursprung fixieren (je Achse einzeln), Strg+Z macht rückgängig.",
+  },
+  {
     id: "chg-20260808-01",
     datum: "2026-08-08",
     typ: "fix",
