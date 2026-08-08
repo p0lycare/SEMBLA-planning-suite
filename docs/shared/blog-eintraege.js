@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260808-01",
+    datum: "2026-08-08",
+    typ: "fix",
+    issue: 26,
+    titel: "Layout-Editor: Wandkanten liegen jetzt auf dem Raster, Griffe ändern die Länge, R dreht um 90°",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: Wand mit gedrückter Maustaste aufziehen (Vorschau ab dem "
+      + "Startpunkt), dann an den Endgriffen länger/kürzer ziehen und mit „R“ drehen.",
+  },
+  {
     id: "chg-20260807-05",
     datum: "2026-08-07",
     typ: "feature",

@@ -103,12 +103,17 @@
       <span>Fang auf 125-mm-Raster</span></label>
     <div class="hint" id="gp-hoehe-hinweis"></div>
 
-    <h3>Auswahl</h3>
-    <div id="gp-auswahl-info" class="hint">Keine Wand ausgewählt.</div>
+    <h3>Aktive Wand</h3>
+    <div id="gp-auswahl-info" class="hint">Keine Wand aktiv.</div>
     <div class="row">
+      <button class="btn-s" id="gp-drehen" disabled title="Dreht die aktive Wand um 90° um ihre Min-Ecke (Taste R).">90° drehen</button>
       <button class="btn-s" id="gp-planen" disabled>In Modul&nbsp;1 planen</button>
       <button class="btn-d" id="gp-lage-weg" disabled>Lage aufheben</button>
     </div>
+    <div class="hint"><b>Aktiv</b> (grün, mit Griffen) ist immer genau <b>eine</b> Wand — sie wird
+      bearbeitet. <b>Ausgewählt</b> (gestrichelter Rahmen) können mehrere sein: mit
+      <b>Umschalt</b> oder <b>Strg</b> anklicken. Die <b>Endgriffe</b> ziehen die Wand länger oder
+      kürzer, der <b>runde Griff in der Mitte</b> (oder der Wandkörper) verschiebt sie.</div>
 
     <h3>Ansicht</h3>
     <div class="row">
@@ -144,7 +149,7 @@
     <div class="legende">
       <span><i style="background:#7fb6e6"></i>frei</span>
       <span><i style="background:#1a1a1a"></i>bestimmt</span>
-      <span><i style="background:#1f9d4d"></i>ausgewählt</span>
+      <span><i style="background:#1f9d4d"></i>aktiv</span>
       <span><i style="background:#d92b2b"></i>Fehler</span>
     </div>
     <div class="hint">Die <b>Lage</b> lebt im Geschoss der Projektmappe, nie im Wandelement ([K-10]).
@@ -208,12 +213,17 @@ let store, MAPPE, CON, PLAN, buildWall;
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
   werkzeug: 'auswahl',        // 'auswahl' | 'wand' | 'plan'
-  auswahl: null,              // Kennung der ausgewählten Wand
+  // AKTIV und AUSGEWÄHLT sind zwei verschiedene Dinge: ausgewählt sein können
+  // mehrere Wände (Mehrfachauswahl mit Umschalt/Strg), AKTIV — also in Bearbeitung,
+  // mit Griffen und grün nach [K-8] — ist immer genau EINE davon.
+  aktiv: null,                // Kennung der aktiven Wand (grün, mit Griffen)
+  auswahl: [],                // Kennungen aller ausgewählten Wände (enthält `aktiv`)
   fang: true,                 // Fang auf 125 mm (aus: 0,5 mm — [L-1])
   planLock: true,             // gesperrt = Ziehen bewegt den Plan nicht (§4.4)
   ziel: '',                   // '' = neue Wand anlegen, sonst Kennung einer unverorteten Wand
-  zeichnen: null,             // { start:{x,y}, zeiger:{x,y} } während „Wand zeichnen“
+  zeichnen: null,             // { start:{x,y}, zeiger:{x,y}, wartet } während „Wand zeichnen“
   ziehen: null,               // { id, von:{x,y}, delta:{x,y} } während des Verschiebens
+  groesse: null,              // { id, ende:'min'|'max', zeiger:{x,y} } während des Größenziehens
   pan: null,                  // { x, y, x0, y0 } Blickverschiebung
   planZieh: null,             // { x, y, vx, vy } Planversatz
   raumTaste: false,           // Leertaste gedrückt (Pan)
@@ -274,13 +284,29 @@ function schirmPunkt(p){
 }
 
 /**
- * Fang eines Weltpunkts ([L-1]): auf das 125-mm-Raster, oder — ohne Fang — auf
- * halbe Millimeter. Kleiner als 0,5 mm wird nie gerundet, denn genau das ist das
- * zulässige Positionsraster.
+ * Fang eines Weltpunkts LÄNGS der Wand ([L-1]): auf das 125-mm-Raster, oder —
+ * ohne Fang — auf halbe Millimeter. Kleiner als 0,5 mm wird nie gerundet, denn
+ * genau das ist das zulässige Positionsraster.
+ *
+ * Längs ist das richtig, weil `start_mm` dort auf der STIRNKANTE der Wand liegt:
+ * gefangen wird also eine echte Bauteilkante auf eine Rasterlinie.
  */
 function fange(p){
   const q = GP.fang ? CON.GRID_MM : 0.5;
   return { x: Math.round(Number(p.x) / q) * q, y: Math.round(Number(p.y) / q) * q };
+}
+
+/**
+ * Fang QUER zur Wand. Quer liegt `start_mm` nicht auf einer Kante, sondern auf
+ * der MITTELLINIE ([L-1]) — die 125 mm breite Wand legt beide Längskanten genau
+ * 62,5 mm daneben. Ein 125-mm-Fang der Mittellinie legte die Wand deshalb
+ * zwangsläufig auf halbe Rasterfelder. Gefangen wird darum die Mittellinie auf
+ * die FELDMITTE (k · 125 + 62,5), womit beide Längskanten auf Rasterlinien
+ * liegen — die Wand füllt genau ein Rasterfeld.
+ */
+function fangeQuer(v){
+  if (!GP.fang) return Math.round(Number(v) * 2) / 2;
+  return Math.round((Number(v) - CON.HALB_BREITE_MM) / CON.GRID_MM) * CON.GRID_MM + CON.HALB_BREITE_MM;
 }
 
 /** Zoomen, ohne den Weltpunkt unter dem Zeiger zu verlieren. */
@@ -370,12 +396,65 @@ function planSvgTeil(){
     + ` opacity=".85"/>`;
 }
 
+/** Halbe Kantenlänge der Griffe in Schirmpixeln. */
+const GRIFF_PX = 6;
+
+/** Ist die Wand ausgewählt? (Mehrfachauswahl — `aktiv` ist immer eine davon.) */
+function istAusgewaehlt(id){ return GP.auswahl.indexOf(id) >= 0; }
+
+/**
+ * Auswahl setzen. `dazu` (Umschalt/Strg) nimmt eine Wand zur Auswahl hinzu bzw.
+ * entfernt sie wieder; ohne `dazu` ersetzt der Klick die ganze Auswahl. Aktiv —
+ * also in Bearbeitung — ist danach immer genau eine oder keine Wand.
+ */
+function waehle(id, dazu){
+  if (!id) { if (!dazu) { GP.auswahl = []; GP.aktiv = null; } return; }
+  if (!dazu) { GP.auswahl = [id]; GP.aktiv = id; return; }
+  const i = GP.auswahl.indexOf(id);
+  if (i < 0) { GP.auswahl.push(id); GP.aktiv = id; return; }
+  if (GP.aktiv !== id) { GP.aktiv = id; return; }        // schon ausgewählt ⇒ nur aktiv machen
+  GP.auswahl.splice(i, 1);                               // aktiv und erneut geklickt ⇒ abwählen
+  GP.aktiv = GP.auswahl.length ? GP.auswahl[GP.auswahl.length - 1] : null;
+}
+
+/** Auswahl auf noch vorhandene Wände eindampfen (nach Löschen/Geschosswechsel). */
+function auswahlPruefen(){
+  GP.auswahl = GP.auswahl.filter(id => !!wand(id));
+  if (GP.aktiv && !wand(GP.aktiv)) GP.aktiv = GP.auswahl.length ? GP.auswahl[GP.auswahl.length - 1] : null;
+}
+
+/**
+ * Die drei Griffe der aktiven Wand in Weltkoordinaten: `min`/`max` sitzen auf den
+ * Stirnkanten und ändern die LÄNGE, `mitte` verschiebt die ganze Wand.
+ * @returns {{ende:'min'|'max'|'mitte', x:number, y:number}[]}
+ */
+function griffe(w, rect, lage){
+  const r = rect || CON.wandRechteck(w.lage, position(w.id, loesen()));
+  const l = lage || CON.normLage(w.lage);
+  if (!r || !l) return [];
+  const cx = (r.x_min + r.x_max) / 2, cy = (r.y_min + r.y_max) / 2;
+  return l.richtung === 'x'
+    ? [{ ende: 'min', x: r.x_min, y: cy }, { ende: 'max', x: r.x_max, y: cy }, { ende: 'mitte', x: cx, y: cy }]
+    : [{ ende: 'min', x: cx, y: r.y_min }, { ende: 'max', x: cx, y: r.y_max }, { ende: 'mitte', x: cx, y: cy }];
+}
+
+/** Griff unter einem Weltpunkt — nur die aktive Wand hat welche. */
+function griffTreffer(p){
+  const w = GP.aktiv ? wand(GP.aktiv) : null;
+  if (!w || w.lage == null) return null;
+  const r = GRIFF_PX * V.mm;
+  for (const g of griffe(w)) {
+    if (Math.abs(p.x - g.x) <= r && Math.abs(p.y - g.y) <= r) return g;
+  }
+  return null;
+}
+
 /** Eine Wand als Rechteck samt Mittellinie ([K-2]) und Zustandsfarbe ([K-8]). */
 function wandSvg(w, erg, koll){
   const pos = position(w.id, erg);
   const rect = CON.wandRechteck(w.lage, pos);
   if (!rect) return '';
-  const zustand = CON.zustand(w.id, erg, { aktiv: GP.auswahl, kollisionen: koll });
+  const zustand = CON.zustand(w.id, erg, { aktiv: GP.aktiv, kollisionen: koll });
   const farbe = CON.FARBEN[zustand];
   const l = CON.normLage(w.lage);
   const b = rect.x_max - rect.x_min, h = rect.y_max - rect.y_min;
@@ -391,12 +470,30 @@ function wandSvg(w, erg, koll){
   teile.push(`<line class="mittellinie" x1="${r2(mx1)}" y1="${r2(my1)}" x2="${r2(mx2)}" y2="${r2(my2)}"`
     + ` stroke="${farbe}" stroke-width="${r2(strich(1))}"`
     + ` stroke-dasharray="${r2(strich(8))} ${r2(strich(5))}"/>`);
-  if (GP.auswahl === w.id) {
-    // Griffe an den Stirnkanten — die Auswahl bleibt auch in Fehlerrot erkennbar ([K-8]).
-    const g = 5 * V.mm;
-    for (const p of [{ x: mx1, y: my1 }, { x: mx2, y: my2 }]) {
-      teile.push(`<rect class="griff" x="${r2(p.x - g)}" y="${r2(p.y - g)}" width="${r2(2 * g)}"`
-        + ` height="${r2(2 * g)}" fill="#fff" stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(1.6))}"/>`);
+  if (istAusgewaehlt(w.id) && GP.aktiv !== w.id) {
+    // AUSGEWÄHLT, aber nicht aktiv: nur ein Rahmen. Ausgewählt sein können mehrere
+    // Wände; die Zustandsfarbe der Wand bleibt dabei unangetastet ([K-8]).
+    const luft = 4 * V.mm;
+    teile.push(`<rect class="auswahlrahmen" x="${r2(rect.x_min - luft)}" y="${r2(rect.y_min - luft)}"`
+      + ` width="${r2(rect.x_max - rect.x_min + 2 * luft)}" height="${r2(rect.y_max - rect.y_min + 2 * luft)}"`
+      + ` fill="none" stroke="#33415c" stroke-width="${r2(strich(1.2))}"`
+      + ` stroke-dasharray="${r2(strich(5))} ${r2(strich(4))}"/>`);
+  }
+  if (GP.aktiv === w.id) {
+    // AKTIV: die eine Wand in Bearbeitung. Die beiden Griffe an den Stirnkanten
+    // ziehen die Wand LÄNGER oder KÜRZER, der runde Griff in der Mitte verschiebt
+    // sie. Sie bleiben auch in Fehlerrot erkennbar ([K-8]).
+    const g = GRIFF_PX * V.mm;
+    for (const p of griffe(w, rect, l)) {
+      if (p.ende === 'mitte') {
+        teile.push(`<circle class="griff griff-mitte" cx="${r2(p.x)}" cy="${r2(p.y)}" r="${r2(g)}"`
+          + ` fill="#fff" stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(1.6))}"/>`
+          + `<circle cx="${r2(p.x)}" cy="${r2(p.y)}" r="${r2(g / 3)}" fill="${CON.FARBEN.aktiv}"/>`);
+      } else {
+        teile.push(`<rect class="griff griff-ende" data-ende="${p.ende}" x="${r2(p.x - g)}"`
+          + ` y="${r2(p.y - g)}" width="${r2(2 * g)}" height="${r2(2 * g)}" fill="#fff"`
+          + ` stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(1.6))}"/>`);
+      }
     }
   }
   const laenge = CON.laengeMm(w.lage);
@@ -427,6 +524,53 @@ function entwurfSvg(){
     + `<text x="${r2((rect.x_min + rect.x_max) / 2)}" y="${r2(rect.y_min - 6 * V.mm)}"`
     + ` font-size="${r2(11 * V.mm)}" text-anchor="middle" fill="#1f9d4d">`
     + `${v.lage.laenge_grid} × 125 = ${v.laenge_mm} mm</text>`;
+}
+
+/**
+ * Neue Lage beim Ziehen an einem Endgriff: die gegenüberliegende Stirnkante
+ * bleibt FEST, nur die gezogene wandert. Damit ändert sich ausschließlich die
+ * LÄNGE (und bei „min“ notwendigerweise der Anker) — Richtung und Querlage
+ * bleiben unangetastet, und die feste Kante behält ihre Rasterlage.
+ * @returns {object|null} Lage nach [L-1] oder `null`, wenn sich nichts ändert
+ */
+function groesseLage(erg){
+  const g = GP.groesse;
+  if (!g) return null;
+  const w = wand(g.id);
+  const l = CON.normLage(w && w.lage);
+  if (!l || !ACHSE_OK(l)) return null;
+  const a = l.richtung;
+  const pos = position(g.id, erg) || l.start_mm;
+  const L = CON.laengeMm(l);
+  const z = fange(g.zeiger)[a];
+  const start = { x: pos.x, y: pos.y };
+  let grid;
+  if (g.ende === 'max') {
+    grid = Math.round((z - pos[a]) / CON.GRID_MM);
+  } else {
+    const fest = pos[a] + L;                       // die andere Stirnkante bleibt stehen
+    grid = Math.round((fest - z) / CON.GRID_MM);
+    start[a] = fest - Math.max(1, grid) * CON.GRID_MM;
+  }
+  if (grid < 1) grid = 1;                          // kürzer als eine Rastereinheit gibt es nicht ([L-1])
+  return { start_mm: start, richtung: l.richtung, laenge_grid: grid };
+}
+
+function ACHSE_OK(l){ return l && (l.richtung === 'x' || l.richtung === 'y'); }
+
+/** Vorschau des Größenziehens — gestrichelt, nichts davon ist gespeichert. */
+function groesseSvg(erg){
+  const lage = groesseLage(erg);
+  if (!lage) return '';
+  const r = CON.wandRechteck(lage);
+  if (!r) return '';
+  return `<rect class="groesse" x="${r2(r.x_min)}" y="${r2(r.y_min)}" width="${r2(r.x_max - r.x_min)}"`
+    + ` height="${r2(r.y_max - r.y_min)}" fill="${CON.FARBEN.aktiv}" fill-opacity=".14"`
+    + ` stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(1.6))}"`
+    + ` stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"/>`
+    + `<text x="${r2((r.x_min + r.x_max) / 2)}" y="${r2(r.y_min - 6 * V.mm)}"`
+    + ` font-size="${r2(11 * V.mm)}" text-anchor="middle" fill="#1f9d4d">`
+    + `${lage.laenge_grid} × 125 = ${lage.laenge_grid * CON.GRID_MM} mm</text>`;
 }
 
 /**
@@ -478,6 +622,7 @@ function render(){
     return;
   }
   const f = flaeche();
+  auswahlPruefen();
   const erg = loesen();
   const koll = erg.kollisionen || [];
   const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
@@ -485,7 +630,7 @@ function render(){
     `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
     planSvgTeil(), rasterSvg(f), ursprungSvg()];
   for (const w of waende()) teile.push(wandSvg(w, erg, koll));
-  teile.push(zugSvg(erg), entwurfSvg(), '</svg>');
+  teile.push(zugSvg(erg), groesseSvg(erg), entwurfSvg(), '</svg>');
   buehne.innerHTML = teile.join('');
   buehne.className = 'gp-buehne'
     + (GP.pan ? ' zieht' : GP.werkzeug === 'wand' ? ' zeichnet'
@@ -540,13 +685,15 @@ function kopfSync(){
     $('wz-' + b).className = GP.werkzeug === b ? 'an' : '';
   }
   $('wz-hinweis').innerHTML = GP.werkzeug === 'wand'
-    ? 'Startpunkt anklicken, dann den Endpunkt: die Wand liegt <b>orthogonal</b> ([L-2]), die Länge '
-      + 'rastet auf 125 mm ([L-1]). <b>Escape</b> verwirft.'
+    ? 'Maustaste am Startpunkt <b>drücken</b>, halten und zum Endpunkt ziehen — die Vorschau läuft '
+      + 'mit. Die Wand liegt <b>orthogonal</b> ([L-2]), die Länge rastet auf 125 mm und die '
+      + '<b>Wandkanten</b> liegen auf dem Raster ([L-1]). <b>Escape</b> verwirft.'
     : GP.werkzeug === 'plan'
       ? (GP.planLock ? 'Der Plan ist <b>gesperrt</b> — erst die Sperre unten lösen.'
         : 'Plan mit der Maus ziehen. Verschoben wird der <b>Plan</b>, keine Wandlage ([L-1]/[L-9]).')
-      : 'Wand anklicken und ziehen. Bewegt wird die ganze starre Gruppe; eine in einer Achse '
-        + '<b>bestimmte</b> Wand lässt sich dort nicht ziehen ([K-9]).';
+      : 'Wand anklicken (Umschalt/Strg wählt mehrere) und am Körper oder Mittelgriff ziehen. Bewegt '
+        + 'wird die ganze starre Gruppe; eine in einer Achse <b>bestimmte</b> Wand lässt sich dort '
+        + 'nicht ziehen ([K-9]). Die <b>Endgriffe</b> ändern die Länge, <b>R</b> dreht um 90°.';
 
   // Ziel des Wand-Werkzeugs: neu anlegen oder eine eingetragene, aber unverortete Wand.
   const ohneLage = waende().filter(w => w.lage == null && store.holeElement(w.id));
@@ -576,11 +723,13 @@ function kopfSync(){
           + 'änderbar und nie zurückgeschrieben ([L-5]).'
         : esc(vg.hinweis);
 
-  const aus = GP.auswahl ? wand(GP.auswahl) : null;
+  const aus = GP.aktiv ? wand(GP.aktiv) : null;
   const el = aus ? store.holeElement(aus.id) : null;
+  const weitere = GP.auswahl.length - (aus ? 1 : 0);
   $('gp-auswahl-info').innerHTML = !aus
-    ? 'Keine Wand ausgewählt.'
-    : `<b>${esc(aus.name || aus.id)}</b><br>`
+    ? 'Keine Wand aktiv.'
+    : `<b>${esc(aus.name || aus.id)}</b> <span style="color:#1f9d4d">aktiv</span>`
+      + (weitere > 0 ? ` · ${weitere} weitere ausgewählt` : '') + '<br>'
       + (aus.lage
         ? `Lage ${r2(aus.lage.start_mm.x)} / ${r2(aus.lage.start_mm.y)} mm · Richtung `
           + `${esc(aus.lage.richtung)} · ${aus.lage.laenge_grid} × 125 = ${CON.laengeMm(aus.lage)} mm`
@@ -590,6 +739,7 @@ function kopfSync(){
         : '<br>⚠ kein Wandelement (verwaister Eintrag, [L-4])');
   $('gp-planen').disabled = !(aus && el);
   $('gp-lage-weg').disabled = !(aus && aus.lage);
+  $('gp-drehen').disabled = !(aus && aus.lage);
 
   planKopfSync();
 }
@@ -622,22 +772,28 @@ function planKopfSync(){
 //  Wand zeichnen ([L-1]/[L-2], Länge im 125-mm-Raster)
 // ---------------------------------------------------------------------------
 /**
- * Aus zwei Weltpunkten eine gültige Lage ableiten: Richtung = Achse mit dem
- * größeren Abstand ([L-2] — schräg gibt es nicht), Länge auf 125 mm gerundet,
- * Anker auf der Mittellinie am Ende mit der kleineren Koordinate ([L-1]).
+ * Aus zwei UNGEFANGENEN Weltpunkten eine gültige Lage ableiten: Richtung = Achse
+ * mit dem größeren Abstand ([L-2] — schräg gibt es nicht), Länge auf 125 mm
+ * gerundet, Anker auf der Mittellinie am Ende mit der kleineren Koordinate ([L-1]).
+ *
+ * Gefangen wird erst hier, weil der Fang von der Richtung abhängt: längs auf die
+ * Rasterlinie (dort ist der Anker eine Stirnkante), quer auf die Feldmitte (dort
+ * ist er die Mittellinie) — so liegen alle vier Wandkanten auf dem Raster.
+ *
  * `null`, wenn die Strecke für weniger als eine Rastereinheit reicht.
  * @returns {{lage:object, laenge_mm:number}|null}
  */
 function entwurfLage(a, b){
   const dx = Number(b.x) - Number(a.x), dy = Number(b.y) - Number(a.y);
   const richtung = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
-  const roh = Math.abs(richtung === 'x' ? dx : dy);
-  const grid = Math.round(roh / CON.GRID_MM);
+  const quer = richtung === 'x' ? 'y' : 'x';
+  const von = fange(a)[richtung], bis = fange(b)[richtung];
+  const grid = Math.round(Math.abs(bis - von) / CON.GRID_MM);
   if (grid < 1) return null;
   const laenge_mm = grid * CON.GRID_MM;
-  const start = richtung === 'x'
-    ? { x: dx >= 0 ? a.x : a.x - laenge_mm, y: a.y }
-    : { x: a.x, y: dy >= 0 ? a.y : a.y - laenge_mm };
+  const start = {};
+  start[richtung] = Math.min(von, bis);
+  start[quer] = fangeQuer(a[quer]);
   return { lage: { start_mm: start, richtung, laenge_grid: grid }, laenge_mm };
 }
 
@@ -666,7 +822,7 @@ function wandFertig(a, b){
     if (!w) { zeige('Die zu verortende Wand ist nicht mehr im Geschoss.', false); return null; }
     try { store.verorteWand(w.id, gs.id, { lage: v.lage }); }
     catch (e) { zeige('Nicht verortet: ' + fehlerText(e), false); return null; }
-    GP.auswahl = w.id; GP.ziel = '';
+    waehle(w.id); GP.ziel = '';
     const el = store.holeElement(w.id);
     const ab = MAPPE.laengenAbgleich(v.lage, el && el.wandelement ? el.wandelement.length_mm : null);
     zeige(`„${w.name || w.id}“ verortet: ${v.laenge_mm} mm in Richtung ${v.lage.richtung}.`
@@ -687,7 +843,7 @@ function wandFertig(a, b){
   } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
   try { store.verorteWand(id, gs.id, { name, lage: v.lage }); }
   catch (e) { zeige(`„${name}“ angelegt, aber nicht eingetragen: ${fehlerText(e)}`, false); return id; }
-  GP.auswahl = id;
+  waehle(id);
   try { store.setzeAktiv(id); } catch { /* nicht aktivierbar: wird unten benannt */ }
 
   // [P-18] Startklar statt leer: nur LEERE Verwendungsstellen übernehmen die
@@ -768,28 +924,105 @@ function ziehenFertig(id, delta){
     !r.meldungen.length && !koll.length);
 }
 
+/**
+ * Längenmaße, die diese Wand treiben ([K-11]). Solange eines gesetzt ist, ist die
+ * Länge bemaßt — Ziehen am Endgriff würde das Maß hintergehen und wird abgewiesen.
+ * (Die Bedienung zum Setzen kommt in C4b; der Löser kennt sie schon.)
+ */
+function laengenmasse(id){
+  const lagen = new Map(waende().map(w => [w.id, w.lage]));
+  return bemassungen().filter(b => {
+    const n = CON.normBemassung(b);
+    return n.von && n.von.wand === id && CON.istLaengenmass(n, lagen);
+  });
+}
+
+/** Neue Lage speichern — der einzige Schreibweg des Editors ist die LAGE ([K-10]). */
+function speichereLage(id, lage, was){
+  const gs = geschoss();
+  if (!gs) { zeige('Kein aktives Geschoss.', false); return false; }
+  const f = CON.lageFehler(lage);
+  if (f.length) { zeige(`${was} nicht möglich: ` + f.join(' '), false); return false; }
+  try { store.verorteWand(id, gs.id, { lage }); }
+  catch (e) { zeige(`${was} nicht möglich: ` + fehlerText(e), false); return false; }
+  return true;
+}
+
+/** Meldung über Längenabweichung ([L-3]) und Kollisionen ([K-13]) nach einer Änderung. */
+function folgen(id, lage){
+  const el = store.holeElement(id);
+  const ab = MAPPE.laengenAbgleich(lage, el && el.wandelement ? el.wandelement.length_mm : null);
+  const koll = loesen().kollisionen || [];
+  return (ab.abweichung ? ` Das Wandelement ist ${ab.wand_mm} mm lang — die Abweichung wird gemeldet, `
+      + 'nicht angeglichen ([L-3]).' : '')
+    + (koll.length ? ` ⚠ ${koll.length} Kollision(en) — gemeldet, nicht korrigiert ([K-13]).` : '');
+}
+
+/** Größenziehen abschließen: nur die Länge (und bei „min“ der Anker) ändern sich. */
+function groesseFertig(){
+  const g = GP.groesse;
+  if (!g) return;
+  const w = wand(g.id);
+  const alt = CON.normLage(w && w.lage);
+  const lage = groesseLage(loesen());          // noch mit gesetztem GP.groesse rechnen
+  GP.groesse = null;
+  if (!alt || !lage) { render(); return; }
+  if (lage.laenge_grid === alt.laenge_grid
+    && lage.start_mm.x === alt.start_mm.x && lage.start_mm.y === alt.start_mm.y) { render(); return; }
+  const masse = laengenmasse(g.id);
+  if (masse.length) {
+    zeige(`Die Länge von „${w.name || w.id}“ ist durch das Längenmaß „${esc(masse[0].id)}“ festgelegt — `
+      + 'sie wird nicht am Griff überschrieben. Erst das Maß ändern ([K-11]).', false);
+    render();
+    return;
+  }
+  if (!speichereLage(g.id, lage, 'Länge ändern')) { render(); return; }
+  zeige(`„${w.name || w.id}“ ist jetzt ${lage.laenge_grid} × 125 = ${lage.laenge_grid * CON.GRID_MM} mm lang.`
+    + folgen(g.id, lage), true);
+  render();
+}
+
+/**
+ * Aktive Wand um 90° drehen. Gedreht wird um die MIN-ECKE des Grundrisses (die
+ * Ecke mit der kleinsten x- und y-Koordinate): nur so bleibt die Rasterlage
+ * erhalten — die neue Längsachse startet wieder auf einer Rasterlinie, die neue
+ * Mittellinie wieder auf einer Feldmitte. Länge und Wandelement bleiben unberührt.
+ */
+function drehe(){
+  const w = GP.aktiv ? wand(GP.aktiv) : null;
+  if (!w || w.lage == null) { zeige('Keine aktive, verortete Wand — nichts gedreht.', false); return; }
+  const erg = loesen();
+  const b = erg.bestimmt[w.id];
+  if (b && (b.x || b.y)) {
+    zeige(`„${w.name || w.id}“ ist durch Bemaßungen bestimmt — Drehen würde sie verschieben. `
+      + 'Erst das Maß lösen ([K-9]).', false);
+    return;
+  }
+  const l = CON.normLage(w.lage);
+  const r = CON.wandRechteck(w.lage, position(w.id, erg));
+  if (!l || !r) { zeige('Die Lage ist ungültig — nichts gedreht.', false); return; }
+  const lage = l.richtung === 'x'
+    ? { start_mm: { x: r.x_min + CON.HALB_BREITE_MM, y: r.y_min }, richtung: 'y', laenge_grid: l.laenge_grid }
+    : { start_mm: { x: r.x_min, y: r.y_min + CON.HALB_BREITE_MM }, richtung: 'x', laenge_grid: l.laenge_grid };
+  if (!speichereLage(w.id, lage, 'Drehen')) { render(); return; }
+  zeige(`„${w.name || w.id}“ um 90° gedreht — jetzt Richtung ${lage.richtung}, `
+    + `${lage.laenge_grid * CON.GRID_MM} mm lang (Länge unverändert).` + folgen(w.id, lage), true);
+  render();
+}
+
 // ---------------------------------------------------------------------------
 //  Zeigerbedienung der Zeichenfläche
 // ---------------------------------------------------------------------------
 function beiKlick(ev){
   if (!geschoss()) return;
-  const p = fange(weltPunkt(ev.clientX, ev.clientY));
-  if (GP.werkzeug === 'wand') {
-    if (!GP.zeichnen) {
-      GP.zeichnen = { start: p, zeiger: p };
-      zeige('Startpunkt gesetzt — jetzt den Endpunkt anklicken (Escape verwirft).', true);
+  // Das Zeichnen läuft vollständig über pointerdown/-up (Startpunkt beim DRÜCKEN);
+  // hier bleibt nur das Abwählen mit einem Klick ins Leere.
+  if (GP.werkzeug === 'auswahl' && !GP.ziehen && !GP.groesse) {
+    const welt = weltPunkt(ev.clientX, ev.clientY);
+    if (!griffTreffer(welt) && !treffer(welt)) {
+      waehle(null, ev.shiftKey || ev.ctrlKey || ev.metaKey);
       render();
-      return;
     }
-    const start = GP.zeichnen.start;
-    GP.zeichnen = null;
-    wandFertig(start, p);
-    render();
-    return;
-  }
-  if (GP.werkzeug === 'auswahl' && !GP.ziehen) {
-    GP.auswahl = treffer(weltPunkt(ev.clientX, ev.clientY));
-    render();
   }
 }
 
@@ -798,6 +1031,22 @@ function beiZeigerAb(ev){
   const mitte = ev.button === 1;
   if (mitte || GP.raumTaste) {
     GP.pan = { x: ev.clientX, y: ev.clientY, x0: V.x0, y0: V.y0 };
+    if (ev.preventDefault) ev.preventDefault();
+    render();
+    return;
+  }
+  if (GP.werkzeug === 'wand') {
+    // Der Startpunkt sitzt auf dem DRÜCKEN, nicht auf dem Loslassen: von hier
+    // läuft die Vorschau mit der Maus mit. Ein zu kurzer Zug lässt den Startpunkt
+    // stehen, sodass auch „klicken – klicken“ funktioniert.
+    const welt = weltPunkt(ev.clientX, ev.clientY);
+    if (GP.zeichnen && GP.zeichnen.wartet) {
+      const start = GP.zeichnen.start;
+      GP.zeichnen = null;
+      wandFertig(start, welt);
+    } else {
+      GP.zeichnen = { start: welt, zeiger: welt, wartet: false };
+    }
     if (ev.preventDefault) ev.preventDefault();
     render();
     return;
@@ -813,10 +1062,22 @@ function beiZeigerAb(ev){
   }
   if (GP.werkzeug !== 'auswahl') return;
   const welt = weltPunkt(ev.clientX, ev.clientY);
-  const id = treffer(welt);
+  // Die Griffe der aktiven Wand haben Vorrang vor ihrem Körper: die beiden
+  // Endgriffe ändern die LÄNGE, der Mittelgriff (und der Körper) verschieben.
+  // Mit Umschalt/Strg geht es um die AUSWAHL, nicht ums Bearbeiten — dann haben
+  // die Griffe keinen Vorrang, sonst ließe sich die aktive Wand nicht abwählen.
+  const dazu = !!(ev.shiftKey || ev.ctrlKey || ev.metaKey);
+  const g = dazu ? null : griffTreffer(welt);
+  if (g && g.ende !== 'mitte') {
+    GP.groesse = { id: GP.aktiv, ende: g.ende, zeiger: welt };
+    if (ev.preventDefault) ev.preventDefault();
+    render();
+    return;
+  }
+  const id = g ? GP.aktiv : treffer(welt);
   if (!id) return;
-  GP.auswahl = id;
-  GP.ziehen = { id, von: welt, delta: { x: 0, y: 0 } };
+  if (!g) waehle(id, dazu);
+  if (GP.aktiv === id) GP.ziehen = { id, von: welt, delta: { x: 0, y: 0 } };
   if (ev.preventDefault) ev.preventDefault();
   render();
 }
@@ -835,14 +1096,19 @@ function beiZeigerBewegung(ev){
     $('gp-vy').value = String(Math.round(GP.planZieh.vy + (ev.clientY - GP.planZieh.y) * V.mm));
     return;
   }
+  if (GP.groesse) {
+    GP.groesse.zeiger = weltPunkt(ev.clientX, ev.clientY);
+    render();                                   // Vorschau der neuen Länge
+    return;
+  }
   if (GP.ziehen) {
     const welt = weltPunkt(ev.clientX, ev.clientY);
     GP.ziehen.delta = { x: welt.x - GP.ziehen.von.x, y: welt.y - GP.ziehen.von.y };
     render();                                   // Vorschau der starren Gruppe
     return;
   }
-  if (GP.werkzeug === 'wand' && GP.zeichnen) {
-    GP.zeichnen.zeiger = fange(weltPunkt(ev.clientX, ev.clientY));
+  if (GP.werkzeug === 'wand' && GP.zeichnen && !GP.zeichnen.wartet) {
+    GP.zeichnen.zeiger = weltPunkt(ev.clientX, ev.clientY);
     render();
   }
 }
@@ -852,6 +1118,21 @@ function beiZeigerAuf(){
   if (GP.planZieh) {
     GP.planZieh = null;
     versatzUebernehmen();
+    return;
+  }
+  if (GP.groesse) { groesseFertig(); return; }
+  if (GP.werkzeug === 'wand' && GP.zeichnen && !GP.zeichnen.wartet) {
+    const { start, zeiger } = GP.zeichnen;
+    if (entwurfLage(start, zeiger)) {
+      GP.zeichnen = null;
+      wandFertig(start, zeiger);
+    } else {
+      // Kein Zug, nur ein Klick: der Startpunkt bleibt stehen, der zweite Klick
+      // schließt ab. Nichts wird angelegt und nichts aufgerundet ([P-9]).
+      GP.zeichnen.wartet = true;
+      zeige('Startpunkt gesetzt — jetzt ziehen oder den Endpunkt anklicken (Escape verwirft).', true);
+    }
+    render();
     return;
   }
   if (GP.ziehen) {
@@ -982,6 +1263,7 @@ async function auffrischen(erzwingen){
 function werkzeug(name){
   GP.werkzeug = name;
   GP.zeichnen = null;
+  GP.groesse = null;
   render();
 }
 
@@ -1015,13 +1297,14 @@ function binde(){
   $('gp-zoom-alles').addEventListener('click', zeigeAlles);
 
   $('gp-planen').addEventListener('click', () => {
-    if (!GP.auswahl) return;
-    try { store.setzeAktiv(GP.auswahl); }
+    if (!GP.aktiv) return;
+    try { store.setzeAktiv(GP.aktiv); }
     catch (e) { zeige('Nicht aktiviert: ' + fehlerText(e), false); return; }
     try { window.location.href = 'wandplanung.html'; } catch { /* Navigation nicht möglich */ }
   });
+  $('gp-drehen').addEventListener('click', drehe);
   $('gp-lage-weg').addEventListener('click', () => {
-    const gs = geschoss(), w = GP.auswahl ? wand(GP.auswahl) : null;
+    const gs = geschoss(), w = GP.aktiv ? wand(GP.aktiv) : null;
     if (!gs || !w) return;
     // Nur die LAGE geht — das Wandelement und der Eintrag im Geschoss bleiben ([K-10]).
     try { store.verorteWand(w.id, gs.id, { lage: null }); }
@@ -1067,6 +1350,7 @@ function beiTaste(ev){
   if (ev.key === 'Escape') {
     if (!$('kal-overlay').hidden) { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); return; }
     if (GP.zeichnen) { GP.zeichnen = null; zeige('Zeichnen verworfen — nichts angelegt.', true); render(); return; }
+    if (GP.groesse) { GP.groesse = null; zeige('Größenänderung verworfen — die Länge bleibt.', true); render(); return; }
     werkzeug('auswahl');
     return;
   }
@@ -1076,6 +1360,7 @@ function beiTaste(ev){
   const k = String(ev.key || '').toLowerCase();
   if (k === 'w') werkzeug('wand');
   else if (k === 'p') werkzeug('plan');
+  else if (k === 'r') drehe();
   else if (k === '0') zeigeAlles();
   else if (k === '+') zoomeAuf(1 / 1.3);
   else if (k === '-') zoomeAuf(1.3);
@@ -1083,20 +1368,35 @@ function beiTaste(ev){
 
 // --- Prüfhilfen (Smoke-Test): dieselben Pfade wie die echte Bedienung -------
 window.__gp = {
-  render, werkzeug, zeigeAlles, auffrischen,
-  entwurfLage, fange, weltPunkt, schirmPunkt, treffer, loesen,
-  /** Klick an einem WELTpunkt (mm) — läuft durch die echten Ereignisbehandler. */
-  tippe(welt){ const p = schirmPunkt(welt); beiKlick({ clientX: p.x, clientY: p.y }); },
+  render, werkzeug, zeigeAlles, auffrischen, drehe,
+  entwurfLage, fange, fangeQuer, weltPunkt, schirmPunkt, treffer, griffTreffer, loesen,
+  /**
+   * Klick an einem WELTpunkt (mm) — wie im Browser pointerdown, pointerup, click,
+   * damit auch das Zeichnen ab dem Drücken durch dieselben Behandler läuft.
+   */
+  tippe(welt, mod){
+    window.__gp.zeigerAb(welt, mod);
+    beiZeigerAuf();
+    const p = schirmPunkt(welt);
+    beiKlick({ clientX: p.x, clientY: p.y, ...(mod || {}) });
+  },
   /** Einzelschritte des Ziehens an WELTpunkten — dieselben Behandler wie im Browser. */
-  zeigerAb(welt){ const p = schirmPunkt(welt); beiZeigerAb({ clientX: p.x, clientY: p.y, button: 0, preventDefault(){} }); },
+  zeigerAb(welt, mod){
+    const p = schirmPunkt(welt);
+    beiZeigerAb({ clientX: p.x, clientY: p.y, button: 0, preventDefault(){}, ...(mod || {}) });
+  },
   zeigerBewegung(welt){ const p = schirmPunkt(welt); beiZeigerBewegung({ clientX: p.x, clientY: p.y }); },
   zeigerAuf: () => beiZeigerAuf(),
   /** Ziehen von Welt- zu Weltpunkt (pointerdown/move/up wie im Browser). */
-  ziehe(von, nach){
-    window.__gp.zeigerAb(von);
+  ziehe(von, nach, mod){
+    window.__gp.zeigerAb(von, mod);
     window.__gp.zeigerBewegung(nach);
     beiZeigerAuf();
   },
+  /** Wand zeichnen wie im Browser: drücken – ziehen – loslassen. */
+  zeichne(von, nach){ window.__gp.ziehe(von, nach); },
+  /** Griffe der aktiven Wand in Weltkoordinaten. */
+  griffe(){ const w = GP.aktiv ? wand(GP.aktiv) : null; return w ? griffe(w) : []; },
   taste(key, target){ beiTaste({ key, target: target || {} }); },
   get zustand(){ return GP; },
   get blick(){ return V; },

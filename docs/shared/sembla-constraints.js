@@ -56,7 +56,9 @@ export const URSPRUNG = "@ursprung";
  */
 export const FARBEN = Object.freeze({
   fehler: "#d92b2b",    // rot   — Widerspruch [K-6] oder Kollision [K-13]
-  aktiv: "#1f9d4d",     // gruen — aktuell ausgewaehlte Wand
+  aktiv: "#1f9d4d",     // gruen — AKTIVE Wand (genau eine, in Bearbeitung). Mehrfach
+                        //         AUSGEWAEHLTE Waende sind reine Bedienung und bekommen
+                        //         keine eigene Zustandsfarbe, nur einen Rahmen.
   bestimmt: "#1a1a1a",  // schwarz — in x UND y bestimmt
   frei: "#7fb6e6",      // hellblau — in mindestens einer Achse frei
 });

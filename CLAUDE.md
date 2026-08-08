@@ -233,6 +233,27 @@ verfälscht den Maßstab still); die Marker sind **Kreuze mit ausgesparter Mitte
 **Hochgeladen** wird ein Plan ausschließlich im **Geschoss-Popup von Modul 0** — genau ein
 Upload-Weg.
 
+**Bedienung des Layout-Editors (Nachschärfung 2026-08-08).** Vier Punkte, die alle in
+`docs/geschossplan.html` wohnen und **nichts** am Datenmodell ändern:
+**(a) Aktiv ≠ ausgewählt.** *Ausgewählt* (gestrichelter Rahmen) können **mehrere** Wände sein
+(Umschalt/Strg); *aktiv* — grün nach [K-8], als einzige mit Griffen, in Bearbeitung — ist immer genau
+**eine**. „Ausgewählt" bekommt bewusst **keine** Zustandsfarbe, sonst gäbe es zwei Grün.
+**(b) Zeichnen ab dem Drücken.** Der Startpunkt sitzt auf `pointerdown`, die Vorschau läuft mit, das
+Loslassen legt an; ein Klick ohne Zug lässt den Startpunkt stehen (klicken–klicken geht weiter).
+**(c) Der Fang ist richtungsabhängig, weil der Anker es ist.** Längs liegt `start_mm` auf einer
+**Stirnkante** und rastet auf die Rasterlinie; quer liegt er auf der **Mittellinie**, und die 125 mm
+breite Wand legt beide Längskanten 62,5 mm daneben — ein 125-mm-Fang der Mittellinie legte die Wand
+also zwangsläufig auf **halbe Rasterfelder**. Quer wird darum auf die **Feldmitte** (k · 125 + 62,5)
+gefangen, womit **alle vier Wandkanten auf dem Raster** liegen. Gefangen wird erst in
+`entwurfLage()`, weil die Richtung vorher nicht feststeht.
+**(d) Griffe ändern die Größe, der Körper die Lage.** Die Griffe auf den Stirnkanten ziehen die Wand
+länger/kürzer (die **gegenüberliegende** Kante bleibt fest, damit ihre Rasterlage erhalten bleibt);
+verschoben wird über den runden **Mittelgriff** oder den Wandkörper. Ein **Längenmaß** schlägt den
+Griff: das Ziehen wird abgewiesen und das Maß genannt ([K-11]). **90° drehen** (Knopf oder **R**)
+tauscht die Richtung bei unveränderter Länge und dreht um die **Min-Ecke** — nur so bleibt die
+Rasterlage erhalten und zweimal Drehen ist bit-genau die Ausgangslage. Eine **bestimmte** Wand wird
+nicht gedreht (Grund benannt, [K-9]).
+
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
 Verbrauchsmaterial) ist eine **eigene Ressource** — technisch und fachlich getrennt vom
@@ -472,7 +493,7 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 | Nr. | Datei | Inhalt |
 |---|---|---|
 | 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a stehen, Bemaßen folgt in C4b): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
-| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappe C4a, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). Schreibt **nur** die Lage im Geschoss ([K-10]); Bemaßen/Fixieren/Undo folgen in C4b |
+| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappe C4a, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Schreibt **nur** die Lage im Geschoss ([K-10]); Bemaßen/Fixieren/Undo folgen in C4b |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

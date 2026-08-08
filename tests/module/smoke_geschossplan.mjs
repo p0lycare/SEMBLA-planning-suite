@@ -135,16 +135,18 @@ ok('Statuszeile nennt den Stand', /0<\/b> Wand/.test($('gp-status').innerHTML));
 // --- 2) Wand zeichnen ([L-1]/[L-2]) ---------------------------------------
 GP.werkzeug('wand');
 ok('Werkzeugwechsel ist an der Flaeche sichtbar', /zeichnet/.test($('gp-buehne').className));
-GP.tippe({ x: 0, y: 0 });
-ok('Startpunkt gesetzt, aber noch nichts angelegt',
-  store.listeElemente().length === 0 && /Startpunkt gesetzt/.test($('gp-msg').textContent));
+GP.zeigerAb({ x: 0, y: 0 });
+ok('der Startpunkt sitzt auf dem DRUECKEN, nicht auf dem Loslassen',
+  !!GP.zustand.zeichnen && GP.zustand.zeichnen.start.x === 0 && GP.zustand.zeichnen.wartet === false);
+GP.zeigerBewegung({ x: 3040, y: 60 });
+ok('vom Startpunkt aus laeuft eine Vorschau mit, gespeichert ist nichts',
+  /class="entwurf"/.test(GP.svg) && store.listeElemente().length === 0);
 GP.taste('Escape');
 ok('Escape verwirft den Entwurf, ohne etwas anzulegen',
   store.listeElemente().length === 0 && /verworfen/.test($('gp-msg').textContent));
 
 GP.werkzeug('wand');
-GP.tippe({ x: 0, y: 0 });
-GP.tippe({ x: 3040, y: 60 });                        // leicht schief und krumm
+GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });      // druecken, ziehen, loslassen
 await warte();
 const el1 = store.listeElemente()[0];
 const w1 = MAPPE.findeWand(store.holeMappe(), el1.id).wand;
@@ -153,8 +155,14 @@ ok('[L-2] die Wand liegt orthogonal (Richtung x, die groessere Differenz gewinnt
   w1.lage.richtung === 'x');
 ok('[L-1] die Laenge rastet auf 125 mm (3040 -> 3000 = 24 Raster)',
   w1.lage.laenge_grid === 24 && CON.laengeMm(w1.lage) === 3000);
-ok('[L-1] die Position steht in mm und ist mit Fang ein Vielfaches von 125',
-  w1.lage.start_mm.x === 0 && w1.lage.start_mm.y === 0);
+ok('[L-1] die Position steht in mm; laengs rastet die Stirnkante auf das Raster',
+  w1.lage.start_mm.x === 0);
+// Der Anker liegt quer auf der MITTELLINIE — sie gehoert deshalb auf die Feldmitte,
+// damit beide Laengskanten auf Rasterlinien landen (und nicht auf halben Feldern).
+const r1 = CON.wandRechteck(w1.lage);
+ok('die Mittellinie rastet quer auf die Feldmitte …', w1.lage.start_mm.y === 62.5);
+ok('… womit alle vier Wandkanten auf dem 125-mm-Raster liegen',
+  r1.x_min % 125 === 0 && r1.x_max % 125 === 0 && r1.y_min % 125 === 0 && r1.y_max % 125 === 0);
 ok('[K-10] die Lage steht im Geschoss der Projektmappe …',
   MAPPE.validiereMappe(store.holeMappe()).length === 0
   && localStorage.getItem('sembla:projekte').includes('start_mm'));
@@ -162,13 +170,15 @@ ok('… und NICHT im Wandelement ([P-1]/[L-3])',
   !localStorage.getItem('sembla:elemente').includes('start_mm')
   && el1.wandelement.length_mm === 3000 && el1.wandelement.height_mm === 2800);
 ok('der gewaehlte Wandtyp steht am Wandelement', el1.wandelement.wandtyp === 'mit_wind');
-ok('die gezeichnete Wand ist ausgewaehlt und aktiv gesetzt',
-  GP.zustand.auswahl === el1.id && store.aktivId() === el1.id);
+ok('die gezeichnete Wand ist aktiv und ausgewaehlt und aktiv gesetzt',
+  GP.zustand.aktiv === el1.id && GP.zustand.auswahl.length === 1 && store.aktivId() === el1.id);
 ok('die Wand erscheint in der Zeichnung', GP.svg.includes(`data-wand="${el1.id}"`));
 
-// zu kurz: abgewiesen statt auf eine Rastereinheit aufgerundet
+// Klicken–klicken geht weiterhin: ein Klick ohne Zug laesst den Startpunkt stehen.
 GP.werkzeug('wand');
 GP.tippe({ x: 0, y: 2000 });
+ok('ein Klick ohne Zug setzt nur den Startpunkt, ohne etwas anzulegen',
+  store.listeElemente().length === 1 && /Startpunkt gesetzt/.test($('gp-msg').textContent));
 GP.tippe({ x: 40, y: 2000 });
 ok('zu kurze Strecke wird benannt abgewiesen, nichts angelegt ([P-9])',
   store.listeElemente().length === 1 && /Zu kurz/.test($('gp-msg').textContent));
@@ -176,24 +186,29 @@ ok('zu kurze Strecke wird benannt abgewiesen, nichts angelegt ([P-9])',
 // --- 3) Auswaehlen und Ziehen ([K-9]) -------------------------------------
 GP.werkzeug('auswahl');
 GP.tippe({ x: 5000, y: 5000 });
-ok('Klick ins Leere hebt die Auswahl auf', GP.zustand.auswahl === null);
-ok('[K-8] ohne Bemassung und ohne Auswahl ist die Wand hellblau („frei")',
+ok('Klick ins Leere hebt Auswahl und aktive Wand auf',
+  GP.zustand.aktiv === null && GP.zustand.auswahl.length === 0);
+ok('[K-8] ohne Bemassung und ohne aktive Wand ist die Wand hellblau („frei")',
   GP.svg.includes(CON.FARBEN.frei) && !GP.svg.includes(CON.FARBEN.aktiv));
-GP.tippe({ x: 1500, y: 0 });
-ok('Klick auf die Wand waehlt sie aus', GP.zustand.auswahl === el1.id);
-ok('[K-8] die ausgewaehlte Wand ist gruen', GP.svg.includes(CON.FARBEN.aktiv));
+GP.tippe({ x: 1500, y: 62.5 });
+ok('Klick auf die Wand macht sie aktiv', GP.zustand.aktiv === el1.id);
+ok('[K-8] die AKTIVE Wand ist gruen', GP.svg.includes(CON.FARBEN.aktiv));
+ok('die aktive Wand hat drei Griffe: zwei Enden (Laenge) und einen in der Mitte (Verschieben)',
+  GP.griffe().length === 3 && /class="griff griff-ende" data-ende="min"/.test(GP.svg)
+  && /class="griff griff-ende" data-ende="max"/.test(GP.svg)
+  && /class="griff griff-mitte"/.test(GP.svg));
 
 // Vorschau: waehrend des Ziehens steht die Gruppe gestrichelt im Bild, gespeichert ist nichts.
-GP.zeigerAb({ x: 1500, y: 0 });
-GP.zeigerBewegung({ x: 2000, y: 250 });
+GP.zeigerAb({ x: 1500, y: 62.5 });
+GP.zeigerBewegung({ x: 2000, y: 312.5 });
 ok('waehrend des Ziehens gibt es eine Vorschau, aber noch keine gespeicherte Aenderung',
   /class="zug"/.test(GP.svg)
   && MAPPE.findeWand(store.holeMappe(), el1.id).wand.lage.start_mm.x === 0);
 GP.zeigerAuf();
 await warte();
 const nachZug = MAPPE.findeWand(store.holeMappe(), el1.id).wand;
-ok('Ziehen verschiebt die Wand um den gerasterten Versatz',
-  nachZug.lage.start_mm.x === 500 && nachZug.lage.start_mm.y === 250);
+ok('Ziehen am Wandkoerper verschiebt die Wand um den gerasterten Versatz',
+  nachZug.lage.start_mm.x === 500 && nachZug.lage.start_mm.y === 312.5);
 ok('Ziehen laesst Laenge und Richtung unberuehrt',
   nachZug.lage.laenge_grid === 24 && nachZug.lage.richtung === 'x');
 ok('das Wandelement bleibt vom Ziehen unberuehrt ([P-1])',
@@ -208,12 +223,12 @@ store.aendereMappe(m => MAPPE.setzeBemassung(m, gsId, {
 await warte();
 ok('[K-4] mit Kette zum Ursprung gilt die Wand in x als bestimmt',
   GP.loesen().bestimmt[el1.id].x === true && GP.loesen().bestimmt[el1.id].y === false);
-GP.tippe({ x: 2000, y: 250 });
-GP.ziehe({ x: 2000, y: 250 }, { x: 2500, y: 500 });
+GP.tippe({ x: 2000, y: 312.5 });
+GP.ziehe({ x: 2000, y: 312.5 }, { x: 2500, y: 562.5 });
 await warte();
 const nachSperre = MAPPE.findeWand(store.holeMappe(), el1.id).wand;
 ok('[K-9] die bestimmte Achse bleibt stehen, die freie wandert',
-  nachSperre.lage.start_mm.x === 500 && nachSperre.lage.start_mm.y === 500);
+  nachSperre.lage.start_mm.x === 500 && nachSperre.lage.start_mm.y === 562.5);
 ok('[K-9] der Grund wird benannt', /bestimmt/.test($('gp-msg').textContent));
 ok('[K-9] das Mass selbst bleibt unveraendert',
   MAPPE.bemassungen(store.holeMappe(), gsId)[0].mass_mm === 500);
@@ -272,6 +287,80 @@ await warte();
 ok('„Lage aufheben" nimmt nur die Lage, nicht den Eintrag',
   MAPPE.findeWand(store.holeMappe(), fremdId).wand.lage === null
   && !!store.holeElement(fremdId));
+
+// --- 6b) Griffe aendern die LAENGE, nicht die Lage -------------------------
+GP.werkzeug('wand');
+GP.zeichne({ x: 0, y: 8000 }, { x: 2000, y: 8000 });
+await warte();
+const el3 = store.listeElemente().find(e => !['Wand 1', 'Wand 2', 'Wand aus Modul 0'].includes(e.name))
+  || store.listeElemente()[store.listeElemente().length - 1];
+const lage3 = () => MAPPE.findeWand(store.holeMappe(), el3.id).wand.lage;
+ok('Ausgangslage der Pruefwand: 16 Raster, Kanten auf dem Raster',
+  lage3().laenge_grid === 16 && lage3().start_mm.x === 0 && lage3().start_mm.y === 8062.5);
+
+GP.werkzeug('auswahl');
+GP.tippe({ x: 1000, y: 8062.5 });
+ok('die Pruefwand ist aktiv', GP.zustand.aktiv === el3.id);
+GP.zeigerAb({ x: 2000, y: 8062.5 });                 // Griff am Ende „max“
+ok('das Ziehen am Endgriff aendert die GROESSE, nicht die Lage',
+  !!GP.zustand.groesse && GP.zustand.groesse.ende === 'max' && GP.zustand.ziehen === null);
+GP.zeigerBewegung({ x: 1300, y: 8062.5 });
+ok('waehrend des Groessenziehens steht eine Vorschau im Bild, gespeichert ist nichts',
+  /class="groesse"/.test(GP.svg) && lage3().laenge_grid === 16);
+GP.zeigerAuf();
+await warte();
+ok('der Griff „max“ zieht nur die eigene Stirnkante — der Anker bleibt stehen',
+  lage3().laenge_grid === 10 && lage3().start_mm.x === 0 && lage3().start_mm.y === 8062.5);
+
+GP.ziehe({ x: 0, y: 8062.5 }, { x: 400, y: 8062.5 });   // Griff am Ende „min“
+await warte();
+ok('der Griff „min“ laesst die gegenueberliegende Stirnkante fest stehen',
+  lage3().laenge_grid === 7 && lage3().start_mm.x === 375
+  && CON.wandRechteck(lage3()).x_max === 1250);
+ok('das Wandelement bleibt von der Groessenaenderung unberuehrt ([P-1]/[L-3])',
+  store.holeElement(el3.id).wandelement.length_mm === 2000
+  && /Längenabweichung/.test($('gp-status').innerHTML));
+
+GP.ziehe({ x: 812.5, y: 8062.5 }, { x: 1062.5, y: 8062.5 });  // runder Griff in der Mitte
+await warte();
+ok('der Mittelgriff verschiebt die ganze Wand, ohne die Laenge anzutasten',
+  lage3().laenge_grid === 7 && lage3().start_mm.x === 625 && lage3().start_mm.y === 8062.5);
+
+// --- 6c) Um 90° drehen ----------------------------------------------------
+const vorDrehung = JSON.stringify(lage3());
+GP.taste('r');
+await warte();
+ok('Drehen wechselt die Richtung und laesst die Laenge unveraendert',
+  lage3().richtung === 'y' && lage3().laenge_grid === 7);
+ok('gedreht wird um die Min-Ecke — die Kanten liegen weiter auf dem Raster',
+  lage3().start_mm.x === 687.5 && lage3().start_mm.y === 8000
+  && CON.wandRechteck(lage3()).x_min === 625 && CON.wandRechteck(lage3()).y_min === 8000);
+ok('das Wandelement bleibt vom Drehen unberuehrt ([P-1])',
+  store.holeElement(el3.id).wandelement.length_mm === 2000);
+$('gp-drehen').dispatch('click');
+await warte();
+ok('zweimal drehen kehrt zur Ausgangsrichtung zurueck', lage3().richtung === 'x');
+ok('… und liefert wieder genau die Ausgangslage (kein Drift)',
+  JSON.stringify(lage3()) === vorDrehung);
+
+// --- 6d) Mehrfachauswahl: aktiv ist genau EINE ----------------------------
+GP.tippe({ x: 1000, y: 8062.5 });
+ok('Klick waehlt genau eine Wand aus und macht sie aktiv',
+  GP.zustand.auswahl.length === 1 && GP.zustand.aktiv === el3.id);
+GP.tippe({ x: 2000, y: 562.5 }, { shiftKey: true });     // erste Wand dazu
+ok('Umschalt-Klick nimmt eine zweite Wand in die Auswahl auf',
+  GP.zustand.auswahl.length === 2 && GP.zustand.auswahl.includes(el3.id));
+ok('aktiv ist trotzdem genau EINE — die zuletzt angeklickte', GP.zustand.aktiv === el1.id);
+ok('die ausgewaehlte, aber nicht aktive Wand bekommt nur einen Rahmen (keine zweite gruene)',
+  /class="auswahlrahmen"/.test(GP.svg)
+  && (GP.svg.match(/class="griff griff-mitte"/g) || []).length === 1);
+GP.tippe({ x: 2000, y: 562.5 }, { shiftKey: true });     // dieselbe wieder abwaehlen
+ok('nochmal Umschalt-Klick waehlt sie wieder ab',
+  GP.zustand.auswahl.length === 1 && GP.zustand.aktiv === el3.id);
+
+// Aufraeumen: die Pruefwand aus dem Weg raeumen, damit Abschnitt 7 unveraendert bleibt.
+$('gp-lage-weg').dispatch('click');
+await warte();
 
 // --- 7) Plan als Hintergrund ([L-8]/[L-9]) --------------------------------
 const lagenVorPlan = JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage));

@@ -1,7 +1,9 @@
 # Plan: Layout-Editor mit Constraints (Issue #26, Etappen C3.2 / C4)
 
-> Stand: 2026-08-07 · **Etappen C3.2 und C4a umgesetzt** (Regelwerk, Löser, Datenmodell, Migration
-> — s. §7; Editor-Seite mit Zeichnen/Ziehen/Plan — s. §8); Bemaßen und Fixieren folgen in C4b ·
+> Stand: 2026-08-08 · **Etappen C3.2 und C4a umgesetzt** (Regelwerk, Löser, Datenmodell, Migration
+> — s. §7; Editor-Seite mit Zeichnen/Ziehen/Plan — s. §8; am 2026-08-08 nachgeschärft: Zeichnen ab
+> dem Drücken, Wandkanten auf dem Raster, aktiv ≠ ausgewählt, Größengriffe, 90° drehen);
+> Bemaßen und Fixieren folgen in C4b ·
 > löst den bisherigen §11 („Feinschliff Layout-Editor") in
 > [`PLAN-Projektplaner.md`](PLAN-Projektplaner.md) ab.
 
@@ -195,7 +197,7 @@ Nach Projektregel gilt: erst Handbuch, dann Implementierung, dann Regressionstes
 | **[K-5 · MUSS]** | **Deterministische Lösung.** Lineares Differenzsystem, exakte Arithmetik in 0,5-mm-Schritten, keine Iteration, keine Toleranz, keine Startwertabhängigkeit. Gleiche Eingabe ⇒ bit-genau gleiche Ausgabe |
 | **[K-6 · MUSS]** | **Widerspruch wird benannt, nie aufgelöst.** Ein widersprüchliches Maß wird gespeichert und rot markiert; genannt werden beide beteiligten Maße und die Differenz in mm. Die Positionen behalten den letzten widerspruchsfreien Stand. Kein Gewichten, kein Mitteln, kein automatisches Löschen |
 | **[K-7]** | **Redundanz ist ein Hinweis, kein Fehler.** Ein Maß, das widerspruchsfrei etwas bereits Bestimmtes wiederholt, wird als redundant gemeldet und bleibt wirksam |
-| **[K-8 · MUSS]** | **Bestimmtheit ist sichtbar.** Farbregel: **hellblau** = nicht vollständig bestimmt · **schwarz** = in x und y bestimmt · **grün** = aktive Wand · **rot** = fehlerhaft (Widerspruch **oder** Kollision nach [K-13]). Vorrang: rot > grün > schwarz/hellblau; die Auswahl ist zusätzlich an Griffen erkennbar |
+| **[K-8 · MUSS]** | **Bestimmtheit ist sichtbar.** Farbregel: **hellblau** = nicht vollständig bestimmt · **schwarz** = in x und y bestimmt · **grün** = **aktive** Wand (genau eine, in Bearbeitung) · **rot** = fehlerhaft (Widerspruch **oder** Kollision nach [K-13]). Vorrang: rot > grün > schwarz/hellblau; die aktive Wand ist zusätzlich an ihren Griffen erkennbar. **Ausgewählt** können mehrere Wände sein — das ist reine Bedienung, bekommt **keine** eigene Zustandsfarbe, sondern nur einen Rahmen |
 | **[K-9 · MUSS]** | **Ziehen ändert nie ein Maß.** Gezogen wird die gesamte starre Gruppe einer freien Wand. Eine in dieser Achse bestimmte Wand lässt sich nicht ziehen — der Grund wird genannt, statt still ein Maß zu ändern |
 | **[K-10 · MUSS]** | **Positionsdaten leben im Geschoss** der Projektmappe (Lage **und** Bemaßungen), nie im Wandelement und nie in `eingaben` |
 | **[K-11]** | **Längenmaß rastet nicht still.** Ein Längenmaß muss ein Vielfaches von 125 mm sein; ein anderer Wert wird abgewiesen und nennt die beiden nächstliegenden gültigen Maße ([L-3] bleibt gültig) |
@@ -365,11 +367,20 @@ Statuszeile unten. Die Seite folgt Architektur-Regel 2 (klassisches App-Skript +
   **Fixieren (F)** stehen sichtbar und **gesperrt** als „C4b" in der Leiste — sie werden nicht
   versteckt, damit der Ausbaustand ablesbar bleibt. Zoom auf den Zeiger (Mausrad), Pan mit Leertaste
   oder mittlerer Maustaste, „Alles zeigen" (0). **Pan ≠ Versatz**: der Planversatz bleibt unberührt.
-- **Wand zeichnen** setzt Start- und Endpunkt. Richtung = Achse mit der größeren Differenz ([L-2]),
-  Länge auf 125 mm gerundet, Anker auf der Mittellinie am Ende mit der kleineren Koordinate. Der
-  **Fang** rastet auf 125 mm; ausgeschaltet auf **0,5 mm** — nie feiner, denn das ist das zulässige
-  Positionsraster ([L-1]). Eine zu kurze Strecke wird **abgewiesen**, nicht auf eine Rastereinheit
+- **Wand zeichnen** beginnt beim **Drücken** der Maustaste (nicht beim Loslassen): von dort läuft
+  die Vorschau mit dem Zeiger mit, das Loslassen legt an. Ein Klick **ohne** Zug lässt den
+  Startpunkt stehen, sodass „klicken – klicken" weiter funktioniert. Richtung = Achse mit der
+  größeren Differenz ([L-2]), Länge auf 125 mm gerundet, Anker auf der Mittellinie am Ende mit der
+  kleineren Koordinate. Eine zu kurze Strecke wird **abgewiesen**, nicht auf eine Rastereinheit
   aufgerundet.
+- **Der Fang ist richtungsabhängig, weil der Anker es ist.** **Längs** liegt `start_mm` auf einer
+  **Stirnkante** — dort rastet er auf die Rasterlinie (125 mm). **Quer** liegt er auf der
+  **Mittellinie**, und die 125 mm breite Wand legt beide Längskanten genau 62,5 mm daneben: ein
+  125-mm-Fang der Mittellinie legte die Wand deshalb zwangsläufig auf **halbe Rasterfelder**.
+  Gefangen wird quer darum auf die **Feldmitte** (k · 125 + 62,5), womit **alle vier Wandkanten auf
+  dem Raster liegen** und die Wand genau ein Rasterfeld füllt. Ohne Fang gilt in beiden Achsen
+  **0,5 mm** — nie feiner, denn das ist das zulässige Positionsraster ([L-1]). Gefangen wird erst
+  in `entwurfLage()`, weil die Richtung vorher nicht feststeht.
 - **Zwei Ziele je Zeichnung:** entweder eine **neue Wand** (Wandelement über `buildWall`, Höhe als
   Vorgabe aus der Geschosshöhe [L-5], Wandtyp ausdrücklich gewählt, danach [P-18]-Vorbelegung der
   Verwendungsstellen) oder das **Verorten einer vorhandenen, unverorteten Wand** des Geschosses.
@@ -380,7 +391,23 @@ Statuszeile unten. Die Seite folgt Architektur-Regel 2 (klassisches App-Skript +
   starre Gruppe, sperrt eine durch Bemaßungen **bestimmte** Achse und benennt den Grund ([K-9]).
   Gespeichert wird ausschließlich die **Lage** im Geschoss ([K-10]) — in **einem** `aendereMappe`,
   über `setzeLage` geprüft. Das Wandelement wird nie angefasst ([P-1]).
-- **Farben nach [K-8]** (hellblau/schwarz/grün/rot) samt Griffen an der Auswahl; **Kollisionen** nach
+- **Aktiv ≠ ausgewählt.** *Ausgewählt* (gestrichelter Rahmen) können **mehrere** Wände sein —
+  Umschalt/Strg nimmt hinzu bzw. wieder heraus. *Aktiv* — also in Bearbeitung, **grün** nach [K-8]
+  und als einzige mit Griffen — ist immer genau **eine** davon. Die Trennung ist reine Bedienung und
+  ändert am Datenmodell nichts; mit Modifikator haben die Griffe bewusst **keinen** Vorrang, sonst
+  ließe sich die aktive Wand nicht abwählen.
+- **Griffe ändern die Größe, der Körper die Lage.** Die beiden Griffe auf den **Stirnkanten** ziehen
+  die Wand länger oder kürzer: die **gegenüberliegende** Stirnkante bleibt dabei fest stehen, womit
+  ihre Rasterlage erhalten bleibt und sich ausschließlich `laenge_grid` (bei „min" zwangsläufig auch
+  der Anker) ändert. Verschoben wird über den **runden Griff in der Mitte** oder den Wandkörper.
+  Ist die Länge durch ein **Längenmaß** bestimmt, wird das Ziehen am Endgriff **abgewiesen** und das
+  Maß genannt ([K-11]) — nie stillschweigend überschrieben.
+- **90° drehen** (Knopf oder **R**) tauscht die Richtung der aktiven Wand bei **unveränderter
+  Länge**. Gedreht wird um die **Min-Ecke** des Grundrisses: nur so bleibt die Rasterlage erhalten
+  (neue Längsachse wieder auf einer Rasterlinie, neue Mittellinie wieder auf einer Feldmitte), und
+  zweimal Drehen liefert bit-genau die Ausgangslage zurück. Eine durch Bemaßungen **bestimmte** Wand
+  wird nicht gedreht, weil das sie verschöbe — der Grund wird benannt ([K-9]).
+- **Farben nach [K-8]** (hellblau/schwarz/grün/rot) samt Griffen an der aktiven Wand; **Kollisionen** nach
   [K-13] werden mit Wandpaar und Überlappungsmaß in der Statuszeile genannt und **nichts** wird
   verschoben. Ebenfalls sichtbar: Anzahl der Wände ohne vollständige Bestimmung.
 - **Plan:** Maßstab als Zahl **oder** über die Kalibrierlinie (gleichwertig, [L-9]), Versatz über
@@ -392,9 +419,11 @@ Statuszeile unten. Die Seite folgt Architektur-Regel 2 (klassisches App-Skript +
   `docs/index.html` entfernt; geblieben ist der **Planupload**, der ins **Geschoss-Popup** gewandert
   ist (§4.4) — es gibt weiterhin genau **einen** Upload-Weg. Die Baumliste hat den neuen Knopf
   „Geschoss öffnen".
-- **Tests:** neu `tests/module/smoke_geschossplan.mjs` (60 Prüfungen an der echten Seitenlogik:
-  Zeichnen, Fang, Ziehen samt gesperrter Achse, Kollision, Verorten mit Längenabweichung, Plan ohne
-  und mit Kalibrierung, Plan-Lock, orthogonale Kalibrierlinie, Determinismus). `test-plan.mjs` um
+- **Tests:** neu `tests/module/smoke_geschossplan.mjs` (84 Prüfungen an der echten Seitenlogik:
+  Zeichnen ab dem Drücken, kantenrichtiger Fang, Aktiv/Auswahl, Größenziehen an den Endgriffen,
+  Verschieben am Mittelgriff, Drehen ohne Drift, Ziehen samt gesperrter Achse, Kollision, Verorten
+  mit Längenabweichung, Plan ohne und mit Kalibrierung, Plan-Lock, orthogonale Kalibrierlinie,
+  Determinismus). `test-plan.mjs` um
   `orthogonalPunkt`/`kreuzPfad`/`planRahmenMm` erweitert (77 Prüfungen), `smoke_start.mjs` auf den
   ausgezogenen Editor umgestellt. `npm run test:all` ist grün; der neue Test hängt an
   `npm run test:modul0`.
