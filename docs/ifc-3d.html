@@ -87,8 +87,8 @@
 
 <script>
 // ===== Klassisches App-Skript (ohne Modulauflösung testbar) =====
-// Shared-Code (buildWall/Opening/store) wird via window.SEMBLA injiziert.
-let buildWall, Opening, store;
+// Shared-Code (buildWall/Opening/store, Konturableitung) wird via window.SEMBLA injiziert.
+let buildWall, Opening, store, topLagen, oberkantenAbschnitte;
 
 const $=id=>document.getElementById(id);
 const MM=0.001; // mm -> Szene (m)
@@ -164,6 +164,28 @@ function animate(){ requestAnimationFrame(animate); renderer.render(scene,camera
 function clearGroup(){ while(group.children.length) group.remove(group.children[0]); }
 function box(w,d,h,cx,cy,cz,mat){ const g=new THREE.BoxGeometry(w,h,d); const m=new THREE.Mesh(g,mat); m.position.set(cx,cz,cy); return m; }
 
+// ---- Anschlussbleche: dieselbe fachliche Kontur wie BOM/Zeichnung ([A-1]/[D-4]) ----
+// Bodenblech liegt immer wandlang unter der Wand (base_plate). Das Kopfblech folgt der
+// TATSAECHLICH GEBAUTEN Oberkante: je horizontalem Abschnitt gleicher lokaler Hoehe ein
+// Blech, lueckenlos und ohne schwebendes oder ueberragendes Stueck. Abgeleitet wird das
+// aus dem gemeinsamen `oberkantenAbschnitte()` (sembla-montage.js) — Modul 6 rechnet die
+// Kontur NICHT selbst nach, sonst waere es eine zweite Konturdefinition ([P-6]).
+function blechDicke(w){ return (w&&w.bom&&w.bom.stahlblech_dicke_mm)||15; }
+/** @returns {Array<{x0_mm:number,x1_mm:number}>} Bodenblech (wandlang, immer genau eins). */
+function bodenblechSegmente(w){
+  const l=(w&&w.base_plate&&w.base_plate.laenge_mm)||(w&&w.length_mm)||0;
+  return l>0?[{x0_mm:0,x1_mm:l}]:[];
+}
+/** @returns {Array<{x0_mm:number,x1_mm:number,hoehe_mm:number}>} Kopfbleche je lokaler Oberkante. */
+function kopfblechSegmente(w){
+  if(!w) return [];
+  const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
+  // Ohne Blechanschluss gibt es kein Kopfblech — und der Kern fuehrt dann auch keine Platte.
+  if(topConn!=='blech'||('top_plate' in w && !w.top_plate)) return [];
+  if(!oberkantenAbschnitte) return [];
+  return oberkantenAbschnitte(w).map(a=>({x0_mm:a.x0_mm,x1_mm:a.x1_mm,hoehe_mm:a.hoehe_mm}));
+}
+
 function build(w){
   clearGroup(); WALL=w;
   const L=w.length_mm,H=w.height_mm,T=w.thickness_mm||125,course=w.course_mm||200;
@@ -185,10 +207,15 @@ function build(w){
   if(opt.tension){
     const matSteelPl=new THREE.MeshStandardMaterial({color:0x5b6673,roughness:0.5,metalness:0.5});
     const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
-    const blTh=(w.bom&&w.bom.stahlblech_dicke_mm)||15;
-    group.add(box(L*MM,T*MM,blTh*MM,(L/2)*MM,(T/2)*MM,-(blTh/2)*MM,matSteelPl));                 // Bodenblech
-    if(topConn==='blech') group.add(box(L*MM,T*MM,blTh*MM,(L/2)*MM,(T/2)*MM,(H+blTh/2)*MM,matSteelPl)); // Kopfblech
-    const lt3d=k=>{ const xc=(k+0.5)*125; for(const st of (w.steps||[])){ if(xc>=st.x0_mm&&xc<st.x1_mm) return st.height_mm; } return H; };
+    const blTh=blechDicke(w);
+    for(const s of bodenblechSegmente(w)){ const b=s.x1_mm-s.x0_mm;                              // Bodenblech
+      group.add(box(b*MM,T*MM,blTh*MM,(s.x0_mm+b/2)*MM,(T/2)*MM,-(blTh/2)*MM,matSteelPl)); }
+    for(const s of kopfblechSegmente(w)){ const b=s.x1_mm-s.x0_mm;                               // Kopfblech je Oberkante
+      group.add(box(b*MM,T*MM,blTh*MM,(s.x0_mm+b/2)*MM,(T/2)*MM,(s.hoehe_mm+blTh/2)*MM,matSteelPl)); }
+    // Lokale Oberkante je Spannachse aus DERSELBEN Kontur (frueher eine modul-eigene,
+    // ungerundete Zweitrechnung aus `steps` -> Drift bei Stufenhoehen ausserhalb des Lagenrasters).
+    const tl3d=topLagen?topLagen(w):null;
+    const lt3d=k=>(tl3d&&tl3d[k]!=null)?tl3d[k]*course:H;
     for(const col of (w.tension_columns||[])){ const x=col.x_mm*MM; const lt=lt3d(col.k);
       for(const sg of (col.segments||[])){ const h=(sg.z1_mm-sg.z0_mm); const cz=(sg.z0_mm+h/2)*MM;
         group.add(box(34*MM,34*MM,h*MM,x,(T/2)*MM,cz,matSteel));
@@ -279,11 +306,13 @@ function bindEvents(){
 }
 
 window.__ifc={applyWand,build,clearWall,parseObjScene,stoneGeom,opt,OBJTEXT,
+  kopfblechSegmente,bodenblechSegmente,
   get wall(){return WALL;}};
 
 window.__ifcInit=function(){
   const S=window.SEMBLA||{};
   buildWall=S.buildWall; Opening=S.Opening; store=S.store;
+  topLagen=S.topLagen; oberkantenAbschnitte=S.oberkantenAbschnitte;
   THREE_OK = (typeof THREE!=='undefined');
   if(THREE_OK){ try{ initThree(); }catch(e){ THREE_OK=false; } }
   if(!THREE_OK){ const m=$('stagemsg'); if(m){ m.style.display='flex';
@@ -298,8 +327,9 @@ window.__ifcInit=function(){
 <script type="module">
   import { buildWall, Opening } from './shared/sembla-core.js';
   import * as store from './shared/storage.js';
+  import { topLagen, oberkantenAbschnitte } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, store };
+  window.SEMBLA = { buildWall, Opening, store, topLagen, oberkantenAbschnitte };
   mountNavbar(6);
   window.__ifcInit();
 </script>

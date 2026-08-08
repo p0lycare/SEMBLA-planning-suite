@@ -442,7 +442,13 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      steinfreie **Schnitt 0** (Regel **[A-9]**): nur Bodenblech/Grundplatte + erste Gewindestangen,
      rein **additiv** (die regulären Abschnitte bleiben unverändert), ohne Fußereignis entfällt er
      ersatzlos. Alle Baugruppenbilder nutzen denselben **globalen Maßstab** (`abschnitt.z_top_mm`),
-     damit die Vorschau mit dem Montagefortschritt nicht wächst.
+     damit die Vorschau mit dem Montagefortschritt nicht wächst. Hier liegt zugleich die
+     **kanonische Wandkontur**: `topLagen()` (lokale Oberkante je Rasterspalte) und
+     `oberkantenAbschnitte()` — dieselbe Kontur zu maximalen **horizontalen Abschnitten** gleicher
+     Höhe gefaltet, mit `Σ Abschnittslängen === top_plate.laenge_mm`. Jede Ansicht, die Kontur oder
+     **Anschlussbleche** zeigt, leitet daraus ab (Modul 7 und die 3D-Vorschau in Modul 6); eine
+     modul-eigene zweite Konturrechnung ist nach **[A-1]**/**[D-4]** unzulässig. Nullhöhen-Spalten
+     liefern **keinen** Abschnitt — echte Lücke statt schwebendem Blech.
    - `sembla-zeichnung.js` — **technische Zeichnung** (Modul 7): maßstabsgetreue Wandabwicklung
      (`zeichnungSvg`), Blatt mit Tabellen/Legende/Schriftfeld (`blattHtml`), `ZEICHNUNG_CSS`,
      `druckCss`, `zeichnungDokument`/`zeichnungSvgDatei`, Optionen (`normOptionen`/`standardOptionen`);

@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260808-03",
+    datum: "2026-08-08",
+    typ: "fix",
+    issue: 24,
+    titel: "3D-Vorschau: Kopfblech folgt der gestaffelten Wandoberkante statt über der Wand zu schweben",
+    testbitte: "Reiter 6 mit einer gestaffelten Wand (z. B. 2600/2200/1800/1400): das Kopfblech liegt "
+      + "abschnittsweise auf jeder lokalen Oberkante; bei oberem Anschluss „Spannplatte“ fehlt es ganz.",
+  },
+  {
     id: "chg-20260808-02",
     datum: "2026-08-08",
     typ: "feature",

@@ -6,6 +6,8 @@
 // (Der IFC4-Export läuft zentral über die Startseite, nicht mehr in Modul 6.)
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
+import { topLagen, oberkantenAbschnitte } from "../../docs/shared/sembla-montage.js";
+import { semblaBom } from "../../docs/shared/sembla-bom.js";
 
 const html = readFileSync(new URL("../../docs/ifc-3d.html", import.meta.url), "utf8");
 // erstes attributloses <script> ist die App-Logik (obj-Halter=type, three=src, letztes=type=module)
@@ -58,7 +60,7 @@ const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we,
   holeObj:(t)=>_obj[t], setzeObj:(t,v)=>{_obj[t]=v;}, loescheObj:(t)=>{_obj[t]=null;} };
 const fireStore=()=>_subs.forEach(cb=>cb());
 
-globalThis.window.SEMBLA={ buildWall, Opening, store:storeMock };
+globalThis.window.SEMBLA={ buildWall, Opening, store:storeMock, topLagen, oberkantenAbschnitte };
 
 eval(script);
 globalThis.window.__ifcInit();
@@ -114,6 +116,60 @@ ok('Build mit echter Geometrie läuft', realOk);
 // Storage-Sync: externer Wechsel auf neues aktives Element -> Ansicht folgt (ohne Datei)
 _aktiv='w-2'; _we=WF; fireStore();
 ok('Store-Sync: neues aktives Element geladen', A.wall && A.wall.length_mm===5000);
+
+// --- Kopfblech folgt der gestaffelten Wandoberkante (Issue #24) -------------
+// Das Kopfblech ist KEIN durchgehender Quader auf der Maximalhoehe: es liegt in
+// horizontalen Abschnitten auf der jeweils tatsaechlich gebauten lokalen Oberkante
+// ([A-1]/[D-4]). Geprueft werden Anzahl, Laenge und Hoehe fuer Rechteck- UND
+// Staffelwand, die Summenparitaet zu top_plate/BOM und der Fall Spannplatte.
+// Testwaende sind synthetisch aus dem Core -> checkout-autark, keine Bauteil-OBJ.
+{
+  // Rechteckwand: unveraendert genau EIN Segment ueber die volle Laenge auf H
+  const segR=A.kopfblechSegmente(W);
+  ok('Rechteck: genau ein Kopfblech-Segment', segR.length===1);
+  ok('Rechteck: Segment ueber die volle Wandlaenge auf der Wandhoehe',
+    segR[0].x0_mm===0 && segR[0].x1_mm===W.length_mm && segR[0].hoehe_mm===W.height_mm);
+
+  // Musterwand AWG: vier Hoehen 2600/2200/1800/1400
+  const W4=buildWall('AWG vier Stufen',4000,2600,[],null,null,[
+    {x0_mm:1000,x1_mm:2000,height_mm:2200},
+    {x0_mm:2000,x1_mm:3000,height_mm:1800},
+    {x0_mm:3000,x1_mm:4000,height_mm:1400}]);
+  const seg4=A.kopfblechSegmente(W4);
+  ok('Staffelwand: vier Kopfblech-Segmente (eines je lokaler Oberkante)', seg4.length===4);
+  ok('Staffelwand: Segmenthoehen 2600/2200/1800/1400',
+    seg4.map(s=>s.hoehe_mm).join(',')==='2600,2200,1800,1400');
+  ok('Staffelwand: Segmentgrenzen lueckenlos 0/1000/2000/3000/4000',
+    seg4[0].x0_mm===0 && seg4[3].x1_mm===4000
+    && seg4.every((s,i)=>i===0||s.x0_mm===seg4[i-1].x1_mm));
+  ok('Staffelwand: kein schwebendes/ueberragendes Segment (Hoehe == lokale Oberkante jeder Spalte)',
+    (()=>{ const tl=topLagen(W4),G=W4.grid_mm,C=W4.course_mm;
+      return seg4.every(s=>{ for(let k=s.x0_mm/G;k<s.x1_mm/G;k++) if(tl[k]*C!==s.hoehe_mm) return false; return true; }); })());
+  const summe4=seg4.reduce((a,s)=>a+(s.x1_mm-s.x0_mm),0);
+  // Bei lueckenloser Staffelung ist die Summe der lokalen Oberkanten gleich der Wandlaenge —
+  // der Fehler steckt in HOEHE und ANZAHL, nicht in der Gesamtlaenge. Die echte Verkuerzung
+  // pruefen der Nullhoehen-Fall in test-montage.mjs und die Hoehenzusicherung oben.
+  ok('Staffelwand: Summe der Segmentlaengen == top_plate.laenge_mm (dieselbe Konturdefinition wie BOM)',
+    summe4===W4.top_plate.laenge_mm);
+  ok('Staffelwand: Modulzahl aus den Segmenten == BOM-Kopfblechmodule',
+    Math.ceil(summe4/W4.prestress.blech_mm)===semblaBom(W4).stahlblech_module_kopf);
+  ok('Staffelwand: oberkantenAbschnitte ist die gemeinsame Quelle (keine zweite Kontur)',
+    JSON.stringify(seg4.map(s=>[s.x0_mm,s.x1_mm,s.hoehe_mm]))
+      ===JSON.stringify(oberkantenAbschnitte(W4).map(a=>[a.x0_mm,a.x1_mm,a.hoehe_mm])));
+
+  // Spannplatte: gar kein Kopfblech
+  const W4sp=buildWall('AWG Spannplatte',4000,2600,[],null,{top_connection:'spannplatte'},W4.steps);
+  ok('top_connection=spannplatte erzeugt kein Kopfblech-Segment',
+    A.kopfblechSegmente(W4sp).length===0 && W4sp.top_plate===null);
+
+  // 3D-Aufbau laeuft mit Staffelwand und zaehlt die Bleche wie erwartet
+  let bOk=true; try{ A.build(W4); }catch(e){ bOk=false; globalThis.__b4=e.message; }
+  ok('Build der Staffelwand laeuft fehlerfrei', bOk);
+  ok('Bodenblech bleibt wandlang und unveraendert (ein Segment)',
+    A.bodenblechSegmente(W4).length===1
+    && A.bodenblechSegmente(W4)[0].x1_mm===W4.base_plate.laenge_mm);
+  A.build(W);
+}
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`);

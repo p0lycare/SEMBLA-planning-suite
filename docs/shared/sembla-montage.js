@@ -169,6 +169,37 @@ export function topLagen(w) {
   return out;
 }
 
+/**
+ * Horizontale Abschnitte der TATSAECHLICH GEBAUTEN Wandoberkante ([A-1]/[D-4]).
+ *
+ * Faltet `topLagen()` zu maximalen Laeufen gleicher lokaler Oberkante — die kanonische
+ * Ableitung fuer jede Ansicht, die den oberen Wandabschluss zeigt (Kopfblech in der
+ * technischen Zeichnung und in der 3D-Vorschau). Rasterspalten OHNE Wand (lokale
+ * Oberkante 0, z. B. eine Aussparung ueber die volle Hoehe) liefern KEINEN Abschnitt:
+ * dort steht nichts, worauf ein Blech liegen koennte — es entsteht eine echte Luecke
+ * statt eines schwebenden Abschnitts.
+ *
+ * Die Summe der Abschnittslaengen ist konstruktionsbedingt `top_plate.laenge_mm` des
+ * Rechenkerns (dort `occCols * GRID`), damit Darstellung und Mengen dieselbe fachliche
+ * Kontur benutzen und nicht auseinanderlaufen koennen. REIN GEOMETRISCH: die Art des
+ * oberen Anschlusses (`prestress.top_connection`) aendert die Kontur nicht und wird
+ * hier bewusst nicht ausgewertet.
+ *
+ * @param {any} w Wandelement
+ * @returns {Array<{x0_mm:number,x1_mm:number,hoehe_mm:number,lagen:number}>}
+ */
+export function oberkantenAbschnitte(w) {
+  const G = _grid(w), C = _course(w), tl = topLagen(w);
+  const out = [];
+  for (let k = 0; k < tl.length; k++) {
+    if (tl[k] <= 0) continue;
+    const letzte = out[out.length - 1];
+    if (letzte && letzte.lagen === tl[k] && letzte.x1_mm === k * G) letzte.x1_mm = (k + 1) * G;
+    else out.push({ x0_mm: k * G, x1_mm: (k + 1) * G, hoehe_mm: tl[k] * C, lagen: tl[k] });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- Ereignisse
 
 /**

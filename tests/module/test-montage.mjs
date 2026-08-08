@@ -28,7 +28,9 @@ import {
   montageEreignisse, montageAbschnitte, abschnittSvg, konturSvg,
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
   STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt,
+  topLagen, oberkantenAbschnitte,
 } from "../../docs/shared/sembla-montage.js";
+import { semblaBom } from "../../docs/shared/sembla-bom.js";
 import { FARBE as Z_FARBE } from "../../docs/shared/sembla-zeichnung.js";
 import { montageHtml, baueDateien } from "../../docs/shared/sembla-export.js";
 
@@ -426,6 +428,56 @@ ok("Alt-Bundle faellt auf die Einzellinie je Strang zurueck (kein Zeichenfehler)
     === alleAlt[alleAlt.length - 1].straenge.length);
 ok("Alt-Bundle zeigt KEINE Zuschnitt-Legende (nichts erfinden)",
   !/Zuschnitt:/.test(svgAlt) && !svgAlt.includes(STUECK_LABEL.rest));
+
+// --- Abschnitte der lokalen Wandoberkante (Issue #24, [A-1]/[D-4]) ---------
+// `oberkantenAbschnitte()` ist die KANONISCHE Ableitung der horizontalen Abschnitte der
+// tatsaechlich gebauten Oberkante — dieselbe Kontur wie `topLagen()`, nur zu maximalen
+// Laeufen gleicher Hoehe gefaltet. Sie ist REIN GEOMETRISCH: die Art des oberen
+// Anschlusses (Kopfblech/Spannplatte) aendert die Kontur nicht.
+{
+  // Rechteckwand: genau EIN Abschnitt ueber die volle Laenge
+  const aR = oberkantenAbschnitte(WR);
+  ok("Rechteck: genau ein Oberkanten-Abschnitt ueber die volle Wandlaenge",
+    aR.length === 1 && aR[0].x0_mm === 0 && aR[0].x1_mm === 3000
+    && aR[0].hoehe_mm === 2600 && aR[0].lagen === 13);
+
+  // Musterwand AWG mit vier Hoehen 2600/2200/1800/1400 (Fall aus Issue #24)
+  const W4 = buildWall("AWG vier Stufen", 4000, 2600, [], null, null, [
+    { x0_mm: 1000, x1_mm: 2000, height_mm: 2200 },
+    { x0_mm: 2000, x1_mm: 3000, height_mm: 1800 },
+    { x0_mm: 3000, x1_mm: 4000, height_mm: 1400 },
+  ]);
+  const a4 = oberkantenAbschnitte(W4);
+  ok("AWG-Staffelung: vier Abschnitte 2600/2200/1800/1400",
+    a4.length === 4 && a4.map(a => a.hoehe_mm).join(",") === "2600,2200,1800,1400");
+  ok("AWG-Staffelung: Abschnittsgrenzen lueckenlos 0/1000/2000/3000/4000",
+    a4[0].x0_mm === 0 && a4[3].x1_mm === 4000
+    && a4.every((a, i) => i === 0 || a.x0_mm === a4[i - 1].x1_mm));
+  ok("AWG-Staffelung: jeder Abschnitt liegt auf der lokalen Oberkante JEDER seiner Spalten",
+    (() => { const tl = topLagen(W4), G = W4.grid_mm, C = W4.course_mm;
+      return a4.every(a => { for (let k = a.x0_mm / G; k < a.x1_mm / G; k++)
+        if (tl[k] * C !== a.hoehe_mm) return false; return true; }); })());
+  // Summenparitaet zu top_plate und zur Stuecklisten-BOM ([A-1])
+  const summe4 = a4.reduce((s, a) => s + (a.x1_mm - a.x0_mm), 0);
+  ok("AWG-Staffelung: Summe der Abschnittslaengen == top_plate.laenge_mm",
+    summe4 === W4.top_plate.laenge_mm);
+  ok("AWG-Staffelung: Modulzahl aus den Abschnitten == BOM-Kopfblechmodule",
+    Math.ceil(summe4 / W4.prestress.blech_mm) === semblaBom(W4).stahlblech_module_kopf);
+
+  // Rein geometrisch: Spannplatte statt Kopfblech laesst die Kontur unveraendert
+  const W4sp = buildWall("AWG vier Stufen (Spannplatte)", 4000, 2600, [], null,
+    { top_connection: "spannplatte" }, W4.steps);
+  ok("Kontur ist unabhaengig von der Anschlussart (Spannplatte == Blech)",
+    JSON.stringify(oberkantenAbschnitte(W4sp)) === JSON.stringify(a4) && W4sp.top_plate === null);
+
+  // Stufe auf Hoehe 0: dort steht keine Wand -> kein Abschnitt, echte Luecke
+  const W0 = buildWall("Wand mit Aussparung", 4000, 2600, [], null, null,
+    [{ x0_mm: 1000, x1_mm: 2000, height_mm: 0 }]);
+  const a0 = oberkantenAbschnitte(W0);
+  ok("Stufe auf Hoehe 0 erzeugt keinen schwebenden Abschnitt (echte Luecke)",
+    a0.length === 2 && a0[0].x1_mm === 1000 && a0[1].x0_mm === 2000
+    && a0.reduce((s, a) => s + (a.x1_mm - a.x0_mm), 0) === W0.top_plate.laenge_mm);
+}
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`); process.exit(fail ? 1 : 0);
