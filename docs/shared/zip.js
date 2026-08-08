@@ -1,11 +1,14 @@
 // @ts-check
 /**
- * SEMBLA ZIP — winziger ZIP-Writer OHNE externe Bibliothek.
+ * SEMBLA ZIP — winziger ZIP-Writer UND -Leser OHNE externe Bibliothek.
  *
- * Speichert Dateien unkomprimiert (STORE, Methode 0) und schreibt ein
- * gueltiges ZIP (lokale Header + Central Directory + End-of-Central-Directory).
- * Reicht fuer den zentralen Export der Suite (JSON/CSV/HTML/IFC sind ohnehin
- * klein) und bleibt damit voll offline-faehig — passt zur "kein Build"-Regel.
+ * Geschrieben wird unkomprimiert (STORE, Methode 0) als gueltiges ZIP (lokale
+ * Header + Central Directory + End-of-Central-Directory). Das reicht fuer den
+ * zentralen Export der Suite (JSON/CSV/HTML/IFC sind ohnehin klein).
+ *
+ * GELESEN (`entpacke`, Etappe C5 / [L-13]) wird auch Deflate — ein vom Nutzer neu
+ * gepacktes Archiv ist praktisch immer komprimiert. Entpackt wird ueber das native
+ * `DecompressionStream('deflate-raw')`, also weiterhin ohne Fremd-Lib.
  *
  * Reine Funktionen (kein DOM ausser der Download-Hilfe). `TextEncoder` ist im
  * Browser und in Node vorhanden, daher auch per Node-Test nutzbar.
@@ -120,6 +123,116 @@ export function zipSync(files) {
   for (const part of centrals) { out.set(part, p); p += part.length; }
   out.set(eocd, p);
   return out;
+}
+
+// --- Lesen (Gegenrichtung, Etappe C5 / [L-13]) ------------------------------
+// Gebraucht wird sie fuer den Import eines vollstaendigen Projektarchivs. Gelesen
+// wird streng nach dem CENTRAL DIRECTORY (es ist die verbindliche Inhaltsangabe
+// eines ZIPs); der lokale Header liefert nur die Laengen von Name und Extra-Feld,
+// weil erst dahinter die Daten beginnen. Bei „data descriptor“-Eintraegen (Flag
+// Bit 3) stehen im lokalen Header ohnehin Nullen — die Central-Werte gelten.
+//
+// Unterstuetzt werden STORE (0) und DEFLATE (8, ueber das native
+// `DecompressionStream('deflate-raw')`). Alles andere wird BENANNT abgewiesen,
+// nicht naeherungsweise gedeutet; die CRC32 jedes Eintrags wird geprueft.
+
+/** Signatur des End-of-Central-Directory. */
+const _EOCD_SIG = 0x06054b50;
+
+function _findeEocd(view, len) {
+  const max = Math.min(len, 22 + 0xFFFF);          // 22 Byte + maximaler Kommentar
+  for (let i = 22; i <= max; i++) {
+    const p = len - i;
+    if (view.getUint32(p, true) === _EOCD_SIG) return p;
+  }
+  return -1;
+}
+
+/** Ein Deflate-Rohdatenstrom entpacken (nativ, keine Fremd-Lib). */
+async function _inflate(bytes, name) {
+  const DS = globalThis.DecompressionStream;
+  if (typeof DS !== "function") {
+    throw new Error(`„${name}“ ist komprimiert (Deflate), aber dieser Browser stellt kein `
+      + "DecompressionStream bereit. Bitte das Archiv unkomprimiert (STORE) packen oder als "
+      + "Ordner importieren.");
+  }
+  const ds = new DS("deflate-raw");
+  const schreiber = ds.writable.getWriter();
+  schreiber.write(bytes);
+  schreiber.close();
+  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+}
+
+/**
+ * Ein ZIP lesen. Liefert die Eintraege in der Reihenfolge des Central Directory.
+ * Ordnereintraege (Name endet auf „/“) werden weggelassen — sie tragen keine Daten.
+ *
+ * @param {Uint8Array|ArrayBuffer} daten
+ * @returns {Promise<Array<{name:string, data:Uint8Array}>>}
+ */
+export async function entpacke(daten) {
+  const buf = (daten instanceof Uint8Array) ? daten : new Uint8Array(daten);
+  if (buf.length < 22) throw new Error("Datei ist kein ZIP (zu kurz für ein Zentralverzeichnis).");
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+
+  const eocd = _findeEocd(view, buf.length);
+  if (eocd < 0) throw new Error("Datei ist kein ZIP (End-of-Central-Directory nicht gefunden).");
+  const anzahl = view.getUint16(eocd + 10, true);
+  const cdGroesse = view.getUint32(eocd + 12, true);
+  const cdOffset = view.getUint32(eocd + 16, true);
+  if (anzahl === 0xFFFF || cdOffset === 0xFFFFFFFF || cdGroesse === 0xFFFFFFFF) {
+    throw new Error("ZIP64-Archive werden nicht gelesen. Bitte das Archiv kleiner teilen oder "
+      + "als Ordner importieren.");
+  }
+  if (cdOffset + cdGroesse > buf.length) throw new Error("ZIP ist beschädigt (Zentralverzeichnis liegt außerhalb der Datei).");
+
+  const dec = new TextDecoder("utf-8");
+  const eintraege = [];
+  let p = cdOffset;
+  for (let i = 0; i < anzahl; i++) {
+    if (p + 46 > buf.length || view.getUint32(p, true) !== 0x02014b50) {
+      throw new Error(`ZIP ist beschädigt (Eintrag ${i + 1} im Zentralverzeichnis unlesbar).`);
+    }
+    const methode = view.getUint16(p + 10, true);
+    const crc = view.getUint32(p + 16, true);
+    const komprimiert = view.getUint32(p + 20, true);
+    const roh = view.getUint32(p + 24, true);
+    const nameLen = view.getUint16(p + 28, true);
+    const extraLen = view.getUint16(p + 30, true);
+    const kommLen = view.getUint16(p + 32, true);
+    const lokal = view.getUint32(p + 42, true);
+    const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + kommLen;
+
+    if (name.endsWith("/")) continue;                       // Ordnereintrag, keine Daten
+
+    if (lokal + 30 > buf.length || view.getUint32(lokal, true) !== 0x04034b50) {
+      throw new Error(`ZIP ist beschädigt (lokaler Header von „${name}“ fehlt).`);
+    }
+    const lNameLen = view.getUint16(lokal + 26, true);
+    const lExtraLen = view.getUint16(lokal + 28, true);
+    // Der lokale Name muss zum Zentralverzeichnis passen — sonst beschreibt das
+    // Archiv zwei verschiedene Dinge, und welches gilt, wird nicht geraten.
+    if (dec.decode(buf.subarray(lokal + 30, lokal + 30 + lNameLen)) !== name) {
+      throw new Error(`ZIP ist beschädigt („${name}“ heißt im lokalen Header anders).`);
+    }
+    const von = lokal + 30 + lNameLen + lExtraLen;
+    if (von + komprimiert > buf.length) throw new Error(`ZIP ist beschädigt („${name}“ reicht über das Dateiende hinaus).`);
+    const rohdaten = buf.subarray(von, von + komprimiert);
+
+    let inhalt;
+    if (methode === 0) inhalt = rohdaten.slice();
+    else if (methode === 8) inhalt = await _inflate(rohdaten, name);
+    else throw new Error(`„${name}“ nutzt das nicht unterstützte Kompressionsverfahren ${methode} `
+      + "(nur STORE und Deflate werden gelesen).");
+
+    if (inhalt.length !== roh) {
+      throw new Error(`„${name}“ ist beschädigt (${inhalt.length} statt ${roh} Byte nach dem Entpacken).`);
+    }
+    if (_crc32(inhalt) !== crc) throw new Error(`„${name}“ ist beschädigt (Prüfsumme CRC32 stimmt nicht).`);
+    eintraege.push({ name, data: inhalt });
+  }
+  return eintraege;
 }
 
 /**

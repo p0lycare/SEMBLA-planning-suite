@@ -110,8 +110,10 @@
   <div class="panel">
     <div class="row">
       <button class="btn-p" id="tr-projekt-neu">Projekt anlegen…</button>
-      <label class="btn-s" for="tr-mappe-import">Projekt hochladen…</label>
-      <input id="tr-mappe-import" type="file" accept=".json,application/json" hidden>
+      <label class="btn-s" for="tr-mappe-import">Projekt hochladen (ZIP/JSON)…</label>
+      <input id="tr-mappe-import" type="file" accept=".zip,.json,application/zip,application/json" hidden>
+      <label class="btn-s" for="tr-ordner-import">Projektordner wählen…</label>
+      <input id="tr-ordner-import" type="file" webkitdirectory directory multiple hidden>
       <div class="muted" id="tr-stand" style="font-size:12.5px;padding-bottom:8px">–</div>
     </div>
     <div class="msg" id="tr-msg"></div>
@@ -357,6 +359,28 @@
   </div>
 </div>
 
+<!-- Projektarchiv ([L-13]): Bericht VOR jedem Schreiben. Bis „Importieren“ liegt das
+     geprüfte Archiv nur im Speicher der Seite; ein Fehler beim Schreiben setzt den
+     vorherigen Stand vollständig zurück (store.schreibeArchiv). -->
+<div class="overlay" id="arc-overlay" hidden>
+  <div class="modal" style="max-width:620px">
+    <h3 id="arc-titel">Projektarchiv importieren</h3>
+    <p class="sub">Die Quelle <b id="arc-quelle">–</b> wurde gelesen und geprüft, aber
+      <b>noch nichts gespeichert</b>. Der Bauteilkatalog ist nicht Teil des Archivs ([L-12]) —
+      er wird getrennt importiert.</p>
+    <div class="zus" id="arc-bericht"></div>
+    <div class="warn" id="arc-fehler" hidden></div>
+    <label class="opt" id="arc-ueber-box" hidden><input type="checkbox" id="arc-ueber"><span>
+      <span class="t">Vorhandene Einträge überschreiben</span><br>
+      <span class="d" id="arc-ueber-text"></span></span></label>
+    <div class="msg" id="arc-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="arc-cancel">Abbrechen</button>
+      <button class="btn-p" id="arc-go">Importieren</button>
+    </div>
+  </div>
+</div>
+
 <!-- Zentraler Export-Dialog: erzeugt alle Ausgaben frisch aus dem Datenmodell -->
 <div class="overlay" id="exp-overlay" hidden>
   <div class="modal">
@@ -416,7 +440,8 @@
   import * as store from './shared/storage.js';
   import { buildWall } from './shared/sembla-core.js';
   import { baueDateien } from './shared/sembla-export.js';
-  import { downloadZip } from './shared/zip.js';
+  import { downloadZip, entpacke } from './shared/zip.js';
+  import * as ARCHIV from './shared/sembla-archiv.js';
   import * as KAT from './shared/sembla-katalog.js';
   import * as MAPPE from './shared/sembla-projektmappe.js';
   import * as PLAN from './shared/sembla-plan.js';
@@ -510,7 +535,8 @@
         + `<span class="akt">`
         + (istAktivPrj ? '' : knopf('prj-aktiv', m.projekt.id, 'Aktiv setzen'))
         + knopf('prj-bearbeiten', m.projekt.id, 'Bearbeiten')
-        + knopf('prj-export', m.projekt.id, 'Export')
+        + knopf('prj-zip', m.projekt.id, 'Export (ZIP)', 'btn-p')
+        + knopf('prj-json', m.projekt.id, 'nur Struktur (JSON)')
         + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d')
         + `</span></div>`;
       if (!offen) return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}</div>`;
@@ -649,7 +675,8 @@
       return;
     }
     if (act === 'prj-bearbeiten') { ppOeffne(id); return; }
-    if (act === 'prj-export') { trMappeExport(id); return; }
+    if (act === 'prj-zip') { arcExport(id); return; }
+    if (act === 'prj-json') { trMappeExport(id); return; }
     if (act === 'prj-loeschen') { trProjektLoeschen(id); return; }
     if (act === 'gs-neu') { gpOeffne(id, null); return; }
     if (act === 'gs-aktiv') {
@@ -762,14 +789,160 @@
   $('tr-mappe-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
+    // ZIP oder Struktur-JSON — entschieden wird an der Endung bzw. am MIME-Typ,
+    // nicht am Inhalt: ein ZIP ist keine JSON und umgekehrt ([L-13]).
+    const istZip = /\.zip$/i.test(file.name || '') || String(file.type || '') === 'application/zip';
     try {
-      const m = store.importiereMappeText(await file.text());
-      store.setzeAktivesProjekt(m.projekt.id);
-      KLAPP.add(m.projekt.id);
-      trZeige(`Projekt „${m.projekt.name}“ importiert und aktiv gesetzt. Verwaiste Einträge werden `
-        + 'unten gemeldet, nicht bereinigt ([L-4]).', true);
+      if (istZip) await arcAusZip(file);
+      else {
+        const m = store.importiereMappeText(await file.text());
+        store.setzeAktivesProjekt(m.projekt.id);
+        KLAPP.add(m.projekt.id);
+        trZeige(`Projekt „${m.projekt.name}“ importiert und aktiv gesetzt (nur Struktur — `
+          + 'Wandelemente und Planbilder waren nicht Teil dieser Datei). Verwaiste Einträge werden '
+          + 'unten gemeldet, nicht bereinigt ([L-4]).', true);
+      }
     } catch (e) { trZeige('Import fehlgeschlagen: ' + fehlerText(e), false); }
     ev.target.value = '';
+  });
+
+  $('tr-ordner-import').addEventListener('change', async (ev) => {
+    const files = [...(ev.target.files || [])];
+    if (!files.length) return;
+    try { await arcAusDateien(files, 'Ordner mit ' + files.length + ' Datei(en)'); }
+    catch (e) { trZeige('Import fehlgeschlagen: ' + fehlerText(e), false); }
+    ev.target.value = '';
+  });
+
+  // =====================================================================
+  //  Vollständiges Projektarchiv ([L-13]) — ZIP/Ordner, Export und Import
+  // =====================================================================
+  // Genau EINE Mappe je Archiv, alle referenzierten Wände und alle vorhandenen
+  // Planbilder. Der Bauteilkatalog gehört NICHT hinein ([L-12]) — nur seine
+  // Referenz. Gelesen/geprüft wird in sembla-archiv.js (rein), geschrieben in
+  // store.schreibeArchiv (mit vollständigem Rücksprung bei jedem Fehler).
+
+  /** Bytes eines abgelegten Planbildes (null = keines vorhanden). */
+  async function arcBildBytes(geschossId){
+    const satz = await PLAN.holePlan(geschossId);
+    if (!satz || !satz.blob) return null;
+    const puffer = await satz.blob.arrayBuffer();
+    return new Uint8Array(puffer);
+  }
+
+  /** Ein Projekt vollständig als ZIP sichern ([L-13]). */
+  async function arcExport(id){
+    const m = store.projektMappe(id);
+    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
+    try {
+      const vorhandeneWaende = store.listeElemente().map(e => e.id);
+      const vorhandeneBilder = await PLAN.listePlaene();
+      const plan = ARCHIV.exportPlan(m, vorhandeneWaende, vorhandeneBilder);
+
+      // Unvollständigkeit wird VOR dem Download benannt — ein stilles Teilarchiv,
+      // das sich „vollständig“ nennt, wäre der schlimmste Fehlermodus ([L-13]).
+      const luecken = [];
+      if (plan.fehlendeWaende.length) {
+        luecken.push(`${plan.fehlendeWaende.length} eingetragene Wand/Wände haben kein Wandelement mehr `
+          + `(${plan.fehlendeWaende.map(w => (w.name || w.id) + ' / ' + w.geschoss).join(', ')}) — `
+          + 'sie bleiben verwaiste Einträge ([L-4]).');
+      }
+      if (plan.fehlendeBilder.length) {
+        luecken.push(`${plan.fehlendeBilder.length} Geschoss(e) verweisen auf einen Plan, dessen Bild in `
+          + `diesem Browser fehlt (${plan.fehlendeBilder.map(b => b.name).join(', ')}) — Maßstab und `
+          + 'Versatz reisen mit, das Bild nicht ([L-9]).');
+      }
+      if (luecken.length && !confirm('Dieses Archiv wird NICHT vollständig:\n\n– ' + luecken.join('\n– ')
+        + '\n\nTrotzdem exportieren?')) { trZeige('Export abgebrochen — es wurde nichts geschrieben.', false); return; }
+
+      const bilder = new Map();
+      for (const p of plan.plaene) bilder.set(p.geschossId, await arcBildBytes(p.geschossId));
+      const dateien = ARCHIV.archivDateien(m, plan,
+        (wid) => store.projektObjekt(wid),
+        (gid) => bilder.get(gid));
+      const wurzel = ARCHIV.archivName(m);
+      downloadZip(wurzel + '.zip', dateien.map(d => ({ name: wurzel + '/' + d.name, data: d.data })));
+      trZeige(`Projekt „${m.projekt.name}“ als ZIP gesichert: ${plan.waende.length} Wanddatei(en), `
+        + `${plan.plaene.length} Planbild(er), Struktur mit Lage, Bemaßungen und Kopfdaten.`
+        + (luecken.length ? ' ⚠ Unvollständig: ' + luecken.join(' ') : '')
+        + ' Der Bauteilkatalog ist nicht enthalten ([L-12]) — er wird getrennt exportiert.', !luecken.length);
+    } catch (e) { trZeige('Export fehlgeschlagen: ' + fehlerText(e), false); }
+  }
+
+  // --- Import: lesen, prüfen, bestätigen, erst dann schreiben --------------
+  const arcOverlay = $('arc-overlay');
+  let arcOffen = null;              // { gelesen, quelle } — nur im Speicher der Seite
+
+  async function arcAusZip(file){
+    const puffer = await file.arrayBuffer();
+    const eintraege = await entpacke(new Uint8Array(puffer));
+    arcPruefe(eintraege, file.name);
+  }
+
+  async function arcAusDateien(files, quelle){
+    const eintraege = [];
+    for (const f of files) {
+      const pfad = f.webkitRelativePath || f.name;
+      // Nur was ein Archiv ausmacht wird gelesen — ein Ordner enthält oft mehr.
+      const puffer = await f.arrayBuffer();
+      eintraege.push({ name: pfad, data: new Uint8Array(puffer) });
+    }
+    arcPruefe(eintraege, quelle);
+  }
+
+  /** Prüfbericht anzeigen — bis „Importieren“ wird nichts geschrieben ([L-13]). */
+  function arcPruefe(eintraege, quelle){
+    const gelesen = ARCHIV.leseArchiv(eintraege, { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) });
+    arcOffen = { gelesen, quelle };
+    $('arc-quelle').textContent = quelle;
+    $('arc-bericht').innerHTML = ARCHIV.berichtZeilen(gelesen).map(z => '<div>' + esc(z) + '</div>').join('')
+      || '<div>Keine Angaben.</div>';
+    const fehlerBox = $('arc-fehler');
+    fehlerBox.hidden = gelesen.fehler.length === 0;
+    fehlerBox.innerHTML = gelesen.fehler.length
+      ? '<b>Das Archiv ist nicht importierbar:</b>' + gelesen.fehler.map(f => '<div>– ' + esc(f) + '</div>').join('')
+      : '';
+
+    const konf = gelesen.mappe ? store.archivKonflikte(gelesen) : { projekt: null, waende: [] };
+    const box = $('arc-ueber-box');
+    box.hidden = !(konf.projekt || konf.waende.length);
+    $('arc-ueber').checked = false;
+    if (!box.hidden) {
+      $('arc-ueber-text').textContent =
+        (konf.projekt ? `Projekt „${konf.projekt.name}“ ist bereits vorhanden. ` : '')
+        + (konf.waende.length ? `${konf.waende.length} Wandelement(e) werden ersetzt `
+          + `(${konf.waende.map(w => w.name).join(', ')}). ` : '')
+        + 'Die stabilen Kennungen bleiben erhalten — es wird keine Ausweichkennung vergeben ([L-4]).';
+    }
+    $('arc-go').disabled = gelesen.fehler.length > 0;
+    $('arc-msg').textContent = '';
+    $('arc-msg').className = 'msg';
+    arcOverlay.hidden = false;
+  }
+
+  function arcSchliesse(){ arcOverlay.hidden = true; arcOffen = null; }
+  $('arc-cancel').addEventListener('click', () => { arcSchliesse(); trZeige('Import abgebrochen — es wurde nichts gespeichert.', false); });
+  arcOverlay.addEventListener('click', (ev) => { if (ev.target === arcOverlay) arcSchliesse(); });
+
+  $('arc-go').addEventListener('click', async () => {
+    if (!arcOffen) return;
+    const { gelesen } = arcOffen;
+    try {
+      const erg = await store.schreibeArchiv(gelesen, {
+        plan: PLAN, ueberschreiben: $('arc-ueber').checked,
+      });
+      KLAPP.add(gelesen.mappe.projekt.id);
+      arcSchliesse();
+      trZeige(`Projekt „${erg.projekt.projekt.name}“ importiert und aktiv gesetzt: `
+        + `${erg.waende} Wandelement(e), ${erg.bilder} Planbild(er), Struktur mit Lage und Bemaßungen.`
+        + (erg.katalogFehlt ? ` ⚠ Der zugeordnete Bauteilkatalog „${erg.katalogFehlt}“ liegt nicht in `
+          + 'diesem Browser — die Zuordnung bleibt bestehen, der Katalog ist getrennt zu importieren ([L-12]).' : ''),
+        !erg.katalogFehlt);
+    } catch (e) {
+      const box = $('arc-msg');
+      box.textContent = fehlerText(e);
+      box.className = 'msg err';
+    }
   });
 
   // =====================================================================
@@ -1683,6 +1856,7 @@
   document.addEventListener('keydown', (ev) => {
     if (ev.key !== 'Escape') return;
     if (!overlay.hidden) schliesseExport();
+    if (!arcOverlay.hidden) arcSchliesse();     // Abbruch schreibt nichts ([L-13])
     if (!impOverlay.hidden) impSchliesse();
     if (!kpOverlay.hidden) kpAbbruch();         // Produktpflege: Abbruch schreibt nichts ([P-16])
     else if (!katOverlay.hidden) katSchliesse();

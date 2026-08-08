@@ -186,6 +186,17 @@ Export lesen über `store.wirksameKopfdaten()`/`eingabenMitKopfdaten()` aus dem 
 Altbestand am Wandelement ist **nur Rückfall**, wenn die Wand keinem Projekt zugeordnet ist. Es gilt
 immer **genau eine** Quelle — **nie** ein Zusammenführen —, und welche es war, ist benennbar.
 
+**Vollständiges Projektarchiv (Etappe C5, [L-13]).** Modul 0 exportiert genau eine Projektmappe als
+ZIP: `projekt.json`, alle vorhandenen referenzierten Wände als SEMBLA-Projekt-v2-Dateien und alle
+vorhandenen referenzierten Planbilder aus IndexedDB. Der Bauteilkatalog bleibt eine eigene Ressource
+([L-12]); nur seine Kennung reist mit. `wand.datei` ist die einzige explizite Zuordnung im Archiv und
+wird nach dem Import nicht als zweite Identität gespeichert. ZIP (STORE/Deflate) und Ordner laufen
+durch dieselbe vollständige Vorabprüfung (Pfade, Duplikate, Vollständigkeit, Formate/Versionen,
+Bildsignaturen; ZIP zusätzlich CRC/Kompressionsmethode). Erst der bestätigte Prüfbericht schreibt;
+ID-Konflikte brauchen eine eigene Überschreibbestätigung, und jeder Fehler setzt localStorage und
+IndexedDB vollständig zurück. Der alte Mappenweg heißt eindeutig **„nur Struktur (JSON)“**;
+Einzelwand- und Katalogimport bleiben getrennt. Kein Schema-/Formatversionsbump.
+
 **Bedienung der Struktur (Etappe C2, Modul 0).** Die Oberfläche pflegt Projekt/Gebäude/Geschoss
 (anlegen, wählen, umbenennen, Geschosshöhe setzen, löschen) über die **reinen** Operationen aus
 `sembla-projektmappe.js`; jeder Fehlschlag wird benannt und lässt den Speicher unverändert. Eine
@@ -365,8 +376,8 @@ C3.2 die neue Fassung** (Position in mm).
 [K-13], Plan als Hintergrund [L-9]), **C4b** (Bemaßen, Fixieren, sichtbarer Widerspruch [K-6] und
 Redundanz [K-7], Längenmaß [K-11], Millimetereingabe [K-12], Undo/Redo) und **C4c** (schwebende
 Bauteilliste, Referenzgeschoss, Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) —
-`tests/module/smoke_geschossplan.mjs`. **Offen ist nur noch das Mappen-ZIP (C5)**; es berührt keine
-[K]-Regel. C4b **und C4c** kamen **ohne neue Regel, ohne neue Shared-Datei und ohne Versionsbump**
+`tests/module/smoke_geschossplan.mjs`. **C5 ist abgeschlossen**; das Projektarchiv berührt keine
+[K]-Regel. C4b, C4c **und C5** kamen **ohne Schema-/Formatversionsbump**
 aus. Das frühere
 „Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
 Wandabstände lägen im Raster.

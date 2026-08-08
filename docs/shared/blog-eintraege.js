@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260808-05",
+    datum: "2026-08-08",
+    typ: "feature",
+    issue: 26,
+    titel: "Projektarchiv vollständig sichern und wiederherstellen – als ZIP oder importierbarer Ordner",
+    testbitte: "Reiter 0: „Export (ZIP)“, Browserdaten in einem Testbrowser löschen und das ZIP oder den "
+      + "entpackten Ordner importieren. Vor dem Schreiben muss ein Prüfbericht erscheinen.",
+  },
+  {
     id: "chg-20260808-04",
     datum: "2026-08-08",
     typ: "feature",

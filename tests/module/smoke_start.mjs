@@ -95,9 +95,55 @@ function fakeIndexedDB(){
     return req; } };
 }
 
+/**
+ * Wie `fakeIndexedDB`, aber der `ab`-te Schreibvorgang scheitert — damit laesst
+ * sich der Ruecksprung des Archivimports pruefen ([L-13]): faellt der Planspeicher
+ * mitten im Schreiben aus, muss der VORHERIGE Stand vollstaendig zurueckkommen.
+ */
+function fakeIndexedDBMitFehler(ab){
+  const daten = new Map();
+  let puts = 0;
+  const spaeter = (wert) => {
+    const req = { result: undefined, error: null, onsuccess: null, onerror: null };
+    queueMicrotask(() => { req.result = wert(); if (req.onsuccess) req.onsuccess(); });
+    return req;
+  };
+  const st = {
+    put: (s) => {
+      if (++puts < ab) return spaeter(() => { daten.set(String(s.id), s); return s.id; });
+      const req = { result: undefined, error: new Error('Speicher voll (Test)'), onsuccess: null, onerror: null };
+      queueMicrotask(() => { if (req.onerror) req.onerror(); });
+      return req;
+    },
+    get: (id) => spaeter(() => daten.get(String(id))),
+    delete: (id) => spaeter(() => { daten.delete(String(id)); return undefined; }),
+    getAllKeys: () => spaeter(() => [...daten.keys()]),
+  };
+  const db = { objectStoreNames:{ contains:()=>true }, createObjectStore:()=>st,
+               transaction:()=>({ objectStore:()=>st }), close(){} };
+  return { open(){ const req={ result:db, onsuccess:null, onerror:null, onupgradeneeded:null };
+    queueMicrotask(()=>{ if(req.onupgradeneeded) req.onupgradeneeded(); if(req.onsuccess) req.onsuccess(); });
+    return req; } };
+}
+
 // Datei-Downloads abfangen (Katalog-Export laeuft ueber Blob/URL wie im Browser).
+// Der Blob kann seit Etappe C5 auch BINAERES: Planbilder reisen als Bytes durch
+// Export und Import ([L-13]), und der Produktcode liest sie ueber `arrayBuffer()`.
 let letzterDownload = null;
-globalThis.Blob = class { constructor(parts){ this._t = parts.join(""); } };
+globalThis.Blob = class {
+  constructor(parts, opt){
+    this._parts = parts || [];
+    this.type = (opt && opt.type) || "";
+    this._t = this._parts.map(p => (typeof p === "string" ? p : "")).join("");
+  }
+  get _bytes(){
+    const stuecke = this._parts.map(p => (typeof p === "string" ? new TextEncoder().encode(p) : new Uint8Array(p.buffer || p)));
+    const out = new Uint8Array(stuecke.reduce((s, b) => s + b.length, 0));
+    let o = 0; for (const b of stuecke) { out.set(b, o); o += b.length; }
+    return out;
+  }
+  async arrayBuffer(){ const b = this._bytes; return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); }
+};
 // Nur die Blob-URL-Helfer ergaenzen — `new URL(...)` bleibt das echte Node-URL.
 URL.createObjectURL = (b) => { letzterDownload = b._t; return "blob:x"; };
 URL.revokeObjectURL = () => {};
@@ -110,14 +156,19 @@ const { baueDateien, stuecklistePositionen } = await import("../../docs/shared/s
 const KAT = await import("../../docs/shared/sembla-katalog.js");
 const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
 const PLAN = await import("../../docs/shared/sembla-plan.js");
+const ARCHIV = await import("../../docs/shared/sembla-archiv.js");
+const { entpacke, zipSync } = await import("../../docs/shared/zip.js");
 
 // --- Produktcode aus docs/index.html laden --------------------------------
 const html = readFileSync(new URL("../../docs/index.html", import.meta.url), "utf8");
 const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
+const BINDUNGEN = ["mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip",
+                   "entpacke","ARCHIV","KAT","MAPPE","PLAN"];
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
-new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT","MAPPE","PLAN", src)(
-  () => {}, MODULE, store, buildWall, baueDateien, (name, files) => zipCalls.push({ name, files }), KAT, MAPPE, PLAN
+new Function(...BINDUNGEN, src)(
+  () => {}, MODULE, store, buildWall, baueDateien, (name, files) => zipCalls.push({ name, files }),
+  entpacke, ARCHIV, KAT, MAPPE, PLAN
 );
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
@@ -1319,7 +1370,8 @@ globalThis.fetch = echtesFetch;
 
   // 8k) Mappen-Datei: Sichern und Wiedereinlesen ----------------------------
   store.setzeAktivesProjekt(prj0.projekt.id);
-  baum('prj-export', prj0.projekt.id);
+  // Der reine Struktur-Weg bleibt neben dem vollstaendigen Archiv bestehen ([L-13]).
+  baum('prj-json', prj0.projekt.id);
   const mappeDatei = letzterDownload;
   ok('Projekt-Export erzeugt eine Projektmappen-Datei v2',
     JSON.parse(mappeDatei).format === 'SEMBLA-Projektmappe'
@@ -1468,6 +1520,274 @@ globalThis.fetch = echtesFetch;
   ok('Loeschmeldung nennt den mitentfernten Plan', /Plan wurde mit entfernt/.test(trMsgTxt()));
 }
 
+// --- 11) Vollstaendiges Projektarchiv ([L-13], Etappe C5) ------------------
+// Der ECHTE Roundtrip an der echten Oberflaeche: Projekt mit Kopfdaten, zwei
+// Geschossen, zwei Waenden samt Eingaben, Lagen, Bemassungen und zwei
+// Planbildern exportieren -> localStorage UND Plan-Datenbank loeschen ->
+// Archivbytes wieder importieren -> fachlich derselbe Stand, Bildbytes inklusive.
+//
+// Gearbeitet wird mit den ECHTEN Exportbytes (zipSync ueber die vom Produktcode
+// uebergebenen Dateien), nicht mit einem nachgebauten Dateibaum.
+{
+  const { zipDeflate } = await import("./hilfe-zip-deflate.mjs");
+  const enc = (s) => new TextEncoder().encode(s);
+  const warte = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 0)); };
+
+  // Synthetische Minimalbilder — nur die Signatur muss echt sein ([L-13]).
+  const PNG = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 11, 22, 33, 44, 55, 66]);
+  const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 8, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 77, 88]);
+  const bildDatei = (name, type, bytes, w, h) => ({
+    name, type, size: bytes.length, _w: w, _h: h,
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  });
+  const zipDatei = (name, bytes) => ({
+    name, type: 'application/zip',
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  });
+  const ordnerDatei = (pfad, data) => ({
+    name: pfad.split('/').pop(), webkitRelativePath: pfad,
+    arrayBuffer: async () => { const b = (typeof data === 'string') ? enc(data) : data;
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); },
+  });
+
+  // 11a) Frischer Sandkasten, damit „alles loeschen“ spaeter wirklich alles ist.
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+
+  const prjA = projektAnlegen('Archivprojekt', { bauherr: 'AWG Musterstadt', phase: 'LP5' });
+  const gsEg = store.aktivesGeschossId();
+  const gsOg = geschossAnlegen(prjA.projekt.id, 'OG', 2400);
+  store.setzeAktivesGeschoss(gsEg);
+  const wEg = wandAnlegen(gsEg, { name: 'EG-W01', laenge: 3000, hoehe: 2400 });
+  store.setzeAktivesGeschoss(gsOg);
+  const wOg = wandAnlegen(gsOg, { name: 'OG-W01', laenge: 2000, hoehe: 2400, wandtyp: 'ohne_wind' });
+
+  // `wandAnlegen` startet nach dem unmittelbaren Speichern noch die asynchrone
+  // Standardkatalog-Vorbelegung. Sie gehoert zum echten Produktweg und muss vor
+  // dem bewusst kataloglosen Archivstand abgeschlossen sein; sonst teilt dieser
+  // Test Zustand mit noch laufenden Fortsetzungen der beiden Klick-Handler.
+  await warte();
+
+  // Lage und Bemassung schreibt sonst der Layout-Editor ([K-10]) — hier ueber
+  // dieselben reinen Operationen, damit der Archivtest echte Nutzdaten sieht.
+  store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsEg, {
+    id: wEg, name: 'EG-W01', lage: { start_mm: { x: 0, y: 62.5 }, richtung: 'x', laenge_grid: 24 } }));
+  store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsOg, {
+    id: wOg, name: 'OG-W01', lage: { start_mm: { x: 1562.5, y: 250 }, richtung: 'y', laenge_grid: 16 } }));
+  store.setzeMappe(MAPPE.setzeBemassung(store.holeMappe(), gsEg, {
+    id: 'bm-1', achse: 'x', von: null, bis: { wand: wEg, bezug: 'min' }, mass_mm: 0 }));
+  store.mergeEingaben('kosten', { waehrung: 'CHF' }, wEg);
+  store.setzeMappe(MAPPE.setzeKatalogRef(store.holeMappe(), 'kat-nichtdabei'));
+
+  // Planbilder ueber den ECHTEN Upload-Weg (Geschoss-Popup, einziger Upload-Weg).
+  for (const [gs, datei] of [[gsEg, bildDatei('eg.png', 'image/png', PNG, 1600, 1200)],
+                             [gsOg, bildDatei('og.webp', 'image/webp', WEBP, 800, 600)]]) {
+    baum('gs-bearbeiten', gs);
+    await warte(2);
+    await $('gp-plan-import').dispatch('change', { target: { files: [datei], value: '' } });
+    $('gp-cancel').dispatch('click');
+  }
+  ok('[L-13] Ausgangsstand steht: 2 Geschosse, 2 Waende, 2 Planbilder',
+    MAPPE.alleWaende(store.holeMappe()).length === 2
+    && !!(await PLAN.holePlan(gsEg)) && !!(await PLAN.holePlan(gsOg)));
+
+  // Fachlicher Stand VOR dem Export — genau daran wird der Import gemessen.
+  const vergleich = () => JSON.stringify({
+    mappe: MAPPE.mappeObjekt(store.projektMappe(prjA.projekt.id)),
+    // Projekt-v2 exportiert die kanonisch mit Standardwerten aufgefuellten
+    // Eingaben. Roh gespeicherte Teilobjekte und ihre aufgefuellte Form sind
+    // fachlich identisch; verglichen wird deshalb dieselbe kanonische Lesesicht.
+    waende: store.listeElemente().map(e => ({ id: e.id, name: e.name, we: e.wandelement, ein: store.holeEingaben(e.id) }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  });
+  const standVorher = vergleich();
+
+  // 11b) Export als ZIP ---------------------------------------------------
+  const zipVor = zipCalls.length;
+  baum('prj-zip', prjA.projekt.id);
+  await warte();
+  ok('[L-13] Export erzeugt genau EIN ZIP', zipCalls.length === zipVor + 1);
+  const archivDateien = zipCalls[zipCalls.length - 1].files;
+  const namen = archivDateien.map(d => d.name);
+  ok('[L-13] Archiv traegt projekt.json, beide Waende und beide Planbilder',
+    namen.length === 5
+    && namen.some(n => n.endsWith('/projekt.json'))
+    && namen.filter(n => n.includes('/waende/')).length === 2
+    && namen.filter(n => n.includes('/plaene/')).length === 2);
+  ok('[L-13] alles liegt unter EINEM Wurzelordner',
+    namen.every(n => n.startsWith('SEMBLA_Projekt_Archivprojekt/')));
+  ok('[L-13] Planbilder liegen unter ihrer Geschoss-Kennung',
+    namen.includes(`SEMBLA_Projekt_Archivprojekt/plaene/${gsEg}.png`)
+    && namen.includes(`SEMBLA_Projekt_Archivprojekt/plaene/${gsOg}.webp`));
+  ok('[L-12] KEIN Bauteilkatalog im Archiv, nur seine Referenz',
+    !namen.some(n => /katalog/i.test(n))
+    && JSON.parse(archivDateien.find(d => d.name.endsWith('projekt.json')).data).katalog === 'kat-nichtdabei');
+  ok('[L-13] die Wanddateien bleiben SEMBLA-Projekt v2 (unveraendertes Format)',
+    archivDateien.filter(d => d.name.includes('/waende/'))
+      .every(d => { const o = JSON.parse(d.data); return o.format === 'SEMBLA-Projekt' && o.version === 2; }));
+  ok('[L-13] die Zuordnung steht ausdruecklich in wand.datei', (() => {
+    const m = JSON.parse(archivDateien.find(d => d.name.endsWith('projekt.json')).data);
+    return MAPPE.alleWaende(m).every(({ wand }) => !!wand.datei && namen.includes('SEMBLA_Projekt_Archivprojekt/' + wand.datei));
+  })());
+  ok('Erfolgsmeldung nennt Wanddateien, Planbilder und den fehlenden Katalog',
+    !trFehler() && /2 Wanddatei\(en\)/.test(trMsgTxt()) && /2 Planbild\(er\)/.test(trMsgTxt())
+    && /nicht enthalten/.test(trMsgTxt()));
+
+  const archivBytes = zipSync(archivDateien);
+
+  // 11c) Alles loeschen — der eigentliche Zweck des Archivs ----------------
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  const leerStand = JSON.stringify([localStorage.getItem('sembla:projekte'), localStorage.getItem('sembla:elemente')]);
+  ok('Browserdaten sind wirklich weg',
+    store.listeProjekte().length === 0 && store.listeElemente().length === 0
+    && (await PLAN.holePlan(gsEg)) === null);
+
+  // 11d) Import des ZIP: erst Bericht, dann schreiben ----------------------
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [zipDatei('SEMBLA_Projekt_Archivprojekt.zip', archivBytes)], value: 'x' } });
+  await warte();
+  ok('[L-13] der Prueferbericht erscheint, bevor irgendetwas geschrieben wird',
+    $('arc-overlay').hidden === false && store.listeProjekte().length === 0
+    && /2 Wanddatei\(en\)/.test($('arc-bericht').innerHTML)
+    && /2 Planbild\(er\)/.test($('arc-bericht').innerHTML));
+  ok('[L-13] ohne Konflikt wird nicht nach Ueberschreiben gefragt', $('arc-ueber-box').hidden === true);
+  $('arc-go').dispatch('click');
+  await warte();
+  ok('[L-13] Import abgeschlossen und Projekt aktiv',
+    $('arc-overlay').hidden === true && store.aktivesProjektId() === prjA.projekt.id);
+  ok('[L-13] fachlich identischer Stand (Struktur, Lage, Bemassungen, Kopfdaten, Eingaben)',
+    vergleich() === standVorher);
+  ok('[L-11] die Kopfdaten stehen wieder am Projekt',
+    store.holeMappe().projekt.kopfdaten.bauherr === 'AWG Musterstadt');
+  ok('[K-10] die Bemassung ist wieder da', MAPPE.bemassungen(store.holeMappe(), gsEg).length === 1);
+  ok('[L-4] keine verwaisten und keine unverorteten Waende nach dem Import', (() => {
+    const r = store.mappeReferenzen();
+    return r.verwaist.length === 0 && r.unverortet.length === 0;
+  })());
+  const bildBytes = async (gs) => new Uint8Array(await (await PLAN.holePlan(gs)).blob.arrayBuffer());
+  const gleich = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  ok('[L-13] die Planbilder sind bitgenau zurueck',
+    gleich(await bildBytes(gsEg), PNG) && gleich(await bildBytes(gsOg), WEBP));
+  ok('[L-9] Massstab/Bildmasse der Planbeschreibung bleiben erhalten',
+    store.geschossPlan(gsEg).breite_px === 1600 && store.geschossPlan(gsEg).datei === 'eg.png');
+  ok('[L-12] der fehlende Bauteilkatalog wird benannt, die Referenz bleibt',
+    /kat-nichtdabei/.test(trMsgTxt()) && store.holeMappe().katalog === 'kat-nichtdabei');
+
+  // 11e) Zweiter Import derselben Bytes: Konflikt, Abbruch, Bestaetigung ----
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [zipDatei('nochmal.zip', archivBytes)], value: 'x' } });
+  await warte();
+  ok('[L-13] vorhandene Kennungen werden als Konflikt gemeldet',
+    $('arc-ueber-box').hidden === false && $('arc-ueber').checked === false
+    && /EG-W01/.test($('arc-ueber-text').textContent));
+  const standVorKonflikt = vergleich();
+  $('arc-go').dispatch('click');
+  await warte();
+  ok('[L-13] ohne Bestaetigung wird NICHTS geschrieben',
+    /ausdrückliche Bestätigung/.test($('arc-msg').textContent) && vergleich() === standVorKonflikt);
+  $('arc-ueber').checked = true;
+  $('arc-go').dispatch('click');
+  await warte();
+  ok('[L-13] mit Bestaetigung geht der Import durch — stabile Kennungen bleiben',
+    $('arc-overlay').hidden === true && vergleich() === standVorKonflikt
+    && !!store.holeElement(wEg) && !!store.holeElement(wOg));
+
+  // 11f) Ordnerimport (dieselben Dateien, entpackt) ------------------------
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  await $('tr-ordner-import').dispatch('change', {
+    target: { files: archivDateien.map(d => ordnerDatei(d.name, d.data)), value: 'x' } });
+  await warte();
+  ok('[L-13] der Ordnerimport zeigt denselben Bericht', $('arc-overlay').hidden === false);
+  $('arc-go').dispatch('click');
+  await warte();
+  ok('[L-13] Ordnerimport stellt denselben Stand her wie das ZIP', vergleich() === standVorher);
+  ok('[L-13] auch die Planbilder kommen aus dem Ordner mit',
+    !!(await PLAN.holePlan(gsEg)) && !!(await PLAN.holePlan(gsOg)));
+
+  // 11g) Deflate-Archiv (so packt jedes uebliche Programm) -----------------
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  const deflateBytes = await zipDeflate(archivDateien);
+  ok('das Deflate-Archiv ist wirklich komprimiert', deflateBytes.length < archivBytes.length);
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [zipDatei('komprimiert.zip', deflateBytes)], value: 'x' } });
+  await warte();
+  $('arc-go').dispatch('click');
+  await warte();
+  ok('[L-13] ein komprimiertes ZIP wird genauso importiert', vergleich() === standVorher);
+
+  // 11h) Rollback: der Planspeicher faellt beim ZWEITEN Bild aus -----------
+  globalThis.localStorage = new MemStorage();
+  store.migrieren();
+  PLAN.setzeIndexedDB(fakeIndexedDBMitFehler(2));   // das ZWEITE Planbild scheitert
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [zipDatei('rollback.zip', archivBytes)], value: 'x' } });
+  await warte();
+  $('arc-go').dispatch('click');
+  await warte(12);
+  ok('[L-13] Schreibfehler ⇒ Fehlermeldung im Dialog, kein halber Stand',
+    /vollständig wiederhergestellt|abgebrochen/.test($('arc-msg').textContent));
+  ok('[L-13] der vorherige localStorage-Stand ist vollstaendig zurueck',
+    JSON.stringify([localStorage.getItem('sembla:projekte'), localStorage.getItem('sembla:elemente')]) === leerStand
+    && store.listeProjekte().length === 0 && store.listeElemente().length === 0);
+  ok('[L-13] auch das bereits geschriebene Planbild wurde zurueckgenommen',
+    (await PLAN.holePlan(gsEg)) === null && (await PLAN.holePlan(gsOg)) === null);
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+
+  // 11i) Kaputte Archive: benannt, nicht geraten ---------------------------
+  const boese = zipSync([...archivDateien, { name: '../boese.json', data: '{}' }]);
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [zipDatei('boese.zip', boese)], value: 'x' } });
+  await warte();
+  ok('[L-13] Traversal wird im Dialog benannt und der Import gesperrt',
+    $('arc-fehler').hidden === false && /verlässt das Archiv/.test($('arc-fehler').innerHTML)
+    && $('arc-go').disabled === true);
+  $('arc-cancel').dispatch('click');
+  ok('Abbruch schreibt nichts', store.listeProjekte().length === 0 && !!/nichts gespeichert/.test(trMsgTxt()));
+
+  const ohneWandDatei = zipSync(archivDateien.filter(d => !d.name.includes('/waende/')));
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [zipDatei('unvollstaendig.zip', ohneWandDatei)], value: 'x' } });
+  await warte();
+  ok('[L-13] fehlende Wanddateien sperren den Import',
+    $('arc-fehler').hidden === false && /Wanddatei/.test($('arc-fehler').innerHTML)
+    && $('arc-go').disabled === true);
+  $('arc-cancel').dispatch('click');
+
+  // 11j) Der Struktur-JSON-Weg bleibt daneben bestehen ---------------------
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [zipDatei('leer.zip', zipSync([{ name: 'nur/text.txt', data: 'hallo' }]))], value: 'x' } });
+  await warte();
+  ok('[L-13] ein ZIP ohne projekt.json wird benannt abgewiesen',
+    /kein SEMBLA-Projektarchiv/.test($('arc-fehler').innerHTML) && $('arc-go').disabled === true);
+  $('arc-cancel').dispatch('click');
+
+  globalThis.localStorage = new MemStorage();
+  store.migrieren();
+  const nurStruktur = JSON.parse(archivDateien.find(d => d.name.endsWith('projekt.json')).data);
+  await $('tr-mappe-import').dispatch('change', {
+    target: { files: [kFile(JSON.stringify(nurStruktur), 'nur-struktur.json')], value: 'x' } });
+  await warte();
+  ok('der Struktur-JSON-Weg funktioniert unveraendert weiter',
+    store.holeMappe()?.projekt.id === prjA.projekt.id && store.listeElemente().length === 0);
+  ok('… und sagt ausdruecklich, dass Waende und Planbilder NICHT dabei waren',
+    /nur Struktur/.test(trMsgTxt()));
+  ok('die Oberflaeche beschriftet beide Wege eindeutig',
+    /Export \(ZIP\)/.test(html) && /nur Struktur \(JSON\)/.test(html)
+    && /Projektordner wählen/.test(html) && /webkitdirectory/.test(html));
+  ok('der Einzelwand-Weg ist unberuehrt vorhanden',
+    /id="f-import"/.test(html) && /id="exp-go"/.test(html)
+    // Das Verhalten selbst wurde oben ueber die echte Ereignisdelegation
+    // geprueft; dynamisch von `knopf(...)` erzeugtes Markup ist kein Quellliteral.
+    && checks.some(([n, c]) => n === 'Klick auf „Export" oeffnet den Dialog' && c));
+}
+
 // --- 10) KEIN Autoload beim Initialisieren (Issue #33) --------------------
 // Steht bewusst am ENDE: der Block erzeugt eine ZWEITE Instanz des Modul-0-Codes.
 // Die haengt sich ebenfalls an store.abonniere und wuerde die Baumliste der ersten
@@ -1484,8 +1804,8 @@ globalThis.document = {
   body:{ appendChild(){}, insertBefore(){}, firstChild:null },
 };
 globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return { ok:true, status:200, text: async () => '{}' }; };
-new Function("mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip","KAT","MAPPE","PLAN", src)(
-  () => {}, MODULE, store, buildWall, baueDateien, () => {}, KAT, MAPPE, PLAN);
+new Function(...BINDUNGEN, src)(
+  () => {}, MODULE, store, buildWall, baueDateien, () => {}, entpacke, ARCHIV, KAT, MAPPE, PLAN);
 const frischKatalog = globalThis.localStorage.getItem('sembla:kataloge');
 const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
 globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();

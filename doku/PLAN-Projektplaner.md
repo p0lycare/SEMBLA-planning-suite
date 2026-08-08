@@ -1,8 +1,7 @@
 # Plan: Modul 0 wird Projektplaner (Issues #26, #37, #42, #43)
 
-> Stand: 2026-08-07 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappen C1 + C2 + C3 umgesetzt**;
-> nach Nutzerrückmeldung zum C3-Stand sind **C3.1** (Oberfläche Projektplanung) und **C3.2**
-> (Feinschliff Layout-Editor) vorgezogen — sie laufen **vor** C4 (s. §10/§11).
+> Stand: 2026-08-08 · Zyklus: Aschersleben/AWG (#20) · Status: **Etappen C1 bis C5 umgesetzt**;
+> der Projektplaner-Zuschnitt ist abgeschlossen (C3.1/C3.2 und C4a–c eingeschlossen).
 > **Achtung:** §11 (C3.2) und C4 sind seit dem 2026-08-07 überholt — die Wandabstände sind **nicht**
 > rastergebunden. Maßgeblich ist ab dort [`PLAN-Layout-Editor.md`](PLAN-Layout-Editor.md).
 
@@ -200,7 +199,7 @@ UI-Konvention, keine strukturelle mehr.
 | ~~**C3.1**~~ | Oberfläche Projektplanung: Baumliste Projekt→Geschoss→Wand, alle Formulare als Popup, mehrere Projekte, Kopfdaten am Projekt, Katalog-Popup (§10) | **erledigt** (s. §12) — die Seite besteht aus **einer** Baumliste plus Editor; kein Formularblock mehr auf der Hauptfläche |
 | **C3.2** *(neu geschnitten)* | Regelwerk [K], Constraint-Löser `sembla-constraints.js`, Lage in mm, Migration — kein UI → **`PLAN-Layout-Editor.md`** | Solver löst, meldet Widersprüche und Bestimmtheit; `test:all` grün |
 | ~~**C4**~~ | ~~Wand-Werkzeug + Radierer~~ — **entfällt** (beruhte auf der widerlegten Rasterannahme); ersetzt durch **C4a/C4b/C4c**: eigene Seite `docs/geschossplan.html` mit Skizzenmodus, Bemaßen, Bauteilliste | s. `PLAN-Layout-Editor.md` §5 |
-| **C5** | Projektmappe Export/Import (ZIP + Ordner, §3) inkl. Bemaßungen | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
+| **C5 ✅** | Vollständiges Projektarchiv als ZIP + importierbarer Ordner inkl. Wänden, Planbildern und Bemaßungen | **erledigt** (s. §13): geprüfter atomarer Roundtrip, identischer Stand |
 | ~~**C6**~~ | Katalogwahl je Projekt + Pflege-Popup | **geht in C3.1 auf** — das Popup entsteht dort ohnehin, und die Zuordnung hängt am neuen Projekt-Datensatz |
 
 **C2 ist der Punkt, ab dem der Planer echten Nutzen bringt** — C3/C4 sind der Komfort obendrauf.
@@ -262,6 +261,7 @@ Festgelegt in **Kapitel 16.9 „Projektstruktur & Geschosslayout (Modul 0) [L]"*
 | **[L-10 · MUSS]** *(neu, C3.1)* | **Aktivierung ist streng hierarchisch.** Eine Wand ist nur aktivierbar, wenn ihr Geschoss aktiv ist; ein Geschoss nur, wenn sein Projekt aktiv ist. Kein Aktivsetzen zieht Eltern still mit. Umgekehrt hebt ein Elternwechsel die Kind-Zeiger **auf**, statt sie auf Fremdes zu biegen. Auf-/Zuklappen ist reine Anzeige und ändert **nie** einen Zeiger |
 | **[L-11 · MUSS]** *(neu, C3.1)* | **Projekt-Kopfdaten leben am Projekt** und nirgends sonst. Modul 0 schreibt `eingaben.projekt` nicht mehr; Zeichnung/Export/Schriftfeld lesen aus dem aktiven Projekt. Der Altbestand `eingaben.projekt` bleibt in Altprojekten erhalten und wird nur als **Rückfall** gelesen, wenn kein Projekt zugeordnet ist — nie beschrieben, nie zusammengeführt |
 | **[L-12]** *(neu, C3.1)* | **Ein Bauteilkatalog je Projekt.** Die Zuordnung hängt am Projekt; der aktive Katalog folgt dem aktiven Projekt. Ohne Zuordnung wird das gemeldet, kein Katalog geraten |
+| **[L-13 · MUSS]** *(neu, C5)* | Vollständiges Projektarchiv: genau eine Mappe, explizite `wand.datei`-Zuordnung, sichere vollständige Vorabprüfung und bestätigter atomarer Import mit Rollback von localStorage und IndexedDB; Katalog bleibt getrennt |
 
 ---
 
@@ -519,6 +519,33 @@ entsprechend nachgezogen, das Handbuch neu gebaut.
   (Migration 4 → 5, [L-10]/[L-11]/[L-12]), `test-projektmappe.mjs` um Kopfdaten und
   Katalogzuordnung. `npm run test:all` ist grün.
 
-**Offen (bewusst nicht in C3.1):** Feinschliff des Layout-Editors (C3.2 — Plan-Lock, Zoom/Pan,
+**Offen (historischer Stand nach C3.1):** Feinschliff des Layout-Editors (C3.2 — Plan-Lock, Zoom/Pan,
 Kreuzmarker, orthogonale Kalibrierlinie; der Planupload wandert dort ins Geschoss-Popup),
 Wand-Werkzeug und Einzeichnen der Lage (C4), Projektmappe als ZIP/Ordner inklusive Planbild (C5).
+Diese Punkte sind inzwischen umgesetzt.
+
+---
+
+## 13. Umsetzungsstand C5 (2026-08-08)
+
+- **Archivinhalt:** genau eine `projekt.json`, alle vorhandenen referenzierten Wände als unveränderte
+  SEMBLA-Projekt-v2-Dateien und alle vorhandenen referenzierten Planbilder aus IndexedDB. Kataloge
+  bleiben nach [L-12] eigene Ressourcen; nur die Referenz reist mit und ein fehlender Zielkatalog
+  wird sichtbar benannt, ohne die Referenz zu löschen.
+- **Deterministische Vorabprüfung:** `docs/shared/sembla-archiv.js` akzeptiert nur die ausdrückliche
+  `wand.datei`-Zuordnung, normalisiert sichere relative Pfade und meldet Traversal, absolute Pfade,
+  Duplikate, fehlende und überzählige Dateien, falsche Formate/Versionen sowie widersprüchliche
+  Bildtypen. `docs/shared/zip.js` liest STORE und Deflate und prüft CRC, lokale/Zentralverzeichnis-
+  Namen und Kompressionsmethoden. Ordner und ZIP münden in denselben Prüferbericht.
+- **Bestätigung und Atomarität:** bis „Importieren“ bleibt das geprüfte Archiv im Seitenspeicher.
+  Vorhandene stabile Projekt-/Wand-IDs verlangen eine ausdrückliche Überschreibbestätigung.
+  `store.schreibeArchiv()` sichert alle betroffenen localStorage-Schlüssel und Planbilder und stellt
+  bei jedem Schreibfehler beide Speicher vollständig wieder her. `wand.datei` und die für eine
+  Einzelwanddatei mitgeführte Kopfdatenkopie sind Transportmetadaten und werden nicht als zweite
+  Identitäten/Quellen persistiert ([L-4]/[L-11]).
+- **Bedienwege:** vollständiger Export heißt „Export (ZIP)“, der bestehende Mappenweg eindeutig
+  „nur Struktur (JSON)“; Einzelwand- und Katalogwege sind unverändert. Kein Schema-, Mappen-, Wand-
+  oder Katalogversionsbump.
+- **Tests:** `test-archiv.mjs` prüft 65 reine Archiv-/ZIP-Fälle; der echte Oberflächenroundtrip in
+  `smoke_start.mjs` umfasst ZIP, Ordner, Deflate, fehlenden Katalog, Konfliktbestätigung, vollständigen
+  Rollback und synthetische Mini-Bilder. `npm run test:modul0` ist mit 373 Prüfungen grün.

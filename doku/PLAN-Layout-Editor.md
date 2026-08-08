@@ -1,10 +1,10 @@
 # Plan: Layout-Editor mit Constraints (Issue #26, Etappen C3.2 / C4)
 
-> Stand: 2026-08-08 · **Etappen C3.2, C4a, C4b und C4c umgesetzt** (Regelwerk, Löser, Datenmodell,
+> Stand: 2026-08-08 · **Etappen C3.2, C4a, C4b, C4c und C5 umgesetzt** (Regelwerk, Löser, Datenmodell,
 > Migration — s. §7; Editor-Seite mit Zeichnen/Ziehen/Plan — s. §8; am 2026-08-08 nachgeschärft:
 > Zeichnen ab dem Drücken, Wandkanten auf dem Raster, aktiv ≠ ausgewählt, Größengriffe, 90° drehen;
 > Bemaßen, Fixieren, Widerspruch/Redundanz und Undo/Redo — s. §9; schwebende Bauteilliste,
-> Referenzgeschoss und zwei Bedienkorrekturen — s. §10) · offen bleibt allein **C5** ·
+> Referenzgeschoss und zwei Bedienkorrekturen — s. §10; vollständiges Projektarchiv — s. §11) ·
 > löst den bisherigen §11 („Feinschliff Layout-Editor") in
 > [`PLAN-Projektplaner.md`](PLAN-Projektplaner.md) ab.
 
@@ -276,7 +276,7 @@ Projektieren-Werkzeug aus dem Plan.
 | **C4a ✅** | Neue Seite `docs/geschossplan.html`: Plan-Hintergrund, Zoom/Pan, Plan-Lock, Kalibrier-Feinschliff (§4.4), Wand zeichnen, Auswahl + Ziehen | **erledigt** (s. §8) |
 | **C4b ✅** | Bemaßen, Fixieren, Farbcodierung, Widerspruchsmeldung, Undo/Redo | **erledigt** (s. §9) |
 | **C4c ✅** | Schwebende Bauteilliste mit Kurzbeschreibung; Referenzgeschoss mit einstellbarer Deckkraft; zwei Bedienkorrekturen (Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) | **erledigt** (s. §10) |
-| **C5** | Projektmappe Export/Import als ZIP inkl. Planbild und Bemaßungen | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
+| **C5 ✅** | Vollständiges Projektarchiv als ZIP/Ordner inkl. Planbildern und Bemaßungen | **erledigt** (s. §11): vorab geprüft, bestätigt, atomar, identischer Roundtrip |
 
 Der bisherige C4-Inhalt („Kästchen einfärben + Radierer") entfällt ersatzlos — er beruhte auf der
 widerlegten Rasterannahme.
@@ -566,5 +566,24 @@ Regression.
   also über denselben Behandler wie im Browser, aber nicht über echtes Markup; das gerenderte
   Panel-HTML wird zusätzlich geprüft.
 
-**Offen (bewusst nicht in C4c):** Mappen-ZIP inklusive Planbild und Bemaßungen (C5). Issue #26
-bleibt als Umbrella offen.
+**Nach C4c abgeschlossen:** Das vollständige Projektarchiv inklusive Planbildern und Bemaßungen
+(C5) ist in §11 dokumentiert.
+
+---
+
+## 11. Umsetzungsstand C5 (2026-08-08)
+
+C5 ändert keine [K]-Regel und keine Geometrie. Das Archiv nimmt die Geschossstruktur samt Lagen und
+Bemaßungen unverändert aus der Projektmappe, ergänzt jede referenzierte Wand als SEMBLA-Projekt-v2-
+Datei und jedes vorhandene referenzierte Planbild aus IndexedDB. ZIP und importierbarer Ordner
+durchlaufen denselben vollständigen Prüfer: genau eine Mappe, ausschließlich explizite
+`wand.datei`-Zuordnung, sichere normalisierte relative Pfade, eindeutige/vollständige Dateien,
+gültige Formate, Versionen und Bildsignaturen; ZIP zusätzlich CRC und STORE/Deflate-Methode.
+
+Geschrieben wird erst nach dem sichtbaren Bericht und einer ausdrücklichen Importbestätigung;
+Konflikte stabiler IDs brauchen zusätzlich die Überschreibbestätigung. Ein Schreibfehler setzt
+localStorage und IndexedDB vollständig zurück. Der Katalog bleibt eigene Ressource ([L-12]), der
+reine Mappenweg heißt „nur Struktur (JSON)“, und alle Format-/Schemaversionen bleiben unverändert.
+Der Oberflächenroundtrip prüft Lage, Bemaßungen, Kopfdaten, Eingaben und bitgenaue synthetische
+Planbilder für ZIP, Ordner und Deflate sowie den Rollback. Damit ist der in C4b geforderte spätere
+Exportpfad umgesetzt, ohne gelöste Positionen in die Mappe zurückzuschreiben.

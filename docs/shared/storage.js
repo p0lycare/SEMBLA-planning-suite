@@ -1161,6 +1161,146 @@ export function importiereMappeDatei(file) {
   return file.text().then((text) => importiereMappeText(text));
 }
 
+// --- Vollstaendiges Projektarchiv ([L-13]) --------------------------------
+// Der Inhalt eines Archivs wird in `sembla-archiv.js` gedeutet und geprueft (rein,
+// ohne Speicherzugriff). Hier steht nur das SCHREIBEN — und zwar so, dass es
+// entweder ganz gelingt oder gar nicht: vorher eine Momentaufnahme, hinterher im
+// Fehlerfall der vollstaendige Ruecksprung. Ein halb importiertes Projekt waere
+// schlimmer als ein gescheiterter Import.
+
+/** Die Schluessel, die ein Archivimport anfasst — mehr wird nie gesichert oder ersetzt. */
+const ARCHIV_SCHLUESSEL = [K_ELEM, K_AKTIV, K_PROJEKTE, K_AKTIV_PRJ, K_AKTIV_GEB, K_AKTIV_GS];
+
+/**
+ * Rohstand der vom Archivimport betroffenen Schluessel sichern. Bewusst eine feste
+ * LISTE statt eines Durchlaufs ueber den ganzen localStorage: gesichert wird nur,
+ * was auch geschrieben wird (Kataloge, OBJ-Geometrie und Fremdschluessel bleiben
+ * ausserhalb).
+ * @returns {Record<string, string|null>}
+ */
+export function momentaufnahme() {
+  /** @type {Record<string, string|null>} */
+  const snap = {};
+  for (const k of ARCHIV_SCHLUESSEL) {
+    try { snap[k] = localStorage.getItem(k); } catch { snap[k] = null; }
+  }
+  return snap;
+}
+
+/**
+ * Eine Momentaufnahme vollstaendig zurueckspielen (Rollback). Fehlte ein Schluessel
+ * vorher, wird er auch wieder entfernt — nicht auf einem Zwischenstand belassen.
+ * @param {Record<string, string|null>} snap
+ */
+export function stelleWiederHer(snap) {
+  for (const k of ARCHIV_SCHLUESSEL) {
+    const v = snap ? snap[k] : null;
+    if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v);
+  }
+  _benachrichtige();
+}
+
+/**
+ * Was ein Archivimport ueberschreiben wuerde ([L-13]: stabile IDs bleiben stabil,
+ * also gibt es keine Ausweich-Kennung — nur ein ausdrueckliches Ja).
+ * @param {{mappe:object, waende:Array<{id:string,name:string}>}} gelesen
+ * @returns {{projekt:{id:string,name:string}|null, waende:Array<{id:string,name:string}>}}
+ */
+export function archivKonflikte(gelesen) {
+  const vorhanden = gelesen && gelesen.mappe ? projektMappe(gelesen.mappe.projekt.id) : null;
+  const waende = (gelesen?.waende || [])
+    .filter((w) => !!holeElement(w.id))
+    .map((w) => ({ id: w.id, name: holeElement(w.id).name }));
+  return { projekt: vorhanden ? { id: vorhanden.projekt.id, name: vorhanden.projekt.name } : null, waende };
+}
+
+/**
+ * Ein GEPRUEFTES Archiv persistieren ([L-13]). Reihenfolge: Wandelemente →
+ * Projektmappe → Planbilder → aktives Projekt. Scheitert irgendetwas davon, wird
+ * der komplette vorherige Stand wiederhergestellt (localStorage aus der
+ * Momentaufnahme, Planbilder aus ihrer jeweiligen Vorversion) und der Fehler
+ * benannt — es bleibt kein Zwischenstand stehen.
+ *
+ * Der Bauteilkatalog ist NICHT Teil des Archivs ([L-12]); fehlt der referenzierte
+ * Katalog in diesem Browser, wird das gemeldet und die Referenz bleibt stehen.
+ *
+ * @param {{mappe:object, waende:Array<any>, bilder:Array<any>, fehler?:string[]}} gelesen
+ * @param {{plan:{speicherePlan:Function, holePlan:Function, loeschePlan:Function},
+ *          ueberschreiben?:boolean, blob?:(b:any)=>any}} opt
+ * @returns {Promise<{projekt:object, waende:number, bilder:number, katalogFehlt:string|null}>}
+ */
+export async function schreibeArchiv(gelesen, opt) {
+  const o = opt || /** @type {any} */ ({});
+  if (!gelesen || !gelesen.mappe) throw new Error("Kein geprüftes Archiv übergeben.");
+  if (gelesen.fehler && gelesen.fehler.length) {
+    throw new Error("Das Archiv wurde nicht fehlerfrei geprüft — es wird nichts geschrieben ([L-13]).");
+  }
+  const bilder = gelesen.bilder || [];
+  const planApi = o.plan;
+  if (bilder.length && (!planApi || !planApi.speicherePlan)) {
+    throw new Error("Ohne Planspeicher werden Planbilder nicht importiert — es wird nichts geschrieben ([L-8]).");
+  }
+  const konflikte = archivKonflikte(gelesen);
+  if (!o.ueberschreiben && (konflikte.projekt || konflikte.waende.length)) {
+    throw new Error("Der Import würde vorhandene Einträge überschreiben — dafür fehlt die ausdrückliche Bestätigung.");
+  }
+
+  const sicherung = momentaufnahme();
+  /** @type {Array<[string, any]>} */
+  const bildSicherung = [];
+  try {
+    for (const w of (gelesen.waende || [])) {
+      // Eine eigenstaendige Projekt-v2-Wanddatei traegt fuer ihr Schriftfeld die
+      // wirksamen Kopfdaten in `eingaben.projekt`. Im vollstaendigen Archiv sind
+      // dieselben Kopfdaten bereits am Projekt die verbindliche Quelle ([L-11]);
+      // die Exportkopie darf beim Wiederherstellen keine zweite Quelle erzeugen.
+      const eingaben = (w.eingaben && typeof w.eingaben === "object") ? { ...w.eingaben } : w.eingaben;
+      if (eingaben && typeof eingaben === "object") delete eingaben.projekt;
+      speichere(w.name, w.wandelement, w.id, eingaben);
+    }
+    // `wand.datei` ist ausschliesslich die explizite Zuordnung INNERHALB des
+    // Archivs. Nach erfolgreicher Pruefung darf dieser Transportpfad nicht als
+    // zweite Identitaet neben der stabilen Wand-id im Browserstand bleiben.
+    const mappeStand = mappeObjekt(gelesen.mappe);
+    for (const gebaeude of mappeStand.gebaeude) {
+      for (const geschoss of gebaeude.geschosse) {
+        for (const wand of geschoss.waende) wand.datei = null;
+      }
+    }
+    setzeMappe(mappeStand);
+    for (const b of bilder) {
+      // Vorversion VOR dem Schreiben merken — nur so ist der Ruecksprung vollstaendig.
+      let alt = null;
+      try { alt = await planApi.holePlan(b.geschossId); } catch { alt = null; }
+      bildSicherung.push([b.geschossId, alt]);
+      const inhalt = o.blob ? o.blob(b) : new Blob([b.bytes], { type: b.typ });
+      await planApi.speicherePlan(b.geschossId, inhalt, {
+        name: (b.plan && b.plan.datei) || "", typ: b.typ, groesse: b.bytes.length,
+        breite_px: b.plan && b.plan.breite_px, hoehe_px: b.plan && b.plan.hoehe_px,
+      });
+    }
+    setzeAktivesProjekt(mappeStand.projekt.id);
+  } catch (e) {
+    for (const [id, alt] of bildSicherung) {
+      try {
+        if (alt && alt.blob) await planApi.speicherePlan(id, alt.blob, alt);
+        else await planApi.loeschePlan(id);
+      } catch { /* der localStorage-Stand wird trotzdem zurueckgesetzt */ }
+    }
+    stelleWiederHer(sicherung);
+    throw new Error("Import abgebrochen — der vorherige Stand wurde vollständig wiederhergestellt. "
+      + "Grund: " + (e && e.message ? e.message : e));
+  }
+
+  const katalogRef = gelesen.mappe.katalog;
+  return {
+    projekt: holeMappe(),
+    waende: (gelesen.waende || []).length,
+    bilder: bilder.length,
+    katalogFehlt: (katalogRef && !katalogNachId(katalogRef)) ? String(katalogRef) : null,
+  };
+}
+
 // --- Wandbezogene Produktreferenzen ([P-13]) ------------------------------
 // Nur Produkt-IDs je Verwendungsrolle + Herkunftsnotiz des Katalogs. Eigentuemer ist
 // das jeweils fachlich zustaendige Modul; jedes schreibt ausschliesslich seinen
