@@ -47,6 +47,7 @@ class El {
 // Vorbelegung wie im Markup (Haekchen und Felder der Werkzeugleiste).
 const START = { 'gp-fang': { checked: true }, 'gp-plan-lock': { checked: true },
                 'gp-hoehe': { value: '2600' }, 'gp-wandtyp': { value: 'mit_wind' },
+                'gp-ref': { checked: true }, 'gp-ref-deck': { value: '25' },
                 'kal-overlay': { hidden: true } };
 const document = {
   _e: {},
@@ -106,6 +107,12 @@ globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, buildWall };
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
 const warte = () => new Promise(r => setTimeout(r, 0));
+/**
+ * Eine Pruefhilfe der Seite aufrufen. Fehlt sie, liefert das `null` statt den
+ * Lauf abzubrechen — eine fehlende Hilfe soll die zugehoerige Pruefung rot
+ * faerben und nicht alle folgenden verschlucken.
+ */
+const gp = (name, ...args) => (typeof GP[name] === 'function' ? GP[name](...args) : null);
 
 // --- 0) Startzustand ohne aktives Geschoss --------------------------------
 eval(script);
@@ -721,6 +728,196 @@ ok('[L-8] das Planbild in der eigenen Datenbank fasst der Stapel gar nicht an',
 // --- 18) Determinismus mit Bemassungen ([K-5]) ---------------------------
 const c = JSON.stringify(GP.loesen()), d = JSON.stringify(GP.loesen());
 ok('[K-5] auch mit Bemassungen gilt: gleiche Eingabe ⇒ bit-genau gleiches Ergebnis', c === d);
+
+// ==========================================================================
+//  Etappe C4c — Bauteilliste, Referenzgeschoss, Doppelklick auf die Massszahl
+// ==========================================================================
+// Alles hier ist REINE BEDIENUNG: kein neues Feld in der Projektmappe, keine
+// neue Formatversion, keine [K]-Regel. Entsprechend prueft dieser Abschnitt vor
+// allem, was NICHT passiert — kein Persistieren, keine Auswahl auf fremden
+// Waenden, keine Kollision, kein zweiter Bearbeitungspfad fuer Masse.
+
+// --- 19) Schwebende Bauteilliste ueber der Zeichenflaeche -----------------
+const gsWaende = () => MAPPE.findeGeschoss(store.holeMappe(), gs2).geschoss.waende;
+const liste = () => $('gp-liste').innerHTML;
+/** Genau EINE Zeile der Bauteilliste — vom Klassennamen bis zum Anfang der naechsten. */
+const zeileVon = (id) => (liste().split('class="gp-zeile')
+  .find(s => s.includes(`data-wand="${id}"`)) || '');
+
+// Zwei Sonderfaelle mit ins Geschoss: eine eingetragene, aber UNVERORTETE Wand
+// und ein verwaister Eintrag ohne Wandelement ([L-4]).
+const ohneLageId = store.speichere('Ohne Lage', buildWall('Ohne Lage', 1000, 2600, []));
+store.verorteWand(ohneLageId, gs2, { lage: null });
+store.aendereMappe(m => MAPPE.setzeWand(m, gs2, { id: 'wnd-verwaist', name: 'Verwaist', lage: null }));
+await warte();
+GP.render();
+
+ok('die Bauteilliste liegt als eigenes Panel UEBER der Zeichenflaeche, nicht in ihr',
+  /id="gp-liste"/.test(html) && /<div class="gp-buehne" id="gp-buehne"><\/div>/.test(html));
+ok('sie fuehrt ALLE Waende des aktiven Geschosses auf',
+  (liste().match(/class="gp-zeile/g) || []).length === gsWaende().length);
+{
+  const b = GP.loesen().bestimmt[idA];
+  const erwartet = b.x && b.y ? 'x/y' : b.x ? 'nur x' : b.y ? 'nur y' : 'frei';
+  const z = zeileVon(idA);
+  ok('die Kurzbeschreibung nennt Name, Laenge, Hoehe, Wandtyp und Bestimmtheit',
+    z.includes(store.holeElement(idA).name) && z.includes(`${CON.laengeMm(lageVon(idA))} mm`)
+    && z.includes('2600') && /mit Wind/.test(z) && z.includes(erwartet));
+}
+ok('die Bestimmtheit steht kompakt als x/y, nur x, nur y oder frei — ohne Massanzahl',
+  /x\/y|nur x|nur y|frei/.test(zeileVon(idA)) && !/Ma(ss|ß)e?\s*:/.test(zeileVon(idA)));
+ok('eine unverortete Wand steht als solche da, ohne erfundene Laenge',
+  /unverortet/.test(zeileVon(ohneLageId)));
+ok('[L-4] ein verwaister Eintrag wird gemeldet, Hoehe und Wandtyp werden NICHT geraten',
+  /verwaist/i.test(zeileVon('wnd-verwaist')) && !/mit Wind|ohne Wind/.test(zeileVon('wnd-verwaist')));
+
+// Auswahl in beide Richtungen — ueber DIESELBE Auswahlfunktion wie die Zeichnung.
+GP.werkzeug('auswahl');
+gp('listeKlick', idA);
+ok('Klick in der Liste macht die Wand aktiv (Liste ⇒ Zeichnung)',
+  GP.zustand.aktiv === idA && GP.zustand.auswahl.length === 1
+  && GP.svg.includes(CON.FARBEN.aktiv));
+gp('listeKlick', idB, { shiftKey: true });
+ok('Umschalt-Klick in der Liste nimmt eine zweite Wand hinzu — aktiv bleibt genau EINE',
+  GP.zustand.auswahl.length === 2 && GP.zustand.aktiv === idB);
+ok('aktiv und ausgewaehlt werden in der Liste NICHT vermischt: eine Zeile aktiv, eine gewaehlt',
+  (liste().match(/gp-zeile aktiv/g) || []).length === 1
+  && (liste().match(/gp-zeile gewaehlt/g) || []).length === 1);
+GP.tippe(mitteVon(idA));
+ok('Klick in der Zeichnung markiert die Zeile (Zeichnung ⇒ Liste)',
+  GP.zustand.aktiv === idA && zeileVon(idA).startsWith(' aktiv"')
+  && (liste().match(/gp-zeile aktiv/g) || []).length === 1);
+{
+  const vorher = localStorage.getItem('sembla:projekte');
+  const undoVor = GP.undoStand.undo;
+  gp('listeKlick', ohneLageId);
+  ok('die Liste ist Anzeige + Auswahl und KEIN Verortungsweg — sie schreibt nichts',
+    GP.zustand.aktiv === ohneLageId
+    && localStorage.getItem('sembla:projekte') === vorher && GP.undoStand.undo === undoVor
+    && MAPPE.findeWand(store.holeMappe(), ohneLageId).wand.lage === null);
+}
+
+// --- 20) Referenzgeschoss: das Geschoss darunter, blass und unantastbar ---
+ok('ohne Geschoss darunter wird das benannt statt eines erfunden',
+  /Kein Geschoss darunter/.test($('gp-ref-info').innerHTML) && !/class="ref-wand"/.test(GP.svg));
+
+// Zwei Rechtecke des EG merken, solange das EG aktiv ist — die Referenz zeichnet
+// den GELOESTEN Stand, also muss der Test dieselbe Quelle lesen ([K-5]).
+const ergEG = GP.loesen();
+const rEGa = CON.wandRechteck(lageVon(idA), ergEG.positionen[idA]);
+const rEGb = CON.wandRechteck(lageVon(idB), ergEG.positionen[idB]);
+const gebId = MAPPE.findeGeschoss(store.holeMappe(), gs2).gebaeude.id;
+let ogId;
+store.aendereMappe(m => { const r = MAPPE.fuegeGeschossHinzu(m, gebId, '1. OG', 2600); ogId = r.id; return r.mappe; });
+store.setzeAktivesGeschoss(ogId);
+await warte();
+GP.zeigeAlles();
+ok('das unmittelbar darunterliegende Geschoss ist Index minus 1 im selben Gebaeude …',
+  /Referenz/.test($('gp-ref-info').innerHTML) && /EG/.test($('gp-ref-info').innerHTML));
+
+// Eine Wand im 1. OG genau AUF die EG-Wand idA legen — sie darf keine Kollision ausloesen.
+GP.werkzeug('wand');
+GP.zeichne({ x: rEGa.x_min, y: (rEGa.y_min + rEGa.y_max) / 2 },
+           { x: rEGa.x_max, y: (rEGa.y_min + rEGa.y_max) / 2 });
+await warte();
+const ogWaende = MAPPE.findeGeschoss(store.holeMappe(), ogId).geschoss.waende;
+const idOG = ogWaende[0] ? ogWaende[0].id : null;
+ok('Pruefaufbau: das 1. OG hat genau eine Wand, deckungsgleich mit einer EG-Wand',
+  ogWaende.length === 1 && !!idOG);
+ok('das Geschoss darunter erscheint als blasse Umrisse',
+  (GP.svg.match(/class="ref-wand"/g) || []).length
+    === gsWaende().filter(w => w.lage != null).length);
+ok('die Referenz ist standardmaessig sichtbar und 25 % deckend',
+  $('gp-ref').checked === true && /class="referenz" pointer-events="none" opacity="0.25"/.test(GP.svg)
+  && GP.zustand.refDeckkraft === 0.25);
+ok('Referenzwaende sind nicht anklickbar: kein data-wand, pointer-events aus',
+  !/class="ref-wand"[^>]*data-wand/.test(GP.svg)
+  && (GP.svg.match(/data-wand=/g) || []).length === ogWaende.length);
+{
+  // Ein Punkt, der NUR von einer Referenzwand bedeckt ist (idB hat im OG keine Entsprechung).
+  const p = { x: (rEGb.x_min + rEGb.x_max) / 2, y: (rEGb.y_min + rEGb.y_max) / 2 };
+  GP.werkzeug('auswahl');
+  GP.tippe(p);
+  ok('ein Klick auf eine Referenzwand waehlt NICHTS aus',
+    GP.treffer(p) === null && GP.zustand.aktiv === null);
+}
+ok('[K-13] die deckungsgleiche Referenzwand erzeugt KEINE Kollision …',
+  GP.loesen().kollisionen.length === 0 && !GP.svg.includes(CON.FARBEN.fehler));
+{
+  const ohne = JSON.stringify(GP.loesen());
+  $('gp-ref').checked = false; $('gp-ref').dispatch('change');
+  ok('… und der Loeser sieht sie ueberhaupt nicht — bit-genau dasselbe Ergebnis mit und ohne Referenz',
+    JSON.stringify(GP.loesen()) === ohne && !/class="ref-wand"/.test(GP.svg));
+  $('gp-ref').checked = true; $('gp-ref').dispatch('change');
+}
+{
+  const vorher = localStorage.getItem('sembla:projekte');
+  $('gp-ref-deck').value = '60';
+  $('gp-ref-deck').dispatch('change');
+  ok('die Deckkraft ist einstellbar', /class="referenz" pointer-events="none" opacity="0.6"/.test(GP.svg));
+  ok('Sichtbarkeit und Deckkraft werden NICHT in der Projektmappe gespeichert',
+    localStorage.getItem('sembla:projekte') === vorher
+    && !/refDeckkraft|referenzgeschoss/i.test(localStorage.getItem('sembla:projekte')));
+  $('gp-ref-deck').value = '25';
+  $('gp-ref-deck').dispatch('change');
+}
+
+// --- 21) Doppelklick auf die Masszahl oeffnet den vorhandenen Masseditor --
+store.setzeAktivesGeschoss(gs2);
+await warte();
+GP.zeigeAlles();
+GP.werkzeug('auswahl');
+const bmT = GP.bemassungen()[0];
+ok('Pruefaufbau: im EG steht mindestens ein Mass', !!bmT);
+const textPunkt = gp('bemTextPunkt', bmT ? bmT.id : null);
+ok('die dargestellte Masszahl gehoert zur Trefferflaeche des Masses (CAD-Verhalten)',
+  !!textPunkt && GP.bemTreffer(textPunkt) === bmT.id);
+{
+  const mappeVor = localStorage.getItem('sembla:projekte');
+  const undoVor = GP.undoStand.undo;
+  gp('doppeltippe', textPunkt);
+  ok('Doppelklick auf die Masszahl waehlt genau dieses Mass zur Bearbeitung',
+    GP.zustand.bemAktiv === bmT.id && $('gp-bem-wert').value === String(bmT.mass_mm));
+  ok('… und zwar im VORHANDENEN Masseditor — kein zweiter Bearbeitungspfad',
+    $('gp-bem-setzen').disabled === false && $('gp-bem-weg').disabled === false);
+  ok('… ohne das Werkzeug zu wechseln', GP.zustand.werkzeug === 'auswahl');
+  ok('… und ohne irgendetwas zu speichern (die Massesemantik bleibt unveraendert, [K-3])',
+    localStorage.getItem('sembla:projekte') === mappeVor && GP.undoStand.undo === undoVor
+    && GP.bemassungen().length === MAPPE.bemassungen(store.holeMappe(), gs2).length);
+}
+{
+  // Der gewohnte Weg bleibt der einzige Schreibweg: Wert eintragen, „Mass setzen".
+  const neu = bmT.mass_mm + 125;
+  $('gp-bem-wert').value = String(neu);
+  $('gp-bem-setzen').dispatch('click');
+  await warte();
+  ok('das im Doppelklick geoeffnete Mass wird ueber denselben Knopf geaendert',
+    GP.bemassungen().find(b => b.id === bmT.id).mass_mm === neu);
+  $('gp-bem-wert').value = String(bmT.mass_mm);
+  $('gp-bem-setzen').dispatch('click');
+  await warte();
+}
+{
+  const vor = GP.zustand.bemAktiv;
+  gp('doppeltippe', { x: 90000, y: 90000 });
+  ok('ein Doppelklick ins Leere aendert nichts', GP.zustand.bemAktiv === vor);
+}
+
+// --- 22) Kein Textauswahl-Cursor ueber der Wandbeschriftung ---------------
+const svgTextRegel = (html.match(/\.gp-buehne svg text\s*\{[^}]*\}/) || [''])[0];
+ok('Beschriftungen in der Zeichenflaeche sind nicht markierbar (kein I-Beam)',
+  /user-select:\s*none/.test(svgTextRegel) && /-webkit-user-select:\s*none/.test(svgTextRegel));
+ok('sie fangen auch keine Zeigerereignisse ab — die Wandinteraktion bleibt klar',
+  /pointer-events:\s*none/.test(svgTextRegel));
+ok('die Regel gilt AUSSCHLIESSLICH unterhalb der Zeichenflaeche',
+  (html.match(/user-select/g) || []).length === 2
+  && !/\*\s*\{[^}]*user-select/.test(html)
+  && !/\.field[^{]*\{[^}]*user-select/.test(html));
+ok('echte Eingabefelder bleiben unangetastet — das Massfeld ist weiter bedienbar',
+  (() => { $('gp-bem-wert').value = '4321'; return $('gp-bem-wert').value === '4321'; })());
+ok('trotz pointer-events:none bleibt der Doppelklick auf die Masszahl moeglich '
+  + '(getroffen wird geometrisch in Weltkoordinaten, nicht ueber DOM-Knoten)',
+  /addEventListener\('dblclick'/.test(html) && !!textPunkt && GP.bemTreffer(textPunkt) === bmT.id);
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }

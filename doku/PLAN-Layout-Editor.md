@@ -1,9 +1,10 @@
 # Plan: Layout-Editor mit Constraints (Issue #26, Etappen C3.2 / C4)
 
-> Stand: 2026-08-08 · **Etappen C3.2, C4a und C4b umgesetzt** (Regelwerk, Löser, Datenmodell,
+> Stand: 2026-08-08 · **Etappen C3.2, C4a, C4b und C4c umgesetzt** (Regelwerk, Löser, Datenmodell,
 > Migration — s. §7; Editor-Seite mit Zeichnen/Ziehen/Plan — s. §8; am 2026-08-08 nachgeschärft:
 > Zeichnen ab dem Drücken, Wandkanten auf dem Raster, aktiv ≠ ausgewählt, Größengriffe, 90° drehen;
-> Bemaßen, Fixieren, Widerspruch/Redundanz und Undo/Redo — s. §9) · offen bleiben **C4c** und **C5** ·
+> Bemaßen, Fixieren, Widerspruch/Redundanz und Undo/Redo — s. §9; schwebende Bauteilliste,
+> Referenzgeschoss und zwei Bedienkorrekturen — s. §10) · offen bleibt allein **C5** ·
 > löst den bisherigen §11 („Feinschliff Layout-Editor") in
 > [`PLAN-Projektplaner.md`](PLAN-Projektplaner.md) ab.
 
@@ -256,10 +257,10 @@ Kalibrierlinie**.
 
 **Schwebende Bauteilliste** — ein Panel über der Zeichenfläche mit allen Wänden des Geschosses und
 je einer Kurzbeschreibung (Name, Länge, Höhe, Wandtyp, Bestimmtheit). Auswahl in der Liste ↔ Auswahl
-in der Zeichnung. Kommt in C4c, nach den Kernfunktionen.
+in der Zeichnung. **Mit C4c umgesetzt (§10).**
 
 **Referenzgeschoss** — das darunterliegende Geschoss als blasse Umrisse mit einstellbarer Deckkraft,
-nicht anklickbar (§6.3). Ebenfalls C4c.
+nicht anklickbar (§6.3). **Ebenfalls mit C4c umgesetzt (§10).**
 
 Ebenfalls später und ausdrücklich **nicht** in der ersten Ausbaustufe: Mehrfachauswahl, Kopieren,
 Gleichheits-/Symmetrie-Constraints, Winkel, Bemaßungsstil von Hand, DXF-Import und ein
@@ -274,7 +275,7 @@ Projektieren-Werkzeug aus dem Plan.
 | **C3.2 ✅** | Regelwerk (Kap. 16.10, [L-1] neu gefasst), `sembla-constraints.js`, Datenmodell + Migration `MAPPE_VERSION` 1→2 / `SCHEMA_VERSION` 5→6, Tests — **kein UI** | **erledigt** (s. §7) |
 | **C4a ✅** | Neue Seite `docs/geschossplan.html`: Plan-Hintergrund, Zoom/Pan, Plan-Lock, Kalibrier-Feinschliff (§4.4), Wand zeichnen, Auswahl + Ziehen | **erledigt** (s. §8) |
 | **C4b ✅** | Bemaßen, Fixieren, Farbcodierung, Widerspruchsmeldung, Undo/Redo | **erledigt** (s. §9) |
-| **C4c** | Schwebende Bauteilliste mit Kurzbeschreibung; Referenzgeschoss mit einstellbarer Deckkraft | Auswahl in beiden Richtungen synchron; das Geschoss darunter ist blass sichtbar |
+| **C4c ✅** | Schwebende Bauteilliste mit Kurzbeschreibung; Referenzgeschoss mit einstellbarer Deckkraft; zwei Bedienkorrekturen (Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) | **erledigt** (s. §10) |
 | **C5** | Projektmappe Export/Import als ZIP inkl. Planbild und Bemaßungen | Roundtrip: exportieren, Browserdaten löschen, importieren, identischer Stand |
 
 Der bisherige C4-Inhalt („Kästchen einfärben + Radierer") entfällt ersatzlos — er beruhte auf der
@@ -504,3 +505,66 @@ das Regelwerk brauchte **keine neue Regel** — [K-1]…[K-13] decken den Ausbau
 
 **Offen (bewusst nicht in C4b):** schwebende Bauteilliste und Referenzgeschoss (C4c), Mappen-ZIP
 inklusive Bemaßungen (C5). Issue #26 bleibt als Umbrella offen.
+
+---
+
+## 10. Umsetzungsstand C4c (2026-08-08)
+
+**Wieder ohne neue Regel, ohne neue Shared-Datei und ohne Versionsbump.** C4c ist vollständig
+Bedienung über dem, was C3.2/C4b schon können; gebaut wurde ausschließlich in
+`docs/geschossplan.html`. `MAPPE_VERSION`, `SCHEMA_VERSION`, `PROJEKT_VERSION` und `KATALOG_VERSION`
+bleiben unberührt, `sembla-constraints.js`, `sembla-projektmappe.js` und `sembla-plan.js` sind nicht
+angefasst, und [K-1]…[K-13] decken den Ausbau unverändert ab. Vorgegangen wurde nach **TDD**: die
+Prüfungen zuerst (RED: 24 von 35 neuen Prüfungen rot), dann die Umsetzung, dann GREEN und die
+Regression.
+
+- **Schwebende Bauteilliste.** Ein Panel über der Zeichenfläche listet **alle** Wände des aktiven
+  Geschosses mit Name, Länge, Höhe, Wandtyp und Bestimmtheit. Die Quellen sind streng getrennt:
+  Länge und Bestimmtheit kommen aus Lage und Löser, **Höhe und Wandtyp aus dem Wandelement** — die
+  Mappe kennt beides nicht, und es wird nichts gespiegelt ([P-1]). Fehlt das Wandelement, steht das
+  als **verwaister Eintrag** da statt geratener Werte ([L-4]); eine unverortete Wand steht als
+  „unverortet“ ohne erfundene Länge. Die **Bestimmtheit** ist kompakt `x/y` · `nur x` · `nur y` ·
+  `frei` (keine Maßanzahl) und meint wie überall die **Position**, nie die Länge (§2.4).
+  Die Liste liegt im Markup **neben** der Bühne und nur optisch darüber — `render()` schreibt die
+  Bühne komplett neu, ein Panel darin hätte nach dem ersten Neuzeichnen tote Ereignisbehandler.
+- **Auswahl ist in beiden Richtungen dieselbe.** Der Listenklick ruft **`waehle()`** auf — genau die
+  Funktion der Zeichenfläche. Es gibt keinen zweiten Auswahlzustand, und **aktiv ≠ ausgewählt**
+  bleibt getrennt: genau eine Zeile ist `aktiv` (grün, wie [K-8] es für die Wand vorsieht), weitere
+  sind `gewaehlt` (gestrichelter Rahmen, **keine** Zustandsfarbe). Die Liste ist **Anzeige und
+  Auswahl** und ausdrücklich **kein zweiter Verortungsweg** — sie schreibt nichts, auch nicht bei
+  einer unverorteten Wand.
+- **Referenzgeschoss.** Gezeigt wird das **unmittelbar darunterliegende** Geschoss = **Index − 1** in
+  der Geschossliste desselben Gebäudes. Ein Höhen- oder Niveaufeld gibt es im Datenmodell nicht, und
+  es wurde bewusst **keines eingeführt** (das wäre ein Format- und Schemabruch gewesen); maßgebend
+  ist allein die Reihenfolge in der Mappe. Beim untersten Geschoss gibt es keine Referenz, und das
+  wird **benannt**. Die Umrisse laufen über einen **eigenen, getrennten Löserlauf**, dessen Ergebnis
+  nie in `loesen()` des aktiven Geschosses fließt; sie tragen kein `data-wand` und
+  `pointer-events="none"`. Damit sind sie für Auswahl, Kollisionsprüfung ([K-13]) und Bemaßung
+  schlicht nicht vorhanden — eine deckungsgleiche Wand im Geschoss darunter erzeugt **keine**
+  Kollision, und der Löser liefert mit und ohne Referenz **bit-genau** dasselbe ([K-5]).
+  Standardmäßig sichtbar, Deckkraft **25 %** und einstellbar; wie Zoom und Plan-Sperre ist beides
+  **Bedienung und wird nicht gespeichert**.
+- **Doppelklick auf die Maßzahl (Bedienkorrektur).** Bisher traf ein Klick nur die **Maßlinie**; die
+  Zahl steht rund 5–17 Schirmpixel darüber und lag außerhalb der Trefferfläche — ein Klick genau auf
+  die Zahl wählte deshalb nichts und hob stattdessen die Auswahl auf. Jetzt gehört das Feld der
+  Maßzahl zur Trefferfläche des Maßes, und ein **Doppelklick** öffnet wie im CAD die Bearbeitung
+  dieses Maßes. Benutzt wird ausschließlich der **vorhandene** Weg (`waehleBemassung` → Feld „Maß“ →
+  „Maß setzen“): **kein zweiter Bearbeitungspfad**, keine geänderte Maßsemantik, beim Doppelklick
+  wird **nichts** gespeichert ([K-3]), und das **Werkzeug wechselt nicht**.
+- **Kein Textcursor über der Beschriftung (Bedienkorrektur).** `.gp-buehne svg text` bekommt
+  `user-select:none` und `pointer-events:none`. Die Regel gilt **nur** unterhalb der Zeichenfläche —
+  echte Eingabefelder (Maßfeld, Höhe, Versatz, Kalibrierlänge) bleiben unverändert bedien- und
+  markierbar, und es gibt keine globale Selektionssperre. Dem Doppelklick auf die Maßzahl schadet
+  `pointer-events:none` nicht, weil der Treffer **geometrisch in Weltkoordinaten** (`bemTreffer`)
+  entschieden wird und nicht über DOM-Knoten — genau das prüft der Test ausdrücklich.
+- **Tests:** `smoke_geschossplan.mjs` auf **170 Prüfungen** erweitert (Blöcke 19–22: Bauteilliste
+  samt Sonderfällen, beidseitige Auswahl, Referenzgeschoss inkl. „keine Kollision“ und
+  „Löser bit-genau gleich“, fehlende Persistenz, Doppelklick auf die Maßzahl, CSS-Regel und ihre
+  Begrenzung). `npm run test:modul0` und `npm run test:all` sind grün. **Grenze der Prüftiefe,
+  ausdrücklich benannt:** der DOM-Ersatz der Node-Tests kennt keine Kindknoten und kein
+  Ereignis-Bubbling, deshalb läuft der Listenklick im Test über die Prüfhilfe `listeKlick()` —
+  also über denselben Behandler wie im Browser, aber nicht über echtes Markup; das gerenderte
+  Panel-HTML wird zusätzlich geprüft.
+
+**Offen (bewusst nicht in C4c):** Mappen-ZIP inklusive Planbild und Bemaßungen (C5). Issue #26
+bleibt als Umbrella offen.

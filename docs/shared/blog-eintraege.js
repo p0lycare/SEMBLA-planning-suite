@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260808-04",
+    datum: "2026-08-08",
+    typ: "feature",
+    issue: 26,
+    titel: "Layout-Editor: Wandliste über der Zeichnung, Geschoss darunter als blasse Umrisse",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: die Liste oben rechts zeigt alle Wände (Länge, Höhe, "
+      + "Wandtyp, Bestimmtheit) und wählt in beide Richtungen; Doppelklick auf eine Maßzahl öffnet das Maß.",
+  },
+  {
     id: "chg-20260808-03",
     datum: "2026-08-08",
     typ: "fix",

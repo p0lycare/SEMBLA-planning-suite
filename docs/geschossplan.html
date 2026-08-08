@@ -9,9 +9,17 @@
   .gp-app{display:flex;align-items:stretch;gap:0;height:calc(100vh - 46px);min-height:520px}
   .gp-tools{width:290px;flex:0 0 290px;background:var(--sb-panel);border-right:1px solid var(--sb-line);
             overflow:auto;padding:12px 14px}
-  .gp-main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .gp-main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
   .gp-buehne{flex:1;position:relative;overflow:hidden;background:#eef1f5;min-height:320px}
   .gp-buehne svg{display:block;width:100%;height:100%;touch-action:none}
+  /* Beschriftungen in der Zeichenflaeche sind Grafik, kein Text zum Markieren: ohne
+     das erscheint beim Ueberfahren einer Wandbeschriftung der Textcursor (I-Beam)
+     und ein Zug markiert Text, statt die Wand zu ziehen. Die Regel gilt bewusst
+     NUR unterhalb der Zeichenflaeche — echte Eingabefelder (Massfeld, Hoehe,
+     Versatz) bleiben unveraendert bedien- und markierbar. Dem Doppelklick auf die
+     Masszahl schadet `pointer-events:none` nicht: getroffen wird geometrisch in
+     Weltkoordinaten (`bemTreffer`), nicht ueber DOM-Knoten. */
+  .gp-buehne svg text{user-select:none;-webkit-user-select:none;pointer-events:none}
   .gp-buehne.zieht{cursor:grabbing}
   .gp-buehne.zeichnet{cursor:crosshair}
   .gp-buehne.schiebt{cursor:move}
@@ -68,6 +76,29 @@
   .kalbuehne{border:1px solid var(--sb-line);border-radius:9px;background:#f7f9fc;overflow:auto;
              max-height:56vh;cursor:crosshair}
   .kalbuehne svg{display:block}
+
+  /* Schwebende Bauteilliste (C4c): sie liegt UEBER der Zeichenflaeche, aber nicht
+     IN ihr — `render()` schreibt die Buehne komplett neu, ein Panel darin haette
+     nach dem ersten Neuzeichnen tote Ereignisbehandler. */
+  .gp-liste{position:absolute;top:12px;right:12px;width:252px;max-height:calc(100% - 84px);
+            overflow:auto;background:rgba(255,255,255,.94);border:1px solid var(--sb-line);
+            border-radius:11px;box-shadow:0 6px 20px rgba(20,32,46,.18);padding:9px 10px;
+            font-size:12px;z-index:5}
+  .gp-liste h4{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+               color:var(--sb-muted);display:flex;justify-content:space-between;gap:8px}
+  .gp-zeile{display:block;width:100%;text-align:left;background:none;border:1px solid transparent;
+            border-radius:7px;padding:5px 6px;margin-bottom:2px;cursor:pointer;font-size:12px;
+            font-weight:400;line-height:1.35}
+  .gp-zeile:hover{background:#f2f5f9}
+  .gp-zeile.gewaehlt{border-style:dashed;border-color:#33415c}
+  .gp-zeile.aktiv{background:#eaf7ef;border-color:#1f9d4d;border-style:solid}
+  .gp-zeile .nam{font-weight:650;color:#1c2430}
+  .gp-zeile .det{display:block;color:var(--sb-muted)}
+  .gp-zeile .pkt{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;
+                 vertical-align:middle}
+  .gp-zeile .warn{color:#c0392b}
+  .gp-liste-leer,.gp-liste-fuss{color:var(--sb-muted);font-size:11px;line-height:1.45}
+  .gp-liste-fuss{margin-top:7px;border-top:1px solid var(--sb-line);padding-top:6px}
 </style>
 </head>
 <body>
@@ -149,6 +180,19 @@
     <div class="hint">Zoom auf den Zeiger mit dem Mausrad · Verschieben mit <b>Leertaste</b> oder
       mittlerer Maustaste. Das ist nur der <b>Blick</b> — der Planversatz bleibt unberührt ([L-9]).</div>
 
+    <h3>Referenzgeschoss</h3>
+    <div class="hint" id="gp-ref-info">–</div>
+    <label class="chk"><input type="checkbox" id="gp-ref" checked>
+      <span>Geschoss darunter blass anzeigen</span></label>
+    <div class="row">
+      <div class="field"><label for="gp-ref-deck">Deckkraft (%)</label>
+        <input id="gp-ref-deck" class="s" type="number" step="5" min="0" max="100" value="25"></div>
+    </div>
+    <div class="hint">Gezeigt wird das in der Struktur <b>unmittelbar darunterliegende</b> Geschoss
+      desselben Gebäudes als blasse Umrisse. Das ist <b>reine Anzeige</b>: die Umrisse sind nicht
+      anklickbar, gehen in keine Auswahl, keine Kollisionsprüfung ([K-13]) und keine Bemaßung ein.
+      Sichtbarkeit und Deckkraft werden — wie Zoom und Plan-Sperre — <b>nicht gespeichert</b>.</div>
+
     <h3>Geschossplan</h3>
     <div class="hint" id="gp-plan-info">–</div>
     <label class="chk"><input type="checkbox" id="gp-plan-lock" checked>
@@ -186,6 +230,9 @@
 
   <div class="gp-main">
     <div class="gp-buehne" id="gp-buehne"></div>
+    <!-- Schwebende Bauteilliste: bewusst NEBEN der Buehne im Markup, nur optisch
+         darueber. Sie ist Anzeige und Auswahl — verortet wird mit „Wand zeichnen". -->
+    <div class="gp-liste" id="gp-liste"></div>
     <div class="gp-status" id="gp-status"></div>
   </div>
 </div>
@@ -258,6 +305,12 @@ const GP = {
   // Bemaßen (D) und Fixieren (F): `bem` hält die LAUFENDE Eingabe, `bemAktiv` das
   // angeklickte, schon gespeicherte Maß. Beides ist Bedienung — gespeichert wird
   // erst mit „Maß setzen“ ([K-3]).
+  // Referenzgeschoss (C4c): das in der Struktur unmittelbar darunterliegende
+  // Geschoss als blasse Umrisse. Wie Zoom, Auswahl und Plan-Sperre ist das
+  // Bedienung und gehört NICHT ins Datenmodell der Mappe — es wird deshalb
+  // bewusst nirgends gespeichert.
+  refAn: true,                // Umrisse des Geschosses darunter anzeigen
+  refDeckkraft: 0.25,         // Vorgabe 25 %
   bem: null,                  // { achse, von:{wand,bezug}, bis:{wand,bezug}|null }
   bemHover: null,             // Bezug unter dem Zeiger (nur Rückmeldung, §4.3)
   bemAktiv: null,             // Kennung eines gewählten, vorhandenen Maßes
@@ -532,6 +585,52 @@ function planSvgTeil(){
     + ` opacity=".85"/>`;
 }
 
+// ---------------------------------------------------------------------------
+//  Referenzgeschoss (C4c) — blasser Hintergrund, ausdrücklich keine Datenquelle
+// ---------------------------------------------------------------------------
+/**
+ * Das in der Struktur **unmittelbar darunterliegende** Geschoss: Index − 1 in der
+ * Geschossliste desselben Gebäudes. Ein Höhen- oder Niveaufeld gibt es im
+ * Datenmodell nicht, und es wird auch keines erfunden — maßgebend ist allein die
+ * Reihenfolge in der Mappe. Beim untersten Geschoss gibt es keine Referenz.
+ * @returns {object|null} das Geschossobjekt darunter
+ */
+function referenzGeschoss(){
+  const o = ort();
+  if (!o) return null;
+  const geb = MAPPE.findeGebaeude(store.holeMappe(), o.gebaeude.id);
+  if (!geb) return null;
+  const i = geb.geschosse.findIndex(g => g.id === o.geschoss.id);
+  return i > 0 ? geb.geschosse[i - 1] : null;
+}
+
+/**
+ * Die Wände des Referenzgeschosses als blasse Umrisse. Bewusst ein eigener,
+ * getrennter Löserlauf: sein Ergebnis fließt **nie** in `loesen()` des aktiven
+ * Geschosses ein. Die Umrisse tragen kein `data-wand` und keine Zeigerereignisse
+ * — sie sind damit für Auswahl ([K-8]), Kollisionsprüfung ([K-13]) und
+ * Bemaßung ([K-1]…[K-4]) schlicht nicht vorhanden.
+ */
+function referenzSvg(){
+  if (!GP.refAn) return '';
+  const gs = referenzGeschoss();
+  if (!gs) return '';
+  const liste = gs.waende || [];
+  const erg = CON.pruefeGeschoss(liste, gs.bemassungen || []);
+  const teile = [];
+  for (const w of liste) {
+    const p = (erg.positionen && erg.positionen[w.id]) || null;
+    const r = CON.wandRechteck(w.lage, p);
+    if (!r) continue;                              // unverortet ⇒ kein Umriss ([L-4])
+    teile.push(`<rect class="ref-wand" x="${r2(r.x_min)}" y="${r2(r.y_min)}"`
+      + ` width="${r2(r.x_max - r.x_min)}" height="${r2(r.y_max - r.y_min)}" fill="none"`
+      + ` stroke="#33415c" stroke-width="${r2(strich(1.4))}"/>`);
+  }
+  if (!teile.length) return '';
+  return `<g class="referenz" pointer-events="none" opacity="${r2(GP.refDeckkraft)}">`
+    + teile.join('') + '</g>';
+}
+
 /** Halbe Kantenlänge der Griffe in Schirmpixeln. */
 const GRIFF_PX = 6;
 
@@ -764,6 +863,14 @@ function bemGeometrie(bm, idx, erg){
            q: Math.max(v.quer, b.quer) + versatz, mass: n.mass_mm };
 }
 
+/**
+ * Höhe des Maßtextes über der Maßlinie in Schirmpixeln. Der Text steht bei
+ * `q − 5 px` (in beiden Achsen, bei `y` nach der Drehung um −90°) und ist rund
+ * 12 px hoch — er gehört zur **Trefferfläche des Maßes**: wie im CAD trifft ein
+ * Klick auf die dargestellte Zahl das Maß, nicht das Nichts dahinter.
+ */
+const MASSTEXT_PX = 18;
+
 /** Bemaßung unter einem Weltpunkt (die zuletzt gezeichnete gewinnt). */
 function bemTreffer(p, erg){
   const luft = FANG_PX * V.mm;
@@ -772,10 +879,23 @@ function bemTreffer(p, erg){
     const g = bemGeometrie(liste[i], i, erg);
     if (!g) continue;
     const laengs = g.achse === 'x' ? p.x : p.y, quer = g.achse === 'x' ? p.y : p.x;
+    // Getroffen wird die Maßlinie (± Fangradius) UND das Feld der Maßzahl darüber.
     if (laengs >= Math.min(g.v1, g.v2) - luft && laengs <= Math.max(g.v1, g.v2) + luft
-      && Math.abs(quer - g.q) <= luft) return liste[i].id;
+      && quer <= g.q + luft && quer >= g.q - MASSTEXT_PX * V.mm) return liste[i].id;
   }
   return null;
+}
+
+/** Mitte der Maßzahl eines Maßes als Weltpunkt (Zeichnen und Treffen, s. o.). */
+function bemTextPunkt(id){
+  const erg = loesen();
+  const liste = bemassungen();
+  const i = liste.findIndex(b => b.id === id);
+  if (i < 0) return null;
+  const g = bemGeometrie(liste[i], i, erg);
+  if (!g) return null;
+  const m = (g.v1 + g.v2) / 2, q = g.q - 10 * V.mm;
+  return g.achse === 'x' ? { x: m, y: q } : { x: q, y: m };
 }
 
 /** Ein Maß als Maßlinie mit Hilfslinien und Text. Rot bei Widerspruch ([K-6]/[K-8]). */
@@ -918,11 +1038,75 @@ function zugSvg(erg){
   return teile.join('');
 }
 
+// ---------------------------------------------------------------------------
+//  Schwebende Bauteilliste (C4c) — Anzeige und Auswahl, sonst nichts
+// ---------------------------------------------------------------------------
+/** Bestimmtheit einer Wand kompakt ([K-8] meint immer die POSITION, nie die Länge). */
+function bestimmtText(b){
+  if (!b) return 'frei';
+  if (b.x && b.y) return 'x/y';
+  if (b.x) return 'nur x';
+  if (b.y) return 'nur y';
+  return 'frei';
+}
+
+/**
+ * Die Wandliste des aktiven Geschosses. Sie liest ausschließlich — Länge und
+ * Bestimmtheit aus Lage und Löser, Höhe und Wandtyp aus dem Wandelement (die
+ * Mappe kennt beides nicht). Fehlt das Wandelement, steht das da; geraten wird
+ * nichts ([L-4]).
+ */
+function listeSync(erg, koll){
+  const p = $('gp-liste');
+  if (!geschoss()) {
+    p.innerHTML = '<div class="gp-liste-leer">Kein aktives Geschoss.</div>';
+    return;
+  }
+  const liste = waende();
+  const zeilen = liste.map(w => {
+    const el = store.holeElement(w.id);
+    const we = el && el.wandelement;
+    const zu = CON.zustand(w.id, erg, { aktiv: GP.aktiv, kollisionen: koll });
+    // AKTIV (genau eine, in Bearbeitung) und AUSGEWÄHLT (mehrere) bleiben getrennt —
+    // dieselbe Unterscheidung wie in der Zeichnung, nur als Zeile.
+    const klassen = 'gp-zeile' + (GP.aktiv === w.id ? ' aktiv'
+      : istAusgewaehlt(w.id) ? ' gewaehlt' : '');
+    const det = [
+      w.lage ? `${CON.laengeMm(w.lage)} mm` : 'unverortet',
+      we ? `h ${we.height_mm} mm` : '–',
+      we ? (store.normWandtyp(we.wandtyp) === 'ohne_wind' ? 'ohne Wind' : 'mit Wind') : '–',
+      w.lage ? bestimmtText(erg.bestimmt[w.id]) : 'frei',
+    ];
+    return `<button type="button" class="${klassen}" data-wand="${esc(w.id)}">`
+      + `<span class="pkt" style="background:${CON.FARBEN[zu]}"></span>`
+      + `<span class="nam">${esc(w.name || w.id)}</span>`
+      + `<span class="det">${esc(det.join(' · '))}</span>`
+      + (we ? '' : '<span class="det warn">verwaister Eintrag ohne Wandelement ([L-4])</span>')
+      + '</button>';
+  });
+  p.innerHTML = `<h4>Wände im Geschoss <span>${liste.length}</span></h4>`
+    + (zeilen.join('') || '<div class="gp-liste-leer">Noch keine Wand in diesem Geschoss.</div>')
+    + '<div class="gp-liste-fuss">Klick wählt aus, Umschalt/Strg mehrere; <b>aktiv</b> ist immer '
+    + 'genau eine. Anzeige und Auswahl — verortet wird mit „Wand zeichnen“.</div>';
+}
+
+/**
+ * Klick in der Bauteilliste. Er läuft durch **dieselbe** Auswahlfunktion wie die
+ * Zeichenfläche — es gibt keinen zweiten Auswahlzustand und keinen zweiten
+ * Schreibweg; die Liste selbst ändert nie ein Datum.
+ */
+function listeKlick(id, mod){
+  if (!wand(id)) return;
+  waehle(id, !!(mod && (mod.shiftKey || mod.ctrlKey || mod.metaKey)));
+  render();
+}
+
 function render(){
   const gs = geschoss();
   undoPruefen();
   const buehne = $('gp-buehne');
   if (!gs) {
+    listeSync({ bestimmt: {}, positionen: {} }, []);
     buehne.innerHTML = '<div class="leer"><div>Kein aktives Geschoss. Der Editor arbeitet immer am '
       + '<b>aktiven</b> Geschoss des aktiven Projekts ([L-10]) — im '
       + '<a href="index.html">Projektplaner</a> ein Geschoss aktiv setzen und „Geschoss öffnen“ '
@@ -938,7 +1122,7 @@ function render(){
   const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
     + `${r2(f.breite * V.mm)} ${r2(f.hoehe * V.mm)}">`,
     `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
-    planSvgTeil(), rasterSvg(f), ursprungSvg()];
+    planSvgTeil(), rasterSvg(f), ursprungSvg(), referenzSvg()];
   for (const w of waende()) teile.push(wandSvg(w, erg, koll));
   bemassungen().forEach((bm, i) => teile.push(bemassungSvg(bm, i, erg)));
   teile.push(bezuegeSvg(erg), bemEntwurfSvg(erg));
@@ -949,6 +1133,7 @@ function render(){
       : GP.werkzeug === 'plan' ? ' schiebt'
       : (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') ? ' zeichnet' : '');
   statusSync(erg, koll);
+  listeSync(erg, koll);
   kopfSync();
 }
 
@@ -1080,6 +1265,18 @@ function kopfSync(){
   $('gp-planen').disabled = !(aus && el);
   $('gp-lage-weg').disabled = !(aus && aus.lage);
   $('gp-drehen').disabled = !(aus && aus.lage);
+
+  // Referenzgeschoss: benannt wird, WELCHES Geschoss gezeigt wird — und wenn es
+  // keines darunter gibt, genau das. Erfunden wird keines.
+  const rg = referenzGeschoss();
+  $('gp-ref-info').innerHTML = !gs
+    ? '–'
+    : rg
+      ? `Referenz: <b>${esc(rg.name)}</b> — das Geschoss unmittelbar darunter. Nur Umrisse, nicht `
+        + 'anklickbar, ohne Einfluss auf Auswahl, Bemaßung und Kollisionsprüfung.'
+      : 'Kein Geschoss darunter — dies ist das unterste Geschoss des Gebäudes. Es wird keines erfunden.';
+  $('gp-ref').disabled = !rg;
+  $('gp-ref-deck').disabled = !rg || !GP.refAn;
 
   bemKopfSync();
   $('gp-undo').disabled = !GP.undo.length;
@@ -1617,6 +1814,26 @@ function beiKlick(ev){
   }
 }
 
+/**
+ * Doppelklick auf ein Maß — wie im CAD öffnet die dargestellte **Maßzahl** die
+ * Bearbeitung genau dieses Maßes. Benutzt wird ausschließlich der **vorhandene**
+ * Weg (`waehleBemassung` + das Feld „Maß“ + „Maß setzen“): kein zweiter
+ * Bearbeitungspfad, keine geänderte Maßsemantik, und gespeichert wird hier gar
+ * nichts ([K-3]). Das **Werkzeug wechselt ausdrücklich nicht** — ein Doppelklick
+ * ist Bedienung an einem Objekt, keine Moduswahl.
+ */
+function beiDoppelklick(ev){
+  if (!geschoss()) return;
+  const id = bemTreffer(weltPunkt(ev.clientX, ev.clientY), loesen());
+  if (!id) return;
+  if (!waehleBemassung(id)) return;
+  const feld = $('gp-bem-wert');
+  if (feld && typeof feld.focus === 'function') feld.focus();
+  if (feld && typeof feld.select === 'function') feld.select();
+  if (ev.preventDefault) ev.preventDefault();
+  render();
+}
+
 function beiZeigerAb(ev){
   if (!geschoss()) return;
   const mitte = ev.button === 1;
@@ -1896,6 +2113,28 @@ function binde(){
   buehne.addEventListener('pointermove', beiZeigerBewegung);
   buehne.addEventListener('pointerup', beiZeigerAuf);
   buehne.addEventListener('pointerleave', beiZeigerAuf);
+  buehne.addEventListener('dblclick', beiDoppelklick);
+  // Bauteilliste: ein einziger Behandler am festen Panel, die Zeilen darin werden
+  // bei jedem `render()` neu geschrieben.
+  $('gp-liste').addEventListener('click', (ev) => {
+    const t = ev.target && ev.target.closest ? ev.target.closest('.gp-zeile') : null;
+    if (!t) return;
+    listeKlick(t.getAttribute('data-wand'), ev);
+  });
+  $('gp-ref').addEventListener('change', () => {
+    GP.refAn = !!$('gp-ref').checked;
+    render();
+  });
+  $('gp-ref-deck').addEventListener('change', () => {
+    const s = String($('gp-ref-deck').value || '').trim();
+    const v = Number(s.replace(',', '.'));
+    if (!s || !Number.isFinite(v) || v < 0 || v > 100) {
+      zeige('Die Deckkraft des Referenzgeschosses ist eine Zahl von 0 bis 100 %.', false);
+      return;
+    }
+    GP.refDeckkraft = Math.round(v) / 100;
+    render();
+  });
   buehne.addEventListener('wheel', (ev) => {
     if (ev.preventDefault) ev.preventDefault();
     zoomeAuf(ev.deltaY > 0 ? 1.15 : 1 / 1.15, ev.clientX, ev.clientY);
@@ -2022,6 +2261,15 @@ window.__gp = {
     if (!g) return null;
     const m = (g.v1 + g.v2) / 2;
     return g.achse === 'x' ? { x: m, y: g.q } : { x: g.q, y: m };
+  },
+  /** Mitte der dargestellten Maßzahl als Weltpunkt — dort klickt auch die Maus. */
+  bemTextPunkt,
+  /** Klick auf eine Zeile der Bauteilliste (im Browser der delegierte Behandler). */
+  listeKlick,
+  /** Doppelklick an einem WELTpunkt — derselbe Behandler wie im Browser. */
+  doppeltippe(welt){
+    const p = schirmPunkt(welt);
+    beiDoppelklick({ clientX: p.x, clientY: p.y, preventDefault(){} });
   },
   bemassungen: () => bemassungen(),
   get undoStand(){ return { undo: GP.undo.length, redo: GP.redo.length }; },

@@ -362,11 +362,12 @@ C3.2 die neue Fassung** (Position in mm).
 **vollständig umgesetzt und regressionsgetestet** — Löser, Datenmodell und Migration mit Etappe C3.2
 (`tests/module/test-constraints.mjs`), die **Oberfläche** dazu als eigene Seite
 `docs/geschossplan.html` mit C4a (Zeichnen, Auswählen/Ziehen [K-9], Farben [K-8], Kollisionsmeldung
-[K-13], Plan als Hintergrund [L-9]) und **C4b** (Bemaßen, Fixieren, sichtbarer Widerspruch [K-6] und
-Redundanz [K-7], Längenmaß [K-11], Millimetereingabe [K-12], Undo/Redo) —
-`tests/module/smoke_geschossplan.mjs`. **Offen sind nur noch Bedienzugaben:** schwebende
-Bauteilliste und Referenzgeschoss (C4c) sowie das Mappen-ZIP (C5); beide berühren keine [K]-Regel.
-C4b kam **ohne neue Regel, ohne neue Shared-Datei und ohne Versionsbump** aus. Das frühere
+[K-13], Plan als Hintergrund [L-9]), **C4b** (Bemaßen, Fixieren, sichtbarer Widerspruch [K-6] und
+Redundanz [K-7], Längenmaß [K-11], Millimetereingabe [K-12], Undo/Redo) und **C4c** (schwebende
+Bauteilliste, Referenzgeschoss, Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) —
+`tests/module/smoke_geschossplan.mjs`. **Offen ist nur noch das Mappen-ZIP (C5)**; es berührt keine
+[K]-Regel. C4b **und C4c** kamen **ohne neue Regel, ohne neue Shared-Datei und ohne Versionsbump**
+aus. Das frühere
 „Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
 Wandabstände lägen im Raster.
 
@@ -393,6 +394,36 @@ Eine im Editor **neu gezeichnete** Wand ist ein **atomarer** Schritt (Geschossei
 das dabei erzeugte Wandelement); das Verorten einer bestehenden Wand ändert nur die Mappe, fremde
 Wandelemente werden nie angefasst. Eine neue Änderung verwirft den Redo-Stapel, ein Geschosswechsel
 beide.
+
+**Bauteilliste, Referenzgeschoss und zwei Bedienkorrekturen (Etappe C4c, wieder alles in
+`docs/geschossplan.html` — keine neue Regel, keine neue Shared-Datei, kein Versionsbump).**
+**(a) Die schwebende Bauteilliste** zeigt alle Wände des aktiven Geschosses mit Name, Länge, Höhe,
+Wandtyp und Bestimmtheit. Die Quellen bleiben getrennt: Länge und Bestimmtheit aus Lage und Löser,
+**Höhe und Wandtyp aus dem Wandelement** — die Mappe kennt beides nicht und bekommt keine Kopie
+([P-1]). Fehlt das Wandelement, steht dort „verwaister Eintrag“ ([L-4]) statt geratener Werte, eine
+unverortete Wand steht ohne Länge. Bestimmtheit kompakt `x/y` · `nur x` · `nur y` · `frei` — sie
+meint wie überall die **Position**, nie die Länge. Der Listenklick ruft **`waehle()`**, also genau die
+Funktion der Zeichenfläche: **ein** Auswahlzustand, und **aktiv ≠ ausgewählt** bleibt getrennt (eine
+Zeile aktiv, weitere nur gerahmt, [K-8]). Die Liste ist **Anzeige und Auswahl**, **kein** zweiter
+Verortungsweg — sie schreibt nichts. Im Markup liegt sie **neben** der Bühne und nur optisch darüber,
+weil `render()` die Bühne komplett neu schreibt.
+**(b) Das Referenzgeschoss** ist das **unmittelbar darunterliegende** = **Index − 1** in der
+Geschossliste desselben Gebäudes; ein Höhen-/Niveaufeld gibt es nicht und wurde bewusst **nicht**
+eingeführt (Format- und Schemabruch). Beim untersten Geschoss wird das **benannt**, nicht geraten.
+Die blassen Umrisse laufen über einen **getrennten** Löserlauf, dessen Ergebnis nie in den des
+aktiven Geschosses fließt, tragen kein `data-wand` und `pointer-events="none"` — für Auswahl,
+Kollision ([K-13]) und Bemaßung existieren sie nicht, und der Löser liefert mit und ohne Referenz
+bit-genau dasselbe ([K-5]). Standardmäßig sichtbar, Deckkraft 25 % und einstellbar; wie Zoom und
+Plan-Sperre ist beides **Bedienung und wird nicht gespeichert**.
+**(c) Doppelklick auf die Maßzahl.** Die dargestellte Zahl gehört jetzt zur Trefferfläche des Maßes
+(sie steht über der Maßlinie und lag vorher außerhalb); ein Doppelklick öffnet wie im CAD die
+Bearbeitung. Benutzt wird ausschließlich der **vorhandene** Editor (`waehleBemassung` → Feld „Maß“ →
+„Maß setzen“): kein zweiter Bearbeitungspfad, keine geänderte Maßsemantik, beim Doppelklick wird
+nichts gespeichert ([K-3]), und das Werkzeug wechselt nicht.
+**(d) Kein Textcursor über der Beschriftung.** `.gp-buehne svg text` trägt `user-select:none` und
+`pointer-events:none` — **nur** unterhalb der Zeichenfläche, echte Eingabefelder bleiben unberührt.
+Der Doppelklick auf die Maßzahl überlebt das, weil der Treffer **geometrisch in Weltkoordinaten**
+entschieden wird und nicht über DOM-Knoten.
 
 **Vorspann-Grundregeln [V-2]/[V-3] sind umgesetzt und regressionsgetestet** (Core + Python-Orakel,
 `tests/core/`): Steinabdeckung als Muss, i3-Mitte der untersten Lage als Soll, `max_span_grid` nur
@@ -523,8 +554,8 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b stehen, offen sind C4c und C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
-| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]) und **Undo/Redo**. Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) |
+| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b/C4c stehen, offen ist C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet denselben Maßeditor) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg) und das **Referenzgeschoss** (Index − 1, blass, nicht anklickbar, nicht gespeichert). Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
