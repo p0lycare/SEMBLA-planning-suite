@@ -919,6 +919,135 @@ ok('trotz pointer-events:none bleibt der Doppelklick auf die Masszahl moeglich '
   + '(getroffen wird geometrisch in Weltkoordinaten, nicht ueber DOM-Knoten)',
   /addEventListener\('dblclick'/.test(html) && !!textPunkt && GP.bemTreffer(textPunkt) === bmT.id);
 
+// ==========================================================================
+//  Issue #50, Paket 1 — ein Erzeugungsweg, Standard-Wandhoehe, „Planen"
+// ==========================================================================
+// Wieder REINE BEDIENUNG: kein neues Feld in der Projektmappe, keine neue
+// Formatversion, keine [K]-Regel. Geprueft wird vor allem, was NICHT passiert —
+// kein zweiter Erzeugungsweg, kein zweiter Navigationspfad, kein Schreiben aus
+// der Liste und keine angefasste Bestandswand.
+
+// --- 23) Der irrefuehrende zweite Einstieg links ist weg ------------------
+ok('#50 links gibt es keinen eigenen „Neue Wand"-Block mehr',
+  !/<h3>Neue Wand<\/h3>/.test(html));
+{
+  // … aber KEIN noetiger Parameter faellt mit ihm weg: Ziel, Standard-Wandhoehe
+  // und Wandtyp gehoeren jetzt sichtbar zum Werkzeug „Wand zeichnen".
+  const wzBlock = (html.split('id="wz-wand-parameter"')[1] || '').split('<h3>')[0];
+  ok('#50 Ziel, Standard-Wandhoehe und Wandtyp bleiben — als Parameter des Zeichenwerkzeugs',
+    wzBlock.includes('id="gp-ziel"') && wzBlock.includes('id="gp-hoehe"')
+    && wzBlock.includes('id="gp-wandtyp"'));
+  const ansicht = (html.split('<h3>Ansicht</h3>')[1] || '').split('<h3>')[0];
+  ok('#50 der Fang ist eine Ansichtsoption und steht dort', ansicht.includes('id="gp-fang"'));
+}
+GP.werkzeug('auswahl');
+ok('#50 die Werkzeugparameter erscheinen nicht als eigenstaendiges Anlegeformular',
+  $('wz-wand-parameter').hidden === true);
+GP.werkzeug('wand');
+ok('#50 … sondern genau dann, wenn „Wand zeichnen" aktiv ist',
+  $('wz-wand-parameter').hidden === false);
+GP.werkzeug('auswahl');
+ok('#50 das Verorten einer bestehenden, unverorteten Wand bleibt moeglich ([L-4])',
+  $('gp-ziel').innerHTML.includes(ohneLageId));
+
+// --- 24) „Standard-Wandhoehe" statt „Geschosshoehe" ([L-5]) ---------------
+ok('#50 die Oberflaeche nennt den Wert Standard-Wandhoehe, nirgends mehr Geschosshoehe',
+  !/Geschosshöhe/.test(html) && /Standard-Wandhöhe/.test(html));
+ok('#50 auch die Meldungen zur Vorgabe sprechen von der Standard-Wandhoehe',
+  /Standard-Wandhöhe/.test($('gp-ort').innerHTML)
+  && /Standard-Wandhöhe/.test($('gp-hoehe-hinweis').innerHTML));
+ok('#50 auch die gemeinsame Hoehenvorgabe meldet die Standard-Wandhoehe',
+  /Standard-Wandhöhe/.test(MAPPE.hoehenVorgabe(2550).hinweis)
+  && !/Geschosshöhe/.test(MAPPE.hoehenVorgabe(2550).hinweis));
+
+// Die Vorgabe ist Vorgabe: sie wirkt beim ANLEGEN und fasst Bestand nie an.
+{
+  const hoeheVorA = store.holeElement(idA).wandelement.height_mm;
+  const elementeVor = localStorage.getItem('sembla:elemente');
+  store.aendereMappe(m => MAPPE.setzeGeschossHoehe(m, gs2, 3000));
+  await warte();
+  GP.render();
+  ok('#50 [L-5] eine geaenderte Standard-Wandhoehe laesst bestehende Wandhoehen unveraendert',
+    store.holeElement(idA).wandelement.height_mm === hoeheVorA
+    && store.holeElement(idB).wandelement.height_mm === 2600
+    && localStorage.getItem('sembla:elemente') === elementeVor
+    && MAPPE.findeGeschoss(store.holeMappe(), gs2).geschoss.hoehe_mm === 3000);
+  ok('#50 die neue Vorgabe steht im Feld …', $('gp-hoehe').value === '3000');
+
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 6000, y: 9000 }, { x: 8000, y: 9000 });
+  await warte();
+  const neueWand = MAPPE.findeGeschoss(store.holeMappe(), gs2).geschoss.waende.slice(-1)[0];
+  const neuEl = store.holeElement(neueWand.id);
+  ok('#50 … und genau sie uebernimmt die neu gezeichnete Wand',
+    neuEl.wandelement.height_mm === 3000
+    && store.holeElement(idA).wandelement.height_mm === hoeheVorA);
+  GP.undo();
+  await warte();
+  GP.werkzeug('auswahl');
+}
+
+// --- 25) „Planen" je Wand in der schwebenden Liste -------------------------
+GP.render();
+const eintragVon = (id) => (liste().split('class="gp-eintrag')
+  .find(s => s.includes(`data-wand="${id}"`)) || '');
+ok('#50 jede Wand mit Wandelement traegt in der Liste einen kompakten „Planen"-Knopf',
+  /data-planen="/.test(eintragVon(idA)) && />Planen</.test(eintragVon(idA))
+  && /data-planen="/.test(eintragVon(ohneLageId)));
+ok('#50 [L-4] ein verwaister Eintrag bekommt KEINEN Planen-Knopf — kein vorgetaeuschter Weg',
+  eintragVon('wnd-verwaist') !== '' && !/data-planen="/.test(eintragVon('wnd-verwaist')));
+ok('#50 es gibt genau so viele Planen-Knoepfe wie Waende MIT Wandelement',
+  (liste().match(/data-planen="/g) || []).length
+    === gsWaende().filter(w => !!store.holeElement(w.id)).length);
+ok('#50 die Zeilenauswahl bleibt unveraendert (Anzeige und Auswahl, [K-8])',
+  (liste().match(/class="gp-zeile/g) || []).length === gsWaende().length);
+
+// Echter Bedienpfad: derselbe delegierte Behandler wie im Browser.
+const listeEreignis = (sel, id, mod) => $('gp-liste').dispatch('click', {
+  target: { closest: (s) => (s === sel ? { getAttribute: () => id } : null) },
+  ...(mod || {}),
+});
+{
+  window.location.href = '';
+  const mappeVor = localStorage.getItem('sembla:projekte');
+  const undoVor = GP.undoStand.undo;
+  listeEreignis('[data-planen]', idA);
+  ok('#50 „Planen" setzt genau diese Wand aktiv und oeffnet Modul 1',
+    store.aktivId() === idA && window.location.href === 'wandplanung.html');
+  ok('#50 der Pfad bleibt hierarchisch korrekt: Wand im aktiven Geschoss ([L-10])',
+    store.aktivesGeschossId() === gs2
+    && MAPPE.findeWand(store.holeMappe(), idA).geschoss.id === gs2);
+  ok('#50 die Liste bleibt lesend — „Planen" schreibt weder Lage noch Mass ([K-10]/[P-1])',
+    localStorage.getItem('sembla:projekte') === mappeVor && GP.undoStand.undo === undoVor);
+}
+{
+  window.location.href = '';
+  const aktivVor = store.aktivId();
+  ok('#50 [L-4] auch programmatisch fuehrt ein verwaister Eintrag zu keiner Navigation',
+    gp('planeWand', 'wnd-verwaist') === false && window.location.href === ''
+    && store.aktivId() === aktivVor);
+}
+{
+  // Ein einfacher Klick auf die Zeile bleibt reine Auswahl — er navigiert nicht.
+  window.location.href = '';
+  listeEreignis('.gp-zeile', idB);
+  ok('#50 ein Klick auf die Zeile waehlt weiterhin nur aus',
+    GP.zustand.aktiv === idB && window.location.href === '');
+}
+{
+  window.location.href = '';
+  $('gp-planen').dispatch('click');
+  ok('#50 der linke Knopf „In Modul 1 planen" nutzt dieselbe Funktion',
+    store.aktivId() === idB && window.location.href === 'wandplanung.html');
+}
+ok('#50 es gibt genau EINEN Weg nach Modul 1 — kein zweiter Navigationspfad',
+  (html.match(/wandplanung\.html/g) || []).length === 1);
+
+// --- 26) Kein Schema-/Formatbump (reine Bedienung) ------------------------
+ok('#50 Projektmappen- und Schemaversion bleiben unveraendert',
+  MAPPE.MAPPE_VERSION === 2 && store.SCHEMA_VERSION === 6
+  && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

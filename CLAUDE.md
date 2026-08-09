@@ -164,7 +164,8 @@ liegt auf der **Mittellinie**, am Ende mit der kleineren Koordinate. Die Umstell
 **5 → 6** — verlustfrei und praktisch leer, weil das Einzeichnen nie umgesetzt war und im Bestand
 jede Lage `null` ist. Aus der Lage wird beim **Anlegen** nur die **Länge
 als Vorgabe** abgeleitet; danach ist das Wandelement maßgebend, eine Abweichung wird **gemeldet,
-nie still angeglichen** ([L-3]). Die **Geschosshöhe** ist ebenfalls nur Vorgabe und wird nie
+nie still angeglichen** ([L-3]). Die **Standard-Wandhöhe** (Datenfeld unverändert
+`geschoss.hoehe_mm`) ist ebenfalls nur Vorgabe und wird nie
 zurückgeschrieben ([L-5]); passt sie nicht ins 200-mm-Lagenraster, wird das benannt statt gerundet.
 Schema **v3→v4** übernimmt bestehende Wände einmalig und verlustfrei in ein „Projekt ohne Plan“ —
 **ohne** Lagedaten, die es nie gab ([L-7]); der aktive-Wand-Zeiger und die Module 1–7 bleiben
@@ -198,12 +199,12 @@ IndexedDB vollständig zurück. Der alte Mappenweg heißt eindeutig **„nur Str
 Einzelwand- und Katalogimport bleiben getrennt. Kein Schema-/Formatversionsbump.
 
 **Bedienung der Struktur (Etappe C2, Modul 0).** Die Oberfläche pflegt Projekt/Gebäude/Geschoss
-(anlegen, wählen, umbenennen, Geschosshöhe setzen, löschen) über die **reinen** Operationen aus
+(anlegen, wählen, umbenennen, Standard-Wandhöhe setzen, löschen) über die **reinen** Operationen aus
 `sembla-projektmappe.js`; jeder Fehlschlag wird benannt und lässt den Speicher unverändert. Eine
 **neu angelegte oder importierte** Wand wird im **aktiven Geschoss eingetragen** — mit `lage: null`,
 denn gezeichnet ist noch nichts ([L-4]); ohne aktives Geschoss bleibt sie nicht eingetragen und wird
-als solche gemeldet. Die Geschosshöhe steht als **Vorgabe** im Höhenfeld des Anlegen-Formulars und
-bleibt frei änderbar ([L-5]). Die Wandliste zeigt je Wand **Geschoss und Lage** (mit gemeldeter
+als solche gemeldet. Die Standard-Wandhöhe steht als **Vorgabe** im Höhenfeld des Anlegen-Formulars
+und bleibt frei änderbar ([L-5]). Die Wandliste zeigt je Wand **Geschoss und Lage** (mit gemeldeter
 Längenabweichung nach [L-3]) und lässt sich auf das aktive Geschoss bzw. auf nicht eingetragene
 Wände einschränken — der Filter ändert nur die **Anzeige**. Das **Umbenennen** einer Wand führt den
 Anzeigenamen der Mappe mit (die Referenz bleibt die `id`); das **Löschen eines Geschosses/Gebäudes**
@@ -264,6 +265,35 @@ Griff: das Ziehen wird abgewiesen und das Maß genannt ([K-11]). **90° drehen**
 tauscht die Richtung bei unveränderter Länge und dreht um die **Min-Ecke** — nur so bleibt die
 Rasterlage erhalten und zweimal Drehen ist bit-genau die Ausgangslage. Eine **bestimmte** Wand wird
 nicht gedreht (Grund benannt, [K-9]).
+
+**Ein Erzeugungsweg, „Standard-Wandhöhe", „Planen" (Issue #50, Paket 1, 2026-08-09).** Wieder reine
+Bedienung in `docs/geschossplan.html` (plus Beschriftungen in `docs/index.html`/
+`sembla-projektmappe.js`) — **keine** neue Regel-ID, **kein** Schema-/Formatbump, Paket 2 und 3 des
+Plans `doku/plans/geschossplan-ui-verbesserungen.md` sind ausdrücklich nicht berührt:
+**(a) Der linke Abschnitt „Neue Wand" ist entfallen.** Er las sich wie ein zweites,
+formularbasiertes Anlegen **neben** dem grafischen Werkzeug, obwohl er nur dessen Parameter hielt.
+Erzeugt wird ausschließlich durch **Zeichnen**; `gp-ziel`, Standard-Wandhöhe und Wandtyp stehen jetzt
+als `#wz-wand-parameter` sichtbar **am Werkzeug** und erscheinen genau dann, wenn es aktiv ist. Der
+**Rasterfang** ist eine Ansichtsoption und steht bei „Ansicht". Keiner der Parameter durfte
+wegfallen: `gp-ziel` ist der **einzige** Weg, eine eingetragene, aber unverortete Wand zu verorten,
+und der **Wandtyp** wird ausschließlich bei der Anlage gewählt. Der Formularweg **„+ Wand
+hinzufügen" in Modul 0 bleibt bewusst bestehen** — er trägt Einzelwand-Import, Musterwand und das
+Anlegen ohne aktives Geschoss.
+**(b) „Geschosshöhe" heißt in der Oberfläche „Standard-Wandhöhe"** — genau das ist sie nach [L-5]:
+Vorgabe für **neue** Wände, nie Rückschreibung, nie Nachführung des Bestands, und ausdrücklich
+**keine** Geschoss-/Deckenhöhenlogik. Das Datenfeld bleibt `geschoss.hoehe_mm`, die Funktion
+`hoehenVorgabe()`; umbenannt sind nur nutzersichtbare Texte. Ins Höhenfeld des Editors wird die
+Vorgabe geschrieben, sobald sich **Geschoss oder Vorgabewert** ändern (`GP.hoeheFuer` trägt beides) —
+sonst zeichnete man nach einer Änderung in Modul 0 weiter mit dem alten Wert. Bestehende Wandhöhen
+rührt das nie an; sie gehören Modul 1 ([P-1]).
+**(c) „Planen" je Zeile der schwebenden Bauteilliste.** Zeile und Knopf liegen als
+`.gp-eintrag` **nebeneinander** (ein Knopf im Knopf wäre ungültiges Markup); der delegierte Behandler
+prüft `[data-planen]` **vor** `.gp-zeile`, ein Zeilenklick bleibt also reine Auswahl. Beide Knöpfe —
+der neue und „In Modul 1 planen" der aktiven Wand — rufen **dieselbe** Funktion `planeWand()`:
+`store.setzeAktiv()` und dann `wandplanung.html`, mit benanntem Fehlschlag statt Navigation, wenn die
+Hierarchie es verbietet ([L-10]). Ein **verwaister Eintrag** bekommt **keinen** Knopf, statt einen
+Weg vorzutäuschen, den es nicht gibt ([L-4]). Die Liste bleibt Anzeige und Auswahl und schreibt
+nichts ([K-10]).
 
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
@@ -565,8 +595,8 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b/C4c stehen, offen ist C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, Geschosshöhe als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
-| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet denselben Maßeditor) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg) und das **Referenzgeschoss** (Index − 1, blass, nicht anklickbar, nicht gespeichert). Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) |
+| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b/C4c stehen, offen ist C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, **Standard-Wandhöhe** als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet denselben Maßeditor) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg) und das **Referenzgeschoss** (Index − 1, blass, nicht anklickbar, nicht gespeichert). Aus #50 (Paket 1) dazu: **kein** linker „Neue Wand"-Abschnitt mehr — Zielwahl, **Standard-Wandhöhe** und Wandtyp sind Parameter **des Werkzeugs** „Wand zeichnen", der Fang gehört zur Ansicht; je Wand mit Wandelement ein Knopf **„Planen"** in der Liste (aktiv setzen + Modul 1, gemeinsame `planeWand()`, kein Knopf bei verwaistem Eintrag). Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

@@ -128,7 +128,7 @@
       hierarchisch</b>: ein Geschoss nur im aktiven Projekt, eine Wand nur in ihrem aktiven Geschoss
       — der gesperrte Weg wird benannt, nichts wird still mitaktiviert. Umgekehrt hebt ein
       Projektwechsel die Zeiger darunter <b>auf</b>, statt sie auf Fremdes zu biegen.<br>
-      Die <b>Geschosshöhe</b> ist nur eine <b>Vorgabe</b> für neu angelegte Wände und wird nie aus dem
+      Die <b>Standard-Wandhöhe</b> ist nur eine <b>Vorgabe</b> für neu angelegte Wände und wird nie aus dem
       Wandelement zurückgeschrieben ([L-5]). Eine neue oder importierte Wand wird im Geschoss
       <b>ohne Lage</b> eingetragen — gezeichnet ist noch nichts ([L-4]); maßgebend für Länge und Höhe
       bleibt das Wandelement, eine Abweichung zur gezeichneten Lage wird <b>gemeldet, nicht
@@ -190,12 +190,12 @@
 <div class="overlay" id="gp-overlay" hidden>
   <div class="modal">
     <h3 id="gp-titel">Geschoss anlegen</h3>
-    <p class="sub">Die <b>Geschosshöhe ist nur eine Vorgabe</b> für neu angelegte Wände; sie wird in
+    <p class="sub">Die <b>Standard-Wandhöhe ist nur eine Vorgabe</b> für neu angelegte Wände; sie wird in
       Modul&nbsp;1 frei überschrieben und nie zurückgeschrieben ([L-5]).</p>
     <div class="row">
       <div class="field"><label for="gp-name">Bezeichnung</label>
         <input id="gp-name" type="text" style="width:200px" placeholder="z. B. EG"></div>
-      <div class="field"><label for="gp-hoehe">Geschosshöhe (mm)</label>
+      <div class="field"><label for="gp-hoehe">Standard-Wandhöhe (mm)</label>
         <input id="gp-hoehe" class="s" type="number" step="200" min="200" placeholder="leer = keine"></div>
     </div>
     <div class="hint" id="gp-hinweis"></div>
@@ -552,7 +552,7 @@
     const offen = KLAPP.has(gs.id);
     const vg = MAPPE.hoehenVorgabe(gs.hoehe_mm);
     const meta = (gs.hoehe_mm != null ? `${gs.hoehe_mm} mm` + (vg.passt ? ` = ${vg.lagen} Lagen` : ' ⚠ kein Vielfaches von 200 mm')
-                                      : 'ohne Geschosshöhe')
+                                      : 'ohne Standard-Wandhöhe')
       + ` · ${gs.waende.length} Wand/Wände · ` + (gs.plan ? 'Plan hinterlegt' : 'kein Plan');
     const kopf = `<div class="kopf">`
       + `<button class="klapp" data-act="klapp" data-id="${esc(gs.id)}">${offen ? '▾' : '▸'}</button>`
@@ -1046,12 +1046,12 @@
   $('gp-cancel').addEventListener('click', gpAbbruch);
   gpOverlay.addEventListener('click', (ev) => { if (ev.target === gpOverlay) gpAbbruch(); });
 
-  /** Eingegebene Geschosshoehe: leer = keine Vorgabe, unsinnig = Fehler (nie geraten). */
+  /** Eingegebene Standard-Wandhoehe: leer = keine Vorgabe, unsinnig = Fehler (nie geraten). */
   function gpHoehe(){
     const s = String($('gp-hoehe').value || '').trim();
     if (!s) return null;
     const n = Number(s.replace(',', '.'));
-    if (!Number.isFinite(n) || n <= 0) throw new Error('Geschosshöhe muss eine positive Zahl in mm sein (oder leer bleiben).');
+    if (!Number.isFinite(n) || n <= 0) throw new Error('Standard-Wandhöhe muss eine positive Zahl in mm sein (oder leer bleiben).');
     return n;
   }
 
@@ -1084,8 +1084,8 @@
       }
       gpSchliesse();
       trZeige((neu ? 'Geschoss angelegt' : 'Geschoss geändert') + '. '
-        + (vg.hoehe_mm == null ? 'Ohne Geschosshöhe — neue Wände erhalten keine Höhenvorgabe ([L-5]).'
-           : vg.passt ? `Geschosshöhe ${vg.hoehe_mm} mm = ${vg.lagen} Lagen à 200 mm.` : vg.hinweis)
+        + (vg.hoehe_mm == null ? 'Ohne Standard-Wandhöhe — neue Wände erhalten keine Höhenvorgabe ([L-5]).'
+           : vg.passt ? `Standard-Wandhöhe ${vg.hoehe_mm} mm = ${vg.lagen} Lagen à 200 mm.` : vg.hinweis)
         + ' Bestehende Wandelemente bleiben unverändert ([L-5]).', true);
     } catch (e) { gpZeige('Nicht gespeichert: ' + fehlerText(e), false); }
   });
@@ -1141,7 +1141,7 @@
       $('f-hoehe').value = vg.hoehe_mm != null ? String(vg.hoehe_mm) : '2600';
       $('f-wandtyp').value = 'mit_wind';
       $('wp-hinweis').innerHTML = vg.hoehe_mm == null
-        ? 'Das Geschoss hat keine Geschosshöhe — die Höhe ist hier frei zu wählen ([L-5]).'
+        ? 'Das Geschoss hat keine Standard-Wandhöhe — die Höhe ist hier frei zu wählen ([L-5]).'
         : vg.passt
           ? `Höhenvorgabe aus dem Geschoss: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm — `
             + 'frei änderbar und nie zurückgeschrieben ([L-5]).'

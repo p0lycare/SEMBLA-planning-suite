@@ -86,9 +86,14 @@
             font-size:12px;z-index:5}
   .gp-liste h4{margin:0 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.6px;
                color:var(--sb-muted);display:flex;justify-content:space-between;gap:8px}
-  .gp-zeile{display:block;width:100%;text-align:left;background:none;border:1px solid transparent;
-            border-radius:7px;padding:5px 6px;margin-bottom:2px;cursor:pointer;font-size:12px;
+  /* Zeile + „Planen“ liegen nebeneinander: ein Knopf im Knopf waere ungueltig. */
+  .gp-eintrag{display:flex;align-items:flex-start;gap:4px;margin-bottom:2px}
+  .gp-zeile{display:block;flex:1;min-width:0;text-align:left;background:none;border:1px solid transparent;
+            border-radius:7px;padding:5px 6px;cursor:pointer;font-size:12px;
             font-weight:400;line-height:1.35}
+  .gp-plan{flex:none;align-self:center;background:#fff;border:1px solid var(--sb-line);
+           border-radius:7px;padding:3px 7px;font-size:11px;cursor:pointer;color:#1c2430}
+  .gp-plan:hover{background:#eaf7ef;border-color:#1f9d4d}
   .gp-zeile:hover{background:#f2f5f9}
   .gp-zeile.gewaehlt{border-style:dashed;border-color:#33415c}
   .gp-zeile.aktiv{background:#eaf7ef;border-color:#1f9d4d;border-style:solid}
@@ -117,6 +122,26 @@
       <button id="wz-fixieren" data-wz="fixieren" title="Einen Bezug anklicken — er wird gegen den Geschossursprung festgesetzt (je Achse einzeln)."><span class="k">F</span> Fixieren</button>
     </div>
     <div class="hint" id="wz-hinweis">–</div>
+    <!-- Parameter des Werkzeugs „Wand zeichnen“ (#50). Bewusst KEIN eigener Abschnitt
+         „Neue Wand“ mehr: der las sich wie ein zweites, formularbasiertes Anlegen neben
+         dem grafischen Werkzeug. Erzeugt wird ausschließlich durch Zeichnen; hier stehen
+         nur die Angaben, die dieses eine Werkzeug braucht — Ziel, Standard-Wandhöhe
+         ([L-5]) und Wandtyp (nur bei der Anlage wählbar). Sichtbar ist der Block genau
+         dann, wenn das Werkzeug aktiv ist. -->
+    <div id="wz-wand-parameter" hidden>
+      <div class="field voll"><label for="gp-ziel">Gezeichnet wird</label>
+        <select id="gp-ziel"></select></div>
+      <div class="row">
+        <div class="field"><label for="gp-hoehe">Standard-Wandhöhe (mm)</label>
+          <input id="gp-hoehe" class="s" type="number" step="200" min="200" value="2600"></div>
+        <div class="field"><label for="gp-wandtyp">Wandtyp</label>
+          <select id="gp-wandtyp" style="width:130px">
+            <option value="mit_wind" selected>mit Wind (Cpi)</option>
+            <option value="ohne_wind">ohne Wind</option>
+          </select></div>
+      </div>
+      <div class="hint" id="gp-hoehe-hinweis"></div>
+    </div>
 
     <h3>Bemaßung</h3>
     <div class="hint" id="gp-bem-info">–</div>
@@ -143,22 +168,6 @@
     </div>
     <div class="hint" id="gp-undo-info">–</div>
 
-    <h3>Neue Wand</h3>
-    <div class="field voll"><label for="gp-ziel">Gezeichnet wird</label>
-      <select id="gp-ziel"></select></div>
-    <div class="row">
-      <div class="field"><label for="gp-hoehe">Höhe (mm)</label>
-        <input id="gp-hoehe" class="s" type="number" step="200" min="200" value="2600"></div>
-      <div class="field"><label for="gp-wandtyp">Wandtyp</label>
-        <select id="gp-wandtyp" style="width:130px">
-          <option value="mit_wind" selected>mit Wind (Cpi)</option>
-          <option value="ohne_wind">ohne Wind</option>
-        </select></div>
-    </div>
-    <label class="chk"><input type="checkbox" id="gp-fang" checked>
-      <span>Fang auf 125-mm-Raster</span></label>
-    <div class="hint" id="gp-hoehe-hinweis"></div>
-
     <h3>Aktive Wand</h3>
     <div id="gp-auswahl-info" class="hint">Keine Wand aktiv.</div>
     <div class="row">
@@ -177,6 +186,8 @@
       <button class="btn-s" id="gp-zoom-plus" title="Hineinzoomen">+</button>
       <button class="btn-s" id="gp-zoom-alles">Alles zeigen</button>
     </div>
+    <label class="chk"><input type="checkbox" id="gp-fang" checked>
+      <span>Fang auf 125-mm-Raster</span></label>
     <div class="hint">Zoom auf den Zeiger mit dem Mausrad · Verschieben mit <b>Leertaste</b> oder
       mittlerer Maustaste. Das ist nur der <b>Blick</b> — der Planversatz bleibt unberührt ([L-9]).</div>
 
@@ -1077,12 +1088,18 @@ function listeSync(erg, koll){
       we ? (store.normWandtyp(we.wandtyp) === 'ohne_wind' ? 'ohne Wind' : 'mit Wind') : '–',
       w.lage ? bestimmtText(erg.bestimmt[w.id]) : 'frei',
     ];
-    return `<button type="button" class="${klassen}" data-wand="${esc(w.id)}">`
+    // „Planen“ nur, wo es ein Wandelement GIBT: ein verwaister Eintrag bekommt keinen
+    // Knopf, statt einen Weg vorzutäuschen, den es nicht gibt ([L-4]).
+    return '<div class="gp-eintrag">'
+      + `<button type="button" class="${klassen}" data-wand="${esc(w.id)}">`
       + `<span class="pkt" style="background:${CON.FARBEN[zu]}"></span>`
       + `<span class="nam">${esc(w.name || w.id)}</span>`
       + `<span class="det">${esc(det.join(' · '))}</span>`
       + (we ? '' : '<span class="det warn">verwaister Eintrag ohne Wandelement ([L-4])</span>')
-      + '</button>';
+      + '</button>'
+      + (el ? `<button type="button" class="gp-plan" data-planen="${esc(w.id)}" `
+        + 'title="Diese Wand aktiv setzen und in Modul 1 (Wandplanung) öffnen.">Planen</button>' : '')
+      + '</div>';
   });
   p.innerHTML = `<h4>Wände im Geschoss <span>${liste.length}</span></h4>`
     + (zeilen.join('') || '<div class="gp-liste-leer">Noch keine Wand in diesem Geschoss.</div>')
@@ -1099,6 +1116,27 @@ function listeKlick(id, mod){
   if (!wand(id)) return;
   waehle(id, !!(mod && (mod.shiftKey || mod.ctrlKey || mod.metaKey)));
   render();
+}
+
+/**
+ * Eine Wand aktiv setzen und in Modul 1 öffnen — der EINE Weg dorthin. Sowohl der
+ * Knopf „In Modul 1 planen“ der aktiven Wand als auch „Planen“ in der Liste rufen
+ * genau diese Funktion; es gibt keinen zweiten Aktivierungs- oder Navigationspfad.
+ *
+ * Ohne Wandelement passiert nichts (verwaister Eintrag, [L-4]); scheitert das
+ * Aktivsetzen an der Hierarchie ([L-10]), wird das benannt statt navigiert.
+ * @returns {boolean} true, wenn die Wand aktiv ist und Modul 1 geöffnet wird
+ */
+function planeWand(id){
+  const w = id ? wand(id) : null;
+  if (!w || !store.holeElement(w.id)) {
+    zeige('Kein Wandelement zu diesem Eintrag — in Modul 1 gibt es dazu nichts zu planen ([L-4]).', false);
+    return false;
+  }
+  try { store.setzeAktiv(w.id); }
+  catch (e) { zeige('Nicht aktiviert: ' + fehlerText(e), false); return false; }
+  try { window.location.href = 'wandplanung.html'; } catch { /* Navigation nicht möglich */ }
+  return true;
 }
 
 function render(){
@@ -1195,7 +1233,7 @@ function kopfSync(){
   const m = store.holeMappe();
   $('gp-ort').innerHTML = o
     ? `${esc(gs.name)}<span> · ${esc(o.gebaeude.name)} · Projekt ${esc(m ? m.projekt.name : '–')}`
-      + (gs.hoehe_mm != null ? ` · Geschosshöhe ${gs.hoehe_mm} mm` : ' · ohne Geschosshöhe') + '</span>'
+      + (gs.hoehe_mm != null ? ` · Standard-Wandhöhe ${gs.hoehe_mm} mm` : ' · ohne Standard-Wandhöhe') + '</span>'
     : '<span>kein aktives Geschoss</span>';
 
   for (const b of WERKZEUGE) {
@@ -1220,6 +1258,10 @@ function kopfSync(){
         + 'wird die ganze starre Gruppe; eine in einer Achse <b>bestimmte</b> Wand lässt sich dort '
         + 'nicht ziehen ([K-9]). Die <b>Endgriffe</b> ändern die Länge, <b>R</b> dreht um 90°.';
 
+  // Die Parameter gehören zum Werkzeug „Wand zeichnen“ und erscheinen nur mit ihm (#50):
+  // es gibt genau EINEN Erzeugungsweg, und der ist das Zeichnen.
+  $('wz-wand-parameter').hidden = GP.werkzeug !== 'wand';
+
   // Ziel des Wand-Werkzeugs: neu anlegen oder eine eingetragene, aber unverortete Wand.
   const ohneLage = waende().filter(w => w.lage == null && store.holeElement(w.id));
   const sel = $('gp-ziel');
@@ -1232,20 +1274,23 @@ function kopfSync(){
   $('gp-hoehe').disabled = !neu;
   $('gp-wandtyp').disabled = !neu;
   const vg = MAPPE.hoehenVorgabe(gs ? gs.hoehe_mm : null);
-  // Die Geschosshöhe ist VORGABE ([L-5]): einmal je Geschoss ins Feld, danach frei
-  // änderbar — eine getroffene Eingabe wird nie überschrieben und nie zurückgeschrieben.
-  if (gs && GP.hoeheFuer !== gs.id) {
-    GP.hoeheFuer = gs.id;
+  // Die Standard-Wandhöhe ist VORGABE ([L-5]): sie wirkt beim ANLEGEN und wird nie
+  // zurückgeschrieben. Ins Feld kommt sie, sobald sich Geschoss ODER Vorgabewert
+  // ändern — sonst zeichnete man nach einer Änderung in Modul 0 weiter mit dem alten
+  // Wert. Bestehende Wände fasst das nie an; ihre Höhe gehört Modul 1 ([P-1]).
+  const vorgabeSchluessel = gs ? gs.id + ':' + vg.hoehe_mm : null;
+  if (gs && GP.hoeheFuer !== vorgabeSchluessel) {
+    GP.hoeheFuer = vorgabeSchluessel;
     if (vg.hoehe_mm != null) $('gp-hoehe').value = String(vg.hoehe_mm);
   }
   $('gp-hoehe-hinweis').innerHTML = !neu
     ? 'Diese Wand hat schon ein Wandelement — Höhe und Wandtyp bleiben unverändert; gezeichnet wird '
       + 'nur ihre <b>Lage</b>. Eine Längenabweichung wird gemeldet, nie angeglichen ([L-3]).'
     : vg.hoehe_mm == null
-      ? 'Das Geschoss hat keine Geschosshöhe — die Höhe ist hier zu wählen ([L-5]).'
+      ? 'Das Geschoss hat keine Standard-Wandhöhe — die Höhe ist hier zu wählen ([L-5]).'
       : vg.passt
-        ? `Vorgabe aus dem Geschoss: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm — frei `
-          + 'änderbar und nie zurückgeschrieben ([L-5]).'
+        ? `Standard-Wandhöhe des Geschosses: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm `
+          + '— frei änderbar, wirkt nur auf <b>neue</b> Wände und wird nie zurückgeschrieben ([L-5]).'
         : esc(vg.hinweis);
 
   const aus = GP.aktiv ? wand(GP.aktiv) : null;
@@ -1361,11 +1406,11 @@ function entwurfLage(a, b){
   return { lage: { start_mm: start, richtung, laenge_grid: grid }, laenge_mm };
 }
 
-/** Höhe für eine neu angelegte Wand — Vorgabe, nie erzwungen ([L-5]). */
+/** Höhe für eine neu angelegte Wand — Standard-Wandhöhe als Vorgabe, nie erzwungen ([L-5]). */
 function neueHoehe(){
   const s = String($('gp-hoehe').value || '').trim();
   const n = Number(s.replace(',', '.'));
-  if (!Number.isFinite(n) || n <= 0) throw new Error('Höhe muss eine positive Zahl in mm sein.');
+  if (!Number.isFinite(n) || n <= 0) throw new Error('Die Standard-Wandhöhe muss eine positive Zahl in mm sein.');
   return n;
 }
 
@@ -2117,7 +2162,11 @@ function binde(){
   // Bauteilliste: ein einziger Behandler am festen Panel, die Zeilen darin werden
   // bei jedem `render()` neu geschrieben.
   $('gp-liste').addEventListener('click', (ev) => {
-    const t = ev.target && ev.target.closest ? ev.target.closest('.gp-zeile') : null;
+    if (!ev.target || !ev.target.closest) return;
+    // „Planen“ zuerst: der Knopf liegt neben der Zeile, ein Treffer dort ist nie Auswahl.
+    const p = ev.target.closest('[data-planen]');
+    if (p) { planeWand(p.getAttribute('data-planen')); return; }
+    const t = ev.target.closest('.gp-zeile');
     if (!t) return;
     listeKlick(t.getAttribute('data-wand'), ev);
   });
@@ -2154,12 +2203,7 @@ function binde(){
   $('gp-zoom-minus').addEventListener('click', () => zoomeAuf(1.3));
   $('gp-zoom-alles').addEventListener('click', zeigeAlles);
 
-  $('gp-planen').addEventListener('click', () => {
-    if (!GP.aktiv) return;
-    try { store.setzeAktiv(GP.aktiv); }
-    catch (e) { zeige('Nicht aktiviert: ' + fehlerText(e), false); return; }
-    try { window.location.href = 'wandplanung.html'; } catch { /* Navigation nicht möglich */ }
-  });
+  $('gp-planen').addEventListener('click', () => { if (GP.aktiv) planeWand(GP.aktiv); });
   $('gp-drehen').addEventListener('click', drehe);
   $('gp-lage-weg').addEventListener('click', () => {
     const gs = geschoss(), w = GP.aktiv ? wand(GP.aktiv) : null;
@@ -2266,6 +2310,8 @@ window.__gp = {
   bemTextPunkt,
   /** Klick auf eine Zeile der Bauteilliste (im Browser der delegierte Behandler). */
   listeKlick,
+  /** Wand aktiv setzen und Modul 1 öffnen — dieselbe Funktion wie beide Knöpfe. */
+  planeWand,
   /** Doppelklick an einem WELTpunkt — derselbe Behandler wie im Browser. */
   doppeltippe(welt){
     const p = schirmPunkt(welt);

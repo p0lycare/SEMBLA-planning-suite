@@ -1248,6 +1248,11 @@ globalThis.fetch = echtesFetch;
   ok('[L-5] die Geschosshoehe steht als VORGABE im Hoehenfeld',
     $('wp-overlay').hidden === false && $('f-hoehe').value === '2600'
     && /Höhenvorgabe aus dem Geschoss/.test($('wp-hinweis').innerHTML));
+  // #50: derselbe Wert heisst in der Oberflaeche durchgaengig Standard-Wandhoehe.
+  ok('#50 Modul 0 nennt den Vorgabewert Standard-Wandhoehe, nicht mehr Geschosshoehe',
+    !/Geschosshöhe/.test(html) && /Standard-Wandhöhe \(mm\)/.test(html));
+  ok('#50 auch die Meldung zum Geschoss spricht von der Standard-Wandhoehe',
+    /Standard-Wandhöhe 2600 mm = 13 Lagen/.test(trMsgTxt()));
   $('f-hoehe').value = '2400';
   $('f-name').value = 'Wand OG 1';
   $('btn-neu').dispatch('click');

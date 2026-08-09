@@ -252,7 +252,7 @@ export function validiereMappe(m) {
     for (const gs of g.geschosse) {
       merke(gs && gs.id, "Geschoss");
       if (gs?.hoehe_mm != null && !(gs.hoehe_mm > 0)) {
-        f.push(`Geschoss „${gs.name || gs.id}“: Geschosshöhe muss positiv sein.`);
+        f.push(`Geschoss „${gs.name || gs.id}“: Standard-Wandhöhe muss positiv sein.`);
       }
       f.push(...planFehler(gs?.plan, gs?.name || gs?.id));
       if (!Array.isArray(gs?.waende)) { f.push(`Geschoss „${gs?.name || gs?.id}“ ohne Wandliste.`); continue; }
@@ -472,7 +472,7 @@ export function entferneGebaeude(m, gebaeudeId, { mitInhalt = false } = {}) {
  */
 export function setzeGeschossHoehe(m, geschossId, hoehe_mm) {
   const h = _zahlOderNull(hoehe_mm);
-  if (h != null && !(h > 0)) throw new Error("Geschosshöhe muss positiv sein (oder leer bleiben).");
+  if (h != null && !(h > 0)) throw new Error("Standard-Wandhöhe muss positiv sein (oder leer bleiben).");
   const n = _klon(m);
   const gs = n.gebaeude.flatMap((g) => g.geschosse).find((x) => x.id === String(geschossId));
   if (!gs) throw new Error(`Unbekanntes Geschoss „${geschossId}“.`);
@@ -717,7 +717,11 @@ export function endpunktMm(lage) {
 
 /**
  * Hoehenvorgabe eines Geschosses fuer eine NEUE Wand ([L-5]). Es wird nichts
- * gerundet: passt die Geschosshoehe nicht ins Lagenraster, wird das benannt.
+ * gerundet: passt der Wert nicht ins Lagenraster, wird das benannt.
+ *
+ * Das Feld heisst intern weiter `geschoss.hoehe_mm` (Format unveraendert); in der
+ * OBERFLAECHE heisst es seit #50 durchgaengig „Standard-Wandhoehe“ — genau das ist
+ * es fachlich: eine Vorgabe fuer neue Waende, nie eine Geschoss- oder Deckenhoehe.
  * @param {number|null|undefined} hoehe_mm
  * @returns {{hoehe_mm:number|null, passt:boolean, lagen:number|null, hinweis:string|null}}
  */
@@ -730,7 +734,7 @@ export function hoehenVorgabe(hoehe_mm) {
     passt,
     lagen: passt ? h / COURSE_MM : null,
     hinweis: passt ? null
-      : `Geschosshöhe ${h} mm ist kein Vielfaches der Lagenhöhe ${COURSE_MM} mm ([G-2]) — `
+      : `Standard-Wandhöhe ${h} mm ist kein Vielfaches der Lagenhöhe ${COURSE_MM} mm ([G-2]) — `
         + `die Wandhöhe ist ausdrücklich zu wählen (${Math.floor(h / COURSE_MM) * COURSE_MM} mm oder `
         + `${Math.ceil(h / COURSE_MM) * COURSE_MM} mm). Es wird nichts gerundet ([L-5]).`,
   };

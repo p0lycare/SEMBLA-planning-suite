@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260809-01",
+    datum: "2026-08-09",
+    typ: "feature",
+    issue: 50,
+    titel: "Layout-Editor: neue Wände nur noch zeichnen, „Standard-Wandhöhe“ und „Planen“ je Wand",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: links gibt es keinen Abschnitt „Neue Wand“ mehr; die "
+      + "Angaben stehen am Werkzeug „Wand zeichnen“, und in der Wandliste öffnet „Planen“ Modul 1.",
+  },
+  {
     id: "chg-20260808-05",
     datum: "2026-08-08",
     typ: "feature",
