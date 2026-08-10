@@ -328,8 +328,13 @@
    deshalb in mm; das Planbild wird über seinen Maßstab in mm eingehängt und ist
    ohne Kalibrierung gar nicht darstellbar — geschätzt wird nichts ([L-9]).
 
-   Diese Seite ist kein neues Modul: die Nummerierung 0–8 bleibt stabil, fachlich
-   gehört die Verortung zu Modul 0. Aufruf dort über „Geschoss öffnen“. */
+   Diese Seite ist kein eigenes Modul: fachlich gehört die Verortung zu Modul 0,
+   Aufruf dort über „Geschoss öffnen“. Die frühere Begründung „kein Modul 9, die
+   Nummerierung 0–8 bleibt stabil“ ist mit Issue #54 überholt — Modul 9 ist der
+   LAGEPLAN (`lageplan.html`), also die Ausgabe dieses Geschosses. Dieser Editor
+   bleibt der einzige Ort der BEARBEITUNG und liefert der Ausgabe nichts zu:
+   beide lesen dieselben kanonischen Daten und rechnen mit demselben DOM-freien
+   Baustein `sembla-massbild.js` ([N-5]). */
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
   c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -337,7 +342,7 @@ const fehlerText = e => (e && e.message ? e.message : String(e));
 const r2 = v => Math.round(Number(v) * 100) / 100;
 
 // aus window.SEMBLA (in __gpInit gebunden):
-let store, MAPPE, CON, PLAN, buildWall;
+let store, MAPPE, CON, PLAN, MB, buildWall;
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
@@ -939,67 +944,46 @@ function bezuegeSvg(erg){
 // ---------------------------------------------------------------------------
 //  Bemaßungen zeichnen und treffen ([K-3], [K-6], [K-7])
 // ---------------------------------------------------------------------------
-/** Abstand der Maßlinie vom Bauteil, je Maß gestaffelt, damit sich Maße nicht decken. */
-const MASS_ABSTAND_MM = 250;
+/**
+ * Der Nachschlagekontext der gemeinsamen Maßgeometrie: Lage und **gelöste**
+ * Position je Wand des Geschosses ([K-3]-Fassung C4b(c)).
+ */
+function massKontext(erg){
+  return MB.massKontext(waende(), erg);
+}
 
 /** Lage eines Bemaßungs-Endpunkts: Wert auf der Achse und Mitte quer dazu. */
 function bemEndpunkt(p, achse, erg){
-  if (p == null) return { wert: 0, quer: 0 };            // Geschossursprung ([K-4])
-  const w = wand(p.wand);
-  if (!w || w.lage == null) return null;
-  const pos = position(p.wand, erg);
-  const wert = CON.bezugsWert(w.lage, achse, p.bezug, pos);
-  const r = CON.wandRechteck(w.lage, pos);
-  if (wert == null || !r) return null;
-  return { wert, quer: achse === 'x' ? (r.y_min + r.y_max) / 2 : (r.x_min + r.x_max) / 2 };
+  return MB.massEndpunkt(p, achse, massKontext(erg));
 }
 
 /**
  * Geometrie einer Bemaßung in Weltkoordinaten. `null` = nicht darstellbar.
  *
- * Zwei Darstellungsfelder wirken hier — und **nur** hier:
+ * Gerechnet wird das **nicht mehr hier**, sondern in `docs/shared/sembla-massbild.js`
+ * — demselben DOM-freien Baustein, aus dem auch der Lageplan (Modul 9) seine Maße
+ * zeichnet ([N-5]). So können Editor und Blatt nicht auseinanderlaufen, und die
+ * Bearbeitungsoberfläche wird trotzdem nicht zur Ausgabequelle: sie ist
+ * gleichrangiger Aufrufer. Dort stehen auch die Regeln zu `linie_mm` (verschiebt
+ * die ganze Darstellung quer) und `text_mm` (verschiebt allein die Zahl).
  *
- * - **`linie_mm`** verschiebt als reine Darstellung die **ganze Maßdarstellung quer** zur
- *   Messrichtung: die Maßlinie, die daran hängende Zahl und die Hilfslinien, die
- *   dadurch länger oder kürzer werden. Ihre **Fußpunkte** bleiben an den
- *   unveränderten Bezügen (`q1`/`q2`), also bleibt das Maß, was es misst.
- * - **`text_mm`** (aus #51, Paket 2) verschiebt **allein die Zahl** relativ dazu.
- *   Es wird nicht mehr geschrieben, bleibt aber **unverändert wirksam**: ein
- *   bereits verschobenes Label behält seinen relativen Versatz und wandert mit
- *   der Maßlinie mit.
- *
- * Beide ändern **nie** Maßwert, Bezüge oder Achse und erreichen den Löser nie
- * ([K-5]). Fehlen sie, steht alles bitgenau an der automatisch gestaffelten
- * Stelle — es wird keine erfunden. Ein **laufender** Zug wird aufgeschlagen: das
- * ist die Live-Nachführung und noch nichts Gespeichertes.
+ * Hier bleibt genau das, was zur **Bedienung** gehört: der **laufende** Zug wird
+ * aufgeschlagen — das ist die Live-Nachführung und noch nichts Gespeichertes.
  */
 function bemGeometrie(bm, idx, erg){
-  const n = CON.normBemassung(bm);
-  if (!CON.ACHSEN.includes(n.achse) || !n.bis) return null;
-  const v = bemEndpunkt(n.von, n.achse, erg), b = bemEndpunkt(n.bis, n.achse, erg);
-  if (!v || !b) return null;
-  const t = n.text_mm || { x: 0, y: 0 };
-  const zug = (GP.bemZieh && GP.bemZieh.bewegt && GP.bemZieh.id === n.id) ? GP.bemZieh.dq : 0;
-  return { id: n.id, achse: n.achse, v1: v.wert, v2: b.wert, q1: v.quer, q2: b.quer,
-           q: Math.max(v.quer, b.quer) + MASS_ABSTAND_MM * (idx + 1)
-              + (Number(n.linie_mm) || 0) + zug,
-           mass: n.mass_mm,
-           versatz: { x: Number(t.x) || 0, y: Number(t.y) || 0 } };
+  const id = CON.normBemassung(bm).id;
+  const zug = (GP.bemZieh && GP.bemZieh.bewegt && GP.bemZieh.id === id) ? GP.bemZieh.dq : 0;
+  return MB.massGeometrie(bm, idx, massKontext(erg), { zusatz_q: zug });
 }
 
 /**
  * Die EINE Quelle der Beschriftungslage — Zeichnen, Treffen, Ziehen und die
- * Inline-Eingabe leiten alle daraus ab, damit sie nie auseinanderlaufen.
- * `anker` ist der Punkt auf der Maßlinie samt Labelversatz, `mitte` die Mitte
- * der dargestellten Zahl (sie steht über der Linie). Der Querversatz der
- * Maßlinie steckt schon in `g.q` — die Zahl folgt ihm damit von selbst.
+ * Inline-Eingabe leiten alle daraus ab, damit sie nie auseinanderlaufen. Die
+ * Rechnung liegt in `sembla-massbild.js`; blickabhängig ist allein die Texthöhe
+ * über der Maßlinie, und die gehört hierher.
  */
 function bemText(g){
-  const laengs = (g.v1 + g.v2) / 2;
-  const x = (g.achse === 'x' ? laengs : g.q) + g.versatz.x;
-  const y = (g.achse === 'x' ? g.q : laengs) + g.versatz.y;
-  const hoch = 10 * V.mm;
-  return { anker: { x, y }, mitte: g.achse === 'x' ? { x, y: y - hoch } : { x: x - hoch, y } };
+  return MB.massAnker(g, 10 * V.mm);
 }
 
 /**
@@ -1076,13 +1060,9 @@ function bemassungSvg(bm, idx, erg){
   const doppelt = (erg.redundanzen || []).some(w => w.bemassung === g.id);
   const gewaehlt = GP.bemAktiv === g.id;
   const farbe = streit ? CON.FARBEN.fehler : gewaehlt ? CON.FARBEN.aktiv : '#33415c';
-  const pt = (laengs, quer) => (g.achse === 'x' ? `${r2(laengs)} ${r2(quer)}` : `${r2(quer)} ${r2(laengs)}`);
-  const tick = 5 * V.mm;
-  const d = [
-    `M${pt(g.v1, g.q1)}L${pt(g.v1, g.q + tick)}`,          // Hilfslinie am Start
-    `M${pt(g.v2, g.q2)}L${pt(g.v2, g.q + tick)}`,          // Hilfslinie am Ziel
-    `M${pt(g.v1, g.q)}L${pt(g.v2, g.q)}`,                  // Maßlinie
-  ].join('');
+  // Hilfslinien und Maßlinie kommen aus der gemeinsamen Maßgeometrie — dieselbe
+  // Pfadform zeichnet der Lageplan ([N-5]). Gerundet wird hier auf Bildschirmmaß.
+  const d = MB.massPfad(g, 5 * V.mm, r2);
   // Die Zahl folgt `text_mm` (und einem laufenden Zug), die Maßlinie oben nicht.
   const anker = bemText(g).anker;
   const tx = anker.x, ty = anker.y;
@@ -1104,7 +1084,7 @@ function bemEntwurfSvg(erg){
     if (!a) return '';
     const laengs = GP.bem.achse === 'x' ? GP.bemZeiger.x : GP.bemZeiger.y;
     const zeigerQuer = GP.bem.achse === 'x' ? GP.bemZeiger.y : GP.bemZeiger.x;
-    const quer = Math.max(a.quer, zeigerQuer) + MASS_ABSTAND_MM * (bemassungen().length + 1);
+    const quer = Math.max(a.quer, zeigerQuer) + MB.MASS_ABSTAND_MM * (bemassungen().length + 1);
     const pt = (l, q) => GP.bem.achse === 'x' ? `${r2(l)} ${r2(q)}` : `${r2(q)} ${r2(l)}`;
     return `<path class="bementwurf" d="M${pt(a.wert, a.quer)}L${pt(a.wert, quer)}`
       + `M${pt(a.wert, quer)}L${pt(laengs, quer)}" fill="none" stroke="${CON.FARBEN.aktiv}"`
@@ -1114,11 +1094,9 @@ function bemEntwurfSvg(erg){
   const g = bemGeometrie({ id: '@entwurf', achse: GP.bem.achse, von: GP.bem.von, bis: GP.bem.bis,
                            mass_mm: mass }, bemassungen().length, erg);
   if (!g) return '';
-  const pt = (laengs, quer) => (g.achse === 'x' ? `${r2(laengs)} ${r2(quer)}` : `${r2(quer)} ${r2(laengs)}`);
   const t = bemText(g).anker;
   const dreh = g.achse === 'y' ? ` transform="rotate(-90 ${r2(t.x)} ${r2(t.y)})"` : '';
-  return `<g><path class="bementwurf" d="M${pt(g.v1, g.q1)}L${pt(g.v1, g.q + 5 * V.mm)}`
-    + `M${pt(g.v2, g.q2)}L${pt(g.v2, g.q + 5 * V.mm)}M${pt(g.v1, g.q)}L${pt(g.v2, g.q)}" fill="none"`
+  return `<g><path class="bementwurf" d="${MB.massPfad(g, 5 * V.mm, r2)}" fill="none"`
     + ` stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(2))}"`
     + ` stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"/>`
     + `<text x="${r2(t.x)}" y="${r2(t.y - 5 * V.mm)}" font-size="${r2(12 * V.mm)}"`
@@ -2990,7 +2968,7 @@ window.__gp = {
 
 window.__gpInit = function(){
   const S = window.SEMBLA || {};
-  store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; buildWall = S.buildWall;
+  store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; buildWall = S.buildWall;
   binde();
   store.abonniere(() => { auffrischen().catch(() => {}); });
   zeigeAlles();
@@ -3004,10 +2982,12 @@ window.__gpInit = function(){
   import * as MAPPE from './shared/sembla-projektmappe.js';
   import * as CON from './shared/sembla-constraints.js';
   import * as PLAN from './shared/sembla-plan.js';
+  import * as MB from './shared/sembla-massbild.js';
   import { buildWall } from './shared/sembla-core.js';
-  window.SEMBLA = { store, MAPPE, CON, PLAN, buildWall };
-  // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul —
-  // die Nummerierung 0–8 bleibt stabil.
+  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, buildWall };
+  // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
+  // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
+  // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.
   mountNavbar(0);
   window.__gpInit();
 </script>

@@ -221,8 +221,16 @@ Nach Projektregel gilt: erst Handbuch, dann Implementierung, dann Regressionstes
 - **Kein Popup:** ein Skizzenmodus braucht die volle Fläche, eine Werkzeugleiste, Tastenkürzel und
   eigenen Zustand (Auswahl, Undo). In einem Dialog neben den bestehenden Formular-Popups wäre er
   unbedienbar.
-- **Kein Modul 9:** die Nummerierung 0–8 ist an die GitHub-Issues gebunden und bleibt stabil (§0 des
-  Projektplaner-Plans). Fachlich gehört die Verortung zu Modul 0.
+- **Kein eigenes Modul für den Editor:** die Modulnummern sind an die GitHub-Issues gebunden und
+  werden nie umnummeriert (§0 des Projektplaner-Plans). Fachlich gehört die **Verortung** zu Modul 0.
+  > **Überholt mit Issue #54 (2026-08-10).** Die frühere Fassung dieses Punktes lautete „kein
+  > Modul 9: die Nummerierung 0–8 … bleibt stabil". Gemeint war und bleibt: **dieser Editor** wird
+  > kein eigenes Modul. Die Reihe ist mit #54 aber **additiv** auf **0–9** gewachsen — Modul 9 ist
+  > der **Lageplan** (`docs/lageplan.html`), also die reine **Ausgabe** eines Geschosses. Das
+  > widerspricht dem Punkt nicht, sondern trennt beides: **Bearbeitung** hier, **Ausgabe** dort.
+  > Umnummeriert wurde nichts. Beide Seiten rechnen die Maßdarstellung mit demselben DOM-freien
+  > Baustein `docs/shared/sembla-massbild.js`, damit sie nicht auseinanderlaufen ([N-5]) — der
+  > Editor liefert der Ausgabe dabei nichts zu, sondern ist gleichrangiger Aufrufer.
 - Aufruf aus der Baumliste in Modul 0: **„Geschoss öffnen"**. Kein eigener Reiter in `navbar.js`.
 - Modul 0 behält Baumliste, Popups und Planupload; der schwere Editor zieht dort aus.
 

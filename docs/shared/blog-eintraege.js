@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260810-06",
+    datum: "2026-08-10",
+    typ: "feature",
+    issue: 54,
+    titel: "Neu: Modul 9 „Lageplan“ — Geschossgrundriss als druckbare Projektunterlage",
+    testbitte: "Reiter 9 öffnen, Projekt und Geschoss wählen: die Wände müssen wie im "
+      + "Geschossplaner liegen, die Maße genau dort stehen. „Blatt drucken“ prüfen und "
+      + "„Exportieren“ (ZIP mit HTML + SVG). Unverortete Wände müssen auf dem Blatt stehen.",
+  },
+  {
     id: "chg-20260810-05",
     datum: "2026-08-10",
     typ: "feature",

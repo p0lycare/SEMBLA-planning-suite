@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA · Lageplan des Geschosses</title>
+<style>
+  .intro{max-width:1320px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:13px}
+  .intro b{color:var(--sb-ink)}
+  .wrap{display:flex;gap:18px;padding:14px 20px 22px;align-items:flex-start;flex-wrap:wrap;max-width:1320px;margin:0 auto}
+  .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
+  .controls{width:320px;flex:0 0 320px}
+  .stage{flex:1 1 700px;min-width:520px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);margin:0 0 10px}
+  .btnrow{display:flex;gap:8px;margin-top:14px}
+  button{flex:1;padding:9px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
+  button:hover{filter:brightness(.97)}
+  .feld{display:flex;flex-direction:column;gap:3px;margin:8px 0;font-size:12px;color:var(--sb-muted)}
+  .feld select{padding:6px 8px;border:1px solid var(--sb-line);border-radius:6px;font-size:13px;background:#fff;color:var(--sb-ink)}
+  label.f{display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;margin:7px 0}
+  .res{display:grid;grid-template-columns:1fr auto;gap:6px 10px;font-size:13px}
+  .res .k{color:var(--sb-muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+  .bezug{font-size:12.5px;background:#eef4fd;border:1px solid #cfe0f7;border-radius:8px;padding:7px 9px;margin-top:8px;line-height:1.5}
+  .bezug b{color:var(--sb-ink)}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.ok{background:#e3f5ea;color:var(--sb-ok)} .badge.no{background:#fbe6dd;color:#c9461c}
+  .note{font-size:11.5px;color:var(--sb-muted);margin-top:14px;line-height:1.55;border-top:1px solid var(--sb-line);padding-top:10px}
+  .hint{color:var(--sb-muted);font-size:12.5px}
+  .msg{margin:8px 0 0;font-size:12.5px;min-height:18px}
+  .msg.ok{color:var(--sb-ok)} .msg.err{color:#c9461c}
+  /* Blattvorschau: das Blatt selbst wird von sembla-lageplan.js (LAGEPLAN_CSS) gestaltet. */
+  #lp-blatt{max-width:100%;overflow:auto}
+  #lp-blatt .lpsheet{box-shadow:0 3px 18px rgba(20,32,46,.10)}
+  /* Druck: nur das Blatt (dieselbe Ableitung wie der Export). Die Kopfleiste aus
+     navbar.js (.sb-nav, sticky) MUSS ausgeblendet werden, sonst schwebt sie über dem PDF.
+     Das @page-Format kommt aus druckCss() und wird in #pagestyle eingehängt. */
+  @media print{
+    .sb-nav,.intro,.controls{display:none!important}
+    .wrap{display:block;padding:0;margin:0;max-width:none}
+    .stage{min-width:0}
+    .panel{border:none;border-radius:0;padding:0;background:#fff}
+    .stage h2{display:none}
+    #lp-blatt{overflow:visible}
+    #lp-blatt .lpsheet{box-shadow:none}
+    input,select,textarea,button{display:none!important}
+  }
+</style>
+<style id="lpcss"></style>
+<style id="pagestyle"></style>
+</head>
+<body>
+<p class="intro"><b>Lageplan des Geschosses.</b> Technische <b>Draufsicht</b> aller Wände eines
+  Geschosses: Lage, Orientierung, Wandkennzeichnung, die im <b>Geschossplaner</b> gesetzten
+  treibenden Bemaßungen, Maßstab, Legende und Schriftfeld — als A3-/A4-Blatt druckbar
+  („Als PDF speichern"). Dieses Modul <b>liest nur</b>: Wände, Lage und Maße entstehen
+  ausschließlich im Geschossplaner (in „Start" → „Geschoss öffnen"), die Kopfdaten des
+  Schriftfelds am <b>Projekt</b>. Gezeichnet wird die vom Löser <b>bestimmte</b> Lage; ein
+  unvollständiger Stand (unverortete, verwaiste, widersprüchliche oder kollidierende Wände)
+  steht als solcher auf dem Blatt. Vorschau und Export nutzen dieselbe Zeichenableitung.</p>
+
+<div id="app" class="wrap">
+  <div class="panel controls">
+    <h2>Blattbezug</h2>
+    <label class="feld">Projekt
+      <select id="lp-projekt" title="Projekt, dessen Geschoss ausgegeben wird."></select>
+    </label>
+    <label class="feld">Gebäude · Geschoss
+      <select id="lp-geschoss" title="Geschoss, dessen Lageplan ausgegeben wird."></select>
+    </label>
+    <div class="bezug" id="lp-bezug">–</div>
+    <p class="hint" id="lp-hinweis" style="margin-top:8px"></p>
+
+    <div style="margin-top:16px"><h2>Blatt &amp; Darstellung</h2>
+      <label class="feld">Blattformat
+        <select id="lp-fmt">
+          <option value="a3">A3 quer</option>
+          <option value="a4">A4 quer</option>
+        </select>
+      </label>
+      <label class="f"><input type="checkbox" id="lp-masse" checked> Bemaßungen darstellen</label>
+      <label class="f"><input type="checkbox" id="lp-kennz" checked> Wände kennzeichnen</label>
+      <label class="f"><input type="checkbox" id="lp-raster"> 125-mm-Raster andeuten</label>
+      <label class="f"><input type="checkbox" id="lp-wm"> Vorabzug (Wasserzeichen)</label>
+    </div>
+
+    <div style="margin-top:16px"><h2>Übersicht</h2>
+      <div class="res">
+        <div class="k">Wände (verortet)</div><div class="v" id="lp-ovWaende">–</div>
+        <div class="k">Bemaßungen</div><div class="v" id="lp-ovMasse">–</div>
+        <div class="k">Maßstab</div><div class="v" id="lp-ovScale">–</div>
+        <div class="k">Blattgröße</div><div class="v" id="lp-ovSheet">–</div>
+        <div class="k">Stand</div><div class="v"><span class="badge" id="lp-stand">–</span></div>
+      </div>
+    </div>
+
+    <div class="btnrow">
+      <button class="primary" id="lp-print">Blatt drucken</button>
+      <button id="lp-export">Exportieren</button>
+    </div>
+    <p class="msg" id="lp-msg"></p>
+    <div class="note"><b>Hinweis.</b> Maßgeblich ist der <b>Blattbezug</b> oben, nicht der aktive
+      Pfad der Kopfleiste: die Auswahl hier setzt <b>kein</b> aktives Projekt und kein aktives
+      Geschoss ([L-10]) — so lässt sich ein fremdes Geschoss ausgeben, ohne den Arbeitskontext zu
+      verschieben. Der Export liefert <b>ein ZIP</b> mit dem druckbaren HTML-Blatt und dem
+      maßstabsgetreuen SVG desselben Stands; ein Weg über „Start" gibt es dafür nicht. Der
+      <b>Geschossplan</b> (Planbild) ist Hintergrund der Verortung und keine Datenquelle — er
+      erscheint deshalb nicht im Lageplan ([L-9]).</div>
+  </div>
+
+  <div class="panel stage">
+    <h2>Blattvorschau</h2>
+    <div id="lp-blatt"></div>
+  </div>
+</div>
+
+<script>
+/* App-Logik (klassisches Skript). Blatt, Zeichnung, CSS und Druck-CSS kommen vollständig aus
+   docs/shared/sembla-lageplan.js (DOM-frei) — genau dieselben Funktionen nutzt der Export
+   dieses Moduls (LP.lageplanDateien), es gibt also nur EINE Zeichenableitung (Muss 9).
+   Storage/Mappe/Lageplan/ZIP werden vom Modul-Skript unten als window.SEMBLA bereitgestellt
+   und in __lpInit() gebunden — so bleibt diese Logik im Node-Smoke-Test ohne Modulauflösung
+   evaluierbar (Architektur-Regel 2).
+
+   REINER KONSUMENT ([N-1]/[N-3]): gelesen werden Projektmappe (Struktur, Lage, Bemaßungen),
+   Wandspeicher (nur Höhe und Wandtyp) und das Löserergebnis. Es gibt hier keinen Schreibweg —
+   weder für Wände, Lagen und Maße noch für Planbilder, und auch nicht für die
+   Darstellungsoptionen: die bleiben bewusst flüchtig, damit Modul 9 keine neue Datenstruktur
+   anlegt. Die Auswahl setzt ausdrücklich KEINEN aktiven Zeiger ([L-10]). */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+  c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const fehlerText = e => (e && e.message ? e.message : String(e));
+
+// aus window.SEMBLA (in __lpInit gebunden):
+let store, MAPPE, LP, ZIP;
+
+/**
+ * Der Blattbezug ([N-2]). Solange hier NICHTS ausdrücklich gewählt wurde, folgt er dem
+ * aktiven Pfad — dann ist das die naheliegende Vorbelegung. Ab der ersten eigenen Wahl
+ * (`*Gewaehlt`) bleibt er stehen, auch wenn sich der aktive Pfad woanders hin bewegt:
+ * sonst zöge ein Wechsel in einem anderen Modul das Blatt unter der Hand weg. Gesetzt
+ * wird umgekehrt nie ein Zeiger ([L-10]).
+ */
+const AUSWAHL = { projekt: null, geschoss: null, projektGewaehlt: false, geschossGewaehlt: false };
+let DATEN = null, BLATT = null, OPT = null;
+
+function zeige(text, ok){
+  const m = $('lp-msg');
+  m.textContent = text || '';
+  m.className = 'msg' + (text ? (ok ? ' ok' : ' err') : '');
+}
+
+/** Darstellungsoptionen aus den Bedienelementen lesen (normalisiert, nie gespeichert). */
+function optionenAusUi(){
+  return LP.normOptionen({
+    format: $('lp-fmt').value,
+    masse: $('lp-masse').checked,
+    kennzeichnung: $('lp-kennz').checked,
+    raster: $('lp-raster').checked,
+    wasserzeichen: $('lp-wm').checked,
+  });
+}
+
+/** Die Mappe des gewählten Projekts — gelesen, nie aktiv gesetzt. */
+function mappe(){
+  return AUSWAHL.projekt ? store.projektMappe(AUSWAHL.projekt) : null;
+}
+
+/**
+ * Projektauswahl auffüllen. Vorbelegt wird aus dem aktiven Pfad ([N-2]); eine
+ * ausdrücklich getroffene Wahl bleibt erhalten, solange ihr Projekt existiert.
+ */
+function projekteSync(){
+  const liste = store.listeProjekte();
+  const sel = $('lp-projekt');
+  sel.innerHTML = liste.map(m =>
+    `<option value="${esc(m.projekt.id)}">${esc(m.projekt.name || m.projekt.id)}</option>`).join('');
+  if (!liste.length) { AUSWAHL.projekt = null; sel.value = ''; return; }
+  const da = liste.some(m => m.projekt.id === AUSWAHL.projekt);
+  if (!da || !AUSWAHL.projektGewaehlt) {
+    const aktiv = store.aktivesProjektId();
+    const neu = liste.some(m => m.projekt.id === aktiv) ? aktiv : liste[0].projekt.id;
+    if (neu !== AUSWAHL.projekt) { AUSWAHL.projekt = neu; AUSWAHL.geschoss = null; }
+    if (!da) AUSWAHL.projektGewaehlt = false;      // die eigene Wahl gibt es nicht mehr
+  }
+  sel.value = AUSWAHL.projekt;
+}
+
+/** Geschossauswahl des gewählten Projekts auffüllen (Gebäude mit benannt). */
+function geschosseSync(){
+  const m = mappe();
+  const sel = $('lp-geschoss');
+  const alle = m ? MAPPE.alleGeschosse(m) : [];
+  sel.innerHTML = alle.map(e =>
+    `<option value="${esc(e.geschoss.id)}">${esc(e.gebaeude.name)} · ${esc(e.geschoss.name)}`
+    + `</option>`).join('');
+  if (!alle.length) { AUSWAHL.geschoss = null; sel.value = ''; return; }
+  const da = alle.some(e => e.geschoss.id === AUSWAHL.geschoss);
+  if (!da || !AUSWAHL.geschossGewaehlt) {
+    const aktiv = store.aktivesGeschossId();
+    AUSWAHL.geschoss = alle.some(e => e.geschoss.id === aktiv) ? aktiv : alle[0].geschoss.id;
+    if (!da) AUSWAHL.geschossGewaehlt = false;
+  }
+  sel.value = AUSWAHL.geschoss;
+}
+
+/** Der sichtbare Blattbezug — er ist maßgeblich, nicht der aktive Pfad der Kopfleiste. */
+function bezugSync(){
+  const host = $('lp-bezug');
+  if (!DATEN) { host.innerHTML = 'Kein Blattbezug gewählt.'; return; }
+  const aktiv = store.aktivesProjektId();
+  const fremd = aktiv && aktiv !== DATEN.projekt.id;
+  host.innerHTML = `<b>${esc(DATEN.projekt.name)}</b> · ${esc(DATEN.gebaeude.name)} · `
+    + `<b>${esc(DATEN.geschoss.name)}</b>`
+    + (fremd ? '<br>Dieses Geschoss gehört <b>nicht</b> zum aktiven Projekt der Kopfleiste — '
+      + 'für die Ausgabe gilt dieser Blattbezug; aktiv gesetzt wird nichts ([L-10]).' : '');
+}
+
+/** Alles leeren, wenn es keinen Blattbezug gibt — es wird kein Blatt erfunden. */
+function leeren(text){
+  DATEN = null; BLATT = null;
+  $('lp-blatt').innerHTML = '';
+  $('lp-hinweis').innerHTML = esc(text);
+  $('lp-ovWaende').textContent = '–'; $('lp-ovMasse').textContent = '–';
+  $('lp-ovScale').textContent = '–'; $('lp-ovSheet').textContent = '–';
+  $('lp-stand').className = 'badge'; $('lp-stand').textContent = '–';
+  bezugSync();
+  zeige(text, false);
+}
+
+/**
+ * Blatt neu ableiten und zeigen. Vorschau UND Export gehen durch `blattHtml()` bzw.
+ * `lageplanDateien()` desselben Bausteins — es gibt kein zweites Rendering (Muss 9).
+ * Abgeleitet wird jedes Mal frisch aus Mappe, Geschoss und Löserergebnis ([N-3]).
+ */
+function render(){
+  OPT = optionenAusUi();
+  const m = mappe();
+  if (!m) { leeren('Kein Projekt vorhanden — in „Start" ein Projekt anlegen.'); return; }
+  if (!AUSWAHL.geschoss) { leeren('Kein Geschoss in diesem Projekt — in „Start" ein Geschoss anlegen.'); return; }
+  try {
+    DATEN = LP.lageplanDaten({ mappe: m, geschossId: AUSWAHL.geschoss, elemente: store.listeElemente() });
+  } catch (e) { leeren('Nicht darstellbar: ' + fehlerText(e)); return; }
+  BLATT = LP.blattHtml(DATEN, OPT);
+  $('lp-hinweis').innerHTML = '';
+  $('lp-blatt').innerHTML = BLATT.html;
+  $('pagestyle').textContent = LP.druckCss(BLATT.format);
+
+  const verortet = DATEN.waende.filter(w => w.rechteck).length;
+  $('lp-ovWaende').textContent = `${verortet} von ${DATEN.waende.length}`;
+  $('lp-ovMasse').textContent = String(DATEN.bemassungen.length);
+  $('lp-ovScale').textContent = '1 : ' + BLATT.masstab + (BLATT.passt ? '' : ' (Blatt zu klein)');
+  const bl = LP.BLATT[BLATT.format] || LP.BLATT.a3;
+  $('lp-ovSheet').textContent = `${bl.label} · Feld ${bl.feld_mm.w} × ${bl.feld_mm.h} mm`;
+  const st = $('lp-stand');
+  st.className = 'badge ' + (DATEN.vollstaendig ? 'ok' : 'no');
+  st.textContent = DATEN.vollstaendig ? 'vollständig' : 'nicht vollständig';
+  bezugSync();
+  // [N-7]: der unvollständige Stand wird benannt — mit Zahl, nicht mit Gefühl.
+  if (!DATEN.vollstaendig) {
+    zeige(`Dieser Lageplan ist nicht vollständig: ${DATEN.meldungen.length} Punkt(e) `
+      + '— sie stehen auf dem Blatt.', false);
+  } else if (DATEN.hinweise.length) {
+    zeige(`Vollständig; ${DATEN.hinweise.length} Hinweis(e) auf dem Blatt (kein Mangel).`, true);
+  } else {
+    zeige('Vollständig: alle eingetragenen Wände sind verortet.', true);
+  }
+  if (!BLATT.passt) {
+    zeige('Das Geschoss ist für dieses Blatt zu groß — auch 1 : '
+      + LP.MASSSTAEBE[LP.MASSSTAEBE.length - 1] + ' genügt nicht. Die Zeichnung bleibt '
+      + 'vollständig, der Ausdruck ist aber nicht maßstabsgetreu ([N-8]).', false);
+  }
+}
+
+/** Ein anderes Projekt in den Blattbezug nehmen — ohne es aktiv zu setzen ([N-2]). */
+function waehleProjekt(id){
+  AUSWAHL.projekt = id ? String(id) : null;
+  AUSWAHL.projektGewaehlt = !!id;
+  AUSWAHL.geschoss = null;
+  AUSWAHL.geschossGewaehlt = false;
+  projekteSync();
+  geschosseSync();
+  render();
+}
+
+/** Ein anderes Geschoss in den Blattbezug nehmen — ohne es aktiv zu setzen ([N-2]). */
+function waehleGeschoss(id){
+  AUSWAHL.geschoss = id ? String(id) : null;
+  AUSWAHL.geschossGewaehlt = !!id;
+  geschosseSync();
+  render();
+}
+
+/** Darstellungsoption geändert: neu zeichnen. Gespeichert wird dabei nichts. */
+function optionGeaendert(){ render(); }
+
+/**
+ * Export des ausgewählten Geschosses (Muss 9/11): druckbares HTML-Blatt und
+ * maßstabsgetreues SVG desselben Stands, gepackt mit dem vorhandenen ZIP-Baustein.
+ * Die Dateien kommen aus `lageplanDateien()` — also aus genau dem Pfad, den die
+ * Vorschau zeigt; ein zweiter Ausgabeweg gibt es nicht.
+ */
+function exportiere(){
+  if (!DATEN) { zeige('Kein Blatt zum Exportieren — erst Projekt und Geschoss wählen.', false); return false; }
+  const dateien = LP.lageplanDateien(DATEN, OPT);
+  try {
+    ZIP.downloadZip(LP.dateiRumpf(DATEN) + '.zip', dateien.map(d => ({ name: d.name, data: d.data })));
+  } catch (e) { zeige('Export fehlgeschlagen: ' + fehlerText(e), false); return false; }
+  zeige('Exportiert: ' + dateien.map(d => d.name).join(', ')
+    + (DATEN.vollstaendig ? '' : ' — der Stand ist als nicht vollständig gekennzeichnet.'), true);
+  return true;
+}
+
+function drucken(){
+  if (!DATEN) { zeige('Kein Blatt zum Drucken — erst Projekt und Geschoss wählen.', false); return; }
+  window.print();
+}
+
+function bindEvents(){
+  $('lp-projekt').addEventListener('change', () => waehleProjekt($('lp-projekt').value));
+  $('lp-geschoss').addEventListener('change', () => waehleGeschoss($('lp-geschoss').value));
+  for (const id of ['lp-fmt', 'lp-masse', 'lp-kennz', 'lp-raster', 'lp-wm']) {
+    $(id).addEventListener('change', optionGeaendert);
+  }
+  $('lp-print').addEventListener('click', drucken);
+  $('lp-export').addEventListener('click', exportiere);
+}
+
+/** Prüfhilfen — sie laufen durch dieselben Funktionen wie die Bedienung. */
+window.__lp = {
+  render, exportiere, optionGeaendert, waehleProjekt, waehleGeschoss,
+  get daten(){ return DATEN; }, get blatt(){ return BLATT; }, get optionen(){ return OPT; },
+  get auswahl(){ return AUSWAHL; },
+};
+
+window.__lpInit = function(){
+  const S = window.SEMBLA || {};
+  store = S.store; MAPPE = S.MAPPE; LP = S.LP; ZIP = S.ZIP;
+  $('lpcss').textContent = LP.LAGEPLAN_CSS;      // Blatt-CSS aus dem gemeinsamen Baustein
+  bindEvents();
+  // Ein Wechsel im Speicher (andere Seite, andere Wand) frischt die Anzeige auf —
+  // die getroffene Auswahl bleibt dabei stehen, solange sie es noch gibt.
+  store.abonniere(() => { projekteSync(); geschosseSync(); render(); });
+  projekteSync();
+  geschosseSync();
+  render();
+};
+</script>
+
+<script type="module">
+  import * as store from './shared/storage.js';
+  import * as MAPPE from './shared/sembla-projektmappe.js';
+  import * as LP from './shared/sembla-lageplan.js';
+  import * as ZIP from './shared/zip.js';
+  import { mountNavbar } from './shared/navbar.js';
+  window.SEMBLA = { store, MAPPE, LP, ZIP };
+  mountNavbar(9);
+  window.__lpInit();
+</script>
+</body>
+</html>

@@ -106,12 +106,16 @@ const store = await import("../../docs/shared/storage.js");
 const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
 const CON = await import("../../docs/shared/sembla-constraints.js");
 const PLAN = await import("../../docs/shared/sembla-plan.js");
+// Die Massgeometrie ist seit Issue #54 ein gemeinsamer, DOM-freier Baustein: derselbe,
+// aus dem der Lageplan (Modul 9) seine Masse zeichnet ([N-5]). Der Editor rechnet sie
+// nicht mehr selbst — sonst koennten Bearbeitung und Ausgabe auseinanderlaufen.
+const MB = await import("../../docs/shared/sembla-massbild.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
 PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, buildWall };
+globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, buildWall };
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);

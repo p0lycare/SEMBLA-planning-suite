@@ -11,7 +11,7 @@ SEMBLA Planungs-Suite — Werkzeuge zur Planung vorgespannter Trockenmauerwerksw
 **GitHub Pages**: live unter `https://p0lycare.github.io/SEMBLA-planning-suite/`. Kein Build-Schritt,
 kein Server — jeder Push auf `main` ist nach ~20 s live (Auslieferung s. „Deploy").
 
-Die App besteht aus **9 Modulen (0–8)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
+Die App besteht aus **10 Modulen (0–9)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
 Code liegt **einmal** in `docs/shared/` und wird per `<script type="module">` geladen. Einstieg ist
 `docs/index.html` (Modul 0). Die Geschichte des Umbaus von der alten Single-File-Suite auf diesen
 MVP steht in [`doku/REFACTOR.md`](doku/REFACTOR.md); der abgelöste Alt-Stand liegt in `legacy/`.
@@ -411,6 +411,35 @@ Wände, die **ohne eigenes Maß** über die starre Gruppe bestimmt sind ([K-9]);
 verschiedene Auswege und deshalb **verschiedene Meldungen**. Knopf und Taste **R** laufen durch
 dieselbe Funktion.
 
+**Lageplan als eigene Projektausgabe (Modul 9, Issue #54, Kapitel 16.11, [N-1]…[N-8]).** Der im
+Geschossplaner erzeugte Wandgrundriss wird als **prüf- und druckbare Unterlage** ausgegeben —
+`docs/lageplan.html` plus die DOM-freie Ableitung `docs/shared/sembla-lageplan.js`. Die Richtung ist
+**eigenes Modul, keine zweite Bearbeitungsansicht**: der **Geschossplaner bleibt der einzige Ort der
+Bearbeitung** ([N-1]), Modul 9 hat kein Werkzeug, keinen Schreibweg und keine eigene Wandgeometrie.
+Gelesen werden ausschließlich **kanonische** Daten — Projektmappe (Struktur, Lage, Bemaßungen),
+Wandspeicher (**nur** Höhe und Wandtyp, [P-1]) und das deterministische **Löserergebnis**; abgeleitet
+wird bei **jeder** Ausgabe frisch ([N-3]), und wo Maße bestimmen, schlägt die **gelöste** Position die
+gespeicherte Rohposition ([N-4]). **Maße stehen exakt wie im Editor** ([N-5]): dieselben Bezüge,
+Werte, Staffelung und dieselben gespeicherten Darstellungsversätze `linie_mm`/`text_mm` — technisch
+erzwungen, weil beide Seiten `sembla-massbild.js` benutzen und die Editor-Inline-Rechnung dafür
+**ersatzlos dorthin gewandert** ist (keine Copy-Paste-Zeichenlogik, und der Editor wird dadurch
+**nicht** zur Ausgabequelle: er ist gleichrangiger Aufrufer). Das **Schriftfeld** nimmt
+`mappe.projekt.kopfdaten` als **einzige** Quelle ([N-6]/[L-11]) — der wandbezogene Altbestand
+`eingaben.projekt` wird hier nie herangezogen, weil ein Lageplan keine einzelne Wand hat.
+**Unverortete, verwaiste, widersprüchliche und kollidierende Wände** werden **namentlich** auf dem
+Blatt benannt, und ein unvollständiger Stand wird nie als vollständig ausgegeben ([N-7]); eine
+verortete, aber unbemaßte Wand ist dagegen nach [K-8] „frei" und bleibt ein **Hinweis**, kein Mangel.
+**Projekt und Geschoss** sind im Modul wählbar; die Auswahl setzt **keinen** aktiven Zeiger ([L-10]) —
+vorbelegt wird aus dem aktiven Pfad, maßgeblich ist der sichtbare **Blattbezug**. Es gibt **genau ein
+Blatt je Geschoss** mit eigener Bauzeichnungsreihe **1:50/100/200/250/500**; passt ein Geschoss selbst
+bei 1:500 nicht, wird es **sichtbar als zu groß gemeldet** und **nie** beschnitten oder gekachelt
+([N-8]). **Vorschau und Export sind derselbe DOM-freie Pfad** (Muss 9, `blattHtml`/`lageplanDateien` —
+im Smoke an den exportierten **Bytes** geprüft); der **Export-Knopf liegt allein in Modul 9** (ZIP mit
+druckbarem HTML + maßstabsgetreuem SVG), der **zentrale Modul-0-Export bleibt unberührt**. Bewusst
+**nicht** dabei: Planbild im Blatt ([L-9]), IFC/BIM, Planerkennung, Mengen-/Kostenrechnung und **jede**
+neue Datenstruktur — die Darstellungsoptionen des Moduls sind **flüchtig** und werden nicht
+gespeichert (kein Schema-/Formatbump, kein neuer `eingaben`-Abschnitt).
+
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
 Verbrauchsmaterial) ist eine **eigene Ressource** — technisch und fachlich getrennt vom
@@ -684,13 +713,28 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      Mitte** (`kreuzPfad`), Umrechnung Bildpixel ↔ Raster-mm samt Bildlage in mm (`planRahmenMm`),
      Rasterlinien, `planSvg()` und die **eigene IndexedDB** für die Bilder (Fabrik für Tests
      einschleusbar). Rein/DOM-frei, eigene Tests (`tests/module/test-plan.mjs`).
+   - `sembla-massbild.js` — **gemeinsame Weltgeometrie der Maßdarstellung** (Kapitel 16.10/16.11):
+     `massKontext`/`massEndpunkt`/`massGeometrie`/`massAnker`/`massPfad` samt Staffelabstand
+     `MASS_ABSTAND_MM`. Sie lag bis #54 **inline im Layout-Editor**; seit Modul 9 gibt es einen
+     zweiten Leser, der die Maße **bitgenau** so zeigen muss ([N-5]) — deshalb rechnen
+     `geschossplan.html` **und** `sembla-lageplan.js` ausschließlich damit. Bildschirm/Papier,
+     Trefferflächen und der **laufende** Zug bleiben in der jeweiligen Oberfläche; `linie_mm`
+     (ganze Darstellung quer) und `text_mm` (nur die Zahl) wirken **nur hier** und erreichen den
+     Löser nie ([K-5]). Rein/DOM-frei, eigene Tests (`tests/module/test-massbild.mjs`).
+   - `sembla-lageplan.js` — **Lageplanblatt** (Modul 9, Kapitel 16.11, [N-1]…[N-8]):
+     `lageplanDaten` (die eine frische Ableitung aus Mappe + Löserergebnis), `waehleMasstab`
+     (eigene Reihe 50/100/200/250/500), `lageplanSvg`, `schriftfeldHtml` (aus
+     `mappe.projekt.kopfdaten`), `wandTabelleHtml`, `meldungenHtml`, `blattHtml`, `LAGEPLAN_CSS`,
+     `druckCss`, `lageplanDokument`, `lageplanSvgDatei`, `lageplanDateien`, `dateiRumpf`.
+     Rein/DOM-frei, **liest nur** (keine Schreib-, Speicher- oder Planbildpfade), eigene Tests
+     (`tests/module/test-lageplan.mjs`).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
      **Katalogspeicher** (`listeKataloge`/`katalogNachId`/`katalogStatus`/`setzeProjektKatalog`),
      **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
      **Projektliste** (`listeProjekte`/`projektMappe`/`fuegeProjektHinzu`/`loescheProjekt`/
      `setzeAktivesProjekt`/`holeMappe`/`setzeMappe`/`aendereMappe`/`verorteWand`/`mappeReferenzen`),
      **Kopfdaten** (`setzeKopfdaten`/`wirksameKopfdaten`/`eingabenMitKopfdaten`), Import/Export).
-   - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–8, aktiver Pfad **Projekt · Geschoss · Wand**
+   - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–9, aktiver Pfad **Projekt · Geschoss · Wand**
      und die nach [L-10] überhaupt aktivierbare Wandauswahl).
    - `sembla-blog.js` — **Projektblog** (Modul 8): Validator der Änderungsliste, Karten-HTML,
      Filterung/Gruppierung der GitHub-Issues, Fehler-Fallback, Deep-Link-Anker. Rein/DOM-frei,
@@ -722,6 +766,7 @@ der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv �
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 | 8 | `blog.html` | **Projektblog & Status** (mobile-first, read-only): Ansicht „Was ist neu?" aus `blog-eintraege.js` und Ansicht „Projektstatus" aus der öffentlichen GitHub-Issue-API (`sembla-blog.js`). Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben`, kein Login/Backend |
+| 9 | `lageplan.html` | **Lageplan des Geschosses** (#54, Kapitel 16.11, [N-1]…[N-8]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. **Kein Planbild** im Blatt ([L-9]), kein IFC, keine Mengen/Kosten |
 
 **Module 2, 3 und 5 sind vorübergehend ausgeblendet (Zyklus-Fokus, Issue #20).** Der laufende
 AWG-Zyklus nimmt Statik-Ausbau (Modul 3), Modul-2-Ausbau und die stückweise Montageanleitung
@@ -730,8 +775,11 @@ Einträge in `docs/shared/navbar.js` das Feld **`versteckt: true`**: sie erschei
 noch in der Modulübersicht von Modul 0 (`docs/index.html`). Das ist **reine Navigation** —
 die Seiten bleiben per direkter URL erreichbar (und ihr Reiter erscheint wieder, sobald man auf
 ihnen steht), Datenfluss, `eingaben`-Abschnitte, Shared-Code, Tests und die Export-Häkchen bleiben
-**unverändert wirksam**. Rückgängig = Flag entfernen. Kein Modul wurde umnummeriert; die
-Nummerierung 0–8 bleibt stabil, damit sie zu den GitHub-Issues passt.
+**unverändert wirksam**. Rückgängig = Flag entfernen. **Kein Modul wurde je umnummeriert** — das
+ist der Punkt, um den es geht: die Nummern sind an die GitHub-Issues gebunden und bleiben stabil.
+Die Reihe ist mit Issue #54 **additiv** auf **0–9** gewachsen (Modul 9 = Lageplan); die frühere
+Formulierung „Nummerierung 0–8 bleibt stabil / kein Modul 9" betraf den **Layout-Editor**
+(`geschossplan.html`), der weiterhin fachlich zu Modul 0 gehört und **kein** eigenes Modul ist.
 
 **Modul 8 (Blog) und der Datenfluss.** Der Blog ist bewusst vom Planungsmodell entkoppelt: er
 liest weder Wandelement noch `eingaben` und schreibt nirgendwo hin. Seine beiden Quellen sind
@@ -803,7 +851,7 @@ Es gibt **keinen** Build-/Publish-Schritt für die App — `docs/` wird direkt e
 
 ```bash
 npm run test:core                 # Core-Parität (py + mjs) + BOM-Drift (test-shared.mjs) — die wichtigsten
-npm run test:modul0               # … bis test:modul8: Logik-/Smoke-Tests je Modul (tests/module/)
+npm run test:modul0               # … bis test:modul9: Logik-/Smoke-Tests je Modul (tests/module/)
 npm run test:all                  # Core + alle Modultests + Storage-Smoke in einem Rutsch
 npm run test:interop              # tests/interop/: Python-DXF/IFC-Referenz + web-ifc-Validierung (Orakel Modul 6)
 ```
