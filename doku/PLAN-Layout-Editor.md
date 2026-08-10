@@ -122,10 +122,17 @@ Offsets zur Ankerkoordinate: längs `0 / +L/2 / +L`, quer `−62,5 / 0 / +62,5`.
     "von":   { "wand": "wnd-A", "bezug": "mitte" },// null = Geschossursprung
     "bis":   { "wand": "wnd-B", "bezug": "min" },
     "mass_mm": 3410,                               // ganzzahlig, treibend
-    "text_mm": { "x": 0, "y": -300 }               // nur Darstellung, optional
+    "text_mm": { "x": 0, "y": -300 }               // nur Darstellung, optional (s. u.)
   }]
 }
 ```
+
+`text_mm` ist **ausschließlich die Position der Beschriftung** (Issue #51): ein Versatz der
+dargestellten Maßzahl in Millimetern, in Weltkoordinaten `x`/`y` und damit unabhängig von Achse und
+Zoom. Es verschiebt **nie** die Maßlinie, die Hilfslinien oder einen Bezugspunkt, geht **nie** in
+den Löser ein ([K-5]) und ändert **nie** den Maßwert. Fehlt es, steht die Zahl an ihrer automatisch
+berechneten Stelle — es wird keine erfunden. Es ist ein optionales Zusatzfeld ohne eigene
+Formatachse: kein Bump von `MAPPE_VERSION`.
 
 Drei Sonderfälle fallen ohne eigenen Typ heraus:
 

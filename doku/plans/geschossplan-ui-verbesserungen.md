@@ -1,7 +1,7 @@
 # Geschossplan: UI- und Bedienverbesserungen
 
 **Status:** abgestimmter Umsetzungsplan — **Paket 1 umgesetzt** (Issue #50, 2026-08-09),
-Paket 2 und 3 noch offen
+**Paket 2 umgesetzt** (Issue #51, 2026-08-10), Paket 3 noch offen
 **Ziel:** Den Geschossplan vereinfachen, Bemaßungen direkt in der Zeichnung bedienbar machen und die Oberfläche kompakter organisieren.
 
 Die Umsetzung erfolgt in drei getrennten, jeweils test- und veröffentlichbaren Paketen.
@@ -47,7 +47,23 @@ Den Wandworkflow vereinfachen, die Höhenangabe fachlich korrekt benennen und de
 
 ---
 
-## Paket 2 – Maße direkt in der Zeichnung bearbeiten
+## Paket 2 – Maße direkt in der Zeichnung bearbeiten  ✅ umgesetzt (Issue #51, 2026-08-10)
+
+Umgesetzt vollständig in `docs/geschossplan.html`; regressionsgetestet in
+`tests/module/smoke_geschossplan.mjs`. **Ohne Schema-/Formatbump** — das Darstellungsfeld
+`text_mm` gab es in `normBemassung` bereits (optional, im Bestand ausnahmslos `null`).
+
+Zwei Festlegungen der Umsetzung:
+
+- **`text_mm` ist ausschließlich die Beschriftungsposition** (Versatz der Maßzahl in mm, in
+  Weltkoordinaten x/y). Zuvor floss der Querteil in die Lage der **Maßlinie** — das hätte dem
+  Nicht-Ziel „keine Maßlinien verschieben" widersprochen. Da das Feld nie geschrieben wurde, ist
+  die Präzisierung verlustfrei; `bemGeometrie`/`bemText` sind die einzige Quelle für Zeichnen,
+  Treffen, Ziehen und die Position des Eingabefelds.
+- **Ein Zug entsteht erst ab 3 Schirmpixeln Bewegung.** Darunter bleibt das Drücken auf der Maßzahl
+  reine Auswahl: ein Klick und ein Doppelklick speichern nichts und buchen keinen
+  Rückgängig-Schritt. Gezogen wird mit dem Werkzeug **Auswählen & ziehen**; die Maßzahl hat dafür
+  eine eigene, engere Trefferfläche als das Maß insgesamt.
 
 ### Ziel
 

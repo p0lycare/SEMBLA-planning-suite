@@ -104,6 +104,17 @@
   .gp-zeile .warn{color:#c0392b}
   .gp-liste-leer,.gp-liste-fuss{color:var(--sb-muted);font-size:11px;line-height:1.45}
   .gp-liste-fuss{margin-top:7px;border-top:1px solid var(--sb-line);padding-top:6px}
+
+  /* Inline-Eingabe an der Masszahl (#51, Paket 2). Wie die Bauteilliste liegt sie
+     NEBEN der Buehne im Markup und nur optisch darueber: `render()` schreibt die
+     Buehne komplett neu, ein Feld darin verloere bei jedem Neuzeichnen Fokus,
+     Auswahl und Ereignisbehandler. Positioniert wird es je `render()` an der
+     dargestellten Masszahl. */
+  .gp-inline{position:absolute;z-index:7;width:104px;margin:0;transform:translate(-50%,-50%);
+             border:1px solid var(--sb-accent);border-radius:6px;padding:3px 5px;font-size:12px;
+             text-align:center;background:#fff;box-shadow:0 4px 14px rgba(20,32,46,.28)}
+  .gp-inline[hidden]{display:none}
+  .gp-inline.fehler{border-color:#c0392b;background:#fdecec;color:#c0392b}
 </style>
 </head>
 <body>
@@ -160,6 +171,13 @@
       Achse gegen den Geschossursprung fest — für beide Achsen zweimal anwenden ([K-4]). Ein
       <b>Längenmaß</b> zwischen den Stirnkanten derselben Wand treibt die Länge und muss ein
       Vielfaches von 125&nbsp;mm sein ([K-11]); das Wandelement bleibt unberührt ([L-3]).</div>
+    <div class="hint"><b>Direkt in der Zeichnung:</b> ein <b>Doppelklick</b> auf die Maßzahl öffnet
+      das Eingabefeld an Ort und Stelle — <b>Enter</b> übernimmt, <b>Escape</b> verwirft, ein
+      <b>Fokusverlust</b> übernimmt einen gültigen Wert. Ein ungültiger Wert ändert <b>nichts</b> und
+      bleibt rot markiert stehen. Mit dem Werkzeug <b>Auswählen &amp; ziehen</b> lässt sich die
+      Maßzahl außerdem <b>verschieben</b>: das ist <b>reine Darstellung</b> und ändert weder den
+      Maßwert noch die Maßlinie oder eine Wandlage. Beides ist einzeln
+      <b>rückgängig</b> zu machen.</div>
 
     <h3>Rückgängig</h3>
     <div class="row">
@@ -244,6 +262,12 @@
     <!-- Schwebende Bauteilliste: bewusst NEBEN der Buehne im Markup, nur optisch
          darueber. Sie ist Anzeige und Auswahl — verortet wird mit „Wand zeichnen". -->
     <div class="gp-liste" id="gp-liste"></div>
+    <!-- Inline-Eingabe des Maßwerts (#51): sitzt beim Bearbeiten genau auf der
+         dargestellten Maßzahl. Sie ist reine Bedienoberfläche über dem VORHANDENEN
+         Schreibweg (`bemSetzen` → `speichereBemassung`) — kein zweiter fachlicher
+         Bearbeitungspfad und keine eigene Maßsemantik ([K-3]/[K-12]). -->
+    <input class="gp-inline" id="gp-inline" type="text" inputmode="numeric" hidden
+           aria-label="Maß in Millimetern" title="Enter übernimmt · Escape verwirft">
     <div class="gp-status" id="gp-status"></div>
   </div>
 </div>
@@ -325,6 +349,11 @@ const GP = {
   bem: null,                  // { achse, von:{wand,bezug}, bis:{wand,bezug}|null }
   bemHover: null,             // Bezug unter dem Zeiger (nur Rückmeldung, §4.3)
   bemAktiv: null,             // Kennung eines gewählten, vorhandenen Maßes
+  // Beschriftung ziehen und Maßwert inline eingeben (#51, Paket 2). Beides ist
+  // Bedienung: `labelZieh` hält den laufenden Zug (gespeichert wird erst bei
+  // `pointerup`, und nur wenn wirklich gezogen wurde), `inline` das offene Feld.
+  labelZieh: null,            // { id, von:{x,y}, delta:{x,y}, bewegt }
+  inline: null,               // { id, laeuft } während der Inline-Eingabe
   undo: [], redo: [],         // Rückgängig-Stapel (nur Projektmappe, s. `buchen`)
   undoFuer: undefined,        // Geschoss, zu dem die Stapel gehören
 };
@@ -791,6 +820,13 @@ function alleBezuege(erg){
 /** Halber Fangradius für Bezüge und Maßlinien, in Schirmpixeln. */
 const FANG_PX = 7;
 
+/**
+ * Ab wie vielen Schirmpixeln Bewegung aus dem Drücken ein ZUG wird (#51). Sie
+ * trennt Einfachklick und Doppelklick sauber vom Ziehen: darunter bleibt es
+ * Auswahl, es wird nichts gespeichert und kein Rückgängig-Schritt gebucht.
+ */
+const ZUG_SCHWELLE_PX = 3;
+
 /** Abstand eines Weltpunkts zu einem Bezug, oder `null` außerhalb seiner Ausdehnung. */
 function bezugAbstand(p, b, luft){
   const laengs = b.achse === 'x' ? p.y : p.x;
@@ -862,16 +898,44 @@ function bemEndpunkt(p, achse, erg){
   return { wert, quer: achse === 'x' ? (r.y_min + r.y_max) / 2 : (r.x_min + r.x_max) / 2 };
 }
 
-/** Geometrie einer Bemaßung in Weltkoordinaten. `null` = nicht darstellbar. */
+/**
+ * Geometrie einer Bemaßung in Weltkoordinaten. `null` = nicht darstellbar.
+ *
+ * `text_mm` ist seit #51 **ausschließlich die Beschriftungsposition** — ein
+ * Versatz der dargestellten Maßzahl in mm, in Weltkoordinaten (x/y), und damit
+ * unabhängig von Achse und Zoom. Die **Maßlinie** und ihre Hilfslinien bleiben,
+ * wo die Geometrie sie hinlegt: das Verschieben von Maßlinien oder Bezugspunkten
+ * ist ausdrücklich **nicht** vorgesehen, und ein Darstellungsfeld darf die
+ * Maßsemantik nicht durch die Hintertür ändern. Fehlt `text_mm` (der gesamte
+ * Bestand), ist der Versatz 0 und alles steht bitgenau wie zuvor.
+ */
 function bemGeometrie(bm, idx, erg){
   const n = CON.normBemassung(bm);
   if (!CON.ACHSEN.includes(n.achse) || !n.bis) return null;
   const v = bemEndpunkt(n.von, n.achse, erg), b = bemEndpunkt(n.bis, n.achse, erg);
   if (!v || !b) return null;
-  const versatz = (n.text_mm ? Number(n.text_mm[CON.andereAchse(n.achse)]) || 0 : 0)
-    + MASS_ABSTAND_MM * (idx + 1);
+  const t = n.text_mm || { x: 0, y: 0 };
   return { id: n.id, achse: n.achse, v1: v.wert, v2: b.wert, q1: v.quer, q2: b.quer,
-           q: Math.max(v.quer, b.quer) + versatz, mass: n.mass_mm };
+           q: Math.max(v.quer, b.quer) + MASS_ABSTAND_MM * (idx + 1), mass: n.mass_mm,
+           versatz: { x: Number(t.x) || 0, y: Number(t.y) || 0 } };
+}
+
+/**
+ * Die EINE Quelle der Beschriftungslage — Zeichnen, Treffen, Ziehen und die
+ * Inline-Eingabe leiten alle daraus ab, damit sie nie auseinanderlaufen.
+ * `anker` ist der Punkt auf der Maßlinie samt gespeichertem Versatz, `mitte`
+ * die Mitte der dargestellten Zahl (sie steht über der Linie). Ein **laufender**
+ * Zug wird hier aufgeschlagen — das ist die Live-Nachführung und noch nichts
+ * Gespeichertes.
+ */
+function bemText(g){
+  const zug = (GP.labelZieh && GP.labelZieh.bewegt && GP.labelZieh.id === g.id)
+    ? GP.labelZieh.delta : { x: 0, y: 0 };
+  const laengs = (g.v1 + g.v2) / 2;
+  const x = (g.achse === 'x' ? laengs : g.q) + g.versatz.x + zug.x;
+  const y = (g.achse === 'x' ? g.q : laengs) + g.versatz.y + zug.y;
+  const hoch = 10 * V.mm;
+  return { anker: { x, y }, mitte: g.achse === 'x' ? { x, y: y - hoch } : { x: x - hoch, y } };
 }
 
 /**
@@ -882,8 +946,36 @@ function bemGeometrie(bm, idx, erg){
  */
 const MASSTEXT_PX = 18;
 
+/**
+ * Halbe Kantenlängen der Trefferfläche der dargestellten Maßzahl in Schirmpixeln:
+ * längs der Schrift breit, quer dazu knapp die Zeilenhöhe. Sie ist bewusst ENGER
+ * als `bemTreffer` — nur hier beginnt ein Zug an der Beschriftung (#51), damit ein
+ * Klick auf die Maßlinie weiterhin ausschließlich auswählt.
+ */
+const MASSTEXT_HALB_PX = { laengs: 34, quer: 9 };
+
+/** Nur die dargestellte Maßzahl unter einem Weltpunkt (die zuletzt gezeichnete gewinnt). */
+function bemTextTreffer(p, erg){
+  const liste = bemassungen();
+  for (let i = liste.length - 1; i >= 0; i--) {
+    const g = bemGeometrie(liste[i], i, erg);
+    if (!g) continue;
+    const t = bemText(g).mitte;
+    // Die Zahl der y-Achse ist um −90° gedreht: längs und quer tauschen die Seiten.
+    const hx = (g.achse === 'x' ? MASSTEXT_HALB_PX.laengs : MASSTEXT_HALB_PX.quer) * V.mm;
+    const hy = (g.achse === 'x' ? MASSTEXT_HALB_PX.quer : MASSTEXT_HALB_PX.laengs) * V.mm;
+    if (Math.abs(p.x - t.x) <= hx && Math.abs(p.y - t.y) <= hy) return liste[i].id;
+  }
+  return null;
+}
+
 /** Bemaßung unter einem Weltpunkt (die zuletzt gezeichnete gewinnt). */
 function bemTreffer(p, erg){
+  // Die Beschriftung liegt obenauf und wird zuerst geprüft — sonst wäre ein
+  // verschobenes Label (#51) nicht mehr anklickbar, weil es nicht länger über
+  // seiner Maßlinie steht.
+  const amText = bemTextTreffer(p, erg);
+  if (amText) return amText;
   const luft = FANG_PX * V.mm;
   const liste = bemassungen();
   for (let i = liste.length - 1; i >= 0; i--) {
@@ -904,9 +996,7 @@ function bemTextPunkt(id){
   const i = liste.findIndex(b => b.id === id);
   if (i < 0) return null;
   const g = bemGeometrie(liste[i], i, erg);
-  if (!g) return null;
-  const m = (g.v1 + g.v2) / 2, q = g.q - 10 * V.mm;
-  return g.achse === 'x' ? { x: m, y: q } : { x: q, y: m };
+  return g ? bemText(g).mitte : null;
 }
 
 /** Ein Maß als Maßlinie mit Hilfslinien und Text. Rot bei Widerspruch ([K-6]/[K-8]). */
@@ -924,8 +1014,9 @@ function bemassungSvg(bm, idx, erg){
     `M${pt(g.v2, g.q2)}L${pt(g.v2, g.q + tick)}`,          // Hilfslinie am Ziel
     `M${pt(g.v1, g.q)}L${pt(g.v2, g.q)}`,                  // Maßlinie
   ].join('');
-  const mitte = (g.v1 + g.v2) / 2;
-  const tx = g.achse === 'x' ? mitte : g.q, ty = g.achse === 'x' ? g.q : mitte;
+  // Die Zahl folgt `text_mm` (und einem laufenden Zug), die Maßlinie oben nicht.
+  const anker = bemText(g).anker;
+  const tx = anker.x, ty = anker.y;
   const dreh = g.achse === 'y' ? ` transform="rotate(-90 ${r2(tx)} ${r2(ty)})"` : '';
   return `<g class="bemassung${streit ? ' streit' : ''}${doppelt ? ' redundant' : ''}`
     + `${gewaehlt ? ' gewaehlt' : ''}" data-bemassung="${esc(g.id)}">`
@@ -1150,6 +1241,7 @@ function render(){
       + '<a href="index.html">Projektplaner</a> ein Geschoss aktiv setzen und „Geschoss öffnen“ '
       + 'wählen.</div></div>';
     $('gp-status').innerHTML = '<span>Kein aktives Geschoss.</span>';
+    inlineSchliesse();
     kopfSync();
     return;
   }
@@ -1170,9 +1262,22 @@ function render(){
     + (GP.pan ? ' zieht' : GP.werkzeug === 'wand' ? ' zeichnet'
       : GP.werkzeug === 'plan' ? ' schiebt'
       : (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') ? ' zeichnet' : '');
+  inlineSync();
   statusSync(erg, koll);
   listeSync(erg, koll);
   kopfSync();
+}
+
+/**
+ * Die Inline-Eingabe an den neu gezeichneten Stand angleichen (#51): sie wird
+ * nicht neu erzeugt — dann verlöre sie Fokus und Auswahl —, sondern nur an die
+ * Maßzahl gesetzt. Ist das Maß inzwischen weg oder nicht mehr darstellbar,
+ * schließt sie sich, statt über dem Nichts zu schweben.
+ */
+function inlineSync(){
+  if (!GP.inline) { const f = $('gp-inline'); if (f) f.hidden = true; return; }
+  if (!bemassungen().some(b => b.id === GP.inline.id)) { inlineSchliesse(); return; }
+  inlineStelle();
 }
 
 // ---------------------------------------------------------------------------
@@ -1735,6 +1840,131 @@ function loescheBemassungJetzt(id){
 }
 
 /**
+ * Die verschobene Beschriftung speichern (#51). `text_mm` ist **reine
+ * Darstellung**: geschrieben wird ausschließlich dieses Feld, über denselben
+ * `MAPPE.setzeBemassung`-Weg wie jeder Maßwert — Maßwert, Maßlinie, Bezüge und
+ * jede Wandlage bleiben unangetastet, der Löser sieht das Feld nie ([K-5]).
+ * Gebucht wird ein ganz normaler Rückgängig-Schritt ([K-10]).
+ */
+function speichereTextVersatz(id, delta){
+  const gs = geschoss();
+  const b = gs ? bemassungen().find(x => x.id === id) : null;
+  if (!b) { zeige('Beschriftung nicht verschoben: das Maß gibt es nicht mehr.', false); return false; }
+  const n = CON.normBemassung(b);
+  const alt = n.text_mm || { x: 0, y: 0 };
+  const text_mm = { x: r2(alt.x + delta.x), y: r2(alt.y + delta.y) };
+  const vor = mappenStand();
+  try { store.aendereMappe(m => MAPPE.setzeBemassung(m, gs.id, { ...n, text_mm })); }
+  catch (e) { zeige('Beschriftung nicht verschoben: ' + fehlerText(e), false); return false; }
+  buchen(vor, []);
+  zeige(`Beschriftung von Maß „${id}“ verschoben (${text_mm.x} / ${text_mm.y} mm). Das ist reine `
+    + `Darstellung — Maßwert (${n.mass_mm} mm), Maßlinie und Wandlagen sind unverändert.`, true);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+//  Inline-Eingabe des Maßwerts an der Maßzahl (#51, Paket 2)
+// ---------------------------------------------------------------------------
+// Das Feld ist reine Bedienoberfläche. Übernommen wird ausschließlich über den
+// VORHANDENEN Schreibweg: `waehleBemassung` → Feld „Maß“ → `bemSetzen()` →
+// `speichereBemassung()`. Damit gelten Prüfung ([K-12]), Längenmaß ([K-11]),
+// Widerspruch/Redundanz ([K-6]/[K-7]) und Rückgängig unverändert, und es gibt
+// keinen zweiten fachlichen Bearbeitungspfad.
+
+/** Das Feld an die dargestellte Maßzahl setzen (Zoom und Blick verschieben sie). */
+function inlineStelle(){
+  const feld = $('gp-inline');
+  if (!GP.inline || !feld) return;
+  const p = bemTextPunkt(GP.inline.id);
+  if (!p) { inlineSchliesse(); return; }
+  const s = schirmPunkt(p), f = flaeche();
+  feld.style.left = r2(s.x - f.links) + 'px';
+  feld.style.top = r2(s.y - f.oben) + 'px';
+}
+
+/** Die Inline-Eingabe an einem Maß öffnen — mit vorausgewähltem aktuellem Wert. */
+function inlineOeffne(id){
+  const b = bemassungen().find(x => x.id === id);
+  const feld = $('gp-inline');
+  if (!b || !feld) return false;
+  GP.inline = { id, laeuft: false };
+  feld.value = String(b.mass_mm);
+  feld.className = 'gp-inline';
+  feld.hidden = false;
+  inlineStelle();
+  if (typeof feld.focus === 'function') feld.focus();
+  if (typeof feld.select === 'function') feld.select();
+  return true;
+}
+
+/** Das Feld schließen, ohne irgendetwas zu speichern. */
+function inlineSchliesse(){
+  GP.inline = null;
+  const feld = $('gp-inline');
+  if (!feld) return;
+  feld.hidden = true;
+  feld.className = 'gp-inline';
+  feld.value = '';
+}
+
+/**
+ * Übernahme aus dem Feld. Ungültige Eingaben ändern **nichts** — sie werden vom
+ * vorhandenen Weg begründet gemeldet (`zeige`) und bleiben im rot markierten Feld
+ * stehen, statt still verworfen oder gerundet zu werden ([K-12]/[P-9]).
+ */
+function inlineUebernehmen(){
+  if (!GP.inline || GP.inline.laeuft) return false;
+  const id = GP.inline.id, feld = $('gp-inline');
+  // Enter schließt das Feld und löst dabei im Browser zusätzlich `blur` aus —
+  // ohne diese Sperre liefe die Übernahme zweimal.
+  GP.inline.laeuft = true;
+  const roh = String(feld.value || '').trim().replace(',', '.');
+  // Unverändert ist keine Änderung: sonst buchte jedes bloße Wegklicken vom Feld
+  // einen Rückgängig-Schritt, der nichts zurücknimmt.
+  const b = bemassungen().find(x => x.id === id);
+  if (b && roh !== '' && Number(roh) === b.mass_mm) {
+    GP.inline.laeuft = false;
+    inlineSchliesse();
+    zeige(`Maß „${id}“ unverändert: ${b.mass_mm} mm — es wurde nichts geschrieben.`, true);
+    render();
+    return true;
+  }
+  let ok = false;
+  try {
+    if (waehleBemassung(id)) {
+      $('gp-bem-wert').value = roh;
+      ok = bemSetzen() === true;
+    }
+  } finally { if (GP.inline) GP.inline.laeuft = false; }
+  if (ok || !bemassungen().some(b => b.id === id)) inlineSchliesse();
+  else feld.className = 'gp-inline fehler';
+  render();
+  return ok;
+}
+
+/** Tastatur im Feld: Enter übernimmt, Escape verwirft — sonst nichts. */
+function inlineTaste(ev){
+  const k = ev && ev.key;
+  // Die Tastenkürzel der Seite (W/D/F/R, Escape, Strg+Z) dürfen hier nicht
+  // greifen: im Feld wird geschrieben, nicht das Werkzeug gewechselt.
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (k === 'Enter') {
+    if (ev.preventDefault) ev.preventDefault();
+    inlineUebernehmen();
+  } else if (k === 'Escape') {
+    if (ev.preventDefault) ev.preventDefault();
+    inlineSchliesse();
+    zeige('Eingabe verworfen — das Maß ist unverändert ([K-3]).', true);
+    render();
+  }
+}
+
+/** Fokusverlust übernimmt einen gültigen Wert; ein ungültiger bleibt sichtbar stehen. */
+function inlineBlur(){
+  if (GP.inline && !GP.inline.laeuft) inlineUebernehmen();
+}
+
+/**
  * Fixieren: der Abstand des angeklickten Bezugs zum EINZIGEN Geschossursprung wird
  * als ganz normale Bemaßung `von: null` gespeichert ([K-4]) — es gibt keine zweite
  * Fixierungsstruktur. Festgesetzt wird genau die Achse dieses Bezugs; für die
@@ -1821,23 +2051,30 @@ function bemKlick(p){
 
 function namenRoh(id){ const w = wand(id); return w ? (w.name || id) : id; }
 
-/** „Maß setzen“: entweder ein gewähltes Maß ändern oder die laufende Bemaßung abschließen. */
+/**
+ * „Maß setzen“: entweder ein gewähltes Maß ändern oder die laufende Bemaßung
+ * abschließen. Der EINE Schreibweg für Maßwerte — der Knopf der Leiste und die
+ * Inline-Eingabe an der Maßzahl (#51) laufen beide hier durch. `true` = wirklich
+ * gespeichert; jede Ablehnung ist begründet gemeldet und lässt die Daten unberührt.
+ */
 function bemSetzen(){
   const s = String($('gp-bem-wert').value || '').trim();
   const v = Number(s.replace(',', '.'));
-  if (!s || !Number.isFinite(v)) { zeige('Das Maß muss eine Zahl in Millimetern sein ([K-12]).', false); return; }
+  if (!s || !Number.isFinite(v)) { zeige('Das Maß muss eine Zahl in Millimetern sein ([K-12]).', false); return false; }
   if (!Number.isInteger(v)) {
     zeige(`${v} mm ist nicht ganzzahlig — Bemaßungen stehen ganzzahlig in Millimetern ([K-12]). `
       + 'Gerundet wird nichts.', false);
-    return;
+    return false;
   }
   const gewaehlt = GP.bemAktiv ? bemassungen().find(b => b.id === GP.bemAktiv) : null;
   if (gewaehlt) {
-    speichereBemassung({ ...CON.normBemassung(gewaehlt), mass_mm: v }, `Maß „${gewaehlt.id}“ geändert`);
-    return;
+    // `normBemassung` führt `text_mm` mit: die Beschriftungsposition überlebt eine
+    // Wertänderung, und der Wert überlebt eine Verschiebung ([K-3] bleibt getrennt).
+    return speichereBemassung({ ...CON.normBemassung(gewaehlt), mass_mm: v },
+      `Maß „${gewaehlt.id}“ geändert`);
   }
-  if (!GP.bem || !GP.bem.bis) { zeige('Erst zwei parallele Bezüge anklicken ([K-2]).', false); return; }
-  speichereBemassung({
+  if (!GP.bem || !GP.bem.bis) { zeige('Erst zwei parallele Bezüge anklicken ([K-2]).', false); return false; }
+  return speichereBemassung({
     id: MAPPE.neueId('bm'), achse: GP.bem.achse, von: GP.bem.von, bis: GP.bem.bis, mass_mm: v,
   }, 'Maß gesetzt');
 }
@@ -1861,20 +2098,24 @@ function beiKlick(ev){
 
 /**
  * Doppelklick auf ein Maß — wie im CAD öffnet die dargestellte **Maßzahl** die
- * Bearbeitung genau dieses Maßes. Benutzt wird ausschließlich der **vorhandene**
- * Weg (`waehleBemassung` + das Feld „Maß“ + „Maß setzen“): kein zweiter
- * Bearbeitungspfad, keine geänderte Maßsemantik, und gespeichert wird hier gar
- * nichts ([K-3]). Das **Werkzeug wechselt ausdrücklich nicht** — ein Doppelklick
- * ist Bedienung an einem Objekt, keine Moduswahl.
+ * Bearbeitung genau dieses Maßes. Seit #51 geschieht das **an Ort und Stelle**:
+ * das Eingabefeld sitzt auf der Maßzahl, der aktuelle Wert steht vorausgewählt
+ * darin. Geschrieben wird trotzdem ausschließlich über den **vorhandenen** Weg
+ * (`waehleBemassung` + das Feld „Maß“ + `bemSetzen`) — kein zweiter
+ * Bearbeitungspfad, keine geänderte Maßsemantik, und der Doppelklick selbst
+ * speichert nach wie vor gar nichts ([K-3]). Das **Werkzeug wechselt
+ * ausdrücklich nicht** — ein Doppelklick ist Bedienung an einem Objekt, keine
+ * Moduswahl. Ein zwischen den beiden Klicks entstandener Zug ist keiner: die
+ * Schwelle in `beiZeigerBewegung` verhindert, dass ein Doppelklick nebenbei die
+ * Beschriftung verschiebt.
  */
 function beiDoppelklick(ev){
   if (!geschoss()) return;
   const id = bemTreffer(weltPunkt(ev.clientX, ev.clientY), loesen());
   if (!id) return;
+  GP.labelZieh = null;
   if (!waehleBemassung(id)) return;
-  const feld = $('gp-bem-wert');
-  if (feld && typeof feld.focus === 'function') feld.focus();
-  if (feld && typeof feld.select === 'function') feld.select();
+  inlineOeffne(id);
   if (ev.preventDefault) ev.preventDefault();
   render();
 }
@@ -1920,6 +2161,21 @@ function beiZeigerAb(ev){
   }
   if (GP.werkzeug !== 'auswahl') return;
   const welt = weltPunkt(ev.clientX, ev.clientY);
+  // Die dargestellte Maßzahl liegt obenauf und wird deshalb ZUERST geprüft (#51).
+  // Das Drücken darauf WÄHLT das Maß — wie bisher jeder Klick auf ein Maß —, merkt
+  // sich aber zusätzlich den Startpunkt. Ob daraus ein Zug wird, entscheidet erst
+  // die Bewegung: ein Klick ohne Zug schreibt nichts und bucht keinen Schritt.
+  // Mit Umschalt/Strg geht es um die Wandauswahl, dann bleibt das Label außen vor.
+  if (!(ev.shiftKey || ev.ctrlKey || ev.metaKey)) {
+    const lid = bemTextTreffer(welt, loesen());
+    if (lid) {
+      waehleBemassung(lid);
+      GP.labelZieh = { id: lid, von: welt, delta: { x: 0, y: 0 }, bewegt: false };
+      if (ev.preventDefault) ev.preventDefault();
+      render();
+      return;
+    }
+  }
   // Die Griffe der aktiven Wand haben Vorrang vor ihrem Körper: die beiden
   // Endgriffe ändern die LÄNGE, der Mittelgriff (und der Körper) verschieben.
   // Mit Umschalt/Strg geht es um die AUSWAHL, nicht ums Bearbeiten — dann haben
@@ -1959,6 +2215,19 @@ function beiZeigerBewegung(ev){
     $('gp-vy').value = String(Math.round(GP.planZieh.vy + (ev.clientY - GP.planZieh.y) * V.mm));
     return;
   }
+  if (GP.labelZieh) {
+    const welt = weltPunkt(ev.clientX, ev.clientY);
+    const d = { x: welt.x - GP.labelZieh.von.x, y: welt.y - GP.labelZieh.von.y };
+    // Aus dem Drücken wird erst ab einer Schwelle ein Zug. Ohne sie machte schon
+    // das Zittern eines einfachen Klicks — und jeder Doppelklick — aus der
+    // Auswahl eine gespeicherte Verschiebung.
+    if (!GP.labelZieh.bewegt
+      && Math.max(Math.abs(d.x), Math.abs(d.y)) < ZUG_SCHWELLE_PX * V.mm) return;
+    GP.labelZieh.bewegt = true;
+    GP.labelZieh.delta = d;
+    render();                                   // Live-Nachführung der Beschriftung
+    return;
+  }
   if (GP.groesse) {
     GP.groesse.zeiger = weltPunkt(ev.clientX, ev.clientY);
     render();                                   // Vorschau der neuen Länge
@@ -1992,6 +2261,14 @@ function beiZeigerAuf(){
   if (GP.planZieh) {
     GP.planZieh = null;
     versatzUebernehmen();
+    return;
+  }
+  if (GP.labelZieh) {
+    const z = GP.labelZieh;
+    GP.labelZieh = null;
+    // Gespeichert wird erst hier — und nur, wenn wirklich gezogen wurde (#51).
+    if (z.bewegt) speichereTextVersatz(z.id, z.delta);
+    render();
     return;
   }
   if (GP.groesse) { groesseFertig(); return; }
@@ -2139,6 +2416,8 @@ function werkzeug(name){
   GP.zeichnen = null;
   GP.groesse = null;
   GP.bemHover = null;
+  GP.labelZieh = null;                          // ein laufender Zug an der Beschriftung ebenso wenig
+  inlineSchliesse();                            // … und die offene Inline-Eingabe (nichts gespeichert)
   bemAbbrechen(true);                           // eine laufende Bemaßung überlebt den Werkzeugwechsel nicht
   render();
 }
@@ -2159,6 +2438,11 @@ function binde(){
   buehne.addEventListener('pointerup', beiZeigerAuf);
   buehne.addEventListener('pointerleave', beiZeigerAuf);
   buehne.addEventListener('dblclick', beiDoppelklick);
+  // Inline-Eingabe an der Maßzahl (#51): Enter/Escape bleiben IM Feld (kein
+  // Werkzeugwechsel), der Fokusverlust übernimmt einen gültigen Wert.
+  const inline = $('gp-inline');
+  inline.addEventListener('keydown', inlineTaste);
+  inline.addEventListener('blur', inlineBlur);
   // Bauteilliste: ein einziger Behandler am festen Panel, die Zeilen darin werden
   // bei jedem `render()` neu geschrieben.
   $('gp-liste').addEventListener('click', (ev) => {
@@ -2252,6 +2536,9 @@ function beiTaste(ev){
   if (ev.key === ' ') { GP.raumTaste = true; return; }
   if (ev.key === 'Escape') {
     if (!$('kal-overlay').hidden) { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); return; }
+    // Eine offene Inline-Eingabe verwirft Escape zuerst — auch dann, wenn das Feld
+    // nach einer abgelehnten Eingabe den Fokus verloren hat (#51).
+    if (GP.inline) { inlineSchliesse(); zeige('Eingabe verworfen — das Maß ist unverändert ([K-3]).', true); render(); return; }
     if (GP.zeichnen) { GP.zeichnen = null; zeige('Zeichnen verworfen — nichts angelegt.', true); render(); return; }
     if (GP.groesse) { GP.groesse = null; zeige('Größenänderung verworfen — die Länge bleibt.', true); render(); return; }
     if (bemAbbrechen()) { render(); return; }
@@ -2308,6 +2595,19 @@ window.__gp = {
   },
   /** Mitte der dargestellten Maßzahl als Weltpunkt — dort klickt auch die Maus. */
   bemTextPunkt,
+  /** Nur die Maßzahl (enger als `bemTreffer`) — dort beginnt der Zug (#51). */
+  bemTextTreffer: (welt) => bemTextTreffer(welt, loesen()),
+  /** Die Inline-Eingabe: dieselben Behandler wie Tastatur und Fokus im Browser. */
+  inlineTaste: (key) => inlineTaste({ key, preventDefault(){}, stopPropagation(){} }),
+  inlineBlur,
+  get inlineStand(){
+    const f = $('gp-inline');
+    return { offen: !!GP.inline, id: GP.inline ? GP.inline.id : null,
+             sichtbar: !f.hidden, wert: f.value, klasse: f.className,
+             fokus: typeof f.fokus === 'boolean' ? f.fokus : (document.activeElement === f),
+             markiert: !!f.markiert,
+             links: f.style.left, oben: f.style.top };
+  },
   /** Klick auf eine Zeile der Bauteilliste (im Browser der delegierte Behandler). */
   listeKlick,
   /** Wand aktiv setzen und Modul 1 öffnen — dieselbe Funktion wie beide Knöpfe. */

@@ -33,6 +33,12 @@ class El {
     this.dataset = {}; this.listeners = {}; this.files = [];
   }
   addEventListener(e, f){ (this.listeners[e] || (this.listeners[e] = [])).push(f); }
+  // Fokus und Textauswahl der Inline-Masseingabe (#51): `blur()` laeuft ueber
+  // dieselben Behandler wie im Browser, damit die Uebernahme bei Fokusverlust
+  // wirklich geprueft wird.
+  focus(){ this.fokus = true; }
+  select(){ this.markiert = true; }
+  blur(){ this.fokus = false; this.markiert = false; this.dispatch('blur', { target: this }); }
   dispatch(e, ev){ let r; (this.listeners[e] || []).forEach(f => { r = f(ev || { target: this }); }); return r; }
   get innerHTML(){ return this._h; } set innerHTML(v){ this._h = v; }
   // Die Zeichenflaeche liegt im Test bei 0/0 und ist 1000 × 600 gross — damit sind
@@ -1047,6 +1053,259 @@ ok('#50 es gibt genau EINEN Weg nach Modul 1 — kein zweiter Navigationspfad',
 ok('#50 Projektmappen- und Schemaversion bleiben unveraendert',
   MAPPE.MAPPE_VERSION === 2 && store.SCHEMA_VERSION === 6
   && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+
+// ==========================================================================
+//  Issue #51, Paket 2 — Mass inline bearbeiten, Beschriftung verschieben
+// ==========================================================================
+// Wieder REINE Bedienung und Darstellung. Geprueft wird vor allem, was NICHT
+// passiert: kein zweiter fachlicher Schreibweg (uebernommen wird ausschliesslich
+// ueber `bemSetzen` → `speichereBemassung`), keine verschobene Masslinie, kein
+// angefasster Maßwert beim Ziehen, kein Undo-Schritt ohne echte Aenderung und
+// keine neue Formatversion. `text_mm` ist ausschliesslich die Beschriftungs-
+// position und war im Bestand nie gesetzt.
+
+store.setzeAktivesGeschoss(gs2);
+await warte();
+GP.werkzeug('auswahl');
+GP.zeigeAlles();
+
+const mappeText = () => localStorage.getItem('sembla:projekte');
+const bm51 = (id) => GP.bemassungen().find(b => b.id === id);
+const gVon = (id) => (GP.svg.split('<g class="bemassung')
+  .find(s => s.includes(`data-bemassung="${id}"`)) || '');
+const linieVon = (id) => (gVon(id).match(/<path d="([^"]*)"/) || [, ''])[1];
+const textVon = (id) => (gVon(id).match(/<text x="([^"]*)" y="([^"]*)"/) || [, '', '']).slice(1).join('/');
+const posVon = () => JSON.stringify(GP.loesen().positionen);
+
+const bmX = GP.bemassungen().find(b => b.achse === 'x' && b.mass_mm > 0);
+const bmY = GP.bemassungen().find(b => b.achse === 'y' && b.mass_mm > 0);
+ok('#51 Pruefaufbau: im Geschoss stehen Masse in beiden Achsen, keines mit `text_mm`',
+  !!bmX && !!bmY && GP.bemassungen().every(b => b.text_mm == null));
+
+// --- 27) Das Feld sitzt an der Masszahl, nicht in der Buehne --------------
+ok('#51 die Inline-Eingabe liegt NEBEN der Buehne im Markup (render() schreibt die Buehne neu)',
+  /<div class="gp-buehne" id="gp-buehne"><\/div>/.test(html)
+  && /<input class="gp-inline" id="gp-inline"/.test(html)
+  && html.indexOf('id="gp-inline"') > html.indexOf('id="gp-buehne"')
+  && html.indexOf('id="gp-inline"') < html.indexOf('class="gp-status"'));
+ok('#51 sie ist im Ausgangszustand verborgen und leer',
+  !GP.inlineStand.offen && GP.inlineStand.sichtbar === false);
+
+// --- 28) Doppelklick oeffnet die Eingabe an Ort und Stelle ----------------
+{
+  const punkt = gp('bemTextPunkt', bmX.id);
+  const vorMappe = mappeText(), vorUndo = GP.undoStand.undo;
+  gp('doppeltippe', punkt);
+  const stand = GP.inlineStand;
+  const schirm = gp('schirmPunkt', gp('bemTextPunkt', bmX.id));
+  ok('#51 Doppelklick auf die Masszahl oeffnet das Eingabefeld an genau dieser Stelle',
+    stand.offen && stand.id === bmX.id && stand.sichtbar
+    && stand.links === Math.round(schirm.x * 100) / 100 + 'px'
+    && stand.oben === Math.round(schirm.y * 100) / 100 + 'px');
+  ok('#51 der aktuelle Maßwert steht darin und ist vorausgewaehlt',
+    stand.wert === String(bmX.mass_mm) && stand.fokus === true && stand.markiert === true);
+  ok('#51 der Doppelklick selbst speichert nichts und bucht keinen Schritt ([K-3])',
+    mappeText() === vorMappe && GP.undoStand.undo === vorUndo);
+  ok('#51 … und wechselt das Werkzeug nicht', GP.zustand.werkzeug === 'auswahl');
+}
+
+// --- 29) Enter uebernimmt ueber den VORHANDENEN Schreibweg ----------------
+{
+  const alt = bm51(bmX.id).mass_mm, neu = alt + 125;
+  const vorUndo = GP.undoStand.undo;
+  $('gp-inline').value = String(neu);
+  GP.inlineTaste('Enter');
+  await warte();
+  ok('#51 Enter uebernimmt den Wert — ueber `bemSetzen`, also den einzigen Schreibweg',
+    bm51(bmX.id).mass_mm === neu
+    && MAPPE.bemassungen(store.holeMappe(), gs2).find(b => b.id === bmX.id).mass_mm === neu);
+  ok('#51 … und schliesst das Feld', !GP.inlineStand.offen && !GP.inlineStand.sichtbar);
+  ok('#51 die Wertaenderung ist genau EIN Rueckgaengig-Schritt ([K-10])',
+    GP.undoStand.undo === vorUndo + 1);
+  GP.undo();
+  await warte();
+  ok('#51 Rueckgaengig stellt den alten Maßwert wieder her',
+    bm51(bmX.id).mass_mm === alt && GP.undoStand.undo === vorUndo);
+  GP.redo();
+  await warte();
+  ok('#51 Wiederholen setzt ihn erneut', bm51(bmX.id).mass_mm === neu);
+  GP.undo();
+  await warte();
+}
+
+// --- 30) Escape verwirft, Fokusverlust uebernimmt gueltig -----------------
+{
+  const vorMappe = mappeText(), vorUndo = GP.undoStand.undo;
+  gp('doppeltippe', gp('bemTextPunkt', bmX.id));
+  $('gp-inline').value = '999999';
+  GP.inlineTaste('Escape');
+  ok('#51 Escape verwirft die Eingabe: Feld zu, Projektstand unveraendert',
+    !GP.inlineStand.offen && mappeText() === vorMappe && GP.undoStand.undo === vorUndo);
+}
+{
+  const alt = bm51(bmY.id).mass_mm;
+  gp('doppeltippe', gp('bemTextPunkt', bmY.id));
+  $('gp-inline').value = String(alt + 125);
+  $('gp-inline').blur();
+  await warte();
+  ok('#51 Fokusverlust uebernimmt einen gueltigen Wert',
+    bm51(bmY.id).mass_mm === alt + 125 && !GP.inlineStand.offen);
+  GP.undo();
+  await warte();
+  ok('#51 … und ist ebenfalls rueckgaengig zu machen', bm51(bmY.id).mass_mm === alt);
+}
+
+{
+  // Wegklicken ohne Aenderung ist keine Aenderung — sonst buchte jeder Fokusverlust
+  // einen Rueckgaengig-Schritt, der nichts zuruecknimmt.
+  const vorMappe = mappeText(), vorUndo = GP.undoStand.undo;
+  gp('doppeltippe', gp('bemTextPunkt', bmX.id));
+  $('gp-inline').blur();
+  await warte();
+  ok('#51 ein Fokusverlust ohne Wertaenderung schreibt nichts und bucht keinen Schritt',
+    !GP.inlineStand.offen && mappeText() === vorMappe && GP.undoStand.undo === vorUndo
+    && /unverändert/.test($('gp-msg').textContent));
+}
+
+// --- 31) Ungueltige Eingabe aendert NICHTS und wird benannt ---------------
+for (const [text, muster] of [['abc', /Zahl in Millimetern/], ['12,5', /nicht ganzzahlig/],
+                              ['', /Zahl in Millimetern/]]) {
+  const vorMappe = mappeText(), vorUndo = GP.undoStand.undo;
+  gp('doppeltippe', gp('bemTextPunkt', bmX.id));
+  $('gp-inline').value = text;
+  $('gp-inline').blur();
+  await warte();
+  ok(`#51 „${text || '(leer)'}“ aendert keine Daten und wird verstaendlich gemeldet`,
+    mappeText() === vorMappe && GP.undoStand.undo === vorUndo
+    && muster.test($('gp-msg').textContent) && $('gp-msg').className === 'msg err');
+  ok(`#51 … das Feld bleibt mit „${text || '(leer)'}“ sichtbar rot stehen (nichts still verworfen)`,
+    GP.inlineStand.offen && GP.inlineStand.sichtbar
+    && /fehler/.test(GP.inlineStand.klasse) && GP.inlineStand.wert === text);
+  GP.inlineTaste('Escape');
+}
+
+// --- 32) Die Beschriftung ziehen — reine Darstellung ----------------------
+{
+  const anderes = GP.bemassungen().filter(b => b.id !== bmX.id).map(b => [b.id, gVon(b.id)]);
+  const vorLinie = linieVon(bmX.id), vorText = textVon(bmX.id);
+  const vorPos = posVon(), vorWert = bm51(bmX.id).mass_mm, vorUndo = GP.undoStand.undo;
+  const p0 = gp('bemTextPunkt', bmX.id);
+  ok('#51 die Masszahl hat eine eigene, engere Trefferflaeche als das ganze Mass',
+    GP.bemTextTreffer(p0) === bmX.id
+    && GP.bemTextTreffer(gp('bemPunkt', bmX.id)) === null
+    && GP.bemTreffer(gp('bemPunkt', bmX.id)) === bmX.id);
+
+  GP.ziehe(p0, { x: p0.x + 400, y: p0.y + 300 });
+  await warte();
+  const t = bm51(bmX.id).text_mm;
+  ok('#51 der Zug speichert genau die Beschriftungsposition `text_mm`',
+    !!t && Math.abs(t.x - 400) < 1 && Math.abs(t.y - 300) < 1);
+  ok('#51 Maßwert, Masslinie und alle Wandlagen bleiben unberuehrt (reine Darstellung)',
+    bm51(bmX.id).mass_mm === vorWert && linieVon(bmX.id) === vorLinie && posVon() === vorPos);
+  ok('#51 … die dargestellte Zahl steht dagegen an der neuen Stelle',
+    textVon(bmX.id) !== vorText);
+  ok('#51 [K-5] der Loeser rechnet unveraendert — `text_mm` erreicht ihn nie',
+    JSON.stringify(CON.pruefeGeschoss(gsWaende(), GP.bemassungen()))
+      === JSON.stringify(CON.pruefeGeschoss(gsWaende(),
+        GP.bemassungen().map(b => ({ ...b, text_mm: null })))));
+  ok('#51 Masse ohne `text_mm` behalten ihre automatische Standardposition (bitgenau)',
+    anderes.every(([id, s]) => gVon(id) === s));
+  ok('#51 das verschobene Label ist an seiner neuen Stelle anklickbar',
+    GP.bemTextTreffer(gp('bemTextPunkt', bmX.id)) === bmX.id);
+  ok('#51 die Verschiebung ist genau EIN Rueckgaengig-Schritt',
+    GP.undoStand.undo === vorUndo + 1);
+
+  ok('#51 sie ueberlebt das Neuladen: `text_mm` steht in der Projektmappe',
+    /"text_mm":\{/.test(mappeText())
+    && MAPPE.bemassungen(store.holeMappe(), gs2).find(b => b.id === bmX.id).text_mm.x === t.x);
+
+  GP.undo();
+  await warte();
+  ok('#51 Rueckgaengig holt die Beschriftung an ihren automatischen Platz zurueck',
+    bm51(bmX.id).text_mm == null && textVon(bmX.id) === vorText);
+  GP.redo();
+  await warte();
+  ok('#51 Wiederholen verschiebt sie erneut', bm51(bmX.id).text_mm.x === t.x);
+}
+
+{
+  // Die Zahl der y-Achse ist um −90° gedreht: laengs und quer tauschen die Seiten.
+  // Ohne diese Unterscheidung waere ihre Trefferflaeche um 90° verdreht.
+  const vorLinie = linieVon(bmY.id), vorWert = bm51(bmY.id).mass_mm;
+  const p = gp('bemTextPunkt', bmY.id);
+  ok('#51 auch die gedrehte Zahl der y-Achse hat ihre Trefferflaeche an der Zahl',
+    GP.bemTextTreffer(p) === bmY.id
+    && GP.bemTextTreffer({ x: p.x, y: p.y + 25 * GP.blick.mm }) === bmY.id
+    && GP.bemTextTreffer({ x: p.x + 25 * GP.blick.mm, y: p.y }) === null);
+  GP.ziehe(p, { x: p.x - 500, y: p.y + 200 });
+  await warte();
+  const t = bm51(bmY.id).text_mm;
+  ok('#51 sie laesst sich genauso verschieben, ohne Wert oder Masslinie zu aendern',
+    !!t && Math.abs(t.x + 500) < 1 && Math.abs(t.y - 200) < 1
+    && bm51(bmY.id).mass_mm === vorWert && linieVon(bmY.id) === vorLinie);
+  GP.undo();
+  await warte();
+}
+
+// --- 33) Klick und Doppelklick loesen kein Ziehen aus ---------------------
+{
+  const p = gp('bemTextPunkt', bmX.id);
+  const vorMappe = mappeText(), vorUndo = GP.undoStand.undo;
+  GP.tippe(p);
+  ok('#51 ein Klick OHNE Zug waehlt nur aus — er speichert nichts und bucht nichts',
+    GP.zustand.bemAktiv === bmX.id && mappeText() === vorMappe
+    && GP.undoStand.undo === vorUndo);
+  const winzig = 2 * GP.blick.mm;               // unter der Schwelle von 3 px
+  GP.ziehe(p, { x: p.x + winzig, y: p.y + winzig });
+  await warte();
+  ok('#51 ein Zittern unterhalb der Schwelle bleibt ein Klick',
+    mappeText() === vorMappe && GP.undoStand.undo === vorUndo);
+  gp('doppeltippe', p);
+  ok('#51 ein Doppelklick verschiebt die Beschriftung nicht, sondern oeffnet die Eingabe',
+    GP.inlineStand.offen && mappeText() === vorMappe && GP.undoStand.undo === vorUndo
+    && GP.zustand.labelZieh === null);
+  GP.inlineTaste('Escape');
+}
+
+// --- 34) Wert und Beschriftungsposition stoeren einander nicht ------------
+{
+  const alt = bm51(bmX.id).mass_mm, t = bm51(bmX.id).text_mm;
+  gp('doppeltippe', gp('bemTextPunkt', bmX.id));
+  $('gp-inline').value = String(alt + 125);
+  GP.inlineTaste('Enter');
+  await warte();
+  ok('#51 eine Wertaenderung erhaelt die verschobene Beschriftung',
+    bm51(bmX.id).mass_mm === alt + 125 && bm51(bmX.id).text_mm.x === t.x
+    && bm51(bmX.id).text_mm.y === t.y);
+  GP.undo();
+  await warte();
+}
+{
+  // Der Werkzeugwechsel ist Bedienung: er verwirft die offene Eingabe, ohne zu speichern.
+  gp('doppeltippe', gp('bemTextPunkt', bmX.id));
+  const vorMappe = mappeText();
+  GP.werkzeug('bemassen');
+  ok('#51 ein Werkzeugwechsel schliesst die Eingabe, ohne etwas zu speichern',
+    !GP.inlineStand.offen && !GP.inlineStand.sichtbar && mappeText() === vorMappe);
+  GP.werkzeug('auswahl');
+}
+
+// --- 35) Kein Schema-/Formatbump, kein zweites Massmodell -----------------
+ok('#51 `text_mm` ist ein optionales Darstellungsfeld der VORHANDENEN Bemassung',
+  MAPPE.MAPPE_VERSION === 2 && store.SCHEMA_VERSION === 6
+  && MAPPE.validiereMappe(store.holeMappe()).length === 0
+  && CON.normBemassung({ id: 'x', achse: 'x', von: null, bis: { wand: 'a', bezug: 'min' },
+                         mass_mm: 10 }).text_mm === null);
+ok('#51 geschrieben wird die Beschriftungsposition ueber denselben `setzeBemassung`-Weg',
+  /MAPPE\.setzeBemassung\(m, gs\.id, \{ \.\.\.n, text_mm \}\)/.test(html)
+  && (html.match(/store\.aendereMappe\(m => MAPPE\.setzeBemassung/g) || []).length === 1);
+ok('#51 und der Maßwert weiterhin ausschliesslich ueber `bemSetzen` → `speichereBemassung`',
+  // Genau drei Aufrufstellen: Fixieren und die beiden Zweige von `bemSetzen`.
+  // Die Inline-Eingabe legt KEINE vierte an, sondern ruft `bemSetzen()` auf.
+  (html.match(/speichereBemassung\(\{/g) || []).length === 3
+  && /ok = bemSetzen\(\) === true/.test(html)
+  && !/speichereBemassung\(/.test(html.slice(html.indexOf('function inlineUebernehmen'),
+                                             html.indexOf('function inlineTaste'))));
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }

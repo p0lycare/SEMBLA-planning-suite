@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260810-01",
+    datum: "2026-08-10",
+    typ: "feature",
+    issue: 51,
+    titel: "Layout-Editor: Maße direkt in der Zeichnung eingeben und die Maßzahl frei verschieben",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: Doppelklick auf eine Maßzahl öffnet die Eingabe an "
+      + "Ort und Stelle (Enter übernimmt, Escape verwirft); die Zahl lässt sich außerdem "
+      + "verschieben, ohne dass sich Maßwert oder Maßlinie bewegen.",
+  },
+  {
     id: "chg-20260809-01",
     datum: "2026-08-09",
     typ: "feature",
