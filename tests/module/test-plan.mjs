@@ -144,6 +144,51 @@ t("[L-9] ohne Kalibrierung gibt es keine mm-Lage des Bildes — und keine gescha
     && P.planRahmenMm({ ...p, breite_px: null }, { breite_px: 1600 }).breite === 20000);
 }
 
+// --- [L-9] Vorlaeufiger Anzeigefaktor eines NICHT kalibrierten Plans (#52) --
+// Der Plan soll auch ohne Massstab als Hintergrund sichtbar sein — sonst laesst
+// sich die Kalibrierlinie gar nicht erst in ihn hineinklicken. Der dafuer
+// benutzte Faktor ist ausdruecklich KEIN geschaetzter Massstab: er ist fest
+// 1 Bildpixel = 1 mm, wird NIE gespeichert und traegt das Kennzeichen
+// `vorlaeufig`. `planRahmenMm` bleibt davon voellig unberuehrt.
+t("#52 der vorlaeufige Faktor ist fest 1 mm je Bildpixel (deterministisch, nicht geraten)",
+  P.VORLAEUFIG_MM_JE_PIXEL === 1);
+{
+  const p = { ...ohne, breite_px: 1600, hoehe_px: 1200 };
+  const vr = P.planVorschauRahmen(p);
+  t("#52 unkalibrierter Plan bekommt einen vorlaeufigen Rahmen in Bildpixelgroesse",
+    vr.breite === 1600 && vr.hoehe === 1200 && vr.mm_je_pixel === 1 && vr.vorlaeufig === true);
+  t("#52 der vorlaeufige Rahmen beruecksichtigt den gesetzten Versatz",
+    P.planVorschauRahmen({ ...p, versatz_x_mm: 500, versatz_y_mm: -250 }).x === 500
+    && P.planVorschauRahmen({ ...p, versatz_x_mm: 500, versatz_y_mm: -250 }).y === -250);
+  t("#52 ein KALIBRIERTER Plan hat keinen vorlaeufigen Rahmen (echter Massstab gilt)",
+    P.planVorschauRahmen({ ...p, mm_je_pixel: 12.5 }) === null);
+  const blind = { ...ohne, breite_px: null, hoehe_px: null };
+  t("#52 ohne Bildmasse gibt es auch keinen vorlaeufigen Rahmen — nichts wird erfunden",
+    P.planVorschauRahmen(blind) === null
+    && P.planVorschauRahmen(blind, { breite_px: 800, hoehe_px: 600 }).breite === 800);
+  t("[L-9] der vorlaeufige Faktor faerbt NICHT auf planRahmenMm ab",
+    P.planRahmenMm(p) === null);
+
+  // Die Ansicht waehlt: echter Massstab, sonst vorlaeufig. Genau eine Quelle.
+  const an = P.planAnsichtRahmen(p);
+  t("#52 die Ansicht nimmt ohne Massstab den vorlaeufigen Rahmen",
+    an.vorlaeufig === true && an.mm_je_pixel === 1);
+  t("#52 die Ansicht nimmt mit Massstab den echten Rahmen",
+    P.planAnsichtRahmen({ ...p, mm_je_pixel: 12.5 }).mm_je_pixel === 12.5
+    && P.planAnsichtRahmen({ ...p, mm_je_pixel: 12.5 }).vorlaeufig !== true);
+
+  // Rueckweg fuer die Kalibrierung AUF der mm-Buehne: ein Weltpunkt in mm muss
+  // wieder ein Bildpunkt werden, sonst haengt der Massstab am Zoom.
+  t("#52 Weltpunkt (mm) → Bildpunkt ueber den vorlaeufigen Rahmen",
+    P.rahmenPunktZuPixel(an, { x: 100, y: 250 }).x === 100
+    && P.rahmenPunktZuPixel(an, { x: 100, y: 250 }).y === 250);
+  t("#52 … und ueber den echten Rahmen genauso (Neukalibrierung moeglich)",
+    P.rahmenPunktZuPixel(P.planAnsichtRahmen({ ...p, mm_je_pixel: 12.5, versatz_x_mm: 375 }),
+      { x: 375 + 1000, y: 500 }).x === 80);
+  t("#52 ohne Rahmen gibt es keinen Bildpunkt (kein geratener)",
+    P.rahmenPunktZuPixel(null, { x: 0, y: 0 }) === null);
+}
+
 // --- [L-1] Umrechnung Bild ↔ Raster ---------------------------------------
 const plan = { ...ohne, mm_je_pixel: 12.5, versatz_x_mm: 1000, versatz_y_mm: -500 };
 t("[L-1] Bildpunkt → mm beruecksichtigt den Versatz",

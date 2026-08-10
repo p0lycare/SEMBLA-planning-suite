@@ -1,7 +1,8 @@
 # Geschossplan: UI- und Bedienverbesserungen
 
 **Status:** abgestimmter Umsetzungsplan — **Paket 1 umgesetzt** (Issue #50, 2026-08-09),
-**Paket 2 umgesetzt** (Issue #51, 2026-08-10), Paket 3 noch offen
+**Paket 2 umgesetzt** (Issue #51, 2026-08-10), **Nachtrag Maßstab/Fang umgesetzt** (Issue #52,
+2026-08-10), Paket 3 noch offen
 **Ziel:** Den Geschossplan vereinfachen, Bemaßungen direkt in der Zeichnung bedienbar machen und die Oberfläche kompakter organisieren.
 
 Die Umsetzung erfolgt in drei getrennten, jeweils test- und veröffentlichbaren Paketen.
@@ -128,6 +129,54 @@ Nebenwirkung anordnen, ohne ein separates Maßformular bedienen zu müssen.
   Browser aus echter Eingabe kein `click`/`dblclick` mehr. Der Doppelklick wird deshalb im
   Zeigerstrom erkannt (zwei zuglose Tipps auf dasselbe Maß innerhalb des Doppelklickfensters), und
   der Test darf `beiDoppelklick`/`doppeltippe` nicht direkt aufrufen.
+
+---
+
+## Nachtrag – Maßstab im Editor und allgemeiner Rasterfang  ✅ umgesetzt (Issue #52, 2026-08-10)
+
+Eigener Scope aus Nutzerrückmeldung, **nicht** Teil von Paket 3. Umgesetzt in
+`docs/geschossplan.html` (Kalibriermodus auf der Bühne, vorläufiger Planhintergrund, Fang-Default),
+`docs/shared/sembla-plan.js` (`VORLAEUFIG_MM_JE_PIXEL`, `planVorschauRahmen`, `planAnsichtRahmen`,
+`rahmenPunktZuPixel`) und einem Hinweistext in `docs/index.html`. Regressionsgetestet in
+`tests/module/test-plan.mjs` und `tests/module/smoke_geschossplan.mjs`. **Ohne Schema-/Formatbump**,
+ohne neue Regel-ID; [L-9] ist in der Handbuchquelle um den vorläufigen Anzeigefaktor **präzisiert**.
+
+### Ziel
+
+Den Maßstab dort festlegen, wo gearbeitet wird — mit dem Zoom des Editors —, und den Rasterfang zu
+dem machen, was er fachlich ist: ein einziger allgemeiner Schalter, der nicht ungefragt eingreift.
+
+### Umfang
+
+1. Der modale Kalibriereditor mit eigener Bildpixelansicht entfällt ersatzlos.
+2. Kalibriert wird als Modus **auf der Zeichenfläche**, gestartet links mit „Maßstab aus Plan
+   übernehmen“; reale Länge, Übernehmen, Punkte verwerfen und Abbrechen bleiben im linken Panel.
+3. Zoom, Mausrad, Verschieben und „Alles zeigen“ bleiben während der Punktwahl nutzbar; die Punkte
+   werden sofort als Bildpunkte geführt und sind dadurch blickunabhängig.
+4. Ein noch nicht kalibrierter Plan liegt mit dem **vorläufigen** Faktor 1 Bildpixel = 1 mm als
+   Hintergrund unter der Zeichnung — nie gespeichert, kein geschätzter Maßstab.
+5. Solange unkalibriert, bleibt das 125-mm-Raster aus, und der Zustand wird sichtbar benannt.
+6. Nach der Übernahme wird der Blick einmal auf den vollständigen Inhalt gesetzt.
+7. Der Rasterfang wird zu genau einem allgemeinen Schalter für Zeichnen, Verschieben und
+   Größenziehen aller Wände und startet **aus**.
+
+### Nicht-Ziele
+
+- Kein zweiter Uploadweg, kein PDF-Support, kein Paket-3-Umbau der Bedienflächen.
+- Keine Änderung an Datenmodell, Formatversionen, Löser oder [K]-Regeln.
+- Keine Persistenz von Fang, Zoom, Plan-Sperre oder Kalibrierzustand.
+- Keine Änderung der 0,5-mm-/1-mm-Semantik bei ausgeschaltetem Fang.
+- Kein Objektverschieben des Plans vor der Kalibrierung.
+
+### Abnahme
+
+- Der Plan ist unmittelbar nach dem Upload im Editor sichtbar, ohne Raster und als „nicht
+  kalibriert“ benannt; `mm_je_pixel` bleibt dabei `null`.
+- Zwei Punkte lassen sich bei beliebigem Zoom setzen; ein Zoom zwischen den Punkten ändert den
+  ermittelten Maßstab nicht.
+- Abbrechen und Escape lassen Maßstab, Wandlagen und Undo-Stapel unverändert.
+- Die Zahleneingabe „mm je Bildpixel“ liefert weiterhin dasselbe Ergebnis.
+- Der Rasterfang ist beim Laden aus und wirkt eingeschaltet auf alle drei Wandoperationen.
 
 ---
 

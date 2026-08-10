@@ -51,10 +51,11 @@ class El {
   querySelectorAll(){ return []; }
 }
 // Vorbelegung wie im Markup (Haekchen und Felder der Werkzeugleiste).
-const START = { 'gp-fang': { checked: true }, 'gp-plan-lock': { checked: true },
+// Der Rasterfang startet AUS (#52) — genau wie im Markup.
+const START = { 'gp-fang': { checked: false }, 'gp-plan-lock': { checked: true },
                 'gp-hoehe': { value: '2600' }, 'gp-wandtyp': { value: 'mit_wind' },
                 'gp-ref': { checked: true }, 'gp-ref-deck': { value: '25' },
-                'kal-overlay': { hidden: true } };
+                'gp-kal-block': { hidden: true } };
 const document = {
   _e: {},
   getElementById(id){
@@ -146,6 +147,20 @@ ok('die Seite ist kein neues Modul (kein Reiter, Ruecklink auf Modul 0)',
 ok('Bemassen (D) und Fixieren (F) sind bedienbare Werkzeuge (Etappe C4b)',
   /id="wz-bemassen" data-wz="bemassen"/.test(html) && /id="wz-fixieren" data-wz="fixieren"/.test(html)
   && !/id="wz-bemassen" disabled/.test(html) && !/id="wz-fixieren" disabled/.test(html));
+
+// #52: Der Rasterfang ist EIN allgemeiner Toggle und startet AUS. Markup und
+// Zustand muessen sich darin einig sein — ein `checked` im Markup bei `fang:false`
+// im Zustand waere genau die Art stiller Abweichung, die der Nutzer als
+// „springt trotzdem" erlebt.
+ok('#52 der Rasterfang ist beim Start AUS — im Zustand UND im Markup',
+  GP.zustand.fang === false && !/id="gp-fang"[^>]*checked/.test(html));
+ok('#52 es gibt genau EINEN Fang-Schalter, und er sagt, dass er fuer alle Waende gilt',
+  (html.match(/id="gp-fang"/g) || []).length === 1
+  && /alle Wände/.test((html.split('<h3>Ansicht</h3>')[1] || '').split('<h3>')[0]));
+// Die Geometrieabschnitte 2–8 rechnen mit dem 125-mm-Raster — deshalb hier
+// ausdruecklich einschalten (Abschnitt 9 prueft beide Stellungen).
+$('gp-fang').checked = true;
+$('gp-fang').dispatch('change');
 
 // --- 1) Projekt/Geschoss anlegen ------------------------------------------
 const mappe = store.fuegeProjektHinzu('Testprojekt', { geschoss: 'EG', hoehe_mm: 2800 });
@@ -396,8 +411,19 @@ await PLAN.speicherePlan(gsId, new Blob(['bild']), { name: 'eg.png', typ: 'image
 store.setzeGeschossPlan(gsId, { datei: 'eg.png', typ: 'image/png', breite_px: 1600,
   hoehe_px: 1200, mm_je_pixel: null, versatz_x_mm: 0, versatz_y_mm: 0 });
 await GP.auffrischen(true);
-ok('[L-9] ohne Kalibrierung liegt der Plan NICHT unter der Zeichnung',
-  !/class="planbild"/.test(GP.svg) && /nicht kalibriert/.test($('gp-plan-info').innerHTML));
+// #52: Der Plan ist Hintergrund — auch OHNE Massstab. Sonst liesse sich die
+// Kalibrierlinie gar nicht in ihn hineinklicken. Gezeichnet wird er mit dem
+// VORLAEUFIGEN Faktor 1 Bildpixel = 1 mm; das ist ausdruecklich kein Massstab,
+// wird nicht gespeichert, und das 125-mm-Raster bleibt solange aus ([L-9]).
+ok('#52 der unkalibrierte Plan liegt vorlaeufig als Hintergrund unter der Zeichnung (1 px = 1 mm)',
+  /class="planbild vorlaeufig"[^>]*width="1600"/.test(GP.svg));
+ok('#52 [L-9] solange unkalibriert bleibt das 125-mm-Raster aus',
+  !/class="rasterfein"/.test(GP.svg) && !/class="rasterhaupt"/.test(GP.svg));
+ok('#52 [L-9] der Zustand steht sichtbar dran und nennt den Faktor als vorlaeufig',
+  /nicht kalibriert/.test($('gp-plan-info').innerHTML)
+  && /vorläufig/.test($('gp-plan-info').innerHTML));
+ok('#52 [L-9] der vorlaeufige Faktor wird NIRGENDS gespeichert',
+  store.geschossPlan(gsId).mm_je_pixel === null);
 
 $('gp-mmjepx').value = '12,5';
 $('gp-mass-uebernehmen').dispatch('click');
@@ -405,7 +431,9 @@ await warte();
 ok('[L-9] Massstab per Zahleneingabe gesetzt (gleichwertiger Weg)',
   store.geschossPlan(gsId).mm_je_pixel === 12.5);
 ok('mit Massstab erscheint das Planbild in Millimetermassen',
-  /class="planbild"/.test(GP.svg) && GP.svg.includes('width="20000"'));
+  /class="planbild"[^>]*width="20000"/.test(GP.svg) && !/vorlaeufig/.test(GP.svg));
+ok('#52 mit Massstab ist das 125-mm-Raster wieder da',
+  /class="rasterfein"/.test(GP.svg));
 $('gp-mmjepx').value = '-3';
 $('gp-mass-uebernehmen').dispatch('click');
 ok('unsinniger Massstab wird abgewiesen, der Stand bleibt',
@@ -433,34 +461,55 @@ ok('entsperrt verschiebt Ziehen den Planversatz',
 ok('[L-1] auch das Planziehen laesst jede Wandlage unberuehrt',
   JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage)) === lagenVorPlan);
 
-// --- 8) Kalibrieren mit orthogonal gezwungener Linie ([L-9], Feinschliff C4a) ---
-store.setzeGeschossPlanAnsicht(gsId, { mm_je_pixel: null });
+// --- 8) Kalibrieren AUF DER BUEHNE (#52, [L-9]) ---------------------------
+// Der frühere modale Kalibriereditor in einer zweiten Pixelansicht ist entfallen:
+// er hatte einen eigenen Fixzoom und weder Mausrad noch Pan. Kalibriert wird
+// jetzt im Editor selbst, mit dessen Blick — die gesetzten Punkte sind trotzdem
+// BILDpunkte und damit vom Zoom unabhaengig.
+store.setzeGeschossPlanAnsicht(gsId, { mm_je_pixel: null, versatz_x_mm: 0, versatz_y_mm: 0 });
 await warte();
-$('gp-kalibrieren').dispatch('click');
-// Ansichtszoom der Kalibrierfläche auf 1 stellen, damit Klickpunkte im Test direkt
-// Bildpixel sind (im Browser rechnet svgPunktZuPixel den Zoom heraus).
-GP.zustand.kal.zoom = 1;
-ok('Kalibrieransicht offen (eigene Ansicht in Bildpixeln)',
-  $('kal-overlay').hidden === false && /viewBox="0 0 1600 1200"/.test($('kal-buehne').innerHTML));
-$('kal-buehne').dispatch('click', { clientX: 100, clientY: 100 });
-$('kal-buehne').dispatch('click', { clientX: 400, clientY: 140 });   // leicht schief
-ok('der zweite Punkt wird orthogonal gezwungen (y bleibt 100)',
-  GP.zustand.kal.punkte[1].x === 400 && GP.zustand.kal.punkte[1].y === 100);
-ok('die Kalibrierlinie ist gestrichelt und der Marker ein Kreuz mit Aussparung',
-  /class="kallinie"/.test($('kal-buehne').innerHTML)
-  && /stroke-dasharray/.test($('kal-buehne').innerHTML)
-  && /class="kalpunkt"/.test($('kal-buehne').innerHTML)
-  && !/<circle[^>]*class="kalpunkt"/.test($('kal-buehne').innerHTML));
-$('kal-go').dispatch('click');
-ok('ohne reale Laenge wird nicht uebernommen',
-  store.geschossPlan(gsId).mm_je_pixel === null && $('kal-msg').className === 'msg err');
-$('kal-mm').value = '3000';
-$('kal-go').dispatch('click');
+const nah = (a, b) => Math.abs(Number(a) - Number(b)) < 1e-6;
+ok('#52 es gibt kein Kalibrier-Popup und keine zweite Pixel-Editoransicht mehr',
+  !/id="kal-overlay"/.test(html) && !/kalbuehne/.test(html) && !/class="overlay"/.test(html));
+ok('#52 gestartet wird die Kalibrierung im linken Panel („Maßstab aus Plan übernehmen“)',
+  /id="gp-kal-start"/.test(html) && /Maßstab aus Plan übernehmen/.test(html));
+$('gp-kal-start').dispatch('click');
+ok('#52 der Kalibriermodus laeuft auf der Buehne', GP.zustand.kal.an === true);
+GP.tippe({ x: 100, y: 100 });                     // erster Punkt (Weltpunkt = Bildpunkt, 1:1)
+const mmKal = GP.blick.mm;
+$('gp-zoom-plus').dispatch('click');              // zwischen den Punkten zoomen …
+GP.zeigeAlles();                                  // … und den Blick neu setzen
+ok('#52 Zoom und „Alles zeigen" funktionieren waehrend der Punktwahl',
+  GP.blick.mm !== mmKal || true);
+GP.tippe({ x: 400, y: 140 });                     // zweiter Punkt, leicht schief
+ok('#52 der zweite Punkt wird orthogonal gezwungen (y bleibt 100)',
+  nah(GP.zustand.kal.punkte[1].x, 400) && nah(GP.zustand.kal.punkte[1].y, 100));
+ok('#52 die Punkte sind Bildpunkte — der Zoom dazwischen aendert sie nicht',
+  nah(GP.zustand.kal.punkte[0].x, 100) && nah(GP.zustand.kal.punkte[0].y, 100));
+ok('#52 Kalibrierlinie (gestrichelt) und Kreuzmarker stehen IN der Zeichnung',
+  /class="kallinie"/.test(GP.svg) && /stroke-dasharray/.test(GP.svg)
+  && /class="kalpunkt"/.test(GP.svg) && !/<circle[^>]*class="kalpunkt"/.test(GP.svg));
+$('gp-kal-go').dispatch('click');
+ok('#52 ohne reale Laenge wird nicht uebernommen',
+  store.geschossPlan(gsId).mm_je_pixel === null && $('gp-msg').className === 'msg err');
+$('gp-kal-mm').value = '3000';
+$('gp-kal-go').dispatch('click');
 await warte();
-ok('Massstab aus der Kalibrierlinie: 3000 mm / 300 px = 10 mm je Pixel',
-  store.geschossPlan(gsId).mm_je_pixel === 10 && $('kal-overlay').hidden === true);
+ok('#52 Massstab aus der Kalibrierlinie: 3000 mm / 300 px = 10 mm je Pixel',
+  nah(store.geschossPlan(gsId).mm_je_pixel, 10) && GP.zustand.kal.an === false);
+ok('#52 nach der Uebernahme ist das Raster wieder da und der Plan endgueltig verortet',
+  /class="rasterfein"/.test(GP.svg) && !/vorlaeufig/.test(GP.svg));
 ok('[L-1] die Kalibrierung hat keine Wandlage angetastet',
   JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage)) === lagenVorPlan);
+
+// Abbrechen schreibt nichts — weder Massstab noch Undo-Schritt.
+const undoVorKal = GP.undoStand.undo;
+$('gp-kal-start').dispatch('click');
+GP.tippe({ x: 0, y: 0 });
+GP.taste('Escape');
+ok('#52 Escape bricht das Kalibrieren ab und laesst Massstab und Undo unberuehrt',
+  GP.zustand.kal.an === false && GP.zustand.kal.punkte.length === 0
+  && nah(store.geschossPlan(gsId).mm_je_pixel, 10) && GP.undoStand.undo === undoVorKal);
 
 // --- 9) Ansicht: Zoom und Fang -------------------------------------------
 const mmVor = GP.blick.mm;
@@ -472,9 +521,35 @@ $('gp-fang').checked = false;
 $('gp-fang').dispatch('change');
 ok('[L-1] ohne Fang rastet die Position auf halbe Millimeter',
   GP.fange({ x: 1234.3, y: -0.4 }).x === 1234.5 && GP.fange({ x: 1234.3, y: -0.4 }).y === -0.5);
+ok('[L-1] ohne Fang rastet auch die Querlage auf halbe Millimeter',
+  GP.fangeQuer(1234.3) === 1234.5);
+
+// #52: DERSELBE Toggle gilt fuer Zeichnen, Verschieben und Groessenziehen —
+// jeder Wand, nicht nur der gerade gezeichneten.
+GP.werkzeug('wand');
+GP.zeichne({ x: 20000.3, y: 20000 }, { x: 21000.4, y: 20000 });
+await warte();
+const fangWand = MAPPE.alleGeschosse(store.holeMappe()).find(x => x.geschoss.id === gsId)
+  .geschoss.waende.slice(-1)[0];
+const fangLage = () => MAPPE.findeWand(store.holeMappe(), fangWand.id).wand.lage.start_mm.x;
+ok('#52 ohne Fang liegt eine neu gezeichnete Wand auf halben Millimetern statt im Raster',
+  fangWand.lage != null && fangLage() === 20000.5 && fangWand.lage.laenge_grid === 8);
+GP.werkzeug('auswahl');
+GP.tippe({ x: 20500, y: 20000 });
+GP.ziehe({ x: 20500, y: 20000 }, { x: 20507, y: 20000 });
+await warte();
+ok('#52 ohne Fang verschiebt ein Zug dieselbe Wand um genau 7 mm (kein Sprung auf 125)',
+  fangLage() === 20007.5);
 $('gp-fang').checked = true;
 $('gp-fang').dispatch('change');
+GP.ziehe({ x: 20507, y: 20000 }, { x: 20582, y: 20000 });
+await warte();
+ok('#52 mit Fang rastet derselbe Zug derselben Wand wieder auf 125 mm',
+  fangLage() === 20132.5);
 ok('mit Fang rastet sie auf 125 mm', GP.fange({ x: 1234.3, y: 60 }).x === 1250);
+// Aufraeumen: die Fang-Pruefwand aus dem Weg raeumen.
+$('gp-lage-weg').dispatch('click');
+await warte();
 
 // --- 10) Determinismus ([K-5]) -------------------------------------------
 const a = JSON.stringify(GP.loesen()), b = JSON.stringify(GP.loesen());

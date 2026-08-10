@@ -65,17 +65,11 @@
   .legende span{display:inline-flex;align-items:center;gap:5px;margin-right:9px}
   .legende i{width:11px;height:11px;border-radius:3px;display:inline-block}
 
-  .overlay{position:fixed;inset:0;background:rgba(20,32,46,.5);display:flex;align-items:center;
-           justify-content:center;z-index:60;padding:16px}
-  .overlay[hidden]{display:none}
-  .modal{background:#fff;border-radius:14px;padding:18px 20px;max-width:1000px;width:100%;
-         max-height:92vh;overflow:auto;box-shadow:0 12px 40px rgba(20,32,46,.25)}
-  .modal h3{margin:0 0 4px;font-size:16px}
-  .modal .sub{font-size:12.5px;color:var(--sb-muted);margin:0 0 12px}
-  .modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:14px}
-  .kalbuehne{border:1px solid var(--sb-line);border-radius:9px;background:#f7f9fc;overflow:auto;
-             max-height:56vh;cursor:crosshair}
-  .kalbuehne svg{display:block}
+  /* Kalibrieren (#52): kein Modal, kein zweiter Editor. Der laufende Modus ist
+     ein hervorgehobener Block IM linken Panel; gemessen wird auf der Buehne. */
+  .gp-kal{border:1px solid #1f9d4d;background:#eefaf2;border-radius:9px;padding:8px 9px;margin-top:8px}
+  .gp-kal[hidden]{display:none}
+  .gp-kal .hint{margin-top:6px}
 
   /* Schwebende Bauteilliste (C4c): sie liegt UEBER der Zeichenflaeche, aber nicht
      IN ihr — `render()` schreibt die Buehne komplett neu, ein Panel darin haette
@@ -203,8 +197,12 @@
       <button class="btn-s" id="gp-zoom-plus" title="Hineinzoomen">+</button>
       <button class="btn-s" id="gp-zoom-alles">Alles zeigen</button>
     </div>
-    <label class="chk"><input type="checkbox" id="gp-fang" checked>
-      <span>Fang auf 125-mm-Raster</span></label>
+    <label class="chk"><input type="checkbox" id="gp-fang">
+      <span>Fang auf 125-mm-Raster (gilt für alle Wände)</span></label>
+    <div class="hint">Der Fang ist <b>ein allgemeiner Schalter</b> und beim Start <b>aus</b> (#52): er
+      gilt gleichermaßen fürs <b>Zeichnen</b>, <b>Verschieben</b> und <b>Größenziehen</b> jeder Wand —
+      es gibt keinen wandbezogenen Fang. Aus rasten Positionen weiter auf halbe Millimeter ([L-1]);
+      die <b>Länge</b> bleibt immer im 125-mm-Raster, das ist keine Ansichtsoption.</div>
     <div class="hint">Zoom auf den Zeiger mit dem Mausrad · Verschieben mit <b>Leertaste</b> oder
       mittlerer Maustaste. Das ist nur der <b>Blick</b> — der Planversatz bleibt unberührt ([L-9]).</div>
 
@@ -225,8 +223,29 @@
     <div class="hint" id="gp-plan-info">–</div>
     <label class="chk"><input type="checkbox" id="gp-plan-lock" checked>
       <span>Plan gesperrt (Ziehen bewegt ihn nicht)</span></label>
+    <!-- Maßstab (#52): gemessen wird AUF der Zeichenfläche, mit deren Zoom und
+         Pan — es gibt kein Kalibrier-Popup und keine zweite Pixelansicht mehr.
+         Der Knopf startet nur den Modus; geklickt wird danach im Plan. -->
     <div class="row">
-      <button class="btn-s" id="gp-kalibrieren">Kalibrieren…</button>
+      <button class="btn-s" id="gp-kal-start">Maßstab aus Plan übernehmen</button>
+    </div>
+    <div class="gp-kal" id="gp-kal-block" hidden>
+      <div class="hint" id="gp-kal-status" style="margin-top:0">–</div>
+      <div class="row">
+        <div class="field"><label for="gp-kal-mm">reale Länge der Linie (mm)</label>
+          <input id="gp-kal-mm" class="s" type="number" step="1" min="1" placeholder="z. B. 5000"></div>
+        <button class="btn-p" id="gp-kal-go">Übernehmen</button>
+      </div>
+      <div class="row">
+        <button class="btn-s" id="gp-kal-reset">Punkte verwerfen</button>
+        <button class="btn-s" id="gp-kal-abbruch">Abbrechen (Esc)</button>
+      </div>
+      <div class="hint">Zwei Punkte im Plan anklicken, deren realen Abstand du kennst. Der zweite
+        Punkt wird <b>orthogonal</b> zum ersten gezwungen — schief gemessen verfälscht den Maßstab
+        still. Gemessen wird in <b>Bildpunkten</b>: Zoomen, Verschieben und „Alles zeigen“ ändern das
+        Ergebnis nicht. Es wird <b>kein</b> Maßstab geschätzt ([L-9]).</div>
+    </div>
+    <div class="row">
       <div class="field"><label for="gp-mmjepx">mm je Bildpixel</label>
         <input id="gp-mmjepx" class="s" type="number" step="0.001" min="0" placeholder="z. B. 12,5"></div>
       <button class="btn-s" id="gp-mass-uebernehmen">Setzen</button>
@@ -271,29 +290,10 @@
   </div>
 </div>
 
-<!-- Kalibrieren: eigene Ansicht in BILDPIXELN. Nur hier lassen sich zwei Punkte im Bild
-     anklicken, solange es noch keinen Maßstab gibt — die Zeichenfläche selbst rechnet in
-     Millimetern und kann einen unkalibrierten Plan gar nicht verorten ([L-9]). -->
-<div class="overlay" id="kal-overlay" hidden>
-  <div class="modal">
-    <h3>Plan kalibrieren</h3>
-    <p class="sub">Zwei Punkte im Plan anklicken, deren realen Abstand du kennst, und die Strecke in
-      mm eintragen. Der zweite Punkt wird <b>orthogonal</b> zum ersten gezwungen — schief gemessen
-      verfälscht den Maßstab. Es wird <b>kein</b> Maßstab geschätzt ([L-9]).</p>
-    <div class="row">
-      <div class="field"><label for="kal-mm">reale Länge der Linie (mm)</label>
-        <input id="kal-mm" type="number" step="1" min="1" placeholder="z. B. 5000"></div>
-      <button class="btn-s" id="kal-zuruecksetzen">Punkte verwerfen</button>
-      <div class="hint" id="kal-status" style="margin:0">–</div>
-    </div>
-    <div class="kalbuehne" id="kal-buehne"></div>
-    <div class="msg" id="kal-msg"></div>
-    <div class="modal-actions">
-      <button class="btn-s" id="kal-cancel">Abbrechen</button>
-      <button class="btn-p" id="kal-go">Maßstab übernehmen</button>
-    </div>
-  </div>
-</div>
+<!-- Kein Kalibrier-Popup mehr (#52): der Maßstab entsteht auf der Zeichenfläche
+     selbst, mit deren Zoom und Pan. Ein unkalibrierter Plan liegt dafür mit dem
+     VORLÄUFIGEN Faktor 1 Bildpixel = 1 mm unter der Zeichnung — nie gespeichert,
+     kein geschätzter Maßstab, und das 125-mm-Raster bleibt so lange aus ([L-9]). -->
 
 <script>
 /* Layout-Editor des Geschossplans (Etappe C4a, Issue #26, Regeln [K-1]…[K-13]).
@@ -324,7 +324,10 @@ const GP = {
   // mit Griffen und grün nach [K-8] — ist immer genau EINE davon.
   aktiv: null,                // Kennung der aktiven Wand (grün, mit Griffen)
   auswahl: [],                // Kennungen aller ausgewählten Wände (enthält `aktiv`)
-  fang: true,                 // Fang auf 125 mm (aus: 0,5 mm — [L-1])
+  // EIN allgemeiner Schalter für alle Wände und alle drei Wandoperationen
+  // (Zeichnen, Verschieben, Größenziehen) — und beim Start AUS (#52). Er ist
+  // Bedienung und wird bewusst nicht gespeichert.
+  fang: false,                // Fang auf 125 mm (aus: 0,5 mm — [L-1])
   planLock: true,             // gesperrt = Ziehen bewegt den Plan nicht (§4.4)
   ziel: '',                   // '' = neue Wand anlegen, sonst Kennung einer unverorteten Wand
   zeichnen: null,             // { start:{x,y}, zeiger:{x,y}, wartet } während „Wand zeichnen“
@@ -335,7 +338,9 @@ const GP = {
   raumTaste: false,           // Leertaste gedrückt (Pan)
   bild: null, bildUrl: null, bildFuer: undefined,
   hoeheFuer: undefined,       // Geschoss, dessen Höhenvorgabe im Feld steht ([L-5])
-  kal: { punkte: [], zoom: 1 },
+  // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
+  // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
+  kal: { an: false, punkte: [] },
   // Bemaßen (D) und Fixieren (F): `bem` hält die LAUFENDE Eingabe, `bemAktiv` das
   // angeklickte, schon gespeicherte Maß. Beides ist Bedienung — gespeichert wird
   // erst mit „Maß setzen“ ([K-3]).
@@ -567,7 +572,7 @@ function zeigeAlles(){
     const r = CON.wandRechteck(w.lage, position(w.id, erg));
     if (r) dazu(r.x_min, r.y_min, r.x_max, r.y_max);
   }
-  const rahmen = PLAN.planRahmenMm(plan(), GP.bild);
+  const rahmen = planRahmen();
   if (rahmen) dazu(rahmen.x, rahmen.y, rahmen.x + rahmen.breite, rahmen.y + rahmen.hoehe);
   const f = flaeche();
   if (!Number.isFinite(min.x)) {
@@ -592,7 +597,26 @@ function zeigeAlles(){
 /** Strichbreite in mm, damit sie auf dem Schirm konstant dünn bleibt. */
 function strich(px){ return (px || 1) * V.mm; }
 
+/**
+ * Der Rahmen, mit dem das Planbild eingehängt wird: der echte Maßstab, sonst der
+ * VORLÄUFIGE Faktor 1 Bildpixel = 1 mm (#52). Entschieden wird das in
+ * `sembla-plan.js` — die Oberfläche rechnet hier nichts nach.
+ */
+function planRahmen(){ return PLAN.planAnsichtRahmen(plan(), GP.bild); }
+
+/**
+ * Liegt gerade ein NICHT kalibrierter Plan vorläufig unter der Zeichnung? Dann
+ * ist jede mm-Aussage über das Bild vorläufig — und das 125-mm-Raster hat darüber
+ * nichts zu suchen ([L-9]): es würde eine Maßtreue behaupten, die es nicht gibt.
+ */
+function planVorlaeufig(){
+  if (!GP.bildUrl) return false;
+  const r = planRahmen();
+  return !!(r && r.vorlaeufig);
+}
+
 function rasterSvg(f){
+  if (planVorlaeufig()) return '';                // kein Raster über einem Plan ohne Maßstab
   const s = CON.GRID_MM;
   const pxJe = s / V.mm;
   if (pxJe < 3) return '';                       // unter 3 Schirmpixeln nur graue Fläche
@@ -620,11 +644,39 @@ function ursprungSvg(){
 function planSvgTeil(){
   const p = plan();
   if (!p) return '';
-  const rahmen = PLAN.planRahmenMm(p, GP.bild);
+  const rahmen = planRahmen();
   if (!rahmen || !GP.bildUrl) return '';
-  return `<image class="planbild" href="${esc(GP.bildUrl)}" x="${r2(rahmen.x)}" y="${r2(rahmen.y)}"`
+  // Der vorläufige Stand ist als solcher gekennzeichnet und blasser — er ist
+  // Hintergrund zum Hineinklicken, keine maßstäbliche Aussage (#52, [L-9]).
+  return `<image class="planbild${rahmen.vorlaeufig ? ' vorlaeufig' : ''}" href="${esc(GP.bildUrl)}"`
+    + ` x="${r2(rahmen.x)}" y="${r2(rahmen.y)}"`
     + ` width="${r2(rahmen.breite)}" height="${r2(rahmen.hoehe)}" preserveAspectRatio="none"`
-    + ` opacity=".85"/>`;
+    + ` opacity="${rahmen.vorlaeufig ? '.65' : '.85'}"/>`;
+}
+
+/**
+ * Die laufende Kalibrierlinie IN der Zeichnung (#52). Die Punkte liegen in
+ * Bildpunkten; gezeichnet wird über denselben Rahmen, mit dem auch das Bild
+ * hängt — dieselbe Semantik wie früher im Popup: gestrichelte Messhilfe und
+ * Kreuzmarker mit ausgesparter Mitte.
+ */
+function kalSvgTeil(){
+  if (!GP.kal.an || !GP.kal.punkte.length) return '';
+  const rahmen = planRahmen();
+  if (!rahmen) return '';
+  const welt = (p) => ({ x: rahmen.x + p.x * rahmen.mm_je_pixel, y: rahmen.y + p.y * rahmen.mm_je_pixel });
+  const pk = GP.kal.punkte.slice(0, 2).map(welt);
+  const teile = [];
+  if (pk.length >= 2) {
+    teile.push(`<line class="kallinie" x1="${r2(pk[0].x)}" y1="${r2(pk[0].y)}" x2="${r2(pk[1].x)}"`
+      + ` y2="${r2(pk[1].y)}" stroke="#c0392b" stroke-width="${r2(strich(1.6))}"`
+      + ` stroke-dasharray="${r2(strich(7))} ${r2(strich(5))}"/>`);
+  }
+  for (const p of pk) {
+    teile.push(`<path class="kalpunkt" d="${PLAN.kreuzPfad(p.x, p.y, V.mm)}" fill="none"`
+      + ` stroke="#c0392b" stroke-width="${r2(strich(1.6))}"/>`);
+  }
+  return teile.join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -1307,10 +1359,10 @@ function render(){
   for (const w of waende()) teile.push(wandSvg(w, erg, koll));
   bemassungen().forEach((bm, i) => teile.push(bemassungSvg(bm, i, erg)));
   teile.push(bezuegeSvg(erg), bemEntwurfSvg(erg));
-  teile.push(zugSvg(erg), groesseSvg(erg), entwurfSvg(), '</svg>');
+  teile.push(zugSvg(erg), groesseSvg(erg), entwurfSvg(), kalSvgTeil(), '</svg>');
   buehne.innerHTML = teile.join('');
   buehne.className = 'gp-buehne'
-    + (GP.pan ? ' zieht' : GP.werkzeug === 'wand' ? ' zeichnet'
+    + (GP.pan ? ' zieht' : GP.kal.an ? ' zeichnet' : GP.werkzeug === 'wand' ? ' zeichnet'
       : GP.werkzeug === 'plan' ? ' schiebt'
       : (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') ? ' zeichnet' : '');
   inlineSync();
@@ -1511,10 +1563,14 @@ function bemKopfSync(){
 function planKopfSync(){
   const p = plan();
   const info = $('gp-plan-info');
-  for (const id of ['gp-kalibrieren', 'gp-mass-uebernehmen', 'gp-versatz-uebernehmen',
+  for (const id of ['gp-kal-start', 'gp-mass-uebernehmen', 'gp-versatz-uebernehmen',
                     'gp-versatz-null', 'gp-mmjepx', 'gp-vx', 'gp-vy', 'gp-plan-lock']) {
     $(id).disabled = !p;
   }
+  // Ohne Bild in diesem Browser gibt es nichts anzuklicken — dann wird der Modus
+  // gar nicht erst angeboten, statt eine leere Fläche zum Messen hinzustellen.
+  if (p && !GP.bild) $('gp-kal-start').disabled = true;
+  kalKopfSync();
   if (!p) {
     info.innerHTML = 'Kein Plan hinterlegt. Hochgeladen wird er im <a href="index.html">Projektplaner</a> '
       + 'beim Geschoss („Bearbeiten“) — es gibt bewusst nur <b>einen</b> Upload-Weg.';
@@ -1524,8 +1580,9 @@ function planKopfSync(){
   if (p.breite_px && p.hoehe_px) teile.push(`${p.breite_px} × ${p.hoehe_px} px`);
   teile.push(esc(PLAN.massstabText(p.mm_je_pixel)));
   if (!GP.bild) teile.push('⚠ Bild in diesem Browser nicht hinterlegt — Maßstab und Versatz sind erhalten');
-  else if (!PLAN.planKalibriert(p)) teile.push('⚠ nicht kalibriert — der Plan liegt deshalb <b>nicht</b> '
-    + 'unter der Zeichnung; es wird kein Maßstab geschätzt ([L-9])');
+  else if (!PLAN.planKalibriert(p)) teile.push('⚠ nicht kalibriert — der Plan liegt <b>vorläufig</b> mit '
+    + `1 Bildpixel = ${PLAN.VORLAEUFIG_MM_JE_PIXEL} mm unter der Zeichnung (reine Anzeige, nicht `
+    + 'gespeichert, <b>kein</b> geschätzter Maßstab); das 125-mm-Raster bleibt so lange aus ([L-9])');
   info.innerHTML = teile.join(' · ');
   $('gp-mmjepx').value = p.mm_je_pixel != null ? String(p.mm_je_pixel) : '';
   $('gp-vx').value = String(p.versatz_x_mm);
@@ -2118,6 +2175,7 @@ function bemSetzen(roh){
 // ---------------------------------------------------------------------------
 function beiKlick(ev){
   if (!geschoss()) return;
+  if (GP.kal.an) return;                          // im Messmodus wird nichts abgewählt (#52)
   // Das Zeichnen läuft vollständig über pointerdown/-up (Startpunkt beim DRÜCKEN);
   // hier bleibt nur das Abwählen mit einem Klick ins Leere.
   if (GP.werkzeug === 'auswahl' && !GP.ziehen && !GP.groesse) {
@@ -2152,6 +2210,7 @@ function beiKlick(ev){
  */
 function beiDoppelklick(ev){
   if (!geschoss()) return;
+  if (GP.kal.an) return;                          // im Messmodus öffnet nichts (#52)
   const id = bemTreffer(weltPunkt(ev.clientX, ev.clientY), loesen());
   if (!id) return;
   GP.bemZieh = null;
@@ -2168,6 +2227,14 @@ function beiZeigerAb(ev){
     GP.pan = { x: ev.clientX, y: ev.clientY, x0: V.x0, y0: V.y0 };
     if (ev.preventDefault) ev.preventDefault();
     render();
+    return;
+  }
+  // Kalibrieren (#52) liegt VOR allem anderen — solange der Modus läuft, ist die
+  // Bühne ein Messwerkzeug: kein Auswählen, kein Zeichnen, kein Maßtreffer.
+  // Pan und Zoom bleiben nutzbar, sie sind oben bzw. am Mausrad abgehandelt.
+  if (GP.kal.an) {
+    kalKlickWelt(weltPunkt(ev.clientX, ev.clientY));
+    if (ev.preventDefault) ev.preventDefault();
     return;
   }
   // Maße liegen werkzeugübergreifend obenauf. So können die beiden Klickpaare
@@ -2378,47 +2445,55 @@ function versatzUebernehmen(){
 }
 
 // ---------------------------------------------------------------------------
-//  Kalibrieransicht (Bildpixel) — der einzige Weg zu einem Maßstab ohne Zahl
+//  Kalibrieren AUF der Zeichenfläche (#52) — ein Modus, kein zweiter Editor
 // ---------------------------------------------------------------------------
-function kalZeige(text, ok){ const m = $('kal-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+// Der frühere modale Kalibriereditor hatte eine eigene Pixelansicht mit festem
+// Zoom, ohne Mausrad und ohne Verschieben — an einem Grundriss war damit kein
+// Anschlag sauber zu treffen. Gemessen wird jetzt im Editor selbst; damit das
+// vom Blick unabhängig bleibt, werden die Klicks sofort in BILDpunkte
+// umgerechnet (`rahmenPunktZuPixel`). Zoom, Pan und „Alles zeigen“ ändern
+// deshalb nichts am Ergebnis. Geschrieben wird ausschließlich `mm_je_pixel` über
+// denselben Weg wie die Zahleneingabe — kein zweiter Datenpfad ([L-9]).
 
-function kalOeffne(){
+function kalStart(){
   const p = plan();
   if (!p) { zeige('Kein Plan hinterlegt.', false); return; }
   if (!GP.bild) { zeige('Das Planbild liegt nicht in diesem Browser — kalibrieren ist ohne Bild nicht möglich ([L-9]).', false); return; }
+  GP.kal.an = true;
   GP.kal.punkte = [];
-  const b = p.breite_px || GP.bild.breite_px || 0;
-  GP.kal.zoom = b > 0 ? Math.min(1, 900 / b) : 1;
-  $('kal-mm').value = '';
-  kalZeige('', true);
-  $('kal-overlay').hidden = false;
-  kalRender();
+  $('gp-kal-mm').value = '';
+  zeige('Kalibrieren: zwei Punkte im Plan anklicken. Zoom und Verschieben bleiben nutzbar.', true);
+  render();
 }
 
-function kalSchliesse(){ $('kal-overlay').hidden = true; GP.kal.punkte = []; }
+/** Modus beenden, ohne irgendetwas zu schreiben. */
+function kalAbbrechen(still){
+  if (!GP.kal.an) return false;
+  GP.kal.an = false;
+  GP.kal.punkte = [];
+  if (!still) zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true);
+  render();
+  return true;
+}
 
-function kalRender(){
-  const p = plan();
-  if (!p) return;
-  const b = p.breite_px || (GP.bild && GP.bild.breite_px) || 0;
-  const h = p.hoehe_px || (GP.bild && GP.bild.hoehe_px) || 0;
-  $('kal-buehne').innerHTML = PLAN.planSvg(p, {
-    bildUrl: GP.bildUrl, breite_px: b, hoehe_px: h, zoom: GP.kal.zoom,
-    kalibrierpunkte: GP.kal.punkte, beschriftung: false,
-  });
+/** Anzeige des Modus im linken Panel (reine Rückmeldung). */
+function kalKopfSync(){
+  $('gp-kal-block').hidden = !GP.kal.an;
+  if (!GP.kal.an) return;
   const n = GP.kal.punkte.length;
-  $('kal-status').innerHTML = n === 0 ? 'Ersten Punkt im Plan anklicken.'
-    : n === 1 ? 'Zweiten Punkt anklicken — er wird orthogonal gezwungen.'
-    : `Linie gesetzt: ${Math.round(PLAN.pixelAbstand(GP.kal.punkte[0], GP.kal.punkte[1]))} Bildpixel `
-      + '· reale Länge eintragen und übernehmen.';
+  const px = n >= 2 ? PLAN.pixelAbstand(GP.kal.punkte[0], GP.kal.punkte[1]) : null;
+  $('gp-kal-status').innerHTML = n === 0
+    ? '<b>Ersten Punkt</b> im Plan anklicken.'
+    : n === 1
+      ? '<b>Zweiten Punkt</b> anklicken — er wird orthogonal gezwungen.'
+      : `Linie gesetzt: <b>${Math.round(px)} Bildpixel</b> · reale Länge eintragen und übernehmen.`;
 }
 
-function kalKlick(ev){
-  const svg = $('kal-buehne').querySelector ? $('kal-buehne').querySelector('svg') : null;
-  if (!svg || typeof svg.getBoundingClientRect !== 'function') return;
-  const r = svg.getBoundingClientRect();
-  const p = PLAN.svgPunktZuPixel({ links: r.left, oben: r.top, zoom: GP.kal.zoom },
-    { x: ev.clientX, y: ev.clientY });
+/** Ein Klick auf der Bühne während des Modus: Weltpunkt → Bildpunkt. */
+function kalKlickWelt(welt){
+  const rahmen = planRahmen();
+  const p = PLAN.rahmenPunktZuPixel(rahmen, welt);
+  if (!p) { zeige('Der Plan ist gerade nicht darstellbar — es lässt sich nichts messen ([L-9]).', false); return; }
   if (GP.kal.punkte.length >= 2) GP.kal.punkte = [];
   if (GP.kal.punkte.length === 1) {
     // Orthogonal gezwungen: schief gemessen verfälscht den Maßstab still ([L-9]).
@@ -2426,21 +2501,25 @@ function kalKlick(ev){
   } else {
     GP.kal.punkte.push(p);
   }
-  kalRender();
+  render();
 }
 
 function kalUebernehmen(){
   const gs = geschoss();
-  if (!gs || !gs.plan) { kalZeige('Kein Plan hinterlegt.', false); return; }
-  if (GP.kal.punkte.length < 2) { kalZeige('Erst zwei Punkte im Plan anklicken.', false); return; }
+  if (!gs || !gs.plan) { zeige('Kein Plan hinterlegt.', false); return; }
+  if (GP.kal.punkte.length < 2) { zeige('Erst zwei Punkte im Plan anklicken.', false); return; }
   let mm, k;
-  try { mm = zahlAus('kal-mm', 'Die Länge der Kalibrierlinie'); }
-  catch (e) { kalZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+  try { mm = zahlAus('gp-kal-mm', 'Die Länge der Kalibrierlinie'); }
+  catch (e) { zeige('Nicht übernommen: ' + fehlerText(e), false); return; }
   try { k = PLAN.kalibriere(GP.kal.punkte[0], GP.kal.punkte[1], mm); }
-  catch (e) { kalZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+  catch (e) { zeige('Nicht übernommen: ' + fehlerText(e), false); return; }
   try { store.setzeGeschossPlanAnsicht(gs.id, { mm_je_pixel: k.mm_je_pixel }); }
-  catch (e) { kalZeige('Nicht übernommen: ' + fehlerText(e), false); return; }
-  kalSchliesse();
+  catch (e) { zeige('Nicht übernommen: ' + fehlerText(e), false); return; }
+  GP.kal.an = false;
+  GP.kal.punkte = [];
+  // Der Plan wechselt mit dem Maßstab seine Größe — deshalb den Blick neu setzen,
+  // statt den Nutzer irgendwo im Nichts stehen zu lassen. Das ist Ansicht, sonst nichts.
+  zeigeAlles();
   zeige(`Maßstab aus der Kalibrierlinie: ${k.strecke_mm} mm auf ${Math.round(k.pixel)} Bildpixel ⇒ `
     + `${PLAN.massstabText(k.mm_je_pixel)}. Wandlagen unverändert ([L-1]).`, true);
 }
@@ -2450,6 +2529,9 @@ function kalUebernehmen(){
 // ---------------------------------------------------------------------------
 async function bildLaden(gsId, erzwingen){
   if (!erzwingen && GP.bildFuer === gsId) return;
+  // Ein anderes Geschoss heißt ein anderer Plan: eine laufende Messung gehörte
+  // zum alten Bild und wird verworfen, nicht weitergeschleppt (#52).
+  if (GP.bildFuer !== gsId) { GP.kal.an = false; GP.kal.punkte = []; }
   GP.bildFuer = gsId;
   if (GP.bildUrl) { try { URL.revokeObjectURL(GP.bildUrl); } catch { /* egal */ } GP.bildUrl = null; }
   GP.bild = null;
@@ -2479,6 +2561,7 @@ function werkzeug(name){
   GP.bemZieh = null;
   inlineSchliesse();                            // … und die offene Inline-Eingabe (nichts gespeichert)
   bemAbbrechen(true);                           // eine laufende Bemaßung überlebt den Werkzeugwechsel nicht
+  kalAbbrechen(true);                           // ebenso wenig eine laufende Messung (#52) — ohne zu schreiben
   render();
 }
 
@@ -2532,7 +2615,10 @@ function binde(){
 
   $('gp-fang').addEventListener('change', () => {
     GP.fang = !!$('gp-fang').checked;
-    zeige(GP.fang ? 'Fang auf 125 mm.' : 'Fang aus — Positionen rasten auf halbe Millimeter ([L-1]).', true);
+    zeige(GP.fang
+      ? 'Fang auf 125 mm — für alle Wände, beim Zeichnen, Verschieben und Größenziehen.'
+      : 'Fang aus — Positionen rasten auf halbe Millimeter ([L-1]); die Länge bleibt im 125-mm-Raster.',
+      true);
     render();
   });
   $('gp-ziel').addEventListener('change', () => { GP.ziel = $('gp-ziel').value; render(); });
@@ -2575,14 +2661,14 @@ function binde(){
     $('gp-vx').value = '0'; $('gp-vy').value = '0';
     versatzUebernehmen();
   });
-  $('gp-kalibrieren').addEventListener('click', kalOeffne);
-  $('kal-buehne').addEventListener('click', kalKlick);
-  $('kal-zuruecksetzen').addEventListener('click', () => { GP.kal.punkte = []; kalRender(); });
-  $('kal-cancel').addEventListener('click', () => { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); });
-  $('kal-go').addEventListener('click', kalUebernehmen);
-  $('kal-overlay').addEventListener('click', (ev) => {
-    if (ev.target === $('kal-overlay')) { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); }
+  $('gp-kal-start').addEventListener('click', kalStart);
+  $('gp-kal-reset').addEventListener('click', () => {
+    GP.kal.punkte = [];
+    zeige('Punkte verworfen — erneut zwei Punkte im Plan anklicken.', true);
+    render();
   });
+  $('gp-kal-abbruch').addEventListener('click', () => kalAbbrechen());
+  $('gp-kal-go').addEventListener('click', kalUebernehmen);
 
   document.addEventListener('keydown', beiTaste);
   document.addEventListener('keyup', (ev) => { if (ev.key === ' ') GP.raumTaste = false; });
@@ -2592,7 +2678,7 @@ function binde(){
 function beiTaste(ev){
   if (ev.key === ' ') { GP.raumTaste = true; return; }
   if (ev.key === 'Escape') {
-    if (!$('kal-overlay').hidden) { kalSchliesse(); zeige('Kalibrieren abgebrochen — der Maßstab ist unverändert.', true); return; }
+    if (kalAbbrechen()) return;                   // Messmodus zuerst (#52) — geschrieben wird nichts
     // Eine offene Inline-Eingabe verwirft Escape zuerst — auch dann, wenn das Feld
     // nach einer abgelehnten Eingabe den Fokus verloren hat (#51).
     if (GP.inline) {

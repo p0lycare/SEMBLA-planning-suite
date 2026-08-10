@@ -218,7 +218,14 @@ nichts abgeleitet — keine Wand, keine Länge und vor allem **kein Maßstab**. 
 `versatz_x_mm`/`versatz_y_mm` sind **ausdrücklich gesetzte Anzeigeparameter**, wahlweise über eine
 **Kalibrierlinie** (zwei Bildpunkte + reale Strecke in mm) oder als **Zahleneingabe** — beide Wege
 gleichwertig. Ohne Kalibrierung liegt **kein Raster** über dem Plan, und es wird keines erfunden; ein
-**neues Bild setzt Maßstab und Versatz zurück** statt sie zu übernehmen. Umgekehrt ändert weder
+**neues Bild setzt Maßstab und Versatz zurück** statt sie zu übernehmen. Davon **streng zu
+unterscheiden** ist seit #52 der **vorläufige Anzeigefaktor**: ein noch nicht kalibrierter Plan wird
+mit dem festen, deterministischen Faktor **1 Bildpixel = 1 mm** unter die Zeichnung gelegt, damit er
+überhaupt sichtbar ist und sich eine Kalibrierlinie in ihn hineinklicken lässt. Das ist **kein
+Maßstab** — er wird **nie gespeichert** (`mm_je_pixel` bleibt `null`), geht in keine Wandlage, keine
+Länge und keine Bemaßung ein, das **125-mm-Raster bleibt so lange aus**, und „nicht kalibriert“ steht
+sichtbar dran. Rechnerisch wohnt das in `planVorschauRahmen`/`planAnsichtRahmen`/`rahmenPunktZuPixel`
+(`sembla-plan.js`); `planRahmenMm` liefert für Unkalibrierte weiterhin `null`. Umgekehrt ändert weder
 Kalibrierung noch Versatz noch Planwechsel **irgendeine Wandlage** ([L-1]) — die Lage lebt in
 Millimetern und ist vom Plan unabhängig. Das **Bild** liegt nie im localStorage ([L-8]: ein Grundriss sprengt ihn und nähme
 den ganzen Projektstand mit), sondern in einer **eigenen IndexedDB** (ein Datensatz je
@@ -234,16 +241,19 @@ Bild (anderer Browser, gelöschte Websitedaten), bleiben Maßstab und Versatz er
 Plan wird **gemeldet**. Beim Löschen eines Geschosses/Gebäudes wird sein Planbild **mit** entfernt und
 das gesagt.
 
-**Zwei getrennte Ansichten seit C4a.** Der `viewBox` von `planSvg()` liegt in **Bildpixeln** — das ist
-die **Kalibrieransicht**, und nur dort lassen sich zwei Bildpunkte anklicken, solange es noch keinen
-Maßstab gibt. Die **Zeichenfläche** des Layout-Editors rechnet dagegen in **Millimetern** ([L-1]);
-ein **nicht kalibrierter Plan liegt dort gar nicht erst unter der Zeichnung**, weil es für ihn kein
-Millimetermaß gibt — das wird benannt statt geschätzt ([L-9]). Die Umrechnung dafür ist
-`planRahmenMm()`. Die Kalibrierlinie ist **gestrichelt** und ihr zweiter Punkt wird über
-`orthogonalPunkt()` auf die Achse mit der größeren Pixeldifferenz **gezwungen** (schief gemessen
-verfälscht den Maßstab still); die Marker sind **Kreuze mit ausgesparter Mitte** (`kreuzPfad()`).
-**Hochgeladen** wird ein Plan ausschließlich im **Geschoss-Popup von Modul 0** — genau ein
-Upload-Weg.
+**Kalibriert wird auf der Zeichenfläche (seit #52).** Die Bühne rechnet in **Millimetern** ([L-1]);
+der unkalibrierte Plan liegt dort mit dem **vorläufigen Faktor** (s. o.) als Hintergrund, sodass die
+Kalibrierlinie **im Editor selbst** gesetzt wird — mit dessen Zoom, Mausrad, Pan und „Alles zeigen“.
+Der frühere **modale Kalibriereditor in Bildpixelansicht ist entfallen** (fester Zoom, kein Pan — an
+einem realen Grundriss war kein Anschlag sauber zu treffen). Die geklickten Weltpunkte werden sofort
+über `rahmenPunktZuPixel()` in **Bildpunkte** umgerechnet; das Ergebnis ist damit **blickunabhängig**.
+Die Kalibrierlinie ist **gestrichelt** und ihr zweiter Punkt wird über `orthogonalPunkt()` auf die
+Achse mit der größeren Pixeldifferenz **gezwungen** (schief gemessen verfälscht den Maßstab still);
+die Marker sind **Kreuze mit ausgesparter Mitte** (`kreuzPfad()`). `planSvg()` (viewBox in Bildpixeln)
+und `svgPunktZuPixel()` bleiben als geprüfte Anzeige-/Umrechnungsfunktionen in `sembla-plan.js`, haben
+im Betrieb aber **keinen Aufrufer mehr** — sie sind der abgelöste Popup-Weg und werden nicht
+wiederbelebt. **Hochgeladen** wird ein Plan ausschließlich im **Geschoss-Popup von
+Modul 0** — genau ein Upload-Weg.
 
 **Bedienung des Layout-Editors (Nachschärfung 2026-08-08).** Vier Punkte, die alle in
 `docs/geschossplan.html` wohnen und **nichts** am Datenmodell ändern:
@@ -332,6 +342,31 @@ aus dem Drücken auf Maßzahl **oder Maßlinie** ein Zug; Klick und Doppelklick 
 Zug funktioniert werkzeugübergreifend und wird erst bei `pointerup` als genau ein Undo-Schritt
 gespeichert. **Delete/Backspace** löschen genau ein ausgewähltes Maß als einen Schritt, außer ein
 Textfeld ist aktiv; Wände werden über diese Tasten nie gelöscht.
+
+**Maßstab im Editor und ein allgemeiner Rasterfang (Issue #52, 2026-08-10).** Wieder reine Bedienung
+in `docs/geschossplan.html` (plus `planVorschauRahmen`/`planAnsichtRahmen`/`rahmenPunktZuPixel` in
+`docs/shared/sembla-plan.js` und ein Hinweistext in `docs/index.html`) — **keine** neue Regel-ID,
+**kein** Schema-/Formatbump, Paket 3 unberührt:
+**(a) Der Plan ist Hintergrund, sofort.** Ein unkalibrierter Plan liegt mit dem **vorläufigen**
+Faktor 1 Bildpixel = 1 mm unter der Zeichnung (`class="planbild vorlaeufig"`, blasser), das
+**125-mm-Raster bleibt so lange aus**, und der Zustand steht sichtbar im Panel. Nichts davon wird
+gespeichert; `mm_je_pixel` bleibt `null`, bis einer der **zwei** ausdrücklichen Wege benutzt wird.
+**(b) Kalibrieren ist ein Modus der Bühne, kein Fenster.** Gestartet wird er links mit **„Maßstab aus
+Plan übernehmen“** (`#gp-kal-start`); reale Länge, „Übernehmen“, „Punkte verwerfen“ und „Abbrechen“
+bleiben im Panel (`#gp-kal-block`). Der Modus liegt in `beiZeigerAb` **vor** Maß-, Wand-, Bemaßungs-,
+Fixier- und Planzweig — während gemessen wird, wählt und zeichnet die Bühne nichts. **Pan (Leertaste/
+Mittelklick), Mausrad-Zoom, ± und „Alles zeigen“ bleiben nutzbar**, weil die Punkte sofort Bildpunkte
+sind. Nach der Übernahme läuft einmal `zeigeAlles()` — der Plan ändert mit dem Maßstab seine Größe.
+**Escape, „Abbrechen“, Werkzeugwechsel und Geschosswechsel beenden den Modus, ohne zu schreiben**;
+Wandlagen ([L-1]) und Undo/Redo ([K-10]) bleiben unberührt, und **Plan verschieben bleibt bis zur
+Kalibrierung gesperrt**. Die Zahleneingabe `#gp-mmjepx` ist weiterhin gleichwertig, und geschrieben
+wird in beiden Fällen nur `mm_je_pixel` über `store.setzeGeschossPlanAnsicht`.
+**(c) Der Rasterfang ist genau ein allgemeiner Schalter — und startet AUS.** `GP.fang = false`, im
+Markup **ohne** `checked`. Er gilt gleichermaßen für **Zeichnen** (`fange`/`fangeQuer`),
+**Verschieben** (`zugVersatz`/`ziehenFertig`) und **Größenziehen** (`groesseLage`) **jeder** Wand; es
+gibt keinen wandbezogenen Fang und keine Speicherung. Die 0,5-mm-/1-mm-Semantik bei Fang AUS bleibt
+unverändert, und die **Länge** bleibt zwingend im 125-mm-Raster ([L-1]) — sie ist keine
+Ansichtsoption.
 
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
@@ -446,7 +481,8 @@ Redundanz [K-7], Längenmaß [K-11], Millimetereingabe [K-12], Undo/Redo) und **
 Bauteilliste, Referenzgeschoss, Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) —
 `tests/module/smoke_geschossplan.mjs`. **C5 ist abgeschlossen**; das Projektarchiv berührt keine
 [K]-Regel, ebenso wenig die Bedienzugaben aus **#50 (Paket 1)** und **#51 (Paket 2:
-Inline-Maßeingabe, verschiebbare Maßdarstellung)**. C4b, C4c, **C5** und beide Pakete kamen **ohne
+Inline-Maßeingabe, verschiebbare Maßdarstellung)** und **#52 (Maßstab auf der Bühne, Rasterfang als
+allgemeiner Schalter)**. C4b, C4c, **C5** und alle drei Bedienpakete kamen **ohne
 Schema-/Formatversionsbump** aus. Das frühere
 „Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
 Wandabstände lägen im Raster.
@@ -635,7 +671,8 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 | Nr. | Datei | Inhalt |
 |---|---|---|
 | 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b/C4c stehen, offen ist C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, **Standard-Wandhöhe** als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
-| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], Kalibrieren in eigener Bildpixel-Ansicht ([L-9]). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet aus #51 die Eingabe **an Ort und Stelle**, erkannt im **Zeigerstrom** statt am `dblclick`, schreibt aber weiter über `bemSetzen`) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg) und das **Referenzgeschoss** (Index − 1, blass, nicht anklickbar, nicht gespeichert). Aus #50 (Paket 1) dazu: **kein** linker „Neue Wand"-Abschnitt mehr — Zielwahl, **Standard-Wandhöhe** und Wandtyp sind Parameter **des Werkzeugs** „Wand zeichnen", der Fang gehört zur Ansicht; je Wand mit Wandelement ein Knopf **„Planen"** in der Liste (aktiv setzen + Modul 1, gemeinsame `planeWand()`, kein Knopf bei verwaistem Eintrag). Aus #51 (Paket 2): **Inline-Eingabe des Maßwerts** an der Maßzahl (Enter/Escape/Blur, ungültig ⇒ keine Änderung + rotes Feld) und die **verschiebbare Maßzahl** (`text_mm`, reine Darstellung, Schwelle 3 px, Speichern erst bei `pointerup`). Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) |
+| – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], **Kalibrieren auf der Bühne selbst** ([L-9], #52 —
+der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet aus #51 die Eingabe **an Ort und Stelle**, erkannt im **Zeigerstrom** statt am `dblclick`, schreibt aber weiter über `bemSetzen`) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg) und das **Referenzgeschoss** (Index − 1, blass, nicht anklickbar, nicht gespeichert). Aus #50 (Paket 1) dazu: **kein** linker „Neue Wand"-Abschnitt mehr — Zielwahl, **Standard-Wandhöhe** und Wandtyp sind Parameter **des Werkzeugs** „Wand zeichnen", der Fang gehört zur Ansicht; je Wand mit Wandelement ein Knopf **„Planen"** in der Liste (aktiv setzen + Modul 1, gemeinsame `planeWand()`, kein Knopf bei verwaistem Eintrag). Aus #51 (Paket 2): **Inline-Eingabe des Maßwerts** an der Maßzahl (Enter/Escape/Blur, ungültig ⇒ keine Änderung + rotes Feld) und die **verschiebbare Maßzahl** (`text_mm`, reine Darstellung, Schwelle 3 px, Speichern erst bei `pointerup`). Aus #52: der Plan liegt **sofort** als Hintergrund (unkalibriert vorläufig 1 px = 1 mm, ohne 125-mm-Raster), **kalibriert wird auf der Bühne** („Maßstab aus Plan übernehmen“, Zoom/Pan bleiben nutzbar, kein Popup), und der **Rasterfang** ist ein allgemeiner Schalter für alle Wände, der **aus** startet. Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) — Maßstab/Versatz bleiben Plan-Ansichtsparameter ([L-9]) |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |

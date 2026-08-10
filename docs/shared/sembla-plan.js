@@ -238,6 +238,63 @@ export function planRahmenMm(plan, masse) {
 }
 
 /**
+ * Der VORLAEUFIGE Anzeigefaktor eines noch nicht kalibrierten Plans (#52).
+ *
+ * Fest 1 Bildpixel = 1 mm. Das ist ausdruecklich KEIN geschaetzter Massstab: er
+ * wird nie gespeichert, geht in keine Umrechnung von Wandlagen ein und traegt in
+ * jedem Rahmen das Kennzeichen `vorlaeufig`. Er existiert allein, damit der Plan
+ * als Hintergrund ueberhaupt sichtbar ist — sonst liesse sich die Kalibrierlinie
+ * gar nicht erst in ihn hineinklicken ([L-9]).
+ */
+export const VORLAEUFIG_MM_JE_PIXEL = 1;
+
+/**
+ * Lage und Groesse eines NICHT kalibrierten Planbildes fuer die reine Anzeige
+ * (#52). `null`, sobald der Plan kalibriert ist (dann gilt `planRahmenMm`) oder
+ * die Bildmasse fehlen — erfunden wird nichts.
+ *
+ * @param {any} plan @param {{breite_px?:number, hoehe_px?:number}} [masse]
+ * @returns {{x:number, y:number, breite:number, hoehe:number, mm_je_pixel:number, vorlaeufig:true}|null}
+ */
+export function planVorschauRahmen(plan, masse) {
+  if (planKalibriert(plan)) return null;
+  const b = _zahl(plan && plan.breite_px) ?? _zahl(masse && masse.breite_px);
+  const h = _zahl(plan && plan.hoehe_px) ?? _zahl(masse && masse.hoehe_px);
+  if (b == null || h == null || !(b > 0) || !(h > 0)) return null;
+  const k = VORLAEUFIG_MM_JE_PIXEL;
+  return {
+    x: _zahl(plan && plan.versatz_x_mm) || 0,
+    y: _zahl(plan && plan.versatz_y_mm) || 0,
+    breite: b * k, hoehe: h * k, mm_je_pixel: k, vorlaeufig: true,
+  };
+}
+
+/**
+ * Der Rahmen, mit dem die Zeichenflaeche das Bild einhaengt: der ECHTE Massstab,
+ * sonst der vorlaeufige (#52). Genau eine Quelle — die Oberflaeche entscheidet
+ * das nicht noch einmal selbst.
+ * @param {any} plan @param {{breite_px?:number, hoehe_px?:number}} [masse]
+ */
+export function planAnsichtRahmen(plan, masse) {
+  return planRahmenMm(plan, masse) || planVorschauRahmen(plan, masse);
+}
+
+/**
+ * Weltpunkt (mm der Zeichenflaeche) → Bildpunkt in einem Rahmen. Das ist der
+ * Rueckweg der Kalibrierung AUF der Buehne: gemessen wird in Bildpixeln, damit
+ * der Massstab vom Blick (Zoom/Pan) unabhaengig bleibt.
+ * @param {{x:number,y:number,mm_je_pixel:number}|null} rahmen
+ * @param {{x:number,y:number}} punkt
+ * @returns {{x:number,y:number}|null}
+ */
+export function rahmenPunktZuPixel(rahmen, punkt) {
+  if (!rahmen || !punkt) return null;
+  const k = _zahl(rahmen.mm_je_pixel);
+  if (k == null || !(k > 0)) return null;
+  return { x: (Number(punkt.x) - rahmen.x) / k, y: (Number(punkt.y) - rahmen.y) / k };
+}
+
+/**
  * Die im Bild sichtbaren Rasterlinien ([L-9]) — als Bildpixel-Koordinaten.
  * Ohne Kalibrierung ist die Liste LEER: es wird kein Raster erfunden.
  *

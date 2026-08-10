@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260810-04",
+    datum: "2026-08-10",
+    typ: "feature",
+    issue: 52,
+    titel: "Geschossplan: Maßstab direkt im Editor abgreifen, Rasterfang standardmäßig aus",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: der Plan liegt sofort als Hintergrund; links "
+      + "„Maßstab aus Plan übernehmen“ starten, zwei Punkte im Plan anklicken (Zoomen dazwischen "
+      + "erlaubt), Länge eintragen. Der Rasterfang muss beim Start aus sein.",
+  },
+  {
     id: "chg-20260810-03",
     datum: "2026-08-10",
     typ: "fix",
