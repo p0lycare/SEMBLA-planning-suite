@@ -1471,6 +1471,72 @@ ok('#51 und der Maßwert ausschliesslich ueber `bemSetzen` → `speichereBemassu
 ok('#51 der Maßwert wird nirgends mehr aus einem Seitenleisten-Feld gelesen',
   !/gp-bem-wert/.test(html));
 
+// --- 40) Inline-Eingabe im ECHTEN Zeigerstrom ----------------------------
+// `render()` ersetzt bei jedem pointerdown/pointerup den SVG-Kindbaum der Buehne.
+// Chromium 148 erzeugt daraus weder `click` noch `dblclick`, der dblclick-Behandler
+// ist aus echter Eingabe also unerreichbar. Deshalb wird hier AUSSCHLIESSLICH ueber
+// die wirklich gebundenen Buehnen-Listener bedient — zwei schnelle
+// pointerdown/pointerup-Paare, kein vorgefertigtes `dblclick` und kein direkter
+// Aufruf von beiDoppelklick/doppeltippe.
+{
+  const buehne = $('gp-buehne');
+  const feuer = (typ, welt, zeit) => {
+    const p = gp('schirmPunkt', welt);
+    buehne.dispatch(typ, { clientX: p.x, clientY: p.y, button: 0, timeStamp: zeit,
+                           preventDefault(){} });
+  };
+  const tippPaar = (welt, zeit) => { feuer('pointerdown', welt, zeit); feuer('pointerup', welt, zeit); };
+
+  gp('inlineTaste', 'Escape');
+  GP.werkzeug('auswahl');
+  GP.render();
+
+  const pX = gp('bemTextPunkt', bmX.id);
+  const vorMappe = mappeText(), vorUndo = GP.undoStand.undo;
+  tippPaar(pX, 1000);
+  ok('#51 ein einzelner Tipp waehlt nur aus und oeffnet keine Eingabe',
+    GP.zustand.bemAktiv === bmX.id && !GP.inlineStand.offen);
+  tippPaar(pX, 1150);
+  ok('#51 zwei schnelle Zeigerpaare auf DASSELBE Mass oeffnen die Inline-Eingabe '
+    + '(ohne dblclick — der Kindbaum wird bei jedem Ereignis neu geschrieben)',
+    GP.inlineStand.offen && GP.inlineStand.id === bmX.id
+    && GP.inlineStand.wert === String(bm51(bmX.id).mass_mm));
+  ok('#51 das Oeffnen im Zeigerstrom schreibt nichts, bucht nichts und wechselt '
+    + 'das Werkzeug nicht ([K-3])',
+    mappeText() === vorMappe && GP.undoStand.undo === vorUndo
+    && GP.zustand.werkzeug === 'auswahl' && GP.zustand.bemZieh === null);
+  gp('inlineTaste', 'Escape');
+
+  // Zu langsam ist kein Doppelklick.
+  tippPaar(pX, 5000);
+  tippPaar(pX, 9000);
+  ok('#51 zwei langsame Tipps sind zwei Klicks — die Eingabe bleibt zu',
+    !GP.inlineStand.offen && mappeText() === vorMappe);
+
+  // Zwei verschiedene Masse sind kein Doppelklick.
+  const pY = gp('bemTextPunkt', bmY.id);
+  tippPaar(pX, 12000);
+  tippPaar(pY, 12100);
+  ok('#51 schnelle Tipps auf VERSCHIEDENE Masse oeffnen nichts',
+    !GP.inlineStand.offen && GP.zustand.bemAktiv === bmY.id);
+
+  // Ein echter Zug bleibt ein Zug — und er startet keine Doppelklickfolge.
+  tippPaar(pX, 15000);
+  const weit = 40 * GP.blick.mm;                  // klar ueber der Schwelle
+  feuer('pointerdown', pX, 15100);
+  feuer('pointermove', { x: pX.x, y: pX.y + weit }, 15120);
+  feuer('pointerup', { x: pX.x, y: pX.y + weit }, 15140);
+  await warte();
+  ok('#51 ein echter Zug verschiebt die Darstellung und oeffnet keine Eingabe',
+    !GP.inlineStand.offen && bm51(bmX.id).linie_mm != null
+    && GP.undoStand.undo === vorUndo + 1);
+  GP.undo();
+  await warte();
+  // Der Zeitstempel der Mappe laeuft mit; verglichen wird der Inhalt.
+  const ohneStempel = (t) => String(t).replace(/"geaendert":"[^"]*"/g, '""');
+  ok('#51 nach dem Zug ist der Stand wieder der alte',
+    bm51(bmX.id).linie_mm == null && ohneStempel(mappeText()) === ohneStempel(vorMappe));
+}
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }

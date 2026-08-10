@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260810-03",
+    datum: "2026-08-10",
+    typ: "fix",
+    issue: 51,
+    titel: "Layout-Editor: Doppelklick auf ein Maß öffnet die Eingabe wieder zuverlässig",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: zweimal schnell auf Maßzahl oder Maßlinie klicken — die "
+      + "Eingabe muss aufgehen. Zwei langsame Klicks, zwei verschiedene Maße und echtes Ziehen dürfen "
+      + "sie nicht öffnen.",
+  },
+  {
     id: "chg-20260810-02",
     datum: "2026-08-10",
     typ: "fix",

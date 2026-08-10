@@ -122,8 +122,12 @@ Nebenwirkung anordnen, ohne ein separates Maßformular bedienen zu müssen.
 - Delete/Backspace löschen Maße, aber weder bei Texteingabe noch jemals Wände.
 - Anlegen, Ändern, Verschieben und Löschen lassen sich jeweils mit genau einem Schritt rückgängig
   machen und wiederholen.
-- Die Interferenzkette wird mit vollständigen Pointerdown-/Pointerup-/Click-Paaren vor `dblclick`
-  regressionsgeprüft.
+- Die Interferenzkette wird mit vollständigen Pointerdown-/Pointerup-Paaren regressionsgeprüft, und
+  zwar **ausschließlich über die wirklich gebundenen Bühnen-Listener**. Ein vorgefertigtes `dblclick`
+  taugt dafür nicht: weil `render()` den SVG-Kindbaum bei jedem Zeigerereignis ersetzt, liefert der
+  Browser aus echter Eingabe kein `click`/`dblclick` mehr. Der Doppelklick wird deshalb im
+  Zeigerstrom erkannt (zwei zuglose Tipps auf dasselbe Maß innerhalb des Doppelklickfensters), und
+  der Test darf `beiDoppelklick`/`doppeltippe` nicht direkt aufrufen.
 
 ---
 

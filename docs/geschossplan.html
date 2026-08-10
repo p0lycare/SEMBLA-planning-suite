@@ -354,6 +354,7 @@ const GP = {
   // `pointerup`, und nur wenn wirklich gezogen wurde), `inline` das offene Feld.
   // Der Zug fasst die GANZE Maßdarstellung quer zur Messrichtung (reine Darstellung).
   bemZieh: null,              // { id, von:{x,y}, dq:number, bewegt }
+  massTipp: null,             // { id, zeit } letzter zugloser Tipp auf ein Maß (Doppelklick)
   inline: null,               // { id|null, entwurf, laeuft } während der Inline-Eingabe
   undo: [], redo: [],         // Rückgängig-Stapel (nur Projektmappe, s. `buchen`)
   undoFuer: undefined,        // Geschoss, zu dem die Stapel gehören
@@ -827,6 +828,22 @@ const FANG_PX = 7;
  * Auswahl, es wird nichts gespeichert und kein Rückgängig-Schritt gebucht.
  */
 const ZUG_SCHWELLE_PX = 3;
+
+/**
+ * Zeitfenster zweier zugloser Tipps auf DASSELBE Maß, die als Doppelklick gelten
+ * (#51). Der Doppelklick wird im **Zeigerstrom** erkannt und nicht am `dblclick`:
+ * `render()` schreibt den SVG-Kindbaum der Bühne bei jedem pointerdown/pointerup
+ * neu, weshalb der Browser aus echter Eingabe hier weder `click` noch `dblclick`
+ * erzeugt — der `dblclick`-Behandler war damit unerreichbar. pointerdown/-up sind
+ * davon unberührt, deshalb hängt die Erkennung an ihnen. Der Wert entspricht dem
+ * üblichen Doppelklickfenster der Systeme.
+ */
+const DOPPEL_MS = 500;
+
+/** Zeitpunkt eines Zeigerereignisses — im Browser `timeStamp`, sonst die Uhr. */
+function zeigerZeit(ev){
+  return ev && typeof ev.timeStamp === 'number' ? ev.timeStamp : Date.now();
+}
 
 /** Abstand eines Weltpunkts zu einem Bezug, oder `null` außerhalb seiner Ausdehnung. */
 function bezugAbstand(p, b, luft){
@@ -2125,6 +2142,13 @@ function beiKlick(ev){
  * Moduswahl. Ein zwischen den beiden Klicks entstandener Zug ist keiner: die
  * Schwelle in `beiZeigerBewegung` verhindert, dass ein Doppelklick nebenbei die
  * Beschriftung verschiebt.
+ *
+ * ACHTUNG — dieser Behandler ist nur noch **Rückfall**: `render()` ersetzt den
+ * SVG-Kindbaum der Bühne bei jedem Zeigerereignis, weshalb der Browser (geprüft
+ * in Chromium 148) aus echter Eingabe hier weder `click` noch `dblclick` erzeugt.
+ * Der wirksame Weg ist deshalb die Doppelklickerkennung im **Zeigerstrom** in
+ * `beiZeigerAuf` (s. `DOPPEL_MS`) — beide Wege öffnen dieselbe Eingabe über
+ * `inlineOeffne`, es gibt keine zweite Semantik.
  */
 function beiDoppelklick(ev){
   if (!geschoss()) return;
@@ -2272,7 +2296,7 @@ function beiZeigerBewegung(ev){
   }
 }
 
-function beiZeigerAuf(){
+function beiZeigerAuf(ev){
   if (GP.pan) { GP.pan = null; render(); return; }
   if (GP.planZieh) {
     GP.planZieh = null;
@@ -2282,7 +2306,27 @@ function beiZeigerAuf(){
   if (GP.bemZieh) {
     const z = GP.bemZieh;
     GP.bemZieh = null;
-    if (z.bewegt) speichereLinienVersatz(z.id, z.dq);
+    if (z.bewegt) {
+      // Ein echter Zug ist kein Klick: er beendet auch eine begonnene
+      // Doppelklickfolge, sonst öffnete das Loslassen nebenbei die Eingabe.
+      GP.massTipp = null;
+      speichereLinienVersatz(z.id, z.dq);
+      render();
+      return;
+    }
+    // Zugloser Tipp auf ein Maß. Zwei davon auf DASSELBE Maß innerhalb von
+    // DOPPEL_MS sind der Doppelklick — erkannt im stabilen Zeigerstrom, weil
+    // `render()` den Kindbaum ersetzt und der Browser deshalb kein `dblclick`
+    // liefert. Geöffnet wird die vorhandene Inline-Eingabe; gewählt ist das Maß
+    // schon aus dem pointerdown. Geschrieben wird dabei nichts, das Werkzeug
+    // wechselt nicht ([K-3]).
+    const t = zeigerZeit(ev);
+    const vorher = GP.massTipp;
+    GP.massTipp = { id: z.id, zeit: t };
+    if (vorher && vorher.id === z.id && t - vorher.zeit >= 0 && t - vorher.zeit <= DOPPEL_MS) {
+      GP.massTipp = null;
+      inlineOeffne(z.id);
+    }
     render();
     return;
   }
