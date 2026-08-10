@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260810-02",
+    datum: "2026-08-10",
+    typ: "fix",
+    issue: 51,
+    titel: "Layout-Editor: Bemaßungen vollständig inline anlegen, bearbeiten, verschieben und löschen",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: mit D zwei Bezüge wählen, Maß per Enter setzen; danach "
+      + "Maßzahl oder Maßlinie doppelklicken, ziehen und mit Delete löschen. Escape muss Entwürfe verwerfen.",
+  },
+  {
     id: "chg-20260810-01",
     datum: "2026-08-10",
     typ: "feature",

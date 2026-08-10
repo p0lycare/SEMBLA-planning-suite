@@ -594,3 +594,34 @@ reine Mappenweg heißt „nur Struktur (JSON)“, und alle Format-/Schemaversion
 Der Oberflächenroundtrip prüft Lage, Bemaßungen, Kopfdaten, Eingaben und bitgenaue synthetische
 Planbilder für ZIP, Ordner und Deflate sowie den Rollback. Damit ist der in C4b geforderte spätere
 Exportpfad umgesetzt, ohne gelöste Positionen in die Mappe zurückzuschreiben.
+
+---
+
+## 12. Bedienkorrektur Bemaßungen (Issue #51, 2026-08-10)
+
+Issue #51 ändert keine [K]-Regel, keine Constraint-Mathematik und keine Formatversion. Paket 3 der
+Oberflächenplanung bleibt offen; Fixieren bleibt fachlich ein Klick auf genau einen Bezug.
+
+- **Anlegen vollständig im Plan.** Der erste Bezug startet sofort die Vorschau. Nach dem zweiten
+  Bezug stehen vollständige Hilfslinien, Maßlinie und Maßzahl als ungespeicherter Entwurf im Plan;
+  an der Maßzahl ist der exakte Istabstand vorausgewählt. Ein 0,5-mm-Istabstand bleibt ungerundet
+  und wegen [K-12] rot/ungültig, bis er überschrieben wird. Enter schreibt ausschließlich über
+  `bemSetzen` → `speichereBemassung`; Escape verwirft Feld und Entwurf gemeinsam. Der Entwurf bucht
+  keinen Undo-Schritt und verändert die Projektmappe nicht.
+- **Ein Editor und ein Wertweg.** Der linke Maßeditor samt Setzen-/Löschen-/Abbrechen-Schaltflächen
+  ist entfernt. Doppelklick auf Maßzahl oder Maßlinie öffnet dieselbe Inline-Eingabe in Auswahl,
+  Bemaßen, Fixieren, Wand und Plan. Maßtreffer werden vor werkzeugspezifischen Aktionen behandelt,
+  sodass die beiden Pointer-/Klickpaare vor `dblclick` keine Wand zeichnen, kein Fixiermaß setzen,
+  keinen Plan verschieben und keinen Bemaßungsentwurf fortschalten.
+- **Vollständige Darstellung verschieben.** Ein Zug an Maßzahl oder Maßlinie verschiebt Maßlinie
+  und Zahl gemeinsam quer zur Messrichtung; Hilfslinien bleiben an ihren Referenzen. Gespeichert
+  wird nur das optionale skalare `linie_mm`. Ein vorhandenes `text_mm` bleibt als relativer
+  Labelversatz erhalten. Maßwert, Wandgeometrie, Referenzen und Löserergebnis bleiben bit-genau.
+  Unter 3 Schirmpixeln bleibt die Bewegung ein Klick ohne Speicherung.
+- **Sicher löschen und atomar rückgängig.** Delete und Backspace löschen nur ein ausgewähltes Maß
+  und greifen bei aktiver Texteingabe nicht; Wände werden über diesen Weg nie gelöscht. Anlegen,
+  Ändern, Verschieben und Löschen sind jeweils genau ein Undo-/Redo-Schritt.
+- **Regression.** `smoke_geschossplan.mjs` prüft den vollständigen Entwurf, 0,5-mm-Abweisung,
+  Inline-Wertweg, Maßzahl und Maßlinie, alle Werkzeuge, vollständige Pointerdown-/pointerup-/click-
+  Paare vor `dblclick`, `text_mm`-Altbestand, bit-genau unberührten Löser und Delete/Backspace.
+  `test-constraints.mjs` prüft die verlustfreie optionale Normalisierung von `linie_mm`.

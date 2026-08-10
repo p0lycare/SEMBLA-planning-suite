@@ -472,5 +472,49 @@ t("[K-11] krummes Laengenmass faellt in der Validierung auf",
   })());
 }
 
+// --- Querversatz der Massdarstellung: Darstellung, kein Constraint ---------
+// `linie_mm` verschiebt die Massdarstellung quer zur Messrichtung. Es ist rein
+// darstellend: der Loeser darf es NIE sehen, und ein unbrauchbarer Wert wird
+// benannt abgewiesen statt still verworfen ([P-9]).
+{
+  const bm = (extra) => ({ id: "d1", achse: "y", von: p("A", "mitte"), bis: p("B", "mitte"),
+                           mass_mm: 2000, ...extra });
+  const mappe = () => {
+    let m = M.leereMappe("Test", { geschoss: "EG", hoehe_mm: 2600 });
+    const gs = M.alleGeschosse(m)[0].geschoss.id;
+    m = M.setzeWand(m, gs, { id: "A", name: "A",
+      lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 16 } });
+    return { m, gs };
+  };
+  t("Darstellung: `linie_mm` fehlt im Bestand und normalisiert zu null",
+    K.normBemassung(bm({})).linie_mm === null);
+  t("Darstellung: ein gesetzter Querversatz wird verlustfrei mitgefuehrt",
+    K.normBemassung(bm({ linie_mm: -250 })).linie_mm === -250
+    && K.normBemassung(bm({ linie_mm: 0 })).linie_mm === 0);
+  t("Darstellung: `linie_mm` steht neben `text_mm`, ohne es zu verdraengen", (() => {
+    const n = K.normBemassung(bm({ linie_mm: -250, text_mm: { x: -300, y: 0 } }));
+    return n.linie_mm === -250 && n.text_mm.x === -300 && n.text_mm.y === 0;
+  })());
+  t("Darstellung: ein unbrauchbarer Querversatz wird benannt abgewiesen",
+    K.bemassungFehler(bm({ linie_mm: "weit" }), new Map([["A", null], ["B", null]]))
+      .some(f => /Querversatz der Maßdarstellung muss eine Zahl/.test(f))
+    && K.bemassungFehler(bm({ linie_mm: 0 })).every(f => !/Querversatz der Maßdarstellung/.test(f)));
+  t("[K-5] der Loeser rechnet mit und ohne Darstellungsversatz bit-genau gleich", (() => {
+    const waende = [w("A", 0, 62.5, "x", 16), w("B", 0, 2062.5, "x", 16)];
+    const ohne = K.loese(waende, [bm({}), b("f1", "y", null, p("A", "min"), 0)]);
+    const mit = K.loese(waende, [bm({ linie_mm: -900, text_mm: { x: 5, y: 5 } }),
+                                 b("f1", "y", null, p("A", "min"), 0)]);
+    return JSON.stringify(ohne) === JSON.stringify(mit);
+  })());
+  t("Darstellung: eine Bemassung mit Querversatz bleibt in der Mappe gueltig", (() => {
+    const { m, gs } = mappe();
+    let n = M.setzeWand(m, gs, { id: "B", name: "B",
+      lage: { start_mm: { x: 0, y: 2062.5 }, richtung: "x", laenge_grid: 16 } });
+    n = M.setzeBemassung(n, gs, bm({ linie_mm: -250 }));
+    return M.validiereMappe(n).length === 0
+      && M.bemassungen(n, gs)[0].linie_mm === -250;
+  })());
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

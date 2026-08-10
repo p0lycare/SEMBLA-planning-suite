@@ -296,34 +296,35 @@ Hierarchie es verbietet ([L-10]). Ein **verwaister Eintrag** bekommt **keinen** 
 Weg vorzutäuschen, den es nicht gibt ([L-4]). Die Liste bleibt Anzeige und Auswahl und schreibt
 nichts ([K-10]).
 
-**Maße inline bearbeiten, Maßzahl verschieben (Issue #51, Paket 2, 2026-08-10).** Vollständig in
-`docs/geschossplan.html` — **keine** neue Regel-ID, **kein** Schema-/Formatbump, Paket 3 des Plans
-ausdrücklich unberührt:
-**(a) Der Doppelklick auf die Maßzahl öffnet die Eingabe jetzt an Ort und Stelle.** Das Feld
+**Maße inline bearbeiten und Maßdarstellung verschieben (Issue #51, Paket 2, 2026-08-10).** In
+`docs/geschossplan.html`, mit verlustfreier Normalisierung des optionalen `linie_mm` in
+`docs/shared/sembla-constraints.js` — **keine** neue Regel-ID, **kein** Schema-/Formatbump, Paket 3
+und die Ein-Klick-Semantik des Fixierwerkzeugs ausdrücklich unberührt:
+**(a) Der Doppelklick auf Maßzahl oder Maßlinie öffnet die Eingabe an Ort und Stelle.** Das Feld
 `#gp-inline` liegt — wie die Bauteilliste — **neben** der Bühne im Markup und nur optisch darüber
 (`render()` schreibt die Bühne komplett neu, ein Feld darin verlöre Fokus, Auswahl und Behandler);
-positioniert wird es bei jedem `render()` an der dargestellten Zahl. **Geschrieben wird nichts
-Eigenes:** übernommen wird über `waehleBemassung` → Feld „Maß“ → **`bemSetzen()`** →
-`speichereBemassung()`, also den **einen** Maßwert-Schreibweg samt [K-11]/[K-12], Widerspruch,
-Redundanz und Rückgängig. `bemSetzen()` liefert dafür `true`/`false`. **Enter** übernimmt, **Escape**
-verwirft, **Fokusverlust** übernimmt einen gültigen Wert; ein **ungültiger** Wert ändert nichts, wird
-begründet gemeldet und bleibt rot markiert im Feld stehen, statt still verworfen oder gerundet zu
-werden ([P-9]). Enter und Escape werden **im Feld gestoppt** — sonst griffen die Tastenkürzel der
-Seite (Werkzeugwechsel, Abbrechen) mitten in eine Eingabe.
-**(b) `text_mm` ist ausschließlich die Beschriftungsposition.** Das optionale Feld gab es in
-`normBemassung` bereits; bislang floss sein Querteil in die Lage der **Maßlinie**. Das ist
-präzisiert: `text_mm` verschiebt **nur die Maßzahl** (Versatz in mm, Weltkoordinaten x/y, also
-achsen- und zoomunabhängig), nie Maßlinie, Hilfslinie oder Bezugspunkt, nie den Maßwert, und der
-**Löser sieht es nie** ([K-5]). Verlustfrei, weil das Feld nie geschrieben wurde und im Bestand
-ausnahmslos `null` ist — deshalb **kein** Bump von `MAPPE_VERSION`/`SCHEMA_VERSION`. `bemGeometrie()`
-+ `bemText()` sind die **eine** Quelle für Zeichnen, Treffen, Ziehen und die Feldposition; gespeichert
-wird über dasselbe `MAPPE.setzeBemassung`.
-**(c) Klick, Doppelklick und Zug sind über eine Schwelle getrennt.** Das Drücken auf der Maßzahl
-wählt das Maß (wie bisher jeder Klick auf ein Maß) und merkt nur den Startpunkt; erst ab **3
-Schirmpixeln** Bewegung wird daraus ein Zug. Ein Klick ohne Zug und jeder Doppelklick speichern damit
-**nichts** und buchen **keinen** Rückgängig-Schritt. Die Zahl hat dafür eine eigene, **engere**
-Trefferfläche (`bemTextTreffer`) als das Maß insgesamt (`bemTreffer`) — ein Klick auf die **Maßlinie**
-bleibt reine Auswahl. Gezogen wird mit **Auswählen & ziehen**; gespeichert wird erst bei `pointerup`.
+positioniert wird es bei jedem `render()` an der dargestellten Zahl. Der Maßtreffer wird **vor** den
+werkzeugspezifischen Wand-, Bemaßungs-, Fixier- und Planaktionen behandelt; dadurch lösen die zwei
+Pointer-/Klickpaare vor `dblclick` keine fremde Aktion aus. **Geschrieben wird nichts Eigenes:**
+übernommen wird ausschließlich über **`bemSetzen(roh)` → `speichereBemassung()`**, also den einen
+treibenden Maßwert-Schreibweg samt [K-11]/[K-12], Widerspruch, Redundanz und Rückgängig. Der linke
+Maßeditor samt Schaltflächen ist entfernt.
+**(b) Der D-Werkzeug-Entwurf ist vollständig inline.** Nach dem ersten Bezug folgt eine Vorschau dem
+Zeiger; nach dem zweiten stehen Maßlinie, Hilfslinien, Zahl und Inline-Feld vollständig im Plan. Das
+Feld enthält den **exakten** Istabstand vorausgewählt. Ein nicht ganzzahliger 0,5-mm-Abstand wird
+nicht gerundet: er bleibt nach [K-12] rot und ungültig, bis er überschrieben wird. **Enter** setzt,
+**Escape** verwirft Feld und ungespeicherten Entwurf gemeinsam; der Entwurf verändert weder Mappe
+noch Undo-Stapel.
+**(c) `linie_mm` verschiebt die vollständige Maßdarstellung quer zur Messrichtung.** Maßlinie und
+Zahl wandern gemeinsam, Hilfslinien bleiben an den Referenzen. Das optionale skalare Feld ist reine
+Darstellung; Wert, Wandgeometrie, Referenzen und Löser bleiben bit-genau. Altbestand ohne das Feld
+zeichnet wie bisher. Ein vorhandenes `text_mm` bleibt als **relativer** Labelversatz unverändert,
+und neue Züge schreiben ausschließlich `linie_mm` über `MAPPE.setzeBemassung`.
+**(d) Klick, Doppelklick und Zug sind über eine Schwelle getrennt.** Erst ab **3 Schirmpixeln** wird
+aus dem Drücken auf Maßzahl **oder Maßlinie** ein Zug; Klick und Doppelklick speichern nichts. Der
+Zug funktioniert werkzeugübergreifend und wird erst bei `pointerup` als genau ein Undo-Schritt
+gespeichert. **Delete/Backspace** löschen genau ein ausgewähltes Maß als einen Schritt, außer ein
+Textfeld ist aktiv; Wände werden über diese Tasten nie gelöscht.
 
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
@@ -438,7 +439,7 @@ Redundanz [K-7], Längenmaß [K-11], Millimetereingabe [K-12], Undo/Redo) und **
 Bauteilliste, Referenzgeschoss, Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) —
 `tests/module/smoke_geschossplan.mjs`. **C5 ist abgeschlossen**; das Projektarchiv berührt keine
 [K]-Regel, ebenso wenig die Bedienzugaben aus **#50 (Paket 1)** und **#51 (Paket 2:
-Inline-Maßeingabe, verschiebbare Maßzahl)**. C4b, C4c, **C5** und beide Pakete kamen **ohne
+Inline-Maßeingabe, verschiebbare Maßdarstellung)**. C4b, C4c, **C5** und beide Pakete kamen **ohne
 Schema-/Formatversionsbump** aus. Das frühere
 „Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
 Wandabstände lägen im Raster.

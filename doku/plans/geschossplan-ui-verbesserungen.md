@@ -49,61 +49,81 @@ Den Wandworkflow vereinfachen, die Höhenangabe fachlich korrekt benennen und de
 
 ## Paket 2 – Maße direkt in der Zeichnung bearbeiten  ✅ umgesetzt (Issue #51, 2026-08-10)
 
-Umgesetzt vollständig in `docs/geschossplan.html`; regressionsgetestet in
-`tests/module/smoke_geschossplan.mjs`. **Ohne Schema-/Formatbump** — das Darstellungsfeld
-`text_mm` gab es in `normBemassung` bereits (optional, im Bestand ausnahmslos `null`).
+Umgesetzt in `docs/geschossplan.html`; die optionale Darstellungseigenschaft `linie_mm` wird in
+`docs/shared/sembla-constraints.js` verlustfrei normalisiert. Regressionsgetestet in
+`tests/module/smoke_geschossplan.mjs` und `tests/module/test-constraints.mjs`. **Ohne
+Schema-/Formatbump** und ohne Änderung an [K-1]…[K-13], Constraint-Mathematik oder Fixiersemantik.
 
-Zwei Festlegungen der Umsetzung:
+Festlegungen der finalen Umsetzung:
 
-- **`text_mm` ist ausschließlich die Beschriftungsposition** (Versatz der Maßzahl in mm, in
-  Weltkoordinaten x/y). Zuvor floss der Querteil in die Lage der **Maßlinie** — das hätte dem
-  Nicht-Ziel „keine Maßlinien verschieben" widersprochen. Da das Feld nie geschrieben wurde, ist
-  die Präzisierung verlustfrei; `bemGeometrie`/`bemText` sind die einzige Quelle für Zeichnen,
-  Treffen, Ziehen und die Position des Eingabefelds.
-- **Ein Zug entsteht erst ab 3 Schirmpixeln Bewegung.** Darunter bleibt das Drücken auf der Maßzahl
-  reine Auswahl: ein Klick und ein Doppelklick speichern nichts und buchen keinen
-  Rückgängig-Schritt. Gezogen wird mit dem Werkzeug **Auswählen & ziehen**; die Maßzahl hat dafür
-  eine eigene, engere Trefferfläche als das Maß insgesamt.
+- Nach erstem und zweitem Bezug ist die noch ungespeicherte Bemaßung sichtbar. Nach dem zweiten
+  Bezug öffnet sich das Inline-Feld an der Maßzahl und enthält den **exakten** Istabstand. Auch ein
+  0,5-mm-Wert bleibt unverändert vorausgewählt und wegen [K-12] rot/ungültig, bis er überschrieben
+  oder mit Escape zusammen mit dem Entwurf verworfen wird. Der Entwurf verändert weder Mappe noch
+  Undo-Stapel.
+- `bemSetzen(roh)` → `speichereBemassung()` ist der **einzige** Wert-Schreibpfad. Der linke
+  Maßeditor samt Setzen-/Löschen-/Abbrechen-Schaltflächen ist vollständig entfernt.
+- `linie_mm` ist ein optionaler skalarer Querversatz der **gesamten Maßdarstellung**. Maßlinie und
+  Zahl wandern gemeinsam; Hilfslinien bleiben an den Referenzen. Ein vorhandenes `text_mm` bleibt
+  als relativer Labelversatz unverändert erhalten. Neue Züge schreiben ausschließlich `linie_mm`.
+- Ein Zug entsteht erst ab 3 Schirmpixeln Bewegung. Darunter bleiben Klick und Doppelklick ohne
+  Speicherung. Maßzahl und Maßlinie haben denselben Zugweg, und Maße liegen bei der
+  Zeigerbehandlung werkzeugübergreifend über Wand-, Fixier- und Planaktionen.
 
 ### Ziel
 
-Maßwerte und ihre Beschriftungsposition unmittelbar im Plan bearbeiten, ohne ein separates Maßformular bedienen zu müssen.
+Maßwerte unmittelbar im Plan bearbeiten und die vollständige Bemaßungsdarstellung ohne geometrische
+Nebenwirkung anordnen, ohne ein separates Maßformular bedienen zu müssen.
 
 ### Umfang
 
-1. Ein Doppelklick auf ein Maßlabel ersetzt die dargestellte Maßzahl direkt an ihrer Position durch ein Eingabefeld.
-2. Der aktuelle Maßwert ist im Feld vorausgewählt.
-3. **Enter** übernimmt den eingegebenen Wert.
-4. **Escape** verwirft die Eingabe.
-5. Ein Fokusverlust übernimmt einen gültigen Wert; ein ungültiger Wert bleibt ohne Datenänderung und wird verständlich kenntlich gemacht.
-6. Die Übernahme nutzt die bestehende treibende Bemaßungs- und Constraint-Logik; es entsteht kein zweiter fachlicher Bearbeitungspfad.
-7. Ein Maßlabel kann angeklickt und gezogen werden.
-8. Während des Ziehens folgt das Label dem Zeiger; bei `pointerup` wird die neue Beschriftungsposition gespeichert.
-9. Die Labelposition ist reine Darstellung und verändert weder Maßwert noch Wandgeometrie.
-10. Maßwertänderungen und gespeicherte Labelverschiebungen werden in Undo/Redo aufgenommen.
-11. Einfacher Klick, Doppelklick und Ziehen werden so unterschieden, dass keine Aktion versehentlich eine andere auslöst.
+1. Ein Doppelklick auf Maßzahl oder Maßlinie öffnet das Eingabefeld direkt an der Maßzahl — in
+   Auswahl, Bemaßen, Fixieren, Wand und Plan, ohne vorher eine fremde Werkzeugaktion auszulösen.
+2. Beim Anlegen zeigt bereits der erste Bezug eine Vorschau; nach dem zweiten Bezug stehen die
+   vollständige vorläufige Bemaßung und das Inline-Feld mit exakt vorausgewähltem Istabstand.
+3. **Enter** übernimmt über den bestehenden treibenden Constraint-Pfad; **Escape** verwirft Feld
+   und Entwurf gemeinsam.
+4. Ein Fokusverlust übernimmt einen gültigen Wert. Ein ungültiger Wert — insbesondere ein
+   nicht-ganzzahliger 0,5-mm-Istabstand — bleibt rot und unverändert stehen; gerundet wird nichts.
+5. Maßzahl und Maßlinie können angeklickt und quer zur Messrichtung gezogen werden.
+6. Während des Ziehens folgen Maßlinie und Zahl gemeinsam dem Zeiger; die Hilfslinien bleiben an
+   den Referenzen. Bei `pointerup` wird ausschließlich `linie_mm` gespeichert.
+7. Maßwert, Wandgeometrie, Referenzen, `text_mm` und Löserergebnis ändern sich durch den Zug nicht.
+8. **Delete** und **Backspace** löschen ausschließlich ein gewähltes Maß; bei aktiver Texteingabe
+   greift der globale Löschweg nicht und Wände werden nie über diese Tasten gelöscht.
+9. Anlegen, Ändern, Verschieben und Löschen sind jeweils genau ein Undo-/Redo-Schritt.
+10. Einfacher Klick, Doppelklick und Ziehen werden so unterschieden, dass keine Aktion
+    versehentlich eine andere auslöst.
 
 ### Datenmodell
 
 - Die bestehende Bemaßung bleibt die einzige Quelle für den treibenden Maßwert.
-- Für die manuell verschobene Beschriftung wird nur die minimal nötige Darstellungsposition an der Bemaßung gespeichert.
-- Bestehende Bemaßungen ohne gespeicherte Labelposition verwenden weiterhin die automatisch berechnete Standardposition.
+- `linie_mm` ist optional und enthält nur den skalaren Querversatz der Maßlinie gegenüber ihrer
+  automatischen Staffelposition.
+- `text_mm` bleibt ein relativer Versatz der Maßzahl gegenüber der Maßlinie. Altbestand ohne
+  `linie_mm` wird unverändert gezeichnet; Altbestand mit `text_mm` behält seinen relativen Versatz.
 
 ### Nicht-Ziele
 
 - Keine Änderung der mathematischen Maß- oder Lösersemantik.
-- Kein freies Verschieben der Maßlinien oder Maßbezugspunkte in diesem Paket.
+- Keine Änderung von Paket 3 oder der Ein-Klick-Semantik des Fixierwerkzeugs.
+- Kein freies Verschieben der Bezugspunkte oder Hilfslinienenden.
 - Kein zweites, unabhängiges Maßmodell für die Darstellung.
 
 ### Abnahme
 
-- Doppelklick ermöglicht die vollständige Werteingabe direkt im Plan.
-- Gültige Werte wirken über die bestehende Constraint-Logik.
-- Ungültige Werte verändern den Projektstand nicht.
-- Ein verschobenes Label bleibt nach Neuladen an seiner Position.
-- Das Verschieben eines Labels ändert weder Wert noch Geometrie.
-- Undo/Redo funktioniert für Maßwert und Labelposition.
-- Die kritische Bedienkette wird zusätzlich mit echten Browser-DOM-/Pointer-Ereignissen geprüft.
+- Der vollständige D-Werkzeug-Ablauf funktioniert ohne linken Maßeditor.
+- Doppelklick auf Zahl oder Linie öffnet in allen Werkzeugen zuverlässig genau das Inline-Feld.
+- Ein 0,5-mm-Istabstand wird exakt gezeigt, nicht gerundet und erst nach gültigem Überschreiben
+  speicherbar.
+- Ein Zug an Zahl oder Linie bewegt Maßlinie und Zahl gleich weit; Hilfslinien bleiben verankert.
+- Altbestand mit `text_mm` bleibt visuell verlustfrei, und ein neuer Zug ändert nur `linie_mm`.
+- Ziehen verändert Wert, Wände, Referenzen und Löser bit-genau nicht.
+- Delete/Backspace löschen Maße, aber weder bei Texteingabe noch jemals Wände.
+- Anlegen, Ändern, Verschieben und Löschen lassen sich jeweils mit genau einem Schritt rückgängig
+  machen und wiederholen.
+- Die Interferenzkette wird mit vollständigen Pointerdown-/Pointerup-/Click-Paaren vor `dblclick`
+  regressionsgeprüft.
 
 ---
 

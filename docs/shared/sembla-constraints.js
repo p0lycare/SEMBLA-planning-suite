@@ -217,6 +217,11 @@ export function normBemassung(b) {
     text_mm: (t && typeof t === "object")
       ? { x: _zahlOderNull(t.x) ?? 0, y: _zahlOderNull(t.y) ?? 0 }
       : null,
+    // Querversatz der MASSDARSTELLUNG (Masslinie samt Zahl und mitwachsenden
+    // Hilfslinien) in mm, quer zur Messrichtung — reine Darstellung.
+    // Der Loeser sieht das Feld NIE: es kommt in keiner Gleichung vor ([K-5]).
+    // `text_mm` bleibt daneben unveraendert der Versatz der ZAHL allein.
+    linie_mm: _zahlOderNull(o.linie_mm),
   };
 }
 
@@ -298,6 +303,11 @@ export function bemassungFehler(b, lagen) {
   }
   if (n.von && n.bis && n.von.wand === n.bis.wand && n.von.bezug === n.bis.bezug) {
     f.push(`${wo}Start- und Zielbezug sind derselbe Punkt — [K-3].`);
+  }
+  // Ein unbrauchbarer Querversatz wird BENANNT abgewiesen, nicht still auf 0
+  // gesetzt: sonst waere eine kaputte Datei nachher unauffaellig ([P-9]).
+  if (b && typeof b === "object" && b.linie_mm != null && n.linie_mm == null) {
+    f.push(`${wo}Querversatz der Maßdarstellung muss eine Zahl in Millimetern sein (gefunden: ${b.linie_mm}).`);
   }
   if (istLaengenmass(n, lagen)) {
     const p = pruefeLaengenmass(n.mass_mm);
