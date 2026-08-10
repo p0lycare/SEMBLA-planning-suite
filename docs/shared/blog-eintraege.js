@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260810-05",
+    datum: "2026-08-10",
+    typ: "feature",
+    issue: 53,
+    titel: "Layout-Editor: aufgeräumte Oberfläche — Werkzeugleiste oben, Ansicht unten, Plan im Popup",
+    testbitte: "Reiter 0 → „Geschoss öffnen“: linke Spalte weg, Werkzeuge oben, Ansicht unten. Der "
+      + "Plan wird nur noch über „Plan…“ verwaltet; beim Kalibrieren muss das Popup klein werden. "
+      + "Eine Wand mit anliegendem Maß darf sich nicht drehen lassen.",
+  },
+  {
     id: "chg-20260810-04",
     datum: "2026-08-10",
     typ: "feature",

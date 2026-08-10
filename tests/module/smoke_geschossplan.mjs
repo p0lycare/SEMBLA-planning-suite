@@ -54,8 +54,10 @@ class El {
 // Der Rasterfang startet AUS (#52) — genau wie im Markup.
 const START = { 'gp-fang': { checked: false }, 'gp-plan-lock': { checked: true },
                 'gp-hoehe': { value: '2600' }, 'gp-wandtyp': { value: 'mit_wind' },
-                'gp-ref': { checked: true }, 'gp-ref-deck': { value: '25' },
-                'gp-kal-block': { hidden: true } };
+                // #53: die beiden reinen Ansichtsschalter starten EIN, das
+                // Planblatt ist zu, der Kalibrierblock unsichtbar.
+                'gp-raster': { checked: true }, 'gp-masse': { checked: true },
+                'gp-planblatt': { hidden: true }, 'gp-kal-block': { hidden: true } };
 const document = {
   _e: {},
   getElementById(id){
@@ -154,9 +156,9 @@ ok('Bemassen (D) und Fixieren (F) sind bedienbare Werkzeuge (Etappe C4b)',
 // „springt trotzdem" erlebt.
 ok('#52 der Rasterfang ist beim Start AUS — im Zustand UND im Markup',
   GP.zustand.fang === false && !/id="gp-fang"[^>]*checked/.test(html));
+const ansichtLeiste = (html.split('id="gp-ansicht"')[1] || '').split('<!-- Planverwaltung')[0];
 ok('#52 es gibt genau EINEN Fang-Schalter, und er sagt, dass er fuer alle Waende gilt',
-  (html.match(/id="gp-fang"/g) || []).length === 1
-  && /alle Wände/.test((html.split('<h3>Ansicht</h3>')[1] || '').split('<h3>')[0]));
+  (html.match(/id="gp-fang"/g) || []).length === 1 && /JEDER Wand/.test(ansichtLeiste));
 // Die Geometrieabschnitte 2–8 rechnen mit dem 125-mm-Raster — deshalb hier
 // ausdruecklich einschalten (Abschnitt 9 prueft beide Stellungen).
 $('gp-fang').checked = true;
@@ -891,12 +893,18 @@ ok('Klick in der Zeichnung markiert die Zeile (Zeichnung ⇒ Liste)',
     && MAPPE.findeWand(store.holeMappe(), ohneLageId).wand.lage === null);
 }
 
-// --- 20) Referenzgeschoss: das Geschoss darunter, blass und unantastbar ---
-ok('ohne Geschoss darunter wird das benannt statt eines erfunden',
-  /Kein Geschoss darunter/.test($('gp-ref-info').innerHTML) && !/class="ref-wand"/.test(GP.svg));
+// --- 20) Referenzgeschoss ist VOLLSTAENDIG entfernt (#53) -----------------
+// Bis #52 lag das unmittelbar darunterliegende Geschoss als blasse Umrisse unter
+// der Zeichnung. Mit #53 ist das ersatzlos entfallen: kein Schalter, keine
+// Deckkraft, kein zweiter Loeserlauf, keine Umrisse. Geprueft wird deshalb vor
+// allem, was NICHT mehr da ist — und dass ein zweites Geschoss daran nichts aendert.
+ok('#53 es gibt keinerlei Bedienelemente des Referenzgeschosses mehr',
+  !/id="gp-ref"/.test(html) && !/id="gp-ref-deck"/.test(html) && !/id="gp-ref-info"/.test(html)
+  && !/Referenzgeschoss/.test(html));
+ok('#53 auch der Zeichen- und Loesercode dazu ist weg (kein zweiter Loeserlauf)',
+  !/referenzSvg|referenzGeschoss|refDeckkraft|ref-wand/.test(html));
 
-// Zwei Rechtecke des EG merken, solange das EG aktiv ist — die Referenz zeichnet
-// den GELOESTEN Stand, also muss der Test dieselbe Quelle lesen ([K-5]).
+// Zwei Rechtecke des EG merken, solange das EG aktiv ist.
 const ergEG = GP.loesen();
 const rEGa = CON.wandRechteck(lageVon(idA), ergEG.positionen[idA]);
 const rEGb = CON.wandRechteck(lageVon(idB), ergEG.positionen[idB]);
@@ -906,10 +914,8 @@ store.aendereMappe(m => { const r = MAPPE.fuegeGeschossHinzu(m, gebId, '1. OG', 
 store.setzeAktivesGeschoss(ogId);
 await warte();
 GP.zeigeAlles();
-ok('das unmittelbar darunterliegende Geschoss ist Index minus 1 im selben Gebaeude …',
-  /Referenz/.test($('gp-ref-info').innerHTML) && /EG/.test($('gp-ref-info').innerHTML));
 
-// Eine Wand im 1. OG genau AUF die EG-Wand idA legen — sie darf keine Kollision ausloesen.
+// Eine Wand im 1. OG genau AUF die EG-Wand idA legen.
 GP.werkzeug('wand');
 GP.zeichne({ x: rEGa.x_min, y: (rEGa.y_min + rEGa.y_max) / 2 },
            { x: rEGa.x_max, y: (rEGa.y_min + rEGa.y_max) / 2 });
@@ -918,43 +924,19 @@ const ogWaende = MAPPE.findeGeschoss(store.holeMappe(), ogId).geschoss.waende;
 const idOG = ogWaende[0] ? ogWaende[0].id : null;
 ok('Pruefaufbau: das 1. OG hat genau eine Wand, deckungsgleich mit einer EG-Wand',
   ogWaende.length === 1 && !!idOG);
-ok('das Geschoss darunter erscheint als blasse Umrisse',
-  (GP.svg.match(/class="ref-wand"/g) || []).length
-    === gsWaende().filter(w => w.lage != null).length);
-ok('die Referenz ist standardmaessig sichtbar und 25 % deckend',
-  $('gp-ref').checked === true && /class="referenz" pointer-events="none" opacity="0.25"/.test(GP.svg)
-  && GP.zustand.refDeckkraft === 0.25);
-ok('Referenzwaende sind nicht anklickbar: kein data-wand, pointer-events aus',
-  !/class="ref-wand"[^>]*data-wand/.test(GP.svg)
-  && (GP.svg.match(/data-wand=/g) || []).length === ogWaende.length);
+ok('#53 vom Geschoss darunter wird NICHTS mehr gezeichnet',
+  (GP.svg.match(/data-wand=/g) || []).length === ogWaende.length
+  && !/class="referenz"/.test(GP.svg));
 {
-  // Ein Punkt, der NUR von einer Referenzwand bedeckt ist (idB hat im OG keine Entsprechung).
+  // Ein Punkt, der im EG von einer Wand bedeckt ist, im OG aber leer ist.
   const p = { x: (rEGb.x_min + rEGb.x_max) / 2, y: (rEGb.y_min + rEGb.y_max) / 2 };
   GP.werkzeug('auswahl');
   GP.tippe(p);
-  ok('ein Klick auf eine Referenzwand waehlt NICHTS aus',
+  ok('#53 dort ist nichts anzuklicken — das Geschoss darunter existiert fuer den Editor nicht',
     GP.treffer(p) === null && GP.zustand.aktiv === null);
 }
-ok('[K-13] die deckungsgleiche Referenzwand erzeugt KEINE Kollision …',
+ok('[K-13] die deckungsgleiche Wand des Geschosses darunter erzeugt keine Kollision',
   GP.loesen().kollisionen.length === 0 && !GP.svg.includes(CON.FARBEN.fehler));
-{
-  const ohne = JSON.stringify(GP.loesen());
-  $('gp-ref').checked = false; $('gp-ref').dispatch('change');
-  ok('… und der Loeser sieht sie ueberhaupt nicht — bit-genau dasselbe Ergebnis mit und ohne Referenz',
-    JSON.stringify(GP.loesen()) === ohne && !/class="ref-wand"/.test(GP.svg));
-  $('gp-ref').checked = true; $('gp-ref').dispatch('change');
-}
-{
-  const vorher = localStorage.getItem('sembla:projekte');
-  $('gp-ref-deck').value = '60';
-  $('gp-ref-deck').dispatch('change');
-  ok('die Deckkraft ist einstellbar', /class="referenz" pointer-events="none" opacity="0.6"/.test(GP.svg));
-  ok('Sichtbarkeit und Deckkraft werden NICHT in der Projektmappe gespeichert',
-    localStorage.getItem('sembla:projekte') === vorher
-    && !/refDeckkraft|referenzgeschoss/i.test(localStorage.getItem('sembla:projekte')));
-  $('gp-ref-deck').value = '25';
-  $('gp-ref-deck').dispatch('change');
-}
 
 // --- 21) Doppelklick auf die Masszahl oeffnet den vorhandenen Masseditor --
 store.setzeAktivesGeschoss(gs2);
@@ -1023,17 +1005,17 @@ ok('trotz pointer-events:none bleibt der Doppelklick auf die Masszahl moeglich '
 // der Liste und keine angefasste Bestandswand.
 
 // --- 23) Der irrefuehrende zweite Einstieg links ist weg ------------------
-ok('#50 links gibt es keinen eigenen „Neue Wand"-Block mehr',
-  !/<h3>Neue Wand<\/h3>/.test(html));
+ok('#50 es gibt keinen eigenen „Neue Wand"-Block mehr',
+  !/Neue Wand<\/h3>/.test(html) && !/>Neue Wand</.test(html));
 {
   // … aber KEIN noetiger Parameter faellt mit ihm weg: Ziel, Standard-Wandhoehe
   // und Wandtyp gehoeren jetzt sichtbar zum Werkzeug „Wand zeichnen".
-  const wzBlock = (html.split('id="wz-wand-parameter"')[1] || '').split('<h3>')[0];
+  const wzBlock = (html.split('id="wz-wand-parameter"')[1] || '').split('<div class="kontext">')[0];
   ok('#50 Ziel, Standard-Wandhoehe und Wandtyp bleiben — als Parameter des Zeichenwerkzeugs',
     wzBlock.includes('id="gp-ziel"') && wzBlock.includes('id="gp-hoehe"')
     && wzBlock.includes('id="gp-wandtyp"'));
-  const ansicht = (html.split('<h3>Ansicht</h3>')[1] || '').split('<h3>')[0];
-  ok('#50 der Fang ist eine Ansichtsoption und steht dort', ansicht.includes('id="gp-fang"'));
+  ok('#50 der Fang ist eine Ansichtsoption und steht in der Ansichtsleiste',
+    ansichtLeiste.includes('id="gp-fang"'));
 }
 GP.werkzeug('auswahl');
 ok('#50 die Werkzeugparameter erscheinen nicht als eigenstaendiges Anlegeformular',
@@ -1130,9 +1112,12 @@ const listeEreignis = (sel, id, mod) => $('gp-liste').dispatch('click', {
     GP.zustand.aktiv === idB && window.location.href === '');
 }
 {
+  // #53: der doppelte Knopf „In Modul 1 planen" der aktiven Wand ist entfallen —
+  // es gibt nur noch „Planen" je Zeile, und beide riefen ohnehin dieselbe Funktion.
+  ok('#53 kein zweiter, doppelter Knopf nach Modul 1 mehr', !/id="gp-planen"/.test(html));
   window.location.href = '';
-  $('gp-planen').dispatch('click');
-  ok('#50 der linke Knopf „In Modul 1 planen" nutzt dieselbe Funktion',
+  listeEreignis('[data-planen]', idB);
+  ok('#50 „Planen" der Zeile setzt aktiv und oeffnet Modul 1',
     store.aktivId() === idB && window.location.href === 'wandplanung.html');
 }
 ok('#50 es gibt genau EINEN Weg nach Modul 1 — kein zweiter Navigationspfad',
@@ -1611,6 +1596,276 @@ ok('#51 der Maßwert wird nirgends mehr aus einem Seitenleisten-Feld gelesen',
   const ohneStempel = (t) => String(t).replace(/"geaendert":"[^"]*"/g, '""');
   ok('#51 nach dem Zug ist der Stand wieder der alte',
     bm51(bmX.id).linie_mm == null && ohneStempel(mappeText()) === ohneStempel(vorMappe));
+}
+
+// ==========================================================================
+//  Issue #53, Paket 3 — schwebende Bedienoberflaeche, Planverwaltung, Drehsperre
+// ==========================================================================
+// Wieder REINE BEDIENUNG: kein Feld in der Projektmappe, keine Formatversion,
+// keine [K]-Regel und keine Zeile Constraint-Mathematik. Geprueft wird deshalb
+// vor allem, was NICHT passiert — kein zweiter Uploadweg, kein Referenzgeschoss,
+// keine gespeicherten Ansichtsschalter, kein stilles Drehen ueber ein Mass hinweg.
+
+// --- 27) Das linke Panel ist ersatzlos weg --------------------------------
+ok('#53 es gibt keine linke Bedienflaeche mehr',
+  !/class="gp-tools"/.test(html) && !/<aside/.test(html) && !/gp-zurueck/.test(html));
+ok('#53 die Zeichenflaeche liegt in einem eigenen Raum, die Bedienung schwebt darueber',
+  /<div class="gp-raum">/.test(html)
+  && /<div class="gp-buehne" id="gp-buehne"><\/div>/.test(html));
+ok('#53 der Rueckweg nach Modul 0 bleibt erreichbar',
+  /index\.html">‹ Projektplaner/.test(html));
+
+// --- 28) Obere Werkzeugleiste: Werkzeuge, Undo/Redo, Drehen ---------------
+{
+  const oben = (html.split('id="gp-oben"')[1] || '').split('id="gp-liste"')[0];
+  ok('#53 die vier Zeichenwerkzeuge stehen in der oberen Leiste',
+    ['wz-auswahl', 'wz-wand', 'wz-bemassen', 'wz-fixieren'].every(i => oben.includes(`id="${i}"`)));
+  ok('#53 Undo, Redo und Drehen sind in dieselbe Leiste gezogen',
+    oben.includes('id="gp-undo"') && oben.includes('id="gp-redo"')
+    && oben.includes('id="gp-drehen"'));
+  ok('#53 „Plan verschieben" steht ausdruecklich NICHT in der Werkzeugleiste',
+    !oben.includes('gp-plan-schieben') && !/id="wz-plan"/.test(html));
+  ok('#53 jedes Werkzeug nennt Bedeutung und Kuerzel im Tooltip',
+    (oben.match(/title="[^"]*\((?:Esc|W|D|F|R|Strg\+Z|Strg\+Umschalt\+Z)\)/g) || []).length >= 6);
+}
+GP.werkzeug('wand');
+ok('#53 das aktive Werkzeug ist eindeutig hervorgehoben — und nur dieses',
+  $('wz-wand').className === 'an' && $('wz-auswahl').className === ''
+  && $('wz-bemassen').className === '' && $('wz-fixieren').className === '');
+GP.werkzeug('auswahl');
+
+// --- 29) Untere Ansichtsleiste und die zwei fluechtigen Schalter ----------
+ok('#53 Zoom, Fang und die Ebenenschalter stehen in der unteren Ansichtsleiste',
+  ['gp-zoom-minus', 'gp-zoom-plus', 'gp-zoom-alles', 'gp-fang', 'gp-raster', 'gp-masse',
+   'gp-plan-knopf'].every(i => ansichtLeiste.includes(`id="${i}"`)));
+{
+  const vorMappe53 = localStorage.getItem('sembla:projekte');
+  const vorUndo53 = GP.undoStand.undo;
+  const vorLoeser = JSON.stringify(GP.loesen());
+  ok('#53 beide Ansichtsschalter starten EIN', GP.zustand.rasterAn === true && GP.zustand.masseAn === true);
+
+  $('gp-raster').checked = false; $('gp-raster').dispatch('change');
+  ok('#53 „Raster" aus ⇒ keine Rasterlinien mehr im SVG',
+    !/class="rasterfein"/.test(GP.svg) && !/class="rasterhaupt"/.test(GP.svg));
+  $('gp-raster').checked = true; $('gp-raster').dispatch('change');
+  ok('#53 … und wieder ein ⇒ bit-genau dasselbe Raster', /class="rasterfein"/.test(GP.svg));
+
+  const masseVorher = (GP.svg.match(/class="bemassung/g) || []).length;
+  $('gp-masse').checked = false; $('gp-masse').dispatch('change');
+  ok('#53 „Bemassungen" aus ⇒ sie werden nicht gezeichnet',
+    masseVorher > 0 && !/class="bemassung/.test(GP.svg));
+  {
+    const p = gp('bemPunkt', GP.bemassungen()[0].id);
+    ok('#53 ein ausgeblendetes Mass ist auch nicht anklickbar (keine unsichtbare Trefferflaeche)',
+      p === null || GP.bemTreffer(p) === null);
+  }
+  ok('#53 die Masse bleiben dabei vollstaendig wirksam — der Loeser rechnet unveraendert ([K-5])',
+    JSON.stringify(GP.loesen()) === vorLoeser
+    && GP.bemassungen().length > 0);
+  // Wer Masse bearbeitet, muss sie sehen: D und F blenden sie ein und sagen es.
+  GP.werkzeug('bemassen');
+  ok('#53 das Werkzeug Mass blendet Bemassungen ein und benennt das',
+    GP.zustand.masseAn === true && /eingeblendet/.test($('gp-msg').textContent)
+    && $('gp-masse').disabled === true);
+  GP.werkzeug('auswahl');
+  ok('#53 ausserhalb von D/F ist der Schalter wieder frei', $('gp-masse').disabled === false);
+
+  ok('#53 kein Ansichtsschalter wird gespeichert — die Mappe ist unberuehrt',
+    localStorage.getItem('sembla:projekte') === vorMappe53 && GP.undoStand.undo === vorUndo53
+    && !/rasterAn|masseAn|planBlatt/.test(localStorage.getItem('sembla:projekte')));
+}
+
+// --- 30) Planverwaltung: EIN Uploadweg, im Blatt von unten ----------------
+// Der Editor ist seit #53 der einzige Ort, an dem ein Geschossplan hochgeladen,
+// ersetzt und entfernt wird ([L-8]/[L-9]). Gefahren wird der ECHTE Behandler.
+globalThis.createImageBitmap = async (b) => ({ width: b._w || 1600, height: b._h || 1200, close(){} });
+const dateiDouble = (name, type, size, w, h) => ({ name, type, size, _w: w, _h: h });
+const planVon = () => store.geschossPlan(store.aktivesGeschossId());
+{
+  ok('#53 alle Planbedienelemente liegen im Blatt und nirgends sonst',
+    (html.match(/id="gp-plan-import"/g) || []).length === 1
+    && (html.split('id="gp-planblatt"')[1] || '').includes('id="gp-plan-import"')
+    && (html.split('id="gp-planblatt"')[1] || '').includes('id="gp-plan-entfernen"')
+    && (html.split('id="gp-planblatt"')[1] || '').includes('id="gp-kal-start"')
+    && (html.split('id="gp-planblatt"')[1] || '').includes('id="gp-plan-schieben"'));
+  ok('#53 der Uploadweg nimmt nur Rasterbilder an ([L-8])',
+    /<input id="gp-plan-import" type="file" accept="image\/png,image\/jpeg,image\/webp"/.test(html));
+
+  ok('#53 das Blatt ist zu, bis es geoeffnet wird', $('gp-planblatt').hidden === true);
+  $('gp-plan-knopf').dispatch('click');
+  ok('#53 „Plan…" oeffnet die Planverwaltung',
+    $('gp-planblatt').hidden === false && GP.zustand.planBlatt === true);
+
+  // 30a) PDF und zu grosse Bilder werden benannt abgewiesen — nichts geschrieben.
+  const mappeVorUpload = localStorage.getItem('sembla:projekte');
+  await $('gp-plan-import').dispatch('change', {
+    target: { files: [dateiDouble('grundriss.pdf', 'application/pdf', 400000)], value: '' } });
+  const planVorher = JSON.stringify(planVon());
+  ok('#53 [L-8] ein PDF wird abgewiesen und der Grund genannt',
+    /PDF/.test($('gp-msg').textContent) && $('gp-msg').className === 'msg err'
+    && JSON.stringify(planVon()) === planVorher
+    && localStorage.getItem('sembla:projekte') === mappeVorUpload);
+  await $('gp-plan-import').dispatch('change', {
+    target: { files: [dateiDouble('riesig.png', 'image/png', 25 * 1048576, 100, 100)], value: '' } });
+  ok('#53 [L-8] ein zu grosses Bild wird abgewiesen statt verkleinert',
+    /20 MB/.test($('gp-msg').textContent) && JSON.stringify(planVon()) === planVorher);
+
+  // 30b) Echter Upload
+  const lagenVorUpload = JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage));
+  const undoVorUpload = GP.undoStand.undo;
+  await $('gp-plan-import').dispatch('change', {
+    target: { files: [dateiDouble('eg53.png', 'image/png', 123456, 1600, 1200)], value: '' } });
+  await warte();
+  ok('#53 der Plan ist hinterlegt — Beschreibung in der Mappe, Bild in der Plan-Datenbank',
+    planVon() && planVon().datei === 'eg53.png' && planVon().breite_px === 1600
+    && !!(await PLAN.holePlan(store.aktivesGeschossId())));
+  ok('#53 [L-8] das Bild landet NICHT im localStorage',
+    !localStorage.getItem('sembla:projekte').includes('blob')
+    && !localStorage.getItem('sembla:projekte').includes('base64'));
+  ok('#53 [L-9] ein frischer Plan ist unkalibriert — es wird kein Massstab geraten',
+    planVon().mm_je_pixel === null && planVon().versatz_x_mm === 0);
+  ok('#53 [L-1] der Upload hat keine Wandlage angetastet …',
+    JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage)) === lagenVorUpload);
+  ok('#53 [K-10]/[L-8] … und keinen Rueckgaengig-Schritt gebucht',
+    GP.undoStand.undo === undoVorUpload);
+  ok('#53 der unkalibrierte Plan liegt sofort vorlaeufig als Hintergrund, ohne Raster',
+    /class="planbild vorlaeufig"/.test(GP.svg) && !/class="rasterfein"/.test(GP.svg));
+  ok('#53 die Ansichtsleiste nennt den Zustand kurz', $('gp-plan-chip').textContent === 'nicht kalibriert');
+
+  // 30c) Ersetzen setzt Massstab und Versatz zurueck ([L-9])
+  store.setzeGeschossPlanAnsicht(store.aktivesGeschossId(), { mm_je_pixel: 8, versatz_x_mm: 250 });
+  await warte();
+  await $('gp-plan-import').dispatch('change', {
+    target: { files: [dateiDouble('og53.jpg', 'image/jpeg', 99999, 800, 600)], value: '' } });
+  await warte();
+  ok('#53 [L-9] ein neues Bild setzt Massstab und Versatz ausdruecklich zurueck',
+    planVon().datei === 'og53.jpg' && planVon().mm_je_pixel === null
+    && planVon().versatz_x_mm === 0 && /zurückgesetzt/.test($('gp-msg').textContent));
+  ok('#53 [L-1] auch das Ersetzen laesst jede Wandlage stehen',
+    JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage)) === lagenVorUpload);
+
+  // 30d) „Plan verschieben" ist Planverwaltung, kein Werkzeug der oberen Leiste
+  store.setzeGeschossPlanAnsicht(store.aktivesGeschossId(), { mm_je_pixel: 10 });
+  await warte();
+  $('gp-plan-schieben').dispatch('click');
+  ok('#53 „Plan verschieben" schaltet den Modus aus dem Blatt heraus ein',
+    GP.zustand.werkzeug === 'plan' && $('gp-plan-schieben').className === 'btn-s an');
+  $('gp-plan-zu').dispatch('click');
+  ok('#53 das Schliessen des Blattes beendet auch den Verschiebemodus',
+    $('gp-planblatt').hidden === true && GP.zustand.werkzeug === 'auswahl');
+  GP.taste('p');
+  ok('#53 die Taste P fuehrt in dieselbe Planverwaltung (ein Weg, zwei Ausloeser)',
+    GP.zustand.planBlatt === true && GP.zustand.werkzeug === 'plan');
+  GP.werkzeug('auswahl');
+
+  // 30e) Waehrend der Punktwahl schrumpft das Blatt auf Status und Abbruch
+  if ($('gp-planblatt').hidden) $('gp-plan-knopf').dispatch('click');
+  ok('#53 Pruefaufbau: die Planverwaltung ist offen', $('gp-planblatt').hidden === false);
+  $('gp-kal-start').dispatch('click');
+  ok('#53 der Kalibriermodus reduziert das Blatt auf eine kompakte Bedienung',
+    GP.zustand.kal.an === true && $('gp-planblatt').className === 'gp-sheet kompakt'
+    && $('gp-planblatt').hidden === false && $('gp-kal-block').hidden === false);
+  {
+    const mmVorKal = GP.blick.mm;
+    GP.tippe({ x: 100, y: 100 });
+    $('gp-zoom-plus').dispatch('click');
+    GP.tippe({ x: 400, y: 100 });
+    ok('#53 die Buehne bleibt waehrend der Punktwahl voll nutzbar (Klicken und Zoomen)',
+      GP.zustand.kal.punkte.length === 2 && GP.blick.mm !== mmVorKal);
+  }
+  $('gp-kal-abbruch').dispatch('click');
+  ok('#53 nach dem Abbruch ist die volle Planverwaltung wieder da',
+    GP.zustand.kal.an === false && $('gp-planblatt').className === 'gp-sheet'
+    && $('gp-planblatt').hidden === false);
+
+  // 30f) Entfernen
+  confirmAntwort = false;
+  await $('gp-plan-entfernen').dispatch('click');
+  ok('#53 ohne Bestaetigung wird nichts entfernt', planVon() !== null);
+  confirmAntwort = true;
+  await $('gp-plan-entfernen').dispatch('click');
+  await warte();
+  ok('#53 Entfernen loescht Beschreibung UND Bild',
+    planVon() === null && (await PLAN.holePlan(store.aktivesGeschossId())) === null);
+  ok('#53 [L-1] und laesst die Wandlagen unveraendert',
+    JSON.stringify(MAPPE.alleWaende(store.holeMappe()).map(e => e.wand.lage)) === lagenVorUpload
+    && /unverändert/.test($('gp-msg').textContent));
+  $('gp-plan-zu').dispatch('click');
+}
+
+// --- 31) Drehen: jede unmittelbar anliegende Bemassung sperrt -------------
+{
+  const prj53 = store.fuegeProjektHinzu('Drehsperre', { geschoss: 'EG', hoehe_mm: 2600 });
+  const gs53 = MAPPE.alleGeschosse(prj53)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs53);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 1000, y: 0 });
+  await warte();
+  const w53 = MAPPE.findeGeschoss(store.holeMappe(), gs53).geschoss.waende[0].id;
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 500, y: 62.5 });
+
+  const lage53 = () => MAPPE.findeWand(store.holeMappe(), w53).wand.lage;
+  ok('#53 Pruefaufbau: eine freie, verortete Wand ist aktiv und drehbar',
+    GP.zustand.aktiv === w53 && lage53().richtung === 'x' && $('gp-drehen').disabled === false);
+  GP.drehe();
+  await warte();
+  ok('#53 ohne Mass dreht sie wie bisher (Laenge unveraendert)',
+    lage53().richtung === 'y' && lage53().laenge_grid === 8);
+  GP.drehe();
+  await warte();
+  ok('#53 zweimal drehen ist bit-genau die Ausgangslage', lage53().richtung === 'x');
+
+  // Ein einziges Mass an DIESER Wand — mehr braucht es nicht.
+  GP.werkzeug('fixieren');
+  GP.tippe(gp('bezugsPunkt', w53, 'x', 'min'));
+  await warte();
+  ok('#53 Pruefaufbau: genau ein Mass haengt unmittelbar an der Wand',
+    GP.bemassungen().length === 1);
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 500, y: 62.5 });
+  const lageVorDreh = JSON.stringify(lage53());
+  const undoVorDreh = GP.undoStand.undo;
+  ok('#53 der Drehknopf ist damit gesperrt', $('gp-drehen').disabled === true);
+  GP.drehe();
+  await warte();
+  ok('#53 Drehen wird abgewiesen und nennt das anliegende Mass',
+    JSON.stringify(lage53()) === lageVorDreh && $('gp-msg').className === 'msg err'
+    && /hängt/.test($('gp-msg').textContent)
+    && /Maß/.test($('gp-msg').textContent));
+  ok('#53 die Abweisung schreibt nichts und bucht keinen Rueckgaengig-Schritt',
+    GP.undoStand.undo === undoVorDreh);
+  GP.taste('r');
+  await warte();
+  ok('#53 auch die Taste R laeuft durch dieselbe Sperre',
+    JSON.stringify(lage53()) === lageVorDreh);
+
+  // Und die alte Sicherheitspruefung bleibt — mit UNTERSCHEIDBARER Meldung.
+  const direktText = $('gp-msg').textContent;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 1000, y: 2000 });
+  await warte();
+  const w53b = MAPPE.findeGeschoss(store.holeMappe(), gs53).geschoss.waende[1].id;
+  GP.werkzeug('bemassen');
+  GP.tippe(gp('bezugsPunkt', w53, 'y', 'mitte'));
+  GP.tippe(gp('bezugsPunkt', w53b, 'y', 'mitte'));
+  $('gp-inline').value = '2000';
+  gp('inlineTaste', 'Enter');
+  await warte();
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 500, y: 2000 });
+  ok('#53 Pruefaufbau: die zweite Wand ist ueber ein Mass mit der ersten verbunden',
+    GP.zustand.aktiv === w53b && GP.bemassungen().length === 2);
+  GP.drehe();
+  await warte();
+  ok('#53 auch sie ist gesperrt — sie traegt das Mass ja selbst',
+    /hängt/.test($('gp-msg').textContent));
+  ok('#53 die beiden Sperrgruende sind unterscheidbar formuliert',
+    /hängt/.test(direktText) && !/starre Gruppe/.test(direktText)
+    && /starre Gruppe/.test(html));
 }
 
 let fail = 0;

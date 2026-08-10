@@ -1,8 +1,8 @@
 # Geschossplan: UI- und Bedienverbesserungen
 
-**Status:** abgestimmter Umsetzungsplan — **Paket 1 umgesetzt** (Issue #50, 2026-08-09),
-**Paket 2 umgesetzt** (Issue #51, 2026-08-10), **Nachtrag Maßstab/Fang umgesetzt** (Issue #52,
-2026-08-10), Paket 3 noch offen
+**Status:** abgestimmter Umsetzungsplan — **vollständig umgesetzt**: Paket 1 (Issue #50,
+2026-08-09), Paket 2 (Issue #51, 2026-08-10), Nachtrag Maßstab/Fang (Issue #52, 2026-08-10) und
+Paket 3 (Issue #53, 2026-08-10)
 **Ziel:** Den Geschossplan vereinfachen, Bemaßungen direkt in der Zeichnung bedienbar machen und die Oberfläche kompakter organisieren.
 
 Die Umsetzung erfolgt in drei getrennten, jeweils test- und veröffentlichbaren Paketen.
@@ -180,7 +180,37 @@ dem machen, was er fachlich ist: ein einziger allgemeiner Schalter, der nicht un
 
 ---
 
-## Paket 3 – Schwebende, kompakte Bedienoberfläche
+## Paket 3 – Schwebende, kompakte Bedienoberfläche  ✅ umgesetzt (Issue #53, 2026-08-10)
+
+Umgesetzt in `docs/geschossplan.html` (linkes Panel ersatzlos entfernt, obere Werkzeugleiste, untere
+Ansichtsleiste, Planverwaltung als Blatt von unten, Referenzgeschoss entfernt, Drehsperre) und
+`docs/index.html` (Rückbau des Plan-Uploads aus Modul 0). Regressionsgetestet in
+`tests/module/smoke_geschossplan.mjs` und `tests/module/smoke_start.mjs`. **Ohne
+Schema-/Formatbump**, ohne neue Regel-ID und ohne jede Änderung an Löser, Constraint-Mathematik oder
+Fixiersemantik.
+
+Festlegungen der finalen Umsetzung (über den ursprünglichen Umfang hinaus, ausdrücklich beauftragt):
+
+- **„Plan verschieben“ gehört nicht in die Werkzeugleiste.** Es ist Planverwaltung und wird
+  ausschließlich im Planblatt eingeschaltet (Knopf oder Taste **P**). Der interne Werkzeugzustand
+  `'plan'` bleibt unverändert; nur der Bedienweg dorthin ist eindeutig.
+- **Die Planverwaltung ist ein Blatt von unten und der einzige Uploadweg der Suite.** Hochladen,
+  Ersetzen, Entfernen, Kalibrieren, Maßstab, Versatz und Plan verschieben liegen dort an einer
+  Stelle. Modul 0 zeigt im Geschoss-Popup nur noch an, ob ein Plan hinterlegt ist.
+- **Während der Kalibrierpunktwahl verkleinert sich das Blatt** auf Status, reale Länge und Abbruch
+  (`.kompakt`); die Bühne bleibt vollständig bedienbar. Nach Übernahme, Abbruch oder Escape ist die
+  volle Verwaltung wieder erreichbar; das Schließen des Blattes beendet Messung und Verschiebemodus.
+- **Zwei neue, rein flüchtige Ansichtsschalter** für Raster und Bemaßungen. Sie ändern kein Datum,
+  keine Geometrie und kein Löserergebnis und werden nicht gespeichert. Ein ausgeblendetes Maß ist
+  auch nicht anklickbar; in den Werkzeugen D und F werden Maße eingeblendet und der Schalter gesperrt
+  — beides wird ausdrücklich gemeldet.
+- **Das Referenzgeschoss ist ersatzlos entfallen** — samt Schaltern, Deckkraft und zweitem Löserlauf.
+- **Drehen ist gesperrt, sobald eine Bemaßung unmittelbar an der Wand hängt** (`von` oder `bis`,
+  einschließlich Fixierung und Längenmaß). Die bisherige Prüfung auf mittelbare Bestimmtheit bleibt
+  als zweite Schranke bestehen; beide Sperren haben verschiedene Auswege und deshalb verschiedene
+  Meldungen.
+- **Kein Duplikat bleibt stehen:** der zweite Knopf „In Modul 1 planen“ der aktiven Wand ist
+  entfallen, „Planen“ je Zeile der Wandliste ruft dieselbe Funktion.
 
 ### Ziel
 
@@ -223,6 +253,7 @@ Mehr nutzbare Planfläche schaffen und Werkzeuge sowie Darstellungsoptionen klar
 1. **Paket 1** vollständig umsetzen, automatisiert testen und im echten Browser prüfen.
 2. Erst nach erfolgreicher Abnahme mit **Paket 2** beginnen.
 3. Erst nach erfolgreicher Abnahme mit **Paket 3** beginnen.
+   (Reihenfolge eingehalten: #50 → #51 → #52 → #53.)
 4. Jedes Paket bleibt ein eigener fachlicher Scope und erhält eigene Regressionstests.
 5. Vor jeder Veröffentlichung läuft mindestens die fokussierte Geschossplan-Testsuite sowie `npm run test:all` in der unabhängigen Abnahme.
 6. Interaktionen wie Doppelklick, Fokus und Pointer-Drag werden nicht nur mit vereinfachten DOM-Doubles, sondern zusätzlich im echten Browser geprüft.

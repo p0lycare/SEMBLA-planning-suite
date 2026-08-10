@@ -204,22 +204,18 @@
       · Hintergrund für die Verortung, keine Datenquelle ([L-9])</span></div>
     <div id="gp-plan-block">
       <div class="row">
-        <label class="btn-s" for="gp-plan-import">Plan hochladen…</label>
-        <input id="gp-plan-import" type="file" accept="image/png,image/jpeg,image/webp" hidden>
-        <button class="btn-d" id="gp-plan-entfernen">Plan entfernen</button>
         <button class="btn-s" id="gp-plan-oeffnen">Geschoss öffnen…</button>
       </div>
       <div class="muted" id="gp-plan-info" style="font-size:12.5px;margin-top:6px">–</div>
     </div>
-    <div class="hint">Der Upload wirkt <b>sofort</b> (er legt das Bild in einem eigenen
-      Browserspeicher ab, [L-8]) und hängt nicht an „Speichern“. Zulässig sind <b>PNG, JPEG und
-      WebP</b> bis 20 MB; ein <b>PDF wird abgewiesen</b> — bitte vorher als Bild exportieren. Ein
-      <b>neues Bild setzt Maßstab und Versatz zurück</b>, statt einen Maßstab zu übernehmen, den es
-      nicht gibt ([L-9]); die Lagen bereits verorteter Wände bleiben davon unberührt ([L-1]).<br>
-      <b>Kalibrieren, Versatz und das Einzeichnen der Wände</b> geschehen im Layout-Editor
-      („Geschoss öffnen“) — der braucht die volle Fläche und ist deshalb eine eigene Seite. Der
-      Plan liegt dort <b>sofort als Hintergrund</b>; den Maßstab setzt man mit
-      <b>„Maßstab aus Plan übernehmen“</b> direkt in der Zeichenfläche, mit deren Zoom.</div>
+    <div class="hint">Der Plan wird seit #53 <b>ausschließlich im Layout-Editor</b> verwaltet
+      („Geschoss öffnen“ → untere Leiste → <b>„Plan…“</b>): hochladen, ersetzen, entfernen,
+      kalibrieren, Maßstab, Versatz und Plan verschieben liegen dort an <b>einer</b> Stelle — dort,
+      wo man den Plan auch sieht. Modul 0 zeigt hier nur noch, <b>ob</b> ein Plan hinterlegt ist.
+      Unverändert gilt: das Bild liegt in einem eigenen Browserspeicher ([L-8]), zulässig sind
+      <b>PNG, JPEG und WebP</b> bis 20 MB, ein <b>PDF wird abgewiesen</b>, ein <b>neues Bild setzt
+      Maßstab und Versatz zurück</b> statt einen Maßstab zu übernehmen, den es nicht gibt ([L-9]) —
+      und die Lagen bereits verorteter Wände bleiben unberührt ([L-1]).</div>
     <div class="msg" id="gp-msg"></div>
     <div class="modal-actions">
       <button class="btn-s" id="gp-cancel">Abbrechen</button>
@@ -1348,24 +1344,15 @@
   // =====================================================================
   //  Geschossplan im Geschoss-Popup (Etappe C3/C4a, [L-8]/[L-9])
   // =====================================================================
-  // Modul 0 haelt nur noch das BILD: hochladen und entfernen. Kalibrieren, Versatz und
-  // das Einzeichnen der Waende sind mit Etappe C4a in den Layout-Editor (eigene Seite
-  // docs/geschossplan.html) gezogen — ein Skizzenmodus braucht die volle Flaeche.
-  // Unveraendert gilt: der Plan ist HINTERGRUND, keine Datenquelle ([L-9]); das Bild
-  // liegt in einer eigenen IndexedDB ([L-8]), in der Mappe stehen nur Dateiname,
-  // Bildmasse, Massstab und Versatz. Wandlagen werden hier nie angefasst ([L-1]).
-
-  /** Bildmasse einer Datei lesen — ohne Deutung, nur die tatsaechliche Pixelgroesse. */
-  async function gpBildMasse(blob){
-    if (typeof createImageBitmap !== 'function') {
-      throw new Error('Dieser Browser kann die Bildmaße nicht lesen (createImageBitmap fehlt).');
-    }
-    const bm = await createImageBitmap(blob);
-    const masse = { breite: bm.width, hoehe: bm.height };
-    if (bm.close) bm.close();
-    if (!(masse.breite > 0) || !(masse.hoehe > 0)) throw new Error('Das Bild hat keine lesbaren Maße.');
-    return masse;
-  }
+  // Modul 0 zeigt seit #53 nur noch AN, ob ein Plan hinterlegt ist. Hochladen,
+  // Ersetzen und Entfernen sind — wie Kalibrieren, Versatz und das Einzeichnen —
+  // vollstaendig in den Layout-Editor gezogen (docs/geschossplan.html, Planblatt
+  // „Plan…“). Damit gibt es genau EINEN Uploadweg, und er liegt dort, wo der Plan
+  // sichtbar ist. Unveraendert gilt: der Plan ist HINTERGRUND, keine Datenquelle
+  // ([L-9]); das Bild liegt in einer eigenen IndexedDB ([L-8]), in der Mappe
+  // stehen nur Dateiname, Bildmasse, Massstab und Versatz. Wandlagen werden hier
+  // nie angefasst ([L-1]) — das Loeschen eines Geschosses/Gebaeudes raeumt sein
+  // Planbild aber weiterhin mit auf, sonst bliebe es unerreichbar liegen.
 
   /** Planzeile des Popups — Dateiname, Bildmaße, Maßstab; fehlendes Bild wird benannt. */
   async function gpPlanInfo(){
@@ -1376,9 +1363,9 @@
     block.hidden = !ort;
     if (!ort) { info.textContent = ''; return; }
     const plan = ort.geschoss.plan;
-    $('gp-plan-entfernen').disabled = !plan;
     if (!plan) {
-      info.textContent = 'Kein Plan hinterlegt. Der Plan hängt am Geschoss, nicht am Wandelement.';
+      info.textContent = 'Kein Plan hinterlegt. Der Plan hängt am Geschoss, nicht am Wandelement — '
+        + 'hochgeladen wird er im Layout-Editor („Geschoss öffnen“ → „Plan…“).';
       return;
     }
     const teile = [plan.datei || 'Plan'];
@@ -1390,53 +1377,6 @@
     if (!bild) teile.push('⚠ Bild in diesem Browser nicht hinterlegt — Maßstab und Versatz sind erhalten');
     info.textContent = teile.join(' · ');
   }
-
-  $('gp-plan-import').addEventListener('change', async (ev) => {
-    const file = ev.target.files && ev.target.files[0];
-    if (!file) return;
-    const ort = gpGeschossId ? trFindeGeschoss(gpGeschossId) : null;
-    if (!ort) { gpZeige('Erst das Geschoss anlegen — das Planbild hängt an seiner Kennung ([L-4]).', false); ev.target.value = ''; return; }
-    const fehler = PLAN.pruefePlanDatei(file);
-    if (fehler.length) { gpZeige(fehler.join(' '), false); ev.target.value = ''; return; }
-    try {
-      const masse = await gpBildMasse(file);
-      await PLAN.speicherePlan(ort.geschoss.id, file, {
-        name: file.name, typ: file.type, groesse: file.size,
-        breite_px: masse.breite, hoehe_px: masse.hoehe,
-      });
-      // Ein NEUES Bild hat einen neuen Massstab: Kalibrierung und Versatz werden
-      // zurueckgesetzt statt stillschweigend uebernommen — das waere ein geratener
-      // Massstab ([L-9]). Die Wandlagen bleiben davon unberuehrt ([L-1]).
-      store.setzeGeschossPlan(ort.geschoss.id, {
-        datei: file.name, typ: file.type,
-        breite_px: masse.breite, hoehe_px: masse.hoehe,
-        mm_je_pixel: null, versatz_x_mm: 0, versatz_y_mm: 0,
-      });
-      await gpPlanInfo();
-      gpZeige(`Plan „${file.name}“ hinterlegt (${masse.breite} × ${masse.hoehe} px). `
-        + 'Maßstab und Versatz sind zurückgesetzt — bitte im Layout-Editor („Geschoss öffnen“) '
-        + 'ausdrücklich kalibrieren ([L-9]). Die Lagen bereits verorteter Wände bleiben '
-        + 'unverändert ([L-1]).', true);
-    } catch (e) {
-      gpZeige('Plan nicht hinterlegt: ' + fehlerText(e), false);
-    } finally {
-      ev.target.value = '';
-    }
-  });
-
-  $('gp-plan-entfernen').addEventListener('click', async () => {
-    const ort = gpGeschossId ? trFindeGeschoss(gpGeschossId) : null;
-    if (!ort) { gpZeige('Erst das Geschoss anlegen.', false); return; }
-    const gs = ort.geschoss;
-    if (!gs.plan) { gpZeige('Für dieses Geschoss ist kein Plan hinterlegt.', false); return; }
-    if (!confirm(`Plan „${gs.plan.datei || ''}“ aus Geschoss „${gs.name}“ entfernen? `
-      + 'Bild, Maßstab und Versatz gehen verloren. Die Wände und ihre Lagen bleiben erhalten.')) return;
-    await PLAN.loeschePlan(gs.id);
-    try { store.setzeGeschossPlan(gs.id, null); }
-    catch (e) { gpZeige('Nicht entfernt: ' + fehlerText(e), false); return; }
-    await gpPlanInfo();
-    gpZeige('Plan entfernt. Die Wandlagen dieses Geschosses sind unverändert ([L-1]).', true);
-  });
 
   $('gp-plan-oeffnen').addEventListener('click', () => { gpSchliesse(); gsOeffnen(gpGeschossId); });
 

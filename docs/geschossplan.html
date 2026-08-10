@@ -6,11 +6,16 @@
 <title>SEMBLA · Geschossplan (Layout-Editor)</title>
 <style>
   a{color:var(--sb-accent);text-decoration:none}
-  .gp-app{display:flex;align-items:stretch;gap:0;height:calc(100vh - 46px);min-height:520px}
-  .gp-tools{width:290px;flex:0 0 290px;background:var(--sb-panel);border-right:1px solid var(--sb-line);
-            overflow:auto;padding:12px 14px}
-  .gp-main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
-  .gp-buehne{flex:1;position:relative;overflow:hidden;background:#eef1f5;min-height:320px}
+  /* Paket 3 (#53): das linke Panel ist ERSATZLOS entfallen. Die Zeichenfläche
+     nimmt die volle Breite; darüber schweben genau vier Bereiche — Werkzeuge
+     (oben), Ansicht (unten), Wandliste (rechts) und die Planverwaltung als Blatt
+     von unten. Alle liegen im Markup NEBEN der Bühne und nur optisch darüber:
+     `render()` schreibt die Bühne bei jedem Zeigerereignis komplett neu, ein
+     Bedienelement darin hätte danach tote Ereignisbehandler. */
+  .gp-app{display:flex;flex-direction:column;height:calc(100vh - 46px);min-height:520px}
+  .gp-main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+  .gp-raum{position:relative;flex:1;min-height:300px}
+  .gp-buehne{position:absolute;inset:0;overflow:hidden;background:#eef1f5}
   .gp-buehne svg{display:block;width:100%;height:100%;touch-action:none}
   /* Beschriftungen in der Zeichenflaeche sind Grafik, kein Text zum Markieren: ohne
      das erscheint beim Ueberfahren einer Wandbeschriftung der Textcursor (I-Beam)
@@ -27,20 +32,24 @@
              font-size:12.5px;color:#42505e;display:flex;gap:14px;flex-wrap:wrap}
   .gp-status b{font-weight:650}
   .gp-status .err{color:#c0392b}
+  /* Die Meldezeile lag früher unten im linken Panel. Sie bleibt eine eigene Zeile
+     UNTER der Bühne (nicht schwebend): sie verdeckt so nie einen Klickpunkt und
+     überlebt `statusSync`, das die Statuszeile komplett neu schreibt. */
+  #gp-msg{padding:6px 12px;font-size:12.5px;border-top:1px solid var(--sb-line);
+          background:#fff;word-break:break-word}
+  #gp-msg:empty{display:none}
 
-  .gp-tools h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);
-               margin:16px 0 7px;border-top:1px solid var(--sb-line);padding-top:11px}
-  .gp-tools h3:first-of-type{border-top:0;margin-top:8px;padding-top:0}
-  .gp-zurueck{font-size:12.5px}
-  .gp-ort{font-size:13px;font-weight:650;margin:6px 0 2px}
+  .gp-ort{font-size:12.5px;font-weight:650;color:#1c2430;margin-left:auto;text-align:right;
+          max-width:340px;line-height:1.3}
   .gp-ort span{font-weight:400;color:var(--sb-muted)}
-  .wz{display:flex;flex-direction:column;gap:5px}
-  .wz button{text-align:left;background:#eef2f7;color:#33415c;border:1px solid transparent;
-             border-radius:8px;padding:7px 10px;font-size:13px;font-weight:600;cursor:pointer}
-  .wz button .k{display:inline-block;min-width:20px;color:var(--sb-muted);font-weight:700}
+  .wz{display:flex;flex-direction:row;gap:4px;flex-wrap:wrap;align-items:center}
+  .wz button{background:#eef2f7;color:#33415c;border:1px solid transparent;
+             border-radius:8px;padding:6px 9px;font-size:12.5px;font-weight:600;cursor:pointer;
+             display:inline-flex;align-items:center;gap:5px}
+  .wz button .k{display:inline-block;font-size:14px;line-height:1;font-weight:700}
   .wz button.an{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
-  .wz button.an .k{color:#cfe0ff}
-  .wz button[disabled]{opacity:.5;cursor:not-allowed}
+  .wz .trenner{width:1px;align-self:stretch;background:var(--sb-line);margin:0 3px}
+  .wz button[disabled]{opacity:.45;cursor:not-allowed}
   button,.btn-p,.btn-s,.btn-d{border:0;border-radius:8px;padding:7px 11px;font-size:12.5px;
         font-weight:600;line-height:1.15;cursor:pointer}
   .btn-p{background:var(--sb-accent);color:#fff}
@@ -53,20 +62,56 @@
   .field input,.field select{border:1px solid var(--sb-line);border-radius:7px;padding:6px 8px;font-size:13px;width:118px}
   .field input.s{width:78px}
   .field.voll,.field.voll select,.field.voll input{width:100%}
-  .chk{display:flex;align-items:center;gap:7px;font-size:12.5px;margin:7px 0}
-  .msg{font-size:12px;margin-top:8px;min-height:16px;word-break:break-word}
+  .chk{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:0}
+  .msg{font-size:12px;word-break:break-word}
   .msg.err{color:#c0392b}
   .msg.ok{color:var(--sb-ok)}
   .hint{font-size:11.5px;color:var(--sb-muted);margin-top:8px;line-height:1.45}
   .leer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
         text-align:center;padding:24px;color:#42505e;font-size:14px}
   .leer div{max-width:520px}
-  .legende{font-size:11.5px;color:var(--sb-muted);margin-top:7px}
+  .legende{font-size:11.5px;color:var(--sb-muted)}
   .legende span{display:inline-flex;align-items:center;gap:5px;margin-right:9px}
   .legende i{width:11px;height:11px;border-radius:3px;display:inline-block}
 
-  /* Kalibrieren (#52): kein Modal, kein zweiter Editor. Der laufende Modus ist
-     ein hervorgehobener Block IM linken Panel; gemessen wird auf der Buehne. */
+  /* Gemeinsame Grundform der schwebenden Bereiche (#53). */
+  .gp-leiste{position:absolute;background:rgba(255,255,255,.95);border:1px solid var(--sb-line);
+             border-radius:11px;box-shadow:0 6px 20px rgba(20,32,46,.18);padding:7px 9px}
+  /* Oben: Werkzeuge, Undo/Redo, Drehen — und darunter die Kontextzeile des
+     aktiven Werkzeugs. Ein Block, damit die wechselnden Höhen nicht über zwei
+     absolut gesetzte Kästen auseinanderlaufen. */
+  #gp-oben{top:10px;left:10px;right:274px;z-index:6}
+  #gp-oben .kopf{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  #gp-oben .kontext{margin-top:6px;border-top:1px solid var(--sb-line);padding-top:5px;
+                    display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--sb-muted)}
+  #gp-oben .kontext > div{min-width:0}
+  #gp-oben .kontext b{color:#33415c}
+  #wz-wand-parameter{margin-top:6px;border-top:1px solid var(--sb-line);padding-top:6px}
+  #wz-wand-parameter[hidden]{display:none}
+  /* Unten: ausschließlich Ansicht — Zoom, Fang, Ebenen, Zugang zur Planverwaltung. */
+  #gp-ansicht{bottom:10px;left:10px;right:274px;z-index:6;display:flex;align-items:center;
+              gap:12px;flex-wrap:wrap;font-size:12.5px}
+  #gp-ansicht .grp{display:flex;align-items:center;gap:6px}
+  #gp-plan-chip{color:var(--sb-muted);font-size:11.5px}
+  #gp-plan-chip.warn{color:#b26a00}
+
+  /* Planverwaltung als Blatt von unten (#53): der EINZIGE Ort für Upload,
+     Ersetzen, Löschen, Kalibrieren, Maßstab, Versatz und Plan verschieben.
+     Während der Kalibrierpunktwahl schrumpft es auf `.kompakt` — Status und
+     Abbruch bleiben, der Rest weicht der Bühne. */
+  .gp-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:58px;
+            width:min(560px,calc(100% - 300px));max-height:calc(100% - 130px);overflow:auto;
+            background:#fff;border:1px solid var(--sb-line);border-radius:13px;
+            box-shadow:0 -6px 28px rgba(20,32,46,.24);padding:11px 13px;z-index:9;font-size:12.5px}
+  .gp-sheet[hidden]{display:none}
+  .gp-sheet h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;
+               color:var(--sb-muted);display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .gp-sheet.kompakt{left:10px;transform:none;width:min(430px,calc(100% - 300px));bottom:58px}
+  .gp-sheet.kompakt #gp-plan-koerper{display:none}
+  .gp-sheet .row{margin:7px 0}
+
+  /* Kalibrieren (#52/#53): kein Modal, kein zweiter Editor — gemessen wird auf
+     der Bühne, hier steht nur Status und Abbruch. */
   .gp-kal{border:1px solid #1f9d4d;background:#eefaf2;border-radius:9px;padding:8px 9px;margin-top:8px}
   .gp-kal[hidden]{display:none}
   .gp-kal .hint{margin-top:6px}
@@ -74,7 +119,7 @@
   /* Schwebende Bauteilliste (C4c): sie liegt UEBER der Zeichenflaeche, aber nicht
      IN ihr — `render()` schreibt die Buehne komplett neu, ein Panel darin haette
      nach dem ersten Neuzeichnen tote Ereignisbehandler. */
-  .gp-liste{position:absolute;top:12px;right:12px;width:252px;max-height:calc(100% - 84px);
+  .gp-liste{position:absolute;top:10px;right:10px;width:252px;max-height:calc(100% - 20px);
             overflow:auto;background:rgba(255,255,255,.94);border:1px solid var(--sb-line);
             border-radius:11px;box-shadow:0 6px 20px rgba(20,32,46,.18);padding:9px 10px;
             font-size:12px;z-index:5}
@@ -114,186 +159,164 @@
 <body>
 
 <div class="gp-app">
-  <aside class="gp-tools">
-    <div class="gp-zurueck"><a href="index.html">‹ Projektplaner (Modul&nbsp;0)</a></div>
-    <div class="gp-ort" id="gp-ort">–</div>
+  <div class="gp-main">
+    <div class="gp-raum">
+      <div class="gp-buehne" id="gp-buehne"></div>
 
-    <h3>Werkzeuge</h3>
-    <div class="wz">
-      <button id="wz-auswahl" data-wz="auswahl"><span class="k">Esc</span> Auswählen &amp; ziehen</button>
-      <button id="wz-wand" data-wz="wand"><span class="k">W</span> Wand zeichnen</button>
-      <button id="wz-plan" data-wz="plan"><span class="k">P</span> Plan verschieben</button>
-      <button id="wz-bemassen" data-wz="bemassen" title="Zwei parallele Bezüge anklicken und das Maß in mm eintragen."><span class="k">D</span> Bemaßen</button>
-      <button id="wz-fixieren" data-wz="fixieren" title="Einen Bezug anklicken — er wird gegen den Geschossursprung festgesetzt (je Achse einzeln)."><span class="k">F</span> Fixieren</button>
-    </div>
-    <div class="hint" id="wz-hinweis">–</div>
-    <!-- Parameter des Werkzeugs „Wand zeichnen“ (#50). Bewusst KEIN eigener Abschnitt
-         „Neue Wand“ mehr: der las sich wie ein zweites, formularbasiertes Anlegen neben
-         dem grafischen Werkzeug. Erzeugt wird ausschließlich durch Zeichnen; hier stehen
-         nur die Angaben, die dieses eine Werkzeug braucht — Ziel, Standard-Wandhöhe
-         ([L-5]) und Wandtyp (nur bei der Anlage wählbar). Sichtbar ist der Block genau
-         dann, wenn das Werkzeug aktiv ist. -->
-    <div id="wz-wand-parameter" hidden>
-      <div class="field voll"><label for="gp-ziel">Gezeichnet wird</label>
-        <select id="gp-ziel"></select></div>
-      <div class="row">
-        <div class="field"><label for="gp-hoehe">Standard-Wandhöhe (mm)</label>
-          <input id="gp-hoehe" class="s" type="number" step="200" min="200" value="2600"></div>
-        <div class="field"><label for="gp-wandtyp">Wandtyp</label>
-          <select id="gp-wandtyp" style="width:130px">
-            <option value="mit_wind" selected>mit Wind (Cpi)</option>
-            <option value="ohne_wind">ohne Wind</option>
-          </select></div>
+      <!-- Obere CAD-Werkzeugleiste (#53, Paket 3). Sie führt AUSSCHLIESSLICH die
+           Werkzeuge der Zeichenfläche, dazu Rückgängig/Wiederholen und Drehen.
+           „Plan verschieben“ steht bewusst NICHT hier: es ist Planverwaltung und
+           lebt allein im Planblatt (unten über „Plan…“). -->
+      <div class="gp-leiste" id="gp-oben">
+        <div class="kopf">
+          <a href="index.html">‹ Projektplaner</a>
+          <div class="wz">
+            <button id="wz-auswahl" data-wz="auswahl" title="Auswählen &amp; ziehen — Wand anklicken, am Körper oder Mittelgriff verschieben, an den Endgriffen die Länge ändern (Esc)"><span class="k">↖</span> Auswahl</button>
+            <button id="wz-wand" data-wz="wand" title="Wand zeichnen — drücken, ziehen, loslassen; orthogonal, Länge im 125-mm-Raster (W)"><span class="k">▭</span> Wand</button>
+            <button id="wz-bemassen" data-wz="bemassen" title="Bemaßen — zwei parallele Bezüge anklicken, Maß in mm direkt im Plan eintragen (D)"><span class="k">↔</span> Maß</button>
+            <button id="wz-fixieren" data-wz="fixieren" title="Fixieren — einen Bezug gegen den Geschossursprung festsetzen, je Achse einzeln (F)"><span class="k">⌖</span> Fix</button>
+            <span class="trenner"></span>
+            <button class="btn-s" id="gp-undo" disabled title="Rückgängig (Strg+Z) — nur Lagen und Bemaßungen ([K-10])">↶</button>
+            <button class="btn-s" id="gp-redo" disabled title="Wiederholen (Strg+Umschalt+Z)">↷</button>
+            <button class="btn-s" id="gp-drehen" disabled title="Aktive Wand um 90° um ihre Min-Ecke drehen (R). Gesperrt, sobald ein Maß an der Wand hängt.">⟳</button>
+            <span class="trenner"></span>
+            <button class="btn-d" id="gp-lage-weg" disabled title="Lage der aktiven Wand aufheben — die Wand bleibt im Geschoss eingetragen ([L-4])">Lage aufheben</button>
+          </div>
+          <div class="gp-ort" id="gp-ort">–</div>
+        </div>
+
+        <!-- Parameter des Werkzeugs „Wand zeichnen“ (#50): sichtbar genau dann,
+             wenn das Werkzeug aktiv ist. Erzeugt wird ausschließlich durch
+             Zeichnen — Ziel, Standard-Wandhöhe ([L-5]) und Wandtyp gehören dazu. -->
+        <div id="wz-wand-parameter" hidden>
+          <div class="row">
+            <div class="field"><label for="gp-ziel">Gezeichnet wird</label>
+              <select id="gp-ziel" style="width:210px"></select></div>
+            <div class="field"><label for="gp-hoehe">Standard-Wandhöhe (mm)</label>
+              <input id="gp-hoehe" class="s" type="number" step="200" min="200" value="2600"></div>
+            <div class="field"><label for="gp-wandtyp">Wandtyp</label>
+              <select id="gp-wandtyp" style="width:130px">
+                <option value="mit_wind" selected>mit Wind (Cpi)</option>
+                <option value="ohne_wind">ohne Wind</option>
+              </select></div>
+          </div>
+          <div class="hint" id="gp-hoehe-hinweis" style="margin-top:2px"></div>
+        </div>
+
+        <div class="kontext">
+          <div id="wz-hinweis">–</div>
+          <div id="gp-bem-info">–</div>
+          <div id="gp-auswahl-info">Keine Wand aktiv.</div>
+        </div>
       </div>
-      <div class="hint" id="gp-hoehe-hinweis"></div>
-    </div>
 
-    <h3>Bemaßung</h3>
-    <!-- Bewusst KEIN Maßformular mehr an dieser Stelle. Es war ein zweiter
-         Bedienweg neben der Zeichnung und zwang den Blick bei jedem Maß 290 px
-         nach links; Werte werden ausschließlich im Feld an der Maßzahl selbst
-         eingegeben (ein Schreibweg, `bemSetzen` → `speichereBemassung`). Hier
-         steht nur noch Anzeige. -->
-    <div class="hint" id="gp-bem-info">–</div>
-    <div class="hint">Jeder Bezug gehört genau <b>einer</b> Achse ([K-2]) — mit dem ersten Klick steht
-      sie fest, danach sind nur noch <b>parallele</b> Bezüge wählbar ([K-1]). Ein Maß hat immer einen
-      Wert ([K-3]) und ist <b>ganzzahlig in Millimetern</b> ([K-12]). <b>Fixieren</b> setzt genau eine
-      Achse gegen den Geschossursprung fest — für beide Achsen zweimal anwenden ([K-4]). Ein
-      <b>Längenmaß</b> zwischen den Stirnkanten derselben Wand treibt die Länge und muss ein
-      Vielfaches von 125&nbsp;mm sein ([K-11]); das Wandelement bleibt unberührt ([L-3]).</div>
-    <div class="hint"><b>Alles in der Zeichnung:</b> nach dem <b>zweiten</b> Bezug steht die
-      vorläufige Bemaßung im Bild und das Eingabefeld an ihrer Maßzahl — mit dem <b>exakten</b>
-      Istabstand vorausgewählt. <b>Enter</b> übernimmt, <b>Escape</b> verwirft Feld und Entwurf
-      zusammen, ein <b>Fokusverlust</b> übernimmt einen gültigen Wert. Ein ungültiger Wert — auch ein
-      krummer Istabstand wie 2937,5&nbsp;mm — ändert <b>nichts</b>, bleibt rot markiert stehen und
-      wird überschrieben ([K-12]). Ein <b>Doppelklick</b> auf ein vorhandenes Maß öffnet dasselbe
-      Feld, in <b>jedem</b> Werkzeug. <b>Ziehen</b> an Maßzahl oder Maßlinie verschiebt die
-      <b>ganze Maßdarstellung quer</b> zur Messrichtung — reine Darstellung, die Hilfslinien wachsen
-      mit. <b>Entf</b> oder <b>Rücktaste</b> löschen das gewählte Maß (nie eine Wand). Jeder
-      dieser Schritte ist einzeln <b>rückgängig</b> zu machen.</div>
+      <!-- Schwebende Bauteilliste (C4c): Anzeige und Auswahl, kein Schreibweg. -->
+      <div class="gp-liste" id="gp-liste"></div>
 
-    <h3>Rückgängig</h3>
-    <div class="row">
-      <button class="btn-s" id="gp-undo" disabled title="Strg+Z">↶ Rückgängig</button>
-      <button class="btn-s" id="gp-redo" disabled title="Strg+Umschalt+Z">↷ Wiederholen</button>
-    </div>
-    <div class="hint" id="gp-undo-info">–</div>
+      <!-- Inline-Eingabe des Maßwerts (#51): sitzt beim Bearbeiten genau auf der
+           dargestellten Maßzahl und schreibt über den VORHANDENEN Weg
+           (`bemSetzen` → `speichereBemassung`) — kein zweiter Bearbeitungspfad. -->
+      <input class="gp-inline" id="gp-inline" type="text" inputmode="numeric" hidden
+             aria-label="Maß in Millimetern" title="Enter übernimmt · Escape verwirft">
 
-    <h3>Aktive Wand</h3>
-    <div id="gp-auswahl-info" class="hint">Keine Wand aktiv.</div>
-    <div class="row">
-      <button class="btn-s" id="gp-drehen" disabled title="Dreht die aktive Wand um 90° um ihre Min-Ecke (Taste R).">90° drehen</button>
-      <button class="btn-s" id="gp-planen" disabled>In Modul&nbsp;1 planen</button>
-      <button class="btn-d" id="gp-lage-weg" disabled>Lage aufheben</button>
-    </div>
-    <div class="hint"><b>Aktiv</b> (grün, mit Griffen) ist immer genau <b>eine</b> Wand — sie wird
-      bearbeitet. <b>Ausgewählt</b> (gestrichelter Rahmen) können mehrere sein: mit
-      <b>Umschalt</b> oder <b>Strg</b> anklicken. Die <b>Endgriffe</b> ziehen die Wand länger oder
-      kürzer, der <b>runde Griff in der Mitte</b> (oder der Wandkörper) verschiebt sie.</div>
-
-    <h3>Ansicht</h3>
-    <div class="row">
-      <button class="btn-s" id="gp-zoom-minus" title="Herauszoomen">–</button>
-      <button class="btn-s" id="gp-zoom-plus" title="Hineinzoomen">+</button>
-      <button class="btn-s" id="gp-zoom-alles">Alles zeigen</button>
-    </div>
-    <label class="chk"><input type="checkbox" id="gp-fang">
-      <span>Fang auf 125-mm-Raster (gilt für alle Wände)</span></label>
-    <div class="hint">Der Fang ist <b>ein allgemeiner Schalter</b> und beim Start <b>aus</b> (#52): er
-      gilt gleichermaßen fürs <b>Zeichnen</b>, <b>Verschieben</b> und <b>Größenziehen</b> jeder Wand —
-      es gibt keinen wandbezogenen Fang. Aus rasten Positionen weiter auf halbe Millimeter ([L-1]);
-      die <b>Länge</b> bleibt immer im 125-mm-Raster, das ist keine Ansichtsoption.</div>
-    <div class="hint">Zoom auf den Zeiger mit dem Mausrad · Verschieben mit <b>Leertaste</b> oder
-      mittlerer Maustaste. Das ist nur der <b>Blick</b> — der Planversatz bleibt unberührt ([L-9]).</div>
-
-    <h3>Referenzgeschoss</h3>
-    <div class="hint" id="gp-ref-info">–</div>
-    <label class="chk"><input type="checkbox" id="gp-ref" checked>
-      <span>Geschoss darunter blass anzeigen</span></label>
-    <div class="row">
-      <div class="field"><label for="gp-ref-deck">Deckkraft (%)</label>
-        <input id="gp-ref-deck" class="s" type="number" step="5" min="0" max="100" value="25"></div>
-    </div>
-    <div class="hint">Gezeigt wird das in der Struktur <b>unmittelbar darunterliegende</b> Geschoss
-      desselben Gebäudes als blasse Umrisse. Das ist <b>reine Anzeige</b>: die Umrisse sind nicht
-      anklickbar, gehen in keine Auswahl, keine Kollisionsprüfung ([K-13]) und keine Bemaßung ein.
-      Sichtbarkeit und Deckkraft werden — wie Zoom und Plan-Sperre — <b>nicht gespeichert</b>.</div>
-
-    <h3>Geschossplan</h3>
-    <div class="hint" id="gp-plan-info">–</div>
-    <label class="chk"><input type="checkbox" id="gp-plan-lock" checked>
-      <span>Plan gesperrt (Ziehen bewegt ihn nicht)</span></label>
-    <!-- Maßstab (#52): gemessen wird AUF der Zeichenfläche, mit deren Zoom und
-         Pan — es gibt kein Kalibrier-Popup und keine zweite Pixelansicht mehr.
-         Der Knopf startet nur den Modus; geklickt wird danach im Plan. -->
-    <div class="row">
-      <button class="btn-s" id="gp-kal-start">Maßstab aus Plan übernehmen</button>
-    </div>
-    <div class="gp-kal" id="gp-kal-block" hidden>
-      <div class="hint" id="gp-kal-status" style="margin-top:0">–</div>
-      <div class="row">
-        <div class="field"><label for="gp-kal-mm">reale Länge der Linie (mm)</label>
-          <input id="gp-kal-mm" class="s" type="number" step="1" min="1" placeholder="z. B. 5000"></div>
-        <button class="btn-p" id="gp-kal-go">Übernehmen</button>
+      <!-- Untere Ansichtsleiste (#53): ausschließlich Ansicht. Nichts davon wird
+           gespeichert — weder Zoom noch Fang noch die Ebenenschalter. -->
+      <div class="gp-leiste" id="gp-ansicht">
+        <div class="grp">
+          <button class="btn-s" id="gp-zoom-minus" title="Herauszoomen (−)">–</button>
+          <button class="btn-s" id="gp-zoom-plus" title="Hineinzoomen (+)">+</button>
+          <button class="btn-s" id="gp-zoom-alles" title="Alles zeigen (0)">Alles zeigen</button>
+        </div>
+        <label class="chk" title="Fang auf das 125-mm-Raster — gilt für Zeichnen, Verschieben und Größenziehen JEDER Wand. Aus rasten Positionen auf halbe Millimeter ([L-1]); die Länge bleibt immer im 125-mm-Raster.">
+          <input type="checkbox" id="gp-fang"><span>Fang 125&nbsp;mm</span></label>
+        <label class="chk" title="Das 125-mm-Raster ein- oder ausblenden. Reine Ansicht — über einem unkalibrierten Plan bleibt es ohnehin aus ([L-9]).">
+          <input type="checkbox" id="gp-raster" checked><span>Raster</span></label>
+        <label class="chk" title="Bemaßungen ein- oder ausblenden. Reine Ansicht: Werte, Löser und Wandlagen bleiben unberührt ([K-5]). In den Werkzeugen Maß und Fix sind sie immer sichtbar.">
+          <input type="checkbox" id="gp-masse" checked><span>Bemaßungen</span></label>
+        <div class="grp">
+          <button class="btn-s" id="gp-plan-knopf" title="Planverwaltung öffnen: hochladen, ersetzen, löschen, kalibrieren, Maßstab, Versatz und Plan verschieben (P)">Plan…</button>
+          <span id="gp-plan-chip">–</span>
+        </div>
+        <div class="legende">
+          <span><i style="background:#7fb6e6"></i>frei</span>
+          <span><i style="background:#1a1a1a"></i>bestimmt</span>
+          <span><i style="background:#1f9d4d"></i>aktiv</span>
+          <span><i style="background:#d92b2b"></i>Fehler</span>
+        </div>
       </div>
-      <div class="row">
-        <button class="btn-s" id="gp-kal-reset">Punkte verwerfen</button>
-        <button class="btn-s" id="gp-kal-abbruch">Abbrechen (Esc)</button>
+
+      <!-- Planverwaltung als Blatt von unten (#53). Sie ist der EINZIGE Uploadweg
+           der Suite: Modul 0 lädt keinen Plan mehr hoch. Der Plan bleibt
+           Hintergrund und keine Datenquelle ([L-9]); das Bild liegt in einer
+           eigenen IndexedDB ([L-8]), in der Mappe stehen nur Dateiname, Bildmaße,
+           Maßstab und Versatz. -->
+      <div class="gp-sheet" id="gp-planblatt" hidden>
+        <h4><span>Geschossplan</span>
+          <button class="btn-s" id="gp-plan-zu" title="Planverwaltung schließen">Schließen</button></h4>
+        <div class="hint" id="gp-plan-info" style="margin-top:0">–</div>
+
+        <!-- Während der Punktwahl bleibt NUR dieser Block stehen (`.kompakt`):
+             die Bühne ist dann vollständig bedienbar — Zoom, Mausrad, Pan und
+             „Alles zeigen“ inbegriffen. -->
+        <div class="gp-kal" id="gp-kal-block" hidden>
+          <div class="hint" id="gp-kal-status" style="margin-top:0">–</div>
+          <div class="row">
+            <div class="field"><label for="gp-kal-mm">reale Länge der Linie (mm)</label>
+              <input id="gp-kal-mm" class="s" type="number" step="1" min="1" placeholder="z. B. 5000"></div>
+            <button class="btn-p" id="gp-kal-go">Übernehmen</button>
+            <button class="btn-s" id="gp-kal-reset">Punkte verwerfen</button>
+            <button class="btn-s" id="gp-kal-abbruch">Abbrechen (Esc)</button>
+          </div>
+          <div class="hint">Zwei Punkte im Plan anklicken, deren realen Abstand du kennst. Der zweite
+            Punkt wird <b>orthogonal</b> zum ersten gezwungen — schief gemessen verfälscht den Maßstab
+            still. Gemessen wird in <b>Bildpunkten</b>: Zoomen, Verschieben und „Alles zeigen“ ändern das
+            Ergebnis nicht. Es wird <b>kein</b> Maßstab geschätzt ([L-9]).</div>
+        </div>
+
+        <div id="gp-plan-koerper">
+          <div class="row">
+            <label class="btn-s" id="gp-plan-import-label" for="gp-plan-import">Plan hochladen / ersetzen…</label>
+            <input id="gp-plan-import" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+            <button class="btn-d" id="gp-plan-entfernen">Plan entfernen</button>
+          </div>
+          <div class="hint" style="margin-top:2px">Der Upload wirkt <b>sofort</b> und legt das Bild in
+            einem eigenen Browserspeicher (IndexedDB) ab, nicht im Projektstand ([L-8]). Zulässig sind
+            <b>PNG, JPEG und WebP</b> bis 20 MB; ein <b>PDF wird abgewiesen</b> — bitte vorher als Bild
+            exportieren. Ein <b>neues Bild setzt Maßstab und Versatz zurück</b>, statt einen Maßstab zu
+            übernehmen, den es nicht gibt ([L-9]); die Lagen bereits verorteter Wände bleiben unberührt
+            ([L-1]). Upload, Ersetzen und Entfernen sind <b>kein</b> Rückgängig-Schritt: der
+            Stapel führt allein Lagen und Bemaßungen ([K-10]/[L-8]).</div>
+
+          <div class="row">
+            <button class="btn-s" id="gp-kal-start">Maßstab aus Plan übernehmen</button>
+            <div class="field"><label for="gp-mmjepx">oder mm je Bildpixel</label>
+              <input id="gp-mmjepx" class="s" type="number" step="0.001" min="0" placeholder="z. B. 12,5"></div>
+            <button class="btn-s" id="gp-mass-uebernehmen">Setzen</button>
+          </div>
+          <div class="row">
+            <div class="field"><label for="gp-vx">Versatz X (mm)</label>
+              <input id="gp-vx" class="s" type="number" step="125" value="0"></div>
+            <div class="field"><label for="gp-vy">Versatz Y (mm)</label>
+              <input id="gp-vy" class="s" type="number" step="125" value="0"></div>
+            <button class="btn-s" id="gp-versatz-uebernehmen">Versatz setzen</button>
+            <button class="btn-s" id="gp-versatz-null">Auf 0 / 0</button>
+          </div>
+          <div class="row">
+            <button class="btn-s" id="gp-plan-schieben" title="Den Plan mit der Maus verschieben (P). Verschoben wird der PLAN, nie eine Wandlage.">Plan verschieben</button>
+            <label class="chk"><input type="checkbox" id="gp-plan-lock" checked>
+              <span>Plan gesperrt</span></label>
+          </div>
+          <div class="hint" style="margin-top:2px">Maßstab und Versatz sind ausdrücklich gesetzte
+            <b>Anzeigeparameter</b> ([L-9]) — sie ändern <b>keine</b> Wandlage ([L-1]) und stehen nicht
+            im Rückgängig-Stapel. Verschieben ist erst nach der Kalibrierung möglich.</div>
+        </div>
       </div>
-      <div class="hint">Zwei Punkte im Plan anklicken, deren realen Abstand du kennst. Der zweite
-        Punkt wird <b>orthogonal</b> zum ersten gezwungen — schief gemessen verfälscht den Maßstab
-        still. Gemessen wird in <b>Bildpunkten</b>: Zoomen, Verschieben und „Alles zeigen“ ändern das
-        Ergebnis nicht. Es wird <b>kein</b> Maßstab geschätzt ([L-9]).</div>
-    </div>
-    <div class="row">
-      <div class="field"><label for="gp-mmjepx">mm je Bildpixel</label>
-        <input id="gp-mmjepx" class="s" type="number" step="0.001" min="0" placeholder="z. B. 12,5"></div>
-      <button class="btn-s" id="gp-mass-uebernehmen">Setzen</button>
-    </div>
-    <div class="row">
-      <div class="field"><label for="gp-vx">Versatz X (mm)</label>
-        <input id="gp-vx" class="s" type="number" step="125" value="0"></div>
-      <div class="field"><label for="gp-vy">Versatz Y (mm)</label>
-        <input id="gp-vy" class="s" type="number" step="125" value="0"></div>
-    </div>
-    <div class="row">
-      <button class="btn-s" id="gp-versatz-uebernehmen">Versatz setzen</button>
-      <button class="btn-s" id="gp-versatz-null">Auf 0 / 0</button>
     </div>
 
     <div class="msg" id="gp-msg"></div>
-    <div class="legende">
-      <span><i style="background:#7fb6e6"></i>frei</span>
-      <span><i style="background:#1a1a1a"></i>bestimmt</span>
-      <span><i style="background:#1f9d4d"></i>aktiv</span>
-      <span><i style="background:#d92b2b"></i>Fehler</span>
-    </div>
-    <div class="hint">Die <b>Lage</b> lebt im Geschoss der Projektmappe, nie im Wandelement ([K-10]).
-      Positionen stehen in <b>Millimetern</b>, die Länge im 125-mm-Raster, die Breite ist konstant
-      125&nbsp;mm ([L-1]). <b>Überlappungen</b> werden rot gemeldet und <b>nie</b> selbsttätig
-      korrigiert ([K-13]); eine Ecke ist ein <b>Stoß</b>. Der Plan ist <b>Hintergrund, keine
-      Datenquelle</b> ([L-9]) — hochgeladen wird er im Projektplaner beim Geschoss.</div>
-  </aside>
-
-  <div class="gp-main">
-    <div class="gp-buehne" id="gp-buehne"></div>
-    <!-- Schwebende Bauteilliste: bewusst NEBEN der Buehne im Markup, nur optisch
-         darueber. Sie ist Anzeige und Auswahl — verortet wird mit „Wand zeichnen". -->
-    <div class="gp-liste" id="gp-liste"></div>
-    <!-- Inline-Eingabe des Maßwerts (#51): sitzt beim Bearbeiten genau auf der
-         dargestellten Maßzahl. Sie ist reine Bedienoberfläche über dem VORHANDENEN
-         Schreibweg (`bemSetzen` → `speichereBemassung`) — kein zweiter fachlicher
-         Bearbeitungspfad und keine eigene Maßsemantik ([K-3]/[K-12]). -->
-    <input class="gp-inline" id="gp-inline" type="text" inputmode="numeric" hidden
-           aria-label="Maß in Millimetern" title="Enter übernimmt · Escape verwirft">
     <div class="gp-status" id="gp-status"></div>
   </div>
 </div>
-
-<!-- Kein Kalibrier-Popup mehr (#52): der Maßstab entsteht auf der Zeichenfläche
-     selbst, mit deren Zoom und Pan. Ein unkalibrierter Plan liegt dafür mit dem
-     VORLÄUFIGEN Faktor 1 Bildpixel = 1 mm unter der Zeichnung — nie gespeichert,
-     kein geschätzter Maßstab, und das 125-mm-Raster bleibt so lange aus ([L-9]). -->
 
 <script>
 /* Layout-Editor des Geschossplans (Etappe C4a, Issue #26, Regeln [K-1]…[K-13]).
@@ -328,6 +351,12 @@ const GP = {
   // (Zeichnen, Verschieben, Größenziehen) — und beim Start AUS (#52). Er ist
   // Bedienung und wird bewusst nicht gespeichert.
   fang: false,                // Fang auf 125 mm (aus: 0,5 mm — [L-1])
+  // Reine ANSICHTSSCHALTER (#53): sie blenden Vorhandenes ein und aus und ändern
+  // weder Datenmodell noch Geometrie noch Löserergebnis. Wie Zoom und Fang werden
+  // sie bewusst NICHT gespeichert.
+  rasterAn: true,             // 125-mm-Raster zeichnen
+  masseAn: true,              // Bemaßungen zeichnen (und treffbar halten)
+  planBlatt: false,           // Planverwaltung (Blatt von unten) geöffnet
   planLock: true,             // gesperrt = Ziehen bewegt den Plan nicht (§4.4)
   ziel: '',                   // '' = neue Wand anlegen, sonst Kennung einer unverorteten Wand
   zeichnen: null,             // { start:{x,y}, zeiger:{x,y}, wartet } während „Wand zeichnen“
@@ -344,12 +373,6 @@ const GP = {
   // Bemaßen (D) und Fixieren (F): `bem` hält die LAUFENDE Eingabe, `bemAktiv` das
   // angeklickte, schon gespeicherte Maß. Beides ist Bedienung — gespeichert wird
   // erst mit „Maß setzen“ ([K-3]).
-  // Referenzgeschoss (C4c): das in der Struktur unmittelbar darunterliegende
-  // Geschoss als blasse Umrisse. Wie Zoom, Auswahl und Plan-Sperre ist das
-  // Bedienung und gehört NICHT ins Datenmodell der Mappe — es wird deshalb
-  // bewusst nirgends gespeichert.
-  refAn: true,                // Umrisse des Geschosses darunter anzeigen
-  refDeckkraft: 0.25,         // Vorgabe 25 %
   bem: null,                  // { achse, von:{wand,bezug}, bis:{wand,bezug}|null }
   bemHover: null,             // Bezug unter dem Zeiger (nur Rückmeldung, §4.3)
   bemZeiger: null,            // letzter Weltpunkt beim Bemaßen (Vorschau nach dem 1. Bezug)
@@ -373,8 +396,16 @@ const V = { x0: -1000, y0: -1000, mm: 12 };
 
 const MM_JE_PX_MIN = 0.5, MM_JE_PX_MAX = 400;
 
-/** Die Werkzeuge der Leiste (§4.2). */
+/** Alle Werkzeugzustände der Zeichenfläche (§4.2). */
 const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen', 'fixieren'];
+
+/**
+ * Die Werkzeuge der oberen Leiste (#53). „plan“ steht bewusst NICHT darin: das
+ * Verschieben des Plans ist Planverwaltung und wird ausschließlich im Planblatt
+ * (Knopf „Plan verschieben“, Taste P) eingeschaltet — es gibt keinen zweiten
+ * Bedienweg dafür.
+ */
+const WZ_KNOEPFE = ['auswahl', 'wand', 'bemassen', 'fixieren'];
 
 function zeige(text, ok){ const m = $('gp-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
@@ -616,6 +647,7 @@ function planVorlaeufig(){
 }
 
 function rasterSvg(f){
+  if (!GP.rasterAn) return '';                    // reiner Ansichtsschalter (#53)
   if (planVorlaeufig()) return '';                // kein Raster über einem Plan ohne Maßstab
   const s = CON.GRID_MM;
   const pxJe = s / V.mm;
@@ -677,52 +709,6 @@ function kalSvgTeil(){
       + ` stroke="#c0392b" stroke-width="${r2(strich(1.6))}"/>`);
   }
   return teile.join('');
-}
-
-// ---------------------------------------------------------------------------
-//  Referenzgeschoss (C4c) — blasser Hintergrund, ausdrücklich keine Datenquelle
-// ---------------------------------------------------------------------------
-/**
- * Das in der Struktur **unmittelbar darunterliegende** Geschoss: Index − 1 in der
- * Geschossliste desselben Gebäudes. Ein Höhen- oder Niveaufeld gibt es im
- * Datenmodell nicht, und es wird auch keines erfunden — maßgebend ist allein die
- * Reihenfolge in der Mappe. Beim untersten Geschoss gibt es keine Referenz.
- * @returns {object|null} das Geschossobjekt darunter
- */
-function referenzGeschoss(){
-  const o = ort();
-  if (!o) return null;
-  const geb = MAPPE.findeGebaeude(store.holeMappe(), o.gebaeude.id);
-  if (!geb) return null;
-  const i = geb.geschosse.findIndex(g => g.id === o.geschoss.id);
-  return i > 0 ? geb.geschosse[i - 1] : null;
-}
-
-/**
- * Die Wände des Referenzgeschosses als blasse Umrisse. Bewusst ein eigener,
- * getrennter Löserlauf: sein Ergebnis fließt **nie** in `loesen()` des aktiven
- * Geschosses ein. Die Umrisse tragen kein `data-wand` und keine Zeigerereignisse
- * — sie sind damit für Auswahl ([K-8]), Kollisionsprüfung ([K-13]) und
- * Bemaßung ([K-1]…[K-4]) schlicht nicht vorhanden.
- */
-function referenzSvg(){
-  if (!GP.refAn) return '';
-  const gs = referenzGeschoss();
-  if (!gs) return '';
-  const liste = gs.waende || [];
-  const erg = CON.pruefeGeschoss(liste, gs.bemassungen || []);
-  const teile = [];
-  for (const w of liste) {
-    const p = (erg.positionen && erg.positionen[w.id]) || null;
-    const r = CON.wandRechteck(w.lage, p);
-    if (!r) continue;                              // unverortet ⇒ kein Umriss ([L-4])
-    teile.push(`<rect class="ref-wand" x="${r2(r.x_min)}" y="${r2(r.y_min)}"`
-      + ` width="${r2(r.x_max - r.x_min)}" height="${r2(r.y_max - r.y_min)}" fill="none"`
-      + ` stroke="#33415c" stroke-width="${r2(strich(1.4))}"/>`);
-  }
-  if (!teile.length) return '';
-  return `<g class="referenz" pointer-events="none" opacity="${r2(GP.refDeckkraft)}">`
-    + teile.join('') + '</g>';
 }
 
 /** Halbe Kantenlänge der Griffe in Schirmpixeln. */
@@ -1034,6 +1020,7 @@ const MASSTEXT_HALB_PX = { laengs: 34, quer: 9 };
 
 /** Nur die dargestellte Maßzahl unter einem Weltpunkt (die zuletzt gezeichnete gewinnt). */
 function bemTextTreffer(p, erg){
+  if (!GP.masseAn) return null;                   // ausgeblendet heißt auch: nicht treffbar (#53)
   const liste = bemassungen();
   for (let i = liste.length - 1; i >= 0; i--) {
     const g = bemGeometrie(liste[i], i, erg);
@@ -1049,6 +1036,10 @@ function bemTextTreffer(p, erg){
 
 /** Bemaßung unter einem Weltpunkt (die zuletzt gezeichnete gewinnt). */
 function bemTreffer(p, erg){
+  // Ein ausgeblendetes Maß ist auch nicht anklickbar (#53): sonst gäbe es eine
+  // unsichtbare Trefferfläche, die Wandklicks abfängt. Der Schalter ist reine
+  // Ansicht — an Werten, Bezügen und Löser ändert er nichts ([K-5]).
+  if (!GP.masseAn) return null;
   // Die Beschriftung liegt obenauf und wird zuerst geprüft — sonst wäre ein
   // verschobenes Label (#51) nicht mehr anklickbar, weil es nicht länger über
   // seiner Maßlinie steht.
@@ -1355,9 +1346,11 @@ function render(){
   const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
     + `${r2(f.breite * V.mm)} ${r2(f.hoehe * V.mm)}">`,
     `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
-    planSvgTeil(), rasterSvg(f), ursprungSvg(), referenzSvg()];
+    planSvgTeil(), rasterSvg(f), ursprungSvg()];
   for (const w of waende()) teile.push(wandSvg(w, erg, koll));
-  bemassungen().forEach((bm, i) => teile.push(bemassungSvg(bm, i, erg)));
+  // Ausgeblendete Bemaßungen werden nicht gezeichnet — die Staffelung (`i`) bleibt
+  // dieselbe, damit sie beim Einblenden bit-genau wieder dort stehen (#53).
+  if (GP.masseAn) bemassungen().forEach((bm, i) => teile.push(bemassungSvg(bm, i, erg)));
   teile.push(bezuegeSvg(erg), bemEntwurfSvg(erg));
   teile.push(zugSvg(erg), groesseSvg(erg), entwurfSvg(), kalSvgTeil(), '</svg>');
   buehne.innerHTML = teile.join('');
@@ -1446,7 +1439,9 @@ function kopfSync(){
       + (gs.hoehe_mm != null ? ` · Standard-Wandhöhe ${gs.hoehe_mm} mm` : ' · ohne Standard-Wandhöhe') + '</span>'
     : '<span>kein aktives Geschoss</span>';
 
-  for (const b of WERKZEUGE) {
+  // „plan“ hat bewusst keinen Knopf in dieser Leiste (#53) — es wird im Planblatt
+  // eingeschaltet und dort hervorgehoben (s. `planKopfSync`).
+  for (const b of WZ_KNOEPFE) {
     $('wz-' + b).className = GP.werkzeug === b ? 'an' : '';
   }
   $('wz-hinweis').innerHTML = GP.werkzeug === 'bemassen'
@@ -1462,7 +1457,7 @@ function kopfSync(){
       + 'mit. Die Wand liegt <b>orthogonal</b> ([L-2]), die Länge rastet auf 125 mm und die '
       + '<b>Wandkanten</b> liegen auf dem Raster ([L-1]). <b>Escape</b> verwirft.'
     : GP.werkzeug === 'plan'
-      ? (GP.planLock ? 'Der Plan ist <b>gesperrt</b> — erst die Sperre unten lösen.'
+      ? (GP.planLock ? 'Der Plan ist <b>gesperrt</b> — erst die Sperre im Planblatt („Plan…“) lösen.'
         : 'Plan mit der Maus ziehen. Verschoben wird der <b>Plan</b>, keine Wandlage ([L-1]/[L-9]).')
       : 'Wand anklicken (Umschalt/Strg wählt mehrere) und am Körper oder Mittelgriff ziehen. Bewegt '
         + 'wird die ganze starre Gruppe; eine in einer Achse <b>bestimmte</b> Wand lässt sich dort '
@@ -1517,29 +1512,67 @@ function kopfSync(){
       + (el && el.wandelement
         ? `<br>Wandelement: ${el.wandelement.length_mm} × ${el.wandelement.height_mm} mm`
         : '<br>⚠ kein Wandelement (verwaister Eintrag, [L-4])');
-  $('gp-planen').disabled = !(aus && el);
   $('gp-lage-weg').disabled = !(aus && aus.lage);
-  $('gp-drehen').disabled = !(aus && aus.lage);
+  // Drehen ist gesperrt, sobald ein Maß an der Wand hängt ODER sie mittelbar
+  // bestimmt ist — beides sagt `drehSperre()`, mit unterscheidbarem Grund.
+  const sperre = aus ? drehSperre(aus.id) : { grund: 'ohne' };
+  $('gp-drehen').disabled = !(aus && aus.lage) || !!sperre.grund;
 
-  // Referenzgeschoss: benannt wird, WELCHES Geschoss gezeigt wird — und wenn es
-  // keines darunter gibt, genau das. Erfunden wird keines.
-  const rg = referenzGeschoss();
-  $('gp-ref-info').innerHTML = !gs
-    ? '–'
-    : rg
-      ? `Referenz: <b>${esc(rg.name)}</b> — das Geschoss unmittelbar darunter. Nur Umrisse, nicht `
-        + 'anklickbar, ohne Einfluss auf Auswahl, Bemaßung und Kollisionsprüfung.'
-      : 'Kein Geschoss darunter — dies ist das unterste Geschoss des Gebäudes. Es wird keines erfunden.';
-  $('gp-ref').disabled = !rg;
-  $('gp-ref-deck').disabled = !rg || !GP.refAn;
+  // Die Ansichtsschalter sind reine Bedienung — sie stehen hier nur im Einklang
+  // mit dem Zustand. Bemaßungen sind in D und F immer sichtbar, damit man nicht
+  // an unsichtbaren Maßen arbeitet; der Schalter ist dann gesperrt und sagt warum.
+  const massPflicht = GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren';
+  $('gp-raster').checked = GP.rasterAn;
+  $('gp-masse').checked = GP.masseAn;
+  $('gp-masse').disabled = massPflicht;
+  $('gp-masse').title = massPflicht
+    ? 'In den Werkzeugen Maß (D) und Fix (F) bleiben Bemaßungen sichtbar — sonst bearbeitete man '
+      + 'unsichtbare Maße.'
+    : 'Bemaßungen ein- oder ausblenden. Reine Ansicht: Werte, Löser und Wandlagen bleiben unberührt ([K-5]).';
 
   bemKopfSync();
   $('gp-undo').disabled = !GP.undo.length;
   $('gp-redo').disabled = !GP.redo.length;
-  $('gp-undo-info').innerHTML = `${GP.undo.length} Schritt(e) rückgängig · ${GP.redo.length} `
-    + 'wiederholbar. Zurückgenommen werden nur <b>Lagen und Bemaßungen</b> ([K-10]) — Planbild, '
-    + 'Maßstab, Versatz, Blick und Auswahl bleiben unberührt ([L-8]/[L-9]).';
+  $('gp-undo').title = `Rückgängig (Strg+Z) · ${GP.undo.length} Schritt(e). Zurückgenommen werden nur `
+    + 'Lagen und Bemaßungen ([K-10]) — Planbild, Maßstab, Versatz, Blick und Auswahl bleiben unberührt.';
+  $('gp-redo').title = `Wiederholen (Strg+Umschalt+Z) · ${GP.redo.length} Schritt(e).`;
   planKopfSync();
+}
+
+/**
+ * Warum die aktive Wand gerade nicht gedreht werden darf (#53).
+ *
+ * Gedreht wird um die Min-Ecke; die Wand tauscht dabei ihre Achsen. Ein Maß, das
+ * unmittelbar an dieser Wand hängt — gleich ob Bemaßung, Fixierung ([K-4]) oder
+ * Längenmaß ([K-11]) —, verlöre damit seinen Bezugssinn oder würde still
+ * überfahren. Deshalb sperrt **jede** direkt anliegende Bemaßung das Drehen.
+ *
+ * Davon getrennt bleibt die alte Prüfung: eine Wand ohne eigenes Maß kann über
+ * die starre Gruppe **mittelbar** bestimmt sein ([K-9]) — Drehen würde sie
+ * verschieben. Beide Fälle sind gesperrt, werden aber ausdrücklich
+ * unterschieden, weil sie verschiedene Auswege haben.
+ *
+ * @returns {{grund:'direkt'|'bestimmt'|null, masse:object[], achsen:string[]}}
+ */
+function drehSperre(id, erg){
+  const masse = bemassungenAn(id);
+  if (masse.length) return { grund: 'direkt', masse, achsen: [] };
+  const e = erg || loesen();
+  const b = e.bestimmt[id];
+  const achsen = b ? CON.ACHSEN.filter(a => b[a]) : [];
+  return achsen.length ? { grund: 'bestimmt', masse: [], achsen } : { grund: null, masse: [], achsen: [] };
+}
+
+/**
+ * Alle Bemaßungen, die diese Wand UNMITTELBAR als Bezug führen — als Start oder
+ * als Ziel, in jeder Achse. Reines Lesen der Mappe; die Bemaßungsmathematik in
+ * `sembla-constraints.js` bleibt unberührt.
+ */
+function bemassungenAn(id){
+  return bemassungen().filter(b => {
+    const n = CON.normBemassung(b);
+    return (n.von && n.von.wand === id) || (n.bis && n.bis.wand === id);
+  });
 }
 
 /** Der Bemaßungsteil der Leiste — reine Anzeige des Bedienstands. */
@@ -1562,18 +1595,40 @@ function bemKopfSync(){
 
 function planKopfSync(){
   const p = plan();
+  const gs = geschoss();
   const info = $('gp-plan-info');
-  for (const id of ['gp-kal-start', 'gp-mass-uebernehmen', 'gp-versatz-uebernehmen',
-                    'gp-versatz-null', 'gp-mmjepx', 'gp-vx', 'gp-vy', 'gp-plan-lock']) {
+  // Das Blatt ist offen, wenn es geöffnet wurde — ODER solange gemessen wird:
+  // dann bleibt es als KOMPAKTE Status-/Abbruchbedienung stehen, damit die Bühne
+  // frei ist (#53). Ohne aktives Geschoss gibt es nichts zu verwalten.
+  const offen = !!gs && (GP.planBlatt || GP.kal.an);
+  const blatt = $('gp-planblatt');
+  blatt.hidden = !offen;
+  blatt.className = 'gp-sheet' + (GP.kal.an ? ' kompakt' : '');
+  $('gp-plan-knopf').disabled = !gs;
+  $('gp-plan-import').disabled = !gs;
+  for (const id of ['gp-plan-entfernen', 'gp-kal-start', 'gp-mass-uebernehmen',
+                    'gp-versatz-uebernehmen', 'gp-versatz-null', 'gp-mmjepx', 'gp-vx', 'gp-vy',
+                    'gp-plan-lock', 'gp-plan-schieben']) {
     $(id).disabled = !p;
   }
   // Ohne Bild in diesem Browser gibt es nichts anzuklicken — dann wird der Modus
   // gar nicht erst angeboten, statt eine leere Fläche zum Messen hinzustellen.
   if (p && !GP.bild) $('gp-kal-start').disabled = true;
+  // Verschieben braucht ein Millimetermaß: ohne Kalibrierung gibt es keines ([L-9]).
+  if (p && !PLAN.planKalibriert(p)) $('gp-plan-schieben').disabled = true;
+  $('gp-plan-schieben').className = 'btn-s' + (GP.werkzeug === 'plan' ? ' an' : '');
   kalKopfSync();
+  const chip = $('gp-plan-chip');
+  chip.className = p && !PLAN.planKalibriert(p) ? 'warn' : '';
+  chip.textContent = !gs ? '–'
+    : !p ? 'kein Plan'
+    : !GP.bild ? 'Bild fehlt in diesem Browser'
+    : PLAN.planKalibriert(p) ? PLAN.massstabText(p.mm_je_pixel)
+    : 'nicht kalibriert';
   if (!p) {
-    info.innerHTML = 'Kein Plan hinterlegt. Hochgeladen wird er im <a href="index.html">Projektplaner</a> '
-      + 'beim Geschoss („Bearbeiten“) — es gibt bewusst nur <b>einen</b> Upload-Weg.';
+    info.innerHTML = 'Kein Plan hinterlegt. Er wird <b>hier</b> hochgeladen — seit #53 gibt es genau '
+      + '<b>einen</b> Upload-Weg, und der liegt in diesem Blatt. Der Plan ist <b>Hintergrund, keine '
+      + 'Datenquelle</b> ([L-9]).';
     return;
   }
   const teile = [esc(p.datei || 'Plan')];
@@ -1835,10 +1890,19 @@ function drehe(){
   const w = GP.aktiv ? wand(GP.aktiv) : null;
   if (!w || w.lage == null) { zeige('Keine aktive, verortete Wand — nichts gedreht.', false); return; }
   const erg = loesen();
-  const b = erg.bestimmt[w.id];
-  if (b && (b.x || b.y)) {
-    zeige(`„${w.name || w.id}“ ist durch Bemaßungen bestimmt — Drehen würde sie verschieben. `
-      + 'Erst das Maß lösen ([K-9]).', false);
+  // Zwei verschiedene Sperren, zwei verschiedene Auswege — deshalb zwei Meldungen (#53).
+  const sperre = drehSperre(w.id, erg);
+  if (sperre.grund === 'direkt') {
+    const m = sperre.masse;
+    zeige(`An „${w.name || w.id}“ hängt ${m.length === 1 ? 'ein Maß' : m.length + ' Maße'} `
+      + `(${m.map(x => x.id).join(', ')}) — Drehen tauscht die Achsen der Wand und würde `
+      + 'diesen Bezug hintergehen. Erst das Maß ändern oder löschen ([K-3]/[K-11]).', false);
+    return;
+  }
+  if (sperre.grund === 'bestimmt') {
+    zeige(`„${w.name || w.id}“ trägt selbst kein Maß, ist aber über die starre Gruppe in Achse `
+      + `${sperre.achsen.join(' und ')} bestimmt — Drehen würde sie verschieben. Erst das `
+      + 'maßgebende Maß der Gruppe lösen ([K-9]).', false);
     return;
   }
   const l = CON.normLage(w.lage);
@@ -2525,6 +2589,102 @@ function kalUebernehmen(){
 }
 
 // ---------------------------------------------------------------------------
+//  Planverwaltung: Blatt von unten, EINZIGER Uploadweg (#53, [L-8]/[L-9])
+// ---------------------------------------------------------------------------
+// Hochladen, Ersetzen und Entfernen des Geschossplans sind mit #53 vollständig
+// aus Modul 0 hierher gezogen. Es gibt seither GENAU EINEN Uploadweg — dort, wo
+// der Plan gebraucht wird. Fachlich ändert sich dabei nichts: der Plan bleibt
+// Hintergrund und keine Datenquelle ([L-9]), das Bild liegt in der eigenen
+// IndexedDB ([L-8]), in der Mappe stehen nur Dateiname, Bildmaße, Maßstab und
+// Versatz, und keine Wandlage wird angefasst ([L-1]). Nichts davon steht im
+// Rückgängig-Stapel — der führt allein Lagen und Bemaßungen ([K-10]).
+
+/** Das Blatt zeigen oder schließen (reine Bedienung, nichts gespeichert). */
+function planBlattZeigen(auf){
+  if (!auf) {
+    // Schließen beendet auch eine laufende Messung und den Verschiebemodus —
+    // beides gehört zur Planverwaltung und liefe sonst unsichtbar weiter.
+    kalAbbrechen(true);
+    GP.planBlatt = false;
+    if (GP.werkzeug === 'plan') { werkzeug('auswahl'); return; }
+    render();
+    return;
+  }
+  if (!geschoss()) { zeige('Kein aktives Geschoss — es gibt keinen Plan zu verwalten ([L-10]).', false); return; }
+  GP.planBlatt = true;
+  render();
+}
+
+/** Plan verschieben — der EINZIGE Weg in diesen Modus (Knopf im Blatt oder P). */
+function planSchieben(){
+  if (!geschoss()) { zeige('Kein aktives Geschoss.', false); return; }
+  GP.planBlatt = true;
+  if (!plan()) { zeige('Kein Plan hinterlegt — es gibt nichts zu verschieben.', false); render(); return; }
+  werkzeug('plan');
+}
+
+/** Bildmaße einer Datei lesen — ohne Deutung, nur die tatsächliche Pixelgröße. */
+async function bildMasse(blob){
+  if (typeof createImageBitmap !== 'function') {
+    throw new Error('Dieser Browser kann die Bildmaße nicht lesen (createImageBitmap fehlt).');
+  }
+  const bm = await createImageBitmap(blob);
+  const masse = { breite: bm.width, hoehe: bm.height };
+  if (bm.close) bm.close();
+  if (!(masse.breite > 0) || !(masse.hoehe > 0)) throw new Error('Das Bild hat keine lesbaren Maße.');
+  return masse;
+}
+
+/**
+ * Plan hochladen oder ersetzen. Ein NEUES Bild hat einen neuen Maßstab: Kalibrierung
+ * und Versatz werden ausdrücklich zurückgesetzt statt stillschweigend übernommen —
+ * das wäre ein geratener Maßstab ([L-9]). Die Wandlagen bleiben unberührt ([L-1]).
+ */
+async function planHochladen(datei){
+  const gs = geschoss();
+  if (!gs) { zeige('Kein aktives Geschoss — das Planbild hängt an seiner Kennung ([L-4]).', false); return false; }
+  if (!datei) return false;
+  const fehler = PLAN.pruefePlanDatei(datei);
+  if (fehler.length) { zeige(fehler.join(' '), false); return false; }
+  try {
+    const masse = await bildMasse(datei);
+    await PLAN.speicherePlan(gs.id, datei, {
+      name: datei.name, typ: datei.type, groesse: datei.size,
+      breite_px: masse.breite, hoehe_px: masse.hoehe,
+    });
+    store.setzeGeschossPlan(gs.id, {
+      datei: datei.name, typ: datei.type,
+      breite_px: masse.breite, hoehe_px: masse.hoehe,
+      mm_je_pixel: null, versatz_x_mm: 0, versatz_y_mm: 0,
+    });
+  } catch (e) { zeige('Plan nicht hinterlegt: ' + fehlerText(e), false); render(); return false; }
+  // Eine Messung gehörte zum alten Bild und wird verworfen, nicht weitergeschleppt.
+  GP.kal.an = false; GP.kal.punkte = [];
+  await auffrischen(true);
+  zeige(`Plan „${datei.name}“ hinterlegt. Maßstab und Versatz sind zurückgesetzt — bitte `
+    + 'ausdrücklich kalibrieren ([L-9]); bis dahin liegt er nur vorläufig unter der Zeichnung und '
+    + 'das 125-mm-Raster bleibt aus. Die Lagen bereits verorteter Wände sind unverändert ([L-1]).', true);
+  return true;
+}
+
+/** Plan entfernen — Bild und Beschreibung, aber keine Wand und keine Lage ([L-1]). */
+async function planEntfernen(){
+  const gs = geschoss();
+  if (!gs) { zeige('Kein aktives Geschoss.', false); return false; }
+  if (!gs.plan) { zeige('Für dieses Geschoss ist kein Plan hinterlegt.', false); return false; }
+  if (!confirm(`Plan „${gs.plan.datei || ''}“ aus Geschoss „${gs.name}“ entfernen? `
+    + 'Bild, Maßstab und Versatz gehen verloren. Die Wände und ihre Lagen bleiben erhalten.')) return false;
+  await PLAN.loeschePlan(gs.id);
+  try { store.setzeGeschossPlan(gs.id, null); }
+  catch (e) { zeige('Nicht entfernt: ' + fehlerText(e), false); return false; }
+  GP.kal.an = false; GP.kal.punkte = [];
+  if (GP.werkzeug === 'plan') werkzeug('auswahl');
+  await auffrischen(true);
+  zeige('Plan entfernt. Die Wandlagen dieses Geschosses sind unverändert ([L-1]).', true);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 //  Planbild aus der eigenen Datenbank ([L-8])
 // ---------------------------------------------------------------------------
 async function bildLaden(gsId, erzwingen){
@@ -2554,6 +2714,14 @@ async function auffrischen(erzwingen){
 // ---------------------------------------------------------------------------
 function werkzeug(name){
   GP.werkzeug = name;
+  // Wer Maße bearbeitet, muss sie sehen (#53): der Ansichtsschalter wird dafür
+  // eingeschaltet und das GESAGT — still bliebe die Ursache im Dunkeln, und an
+  // unsichtbaren Maßen zu arbeiten wäre die schlechtere Alternative.
+  if ((name === 'bemassen' || name === 'fixieren') && !GP.masseAn) {
+    GP.masseAn = true;
+    zeige('Bemaßungen wurden eingeblendet — in den Werkzeugen Maß (D) und Fix (F) sind sie immer '
+      + 'sichtbar. Reine Ansicht; an den Maßen selbst ändert das nichts.', true);
+  }
   GP.zeichnen = null;
   GP.groesse = null;
   GP.bemHover = null;
@@ -2566,7 +2734,7 @@ function werkzeug(name){
 }
 
 function binde(){
-  for (const b of WERKZEUGE) {
+  for (const b of WZ_KNOEPFE) {
     $('wz-' + b).addEventListener('click', () => werkzeug(b));
   }
   $('gp-undo').addEventListener('click', undo);
@@ -2594,18 +2762,21 @@ function binde(){
     if (!t) return;
     listeKlick(t.getAttribute('data-wand'), ev);
   });
-  $('gp-ref').addEventListener('change', () => {
-    GP.refAn = !!$('gp-ref').checked;
+  // Ansichtsschalter (#53): sie blenden nur ein und aus. Kein Datenmodell, keine
+  // Geometrie, kein Löser — und ausdrücklich keine Speicherung.
+  $('gp-raster').addEventListener('change', () => {
+    GP.rasterAn = !!$('gp-raster').checked;
+    zeige(GP.rasterAn ? 'Raster eingeblendet.'
+      : 'Raster ausgeblendet — reine Ansicht; der Fang und die 125-mm-Bindung der Länge bleiben '
+        + 'davon unberührt ([L-1]).', true);
     render();
   });
-  $('gp-ref-deck').addEventListener('change', () => {
-    const s = String($('gp-ref-deck').value || '').trim();
-    const v = Number(s.replace(',', '.'));
-    if (!s || !Number.isFinite(v) || v < 0 || v > 100) {
-      zeige('Die Deckkraft des Referenzgeschosses ist eine Zahl von 0 bis 100 %.', false);
-      return;
-    }
-    GP.refDeckkraft = Math.round(v) / 100;
+  $('gp-masse').addEventListener('change', () => {
+    GP.masseAn = !!$('gp-masse').checked;
+    if (!GP.masseAn) { GP.bemAktiv = null; inlineSchliesse(); }
+    zeige(GP.masseAn ? 'Bemaßungen eingeblendet.'
+      : 'Bemaßungen ausgeblendet — sie bleiben vollständig wirksam; nur gezeichnet und angeklickt '
+        + 'werden sie nicht ([K-5]).', true);
     render();
   });
   buehne.addEventListener('wheel', (ev) => {
@@ -2630,7 +2801,6 @@ function binde(){
   $('gp-zoom-minus').addEventListener('click', () => zoomeAuf(1.3));
   $('gp-zoom-alles').addEventListener('click', zeigeAlles);
 
-  $('gp-planen').addEventListener('click', () => { if (GP.aktiv) planeWand(GP.aktiv); });
   $('gp-drehen').addEventListener('click', drehe);
   $('gp-lage-weg').addEventListener('click', () => {
     const gs = geschoss(), w = GP.aktiv ? wand(GP.aktiv) : null;
@@ -2661,6 +2831,16 @@ function binde(){
     $('gp-vx').value = '0'; $('gp-vy').value = '0';
     versatzUebernehmen();
   });
+  // Planverwaltung (#53): genau ein Uploadweg, und er liegt hier.
+  $('gp-plan-knopf').addEventListener('click', () => planBlattZeigen(!GP.planBlatt));
+  $('gp-plan-zu').addEventListener('click', () => planBlattZeigen(false));
+  $('gp-plan-schieben').addEventListener('click', planSchieben);
+  $('gp-plan-import').addEventListener('change', async (ev) => {
+    const datei = ev && ev.target && ev.target.files ? ev.target.files[0] : null;
+    try { await planHochladen(datei); }
+    finally { if (ev && ev.target) ev.target.value = ''; }
+  });
+  $('gp-plan-entfernen').addEventListener('click', () => { planEntfernen().catch(() => {}); });
   $('gp-kal-start').addEventListener('click', kalStart);
   $('gp-kal-reset').addEventListener('click', () => {
     GP.kal.punkte = [];
@@ -2709,7 +2889,7 @@ function beiTaste(ev){
     return;
   }
   if (k === 'w') werkzeug('wand');
-  else if (k === 'p') werkzeug('plan');
+  else if (k === 'p') planSchieben();          // Plan verschieben lebt in der Planverwaltung (#53)
   else if (k === 'd') werkzeug('bemassen');
   else if (k === 'f') werkzeug('fixieren');
   else if (k === 'r') drehe();

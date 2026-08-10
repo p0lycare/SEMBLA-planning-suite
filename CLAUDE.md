@@ -252,8 +252,9 @@ Achse mit der größeren Pixeldifferenz **gezwungen** (schief gemessen verfälsc
 die Marker sind **Kreuze mit ausgesparter Mitte** (`kreuzPfad()`). `planSvg()` (viewBox in Bildpixeln)
 und `svgPunktZuPixel()` bleiben als geprüfte Anzeige-/Umrechnungsfunktionen in `sembla-plan.js`, haben
 im Betrieb aber **keinen Aufrufer mehr** — sie sind der abgelöste Popup-Weg und werden nicht
-wiederbelebt. **Hochgeladen** wird ein Plan ausschließlich im **Geschoss-Popup von
-Modul 0** — genau ein Upload-Weg.
+wiederbelebt. **Hochgeladen** wird ein Plan seit #53 ausschließlich in der **Planverwaltung des
+Layout-Editors** (Blatt von unten, „Plan…“) — genau ein Upload-Weg, und er liegt dort, wo der Plan
+sichtbar ist. Modul 0 zeigt im Geschoss-Popup nur noch **an**, ob ein Plan hinterlegt ist.
 
 **Bedienung des Layout-Editors (Nachschärfung 2026-08-08).** Vier Punkte, die alle in
 `docs/geschossplan.html` wohnen und **nichts** am Datenmodell ändern:
@@ -273,14 +274,15 @@ länger/kürzer (die **gegenüberliegende** Kante bleibt fest, damit ihre Raster
 verschoben wird über den runden **Mittelgriff** oder den Wandkörper. Ein **Längenmaß** schlägt den
 Griff: das Ziehen wird abgewiesen und das Maß genannt ([K-11]). **90° drehen** (Knopf oder **R**)
 tauscht die Richtung bei unveränderter Länge und dreht um die **Min-Ecke** — nur so bleibt die
-Rasterlage erhalten und zweimal Drehen ist bit-genau die Ausgangslage. Eine **bestimmte** Wand wird
-nicht gedreht (Grund benannt, [K-9]).
+Rasterlage erhalten und zweimal Drehen ist bit-genau die Ausgangslage. Gedreht wird **nicht**, sobald
+eine Bemaßung **unmittelbar an der Wand hängt** (#53, s. u.) oder die Wand mittelbar **bestimmt** ist
+— beide Gründe werden getrennt benannt ([K-9]).
 
 **Ein Erzeugungsweg, „Standard-Wandhöhe", „Planen" (Issue #50, Paket 1, 2026-08-09).** Wieder reine
 Bedienung in `docs/geschossplan.html` (plus Beschriftungen in `docs/index.html`/
 `sembla-projektmappe.js`) — **keine** neue Regel-ID, **kein** Schema-/Formatbump, Paket 2 und 3 des
 Plans `doku/plans/geschossplan-ui-verbesserungen.md` waren damals nicht berührt (Paket 2 folgte mit
-#51, s. u.; Paket 3 ist weiter offen):
+#51, s. u.; Paket 3 folgte mit #53, s. u.):
 **(a) Der linke Abschnitt „Neue Wand" ist entfallen.** Er las sich wie ein zweites,
 formularbasiertes Anlegen **neben** dem grafischen Werkzeug, obwohl er nur dessen Parameter hielt.
 Erzeugt wird ausschließlich durch **Zeichnen**; `gp-ziel`, Standard-Wandhöhe und Wandtyp stehen jetzt
@@ -346,14 +348,15 @@ Textfeld ist aktiv; Wände werden über diese Tasten nie gelöscht.
 **Maßstab im Editor und ein allgemeiner Rasterfang (Issue #52, 2026-08-10).** Wieder reine Bedienung
 in `docs/geschossplan.html` (plus `planVorschauRahmen`/`planAnsichtRahmen`/`rahmenPunktZuPixel` in
 `docs/shared/sembla-plan.js` und ein Hinweistext in `docs/index.html`) — **keine** neue Regel-ID,
-**kein** Schema-/Formatbump, Paket 3 unberührt:
+**kein** Schema-/Formatbump, Paket 3 damals unberührt (es kam mit #53):
 **(a) Der Plan ist Hintergrund, sofort.** Ein unkalibrierter Plan liegt mit dem **vorläufigen**
 Faktor 1 Bildpixel = 1 mm unter der Zeichnung (`class="planbild vorlaeufig"`, blasser), das
-**125-mm-Raster bleibt so lange aus**, und der Zustand steht sichtbar im Panel. Nichts davon wird
+**125-mm-Raster bleibt so lange aus**, und der Zustand steht sichtbar in der Oberfläche. Nichts davon wird
 gespeichert; `mm_je_pixel` bleibt `null`, bis einer der **zwei** ausdrücklichen Wege benutzt wird.
-**(b) Kalibrieren ist ein Modus der Bühne, kein Fenster.** Gestartet wird er links mit **„Maßstab aus
+**(b) Kalibrieren ist ein Modus der Bühne, kein Fenster.** Gestartet wird er mit **„Maßstab aus
 Plan übernehmen“** (`#gp-kal-start`); reale Länge, „Übernehmen“, „Punkte verwerfen“ und „Abbrechen“
-bleiben im Panel (`#gp-kal-block`). Der Modus liegt in `beiZeigerAb` **vor** Maß-, Wand-, Bemaßungs-,
+stehen im Kalibrierblock (`#gp-kal-block`) — seit #53 in der Planverwaltung, die sich dafür auf genau
+diesen Block **verkleinert**. Der Modus liegt in `beiZeigerAb` **vor** Maß-, Wand-, Bemaßungs-,
 Fixier- und Planzweig — während gemessen wird, wählt und zeichnet die Bühne nichts. **Pan (Leertaste/
 Mittelklick), Mausrad-Zoom, ± und „Alles zeigen“ bleiben nutzbar**, weil die Punkte sofort Bildpunkte
 sind. Nach der Übernahme läuft einmal `zeigeAlles()` — der Plan ändert mit dem Maßstab seine Größe.
@@ -367,6 +370,46 @@ Markup **ohne** `checked`. Er gilt gleichermaßen für **Zeichnen** (`fange`/`fa
 gibt keinen wandbezogenen Fang und keine Speicherung. Die 0,5-mm-/1-mm-Semantik bei Fang AUS bleibt
 unverändert, und die **Länge** bleibt zwingend im 125-mm-Raster ([L-1]) — sie ist keine
 Ansichtsoption.
+
+**Schwebende Bedienoberfläche, Planverwaltung im Editor, Drehsperre (Issue #53, Paket 3,
+2026-08-10).** Wieder reine Bedienung in `docs/geschossplan.html` (plus Rückbau des Plan-Uploads in
+`docs/index.html`) — **keine** neue Regel-ID, **keine** Änderung an Löser, Constraint-Mathematik oder
+Fixiersemantik, **kein** Schema-/Formatbump:
+**(a) Das linke Panel ist ersatzlos entfallen.** Die Zeichenfläche nimmt die volle Breite; darüber
+schweben genau vier Bereiche — **obere Werkzeugleiste**, **untere Ansichtsleiste**, **rechte
+Wandliste** und das **Planblatt von unten**. Alle liegen im Markup **neben** der Bühne und nur
+optisch darüber, weil `render()` den SVG-Kindbaum bei jedem Zeigerereignis komplett ersetzt. Die
+Meldezeile (`#gp-msg`) steht bewusst **unter** der Bühne statt schwebend: so verdeckt sie nie einen
+Klickpunkt. Kein Werkzeug und keine Ansichtsoption ist dabei weggefallen; die langen Erklärtexte des
+alten Panels stecken jetzt in `title`-Tooltips samt Tastenkürzel.
+**(b) Oben nur Zeichenwerkzeuge, Undo/Redo und Drehen.** `WZ_KNOEPFE` = Auswahl (Esc), Wand (W), Maß
+(D), Fix (F) — **ohne** „Plan verschieben“. Das ist Planverwaltung und wird ausschließlich im
+Planblatt eingeschaltet (Knopf oder **P**, `planSchieben()`); der Werkzeugzustand `'plan'` bleibt
+intern unverändert. Der doppelte Knopf „In Modul 1 planen“ der aktiven Wand ist entfallen — „Planen“
+je Zeile der Wandliste ruft dieselbe `planeWand()`, ein Weg genügt.
+**(c) Die Planverwaltung ist der einzige Uploadweg.** Hochladen, Ersetzen, Entfernen, Kalibrieren,
+Maßstab, Versatz und Plan verschieben liegen **an einer Stelle**, dort wo der Plan sichtbar ist;
+Modul 0 zeigt im Geschoss-Popup nur noch **an**, ob ein Plan hinterlegt ist. Fachlich ändert das
+nichts: der Plan bleibt Hintergrund ([L-9]), das Bild liegt in der eigenen IndexedDB ([L-8]), ein
+neues Bild setzt Maßstab und Versatz zurück statt sie zu raten, keine Wandlage wird angefasst
+([L-1]), und **nichts davon steht im Rückgängig-Stapel** ([K-10]). Beim **Kalibrieren** verkleinert
+sich das Blatt auf `.kompakt` — nur Status, reale Länge und Abbruch bleiben stehen, die Bühne ist
+vollständig bedienbar (Klicken, Mausrad, Pan, „Alles zeigen“); nach Übernahme oder Abbruch ist die
+volle Verwaltung wieder da. Das **Schließen** des Blattes beendet Messung und Verschiebemodus mit.
+**(d) Zwei neue, rein flüchtige Ansichtsschalter.** `GP.rasterAn` und `GP.masseAn` blenden das
+125-mm-Raster bzw. die Bemaßungen ein und aus. Sie ändern **kein** Datum, **keine** Geometrie und
+**kein** Löserergebnis ([K-5]) und werden — wie Zoom, Fang und Plan-Sperre — **nicht gespeichert**.
+Ein ausgeblendetes Maß ist konsequenterweise auch **nicht anklickbar** (sonst bliebe eine unsichtbare
+Trefferfläche über den Wänden liegen); in den Werkzeugen **D** und **F** werden die Maße
+eingeblendet und der Schalter gesperrt, damit niemand an unsichtbaren Maßen arbeitet — gesagt wird
+das ausdrücklich.
+**(e) Drehen sperrt jede unmittelbar anliegende Bemaßung.** Drehen tauscht die Achsen der Wand; ein
+Maß, das sie als `von` oder `bis` führt — Bemaßung, Fixierung ([K-4]) oder Längenmaß ([K-11]) —
+verlöre damit seinen Bezugssinn. `drehSperre()` prüft deshalb **zuerst** `bemassungenAn(id)` und
+weist mit Nennung der Maße ab. Die frühere Prüfung auf `erg.bestimmt` bleibt als zweite Schranke für
+Wände, die **ohne eigenes Maß** über die starre Gruppe bestimmt sind ([K-9]); beide Gründe haben
+verschiedene Auswege und deshalb **verschiedene Meldungen**. Knopf und Taste **R** laufen durch
+dieselbe Funktion.
 
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
@@ -478,11 +521,12 @@ C3.2 die neue Fassung** (Position in mm).
 `docs/geschossplan.html` mit C4a (Zeichnen, Auswählen/Ziehen [K-9], Farben [K-8], Kollisionsmeldung
 [K-13], Plan als Hintergrund [L-9]), **C4b** (Bemaßen, Fixieren, sichtbarer Widerspruch [K-6] und
 Redundanz [K-7], Längenmaß [K-11], Millimetereingabe [K-12], Undo/Redo) und **C4c** (schwebende
-Bauteilliste, Referenzgeschoss, Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) —
+Bauteilliste, Doppelklick auf die Maßzahl, kein Textcursor über der Beschriftung) —
 `tests/module/smoke_geschossplan.mjs`. **C5 ist abgeschlossen**; das Projektarchiv berührt keine
-[K]-Regel, ebenso wenig die Bedienzugaben aus **#50 (Paket 1)** und **#51 (Paket 2:
-Inline-Maßeingabe, verschiebbare Maßdarstellung)** und **#52 (Maßstab auf der Bühne, Rasterfang als
-allgemeiner Schalter)**. C4b, C4c, **C5** und alle drei Bedienpakete kamen **ohne
+[K]-Regel, ebenso wenig die Bedienzugaben aus **#50 (Paket 1)**, **#51 (Paket 2:
+Inline-Maßeingabe, verschiebbare Maßdarstellung)**, **#52 (Maßstab auf der Bühne, Rasterfang als
+allgemeiner Schalter)** und **#53 (Paket 3: schwebende Bedienoberfläche, Planverwaltung im Editor,
+Drehsperre bei anliegender Bemaßung)**. C4b, C4c, **C5** und alle vier Bedienpakete kamen **ohne
 Schema-/Formatversionsbump** aus. Das frühere
 „Kästchen einfärben + Radierer“ ist ersatzlos entfallen: es beruhte auf der widerlegten Annahme,
 Wandabstände lägen im Raster.
@@ -511,7 +555,7 @@ das dabei erzeugte Wandelement); das Verorten einer bestehenden Wand ändert nur
 Wandelemente werden nie angefasst. Eine neue Änderung verwirft den Redo-Stapel, ein Geschosswechsel
 beide.
 
-**Bauteilliste, Referenzgeschoss und zwei Bedienkorrekturen (Etappe C4c, wieder alles in
+**Bauteilliste und zwei Bedienkorrekturen (Etappe C4c, wieder alles in
 `docs/geschossplan.html` — keine neue Regel, keine neue Shared-Datei, kein Versionsbump).**
 **(a) Die schwebende Bauteilliste** zeigt alle Wände des aktiven Geschosses mit Name, Länge, Höhe,
 Wandtyp und Bestimmtheit. Die Quellen bleiben getrennt: Länge und Bestimmtheit aus Lage und Löser,
@@ -523,14 +567,11 @@ Funktion der Zeichenfläche: **ein** Auswahlzustand, und **aktiv ≠ ausgewählt
 Zeile aktiv, weitere nur gerahmt, [K-8]). Die Liste ist **Anzeige und Auswahl**, **kein** zweiter
 Verortungsweg — sie schreibt nichts. Im Markup liegt sie **neben** der Bühne und nur optisch darüber,
 weil `render()` die Bühne komplett neu schreibt.
-**(b) Das Referenzgeschoss** ist das **unmittelbar darunterliegende** = **Index − 1** in der
-Geschossliste desselben Gebäudes; ein Höhen-/Niveaufeld gibt es nicht und wurde bewusst **nicht**
-eingeführt (Format- und Schemabruch). Beim untersten Geschoss wird das **benannt**, nicht geraten.
-Die blassen Umrisse laufen über einen **getrennten** Löserlauf, dessen Ergebnis nie in den des
-aktiven Geschosses fließt, tragen kein `data-wand` und `pointer-events="none"` — für Auswahl,
-Kollision ([K-13]) und Bemaßung existieren sie nicht, und der Löser liefert mit und ohne Referenz
-bit-genau dasselbe ([K-5]). Standardmäßig sichtbar, Deckkraft 25 % und einstellbar; wie Zoom und
-Plan-Sperre ist beides **Bedienung und wird nicht gespeichert**.
+**(b) Das Referenzgeschoss ist mit #53 ersatzlos entfallen.** Es zeigte das unmittelbar
+darunterliegende Geschoss als blasse Umrisse über einen zweiten, getrennten Löserlauf. Entfernt sind
+damit `referenzGeschoss()`, `referenzSvg()`, beide Schalter und der zweite Löserlauf; im aktiven
+Geschoss ändert sich dadurch **nichts** — die Umrisse waren nie anklickbar und gingen weder in
+Auswahl noch in Kollisionsprüfung ([K-13]) noch in Bemaßung ein.
 **(c) Doppelklick auf die Maßzahl.** Die dargestellte Zahl gehört jetzt zur Trefferfläche des Maßes
 (sie steht über der Maßlinie und lag vorher außerhalb); ein Doppelklick öffnet wie im CAD die
 Bearbeitung. Benutzt wird ausschließlich der **vorhandene** Editor (`waehleBemassung` → Feld „Maß“ →
@@ -670,9 +711,9 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b/C4c stehen, offen ist C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, **Standard-Wandhöhe** als Vorgabe [L-5], **Planupload** — der einzige Upload-Weg), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`; C1/C2/C3/C3.1/C3.2/C4a/C4b/C4c stehen, offen ist C5): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand (unabhängig auf-/zuklappbar, streng hierarchisches Aktivsetzen nach [L-10]) mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor** (`geschossplan.html`, s. u.). **Alle Formulare liegen in Popups**: Projekt (Name, **Kopfdaten** [L-11], **Katalogwahl** [L-12]), Geschoss (Bezeichnung, **Standard-Wandhöhe** als Vorgabe [L-5]; der **Planupload ist seit #53 im Layout-Editor** — hier steht nur noch, ob ein Plan hinterlegt ist), Wand (**legt das Wandelement an**, inkl. Wandtyp-Wahl; beim Bearbeiten nur der Name, weil Geometrie Modul 1 gehört) und **Bauteilkatalog** als **alleiniger Pflegeort** für Produkte **und Preise** + separater Katalogim-/-export. Dazu Modulübersicht, **zentraler Export/Import** je Wand (Häkchen-Dialog → ZIP via `sembla-export.js`/`zip.js`, inkl. **Zeichnung** aus Modul 7) und Export/Import der **Projektmappe** als JSON. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
 | – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], **Kalibrieren auf der Bühne selbst** ([L-9], #52 —
-der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet aus #51 die Eingabe **an Ort und Stelle**, erkannt im **Zeigerstrom** statt am `dblclick`, schreibt aber weiter über `bemSetzen`) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg) und das **Referenzgeschoss** (Index − 1, blass, nicht anklickbar, nicht gespeichert). Aus #50 (Paket 1) dazu: **kein** linker „Neue Wand"-Abschnitt mehr — Zielwahl, **Standard-Wandhöhe** und Wandtyp sind Parameter **des Werkzeugs** „Wand zeichnen", der Fang gehört zur Ansicht; je Wand mit Wandelement ein Knopf **„Planen"** in der Liste (aktiv setzen + Modul 1, gemeinsame `planeWand()`, kein Knopf bei verwaistem Eintrag). Aus #51 (Paket 2): **Inline-Eingabe des Maßwerts** an der Maßzahl (Enter/Escape/Blur, ungültig ⇒ keine Änderung + rotes Feld) und die **verschiebbare Maßzahl** (`text_mm`, reine Darstellung, Schwelle 3 px, Speichern erst bei `pointerup`). Aus #52: der Plan liegt **sofort** als Hintergrund (unkalibriert vorläufig 1 px = 1 mm, ohne 125-mm-Raster), **kalibriert wird auf der Bühne** („Maßstab aus Plan übernehmen“, Zoom/Pan bleiben nutzbar, kein Popup), und der **Rasterfang** ist ein allgemeiner Schalter für alle Wände, der **aus** startet. Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) — Maßstab/Versatz bleiben Plan-Ansichtsparameter ([L-9]) |
+der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet aus #51 die Eingabe **an Ort und Stelle**, erkannt im **Zeigerstrom** statt am `dblclick`, schreibt aber weiter über `bemSetzen`) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg). Aus #50 (Paket 1) dazu: **kein** linker „Neue Wand"-Abschnitt mehr — Zielwahl, **Standard-Wandhöhe** und Wandtyp sind Parameter **des Werkzeugs** „Wand zeichnen", der Fang gehört zur Ansicht; je Wand mit Wandelement ein Knopf **„Planen"** in der Liste (aktiv setzen + Modul 1, gemeinsame `planeWand()`, kein Knopf bei verwaistem Eintrag). Aus #51 (Paket 2): **Inline-Eingabe des Maßwerts** an der Maßzahl (Enter/Escape/Blur, ungültig ⇒ keine Änderung + rotes Feld) und die **verschiebbare Maßzahl** (`text_mm`, reine Darstellung, Schwelle 3 px, Speichern erst bei `pointerup`). Aus #52: der Plan liegt **sofort** als Hintergrund (unkalibriert vorläufig 1 px = 1 mm, ohne 125-mm-Raster), **kalibriert wird auf der Bühne** („Maßstab aus Plan übernehmen“, Zoom/Pan bleiben nutzbar, kein Popup), und der **Rasterfang** ist ein allgemeiner Schalter für alle Wände, der **aus** startet. Aus #53 (Paket 3): **kein linkes Panel** mehr — obere **Werkzeugleiste** (Auswahl/Wand/Maß/Fix + Undo/Redo + Drehen, **ohne** „Plan verschieben“), untere **Ansichtsleiste** (Zoom, Fang, **Raster** und **Bemaßungen** als flüchtige Schalter, Zugang „Plan…“), rechte **Wandliste** und die **Planverwaltung als Blatt von unten** — der **einzige Uploadweg** der Suite (hochladen/ersetzen/entfernen/kalibrieren/Maßstab/Versatz/Plan verschieben), beim Kalibrieren auf Status und Abbruch verkleinert. Das **Referenzgeschoss ist entfallen**, und **Drehen** ist gesperrt, sobald eine Bemaßung unmittelbar an der Wand hängt. Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) — Maßstab/Versatz bleiben Plan-Ansichtsparameter ([L-9]), Planbild und Ansichtsschalter stehen in keinem Undo-Schritt |
 | 1 | `wandplanung.html` | Wand, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse) — **erzeugt** das Wandelement; **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
