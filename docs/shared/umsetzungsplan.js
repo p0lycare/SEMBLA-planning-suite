@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "719f548c",
+  "signatur": "b64011cc",
   "entscheidungen": [
     {
       "issue": 41,
@@ -60,15 +60,6 @@ export const PLAN = {
     "begruendung": "Der Neuanlegefehler ist behoben. Offen bleiben die übrigen Komponenten, gemeinsame Einbauteil-IDs und die Realwand-Abnahme; als angefangene Sicherheitsausgabe bleibt #15 nach der berechneten Portfolio-Ordnung vorn."
   },
   "weitere": [
-    {
-      "issue": 62,
-      "titel": "Baustellenstückliste ohne unbrauchbare Einbauteil-ID-Spalte",
-      "prio": "high",
-      "status": "ohne",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
     {
       "issue": 59,
       "titel": "Lageplan: Wandnummern mit Liste, minimaler Kopf, keine Nullmaße",

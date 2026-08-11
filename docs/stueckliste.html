@@ -25,9 +25,9 @@
   .kopf-titel{font-size:14px;font-weight:700;color:var(--sb-ink)}
   .kopf-zeile{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--sb-muted);margin-top:3px}
   .kopf-zeile b{color:var(--sb-ink);font-weight:600}
-  /* table-layout:fixed + colgroup: NUR so halten sich die Einbauteil-IDs an ihre Spaltenbreite.
-     Ohne festes Layout ignoriert der Browser jede Breitenangabe an der Zelle, und lange
-     ID-Listen sprengen die Tabelle (#62). */
+  /* table-layout:fixed + colgroup: nur so gelten die Breitenangaben der colgroup ueberhaupt —
+     ohne festes Layout ignoriert der Browser sie und laesst den laengsten Zelleninhalt die
+     Spaltenbreite bestimmen. Die Spaltenaufteilung des Blattes bleibt damit vorhersagbar. */
   table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;margin-top:8px}
   th{font-size:11px;color:var(--sb-muted);text-align:right;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--sb-line)}
   th:first-child{text-align:left}
@@ -46,11 +46,8 @@
   td.art .sym{font-weight:700;margin-right:4px}
   td.art.standard .sym{color:#1f6feb} td.art.sonder .sym{color:#e8702a} td.art.rest .sym{color:#7a3fd6}
   td.art.sonder{font-weight:600}
-  td.ids{text-align:left;font-size:11px;font-family:Consolas,ui-monospace,monospace;color:#46505e;
-         word-break:break-all;overflow-wrap:anywhere}
   /* Herkunft (#44): je Wand Name und Teilmenge — die Aggregation bleibt bis zur Wand auflösbar. */
   td.herk{text-align:left;font-size:11px;color:#46505e}
-  td.ids .wq{color:#8a93a0}
   .kennz{font-size:11.5px;color:var(--sb-muted);margin-top:10px;line-height:1.6}
   .kennz b{color:var(--sb-ink)}
   .kennz .sym{font-weight:700;margin-right:3px}
@@ -72,7 +69,7 @@
     html,body{background:#fff;margin:0}
     .wrap{padding:0;margin:0;max-width:none}
     .blatt{border:none;border-radius:0;padding:0;background:#fff;box-shadow:none}
-    table{font-size:10.5px} td.ids{font-size:9px} td.herk{font-size:9px}
+    table{font-size:10.5px} td.herk{font-size:9px}
     thead{display:table-header-group}
     tr{break-inside:avoid;page-break-inside:avoid}
     *{box-shadow:none!important}
@@ -108,11 +105,11 @@
     <div class="kopf" id="printkopf"></div>
     <table id="tbl">
       <colgroup id="cols">
-        <col style="width:26%"><col style="width:12%"><col style="width:10%"><col style="width:10%">
-        <col style="width:26%"><col style="width:8%"><col style="width:8%">
+        <col style="width:35%"><col style="width:16%"><col style="width:14%">
+        <col style="width:14%"><col style="width:11%"><col style="width:11%">
       </colgroup>
       <thead id="thead"><tr><th>Einbauteil</th><th>Art</th><th>Fertigmaß</th><th>Menge</th>
-        <th>Einbauteil-IDs</th><th>EP</th><th>GP</th></tr></thead>
+        <th>EP</th><th>GP</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
     <!-- Summe UND Vollstaendigkeit stehen ausschliesslich in der Summenzeile der Tabelle
@@ -136,24 +133,27 @@
    gespeichert (Ableitung in sembla-gesamtstueckliste.js). Auf Wandebene bleibt der bestehende
    kanonische Wandpfad maßgeblich: dieselbe Funktion, dieselben Werte, dasselbe Blatt.
 
-   EINBAUTEILE ([P-19]): Gewindestangenstücke tragen Art (Symbol + Klartext + Farbe),
-   Fertigmaß und die IDs ihrer Einzelteile. Gleichartige Fertigteile stehen als
-   eine Zeile, die Einzel-IDs bleiben sichtbar und sind mit derselben Kennung im Zeichnungsblatt
-   (Modul 7) wiederzufinden. Für Steine, Muttern, Bleche und Dichtstreifen gibt es KEINE
-   Einzel-ID — der Rechenkern kennt dort keine Einzelteil-Identität, und es wird keine erfunden.
-   Über mehrere Wände ist die Einzel-ID wandlokal; eindeutig ist erst das Paar
-   (Wand-ID, Einbauteil-ID), und genau so steht es dann in der Liste.
+   EINBAUTEILE ([P-19]): Gewindestangenstücke tragen Art (Symbol + Klartext + Farbe) und
+   Fertigmaß; gleichartige Fertigteile stehen als eine Zeile mit ihrer Stückzahl.
+   Die kanonischen Einzel-IDs bleiben in den Positionen (`r.ids`) unverändert erhalten und
+   werden dort gelesen, wo sie gebraucht werden — in der GETRENNTEN Einbauteilliste
+   (einbauteileCsv) und im Zeichnungsblatt (Modul 7). Im Arbeitsblatt selbst stehen sie NICHT
+   (#62): eine Wand mit vielen Stangenstücken trägt je Zeile dutzende Kennungen, die die
+   Tabelle am Bildschirm und im A4-Druck auseinandernehmen, ohne auf der Baustelle gebraucht
+   zu werden — dort wird nach Fertigmaß und Stückzahl gearbeitet. Für Steine, Muttern, Bleche
+   und Dichtstreifen gibt es ohnehin KEINE Einzel-ID — der Rechenkern kennt dort keine
+   Einzelteil-Identität, und es wird keine erfunden.
    Latten, Platten und Verbinder der Beplankung (Modul 2) erscheinen hier nicht.
 
    PREISE WERDEN HIER NICHT GEPFLEGT ([P-13]): sie werden je Position aus dem Katalog aufgelöst
    ([P-14]) — über die in Modul 1 (eingaben.planung.produkte) gewählten Produkte. Ist die
    Zuordnung nicht eindeutig, bleibt die Zeile ohne Preis und nennt den Grund; Mengen bleiben
    davon unberührt. Der Preisschalter blendet Einzelpreis, Gesamtpreis und Summenbetrag
-   gemeinsam aus — Mengen, IDs und Lückenstand bleiben unverändert. Editierbar sind auf der
+   gemeinsam aus — Mengen und Lückenstand bleiben unverändert. Editierbar sind auf der
    Wandebene nur Projektname und Währung. window.SEMBLA wird unten gebunden (Node-Test).
 
    ARBEITSBLATT (#58/#62): Die Anzeige ist auf das reduziert, was auf der Baustelle gebraucht
-   wird — Einbauteil, Art, Fertigmaß, Menge und die vorhandenen Einbauteil-IDs. Die
+   wird — Einbauteil, Art, Fertigmaß und Menge. Die
    WANDREFERENZ steht EINMAL im Blattkopf statt in jeder Zeile: auf der Wandebene ist die Liste
    immer genau eine Wand, und die Wiederholung war reine Fülle (die CSV behält ihre Zeilen-Spalte
    unverändert). Auf den Gesamtebenen tritt dafür genau eine Herkunftsspalte hinzu.
@@ -208,12 +208,11 @@ function leser(){
 function daten(){ return gesamtDaten(umfang(mappe(), EBENE, zeiger()), leser()); }
 
 /* ---- Spalten des Blattes ---------------------------------------------------------------
-   Wandebene: unveraendert die sieben Spalten aus #62. Gesamtebenen: genau eine Spalte mehr
-   (Herkunft). Der Preisschalter entfernt ausschliesslich EP und GP. */
+   Wandebene: die sechs Spalten aus #62 (die ID-Spalte ist ersatzlos entfallen). Gesamtebenen:
+   genau eine Spalte mehr (Herkunft). Der Preisschalter entfernt ausschliesslich EP und GP. */
 function spalten(){
   const s=[{t:'Einbauteil',w:26},{t:'Art',w:12},{t:'Fertigmaß',w:10},{t:'Menge',w:10}];
   if(EBENE!=='wand') s.push({t:'Wände (Herkunft)',w:16});
-  s.push({t:'Einbauteil-IDs',w:26});
   if(PREISE) s.push({t:'EP',w:8},{t:'GP',w:8});
   const summe=s.reduce((a,c)=>a+c.w,0);
   return s.map(c=>({...c,w:Math.round(c.w*100/summe)}));
@@ -270,21 +269,14 @@ function render(){
   const keinKatalog=!KATALOG;
   let html='';
   rs.forEach(r=>{
-    // [P-19] Art als Symbol + Klartext (Farbe nur zusätzlich), Fertigmaß und die IDs der
-    // aggregierten Einzelteile. Positionen ohne Stückart bleiben ausdrücklich leer — es wird
-    // keine Art und keine ID erfunden.
+    // [P-19] Art als Symbol + Klartext (Farbe nur zusätzlich) und Fertigmaß der aggregierten
+    // Einzelteile. Positionen ohne Stückart bleiben ausdrücklich leer — es wird keine Art
+    // erfunden. Die Einzel-IDs stehen weiter in `r.ids`, aber nicht mehr im Blatt (#62).
     const art = r.art
       ? `<td class="art ${r.art}"><span class="sym">${esc(r.art_symbol)}</span>${esc(r.art_label)}</td>`
       : `<td class="art">–</td>`;
     const mass = r.fertigmass_mm!=null ? fmt(r.fertigmass_mm/10,1)+' cm' : '–';
     const nk=(r.unit==='m²'||r.unit==='m')?2:0;
-    // IDs: bei genau einer Wand die reinen Einzel-IDs (Wandebene, unverändert), sonst je Wand
-    // gruppiert — die Wandkennung steht dabei ausdrücklich davor.
-    const ids = !r.herkunft.length || r.herkunft.every(h=>!h.ids.length) ? '–'
-      : (r.herkunft.length===1
-          ? esc(r.herkunft[0].ids.join(' '))
-          : r.herkunft.filter(h=>h.ids.length)
-              .map(h=>`<span class="wq">${esc(h.wand)}:</span> ${esc(h.ids.join(' '))}`).join('<br>'));
     const herk = EBENE==='wand' ? ''
       : `<td class="herk">${esc(r.herkunft.map(h=>h.wand+': '+fmt(h.menge,nk)).join(' · '))}</td>`;
     // [P-14] Grund knapp und sekundär unter dem Namen — nie in der Preiszelle.
@@ -295,7 +287,6 @@ function render(){
         +`<td>${mass}</td>`
         +`<td>${fmt(r.menge,nk)} ${esc(r.unit)}</td>`
         +herk
-        +`<td class="ids">${ids}</td>`
         +(PREISE?preis(r.ep)+preis(r.gp):'')+`</tr>`;
   });
   // Summenzeile: Betrag UND Vollständigkeit stehen hier — und nur hier ([P-14]).
@@ -336,15 +327,17 @@ function renderLuecken(d){
 
 // Legende der Einbauteil-Kennzeichnung ([P-19]) — Symbol, Klartext und Farbe stehen
 // zusammen, damit die Liste auch schwarz-weiß gedruckt vollständig verständlich ist.
+// Das GS-k-ID-SCHEMA wird hier NICHT mehr erklärt (#62): das Blatt zeigt keine ID, und eine
+// Legende zu etwas Unsichtbarem ist Fülltext. Erklärt wird es dort, wo die IDs stehen —
+// in der Einbauteilliste (CSV) und auf dem Zeichnungsblatt. Gezählt wird weiter über
+// `r.ids.length`, also die reale Stückzahl je Art.
 function renderKennzeichnung(rs){
   const arten=[['standard','■','Standardteil'],['sonder','◆','Sonderzuschnitt'],['rest','▲','Reststück oben']];
   $('kennz').innerHTML='<b>Kennzeichnung.</b> '
     + arten.map(([k,sym,txt])=>{
         const n=rs.filter(r=>r.art===k).reduce((a,r)=>a+r.ids.length,0);
         return `<span class="art ${k}" style="display:inline-block;margin-right:12px">`
-          +`<span class="sym">${sym}</span>${txt} (${n}×)</span>`; }).join('')
-    + '<br>Einbauteil-ID: <b>GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt;</b>'
-    + (EBENE==='wand' ? '' : ' — über mehrere Wände eindeutig als <b>Wand:ID</b>');
+          +`<span class="sym">${sym}</span>${txt} (${n}×)</span>`; }).join('');
 }
 
 function applyWand(w){

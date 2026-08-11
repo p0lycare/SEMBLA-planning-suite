@@ -110,12 +110,15 @@ ok('setAnzahl-API entfernt (keine Mehrfachwand-Steuerung)', typeof SL.setAnzahl=
 
 // ---- #58/#62: kompaktes Baustellenblatt (reine Darstellung, Rechnung unveraendert) --------
 // Der Tabellenkopf ist auf das reduziert, was auf der Baustelle gebraucht wird. Katalog-
-// Metadaten (Produkt/Preisbasis), die Einheiten-Spalte und die je Zeile wiederholte
-// Wandreferenz sind entfallen — die Wand steht EINMAL im Blattkopf.
+// Metadaten (Produkt/Preisbasis), die Einheiten-Spalte, die je Zeile wiederholte
+// Wandreferenz und die Einbauteil-ID-Spalte sind entfallen — die Wand steht EINMAL im
+// Blattkopf, die IDs stehen in der getrennten Einbauteilliste und auf dem Zeichnungsblatt.
 {
   const kopf=[...html.matchAll(/<th>([^<]*)<\/th>/g)].map(m=>m[1]);
   ok('#62 Tabellenkopf ist genau die reduzierte Spaltenfolge',
-    JSON.stringify(kopf)===JSON.stringify(['Einbauteil','Art','Fertigmaß','Menge','Einbauteil-IDs','EP','GP']));
+    JSON.stringify(kopf)===JSON.stringify(['Einbauteil','Art','Fertigmaß','Menge','EP','GP']));
+  ok('#62 Tabellenkopf führt keine Einbauteil-ID-Spalte mehr',
+    !kopf.includes('Einbauteil-IDs') && !/Einbauteil-ID/.test(document.getElementById('thead').innerHTML));
   ok('#58 keine Produkt-/Katalogspalte mehr', !/<th>Produkt/.test(html) && !/class="prod"/.test(html));
   ok('#62 keine je Zeile wiederholte Wandspalte', !/<th>Wand<\/th>/.test(html) && !/class="wand"/.test(html));
   ok('#58 veralteter linker Uebersichtsblock entfernt',
@@ -131,18 +134,18 @@ ok('setAnzahl-API entfernt (keine Mehrfachwand-Steuerung)', typeof SL.setAnzahl=
     && kopfHtml.includes('Testwand') && /<b>Datum:<\/b>/.test(kopfHtml));
 }
 
-// Umbruch der Einbauteil-IDs (#62-Nachtrag): ohne festes Tabellenlayout ignoriert der Browser
-// jede Breitenangabe an der Zelle, und lange ID-Listen sprengen die Tabelle. Geprueft wird die
-// strukturelle Garantie im Quelltext — ein Node-DOM-Mock hat kein Layout und kann keine
-// Pixelbreite messen (die optische Kontrolle bleibt der Live-Check im Browser).
+// Spaltenaufteilung (#62): Der Umbruchbehelf fuer lange ID-Listen ist gegenstandslos geworden,
+// weil die ID-Spalte selbst entfallen ist — es gibt keinen Zelleninhalt mehr, der die Tabelle
+// auseinandernehmen koennte. Geblieben ist die strukturelle Garantie fester Spaltenbreiten.
+// Ein Node-DOM-Mock hat kein Layout und kann keine Pixelbreite messen (die optische Kontrolle
+// bleibt der Live-Check im Browser).
 {
   const cols=(html.match(/<col style="width:\d+%">/g)||[]).length;
   ok('#62 festes Tabellenlayout mit einer Breite je Spalte',
-    /table\{[^}]*table-layout:fixed/.test(html) && cols===7);
-  const idRegel=(html.match(/td\.ids\{[^}]*\}/)||[''])[0];
-  ok('#62 ID-Zelle bricht innerhalb ihrer Spalte um',
-    /word-break:break-all/.test(idRegel) && /overflow-wrap:anywhere/.test(idRegel));
-  ok('#62 ID-Zelle hat keine wirkungslose max-width mehr', !/max-width/.test(idRegel));
+    /table\{[^}]*table-layout:fixed/.test(html) && cols===6);
+  ok('#62 keine ID-Zelle und keine ID-Zellenregel mehr im Blatt',
+    !/td\.ids\{/.test(html) && !/class="ids"/.test(html) && !/\.wq\{/.test(html));
+  ok('#62 Druckregel kennt keine ID-Zelle mehr', !/td\.ids\{font-size/.test(html));
 }
 
 // Eigene Druckregel (#62): Navigation, Bedienfelder und Bildschirmhilfen aus; Kopf, Tabelle
@@ -451,28 +454,30 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
   ok('[P-19] Einbauteile = Core-Gesamtzahl', teile.length===WE.bom.gewindestangen);
 
   const tb=document.getElementById('tbody').innerHTML;
-  ok('[P-19] Oberfläche: Tabellenkopf nennt Einbauteil, Art, Fertigmaß, Menge und IDs',
+  ok('[P-19] Oberfläche: Tabellenkopf nennt Einbauteil, Art, Fertigmaß und Menge',
     /<th>Einbauteil<\/th>/.test(html) && /<th>Art<\/th>/.test(html) && /<th>Fertigmaß<\/th>/.test(html)
-    && /<th>Menge<\/th>/.test(html) && /<th>Einbauteil-IDs<\/th>/.test(html));
-  ok('[P-19] Oberfläche: jede konkrete Einbauteil-ID steht in der Tabelle',
-    teile.every(t=>tb.includes(t.id)));
-  // #62: Die IDs bleiben in IHRER Zelle — sie duerfen weder in eine Nachbarzelle rutschen noch
-  // eine eigene Spalte aufspannen. Der Node-Mock hat kein Layout; pruefbar ist, dass jede ID
-  // innerhalb von <td class="ids"> steht und die Zeile die feste Spaltenzahl behaelt.
-  ok('#62 Oberfläche: jede ID steht in der ID-Zelle ihrer Zeile', (()=>{
-    const zellen=[...tb.matchAll(/<td class="ids">([\s\S]*?)<\/td>/g)].map(m=>m[1]);
-    return zellen.length===rsE.length && teile.every(t=>zellen.some(z=>z.split(' ').includes(t.id)));
-  })());
-  ok('#62 Oberfläche: jede Zeile hat genau die 7 Spalten des Blattes', (()=>{
+    && /<th>Menge<\/th>/.test(html));
+  // #62 — DER reale Fall aus der Meldung: eine Wand mit vielen Gewindestangenstuecken. Die
+  // kanonischen IDs bleiben in den Positionen und in einbauteile() vollzaehlig, erscheinen aber
+  // weder im gerenderten Blatt noch in der Legende. Die Fixture bringt dafuer eine Position mit
+  // deutlich mehr als zehn IDs mit (genau die Folge GS-k0.1.1, GS-k0.1.2, … aus dem Issue).
+  const laengste=rsE.reduce((a,r)=>r.ids.length>a.ids.length?r:a, rsE[0]);
+  ok('#62 Fixture stellt den realen Fall her: Position mit mindestens zehn Einbauteil-IDs',
+    laengste.ids.length>=10 && laengste.ids.some(id=>/^GS-k\d+\.\d+\.\d+$/.test(id)));
+  ok('#62 kanonische IDs bleiben in den Positionen und in einbauteile() vollzählig',
+    rsE.reduce((a,r)=>a+r.ids.length,0)===teile.length
+    && teile.every(t=>rsE.some(r=>r.ids.includes(t.id))));
+  ok('#62 Oberfläche: keine einzige Einbauteil-ID im gerenderten Blatt',
+    !teile.some(t=>tb.includes(t.id)) && !/GS-k/.test(tb) && !/class="ids"/.test(tb));
+  ok('#62 Oberfläche: auch die längste ID-Liste taucht nirgends im Blatt auf',
+    !tb.includes(laengste.ids.join(' ')) && !tb.includes(laengste.ids[0]));
+  ok('#62 Oberfläche: jede Zeile hat genau die 6 Spalten des Blattes', (()=>{
     const zeilen=tb.split('<tr').slice(1).filter(z=>!z.includes('class="sum"'));
-    return zeilen.length===rsE.length && zeilen.every(z=>(z.match(/<td/g)||[]).length===7);
+    return zeilen.length===rsE.length && zeilen.every(z=>(z.match(/<td/g)||[]).length===6);
   })());
-  // Die laengste ID-Liste des Fixtures ist die harte Probe fuer den Umbruch: sie steht
-  // vollstaendig und leerzeichengetrennt in einer Zelle, also an umbrechbaren Stellen.
-  ok('#62 Oberfläche: auch die laengste ID-Liste bleibt vollständig in einer Zelle', (()=>{
-    const laengste=rsE.reduce((a,r)=>r.ids.length>a.ids.length?r:a, rsE[0]);
-    const z=zeileMit(laengste.label);
-    return laengste.ids.length>=3 && z.includes('<td class="ids">'+laengste.ids.join(' ')+'</td>');
+  ok('#62 Oberfläche: die Summenzeile spannt genau die 6 Spalten auf', (()=>{
+    const z=sumZeile();
+    return /colspan="5"/.test(z) && (z.match(/<td/g)||[]).length===2;
   })());
   ok('[P-19] Oberfläche: Standardteil mit Symbol UND Klartext',
     /class="art standard"[^>]*>.*?■.*?Standardteil/.test(tb));
@@ -488,10 +493,17 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     document.getElementById('printkopf').innerHTML.includes('Einbauteilwand') && !/class="wand"/.test(tb));
   ok('[P-19] Oberfläche: Aggregation nachvollziehbar (Menge = Anzahl der IDs)',
     rod.length>0 && rod.every(r=>r.ids.length===r.menge));
-  ok('[P-19] Oberfläche: Legende erklärt Symbole und ID-Schema', (()=>{
+  // #62: Die Legende erklaert weiter die drei Arten — aber nicht mehr das GS-k-ID-Schema.
+  // Eine Legende zu etwas, das auf dem Blatt gar nicht steht, ist Fuelltext; erklaert wird das
+  // Schema dort, wo die IDs stehen (Einbauteilliste und Zeichnungsblatt, s. u.).
+  ok('[P-19] Oberfläche: Legende erklärt Standardteil, Sonderzuschnitt und Reststück', (()=>{
     const k=document.getElementById('kennz').innerHTML;
-    return /■/.test(k) && /◆/.test(k) && /▲/.test(k) && /Sonderzuschnitt/.test(k)
-      && /GS-k&lt;Spannachse&gt;/.test(k); })());
+    return /■/.test(k) && /◆/.test(k) && /▲/.test(k)
+      && /Standardteil/.test(k) && /Sonderzuschnitt/.test(k) && /Reststück oben/.test(k); })());
+  ok('#62 Oberfläche: Legende erklärt kein ID-Schema und nennt keine ID', (()=>{
+    const k=document.getElementById('kennz').innerHTML;
+    return !/GS-k/.test(k) && !/Einbauteil-ID/.test(k) && !/Spannachse/.test(k)
+      && !/Wand:ID/.test(k); })());
   ok('[P-19] Oberfläche: Legende zählt die Einbauteile je Art', (()=>{
     const k=document.getElementById('kennz').innerHTML;
     const summe=[...k.matchAll(/\((\d+)×\)/g)].reduce((a,m)=>a+ +m[1],0);
@@ -597,12 +609,14 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const roh=stuecklistePositionen(EL['w-a'].wandelement, egVoll(), KATALOG);
     ok('#44 Wandebene: Überschrift unverändert Baustellenstückliste',
       document.getElementById('printkopf').innerHTML.includes('Baustellenstückliste · Einbauteile'));
-    ok('#44 Wandebene: keine Herkunftsspalte, sieben Spalten wie bisher',
-      JSON.stringify(kopfSpalten())===JSON.stringify(['Einbauteil','Art','Fertigmaß','Menge','Einbauteil-IDs','EP','GP']));
+    ok('#44 Wandebene: keine Herkunftsspalte, genau die sechs Spalten des Blattes (#62)',
+      JSON.stringify(kopfSpalten())===JSON.stringify(['Einbauteil','Art','Fertigmaß','Menge','EP','GP']));
     ok('#44 Wandebene: Zeilen entsprechen exakt dem bestehenden Wandpfad',
       zeilen().length===roh.length && roh.every(r=>document.getElementById('tbody').innerHTML.includes(esc0(r.label))));
-    ok('#44 Wandebene: Einzel-IDs unverändert ohne Wandkennung',
-      roh.filter(r=>r.ids.length).every(r=>document.getElementById('tbody').innerHTML.includes('<td class="ids">'+r.ids.join(' ')+'</td>')));
+    // #62: Die Einzel-IDs bleiben in den kanonischen Positionen, stehen aber nicht im Blatt.
+    ok('#44/#62 Wandebene: Einzel-IDs in den Daten vorhanden, im Blatt nicht',
+      roh.some(r=>r.ids.length>0)
+      && !roh.flatMap(r=>r.ids).some(id=>document.getElementById('tbody').innerHTML.includes(id)));
   }
 
   // (b) Geschoss, Gebäude, Projekt — jede Ebene exakt die Summe ihrer Wandstücklisten.
@@ -617,7 +631,7 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     ok(`#44 ${ebene}: eine Tabellenzeile je aggregierter Position`, zeilen().length===d.positionen.length);
     ok(`#44 ${ebene}: Herkunftsspalte kommt hinzu und nennt jede Wand`, (()=>{
       const sp=kopfSpalten(); const tb=document.getElementById('tbody').innerHTML;
-      return sp[4]==='Wände (Herkunft)' && sp.length===8
+      return sp[4]==='Wände (Herkunft)' && sp.length===7
         && ids.every(id=>tb.includes(EL[id].name)); })());
     ok(`#44 ${ebene}: verwaiste Wand steht als benannte Lücke am Blatt`, (()=>{
       const l=document.getElementById('luecken');
@@ -627,18 +641,22 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       d.positionen.every(p=>p.menge>0 || p.status==='nicht_erforderlich'));
   }
 
-  // (c) Auf den Gesamtebenen sind die IDs je Wand qualifiziert und bleiben vollzählig.
+  // (c) Auf den Gesamtebenen bleiben die IDs je Wand qualifiziert und vollzählig — in der
+  // AGGREGATION. Im Blatt stehen sie wie auf der Wandebene nicht (#62): dort waren sie sogar
+  // laenger, weil jede ID zusaetzlich ihre Wandkennung trug. Die Aggregation selbst (#44) ist
+  // davon unberuehrt und wird hier weiter geprueft.
   {
     SL.setzeEbene('geschoss');
     const d=SL.daten(); const tb=document.getElementById('tbody').innerHTML;
     const alle=d.positionen.flatMap(p=>p.ids);
     ok('#44 Gesamtebene: jede ID ist als Wand-ID:ID eindeutig',
       alle.length>0 && new Set(alle).size===alle.length && alle.every(x=>/^w-[a-z]+:GS-k/.test(x)));
-    ok('#44 Gesamtebene: die Oberfläche zeigt jede Einzel-ID mit ihrer Wand',
-      d.positionen.filter(p=>p.herkunft.filter(h=>h.ids.length).length>1)
-        .every(p=>p.herkunft.filter(h=>h.ids.length).every(h=>tb.includes(h.wand+':</span> '+h.ids.join(' ')))));
-    ok('#44 Gesamtebene: Legende erklärt die Qualifizierung',
-      /über mehrere Wände eindeutig als <b>Wand:ID<\/b>/.test(document.getElementById('kennz').innerHTML));
+    ok('#44 Gesamtebene: die Herkunft bleibt je Wand mit ihren IDs auflösbar',
+      d.positionen.filter(p=>p.herkunft.filter(h=>h.ids.length).length>1).length>0
+      && d.positionen.every(p=>p.ids.length===p.herkunft.reduce((a,h)=>a+h.ids.length,0)));
+    ok('#44/#62 Gesamtebene: keine qualifizierte ID im Blatt, keine Legende dazu',
+      !alle.some(id=>tb.includes(id)) && !/GS-k/.test(tb)
+      && !/Wand:ID/.test(document.getElementById('kennz').innerHTML));
   }
 
   // (d) Preisschalter: entfernt genau Einzelpreis, Gesamtpreis und Summenbetrag.
@@ -646,9 +664,11 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     SL.setzeEbene('geschoss'); SL.setzePreise(true);
     const mit=document.getElementById('tbody').innerHTML, mitKopf=kopfSpalten();
     const d=SL.daten();
-    const mengen=z=>z.split('<td').slice(1,6).join('<td');   // Einbauteil..Herkunft
+    // Einbauteil..Herkunft. Das schliessende </tr> wird vorher entfernt: ohne Preise ist die
+    // Herkunft die LETZTE Zelle der Zeile und truege es sonst mit — ein Artefakt dieses
+    // Vergleichs, keine Aussage ueber die Zelle selbst.
+    const mengen=z=>z.replace(/<\/tr>\s*$/,'').split('<td').slice(1,6).join('<td');
     const mitZeilen=zeilen().map(mengen);
-    const mitIds=(mit.match(/<td class="ids">[\s\S]*?<\/td>/g)||[]);
     SL.setzePreise(false);
     const ohne=document.getElementById('tbody').innerHTML, ohneKopf=kopfSpalten();
     ok('#44 Preisschalter: EP/GP verschwinden aus dem Tabellenkopf',
@@ -659,8 +679,9 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       && /Preise ausgeblendet/.test(ohne));
     ok('#44 Preisschalter: Mengen und Herkunft bleiben Zeichen für Zeichen gleich',
       JSON.stringify(zeilen().map(mengen))===JSON.stringify(mitZeilen));
-    ok('#44 Preisschalter: die Einbauteil-IDs bleiben vollständig',
-      JSON.stringify(ohne.match(/<td class="ids">[\s\S]*?<\/td>/g)||[])===JSON.stringify(mitIds));
+    ok('#44/#62 Preisschalter: das Blatt bleibt in beiden Stellungen ohne Einbauteil-IDs',
+      !/GS-k/.test(mit) && !/GS-k/.test(ohne)
+      && !/class="ids"/.test(mit) && !/class="ids"/.test(ohne));
     ok('#44 Preisschalter: Lückenstand bleibt sichtbar',
       !document.getElementById('luecken').hidden && /UNVOLLSTÄNDIG/.test(document.getElementById('luecken').innerHTML));
     ok('#44 Preisschalter: Mengen der Ableitung sind unverändert',

@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-09",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 62,
+    titel: "Baustellenstückliste kommt ohne die ausufernde Einbauteil-ID-Spalte aus",
+    testbitte: "Reiter 4 mit einer Wand mit vielen Gewindestangenstücken öffnen und drucken: Die Tabelle muss sechs Spalten haben und ohne GS-k-Folgen lesbar bleiben. Einzelteilliste und Zeichnung müssen die IDs weiterhin führen.",
+  },
+  {
     id: "chg-20260811-08",
     datum: "2026-08-11",
     typ: "feature",
