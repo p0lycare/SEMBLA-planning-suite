@@ -27,7 +27,7 @@ import { standardEingaben } from "../../docs/shared/storage.js";
 import {
   montageEreignisse, montageAbschnitte, abschnittSvg, konturSvg,
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
-  STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt,
+  STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt, stangenEnden, stangenStuecke,
   topLagen, oberkantenAbschnitte,
 } from "../../docs/shared/sembla-montage.js";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
@@ -44,6 +44,12 @@ const WR = buildWall("IW-Rechteck", 3000, 2600, []);
 const WAWG = buildWall("Musterwand AWG", 3000, 2600, [], null, null,
   [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }, { x0_mm: 2250, x1_mm: 3000, height_mm: 1400 }]);
 const WT = buildWall("Tuerwand", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")]);
+// (4)/(5) Waende MIT bestimmtem Reststueck ([Z-6]): einmal reines Rechteck (alle Segmente mit
+// Oberkantenbezug), einmal mit Fenster (Bruestung/Sturz OHNE Oberkantenbezug daneben) — nur so
+// ist die Fallunterscheidung des Ueberstands ueberhaupt pruefbar.
+const PS_REST = { rod_lengths_mm: [1000], rod_rest_mm: 100, rod_overhang_mm: 10 };
+const WU5 = buildWall("IW-Reststueck", 2000, 2600, [], null, PS_REST);
+const WFB = buildWall("IW-Rest-Fenster", 3000, 2600, [new Opening(6, 10, 4, 10, "fenster")], null, PS_REST);
 
 const eingaben = standardEingaben();
 eingaben.projekt.name = "Rettungswache";
@@ -54,6 +60,7 @@ const alleR = montageAbschnitte(WR), alleA = montageAbschnitte(WAWG), alleT = mo
 // sind die uebrigen — alle Alt-Zusicherungen gelten unveraendert fuer diese.
 const echte = abs => abs.filter(a => a.art !== "schnitt0");
 const absR = echte(alleR), absA = echte(alleA), absT = echte(alleT);
+const absU5 = echte(montageAbschnitte(WU5)), absFB = echte(montageAbschnitte(WFB));
 
 // --- 1) Erste Darstellung: Bodenblech + erste Stangen + mehrere Reihen -----
 for (const [name, w, abs] of [["Rechteck", WR, absR], ["AWG", WAWG, absA]]) {
@@ -215,10 +222,34 @@ for (const [name, w, abs] of [["Rechteck", WR, absR], ["AWG", WAWG, absA], ["Tue
     yStange.length && yReihe.length && Math.min(...yStange) < Math.min(...yReihe));
   ok(`${name}: offenes Stangenende markiert (Kopplung folgt)`, svg.includes('fill="#fff" stroke="#1f6feb"'));
 }
-// Abgeschlossene Straenge werden NICHT kuenstlich verlaengert
-ok("abgeschlossene Straenge enden genau an der Segmentoberkante",
-  [...absR, ...absA, ...absT].every(a => a.straenge.filter(s => s.abgeschlossen)
-    .every(s => s.zeichen_oben_mm === s.seg_z1_mm)));
+// Ein abgeschlossener Strang endet GENAU an der Materialoberkante seines Segments:
+// Segmentende + `ueberstand_mm`. Der Ueberstand ist nach [Z-6] ausschliesslich an Segmenten
+// MIT Oberkantenbezug bestimmt (dort > 0, weil dort das Reststueck sitzt); Bruestung und Sturz
+// an einer Oeffnung haben keinen und enden bit-genau am Segmentende. Beides steht hier in
+// EINER Zusicherung, damit kein Fall durch eine „>=„-Schranke rutscht.
+const segZu = (w, s) => (w.tension_columns.find(c => c.k === s.k) || { segments: [] })
+  .segments.find(g => g.z0_mm === s.z_unten_mm && g.z1_mm === s.seg_z1_mm);
+for (const [name, w, abs] of [["Rechteck", WR, absR], ["AWG", WAWG, absA], ["Tuer", WT, absT],
+  ["Reststueck", WU5, absU5], ["Reststueck+Fenster", WFB, absFB]]) {
+  const zu = abs.flatMap(a => a.straenge).filter(s => s.abgeschlossen);
+  ok(`${name}: abgeschlossene Straenge enden genau an der Materialoberkante ([Z-6])`,
+    zu.length > 0 && zu.every(s => {
+      const g = segZu(w, s);
+      return !!g && s.zeichen_oben_mm === s.seg_z1_mm + (g.ueberstand_mm || 0);
+    }));
+}
+// Die Fallunterscheidung selbst muss an der gemischten Wand wirklich vorkommen, sonst
+// pruefte die Zusicherung oben nur einen der beiden Faelle.
+{
+  const zu = absFB.flatMap(a => a.straenge).filter(s => s.abgeschlossen);
+  const mitOk = zu.filter(s => (segZu(WFB, s).ueberstand_mm || 0) > 0);
+  const ohneOk = zu.filter(s => !(segZu(WFB, s).ueberstand_mm || 0));
+  ok("gemischte Wand enthaelt Segmente MIT und OHNE Oberkantenbezug (Voraussetzung)",
+    mitOk.length > 0 && ohneOk.length > 0);
+  ok("[Z-6] nur Segmente mit Oberkantenbezug ragen ueber ihr Segmentende hinaus",
+    mitOk.every(s => s.zeichen_oben_mm > s.seg_z1_mm)
+    && ohneOk.every(s => s.zeichen_oben_mm === s.seg_z1_mm));
+}
 
 // --- 8) Wand-/Projektbezug, Orientierung, Bauteilpositionen ---------------
 const seitenR = montageSeiten(WR, eingaben);
@@ -384,7 +415,8 @@ ok("stueckArt liest die kanonischen `stuecke` (Art des letzten Stuecks = rest)",
   (() => { const sg = WZ.tension_columns[0].segments[0]; const n = sg.stuecke.length;
     return stueckArt(WZ, sg, n - 1, true) === "rest" && stueckArt(WZ, sg, 0, false) === "standard"; })());
 
-// stuecke_sicht deckt die gezeichnete Stange lueckenlos ab und endet an ihrer Oberkante
+// stuecke_sicht deckt die gezeichnete Stange lueckenlos ab und endet an ihrer
+// Materialoberkante (bei Abschluss inklusive [Z-6]-Ueberstand).
 let sichtOk = true, kopplungOk = true, restZuOben = true;
 for (const ab of alleZ) for (const st of ab.straenge) {
   const ps = st.stuecke_sicht;
@@ -397,7 +429,7 @@ for (const ab of alleZ) for (const st of ab.straenge) {
   if (ps.length !== st.kopplungen_mm.length + 1) kopplungOk = false;
   if (st.abgeschlossen && ps[ps.length - 1].art !== "rest") restZuOben = false;
 }
-ok("stuecke_sicht deckt die gezeichnete Stange lueckenlos von unten bis zur Oberkante ab", sichtOk);
+ok("stuecke_sicht deckt die gezeichnete Stange lueckenlos bis zur Materialoberkante ab", sichtOk);
 ok("Ueberstand zaehlt zum letzten gesetzten Stueck (Stuecke = Kopplungen + 1)", kopplungOk);
 ok("abgeschlossene Straenge schliessen mit dem Reststueck ab ([Z-6])", restZuOben);
 
@@ -477,6 +509,72 @@ ok("Alt-Bundle zeigt KEINE Zuschnitt-Legende (nichts erfinden)",
   ok("Stufe auf Hoehe 0 erzeugt keinen schwebenden Abschnitt (echte Luecke)",
     a0.length === 2 && a0[0].x1_mm === 1000 && a0[1].x0_mm === 2000
     && a0.reduce((s, a) => s + (a.x1_mm - a.x0_mm), 0) === W0.top_plate.laenge_mm);
+}
+
+// --- 13) stangenStuecke(): die EINE Zeichengeometrie der Stuecke ([D-4]/[Z-6]) ----------
+// Getrennt von stangenEnden(): dort sind es KOPPLUNGSHOEHEN (letzter Wert = Segmentende, ohne
+// Ueberstand), hier die zu zeichnenden Spannen (letztes Stueck bis zur Materialoberkante).
+{
+  const WU = buildWall("Ueberstand", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 100, rod_overhang_mm: 10 });
+  const sg = WU.tension_columns[0].segments[0];
+  const st = stangenStuecke(WU, sg);
+  ok("stangenStuecke: ein Eintrag je reales Stueck", st.length === sg.stuecke.length);
+  ok("stangenStuecke: Laengen und Arten kommen unveraendert aus dem Wandelement",
+    st.every((p, i) => p.len_mm === sg.stuecke[i].len_mm && p.art === sg.stuecke[i].art));
+  ok("stangenStuecke: die Stuecke stossen luecken- und ueberlappungsfrei aneinander",
+    st[0].z0_mm === sg.z0_mm && st.every((p, i) => i === 0 || p.z0_mm === st[i - 1].z1_mm));
+  ok("[Z-6] das letzte Stueck reicht um den Ueberstand ueber das Segmentende",
+    st[st.length - 1].z1_mm === sg.z1_mm + sg.ueberstand_mm
+    && st[st.length - 1].z1_mm - st[st.length - 1].z0_mm === st[st.length - 1].len_mm);
+  ok("[Z-6] gezeichnete Gesamtlaenge == bestuecktes Material (`bedarf_mm`)",
+    st.reduce((a, p) => a + (p.z1_mm - p.z0_mm), 0) === sg.bedarf_mm);
+  ok("stangenEnden bleibt die Kopplungsableitung (letzter Wert = Segmentende)",
+    stangenEnden(WU, sg)[sg.stuecke.length - 1] === sg.z1_mm);
+
+  // Reststueck == Ueberstand: die Spanne darf nicht auf 0 zusammenfallen.
+  const WK = buildWall("kurz", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 10, rod_overhang_mm: 10 });
+  const sk = stangenStuecke(WK, WK.tension_columns[0].segments[0]);
+  ok("[Z-6] Reststueck == Ueberstand behaelt eine Spanne > 0",
+    sk[sk.length - 1].art === "rest" && sk[sk.length - 1].z1_mm - sk[sk.length - 1].z0_mm === 10);
+
+  // Segment ohne Oberkantenbezug (Bruestung an einer Oeffnung) bleibt bit-genau wie zuvor.
+  const WF = buildWall("Fenster", 3000, 2600, [new Opening(6, 10, 4, 10, "fenster")], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 100, rod_overhang_mm: 10 });
+  const bru = WF.tension_columns.flatMap(c => c.segments).find(g => g.z1_mm < WF.height_mm);
+  ok("Testwand hat ein Segment ohne Oberkantenbezug (Voraussetzung)", !!bru && !bru.ueberstand_mm);
+  ok("[Z-6] Segment ohne Oberkantenbezug endet exakt am Segmentende",
+    stangenStuecke(WF, bru).slice(-1)[0].z1_mm === bru.z1_mm);
+
+  // Unbestimmte Zerlegung: leeres `stuecke` heisst Konflikt, nicht Altstand.
+  const WL = buildWall("lang", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 5000, rod_overhang_mm: 10 });
+  const sl = WL.tension_columns[0].segments[0];
+  ok("[Z-6] leeres `stuecke` (Konflikt) liefert keine Zeichengeometrie",
+    sl.zuschnitt_konflikt === "reststueck_zu_lang" && stangenStuecke(WL, sl).length === 0);
+
+  // Alt-Bundle OHNE das Feld faellt weiterhin auf die gleichmaessige Aufteilung zurueck.
+  const alt = { ...WU, rod_mm: 1100,
+    tension_columns: [{ k: 0, x_mm: 62.5, segments: [{ z0_mm: 0, z1_mm: 2200, gewindestangen: 2 }] }] };
+  const sa = stangenStuecke(alt, alt.tension_columns[0].segments[0]);
+  ok("Alt-Bundle ohne `stuecke`: gleichmaessige Aufteilung, Ende am Segmentende",
+    sa.length === 2 && sa[0].z1_mm === 1100 && sa[1].z1_mm === 2200
+    && sa.every(p => p.art === "standard"));
+}
+
+// --- 14) Modul 5: das abgeschlossene Segment zeigt den Ueberstand ebenfalls ([D-4]) -----
+{
+  const WU = buildWall("Ueberstand-M5", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 100, rod_overhang_mm: 10 });
+  const letzte = montageAbschnitte(WU).slice(-1)[0];
+  const mitRest = letzte.straenge.filter(s => (s.stuecke_sicht || []).some(p => p.art === "rest"));
+  ok("letzter Baugruppenabschnitt zeigt Reststuecke (Voraussetzung)", mitRest.length > 0);
+  ok("[Z-6] das Reststueck im Baugruppenbild endet an der Materialoberkante, nicht am Segmentende",
+    mitRest.every(s => {
+      const p = s.stuecke_sicht[s.stuecke_sicht.length - 1];
+      return p.art === "rest" && p.z1_mm === s.seg_z1_mm + 10 && p.z1_mm - p.z0_mm === 100;
+    }));
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

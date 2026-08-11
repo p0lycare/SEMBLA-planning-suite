@@ -459,8 +459,12 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         // erscheint — er ist eingebautes Material.
         bedarf_mm: kombi.bedarf_mm, ueberstand_mm: kombi.bedarf_mm - h,
         letzte_stange_mm: stueck ? stuecke[stueck - 1].len_mm : h,
-        verschnitt_mm: quelleSumme - kombi.bedarf_mm,
-        verbindungsmuttern: stueck - 1, anker_unten: ankerUnten, anker_oben: ankerOben,
+        // Ein Zuschnittkonflikt kann `stuecke` LEER lassen ([Z-6]: `reststueck_zu_lang`,
+        // `kein_ausgangsprodukt`). Dann gibt es keine Stange, also auch keine Kopplung und
+        // keinen Verschnitt: die Zaehlung darf nicht ins Negative laufen (−1 Kopplungsmutter
+        // je Segment lief bisher in jede Summe und damit in die Stueckliste).
+        verschnitt_mm: stueck ? quelleSumme - kombi.bedarf_mm : 0,
+        verbindungsmuttern: Math.max(0, stueck - 1), anker_unten: ankerUnten, anker_oben: ankerOben,
         senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter });
       r = r2 + 1;
     }

@@ -197,7 +197,7 @@ const M=1000;
 // aus window.SEMBLA (in __wpInit gebunden):
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store, KAT;
 // Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
-let STUECK_FARBE, STUECK_LABEL, stueckFarbe;
+let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
 // hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
@@ -418,22 +418,19 @@ function draw(w){
   // oder Produktauswahl sofort, wie sich die Zerlegung verschiebt.
   // Farbschlüssel und Klartext kommen aus sembla-montage.js ([D-4]) — dieselbe Quelle wie
   // Baugruppenbild (Modul 5) und technische Zeichnung (Modul 7), keine lokalen Hex-Werte.
-  const C_STD=STUECK_FARBE.standard;
+  // Die Stückgeometrie kommt aus stangenStuecke() (sembla-montage.js, [D-4]) — dieselbe
+  // Ableitung wie Modul 5 und Modul 7, inklusive des Überstands des Reststücks über die
+  // Wandoberkante ([Z-6]). Hier wird nichts nachgerechnet: ein Segment ohne bestimmten
+  // Zuschnitt (leeres `stuecke` = gemeldeter Konflikt) bleibt LEER, statt eine durchgehende
+  // Stange vorzutäuschen; der Konflikt steht als Warnung über der Ansicht.
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
-      const st=Array.isArray(g.stuecke)&&g.stuecke.length?g.stuecke:null;
-      if(!st){
-        s+=`<line x1="${x}" y1="${Y(g.z0_mm)}" x2="${x}" y2="${Y(g.z1_mm)}" stroke="${C_STD}" stroke-width="2"/>`;
-      } else {
-        let z=g.z0_mm;
-        st.forEach((p,i)=>{
-          const z2=z+p.len_mm;
-          s+=`<line x1="${x}" y1="${Y(z)}" x2="${x}" y2="${Y(z2)}" stroke="${stueckFarbe(p.art)}" stroke-width="${p.art==='rest'?3:2.4}"/>`;
-          // Kopplung an jedem inneren Stoß (Stücke − 1) — quer zur Achse, damit sie sichtbar ist
-          if(i<st.length-1) s+=`<line class="kop" x1="${x-4}" y1="${Y(z2)}" x2="${x+4}" y2="${Y(z2)}" stroke="#0b3a73" stroke-width="2"/>`;
-          z=z2;
-        });
-      }
+      const st=stangenStuecke(w,g);
+      st.forEach((p,i)=>{
+        s+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art)}" stroke-width="${p.art==='rest'?3:2.4}"/>`;
+        // Kopplung an jedem inneren Stoß (Stücke − 1) — quer zur Achse, damit sie sichtbar ist
+        if(i<st.length-1) s+=`<line class="kop" x1="${x-4}" y1="${Y(p.z1_mm)}" x2="${x+4}" y2="${Y(p.z1_mm)}" stroke="#0b3a73" stroke-width="2"/>`;
+      });
       const pw=110*sc;
       const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
       const ao=g.anker_oben||((g.z1_mm===topH(col.k)*1)?topConn:'spannplatte');
@@ -768,6 +765,7 @@ window.__wpInit=function(){
   GRID=S.GRID; COURSE=S.COURSE; Opening=S.Opening; buildWall=S.buildWall;
   autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store; KAT=S.KAT;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
+  stangenStuecke=S.stangenStuecke;
   bindEvents();
   bindProdukte();
   setupStoreSync();
@@ -786,10 +784,10 @@ window.__wpInit=function(){
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
-  import { STUECK_FARBE, STUECK_LABEL, stueckFarbe } from './shared/sembla-montage.js';
+  import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
-                    STUECK_FARBE, STUECK_LABEL, stueckFarbe };
+                    STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke };
   mountNavbar(1);
   window.__wpInit();
 </script>

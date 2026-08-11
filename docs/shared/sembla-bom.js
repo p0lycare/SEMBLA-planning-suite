@@ -51,6 +51,13 @@ export function semblaBom(w) {
   let haveSeg = false, haveStuecke = false;
   for (const col of (w.tension_columns || [])) for (const sg of (col.segments || [])) {
     haveSeg = true;
+    // Ein VORHANDENES, aber LEERES `stuecke` ist keine fehlende Angabe, sondern ein gemeldeter
+    // Zuschnittkonflikt ([Z-6]: `reststueck_zu_lang`/`kein_ausgangsprodukt`): fuer dieses Segment
+    // ist KEIN Zuschnitt bestimmt. Der Alt-Bundle-Fallback darf hier nicht greifen — er leitete
+    // aus `letzte_stange_mm` (= Segmenthoehe) eine Sonderlaenge ab, die im Wandelement nirgends
+    // steht. Das JSON ist die einzige Quelle ([P-6]/[P-9]); gemeldet wird der Konflikt, erfunden
+    // wird nichts.
+    if (Array.isArray(sg.stuecke) && !sg.stuecke.length) continue;
     if (Array.isArray(sg.stuecke) && sg.stuecke.length) {
       haveStuecke = true;
       for (const s of sg.stuecke) {

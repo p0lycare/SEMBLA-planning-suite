@@ -97,9 +97,12 @@ function _stueck(w, sg) {
  * sonst entstuende ein zweites Stueckmodell neben dem Core ([P-6]). Alt-Bundles ohne
  * `stuecke` behalten die gleichmaessige Aufteilung ueber eine Pauschallaenge.
  *
- * Exportiert, weil auch die technische Zeichnung (`sembla-zeichnung.js`, [D-4]) die
- * Stangenstoesse zeichnet — beide Ausgaben teilen dieselbe Ableitung statt sie zu
- * verdoppeln.
+ * ACHTUNG — das sind KOPPLUNGSHOEHEN, keine Zeichengeometrie: der letzte Wert ist
+ * ausdruecklich das SEGMENTENDE und enthaelt deshalb den Ueberstand des Reststuecks
+ * ([Z-6]) NICHT. Weil Σ`stuecke` = `bedarf_mm` = Segmenthoehe + Ueberstand ist, waere
+ * ein Zeichnen bis zu diesem Wert um genau den Ueberstand zu kurz (und bei
+ * `rod_rest_mm ≤ rod_overhang_mm` sogar null lang). Wer STUECKE zeichnet, nimmt
+ * `stangenStuecke()`; wer Montageereignisse an Stoessen bildet, nimmt diese Funktion.
  */
 export function stangenEnden(w, sg) {
   const out = [];
@@ -112,6 +115,52 @@ export function stangenEnden(w, sg) {
   const rod = _rod(w), st = _stueck(w, sg);
   for (let j = 1; j < st; j++) out.push(sg.z0_mm + j * rod);
   out.push(sg.z1_mm);
+  return out;
+}
+
+/**
+ * Gezeichnete Stuecke eines Segments in Wandkoordinaten ([D-4]/[Z-6]) — die EINE
+ * Geometriequelle fuer jede Ansicht, die den Zuschnitt stueckweise zeigt (Modul 1,
+ * Modul 5, Modul 7 und der zentrale Export).
+ *
+ * Jedes Stueck traegt seine reale Materiallaenge `len_mm` aus dem Wandelement und die
+ * Spanne `z0_mm…z1_mm`, in der es zu zeichnen ist. Beim LETZTEN Stueck eines Segments
+ * mit Oberkantenbezug liegt `z1_mm` um den Ueberstand [Z-6] UEBER der Wandoberkante:
+ * der Ueberstand ist eingebautes Material (Platz fuer Kopfblech/Spannplatte und
+ * Spannmutter) und wird deshalb dargestellt, nicht auf die Oberkante gekappt. Nach
+ * unten bleibt der Rundungsschutz aus `stangenEnden()` erhalten (nie kuerzer als das
+ * Segmentende).
+ *
+ * Ein Segment mit VORHANDENEM, aber LEEREM `stuecke` ist ein gemeldeter
+ * Zuschnittkonflikt ([Z-6]: `reststueck_zu_lang`/`kein_ausgangsprodukt`) — dort gibt es
+ * nichts zu zeichnen, und es wird auch nichts erfunden (keine Ersatzstange). Nur
+ * Alt-Bundles OHNE das Feld fallen auf die gleichmaessige Aufteilung zurueck.
+ *
+ * @param {any} w @param {any} sg Segment
+ * @returns {Array<{z0_mm:number,z1_mm:number,len_mm:number,art:string}>}
+ */
+export function stangenStuecke(w, sg) {
+  const hat = Array.isArray(sg.stuecke);
+  if (hat && !sg.stuecke.length) return [];
+  const out = [];
+  if (hat) {
+    let z = sg.z0_mm;
+    for (let i = 0; i < sg.stuecke.length; i++) {
+      const st = sg.stuecke[i], letzter = i === sg.stuecke.length - 1;
+      const ende = z + st.len_mm;
+      out.push({ z0_mm: z, z1_mm: letzter ? Math.max(sg.z1_mm, ende) : ende,
+        len_mm: st.len_mm, art: stueckArt(w, sg, i, letzter) });
+      z = ende;
+    }
+    return out;
+  }
+  const enden = stangenEnden(w, sg);
+  let z = sg.z0_mm;
+  for (let i = 0; i < enden.length; i++) {
+    out.push({ z0_mm: z, z1_mm: enden[i], len_mm: enden[i] - z,
+      art: stueckArt(w, sg, i, i === enden.length - 1) });
+    z = enden[i];
+  }
   return out;
 }
 
@@ -140,19 +189,25 @@ export function stueckArt(w, sg, i, letzter) {
  * wird dem LETZTEN wirklich gesetzten Stueck zugeschlagen — nie dem naechsten, das
  * noch nicht montiert ist. Alt-Bundles ohne `stuecke` liefern eine leere Liste; die
  * Zeichnung faellt dann auf die Einzellinie zurueck.
+ *
+ * Am ABGESCHLOSSENEN Segment ist `obenMm` das Segmentende; das reicht fuer das
+ * Reststueck [Z-6] nicht, weil dessen Ueberstand oberhalb der Wandoberkante liegt und
+ * eingebautes Material ist. Gezeichnet wird deshalb bis zur realen Materialoberkante,
+ * wenn die hoeher liegt als die Montage-Darstellung ([D-4]: dieselbe Geometrie wie
+ * `stangenStuecke()`).
  */
 function _stueckeSicht(w, sg, echtMm, obenMm) {
   if (!Array.isArray(sg.stuecke) || !sg.stuecke.length) return [];
   const out = [];
-  let z = sg.z0_mm;
+  let z = sg.z0_mm, material = sg.z0_mm;
   for (let i = 0; i < sg.stuecke.length; i++) {
     const art = stueckArt(w, sg, i, i === sg.stuecke.length - 1);
     const z1 = z + sg.stuecke[i].len_mm;
     out.push({ z0_mm: z, z1_mm: Math.min(z1, echtMm), art });
-    z = z1;
+    z = z1; material = z1;
     if (z >= echtMm - 1e-9) break;
   }
-  if (out.length) out[out.length - 1].z1_mm = obenMm;
+  if (out.length) out[out.length - 1].z1_mm = Math.max(obenMm, material);
   return out;
 }
 
@@ -445,7 +500,12 @@ function _strangZustand(w, ab) {
       const enden = stangenEnden(w, sg);
       const abgeschlossen = !!(bet && bet.abschluss);
       const echt = abgeschlossen ? sg.z1_mm : (enden.find(z => z >= zBis) != null ? enden.find(z => z >= zBis) : sg.z1_mm);
-      const oben = abgeschlossen ? sg.z1_mm : Math.max(echt, zBis + UEBERSTAND_MM);
+      // Am abgeschlossenen Segment ist die gezeichnete Oberkante die MATERIALoberkante: das
+      // Reststueck ragt um den Ueberstand ueber das Segmentende ([Z-6]) und ist eingebautes
+      // Material. Für Zwischenstände bleibt der reine Darstellungsüberstand maßgebend.
+      const stuecke = abgeschlossen ? stangenStuecke(w, sg) : [];
+      const materialOben = stuecke.length ? stuecke[stuecke.length - 1].z1_mm : sg.z1_mm;
+      const oben = abgeschlossen ? materialOben : Math.max(echt, zBis + UEBERSTAND_MM);
       out.push({
         k: col.k, x_mm: col.x_mm,
         z_unten_mm: sg.z0_mm, seg_z1_mm: sg.z1_mm,

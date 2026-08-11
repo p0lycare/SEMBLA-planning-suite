@@ -13,8 +13,11 @@
  *   * kein eigener Datei-Download und kein jsPDF — der ZIP-Export laeuft zentral
  *     ueber Modul 0 (`sembla-export.js`), gedruckt wird aus dem Modul heraus,
  *   * kein BOM-Duplikat — Mengen kommen aus `sembla-bom.js`,
- *   * Stangenstoesse aus `stangenEnden()` (`sembla-montage.js`), also aus derselben
- *     Ableitung wie die Montageanleitung ([D-4]).
+ *   * Stangenstuecke und ihre Stoesse aus `stangenStuecke()` (`sembla-montage.js`), also
+ *     aus derselben Ableitung wie Wandansicht und Montageanleitung ([D-4]) — inklusive
+ *     des Ueberstands des Reststuecks ueber die Wandoberkante ([Z-6]),
+ *   * Zuschnittkonflikte des Kerns stehen als Mangelblock auf dem Blatt ([Z-5]/[Z-6]):
+ *     ein unvollstaendiger Zuschnitt wird nie als vollstaendiges Blatt ausgegeben.
  *
  * Masstab: `waehleMasstab()` waehlt aus der Normreihe den GROESSTEN Masstab, bei dem
  * die Wand ins nutzbare Zeichenfeld des Blattformats passt. Das SVG traegt
@@ -29,7 +32,7 @@
  */
 
 import { semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
-import { stangenEnden, topLagen, stueckArt, stueckFarbe, STUECK_FARBE, STUECK_LABEL } from "./sembla-montage.js";
+import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL } from "./sembla-montage.js";
 
 const GRID_FALLBACK = 125, COURSE_FALLBACK = 200, ROD_FALLBACK = 1100;
 
@@ -160,6 +163,9 @@ export const HINWEIS_TITEL = "Planungshinweise / Zielregeln – nicht automatisc
 /** Fussnote zur Hinweisliste ([D-5]). */
 export const HINWEIS_FUSS = "Diese Regeln sind Zielvorgaben für die Planung. Die Zeichnung stellt den "
   + "berechneten Zustand dar; ob die Regeln eingehalten sind, ist planerisch zu prüfen.";
+
+/** Ueberschrift des Mangelblocks — Zuschnittkonflikte des Kerns ([Z-5]/[Z-6]). */
+export const MANGEL_TITEL = "Zuschnittkonflikte – Blatt unvollständig";
 
 /** Nachweis-Feld im Schriftfeld — nie „bestanden", kein Rueckgriff auf ein Rechenmodell ([D-8]). */
 export const NACHWEIS_TEXT = "nicht Bestandteil dieser Zeichnung – separat prüfen";
@@ -300,15 +306,20 @@ export function zeichnungSvg(w, opts = {}) {
   for (const col of (w.tension_columns || [])) {
     const x = X(col.x_mm), lt = _obenBei(w, col.x_mm);
     for (const sg of _segmente(w, col)) {
-      const enden = stangenEnden(w, sg);
-      let z = sg.z0_mm;
-      for (let i = 0; i < enden.length; i++) {
-        const zt = enden[i], letzter = i === enden.length - 1;
-        const art = stueckArt(w, sg, i, letzter);
-        s += `<line x1="${_n(x)}" y1="${_n(Y(z))}" x2="${_n(x)}" y2="${_n(Y(zt))}" `
-          + `stroke="${stueckFarbe(art)}" stroke-width="${_n(SW * 2.6)}"/>`;
-        if (!letzter) s += `<circle cx="${_n(x)}" cy="${_n(Y(zt))}" r="${_n(SW * 3)}" fill="${FARBE.mutter}"/>`;
-        z = zt;
+      // Gezeichnet werden die REALEN Stuecke samt Ueberstand des Reststuecks ([Z-6]/[D-4]) —
+      // dieselbe Geometrie wie in Modul 1/5, deshalb aus `stangenStuecke()` und nicht aus den
+      // Kopplungshoehen: die kappen den Ueberstand ab und liessen ein kurzes Reststueck
+      // verschwinden. Ein leeres Ergebnis heisst gemeldeter Zuschnittkonflikt — dann wird
+      // NICHTS gezeichnet, statt eine Stange zu erfinden (die Meldung steht im Blatt).
+      const stuecke = stangenStuecke(w, sg);
+      for (let i = 0; i < stuecke.length; i++) {
+        const st = stuecke[i], letzter = i === stuecke.length - 1;
+        // Das Reststueck ist kurz — es traegt deshalb zusaetzlich zur Farbe eine groessere
+        // Strichstaerke, damit es auch im Schwarz-Weiss-Druck als eigenes Bauteil auffaellt.
+        const dick = st.art === "rest" ? 3.4 : 2.6;
+        s += `<line x1="${_n(x)}" y1="${_n(Y(st.z0_mm))}" x2="${_n(x)}" y2="${_n(Y(st.z1_mm))}" `
+          + `stroke="${stueckFarbe(st.art)}" stroke-width="${_n(SW * dick)}"/>`;
+        if (!letzter) s += `<circle cx="${_n(x)}" cy="${_n(Y(st.z1_mm))}" r="${_n(SW * 3)}" fill="${FARBE.mutter}"/>`;
       }
       const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
       const ao = sg.anker_oben || (sg.z1_mm === lt ? topConn : "spannplatte");
@@ -350,20 +361,19 @@ export function vorspannZeilen(w) {
   let stangen = 0, sonder = new Set(), rest = new Set(), restAnz = 0;
   for (const col of cols) {
     for (const sg of _segmente(w, col)) {
-      const enden = stangenEnden(w, sg);
-      stangen += enden.length;
-      for (let i = 0; i < enden.length; i++) {
-        const art = stueckArt(w, sg, i, i === enden.length - 1);
-        const st = Array.isArray(sg.stuecke) ? sg.stuecke[i] : null;
+      const stuecke = stangenStuecke(w, sg);
+      stangen += stuecke.length;
+      for (const st of stuecke) {
         // [Z-6] Reststuecke werden GETRENNT ausgewiesen: eigenes Bauteil, eigene Katalogrolle —
         // sie duerfen nicht unter den Sonderlaengen mitlaufen.
-        if (art === "rest") {
+        if (st.art === "rest") {
           restAnz++;
-          if (st && st.len_mm != null) rest.add(Math.round(st.len_mm));
+          if (st.len_mm != null) rest.add(Math.round(st.len_mm));
           continue;
         }
-        if (art !== "sonder") continue;
-        const len = st && st.len_mm != null ? st.len_mm : sg.letzte_stange_mm;
+        if (st.art !== "sonder") continue;
+        // Materiallaenge, nicht die gezeichnete Spanne — das Fertigmass steht im Blatt.
+        const len = st.len_mm != null ? st.len_mm : sg.letzte_stange_mm;
         if (len != null) sonder.add(Math.round(len));
       }
     }
@@ -376,11 +386,12 @@ export function vorspannZeilen(w) {
     { label: "Gewindestange", wert: _fmt(_rod(w) / 10, 0) + " cm" },
     { label: "Stangenstücke", wert: stangen + "×" },
     { label: "Sonderlängen", wert: sonder.size ? [...sonder].sort((a, b) => a - b).map(m => _fmt(m / 10, 0) + " cm").join(", ") : "–" },
-    // [Z-6]: Ohne Reststueck ist der obere Abschluss offen — das steht als „–" auf dem Blatt
-    // und wird nicht durch eine Standardlaenge ersetzt.
+    // [Z-6]: Ohne Reststueck ist der obere Abschluss OFFEN. Das wird beim Namen genannt und
+    // nicht als „–" verschwiegen (ein „–" liest sich wie „nicht erforderlich"); ersetzt wird
+    // es nie durch eine Standardlaenge. Die betroffenen Segmente stehen im Mangelblock.
     { label: "Reststück oben", wert: rest.size
         ? [...rest].sort((a, b) => a - b).map(m => _fmt(m / 10, 1) + " cm").join(", ") + " · " + restAnz + "×"
-        : "–" },
+        : (konfliktZeilen(w).length ? "fehlt — siehe Zuschnittkonflikte" : "–") },
     { label: "oberer Anschluss", wert: ((w.prestress && w.prestress.top_connection) || "blech") === "blech" ? "Kopfblech" : "Spannplatte" },
   ];
   return rows;
@@ -390,9 +401,65 @@ export function vorspannZeilen(w) {
 export function strangZeilen(w) {
   return (w.tension_columns || []).map(col => {
     let stangen = 0;
-    for (const sg of _segmente(w, col)) stangen += stangenEnden(w, sg).length;
+    for (const sg of _segmente(w, col)) stangen += stangenStuecke(w, sg).length;
     return { label: "k" + col.k + " · x = " + _fmt(col.x_mm / 10, 1) + " cm", wert: stangen + "×" };
   });
+}
+
+/**
+ * Klartext der Zuschnittkonflikte ([Z-5]/[Z-6]) — je Grund ein Satz. Die Gruende sind die
+ * des Rechenkerns (`validation.zuschnitt_konflikte[].grund`); ein unbekannter Grund wird
+ * unveraendert benannt statt weggelassen.
+ */
+export const KONFLIKT_TEXT = {
+  kein_reststueck: "Oberer Wandabschluss offen: kein Reststück gewählt ([Z-6]) — Vorspannung nicht bestückbar.",
+  reststueck_zu_lang: "Gewähltes Reststück ist länger als das Segment ([Z-6]) — keine Zerlegung möglich.",
+  mindestmass: "Fertigmaß unter dem Mindestmaß ([Z-5]) — weitere Standardlänge wählen.",
+  kein_ausgangsprodukt: "Kein Ausgangsprodukt für das nötige Fertigmaß ([Z-2]/[Z-5]).",
+  keine_standardlaenge: "Keine Standardlänge gewählt ([Z-1]) — Zerlegung nicht bestimmt.",
+};
+
+/**
+ * Zuschnittkonflikte des Wandelements als Blattzeilen, gruppiert nach Grund.
+ *
+ * Das Blatt darf einen unvollstaendigen Zuschnitt NICHT als vollstaendig zeigen: fehlt das
+ * Reststueck des oberen Abschlusses ([Z-6]), sind Zeichnung UND Stueckliste unvollstaendig,
+ * und beides muss auf dem Blatt stehen — bisher war der Befund nur in Modul 1 sichtbar.
+ * Gelesen wird ausschliesslich `validation.zuschnitt_konflikte`; hier wird nichts
+ * nachgerechnet und nichts bewertet ([D-1]).
+ */
+export function konfliktZeilen(w) {
+  const zk = (w.validation && w.validation.zuschnitt_konflikte) || [];
+  const nach = new Map();
+  for (const k of zk) {
+    const g = String(k.grund || "unbekannt");
+    const e = nach.get(g) || { grund: g, anzahl: 0, straenge: new Set() };
+    e.anzahl++; if (k.k != null) e.straenge.add(k.k);
+    nach.set(g, e);
+  }
+  return [...nach.values()].map(e => ({
+    grund: e.grund,
+    text: KONFLIKT_TEXT[e.grund] || e.grund,
+    anzahl: e.anzahl,
+    straenge: [...e.straenge].sort((a, b) => a - b),
+  }));
+}
+
+/**
+ * Mangelblock des Blattes ([Z-5]/[Z-6]) — leer, wenn es keinen Konflikt gibt (kein leerer
+ * Kasten, wie bei der Legende in [D-4]).
+ */
+export function maengelHtml(w) {
+  const z = konfliktZeilen(w);
+  if (!z.length) return "";
+  return `<div class="zmangel">`
+    + z.map(e => `<div><span class="chip"></span><span>${_esc(e.text)} `
+      + `Betrifft ${e.anzahl} Segment(e)`
+      + (e.straenge.length ? ` in Spannachse ${e.straenge.map(k => "k" + k).join(", ")}` : "")
+      + `.</span></div>`).join("")
+    + `</div><div class="zfuss">Bis zur Behebung sind Zeichnung und Stückliste dieses Blattes `
+    + `unvollständig: Für die betroffenen Segmente ist kein Zuschnitt bestimmt — es wird `
+    + `ausdrücklich keine Länge und keine Ersatzstange angenommen.</div>`;
 }
 
 // ------------------------------------------------------------------ Blatt-HTML
@@ -470,6 +537,9 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
     + `<aside class="zside">`
     + `<div class="zbox"><h4>Stückliste (Mengen)</h4>${_tab(bomZeilen(w))}</div>`
     + `<div class="zbox"><h4>Vorspannung</h4>${_tab(vorspannZeilen(w))}</div>`
+    // [Z-5]/[Z-6] Zuschnittkonflikte stehen VOR der Legende und nur, wenn es welche gibt:
+    // ein unvollstaendiger Zuschnitt darf auf dem Blatt nicht als vollstaendig erscheinen.
+    + (maengelHtml(w) ? `<div class="zbox mangel"><h4>${MANGEL_TITEL}</h4>${maengelHtml(w)}</div>` : "")
     + `<div class="zbox"><h4>Darstellung</h4>${legendeHtml()}</div>`
     + `<div class="zbox"><h4>${GEPRUEFT_TITEL}</h4>${gepruefteHtml()}</div>`
     + `<div class="zbox"><h4>${HINWEIS_TITEL}</h4>${hinweiseHtml()}</div>`
@@ -506,6 +576,12 @@ export const ZEICHNUNG_CSS = `
   .zregeln{font-size:10px;line-height:1.4}
   .zregeln div{display:flex;gap:6px;margin:3px 0}
   .zregeln .chip{flex:0 0 10px;height:10px;border-radius:2px;margin-top:1px}
+  .zbox.mangel{border-color:#c9461c;border-width:1.5px}
+  .zbox.mangel h4{color:#c9461c}
+  .zmangel{font-size:10px;line-height:1.4}
+  .zmangel div{display:flex;gap:6px;margin:3px 0}
+  .zmangel .chip{flex:0 0 10px;height:10px;border-radius:2px;margin-top:1px;background:#c9461c;
+                 -webkit-print-color-adjust:exact;print-color-adjust:exact}
   .zfuss{font-size:9.5px;color:#6b7682;margin-top:4px;line-height:1.4}
   .zlegende{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px}
   .zlegende span{display:flex;align-items:center;gap:4px}

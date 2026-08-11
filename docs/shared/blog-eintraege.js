@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-02",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 15,
+    titel: "Technische Zeichnung zeigt das obere Reststück vollständig und meldet offenen Zuschnitt",
+    testbitte: "Reiter 7 mit einer Wand öffnen: Das kurze Reststück muss über die Oberkante ragen "
+      + "und in der Stückliste stehen. Ohne gültiges Reststück muss ein Zuschnittkonflikt erscheinen.",
+  },
+  {
     id: "chg-20260811-01",
     datum: "2026-08-11",
     typ: "feature",

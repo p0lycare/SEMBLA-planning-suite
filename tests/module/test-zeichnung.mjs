@@ -19,7 +19,7 @@ import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import { semblaBomItems } from "../../docs/shared/sembla-bom.js";
-import { stangenEnden, STUECK_FARBE, STUECK_LABEL } from "../../docs/shared/sembla-montage.js";
+import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL } from "../../docs/shared/sembla-montage.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
 
@@ -96,12 +96,11 @@ ok("Bodenblech und Kopfblech gezeichnet", (svg.match(new RegExp(Z.FARBE.stahl, "
 ok("Steinreihen sind nummeriert (1 … lagen)",
   svg.includes(">" + W.lagen + "</text>") && svg.includes(">1</text>"));
 
-// Stangenstuecke: Anzahl der gezeichneten Linien = Summe der realen Stuecke (stangenEnden)
+// Stangenstuecke: Anzahl der gezeichneten Linien = Summe der realen Stuecke (stangenStuecke)
 let stueckSoll = 0, sonderSoll = 0;
 for (const col of W.tension_columns) {
   for (const sg of col.segments) {
-    const enden = stangenEnden(W, sg);
-    stueckSoll += enden.length;
+    stueckSoll += stangenStuecke(W, sg).length;
     for (const st of (sg.stuecke || [])) if (st.art === "sonder") sonderSoll++;
   }
 }
@@ -116,10 +115,13 @@ ok("Kopplungen/Verankerungen sind markiert", svg.includes(Z.FARBE.mutter) && /<c
 ok("Stangenfarben kommen aus STUECK_FARBE (sembla-montage.js), kein eigener Farbsatz",
   Z.FARBE.stange === STUECK_FARBE.standard && Z.FARBE.stange_sonder === STUECK_FARBE.sonder
   && Z.FARBE.stange_rest === STUECK_FARBE.rest);
-ok("die Zeichnung leitet die Stueckart nicht selbst ab (stueckArt kommt geteilt)",
-  /import \{[^}]*stueckArt[^}]*\} from "\.\/sembla-montage\.js"/.test(
-    readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8"))
-  && !/function _stueckArt/.test(readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8")));
+ok("die Zeichnung leitet Stueckart und Stueckgeometrie nicht selbst ab (beide kommen geteilt)", (() => {
+  const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
+  return /import \{[^}]*stangenStuecke[^}]*\} from "\.\/sembla-montage\.js"/.test(q)
+    && !/function _stueckArt/.test(q)
+    // keine eigene Kumulation der Stuecklaengen im Zeichenbaustein ([P-6])
+    && !/\+=\s*st\.len_mm|\+\s*st\.len_mm/.test(q);
+})());
 
 // Reststueck am oberen Wandabschluss ([Z-6]) ist in der Zeichnung eigens erkennbar.
 // Standardlaengen 100/50 cm, Reststueck 30 cm, Ueberstand 1 cm -> 100+100+31(Sonder)+30(Rest).
@@ -186,11 +188,98 @@ ok("Legende erklaert den Darstellungsschluessel",
     const so = Z.vorspannZeilen(WR).find(r => r.label === "Sonderlängen").wert;
     return !/10,0 cm/.test(so) && !/^10 cm/.test(so);
   })());
-  ok("[Z-6] ohne Reststueck bleibt die Kennzahl leer (keine ersatzweise Standardlaenge)", (() => {
+  ok("[Z-6] ohne Reststueck wird keine Laenge erfunden (keine ersatzweise Standardlaenge)", (() => {
     const WO = buildWall("IW-ohne", 2000, 2600, [], null, { rod_lengths_mm: [1000] });
-    return Z.vorspannZeilen(WO).find(r => r.label === "Reststück oben").wert === "–"
-      && !Z.zeichnungSvg(WO, {}).svg.includes(Z.FARBE.stange_rest);
+    const wert = Z.vorspannZeilen(WO).find(r => r.label === "Reststück oben").wert;
+    return !/cm/.test(wert) && !Z.zeichnungSvg(WO, {}).svg.includes(Z.FARBE.stange_rest);
   })());
+}
+
+// [Z-6]/[D-4] Das Reststueck wird mit seiner REALEN Materiallaenge gezeichnet — der Ueberstand
+// ueber die Wandoberkante ist eingebautes Material und darf nicht abgeschnitten werden. Vorher
+// kappte die Zeichnung das letzte Stueck auf das Segmentende: das Reststueck war um genau den
+// Ueberstand zu kurz und bei rod_rest_mm <= rod_overhang_mm gar nicht mehr sichtbar.
+console.log("\n[Z-6] Reststueck: Geometrie inkl. Ueberstand");
+{
+  // Laengen der im SVG mit `farbe` gezeichneten senkrechten Linien (in Papier-mm).
+  const linien = (svg, farbe) => [...svg.matchAll(
+    /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="([^"]+)"/g)]
+    .filter(m => m[5] === farbe).map(m => Math.abs(+m[2] - +m[4]));
+
+  const WR = buildWall("IW-Rest", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 100, rod_overhang_mm: 10 });
+  const zr = Z.zeichnungSvg(WR, {});
+  const sc = 1 / zr.masstab;
+  const restL = linien(zr.svg, Z.FARBE.stange_rest);
+  const segR = WR.tension_columns[0].segments[0];
+  const restStueck = segR.stuecke[segR.stuecke.length - 1];
+  ok("Testwand: Reststueck 100 mm mit 10 mm Ueberstand (Voraussetzung)",
+    restStueck.art === "rest" && restStueck.len_mm === 100 && segR.ueberstand_mm === 10);
+  ok("[Z-6] gezeichnete Reststuecklaenge == Materiallaenge (Ueberstand nicht gekappt)",
+    restL.length === WR.tension_columns.length
+    && restL.every(l => Math.abs(l - restStueck.len_mm * sc) < 0.01));
+  ok("[Z-6] das Reststueck ragt ueber die Wandoberkante hinaus (Ueberstand sichtbar)", (() => {
+    // y der Wandoberkante = PAD_MM; das obere Ende des Reststuecks liegt darueber (kleineres y)
+    const oben = [...zr.svg.matchAll(
+      /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="([^"]+)"/g)]
+      .filter(m => m[5] === Z.FARBE.stange_rest).map(m => Math.min(+m[2], +m[4]));
+    return oben.length > 0 && oben.every(y => y < Z.PAD_MM - 1e-9
+      && Math.abs(y - (Z.PAD_MM - segR.ueberstand_mm * sc)) < 0.01);
+  })());
+  ok("[Z-6] Kopplungshoehen bleiben das Segmentende (stangenEnden unveraendert)",
+    stangenEnden(WR, segR)[segR.stuecke.length - 1] === segR.z1_mm);
+
+  // Der Fall, der das Stueck ganz verschwinden liess: Reststueck == Ueberstand.
+  const WK = buildWall("IW-kurz", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 10, rod_overhang_mm: 10 });
+  const zk = Z.zeichnungSvg(WK, {});
+  const kurzL = linien(zk.svg, Z.FARBE.stange_rest);
+  ok("[Z-6] Reststueck bleibt sichtbar, wenn es so lang ist wie der Ueberstand",
+    kurzL.length === WK.tension_columns.length
+    && kurzL.every(l => Math.abs(l - 10 * (1 / zk.masstab)) < 0.01));
+  ok("[Z-6] auch dieses kurze Stueck steht als eigene Position in der Blatt-Stueckliste",
+    Z.bomZeilen(WK).some(r => /Reststück/.test(r.label)));
+}
+
+// [Z-5]/[Z-6] Zuschnittkonflikte: das Blatt darf einen unvollstaendigen Zuschnitt nicht als
+// vollstaendig ausgeben. Bisher stand der Befund NUR in Modul 1; Blatt und Export schwiegen.
+console.log("\n[Z-5]/[Z-6] Zuschnittkonflikte stehen auf dem Blatt");
+{
+  const WO = buildWall("IW-ohne", 2000, 2600, [], null, { rod_lengths_mm: [1000] });
+  const zk = Z.konfliktZeilen(WO);
+  ok("konfliktZeilen liest validation.zuschnitt_konflikte (kein_reststueck)",
+    zk.length === 1 && zk[0].grund === "kein_reststueck"
+    && zk[0].anzahl === WO.validation.zuschnitt_konflikte.length
+    && zk[0].straenge.length === WO.tension_columns.length);
+  const blattO = Z.blattHtml(WO, eingaben, {}).html;
+  ok("Blatt benennt den Konflikt im Mangelblock", blattO.includes(Z.MANGEL_TITEL)
+    && blattO.includes("zmangel") && blattO.includes(Z.KONFLIKT_TEXT.kein_reststueck));
+  ok("Blatt sagt, dass es damit unvollstaendig ist", /unvollständig/.test(blattO));
+  ok("Kennzahl „Reststück oben\" verschweigt den Mangel nicht als „–\"",
+    Z.vorspannZeilen(WO).find(r => r.label === "Reststück oben").wert !== "–");
+  ok("derselbe Mangel steht im zentralen Export ([D-6])",
+    zeichnungHtml(WO, eingaben, {}).includes(Z.KONFLIKT_TEXT.kein_reststueck));
+
+  // Ohne Konflikt gibt es keinen leeren Kasten (wie bei der Legende in [D-4]).
+  const WG = buildWall("IW-gut", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 100, rod_overhang_mm: 10 });
+  ok("ohne Konflikt kein Mangelblock", Z.konfliktZeilen(WG).length === 0
+    && Z.maengelHtml(WG) === "" && !Z.blattHtml(WG, eingaben, {}).html.includes(Z.MANGEL_TITEL));
+
+  // Unbestimmter Zuschnitt: nichts zeichnen und nichts erfinden.
+  const WL2 = buildWall("IW-lang", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 5000, rod_overhang_mm: 10 });
+  const segL = WL2.tension_columns[0].segments[0];
+  ok("Testwand: Zerlegung unbestimmt (reststueck_zu_lang, leeres `stuecke`)",
+    segL.zuschnitt_konflikt === "reststueck_zu_lang" && segL.stuecke.length === 0);
+  const svgL = Z.zeichnungSvg(WL2, {}).svg;
+  ok("[Z-6] unbestimmtes Segment wird NICHT gezeichnet (keine Ersatzstange)",
+    !svgL.includes(Z.FARBE.stange_rest) && !svgL.includes(`stroke="${Z.FARBE.stange}"`)
+    && !svgL.includes(`stroke="${Z.FARBE.stange_sonder}"`));
+  ok("Blatt benennt reststueck_zu_lang",
+    Z.blattHtml(WL2, eingaben, {}).html.includes(Z.KONFLIKT_TEXT.reststueck_zu_lang));
+  ok("[P-6] Blatt-Stueckliste erfindet dafuer keine Gewindestangen-Position",
+    !Z.bomZeilen(WL2).some(r => /Gewindestange/.test(r.label)));
 }
 
 // [D-5] Trennung: was der Kern rechnet, steht als eingehalten; der Rest bleibt ungeprueft.

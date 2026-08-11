@@ -520,8 +520,12 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                          "bedarf_mm": _kombi["bedarf_mm"],
                          "ueberstand_mm": _kombi["bedarf_mm"] - h,
                          "letzte_stange_mm": (_stuecke[stueck - 1]["len_mm"] if stueck else h),
-                         "verschnitt_mm": _quelle_summe - _kombi["bedarf_mm"],
-                         "verbindungsmuttern": stueck - 1, "anker_unten": anker_unten, "anker_oben": anker_oben,
+                         # Ein Zuschnittkonflikt kann `stuecke` LEER lassen ([Z-6]:
+                         # `reststueck_zu_lang`, `kein_ausgangsprodukt`). Dann gibt es keine
+                         # Stange, also auch keine Kopplung und keinen Verschnitt — die
+                         # Zaehlung darf nicht ins Negative laufen.
+                         "verschnitt_mm": (_quelle_summe - _kombi["bedarf_mm"] if stueck else 0),
+                         "verbindungsmuttern": max(0, stueck - 1), "anker_unten": anker_unten, "anker_oben": anker_oben,
                          "senkkopfschrauben": seg_senkkopf, "spannplatten": seg_spannplatten, "spannmuttern": seg_spannmutter})
             r = r2 + 1
         if not segs:

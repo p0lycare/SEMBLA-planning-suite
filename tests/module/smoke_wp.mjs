@@ -40,7 +40,8 @@ const MONT = await import("../../docs/shared/sembla-montage.js");
 const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
 const idA=store.speichere('Wand A', startWand); store.setzeAktiv(idA);
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
-  STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL, stueckFarbe: MONT.stueckFarbe };
+  STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL,
+  stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke };
 
 eval(script);
 globalThis.window.__wpInit();
