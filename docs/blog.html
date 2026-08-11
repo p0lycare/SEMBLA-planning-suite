@@ -88,6 +88,43 @@
   .gruppe-blockiert .gtitel{color:#b02a1c}
   .gruppe-naechstes .gtitel{color:var(--sb-ok)}
 
+  /* Workflow-Retros (Issue #65): Kennzahlenfelder und aufklappbare Run-Karten.
+     Bewusst KEINE Tabelle — auf 320 px waere eine horizontale Zeile nicht lesbar. */
+  .kz{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+  .kzfeld{flex:1 1 140px;min-width:0;background:var(--sb-panel);border:1px solid var(--sb-line);
+          border-radius:11px;padding:10px 12px;display:flex;flex-direction:column;gap:2px}
+  .kzwert{font-size:19px;font-weight:750;line-height:1.2;font-variant-numeric:tabular-nums;
+          overflow-wrap:anywhere}
+  .kzname{font-size:12px;color:#42505e;line-height:1.35}
+  .kzvon{font-size:11px;color:var(--sb-muted);line-height:1.35}
+
+  .filterzeile{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}
+  .filterzeile label{font-size:13px;color:#42505e;font-weight:600}
+  .filterzeile select{flex:1 1 180px;min-width:0;min-height:44px;font-family:inherit;
+                      font-size:14px;color:var(--sb-ink);background:var(--sb-panel);
+                      border:1px solid var(--sb-line);border-radius:9px;padding:0 10px}
+
+  details.retro{padding:0}
+  details.retro>summary{list-style:none;cursor:pointer;min-height:44px;padding:11px 14px;
+                        display:flex;flex-direction:column;gap:4px}
+  details.retro>summary::-webkit-details-marker{display:none}
+  details.retro .rtitel{font-size:15.5px;line-height:1.35;font-weight:650}
+  details.retro .rpaket{font-size:11.5px;color:var(--sb-muted);overflow-wrap:anywhere}
+  details.retro[open]>summary{border-bottom:1px solid var(--sb-line)}
+  .rinhalt{padding:11px 14px 13px}
+  .rinhalt .ergebnis{font-size:13px;line-height:1.5;color:#42505e;margin:0 0 8px}
+  .rwerte{list-style:none;margin:0;padding:0;font-size:13px}
+  .rwerte li{display:flex;flex-wrap:wrap;gap:2px 10px;padding:5px 0;
+             border-bottom:1px solid var(--sb-line)}
+  .rwerte .wname{flex:1 1 150px;color:var(--sb-muted)}
+  .rwerte .wwert{flex:1 1 120px;color:var(--sb-ink);font-weight:600}
+  .rtests{font-size:13px;line-height:1.5;color:#42505e;margin:10px 0 0}
+  .rerk{margin:8px 0 0;padding:0 0 0 18px;font-size:13px;line-height:1.5;color:#42505e}
+  .rerk li{margin:0 0 4px}
+  .chip.klass-beibehalten{background:#e3f5ea;color:var(--sb-ok)}
+  .chip.klass-beobachten{background:#fdf0d8;color:#8a5d05}
+  .chip.klass-aenderung_vorschlagen{background:#fbe0dc;color:#b02a1c}
+
   .fehler{background:#fdeee4;border:1px solid #f2c9b3;color:#8a3a15;border-radius:11px;
           padding:12px 14px;font-size:13px;line-height:1.55;margin:0 0 14px}
   .leer{font-size:13px;color:var(--sb-muted);padding:6px 0}
@@ -103,18 +140,21 @@
 </head>
 <body>
 <div class="wrap">
-  <p class="intro"><b>Umsetzungsplan &amp; Änderungen.</b> Links steht, <b>was als Nächstes
-    gebaut wird</b> — welche Entscheidungen ich von dir brauche, welches Issue ich danach
-    umsetze und warum, was in der Warteschlange steht und was blockiert ist. Rechts steht,
-    <b>was sich zuletzt geändert hat</b>. Der Plan ist ein im Repo versioniertes Dokument
-    und wird nur bei inhaltlicher Änderung neu geschrieben; entschieden wird im jeweiligen
-    GitHub-Issue. Diese Seite ist reine Anzeige: sie lädt nichts nach, speichert nichts,
-    liest kein Wandelement und braucht keine Anmeldung.</p>
+  <p class="intro"><b>Umsetzungsplan, Änderungen &amp; Workflow-Retros.</b> Im
+    <b>Umsetzungsplan</b> steht, was als Nächstes gebaut wird — welche Entscheidungen ich
+    von dir brauche, welches Issue ich danach umsetze und warum, was in der Warteschlange
+    steht und was blockiert ist. Unter <b>Was ist neu?</b> steht, was sich zuletzt geändert
+    hat. Die <b>Workflow-Retros</b> zeigen, wie die bereits veröffentlichten Umsetzungsruns
+    gelaufen sind: Gesamtlage, Aufwand, Tests und die Erkenntnisse je Run. Alle drei sind im
+    Repo versionierte Dokumente; entschieden wird im jeweiligen GitHub-Issue. Diese Seite ist
+    reine Anzeige: sie lädt nichts nach, speichert nichts, liest kein Wandelement und braucht
+    keine Anmeldung.</p>
 
   <div class="segwrap">
     <div class="seg" role="tablist" aria-label="Ansicht wählen">
       <button id="seg-plan" role="tab" type="button">Umsetzungsplan</button>
       <button id="seg-neu" role="tab" type="button">Was ist neu?</button>
+      <button id="seg-retro" role="tab" type="button">Workflow-Retros</button>
     </div>
   </div>
 
@@ -129,24 +169,41 @@
     <div id="blogwarnung"></div>
     <div id="blogliste"></div>
   </div>
+
+  <div id="view-retro" class="verborgen">
+    <div class="meta"><span class="stand" id="retrometa"></span></div>
+    <div id="retrofehler"></div>
+    <div id="retrokennzahlen"></div>
+    <div id="retrofilterzeile" class="filterzeile">
+      <label for="retrofilter">Bewertung</label>
+      <select id="retrofilter"></select>
+    </div>
+    <div id="retroliste"></div>
+  </div>
 </div>
 
 <script>
-// SEMBLA Modul 8 — Umsetzungsplan & Änderungsliste (Issues #48/#55).
+// SEMBLA Modul 8 — Umsetzungsplan, Änderungsliste & Workflow-Retros (#48/#55/#65).
 //
 // Klassisches Skript (ohne Modulaufloesung testbar); der gemeinsame Code kommt ueber
-// window.SEMBLA aus dem Modul-Skript am Ende der Seite. Genau zwei Ansichten:
-// „Umsetzungsplan" (Standard) und „Was ist neu?".
+// window.SEMBLA aus dem Modul-Skript am Ende der Seite. Genau drei Ansichten:
+// „Umsetzungsplan" (Standard), „Was ist neu?" und „Workflow-Retros".
 //
 // STRENG READ-ONLY UND STATISCH. Seit #55 gibt es hier KEINEN Netzabruf und KEINEN
 // localStorage mehr: der Backlog wird vom Cron ausgewertet und als versioniertes
-// Artefakt (shared/umsetzungsplan.js) ausgeliefert. Damit entfallen Abruflimit,
-// Anzeigecache und jeder geratene Status. Kein Login, kein Backend, kein Schreibpfad.
+// Artefakt (shared/umsetzungsplan.js) ausgeliefert; die Retro-Auswertung ebenso
+// (shared/workflow-retros.js). Damit entfallen Abruflimit, Anzeigecache und jeder
+// geratene Status. Kein Login, kein Backend, kein Schreibpfad. Die lokalen Workflow-,
+// Queue-, Manifest-, Retro- und Sessiondateien werden hier NIEMALS gelesen.
 
 var B = null;                 // Blog-Baustein (sembla-blog.js)
 var P = null;                 // Plan-Baustein (sembla-umsetzungsplan.js)
+var R = null;                 // Retro-Baustein (sembla-workflow-retros.js)
 var PLANDATEN = null;         // das Artefakt (shared/umsetzungsplan.js) oder null
-var ANSICHT = 'plan';         // 'plan' | 'neu'
+var RETRODATEN = null;        // das Artefakt (shared/workflow-retros.js) oder null
+var ANSICHTEN = ['plan', 'neu', 'retro'];
+var ANSICHT = 'plan';         // 'plan' | 'neu' | 'retro'
+var RFILTER = 'alle';         // Retro-Filter: 'alle' oder eine Klassifikation
 var ZIEL = null;              // Anker aus dem Deep-Link
 
 function $(id){ return document.getElementById(id); }
@@ -186,15 +243,60 @@ function renderNeu(){
     + '). Bitte im Repo korrigieren.</div>';
 }
 
+// --- Ansicht „Workflow-Retros" -------------------------------------------
+// Die Gesamtlage kommt IMMER aus dem vollen validen Bestand; der Filter waehlt nur
+// Karten aus (deshalb zwei getrennte Funktionen). Fehlt das Artefakt oder verletzt ein
+// Run das Format, wird NICHTS gerendert — keine Teilkennzahl, keine Teilliste. Die
+// beiden anderen Ansichten sind davon unberuehrt, weil sie eigene Quellen haben.
+function renderRetro(){
+  var runs = RETRODATEN ? RETRODATEN.RUNS : null;
+  var formatFehler = RETRODATEN
+    ? R.pruefeFormat(RETRODATEN.RETRO_FORMAT, RETRODATEN.RETRO_VERSION) : [];
+  var pruefung = R.pruefeRetros(runs);
+
+  if(!pruefung.ok || formatFehler.length){
+    $('retrofehler').innerHTML = R.retroFehlerHinweis(
+      { ok:false, fehler: formatFehler.concat(pruefung.fehler) });
+    $('retrokennzahlen').innerHTML = '';
+    $('retroliste').innerHTML = '';
+    $('retrofilterzeile').className = 'verborgen';
+    $('retrometa').textContent = RETRODATEN
+      ? 'Retro-Daten ungültig' : 'Keine Retro-Daten vorhanden';
+    return;
+  }
+  $('retrofehler').innerHTML = '';
+  $('retrofilterzeile').className = 'filterzeile';
+  $('retrokennzahlen').innerHTML = R.kennzahlenHtml(R.kennzahlen(runs));
+  $('retrometa').textContent = R.metaText(runs);
+  renderRetroListe();
+}
+
+/** Nur die Kartenliste — die Kennzahlen bleiben dabei unangetastet. */
+function renderRetroListe(){
+  var runs = (RETRODATEN && Array.isArray(RETRODATEN.RUNS)) ? RETRODATEN.RUNS : [];
+  $('retroliste').innerHTML = R.retroKarten(R.filterRuns(runs, RFILTER));
+}
+
+/** Filterauswahl aus dem kanonischen Vokabular aufbauen (keine erfundene Stufe). */
+function fuelleRetroFilter(){
+  var html = '<option value="alle">alle Bewertungen</option>';
+  for(var k in R.KLASSIFIKATION_TEXT){
+    if(!Object.prototype.hasOwnProperty.call(R.KLASSIFIKATION_TEXT, k)) continue;
+    html += '<option value="' + B.esc(k) + '">' + B.esc(R.KLASSIFIKATION_TEXT[k]) + '</option>';
+  }
+  $('retrofilter').innerHTML = html;
+  $('retrofilter').value = RFILTER;
+}
+
 // --- Umschalter und Deep-Links -------------------------------------------
 function zeigeAnsicht(a){
-  ANSICHT = (a === 'neu') ? 'neu' : 'plan';
-  $('view-plan').className = ANSICHT === 'plan' ? '' : 'verborgen';
-  $('view-neu').className = ANSICHT === 'neu' ? '' : 'verborgen';
-  $('seg-plan').className = ANSICHT === 'plan' ? 'aktiv' : '';
-  $('seg-neu').className = ANSICHT === 'neu' ? 'aktiv' : '';
-  $('seg-plan').setAttribute('aria-selected', String(ANSICHT === 'plan'));
-  $('seg-neu').setAttribute('aria-selected', String(ANSICHT === 'neu'));
+  ANSICHT = (ANSICHTEN.indexOf(a) >= 0) ? a : 'plan';
+  for(var i = 0; i < ANSICHTEN.length; i++){
+    var k = ANSICHTEN[i], an = (ANSICHT === k);
+    $('view-' + k).className = an ? '' : 'verborgen';
+    $('seg-' + k).className = an ? 'aktiv' : '';
+    $('seg-' + k).setAttribute('aria-selected', String(an));
+  }
 }
 
 /** Anker markieren und anspringen. */
@@ -217,18 +319,29 @@ function ankerAuswerten(){
 function bindEvents(){
   $('seg-plan').addEventListener('click', function(){ zeigeAnsicht('plan'); });
   $('seg-neu').addEventListener('click', function(){ zeigeAnsicht('neu'); });
+  $('seg-retro').addEventListener('click', function(){ zeigeAnsicht('retro'); });
+  $('retrofilter').addEventListener('change', function(){
+    RFILTER = $('retrofilter').value;
+    renderRetroListe();          // nur die Karten — die Gesamtlage bleibt, wie sie ist
+  });
 }
 
-window.__blog = { renderPlan, renderNeu, zeigeAnsicht, ankerAuswerten,
-  get ansicht(){ return ANSICHT; }, get plan(){ return PLANDATEN; } };
+window.__blog = { renderPlan, renderNeu, renderRetro, renderRetroListe, zeigeAnsicht,
+  ankerAuswerten, get ansicht(){ return ANSICHT; }, get plan(){ return PLANDATEN; },
+  get retros(){ return RETRODATEN; }, get filter(){ return RFILTER; } };
 
 window.__blogInit = function(){
   B = window.SEMBLA || {};
   P = B.plan || {};
+  R = B.retro || {};
   PLANDATEN = B.PLANDATEN || null;
+  RETRODATEN = B.RETRODATEN || null;
+  RFILTER = 'alle';
   bindEvents();
+  fuelleRetroFilter();
   renderPlan();
   renderNeu();
+  renderRetro();
   zeigeAnsicht('plan');
   ankerAuswerten();
 };
@@ -237,16 +350,20 @@ window.__blogInit = function(){
 <script type="module">
   import * as blog from './shared/sembla-blog.js';
   import * as plan from './shared/sembla-umsetzungsplan.js';
+  import * as retro from './shared/sembla-workflow-retros.js';
   import { mountNavbar } from './shared/navbar.js';
 
-  // Das Planartefakt wird DYNAMISCH geladen: fehlt es, darf das nicht die ganze Seite
-  // mitnehmen (ein fehlgeschlagener statischer Import tut genau das). Stattdessen
-  // meldet die Planansicht sichtbar, dass kein Plan vorliegt — und „Was ist neu?"
-  // funktioniert weiter.
+  // Beide Datenartefakte werden DYNAMISCH geladen: fehlt eines, darf das nicht die ganze
+  // Seite mitnehmen (ein fehlgeschlagener statischer Import tut genau das). Stattdessen
+  // meldet die betroffene Ansicht sichtbar, dass keine Daten vorliegen — die jeweils
+  // anderen Ansichten funktionieren weiter, weil sie eigene Quellen haben.
   let plandaten = null;
   try { plandaten = await import('./shared/umsetzungsplan.js'); } catch (e) { plandaten = null; }
+  let retrodaten = null;
+  try { retrodaten = await import('./shared/workflow-retros.js'); } catch (e) { retrodaten = null; }
 
-  window.SEMBLA = Object.assign({}, blog, { plan: plan, PLANDATEN: plandaten });
+  window.SEMBLA = Object.assign({}, blog, { plan: plan, PLANDATEN: plandaten,
+    retro: retro, RETRODATEN: retrodaten });
   mountNavbar(8);
   window.__blogInit();
 </script>

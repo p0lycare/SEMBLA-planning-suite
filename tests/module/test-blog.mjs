@@ -32,15 +32,15 @@ ok("Seed-Eintrag verweist auf Issue 48 und ist ein feature",
   seed && seed.issue === 48 && seed.typ === "feature" && seed.datum === "2026-08-05");
 ok("Seed-Eintrag enthaelt eine Testbitte", seed && typeof seed.testbitte === "string" && seed.testbitte.length > 10);
 
-// Produktauftrag #55 bleibt genau einmal dokumentiert; die Druckvorschau-Korrektur #61 steht vorn.
+// Produktauftrag #55 bleibt genau einmal dokumentiert; die Workflow-Retros #65 stehen vorn.
 const neu55 = EINTRAEGE.filter(e => e.issue === 55);
 const neu15 = EINTRAEGE.filter(e => e.issue === 15 && e.datum === "2026-08-11");
 ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-ok("die ausgeblendeten Nullmasse zu Issue 59 sind der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260811-14" && EINTRAEGE[0]?.issue === 59);
+ok("die Workflow-Retros zu Issue 65 sind der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260812-01" && EINTRAEGE[0]?.issue === 65);
 
 // --- 2) Validator: jede Regel schlaegt einzeln an -------------------------
 const gut = { id: "chg-20260805-01", datum: "2026-08-05", typ: "feature", issue: 48, titel: "Titel" };

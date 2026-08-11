@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-01",
+    datum: "2026-08-12",
+    typ: "feature",
+    issue: 65,
+    titel: "Modul 8 zeigt veröffentlichte Workflow-Retros als mobile Auswertung",
+    testbitte: "Reiter 8 auf einem schmalen Bildschirm öffnen und Workflow-Retros wählen: Kennzahlen und Karten müssen ohne horizontales Scrollen lesbar sein; Filter und Aufklappen müssen funktionieren.",
+  },
+  {
     id: "chg-20260811-14",
     datum: "2026-08-11",
     typ: "fix",

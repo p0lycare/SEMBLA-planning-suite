@@ -3,23 +3,29 @@
 // im Browser via window.SEMBLA — aus docs/shared/ bereitgestellt und vor __blogInit()
 // gebunden.
 //
-// Schwerpunkte (Issues #48/#55):
-//   * genau ZWEI Ansichten, „Umsetzungsplan" ist der Standard,
+// Schwerpunkte (Issues #48/#55/#65):
+//   * genau DREI Ansichten, „Umsetzungsplan" ist der Standard,
 //   * der Plan wird vollstaendig gerendert: Entscheidungen, Als Naechstes, Danach,
 //     Blockiert — und zwar genau als planAnsicht() des gemeinsamen Bausteins,
-//   * fehlender ODER ungueltiger Plan ⇒ sichtbare Meldung und NICHTS gerendert,
-//     waehrend „Was ist neu?" weiterlaeuft,
+//   * „Workflow-Retros": Gesamtkennzahlen und Run-Karten genau als die Bausteine sie
+//     liefern, echter change-Handler des Filters, echtes details-Aufklappen,
+//   * fehlendes ODER manipuliertes Artefakt ⇒ sichtbare Meldung und NICHTS gerendert,
+//     waehrend die jeweils anderen Ansichten weiterlaufen,
 //   * Deep-Links (#chg-…, #issue-…) waehlen die Ansicht und markieren das Ziel,
-//   * streng statisch: KEIN fetch, KEIN localStorage, kein Login, kein Download,
-//   * read-only: kein Wandelement, kein Eingaben-Schreibpfad.
+//   * streng statisch: KEIN fetch, KEIN localStorage, kein Login, kein Download, kein
+//     Zugriff auf lokale Workflow-, Queue-, Manifest-, Retro- oder Sessiondateien,
+//   * read-only: kein Wandelement, kein Eingaben-Schreibpfad,
+//   * mobile DOM-Vertraege: keine Tabelle, Touch-Ziele >= 44 px.
 //
-// Checkout-autark: alle Plaene ausser dem echten Artefakt sind synthetisch, es geht NIE
-// etwas ins Netz — der Test bricht ab, falls die Seite es doch versuchte.
+// Checkout-autark: alle Datensaetze ausser den echten Artefakten sind synthetisch, es geht
+// NIE etwas ins Netz — der Test bricht ab, falls die Seite es doch versuchte.
 
 import { readFileSync } from "node:fs";
 import * as B from "../../docs/shared/sembla-blog.js";
 import * as P from "../../docs/shared/sembla-umsetzungsplan.js";
+import * as R from "../../docs/shared/sembla-workflow-retros.js";
 import * as ARTEFAKT from "../../docs/shared/umsetzungsplan.js";
+import * as RETRO from "../../docs/shared/workflow-retros.js";
 
 const html = readFileSync(new URL("../../docs/blog.html", import.meta.url), "utf8");
 // erstes attributloses <script> ist die App-Logik (das zweite ist type="module")
@@ -31,7 +37,8 @@ class El {
   constructor(tag, id) {
     this.tagName = tag; this.id = id; this.className = ""; this.style = {};
     this._h = ""; this._t = ""; this.attrs = {}; this.listeners = {}; this.kinder = [];
-    this.scrolled = false;
+    this.scrolled = false; this.value = "";        // Auswahlfeld (Filter)
+    this.open = false;                             // details/summary
   }
   addEventListener(e, f) { (this.listeners[e] || (this.listeners[e] = [])).push(f); }
   dispatch(e) { (this.listeners[e] || []).forEach(f => f({ target: this })); }
@@ -44,8 +51,10 @@ class El {
   get textContent() { return this._t + this.kinder.map(k => k.textContent).join(""); }
   set textContent(v) { this._t = v; this.kinder = []; }
 }
-const IDS = ["seg-plan", "seg-neu", "view-plan", "view-neu", "planstand", "planfehler",
-  "planliste", "blogmeta", "blogwarnung", "blogliste"];
+const IDS = ["seg-plan", "seg-neu", "seg-retro", "view-plan", "view-neu", "view-retro",
+  "planstand", "planfehler", "planliste", "blogmeta", "blogwarnung", "blogliste",
+  "retrometa", "retrofehler", "retrokennzahlen", "retrofilterzeile", "retrofilter",
+  "retroliste"];
 const _e = {};
 const document = {
   getElementById: (id) => _e[id] || null,
@@ -66,8 +75,9 @@ globalThis.localStorage = {
 };
 
 globalThis.window = {};
-const binde = (plandaten) => {
-  globalThis.window.SEMBLA = Object.assign({}, B, { plan: P, PLANDATEN: plandaten });
+const binde = (plandaten, retrodaten = RETRO) => {
+  globalThis.window.SEMBLA = Object.assign({}, B, { plan: P, PLANDATEN: plandaten,
+    retro: R, RETRODATEN: retrodaten });
 };
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
@@ -81,12 +91,15 @@ globalThis.window.__blogInit();
 
 // --- 1) Startzustand: der Umsetzungsplan ist offen -----------------------
 ok("Startansicht ist der Umsetzungsplan", A().ansicht === "plan"
-  && $("view-plan").className === "" && $("view-neu").className === "verborgen");
+  && $("view-plan").className === "" && $("view-neu").className === "verborgen"
+  && $("view-retro").className === "verborgen");
 ok("Segmentumschalter markiert die aktive Ansicht",
   $("seg-plan").className === "aktiv" && $("seg-neu").className === ""
+  && $("seg-retro").className === ""
   && $("seg-plan").getAttribute("aria-selected") === "true"
-  && $("seg-neu").getAttribute("aria-selected") === "false");
-ok("es gibt genau zwei Ansichten", (html.match(/role="tab"/g) || []).length === 2
+  && $("seg-neu").getAttribute("aria-selected") === "false"
+  && $("seg-retro").getAttribute("aria-selected") === "false");
+ok("es gibt genau drei Ansichten", (html.match(/role="tab"/g) || []).length === 3
   && !/seg-status|view-status/.test(html));
 
 // --- 2) Der Plan wird vollstaendig gerendert -----------------------------
@@ -123,14 +136,107 @@ ok("Anzahl der Eintraege wird als Text ausgewiesen",
   /Eintrag|Einträge/.test($("blogmeta").textContent));
 ok("kein Validator-Warnhinweis beim gueltigen Datensatz", $("blogwarnung").innerHTML === "");
 
+// --- 3b) Ansicht „Workflow-Retros" (Issue #65) ---------------------------
+ok("die Gesamtlage ist genau kennzahlenHtml(kennzahlen()) des Bausteins",
+  $("retrokennzahlen").innerHTML === R.kennzahlenHtml(R.kennzahlen(RETRO.RUNS)));
+ok("die Run-Karten sind genau retroKarten() des Bausteins",
+  $("retroliste").innerHTML === R.retroKarten(RETRO.RUNS));
+ok("die Meta-Angabe ist abgeleitet, nicht gespeichert",
+  $("retrometa").textContent === R.metaText(RETRO.RUNS)
+  && /Runs · neuester /.test($("retrometa").textContent));
+ok("kein Fehlerhinweis beim gueltigen Bestand und der Filter ist bedienbar",
+  $("retrofehler").innerHTML === "" && $("retrofilterzeile").className === "filterzeile");
+ok("die Kennzahlen nennen Runs, Veroeffentlichung, Laufzeit, Korrekturen, "
+  + "Testwiederholungen und verdeckte Exitcodes", (() => {
+    const h = $("retrokennzahlen").innerHTML;
+    return /veröffentlichte Runs/.test(h) && /erfolgreich veröffentlicht/.test(h)
+      && /Laufzeit im Schnitt/.test(h) && /Korrekturrunden/.test(h)
+      && /vermeidbare Testwiederholungen/.test(h) && /verdeckte Test-Exitcodes/.test(h)
+      && /Runs belegt/.test(h);
+  })());
+ok("die Karten stehen neueste zuerst und nennen die Klassifikation", (() => {
+  const h = $("retroliste").innerHTML;
+  const neu = R.ankerId(RETRO.RUNS[0]), alt = R.ankerId(RETRO.RUNS[RETRO.RUNS.length - 1]);
+  return h.indexOf(neu) >= 0 && h.indexOf(neu) < h.indexOf(alt)
+    && new Set(RETRO.RUNS.map(r => `klass-${r.ergebnis}`))
+      .size === 3 && RETRO.RUNS.every(r => h.includes(`klass-${r.ergebnis}`));
+})());
+ok("jede Karte nennt Paket, Issue, Commit, Aufwand, Tests und Erkenntnisse", (() => {
+  const h = $("retroliste").innerHTML;
+  return RETRO.RUNS.every(r => h.includes(r.paket) && h.includes(`/commit/${r.commit}`)
+    && r.issues.every(n => h.includes(`/issues/${n}`)))
+    && (h.match(/Nutzerergebnis:/g) || []).length === RETRO.RUNS.length
+    && (h.match(/Diff-Umfang/g) || []).length === RETRO.RUNS.length
+    && (h.match(/<b>Tests:<\/b>/g) || []).length === RETRO.RUNS.length;
+})());
+ok("ein nicht belegter Wert steht als „nicht belegt\" statt als 0",
+  /nicht belegt/.test($("retroliste").innerHTML)
+  && RETRO.RUNS.some(r => r.implementierungs_turns === null
+    || r.test_wiederholungen === null || r.verdeckte_exitcodes === null));
+
+// Echtes Aufklappen: die Karten sind natives details/summary. Der zugeklappte Inhalt
+// steckt vollstaendig IM details-Element, es gibt kein Klickskript und kein `open`.
+{
+  const h = $("retroliste").innerHTML;
+  const anfang = h.indexOf("<details");
+  const ende = h.indexOf("</details>");
+  const erste = h.slice(anfang, ende);
+  const sumEnde = erste.indexOf("</summary>");
+  ok("Aufklappen ist eingebautes details/summary — kein Klickskript",
+    (h.match(/<details class="karte retro"/g) || []).length === RETRO.RUNS.length
+    && (h.match(/<summary class="rsum">/g) || []).length === RETRO.RUNS.length
+    && !/onclick|onto|<script/i.test(h));
+  ok("die Karten sind zugeklappt und tragen kein open",
+    !/<details[^>]*\sopen/.test(h));
+  ok("der aufklappbare Inhalt liegt vollstaendig innerhalb des details",
+    sumEnde > 0 && erste.indexOf("rinhalt") > sumEnde
+    && erste.includes("Nutzerergebnis:") && erste.includes("Tests:"));
+}
+
+// Echter change-Handler des Filters: nur die Karten wechseln, die Gesamtlage bleibt.
+{
+  const lageVorher = $("retrokennzahlen").innerHTML;
+  const metaVorher = $("retrometa").textContent;
+  ok("der Filter kennt genau „alle\" plus die drei Klassifikationen",
+    (($("retrofilter").innerHTML.match(/<option /g) || []).length === 4)
+    && /value="alle"/.test($("retrofilter").innerHTML)
+    && Object.keys(R.KLASSIFIKATION_TEXT)
+      .every(k => $("retrofilter").innerHTML.includes(`value="${k}"`)));
+  $("retrofilter").value = "beobachten";
+  $("retrofilter").dispatch("change");
+  ok("der Filter zeigt genau die Runs einer Klassifikation",
+    A().filter === "beobachten"
+    && $("retroliste").innerHTML
+      === R.retroKarten(R.filterRuns(RETRO.RUNS, "beobachten"))
+    && $("retroliste").innerHTML !== R.retroKarten(RETRO.RUNS));
+  ok("und laesst die Gesamtkennzahlen unveraendert",
+    $("retrokennzahlen").innerHTML === lageVorher
+    && $("retrometa").textContent === metaVorher);
+  $("retrofilter").value = "beibehalten";
+  $("retrofilter").dispatch("change");
+  ok("ein weiterer Filterwechsel wirkt ebenfalls nur auf die Karten",
+    $("retroliste").innerHTML === R.retroKarten(R.filterRuns(RETRO.RUNS, "beibehalten"))
+    && $("retrokennzahlen").innerHTML === lageVorher);
+  $("retrofilter").value = "alle";
+  $("retrofilter").dispatch("change");
+  ok("„alle\" stellt den vollen Bestand wieder her",
+    $("retroliste").innerHTML === R.retroKarten(RETRO.RUNS));
+}
+
 // --- 4) Umschalten zwischen den Ansichten --------------------------------
 $("seg-neu").dispatch("click");
 ok("Klick auf Was ist neu schaltet um", A().ansicht === "neu"
   && $("view-neu").className === "" && $("view-plan").className === "verborgen"
-  && $("seg-neu").className === "aktiv");
+  && $("view-retro").className === "verborgen" && $("seg-neu").className === "aktiv");
+$("seg-retro").dispatch("click");
+ok("Klick auf Workflow-Retros schaltet um", A().ansicht === "retro"
+  && $("view-retro").className === "" && $("view-plan").className === "verborgen"
+  && $("view-neu").className === "verborgen" && $("seg-retro").className === "aktiv"
+  && $("seg-retro").getAttribute("aria-selected") === "true");
 $("seg-plan").dispatch("click");
 ok("Klick auf Umsetzungsplan schaltet zurueck", A().ansicht === "plan"
-  && $("view-plan").className === "" && $("view-neu").className === "verborgen");
+  && $("view-plan").className === "" && $("view-neu").className === "verborgen"
+  && $("view-retro").className === "verborgen");
 
 // --- 5) Fehlender Plan: melden, nichts raten ----------------------------
 {
@@ -147,6 +253,9 @@ ok("Klick auf Umsetzungsplan schaltet zurueck", A().ansicht === "plan"
     !/gruppe-|Als Nächstes|Warum jetzt/.test($("planfehler").innerHTML));
   ok("die Aenderungsliste funktioniert trotzdem (getrennte, statische Quelle)",
     $("blogliste").innerHTML === B.blogKarten(B.EINTRAEGE));
+  ok("und die Workflow-Retros funktionieren trotzdem (eigene Quelle)",
+    $("retroliste").innerHTML === R.retroKarten(RETRO.RUNS)
+    && $("retrofehler").innerHTML === "");
 }
 
 // --- 6) Ungueltiger Plan: ebenfalls melden, nichts teilweise rendern ----
@@ -170,6 +279,66 @@ ok("Klick auf Umsetzungsplan schaltet zurueck", A().ansicht === "plan"
   globalThis.window.__blogInit();
   ok("fremdes Format wird benannt und nicht gerendert",
     /PLAN_FORMAT/.test($("planfehler").innerHTML) && $("planliste").innerHTML === "");
+}
+
+// --- 6b) Fehlende/manipulierte Retro-Daten: isoliert melden -------------
+{
+  frisch();
+  globalThis.location = { hash: "" };
+  binde(ARTEFAKT, null);                        // Retro-Artefakt fehlt (404/geloescht)
+  new Function(script)();
+  globalThis.window.__blogInit();
+  ok("fehlendes Retro-Artefakt ⇒ sichtbare Meldung statt geratener Kennzahlen",
+    /Keine gültigen Workflow-Retros/.test($("retrofehler").innerHTML)
+    && $("retrokennzahlen").innerHTML === "" && $("retroliste").innerHTML === ""
+    && $("retrometa").textContent === "Keine Retro-Daten vorhanden");
+  ok("der Filter wird dabei ausgeblendet statt ins Leere zu greifen",
+    $("retrofilterzeile").className === "verborgen");
+  ok("die Meldung behauptet keine Teilkennzahl",
+    !/kzwert|Laufzeit im Schnitt|details/.test($("retrofehler").innerHTML));
+  ok("Umsetzungsplan und Aenderungsliste laufen unveraendert weiter",
+    $("planliste").innerHTML === P.planAnsicht(ARTEFAKT.PLAN)
+    && $("planfehler").innerHTML === ""
+    && $("blogliste").innerHTML === B.blogKarten(B.EINTRAEGE));
+}
+{
+  frisch();
+  globalThis.location = { hash: "" };
+  // Manipulierter Datensatz: interne Zusatzangabe (Sitzungskennung) untergeschoben.
+  const kaputt = RETRO.RUNS.map((r, i) => i === 0
+    ? { ...r, session_id: "ce143416-1561-499d-af42-88c3f56b5954" } : r);
+  binde(ARTEFAKT, { RUNS: kaputt, RETRO_FORMAT: "SEMBLA-Workflow-Retros", RETRO_VERSION: 1 });
+  new Function(script)();
+  globalThis.window.__blogInit();
+  ok("manipuliertes Retro-Artefakt ⇒ Meldung, keine Karten, keine Kennzahlen",
+    /Keine gültigen Workflow-Retros/.test($("retrofehler").innerHTML)
+    && $("retroliste").innerHTML === "" && $("retrokennzahlen").innerHTML === ""
+    && $("retrometa").textContent === "Retro-Daten ungültig");
+  ok("die Meldung benennt den Grund", /session_id/.test($("retrofehler").innerHTML));
+  ok("die beiden anderen Ansichten bleiben davon unberuehrt",
+    $("planliste").innerHTML === P.planAnsicht(ARTEFAKT.PLAN)
+    && $("blogliste").innerHTML === B.blogKarten(B.EINTRAEGE));
+}
+{
+  frisch();
+  globalThis.location = { hash: "" };
+  binde(ARTEFAKT, { RUNS: RETRO.RUNS, RETRO_FORMAT: "SEMBLA-Projekt", RETRO_VERSION: 1 });
+  new Function(script)();
+  globalThis.window.__blogInit();
+  ok("fremdes Retro-Format wird benannt und nicht gerendert",
+    /RETRO_FORMAT/.test($("retrofehler").innerHTML) && $("retroliste").innerHTML === "");
+}
+{
+  frisch();
+  globalThis.location = { hash: "" };
+  const falschSortiert = R.ordneRuns(RETRO.RUNS).slice().reverse();
+  binde(ARTEFAKT, { RUNS: falschSortiert, RETRO_FORMAT: "SEMBLA-Workflow-Retros",
+    RETRO_VERSION: 1 });
+  new Function(script)();
+  globalThis.window.__blogInit();
+  ok("falsch sortierte Runs werden gemeldet statt still sortiert",
+    /Reihenfolge verletzt/.test($("retrofehler").innerHTML)
+    && $("retroliste").innerHTML === "");
 }
 
 // --- 7) Deep-Links -------------------------------------------------------
@@ -232,8 +401,19 @@ ok("kein Datei-Download/-Upload im Modul",
 ok("das Planartefakt wird dynamisch geladen und sein Fehlen abgefangen",
   /await import\(['"]\.\/shared\/umsetzungsplan\.js['"]\)/.test(html)
   && /catch\s*\(e\)\s*\{\s*plandaten = null/.test(html));
+ok("das Retro-Artefakt wird ebenfalls dynamisch geladen und abgefangen",
+  /await import\(['"]\.\/shared\/workflow-retros\.js['"]\)/.test(html)
+  && /catch\s*\(e\)\s*\{\s*retrodaten = null/.test(html));
+ok("die Seite liest keine lokalen Workflow-, Queue-, Manifest-, Retro- oder Sessiondateien",
+  !/retro-archive|retro\.md|runtime\/|manifest|queue|session|node:fs|readFile/i.test(code));
 ok("Seite ist mobile-first ausgelegt (viewport, keine Tabelle, Touch-Ziele)",
   /name="viewport"/.test(html) && !/<table/.test(html) && /min-height:44px/.test(html));
+ok("Retro-Karten und Filter haben ausreichend grosse Touch-Ziele",
+  /details\.retro>summary\{[^}]*min-height:44px/.test(html)
+  && /\.filterzeile select\{[^}]*min-height:44px/.test(html));
+ok("die Retro-Ansicht baut ihr Markup nicht selbst nach (kein zweiter Renderer)",
+  !/<details|kzfeld|rinhalt|klass-/.test(script)
+  && /retroKarten|kennzahlenHtml/.test(script));
 ok("Segmentumschalter klebt oben", /\.segwrap\{position:sticky/.test(html));
 
 let fail = 0;

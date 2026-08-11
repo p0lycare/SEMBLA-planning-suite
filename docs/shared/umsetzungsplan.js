@@ -24,8 +24,8 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-08-11",
-  "signatur": "5db1f3da",
+  "stand": "2026-08-12",
+  "signatur": "886cdf90",
   "entscheidungen": [
     {
       "issue": 41,
@@ -68,15 +68,6 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
-    },
-    {
-      "issue": 65,
-      "titel": "Modul 8: Mobile Workflow-Retros mit Run-Dashboard",
-      "prio": "medium",
-      "status": "ready",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false
     },
     {
       "issue": 56,
