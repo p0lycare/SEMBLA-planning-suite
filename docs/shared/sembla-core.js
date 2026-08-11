@@ -251,13 +251,23 @@ export const DEFAULT_PRESTRESS = { max_span_grid: MAX_SPAN_GRID, force_kN: null,
 function normPrestress(p) {
   const m = (p && Number.isInteger(p.max_span_grid) && p.max_span_grid >= 1) ? p.max_span_grid : MAX_SPAN_GRID;
   const fk = (p && p.force_kN != null) ? p.force_kN : null;
-  // Gewindestangen-Standardlaengen ([Z-1]): der VORRATSSATZ der in Modul 1 gewaehlten
-  // Katalogprodukte ist die verbindliche Quelle. Fehlt er (Altstand/keine Auswahl), gilt der
-  // kompatible Fallback aus dem Einzelwert `rod_mm` bzw. ROD — dann ist der Satz einelementig
-  // und die Kombination liefert bit-genau das bisherige Ergebnis.
+  // Gewindestangen-Standardlaengen ([Z-1]): der VORRATSSATZ der gewaehlten Katalogprodukte ist
+  // die verbindliche Quelle.
+  //
+  // FEHLT das Feld ganz (Altstand/Altaufruf), gilt unveraendert der kompatible Fallback aus dem
+  // Einzelwert `rod_mm` bzw. ROD — dann ist der Satz einelementig und die Kombination liefert
+  // bit-genau das bisherige Ergebnis.
+  //
+  // Ist das Feld dagegen AUSDRUECKLICH gesetzt und leer, hat der Aufrufer die Auswahl bereits
+  // ausgewertet und sagt: es ist keine Standardlaenge gewaehlt. Dann wird KEINE erfunden — weder
+  // als `rod_mm` noch als reales Stueck. Der Zuschnitt bleibt sichtbar offen
+  // (`zuschnitt_konflikte`: `keine_standardlaenge`), statt still 1100 mm zu behaupten.
+  const rodExplizit = Array.isArray(p && p.rod_lengths_mm);
   let rodL = normLaengen(p && p.rod_lengths_mm);
-  const rod = rodL.length ? rodL[0] : ((p && p.rod_mm != null && +p.rod_mm > 0) ? +p.rod_mm : ROD);
-  if (!rodL.length) rodL = [rod];
+  let rod;
+  if (rodL.length) rod = rodL[0];
+  else if (rodExplizit) rod = null;
+  else { rod = (p && p.rod_mm != null && +p.rod_mm > 0) ? +p.rod_mm : ROD; rodL = [rod]; }
   const blech = (p && p.blech_mm != null && +p.blech_mm > 0) ? +p.blech_mm : BLECH;
   const top = (p && (p.top_connection === "spannplatte" || p.top_connection === "blech")) ? p.top_connection : "blech";
   // manuelle Spannachsen (Rasterindizes) – wenn gesetzt, exakt diese statt Auto-Verteilung

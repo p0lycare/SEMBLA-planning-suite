@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-04",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 15,
+    titel: "Neue Wände speichern Gewindestangen und Reststück sofort aus dem Bauteilkatalog",
+    testbitte: "In Reiter 0 eine Wand anlegen oder im Geschossplan zeichnen und direkt Reiter 4 oder 7 öffnen: "
+      + "Die Gewindestangenlängen und das obere Reststück müssen ohne Zwischenbesuch von Reiter 1 stimmen.",
+  },
+  {
     id: "chg-20260811-03",
     datum: "2026-08-11",
     typ: "feature",

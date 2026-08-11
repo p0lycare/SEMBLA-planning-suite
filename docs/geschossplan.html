@@ -342,7 +342,7 @@ const fehlerText = e => (e && e.message ? e.message : String(e));
 const r2 = v => Math.round(Number(v) * 100) / 100;
 
 // aus window.SEMBLA (in __gpInit gebunden):
-let store, MAPPE, CON, PLAN, MB, buildWall;
+let store, MAPPE, CON, PLAN, MB, WA;
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
@@ -1689,15 +1689,19 @@ function wandFertig(a, b){
     return w.id;
   }
 
-  let hoehe, id;
+  let hoehe, id, anlage;
   try { hoehe = neueHoehe(); } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
   const name = naechsterName();
   try {
-    const we = buildWall(name, v.laenge_mm, hoehe, []);
+    // Gerechnet und gespeichert wird über den gemeinsamen Anlagepfad (#15/#62) — dieselbe
+    // DOM-freie Funktion, die auch Modul 0 benutzt. Sie bestimmt die Verwendungsstellen aus
+    // dem Katalog, rechnet das Wandelement daraus und schreibt GENAU EINMAL den fertigen
+    // Stand; ein Zwischenstand mit dem Altstand-Fallback des Cores entsteht nicht. Der
     // Wandtyp ist ein Fachmerkmal der Wand und wird ausdrücklich hier bei der Anlage
-    // gewählt — Modul 1 führt ihn nur mit.
-    we.wandtyp = store.normWandtyp($('gp-wandtyp').value);
-    id = store.speichere(name, we);
+    // gewählt; Modul 1 führt ihn nur mit.
+    anlage = WA.legeWandAn(store, { name, laenge_mm: v.laenge_mm, hoehe_mm: hoehe,
+      wandtyp: $('gp-wandtyp').value });
+    id = anlage.id;
   } catch (e) { zeige('Nicht angelegt: ' + fehlerText(e), false); return null; }
   try { store.verorteWand(id, gs.id, { name, lage: v.lage }); }
   catch (e) {
@@ -1708,16 +1712,14 @@ function wandFertig(a, b){
   waehle(id);
   try { store.setzeAktiv(id); } catch { /* nicht aktivierbar: wird unten benannt */ }
 
-  // [P-18] Startklar statt leer: nur LEERE Verwendungsstellen übernehmen die
-  // Standardauswahl des Katalogs. Ohne zugeordneten Katalog wird das gesagt, nie geraten.
+  // [P-18] Startklar statt leer: die Verwendungsstellen sind bereits mit dem Wandelement
+  // geschrieben. Ohne zugeordneten Katalog wird das gesagt, nie geraten ([L-12]).
   const nach = [];
-  if (!store.holeKatalog()) {
-    nach.push('kein Bauteilkatalog zugeordnet — im Projektplaner zuordnen ([L-12])');
-  } else {
-    const vb = store.vorbelegeProduktrollen(undefined, id);
-    const n = Object.keys(vb.gesetzt).length;
-    if (n) nach.push(`${n} Verwendungsstelle(n) vorbelegt`);
-  }
+  if (!store.holeKatalog()) nach.push('kein Bauteilkatalog zugeordnet — im Projektplaner zuordnen ([L-12])');
+  const n = Object.keys(anlage.gesetzt).length;
+  if (n) nach.push(`${n} Verwendungsstelle(n) vorbelegt`);
+  const vt = WA.vorspannText(anlage.vorgaben);
+  if (vt) nach.push(vt);
   // Erst jetzt buchen: das Wandelement ist samt vorbelegten Verwendungsstellen fertig,
   // und genau dieser Stand wird beim Wiederholen wiederhergestellt.
   buchen(vor, [id]);
@@ -2968,7 +2970,7 @@ window.__gp = {
 
 window.__gpInit = function(){
   const S = window.SEMBLA || {};
-  store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; buildWall = S.buildWall;
+  store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; WA = S.WA;
   binde();
   store.abonniere(() => { auffrischen().catch(() => {}); });
   zeigeAlles();
@@ -2983,8 +2985,8 @@ window.__gpInit = function(){
   import * as CON from './shared/sembla-constraints.js';
   import * as PLAN from './shared/sembla-plan.js';
   import * as MB from './shared/sembla-massbild.js';
-  import { buildWall } from './shared/sembla-core.js';
-  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, buildWall };
+  import * as WA from './shared/sembla-wandanlage.js';
+  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA };
   // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
   // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
   // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.

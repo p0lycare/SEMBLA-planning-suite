@@ -263,11 +263,17 @@ def _norm_prestress(p):
     m = m if isinstance(m, int) and m >= 1 else MAX_SPAN_GRID
     fk = p.get("force_kN")
     # Gewindestangen-Standardlaengen ([Z-1]): Vorratssatz der gewaehlten Katalogprodukte.
-    # Fehlt er, gilt der kompatible Fallback aus `rod_mm`/ROD (einelementiger Satz ->
-    # bit-genau das bisherige Ergebnis).
-    rod_l = norm_laengen(p.get("rod_lengths_mm"))
+    # FEHLT das Feld, gilt der kompatible Fallback aus `rod_mm`/ROD (einelementiger Satz ->
+    # bit-genau das bisherige Ergebnis). Ist es AUSDRUECKLICH gesetzt und leer, hat der
+    # Aufrufer die Auswahl ausgewertet: es ist keine Standardlaenge gewaehlt, also wird auch
+    # keine erfunden (`rod_mm` bleibt None, der Zuschnitt bleibt sichtbar offen).
+    _rod_roh = p.get("rod_lengths_mm")
+    rod_explizit = isinstance(_rod_roh, (list, tuple))
+    rod_l = norm_laengen(_rod_roh)
     if rod_l:
         rod = rod_l[0]
+    elif rod_explizit:
+        rod = None
     else:
         rod = p.get("rod_mm")
         if rod is None or float(rod) <= 0:

@@ -111,11 +111,14 @@ const PLAN = await import("../../docs/shared/sembla-plan.js");
 // nicht mehr selbst — sonst koennten Bearbeitung und Ausgabe auseinanderlaufen.
 const MB = await import("../../docs/shared/sembla-massbild.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
+// Der gemeinsame Anlagepfad beider Anlageorte (#15/#62): er belegt die Verwendungsrollen
+// vor und rechnet das Wandelement DARAUS neu, bevor es gespeichert bleibt.
+const WA = await import("../../docs/shared/sembla-wandanlage.js");
 PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, buildWall };
+globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA };
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
@@ -1870,6 +1873,87 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#53 die beiden Sperrgruende sind unterscheidbar formuliert',
     /hängt/.test(direktText) && !/starre Gruppe/.test(direktText)
     && /starre Gruppe/.test(html));
+}
+
+// --- 12) Neuanlage speichert den katalogbasierten Zuschnitt (#15/#62) -----
+// Der reale Weg: Wand ZEICHNEN und danach sofort das gespeicherte JSON lesen — ohne
+// Modul 1. Frueher lief `buildWall` vor der Katalogvorbelegung, sodass der
+// Altstand-Fallback des Cores (1100 mm) im Element festgeschrieben wurde.
+{
+  const BOM = await import("../../docs/shared/sembla-bom.js");
+  const ZEI = await import("../../docs/shared/sembla-zeichnung.js");
+  const KAT = await import("../../docs/shared/sembla-katalog.js");
+  const katalogText = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const stuecke = (w) => (w.tension_columns || []).flatMap(c => (c.segments || []).flatMap(sg => sg.stuecke || []));
+
+  // Ohne zugeordneten Katalog gibt es keine Auswahl — und dann auch keine erfundene Laenge.
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600';
+  GP.zeichne({ x: 40000, y: 40000 }, { x: 42000, y: 40000 });
+  await warte();
+  const idOhne = GP.zustand.aktiv;
+  const wOhne = store.holeElement(idOhne).wandelement;
+  ok('#62 ohne Bauteilkatalog steht KEIN rod_lengths_mm:[1100] im Neubestand',
+    wOhne.prestress.rod_lengths_mm.length === 0 && wOhne.rod_mm === null
+    && !JSON.stringify(wOhne).includes('1100'));
+  ok('#62 und kein reales 1100-mm-Stueck', stuecke(wOhne).length === 0);
+  ok('der fehlende Zuschnitt bleibt sichtbar offen ([Z-1]/[L-12])',
+    wOhne.validation.zuschnitt_konflikte.length > 0
+    && wOhne.validation.zuschnitt_konflikte.every(k => k.grund === 'keine_standardlaenge')
+    && /kein Bauteilkatalog/.test($('gp-msg').textContent));
+
+  // Mit zugeordnetem Standardkatalog steht der Zuschnitt sofort im gespeicherten JSON.
+  store.importiereKatalogText(katalogText);
+  GP.werkzeug('wand');
+  // Jeden Schreibvorgang am Wandspeicher mitschreiben: ein initial persistierter
+  // Fallback-Stand faellt damit auf, auch wenn er sofort ueberschrieben wuerde (#15/#62).
+  const schreibfolge = [];
+  const echtesSetItem = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = (k, v) => { if (k === 'sembla:elemente') schreibfolge.push(String(v)); return echtesSetItem(k, v); };
+  GP.zeichne({ x: 40000, y: 44000 }, { x: 42000, y: 44000 });
+  await warte();
+  localStorage.setItem = echtesSetItem;
+  const idMit = GP.zustand.aktiv;
+  const wMit = store.holeElement(idMit).wandelement;
+
+  const neueStaende = schreibfolge.filter(v => !!JSON.parse(v)[idMit]);
+  ok('#15 die gezeichnete Wand wird GENAU EINMAL in den Wandspeicher geschrieben',
+    neueStaende.length === 1);
+  // Geprueft wird der EINTRAG DIESER WAND in jedem geschriebenen Stand — der uebrige
+  // Speicher enthaelt bewusst Altbestand, fuer den der 1100-mm-Fallback weiter gilt.
+  const staendeDieserWand = schreibfolge.map(v => JSON.parse(v)[idMit]).filter(Boolean);
+  ok('#62 zu KEINEM Zeitpunkt stand ein 1100-mm-Zwischenstand dieser Wand im Speicher',
+    staendeDieserWand.length > 0 && staendeDieserWand.every(e => !JSON.stringify(e).includes('1100')));
+  ok('#15 schon der erste geschriebene Stand traegt Kataloglaengen, Reststueck und Rollen',
+    JSON.stringify(JSON.parse(neueStaende[0])[idMit].wandelement.prestress.rod_lengths_mm) === '[1000,850]'
+    && JSON.parse(neueStaende[0])[idMit].wandelement.prestress.rod_rest_mm === 100
+    && (JSON.parse(neueStaende[0])[idMit].eingaben?.planung?.produkte?.rollen?.rod_std || []).length === 2);
+  ok('#15 die gezeichnete Wand traegt sofort die Kataloglaengen',
+    JSON.stringify(wMit.prestress.rod_lengths_mm) === '[1000,850]' && wMit.rod_mm === 1000);
+  ok('#15 [Z-6] samt Reststueck am oberen Wandabschluss',
+    wMit.prestress.rod_rest_mm === 100
+    && wMit.tension_columns.every(c => c.segments.every(sg =>
+         sg.z1_mm !== wMit.height_mm || sg.stuecke[sg.stuecke.length - 1].art === 'rest')));
+  ok('#62 keine erfundene 1100-mm-Stange im gespeicherten Stand',
+    !JSON.stringify(wMit).includes('1100'));
+  ok('[P-18] die Verwendungsstellen sind dabei vorbelegt',
+    store.holeProdukte(1, idMit).rollen.rod_std.length === 2
+    && /Verwendungsstelle/.test($('gp-msg').textContent));
+  ok('#62 Baustellenstueckliste und Zeichnung leiten OHNE Modul 1 denselben Satz ab',
+    BOM.einbauteile(wMit).length === stuecke(wMit).length
+    && BOM.semblaBomItems(wMit).filter(p => /^rod_/.test(p.key) && p.menge > 0)
+         .every(p => stuecke(wMit).some(s => s.len_mm === p.mass_mm))
+    && ZEI.einbauteilZeilen(wMit).length > 0 && ZEI.konfliktZeilen(wMit).length === 0);
+  GP.undo(); await warte();
+  ok('[K-10] Rueckgaengig nimmt die gezeichnete Wand samt Wandelement zurueck',
+    !store.holeElement(idMit) && !MAPPE.findeWand(store.holeMappe(), idMit));
+  GP.redo(); await warte();
+  const zurueckMit = store.holeElement(idMit);
+  ok('… und Wiederholen stellt genau den katalogbasierten Stand wieder her',
+    !!zurueckMit
+    && JSON.stringify(zurueckMit.wandelement.prestress.rod_lengths_mm) === '[1000,850]'
+    && zurueckMit.wandelement.prestress.rod_rest_mm === 100);
 }
 
 let fail = 0;

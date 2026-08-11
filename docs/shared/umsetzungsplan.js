@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "35206589",
+  "signatur": "b2078a53",
   "entscheidungen": [
     {
       "issue": 41,
@@ -99,7 +99,7 @@ export const PLAN = {
     "sicherheit": true,
     "abhaengig_von": [],
     "zyklus": true,
-    "begruendung": "Abnahme gescheitert und durch #62 bestätigt: Der reale Neuanlegefluss speichert 1100 mm als echte Vorspanngeometrie. Zeichnung und Stückliste lesen falsches JSON; Baubarkeit und Baustellenausgabe sind betroffen."
+    "begruendung": "Der Neuanlegefehler bei Gewindestangen ist behoben. Offen bleiben die noch nicht abgenommenen Komponenten, Einbauteil-IDs und die Realwand-Abnahme der vollständigen technischen Zeichnung; als Sicherheitsausgabe bleibt #15 vorn."
   },
   "weitere": [
     {

@@ -436,7 +436,7 @@
 <script type="module">
   import { mountNavbar, MODULE } from './shared/navbar.js';
   import * as store from './shared/storage.js';
-  import { buildWall } from './shared/sembla-core.js';
+  import * as WA from './shared/sembla-wandanlage.js';
   import { baueDateien } from './shared/sembla-export.js';
   import { downloadZip, entpacke } from './shared/zip.js';
   import * as ARCHIV from './shared/sembla-archiv.js';
@@ -1093,8 +1093,10 @@
   // =====================================================================
   //  Popup Wand (Anlegen / Umbenennen / Import)
   // =====================================================================
-  // Beim ANLEGEN entsteht das Wandelement hier (buildWall) und wandert sofort in das
-  // gewaehlte Geschoss — ohne Lage ([L-4]). Beim BEARBEITEN ist ausschliesslich der
+  // Beim ANLEGEN entsteht das Wandelement hier ueber den gemeinsamen Anlagepfad
+  // `sembla-wandanlage.js` und wandert sofort in das gewaehlte Geschoss — ohne Lage
+  // ([L-4]). Der Gewindestangen-Zuschnitt wird NACH der Katalogvorbelegung neu
+  // gerechnet (#15/#62). Beim BEARBEITEN ist ausschliesslich der
   // Name aenderbar: Laenge, Hoehe, Oeffnungen und Auslegung gehoeren Modul 1, dem
   // einzigen Schreiber des Wandelements ([P-1]).
   const wpOverlay = $('wp-overlay');
@@ -1171,26 +1173,12 @@
     const name = String($('f-name').value || '').trim() || 'Neue Wand';
     const l = Number($('f-laenge').value);
     const h = Number($('f-hoehe').value);
-    let id;
-    try {
-      const we = buildWall(name, l, h, []);
-      // Wandtyp ist ein Fachmerkmal der Wand und wird NUR hier (bei der Anlage) gewaehlt.
-      we.wandtyp = store.normWandtyp($('f-wandtyp').value);
-      id = store.speichere(name, we);
-    } catch (e) { zeige('Fehler: ' + fehlerText(e), false); return; }
-
-    // Erst eintragen, dann aktiv setzen: nach [L-10] ist eine eingetragene Wand nur in
-    // ihrem AKTIVEN Geschoss aktivierbar.
-    const ort = wandEintragen(id, name, gsId);
-    wpSchliesse();
-    trZeige('Angelegt: ' + name + ort, true);
-    neuId = id; neuScroll = true;
-    trRender();
-
-    // [P-18] Startklar statt leer — laeuft NACH der Erfolgsmeldung und kann das Anlegen
-    // nicht mehr gefaehrden: Ist dem Projekt noch KEIN Katalog zugeordnet, wird der
-    // mitgelieferte Standardkatalog geholt. Danach uebernehmen alle noch LEEREN
-    // Verwendungsrollen die Standardauswahl des Katalogs.
+    // [P-18] Startklar statt leer — und zwar VOR der Anlage (#15/#62): ist dem Projekt noch
+    // KEIN Katalog zugeordnet, wird zuerst der mitgelieferte Standardkatalog geholt. Erst
+    // danach entsteht das Wandelement, damit es von Anfang an mit den katalogbasierten
+    // Gewindestangenlaengen gerechnet wird. Frueher lief das umgekehrt: das Element wurde mit
+    // dem Altstand-Fallback des Cores gespeichert und erst hinterher nachgerechnet — Zeichnung
+    // und Stueckliste lasen in der Zwischenzeit einen falschen Stand.
     const nach = [];
     if (!store.holeKatalog()) {
       try {
@@ -1199,11 +1187,30 @@
         katLaden();
       } catch (e) { nach.push('Standardkatalog nicht ladbar (' + fehlerText(e) + ')'); }
     }
-    const vb = store.vorbelegeProduktrollen(undefined, id);
-    const n = Object.keys(vb.gesetzt).length;
+
+    let id, anlage;
+    try {
+      // Wandtyp ist ein Fachmerkmal der Wand und wird NUR hier (bei der Anlage) gewaehlt.
+      // Der gemeinsame Anlagepfad schreibt GENAU EINMAL — den fertigen Stand samt
+      // vorbelegten Verwendungsstellen.
+      anlage = WA.legeWandAn(store, { name, laenge_mm: l, hoehe_mm: h,
+        wandtyp: $('f-wandtyp').value });
+      id = anlage.id;
+    } catch (e) { zeige('Fehler: ' + fehlerText(e), false); return; }
+    const n = Object.keys(anlage.gesetzt).length;
     if (n) nach.push(`${n} Verwendungsstelle(n) aus dem Katalog vorbelegt`);
-    if (vb.offen.length) nach.push(`ohne Standardprodukt: ${vb.offen.join(', ')}`);
-    if (nach.length) trZeige('Angelegt: ' + name + ort + ' · ' + nach.join(' · '), true);
+    if (anlage.offen.length) nach.push(`ohne Standardprodukt: ${anlage.offen.join(', ')}`);
+    const vt = WA.vorspannText(anlage.vorgaben);
+    if (vt) nach.push(vt);
+
+    // Erst eintragen, dann aktiv setzen: nach [L-10] ist eine eingetragene Wand nur in
+    // ihrem AKTIVEN Geschoss aktivierbar.
+    const ort = wandEintragen(id, name, gsId);
+    wpSchliesse();
+    // Genau EINE Rueckmeldung — sie beschreibt den Stand, der auch wirklich gespeichert ist.
+    trZeige('Angelegt: ' + name + ort + (nach.length ? ' · ' + nach.join(' · ') : ''), true);
+    neuId = id; neuScroll = true;
+    trRender();
   });
 
   /**

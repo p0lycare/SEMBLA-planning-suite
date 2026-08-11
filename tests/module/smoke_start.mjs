@@ -151,6 +151,7 @@ URL.revokeObjectURL = () => {};
 // --- Abhaengigkeiten wie im Browser ---------------------------------------
 const store = await import("../../docs/shared/storage.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
+const WA = await import("../../docs/shared/sembla-wandanlage.js");
 const { MODULE } = await import("../../docs/shared/navbar.js");
 const { baueDateien, stuecklistePositionen } = await import("../../docs/shared/sembla-export.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
@@ -163,11 +164,11 @@ const { entpacke, zipSync } = await import("../../docs/shared/zip.js");
 const html = readFileSync(new URL("../../docs/index.html", import.meta.url), "utf8");
 const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
-const BINDUNGEN = ["mountNavbar","MODULE","store","buildWall","baueDateien","downloadZip",
+const BINDUNGEN = ["mountNavbar","MODULE","store","WA","baueDateien","downloadZip",
                    "entpacke","ARCHIV","KAT","MAPPE","PLAN"];
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
 new Function(...BINDUNGEN, src)(
-  () => {}, MODULE, store, buildWall, baueDateien, (name, files) => zipCalls.push({ name, files }),
+  () => {}, MODULE, store, WA, baueDateien, (name, files) => zipCalls.push({ name, files }),
   entpacke, ARCHIV, KAT, MAPPE, PLAN
 );
 
@@ -199,14 +200,16 @@ function geschossAnlegen(projektId, name, hoehe){
   $('gp-speichern').dispatch('click');
   return store.aktivesGeschossId();
 }
-/** Wand ueber den echten Dialog anlegen (Popup oeffnen -> Felder -> „Anlegen"). */
-function wandAnlegen(geschossId, { name, laenge = 2000, hoehe = 2600, wandtyp = 'mit_wind' }){
+/** Wand ueber den echten Dialog anlegen (Popup oeffnen -> Felder -> „Anlegen").
+ *  Der Handler ist ECHT asynchron: er stellt vor der Anlage sicher, dass ein Katalog da
+ *  ist ([P-18], #15/#62), und legt die Wand erst danach an — in EINEM Schreibvorgang. */
+async function wandAnlegen(geschossId, { name, laenge = 2000, hoehe = 2600, wandtyp = 'mit_wind' }){
   baum('wand-neu', geschossId);
   $('f-name').value = name;
   $('f-laenge').value = String(laenge);
   $('f-hoehe').value = String(hoehe);
   $('f-wandtyp').value = wandtyp;
-  $('btn-neu').dispatch('click');
+  await $('btn-neu').dispatch('click');
   return store.aktivId();
 }
 
@@ -223,7 +226,7 @@ ok('Auswahl bietet genau mit_wind/ohne_wind',
   /value="mit_wind"[^>]*selected/.test(html) && /value="ohne_wind"/.test(html));
 
 // --- 2) Anlegen mit gewaehltem Wandtyp -> steht am Wandelement (M1) --------
-const idOhneWind = wandAnlegen(gs0, { name:'Wand ohne Wind', wandtyp:'ohne_wind' });
+const idOhneWind = await wandAnlegen(gs0, { name:'Wand ohne Wind', wandtyp:'ohne_wind' });
 const we1=store.aktivesWandelement();
 ok('Anlegen setzt aktives Wandelement', !!we1 && we1.length_mm===2000);
 ok('gewaehlter Wandtyp am Wandelement gespeichert', we1.wandtyp==='ohne_wind');
@@ -234,13 +237,13 @@ ok('[L-4] die neue Wand ist im Geschoss eingetragen — ohne erfundene Lage',
 ok('[L-10] die Wand des aktiven Geschosses wird dabei aktiv gesetzt', store.aktivId() === idOhneWind);
 ok('Wand-Dialog schliesst nach dem Anlegen', $('wp-overlay').hidden === true);
 
-wandAnlegen(gs0, { name:'Wand mit Wind', wandtyp:'mit_wind' });
+await wandAnlegen(gs0, { name:'Wand mit Wind', wandtyp:'mit_wind' });
 ok('zweites Element mit eigenem Wandtyp', store.aktivesWandelement().wandtyp==='mit_wind');
 ok('erstes Element behaelt seinen Wandtyp',
   store.listeElemente().find(e=>e.name==='Wand ohne Wind').wandelement.wandtyp==='ohne_wind');
 
 // unsinnige Auswahl faellt auf den kompatiblen Standard zurueck
-wandAnlegen(gs0, { name:'Wand kaputt', wandtyp:'quatsch' });
+await wandAnlegen(gs0, { name:'Wand kaputt', wandtyp:'quatsch' });
 ok('unbekannter Wert -> Standard mit_wind', store.aktivesWandelement().wandtyp==='mit_wind');
 
 // --- 3) Wandtyp reist im Projekt-Export mit, Format bleibt v2 (M8/N4) ------
@@ -1175,7 +1178,7 @@ globalThis.fetch = echtesFetch;
   ok('[L-11] Kopfdaten stehen am Projekt, nicht am Wandelement',
     store.holeMappe().projekt.kopfdaten.bauherr === 'AWG eG'
     && store.holeMappe().projekt.kopfdaten.plan_nr === '07');
-  const idB = wandAnlegen(gsB, { name:'Wand Süd 1' });
+  const idB = await wandAnlegen(gsB, { name:'Wand Süd 1' });
   await new Promise(r => setTimeout(r, 0));      // [P-18]-Nachlauf des Anlege-Handlers abwarten
   ok('[L-11] die Wand des Projekts bekommt dessen Kopfdaten', (() => {
     const k = store.wirksameKopfdaten(idB);
@@ -1548,9 +1551,9 @@ globalThis.fetch = echtesFetch;
   const gsEg = store.aktivesGeschossId();
   const gsOg = geschossAnlegen(prjA.projekt.id, 'OG', 2400);
   store.setzeAktivesGeschoss(gsEg);
-  const wEg = wandAnlegen(gsEg, { name: 'EG-W01', laenge: 3000, hoehe: 2400 });
+  const wEg = await wandAnlegen(gsEg, { name: 'EG-W01', laenge: 3000, hoehe: 2400 });
   store.setzeAktivesGeschoss(gsOg);
-  const wOg = wandAnlegen(gsOg, { name: 'OG-W01', laenge: 2000, hoehe: 2400, wandtyp: 'ohne_wind' });
+  const wOg = await wandAnlegen(gsOg, { name: 'OG-W01', laenge: 2000, hoehe: 2400, wandtyp: 'ohne_wind' });
 
   // `wandAnlegen` startet nach dem unmittelbaren Speichern noch die asynchrone
   // Standardkatalog-Vorbelegung. Sie gehoert zum echten Produktweg und muss vor
@@ -1780,6 +1783,90 @@ globalThis.fetch = echtesFetch;
     && checks.some(([n, c]) => n === 'Klick auf „Export" oeffnet den Dialog' && c));
 }
 
+// --- 12) Neuanlage speichert den katalogbasierten Zuschnitt (#15/#62) -----
+// Der reale Weg: Wand ueber den ECHTEN Anlegen-Handler erzeugen und danach SOFORT das
+// gespeicherte JSON lesen — ohne Modul 1 auch nur zu beruehren. Frueher stand hier der
+// Altstand-Fallback des Cores (1100 mm) im Element, weil `buildWall` VOR der
+// Katalogvorbelegung lief; Zeichnung und Stueckliste lasen damit einen falschen Stand.
+{
+  const warte = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 0)); };
+  const BOM = await import("../../docs/shared/sembla-bom.js");
+  const ZEI = await import("../../docs/shared/sembla-zeichnung.js");
+  const stuecke = (w) => (w.tension_columns || []).flatMap(c => (c.segments || []).flatMap(sg => sg.stuecke || []));
+
+  // Frischer Stand: eigenes Projekt, eigenes Geschoss, KEIN Katalog — damit der Handler
+  // seinen echten Weg geht und den Standardkatalog selbst nachlaedt ([P-18]).
+  const altStand = localStorage.getItem('sembla:kataloge');
+  const altAktiv = localStorage.getItem('sembla:aktiv:katalog');
+  localStorage.removeItem('sembla:kataloge'); localStorage.removeItem('sembla:aktiv:katalog');
+  const prjZ = projektAnlegen('Zuschnittprojekt');
+  const gsZ = store.aktivesGeschossId();
+  store.setzeProjektKatalog(null);
+
+  // Jeden Schreibvorgang am Wandspeicher mitschreiben: so faellt ein initial persistierter
+  // Fallback-Stand auf, selbst wenn er unmittelbar danach ueberschrieben wuerde (#15/#62).
+  const schreibfolge = [];
+  const echtesSetItem = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = (k, v) => { if (k === 'sembla:elemente') schreibfolge.push(String(v)); return echtesSetItem(k, v); };
+  const idZ = await wandAnlegen(gsZ, { name: 'Zuschnitt-Wand', laenge: 2000, hoehe: 2600 });
+  await warte();                                   // asynchrone Fortsetzung des Klick-Handlers
+  localStorage.setItem = echtesSetItem;
+  const wZ = store.holeElement(idZ).wandelement;   // GESPEICHERTER Stand
+
+  const neueStaende = schreibfolge.filter(v => !!JSON.parse(v)[idZ]);
+  ok('#15 die Wand wird GENAU EINMAL in den Wandspeicher geschrieben',
+    neueStaende.length === 1);
+  // Geprueft wird der EINTRAG DIESER WAND in jedem geschriebenen Stand — fuer Altbestand
+  // im uebrigen Speicher gilt der 1100-mm-Fallback weiterhin.
+  ok('#62 zu KEINEM Zeitpunkt stand ein 1100-mm-Zwischenstand dieser Wand im Speicher',
+    neueStaende.length > 0
+    && neueStaende.every(v => !JSON.stringify(JSON.parse(v)[idZ]).includes('1100')));
+  ok('#15 schon der erste geschriebene Stand traegt Kataloglaengen und Reststueck',
+    JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_rest_mm === 100
+    && JSON.stringify(JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_lengths_mm) === '[1000,850]');
+  ok('[P-18] und im selben Stand stehen bereits die vorbelegten Verwendungsstellen',
+    (JSON.parse(neueStaende[0])[idZ].eingaben?.planung?.produkte?.rollen?.rod_std || []).length === 2);
+  ok('#15 es gibt nur EINE Rueckmeldung — keine ueber einen Zwischenstand',
+    /Angelegt/.test(trMsgTxt()) && /Reststück 100 mm/.test(trMsgTxt()) && !trFehler());
+
+  ok('#15 der Anlegen-Handler laedt den Standardkatalog und belegt vor ([P-18])',
+    !!store.holeKatalog() && store.holeProdukte(1, idZ).rollen.rod_std.length === 2);
+  ok('#15 das unmittelbar gespeicherte JSON traegt die Kataloglaengen',
+    JSON.stringify(wZ.prestress.rod_lengths_mm) === '[1000,850]' && wZ.rod_mm === 1000);
+  ok('#15 [Z-6] das Reststueck steht in der Vorspannung und oben in den Stuecken',
+    wZ.prestress.rod_rest_mm === 100
+    && wZ.tension_columns.every(c => c.segments.every(sg =>
+         sg.z1_mm !== wZ.height_mm || sg.stuecke[sg.stuecke.length - 1].art === 'rest')));
+  ok('#62 keine erfundene 1100-mm-Stange im gespeicherten Stand',
+    !JSON.stringify(wZ).includes('1100')
+    && stuecke(wZ).every(s => s.len_mm === 1000 || s.len_mm === 850 || s.art !== 'standard'));
+  ok('#62 Baustellenstueckliste und Zeichnung leiten OHNE Modul 1 denselben Satz ab',
+    BOM.einbauteile(wZ).length === stuecke(wZ).length
+    && BOM.semblaBomItems(wZ).filter(p => /^rod_/.test(p.key) && p.menge > 0)
+         .every(p => stuecke(wZ).some(s => s.len_mm === p.mass_mm))
+    && ZEI.einbauteilZeilen(wZ).length > 0 && ZEI.konfliktZeilen(wZ).length === 0);
+
+  // Katalog OHNE Gewindestange: keine Auswahl -> keine erfundene Laenge, sichtbar offen.
+  const leer = { format: 'SEMBLA-Bauteilkatalog', version: KAT.KATALOG_VERSION, name: 'Katalog ohne Stangen',
+    produkte: [{ id: 'stein-i3-375', kategorie: 'stein', bezeichnung: 'Stein i3',
+                 einheit: 'Stk', preis: 9.5, breite_mm: 375, rollen: ['i3'] }] };
+  store.importiereKatalogText(JSON.stringify(leer));
+  const idL = await wandAnlegen(gsZ, { name: 'Wand ohne Stangen', laenge: 2000, hoehe: 2600 });
+  await warte();
+  const wL = store.holeElement(idL).wandelement;
+  ok('#62 ohne gewaehlte Standardlaenge steht KEIN rod_lengths_mm:[1100] im Neubestand',
+    wL.prestress.rod_lengths_mm.length === 0 && wL.rod_mm === null
+    && !JSON.stringify(wL).includes('1100'));
+  ok('#62 und kein reales 1100-mm-Stueck', stuecke(wL).length === 0 && BOM.einbauteile(wL).length === 0);
+  ok('der fehlende Zuschnitt bleibt sichtbar offen ([Z-1])',
+    wL.validation.zuschnitt_konflikte.length > 0
+    && wL.validation.zuschnitt_konflikte.every(k => k.grund === 'keine_standardlaenge')
+    && /keine Gewindestangen-Standardlänge/.test(trMsgTxt()));
+
+  if (altStand !== null) localStorage.setItem('sembla:kataloge', altStand);
+  if (altAktiv !== null) localStorage.setItem('sembla:aktiv:katalog', altAktiv);
+}
+
 // --- 10) KEIN Autoload beim Initialisieren (Issue #33) --------------------
 // Steht bewusst am ENDE: der Block erzeugt eine ZWEITE Instanz des Modul-0-Codes.
 // Die haengt sich ebenfalls an store.abonniere und wuerde die Baumliste der ersten
@@ -1797,7 +1884,7 @@ globalThis.document = {
 };
 globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return { ok:true, status:200, text: async () => '{}' }; };
 new Function(...BINDUNGEN, src)(
-  () => {}, MODULE, store, buildWall, baueDateien, () => {}, entpacke, ARCHIV, KAT, MAPPE, PLAN);
+  () => {}, MODULE, store, WA, baueDateien, () => {}, entpacke, ARCHIV, KAT, MAPPE, PLAN);
 const frischKatalog = globalThis.localStorage.getItem('sembla:kataloge');
 const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
 globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
