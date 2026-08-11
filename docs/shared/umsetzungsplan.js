@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "965504a7",
+  "signatur": "a739164f",
   "entscheidungen": [
     {
       "issue": 20,
@@ -121,25 +121,16 @@ export const PLAN = {
     }
   ],
   "naechstes": {
-    "issue": 15,
-    "titel": "Ausgabe: Technische Wandzeichnung mit allen Komponenten",
+    "issue": 22,
+    "titel": "Modul 4: Reine Baustellenstückliste mit Einbauteil-IDs und Fertigmaßen",
     "prio": "high",
     "status": "ready",
-    "sicherheit": true,
+    "sicherheit": false,
     "abhaengig_von": [],
     "zyklus": true,
-    "begruendung": "Höchste Priorität im laufenden Zyklus und baubarkeitsrelevant: das obere Reststück der Gewindestange fehlt in Zeichnung und Stückliste. Zuerst ist das Datenmodell zu prüfen, danach, ob weitere Module davon abweichen."
+    "begruendung": "Höchste Priorität im laufenden Zyklus, umsetzungsreif und ohne offene Abhängigkeit; die Gesamtstückliste aus Issue 44 wartet ausschließlich darauf, weil sie die Summe der wandweisen Baustellenstücklisten ist."
   },
   "weitere": [
-    {
-      "issue": 22,
-      "titel": "Modul 4: Reine Baustellenstückliste mit Einbauteil-IDs und Fertigmaßen",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
     {
       "issue": 56,
       "titel": "Längenänderungen und Erstellen der Wand nur im Geschosseditor",
@@ -160,7 +151,7 @@ export const PLAN = {
     },
     {
       "issue": 58,
-      "titel": "Stückliste benutzbar machen",
+      "titel": "Stückliste benutzbar machen: keine Vorläufigkeitstexte, n.a. statt Begründung, ohne Beplankung",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": false,
@@ -169,7 +160,16 @@ export const PLAN = {
     },
     {
       "issue": 59,
-      "titel": "Lageplan: Rückmeldungen zu Kennzeichnung, Maßen und Schriftfeld",
+      "titel": "Lageplan: Wandnummern mit Liste, schlanker Zeichnungskopf, keine Nullmaße, Ursprung und Elementbreite",
+      "prio": "ohne",
+      "status": "ohne",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
+      "issue": 60,
+      "titel": "Fixierwerkzeug ersetzen: Bemaßung unmittelbar gegen den auswählbaren Ursprung",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": false,
