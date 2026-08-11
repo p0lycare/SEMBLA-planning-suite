@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-05",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 58,
+    titel: "Modul 4 zeigt die Baustellenstückliste jetzt kompakt und druckbar",
+    testbitte: "Reiter 4 öffnen und drucken: Lange Einbauteil-ID-Listen müssen innerhalb der Tabelle umbrechen. "
+      + "Fehlende Einzel- und Gesamtpreise müssen als n.a. erscheinen; Latten, Platten und Verbinder bleiben ausgeschlossen.",
+  },
+  {
     id: "chg-20260811-04",
     datum: "2026-08-11",
     typ: "fix",

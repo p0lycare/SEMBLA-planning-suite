@@ -5,116 +5,98 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEMBLA · Baustellenstückliste (Einbauteile)</title>
 <style>
-  .intro{max-width:1180px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:13px}
+  /* Modul 4 ist ein ARBEITSBLATT (#58/#62): oben eine schmale Bedienzeile, darunter genau das
+     Blatt (Kopf, Tabelle, Kennzeichnung, Summe). Bildschirmhilfen bleiben kurz und werden im
+     Druck ausgeblendet. */
+  .intro{max-width:1180px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:12.5px}
   .intro b{color:var(--sb-ink)}
-  .wrap{display:flex;gap:18px;padding:14px 20px 22px;align-items:flex-start;flex-wrap:wrap;max-width:1180px;margin:0 auto}
-  .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
-  .controls{width:300px;flex:0 0 300px}
-  .stage{flex:1 1 560px;min-width:440px}
-  h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);margin:0 0 10px}
-  button{padding:9px 11px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
-  button.primary{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent);width:100%}
-  .btnrow{display:flex;gap:8px;margin-top:10px}.btnrow button{flex:1}
-  label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:7px 0;font-size:13px}
-  input[type=number],input[type=text]{width:120px;padding:5px 7px;border:1px solid var(--sb-line);border-radius:6px;font-size:13px;text-align:right;background:#fff}
-  input[type=text]{text-align:left}
-  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  .wrap{padding:10px 20px 22px;max-width:1180px;margin:0 auto}
+  .kopfleiste{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+  .kopfleiste label{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--sb-muted)}
+  button{padding:8px 13px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  .kopfleiste button{margin-left:auto}
+  input[type=text]{width:150px;padding:5px 7px;border:1px solid var(--sb-line);border-radius:6px;font-size:13px;background:#fff}
+  .blatt{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
+  /* Blattkopf: die Wandreferenz steht EINMAL hier statt in jeder Zeile — die Liste ist immer
+     genau eine Wand. Derselbe Kopf ist der Druckkopf. */
+  .kopf{border-bottom:1px solid var(--sb-line);padding-bottom:9px;margin-bottom:4px}
+  .kopf-titel{font-size:14px;font-weight:700;color:var(--sb-ink)}
+  .kopf-zeile{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--sb-muted);margin-top:3px}
+  .kopf-zeile b{color:var(--sb-ink);font-weight:600}
+  /* table-layout:fixed + colgroup: NUR so halten sich die Einbauteil-IDs an ihre Spaltenbreite.
+     Ohne festes Layout ignoriert der Browser jede Breitenangabe an der Zelle, und lange
+     ID-Listen sprengen die Tabelle (#62). */
+  table{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;margin-top:8px}
   th{font-size:11px;color:var(--sb-muted);text-align:right;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--sb-line)}
   th:first-child{text-align:left}
-  td{padding:5px 8px;border-bottom:1px solid var(--sb-line);text-align:right;font-variant-numeric:tabular-nums}
+  td{padding:5px 8px;border-bottom:1px solid var(--sb-line);text-align:right;
+     font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
   td:first-child{text-align:left}
-  td input{width:92px}
   tr.sum td{font-weight:700;border-top:2px solid #cdd3da;background:#f7f9fb}
-  .grp{margin-bottom:13px}
-  .res{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:13px;margin-top:8px}
-  .res .k{color:var(--sb-muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
-  .hint{font-size:11.5px;color:var(--sb-muted);margin-top:14px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
-  .big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
-  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600}
-  .badge.ok{background:#e3f5ea;color:var(--sb-ok)}.badge.no{background:#fbe6dd;color:#c9461c}
-  /* Preisauflösung: Status je Zeile + Sammelwarnung */
-  .warnbox{border:1px solid #d9a441;background:#fdf7ec;color:#6b4a08;border-radius:9px;padding:9px 11px;
-           margin:0 0 10px;font-size:12px;line-height:1.5}
-  .warnbox b{color:#5a3d05} .warnbox ul{margin:5px 0 0;padding-left:18px} .warnbox li{margin:2px 0}
-  td.prod{text-align:left;font-size:12px}
-  td.prod .pid{color:var(--sb-muted)}
-  .st{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
-  .st.no{background:#fbe6dd;color:#c9461c} .st.warn{background:#fdf3e6;color:#8a5300}
-  .st.mute{background:#eef2f7;color:#5b6673}
-  tr.offen td{background:#fffaf3}
-  .vorl{color:#8a5300;font-size:11px;display:block;margin-top:2px}
+  tr.sum td:first-child{text-align:left}
+  /* Preisgrund nach [P-14]: sichtbar, aber knapp und sekundär — die Preiszellen selbst tragen
+     ausschliesslich „n.a.“, nie einen Status und nie eine 0. */
+  .grund{font-size:11px;color:#8a5300;font-weight:400;margin-top:1px}
+  td.na{color:var(--sb-muted)}
   /* Einbauteil-Kennzeichnung ([P-19]): Symbol + Klartext tragen die Aussage, die Farbe ist
      nur redundante Zugabe — im Schwarz-Weiß-Druck bleibt die Zeile vollständig lesbar. */
-  td.art{text-align:left;white-space:nowrap;font-size:12px}
+  td.art{text-align:left;font-size:12px}
   td.art .sym{font-weight:700;margin-right:4px}
   td.art.standard .sym{color:#1f6feb} td.art.sonder .sym{color:#e8702a} td.art.rest .sym{color:#7a3fd6}
   td.art.sonder{font-weight:600}
   td.ids{text-align:left;font-size:11px;font-family:Consolas,ui-monospace,monospace;color:#46505e;
-         word-break:break-word;max-width:260px}
-  td.wand{text-align:left;font-size:12px;color:var(--sb-muted)}
-  .kennz{font-size:11.5px;color:var(--sb-muted);margin-top:10px;border-top:1px solid var(--sb-line);
-         padding-top:8px;line-height:1.6}
+         word-break:break-all;overflow-wrap:anywhere}
+  .kennz{font-size:11.5px;color:var(--sb-muted);margin-top:10px;line-height:1.6}
   .kennz b{color:var(--sb-ink)}
   .kennz .sym{font-weight:700;margin-right:3px}
+  tr.sum td.stand{font-weight:600;font-size:12px;color:var(--sb-ink)}
+  /* Druck: das Blatt und sonst nichts. Die Kopfleiste aus navbar.js heisst `.sb-nav` (sticky,
+     z-index 50) — sie MUSS ausgeblendet werden, sonst schwebt sie ueber dem PDF. Ebenso jede
+     Eingabebedienung und jede Bildschirmhilfe; gedruckt werden Kopf, Tabelle und die nach
+     [P-19] noetige Kennzeichnungslegende. */
+  @page{size:A4 portrait;margin:12mm}
+  @media print{
+    .sb-nav,.intro,.kopfleiste{display:none!important}
+    input,select,textarea,button{display:none!important}
+    html,body{background:#fff;margin:0}
+    .wrap{padding:0;margin:0;max-width:none}
+    .blatt{border:none;border-radius:0;padding:0;background:#fff;box-shadow:none}
+    table{font-size:10.5px} td.ids{font-size:9px}
+    thead{display:table-header-group}
+    tr{break-inside:avoid;page-break-inside:avoid}
+    *{box-shadow:none!important}
+  }
 </style>
 </head>
 <body>
-<p class="intro"><b>Baustellenstückliste (Einbauteile).</b> Die real einzubauenden Teile des
-  <b>aktiven Wandelements</b> (aus „Wand planen") in ihren <b>Fertigmaßen</b> — Steine, Vorspannung,
-  Anschluss und Fugen. <b>Gewindestangenstücke tragen zusätzlich ihre Einbauteil-ID</b>: gleichartige
-  Fertigteile stehen als eine Zeile, die Einzel-IDs bleiben daneben sichtbar und stehen mit derselben
-  Kennung in der <b>technischen Zeichnung</b> (Modul 7). <b>Latten, Platten und Verbinder der
-  Beplankung (Modul 2) sind hier nicht enthalten</b>, solange die Beplankung nicht neu aufgesetzt ist.
-  <b>Preise werden hier nicht gepflegt:</b> sie kommen read-only aus dem <b>Bauteilkatalog</b> über die
-  in Modul 1 gewählten Produkte. Fehlt eine eindeutige Zuordnung, bleibt die Zeile <b>ohne Preis</b>
-  mit benanntem Grund — es wird kein Nullpreis erfunden und keine Menge verändert.
-  Der Datei-Export (Baustellenstückliste/ZIP) sitzt zentral auf der Startseite.</p>
+<p class="intro">Die real einzubauenden Teile des <b>aktiven Wandelements</b> in ihren
+  <b>Fertigmaßen</b>. <b>Preise pflegt ausschließlich Modul 0</b> im Bauteilkatalog, die Produkte
+  wählt Modul 1; ohne eindeutige Zuordnung bleibt die Zeile ohne Preis (<b>n.a.</b>) — nie ein
+  Nullpreis, nie eine veränderte Menge. Datei-Export zentral auf der Startseite.</p>
 <div class="wrap">
-  <div class="panel controls">
-    <h2>Wandelement</h2>
-    <div id="info" style="font-size:12.5px;color:var(--sb-muted);margin-top:2px">–</div>
-    <div class="grp" style="margin-top:14px">
-      <h2>Projekt</h2>
-      <label><span>Projektname</span><input type="text" id="proj" value="SEMBLA-Projekt"></label>
-      <label><span>Währung</span><input type="text" id="cur" value="EUR" style="width:80px"></label>
-    </div>
-    <div class="res">
-      <div class="k">Wandmaße</div><div class="v" id="ovDim">–</div>
-      <div class="k">Wandfläche</div><div class="v" id="ovArea">–</div>
-      <div class="k">Nachweis</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
-    </div>
-    <div class="res" style="margin-top:12px">
-      <div class="k">Bauteilkatalog</div><div class="v" id="ovKat" style="font-weight:500;text-align:right">–</div>
-      <div class="k">Bepreiste Positionen</div><div class="v" id="ovPreise">–</div>
-    </div>
-    <div class="res" style="margin-top:12px">
-      <div class="k">Einbauteile mit ID</div><div class="v" id="ovTeile">–</div>
-    </div>
-    <div class="btnrow"><button id="print">Drucken</button></div>
-    <div class="hint"><b>Ein Datenmodell.</b> Alle Mengen ergeben sich frisch aus dem aktiven
-      Wandelement — es wird nichts zwischengespeichert. Die <b>Einbauteil-IDs</b> der
-      Gewindestangenstücke folgen dem Schema
-      <b>GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt;</b> und sind damit am
-      Zeichnungsblatt wiederzufinden. <b>Preise pflegt ausschließlich Modul 0</b> im Bauteilkatalog;
-      welches Produkt eine Position ausführt, wird in Modul 1 gewählt. Hier ist nur die
-      <b>Währung</b> und der Projektname editierbar. Datei-Export zentral auf der Startseite.</div>
+  <!-- Bedienzeile: nur die zwei echten Eingaben und der Druckknopf. Sie steht im Quelltext VOR
+       der Tabelle, damit im Blatt selbst kein Eingabefeld liegt. -->
+  <div class="kopfleiste">
+    <label><span>Projekt</span><input type="text" id="proj" value="SEMBLA-Projekt"></label>
+    <label><span>Währung</span><input type="text" id="cur" value="EUR" style="width:70px"></label>
+    <button id="print">Drucken</button>
   </div>
 
-  <div class="panel stage">
-    <h2>Baustellenstückliste · Einbauteile</h2>
-    <div class="warnbox" id="warnbox" hidden></div>
+  <div class="blatt">
+    <div class="kopf" id="printkopf"></div>
     <table id="tbl">
-      <thead><tr><th>Einbauteil</th><th>Art</th><th>Fertigmaß</th><th>Wand</th><th>Einheit</th><th>Menge</th>
-        <th>Einbauteil-IDs</th><th>Produkt (Katalog)</th><th>EP</th><th>GP</th></tr></thead>
+      <colgroup>
+        <col style="width:26%"><col style="width:12%"><col style="width:10%"><col style="width:10%">
+        <col style="width:26%"><col style="width:8%"><col style="width:8%">
+      </colgroup>
+      <thead><tr><th>Einbauteil</th><th>Art</th><th>Fertigmaß</th><th>Menge</th>
+        <th>Einbauteil-IDs</th><th>EP</th><th>GP</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
+    <!-- Summe UND Vollstaendigkeit stehen ausschliesslich in der Summenzeile der Tabelle
+         (tr.sum) — ein zweiter Summenblock darunter waere genau die erklaerende Wiederholung,
+         die #62 abstellt. -->
     <div class="kennz" id="kennz"></div>
-    <div style="display:flex;align-items:baseline;gap:14px;margin-top:16px">
-      <div><div class="big" id="grand">–</div><div class="k" style="color:var(--sb-muted)" id="grandNote">Summe netto</div></div>
-      <div style="margin-left:auto;text-align:right">
-        <div class="v" id="perm2" style="font-size:18px">–</div><div class="k" style="color:var(--sb-muted)">€ / m² Wandfläche</div>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -125,7 +107,7 @@
    auseinanderlaufen.
 
    EINBAUTEILE ([P-19]): Gewindestangenstücke tragen Art (Symbol + Klartext + Farbe),
-   Fertigmaß, Wandreferenz und die IDs ihrer Einzelteile. Gleichartige Fertigteile stehen als
+   Fertigmaß und die IDs ihrer Einzelteile. Gleichartige Fertigteile stehen als
    eine Zeile, die Einzel-IDs bleiben sichtbar und sind mit derselben Kennung im Zeichnungsblatt
    (Modul 7) wiederzufinden. Für Steine, Muttern, Bleche und Dichtstreifen gibt es KEINE
    Einzel-ID — der Rechenkern kennt dort keine Einzelteil-Identität, und es wird keine erfunden.
@@ -135,7 +117,15 @@
    ([P-14]) — über die in Modul 1 (eingaben.planung.produkte) gewählten Produkte. Ist die
    Zuordnung nicht eindeutig, bleibt die Zeile ohne Preis und nennt den Grund; Mengen bleiben
    davon unberührt. Editierbar sind nur Projektname und Währung. window.SEMBLA wird unten
-   gebunden (Node-Test). */
+   gebunden (Node-Test).
+
+   ARBEITSBLATT (#58/#62): Die Anzeige ist auf das reduziert, was auf der Baustelle gebraucht
+   wird — Einbauteil, Art, Fertigmaß, Menge und die vorhandenen Einbauteil-IDs. Die
+   WANDREFERENZ steht EINMAL im Blattkopf statt in jeder Zeile: die Liste ist immer genau eine
+   Wand, und die Wiederholung war reine Fülle (die CSV behält ihre Zeilen-Spalte unverändert).
+   Ein fehlender Preis ist einheitlich „n.a.“ — die Preiszelle trägt NIE einen Status und NIE
+   eine 0. Der nach [P-14] sichtbare GRUND steht knapp und sekundär unter dem Einbauteilnamen;
+   die frühere Sammelwarnung und die Produkt-/Katalogspalte sind ersatzlos entfallen. */
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -149,115 +139,86 @@ function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben
 // Positionen + Preisauflösung zentral (identisch zum ZIP-Export in Modul 0).
 function rows(){ return WALL ? stuecklistePositionen(WALL, eg(), KATALOG) : []; }
 
-// Klasse der Status-Pille: harte Zuordnungsfehler rot, offene Auswahl gelb, „nicht nötig“ grau.
-const ST={fehlt:'no',kategorie_abweichend:'no',einheit_unpassend:'no',mass_abweichend:'no',mehrdeutig:'no',
-  keine_auswahl:'warn',kein_katalog:'warn',nachrichtlich:'mute',ohne_position:'mute',nicht_erforderlich:'mute',
-  kombiniert:'mute',beschaffung:'mute'};   // [P-18] Zuschnitt/Beschaffung: bewusst kein Preis
+const SPALTEN=7;   // Einbauteil · Art · Fertigmaß · Menge · IDs · EP · GP
+const datum=()=>new Date().toLocaleDateString('de-DE');
+
+// Blattkopf: Projekt- und Wandreferenz EINMAL — am Bildschirm und im Druck derselbe Kopf.
+function renderKopf(w){
+  const projekt=(eg().projekt||{}).name || (w&&w.name) || 'SEMBLA-Projekt';
+  const bezug = w
+    ? `${esc(w.name||'Wandelement')} · ${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m`
+    : 'kein aktives Wandelement';
+  $('printkopf').innerHTML='<div class="kopf-titel">Baustellenstückliste · Einbauteile</div>'
+    +`<div class="kopf-zeile"><span><b>Projekt:</b> ${esc(projekt)}</span>`
+    +`<span><b>Wand:</b> ${bezug}</span><span><b>Datum:</b> ${esc(datum())}</span></div>`;
+}
 
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
 function renderLeer(){
-  $('ovDim').textContent='—'; $('ovArea').textContent='—';
-  $('ovBadge').textContent='—'; $('ovBadge').className='badge';
-  $('ovKat').textContent='—'; $('ovPreise').textContent='—'; $('ovTeile').textContent='—';
-  $('warnbox').hidden=true; $('warnbox').innerHTML='';
+  renderKopf(null);
   $('kennz').innerHTML='';
-  $('tbody').innerHTML='<tr><td colspan="10" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>';
-  $('grand').textContent='—'; $('perm2').textContent='—'; $('grandNote').textContent='Summe netto';
+  $('tbody').innerHTML=`<tr><td colspan="${SPALTEN}" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>`;
 }
 
 function render(){
   if(!WALL){ renderLeer(); return; }
   const w=WALL; const k=eg().kosten||{}; const cur=k.waehrung||'EUR';
-  $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
-  $('ovArea').textContent=fmt(wandflaeche(w),2)+' m²';
-  const st=w.verification&&w.verification.status, b=$('ovBadge');
-  if(st){ b.textContent=st; b.className='badge '+(st==='erfüllt'||st==='konvergiert'?'ok':'no'); } else { b.textContent='—'; b.className='badge'; }
-  $('ovKat').textContent = KATALOG ? (KATALOG.name+' (v'+(KATALOG.version||1)+')') : 'kein Katalog geladen';
+  renderKopf(w);
   const rs=rows(); const s=stuecklisteSumme(rs);
+  // Ohne Katalog hätte JEDE Zeile denselben Grund — das wäre wieder Fülltext. Er steht dann
+  // einmal an der Summe (s. u.), die Preiszellen bleiben trotzdem „n.a.“.
+  const keinKatalog=!KATALOG;
   let html='';
   rs.forEach(r=>{
-    const offen = r.bepreisbar && r.gp==null;
-    const prod = r.produkt
-      ? `<b>${esc(r.produkt.bezeichnung)}</b><br><span class="pid">${esc(r.produktId)} · ${esc(r.preisbasis||'')}</span>`
-        + (r.produkt.hinweis?`<span class="vorl">⚠ ${esc(r.produkt.hinweis)}</span>`:'')
-      : `<span class="st ${ST[r.status]||'mute'}">${esc(r.statusText)}</span>`;
-    // [P-19] Art als Symbol + Klartext (Farbe nur zusätzlich), Fertigmaß, Wandreferenz und die
-    // IDs der aggregierten Einzelteile. Positionen ohne Stückart bleiben ausdrücklich leer —
-    // es wird keine Art und keine ID erfunden.
+    // [P-19] Art als Symbol + Klartext (Farbe nur zusätzlich), Fertigmaß und die IDs der
+    // aggregierten Einzelteile. Positionen ohne Stückart bleiben ausdrücklich leer — es wird
+    // keine Art und keine ID erfunden.
     const art = r.art
       ? `<td class="art ${r.art}"><span class="sym">${esc(r.art_symbol)}</span>${esc(r.art_label)}</td>`
       : `<td class="art">–</td>`;
     const mass = r.fertigmass_mm!=null ? fmt(r.fertigmass_mm/10,1)+' cm' : '–';
     const ids = r.ids.length ? esc(r.ids.join(' ')) : '–';
-    html+=`<tr class="${offen?'offen':''}"><td>${esc(r.label)}</td>${art}`
-        +`<td>${mass}</td><td class="wand">${esc(r.wand||'–')}</td><td>${r.unit}</td>`
-        +`<td>${fmt(r.menge,(r.unit==='m²'||r.unit==='m')?2:0)}</td>`
+    // [P-14] Grund knapp und sekundär unter dem Namen — nie in der Preiszelle.
+    const grund = (r.gp==null && r.status!=='nicht_erforderlich' && !keinKatalog)
+      ? `<div class="grund">${esc(r.statusText)}</div>` : '';
+    const preis = v => v==null ? '<td class="na">n.a.</td>' : `<td>${fmt(v,2)}</td>`;
+    html+=`<tr><td>${esc(r.label)}${grund}</td>${art}`
+        +`<td>${mass}</td>`
+        +`<td>${fmt(r.menge,(r.unit==='m²'||r.unit==='m')?2:0)} ${esc(r.unit)}</td>`
         +`<td class="ids">${ids}</td>`
-        +`<td class="prod">${prod}</td>`
-        +`<td>${r.ep==null?'—':fmt(r.ep,2)}</td><td>${r.gp==null?'—':fmt(r.gp,2)}</td></tr>`;
+        +preis(r.ep)+preis(r.gp)+`</tr>`;
   });
-  html+=`<tr class="sum"><td>Summe netto${s.vollstaendig?'':' (unvollständig)'}</td>`
-      +`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`
-      +`<td>${fmt(s.summe,2)} ${esc(cur)}</td></tr>`;
+  // Summenzeile: Betrag UND Vollständigkeit stehen hier — und nur hier ([P-14]).
+  // Ist keine einzige Position bepreist, gibt es auch keinen Betrag: die Zelle zeigt `n.a.`
+  // statt einer erfundenen 0,00. Ist nur ein Teil bepreist, heißt der Betrag „Teilsumme“ —
+  // sonst läse sich ein unvollständiger Wert wie eine fertige Summe.
+  const stand = s.vollstaendig
+    ? 'Summe netto · alle '+s.bepreisbar+' Positionen bepreist'
+    : (s.bepreist>0 ? 'Teilsumme netto · ' : 'Summe netto · ')
+      + s.bepreist+' von '+s.bepreisbar+' Positionen bepreist';
+  html+=`<tr class="sum"><td class="stand" colspan="${SPALTEN-1}">${esc(stand)}`
+      +`${keinKatalog?' · kein Katalog geladen':''}</td>`
+      +(s.bepreist>0 ? `<td>${fmt(s.summe,2)} ${esc(cur)}</td>` : '<td class="na">n.a.</td>')
+      +`</tr>`;
   $('tbody').innerHTML=html;
   renderKennzeichnung(rs);
-  $('grand').textContent=fmt(s.summe,2)+' '+cur;
-  $('grandNote').textContent = s.vollstaendig
-    ? 'Summe netto · alle '+s.bepreisbar+' Positionen bepreist'
-    : 'Summe netto UNVOLLSTÄNDIG · '+s.bepreist+' von '+s.bepreisbar+' Positionen bepreist';
-  $('ovPreise').textContent = s.bepreist+' / '+s.bepreisbar;
-  $('perm2').textContent=fmt(s.summe/wandflaeche(w),2);
-  renderWarnungen(rs,s);
 }
 
 // Legende der Einbauteil-Kennzeichnung ([P-19]) — Symbol, Klartext und Farbe stehen
-// zusammen, damit die Liste auch schwarz-weiß gedruckt vollständig verständlich ist. Der
-// Zähler nennt, wie viele Einzelteile die aggregierten Zeilen tragen.
+// zusammen, damit die Liste auch schwarz-weiß gedruckt vollständig verständlich ist.
 function renderKennzeichnung(rs){
-  const teile=rs.reduce((a,r)=>a+r.ids.length,0);
   const arten=[['standard','■','Standardteil'],['sonder','◆','Sonderzuschnitt'],['rest','▲','Reststück oben']];
-  $('ovTeile').textContent = teile ? teile+'×' : '—';
   $('kennz').innerHTML='<b>Kennzeichnung.</b> '
     + arten.map(([k,sym,txt])=>{
         const n=rs.filter(r=>r.art===k).reduce((a,r)=>a+r.ids.length,0);
         return `<span class="art ${k}" style="display:inline-block;margin-right:12px">`
           +`<span class="sym">${sym}</span>${txt} (${n}×)</span>`; }).join('')
-    + '<br>Einbauteil-ID: <b>GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt;</b> — '
-    + 'dieselben IDs stehen in der technischen Zeichnung (Modul 7) und im Datei-Export. '
-    + 'Gleichartige Fertigteile sind zu einer Zeile zusammengefasst; die Einzel-IDs bleiben daneben '
-    + 'vollständig aufgeführt. <b>Latten, Platten und Verbinder der Beplankung (Modul 2) stehen '
-    + 'hier nicht</b> — die Beplankungsplanung ist zurückgestellt.';
-}
-
-// Sammelwarnung: jede nicht auflösbare Position wird BENANNT (nie still auf 0 gesetzt).
-function renderWarnungen(rs,s){
-  const box=$('warnbox');
-  const offen=rs.filter(r=>r.bepreisbar && r.gp==null);
-  const vorl=rs.filter(r=>r.produkt && r.produkt.hinweis);
-  if(!offen.length && !vorl.length){ box.hidden=true; box.innerHTML=''; return; }
-  let h='';
-  if(offen.length){
-    h+=`<b>${offen.length} Position(en) ohne Preis</b> — Summe ist unvollständig `
-      +`(${s.bepreist} von ${s.bepreisbar} bepreist). Zuordnung in Modul 1 wählen, `
-      +`Produkte und Preise in Modul 0 pflegen.<ul>`
-      + offen.map(r=>{
-          const zus = r.fehlend.length ? ' (nicht auflösbar: '+r.fehlend.map(esc).join(', ')+')'
-            : (r.status==='mehrdeutig' ? ' (möglich: '+r.kandidaten.map(p=>esc(p.id)).join(', ')+')' : '');
-          return `<li>${esc(r.label)}: ${esc(r.statusText)}${zus}</li>`;
-        }).join('')+'</ul>';
-  }
-  if(vorl.length){
-    h+=`<div style="margin-top:${offen.length?'7px':'0'}"><b>Vorläufige, fachlich unbestätigte Katalogwerte</b> `
-      +'in Verwendung — vor der Ausführung prüfen:<ul>'
-      + vorl.map(r=>`<li>${esc(r.label)}: ${esc(r.produkt.bezeichnung)} — ${esc(r.produkt.hinweis)}</li>`).join('')
-      +'</ul></div>';
-  }
-  box.innerHTML=h; box.hidden=false;
+    + '<br>Einbauteil-ID: <b>GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt;</b>';
 }
 
 function applyWand(w){
   if(!w||!w.length_mm||!(w.bom||w.courses)) throw new Error('Kein gültiges Wandelement.');
-  WALL=w; $('info').textContent='Geladen: '+(w.name||'Wandelement'); render();
+  WALL=w; render();
 }
 
 // ---- Eingabefelder aus dem Datenmodell füllen ----
@@ -271,8 +232,7 @@ function loadModel(){
   EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : eg();
   KATALOG = store&&store.holeKatalog ? store.holeKatalog() : null;
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  if(we){ WALL=we; $('info').textContent='Aktives Wandelement: '+(we.name||''); }
-  else { WALL=null; $('info').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.'; }
+  WALL = we || null;   // die Wandreferenz steht im Blattkopf, nicht in einer eigenen Infozeile
   syncInputs(); render();
 }
 function setupStoreSync(){
@@ -293,7 +253,9 @@ function setupStoreSync(){
 
 // ---- Ereignis-Bindung ----
 function bindEvents(){
-  $('proj').addEventListener('input',()=>{ persist('projekt',{name:$('proj').value}); });
+  // Der Projektname steht im Blattkopf — deshalb neu zeichnen, nicht nur speichern.
+  $('proj').addEventListener('input',()=>{ const e=eg(); (e.projekt||(e.projekt={})).name=$('proj').value;
+    persist('projekt',{name:$('proj').value}); render(); });
   $('cur').addEventListener('input',()=>{ eg().kosten.waehrung=$('cur').value; persist('kosten',{waehrung:$('cur').value}); render(); });
   $('print').addEventListener('click',()=>window.print());
 }

@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "dc027815",
+  "signatur": "3881355f",
   "entscheidungen": [
     {
       "issue": 41,
@@ -60,15 +60,6 @@ export const PLAN = {
     "begruendung": "Der Neuanlegefehler ist behoben. Offen bleiben die übrigen Komponenten, gemeinsame Einbauteil-IDs und die Realwand-Abnahme; als angefangene Sicherheitsausgabe bleibt #15 nach der berechneten Portfolio-Ordnung vorn."
   },
   "weitere": [
-    {
-      "issue": 62,
-      "titel": "Baustellenstückliste kompakt und mit robusten Einbauteil-IDs darstellen",
-      "prio": "high",
-      "status": "ohne",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": false
-    },
     {
       "issue": 56,
       "titel": "Längenänderung und Erstellung von Wandelementen nur im Geschosseditor",
