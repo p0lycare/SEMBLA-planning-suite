@@ -664,8 +664,13 @@ ok('Produktanlage ohne bestehenden Katalog erzeugt ihn',
 // 5p) Zentraler Projekt-ZIP-Export bleibt unveraendert katalogfrei, nutzt den Katalog aber als
 // Preisquelle der Stueckliste ([P-14]) — dieselbe Auflösung wie Modul 4.
 const projektDateien = baueDateien(store.projektObjekt(aktivKat), ['projekt','stueckliste'], kat());
+// [P-19] Das Haekchen „Baustellenstueckliste" liefert ZWEI Dateien aus einer Ableitung:
+// die aggregierte Liste und die Einzelteilliste der Gewindestangen mit ihren IDs.
 ok('Projekt-ZIP enthaelt keine Katalog-Datei',
-  projektDateien.length === 2 && !projektDateien.some(f => /Bauteilkatalog/.test(f.name)));
+  projektDateien.length === 3 && !projektDateien.some(f => /Bauteilkatalog/.test(f.name)));
+ok('[P-19] Projekt-ZIP: Baustellenstueckliste + Einbauteilliste',
+  /^Baustellenstueckliste_/.test(projektDateien[1].name)
+  && /^Einbauteile_Gewindestangen_/.test(projektDateien[2].name));
 ok('Projekt-Datei traegt nur Produkt-IDs (keine Preise/Bezeichnungen)',
   (() => { const p = JSON.parse(projektDateien[0].data);
            return p.eingaben.aufbau.produkte.rollen.latte.length === 2
@@ -1061,17 +1066,24 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
   const rsMw = stuecklistePositionen(mw.wandelement, eMw, kat());
   const offen = rsMw.filter(r => r.bepreisbar && r.gp == null);
   ok('Vorlage + Standardkatalog: alle Wandpositionen loesen auf',
-    rsMw.filter(r => r.key !== 'verbinder').every(r => !r.bepreisbar || r.gp != null));
-  ok('einzig offene Position ist das Verbinderprodukt, sichtbar begruendet',
-    offen.length === 1 && offen[0].key === 'verbinder' && offen[0].status === 'keine_auswahl');
+    rsMw.every(r => !r.bepreisbar || r.gp != null));
+  // [Z-4]/[P-19] Das Verbinderprodukt war die einzig offene Position. Seit die Beplankung in
+  // keiner Stueckliste mehr steht, gibt es diese Position nicht — und damit keine offene.
+  ok('keine offene Position mehr (Beplankung entfaellt, [Z-4])',
+    offen.length === 0 && !rsMw.some(r => ['verbinder', 'latte', 'beplankung'].includes(r.key)));
   ok('Vorlage nutzt die zur Wand passende Stangenlänge (1000 mm)',
     rsMw.find(r => r.key === 'rod_std').produktId === 'gewindestange-m10-1000');
   ok('Vorlage: Boden- und Kopfblech getrennt bepreist',
     rsMw.find(r => r.key === 'blech_boden').ep === 18 && rsMw.find(r => r.key === 'blech_kopf').ep === 18
     && rsMw.find(r => r.key === 'blech_boden').menge + rsMw.find(r => r.key === 'blech_kopf').menge
        === mw.wandelement.bom.stahlblech_module);
-  ok('Vorlage: vorläufige Katalogwerte bleiben gekennzeichnet',
-    rsMw.some(r => r.produkt && /vorläufig/.test(r.produkt.hinweis || '')));
+  // Die Latte war die einzige vorlaeufige Position der Musterwand; mit dem Wegfall der
+  // Beplankung ([Z-4]) nutzt sie keinen vorlaeufigen Katalogwert mehr. Die Faehigkeit selbst
+  // bleibt geprueft: ein Produkt-Hinweis wird an der Position sichtbar weitergefuehrt ([P-12]).
+  ok('Vorlage: Produkt-Hinweise werden an der Position weitergefuehrt ([P-12])',
+    rsMw.some(r => r.produkt && r.produkt.hinweis && r.hinweis === r.produkt.hinweis));
+  ok('Vorlage nutzt keinen vorläufigen Katalogwert mehr (Beplankung entfallen, [Z-4])',
+    !rsMw.some(r => r.produkt && /vorläufig/.test(r.produkt.hinweis || '')));
   ok('Vorlage bleibt im oeffentlichen Projektformat v2 (kein Bruch)',
     store.projektObjekt(mw.id).version === 2 && JSON.parse(vorlageDatei(V_WAND)).version === 2);
 }

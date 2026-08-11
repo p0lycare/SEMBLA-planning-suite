@@ -37,7 +37,9 @@ const neu55 = EINTRAEGE.filter(e => e.issue === 55);
 const neu15 = EINTRAEGE.filter(e => e.issue === 15 && e.datum === "2026-08-11");
 ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("genau ein aktueller Eintrag fuer Issue 15", neu15.length === 1);
-ok("der aktuelle Eintrag zu Issue 15 ist der neueste", EINTRAEGE[0] === neu15[0]);
+const neu22 = EINTRAEGE.filter(e => e.issue === 22);
+ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
+ok("der aktuelle Eintrag zu Issue 22 ist der neueste", EINTRAEGE[0] === neu22[0]);
 
 // --- 2) Validator: jede Regel schlaegt einzeln an -------------------------
 const gut = { id: "chg-20260805-01", datum: "2026-08-05", typ: "feature", issue: 48, titel: "Titel" };

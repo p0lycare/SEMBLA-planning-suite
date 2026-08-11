@@ -18,7 +18,7 @@
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
-import { semblaBomItems } from "../../docs/shared/sembla-bom.js";
+import { einbauteile, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL } from "../../docs/shared/sembla-montage.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
@@ -164,6 +164,36 @@ ok("Spannachsen-Zahl stimmt mit dem Wandelement",
 ok("Startachse wird aus prestress abgelesen",
   Z.vorspannZeilen(W).find(r => r.label === "Startachse").wert === "1. Rasterachse");
 ok("Strangzeilen je Spannachse", Z.strangZeilen(W).length === W.tension_columns.length);
+
+// --- [P-19] Einbauteil-IDs: Liste und Zeichnung benennen dieselben KONKRETEN Stuecke -------
+// Geprueft wird kein erklaertes Schema, sondern die Gleichheit der ausgegebenen IDs. Quelle ist
+// beidseitig `einbauteile()`; das Blatt fuehrt sie in seiner Strangtabelle ([D-6]).
+{
+  const teile = einbauteile(W);
+  const idsBlatt = Z.einbauteilZeilen(W).flatMap(r => r.wert.split(" ").map(s => s.replace(/^[^A-Z]+/, "")));
+  ok("[P-19] Blatt-ID-Tabelle enthaelt jede konkrete Einbauteil-ID",
+    teile.length > 0 && teile.every(t => idsBlatt.includes(t.id)));
+  ok("[P-19] Blatt-ID-Tabelle enthaelt KEINE ID, die es nicht gibt",
+    idsBlatt.length === teile.length && new Set(idsBlatt).size === teile.length);
+  ok("[P-19] jede ID steht im gerenderten Blatt-HTML", teile.every(t => blatt.html.includes(t.id)));
+  ok("[P-19] Zeichnung und Stueckliste nutzen dieselben IDs (kein zweites Schema)", (() => {
+    const ausListe = semblaBomItems(W).filter(it => it.ids && it.ids.length).flatMap(it => it.ids);
+    return ausListe.sort().join() === teile.map(t => t.id).sort().join(); })());
+  ok("[P-19] jede ID traegt ihr Art-Symbol unmittelbar voran (schwarz-weiss lesbar)",
+    Z.strangZeilen(W).every(r => r.teile.every(s => /^[■◆▲]GS-k\d+\.\d+\.\d+$/.test(s))));
+  ok("[P-19] Blatt erklaert Symbole UND ID-Schema in der Legende",
+    /■ Standardteil/.test(blatt.html) && /◆ Sonderzuschnitt/.test(blatt.html)
+    && /▲ Reststück oben/.test(blatt.html)
+    && /Einbauteil-ID GS-k&lt;Spannachse&gt;/.test(blatt.html));
+  ok("[P-19] Mengentabelle des Blattes kennzeichnet die Stueckart mit Symbol",
+    Z.bomZeilen(W).filter(r => /Gewindestange/.test(r.label)).every(r => /^[■◆▲] /.test(r.label))
+    && Z.bomZeilen(W).filter(r => /Stein i/.test(r.label)).every(r => !/^[■◆▲] /.test(r.label)));
+  ok("[P-19] ID-Ableitung ist deterministisch (zweimal bitgleich)",
+    JSON.stringify(Z.einbauteilZeilen(W)) === JSON.stringify(Z.einbauteilZeilen(W)));
+  // Der zentrale Export nutzt dieselbe Blattableitung ([D-6]) — also auch dieselben IDs.
+  ok("[P-19] Export-Blatt fuehrt dieselben IDs wie die Vorschau",
+    teile.every(t => zeichnungHtml(W, eingaben).includes(t.id)));
+}
 ok("Legende erklaert den Darstellungsschluessel",
   /Gewindestange \(Standardlänge\)/.test(blatt.html) && /Sonderlänge/.test(blatt.html)
   && /Boden-\/Kopfblech/.test(blatt.html));

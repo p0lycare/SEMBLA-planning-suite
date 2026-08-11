@@ -9,9 +9,14 @@
 // (kein Nullpreis, kein Ersatzprodukt) und veraendert niemals die Menge.
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, zuschnittCsv } from "../../docs/shared/sembla-export.js";
+import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, zuschnittCsv } from "../../docs/shared/sembla-export.js";
+import { einbauteile } from "../../docs/shared/sembla-bom.js";
+import { blattHtml } from "../../docs/shared/sembla-zeichnung.js";
 import { berechneAufbau } from "../../docs/shared/sembla-aufbau.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
+
+/** Deutsche Zahlformatierung wie im Modul (fuer Erwartungswerte der Oberflaechen-Pruefung). */
+const fmtDe = n => n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 const html = readFileSync(new URL("../../docs/stueckliste.html", import.meta.url), "utf8");
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
@@ -71,7 +76,7 @@ let _subs=[]; let _aktiv='w-1'; let _we=W; let _eg=egVoll(); let _merges=[]; let
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we, aktiveEingaben:()=>_eg, holeKatalog:()=>_kat,
   mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); _eg[teil]=merge(_eg[teil],patch); return _aktiv; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
-globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, store:storeMock };
+globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock };
 
 eval(script);
 globalThis.window.__slInit();
@@ -138,22 +143,26 @@ ok('keine Doppelverbuchung der Dichtstreifen in der Summe', (()=>{
 ok('Mengen bleiben unverändert (nachrichtliche Zeile behält ihre Menge)',
   Math.abs(dicht.menge - W.bom.dichtstreifen_mm/1000)<0.01);
 
-// Verbinder/Latten jetzt IMMER aus dem Wandaufbau (kein Bundle mehr noetig)
-ok('Verbinder-Position vorhanden (aus Aufbau)', !!find('Verbinder') && find('Verbinder').menge>0);
-ok('Latten-Position vorhanden (aus Aufbau)', !!find('Lattenstange') && find('Lattenstange').menge>0);
+// [Z-4]/[P-19] Beplankung (Modul 2) steht in KEINER Stuecklistenausgabe: keine Latten, keine
+// Platten, kein Modul-2-Verbinder — auch dann nicht, wenn Modul 2 Produkte dafuer gewaehlt hat
+// (egVoll setzt aufbau.produkte vollstaendig).
+ok('[Z-4] keine Verbinder-Position (Modul 2)', !byKey('verbinder') && !find('Verbinder'));
+ok('[Z-4] keine Latten-Position (Modul 2)', !byKey('latte') && !find('Lattenstange'));
+ok('[Z-4] keine Beplankungs-/Platten-Position', !byKey('beplankung') && !rs.find(r=>/Platte(?!nbreite)/.test(r.label)&&!/Spannplatte/.test(r.label)));
 ok('KEINE Dämmung-Position (MVP)', !rs.find(r=>r.label.includes('Dämmung')));
-// [Z-4]: 11 feste Wandpositionen + je Gewindestangen-Standardlänge und je Sonderzuschnitt-
-// Ausgangsprodukt eine Position + Verbinder + je Latten-Ausgangsprodukt eine Position.
+// Die Gewindestangen-KOPPLUNG ist kein Modul-2-Verbinder und bleibt ausdruecklich enthalten.
+ok('[P-19] Gewindestangen-Kopplung bleibt enthalten', !!byKey('kupplung') && byKey('kupplung').menge>0);
+// [Z-4]: 10 feste Wandpositionen + je Gewindestangen-Standardlänge, je Sonderzuschnitt-
+// Fertigmaß und je Reststück-Fertigmaß eine Position. Nichts aus dem Wandaufbau.
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
-const nLatte=rs.filter(r=>r.key==='latte').length;
+const nRest=rs.filter(r=>r.key==='rod_rest').length;
 // [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
-ok('Positionen = 10 Wand + Stangengruppen + Verbinder + Lattengruppen',
-  rs.length===10+nRod+nSonder+1+nLatte && rs.length>=14);
-ok('[Z-4] jede Stangen-/Lattengruppe traegt ihr maßgebendes Maß',
-  rs.filter(r=>['rod_std','latte'].includes(r.key)).every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
+ok('Positionen = 10 Wand + Stangengruppen (ohne Aufbau)',
+  rs.length===10+nRod+nSonder+nRest && rs.length>=12);
+ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
+  rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
   rs.filter(r=>r.key==='rod_std'||r.key==='rod_sonder').reduce((a,r)=>a+r.menge,0)===W.bom.gewindestangen);
-ok('keine Beplankungs-Kostenzeile (ohne #19/#22)', !byKey('beplankung'));
 
 // Vollständige Zuordnung -> Summe vollständig (Nenner = alle bepreisbaren Positionen)
 {
@@ -272,10 +281,14 @@ const mengenVoll=SL.rows().map(r=>r.key+':'+r.menge).join('|');
 
 // Zentraler CSV-Export nutzt dieselbe Auflösung (Anzeige und Datei sagen dasselbe)
 { const csv=stuecklisteCsv(W1, egVoll(), {datum:'01.01.2026'}, KATALOG);
+  ok('CSV: heißt Baustellenstückliste (Einbauteile)', /SEMBLA – Baustellenstückliste \(Einbauteile\)/.test(csv));
   ok('CSV: Produkt- und Zuordnungsspalte vorhanden', /Produkt \(Katalog\);Preisbasis;Zuordnung/.test(csv));
+  ok('CSV: Einbauteil-Spalten vorhanden',
+    /Einbauteil;Art;Fertigmaß \(mm\);Wand;Einheit;Menge;Einbauteil-IDs;/.test(csv));
   ok('CSV: Bodenblech und Kopfblech getrennt', /Bodenblech-Modul/.test(csv) && /Kopfblech-Modul/.test(csv));
-  ok('CSV: nachrichtliche Dicht-Gesamtlänge ohne Preis', /Dichtstreifen – Gesamtlänge;m;15,4;;;;;nachrichtliche Menge/.test(csv.replace(/15\.4/,'15,4')) || /Gesamtlänge;m;[\d.]+;;;;;nachrichtliche Menge/.test(csv));
+  ok('CSV: nachrichtliche Dicht-Gesamtlänge ohne Preis', /Gesamtlänge;;;Testwand;m;[\d.,]+;;;;;;nachrichtliche Menge/.test(csv));
   ok('CSV: vollständige Summe wird als solche benannt', /alle Positionen bepreist/.test(csv));
+  ok('CSV: keine Latten/Verbinder/Platten-Zeile', !/Lattenstange/.test(csv) && !/^Verbinder/m.test(csv));
   const csvOhne=stuecklisteCsv(W1, egVoll(), {datum:'01.01.2026'}, null);
   ok('CSV ohne Katalog: keine Nullpreise, sondern benannter Grund',
     /kein Bauteilkatalog geladen/.test(csvOhne) && /unvollständig – 0 von \d+ Positionen bepreist/.test(csvOhne)
@@ -305,8 +318,93 @@ ok('Export: Zuschnittliste enthält genau die Achsen der Aufbau-Berechnung',
    JSON.stringify(csvX)===JSON.stringify(AB.batt.axes.map(a=>a.x_cm)));
 ok('Export: keine Zuschnitt-Achse in der Öffnungs-Sperrzone (12,5 cm um 75/150)',
    csvX.every(x=>Math.min(Math.abs(x-75),Math.abs(x-150))>=12.5-0.01));
-ok('Export: Verbindermenge in der Stückliste = Verbinder des Aufbaus',
-   stuecklistePositionen(WT, eg).find(r=>r.key==='verbinder').menge===AB.pts.length);
+// Die Latten-Zuschnittliste bleibt als EIGENE Modul-2-Ausgabe erhalten ([Z-4]) — sie ist keine
+// Stückliste. Umgekehrt darf aus ihr nichts in die Baustellenstückliste zurueckwandern.
+ok('Export: Latten-Zuschnittliste bleibt eine eigene Ausgabe (nicht Teil der Stückliste)',
+   AB.pts.length>0 && /fertigmass_cm/.test(zuschnittCsv(WT, eg))
+   && !stuecklistePositionen(WT, eg).some(r=>['latte','verbinder','beplankung'].includes(r.key)));
+
+// ---- [P-19] Einbauteile in der ECHTEN Modul-4-Oberfläche und im zentralen Export ---------
+// Fixture mit Standardteil (zwei Standardlängen), ZWEI verschiedenen Sonderzuschnittlängen und
+// Reststück ([Z-6]) — konfliktfrei. Geprüft wird das gerenderte DOM des Moduls, nicht nur die
+// reine Funktion, und danach dieselbe Aussage in den Exportdateien.
+const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster')], null,
+  {rod_lengths_mm:[1000,500], rod_rest_mm:300});
+{
+  _eg=egVoll(); _we=WE; _aktiv='w-einbauteile'; _kat=KATALOG;
+  globalThis.window.__slInit();
+  const rsE=SL.rows(), teile=SL.teile();
+  const rod=rsE.filter(r=>r.key.startsWith('rod_'));
+  const sonderLaengen=[...new Set(teile.filter(t=>t.art==='sonder').map(t=>t.fertigmass_mm))];
+  ok('[P-19] Fixture hat Standardteil, 2 Sonderlängen und Reststück',
+    teile.some(t=>t.art==='standard') && sonderLaengen.length>=2 && teile.some(t=>t.art==='rest'));
+  ok('[P-19] Fixture ist konfliktfrei', (WE.validation.zuschnitt_konflikte||[]).length===0);
+  ok('[P-19] Einbauteile = Core-Gesamtzahl', teile.length===WE.bom.gewindestangen);
+
+  const tb=document.getElementById('tbody').innerHTML;
+  ok('[P-19] Oberfläche: Tabellenkopf nennt Einbauteil, Art, Fertigmaß, Wand und IDs',
+    /<th>Einbauteil<\/th>/.test(html) && /<th>Art<\/th>/.test(html) && /<th>Fertigmaß<\/th>/.test(html)
+    && /<th>Wand<\/th>/.test(html) && /<th>Einbauteil-IDs<\/th>/.test(html));
+  ok('[P-19] Oberfläche: jede konkrete Einbauteil-ID steht in der Tabelle',
+    teile.every(t=>tb.includes(t.id)));
+  ok('[P-19] Oberfläche: Standardteil mit Symbol UND Klartext',
+    /class="art standard"[^>]*>.*?■.*?Standardteil/.test(tb));
+  ok('[P-19] Oberfläche: Sonderzuschnitt mit Symbol UND Klartext (nicht nur Farbe)',
+    /class="art sonder"[^>]*>.*?◆.*?Sonderzuschnitt/.test(tb));
+  ok('[P-19] Oberfläche: Reststück mit Symbol UND Klartext',
+    /class="art rest"[^>]*>.*?▲.*?Reststück oben/.test(tb));
+  ok('[P-19] Oberfläche: Fertigmaß je Sonderzuschnitt sichtbar',
+    sonderLaengen.every(mm=>tb.includes(fmtDe(mm/10)+' cm')));
+  ok('[P-19] Oberfläche: Wandreferenz an jeder Zeile', (tb.match(/class="wand"/g)||[]).length===rsE.length);
+  ok('[P-19] Oberfläche: Aggregation nachvollziehbar (Menge = Anzahl der IDs)',
+    rod.length>0 && rod.every(r=>r.ids.length===r.menge));
+  ok('[P-19] Oberfläche: Legende erklärt Symbole und ID-Schema', (()=>{
+    const k=document.getElementById('kennz').innerHTML;
+    return /■/.test(k) && /◆/.test(k) && /▲/.test(k) && /Sonderzuschnitt/.test(k)
+      && /GS-k&lt;Spannachse&gt;/.test(k); })());
+  ok('[P-19] Oberfläche: Zähler der Einbauteile',
+    document.getElementById('ovTeile').textContent===teile.length+'×');
+  ok('[Z-4] Oberfläche: keine Latten/Platten/Verbinder-Zeile',
+    !/Lattenstange/.test(tb) && !/>Verbinder/.test(tb)
+    && !rsE.some(r=>['latte','verbinder','beplankung'].includes(r.key)));
+
+  // Zentraler Export: dieselben IDs, Fertigmaße und Wandreferenzen in BEIDEN Dateien.
+  const csvE=stuecklisteCsv(WE, egVoll(), {datum:'01.01.2026'}, KATALOG);
+  const csvT=einbauteileCsv(WE, egVoll(), {datum:'01.01.2026'});
+  ok('[P-19] Export: aggregierte CSV führt jede konkrete Einbauteil-ID', teile.every(t=>csvE.includes(t.id)));
+  ok('[P-19] Export: Einzelteilliste hat eine Zeile je Einbauteil', (()=>{
+    const zeilen=csvT.trim().split('\n').filter(z=>/^GS-k/.test(z));
+    return zeilen.length===teile.length; })());
+  ok('[P-19] Export: Einzelteilliste nennt ID, Art, Fertigmaß und Wand', teile.every(t=>
+    csvT.includes([t.id,'gewindestange',(t.art==='standard'?'■ Standardteil':t.art==='sonder'?'◆ Sonderzuschnitt':'▲ Reststück oben'),
+      t.fertigmass_mm,t.wand].join(';'))));
+  ok('[P-19] Export: beide Dateien nennen den Kennzeichnungsschlüssel',
+    /Kennzeichnung;■ Standardteil · ◆ Sonderzuschnitt · ▲ Reststück oben/.test(csvE)
+    && /Einbauteil-ID: GS-k<Spannachse>/.test(csvT));
+  ok('[P-19] Export: mindestens zwei Sonderzuschnittlängen als eigene Positionen',
+    rsE.filter(r=>r.key==='rod_sonder'&&r.menge>0).length>=2);
+  ok('[Z-4] Export: keine Latten/Verbinder in der Stücklisten-CSV',
+    !/Lattenstange/.test(csvE) && !/^Verbinder/m.test(csvE));
+
+  // Das Dateibündel des ZIP-Exports: zwei Stücklistendateien mit sprechendem Namen.
+  const files=baueDateien({name:'Einbauteilwand', wandelement:WE, eingaben:egVoll()}, ['stueckliste'], KATALOG);
+  ok('[P-19] ZIP: Baustellenstückliste + Einbauteilliste, eindeutig benannt',
+    files.length===2 && /^Baustellenstueckliste_/.test(files[0].name)
+    && /^Einbauteile_Gewindestangen_/.test(files[1].name));
+  ok('[P-19] ZIP: Dateiinhalt identisch zur direkten Ableitung (kein zweiter Pfad)',
+    files[0].data===stuecklisteCsv(WE, egVoll(), undefined, KATALOG)
+    && files[1].data===einbauteileCsv(WE, egVoll()));
+
+  // Dieselbe Kennung in der technischen Zeichnung ([P-19]/[D-6]).
+  const blatt=blattHtml(WE, egVoll()).html;
+  ok('[P-19] Zeichnung: Blatt führt dieselben konkreten Einbauteil-IDs',
+    teile.every(t=>blatt.includes(t.id)));
+  ok('[P-19] Zeichnung: ID-Tabelle und Kennzeichnungsschlüssel auf dem Blatt',
+    /Einbauteile Gewindestangen – IDs je Spannachse/.test(blatt)
+    && /Einbauteil-ID GS-k&lt;Spannachse&gt;/.test(blatt));
+  ok('[P-19] Zeichnung: Mengentabelle kennzeichnet Sonderzuschnitt mit Symbol',
+    /◆ Gewindestange Sonderzuschnitt/.test(blatt));
+}
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

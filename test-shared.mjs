@@ -1,6 +1,6 @@
 // Drift-Schutz: die gemeinsame semblaBom() muss mit der Core-BOM übereinstimmen.
 import { buildWall, Opening } from "./docs/shared/sembla-core.js";
-import { semblaBom, semblaBomItems } from "./docs/shared/sembla-bom.js";
+import { einbauteile, semblaBom, semblaBomItems } from "./docs/shared/sembla-bom.js";
 
 let pass=0, fail=0; const t=(n,c)=>{ if(c)pass++; else { fail++; console.log("FAIL  "+n); } };
 const cases=[
@@ -76,6 +76,56 @@ for(const [name,l,h,ops] of cases){
   const bo=items.find(it=>it.key==='blech_boden'), ko=items.find(it=>it.key==='blech_kopf');
   t("alt_bundle · Summe = gespeicherte Gesamtzahl", bo.menge+ko.menge===w.bom.stahlblech_module);
   t("alt_bundle · Bodenblech = ceil(L/Modul)", bo.menge===Math.ceil(alt.length_mm/alt.prestress.blech_mm));
+  // [P-19] Auch das Alt-Bundle bekommt Einbauteile: die IDs werden abgeleitet, nicht gespeichert.
+  t("alt_bundle · Einbauteile = Stangenzahl der Positionen", (()=>{
+    const rod=items.filter(it=>it.key.startsWith('rod_'));
+    return einbauteile(alt).length===rod.reduce((a,it)=>a+it.menge,0); })());
+}
+
+// ---- [P-19] Einbauteil-Identität der Gewindestangenstücke -------------------------------
+// Die Einbauteilliste ist die EINZIGE Stückableitung; die Stücklistenmengen sind ihre
+// Aggregation. Geprueft wird beides gegen die Core-Zahl und gegeneinander.
+{
+  // Fixture mit Standardteil (zwei Standardlaengen), ZWEI verschiedenen Sonderzuschnittlaengen
+  // und Reststueck ([Z-6]) — konfliktfrei, damit kein Segment ohne Zuschnitt bleibt.
+  const w=buildWall("einbauteile",3000,3000,[new Opening(6,10,4,10,"fenster")],null,
+    {rod_lengths_mm:[1000,500],rod_rest_mm:300});
+  const teile=einbauteile(w), items=semblaBomItems(w);
+  const rod=items.filter(it=>it.key.startsWith('rod_'));
+  t("P-19 · Einbauteile = Core-Gesamtzahl der Gewindestangen", teile.length===w.bom.gewindestangen);
+  t("P-19 · keine Zuschnittkonflikte im Fixture", (w.validation.zuschnitt_konflikte||[]).length===0);
+  t("P-19 · IDs sind eindeutig", new Set(teile.map(x=>x.id)).size===teile.length);
+  t("P-19 · ID-Schema GS-k<Achse>.<Segment>.<Stueck>",
+    teile.every(x=>x.id===`GS-k${x.k}.${x.segment}.${x.stueck}`)
+    && teile.every(x=>/^GS-k\d+\.\d+\.\d+$/.test(x.id)));
+  t("P-19 · jedes Teil hat Kategorie, Art, Fertigmass und Wandreferenz",
+    teile.every(x=>x.kategorie==='gewindestange' && ['standard','sonder','rest'].includes(x.art)
+      && x.fertigmass_mm>0 && x.wand==='einbauteile'));
+  t("P-19 · Standardteil und mindestens zwei Sonderlaengen vorhanden", (()=>{
+    const so=new Set(teile.filter(x=>x.art==='sonder').map(x=>x.fertigmass_mm));
+    return teile.some(x=>x.art==='standard') && so.size>=2 && teile.some(x=>x.art==='rest'); })());
+  t("P-19 · Aggregation: Menge je Position = Anzahl ihrer IDs",
+    rod.length>0 && rod.every(it=>it.ids.length===it.menge));
+  t("P-19 · Aggregation verliert kein Einzelteil",
+    rod.flatMap(it=>it.ids).sort().join()===teile.map(x=>x.id).sort().join());
+  t("P-19 · gleichartige Fertigteile in EINER Position (Art + Fertigmass eindeutig)",
+    new Set(rod.map(it=>it.art+':'+it.fertigmass_mm)).size===rod.length);
+  t("P-19 · Art, Symbol und Fertigmass an jeder Stangenposition",
+    rod.every(it=>it.art && it.art_symbol && it.art_label && it.fertigmass_mm===it.mass_mm));
+  t("P-19 · Sonderzuschnitt traegt Fertiglaenge und IDs",
+    rod.filter(it=>it.art==='sonder').every(it=>it.fertigmass_mm>0 && it.ids.length===it.menge));
+  t("P-19 · Wandreferenz an JEDER Position (auch ohne Einzelteil-ID)",
+    items.every(it=>it.wand==='einbauteile'));
+  t("P-19 · keine erfundene Einzel-ID fuer Steine/Muttern/Bleche/Dichtstreifen",
+    items.filter(it=>!it.key.startsWith('rod_')).every(it=>!it.ids && !it.art));
+  // Ein VORHANDENES, aber leeres `stuecke` ist ein gemeldeter Konflikt ([Z-6]) — dafuer darf
+  // kein Ersatz-Einbauteil entstehen.
+  const leer=JSON.parse(JSON.stringify(w));
+  leer.tension_columns[0].segments[0].stuecke=[];
+  t("P-19 · leeres stuecke erzeugt kein Ersatz-Einbauteil",
+    einbauteile(leer).length===teile.length-w.tension_columns[0].segments[0].stuecke.length);
+  t("P-19 · Ableitung ist deterministisch (zweimal gleich)",
+    JSON.stringify(einbauteile(w))===JSON.stringify(einbauteile(w)));
 }
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail?1:0);

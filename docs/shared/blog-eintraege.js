@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-03",
+    datum: "2026-08-11",
+    typ: "feature",
+    issue: 22,
+    titel: "Modul 4 ist die Baustellenstückliste: Gewindestangenstücke mit Einbauteil-ID, ohne Beplankung",
+    testbitte: "Reiter 4 öffnen: Stangenstücke zeigen Art (Symbol und Wort), Fertigmaß, Wand und "
+      + "ihre Einbauteil-IDs — dieselben IDs stehen am Blatt in Reiter 7. Latten, Platten und "
+      + "Verbinder stehen nicht mehr in der Liste.",
+  },
+  {
     id: "chg-20260811-02",
     datum: "2026-08-11",
     typ: "fix",

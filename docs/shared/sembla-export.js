@@ -14,7 +14,7 @@
  * ES-Modul: laeuft im Browser und in Node-Tests per import.
  */
 
-import { semblaBomItems } from "./sembla-bom.js";
+import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems } from "./sembla-bom.js";
 import { EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation } from "./sembla-katalog.js";
 import { berechneAufbau } from "./sembla-aufbau.js";
 import { montageDokument } from "./sembla-montage.js";
@@ -35,51 +35,57 @@ export function wandflaeche(w) {
   return Math.max(0.01, a - op);
 }
 
-// ---------- Stueckliste ----------
+// ---------- Baustellenstueckliste ----------
 
 /**
- * Stücklisten-Positionen aus Wandelement + Eingaben. Wandpositionen aus der
- * Core-BOM, Verbinder/Latten aus dem Aufbau-Layout (berechneAufbau) — alles neu
- * gerechnet. Die MENGEN sind allein Sache der BOM/des Aufbaus und werden von der
+ * Stuecklistenschluessel der BEPLANKUNG (Modul 2), die in keiner Stuecklistenausgabe
+ * erscheinen duerfen ([Z-4], Scope-Entscheidung zu #22). Bewusst als Sperrliste am
+ * Ausgabepfad und nicht als Loeschung im Katalog: die Verwendungsrollen bleiben bestehen,
+ * Modul 2 waehlt weiter Produkte, und das Zuruecknehmen ist eine Zeile.
+ *
+ * `kupplung` steht hier NICHT: die Gewindestangen-Kopplung ist ein Vorspann-Einbauteil und
+ * kein Modul-2-Verbinder.
+ */
+const BEPLANKUNG_KEYS = new Set(["latte", "beplankung", "verbinder"]);
+
+/**
+ * Positionen der BAUSTELLENSTÜCKLISTE aus Wandelement + Eingaben ([P-19]) — alles neu
+ * gerechnet, nie gespeichert. Die MENGEN sind allein Sache der BOM und werden von der
  * Preisauflösung nie veraendert.
+ *
+ * AUSDRUECKLICH NICHT enthalten sind Beplankungspositionen ([Z-4], Scope-Entscheidung zu
+ * #22): Latten, Platten und die Modul-2-Verbinderrolle `verbinder` erscheinen in KEINER
+ * Stücklistenausgabe — weder in der Anzeige noch in CSV/HTML des zentralen Exports —,
+ * solange die Beplankung nicht neu aufgesetzt ist. Die Gewindestangen-KOPPLUNG (`kupplung`)
+ * ist davon unberührt: sie ist ein Vorspann-Einbauteil und kein Modul-2-Verbinder. Die
+ * eigenständige Latten-Zuschnittliste (`zuschnittCsv`) bleibt als Modul-2-Ausgabe erhalten;
+ * sie ist keine Stückliste.
  *
  * Preise kommen ausschliesslich aus dem uebergebenen Bauteilkatalog, aufgeloest
  * ueber die in Modul 1/2 gewaehlten Produkte je Verwendungsrolle ([P-13]/[P-14]).
  * `ep`/`gp` sind `null`, wenn die Zuordnung nicht eindeutig ist — es gibt keinen
  * Nullpreis- oder Ersatzproduktpfad. `status`/`statusText` benennen den Grund.
  * @param {object} w @param {object} eingaben @param {object|null} [katalog]
- * @returns {Array<{key,label,unit,menge,ep:number|null,gp:number|null,status:string,
+ * @returns {Array<{key,label,unit,menge,wand:string|null,art:string|null,art_label:string|null,
+ *   art_symbol:string|null,fertigmass_mm:number|null,ids:string[],
+ *   ep:number|null,gp:number|null,status:string,
  *   statusText:string,produkt:any|null,produktId:string|null,preisbasis:string|null,
  *   bepreisbar:boolean,hinweis:string|null,kandidaten:any[],fehlend:string[],vorgemerkt:any[]}>}
  */
 export function stuecklistePositionen(w, eingaben, katalog = null) {
   const rollenIdsMap = produktRollen(eingaben);
   const kontext = preisKontext(w, eingaben, katalog);
-  const items = semblaBomItems(w).slice();
-  const spec = katalog ? produktSpezifikation(eingaben, katalog) : null;
-  const A = berechneAufbau(w, eingaben.aufbau || {}, spec ? spec.latte : null);
-  if (A.pts.length) {
-    const typ = A.layout.verbinder_typ;
-    items.push({ key: "verbinder", label: "Verbinder" + (typ ? " " + typ : ""), unit: "Stk", menge: A.pts.length });
-    // Latten: je AUSGANGSPRODUKT eine Position ([Z-4]) — Menge = Zahl der daraus geschnittenen
-    // Einbaustuecke (keine Reststueck-Wiederverwendung, keine Bestellmengenoptimierung).
-    // `mass_mm` macht die Position auch bei mehreren Standardlaengen eindeutig bepreisbar.
-    const br = A.lattenBreiteCm != null ? A.lattenBreiteCm + " cm · " : "";
-    const aus = A.batt.summary.ausgang || [];
-    if (aus.length) {
-      for (const g of aus) {
-        items.push({ key: "latte", label: "Lattenstange " + br + g.laenge_cm + " cm (Ausgangsprodukt für "
-          + g.anzahl + " Zuschnitt(e))", unit: "Stk", menge: g.anzahl, mass_mm: g.laenge_cm * 10 });
-      }
-    } else {
-      items.push({ key: "latte", label: "Lattenstange " + br + "–", unit: "Stk", menge: 0 });
-    }
-  }
+  // Genau die kanonischen Positionen des Wandelements — keine Aufbau-/Beplankungszeile mehr.
+  const items = semblaBomItems(w).filter(it => !BEPLANKUNG_KEYS.has(it.key));
   return items.map(it => {
     const r = loesePreis(it, rollenIdsMap, katalog, kontext);
     const p = r.produkt;
     return {
       key: it.key, label: it.label, unit: it.unit, menge: it.menge,
+      wand: it.wand || null,
+      art: it.art || null, art_label: it.art_label || null, art_symbol: it.art_symbol || null,
+      fertigmass_mm: it.fertigmass_mm != null ? it.fertigmass_mm : null,
+      ids: it.ids ? it.ids.slice() : [],
       ep: r.ep, gp: (r.ep == null ? null : it.menge * r.ep),
       status: r.status, statusText: r.text, bepreisbar: r.bepreisbar,
       produkt: p, produktId: p ? String(p.id) : null,
@@ -108,9 +114,13 @@ export function stuecklisteSumme(rs) {
 }
 
 /**
- * Stückliste als AoA (Array-of-Arrays) — Basis fuer CSV/Excel. Enthaelt Produkt und
- * Auflösungsstatus je Position, damit die Datei dieselbe Aussage traegt wie die
- * Anzeige in Modul 4 (kein Preis ohne eindeutige Zuordnung).
+ * Baustellenstückliste als AoA (Array-of-Arrays) — Basis fuer CSV/Excel. Enthaelt je
+ * Einbauteil-Position Art, Fertigmaß, Wandreferenz und die Einbauteil-IDs ([P-19]) sowie
+ * Produkt und Auflösungsstatus, damit die Datei dieselbe Aussage traegt wie die Anzeige in
+ * Modul 4 (kein Preis ohne eindeutige Zuordnung).
+ *
+ * Die Art wird mit SYMBOL UND KLARTEXT geschrieben ([P-19]) — eine CSV hat keine Farbe, und
+ * genau darum darf die Kennzeichnung nie an der Farbe haengen.
  * @param {object} w @param {object} eingaben @param {{datum?:string}} [opts] @param {object|null} [katalog]
  */
 export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
@@ -121,20 +131,62 @@ export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
   const datum = opts.datum || _heute();
   const n2 = v => (v == null ? "" : +v.toFixed(2));
   return [
-    ["SEMBLA – Stückliste & Kosten"],
+    ["SEMBLA – Baustellenstückliste (Einbauteile)"],
     ["Projekt", projekt.name || w.name || "SEMBLA-Projekt"],
     ["Wand", w.name || "Wandelement"],
     ["Maße", _fmt(w.length_mm / 1000, 3) + " × " + _fmt(w.height_mm / 1000, 2) + " m"],
     ["Datum", datum],
     ["Katalog", katalog ? (katalog.name || "Bauteilkatalog") : "kein Bauteilkatalog geladen"],
+    ["Kennzeichnung", ART_KENNZEICHNUNG],
     [],
-    ["Position", "Einheit", "Menge", "EP (" + cur + ")", "GP (" + cur + ")", "Produkt (Katalog)", "Preisbasis", "Zuordnung"],
-    ...rs.map(r => [r.label, r.unit, r.menge, n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText]),
+    ["Einbauteil", "Art", "Fertigmaß (mm)", "Wand", "Einheit", "Menge", "Einbauteil-IDs",
+      "EP (" + cur + ")", "GP (" + cur + ")", "Produkt (Katalog)", "Preisbasis", "Zuordnung"],
+    ...rs.map(r => [r.label, _artText(r), r.fertigmass_mm == null ? "" : r.fertigmass_mm,
+      r.wand || "", r.unit, r.menge, r.ids.join(" "),
+      n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText]),
     [],
-    ["Summe netto", "", "", "", +s.summe.toFixed(2), "", "",
+    ["Summe netto", "", "", "", "", "", "", "", +s.summe.toFixed(2), "", "",
       s.vollstaendig ? "alle Positionen bepreist" : `unvollständig – ${s.bepreist} von ${s.bepreisbar} Positionen bepreist`],
-    ["€/m² Wandfläche", "", "", "", +(s.summe / wandflaeche(w)).toFixed(2)],
+    ["€/m² Wandfläche", "", "", "", "", "", "", "", +(s.summe / wandflaeche(w)).toFixed(2)],
   ];
+}
+
+/** Kennzeichnung einer Zeile: Symbol + Klartext, leer bei Positionen ohne Stückart. */
+function _artText(r) { return r && r.art ? r.art_symbol + " " + r.art_label : ""; }
+
+/** Erklaerung des Kennzeichnungsschluessels — identisch in Datei und Oberflaeche ([P-19]). */
+export const ART_KENNZEICHNUNG = ART_SYMBOL.standard + " " + ART_LABEL.standard + " · "
+  + ART_SYMBOL.sonder + " " + ART_LABEL.sonder + " · " + ART_SYMBOL.rest + " " + ART_LABEL.rest
+  + " · Einbauteil-ID: GS-k<Spannachse>.<Segment von unten>.<Stück von unten>";
+
+/**
+ * EINZELTEILLISTE der Gewindestangen als AoA ([P-19]): eine Zeile je real eingebautem
+ * Stück, mit ID, Art, Fertigmaß, Wandreferenz und Einbauort (Spannachse, Segment, Höhenlage).
+ * Damit bleibt jede aggregierte Position der Stückliste bis auf das Einzelteil auflösbar.
+ * @param {object} w @param {object} [eingaben] @param {{datum?:string}} [opts]
+ */
+export function einbauteileAoa(w, eingaben = {}, opts = {}) {
+  const projekt = eingaben.projekt || {};
+  const teile = einbauteile(w);
+  return [
+    ["SEMBLA – Einbauteile Gewindestangen (Baustellenstückliste)"],
+    ["Projekt", projekt.name || w.name || "SEMBLA-Projekt"],
+    ["Wand", w.name || "Wandelement"],
+    ["Datum", opts.datum || _heute()],
+    ["Kennzeichnung", ART_KENNZEICHNUNG],
+    [],
+    ["Einbauteil-ID", "Kategorie", "Art", "Fertigmaß (mm)", "Wand", "Spannachse", "Segment",
+      "Stück", "z unten (mm)", "z oben (mm)"],
+    ...teile.map(t => [t.id, t.kategorie, ART_SYMBOL[t.art] + " " + ART_LABEL[t.art],
+      t.fertigmass_mm, t.wand, "k" + t.k, t.segment, t.stueck, Math.round(t.z0_mm), Math.round(t.z1_mm)]),
+    [],
+    ["Einbauteile gesamt", teile.length],
+  ];
+}
+
+/** Einzelteilliste der Gewindestangen direkt als CSV-Text. */
+export function einbauteileCsv(w, eingaben = {}, opts = {}) {
+  return aoaToCsv(einbauteileAoa(w, eingaben, opts));
 }
 
 /** AoA → CSV (Semikolon-getrennt, deutsch). */
@@ -145,7 +197,7 @@ export function aoaToCsv(aoa) {
   }).join(";")).join("\n");
 }
 
-/** Stückliste direkt als CSV-Text. @param {object|null} [katalog] */
+/** Baustellenstückliste direkt als CSV-Text. @param {object|null} [katalog] */
 export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
   return aoaToCsv(stuecklisteAoa(w, eingaben, opts, katalog));
 }
@@ -469,7 +521,13 @@ export function baueDateien(projekt, auswahl, katalog = null) {
   const set = new Set(auswahl);
   const files = [];
   if (set.has("projekt")) files.push({ name: "Projekt_" + base + ".json", data: JSON.stringify(projekt, null, 2) });
-  if (set.has("stueckliste")) files.push({ name: "Stueckliste_" + base + ".csv", data: stuecklisteCsv(w, eingaben, undefined, katalog) });
+  if (set.has("stueckliste")) {
+    // Zwei Dateien aus EINER Ableitung ([P-19]): die aggregierte Baustellenstückliste und die
+    // Einzelteilliste mit den IDs. Beide lesen dieselbe Einbauteilliste — es gibt keinen
+    // zweiten Mengen- oder Identitätspfad.
+    files.push({ name: "Baustellenstueckliste_" + base + ".csv", data: stuecklisteCsv(w, eingaben, undefined, katalog) });
+    files.push({ name: "Einbauteile_Gewindestangen_" + base + ".csv", data: einbauteileCsv(w, eingaben) });
+  }
   if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben, katalog) });
   if (set.has("montage")) files.push({ name: "Montageanleitung_" + base + ".html", data: montageHtml(w, eingaben) });
   if (set.has("zeichnung")) {

@@ -387,8 +387,8 @@
       Datenmodell (Wandelement + Eingaben + Projekt-Kopfdaten) neu erzeugt — kein Drift.
       Wand: <b id="exp-name">–</b></p>
     <label class="opt"><input type="checkbox" value="projekt" checked><span><span class="t">Projekt-Datei (JSON)</span><br><span class="d">Vollständiges Datenmodell — hier auf der Startseite wieder importierbar.</span></span></label>
-    <label class="opt"><input type="checkbox" value="stueckliste" checked><span><span class="t">Stückliste &amp; Kosten (CSV)</span><br><span class="d">Mengen aus dem aktiven Wandelement, mit Preisen aus dem Modell.</span></span></label>
-    <label class="opt"><input type="checkbox" value="zuschnitt" checked><span><span class="t">Zuschnittliste Latten (CSV)</span><br><span class="d">Lattenschnitt je Verbinderachse aus dem Wandaufbau.</span></span></label>
+    <label class="opt"><input type="checkbox" value="stueckliste" checked><span><span class="t">Baustellenstückliste (2× CSV)</span><br><span class="d">Real einzubauende Teile in Fertigmaßen aus dem aktiven Wandelement — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs. Ohne Beplankung (Latten/Platten/Verbinder).</span></span></label>
+    <label class="opt"><input type="checkbox" value="zuschnitt" checked><span><span class="t">Zuschnittliste Latten (CSV)</span><br><span class="d">Lattenschnitt je Verbinderachse aus dem Wandaufbau (Modul&nbsp;2) — eigene Ausgabe, nicht Teil der Baustellenstückliste.</span></span></label>
     <label class="opt"><input type="checkbox" value="montage" checked><span><span class="t">Montageanleitung (HTML)</span><br><span class="d">Baugruppenabschnitte nach Montageereignissen mit nummerierten Steinreihen, A4-druckbar — im Browser öffnen und drucken.</span></span></label>
     <label class="opt"><input type="checkbox" value="zeichnung" checked><span><span class="t">Technische Zeichnung (SVG + HTML)</span><br><span class="d">Wandabwicklung mit Verlege-/Vorspannplan, Bemaßung, Tabellen und Schriftfeld aus Modul&nbsp;7 — maßstabsgetreues SVG (1:x, mm) plus druckbares A3-/A4-Blatt.</span></span></label>
     <label class="opt"><input type="checkbox" value="nachweis" checked><span><span class="t">Statischer Nachweis (HTML/PDF-fähig)</span><br><span class="d">Voller Schermer-Nachweis aus Modul&nbsp;3 mit Geometrie, Kennwerten und Auslastungen — druckbare, prüfpflichtige Planungshilfe.</span></span></label>
@@ -462,7 +462,7 @@
       1:'Wand zeichnen (Länge/Höhe, Öffnungen) und statisch auslegen — erzeugt das geprüfte Wandelement.',
       2:'Lattung & Verbinderpositionen aus den Panelfugen.',
       3:'Statischer Nachweis der Anschlüsse und des Hebezustands.',
-      4:'Material-Stückliste mit Preisen, Export als Excel/CSV.',
+      4:'Baustellenstückliste: real einzubauende Teile in Fertigmaßen, Gewindestangenstücke mit Einbauteil-ID.',
       5:'Lagenweise Montageanleitung mit Vorspann-Schritten.',
       6:'Experimentell: 3D-Vorschau und IFC-Viewer/-Export (OBJ-Upload).',
       7:'Technische Zeichnung: maßstabsgetreue Wandabwicklung mit Bemaßung und Schriftfeld (A3/A4).',

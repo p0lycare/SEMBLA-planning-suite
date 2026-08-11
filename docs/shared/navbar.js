@@ -27,7 +27,7 @@ export const MODULE = [
   { nr: 1, datei: "wandplanung.html", kurz: "Wand",       titel: "Wandplanung & Auslegung" },
   { nr: 2, datei: "wandaufbau.html",  kurz: "Aufbau",     titel: "Horizontaler Wandaufbau", versteckt: true },
   { nr: 3, datei: "statik.html",      kurz: "Statik",     titel: "Statischer Nachweis", versteckt: true },
-  { nr: 4, datei: "stueckliste.html", kurz: "Stückliste", titel: "Stückliste & Kosten" },
+  { nr: 4, datei: "stueckliste.html", kurz: "Stückliste", titel: "Baustellenstückliste (Einbauteile)" },
   { nr: 5, datei: "montage.html",     kurz: "Montage",    titel: "Montageanleitung", versteckt: true },
   { nr: 6, datei: "ifc-3d.html",      kurz: "3D / IFC",   titel: "3D-Vorschau & IFC (experimentell)" },
   { nr: 7, datei: "zeichnung.html",   kurz: "Zeichnung",  titel: "Technische Zeichnung (Wandabwicklung)" },

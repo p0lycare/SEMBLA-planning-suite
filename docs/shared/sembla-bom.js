@@ -7,10 +7,17 @@
  * Sonderlängen aus `tension_columns[].segments`. Fällt bei fehlenden Feldern
  * auf `w.bom` / Defaults zurück (Alt-Bundles).
  *
- * Die Positionsliste ist die BAUSTELLENLISTE ([P-18]): sie nennt, WAS in welcher Menge
- * verbaut wird. Bauteilgleiche Einbaustellen stehen als EINE Position (Kopplungsmutter für
+ * Die Positionsliste ist die BAUSTELLENSTÜCKLISTE ([P-18]/[P-19]): sie nennt, WAS in welcher
+ * Menge verbaut wird. Bauteilgleiche Einbaustellen stehen als EINE Position (Kopplungsmutter für
  * Stangenstöße und Fuß), und Sonderzuschnitte tragen nur ihr Fertigmaß — aus welcher
  * Lagerlänge sie geschnitten werden, ist Sache des Einkaufs und wird hier nicht geplant.
+ *
+ * Für GEWINDESTANGENSTÜCKE — und nur für sie ([P-19]) — gibt es zusätzlich die
+ * Einbauteil-Identität: `einbauteile()` liefert je real eingebautem Stück einen Datensatz mit
+ * deterministischer ID, Art, Fertigmaß und Wandreferenz. Die Mengen der Stückliste werden
+ * daraus AGGREGIERT (nicht daneben gerechnet), und jede Stangenposition führt die IDs ihrer
+ * Einzelteile mit. Für Steine, Muttern, Bleche und Dichtstreifen wird KEINE Einzel-ID
+ * erfunden — der Rechenkern kennt dort keine Einzelteil-Identität ([P-9]).
  *
  * Boden- und Kopfblech werden hier aus den realen Platten (`base_plate`/`top_plate`)
  * in getrennte Positionen aufgeteilt ([A-1]); der Rechenkern bleibt unverändert und
@@ -28,6 +35,107 @@
 /** Deutsche Tausendertrennung ohne Nachkommastellen (für Labels). */
 function _semNum(n) { return (isFinite(n) ? n : 0).toLocaleString("de-DE"); }
 
+// ------------------------------------------------- Einbauteile (Gewindestangen, [P-19])
+
+/** Klartext der Stückart in Liste, Datei und Zeichnung — EIN Wortlaut ([P-19]/[D-4]). */
+export const ART_LABEL = { standard: "Standardteil", sonder: "Sonderzuschnitt", rest: "Reststück oben" };
+
+/**
+ * Zusätzliches, NICHT-farbliches Unterscheidungszeichen der Stückart ([P-19]): die
+ * Kennzeichnung muss im Schwarz-Weiß-Druck vollständig lesbar bleiben, Farbe ist deshalb
+ * immer nur redundante Zugabe zu Symbol und Klartext.
+ */
+export const ART_SYMBOL = { standard: "■", sonder: "◆", rest: "▲" };
+
+/** Verwendungsrolle (= Stücklistenschlüssel) je Stückart — keine zweite Zuordnungsachse. */
+const ART_ROLLE = { standard: "rod_std", sonder: "rod_sonder", rest: "rod_rest" };
+
+/**
+ * Deterministische Einbauteil-ID eines Gewindestangenstücks ([P-19]).
+ *
+ * Alle drei Bestandteile sind am gezeichneten Blatt ablesbar: die Spannachse `k` steht in der
+ * Strangtabelle, Segment und Stück werden von UNTEN gezählt — genau in der Richtung, in der
+ * montiert wird. Damit ist die ID ohne Zusatztabelle in der Zeichnung wiederfindbar, und
+ * Liste, Datei und Zeichnung benutzen dieselbe Kennung (kein zweites Schema).
+ *
+ * Die Achse wird BEWUSST NICHT auf zwei Stellen aufgefüllt: die Zeichnung schreibt sie als
+ * `k3`, und eine ID `GS-k03…` wäre auf der Baustelle eine zweite Schreibweise derselben
+ * Achse. Eine lexikografische Sortierbarkeit braucht die ID nicht — die Reihenfolge kommt
+ * aus der Ableitung (Achse, dann Segment, dann Stück von unten).
+ * @param {number} k Spannachse (Rasterindex) @param {number} segment 1-basiert von unten
+ * @param {number} stueck 1-basiert von unten
+ */
+export function einbauteilId(k, segment, stueck) {
+  return "GS-k" + k + "." + segment + "." + stueck;
+}
+
+/**
+ * Stücke eines Segments für Alt-Bundles OHNE `stuecke` — dieselbe Ableitung wie bisher
+ * (Stangenzahl − 1 Standardlängen plus, falls vorhanden, `letzte_stange_mm` als Sonderlänge).
+ * Es wird nichts erfunden: fehlt `letzte_stange_mm`, entsteht auch kein Stück.
+ */
+function _altStuecke(sg, col, rodFallback) {
+  const st = (sg.gewindestangen != null) ? sg.gewindestangen : (col.gewindestangen || 1);
+  const arr = [];
+  for (let i = 0; i < Math.max(0, st - 1); i++) arr.push({ len_mm: rodFallback, art: "standard" });
+  if (sg.letzte_stange_mm != null) arr.push({ len_mm: Math.round(sg.letzte_stange_mm), art: "sonder" });
+  return arr;
+}
+
+/**
+ * KANONISCHE Einbauteilliste der Gewindestangen ([P-19]): je real eingebautem Stück ein
+ * Datensatz. Quelle ist ausschliesslich `tension_columns[].segments[].stuecke` ([Z-2]/[Z-3]/
+ * [Z-6]) — es wird nichts nachgerechnet, nichts gespeichert und keine zweite Stückableitung
+ * geführt. `semblaBom()` aggregiert seine Stangenmengen aus GENAU dieser Liste, damit
+ * Einzelteil und Menge nicht auseinanderlaufen können.
+ *
+ * Ein VORHANDENES, aber LEERES `stuecke` ist ein gemeldeter Zuschnittkonflikt ([Z-6]:
+ * `reststueck_zu_lang`/`kein_ausgangsprodukt`): dieses Segment hat KEIN Einbauteil, und es
+ * wird auch keines ersatzweise gebildet ([P-6]/[P-9]).
+ *
+ * @param {any} w Wandelement
+ * @returns {Array<{id:string,kategorie:string,rolle:string,art:"standard"|"sonder"|"rest",
+ *   fertigmass_mm:number,wand:string,k:number,segment:number,stueck:number,
+ *   z0_mm:number,z1_mm:number}>}
+ */
+export function einbauteile(w) {
+  const out = [];
+  const rodFallback = (w && w.rod_mm) || 1100;
+  const wand = wandReferenz(w);
+  for (const col of ((w && w.tension_columns) || [])) {
+    const segs = col.segments || [];
+    for (let si = 0; si < segs.length; si++) {
+      const sg = segs[si];
+      const roh = Array.isArray(sg.stuecke) ? sg.stuecke : _altStuecke(sg, col, rodFallback);
+      let z = +sg.z0_mm || 0;
+      for (let i = 0; i < roh.length; i++) {
+        const s = roh[i];
+        const len = Math.round(s.len_mm);
+        // Unbekannte/fehlende Art gilt als Standardlänge — dieselbe Festlegung wie in
+        // `stueckFarbe()` (sembla-montage.js), damit nirgends eine Art erfunden wird.
+        const art = (s.art === "rest" || s.art === "sonder") ? s.art : "standard";
+        out.push({
+          id: einbauteilId(col.k, si + 1, i + 1),
+          kategorie: "gewindestange", rolle: ART_ROLLE[art], art,
+          fertigmass_mm: len, wand, k: col.k, segment: si + 1, stueck: i + 1,
+          z0_mm: z, z1_mm: z + len,
+        });
+        z += len;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Wandreferenz jeder Stücklistenzeile ([P-19]): der Name des WANDELEMENTS selbst. Bewusst
+ * nicht die Speicher-/Mappen-Kennung — die lebt ausserhalb des Wandelements und wäre eine
+ * zweite Identität ([P-1]). Eine projektweite Wandnummer gibt es (noch) nicht und wird
+ * deshalb nicht erfunden.
+ * @param {any} w
+ */
+export function wandReferenz(w) { return (w && w.name) || "Wandelement"; }
+
 /**
  * Kanonische Mengen aus dem Wandelement.
  * @param {any} w Wandelement
@@ -38,47 +146,31 @@ export function semblaBom(w) {
   for (const c of (w.courses || [])) for (const st of c.stones) { haveStones = true; if (st.type === "i2") i2++; else if (st.type === "i3") i3++; }
   if (!haveStones) { i2 = bom.i2 || 0; i3 = bom.i3 || 0; }
 
-  // --- Gewindestangen: KANONISCH aus segments[].stuecke ([Z-2]/[Z-3]) --------------------
-  // `stuecke` ist die einzige Stückableitung (Core). Jedes Stück ist entweder eine echte
-  // ausgewählte Standardlänge (`art:'standard'`) oder ein Sonderzuschnitt (`art:'sonder'`)
-  // mit dem Ausgangsprodukt `quelle_mm`. Gruppiert wird nach REALER Länge, damit die
-  // Stückliste je Standardlänge genau eine Position hat und [P-14] wieder eindeutig greift.
-  // Alt-Bundles ohne `stuecke` fallen auf die frühere Ableitung zurück (Stangen − 1 Standard,
-  // letztes Stück als Sonderlänge) — dieselbe Gesamtzahl, nur ohne Längenaufschlüsselung.
+  // --- Gewindestangen: KANONISCH aus den Einbauteilen ([Z-2]/[Z-3]/[P-19]) ---------------
+  // `einbauteile()` liest allein `segments[].stuecke` (Core) und ist damit die EINZIGE
+  // Stückableitung; hier wird sie nur noch nach REALER Länge gruppiert, damit die Stückliste je
+  // Standardlänge genau eine Position hat und [P-14] eindeutig greift. Die IDs der Einzelteile
+  // reisen mit der Gruppe mit ([P-19]): aggregiert wird die Menge, nicht die Identität.
+  // Alt-Bundles ohne `stuecke` behandelt `einbauteile()` mit der früheren Ableitung
+  // (Stangen − 1 Standard, letztes Stück als Sonderlänge) — dieselbe Gesamtzahl wie bisher.
   const rodFallback = (w.rod_mm || 1100);
-  const stdMap = new Map(), sonderMap = new Map(), restMap = new Map();
-  const zaehl = (m, key, obj) => m.set(key, { ...obj, anzahl: (m.get(key)?.anzahl || 0) + 1 });
+  const teile = einbauteile(w);
   let haveSeg = false, haveStuecke = false;
   for (const col of (w.tension_columns || [])) for (const sg of (col.segments || [])) {
     haveSeg = true;
-    // Ein VORHANDENES, aber LEERES `stuecke` ist keine fehlende Angabe, sondern ein gemeldeter
-    // Zuschnittkonflikt ([Z-6]: `reststueck_zu_lang`/`kein_ausgangsprodukt`): fuer dieses Segment
-    // ist KEIN Zuschnitt bestimmt. Der Alt-Bundle-Fallback darf hier nicht greifen — er leitete
-    // aus `letzte_stange_mm` (= Segmenthoehe) eine Sonderlaenge ab, die im Wandelement nirgends
-    // steht. Das JSON ist die einzige Quelle ([P-6]/[P-9]); gemeldet wird der Konflikt, erfunden
-    // wird nichts.
-    if (Array.isArray(sg.stuecke) && !sg.stuecke.length) continue;
-    if (Array.isArray(sg.stuecke) && sg.stuecke.length) {
-      haveStuecke = true;
-      for (const s of sg.stuecke) {
-        const len = Math.round(s.len_mm);
-        // [Z-6] Das Reststueck ist ein EIGENES Katalogprodukt (eigene Rolle `rod_rest`) und
-        // damit eine eigene Position — es darf nicht unter den Standardlaengen verschwinden,
-        // sonst waere die Preisauflösung wieder mehrdeutig und die Bestellmenge falsch.
-        if (s.art === "rest") zaehl(restMap, String(len), { len_mm: len });
-        // [P-18] Sonderzuschnitte werden allein nach FERTIGMASS gruppiert — das Ausgangsmaß
-        // (`quelle_mm`) ist Beschaffungssache und darf keine zweite Position aufspannen.
-        else if (s.art === "sonder") zaehl(sonderMap, String(len), { len_mm: len });
-        else zaehl(stdMap, String(len), { len_mm: len });
-      }
-      continue;
-    }
-    const st = (sg.gewindestangen != null) ? sg.gewindestangen : (col.gewindestangen || 1);
-    for (let i = 0; i < Math.max(0, st - 1); i++) zaehl(stdMap, String(rodFallback), { len_mm: rodFallback });
-    if (sg.letzte_stange_mm != null) {
-      const len = Math.round(sg.letzte_stange_mm);
-      zaehl(sonderMap, String(len), { len_mm: len });
-    }
+    if (Array.isArray(sg.stuecke) && sg.stuecke.length) haveStuecke = true;
+  }
+  const stdMap = new Map(), sonderMap = new Map(), restMap = new Map();
+  for (const t of teile) {
+    // [Z-6] Das Reststueck ist ein EIGENES Katalogprodukt (eigene Rolle `rod_rest`) und damit
+    // eine eigene Position — es darf nicht unter den Standardlaengen verschwinden, sonst waere
+    // die Preisauflösung wieder mehrdeutig. [P-18] Sonderzuschnitte werden allein nach
+    // FERTIGMASS gruppiert; das Ausgangsmaß ist Beschaffungssache und spannt keine Position auf.
+    const m = t.art === "rest" ? restMap : (t.art === "sonder" ? sonderMap : stdMap);
+    const key = String(t.fertigmass_mm);
+    const e = m.get(key) || { len_mm: t.fertigmass_mm, anzahl: 0, ids: [] };
+    e.anzahl++; e.ids.push(t.id);
+    m.set(key, e);
   }
   const stangenStd = [...stdMap.values()].sort((a, b) => b.len_mm - a.len_mm);
   const stangenSonder = [...sonderMap.values()].sort((a, b) => a.len_mm - b.len_mm);
@@ -121,6 +213,7 @@ export function semblaBom(w) {
 
   return { i2, i3, rod_mm: rodFallback, rodStd, rodSonder, rodRest, sonderList,
            stangenStd, stangenSonder, stangenRest, stueckAbleitung: haveStuecke,
+           einbauteile: teile, wand: wandReferenz(w),
            gewindestangen_gesamt: gesamt, verbindungsmuttern: verbSplice,
            senkkopfschrauben: senkkopf, kopplungsmuttern_basis: kopplBasis,
            spannplatten, spannmuttern,
@@ -144,27 +237,33 @@ export function semblaBomItems(w) {
   const b = semblaBom(w);
   const bd = _semNum(b.stahlblech_dicke_mm);
   const cm = mm => _semNum(mm / 10);
+  // Gewindestangenstücke tragen zusätzlich die Einbauteil-Kennzeichnung ([P-19]): `art`
+  // (mit Klartext und Symbol), `fertigmass_mm` und die IDs der aggregierten Einzelteile.
+  // `ids.length === menge` ist damit erzwungen, weil beides aus derselben Liste kommt.
+  const stange = (art, x, label) => ({
+    key: ART_ROLLE[art], label, unit: "Stk", menge: x.anzahl, mass_mm: x.len_mm,
+    art, art_label: ART_LABEL[art], art_symbol: ART_SYMBOL[art],
+    fertigmass_mm: x.len_mm, ids: (x.ids || []).slice(),
+  });
   // Je verwendete Standardlänge EINE Position ([Z-4]/[P-14]): `mass_mm` ist das maßgebende
   // Maß dieser Position, damit die Preisauflösung genau ein Katalogprodukt findet, obwohl
   // mehrere Standardlängen gleichzeitig eingebaut sind. Menge = Anzahl realer Stücke.
-  const rodStdItems = (b.stangenStd.length ? b.stangenStd : [{ len_mm: b.rod_mm, anzahl: 0 }])
-    .map(x => ({ key: "rod_std", label: "Gewindestange " + cm(x.len_mm) + " cm", unit: "Stk",
-                 menge: x.anzahl, mass_mm: x.len_mm }));
+  const rodStdItems = (b.stangenStd.length ? b.stangenStd : [{ len_mm: b.rod_mm, anzahl: 0, ids: [] }])
+    .map(x => stange("standard", x, "Gewindestange " + cm(x.len_mm) + " cm"));
   // Sonderzuschnitte ([P-18]): Die Stückliste ist die BAUSTELLENLISTE — sie nennt das
   // Fertigmaß und die Stückzahl, die verbaut werden. Aus welcher Lagerlänge geschnitten wird,
   // ist Sache des Einkaufs: es gibt kein Ausgangsprodukt, keine Herkunftsangabe im Label und
   // keinen Preis (die Rolle ist nicht bepreist). `mass_mm` ist deshalb das FERTIGMASS.
-  const rodSonderItems = (b.stangenSonder.length ? b.stangenSonder : [{ len_mm: b.rod_mm, anzahl: 0 }])
-    .map(x => ({ key: "rod_sonder",
-                 label: "Gewindestange Sonderzuschnitt " + cm(x.len_mm) + " cm",
-                 unit: "Stk", menge: x.anzahl, mass_mm: x.len_mm }));
+  const rodSonderItems = (b.stangenSonder.length ? b.stangenSonder : [{ len_mm: b.rod_mm, anzahl: 0, ids: [] }])
+    .map(x => stange("sonder", x, "Gewindestange Sonderzuschnitt " + cm(x.len_mm) + " cm"));
   // [Z-6] Reststueck am oberen Wandabschluss: eigene Rolle, eigene Position, eigenes Maß.
   // Ohne gewaehltes Reststueck existiert die Position gar nicht (Menge 0 waere eine
   // Behauptung ueber ein Produkt, das niemand gewaehlt hat).
-  const rodRestItems = b.stangenRest.map(x => ({
-    key: "rod_rest", label: "Gewindestange Reststück " + cm(x.len_mm) + " cm (oberer Abschluss)",
-    unit: "Stk", menge: x.anzahl, mass_mm: x.len_mm }));
-  return [
+  const rodRestItems = b.stangenRest.map(x =>
+    stange("rest", x, "Gewindestange Reststück " + cm(x.len_mm) + " cm (oberer Abschluss)"));
+  // Jede Zeile nennt die Wand, an der sie verbaut wird ([P-19]) — auch die Mengenpositionen
+  // ohne Einzelteil-Identität (Steine, Muttern, Bleche, Dichtstreifen).
+  return _mitWand(b.wand, [
     { key: "i3",          label: "Stein i3 (37,5 cm)",                unit: "Stk", menge: b.i3 },
     { key: "i2",          label: "Stein i2 (25 cm)",                  unit: "Stk", menge: b.i2 },
     ...rodStdItems,
@@ -184,8 +283,11 @@ export function semblaBomItems(w) {
     { key: "dicht_stk",   label: "Dichtstreifen 20 cm (Schallschutz)", unit: "Stk", menge: b.stossfugen },
     { key: "dicht",       label: "Dichtstreifen – Gesamtlänge",       unit: "m",   menge: +((b.dichtstreifen_mm / 1000).toFixed(2)),
       nachrichtlich: true },
-  ];
+  ]);
 }
+
+/** Wandreferenz an jede Position schreiben ([P-19]) — ohne die Positionsreihenfolge zu ändern. */
+function _mitWand(wand, items) { return items.map(it => ({ wand, ...it })); }
 
 /**
  * Einheitliche Mengen-Formatierung für Zeilen (Stück vs. Meter).

@@ -31,7 +31,7 @@
  * Einheiten: Wandmasse mm, Zeichenkoordinaten Papier-mm.
  */
 
-import { semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
+import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
 import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL } from "./sembla-montage.js";
 
 const GRID_FALLBACK = 125, COURSE_FALLBACK = 200, ROD_FALLBACK = 1100;
@@ -166,6 +166,9 @@ export const HINWEIS_FUSS = "Diese Regeln sind Zielvorgaben für die Planung. Di
 
 /** Ueberschrift des Mangelblocks — Zuschnittkonflikte des Kerns ([Z-5]/[Z-6]). */
 export const MANGEL_TITEL = "Zuschnittkonflikte – Blatt unvollständig";
+
+/** Titel der Einbauteil-ID-Tabelle des Blattes ([P-19]). */
+export const EINBAUTEIL_TITEL = "Einbauteile Gewindestangen – IDs je Spannachse";
 
 /** Nachweis-Feld im Schriftfeld — nie „bestanden", kein Rueckgriff auf ein Rechenmodell ([D-8]). */
 export const NACHWEIS_TEXT = "nicht Bestandteil dieser Zeichnung – separat prüfen";
@@ -349,9 +352,17 @@ export function zeichnungSvg(w, opts = {}) {
 
 // ---------------------------------------------------------------- Blatt-Daten
 
-/** Stuecklisten-Zeilen des Blattes (Mengen aus `sembla-bom.js`, nur Menge > 0). */
+/**
+ * Stuecklisten-Zeilen des Blattes (Mengen aus `sembla-bom.js`, nur Menge > 0).
+ *
+ * Gewindestangenstuecke tragen ihr Art-SYMBOL voran ([P-19]): das Blatt kennzeichnet
+ * Standardteil, Sonderzuschnitt und Reststueck damit auch ohne Farbe. Die Beplankung
+ * (Latten/Platten/Modul-2-Verbinder) hat hier ohnehin nie eine Zeile — das Blatt liest
+ * allein das Wandelement ([D-1]).
+ */
 export function bomZeilen(w) {
-  return semblaBomItems(w).filter(it => it.menge > 0).map(it => ({ label: it.label, menge: semblaBomMenge(it) }));
+  return semblaBomItems(w).filter(it => it.menge > 0)
+    .map(it => ({ label: (it.art ? ART_SYMBOL[it.art] + " " : "") + it.label, menge: semblaBomMenge(it) }));
 }
 
 /** Vorspann-Kennzahlen des Blattes (reine Ablesewerte aus dem Wandelement). */
@@ -397,13 +408,46 @@ export function vorspannZeilen(w) {
   return rows;
 }
 
-/** Strangtabelle (je Spannachse Position und Stangenzahl) — Datenzugriff/Detailblatt. */
+/**
+ * Strangtabelle (je Spannachse Position, Stangenzahl und die KONKRETEN Einbauteil-IDs
+ * ihrer Stücke) — Datenzugriff/Detailblatt.
+ *
+ * Die IDs stehen hier und nicht an jedem Stück im SVG: bei 1:50 sind die Stücke wenige
+ * Millimeter hoch, eine Beschriftung je Stück würde das Blatt zusetzen. Die Achse `k` ist
+ * am gezeichneten Strang angeschrieben, Segment und Stück werden von unten gezählt — damit
+ * ist jede ID der Baustellenstückliste eindeutig einem gezeichneten Stück zuzuordnen
+ * ([P-19]). Gerechnet wird nichts: die IDs kommen aus `einbauteile()` ([D-1]).
+ */
 export function strangZeilen(w) {
+  const nachAchse = new Map();
+  for (const t of einbauteile(w)) {
+    const l = nachAchse.get(t.k) || [];
+    l.push(t); nachAchse.set(t.k, l);
+  }
   return (w.tension_columns || []).map(col => {
     let stangen = 0;
     for (const sg of _segmente(w, col)) stangen += stangenStuecke(w, sg).length;
-    return { label: "k" + col.k + " · x = " + _fmt(col.x_mm / 10, 1) + " cm", wert: stangen + "×" };
+    const teile = nachAchse.get(col.k) || [];
+    return {
+      label: "k" + col.k + " · x = " + _fmt(col.x_mm / 10, 1) + " cm",
+      wert: stangen + "×",
+      ids: teile.map(t => t.id),
+      // Jede ID traegt ihr Art-SYMBOL unmittelbar voran: so ist Standardteil,
+      // Sonderzuschnitt und Reststück auch im Schwarz-Weiss-Druck am Blatt ablesbar, ohne
+      // die Fertigmaße zu wiederholen (die stehen in der Stücklisten-Tabelle des Blattes).
+      teile: teile.map(t => ART_SYMBOL[t.art] + t.id),
+    };
   });
+}
+
+/**
+ * Blattzeilen der Einbauteil-IDs je Spannachse ([P-19]) — nur Achsen mit Stücken. Eine Achse
+ * traegt selten mehr als fuenf Stücke; die Zeile bleibt damit kurz genug fuer die Seitenspalte
+ * des Blattes, und es muss keine ID ans gezeichnete Stück geschrieben werden.
+ */
+export function einbauteilZeilen(w) {
+  return strangZeilen(w).filter(r => r.teile.length)
+    .map(r => ({ label: r.label, wert: r.teile.join(" ") }));
 }
 
 /**
@@ -502,7 +546,15 @@ export function legendeHtml() {
     + `<span>${i(FARBE.stahl, "plate")}Boden-/Kopfblech</span>`
     + `<span>${i(FARBE.i3, "plate")}i3 (37,5 cm)</span>`
     + `<span>${i(FARBE.i2, "plate")}i2 (25 cm)</span>`
-    + `</div>`;
+    + `</div>`
+    // [P-19] Der Kennzeichnungsschluessel der Einbauteile steht ausdruecklich MIT Symbolen
+    // dabei: Farbe allein waere im Schwarz-Weiss-Druck keine Kennzeichnung.
+    // Wortlaut aus ART_LABEL — genau der der Baustellenstückliste, damit Blatt und Liste
+    // dieselben Begriffe benutzen und nicht zwei Namen für dasselbe Bauteil führen.
+    + `<div class="zfuss">${ART_SYMBOL.standard} ${ART_LABEL.standard} · `
+    + `${ART_SYMBOL.sonder} ${ART_LABEL.sonder} · ${ART_SYMBOL.rest} ${ART_LABEL.rest} · `
+    + `Einbauteil-ID GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt; — `
+    + `dieselben IDs führt die Baustellenstückliste (Modul 4).</div>`;
 }
 
 /** Hinweisliste der noch ungerechneten Vorspann-Zielregeln — ausdruecklich ungeprueft ([D-5]). */
@@ -535,7 +587,11 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
     + `<div class="zdraw"><div class="zcap">${_esc(zeichnungTitel(w, z.masstab, o.planinhalt))}</div>`
     + `<div class="zsvg">${z.svg}</div></div>`
     + `<aside class="zside">`
-    + `<div class="zbox"><h4>Stückliste (Mengen)</h4>${_tab(bomZeilen(w))}</div>`
+    + `<div class="zbox"><h4>Baustellenstückliste (Mengen)</h4>${_tab(bomZeilen(w))}</div>`
+    // [P-19] Konkrete Einbauteil-IDs je Spannachse — Liste und Zeichnung benennen dieselben
+    // Stücke. Leer (kein Kasten), wenn die Wand keine bestückte Spannachse hat.
+    + (einbauteilZeilen(w).length
+        ? `<div class="zbox zids"><h4>${EINBAUTEIL_TITEL}</h4>${_tab(einbauteilZeilen(w))}</div>` : "")
     + `<div class="zbox"><h4>Vorspannung</h4>${_tab(vorspannZeilen(w))}</div>`
     // [Z-5]/[Z-6] Zuschnittkonflikte stehen VOR der Legende und nur, wenn es welche gibt:
     // ein unvollstaendiger Zuschnitt darf auf dem Blatt nicht als vollstaendig erscheinen.
@@ -573,6 +629,10 @@ export const ZEICHNUNG_CSS = `
   table.ztab{width:100%;border-collapse:collapse;font-size:11px}
   table.ztab td{padding:1.5px 2px;vertical-align:top}
   table.ztab td.r{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  /* Einbauteil-IDs ([P-19]): dichter Satz, damit die konkreten IDs je Spannachse in die
+     Seitenspalte passen — die Zelle darf umbrechen, damit keine ID abgeschnitten wird. */
+  .zbox.zids table.ztab{font-size:9px}
+  .zbox.zids table.ztab td.r{text-align:left;font-weight:500;word-break:break-word}
   .zregeln{font-size:10px;line-height:1.4}
   .zregeln div{display:flex;gap:6px;margin:3px 0}
   .zregeln .chip{flex:0 0 10px;height:10px;border-radius:2px;margin-top:1px}
