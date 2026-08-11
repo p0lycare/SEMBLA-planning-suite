@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "78e6c4a6",
+  "signatur": "1e4b37fe",
   "entscheidungen": [
     {
       "issue": 41,
@@ -99,9 +99,18 @@ export const PLAN = {
     "sicherheit": true,
     "abhaengig_von": [],
     "zyklus": true,
-    "begruendung": "Abnahme gescheitert: der reale Neuanlegefluss schreibt 1100 mm als echte Vorspanngeometrie, Zeichnung und Stückliste lesen damit ein falsches JSON. Baubarkeit betroffen, Arbeit läuft, und Voraussetzung für Gesamtstückliste und 20-Wand-Validierung."
+    "begruendung": "Abnahme gescheitert und durch #62 bestätigt: Der reale Neuanlegefluss speichert 1100 mm als echte Vorspanngeometrie. Zeichnung und Stückliste lesen falsches JSON; Baubarkeit und Baustellenausgabe sind betroffen."
   },
   "weitere": [
+    {
+      "issue": 62,
+      "titel": "Stückliste: Baustellendokument vereinfachen und Vorspanndaten konsistent halten",
+      "prio": "high",
+      "status": "ohne",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
     {
       "issue": 20,
       "titel": "Zyklusrahmen: Aschersleben/AWG-Projekt vollständig begleiten",
