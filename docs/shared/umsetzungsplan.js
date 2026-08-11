@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "1baa0289",
+  "signatur": "5db1f3da",
   "entscheidungen": [
     {
       "issue": 41,
@@ -62,7 +62,7 @@ export const PLAN = {
   "weitere": [
     {
       "issue": 59,
-      "titel": "Lageplan: minimaler Kopf, keine Nullmaße und weitere Bemaßungskorrekturen",
+      "titel": "Lageplan: minimaler Kopf und weitere Bemaßungskorrekturen",
       "prio": "high",
       "status": "ohne",
       "sicherheit": false,

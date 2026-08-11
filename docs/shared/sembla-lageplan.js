@@ -424,6 +424,17 @@ export function lageplanSvg(daten, opts) {
     const doppelt = new Set((daten.ergebnis.redundanzen || []).map((r) => r.bemassung));
     daten.massbilder.forEach((g, i) => {
       if (!g) return;
+      // Nullmasse werden NICHT gezeichnet (#59): eine Bemassung mit 0 mm — typisch die
+      // Fixierung einer Kante am Geschossursprung ([K-4]) — haette zwei deckungsgleiche
+      // Hilfslinien, eine Masslinie ohne Ausdehnung und die Zahl „0" mitten im Plan; sie
+      // verdeckt Nachbarmasse und behauptet eine Strecke, die es nicht gibt. Ausgelassen
+      // wird die GANZE Gruppe samt `data-bemassung`, damit im Blatt nichts Unsichtbares
+      // liegen bleibt. Das ist ausschliesslich Darstellung: das Datum bleibt in
+      // `geschoss.bemassungen`, der Loeser wendet es unveraendert an, und `massbilder`
+      // behaelt Laenge und Index — die Staffelung der uebrigen Masse bleibt damit
+      // bitgenau die des Editors ([N-5]). Verglichen wird strikt gegen exakt 0, damit
+      // `null` (kein Mass) seine bestehende Behandlung behaelt.
+      if (g.mass === 0) return;
       // Umgerechnet wird die GEMEINSAME Geometrie — Werte, Bezuege, Staffelung,
       // `linie_mm` und `text_mm` stehen damit exakt wie im Editor ([N-5]).
       const p = {

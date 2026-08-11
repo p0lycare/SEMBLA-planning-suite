@@ -239,6 +239,48 @@ t("[N-5] `text_mm` wirkt und verschiebt allein die Zahl",
   daten.massbilder[1].versatz.x === 30 && daten.massbilder[1].versatz.y === -15
   && daten.massbilder[1].q1 === daten.massbilder[0].q1);
 
+// --- [#59] Nullmasse werden nicht gezeichnet, bleiben aber wirksam ---------
+// Aufgebaut ist der Fall ueber `mFix` (s. o.): `bm-fix` ist eine echte, ueber
+// `MAPPE.setzeBemassung` gesetzte Fixierung der Kante „w-a min" am Geschossursprung
+// mit 0 mm — genau das Mass, das im Plan nichts misst und trotzdem die Lage bestimmt.
+
+t("[#59] das 0-mm-Mass bleibt im Datenstand der Mappe erhalten",
+  MAPPE.bemassungen(mFix, gsEG).length === 3
+  && MAPPE.bemassungen(mFix, gsEG).some((b) => b.id === "bm-fix" && b.mass_mm === 0));
+t("[#59] der kanonische Loeser wendet es unveraendert an (die Kante liegt auf y = 0)",
+  wAfix.rechteck.y_min === 0 && wAfix.bestimmt.y === true);
+t("[#59] `lageplanDaten` filtert nichts — kein Schattenbestand, keine Indexluecke",
+  datenFix.massbilder.length === 3 && datenFix.massbilder.every(Boolean)
+  && datenFix.massbilder[2].id === "bm-fix" && datenFix.massbilder[2].mass === 0
+  && !datenFix.meldungen.some((m) => m.art === "mass_ohne_wand"));
+
+const svgFix = LP.lageplanSvg(datenFix);
+t("[#59] das Blatt laesst die GANZE Massgruppe des Nullmasses aus",
+  !svgFix.svg.includes('data-bemassung="bm-fix"')
+  && svgFix.svg.includes("lpmass"));              // die uebrigen Gruppen stehen weiter
+t("[#59] keine Maszahl „0“ und keine Masslinie ohne Ausdehnung im Blatt",
+  !massTexte(svgFix.svg).includes("0"));
+t("[#59] die Nicht-null-Masse erscheinen unveraendert vollstaendig",
+  svgFix.svg.includes('data-bemassung="bm-1"') && svgFix.svg.includes('data-bemassung="bm-2"')
+  && massTexte(svgFix.svg).length === 2
+  && massTexte(svgFix.svg).every((x) => x === "3000"));
+t("[#59] die Staffelung der uebrigen Masse bleibt unberuehrt (Index bleibt Index)",
+  datenFix.massbilder[1].q - datenFix.massbilder[0].q === MB.MASS_ABSTAND_MM + 400);
+// Muss 5: Vorschau, Druck-HTML und die eigenstaendige SVG-Datei laufen durch denselben
+// DOM-freien Pfad — geprueft wird deshalb an den tatsaechlichen Ausgabezeichenketten.
+const blattFix = LP.blattHtml(datenFix);
+const dokFix = LP.lageplanDokument(datenFix);
+const svgDateiFix = LP.lageplanSvgDatei(datenFix);
+t("[#59] Blatt-HTML, Druckdokument und SVG-Datei zeigen das Nullmass ebenfalls nicht",
+  [blattFix.html, blattFix.svg, dokFix, svgDateiFix]
+    .every((s) => !s.includes('data-bemassung="bm-fix"'))
+  && [blattFix.svg, svgDateiFix].every((s) => !massTexte(s).includes("0")));
+t("[#59] dieselbe Ausgabe traegt die Nicht-null-Masse weiterhin",
+  [blattFix.svg, svgDateiFix].every((s) => s.includes('data-bemassung="bm-1"')
+    && s.includes('data-bemassung="bm-2"') && massTexte(s).length === 2));
+t("[#59] das Wandrechteck der fixierten Wand wird ganz normal gezeichnet",
+  svgFix.svg.includes('data-wand="w-a"'));
+
 // --- [N-6] Schriftfeld aus mappe.projekt.kopfdaten -------------------------
 
 const blatt = LP.blattHtml(daten);

@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-14",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 59,
+    titel: "Nullmaße bleiben als Wandbezug wirksam, werden im Lageplan aber nicht mehr gezeichnet",
+    testbitte: "Im Geschosseditor eine Wandkante mit 0 mm am Ursprung bemaßen und Reiter 9 öffnen: Die Wand muss am Ursprung liegen; Vorschau, Druck und Export dürfen keine Maßgrafik mit 0 zeigen.",
+  },
+  {
     id: "chg-20260811-13",
     datum: "2026-08-11",
     typ: "fix",

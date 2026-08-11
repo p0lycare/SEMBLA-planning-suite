@@ -314,6 +314,55 @@ const einmal = lp.blatt.html;
 lp.render();
 ok('[K-5] gleicher Stand ⇒ bitgenau gleiches Blatt', lp.blatt.html === einmal);
 
+// --- 8) [#59] Nullmasse werden nicht gezeichnet, bleiben aber wirksam -----
+//
+// Gesetzt wird ueber den ECHTEN Pfad: Storage → Projektmappe → `setzeBemassung`.
+// `bm-nul` fixiert die Kante „Wand A min" mit 0 mm am Geschossursprung ([K-4]) —
+// ein Mass, das nichts misst und trotzdem die Lage bestimmt. Geschrieben wird in die
+// Mappe von Projekt A anhand ihrer Kennung; der aktive Zeiger zeigt weiter auf B.
+store.setzeMappe(MAPPE.setzeBemassung(store.projektMappe(prjA.projekt.id), gsEG, {
+  id: 'bm-nul', achse: 'y', von: null, bis: { wand: idA, bezug: 'min' }, mass_mm: 0,
+}));
+await warte();
+lp.render();
+
+const massTexte = s => [...s.matchAll(/<g class="lpmass[^"]*"[^>]*>[\s\S]*?<text\b[^>]*>([^<]*)<\/text>/g)]
+  .map(m => m[1]);
+
+ok('[#59] die 0-mm-Bemassung liegt unveraendert im gespeicherten Stand',
+  MAPPE.bemassungen(store.projektMappe(prjA.projekt.id), gsEG)
+    .some(b => b.id === 'bm-nul' && b.mass_mm === 0));
+ok('[#59] der kanonische Loeser wendet sie an — die Kante liegt auf y = 0',
+  lp.daten.waende.find(w => w.id === idA).rechteck.y_min === 0
+  && lp.daten.waende.find(w => w.id === idA).bestimmt.y === true);
+ok('[#59] die Ableitung filtert nichts weg — das Mass ist als Geometrie vorhanden',
+  lp.daten.massbilder.length === lp.daten.bemassungen.length
+  && lp.daten.massbilder.some(g => g && g.id === 'bm-nul' && g.mass === 0));
+ok('[#59] die sichtbare Vorschau zeichnet das Nullmass nicht',
+  !lp.blatt.svg.includes('data-bemassung="bm-nul"')
+  && !$('lp-blatt').innerHTML.includes('data-bemassung="bm-nul"')
+  && !massTexte(lp.blatt.svg).includes('0'));
+ok('[#59] das Nicht-null-Mass bleibt in der Vorschau vollstaendig stehen',
+  lp.blatt.svg.includes('data-bemassung="bm-1"')
+  && massTexte(lp.blatt.svg).join(',') === '3000');
+
+// Muss 5: geprueft an den ENTPACKTEN Exportbytes, nicht an einem zweiten Aufruf.
+letzterBlob = null;
+$('lp-export').dispatch('click');
+await warte();
+const nulEintraege = await ZIP.entpacke(letzterBlob.teile[0]);
+const nulText = Object.fromEntries(nulEintraege.map(e => [e.name, dec.decode(e.data)]));
+const nulRumpf = LP.dateiRumpf(lp.daten);
+ok('[#59] auch die exportierten Bytes tragen weder Kennung noch Maszahl des Nullmasses',
+  [nulText[nulRumpf + '.html'], nulText[nulRumpf + '.svg']]
+    .every(s => !s.includes('data-bemassung="bm-nul"') && !massTexte(s).includes('0')));
+ok('[#59] Vorschau und Export stimmen ueberein und zeigen das 3000er-Mass weiter',
+  [nulText[nulRumpf + '.html'], nulText[nulRumpf + '.svg']]
+    .every(s => s.includes('data-bemassung="bm-1"') && massTexte(s).join(',') === '3000')
+  && nulText[nulRumpf + '.html'].includes(lp.blatt.svg));
+ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
+  lp.blatt.svg.includes(`data-wand="${idA}"`));
+
 // --- Bericht -------------------------------------------------------------
 let fail = 0;
 for (const [n, c] of checks) { if (!c) fail++; console.log((c ? '  ok  ' : '  FAIL ') + n); }
