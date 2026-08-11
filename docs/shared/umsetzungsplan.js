@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "54df7764",
+  "signatur": "dc027815",
   "entscheidungen": [
     {
       "issue": 41,
@@ -100,7 +100,7 @@ export const PLAN = {
       "issue": 60,
       "titel": "Fixierwerkzeug ersetzen: Bemaßung direkt gegen den Ursprung",
       "prio": "ohne",
-      "status": "ohne",
+      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": false
