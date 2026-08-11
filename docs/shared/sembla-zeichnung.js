@@ -60,17 +60,37 @@ const _mm = v => (Math.round((isFinite(v) ? v : 0) * 10) / 10).toString().replac
 export const MASSSTAEBE = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200];
 
 /**
- * Blattformate (quer). `feld_mm` = nutzbares Zeichenfeld nach Abzug von Rand,
- * Seitenspalte (Tabellen) und Schriftfeld; `druckhoehe_mm` = Blatt-Innenhoehe,
- * damit das Blatt im Druck genau eine Seite fuellt.
+ * Blattformate (quer). `papier_mm` = reales Papiermass, `rand_mm` = Druckrand
+ * (`@page margin`), `feld_mm` = nutzbares Zeichenfeld nach Abzug von Rand,
+ * Seitenspalte (Tabellen) und Schriftfeld.
+ *
+ * Die druckbare Innenflaeche steht NICHT als eigenes Feld daneben, sondern wird
+ * ueber `blattInnen()` aus Papiermass und Rand gerechnet: sonst gaebe es zwei
+ * Wahrheiten fuer dieselbe Groesse (frueher `druckhoehe_mm`), und genau daran ist
+ * die Vorschau auseinandergelaufen (#61).
  */
 export const BLATT = {
-  a3: { label: "A3 quer", seite: "A3 landscape", rand_mm: 10, feld_mm: { w: 345, h: 200 }, druckhoehe_mm: 277 },
-  a4: { label: "A4 quer", seite: "A4 landscape", rand_mm: 8, feld_mm: { w: 195, h: 135 }, druckhoehe_mm: 194 },
+  a3: { label: "A3 quer", seite: "A3 landscape", papier_mm: { w: 420, h: 297 }, rand_mm: 10, feld_mm: { w: 345, h: 200 } },
+  a4: { label: "A4 quer", seite: "A4 landscape", papier_mm: { w: 297, h: 210 }, rand_mm: 8, feld_mm: { w: 195, h: 135 } },
 };
 
 /** @type {ReadonlyArray<'a3'|'a4'>} */
 export const FORMATE = ["a3", "a4"];
+
+/**
+ * Druckbare Innenflaeche des Blattes in Papier-mm (Papiermass abzueglich Rand) —
+ * die kanonische Blattgeometrie fuer Bildschirm UND Druck ([D-6]).
+ *
+ * `ZEICHNUNG_CSS` gibt `.zsheet` genau dieses Mass; damit ist das Blatt in der
+ * Vorschau dieselbe Box wie auf dem Papier und die Pixelmasse im Blattinneren
+ * (Seitenspalte, Raender, Schriftgroessen) stehen in beiden Medien zu derselben
+ * Bezugsbreite. Der Bildschirm skaliert das fertige Blatt nur noch gleichmaessig.
+ * @param {'a3'|'a4'} [format] @returns {{w:number,h:number}}
+ */
+export function blattInnen(format = "a3") {
+  const b = BLATT[FORMATE.includes(/** @type {any} */ (format)) ? format : "a3"];
+  return { w: b.papier_mm.w - 2 * b.rand_mm, h: b.papier_mm.h - 2 * b.rand_mm };
+}
 
 /** Zeichnungsrand (Papier-mm) fuer Masse, Reihennummern und Beschriftung. */
 export const PAD_MM = 14;
@@ -616,14 +636,22 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
   return { html, masstab: z.masstab, format: o.format, svg: z.svg };
 }
 
-/** CSS des Blattes — von Vorschau (Modul 7) und Export-Dokument gemeinsam genutzt. */
+/**
+ * CSS des Blattes — von Vorschau (Modul 7) und Export-Dokument gemeinsam genutzt.
+ *
+ * Die Blattgroesse steht hier FEST in Papier-mm (aus `blattInnen()`) statt als
+ * Seitenverhaeltnis: eine nur bildschirmbreite Box haette dieselben Pixelmasse im
+ * Blattinneren (Seitenspalte 300px, Raender, Schriftgroessen) zu einer ganz anderen
+ * Bezugsbreite gestellt als der Druck — die Vorschau haette also umbrochen statt
+ * skaliert (#61). Der Rahmen ist bewusst `outline`, weil er die Boxgeometrie nicht
+ * veraendern darf; im Druck faellt er weg.
+ */
 export const ZEICHNUNG_CSS = `
-  .zsheet{position:relative;background:#fff;color:#1c2430;
+  .zsheet{position:relative;box-sizing:border-box;background:#fff;color:#1c2430;
           font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-          border:1px solid #b9c0c8;padding:14px;display:grid;
-          grid-template-columns:1fr 300px;grid-template-rows:1fr auto;gap:10px}
-  .zsheet.fmt-a3{aspect-ratio:420/297}
-  .zsheet.fmt-a4{aspect-ratio:297/210}
+          outline:1px solid #b9c0c8;padding:14px;display:grid;
+          grid-template-columns:1fr 300px;grid-template-rows:1fr auto;gap:10px;overflow:hidden}
+${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blattInnen(f).h}mm}`).join("\n")}
   .zwm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
        pointer-events:none;z-index:20;overflow:hidden}
   .zwm span{transform:rotate(-32deg);font-size:150px;font-weight:800;letter-spacing:8px;
@@ -672,12 +700,19 @@ export const ZEICHNUNG_CSS = `
   .ztb-row .v.nw{font-weight:500;color:#7d2a10;font-size:10px}
 `;
 
-/** Druck-CSS je Blattformat (eine Seite, quer) — @page + Blatt-Innenhoehe. */
+/**
+ * Druck-CSS je Blattformat (eine Seite, quer) — `@page` aus denselben `BLATT`-Daten.
+ *
+ * Die Blattgeometrie steht ausschliesslich in `ZEICHNUNG_CSS`; hier wird sie NICHT
+ * noch einmal gesetzt. Eine nur im Druck wirksame Hoehenkorrektur haette Vorschau
+ * und Ausgabe wieder verschieden proportioniert (#61) — uebrig bleiben Seitenformat,
+ * Rand und die reine Druckkosmetik.
+ */
 export function druckCss(format = "a3") {
   const b = BLATT[FORMATE.includes(format) ? format : "a3"];
   return `@page{size:${b.seite};margin:${b.rand_mm}mm}`
     + `@media print{html,body{background:#fff;margin:0;padding:0}`
-    + `.zsheet{width:auto;max-width:none;border:none;box-shadow:none;aspect-ratio:auto;height:${b.druckhoehe_mm}mm;overflow:hidden}`
+    + `.zsheet{outline:none;box-shadow:none}`
     + `.zwm span{color:rgba(201,70,28,.22)}}`;
 }
 

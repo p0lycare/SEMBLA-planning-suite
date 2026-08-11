@@ -422,6 +422,47 @@ ok("SVG-Datei nennt Wand, Masse und Masstab", datei.includes("IW-01") && datei.i
 ok("SVG-Datei verweist auf die separate statische Pruefung", datei.includes(Z.NACHWEIS_TEXT));
 ok("SVG-Datei enthaelt die Zeichnung selbst", (datei.match(/<rect/g) || []).length >= steine);
 
+// --- 6b) #61 Blattgeometrie: Vorschau und Druck aus DENSELBEN BLATT-Daten ---
+// Die Vorschau darf nicht das aeussere Papierverhaeltnis zeigen, waehrend gedruckt der
+// Innenbereich ausgegeben wird — und die Blattgroesse darf nur EINMAL definiert sein.
+// Referenz sind hier die echten DIN-Querformatmasse, nicht der Code selbst.
+const DIN = { a3: { w: 420, h: 297 }, a4: { w: 297, h: 210 } };
+let papierEcht = true, cssMass = true, druckOhneGeometrie = true, seitenverhaeltnis = true;
+for (const f of Z.FORMATE) {
+  const b = Z.BLATT[f], i = Z.blattInnen(f);
+  if (b.papier_mm.w !== DIN[f].w || b.papier_mm.h !== DIN[f].h) papierEcht = false;
+  // Innenflaeche = Papier abzueglich des Randes, den druckCss() als @page-margin setzt
+  if (i.w !== DIN[f].w - 2 * b.rand_mm || i.h !== DIN[f].h - 2 * b.rand_mm) papierEcht = false;
+  // Vorschau-Basisgeometrie: feste Papier-mm in der gemeinsamen CSS-Basis
+  if (!new RegExp(`\\.zsheet\\.fmt-${f}\\{width:${i.w}mm;height:${i.h}mm\\}`).test(Z.ZEICHNUNG_CSS)) cssMass = false;
+  // Druck-CSS: @page passt zu BLATT und definiert KEINE zweite Blattgeometrie
+  const d = Z.druckCss(f);
+  if (!d.startsWith(`@page{size:${b.seite};margin:${b.rand_mm}mm}`)) druckOhneGeometrie = false;
+  const regel = (d.match(/\.zsheet\{([^}]*)\}/) || [])[1] || "";
+  if (/width|height|aspect-ratio/.test(regel)) druckOhneGeometrie = false;
+  // Seitenverhaeltnis Vorschau == Druck (beide sind die druckbare Innenflaeche)
+  const cssV = i.w / i.h, druckV = (DIN[f].w - 2 * b.rand_mm) / (DIN[f].h - 2 * b.rand_mm);
+  if (Math.abs(cssV - druckV) > 1e-12) seitenverhaeltnis = false;
+}
+ok("BLATT fuehrt das reale Papiermass; die Innenflaeche wird daraus gerechnet", papierEcht);
+ok("Vorschau-Basisgeometrie steht in Papier-mm in ZEICHNUNG_CSS", cssMass);
+ok("druckCss() setzt nur @page — keine zweite Blattgeometrie", druckOhneGeometrie);
+ok("A3 und A4: Vorschau und Druck haben dasselbe Seitenverhaeltnis", seitenverhaeltnis);
+ok("kein aeusseres Papierverhaeltnis mehr in der Blatt-CSS-Basis", !/aspect-ratio/.test(Z.ZEICHNUNG_CSS));
+ok("die Blattgroesse ist genau einmal definiert (nur in ZEICHNUNG_CSS)",
+  (Z.ZEICHNUNG_CSS.match(/\.zsheet\.fmt-\w+\{width:/g) || []).length === Z.FORMATE.length
+  && !/\.zsheet\.fmt-/.test(Z.druckCss("a3")) && !/\.zsheet\.fmt-/.test(Z.druckCss("a4")));
+// Der Rahmen der Vorschau darf die Boxgeometrie nicht veraendern (sonst waere das
+// gedruckte Blatt um die Rahmenstaerke anders proportioniert als die Vorschau).
+ok("Blattrahmen liegt ausserhalb der Boxgeometrie (outline, box-sizing)",
+  /\.zsheet\{[^}]*box-sizing:border-box/.test(Z.ZEICHNUNG_CSS)
+  && /\.zsheet\{[^}]*outline:1px/.test(Z.ZEICHNUNG_CSS)
+  && !/\.zsheet\{[^}]*border:1px/.test(Z.ZEICHNUNG_CSS));
+// Das Blatt selbst bleibt derselbe eine Inhaltsbaustein
+ok("blattHtml() traegt weiterhin genau die Formatklasse des Blattes",
+  Z.blattHtml(W, eingaben, { format: "a3" }).html.includes('class="zsheet fmt-a3"')
+  && Z.blattHtml(W, eingaben, { format: "a4" }).html.includes('class="zsheet fmt-a4"'));
+
 // --- 7) [D-6] Eine Ableitung: Export == Modulbaustein ---------------------
 ok("zeichnungHtml() des Exports ist genau zeichnungDokument() mit den Eingaben-Optionen",
   zeichnungHtml(W, eingaben) === Z.zeichnungDokument(W, eingaben, Z.optionenAusEingaben(eingaben)));
@@ -468,6 +509,15 @@ ok("Modul 7 nutzt den gemeinsamen Baustein (kein eigenes SVG-Zeichnen)",
 ok("Modul 7 haengt sich als Modul 7 in die Navbar", /mountNavbar\(7\)/.test(modul));
 ok("Modul 7 zeigt ohne aktives Wandelement einen Verweis auf Modul 0 (kein Demo)",
   /Kein aktives Wandelement/.test(modul) && !/function demo\(/.test(modul));
+// #61: keine unabhaengigen Papiermasse und kein zweiter Renderer in der Oberflaeche —
+// die Papiergroesse kommt ausschliesslich aus BLATT/blattInnen().
+ok("Modul 7 hat keine eigenen Papiermasse und kein eigenes Seitenverhaeltnis",
+  !/\b(420|297|277|281|210|194)\b/.test(modul) && !/aspect-ratio/.test(modul));
+ok("Modul 7 bezieht die Blattgeometrie aus dem gemeinsamen Baustein",
+  /blattInnen/.test(modul) && /S\.blattInnen/.test(modul));
+ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
+  /transform:scale\(var\(--zskala/.test(modul) && /Math\.min\(1,/.test(modul)
+  && /transform:none/.test(modul));
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

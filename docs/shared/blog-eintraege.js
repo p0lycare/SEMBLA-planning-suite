@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-13",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 61,
+    titel: "Die Blattvorschau der technischen Zeichnung entspricht jetzt dem späteren Druck",
+    testbitte: "Reiter 7 öffnen und zwischen A3 und A4 wechseln: Wandzeichnung, Seitenspalte und Schriftfeld müssen in Vorschau und Druck dieselben Größenverhältnisse behalten.",
+  },
+  {
     id: "chg-20260811-12",
     datum: "2026-08-11",
     typ: "fix",

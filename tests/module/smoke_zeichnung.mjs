@@ -14,7 +14,7 @@
 
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT }
+import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen }
   from "../../docs/shared/sembla-zeichnung.js";
 import { zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
 
@@ -28,7 +28,11 @@ const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 class El {
   constructor(tag, id) {
     this.tagName = tag; this.id = id; this.value = undefined; this._h = ""; this._t = "";
-    this.style = {}; this.checked = false; this.listeners = {}; this.kinder = [];
+    // `style` kann wie im Browser auch CSS-Variablen aufnehmen (--zskala, #61);
+    // `clientWidth` ist die Layoutbreite — im Mock 0 (kein Layout), im Test setzbar.
+    this.style = { setProperty(k, v) { this[k] = v; } };
+    this.clientWidth = 0;
+    this.checked = false; this.listeners = {}; this.kinder = [];
   }
   addEventListener(e, f) { (this.listeners[e] || (this.listeners[e] = [])).push(f); }
   dispatch(e) { (this.listeners[e] || []).forEach(f => f({ target: this })); }
@@ -46,7 +50,13 @@ const document = {
   createElement: tag => new El(tag, "_"),
 };
 globalThis.document = document;
-globalThis.window = { print: () => { globalThis.__printed = true; } };
+// Fensterereignisse (nur `resize` wird genutzt: Bildschirmfaktor nachziehen, #61).
+const _fenster = {};
+globalThis.window = {
+  print: () => { globalThis.__printed = true; },
+  addEventListener: (e, f) => { (_fenster[e] || (_fenster[e] = [])).push(f); },
+};
+const fireFenster = e => (_fenster[e] || []).forEach(f => f());
 let alertMsg = null;
 globalThis.alert = m => { alertMsg = m; };
 
@@ -72,7 +82,7 @@ const storeMock = {
 };
 const fireStore = () => _subs.forEach(cb => cb());
 
-globalThis.window.SEMBLA = { store: storeMock, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT };
+globalThis.window.SEMBLA = { store: storeMock, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen };
 
 // App-Logik evaluieren und wie im Browser initialisieren.
 new Function(script)();
@@ -101,6 +111,36 @@ ok("Vorschau enthaelt das Schriftfeld", /ztitleblock/.test($("blattwrap").innerH
 ok("Masstab angezeigt", $("ovScale").textContent === "1 : " + soll.masstab && Z.masstab === soll.masstab);
 ok("Blattgroesse angezeigt", /A3 quer/.test($("ovSheet").textContent));
 ok("Druck-CSS passt zum Format", $("pagestyle").textContent === druckCss("a3"));
+
+// --- 2b) #61 Vorschaugeometrie: echte Papiermasse, nur Bildschirmfaktor -----
+// Die Vorschau muss dieselbe Blattgeometrie zeigen wie der Druck. Geprueft wird der
+// ECHTE UI-Pfad: was render() aus BLATT abgeleitet und an den Vorschaurahmen gelegt hat.
+const PX_JE_MM = 96 / 25.4;
+const geoA3 = Z.blattgeometrie;
+ok("Vorschau nutzt die kanonische A3-Innenflaeche aus BLATT",
+  geoA3.format === "a3" && geoA3.breite_mm === blattInnen("a3").w && geoA3.hoehe_mm === blattInnen("a3").h);
+ok("ohne bekannte Layoutbreite bleibt der Bildschirmfaktor deterministisch 1", geoA3.skala === 1);
+// Enges Fenster: das VOLLSTAENDIGE Blatt wird gleichmaessig verkleinert — die dargestellte
+// Flaeche behaelt exakt das Papierverhaeltnis, es wird kein Bereich neu proportioniert.
+$("blattwrap").clientWidth = 800;
+fireFenster("resize");
+const g800 = Z.blattgeometrie;
+const sollSkala = 800 / (blattInnen("a3").w * PX_JE_MM);
+ok("enges Fenster verkleinert das Blatt gleichmaessig",
+  Math.abs(g800.skala - sollSkala) < 1e-12 && g800.skala < 1);
+const hoehePx = parseFloat($("blattwrap").style.height);
+ok("Vorschaurahmen traegt die skalierte Blatthoehe (kein Layoutloch)",
+  Math.abs(hoehePx - blattInnen("a3").h * PX_JE_MM * g800.skala) < 1e-9);
+ok("dargestellte Flaeche hat exakt das Blattverhaeltnis",
+  Math.abs(hoehePx / 800 - blattInnen("a3").h / blattInnen("a3").w) < 1e-12);
+ok("Bildschirmfaktor liegt als CSS-Variable am Vorschaurahmen",
+  $("blattwrap").style["--zskala"] === String(g800.skala));
+// Breites Fenster: nie ueber die echte Papiergroesse hinaus vergroessern.
+$("blattwrap").clientWidth = 5000;
+fireFenster("resize");
+ok("breites Fenster vergroessert das Blatt nicht ueber Papiergroesse", Z.blattgeometrie.skala === 1);
+$("blattwrap").clientWidth = 800;
+fireFenster("resize");
 ok("Projekt-Kopfdaten aus Modul 0 im Blatt", /Rettungswache/.test($("blattwrap").innerHTML) && /A-12/.test($("blattwrap").innerHTML));
 ok("Zielregeln als ungeprueft gekennzeichnet", /nicht automatisch geprüft/.test($("blattwrap").innerHTML));
 ok("kein Nachweis-Ergebnis im Blatt", /separat prüfen/.test($("blattwrap").innerHTML) && !/bestanden/i.test($("blattwrap").innerHTML));
@@ -114,6 +154,17 @@ ok("Patch enthaelt nur Darstellungsoptionen",
 ok("A4 fuehrt zu gleichem oder groberem Masstab", Z.masstab >= soll.masstab);
 ok("Vorschau nach Formatwechsel neu gezeichnet", $("blattwrap").innerHTML === blattHtml(W, _eing, Z.opt).html);
 ok("Druck-CSS auf A4 umgestellt", $("pagestyle").textContent === druckCss("a4"));
+// #61: Der Formatwechsel fuehrt Blattbaustein, Vorschaugeometrie und Druck-CSS GEMEINSAM nach.
+const geoA4 = Z.blattgeometrie;
+ok("Formatwechsel fuehrt Blatt, Vorschaugeometrie und Druck-CSS gemeinsam nach",
+  $("blattwrap").innerHTML.includes('class="zsheet fmt-a4"')
+  && geoA4.format === "a4"
+  && geoA4.breite_mm === blattInnen("a4").w && geoA4.hoehe_mm === blattInnen("a4").h
+  && $("pagestyle").textContent === druckCss("a4"));
+ok("A3 und A4 unterscheiden sich in der Vorschau wie auf dem Papier",
+  geoA4.breite_mm !== blattInnen("a3").w
+  && Math.abs(parseFloat($("blattwrap").style.height)
+      - blattInnen("a4").h * PX_JE_MM * geoA4.skala) < 1e-9);
 
 $("masse").checked = false; $("masse").dispatch("change");
 ok("Bemassung abschaltbar", Z.opt.masse === false && !/ m<\/text>/.test($("blattwrap").innerHTML));
@@ -183,6 +234,15 @@ ok("gedruckt wird die Vorschau selbst (kein zweites Rendering)",
 // im Export-Dokument, und das Export-SVG ist dasselbe Blatt-SVG.
 const exportDok = zeichnungHtml(W, _eing);
 ok("Blatt der Vorschau steckt identisch im Export-Dokument", exportDok.includes($("blattwrap").innerHTML));
+// #61: Gedruckt wird genau die sichtbare Vorschau — dieselbe Blattgeometrie, dieselbe
+// CSS-Basis, dasselbe @page. Vom Papier weicht allein der Bildschirmfaktor ab.
+ok("gedruckte Blattgeometrie ist die der Vorschau",
+  Z.blattgeometrie.format === Z.opt.format
+  && Z.blattgeometrie.breite_mm === blattInnen(Z.opt.format).w
+  && Z.blattgeometrie.hoehe_mm === blattInnen(Z.opt.format).h);
+ok("Export-Dokument nutzt dieselbe CSS-Basis und dasselbe @page wie die Vorschau",
+  exportDok.includes(ZEICHNUNG_CSS) && exportDok.includes(druckCss(Z.opt.format))
+  && $("pagestyle").textContent === druckCss(Z.opt.format));
 ok("Export-SVG ist die Zeichnung dieses Blattes",
   zeichnungSvgText(W, _eing).includes(blattHtml(W, _eing, Z.opt).svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")));
 
@@ -190,6 +250,11 @@ ok("Export-SVG ist die Zeichnung dieses Blattes",
 ok("kein Datei-Download / kein Datei-Upload im Modul",
   !/downloadZip|createObjectURL|type="file"|FileReader/.test(html));
 ok("kein jsPDF/CDN im Modul", !/jspdf|html2canvas|cdnjs|unpkg/i.test(html));
+// #61: kein zweiter Renderer und keine eigenen Papiermasse in der Oberflaeche
+ok("Modul hat keine unabhaengigen Papiermasse und kein eigenes Seitenverhaeltnis",
+  !/\b(420|297|277|281|210|194)\b/.test(html) && !/aspect-ratio/.test(html));
+ok("Blatt kommt ausschliesslich aus blattHtml(); Geometrie aus blattInnen()",
+  (html.match(/blattHtml\(WALL/g) || []).length === 1 && /blattInnen\(/.test(html));
 ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.test(html));
 
 let fail = 0;
