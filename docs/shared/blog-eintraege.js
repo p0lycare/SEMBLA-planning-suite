@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-01",
+    datum: "2026-08-11",
+    typ: "feature",
+    issue: 55,
+    titel: "Modul 8 zeigt jetzt den Umsetzungsplan: Entscheidungen, nächstes Issue, Warteschlange",
+    testbitte: "Reiter 8 öffnen: der Umsetzungsplan muss zuerst kommen. Prüfen, ob die "
+      + "Entscheidungen zu dir passen, ob „Als Nächstes“ nachvollziehbar begründet ist und "
+      + "ob jede Karte auf das richtige Issue verlinkt. „Was ist neu?“ muss unverändert sein.",
+  },
+  {
     id: "chg-20260810-06",
     datum: "2026-08-10",
     typ: "feature",

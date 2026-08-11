@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SEMBLA · Projektblog & Status</title>
+<title>SEMBLA · Umsetzungsplan &amp; Änderungen</title>
 <style>
   /* Mobile-first: eine Spalte, Karten statt Tabellen, keine festen Breiten.
      Ab 320 px darf nichts horizontal scrollen — deshalb kein min-width, und
@@ -25,9 +25,6 @@
   .meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
         font-size:12px;color:var(--sb-muted);margin:2px 0 12px}
   .meta .stand{flex:1 1 auto;min-width:0}
-  button.nachladen{min-height:44px;padding:0 16px;border:1px solid var(--sb-line);
-                   background:#fff;border-radius:9px;font-size:13px;font-weight:600;
-                   color:var(--sb-ink);cursor:pointer;font-family:inherit}
 
   /* Karten */
   .karte{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;
@@ -37,19 +34,32 @@
   .karte .testbitte{font-size:13px;line-height:1.5;color:#42505e;margin:8px 0 0;
                     background:#f3f7fd;border-left:3px solid var(--sb-accent);
                     border-radius:0 7px 7px 0;padding:8px 10px}
-  /* Entscheidungs-/Blockade-Absatz aus dem Issue (nur decision/blocked, nur wenn
-     im Issue ausdruecklich hinterlegt) — neutral gehalten, es ist ein Zitat. */
-  .karte .entscheidung{font-size:13px;line-height:1.5;color:#42505e;margin:6px 0 0;
-                       background:#f4f5f7;border-left:3px solid var(--sb-line);
-                       border-radius:0 7px 7px 0;padding:8px 10px}
-  .karte .entscheidung b{color:var(--sb-ink)}
-  .karte .labels{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+  .karte .datum{font-size:12px;color:var(--sb-muted)}
+  .karte.ziel{border-color:var(--sb-accent);box-shadow:0 0 0 3px rgba(31,111,235,.15)}
+
+  /* Planspezifische Blöcke */
+  .karte .frage,.karte .empfehlung,.karte .begruendung,
+  .karte .ursache,.karte .schritt,.karte .abhaengig{
+    font-size:13px;line-height:1.5;color:#42505e;margin:6px 0 0}
+  .karte .frage{background:#fdf6e3;border-left:3px solid #d9a406;
+                border-radius:0 7px 7px 0;padding:8px 10px}
+  .karte .begruendung{background:#e9f6ee;border-left:3px solid var(--sb-ok);
+                      border-radius:0 7px 7px 0;padding:8px 10px}
+  .karte .ursache{background:#fdeee4;border-left:3px solid #d0703c;
+                  border-radius:0 7px 7px 0;padding:8px 10px}
+  .karte .frage b,.karte .empfehlung b,.karte .begruendung b,
+  .karte .ursache b,.karte .schritt b{color:var(--sb-ink)}
+  .karte .optionen{margin:8px 0 0;padding:0 0 0 18px;font-size:13px;line-height:1.5;color:#42505e}
+  .karte .optionen li{margin:0 0 4px}
+  .karte .optionen .wirkung{color:var(--sb-muted)}
+  .karte .abhaengig{color:var(--sb-muted)}
+  .karte .durch{color:var(--sb-muted);font-weight:500}
+  .karte.naechstes{border-color:var(--sb-ok);box-shadow:0 0 0 2px rgba(26,127,55,.12)}
+
   .karte .fuss{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:10px}
   .karte .fuss a{display:inline-flex;align-items:center;min-height:44px;
                  font-size:13px;text-decoration:none;color:var(--sb-accent);font-weight:600}
   .karte .fuss .anker{color:var(--sb-muted);font-weight:500;font-size:12px}
-  .karte .datum{font-size:12px;color:var(--sb-muted)}
-  .karte.ziel{border-color:var(--sb-accent);box-shadow:0 0 0 3px rgba(31,111,235,.15)}
 
   /* Chips */
   .chip{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11.5px;
@@ -59,22 +69,28 @@
   .chip.typ-doku{background:#e9eefb;color:#2b52a8}
   .chip.typ-intern{background:#eef1f4;color:#5b6773}
   .chip.nr{background:#13202e;color:#fff;font-variant-numeric:tabular-nums}
-  .chip.ms{background:#eef1f4;color:#42505e}
-  .chip.ms.awg{background:#fdf0d8;color:#8a5d05}
-  .chip.label{background:#f2f4f7;color:#5b6773;font-weight:550}
+  .chip.platz{background:#e7eaee;color:#42505e;font-variant-numeric:tabular-nums}
+  .chip.prio-critical{background:#fbe0dc;color:#8a1c10}
+  .chip.prio-high{background:#fbe0dc;color:#b02a1c}
+  .chip.prio-medium{background:#fdf0d8;color:#8a5d05}
+  .chip.prio-low{background:#eef1f4;color:#5b6773}
+  .chip.prio-ohne{background:#eef1f4;color:#5b6773}
+  .chip.stat{background:#f2f4f7;color:#5b6773;font-weight:550}
+  .chip.stat-in-progress{background:#e9eefb;color:#2b52a8}
+  .chip.stat-ready{background:#e3f5ea;color:var(--sb-ok)}
+  .chip.sicherheit{background:#fbe0dc;color:#8a1c10}
 
-  /* Statusgruppen */
+  /* Abschnitte des Plans */
   .gruppe{margin:0 0 22px}
   .gtitel{font-size:14px;font-weight:750;margin:0 0 2px;display:flex;align-items:center;gap:8px}
-  .gtitel .anzahl{font-size:11.5px;font-weight:650;color:var(--sb-muted);
-                  background:#e7eaee;border-radius:20px;padding:2px 9px}
   .ghinweis{font-size:12px;color:var(--sb-muted);margin:0 0 9px}
-  .gruppe-blocked .gtitel{color:#b02a1c}
-  .gruppe-decision .gtitel{color:#8a5d05}
+  .gruppe-entscheidungen .gtitel{color:#8a5d05}
+  .gruppe-blockiert .gtitel{color:#b02a1c}
+  .gruppe-naechstes .gtitel{color:var(--sb-ok)}
 
   .fehler{background:#fdeee4;border:1px solid #f2c9b3;color:#8a3a15;border-radius:11px;
           padding:12px 14px;font-size:13px;line-height:1.55;margin:0 0 14px}
-  .laedt,.leer{font-size:13px;color:var(--sb-muted);padding:6px 0}
+  .leer{font-size:13px;color:var(--sb-muted);padding:6px 0}
   .warnung{background:#fdeee4;border:1px solid #f2c9b3;color:#8a3a15;border-radius:11px;
            padding:12px 14px;font-size:13px;margin:0 0 12px}
   .verborgen{display:none}
@@ -87,66 +103,73 @@
 </head>
 <body>
 <div class="wrap">
-  <p class="intro"><b>Projektblog &amp; Status.</b> Links steht, <b>was sich zuletzt geändert
-    hat</b> — jeder Eintrag nennt das zugehörige GitHub-Issue und, wo sinnvoll, eine Testbitte.
-    Rechts steht der <b>aktuelle Stand der offenen Issues</b>, direkt von GitHub geladen und
-    ausschließlich nach den gesetzten <code>status:</code>-Labels gruppiert. Diese Seite ist
-    reine Anzeige: sie liest kein Wandelement, ändert kein Projekt und braucht keine Anmeldung.</p>
+  <p class="intro"><b>Umsetzungsplan &amp; Änderungen.</b> Links steht, <b>was als Nächstes
+    gebaut wird</b> — welche Entscheidungen ich von dir brauche, welches Issue ich danach
+    umsetze und warum, was in der Warteschlange steht und was blockiert ist. Rechts steht,
+    <b>was sich zuletzt geändert hat</b>. Der Plan ist ein im Repo versioniertes Dokument
+    und wird nur bei inhaltlicher Änderung neu geschrieben; entschieden wird im jeweiligen
+    GitHub-Issue. Diese Seite ist reine Anzeige: sie lädt nichts nach, speichert nichts,
+    liest kein Wandelement und braucht keine Anmeldung.</p>
 
   <div class="segwrap">
     <div class="seg" role="tablist" aria-label="Ansicht wählen">
+      <button id="seg-plan" role="tab" type="button">Umsetzungsplan</button>
       <button id="seg-neu" role="tab" type="button">Was ist neu?</button>
-      <button id="seg-status" role="tab" type="button">Projektstatus</button>
     </div>
   </div>
 
-  <div id="view-neu">
+  <div id="view-plan">
+    <div class="meta"><span class="stand" id="planstand"></span></div>
+    <div id="planfehler"></div>
+    <div id="planliste"></div>
+  </div>
+
+  <div id="view-neu" class="verborgen">
     <div class="meta"><span class="stand" id="blogmeta"></span></div>
     <div id="blogwarnung"></div>
     <div id="blogliste"></div>
   </div>
-
-  <div id="view-status" class="verborgen">
-    <div class="meta">
-      <span class="stand" id="statusstand">Wird geladen …</span>
-      <button class="nachladen" id="reload" type="button">Neu laden</button>
-    </div>
-    <div id="statusfehler"></div>
-    <div id="statusliste"><p class="laedt">Offene Issues werden von GitHub geladen …</p></div>
-  </div>
 </div>
 
 <script>
-// SEMBLA Modul 8 — Projektblog & Projektstatus (Issue #48).
+// SEMBLA Modul 8 — Umsetzungsplan & Änderungsliste (Issues #48/#55).
 //
 // Klassisches Skript (ohne Modulaufloesung testbar); der gemeinsame Code kommt ueber
-// window.SEMBLA aus dem Modul-Skript am Ende der Seite. Read-only: kein Login, kein
-// Backend, kein Schreibpfad. Der einzige localStorage-Zugriff ist ein reiner
-// ANZEIGECACHE der letzten erfolgreichen GitHub-Antwort (sembla:blog:issues) — er
-// gehoert nicht zum Projektmodell und laeuft bewusst nicht ueber storage.js.
+// window.SEMBLA aus dem Modul-Skript am Ende der Seite. Genau zwei Ansichten:
+// „Umsetzungsplan" (Standard) und „Was ist neu?".
+//
+// STRENG READ-ONLY UND STATISCH. Seit #55 gibt es hier KEINEN Netzabruf und KEINEN
+// localStorage mehr: der Backlog wird vom Cron ausgewertet und als versioniertes
+// Artefakt (shared/umsetzungsplan.js) ausgeliefert. Damit entfallen Abruflimit,
+// Anzeigecache und jeder geratene Status. Kein Login, kein Backend, kein Schreibpfad.
 
-var B = null;                 // gemeinsamer Baustein (sembla-blog.js)
-var ANSICHT = 'neu';          // 'neu' | 'status'
-var ISSUES = null;            // gefilterte Issues (nur Nummer/Titel/Labels/Meilenstein)
-var STAND = null;             // ISO-Zeitpunkt des letzten erfolgreichen Abrufs
-var FEHLER = null;            // Fehlerschluessel des letzten Abrufs (null = ok)
+var B = null;                 // Blog-Baustein (sembla-blog.js)
+var P = null;                 // Plan-Baustein (sembla-umsetzungsplan.js)
+var PLANDATEN = null;         // das Artefakt (shared/umsetzungsplan.js) oder null
+var ANSICHT = 'plan';         // 'plan' | 'neu'
 var ZIEL = null;              // Anker aus dem Deep-Link
 
 function $(id){ return document.getElementById(id); }
 
-// --- Anzeigecache ---------------------------------------------------------
-function cacheLesen(){
-  try{
-    var raw = localStorage.getItem(B.CACHE_KEY);
-    if(!raw) return null;
-    var o = JSON.parse(raw);
-    if(!o || !Array.isArray(o.issues)) return null;
-    return { issues: o.issues, stand: o.stand || null };
-  }catch(e){ return null; }
-}
-function cacheSchreiben(issues, stand){
-  try{ localStorage.setItem(B.CACHE_KEY, JSON.stringify({ issues: issues, stand: stand })); }
-  catch(e){ /* privater Modus / Speicher voll: der Cache ist nur Komfort */ }
+// --- Ansicht „Umsetzungsplan" --------------------------------------------
+function renderPlan(){
+  var plan = PLANDATEN ? PLANDATEN.PLAN : null;
+  var pruefung = P.pruefePlan(plan);
+  var formatFehler = PLANDATEN
+    ? P.pruefeFormat(PLANDATEN.PLAN_FORMAT, PLANDATEN.PLAN_VERSION) : [];
+
+  // Fehlt der Plan oder ist er ungueltig, wird NICHTS gerendert — nur benannt, was
+  // nicht stimmt. Kein Teilplan, keine Ersatzinhalte, nie ein geratener Stand.
+  if(!pruefung.ok || formatFehler.length){
+    $('planfehler').innerHTML = P.fehlerHinweis(
+      { ok:false, fehler: formatFehler.concat(pruefung.fehler) });
+    $('planliste').innerHTML = '';
+    $('planstand').textContent = PLANDATEN ? 'Plan ungültig' : 'Kein Plan vorhanden';
+    return;
+  }
+  $('planfehler').innerHTML = '';
+  $('planliste').innerHTML = P.planAnsicht(plan);
+  $('planstand').textContent = P.standText(plan) + ' · nur bei inhaltlicher Änderung neu geschrieben';
 }
 
 // --- Ansicht „Was ist neu?" ----------------------------------------------
@@ -163,68 +186,22 @@ function renderNeu(){
     + '). Bitte im Repo korrigieren.</div>';
 }
 
-// --- Ansicht „Projektstatus" ---------------------------------------------
-function renderStatus(){
-  var liste = $('statusliste'), hinweis = $('statusfehler');
-  if(FEHLER){
-    hinweis.innerHTML = B.fehlerHinweis(FEHLER, ISSUES ? STAND : null);
-    liste.innerHTML = ISSUES ? B.issueKarten(B.gruppiereIssues(ISSUES)) : '';
-    $('statusstand').textContent = ISSUES
-      ? 'Stand: ' + B.standText(STAND) + ' (aus dem Zwischenspeicher)'
-      : 'Kein Status verfügbar';
-    return;
-  }
-  hinweis.innerHTML = '';
-  if(!ISSUES){
-    liste.innerHTML = '<p class="laedt">Offene Issues werden von GitHub geladen …</p>';
-    $('statusstand').textContent = 'Wird geladen …';
-    return;
-  }
-  liste.innerHTML = B.issueKarten(B.gruppiereIssues(ISSUES));
-  $('statusstand').textContent = ISSUES.length + ' offene Issues · Stand: ' + B.standText(STAND);
-}
-
-/** Fehlerschluessel aus einer Antwort ableiten (nie einen Status raten). */
-function fehlerVonAntwort(res){
-  if(res.status === 403 || res.status === 429) return 'limit';
-  return 'http';
-}
-
-function ladeIssues(){
-  var cache = cacheLesen();
-  if(cache && !ISSUES){ ISSUES = cache.issues; STAND = cache.stand; renderStatus(); }
-  return fetch(B.ISSUES_URL, { headers: { 'Accept': 'application/vnd.github+json' } })
-    .then(function(res){
-      if(!res.ok){ FEHLER = fehlerVonAntwort(res); renderStatus(); return; }
-      return res.json().then(function(daten){
-        if(!Array.isArray(daten)){ FEHLER = 'format'; renderStatus(); return; }
-        ISSUES = B.filterIssues(daten);
-        STAND = new Date().toISOString();
-        FEHLER = null;
-        cacheSchreiben(ISSUES, STAND);
-        renderStatus();
-        markiereZiel();
-      }, function(){ FEHLER = 'format'; renderStatus(); });
-    }, function(){ FEHLER = 'netz'; renderStatus(); })
-    .then(function(){ markiereZiel(); });
-}
-
 // --- Umschalter und Deep-Links -------------------------------------------
 function zeigeAnsicht(a){
-  ANSICHT = (a === 'status') ? 'status' : 'neu';
+  ANSICHT = (a === 'neu') ? 'neu' : 'plan';
+  $('view-plan').className = ANSICHT === 'plan' ? '' : 'verborgen';
   $('view-neu').className = ANSICHT === 'neu' ? '' : 'verborgen';
-  $('view-status').className = ANSICHT === 'status' ? '' : 'verborgen';
+  $('seg-plan').className = ANSICHT === 'plan' ? 'aktiv' : '';
   $('seg-neu').className = ANSICHT === 'neu' ? 'aktiv' : '';
-  $('seg-status').className = ANSICHT === 'status' ? 'aktiv' : '';
+  $('seg-plan').setAttribute('aria-selected', String(ANSICHT === 'plan'));
   $('seg-neu').setAttribute('aria-selected', String(ANSICHT === 'neu'));
-  $('seg-status').setAttribute('aria-selected', String(ANSICHT === 'status'));
 }
 
-/** Anker markieren und anspringen — sobald das Ziel gerendert ist. */
+/** Anker markieren und anspringen. */
 function markiereZiel(){
   if(!ZIEL) return;
   var el = $(ZIEL.id);
-  if(!el) return;                       // Issue-Ansicht evtl. noch nicht geladen
+  if(!el) return;                       // Ziel steht nicht (mehr) im Plan
   el.className = 'karte ziel';
   if(el.scrollIntoView) el.scrollIntoView({ block: 'center' });
   ZIEL = null;                          // nur einmal markieren
@@ -238,29 +215,38 @@ function ankerAuswerten(){
 }
 
 function bindEvents(){
+  $('seg-plan').addEventListener('click', function(){ zeigeAnsicht('plan'); });
   $('seg-neu').addEventListener('click', function(){ zeigeAnsicht('neu'); });
-  $('seg-status').addEventListener('click', function(){ zeigeAnsicht('status'); });
-  $('reload').addEventListener('click', function(){ FEHLER = null; ladeIssues(); });
 }
 
-window.__blog = { renderNeu, renderStatus, zeigeAnsicht, ladeIssues, ankerAuswerten,
-  get ansicht(){ return ANSICHT; }, get issues(){ return ISSUES; },
-  get fehler(){ return FEHLER; }, get stand(){ return STAND; } };
+window.__blog = { renderPlan, renderNeu, zeigeAnsicht, ankerAuswerten,
+  get ansicht(){ return ANSICHT; }, get plan(){ return PLANDATEN; } };
 
 window.__blogInit = function(){
   B = window.SEMBLA || {};
+  P = B.plan || {};
+  PLANDATEN = B.PLANDATEN || null;
   bindEvents();
+  renderPlan();
   renderNeu();
-  zeigeAnsicht('neu');
+  zeigeAnsicht('plan');
   ankerAuswerten();
-  ladeIssues();
 };
 </script>
 
 <script type="module">
   import * as blog from './shared/sembla-blog.js';
+  import * as plan from './shared/sembla-umsetzungsplan.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = blog;
+
+  // Das Planartefakt wird DYNAMISCH geladen: fehlt es, darf das nicht die ganze Seite
+  // mitnehmen (ein fehlgeschlagener statischer Import tut genau das). Stattdessen
+  // meldet die Planansicht sichtbar, dass kein Plan vorliegt — und „Was ist neu?"
+  // funktioniert weiter.
+  let plandaten = null;
+  try { plandaten = await import('./shared/umsetzungsplan.js'); } catch (e) { plandaten = null; }
+
+  window.SEMBLA = Object.assign({}, blog, { plan: plan, PLANDATEN: plandaten });
   mountNavbar(8);
   window.__blogInit();
 </script>

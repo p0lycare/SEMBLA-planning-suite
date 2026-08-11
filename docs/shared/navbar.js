@@ -31,7 +31,7 @@ export const MODULE = [
   { nr: 5, datei: "montage.html",     kurz: "Montage",    titel: "Montageanleitung", versteckt: true },
   { nr: 6, datei: "ifc-3d.html",      kurz: "3D / IFC",   titel: "3D-Vorschau & IFC (experimentell)" },
   { nr: 7, datei: "zeichnung.html",   kurz: "Zeichnung",  titel: "Technische Zeichnung (Wandabwicklung)" },
-  { nr: 8, datei: "blog.html",        kurz: "Blog",       titel: "Projektblog & Status" },
+  { nr: 8, datei: "blog.html",        kurz: "Blog",       titel: "Umsetzungsplan & Änderungen" },
   { nr: 9, datei: "lageplan.html",    kurz: "Lageplan",   titel: "Lageplan des Geschosses (Draufsicht)" },
 ];
 

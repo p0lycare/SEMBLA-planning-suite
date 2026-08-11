@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "handbuch": "node build-handbuch.mjs",
+    "plan:schreiben": "node umsetzungsplan-schreiben.mjs",
     "test:core": "python3 tests/core/test_sembla_core.py && node tests/core/test-sembla-core.mjs && node test-shared.mjs",
     "test:zuschnitt": "node tests/module/test-zuschnitt.mjs",
     "test:modul0": "node tests/module/smoke_start.mjs && node tests/module/test-katalog.mjs && node tests/module/test-projektmappe.mjs && node tests/module/test-constraints.mjs && node tests/module/test-plan.mjs && node tests/module/smoke_geschossplan.mjs && node tests/module/test-nachweis-export.mjs && node tests/module/smoke_storage.mjs",
@@ -16,7 +17,7 @@
     "test:modul5": "node tests/module/test-montage.mjs && node tests/module/smoke_montage.mjs",
     "test:modul6": "node tests/module/smoke_3d.mjs && node tests/interop/test_webifc.mjs",
     "test:modul7": "node tests/module/test-zeichnung.mjs && node tests/module/smoke_zeichnung.mjs",
-    "test:modul8": "node tests/module/test-blog.mjs && node tests/module/smoke_blog.mjs",
+    "test:modul8": "node tests/module/test-blog.mjs && node tests/module/test-umsetzungsplan.mjs && node tests/module/test-plan-schreiber.mjs && node tests/module/smoke_blog.mjs",
     "test:modul9": "node tests/module/test-massbild.mjs && node tests/module/test-lageplan.mjs && node tests/module/smoke_lageplan.mjs",
     "test:all": "npm run test:core && npm run test:zuschnitt && npm run test:modul0 && npm run test:modul1 && npm run test:modul2 && npm run test:modul3 && npm run test:modul4 && npm run test:modul5 && npm run test:modul6 && npm run test:modul7 && npm run test:modul8 && npm run test:modul9 && node tests/module/smoke_storage.mjs",
     "dxf": "python3 tests/interop/sembla_dxf.py",
