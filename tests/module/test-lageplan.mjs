@@ -113,7 +113,18 @@ t("[N-5] beide Masse des Geschosses sind uebernommen — in der Reihenfolge der 
   daten.bemassungen.length === 2 && daten.bemassungen[0].id === "bm-1"
   && daten.bemassungen[1].id === "bm-2");
 const svgEG = LP.lageplanSvg(daten);
-t("[N-5] Masswerte stehen unveraendert im Blatt", /3000 mm/.test(svgEG.svg));
+/**
+ * Die gezeichneten MASSTEXTKNOTEN (#64) — gezielt aus den `lpmass`-Gruppen, nicht
+ * global ueber alle `mm`-Vorkommen: die SVG-Wurzel traegt Papiermasse in mm, und
+ * Wandtabelle wie Meldungstexte behalten ihre fachlich noetige Einheit.
+ */
+const massTexte = (s) => [...s.matchAll(/<g class="lpmass[^"]*"[^>]*>.*?<text\b[^>]*>([^<]*)<\/text>/g)]
+  .map((m) => m[1]);
+const mtEG = massTexte(svgEG.svg);
+t("[N-5] Masswerte stehen unveraendert im Blatt — als reine mm-Zahl ohne Suffix",
+  mtEG.includes("3000") && mtEG.length === 2);
+t("[#64] kein Masstext im Lageplan traegt ein Einheitensuffix",
+  mtEG.length > 0 && mtEG.every((x) => !/\s(?:mm|cm|m)$/.test(x)));
 t("[N-5] jedes Mass ist im Blatt an seiner Kennung auffindbar",
   svgEG.svg.includes('data-bemassung="bm-1"') && svgEG.svg.includes('data-bemassung="bm-2"'));
 // Der Vergleich laeuft gegen DIESELBE Quelle, mit der der Editor rechnet — es gibt
@@ -139,6 +150,14 @@ const blatt = LP.blattHtml(daten);
 t("[N-6] die Kopfdaten des PROJEKTS stehen im Schriftfeld",
   /Bauherrschaft Muster/.test(blatt.html) && /POLYCARE/.test(blatt.html)
   && /LP 3/.test(blatt.html) && /A-101/.test(blatt.html) && /TB/.test(blatt.html));
+// [#64]: die Einheit steht GENAU EINMAL im Schriftfeld — und nur dort.
+const einheitFelder = [...blatt.html.matchAll(
+  /<div class="lptb-row"><div class="k">Einheit<\/div><div class="v[^"]*">([^<]*)<\/div><\/div>/g)];
+t("[#64] das vollstaendige Blatt hat genau ein Schriftfeld „Einheit“ = mm",
+  einheitFelder.length === 1 && einheitFelder[0][1] === "mm");
+t("[#64] auch im vollstaendigen Blatt ist kein Masstext mit Einheit beschriftet",
+  massTexte(blatt.svg).length > 0
+  && massTexte(blatt.svg).every((x) => !/\s(?:mm|cm|m)$/.test(x)));
 t("[N-6] Projekt, Gebaeude und Geschoss stehen als Blattbezug darin",
   /Pruefprojekt/.test(blatt.html) && /Haus A/.test(blatt.html) && />EG</.test(blatt.html));
 // [L-11]: genau EINE Quelle. Ein nur am Wandelement vorhandenes `eingaben.projekt`

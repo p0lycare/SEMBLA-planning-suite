@@ -155,6 +155,15 @@ ok('die Seite ist kein neues Modul (kein Reiter, Ruecklink auf Modul 0)',
   /mountNavbar\(0\)/.test(html) && /index\.html">‹ Projektplaner/.test(html));
 ok('Bemassen (D) ist ein bedienbares Werkzeug (Etappe C4b)',
   /id="wz-bemassen" data-wz="bemassen"/.test(html) && !/id="wz-bemassen" disabled/.test(html));
+// #64: Die Einheit steht GENAU EINMAL sichtbar in der Oberflaeche — es gibt keine
+// Alternative und keine Einheitenwahl.
+ok('#64 der Editor nennt die Einheit genau einmal („Einheit: mm")',
+  (html.match(/Einheit: mm/g) || []).length === 1
+  && /<span id="gp-einheit"[^>]*>Einheit: mm<\/span>/.test(html)
+  // … und zwar dauerhaft sichtbar in der Ansichtsleiste (kein `hidden`, kein Popup).
+  && /<div class="gp-leiste" id="gp-ansicht">[\s\S]*?<span id="gp-einheit"[^>]*>[\s\S]*?<\/div>/
+    .test(html)
+  && !/<span id="gp-einheit"[^>]*\shidden/.test(html));
 // #60: Das separate Fixierwerkzeug ist ERSATZLOS entfallen — es bleibt kein
 // zweiter Bedienweg fuer Masse gegen den Ursprung. Geprueft wird das am Markup
 // UND am Skript: Knopf, Werkzeugzustand, Tastenzuordnung und Hinweistexte.
@@ -740,6 +749,25 @@ ok('[K-3] derselbe Punkt zweimal ist kein Mass',
 GP.tippe(GP.bezugsPunkt(idB, 'y', 'mitte'));
 ok('der zweite Klick schlaegt den aktuellen Abstand vor (3000 mm) — im Inline-Feld, gespeichert ist nichts',
   GP.inlineStand.offen && GP.inlineStand.wert === '3000' && GP.bemassungen().length === 0);
+
+// --- [#64] Maszzahlen sind reine Millimeterwerte ohne Suffix ---------------
+// Geprueft wird an den gezeichneten MASSTEXTKNOTEN, nicht an allen `mm`-Vorkommen
+// der Seite: Eingabehinweise, Meldungen und die Massstabsanzeige behalten ihre
+// fachlich noetige Einheit.
+/** Text des VORLAEUFIGEN Masses (D-Werkzeug-Entwurf, noch nichts gespeichert). */
+const entwurfMassText = () => {
+  const m = /<path class="bementwurf"[^>]*\/><text\b[^>]*>([^<]*)<\/text>/.exec(GP.svg);
+  return m ? m[1] : null;
+};
+/** Text eines GESPEICHERTEN Masses an seiner Kennung. */
+const massText = (id) => {
+  const m = new RegExp(`<g class="bemassung[^"]*" data-bemassung="${id}">.*?<text\\b[^>]*>([^<]*)</text>`)
+    .exec(GP.svg);
+  return m ? m[1] : null;
+};
+ok('[#64] das vorlaeufige Mass zeigt die reine Millimeterzahl ohne Einheit',
+  entwurfMassText() === '3000');
+
 inlineEnter(2500);
 await warte();
 const bm1 = GP.bemassungen()[0];
@@ -753,8 +781,10 @@ ok('das Mass ist wirksam: der geloeste Abstand betraegt 2500 mm',
 ok('die gespeicherte Lage bleibt der letzte gueltige Stand — kein Rueckschreiben, keine zweite Wahrheit',
   lageVon(idB).start_mm.y === 4062.5);
 ok('das Mass wird gezeichnet und ist anklickbar',
-  GP.svg.includes(`data-bemassung="${bm1.id}"`) && /2500 mm/.test(GP.svg)
+  GP.svg.includes(`data-bemassung="${bm1.id}"`)
   && GP.bemTreffer(GP.bemPunkt(bm1.id)) === bm1.id);
+ok('[#64] das gespeicherte Mass zeigt die reine Millimeterzahl ohne Einheit',
+  massText(bm1.id) === '2500' && !/2500 mm/.test(GP.svg) && !/3000 mm/.test(GP.svg));
 ok('[K-12] ein nicht ganzzahliges Mass wird benannt abgewiesen, nicht gerundet',
   (() => { doppel(gp('bemTextPunkt', bm1.id)); inlineEnter('2500.5');
     const r = /nicht ganzzahlig/.test($('gp-msg').textContent) && GP.bemassungen()[0].mass_mm === 2500

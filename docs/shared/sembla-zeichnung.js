@@ -46,6 +46,14 @@ const _esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&a
 /** Zahl auf 3 Dezimalen kuerzen — haelt die SVG-Zeichenkette stabil/vergleichbar. */
 const _n = v => (Math.round((isFinite(v) ? v : 0) * 1000) / 1000).toString();
 
+/**
+ * Massbeschriftung: der Millimeterwert als reine Zahl ([D-3], #64). Ohne Suffix
+ * und ohne Tausenderpunkt — die Einheit steht genau einmal im Schriftfeld, und
+ * eine Gruppierung waere in einer Massangabe nur ein zweites Trennzeichen neben
+ * dem Dezimalkomma. Umgerechnet wird NICHTS: der Wert ist der Wandwert in mm.
+ */
+const _mm = v => (Math.round((isFinite(v) ? v : 0) * 10) / 10).toString().replace(".", ",");
+
 // ------------------------------------------------------------ Blatt & Masstab
 
 /** Norm-Masstabsreihe (Zeichnung ist immer 1:x mit x aus dieser Reihe, [D-2]). */
@@ -188,13 +196,12 @@ function _obenBei(w, x_mm) {
 }
 
 /**
- * Bemassungsschicht (Papier-mm): Gesamtmasse in m, Oeffnungs-/Bruestungs- und
- * Staffelungsmasse in cm ([D-3]).
+ * Bemassungsschicht (Papier-mm): Gesamt-, Oeffnungs-, Bruestungs- und
+ * Staffelungsmasse ALLE als reine Millimeterzahl ([D-3]). Es gibt genau eine
+ * Einheit, sie steht einmal im Schriftfeld — nicht an jeder Masszahl.
  */
 function _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, openings) {
   const C = FARBE.mass, A = FARBE.oeffnung, STP = FARBE.staffel;
-  const mC = mm => _fmt(mm / 10, (mm / 10) % 1 !== 0 ? 1 : 0) + " cm";
-  const mM = mm => _fmt(mm / 1000, 2) + " m";
   const T = 1.3, F = 2.4, LW = 0.3;
   const tk = (x, y, v) => v
     ? `<line x1="${_n(x - T)}" y1="${_n(y - T)}" x2="${_n(x + T)}" y2="${_n(y + T)}" stroke="${C}" stroke-width="${LW}"/>`
@@ -212,26 +219,27 @@ function _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, openings) {
   };
   let s = "";
   const left0 = pad, right0 = pad + wPx, bot0 = Y(0), top0 = Y(H);
-  s += hD(left0, right0, bot0 + 7, mM(L));
-  s += vD(top0, bot0, left0 - 7, mM(H));
+  s += hD(left0, right0, bot0 + 7, _mm(L));
+  s += vD(top0, bot0, left0 - 7, _mm(H));
   for (const op of openings) {
     const L_ = Math.min(X(op.x0), X(op.x1)), R_ = Math.max(X(op.x0), X(op.x1)), T_ = Y(op.y1), B_ = Y(op.y0);
-    s += hD(L_, R_, T_ - 2, mC(op.x1 - op.x0), A);
-    s += vD(T_, B_, L_ - 2, mC(op.y1 - op.y0), A);
-    if (op.y0 > 1e-6) s += vD(B_, bot0, L_ - 2, mC(op.y0), A);
+    s += hD(L_, R_, T_ - 2, _mm(op.x1 - op.x0), A);
+    s += vD(T_, B_, L_ - 2, _mm(op.y1 - op.y0), A);
+    if (op.y0 > 1e-6) s += vD(B_, bot0, L_ - 2, _mm(op.y0), A);
   }
   for (const st of (w.steps || [])) {
     const L_ = Math.min(X(st.x0_mm), X(st.x1_mm)), R_ = Math.max(X(st.x0_mm), X(st.x1_mm)), T_ = Y(st.height_mm);
-    s += hD(L_, R_, T_ - 2, mC(st.x1_mm - st.x0_mm), STP);
-    s += vD(T_, bot0, R_ + 2, mC(st.height_mm), STP);
+    s += hD(L_, R_, T_ - 2, _mm(st.x1_mm - st.x0_mm), STP);
+    s += vD(T_, bot0, R_ + 2, _mm(st.height_mm), STP);
   }
   return s;
 }
 
 /** Bildunterschrift/Kopfzeile der Zeichnung (Wand, Masse, Masstab). */
 export function zeichnungTitel(w, masstab, planinhalt = "Wandabwicklung") {
+  // Direkt aus `length_mm`/`height_mm` — keine Meter-Schattenumrechnung (#64).
   return planinhalt + " · " + (w.name || "Wand") + " · "
-    + _fmt(w.length_mm / 1000, 3) + " × " + _fmt(w.height_mm / 1000, 2) + " m · M 1:" + masstab;
+    + _mm(w.length_mm) + " × " + _mm(w.height_mm) + " · M 1:" + masstab;
 }
 
 /**
@@ -520,7 +528,7 @@ const _tab = rows => `<table class="ztab"><tbody>`
 export function schriftfeldHtml(w, eingaben = {}, masstab = 25, opts = {}) {
   const o = normOptionen(opts);
   const p = (eingaben && eingaben.projekt) || {};
-  const dim = _fmt(w.length_mm / 1000, 3) + " × " + _fmt(w.height_mm / 1000, 2) + " m";
+  const dim = _mm(w.length_mm) + " × " + _mm(w.height_mm);   // reine mm-Werte (#64)
   const row = (k, v) => `<div class="ztb-row"><div class="k">${k}</div><div class="v">${_esc(v) || "–"}</div></div>`;
   return `<div class="ztitleblock">`
     + `<div class="col">${row("Projekt", p.name || w.name)}${row("Bauherrenschaft", p.bauherr)}${row("Planverfasser", p.planverfasser)}</div>`
@@ -529,6 +537,9 @@ export function schriftfeldHtml(w, eingaben = {}, masstab = 25, opts = {}) {
     + row("Plan Nr.", p.plan_nr || "###")
     + row("Index", p.index)
     + `<div class="ztb-row"><div class="k">Maßstab</div><div class="v">1 : ${masstab}</div></div>`
+    // Die EINE Einheitenangabe des Blattes (#64): alle Masszahlen der Zeichnung
+    // sind reine Millimeterwerte und tragen deshalb kein Suffix ([D-3]).
+    + `<div class="ztb-row"><div class="k">Einheit</div><div class="v">mm</div></div>`
     + row("Gez.", p.gez)
     + `<div class="ztb-row"><div class="k">Statik</div><div class="v nw">${NACHWEIS_TEXT}</div></div>`
     + `</div></div>`;

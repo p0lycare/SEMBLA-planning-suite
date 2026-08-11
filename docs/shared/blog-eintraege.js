@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-10",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 64,
+    titel: "Bemaßungen zeigen Millimeterwerte ohne wiederholtes Einheitensuffix",
+    testbitte: "Im Geschosseditor ein Maß setzen und Lageplan sowie technische Wandzeichnung öffnen: Maßzahlen müssen ohne Suffix erscheinen; jede Ansicht nennt die Einheit mm genau einmal.",
+  },
+  {
     id: "chg-20260811-09",
     datum: "2026-08-11",
     typ: "fix",

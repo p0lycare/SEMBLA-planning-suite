@@ -431,7 +431,9 @@ export function lageplanSvg(daten, opts) {
         + `<path d="${massPfad(p, 1, _n)}" fill="none" stroke="${farbe}" stroke-width="0.16"`
         + (doppelt.has(g.id) && !streit ? ` stroke-dasharray="1.4 0.8"` : "") + `/>`
         + `<text x="${_n(t.x)}" y="${_n(t.y - MASSTEXT_MM)}" font-size="2" text-anchor="middle"`
-        + ` fill="${farbe}"${dreh}>${_esc(String(g.mass))} mm${streit ? " ⚠" : ""}</text></g>`);
+        // Reine Millimeterzahl ohne Suffix (#64) — genau wie im Editor ([N-5]);
+        // die Einheit steht einmal im Schriftfeld.
+        + ` fill="${farbe}"${dreh}>${_esc(String(g.mass))}${streit ? " ⚠" : ""}</text></g>`);
       void i;
     });
   }
@@ -477,6 +479,9 @@ export function schriftfeldHtml(daten, masstab, opts) {
     + row("Gez.", k.gez) + `</div>`
     + `<div class="col">${row("Phase", k.phase)}`
     + row("Blattformat", b.label)
+    // Die EINE Einheitenangabe des Blattes (#64): die Maßzahlen in der Zeichnung
+    // sind reine Millimeterwerte und tragen deshalb kein Suffix.
+    + row("Einheit", "mm")
     + row("Stand", daten.vollstaendig ? "vollständig" : "nicht vollständig",
       daten.vollstaendig ? "" : "warn")
     + `</div></div>`;

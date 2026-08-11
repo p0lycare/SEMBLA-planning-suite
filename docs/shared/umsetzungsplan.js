@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "b64011cc",
+  "signatur": "13a8f831",
   "entscheidungen": [
     {
       "issue": 41,
@@ -77,15 +77,6 @@ export const PLAN = {
       "sicherheit": true,
       "abhaengig_von": [],
       "zyklus": false
-    },
-    {
-      "issue": 64,
-      "titel": "Maßzahlen ohne Einheitenwiederholung, Einheit mm einmal je Ansicht",
-      "prio": "ohne",
-      "status": "ohne",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
     },
     {
       "issue": 56,

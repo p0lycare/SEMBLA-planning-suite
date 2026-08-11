@@ -4,7 +4,8 @@
 // im zentralen Export (sembla-export.js/baueDateien) direkt — nicht ueber Stubs:
 //   * [D-1] Zeichnung entsteht allein aus dem kanonischen Wandelement,
 //   * [D-2] Norm-Masstab + mm-genaues SVG (Zeichnung passt wirklich ins Blattfeld),
-//   * [D-3] Bemassung (m gesamt, cm fuer Oeffnung/Bruestung/Staffelung),
+//   * [D-3] Bemassung: ALLE Masszahlen als reine Millimeterwerte ohne Suffix,
+//           Einheit genau einmal im Schriftfeld (#64),
 //   * [D-4] Darstellung von Steinen/Oeffnungen/Kontur/Blechen/Stangen inkl. realer
 //           Stangenstuecke (Kopplungen, Sonderlaengen) aus stangenEnden(),
 //   * [D-5] Vorspann-Zielregeln nur als ungepruefte Planungshinweise,
@@ -141,14 +142,52 @@ ok("Legende erklaert auch das Reststueck am oberen Abschluss",
 ok("ohne Reststueck steht die Reststueck-Farbe nicht im Blatt-SVG (nichts erfinden)",
   !Z.zeichnungSvg(W, {}).svg.includes(STUECK_FARBE.rest));
 
-// --- 4) [D-3] Bemassung ----------------------------------------------------
-ok("Gesamtlaenge und -hoehe in m bemasst", / m<\/text>/.test(svg));
-ok("Oeffnungsmasse in cm bemasst", / cm<\/text>/.test(svg));
-ok("Staffelungsmass in der Staffelungsfarbe", svg.includes(Z.FARBE.staffel));
+// --- 4) [D-3] Bemassung: reine Millimeterwerte ohne Suffix (#64) -----------
+// Geprueft wird an den gezeichneten MASSTEXTKNOTEN, nicht an einem globalen
+// mm-Zaehler: `width="…mm"` am SVG-Wurzelelement, Materialangaben in Tabellen
+// und Meldungstexte duerfen ihre Einheit selbstverstaendlich behalten.
+/** Alle Textknoten eines SVG mit ihrer Farbe. */
+const textKnoten = (s) => [...s.matchAll(/<text\b[^>]*fill="([^"]+)"[^>]*>([^<]*)<\/text>/g)]
+  .map(m => ({ farbe: m[1], text: m[2] }));
+/**
+ * Textknoten, die eine Massbeschriftung sind (Mass-, Oeffnungs-, Staffelfarbe).
+ * Die Art-Beschriftung IN der Oeffnung („Tür"/„Fenster"/„Durchbruch") traegt
+ * dieselbe Farbe, ist aber kein Mass und wird deshalb ausgenommen — die
+ * Reihennummern haben mit `FARBE.reihe` ohnehin eine eigene Farbe.
+ */
+const ART_TEXTE = ["Tür", "Fenster", "Durchbruch"];
+const massTexte = (s) => textKnoten(s)
+  .filter(t => [Z.FARBE.mass, Z.FARBE.oeffnung, Z.FARBE.staffel].includes(t.farbe))
+  .map(t => t.text)
+  .filter(t => !ART_TEXTE.includes(t));
+
+const mt = massTexte(svg);
+// W = 3000 x 2600, Tuer 750 breit / 2000 hoch, Staffelstufe 750 lang / 2000 hoch.
+ok("Gesamtlaenge und -hoehe stehen als reine mm-Zahl (3000 / 2600)",
+  mt.includes("3000") && mt.includes("2600"));
+ok("Oeffnungsbreite und -hoehe stehen als reine mm-Zahl (750 / 2000)",
+  mt.includes("750") && mt.includes("2000"));
+ok("Staffelungsmass steht in der Staffelungsfarbe und als reine mm-Zahl",
+  textKnoten(svg).filter(t => t.farbe === Z.FARBE.staffel).map(t => t.text)
+    .some(t => t === "750") && svg.includes(Z.FARBE.staffel));
+ok("KEIN Masstext traegt ein Einheitensuffix (mm/cm/m)",
+  mt.length > 0 && mt.every(t => !/\s(?:mm|cm|m)$/.test(t)));
+ok("keine Meter-/Zentimeter-Schattenumrechnung in den Masstexten",
+  mt.every(t => !/^\d+,\d{2,3}$/.test(t)) && !mt.includes("3,000") && !mt.includes("2,60"));
+
 const bruestung = Z.zeichnungSvg(WF, {}).svg;
-ok("Bruestungshoehe wird bemasst (Fenster mit l0 > 0)",
-  (bruestung.match(/ cm<\/text>/g) || []).length >= 3);
-ok("Bemassung abschaltbar", !/ m<\/text>/.test(Z.zeichnungSvg(W, { masse: false }).svg));
+const mtF = massTexte(bruestung);
+// WF = 4000 x 2600, Fenster 750 breit, 1200 hoch, Bruestung 800.
+ok("Bruestungshoehe wird bemasst (Fenster mit l0 > 0) — reine mm-Zahl",
+  mtF.includes("800") && mtF.includes("1200") && mtF.includes("750"));
+ok("auch beim Fenster traegt kein Masstext ein Suffix",
+  mtF.length > 0 && mtF.every(t => !/\s(?:mm|cm|m)$/.test(t)));
+ok("Bemassung abschaltbar", massTexte(Z.zeichnungSvg(W, { masse: false }).svg).length === 0);
+
+// [#64] Titel und Wandangabe fuehren direkt auf length_mm/height_mm zurueck.
+const titel = Z.zeichnungTitel(W, 25);
+ok("Zeichnungstitel nennt die Wandmasse in mm ohne Umrechnung",
+  titel.includes(W.length_mm + " × " + W.height_mm) && !/\bm ·/.test(titel));
 
 // --- 5) Blatt: Tabellen, Legende, Hinweise, Schriftfeld --------------------
 const blatt = Z.blattHtml(W, eingaben, { format: "a3" });
@@ -341,6 +380,13 @@ ok("Schriftfeld nutzt die Projekt-Kopfdaten aus Modul 0",
   blatt.html.includes("Rettungswache") && blatt.html.includes("Landkreis")
   && blatt.html.includes("A-12") && blatt.html.includes("TB"));
 ok("Schriftfeld nennt den Masstab", blatt.html.includes("1 : " + blatt.masstab));
+// [D-3]/#64: die Einheit steht GENAU EINMAL im Schriftfeld — und nur dort.
+const einheitFelder = [...blatt.html.matchAll(
+  /<div class="ztb-row"><div class="k">Einheit<\/div><div class="v">([^<]*)<\/div><\/div>/g)];
+ok("Schriftfeld hat genau ein Feld „Einheit“ mit dem Wert mm",
+  einheitFelder.length === 1 && einheitFelder[0][1] === "mm");
+ok("Wandangabe im Schriftfeld steht in mm (keine Meter-Schattenumrechnung)",
+  blatt.html.includes("IW-01 · " + W.length_mm + " × " + W.height_mm));
 ok("Nachweis-Feld verweist auf die separate Pruefung",
   blatt.html.includes(Z.NACHWEIS_TEXT) && /separat prüfen/.test(blatt.html));
 ok("kein Nachweis-Ergebnis im Blatt (kein bestanden/erfüllt/η)",

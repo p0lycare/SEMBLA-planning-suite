@@ -94,6 +94,9 @@
   #gp-ansicht .grp{display:flex;align-items:center;gap:6px}
   #gp-plan-chip{color:var(--sb-muted);font-size:11.5px}
   #gp-plan-chip.warn{color:#b26a00}
+  /* Die EINE Einheitenangabe des Editors (#64): jede Maßzahl im Plan ist eine
+     reine Millimeterzahl, die Einheit steht genau hier — nicht an jedem Maß. */
+  #gp-einheit{font-weight:650;color:#33415c;white-space:nowrap}
 
   /* Planverwaltung als Blatt von unten (#53): der EINZIGE Ort für Upload,
      Ersetzen, Löschen, Kalibrieren, Maßstab, Versatz und Plan verschieben.
@@ -236,6 +239,7 @@
           <button class="btn-s" id="gp-plan-knopf" title="Planverwaltung öffnen: hochladen, ersetzen, löschen, kalibrieren, Maßstab, Versatz und Plan verschieben (P)">Plan…</button>
           <span id="gp-plan-chip">–</span>
         </div>
+        <span id="gp-einheit" title="Geplant wird ausschließlich in Millimetern. Die Maßzahlen im Plan stehen deshalb ohne Einheit — die Einheit steht genau einmal hier.">Einheit: mm</span>
         <div class="legende">
           <span><i style="background:#7fb6e6"></i>frei</span>
           <span><i style="background:#1a1a1a"></i>bestimmt</span>
@@ -1159,7 +1163,9 @@ function bemassungSvg(bm, idx, erg){
     + `<path d="${d}" fill="none" stroke="${farbe}" stroke-width="${r2(strich(gewaehlt ? 2.2 : 1.3))}"`
     + (doppelt && !streit ? ` stroke-dasharray="${r2(strich(7))} ${r2(strich(4))}"` : '') + `/>`
     + `<text x="${r2(tx)}" y="${r2(ty - 5 * V.mm)}" font-size="${r2(12 * V.mm)}" text-anchor="middle"`
-    + ` fill="${farbe}"${dreh}>${g.mass} mm${streit ? ' ⚠' : ''}</text></g>`;
+    // Reine Millimeterzahl ohne Suffix (#64) — die Einheit steht einmal in der
+    // Ansichtsleiste (`#gp-einheit`), nicht an jedem einzelnen Maß.
+    + ` fill="${farbe}"${dreh}>${g.mass}${streit ? ' ⚠' : ''}</text></g>`;
 }
 
 /** Vorschau: ab dem ersten Bezug folgt sie dem Zeiger, ab dem zweiten ist sie vollständig. */
@@ -1187,7 +1193,8 @@ function bemEntwurfSvg(erg){
     + ` stroke="${CON.FARBEN.aktiv}" stroke-width="${r2(strich(2))}"`
     + ` stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"/>`
     + `<text x="${r2(t.x)}" y="${r2(t.y - 5 * V.mm)}" font-size="${r2(12 * V.mm)}"`
-    + ` text-anchor="middle" fill="${CON.FARBEN.aktiv}"${dreh}>${g.mass} mm</text></g>`;
+    // Auch der Entwurf zeigt die reine Millimeterzahl (#64).
+    + ` text-anchor="middle" fill="${CON.FARBEN.aktiv}"${dreh}>${g.mass}</text></g>`;
 }
 
 function bemEntwurfTextPunkt(){
