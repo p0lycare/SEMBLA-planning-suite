@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "1e4b37fe",
+  "signatur": "35206589",
   "entscheidungen": [
     {
       "issue": 41,
@@ -121,6 +121,15 @@ export const PLAN = {
       "zyklus": true
     },
     {
+      "issue": 58,
+      "titel": "Stückliste benutzbar machen: n.a. statt Fülltext, Beplankung entfernen",
+      "prio": "ohne",
+      "status": "ohne",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
       "issue": 56,
       "titel": "Längenänderung und Erstellung von Wandelementen nur im Geschosseditor",
       "prio": "ohne",
@@ -132,15 +141,6 @@ export const PLAN = {
     {
       "issue": 57,
       "titel": "Wandwerkzeug: Ecke als erster Punkt, Erzeugen nur durch Ziehen",
-      "prio": "ohne",
-      "status": "ohne",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false
-    },
-    {
-      "issue": 58,
-      "titel": "Stückliste benutzbar machen: n.a. statt Fülltext, Beplankung entfernen",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": false,
