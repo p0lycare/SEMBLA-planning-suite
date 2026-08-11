@@ -32,15 +32,15 @@ ok("Seed-Eintrag verweist auf Issue 48 und ist ein feature",
   seed && seed.issue === 48 && seed.typ === "feature" && seed.datum === "2026-08-05");
 ok("Seed-Eintrag enthaelt eine Testbitte", seed && typeof seed.testbitte === "string" && seed.testbitte.length > 10);
 
-// Produktauftrag #55 bleibt genau einmal dokumentiert; der neue Wandwerkzeug-Fix #57 steht vorn.
+// Produktauftrag #55 bleibt genau einmal dokumentiert; der neue Ursprungsmaß-Fix #60 steht vorn.
 const neu55 = EINTRAEGE.filter(e => e.issue === 55);
 const neu15 = EINTRAEGE.filter(e => e.issue === 15 && e.datum === "2026-08-11");
 ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-ok("der Wandwerkzeug-Fix zu Issue 57 ist der neueste",
-  EINTRAEGE[0]?.id === "chg-20260811-06" && EINTRAEGE[0]?.issue === 57);
+ok("der Ursprungsmass-Fix zu Issue 60 ist der neueste",
+  EINTRAEGE[0]?.id === "chg-20260811-07" && EINTRAEGE[0]?.issue === 60);
 
 // --- 2) Validator: jede Regel schlaegt einzeln an -------------------------
 const gut = { id: "chg-20260805-01", datum: "2026-08-05", typ: "feature", issue: 48, titel: "Titel" };

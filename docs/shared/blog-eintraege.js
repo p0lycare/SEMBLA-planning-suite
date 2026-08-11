@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-07",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 60,
+    titel: "Ursprungsmaße entstehen jetzt direkt mit dem normalen Bemaßungswerkzeug",
+    testbitte: "Im Geschossplan „Maß“ wählen, eine Ursprungslinie und einen parallelen Wandbezug anklicken und "
+      + "den Wert eingeben. Das frühere Fix-Werkzeug und die Taste F dürfen nicht mehr vorhanden sein.",
+  },
+  {
     id: "chg-20260811-06",
     datum: "2026-08-11",
     typ: "fix",

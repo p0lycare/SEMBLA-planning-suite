@@ -173,8 +173,7 @@
           <div class="wz">
             <button id="wz-auswahl" data-wz="auswahl" title="Auswählen &amp; ziehen — Wand anklicken, am Körper oder Mittelgriff verschieben, an den Endgriffen die Länge ändern (Esc)"><span class="k">↖</span> Auswahl</button>
             <button id="wz-wand" data-wz="wand" title="Wand zeichnen — drücken, ziehen, loslassen; orthogonal, Länge im 125-mm-Raster (W)"><span class="k">▭</span> Wand</button>
-            <button id="wz-bemassen" data-wz="bemassen" title="Bemaßen — zwei parallele Bezüge anklicken, Maß in mm direkt im Plan eintragen (D)"><span class="k">↔</span> Maß</button>
-            <button id="wz-fixieren" data-wz="fixieren" title="Fixieren — einen Bezug gegen den Geschossursprung festsetzen, je Achse einzeln (F)"><span class="k">⌖</span> Fix</button>
+            <button id="wz-bemassen" data-wz="bemassen" title="Bemaßen — zwei parallele Bezüge anklicken (auch die Linien des Geschossursprungs), Maß in mm direkt im Plan eintragen (D)"><span class="k">↔</span> Maß</button>
             <span class="trenner"></span>
             <button class="btn-s" id="gp-undo" disabled title="Rückgängig (Strg+Z) — nur Lagen und Bemaßungen ([K-10])">↶</button>
             <button class="btn-s" id="gp-redo" disabled title="Wiederholen (Strg+Umschalt+Z)">↷</button>
@@ -346,7 +345,7 @@ let store, MAPPE, CON, PLAN, MB, WA;
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
-  werkzeug: 'auswahl',        // 'auswahl' | 'wand' | 'plan' | 'bemassen' | 'fixieren'
+  werkzeug: 'auswahl',        // 'auswahl' | 'wand' | 'plan' | 'bemassen'
   // AKTIV und AUSGEWÄHLT sind zwei verschiedene Dinge: ausgewählt sein können
   // mehrere Wände (Mehrfachauswahl mit Umschalt/Strg), AKTIV — also in Bearbeitung,
   // mit Griffen und grün nach [K-8] — ist immer genau EINE davon.
@@ -375,9 +374,14 @@ const GP = {
   // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
   // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
   kal: { an: false, punkte: [] },
-  // Bemaßen (D) und Fixieren (F): `bem` hält die LAUFENDE Eingabe, `bemAktiv` das
-  // angeklickte, schon gespeicherte Maß. Beides ist Bedienung — gespeichert wird
-  // erst mit „Maß setzen“ ([K-3]).
+  // Bemaßen (D): `bem` hält die LAUFENDE Eingabe, `bemAktiv` das angeklickte,
+  // schon gespeicherte Maß. Beides ist Bedienung — gespeichert wird erst mit
+  // „Maß setzen“ ([K-3]).
+  //
+  // Der Geschossursprung steht im laufenden Entwurf als `{wand:null,bezug:'ursprung'}`
+  // und NICHT als `null`: `bis: null` heißt hier „noch kein Zielbezug“. Kanonisch
+  // (also im gespeicherten Maß) ist der Ursprung weiterhin genau ein `null`-Endpunkt
+  // ([K-4]) — umgesetzt wird das an genau einer Stelle, in `kanon()`.
   bem: null,                  // { achse, von:{wand,bezug}, bis:{wand,bezug}|null }
   bemHover: null,             // Bezug unter dem Zeiger (nur Rückmeldung, §4.3)
   bemZeiger: null,            // letzter Weltpunkt beim Bemaßen (Vorschau nach dem 1. Bezug)
@@ -402,7 +406,7 @@ const V = { x0: -1000, y0: -1000, mm: 12 };
 const MM_JE_PX_MIN = 0.5, MM_JE_PX_MAX = 400;
 
 /** Alle Werkzeugzustände der Zeichenfläche (§4.2). */
-const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen', 'fixieren'];
+const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen'];
 
 /**
  * Die Werkzeuge der oberen Leiste (#53). „plan“ steht bewusst NICHT darin: das
@@ -410,7 +414,7 @@ const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen', 'fixieren'];
  * (Knopf „Plan verschieben“, Taste P) eingeschaltet — es gibt keinen zweiten
  * Bedienweg dafür.
  */
-const WZ_KNOEPFE = ['auswahl', 'wand', 'bemassen', 'fixieren'];
+const WZ_KNOEPFE = ['auswahl', 'wand', 'bemassen'];
 
 function zeige(text, ok){ const m = $('gp-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
@@ -694,9 +698,18 @@ function rasterSvg(f){
       + ` stroke-opacity=".45" stroke-width="${r2(strich(1.2))}"/>` : '');
 }
 
-/** Geschossursprung — der einzige Grundbezug ([K-4]), als Kreuzmarker mit Aussparung. */
-function ursprungSvg(){
-  return `<path class="ursprung" d="${PLAN.kreuzPfad(0, 0, V.mm)}" fill="none" stroke="#33415c"`
+/**
+ * Geschossursprung — der einzige Grundbezug ([K-4]), als Kreuzmarker mit Aussparung
+ * und, seit #60, mit seinen beiden **Linien**: sie sind im Werkzeug „Maß“ ganz
+ * normale, achsenspezifische Bezüge (s. `ursprungBezuege`). Sichtbar sind sie
+ * immer — man kann nur anklicken, was man sieht.
+ */
+function ursprungSvg(f){
+  const x1 = V.x0 + f.breite * V.mm, y1 = V.y0 + f.hoehe * V.mm;
+  return `<path class="ursprunglinie" d="M${r2(V.x0)} 0H${r2(x1)}M0 ${r2(V.y0)}V${r2(y1)}"`
+    + ` fill="none" stroke="#33415c" stroke-opacity=".3" stroke-width="${r2(strich(1))}"`
+    + ` stroke-dasharray="${r2(strich(10))} ${r2(strich(4))} ${r2(strich(2))} ${r2(strich(4))}"/>`
+    + `<path class="ursprung" d="${PLAN.kreuzPfad(0, 0, V.mm)}" fill="none" stroke="#33415c"`
     + ` stroke-width="${r2(strich(1.4))}"/>`
     + `<text x="${r2(14 * V.mm)}" y="${r2(-8 * V.mm)}" font-size="${r2(11 * V.mm)}" fill="#33415c">0/0</text>`;
 }
@@ -851,8 +864,30 @@ function wandSvg(w, erg, koll){
 }
 
 // ---------------------------------------------------------------------------
-//  Bezüge ([K-2]) — drei je Wand und Achse, mehr gibt es nicht
+//  Bezüge ([K-2]) — drei je Wand und Achse, dazu der eine Geschossursprung ([K-4])
 // ---------------------------------------------------------------------------
+/**
+ * Kennzeichen der Ursprungslinie **im laufenden Entwurf** (#60). Gespeichert wird
+ * der Ursprung unverändert als `null`-Endpunkt ([K-4]); im Entwurf braucht er ein
+ * eigenes Zeichen, weil dort `bis: null` schon „noch kein Zielbezug“ bedeutet.
+ */
+const URSPRUNG_BEZUG = 'ursprung';
+
+function istUrsprung(p){ return !!p && p.wand == null; }
+
+/**
+ * Entwurfs-Endpunkt → **kanonischer** Endpunkt: der Ursprung ist im Datenmodell
+ * genau `null` ([K-4]). Diese eine Stelle übersetzt — es gibt keine zweite
+ * Fixierungsstruktur und kein zweites Format.
+ */
+function kanon(p){ return istUrsprung(p) ? null : (p || null); }
+
+/** Anzeigename eines Bezugs — der Ursprung heißt beim Namen, nicht „undefined“. */
+function bezugName(b){
+  if (!b || b.wand == null) return 'Geschossursprung';
+  return `${b.bezug} von „${namenRoh(b.wand)}“`;
+}
+
 /**
  * Ein Bezug ist eine GERADE senkrecht zu seiner Achse, nicht ein Punkt: für die
  * Achse x liegt er bei x = `wert` und reicht über die Wandtiefe, für y umgekehrt.
@@ -878,10 +913,33 @@ function bezugsLinien(w, erg){
   return out;
 }
 
-/** Alle Bezüge des Geschosses — Reihenfolge Wand × Achse × Bezug, also deterministisch. */
+/**
+ * Die beiden Linien des Geschossursprungs als Bezüge (#60). Sie sind **achsen-
+ * spezifisch** wie jeder Wandbezug: die Linie `x = 0` ist der x-Bezug, `y = 0`
+ * der y-Bezug — damit trägt [K-1] hier unverändert, und ein Klick auf die falsche
+ * Linie ist nach festgelegter Achse gar nicht erst wählbar.
+ *
+ * Ihre Ausdehnung ist der sichtbare Ausschnitt: gemessen wird an der Linie, die
+ * der Nutzer vor sich sieht. Das ist reine Trefferfläche und geht in kein Maß ein.
+ */
+function ursprungBezuege(f){
+  const x1 = V.x0 + f.breite * V.mm, y1 = V.y0 + f.hoehe * V.mm;
+  return [
+    { wand: null, achse: 'x', bezug: URSPRUNG_BEZUG, wert: 0, a: V.y0, b: y1 },
+    { wand: null, achse: 'y', bezug: URSPRUNG_BEZUG, wert: 0, a: V.x0, b: x1 },
+  ];
+}
+
+/**
+ * Alle Bezüge des Geschosses — Reihenfolge Wand × Achse × Bezug, also
+ * deterministisch; die beiden Ursprungslinien stehen am **Ende**, damit ein
+ * Wandbezug, der zufällig genau auf 0 liegt, den Gleichstand gewinnt und
+ * anklickbar bleibt.
+ */
 function alleBezuege(erg){
   const out = [];
   for (const w of waende()) out.push(...bezugsLinien(w, erg));
+  out.push(...ursprungBezuege(flaeche()));
   return out;
 }
 
@@ -939,9 +997,9 @@ function gleicherBezug(a, b){
   return !!a && !!b && a.wand === b.wand && a.bezug === b.bezug;
 }
 
-/** Bezüge einblenden, solange bemaßt oder fixiert wird (§4.3). */
+/** Bezüge einblenden, solange bemaßt wird (§4.3). */
 function bezuegeSvg(erg){
-  if (GP.werkzeug !== 'bemassen' && GP.werkzeug !== 'fixieren') return '';
+  if (GP.werkzeug !== 'bemassen') return '';
   const achse = GP.bem ? GP.bem.achse : null;
   const luft = FANG_PX * V.mm;
   const teile = [];
@@ -954,8 +1012,11 @@ function bezuegeSvg(erg){
     // Mittellinien gestrichelt, Kanten durchgezogen (§4.3).
     const strichel = b.bezug === 'mitte'
       ? ` stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"` : '';
-    teile.push(`<line class="bezug${hover ? ' hover' : ''}${gewaehlt ? ' gewaehlt' : ''}"`
-      + ` data-wand="${esc(b.wand)}" data-achse="${b.achse}" data-bezug="${b.bezug}"`
+    // Der Ursprung ist ein Bezug wie jeder andere — gleiche Klasse, gleicher
+    // Hover-/Auswahlzustand; nur ohne Wandkennung, weil er keiner Wand gehört.
+    teile.push(`<line class="bezug${b.wand == null ? ' ursprung' : ''}`
+      + `${hover ? ' hover' : ''}${gewaehlt ? ' gewaehlt' : ''}"`
+      + ` data-wand="${esc(b.wand == null ? '' : b.wand)}" data-achse="${b.achse}" data-bezug="${b.bezug}"`
       + ` x1="${r2(x1)}" y1="${r2(y1)}" x2="${r2(x2)}" y2="${r2(y2)}"`
       + ` stroke="${gewaehlt || hover ? CON.FARBEN.aktiv : '#2f6fb3'}"`
       + ` stroke-opacity="${gewaehlt ? '1' : hover ? '.9' : '.45'}"`
@@ -975,9 +1036,12 @@ function massKontext(erg){
   return MB.massKontext(waende(), erg);
 }
 
-/** Lage eines Bemaßungs-Endpunkts: Wert auf der Achse und Mitte quer dazu. */
+/**
+ * Lage eines Bemaßungs-Endpunkts: Wert auf der Achse und Mitte quer dazu.
+ * Der Ursprung wird vorher kanonisiert — `sembla-massbild.js` kennt ihn als `null`.
+ */
 function bemEndpunkt(p, achse, erg){
-  return MB.massEndpunkt(p, achse, massKontext(erg));
+  return MB.massEndpunkt(kanon(p), achse, massKontext(erg));
 }
 
 /**
@@ -1114,8 +1178,8 @@ function bemEntwurfSvg(erg){
       + ` stroke-width="${r2(strich(2))}" stroke-dasharray="${r2(strich(6))} ${r2(strich(4))}"/>`;
   }
   const mass = Math.abs(istAbstand(GP.bem.achse, GP.bem.von, GP.bem.bis, erg));
-  const g = bemGeometrie({ id: '@entwurf', achse: GP.bem.achse, von: GP.bem.von, bis: GP.bem.bis,
-                           mass_mm: mass }, bemassungen().length, erg);
+  const g = bemGeometrie({ id: '@entwurf', achse: GP.bem.achse, von: kanon(GP.bem.von),
+                           bis: kanon(GP.bem.bis), mass_mm: mass }, bemassungen().length, erg);
   if (!g) return '';
   const t = bemText(g).anker;
   const dreh = g.achse === 'y' ? ` transform="rotate(-90 ${r2(t.x)} ${r2(t.y)})"` : '';
@@ -1128,8 +1192,8 @@ function bemEntwurfSvg(erg){
 
 function bemEntwurfTextPunkt(){
   if (!GP.bem || !GP.bem.bis) return null;
-  const g = bemGeometrie({ id: '@entwurf', achse: GP.bem.achse, von: GP.bem.von,
-    bis: GP.bem.bis, mass_mm: 0 }, bemassungen().length, loesen());
+  const g = bemGeometrie({ id: '@entwurf', achse: GP.bem.achse, von: kanon(GP.bem.von),
+    bis: kanon(GP.bem.bis), mass_mm: 0 }, bemassungen().length, loesen());
   return g ? bemText(g).mitte : null;
 }
 
@@ -1347,7 +1411,7 @@ function render(){
   const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
     + `${r2(f.breite * V.mm)} ${r2(f.hoehe * V.mm)}">`,
     `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
-    planSvgTeil(), rasterSvg(f), ursprungSvg()];
+    planSvgTeil(), rasterSvg(f), ursprungSvg(f)];
   for (const w of waende()) teile.push(wandSvg(w, erg, koll));
   // Ausgeblendete Bemaßungen werden nicht gezeichnet — die Staffelung (`i`) bleibt
   // dieselbe, damit sie beim Einblenden bit-genau wieder dort stehen (#53).
@@ -1358,7 +1422,7 @@ function render(){
   buehne.className = 'gp-buehne'
     + (GP.pan ? ' zieht' : GP.kal.an ? ' zeichnet' : GP.werkzeug === 'wand' ? ' zeichnet'
       : GP.werkzeug === 'plan' ? ' schiebt'
-      : (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') ? ' zeichnet' : '');
+      : GP.werkzeug === 'bemassen' ? ' zeichnet' : '');
   inlineSync();
   statusSync(erg, koll);
   listeSync(erg, koll);
@@ -1447,12 +1511,10 @@ function kopfSync(){
   }
   $('wz-hinweis').innerHTML = GP.werkzeug === 'bemassen'
     ? 'Zwei <b>parallele</b> Bezüge anklicken — mit dem ersten Klick steht die <b>Achse</b> fest '
-      + '([K-1]/[K-2]), danach den Wert in mm eintragen und „Maß setzen“ ([K-3]/[K-12]). Ein '
+      + '([K-1]/[K-2]), danach den Wert in mm eintragen ([K-3]/[K-12]). Wählbar sind auch die beiden '
+      + 'Linien des <b>Geschossursprungs</b>, je eine je Achse — in beliebiger Reihenfolge; '
+      + 'gespeichert wird das als ganz normales Maß mit <code>von: null</code> ([K-4]). Ein '
       + 'vorhandenes Maß lässt sich anklicken und ändern oder löschen.'
-    : GP.werkzeug === 'fixieren'
-    ? 'Einen Bezug anklicken: sein Abstand zum <b>Geschossursprung</b> wird als normales Maß '
-      + '<code>von: null</code> gespeichert ([K-4]). Das setzt <b>genau die Achse dieses Bezugs</b> '
-      + 'fest — für die andere Achse ein zweites Mal fixieren. Es wird kein zweiter Bezug erfunden.'
     : GP.werkzeug === 'wand'
     ? 'Maustaste am Startpunkt <b>drücken</b>, halten und zum Endpunkt ziehen — die Vorschau läuft '
       + 'mit. Die Wand liegt <b>orthogonal</b> ([L-2]), die Länge rastet auf 125 mm und die '
@@ -1522,12 +1584,12 @@ function kopfSync(){
   // Die Ansichtsschalter sind reine Bedienung — sie stehen hier nur im Einklang
   // mit dem Zustand. Bemaßungen sind in D und F immer sichtbar, damit man nicht
   // an unsichtbaren Maßen arbeitet; der Schalter ist dann gesperrt und sagt warum.
-  const massPflicht = GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren';
+  const massPflicht = GP.werkzeug === 'bemassen';
   $('gp-raster').checked = GP.rasterAn;
   $('gp-masse').checked = GP.masseAn;
   $('gp-masse').disabled = massPflicht;
   $('gp-masse').title = massPflicht
-    ? 'In den Werkzeugen Maß (D) und Fix (F) bleiben Bemaßungen sichtbar — sonst bearbeitete man '
+    ? 'Im Werkzeug Maß (D) bleiben Bemaßungen sichtbar — sonst bearbeitete man '
       + 'unsichtbare Maße.'
     : 'Bemaßungen ein- oder ausblenden. Reine Ansicht: Werte, Löser und Wandlagen bleiben unberührt ([K-5]).';
 
@@ -1544,7 +1606,8 @@ function kopfSync(){
  * Warum die aktive Wand gerade nicht gedreht werden darf (#53).
  *
  * Gedreht wird um die Min-Ecke; die Wand tauscht dabei ihre Achsen. Ein Maß, das
- * unmittelbar an dieser Wand hängt — gleich ob Bemaßung, Fixierung ([K-4]) oder
+ * unmittelbar an dieser Wand hängt — gleich ob Maß gegen eine Wand, gegen den
+ * Geschossursprung ([K-4]) oder
  * Längenmaß ([K-11]) —, verlöre damit seinen Bezugssinn oder würde still
  * überfahren. Deshalb sperrt **jede** direkt anliegende Bemaßung das Drehen.
  *
@@ -1583,15 +1646,16 @@ function bemKopfSync(){
   const laeuft = !!GP.bem;
   $('gp-bem-info').innerHTML = vorhanden
     ? `Maß gewählt: <b>${vorhanden.mass_mm} mm</b> in Achse <b>${esc(vorhanden.achse)}</b>`
-      + (vorhanden.von ? '' : ' (fixiert gegen den Geschossursprung)')
+      + (vorhanden.von ? '' : ' (gegen den Geschossursprung)')
       + ' — Wert ändern oder löschen.'
     : laeuft
       ? (GP.bem.bis
         ? `Achse <b>${GP.bem.achse}</b> · beide Bezüge gewählt — Maß in mm eintragen und setzen ([K-3]).`
         : `Achse <b>${GP.bem.achse}</b> steht fest — jetzt einen <b>parallelen</b> Bezug anklicken ([K-1]).`)
-      : (GP.werkzeug === 'bemassen' ? 'Ersten Bezug anklicken — die Achse folgt ihm ([K-2]).'
-        : GP.werkzeug === 'fixieren' ? 'Bezug anklicken — er wird gegen den Geschossursprung festgesetzt ([K-4]).'
-        : `${bemassungen().length} Maß(e) im Geschoss. Werkzeug <b>D</b> bemaßt, <b>F</b> fixiert.`);
+      : (GP.werkzeug === 'bemassen'
+        ? 'Ersten Bezug anklicken — die Achse folgt ihm ([K-2]); auch eine Ursprungslinie ([K-4]).'
+        : `${bemassungen().length} Maß(e) im Geschoss. Werkzeug <b>D</b> bemaßt — auch gegen den `
+          + 'Geschossursprung ([K-4]).');
 }
 
 function planKopfSync(){
@@ -1925,7 +1989,7 @@ function drehe(){
 }
 
 // ---------------------------------------------------------------------------
-//  Bemaßen (D) und Fixieren (F) — [K-1]…[K-4], [K-11], [K-12]
+//  Bemaßen (D) — [K-1]…[K-4], [K-11], [K-12]
 // ---------------------------------------------------------------------------
 /**
  * Ist-Abstand zwischen zwei Bezügen derselben Achse, aus dem GELÖSTEN Stand.
@@ -2126,40 +2190,7 @@ function inlineBlur(){
   if (GP.inline && !GP.inline.laeuft) inlineUebernehmen();
 }
 
-/**
- * Fixieren: der Abstand des angeklickten Bezugs zum EINZIGEN Geschossursprung wird
- * als ganz normale Bemaßung `von: null` gespeichert ([K-4]) — es gibt keine zweite
- * Fixierungsstruktur. Festgesetzt wird genau die Achse dieses Bezugs; für die
- * andere Achse ist ein zweites Mal zu fixieren, und es wird kein zweiter Bezug
- * erfunden.
- */
-function fixiere(b, erg){
-  const w = wand(b.wand);
-  const wert = istAbstand(b.achse, null, { wand: b.wand, bezug: b.bezug }, erg);
-  const wo = `„${w ? (w.name || w.id) : b.wand}“ (${b.bezug}, Achse ${b.achse})`;
-  if (wert == null) { zeige(`Fixieren nicht möglich: der Bezug ${wo} ist nicht berechenbar.`, false); return false; }
-  if (!Number.isInteger(wert)) {
-    // Gerundet wird nichts ([K-12]/[P-9]) — eine Längskante liegt 62,5 mm neben der
-    // Mittellinie und ist deshalb regelmäßig krumm; die Mittellinie ist der Bezug,
-    // der hier passt.
-    zeige(`Nicht fixiert: der Abstand von ${wo} zum Geschossursprung ist ${wert} mm und damit nicht `
-      + 'ganzzahlig — ein Maß ist ganzzahlig in Millimetern ([K-12]). Gerundet wird nichts. Entweder '
-      + 'die Mittellinie als Bezug wählen oder die Wand vorher auf ein ganzzahliges Maß setzen.', false);
-    return false;
-  }
-  if (wert < 0) {
-    zeige(`Nicht fixiert: ${wo} liegt ${-wert} mm VOR dem Geschossursprung. Der Ursprung ist der `
-      + 'Start einer Bemaßung, ein Maß darf nicht negativ sein ([K-3]/[K-4]). Die Wand auf die '
-      + 'andere Seite des Ursprungs legen oder von einer anderen Wand aus bemaßen.', false);
-    return false;
-  }
-  return speichereBemassung({
-    id: MAPPE.neueId('bm'), achse: b.achse, von: null,
-    bis: { wand: b.wand, bezug: b.bezug }, mass_mm: wert,
-  }, `${wo} gegen den Geschossursprung fixiert`);
-}
-
-/** Klick der Werkzeuge D und F auf die Zeichenfläche. */
+/** Klick des Werkzeugs D auf die Zeichenfläche. */
 function bemKlick(p){
   const erg = loesen();
   const achse = GP.bem ? GP.bem.achse : null;
@@ -2177,13 +2208,12 @@ function bemKlick(p){
     render();
     return;
   }
-  if (GP.werkzeug === 'fixieren') { fixiere(b, erg); return; }
   const punkt = { wand: b.wand, bezug: b.bezug };
   if (!GP.bem) {
     GP.bem = { achse: b.achse, von: punkt, bis: null };
     GP.bemAktiv = null;
     GP.bemZeiger = p;
-    zeige(`Startbezug gesetzt: ${b.bezug} von „${namenRoh(b.wand)}“ — Achse ${b.achse} steht damit `
+    zeige(`Startbezug gesetzt: ${bezugName(b)} — Achse ${b.achse} steht damit `
       + 'fest ([K-2]). Jetzt einen parallelen Bezug anklicken.', true);
     render();
     return;
@@ -2200,6 +2230,20 @@ function bemKlick(p){
     GP.bem = { achse: GP.bem.achse, von: GP.bem.bis, bis: GP.bem.von };
     ist = -ist;
   }
+  // Der Ursprung ist der ANFANG einer Bemaßung ([K-4]) — als Ziel gelesen kehrte
+  // sich das Vorzeichen um. Steht er nach der Umkehr immer noch hinten, liegt die
+  // Wand VOR dem Ursprung; das wird benannt abgewiesen und nicht gedreht. Der
+  // Wandbezug bleibt als Startbezug stehen, damit ein anderes Ziel wählbar ist.
+  if (istUrsprung(GP.bem.bis)) {
+    zeige(`Kein Maß gesetzt: ${bezugName(GP.bem.von)} (Achse ${GP.bem.achse}) liegt`
+      + (ist == null ? '' : ` ${ist} mm`) + ' VOR '
+      + 'dem Geschossursprung. Der Ursprung ist der Start einer Bemaßung, ein Maß darf nicht negativ '
+      + 'sein ([K-3]/[K-4]). Die Wand auf die andere Seite des Ursprungs legen oder von einer anderen '
+      + 'Wand aus bemaßen.', false);
+    GP.bem.bis = null;
+    render();
+    return;
+  }
   zeige(ist == null
     ? 'Zielbezug gesetzt — jetzt das Maß in mm eintragen ([K-3]).'
     : Number.isInteger(ist)
@@ -2211,7 +2255,11 @@ function bemKlick(p){
   if (ist != null) inlineOeffneEntwurf(ist);
 }
 
-function namenRoh(id){ const w = wand(id); return w ? (w.name || id) : id; }
+function namenRoh(id){
+  if (id == null) return 'Geschossursprung';
+  const w = wand(id);
+  return w ? (w.name || id) : id;
+}
 
 /**
  * „Maß setzen“: entweder ein gewähltes Maß ändern oder die laufende Bemaßung
@@ -2236,9 +2284,12 @@ function bemSetzen(roh){
       `Maß „${gewaehlt.id}“ geändert`);
   }
   if (!GP.bem || !GP.bem.bis) { zeige('Erst zwei parallele Bezüge anklicken ([K-2]).', false); return false; }
+  // `kanon` macht aus der Ursprungslinie den einen `null`-Endpunkt ([K-4]) — ein
+  // Ursprungsmaß läuft damit durch genau denselben Schreibweg wie jedes andere.
   return speichereBemassung({
-    id: MAPPE.neueId('bm'), achse: GP.bem.achse, von: GP.bem.von, bis: GP.bem.bis, mass_mm: v,
-  }, 'Maß gesetzt');
+    id: MAPPE.neueId('bm'), achse: GP.bem.achse, von: kanon(GP.bem.von), bis: kanon(GP.bem.bis),
+    mass_mm: v,
+  }, istUrsprung(GP.bem.von) ? 'Maß gegen den Geschossursprung gesetzt' : 'Maß gesetzt');
 }
 
 // ---------------------------------------------------------------------------
@@ -2309,7 +2360,7 @@ function beiZeigerAb(ev){
     return;
   }
   // Maße liegen werkzeugübergreifend obenauf. So können die beiden Klickpaare
-  // eines Doppelklicks niemals vorher Wand-, Fixier- oder Planaktionen auslösen.
+  // eines Doppelklicks niemals vorher Wand- oder Planaktionen auslösen.
   // Ein bereits laufender D-Entwurf ist die einzige Ausnahme: sein Zielbezug hat Vorrang.
   const weltMass = weltPunkt(ev.clientX, ev.clientY);
   const mod = ev.shiftKey || ev.ctrlKey || ev.metaKey;
@@ -2345,7 +2396,7 @@ function beiZeigerAb(ev){
     if (ev.preventDefault) ev.preventDefault();
     return;
   }
-  if (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') {
+  if (GP.werkzeug === 'bemassen') {
     bemKlick(weltPunkt(ev.clientX, ev.clientY));
     if (ev.preventDefault) ev.preventDefault();
     return;
@@ -2425,15 +2476,15 @@ function beiZeigerBewegung(ev){
     render();
     return;
   }
-  if (GP.werkzeug === 'bemassen' || GP.werkzeug === 'fixieren') {
+  if (GP.werkzeug === 'bemassen') {
     const welt = weltPunkt(ev.clientX, ev.clientY);
-    if (GP.werkzeug === 'bemassen' && GP.bem && !GP.bem.bis) GP.bemZeiger = welt;
+    if (GP.bem && !GP.bem.bis) GP.bemZeiger = welt;
     const b = bezugTreffer(welt, loesen(), GP.bem ? GP.bem.achse : null);
     const vorher = GP.bemHover;
     GP.bemHover = b ? { wand: b.wand, achse: b.achse, bezug: b.bezug } : null;
     const gleich = (!b && !vorher)
       || (!!b && !!vorher && vorher.wand === b.wand && vorher.achse === b.achse && vorher.bezug === b.bezug);
-    if (!gleich || (GP.werkzeug === 'bemassen' && GP.bem && !GP.bem.bis)) render();
+    if (!gleich || (GP.bem && !GP.bem.bis)) render();
   }
 }
 
@@ -2729,9 +2780,9 @@ function werkzeug(name){
   // Wer Maße bearbeitet, muss sie sehen (#53): der Ansichtsschalter wird dafür
   // eingeschaltet und das GESAGT — still bliebe die Ursache im Dunkeln, und an
   // unsichtbaren Maßen zu arbeiten wäre die schlechtere Alternative.
-  if ((name === 'bemassen' || name === 'fixieren') && !GP.masseAn) {
+  if (name === 'bemassen' && !GP.masseAn) {
     GP.masseAn = true;
-    zeige('Bemaßungen wurden eingeblendet — in den Werkzeugen Maß (D) und Fix (F) sind sie immer '
+    zeige('Bemaßungen wurden eingeblendet — im Werkzeug Maß (D) sind sie immer '
       + 'sichtbar. Reine Ansicht; an den Maßen selbst ändert das nichts.', true);
   }
   GP.zeichnen = null;
@@ -2903,7 +2954,6 @@ function beiTaste(ev){
   if (k === 'w') werkzeug('wand');
   else if (k === 'p') planSchieben();          // Plan verschieben lebt in der Planverwaltung (#53)
   else if (k === 'd') werkzeug('bemassen');
-  else if (k === 'f') werkzeug('fixieren');
   else if (k === 'r') drehe();
   else if (k === '0') zeigeAlles();
   else if (k === '+') zoomeAuf(1 / 1.3);
@@ -2916,11 +2966,16 @@ window.__gp = {
   entwurfLage, fange, fangeQuer, weltPunkt, schirmPunkt, treffer, griffTreffer, loesen,
   bezugTreffer: (welt, achse) => bezugTreffer(welt, loesen(), achse),
   bemTreffer: (welt) => bemTreffer(welt, loesen()),
-  /** Weltpunkt eines Bezugs — damit klickt der Test dieselben Stellen wie die Maus. */
+  /**
+   * Weltpunkt eines Bezugs — damit klickt der Test dieselben Stellen wie die Maus.
+   * `wandId === null` meint die Linie des Geschossursprungs der jeweiligen Achse (#60).
+   */
   bezugsPunkt(wandId, achse, bezug){
     const erg = loesen();
-    const b = bezugsLinien(wand(wandId) || {}, erg)
-      .find(x => x.achse === achse && x.bezug === bezug);
+    const b = (wandId == null
+      ? ursprungBezuege(flaeche())
+      : bezugsLinien(wand(wandId) || {}, erg))
+      .find(x => x.achse === achse && (wandId == null || x.bezug === bezug));
     if (!b) return null;
     // Viertelpunkt statt Mitte: die Mitte einer Bezugslinie ist zugleich der
     // „mitte“-Bezug der ANDEREN Achse, dort läge ein Klick auf zwei Bezügen

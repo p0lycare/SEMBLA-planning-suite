@@ -134,7 +134,7 @@ const gp = (name, ...args) => (typeof GP[name] === 'function' ? GP[name](...args
  * Ein EHRLICHER Doppelklick. Im Browser feuern vor `dblclick` zwei vollstaendige
  * pointerdown/pointerup/click-Paare — und genau die liefen im Test bisher nicht
  * mit. Deshalb blieb unentdeckt, dass die werkzeugspezifischen pointerdown-Zweige
- * (Wand zeichnen, Fixieren, Plan verschieben, laufende Bemassung) dem dblclick
+ * (Wand zeichnen, Plan verschieben, laufende Bemassung) dem dblclick
  * zuvorkommen und nebenbei Daten schreiben. Zusammengesetzt wird ausschliesslich
  * aus den vorhandenen Ereignis-Pruefhilfen der Seite.
  */
@@ -153,9 +153,16 @@ ok('ohne aktives Geschoss wird das benannt statt etwas erfunden ([L-10])',
   && /Projektplaner/.test($('gp-buehne').innerHTML));
 ok('die Seite ist kein neues Modul (kein Reiter, Ruecklink auf Modul 0)',
   /mountNavbar\(0\)/.test(html) && /index\.html">‹ Projektplaner/.test(html));
-ok('Bemassen (D) und Fixieren (F) sind bedienbare Werkzeuge (Etappe C4b)',
-  /id="wz-bemassen" data-wz="bemassen"/.test(html) && /id="wz-fixieren" data-wz="fixieren"/.test(html)
-  && !/id="wz-bemassen" disabled/.test(html) && !/id="wz-fixieren" disabled/.test(html));
+ok('Bemassen (D) ist ein bedienbares Werkzeug (Etappe C4b)',
+  /id="wz-bemassen" data-wz="bemassen"/.test(html) && !/id="wz-bemassen" disabled/.test(html));
+// #60: Das separate Fixierwerkzeug ist ERSATZLOS entfallen — es bleibt kein
+// zweiter Bedienweg fuer Masse gegen den Ursprung. Geprueft wird das am Markup
+// UND am Skript: Knopf, Werkzeugzustand, Tastenzuordnung und Hinweistexte.
+ok('#60 das separate Fixierwerkzeug ist vollstaendig entfernt (Knopf, Zustand, Taste F, Hinweise)',
+  !/wz-fixieren/.test(html) && !/data-wz="fixieren"/.test(html) && !/'fixieren'/.test(html)
+  && !/fixiere\(/.test(html) && !/Fix \(F\)/.test(html)
+  && !/k === 'f'/.test(html)
+  && GP.zustand.werkzeug === 'auswahl');
 
 // #52: Der Rasterfang ist EIN allgemeiner Toggle und startet AUS. Markup und
 // Zustand muessen sich darin einig sein — ein `checked` im Markup bei `fang:false`
@@ -645,7 +652,7 @@ const a = JSON.stringify(GP.loesen()), b = JSON.stringify(GP.loesen());
 ok('[K-5] gleicher Stand ⇒ bit-genau gleiches Ergebnis', a === b);
 
 // ==========================================================================
-//  Etappe C4b — Bemassen (D), Fixieren (F), Widerspruch/Redundanz, Undo/Redo
+//  Etappe C4b — Bemassen (D) inkl. Ursprung (#60), Widerspruch/Redundanz, Undo/Redo
 // ==========================================================================
 // Eigenes, frisches Projekt: die Geometrie der Etappe C4a ist oben absichtlich
 // verwinkelt, hier soll sie nachrechenbar sein.
@@ -715,8 +722,11 @@ ok('… und traegt es wieder mit derselben Lage ins Geschoss ein',
 // --- 12) Bemassen (D): Achse folgt dem Bezug ([K-1]/[K-2]) ----------------
 GP.werkzeug('bemassen');
 ok('im Bemassen-Werkzeug sind alle sechs Bezuege je Wand sichtbar ([K-2])',
-  (GP.svg.match(/class="bezug/g) || []).length === 12
+  (GP.svg.match(/class="bezug/g) || []).length === 14      // 2 Waende x 6 + 2 Ursprungslinien
   && /data-achse="x" data-bezug="mitte"/.test(GP.svg) && /data-achse="y" data-bezug="min"/.test(GP.svg));
+ok('#60 dazu die beiden Ursprungslinien — je eine Achse, ohne Wandkennung ([K-4])',
+  /class="bezug ursprung" data-wand="" data-achse="x" data-bezug="ursprung"/.test(GP.svg)
+  && /class="bezug ursprung" data-wand="" data-achse="y" data-bezug="ursprung"/.test(GP.svg));
 GP.tippe(GP.bezugsPunkt(idA, 'y', 'mitte'));
 ok('der erste Klick legt Startbezug UND Achse fest — sie wird nicht getrennt gewaehlt',
   GP.zustand.bem && GP.zustand.bem.achse === 'y'
@@ -819,37 +829,147 @@ ok('[K-7] ein widerspruchsfrei wiederholtes Mass bleibt wirksam und wird als red
   && GP.loesen().widersprueche.length === 0
   && /redundant/.test($('gp-status').innerHTML));
 
-// --- 16) Fixieren (F) gegen den EINZIGEN Geschossursprung ([K-4]) ---------
-GP.werkzeug('fixieren');
+// --- 16) Bemassen gegen den EINZIGEN Geschossursprung ([K-4], #60) --------
+// Kein eigenes Werkzeug mehr: die beiden Ursprungslinien sind ganz normale,
+// achsenspezifische Bezuege im Werkzeug „Mass". Bedient wird ausschliesslich
+// ueber die echten Zeigerhandler der Buehne und die echte Inline-Eingabe.
+//
+// Herausgezoomt, damit der Ursprung wirklich im Bild liegt — man kann nur
+// anklicken, was man sieht, und die Trefferflaeche der Linien ist der Ausschnitt.
+GP.werkzeug('auswahl');
+GP.zeigeAlles();
+GP.taste('-'); GP.taste('-'); GP.taste('-');
+const uX = GP.bezugsPunkt(null, 'x');            // Linie x = 0 (Achse x)
+const uY = GP.bezugsPunkt(null, 'y');            // Linie y = 0 (Achse y)
+GP.werkzeug('bemassen');
+ok('#60 Pruefaufbau: beide Ursprungslinien sind an diesen Punkten wirklich getroffen',
+  !!uX && !!uY && GP.bezugTreffer(uX, 'x') && GP.bezugTreffer(uX, 'x').wand === null
+  && GP.bezugTreffer(uY, 'y') && GP.bezugTreffer(uY, 'y').wand === null);
+
+// (a) Falsche Ursprungslinie nach festgelegter Achse: sichtbar abgewiesen,
+//     und zwar OHNE etwas zu schreiben.
+const vorMappe16 = localStorage.getItem('sembla:projekte');
+const vorUndo16 = GP.undoStand.undo, vorMasse16 = GP.bemassungen().length;
+GP.tippe(uX);
+ok('#60 der Klick auf eine Ursprungslinie legt Startbezug UND Achse fest ([K-2])',
+  !!GP.zustand.bem && GP.zustand.bem.achse === 'x'
+  && GP.zustand.bem.von.wand === null && GP.zustand.bem.bis === null
+  && /Geschossursprung/.test($('gp-msg').textContent));
+ok('#60 [K-1] danach ist nur noch die PARALLELE Ursprungslinie im Angebot',
+  (GP.svg.match(/class="bezug ursprung/g) || []).length === 1
+  && /class="bezug ursprung gewaehlt" data-wand="" data-achse="x"/.test(GP.svg)
+  && !/class="bezug[^"]*" data-wand="[^"]*" data-achse="y"/.test(GP.svg));
+GP.tippe(uY);                                     // falsche Achse
+ok('#60 der Klick auf die falsche Ursprungslinie wird sichtbar abgewiesen',
+  /nichts gespeichert|Kein paralleler Bezug/.test($('gp-msg').textContent)
+  && GP.bemassungen().length === vorMasse16);
+ok('#60 … und veraendert weder Projektmappe noch Rueckgaengig-Stand',
+  localStorage.getItem('sembla:projekte') === vorMappe16 && GP.undoStand.undo === vorUndo16);
+
+// (b) Nicht ganzzahlig bleibt ungespeichert — gerundet wird nichts ([K-12]).
 // Die Mittellinie liegt 62,5 mm neben der Laengskante und ist damit in JEDEM Lauf krumm.
+GP.werkzeug('bemassen');
+GP.tippe(uY);
 GP.tippe(GP.bezugsPunkt(idA, 'y', 'mitte'));
-ok('[K-12] ein nicht ganzzahliger Abstand zum Ursprung wird benannt abgewiesen, nicht gerundet',
-  /nicht ganzzahlig/.test($('gp-msg').textContent) && GP.bemassungen().length === 3);
-// Erwartet wird der IST-Abstand aus dem Loeser, nicht eine feste Zahl: A haengt ueber
-// das Mass aus Abschnitt 12 in einer freien Gruppe, deren Anker die lexikographisch
-// kleinste Wandkennung ist ([K-5]) — und die Kennungen sind Zufalls-UUIDs. Genau
-// diesen Ist-Abstand sagt „Fixieren" zu (ganzzahlig, [K-12]).
-const yMinIst = CON.bezugsWert(lageVon(idA), 'y', 'min', GP.loesen().positionen[idA]);
-GP.tippe(GP.bezugsPunkt(idA, 'y', 'min'));
-await warte();
-const fix1 = GP.bemassungen().find(b => b.von === null);
-ok('[K-4] Fixieren speichert eine ganz normale Bemassung mit von:null — keine zweite Struktur',
-  !!fix1 && fix1.von === null && fix1.bis.wand === idA && fix1.bis.bezug === 'min'
-  && fix1.achse === 'y' && Number.isInteger(yMinIst) && fix1.mass_mm === yMinIst);
-ok('[K-4] das fixierte Mass haelt die Wand genau dort, wo sie stand',
-  GP.loesen().positionen[idA].y === yMinIst + CON.HALB_BREITE_MM);
-ok('[K-4] fixiert wird GENAU die Achse des Bezugs — die andere bleibt frei',
-  GP.loesen().bestimmt[idA].y === true && GP.loesen().bestimmt[idA].x === false);
-ok('[K-4] ueber die Kette gilt auch die zweite Wand in dieser Achse als bestimmt',
-  GP.loesen().bestimmt[idB].y === true);
-ok('die Oberflaeche sagt, dass fuer die andere Achse ein zweites Mal zu fixieren ist',
-  /zweites Mal fixieren/.test($('wz-hinweis').innerHTML));
-GP.werkzeug('fixieren');
+ok('#60 der krumme Ist-Abstand wird angeboten, aber nicht gerundet ([K-12])',
+  GP.inlineStand.offen && !Number.isInteger(Number(GP.inlineStand.wert)));
+inlineEnter(GP.inlineStand.wert);
+ok('#60 ein nicht ganzzahliges Mass gegen den Ursprung bleibt ungespeichert',
+  /nicht ganzzahlig/.test($('gp-msg').textContent)
+  && GP.bemassungen().length === vorMasse16
+  && localStorage.getItem('sembla:projekte') === vorMappe16);
+gp('inlineTaste', 'Escape');
+
+// (c) Erster Fall: ZUERST die Ursprungslinie, dann der Wandbezug (Achse x).
+GP.werkzeug('bemassen');
+GP.tippe(uX);
 GP.tippe(GP.bezugsPunkt(idA, 'x', 'min'));
-GP.tippe(GP.bezugsPunkt(idB, 'x', 'min'));
+ok('#60 nach beiden Bezuegen steht der Ist-Abstand in der echten Inline-Eingabe',
+  GP.inlineStand.offen && GP.inlineStand.id === null);
+inlineEnter(500);
 await warte();
-ok('nach dem Fixieren beider Achsen sind beide Waende vollstaendig bestimmt ([K-8])',
+const uMassX = GP.bemassungen().find(b => b.von === null && b.achse === 'x');
+ok('#60 [K-4] gespeichert wird ein ganz normales Mass mit GENAU EINEM null-Endpunkt',
+  !!uMassX && uMassX.von === null && uMassX.bis.wand === idA && uMassX.bis.bezug === 'min'
+  && uMassX.achse === 'x' && uMassX.mass_mm === 500
+  && localStorage.getItem('sembla:projekte').includes(uMassX.id));
+ok('#60 das Mass treibt die Lage: die min-Stirnkante steht auf 500 mm',
+  GP.loesen().positionen[idA].x === 500);
+ok('#60 gesetzt wird GENAU die Achse dieses Bezugs — die andere bleibt frei',
+  GP.loesen().bestimmt[idA].x === true && GP.loesen().bestimmt[idA].y === false);
+ok('#60 das Wandelement bleibt dabei unberuehrt ([P-1])',
+  store.holeElement(idA).wandelement.length_mm === 2000
+  && store.holeElement(idA).wandelement.height_mm === 2600);
+
+// (d) Zweiter Fall: ZUERST der Wandbezug, DANACH die Ursprungslinie (Achse y).
+//     Derselbe kanonische Speicherpfad — die Reihenfolge ist frei.
+GP.werkzeug('bemassen');
+GP.tippe(GP.bezugsPunkt(idA, 'y', 'min'));
+ok('#60 auch hier folgt die Achse dem ersten Bezug — jetzt der Wand',
+  !!GP.zustand.bem && GP.zustand.bem.achse === 'y' && GP.zustand.bem.von.wand === idA);
+GP.tippe(uY);
+ok('#60 der Ursprung als zweiter Klick vervollstaendigt den Entwurf',
+  GP.inlineStand.offen && !!GP.zustand.bem && GP.zustand.bem.bis !== null);
+inlineEnter(1000);
+await warte();
+const uMassY = GP.bemassungen().find(b => b.von === null && b.achse === 'y');
+ok('#60 [K-4] auch in dieser Reihenfolge steht der Ursprung im START — ein null-Endpunkt',
+  !!uMassY && uMassY.von === null && uMassY.bis.wand === idA && uMassY.bis.bezug === 'min'
+  && uMassY.achse === 'y' && uMassY.mass_mm === 1000);
+ok('#60 und es treibt die Lage: y-min der Wand steht auf 1000 mm',
+  GP.loesen().positionen[idA].y === 1000 + CON.HALB_BREITE_MM);
+ok('#60 ueber die Kette gilt auch die zweite Wand in dieser Achse als bestimmt',
+  GP.loesen().bestimmt[idB].y === true);
+ok('#60 die gespeicherte Lage bleibt der letzte gueltige Stand — kein Rueckschreiben',
+  lageVon(idA).start_mm.y === 1062.5);
+ok('die Oberflaeche nennt den Ursprung als ganz normalen Bezug des Massewerkzeugs',
+  /Geschossursprung/.test($('wz-hinweis').innerHTML) && /von: null/.test($('wz-hinweis').innerHTML));
+
+// (e) Die zweite Wand in x — danach ist alles bestimmt.
+GP.werkzeug('bemassen');
+GP.tippe(uX);
+GP.tippe(GP.bezugsPunkt(idB, 'x', 'min'));
+inlineEnter(500);
+await warte();
+ok('nach den Ursprungsmassen beider Achsen sind beide Waende vollstaendig bestimmt ([K-8])',
   GP.loesen().offen.length === 0);
+
+// (f) Ein gespeichertes null-Endpunkt-Mass bleibt sichtbar, loesbar und aenderbar.
+{
+  const roh = JSON.parse(localStorage.getItem('sembla:projekte'));
+  const drin = JSON.stringify(roh).includes(`"${uMassY.id}"`);
+  GP.auffrischen();                              // Neuaufbau aus dem Speicher (wie nach einem Reload)
+  await warte();
+  GP.werkzeug('auswahl');
+  ok('#60 das Ursprungsmass steht im Speicher und wird nach dem Neuaufbau wieder gezeichnet',
+    drin && GP.svg.includes(`data-bemassung="${uMassY.id}"`)
+    && CON.bemassungFehler(uMassY, new Map(MAPPE.findeGeschoss(store.holeMappe(), gs2)
+      .geschoss.waende.map(w => [w.id, w.lage]))).length === 0);
+  ok('#60 der Loeser wendet es unveraendert an',
+    GP.loesen().positionen[idA].y === 1000 + CON.HALB_BREITE_MM
+    && GP.loesen().widersprueche.length === 0);
+  // Geaendert wird ueber die vorhandene Masszahl — kein eigener Bearbeitungspfad.
+  doppel(gp('bemTextPunkt', uMassY.id));
+  ok('#60 der Doppelklick auf die Masszahl oeffnet die vorhandene Inline-Eingabe',
+    GP.inlineStand.offen && GP.inlineStand.id === uMassY.id
+    && GP.inlineStand.wert === '1000');
+  inlineEnter(1500);
+  await warte();
+  const nachher = GP.bemassungen().find(b => b.id === uMassY.id);
+  ok('#60 der geaenderte Wert bleibt ein null-Endpunkt-Mass und wirkt sofort',
+    !!nachher && nachher.von === null && nachher.mass_mm === 1500
+    && GP.loesen().positionen[idA].y === 1500 + CON.HALB_BREITE_MM);
+  ok('#60 das Wandelement ist von alldem unberuehrt ([P-1])',
+    store.holeElement(idA).wandelement.length_mm === 2000);
+  // Zurueck auf den Ausgangsstand — und zwar ueber Rueckgaengig: die Aenderung
+  // eines Ursprungsmasses ist ein ganz normaler Schritt des Stapels ([K-10]).
+  GP.undo();
+  await warte();
+  ok('#60 Rueckgaengig nimmt auch die Aenderung eines Ursprungsmasses zurueck',
+    GP.bemassungen().find(b => b.id === uMassY.id).mass_mm === 1000
+    && GP.loesen().positionen[idA].y === 1000 + CON.HALB_BREITE_MM);
+}
+
 GP.werkzeug('auswahl');
 GP.tippe({ x: 40000, y: 40000 });
 ok('[K-8] vollstaendig bestimmte Waende sind schwarz, keine mehr hellblau',
@@ -878,8 +998,10 @@ ok('Wiederholen setzt sie wieder ein', GP.bemassungen().length === masseVorher);
 GP.undo();
 await warte();
 ok('nach dem Rueckgaengigmachen steht ein Wiederholen bereit', GP.undoStand.redo >= 1);
-GP.werkzeug('fixieren');
-GP.tippe(GP.bezugsPunkt(idB, 'x', 'mitte'));         // neue Aenderung
+GP.werkzeug('bemassen');                             // neue Aenderung
+GP.tippe(GP.bezugsPunkt(null, 'x'));
+GP.tippe(GP.bezugsPunkt(idB, 'x', 'mitte'));
+inlineEnter(GP.inlineStand.wert);
 await warte();
 ok('eine neue Aenderung verwirft den Wiederholen-Stapel', GP.undoStand.redo === 0);
 
@@ -1362,7 +1484,7 @@ let neuId = null;
 // --- 32) Doppelklick in JEDEM Werkzeug, ohne Werkzeugaktion ---------------
 $('gp-plan-lock').checked = false;
 $('gp-plan-lock').dispatch('change');
-for (const wz of ['auswahl', 'bemassen', 'fixieren', 'wand', 'plan']) {
+for (const wz of ['auswahl', 'bemassen', 'wand', 'plan']) {
   for (const wo of ['zahl', 'linie']) {
     GP.werkzeug(wz);
     const p = wo === 'zahl' ? gp('bemTextPunkt', bmX.id) : gp('bemPunkt', bmX.id);
@@ -1608,9 +1730,10 @@ ok('#51 geschrieben wird der Querversatz ueber denselben `setzeBemassung`-Weg',
   /MAPPE\.setzeBemassung\(m, gs\.id, \{ \.\.\.n, linie_mm \}\)/.test(html)
   && (html.match(/store\.aendereMappe\(m => MAPPE\.setzeBemassung/g) || []).length === 1);
 ok('#51 und der Maßwert ausschliesslich ueber `bemSetzen` → `speichereBemassung`',
-  // Genau drei Aufrufstellen: Fixieren und die beiden Zweige von `bemSetzen`.
-  // Die Inline-Eingabe legt KEINE vierte an, sondern ruft `bemSetzen(roh)` auf.
-  (html.match(/speichereBemassung\(\{/g) || []).length === 3
+  // Genau zwei Aufrufstellen: die beiden Zweige von `bemSetzen` (#60 — das
+  // Fixieren hatte eine dritte, sie ist mit dem Werkzeug entfallen). Die
+  // Inline-Eingabe legt KEINE weitere an, sondern ruft `bemSetzen(roh)` auf.
+  (html.match(/speichereBemassung\(\{/g) || []).length === 2
   && /function bemSetzen\(roh\)/.test(html)
   && /ok = bemSetzen\(roh\) === true/.test(html)
   && !/speichereBemassung\(/.test(html.slice(html.indexOf('function inlineUebernehmen'),
@@ -1705,20 +1828,21 @@ ok('#53 der Rueckweg nach Modul 0 bleibt erreichbar',
 // --- 28) Obere Werkzeugleiste: Werkzeuge, Undo/Redo, Drehen ---------------
 {
   const oben = (html.split('id="gp-oben"')[1] || '').split('id="gp-liste"')[0];
-  ok('#53 die vier Zeichenwerkzeuge stehen in der oberen Leiste',
-    ['wz-auswahl', 'wz-wand', 'wz-bemassen', 'wz-fixieren'].every(i => oben.includes(`id="${i}"`)));
+  ok('#53/#60 die drei Zeichenwerkzeuge stehen in der oberen Leiste',
+    ['wz-auswahl', 'wz-wand', 'wz-bemassen'].every(i => oben.includes(`id="${i}"`))
+    && !oben.includes('wz-fixieren'));
   ok('#53 Undo, Redo und Drehen sind in dieselbe Leiste gezogen',
     oben.includes('id="gp-undo"') && oben.includes('id="gp-redo"')
     && oben.includes('id="gp-drehen"'));
   ok('#53 „Plan verschieben" steht ausdruecklich NICHT in der Werkzeugleiste',
     !oben.includes('gp-plan-schieben') && !/id="wz-plan"/.test(html));
   ok('#53 jedes Werkzeug nennt Bedeutung und Kuerzel im Tooltip',
-    (oben.match(/title="[^"]*\((?:Esc|W|D|F|R|Strg\+Z|Strg\+Umschalt\+Z)\)/g) || []).length >= 6);
+    (oben.match(/title="[^"]*\((?:Esc|W|D|R|Strg\+Z|Strg\+Umschalt\+Z)\)/g) || []).length >= 5);
 }
 GP.werkzeug('wand');
 ok('#53 das aktive Werkzeug ist eindeutig hervorgehoben — und nur dieses',
   $('wz-wand').className === 'an' && $('wz-auswahl').className === ''
-  && $('wz-bemassen').className === '' && $('wz-fixieren').className === '');
+  && $('wz-bemassen').className === '');
 GP.werkzeug('auswahl');
 
 // --- 29) Untere Ansichtsleiste und die zwei fluechtigen Schalter ----------
@@ -1906,9 +2030,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   await warte();
   ok('#53 zweimal drehen ist bit-genau die Ausgangslage', lage53().richtung === 'x');
 
-  // Ein einziges Mass an DIESER Wand — mehr braucht es nicht.
-  GP.werkzeug('fixieren');
+  // Ein einziges Mass an DIESER Wand — mehr braucht es nicht. Gemessen wird
+  // gegen den Geschossursprung, also im ganz normalen Massewerkzeug (#60).
+  GP.werkzeug('bemassen');
+  GP.tippe(gp('bezugsPunkt', null, 'x'));
   GP.tippe(gp('bezugsPunkt', w53, 'x', 'min'));
+  inlineEnter(GP.inlineStand.wert);
   await warte();
   ok('#53 Pruefaufbau: genau ein Mass haengt unmittelbar an der Wand',
     GP.bemassungen().length === 1);
