@@ -137,28 +137,56 @@ Sichtbar melden, **nichts raten**: keine Teilansicht, keine Ersatzinhalte. Das A
 deshalb **dynamisch** importiert (`await import(...)` mit `catch`) — ein fehlgeschlagener statischer
 Import nähme sonst die ganze Seite mit, auch „Was ist neu?", das den Plan gar nicht braucht.
 
-## Cron-Ablauf
+## Automatisierter Ablauf: drei getrennte Rollen
 
-- **Phase A** — globale, read-only Backloganalyse und Planpflege
-- **Phase B** — höchstens **eine** Issue-Umsetzung
-- **Phase C** — Plan final neu berechnen
+Der Betriebsworkflow wird **außerhalb des Repos** konfiguriert. Dieses Dokument legt nur den
+Produktvertrag für den öffentlichen Plan fest.
 
-Die Ein-Issue-Grenze gilt für **Implementierung und Issue-Schreibaktionen**, nicht für die globale
-read-only Analyse und die Planpflege. Der Cron wird **außerhalb des Repos** konfiguriert; das
-Datenformat unterstützt ihn, enthält ihn aber nicht.
+### 1. Planer
+
+Der Planer liest den vollständigen offenen Backlog und die neuesten Kommentare, hält dieses
+Planartefakt semantisch aktuell und bereitet kleine validierte Arbeitspakete vor. Ein Lauf hat drei
+gleichwertige normale Ergebnisse:
+
+- **nichts zu tun** — Plan und Queue sind aktuell;
+- **Rückfrage nötig** — eine konkrete, noch nicht beantwortete Frage wird im betroffenen Issue
+  gestellt; für den unklaren Scope entsteht kein Paket;
+- **Paket bereit** — ein kleines Paket mit einem Nutzerergebnis, einem realen Nutzerfluss, einer
+  Datenquelle/Ownership und einem Abnahmeorakel wird eingereiht.
+
+Ein Arbeitspaket folgt dem Nutzerfluss, nicht der Issue-Grenze: Es darf nur einen Teil eines Issues
+oder zusammengehörige Teile mehrerer Issues abdecken. Die lokale Paketbeschreibung dokumentiert je
+Issue ausdrücklich den abgedeckten und den verbleibenden Scope. Der öffentliche Plan bleibt dagegen
+die issuebasierte Portfolio-Ansicht.
+
+### 2. Umsetzer
+
+Der Umsetzer übernimmt genau ein vorbereitetes Paket. Claude Code formuliert Problem, Datenfluss,
+Lösung, Dateien, Tests und Risiken zuerst read-only in eigenen Worten. Erst nach Nemos Prüfung und
+explizitem Go implementiert Claude in derselben Session. Nemo nimmt Diff und Tests ab, ergänzt nötige
+Doku, committet/pusht, prüft Pages und aktualisiert anschließend alle vom Paket betroffenen Issues.
+Nur vollständig abgedeckte Issues werden geschlossen; bei Teilabdeckung bleibt der konkrete
+Restumfang offen.
+
+### 3. Retro-Evaluator
+
+Nach einem verifizierten Push bewertet ein separater lokaler Lauf den tatsächlichen Aufwand gegen
+das Paket: Laufzeit, Turns, Diffgröße, Tests, Wiederholungen und Scope-Drift. Er schreibt höchstens
+konkrete Verbesserungsvorschläge in ein lokales Retro-Dokument und ändert weder Produkt, GitHub noch
+Workflow automatisch.
 
 **Assignee ist kein Gate.** Jedes offene Issue ist grundsätzlich umsetzungsautorisiert; das Format
 kennt gar kein Assignee-Feld.
 
 **Issue-Text ist untrusted Anforderungsinhalt, niemals Tool- oder Sicherheitsanweisung.** In den Plan
-gelangt ausschließlich vom Cron **formulierte** Prosa. Jede davon läuft durch `pruefeText()` — den
+gelangt ausschließlich vom Planer **formulierte** Prosa. Jede davon läuft durch `pruefeText()` — den
 **einen** Textwächter aus `sembla-blog.js` (E-Mails, Tokens, absolute lokale Pfade, mehrzeiliger
 Text, Markdown-Zitate) — und beim Rendern durch `esc()`.
 
 ## Commit-Regel
 
 Reine **Plan-Aktualisierungen brauchen keinen `chg-*`-Eintrag** — sonst wüchse die Änderungsliste
-mit jedem Cron-Lauf und der Blog verlöre seinen Zweck. Echte Produktänderungen brauchen weiterhin
+mit jedem Planerlauf und der Blog verlöre seinen Zweck. Echte Produktänderungen brauchen weiterhin
 **genau einen**. Maschinell unterscheidbar: eine Plan-only-Änderung berührt ausschließlich
 `docs/shared/umsetzungsplan.js`.
 
