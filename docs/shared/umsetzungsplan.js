@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "772038c6",
+  "signatur": "48a18267",
   "entscheidungen": [
     {
       "issue": 41,
@@ -61,17 +61,35 @@ export const PLAN = {
   },
   "weitere": [
     {
-      "issue": 56,
-      "titel": "Längenänderung und Erstellung von Wandelementen nur im Geschosseditor",
-      "prio": "ohne",
+      "issue": 62,
+      "titel": "Baustellenstückliste ohne unbrauchbare Einbauteil-ID-Spalte",
+      "prio": "high",
       "status": "ohne",
-      "sicherheit": false,
+      "sicherheit": true,
       "abhaengig_von": [],
-      "zyklus": false
+      "zyklus": true
     },
     {
       "issue": 59,
       "titel": "Lageplan: Wandnummern mit Liste, minimaler Kopf, keine Nullmaße",
+      "prio": "high",
+      "status": "ohne",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 63,
+      "titel": "Modul-1-Legende darf die Wanddarstellung nicht überdecken",
+      "prio": "low",
+      "status": "ohne",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
+      "issue": 56,
+      "titel": "Längenänderung und Erstellung von Wandelementen nur im Geschosseditor",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": false,
@@ -97,8 +115,8 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true,
-      "ursache": "Das Label status: blocked steht noch, obwohl die Ursache entfallen ist: die wandweise Baustellenstückliste ist mit #22 erledigt und live. Fachlich ist der Scope bestätigt, offen ist die Statusbereinigung und die Umsetzung.",
-      "naechster_schritt": "Label status: blocked entfernen und den bestätigten Umbau des Stücklistenmoduls umsetzen: Umschaltung Wand, Geschoss, Gebäude und Gesamt über die aktiven Entitäten, Export beider Listen und ein Schalter für die Preisanzeige.",
+      "ursache": "Das Label status: blocked steht noch, obwohl die Ursache entfallen ist: die wandweise Baustellenstückliste ist umgesetzt und live. Fachlich ist der Scope bestätigt; ein validiertes Paket ist bereits eingereiht.",
+      "naechster_schritt": "Das eingereihte Paket setzt die bestätigte Umschaltung zwischen Wand, Geschoss, Gebäude und Projekt über die aktiven Entitäten um, einschließlich Export und Preisanzeige-Schalter.",
       "blockiert_durch": []
     },
     {
