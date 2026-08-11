@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "37ecf99b",
+  "signatur": "c3b5516d",
   "entscheidungen": [
     {
       "issue": 41,
@@ -62,7 +62,7 @@ export const PLAN = {
   "weitere": [
     {
       "issue": 59,
-      "titel": "Lageplan: Wandnummern mit Liste, minimaler Kopf, keine Nullmaße",
+      "titel": "Lageplan: minimaler Kopf, keine Nullmaße und weitere Bemaßungskorrekturen",
       "prio": "high",
       "status": "ohne",
       "sicherheit": false,

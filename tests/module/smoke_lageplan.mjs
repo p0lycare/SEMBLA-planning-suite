@@ -111,10 +111,15 @@ store.setzeMappe(zwei.mappe);
 const gsOG = zwei.id;
 
 // Drei Waende im EG (zwei laengs, eine quer) + eine im OG. Angelegt wird ueber die
-// regulaeren Wege — Modul 9 selbst legt nie etwas an.
-const idA = store.speichere('Wand A', buildWall('Wand A', 2000, 2600, []));
-const idB = store.speichere('Wand B', buildWall('Wand B', 2000, 2600, []));
-const idC = store.speichere('Wand C', buildWall('Wand C', 2875, 2600, []));
+// regulaeren Wege — Modul 9 selbst legt nie etwas an. Die Namen sind ABSICHTLICH lang:
+// genau daran war die Zeichnung unlesbar (#59), und genau die muessen jetzt in der
+// Liste statt im Wandrechteck stehen.
+const NAME_A = 'Wand A — Erdgeschoss Nord tragend, Achse A/1 bis A/5';
+const NAME_B = 'Wand B — Erdgeschoss Süd, Anschluss Treppenhaus, nichttragend';
+const NAME_C = 'Wand C — Erdgeschoss West, Querwand mit Installationsschacht';
+const idA = store.speichere(NAME_A, buildWall(NAME_A, 2000, 2600, []));
+const idB = store.speichere(NAME_B, buildWall(NAME_B, 2000, 2600, []));
+const idC = store.speichere(NAME_C, buildWall(NAME_C, 2875, 2600, []));
 const idOG = store.speichere('Wand OG', buildWall('Wand OG', 1000, 2400, []));
 store.verorteWand(idA, gsEG, { lage: { start_mm: { x: 0, y: 1062.5 }, richtung: 'x', laenge_grid: 16 } });
 store.verorteWand(idB, gsEG, { lage: { start_mm: { x: 0, y: 4062.5 }, richtung: 'x', laenge_grid: 16 } });
@@ -171,6 +176,9 @@ lp.optionGeaendert();
 $('lp-fmt').value = 'a4'; $('lp-fmt').dispatch('change');
 $('lp-masse').checked = false; $('lp-masse').dispatch('change');
 $('lp-masse').checked = true; $('lp-masse').dispatch('change');
+// Die Haken stehen im Markup auf `checked`; der DOM-Double liest kein Markup, deshalb
+// wird die Wandkennzeichnung hier ueber denselben Behandler eingeschaltet wie im Browser.
+$('lp-kennz').checked = true; $('lp-kennz').dispatch('change');
 $('lp-print').dispatch('click');
 await warte();
 ok('[N-3] Anzeigen, Optionen und Drucken schreiben NICHTS in den Speicher',
@@ -200,6 +208,58 @@ ok('Muss 9: die Vorschau zeigt genau dasselbe Blatt-SVG wie der Export',
 ok('[N-6] das Schriftfeld der Ausgabe traegt die Projekt-Kopfdaten',
   /Bauherrschaft Muster/.test(alsText[rumpf + '.html'])
   && /A-101/.test(alsText[rumpf + '.html']));
+// --- 5b) [#59] kurze Nummer im Plan, voller Name in der rechten Liste -----
+//
+// Geprueft am ECHTEN Pfad: Storage → Mappe → lageplanDaten → blattHtml → Vorschau
+// und entpackte Exportbytes. Die Nummer darf an keiner der vier Stellen abweichen.
+const wandGruppen = (s) => [...s.matchAll(/<g class="lpwand[^"]*" data-wand="([^"]*)">([\s\S]*?)<\/g>/g)]
+  .map((m) => ({
+    id: m[1],
+    title: (m[2].match(/<title>([^<]*)<\/title>/) || [, null])[1],
+    text: (m[2].match(/<text\b[^>]*>([^<]*)<\/text>/) || [, null])[1],
+  }));
+const gruppen = wandGruppen(lp.blatt.svg);
+const nrVon = id => String(daten.waende.find(w => w.id === id).nr);
+
+ok('[#59] die Nummer ist Index+1 der kanonischen Mappenreihenfolge',
+  daten.waende.map(w => w.nr).join(',') === '1,2,3'
+  && daten.waende.map(w => w.id).join(',') === [idA, idB, idC].join(','));
+ok('[#59] die Zeichnung beschriftet jede verortete Wand NUR mit ihrer kurzen Nummer',
+  gruppen.length === 3
+  && gruppen.every(g => g.text === nrVon(g.id) && /^\d+$/.test(g.text)));
+ok('[#59] kein langer Wandname steht mehr als Beschriftung im Plan',
+  !/<text[^>]*>Wand [ABC] —/.test(lp.blatt.svg)
+  && gruppen.every(g => !/[A-Za-zÄÖÜäöüß]/.test(String(g.text))));
+ok('[#59] `title` und `data-wand` behalten vollen Namen und stabile Speicherkennung',
+  gruppen.every(g => g.title === store.holeElement(g.id).name)
+  && gruppen.map(g => g.id).sort().join(',') === [idA, idB, idC].sort().join(','));
+// Muss 3: die rechte Tabelle ist der Schluessel von der Zahl zum vollen Namen.
+const tabZeilen = s => [...s.matchAll(
+  /<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td>[\s\S]*?<td>([^<]*)<\/td><\/tr>/g)]
+  .map(m => ({ nr: m[1], name: m[2], lage: m[3] }));
+const zeilenVorschau = tabZeilen(lp.blatt.html);
+ok('[#59] die rechte Wandliste beginnt mit der Nummer und nennt den vollen Namen',
+  /<th class="nr">Nr\.<\/th><th>Wand<\/th>/.test(lp.blatt.html)
+  && zeilenVorschau.length === 3
+  && zeilenVorschau.map(z => z.nr).join(',') === '1,2,3'
+  && zeilenVorschau[0].name === NAME_A && zeilenVorschau[2].name === NAME_C);
+ok('[#59] Zeichnung und Liste sind damit eindeutig zugeordnet',
+  gruppen.every(g => {
+    const z = zeilenVorschau.find(x => x.name === store.holeElement(g.id).name);
+    return !!z && z.nr === g.text;
+  }));
+// Muss 4: dieselbe Nummerierung in Vorschau, Blatt-HTML und beiden Exportdateien —
+// nachgewiesen an den ENTPACKTEN BYTES, nicht an einem zweiten Aufruf.
+const sig = s => wandGruppen(s).map(g => g.id + ':' + g.text).join(',');
+ok('[#59] Vorschau, exportiertes HTML und exportiertes SVG zeigen dieselbe Nummerierung',
+  sig(lp.blatt.svg) === sig($('lp-blatt').innerHTML)
+  && sig(alsText[rumpf + '.html']) === sig(lp.blatt.svg)
+  && sig(alsText[rumpf + '.svg']) === sig(lp.blatt.svg));
+ok('[#59] die exportierte HTML-Datei traegt dieselbe nummerierte Wandliste',
+  JSON.stringify(tabZeilen(alsText[rumpf + '.html'])) === JSON.stringify(zeilenVorschau));
+ok('[#59] die Nummer wird NICHT gespeichert (keine neue Datenstruktur)',
+  !/"nr"/.test(JSON.stringify([...localStorage.m.entries()])));
+
 ok('Muss 11: es gibt keinen Modul-0-Weg fuer den Lageplan',
   !/[Ll]ageplan/.test(startseite.replace(/9:'[^']*'/g, '').replace(/9:\s*'[^']*'/g, ''))
   || !/sembla-lageplan/.test(startseite));
@@ -233,6 +293,19 @@ ok('[N-7] der Stand wird sichtbar als NICHT vollstaendig ausgegeben',
 ok('[N-7] auch der Export traegt den unvollstaendigen Stand',
   /nicht vollständig/i.test(LP.lageplanDokument(lp.daten, lp.optionen))
   && /nicht vollständig/i.test(LP.lageplanSvgDatei(lp.daten, lp.optionen)));
+// [#59] Muss 5: unverortete und verwaiste Eintraege zaehlen mit und bleiben in der
+// Liste — es wird weder eine Lage noch eine Ersatzkennung erfunden.
+const zeilenSpaeter = tabZeilen(lp.blatt.html);
+ok('[#59] unverortete und verwaiste Eintraege tragen ebenfalls eine Nummer',
+  lp.daten.waende.map(w => w.nr).join(',') === '1,2,3,4,5,6'
+  && lp.daten.waende.map(w => w.id).join(',') === [idA, idB, idC, idFrei, 'verwaist-1', idKoll].join(','));
+ok('[#59] alle sechs Eintraege stehen nummeriert mit vollem Namen in der Liste',
+  zeilenSpaeter.map(z => z.nr).join(',') === '1,2,3,4,5,6'
+  && zeilenSpaeter[3].name === 'Wand ohne Lage' && zeilenSpaeter[3].lage === 'unverortet'
+  && zeilenSpaeter[4].name === 'Wand Verwaist');
+ok('[#59] die unverortete Wand bleibt ungezeichnet — Nummer nur in der Liste',
+  !lp.blatt.svg.includes(`data-wand="${idFrei}"`)
+  && wandGruppen(lp.blatt.svg).map(g => g.text).join(',') === '1,2,3,5,6');
 ok('Muss 8: die Wandkennungen der Ausgabe sind die des Wandspeichers',
   lp.daten.waende.filter(w => !w.verwaist).every(w => !!store.holeElement(w.id)));
 

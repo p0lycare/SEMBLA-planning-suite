@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-12",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 59,
+    titel: "Lageplan ordnet kurze Wandnummern den vollständigen Namen in der Seitenliste zu",
+    testbitte: "Reiter 9 mit mehreren lang benannten Wänden öffnen: Im Grundriss dürfen nur kurze Nummern stehen; dieselben Nummern müssen in Vorschau, Wandliste und Export eindeutig zu den vollständigen Namen führen.",
+  },
+  {
     id: "chg-20260811-11",
     datum: "2026-08-11",
     typ: "fix",

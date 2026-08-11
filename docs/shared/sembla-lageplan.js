@@ -193,7 +193,7 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
     return (w && (w.name || w.id)) || String(id);
   };
 
-  const waende = waendeRoh.map((w) => {
+  const waende = waendeRoh.map((w, i) => {
     const el = nachId.get(w.id) || null;
     const we = el && el.wandelement ? el.wandelement : null;
     const lage = normLage(w.lage);
@@ -202,6 +202,12 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
     const bestimmt = erg.bestimmt[w.id] || { x: false, y: false };
     const eintrag = {
       id: w.id,
+      // Laufende Nummer der Zeichnung (#59): Index+1 der KANONISCHEN Mappenreihenfolge
+      // `geschoss.waende` — einschliesslich unverorteter und verwaister Eintraege, damit
+      // Zeichnung und rechte Liste lueckenlos dieselbe Zuordnung tragen. Sie ist reine
+      // Darstellung: nicht gespeichert, keine zweite Wandkennung. Identifiziert wird
+      // weiter ueber die stabile `id` (`data-wand`) und den Namen (`<title>`).
+      nr: i + 1,
       name: w.name || w.id,
       verwaist: !el,
       richtung: lage ? lage.richtung : null,
@@ -400,8 +406,13 @@ export function lageplanSvg(daten, opts) {
     if (o.kennzeichnung) {
       const cx = x + bw / 2, cy = y + bh / 2;
       const dreh = w.richtung === "y" ? ` transform="rotate(-90 ${_n(cx)} ${_n(cy)})"` : "";
+      // Beschriftet wird NUR die kurze laufende Nummer (#59). Der vollstaendige Name
+      // war regelmaessig laenger als das Bauteil — eine 125 mm breite Wand ist bei 1:50
+      // nur 2,5 Papier-mm breit — und ueberdeckte Nachbarwaende und Masse. Der Name
+      // steht unveraendert im `<title>` der Wand und mit derselben Nummer in der
+      // rechten Wandtabelle des Blattes.
       st.push(`<text x="${_n(cx)}" y="${_n(cy + 0.75)}" font-size="2.1" text-anchor="middle"`
-        + ` fill="${FARBE.text}"${dreh}>${_esc(w.name)}</text>`);
+        + ` fill="${FARBE.text}"${dreh}>${_esc(w.nr)}</text>`);
     }
     st.push("</g>");
     teile.push(st.join(""));
@@ -494,22 +505,35 @@ export function legendeHtml() {
     + `<span>${i(FARBE.wand, "plate")}Wand (125 mm breit)</span>`
     + `<span>${i(FARBE.mittellinie)}Mittellinie (Bezug, [K-2])</span>`
     + `<span>${i(FARBE.mass)}treibende Bemaßung ([K-3])</span>`
+    // #59: die Zahl im Wandrechteck ist eine reine Lesehilfe des Blattes und keine
+    // Wandkennung — nachgeschlagen wird sie in der Wandliste.
+    + `<span><b>1</b> Nummer der Wand — Name s. „Wände im Geschoss"</span>`
     + `<span>${i(FARBE.fehler, "plate")}Widerspruch / Kollision ([K-6]/[K-13])</span>`
     + `</div>`;
 }
 
-/** Wandtabelle: Kennzeichnung, Länge, Höhe, Wandtyp, Bestimmtheit. */
+/**
+ * Wandtabelle: Nummer, Name, Länge, Höhe, Wandtyp, Bestimmtheit.
+ *
+ * Die Nummer der ersten Spalte ist GENAU die, mit der die Wand in der Draufsicht
+ * beschriftet ist (#59) — die Tabelle ist damit der Schluessel von der kurzen Zahl
+ * im Plan zum vollstaendigen Wandnamen. Unverortete und verwaiste Eintraege stehen
+ * weiter mit ihrer Nummer in der Liste; es wird keine Lage und keine Ersatzkennung
+ * erfunden ([L-4]/[N-7]).
+ */
 export function wandTabelleHtml(daten) {
   const typ = (t) => (t === "ohne_wind" ? "ohne Wind" : t === "mit_wind" ? "mit Wind" : "–");
   const best = (b) => (b.x && b.y ? "x/y" : b.x ? "nur x" : b.y ? "nur y" : "frei");
-  const zeilen = daten.waende.map((w) => `<tr><td>${_esc(w.name)}</td>`
+  const zeilen = daten.waende.map((w) => `<tr><td class="nr">${_esc(w.nr)}</td>`
+    + `<td>${_esc(w.name)}</td>`
     + `<td class="r">${w.laenge_mm == null ? "–" : _fmt(w.laenge_mm) + " mm"}</td>`
     + `<td class="r">${w.hoehe_mm == null ? "–" : _fmt(w.hoehe_mm) + " mm"}</td>`
     + `<td>${_esc(typ(w.wandtyp))}</td>`
     + `<td>${w.rechteck ? _esc(best(w.bestimmt)) : "unverortet"}</td></tr>`).join("");
-  return `<table class="lptab"><thead><tr><th>Wand</th><th class="r">Länge</th>`
+  return `<table class="lptab"><thead><tr><th class="nr">Nr.</th><th>Wand</th>`
+    + `<th class="r">Länge</th>`
     + `<th class="r">Höhe</th><th>Wandtyp</th><th>Lage</th></tr></thead>`
-    + `<tbody>${zeilen || '<tr><td colspan="5">keine Wand eingetragen</td></tr>'}</tbody></table>`;
+    + `<tbody>${zeilen || '<tr><td colspan="6">keine Wand eingetragen</td></tr>'}</tbody></table>`;
 }
 
 /**
@@ -593,6 +617,9 @@ export const LAGEPLAN_CSS = `
                  color:#6b7682;border-bottom:1px solid #e3e7ec;padding:1px 2px;font-weight:600}
   table.lptab td{padding:1.5px 2px;vertical-align:top;border-bottom:1px solid #f1f3f6}
   table.lptab td.r,table.lptab th.r{text-align:right;font-variant-numeric:tabular-nums}
+  table.lptab td.nr,table.lptab th.nr{width:20px;text-align:right;padding-right:5px;
+                                      font-variant-numeric:tabular-nums}
+  table.lptab td.nr{font-weight:700;color:#1c2430}
   .lplegende{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px}
   .lplegende span{display:flex;align-items:center;gap:4px}
   .lplegende i{width:14px;height:4px;border-radius:2px;display:inline-block}

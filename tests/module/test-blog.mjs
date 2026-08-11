@@ -39,8 +39,8 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-ok("die ausgelagerte Zuschnittlegende zu Issue 63 ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260811-11" && EINTRAEGE[0]?.issue === 63);
+ok("die nummerierte Lageplanzuordnung zu Issue 59 ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260811-12" && EINTRAEGE[0]?.issue === 59);
 
 // --- 2) Validator: jede Regel schlaegt einzeln an -------------------------
 const gut = { id: "chg-20260805-01", datum: "2026-08-05", typ: "feature", issue: 48, titel: "Titel" };

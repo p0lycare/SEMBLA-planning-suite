@@ -88,11 +88,106 @@ t("[N-2] der Geschosswechsel liefert eine andere Wandmenge",
 const wA = daten.waende.find((w) => w.id === "w-a");
 t("Muss 8: die Wandkennung ist die stabile Mappen-/Speicherkennung",
   !!wA && wA.id === "w-a" && wA.name === "Wand A");
+t("[#59] die laufende Nummer ist Index+1 der kanonischen Mappenreihenfolge",
+  daten.waende.map((w) => w.nr).join(",") === "1,2,3,4"
+  && daten.waende.map((w) => w.id).join(",") === "w-a,w-b,w-c,w-d");
 t("Laenge kommt aus der Lage, Hoehe und Wandtyp aus dem Wandelement ([P-1])",
   wA.laenge_mm === 2000 && wA.hoehe_mm === 2600 && wA.wandtyp === "mit_wind");
 const wD = daten.waende.find((w) => w.id === "w-d");
 t("[L-4] ein verwaister Eintrag wird als solcher gefuehrt — ohne geratene Hoehe",
   wD.verwaist === true && wD.hoehe_mm === null && wD.wandtyp === null);
+
+// --- [#59] kurze Nummer in der Zeichnung, voller Name in der Liste ---------
+//
+// Der lange Wandname war regelmaessig laenger als das Bauteil (eine 125 mm breite
+// Wand ist bei 1:50 nur 2,5 Papier-mm breit) und ueberdeckte Nachbarwaende und
+// Masse. Beschriftet wird deshalb nur noch die laufende Nummer; identifizierbar
+// bleibt die Wand ueber `data-wand` (stabile Kennung) und `<title>` (voller Name).
+
+/**
+ * Die `lpwand`-Gruppen des Blattes, je Gruppe: stabile Kennung, `<title>` und —
+ * falls vorhanden — der eine Beschriftungstext. Gezielt je Gruppe, nicht global:
+ * Ursprungskreuz („0/0") und Massbeschriftungen sind eigene Knoten.
+ */
+const wandGruppen = (s) => [...s.matchAll(/<g class="lpwand[^"]*" data-wand="([^"]*)">([\s\S]*?)<\/g>/g)]
+  .map((m) => ({
+    id: m[1],
+    title: (m[2].match(/<title>([^<]*)<\/title>/) || [, null])[1],
+    text: (m[2].match(/<text\b[^>]*>([^<]*)<\/text>/) || [, null])[1],
+  }));
+
+const LANG = (() => {
+  let m = MAPPE.leereMappe("Langnamen", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
+  const gs = m.gebaeude[0].geschosse[0].id;
+  m = MAPPE.setzeWand(m, gs, { id: "L1", name: "Wand Erdgeschoss Nord tragend, Achse A/1–A/5",
+    lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 16 } });
+  m = MAPPE.setzeWand(m, gs, { id: "L2", name: "Wand Erdgeschoss Ost, nichttragende Trennwand",
+    lage: { start_mm: { x: 62.5, y: 125 }, richtung: "y", laenge_grid: 16 } });
+  m = MAPPE.setzeWand(m, gs, { id: "L3", name: "Wand Erdgeschoss Süd, Anschluss Treppenhaus",
+    lage: { start_mm: { x: 0, y: 2187.5 }, richtung: "x", laenge_grid: 16 } });
+  // Vierter Eintrag ohne Lage, fuenfter ohne Wandelement — beide zaehlen mit.
+  m = MAPPE.setzeWand(m, gs, { id: "L4", name: "Wand Erdgeschoss West, noch nicht eingezeichnet",
+    lage: null });
+  m = MAPPE.setzeWand(m, gs, { id: "L5", name: "Wand Erdgeschoss Kern, verwaister Eintrag",
+    lage: { start_mm: { x: 3000, y: 62.5 }, richtung: "x", laenge_grid: 8 } });
+  const el = ["L1", "L2", "L3", "L4"].map((id) => ({ id, name: id,
+    wandelement: { height_mm: 2600, wandtyp: "mit_wind", length_mm: 2000 } }));
+  return LP.lageplanDaten({ mappe: m, geschossId: gs, elemente: el });
+})();
+const langBlatt = LP.blattHtml(LANG);
+const langGruppen = wandGruppen(langBlatt.svg);
+
+t("[#59] jede Wand traegt eine eindeutige Nummer — auch unverortete und verwaiste",
+  LANG.waende.map((w) => `${w.id}=${w.nr}`).join(",") === "L1=1,L2=2,L3=3,L4=4,L5=5"
+  && new Set(LANG.waende.map((w) => w.nr)).size === 5);
+t("[#59] die Zeichnung beschriftet die verorteten Waende NUR mit der kurzen Nummer",
+  langGruppen.map((g) => g.id + ":" + g.text).join(",") === "L1:1,L2:2,L3:3,L5:5");
+t("[#59] kein Wandname steht mehr als Beschriftung in der Zeichnung",
+  langGruppen.every((g) => !/[A-Za-zÄÖÜäöüß]/.test(String(g.text)))
+  && !/<text[^>]*>Wand Erdgeschoss/.test(langBlatt.svg));
+t("[#59] `title` und `data-wand` behalten vollen Namen und stabile Kennung",
+  langGruppen.every((g) => g.title === LANG.waende.find((w) => w.id === g.id).name)
+  && langGruppen.map((g) => g.id).join(",") === "L1,L2,L3,L5");
+t("[#59] die unverortete Wand wird weiterhin nicht gezeichnet, sondern gemeldet",
+  !langBlatt.svg.includes('data-wand="L4"')
+  && LANG.meldungen.some((x) => x.art === "unverortet" && /noch nicht eingezeichnet/.test(x.text)));
+
+// Die rechte Tabelle ist der Schluessel von der Zahl zum Namen (Muss 3).
+const tabelle = LP.wandTabelleHtml(LANG);
+const tabZeilen = [...tabelle.matchAll(
+  /<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td>[\s\S]*?<td>([^<]*)<\/td><\/tr>/g)]
+  .map((m) => ({ nr: m[1], name: m[2], lage: m[3] }));
+t("[#59] die Tabelle beginnt mit der Nummer und nennt daneben den vollen Namen",
+  /<th class="nr">Nr\.<\/th><th>Wand<\/th>/.test(tabelle)
+  && tabZeilen.length === 5
+  && tabZeilen.map((z) => z.nr).join(",") === "1,2,3,4,5"
+  && tabZeilen[0].name === "Wand Erdgeschoss Nord tragend, Achse A/1–A/5");
+t("[#59] Zeichnung und Liste sind damit eindeutig zugeordnet",
+  langGruppen.every((g) => {
+    const z = tabZeilen.find((x) => x.name === LANG.waende.find((w) => w.id === g.id).name);
+    return !!z && z.nr === String(g.text);
+  }));
+t("[#59] der unverortete Eintrag steht mit Nummer in der Liste — ohne erfundene Lage",
+  tabZeilen[3].nr === "4" && /noch nicht eingezeichnet/.test(tabZeilen[3].name)
+  && tabZeilen[3].lage === "unverortet");
+t("[#59] der verwaiste Eintrag steht mit Nummer und vollem Namen in der Liste ([L-4])",
+  tabZeilen[4].nr === "5" && /verwaister Eintrag/.test(tabZeilen[4].name)
+  && LANG.waende[4].verwaist === true && LANG.waende[4].hoehe_mm === null);
+t("[#59] das vollstaendige Blatt traegt Nummer und Namen an genau diesen Stellen",
+  langBlatt.html.includes(tabelle) && langBlatt.html.includes(langBlatt.svg));
+t("[#59] Vorschau, Dokument und SVG-Datei zeigen bitgenau dieselbe Nummerierung",
+  (() => {
+    const dok = LP.lageplanDokument(LANG, langBlatt.optionen);
+    const svgD = LP.lageplanSvgDatei(LANG, langBlatt.optionen);
+    const s = (x) => wandGruppen(x).map((g) => g.id + ":" + g.text).join(",");
+    return s(dok) === s(langBlatt.svg) && s(svgD) === s(langBlatt.svg)
+      && dok.includes(tabelle);
+  })());
+t("[#59] die Nummer ist reine Darstellung — keine zweite Wandkennung im Datensatz",
+  LANG.waende.every((w) => w.id !== String(w.nr))
+  && !/data-nr=|data-nummer=/.test(langBlatt.svg));
+t("[#59] die Legende erklaert die Zahl im Wandrechteck",
+  /Nummer der Wand/.test(LP.legendeHtml()) && /Wände im Geschoss/.test(langBlatt.html));
 
 // --- [N-4] geloeste Positionen schlagen Rohpositionen ----------------------
 
@@ -278,8 +373,8 @@ t("Optionen: ohne Bemassung verschwinden die Masse — die Waende bleiben",
 // bewusst stehen, damit die Wand in der Vorschau weiter identifizierbar ist.
 t("Optionen: ohne Wandkennzeichnung fehlt die Beschriftung, nicht die Wand",
   (() => { const s = LP.lageplanSvg(daten, { kennzeichnung: false });
-    return !/<text[^>]*>Wand A<\/text>/.test(s.svg) && s.svg.includes('data-wand="w-a"')
-      && /<text[^>]*>Wand A<\/text>/.test(LP.lageplanSvg(daten).svg); })());
+    return wandGruppen(s.svg).every((g) => g.text === null) && s.svg.includes('data-wand="w-a"')
+      && wandGruppen(LP.lageplanSvg(daten).svg).every((g) => g.text !== null); })());
 
 // --- Determinismus und Reinheit ------------------------------------------
 
