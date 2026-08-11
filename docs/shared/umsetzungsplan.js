@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "b2078a53",
+  "signatur": "54df7764",
   "entscheidungen": [
     {
       "issue": 41,
@@ -35,95 +35,35 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true,
-      "frage": "Vom SEMBLA-Team kamen fünf Spannachsenregeln. Regel 1 und 2 stehen als [V-2] und [V-3] im Kern, Regel 3 und 4 sind ungeprüfte Planungshinweise, Regel 5 ist neu. Welche werden jetzt verbindlich?",
+      "frage": "Regel 1 ist [V-2]. Regel 2 ist bisher nur unten [V-3], [V-8] setzt je Öffnungsseite eine Achse; Regeln 4/5 fehlen. Bleibt Regel 2 unten und zählen i3-Kammern links nach rechts, oder gilt oben alternativ mit zusätzlicher Vorrangregel?",
       "optionen": [
         {
-          "text": "Alle drei offenen Regeln jetzt verbindlich in Kern und Orakel.",
-          "wirkung": "Zwei Achsen je Öffnungsseite über 750 mm, mindestens zwei Achsen je Blech und die neue Kammerregel der obersten Lage ändern die Achsverteilung vieler Wände. Beide Cores, Fixtures und Statikabstimmung müssen mit."
+          "text": "Regel 2 bleibt als [V-3] auf der untersten Lage; Regeln 3/4 werden ergänzt, Kammern 1–3 zählen links nach rechts.",
+          "wirkung": "Der erste Schritt ist deterministisch: breite Öffnungen erhalten je Seite zwei Nachbarachsen, jedes definierte Spannblech mindestens zwei Achsen und die obere i3-Kammerregel folgt einer festen Zählung."
         },
         {
-          "text": "Zuerst nur Regel 3 und 4 umsetzen, Regel 5 nach Rückfrage beim Team.",
-          "wirkung": "Die zwei lange bekannten Zielregeln werden geprüft und verlassen die Planungshinweise. Regel 5 braucht vorher eine eindeutige Definition der Kammerzählung 1 bis 3 am i3-Stein."
+          "text": "Regel 2 gilt wahlweise unten oder oben.",
+          "wirkung": "Vor Umsetzung müssen der Vorrang bei widersprechenden i3-Mitten und die genaue Zuordnung der Spannbleche definiert werden; sonst wären Kern und Orakel mehrdeutig."
         }
       ],
-      "empfehlung": "Option 2. Regel 3 und 4 sind fachlich unstrittig und nur noch nicht umgesetzt. Regel 5 ist neu und ohne festgelegte Kammerzählung nicht deterministisch umsetzbar; eine geratene Zählweise wäre ein stiller Regelkonflikt."
-    },
-    {
-      "issue": 43,
-      "titel": "Eigenes Modul: Projekt- und Wandkonfiguration",
-      "prio": "high",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true,
-      "frage": "Rückfrage aus dem Issue: die Wandkonfiguration hat mit Modul 1 bereits ein eigenes Modul. Wird #43 als überflüssig geschlossen oder auf reine Projekt- und Geschossdefaults verengt?",
-      "optionen": [
-        {
-          "text": "#43 schließen; Ownership bleibt bei Modul 1 und Modul 0.",
-          "wirkung": "Kein neues Modul und keine Migration von Formularfeldern. Offene Punkte wie konkurrierende Schattenfelder werden weiter als atomare Issues am jeweiligen Fachmodul geführt."
-        },
-        {
-          "text": "#43 auf projektweite Defaults verengen, ohne Wandkonfiguration.",
-          "wirkung": "Ein kleines Modul für Werte mit Projekt- oder Geschossgeltung, etwa Überstand und Standardwandhöhe. Modul 1 behält die Wandeingaben; vorher muss festgelegt werden, welche Werte das genau sind."
-        }
-      ],
-      "empfehlung": "Option 1: schließen. Modul 1 besitzt die Wandeingaben, Modul 0 die Projekt- und Geschossdaten. Ein drittes Konfigurationsmodul wäre eine zweite Quelle für dieselben Werte und widerspricht der Einbahnstraße des Datenflusses."
-    },
-    {
-      "issue": 19,
-      "titel": "Zuschnitt- und Layoutplanung für Platten, Latten und Gewindestangen",
-      "prio": "medium",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false,
-      "frage": "Gefragt wurde, ob hier noch etwas zu tun ist. Der Gewindestangenteil ist über [Z-1], [Z-2] und [Z-6] umgesetzt, Platten und Latten sind in diesem Zyklus außer Scope. Schließen?",
-      "optionen": [
-        {
-          "text": "#19 schließen; Platten- und Lattenzuschnitt später als eigenes Issue.",
-          "wirkung": "Kein Issue mehr, dessen umgesetzter Teil den offenen verdeckt. Der Plattenteil ist erst wieder greifbar, wenn er neu und atomar erfasst wird; die dort getroffenen Fachentscheidungen bleiben im geschlossenen Issue lesbar."
-        },
-        {
-          "text": "#19 offen lassen als Platzhalter für den nächsten Zyklus.",
-          "wirkung": "Die bereits getroffenen Plattenentscheidungen bleiben am offenen Issue sichtbar, es steht aber dauerhaft mit Entscheidung nötig im Plan, obwohl der aktuelle Zyklus es nicht anfasst."
-        }
-      ],
-      "empfehlung": "Option 1: schließen. Der Gewindestangenanteil ist abgeschlossen und live, Modul 2 ist im aktuellen Zyklus ausgeblendet. Ein neues kleines Issue für Platten- und Lattenzuschnitt ist ehrlicher als ein halb erledigtes Sammelissue."
+      "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
     }
   ],
   "naechstes": {
     "issue": 15,
-    "titel": "Ausgabe: Technische Wandzeichnung mit allen Komponenten",
+    "titel": "Technische Wandzeichnung: übrige Komponenten und Einbauteil-IDs abnehmen",
     "prio": "high",
     "status": "in progress",
     "sicherheit": true,
     "abhaengig_von": [],
     "zyklus": true,
-    "begruendung": "Der Neuanlegefehler bei Gewindestangen ist behoben. Offen bleiben die noch nicht abgenommenen Komponenten, Einbauteil-IDs und die Realwand-Abnahme der vollständigen technischen Zeichnung; als Sicherheitsausgabe bleibt #15 vorn."
+    "begruendung": "Der Neuanlegefehler ist behoben. Offen bleiben die übrigen Komponenten, gemeinsame Einbauteil-IDs und die Realwand-Abnahme; als angefangene Sicherheitsausgabe bleibt #15 nach der berechneten Portfolio-Ordnung vorn."
   },
   "weitere": [
     {
       "issue": 62,
-      "titel": "Stückliste: Baustellendokument vereinfachen und Vorspanndaten konsistent halten",
+      "titel": "Baustellenstückliste kompakt und mit robusten Einbauteil-IDs darstellen",
       "prio": "high",
-      "status": "ohne",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": false
-    },
-    {
-      "issue": 20,
-      "titel": "Zyklusrahmen: Aschersleben/AWG-Projekt vollständig begleiten",
-      "prio": "high",
-      "status": "in progress",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 58,
-      "titel": "Stückliste benutzbar machen: n.a. statt Fülltext, Beplankung entfernen",
-      "prio": "ohne",
       "status": "ohne",
       "sicherheit": true,
       "abhaengig_von": [],
@@ -142,7 +82,7 @@ export const PLAN = {
       "issue": 57,
       "titel": "Wandwerkzeug: Ecke als erster Punkt, Erzeugen nur durch Ziehen",
       "prio": "ohne",
-      "status": "ohne",
+      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": false
