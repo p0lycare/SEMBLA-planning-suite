@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-08",
+    datum: "2026-08-11",
+    typ: "feature",
+    issue: 44,
+    titel: "Gesamtstücklisten fassen aktive Geschosse, Gebäude oder Projekte rückverfolgbar zusammen",
+    testbitte: "Reiter 4 öffnen und zwischen Wand, Geschoss, Gebäude und Projekt wechseln: Mengen und Einbauteil-IDs müssen bis zur Wand auflösbar bleiben. Preise ausblenden und den zentralen CSV-Export ohne aktive Wand prüfen.",
+  },
+  {
     id: "chg-20260811-07",
     datum: "2026-08-11",
     typ: "fix",

@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "48a18267",
+  "signatur": "7f803ef1",
   "entscheidungen": [
     {
       "issue": 41,
@@ -108,18 +108,6 @@ export const PLAN = {
   ],
   "blockiert": [
     {
-      "issue": 44,
-      "titel": "Ausgabe: Gesamtstückliste Projekt/Gebäude aus Baustellenstücklisten",
-      "prio": "high",
-      "status": "blocked",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true,
-      "ursache": "Das Label status: blocked steht noch, obwohl die Ursache entfallen ist: die wandweise Baustellenstückliste ist umgesetzt und live. Fachlich ist der Scope bestätigt; ein validiertes Paket ist bereits eingereiht.",
-      "naechster_schritt": "Das eingereihte Paket setzt die bestätigte Umschaltung zwischen Wand, Geschoss, Gebäude und Projekt über die aktiven Entitäten um, einschließlich Export und Preisanzeige-Schalter.",
-      "blockiert_durch": []
-    },
-    {
       "issue": 38,
       "titel": "Validierung: 20 reale Aschersleben/AWG-Wände als Regelfälle",
       "prio": "high",
@@ -127,15 +115,13 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [
         41,
-        44,
         15
       ],
       "zyklus": true,
-      "ursache": "Bewusst am Zyklusende: die Validierung setzt bestätigte Regeln und die priorisierten Ausgaben voraus. Zudem fehlt die fachliche Freigabe der 20 realen Wände durch das Projektteam.",
-      "naechster_schritt": "Freigabe und stabile Referenzen der 20 datensparsamen Wandfälle beim Projektteam anfordern, danach #41 entscheiden und Wandzeichnung sowie Gesamtstückliste bereitstellen.",
+      "ursache": "Bewusst am Zyklusende: die Validierung setzt bestätigte Regeln und die priorisierte Wandzeichnung voraus. Zudem fehlt die fachliche Freigabe der 20 realen Wände durch das Projektteam.",
+      "naechster_schritt": "Freigabe und stabile Referenzen der 20 datensparsamen Wandfälle beim Projektteam anfordern, danach #41 entscheiden und die Wandzeichnung bereitstellen.",
       "blockiert_durch": [
         41,
-        44,
         15
       ]
     }

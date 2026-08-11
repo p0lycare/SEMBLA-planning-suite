@@ -153,7 +153,8 @@ const store = await import("../../docs/shared/storage.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
 const WA = await import("../../docs/shared/sembla-wandanlage.js");
 const { MODULE } = await import("../../docs/shared/navbar.js");
-const { baueDateien, stuecklistePositionen } = await import("../../docs/shared/sembla-export.js");
+const { baueDateien, gesamtstuecklisteDateien, stuecklistePositionen } = await import("../../docs/shared/sembla-export.js");
+const GES = await import("../../docs/shared/sembla-gesamtstueckliste.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
 const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
 const PLAN = await import("../../docs/shared/sembla-plan.js");
@@ -164,11 +165,14 @@ const { entpacke, zipSync } = await import("../../docs/shared/zip.js");
 const html = readFileSync(new URL("../../docs/index.html", import.meta.url), "utf8");
 const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
-const BINDUNGEN = ["mountNavbar","MODULE","store","WA","baueDateien","downloadZip",
+const BINDUNGEN = ["mountNavbar","MODULE","store","WA","baueDateien","gesamtstuecklisteDateien",
+                   "gesamtUmfang","gesamtDaten","gesamtDateiRumpf","downloadZip",
                    "entpacke","ARCHIV","KAT","MAPPE","PLAN"];
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
 new Function(...BINDUNGEN, src)(
-  () => {}, MODULE, store, WA, baueDateien, (name, files) => zipCalls.push({ name, files }),
+  () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
+  GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
+  (name, files) => zipCalls.push({ name, files }),
   entpacke, ARCHIV, KAT, MAPPE, PLAN
 );
 
@@ -1867,6 +1871,215 @@ globalThis.fetch = echtesFetch;
   if (altAktiv !== null) localStorage.setItem('sembla:aktiv:katalog', altAktiv);
 }
 
+// --- 9b) Zentraler Export der GESAMTSTÜCKLISTE (#44) ----------------------
+// Gefahren wird der ECHTE Produktpfad: Baumliste -> „Export" -> Ebene/Preise im Dialog ->
+// „ZIP herunterladen". Geprueft werden Dateiname, Ebenenbezug, CSV-Inhalt und dass die
+// Mengen BITGLEICH die Summe der kanonischen Wandstuecklisten sind.
+{
+  const gsG = projektAnlegen('Exportprojekt #44') && store.aktivesGeschossId();
+  const idG1 = await wandAnlegen(gsG, { name: 'Export Wand 1', laenge: 3000, hoehe: 3000 });
+  const idG2 = await wandAnlegen(gsG, { name: 'Export Wand 2', laenge: 2000, hoehe: 2600 });
+  const gsName = MAPPE.findeGeschoss(store.holeMappe(), gsG).geschoss.name;
+  const csvZeilen = (t) => t.split('\n').map(z => z.split(';'));
+  /** Reine Erwartung: Summe der kanonischen Wandstuecklisten. */
+  const erwarteteMengen = (ids) => { const m = new Map();
+    for (const id of ids) for (const p of stuecklistePositionen(store.holeElement(id).wandelement,
+        store.holeEingaben(id), store.holeKatalog())) {
+      const k = [p.key, p.unit, p.art || '', p.fertigmass_mm ?? ''].join('|');
+      m.set(k, (m.get(k) || 0) + p.menge); }
+    return m; };
+
+  ok('#44 Export-Dialog hat das Gesamtstücklisten-Häkchen (nicht vorausgewählt)',
+    /<input type="checkbox" value="gesamt"><span>/.test(html)
+    && /Gesamtstückliste der aktiven Ebene \(CSV\)/.test(html));
+  ok('#44 Ebene und Preisschalter stehen AUSSERHALB des Häkchen-Labels',
+    /id="exp-gesamt-optionen"/.test(html)
+    && html.indexOf('id="exp-gesamt-optionen"') > html.indexOf('value="gesamt"')
+    && !/value="gesamt">[\s\S]*?<select/.test(html.split('</label>')[html.split('</label>').findIndex(t => t.includes('value="gesamt"'))] || ''));
+
+  // (a) Geschossebene mit Preisen
+  zipCalls.length = 0;
+  baum('wand-export', idG1);
+  $('exp-ebene').value = 'geschoss'; $('exp-preise').checked = true;
+  $('exp-overlay')._sel = [{ value: 'gesamt' }];
+  $('exp-go').dispatch('click');
+  const gFiles = zipCalls.length ? zipCalls[0].files : [];
+  ok('#44 Gesamt-Häkchen erzeugt genau eine CSV', gFiles.length === 1 && /\.csv$/.test(gFiles[0].name));
+  ok('#44 Dateiname nennt Ebene und Bezug',
+    gFiles[0].name === 'Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '.csv');
+  const gCsv = gFiles.length ? gFiles[0].data : '';
+  ok('#44 CSV nennt Blatt, Ebene und Geschoss',
+    /^SEMBLA – Gesamtstückliste Geschoss/.test(gCsv)
+    && new RegExp('Ebene;Geschoss').test(gCsv) && gCsv.includes('Geschoss;' + gsName));
+  ok('#44 CSV nennt beide Wände als Herkunft und ist vollständig',
+    /Wände;2 von 2/.test(gCsv) && /Vollständigkeit;vollständig/.test(gCsv)
+    && gCsv.includes('Export Wand 1') && gCsv.includes('Export Wand 2'));
+  ok('#44 CSV-Mengen sind bitgleich die Summe der Wandstücklisten', (() => {
+    const zeilen = csvZeilen(gCsv);
+    const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
+    const ist = new Map();
+    for (const z of zeilen.slice(kopf + 1)) {
+      if (!z[0] || z[0].startsWith('Summe netto') || z.length < 7) continue;
+      // Spalten: Einbauteil;Art;Fertigmaß;Einheit;Menge;Herkunft;IDs;...
+      const art = z[1] ? ({ '■': 'standard', '◆': 'sonder', '▲': 'rest' })[z[1][0]] || '' : '';
+      const k = [null, z[3], art, z[2] === '' ? '' : +z[2]].join('|');
+      ist.set(k, (ist.get(k) || 0) + +z[4]);
+    }
+    const soll = new Map();
+    for (const [k, v] of erwarteteMengen([idG1, idG2])) {
+      const t = k.split('|'); const k2 = [null, t[1], t[2], t[3] === '' ? '' : +t[3]].join('|');
+      soll.set(k2, (soll.get(k2) || 0) + v);
+    }
+    return ist.size === soll.size && [...soll].every(([k, v]) => Math.abs((ist.get(k) ?? NaN) - v) < 1e-9);
+  })());
+  ok('#44 CSV führt die Einbauteil-IDs als Wand-ID:ID',
+    new RegExp(idG1 + ':GS-k').test(gCsv) && new RegExp(idG2 + ':GS-k').test(gCsv));
+
+  // (b) Preisschalter im Export
+  zipCalls.length = 0;
+  baum('wand-export', idG1);
+  $('exp-ebene').value = 'geschoss'; $('exp-preise').checked = false;
+  $('exp-overlay')._sel = [{ value: 'gesamt' }];
+  $('exp-go').dispatch('click');
+  const oCsv = zipCalls.length ? zipCalls[0].files[0].data : '';
+  ok('#44 Export ohne Preise: keine EP/GP-Spalte, kein Summenbetrag',
+    !/EP \(EUR\)/.test(oCsv) && !/GP \(EUR\)/.test(oCsv) && !/Summe netto/.test(oCsv));
+  ok('#44 Export ohne Preise: Mengen, Herkunft und IDs unverändert', (() => {
+    const nurMengen = t => csvZeilen(t).filter(z => z.length > 6 && z[0] && !z[0].startsWith('Summe netto'))
+      .map(z => [z[0], z[3], z[4], z[5], z[6]].join('|')).join('\n');
+    return nurMengen(oCsv) === nurMengen(gCsv); })());
+
+  // (c) Projektebene und Wandebene
+  for (const [ebene, ids, rumpf] of [['projekt', [idG1, idG2], 'Gesamtstueckliste_Projekt_Exportprojekt_44'],
+      ['wand', [idG1], 'Baustellenstueckliste_Wand_Export_Wand_1']]) {
+    zipCalls.length = 0;
+    store.setzeAktiv(idG1);
+    baum('wand-export', idG1);
+    $('exp-ebene').value = ebene; $('exp-preise').checked = true;
+    $('exp-overlay')._sel = [{ value: 'gesamt' }];
+    $('exp-go').dispatch('click');
+    const f = zipCalls.length ? zipCalls[0].files[0] : { name: '', data: '' };
+    ok(`#44 Ebene ${ebene}: Dateiname und Ebenenbezug`, f.name === rumpf + '.csv'
+      && new RegExp('Ebene;' + (ebene === 'wand' ? 'Wand' : 'Projekt')).test(f.data));
+    ok(`#44 Ebene ${ebene}: Mengen = Summe genau dieser ${ids.length} Wand/Wände`, (() => {
+      const zeilen = csvZeilen(f.data); const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
+      const summe = zeilen.slice(kopf + 1).filter(z => z[0] && !z[0].startsWith('Summe netto') && z.length > 6)
+        .reduce((a, z) => a + +z[4], 0);
+      const soll = [...erwarteteMengen(ids).values()].reduce((a, v) => a + v, 0);
+      return Math.abs(summe - soll) < 1e-9; })());
+  }
+
+  // (d) Der bisherige Wandexport bleibt unveraendert
+  zipCalls.length = 0;
+  baum('wand-export', idG1);
+  $('exp-overlay')._sel = [{ value: 'stueckliste' }];
+  $('exp-go').dispatch('click');
+  const wFiles = zipCalls.length ? zipCalls[0].files : [];
+  ok('#44 der bisherige Wandexport ist unberührt (2 Dateien, alte Namen)',
+    wFiles.length === 2 && /^Baustellenstueckliste_/.test(wFiles[0].name)
+    && /^Einbauteile_Gewindestangen_/.test(wFiles[1].name));
+  ok('#44 und liefert bitgleich die bestehende Ableitung', (() => {
+    const soll = baueDateien(store.projektObjekt(idG1), ['stueckliste'], store.holeKatalog());
+    return wFiles[0].data === soll[0].data && wFiles[1].data === soll[1].data; })());
+
+  // (e) Nicht aktivierbare Ebene: benannt, kein ZIP. Damit der dokumentierte Rueckfall von
+  // `aktivesGeschoss()` (genau EIN Geschoss ist eindeutig) nicht greift, bekommt das Projekt
+  // vorher ein zweites Geschoss — erst dann ist „kein aktives Geschoss" wirklich unbestimmt.
+  zipCalls.length = 0;
+  store.setzeMappe(MAPPE.fuegeGeschossHinzu(store.holeMappe(), store.aktivesGebaeude().id, 'OG Export').mappe);
+  store.setzeAktivesGeschoss(null);
+  baum('wand-export', idG1);
+  $('exp-ebene').value = 'geschoss'; $('exp-preise').checked = true;
+  $('exp-overlay')._sel = [{ value: 'gesamt' }];
+  $('exp-go').dispatch('click');
+  ok('#44 ohne aktives Geschoss wird die Ebene benannt statt ersetzt',
+    zipCalls.length === 0 && /Gesamtstückliste/.test(trMsgTxt()) && /Kein aktives Geschoss/.test(trMsgTxt()));
+  store.setzeAktivesGeschoss(gsG);
+
+  // (f) DER WEG OHNE AKTIVE WAND: Projekt-/Gebäude-/Geschossebene ist zentral exportierbar,
+  // auch wenn keine Wand aktiv ist. Geoeffnet wird der ECHTE Dialog ueber die Baumliste.
+  {
+    store.setzeAktiv(null);
+    ok('#44 Ausgangslage: keine aktive Wand', store.aktivId() === null);
+    ok('#44 Baumliste bietet „Gesamtstückliste" am aktiven Geschoss und am aktiven Projekt', (() => {
+      const b = $('tr-baum').innerHTML;
+      return new RegExp('data-act="gs-gesamt" data-id="' + gsG + '">Gesamtstückliste').test(b)
+        && /data-act="prj-gesamt"[^>]*>Gesamtstückliste/.test(b); })());
+    ok('#44 an einem NICHT aktiven Geschoss ist der Knopf gesperrt und benennt den Weg ([L-10])', (() => {
+      const b = $('tr-baum').innerHTML;
+      const treffer = [...b.matchAll(/data-act="gs-gesamt" data-id="([^"]+)"([^>]*)>/g)];
+      return treffer.length >= 2
+        && treffer.some(t => t[1] !== gsG && /disabled/.test(t[2]) && /aktiv setzen/.test(t[2]))
+        && treffer.some(t => t[1] === gsG && !/disabled/.test(t[2])); })());
+
+    zipCalls.length = 0;
+    baum('gs-gesamt', gsG);
+    ok('#44 der Dialog öffnet ohne Wand und nennt die Ebene statt einer Wand',
+      $('exp-overlay').hidden === false && $('exp-titel').textContent === 'Gesamtstückliste exportieren'
+      && $('exp-bezug').textContent === 'Ebene:'
+      && /Geschoss „.+“ · Projekt „Exportprojekt #44“/.test($('exp-name').textContent)
+      && $('exp-ebene').value === 'geschoss');
+
+    // Wandbezogene Häkchen dürfen ohne Wand nicht ausgeführt werden.
+    $('exp-overlay')._sel = [{ value: 'stueckliste' }, { value: 'gesamt' }];
+    $('exp-go').dispatch('click');
+    ok('#44 wandbezogene Auswahl ohne Wand wird benannt und NICHT ausgeführt',
+      zipCalls.length === 0 && /Ohne aktive Wand/.test(trMsgTxt()) && trFehler());
+
+    // Die Gesamtstückliste selbst läuft — ohne jede Wandaktivierung.
+    $('exp-overlay')._sel = [{ value: 'gesamt' }];
+    $('exp-go').dispatch('click');
+    const f = zipCalls.length ? zipCalls[0].files : [];
+    ok('#44 ohne aktive Wand entsteht genau die Gesamtstückliste der Ebene',
+      zipCalls.length === 1 && f.length === 1
+      && f[0].name === 'Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '.csv');
+    ok('#44 der ZIP-Name folgt der Ebene, nicht einer Wand',
+      zipCalls[0].name === 'SEMBLA_Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '.zip');
+    ok('#44 Inhalt ist bitgleich die Summe beider Wände', (() => {
+      const zeilen = csvZeilen(f[0].data); const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
+      const summe = zeilen.slice(kopf + 1).filter(z => z[0] && !z[0].startsWith('Summe netto') && z.length > 6)
+        .reduce((a, z) => a + +z[4], 0);
+      const soll = [...erwarteteMengen([idG1, idG2]).values()].reduce((a, v) => a + v, 0);
+      return Math.abs(summe - soll) < 1e-9 && /Wände;2 von 2/.test(f[0].data); })());
+    ok('#44 dabei wird nichts still aktiviert',
+      store.aktivId() === null && store.aktivesGeschossId() === gsG);
+
+    // Projektebene über den Projektknopf — derselbe Weg, andere Vorauswahl.
+    zipCalls.length = 0;
+    baum('prj-gesamt', store.holeMappe().projekt.id);
+    ok('#44 Projektknopf öffnet den Dialog mit Projektebene',
+      $('exp-ebene').value === 'projekt' && /^Projekt „Exportprojekt #44“$/.test($('exp-name').textContent));
+    $('exp-overlay')._sel = [{ value: 'gesamt' }];
+    $('exp-go').dispatch('click');
+    ok('#44 Projektebene ohne aktive Wand exportiert',
+      zipCalls.length === 1 && zipCalls[0].files[0].name === 'Gesamtstueckliste_Projekt_Exportprojekt_44.csv');
+
+    // Zurück in den Wandmodus: die wandbezogenen Häkchen sind wieder benutzbar.
+    store.setzeAktiv(idG1);
+    zipCalls.length = 0;
+    baum('wand-export', idG1);
+    ok('#44 mit Wand ist der Dialog wieder der Wandexport',
+      $('exp-titel').textContent === 'Wand exportieren' && $('exp-bezug').textContent === 'Wand:'
+      && $('exp-name').textContent === 'Export Wand 1');
+    $('exp-overlay')._sel = [{ value: 'stueckliste' }];
+    $('exp-go').dispatch('click');
+    ok('#44 der Wandexport funktioniert danach unverändert',
+      zipCalls.length === 1 && zipCalls[0].files.length === 2
+      && /^Baustellenstueckliste_/.test(zipCalls[0].files[0].name));
+
+    // Der Häkchen-Zustand selbst: ohne Wand abgewählt UND gesperrt, mit Wand unverändert zurück.
+    const haken = [{ value: 'projekt', checked: true }, { value: 'gesamt', checked: false }];
+    $('exp-overlay')._sel = haken;
+    baum('gs-gesamt', gsG);
+    ok('#44 ohne Wand: wandbezogene Häkchen werden abgewählt und gesperrt (keine Vortäuschung)',
+      haken[0].checked === false && haken[0].disabled === true && haken[1].checked === true);
+    baum('wand-export', idG1);
+    ok('#44 mit Wand: der vorherige Häkchen-Stand kommt unverändert zurück',
+      haken[0].checked === true && haken[0].disabled === false);
+    $('exp-overlay')._sel = [];
+  }
+}
+
 // --- 10) KEIN Autoload beim Initialisieren (Issue #33) --------------------
 // Steht bewusst am ENDE: der Block erzeugt eine ZWEITE Instanz des Modul-0-Codes.
 // Die haengt sich ebenfalls an store.abonniere und wuerde die Baumliste der ersten
@@ -1884,7 +2097,9 @@ globalThis.document = {
 };
 globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return { ok:true, status:200, text: async () => '{}' }; };
 new Function(...BINDUNGEN, src)(
-  () => {}, MODULE, store, WA, baueDateien, () => {}, entpacke, ARCHIV, KAT, MAPPE, PLAN);
+  () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
+  GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
+  () => {}, entpacke, ARCHIV, KAT, MAPPE, PLAN);
 const frischKatalog = globalThis.localStorage.getItem('sembla:kataloge');
 const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
 globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();

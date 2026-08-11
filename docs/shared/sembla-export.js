@@ -202,6 +202,94 @@ export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
   return aoaToCsv(stuecklisteAoa(w, eingaben, opts, katalog));
 }
 
+// ---------- Gesamtstueckliste ueber die aktiven Projektstufen (#44) ----------
+
+/**
+ * Datei-Ableitung der GESAMTSTÜCKLISTE einer Projektstufe.
+ *
+ * Uebergeben wird das fertige Datenobjekt aus `sembla-gesamtstueckliste.gesamtDaten()` — diese
+ * Datei rechnet daran NICHTS nach und importiert das Modul bewusst nicht (die Ableitung liest
+ * `stuecklistePositionen` von hier; die umgekehrte Abhaengigkeit waere ein Zirkel). Damit gibt es
+ * genau einen Mengenpfad: Oberflaeche und Datei sehen dasselbe Objekt.
+ *
+ * Der PREISSCHALTER blendet ausschliesslich Einzelpreis, Gesamtpreis und Summenbetrag aus.
+ * Mengen, Herkunft, Einbauteil-IDs und der Vollstaendigkeitsstand bleiben unveraendert — eine
+ * Liste ohne Preise ist dieselbe Liste.
+ *
+ * @param {object} daten Ergebnis von `gesamtDaten()`
+ * @param {{preise?:boolean, datum?:string}} [opts]
+ */
+export function gesamtstuecklisteAoa(daten, opts = {}) {
+  const preise = opts.preise !== false;
+  const cur = daten.waehrung || "EUR";
+  const b = daten.bezug || {};
+  const n2 = v => (v == null ? "" : +v.toFixed(2));
+  const kopf = [
+    ["SEMBLA – " + daten.titel],
+    ["Ebene", daten.ebene_label],
+    ["Projekt", b.projekt || ""],
+  ];
+  if (b.gebaeude) kopf.push(["Gebäude", b.gebaeude]);
+  if (b.geschoss) kopf.push(["Geschoss", b.geschoss]);
+  if (b.wand) kopf.push(["Wand", b.wand]);
+  kopf.push(["Datum", opts.datum || _heute()]);
+  kopf.push(["Katalog", daten.katalog ? (daten.katalog.name || "Bauteilkatalog") : "kein Bauteilkatalog geladen"]);
+  kopf.push(["Wände", daten.quellen.length + " von " + daten.waende.length]);
+  kopf.push(["Vollständigkeit", _standTextDatei(daten)]);
+  kopf.push(["Kennzeichnung", ART_KENNZEICHNUNG]);
+  // Jede Luecke steht als eigene Zeile mit Projektpfad und Ursache — eine unvollstaendige
+  // Datei sagt, WELCHE Wand fehlt und warum, statt still weniger zu zeigen.
+  for (const l of daten.luecken) kopf.push(["Lücke", l.pfad || "", l.grund]);
+
+  const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge",
+    "Wände (Herkunft)", "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung"];
+  if (preise) spalten.splice(7, 0, "EP (" + cur + ")", "GP (" + cur + ")");
+
+  const zeilen = daten.positionen.map(r => {
+    const z = [r.label, r.art ? r.art_symbol + " " + r.art_label : "",
+      r.fertigmass_mm == null ? "" : r.fertigmass_mm, r.unit, r.menge,
+      r.herkunft.map(h => h.wand + ": " + h.menge).join(" | "), r.ids.join(" "),
+      r.produktId || "", r.statusText];
+    if (preise) z.splice(7, 0, n2(r.ep), n2(r.gp));
+    return z;
+  });
+
+  const aoa = [...kopf, [], spalten, ...zeilen];
+  if (preise) {
+    // Ohne Gesamtbetrag (kein bepreiste Position oder uneinheitliche Waehrung) steht dort
+    // ausdruecklich KEINE 0,00 — sondern der Grund.
+    const s = daten.summe;
+    const betrag = daten.betragMoeglich ? +s.summe.toFixed(2)
+      : (daten.waehrungKonflikt ? "kein Gesamtbetrag – uneinheitliche Währung" : "kein Gesamtbetrag – keine Position bepreist");
+    aoa.push([]);
+    aoa.push(["Summe netto (" + cur + ")", "", "", "", "", "", "", "", betrag, "",
+      s.vollstaendig ? "alle Positionen bepreist" : `unvollständig – ${s.bepreist} von ${s.bepreisbar} Positionen bepreist`]);
+  }
+  return aoa;
+}
+
+/** Vollstaendigkeitssatz der Datei — dieselbe Aussage wie in der Oberflaeche. */
+function _standTextDatei(daten) {
+  return daten.vollstaendig
+    ? `vollständig – ${daten.quellen.length} von ${daten.waende.length} Wänden enthalten`
+    : `UNVOLLSTÄNDIG – ${daten.quellen.length} von ${daten.waende.length} Wänden enthalten, ${daten.luecken.length} Lücke(n)`;
+}
+
+/** Gesamtstückliste einer Projektstufe direkt als CSV-Text. */
+export function gesamtstuecklisteCsv(daten, opts = {}) {
+  return aoaToCsv(gesamtstuecklisteAoa(daten, opts));
+}
+
+/**
+ * Datei-Buendel der gewaehlten Projektstufe fuer den zentralen ZIP-Export.
+ * @param {object} daten @param {{preise?:boolean, datum?:string, rumpf?:string}} [opts]
+ * @returns {Array<{name:string,data:string}>}
+ */
+export function gesamtstuecklisteDateien(daten, opts = {}) {
+  const rumpf = sicherName(opts.rumpf || daten.titel);
+  return [{ name: rumpf + ".csv", data: gesamtstuecklisteCsv(daten, opts) }];
+}
+
 // ---------- Zuschnittliste (Latten) ----------
 
 /**

@@ -382,10 +382,10 @@
 <!-- Zentraler Export-Dialog: erzeugt alle Ausgaben frisch aus dem Datenmodell -->
 <div class="overlay" id="exp-overlay" hidden>
   <div class="modal">
-    <h3>Wand exportieren</h3>
+    <h3 id="exp-titel">Wand exportieren</h3>
     <p class="sub">Auswahl wird als <b>ZIP</b> heruntergeladen und komplett aus dem aktuellen
       Datenmodell (Wandelement + Eingaben + Projekt-Kopfdaten) neu erzeugt — kein Drift.
-      Wand: <b id="exp-name">–</b></p>
+      <span id="exp-bezug">Wand:</span> <b id="exp-name">–</b></p>
     <label class="opt"><input type="checkbox" value="projekt" checked><span><span class="t">Projekt-Datei (JSON)</span><br><span class="d">Vollständiges Datenmodell — hier auf der Startseite wieder importierbar.</span></span></label>
     <label class="opt"><input type="checkbox" value="stueckliste" checked><span><span class="t">Baustellenstückliste (2× CSV)</span><br><span class="d">Real einzubauende Teile in Fertigmaßen aus dem aktiven Wandelement — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs. Ohne Beplankung (Latten/Platten/Verbinder).</span></span></label>
     <label class="opt"><input type="checkbox" value="zuschnitt" checked><span><span class="t">Zuschnittliste Latten (CSV)</span><br><span class="d">Lattenschnitt je Verbinderachse aus dem Wandaufbau (Modul&nbsp;2) — eigene Ausgabe, nicht Teil der Baustellenstückliste.</span></span></label>
@@ -393,6 +393,22 @@
     <label class="opt"><input type="checkbox" value="zeichnung" checked><span><span class="t">Technische Zeichnung (SVG + HTML)</span><br><span class="d">Wandabwicklung mit Verlege-/Vorspannplan, Bemaßung, Tabellen und Schriftfeld aus Modul&nbsp;7 — maßstabsgetreues SVG (1:x, mm) plus druckbares A3-/A4-Blatt.</span></span></label>
     <label class="opt"><input type="checkbox" value="nachweis" checked><span><span class="t">Statischer Nachweis (HTML/PDF-fähig)</span><br><span class="d">Voller Schermer-Nachweis aus Modul&nbsp;3 mit Geometrie, Kennwerten und Auslastungen — druckbare, prüfpflichtige Planungshilfe.</span></span></label>
     <label class="opt"><input type="checkbox" value="ifc" checked><span><span class="t">3D-Modell (IFC4)</span><br><span class="d">Wand als IFC4 für CAD/BIM-Programme.</span></span></label>
+    <!-- Gesamtstückliste (#44): bezieht sich NICHT auf die oben gewählte Wand, sondern auf die
+         AKTIVE Ebene der Projektmappe. Ebene und Preisschalter stehen deshalb ausserhalb des
+         Häkchen-Labels — ein Klick darauf darf das Häkchen nicht mitschalten. Erzeugt wird die
+         Datei aus derselben Ableitung wie die Anzeige in Modul 4 (kein DOM-Wert, kein zweites
+         Mengenmodell). -->
+    <label class="opt"><input type="checkbox" value="gesamt"><span><span class="t">Gesamtstückliste der aktiven Ebene (CSV)</span><br><span class="d">Summe der Baustellenstücklisten aller Wände der gewählten Ebene — mit Herkunft je Wand, den vorhandenen Einbauteil-IDs als <b>Wand-ID:ID</b> und benannten Lücken. Ebene und Preise unten wählen.</span></span></label>
+    <div class="opt-zusatz" id="exp-gesamt-optionen" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
+      <label style="display:flex;gap:6px;align-items:center">Ebene
+        <select id="exp-ebene">
+          <option value="wand">Wand (aktiv)</option>
+          <option value="geschoss" selected>Geschoss (aktiv)</option>
+          <option value="gebaeude">Gebäude (aktiv)</option>
+          <option value="projekt">Projekt (aktiv)</option>
+        </select></label>
+      <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="exp-preise" checked>Preise enthalten</label>
+    </div>
     <div class="modal-actions">
       <button class="btn-s" id="exp-cancel">Abbrechen</button>
       <button class="btn-p" id="exp-go">ZIP herunterladen</button>
@@ -437,7 +453,8 @@
   import { mountNavbar, MODULE } from './shared/navbar.js';
   import * as store from './shared/storage.js';
   import * as WA from './shared/sembla-wandanlage.js';
-  import { baueDateien } from './shared/sembla-export.js';
+  import { baueDateien, gesamtstuecklisteDateien } from './shared/sembla-export.js';
+  import { umfang as gesamtUmfang, gesamtDaten, dateiRumpf as gesamtDateiRumpf } from './shared/sembla-gesamtstueckliste.js';
   import { downloadZip, entpacke } from './shared/zip.js';
   import * as ARCHIV from './shared/sembla-archiv.js';
   import * as KAT from './shared/sembla-katalog.js';
@@ -536,6 +553,10 @@
         + (istAktivPrj ? '' : knopf('prj-aktiv', m.projekt.id, 'Aktiv setzen'))
         + knopf('prj-bearbeiten', m.projekt.id, 'Bearbeiten')
         + knopf('prj-zip', m.projekt.id, 'Export (ZIP)', 'btn-p')
+        // Gesamtstückliste des PROJEKTS (#44) — ohne aktive Wand erreichbar. Der Knopf setzt
+        // nichts aktiv ([L-10]): er ist gesperrt, solange das Projekt nicht aktiv ist.
+        + knopf('prj-gesamt', m.projekt.id, 'Gesamtstückliste', 'btn-s', !istAktivPrj,
+            `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`)
         + knopf('prj-json', m.projekt.id, 'nur Struktur (JSON)')
         + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d')
         + `</span></div>`;
@@ -564,6 +585,10 @@
           `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`))
       + knopf('gs-oeffnen', gs.id, 'Geschoss öffnen', 'btn-p', !istAktivPrj,
           `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`)
+      // Gesamtstückliste des GESCHOSSES (#44) — der Weg ohne aktive Wand. Gesperrt, solange
+      // das Geschoss nicht aktiv ist; aktiviert wird hier nichts ([L-10]).
+      + knopf('gs-gesamt', gs.id, 'Gesamtstückliste', 'btn-s', !istAktiv,
+          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`)
       + knopf('gs-bearbeiten', gs.id, 'Bearbeiten')
       + knopf('gs-loeschen', gs.id, 'Löschen', 'btn-d')
       + `</span></div>`;
@@ -676,6 +701,7 @@
     }
     if (act === 'prj-bearbeiten') { ppOeffne(id); return; }
     if (act === 'prj-zip') { arcExport(id); return; }
+    if (act === 'prj-gesamt') { oeffneExport(null, 'projekt'); return; }
     if (act === 'prj-json') { trMappeExport(id); return; }
     if (act === 'prj-loeschen') { trProjektLoeschen(id); return; }
     if (act === 'gs-neu') { gpOeffne(id, null); return; }
@@ -685,6 +711,7 @@
       return;
     }
     if (act === 'gs-oeffnen') { gsOeffnen(id); return; }
+    if (act === 'gs-gesamt') { oeffneExport(null, 'geschoss'); return; }
     if (act === 'gs-bearbeiten') { gpOeffne(null, id); return; }
     if (act === 'gs-loeschen') { trGeschossLoeschen(id); return; }
     if (act === 'wand-neu') { wpOeffne(id, null); return; }
@@ -1795,10 +1822,47 @@
   // =====================================================================
   const overlay = $('exp-overlay');
   let expId = null;
-  function oeffneExport(id){
-    const e = store.holeElement(id); if (!e) return;
-    expId = id;
-    $('exp-name').textContent = e.name;
+  /** Alle Datei-Haekchen des Dialogs (direkte Kinder von .opt). */
+  const expHaken = () => [...overlay.querySelectorAll('.opt > input[type=checkbox]')];
+  /** Die WANDBEZOGENEN Haekchen — alles ausser der Gesamtstückliste. */
+  const expWandHaken = () => expHaken().filter(c => c.value !== 'gesamt');
+  let expWandStand = null;            // gemerkter Haken-Stand des Wandmodus
+
+  /**
+   * Zentralen Export oeffnen. `id = null` ist der Weg OHNE aktive Wand (#44): dann gibt es
+   * genau eine sinnvolle Ausgabe — die Gesamtstückliste der aktiven Projektstufe.
+   *
+   * Die wandbezogenen Haekchen werden dabei abgewaehlt UND gesperrt, statt sie anzubieten:
+   * ein Haken, der ohne Wand nichts erzeugen kann, waere eine Vortaeuschung. Aktiviert wird
+   * nichts ([L-10]) — die Ebene folgt weiterhin allein den aktiven Zeigern.
+   * @param {string|null} id Wandkennung oder null @param {string} [ebene] Vorauswahl der Ebene
+   */
+  function oeffneExport(id, ebene){
+    if (id != null) {
+      const e = store.holeElement(id); if (!e) return;
+      expId = id;
+      $('exp-titel').textContent = 'Wand exportieren';
+      $('exp-bezug').textContent = 'Wand:';
+      $('exp-name').textContent = e.name;
+      // Der vor dem Gesamtmodus gemerkte Stand kommt zurueck — nichts wird stillschweigend
+      // an- oder abgewaehlt.
+      expWandHaken().forEach((c, i) => { c.disabled = false; if (expWandStand) c.checked = expWandStand[i]; });
+      expWandStand = null;
+    } else {
+      const gs = aktGeschoss(), m = store.holeMappe();
+      if (!m) { trZeige('Kein aktives Projekt — erst ein Projekt aktiv setzen ([L-10]).', false); return; }
+      expId = null;
+      $('exp-titel').textContent = 'Gesamtstückliste exportieren';
+      $('exp-bezug').textContent = 'Ebene:';
+      $('exp-name').textContent = ebene === 'geschoss' && gs
+        ? `Geschoss „${gs.name}“ · Projekt „${m.projekt.name}“`
+        : `Projekt „${m.projekt.name}“`;
+      if (!expWandStand) expWandStand = expWandHaken().map(c => !!c.checked);
+      expWandHaken().forEach(c => { c.checked = false; c.disabled = true; });
+      const g = expHaken().find(c => c.value === 'gesamt');
+      if (g) g.checked = true;
+    }
+    if (ebene) $('exp-ebene').value = ebene;
     overlay.hidden = false;
   }
   function schliesseExport(){ overlay.hidden = true; expId = null; }
@@ -1815,16 +1879,60 @@
     if (!gpOverlay.hidden) gpAbbruch();
     if (!ppOverlay.hidden) ppAbbruch();
   });
+  /**
+   * Dateien der GESAMTSTÜCKLISTE (#44) aus der AKTIVEN Ebene der Projektmappe.
+   * Der Umfang kommt ausschliesslich aus Mappe und aktiven Zeigern ([L-10]); eine nicht
+   * aktivierbare Ebene wird BENANNT (Fehler) statt durch eine andere ersetzt. Gerechnet wird
+   * je Wand mit `stuecklistePositionen` — es gibt keinen zweiten Mengenpfad und keinen Wert
+   * aus einer Oberflaeche.
+   */
+  function gesamtDateien() {
+    const gs = store.aktivesGeschoss(), geb = store.aktivesGebaeude();
+    const wandId = store.aktivId();
+    const el = wandId ? store.holeElement(wandId) : null;
+    const umf = gesamtUmfang(store.holeMappe(), $('exp-ebene').value || 'wand', {
+      wandId, wandName: el ? el.name : null,
+      geschossId: gs ? gs.geschoss.id : null,
+      gebaeudeId: geb ? geb.id : (gs ? gs.gebaeude.id : null),
+    });
+    if (!umf.ok) throw new Error('Gesamtstückliste: ' + umf.grund);
+    const daten = gesamtDaten(umf, {
+      holeElement: (id) => store.holeElement(id),
+      holeEingaben: (id) => store.holeEingaben(id),
+      katalog: store.holeKatalog(),
+    });
+    return gesamtstuecklisteDateien(daten, { preise: $('exp-preise').checked, rumpf: gesamtDateiRumpf(daten) });
+  }
+
   $('exp-go').addEventListener('click', () => {
-    if (!expId) return;
-    const auswahl = [...overlay.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    // Nur die Haekchen der Dateiauswahl (direkte Kinder von .opt) — die Zusatzbedienung der
+    // Gesamtstückliste ist keine Datei und darf nie als Auswahl gelesen werden.
+    const auswahl = [...overlay.querySelectorAll('.opt > input[type=checkbox]:checked')].map(c => c.value);
     if (!auswahl.length) { trZeige('Bitte mindestens eine Datei auswählen.', false); return; }
+    const wandTeile = auswahl.filter(v => v !== 'gesamt');
+    // Ohne aktive Wand gibt es keine wandbezogene Ausgabe — das wird BENANNT und nicht
+    // halb ausgeführt ([P-1]: die Wanddateien haben keine zweite Quelle).
+    if (!expId && wandTeile.length) {
+      trZeige('Ohne aktive Wand ist nur die Gesamtstückliste exportierbar — '
+        + 'wandbezogene Dateien über „Export" an der Wand.', false);
+      return;
+    }
     try {
-      // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
-      const projekt = store.projektObjekt(expId);
-      // Katalog ist Preisquelle der Stückliste ([P-14]) — dieselbe Auflösung wie in Modul 4.
-      const files = baueDateien(projekt, auswahl, store.holeKatalog());
-      downloadZip('SEMBLA_' + store.sicherName(projekt.name) + '.zip', files);
+      const files = [];
+      let zipName = null;
+      if (expId) {
+        // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
+        const projekt = store.projektObjekt(expId);
+        // Katalog ist Preisquelle der Stückliste ([P-14]) — dieselbe Auflösung wie in Modul 4.
+        files.push(...baueDateien(projekt, auswahl, store.holeKatalog()));
+        zipName = 'SEMBLA_' + store.sicherName(projekt.name);
+      }
+      if (auswahl.includes('gesamt')) {
+        const g = gesamtDateien();
+        files.push(...g);
+        if (!zipName) zipName = 'SEMBLA_' + g[0].name.replace(/\.csv$/, '');
+      }
+      downloadZip(zipName + '.zip', files);
       schliesseExport();
       trZeige('Exportiert: ' + files.length + ' Datei(en) im ZIP.', true);
     } catch (e) {

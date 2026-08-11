@@ -16,9 +16,11 @@
   button{padding:8px 13px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
   .kopfleiste button{margin-left:auto}
   input[type=text]{width:150px;padding:5px 7px;border:1px solid var(--sb-line);border-radius:6px;font-size:13px;background:#fff}
+  select{padding:5px 7px;border:1px solid var(--sb-line);border-radius:6px;font-size:13px;background:#fff}
   .blatt{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
   /* Blattkopf: die Wandreferenz steht EINMAL hier statt in jeder Zeile — die Liste ist immer
-     genau eine Wand. Derselbe Kopf ist der Druckkopf. */
+     genau eine Wand. Derselbe Kopf ist der Druckkopf. Auf den Gesamtebenen (#44) tragen
+     dieselben Zeilen den Projektpfad und den Vollständigkeitsstand. */
   .kopf{border-bottom:1px solid var(--sb-line);padding-bottom:9px;margin-bottom:4px}
   .kopf-titel{font-size:14px;font-weight:700;color:var(--sb-ink)}
   .kopf-zeile{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--sb-muted);margin-top:3px}
@@ -46,14 +48,23 @@
   td.art.sonder{font-weight:600}
   td.ids{text-align:left;font-size:11px;font-family:Consolas,ui-monospace,monospace;color:#46505e;
          word-break:break-all;overflow-wrap:anywhere}
+  /* Herkunft (#44): je Wand Name und Teilmenge — die Aggregation bleibt bis zur Wand auflösbar. */
+  td.herk{text-align:left;font-size:11px;color:#46505e}
+  td.ids .wq{color:#8a93a0}
   .kennz{font-size:11.5px;color:var(--sb-muted);margin-top:10px;line-height:1.6}
   .kennz b{color:var(--sb-ink)}
   .kennz .sym{font-weight:700;margin-right:3px}
+  /* Lücken (#44): fehlende, verwaiste oder nicht ableitbare Wände stehen MIT Projektpfad und
+     Ursache am Blatt — eine unvollständige Liste sagt das, statt still weniger zu zeigen. */
+  .luecken{margin-top:10px;font-size:12px;border:1px solid #e6c9a8;background:#fff8ef;
+           border-radius:8px;padding:8px 10px;color:#7a4b00}
+  .luecken b{color:#5f3a00}
+  .luecken ul{margin:4px 0 0;padding-left:18px} .luecken li{margin:2px 0}
   tr.sum td.stand{font-weight:600;font-size:12px;color:var(--sb-ink)}
   /* Druck: das Blatt und sonst nichts. Die Kopfleiste aus navbar.js heisst `.sb-nav` (sticky,
      z-index 50) — sie MUSS ausgeblendet werden, sonst schwebt sie ueber dem PDF. Ebenso jede
-     Eingabebedienung und jede Bildschirmhilfe; gedruckt werden Kopf, Tabelle und die nach
-     [P-19] noetige Kennzeichnungslegende. */
+     Eingabebedienung und jede Bildschirmhilfe; gedruckt werden Kopf, Tabelle, Lücken und die
+     nach [P-19] noetige Kennzeichnungslegende. */
   @page{size:A4 portrait;margin:12mm}
   @media print{
     .sb-nav,.intro,.kopfleiste{display:none!important}
@@ -61,7 +72,7 @@
     html,body{background:#fff;margin:0}
     .wrap{padding:0;margin:0;max-width:none}
     .blatt{border:none;border-radius:0;padding:0;background:#fff;box-shadow:none}
-    table{font-size:10.5px} td.ids{font-size:9px}
+    table{font-size:10.5px} td.ids{font-size:9px} td.herk{font-size:9px}
     thead{display:table-header-group}
     tr{break-inside:avoid;page-break-inside:avoid}
     *{box-shadow:none!important}
@@ -69,33 +80,45 @@
 </style>
 </head>
 <body>
-<p class="intro">Die real einzubauenden Teile des <b>aktiven Wandelements</b> in ihren
-  <b>Fertigmaßen</b>. <b>Preise pflegt ausschließlich Modul 0</b> im Bauteilkatalog, die Produkte
+<p class="intro">Die real einzubauenden Teile der gewählten <b>Ebene</b> in ihren
+  <b>Fertigmaßen</b> — aktives Wandelement, aktives Geschoss, aktives Gebäude oder aktives
+  Projekt; die Gesamtsicht ist genau die Summe der einzelnen Wandstücklisten und bleibt bis zur
+  Wand auflösbar. <b>Preise pflegt ausschließlich Modul 0</b> im Bauteilkatalog, die Produkte
   wählt Modul 1; ohne eindeutige Zuordnung bleibt die Zeile ohne Preis (<b>n.a.</b>) — nie ein
   Nullpreis, nie eine veränderte Menge. Datei-Export zentral auf der Startseite.</p>
 <div class="wrap">
-  <!-- Bedienzeile: nur die zwei echten Eingaben und der Druckknopf. Sie steht im Quelltext VOR
-       der Tabelle, damit im Blatt selbst kein Eingabefeld liegt. -->
+  <!-- Bedienzeile: Ebene, Preisschalter, die zwei echten Eingaben der Wandebene und der
+       Druckknopf. Sie steht im Quelltext VOR der Tabelle, damit im Blatt selbst kein
+       Eingabefeld liegt. Ebene und Preisschalter sind FLÜCHTIG — sie ändern kein Datum
+       und werden nirgends gespeichert (#44). -->
   <div class="kopfleiste">
-    <label><span>Projekt</span><input type="text" id="proj" value="SEMBLA-Projekt"></label>
-    <label><span>Währung</span><input type="text" id="cur" value="EUR" style="width:70px"></label>
+    <label><span>Ebene</span><select id="ebene">
+      <option value="wand">Wand (aktiv)</option>
+      <option value="geschoss">Geschoss (aktiv)</option>
+      <option value="gebaeude">Gebäude (aktiv)</option>
+      <option value="projekt">Projekt (aktiv)</option>
+    </select></label>
+    <label id="lbl-preise"><input type="checkbox" id="preise" checked><span>Preise anzeigen</span></label>
+    <label id="lbl-proj"><span>Projekt</span><input type="text" id="proj" value="SEMBLA-Projekt"></label>
+    <label id="lbl-cur"><span>Währung</span><input type="text" id="cur" value="EUR" style="width:70px"></label>
     <button id="print">Drucken</button>
   </div>
 
   <div class="blatt">
     <div class="kopf" id="printkopf"></div>
     <table id="tbl">
-      <colgroup>
+      <colgroup id="cols">
         <col style="width:26%"><col style="width:12%"><col style="width:10%"><col style="width:10%">
         <col style="width:26%"><col style="width:8%"><col style="width:8%">
       </colgroup>
-      <thead><tr><th>Einbauteil</th><th>Art</th><th>Fertigmaß</th><th>Menge</th>
+      <thead id="thead"><tr><th>Einbauteil</th><th>Art</th><th>Fertigmaß</th><th>Menge</th>
         <th>Einbauteil-IDs</th><th>EP</th><th>GP</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
     <!-- Summe UND Vollstaendigkeit stehen ausschliesslich in der Summenzeile der Tabelle
          (tr.sum) — ein zweiter Summenblock darunter waere genau die erklaerende Wiederholung,
-         die #62 abstellt. -->
+         die #62 abstellt. Die Lueckenliste (#44) ist etwas anderes: sie nennt fehlende WÄNDE. -->
+    <div class="luecken" id="luecken" hidden></div>
     <div class="kennz" id="kennz"></div>
   </div>
 </div>
@@ -106,32 +129,43 @@
    dieselbe Funktion nutzt der ZIP-Export in Modul 0, Anzeige und Datei können also nicht
    auseinanderlaufen.
 
+   EBENEN (#44): Wand · Geschoss · Gebäude · Projekt. Der Umfang kommt ausschliesslich aus der
+   aktiven Projektmappe und ihren aktiven Zeigern ([L-10]); eine nicht aktivierbare Ebene wird
+   BENANNT und nie durch eine andere ersetzt. Die Gesamtsicht ist genau die Summe der
+   `stuecklistePositionen`-Aufrufe ihrer Wände — hier wird nichts nachgerechnet und nichts
+   gespeichert (Ableitung in sembla-gesamtstueckliste.js). Auf Wandebene bleibt der bestehende
+   kanonische Wandpfad maßgeblich: dieselbe Funktion, dieselben Werte, dasselbe Blatt.
+
    EINBAUTEILE ([P-19]): Gewindestangenstücke tragen Art (Symbol + Klartext + Farbe),
    Fertigmaß und die IDs ihrer Einzelteile. Gleichartige Fertigteile stehen als
    eine Zeile, die Einzel-IDs bleiben sichtbar und sind mit derselben Kennung im Zeichnungsblatt
    (Modul 7) wiederzufinden. Für Steine, Muttern, Bleche und Dichtstreifen gibt es KEINE
    Einzel-ID — der Rechenkern kennt dort keine Einzelteil-Identität, und es wird keine erfunden.
+   Über mehrere Wände ist die Einzel-ID wandlokal; eindeutig ist erst das Paar
+   (Wand-ID, Einbauteil-ID), und genau so steht es dann in der Liste.
    Latten, Platten und Verbinder der Beplankung (Modul 2) erscheinen hier nicht.
 
    PREISE WERDEN HIER NICHT GEPFLEGT ([P-13]): sie werden je Position aus dem Katalog aufgelöst
    ([P-14]) — über die in Modul 1 (eingaben.planung.produkte) gewählten Produkte. Ist die
    Zuordnung nicht eindeutig, bleibt die Zeile ohne Preis und nennt den Grund; Mengen bleiben
-   davon unberührt. Editierbar sind nur Projektname und Währung. window.SEMBLA wird unten
-   gebunden (Node-Test).
+   davon unberührt. Der Preisschalter blendet Einzelpreis, Gesamtpreis und Summenbetrag
+   gemeinsam aus — Mengen, IDs und Lückenstand bleiben unverändert. Editierbar sind auf der
+   Wandebene nur Projektname und Währung. window.SEMBLA wird unten gebunden (Node-Test).
 
    ARBEITSBLATT (#58/#62): Die Anzeige ist auf das reduziert, was auf der Baustelle gebraucht
    wird — Einbauteil, Art, Fertigmaß, Menge und die vorhandenen Einbauteil-IDs. Die
-   WANDREFERENZ steht EINMAL im Blattkopf statt in jeder Zeile: die Liste ist immer genau eine
-   Wand, und die Wiederholung war reine Fülle (die CSV behält ihre Zeilen-Spalte unverändert).
+   WANDREFERENZ steht EINMAL im Blattkopf statt in jeder Zeile: auf der Wandebene ist die Liste
+   immer genau eine Wand, und die Wiederholung war reine Fülle (die CSV behält ihre Zeilen-Spalte
+   unverändert). Auf den Gesamtebenen tritt dafür genau eine Herkunftsspalte hinzu.
    Ein fehlender Preis ist einheitlich „n.a.“ — die Preiszelle trägt NIE einen Status und NIE
-   eine 0. Der nach [P-14] sichtbare GRUND steht knapp und sekundär unter dem Einbauteilnamen;
-   die frühere Sammelwarnung und die Produkt-/Katalogspalte sind ersatzlos entfallen. */
+   eine 0. Der nach [P-14] sichtbare GRUND steht knapp und sekundär unter dem Einbauteilnamen. */
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 let WALL=null, EINGABEN=null, KATALOG=null, currentId=null;
+let EBENE='wand', PREISE=true;          // beides fluechtig: kein Datum, keine Speicherung
 // aus window.SEMBLA (in __slInit gebunden):
-let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile;
+let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten, standText;
 
 function eg(){ return EINGABEN || (EINGABEN={kosten:{waehrung:'EUR'},projekt:{},aufbau:{},planung:{}}); }
 function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben(teil,patch); }
@@ -139,32 +173,98 @@ function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben
 // Positionen + Preisauflösung zentral (identisch zum ZIP-Export in Modul 0).
 function rows(){ return WALL ? stuecklistePositionen(WALL, eg(), KATALOG) : []; }
 
-const SPALTEN=7;   // Einbauteil · Art · Fertigmaß · Menge · IDs · EP · GP
 const datum=()=>new Date().toLocaleDateString('de-DE');
 
-// Blattkopf: Projekt- und Wandreferenz EINMAL — am Bildschirm und im Druck derselbe Kopf.
-function renderKopf(w){
-  const projekt=(eg().projekt||{}).name || (w&&w.name) || 'SEMBLA-Projekt';
-  const bezug = w
-    ? `${esc(w.name||'Wandelement')} · ${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m`
-    : 'kein aktives Wandelement';
-  $('printkopf').innerHTML='<div class="kopf-titel">Baustellenstückliste · Einbauteile</div>'
-    +`<div class="kopf-zeile"><span><b>Projekt:</b> ${esc(projekt)}</span>`
-    +`<span><b>Wand:</b> ${bezug}</span><span><b>Datum:</b> ${esc(datum())}</span></div>`;
+/* ---- Ebene: Umfang und Daten ------------------------------------------------------------
+   Gelesen wird ausschliesslich aus dem Speicher (Mappe + aktive Zeiger + Wandspeicher). Fuer
+   die AKTIVE Wand nimmt der Leser das bereits geladene Wandelement samt Eingaben — genau der
+   Pfad, den das Modul immer schon ging; Nachbarwände kommen ueber ihre stabile id aus dem
+   Wandspeicher. Es wird nie ein Wandelement geschrieben. */
+// Kennung der aktiven Wand. Ohne Zeiger im Speicher (Alt-/Testaufbau ohne aktive Id) bleibt das
+// geladene Wandelement trotzdem auswertbar — es bekommt eine SPRECHENDE Ersatzkennung, die nur
+// innerhalb dieser Ansicht gilt und nie gespeichert wird.
+function wandRef(){ return currentId || (WALL ? '(aktive Wand)' : null); }
+function zeiger(){
+  const z={ wandId:wandRef(), wandName:WALL&&WALL.name, geschossId:null, gebaeudeId:null };
+  try{
+    const gs=store&&store.aktivesGeschoss?store.aktivesGeschoss():null;
+    const geb=store&&store.aktivesGebaeude?store.aktivesGebaeude():null;
+    z.geschossId=gs?gs.geschoss.id:null;
+    z.gebaeudeId=geb?geb.id:(gs?gs.gebaeude.id:null);
+  }catch(e){ /* fehlende Zeiger sind kein Fehler, sondern eine benannte Lücke */ }
+  return z;
+}
+function mappe(){ try{ return store&&store.holeMappe?store.holeMappe():null; }catch(e){ return null; } }
+function leser(){
+  return {
+    holeElement:(id)=> (id===wandRef() && WALL)
+      ? { id, name:(WALL&&WALL.name)||id, wandelement:WALL }
+      : (store&&store.holeElement?store.holeElement(id):null),
+    holeEingaben:(id)=> (id===wandRef()) ? eg()
+      : (store&&store.holeEingaben?store.holeEingaben(id):{}),
+    katalog:KATALOG,
+  };
+}
+function daten(){ return gesamtDaten(umfang(mappe(), EBENE, zeiger()), leser()); }
+
+/* ---- Spalten des Blattes ---------------------------------------------------------------
+   Wandebene: unveraendert die sieben Spalten aus #62. Gesamtebenen: genau eine Spalte mehr
+   (Herkunft). Der Preisschalter entfernt ausschliesslich EP und GP. */
+function spalten(){
+  const s=[{t:'Einbauteil',w:26},{t:'Art',w:12},{t:'Fertigmaß',w:10},{t:'Menge',w:10}];
+  if(EBENE!=='wand') s.push({t:'Wände (Herkunft)',w:16});
+  s.push({t:'Einbauteil-IDs',w:26});
+  if(PREISE) s.push({t:'EP',w:8},{t:'GP',w:8});
+  const summe=s.reduce((a,c)=>a+c.w,0);
+  return s.map(c=>({...c,w:Math.round(c.w*100/summe)}));
+}
+function renderKopfzeile(sp){
+  $('cols').innerHTML=sp.map(c=>'<col style="width:'+c.w+'%">').join('');
+  $('thead').innerHTML='<tr>'+sp.map(c=>'<'+'th>'+esc(c.t)+'<'+'/th>').join('')+'</tr>';
+}
+
+// Blattkopf: Projekt-, Ebenen- und Wandreferenz EINMAL — am Bildschirm und im Druck derselbe Kopf.
+function renderKopf(d){
+  if(EBENE==='wand'){
+    const w=WALL;
+    const projekt=(eg().projekt||{}).name || (w&&w.name) || 'SEMBLA-Projekt';
+    const bezug = w
+      ? `${esc(w.name||'Wandelement')} · ${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m`
+      : 'kein aktives Wandelement';
+    $('printkopf').innerHTML='<div class="kopf-titel">Baustellenstückliste · Einbauteile</div>'
+      +`<div class="kopf-zeile"><span><b>Projekt:</b> ${esc(projekt)}</span>`
+      +`<span><b>Wand:</b> ${bezug}</span><span><b>Datum:</b> ${esc(datum())}</span></div>`;
+    return;
+  }
+  // Gesamtebenen ([L-11]): beschriftet wird aus der aktiven Projektmappe — nicht aus dem
+  // wandbezogenen Altbestand `eingaben.projekt`, den es hier gar nicht eindeutig gibt.
+  const b=d.bezug||{};
+  const teile=[`<span><b>Projekt:</b> ${esc(b.projekt||'—')}</span>`];
+  if(b.gebaeude) teile.push(`<span><b>Gebäude:</b> ${esc(b.gebaeude)}</span>`);
+  if(b.geschoss) teile.push(`<span><b>Geschoss:</b> ${esc(b.geschoss)}</span>`);
+  teile.push(`<span><b>Wände:</b> ${d.quellen.length} von ${d.waende.length}</span>`);
+  teile.push(`<span><b>Stand:</b> ${esc(standText(d))}</span>`);
+  teile.push(`<span><b>Datum:</b> ${esc(datum())}</span>`);
+  $('printkopf').innerHTML=`<div class="kopf-titel">${esc(d.titel)} · Einbauteile</div>`
+    +`<div class="kopf-zeile">${teile.join('')}</div>`;
 }
 
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
 function renderLeer(){
-  renderKopf(null);
-  $('kennz').innerHTML='';
-  $('tbody').innerHTML=`<tr><td colspan="${SPALTEN}" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>`;
+  renderKopfzeile(spalten());
+  renderKopf({bezug:{},quellen:[],waende:[],titel:'Baustellenstückliste Wand'});
+  $('kennz').innerHTML=''; $('luecken').hidden=true; $('luecken').innerHTML='';
+  $('tbody').innerHTML=`<tr><td colspan="${spalten().length}" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>`;
 }
 
 function render(){
-  if(!WALL){ renderLeer(); return; }
-  const w=WALL; const k=eg().kosten||{}; const cur=k.waehrung||'EUR';
-  renderKopf(w);
-  const rs=rows(); const s=stuecklisteSumme(rs);
+  if(EBENE==='wand' && !WALL){ renderLeer(); return; }
+  const d=daten();
+  const sp=spalten(); const SPALTEN=sp.length;
+  const cur=d.waehrung||'EUR';
+  renderKopfzeile(sp);
+  renderKopf(d);
+  const rs=d.positionen; const s=d.summe;
   // Ohne Katalog hätte JEDE Zeile denselben Grund — das wäre wieder Fülltext. Er steht dann
   // einmal an der Summe (s. u.), die Preiszellen bleiben trotzdem „n.a.“.
   const keinKatalog=!KATALOG;
@@ -177,31 +277,61 @@ function render(){
       ? `<td class="art ${r.art}"><span class="sym">${esc(r.art_symbol)}</span>${esc(r.art_label)}</td>`
       : `<td class="art">–</td>`;
     const mass = r.fertigmass_mm!=null ? fmt(r.fertigmass_mm/10,1)+' cm' : '–';
-    const ids = r.ids.length ? esc(r.ids.join(' ')) : '–';
+    const nk=(r.unit==='m²'||r.unit==='m')?2:0;
+    // IDs: bei genau einer Wand die reinen Einzel-IDs (Wandebene, unverändert), sonst je Wand
+    // gruppiert — die Wandkennung steht dabei ausdrücklich davor.
+    const ids = !r.herkunft.length || r.herkunft.every(h=>!h.ids.length) ? '–'
+      : (r.herkunft.length===1
+          ? esc(r.herkunft[0].ids.join(' '))
+          : r.herkunft.filter(h=>h.ids.length)
+              .map(h=>`<span class="wq">${esc(h.wand)}:</span> ${esc(h.ids.join(' '))}`).join('<br>'));
+    const herk = EBENE==='wand' ? ''
+      : `<td class="herk">${esc(r.herkunft.map(h=>h.wand+': '+fmt(h.menge,nk)).join(' · '))}</td>`;
     // [P-14] Grund knapp und sekundär unter dem Namen — nie in der Preiszelle.
     const grund = (r.gp==null && r.status!=='nicht_erforderlich' && !keinKatalog)
       ? `<div class="grund">${esc(r.statusText)}</div>` : '';
     const preis = v => v==null ? '<td class="na">n.a.</td>' : `<td>${fmt(v,2)}</td>`;
     html+=`<tr><td>${esc(r.label)}${grund}</td>${art}`
         +`<td>${mass}</td>`
-        +`<td>${fmt(r.menge,(r.unit==='m²'||r.unit==='m')?2:0)} ${esc(r.unit)}</td>`
+        +`<td>${fmt(r.menge,nk)} ${esc(r.unit)}</td>`
+        +herk
         +`<td class="ids">${ids}</td>`
-        +preis(r.ep)+preis(r.gp)+`</tr>`;
+        +(PREISE?preis(r.ep)+preis(r.gp):'')+`</tr>`;
   });
   // Summenzeile: Betrag UND Vollständigkeit stehen hier — und nur hier ([P-14]).
   // Ist keine einzige Position bepreist, gibt es auch keinen Betrag: die Zelle zeigt `n.a.`
   // statt einer erfundenen 0,00. Ist nur ein Teil bepreist, heißt der Betrag „Teilsumme“ —
-  // sonst läse sich ein unvollständiger Wert wie eine fertige Summe.
-  const stand = s.vollstaendig
-    ? 'Summe netto · alle '+s.bepreisbar+' Positionen bepreist'
-    : (s.bepreist>0 ? 'Teilsumme netto · ' : 'Summe netto · ')
-      + s.bepreist+' von '+s.bepreisbar+' Positionen bepreist';
-  html+=`<tr class="sum"><td class="stand" colspan="${SPALTEN-1}">${esc(stand)}`
-      +`${keinKatalog?' · kein Katalog geladen':''}</td>`
-      +(s.bepreist>0 ? `<td>${fmt(s.summe,2)} ${esc(cur)}</td>` : '<td class="na">n.a.</td>')
-      +`</tr>`;
+  // sonst läse sich ein unvollständiger Wert wie eine fertige Summe. Ohne Preise entfällt
+  // die Zeile nicht, sie trägt dann nur den Wand-/Vollständigkeitsstand.
+  if(PREISE){
+    const stand = s.vollstaendig
+      ? 'Summe netto · alle '+s.bepreisbar+' Positionen bepreist'
+      : (s.bepreist>0 ? 'Teilsumme netto · ' : 'Summe netto · ')
+        + s.bepreist+' von '+s.bepreisbar+' Positionen bepreist';
+    html+=`<tr class="sum"><td class="stand" colspan="${SPALTEN-1}">${esc(stand)}`
+        +`${keinKatalog?' · kein Katalog geladen':''}`
+        +`${EBENE!=='wand'?' · '+esc(standText(d)):''}`
+        +`${d.waehrungKonflikt?' · kein Gesamtbetrag: uneinheitliche Währung':''}</td>`
+        +(d.betragMoeglich ? `<td>${fmt(s.summe,2)} ${esc(cur)}</td>` : '<td class="na">n.a.</td>')
+        +`</tr>`;
+  } else {
+    html+=`<tr class="sum"><td class="stand" colspan="${SPALTEN}">Preise ausgeblendet`
+        +`${EBENE!=='wand'?' · '+esc(standText(d)):''}</td></tr>`;
+  }
   $('tbody').innerHTML=html;
+  renderLuecken(d);
   renderKennzeichnung(rs);
+}
+
+// Lücken (#44): fehlende, verwaiste oder nicht ableitbare Wände und widersprüchliche
+// Währungsstände — mit Projektpfad und Ursache, nie als Nullposition und nie als Ersatzpreis.
+function renderLuecken(d){
+  const el=$('luecken');
+  if(!d.luecken.length){ el.hidden=true; el.innerHTML=''; return; }
+  el.hidden=false;
+  el.innerHTML='<b>Unvollständig:</b> '+esc(standText(d))+'<ul>'
+    + d.luecken.map(l=>`<li>${esc(l.pfad||'—')} — ${esc(l.grund)}</li>`).join('')
+    + '</ul>';
 }
 
 // Legende der Einbauteil-Kennzeichnung ([P-19]) — Symbol, Klartext und Farbe stehen
@@ -213,7 +343,8 @@ function renderKennzeichnung(rs){
         const n=rs.filter(r=>r.art===k).reduce((a,r)=>a+r.ids.length,0);
         return `<span class="art ${k}" style="display:inline-block;margin-right:12px">`
           +`<span class="sym">${sym}</span>${txt} (${n}×)</span>`; }).join('')
-    + '<br>Einbauteil-ID: <b>GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt;</b>';
+    + '<br>Einbauteil-ID: <b>GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt;</b>'
+    + (EBENE==='wand' ? '' : ' — über mehrere Wände eindeutig als <b>Wand:ID</b>');
 }
 
 function applyWand(w){
@@ -224,7 +355,14 @@ function applyWand(w){
 // ---- Eingabefelder aus dem Datenmodell füllen ----
 function syncInputs(){ const k=eg().kosten||{}, p=eg().projekt||{};
   $('proj').value=p.name||(WALL&&WALL.name)||'SEMBLA-Projekt';
-  $('cur').value=k.waehrung||'EUR'; }
+  $('cur').value=k.waehrung||'EUR';
+  $('ebene').value=EBENE;
+  $('preise').checked=PREISE;
+  // Projektname und Währung gehören zur AKTIVEN WAND. Auf den Gesamtebenen stünden sie für
+  // mehrere Wände und würden beim Tippen genau eine davon ändern — deshalb nur dort sichtbar.
+  const nurWand = EBENE==='wand' ? '' : 'none';
+  $('lbl-proj').style.display=nurWand; $('lbl-cur').style.display=nurWand;
+}
 
 // ---- Aktives Wandelement + Eingaben + Katalog (localStorage) ----
 function loadModel(){
@@ -257,18 +395,25 @@ function bindEvents(){
   $('proj').addEventListener('input',()=>{ const e=eg(); (e.projekt||(e.projekt={})).name=$('proj').value;
     persist('projekt',{name:$('proj').value}); render(); });
   $('cur').addEventListener('input',()=>{ eg().kosten.waehrung=$('cur').value; persist('kosten',{waehrung:$('cur').value}); render(); });
+  // Ebene und Preisschalter sind reine Ansicht: kein Schreibvorgang, keine Speicherung.
+  $('ebene').addEventListener('change',()=>{ EBENE=$('ebene').value||'wand'; syncInputs(); render(); });
+  $('preise').addEventListener('change',()=>{ PREISE=!!$('preise').checked; render(); });
   $('print').addEventListener('click',()=>window.print());
 }
 
 // Testhaken (kein setPrice mehr — Modul 4 pflegt keine Preise, [P-13]).
 window.__sl={ applyWand, rows, render, area:(w)=>wandflaeche(w), summe:()=>stuecklisteSumme(rows()),
-  teile:()=>WALL?einbauteile(WALL):[],
+  teile:()=>WALL?einbauteile(WALL):[], daten,
+  setzeEbene:(e)=>{ EBENE=e; syncInputs(); render(); },
+  setzePreise:(b)=>{ PREISE=!!b; syncInputs(); render(); },
+  get ebene(){return EBENE;}, get preise(){return PREISE;},
   get wall(){return WALL;}, get eingaben(){return eg();}, get katalog(){return KATALOG;} };
 
 window.__slInit=function(){
   const S=window.SEMBLA||{};
   stuecklistePositionen=S.stuecklistePositionen; stuecklisteSumme=S.stuecklisteSumme;
   wandflaeche=S.wandflaeche; store=S.store; einbauteile=S.einbauteile;
+  umfang=S.umfang; gesamtDaten=S.gesamtDaten; standText=S.standText;
   bindEvents();
   setupStoreSync();
   loadModel();
@@ -278,9 +423,11 @@ window.__slInit=function(){
 <script type="module">
   import { stuecklistePositionen, stuecklisteSumme, wandflaeche } from './shared/sembla-export.js';
   import { einbauteile } from './shared/sembla-bom.js';
+  import { umfang, gesamtDaten, standText } from './shared/sembla-gesamtstueckliste.js';
   import * as store from './shared/storage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store };
+  window.SEMBLA = { stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store,
+                    umfang, gesamtDaten, standText };
   mountNavbar(4);
   window.__slInit();
 </script>

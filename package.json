@@ -13,7 +13,7 @@
     "test:modul1": "node tests/module/test-engine.mjs && node tests/module/smoke_wp.mjs",
     "test:modul2": "node tests/module/smoke_wandaufbau.mjs",
     "test:modul3": "node tests/module/test-statik.mjs && node tests/module/smoke_statik.mjs",
-    "test:modul4": "node tests/module/smoke_stueckliste.mjs",
+    "test:modul4": "node tests/module/test-gesamtstueckliste.mjs && node tests/module/smoke_stueckliste.mjs",
     "test:modul5": "node tests/module/test-montage.mjs && node tests/module/smoke_montage.mjs",
     "test:modul6": "node tests/module/smoke_3d.mjs && node tests/interop/test_webifc.mjs",
     "test:modul7": "node tests/module/test-zeichnung.mjs && node tests/module/smoke_zeichnung.mjs",

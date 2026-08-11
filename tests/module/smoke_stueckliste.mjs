@@ -11,6 +11,8 @@ import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, zuschnittCsv } from "../../docs/shared/sembla-export.js";
 import { einbauteile } from "../../docs/shared/sembla-bom.js";
+import { umfang, gesamtDaten, standText } from "../../docs/shared/sembla-gesamtstueckliste.js";
+import { leereMappe, fuegeGeschossHinzu, setzeWand } from "../../docs/shared/sembla-projektmappe.js";
 import { blattHtml } from "../../docs/shared/sembla-zeichnung.js";
 import { berechneAufbau } from "../../docs/shared/sembla-aufbau.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
@@ -78,13 +80,16 @@ let _subs=[]; let _aktiv='w-1'; let _we=W; let _eg=egVoll(); let _merges=[]; let
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we, aktiveEingaben:()=>_eg, holeKatalog:()=>_kat,
   mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); _eg[teil]=merge(_eg[teil],patch); return _aktiv; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
-globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock };
+globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock,
+  umfang, gesamtDaten, standText };
 
 eval(script);
 globalThis.window.__slInit();
 const SL=globalThis.window.__sl;
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
+/** Dieselbe Maskierung wie im Modul (fuer Erwartungswerte im gerenderten DOM). */
+const esc0=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
 /** Summenzeile der Tabelle — Betrag UND Vollstaendigkeit stehen ausschliesslich dort (#62). */
 const sumZeile = () => (document.getElementById('tbody').innerHTML.split('<tr').find(z=>z.includes('class="sum"'))||'');
@@ -540,6 +545,149 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     && /Einbauteil-ID GS-k&lt;Spannachse&gt;/.test(blatt));
   ok('[P-19] Zeichnung: Mengentabelle kennzeichnet Sonderzuschnitt mit Symbol',
     /◆ Gewindestange Sonderzuschnitt/.test(blatt));
+}
+
+// ---- #44: die vier Ebenen in der ECHTEN Modul-4-Oberflaeche ------------------------------
+// Gewechselt wird ueber die AKTIVEN Zeiger (Mappe + aktives Geschoss/Gebäude/Projekt), nicht
+// ueber eine modul-eigene Auswahl. Geprueft werden Ueberschrift, Zeilen gegen die reine
+// Aggregation und der Preisschalter.
+{
+  const OPT={rod_lengths_mm:[1000,500], rod_rest_mm:300};
+  const EL={
+    'w-a':{id:'w-a',name:'Wand A',wandelement:buildWall('Wand A',3000,3000,[new Opening(6,10,4,10,'fenster')],null,OPT)},
+    'w-b':{id:'w-b',name:'Wand B',wandelement:buildWall('Wand B',2000,2600,[new Opening(5,11,0,10,'tuer')],null,OPT)},
+    'w-c':{id:'w-c',name:'Wand C',wandelement:buildWall('Wand C',2500,2400,[],null,OPT)},
+  };
+  let MAPPE=leereMappe('Projekt M4',{gebaeude:'Haus',geschoss:'EG'});
+  const GEB=MAPPE.gebaeude[0].id, EG=MAPPE.gebaeude[0].geschosse[0].id;
+  const rOg=fuegeGeschossHinzu(MAPPE,GEB,'OG'); MAPPE=rOg.mappe; const OG=rOg.id;
+  MAPPE=setzeWand(MAPPE,EG,{id:'w-a',name:'Wand A'});
+  MAPPE=setzeWand(MAPPE,EG,{id:'w-b',name:'Wand B'});
+  MAPPE=setzeWand(MAPPE,OG,{id:'w-c',name:'Wand C'});
+  MAPPE=setzeWand(MAPPE,EG,{id:'w-weg',name:'Verwaiste Wand'});   // ohne Wandelement ([L-4])
+
+  storeMock.holeMappe=()=>MAPPE;
+  storeMock.aktivesGeschoss=()=>({gebaeude:MAPPE.gebaeude[0], geschoss:MAPPE.gebaeude[0].geschosse[0]});
+  storeMock.aktivesGebaeude=()=>MAPPE.gebaeude[0];
+  storeMock.holeElement=(id)=>EL[id]||null;
+  storeMock.holeEingaben=()=>egVoll();
+  _aktiv='w-a'; _we=EL['w-a'].wandelement; _eg=egVoll(); _kat=KATALOG;
+  globalThis.window.__slInit();
+
+  /** Reine Erwartung: Summe der kanonischen Wandstuecklisten der genannten Waende. */
+  const erwartet=(ids)=>{ const m=new Map();
+    for(const id of ids) for(const p of stuecklistePositionen(EL[id].wandelement, egVoll(), KATALOG)){
+      const k=[p.key,p.unit,p.art||'',p.fertigmass_mm??''].join('|'); m.set(k,(m.get(k)||0)+p.menge); }
+    return m; };
+  const istAus=(d)=>{ const m=new Map();
+    for(const p of d.positionen){ const k=[p.key,p.unit,p.art||'',p.fertigmass_mm??''].join('|'); m.set(k,(m.get(k)||0)+p.menge); }
+    return m; };
+  const gleich=(a,b)=>a.size===b.size&&[...a].every(([k,v])=>Math.abs((b.get(k)??NaN)-v)<1e-9);
+  const zeilen=()=>document.getElementById('tbody').innerHTML.split('<tr').slice(1).filter(z=>!z.includes('class="sum"'));
+  const kopfSpalten=()=>[...document.getElementById('thead').innerHTML.matchAll(/<th>([^<]*)<\/th>/g)].map(m=>m[1]);
+
+  ok('#44 Modul 4 startet auf der Wandebene', SL.ebene==='wand' && SL.preise===true);
+  ok('#44 Ebenenwahl steht als Auswahlfeld im Markup', (()=>{
+    const sel=(html.match(/<select id="ebene">[\s\S]*?<\/select>/)||[''])[0];
+    return ['wand','geschoss','gebaeude','projekt'].every(e=>sel.includes('value="'+e+'"'))
+      && !/value="(?!wand|geschoss|gebaeude|projekt)[a-z]+"/.test(sel); })());
+
+  // (a) Wandebene bleibt das bestehende Blatt — Ueberschrift, Spalten und Zeilen unveraendert.
+  {
+    const roh=stuecklistePositionen(EL['w-a'].wandelement, egVoll(), KATALOG);
+    ok('#44 Wandebene: Überschrift unverändert Baustellenstückliste',
+      document.getElementById('printkopf').innerHTML.includes('Baustellenstückliste · Einbauteile'));
+    ok('#44 Wandebene: keine Herkunftsspalte, sieben Spalten wie bisher',
+      JSON.stringify(kopfSpalten())===JSON.stringify(['Einbauteil','Art','Fertigmaß','Menge','Einbauteil-IDs','EP','GP']));
+    ok('#44 Wandebene: Zeilen entsprechen exakt dem bestehenden Wandpfad',
+      zeilen().length===roh.length && roh.every(r=>document.getElementById('tbody').innerHTML.includes(esc0(r.label))));
+    ok('#44 Wandebene: Einzel-IDs unverändert ohne Wandkennung',
+      roh.filter(r=>r.ids.length).every(r=>document.getElementById('tbody').innerHTML.includes('<td class="ids">'+r.ids.join(' ')+'</td>')));
+  }
+
+  // (b) Geschoss, Gebäude, Projekt — jede Ebene exakt die Summe ihrer Wandstücklisten.
+  for(const [ebene,ids,titel] of [['geschoss',['w-a','w-b'],'Gesamtstückliste Geschoss'],
+      ['gebaeude',['w-a','w-b','w-c'],'Gesamtstückliste Gebäude'],
+      ['projekt',['w-a','w-b','w-c'],'Gesamtstückliste Projekt']]){
+    SL.setzeEbene(ebene);
+    const d=SL.daten();
+    ok(`#44 ${ebene}: Überschrift nennt die Ebene`,
+      document.getElementById('printkopf').innerHTML.includes(titel+' · Einbauteile'));
+    ok(`#44 ${ebene}: Mengen = reine Aggregation der Wandstücklisten`, gleich(istAus(d), erwartet(ids)));
+    ok(`#44 ${ebene}: eine Tabellenzeile je aggregierter Position`, zeilen().length===d.positionen.length);
+    ok(`#44 ${ebene}: Herkunftsspalte kommt hinzu und nennt jede Wand`, (()=>{
+      const sp=kopfSpalten(); const tb=document.getElementById('tbody').innerHTML;
+      return sp[4]==='Wände (Herkunft)' && sp.length===8
+        && ids.every(id=>tb.includes(EL[id].name)); })());
+    ok(`#44 ${ebene}: verwaiste Wand steht als benannte Lücke am Blatt`, (()=>{
+      const l=document.getElementById('luecken');
+      return !l.hidden && /Verwaiste Wand/.test(l.innerHTML) && /verwaister Eintrag/.test(l.innerHTML)
+        && /UNVOLLSTÄNDIG/.test(l.innerHTML); })());
+    ok(`#44 ${ebene}: keine Nullposition für die fehlende Wand`,
+      d.positionen.every(p=>p.menge>0 || p.status==='nicht_erforderlich'));
+  }
+
+  // (c) Auf den Gesamtebenen sind die IDs je Wand qualifiziert und bleiben vollzählig.
+  {
+    SL.setzeEbene('geschoss');
+    const d=SL.daten(); const tb=document.getElementById('tbody').innerHTML;
+    const alle=d.positionen.flatMap(p=>p.ids);
+    ok('#44 Gesamtebene: jede ID ist als Wand-ID:ID eindeutig',
+      alle.length>0 && new Set(alle).size===alle.length && alle.every(x=>/^w-[a-z]+:GS-k/.test(x)));
+    ok('#44 Gesamtebene: die Oberfläche zeigt jede Einzel-ID mit ihrer Wand',
+      d.positionen.filter(p=>p.herkunft.filter(h=>h.ids.length).length>1)
+        .every(p=>p.herkunft.filter(h=>h.ids.length).every(h=>tb.includes(h.wand+':</span> '+h.ids.join(' ')))));
+    ok('#44 Gesamtebene: Legende erklärt die Qualifizierung',
+      /über mehrere Wände eindeutig als <b>Wand:ID<\/b>/.test(document.getElementById('kennz').innerHTML));
+  }
+
+  // (d) Preisschalter: entfernt genau Einzelpreis, Gesamtpreis und Summenbetrag.
+  {
+    SL.setzeEbene('geschoss'); SL.setzePreise(true);
+    const mit=document.getElementById('tbody').innerHTML, mitKopf=kopfSpalten();
+    const d=SL.daten();
+    const mengen=z=>z.split('<td').slice(1,6).join('<td');   // Einbauteil..Herkunft
+    const mitZeilen=zeilen().map(mengen);
+    const mitIds=(mit.match(/<td class="ids">[\s\S]*?<\/td>/g)||[]);
+    SL.setzePreise(false);
+    const ohne=document.getElementById('tbody').innerHTML, ohneKopf=kopfSpalten();
+    ok('#44 Preisschalter: EP/GP verschwinden aus dem Tabellenkopf',
+      mitKopf.includes('EP') && mitKopf.includes('GP') && !ohneKopf.includes('EP') && !ohneKopf.includes('GP')
+      && mitKopf.length-2===ohneKopf.length);
+    ok('#44 Preisschalter: keine Preiszelle und kein Summenbetrag mehr',
+      !/<td class="na">n\.a\.<\/td>/.test(ohne) && !/EUR<\/td>/.test(ohne)
+      && /Preise ausgeblendet/.test(ohne));
+    ok('#44 Preisschalter: Mengen und Herkunft bleiben Zeichen für Zeichen gleich',
+      JSON.stringify(zeilen().map(mengen))===JSON.stringify(mitZeilen));
+    ok('#44 Preisschalter: die Einbauteil-IDs bleiben vollständig',
+      JSON.stringify(ohne.match(/<td class="ids">[\s\S]*?<\/td>/g)||[])===JSON.stringify(mitIds));
+    ok('#44 Preisschalter: Lückenstand bleibt sichtbar',
+      !document.getElementById('luecken').hidden && /UNVOLLSTÄNDIG/.test(document.getElementById('luecken').innerHTML));
+    ok('#44 Preisschalter: Mengen der Ableitung sind unverändert',
+      gleich(istAus(SL.daten()), istAus(d)));
+    SL.setzePreise(true);
+  }
+
+  // (e) Ohne aktives Geschoss wird die Ebene BENANNT und nicht ersetzt ([L-10]).
+  {
+    const alt=storeMock.aktivesGeschoss;
+    storeMock.aktivesGeschoss=()=>null; storeMock.aktivesGebaeude=()=>null;
+    SL.setzeEbene('geschoss');
+    const d=SL.daten();
+    ok('#44 kein aktives Geschoss: keine Position, benannte Lücke statt Ersatzumfang',
+      d.positionen.length===0 && d.luecken.some(l=>l.art==='ebene' && /Kein aktives Geschoss/.test(l.grund))
+      && /Kein aktives Geschoss/.test(document.getElementById('luecken').innerHTML));
+    storeMock.aktivesGeschoss=alt; storeMock.aktivesGebaeude=()=>MAPPE.gebaeude[0];
+    SL.setzeEbene('wand');
+  }
+
+  // (f) Nichts davon wird geschrieben: keine Mappe, keine Eingaben, kein Wandelement.
+  {
+    const vorher=_merges.length;
+    SL.setzeEbene('projekt'); SL.setzePreise(false); SL.setzeEbene('wand'); SL.setzePreise(true);
+    ok('#44 Ebene und Preisschalter schreiben nichts ins Datenmodell',
+      _merges.length===vorher && !/setzeMappe|verorteWand|speichere\(/.test(script));
+  }
 }
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
