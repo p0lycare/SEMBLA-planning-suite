@@ -70,17 +70,40 @@ ok('Wandansicht zeichnet die einzelnen Stuecke, nicht einen Strich je Strang', (
   return stuecke.length>w.tension_columns.length      // es gibt ueberhaupt mehrere Stuecke
     && striche===stuecke.filter(p=>p.art==='standard').length
     && marken===kopplungen; })());
-ok('Legende benennt den Zuschnitt', /Zuschnitt:/.test(document.getElementById('plan').innerHTML)
-  && /Standardlänge/.test(document.getElementById('plan').innerHTML));
+// Issue #63: Die Legende liegt in einem EIGENEN DOM-Bereich unterhalb der Ansicht — im SVG hat sie
+// den Kopfraum belegt und dort Reststueck-Ueberstand, Kopfblech und Bemassung ueberdeckt.
+const zleg=()=>document.getElementById('zLegende').innerHTML;
+ok('[#63] Legendenbereich liegt ausserhalb des Plan-SVG (eigenes Element im Markup)',
+  /id="zLegende"/.test(html) && /<svg id="plan"[\s\S]*?id="zLegende"/.test(html));
+ok('[#63] Legende benennt den Zuschnitt im eigenen Bereich',
+  /Zuschnitt:/.test(zleg()) && /Standardlänge/.test(zleg()));
+ok('[#63] kein Legendentext mehr innerhalb von plan.innerHTML', (()=>{
+  const svg=document.getElementById('plan').innerHTML;
+  return !/Zuschnitt:/.test(svg) && !/Kopplung/.test(svg)
+    && !svg.includes(MONT.STUECK_LABEL.standard); })());
 // [D-4]: EIN Farbschluessel fuer Modul 1/5/7 — Modul 1 fuehrt keine eigenen Hex-Werte
 // und keine eigenen Klartexte der Stueckarten mehr.
 ok('Zuschnitt-Farben/-Texte kommen aus sembla-montage.js (keine lokalen Werte)',
   /STUECK_FARBE/.test(html) && /STUECK_LABEL/.test(html) && /sembla-montage\.js/.test(html)
   && !/C_SOND|C_REST/.test(html)
   && !new RegExp(MONT.STUECK_FARBE.sonder+'|'+MONT.STUECK_FARBE.rest).test(html));
-ok('Legende nutzt genau die geteilten Farben', (()=>{
-  const svg=document.getElementById('plan').innerHTML;
-  return svg.includes(MONT.STUECK_FARBE.standard) && svg.includes(MONT.STUECK_LABEL.standard); })());
+ok('Legende nutzt genau die geteilten Farben/Texte aus sembla-montage.js', (()=>{
+  const L=zleg();
+  return L.includes(MONT.STUECK_FARBE.standard) && L.includes(MONT.STUECK_LABEL.standard); })());
+// Nur TATSAECHLICH vorhandene Stueckarten — und die Kopplung sichtbar gekennzeichnet.
+// Gleichheit in BEIDE Richtungen und fuer ALLE DREI Arten — auch die Standardlaenge wird nur
+// genannt, wenn sie wirklich vorkommt (kein Sonderfall „Standard immer“).
+const legendeStimmt=()=>{
+  const L=zleg(), w=WP.RESULT.wandelement;
+  const alle=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
+  const hat=a=>alle.some(p=>p.art===a);
+  for(const a of ['standard','sonder','rest']){
+    if(L.includes(MONT.STUECK_LABEL[a])!==hat(a)) return false;          // Text genau bei Vorkommen
+    if(L.includes(MONT.STUECK_FARBE[a])!==hat(a)) return false;          // Farbe genau bei Vorkommen
+  }
+  return alle.length>0 && /Kopplung/.test(L);
+};
+ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legendeStimmt());
 ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);
 ok('Steine-Zusammenfassung gefüllt (BOM-Tabelle jetzt in Modul 4)', /\d/.test(document.getElementById('rSteine').textContent));
 ok('sides + verification im Ergebnis', WP.RESULT.wandelement.sides.vorne.funktion==='fassade' && WP.RESULT.wandelement.verification.status==='geprüft');
@@ -434,6 +457,21 @@ store.setzeKatalog(KATALOG);
       && w.prestress.rod_rest_mm===100
       && stuecke.some(s=>s.art==='rest');               // Slicing steht im gespeicherten JSON
   })());
+  // Dieser echte Stand enthaelt ein Reststueck ([Z-6]) — die Legende muss es jetzt nennen,
+  // und die Gleichheit gilt weiterhin fuer alle drei Arten.
+  ok('[#63] Legende folgt dem echten Stand (Reststueck genannt)',
+    legendeStimmt() && zleg().includes(MONT.STUECK_LABEL.rest));
+  // Gegenrichtung am echten Pfad: eine einlagige Wand mit 1000-mm-Standardlaenge und 100-mm-
+  // Reststueck kommt ohne EINE Standardlaenge aus (Rest + Sonderzuschnitt). Dann darf auch
+  // „Standardlaenge“ nicht in der Legende stehen — genau das war vorher fest eingetragen.
+  ok('[#63] Stand ohne Standardstueck nennt keine Standardlaenge', (()=>{
+    document.getElementById('hgt').value='0.20'; WP.run();
+    const alle=WP.RESULT.wandelement.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
+    const treffer = alle.length>0 && !alle.some(p=>p.art==='standard')
+      && legendeStimmt() && !zleg().includes(MONT.STUECK_LABEL.standard)
+      && !zleg().includes(MONT.STUECK_FARBE.standard);
+    document.getElementById('hgt').value='2.60'; WP.run();
+    return treffer; })());
   store.setzeKatalog(KATALOG); store.setzeAktiv(idA); WP.renderProdukte();
 }
 
@@ -458,6 +496,8 @@ store.setzeAktiv(null);
 ok('ohne aktives Element: leere Vorschau + Verweis auf Modul 0',
   !WP.RESULT && /Kein aktives Wandelement/.test(document.getElementById('plan').innerHTML)
   && /Start/.test(document.getElementById('saveHint').textContent));
+// Issue #63: im echten Leerzustand darf keine irrefuehrende Zuschnittlegende stehenbleiben.
+ok('[#63] Leerzustand: Legendenbereich ist leer', zleg()==='');
 document.getElementById('len').value='3.00'; document.getElementById('len').dispatch('input');
 ok('ohne aktives Element: keine stille Neuanlage', store.listeElemente().length===anzahlVorher && !WP.RESULT);
 ok('ohne aktives Element: keine Produktauswahl möglich', (()=>{

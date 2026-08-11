@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-11",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 63,
+    titel: "Die Zuschnittlegende steht jetzt außerhalb der Wanddarstellung",
+    testbitte: "Reiter 1 mit einer aktiven Wand öffnen: Die Legende muss direkt unter der Wandansicht stehen, darf nichts überdecken und nur tatsächlich vorhandene Stückarten nennen.",
+  },
+  {
     id: "chg-20260811-10",
     datum: "2026-08-11",
     typ: "fix",

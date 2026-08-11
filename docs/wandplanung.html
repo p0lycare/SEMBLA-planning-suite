@@ -38,6 +38,16 @@
   .op .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px} .op .head b{font-size:12.5px}
   svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--sb-line);border-radius:8px;margin-top:6px}
   .warns{margin-top:8px;font-size:12.5px;color:var(--sb-warn)}
+  /* Zuschnittlegende (Issue #63): eigener Bereich AUSSERHALB des Plan-SVG. Im Bild lag sie im
+     46-px-Kopfraum und verdeckte dort Reststueck-Ueberstand ([Z-6]), Kopfblech/Spannplatten,
+     Achsgriffe und Bemassung. Farben/Texte bleiben die geteilten Werte aus sembla-montage.js. */
+  .zlegende{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:8px;
+            font-size:11.5px;color:var(--sb-muted)}
+  .zlegende:empty{display:none}
+  .zlegende .zl-t{font-weight:600}
+  .zlegende span{display:inline-flex;align-items:center;gap:5px}
+  .zlegende i{display:inline-block;width:16px;height:0;border-top:3px solid currentColor}
+  .zlegende i.kop{width:0;height:11px;border-top:0;border-left:2px solid currentColor}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -163,6 +173,7 @@
       <span class="badge" id="sideBadge" style="background:#eef2f7;color:#1c2430">–</span>
     </div>
     <svg id="plan" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="zlegende" id="zLegende"></div>
     <div class="warns" id="warns"></div>
 
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:14px">
@@ -360,6 +371,7 @@ function renderLeer(){
   $('itTable').querySelector('tbody').innerHTML='';
   $('plan').setAttribute('viewBox','0 0 1000 120');
   $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.</text>';
+  renderZLegende(null);   // ohne Wand keine irreführende Zuschnittlegende (Issue #63)
   if(KAT) renderProdukte();
 }
 function nwRow(name,e,wd,util,ok,gov){ return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀':''}</td><td>${e}</td><td>${wd}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`; }
@@ -446,22 +458,8 @@ function draw(w){
   for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
     s+=`<text x="${pad-10}" y="${yc+3}" font-size="9" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
   s+=`<text x="${pad}" y="22" font-size="13" fill="#6b7682">${back?'Rückseite (gespiegelt)':'Vorderseite'} · ${fmt(L/1000,3)} × ${fmt(H/1000,2)} m · ${w.tension_columns.length} Stränge · N=${fmt(w.prestress.force_kN,0)} kN${editMode?' · Durchbruch-Modus':''}</text>`;
-  // Legende des Slicings — nur wenn wirklich Stücke gezeichnet wurden ([Z-2]/[Z-6]).
-  { const alle=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
-    if(alle.length){
-      const hat=a=>alle.some(p=>p.art===a);
-      const teile=[['standard',true],['sonder',hat('sonder')],['rest',hat('rest')]]
-        .filter(t=>t[1]).map(t=>[STUECK_LABEL[t[0]],stueckFarbe(t[0])]);
-      let lx=pad;
-      s+=`<text x="${lx}" y="38" font-size="10" fill="#8f96a0">Zuschnitt:</text>`; lx+=58;
-      for(const [txt,col] of teile){
-        s+=`<line x1="${lx}" y1="35" x2="${lx+14}" y2="35" stroke="${col}" stroke-width="2.6"/>`;
-        s+=`<text x="${lx+18}" y="38" font-size="10" fill="#8f96a0">${txt}</text>`;
-        lx+=28+txt.length*5.4;
-      }
-      s+=`<line x1="${lx}" y1="31" x2="${lx}" y2="39" stroke="#0b3a73" stroke-width="2"/>`;
-      s+=`<text x="${lx+6}" y="38" font-size="10" fill="#8f96a0">Kopplung</text>`;
-    } }
+  // Legende des Slicings steht AUSSERHALB des SVG (Issue #63) — s. renderZLegende().
+  renderZLegende(w);
   if(editMode){ const Ng=w.N_grid, Lg=w.lagen;
     for(let r=0;r<Lg;r++) for(let c=0;c<Ng;c++){ const lx=Math.min(X(c*GRID),X((c+1)*GRID));
       s+=`<rect class="cell" data-r="${r}" data-c="${c}" x="${lx}" y="${Y((r+1)*COURSE)}" width="${GRID*sc}" height="${COURSE*sc}" fill="transparent" stroke="#1f6feb" stroke-opacity="0.18" stroke-width="0.6" style="cursor:pointer"/>`; } }
@@ -472,6 +470,24 @@ function draw(w){
       s+=`<text x="${x}" y="${Y(H)-14}" font-size="9" fill="${on?'#c9461c':'#1f6feb'}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
   s+=dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H);
   svg.innerHTML=s;
+}
+
+// Zuschnittlegende (Issue #63): eigener DOM-Bereich unmittelbar unter der Wandansicht, damit sie
+// weder Wandkontur noch obere Anschlüsse, Reststück-Überstand oder Bemaßung überdeckt. Genannt
+// werden nur TATSÄCHLICH vorhandene Stückarten ([Z-2]/[Z-6]) plus die Kopplung; Farbschlüssel und
+// Klartexte kommen unverändert aus sembla-montage.js ([D-4]) — hier wird nichts erfunden.
+function renderZLegende(w){
+  const box=$('zLegende'); if(!box) return;
+  const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
+  if(!alle.length){ box.innerHTML=''; return; }   // kein bestimmter Zuschnitt -> keine Legende
+  // Auch die Standardlänge wird nur genannt, wenn sie wirklich vorkommt: ein Stand aus reinem
+  // Sonderzuschnitt plus Reststück ([Z-2]/[Z-6]) hat keine Standardlänge, und die Legende darf
+  // keine behaupten. Reihenfolge bleibt standard · sonder · rest.
+  const hat=a=>alle.some(p=>p.art===a);
+  const teile=['standard','sonder','rest'].filter(hat);
+  box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
+    + teile.map(a=>`<span><i style="color:${stueckFarbe(a)}"></i>${STUECK_LABEL[a]}</span>`).join('')
+    + '<span><i class="kop" style="color:#0b3a73"></i>Kopplung</span>';
 }
 
 // ---------- Öffnungs-UI ----------

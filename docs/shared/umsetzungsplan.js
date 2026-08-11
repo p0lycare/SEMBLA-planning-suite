@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "13a8f831",
+  "signatur": "37ecf99b",
   "entscheidungen": [
     {
       "issue": 41,
@@ -68,15 +68,6 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
-    },
-    {
-      "issue": 63,
-      "titel": "Modul-1-Legende darf die Wanddarstellung nicht überdecken",
-      "prio": "low",
-      "status": "ohne",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": false
     },
     {
       "issue": 56,
