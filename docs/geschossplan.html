@@ -364,7 +364,7 @@ const GP = {
   planBlatt: false,           // Planverwaltung (Blatt von unten) geöffnet
   planLock: true,             // gesperrt = Ziehen bewegt den Plan nicht (§4.4)
   ziel: '',                   // '' = neue Wand anlegen, sonst Kennung einer unverorteten Wand
-  zeichnen: null,             // { start:{x,y}, zeiger:{x,y}, wartet } während „Wand zeichnen“
+  zeichnen: null,             // { start:{x,y}, zeiger:{x,y}, bewegt } während „Wand zeichnen“
   ziehen: null,               // { id, von:{x,y}, delta:{x,y} } während des Verschiebens
   groesse: null,              // { id, ende:'min'|'max', zeiger:{x,y} } während des Größenziehens
   pan: null,                  // { x, y, x0, y0 } Blickverschiebung
@@ -579,6 +579,29 @@ function fange(p){
 function fangeQuer(v){
   if (!GP.fang) return Math.round(Number(v) * 2) / 2;
   return Math.round((Number(v) - CON.HALB_BREITE_MM) / CON.GRID_MM) * CON.GRID_MM + CON.HALB_BREITE_MM;
+}
+
+/**
+ * Queranker einer NEU gezeichneten Wand (#57).
+ *
+ * Mit Fang bleibt es bei `fangeQuer`: die Mittellinie rastet auf die Feldmitte,
+ * die Wand füllt genau ein Rasterfeld.
+ *
+ * OHNE Fang ist der Druckpunkt eine **Außenecke** der Wand, nicht ihre Mitte:
+ * gezeichnet wird an einer Bestandskante entlang, und dort liegt die reale
+ * Wandkante. Die kanonische Mittellinie liegt deshalb 62,5 mm neben dem
+ * gedrückten Punkt — auf der Seite, in die der Zug quer gelaufen ist (`dq`).
+ * 62,5 ist selbst ein halber Millimeter, das zulässige 0,5-mm-Positionsraster
+ * nach [L-1] bleibt damit exakt gewahrt (in IEEE-754 ohne Drift).
+ *
+ * Ein rein achsparalleler Zug (`dq === 0`) benennt keine Seite. Gewählt wird
+ * dann festgelegt die POSITIVE — eine technische Konvention, damit dieselbe
+ * Eingabe immer dieselbe Wand ergibt; geraten wird nichts.
+ */
+function querAnker(v, dq){
+  if (GP.fang) return fangeQuer(v);
+  const seite = Number(dq) < 0 ? -CON.HALB_BREITE_MM : CON.HALB_BREITE_MM;
+  return Math.round(Number(v) * 2) / 2 + seite;
 }
 
 /** Zoomen, ohne den Weltpunkt unter dem Zeiger zu verlieren. */
@@ -1631,8 +1654,12 @@ function planKopfSync(){
  * gerundet, Anker auf der Mittellinie am Ende mit der kleineren Koordinate ([L-1]).
  *
  * Gefangen wird erst hier, weil der Fang von der Richtung abhängt: längs auf die
- * Rasterlinie (dort ist der Anker eine Stirnkante), quer auf die Feldmitte (dort
- * ist er die Mittellinie) — so liegen alle vier Wandkanten auf dem Raster.
+ * Rasterlinie (dort ist der Anker eine Stirnkante), quer über `querAnker` — mit
+ * Fang auf die Feldmitte, ohne Fang 62,5 mm neben den gedrückten Punkt, weil der
+ * dann eine Außenecke ist (#57).
+ *
+ * Der Längsanker bleibt das Ende mit der kleineren Koordinate; bei einem Zug in
+ * positiver Richtung ist das genau der erste, gedrückte Eckpunkt.
  *
  * `null`, wenn die Strecke für weniger als eine Rastereinheit reicht.
  * @returns {{lage:object, laenge_mm:number}|null}
@@ -1647,7 +1674,7 @@ function entwurfLage(a, b){
   const laenge_mm = grid * CON.GRID_MM;
   const start = {};
   start[richtung] = Math.min(von, bis);
-  start[quer] = fangeQuer(a[quer]);
+  start[quer] = querAnker(a[quer], quer === 'y' ? dy : dx);
   return { lage: { start_mm: start, richtung, laenge_grid: grid }, laenge_mm };
 }
 
@@ -2299,16 +2326,12 @@ function beiZeigerAb(ev){
   }
   if (GP.werkzeug === 'wand') {
     // Der Startpunkt sitzt auf dem DRÜCKEN, nicht auf dem Loslassen: von hier
-    // läuft die Vorschau mit der Maus mit. Ein zu kurzer Zug lässt den Startpunkt
-    // stehen, sodass auch „klicken – klicken“ funktioniert.
+    // läuft die Vorschau mit der Maus mit. Angelegt wird ausschließlich durch
+    // einen zusammenhängenden ZUG (#57) — es gibt keinen wartenden
+    // „klicken – klicken“-Zustand mehr, in dem zwei einzelne Klicks nebenbei
+    // eine Wand erzeugen. Jedes Drücken beginnt deshalb einen frischen Entwurf.
     const welt = weltPunkt(ev.clientX, ev.clientY);
-    if (GP.zeichnen && GP.zeichnen.wartet) {
-      const start = GP.zeichnen.start;
-      GP.zeichnen = null;
-      wandFertig(start, welt);
-    } else {
-      GP.zeichnen = { start: welt, zeiger: welt, wartet: false };
-    }
+    GP.zeichnen = { start: welt, zeiger: welt, bewegt: false };
     if (ev.preventDefault) ev.preventDefault();
     render();
     return;
@@ -2390,8 +2413,15 @@ function beiZeigerBewegung(ev){
     render();                                   // Vorschau der starren Gruppe
     return;
   }
-  if (GP.werkzeug === 'wand' && GP.zeichnen && !GP.zeichnen.wartet) {
-    GP.zeichnen.zeiger = weltPunkt(ev.clientX, ev.clientY);
+  if (GP.werkzeug === 'wand' && GP.zeichnen) {
+    const welt = weltPunkt(ev.clientX, ev.clientY);
+    GP.zeichnen.zeiger = welt;
+    // Erst ab derselben Schwelle wie beim Maß-Zug (#51) ist das Drücken ein
+    // echter ZUG. Darunter bleibt es ein Klick — und ein Klick legt nichts an.
+    if (!GP.zeichnen.bewegt
+      && Math.hypot(welt.x - GP.zeichnen.start.x, welt.y - GP.zeichnen.start.y) >= ZUG_SCHWELLE_PX * V.mm) {
+      GP.zeichnen.bewegt = true;
+    }
     render();
     return;
   }
@@ -2442,16 +2472,18 @@ function beiZeigerAuf(ev){
     return;
   }
   if (GP.groesse) { groesseFertig(); return; }
-  if (GP.werkzeug === 'wand' && GP.zeichnen && !GP.zeichnen.wartet) {
-    const { start, zeiger } = GP.zeichnen;
-    if (entwurfLage(start, zeiger)) {
-      GP.zeichnen = null;
-      wandFertig(start, zeiger);
+  if (GP.werkzeug === 'wand' && GP.zeichnen) {
+    const { start, zeiger, bewegt } = GP.zeichnen;
+    // Angelegt wird NUR aus einem echten Zug (#57): gedrückt, gezogen,
+    // losgelassen. Ein Klick ohne Zug — und damit auch zwei aufeinanderfolgende
+    // Klicks — lässt keinen Entwurf zurück und legt nichts an; eine zu kurze
+    // Strecke wird von `wandFertig` benannt und nichts aufgerundet ([P-9]).
+    GP.zeichnen = null;
+    if (!bewegt) {
+      zeige('Nichts angelegt: eine Wand entsteht nur durch Ziehen — drücken, ziehen, loslassen. '
+        + 'Einzelne Klicks legen keine Wand an.', false);
     } else {
-      // Kein Zug, nur ein Klick: der Startpunkt bleibt stehen, der zweite Klick
-      // schließt ab. Nichts wird angelegt und nichts aufgerundet ([P-9]).
-      GP.zeichnen.wartet = true;
-      zeige('Startpunkt gesetzt — jetzt ziehen oder den Endpunkt anklicken (Escape verwirft).', true);
+      wandFertig(start, zeiger);
     }
     render();
     return;

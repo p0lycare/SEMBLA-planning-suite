@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260811-06",
+    datum: "2026-08-11",
+    typ: "fix",
+    issue: 57,
+    titel: "Wandwerkzeug setzt den ersten Punkt auf die Außenecke und legt nur noch durch Ziehen an",
+    testbitte: "Im Geschossplan den Rasterfang ausschalten und eine Wand schräg von einer Ecke wegziehen: "
+      + "Die Wand muss auf der gewählten Seite liegen. Einzelne oder zwei getrennte Klicks dürfen nichts anlegen.",
+  },
+  {
     id: "chg-20260811-05",
     datum: "2026-08-11",
     typ: "fix",

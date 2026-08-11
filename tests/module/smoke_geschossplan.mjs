@@ -188,7 +188,7 @@ GP.werkzeug('wand');
 ok('Werkzeugwechsel ist an der Flaeche sichtbar', /zeichnet/.test($('gp-buehne').className));
 GP.zeigerAb({ x: 0, y: 0 });
 ok('der Startpunkt sitzt auf dem DRUECKEN, nicht auf dem Loslassen',
-  !!GP.zustand.zeichnen && GP.zustand.zeichnen.start.x === 0 && GP.zustand.zeichnen.wartet === false);
+  !!GP.zustand.zeichnen && GP.zustand.zeichnen.start.x === 0 && GP.zustand.zeichnen.bewegt === false);
 GP.zeigerBewegung({ x: 3040, y: 60 });
 ok('vom Startpunkt aus laeuft eine Vorschau mit, gespeichert ist nichts',
   /class="entwurf"/.test(GP.svg) && store.listeElemente().length === 0);
@@ -225,14 +225,32 @@ ok('die gezeichnete Wand ist aktiv und ausgewaehlt und aktiv gesetzt',
   GP.zustand.aktiv === el1.id && GP.zustand.auswahl.length === 1 && store.aktivId() === el1.id);
 ok('die Wand erscheint in der Zeichnung', GP.svg.includes(`data-wand="${el1.id}"`));
 
-// Klicken–klicken geht weiterhin: ein Klick ohne Zug laesst den Startpunkt stehen.
+// #57: Angelegt wird NUR durch Ziehen. Ein Klick, zwei getrennte Klicks und ein
+// zu kurzer Zug erzeugen kein Wandelement und keine Wandlage — und lassen auch
+// keinen wartenden Entwurf zurueck, aus dem der naechste Klick eine Wand machte.
 GP.werkzeug('wand');
+const standVorKlicks = { el: store.listeElemente().length, mappe: localStorage.getItem('sembla:projekte'),
+  undo: GP.undoStand.undo };
 GP.tippe({ x: 0, y: 2000 });
-ok('ein Klick ohne Zug setzt nur den Startpunkt, ohne etwas anzulegen',
-  store.listeElemente().length === 1 && /Startpunkt gesetzt/.test($('gp-msg').textContent));
-GP.tippe({ x: 40, y: 2000 });
-ok('zu kurze Strecke wird benannt abgewiesen, nichts angelegt ([P-9])',
-  store.listeElemente().length === 1 && /Zu kurz/.test($('gp-msg').textContent));
+ok('#57 ein einzelner Klick legt nichts an und laesst keinen Entwurf stehen',
+  store.listeElemente().length === standVorKlicks.el && GP.zustand.zeichnen === null
+  && /nur durch Ziehen/.test($('gp-msg').textContent));
+GP.tippe({ x: 3000, y: 2000 });
+ok('#57 auch der zweite, getrennte Klick legt nichts an (kein „klicken–klicken")',
+  store.listeElemente().length === standVorKlicks.el && GP.zustand.zeichnen === null
+  && localStorage.getItem('sembla:projekte') === standVorKlicks.mappe
+  && GP.undoStand.undo === standVorKlicks.undo);
+// Weit genug hineinzoomen, damit die 40 mm sicher ueber der Zugschwelle von 3
+// Bildpunkten liegen: geprueft werden soll der ECHTE Zug unter der Mindestlaenge
+// von 125 mm ([L-1]) und nicht nochmals der zuglose Klick.
+while (GP.blick.mm > 5) $('gp-zoom-plus').dispatch('click');
+GP.ziehe({ x: 0, y: 2000 }, { x: 40, y: 2000 });
+ok('#57 ein echter Zug unter der Mindestlaenge wird benannt abgewiesen, nichts angelegt ([P-9])',
+  store.listeElemente().length === standVorKlicks.el && GP.zustand.zeichnen === null
+  && /Zu kurz/.test($('gp-msg').textContent)
+  && localStorage.getItem('sembla:projekte') === standVorKlicks.mappe
+  && GP.undoStand.undo === standVorKlicks.undo);
+GP.zeigeAlles();
 
 // --- 3) Auswaehlen und Ziehen ([K-9]) -------------------------------------
 GP.werkzeug('auswahl');
@@ -288,8 +306,7 @@ await warte();
 
 // --- 5) Kollision wird gemeldet, nie korrigiert ([K-13]) ------------------
 GP.werkzeug('wand');
-GP.tippe({ x: 1000, y: 500 });
-GP.tippe({ x: 1000, y: 3000 });                      // kreuzt die erste Wand
+GP.zeichne({ x: 1000, y: 500 }, { x: 1000, y: 3000 });   // kreuzt die erste Wand
 await warte();
 const el2 = store.listeElemente().find(e => e.id !== el1.id);
 const koll = GP.loesen().kollisionen;
@@ -318,8 +335,7 @@ $('gp-ziel').dispatch('change');
 ok('unverortete Waende stehen als Ziel zur Wahl',
   $('gp-ziel').innerHTML.includes(fremdId) && GP.zustand.ziel === fremdId);
 GP.werkzeug('wand');
-GP.tippe({ x: 0, y: 4000 });
-GP.tippe({ x: 2500, y: 4000 });                      // absichtlich 2500 statt 2000
+GP.zeichne({ x: 0, y: 4000 }, { x: 2500, y: 4000 });     // absichtlich 2500 statt 2000
 await warte();
 const fremd = MAPPE.findeWand(store.holeMappe(), fremdId).wand;
 ok('die vorhandene Wand wird verortet, ohne ein zweites Element anzulegen',
@@ -532,6 +548,70 @@ ok('[L-1] ohne Fang rastet die Position auf halbe Millimeter',
   GP.fange({ x: 1234.3, y: -0.4 }).x === 1234.5 && GP.fange({ x: 1234.3, y: -0.4 }).y === -0.5);
 ok('[L-1] ohne Fang rastet auch die Querlage auf halbe Millimeter',
   GP.fangeQuer(1234.3) === 1234.5);
+
+// --- 9b) #57: ohne Fang ist der Druckpunkt eine AUSSENECKE ----------------
+// Gezeichnet wird an einer Bestandskante entlang; dort liegt die reale Wandkante
+// und nicht die Mittellinie. Geprueft wird deshalb am GESPEICHERTEN Wandrechteck,
+// dass der gedrueckte Punkt genau auf der erwarteten Ecke sitzt.
+GP.werkzeug('wand');
+/** Rechteck der zuletzt im Geschoss verorteten Wand (aus der gespeicherten Lage). */
+const letztesRechteck = () => {
+  const l = MAPPE.alleGeschosse(store.holeMappe()).find(x => x.geschoss.id === gsId)
+    .geschoss.waende.slice(-1)[0].lage;
+  return { r: CON.wandRechteck(l), lage: l };
+};
+/** Ein echter Zug mit dem Wandwerkzeug: druecken, ziehen (mit Vorschau), loslassen. */
+const eckZug = async (von, nach) => {
+  const vorher = store.listeElemente().length;
+  GP.werkzeug('wand');
+  GP.zeigerAb(von);
+  GP.zeigerBewegung(nach);
+  const vorschau = /<rect class="entwurf" x="([-\d.]+)" y="([-\d.]+)"/.exec(GP.svg);
+  GP.zeigerAuf();
+  await warte();
+  return { ...letztesRechteck(), neu: store.listeElemente().length - vorher, vorschau };
+};
+
+let eck = await eckZug({ x: 30000, y: 30000 }, { x: 31000, y: 30200 });
+ok('#57 x-Zug mit positivem Queranteil: der Druckpunkt ist die Ecke (x_min, y_min)',
+  eck.r.x_min === 30000 && eck.r.y_min === 30000 && eck.lage.start_mm.y === 30062.5);
+ok('#57 dabei bleiben Richtung, 125-mm-Raster der Laenge und das 0,5-mm-Positionsraster gewahrt',
+  eck.lage.richtung === 'x' && eck.lage.laenge_grid === 8
+  && (eck.lage.start_mm.x * 2) % 1 === 0 && (eck.lage.start_mm.y * 2) % 1 === 0);
+ok('#57 die Vorschau zeigt schon waehrend des Zugs genau diese Wandseite',
+  !!eck.vorschau && Number(eck.vorschau[2]) === eck.r.y_min);
+ok('#57 genau EIN Wandelement, angelegt ueber den gemeinsamen Anlagepfad',
+  eck.neu === 1 && store.holeElement(
+    MAPPE.alleGeschosse(store.holeMappe()).find(x => x.geschoss.id === gsId)
+      .geschoss.waende.slice(-1)[0].id).wandelement.length_mm === 1000);
+
+eck = await eckZug({ x: 30000, y: 34000 }, { x: 31000, y: 33800 });
+ok('#57 x-Zug mit negativem Queranteil: die Wand liegt auf der anderen Seite (Ecke x_min, y_max)',
+  eck.r.y_max === 34000 && eck.r.x_min === 30000 && eck.lage.start_mm.y === 33937.5);
+
+eck = await eckZug({ x: 36000, y: 30000 }, { x: 36200, y: 31000 });
+ok('#57 y-Zug: dieselbe Ecksemantik mit 62,5-mm-Versatz und gerasterter Laenge',
+  eck.lage.richtung === 'y' && eck.lage.laenge_grid === 8
+  && eck.r.x_min === 36000 && eck.r.y_min === 30000 && eck.lage.start_mm.x === 36062.5);
+
+eck = await eckZug({ x: 40000, y: 30000 }, { x: 39800, y: 31000 });
+ok('#57 y-Zug mit negativem Queranteil: Ecke (x_max, y_min)',
+  eck.r.x_max === 40000 && eck.r.y_min === 30000 && eck.lage.start_mm.x === 39937.5);
+
+// Rein achsparalleler Zug: der Queranteil benennt keine Seite. Festgelegte
+// technische Konvention ist die POSITIVE — dieselbe Eingabe, dieselbe Wand.
+eck = await eckZug({ x: 44000, y: 30000 }, { x: 45000, y: 30000 });
+ok('#57 ohne Queranteil gilt deterministisch die positive Wandseite',
+  eck.r.y_min === 30000 && eck.lage.start_mm.y === 30062.5);
+
+// Mit Fang bleibt es bei der Feldmitte — die Ecksemantik gilt nur ohne Fang.
+$('gp-fang').checked = true;
+$('gp-fang').dispatch('change');
+eck = await eckZug({ x: 48000, y: 30000 }, { x: 49000, y: 30200 });
+ok('#57/#52 mit Fang rastet die Mittellinie unveraendert auf die Feldmitte',
+  eck.lage.start_mm.y === 30062.5 && eck.r.y_min % 125 === 0 && eck.r.y_max % 125 === 0);
+$('gp-fang').checked = false;
+$('gp-fang').dispatch('change');
 
 // #52: DERSELBE Toggle gilt fuer Zeichnen, Verschieben und Groessenziehen —
 // jeder Wand, nicht nur der gerade gezeichneten.

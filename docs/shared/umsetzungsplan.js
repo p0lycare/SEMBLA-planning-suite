@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-11",
-  "signatur": "3881355f",
+  "signatur": "2a9ab0eb",
   "entscheidungen": [
     {
       "issue": 41,
@@ -65,15 +65,6 @@ export const PLAN = {
       "titel": "Längenänderung und Erstellung von Wandelementen nur im Geschosseditor",
       "prio": "ohne",
       "status": "ohne",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false
-    },
-    {
-      "issue": 57,
-      "titel": "Wandwerkzeug: Ecke als erster Punkt, Erzeugen nur durch Ziehen",
-      "prio": "ohne",
-      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": false
