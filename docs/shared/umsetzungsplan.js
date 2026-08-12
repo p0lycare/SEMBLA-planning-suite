@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "193b7d83",
+  "signatur": "164c369f",
   "entscheidungen": [
     {
       "issue": 41,
@@ -47,6 +47,31 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
+    },
+    {
+      "issue": 71,
+      "titel": "Dichtstreifen: Entscheidungsebene festlegen",
+      "prio": "ohne",
+      "status": "decision needed",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true,
+      "frage": "Wird die Abdichtung je Wand, je Geschoss oder je Projekt festgelegt?",
+      "optionen": [
+        {
+          "text": "Je Wand entscheiden.",
+          "wirkung": "Abgedichtete und nicht abgedichtete Wände können innerhalb desselben Geschosses eindeutig nebeneinander geplant werden."
+        },
+        {
+          "text": "Je Geschoss entscheiden.",
+          "wirkung": "Alle Wände eines Geschosses erben denselben Wert; Mischfälle brauchen später eine Ausnahme."
+        },
+        {
+          "text": "Je Projekt entscheiden.",
+          "wirkung": "Alle Wände des Projekts verwenden denselben Wert; Geschoss- und Wandabweichungen sind nicht abbildbar."
+        }
+      ],
+      "empfehlung": "Je Wand entscheiden, weil der beschriebene Bestand beide Wandarten enthalten kann und keine stille Vererbung nötig ist."
     }
   ],
   "naechstes": {
@@ -72,6 +97,15 @@ export const PLAN = {
     {
       "issue": 68,
       "titel": "Projektanlage: Kopfdaten passend zuordnen und Standardkatalog vorbelegen",
+      "prio": "ohne",
+      "status": "ohne",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 70,
+      "titel": "Wandname statt Projekt-Eingabefeld in der Stückliste",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": true,
