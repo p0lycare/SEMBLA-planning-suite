@@ -2450,6 +2450,114 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     !abwOk.unveraendert && einig(id56, 500) && ableitungPasst(id56) && keineAbweichung());
 }
 
+// ==========================================================================
+//  Issue #66 — ein Klick macht die Wand auch KANONISCH aktiv
+// ==========================================================================
+// Bis #66 fuehrte der Editor zwei Aktivbegriffe: die gruene lokale Auswahl und den
+// Zeiger `sembla:aktiv` in storage.js. Geprueft wird deshalb bis zur SICHTBAREN
+// Anzeige — die ECHTE Kopfleiste wird gemountet und nach jedem Klick ausgelesen.
+// Sie haengt ueber store.abonniere am Zeiger, also an derselben Kette wie im
+// Browser; ein nachgebauter Anzeigepfad oder ein blosser Abonnentenzaehler wuerde
+// genau den Fehler nicht sehen, um den es geht.
+{
+  const { mountNavbar } = await import("../../docs/shared/navbar.js");
+  mountNavbar(0);                       // erst hier: alle Abschnitte davor laufen unveraendert
+  /** Die sichtbare Wand im aktiven Pfad der Kopfleiste (Projekt · Geschoss · Wand). */
+  const navWand = () => {
+    const m = $('sb-pfad').innerHTML.match(/<span class="k">Wand<\/span> <b>([\s\S]*?)<\/b>/);
+    return m ? m[1] : null;
+  };
+  /** Die sichtbar ausgewaehlte Wand der Kopfleiste (das `selected` der Auswahl). */
+  const navGewaehlt = () => {
+    const m = $('sb-active').innerHTML.match(/<option value="([^"]+)"[^>]*selected/);
+    return m ? m[1] : null;
+  };
+  /** Lokal aktiv, kanonisch aktiv und sichtbar aktiv MUESSEN dieselbe Wand nennen. */
+  const einigAktiv = (id) => GP.zustand.aktiv === id && store.aktivId() === id
+    && navGewaehlt() === id && navWand() === store.holeElement(id).name;
+  /**
+   * Klick auf eine Listenzeile ueber den ECHT registrierten, delegierten Behandler
+   * am Panel `gp-liste` — nicht ueber den internen Direktaufruf. Der Zielknoten wird
+   * so nachgebildet, wie ihn der Browser liefert: `closest` findet die Zeile mit
+   * ihrem `data-wand`, den Knopf `[data-planen]` gibt es beim Zeilenklick nicht.
+   */
+  const listenKlick = (id, mod) => {
+    const zeile = { getAttribute: (n) => (n === 'data-wand' ? id : null) };
+    $('gp-liste').dispatch('click',
+      { target: { closest: (sel) => (sel === '.gp-zeile' ? zeile : null) }, ...(mod || {}) });
+  };
+
+  const prj66 = store.fuegeProjektHinzu('#66-Pruefprojekt', { geschoss: 'EG', hoehe_mm: 2600 });
+  const gs66 = MAPPE.alleGeschosse(prj66)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs66);
+  await warte();
+  GP.zeigeAlles(); GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 1000 }, { x: 2000, y: 1000 }); await warte();
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2000, y: 4000 }); await warte();
+  const w66 = MAPPE.alleGeschosse(store.holeMappe())
+    .find(x => x.geschoss.id === gs66).geschoss.waende;
+  const a66 = w66[0].id, b66 = w66[1].id;
+  GP.werkzeug('auswahl');
+  await warte();
+
+  ok('#66 Pruefaufbau: die echte Kopfleiste haengt am Zeiger und zeigt die zuletzt gezeichnete Wand',
+    w66.length === 2 && einigAktiv(b66));
+
+  // (a) Muss 1/4 — Klick auf den WANDKOERPER, ueber dieselben Zeigerbehandler wie die Maus.
+  GP.tippe(mitteVon(a66)); await warte();
+  ok('#66 (Muss 1) ein Klick auf den Wandkoerper setzt dieselbe Wand lokal UND kanonisch aktiv',
+    einigAktiv(a66) && GP.zustand.auswahl.length === 1);
+  GP.tippe(mitteVon(b66)); await warte();
+  ok('#66 (Muss 4) der naechste Klick zieht die sichtbare Aktivanzeige mit',
+    einigAktiv(b66) && GP.svg.includes(CON.FARBEN.aktiv));
+
+  // (b) Muss 2 — Klick in der Wandliste, ueber den registrierten data-wand-Behandler.
+  ok('#66 Pruefaufbau: beide Waende stehen mit ihrem data-wand in der Liste',
+    liste().includes(`data-wand="${a66}"`) && liste().includes(`data-wand="${b66}"`));
+  listenKlick(a66); await warte();
+  ok('#66 (Muss 2) ein Klick in der Wandliste setzt lokal und kanonisch dieselbe Wand',
+    einigAktiv(a66) && GP.zustand.auswahl.length === 1);
+
+  // (c) Muss 3 — Mehrfachauswahl: aktiv ist genau EINE, und die steht auch oben.
+  listenKlick(b66, { shiftKey: true }); await warte();
+  ok('#66 (Muss 3) Umschalt-Klick: zwei ausgewaehlt, genau EINE aktiv — und die ist die kanonische',
+    GP.zustand.auswahl.length === 2 && einigAktiv(b66));
+  GP.tippe(mitteVon(a66), { ctrlKey: true }); await warte();
+  ok('#66 (Muss 3) auch der Strg-Klick auf der Zeichenflaeche fuehrt den Zeiger nach',
+    GP.zustand.auswahl.length === 2 && einigAktiv(a66));
+
+  // (d) Muss 5 — verwaister Eintrag: lokal waehlbar, Zeiger UND Anzeige unberuehrt ([L-4]).
+  store.aendereMappe(m => MAPPE.setzeWand(m, gs66,
+    { id: 'wnd-verwaist-66', name: 'Verwaist 66', lage: null }));
+  await warte(); GP.render();
+  const zeigerVor = store.aktivId();
+  const pfadVor = $('sb-pfad').innerHTML, auswahlVor = $('sb-active').innerHTML;
+  listenKlick('wnd-verwaist-66'); await warte();
+  ok('#66 (Muss 5) ein verwaister Eintrag ist waehlbar, ueberschreibt den Zeiger aber nicht',
+    GP.zustand.aktiv === 'wnd-verwaist-66' && store.aktivId() === zeigerVor
+    && !store.holeElement('wnd-verwaist-66'));
+  ok('#66 (Muss 5) … und die sichtbare Anzeige bleibt unveraendert, ohne erfundenen Eintrag',
+    $('sb-pfad').innerHTML === pfadVor && $('sb-active').innerHTML === auswahlVor
+    && !$('sb-active').innerHTML.includes('wnd-verwaist-66'));
+
+  // (e) Abwaehlen ist Sache der Zeichenflaeche — es hebt die aktive Wand der Suite nicht auf.
+  GP.tippe({ x: 90000, y: 90000 }); await warte();
+  ok('#66 ein Klick ins Leere waehlt lokal ab, laesst den kanonischen Zeiger aber stehen',
+    GP.zustand.aktiv === null && GP.zustand.auswahl.length === 0
+    && store.aktivId() === zeigerVor && $('sb-pfad').innerHTML === pfadVor);
+
+  // (f) Muss 6 — „Planen" laeuft unveraendert ueber denselben Aktivierungsweg.
+  globalThis.window.location.href = '';
+  ok('#66 (Muss 6) „Planen" setzt die Wand aktiv und navigiert weiterhin nach Modul 1',
+    gp('planeWand', b66) === true && store.aktivId() === b66
+    && globalThis.window.location.href === 'wandplanung.html');
+
+  // (g) Must-not — die Eltern-Zeiger bleiben, was sie waren ([L-10]).
+  ok('#66 kein Wandklick veraendert Projekt-, Gebaeude- oder Geschossaktivierung',
+    store.holeMappe().projekt.id === prj66.projekt.id
+    && store.aktivesGeschoss().geschoss.id === gs66);
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

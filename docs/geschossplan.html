@@ -794,15 +794,40 @@ function istAusgewaehlt(id){ return GP.auswahl.indexOf(id) >= 0; }
  * Auswahl setzen. `dazu` (Umschalt/Strg) nimmt eine Wand zur Auswahl hinzu bzw.
  * entfernt sie wieder; ohne `dazu` ersetzt der Klick die ganze Auswahl. Aktiv —
  * also in Bearbeitung — ist danach immer genau eine oder keine Wand.
+ *
+ * Am Ende steht der Abgleich mit dem KANONISCHEN Aktivzeiger (#66): die lokale
+ * Auswahl ist Bedienzustand dieser Seite, aktiv im Sinne der Suite ist allein
+ * `sembla:aktiv` in `storage.js`. Beides lief bis #66 auseinander — grün war die
+ * geklickte Wand, oben stand die vorherige.
  */
 function waehle(id, dazu){
-  if (!id) { if (!dazu) { GP.auswahl = []; GP.aktiv = null; } return; }
-  if (!dazu) { GP.auswahl = [id]; GP.aktiv = id; return; }
+  if (!id) { if (!dazu) { GP.auswahl = []; GP.aktiv = null; } aktivSync(); return; }
+  if (!dazu) { GP.auswahl = [id]; GP.aktiv = id; aktivSync(); return; }
   const i = GP.auswahl.indexOf(id);
-  if (i < 0) { GP.auswahl.push(id); GP.aktiv = id; return; }
-  if (GP.aktiv !== id) { GP.aktiv = id; return; }        // schon ausgewählt ⇒ nur aktiv machen
+  if (i < 0) { GP.auswahl.push(id); GP.aktiv = id; aktivSync(); return; }
+  if (GP.aktiv !== id) { GP.aktiv = id; aktivSync(); return; }   // schon ausgewählt ⇒ nur aktiv machen
   GP.auswahl.splice(i, 1);                               // aktiv und erneut geklickt ⇒ abwählen
   GP.aktiv = GP.auswahl.length ? GP.auswahl[GP.auswahl.length - 1] : null;
+  aktivSync();
+}
+
+/**
+ * Die lokal aktive Wand auch kanonisch aktiv setzen (#66) — der EINE Abgleich
+ * zwischen Bedienzustand und Aktivzeiger. Es entsteht dabei kein zweiter Zeiger:
+ * geschrieben wird ausschließlich über `store.setzeAktiv()`.
+ *
+ * Bewusst wird NICHT geschrieben, wenn
+ *  - nichts lokal aktiv ist: das Abwählen ist eine Sache dieser Zeichenfläche und
+ *    darf die aktive Wand der Suite nicht aufheben;
+ *  - der Eintrag verwaist ist ([L-4]): ohne Wandelement gibt es nichts zu aktivieren,
+ *    und erfunden wird keines;
+ *  - der Zeiger schon stimmt: sonst liefe je Klick eine überflüssige Benachrichtigung.
+ * Scheitert es an der Hierarchie ([L-10]), bleibt der Zeiger stehen statt zu raten.
+ */
+function aktivSync(){
+  const id = GP.aktiv;
+  if (!id || !store.holeElement(id) || store.aktivId() === id) return;
+  try { store.setzeAktiv(id); } catch { /* nicht aktivierbar ([L-10]): kein Ersatzzeiger */ }
 }
 
 /** Auswahl auf noch vorhandene Wände eindampfen (nach Löschen/Geschosswechsel). */

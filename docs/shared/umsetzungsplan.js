@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "1b1955b5",
+  "signatur": "193b7d83",
   "entscheidungen": [
     {
       "issue": 41,
@@ -60,15 +60,6 @@ export const PLAN = {
     "begruendung": "Der Neuanlegefehler ist behoben. Offen bleiben die übrigen Komponenten, gemeinsame Einbauteil-IDs und die Realwand-Abnahme; als angefangene Sicherheitsausgabe bleibt #15 nach der berechneten Portfolio-Ordnung vorn."
   },
   "weitere": [
-    {
-      "issue": 66,
-      "titel": "Angeklickte Wand im Geschosseditor tatsächlich aktiv setzen",
-      "prio": "high",
-      "status": "ohne",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
     {
       "issue": 59,
       "titel": "Lageplan: weitere Bemaßungskorrekturen",
