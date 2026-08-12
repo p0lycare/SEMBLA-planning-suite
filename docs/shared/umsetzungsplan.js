@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "ec7fc7fa",
+  "signatur": "644fb918",
   "entscheidungen": [
     {
       "issue": 41,
@@ -73,6 +73,24 @@ export const PLAN = {
       "issue": 59,
       "titel": "Lageplan: minimaler Kopf und weitere Bemaßungskorrekturen",
       "prio": "high",
+      "status": "ohne",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 68,
+      "titel": "Projektanlage: Kopfdaten passend zuordnen und Standardkatalog vorbelegen",
+      "prio": "ohne",
+      "status": "ohne",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 67,
+      "titel": "Hierarchischen Projektexport statt Gesamtstücklisten-Sammeldialog anbieten",
+      "prio": "ohne",
       "status": "ohne",
       "sicherheit": false,
       "abhaengig_von": [],
