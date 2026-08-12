@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "824e78e2",
+  "signatur": "3b5a09e4",
   "entscheidungen": [
     {
       "issue": 41,
@@ -97,6 +97,15 @@ export const PLAN = {
     {
       "issue": 68,
       "titel": "Projektanlage-Kopfdaten: übrige Felder fachlich in die Zeichnung verlagern",
+      "prio": "ohne",
+      "status": "ohne",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 73,
+      "titel": "Lageplan: Wandnummern außen lesbar kennzeichnen",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": true,
