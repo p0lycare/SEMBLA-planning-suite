@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-06",
+    datum: "2026-08-12",
+    typ: "fix",
+    issue: 69,
+    titel: "Die Eingabespalte der Wandplanung zeigt Bedienfelder statt Erklärtexte",
+    testbitte: "Reiter 1 öffnen: Die linke Spalte enthält nur noch Felder, Gruppen und Zustandsmeldungen; Auslegen, Öffnungen, Staffelung, Spannachsen und Produktauswahl müssen unverändert bedienbar bleiben.",
+  },
+  {
     id: "chg-20260812-05",
     datum: "2026-08-12",
     typ: "fix",

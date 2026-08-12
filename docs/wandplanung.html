@@ -78,11 +78,7 @@
 </style>
 </head>
 <body>
-<p class="intro"><b>Wand planen &amp; auslegen.</b> Wand zeichnen (Verband, Öffnungen, Seiten) und in
-  einem Schritt statisch auslegen (Vorspannung optimiert, Nachweise). Ergebnis ist das geprüfte
-  <b>Wandelement</b>, das alle weiteren Module lesen — es wird im aktiven Wandelement der Suite gespeichert.
-  Zusätzlich werden hier die <b>Katalogprodukte dieser Wand</b> gewählt (Steine, Vorspannung, Anschluss,
-  Fugen): nur Produkt-IDs, gepflegt wird der Katalog samt Preisen in Modul 0.</p>
+<p class="intro"><b>Wand planen &amp; auslegen.</b></p>
 
 <div id="app" class="wrap">
   <div class="controls panel">
@@ -91,24 +87,23 @@
       <!-- Die LÄNGE ist hier nur noch Anzeige (Issue #56): geführt wird sie im
            Geschosseditor an der Lage der Wand, und von dort wird das Wandelement damit
            neu gerechnet. Ein zweites Eingabefeld wäre ein konkurrierender Schreibweg. -->
-      <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125" readonly><small>m · nur Anzeige</small></label>
+      <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125" readonly
+        title="Nur Anzeige — die Länge wird im Geschosseditor geführt (Endgriff oder Längenmaß)."><small>m · nur Anzeige</small></label>
       <label><span>Höhe</span><input type="number" id="hgt" value="2.60" step="0.20"><small>m · ×20cm</small></label>
     </div>
-    <div class="hint" id="lenHint">Die <b>Länge</b> wird im <b>Geschosseditor</b> geführt (Endgriff
-      oder Längenmaß) — dort wird das Wandelement damit neu gerechnet. Alles Übrige auf dieser
-      Seite rechnet mit der gespeicherten Länge weiter.</div>
     <div class="grp"><h3>Öffnungen</h3>
       <div id="ops"></div>
       <div class="btnrow"><button class="mini" id="addTuer">+ Tür</button><button class="mini" id="addFenster">+ Fenster</button></div>
       <div class="btnrow"><button class="mini" id="durchTool">Durchbruch-Modus</button><button class="mini" id="durchClear">Durchbrüche leeren</button></div>
       <div class="hint" id="durchHint" style="color:var(--sb-muted);font-size:11.5px;margin-top:4px;display:none">Klick auf eine Zelle: Stein entfernen (Durchbruch) bzw. wieder auffüllen.</div>
-      <div class="btnrow" style="margin-top:6px"><button class="mini" id="axisTool">Spannachsen bearbeiten</button><button class="mini" id="axisDel">Achse löschen</button><button class="mini" id="axisAuto">Zurück zu Auto</button></div>
-      <div class="hint" id="axisHint" style="color:var(--sb-muted);font-size:11.5px;margin-top:4px;display:none">Sonderkonstruktion: Achse ziehen = verschieben (Raster 12,5 cm) · Klick auf leere Rasterposition = Achse hinzufügen · Doppelklick oder „Achse löschen“ = entfernen. Manuelle Achsen sperren die Auto-Verteilung, bis „Zurück zu Auto“.</div>
+      <div class="btnrow" style="margin-top:6px"><button class="mini" id="axisTool"
+        title="Sonderkonstruktion: manuell gesetzte Achsen sperren die Auto-Verteilung, bis „Zurück zu Auto“.">Spannachsen bearbeiten</button><button class="mini" id="axisDel">Achse löschen</button><button class="mini" id="axisAuto">Zurück zu Auto</button></div>
+      <div class="hint" id="axisHint" style="color:var(--sb-muted);font-size:11.5px;margin-top:4px;display:none">Achse ziehen = verschieben · Klick = hinzufügen · Doppelklick = entfernen.</div>
     </div>
     <div class="grp"><h3>Staffelung (getreppter Aufbau)</h3>
       <div id="stepsList"></div>
-      <div class="btnrow"><button class="mini" id="addStep">+ Stufe</button></div>
-      <div class="hint" style="color:var(--sb-muted);font-size:11.5px;margin-top:4px">Je Stufe: Längsbereich (von–bis) + reduzierte Höhe. Die „Höhe" oben bleibt die Maximalhöhe; Stufen senken die Oberkante bereichsweise ab (getreppte Kontur).</div>
+      <div class="btnrow"><button class="mini" id="addStep"
+        title="Je Stufe: Längsbereich (von–bis) und reduzierte Höhe.">+ Stufe</button></div>
     </div>
     <div class="grp"><h3>Seiten (Funktion)</h3>
       <label><span>Vorderseite</span><select id="sideVorne"><option value="fassade">Fassade</option><option value="innenausbau">Innenausbau</option><option value="sicht">Sichtfläche / roh</option><option value="installation">Installationsebene</option></select></label>
@@ -128,19 +123,19 @@
       </div>
     </div>
     <div class="grp"><h3>Spannachsen</h3>
-      <label><span>Erste Vorspannung</span><select id="startAchse"><option value="0" selected>1. Rasterachse (Standard)</option><option value="1">2. Rasterachse</option></select></label>
-      <small style="color:var(--sb-muted)">Ab dieser Achse werden die weiteren Spannachsen im gewählten Strangabstand (max. jede x-te Achse) fortgeführt. Achsen an Öffnungs- und Stufenkanten kommen zusätzlich hinzu; manuelle Achsen (Sonderkonstruktion) haben Vorrang.</small>
+      <label><span>Erste Vorspannung</span><select id="startAchse"
+        title="Ab dieser Achse werden die weiteren Spannachsen im gewählten Strangabstand fortgeführt."><option value="0" selected>1. Rasterachse (Standard)</option><option value="1">2. Rasterachse</option></select></label>
     </div>
     <div class="grp"><h3>Vorspann-Hardware</h3>
       <div class="lockhint" id="rodQuelle"></div>
       <label><span>Blechlänge (Module)</span><input type="number" id="blechCm" value="100" step="10" min="20"><small>cm</small></label>
-      <label><span>Oberer Anschluss</span><select id="topConn"><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte</option></select></label>
-      <small style="color:var(--sb-muted)">Fuß immer Bodenblech (15 mm). Kopf wahlweise Kopfblech-Module oder Spannplatten auf der Steinkante.</small>
-      <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"><small>mm</small></label>
+      <label><span>Oberer Anschluss</span><select id="topConn"
+        title="Fuß immer Bodenblech (15 mm). Kopf wahlweise Kopfblech-Module oder Spannplatten auf der Steinkante."><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte</option></select></label>
+      <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"
+        title="Überstand des Reststücks über die Wandoberkante (Platz für Kopfblech/Spannplatte und Spannmutter)."><small>mm</small></label>
       <div class="lockhint" id="rodRestQuelle"></div>
-      <small style="color:var(--sb-muted)">Die Wände werden im Innenraum montiert — jeder Strang an der Wandoberkante endet mit dem im Katalog gewählten <b>Reststück</b> ([Z-6]). Es ragt um diesen Überstand über die Oberkante hinaus (Platz für Kopfblech/Spannplatte + Spannmutter); sein unteres Ende liegt darunter.</small>
     </div>
-    <div class="grp"><h3>Materialannahmen <small>(zu bestätigen)</small></h3>
+    <div class="grp"><h3>Materialannahmen</h3>
       <label><span>f<sub>cd</sub></span><input type="number" id="fcd" value="20" step="1"><small>N/mm²</small></label>
       <label><span>C<sub>f,d</sub></span><input type="number" id="cfd" value="0.60" step="0.05"><small>–</small></label>
       <label><span>ρ</span><input type="number" id="rho" value="14" step="0.5"><small>kN/m³</small></label>
@@ -149,24 +144,10 @@
     <div class="grp">
       <div class="prodinfo" id="prodInfo">–</div>
       <div id="prodRollen"></div>
-      <div class="hint" style="color:var(--sb-muted);font-size:11.5px;margin-top:8px">Je Verwendungsstelle
-        eine Zeile mit <b>Mehrfachauswahl</b> aus dem <b>vollständigen aktiven Bauteilkatalog</b> (gepflegt
-        in Modul 0 — dort auch die Preise). <b>Mehrere gewählte Standardgrößen werden kombiniert</b>
-        ([Z-2]): größte geeignete zuerst, mit kleineren auffüllen, das Restmaß als gekennzeichneter
-        Sonderzuschnitt. Ein gewähltes Produkt ist die <b>alleinige Quelle</b> seiner Maße ([Z-1]).
-        Gespeichert werden nur <b>Produkt-IDs</b> — keine Preise, keine Maße.<br>
-        <b>Vorbelegt aus dem Katalog ([P-18]):</b> Noch leere Verwendungsstellen übernehmen beim
-        Öffnen die Standardauswahl des Katalogs — jede Zeile bleibt frei umwählbar, und was du
-        bewusst leer räumst, bleibt leer. Für <b>Sonderzuschnitte</b> wird hier bewusst
-        <b>kein</b> Ausgangsprodukt mehr gewählt: die Stückliste nennt nur das Fertigmaß der
-        Baustelle, aus welcher Lagerlänge geschnitten wird, entscheidet der Einkauf.</div>
     </div>
 
     <button class="primary" id="run">Auslegen</button>
     <div class="savehint" id="saveHint"></div>
-    <div class="note"><b>Ein Datenmodell.</b> Dieses Modul erzeugt das geprüfte <b>Wandelement</b>, das
-      Aufbau, Statik, Stückliste, Montage und 3D/IFC lesen. Es wird im <b>aktiven Wandelement</b> der Suite
-      gespeichert (localStorage); Wechsel/Neuanlage in der Kopfleiste bzw. auf der Startseite.</div>
   </div>
 
   <div class="stage panel">

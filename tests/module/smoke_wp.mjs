@@ -290,8 +290,10 @@ ok('#56 Laengenfeld ist nur noch Anzeige (readonly im Markup)',
   /<input type="number" id="len"[^>]*\breadonly\b/.test(html));
 ok('#56 kein indirekter Schreibweg: `len` haengt an keinem Ereignishoerer mehr',
   /\['hgt','qk','gammaQ'/.test(html) && !/\['len','hgt'/.test(html));
+// Seit #69 traegt den Verweis nicht mehr ein dauerhaft sichtbarer Absatz, sondern ein knapper
+// Tooltip AM Bedienelement — der Fundort der Laenge bleibt damit benannt (Absicht von #56).
 ok('#56 die Oberflaeche verweist fuer die Laenge auf den Geschosseditor',
-  /id="lenHint"/.test(html) && /Geschosseditor/.test(html));
+  /<input type="number" id="len"[^>]*title="[^"]*Geschosseditor[^"]*"/.test(html));
 // Muss 7: andere fachliche Aenderungen rechnen weiter — mit der GESPEICHERTEN Laenge.
 const vorLaenge=store.aktivesWandelement().length_mm;
 document.getElementById('qk').value='2.0'; document.getElementById('qk').dispatch('input');
@@ -304,6 +306,78 @@ ok('#56 Oeffnung hinzufuegen laesst die gespeicherte Laenge unberuehrt',
   nachOp.length_mm===vorLaenge && nachOp.openings.length===1);
 // Ausgangszustand fuer die folgenden Abschnitte wiederherstellen (glatte 2,00-m-Wand).
 document.getElementById('qk').value='1.00';
+WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[]),{wandtyp:'mit_wind'}));
+
+// ---- Issue #69: linke Eingabespalte ohne statische Anleitungstexte ------------------
+// Geprueft wird der ECHTE linke Bedienbereich der HTML-Quelle — und zwar OHNE Kommentare:
+// die Quellkommentare erklaeren dieselben Sachverhalte mit denselben Stichworten und wuerden
+// die Abwesenheitsprueufungen sonst falsch rot faerben.
+const LINKS = html.match(/<div class="controls panel">[\s\S]*?<div class="stage panel">/)[0]
+  .replace(/<!--[\s\S]*?-->/g,'');
+ok('[#69] einleitender Erklaerungstext auf eine Funktionsbezeichnung reduziert', (()=>{
+  const p=html.match(/<p class="intro">([\s\S]*?)<\/p>/);
+  if(!p) return false;
+  const text=p[1].replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
+  return text.length<=60 && /Wand planen/.test(text)
+    && !/Katalogprodukte dieser Wand/.test(html);
+})());
+// Fuer die Abwesenheitspruefung zaehlt der SICHTBARE Text: knappe Hover-Tooltips am
+// Bedienelement sind ausdruecklich erlaubt und werden deshalb vorher herausgeschnitten.
+const SICHTBAR = LINKS.replace(/\stitle="[^"]*"/g,'');
+ok('[#69] keine statischen Anleitungsbloecke mehr in der linken Spalte', (()=>{
+  const verboten=[
+    'Alles Übrige auf dieser',            // Laengenfuehrung
+    'Maximalhöhe',                        // Staffelung
+    'Achsen an Öffnungs- und Stufenkanten',  // Spannachsenverteilung
+    'Fuß immer Bodenblech (15 mm). Kopf wahlweise',   // Vorspann-Hardware (statischer Absatz)
+    'Die Wände werden im Innenraum montiert',         // Reststueck-Erklaerung
+    'alleinige Quelle',                   // Produktauswahl
+    'Vorbelegt aus dem Katalog',          // Produktauswahl
+    'Gespeichert werden nur',             // Produktauswahl
+    'Ein Datenmodell',                    // gemeinsames Datenmodell
+  ];
+  return verboten.every(t=>!SICHTBAR.includes(t));
+})());
+ok('[#69] die linke Spalte traegt keine Regelreferenzen mehr', !/\[(Z|P|A|V|D)-\d+\]/.test(SICHTBAR));
+ok('[#69] Langtext zur Laengenfuehrung ersatzlos entfernt (kein lenHint-Block mehr)',
+  !/id="lenHint"/.test(html));
+ok('[#69] Kennzeichnung „zu bestätigen“ entfernt, Materialfelder unveraendert',
+  !/zu bestätigen/.test(LINKS) && /<h3>Materialannahmen<\/h3>/.test(LINKS)
+  && /id="fcd" value="20"/.test(LINKS) && /id="cfd" value="0.60"/.test(LINKS)
+  && /id="rho" value="14"/.test(LINKS));
+ok('[#69] Materialwerte gehen unveraendert in die Vorgaben', (()=>{
+  const m=WP.vorgaben().material;
+  return m.fcd_Nmm2===20 && m.cfd===0.60 && m.rho===14; })());
+ok('[#69] Gruppenueberschriften und Bedienelemente bleiben in derselben Reihenfolge', (()=>{
+  const soll=['1 · Wand','Öffnungen','Staffelung (getreppter Aufbau)','Seiten (Funktion)',
+    '2 · Auslegung','Last (horizontal, Fläche)','Modus','Spannachsen','Vorspann-Hardware',
+    'Materialannahmen','3 · Produkte (Bauteilkatalog)'];
+  let pos=-1;
+  for(const t of soll){ const i=LINKS.indexOf('>'+t+'<'); if(i<=pos) return false; pos=i; }
+  const felder=['len','hgt','addTuer','addFenster','durchTool','durchClear','axisTool','axisDel',
+    'axisAuto','addStep','sideVorne','sideHinten','qk','gammaQ','modus','spacing','force',
+    'startAchse','blechCm','topConn','rodUeber','fcd','cfd','rho','prodRollen','run'];
+  return felder.every(id=>LINKS.includes('id="'+id+'"')); })());
+ok('[#69] dynamische Zustandsanzeigen bleiben im linken Bereich erhalten',
+  ['rodQuelle','rodRestQuelle','prodInfo','prodRollen','saveHint']
+    .every(id=>LINKS.includes('id="'+id+'"')));
+// Die kontextabhaengigen Kurzhilfen duerfen bleiben — und werden weiterhin echt geschaltet.
+ok('[#69] Durchbruch-Kurzhilfe erscheint nur im Werkzeug', (()=>{
+  const h=document.getElementById('durchHint');
+  const zu0=h.style.display;
+  document.getElementById('durchTool').dispatch('click');
+  const an=h.style.display;
+  document.getElementById('durchTool').dispatch('click');
+  return zu0!=='block' && an==='block' && h.style.display==='none'; })());
+ok('[#69] Spannachsen-Kurzhilfe erscheint nur im Werkzeug', (()=>{
+  const h=document.getElementById('axisHint');
+  WP.setAxisEdit(true); const an=h.style.display;
+  WP.setAxisEdit(false);
+  return an==='block' && h.style.display==='none'; })());
+ok('[#69] lange Bedienhilfen haengen als Tooltip am Bedienelement',
+  /id="axisTool"[^>]*title="[^"]+"/.test(LINKS) && /id="addStep"[^>]*title="[^"]+"/.test(LINKS)
+  && /id="startAchse"[^>]*title="[^"]+"/.test(LINKS) && /id="topConn"[^>]*title="[^"]+"/.test(LINKS));
+WP.setManualCols(null);   // Achsen-Editor hinterlaesst keinen Zustand fuer die naechsten Abschnitte
 WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[]),{wandtyp:'mit_wind'}));
 
 // ---- Issue #35: Produkte dieser Wand (echte Modul-1-Oberfläche) ----------------------

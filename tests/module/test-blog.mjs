@@ -39,16 +39,18 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-ok("die aktive Wand im Geschosseditor (Issue 66) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260812-05" && EINTRAEGE[0]?.issue === 66);
-ok("die Blattreduktion zu Issue 61 folgt direkt danach",
-  EINTRAEGE[1]?.id === "chg-20260812-04" && EINTRAEGE[1]?.issue === 61);
-ok("der kompakte Lageplankopf zu Issue 59 bleibt als dritter aktueller Eintrag erhalten",
-  EINTRAEGE[2]?.id === "chg-20260812-03" && EINTRAEGE[2]?.issue === 59);
-ok("der Eintrag zu Issue 56 bleibt als vierter aktueller Eintrag erhalten",
-  EINTRAEGE[3]?.id === "chg-20260812-02" && EINTRAEGE[3]?.issue === 56);
-ok("die Workflow-Retros zu Issue 65 bleiben als fuenfter aktueller Eintrag erhalten",
-  EINTRAEGE[4]?.id === "chg-20260812-01" && EINTRAEGE[4]?.issue === 65);
+ok("die kompakte Eingabespalte in Modul 1 (Issue 69) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260812-06" && EINTRAEGE[0]?.issue === 69);
+ok("die aktive Wand im Geschosseditor (Issue 66) folgt direkt danach",
+  EINTRAEGE[1]?.id === "chg-20260812-05" && EINTRAEGE[1]?.issue === 66);
+ok("die Blattreduktion zu Issue 61 bleibt als dritter aktueller Eintrag erhalten",
+  EINTRAEGE[2]?.id === "chg-20260812-04" && EINTRAEGE[2]?.issue === 61);
+ok("der kompakte Lageplankopf zu Issue 59 bleibt als vierter aktueller Eintrag erhalten",
+  EINTRAEGE[3]?.id === "chg-20260812-03" && EINTRAEGE[3]?.issue === 59);
+ok("der Eintrag zu Issue 56 bleibt als fuenfter aktueller Eintrag erhalten",
+  EINTRAEGE[4]?.id === "chg-20260812-02" && EINTRAEGE[4]?.issue === 56);
+ok("die Workflow-Retros zu Issue 65 bleiben als sechster aktueller Eintrag erhalten",
+  EINTRAEGE[5]?.id === "chg-20260812-01" && EINTRAEGE[5]?.issue === 65);
 
 // --- 2) Validator: jede Regel schlaegt einzeln an -------------------------
 const gut = { id: "chg-20260805-01", datum: "2026-08-05", typ: "feature", issue: 48, titel: "Titel" };
