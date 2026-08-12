@@ -281,6 +281,58 @@ t("[#59] dieselbe Ausgabe traegt die Nicht-null-Masse weiterhin",
 t("[#59] das Wandrechteck der fixierten Wand wird ganz normal gezeichnet",
   svgFix.svg.includes('data-wand="w-a"'));
 
+// --- [#59] Masszahlen ueberdecken einander nicht — wie im Editor -----------
+// Ein drittes Mass legt sich per `linie_mm` auf die Masslinie von bm-1: gleiche
+// Bezuege, gleicher Mittelpunkt — ohne Anordnung staenden beide Zahlen
+// deckungsgleich. Das Blatt muss DIESELBE kollisionsfreie Anordnung zeigen wie
+// der Editor: beide rechnen mit `massTextLayout` aus `sembla-massbild.js`.
+
+const mKoll = MAPPE.setzeBemassung(MAPPE0, gsEG, { id: "bm-koll", achse: "y",
+  von: { wand: "w-a", bezug: "mitte" }, bis: { wand: "w-b", bezug: "mitte" }, mass_mm: 3000,
+  linie_mm: -2 * MB.MASS_ABSTAND_MM });
+const datenKoll = LP.lageplanDaten({ mappe: mKoll, geschossId: gsEG, elemente: ELEMENTE });
+const disjunkt = (a, b) => a.x_min >= b.x_max || b.x_min >= a.x_max
+  || a.y_min >= b.y_max || b.y_min >= a.y_max;
+const flKoll = datenKoll.massbilder.map((g) => MB.massTextFlaeche(g));
+
+t("[#59] Pruefaufbau: die Masslinien liegen wirklich uebereinander",
+  datenKoll.massbilder.length === 3
+  && datenKoll.massbilder[2].q === datenKoll.massbilder[0].q);
+t("[#59] die Beschriftungsflaechen des Blattes ueberdecken einander nicht",
+  disjunkt(flKoll[0], flKoll[1]) && disjunkt(flKoll[0], flKoll[2])
+  && disjunkt(flKoll[1], flKoll[2]));
+t("[#59] die Anordnung ist bitgenau die der gemeinsamen Ableitung — dieselbe wie im Editor",
+  (() => {
+    const geschoss = MAPPE.findeGeschoss(mKoll, gsEG).geschoss;
+    const ctxK = MB.massKontext(geschoss.waende,
+      CON.pruefeGeschoss(geschoss.waende, MAPPE.bemassungen(mKoll, gsEG)));
+    const ref = MB.massTextLayout(MAPPE.bemassungen(mKoll, gsEG)
+      .map((bm, i) => MB.massGeometrie(bm, i, ctxK)));
+    return JSON.stringify(datenKoll.massbilder) === JSON.stringify(ref);
+  })());
+t("[#59] nur die Zahl weicht aus — Masslinie, Werte und die gespeicherte Bemassung bleiben",
+  datenKoll.massbilder[2].versatz.x === MB.MASS_TEXT_MM.hoehe
+  && datenKoll.massbilder[0].versatz.x === 0
+  && datenKoll.massbilder[2].mass === 3000
+  && MAPPE.bemassungen(mKoll, gsEG).find((b) => b.id === "bm-koll").text_mm == null);
+
+// Vorschau (Blatt-HTML), Druckdokument und SVG-Datei zeigen dieselben getrennten
+// Textlagen — es ist ein Pfad, keine zweite Zeichenrechnung.
+const massTextPos = (s, id) => {
+  const m = new RegExp(`<g class="lpmass[^"]*" data-bemassung="${id}">.*?<text x="([^"]*)" y="([^"]*)"`)
+    .exec(s);
+  return m ? m[1] + "/" + m[2] : null;
+};
+const blattKoll = LP.blattHtml(datenKoll);
+const svgDateiKoll = LP.lageplanSvgDatei(datenKoll);
+t("[#59] die beiden kollidierenden Zahlen stehen im Blatt an verschiedenen Stellen",
+  massTextPos(blattKoll.svg, "bm-koll") !== null
+  && massTextPos(blattKoll.svg, "bm-koll") !== massTextPos(blattKoll.svg, "bm-1"));
+t("[#59] Vorschau und Ausgabeableitung zeigen DIESELBEN Beschriftungslagen",
+  ["bm-1", "bm-2", "bm-koll"].every((id) =>
+    massTextPos(blattKoll.svg, id) === massTextPos(svgDateiKoll, id)
+    && massTextPos(blattKoll.svg, id) === massTextPos(LP.lageplanDokument(datenKoll), id)));
+
 // --- [N-6] Schriftfeld aus mappe.projekt.kopfdaten -------------------------
 
 const blatt = LP.blattHtml(daten);

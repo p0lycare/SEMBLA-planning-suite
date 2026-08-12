@@ -1131,6 +1131,19 @@ function bemText(g){
 }
 
 /**
+ * Die kollisionsfrei angeordneten Maßgeometrien ALLER Maße des Geschosses (#59),
+ * in Mappenreihenfolge. Gerechnet wird in `sembla-massbild.js` — mit derselben
+ * Funktion, mit der auch der Lageplan (Modul 9) seine Zahlen setzt ([N-5]). Der
+ * automatische Ausweichversatz steckt nur im `versatz` der Kopie und wird nie
+ * gespeichert; Maßlinie, Maßwert und Bezüge bleiben bitgenau. Zeichnen, Treffen,
+ * Ziehen und Inline-Eingabe lesen alle DIESE Liste — die dargestellte Textlage
+ * ist damit überall dieselbe.
+ */
+function bemLayout(erg){
+  return MB.massTextLayout(bemassungen().map((bm, i) => bemGeometrie(bm, i, erg)));
+}
+
+/**
  * Höhe des Maßtextes über der Maßlinie in Schirmpixeln. Der Text steht bei
  * `q − 5 px` (in beiden Achsen, bei `y` nach der Drehung um −90°) und ist rund
  * 12 px hoch — er gehört zur **Trefferfläche des Maßes**: wie im CAD trifft ein
@@ -1150,8 +1163,11 @@ const MASSTEXT_HALB_PX = { laengs: 34, quer: 9 };
 function bemTextTreffer(p, erg){
   if (!GP.masseAn) return null;                   // ausgeblendet heißt auch: nicht treffbar (#53)
   const liste = bemassungen();
+  // Getroffen wird die TATSÄCHLICH dargestellte Zahl — also die kollisionsfrei
+  // angeordnete Lage aus `bemLayout` (#59), nicht die unverlegte Rohstelle.
+  const gs = bemLayout(erg);
   for (let i = liste.length - 1; i >= 0; i--) {
-    const g = bemGeometrie(liste[i], i, erg);
+    const g = gs[i];
     if (!g) continue;
     const t = bemText(g).mitte;
     // Die Zahl der y-Achse ist um −90° gedreht: längs und quer tauschen die Seiten.
@@ -1175,8 +1191,9 @@ function bemTreffer(p, erg){
   if (amText) return amText;
   const luft = FANG_PX * V.mm;
   const liste = bemassungen();
+  const gs = bemLayout(erg);
   for (let i = liste.length - 1; i >= 0; i--) {
-    const g = bemGeometrie(liste[i], i, erg);
+    const g = gs[i];
     if (!g) continue;
     const laengs = g.achse === 'x' ? p.x : p.y, quer = g.achse === 'x' ? p.y : p.x;
     // Getroffen wird die Maßlinie (± Fangradius) UND das Feld der Maßzahl darüber.
@@ -1189,16 +1206,18 @@ function bemTreffer(p, erg){
 /** Mitte der Maßzahl eines Maßes als Weltpunkt (Zeichnen und Treffen, s. o.). */
 function bemTextPunkt(id){
   const erg = loesen();
-  const liste = bemassungen();
-  const i = liste.findIndex(b => b.id === id);
+  const i = bemassungen().findIndex(b => b.id === id);
   if (i < 0) return null;
-  const g = bemGeometrie(liste[i], i, erg);
+  const g = bemLayout(erg)[i];
   return g ? bemText(g).mitte : null;
 }
 
-/** Ein Maß als Maßlinie mit Hilfslinien und Text. Rot bei Widerspruch ([K-6]/[K-8]). */
-function bemassungSvg(bm, idx, erg){
-  const g = bemGeometrie(bm, idx, erg);
+/**
+ * Ein Maß als Maßlinie mit Hilfslinien und Text. Rot bei Widerspruch ([K-6]/[K-8]).
+ * `g` kommt aus `bemLayout` (#59) — Zahl an der kollisionsfreien Stelle, Maßlinie
+ * unverändert an der gestaffelten.
+ */
+function bemassungSvg(g, erg){
   if (!g) return '';
   const streit = (erg.widersprueche || []).some(w => w.bemassung === g.id || w.konflikt_mit === g.id);
   const doppelt = (erg.redundanzen || []).some(w => w.bemassung === g.id);
@@ -1477,7 +1496,7 @@ function render(){
   for (const w of waende()) teile.push(wandSvg(w, erg, koll));
   // Ausgeblendete Bemaßungen werden nicht gezeichnet — die Staffelung (`i`) bleibt
   // dieselbe, damit sie beim Einblenden bit-genau wieder dort stehen (#53).
-  if (GP.masseAn) bemassungen().forEach((bm, i) => teile.push(bemassungSvg(bm, i, erg)));
+  if (GP.masseAn) bemLayout(erg).forEach(g => teile.push(bemassungSvg(g, erg)));
   teile.push(bezuegeSvg(erg), bemEntwurfSvg(erg));
   teile.push(zugSvg(erg), groesseSvg(erg), entwurfSvg(), kalSvgTeil(), '</svg>');
   buehne.innerHTML = teile.join('');
@@ -3215,6 +3234,8 @@ window.__gp = {
   bemTextPunkt,
   /** Nur die Maßzahl (enger als `bemTreffer`) — dort beginnt der Zug (#51). */
   bemTextTreffer: (welt) => bemTextTreffer(welt, loesen()),
+  /** Die kollisionsfrei angeordneten Maßgeometrien in Mappenreihenfolge (#59). */
+  bemLayout: () => bemLayout(loesen()),
   /** Mitte des vollständigen, noch ungespeicherten Maßentwurfs. */
   bemEntwurfTextPunkt,
   /** Die Inline-Eingabe: dieselben Behandler wie Tastatur und Fokus im Browser. */

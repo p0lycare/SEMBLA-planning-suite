@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-10",
+    datum: "2026-08-12",
+    typ: "fix",
+    issue: 59,
+    titel: "Maßzahlen im Geschosseditor und im Lageplan weichen einander automatisch aus und bleiben einzeln lesbar",
+    testbitte: "Im Geschosseditor ein Maß per Ziehen an der Maßzahl auf die Maßlinie eines anderen legen: Beide Zahlen bleiben getrennt lesbar und einzeln anklickbar, und der Lageplan des Geschosses zeigt dieselbe Anordnung.",
+  },
+  {
     id: "chg-20260812-09",
     datum: "2026-08-12",
     typ: "fix",

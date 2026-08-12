@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "df0188ed",
+  "signatur": "824e78e2",
   "entscheidungen": [
     {
       "issue": 41,
@@ -87,7 +87,7 @@ export const PLAN = {
   "weitere": [
     {
       "issue": 59,
-      "titel": "Lageplan: weitere Bemaßungskorrekturen",
+      "titel": "Bemaßung im Geschossplan: Elementbreite bemaßbar machen und Ursprungsdarstellung fachlich abnehmen",
       "prio": "high",
       "status": "ohne",
       "sicherheit": false,

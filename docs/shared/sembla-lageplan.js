@@ -44,7 +44,7 @@ import {
   ACHSEN, FARBEN, GRID_MM, HALB_BREITE_MM,
   normLage, laengeMm, wandRechteck, pruefeGeschoss, zustand,
 } from "./sembla-constraints.js";
-import { massKontext, massGeometrie, massAnker, massPfad } from "./sembla-massbild.js";
+import { massKontext, massGeometrie, massTextLayout, massAnker, massPfad } from "./sembla-massbild.js";
 import { findeGeschoss, kopfdaten as mappeKopfdaten, laengenAbgleich } from "./sembla-projektmappe.js";
 
 // ------------------------------------------------------------ Blatt & Masstab
@@ -254,7 +254,10 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
 
   // Bemassungen: Reihenfolge und Index sind die der Mappe — die Staffelung der
   // Massdarstellung haengt daran und ist damit dieselbe wie im Editor ([N-5]).
-  const massbilder = bemassungenRoh.map((bm, i) => massGeometrie(bm, i, ctx));
+  // Die Masszahlen laufen zusaetzlich durch die kollisionsfreie Anordnung (#59):
+  // DIESELBE Funktion wie im Editor, damit beide dieselben Textlagen zeigen —
+  // Masslinien, Werte und die gespeicherten Bemassungen bleiben unveraendert.
+  const massbilder = massTextLayout(bemassungenRoh.map((bm, i) => massGeometrie(bm, i, ctx)));
   bemassungenRoh.forEach((bm, i) => {
     if (massbilder[i]) return;
     meldungen.push({ art: "mass_ohne_wand", text:

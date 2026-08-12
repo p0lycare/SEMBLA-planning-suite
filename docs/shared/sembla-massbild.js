@@ -33,6 +33,13 @@
  * Felder nicht. Fehlen sie, steht alles bitgenau an der automatisch gestaffelten
  * Stelle — es wird keine erfunden.
  *
+ * Dazu kommt seit #59 die KOLLISIONSFREIE Anordnung der Masszahlen
+ * (`massTextLayout`): gleichzeitig sichtbare Zahlen duerfen einander nicht
+ * ueberdecken. Der automatische Ausweichversatz ist fluechtige Darstellung —
+ * er wird bei jeder Ableitung frisch gerechnet, nie gespeichert und aendert
+ * weder Masswert noch Masslinie. Editor und Lageplan rufen DIESELBE Funktion
+ * auf, damit beide dieselbe Anordnung zeigen ([N-5]).
+ *
  * Rein und DOM-frei. Eigene Datei nach shared-Regel a+b: zwei Nutzer
  * (`docs/geschossplan.html`, `docs/shared/sembla-lageplan.js`) und eigene Tests
  * (`tests/module/test-massbild.mjs`).
@@ -145,6 +152,78 @@ export function massAnker(g, textHoehe) {
   const y = (g.achse === "x" ? g.q : laengs) + g.versatz.y;
   const h = Number(textHoehe) || 0;
   return { anker: { x, y }, mitte: g.achse === "x" ? { x, y: y - h } : { x: x - h, y } };
+}
+
+/**
+ * Kanonisches Mass der Beschriftungsflaeche einer Masszahl in Welt-mm (#59):
+ * `zeichen` ist die Breite je Zeichen laengs der Schrift, `hoehe` die Zeilenhoehe
+ * quer dazu — zugleich die Schrittweite des automatischen Ausweichens. Bewusst
+ * BLICKUNABHAENGIG (weder Editor-Zoom noch Papiermassstab gehen ein), damit
+ * Editor und Lageplan bitgenau dieselbe Anordnung errechnen.
+ */
+export const MASS_TEXT_MM = { zeichen: 110, hoehe: 200 };
+
+/**
+ * Beschriftungsflaeche einer Masszahl in Weltkoordinaten (mm): das Rechteck der
+ * dargestellten Zahl an ihrer Stelle nach Staffelung, `linie_mm` und `text_mm`.
+ * Die Zahl steht ueber der Masslinie; in Achse y ist sie um −90° gedreht, laengs
+ * und quer tauschen deshalb die Seiten (wie in `massAnker`).
+ *
+ * @param {{achse:'x'|'y', v1:number, v2:number, q:number, mass:number|null,
+ *          versatz:{x:number,y:number}}} g
+ * @returns {{x_min:number, x_max:number, y_min:number, y_max:number}}
+ */
+export function massTextFlaeche(g) {
+  const breite = Math.max(1, String(g.mass ?? "").length) * MASS_TEXT_MM.zeichen;
+  const laengs = (g.v1 + g.v2) / 2;
+  if (g.achse === "x") {
+    const x = laengs + g.versatz.x, y = g.q + g.versatz.y;
+    return { x_min: x - breite / 2, x_max: x + breite / 2, y_min: y - MASS_TEXT_MM.hoehe, y_max: y };
+  }
+  const x = g.q + g.versatz.x, y = laengs + g.versatz.y;
+  return { x_min: x - MASS_TEXT_MM.hoehe, x_max: x, y_min: y - breite / 2, y_max: y + breite / 2 };
+}
+
+/**
+ * Kollisionsfreie Anordnung der Masszahlen (#59). Deterministisch aus
+ * Reihenfolge und Geometrie: die Liste kommt in Mappenreihenfolge, die erste
+ * Zahl bleibt an ihrer Stelle, jede weitere weicht in ganzen `hoehe`-Schritten
+ * quer zur Messrichtung nach aussen (+q) aus, bis ihre Flaeche keine bereits
+ * platzierte mehr ueberdeckt. Gespeicherte `linie_mm`/`text_mm` wirken ZUERST
+ * und gehen unveraendert in die Pruefung ein.
+ *
+ * Der Ausweichversatz steckt allein im `versatz` der zurueckgegebenen KOPIE —
+ * er ist fluechtig und wird nie gespeichert. Masslinie (`q`), Fusspunkte,
+ * Endwerte und Masswert bleiben bitgenau; ohne Kollision ist der Eintrag das
+ * unveraenderte Eingabeobjekt. Ausgeblendet wird nichts, `null` bleibt `null`.
+ *
+ * @param {Array<{achse:'x'|'y', v1:number, v2:number, q:number, mass:number|null,
+ *                versatz:{x:number,y:number}}|null>} geometrien
+ *        Ergebnisse von `massGeometrie` in Mappenreihenfolge
+ * @returns {Array<object|null>} gleiche Laenge und Reihenfolge
+ */
+export function massTextLayout(geometrien) {
+  /** @type {Array<{x_min:number,x_max:number,y_min:number,y_max:number}>} */
+  const belegt = [];
+  const frei = (f) => belegt.every((b) =>
+    f.x_min >= b.x_max || b.x_min >= f.x_max || f.y_min >= b.y_max || b.y_min >= f.y_max);
+  return (Array.isArray(geometrien) ? geometrien : []).map((g) => {
+    if (!g) return null;
+    const quer = g.achse === "x" ? "y" : "x";
+    const mitAuto = (auto) =>
+      auto ? { ...g, versatz: { ...g.versatz, [quer]: g.versatz[quer] + auto } } : g;
+    let auto = 0;
+    // Terminiert immer OHNE Kappe: `belegt` ist endlich, und jeder Schritt schiebt
+    // die Flaeche monoton nach +q — jenseits der am weitesten aussen liegenden
+    // belegten Flaeche ist sie zwangslaeufig frei. Eine feste Obergrenze liesse
+    // bei genuegend deckungsgleichen Zahlen wieder eine Ueberdeckung zu.
+    while (!frei(massTextFlaeche(mitAuto(auto)))) {
+      auto += MASS_TEXT_MM.hoehe;
+    }
+    const platziert = mitAuto(auto);
+    belegt.push(massTextFlaeche(platziert));
+    return platziert;
+  });
 }
 
 /**

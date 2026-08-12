@@ -2558,6 +2558,87 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && store.aktivesGeschoss().geschoss.id === gs66);
 }
 
+// ==========================================================================
+//  Issue #59 — Masszahlen ueberdecken einander nicht (kollisionsfreie Anordnung)
+// ==========================================================================
+// Angelegt wird ueber das ECHTE Masswerkzeug; kollidieren laesst sie der ganz
+// normale Zug an der Masszahl (`linie_mm`). Die Zahlen muessen getrennt lesbar
+// bleiben und an ihrer TATSAECHLICH dargestellten Stelle treff-, zieh- und
+// inline-bearbeitbar sein. Gespeichert wird KEIN Ausweichversatz — nur der Zug.
+{
+  store.setzeAktivesProjekt(prj2.projekt.id);
+  store.setzeAktivesGeschoss(gs2);
+  await warte();
+  GP.werkzeug('auswahl');
+  GP.zeigeAlles();
+
+  const r2v = (v) => Math.round(Number(v) * 100) / 100;
+  const disjunkt = (a, b) => a.x_min >= b.x_max || b.x_min >= a.x_max
+    || a.y_min >= b.y_max || b.y_min >= a.y_max;
+  const getrennt = (fl) => fl.every((a, i) => fl.slice(i + 1).every((b) => disjunkt(a, b)));
+  const flaechen = (lay) => lay.filter(Boolean).map((g) => MB.massTextFlaeche(g));
+
+  // (a) Eine weitere nahe Bemassung ueber den realen Editorpfad anlegen.
+  GP.werkzeug('bemassen');
+  GP.tippe(GP.bezugsPunkt(idA, 'y', 'max'));
+  GP.tippe(GP.bezugsPunkt(idB, 'y', 'max'));
+  inlineEnter(2500);
+  await warte();
+  GP.werkzeug('auswahl');
+  const mNeu = GP.bemassungen()[GP.bemassungen().length - 1];
+  const layVor = GP.bemLayout();
+  ok('#59 nach dem Anlegen ueber das echte Werkzeug sind ALLE Masszahlen getrennt lesbar',
+    GP.bemassungen().length >= 2 && getrennt(flaechen(layVor)));
+
+  // (b) Der normale Zug an der Zahl legt die neue Masslinie AUF die von bmY —
+  //     ohne Anordnung staenden beide Zahlen deckungsgleich uebereinander.
+  const iNeu = GP.bemassungen().findIndex(b => b.id === mNeu.id);
+  const iZiel = GP.bemassungen().findIndex(b => b.id === bmY.id);
+  const delta = layVor[iZiel].q - layVor[iNeu].q;
+  const vorPos59 = posVon();
+  const p0 = gp('bemTextPunkt', mNeu.id);
+  GP.ziehe(p0, { x: p0.x + delta, y: p0.y });
+  await warte();
+
+  const lay = GP.bemLayout();
+  ok('#59 der Zug legt die Masslinien wirklich uebereinander — die Kollision ist echt',
+    Math.abs(bm51(mNeu.id).linie_mm - delta) < 1 && lay[iNeu].q === lay[iZiel].q);
+  ok('#59 die Zahlen bleiben trotzdem getrennt — automatisch und deterministisch',
+    getrennt(flaechen(lay)) && lay[iNeu].versatz.x >= MB.MASS_TEXT_MM.hoehe
+    && lay[iZiel].versatz.x === 0);
+  ok('#59 die Masslinie folgt NUR dem Zug, nicht dem Ausweichversatz der Zahl',
+    lay[iNeu].q === layVor[iNeu].q + delta
+    && lay.every((g, i) => !g || g.q === (i === iNeu ? layVor[i].q + delta : layVor[i].q)));
+  ok('#59 die dargestellten Textknoten stehen an verschiedenen Stellen',
+    textVon(mNeu.id) !== '' && textVon(mNeu.id) !== textVon(bmY.id));
+  const anker59 = MB.massAnker(lay[iNeu], 0).anker;
+  ok('#59 gezeichnet wird exakt die angeordnete Lage — Zeichnen und Ableitung sind dieselbe Quelle',
+    textVon(mNeu.id) === `${r2v(anker59.x)}/${r2v(anker59.y - 5 * GP.blick.mm)}`);
+
+  // (c) Treffen, Ziehen und Inline-Bearbeiten an der TATSAECHLICHEN Textlage.
+  const pT = gp('bemTextPunkt', mNeu.id);
+  ok('#59 die ausgewichene Zahl ist an ihrer dargestellten Stelle treffbar',
+    GP.bemTextTreffer(pT) === mNeu.id);
+  const vorL59 = bm51(mNeu.id).linie_mm;
+  GP.ziehe(pT, { x: pT.x + 125, y: pT.y });
+  await warte();
+  ok('#59 der naechste Zug startet an der dargestellten Zahl und wirkt normal weiter',
+    Math.abs(bm51(mNeu.id).linie_mm - (vorL59 + 125)) < 1);
+  const pT2 = gp('bemTextPunkt', mNeu.id);
+  doppel(pT2);
+  ok('#59 der Doppelklick auf die ausgewichene Zahl oeffnet die Inline-Eingabe',
+    GP.inlineStand.offen && GP.inlineStand.id === mNeu.id && GP.inlineStand.wert === '2500');
+  gp('inlineTaste', 'Escape');
+
+  // (d) Reine Darstellung: nichts Gespeichertes ausser dem Zug, nichts Geloestes anders.
+  const gespeichert59 = MAPPE.bemassungen(store.holeMappe(), gs2).find(b => b.id === mNeu.id);
+  ok('#59 der Ausweichversatz wird NIE gespeichert — in der Mappe steht nur der Zug (`linie_mm`)',
+    gespeichert59.text_mm == null && typeof gespeichert59.linie_mm === 'number'
+    && gespeichert59.mass_mm === 2500);
+  ok('#59 Masswert, Bezuege und Loeserergebnis bleiben unveraendert (reine Darstellung)',
+    posVon() === vorPos59 && bm51(mNeu.id).mass_mm === 2500);
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);
