@@ -204,17 +204,23 @@ function geschossAnlegen(projektId, name, hoehe){
   $('gp-speichern').dispatch('click');
   return store.aktivesGeschossId();
 }
-/** Wand ueber den echten Dialog anlegen (Popup oeffnen -> Felder -> „Anlegen").
- *  Der Handler ist ECHT asynchron: er stellt vor der Anlage sicher, dass ein Katalog da
- *  ist ([P-18], #15/#62), und legt die Wand erst danach an — in EINEM Schreibvorgang. */
-async function wandAnlegen(geschossId, { name, laenge = 2000, hoehe = 2600, wandtyp = 'mit_wind' }){
-  baum('wand-neu', geschossId);
-  $('f-name').value = name;
-  $('f-laenge').value = String(laenge);
-  $('f-hoehe').value = String(hoehe);
-  $('f-wandtyp').value = wandtyp;
-  await $('btn-neu').dispatch('click');
-  return store.aktivId();
+/**
+ * VORBEDINGUNG herstellen: eine Wand existiert und ist im Geschoss eingetragen.
+ *
+ * Seit Issue #56 legt Modul 0 keine Wand mehr an — das tut ausschliesslich das
+ * Wandwerkzeug des Geschosseditors. Der Helfer geht deshalb GENAU dessen Weg: der
+ * gemeinsame Anlagepfad `sembla-wandanlage.js` (ein Schreibvorgang, [P-18]/#15/#62),
+ * danach der Geschosseintrag ohne Lage ([L-4]) und das Aktivsetzen ([L-10]).
+ * Die Baumliste rendert daraufhin ueber `store.abonniere(trRender)` von selbst neu —
+ * geprueft wird also weiterhin die echte Modul-0-Oberflaeche.
+ *
+ * Dass Modul 0 selbst KEINEN Anlageweg mehr anbietet, prueft Abschnitt 1 gesondert.
+ */
+function wandAnlegen(geschossId, { name, laenge = 2000, hoehe = 2600, wandtyp = 'mit_wind' }){
+  const anlage = WA.legeWandAn(store, { name, laenge_mm: laenge, hoehe_mm: hoehe, wandtyp });
+  store.verorteWand(anlage.id, geschossId, { name, lage: null });
+  try { store.setzeAktiv(anlage.id); } catch { /* nicht aktivierbar: Zeiger bleibt */ }
+  return anlage.id;
 }
 
 // Ausgangslage: ein Projekt mit einem Geschoss — Waende leben nach [L-6] immer in
@@ -224,30 +230,41 @@ const gs0 = store.aktivesGeschossId();
 ok('[L-6] Anlegen erzeugt Projekt samt Gebaeude und Geschoss',
   !!prj0 && prj0.gebaeude.length === 1 && prj0.gebaeude[0].geschosse.length === 1 && !!gs0);
 
-// --- 1) Wandtyp-Auswahl existiert an der echten Oberflaeche ----------------
-ok('Wandtyp-Auswahl in Modul 0 vorhanden', /<select[^>]*id="f-wandtyp"/.test(html));
-ok('Auswahl bietet genau mit_wind/ohne_wind',
-  /value="mit_wind"[^>]*selected/.test(html) && /value="ohne_wind"/.test(html));
+// --- 1) #56: Modul 0 legt KEINE Wand mehr an -------------------------------
+// Geprueft gegen die echte HTML-Quelle: es gibt weder Anlageknopf noch Neuanlagedialog,
+// und die frueheren Geometriefelder sind ersatzlos entfallen — nicht nur gesperrt.
+ok('#56 kein Anlageknopf mehr in der Baumliste (`wand-neu` existiert nicht)',
+  !/data-act="wand-neu"/.test(html) && !/\+ Wand hinzufügen/.test(html));
+ok('#56 keine Geometrie-/Wandtypfelder mehr im Wand-Popup',
+  !/id="f-laenge"/.test(html) && !/id="f-hoehe"/.test(html) && !/id="f-wandtyp"/.test(html));
+ok('#56 die Baumliste verweist fuer neue Waende auf den Geschosseditor',
+  /Neue Wand zeichnen \(Geschosseditor\)/.test(html));
+ok('#56 der Dateiimport bleibt als eigener, ausdruecklicher Weg erhalten',
+  /data-act="wand-import"/.test(html) && /Wand aus Datei importieren/.test(html)
+  && /id="f-import"/.test(html) && /id="btn-vorlage-wand"/.test(html));
+ok('#56 der einzige Schreibknopf des Popups ist das Umbenennen',
+  /id="btn-neu" hidden>Namen speichern</.test(html));
 
-// --- 2) Anlegen mit gewaehltem Wandtyp -> steht am Wandelement (M1) --------
-const idOhneWind = await wandAnlegen(gs0, { name:'Wand ohne Wind', wandtyp:'ohne_wind' });
+// --- 2) Der Wandtyp steht am Wandelement (M1) ------------------------------
+// Angelegt wird im Geschosseditor (s. `wandAnlegen`); Modul 0 zeigt und verwaltet nur.
+const idOhneWind = wandAnlegen(gs0, { name:'Wand ohne Wind', wandtyp:'ohne_wind' });
 const we1=store.aktivesWandelement();
 ok('Anlegen setzt aktives Wandelement', !!we1 && we1.length_mm===2000);
 ok('gewaehlter Wandtyp am Wandelement gespeichert', we1.wandtyp==='ohne_wind');
-ok('Rueckmeldung an den Nutzer', /Angelegt/.test(trMsgTxt()) && !trFehler());
 ok('[L-4] die neue Wand ist im Geschoss eingetragen — ohne erfundene Lage',
   store.wandVerortung(idOhneWind)?.geschoss.id === gs0
   && store.wandVerortung(idOhneWind).wand.lage === null);
 ok('[L-10] die Wand des aktiven Geschosses wird dabei aktiv gesetzt', store.aktivId() === idOhneWind);
-ok('Wand-Dialog schliesst nach dem Anlegen', $('wp-overlay').hidden === true);
+ok('Modul 0 zeigt die neue Wand ohne eigenes Zutun in der Baumliste',
+  $('tr-baum').innerHTML.includes('Wand ohne Wind'));
 
-await wandAnlegen(gs0, { name:'Wand mit Wind', wandtyp:'mit_wind' });
+wandAnlegen(gs0, { name:'Wand mit Wind', wandtyp:'mit_wind' });
 ok('zweites Element mit eigenem Wandtyp', store.aktivesWandelement().wandtyp==='mit_wind');
 ok('erstes Element behaelt seinen Wandtyp',
   store.listeElemente().find(e=>e.name==='Wand ohne Wind').wandelement.wandtyp==='ohne_wind');
 
 // unsinnige Auswahl faellt auf den kompatiblen Standard zurueck
-await wandAnlegen(gs0, { name:'Wand kaputt', wandtyp:'quatsch' });
+wandAnlegen(gs0, { name:'Wand kaputt', wandtyp:'quatsch' });
 ok('unbekannter Wert -> Standard mit_wind', store.aktivesWandelement().wandtyp==='mit_wind');
 
 // --- 3) Wandtyp reist im Projekt-Export mit, Format bleibt v2 (M8/N4) ------
@@ -1182,8 +1199,11 @@ globalThis.fetch = echtesFetch;
   ok('[L-11] Kopfdaten stehen am Projekt, nicht am Wandelement',
     store.holeMappe().projekt.kopfdaten.bauherr === 'AWG eG'
     && store.holeMappe().projekt.kopfdaten.plan_nr === '07');
-  const idB = await wandAnlegen(gsB, { name:'Wand Süd 1' });
-  await new Promise(r => setTimeout(r, 0));      // [P-18]-Nachlauf des Anlege-Handlers abwarten
+  const idB = wandAnlegen(gsB, { name:'Wand Süd 1' });
+  // #56: Der Katalog wird ausdruecklich geladen (frueher tat das der entfallene
+  // Anlegen-Handler nebenbei) — je Projekt ein eigener, s. [L-12] weiter unten.
+  $('k-vorlage').dispatch('click');
+  await new Promise(r => setTimeout(r, 0));
   ok('[L-11] die Wand des Projekts bekommt dessen Kopfdaten', (() => {
     const k = store.wirksameKopfdaten(idB);
     return k.quelle === 'projekt' && k.kopfdaten.bauherr === 'AWG eG' && k.kopfdaten.name === 'Halle Süd';
@@ -1263,19 +1283,14 @@ globalThis.fetch = echtesFetch;
   ok('[L-5] die Geschosshoehe wird als Lagenzahl benannt',
     /2600 mm = 13 Lagen/.test(trMsgTxt()));
   ok('[L-10] das Anlegen hebt den Wandzeiger des alten Geschosses auf', store.aktivId() === null);
-  baum('wand-neu', gsNeu);
-  ok('[L-5] die Geschosshoehe steht als VORGABE im Hoehenfeld',
-    $('wp-overlay').hidden === false && $('f-hoehe').value === '2600'
-    && /Höhenvorgabe aus dem Geschoss/.test($('wp-hinweis').innerHTML));
   // #50: derselbe Wert heisst in der Oberflaeche durchgaengig Standard-Wandhoehe.
   ok('#50 Modul 0 nennt den Vorgabewert Standard-Wandhoehe, nicht mehr Geschosshoehe',
     !/Geschosshöhe/.test(html) && /Standard-Wandhöhe \(mm\)/.test(html));
   ok('#50 auch die Meldung zum Geschoss spricht von der Standard-Wandhoehe',
     /Standard-Wandhöhe 2600 mm = 13 Lagen/.test(trMsgTxt()));
-  $('f-hoehe').value = '2400';
-  $('f-name').value = 'Wand OG 1';
-  $('btn-neu').dispatch('click');
-  const idOg = store.aktivId();
+  // #56: Die Vorgabe steht jetzt im Hoehenfeld des GESCHOSSEDITORS ([L-5] unveraendert);
+  // Modul 0 haelt sie nur noch am Geschoss. Die Wand entsteht mit abweichender Hoehe.
+  const idOg = wandAnlegen(gsNeu, { name: 'Wand OG 1', hoehe: 2400 });
   ok('[L-5] die Vorgabe bleibt frei aenderbar und wird nie zurueckgeschrieben',
     store.holeElement(idOg).wandelement.height_mm === 2400
     && MAPPE.findeGeschoss(store.holeMappe(), gsNeu).geschoss.hoehe_mm === 2600);
@@ -1299,9 +1314,11 @@ globalThis.fetch = echtesFetch;
 
   // 8f) Wand-Popup „Bearbeiten": nur der Name, nie die Geometrie ([P-1]) ----
   baum('wand-bearbeiten', idOg);
-  ok('Bearbeiten sperrt Länge/Höhe/Wandtyp und verweist auf Modul 1',
-    $('f-laenge').disabled === true && $('f-hoehe').disabled === true
-    && $('f-wandtyp').disabled === true && /Modul&nbsp;1/.test($('wp-sub').innerHTML));
+  ok('#56 Bearbeiten ist reines Umbenennen und verweist auf Modul 1 und den Geschosseditor',
+    /Modul&nbsp;1/.test($('wp-sub').innerHTML) && /Geschosseditor/.test($('wp-sub').innerHTML)
+    && $('btn-neu').hidden === false);
+  ok('#56 die gespeicherte Geometrie steht dort nur als Anzeige',
+    /Länge: 2000 mm/.test($('wp-hinweis').innerHTML) && /Höhe: 2400 mm/.test($('wp-hinweis').innerHTML));
   ok('Bearbeiten blendet die Importwege aus', $('wp-quellen').hidden === true);
   $('f-name').value = 'Wand OG Nord';
   $('btn-neu').dispatch('click');
@@ -1798,22 +1815,26 @@ globalThis.fetch = echtesFetch;
   const ZEI = await import("../../docs/shared/sembla-zeichnung.js");
   const stuecke = (w) => (w.tension_columns || []).flatMap(c => (c.segments || []).flatMap(sg => sg.stuecke || []));
 
-  // Frischer Stand: eigenes Projekt, eigenes Geschoss, KEIN Katalog — damit der Handler
-  // seinen echten Weg geht und den Standardkatalog selbst nachlaedt ([P-18]).
+  // Frischer Stand: eigenes Projekt, eigenes Geschoss, KEIN Katalog.
   const altStand = localStorage.getItem('sembla:kataloge');
   const altAktiv = localStorage.getItem('sembla:aktiv:katalog');
   localStorage.removeItem('sembla:kataloge'); localStorage.removeItem('sembla:aktiv:katalog');
   const prjZ = projektAnlegen('Zuschnittprojekt');
   const gsZ = store.aktivesGeschossId();
   store.setzeProjektKatalog(null);
+  // #56: Das automatische Nachladen haing am entfallenen Anlegen-Handler von Modul 0.
+  // Der Katalog wird jetzt ausdruecklich im Katalog-Popup geladen — ueber den echten Knopf.
+  $('k-vorlage').dispatch('click');
+  await warte();
+  ok('#56 der Standardkatalog wird ueber den echten Katalog-Knopf geladen und zugeordnet',
+    !!store.holeKatalog() && /Standardkatalog geladen und zugeordnet/.test($('k-msg').textContent));
 
   // Jeden Schreibvorgang am Wandspeicher mitschreiben: so faellt ein initial persistierter
   // Fallback-Stand auf, selbst wenn er unmittelbar danach ueberschrieben wuerde (#15/#62).
   const schreibfolge = [];
   const echtesSetItem = localStorage.setItem.bind(localStorage);
   localStorage.setItem = (k, v) => { if (k === 'sembla:elemente') schreibfolge.push(String(v)); return echtesSetItem(k, v); };
-  const idZ = await wandAnlegen(gsZ, { name: 'Zuschnitt-Wand', laenge: 2000, hoehe: 2600 });
-  await warte();                                   // asynchrone Fortsetzung des Klick-Handlers
+  const idZ = wandAnlegen(gsZ, { name: 'Zuschnitt-Wand', laenge: 2000, hoehe: 2600 });
   localStorage.setItem = echtesSetItem;
   const wZ = store.holeElement(idZ).wandelement;   // GESPEICHERTER Stand
 
@@ -1830,10 +1851,11 @@ globalThis.fetch = echtesFetch;
     && JSON.stringify(JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_lengths_mm) === '[1000,850]');
   ok('[P-18] und im selben Stand stehen bereits die vorbelegten Verwendungsstellen',
     (JSON.parse(neueStaende[0])[idZ].eingaben?.planung?.produkte?.rollen?.rod_std || []).length === 2);
-  ok('#15 es gibt nur EINE Rueckmeldung — keine ueber einen Zwischenstand',
-    /Angelegt/.test(trMsgTxt()) && /Reststück 100 mm/.test(trMsgTxt()) && !trFehler());
+  ok('#15 der Anlagepfad benennt den Zuschnitt genau einmal — nie einen Zwischenstand',
+    /Reststück 100 mm/.test(WA.vorspannText(WA.vorspannVorgaben(
+      store.holeElement(idZ).eingaben, store.holeKatalog()))));
 
-  ok('#15 der Anlegen-Handler laedt den Standardkatalog und belegt vor ([P-18])',
+  ok('#15 der geladene Katalog belegt die Verwendungsstellen vor ([P-18])',
     !!store.holeKatalog() && store.holeProdukte(1, idZ).rollen.rod_std.length === 2);
   ok('#15 das unmittelbar gespeicherte JSON traegt die Kataloglaengen',
     JSON.stringify(wZ.prestress.rod_lengths_mm) === '[1000,850]' && wZ.rod_mm === 1000);
@@ -1855,8 +1877,7 @@ globalThis.fetch = echtesFetch;
     produkte: [{ id: 'stein-i3-375', kategorie: 'stein', bezeichnung: 'Stein i3',
                  einheit: 'Stk', preis: 9.5, breite_mm: 375, rollen: ['i3'] }] };
   store.importiereKatalogText(JSON.stringify(leer));
-  const idL = await wandAnlegen(gsZ, { name: 'Wand ohne Stangen', laenge: 2000, hoehe: 2600 });
-  await warte();
+  const idL = wandAnlegen(gsZ, { name: 'Wand ohne Stangen', laenge: 2000, hoehe: 2600 });
   const wL = store.holeElement(idL).wandelement;
   ok('#62 ohne gewaehlte Standardlaenge steht KEIN rod_lengths_mm:[1100] im Neubestand',
     wL.prestress.rod_lengths_mm.length === 0 && wL.rod_mm === null
@@ -1865,7 +1886,8 @@ globalThis.fetch = echtesFetch;
   ok('der fehlende Zuschnitt bleibt sichtbar offen ([Z-1])',
     wL.validation.zuschnitt_konflikte.length > 0
     && wL.validation.zuschnitt_konflikte.every(k => k.grund === 'keine_standardlaenge')
-    && /keine Gewindestangen-Standardlänge/.test(trMsgTxt()));
+    && /keine Gewindestangen-Standardlänge/.test(WA.vorspannText(WA.vorspannVorgaben(
+         store.holeElement(idL).eingaben, store.holeKatalog()))));
 
   if (altStand !== null) localStorage.setItem('sembla:kataloge', altStand);
   if (altAktiv !== null) localStorage.setItem('sembla:aktiv:katalog', altAktiv);
@@ -1877,8 +1899,12 @@ globalThis.fetch = echtesFetch;
 // Mengen BITGLEICH die Summe der kanonischen Wandstuecklisten sind.
 {
   const gsG = projektAnlegen('Exportprojekt #44') && store.aktivesGeschossId();
-  const idG1 = await wandAnlegen(gsG, { name: 'Export Wand 1', laenge: 3000, hoehe: 3000 });
-  const idG2 = await wandAnlegen(gsG, { name: 'Export Wand 2', laenge: 2000, hoehe: 2600 });
+  // #56: Katalog ausdruecklich laden — er belegt die Verwendungsstellen der Waende vor
+  // ([P-18]) und ist damit Voraussetzung fuer die Einbauteile in der Gesamtstueckliste.
+  $('k-vorlage').dispatch('click');
+  await new Promise(r => setTimeout(r, 0));
+  const idG1 = wandAnlegen(gsG, { name: 'Export Wand 1', laenge: 3000, hoehe: 3000 });
+  const idG2 = wandAnlegen(gsG, { name: 'Export Wand 2', laenge: 2000, hoehe: 2600 });
   const gsName = MAPPE.findeGeschoss(store.holeMappe(), gsG).geschoss.name;
   const csvZeilen = (t) => t.split('\n').map(z => z.split(';'));
   /** Reine Erwartung: Summe der kanonischen Wandstuecklisten. */
@@ -2106,10 +2132,11 @@ globalThis.localStorage = altStorage; globalThis.document = altDocument; install
 ok('Initialisierung ruft KEIN fetch auf (kein Autoload)', frischeAufrufe.length === 0);
 ok('Initialisierung legt keinen Katalog an', frischKatalog === null);
 ok('Initialisierung legt kein Wandelement an', frischElemente === null);
-// [P-18]: dritter Aufruf im Anlegen-Handler — Standardkatalog nachladen, wenn GAR KEINER da ist.
-// Auch das ist ein Klick-Handler; beim Initialisieren wird weiterhin nichts geholt.
+// #56: Der Anlegen-Handler ist entfallen und mit ihm sein Nachladen des Standardkatalogs —
+// geblieben sind Musterwand und Standardkatalog, beide in Klick-Handlern. Beim
+// Initialisieren wird weiterhin nichts geholt.
 ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
-  (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
+  (src.match(/vorlageText\(/g) || []).length === 3           // 1 Definition + 2 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
 
 

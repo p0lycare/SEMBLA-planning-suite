@@ -345,7 +345,9 @@ const fehlerText = e => (e && e.message ? e.message : String(e));
 const r2 = v => Math.round(Number(v) * 100) / 100;
 
 // aus window.SEMBLA (in __gpInit gebunden):
-let store, MAPPE, CON, PLAN, MB, WA;
+// ENG/Opening sind der Auslegungspfad, den auch Modul 1 benutzt — er wird für die
+// Neurechnung nach einer Längenänderung gebraucht (#56, s. „Länge der Wand“).
+let store, MAPPE, CON, PLAN, MB, WA, ENG, Opening;
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
@@ -403,6 +405,17 @@ const GP = {
 
 /** Obergrenze des Rückgängig-Stapels — ein Skizzenzustand ist billig, aber nicht gratis. */
 const UNDO_MAX = 200;
+
+/**
+ * Mindestlänge einer Wand in Rastereinheiten — die Untergrenze des Rechenkerns
+ * (2 × 125 = 250 mm; darunter lässt sich keine Lage mit i2/i3 belegen).
+ *
+ * Der Editor hält sich seit #56 an dieselbe Grenze wie der Kern: Zeichnen,
+ * Größenziehen und Verorten bieten nichts an, was erst beim Rechnen scheitern
+ * würde. Vorher ließ sich eine 125-mm-Wand ziehen, und die Anlage brach danach
+ * mit einer technischen Meldung ab.
+ */
+const MIN_GRID = 2;
 
 /** Blickfeld: linke obere Ecke in mm und der Maßstab (mm je Schirmpixel). */
 const V = { x0: -1000, y0: -1000, mm: 12 };
@@ -489,17 +502,27 @@ function wendeStandAn(json){
   store.setzeMappe(m);
 }
 
+/** Momentaufnahme eines Wandelements für Rückgängig/Wiederholen. */
+function elementStand(id){
+  const e = store.holeElement(id);
+  return e ? { id: e.id, name: e.name, wandelement: e.wandelement, eingaben: e.eingaben } : null;
+}
+
 /**
  * Einen abgeschlossenen Schritt buchen. `vor` ist der Stand VOR der Änderung,
- * `angelegt` sind die Wandelemente, die dieser Schritt selbst erzeugt hat.
+ * `angelegt` sind die Wandelemente, die dieser Schritt selbst erzeugt hat,
+ * `vorher` die Momentaufnahmen der Wandelemente, die er GEÄNDERT hat (Länge, #56).
  * Eine neue Änderung verwirft den Wiederholen-Stapel.
  */
-function buchen(vor, angelegt){
+function buchen(vor, angelegt, vorher){
   const ids = angelegt || [];
+  const alt = (vorher || []).filter(Boolean);
   GP.undo.push({
     vor, nach: mappenStand(), angelegt: ids,
-    elemente: ids.map(id => store.holeElement(id)).filter(Boolean)
-      .map(e => ({ id: e.id, name: e.name, wandelement: e.wandelement, eingaben: e.eingaben })),
+    // Zustand VOR dem Schritt — nur für geänderte Elemente; angelegte werden gelöscht.
+    vorher: alt,
+    // Zustand DANACH für alles, was dieser Schritt angelegt ODER geändert hat.
+    elemente: [...ids, ...alt.map(e => e.id)].map(elementStand).filter(Boolean),
   });
   if (GP.undo.length > UNDO_MAX) GP.undo.shift();
   GP.redo = [];
@@ -521,9 +544,14 @@ function undo(){
   for (const id of e.angelegt) { try { store.loesche(id); } catch { /* schon weg */ } }
   try { wendeStandAn(e.vor); }
   catch (err) { GP.undo.push(e); zeige('Nicht rückgängig gemacht: ' + fehlerText(err), false); return; }
+  // Geänderte Wandelemente auf ihren Stand davor zurück — Lage und Wandelement
+  // gehören zu EINEM Bedienvorgang und werden gemeinsam zurückgenommen (#56).
+  for (const el of (e.vorher || [])) store.speichere(el.name, el.wandelement, el.id, el.eingaben);
   GP.redo.push(e);
   zeige('Rückgängig gemacht'
-    + (e.angelegt.length ? ` — samt ${e.angelegt.length} in diesem Schritt angelegten Wandelement(en).` : '.')
+    + (e.angelegt.length ? ` — samt ${e.angelegt.length} in diesem Schritt angelegten Wandelement(en).` : '')
+    + ((e.vorher || []).length ? ` — samt ${e.vorher.length} geänderten Wandelement(en).` : '')
+    + ((e.angelegt.length || (e.vorher || []).length) ? '' : '.')
     + ` (${GP.undo.length} weitere Schritte)`, true);
   render();
 }
@@ -1247,9 +1275,11 @@ function groesseLage(erg){
   } else {
     const fest = pos[a] + L;                       // die andere Stirnkante bleibt stehen
     grid = Math.round((fest - z) / CON.GRID_MM);
-    start[a] = fest - Math.max(1, grid) * CON.GRID_MM;
+    start[a] = fest - Math.max(MIN_GRID, grid) * CON.GRID_MM;
   }
-  if (grid < 1) grid = 1;                          // kürzer als eine Rastereinheit gibt es nicht ([L-1])
+  // Unter das Mindestmaß des Rechenkerns geht der Griff gar nicht erst (#56) — sonst
+  // stünde eine Vorschau im Bild, die beim Loslassen zwingend abgewiesen würde.
+  if (grid < MIN_GRID) grid = MIN_GRID;
   return { start_mm: start, richtung: l.richtung, laenge_grid: grid };
 }
 
@@ -1559,8 +1589,9 @@ function kopfSync(){
     if (vg.hoehe_mm != null) $('gp-hoehe').value = String(vg.hoehe_mm);
   }
   $('gp-hoehe-hinweis').innerHTML = !neu
-    ? 'Diese Wand hat schon ein Wandelement — Höhe und Wandtyp bleiben unverändert; gezeichnet wird '
-      + 'nur ihre <b>Lage</b>. Eine Längenabweichung wird gemeldet, nie angeglichen ([L-3]).'
+    ? 'Diese Wand hat schon ein Wandelement — Höhe, Wandtyp, Öffnungen und Produkte bleiben '
+      + 'unverändert. Die <b>gezeichnete Länge</b> wird die maßgebende: das Wandelement wird '
+      + 'damit neu gerechnet (#56).'
     : vg.hoehe_mm == null
       ? 'Das Geschoss hat keine Standard-Wandhöhe — die Höhe ist hier zu wählen ([L-5]).'
       : vg.passt
@@ -1732,7 +1763,11 @@ function planKopfSync(){
  * Der Längsanker bleibt das Ende mit der kleineren Koordinate; bei einem Zug in
  * positiver Richtung ist das genau der erste, gedrückte Eckpunkt.
  *
- * `null`, wenn die Strecke für weniger als eine Rastereinheit reicht.
+ * `null`, wenn die Strecke nicht für das MINDESTMASS reicht: zwei Rastereinheiten
+ * (250 mm). Das ist die Untergrenze des Rechenkerns — eine 125-mm-Wand liesse sich
+ * gar nicht mit i2/i3 belegen. Sie hier schon zu ziehen, hiesse eine Wand
+ * anzubieten, die erst beim Rechnen scheitert; deshalb entsteht so weder eine
+ * Vorschau noch ein Entwurf (#56).
  * @returns {{lage:object, laenge_mm:number}|null}
  */
 function entwurfLage(a, b){
@@ -1741,7 +1776,7 @@ function entwurfLage(a, b){
   const quer = richtung === 'x' ? 'y' : 'x';
   const von = fange(a)[richtung], bis = fange(b)[richtung];
   const grid = Math.round(Math.abs(bis - von) / CON.GRID_MM);
-  if (grid < 1) return null;
+  if (grid < MIN_GRID) return null;
   const laenge_mm = grid * CON.GRID_MM;
   const start = {};
   start[richtung] = Math.min(von, bis);
@@ -1763,7 +1798,8 @@ function wandFertig(a, b){
   if (!gs) { zeige('Kein aktives Geschoss.', false); return null; }
   const v = entwurfLage(a, b);
   if (!v) {
-    zeige(`Zu kurz: eine Wand ist mindestens ${CON.GRID_MM} mm lang ([L-1]). Nichts angelegt.`, false);
+    zeige(`Zu kurz: eine Wand ist mindestens ${MIN_GRID * CON.GRID_MM} mm lang `
+      + `(${MIN_GRID} Raster). Nichts angelegt.`, false);
     return null;
   }
   const fehler = CON.lageFehler(v.lage);
@@ -1773,17 +1809,15 @@ function wandFertig(a, b){
   if (GP.ziel) {
     const w = wand(GP.ziel);
     if (!w) { zeige('Die zu verortende Wand ist nicht mehr im Geschoss.', false); return null; }
-    try { store.verorteWand(w.id, gs.id, { lage: v.lage }); }
-    catch (e) { zeige('Nicht verortet: ' + fehlerText(e), false); return null; }
-    // Eine BESTEHENDE Wand wird nur verortet: rückgängig geht allein die Mappe,
-    // das fremde Wandelement bleibt in jedem Fall unangetastet.
-    buchen(vor, []);
+    // Mit dem Verorten bekommt die Wand ihre Lage — und damit ihre maßgebende Länge (#56).
+    // Sie läuft deshalb durch denselben Vorgang wie Endgriff und Längenmaß: erst rechnen,
+    // dann Lage und Wandelement schreiben. Eine Abweichung nach [L-3] kann hier gar nicht
+    // mehr entstehen; ein Hindernis weist den ganzen Vorgang ab, ohne etwas zu schreiben.
+    if (!laengeAendern(w.id, v.lage.laenge_grid, 'Verorten',
+      () => store.verorteWand(w.id, gs.id, { lage: v.lage }))) return null;
     waehle(w.id); GP.ziel = '';
-    const el = store.holeElement(w.id);
-    const ab = MAPPE.laengenAbgleich(v.lage, el && el.wandelement ? el.wandelement.length_mm : null);
-    zeige(`„${w.name || w.id}“ verortet: ${v.laenge_mm} mm in Richtung ${v.lage.richtung}.`
-      + (ab.abweichung ? ` Achtung: das Wandelement ist ${ab.wand_mm} mm lang — die Abweichung wird `
-        + 'gemeldet, nicht angeglichen ([L-3]).' : ''), !ab.abweichung);
+    zeige(`„${w.name || w.id}“ verortet: ${v.laenge_mm} mm in Richtung ${v.lage.richtung} — `
+      + 'das Wandelement wurde mit dieser Länge neu gerechnet.' + folgen(w.id, v.lage), true);
     return w.id;
   }
 
@@ -1911,6 +1945,144 @@ function laengenmasse(id){
   });
 }
 
+// ---------------------------------------------------------------------------
+//  Länge der Wand — Projektmappe UND Wandelement in einem Vorgang (Issue #56)
+// ---------------------------------------------------------------------------
+/*
+ * Für eine VERORTETE Wand ist die hier bearbeitete Rasterlänge die einzige
+ * Längeneingabe der Suite; Modul 1 zeigt sie nur noch an. Damit beide Stände nie
+ * auseinanderlaufen, wird das vorhandene Wandelement mit der neuen Länge NEU
+ * GERECHNET — über denselben Auslegungspfad, den Modul 1 benutzt (`sembla-engine.js`).
+ * Kopiert wird dabei nichts Abgeleitetes: Stückliste, Stränge, Lagen und Nachweis
+ * entstehen frisch. Alles andere — Name, Wandtyp, Höhe, Öffnungen, Staffelung,
+ * Seiten, Vorspann-Hardware und die Produktrollen in `eingaben` — bleibt unberührt.
+ *
+ * Die HÖHE bleibt ausdrücklich beim Wandelement: `#gp-hoehe` ist und bleibt die
+ * Vorgabe für NEUE Wände ([L-5]) und wird hier nie herangezogen.
+ */
+
+/** Verkehrslast und Teilsicherheitsbeiwert der Neurechnung.
+ *
+ * Sie sind KEIN gespeichertes Datum der Wand: Modul 1 hält sie nur in seinen Feldern
+ * `#qk`/`#gammaQ` und stellt sie beim Laden eines Elements auch nicht wieder her — es
+ * rechnet nach jedem Seitenaufruf mit genau diesen Vorgaben. Die Neurechnung benutzt
+ * deshalb dieselben Werte; jeder andere wäre ein erfundener Ersatz. */
+const LAST_VORGABE = { qk_area: 1.00, gammaQ: 1.50 };   // = Feldvorgaben `#qk`/`#gammaQ` in Modul 1
+
+/**
+ * Gründe, die eine Wand an der neuen Rasterlänge hindern — jeder einzeln benannt.
+ *
+ * Geprüft wird VOR jedem Schreiben, und zwar genau das, was der Rechenkern sonst
+ * still zurechtbiegen würde: `normSteps` klemmt eine überstehende Staffelstufe auf
+ * die Wandlänge, und die Achsverteilung filtert manuelle Achsen jenseits der Wand
+ * heraus. Beides wäre eine stille Änderung einer fachlichen Eingabe. Überstehende
+ * Öffnungen und ein unterschrittenes Mindestmaß würde der Kern werfen — auch das
+ * wird hier vorher benannt, statt als technischer Fehler zu erscheinen.
+ *
+ * @param {any} we gespeichertes Wandelement
+ * @param {number} laengeGrid neue Rasterlänge
+ * @returns {string[]} leer = zulässig
+ */
+function laengeHindernisse(we, laengeGrid){
+  const N = laengeGrid, mm = N * CON.GRID_MM, gruende = [];
+  if (!(Number.isInteger(N) && N >= MIN_GRID)) {
+    gruende.push(`Eine Wand ist mindestens ${MIN_GRID * CON.GRID_MM} mm lang (${MIN_GRID} Raster) — `
+      + `${mm} mm unterschreitet das Mindestmaß des Rechenkerns.`);
+    return gruende;                            // kürzer geht gar nichts: alles Weitere erübrigt sich
+  }
+  const arten = { tuer: 'Tür', fenster: 'Fenster', durchbruch: 'Durchbruch' };
+  for (const op of (we.openings || [])) {
+    if (op.g1 > N) gruende.push(`${arten[op.art] || 'Öffnung'} reicht bis Raster ${op.g1} `
+      + `(${op.g1 * CON.GRID_MM} mm) und läge jenseits der neuen Länge.`);
+  }
+  for (const s of (we.steps || [])) {
+    if (s.x1_mm > mm) gruende.push(`Staffelstufe bis ${s.x1_mm} mm läge jenseits der neuen Länge.`);
+  }
+  const cg = (we.prestress && we.prestress.columns_grid) || null;
+  for (const k of (Array.isArray(cg) ? cg : [])) {
+    if (k >= N) gruende.push(`Die manuell gesetzte Spannachse in Rasterlage ${k} `
+      + 'läge jenseits der neuen Länge.');
+  }
+  if (gruende.length) gruende.push('Erst in Modul 1 anpassen — hier wird nichts gekürzt oder entfernt.');
+  return gruende;
+}
+
+/**
+ * Das gespeicherte Wandelement mit einer neuen Rasterlänge neu rechnen — ohne
+ * jeden Speicherzugriff, damit ein Fehlschlag nichts hinterlässt.
+ *
+ * Der Auslegungsmodus wird genau so bestimmt wie in Modul 1 (`applyWand`): trägt
+ * das Element eine Vorspannkraft, wird sie geprüft; sonst legt die Engine aus.
+ * @param {any} el Speichereintrag (`store.holeElement`)
+ * @param {number} laengeGrid
+ */
+function rechneWandelement(el, laengeGrid){
+  const we = el.wandelement;
+  const vorg = {
+    name: el.name || we.name,
+    length_mm: laengeGrid * CON.GRID_MM,
+    height_mm: we.height_mm,                                   // Höhe gehört dem Wandelement
+    openings: (we.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+    sides: we.sides || null,
+    steps: (we.steps || []).map(s => ({ ...s })),
+    prestress: { ...(we.prestress || {}) },
+    load: { ...LAST_VORGABE },
+    // Materialkennwerte reisen im Nachweis des Elements mit; fehlen sie (frisch
+    // gezeichnete Wand ohne Nachweis), gelten die Vorgaben der Engine.
+    material: (we.verification && we.verification.material) || undefined,
+  };
+  const erg = (we.prestress && we.prestress.force_kN)
+    ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg);
+  const neu = erg.wandelement;
+  neu.wandtyp = we.wandtyp;         // hängt nicht am Core und wird nur bei der Anlage gewählt
+  return neu;
+}
+
+/**
+ * Ein Bedienvorgang, der die LÄNGE ändert: erst rechnen, dann Mappe, dann Element.
+ *
+ * Gerechnet wird zuerst und vollständig — schlägt das fehl, ist nichts geschrieben.
+ * Scheitert danach wider Erwarten das Wandelement, wird die Mappe auf den Stand
+ * davor zurückgesetzt: es bleibt kein Zustand, in dem beide Längen auseinanderliegen.
+ *
+ * @param {string} id Wand
+ * @param {number} laengeGrid neue Rasterlänge
+ * @param {string} was Vorgangsname für die Meldungen
+ * @param {() => void} schreibeMappe schreibt Lage (und ggf. Maß) in EINEM Zug
+ * @returns {boolean}
+ */
+function laengeAendern(id, laengeGrid, was, schreibeMappe){
+  const el = store.holeElement(id);
+  if (!el || !el.wandelement) {
+    zeige(`${was} nicht möglich: zu „${id}“ gibt es kein Wandelement (verwaister Eintrag, [L-4]).`, false);
+    return false;
+  }
+  const hindernisse = laengeHindernisse(el.wandelement, laengeGrid);
+  if (hindernisse.length) {
+    zeige(`${was} nicht möglich: ` + hindernisse.join(' '), false);
+    return false;
+  }
+  let neu;
+  try { neu = rechneWandelement(el, laengeGrid); }
+  catch (e) {
+    zeige(`${was} nicht möglich: ` + fehlerText(e) + ' Es wurde nichts geändert.', false);
+    return false;
+  }
+  const vor = mappenStand();
+  const standVorher = elementStand(id);
+  try { schreibeMappe(); }
+  catch (e) { zeige(`${was} nicht möglich: ` + fehlerText(e), false); return false; }
+  try { store.speichere(el.name, neu, id); }
+  catch (e) {
+    try { wendeStandAn(vor); } catch { /* Mappe nicht zurücksetzbar: wird unten benannt */ }
+    zeige(`${was} nicht möglich: ` + fehlerText(e)
+      + ' Länge und Wandelement bleiben unverändert.', false);
+    return false;
+  }
+  buchen(vor, [], [standVorher]);
+  return true;
+}
+
 /** Neue Lage speichern — der einzige Schreibweg des Editors ist die LAGE ([K-10]). */
 function speichereLage(id, lage, was){
   const gs = geschoss();
@@ -1952,9 +2124,15 @@ function groesseFertig(){
     render();
     return;
   }
-  if (!speichereLage(g.id, lage, 'Länge ändern')) { render(); return; }
-  zeige(`„${w.name || w.id}“ ist jetzt ${lage.laenge_grid} × 125 = ${lage.laenge_grid * CON.GRID_MM} mm lang.`
-    + folgen(g.id, lage), true);
+  const gs = geschoss();
+  if (!gs) { zeige('Kein aktives Geschoss.', false); render(); return; }
+  const f = CON.lageFehler(lage);
+  if (f.length) { zeige('Länge ändern nicht möglich: ' + f.join(' '), false); render(); return; }
+  // Länge ändern heißt: Lage UND Wandelement — erst rechnen, dann beides schreiben (#56).
+  if (!laengeAendern(g.id, lage.laenge_grid, 'Länge ändern',
+    () => store.verorteWand(g.id, gs.id, { lage }))) { render(); return; }
+  zeige(`„${w.name || w.id}“ ist jetzt ${lage.laenge_grid} × 125 = ${lage.laenge_grid * CON.GRID_MM} mm lang `
+    + '— das Wandelement wurde mit dieser Länge neu gerechnet.' + folgen(g.id, lage), true);
   render();
 }
 
@@ -2034,7 +2212,8 @@ function waehleBemassung(id){
  * Ein LÄNGENMASS treibt zusätzlich `laenge_grid` (§2.4): das geschieht in EINEM
  * `aendereMappe`, damit Maß und Länge nie auseinanderlaufen. Ein krummer Wert
  * wird abgewiesen und nennt die Nachbarmaße — gerundet wird nichts ([K-11]).
- * Das Wandelement bleibt unberührt, eine Abweichung wird gemeldet ([L-3]).
+ * Seit #56 wandert dabei auch das Wandelement mit: Maß, Lage und Element sind EIN
+ * Bedienvorgang (`laengeAendern`), es bleibt keine Abweichung zu melden.
  */
 function speichereBemassung(bem, was){
   const gs = geschoss();
@@ -2045,25 +2224,31 @@ function speichereBemassung(bem, was){
     const p = CON.pruefeLaengenmass(bem.mass_mm);
     if (!p.ok) { zeige(`${was} nicht möglich: ${p.meldung}`, false); return false; }
   }
-  const vor = mappenStand();
-  try {
-    store.aendereMappe(m => {
-      let n = MAPPE.setzeBemassung(m, gs.id, bem);
-      if (laengenmass) {
-        const l = CON.normLage(wand(bem.bis.wand).lage);
-        n = MAPPE.setzeLage(n, bem.bis.wand, { ...l, laenge_grid: bem.mass_mm / CON.GRID_MM });
-      }
-      return n;
-    });
-  } catch (e) { zeige(`${was} nicht möglich: ` + fehlerText(e), false); return false; }
-  buchen(vor, []);
+  const schreibeMappe = () => store.aendereMappe(m => {
+    let n = MAPPE.setzeBemassung(m, gs.id, bem);
+    if (laengenmass) {
+      const l = CON.normLage(wand(bem.bis.wand).lage);
+      n = MAPPE.setzeLage(n, bem.bis.wand, { ...l, laenge_grid: bem.mass_mm / CON.GRID_MM });
+    }
+    return n;
+  });
+  if (laengenmass) {
+    // Maß, Lage und Wandelement sind EIN Bedienvorgang: erst rechnen, dann schreiben (#56).
+    if (!laengeAendern(bem.bis.wand, bem.mass_mm / CON.GRID_MM, was, schreibeMappe)) return false;
+  } else {
+    const vor = mappenStand();
+    try { schreibeMappe(); }
+    catch (e) { zeige(`${was} nicht möglich: ` + fehlerText(e), false); return false; }
+    buchen(vor, []);
+  }
   GP.bem = null;
   GP.bemAktiv = bem.id;
   const erg = loesen();
   const streit = erg.widersprueche.filter(w => w.bemassung === bem.id || w.konflikt_mit === bem.id);
   const doppelt = erg.redundanzen.some(w => w.bemassung === bem.id);
   zeige(`${was}: ${bem.mass_mm} mm in Achse ${bem.achse}.`
-    + (laengenmass ? ` Die Länge steht jetzt auf ${bem.mass_mm / CON.GRID_MM} × 125 mm`
+    + (laengenmass ? ` Die Länge steht jetzt auf ${bem.mass_mm / CON.GRID_MM} × 125 mm; `
+      + 'das Wandelement wurde damit neu gerechnet.'
       + folgen(bem.bis.wand, wand(bem.bis.wand).lage) : '')
     + (streit.length ? ' ⚠ ' + streit.map(w => w.meldung).join(' ') : '')
     + (doppelt ? ' Hinweis: das Maß wiederholt einen bereits bestimmten Abstand widerspruchsfrei '
@@ -3065,6 +3250,7 @@ window.__gp = {
 window.__gpInit = function(){
   const S = window.SEMBLA || {};
   store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; WA = S.WA;
+  ENG = S.ENG; Opening = S.Opening;
   binde();
   store.abonniere(() => { auffrischen().catch(() => {}); });
   zeigeAlles();
@@ -3080,7 +3266,11 @@ window.__gpInit = function(){
   import * as PLAN from './shared/sembla-plan.js';
   import * as MB from './shared/sembla-massbild.js';
   import * as WA from './shared/sembla-wandanlage.js';
-  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA };
+  // Der Auslegungspfad von Modul 1 (#56): eine Längenänderung im Editor rechnet das
+  // vorhandene Wandelement damit NEU — kein zweiter Rechenkern, keine eigene Wandgeometrie.
+  import * as ENG from './shared/sembla-engine.js';
+  import { Opening } from './shared/sembla-core.js';
+  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening };
   // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
   // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
   // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.

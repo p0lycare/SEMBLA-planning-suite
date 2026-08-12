@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "886cdf90",
+  "signatur": "33b3f8f8",
   "entscheidungen": [
     {
       "issue": 41,
@@ -68,15 +68,6 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
-    },
-    {
-      "issue": 56,
-      "titel": "Längenänderung und Erstellung von Wandelementen nur im Geschosseditor",
-      "prio": "ohne",
-      "status": "ohne",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false
     },
     {
       "issue": 61,

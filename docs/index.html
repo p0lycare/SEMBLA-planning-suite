@@ -224,38 +224,30 @@
   </div>
 </div>
 
-<!-- Wand anlegen/bearbeiten. Beim Anlegen entsteht das Wandelement (buildWall);
-     beim Bearbeiten ist NUR der Name änderbar — Länge/Höhe/Öffnungen gehören
-     Modul 1, dem einzigen Schreiber des Wandelements ([P-1]). -->
+<!-- Wand importieren/umbenennen. NEUE Wände entstehen seit Issue #56 ausschliesslich
+     durch Zeichnen im Geschosseditor — hier gibt es weder Anlageknopf noch
+     Neuanlagedialog. Beim Umbenennen ist NUR der Name änderbar; Länge, Höhe und
+     Öffnungen gehören dem Wandelement ([P-1]), die Länge einer verorteten Wand
+     wird im Geschosseditor geführt. -->
 <div class="overlay" id="wp-overlay" hidden>
   <div class="modal">
-    <h3 id="wp-titel">Wand hinzufügen</h3>
-    <p class="sub" id="wp-sub">Die Wand wird im gewählten Geschoss eingetragen — <b>ohne Lage im
-      Raster</b>, denn gezeichnet ist noch nichts ([L-4]).</p>
+    <h3 id="wp-titel">Wand importieren</h3>
+    <p class="sub" id="wp-sub">Eine gespeicherte Wanddatei wird im gewählten Geschoss eingetragen —
+      <b>ohne Lage im Raster</b>, denn gezeichnet ist noch nichts ([L-4]).</p>
     <div class="row">
       <div class="field"><label for="f-name">Name</label>
         <input id="f-name" type="text" placeholder="z. B. Wand A" value="Neue Wand"></div>
-      <div class="field"><label for="f-laenge">Länge (mm, Vielfaches 125)</label>
-        <input id="f-laenge" type="number" step="125" min="250" value="2000"></div>
-      <div class="field"><label for="f-hoehe">Höhe (mm, Vielfaches 200)</label>
-        <input id="f-hoehe" type="number" step="200" min="200" value="2600"></div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <div class="field"><label for="f-wandtyp">Wandtyp (Windsituation)</label>
-        <select id="f-wandtyp" style="width:230px">
-          <option value="mit_wind" selected>Innenwand mit Wind (Cpi)</option>
-          <option value="ohne_wind">Innenwand ohne Wind</option>
-        </select></div>
     </div>
     <div class="row" style="margin-top:12px" id="wp-quellen">
       <label class="btn-s" for="f-import">Datei importieren…</label>
       <input id="f-import" type="file" accept=".json,application/json" hidden>
       <button class="btn-s" id="btn-vorlage-wand">Musterwand laden…</button>
     </div>
-    <div class="hint">Öffnungen, Auslegung usw. entstehen in <b>Modul&nbsp;1</b> (Wandplanung). Hier
-      wird das Element nur grob angelegt bzw. eine gespeicherte Datei eingelesen. Der
-      <b>Wandtyp</b> gehört zum Wandelement und wird nur hier beim Anlegen festgelegt; die übrigen
-      Module lesen ihn.<br>
+    <div class="hint" id="wp-neu-hinweis"><b>Neue Wände entstehen im Geschosseditor</b>: Geschoss
+      auswählen, „Geschoss öffnen“, Werkzeug <b>Wand zeichnen</b> (W). Dort werden Länge, Höhe und
+      Wandtyp festgelegt, und dort wird die Länge einer verorteten Wand auch geändert — Modul 0
+      legt keine Wand mehr an. Öffnungen, Staffelung und Auslegung entstehen in
+      <b>Modul&nbsp;1</b> (Wandplanung).<br>
       „<b>Musterwand laden…</b>“ liest die mitgelieferte Repo-Vorlage
       (<code>vorlagen/SEMBLA_Musterwand.json</code>, Projektformat&nbsp;v2) — bewusst auf Klick, nie
       automatisch. Sie läuft durch denselben Bestätigungsdialog wie ein Dateiimport und wird als
@@ -264,7 +256,7 @@
     <div class="msg" id="msg"></div>
     <div class="modal-actions">
       <button class="btn-s" id="wp-cancel">Abbrechen</button>
-      <button class="btn-p" id="btn-neu">Anlegen</button>
+      <button class="btn-p" id="btn-neu" hidden>Namen speichern</button>
     </div>
   </div>
 </div>
@@ -315,8 +307,8 @@
       „<b>Standardkatalog laden</b>“ liest die mitgelieferte Repo-Vorlage
       (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) als <b>neuen</b> Katalog
       und ordnet ihn dem aktiven Projekt zu; der bisherige Katalog bleibt erhalten und lässt sich
-      oben im Projekt-Dialog wieder auswählen. Ist noch <b>gar kein</b> Katalog zugeordnet, holt ihn
-      das Anlegen einer Wand automatisch, damit man nicht mit einer leeren Planung startet.<br>
+      oben im Projekt-Dialog wieder auswählen. Ist noch <b>gar kein</b> Katalog zugeordnet, ist er
+      hier zu laden, bevor die erste Wand gezeichnet wird — sonst startet die Planung leer.<br>
       <b>Startklar statt leer ([P-18]):</b> Jedes Produkt kann im Feld <code>rollen</code> die
       Verwendungsstelle nennen, die es im Regelfall ausführt. Beim Anlegen einer Wand und beim
       Laden/Importieren eines Katalogs übernehmen <b>nur noch leere</b> Verwendungsstellen diese
@@ -452,7 +444,8 @@
 <script type="module">
   import { mountNavbar, MODULE } from './shared/navbar.js';
   import * as store from './shared/storage.js';
-  import * as WA from './shared/sembla-wandanlage.js';
+  // `sembla-wandanlage.js` wird hier nicht mehr gebraucht: neue Wände entstehen seit
+  // Issue #56 ausschliesslich im Geschosseditor, der diesen Anlagepfad benutzt.
   import { baueDateien, gesamtstuecklisteDateien } from './shared/sembla-export.js';
   import { umfang as gesamtUmfang, gesamtDaten, dateiRumpf as gesamtDateiRumpf } from './shared/sembla-gesamtstueckliste.js';
   import { downloadZip, entpacke } from './shared/zip.js';
@@ -596,8 +589,13 @@
 
     const waende = gs.waende.map(w => trWandHtml(m, gs, w, istAktiv, wAktiv)).join('')
       || '<div class="empty">Noch keine Wand in diesem Geschoss.</div>';
+    // Neue Wände entstehen ausschliesslich durch Zeichnen im Geschosseditor (#56);
+    // hier steht nur noch der Weg dorthin und der unveraenderte Dateiimport ([L-4]).
     const kinder = waende
-      + `<button class="plus" data-act="wand-neu" data-id="${esc(gs.id)}">+ Wand hinzufügen</button>`;
+      + `<button class="plus" data-act="gs-oeffnen" data-id="${esc(gs.id)}">`
+      + '+ Neue Wand zeichnen (Geschosseditor)</button>'
+      + `<button class="plus" data-act="wand-import" data-id="${esc(gs.id)}">`
+      + 'Wand aus Datei importieren…</button>';
     return `<div class="knoten gs${istAktiv ? ' aktiv' : ''}">${kopf}<div class="kinder">${kinder}</div></div>`;
   }
 
@@ -637,8 +635,8 @@
     if (ref.unverortet.length) {
       const namen = ref.unverortet.map(id => (store.holeElement(id)?.name) || id);
       teile.push('<b>' + ref.unverortet.length + ' Wandelement(e) gehören zu keinem Projekt:</b> '
-        + esc(namen.join(', ')) + '. Sie bleiben erhalten und lassen sich über „+ Wand hinzufügen“ → '
-        + '„vorhandene Wand eintragen“ einem Geschoss zuordnen — bereinigt wird nichts ([L-4]).'
+        + esc(namen.join(', ')) + '. Sie bleiben erhalten und lassen sich hier einem Geschoss '
+        + 'zuordnen — bereinigt wird nichts ([L-4]).'
         + trZuordnenHtml(ref.unverortet));
     }
     if (ref.ohneLage.length) {
@@ -714,7 +712,7 @@
     if (act === 'gs-gesamt') { oeffneExport(null, 'geschoss'); return; }
     if (act === 'gs-bearbeiten') { gpOeffne(null, id); return; }
     if (act === 'gs-loeschen') { trGeschossLoeschen(id); return; }
-    if (act === 'wand-neu') { wpOeffne(id, null); return; }
+    if (act === 'wand-import') { wpOeffne(id, null); return; }
     if (act === 'wand-aktiv') {
       try { store.setzeAktiv(id); trZeige('Wand aktiv gesetzt.', true); }
       catch (e) { trZeige('Nicht aktiviert: ' + fehlerText(e), false); }
@@ -1118,14 +1116,15 @@
   });
 
   // =====================================================================
-  //  Popup Wand (Anlegen / Umbenennen / Import)
+  //  Popup Wand (Umbenennen / Import)
   // =====================================================================
-  // Beim ANLEGEN entsteht das Wandelement hier ueber den gemeinsamen Anlagepfad
-  // `sembla-wandanlage.js` und wandert sofort in das gewaehlte Geschoss — ohne Lage
-  // ([L-4]). Der Gewindestangen-Zuschnitt wird NACH der Katalogvorbelegung neu
-  // gerechnet (#15/#62). Beim BEARBEITEN ist ausschliesslich der
-  // Name aenderbar: Laenge, Hoehe, Oeffnungen und Auslegung gehoeren Modul 1, dem
-  // einzigen Schreiber des Wandelements ([P-1]).
+  // ANGELEGT wird hier seit Issue #56 nichts mehr: eine neue Wand entsteht
+  // ausschliesslich durch Zeichnen im Geschosseditor, der dafuer den gemeinsamen
+  // Anlagepfad `sembla-wandanlage.js` benutzt. Modul 0 verweist nur noch dorthin.
+  // Der IMPORT bleibt unveraendert — er liest ein FERTIGES Wandelement aus einer
+  // Datei und traegt es ohne Lage im gewaehlten Geschoss ein ([L-4]).
+  // Beim UMBENENNEN ist ausschliesslich der Name aenderbar: Oeffnungen und
+  // Auslegung gehoeren Modul 1, die Laenge einer verorteten Wand dem Geschosseditor.
   const wpOverlay = $('wp-overlay');
   let wpGeschossId = null, wpWandId = null;
   const msg = $('msg');
@@ -1139,105 +1138,52 @@
     if (!bearbeiten && !ort) { trZeige('Unbekanntes Geschoss.', false); return; }
     const gs = ort ? ort.geschoss : null;
 
-    $('wp-titel').textContent = bearbeiten ? 'Wand bearbeiten: ' + (el ? el.name : wandId)
-      : 'Wand hinzufügen' + (gs ? ' in „' + gs.name + '“' : '');
+    $('wp-titel').textContent = bearbeiten ? 'Wand umbenennen: ' + (el ? el.name : wandId)
+      : 'Wand importieren' + (gs ? ' in „' + gs.name + '“' : '');
     $('wp-sub').innerHTML = bearbeiten
-      ? 'Hier ist nur der <b>Name</b> änderbar. Länge, Höhe, Öffnungen und Auslegung gehören in '
-        + '<b>Modul&nbsp;1</b> — dem einzigen Schreiber des Wandelements ([P-1]).'
-      : 'Die Wand wird im Geschoss eingetragen — <b>ohne Lage im Raster</b>, denn gezeichnet ist noch '
-        + 'nichts ([L-4]).';
+      ? 'Hier ist nur der <b>Name</b> änderbar. Öffnungen und Auslegung gehören in '
+        + '<b>Modul&nbsp;1</b>; die <b>Länge</b> einer verorteten Wand wird im '
+        + '<b>Geschosseditor</b> geführt ([P-1]).'
+      : 'Eine gespeicherte Wanddatei wird im Geschoss eingetragen — <b>ohne Lage im Raster</b>, denn '
+        + 'gezeichnet ist noch nichts ([L-4]).';
     $('wp-quellen').hidden = bearbeiten;
-    for (const id of ['f-laenge', 'f-hoehe', 'f-wandtyp']) $(id).disabled = bearbeiten;
-    $('btn-neu').textContent = bearbeiten ? 'Namen speichern' : 'Anlegen';
+    $('wp-neu-hinweis').hidden = bearbeiten;
+    // Der einzige Schreibknopf dieses Popups ist das Umbenennen — angelegt wird hier nichts (#56).
+    $('btn-neu').hidden = !bearbeiten;
 
     if (bearbeiten) {
       const w = el ? el.wandelement : null;
       $('f-name').value = el ? el.name : '';
-      if (w) {
-        $('f-laenge').value = String(w.length_mm ?? '');
-        $('f-hoehe').value = String(w.height_mm ?? '');
-        $('f-wandtyp').value = store.normWandtyp(w.wandtyp);
-      }
       $('wp-hinweis').innerHTML = w
-        ? `Wandtyp: <b>${esc(WANDTYP_LABEL[store.normWandtyp(w.wandtyp)])}</b> · Öffnungen: `
+        ? `Wandtyp: <b>${esc(WANDTYP_LABEL[store.normWandtyp(w.wandtyp)])}</b> · Länge: `
+          + `${w.length_mm} mm · Höhe: ${w.height_mm} mm · Öffnungen: `
           + `${Array.isArray(w.openings) ? w.openings.length : 0}`
         : 'Zu diesem Eintrag gibt es kein Wandelement (verwaister Eintrag, [L-4]).';
     } else {
       $('f-name').value = 'Neue Wand';
-      $('f-laenge').value = '2000';
-      // Geschosshoehe ist VORGABE ([L-5]) — frei aenderbar, nie zurueckgeschrieben.
-      const vg = MAPPE.hoehenVorgabe(gs ? gs.hoehe_mm : null);
-      $('f-hoehe').value = vg.hoehe_mm != null ? String(vg.hoehe_mm) : '2600';
-      $('f-wandtyp').value = 'mit_wind';
-      $('wp-hinweis').innerHTML = vg.hoehe_mm == null
-        ? 'Das Geschoss hat keine Standard-Wandhöhe — die Höhe ist hier frei zu wählen ([L-5]).'
-        : vg.passt
-          ? `Höhenvorgabe aus dem Geschoss: <b>${vg.hoehe_mm} mm</b> = ${vg.lagen} Lagen à 200 mm — `
-            + 'frei änderbar und nie zurückgeschrieben ([L-5]).'
-          : esc(vg.hinweis);
+      $('wp-hinweis').innerHTML = '';
     }
     zeige('', true);
     wpOverlay.hidden = false;
   }
   function wpSchliesse(){ wpOverlay.hidden = true; wpGeschossId = null; wpWandId = null; }
 
-  function wpAbbruch(){ wpSchliesse(); trZeige('Abgebrochen — es wurde nichts angelegt.', true); }
+  function wpAbbruch(){ wpSchliesse(); trZeige('Abgebrochen — es wurde nichts geändert.', true); }
   $('wp-cancel').addEventListener('click', wpAbbruch);
   wpOverlay.addEventListener('click', (ev) => { if (ev.target === wpOverlay) wpAbbruch(); });
 
-  $('btn-neu').addEventListener('click', async () => {
-    // Bearbeiten: ausschliesslich umbenennen.
-    if (wpWandId) {
-      const name = String($('f-name').value || '').trim();
-      if (!name) { zeige('Bitte einen Namen eingeben.', false); return; }
-      try { store.umbenennen(wpWandId, name); }
-      catch (e) { zeige('Nicht gespeichert: ' + fehlerText(e), false); return; }
-      wpSchliesse();
-      trZeige(`Wand umbenannt: „${name}“.`, true);
-      return;
-    }
-    const gsId = wpGeschossId;
-    const name = String($('f-name').value || '').trim() || 'Neue Wand';
-    const l = Number($('f-laenge').value);
-    const h = Number($('f-hoehe').value);
-    // [P-18] Startklar statt leer — und zwar VOR der Anlage (#15/#62): ist dem Projekt noch
-    // KEIN Katalog zugeordnet, wird zuerst der mitgelieferte Standardkatalog geholt. Erst
-    // danach entsteht das Wandelement, damit es von Anfang an mit den katalogbasierten
-    // Gewindestangenlaengen gerechnet wird. Frueher lief das umgekehrt: das Element wurde mit
-    // dem Altstand-Fallback des Cores gespeichert und erst hinterher nachgerechnet — Zeichnung
-    // und Stueckliste lasen in der Zwischenzeit einen falschen Stand.
-    const nach = [];
-    if (!store.holeKatalog()) {
-      try {
-        const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
-        nach.push(`Standardkatalog geladen und dem Projekt zugeordnet (${k.produkte.length} Produkte)`);
-        katLaden();
-      } catch (e) { nach.push('Standardkatalog nicht ladbar (' + fehlerText(e) + ')'); }
-    }
-
-    let id, anlage;
-    try {
-      // Wandtyp ist ein Fachmerkmal der Wand und wird NUR hier (bei der Anlage) gewaehlt.
-      // Der gemeinsame Anlagepfad schreibt GENAU EINMAL — den fertigen Stand samt
-      // vorbelegten Verwendungsstellen.
-      anlage = WA.legeWandAn(store, { name, laenge_mm: l, hoehe_mm: h,
-        wandtyp: $('f-wandtyp').value });
-      id = anlage.id;
-    } catch (e) { zeige('Fehler: ' + fehlerText(e), false); return; }
-    const n = Object.keys(anlage.gesetzt).length;
-    if (n) nach.push(`${n} Verwendungsstelle(n) aus dem Katalog vorbelegt`);
-    if (anlage.offen.length) nach.push(`ohne Standardprodukt: ${anlage.offen.join(', ')}`);
-    const vt = WA.vorspannText(anlage.vorgaben);
-    if (vt) nach.push(vt);
-
-    // Erst eintragen, dann aktiv setzen: nach [L-10] ist eine eingetragene Wand nur in
-    // ihrem AKTIVEN Geschoss aktivierbar.
-    const ort = wandEintragen(id, name, gsId);
+  // Der einzige Schreibweg dieses Popups: UMBENENNEN. Eine neue Wand entsteht seit
+  // Issue #56 ausschliesslich durch Zeichnen im Geschosseditor — Modul 0 hat dafuer
+  // weder Knopf noch Dialog und verweist nur noch dorthin. Der Dateiimport bleibt
+  // unveraendert erhalten (er liest ein FERTIGES Wandelement und legt keines an).
+  $('btn-neu').addEventListener('click', () => {
+    if (!wpWandId) return;
+    const name = String($('f-name').value || '').trim();
+    if (!name) { zeige('Bitte einen Namen eingeben.', false); return; }
+    try { store.umbenennen(wpWandId, name); }
+    catch (e) { zeige('Nicht gespeichert: ' + fehlerText(e), false); return; }
     wpSchliesse();
-    // Genau EINE Rueckmeldung — sie beschreibt den Stand, der auch wirklich gespeichert ist.
-    trZeige('Angelegt: ' + name + ort + (nach.length ? ' · ' + nach.join(' · ') : ''), true);
-    neuId = id; neuScroll = true;
-    trRender();
+    trZeige(`Wand umbenannt: „${name}“.`, true);
   });
 
   /**

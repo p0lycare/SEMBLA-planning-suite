@@ -88,9 +88,15 @@
   <div class="controls panel">
     <h2>1 · Wand</h2>
     <div class="grp">
-      <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125"><small>m · ×12,5cm</small></label>
+      <!-- Die LÄNGE ist hier nur noch Anzeige (Issue #56): geführt wird sie im
+           Geschosseditor an der Lage der Wand, und von dort wird das Wandelement damit
+           neu gerechnet. Ein zweites Eingabefeld wäre ein konkurrierender Schreibweg. -->
+      <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125" readonly><small>m · nur Anzeige</small></label>
       <label><span>Höhe</span><input type="number" id="hgt" value="2.60" step="0.20"><small>m · ×20cm</small></label>
     </div>
+    <div class="hint" id="lenHint">Die <b>Länge</b> wird im <b>Geschosseditor</b> geführt (Endgriff
+      oder Längenmaß) — dort wird das Wandelement damit neu gerechnet. Alles Übrige auf dieser
+      Seite rechnet mit der gespeicherten Länge weiter.</div>
     <div class="grp"><h3>Öffnungen</h3>
       <div id="ops"></div>
       <div class="btnrow"><button class="mini" id="addTuer">+ Tür</button><button class="mini" id="addFenster">+ Fenster</button></div>
@@ -748,7 +754,9 @@ function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchHin
 // ---------- Ereignis-Bindung + Start ----------
 let axisDragging=false;
 function bindEvents(){
-  ['len','hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
+  // `len` steht bewusst NICHT in dieser Liste (Issue #56): das Feld ist nur Anzeige, und
+  // es gibt hier keinen — auch keinen indirekten — Schreibweg fuer die Wandlaenge mehr.
+  ['hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
   ['sideVorne','sideHinten','modus','topConn','startAchse'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; $('durchHint').style.display=editMode?'block':'none'; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });

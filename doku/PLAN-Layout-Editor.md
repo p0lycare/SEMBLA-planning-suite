@@ -633,3 +633,52 @@ Oberflächenplanung bleibt offen; Fixieren bleibt fachlich ein Klick auf genau e
   Inline-Wertweg, Maßzahl und Maßlinie, alle Werkzeuge, vollständige Pointerdown-/pointerup-/click-
   Paare vor `dblclick`, `text_mm`-Altbestand, bit-genau unberührten Löser und Delete/Backspace.
   `test-constraints.mjs` prüft die verlustfreie optionale Normalisierung von `linie_mm`.
+
+---
+
+## 13. Die Länge lebt im Editor (Issue #56, 2026-08-12)
+
+Issue #56 ändert **keine** [K]-Regel, keine Constraint-Mathematik, keine Fixiersemantik und keine
+Formatversion. Projektmappe und Wandelement bleiben **zwei getrennte Speicher**; zusammengefasst
+wird nichts.
+
+- **Eine Längenquelle.** Für eine verortete Wand ist `lage.laenge_grid` die einzige Längeneingabe
+  der Suite. Modul 1 zeigt die Länge nur noch an und hat weder ein editierbares Feld noch einen
+  indirekten Schreibweg. Damit entfällt der Fall, für den [L-3] die Abweichungsmeldung vorsah:
+  Endgriff und Längenmaß erzeugen ihn nicht mehr.
+- **Drei Wege, ein Vorgang.** Längenänderungen entstehen an genau drei Stellen: am **Endgriff**, über
+  ein **Längenmaß** und beim **Verorten einer vorhandenen, unverorteten Wand** (Werkzeug „Wand
+  zeichnen“ mit gewähltem Ziel). Alle drei laufen durch dieselbe Funktion `laengeAendern()`. Beim
+  Verorten bekommt die Wand mit der Lage ihre maßgebende Länge — die frühere, bewusst erzeugte
+  [L-3]-Abweichung auf diesem Weg ist damit entfallen.
+- **Neu gerechnet, nicht angeglichen.** Eine Längenänderung rechnet das vorhandene Wandelement mit
+  der neuen Rasterlänge über **denselben Auslegungspfad wie Modul 1** neu (`sembla-engine.js`:
+  `nachweisPruefen` bei gesetzter Vorspannkraft, sonst `autoAuslegung`). Der Editor bekommt damit
+  **keinen zweiten Rechenkern** und keine eigene Wandgeometrie. Erhalten bleiben Name, Wandtyp,
+  Höhe, Öffnungen, Staffelung, Seiten, die Vorspann-Hardware und die Produktrollen in `eingaben`;
+  Stückliste, Stränge, Lagen und Nachweis entstehen **frisch**. Kopierte Altwerte gibt es nicht.
+- **Die Höhe bleibt beim Wandelement.** `#gp-hoehe` ist und bleibt die Vorgabe für **neue** Wände
+  ([L-5]) und wird bei einer Längenänderung nie herangezogen.
+- **Verkürzungen werden abgewiesen, nicht zurechtgebogen.** Vor jedem Schreiben prüft
+  `laengeHindernisse()` vier Fälle und benennt jeden einzeln: eine Öffnung jenseits der neuen
+  Länge, eine Staffelstufe jenseits der neuen Länge, eine manuell gesetzte Spannachse jenseits der
+  neuen Länge und eine Länge unter dem Core-Mindestmaß. Genau die ersten drei würde
+  der Rechenkern sonst still klemmen bzw. herausfiltern — das wäre eine unbemerkte Änderung einer
+  fachlichen Eingabe. Angepasst wird stattdessen in Modul 1; der Editor kürzt und entfernt nichts.
+- **Das Mindestmaß gilt schon beim Ziehen.** `MIN_GRID = 2` (250 mm) ist die Untergrenze des
+  Rechenkerns und jetzt auch die des Editors: `entwurfLage()` liefert darunter keinen Entwurf und
+  keine Vorschau, der Endgriff klemmt darauf. Vorher ließ sich eine 125-mm-Wand ziehen, die erst
+  beim Rechnen mit einer technischen Meldung scheiterte. Kommt der Wert trotzdem an — etwa über ein
+  Längenmaß von 125 mm —, greift dieselbe Vorprüfung und weist ihn ohne jeden Schreibvorgang ab.
+- **Ein Bedienvorgang.** `laengeAendern()` rechnet **zuerst** vollständig; erst danach werden
+  Projektmappe (Lage, beim Längenmaß zusätzlich das Maß in einem `aendereMappe`) und Wandelement
+  geschrieben. Scheitert das Rechnen, ist nichts geschrieben; scheitert der zweite Schreibvorgang,
+  wird die Mappe auf den Stand davor zurückgesetzt. Es bleibt kein Zustand, in dem
+  Projektmappenlänge und Wandelementlänge auseinanderliegen.
+- **Rückgängig nimmt beides zurück.** Ein Undo-Schritt trägt jetzt neben dem Mappenstand und den in
+  ihm **angelegten** Wandelementen auch die Momentaufnahmen der in ihm **geänderten** — Rückgängig
+  stellt sie wieder her, Wiederholen setzt den Stand danach zurück. Planbild, Maßstab, Blick,
+  Auswahl und Werkzeug stehen weiterhin in keinem Undo-Schritt ([K-10]/[L-8]/[L-9]).
+- **Tests.** `smoke_geschossplan.mjs` fährt Zeichnen, Endgriff, Längenmaß und Undo/Redo über die
+  echten Handler und vergleicht nach jedem Schritt Maß, Lage, Wandelementlänge und eine frisch
+  gerechnete längenabhängige Ableitung; zusätzlich werden alle vier Abweisungsgründe geprüft.

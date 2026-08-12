@@ -110,7 +110,10 @@ const PLAN = await import("../../docs/shared/sembla-plan.js");
 // aus dem der Lageplan (Modul 9) seine Masse zeichnet ([N-5]). Der Editor rechnet sie
 // nicht mehr selbst — sonst koennten Bearbeitung und Ausgabe auseinanderlaufen.
 const MB = await import("../../docs/shared/sembla-massbild.js");
-const { buildWall } = await import("../../docs/shared/sembla-core.js");
+const { buildWall, Opening } = await import("../../docs/shared/sembla-core.js");
+// Der Auslegungspfad von Modul 1 (#56): eine Laengenaenderung im Editor rechnet das
+// vorhandene Wandelement damit NEU — derselbe Baustein, kein zweiter Rechenkern.
+const ENG = await import("../../docs/shared/sembla-engine.js");
 // Der gemeinsame Anlagepfad beider Anlageorte (#15/#62): er belegt die Verwendungsrollen
 // vor und rechnet das Wandelement DARAUS neu, bevor es gespeichert bleibt.
 const WA = await import("../../docs/shared/sembla-wandanlage.js");
@@ -118,7 +121,7 @@ PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA };
+globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening };
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
@@ -342,7 +345,7 @@ GP.ziehe({ x: 1000, y: 2000 }, { x: 5000, y: 2000 });
 await warte();
 ok('nach dem Wegziehen ist die Kollision weg', GP.loesen().kollisionen.length === 0);
 
-// --- 6) Vorhandene, unverortete Wand verorten ([L-3]/[L-4]) ---------------
+// --- 6) Vorhandene, unverortete Wand verorten ([L-4], #56) ----------------
 const fremdId = store.speichere('Wand aus Modul 0', buildWall('Wand aus Modul 0', 2000, 2800, []));
 store.verorteWand(fremdId, gsId, { lage: null });
 await warte();
@@ -350,17 +353,44 @@ $('gp-ziel').value = fremdId;
 $('gp-ziel').dispatch('change');
 ok('unverortete Waende stehen als Ziel zur Wahl',
   $('gp-ziel').innerHTML.includes(fremdId) && GP.zustand.ziel === fremdId);
+const rollenFremd = JSON.stringify(store.holeProdukte(1, fremdId).rollen);
 GP.werkzeug('wand');
-GP.zeichne({ x: 0, y: 4000 }, { x: 2500, y: 4000 });     // absichtlich 2500 statt 2000
+GP.zeichne({ x: 0, y: 4000 }, { x: 2500, y: 4000 });     // gezeichnet: 2500 statt bisher 2000
 await warte();
 const fremd = MAPPE.findeWand(store.holeMappe(), fremdId).wand;
 ok('die vorhandene Wand wird verortet, ohne ein zweites Element anzulegen',
   store.listeElemente().length === 3 && fremd.lage.laenge_grid === 20);
-ok('[L-3] die Laengenabweichung wird gemeldet, nicht angeglichen',
-  /2000 mm lang/.test($('gp-msg').textContent)
+// #56: Mit der Lage bekommt die Wand ihre massgebende Laenge — das Wandelement wird
+// damit neu gerechnet, statt eine Abweichung stehen zu lassen.
+ok('#56 das Verorten uebernimmt die gezeichnete Laenge ins Wandelement',
+  store.holeElement(fremdId).wandelement.length_mm === 2500
+  && store.holeElement(fremdId).wandelement.N_grid === 20);
+ok('#56 dabei bleiben Hoehe und die uebrigen fachlichen Eingaben erhalten',
+  store.holeElement(fremdId).wandelement.height_mm === 2800
+  && JSON.stringify(store.holeProdukte(1, fremdId).rollen) === rollenFremd);
+ok('#56 die laengenabhaengige Ableitung passt frisch zur neuen Laenge', (() => {
+  const w = store.holeElement(fremdId).wandelement;
+  const vorg = { name: w.name, length_mm: w.length_mm, height_mm: w.height_mm,
+    openings: [], sides: w.sides, steps: [], prestress: { ...w.prestress },
+    load: { qk_area: 1.00, gammaQ: 1.50 },
+    material: w.verification && w.verification.material };
+  const soll = (w.prestress && w.prestress.force_kN
+    ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg)).wandelement;
+  return JSON.stringify(w.bom) === JSON.stringify(soll.bom)
+    && JSON.stringify(w.tension_columns) === JSON.stringify(soll.tension_columns)
+    && w.courses.every(c => Math.max(0, ...c.stones.map(s => s.x1)) <= 2500); })());
+ok('#56 es gibt nichts mehr zu melden — keine Abweichung in Meldung und Statuszeile',
+  !/Abweichung/.test($('gp-msg').textContent)
+  && !/Längenabweichung/.test($('gp-status').innerHTML));
+// Muss 8 auch hier: Lage UND Wandelement gehen gemeinsam zurueck und wieder vor.
+GP.undo(); await warte();
+ok('#56 Rueckgaengig nimmt Verortung und Wandelement gemeinsam zurueck',
+  MAPPE.findeWand(store.holeMappe(), fremdId).wand.lage === null
   && store.holeElement(fremdId).wandelement.length_mm === 2000);
-ok('[L-3] die Abweichung steht auch in der Statuszeile',
-  /Längenabweichung/.test($('gp-status').innerHTML));
+GP.redo(); await warte();
+ok('#56 Wiederholen stellt beide Staende wieder her',
+  MAPPE.findeWand(store.holeMappe(), fremdId).wand.lage.laenge_grid === 20
+  && store.holeElement(fremdId).wandelement.length_mm === 2500);
 
 // Lage wieder aufheben — der Eintrag im Geschoss bleibt ([L-4])
 GP.werkzeug('auswahl');
@@ -400,9 +430,32 @@ await warte();
 ok('der Griff „min“ laesst die gegenueberliegende Stirnkante fest stehen',
   lage3().laenge_grid === 7 && lage3().start_mm.x === 375
   && CON.wandRechteck(lage3()).x_max === 1250);
-ok('das Wandelement bleibt von der Groessenaenderung unberuehrt ([P-1]/[L-3])',
-  store.holeElement(el3.id).wandelement.length_mm === 2000
-  && /Längenabweichung/.test($('gp-status').innerHTML));
+// #56: Die Groessenaenderung fuehrt das Wandelement MIT — es gibt keine Abweichung mehr,
+// und damit auch nichts nach [L-3] zu melden. Abgeleitetes wird dabei frisch gerechnet.
+ok('#56 die Groessenaenderung rechnet das Wandelement mit der neuen Rasterlaenge neu',
+  store.holeElement(el3.id).wandelement.length_mm === 7 * CON.GRID_MM
+  && store.holeElement(el3.id).wandelement.N_grid === 7
+  && !/Längenabweichung/.test($('gp-status').innerHTML));
+ok('#56 dabei bleiben Hoehe und Wandtyp der Wand erhalten',
+  store.holeElement(el3.id).wandelement.height_mm === Number($('gp-hoehe').value)
+  && store.holeElement(el3.id).wandelement.wandtyp === 'mit_wind');
+// Die Ableitung stammt aus dem AUSLEGUNGSPFAD von Modul 1, nicht aus kopierten Altwerten:
+// dieselbe Rechnung mit denselben Eingaben liefert Stueckliste, Lagen und Straenge bitgleich —
+// und sie passt zur NEUEN Laenge (7 Raster), nicht mehr zur alten (10 Raster).
+ok('#56 die Ableitung ist frisch aus dem Auslegungspfad, nicht kopiert', (() => {
+  const w = store.holeElement(el3.id).wandelement;
+  const vorg = { name: w.name, length_mm: w.length_mm, height_mm: w.height_mm,
+    openings: [], sides: w.sides, steps: [], prestress: { ...w.prestress },
+    load: { qk_area: 1.00, gammaQ: 1.50 },
+    material: w.verification && w.verification.material };
+  const soll = (w.prestress && w.prestress.force_kN
+    ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg)).wandelement;
+  return JSON.stringify(w.bom) === JSON.stringify(soll.bom)
+    && JSON.stringify(w.courses) === JSON.stringify(soll.courses)
+    && JSON.stringify(w.tension_columns) === JSON.stringify(soll.tension_columns)
+    // … und die Mengen gehoeren wirklich zur neuen Laenge:
+    && w.courses.every(c => Math.max(0, ...c.stones.map(s => s.x1)) <= 7 * CON.GRID_MM)
+    && w.bom.i3 + w.bom.i2 < 10 * 13; })());
 
 GP.ziehe({ x: 812.5, y: 8062.5 }, { x: 1062.5, y: 8062.5 });  // runder Griff in der Mitte
 await warte();
@@ -419,7 +472,7 @@ ok('gedreht wird um die Min-Ecke — die Kanten liegen weiter auf dem Raster',
   lage3().start_mm.x === 687.5 && lage3().start_mm.y === 8000
   && CON.wandRechteck(lage3()).x_min === 625 && CON.wandRechteck(lage3()).y_min === 8000);
 ok('das Wandelement bleibt vom Drehen unberuehrt ([P-1])',
-  store.holeElement(el3.id).wandelement.length_mm === 2000);
+  store.holeElement(el3.id).wandelement.length_mm === 7 * CON.GRID_MM);
 $('gp-drehen').dispatch('click');
 await warte();
 ok('zweimal drehen kehrt zur Ausgangsrichtung zurueck', lage3().richtung === 'x');
@@ -808,9 +861,15 @@ await warte();
 ok('[K-11] ein gueltiges Laengenmass treibt laenge_grid …',
   GP.bemassungen().length === 2 && lageVon(idA).laenge_grid === 8);
 ok('… laesst den Anker stehen (die min-Stirnkante bleibt)', lageVon(idA).start_mm.x === 0);
-ok('[L-3] das Wandelement bleibt unberuehrt, die Abweichung wird gemeldet',
-  store.holeElement(idA).wandelement.length_mm === 2000
-  && /Längenabweichung/.test($('gp-status').innerHTML));
+// #56: … und fuehrt das Wandelement mit. Es gibt keine Abweichung mehr zu melden.
+ok('#56 das Laengenmass rechnet auch das Wandelement mit der neuen Laenge neu',
+  store.holeElement(idA).wandelement.length_mm === 1000
+  && store.holeElement(idA).wandelement.N_grid === 8
+  && !/Längenabweichung/.test($('gp-status').innerHTML));
+ok('#56 Mass, Lage und Wandelement nennen dieselbe Laenge',
+  GP.bemassungen().find(b => b.mass_mm === 1000).mass_mm
+    === lageVon(idA).laenge_grid * CON.GRID_MM
+  && lageVon(idA).laenge_grid * CON.GRID_MM === store.holeElement(idA).wandelement.length_mm);
 ok('[K-11] die Laenge gilt nicht als geloest — „bestimmt" meint nur die Position',
   GP.loesen().bestimmt[idA].x === false);
 GP.werkzeug('auswahl');
@@ -928,7 +987,9 @@ ok('#60 das Mass treibt die Lage: die min-Stirnkante steht auf 500 mm',
 ok('#60 gesetzt wird GENAU die Achse dieses Bezugs — die andere bleibt frei',
   GP.loesen().bestimmt[idA].x === true && GP.loesen().bestimmt[idA].y === false);
 ok('#60 das Wandelement bleibt dabei unberuehrt ([P-1])',
-  store.holeElement(idA).wandelement.length_mm === 2000
+  // Ein Ursprungsmass treibt die POSITION, nie die Laenge — das Wandelement steht
+  // unveraendert auf dem Stand, den ihm das Laengenmass aus Abschnitt 13 gab (#56).
+  store.holeElement(idA).wandelement.length_mm === 1000
   && store.holeElement(idA).wandelement.height_mm === 2600);
 
 // (d) Zweiter Fall: ZUERST der Wandbezug, DANACH die Ursprungslinie (Achse y).
@@ -990,7 +1051,7 @@ ok('nach den Ursprungsmassen beider Achsen sind beide Waende vollstaendig bestim
     !!nachher && nachher.von === null && nachher.mass_mm === 1500
     && GP.loesen().positionen[idA].y === 1500 + CON.HALB_BREITE_MM);
   ok('#60 das Wandelement ist von alldem unberuehrt ([P-1])',
-    store.holeElement(idA).wandelement.length_mm === 2000);
+    store.holeElement(idA).wandelement.length_mm === 1000);
   // Zurueck auf den Ausgangsstand — und zwar ueber Rueckgaengig: die Aenderung
   // eines Ursprungsmasses ist ein ganz normaler Schritt des Stapels ([K-10]).
   GP.undo();
@@ -2191,6 +2252,202 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     !!zurueckMit
     && JSON.stringify(zurueckMit.wandelement.prestress.rod_lengths_mm) === '[1000,850]'
     && zurueckMit.wandelement.prestress.rod_rest_mm === 100);
+}
+
+// ==========================================================================
+//  Issue #56 — die Laenge lebt im Editor: Lage UND Wandelement in einem Vorgang
+// ==========================================================================
+// Gefahren wird ausschliesslich ueber die echten Handler (zeichnen, Endgriff ziehen,
+// Laengenmass inline setzen, Rueckgaengig/Wiederholen). Nach JEDEM Schritt muessen
+// Mass, Lage und Wandelementlaenge dieselbe Zahl nennen, die laengenabhaengige
+// Ableitung frisch dazu passen und KEINE Abweichung gemeldet sein.
+{
+  const prj56 = store.fuegeProjektHinzu('#56-Pruefprojekt', { geschoss: 'EG', hoehe_mm: 2600 });
+  const gs56 = MAPPE.alleGeschosse(prj56)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs56);
+  await warte();
+  GP.werkzeug('auswahl'); GP.zeigeAlles();
+
+  /** Laenge aus allen drei Quellen — sie MUESSEN uebereinstimmen (Nicht-Ziel 1). */
+  const dreiklang = (id) => {
+    const l = MAPPE.findeWand(store.holeMappe(), id).wand.lage;
+    const w = store.holeElement(id).wandelement;
+    return { lage: l.laenge_grid * CON.GRID_MM, element: w.length_mm, grid: l.laenge_grid };
+  };
+  const einig = (id, mm) => { const d = dreiklang(id);
+    return d.lage === mm && d.element === mm; };
+  /** Die laengenabhaengige Ableitung frisch nachrechnen — bitgleich? */
+  const ableitungPasst = (id) => {
+    const w = store.holeElement(id).wandelement;
+    const vorg = { name: w.name, length_mm: w.length_mm, height_mm: w.height_mm,
+      openings: (w.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+      sides: w.sides, steps: (w.steps || []).map(s => ({ ...s })),
+      prestress: { ...w.prestress }, load: { qk_area: 1.00, gammaQ: 1.50 },
+      material: w.verification && w.verification.material };
+    const soll = (w.prestress && w.prestress.force_kN
+      ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg)).wandelement;
+    return w.N_grid === w.length_mm / CON.GRID_MM
+      && JSON.stringify(w.bom) === JSON.stringify(soll.bom)
+      && JSON.stringify(w.courses) === JSON.stringify(soll.courses)
+      && JSON.stringify(w.tension_columns) === JSON.stringify(soll.tension_columns);
+  };
+  const keineAbweichung = () => !/Längenabweichung/.test($('gp-status').innerHTML)
+    && !/Abweichung/.test($('gp-msg').textContent);
+
+  // (a) Muss 2 — Zeichnen legt Lage UND Wandelement mit derselben Rasterlaenge an.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 1000 }, { x: 2000, y: 1000 });
+  await warte();
+  const id56 = MAPPE.alleGeschosse(store.holeMappe())
+    .find(x => x.geschoss.id === gs56).geschoss.waende[0].id;
+  ok('#56 (Muss 2) das Zeichnen speichert Lage und Wandelement mit derselben Rasterlaenge',
+    einig(id56, 2000) && dreiklang(id56).grid === 16 && ableitungPasst(id56) && keineAbweichung());
+  const hoehe56 = store.holeElement(id56).wandelement.height_mm;
+  const typ56 = store.holeElement(id56).wandelement.wandtyp;
+  const rollen56 = JSON.stringify(store.holeProdukte(1, id56).rollen);
+
+  // (b) Muss 3 — Endgriff: ein Bedienvorgang, beide Staende wandern mit.
+  GP.werkzeug('auswahl');
+  GP.tippe(mitteVon(id56));
+  const griff = GP.griffe().find(g => g.ende === 'max');
+  GP.ziehe(griff, { x: griff.x - 1000, y: griff.y });
+  await warte();
+  ok('#56 (Muss 3) der Endgriff rechnet das Wandelement mit der neuen Laenge neu',
+    einig(id56, 1000) && ableitungPasst(id56) && keineAbweichung());
+  ok('#56 (Muss 5) Hoehe, Wandtyp und Produktrollen ueberstehen die Neurechnung',
+    store.holeElement(id56).wandelement.height_mm === hoehe56
+    && store.holeElement(id56).wandelement.wandtyp === typ56
+    && JSON.stringify(store.holeProdukte(1, id56).rollen) === rollen56);
+
+  // (c) Muss 8 — Rueckgaengig/Wiederholen stellen BEIDE Staende her.
+  GP.undo(); await warte();
+  ok('#56 (Muss 8) Rueckgaengig nimmt Lage UND Wandelement gemeinsam zurueck',
+    einig(id56, 2000) && ableitungPasst(id56));
+  GP.redo(); await warte();
+  ok('#56 (Muss 8) Wiederholen setzt beide Staende wieder nach vorn',
+    einig(id56, 1000) && ableitungPasst(id56));
+
+  // (d) Muss 4 — dasselbe ueber ein Laengenmass, inline gesetzt.
+  GP.werkzeug('bemassen');
+  GP.tippe(GP.bezugsPunkt(id56, 'x', 'min'));
+  GP.tippe(GP.bezugsPunkt(id56, 'x', 'max'));
+  inlineEnter(1500);
+  await warte();
+  const lm = GP.bemassungen().find(b => b.mass_mm === 1500);
+  ok('#56 (Muss 4) das Laengenmass fuehrt Mass, Lage und Wandelement gemeinsam',
+    !!lm && einig(id56, 1500) && lm.mass_mm === dreiklang(id56).lage
+    && ableitungPasst(id56) && keineAbweichung());
+  GP.undo(); await warte();
+  ok('#56 (Muss 8) Rueckgaengig nimmt auch Mass, Lage und Wandelement gemeinsam zurueck',
+    !GP.bemassungen().some(b => b.id === lm.id) && einig(id56, 1000) && ableitungPasst(id56));
+  GP.redo(); await warte();
+  ok('#56 (Muss 8) und Wiederholen stellt alle drei wieder her',
+    GP.bemassungen().some(b => b.id === lm.id) && einig(id56, 1500) && ableitungPasst(id56));
+
+  // (e) Nicht-Ziel 1 — was ungueltig wuerde, wird benannt ABGEWIESEN. Nichts wird
+  //     geklemmt, gefiltert oder ersetzt, und es bleibt nichts halb geschrieben.
+  const el56 = store.holeElement(id56);
+  const basis = el56.wandelement;
+  /** Wandelement mit Zusatzmerkmal hinterlegen — so, wie Modul 1 es geschrieben haette. */
+  const setze = (opts) => {
+    const w = Object.assign(buildWall(el56.name, basis.length_mm, basis.height_mm,
+      opts.openings || [], basis.sides,
+      { ...basis.prestress, ...(opts.prestress || {}) }, opts.steps || []),
+      { wandtyp: basis.wandtyp });
+    store.speichere(el56.name, w, id56);
+  };
+  /** Verkuerzen ueber den ECHTEN Endgriff — und pruefen, dass NICHTS geschrieben wurde. */
+  const verkuerzeAuf = (grid) => {
+    const vorMappe = localStorage.getItem('sembla:projekte');
+    const vorElement = JSON.stringify(store.holeElement(id56).wandelement);
+    GP.werkzeug('auswahl');
+    GP.tippe(mitteVon(id56));
+    const g = GP.griffe().find(x => x.ende === 'max');
+    const r = CON.wandRechteck(MAPPE.findeWand(store.holeMappe(), id56).wand.lage,
+      GP.loesen().positionen[id56]);
+    GP.ziehe(g, { x: r.x_min + grid * CON.GRID_MM, y: g.y });
+    return { unveraendert: localStorage.getItem('sembla:projekte') === vorMappe
+      && JSON.stringify(store.holeElement(id56).wandelement) === vorElement,
+      meldung: $('gp-msg').textContent };
+  };
+
+  // Das Laengenmass aus (d) wuerde den Griff nach [K-11] schon vorher sperren.
+  GP.werkzeug('auswahl');
+  GP.tippe(GP.bemPunkt(lm.id));
+  gp('taste', 'Delete');
+  await warte();
+
+  setze({ openings: [new Opening(8, 11, 0, 10, 'tuer')] });
+  await warte();
+  const abwOeffnung = verkuerzeAuf(6);
+  ok('#56 (Nicht-Ziel 1) eine Oeffnung jenseits der neuen Laenge weist die Verkuerzung ab',
+    abwOeffnung.unveraendert && /Tür reicht bis Raster 11/.test(abwOeffnung.meldung)
+    && /nichts gekürzt oder entfernt/.test(abwOeffnung.meldung));
+
+  setze({ steps: [{ x0_mm: 1000, x1_mm: 1500, height_mm: 1000 }] });
+  await warte();
+  const abwStufe = verkuerzeAuf(6);
+  ok('#56 (Nicht-Ziel 1) eine Staffelstufe jenseits der neuen Laenge wird nicht still geklemmt',
+    abwStufe.unveraendert && /Staffelstufe bis 1500 mm/.test(abwStufe.meldung));
+
+  setze({ prestress: { columns_grid: [0, 5, 11] } });
+  await warte();
+  const abwAchse = verkuerzeAuf(6);
+  ok('#56 (Nicht-Ziel 1) eine manuelle Spannachse jenseits der neuen Laenge wird nicht gefiltert',
+    abwAchse.unveraendert && /Spannachse in Rasterlage 11/.test(abwAchse.meldung));
+
+  setze({});
+  await warte();
+  // (e2) Mindestmass: Der Editor bietet gar nicht erst an, was der Kern ablehnt.
+  // Der Endgriff klemmt auf 2 Raster — die Vorschau zeigt nie eine 125-mm-Wand.
+  const abwKurz = verkuerzeAuf(1);
+  ok('#56 der Endgriff kommt nicht unter das Core-Mindestmass von 250 mm',
+    !abwKurz.unveraendert && einig(id56, 250) && ableitungPasst(id56));
+  // Und wenn ein Mass doch 125 mm verlangt, wird das benannt abgewiesen — ohne
+  // Mass, ohne Lage, ohne Wandelement, also ohne jeden Teil-Schreibvorgang.
+  {
+    const vorMappe = localStorage.getItem('sembla:projekte');
+    const vorElement = JSON.stringify(store.holeElement(id56).wandelement);
+    GP.werkzeug('bemassen');
+    GP.tippe(GP.bezugsPunkt(id56, 'x', 'min'));
+    GP.tippe(GP.bezugsPunkt(id56, 'x', 'max'));
+    inlineEnter(125);
+    await warte();
+    ok('#56 (Nicht-Ziel 1) ein Laengenmass unter dem Mindestmass wird benannt abgewiesen',
+      /mindestens 250 mm lang \(2 Raster\)/.test($('gp-msg').textContent)
+      && localStorage.getItem('sembla:projekte') === vorMappe
+      && JSON.stringify(store.holeElement(id56).wandelement) === vorElement);
+    gp('inlineTaste', 'Escape');
+  }
+  // Auch das ZEICHNEN bietet unter dem Mindestmass nichts an — kein Entwurf, keine Wand.
+  {
+    const vorEl = store.listeElemente().length;
+    const vorMappe = localStorage.getItem('sembla:projekte');
+    GP.werkzeug('wand');
+    while (GP.blick.mm > 5) $('gp-zoom-plus').dispatch('click');
+    GP.ziehe({ x: 0, y: 9000 }, { x: 125, y: 9000 });     // genau 1 Raster
+    await warte();
+    ok('#56 ein Zug ueber genau 1 Raster legt nichts an und wird benannt abgewiesen',
+      store.listeElemente().length === vorEl
+      && localStorage.getItem('sembla:projekte') === vorMappe
+      && /mindestens 250 mm lang \(2 Raster\)/.test($('gp-msg').textContent));
+    ok('#56 dazu entsteht nicht einmal ein Entwurf',
+      GP.entwurfLage({ x: 0, y: 9000 }, { x: 125, y: 9000 }) === null
+      && GP.entwurfLage({ x: 0, y: 9000 }, { x: 250, y: 9000 }).lage.laenge_grid === 2);
+    GP.zeigeAlles();
+  }
+
+  // (f) Nach allen Abweisungen ist der Stand einig — auf dem Mindestmass, das der
+  //     geklemmte Endgriff zuletzt gesetzt hat; die abgewiesenen Schritte haben nichts
+  //     hinterlassen.
+  ok('#56 nach jeder Abweisung sind Lage und Wandelement weiterhin einig',
+    einig(id56, 250) && ableitungPasst(id56));
+
+  // (g) Ein gueltiges Verkuerzen laeuft danach ganz normal durch.
+  const abwOk = verkuerzeAuf(4);
+  await warte();
+  ok('#56 eine zulaessige Verkuerzung wird danach ganz normal ausgefuehrt',
+    !abwOk.unveraendert && einig(id56, 500) && ableitungPasst(id56) && keineAbweichung());
 }
 
 let fail = 0;

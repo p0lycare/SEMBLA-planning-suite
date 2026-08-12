@@ -48,6 +48,22 @@ globalThis.window.__wpInit();
 const WP=globalThis.window.__wp;
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
+
+/**
+ * Laenge der Wand aendern — seit Issue #56 NICHT mehr ueber Modul 1: das Feld `len`
+ * ist dort nur noch Anzeige und hat keinen Ereignishoerer mehr. Im Betrieb rechnet
+ * der GESCHOSSEDITOR das Wandelement mit der neuen Rasterlaenge neu und speichert es;
+ * Modul 1 laedt diesen Stand. Genau diesen Weg nimmt der Helfer, damit die folgenden
+ * Pruefungen keinen Bedienweg benutzen, den es im Produkt nicht mehr gibt.
+ */
+function setzeLaenge(mm){
+  const el=store.holeElement(store.aktivId());
+  const we=el?el.wandelement:WP.RESULT.wandelement;
+  const neu=Object.assign(buildWall(we.name, mm, we.height_mm, [], we.sides, we.prestress, []),
+    {wandtyp:we.wandtyp});
+  if(el) store.speichere(el.name, neu, el.id);
+  WP.applyWand(neu);
+}
 // Mit aktivem Element rechnet Modul 1 direkt beim Laden.
 ok('aktives Element geladen -> Auslegung läuft, konvergiert', WP.RESULT && WP.RESULT.status==='konvergiert');
 // Issue #6 (M2): Modul 1 wählt keinen Wandtyp, führt den des Elements aber unverändert mit —
@@ -160,7 +176,7 @@ ok('Auffüllen entfernt breiten Durchbruch', !WP.RESULT.wandelement.openings.som
 
 // Versatz-Warnung: 0,50 m (zwei i2) verletzt den Mindestversatz -> sichtbare Warnung + rotes Badge
 WP.voids.clear();
-document.getElementById('len').value='0.50';
+setzeLaenge(500);
 document.getElementById('modus').value='nachweis';
 WP.run();
 const wbad=WP.RESULT.wandelement;
@@ -168,7 +184,7 @@ ok('0,50 m: Core meldet versatz_ok=false', wbad.validation.versatz_ok===false);
 ok('Versatz-Warnung im UI sichtbar', /Versatz/.test(document.getElementById('warns').textContent));
 ok('Badge zeigt Verband regelwidrig', /regelwidrig/.test(document.getElementById('statusBadge').textContent));
 ok('Badge ist rot (Klasse no)', /badge no/.test(document.getElementById('statusBadge').className));
-document.getElementById('len').value='2.00'; document.getElementById('modus').value='auto'; WP.run();
+setzeLaenge(2000); document.getElementById('modus').value='auto'; WP.run();
 
 // [Z-1] Es gibt KEIN Eingabefeld fuer die Gewindestangenlaenge mehr — der Bauteilkatalog ist
 // die alleinige Quelle. Ohne Katalog rechnet der Core mit seinem dokumentierten Altstand-Wert.
@@ -183,7 +199,7 @@ ok('fehlende Auswahl wird sichtbar gemeldet',
   /Kein Gewindestangenprodukt gewählt/.test(document.getElementById('rodQuelle').innerHTML));
 
 // Staffelung / getreppter Aufbau: rechte Hälfte niedriger -> keine Öffnungs-Überlappung, oben rechts keine Steine
-document.getElementById('len').value='2.00'; document.getElementById('hgt').value='2.60'; WP.run();
+setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
 WP.addStep(); WP.steps[0].x0=1.00; WP.steps[0].x1=2.00; WP.steps[0].h=1.00; WP.run();
 const wst=WP.RESULT.wandelement;
 ok('Staffelung im Wandelement (steps)', Array.isArray(wst.steps) && wst.steps.length===1 && wst.steps[0].height_mm===1000);
@@ -196,7 +212,7 @@ ok('unterste Lage volle Breite (2,0 m)', Math.max(0,...untenc.stones.map(s=>s.x1
 // Projekt-Kopfdaten wurden nach Modul 0 (Startseite) verschoben — hier nicht mehr getestet.
 
 // Feature-Requests: Anschluss-Modell + Reihennummern
-document.getElementById('len').value='2.00'; document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
+setzeLaenge(2000); document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
 const wfr=WP.RESULT.wandelement;
 ok('prestress hat blech_mm + top_connection', wfr.prestress.blech_mm>0 && (wfr.prestress.top_connection==='blech'||wfr.prestress.top_connection==='spannplatte'));
 ok('base_plate im Wandelement (15 mm)', !!wfr.base_plate && wfr.base_plate.dicke_mm===15);
@@ -209,7 +225,7 @@ ok('Umschaltung Spannplatte wirkt', WP.RESULT.wandelement.prestress.top_connecti
 document.getElementById('topConn').value='blech'; document.getElementById('topConn').dispatch('change');
 
 // Feature: manueller Spannachsen-Editor (Sonderkonstruktion)
-document.getElementById('len').value='2.00'; document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
+setzeLaenge(2000); document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
 WP.setManualCols([0,8,15]);
 const mks=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
 ok('manuelle Achsen: nur gesetzte k', mks.every(k=>[0,8,15].includes(k)) && mks.includes(0) && mks.includes(15));
@@ -261,10 +277,34 @@ const alt=buildWall('Alt',2000,2600,[]); delete alt.prestress.start_axis_grid;  
 WP.applyWand(Object.assign(alt,{wandtyp:'mit_wind'}));
 ok('Altstand ohne Feld -> 1. Rasterachse', document.getElementById('startAchse').value==='0' && WP.RESULT.wandelement.tension_columns[0].k===0);
 
-// Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element
-document.getElementById('len').value='2.00'; document.getElementById('len').dispatch('input');
+// Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element.
+// Gefahren wird das ueber die HOEHE — die Laenge ist seit #56 kein Bedienweg mehr (s. u.).
+document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
 const gesp=store.aktivesWandelement();
 ok('Auto-Speichern übergibt Wandelement an Storage', gesp && gesp.length_mm>0 && !!gesp.verification);
+
+// ---- Issue #56: Modul 1 fuehrt die Laenge nicht mehr -------------------------------
+// Geprueft wird gegen die ECHTE HTML-Quelle, nicht gegen den DOM-Stub: der legt Elemente
+// bei Bedarf an und koennte ein entferntes Attribut nie als fehlend melden.
+ok('#56 Laengenfeld ist nur noch Anzeige (readonly im Markup)',
+  /<input type="number" id="len"[^>]*\breadonly\b/.test(html));
+ok('#56 kein indirekter Schreibweg: `len` haengt an keinem Ereignishoerer mehr',
+  /\['hgt','qk','gammaQ'/.test(html) && !/\['len','hgt'/.test(html));
+ok('#56 die Oberflaeche verweist fuer die Laenge auf den Geschosseditor',
+  /id="lenHint"/.test(html) && /Geschosseditor/.test(html));
+// Muss 7: andere fachliche Aenderungen rechnen weiter — mit der GESPEICHERTEN Laenge.
+const vorLaenge=store.aktivesWandelement().length_mm;
+document.getElementById('qk').value='2.0'; document.getElementById('qk').dispatch('input');
+const nachQk=store.aktivesWandelement();
+ok('#56 andere Aenderung speichert bei unveraenderter Laenge',
+  nachQk.length_mm===vorLaenge && !!nachQk.verification);
+WP.addOpening('tuer');
+const nachOp=store.aktivesWandelement();
+ok('#56 Oeffnung hinzufuegen laesst die gespeicherte Laenge unberuehrt',
+  nachOp.length_mm===vorLaenge && nachOp.openings.length===1);
+// Ausgangszustand fuer die folgenden Abschnitte wiederherstellen (glatte 2,00-m-Wand).
+document.getElementById('qk').value='1.00';
+WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[]),{wandtyp:'mit_wind'}));
 
 // ---- Issue #35: Produkte dieser Wand (echte Modul-1-Oberfläche) ----------------------
 // Modul 1 wählt DIREKT aus dem vollständigen Katalog; es gibt keinen Freigabepool in Modul 0.
@@ -498,7 +538,7 @@ ok('ohne aktives Element: leere Vorschau + Verweis auf Modul 0',
   && /Start/.test(document.getElementById('saveHint').textContent));
 // Issue #63: im echten Leerzustand darf keine irrefuehrende Zuschnittlegende stehenbleiben.
 ok('[#63] Leerzustand: Legendenbereich ist leer', zleg()==='');
-document.getElementById('len').value='3.00'; document.getElementById('len').dispatch('input');
+document.getElementById('hgt').value='3.00'; document.getElementById('hgt').dispatch('input');
 ok('ohne aktives Element: keine stille Neuanlage', store.listeElemente().length===anzahlVorher && !WP.RESULT);
 ok('ohne aktives Element: keine Produktauswahl möglich', (()=>{
   document.getElementById('prodRollen').dispatch('change',{target:{dataset:{prolle:'i3',pid:'stein-i3'},checked:true}});

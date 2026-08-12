@@ -549,3 +549,32 @@ Diese Punkte sind inzwischen umgesetzt.
 - **Tests:** `test-archiv.mjs` prüft 65 reine Archiv-/ZIP-Fälle; der echte Oberflächenroundtrip in
   `smoke_start.mjs` umfasst ZIP, Ordner, Deflate, fehlenden Katalog, Konfliktbestätigung, vollständigen
   Rollback und synthetische Mini-Bilder. `npm run test:modul0` ist mit 373 Prüfungen grün.
+
+---
+
+## 14. Ein Anlageweg, eine Längenquelle (Issue #56, 2026-08-12)
+
+Issue #56 ändert **keine** [L]-Regel, keine Datenstruktur und keine Format-/Schemaversion. Betroffen
+ist allein die Bedienung: Modul 0 legt keine Wände mehr an und führt keine Länge mehr.
+
+- **Kein Anlageknopf, kein Neuanlagedialog.** Der frühere „+ Wand hinzufügen“ in der Baumliste ist
+  durch zwei eindeutige Wege ersetzt: **„+ Neue Wand zeichnen (Geschosseditor)“** öffnet das
+  Geschoss im Layout-Editor, **„Wand aus Datei importieren…“** öffnet das Wand-Popup im reinen
+  Importmodus. Das Popup hat damit nur noch **einen** Schreibknopf — „Namen speichern“ —, und die
+  Felder Länge, Höhe und Wandtyp sind ersatzlos entfallen: sie gehören zum Zeichnen im Editor.
+- **Der Dateiimport bleibt unverändert** (Nicht-Ziel des Pakets). „Datei importieren…“ und
+  „Musterwand laden…“ lesen weiter ein **fertiges** Wandelement, bestätigen es im gewohnten
+  Import-Dialog und tragen es ohne Lage im gewählten Geschoss ein ([L-4]). Ein Import ist keine
+  Neuanlage und wird auch nicht als solche umgedeutet.
+- **Wandtyp und Höhe wandern nicht mit.** Beide werden weiterhin genau einmal bei der Anlage
+  gewählt — jetzt am Werkzeug „Wand zeichnen“ des Editors, wo sie seit #50 ohnehin stehen. Die
+  Standard-Wandhöhe des Geschosses bleibt unverändert **Vorgabe** ([L-5]).
+- **Folge für den Bauteilkatalog.** Weil Modul 0 keine Wand mehr anlegt, entfällt das automatische
+  Nachladen des Standardkatalogs an dieser Stelle. Der Katalog wird im Katalog-Popup geladen
+  („Standardkatalog laden“); fehlt er beim Zeichnen, benennt der Editor das sichtbar und rät
+  keinen ([L-12]/[P-18]).
+- **Warnbox.** Der Hinweis auf unverortete Wandelemente verweist nicht mehr auf den entfallenen
+  Anlagedialog, sondern auf die Zuordnung an Ort und Stelle.
+- **Tests.** `smoke_start.mjs` prüft, dass es außerhalb des Geschosseditors keinen Anlageweg mehr
+  gibt (kein `wand-neu`, keine Längen-/Höhen-/Wandtyp-Felder, kein „Anlegen“-Knopf) und dass
+  Dateiimport, Musterwand und das Öffnen des Editors erhalten bleiben.

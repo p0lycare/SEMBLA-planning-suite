@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-02",
+    datum: "2026-08-12",
+    typ: "feature",
+    issue: 56,
+    titel: "Wände entstehen und ändern ihre Länge nur noch im Geschosseditor",
+    testbitte: "In Reiter 0 ein Geschoss öffnen, eine Wand zeichnen und ihre Länge am Endgriff sowie per Längenmaß ändern. Reiter 1 muss dieselbe Länge nur anzeigen; Rückgängig und Wiederholen müssen Lage und Wand gemeinsam zurücksetzen.",
+  },
+  {
     id: "chg-20260812-01",
     datum: "2026-08-12",
     typ: "feature",
