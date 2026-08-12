@@ -361,19 +361,23 @@ ok('[#69] Gruppenueberschriften und Bedienelemente bleiben in derselben Reihenfo
 ok('[#69] dynamische Zustandsanzeigen bleiben im linken Bereich erhalten',
   ['rodQuelle','rodRestQuelle','prodInfo','prodRollen','saveHint']
     .every(id=>LINKS.includes('id="'+id+'"')));
-// Die kontextabhaengigen Kurzhilfen duerfen bleiben — und werden weiterhin echt geschaltet.
-ok('[#69] Durchbruch-Kurzhilfe erscheint nur im Werkzeug', (()=>{
-  const h=document.getElementById('durchHint');
-  const zu0=h.style.display;
+// Zweite Kuerzung (PO-Fassung 2026-08-12): die kontextabhaengigen Kurzhilfen fuer den
+// Durchbruch-Modus und die Spannachsenbearbeitung sind ERSATZLOS entfernt — sie erscheinen
+// weder im Markup noch im Skript und wandern auch nicht in Tooltips oder andere Texte.
+ok('[#69] Durchbruch-/Spannachsen-Kurzhilfen ersatzlos entfernt',
+  !/durchHint/.test(html) && !/axisHint/.test(html)
+  && !/Klick auf eine Zelle/.test(html) && !/Achse ziehen = verschieben/.test(html));
+// Die Werkzeuge selbst bleiben ohne Kurzhilfe voll bedienbar (echter Klick-/Zustandspfad).
+ok('[#69] Durchbruch-Werkzeug bedienbar: Zellraster erscheint und verschwindet', (()=>{
+  const plan=document.getElementById('plan');
   document.getElementById('durchTool').dispatch('click');
-  const an=h.style.display;
+  const an=/class="cell"/.test(plan.innerHTML);
   document.getElementById('durchTool').dispatch('click');
-  return zu0!=='block' && an==='block' && h.style.display==='none'; })());
-ok('[#69] Spannachsen-Kurzhilfe erscheint nur im Werkzeug', (()=>{
-  const h=document.getElementById('axisHint');
-  WP.setAxisEdit(true); const an=h.style.display;
+  return an && !/class="cell"/.test(plan.innerHTML); })());
+ok('[#69] Spannachsen-Werkzeug bedienbar: Achsgriffe erscheinen und verschwinden', (()=>{
+  WP.setAxisEdit(true); const an=/cursor:grab/.test(document.getElementById('plan').innerHTML);
   WP.setAxisEdit(false);
-  return an==='block' && h.style.display==='none'; })());
+  return an && !/cursor:grab/.test(document.getElementById('plan').innerHTML); })());
 ok('[#69] lange Bedienhilfen haengen als Tooltip am Bedienelement',
   /id="axisTool"[^>]*title="[^"]+"/.test(LINKS) && /id="addStep"[^>]*title="[^"]+"/.test(LINKS)
   && /id="startAchse"[^>]*title="[^"]+"/.test(LINKS) && /id="topConn"[^>]*title="[^"]+"/.test(LINKS));
@@ -386,7 +390,10 @@ WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[]),{wandtyp:'mit_wind'}));
 const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1', produkte:[
   { id:'stein-i3', kategorie:'stein', bezeichnung:'Stein i3', einheit:'Stk', preis:9.5, breite_mm:375, hoehe_mm:200, dicke_mm:125 },
   { id:'stein-i2', kategorie:'stein', bezeichnung:'Stein i2', einheit:'Stk', preis:7.2, breite_mm:250, hoehe_mm:200, dicke_mm:125 },
-  { id:'rod-1100', kategorie:'gewindestange', bezeichnung:'Stange 1100', einheit:'Stk', preis:3.8, gewinde:'M10', laenge_mm:1100 },
+  // `hinweis` ist bewusst gesetzt: reine Produkt-Hinweisprosa darf seit #69 nicht mehr
+  // dauerhaft in der linken Spalte erscheinen (unten geprueft).
+  { id:'rod-1100', kategorie:'gewindestange', bezeichnung:'Stange 1100', einheit:'Stk', preis:3.8, gewinde:'M10', laenge_mm:1100,
+    hinweis:'Nur als Beispieltext für Produkt-Hinweisprosa' },
   { id:'rod-1000', kategorie:'gewindestange', bezeichnung:'Stange 1000', einheit:'Stk', preis:3.5, gewinde:'M10', laenge_mm:1000 },
   { id:'rod-1100b', kategorie:'gewindestange', bezeichnung:'Stange 1100 Zweitquelle', einheit:'Stk', preis:4.1, gewinde:'M10', laenge_mm:1100 },
   { id:'blech-boden', kategorie:'blech_platte', bezeichnung:'Bodenblech 1000', einheit:'Stk', preis:18, breite_mm:1000, hoehe_mm:125, dicke_mm:15 },
@@ -441,6 +448,8 @@ ok('[Z-2] zwei Standardlängen -> Status kombiniert (kein „vorgemerkt“)', ((
   return st.status==='kombiniert' && st.vorgemerkt.length===0
     && JSON.stringify(st.laengen_mm)==='[1100,1000]'; })());
 ok('[Z-2] Kombination ist in Modul 1 sichtbar benannt', /kombiniert/.test(prodHtml()));
+// #69: der Zustand steht allein im Pill-Status — der frühere Erklärabsatz dazu ist entfallen.
+ok('[#69] kein Erklärabsatz mehr zur Kombination', !/als eigene Position bepreist/.test(prodHtml()));
 ok('[Z-1] beide Standardlängen gehen in das Wandelement', (()=>{
   WP.run(); return JSON.stringify(WP.RESULT.wandelement.prestress.rod_lengths_mm)==='[1100,1000]'; })());
 ok('[Z-2] Segmente kombinieren echte Standardlängen', (()=>{
@@ -489,9 +498,10 @@ ok('[Z-1] Stangenlaenge kommt allein aus dem gewaehlten Produkt', (()=>{
   return v.prestress.rod_mm===undefined
     && JSON.stringify(v.prestress.rod_lengths_mm)==='[1100]'
     && WP.RESULT.wandelement.rod_mm===1100; })());
-ok('[Z-1] Anzeige nennt die Standardlaengen und die unterste Stange',
-  /Standardlängen aus dem Katalog/.test(document.getElementById('rodQuelle').innerHTML)
-  && /Unterste Stange ist immer die größte/.test(document.getElementById('rodQuelle').innerHTML));
+// #69, zweite Kuerzung: die fehlerfreie Auswahl erklaert sich nicht mehr selbst — das frühere
+// Herkunfts-/Erklaerfeld bleibt LEER; erst der Konfliktfall meldet sich kurz.
+ok('[#69] fehlerfreie Auswahl: kein erklaerender Quelltext mehr (rodQuelle leer)',
+  document.getElementById('rodQuelle').innerHTML==='');
 ok('[Z-1] ohne Auswahl: Hinweis statt Ersatzwert, keine Vorgabe aus Modul 1', (()=>{
   setzen('rod_std','rod-1100',false);
   return /Kein Gewindestangenprodukt gewählt/.test(document.getElementById('rodQuelle').innerHTML)
@@ -499,6 +509,21 @@ ok('[Z-1] ohne Auswahl: Hinweis statt Ersatzwert, keine Vorgabe aus Modul 1', ((
     && WP.vorgaben().prestress.rod_mm===undefined; })());
 setzen('rod_std','rod-1100',true);
 WP.run();
+// #69: Gesamtsicht der linken Spalte im fehlerfrei gewaehlten Zustand — Quell- und
+// Produktinformation ohne erklaerenden Fliesstext; nur der offene Reststueck-Konflikt
+// ([Z-6], hier ist kein Reststueckprodukt gewaehlt) bleibt als kurze Meldung sichtbar.
+ok('[#69] prodInfo ist mit Katalog und Wand leer', document.getElementById('prodInfo').innerHTML==='');
+ok('[#69] Reststueck-Konflikt bleibt als kurze Meldung sichtbar',
+  /Kein Reststück gewählt/.test(document.getElementById('rodRestQuelle').innerHTML));
+ok('[#69] Rollen-Hinweisprosa (r.hinweis) erscheint nicht mehr',
+  !/Innenraum montiert/.test(prodHtml()) && !/bauteilgleich/.test(prodHtml()));
+ok('[#69] Produkt-Hinweisprosa aus Katalogdaten erscheint nicht mehr',
+  !/Nur als Beispieltext/.test(prodHtml()));
+ok('[#69] keine Regelreferenzen in den dynamischen Texten der linken Spalte',
+  !/\[(Z|P|A|V|D)-\d+\]/.test(prodHtml()
+    +document.getElementById('rodQuelle').innerHTML
+    +document.getElementById('rodRestQuelle').innerHTML
+    +document.getElementById('prodInfo').innerHTML));
 
 // [Z-1] Die Maß-Eingrenzung folgt jetzt dem KATALOG, nicht mehr dem Eingabefeld: ein Wechsel
 // des gesperrten Feldes kann keine Maßabweichung mehr erzeugen (frueher: mass_abweichend).
@@ -543,8 +568,10 @@ store.setzeKatalog(KATALOG);
   ok('[P-18] leere Rollen werden aus dem Katalog vorbelegt',
     store.holeProdukte(1,idVb).rollen.i3.join()==='stein-i3'
     && store.holeProdukte(1,idVb).rollen.dicht_stk.join()==='dicht-stk');
-  ok('[P-18] die Vorbelegung ist in Modul 1 sichtbar benannt',
-    /vorbelegt/.test(document.getElementById('prodInfo').innerHTML));
+  // #69: der frühere Meldetext „… vorbelegt“ ist entfallen — sichtbar ist die Vorbelegung
+  // nach [P-18] allein als ganz normale, angehakte und umwaehlbare Auswahl (naechste Pruefung).
+  ok('[P-18] kein Vorbelegungs-Meldetext mehr (prodInfo bleibt leer, #69)',
+    document.getElementById('prodInfo').innerHTML==='');
   ok('[P-18] Vorbelegung erscheint als normale, angehakte Auswahl',
     /data-prolle="i3" data-pid="stein-i3" checked/.test(prodHtml()));
   ok('[P-18] bestehende Wahl bleibt unangetastet',

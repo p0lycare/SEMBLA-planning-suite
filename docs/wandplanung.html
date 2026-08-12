@@ -95,10 +95,8 @@
       <div id="ops"></div>
       <div class="btnrow"><button class="mini" id="addTuer">+ Tür</button><button class="mini" id="addFenster">+ Fenster</button></div>
       <div class="btnrow"><button class="mini" id="durchTool">Durchbruch-Modus</button><button class="mini" id="durchClear">Durchbrüche leeren</button></div>
-      <div class="hint" id="durchHint" style="color:var(--sb-muted);font-size:11.5px;margin-top:4px;display:none">Klick auf eine Zelle: Stein entfernen (Durchbruch) bzw. wieder auffüllen.</div>
       <div class="btnrow" style="margin-top:6px"><button class="mini" id="axisTool"
         title="Sonderkonstruktion: manuell gesetzte Achsen sperren die Auto-Verteilung, bis „Zurück zu Auto“.">Spannachsen bearbeiten</button><button class="mini" id="axisDel">Achse löschen</button><button class="mini" id="axisAuto">Zurück zu Auto</button></div>
-      <div class="hint" id="axisHint" style="color:var(--sb-muted);font-size:11.5px;margin-top:4px;display:none">Achse ziehen = verschieben · Klick = hinzufügen · Doppelklick = entfernen.</div>
     </div>
     <div class="grp"><h3>Staffelung (getreppter Aufbau)</h3>
       <div id="stepsList"></div>
@@ -142,7 +140,7 @@
     </div>
     <h2 style="margin-top:6px">3 · Produkte (Bauteilkatalog)</h2>
     <div class="grp">
-      <div class="prodinfo" id="prodInfo">–</div>
+      <div class="prodinfo" id="prodInfo"></div>
       <div id="prodRollen"></div>
     </div>
 
@@ -586,33 +584,22 @@ function prodKontext(){
   const w = (RESULT&&RESULT.wandelement) || (store&&store.aktivesWandelement&&store.aktivesWandelement()) || null;
   return w ? KAT.preisKontext(w, prodEingaben(), prodKatalog()) : {};
 }
-// ---- Stangenlängen: reine Anzeige ([Z-1]) -----------------------------------
-// Es gibt KEIN Eingabefeld für die Gewindestangenlänge mehr — der Bauteilkatalog ist die
-// alleinige Quelle. Hier wird nur noch gezeigt, was daraus folgt: welche Standardlängen im
-// Vorratssatz sind und welche davon die unterste Stange bildet (immer die größte, [Z-2]).
+// ---- Stangen-/Reststücklänge: Konfliktanzeige ([Z-1]/[Z-6]) -------------------
+// Es gibt KEIN Eingabefeld für Gewindestangen- oder Reststücklänge — der Bauteilkatalog ist
+// die alleinige Quelle. Im fehlerfreien Zustand steht hier NICHTS (Issue #69, zweite Kürzung:
+// keine Herkunfts-/Erklärungstexte in der Eingabespalte); nur eine fehlende oder mehrdeutige
+// Auswahl wird als kurze Konfliktmeldung benannt, nie ersatzweise geraten.
 function syncLegacyFelder(){
   const L=rodLaengenMm(), hint=$('rodQuelle');
-  if(L.length){
-    hint.innerHTML='Standardlängen aus dem Katalog: '+L.map(x=>'<b>'+fmt(x/10,0)+' cm</b>').join(' · ')
-      +'. Unterste Stange ist immer die größte davon ('+fmt(L[0]/10,0)+' cm), darüber wird mit '
-      +'kleineren aufgefüllt ([Z-2]).';
-  } else {
-    hint.innerHTML='<b>Kein Gewindestangenprodukt gewählt</b> — bis dahin rechnet der Core mit '
-      +'seinem Altstand-Fallback (110 cm). Produkte unten in der Rolle „Gewindestange" wählen ([Z-1]).';
-  }
-  // [Z-6] Reststück: es gibt bewusst KEIN Eingabefeld für die Länge — sie kommt allein aus dem
-  // eindeutig gewählten Katalogprodukt. Der Zustand wird hier benannt, nie ersatzweise geraten.
+  hint.innerHTML=L.length?''
+    :'<b>Kein Gewindestangenprodukt gewählt</b> — Rolle „Gewindestange“ unten wählen.';
   const rr=rodRestMm(), rh=$('rodRestQuelle');
-  if(rr>0){
-    rh.innerHTML='Reststück aus dem Katalog: <b>'+fmt(rr/10,1)+' cm</b>. Jeder Strang an der '
-      +'Wandoberkante endet damit ([Z-6]).';
-  } else {
+  if(rr>0){ rh.innerHTML=''; }
+  else {
     const s=prodSpez(), mehrere=!!(s&&s.rod.rest_ids&&s.rod.rest_ids.length>1);
     rh.innerHTML=mehrere
-      ? '<b>Reststück mehrdeutig</b> — es sind mehrere Produkte gewählt. Es wird genau eines '
-        +'eingebaut; die Stränge bleiben oben offen, bis die Auswahl eindeutig ist ([Z-6]).'
-      : '<b>Kein Reststück gewählt</b> — der obere Wandabschluss wird je Strang als offen '
-        +'gemeldet. Produkt unten in der Rolle „Gewindestange – Reststück" wählen ([Z-6]).';
+      ? '<b>Reststück mehrdeutig</b> — mehrere Produkte gewählt; die Stränge bleiben oben offen.'
+      : '<b>Kein Reststück gewählt</b> — der obere Wandabschluss bleibt je Strang offen.';
   }
 }
 // [P-18] Startklar statt leer: bevor die Auswahl gezeigt wird, uebernehmen ALLE noch leeren
@@ -621,7 +608,7 @@ function syncLegacyFelder(){
 // und umwaehlbare Auswahl — es gibt keinen unsichtbaren zweiten Auswahlpfad.
 // Vorbelegt wird GENAU EINMAL je Wandelement und Seitenaufruf: wer eine Rolle bewusst leer
 // raeumt, soll sie nicht beim naechsten Rendern wieder vorbelegt bekommen.
-let VORBELEGT=null; const VB_ERLEDIGT=new Set();
+const VB_ERLEDIGT=new Set();
 // Maßwirksame Vorbelegung, die noch nicht im gespeicherten Wandelement steht. Sie kann
 // waehrend loadFromStore() entstehen — dort ist das Speichern bewusst aus (bloßes Laden darf
 // das Element nicht anfassen). Der Merker traegt sie nach, sobald gespeichert werden darf.
@@ -632,7 +619,8 @@ function vorbelegeProdukte(){
   VB_ERLEDIGT.add(id);
   const vb=store.vorbelegeProduktrollen();
   const gesetzt=Object.keys(vb.gesetzt).filter(r=>KAT.rolle(r)&&KAT.rolle(r).modul===1);
-  VORBELEGT=gesetzt.length?gesetzt:null;
+  // Sichtbar ist die Vorbelegung als ganz normale, angehakte und umwählbare Auswahl in den
+  // Rollenzeilen ([P-18]) — ein eigener Meldetext dazu ist seit Issue #69 entfallen.
   // Die Vorbelegung ist eine echte Produktwahl und damit die maßgebende Maßquelle ([Z-1]):
   // Standardlängen und Reststück ändern die Zerlegung der Stränge. Wie bei der Wahl per Hand
   // muss das Wandelement deshalb NEU GERECHNET UND GESPEICHERT werden — sonst stünde im JSON
@@ -659,13 +647,10 @@ function renderProdukte(){
   if(vorbelegeProdukte() && saveEnabled){ VB_MASS_OFFEN=false; run(); return; }
   const kat=prodKatalog(), eing=prodEingaben(), ktx=prodKontext();
   const hatWandEl = !!(store&&store.aktivId&&store.aktivId());
+  // Fehlerfrei bleibt die Zeile LEER (Issue #69): nur die zwei echten Fehlzustände werden kurz benannt.
   info.innerHTML = !kat
-    ? 'Kein Bauteilkatalog geladen — in Modul 0 („Start") anlegen oder importieren. Ohne Katalog gibt es keine Preise.'
-    : (!hatWandEl
-      ? 'Kein aktives Wandelement — Produkte können erst an einer Wand gewählt werden.'
-      : `Katalog „${escP(kat.name)}“ · ${kat.produkte.length} Produkt(e) · Auswahl gilt für diese Wand`
-        + (VORBELEGT ? ` · <b>${VORBELEGT.length} Verwendungsstelle(n) aus dem Katalog vorbelegt</b>`
-            + ' ([P-18]) — unten frei umwählbar' : ''));
+    ? 'Kein Bauteilkatalog geladen — in Modul 0 („Start") anlegen oder importieren.'
+    : (!hatWandEl ? 'Kein aktives Wandelement — Produkte können erst an einer Wand gewählt werden.' : '');
   if(!kat || !hatWandEl){ box.innerHTML=''; syncLegacyFelder(); return; }
   // Eine kompakte Zeile je Verwendungsrolle — KEINE Kategorieblöcke, die nur Bezeichnungen
   // wiederholen ([P-17]). Die Gruppen bleiben im Datenmodell, erscheinen aber nicht als UI-Hierarchie.
@@ -692,13 +677,13 @@ function rolleZeile(r, st, kat){
           +`<span class="pmerk">${escP(o.merkmale)}</span></span></label>`).join('')
       : `<div class="pnote">Kein Produkt der Kategorie „${escP(KAT.kategorieLabel(r.kategorie))}“ im Katalog — in Modul 0 anlegen.</div>`)
     +'</div></details>';
-  for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — bleibt erhalten, wird aber nicht bepreist.</div>`;
-  if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig – gleiches maßgebendes Maß: ${st.kandidaten.map(p=>escP(p.id)).join(', ')} — Modul 4 weist hierfür keinen Preis aus.</div>`;
-  if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand — Modul 4 weist keinen Preis aus.</div>`;
-  if(st.status==='kombiniert') h+=`<div class="pnote">Standardgrößen ${(st.laengen_mm||[]).map(x=>fmt(x/10,0)+' cm').join(' · ')} werden nach [Z-2] kombiniert; jede Größe wird in Modul 4 als eigene Position bepreist.</div>`;
-  if(st.vorgemerkt.length) h+=`<div class="pnote">Für den Zuschnitt vorgemerkt (passt nicht zum maßgebenden Maß, daher nicht bepreist): ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
-  if(r.hinweis) h+=`<div class="pnote">${escP(r.hinweis)}</div>`;
-  if(st.produkt&&st.produkt.hinweis) h+=`<div class="pwarn">${escP(st.produkt.hinweis)}</div>`;
+  // Nur echte Fehl-/Konfliktzustände werden benannt — kurz und ohne Erklärsätze (Issue #69).
+  // Rollen- und Produkt-Hinweisprosa (r.hinweis, produkt.hinweis) wird nicht mehr ausgegeben;
+  // der Pill-Status oben in der Zeile benennt den Zustand (auch „kombiniert“) bereits.
+  for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — nicht bepreist.</div>`;
+  if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig – gleiches maßgebendes Maß: ${st.kandidaten.map(p=>escP(p.id)).join(', ')}.</div>`;
+  if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand.</div>`;
+  if(st.vorgemerkt.length) h+=`<div class="pwarn">Nicht bepreist (maßfremd), für den Zuschnitt vorgemerkt: ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
   return h+'</div>';
 }
 function bindProdukte(){
@@ -729,8 +714,8 @@ function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelemen
 function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
 function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
 function setManualCols(arr){ manualCols=(arr&&arr.length)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAxis=null; run(); }
-function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchHint').style.display='none'; $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
-  $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; $('axisHint').style.display=axisEdit?'block':'none'; if(RESULT) draw(RESULT.wandelement); }
+function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
+  $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; if(RESULT) draw(RESULT.wandelement); }
 
 // ---------- Ereignis-Bindung + Start ----------
 let axisDragging=false;
@@ -739,7 +724,7 @@ function bindEvents(){
   // es gibt hier keinen — auch keinen indirekten — Schreibweg fuer die Wandlaenge mehr.
   ['hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
   ['sideVorne','sideHinten','modus','topConn','startAchse'].forEach(id=>$(id).addEventListener('change',run));
-  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; $('durchHint').style.display=editMode?'block':'none'; if(RESULT) draw(RESULT.wandelement); });
+  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });
   $('axisTool').addEventListener('click',()=>setAxisEdit(!axisEdit));

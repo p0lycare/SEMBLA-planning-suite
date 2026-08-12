@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-09",
+    datum: "2026-08-12",
+    typ: "fix",
+    issue: 69,
+    titel: "Die Wandplanung meldet links nur noch Fehler und Konflikte statt Erklär- und Produkthinweisen",
+    testbitte: "Reiter 1 mit Wand und Katalog öffnen: Zwischen den Bedienfeldern steht kein Erklärtext mehr; erst das Abwählen des Gewindestangen- oder Reststückprodukts zeigt eine kurze Meldung.",
+  },
+  {
     id: "chg-20260812-08",
     datum: "2026-08-12",
     typ: "feature",
