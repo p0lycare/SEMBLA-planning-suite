@@ -148,8 +148,9 @@
 <div class="overlay" id="pp-overlay" hidden>
   <div class="modal">
     <h3 id="pp-titel">Projekt anlegen</h3>
-    <p class="sub">Die <b>Kopfdaten</b> gehören zum Projekt und werden hier einmal gepflegt —
-      Zeichnung, Schriftfeld und Export lesen sie von dort ([L-11]).</p>
+    <p class="sub">Die <b>Kopfdaten</b> gehören zum Projekt ([L-11]). Gepflegt wird hier nur die
+      <b>Bauherrenschaft</b>; die übrigen Kopfdaten (Planverfasser, Phase, Plan-Nr., Index, Gez.)
+      bleiben am Projekt gespeichert und werden hier nicht bearbeitet (#68).</p>
     <div class="row">
       <div class="field" style="flex:1"><label for="pp-name">Projektname</label>
         <input id="pp-name" type="text" style="width:100%" placeholder="z. B. Aschersleben AWG"></div>
@@ -157,18 +158,6 @@
     <div class="subh">Kopfdaten</div>
     <div class="row">
       <div class="field"><label for="pp-bauherr">Bauherrenschaft</label><input id="pp-bauherr" type="text"></div>
-      <div class="field"><label for="pp-planverf">Planverfasser</label><input id="pp-planverf" type="text"></div>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <div class="field"><label for="pp-phase">Phase</label>
-        <select id="pp-phase" style="width:170px">
-          <option value="">–</option>
-          <option>Vorplanung</option><option>Entwurfsplanung</option>
-          <option>Genehmigungsplanung</option><option>Ausführungsplanung</option>
-        </select></div>
-      <div class="field"><label for="pp-plannr">Plan-Nr.</label><input id="pp-plannr" type="text" style="width:100px"></div>
-      <div class="field"><label for="pp-index">Index</label><input id="pp-index" type="text" style="width:60px"></div>
-      <div class="field"><label for="pp-gez">Gez.</label><input id="pp-gez" type="text" style="width:100px"></div>
     </div>
     <div class="subh">Bauteilkatalog <span class="muted" style="text-transform:none;letter-spacing:0">
       · genau einer je Projekt ([L-12])</span></div>
@@ -975,21 +964,32 @@
   // =====================================================================
   const ppOverlay = $('pp-overlay');
   let ppId = null;                       // null = Anlage, sonst Projekt-Kennung
-  const PP_FELDER = { bauherr:'pp-bauherr', planverfasser:'pp-planverf', phase:'pp-phase',
-                      plan_nr:'pp-plannr', index:'pp-index', gez:'pp-gez' };
+  // #68: Der Anlagedialog fuehrt nur noch die Bauherrenschaft. Die uebrigen Kopfdatenfelder
+  // bleiben am Projekt erhalten — `setzeKopfdaten` ist ein Patch, nicht genannte Felder
+  // werden nie angefasst ([L-11]).
+  const PP_FELDER = { bauherr:'pp-bauherr' };
+  // Platzhalterwert der Katalogauswahl bei der Anlage: der mitgelieferte Standardkatalog
+  // ist noch keine gespeicherte Ressource — geladen/zugeordnet wird erst mit „Speichern“.
+  const PP_VORLAGE = '__vorlage__';
   function ppZeige(text, ok){ $('pp-msg').textContent = text; $('pp-msg').className = 'msg ' + (ok ? 'ok' : 'err'); }
 
-  function ppKatalogListe(gewaehlt){
+  function ppKatalogListe(gewaehlt, mitVorlage){
     const alle = store.listeKataloge();
-    $('pp-katalog').innerHTML = '<option value="">– kein Katalog zugeordnet –</option>'
+    $('pp-katalog').innerHTML =
+      (mitVorlage ? `<option value="${PP_VORLAGE}">SEMBLA Standardkatalog (Repo-Vorlage)</option>` : '')
+      + '<option value="">– kein Katalog zugeordnet –</option>'
       + alle.map(k => `<option value="${esc(k.id)}"${k.id === gewaehlt ? ' selected' : ''}>`
         + `${esc(k.name)} (${(k.produkte || []).length} Produkte)</option>`).join('');
-    $('pp-katalog').value = gewaehlt || '';
-    $('pp-katalog-hinweis').innerHTML = alle.length
-      ? 'Der zugeordnete Katalog ist die Preisquelle dieses Projekts ([P-14]). Ohne Zuordnung wird '
-        + 'das in Modul 1/2/4 <b>gemeldet</b> — es wird kein Katalog geraten ([L-12]).'
-      : 'Noch kein Katalog vorhanden — über „Katalog bearbeiten…“ anlegen, importieren oder den '
-        + 'Standardkatalog laden.';
+    $('pp-katalog').value = mitVorlage ? PP_VORLAGE : (gewaehlt || '');
+    $('pp-katalog-hinweis').innerHTML = mitVorlage
+      ? 'Vorbelegt ist der mitgelieferte <b>SEMBLA-Standardkatalog</b> (#68) — geladen und diesem '
+        + 'Projekt zugeordnet wird er erst mit „Speichern“ ([L-12]); ein bereits vorhandener '
+        + 'Standardkatalog wird dabei wiederverwendet, nicht doppelt angelegt. Abbrechen schreibt nichts.'
+      : (alle.length
+        ? 'Der zugeordnete Katalog ist die Preisquelle dieses Projekts ([P-14]). Ohne Zuordnung wird '
+          + 'das in Modul 1/2/4 <b>gemeldet</b> — es wird kein Katalog geraten ([L-12]).'
+        : 'Noch kein Katalog vorhanden — über „Katalog bearbeiten…“ anlegen, importieren oder den '
+          + 'Standardkatalog laden.');
   }
 
   function ppOeffne(id){
@@ -999,7 +999,9 @@
     $('pp-titel').textContent = m ? 'Projekt bearbeiten: ' + m.projekt.name : 'Projekt anlegen';
     $('pp-name').value = m ? m.projekt.name : '';
     for (const [key, feld] of Object.entries(PP_FELDER)) $(feld).value = kd[key] != null ? kd[key] : '';
-    ppKatalogListe(m ? (m.katalog || '') : '');
+    // Nur die ANLAGE belegt den Standardkatalog vor — ein bestehendes Projekt behaelt
+    // seine (auch bewusst leere) Zuordnung und wird nie automatisch umgestellt (#68).
+    ppKatalogListe(m ? (m.katalog || '') : '', !m);
     ppZeige('', true);
     ppOverlay.hidden = false;
   }
@@ -1011,18 +1013,35 @@
   ppOverlay.addEventListener('click', (ev) => { if (ev.target === ppOverlay) ppAbbruch(); });
   $('pp-katalog-pflege').addEventListener('click', () => katOeffne());
 
-  $('pp-speichern').addEventListener('click', () => {
+  /**
+   * Die Standardkatalog-Vorbelegung der Anlage einloesen (#68, [L-12]). Erst NACH dem
+   * Aktivsetzen des neuen Projekts aufrufen: `setzeKatalog`/`setzeProjektKatalog` ordnen
+   * dem AKTIVEN Projekt zu — frueher aufgerufen bekaeme das vorher aktive Projekt still
+   * eine neue Zuordnung. Ein bereits gespeicherter Katalog mit dem Namen der Vorlage wird
+   * wiederverwendet statt als identische Ressource doppelt angelegt.
+   */
+  async function ppStandardkatalog(){
+    const vorlage = KAT.parseKatalog(await vorlageText(VORLAGE.katalog.pfad)); // prueft nur, speichert nichts
+    const vorhanden = store.listeKataloge().find(k => k.name === vorlage.name);
+    if (vorhanden) { store.setzeProjektKatalog(vorhanden.id); return { name: vorhanden.name, neu: false }; }
+    const k = store.setzeKatalog(vorlage);          // persistiert + ordnet dem aktiven Projekt zu
+    return { name: k.name, neu: true };
+  }
+
+  $('pp-speichern').addEventListener('click', async () => {
     const name = String($('pp-name').value || '').trim();
     if (!name) { ppZeige('Bitte einen Projektnamen eingeben.', false); return; }
     const patch = {};
     for (const [key, feld] of Object.entries(PP_FELDER)) patch[key] = $(feld).value;
-    const katalogId = $('pp-katalog').value || null;
+    const wahl = $('pp-katalog').value;
+    const mitVorlage = !ppId && wahl === PP_VORLAGE;
     try {
       let m = ppId ? store.projektMappe(ppId) : MAPPE.leereMappe(name);
       if (!m) throw new Error('Projekt ist nicht mehr vorhanden.');
       if (m.projekt.name !== name) m = MAPPE.benenneUm(m, m.projekt.id, name);
       m = MAPPE.setzeKopfdaten(m, patch);
-      m = MAPPE.setzeKatalogRef(m, katalogId);
+      // Die Vorlage ist noch keine gespeicherte Ressource — ihre Referenz entsteht erst unten.
+      m = MAPPE.setzeKatalogRef(m, (mitVorlage || !wahl) ? null : wahl);
       const g = store.setzeMappe(m);
       if (!ppId) {
         store.setzeAktivesProjekt(g.projekt.id);
@@ -1033,9 +1052,22 @@
         if (erstes) { KLAPP.add(erstes.id); try { store.setzeAktivesGeschoss(erstes.id); } catch { /* bleibt inaktiv */ } }
       }
       const war = ppId;
+      let katText = '', katOk = true;
+      if (mitVorlage) {
+        try {
+          const k = await ppStandardkatalog();
+          katText = k.neu ? ` Der Standardkatalog „${k.name}“ wurde geladen und zugeordnet.`
+                          : ` Der vorhandene Standardkatalog „${k.name}“ wurde zugeordnet.`;
+        } catch (e) {
+          // Das Projekt ist angelegt; die fehlende Zuordnung wird benannt, nie geraten ([L-12]).
+          katOk = false;
+          katText = ` ⚠ Der Standardkatalog wurde nicht geladen (${fehlerText(e)}) — Zuordnung über `
+            + '„Projekt bearbeiten…“ nachholen ([L-12]).';
+        }
+      }
       ppSchliesse();
-      trZeige(war ? `Projekt „${name}“ gespeichert.`
-        : `Projekt „${name}“ angelegt und aktiv gesetzt — mit einem Geschoss.`, true);
+      trZeige((war ? `Projekt „${name}“ gespeichert.`
+        : `Projekt „${name}“ angelegt und aktiv gesetzt — mit einem Geschoss.`) + katText, katOk);
     } catch (e) { ppZeige('Nicht gespeichert: ' + fehlerText(e), false); }
   });
 

@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "7829c56e",
+  "signatur": "df0188ed",
   "entscheidungen": [
     {
       "issue": 41,
@@ -96,7 +96,7 @@ export const PLAN = {
     },
     {
       "issue": 68,
-      "titel": "Projektanlage: Kopfdaten passend zuordnen und Standardkatalog vorbelegen",
+      "titel": "Projektanlage-Kopfdaten: übrige Felder fachlich in die Zeichnung verlagern",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": true,

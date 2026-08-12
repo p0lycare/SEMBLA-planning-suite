@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-08",
+    datum: "2026-08-12",
+    typ: "feature",
+    issue: 68,
+    titel: "Die Projektanlage fragt nur noch die Bauherrenschaft ab und belegt den SEMBLA-Standardkatalog vor",
+    testbitte: "In Modul 0 „Projekt anlegen…“ öffnen: Nur Name und Bauherrenschaft sind editierbar, der Standardkatalog ist vorgewählt; nach dem Speichern muss er dem neuen Projekt zugeordnet sein, Abbrechen darf nichts ändern.",
+  },
+  {
     id: "chg-20260812-07",
     datum: "2026-08-12",
     typ: "fix",

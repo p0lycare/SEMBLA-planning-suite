@@ -188,12 +188,18 @@ function baum(act, id, host = 'tr-baum'){
 }
 const trMsgTxt = () => $('tr-msg').textContent;
 const trFehler = () => $('tr-msg').className === 'msg err';
-/** Projekt ueber den echten Dialog anlegen (und aktiv setzen). */
-function projektAnlegen(name, kopf = {}){
+/**
+ * Projekt ueber den echten Dialog anlegen (und aktiv setzen). Seit #68 belegt die Anlage
+ * den SEMBLA-Standardkatalog vor; die historischen Aufrufer dieses Helfers erwarten aber
+ * ein Projekt OHNE Katalog — deshalb wird hier ausdruecklich abgewaehlt. Die Vorbelegung
+ * selbst prueft der eigene Abschnitt „#68 Projektanlage“.
+ */
+async function projektAnlegen(name, kopf = {}, katalog = ''){
   $('tr-projekt-neu').dispatch('click');
   $('pp-name').value = name;
   for (const [feld, wert] of Object.entries(kopf)) $('pp-' + feld).value = wert;
-  $('pp-speichern').dispatch('click');
+  $('pp-katalog').value = katalog;
+  await $('pp-speichern').dispatch('click');
   return store.holeMappe();
 }
 /** Geschoss ueber den echten Dialog anlegen. */
@@ -225,7 +231,7 @@ function wandAnlegen(geschossId, { name, laenge = 2000, hoehe = 2600, wandtyp = 
 
 // Ausgangslage: ein Projekt mit einem Geschoss — Waende leben nach [L-6] immer in
 // einem Geschoss, und nach [L-10] ist nur die Wand des AKTIVEN Geschosses aktivierbar.
-const prj0 = projektAnlegen('Testprojekt');
+const prj0 = await projektAnlegen('Testprojekt');
 const gs0 = store.aktivesGeschossId();
 ok('[L-6] Anlegen erzeugt Projekt samt Gebaeude und Geschoss',
   !!prj0 && prj0.gebaeude.length === 1 && prj0.gebaeude[0].geschosse.length === 1 && !!gs0);
@@ -1188,14 +1194,20 @@ globalThis.fetch = echtesFetch;
   ok('Hinweis nennt Klappzustand, Hierarchie und Vorgabecharakter ([L-3]/[L-5]/[L-10])',
     /\[L-10\]/.test(html) && /\[L-5\]/.test(html) && /\[L-3\]/.test(html)
     && /unabhängig auf- und zuklappen/.test(html));
-  ok('Projekt-Popup fuehrt Kopfdaten und Katalogzuordnung ([L-11]/[L-12])',
-    /<input id="pp-bauherr"/.test(html) && /<input id="pp-planverf"/.test(html)
-    && /<select id="pp-phase"/.test(html) && /<input id="pp-plannr"/.test(html)
+  // #68: neben dem Projektnamen ist die Bauherrenschaft die EINZIGE Kopfdaten-Eingabe;
+  // Planverfasser, Phase, Plan-Nr., Index und Gez. sind ersatzlos aus dem Dialog entfernt.
+  ok('#68 Projekt-Popup fuehrt nur Bauherrenschaft als Kopfdaten-Eingabe ([L-11]/[L-12])',
+    /<input id="pp-bauherr"/.test(html) && !/id="pp-planverf"/.test(html)
+    && !/id="pp-phase"/.test(html) && !/id="pp-plannr"/.test(html)
+    && !/id="pp-index"/.test(html) && !/id="pp-gez"/.test(html)
     && /<select id="pp-katalog"/.test(html) && /\[L-11\]/.test(html) && /\[L-12\]/.test(html));
 
   // 8b) Mehrere Projekte nebeneinander ([L-6]) ------------------------------
   const vorher = projekte().length;
-  const pB = projektAnlegen('Halle Süd', { bauherr:'AWG eG', planverf:'Polycare', plannr:'07' });
+  const pB = await projektAnlegen('Halle Süd', { bauherr:'AWG eG' });
+  // #68: Planverfasser und Plan-Nr. sind keine Dialogfelder mehr — sie bleiben Projekt-
+  // bestand und werden hier ueber den Storage-Pfad gesetzt (Erhalt wird unten geprueft).
+  store.setzeKopfdaten({ planverfasser: 'Polycare', plan_nr: '07' });
   ok('[L-6] zweites Projekt liegt neben dem ersten', projekte().length === vorher + 1);
   ok('[L-6] das neu angelegte Projekt ist aktiv und bringt ein Geschoss mit',
     store.holeMappe().projekt.id === pB.projekt.id
@@ -1234,7 +1246,9 @@ globalThis.fetch = echtesFetch;
   baum('prj-bearbeiten', pB.projekt.id);
   ok('Projekt bearbeiten: Dialog ist aus dem Projekt vorbelegt',
     $('pp-overlay').hidden === false && $('pp-name').value === 'Halle Süd'
-    && $('pp-bauherr').value === 'AWG eG' && $('pp-plannr').value === '07');
+    && $('pp-bauherr').value === 'AWG eG');
+  ok('#68 der Bearbeiten-Dialog bietet die Vorlage NICHT an — bestehende Projekte werden nie umgestellt',
+    !/__vorlage__/.test($('pp-katalog').innerHTML));
   const prjVorAbbruch = prjSlot();
   $('pp-bauherr').value = 'Verworfen';
   ppAbbruchTest();
@@ -1242,12 +1256,18 @@ globalThis.fetch = echtesFetch;
   ok('Abbrechen im Projekt-Dialog schreibt nichts',
     prjSlot() === prjVorAbbruch && store.holeMappe().projekt.kopfdaten.bauherr === 'AWG eG');
   baum('prj-bearbeiten', pB.projekt.id);
-  $('pp-gez').value = 'TB';
-  $('pp-plannr').value = '';
-  $('pp-speichern').dispatch('click');
-  ok('[L-11] Speichern uebernimmt Aenderungen, leeres Feld loescht',
-    store.holeMappe().projekt.kopfdaten.gez === 'TB'
-    && store.holeMappe().projekt.kopfdaten.plan_nr === undefined);
+  $('pp-bauherr').value = 'AWG Musterstadt eG';
+  await $('pp-speichern').dispatch('click');
+  ok('#68 Speichern aendert die Bauherrenschaft — die uebrigen Kopfdaten bleiben unveraendert erhalten',
+    store.holeMappe().projekt.kopfdaten.bauherr === 'AWG Musterstadt eG'
+    && store.holeMappe().projekt.kopfdaten.planverfasser === 'Polycare'
+    && store.holeMappe().projekt.kopfdaten.plan_nr === '07');
+  baum('prj-bearbeiten', pB.projekt.id);
+  $('pp-bauherr').value = '';
+  await $('pp-speichern').dispatch('click');
+  ok('[L-11] ein leeres Feld loescht genau dieses Feld — die uebrigen bleiben',
+    store.holeMappe().projekt.kopfdaten.bauherr === undefined
+    && store.holeMappe().projekt.kopfdaten.plan_nr === '07');
 
   // 8d) Aktivierung ist streng hierarchisch ([L-10]) ------------------------
   ok('[L-10] das Geschoss des nicht aktiven Projekts ist gesperrt und nennt den Grund',
@@ -1386,7 +1406,7 @@ globalThis.fetch = echtesFetch;
   baum('prj-aktiv', pB.projekt.id);
   baum('prj-bearbeiten', pB.projekt.id);
   $('pp-katalog').value = '';
-  $('pp-speichern').dispatch('click');
+  await $('pp-speichern').dispatch('click');
   ok('[L-12] ohne Zuordnung wird das gemeldet, kein Katalog geraten',
     store.holeKatalog() === null && store.katalogStatus().status === 'nicht_zugeordnet'
     && /kein Bauteilkatalog zugeordnet/.test($('k-warn').innerHTML));
@@ -1395,7 +1415,7 @@ globalThis.fetch = echtesFetch;
     /kein Katalog zugeordnet/.test($('pp-katalog').innerHTML)
     && store.listeKataloge().every(k => $('pp-katalog').innerHTML.includes(k.id)));
   $('pp-katalog').value = store.listeKataloge()[0].id;
-  $('pp-speichern').dispatch('click');
+  await $('pp-speichern').dispatch('click');
   ok('[L-12] die Zuordnung haengt danach am Projekt',
     store.holeMappe().katalog === store.listeKataloge()[0].id
     && store.holeKatalog().id === store.listeKataloge()[0].id);
@@ -1452,6 +1472,92 @@ globalThis.fetch = echtesFetch;
     store.projektObjekt(idOg).version === 2);
   ok('[L-3] der Wandspeicher traegt keine Lagedaten',
     !localStorage.getItem('sembla:elemente').includes('start_mm'));
+}
+
+// --- 8m) #68 Projektanlage: nur Bauherrenschaft, Standardkatalog vorbelegt --
+// Der ECHTE Nutzerpfad am echten Dialog: oeffnen und Vorbelegung sehen, abbrechen ohne
+// jede Spur, speichern ohne manuellen Katalogschritt — mit wirksamer `mappe.katalog`-
+// Zuordnung, Wiederverwendung der vorhandenen Standardressource und unangetasteten
+// Zuordnungen aller bestehenden Projekte.
+{
+  const prjSlot = () => localStorage.getItem('sembla:projekte');
+  const katSlot = () => localStorage.getItem('sembla:kataloge');
+
+  // (a) Oeffnen: Standardkatalog sichtbar vorbelegt, nichts persistiert
+  const prjVor = prjSlot(), katVor = katSlot(), aktivVor = store.aktivesProjektId();
+  $('tr-projekt-neu').dispatch('click');
+  ok('#68 der Anlage-Dialog belegt den SEMBLA-Standardkatalog vor',
+    $('pp-katalog').value === '__vorlage__'
+    && /SEMBLA Standardkatalog \(Repo-Vorlage\)/.test($('pp-katalog').innerHTML));
+  ok('#68 das Oeffnen selbst schreibt nichts', prjSlot() === prjVor && katSlot() === katVor);
+
+  // (b) Abbrechen: Projekt- UND Katalogspeicher bleiben byte-unveraendert
+  $('pp-cancel').dispatch('click');
+  ok('#68 Abbrechen laesst Projekt- und Katalogspeicher unveraendert',
+    prjSlot() === prjVor && katSlot() === katVor && store.aktivesProjektId() === aktivVor);
+
+  // (c) Speichern ohne manuellen Katalogschritt: wirksame Zuordnung zum Standardkatalog
+  const anzahlVor = store.listeKataloge().length;
+  const zuordnungenVor = JSON.stringify(store.listeProjekte().map(p => [p.projekt.id, p.katalog]));
+  $('tr-projekt-neu').dispatch('click');
+  $('pp-name').value = 'Katalogprojekt';
+  $('pp-bauherr').value = 'AWG eG';
+  await $('pp-speichern').dispatch('click');
+  const st68 = store.katalogStatus();
+  ok('#68 neues Projekt ist ohne manuellen Katalogschritt dem Standardkatalog zugeordnet',
+    $('pp-overlay').hidden === true && !trFehler()
+    && st68.status === 'ok' && /^SEMBLA Standardkatalog/.test(st68.katalog.name)
+    && store.holeMappe().katalog === st68.id
+    && store.holeMappe().projekt.kopfdaten.bauherr === 'AWG eG');
+  ok('#68 dabei wurde KEIN zweiter Standardkatalog angelegt — die vorhandene Ressource gilt',
+    store.listeKataloge().length === anzahlVor);
+  ok('#68 bestehende Projekte behalten ihre bisherige Zuordnung',
+    JSON.stringify(store.listeProjekte()
+      .filter(p => p.projekt.id !== store.holeMappe().projekt.id)
+      .map(p => [p.projekt.id, p.katalog])) === zuordnungenVor);
+
+  // (d) Eine zweite Anlage verwendet DIESELBE Ressource wieder
+  const ersteKatId = store.holeMappe().katalog;
+  $('tr-projekt-neu').dispatch('click');
+  $('pp-name').value = 'Katalogprojekt 2';
+  await $('pp-speichern').dispatch('click');
+  ok('#68 eine zweite Anlage verwendet dieselbe Standardressource wieder',
+    store.holeMappe().katalog === ersteKatId && store.listeKataloge().length === anzahlVor);
+
+  // (e) Eine bewusst gewaehlte andere vorhandene Katalogressource bleibt wirksam
+  const eigener = store.setzeKatalog(KAT.leererKatalog('Eigener Katalog #68'));
+  $('tr-projekt-neu').dispatch('click');
+  $('pp-name').value = 'Eigenkatalogprojekt';
+  $('pp-katalog').value = eigener.id;
+  await $('pp-speichern').dispatch('click');
+  ok('#68 eine bewusst gewaehlte andere Katalogressource bleibt wirksam',
+    store.holeMappe().katalog === eigener.id && store.katalogStatus().status === 'ok'
+    && store.katalogStatus().katalog.name === 'Eigener Katalog #68'
+    && store.listeKataloge().length === anzahlVor + 1);
+
+  // (f) Auch die ausdrueckliche Wahl „kein Katalog" bleibt wirksam ([L-12]: nie geraten)
+  $('tr-projekt-neu').dispatch('click');
+  $('pp-name').value = 'Katalogloses Projekt';
+  $('pp-katalog').value = '';
+  await $('pp-speichern').dispatch('click');
+  ok('#68 die ausdrueckliche Wahl „kein Katalog" bleibt wirksam — nichts wird geraten ([L-12])',
+    store.holeMappe().katalog === null && store.katalogStatus().status === 'nicht_zugeordnet');
+
+  // (g) Nicht ladbare Vorlage: Projekt entsteht, die fehlende Zuordnung wird benannt
+  const katZwischen = katSlot();
+  const fetch68 = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 404, text: async () => '' });
+  $('tr-projekt-neu').dispatch('click');
+  $('pp-name').value = 'Offlineprojekt';
+  await $('pp-speichern').dispatch('click');
+  globalThis.fetch = fetch68;
+  ok('#68 nicht ladbare Vorlage: Projekt angelegt, fehlende Zuordnung benannt, nie geraten',
+    store.holeMappe().projekt.name === 'Offlineprojekt' && store.holeMappe().katalog === null
+    && trFehler() && /Standardkatalog wurde nicht geladen/.test(trMsgTxt())
+    && katSlot() === katZwischen);
+
+  // Zurueck zur Ausgangslage der Folgeabschnitte: das Testprojekt bleibt der aktive Stand.
+  store.setzeAktivesProjekt(prj0.projekt.id);
 }
 
 // --- 9) Geschossplan: Modul 0 zeigt nur noch AN (#53, [L-8]/[L-9]) --------
@@ -1584,7 +1690,10 @@ globalThis.fetch = echtesFetch;
   PLAN.setzeIndexedDB(fakeIndexedDB());
   store.migrieren();
 
-  const prjA = projektAnlegen('Archivprojekt', { bauherr: 'AWG Musterstadt', phase: 'LP5' });
+  const prjA = await projektAnlegen('Archivprojekt', { bauherr: 'AWG Musterstadt' });
+  // #68: Phase ist kein Feld des Anlagedialogs mehr — als Projektbestand wird sie fuer den
+  // Archiv-Roundtrip ueber den Storage-Pfad gesetzt.
+  store.setzeKopfdaten({ phase: 'LP5' });
   const gsEg = store.aktivesGeschossId();
   const gsOg = geschossAnlegen(prjA.projekt.id, 'OG', 2400);
   store.setzeAktivesGeschoss(gsEg);
@@ -1835,7 +1944,7 @@ globalThis.fetch = echtesFetch;
   const altStand = localStorage.getItem('sembla:kataloge');
   const altAktiv = localStorage.getItem('sembla:aktiv:katalog');
   localStorage.removeItem('sembla:kataloge'); localStorage.removeItem('sembla:aktiv:katalog');
-  const prjZ = projektAnlegen('Zuschnittprojekt');
+  const prjZ = await projektAnlegen('Zuschnittprojekt');
   const gsZ = store.aktivesGeschossId();
   store.setzeProjektKatalog(null);
   // #56: Das automatische Nachladen haing am entfallenen Anlegen-Handler von Modul 0.
@@ -1914,7 +2023,7 @@ globalThis.fetch = echtesFetch;
 // „ZIP herunterladen". Geprueft werden Dateiname, Ebenenbezug, CSV-Inhalt und dass die
 // Mengen BITGLEICH die Summe der kanonischen Wandstuecklisten sind.
 {
-  const gsG = projektAnlegen('Exportprojekt #44') && store.aktivesGeschossId();
+  const gsG = (await projektAnlegen('Exportprojekt #44')) && store.aktivesGeschossId();
   // #56: Katalog ausdruecklich laden — er belegt die Verwendungsstellen der Waende vor
   // ([P-18]) und ist damit Voraussetzung fuer die Einbauteile in der Gesamtstueckliste.
   $('k-vorlage').dispatch('click');
@@ -2149,10 +2258,11 @@ ok('Initialisierung ruft KEIN fetch auf (kein Autoload)', frischeAufrufe.length 
 ok('Initialisierung legt keinen Katalog an', frischKatalog === null);
 ok('Initialisierung legt kein Wandelement an', frischElemente === null);
 // #56: Der Anlegen-Handler ist entfallen und mit ihm sein Nachladen des Standardkatalogs —
-// geblieben sind Musterwand und Standardkatalog, beide in Klick-Handlern. Beim
-// Initialisieren wird weiterhin nichts geholt.
+// geblieben sind Musterwand, der Standardkatalog-Knopf und seit #68 die eingeloeste
+// Vorbelegung beim Speichern der Projektanlage; alle drei liegen in Klick-Handlern.
+// Beim Initialisieren wird weiterhin nichts geholt (geprueft oben: kein fetch-Aufruf).
 ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
-  (src.match(/vorlageText\(/g) || []).length === 3           // 1 Definition + 2 Aufrufe
+  (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
 
 
