@@ -320,10 +320,26 @@ ok('SVG ist masstabsgetreu (mm-Masse im Wurzelelement)',
   /^<\?xml/.test(zSvg.data) && /<svg[^>]*width="[\d.]+mm"/.test(zSvg.data) && /height="[\d.]+mm"/.test(zSvg.data));
 ok('HTML ist ein selbsttragendes, druckbares Blatt',
   /^<!DOCTYPE html>/.test(zHtml.data) && /@page\{size:A[34] landscape/.test(zHtml.data) && /ztitleblock/.test(zHtml.data));
-ok('Blatt kennzeichnet die Vorspann-Zielregeln als ungeprueft',
-  /nicht automatisch geprüft/.test(zHtml.data));
-ok('Blatt behauptet keinen Nachweis',
-  /separat prüfen/.test(zHtml.data) && !/bestanden/i.test(zHtml.data));
+// #61: Das gemeinsame Blatt ist auf das Ausfuehrungsnoetige reduziert — im ECHTEN zentralen
+// Export geprueft. Erwartet wird die Abwesenheit der entfernten Regel- und Statikerklaerungen;
+// ein Nachweisstatus wird dabei nicht erfunden, es gibt schlicht kein Nachweisfeld mehr.
+ok('Zeichnungsexport traegt keine Regel- oder Zielregeltexte',
+  !/nicht automatisch geprüft/.test(zHtml.data) && !/Zielregel/.test(zHtml.data)
+  && !/Planungshinweis/.test(zHtml.data) && !/eingehaltene Vorspannregeln/.test(zHtml.data)
+  && !/Zielvorgaben für die Planung/.test(zHtml.data));
+ok('Zeichnungsexport traegt keine Statikerklaerung und keinen Nachweisstatus',
+  !/separat prüfen/.test(zHtml.data) && !/nicht Bestandteil dieser Zeichnung/.test(zHtml.data)
+  && !/>Statik</.test(zHtml.data) && !/bestanden/i.test(zHtml.data));
+// Diese Wand ist noch ohne Standardlaengen (der Katalog wird erst weiter unten geladen), hat also
+// nach [P-19] zu Recht KEINEN ID-Kasten — geprueft wird deshalb der Pflichtinhalt, den es hier
+// wirklich gibt: Wanddarstellung, Baustellenstueckliste, Vorspannkennzahlen und die kompakte
+// Legende samt ID-Schluessel. Die IDs selbst deckt der Modul-7-Test an einer bestueckten Wand ab.
+ok('Zeichnungsexport behaelt die Ausfuehrungsdaten (Wand, Stueckliste, Kennzahlen, Legende)',
+  /<svg/.test(zHtml.data) && /Baustellenstückliste/.test(zHtml.data)
+  && /Spannachsen/.test(zHtml.data) && /Gewindestange \(Standardlänge\)/.test(zHtml.data)
+  && /Einbauteil-ID GS-k/.test(zHtml.data));
+ok('auch die exportierte SVG-Datei traegt keine Statikerklaerung',
+  !/separat prüfen/.test(zSvg.data) && !/Statik/.test(zSvg.data));
 ok('kein jsPDF/Fremd-Lib im Zeichnungspfad', !/jspdf/i.test(zHtml.data) && !/html2canvas/i.test(zHtml.data));
 ok('Dialog schliesst nach dem Zeichnungs-Export', $('exp-overlay').hidden === true);
 

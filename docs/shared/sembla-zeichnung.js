@@ -156,50 +156,24 @@ export const FARBE = {
   mass: "#46505e", staffel: "#0a7f8c", reihe: "#8f96a0",
 };
 
-// ------------------------------------------------------- Planungshinweise [D-5]
+// --------------------------------------------------------- Blatt-Ueberschriften
 
 /**
- * Vorspann-Zielregeln aus dem Legacy-Blatt, die die Suite NOCH NICHT rechnet. Sie sind
- * PLANUNGSHINWEISE und werden NICHT automatisch geprueft — das Blatt darf sie darum nie
- * als erfuellte Tatsache ausgeben ([D-5]). Titel und Fussnote sind Teil dieser Regel.
- *
- * [V-2] (jeder Stein von einer Spannachse gehalten) und [V-3] (Achsen mittig im i3 der
- * untersten Lage) sind seit der Umstellung der Achsverteilung im Rechenkern umgesetzt und
- * durch Regressionstests gedeckt. Sie stehen deshalb NICHT mehr hier, sondern in
- * GEPRUEFTE_REGELN — sie als ungeprueft auszuweisen waere ebenso unwahr wie umgekehrt.
+ * Das Blatt fuehrt KEINE Regellisten (#61). Weder die vom Rechenkern eingehaltenen
+ * Vorspannregeln noch die noch ungerechneten Zielregeln stehen darauf, und damit auch
+ * keine erklaerende Fussnote dazu: gebraucht wird auf dem Blatt die Wand mit ihren
+ * Massen, Stuecken und IDs, nicht Regelkunde. [D-5] ist eine Regel der
+ * AUSSAGEWAHRHEIT und keine Darstellungspflicht — Geprueftes und Ungeprueftes nie zu
+ * vermischen heisst nicht, beides auflisten zu muessen; das Weglassen behauptet nichts.
+ * Die offenen Zielregeln (Oeffnung > 750 mm beidseitig zwei Achsen; jedes Blech von zwei
+ * Achsen gehalten) stehen unveraendert im Handbuch, Kapitel 16.8.
  */
-export const PLANUNGSHINWEISE = [
-  { farbe: "#e8a01c", text: "Bei Öffnungen &gt; 750 mm: auf jeder Seite zwei Spannachsen nebeneinander." },
-  { farbe: "#8b5cc7", text: "Jedes Blech muss von mindestens zwei Spannachsen gehalten werden." },
-];
-
-/**
- * Vorspann-Regeln, die der Rechenkern tatsaechlich einhaelt und die am gezeichneten
- * Wandelement nachweisbar sind. Nur solche duerfen als erfuellt dargestellt werden ([D-5]).
- */
-export const GEPRUEFTE_REGELN = [
-  { farbe: "#1f6feb", text: "Jeder Stein wird von mindestens einer Spannachse gehalten ([V-2])." },
-  { farbe: "#1f9d55", text: "Automatisch gesetzte Spannachsen liegen möglichst mittig im i3-Stein der untersten Steinreihe ([V-3])." },
-];
-
-/** Ueberschrift der Liste der eingehaltenen Regeln ([D-5]). */
-export const GEPRUEFT_TITEL = "Vom Rechenkern eingehaltene Vorspannregeln";
-
-/** Ueberschrift der Hinweisliste — unmissverstaendlich als ungeprueft gekennzeichnet ([D-5]). */
-export const HINWEIS_TITEL = "Planungshinweise / Zielregeln – nicht automatisch geprüft";
-
-/** Fussnote zur Hinweisliste ([D-5]). */
-export const HINWEIS_FUSS = "Diese Regeln sind Zielvorgaben für die Planung. Die Zeichnung stellt den "
-  + "berechneten Zustand dar; ob die Regeln eingehalten sind, ist planerisch zu prüfen.";
 
 /** Ueberschrift des Mangelblocks — Zuschnittkonflikte des Kerns ([Z-5]/[Z-6]). */
 export const MANGEL_TITEL = "Zuschnittkonflikte – Blatt unvollständig";
 
 /** Titel der Einbauteil-ID-Tabelle des Blattes ([P-19]). */
 export const EINBAUTEIL_TITEL = "Einbauteile Gewindestangen – IDs je Spannachse";
-
-/** Nachweis-Feld im Schriftfeld — nie „bestanden", kein Rueckgriff auf ein Rechenmodell ([D-8]). */
-export const NACHWEIS_TEXT = "nicht Bestandteil dieser Zeichnung – separat prüfen";
 
 // ------------------------------------------------------------------ Zeichnung
 
@@ -541,27 +515,34 @@ const _tab = rows => `<table class="ztab"><tbody>`
   + `</tbody></table>`;
 
 /**
- * Schriftfeld des Blattes. Kopfdaten kommen aus `eingaben.projekt` (Modul 0) —
- * die Zeichnung fuehrt keine eigenen Projektfelder ([D-7]). Das Nachweis-Feld ist
- * bewusst KEIN Ergebnisfeld ([D-8]).
+ * Schriftfeld des Blattes — GENAU die zwingenden Angaben ([D-8], #61): Projekt, Wand mit
+ * ihren Massen, Planinhalt, Plan-Nr., Index, Masstab, Einheit und Zeichner. Kopfdaten
+ * kommen aus `eingaben.projekt` (Modul 0), die Zeichnung fuehrt keine eigenen
+ * Projektfelder ([D-7]).
+ *
+ * Bauherrenschaft, Planverfasser und Phase stehen NICHT mehr hier: sie entscheiden am
+ * Blatt nichts und sind am Projekt gepflegt ([L-11]). Ebenso entfaellt das frueher
+ * verpflichtende Statik-Feld — die Zeichnung weist ohnehin nichts nach, und ein leeres
+ * Erklaerfeld ist kein Nachweis ([D-8] unveraendert: kein Ergebnis, kein Rechenmodell).
+ *
+ * Eine FEHLENDE optionale Angabe erzeugt keine Zeile (kein „–", kein „###"): ein
+ * Platzhalter liest sich wie eine gepflegte Angabe, die es nicht gibt.
  */
 export function schriftfeldHtml(w, eingaben = {}, masstab = 25, opts = {}) {
   const o = normOptionen(opts);
   const p = (eingaben && eingaben.projekt) || {};
   const dim = _mm(w.length_mm) + " × " + _mm(w.height_mm);   // reine mm-Werte (#64)
-  const row = (k, v) => `<div class="ztb-row"><div class="k">${k}</div><div class="v">${_esc(v) || "–"}</div></div>`;
+  const row = (k, v) => (v === undefined || v === null || String(v) === "")
+    ? "" : `<div class="ztb-row"><div class="k">${k}</div><div class="v">${_esc(v)}</div></div>`;
   return `<div class="ztitleblock">`
-    + `<div class="col">${row("Projekt", p.name || w.name)}${row("Bauherrenschaft", p.bauherr)}${row("Planverfasser", p.planverfasser)}</div>`
-    + `<div class="col">${row("Phase", p.phase)}${row("Planinhalt", o.planinhalt)}${row("Wand", (w.name || "–") + " · " + dim)}</div>`
+    + `<div class="col">${row("Projekt", p.name || w.name)}${row("Wand", (w.name || "") + " · " + dim)}</div>`
+    + `<div class="col">${row("Planinhalt", o.planinhalt)}${row("Plan Nr.", p.plan_nr)}${row("Index", p.index)}</div>`
     + `<div class="col">`
-    + row("Plan Nr.", p.plan_nr || "###")
-    + row("Index", p.index)
     + `<div class="ztb-row"><div class="k">Maßstab</div><div class="v">1 : ${masstab}</div></div>`
     // Die EINE Einheitenangabe des Blattes (#64): alle Masszahlen der Zeichnung
     // sind reine Millimeterwerte und tragen deshalb kein Suffix ([D-3]).
     + `<div class="ztb-row"><div class="k">Einheit</div><div class="v">mm</div></div>`
     + row("Gez.", p.gez)
-    + `<div class="ztb-row"><div class="k">Statik</div><div class="v nw">${NACHWEIS_TEXT}</div></div>`
     + `</div></div>`;
 }
 
@@ -588,23 +569,9 @@ export function legendeHtml() {
     + `dieselben IDs führt die Baustellenstückliste (Modul 4).</div>`;
 }
 
-/** Hinweisliste der noch ungerechneten Vorspann-Zielregeln — ausdruecklich ungeprueft ([D-5]). */
-export function hinweiseHtml() {
-  return `<div class="zregeln">`
-    + PLANUNGSHINWEISE.map((r, i) => `<div><span class="chip" style="background:${r.farbe}"></span><span>${i + 1}. ${r.text}</span></div>`).join("")
-    + `</div><div class="zfuss">${HINWEIS_FUSS}</div>`;
-}
-
-/** Liste der vom Rechenkern eingehaltenen Vorspannregeln ([D-5]). */
-export function gepruefteHtml() {
-  return `<div class="zregeln">`
-    + GEPRUEFTE_REGELN.map((r, i) => `<div><span class="chip" style="background:${r.farbe}"></span><span>${i + 1}. ${r.text}</span></div>`).join("")
-    + `</div>`;
-}
-
 /**
  * Das komplette Zeichnungsblatt als HTML-Baustein (Zeichnung + Tabellen + Legende
- * + Hinweise + Schriftfeld). Vorschau (Modul 7) und zentraler Export nutzen GENAU
+ * + Schriftfeld). Vorschau (Modul 7) und zentraler Export nutzen GENAU
  * diese Funktion — es gibt keine zweite Blatt-/Zeichenlogik ([D-6]).
  *
  * @param {object} w @param {object} [eingaben] @param {object} [opts]
@@ -627,9 +594,10 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
     // [Z-5]/[Z-6] Zuschnittkonflikte stehen VOR der Legende und nur, wenn es welche gibt:
     // ein unvollstaendiger Zuschnitt darf auf dem Blatt nicht als vollstaendig erscheinen.
     + (maengelHtml(w) ? `<div class="zbox mangel"><h4>${MANGEL_TITEL}</h4>${maengelHtml(w)}</div>` : "")
+    // Der Darstellungsschluessel bleibt — ohne ihn sind Stueckart und Einbauteil-ID am
+    // Blatt nicht lesbar ([D-4]/[P-19]). Regellisten stehen hier NICHT mehr (#61, s. o.);
+    // die frei werdende Flaeche bleibt der Zeichnung und wird nicht neu belegt.
     + `<div class="zbox"><h4>Darstellung</h4>${legendeHtml()}</div>`
-    + `<div class="zbox"><h4>${GEPRUEFT_TITEL}</h4>${gepruefteHtml()}</div>`
-    + `<div class="zbox"><h4>${HINWEIS_TITEL}</h4>${hinweiseHtml()}</div>`
     + `</aside>`
     + schriftfeldHtml(w, eingaben, z.masstab, o)
     + `</div>`;
@@ -672,9 +640,6 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
      Seitenspalte passen — die Zelle darf umbrechen, damit keine ID abgeschnitten wird. */
   .zbox.zids table.ztab{font-size:9px}
   .zbox.zids table.ztab td.r{text-align:left;font-weight:500;word-break:break-word}
-  .zregeln{font-size:10px;line-height:1.4}
-  .zregeln div{display:flex;gap:6px;margin:3px 0}
-  .zregeln .chip{flex:0 0 10px;height:10px;border-radius:2px;margin-top:1px}
   .zbox.mangel{border-color:#c9461c;border-width:1.5px}
   .zbox.mangel h4{color:#c9461c}
   .zmangel{font-size:10px;line-height:1.4}
@@ -697,7 +662,6 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
   .ztb-row .k{background:#f4f6f8;color:#6b7682;font-size:9.5px;text-transform:uppercase;
               letter-spacing:.3px;padding:4px 7px;border-right:1px solid #e3e7ec;display:flex;align-items:center}
   .ztb-row .v{padding:4px 7px;font-weight:600;display:flex;align-items:center}
-  .ztb-row .v.nw{font-weight:500;color:#7d2a10;font-size:10px}
 `;
 
 /**
@@ -740,8 +704,10 @@ export function zeichnungSvgDatei(w, eingaben = {}, opts = {}) {
   const vbW = z.breite_mm, vbH = z.hoehe_mm + kopf;
   const titel = zeichnungTitel(w, z.masstab, o.planinhalt);
   const p = (eingaben && eingaben.projekt) || {};
-  const sub = [p.name, p.plan_nr ? "Plan " + p.plan_nr : "", p.index ? "Index " + p.index : "",
-    "Statik: " + NACHWEIS_TEXT].filter(Boolean).join(" · ");
+  // Dieselbe Reduktion wie im Schriftfeld (#61): Projekt, Plan-Nr. und Index — kein
+  // erklaerender Statik-Satz. Fehlt eine Angabe, entfaellt sie ganz statt als Platzhalter.
+  const sub = [p.name, p.plan_nr ? "Plan " + p.plan_nr : "", p.index ? "Index " + p.index : ""]
+    .filter(Boolean).join(" · ");
   return `<?xml version="1.0" encoding="UTF-8"?>\n`
     + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${_n(vbW)} ${_n(vbH)}" `
     + `width="${_n(vbW)}mm" height="${_n(vbH)}mm">\n`

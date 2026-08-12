@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "9a830537",
+  "signatur": "1b1955b5",
   "entscheidungen": [
     {
       "issue": 41,
@@ -95,15 +95,6 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
-    },
-    {
-      "issue": 61,
-      "titel": "Technische Zeichnung: Blattinhalt auf wesentliche Angaben reduzieren",
-      "prio": "ohne",
-      "status": "ohne",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false
     }
   ],
   "blockiert": [

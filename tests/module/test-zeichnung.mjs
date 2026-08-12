@@ -8,10 +8,11 @@
 //           Einheit genau einmal im Schriftfeld (#64),
 //   * [D-4] Darstellung von Steinen/Oeffnungen/Kontur/Blechen/Stangen inkl. realer
 //           Stangenstuecke (Kopplungen, Sonderlaengen) aus stangenEnden(),
-//   * [D-5] Vorspann-Zielregeln nur als ungepruefte Planungshinweise,
+//   * [D-5] keine Regellisten auf dem Blatt — die Regel verlangt Aussagewahrheit,
+//           keine Darstellung (#61),
 //   * [D-6] EINE Ableitung fuer Vorschau und Export,
 //   * [D-7] eingaben.zeichnung enthaelt nur Darstellungsoptionen,
-//   * [D-8] Schriftfeld behauptet keinen statischen Nachweis.
+//   * [D-8] Schriftfeld nur mit den zwingenden Angaben, ohne Nachweis (#61).
 //
 // Checkout-autark: alle Waende kommen synthetisch aus dem Core, keine Fixture-Dateien,
 // keine vertrauliche Geometrie.
@@ -351,34 +352,58 @@ console.log("\n[Z-5]/[Z-6] Zuschnittkonflikte stehen auf dem Blatt");
     !Z.bomZeilen(WL2).some(r => /Gewindestange/.test(r.label)));
 }
 
-// [D-5] Trennung: was der Kern rechnet, steht als eingehalten; der Rest bleibt ungeprueft.
-// [V-2]/[V-3] sind seit der Umstellung der Achsverteilung implementiert und regressionsgetestet,
-// die beiden restlichen Zielregeln (750-mm-Oeffnung, Blech von zwei Achsen) nicht.
-ok("beide offenen Vorspann-Zielregeln stehen im Blatt", Z.PLANUNGSHINWEISE.length === 2
-  && Z.PLANUNGSHINWEISE.every(r => blatt.html.includes(r.text)));
-ok("offene Zielregeln sind als nicht automatisch geprueft gekennzeichnet",
-  /nicht automatisch geprüft/.test(blatt.html) && blatt.html.includes(Z.HINWEIS_FUSS));
-ok("[V-2]/[V-3] stehen als eingehaltene Regeln, nicht mehr als Zielregeln",
-  Z.GEPRUEFTE_REGELN.length === 2
-  && Z.GEPRUEFTE_REGELN.every(r => blatt.html.includes(r.text))
-  && blatt.html.includes(Z.GEPRUEFT_TITEL)
-  && Z.PLANUNGSHINWEISE.every(r => !/\[V-2\]|\[V-3\]/.test(r.text)));
-// Die eingehaltenen Regeln sind am Wandelement tatsaechlich nachweisbar — das Blatt behauptet
-// nichts, was der Kern nicht liefert.
-ok("[V-2] ist am gezeichneten Wandelement wirklich erfuellt",
+// [D-5] (#61) Das Blatt fuehrt KEINE Regellisten — weder eingehaltene noch offene Zielregeln,
+// und keinen erklaerenden Fusstext dazu. [D-5] bleibt als Aussagewahrheitsregel scharf: wo keine
+// Regel genannt ist, kann auch nichts vermischt werden. Geprueft wird die Abwesenheit an den
+// wortwoertlichen Texten der frueheren Bloecke, damit ein Rueckfall auffaellt.
+ok("keine Liste eingehaltener Vorspannregeln mehr im Blatt",
+  !/eingehaltene Vorspannregeln/.test(blatt.html)
+  && !/mindestens einer Spannachse gehalten/.test(blatt.html)
+  && !/mittig im i3-Stein/.test(blatt.html));
+ok("keine Liste ungepruefter Zielregeln mehr im Blatt",
+  !/nicht automatisch geprüft/.test(blatt.html)
+  && !/Planungshinweis/.test(blatt.html) && !/Zielregel/.test(blatt.html)
+  && !/750 mm/.test(blatt.html)
+  && !/von mindestens zwei Spannachsen gehalten/.test(blatt.html));
+ok("kein erklaerender Regel-Fusstext mehr im Blatt",
+  !/Zielvorgaben für die Planung/.test(blatt.html)
+  && !/planerisch zu prüfen/.test(blatt.html)
+  && !/eingehalten/.test(blatt.html) && !/erfüllt/i.test(blatt.html));
+ok("der Baustein exportiert die Regellisten gar nicht mehr",
+  !("PLANUNGSHINWEISE" in Z) && !("GEPRUEFTE_REGELN" in Z) && !("GEPRUEFT_TITEL" in Z)
+  && !("HINWEIS_TITEL" in Z) && !("HINWEIS_FUSS" in Z)
+  && !("hinweiseHtml" in Z) && !("gepruefteHtml" in Z));
+ok("die Regeln selbst sind unberuehrt: [V-2] ist am Wandelement weiter erfuellt",
   W.validation.ungehaltene_steine.length === 0);
-// Keine bejahende Aussage ueber die OFFENEN Regeln: "erfüllt" faellt ganz weg, "eingehalten"
-// kommt nur im Titel der gepruefen Liste und in der offenen Pruefaufforderung vor.
-ok("Blatt behauptet nirgends, die offenen Zielregeln seien erfuellt/geprueft",
-  !/erfüllt/i.test(blatt.html)
-  && (blatt.html.match(/eingehalten/g) || []).length
-     === (blatt.html.match(/ob die Regeln eingehalten sind/g) || []).length
-       + (blatt.html.match(/eingehaltene Vorspannregeln/g) || []).length);
+// Der zentrale Export ist dieselbe Ableitung ([D-6]) und damit ebenso reduziert.
+ok("auch das Export-Blatt traegt keine Regeltexte", (() => {
+  const h = zeichnungHtml(W, eingaben);
+  return !/nicht automatisch geprüft/.test(h) && !/eingehaltene Vorspannregeln/.test(h)
+    && !/Zielvorgaben für die Planung/.test(h); })());
 
-// [D-8] Schriftfeld: Kopfdaten aus eingaben.projekt, kein Nachweis-Ergebnis
+// [D-8]/(#61) Schriftfeld: genau die zwingenden Angaben, kein Platzhalter, kein Nachweis.
+const feldNamen = [...blatt.html.matchAll(/<div class="ztb-row"><div class="k">([^<]*)<\/div>/g)]
+  .map(m => m[1]);
+ok("Schriftfeld fuehrt GENAU die festgelegten Felder in dieser Reihenfolge",
+  feldNamen.join("|") === "Projekt|Wand|Planinhalt|Plan Nr.|Index|Maßstab|Einheit|Gez.");
 ok("Schriftfeld nutzt die Projekt-Kopfdaten aus Modul 0",
-  blatt.html.includes("Rettungswache") && blatt.html.includes("Landkreis")
-  && blatt.html.includes("A-12") && blatt.html.includes("TB"));
+  blatt.html.includes("Rettungswache") && blatt.html.includes("A-12")
+  && blatt.html.includes("TB"));
+ok("Verwaltungsangaben stehen nicht mehr auf dem Blatt (am Projekt gepflegt, [L-11])",
+  !/Bauherrenschaft/.test(blatt.html) && !/Planverfasser/.test(blatt.html)
+  && !/>Phase</.test(blatt.html) && !blatt.html.includes("Landkreis"));
+// Fehlende optionale Angabe: keine Zeile, kein "–" und kein "###" — ein Platzhalter liest sich
+// wie eine gepflegte Angabe. Geprueft an einer Wand ohne jede Kopfdatenpflege.
+{
+  const leer = Z.blattHtml(W, {}, {}).html;
+  const namenLeer = [...leer.matchAll(/<div class="ztb-row"><div class="k">([^<]*)<\/div>/g)].map(m => m[1]);
+  ok("ohne Kopfdaten entfallen die optionalen Zeilen ganz",
+    namenLeer.join("|") === "Projekt|Wand|Planinhalt|Maßstab|Einheit"
+    && !/Plan Nr\./.test(leer) && !/>Index</.test(leer) && !/>Gez\.</.test(leer));
+  ok("kein Platzhaltertext im Schriftfeld",
+    !/<div class="v">–<\/div>/.test(leer) && !leer.includes("###")
+    && !/<div class="v">–<\/div>/.test(blatt.html) && !blatt.html.includes("###"));
+}
 ok("Schriftfeld nennt den Masstab", blatt.html.includes("1 : " + blatt.masstab));
 // [D-3]/#64: die Einheit steht GENAU EINMAL im Schriftfeld — und nur dort.
 const einheitFelder = [...blatt.html.matchAll(
@@ -387,8 +412,13 @@ ok("Schriftfeld hat genau ein Feld „Einheit“ mit dem Wert mm",
   einheitFelder.length === 1 && einheitFelder[0][1] === "mm");
 ok("Wandangabe im Schriftfeld steht in mm (keine Meter-Schattenumrechnung)",
   blatt.html.includes("IW-01 · " + W.length_mm + " × " + W.height_mm));
-ok("Nachweis-Feld verweist auf die separate Pruefung",
-  blatt.html.includes(Z.NACHWEIS_TEXT) && /separat prüfen/.test(blatt.html));
+// (#61) Das Blatt fuehrt gar kein Statik-Feld mehr: dass die Zeichnung nichts nachweist, folgt
+// daraus, dass sie kein Nachweisfeld hat — ein Erklaersatz dazu war Blattballast. [D-8] bleibt
+// unveraendert scharf: kein Ergebnis und kein Zugriff auf ein Nachweismodell.
+ok("kein Statik-/Erklaerfeld mehr im Schriftfeld",
+  !/>Statik</.test(blatt.html) && !/separat prüfen/.test(blatt.html)
+  && !/nicht Bestandteil dieser Zeichnung/.test(blatt.html)
+  && !("NACHWEIS_TEXT" in Z));
 ok("kein Nachweis-Ergebnis im Blatt (kein bestanden/erfüllt/η)",
   !/bestanden/i.test(blatt.html) && !/η/.test(blatt.html));
 ok("Zeichnung nutzt kein Statik-/Engine-Modell",
@@ -419,7 +449,13 @@ ok("SVG-Datei ist eigenstaendig (XML-Prolog + xmlns)",
   /^<\?xml/.test(datei) && datei.includes('xmlns="http://www.w3.org/2000/svg"'));
 ok("SVG-Datei traegt mm-Masse", /width="[\d.]+mm"/.test(datei) && /height="[\d.]+mm"/.test(datei));
 ok("SVG-Datei nennt Wand, Masse und Masstab", datei.includes("IW-01") && datei.includes("M 1:"));
-ok("SVG-Datei verweist auf die separate statische Pruefung", datei.includes(Z.NACHWEIS_TEXT));
+// (#61) Auch die eigenstaendige SVG-Ausgabe ist reduziert: Projekt, Plan-Nr., Index — kein
+// erklaerender Statik-Satz. Der zentrale Export ist damit durchgaengig gleich knapp.
+ok("SVG-Datei traegt keinen Statik-Erklaersatz",
+  !/separat prüfen/.test(datei) && !/nicht Bestandteil dieser Zeichnung/.test(datei)
+  && !/Statik/.test(datei));
+ok("SVG-Datei nennt Projekt, Plan-Nr. und Index", datei.includes("Rettungswache")
+  && datei.includes("Plan A-12") && datei.includes("Index 2"));
 ok("SVG-Datei enthaelt die Zeichnung selbst", (datei.match(/<rect/g) || []).length >= steine);
 
 // --- 6b) #61 Blattgeometrie: Vorschau und Druck aus DENSELBEN BLATT-Daten ---

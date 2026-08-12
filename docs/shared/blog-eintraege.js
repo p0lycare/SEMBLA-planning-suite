@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-04",
+    datum: "2026-08-12",
+    typ: "fix",
+    issue: 61,
+    titel: "Die technische Wandzeichnung konzentriert sich auf Ausführungs- und Projektdaten",
+    testbitte: "Reiter 7 mit A3 und A4 öffnen und drucken: Wand, Maße, Stückliste, Einbauteil-IDs und Legende müssen erhalten bleiben; Regeltexte, Verwaltungsfelder und Platzhalter müssen fehlen.",
+  },
+  {
     id: "chg-20260812-03",
     datum: "2026-08-12",
     typ: "fix",

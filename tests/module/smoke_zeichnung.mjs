@@ -142,8 +142,43 @@ ok("breites Fenster vergroessert das Blatt nicht ueber Papiergroesse", Z.blattge
 $("blattwrap").clientWidth = 800;
 fireFenster("resize");
 ok("Projekt-Kopfdaten aus Modul 0 im Blatt", /Rettungswache/.test($("blattwrap").innerHTML) && /A-12/.test($("blattwrap").innerHTML));
-ok("Zielregeln als ungeprueft gekennzeichnet", /nicht automatisch geprüft/.test($("blattwrap").innerHTML));
-ok("kein Nachweis-Ergebnis im Blatt", /separat prüfen/.test($("blattwrap").innerHTML) && !/bestanden/i.test($("blattwrap").innerHTML));
+ok("kein Nachweis-Ergebnis im Blatt", !/bestanden/i.test($("blattwrap").innerHTML));
+
+// --- 2c) #61 Reduzierter Blattinhalt in Vorschau UND zentralem Export, A3 und A4 ----
+// Geprueft wird beides am selben Text: was der Nutzer sieht ($('blattwrap')) und was der
+// zentrale Export schreibt (zeichnungHtml()) — dieselbe Ableitung, also derselbe Befund ([D-6]).
+/** Pflichtinhalt des reduzierten Blattes — Ausfuehrungsdaten, kein Erklaertext. */
+const pflicht = (t) => /<svg/.test(t) && /<rect/.test(t)                       // Wanddarstellung
+  && /ztitleblock/.test(t) && /1 : \d+/.test(t)                                // Schriftfeld/Masstab
+  && /Baustellenstückliste/.test(t) && /Stein i/.test(t)                       // Stueckliste
+  && /Einbauteile Gewindestangen/.test(t) && /GS-k\d+\.\d+\.\d+/.test(t)       // IDs [P-19]
+  && /Spannachsen/.test(t) && /Sonderlängen/.test(t)                           // Kennzahlen
+  && /Gewindestange \(Standardlänge\)/.test(t) && /Reststück oben/.test(t)     // kompakte Legende
+  && /Einbauteil-ID GS-k/.test(t);
+/** Genau die entfernten Textbloecke — Regelkunde und Verwaltungsballast. */
+const entfernt = (t) => !/nicht automatisch geprüft/.test(t) && !/Zielregel/.test(t)
+  && !/Planungshinweis/.test(t) && !/eingehaltene Vorspannregeln/.test(t)
+  && !/Zielvorgaben für die Planung/.test(t) && !/planerisch zu prüfen/.test(t)
+  && !/separat prüfen/.test(t) && !/nicht Bestandteil dieser Zeichnung/.test(t)
+  && !/Bauherrenschaft/.test(t) && !/Planverfasser/.test(t) && !/>Phase</.test(t)
+  && !/>Statik</.test(t) && !/<div class="v">–<\/div>/.test(t) && !t.includes("###");
+for (const f of ["a3", "a4"]) {
+  $("fmt").value = f; $("fmt").dispatch("change");            // echter Format-Handler
+  const sicht = $("blattwrap").innerHTML, exp = zeichnungHtml(W, _eing);
+  ok(`Vorschau ${f.toUpperCase()}: Pflichtinhalt vollstaendig`, pflicht(sicht));
+  ok(`Vorschau ${f.toUpperCase()}: entfernte Text-/Verwaltungsbloecke fehlen`, entfernt(sicht));
+  ok(`Export ${f.toUpperCase()}: Pflichtinhalt vollstaendig`, pflicht(exp));
+  ok(`Export ${f.toUpperCase()}: entfernte Text-/Verwaltungsbloecke fehlen`, entfernt(exp));
+  ok(`Export ${f.toUpperCase()} enthaelt genau das sichtbare Blatt ([D-6])`, exp.includes(sicht));
+}
+// Der Druckpfad bleibt unveraendert: kein zweites Rendering, nur window.print() auf die Vorschau.
+globalThis.__printed = false;
+$("print").dispatch("click");
+ok("#61 Druck bleibt window.print() auf genau die reduzierte Vorschau",
+  globalThis.__printed === true && pflicht($("blattwrap").innerHTML)
+  && entfernt($("blattwrap").innerHTML));
+$("fmt").value = "a3"; $("fmt").dispatch("change");
+schreib.length = 0;                                           // Formatwechsel der Pruefung nicht mitzaehlen
 
 // --- 3) Darstellungsoptionen: nur eigener Abschnitt wird geschrieben ([D-7]) ---
 $("fmt").value = "a4";

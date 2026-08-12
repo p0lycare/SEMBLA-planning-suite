@@ -641,9 +641,11 @@ entschieden wird und nicht über DOM-Knoten.
 `tests/core/`): Steinabdeckung als Muss, i3-Mitte der untersten Lage als Soll, `max_span_grid` nur
 noch als Obergrenze (s. „Spannachsen-Verteilung"). **Noch offen** sind zwei bestätigte Zielregeln
 ohne eigene Regel-ID: bei Öffnungen über 750 mm beidseitig **zwei** Achsen, und jedes Blech von
-mindestens **zwei** Achsen gehalten. Sie stehen in Modul 7 ausschließlich als ungeprüfter
-Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getrennt in
-`GEPRUEFTE_REGELN` — **[D-5]** verbietet beides zu vermischen, in beide Richtungen.
+mindestens **zwei** Achsen gehalten. Sie stehen **nur im Handbuch** (Kapitel 16.8) — seit #61 trägt
+das Zeichnungsblatt **keine** Regellisten mehr, weder die eingehaltenen noch die offenen
+(`PLANUNGSHINWEISE`/`GEPRUEFTE_REGELN` sind ersatzlos entfallen). **[D-5]** ist eine Regel der
+**Aussagewahrheit, keine Darstellungspflicht**: Geprüftes und Ungeprüftes dürfen nie vermischt
+werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglassen behauptet nichts.
 
 ## Zentrale Architektur-Regeln
 
@@ -699,9 +701,15 @@ Planungshinweis (`PLANUNGSHINWEISE`); was der Kern wirklich einhält, steht getr
      Modul 7 (Vorschau + Druck) **und** vom zentralen Export — **eine** Zeichenableitung (**[D-6]**;
      der Punkt ist „kein zweiter Zeichenpfad", nicht „keine Fremd-Lib"). Ausgegeben wird SVG + Druck-HTML
      statt PDF-Erzeugung im Code. Stangenstöße kommen aus `stangenEnden()` (`sembla-montage.js`), Mengen aus
-     `sembla-bom.js` — kein zweites Stück-/Mengenmodell. Die vier Vorspann-Zielregeln stehen nur
-     als **ungeprüfte Planungshinweise** auf dem Blatt (**[D-5]**), der statische Nachweis ist
-     ausdrücklich **nicht** Bestandteil der Zeichnung (**[D-8]**).
+     `sembla-bom.js` — kein zweites Stück-/Mengenmodell. **Der Blattinhalt ist auf das
+     Ausführungsnötige reduziert (#61):** Wanddarstellung mit Maßen, Baustellenstückliste,
+     Einbauteil-IDs, kompakte Vorspannkennzahlen, Zuschnittkonflikte und der Darstellungsschlüssel
+     als Legende — **keine** Regellisten und **keine** erklärenden Fußtexte (**[D-5]** verlangt
+     keine Darstellung, nur Aussagewahrheit). Das **Schriftfeld** führt genau Projekt, Wand mit
+     Maßen, Planinhalt, Plan-Nr., Index, Maßstab, Einheit und Gez.; **fehlende optionale Angaben
+     erzeugen keine Zeile** (kein „–", kein „###"). Der statische Nachweis ist ausdrücklich
+     **nicht** Bestandteil der Zeichnung — kein Ergebnis, kein Nachweismodell (**[D-8]**); der
+     frühere Pflichtsatz dazu ist samt `NACHWEIS_TEXT` entfallen, auch in `zeichnungSvgDatei`.
    - `sembla-ifc.js` — IFC4-Export (`wandelementToIfc` + `parseObj`/`meshStats`; genutzt vom zentralen Export).
    - `sembla-export.js` — baut die Export-Dateien (Stückliste/Zuschnitt-CSV, Montage-HTML,
      **Zeichnung als SVG + druckbares HTML**, **Statischer-Nachweis-HTML**, IFC-Text) für Modul 0. Das
@@ -803,7 +811,7 @@ der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv �
 | 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only**: Preise werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar nur `waehrung` → `eingaben.kosten`. Nicht eindeutige Zuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
 | 5 | `montage.html` | Montageanleitung: **Baugruppenabschnitte nach Montageereignissen** (erste Stange, Kopplung/neue Stange, oberer Abschluss) mit durchgehend nummerierten Steinreihen, A4-paginiert druckbar (`sembla-montage.js`; identisch zum zentralen Export) |
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
-| 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
+| 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 | 8 | `blog.html` | **Umsetzungsplan & Änderungen** (#55, mobile-first, read-only, **streng statisch**): genau zwei Ansichten — **„Umsetzungsplan"** (Standard) aus dem versionierten Artefakt `umsetzungsplan.js` via `sembla-umsetzungsplan.js` (Entscheidungen für Tibor · nächstes Issue mit Begründung · geordnete weitere · blockierte mit Ursache und nächstem Schritt) und **„Was ist neu?"** aus `blog-eintraege.js` via `sembla-blog.js`. Der frühere „Projektstatus" samt GitHub-Live-Abruf und Anzeigecache ist **entfallen**: **kein `fetch`, kein `localStorage`**, kein Login/Backend. Fehlender/ungültiger Plan ⇒ **sichtbar gemeldet, nichts geraten**. Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben` |
 | 9 | `lageplan.html` | **Lageplan des Geschosses** (#54, Kapitel 16.11, [N-1]…[N-8]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. **Kein Planbild** im Blatt ([L-9]), kein IFC, keine Mengen/Kosten |
 
