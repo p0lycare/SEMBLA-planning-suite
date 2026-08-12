@@ -107,8 +107,15 @@ const _n = (v) => (Math.round((Number.isFinite(v) ? v : 0) * 1000) / 1000).toStr
 const _fmt = (n, d = 0) => (Number.isFinite(n) ? n : 0)
   .toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
-/** Ein Feld des Schriftfelds/der Tabelle: leer bleibt leer, nie „undefined". */
-const _wert = (v) => (v == null || v === "" ? "–" : String(v));
+/**
+ * Ein Wert des Zeichnungskopfs: leer bleibt LEER (#59) — kein Gedankenstrich, kein
+ * „###", kein „undefined". Ein Platzhalter taeuscht einen Inhalt vor, den es nicht
+ * gibt; die Wandtabelle hat davon getrennt ihr eigenes „–" fuer fehlende Masse.
+ */
+const _leer = (v) => (v == null || v === "" ? "" : String(v));
+
+/** Der Planinhalt dieses Blattes — er ist fest, weil Modul 9 genau eine Ausgabe hat. */
+const PLANINHALT = "Lageplan (Draufsicht)";
 
 // -------------------------------------------------------- Darstellungsoptionen
 
@@ -477,36 +484,60 @@ export function lageplanTitel(daten, masstab) {
 }
 
 /**
- * Schriftfeld des Blattes. Kopfdaten kommen AUSSCHLIESSLICH aus
- * `mappe.projekt.kopfdaten` ([N-6]/[L-11]) — der wandbezogene Altbestand
- * `eingaben.projekt` wird hier nie herangezogen, weil ein Lageplan keine
- * einzelne Wand hat und es immer genau eine Quelle geben muss.
+ * Der EINE Feldsatz des Zeichnungskopfs (#59) — neun Angaben in fester Reihenfolge,
+ * mehr braucht es nicht, um einen Lageplan eindeutig zu identifizieren. Bauherrschaft,
+ * Planverfasser, Phase, Zeichner und Blattformat stehen deshalb NICHT mehr auf dem
+ * Blatt; sie bleiben in `mappe.projekt.kopfdaten` erhalten und erscheinen weiter im
+ * Schriftfeld der Wandzeichnung (Modul 7). Der kuerzere Kopf gibt seine Hoehe an
+ * Draufsicht und Wandliste zurueck (`.lpsheet` hat `grid-template-rows:1fr auto`).
+ *
+ * Diese Liste ist die gemeinsame Quelle von `schriftfeldHtml()` (Blatt) UND
+ * `lageplanSvgDatei()` (eigenstaendige Datei): beide stellen GENAU sie dar, nur
+ * verschieden. Es gibt keinen zweiten Feldsatz und keine zweite Datenquelle —
+ * gelesen wird ausschliesslich `daten` aus `lageplanDaten()` (und damit
+ * `mappe.projekt.kopfdaten`, [N-6]/[L-11]) und der uebergebene Massstab.
+ *
+ * @param {any} daten Ergebnis von `lageplanDaten` (`_passt` optional, s. `blattHtml`)
+ * @param {number} masstab
+ * @returns {Array<{k:string, v:string, warn?:boolean}>} leerer `v` = Feld bleibt leer
  */
-export function schriftfeldHtml(daten, masstab, opts) {
-  const o = normOptionen(opts);
+export function kopfFelder(daten, masstab) {
   const k = daten.kopfdaten || {};
-  const b = BLATT[o.format] || BLATT.a3;
-  const row = (label, wert, cls) => `<div class="lptb-row"><div class="k">${label}</div>`
-    + `<div class="v${cls ? " " + cls : ""}">${_esc(_wert(wert))}</div></div>`;
-  return `<div class="lptitleblock">`
-    + `<div class="col">${row("Projekt", daten.projekt.name)}`
-    + row("Bauherrenschaft", k.bauherr) + row("Planverfasser", k.planverfasser) + `</div>`
-    + `<div class="col">${row("Gebäude", daten.gebaeude.name)}`
-    + row("Geschoss", daten.geschoss.name)
-    + row("Planinhalt", "Lageplan (Draufsicht)") + `</div>`
-    + `<div class="col">${row("Plan Nr.", k.plan_nr || "###")}`
-    + row("Index", k.index)
-    + `<div class="lptb-row"><div class="k">Maßstab</div><div class="v">1 : ${masstab}`
-    + `${daten._passt === false ? " (Blatt zu klein)" : ""}</div></div>`
-    + row("Gez.", k.gez) + `</div>`
-    + `<div class="col">${row("Phase", k.phase)}`
-    + row("Blattformat", b.label)
-    // Die EINE Einheitenangabe des Blattes (#64): die Maßzahlen in der Zeichnung
+  return [
+    { k: "Projekt", v: _leer(daten.projekt.name) },
+    { k: "Gebäude", v: _leer(daten.gebaeude.name) },
+    { k: "Geschoss", v: _leer(daten.geschoss.name) },
+    { k: "Planinhalt", v: PLANINHALT },
+    // Plan-Nr. und Index sind die einzigen OPTIONALEN Felder: fehlen sie, bleibt die
+    // Zelle leer ([N-7] im Kleinen — nichts erfinden, auch keine Kennung).
+    { k: "Plan Nr.", v: _leer(k.plan_nr) },
+    { k: "Index", v: _leer(k.index) },
+    { k: "Maßstab", v: `1 : ${masstab}${daten._passt === false ? " (Blatt zu klein)" : ""}` },
+    // Die EINE Einheitenangabe der Ausgabe (#64): die Maßzahlen in der Zeichnung
     // sind reine Millimeterwerte und tragen deshalb kein Suffix.
-    + row("Einheit", "mm")
-    + row("Stand", daten.vollstaendig ? "vollständig" : "nicht vollständig",
-      daten.vollstaendig ? "" : "warn")
-    + `</div></div>`;
+    { k: "Einheit", v: "mm" },
+    { k: "Stand", v: daten.vollstaendig ? "vollständig" : "nicht vollständig",
+      warn: !daten.vollstaendig },
+  ];
+}
+
+/**
+ * Schriftfeld des Blattes — die HTML-Darstellung von `kopfFelder()`. Die Felder
+ * stehen zu zweit in einer Spalte und damit in ZWEI statt drei Zeilen; genau daraus
+ * entsteht die zurueckgewonnene Blattflaeche.
+ *
+ * `opts` bleibt Teil der Signatur (Aufruf aus `blattHtml`), wird aber nicht mehr
+ * gebraucht: das Blattformat steht nicht mehr im Kopf.
+ */
+export function schriftfeldHtml(daten, masstab, opts) {          // eslint-disable-line no-unused-vars
+  const felder = kopfFelder(daten, masstab);
+  const row = (f) => `<div class="lptb-row"><div class="k">${_esc(f.k)}</div>`
+    + `<div class="v${f.warn ? " warn" : ""}">${_esc(f.v)}</div></div>`;
+  let spalten = "";
+  for (let i = 0; i < felder.length; i += 2) {
+    spalten += `<div class="col">${felder.slice(i, i + 2).map(row).join("")}</div>`;
+  }
+  return `<div class="lptitleblock">${spalten}</div>`;
 }
 
 /** Legende des Darstellungsschluessels. */
@@ -642,17 +673,22 @@ export const LAGEPLAN_CSS = `
   .lpmeld .warn{color:#7d2a10}
   .lpmeld .ok{color:#1f6f45}
   .lpmeld .hint{color:#6b7682}
+  /* Fuenf Spalten zu je zwei Feldern (#59): der Kopf ist damit ZWEI statt drei Zeilen
+     hoch, und die gewonnene Hoehe faellt ueber grid-template-rows:1fr auto an
+     Draufsicht und Wandliste. Der Wert bricht bei Bedarf um — abgeschnitten wird
+     nichts, ein halber Projektname waere schlimmer als eine dritte Zeile. */
   .lptitleblock{grid-column:1 / span 2;grid-row:2;display:grid;
-                grid-template-columns:1.4fr 1.1fr 1.1fr 1fr;border:1.5px solid #13202e;
+                grid-template-columns:1.5fr 1.2fr 1fr 1fr .9fr;border:1.5px solid #13202e;
                 border-radius:3px;overflow:hidden;font-size:11px}
-  .lptitleblock .col{border-right:1px solid #cfd5db}
+  .lptitleblock .col{border-right:1px solid #cfd5db;min-width:0}
   .lptitleblock .col:last-child{border-right:none}
-  .lptb-row{display:grid;grid-template-columns:92px 1fr;border-bottom:1px solid #e3e7ec}
+  .lptb-row{display:grid;grid-template-columns:70px 1fr;border-bottom:1px solid #e3e7ec}
   .lptb-row:last-child{border-bottom:none}
   .lptb-row .k{background:#f4f6f8;color:#6b7682;font-size:9.5px;text-transform:uppercase;
-               letter-spacing:.3px;padding:4px 7px;border-right:1px solid #e3e7ec;
+               letter-spacing:.3px;padding:4px 6px;border-right:1px solid #e3e7ec;
                display:flex;align-items:center}
-  .lptb-row .v{padding:4px 7px;font-weight:600;display:flex;align-items:center}
+  .lptb-row .v{padding:4px 6px;font-weight:600;display:flex;align-items:center;
+               min-width:0;overflow-wrap:anywhere}
   .lptb-row .v.warn{color:#7d2a10}
 `;
 
@@ -688,22 +724,45 @@ export function lageplanSvgDatei(daten, opts) {
   const o = normOptionen(opts);
   const z = lageplanSvg(daten, o);
   const kopf = 6;                                     // Papier-mm fuer die Kopfzeile
-  const vbW = z.breite_mm, vbH = z.hoehe_mm + kopf + 4;
   const titel = lageplanTitel(daten, z.masstab);
-  const k = daten.kopfdaten || {};
-  const sub = [k.plan_nr ? "Plan " + k.plan_nr : "", k.index ? "Index " + k.index : "",
-    daten.vollstaendig ? "Stand: vollständig"
-      : `Stand: nicht vollständig (${daten.meldungen.length} Punkt(e), s. Blatt)`,
-    z.passt ? "" : "Blatt zu klein — nicht maßstabsgetreu"].filter(Boolean).join(" · ");
+  // GENAU derselbe Feldsatz wie im Schriftfeld des Blattes (#59) — dieselbe Funktion,
+  // dieselbe Reihenfolge, dieselbe Quelle. Die Datei stellt ihn nur als Textzeile statt
+  // als Tabelle dar; ein zweiter Kopf oder ein zweiter Renderer entsteht dabei nicht.
+  // `_passt` wird wie in `blattHtml()` aufgesetzt, damit „(Blatt zu klein)" hier ebenso
+  // am Massstab steht. Leere Felder fallen weg — kein Platzhalter.
+  const felder = kopfFelder({ ...daten, _passt: z.passt }, z.masstab);
+  const stuecke = felder.filter((f) => f.v !== "").map((f) => `${f.k}: ${f.v}`);
+  if (!daten.vollstaendig) stuecke.push(`${daten.meldungen.length} Punkt(e), s. Blatt`);
+
+  // Die Fusszeile wird deterministisch nach GESCHAETZTER Breite umgebrochen
+  // (Zeichenbreite ~ 0,5 · Schriftgroesse), damit sie auch bei einem schmalen Geschoss
+  // im Blatt bleibt: abgeschnitten wird nichts, die Datei waechst stattdessen um die
+  // noetigen Zeilen. Der Massstab der Zeichnung bleibt davon unberuehrt.
+  const FS = 2, RAND = 3, ZEILE = FS + 0.6;
+  const proZeile = Math.max(24, Math.floor((z.breite_mm - 2 * RAND) / (FS * 0.5)));
+  /** @type {string[]} */
+  const zeilen = [];
+  for (const s of stuecke) {
+    const i = zeilen.length - 1;
+    if (i >= 0 && (zeilen[i] + " · " + s).length <= proZeile) zeilen[i] += " · " + s;
+    else zeilen.push(s);
+  }
+  const vbW = z.breite_mm, vbH = z.hoehe_mm + kopf + 4 + Math.max(0, zeilen.length - 1) * ZEILE;
+  // `class="lpkopf"` macht die Kopfangaben unterscheidbar von der Massbeschriftung der
+  // Zeichnung (gleiche Schriftgroesse) — fuer Leser der Datei wie fuer den Test.
+  const fuss = zeilen.map((s, i) =>
+    `<text class="lpkopf" x="${RAND}" y="${_n(vbH - 1.4 - (zeilen.length - 1 - i) * ZEILE)}"`
+    + ` font-size="${FS}" font-family="sans-serif" fill="${FARBE.mass}">${_esc(s)}</text>\n`)
+    .join("");
+
   return `<?xml version="1.0" encoding="UTF-8"?>\n`
     + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${_n(vbW)} ${_n(vbH)}" `
     + `width="${_n(vbW)}mm" height="${_n(vbH)}mm">\n`
     + `<title>${_esc(titel)}</title>\n`
     + `<rect x="0" y="0" width="${_n(vbW)}" height="${_n(vbH)}" fill="#ffffff"/>\n`
-    + `<text x="3" y="4" font-size="2.8" font-family="sans-serif" fill="${FARBE.wand_rand}">`
+    + `<text x="${RAND}" y="4" font-size="2.8" font-family="sans-serif" fill="${FARBE.wand_rand}">`
     + `${_esc(titel)}</text>\n`
-    + `<text x="3" y="${_n(vbH - 1.4)}" font-size="2" font-family="sans-serif" fill="${FARBE.mass}">`
-    + `${_esc(sub)}</text>\n`
+    + fuss
     + `<g transform="translate(0 ${kopf})">${z.inner}</g>\n`
     + `</svg>\n`;
 }

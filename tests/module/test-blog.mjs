@@ -32,17 +32,19 @@ ok("Seed-Eintrag verweist auf Issue 48 und ist ein feature",
   seed && seed.issue === 48 && seed.typ === "feature" && seed.datum === "2026-08-05");
 ok("Seed-Eintrag enthaelt eine Testbitte", seed && typeof seed.testbitte === "string" && seed.testbitte.length > 10);
 
-// Produktauftrag #55 bleibt genau einmal dokumentiert; die Workflow-Retros #65 stehen vorn.
+// Produktauftrag #55 bleibt genau einmal dokumentiert; die neuesten drei Einträge sind belegt.
 const neu55 = EINTRAEGE.filter(e => e.issue === 55);
 const neu15 = EINTRAEGE.filter(e => e.issue === 15 && e.datum === "2026-08-11");
 ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-ok("der aktuelle Eintrag zu Issue 56 ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260812-02" && EINTRAEGE[0]?.issue === 56);
-ok("die Workflow-Retros zu Issue 65 bleiben direkt danach erhalten",
-  EINTRAEGE[1]?.id === "chg-20260812-01" && EINTRAEGE[1]?.issue === 65);
+ok("der kompakte Lageplankopf zu Issue 59 ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260812-03" && EINTRAEGE[0]?.issue === 59);
+ok("der Eintrag zu Issue 56 folgt direkt danach",
+  EINTRAEGE[1]?.id === "chg-20260812-02" && EINTRAEGE[1]?.issue === 56);
+ok("die Workflow-Retros zu Issue 65 bleiben als dritter aktueller Eintrag erhalten",
+  EINTRAEGE[2]?.id === "chg-20260812-01" && EINTRAEGE[2]?.issue === 65);
 
 // --- 2) Validator: jede Regel schlaegt einzeln an -------------------------
 const gut = { id: "chg-20260805-01", datum: "2026-08-05", typ: "feature", issue: 48, titel: "Titel" };

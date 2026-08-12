@@ -284,9 +284,73 @@ t("[#59] das Wandrechteck der fixierten Wand wird ganz normal gezeichnet",
 // --- [N-6] Schriftfeld aus mappe.projekt.kopfdaten -------------------------
 
 const blatt = LP.blattHtml(daten);
+// Ausgelesen wird der SICHTBARE Feldsatz des Schriftfelds — Beschriftung und Wert
+// in der dargestellten Reihenfolge, nicht ein zweiter Aufruf von `kopfFelder()`.
+const kopfPaare = (s) => [...s.matchAll(
+  /<div class="lptb-row"><div class="k">([^<]*)<\/div><div class="v[^"]*">([^<]*)<\/div><\/div>/g)]
+  .map((m) => [m[1], m[2]]);
+const KOPF_SOLL = ["Projekt", "Gebäude", "Geschoss", "Planinhalt", "Plan Nr.", "Index",
+  "Maßstab", "Einheit", "Stand"];
+const ENTFERNT = ["Bauherrenschaft", "Planverfasser", "Phase", "Gez.", "Blattformat"];
+
 t("[N-6] die Kopfdaten des PROJEKTS stehen im Schriftfeld",
-  /Bauherrschaft Muster/.test(blatt.html) && /POLYCARE/.test(blatt.html)
-  && /LP 3/.test(blatt.html) && /A-101/.test(blatt.html) && /TB/.test(blatt.html));
+  /A-101/.test(blatt.html) && kopfPaare(blatt.html).find((p) => p[0] === "Plan Nr.")[1] === "A-101"
+  && kopfPaare(blatt.html).find((p) => p[0] === "Index")[1] === "b");
+// [#59] Muss 1/2: genau die neun zur Planidentifikation noetigen Angaben — nicht mehr.
+t("[#59] der Zeichnungskopf zeigt exakt die neun Pflichtangaben in fester Reihenfolge",
+  kopfPaare(blatt.html).map((p) => p[0]).join("|") === KOPF_SOLL.join("|"));
+t("[#59] Bauherrschaft, Planverfasser, Phase, Zeichner und Blattformat sind entfallen",
+  ENTFERNT.every((f) => !blatt.html.includes(`<div class="k">${f}</div>`))
+  && !/Bauherrschaft Muster/.test(blatt.html) && !/POLYCARE/.test(blatt.html)
+  && !/LP 3/.test(blatt.html) && !/A3 quer/.test(blatt.html));
+t("[#59] der Kopf steht damit in ZWEI Zeilen (fuenf Spalten zu je zwei Feldern)",
+  (blatt.html.match(/<div class="col">/g) || []).length === 5
+  && /grid-template-columns:1\.5fr 1\.2fr 1fr 1fr \.9fr/.test(LP.LAGEPLAN_CSS));
+// [#59] Muss 3: leere optionale Felder bleiben leer — kein „###", kein „–".
+const daten0 = LP.lageplanDaten({
+  mappe: MAPPE.setzeKopfdaten(MAPPE0, { plan_nr: "", index: "" }),
+  geschossId: gsEG, elemente: ELEMENTE,
+});
+const blatt0 = LP.blattHtml(daten0);
+// Das „–" der Wandtabelle (fehlende Hoehe/Wandtyp) bleibt davon unberuehrt — geprueft
+// wird der Zeichnungskopf, nicht das ganze Blatt.
+t("[#59] fehlende Plan-Nr./Index erzeugen keinen Platzhalter",
+  kopfPaare(blatt0.html).find((p) => p[0] === "Plan Nr.")[1] === ""
+  && kopfPaare(blatt0.html).find((p) => p[0] === "Index")[1] === ""
+  && kopfPaare(blatt0.html).every((p) => p[1] !== "–" && p[1] !== "###" && p[1] !== "undefined")
+  && !/###/.test(blatt0.html) && !/undefined/.test(blatt0.html));
+t("[#59] der Feldsatz bleibt dabei vollstaendig — leer heisst nicht weggelassen",
+  kopfPaare(blatt0.html).map((p) => p[0]).join("|") === KOPF_SOLL.join("|"));
+// [#59] Muss 5/6: die eigenstaendige SVG-Datei traegt DENSELBEN Feldsatz aus derselben
+// Quelle — Nachweis am Text der Datei, nicht an einem zweiten Aufruf von `kopfFelder`.
+// Nur die Kopfzeilen (`class="lpkopf"`), nicht die gleich grosse Massbeschriftung.
+// Getrennt wird am ERSTEN „: " — der Massstabswert „1 : 100" enthaelt selbst eines.
+const svgFelder = (s) => [...s.matchAll(/<text class="lpkopf"[^>]*>([^<]*)<\/text>/g)]
+  .map((m) => m[1]).join(" · ").split(" · ")
+  .map((x) => { const i = x.indexOf(": "); return i > 0 ? [x.slice(0, i), x.slice(i + 2)] : null; })
+  .filter(Boolean);
+const svgDateiK = LP.lageplanSvgDatei(daten);
+t("[#59] die SVG-Exportdatei nennt dieselben Angaben in derselben Reihenfolge",
+  svgFelder(svgDateiK).map((p) => p[0]).join("|") === KOPF_SOLL.join("|"));
+t("[#59] die SVG-Exportdatei traegt die Einheit mm und die entfernten Angaben nicht",
+  svgFelder(svgDateiK).find((p) => p[0] === "Einheit")[1] === "mm"
+  && svgFelder(svgDateiK).find((p) => p[0] === "Planinhalt")[1] === "Lageplan (Draufsicht)"
+  && !/Bauherrschaft Muster|POLYCARE|LP 3|A3 quer/.test(svgDateiK));
+t("[#59] auch in der SVG-Datei bleiben leere Felder platzhalterfrei — sie entfallen",
+  (() => { const s = LP.lageplanSvgDatei(daten0);
+    return !/###/.test(s) && !/Plan Nr\.: (·|<)/.test(s) && !/Index: (·|<)/.test(s)
+      && !/undefined/.test(s) && svgFelder(s).map((p) => p[0]).join("|")
+         === KOPF_SOLL.filter((x) => x !== "Plan Nr." && x !== "Index").join("|"); })());
+t("[#59] Blatt und SVG-Datei kommen aus EINER Feldquelle (kopfFelder)",
+  (() => { const f = LP.kopfFelder({ ...daten, _passt: blatt.passt }, blatt.masstab);
+    return f.map((x) => x.k).join("|") === KOPF_SOLL.join("|")
+      && JSON.stringify(kopfPaare(blatt.html)) === JSON.stringify(f.map((x) => [x.k, x.v])); })());
+// [#64] bleibt: die Einheit steht je Ausgabe GENAU EINMAL als Feld — gezaehlt wird das
+// Feld, nicht die Zeichenkette „mm" (die steht auch in width=/height= der SVG-Datei).
+t("[#64] das Blatt fuehrt die Einheit genau einmal, die SVG-Datei ebenso",
+  kopfPaare(blatt.html).filter((p) => p[0] === "Einheit").length === 1
+  && svgFelder(svgDateiK).filter((p) => p[0] === "Einheit").length === 1
+  && kopfPaare(LP.lageplanDokument(daten)).filter((p) => p[0] === "Einheit").length === 1);
 // [#64]: die Einheit steht GENAU EINMAL im Schriftfeld — und nur dort.
 const einheitFelder = [...blatt.html.matchAll(
   /<div class="lptb-row"><div class="k">Einheit<\/div><div class="v[^"]*">([^<]*)<\/div><\/div>/g)];

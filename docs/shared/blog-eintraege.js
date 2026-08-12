@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-03",
+    datum: "2026-08-12",
+    typ: "fix",
+    issue: 59,
+    titel: "Der Lageplan nutzt mehr Blattfläche durch einen kompakten Zeichnungskopf",
+    testbitte: "Reiter 9 öffnen und Vorschau sowie HTML- und SVG-Export prüfen: Der Kopf muss nur die nötigen Planangaben zeigen; leere Plan-Nummer und leerer Index müssen ohne Platzhalter bleiben.",
+  },
+  {
     id: "chg-20260812-02",
     datum: "2026-08-12",
     typ: "feature",

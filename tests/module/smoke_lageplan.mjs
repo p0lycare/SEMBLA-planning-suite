@@ -205,9 +205,73 @@ ok('Muss 9: die exportierten BYTES sind bitgenau der DOM-freie Blattpfad — kei
 ok('Muss 9: die Vorschau zeigt genau dasselbe Blatt-SVG wie der Export',
   $('lp-blatt').innerHTML.includes(lp.blatt.svg)
   && alsText[rumpf + '.html'].includes(lp.blatt.svg));
+// --- 5a) [#59] minimaler Zeichnungskopf am ECHTEN Pfad --------------------
+//
+// Geprueft wird an vier Stellen: sichtbare Vorschau (`lp-blatt`), `lp.blatt.html`
+// und den ENTPACKTEN Bytes beider Exportdateien. Der Feldsatz muss ueberall gleich
+// sein — er kommt aus EINER Quelle (`kopfFelder`), nicht aus vier Bausteinen.
+const kopfPaare = s => [...s.matchAll(
+  /<div class="lptb-row"><div class="k">([^<]*)<\/div><div class="v[^"]*">([^<]*)<\/div><\/div>/g)]
+  .map(m => [m[1], m[2]]);
+// Getrennt wird am ERSTEN „: " — der Massstabswert „1 : 100" enthaelt selbst eines.
+const svgFelder = s => [...s.matchAll(/<text class="lpkopf"[^>]*>([^<]*)<\/text>/g)]
+  .map(m => m[1]).join(' · ').split(' · ')
+  .map(x => { const i = x.indexOf(': '); return i > 0 ? [x.slice(0, i), x.slice(i + 2)] : null; })
+  .filter(Boolean);
+const KOPF_SOLL = ['Projekt', 'Gebäude', 'Geschoss', 'Planinhalt', 'Plan Nr.', 'Index',
+  'Maßstab', 'Einheit', 'Stand'];
+const ENTFERNT = ['Bauherrenschaft', 'Planverfasser', 'Phase', 'Gez.', 'Blattformat'];
+
 ok('[N-6] das Schriftfeld der Ausgabe traegt die Projekt-Kopfdaten',
-  /Bauherrschaft Muster/.test(alsText[rumpf + '.html'])
-  && /A-101/.test(alsText[rumpf + '.html']));
+  kopfPaare(alsText[rumpf + '.html']).find(p => p[0] === 'Plan Nr.')[1] === 'A-101'
+  && kopfPaare(alsText[rumpf + '.html']).find(p => p[0] === 'Index')[1] === 'b');
+ok('[#59] Vorschau, Blatt und exportiertes HTML zeigen exakt die neun Pflichtangaben',
+  [$('lp-blatt').innerHTML, lp.blatt.html, alsText[rumpf + '.html']]
+    .every(s => kopfPaare(s).map(p => p[0]).join('|') === KOPF_SOLL.join('|')));
+ok('[#59] die exportierte SVG-Datei traegt denselben Feldsatz in derselben Reihenfolge',
+  svgFelder(alsText[rumpf + '.svg']).map(p => p[0]).join('|') === KOPF_SOLL.join('|'));
+ok('[#59] alle drei Ausgaben nennen denselben Projekt-, Gebaeude-, Geschoss- und Massstabsstand',
+  ['Projekt', 'Gebäude', 'Geschoss', 'Maßstab'].every(f => {
+    const a = kopfPaare(lp.blatt.html).find(p => p[0] === f)[1];
+    const b = kopfPaare(alsText[rumpf + '.html']).find(p => p[0] === f)[1];
+    const c = svgFelder(alsText[rumpf + '.svg']).find(p => p[0] === f)[1];
+    return a === b && b === c && a !== '';
+  }) && kopfPaare(lp.blatt.html).find(p => p[0] === 'Maßstab')[1] === '1 : ' + lp.blatt.masstab);
+ok('[#59] die entfernten Angaben stehen in KEINER der Ausgaben mehr',
+  [$('lp-blatt').innerHTML, lp.blatt.html, alsText[rumpf + '.html'], alsText[rumpf + '.svg']]
+    .every(s => ENTFERNT.every(f => !s.includes('>' + f + '<'))
+      && !/Bauherrschaft Muster|POLYCARE|LP 3|A3 quer/.test(s)));
+ok('[#59] die Einheit mm steht je Ausgabe genau einmal, die Masszahlen tragen keine',
+  kopfPaare(lp.blatt.html).filter(p => p[0] === 'Einheit' && p[1] === 'mm').length === 1
+  && kopfPaare(alsText[rumpf + '.html']).filter(p => p[0] === 'Einheit').length === 1
+  && svgFelder(alsText[rumpf + '.svg']).filter(p => p[0] === 'Einheit' && p[1] === 'mm').length === 1
+  && [...lp.blatt.svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)]
+    .every(m => !/\s(?:mm|cm|m)$/.test(m[1])));
+// Muss 3: leere optionale Angaben — geleert wird ueber den regulaeren Mappenweg des
+// Projekts A (der aktive Zeiger steht auf B), danach wieder hergestellt.
+store.setzeMappe(MAPPE.setzeKopfdaten(store.projektMappe(prjA.projekt.id),
+  { plan_nr: '', index: '' }));
+await warte();
+lp.render();
+const leerHtml = lp.blatt.html, leerSvg = LP.lageplanSvgDatei(lp.daten, lp.optionen);
+ok('[#59] leere Plan-Nr./Index erzeugen im Blatt keinen Platzhalter',
+  kopfPaare(leerHtml).find(p => p[0] === 'Plan Nr.')[1] === ''
+  && kopfPaare(leerHtml).find(p => p[0] === 'Index')[1] === ''
+  && kopfPaare(leerHtml).map(p => p[0]).join('|') === KOPF_SOLL.join('|')
+  // Das „–" der Wandtabelle (fehlender Wandtyp) bleibt unberuehrt — geprueft wird der Kopf.
+  && kopfPaare(leerHtml).every(p => p[1] !== '–' && p[1] !== '###' && p[1] !== 'undefined')
+  && !/###/.test(leerHtml) && !/undefined/.test(leerHtml));
+ok('[#59] auch die SVG-Exportdatei bleibt platzhalterfrei — das leere Feld entfaellt',
+  !/###|undefined/.test(leerSvg)
+  && svgFelder(leerSvg).map(p => p[0]).join('|')
+     === KOPF_SOLL.filter(f => f !== 'Plan Nr.' && f !== 'Index').join('|'));
+store.setzeMappe(MAPPE.setzeKopfdaten(store.projektMappe(prjA.projekt.id),
+  { plan_nr: 'A-101', index: 'b' }));
+await warte();
+lp.render();
+ok('[#59] nach dem Wiederherstellen tragen die Felder wieder ihren Wert',
+  kopfPaare(lp.blatt.html).find(p => p[0] === 'Plan Nr.')[1] === 'A-101'
+  && kopfPaare(lp.blatt.html).find(p => p[0] === 'Index')[1] === 'b');
 // --- 5b) [#59] kurze Nummer im Plan, voller Name in der rechten Liste -----
 //
 // Geprueft am ECHTEN Pfad: Storage → Mappe → lageplanDaten → blattHtml → Vorschau
