@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260812-07",
+    datum: "2026-08-12",
+    typ: "fix",
+    issue: 70,
+    titel: "Die Wandstückliste zeigt die gespeicherte Wandbezeichnung statt eines Projekt-Eingabefelds",
+    testbitte: "Reiter 4 auf Wandebene öffnen: Kein Projekt-Feld mehr, der Blattkopf nennt den Namen der aktiven Wand; nach Umbenennen oder Wandwechsel muss der Kopf ohne Neuladen den neuen Namen zeigen.",
+  },
+  {
     id: "chg-20260812-06",
     datum: "2026-08-12",
     typ: "fix",

@@ -30,7 +30,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);} dispatch(e){(this.listeners[e]||[]).forEach(f=>f({target:this}));}
   get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelectorAll(){return [];} appendChild(){} click(){}}
-const dv={proj:'SEMBLA-Projekt',cur:'EUR'};
+const dv={cur:'EUR'};   // #70: kein `proj` mehr — Modul 4 hat kein Projekt-Eingabefeld
 const _e={}; const document={getElementById:id=>{let e=_e[id];if(!e){e=_e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement:()=>new El('a')};
 globalThis.document=document; globalThis.window={}; globalThis.alert=m=>{globalThis.__alert=m;};
 globalThis.URL={createObjectURL:()=>'blob:x',revokeObjectURL(){}}; globalThis.Blob=class{constructor(){}};
@@ -76,8 +76,13 @@ function egVoll(){
 }
 // Storage-Mock: aktives Element vorhanden -> Modul laedt es + Eingaben + Katalog beim Start.
 const W=buildWall('Testwand', 2000, 2600, [new Opening(5,11,0,10,'tuer')]);
+// `_name` ist der Name des WANDEINTRAGS (#70) — getrennt von `_we.name`, genau wie im echten
+// Speicher: `storage.umbenennen()` aendert nur den Eintrag, nie das gerechnete Wandelement.
+// Standard `null` = kein Eintragsname, damit alle Altpruefungen weiter den Wandelementnamen sehen.
 let _subs=[]; let _aktiv='w-1'; let _we=W; let _eg=egVoll(); let _merges=[]; let _kat=KATALOG;
+let _name=null;
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we, aktiveEingaben:()=>_eg, holeKatalog:()=>_kat,
+  aktivesElement:()=>_we?{ id:_aktiv, name:_name, wandelement:_we }:null,
   mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); _eg[teil]=merge(_eg[teil],patch); return _aktiv; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
 globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock,
@@ -127,12 +132,23 @@ ok('setAnzahl-API entfernt (keine Mehrfachwand-Steuerung)', typeof SL.setAnzahl=
   ok('#58 Warnbox und Produkt-Hinweistext ersatzlos entfernt',
     !/warnbox/.test(html) && !/renderWarnungen/.test(html) && !/class="vorl"/.test(html)
     && !/produkt\.hinweis/.test(script));
-  // Der Blattkopf traegt Projekt- UND Wandreferenz (R1: einmal statt je Zeile).
+  // Der Blattkopf traegt die Wandreferenz EINMAL (R1: einmal statt je Zeile) — seit #70 ohne
+  // Projektzeile, weil sie fuer ein Eingabefeld stand, das es nicht mehr gibt.
   const kopfHtml=document.getElementById('printkopf').innerHTML;
-  ok('#62 Blattkopf nennt Projekt- und Wandreferenz',
-    /<b>Projekt:<\/b>/.test(kopfHtml) && /<b>Wand:<\/b>/.test(kopfHtml)
-    && kopfHtml.includes('Testwand') && /<b>Datum:<\/b>/.test(kopfHtml));
+  ok('#62 Blattkopf nennt die Wandreferenz mit Maßen und Datum',
+    /<b>Wand:<\/b>/.test(kopfHtml) && kopfHtml.includes('Testwand') && /<b>Datum:<\/b>/.test(kopfHtml));
+  ok('#70 Blattkopf führt auf der Wandebene keine Projektzeile mehr',
+    !/<b>Projekt:<\/b>/.test(kopfHtml));
 }
+
+// ---- #70: kein Projekt-Eingabefeld, kein Projekt-Schreibweg ------------------------------
+ok('#70 kein Projekt-Eingabefeld im Markup',
+  !/id="proj"/.test(html) && !/id="lbl-proj"/.test(html) && !/<span>Projekt<\/span>/.test(html));
+ok('#70 kein Schreibpfad nach eingaben.projekt im Modulskript',
+  !/persist\('projekt'/.test(script) && !/mergeEingaben\('projekt'/.test(script)
+  && !/\.projekt\s*\|\|\s*\(/.test(script));
+ok('#70 Modul 4 liest den Namen aus dem aktiven Wandeintrag',
+  /aktivesElement/.test(script));
 
 // Spaltenaufteilung (#62): Der Umbruchbehelf fuer lange ID-Listen ist gegenstandslos geworden,
 // weil die ID-Spalte selbst entfallen ist — es gibt keinen Zelleninhalt mehr, der die Tabelle
@@ -266,9 +282,10 @@ document.getElementById('cur').value='CHF'; document.getElementById('cur').dispa
 ok('Währung -> mergeEingaben', _eg.kosten.waehrung==='CHF');
 document.getElementById('cur').value='EUR'; document.getElementById('cur').dispatch('input');
 
-// Projektname persistiert
-document.getElementById('proj').value='Mein Projekt'; document.getElementById('proj').dispatch('input');
-ok('Projektname -> mergeEingaben(projekt)', _eg.projekt.name==='Mein Projekt');
+// #70: der frueher hier gepruefte Projektname ist ersatzlos entfallen — er wird nirgends mehr
+// geschrieben (die Gesamtpruefung ueber den ganzen Lauf steht am Ende der Datei).
+ok('#70 bis hierher kein einziger Schreibzugriff auf eingaben.projekt',
+  !_merges.some(([t])=>t==='projekt'));
 
 // Fläche zieht Öffnungen ab
 const a=SL.area(W); const full=(W.length_mm/1000)*(W.height_mm/1000);
@@ -559,6 +576,72 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     /◆ Gewindestange Sonderzuschnitt/.test(blatt));
 }
 
+// ---- #70: Wandbezeichnung im Blattkopf kommt aus dem aktiven WANDEINTRAG ------------------
+// Geprueft wird die echte Modul-4-Oberflaeche: zwei unterschiedlich benannte aktive Eintraege
+// nacheinander, der Umbenennungsfall bei GLEICHER id, beide Rueckfaelle und der Nachweis, dass
+// nichts davon schreibt. Die Bezeichnung ist reine Anzeige — Modul 4 benennt nie um.
+{
+  const WA=buildWall('Wandelement A', 2000, 2600, []);
+  const WB=buildWall('Wandelement B', 3000, 2400, []);
+
+  // (1) erster Eintrag mit eigenem Eintragsnamen
+  _aktiv='w-name-a'; _we=WA; _name='Nordwand EG'; _eg=egVoll(); _kat=KATALOG;
+  globalThis.window.__slInit();
+  const merkeMerges=_merges.length;
+  const k1=document.getElementById('printkopf').innerHTML;
+  ok('#70 Blattkopf zeigt den Namen des aktiven Wandeintrags',
+    k1.includes('Nordwand EG') && SL.wandname==='Nordwand EG');
+  // Der Eintragsname ist der einzige, den ein Umbenennen mitfuehrt — er schlaegt den Namen des
+  // gerechneten Wandelements, der beim Umbenennen bewusst stehen bleibt.
+  ok('#70 Eintragsname schlägt den Wandelementnamen', !k1.includes('Wandelement A'));
+
+  // (2) zweiter, anders benannter Eintrag ueber den bestehenden Storage-Abonnenten
+  _aktiv='w-name-b'; _we=WB; _name='Südwand OG';
+  _subs.forEach(cb=>cb());
+  const k2=document.getElementById('printkopf').innerHTML;
+  ok('#70 Wechsel des aktiven Eintrags aktualisiert die Bezeichnung im Blattkopf',
+    k2.includes('Südwand OG') && !k2.includes('Nordwand EG') && SL.wall.length_mm===3000);
+
+  // (3) Umbenennen bei GLEICHER id: storage.umbenennen aendert nur den Eintrag, nicht die id —
+  // ohne Nachzug stuende hier weiter die alte Bezeichnung.
+  _name='Südwand OG (umbenannt)'; _subs.forEach(cb=>cb());
+  ok('#70 Umbenennen bei gleicher id wird nachgezogen',
+    document.getElementById('printkopf').innerHTML.includes('Südwand OG (umbenannt)'));
+
+  // (4) Rueckfaelle: erst der Wandelementname, dann eine kurze eindeutige Ersatzbezeichnung.
+  _name=null; _subs.forEach(cb=>cb());
+  ok('#70 ohne Eintragsnamen gilt der Wandelementname als Rückfall',
+    document.getElementById('printkopf').innerHTML.includes('Wandelement B'));
+  { const echt=WB.name; WB.name='';
+    _subs.forEach(cb=>cb());
+    ok('#70 ganz ohne Namen bleibt eine kurze eindeutige Ersatzbezeichnung sichtbar',
+      SL.wandname==='(aktive Wand)'
+      && document.getElementById('printkopf').innerHTML.includes('(aktive Wand)'));
+    WB.name=echt; _name='Südwand OG'; _subs.forEach(cb=>cb()); }
+
+  // (5) Die Namensanzeige selbst schreibt nichts.
+  ok('#70 Namensanzeige und Namenswechsel schreiben nichts ins Datenmodell',
+    _merges.length===merkeMerges);
+
+  // (6) Waehrung bleibt die EINE persistente Eingabe der Wandebene; die Rechnung bleibt gleich.
+  const mengenVor=SL.rows().map(r=>r.key+':'+r.menge).join('|');
+  document.getElementById('cur').value='CHF'; document.getElementById('cur').dispatch('input');
+  ok('#70 Währung bleibt einzige persistente Eingabe der Wandebene',
+    _eg.kosten.waehrung==='CHF' && _merges.some(([t,p])=>t==='kosten'&&p.waehrung==='CHF')
+    && !_merges.some(([t])=>t==='projekt'));
+  ok('#70 Stücklistenberechnung bleibt vom Namenspfad unberührt',
+    SL.rows().map(r=>r.key+':'+r.menge).join('|')===mengenVor);
+  document.getElementById('cur').value='EUR'; document.getElementById('cur').dispatch('input');
+
+  // (7) Ebenenwahl bleibt nutzbar und laesst die Wandebene unveraendert.
+  SL.setzeEbene('projekt'); SL.setzeEbene('wand');
+  ok('#70 Ebenenwahl bleibt nutzbar, Wandebene unverändert',
+    SL.ebene==='wand' && document.getElementById('printkopf').innerHTML.includes('Südwand OG')
+    && SL.rows().map(r=>r.key+':'+r.menge).join('|')===mengenVor);
+
+  _name=null;   // Ausgangszustand fuer die folgenden Pruefungen
+}
+
 // ---- #44: die vier Ebenen in der ECHTEN Modul-4-Oberflaeche ------------------------------
 // Gewechselt wird ueber die AKTIVEN Zeiger (Mappe + aktives Geschoss/Gebäude/Projekt), nicht
 // ueber eine modul-eigene Auswahl. Geprueft werden Ueberschrift, Zeilen gegen die reine
@@ -710,6 +793,11 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       _merges.length===vorher && !/setzeMappe|verorteWand|speichere\(/.test(script));
   }
 }
+
+// #70 Gesamtnachweis ueber den KOMPLETTEN Lauf: Modul 4 hat `eingaben.projekt` kein einziges Mal
+// angefasst — weder ueber ein Feld, noch beim Ebenenwechsel, noch beim Laden.
+ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
+  !_merges.some(([t])=>t==='projekt') && _merges.length>0);
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

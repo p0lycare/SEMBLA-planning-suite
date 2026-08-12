@@ -84,10 +84,12 @@
   wählt Modul 1; ohne eindeutige Zuordnung bleibt die Zeile ohne Preis (<b>n.a.</b>) — nie ein
   Nullpreis, nie eine veränderte Menge. Datei-Export zentral auf der Startseite.</p>
 <div class="wrap">
-  <!-- Bedienzeile: Ebene, Preisschalter, die zwei echten Eingaben der Wandebene und der
-       Druckknopf. Sie steht im Quelltext VOR der Tabelle, damit im Blatt selbst kein
+  <!-- Bedienzeile: Ebene, Preisschalter, die EINE echte Eingabe der Wandebene (Währung) und
+       der Druckknopf. Sie steht im Quelltext VOR der Tabelle, damit im Blatt selbst kein
        Eingabefeld liegt. Ebene und Preisschalter sind FLÜCHTIG — sie ändern kein Datum
-       und werden nirgends gespeichert (#44). -->
+       und werden nirgends gespeichert (#44). Ein Projekt-Eingabefeld gibt es hier NICHT
+       mehr (#70): die Wand trägt bereits eine gespeicherte Bezeichnung, und Kopfdaten
+       leben nach [L-11] am Projekt. -->
   <div class="kopfleiste">
     <label><span>Ebene</span><select id="ebene">
       <option value="wand">Wand (aktiv)</option>
@@ -96,7 +98,6 @@
       <option value="projekt">Projekt (aktiv)</option>
     </select></label>
     <label id="lbl-preise"><input type="checkbox" id="preise" checked><span>Preise anzeigen</span></label>
-    <label id="lbl-proj"><span>Projekt</span><input type="text" id="proj" value="SEMBLA-Projekt"></label>
     <label id="lbl-cur"><span>Währung</span><input type="text" id="cur" value="EUR" style="width:70px"></label>
     <button id="print">Drucken</button>
   </div>
@@ -149,8 +150,17 @@
    ([P-14]) — über die in Modul 1 (eingaben.planung.produkte) gewählten Produkte. Ist die
    Zuordnung nicht eindeutig, bleibt die Zeile ohne Preis und nennt den Grund; Mengen bleiben
    davon unberührt. Der Preisschalter blendet Einzelpreis, Gesamtpreis und Summenbetrag
-   gemeinsam aus — Mengen und Lückenstand bleiben unverändert. Editierbar sind auf der
-   Wandebene nur Projektname und Währung. window.SEMBLA wird unten gebunden (Node-Test).
+   gemeinsam aus — Mengen und Lückenstand bleiben unverändert. Editierbar ist auf der
+   Wandebene nur noch die WÄHRUNG. window.SEMBLA wird unten gebunden (Node-Test).
+
+   WANDBEZEICHNUNG (#70): Der Blattkopf nennt die Wand mit ihrem GESPEICHERTEN Namen — ein
+   Eingabefeld dafür gibt es nicht. Maßgebend ist der Name des aktiven WANDEINTRAGS
+   (`store.aktivesElement().name`), NICHT `wandelement.name`: `storage.umbenennen()` ändert nur
+   den Eintragsnamen (und den Anzeigenamen in der Mappe), das gerechnete Wandelement behält
+   seinen alten. Der Wandelementname ist deshalb nur Rückfall, danach eine sprechende
+   Ersatzkennung. Das frühere Feld „Projekt" schrieb `eingaben.projekt` — Modul 4 war dessen
+   letzter Schreiber, obwohl Kopfdaten nach [L-11] ausschliesslich am Projekt leben. Der Block
+   wird hier weder gelesen noch geschrieben; Altbestand bleibt unangetastet im Projekt stehen.
 
    ARBEITSBLATT (#58/#62): Die Anzeige ist auf das reduziert, was auf der Baustelle gebraucht
    wird — Einbauteil, Art, Fertigmaß und Menge. Die
@@ -162,7 +172,7 @@
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-let WALL=null, EINGABEN=null, KATALOG=null, currentId=null;
+let WALL=null, EINGABEN=null, KATALOG=null, currentId=null, WNAME=null;
 let EBENE='wand', PREISE=true;          // beides fluechtig: kein Datum, keine Speicherung
 // aus window.SEMBLA (in __slInit gebunden):
 let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten, standText;
@@ -184,8 +194,19 @@ const datum=()=>new Date().toLocaleDateString('de-DE');
 // geladene Wandelement trotzdem auswertbar — es bekommt eine SPRECHENDE Ersatzkennung, die nur
 // innerhalb dieser Ansicht gilt und nie gespeichert wird.
 function wandRef(){ return currentId || (WALL ? '(aktive Wand)' : null); }
+/* Gespeicherte Bezeichnung der aktiven Wand (#70). Reihenfolge ist keine Geschmacksfrage:
+   der EINTRAGSNAME ist der einzige Name, den ein Umbenennen mitführt (storage.umbenennen
+   lässt `wandelement.name` bewusst unberührt) — deshalb steht er vorn. Danach der Name des
+   gerechneten Wandelements, zuletzt eine kurze Ersatzkennung, die nur in dieser Ansicht gilt
+   und nie gespeichert wird. Gelesen wird ausschliesslich; Modul 4 benennt nichts um. */
+function leseWandName(){
+  let e=null;
+  try{ e = store&&store.aktivesElement ? store.aktivesElement() : null; }catch(err){ e=null; }
+  return (e&&e.name) || (WALL&&WALL.name) || (WALL ? '(aktive Wand)' : null);
+}
+function wandName(){ return WNAME || (WALL ? '(aktive Wand)' : null); }
 function zeiger(){
-  const z={ wandId:wandRef(), wandName:WALL&&WALL.name, geschossId:null, gebaeudeId:null };
+  const z={ wandId:wandRef(), wandName:wandName(), geschossId:null, gebaeudeId:null };
   try{
     const gs=store&&store.aktivesGeschoss?store.aktivesGeschoss():null;
     const geb=store&&store.aktivesGebaeude?store.aktivesGebaeude():null;
@@ -198,7 +219,7 @@ function mappe(){ try{ return store&&store.holeMappe?store.holeMappe():null; }ca
 function leser(){
   return {
     holeElement:(id)=> (id===wandRef() && WALL)
-      ? { id, name:(WALL&&WALL.name)||id, wandelement:WALL }
+      ? { id, name:wandName()||id, wandelement:WALL }
       : (store&&store.holeElement?store.holeElement(id):null),
     holeEingaben:(id)=> (id===wandRef()) ? eg()
       : (store&&store.holeEingaben?store.holeEingaben(id):{}),
@@ -222,17 +243,19 @@ function renderKopfzeile(sp){
   $('thead').innerHTML='<tr>'+sp.map(c=>'<'+'th>'+esc(c.t)+'<'+'/th>').join('')+'</tr>';
 }
 
-// Blattkopf: Projekt-, Ebenen- und Wandreferenz EINMAL — am Bildschirm und im Druck derselbe Kopf.
+// Blattkopf: Ebenen- und Wandreferenz EINMAL — am Bildschirm und im Druck derselbe Kopf.
 function renderKopf(d){
   if(EBENE==='wand'){
     const w=WALL;
-    const projekt=(eg().projekt||{}).name || (w&&w.name) || 'SEMBLA-Projekt';
+    // #70: genau EINE Wandzeile mit der gespeicherten Bezeichnung. Die frühere Zeile „Projekt"
+    // stand fuer ein Eingabefeld, das es nicht mehr gibt; ein zweites Mal denselben Namen zu
+    // zeigen waere Fuelle.
     const bezug = w
-      ? `${esc(w.name||'Wandelement')} · ${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m`
+      ? `${esc(wandName()||'Wandelement')} · ${fmt(w.length_mm/1000,3)} × ${fmt(w.height_mm/1000,2)} m`
       : 'kein aktives Wandelement';
     $('printkopf').innerHTML='<div class="kopf-titel">Baustellenstückliste · Einbauteile</div>'
-      +`<div class="kopf-zeile"><span><b>Projekt:</b> ${esc(projekt)}</span>`
-      +`<span><b>Wand:</b> ${bezug}</span><span><b>Datum:</b> ${esc(datum())}</span></div>`;
+      +`<div class="kopf-zeile"><span><b>Wand:</b> ${bezug}</span>`
+      +`<span><b>Datum:</b> ${esc(datum())}</span></div>`;
     return;
   }
   // Gesamtebenen ([L-11]): beschriftet wird aus der aktiven Projektmappe — nicht aus dem
@@ -342,19 +365,17 @@ function renderKennzeichnung(rs){
 
 function applyWand(w){
   if(!w||!w.length_mm||!(w.bom||w.courses)) throw new Error('Kein gültiges Wandelement.');
-  WALL=w; render();
+  WALL=w; WNAME=leseWandName(); render();
 }
 
 // ---- Eingabefelder aus dem Datenmodell füllen ----
-function syncInputs(){ const k=eg().kosten||{}, p=eg().projekt||{};
-  $('proj').value=p.name||(WALL&&WALL.name)||'SEMBLA-Projekt';
+function syncInputs(){ const k=eg().kosten||{};
   $('cur').value=k.waehrung||'EUR';
   $('ebene').value=EBENE;
   $('preise').checked=PREISE;
-  // Projektname und Währung gehören zur AKTIVEN WAND. Auf den Gesamtebenen stünden sie für
-  // mehrere Wände und würden beim Tippen genau eine davon ändern — deshalb nur dort sichtbar.
-  const nurWand = EBENE==='wand' ? '' : 'none';
-  $('lbl-proj').style.display=nurWand; $('lbl-cur').style.display=nurWand;
+  // Die Währung gehört zur AKTIVEN WAND. Auf den Gesamtebenen stünde sie für mehrere Wände und
+  // würde beim Tippen genau eine davon ändern — deshalb nur dort sichtbar.
+  $('lbl-cur').style.display = EBENE==='wand' ? '' : 'none';
 }
 
 // ---- Aktives Wandelement + Eingaben + Katalog (localStorage) ----
@@ -364,6 +385,7 @@ function loadModel(){
   KATALOG = store&&store.holeKatalog ? store.holeKatalog() : null;
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
   WALL = we || null;   // die Wandreferenz steht im Blattkopf, nicht in einer eigenen Infozeile
+  WNAME = leseWandName();
   syncInputs(); render();
 }
 function setupStoreSync(){
@@ -378,15 +400,16 @@ function setupStoreSync(){
     EINGABEN = store.aktiveEingaben ? store.aktiveEingaben() : EINGABEN;
     KATALOG = store.holeKatalog ? store.holeKatalog() : null;
     if(store.aktivesWandelement) WALL = store.aktivesWandelement() || WALL;
+    // #70: auch der NAME wird hier nachgezogen. Ein Umbenennen in Modul 0 laesst die id
+    // unveraendert — ohne diese Zeile stuende im Blattkopf weiter die alte Bezeichnung.
+    WNAME = leseWandName();
     render();
   });
 }
 
 // ---- Ereignis-Bindung ----
 function bindEvents(){
-  // Der Projektname steht im Blattkopf — deshalb neu zeichnen, nicht nur speichern.
-  $('proj').addEventListener('input',()=>{ const e=eg(); (e.projekt||(e.projekt={})).name=$('proj').value;
-    persist('projekt',{name:$('proj').value}); render(); });
+  // Die Währung ist die EINZIGE persistente Eingabe der Wandebene (#70).
   $('cur').addEventListener('input',()=>{ eg().kosten.waehrung=$('cur').value; persist('kosten',{waehrung:$('cur').value}); render(); });
   // Ebene und Preisschalter sind reine Ansicht: kein Schreibvorgang, keine Speicherung.
   $('ebene').addEventListener('change',()=>{ EBENE=$('ebene').value||'wand'; syncInputs(); render(); });
@@ -399,7 +422,7 @@ window.__sl={ applyWand, rows, render, area:(w)=>wandflaeche(w), summe:()=>stuec
   teile:()=>WALL?einbauteile(WALL):[], daten,
   setzeEbene:(e)=>{ EBENE=e; syncInputs(); render(); },
   setzePreise:(b)=>{ PREISE=!!b; syncInputs(); render(); },
-  get ebene(){return EBENE;}, get preise(){return PREISE;},
+  get ebene(){return EBENE;}, get preise(){return PREISE;}, get wandname(){return wandName();},
   get wall(){return WALL;}, get eingaben(){return eg();}, get katalog(){return KATALOG;} };
 
 window.__slInit=function(){

@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-12",
-  "signatur": "164c369f",
+  "signatur": "7829c56e",
   "entscheidungen": [
     {
       "issue": 41,
@@ -97,15 +97,6 @@ export const PLAN = {
     {
       "issue": 68,
       "titel": "Projektanlage: Kopfdaten passend zuordnen und Standardkatalog vorbelegen",
-      "prio": "ohne",
-      "status": "ohne",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 70,
-      "titel": "Wandname statt Projekt-Eingabefeld in der Stückliste",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": true,
