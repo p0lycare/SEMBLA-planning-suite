@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "b57eb384",
+  "signatur": "6d439587",
   "entscheidungen": [
     {
       "issue": 41,
@@ -90,6 +90,15 @@ export const PLAN = {
       "titel": "Bemaßung im Geschossplan: Elementbreite bemaßbar machen und Ursprungsdarstellung fachlich abnehmen",
       "prio": "high",
       "status": "ohne",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 74,
+      "titel": "Geschosseditor: Wände duplizieren und löschen",
+      "prio": "high",
+      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
