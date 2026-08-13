@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "1810d928",
+  "signatur": "0bac52ae",
   "entscheidungen": [
     {
       "issue": 41,
@@ -88,17 +88,17 @@ export const PLAN = {
       "zyklus": true
     },
     {
-      "issue": 68,
-      "titel": "Projektanlage-Kopfdaten: übrige Felder fachlich in die Zeichnung verlagern",
+      "issue": 84,
+      "titel": "Geschosseditor und Lageplan: Vorder- und Rückseite kennzeichnen",
       "prio": "ohne",
-      "status": "ohne",
+      "status": "in progress",
       "sicherheit": true,
       "abhaengig_von": [],
       "zyklus": true
     },
     {
-      "issue": 84,
-      "titel": "Geschosseditor und Lageplan: Vorder- und Rückseite kennzeichnen",
+      "issue": 68,
+      "titel": "Projektanlage-Kopfdaten: übrige Felder fachlich in die Zeichnung verlagern",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": true,

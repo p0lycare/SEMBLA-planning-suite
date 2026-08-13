@@ -188,7 +188,8 @@
             <span class="trenner"></span>
             <button class="btn-s" id="gp-undo" disabled title="Rückgängig (Strg+Z) — nur Lagen und Bemaßungen ([K-10])">↶</button>
             <button class="btn-s" id="gp-redo" disabled title="Wiederholen (Strg+Umschalt+Z)">↷</button>
-            <button class="btn-s" id="gp-drehen" disabled title="Aktive Wand um 90° um ihre Min-Ecke drehen (R). Gesperrt, sobald ein Maß an der Wand hängt.">⟳</button>
+            <button class="btn-s" id="gp-drehen" disabled title="Aktive Wand um 90° um ihre Min-Ecke drehen (R) — die Vorderseite dreht mit. Gesperrt, sobald ein Maß an der Wand hängt.">⟳</button>
+            <button class="btn-s" id="gp-wenden" disabled title="Aktive Wand um 180° wenden (Umschalt+R) — tauscht nur Vorder- und Rückseite; Lage, Länge, Maße und Bezüge bleiben unverändert (#84)">⇆ 180°</button>
             <button class="btn-s" id="gp-dupl" disabled title="Aktive Wand duplizieren (#74) — unabhängige Kopie von Wandelement und Eingaben unter neuem Namen, unverortet im aktiven Geschoss eingetragen; Bemaßungen wandern nicht mit">⧉ Duplizieren</button>
             <span class="trenner"></span>
             <button class="btn-d" id="gp-lage-weg" disabled title="Lage der aktiven Wand aufheben — die Wand bleibt im Geschoss eingetragen ([L-4])">Lage aufheben</button>
@@ -938,6 +939,23 @@ function wandSvg(w, erg, koll){
   teile.push(`<line class="mittellinie" x1="${r2(mx1)}" y1="${r2(my1)}" x2="${r2(mx2)}" y2="${r2(my2)}"`
     + ` stroke="${farbe}" stroke-width="${r2(strich(1))}"`
     + ` stroke-dasharray="${r2(strich(8))} ${r2(strich(5))}"/>`);
+  // Vorder- und Rückkante (#84): die EINE gemeinsame Ableitung aus der kanonischen
+  // Lage (CON.wandSeiten, dieselbe wie im Lageplan). Kantenlinie plus Kennbuchstabe —
+  // nie nur Farbe, und die Zustandsfarbe der Wandfläche ([K-8]) bleibt unangetastet.
+  const seiten = CON.wandSeiten(w.lage, pos);
+  if (seiten) {
+    for (const [art, s] of [['vorder', seiten.vorder], ['rueck', seiten.rueck]]) {
+      const sf = CON.SEITEN[art];
+      teile.push(`<line class="seite seite-${art}" x1="${r2(s.a.x)}" y1="${r2(s.a.y)}"`
+        + ` x2="${r2(s.b.x)}" y2="${r2(s.b.y)}" stroke="${sf.farbe}"`
+        + ` stroke-width="${r2(strich(2.4))}"/>`);
+      const sx = (s.a.x + s.b.x) / 2 + s.aussen.x * 11 * V.mm;
+      const sy = (s.a.y + s.b.y) / 2 + s.aussen.y * 11 * V.mm;
+      teile.push(`<text class="seite-kz seite-kz-${art}" x="${r2(sx)}" y="${r2(sy + 3.5 * V.mm)}"`
+        + ` font-size="${r2(10 * V.mm)}" text-anchor="middle" fill="${sf.farbe}">`
+        + `${sf.kuerzel}<title>${sf.name} („${esc(seiten.orientierung)}“)</title></text>`);
+    }
+  }
   if (istAusgewaehlt(w.id) && GP.aktiv !== w.id) {
     // AUSGEWÄHLT, aber nicht aktiv: nur ein Rahmen. Ausgewählt sein können mehrere
     // Wände; die Zustandsfarbe der Wand bleibt dabei unangetastet ([K-8]).
@@ -1379,7 +1397,8 @@ function groesseLage(erg){
   // Unter das Mindestmaß des Rechenkerns geht der Griff gar nicht erst (#56) — sonst
   // stünde eine Vorschau im Bild, die beim Loslassen zwingend abgewiesen würde.
   if (grid < MIN_GRID) grid = MIN_GRID;
-  return { start_mm: start, richtung: l.richtung, laenge_grid: grid };
+  // Die Griffe ändern nur die Länge — die gerichtete Orientierung reist mit (#84).
+  return { start_mm: start, richtung: l.richtung, orientierung: l.orientierung, laenge_grid: grid };
 }
 
 function ACHSE_OK(l){ return l && (l.richtung === 'x' || l.richtung === 'y'); }
@@ -2028,6 +2047,9 @@ function kopfSync(){
   // bestimmt ist — beides sagt `drehSperre()`, mit unterscheidbarem Grund.
   const sperre = aus ? drehSperre(aus.id) : { grund: 'ohne' };
   $('gp-drehen').disabled = !(aus && aus.lage) || !!sperre.grund;
+  // Wenden (#84) tauscht nur die Seiten — Geometrie, Maße und Bezüge bleiben,
+  // deshalb gilt hier bewusst KEINE Drehsperre.
+  $('gp-wenden').disabled = !(aus && aus.lage);
 
   // Die Ansichtsschalter sind reine Bedienung — sie stehen hier nur im Einklang
   // mit dem Zustand. Bemaßungen sind in D und F immer sichtbar, damit man nicht
@@ -2192,7 +2214,10 @@ function entwurfLage(a, b){
   const start = {};
   start[richtung] = Math.min(von, bis);
   start[quer] = querAnker(a[quer], quer === 'y' ? dy : dx);
-  return { lage: { start_mm: start, richtung, laenge_grid: grid }, laenge_mm };
+  // Die BEWEGUNGSRICHTUNG des Zugs bestimmt die gerichtete Orientierung (#84) —
+  // Anker (Min-Ende) und Längenrechnung bleiben davon unberührt.
+  const orientierung = (bis >= von ? '+' : '-') + richtung;
+  return { lage: { start_mm: start, richtung, orientierung, laenge_grid: grid }, laenge_mm };
 }
 
 /** Höhe für eine neu angelegte Wand — Standard-Wandhöhe als Vorgabe, nie erzwungen ([L-5]). */
@@ -2586,6 +2611,10 @@ function groesseFertig(){
  * Ecke mit der kleinsten x- und y-Koordinate): nur so bleibt die Rasterlage
  * erhalten — die neue Längsachse startet wieder auf einer Rasterlinie, die neue
  * Mittellinie wieder auf einer Feldmitte. Länge und Wandelement bleiben unberührt.
+ * Die gerichtete Orientierung dreht MIT (#84, `CON.dreheOrientierung`, Zyklus
+ * +x→+y→−x→−y): die physische Vorderseite folgt der Wand. Zweimal Drehen ist
+ * geometrisch bit-genau die Ausgangslage, tauscht aber — physikalisch korrekt —
+ * Vorder- und Rückseite.
  */
 function drehe(){
   const w = GP.aktiv ? wand(GP.aktiv) : null;
@@ -2609,12 +2638,33 @@ function drehe(){
   const l = CON.normLage(w.lage);
   const r = CON.wandRechteck(w.lage, position(w.id, erg));
   if (!l || !r) { zeige('Die Lage ist ungültig — nichts gedreht.', false); return; }
+  const orientierung = CON.dreheOrientierung(l.orientierung);
   const lage = l.richtung === 'x'
-    ? { start_mm: { x: r.x_min + CON.HALB_BREITE_MM, y: r.y_min }, richtung: 'y', laenge_grid: l.laenge_grid }
-    : { start_mm: { x: r.x_min, y: r.y_min + CON.HALB_BREITE_MM }, richtung: 'x', laenge_grid: l.laenge_grid };
+    ? { start_mm: { x: r.x_min + CON.HALB_BREITE_MM, y: r.y_min }, richtung: 'y', orientierung, laenge_grid: l.laenge_grid }
+    : { start_mm: { x: r.x_min, y: r.y_min + CON.HALB_BREITE_MM }, richtung: 'x', orientierung, laenge_grid: l.laenge_grid };
   if (!speichereLage(w.id, lage, 'Drehen')) { render(); return; }
   zeige(`„${w.name || w.id}“ um 90° gedreht — jetzt Richtung ${lage.richtung}, `
-    + `${lage.laenge_grid * CON.GRID_MM} mm lang (Länge unverändert).` + folgen(w.id, lage), true);
+    + `${lage.laenge_grid * CON.GRID_MM} mm lang (Länge unverändert); die Vorderseite `
+    + 'dreht mit (#84).' + folgen(w.id, lage), true);
+  render();
+}
+
+/**
+ * Aktive Wand um 180° wenden (#84): getauscht wird AUSSCHLIESSLICH die gerichtete
+ * Orientierung — und damit die Zuordnung von Vorder- und Rückkante. Anker, Länge,
+ * Maße und Bezüge bleiben byte-gleich; deshalb braucht es — anders als beim
+ * 90°-Drehen — KEINE Drehsperre: kein Maß verliert seinen Bezugssinn, keine
+ * bestimmte Wand verschiebt sich. Ein Schreibvorgang = ein Undo-Schritt ([K-10]).
+ */
+function wende(){
+  const w = GP.aktiv ? wand(GP.aktiv) : null;
+  if (!w || w.lage == null) { zeige('Keine aktive, verortete Wand — nichts gewendet.', false); return; }
+  const l = CON.normLage(w.lage);
+  const orientierung = CON.wendeOrientierung(l && l.orientierung);
+  if (!orientierung) { zeige('Die Lage ist ungültig — nichts gewendet.', false); return; }
+  if (!speichereLage(w.id, { ...l, orientierung }, 'Wenden')) { render(); return; }
+  zeige(`„${w.name || w.id}“ um 180° gewendet — Vorder- und Rückseite sind getauscht `
+    + '(Lage, Länge und Maße unverändert).', true);
   render();
 }
 
@@ -3508,6 +3558,7 @@ function binde(){
   $('gp-sammel-go').addEventListener('click', sammelAnwenden);
 
   $('gp-drehen').addEventListener('click', drehe);
+  $('gp-wenden').addEventListener('click', wende);
   $('gp-dupl').addEventListener('click', dupliziereWand);
   $('gp-wand-loeschen').addEventListener('click', loescheWandJetzt);
   $('gp-lage-weg').addEventListener('click', () => {
@@ -3599,7 +3650,7 @@ function beiTaste(ev){
   if (k === 'w') werkzeug('wand');
   else if (k === 'p') planSchieben();          // Plan verschieben lebt in der Planverwaltung (#53)
   else if (k === 'd') werkzeug('bemassen');
-  else if (k === 'r') drehe();
+  else if (k === 'r') { if (ev.shiftKey) wende(); else drehe(); }   // Umschalt+R wendet (#84)
   else if (k === '0') zeigeAlles();
   else if (k === '+') zoomeAuf(1 / 1.3);
   else if (k === '-') zoomeAuf(1.3);
@@ -3607,7 +3658,7 @@ function beiTaste(ev){
 
 // --- Prüfhilfen (Smoke-Test): dieselben Pfade wie die echte Bedienung -------
 window.__gp = {
-  render, werkzeug, zeigeAlles, auffrischen, drehe, undo, redo,
+  render, werkzeug, zeigeAlles, auffrischen, drehe, wende, undo, redo,
   entwurfLage, fange, fangeQuer, weltPunkt, schirmPunkt, treffer, griffTreffer, loesen,
   bezugTreffer: (welt, achse) => bezugTreffer(welt, loesen(), achse),
   bemTreffer: (welt) => bemTreffer(welt, loesen()),
@@ -3696,7 +3747,7 @@ window.__gp = {
   zeichne(von, nach){ window.__gp.ziehe(von, nach); },
   /** Griffe der aktiven Wand in Weltkoordinaten. */
   griffe(){ const w = GP.aktiv ? wand(GP.aktiv) : null; return w ? griffe(w) : []; },
-  taste(key, target){ beiTaste({ key, target: target || {} }); },
+  taste(key, target, ev){ beiTaste({ key, target: target || {}, ...(ev || {}) }); },
   get zustand(){ return GP; },
   get blick(){ return V; },
   get svg(){ return $('gp-buehne').innerHTML; },

@@ -44,8 +44,8 @@
  */
 
 import {
-  ACHSEN, FARBEN, GRID_MM, HALB_BREITE_MM,
-  normLage, laengeMm, wandRechteck, pruefeGeschoss, zustand,
+  ACHSEN, FARBEN, GRID_MM, HALB_BREITE_MM, SEITEN,
+  normLage, lageFehler, laengeMm, wandRechteck, wandSeiten, pruefeGeschoss, zustand,
 } from "./sembla-constraints.js";
 import { massKontext, massGeometrie, massTextLayout, massAnker, massPfad } from "./sembla-massbild.js";
 import { findeGeschoss, kopfdaten as mappeKopfdaten, laengenAbgleich } from "./sembla-projektmappe.js";
@@ -231,6 +231,11 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
       name: w.name || w.id,
       verwaist: !el,
       richtung: lage ? lage.richtung : null,
+      orientierung: lage ? lage.orientierung : null,
+      // Vorder-/Rueckkante (#84): DIESELBE Ableitung wie im Geschosseditor
+      // (`wandSeiten` aus sembla-constraints.js) auf der geloesten Position —
+      // unverortet oder fehlerhaft bleibt es `null`, keine Seite wird erfunden.
+      seiten: w.lage == null ? null : wandSeiten(w.lage, pos),
       laenge_mm: laengeMm(w.lage),
       hoehe_mm: we && Number.isFinite(+we.height_mm) ? +we.height_mm : null,
       wandtyp: we && we.wandtyp ? String(we.wandtyp) : null,
@@ -242,6 +247,12 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
       meldungen.push({ art: "unverortet", text:
         `Wand „${eintrag.name}“ ist im Geschoss eingetragen, aber nicht verortet — sie fehlt `
         + "deshalb im Plan. Verortet wird sie im Layout-Editor ([L-4])." });
+    } else if (!rechteck) {
+      // Verortet, aber ungueltig (z. B. eine zur Achse widerspruechliche Orientierung,
+      // #84): benannt gemeldet statt still aus dem Blatt zu fallen ([N-7]).
+      meldungen.push({ art: "lage_ungueltig", text:
+        `Wand „${eintrag.name}“ hat eine ungültige Lage und fehlt deshalb im Plan: `
+        + lageFehler(w.lage).join(" ") });
     }
     if (eintrag.verwaist) {
       meldungen.push({ art: "verwaist", text:
@@ -428,6 +439,28 @@ export function lageplanSvg(daten, opts) {
       + ` stroke="${FARBE.mittellinie}" stroke-width="0.1" stroke-dasharray="1.2 0.8"/>`);
     st.push("</g>");
     teile.push(st.join(""));
+    if (w.seiten) {
+      // Vorder-/Rueckkante (#84): dieselbe Ableitung wie im Editor (`wandSeiten`),
+      // hier nur in Papier-mm umgerechnet. Kantenlinie plus Kennbuchstabe AUSSEN —
+      // nie nur Farbe. Eigene Gruppe NACH dem Wandknoten (wie die Nummernblase,
+      // #73); `data-orientierung` traegt den kanonischen Wert. Der Buchstabe sitzt
+      // am Viertelpunkt der Kante, damit er der mittigen Nummernblase und ihrer
+      // Fuehrungslinie nicht in die Quere kommt.
+      const sg = [`<g class="lpseiten" data-wand="${_esc(w.id)}"`
+        + ` data-orientierung="${_esc(w.seiten.orientierung)}">`];
+      for (const [art, s] of [["vorder", w.seiten.vorder], ["rueck", w.seiten.rueck]]) {
+        const sf = SEITEN[art];
+        const ax = X(s.a.x), ay = Y(s.a.y), bx = X(s.b.x), by = Y(s.b.y);
+        sg.push(`<line class="lpseite lpseite-${art}" x1="${_n(ax)}" y1="${_n(ay)}"`
+          + ` x2="${_n(bx)}" y2="${_n(by)}" stroke="${sf.farbe}" stroke-width="0.4"/>`);
+        const tx = ax + (bx - ax) * 0.25 + s.aussen.x * 1.7;
+        const ty = ay + (by - ay) * 0.25 + s.aussen.y * 1.7;
+        sg.push(`<text class="lpseite-kz" x="${_n(tx)}" y="${_n(ty + 0.65)}" font-size="1.8"`
+          + ` text-anchor="middle" fill="${sf.farbe}">${sf.kuerzel}</text>`);
+      }
+      sg.push("</g>");
+      teile.push(sg.join(""));
+    }
     if (o.kennzeichnung) {
       // Aussenliegende Nummernblase mit Fuehrungslinie (#73). Die kurze laufende
       // Nummer (#59) steht NICHT mehr im Wandrechteck — eine 125 mm breite Wand ist
@@ -575,6 +608,9 @@ export function legendeHtml() {
   return `<div class="lplegende">`
     + `<span>${i(FARBE.wand, "plate")}Wand (125 mm breit)</span>`
     + `<span>${i(FARBE.mittellinie)}Mittellinie (Bezug, [K-2])</span>`
+    // #84: Vorder-/Rueckkante — Kennbuchstabe UND Farbe, nie nur Farbe.
+    + `<span>${i(SEITEN.vorder.farbe)}<b>V</b> ${SEITEN.vorder.name} der Wand</span>`
+    + `<span>${i(SEITEN.rueck.farbe)}<b>R</b> ${SEITEN.rueck.name} der Wand</span>`
     + `<span>${i(FARBE.mass)}treibende Bemaßung ([K-3])</span>`
     // #59/#73: die Nummernblase ist eine reine Lesehilfe des Blattes und keine
     // Wandkennung — nachgeschlagen wird sie in der Wandliste.

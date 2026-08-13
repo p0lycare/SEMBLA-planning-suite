@@ -634,5 +634,67 @@ t("das Modul schreibt nichts (keine setz-/aendere-Aufrufe der Mappe)",
 t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   /sembla-massbild\.js/.test(quelle) && !/MASS_ABSTAND_MM\s*=\s*\d/.test(quelle));
 
+// --- #84 Vorder-/Rueckseite: identische Kanten in Ableitung, Blatt und Export
+
+{
+  // Ein Stand mit Altstand-Wand (ohne Orientierung, liest sich als +x), einer
+  // ausdruecklich gewendeten y-Wand (-y) und einer unverorteten Wand.
+  const { m, gsEG } = bau();
+  let n = MAPPE.setzeLage(m, "w-c",
+    { start_mm: { x: 62.5, y: 1125 }, richtung: "y", orientierung: "-y", laenge_grid: 23 });
+  n = MAPPE.setzeWand(n, gsEG, { id: "w-u", name: "Wand U", lage: null });
+  const daten = LP.lageplanDaten({ mappe: n, geschossId: gsEG, elemente: [] });
+  const wa = daten.waende.find((w) => w.id === "w-a");
+  const wc = daten.waende.find((w) => w.id === "w-c");
+  const wu = daten.waende.find((w) => w.id === "w-u");
+
+  t("#84 Altstand ohne Orientierung liest sich deterministisch als +Achse",
+    wa.orientierung === "+x");
+  t("#84 eine ausdrueckliche Orientierung bleibt erhalten", wc.orientierung === "-y");
+  t("#84 die Seiten kommen aus DERSELBEN Ableitung wie im Editor (CON.wandSeiten)",
+    JSON.stringify(wa.seiten) === JSON.stringify(
+      CON.wandSeiten(MAPPE.findeWand(n, "w-a").wand.lage, daten.ergebnis.positionen["w-a"]))
+    && JSON.stringify(wc.seiten) === JSON.stringify(
+      CON.wandSeiten(MAPPE.findeWand(n, "w-c").wand.lage, daten.ergebnis.positionen["w-c"])));
+  t("#84 +x-Wand: Vorderkante = Laengskante mit groesserem y (Konvention)",
+    wa.seiten.vorder.a.y === 1125 && wa.seiten.rueck.a.y === 1000);
+  t("#84 -y-Wand: Vorderkante = Laengskante mit groesserem x",
+    wc.seiten.vorder.a.x === 125 && wc.seiten.rueck.a.x === 0);
+  t("#84 eine unverortete Wand bekommt KEINE erfundene Seite",
+    wu.seiten === null && wu.orientierung === null);
+
+  const z = LP.lageplanSvg(daten, {});
+  const verortet = daten.waende.filter((w) => w.rechteck).length;
+  t("#84 das Blatt zeichnet je verorteter Wand genau eine Vorder- und eine Rueckkante",
+    (z.svg.match(/class="lpseite lpseite-vorder"/g) || []).length === verortet
+    && (z.svg.match(/class="lpseite lpseite-rueck"/g) || []).length === verortet);
+  t("#84 die V/R-Kennbuchstaben stehen im Blatt — Kennzeichnung nie nur Farbe",
+    /class="lpseite-kz"[^>]*>V</.test(z.svg) && /class="lpseite-kz"[^>]*>R</.test(z.svg));
+  t("#84 der Wandknoten traegt die kanonische Orientierung als data-Attribut",
+    /data-orientierung="\+x"/.test(z.svg) && /data-orientierung="-y"/.test(z.svg));
+  t("#84 die Legende nennt beide Seiten mit Kennbuchstabe UND Kennfarbe",
+    LP.legendeHtml().includes("Vorderseite der Wand")
+    && LP.legendeHtml().includes("Rückseite der Wand")
+    && LP.legendeHtml().includes(CON.SEITEN.vorder.farbe)
+    && LP.legendeHtml().includes(CON.SEITEN.rueck.farbe));
+
+  // Vorschau und Export sind derselbe Pfad: exakt dieselben Kantenzeilen.
+  const kante = (z.svg.match(/<line class="lpseite lpseite-vorder"[^>]*\/>/g) || [])[0];
+  const doc = LP.lageplanDokument(daten, {});
+  const svgDatei = LP.lageplanSvgDatei(daten, {});
+  t("#84 Export-HTML und Export-SVG tragen bit-genau dieselben V/R-Kanten wie die Vorschau",
+    !!kante && doc.includes(kante) && svgDatei.includes(kante)
+    && doc.includes("Vorderseite der Wand"));
+
+  // Widerspruechliche Orientierung: benannt gemeldet, nie still umgedeutet.
+  const kaputt = JSON.parse(JSON.stringify(n));
+  kaputt.gebaeude[0].geschosse[0].waende.find((w) => w.id === "w-a").lage.orientierung = "+y";
+  const d2 = LP.lageplanDaten({ mappe: kaputt, geschossId: gsEG, elemente: [] });
+  t("#84 eine zur Achse widerspruechliche Orientierung wird benannt gemeldet",
+    d2.meldungen.some((x) => /widerspricht der Achse/.test(x.text))
+    && d2.waende.find((w) => w.id === "w-a").seiten === null
+    && d2.vollstaendig === false);
+}
+
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

@@ -771,3 +771,51 @@ setzt. Einzelbearbeitung, Auswahl- und Zieh-Semantik bleiben unverändert.
   einer echten Öffnung, Neuberechnung und Persistenz (Lagenzahl folgt der Höhe) bei unveränderten
   Längen/Lagen/Öffnungen/Maßen und unveränderter Fremdwand, genau einen Undo/Redo-Schritt sowie
   den vollständigen Rollback bei einem simulierten Speicherfehler mitten in der Schreibphase.
+
+## 16. Vorder- und Rückseite jeder Wand (Issue #84, 2026-08-13)
+
+Eine SEMBLA-Wand ist real nicht seitensymmetrisch — welche der beiden Längsaußenkanten „vorne"
+ist, war aber weder gespeichert noch sichtbar. Umgesetzt als **gerichtete Wandorientierung** im
+kanonischen Lagemodell; **kein** Schema-/Formatversionsbump, keine neue Regel-ID.
+
+- **Datenmodell.** Die Lage trägt zusätzlich zur Achse das optionale Feld
+  `orientierung: "+x" | "-x" | "+y" | "-y"` (`sembla-constraints.js`, `ORIENTIERUNGEN`). Die
+  Achskomponente **muss** `richtung` entsprechen; ein Widerspruch fällt in `lageFehler` /
+  `validiereMappe` auf und wird **nie still umgedeutet**. Altstände ohne das Feld werden beim
+  Lesen (`normLage`) deterministisch und verlustfrei auf die **positive** Richtung ihrer Achse
+  normalisiert — Altdaten trugen nie eine Seite, es geht nichts verloren. Für Geometrie, Löser
+  und Bemaßung ist die Orientierung **wirkungslos** (sie erreicht weder `wandRechteck` noch
+  `bezugsOffset`); Vorder-/Rückseite sind damit **kein** frei umschaltbarer Wandparameter,
+  sondern folgen allein dem räumlichen Drehen der Wand.
+- **Konvention (die eine, dokumentierte).** In Blickrichtung der Orientierung liegt die
+  **Vorderseite rechts** (Welt-/Papierkoordinaten, x nach rechts, y nach unten); ihre Normale
+  ist die um +90° gedrehte Orientierung ((dx,dy) → (−dy,dx)). Beide Längsaußenkanten samt
+  V/R-Zuordnung liefert **genau eine** Funktion `wandSeiten(lage, position)` — Geschosseditor
+  **und** Lageplan (Modul 9) leiten daraus ab, es gibt keine zweite Kantenberechnung. Die
+  Seitendefinition (`SEITEN`: Kennbuchstabe **V**/**R** plus Kennfarbe, keine
+  [K-8]-Zustandsfarbe) wohnt daneben; gekennzeichnet wird **nie nur durch Farbe**.
+- **Zeichnen.** Die Bewegungsrichtung der Zeigergeste bestimmt die Orientierung
+  (`entwurfLage`: Vorzeichen von `bis − von` auf der Längsachse); Anker (Min-Ende) und
+  Längenrechnung bleiben unverändert. Unverortete Wände haben **keine** erfundene Seite
+  (`wandSeiten` liefert `null`).
+- **Drehen.** **R** (90°, um die Min-Ecke) dreht die Orientierung mit
+  (`dreheOrientierung`, Zyklus +x→+y→−x→−y): die physische Vorderseite folgt der Wand.
+  Zweimal 90° ist **geometrisch** bit-genau die Ausgangslage, tauscht aber — physikalisch
+  korrekt — die Seiten (die frühere Formulierung „zweimal Drehen ist bit-genau die
+  Ausgangslage" gilt seither für die Geometrie). **Umschalt+R** bzw. der Knopf **„⇆ 180°"**
+  wendet die aktive, verortete Wand: getauscht wird **ausschließlich** die Orientierung —
+  Anker, Länge, Maße und Bezüge bleiben byte-gleich, deshalb gilt hier bewusst **keine**
+  Drehsperre. Ein Schreibvorgang = genau ein Undo-Schritt ([K-10]).
+- **Darstellung.** Der Editor zeichnet je verorteter Wand beide Kanten farbig mit
+  V/R-Kennbuchstaben außen (`wandSvg`); die Wandfläche behält ihre Zustandsfarbe ([K-8]).
+  Der Lageplan zeigt dieselben Kanten als eigene `lpseiten`-Gruppe (mit `data-orientierung`),
+  Kennbuchstaben am Viertelpunkt (Abstand zur Nummernblase #73) und beide Seiten in der
+  **Legende**; Vorschau und Export sind derselbe Pfad. Eine verortete, aber ungültige Lage
+  (z. B. widersprüchliche Orientierung) wird im Blatt **benannt gemeldet** statt still zu
+  fehlen ([N-7]).
+- **Tests.** `test-constraints.mjs` (Normalisierung, Validierung, Drehzyklus,
+  Kantenkonvention, Projektmappen-Rundlauf und v1-Migration), `smoke_geschossplan.mjs`
+  (echte Gesten in Gegenrichtungen, SVG-Kanten, 90°/180° über Taste und Knopf, Undo/Redo,
+  unveränderter Wandspeicher, Übergabe desselben Stands an die echte Lageplan-Ableitung samt
+  Export-Bytes), `test-lageplan.mjs` (identische Kanten in Ableitung, Blatt und Export,
+  Legende, unverortete Wand ohne Seite, gemeldeter Widerspruch).

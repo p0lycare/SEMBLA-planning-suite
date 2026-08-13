@@ -14,8 +14,16 @@
  * Lage ist seit Formatversion 2 in MILLIMETERN ([L-1]) und ausschliesslich
  * orthogonal ([L-2]); die LAENGE bleibt im 125-mm-Raster:
  *
- *   lage = { start_mm: {x, y}, richtung: "x"|"y", laenge_grid: n }
+ *   lage = { start_mm: {x, y}, richtung: "x"|"y",
+ *            orientierung: "+x"|"-x"|"+y"|"-y", laenge_grid: n }
  *   lage = null                      // unverortet — der Normalfall vor dem Zeichnen
+ *
+ * `orientierung` ist die gerichtete Wandorientierung (#84, Konvention und
+ * Mathematik in `sembla-constraints.js`). Das Feld ist OPTIONAL und
+ * abwaertskompatibel — KEIN Formatbump: Altstaende ohne Orientierung werden beim
+ * Lesen (`normLage`) deterministisch und verlustfrei auf die positive Richtung
+ * ihrer Achse normalisiert; ein zur Achse widerspruechlicher Wert faellt in
+ * `lageFehler`/`pruefeMappe` auf und wird nie still umgedeutet.
  *
  * Die Lage-/Bemassungsmathematik selbst liegt in `sembla-constraints.js`
  * (Kapitel 16.10, [K-*]); hier steht nur die Struktur drumherum. Bemassungen
@@ -608,9 +616,15 @@ export function migriereMappe(m) {
   const rasterZuMm = (lage) => {
     if (lage == null || typeof lage !== "object") return null;
     if (lage.start_mm) return lage;                    // bereits mm — nichts anfassen
+    // v1 kennt keine gerichtete Orientierung (#84) — ein dennoch vorhandenes Feld
+    // reist verlustfrei mit, erfunden wird keines (Normalisierung erst beim Lesen).
     const sg = lage.start_grid || {};
     const zahl = (x) => (x == null || x === "" || !Number.isFinite(+x)) ? null : +x * GRID_MM;
-    return { start_mm: { x: zahl(sg.x), y: zahl(sg.y) }, richtung: lage.richtung, laenge_grid: lage.laenge_grid };
+    return {
+      start_mm: { x: zahl(sg.x), y: zahl(sg.y) }, richtung: lage.richtung,
+      ...(lage.orientierung != null ? { orientierung: lage.orientierung } : {}),
+      laenge_grid: lage.laenge_grid,
+    };
   };
   return {
     ...m,

@@ -32,7 +32,12 @@ class El {
     this.hidden = false; this.checked = false; this.disabled = false; this.style = {};
     this.dataset = {}; this.listeners = {}; this.files = [];
   }
-  addEventListener(e, f){ (this.listeners[e] || (this.listeners[e] = [])).push(f); }
+  // Wie im echten DOM: dieselbe Funktion wird je Ereignis nur EINMAL registriert —
+  // sonst feuerte der zweite __gpInit()-Lauf (#43) jeden Klick doppelt.
+  addEventListener(e, f){
+    const l = this.listeners[e] || (this.listeners[e] = []);
+    if (!l.includes(f)) l.push(f);
+  }
   // Fokus und Textauswahl der Inline-Masseingabe (#51): `blur()` laeuft ueber
   // dieselben Behandler wie im Browser, damit die Uebernahme bei Fokusverlust
   // wirklich geprueft wird.
@@ -70,7 +75,11 @@ const document = {
   createElement(){ return new El('_'); },
   querySelector(){ return null; },
   _l: {},
-  addEventListener(e, f){ (this._l[e] || (this._l[e] = [])).push(f); },
+  // Auch hier Browser-Semantik: dieselbe Funktion nur einmal je Ereignis.
+  addEventListener(e, f){
+    const l = this._l[e] || (this._l[e] = []);
+    if (!l.includes(f)) l.push(f);
+  },
   dispatch(e, ev){ (this._l[e] || []).forEach(f => f(ev)); },
   head: { appendChild(){} }, body: { appendChild(){}, insertBefore(){}, firstChild: null },
 };
@@ -495,8 +504,14 @@ ok('das Wandelement bleibt vom Drehen unberuehrt ([P-1])',
 $('gp-drehen').dispatch('click');
 await warte();
 ok('zweimal drehen kehrt zur Ausgangsrichtung zurueck', lage3().richtung === 'x');
-ok('… und liefert wieder genau die Ausgangslage (kein Drift)',
-  JSON.stringify(lage3()) === vorDrehung);
+// #84: zweimal 90° ist GEOMETRISCH bit-genau die Ausgangslage — die gerichtete
+// Orientierung ist dabei aber (physikalisch korrekt) um 180° gewendet.
+const vorD = JSON.parse(vorDrehung);
+ok('… und liefert wieder genau die Ausgangs-GEOMETRIE (kein Drift)',
+  lage3().start_mm.x === vorD.start_mm.x && lage3().start_mm.y === vorD.start_mm.y
+  && lage3().richtung === vorD.richtung && lage3().laenge_grid === vorD.laenge_grid);
+ok('#84 zweimal 90° wendet die Orientierung — die physische Vorderseite folgt der Wand',
+  lage3().orientierung === CON.wendeOrientierung(vorD.orientierung));
 
 // --- 6d) Mehrfachauswahl: aktiv ist genau EINE ----------------------------
 GP.tippe({ x: 1000, y: 8062.5 });
@@ -2990,6 +3005,109 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && /<svg/.test(globalThis.window.__gp.svg));
   ok('#43 der Sprung setzt KEINEN aktiven Zeiger um (Projekt, Geschoss, Wand)',
     zeiger43() === vorher43);
+}
+
+// --- #84: Gerichtete Orientierung — Zeichenrichtung, V/R-Kanten, 90°/180° --
+// Realer Pfad: echte Zeigergesten in entgegengesetzten Richtungen, Pruefung von
+// Projektmappe und Editor-SVG, Wenden ueber den echten Knopf, und derselbe Stand
+// geht anschliessend in die ECHTE Lageplan-Ableitung (SVG und Export-Bytes).
+{
+  const LP84 = await import("../../docs/shared/sembla-lageplan.js");
+  const gs84 = store.aktivesGeschossId();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  const wandVon = (id) => MAPPE.findeWand(store.holeMappe(), id).wand;
+  // Die frisch gezeichnete Wand ist die AKTIVE (wandFertig -> waehle + setzeAktiv).
+  const letzteId = () => GP.zustand.aktiv;
+
+  // (a) Zeichnen in POSITIVER x-Richtung — die Bewegungsrichtung bestimmt die
+  // Orientierung; Anker (Min-Ende) und Laenge bleiben wie bisher.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 20000, y: 20060 }, { x: 21000, y: 20070 });
+  await warte();
+  const idV = letzteId();
+  const lV = wandVon(idV).lage;
+  ok('#84 die Zeichenrichtung links→rechts ergibt die Orientierung +x',
+    lV.orientierung === '+x' && lV.richtung === 'x'
+    && lV.start_mm.x === 20000 && lV.start_mm.y === 20062.5 && lV.laenge_grid === 8);
+
+  // (b) Zeichnen in NEGATIVER x-Richtung — entgegengesetzte Geste, gleiche
+  // Geometrieregeln, gespiegelte Orientierung.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 21000, y: 20560 }, { x: 20000, y: 20570 });
+  await warte();
+  const idR = letzteId();
+  const lR = wandVon(idR).lage;
+  ok('#84 die Zeichenrichtung rechts→links ergibt die Orientierung -x — der Anker bleibt das Min-Ende',
+    lR.orientierung === '-x' && lR.start_mm.x === 20000 && lR.laenge_grid === 8);
+
+  // (c) V/R-Kanten im echten Editor-SVG: dieselbe Ableitung wie CON.wandSeiten —
+  // fuer +x liegt die Vorderseite auf der Kante mit GROESSEREM y, fuer -x umgekehrt.
+  ok('#84 beide Waende tragen im SVG je eine Vorder- und eine Rueckkante samt V/R-Kennbuchstaben',
+    (GP.svg.match(/class="seite seite-vorder"/g) || []).length >= 2
+    && (GP.svg.match(/class="seite seite-rueck"/g) || []).length >= 2
+    && /class="seite-kz seite-kz-vorder"[^>]*>V</.test(GP.svg)
+    && /class="seite-kz seite-kz-rueck"[^>]*>R</.test(GP.svg));
+  ok('#84 +x-Wand: die Vorderkante ist die Laengskante mit groesserem y (Konvention „rechts in Blickrichtung“)',
+    GP.svg.includes('class="seite seite-vorder" x1="20000" y1="20125" x2="21000" y2="20125"')
+    && GP.svg.includes('class="seite seite-rueck" x1="20000" y1="20000" x2="21000" y2="20000"'));
+  ok('#84 -x-Wand: Vorder- und Rueckkante sind gegenueber +x getauscht',
+    GP.svg.includes('class="seite seite-vorder" x1="20000" y1="20500" x2="21000" y2="20500"')
+    && GP.svg.includes('class="seite seite-rueck" x1="20000" y1="20625" x2="21000" y2="20625"'));
+
+  // (d) 90°-Drehung: die Orientierung dreht mit (+x → +y), Geometrie um die
+  // Min-Ecke, das Wandelement bleibt unberuehrt.
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 20500, y: 20062.5 });
+  const elVorher = localStorage.getItem('sembla:elemente');
+  GP.taste('r');
+  await warte();
+  const lV90 = wandVon(idV).lage;
+  ok('#84 90° dreht die Orientierung mit (+x → +y) — die physische Vorderseite folgt der Wand',
+    lV90.richtung === 'y' && lV90.orientierung === '+y' && lV90.laenge_grid === 8);
+  ok('#84 90° laesst den Wandspeicher bit-genau stehen ([P-1])',
+    localStorage.getItem('sembla:elemente') === elVorher);
+
+  // (e) 180°-Wenden ueber den echten Knopf: NUR die Orientierung tauscht —
+  // Anker, Laenge, Richtung, Masse und Wandspeicher bleiben byte-gleich.
+  const masseVorher = JSON.stringify(MAPPE.bemassungen(store.holeMappe(), gs84));
+  ok('#84 der Wenden-Knopf ist fuer die aktive, verortete Wand freigegeben', !$('gp-wenden').disabled);
+  $('gp-wenden').dispatch('click');
+  await warte();
+  const lV180 = wandVon(idV).lage;
+  ok('#84 180° wendet NUR die Orientierung (+y → -y)',
+    lV180.orientierung === '-y' && lV180.richtung === lV90.richtung
+    && lV180.start_mm.x === lV90.start_mm.x && lV180.start_mm.y === lV90.start_mm.y
+    && lV180.laenge_grid === lV90.laenge_grid);
+  ok('#84 180° laesst Masse und Wandspeicher unveraendert',
+    JSON.stringify(MAPPE.bemassungen(store.holeMappe(), gs84)) === masseVorher
+    && localStorage.getItem('sembla:elemente') === elVorher);
+  ok('#84 das Wenden ist GENAU EIN Undo-Schritt',
+    (GP.undo(), wandVon(idV).lage.orientierung === '+y'));
+  GP.redo();
+  ok('#84 Redo wendet wieder', wandVon(idV).lage.orientierung === '-y');
+  // Umschalt+R wendet ueber die Tastatur — derselbe Weg wie der Knopf.
+  GP.taste('r', null, { shiftKey: true });
+  ok('#84 Umschalt+R wendet zurueck (+y), R und Umschalt+R sind getrennte Wege',
+    wandVon(idV).lage.orientierung === '+y');
+
+  // (f) Realer Pfad zu Modul 9: DERSELBE Mappenstand geht in die echte
+  // Lageplan-Ableitung — SVG und Export-Bytes weisen dieselben V/R-Kanten aus.
+  const daten84 = LP84.lageplanDaten({ mappe: store.holeMappe(), geschossId: gs84,
+    elemente: store.listeElemente() });
+  const eintragV = daten84.waende.find(w => w.id === idV);
+  const eintragR = daten84.waende.find(w => w.id === idR);
+  ok('#84 die Lageplan-Ableitung traegt dieselben Orientierungen wie der Editor',
+    eintragV.orientierung === '+y' && eintragR.orientierung === '-x'
+    && JSON.stringify(eintragV.seiten) === JSON.stringify(CON.wandSeiten(wandVon(idV).lage,
+      daten84.ergebnis.positionen[idV])));
+  const svg84 = LP84.lageplanSvg(daten84, { kennzeichnung: true }).svg;
+  ok('#84 das Lageplan-SVG kennzeichnet Vorder- und Rueckkanten mit V/R',
+    /class="lpseite lpseite-vorder"/.test(svg84) && /class="lpseite lpseite-rueck"/.test(svg84)
+    && /class="lpseite-kz"[^>]*>V</.test(svg84) && /class="lpseite-kz"[^>]*>R</.test(svg84));
+  const dateien84 = LP84.lageplanDateien(daten84, {});
+  ok('#84 die Export-Bytes tragen dieselbe Kennzeichnung samt Legende',
+    dateien84.every(d => /lpseite-vorder/.test(d.data))
+    && dateien84.some(d => /Vorderseite der Wand/.test(d.data)));
 }
 
 let fail = 0;

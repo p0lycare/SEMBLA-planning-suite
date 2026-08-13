@@ -516,5 +516,169 @@ t("[K-11] krummes Laengenmass faellt in der Validierung auf",
   })());
 }
 
+// --- #84 Gerichtete Orientierung und Wandseiten ------------------------------
+
+{
+  t("#84 genau vier gerichtete Orientierungen",
+    K.ORIENTIERUNGEN.join(",") === "+x,-x,+y,-y");
+
+  // Normalisierung: Altstand ohne Feld -> deterministisch die POSITIVE Richtung
+  // der vorhandenen Achse; ein gesetzter Wert bleibt unangetastet.
+  t("#84 Altstand ohne Orientierung wird auf +Achse normalisiert (x)",
+    K.normLage({ start_mm: { x: 0, y: 0 }, richtung: "x", laenge_grid: 4 }).orientierung === "+x");
+  t("#84 Altstand ohne Orientierung wird auf +Achse normalisiert (y)",
+    K.normLage({ start_mm: { x: 62.5, y: 0 }, richtung: "y", laenge_grid: 4 }).orientierung === "+y");
+  t("#84 eine gesetzte Orientierung bleibt beim Normalisieren erhalten",
+    K.normLage({ start_mm: { x: 0, y: 0 }, richtung: "x", orientierung: "-x", laenge_grid: 4 })
+      .orientierung === "-x");
+  t("#84 unverortet (null) bekommt KEINE erfundene Orientierung",
+    K.normLage(null) === null);
+  t("#84 die Normalisierung ist verlustfrei: alle uebrigen Felder bleiben bit-genau", (() => {
+    const l = K.normLage({ start_mm: { x: 187.5, y: 62.5 }, richtung: "y", laenge_grid: 7 });
+    return l.start_mm.x === 187.5 && l.start_mm.y === 62.5 && l.richtung === "y" && l.laenge_grid === 7;
+  })());
+
+  // Validierung: nur die vier Werte, und die Achskomponente muss passen.
+  t("#84 normalisierter Altstand ist warnungsfrei gueltig",
+    K.lageFehler({ start_mm: { x: 0, y: 0 }, richtung: "x", laenge_grid: 4 }).length === 0);
+  t("#84 passende negative Orientierung ist gueltig",
+    K.lageFehler({ start_mm: { x: 0, y: 0 }, richtung: "y", orientierung: "-y", laenge_grid: 4 }).length === 0);
+  t("#84 unbekannter Orientierungswert wird benannt abgewiesen",
+    K.lageFehler({ start_mm: { x: 0, y: 0 }, richtung: "x", orientierung: "links", laenge_grid: 4 })
+      .some((m2) => /Orientierung/.test(m2)));
+  t("#84 zur Achse widerspruechliche Orientierung wird gemeldet, nicht umgedeutet",
+    K.lageFehler({ start_mm: { x: 0, y: 0 }, richtung: "x", orientierung: "+y", laenge_grid: 4 })
+      .some((m2) => /widerspricht der Achse/.test(m2)));
+
+  // Drehung: der eine Zyklus +x -> +y -> -x -> -y (dieselbe +90°-Drehung, die der
+  // Editor geometrisch ausfuehrt); zweimal 90° == wenden, viermal == Identitaet.
+  t("#84 90°-Zyklus +x→+y→−x→−y→+x",
+    K.dreheOrientierung("+x") === "+y" && K.dreheOrientierung("+y") === "-x"
+    && K.dreheOrientierung("-x") === "-y" && K.dreheOrientierung("-y") === "+x");
+  t("#84 zweimal 90° ist genau das Wenden",
+    K.ORIENTIERUNGEN.every((o) => K.dreheOrientierung(K.dreheOrientierung(o)) === K.wendeOrientierung(o)));
+  t("#84 Wenden ist eine Involution",
+    K.ORIENTIERUNGEN.every((o) => K.wendeOrientierung(K.wendeOrientierung(o)) === o));
+  t("#84 ungueltige Orientierung liefert null statt einer erfundenen",
+    K.dreheOrientierung("x") === null && K.wendeOrientierung(null) === null);
+
+  // Wandseiten: die EINE Kantenableitung. Konvention: Vorderseiten-Normale =
+  // Orientierung um +90° gedreht (in Blickrichtung rechts, y nach unten).
+  const s = (o, richtung) => K.wandSeiten({ start_mm: { x: richtung === "x" ? 0 : 62.5,
+    y: richtung === "x" ? 62.5 : 0 }, richtung, orientierung: o, laenge_grid: 4 });
+  t("#84 +x: Vorderseite ist die Kante mit groesserem y",
+    s("+x", "x").vorder.a.y === 125 && s("+x", "x").vorder.b.y === 125
+    && s("+x", "x").rueck.a.y === 0 && s("+x", "x").vorder.aussen.y === 1);
+  t("#84 -x: Vorder- und Rueckseite sind gegenueber +x getauscht",
+    s("-x", "x").vorder.a.y === 0 && s("-x", "x").rueck.a.y === 125);
+  t("#84 +y: Vorderseite ist die Kante mit kleinerem x",
+    s("+y", "y").vorder.a.x === 0 && s("+y", "y").rueck.a.x === 125
+    && s("+y", "y").vorder.aussen.x === -1);
+  t("#84 -y: Vorderseite ist die Kante mit groesserem x",
+    s("-y", "y").vorder.a.x === 125 && s("-y", "y").rueck.a.x === 0);
+  t("#84 die Seiten folgen der 90°-Drehung wie eine starre Drehung", (() => {
+    // Rigid-Rotation-Eigenschaft: die Vorderseiten-Normale der gedrehten
+    // Orientierung ist die um +90° gedrehte Normale der Ausgangsorientierung.
+    const n = (o) => s(o, o.slice(1)).vorder.aussen;
+    return K.ORIENTIERUNGEN.every((o) => {
+      const a = n(o), b2 = n(K.dreheOrientierung(o));
+      return b2.x === -a.y && b2.y === a.x;
+    });
+  })());
+  t("#84 wandSeiten nutzt die GELOESTE Position, wenn eine uebergeben wird", (() => {
+    const r = K.wandSeiten({ start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 4 },
+      { x: 250, y: 562.5 });
+    return r.vorder.a.x === 250 && r.vorder.a.y === 625;
+  })());
+  t("#84 unverortete Wand hat keine Seiten", K.wandSeiten(null) === null);
+  t("#84 widerspruechliche Orientierung liefert keine Seiten (gemeldet statt umgedeutet)",
+    K.wandSeiten({ start_mm: { x: 0, y: 0 }, richtung: "x", orientierung: "+y", laenge_grid: 4 }) === null);
+
+  // Seitendefinition: Kennbuchstabe UND Farbe — und keine [K-8]-Zustandsfarbe.
+  t("#84 Seiten tragen Kennbuchstaben V und R",
+    K.SEITEN.vorder.kuerzel === "V" && K.SEITEN.rueck.kuerzel === "R");
+  t("#84 Seitenfarben sind verschieden und keine Zustandsfarbe aus [K-8]",
+    K.SEITEN.vorder.farbe !== K.SEITEN.rueck.farbe
+    && !Object.values(K.FARBEN).includes(K.SEITEN.vorder.farbe)
+    && !Object.values(K.FARBEN).includes(K.SEITEN.rueck.farbe));
+
+  // Orientierung ist fuer Geometrie und Loeser wirkungslos.
+  t("#84 wandRechteck ist orientierungsunabhaengig", (() => {
+    const a = K.wandRechteck({ start_mm: { x: 0, y: 62.5 }, richtung: "x", orientierung: "+x", laenge_grid: 4 });
+    const b2 = K.wandRechteck({ start_mm: { x: 0, y: 62.5 }, richtung: "x", orientierung: "-x", laenge_grid: 4 });
+    return JSON.stringify(a) === JSON.stringify(b2);
+  })());
+  t("#84 verschiebe() fuehrt die Orientierung unveraendert mit", (() => {
+    const waende = [{ id: "a", lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", orientierung: "-x", laenge_grid: 4 } }];
+    const r = K.verschiebe(waende, [], "a", { x: 125, y: 0 });
+    return r.waende[0].lage.orientierung === "-x" && r.waende[0].lage.start_mm.x === 125;
+  })());
+}
+
+// --- #84 Projektmappe: Normalisierung, Validierung, Migration, Rundlauf ------
+// (Nachweise laut Arbeitspaket hier, weil die Lage-Mathematik hier wohnt.)
+
+{
+  const basis = () => {
+    let m = M.leereMappe("P", { gebaeude: "G", geschoss: "EG", hoehe_mm: 2600 });
+    const gs = m.gebaeude[0].geschosse[0].id;
+    return { m, gs };
+  };
+
+  t("#84 normWand fuellt den Altstand deterministisch auf +Achse auf",
+    M.normWand({ id: "a", lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 4 } })
+      .lage.orientierung === "+x");
+  t("#84 setzeWand nimmt eine passende negative Orientierung an", (() => {
+    const { m, gs } = basis();
+    const n = M.setzeWand(m, gs, { id: "a", name: "A",
+      lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", orientierung: "-x", laenge_grid: 4 } });
+    return M.findeWand(n, "a").wand.lage.orientierung === "-x" && M.validiereMappe(n).length === 0;
+  })());
+  t("#84 setzeWand weist eine zur Achse widerspruechliche Orientierung benannt ab", (() => {
+    const { m, gs } = basis();
+    try {
+      M.setzeWand(m, gs, { id: "a", name: "A",
+        lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", orientierung: "+y", laenge_grid: 4 } });
+      return false;
+    } catch (e) { return /widerspricht der Achse/.test(String(e.message)); }
+  })());
+  t("#84 validiereMappe meldet eine widerspruechliche Orientierung im Bestand", (() => {
+    const { m, gs } = basis();
+    const n = M.setzeWand(m, gs, { id: "a", name: "A",
+      lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", orientierung: "-x", laenge_grid: 4 } });
+    const kaputt = JSON.parse(JSON.stringify(n));
+    kaputt.gebaeude[0].geschosse[0].waende[0].lage.orientierung = "-y";
+    return M.validiereMappe(kaputt).some((f) => /widerspricht der Achse/.test(f));
+  })());
+  t("#84 Export-Rundlauf: mappeObjekt -> parseMappe erhaelt die Orientierung bit-genau", (() => {
+    const { m, gs } = basis();
+    const n = M.setzeWand(m, gs, { id: "a", name: "A",
+      lage: { start_mm: { x: 250, y: 1062.5 }, richtung: "x", orientierung: "-x", laenge_grid: 8 } });
+    const zurueck = M.parseMappe(JSON.stringify(M.mappeObjekt(n)));
+    const l = M.findeWand(zurueck, "a").wand.lage;
+    return l.orientierung === "-x" && l.start_mm.x === 250 && l.laenge_grid === 8;
+  })());
+  t("#84 Altstand-Datei ohne Orientierung wird beim Lesen normalisiert (verlustfrei)", (() => {
+    const { m, gs } = basis();
+    const n = M.setzeWand(m, gs, { id: "a", name: "A",
+      lage: { start_mm: { x: 0, y: 62.5 }, richtung: "y", laenge_grid: 4 } });
+    const roh = M.mappeObjekt(n);
+    delete roh.gebaeude[0].geschosse[0].waende[0].lage.orientierung;   // Altstand simulieren
+    const l = M.parseMappe(JSON.stringify(roh)).gebaeude[0].geschosse[0].waende[0].lage;
+    return l.orientierung === "+y" && l.start_mm.x === 0 && l.laenge_grid === 4;
+  })());
+  t("#84 Migration v1->v2 bleibt lesbar und normalisiert auf +Achse", (() => {
+    const v1 = { format: M.MAPPE_FORMAT, version: 1, projekt: { id: "p", name: "P", kopfdaten: {} },
+      gebaeude: [{ id: "g", name: "G", geschosse: [{ id: "gs", name: "EG", hoehe_mm: 2600, plan: null,
+        waende: [{ id: "a", name: "A", datei: null,
+          lage: { start_grid: { x: 2, y: 4 }, richtung: "x", laenge_grid: 6 } }],
+        bemassungen: [] }] }] };
+    const m = M.parseMappe(JSON.stringify(v1));
+    const l = M.findeWand(m, "a").wand.lage;
+    return l.start_mm.x === 250 && l.start_mm.y === 500 && l.orientierung === "+x"
+      && M.validiereMappe(m).length === 0;
+  })());
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

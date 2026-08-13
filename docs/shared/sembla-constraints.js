@@ -15,14 +15,26 @@
  * ganzzahlig, Kantenabstand zur Mittellinie ±62,5 mm) und damit in IEEE-754
  * exakt darstellbar; ein Rundungsdrift kann nicht entstehen.
  *
- * Lage einer Wand ([L-1], Fassung ab C3.2):
+ * Lage einer Wand ([L-1], Fassung ab C3.2; `orientierung` seit #84):
  *
- *   lage = { start_mm: {x, y}, richtung: "x"|"y", laenge_grid: n }
+ *   lage = { start_mm: {x, y}, richtung: "x"|"y",
+ *            orientierung: "+x"|"-x"|"+y"|"-y", laenge_grid: n }
  *   lage = null                      // unverortet
  *
  * `start_mm` ist der Ankerpunkt: er liegt auf der MITTELLINIE der Wand, am Ende
  * mit der kleineren Koordinate. Position in Vielfachen von 0,5 mm (s. `_istHalbe`),
  * Laenge im 125-mm-Raster, Breite konstant 125 mm.
+ *
+ * `orientierung` ist die GERICHTETE Wandorientierung (#84): die Achse aus
+ * `richtung` plus das Vorzeichen der Zeichenrichtung. Sie unterscheidet Vorder-
+ * und Rueckseite der Wand und liegt GENAU EINMAL hier in der kanonischen Lage —
+ * Geschosseditor und Lageplan leiten beide Aussenkanten ueber `wandSeiten()` ab.
+ * KONVENTION: in Blickrichtung der Orientierung liegt die VORDERSEITE RECHTS
+ * (Welt-/Papierkoordinaten, x nach rechts, y nach unten); ihre Normale ist die
+ * um +90° gedrehte Orientierung ((dx,dy) → (−dy,dx)). Fuer Geometrie, Loeser und
+ * Bemassung ist die Orientierung wirkungslos — sie erreicht weder `wandRechteck`
+ * noch `bezugsOffset`. Altstaende ohne das Feld werden beim Lesen deterministisch
+ * und verlustfrei auf die POSITIVE Richtung ihrer Achse normalisiert.
  *
  * Dieses Modul ist REIN und DOM-frei und importiert nichts. Es kennt weder
  * Projektmappe noch Speicher — es rechnet auf Listen von {id, lage} und
@@ -43,6 +55,25 @@ export const HALB_BREITE_MM = BREITE_MM / 2;
 
 /** Zulaessige Achsen ([K-1]). */
 export const ACHSEN = /** @type {ReadonlyArray<'x'|'y'>} */ (["x", "y"]);
+
+/**
+ * Die vier — und einzigen — gerichteten Wandorientierungen (#84). Die
+ * Achskomponente MUSS `lage.richtung` entsprechen; ein Widerspruch wird in
+ * `lageFehler` gemeldet, nie still umgedeutet.
+ */
+export const ORIENTIERUNGEN = /** @type {ReadonlyArray<'+x'|'-x'|'+y'|'-y'>} */ (
+  ["+x", "-x", "+y", "-y"]);
+
+/**
+ * Die beiden Wandseiten (#84) mit Kennbuchstabe und Kennfarbe — EINE Definition
+ * fuer Geschosseditor und Lageplan. Die Farben sind bewusst keine der
+ * Zustandsfarben aus [K-8], und die Kennzeichnung ist nie nur Farbe: der
+ * Kennbuchstabe steht immer dabei.
+ */
+export const SEITEN = Object.freeze({
+  vorder: Object.freeze({ kuerzel: "V", name: "Vorderseite", farbe: "#c2571a" }),
+  rueck: Object.freeze({ kuerzel: "R", name: "Rückseite", farbe: "#5b3fa8" }),
+});
 
 /** Die drei — und einzigen — Bezuege je Wand und Achse ([K-2]). */
 export const BEZUEGE = /** @type {ReadonlyArray<'min'|'mitte'|'max'>} */ (["min", "mitte", "max"]);
@@ -98,9 +129,17 @@ export function andereAchse(achse) {
 export function normLage(lage) {
   if (lage == null || typeof lage !== "object") return null;
   const s = lage.start_mm || {};
+  // Altstand ohne gerichtete Orientierung (#84): deterministisch und verlustfrei
+  // die POSITIVE Richtung der vorhandenen Achse — Altdaten trugen nie eine Seite,
+  // es geht also nichts verloren. Ein gesetzter Wert bleibt unangetastet und wird
+  // in `lageFehler` gegen die Achse geprueft, nie still umgedeutet.
+  const orientierung = (lage.orientierung == null && ACHSEN.includes(lage.richtung))
+    ? "+" + lage.richtung
+    : (lage.orientierung == null ? null : String(lage.orientierung));
   return {
     start_mm: { x: _zahlOderNull(s.x), y: _zahlOderNull(s.y) },
     richtung: lage.richtung,
+    orientierung,
     laenge_grid: _zahlOderNull(lage.laenge_grid),
   };
 }
@@ -124,6 +163,16 @@ export function lageFehler(lage, bezeichnung) {
   }
   if (!ACHSEN.includes(l.richtung)) {
     f.push(`${wo}Richtung muss „x“ oder „y“ sein (gefunden: ${l.richtung ?? "—"}) — [L-2].`);
+  }
+  // Gerichtete Orientierung (#84): nur die vier Werte, und die Achskomponente muss
+  // zur Richtung passen. Fehlt sie bei ungueltiger Richtung, genuegt der eine
+  // Richtungsfehler — normLage konnte dann keinen Standard bilden.
+  if (l.orientierung != null || ACHSEN.includes(l.richtung)) {
+    if (!ORIENTIERUNGEN.includes(l.orientierung)) {
+      f.push(`${wo}Orientierung muss „+x“, „-x“, „+y“ oder „-y“ sein (gefunden: ${l.orientierung ?? "—"}) — #84.`);
+    } else if (ACHSEN.includes(l.richtung) && l.orientierung.slice(1) !== l.richtung) {
+      f.push(`${wo}Orientierung „${l.orientierung}“ widerspricht der Achse „${l.richtung}“ — gemeldet, nicht umgedeutet (#84).`);
+    }
   }
   if (!_istGanzzahl(l.laenge_grid) || Number(l.laenge_grid) < 1) {
     f.push(`${wo}Länge muss ganzzahlig in Rastereinheiten und mindestens 1 sein (gefunden: ${l.laenge_grid ?? "—"}) — [L-1].`);
@@ -184,6 +233,74 @@ export function wandRechteck(lage, position) {
   return l.richtung === "x"
     ? { x_min: p.x, x_max: p.x + L, y_min: p.y - HALB_BREITE_MM, y_max: p.y + HALB_BREITE_MM }
     : { x_min: p.x - HALB_BREITE_MM, x_max: p.x + HALB_BREITE_MM, y_min: p.y, y_max: p.y + L };
+}
+
+// --- Gerichtete Orientierung und Wandseiten (#84) ---------------------------
+
+/** Einheitsvektor je Orientierung — Welt-mm, x nach rechts, y nach unten. */
+const _O_VEKTOR = Object.freeze({
+  "+x": Object.freeze({ x: 1, y: 0 }), "-x": Object.freeze({ x: -1, y: 0 }),
+  "+y": Object.freeze({ x: 0, y: 1 }), "-y": Object.freeze({ x: 0, y: -1 }),
+});
+
+/**
+ * Orientierung um +90° gedreht ((dx,dy) → (−dy,dx)): der Zyklus
+ * +x → +y → −x → −y → +x. GENAU diese Drehung fuehrt der Editor beim
+ * 90°-Drehen einer Wand aus — die physische Vorderseite folgt damit der Wand.
+ * Zweimal 90° laesst die Geometrie bit-genau stehen, tauscht aber — physikalisch
+ * korrekt — die Seiten (= `wendeOrientierung`).
+ * @param {any} orientierung @returns {'+x'|'-x'|'+y'|'-y'|null}
+ */
+export function dreheOrientierung(orientierung) {
+  const d = _O_VEKTOR[orientierung];
+  if (!d) return null;
+  const g = { x: -d.y, y: d.x };
+  return /** @type {any} */ (ORIENTIERUNGEN.find((o) => _O_VEKTOR[o].x === g.x && _O_VEKTOR[o].y === g.y) || null);
+}
+
+/**
+ * Orientierung um 180° gewendet — tauscht AUSSCHLIESSLICH Vorder- und
+ * Rueckseite; Achse, Anker und Laenge bleiben unberuehrt (#84).
+ * @param {any} orientierung @returns {'+x'|'-x'|'+y'|'-y'|null}
+ */
+export function wendeOrientierung(orientierung) {
+  return dreheOrientierung(dreheOrientierung(orientierung));
+}
+
+/**
+ * Die beiden LAENGSAUSSENKANTEN einer verorteten Wand mit ihrer V/R-Zuordnung —
+ * die EINE gemeinsame Ableitung fuer Geschosseditor und Lageplan (#84).
+ *
+ * Konvention (s. Kopfkommentar): die Vorderseiten-Normale ist die um +90°
+ * gedrehte Orientierung; in Blickrichtung liegt die Vorderseite damit rechts.
+ * `aussen` ist der Einheitsvektor von der Wand weg — fuer die Platzierung der
+ * Kennbuchstaben. Unverortete oder fehlerhafte Lagen liefern `null`: es wird
+ * keine Seite erfunden.
+ *
+ * @param {any} lage @param {{x:number,y:number}} [position]
+ * @returns {{orientierung:string,
+ *            vorder:{a:{x:number,y:number}, b:{x:number,y:number}, aussen:{x:number,y:number}},
+ *            rueck:{a:{x:number,y:number}, b:{x:number,y:number}, aussen:{x:number,y:number}}}|null}
+ */
+export function wandSeiten(lage, position) {
+  const l = normLage(lage);
+  if (!l || lageFehler(l).length) return null;
+  const r = wandRechteck(l, position);
+  if (!r) return null;
+  const d = _O_VEKTOR[l.orientierung];
+  const n = { x: -d.y, y: d.x };                 // Vorderseiten-Normale (+90°)
+  const kante = (v) => v.x > 0
+    ? { a: { x: r.x_max, y: r.y_min }, b: { x: r.x_max, y: r.y_max }, aussen: v }
+    : v.x < 0
+      ? { a: { x: r.x_min, y: r.y_min }, b: { x: r.x_min, y: r.y_max }, aussen: v }
+      : v.y > 0
+        ? { a: { x: r.x_min, y: r.y_max }, b: { x: r.x_max, y: r.y_max }, aussen: v }
+        : { a: { x: r.x_min, y: r.y_min }, b: { x: r.x_max, y: r.y_min }, aussen: v };
+  return {
+    orientierung: l.orientierung,
+    vorder: kante(n),
+    rueck: kante({ x: -n.x, y: -n.y }),
+  };
 }
 
 // --- Bemassungen ----------------------------------------------------------

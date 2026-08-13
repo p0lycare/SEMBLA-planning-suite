@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-09",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 84,
+    titel: "Geschosseditor und Lageplan kennzeichnen Vorder- und Rückseite jeder Wand an ihren Außenkanten",
+    testbitte: "Im Geschosseditor eine Wand in beliebiger Richtung zeichnen: die Längskanten tragen V und R; R dreht die Wand samt Vorderseite um 90°, „⇆ 180°“ (Umschalt+R) tauscht nur die Seiten, der Lageplan zeigt dieselben Kanten samt Legende.",
+  },
+  {
     id: "chg-20260813-08",
     datum: "2026-08-13",
     typ: "feature",
