@@ -10,8 +10,6 @@
      lange Bezeichner brechen um (overflow-wrap). Touch-Ziele >= 44 px. */
   body{overflow-x:hidden}
   .wrap{max-width:760px;margin:0 auto;padding:0 12px 40px}
-  .intro{color:var(--sb-muted);font-size:13px;margin:12px 0 10px;line-height:1.55}
-  .intro b{color:var(--sb-ink)}
 
   /* Sticky Segmentumschalter — klebt unter der Kopfleiste (die ist selbst sticky). */
   .segwrap{position:sticky;top:0;z-index:40;background:var(--sb-bg);
@@ -140,16 +138,6 @@
 </head>
 <body>
 <div class="wrap">
-  <p class="intro"><b>Umsetzungsplan, Änderungen &amp; Workflow-Retros.</b> Im
-    <b>Umsetzungsplan</b> steht, was als Nächstes gebaut wird — welche Entscheidungen ich
-    von dir brauche, welches Issue ich danach umsetze und warum, was in der Warteschlange
-    steht und was blockiert ist. Unter <b>Was ist neu?</b> steht, was sich zuletzt geändert
-    hat. Die <b>Workflow-Retros</b> zeigen, wie die bereits veröffentlichten Umsetzungsruns
-    gelaufen sind: Gesamtlage, Aufwand, Tests und die Erkenntnisse je Run. Alle drei sind im
-    Repo versionierte Dokumente; entschieden wird im jeweiligen GitHub-Issue. Diese Seite ist
-    reine Anzeige: sie lädt nichts nach, speichert nichts, liest kein Wandelement und braucht
-    keine Anmeldung.</p>
-
   <div class="segwrap">
     <div class="seg" role="tablist" aria-label="Ansicht wählen">
       <button id="seg-plan" role="tab" type="button">Umsetzungsplan</button>

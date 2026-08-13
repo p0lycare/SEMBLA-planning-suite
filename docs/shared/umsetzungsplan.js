@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "96bb6eff",
+  "signatur": "b57eb384",
   "entscheidungen": [
     {
       "issue": 41,
@@ -93,15 +93,6 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
-    },
-    {
-      "issue": 72,
-      "titel": "Modultexte: einleitende Beschreibungen der Module 8 und 9 ersatzlos entfernen",
-      "prio": "low",
-      "status": "in progress",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": false
     },
     {
       "issue": 68,

@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-06",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 72,
+    titel: "Die Module 8 und 9 starten ohne einleitenden Beschreibungstext direkt mit ihren Bedien- und Ergebnisbereichen",
+    testbitte: "Die Module 8 und 9 nacheinander öffnen: Unter der Kopfleiste beginnt jede Seite unmittelbar mit ihren Bedienelementen, alle Funktionen, Hinweise und Druckausgaben im Seiteninhalt bleiben unverändert.",
+  },
+  {
     id: "chg-20260813-05",
     datum: "2026-08-13",
     typ: "feature",

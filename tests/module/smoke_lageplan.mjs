@@ -90,6 +90,14 @@ ok('[N-1] die Modulübersicht in Modul 0 beschreibt Modul 9',
 ok('[N-1] die Seite bietet keine Bearbeitung an (kein Werkzeug, kein Zeichnen)',
   !/data-wz=|Wand zeichnen|Bemaßen|setzeBemassung|verorteWand/.test(html));
 
+// --- 0b) #72: kein einleitender Beschreibungstext -------------------------
+// \b faengt auch `.intro b{…}` und den frueheren toten `.intro`-Selektor der
+// Druckregel — nicht nur `.intro{`.
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\b/.test(html));
+ok('[#72] die Druckregel blendet Navigation und Controls weiterhin aus',
+  /\.sb-nav,\.controls\{display:none!important\}/.test(html));
+
 // --- 1) Startzustand ohne Projekt ----------------------------------------
 eval(script);
 globalThis.window.__lpInit();

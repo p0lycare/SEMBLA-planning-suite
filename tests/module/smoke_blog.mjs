@@ -89,6 +89,10 @@ binde(ARTEFAKT);
 new Function(script)();
 globalThis.window.__blogInit();
 
+// --- 0) #72: kein einleitender Beschreibungstext -------------------------
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\b/.test(html));
+
 // --- 1) Startzustand: der Umsetzungsplan ist offen -----------------------
 ok("Startansicht ist der Umsetzungsplan", A().ansicht === "plan"
   && $("view-plan").className === "" && $("view-neu").className === "verborgen"
