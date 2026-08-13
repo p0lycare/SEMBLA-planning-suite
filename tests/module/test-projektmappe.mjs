@@ -383,6 +383,33 @@ t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
   const ohneWand = M.bemassungenOhneWand(mitBm, g, "wB");
   t("[K-10] Masse einer entfernten Wand werden mit entfernt und benannt",
     ohneWand.entfernt.join(",") === "bm-1" && M.bemassungen(ohneWand.mappe, g).length === 0);
+  // #74: Die Bereinigung trifft GENAU die Masse mit der Wand als `von` ODER `bis`
+  // — ein Mass zwischen zwei fremden Waenden bleibt stehen, und ein gleichnamiger
+  // Verweis in einem ANDEREN Geschoss wird nicht angefasst (geschoss-scoped).
+  {
+    let m74 = M.setzeWand(mitBm, g, { id: "wC", name: "C",
+      lage: { start_mm: { x: 6000, y: 0 }, richtung: "x", laenge_grid: 8 } });
+    m74 = M.setzeBemassung(m74, g, { id: "bm-von", achse: "x",
+      von: { wand: "wC", bezug: "min" }, bis: { wand: "wA", bezug: "max" }, mass_mm: 5000 });
+    m74 = M.setzeBemassung(m74, g, { id: "bm-fremd2", achse: "x",
+      von: { wand: "wB", bezug: "max" }, bis: { wand: "wC", bezug: "min" }, mass_mm: 2000 });
+    const og74 = M.fuegeGeschossHinzu(m74, m74.gebaeude[0].id, "OG74", null);
+    m74 = og74.mappe;
+    const g2 = og74.id;
+    m74 = M.setzeWand(m74, g2, { id: "wA", name: "A oben",
+      lage: { start_mm: { x: 0, y: 0 }, richtung: "x", laenge_grid: 8 } });
+    m74 = M.setzeBemassung(m74, g2, { id: "bm-og", achse: "x",
+      von: null, bis: { wand: "wA", bezug: "min" }, mass_mm: 0 });
+    const r74 = M.bemassungenOhneWand(m74, g, "wA");
+    t("#74 [K-10] entfernt werden Masse mit der Wand als `von` UND als `bis`",
+      r74.entfernt.sort().join(",") === "bm-1,bm-von");
+    t("#74 [K-10] ein Mass zwischen fremden Waenden bleibt unberuehrt",
+      M.bemassungen(r74.mappe, g).map((b) => b.id).join(",") === "bm-fremd2");
+    t("#74 [K-10] ein anderes Geschoss bleibt vollstaendig unberuehrt (geschoss-scoped)",
+      M.bemassungen(r74.mappe, g2).map((b) => b.id).join(",") === "bm-og");
+    t("#74 [K-10] bemassungenOhneWand ist rein — die Ausgangsmappe behaelt alle Masse",
+      M.bemassungen(m74, g).length === 3);
+  }
   t("[K-10] Bemassungen ueberstehen den Datei-Roundtrip",
     M.bemassungen(M.parseMappe(JSON.stringify(M.mappeObjekt(mitBm))), g)[0].mass_mm === 2000);
   t("[K-6] eine widerspruechliche Bemassung ist KEIN Validierungsfehler (sie wird beim Lösen gemeldet)",

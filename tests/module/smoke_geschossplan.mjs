@@ -2656,6 +2656,149 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     posVon() === vorPos59 && bm51(mNeu.id).mass_mm === 2500);
 }
 
+// --- #74: Wand duplizieren und loeschen — die echten Editoraktionen ---------
+{
+  // Kontrollierter Stand: eigenes Projekt/Geschoss, drei gezeichnete Waende,
+  // zwei Masse (A–B und B–C) — B–C muss das Loeschen von A ueberleben.
+  const mappe74 = store.fuegeProjektHinzu('Projekt 74', { geschoss: 'EG74', hoehe_mm: 2600 });
+  const gs74 = MAPPE.alleGeschosse(mappe74)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs74);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const neueste = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });      const idA74 = neueste().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 }); const idB74 = neueste().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2040, y: 4060 }); const idC74 = neueste().id;
+  await warte();
+  GP.werkzeug('bemassen');
+  GP.tippe(GP.bezugsPunkt(idA74, 'y', 'mitte'));
+  GP.tippe(GP.bezugsPunkt(idB74, 'y', 'mitte'));
+  inlineEnter(2000);
+  GP.werkzeug('bemassen');
+  GP.tippe(GP.bezugsPunkt(idB74, 'y', 'mitte'));
+  GP.tippe(GP.bezugsPunkt(idC74, 'y', 'mitte'));
+  inlineEnter(2000);
+  await warte();
+  const anMass = (id) => GP.bemassungen().filter(b =>
+    (b.von && b.von.wand === id) || (b.bis && b.bis.wand === id)).map(b => b.id);
+  const bmAB = GP.bemassungen().find(b => anMass(idA74).includes(b.id));
+  const bmBC = GP.bemassungen().find(b => !anMass(idA74).includes(b.id));
+  ok('#74 Vorbereitung: drei verortete Waende, Mass an A–B und Mass an B–C',
+    !!bmAB && !!bmBC && GP.bemassungen().length === 2
+    && MAPPE.findeWand(store.holeMappe(), idA74).wand.lage !== null);
+
+  // (a) Duplizieren: tiefe, unabhaengige Kopie — ausgewaehlt und aktiv, ein Schritt.
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1500, y: 62.5 });                       // Wand A aktiv
+  store.mergeEingaben('statik', { merkmal: 'original' }, idA74);
+  const nameA74 = store.holeElement(idA74).name;
+  const elVor74 = JSON.stringify(store.holeElement(idA74));
+  const bemVor74 = JSON.stringify(GP.bemassungen());
+  const idsVor74 = new Set(store.listeElemente().map(e => e.id));
+  const undoDupl = GP.undoStand.undo;
+  $('gp-dupl').dispatch('click');
+  await warte();
+  const kopie74 = store.listeElemente().find(e => !idsVor74.has(e.id)) || null;
+  const kopieEintrag = kopie74 ? MAPPE.findeWand(store.holeMappe(), kopie74.id) : null;
+  ok('#74 Duplizieren legt GENAU EINE Kopie mit neuer id und unterscheidbarem Namen an',
+    !!kopie74 && kopie74.id !== idA74 && kopie74.name === `${nameA74} (Kopie)`
+    && store.listeElemente().length === idsVor74.size + 1);
+  ok('#74 die Kopie traegt Wandelement UND Eingaben der Ausgangswand',
+    !!kopie74 && JSON.stringify(kopie74.wandelement) === JSON.stringify(store.holeElement(idA74).wandelement)
+    && kopie74.eingaben?.statik?.merkmal === 'original');
+  ok('#74 die Kopie steht im aktiven Geschoss mit lage null — ohne kopierte Masse',
+    !!kopieEintrag && kopieEintrag.geschoss.id === gs74 && kopieEintrag.wand.lage === null
+    && anMass(kopie74.id).length === 0 && JSON.stringify(GP.bemassungen()) === bemVor74);
+  ok('#74 die Kopie ist danach ausgewaehlt, aktiv und kanonisch aktiv gesetzt',
+    GP.zustand.aktiv === kopie74.id && GP.zustand.auswahl.includes(kopie74.id)
+    && store.aktivId() === kopie74.id);
+  ok('#74 die Ausgangswand bleibt bit-genau stehen (Wandspeicher, Lage, Masse)',
+    JSON.stringify(store.holeElement(idA74)) === elVor74
+    && MAPPE.findeWand(store.holeMappe(), idA74).wand.lage.laenge_grid === 24);
+  ok('#74 Duplizieren ist GENAU EIN Undo-Schritt', GP.undoStand.undo === undoDupl + 1);
+
+  // Unabhaengige Bearbeitung: die Kopie aendern laesst die Quelle unberuehrt.
+  store.mergeEingaben('statik', { merkmal: 'kopie' }, kopie74.id);
+  store.speichere(kopie74.name, buildWall(kopie74.name, 2000, 2600, []), kopie74.id);
+  ok('#74 die Kopie ist unabhaengig bearbeitbar — die Quelle bleibt unveraendert',
+    store.holeElement(kopie74.id).wandelement.length_mm === 2000
+    && store.holeElement(idA74).wandelement.length_mm === 3000
+    && store.holeElement(idA74).eingaben.statik.merkmal === 'original');
+
+  // Undo/Redo des Duplizierens: Wandspeicher, Mappe und Aktiv-Zeiger vollstaendig.
+  GP.undo();
+  await warte();
+  ok('#74 Undo nimmt die Kopie vollstaendig zurueck und stellt den Aktiv-Zeiger wieder her',
+    store.holeElement(kopie74.id) === null && !MAPPE.findeWand(store.holeMappe(), kopie74.id)
+    && store.aktivId() === idA74 && GP.undoStand.undo === undoDupl && GP.undoStand.redo === 1);
+  GP.redo();
+  await warte();
+  ok('#74 Redo legt die Kopie unter DERSELBEN id wieder an — Eintrag mit lage null, Zeiger auf der Kopie',
+    store.holeElement(kopie74.id) !== null
+    && MAPPE.findeWand(store.holeMappe(), kopie74.id).wand.lage === null
+    && store.aktivId() === kopie74.id && GP.undoStand.undo === undoDupl + 1);
+
+  // (b) Loeschen: erst die abgebrochene Bestaetigung — nichts aendert sich.
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1500, y: 62.5 });                       // Wand A aktiv
+  confirmAntwort = false;
+  const standVor74 = { el: localStorage.getItem('sembla:elemente'),
+    mappe: localStorage.getItem('sembla:projekte'),
+    undo: GP.undoStand.undo, redo: GP.undoStand.redo, aktiv: store.aktivId() };
+  $('gp-wand-loeschen').dispatch('click');
+  await warte();
+  ok('#74 ein abgebrochener Loeschdialog aendert weder Daten noch Undo/Redo noch Zeiger',
+    localStorage.getItem('sembla:elemente') === standVor74.el
+    && localStorage.getItem('sembla:projekte') === standVor74.mappe
+    && GP.undoStand.undo === standVor74.undo && GP.undoStand.redo === standVor74.redo
+    && store.aktivId() === standVor74.aktiv && GP.zustand.aktiv === idA74
+    && /abgebrochen/.test($('gp-msg').textContent));
+
+  // (c) Bestaetigtes Loeschen: gezielte Bereinigung, ein Schritt, alles benannt.
+  confirmAntwort = true;
+  const undoDel = GP.undoStand.undo;
+  const elA74 = JSON.parse(elVor74);
+  $('gp-wand-loeschen').dispatch('click');
+  await warte();
+  ok('#74 Loeschen entfernt GENAU Wand A aus Wandspeicher und Projektmappe',
+    store.holeElement(idA74) === null && !MAPPE.findeWand(store.holeMappe(), idA74)
+    && store.holeElement(idB74) !== null && store.holeElement(idC74) !== null
+    && !!MAPPE.findeWand(store.holeMappe(), idB74) && !!MAPPE.findeWand(store.holeMappe(), idC74)
+    && store.holeElement(kopie74.id) !== null);
+  ok('#74 GENAU das anhaengende Mass A–B geht mit; das fremde Mass B–C bleibt',
+    GP.bemassungen().map(b => b.id).join(',') === bmBC.id
+    && !GP.bemassungen().some(b => b.id === bmAB.id));
+  ok('#74 der zeigende Aktiv-Zeiger ist bereinigt, die Wand verschwindet aus Auswahl und SVG',
+    store.aktivId() === null && GP.zustand.aktiv === null
+    && !GP.zustand.auswahl.includes(idA74) && !GP.svg.includes(`data-wand="${idA74}"`));
+  ok('#74 die Meldung benennt das entfernte Mass statt still zu bereinigen ([L-4])',
+    new RegExp(bmAB.id).test($('gp-msg').textContent));
+  ok('#74 Loeschen ist GENAU EIN Undo-Schritt', GP.undoStand.undo === undoDel + 1);
+
+  // Undo/Redo des Loeschens: Wandspeicher, Mappe, Masse und Zeiger vollstaendig.
+  GP.undo();
+  await warte();
+  const wiederA = store.holeElement(idA74);
+  ok('#74 Undo stellt Wand A unter alter id wieder her — Wandelement und Eingaben inhaltsgleich',
+    !!wiederA && JSON.stringify(wiederA.wandelement) === JSON.stringify(elA74.wandelement)
+    && wiederA.eingaben?.statik?.merkmal === 'original');
+  ok('#74 Undo bringt Geschosseintrag samt Lage UND das entfernte Mass zurueck; Zeiger wieder auf A',
+    MAPPE.findeWand(store.holeMappe(), idA74).wand.lage.laenge_grid === 24
+    && GP.bemassungen().some(b => b.id === bmAB.id) && GP.bemassungen().length === 2
+    && store.aktivId() === idA74 && GP.undoStand.undo === undoDel && GP.undoStand.redo === 1);
+  GP.redo();
+  await warte();
+  ok('#74 Redo loescht erneut vollstaendig — Element, Eintrag, Mass A–B und Zeiger; B–C bleibt',
+    store.holeElement(idA74) === null && !MAPPE.findeWand(store.holeMappe(), idA74)
+    && GP.bemassungen().map(b => b.id).join(',') === bmBC.id
+    && store.aktivId() === null && GP.undoStand.undo === undoDel + 1);
+}
+
 // --- #43: Realer Pfad — der Reiter 0,5 fuehrt zum Geschossplaner des AKTIVEN Geschosses
 {
   const zeiger43 = () =>

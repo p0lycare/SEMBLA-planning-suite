@@ -682,3 +682,41 @@ wird nichts.
 - **Tests.** `smoke_geschossplan.mjs` fährt Zeichnen, Endgriff, Längenmaß und Undo/Redo über die
   echten Handler und vergleicht nach jedem Schritt Maß, Lage, Wandelementlänge und eine frisch
   gerechnete längenabhängige Ableitung; zusätzlich werden alle vier Abweisungsgründe geprüft.
+
+---
+
+## 14. Wände duplizieren und löschen (Issue #74, 2026-08-13)
+
+Issue #74 ändert **keine** [K]-Regel, keine Constraint-Mathematik, keine Kollisions- oder
+Bemaßungswertregel und keine Format-/Schemaversion. Wandspeicher und Projektmappe bleiben zwei
+getrennte Speicher; der Editor koordiniert beide je Aktion als **einen** Undo/Redo-Schritt.
+
+- **Duplizieren ist eine tiefe, unabhängige Kopie.** `store.dupliziere()` kopiert Wandelement und
+  sämtliche wandbezogenen `eingaben` unter **neuer stabiler id**; der Name ist unterscheidbar
+  („… (Kopie)“, notfalls nummeriert) und bleibt ein umbenennbarer Vorschlag. Die Kopie wird im
+  **aktiven Geschoss** mit `lage: null` eingetragen — gezeichnet ist sie noch nirgends ([L-4]),
+  verortet wird sie wie jede unverortete Wand über „Wand zeichnen“. Bemaßungen hängen an der id
+  der Ausgangswand und wandern **konstruktiv nicht** mit; die Ausgangswand bleibt samt Lage und
+  Maßen bit-genau stehen. Danach ist die Kopie ausgewählt und aktiv und unabhängig bearbeitbar.
+- **Löschen fragt erst, schreibt dann.** Der Knopf „Wand löschen“ verlangt eine ausdrückliche
+  Bestätigung, **bevor** irgendetwas geschrieben oder gebucht wird — ein Abbruch ändert weder
+  Daten noch Undo/Redo-Stapel. Bestätigt entfernt `store.loesche()` genau die gewählte Wand aus
+  Wandspeicher und Projektmappe **und** genau die Bemaßungen ihres Geschosses, die sie als `von`
+  oder `bis` führen (`bemassungenOhneWand`, bislang ohne Produktions-Aufrufer) — die entfernten
+  Maße werden **benannt**, nie still bereinigt ([L-4]). Ein auf die Wand zeigender Aktiv-Zeiger
+  wird aufgehoben. Fremde Wände, fremde Maße und andere Geschosse bleiben unberührt; auch ein
+  verwaister Eintrag lässt sich so aufräumen (dann geht nur der Eintrag samt Maßen).
+- **Beides atomar rückgängig.** Ein Undo-Schritt kann seit #74 zusätzlich die von ihm
+  **gelöschten** Wandelemente (Momentaufnahme, Rückgängig legt sie unter alter id wieder an,
+  Wiederholen löscht sie erneut) und die **Aktiv-Zeiger** vor/nach dem Schritt tragen — nur für
+  Schritte, die den Zeiger selbst bewegen. Duplizieren und bestätigtes Löschen stellen per
+  Undo/Redo Wandspeicher, Projektmappe und Aktiv-Zeiger vollständig wieder her. Delete/Backspace
+  löschen weiterhin **nur** ein ausgewähltes Maß, nie eine Wand; eine Mehrfachauswahl wird nicht
+  gemeinsam dupliziert oder gelöscht — beide Aktionen wirken auf die **aktive** Wand.
+- **Tests.** `smoke_geschossplan.mjs` bedient beide Knöpfe über die echten Handler an einer real
+  gespeicherten und verorteten, bemaßten Wand: Kopie (neue id, Name, kopierte Eingaben, Eintrag
+  mit `lage: null`, keine kopierten Maße, unabhängige Bearbeitung), Abbruch ohne Änderung,
+  bestätigtes Löschen mit gezielter Referenzbereinigung sowie je genau ein Undo/Redo-Schritt
+  inklusive localStorage-, Mappen-, Zeiger- und SVG-Prüfung. `smoke_storage.mjs` prüft
+  `dupliziere()` und die Bemaßungsbereinigung von `loesche()` auf Speicherebene,
+  `test-projektmappe.mjs` die Randfälle von `bemassungenOhneWand`.

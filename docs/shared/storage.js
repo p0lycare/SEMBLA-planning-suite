@@ -61,7 +61,7 @@
 
 import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rolle,
          rollenIds, rollenVonModul, validiereKatalog } from "./sembla-katalog.js";
-import { alleGeschosse, alleWaende, benenneUm as benenneInMappeUm,
+import { alleGeschosse, alleWaende, bemassungenOhneWand, benenneUm as benenneInMappeUm,
          entferneWand as entferneWandAusMappe,
          findeGebaeude, findeGeschoss, findeWand, kopfdaten as mappeKopfdaten,
          leereMappe, mappeObjekt, migriereMappe, neueId as neueMappenId, normMappe, parseMappe, pruefeReferenzen,
@@ -437,18 +437,48 @@ export function speichereAktiv(wandelement) {
  * Eintrag mitgeloescht: das Loeschen ist eine ausdrueckliche Nutzeraktion, und
  * ein zurueckbleibender Eintrag waere dauerhaft verwaist ([L-4]). Der umgekehrte
  * Weg gilt NICHT — ein verwaister Eintrag loescht nie ein Wandelement.
+ *
+ * Mit dem Eintrag gehen auch GENAU die Bemassungen SEINES Geschosses, die die
+ * Wand als Bezug fuehren (#74): ein Mass ohne Bezugspunkt waere stiller Muell.
+ * Fremde Waende, fremde Masse und andere Geschosse bleiben unberuehrt; die
+ * Kennungen der entfernten Masse werden zurueckgegeben, damit der Aufrufer sie
+ * BENENNEN kann statt still zu bereinigen ([L-4]/[P-9]).
  * @param {string} id
+ * @returns {{bemassungen:string[]}} Kennungen der mit entfernten Bemassungen
  */
 export function loesche(id) {
   const map = _lesenMap();
-  if (!(id in map)) return;
+  if (!(id in map)) return { bemassungen: [] };
   delete map[id];
   _schreibenMap(map);
   if (aktivId() === id) setzeAktiv(null);
+  let entfernt = [];
   try {
     const ort = wandVerortung(id);
-    if (ort) setzeMappe(entferneWandAusMappe(ort.mappe, id));
+    if (ort) {
+      const r = bemassungenOhneWand(ort.mappe, ort.geschoss.id, id);
+      entfernt = r.entfernt;
+      setzeMappe(entferneWandAusMappe(r.mappe, id));
+    }
   } catch { /* Mappe kaputt/fehlend: das Wandelement ist trotzdem geloescht */ }
+  return { bemassungen: entfernt };
+}
+
+/**
+ * Wandelement duplizieren (#74): tiefe, unabhaengige Kopie von Wandelement und
+ * saemtlichen wandbezogenen `eingaben` unter NEUER stabiler id. Die Kopie wird
+ * hier NICHT verortet und NICHT aktiv gesetzt — sie traegt keinerlei Lage- oder
+ * Bemassungsbeziehung der Ausgangswand (die haengen an deren id in der Mappe),
+ * und die Ausgangswand bleibt bit-genau unveraendert.
+ * @param {string} id Kennung der Ausgangswand
+ * @param {string} [name] Anzeigename der Kopie (Vorgabe: „<Name> (Kopie)“)
+ * @returns {string} die id der Kopie
+ */
+export function dupliziere(id, name) {
+  const quelle = _lesenMap()[id];
+  if (!quelle) throw new Error(`Wandelement „${id}“ gibt es nicht.`);
+  const klon = (x) => (x == null ? undefined : JSON.parse(JSON.stringify(x)));
+  return speichere(name || `${quelle.name} (Kopie)`, klon(quelle.wandelement), undefined, klon(quelle.eingaben));
 }
 
 /**

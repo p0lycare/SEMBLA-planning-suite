@@ -712,6 +712,62 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     store.aktivesProjektId() === null && store.aktivesGeschossId() === null);
 }
 
+// 15) #74: dupliziere() und loesche() mit Bemassungsbereinigung --------------
+{
+  const M = await import("../../docs/shared/sembla-projektmappe.js");
+  const p74 = store.fuegeProjektHinzu("Projekt 74", { geschoss: "EG74", hoehe_mm: 2600 });
+  const g74 = M.alleGeschosse(p74)[0].geschoss.id;
+  store.setzeAktivesGeschoss(g74);
+
+  const idQ = store.speichere("Quelle", buildWall("Quelle", 3000, 2600, []));
+  store.mergeEingaben("statik", { merkmal: "quelle" }, idQ);
+  store.verorteWand(idQ, g74, { lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 24 } });
+  const idN = store.speichere("Nachbar", buildWall("Nachbar", 2000, 2600, []));
+  store.verorteWand(idN, g74, { lage: { start_mm: { x: 500, y: 2062.5 }, richtung: "x", laenge_grid: 16 } });
+  // Ein Mass haengt an der Quelle, eines NUR am Nachbarn — Letzteres muss das
+  // Loeschen der Quelle ueberleben (kein fremdes Mass wird angefasst).
+  store.aendereMappe((m) => M.setzeBemassung(m, g74, {
+    id: "bm-quelle", achse: "y", von: { wand: idQ, bezug: "mitte" }, bis: { wand: idN, bezug: "mitte" }, mass_mm: 2000,
+  }));
+  store.aendereMappe((m) => M.setzeBemassung(m, g74, {
+    id: "bm-nachbar", achse: "x", von: null, bis: { wand: idN, bezug: "min" }, mass_mm: 500,
+  }));
+
+  // --- dupliziere() ---------------------------------------------------------
+  const idK = store.dupliziere(idQ, "Quelle (Kopie)");
+  const kopie = store.holeElement(idK);
+  t("#74 dupliziere: NEUE stabile id und unterscheidbarer Name",
+    typeof idK === "string" && idK !== idQ && kopie.name === "Quelle (Kopie)");
+  t("#74 dupliziere: Wandelement und Eingaben sind inhaltsgleich kopiert",
+    JSON.stringify(kopie.wandelement) === JSON.stringify(store.holeElement(idQ).wandelement)
+    && kopie.eingaben?.statik?.merkmal === "quelle");
+  t("#74 dupliziere: die Kopie ist unverortet und traegt keine Beziehungen",
+    store.wandVerortung(idK) === null
+    && !JSON.stringify(M.bemassungen(store.holeMappe(), g74)).includes(idK));
+  store.mergeEingaben("statik", { merkmal: "kopie" }, idK);
+  store.speichere("Quelle (Kopie)", buildWall("Quelle (Kopie)", 2000, 2600, []), idK);
+  t("#74 dupliziere: die Kopie ist unabhaengig — die Quelle bleibt bit-genau stehen",
+    store.holeElement(idQ).eingaben.statik.merkmal === "quelle"
+    && store.holeElement(idQ).wandelement.length_mm === 3000
+    && store.holeElement(idK).wandelement.length_mm === 2000);
+  t("#74 dupliziere: eine unbekannte Quelle wird abgewiesen",
+    (() => { try { store.dupliziere("gibtsnicht"); return false; } catch { return true; } })());
+
+  // --- loesche() mit Bemassungsbereinigung ----------------------------------
+  store.setzeAktiv(idQ);
+  const erg74 = store.loesche(idQ);
+  t("#74 loesche: GENAU das anhaengende Mass wird entfernt und benannt",
+    erg74.bemassungen.join(",") === "bm-quelle"
+    && M.bemassungen(store.holeMappe(), g74).map((b) => b.id).join(",") === "bm-nachbar");
+  t("#74 loesche: Wandelement und Geschosseintrag sind weg, der Nachbar bleibt",
+    store.holeElement(idQ) === null && store.wandVerortung(idQ) === null
+    && store.holeElement(idN) !== null && store.wandVerortung(idN) !== null);
+  t("#74 loesche: der zeigende Aktiv-Zeiger ist bereinigt", store.aktivId() === null);
+  t("#74 loesche: unbekannte id aendert nichts und meldet nichts",
+    store.loesche("gibtsnicht").bemassungen.length === 0
+    && M.bemassungen(store.holeMappe(), g74).length === 1);
+}
+
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-07",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 74,
+    titel: "Im Geschosseditor lassen sich Wände als unabhängige Kopie duplizieren und nach Bestätigung vollständig löschen",
+    testbitte: "Im Geschosseditor eine Wand auswählen: „Duplizieren“ legt eine unverortete Kopie mit neuem Namen an, „Wand löschen“ fragt nach und entfernt die Wand samt anhängender Maße; beides lässt sich mit Strg+Z rückgängig machen.",
+  },
+  {
     id: "chg-20260813-06",
     datum: "2026-08-13",
     typ: "feature",

@@ -181,8 +181,10 @@
             <button class="btn-s" id="gp-undo" disabled title="Rückgängig (Strg+Z) — nur Lagen und Bemaßungen ([K-10])">↶</button>
             <button class="btn-s" id="gp-redo" disabled title="Wiederholen (Strg+Umschalt+Z)">↷</button>
             <button class="btn-s" id="gp-drehen" disabled title="Aktive Wand um 90° um ihre Min-Ecke drehen (R). Gesperrt, sobald ein Maß an der Wand hängt.">⟳</button>
+            <button class="btn-s" id="gp-dupl" disabled title="Aktive Wand duplizieren (#74) — unabhängige Kopie von Wandelement und Eingaben unter neuem Namen, unverortet im aktiven Geschoss eingetragen; Bemaßungen wandern nicht mit">⧉ Duplizieren</button>
             <span class="trenner"></span>
             <button class="btn-d" id="gp-lage-weg" disabled title="Lage der aktiven Wand aufheben — die Wand bleibt im Geschoss eingetragen ([L-4])">Lage aufheben</button>
+            <button class="btn-d" id="gp-wand-loeschen" disabled title="Aktive Wand nach Bestätigung vollständig löschen (#74) — Wandelement, Geschosseintrag und genau die Maße dieses Geschosses, die an der Wand hängen; rückgängig mit Strg+Z">Wand löschen</button>
           </div>
           <div class="gp-ort" id="gp-ort">–</div>
         </div>
@@ -512,9 +514,14 @@ function elementStand(id){
  * Einen abgeschlossenen Schritt buchen. `vor` ist der Stand VOR der Änderung,
  * `angelegt` sind die Wandelemente, die dieser Schritt selbst erzeugt hat,
  * `vorher` die Momentaufnahmen der Wandelemente, die er GEÄNDERT hat (Länge, #56).
+ * `extra` erweitert den Schritt für Duplizieren/Löschen (#74):
+ *  - `geloescht`: Momentaufnahmen der Wandelemente, die dieser Schritt GELÖSCHT
+ *    hat — Rückgängig legt sie wieder an, Wiederholen löscht sie erneut;
+ *  - `aktivVor`/`aktivNach`: der Aktiv-Zeiger vor und nach dem Schritt — nur für
+ *    Schritte, die ihn selbst bewegen; alle anderen lassen ihn unberührt.
  * Eine neue Änderung verwirft den Wiederholen-Stapel.
  */
-function buchen(vor, angelegt, vorher){
+function buchen(vor, angelegt, vorher, extra){
   const ids = angelegt || [];
   const alt = (vorher || []).filter(Boolean);
   GP.undo.push({
@@ -523,6 +530,7 @@ function buchen(vor, angelegt, vorher){
     vorher: alt,
     // Zustand DANACH für alles, was dieser Schritt angelegt ODER geändert hat.
     elemente: [...ids, ...alt.map(e => e.id)].map(elementStand).filter(Boolean),
+    ...(extra || {}),
   });
   if (GP.undo.length > UNDO_MAX) GP.undo.shift();
   GP.redo = [];
@@ -542,16 +550,23 @@ function undo(){
   if (!e) { zeige('Nichts rückgängig zu machen.', true); return; }
   // Erst das in diesem Schritt angelegte Wandelement, dann der Mappenstand davor.
   for (const id of e.angelegt) { try { store.loesche(id); } catch { /* schon weg */ } }
+  // Ein von diesem Schritt GELÖSCHTES Wandelement kommt unter seiner alten,
+  // stabilen id zurück (#74) — bevor die Mappe seinen Eintrag wieder referenziert.
+  for (const el of (e.geloescht || [])) store.speichere(el.name, el.wandelement, el.id, el.eingaben);
   try { wendeStandAn(e.vor); }
   catch (err) { GP.undo.push(e); zeige('Nicht rückgängig gemacht: ' + fehlerText(err), false); return; }
   // Geänderte Wandelemente auf ihren Stand davor zurück — Lage und Wandelement
   // gehören zu EINEM Bedienvorgang und werden gemeinsam zurückgenommen (#56).
   for (const el of (e.vorher || [])) store.speichere(el.name, el.wandelement, el.id, el.eingaben);
+  // Hat der Schritt den Aktiv-Zeiger bewegt (#74), kommt auch der zurück —
+  // erst jetzt, denn [L-10] verlangt den wiederhergestellten Geschosseintrag.
+  if ('aktivVor' in e) { try { store.setzeAktiv(e.aktivVor); } catch { /* [L-10]: kein Ersatzzeiger */ } }
   GP.redo.push(e);
   zeige('Rückgängig gemacht'
     + (e.angelegt.length ? ` — samt ${e.angelegt.length} in diesem Schritt angelegten Wandelement(en).` : '')
+    + ((e.geloescht || []).length ? ` — samt ${e.geloescht.length} wiederhergestellten Wandelement(en).` : '')
     + ((e.vorher || []).length ? ` — samt ${e.vorher.length} geänderten Wandelement(en).` : '')
-    + ((e.angelegt.length || (e.vorher || []).length) ? '' : '.')
+    + ((e.angelegt.length || (e.geloescht || []).length || (e.vorher || []).length) ? '' : '.')
     + ` (${GP.undo.length} weitere Schritte)`, true);
   render();
 }
@@ -560,11 +575,18 @@ function redo(){
   const e = GP.redo.pop();
   if (!e) { zeige('Nichts zu wiederholen.', true); return; }
   for (const el of e.elemente) store.speichere(el.name, el.wandelement, el.id, el.eingaben);
+  // Ein von diesem Schritt gelöschtes Wandelement geht erneut (#74) — store.loesche
+  // räumt Geschosseintrag, anhängende Maße und Aktiv-Zeiger gleich mit; den exakten
+  // Mappenstand danach setzt ohnehin `wendeStandAn(e.nach)`.
+  for (const el of (e.geloescht || [])) { try { store.loesche(el.id); } catch { /* schon weg */ } }
   try { wendeStandAn(e.nach); }
   catch (err) { GP.redo.push(e); zeige('Nicht wiederholt: ' + fehlerText(err), false); return; }
+  if ('aktivNach' in e) { try { store.setzeAktiv(e.aktivNach); } catch { /* [L-10]: kein Ersatzzeiger */ } }
   GP.undo.push(e);
   zeige('Wiederholt'
-    + (e.elemente.length ? ` — samt ${e.elemente.length} Wandelement(en).` : '.'), true);
+    + (e.elemente.length ? ` — samt ${e.elemente.length} Wandelement(en).` : '')
+    + ((e.geloescht || []).length ? ` — samt ${e.geloescht.length} erneut gelöschten Wandelement(en).` : '')
+    + ((e.elemente.length || (e.geloescht || []).length) ? '' : '.'), true);
   render();
 }
 
@@ -1470,6 +1492,112 @@ function planeWand(id){
   return true;
 }
 
+// ---------------------------------------------------------------------------
+//  Duplizieren und Löschen der aktiven Wand (#74)
+// ---------------------------------------------------------------------------
+/** Unterscheidbarer, freier Name für eine Kopie — nur ein Vorschlag, umbenennbar. */
+function kopieName(basis){
+  const vorhanden = new Set(store.listeElemente().map(e => e.name));
+  const erste = `${basis} (Kopie)`;
+  if (!vorhanden.has(erste)) return erste;
+  for (let i = 2; i < 999; i++) {
+    const n = `${basis} (Kopie ${i})`;
+    if (!vorhanden.has(n)) return n;
+  }
+  return erste;
+}
+
+/**
+ * Aktive Wand duplizieren (#74): eine tiefe, unabhängige Kopie von Wandelement
+ * und sämtlichen wandbezogenen Eingaben unter NEUER stabiler id und
+ * unterscheidbarem Namen. Eingetragen wird sie im aktiven Geschoss mit
+ * `lage: null` — gezeichnet ist sie noch nirgends, und Bemaßungen hängen an der
+ * id der Ausgangswand, sie wandern konstruktiv nicht mit. Die Ausgangswand
+ * bleibt samt Lage und Maßen bit-genau stehen. Danach ist die Kopie ausgewählt
+ * und aktiv; der ganze Vorgang ist GENAU EIN Undo-Schritt über Wandspeicher,
+ * Projektmappe und Aktiv-Zeiger.
+ */
+function dupliziereWand(){
+  const gs = geschoss();
+  const w = GP.aktiv ? wand(GP.aktiv) : null;
+  if (!gs || !w) { zeige('Keine Wand aktiv — erst eine Wand auswählen.', false); return null; }
+  const el = store.holeElement(w.id);
+  if (!el || !el.wandelement) {
+    zeige('Kein Wandelement zu diesem Eintrag — ein verwaister Eintrag lässt sich nicht duplizieren ([L-4]).', false);
+    return null;
+  }
+  const vor = mappenStand();
+  const aktivVor = store.aktivId();
+  const name = kopieName(el.name || w.id);
+  let id;
+  try {
+    id = store.dupliziere(w.id, name);
+    store.verorteWand(id, gs.id, { name, lage: null });
+  } catch (e) {
+    // Kein halber Stand: eine schon angelegte, aber nicht eingetragene Kopie geht wieder.
+    if (id) { try { store.loesche(id); } catch { /* schon weg */ } }
+    zeige('Nicht dupliziert: ' + fehlerText(e), false);
+    return null;
+  }
+  waehle(id);
+  buchen(vor, [id], [], { aktivVor, aktivNach: store.aktivId() });
+  zeige(`„${name}“ als unabhängige Kopie von „${el.name || w.id}“ angelegt — unverortet im Geschoss `
+    + '(verorten über „Wand zeichnen“). Die Ausgangswand samt Lage und Maßen bleibt unverändert.', true);
+  render();
+  return id;
+}
+
+/**
+ * Aktive Wand nach ausdrücklicher Bestätigung vollständig löschen (#74):
+ * Wandelement (Wandspeicher), Geschosseintrag (Projektmappe) und GENAU die
+ * Bemaßungen dieses Geschosses, die die Wand als Bezug führen — sie werden
+ * benannt, nie still bereinigt ([L-4]). Ein zeigender Aktiv-Zeiger wird
+ * aufgehoben (`store.loesche`). Der Abbruch der Bestätigung ändert weder Daten
+ * noch Undo-Stapel; das bestätigte Löschen ist GENAU EIN Undo-Schritt über
+ * Wandspeicher, Projektmappe und Aktiv-Zeiger. Fremde Wände, fremde Maße und
+ * andere Geschosse bleiben unberührt.
+ */
+function loescheWandJetzt(){
+  const gs = geschoss();
+  const w = GP.aktiv ? wand(GP.aktiv) : null;
+  if (!gs || !w) { zeige('Keine Wand aktiv — erst eine Wand auswählen.', false); return false; }
+  const el = store.holeElement(w.id);
+  const masse = bemassungenAn(w.id);
+  if (!confirm(`Wand „${w.name || w.id}“ vollständig löschen?\n\nEntfernt werden `
+    + (el ? 'das Wandelement und ' : '') + `der Eintrag im Geschoss „${gs.name}“`
+    + (masse.length ? ` sowie ${masse.length} anhängende(s) Maß(e)` : '')
+    + '. Rückgängig geht mit Strg+Z, solange dieses Geschoss geöffnet bleibt.')) {
+    zeige('Löschen abgebrochen — nichts geändert.', true);
+    return false;
+  }
+  const vor = mappenStand();
+  const aktivVor = store.aktivId();
+  const schnappschuss = elementStand(w.id);
+  let entfernt = [];
+  try {
+    if (el) {
+      entfernt = (store.loesche(w.id) || {}).bemassungen || [];
+    } else {
+      // Verwaister Eintrag ([L-4]): es gibt kein Wandelement — nur Eintrag und Maße gehen.
+      const r = MAPPE.bemassungenOhneWand(store.holeMappe(), gs.id, w.id);
+      entfernt = r.entfernt;
+      store.setzeMappe(MAPPE.entferneWand(r.mappe, w.id));
+    }
+  } catch (e) { zeige('Nicht gelöscht: ' + fehlerText(e), false); render(); return false; }
+  GP.auswahl = GP.auswahl.filter(x => x !== w.id);
+  if (GP.aktiv === w.id) GP.aktiv = null;
+  if (GP.ziel === w.id) GP.ziel = '';
+  buchen(vor, [], [], { geloescht: schnappschuss ? [schnappschuss] : [],
+    aktivVor, aktivNach: store.aktivId() });
+  zeige(`„${w.name || w.id}“ gelöscht — `
+    + (el ? 'Wandelement und Geschosseintrag sind entfernt' : 'der verwaiste Eintrag ist entfernt')
+    + (entfernt.length ? `, dazu ${entfernt.length} anhängende(s) Maß(e): ${entfernt.join(', ')}.`
+      : '; kein Maß hing an der Wand.')
+    + ' Rückgängig: Strg+Z.', true);
+  render();
+  return true;
+}
+
 function render(){
   const gs = geschoss();
   undoPruefen();
@@ -1658,6 +1786,10 @@ function kopfSync(){
         ? `<br>Wandelement: ${el.wandelement.length_mm} × ${el.wandelement.height_mm} mm`
         : '<br>⚠ kein Wandelement (verwaister Eintrag, [L-4])');
   $('gp-lage-weg').disabled = !(aus && aus.lage);
+  // Duplizieren braucht ein Wandelement (ein verwaister Eintrag hat nichts zu
+  // kopieren, [L-4]); Löschen räumt auch einen verwaisten Eintrag auf (#74).
+  $('gp-dupl').disabled = !(aus && el && el.wandelement);
+  $('gp-wand-loeschen').disabled = !aus;
   // Drehen ist gesperrt, sobald ein Maß an der Wand hängt ODER sie mittelbar
   // bestimmt ist — beides sagt `drehSperre()`, mit unterscheidbarem Grund.
   const sperre = aus ? drehSperre(aus.id) : { grund: 'ohne' };
@@ -3101,6 +3233,8 @@ function binde(){
   $('gp-zoom-alles').addEventListener('click', zeigeAlles);
 
   $('gp-drehen').addEventListener('click', drehe);
+  $('gp-dupl').addEventListener('click', dupliziereWand);
+  $('gp-wand-loeschen').addEventListener('click', loescheWandJetzt);
   $('gp-lage-weg').addEventListener('click', () => {
     const gs = geschoss(), w = GP.aktiv ? wand(GP.aktiv) : null;
     if (!gs || !w) return;
