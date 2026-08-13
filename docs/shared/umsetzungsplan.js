@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "43167387",
+  "signatur": "05dd6fc3",
   "entscheidungen": [
     {
       "issue": 41,
@@ -125,7 +125,7 @@ export const PLAN = {
       "issue": 67,
       "titel": "Hierarchischen Projektexport statt Gesamtstücklisten-Sammeldialog anbieten",
       "prio": "ohne",
-      "status": "ohne",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true

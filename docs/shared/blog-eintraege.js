@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-01",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 67,
+    titel: "Ein Exportzugang je Projekt-, Geschoss- und Wandeintrag ersetzt Projekt-ZIP und Gesamtstücklisten-Knöpfe",
+    testbitte: "In Modul 0 an Projekt, Geschoss und Wand „Exportieren“ öffnen: Das ZIP enthält exakt die gewählten Dateien der Ebene. Achtung: Planbilder reisen nicht mehr mit — der frühere Projektarchiv-Export ist entfallen, der Archiv-Import bleibt.",
+  },
+  {
     id: "chg-20260812-10",
     datum: "2026-08-12",
     typ: "fix",

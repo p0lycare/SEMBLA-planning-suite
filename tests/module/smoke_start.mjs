@@ -279,75 +279,64 @@ ok('Projekt traegt den Wandtyp', p.wandelement.wandtyp==='mit_wind');
 ok('oeffentliches Projektformat bleibt Version 2', p.version===2);
 ok('kein mitWind mehr in den Standard-Eingaben', !('mitWind' in p.eingaben.statik));
 
-// --- 4) Zentraler Export: Nachweis-Haekchen an der echten Oberflaeche (Issue #3) ---
-ok('Export-Dialog hat das Nachweis-Haekchen (checked)',
-  /<input type="checkbox" value="nachweis" checked>/.test(html));
-ok('Beschriftung nennt „Statischer Nachweis (HTML/PDF-fähig)"',
-  /Statischer Nachweis \(HTML\/PDF-fähig\)/.test(html));
+// --- 4) Zentraler hierarchischer Export (#67): Wandebene ---------------------
+// Der Dialog bietet je Ebene NUR die passenden Dateien; die zyklusfremden Ausgaben
+// (Nachweis, Montage, Zeichnung, IFC, Lattenzuschnitt) sind aus dem Dialog raus.
+ok('#67 keine zyklusfremden Haekchen mehr im Dialog-Markup',
+  !/value="nachweis"/.test(html) && !/value="zeichnung"/.test(html)
+  && !/value="montage"/.test(html) && !/value="ifc"/.test(html) && !/value="zuschnitt"/.test(html));
+ok('#67 der Dialog rendert seine Optionen je Ebene, ohne Ebenen-Auswahlfeld',
+  /id="exp-opts"/.test(html) && !/id="exp-ebene"/.test(html));
+ok('#67 Wandebene bietet genau Wanddatei und Baustellenstueckliste',
+  JSON.stringify(ARCHIV.exportOptionen('wand')) === JSON.stringify(['wand', 'stueckliste']));
+ok('#67 EIN Exportzugang je Eintrag: keine Alt-Knoepfe mehr im Markup',
+  !/prj-zip/.test(html) && !/prj-json/.test(html) && !/prj-gesamt/.test(html) && !/gs-gesamt/.test(html)
+  // knopf() baut das data-act-Attribut erst zur Laufzeit — im Quelltext stehen die Schluessel.
+  && /'prj-export'/.test(html) && /'gs-export'/.test(html)
+  && new RegExp('data-act="prj-export"').test($('tr-baum').innerHTML));
 
-// Export ueber den echten Produktpfad ausloesen: Tabellen-Klick "Export" -> Dialog -> ZIP-Button.
+// Export ueber den echten Produktpfad: Baumknopf „Exportieren" -> Dialog -> ZIP-Button.
+// Die aktiven Zeiger duerfen dabei weder gelesen werden muessen noch sich aendern.
 const aktivId = store.aktivId();
+const zeigerStand = () => JSON.stringify([store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()]);
+const zeiger0 = zeigerStand();
 baum('wand-export', aktivId);
-ok('Klick auf „Export" oeffnet den Dialog', $('exp-overlay').hidden === false);
+ok('Klick auf „Exportieren" oeffnet den Dialog', $('exp-overlay').hidden === false
+  && $('exp-titel').textContent === 'Wand exportieren');
+ok('#67 die gerenderten Optionen sind genau die der Wandebene',
+  /value="wand"/.test($('exp-opts').innerHTML) && /value="stueckliste"/.test($('exp-opts').innerHTML)
+  && !/value="gesamt"/.test($('exp-opts').innerHTML) && !/value="mappe"/.test($('exp-opts').innerHTML)
+  && !/value="katalog"/.test($('exp-opts').innerHTML));
 
-// Nur das Nachweis-Haekchen ist gesetzt (wie ein Nutzer, der die uebrigen abwaehlt).
-$('exp-overlay')._sel = [{ value: 'nachweis' }];
+// Nur die Baustellenstueckliste ist gewaehlt (wie ein Nutzer, der die Wanddatei abwaehlt).
+$('exp-overlay')._sel = [{ value: 'stueckliste' }];
 $('exp-go').dispatch('click');
-ok('ZIP-Download mit genau einer Datei angestossen', zipCalls.length === 1 && zipCalls[0].files.length === 1);
-const nwDatei = zipCalls.length ? zipCalls[0].files[0] : { name: '', data: '' };
-ok('Dateiname Statischer_Nachweis_<Projekt>.html',
-  nwDatei.name === 'Statischer_Nachweis_' + store.sicherName(store.projektObjekt(aktivId).name) + '.html');
-ok('Inhalt ist ein selbsttragendes HTML-Dokument',
-  /^<!DOCTYPE html>/.test(nwDatei.data) && /<\/html>$/.test(nwDatei.data) && /<style>/.test(nwDatei.data));
-ok('Dokument ist als pruefpflichtige Planungshilfe gekennzeichnet',
-  /Planungshilfe/.test(nwDatei.data) && /prüfpflichtig/i.test(nwDatei.data));
+ok('#67 Baustellenstueckliste: ZIP mit genau zwei CSVs', zipCalls.length === 1
+  && zipCalls[0].files.length === 2
+  && /^Baustellenstueckliste_/.test(zipCalls[0].files[0].name)
+  && /^Einbauteile_Gewindestangen_/.test(zipCalls[0].files[1].name));
+ok('#67 bitgleich die bestehende Wandableitung (kein zweiter Mengenpfad)', (() => {
+  const soll = baueDateien(store.projektObjekt(aktivId), ['stueckliste'], null);
+  return zipCalls.length && zipCalls[0].files[0].data === soll[0].data
+    && zipCalls[0].files[1].data === soll[1].data; })());
+ok('#67 ZIP-Name folgt Ebene und Wand',
+  zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Wand_' + ARCHIV.sicherStamm('Wand kaputt') + '.zip');
 ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
 
-// --- 4b) Zentraler Export: Zeichnungs-Haekchen an der echten Oberflaeche (Issue #36) ---
-ok('Export-Dialog hat das Zeichnungs-Haekchen (checked)',
-  /<input type="checkbox" value="zeichnung" checked>/.test(html));
-ok('Beschriftung nennt „Technische Zeichnung (SVG + HTML)"',
-  /Technische Zeichnung \(SVG \+ HTML\)/.test(html));
-ok('Modulkarte fuer Modul 7 vorhanden', /7:'Technische Zeichnung/.test(html));
-
-// Derselbe Produktpfad, nur mit dem Zeichnungs-Haekchen.
+// --- 4b) Wanddatei-Option: bestehendes Format SEMBLA-Projekt v2 --------------
 zipCalls.length = 0;
 baum('wand-export', aktivId);
-$('exp-overlay')._sel = [{ value: 'zeichnung' }];
+$('exp-overlay')._sel = [{ value: 'wand' }];
 $('exp-go').dispatch('click');
-const zBase = store.sicherName(store.projektObjekt(aktivId).name);
-const zFiles = zipCalls.length ? zipCalls[0].files : [];
-ok('Zeichnungs-Haekchen erzeugt genau zwei Dateien (SVG + HTML)', zFiles.length === 2);
-const zSvg = zFiles.find(f => f.name.endsWith('.svg')) || { name: '', data: '' };
-const zHtml = zFiles.find(f => f.name.endsWith('.html')) || { name: '', data: '' };
-ok('Dateiname Zeichnung_<Projekt>.svg', zSvg.name === 'Zeichnung_' + zBase + '.svg');
-ok('Dateiname Zeichnung_<Projekt>.html', zHtml.name === 'Zeichnung_' + zBase + '.html');
-ok('SVG ist masstabsgetreu (mm-Masse im Wurzelelement)',
-  /^<\?xml/.test(zSvg.data) && /<svg[^>]*width="[\d.]+mm"/.test(zSvg.data) && /height="[\d.]+mm"/.test(zSvg.data));
-ok('HTML ist ein selbsttragendes, druckbares Blatt',
-  /^<!DOCTYPE html>/.test(zHtml.data) && /@page\{size:A[34] landscape/.test(zHtml.data) && /ztitleblock/.test(zHtml.data));
-// #61: Das gemeinsame Blatt ist auf das Ausfuehrungsnoetige reduziert — im ECHTEN zentralen
-// Export geprueft. Erwartet wird die Abwesenheit der entfernten Regel- und Statikerklaerungen;
-// ein Nachweisstatus wird dabei nicht erfunden, es gibt schlicht kein Nachweisfeld mehr.
-ok('Zeichnungsexport traegt keine Regel- oder Zielregeltexte',
-  !/nicht automatisch geprüft/.test(zHtml.data) && !/Zielregel/.test(zHtml.data)
-  && !/Planungshinweis/.test(zHtml.data) && !/eingehaltene Vorspannregeln/.test(zHtml.data)
-  && !/Zielvorgaben für die Planung/.test(zHtml.data));
-ok('Zeichnungsexport traegt keine Statikerklaerung und keinen Nachweisstatus',
-  !/separat prüfen/.test(zHtml.data) && !/nicht Bestandteil dieser Zeichnung/.test(zHtml.data)
-  && !/>Statik</.test(zHtml.data) && !/bestanden/i.test(zHtml.data));
-// Diese Wand ist noch ohne Standardlaengen (der Katalog wird erst weiter unten geladen), hat also
-// nach [P-19] zu Recht KEINEN ID-Kasten — geprueft wird deshalb der Pflichtinhalt, den es hier
-// wirklich gibt: Wanddarstellung, Baustellenstueckliste, Vorspannkennzahlen und die kompakte
-// Legende samt ID-Schluessel. Die IDs selbst deckt der Modul-7-Test an einer bestueckten Wand ab.
-ok('Zeichnungsexport behaelt die Ausfuehrungsdaten (Wand, Stueckliste, Kennzahlen, Legende)',
-  /<svg/.test(zHtml.data) && /Baustellenstückliste/.test(zHtml.data)
-  && /Spannachsen/.test(zHtml.data) && /Gewindestange \(Standardlänge\)/.test(zHtml.data)
-  && /Einbauteil-ID GS-k/.test(zHtml.data));
-ok('auch die exportierte SVG-Datei traegt keine Statikerklaerung',
-  !/separat prüfen/.test(zSvg.data) && !/Statik/.test(zSvg.data));
-ok('kein jsPDF/Fremd-Lib im Zeichnungspfad', !/jspdf/i.test(zHtml.data) && !/html2canvas/i.test(zHtml.data));
-ok('Dialog schliesst nach dem Zeichnungs-Export', $('exp-overlay').hidden === true);
+const wDatei = zipCalls.length ? zipCalls[0].files[0] : { name: '', data: '' };
+ok('#67 Wanddatei-Haekchen erzeugt genau eine JSON-Datei',
+  zipCalls.length === 1 && zipCalls[0].files.length === 1
+  && wDatei.name === ARCHIV.wandPfad({ id: aktivId, name: 'Wand kaputt' }));
+ok('#67 die Wanddatei bleibt SEMBLA-Projekt v2 und bitgleich store.projektObjekt', (() => {
+  const o = JSON.parse(wDatei.data || '{}');
+  return o.format === 'SEMBLA-Projekt' && o.version === 2
+    && wDatei.data === JSON.stringify(store.projektObjekt(aktivId), null, 2); })());
+ok('#67 Export setzt keinen aktiven Zeiger um', zeigerStand() === zeiger0);
 
 // --- 5) Bauteilkatalog (Issue #21) an der echten Modul-0-Oberflaeche -------
 // Bedienhilfen: genau die Wege, die ein Nutzer nimmt (Felder setzen -> Button klicken).
@@ -1447,13 +1436,17 @@ globalThis.fetch = echtesFetch;
 
   // 8k) Mappen-Datei: Sichern und Wiedereinlesen ----------------------------
   store.setzeAktivesProjekt(prj0.projekt.id);
-  // Der reine Struktur-Weg bleibt neben dem vollstaendigen Archiv bestehen ([L-13]).
-  baum('prj-json', prj0.projekt.id);
-  const mappeDatei = letzterDownload;
+  // Der reine Struktur-Weg ([L-13]: „nur Struktur (JSON)“) ist seit #67 die
+  // Mappen-Option des zentralen Exportdialogs — derselbe Inhalt, ein Zugang.
+  zipCalls.length = 0;
+  baum('prj-export', prj0.projekt.id);
+  $('exp-overlay')._sel = [{ value: 'mappe' }];
+  $('exp-go').dispatch('click');
+  const mappeDatei = zipCalls.length ? zipCalls[0].files[0].data : '';
   ok('Projekt-Export erzeugt eine Projektmappen-Datei v2',
     JSON.parse(mappeDatei).format === 'SEMBLA-Projektmappe'
     && JSON.parse(mappeDatei).version === 2
-    && /^SEMBLA_Projektmappe_/.test(letzterAnker.download));
+    && zipCalls.length && /^SEMBLA_Projektmappe_/.test(zipCalls[0].files[0].name));
   ok('die Mappen-Datei traegt keine Wandgeometrie ([L-3])',
     !mappeDatei.includes('courses') && !mappeDatei.includes('length_mm'));
   ok('die Mappen-Datei traegt die Kopfdaten des Projekts ([L-11])',
@@ -1744,12 +1737,24 @@ globalThis.fetch = echtesFetch;
   });
   const standVorher = vergleich();
 
-  // 11b) Export als ZIP ---------------------------------------------------
-  const zipVor = zipCalls.length;
-  baum('prj-zip', prjA.projekt.id);
-  await warte();
-  ok('[L-13] Export erzeugt genau EIN ZIP', zipCalls.length === zipVor + 1);
-  const archivDateien = zipCalls[zipCalls.length - 1].files;
+  // 11b) Archiv bauen -------------------------------------------------------
+  // Den Archiv-EXPORT-Knopf gibt es seit #67 nicht mehr; gebaut wird das Archiv
+  // hier ueber DIESELBEN reinen Bausteine (exportPlan/archivDateien), die auch der
+  // fruehere Knopf nutzte. Der IMPORT darunter laeuft unveraendert ueber die echte
+  // Oberflaeche — genau er ist der [L-13]-Pfad, den dieser Abschnitt absichert.
+  const mArchiv = store.projektMappe(prjA.projekt.id);
+  const planA = ARCHIV.exportPlan(mArchiv, store.listeElemente().map(e => e.id), await PLAN.listePlaene());
+  ok('[L-13] exportPlan meldet am vollstaendigen Stand keine Luecken',
+    planA.fehlendeWaende.length === 0 && planA.fehlendeBilder.length === 0);
+  const bilderA = new Map();
+  for (const p of planA.plaene) {
+    const satz = await PLAN.holePlan(p.geschossId);
+    bilderA.set(p.geschossId, new Uint8Array(await satz.blob.arrayBuffer()));
+  }
+  const wurzelA = ARCHIV.archivName(mArchiv);
+  const archivDateien = ARCHIV.archivDateien(mArchiv, planA,
+    (wid) => store.projektObjekt(wid), (gid) => bilderA.get(gid))
+    .map(d => ({ name: wurzelA + '/' + d.name, data: d.data }));
   const namen = archivDateien.map(d => d.name);
   ok('[L-13] Archiv traegt projekt.json, beide Waende und beide Planbilder',
     namen.length === 5
@@ -1771,10 +1776,6 @@ globalThis.fetch = echtesFetch;
     const m = JSON.parse(archivDateien.find(d => d.name.endsWith('projekt.json')).data);
     return MAPPE.alleWaende(m).every(({ wand }) => !!wand.datei && namen.includes('SEMBLA_Projekt_Archivprojekt/' + wand.datei));
   })());
-  ok('Erfolgsmeldung nennt Wanddateien, Planbilder und den fehlenden Katalog',
-    !trFehler() && /2 Wanddatei\(en\)/.test(trMsgTxt()) && /2 Planbild\(er\)/.test(trMsgTxt())
-    && /nicht enthalten/.test(trMsgTxt()));
-
   const archivBytes = zipSync(archivDateien);
 
   // 11c) Alles loeschen — der eigentliche Zweck des Archivs ----------------
@@ -1919,14 +1920,16 @@ globalThis.fetch = echtesFetch;
     store.holeMappe()?.projekt.id === prjA.projekt.id && store.listeElemente().length === 0);
   ok('… und sagt ausdruecklich, dass Waende und Planbilder NICHT dabei waren',
     /nur Struktur/.test(trMsgTxt()));
-  ok('die Oberflaeche beschriftet beide Wege eindeutig',
-    /Export \(ZIP\)/.test(html) && /nur Struktur \(JSON\)/.test(html)
+  ok('die Oberflaeche beschriftet die Wege eindeutig',
+    // Der Struktur-Export heisst weiterhin ausdruecklich „nur Struktur (JSON)"
+    // ([L-13]) — seit #67 als Option des zentralen Exportdialogs.
+    /nur Struktur \(JSON\)/.test(html) && /Exportieren/.test(html)
     && /Projektordner wählen/.test(html) && /webkitdirectory/.test(html));
   ok('der Einzelwand-Weg ist unberuehrt vorhanden',
     /id="f-import"/.test(html) && /id="exp-go"/.test(html)
     // Das Verhalten selbst wurde oben ueber die echte Ereignisdelegation
     // geprueft; dynamisch von `knopf(...)` erzeugtes Markup ist kein Quellliteral.
-    && checks.some(([n, c]) => n === 'Klick auf „Export" oeffnet den Dialog' && c));
+    && checks.some(([n, c]) => n === 'Klick auf „Exportieren" oeffnet den Dialog' && c));
 }
 
 // --- 12) Neuanlage speichert den katalogbasierten Zuschnitt (#15/#62) -----
@@ -2018,54 +2021,80 @@ globalThis.fetch = echtesFetch;
   if (altAktiv !== null) localStorage.setItem('sembla:aktiv:katalog', altAktiv);
 }
 
-// --- 9b) Zentraler Export der GESAMTSTÜCKLISTE (#44) ----------------------
-// Gefahren wird der ECHTE Produktpfad: Baumliste -> „Export" -> Ebene/Preise im Dialog ->
-// „ZIP herunterladen". Geprueft werden Dateiname, Ebenenbezug, CSV-Inhalt und dass die
-// Mengen BITGLEICH die Summe der kanonischen Wandstuecklisten sind.
+// --- 9b) Zentraler hierarchischer Export (#67): Projekt-/Geschossebene ------
+// Gefahren wird der ECHTE Produktpfad: Baumknopf "Exportieren" -> Optionen je
+// Ebene -> "ZIP herunterladen". Synthetisches Projekt mit ZWEI Gebaeuden, zwei
+// Geschossen und drei Waenden; geprueft werden die zulaessigen Optionen, der
+// exakte ZIP-Inhalt, unveraenderte aktive Zeiger und die benannten Luecken
+// (fehlendes Wandelement, fehlender zugeordneter Katalog).
 {
   const gsG = (await projektAnlegen('Exportprojekt #44')) && store.aktivesGeschossId();
-  // #56: Katalog ausdruecklich laden — er belegt die Verwendungsstellen der Waende vor
-  // ([P-18]) und ist damit Voraussetzung fuer die Einbauteile in der Gesamtstueckliste.
+  // Katalog ausdruecklich laden — er wird dem AKTIVEN Projekt zugeordnet ([L-12])
+  // und belegt die Verwendungsstellen der Waende vor ([P-18]).
   $('k-vorlage').dispatch('click');
   await new Promise(r => setTimeout(r, 0));
   const idG1 = wandAnlegen(gsG, { name: 'Export Wand 1', laenge: 3000, hoehe: 3000 });
   const idG2 = wandAnlegen(gsG, { name: 'Export Wand 2', laenge: 2000, hoehe: 2600 });
+  const prjId = store.aktivesProjektId();
+  // Zweites Gebaeude mit eigenem Geschoss und eigener Wand — ueber die reinen
+  // Mappen-Operationen, wie es Modul 0 selbst tut.
+  const rG = MAPPE.fuegeGebaeudeHinzu(store.holeMappe(), 'Haus 2'); store.setzeMappe(rG.mappe);
+  const rGs = MAPPE.fuegeGeschossHinzu(store.holeMappe(), rG.id, 'EG Haus 2'); store.setzeMappe(rGs.mappe);
+  const gs2 = rGs.id;
+  const idG3 = wandAnlegen(gs2, { name: 'Export Wand 3', laenge: 2500, hoehe: 2600 });
   const gsName = MAPPE.findeGeschoss(store.holeMappe(), gsG).geschoss.name;
+  const katalogG = store.holeKatalog();
   const csvZeilen = (t) => t.split('\n').map(z => z.split(';'));
+  const zeigerJetzt = () => JSON.stringify([store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()]);
   /** Reine Erwartung: Summe der kanonischen Wandstuecklisten. */
   const erwarteteMengen = (ids) => { const m = new Map();
     for (const id of ids) for (const p of stuecklistePositionen(store.holeElement(id).wandelement,
-        store.holeEingaben(id), store.holeKatalog())) {
+        store.holeEingaben(id), katalogG)) {
       const k = [p.key, p.unit, p.art || '', p.fertigmass_mm ?? ''].join('|');
       m.set(k, (m.get(k) || 0) + p.menge); }
     return m; };
+  const mengenSumme = (csv, ids) => {
+    const zeilen = csvZeilen(csv); const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
+    const summe = zeilen.slice(kopf + 1).filter(z => z[0] && !z[0].startsWith('Summe netto') && z.length > 6)
+      .reduce((a, z) => a + +z[4], 0);
+    const soll = [...erwarteteMengen(ids).values()].reduce((a, v) => a + v, 0);
+    return Math.abs(summe - soll) < 1e-9; };
 
-  ok('#44 Export-Dialog hat das Gesamtstücklisten-Häkchen (nicht vorausgewählt)',
-    /<input type="checkbox" value="gesamt"><span>/.test(html)
-    && /Gesamtstückliste der aktiven Ebene \(CSV\)/.test(html));
-  ok('#44 Ebene und Preisschalter stehen AUSSERHALB des Häkchen-Labels',
-    /id="exp-gesamt-optionen"/.test(html)
-    && html.indexOf('id="exp-gesamt-optionen"') > html.indexOf('value="gesamt"')
-    && !/value="gesamt">[\s\S]*?<select/.test(html.split('</label>')[html.split('</label>').findIndex(t => t.includes('value="gesamt"'))] || ''));
+  ok('#67 Projekt-/Gebaeudeebene bieten Mappe, Gesamtstueckliste, Geschosse, Waende, Katalog',
+    JSON.stringify(ARCHIV.exportOptionen('projekt')) === JSON.stringify(['mappe', 'gesamt', 'geschosse', 'waende', 'katalog'])
+    && JSON.stringify(ARCHIV.exportOptionen('gebaeude')) === JSON.stringify(ARCHIV.exportOptionen('projekt')));
+  ok('#67 Geschossebene bietet Geschossdaten, Gesamtstueckliste, Waende — keine Projektmappe',
+    JSON.stringify(ARCHIV.exportOptionen('geschoss')) === JSON.stringify(['geschoss', 'gesamt', 'waende']));
+  ok('#67 der Preisschalter steht ausserhalb der Dateiauswahl',
+    /id="exp-gesamt-optionen"/.test(html) && /id="exp-preise"/.test(html));
 
-  // (a) Geschossebene mit Preisen
+  // (a) Geschossebene mit Preisen — ueber den echten Geschoss-Knopf
+  const zeiger9 = zeigerJetzt();
   zipCalls.length = 0;
-  baum('wand-export', idG1);
-  $('exp-ebene').value = 'geschoss'; $('exp-preise').checked = true;
+  baum('gs-export', gsG);
+  ok('#67 der Geschoss-Dialog oeffnet mit den Geschoss-Optionen und nennt den Bezug',
+    $('exp-overlay').hidden === false && $('exp-titel').textContent === 'Geschoss exportieren'
+    && /value="geschoss"/.test($('exp-opts').innerHTML) && /value="gesamt"/.test($('exp-opts').innerHTML)
+    && /value="waende"/.test($('exp-opts').innerHTML) && !/value="mappe"/.test($('exp-opts').innerHTML)
+    && !/value="katalog"/.test($('exp-opts').innerHTML)
+    && new RegExp(gsName + ' · Projekt „Exportprojekt #44“').test($('exp-name').textContent));
+  $('exp-preise').checked = true;
   $('exp-overlay')._sel = [{ value: 'gesamt' }];
   $('exp-go').dispatch('click');
   const gFiles = zipCalls.length ? zipCalls[0].files : [];
-  ok('#44 Gesamt-Häkchen erzeugt genau eine CSV', gFiles.length === 1 && /\.csv$/.test(gFiles[0].name));
-  ok('#44 Dateiname nennt Ebene und Bezug',
+  ok('#67 Gesamt-Haekchen erzeugt genau eine CSV', gFiles.length === 1 && /\.csv$/.test(gFiles[0].name));
+  ok('#67 Dateiname nennt Ebene und Bezug',
     gFiles[0].name === 'Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '.csv');
+  ok('#67 ZIP-Name folgt Ebene und Geschoss',
+    zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Geschoss_' + ARCHIV.sicherStamm(gsName) + '.zip');
   const gCsv = gFiles.length ? gFiles[0].data : '';
-  ok('#44 CSV nennt Blatt, Ebene und Geschoss',
+  ok('#67 CSV nennt Blatt, Ebene und Geschoss',
     /^SEMBLA – Gesamtstückliste Geschoss/.test(gCsv)
     && new RegExp('Ebene;Geschoss').test(gCsv) && gCsv.includes('Geschoss;' + gsName));
-  ok('#44 CSV nennt beide Wände als Herkunft und ist vollständig',
+  ok('#67 CSV nennt beide Waende als Herkunft und ist vollstaendig',
     /Wände;2 von 2/.test(gCsv) && /Vollständigkeit;vollständig/.test(gCsv)
     && gCsv.includes('Export Wand 1') && gCsv.includes('Export Wand 2'));
-  ok('#44 CSV-Mengen sind bitgleich die Summe der Wandstücklisten', (() => {
+  ok('#67 CSV-Mengen sind bitgleich die Summe der Wandstuecklisten', (() => {
     const zeilen = csvZeilen(gCsv);
     const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
     const ist = new Map();
@@ -2083,152 +2112,155 @@ globalThis.fetch = echtesFetch;
     }
     return ist.size === soll.size && [...soll].every(([k, v]) => Math.abs((ist.get(k) ?? NaN) - v) < 1e-9);
   })());
-  ok('#44 CSV führt die Einbauteil-IDs als Wand-ID:ID',
+  ok('#67 CSV fuehrt die Einbauteil-IDs als Wand-ID:ID',
     new RegExp(idG1 + ':GS-k').test(gCsv) && new RegExp(idG2 + ':GS-k').test(gCsv));
+  ok('#67 der Geschoss-Export setzt keinen Zeiger um', zeigerJetzt() === zeiger9);
 
   // (b) Preisschalter im Export
   zipCalls.length = 0;
-  baum('wand-export', idG1);
-  $('exp-ebene').value = 'geschoss'; $('exp-preise').checked = false;
+  baum('gs-export', gsG);
+  $('exp-preise').checked = false;
   $('exp-overlay')._sel = [{ value: 'gesamt' }];
   $('exp-go').dispatch('click');
   const oCsv = zipCalls.length ? zipCalls[0].files[0].data : '';
-  ok('#44 Export ohne Preise: keine EP/GP-Spalte, kein Summenbetrag',
+  ok('#67 Export ohne Preise: keine EP/GP-Spalte, kein Summenbetrag',
     !/EP \(EUR\)/.test(oCsv) && !/GP \(EUR\)/.test(oCsv) && !/Summe netto/.test(oCsv));
-  ok('#44 Export ohne Preise: Mengen, Herkunft und IDs unverändert', (() => {
+  ok('#67 Export ohne Preise: Mengen, Herkunft und IDs unveraendert', (() => {
     const nurMengen = t => csvZeilen(t).filter(z => z.length > 6 && z[0] && !z[0].startsWith('Summe netto'))
       .map(z => [z[0], z[3], z[4], z[5], z[6]].join('|')).join('\n');
     return nurMengen(oCsv) === nurMengen(gCsv); })());
+  $('exp-preise').checked = true;
 
-  // (c) Projektebene und Wandebene
-  for (const [ebene, ids, rumpf] of [['projekt', [idG1, idG2], 'Gesamtstueckliste_Projekt_Exportprojekt_44'],
-      ['wand', [idG1], 'Baustellenstueckliste_Wand_Export_Wand_1']]) {
-    zipCalls.length = 0;
-    store.setzeAktiv(idG1);
-    baum('wand-export', idG1);
-    $('exp-ebene').value = ebene; $('exp-preise').checked = true;
-    $('exp-overlay')._sel = [{ value: 'gesamt' }];
-    $('exp-go').dispatch('click');
-    const f = zipCalls.length ? zipCalls[0].files[0] : { name: '', data: '' };
-    ok(`#44 Ebene ${ebene}: Dateiname und Ebenenbezug`, f.name === rumpf + '.csv'
-      && new RegExp('Ebene;' + (ebene === 'wand' ? 'Wand' : 'Projekt')).test(f.data));
-    ok(`#44 Ebene ${ebene}: Mengen = Summe genau dieser ${ids.length} Wand/Wände`, (() => {
-      const zeilen = csvZeilen(f.data); const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
-      const summe = zeilen.slice(kopf + 1).filter(z => z[0] && !z[0].startsWith('Summe netto') && z.length > 6)
-        .reduce((a, z) => a + +z[4], 0);
-      const soll = [...erwarteteMengen(ids).values()].reduce((a, v) => a + v, 0);
-      return Math.abs(summe - soll) < 1e-9; })());
-  }
-
-  // (d) Der bisherige Wandexport bleibt unveraendert
+  // (c) Ein NICHT aktives Geschoss ist genauso exportierbar — ohne Zeigerwechsel ([L-10])
   zipCalls.length = 0;
-  baum('wand-export', idG1);
-  $('exp-overlay')._sel = [{ value: 'stueckliste' }];
-  $('exp-go').dispatch('click');
-  const wFiles = zipCalls.length ? zipCalls[0].files : [];
-  ok('#44 der bisherige Wandexport ist unberührt (2 Dateien, alte Namen)',
-    wFiles.length === 2 && /^Baustellenstueckliste_/.test(wFiles[0].name)
-    && /^Einbauteile_Gewindestangen_/.test(wFiles[1].name));
-  ok('#44 und liefert bitgleich die bestehende Ableitung', (() => {
-    const soll = baueDateien(store.projektObjekt(idG1), ['stueckliste'], store.holeKatalog());
-    return wFiles[0].data === soll[0].data && wFiles[1].data === soll[1].data; })());
-
-  // (e) Nicht aktivierbare Ebene: benannt, kein ZIP. Damit der dokumentierte Rueckfall von
-  // `aktivesGeschoss()` (genau EIN Geschoss ist eindeutig) nicht greift, bekommt das Projekt
-  // vorher ein zweites Geschoss — erst dann ist „kein aktives Geschoss" wirklich unbestimmt.
-  zipCalls.length = 0;
-  store.setzeMappe(MAPPE.fuegeGeschossHinzu(store.holeMappe(), store.aktivesGebaeude().id, 'OG Export').mappe);
-  store.setzeAktivesGeschoss(null);
-  baum('wand-export', idG1);
-  $('exp-ebene').value = 'geschoss'; $('exp-preise').checked = true;
+  baum('gs-export', gs2);
   $('exp-overlay')._sel = [{ value: 'gesamt' }];
   $('exp-go').dispatch('click');
-  ok('#44 ohne aktives Geschoss wird die Ebene benannt statt ersetzt',
-    zipCalls.length === 0 && /Gesamtstückliste/.test(trMsgTxt()) && /Kein aktives Geschoss/.test(trMsgTxt()));
+  ok('#67 auch ein nicht aktives Geschoss exportiert — der Zeiger bleibt',
+    zipCalls.length === 1
+    && zipCalls[0].files[0].name === 'Gesamtstueckliste_Geschoss_EG_Haus_2.csv'
+    && mengenSumme(zipCalls[0].files[0].data, [idG3])
+    && store.aktivesGeschossId() === gsG);
+
+  // (d) Projektebene: Gesamtstueckliste ueber den Projekt-Knopf
+  zipCalls.length = 0;
+  baum('prj-export', prjId);
+  ok('#67 der Projekt-Dialog oeffnet mit den Projekt-Optionen',
+    $('exp-titel').textContent === 'Projekt exportieren'
+    && /value="mappe"/.test($('exp-opts').innerHTML) && /value="katalog"/.test($('exp-opts').innerHTML)
+    && /^Exportprojekt #44$/.test($('exp-name').textContent));
+  $('exp-overlay')._sel = [{ value: 'gesamt' }];
+  $('exp-go').dispatch('click');
+  ok('#67 Projektebene: Dateiname, Ebenenbezug, Mengen = Summe ALLER drei Waende',
+    zipCalls.length === 1
+    && zipCalls[0].files[0].name === 'Gesamtstueckliste_Projekt_Exportprojekt_44.csv'
+    && /Ebene;Projekt/.test(zipCalls[0].files[0].data)
+    && mengenSumme(zipCalls[0].files[0].data, [idG1, idG2, idG3]));
+
+  // (e) Vollpaket Projektebene: der ZIP-Inhalt ist EXAKT die Auswahl
+  zipCalls.length = 0;
+  baum('prj-export', prjId);
+  $('exp-overlay')._sel = [{ value: 'mappe' }, { value: 'gesamt' }, { value: 'geschosse' },
+    { value: 'waende' }, { value: 'katalog' }];
+  $('exp-go').dispatch('click');
+  const alle = zipCalls.length ? zipCalls[0].files : [];
+  const an = alle.map(f => f.name);
+  ok('#67 Vollpaket: 1 Mappe + 2 Geschosse + 3 Waende + 1 Gesamtstueckliste + 1 Katalog',
+    alle.length === 8
+    && an.filter(n => n.startsWith('SEMBLA_Projektmappe_')).length === 1
+    && an.filter(n => n.startsWith('geschosse/')).length === 2
+    && an.filter(n => n.startsWith('waende/')).length === 3
+    && an.filter(n => n.startsWith('Gesamtstueckliste_')).length === 1
+    && an.filter(n => n.startsWith('SEMBLA_Bauteilkatalog_')).length === 1);
+  ok('#67 die Mappendatei ist die unveraenderte Projektmappe v2 — und heisst NICHT projekt.json',
+    (() => {
+      const f = alle.find(x => x.name.startsWith('SEMBLA_Projektmappe_'));
+      if (!f) return false;
+      const o = JSON.parse(f.data);
+      return o.format === 'SEMBLA-Projektmappe' && o.version === 2
+        && f.data === JSON.stringify(MAPPE.mappeObjekt(store.projektMappe(prjId)), null, 2)
+        && !an.some(n => n.endsWith('projekt.json'));
+    })());
+  ok('#67 jede Geschossdatei ist eine Teilmappe v2 mit GENAU einem Gebaeude und Geschoss',
+    alle.filter(x => x.name.startsWith('geschosse/')).every(x => {
+      const o = JSON.parse(x.data);
+      return o.format === 'SEMBLA-Projektmappe' && o.version === 2
+        && o.gebaeude.length === 1 && o.gebaeude[0].geschosse.length === 1;
+    }));
+  ok('#67 jede Wanddatei bleibt SEMBLA-Projekt v2 und bitgleich store.projektObjekt',
+    [idG1, idG2, idG3].every(id => {
+      const el = store.holeElement(id);
+      const f = alle.find(x => x.name === ARCHIV.wandPfad({ id, name: el.name }));
+      return f && JSON.parse(f.data).format === 'SEMBLA-Projekt'
+        && f.data === JSON.stringify(store.projektObjekt(id), null, 2);
+    }));
+  ok('#67 der Katalog ist eine EIGENE Datei und in keiner anderen eingebettet ([L-12])',
+    (() => {
+      const k = alle.find(x => x.name.startsWith('SEMBLA_Bauteilkatalog_'));
+      // Mappe und Geschossdaten tragen NUR die Katalog-Referenz; die Produktwahl
+      // in den Wanddateien ([P-13], nur IDs) ist ausdruecklich kein Katalog.
+      return k && JSON.parse(k.data).format === 'SEMBLA-Bauteilkatalog'
+        && JSON.parse(k.data).name === katalogG.name
+        && alle.filter(x => x.name.startsWith('SEMBLA_Projektmappe_') || x.name.startsWith('geschosse/'))
+          .every(x => !x.data.includes('"produkte"'));
+    })());
+  ok('#67 vollstaendiger Export meldet Erfolg ohne Luecken', !trFehler() && /8 Datei/.test(trMsgTxt()));
+
+  // (f) Export eines NICHT aktiven Projekts — der Umfang folgt dem Klick, kein Zeiger wandert
+  const prjZweit = await projektAnlegen('Zweitprojekt #67');
+  const zweitId = prjZweit.projekt.id;
+  store.setzeAktivesProjekt(prjId);
   store.setzeAktivesGeschoss(gsG);
+  zipCalls.length = 0;
+  baum('prj-export', zweitId);
+  ok('#67 Dialog oeffnet fuer das angeklickte, nicht aktive Projekt',
+    $('exp-overlay').hidden === false && $('exp-name').textContent === 'Zweitprojekt #67');
+  $('exp-overlay')._sel = [{ value: 'mappe' }];
+  $('exp-go').dispatch('click');
+  ok('#67 nicht aktives Projekt exportiert seine EIGENE Mappe — aktive Zeiger unveraendert',
+    zipCalls.length === 1
+    && zipCalls[0].files[0].name === 'SEMBLA_Projektmappe_' + ARCHIV.sicherStamm('Zweitprojekt #67') + '.json'
+    && JSON.parse(zipCalls[0].files[0].data).projekt.id === zweitId
+    && store.aktivesProjektId() === prjId && store.aktivesGeschossId() === gsG);
 
-  // (f) DER WEG OHNE AKTIVE WAND: Projekt-/Gebäude-/Geschossebene ist zentral exportierbar,
-  // auch wenn keine Wand aktiv ist. Geoeffnet wird der ECHTE Dialog ueber die Baumliste.
-  {
-    store.setzeAktiv(null);
-    ok('#44 Ausgangslage: keine aktive Wand', store.aktivId() === null);
-    ok('#44 Baumliste bietet „Gesamtstückliste" am aktiven Geschoss und am aktiven Projekt', (() => {
-      const b = $('tr-baum').innerHTML;
-      return new RegExp('data-act="gs-gesamt" data-id="' + gsG + '">Gesamtstückliste').test(b)
-        && /data-act="prj-gesamt"[^>]*>Gesamtstückliste/.test(b); })());
-    ok('#44 an einem NICHT aktiven Geschoss ist der Knopf gesperrt und benennt den Weg ([L-10])', (() => {
-      const b = $('tr-baum').innerHTML;
-      const treffer = [...b.matchAll(/data-act="gs-gesamt" data-id="([^"]+)"([^>]*)>/g)];
-      return treffer.length >= 2
-        && treffer.some(t => t[1] !== gsG && /disabled/.test(t[2]) && /aktiv setzen/.test(t[2]))
-        && treffer.some(t => t[1] === gsG && !/disabled/.test(t[2])); })());
+  // (g) Fehlendes Wandelement: benannt VOR dem Download, nie ersetzt ([L-4])
+  store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsG, { id: 'w-weg', name: 'Verschwundene Wand' }));
+  confirmAntwort = false;
+  zipCalls.length = 0;
+  baum('gs-export', gsG);
+  $('exp-overlay')._sel = [{ value: 'waende' }];
+  $('exp-go').dispatch('click');
+  ok('#67 Luecke wird vor dem Download benannt — ohne Bestaetigung kein ZIP',
+    zipCalls.length === 0 && /nichts geschrieben/.test(trMsgTxt()));
+  confirmAntwort = true;
+  $('exp-overlay')._sel = [{ value: 'waende' }];
+  $('exp-go').dispatch('click');
+  ok('#67 fehlendes Wandelement: ZIP ohne die Wand, Meldung nennt sie ([L-4])',
+    zipCalls.length === 1 && zipCalls[0].files.length === 2
+    && zipCalls[0].files.every(f => !/Verschwundene/.test(f.name))
+    && /Verschwundene Wand/.test(trMsgTxt()) && /L-4/.test(trMsgTxt()) && trFehler());
+  confirmAntwort = false;
+  store.setzeMappe(MAPPE.entferneWand(store.holeMappe(), 'w-weg'));
 
-    zipCalls.length = 0;
-    baum('gs-gesamt', gsG);
-    ok('#44 der Dialog öffnet ohne Wand und nennt die Ebene statt einer Wand',
-      $('exp-overlay').hidden === false && $('exp-titel').textContent === 'Gesamtstückliste exportieren'
-      && $('exp-bezug').textContent === 'Ebene:'
-      && /Geschoss „.+“ · Projekt „Exportprojekt #44“/.test($('exp-name').textContent)
-      && $('exp-ebene').value === 'geschoss');
-
-    // Wandbezogene Häkchen dürfen ohne Wand nicht ausgeführt werden.
-    $('exp-overlay')._sel = [{ value: 'stueckliste' }, { value: 'gesamt' }];
-    $('exp-go').dispatch('click');
-    ok('#44 wandbezogene Auswahl ohne Wand wird benannt und NICHT ausgeführt',
-      zipCalls.length === 0 && /Ohne aktive Wand/.test(trMsgTxt()) && trFehler());
-
-    // Die Gesamtstückliste selbst läuft — ohne jede Wandaktivierung.
-    $('exp-overlay')._sel = [{ value: 'gesamt' }];
-    $('exp-go').dispatch('click');
-    const f = zipCalls.length ? zipCalls[0].files : [];
-    ok('#44 ohne aktive Wand entsteht genau die Gesamtstückliste der Ebene',
-      zipCalls.length === 1 && f.length === 1
-      && f[0].name === 'Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '.csv');
-    ok('#44 der ZIP-Name folgt der Ebene, nicht einer Wand',
-      zipCalls[0].name === 'SEMBLA_Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '.zip');
-    ok('#44 Inhalt ist bitgleich die Summe beider Wände', (() => {
-      const zeilen = csvZeilen(f[0].data); const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
-      const summe = zeilen.slice(kopf + 1).filter(z => z[0] && !z[0].startsWith('Summe netto') && z.length > 6)
-        .reduce((a, z) => a + +z[4], 0);
-      const soll = [...erwarteteMengen([idG1, idG2]).values()].reduce((a, v) => a + v, 0);
-      return Math.abs(summe - soll) < 1e-9 && /Wände;2 von 2/.test(f[0].data); })());
-    ok('#44 dabei wird nichts still aktiviert',
-      store.aktivId() === null && store.aktivesGeschossId() === gsG);
-
-    // Projektebene über den Projektknopf — derselbe Weg, andere Vorauswahl.
-    zipCalls.length = 0;
-    baum('prj-gesamt', store.holeMappe().projekt.id);
-    ok('#44 Projektknopf öffnet den Dialog mit Projektebene',
-      $('exp-ebene').value === 'projekt' && /^Projekt „Exportprojekt #44“$/.test($('exp-name').textContent));
-    $('exp-overlay')._sel = [{ value: 'gesamt' }];
-    $('exp-go').dispatch('click');
-    ok('#44 Projektebene ohne aktive Wand exportiert',
-      zipCalls.length === 1 && zipCalls[0].files[0].name === 'Gesamtstueckliste_Projekt_Exportprojekt_44.csv');
-
-    // Zurück in den Wandmodus: die wandbezogenen Häkchen sind wieder benutzbar.
-    store.setzeAktiv(idG1);
-    zipCalls.length = 0;
-    baum('wand-export', idG1);
-    ok('#44 mit Wand ist der Dialog wieder der Wandexport',
-      $('exp-titel').textContent === 'Wand exportieren' && $('exp-bezug').textContent === 'Wand:'
-      && $('exp-name').textContent === 'Export Wand 1');
-    $('exp-overlay')._sel = [{ value: 'stueckliste' }];
-    $('exp-go').dispatch('click');
-    ok('#44 der Wandexport funktioniert danach unverändert',
-      zipCalls.length === 1 && zipCalls[0].files.length === 2
-      && /^Baustellenstueckliste_/.test(zipCalls[0].files[0].name));
-
-    // Der Häkchen-Zustand selbst: ohne Wand abgewählt UND gesperrt, mit Wand unverändert zurück.
-    const haken = [{ value: 'projekt', checked: true }, { value: 'gesamt', checked: false }];
-    $('exp-overlay')._sel = haken;
-    baum('gs-gesamt', gsG);
-    ok('#44 ohne Wand: wandbezogene Häkchen werden abgewählt und gesperrt (keine Vortäuschung)',
-      haken[0].checked === false && haken[0].disabled === true && haken[1].checked === true);
-    baum('wand-export', idG1);
-    ok('#44 mit Wand: der vorherige Häkchen-Stand kommt unverändert zurück',
-      haken[0].checked === true && haken[0].disabled === false);
-    $('exp-overlay')._sel = [];
-  }
+  // (h) Fehlender bzw. nicht zugeordneter Bauteilkatalog: benannt, nie ersetzt ([L-12])
+  const katRefVor = store.holeMappe().katalog;
+  store.setzeMappe(MAPPE.setzeKatalogRef(store.holeMappe(), 'kat-weg'));
+  confirmAntwort = true;
+  zipCalls.length = 0;
+  baum('prj-export', prjId);
+  $('exp-overlay')._sel = [{ value: 'katalog' }];
+  $('exp-go').dispatch('click');
+  ok('#67 fehlender zugeordneter Katalog: keine Datei, benannte Meldung, Referenz bleibt',
+    zipCalls.length === 0 && /kat-weg/.test(trMsgTxt()) && /nicht gespeichert/.test(trMsgTxt())
+    && trFehler() && store.holeMappe().katalog === 'kat-weg');
+  store.setzeMappe(MAPPE.setzeKatalogRef(store.holeMappe(), null));
+  baum('prj-export', prjId);
+  $('exp-overlay')._sel = [{ value: 'katalog' }];
+  $('exp-go').dispatch('click');
+  ok('#67 kein zugeordneter Katalog wird benannt ([L-12])',
+    zipCalls.length === 0 && /kein Bauteilkatalog zugeordnet/.test(trMsgTxt()));
+  store.setzeMappe(MAPPE.setzeKatalogRef(store.holeMappe(), katRefVor));
+  confirmAntwort = false;
 }
 
 // --- 10) KEIN Autoload beim Initialisieren (Issue #33) --------------------

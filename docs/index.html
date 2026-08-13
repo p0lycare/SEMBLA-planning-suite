@@ -360,35 +360,21 @@
   </div>
 </div>
 
-<!-- Zentraler Export-Dialog: erzeugt alle Ausgaben frisch aus dem Datenmodell -->
+<!-- Zentraler hierarchischer Export-Dialog (#67): EIN Zugang je Projekt-, Geschoss-
+     und Wandeintrag der Baumliste. Die Optionen werden je Ebene aus EXPORT_OPTIONEN
+     (sembla-archiv.js) gerendert; der Umfang folgt dem ANGEKLICKTEN Eintrag, nie den
+     aktiven Zeigern ([L-10]). Alle Dateien entstehen frisch aus dem Datenmodell —
+     kein Drift, kein zweiter Mengenpfad. Das ZIP ist KEIN Projektarchiv nach [L-13]
+     (keine Planbilder); das vollständige Archiv bleibt der Importweg. -->
 <div class="overlay" id="exp-overlay" hidden>
   <div class="modal">
-    <h3 id="exp-titel">Wand exportieren</h3>
+    <h3 id="exp-titel">Exportieren</h3>
     <p class="sub">Auswahl wird als <b>ZIP</b> heruntergeladen und komplett aus dem aktuellen
-      Datenmodell (Wandelement + Eingaben + Projekt-Kopfdaten) neu erzeugt — kein Drift.
-      <span id="exp-bezug">Wand:</span> <b id="exp-name">–</b></p>
-    <label class="opt"><input type="checkbox" value="projekt" checked><span><span class="t">Projekt-Datei (JSON)</span><br><span class="d">Vollständiges Datenmodell — hier auf der Startseite wieder importierbar.</span></span></label>
-    <label class="opt"><input type="checkbox" value="stueckliste" checked><span><span class="t">Baustellenstückliste (2× CSV)</span><br><span class="d">Real einzubauende Teile in Fertigmaßen aus dem aktiven Wandelement — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs. Ohne Beplankung (Latten/Platten/Verbinder).</span></span></label>
-    <label class="opt"><input type="checkbox" value="zuschnitt" checked><span><span class="t">Zuschnittliste Latten (CSV)</span><br><span class="d">Lattenschnitt je Verbinderachse aus dem Wandaufbau (Modul&nbsp;2) — eigene Ausgabe, nicht Teil der Baustellenstückliste.</span></span></label>
-    <label class="opt"><input type="checkbox" value="montage" checked><span><span class="t">Montageanleitung (HTML)</span><br><span class="d">Baugruppenabschnitte nach Montageereignissen mit nummerierten Steinreihen, A4-druckbar — im Browser öffnen und drucken.</span></span></label>
-    <label class="opt"><input type="checkbox" value="zeichnung" checked><span><span class="t">Technische Zeichnung (SVG + HTML)</span><br><span class="d">Wandabwicklung mit Verlege-/Vorspannplan, Bemaßung, Tabellen und Schriftfeld aus Modul&nbsp;7 — maßstabsgetreues SVG (1:x, mm) plus druckbares A3-/A4-Blatt.</span></span></label>
-    <label class="opt"><input type="checkbox" value="nachweis" checked><span><span class="t">Statischer Nachweis (HTML/PDF-fähig)</span><br><span class="d">Voller Schermer-Nachweis aus Modul&nbsp;3 mit Geometrie, Kennwerten und Auslastungen — druckbare, prüfpflichtige Planungshilfe.</span></span></label>
-    <label class="opt"><input type="checkbox" value="ifc" checked><span><span class="t">3D-Modell (IFC4)</span><br><span class="d">Wand als IFC4 für CAD/BIM-Programme.</span></span></label>
-    <!-- Gesamtstückliste (#44): bezieht sich NICHT auf die oben gewählte Wand, sondern auf die
-         AKTIVE Ebene der Projektmappe. Ebene und Preisschalter stehen deshalb ausserhalb des
-         Häkchen-Labels — ein Klick darauf darf das Häkchen nicht mitschalten. Erzeugt wird die
-         Datei aus derselben Ableitung wie die Anzeige in Modul 4 (kein DOM-Wert, kein zweites
-         Mengenmodell). -->
-    <label class="opt"><input type="checkbox" value="gesamt"><span><span class="t">Gesamtstückliste der aktiven Ebene (CSV)</span><br><span class="d">Summe der Baustellenstücklisten aller Wände der gewählten Ebene — mit Herkunft je Wand, den vorhandenen Einbauteil-IDs als <b>Wand-ID:ID</b> und benannten Lücken. Ebene und Preise unten wählen.</span></span></label>
+      Datenmodell neu erzeugt — kein Drift. Aktive Zeiger und gespeicherte Daten bleiben
+      unberührt. <span id="exp-bezug">Bezug:</span> <b id="exp-name">–</b></p>
+    <div id="exp-opts"></div>
     <div class="opt-zusatz" id="exp-gesamt-optionen" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
-      <label style="display:flex;gap:6px;align-items:center">Ebene
-        <select id="exp-ebene">
-          <option value="wand">Wand (aktiv)</option>
-          <option value="geschoss" selected>Geschoss (aktiv)</option>
-          <option value="gebaeude">Gebäude (aktiv)</option>
-          <option value="projekt">Projekt (aktiv)</option>
-        </select></label>
-      <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="exp-preise" checked>Preise enthalten</label>
+      <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="exp-preise" checked>Preise in der Gesamtstückliste</label>
     </div>
     <div class="modal-actions">
       <button class="btn-s" id="exp-cancel">Abbrechen</button>
@@ -435,8 +421,7 @@
   import * as store from './shared/storage.js';
   // `sembla-wandanlage.js` wird hier nicht mehr gebraucht: neue Wände entstehen seit
   // Issue #56 ausschliesslich im Geschosseditor, der diesen Anlagepfad benutzt.
-  import { baueDateien, gesamtstuecklisteDateien } from './shared/sembla-export.js';
-  import { umfang as gesamtUmfang, gesamtDaten, dateiRumpf as gesamtDateiRumpf } from './shared/sembla-gesamtstueckliste.js';
+  // Der zentrale Export läuft seit #67 vollständig über ARCHIV.hierarchieExport.
   import { downloadZip, entpacke } from './shared/zip.js';
   import * as ARCHIV from './shared/sembla-archiv.js';
   import * as KAT from './shared/sembla-katalog.js';
@@ -534,12 +519,10 @@
         + `<span class="akt">`
         + (istAktivPrj ? '' : knopf('prj-aktiv', m.projekt.id, 'Aktiv setzen'))
         + knopf('prj-bearbeiten', m.projekt.id, 'Bearbeiten')
-        + knopf('prj-zip', m.projekt.id, 'Export (ZIP)', 'btn-p')
-        // Gesamtstückliste des PROJEKTS (#44) — ohne aktive Wand erreichbar. Der Knopf setzt
-        // nichts aktiv ([L-10]): er ist gesperrt, solange das Projekt nicht aktiv ist.
-        + knopf('prj-gesamt', m.projekt.id, 'Gesamtstückliste', 'btn-s', !istAktivPrj,
-            `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`)
-        + knopf('prj-json', m.projekt.id, 'nur Struktur (JSON)')
+        // EIN Exportzugang je Eintrag (#67): der Dialog leitet seinen Umfang aus dem
+        // ANGEKLICKTEN Projekt ab und setzt dabei keinen Zeiger um ([L-10]) — deshalb
+        // ist der Knopf auch an nicht aktiven Projekten nutzbar.
+        + knopf('prj-export', m.projekt.id, 'Exportieren', 'btn-p')
         + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d')
         + `</span></div>`;
       if (!offen) return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}</div>`;
@@ -567,10 +550,9 @@
           `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`))
       + knopf('gs-oeffnen', gs.id, 'Geschoss öffnen', 'btn-p', !istAktivPrj,
           `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`)
-      // Gesamtstückliste des GESCHOSSES (#44) — der Weg ohne aktive Wand. Gesperrt, solange
-      // das Geschoss nicht aktiv ist; aktiviert wird hier nichts ([L-10]).
-      + knopf('gs-gesamt', gs.id, 'Gesamtstückliste', 'btn-s', !istAktiv,
-          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`)
+      // EIN Exportzugang je Eintrag (#67): Umfang aus dem ANGEKLICKTEN Geschoss,
+      // ohne Zeiger umzusetzen ([L-10]) — darum nicht an „aktiv“ gebunden.
+      + knopf('gs-export', gs.id, 'Exportieren')
       + knopf('gs-bearbeiten', gs.id, 'Bearbeiten')
       + knopf('gs-loeschen', gs.id, 'Löschen', 'btn-d')
       + `</span></div>`;
@@ -605,7 +587,7 @@
       + (el ? knopf('wand-planen', w.id, 'In Modul 1 planen', 'btn-s', !gsIstAktiv,
           `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`) : '')
       + (el ? knopf('wand-bearbeiten', w.id, 'Bearbeiten') : '')
-      + (el ? knopf('wand-export', w.id, 'Export') : '')
+      + (el ? knopf('wand-export', w.id, 'Exportieren') : '')
       + knopf('wand-loeschen', w.id, 'Löschen', 'btn-d')
       + `</span></div></div>`;
   }
@@ -687,9 +669,7 @@
       return;
     }
     if (act === 'prj-bearbeiten') { ppOeffne(id); return; }
-    if (act === 'prj-zip') { arcExport(id); return; }
-    if (act === 'prj-gesamt') { oeffneExport(null, 'projekt'); return; }
-    if (act === 'prj-json') { trMappeExport(id); return; }
+    if (act === 'prj-export') { oeffneExport('projekt', id); return; }
     if (act === 'prj-loeschen') { trProjektLoeschen(id); return; }
     if (act === 'gs-neu') { gpOeffne(id, null); return; }
     if (act === 'gs-aktiv') {
@@ -698,7 +678,7 @@
       return;
     }
     if (act === 'gs-oeffnen') { gsOeffnen(id); return; }
-    if (act === 'gs-gesamt') { oeffneExport(null, 'geschoss'); return; }
+    if (act === 'gs-export') { oeffneExport('geschoss', id); return; }
     if (act === 'gs-bearbeiten') { gpOeffne(null, id); return; }
     if (act === 'gs-loeschen') { trGeschossLoeschen(id); return; }
     if (act === 'wand-import') { wpOeffne(id, null); return; }
@@ -713,7 +693,7 @@
       return;
     }
     if (act === 'wand-bearbeiten') { wpOeffne(null, id); return; }
-    if (act === 'wand-export') { oeffneExport(id); return; }
+    if (act === 'wand-export') { oeffneExport('wand', id); return; }
     if (act === 'wand-loeschen') {
       const e = store.holeElement(id);
       const name = e ? e.name : id;
@@ -782,24 +762,8 @@
     return null;
   }
 
-  /** Die Projektmappe eines Projekts als eigene JSON-Datei sichern. */
-  function trMappeExport(id){
-    const m = store.projektMappe(id);
-    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
-    try {
-      const obj = MAPPE.mappeObjekt(m);
-      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'SEMBLA_Projektmappe_' + store.sicherName(m.projekt.name) + '.json';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-      trZeige(`Projektmappe „${m.projekt.name}“ als JSON gesichert (Struktur, Lage, Kopfdaten, `
-        + 'Katalogverweis). Wandelemente, Planbilder und der Katalog selbst sind eigene Dateien.', true);
-    } catch (e) { trZeige('Export fehlgeschlagen: ' + fehlerText(e), false); }
-  }
-
+  // Der frühere eigene Mappen-Download („nur Struktur (JSON)") ist seit #67 eine
+  // Option des zentralen Exportdialogs; der IMPORT darunter bleibt unverändert.
   $('tr-mappe-import').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
@@ -829,59 +793,14 @@
   });
 
   // =====================================================================
-  //  Vollständiges Projektarchiv ([L-13]) — ZIP/Ordner, Export und Import
+  //  Vollständiges Projektarchiv ([L-13]) — ZIP/Ordner-IMPORT
   // =====================================================================
   // Genau EINE Mappe je Archiv, alle referenzierten Wände und alle vorhandenen
   // Planbilder. Der Bauteilkatalog gehört NICHT hinein ([L-12]) — nur seine
   // Referenz. Gelesen/geprüft wird in sembla-archiv.js (rein), geschrieben in
   // store.schreibeArchiv (mit vollständigem Rücksprung bei jedem Fehler).
-
-  /** Bytes eines abgelegten Planbildes (null = keines vorhanden). */
-  async function arcBildBytes(geschossId){
-    const satz = await PLAN.holePlan(geschossId);
-    if (!satz || !satz.blob) return null;
-    const puffer = await satz.blob.arrayBuffer();
-    return new Uint8Array(puffer);
-  }
-
-  /** Ein Projekt vollständig als ZIP sichern ([L-13]). */
-  async function arcExport(id){
-    const m = store.projektMappe(id);
-    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
-    try {
-      const vorhandeneWaende = store.listeElemente().map(e => e.id);
-      const vorhandeneBilder = await PLAN.listePlaene();
-      const plan = ARCHIV.exportPlan(m, vorhandeneWaende, vorhandeneBilder);
-
-      // Unvollständigkeit wird VOR dem Download benannt — ein stilles Teilarchiv,
-      // das sich „vollständig“ nennt, wäre der schlimmste Fehlermodus ([L-13]).
-      const luecken = [];
-      if (plan.fehlendeWaende.length) {
-        luecken.push(`${plan.fehlendeWaende.length} eingetragene Wand/Wände haben kein Wandelement mehr `
-          + `(${plan.fehlendeWaende.map(w => (w.name || w.id) + ' / ' + w.geschoss).join(', ')}) — `
-          + 'sie bleiben verwaiste Einträge ([L-4]).');
-      }
-      if (plan.fehlendeBilder.length) {
-        luecken.push(`${plan.fehlendeBilder.length} Geschoss(e) verweisen auf einen Plan, dessen Bild in `
-          + `diesem Browser fehlt (${plan.fehlendeBilder.map(b => b.name).join(', ')}) — Maßstab und `
-          + 'Versatz reisen mit, das Bild nicht ([L-9]).');
-      }
-      if (luecken.length && !confirm('Dieses Archiv wird NICHT vollständig:\n\n– ' + luecken.join('\n– ')
-        + '\n\nTrotzdem exportieren?')) { trZeige('Export abgebrochen — es wurde nichts geschrieben.', false); return; }
-
-      const bilder = new Map();
-      for (const p of plan.plaene) bilder.set(p.geschossId, await arcBildBytes(p.geschossId));
-      const dateien = ARCHIV.archivDateien(m, plan,
-        (wid) => store.projektObjekt(wid),
-        (gid) => bilder.get(gid));
-      const wurzel = ARCHIV.archivName(m);
-      downloadZip(wurzel + '.zip', dateien.map(d => ({ name: wurzel + '/' + d.name, data: d.data })));
-      trZeige(`Projekt „${m.projekt.name}“ als ZIP gesichert: ${plan.waende.length} Wanddatei(en), `
-        + `${plan.plaene.length} Planbild(er), Struktur mit Lage, Bemaßungen und Kopfdaten.`
-        + (luecken.length ? ' ⚠ Unvollständig: ' + luecken.join(' ') : '')
-        + ' Der Bauteilkatalog ist nicht enthalten ([L-12]) — er wird getrennt exportiert.', !luecken.length);
-    } catch (e) { trZeige('Export fehlgeschlagen: ' + fehlerText(e), false); }
-  }
+  // Der frühere Archiv-EXPORT-Knopf ist mit #67 dem hierarchischen Export
+  // gewichen; bestehende Archive bleiben über diesen Weg importierbar.
 
   // --- Import: lesen, prüfen, bestätigen, erst dann schreiben --------------
   const arcOverlay = $('arc-overlay');
@@ -1796,54 +1715,63 @@
   }
 
   // =====================================================================
-  //  Zentraler Export-Dialog (eine Wand)
+  //  Zentraler hierarchischer Export-Dialog (#67)
   // =====================================================================
   const overlay = $('exp-overlay');
-  let expId = null;
-  /** Alle Datei-Haekchen des Dialogs (direkte Kinder von .opt). */
-  const expHaken = () => [...overlay.querySelectorAll('.opt > input[type=checkbox]')];
-  /** Die WANDBEZOGENEN Haekchen — alles ausser der Gesamtstückliste. */
-  const expWandHaken = () => expHaken().filter(c => c.value !== 'gesamt');
-  let expWandStand = null;            // gemerkter Haken-Stand des Wandmodus
+  let expKontext = null;      // { ebene, mappe, gebaeudeId, geschossId, wandId, wandName }
+
+  /** Beschriftung je Option — die Schlüssel sind EXPORT_OPTIONEN (sembla-archiv.js). */
+  const EXP_TEXTE = {
+    mappe: ['Projektmappe — nur Struktur (JSON)', 'Struktur, Lage, Bemaßungen, Kopfdaten und Katalogverweis ([L-13]) — ohne Wandelemente, Planbilder und Katalog; hier wieder importierbar.'],
+    gesamt: ['Gesamtstückliste (CSV)', 'Summe der Baustellenstücklisten aller Wände dieses Umfangs — mit Herkunft je Wand, Einbauteil-IDs als <b>Wand-ID:ID</b> und benannten Lücken.'],
+    geschosse: ['Geschossdaten (JSON je Geschoss)', 'Je enthaltenem Geschoss eine Teilmappe im Format SEMBLA-Projektmappe v2 — genau das eine Gebäude mit genau diesem Geschoss.'],
+    geschoss: ['Geschossdaten (JSON)', 'Dieses Geschoss als Teilmappe im Format SEMBLA-Projektmappe v2 — genau das eine Gebäude mit genau diesem Geschoss, ohne die vollständige Projektmappe.'],
+    waende: ['Wandelementdateien (JSON je Wand)', 'Je enthaltener Wand eine SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben). Fehlende Wandelemente werden benannt, nie ersetzt ([L-4]).'],
+    wand: ['Wanddatei (JSON)', 'Diese Wand als SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben) — hier wieder importierbar.'],
+    katalog: ['Bauteilkatalog (JSON)', 'Der dem Projekt zugeordnete Katalog als eigene SEMBLA-Bauteilkatalog-Datei ([L-12]) — nie in Mappe oder Wanddatei eingebettet.'],
+    stueckliste: ['Baustellenstückliste (2× CSV)', 'Real einzubauende Teile in Fertigmaßen — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs.'],
+  };
 
   /**
-   * Zentralen Export oeffnen. `id = null` ist der Weg OHNE aktive Wand (#44): dann gibt es
-   * genau eine sinnvolle Ausgabe — die Gesamtstückliste der aktiven Projektstufe.
-   *
-   * Die wandbezogenen Haekchen werden dabei abgewaehlt UND gesperrt, statt sie anzubieten:
-   * ein Haken, der ohne Wand nichts erzeugen kann, waere eine Vortaeuschung. Aktiviert wird
-   * nichts ([L-10]) — die Ebene folgt weiterhin allein den aktiven Zeigern.
-   * @param {string|null} id Wandkennung oder null @param {string} [ebene] Vorauswahl der Ebene
+   * Zentralen Export am ANGEKLICKTEN Eintrag oeffnen (#67). Der Umfang kommt
+   * deterministisch aus dem Eintrag der Baumliste; aktive Zeiger werden weder
+   * gelesen noch umgesetzt ([L-10]), gespeichert wird nichts.
+   * @param {'projekt'|'geschoss'|'wand'} ebene @param {string} id
    */
-  function oeffneExport(id, ebene){
-    if (id != null) {
+  function oeffneExport(ebene, id){
+    let kontext = null;
+    if (ebene === 'projekt') {
+      const m = store.projektMappe(id);
+      if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
+      kontext = { ebene, mappe: m };
+      $('exp-titel').textContent = 'Projekt exportieren';
+      $('exp-bezug').textContent = 'Projekt:';
+      $('exp-name').textContent = m.projekt.name;
+    } else if (ebene === 'geschoss') {
+      const ort = trFindeGeschoss(id);
+      if (!ort) { trZeige('Unbekanntes Geschoss.', false); return; }
+      kontext = { ebene, mappe: ort.mappe, gebaeudeId: ort.gebaeude.id, geschossId: id };
+      $('exp-titel').textContent = 'Geschoss exportieren';
+      $('exp-bezug').textContent = 'Geschoss:';
+      $('exp-name').textContent = `${ort.geschoss.name} · Projekt „${ort.mappe.projekt.name}“`;
+    } else {
       const e = store.holeElement(id); if (!e) return;
-      expId = id;
+      const ort = store.wandVerortung(id);
+      kontext = { ebene: 'wand', mappe: ort ? ort.mappe : null,
+        geschossId: ort ? ort.geschoss.id : null, wandId: id, wandName: e.name };
       $('exp-titel').textContent = 'Wand exportieren';
       $('exp-bezug').textContent = 'Wand:';
-      $('exp-name').textContent = e.name;
-      // Der vor dem Gesamtmodus gemerkte Stand kommt zurueck — nichts wird stillschweigend
-      // an- oder abgewaehlt.
-      expWandHaken().forEach((c, i) => { c.disabled = false; if (expWandStand) c.checked = expWandStand[i]; });
-      expWandStand = null;
-    } else {
-      const gs = aktGeschoss(), m = store.holeMappe();
-      if (!m) { trZeige('Kein aktives Projekt — erst ein Projekt aktiv setzen ([L-10]).', false); return; }
-      expId = null;
-      $('exp-titel').textContent = 'Gesamtstückliste exportieren';
-      $('exp-bezug').textContent = 'Ebene:';
-      $('exp-name').textContent = ebene === 'geschoss' && gs
-        ? `Geschoss „${gs.name}“ · Projekt „${m.projekt.name}“`
-        : `Projekt „${m.projekt.name}“`;
-      if (!expWandStand) expWandStand = expWandHaken().map(c => !!c.checked);
-      expWandHaken().forEach(c => { c.checked = false; c.disabled = true; });
-      const g = expHaken().find(c => c.value === 'gesamt');
-      if (g) g.checked = true;
+      $('exp-name').textContent = e.name + (ort ? ` · Geschoss „${ort.geschoss.name}“` : '');
     }
-    if (ebene) $('exp-ebene').value = ebene;
+    expKontext = kontext;
+    $('exp-opts').innerHTML = ARCHIV.exportOptionen(kontext.ebene).map(o =>
+      `<label class="opt"><input type="checkbox" value="${o}" checked><span><span class="t">${EXP_TEXTE[o][0]}</span><br><span class="d">${EXP_TEXTE[o][1]}</span></span></label>`
+    ).join('');
+    // Der Preisschalter gehoert zur Gesamtstückliste — auf der Wandebene gibt es sie nicht.
+    $('exp-gesamt-optionen').hidden = !ARCHIV.exportOptionen(kontext.ebene).includes('gesamt');
     overlay.hidden = false;
   }
-  function schliesseExport(){ overlay.hidden = true; expId = null; }
+  function schliesseExport(){ overlay.hidden = true; expKontext = null; }
   $('exp-cancel').addEventListener('click', schliesseExport);
   overlay.addEventListener('click', (ev) => { if (ev.target === overlay) schliesseExport(); });
   document.addEventListener('keydown', (ev) => {
@@ -1857,62 +1785,38 @@
     if (!gpOverlay.hidden) gpAbbruch();
     if (!ppOverlay.hidden) ppAbbruch();
   });
-  /**
-   * Dateien der GESAMTSTÜCKLISTE (#44) aus der AKTIVEN Ebene der Projektmappe.
-   * Der Umfang kommt ausschliesslich aus Mappe und aktiven Zeigern ([L-10]); eine nicht
-   * aktivierbare Ebene wird BENANNT (Fehler) statt durch eine andere ersetzt. Gerechnet wird
-   * je Wand mit `stuecklistePositionen` — es gibt keinen zweiten Mengenpfad und keinen Wert
-   * aus einer Oberflaeche.
-   */
-  function gesamtDateien() {
-    const gs = store.aktivesGeschoss(), geb = store.aktivesGebaeude();
-    const wandId = store.aktivId();
-    const el = wandId ? store.holeElement(wandId) : null;
-    const umf = gesamtUmfang(store.holeMappe(), $('exp-ebene').value || 'wand', {
-      wandId, wandName: el ? el.name : null,
-      geschossId: gs ? gs.geschoss.id : null,
-      gebaeudeId: geb ? geb.id : (gs ? gs.gebaeude.id : null),
-    });
-    if (!umf.ok) throw new Error('Gesamtstückliste: ' + umf.grund);
-    const daten = gesamtDaten(umf, {
-      holeElement: (id) => store.holeElement(id),
-      holeEingaben: (id) => store.holeEingaben(id),
-      katalog: store.holeKatalog(),
-    });
-    return gesamtstuecklisteDateien(daten, { preise: $('exp-preise').checked, rumpf: gesamtDateiRumpf(daten) });
-  }
-
   $('exp-go').addEventListener('click', () => {
-    // Nur die Haekchen der Dateiauswahl (direkte Kinder von .opt) — die Zusatzbedienung der
-    // Gesamtstückliste ist keine Datei und darf nie als Auswahl gelesen werden.
-    const auswahl = [...overlay.querySelectorAll('.opt > input[type=checkbox]:checked')].map(c => c.value);
+    // Nur die Haekchen der Dateiauswahl (in #exp-opts) — der Preisschalter ist keine Datei.
+    const auswahl = [...overlay.querySelectorAll('#exp-opts .opt > input[type=checkbox]:checked')].map(c => c.value);
     if (!auswahl.length) { trZeige('Bitte mindestens eine Datei auswählen.', false); return; }
-    const wandTeile = auswahl.filter(v => v !== 'gesamt');
-    // Ohne aktive Wand gibt es keine wandbezogene Ausgabe — das wird BENANNT und nicht
-    // halb ausgeführt ([P-1]: die Wanddateien haben keine zweite Quelle).
-    if (!expId && wandTeile.length) {
-      trZeige('Ohne aktive Wand ist nur die Gesamtstückliste exportierbar — '
-        + 'wandbezogene Dateien über „Export" an der Wand.', false);
-      return;
-    }
+    if (!expKontext) { trZeige('Kein Exportbezug — Dialog bitte über die Baumliste öffnen.', false); return; }
     try {
-      const files = [];
-      let zipName = null;
-      if (expId) {
+      const k = expKontext;
+      // Der Katalog des ANGEKLICKTEN Projekts ([L-12]) — nicht der des aktiven.
+      const katalog = k.mappe && k.mappe.katalog ? store.katalogNachId(k.mappe.katalog) : null;
+      const erg = ARCHIV.hierarchieExport(auswahl, {
+        mappe: k.mappe, ebene: k.ebene,
+        gebaeudeId: k.gebaeudeId, geschossId: k.geschossId,
+        wandId: k.wandId, wandName: k.wandName,
+        katalog,
+        holeElement: (id) => store.holeElement(id),
+        holeEingaben: (id) => store.holeEingaben(id),
         // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
-        const projekt = store.projektObjekt(expId);
-        // Katalog ist Preisquelle der Stückliste ([P-14]) — dieselbe Auflösung wie in Modul 4.
-        files.push(...baueDateien(projekt, auswahl, store.holeKatalog()));
-        zipName = 'SEMBLA_' + store.sicherName(projekt.name);
+        projektObjekt: (id) => store.projektObjekt(id),
+        preise: $('exp-preise').checked,
+      });
+      // Fehlendes wird VOR dem Download benannt — kein stilles Teilergebnis ([L-4]/[L-12]).
+      if (erg.luecken.length && !confirm('Dieser Export wird NICHT vollständig:\n\n– '
+        + erg.luecken.join('\n– ') + '\n\nTrotzdem exportieren?')) {
+        trZeige('Export abgebrochen — es wurde nichts geschrieben.', false); return;
       }
-      if (auswahl.includes('gesamt')) {
-        const g = gesamtDateien();
-        files.push(...g);
-        if (!zipName) zipName = 'SEMBLA_' + g[0].name.replace(/\.csv$/, '');
+      if (!erg.dateien.length) {
+        trZeige('Keine Datei erzeugt: ' + (erg.luecken.join(' ') || 'leere Auswahl.'), false); return;
       }
-      downloadZip(zipName + '.zip', files);
+      downloadZip(erg.zipName + '.zip', erg.dateien);
       schliesseExport();
-      trZeige('Exportiert: ' + files.length + ' Datei(en) im ZIP.', true);
+      trZeige('Exportiert: ' + erg.dateien.length + ' Datei(en) im ZIP.'
+        + (erg.luecken.length ? ' ⚠ Unvollständig: ' + erg.luecken.join(' ') : ''), !erg.luecken.length);
     } catch (e) {
       trZeige('Export fehlgeschlagen: ' + fehlerText(e), false);
     }

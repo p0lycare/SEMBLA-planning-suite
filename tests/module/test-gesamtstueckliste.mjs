@@ -8,13 +8,20 @@
 // zweites Mengenmodell entstanden — genau das soll der Test unmoeglich machen.
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
-import { stuecklistePositionen, gesamtstuecklisteAoa, gesamtstuecklisteCsv } from "../../docs/shared/sembla-export.js";
+import {
+  stuecklistePositionen, gesamtstuecklisteAoa, gesamtstuecklisteCsv, gesamtstuecklisteDateien, baueDateien,
+} from "../../docs/shared/sembla-export.js";
 import {
   EBENEN, ebeneTitel, umfang, gesamtDaten, standText, herkunftText, dateiRumpf,
 } from "../../docs/shared/sembla-gesamtstueckliste.js";
 import {
-  leereMappe, fuegeGebaeudeHinzu, fuegeGeschossHinzu, setzeWand,
+  leereMappe, fuegeGebaeudeHinzu, fuegeGeschossHinzu, setzeWand, setzeKatalogRef,
+  mappeObjekt, validiereMappe,
 } from "../../docs/shared/sembla-projektmappe.js";
+import { katalogObjekt } from "../../docs/shared/sembla-katalog.js";
+import {
+  EXPORT_OPTIONEN, exportOptionen, geschossTeilmappe, geschossPfad, hierarchieExport, wandPfad, sicherStamm,
+} from "../../docs/shared/sembla-archiv.js";
 
 const checks = [];
 const ok = (n, c) => checks.push([n, !!c]);
@@ -283,6 +290,153 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   ok("unvollständige CSV nennt Lücke mit Pfad und Ursache",
     /Lücke;Projekt #44 › Haus Nord › EG › Verwaiste Wand;.*verwaister Eintrag/.test(csvL));
   ok("unvollständige CSV erfindet keine Nullzeile", !/;0;;;;;;$/m.test(csvL));
+}
+
+// ==== Hierarchischer Export (#67): Optionen je Ebene, ZIP-Inhalt = Auswahl, Luecken ========
+// Die Mappe bekommt fuer diese Abschnitte eine Katalogzuordnung ([L-12]) — der Export
+// gibt den zugeordneten Katalog als EIGENE Datei aus, nie eingebettet.
+const MK = setzeKatalogRef(M, "kat-44");
+/** SEMBLA-Projekt-v2-Sicht einer Wand — wie store.projektObjekt, hier als reiner Mock. */
+const projektObjekt = (id) => ({
+  format: "SEMBLA-Projekt", version: 2, name: ELEMENTE[id].name,
+  wandelement: ELEMENTE[id].wandelement, eingaben: eingabenFuer(),
+});
+/** Standard-Parameter des Exports — Klick-Kennungen, nie aktive Zeiger. */
+const P = (ueber = {}) => ({
+  mappe: MK, ebene: "projekt", gebaeudeId: GEB1, geschossId: EG, wandId: "w-a", wandName: "Wand A",
+  katalog: KATALOG, ...leser(), projektObjekt, preise: true, ...ueber,
+});
+
+// ---- 8. Optionen je Ebene: genau die zulaessigen, zyklusfremde gibt es nicht --------------
+{
+  ok("#67 Projekt-/Gebaeudeebene: Mappe, Gesamtstueckliste, Geschosse, Waende, Katalog",
+    JSON.stringify(EXPORT_OPTIONEN.projekt) === JSON.stringify(["mappe", "gesamt", "geschosse", "waende", "katalog"])
+    && JSON.stringify(EXPORT_OPTIONEN.gebaeude) === JSON.stringify(EXPORT_OPTIONEN.projekt));
+  ok("#67 Geschossebene: Geschossdaten, Gesamtstueckliste, Waende — keine Projektmappe",
+    JSON.stringify(EXPORT_OPTIONEN.geschoss) === JSON.stringify(["geschoss", "gesamt", "waende"]));
+  ok("#67 Wandebene: Wanddatei und Baustellenstueckliste",
+    JSON.stringify(EXPORT_OPTIONEN.wand) === JSON.stringify(["wand", "stueckliste"]));
+  const alleOpt = Object.values(EXPORT_OPTIONEN).flat();
+  ok("#67 zyklusfremde Ausgaben sind auf KEINER Ebene waehlbar",
+    ["nachweis", "montage", "zeichnung", "ifc", "zuschnitt"].every((o) => !alleOpt.includes(o)));
+  ok("#67 exportOptionen liefert eine Kopie",
+    (() => { const a = exportOptionen("wand"); a.push("x"); return EXPORT_OPTIONEN.wand.length === 2; })());
+  const wirft = (fn, muster) => { try { fn(); return false; } catch (e) { return muster.test(e.message); } };
+  ok("#67 unzulaessige Auswahl wird abgewiesen statt still uebergangen",
+    wirft(() => hierarchieExport(["mappe"], P({ ebene: "geschoss" })), /gibt es auf der Ebene/)
+    && wirft(() => hierarchieExport(["gesamt"], P({ ebene: "wand" })), /gibt es auf der Ebene/)
+    && wirft(() => hierarchieExport(["nachweis"], P()), /gibt es auf der Ebene/));
+  ok("#67 leere Auswahl und unbekannte Ebene werden benannt",
+    wirft(() => hierarchieExport([], P()), /Keine Datei/)
+    && wirft(() => hierarchieExport(["mappe"], P({ ebene: "etage" })), /Unbekannte Exportebene/));
+  ok("#67 ohne Mappe ist nur die Wandebene exportierbar",
+    wirft(() => hierarchieExport(["mappe"], P({ mappe: null })), /nur die Wandebene/));
+}
+
+// ---- 9. ZIP-Inhalt entspricht exakt der Auswahl -------------------------------------------
+{
+  // Projektebene, alles gewaehlt: 1 Mappe + 3 Geschosse + 4 Waende + 1 CSV + 1 Katalog.
+  const erg = hierarchieExport(["mappe", "gesamt", "geschosse", "waende", "katalog"], P());
+  const namen = erg.dateien.map((d) => d.name);
+  ok("#67 Projekt-Vollpaket: 10 Dateien, keine Luecke", erg.dateien.length === 10 && erg.luecken.length === 0);
+  ok("#67 ZIP-Name nennt Ebene und Projekt", erg.zipName === "SEMBLA_Export_Projekt_" + sicherStamm("Projekt #44"));
+  ok("#67 Mappendatei: unveraenderte SEMBLA-Projektmappe v2, heisst NICHT projekt.json", (() => {
+    const f = erg.dateien.find((x) => x.name.startsWith("SEMBLA_Projektmappe_"));
+    return f && f.data === JSON.stringify(mappeObjekt(MK), null, 2)
+      && !namen.some((n) => n.endsWith("projekt.json"));
+  })());
+  ok("#67 je Geschoss eine Teilmappe unter geschosse/", [EG, OG, EG2].every((gs) =>
+    namen.filter((n) => n.startsWith("geschosse/")).some((n) => n.endsWith("__" + gs + ".json"))));
+  ok("#67 jede Teilmappe ist GUELTIGES Mappenformat v2 mit genau einem Gebaeude/Geschoss",
+    erg.dateien.filter((x) => x.name.startsWith("geschosse/")).every((x) => {
+      const t = JSON.parse(x.data);
+      return validiereMappe(t).length === 0 && t.format === "SEMBLA-Projektmappe" && t.version === 2
+        && t.gebaeude.length === 1 && t.gebaeude[0].geschosse.length === 1
+        && t.projekt.id === MK.projekt.id && t.katalog === "kat-44";
+    }));
+  ok("#67 die Teilmappe traegt genau die Waende ihres Geschosses", (() => {
+    const t = JSON.parse(erg.dateien.find((x) => x.name === geschossPfad({ id: EG, name: "EG" })).data);
+    return t.gebaeude[0].geschosse[0].waende.map((w) => w.id).join() === "w-a,w-b";
+  })());
+  ok("#67 je Wand eine SEMBLA-Projekt-v2-Datei unter waende/", ["w-a", "w-b", "w-c", "w-d"].every((id) => {
+    const f = erg.dateien.find((x) => x.name === wandPfad({ id, name: ELEMENTE[id].name }));
+    return f && f.data === JSON.stringify(projektObjekt(id), null, 2);
+  }));
+  ok("#67 die Gesamtstueckliste ist bitgleich der bestehende kanonische Pfad", (() => {
+    const d = gesamtDaten(umfang(MK, "projekt", Z), leser());
+    const soll = gesamtstuecklisteDateien(d, { preise: true, rumpf: dateiRumpf(d) })[0];
+    const f = erg.dateien.find((x) => x.name === soll.name);
+    return f && f.data === soll.data;
+  })());
+  ok("#67 der Katalog ist eine eigene Datei im Katalogformat — nirgends eingebettet ([L-12])", (() => {
+    const f = erg.dateien.find((x) => x.name.startsWith("SEMBLA_Bauteilkatalog_"));
+    return f && f.data === JSON.stringify(katalogObjekt(KATALOG), null, 2)
+      && erg.dateien.filter((x) => x.name.startsWith("SEMBLA_Projektmappe_") || x.name.startsWith("geschosse/"))
+        .every((x) => !x.data.includes('"produkte"'));
+  })());
+
+  // Teilauswahl: genau eine Datei je gewaehlter Einzeloption.
+  ok("#67 die Auswahl bestimmt den Inhalt exakt",
+    hierarchieExport(["mappe"], P()).dateien.length === 1
+    && hierarchieExport(["katalog"], P()).dateien.length === 1
+    && hierarchieExport(["gesamt"], P()).dateien.length === 1
+    && hierarchieExport(["geschosse"], P()).dateien.length === 3
+    && hierarchieExport(["waende"], P()).dateien.length === 4);
+
+  // Gebaeudeebene: nur Haus Nord (EG+OG, Waende A/B/C).
+  const eb = hierarchieExport(["geschosse", "waende"], P({ ebene: "gebaeude" }));
+  ok("#67 Gebaeudeebene: genau die Geschosse und Waende des Gebaeudes",
+    eb.dateien.filter((x) => x.name.startsWith("geschosse/")).length === 2
+    && eb.dateien.filter((x) => x.name.startsWith("waende/")).length === 3
+    && !eb.dateien.some((x) => x.name.includes("w-d"))
+    && eb.zipName === "SEMBLA_Export_Gebaeude_" + sicherStamm("Haus Nord"));
+
+  // Geschossebene: Teilmappe + Waende + CSV — und KEINE vollstaendige Projektmappe.
+  const eg = hierarchieExport(["geschoss", "gesamt", "waende"], P({ ebene: "geschoss" }));
+  ok("#67 Geschossebene: Geschossdaten, Gesamtstueckliste, beide Waende — keine Projektmappe",
+    eg.dateien.length === 4
+    && eg.dateien.filter((x) => x.name.startsWith("geschosse/")).length === 1
+    && eg.dateien.filter((x) => x.name.startsWith("waende/")).length === 2
+    && eg.dateien.some((x) => x.name === "Gesamtstueckliste_Geschoss_EG.csv")
+    && !eg.dateien.some((x) => x.name.startsWith("SEMBLA_Projektmappe_"))
+    && eg.zipName === "SEMBLA_Export_Geschoss_EG");
+
+  // Wandebene: Wanddatei + Baustellenstueckliste, bitgleich der bestehende Wandpfad.
+  const ew = hierarchieExport(["wand", "stueckliste"], P({ ebene: "wand" }));
+  const sollW = baueDateien(projektObjekt("w-a"), ["stueckliste"], KATALOG);
+  ok("#67 Wandebene: Wanddatei + 2 Stuecklisten-CSVs, bitgleich baueDateien",
+    ew.dateien.length === 3
+    && ew.dateien[0].name === wandPfad({ id: "w-a", name: "Wand A" })
+    && ew.dateien[1].data === sollW[0].data && ew.dateien[2].data === sollW[1].data
+    && ew.zipName === "SEMBLA_Export_Wand_" + sicherStamm("Wand A"));
+  ok("#67 eine unverortete Wand bleibt ohne Mappe exportierbar", (() => {
+    const solo = hierarchieExport(["wand"], P({ ebene: "wand", mappe: null }));
+    return solo.dateien.length === 1 && solo.luecken.length === 0;
+  })());
+  ok("#67 geschossTeilmappe zu unbekanntem Geschoss liefert null statt einer erfundenen Mappe",
+    geschossTeilmappe(MK, "gs-fremd") === null);
+}
+
+// ---- 10. Luecken: fehlendes Wandelement und fehlender Katalog — benannt, nie ersetzt ------
+{
+  let ML = setzeWand(MK, EG, { id: "w-verwaist", name: "Verwaiste Wand" });
+  const ev = hierarchieExport(["waende"], P({ mappe: ML, ebene: "geschoss" }));
+  ok("#67 fehlendes Wandelement: Datei fehlt, Luecke nennt Wand und [L-4]",
+    ev.dateien.length === 2
+    && !ev.dateien.some((x) => x.name.includes("w-verwaist"))
+    && ev.luecken.length === 1 && /Verwaiste Wand/.test(ev.luecken[0]) && /L-4/.test(ev.luecken[0]));
+  const eg2 = hierarchieExport(["gesamt"], P({ mappe: ML, ebene: "geschoss" }));
+  ok("#67 die Gesamtstueckliste meldet ihre Luecken in den Exportluecken mit",
+    eg2.luecken.some((l) => /Gesamtstückliste/.test(l) && /Verwaiste Wand/.test(l)));
+  const ohneRef = hierarchieExport(["katalog"], P({ mappe: M, katalog: null }));
+  ok("#67 kein zugeordneter Katalog: keine Datei, benannter Grund ([L-12])",
+    ohneRef.dateien.length === 0 && /kein Bauteilkatalog zugeordnet/.test(ohneRef.luecken[0]));
+  const refWeg = hierarchieExport(["katalog"], P({ katalog: null }));
+  ok("#67 zugeordneter, aber fehlender Katalog: Kennung wird benannt, Referenz bleibt Sache der Mappe",
+    refWeg.dateien.length === 0 && /kat-44/.test(refWeg.luecken[0]) && /nicht gespeichert/.test(refWeg.luecken[0]));
+  const stWeg = hierarchieExport(["stueckliste"], P({ ebene: "wand", wandId: "w-verwaist", wandName: "Verwaiste Wand", mappe: ML }));
+  ok("#67 Baustellenstueckliste ohne Wandelement: Luecke statt erfundener Datei",
+    stWeg.dateien.length === 0 && /L-4/.test(stWeg.luecken[0]));
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

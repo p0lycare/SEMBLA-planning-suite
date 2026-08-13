@@ -32,7 +32,10 @@
  * Rein und DOM-frei; eigene Tests (tests/module/test-archiv.mjs) — shared-Regel (b).
  */
 
-import { alleGeschosse, alleWaende, mappeObjekt, normMappe, parseMappe } from "./sembla-projektmappe.js";
+import { alleGeschosse, alleWaende, findeGebaeude, findeGeschoss, mappeObjekt, normMappe, parseMappe } from "./sembla-projektmappe.js";
+import { katalogObjekt } from "./sembla-katalog.js";
+import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
+import { baueDateien, gesamtstuecklisteDateien } from "./sembla-export.js";
 
 /** Name der Mappendatei im Archiv — das Erkennungsmerkmal eines Projektarchivs. */
 export const DATEI_MAPPE = "projekt.json";
@@ -406,4 +409,196 @@ export function berichtZeilen(gelesen) {
       + `werden nicht importiert: ${gelesen.ueberzaehlig.join(", ")}`);
   }
   return z;
+}
+
+// --- Hierarchischer Export (Issue #67) --------------------------------------
+//
+// Der zentrale Export in Modul 0 bietet je Hierarchieebene NUR die dazu passenden
+// Projektdaten und die Gesamtstueckliste an. Der Umfang folgt deterministisch dem
+// ANGEKLICKTEN Eintrag (nie den aktiven Zeigern), der ZIP-Inhalt ist exakt die
+// sichtbare Auswahl, und fehlende Wandelemente oder ein fehlender zugeordneter
+// Katalog werden BENANNT statt still ersetzt ([L-4]/[L-12]).
+//
+// Alle Dateien behalten ihre bestehenden oeffentlichen Formate und ihre fachliche
+// Trennung: Projektmappe (SEMBLA-Projektmappe v2, „nur Struktur (JSON)“ — [L-13]),
+// Geschossdaten als TEILMAPPE im selben Format (genau das eine Gebaeude mit genau
+// diesem Geschoss — kein neues Format, keine neue Versionsachse), Wanddateien als
+// SEMBLA-Projekt v2, der Katalog als SEMBLA-Bauteilkatalog v1 ([L-12]: nie in die
+// Mappe oder eine Wanddatei eingebettet). Die Mengen der Gesamtstueckliste kommen
+// unveraendert aus `umfang()`/`gesamtDaten()` (sembla-gesamtstueckliste.js) — es
+// gibt keinen zweiten Mengen- oder Preispfad.
+//
+// Dieses ZIP ist ausdruecklich KEIN vollstaendiges Projektarchiv nach [L-13]:
+// Planbilder sind nicht enthalten, und die Mappendatei heisst bewusst nicht
+// `projekt.json`, damit nichts als Archiv missverstanden wird.
+
+/** Ordner der Geschossdaten (Teilmappen) im Export-ZIP. */
+export const ORDNER_GESCHOSSE = "geschosse";
+
+/** Die je Ebene zulaessigen Auswahloptionen — mehr bietet der Dialog nicht an. */
+export const EXPORT_OPTIONEN = {
+  projekt: ["mappe", "gesamt", "geschosse", "waende", "katalog"],
+  gebaeude: ["mappe", "gesamt", "geschosse", "waende", "katalog"],
+  geschoss: ["geschoss", "gesamt", "waende"],
+  wand: ["wand", "stueckliste"],
+};
+
+/** Anzeigename der Ebene im ZIP-Namen (dateisicher, ohne Umlaut). */
+const EBENE_DATEI = { projekt: "Projekt", gebaeude: "Gebaeude", geschoss: "Geschoss", wand: "Wand" };
+
+/** Zulaessige Optionen einer Ebene (Kopie). @param {string} ebene @returns {string[]} */
+export function exportOptionen(ebene) {
+  return (EXPORT_OPTIONEN[ebene] || []).slice();
+}
+
+/**
+ * Geschossdaten als TEILMAPPE: bestehendes oeffentliches Format SEMBLA-Projektmappe
+ * v2 mit dem Projektkopf, der Katalogreferenz und GENAU dem einen Gebaeude, das
+ * genau dieses Geschoss (samt Waenden, Lage, Bemassungen, Planbeschreibung) traegt.
+ * Ausdruecklich NICHT die vollstaendige Projektmappe und kein neues Dateiformat.
+ * @param {any} mappe @param {string} geschossId @returns {object|null}
+ */
+export function geschossTeilmappe(mappe, geschossId) {
+  const obj = mappeObjekt(mappe);
+  for (const g of obj.gebaeude) {
+    const gs = g.geschosse.find((x) => String(x.id) === String(geschossId));
+    if (gs) return { ...obj, gebaeude: [{ id: g.id, name: g.name, geschosse: [gs] }] };
+  }
+  return null;
+}
+
+/** Archivpfad einer Geschossdatei. @param {{id:string, name?:string}} gs @returns {string} */
+export function geschossPfad(gs) {
+  return `${ORDNER_GESCHOSSE}/${sicherStamm(gs && gs.name)}__${String(gs && gs.id)}.json`;
+}
+
+/** Die Geschosse des gewaehlten Umfangs — Strukturiteration, keine Mengenableitung. */
+function _umfangGeschosse(m, ebene, ids) {
+  if (ebene === "projekt") return alleGeschosse(m).map((t) => t.geschoss);
+  if (ebene === "gebaeude") {
+    const geb = findeGebaeude(m, String(ids.gebaeudeId || ""));
+    if (!geb) throw new Error(`Unbekanntes Gebäude „${ids.gebaeudeId}“.`);
+    return geb.geschosse.slice();
+  }
+  const t = findeGeschoss(m, String(ids.geschossId || ""));
+  if (!t) throw new Error(`Unbekanntes Geschoss „${ids.geschossId}“.`);
+  return [t.geschoss];
+}
+
+/**
+ * Dateien des hierarchischen Exports bauen — exakt die Auswahl, Luecken benannt.
+ *
+ * Rein: die Leser (Wandspeicher, Wanddatei, Katalog) werden UEBERGEBEN; die Funktion
+ * liest keinen Speicher und setzt keinen Zeiger. Eine Auswahl, die es auf der Ebene
+ * nicht gibt, wird abgewiesen statt still uebergangen.
+ *
+ * @param {string[]} auswahl Optionsschluessel (s. EXPORT_OPTIONEN)
+ * @param {{mappe?:object|null, ebene:string, gebaeudeId?:string|null, geschossId?:string|null,
+ *   wandId?:string|null, wandName?:string|null, katalog?:object|null,
+ *   holeElement?:(id:string)=>any, holeEingaben?:(id:string)=>any,
+ *   projektObjekt?:(id:string)=>any, preise?:boolean}} p
+ * @returns {{dateien:Array<{name:string,data:string}>, luecken:string[], zipName:string, bezug:string}}
+ */
+export function hierarchieExport(auswahl, p) {
+  const ebene = String(p.ebene || "");
+  const erlaubt = EXPORT_OPTIONEN[ebene];
+  if (!erlaubt) throw new Error(`Unbekannte Exportebene „${ebene}“.`);
+  const gewaehlt = [...new Set((auswahl || []).map(String))];
+  for (const o of gewaehlt) {
+    if (!erlaubt.includes(o)) throw new Error(`Die Auswahl „${o}“ gibt es auf der Ebene „${ebene}“ nicht.`);
+  }
+  if (!gewaehlt.length) throw new Error("Keine Datei ausgewählt.");
+  const m = p.mappe ? normMappe(p.mappe) : null;
+  if (ebene !== "wand" && !m) throw new Error("Ohne Projektmappe ist nur die Wandebene exportierbar.");
+  const holeElement = p.holeElement || (() => null);
+  const projektObjekt = p.projektObjekt || ((id) => { throw new Error(`Keine Wanddatei zu „${id}“ lesbar.`); });
+
+  // Umfang der Ebene: dieselbe kanonische Ableitung wie die Gesamtstueckliste —
+  // mit den KLICK-Kennungen als Zeiger, nie mit den aktiven ([L-10] unberuehrt).
+  const umf = umfang(m, /** @type {any} */ (ebene), {
+    wandId: p.wandId, wandName: p.wandName, geschossId: p.geschossId, gebaeudeId: p.gebaeudeId,
+  });
+  if (!umf.ok) throw new Error(umf.grund || `Umfang der Ebene „${ebene}“ nicht ableitbar.`);
+
+  /** @type {Array<{name:string,data:string}>} */
+  const dateien = [];
+  /** @type {string[]} */
+  const luecken = [];
+
+  // Feste, deterministische Datei-Reihenfolge — unabhaengig von der Klickreihenfolge.
+  if (gewaehlt.includes("mappe") && m) {
+    dateien.push({
+      name: "SEMBLA_Projektmappe_" + sicherStamm(m.projekt.name || "Projekt") + ".json",
+      data: JSON.stringify(mappeObjekt(m), null, 2),
+    });
+  }
+
+  if ((gewaehlt.includes("geschosse") || gewaehlt.includes("geschoss")) && m) {
+    for (const gs of _umfangGeschosse(m, ebene, { gebaeudeId: p.gebaeudeId, geschossId: p.geschossId })) {
+      dateien.push({
+        name: geschossPfad(gs),
+        data: JSON.stringify(geschossTeilmappe(m, gs.id), null, 2),
+      });
+    }
+  }
+
+  if (gewaehlt.includes("waende") || gewaehlt.includes("wand")) {
+    for (const ref of umf.waende) {
+      let el = null;
+      try { el = holeElement(ref.wandId); } catch { el = null; }
+      if (!el) {
+        luecken.push(`Wandelement „${ref.name}“ (${pfadText({ ...umf.bezug, gebaeude: ref.gebaeude || umf.bezug.gebaeude, geschoss: ref.geschoss || umf.bezug.geschoss, wand: null })}) fehlt im Wandspeicher — verwaister Eintrag ([L-4]); keine Wanddatei im ZIP.`);
+        continue;
+      }
+      dateien.push({
+        name: wandPfad({ id: ref.wandId, name: ref.name }),
+        data: JSON.stringify(projektObjekt(ref.wandId), null, 2),
+      });
+    }
+  }
+
+  if (gewaehlt.includes("stueckliste")) {
+    // Baustellenstueckliste der Wand: exakt der bestehende Wandpfad (baueDateien),
+    // inkl. Preisaufloesung nach [P-14] aus dem uebergebenen Katalog.
+    const ref = umf.waende[0];
+    let el = null;
+    try { el = ref ? holeElement(ref.wandId) : null; } catch { el = null; }
+    if (!el) {
+      luecken.push(`Wandelement „${ref ? ref.name : p.wandId}“ fehlt im Wandspeicher — verwaister Eintrag ([L-4]); keine Baustellenstückliste im ZIP.`);
+    } else {
+      dateien.push(...baueDateien(projektObjekt(ref.wandId), ["stueckliste"], p.katalog || null));
+    }
+  }
+
+  if (gewaehlt.includes("gesamt")) {
+    const daten = gesamtDaten(umf, {
+      holeElement, holeEingaben: p.holeEingaben, katalog: p.katalog || null,
+    });
+    for (const l of daten.luecken) {
+      luecken.push(`Gesamtstückliste: ${l.pfad ? l.pfad + " — " : ""}${l.grund}`);
+    }
+    dateien.push(...gesamtstuecklisteDateien(daten, { preise: p.preise !== false, rumpf: dateiRumpf(daten) }));
+  }
+
+  if (gewaehlt.includes("katalog") && m) {
+    if (!m.katalog) {
+      luecken.push("Dem Projekt ist kein Bauteilkatalog zugeordnet ([L-12]) — keine Katalogdatei im ZIP.");
+    } else if (!p.katalog) {
+      luecken.push(`Der zugeordnete Bauteilkatalog „${m.katalog}“ ist in diesem Browser nicht gespeichert — keine Katalogdatei im ZIP; die Zuordnung bleibt in der Mappe erhalten ([L-12]).`);
+    } else {
+      const obj = katalogObjekt(p.katalog);
+      dateien.push({
+        name: "SEMBLA_Bauteilkatalog_" + sicherStamm(obj.name) + ".json",
+        data: JSON.stringify(obj, null, 2),
+      });
+    }
+  }
+
+  const b = umf.bezug || {};
+  const bezugName = ebene === "wand" ? b.wand : (ebene === "geschoss" ? b.geschoss : (ebene === "gebaeude" ? b.gebaeude : b.projekt));
+  return {
+    dateien, luecken,
+    zipName: "SEMBLA_Export_" + EBENE_DATEI[ebene] + "_" + sicherStamm(bezugName || "ohne_Bezug"),
+    bezug: pfadText(b),
+  };
 }
