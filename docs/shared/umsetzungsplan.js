@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "cf63bda2",
+  "signatur": "1810d928",
   "entscheidungen": [
     {
       "issue": 41,
@@ -47,31 +47,6 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
-    },
-    {
-      "issue": 71,
-      "titel": "Dichtstreifen: Entscheidungsebene festlegen",
-      "prio": "ohne",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true,
-      "frage": "Wird die Abdichtung je Wand, je Geschoss oder je Projekt festgelegt?",
-      "optionen": [
-        {
-          "text": "Je Wand entscheiden.",
-          "wirkung": "Abgedichtete und nicht abgedichtete Wände können innerhalb desselben Geschosses eindeutig nebeneinander geplant werden."
-        },
-        {
-          "text": "Je Geschoss entscheiden.",
-          "wirkung": "Alle Wände eines Geschosses erben denselben Wert; Mischfälle brauchen später eine Ausnahme."
-        },
-        {
-          "text": "Je Projekt entscheiden.",
-          "wirkung": "Alle Wände des Projekts verwenden denselben Wert; Geschoss- und Wandabweichungen sind nicht abbildbar."
-        }
-      ],
-      "empfehlung": "Je Wand entscheiden, weil der beschriebene Bestand beide Wandarten enthalten kann und keine stille Vererbung nötig ist."
     }
   ],
   "naechstes": {
@@ -85,6 +60,15 @@ export const PLAN = {
     "begruendung": "Der Neuanlegefehler ist behoben. Offen bleiben die übrigen Komponenten, gemeinsame Einbauteil-IDs und die Realwand-Abnahme; als angefangene Sicherheitsausgabe bleibt #15 nach der berechneten Portfolio-Ordnung vorn."
   },
   "weitere": [
+    {
+      "issue": 71,
+      "titel": "Dichtstreifen je Wand ein- oder ausschließen",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
     {
       "issue": 75,
       "titel": "Geschosseditor: Mehrere Wände gemeinsam bearbeiten",
