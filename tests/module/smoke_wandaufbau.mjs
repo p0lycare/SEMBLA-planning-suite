@@ -70,6 +70,10 @@ const WA=globalThis.window.__wa;
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 
+// #72: der einleitende Beschreibungsabsatz ist ersatzlos entfallen (samt totem CSS).
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\{/.test(html));
+
 // Startet leer (kein aktives Element -> kein Demo/Platzhalter, klare Leer-Anzeige)
 ok('Start ohne aktives Element -> keine Wand geladen (leer)', !WA.wall);
 ok('Start ohne aktives Element -> Leer-Hinweis in der Zeichnung', /Kein aktives Wandelement/.test(document.getElementById('plan').innerHTML));

@@ -93,6 +93,12 @@ globalThis.window.__slInit();
 const SL=globalThis.window.__sl;
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
+
+// #72: der einleitende Beschreibungsabsatz ist ersatzlos entfallen (samt totem CSS und
+// dem toten .intro-Bezug in der Druckregel).
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\b/.test(html));
+
 /** Dieselbe Maskierung wie im Modul (fuer Erwartungswerte im gerenderten DOM). */
 const esc0=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
@@ -107,7 +113,10 @@ ok('Katalog als Preisquelle geladen', SL.katalog && SL.katalog.name==='Testkatal
 ok('kein Preis-Eingabefeld im Markup', !/type="number"[^>]*data-key/.test(html) && !/id="tbody"[\s\S]*<input/.test(html));
 ok('setPrice-API entfernt (Modul 4 pflegt keine Preise)', typeof SL.setPrice==='undefined');
 ok('kein Schreiben von kosten.preise', !/kosten\.preise/.test(script) && !_merges.some(([t,p])=>t==='kosten'&&p&&p.preise));
-ok('Hinweis nennt Modul 0 als Pflegeort', /Preise pflegt ausschließlich Modul 0/.test(html));
+// #72: der Pflegeort-Satz stand nur im entfernten intro-Absatz — er ist mit ihm entfallen
+// und wird nicht durch einen neuen Kurztext ersetzt; die Preisregel selbst sichern die
+// beiden vorstehenden Pruefungen (keine Preisfelder, kein setPrice).
+ok('[#72] kein Pflegeort-Erklaertext mehr auf der Seite', !/Preise pflegt ausschließlich Modul 0/.test(html));
 
 // MVP: genau ein aktives Wandelement — keine Mehrfachwand-Eingabe mehr
 ok('Kein Anzahl-Wände-Eingabefeld (#qty) im Modul', !/id="qty"/.test(html));
@@ -170,8 +179,8 @@ ok('#70 Modul 4 liest den Namen aus dem aktiven Wandeintrag',
   const m=html.match(/@media print\{([\s\S]*?)\n  \}/);
   const p=m?m[1]:'';
   ok('#62 Modul 4 hat eine eigene Druckregel', !!m && /@page\{size:A4/.test(html));
-  ok('#62 Druck blendet Navigation, Bildschirmhilfe und Bedienzeile aus',
-    /\.sb-nav[^{]*\.intro[^{]*\.kopfleiste\{display:none!important\}/.test(p));
+  ok('#62 Druck blendet Navigation und Bedienzeile aus',
+    /\.sb-nav[^{]*\.kopfleiste\{display:none!important\}/.test(p));
   ok('#62 Druck blendet jede Eingabebedienung aus',
     /input,select,textarea,button\{display:none!important\}/.test(p));
   ok('#62 Druck zeigt Kopf, Tabelle und Legende (nichts davon ausgeblendet)',

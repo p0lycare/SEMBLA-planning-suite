@@ -44,6 +44,10 @@ const S=globalThis.window.__statik;
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 const near=(a,b,t)=>Math.abs(a-b)<=t;
 
+// #72: der einleitende Beschreibungsabsatz ist ersatzlos entfallen (samt totem CSS).
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\{/.test(html));
+
 const r=S.nachweise(S.readP());
 // ---- Wand (Excel-Referenz γP=1,1) ----
 ok('Wand η_Biegung ≈ 0,759 & OK', near(r.wand.biegung.eta,0.75946,2e-3)&&r.wand.biegung.ok);

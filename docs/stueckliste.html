@@ -8,8 +8,6 @@
   /* Modul 4 ist ein ARBEITSBLATT (#58/#62): oben eine schmale Bedienzeile, darunter genau das
      Blatt (Kopf, Tabelle, Kennzeichnung, Summe). Bildschirmhilfen bleiben kurz und werden im
      Druck ausgeblendet. */
-  .intro{max-width:1180px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:12.5px}
-  .intro b{color:var(--sb-ink)}
   .wrap{padding:10px 20px 22px;max-width:1180px;margin:0 auto}
   .kopfleiste{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}
   .kopfleiste label{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--sb-muted)}
@@ -64,7 +62,7 @@
      nach [P-19] noetige Kennzeichnungslegende. */
   @page{size:A4 portrait;margin:12mm}
   @media print{
-    .sb-nav,.intro,.kopfleiste{display:none!important}
+    .sb-nav,.kopfleiste{display:none!important}
     input,select,textarea,button{display:none!important}
     html,body{background:#fff;margin:0}
     .wrap{padding:0;margin:0;max-width:none}
@@ -77,12 +75,6 @@
 </style>
 </head>
 <body>
-<p class="intro">Die real einzubauenden Teile der gewählten <b>Ebene</b> in ihren
-  <b>Fertigmaßen</b> — aktives Wandelement, aktives Geschoss, aktives Gebäude oder aktives
-  Projekt; die Gesamtsicht ist genau die Summe der einzelnen Wandstücklisten und bleibt bis zur
-  Wand auflösbar. <b>Preise pflegt ausschließlich Modul 0</b> im Bauteilkatalog, die Produkte
-  wählt Modul 1; ohne eindeutige Zuordnung bleibt die Zeile ohne Preis (<b>n.a.</b>) — nie ein
-  Nullpreis, nie eine veränderte Menge. Datei-Export zentral auf der Startseite.</p>
 <div class="wrap">
   <!-- Bedienzeile: Ebene, Preisschalter, die EINE echte Eingabe der Wandebene (Währung) und
        der Druckknopf. Sie steht im Quelltext VOR der Tabelle, damit im Blatt selbst kein

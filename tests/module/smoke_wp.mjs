@@ -314,13 +314,10 @@ WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[]),{wandtyp:'mit_wind'}));
 // die Abwesenheitsprueufungen sonst falsch rot faerben.
 const LINKS = html.match(/<div class="controls panel">[\s\S]*?<div class="stage panel">/)[0]
   .replace(/<!--[\s\S]*?-->/g,'');
-ok('[#69] einleitender Erklaerungstext auf eine Funktionsbezeichnung reduziert', (()=>{
-  const p=html.match(/<p class="intro">([\s\S]*?)<\/p>/);
-  if(!p) return false;
-  const text=p[1].replace(/<[^>]*>/g,'').replace(/\s+/g,' ').trim();
-  return text.length<=60 && /Wand planen/.test(text)
-    && !/Katalogprodukte dieser Wand/.test(html);
-})());
+// #72 verschaerft #69: der einleitende Absatz ist ersatzlos entfallen (samt totem CSS).
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\{/.test(html)
+  && !/Katalogprodukte dieser Wand/.test(html));
 // Fuer die Abwesenheitspruefung zaehlt der SICHTBARE Text: knappe Hover-Tooltips am
 // Bedienelement sind ausdruecklich erlaubt und werden deshalb vorher herausgeschnitten.
 const SICHTBAR = LINKS.replace(/\stitle="[^"]*"/g,'');
