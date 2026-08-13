@@ -120,7 +120,37 @@ const legendeStimmt=()=>{
   return alle.length>0 && /Kopplung/.test(L);
 };
 ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legendeStimmt());
-ok('3 Nachweise', (document.getElementById('nwTable').querySelector('tbody').innerHTML.match(/<tr/g)||[]).length===3);
+// ---- Issue #78: kein statischer Einzelnachweis mehr in Modul 1 ----------------------
+// Geprueft am ECHTEN HTML: der DOM-Stub legt unbekannte Elemente bei Bedarf an und koennte
+// entferntes Markup nie als fehlend melden. Der Nachweis liegt allein in Modul 3.
+ok('[#78] Nachweisueberschrift und Nachweistabelle sind aus dem Markup entfernt',
+  !/id="nwTable"/.test(html) && !/>Nachweise</.test(html));
+ok('[#78] Nachweis-Renderer und Ergebniszeilen sind ersatzlos entfernt',
+  !/renderNachweise/.test(html) && !/nwRow/.test(html));
+ok('[#78] Status-Badge behauptet keine Nachweispruefung, meldet aber den konstruktiven Zustand',
+  !/alle Nachweise erfüllt/.test(html) && !/Nachweis NICHT erfüllt/.test(html)
+  && document.getElementById('statusBadge').textContent==='Auslegung erstellt');
+ok('[#78] Iterationsprotokoll bleibt als konstruktives Auslegungsfeedback erhalten',
+  /id="itTable"/.test(html) && /renderIter/.test(html));
+ok('[#78] fester Auslegungsmodus bleibt waehlbar (Strangabstand + Vorspannkraft)',
+  /value="nachweis">Feste Auslegung<\/option>/.test(html)
+  && /id="spacing"/.test(html) && /id="force"/.test(html));
+// Beide Auslegungswege am realen Storage-Pfad: die automatische Auslegung speichert Spannachsen
+// und Gewindestangenstuecke, die feste Auslegung die vorgegebenen konstruktiven Parameter —
+// gelesen jeweils ueber store.aktivesWandelement(), nicht ueber RESULT.
+ok('[#78] Auto-Auslegung: gespeichertes Wandelement traegt Spannachsen + Stangenstuecke', (()=>{
+  const w=store.aktivesWandelement();
+  const stuecke=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
+  return w.tension_columns.length>0 && stuecke.length>0; })());
+document.getElementById('modus').value='nachweis'; document.getElementById('modus').dispatch('change');
+document.getElementById('spacing').value='2'; document.getElementById('spacing').dispatch('input');
+document.getElementById('force').value='45'; document.getElementById('force').dispatch('input');
+ok('[#78] feste Auslegung: Strangabstand und Vorspannkraft stehen im gespeicherten Wandelement', (()=>{
+  const w=store.aktivesWandelement();
+  return w.prestress.max_span_grid===2 && w.prestress.force_kN===45 && w.tension_columns.length>0; })());
+// Ausgangszustand der folgenden Abschnitte wiederherstellen (Auto-Modus, Standardparameter).
+document.getElementById('spacing').value='3'; document.getElementById('force').value='60';
+document.getElementById('modus').value='auto'; document.getElementById('modus').dispatch('change');
 ok('Steine-Zusammenfassung gefüllt (BOM-Tabelle jetzt in Modul 4)', /\d/.test(document.getElementById('rSteine').textContent));
 ok('sides + verification im Ergebnis', WP.RESULT.wandelement.sides.vorne.funktion==='fassade' && WP.RESULT.wandelement.verification.status==='geprüft');
 // Öffnung hinzufügen

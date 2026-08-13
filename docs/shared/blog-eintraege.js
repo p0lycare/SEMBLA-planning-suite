@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-10",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 78,
+    titel: "Modul 1 zeigt keinen statischen Einzelnachweis mehr — der Nachweis bleibt allein in Modul 3",
+    testbitte: "In Modul 1 eine Wand automatisch und mit fester Auslegung auslegen: Wandansicht, Spannachsen, Stangenstücke und Iterationsprotokoll bleiben, Nachweistabelle und Prüfaussage im Status sind entfallen.",
+  },
+  {
     id: "chg-20260813-09",
     datum: "2026-08-13",
     typ: "feature",

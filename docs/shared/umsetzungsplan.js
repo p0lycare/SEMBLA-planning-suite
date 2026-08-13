@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "b93609d0",
+  "signatur": "ce003770",
   "entscheidungen": [
     {
       "issue": 41,
@@ -93,15 +93,6 @@ export const PLAN = {
     {
       "issue": 76,
       "titel": "Geschossursprung frei verschieben",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 78,
-      "titel": "Statischen Einzelnachweis aus Modul 1 entfernen",
       "prio": "high",
       "status": "ready",
       "sicherheit": true,

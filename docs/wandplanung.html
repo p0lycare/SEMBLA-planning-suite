@@ -110,7 +110,7 @@
       <label><span>γ<sub>Q</sub></span><input type="number" id="gammaQ" value="1.50" step="0.05"><small>–</small></label>
     </div>
     <div class="grp"><h3>Modus</h3>
-      <label><span>Vorgehen</span><select id="modus"><option value="auto" selected>Auto-Auslegung (optimieren)</option><option value="nachweis">Nachweis (feste Auslegung)</option></select></label>
+      <label><span>Vorgehen</span><select id="modus"><option value="auto" selected>Auto-Auslegung (optimieren)</option><option value="nachweis">Feste Auslegung</option></select></label>
       <div id="manual" style="display:none">
         <label><span>Strangabstand</span><select id="spacing"><option value="3">3 Raster (37,5 cm)</option><option value="2">2 Raster (25 cm)</option><option value="1">1 Raster (12,5 cm)</option></select></label>
         <label><span>Vorspannkraft N</span><input type="number" id="force" value="60" step="5"><small>kN/Strang</small></label>
@@ -171,8 +171,6 @@
       </div>
     </div>
 
-    <h2 style="margin-top:14px">Nachweise</h2>
-    <table class="tb" id="nwTable"><thead><tr><th>Nachweis</th><th>Einwirkung</th><th>Widerstand</th><th>Auslastung</th><th></th></tr></thead><tbody></tbody></table>
     <div id="itWrap"><h2 style="margin-top:14px">Iterationsprotokoll</h2>
       <table class="tb" id="itTable"><thead><tr><th>Versuch</th><th>Strangabstand</th><th>Stränge</th><th>N [kN]</th><th>Auslastung</th><th></th></tr></thead><tbody></tbody></table></div>
   </div>
@@ -303,14 +301,14 @@ function run(){
   catch(e){ err=e.message; }
   if(err){ $('statusBadge').className='badge no'; $('statusBadge').textContent='Eingabe ungültig'; $('warns').textContent=err; return; }
   RESULT.wandelement.wandtyp=aktWandtyp;       // Wandtyp des Elements unveraendert mitfuehren
-  const w=RESULT.wandelement, v=w.verification, nwOk=v.status==='geprüft';
+  // Der statische Einzelnachweis ist aus Modul 1 entfernt (#78) — der Nachweis liegt allein in
+  // Modul 3. Das Badge meldet nur noch den konstruktiven Zustand und behauptet keine Pruefung.
+  const w=RESULT.wandelement, v=w.verification;
   const vv=w.validation; const verbandOk = vv.versatz_ok && vv.buildable;
-  const ok = nwOk && verbandOk;
   const {L,H}=dims();
   $('dims').textContent=fmt(L/1000,3)+' m × '+fmt(H/1000,2)+' m';
-  $('statusBadge').className='badge '+(ok?'ok':'no');
-  $('statusBadge').textContent= !verbandOk ? 'Verband regelwidrig – siehe Warnung'
-                              : nwOk ? 'Geprüft – alle Nachweise erfüllt' : 'Nachweis NICHT erfüllt';
+  $('statusBadge').className='badge '+(verbandOk?'ok':'no');
+  $('statusBadge').textContent= verbandOk ? 'Auslegung erstellt' : 'Verband regelwidrig – siehe Warnung';
   const sd=readSides(); const af=VIEW==='vorne'?sd.vorne.funktion:sd.hinten.funktion;
   $('sideBadge').textContent=(VIEW==='vorne'?'Vorderseite':'Rückseite')+': '+(SIDE_LABEL[af]||af);
   $('rSp').textContent=v.auslegung.max_span_grid+' Raster ('+fmt(v.auslegung.max_span_grid*12.5,1)+' cm)';
@@ -318,7 +316,7 @@ function run(){
   $('rN').textContent=fmt(v.auslegung.force_kN,0)+' kN';
   $('rGrid').textContent=w.N_grid+' × '+w.lagen+' Lagen';
   const b=w.bom; $('rSteine').textContent=fmt((b.i3||0)+(b.i2||0),0)+' ('+fmt(b.i3||0,0)+' · '+fmt(b.i2||0,0)+')';
-  renderNachweise(v); renderIter(auto?RESULT.iterationen:[]);
+  renderIter(auto?RESULT.iterationen:[]);
   const warns=[];
   if(vv.invalid_segments.length) warns.push('⚠ Ungültiges Maß: Abschnitt mit '+vv.invalid_segments[0].breite_grid+' Rastern.');
   if(!vv.versatz_ok && vv.versatz_violations && vv.versatz_violations.length){
@@ -348,19 +346,12 @@ function renderLeer(){
   $('statusBadge').className='badge'; $('statusBadge').textContent='Neu';
   $('warns').textContent='';
   ['dims','rSp','rStrands','rN','rGrid','rSteine'].forEach(id=>$(id).textContent='—');
-  $('nwTable').querySelector('tbody').innerHTML='';
   $('itTable').querySelector('tbody').innerHTML='';
   $('plan').setAttribute('viewBox','0 0 1000 120');
   $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.</text>';
   renderZLegende(null);   // ohne Wand keine irreführende Zuschnittlegende (Issue #63)
   if(KAT) renderProdukte();
 }
-function nwRow(name,e,wd,util,ok,gov){ return `<tr class="${gov?'gov':''}"><td>${name}${gov?' ◀':''}</td><td>${e}</td><td>${wd}</td><td>${pct(util)}</td><td><span class="pill ${ok?'ok':'no'}">${ok?'ok':'!'}</span></td></tr>`; }
-function renderNachweise(v){ const n=v.nachweise,g=v.governing.name;
-  $('nwTable').querySelector('tbody').innerHTML=
-    nwRow('Biegung','M_Ed '+fmt(n.biegung.M_Ed,2),'M_R '+fmt(n.biegung.M_R,2),n.biegung.util,n.biegung.ok,g==='biegung')+
-    nwRow('Randdruck','σ '+fmt(n.randdruck.sigma_Nmm2,2),'f_cd '+fmt(n.randdruck.fcd,0),n.randdruck.util,n.randdruck.ok,g==='randdruck')+
-    nwRow('Schub/Reibung','V_Ed '+fmt(n.schub.V_Ed,1),'V_R '+fmt(n.schub.V_R,1),n.schub.util,n.schub.ok,g==='schub'); }
 function renderIter(its){ const tb=$('itTable').querySelector('tbody'); tb.innerHTML='';
   its.forEach((it,i)=>{ const tr=document.createElement('tr'); if(it.ok)tr.className='hit';
     tr.innerHTML=`<td>${i+1}</td><td>${it.max_span_grid} Raster</td><td>${it.strands}</td><td>${it.N!=null?fmt(it.N,0):'–'}</td><td>${it.util!=null?pct(it.util):'–'}</td><td><span class="pill ${it.ok?'ok':'no'}">${it.ok?'ok':'!'}</span></td>`; tb.appendChild(tr); }); }
