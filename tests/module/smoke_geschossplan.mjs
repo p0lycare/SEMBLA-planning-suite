@@ -117,6 +117,9 @@ const ENG = await import("../../docs/shared/sembla-engine.js");
 // Der gemeinsame Anlagepfad beider Anlageorte (#15/#62): er belegt die Verwendungsrollen
 // vor und rechnet das Wandelement DARAUS neu, bevor es gespeichert bleibt.
 const WA = await import("../../docs/shared/sembla-wandanlage.js");
+// #43: Der Reiter 0,5 der gemeinsamen Kopfleiste ist der direkte Absprung hierher —
+// im Test wird die ECHTE Navbar gemountet, nicht ein Nachbau ihres Markups.
+const { mountNavbar, MODULE } = await import("../../docs/shared/navbar.js");
 PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
@@ -154,8 +157,22 @@ const GP = globalThis.window.__gp;
 ok('ohne aktives Geschoss wird das benannt statt etwas erfunden ([L-10])',
   /Kein aktives Geschoss/.test($('gp-buehne').innerHTML)
   && /Projektplaner/.test($('gp-buehne').innerHTML));
-ok('die Seite ist kein neues Modul (kein Reiter, Ruecklink auf Modul 0)',
-  /mountNavbar\(0\)/.test(html) && /index\.html">‹ Projektplaner/.test(html));
+ok('die Seite ist kein neues Modul (kein MODULE-Eintrag, Ruecklink auf Modul 0) — der Reiter 0,5 ist nur ein Shortcut',
+  MODULE.every(m => m.datei !== 'geschossplan.html')
+  && /mountNavbar\(0\.5\)/.test(html) && /index\.html">‹ Projektplaner/.test(html));
+
+// #43: Die echte Kopfleiste wird wie im Browser gemountet (mountNavbar(0.5)). Der
+// Reiter 0,5 ist hier der aktuelle Navigationsort — auch im Leerzustand ohne aktives
+// Geschoss —, und das Mounten selbst setzt keinen aktiven Zeiger.
+const nav43 = new El('sb-nav');
+document.querySelector = (sel) => (sel === '.sb-nav' ? nav43 : null);
+mountNavbar(0.5);
+ok('#43 ohne aktives Geschoss: der Reiter 0,5 ist hervorgehoben, der Leerzustand bleibt',
+  /class="sb-tab active" href="geschossplan\.html"[^>]*><span class="n">0,5<\/span>/.test(nav43.innerHTML)
+  && /Kein aktives Geschoss/.test($('gp-buehne').innerHTML));
+ok('#43 das Mounten der Kopfleiste setzt keinen aktiven Zeiger (Projekt, Geschoss, Wand)',
+  store.aktivesProjektId() === null && store.aktivesGeschossId() === null
+  && store.aktivId() === null);
 ok('Bemassen (D) ist ein bedienbares Werkzeug (Etappe C4b)',
   /id="wz-bemassen" data-wz="bemassen"/.test(html) && !/id="wz-bemassen" disabled/.test(html));
 // #64: Die Einheit steht GENAU EINMAL sichtbar in der Oberflaeche — es gibt keine
@@ -2637,6 +2654,30 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && gespeichert59.mass_mm === 2500);
   ok('#59 Masswert, Bezuege und Loeserergebnis bleiben unveraendert (reine Darstellung)',
     posVon() === vorPos59 && bm51(mNeu.id).mass_mm === 2500);
+}
+
+// --- #43: Realer Pfad — der Reiter 0,5 fuehrt zum Geschossplaner des AKTIVEN Geschosses
+{
+  const zeiger43 = () =>
+    [store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()].join('|');
+  const vorher43 = zeiger43();
+  mountNavbar(0.5);                        // die Kopfleiste, wie sie jedes Modul zeigt
+  const treffer43 =
+    /<a class="sb-tab active" href="([^"]+)"[^>]*><span class="n">0,5<\/span>/.exec(nav43.innerHTML);
+  ok('#43 der hervorgehobene Reiter 0,5 zielt direkt auf geschossplan.html',
+    !!treffer43 && treffer43[1] === 'geschossplan.html');
+
+  // Das Ausloesen des href laedt genau diese Seite — im Test: die ECHTE Seitenlogik
+  // wird erneut initialisiert, wie beim Sprung ueber den Reiter im Browser.
+  const waende43 = (h) => (h.match(/data-wand="[^"]+"/g) || []).sort().join();
+  const listeVorher43 = waende43($('gp-liste').innerHTML);
+  globalThis.window.__gpInit();
+  await warte();
+  ok('#43 nach dem Sprung zeigt der Editor DASSELBE aktive Geschoss (gleiche Waende, gezeichnete Buehne)',
+    listeVorher43 !== '' && waende43($('gp-liste').innerHTML) === listeVorher43
+    && /<svg/.test(globalThis.window.__gp.svg));
+  ok('#43 der Sprung setzt KEINEN aktiven Zeiger um (Projekt, Geschoss, Wand)',
+    zeiger43() === vorher43);
 }
 
 let fail = 0;

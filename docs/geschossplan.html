@@ -3320,7 +3320,9 @@ window.__gpInit = function(){
   // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
   // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
   // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.
-  mountNavbar(0);
+  // Seit Issue #43 hat der Editor trotzdem einen eigenen Reiter „0,5“ in der Kopfleiste —
+  // ein reiner Shortcut ohne Modulnummer; hier ist er der aktuelle Navigationsort.
+  mountNavbar(0.5);
   window.__gpInit();
 </script>
 </body>

@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-03",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 43,
+    titel: "Die Kopfleiste führt mit dem neuen Reiter 0,5 direkt in den Geschossplaner des aktiven Geschosses",
+    testbitte: "In einem beliebigen Modul den Reiter 0,5 anklicken: Der Geschossplaner zeigt das aktive Geschoss, die aktive Auswahl von Projekt, Geschoss und Wand bleibt unverändert; ohne aktives Geschoss erscheint der bekannte Hinweis.",
+  },
+  {
     id: "chg-20260813-02",
     datum: "2026-08-13",
     typ: "feature",

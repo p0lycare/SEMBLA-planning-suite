@@ -68,7 +68,8 @@ let _unsub = null;
 
 /**
  * Kopfleiste in die Seite einhaengen.
- * @param {number} activeIndex Modul-Nummer der aktuellen Seite (0-9)
+ * @param {number} activeIndex Modul-Nummer der aktuellen Seite (0-9;
+ *   0.5 = Geschossplaner, der Reiter zwischen Start und Wand, Issue #43)
  */
 export function mountNavbar(activeIndex = 0) {
   store.migrieren();
@@ -92,11 +93,21 @@ export function mountNavbar(activeIndex = 0) {
     const active = m.nr === activeIndex ? " active" : "";
     return `<a class="sb-tab${active}" href="${m.datei}" title="${m.titel}">`
       + `<span class="n">${m.nr}</span> ${m.kurz}</a>`;
-  }).join("");
+  });
+  // Reiter 0,5 — direkter Absprung in den Geschossplaner (Issue #43). BEWUSST kein
+  // Eintrag im MODULE-Register: der Editor ist kein Modul (er gehoert fachlich zu
+  // Modul 0), und die Modulübersicht in Modul 0 rendert das Register — dort darf
+  // keine Pseudo-Modulkarte entstehen. Der Link ist reine Navigation und setzt
+  // keinen Zeiger; der Editor liest den aktiven Geschosszeiger unveraendert selbst.
+  const gpAktiv = activeIndex === 0.5 ? " active" : "";
+  tabs.splice(1, 0,
+    `<a class="sb-tab${gpAktiv}" href="geschossplan.html" `
+    + `title="Geschossplaner des aktiven Geschosses (Layout-Editor)">`
+    + `<span class="n">0,5</span> Geschossplan</a>`);
 
   nav.innerHTML =
     `<a class="sb-brand" href="index.html">SEMBLA<span>Planungs-Suite</span></a>`
-    + `<div class="sb-tabs">${tabs}</div>`
+    + `<div class="sb-tabs">${tabs.join("")}</div>`
     + `<div class="sb-pfad" id="sb-pfad"></div>`
     + `<div class="sb-active" id="sb-active"></div>`;
 

@@ -152,7 +152,7 @@ URL.revokeObjectURL = () => {};
 const store = await import("../../docs/shared/storage.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
 const WA = await import("../../docs/shared/sembla-wandanlage.js");
-const { MODULE } = await import("../../docs/shared/navbar.js");
+const { MODULE, mountNavbar } = await import("../../docs/shared/navbar.js");
 const { baueDateien, gesamtstuecklisteDateien, stuecklistePositionen } = await import("../../docs/shared/sembla-export.js");
 const GES = await import("../../docs/shared/sembla-gesamtstueckliste.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
@@ -2297,6 +2297,33 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
 
+
+// --- Issue #43: Reiter 0,5 (Geschossplaner) in der gemeinsamen Kopfleiste ---
+// Gemountet wird die ECHTE Navbar. Der Reiter ist reine Navigation und BEWUSST kein
+// Eintrag im MODULE-Register — sonst zeigte die Modulübersicht eine Pseudo-Modulkarte.
+{
+  const nav = new El('sb-nav');
+  const altQuery = document.querySelector;
+  document.querySelector = (sel) => (sel === '.sb-nav' ? nav : null);
+  mountNavbar(0);
+  document.querySelector = altQuery;
+  const t = nav.innerHTML;
+  const p0  = t.indexOf('<span class="n">0</span> Start');
+  const p05 = t.indexOf('<span class="n">0,5</span> Geschossplan');
+  const p1  = t.indexOf('<span class="n">1</span> Wand');
+  ok('#43 die Kopfleiste zeigt die Reiter in der sichtbaren Reihenfolge 0, 0,5, 1',
+    p0 >= 0 && p05 > p0 && p1 > p05);
+  ok('#43 der Reiter 0,5 verlinkt direkt auf geschossplan.html',
+    /<a class="sb-tab" href="geschossplan\.html"[^>]*><span class="n">0,5<\/span> Geschossplan<\/a>/.test(t));
+  ok('#43 auf Modul 0 ist der Reiter 0,5 NICHT hervorgehoben — aktiv ist Start',
+    !/sb-tab active" href="geschossplan\.html"/.test(t)
+    && /class="sb-tab active" href="index\.html"/.test(t));
+  ok('#43 kein Pseudo-Modul: das MODULE-Register kennt nur ganze Nummern und keine geschossplan.html',
+    MODULE.every(m => Number.isInteger(m.nr) && m.datei !== 'geschossplan.html'));
+  ok('#43 die Modulübersicht von Modul 0 zeigt KEINE 0,5-Karte',
+    !$('modul-grid').innerHTML.includes('0,5')
+    && !$('modul-grid').innerHTML.includes('geschossplan.html'));
+}
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);
