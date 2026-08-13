@@ -63,6 +63,14 @@
   .field input.s{width:78px}
   .field.voll,.field.voll select,.field.voll input{width:100%}
   .chk{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:0}
+  /* Sammel-Editor (#75): sichtbar erst ab zwei ausgewählten Wänden */
+  #gp-sammel{border-top:1px solid var(--sb-line);margin-top:6px;padding-top:2px}
+  #gp-sammel .row{align-items:center}
+  #gp-sammel input,#gp-sammel select{border:1px solid var(--sb-line);border-radius:7px;
+        padding:6px 8px;font-size:13px}
+  #gp-sammel input.s{width:78px}
+  #gp-sammel input[disabled],#gp-sammel select[disabled]{opacity:.55}
+  #gp-sammel-info{font-size:12.5px}
   .msg{font-size:12px;word-break:break-word}
   .msg.err{color:#c0392b}
   .msg.ok{color:var(--sb-ok)}
@@ -211,6 +219,30 @@
           <div id="wz-hinweis">–</div>
           <div id="gp-bem-info">–</div>
           <div id="gp-auswahl-info">Keine Wand aktiv.</div>
+        </div>
+
+        <!-- Sammel-Editor (#75): mehrere AUSGEWÄHLTE Wände in einem bestätigten
+             Schritt auf eine gemeinsame Wandhöhe und/oder Windsituation setzen.
+             Sichtbar erst ab zwei ausgewählten Wänden. Kanonisch bleiben Höhe und
+             Wandtyp je Wandspeicher-Eintrag; die Höhe wird je Wand über den
+             Auslegungspfad von Modul 1 neu gerechnet (wie #56). Länge, Lage,
+             Öffnungen und Bemaßungen bleiben unberührt. -->
+        <div id="gp-sammel" hidden>
+          <div class="row">
+            <span id="gp-sammel-info">–</span>
+            <label class="chk" title="Gemeinsame Wandhöhe übernehmen — jede ausgewählte Wand wird über den Auslegungspfad von Modul 1 neu gerechnet (#56)">
+              <input type="checkbox" id="gp-sammel-hoehe-an"><span>Wandhöhe (mm)</span></label>
+            <input id="gp-sammel-hoehe" class="s" type="number" step="200" min="200" disabled>
+            <label class="chk" title="Gemeinsame Windsituation (Wandtyp) übernehmen — Fachmerkmal der Wand, ohne Einfluss auf Tiling/Stückliste">
+              <input type="checkbox" id="gp-sammel-wandtyp-an"><span>Windsituation</span></label>
+            <select id="gp-sammel-wandtyp" style="width:130px" disabled>
+              <option value="" disabled hidden>– gemischt –</option>
+              <option value="mit_wind">mit Wind (Cpi)</option>
+              <option value="ohne_wind">ohne Wind</option>
+            </select>
+            <button class="btn-p" id="gp-sammel-go" title="Die gewählten Parameter nach Bestätigung für ALLE ausgewählten Wände übernehmen — genau ein Rückgängig-Schritt">Übernehmen…</button>
+          </div>
+          <div class="hint" id="gp-sammel-ist" style="margin-top:2px">–</div>
         </div>
       </div>
 
@@ -379,6 +411,7 @@ const GP = {
   raumTaste: false,           // Leertaste gedrückt (Pan)
   bild: null, bildUrl: null, bildFuer: undefined,
   hoeheFuer: undefined,       // Geschoss, dessen Höhenvorgabe im Feld steht ([L-5])
+  sammelFuer: undefined,      // Auswahl, für die die Sammel-Felder vorbelegt sind (#75)
   // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
   // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
   kal: { an: false, punkte: [] },
@@ -1598,6 +1631,207 @@ function loescheWandJetzt(){
   return true;
 }
 
+// ---------------------------------------------------------------------------
+//  Sammel-Editor: mehrere Wände gemeinsam bearbeiten (#75)
+// ---------------------------------------------------------------------------
+// Genau ZWEI Parameter mit eindeutiger Zuständigkeit des Editors: die gemeinsame
+// WANDHÖHE (je Wand über den Engine-Pfad von Modul 1 neu gerechnet, wie die
+// Länge seit #56) und die WINDSITUATION (`wandtyp` — Fachmerkmal ohne Einfluss
+// auf Tiling/Stückliste). Kanonisch bleibt der jeweilige Wandspeicher-Eintrag;
+// Länge, Lage, Öffnungen und Bemaßungen werden nie angefasst, die Projektmappe
+// bleibt unberührt. Alle übrigen Modul-1-Parameter bleiben in Modul 1.
+
+/** Die ausgewählten Wände des aktiven Geschosses — `aktiv` ist immer eine davon. */
+function sammelWaende(){ return GP.auswahl.filter(id => !!wand(id)); }
+
+/** Lesbarer Text der Windsituation — dieselben Worte wie in der Bauteilliste. */
+function wandtypText(t){ return t === 'ohne_wind' ? 'ohne Wind' : 'mit Wind'; }
+
+/**
+ * Ausgangswerte der Auswahl aggregieren — je Parameter alle VERSCHIEDENEN Werte,
+ * damit ein gemischter Zustand ausdrücklich als „gemischt“ erscheint und nie
+ * still als ein konkreter Wert. Verwaiste Einträge ([L-4]) werden gezählt und
+ * benannt, nie mit geratenen Werten aufgefüllt.
+ */
+function sammelStand(ids){
+  const hoehen = [], typen = [], verwaist = [];
+  for (const id of ids) {
+    const el = store.holeElement(id);
+    if (!el || !el.wandelement) { const w = wand(id); verwaist.push(w && w.name || id); continue; }
+    const h = el.wandelement.height_mm;
+    if (!hoehen.includes(h)) hoehen.push(h);
+    const t = store.normWandtyp(el.wandelement.wandtyp);
+    if (!typen.includes(t)) typen.push(t);
+  }
+  hoehen.sort((a, b) => a - b);
+  return { hoehen, typen, verwaist };
+}
+
+/** Eingabefelder an die Aktivierungshäkchen angleichen (reine Bedienung). */
+function sammelFelder(){
+  $('gp-sammel-hoehe').disabled = !$('gp-sammel-hoehe-an').checked;
+  $('gp-sammel-wandtyp').disabled = !$('gp-sammel-wandtyp-an').checked;
+}
+
+/**
+ * Sammel-Editor an den Zustand angleichen (aus `kopfSync`). Sichtbar erst ab
+ * ZWEI ausgewählten Wänden. Vorbelegt wird nur beim WECHSEL der Auswahl — eine
+ * laufende Eingabe wird nie überschrieben; ein gemischter Ausgangswert belegt
+ * die Felder ausdrücklich NICHT mit einem konkreten Wert.
+ */
+function sammelSync(){
+  const box = $('gp-sammel');
+  const ids = sammelWaende();
+  if (ids.length < 2) { box.hidden = true; GP.sammelFuer = undefined; return; }
+  box.hidden = false;
+  const st = sammelStand(ids);
+  $('gp-sammel-info').innerHTML = `<b>${ids.length}</b> Wände ausgewählt`
+    + (st.verwaist.length ? ` · ⚠ ${st.verwaist.length} verwaister Eintrag/Einträge ([L-4])` : '');
+  $('gp-sammel-ist').innerHTML = 'Ist: Wandhöhe '
+    + (st.hoehen.length === 0 ? '–'
+      : st.hoehen.length === 1 ? `<b>${st.hoehen[0]} mm</b>`
+      : `<b>gemischt</b> (${st.hoehen.join(' · ')} mm)`)
+    + ' · Windsituation '
+    + (st.typen.length === 0 ? '–'
+      : st.typen.length === 1 ? `<b>${esc(wandtypText(st.typen[0]))}</b>`
+      : `<b>gemischt</b> (${st.typen.map(wandtypText).map(esc).join(' · ')})`)
+    + (st.verwaist.length
+      ? ` · ohne Wandelement: ${st.verwaist.map(esc).join(', ')} — erst aufräumen ([L-4])` : '');
+  const schluessel = ids.slice().sort().join('|');
+  if (GP.sammelFuer !== schluessel) {
+    GP.sammelFuer = schluessel;
+    $('gp-sammel-hoehe-an').checked = false;
+    $('gp-sammel-wandtyp-an').checked = false;
+    $('gp-sammel-hoehe').value = st.hoehen.length === 1 ? String(st.hoehen[0]) : '';
+    $('gp-sammel-hoehe').placeholder = st.hoehen.length === 1 ? '' : 'gemischt';
+    $('gp-sammel-wandtyp').value = st.typen.length === 1 ? st.typen[0] : '';
+  }
+  sammelFelder();
+}
+
+/**
+ * Die Sammeländerung ausführen — erst prüfen, dann bestätigen, dann rechnen,
+ * dann schreiben:
+ *  1. PRÜFEN (ohne Schreiben): mindestens zwei Wände, mindestens ein aktivierter
+ *     Parameter, gültige Eingaben, kein verwaister Eintrag, keine Höhen-
+ *     Hindernisse. Jeder Fehlschlag wird benannt und lässt alles unverändert.
+ *  2. BESTÄTIGEN: Anzahl der Wände und GENAU die zu ändernden Parameter; ein
+ *     Abbruch ändert weder Wandspeicher noch Undo/Redo-Stapel.
+ *  3. RECHNEN: erst ALLE neuen Wandelemente vollständig (Höhe über
+ *     `rechneWandelement`, denselben Engine-Pfad wie #56; eine reine
+ *     Wandtyp-Änderung braucht keine Neurechnung — der Wandtyp hängt nicht am
+ *     Core). Scheitert eines, ist nichts geschrieben.
+ *  4. SCHREIBEN mit Rollback: scheitert ein Speichervorgang, werden alle schon
+ *     geschriebenen Wände aus ihren Momentaufnahmen zurückgesetzt — es bleibt
+ *     kein gemischter Bestand aus alten und neuen Werten.
+ * Der ganze Vorgang ist GENAU EIN Undo/Redo-Schritt über alle betroffenen
+ * Wandspeicher-Einträge; Mappe, Lagen und Bemaßungen bleiben unberührt.
+ */
+function sammelAnwenden(){
+  const ids = sammelWaende();
+  if (ids.length < 2) {
+    zeige('Sammeländerung nur bei mindestens zwei ausgewählten Wänden.', false);
+    return false;
+  }
+  const hoeheAn = !!$('gp-sammel-hoehe-an').checked;
+  const wandtypAn = !!$('gp-sammel-wandtyp-an').checked;
+  if (!hoeheAn && !wandtypAn) {
+    zeige('Nichts zu übernehmen — erst Wandhöhe und/oder Windsituation zur Übernahme ankreuzen.', false);
+    return false;
+  }
+  let hoehe = null, wandtyp = null;
+  if (hoeheAn) {
+    const s = String($('gp-sammel-hoehe').value || '').trim();
+    hoehe = Number(s.replace(',', '.'));
+    if (!s || !Number.isFinite(hoehe) || hoehe <= 0) {
+      zeige('Sammeländerung nicht möglich: die gemeinsame Wandhöhe muss eine positive Zahl in mm sein.', false);
+      return false;
+    }
+  }
+  if (wandtypAn) {
+    wandtyp = $('gp-sammel-wandtyp').value;
+    if (!store.WANDTYPEN.includes(wandtyp)) {
+      zeige('Sammeländerung nicht möglich: erst eine Windsituation wählen — ein gemischter '
+        + 'Ausgangszustand wird nie still vereinheitlicht.', false);
+      return false;
+    }
+  }
+  // 1. Prüfphase — VOR jedem Schreiben; der erste benannte Grund bricht ab.
+  const eintraege = [];
+  for (const id of ids) {
+    const el = store.holeElement(id);
+    if (!el || !el.wandelement) {
+      zeige(`Sammeländerung nicht möglich: zu „${namen(id)}“ gibt es kein Wandelement `
+        + '(verwaister Eintrag, [L-4]). Es wurde nichts geändert.', false);
+      return false;
+    }
+    if (hoeheAn) {
+      const hindernisse = hoehenHindernisse(el.wandelement, hoehe);
+      if (hindernisse.length) {
+        zeige(`Sammeländerung nicht möglich („${esc(el.name || id)}“): `
+          + hindernisse.join(' ') + ' Es wurde nichts geändert.', false);
+        return false;
+      }
+    }
+    eintraege.push({ id, el });
+  }
+  // 2. Ausdrückliche Bestätigung: Anzahl und GENAU die zu ändernden Parameter.
+  const teile = [];
+  if (hoeheAn) teile.push(`Wandhöhe → ${hoehe} mm`);
+  if (wandtypAn) teile.push(`Windsituation → ${wandtypText(wandtyp)}`);
+  if (!confirm(`${ids.length} ausgewählte Wände gemeinsam ändern?\n\n${teile.join('\n')}\n\n`
+    + 'Länge, Lage, Öffnungen und Bemaßungen bleiben unverändert. Rückgängig geht mit Strg+Z, '
+    + 'solange dieses Geschoss geöffnet bleibt.')) {
+    zeige('Sammeländerung abgebrochen — nichts geändert.', true);
+    return false;
+  }
+  // 3. Rechenphase — vollständig vor dem ersten Schreiben.
+  const arbeit = [];
+  for (const { id, el } of eintraege) {
+    let neu;
+    try {
+      neu = hoeheAn
+        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe)
+        : JSON.parse(JSON.stringify(el.wandelement));
+    } catch (e) {
+      zeige(`Sammeländerung nicht möglich („${esc(el.name || id)}“): ` + fehlerText(e)
+        + ' Es wurde nichts geändert.', false);
+      return false;
+    }
+    if (wandtypAn) neu.wandtyp = wandtyp;
+    arbeit.push({ id, el, neu });
+  }
+  // 4. Schreibphase mit Rollback — kein gemischter Bestand.
+  const vor = mappenStand();
+  const schnappschuesse = eintraege.map(e => elementStand(e.id));
+  const geschrieben = [];
+  try {
+    for (const { id, el, neu } of arbeit) {
+      store.speichere(el.name, neu, id);
+      geschrieben.push(id);
+    }
+  } catch (e) {
+    let heil = true;
+    for (const s of schnappschuesse) {
+      if (!s || !geschrieben.includes(s.id)) continue;
+      try { store.speichere(s.name, s.wandelement, s.id, s.eingaben); } catch { heil = false; }
+    }
+    zeige('Sammeländerung nicht möglich: ' + fehlerText(e)
+      + (heil ? ' Alle bereits geschriebenen Wände wurden auf ihren Stand davor zurückgesetzt — '
+          + 'es wurde nichts geändert.'
+        : ' ⚠ Der Rollback konnte nicht alle Wände zurücksetzen — den Stand der ausgewählten '
+          + 'Wände prüfen.'), false);
+    render();
+    return false;
+  }
+  buchen(vor, [], schnappschuesse);
+  zeige(`${ids.length} Wände gemeinsam geändert: ${teile.join(' · ')}. `
+    + (hoeheAn ? 'Jedes Wandelement wurde mit der neuen Höhe über den Auslegungspfad neu gerechnet. ' : '')
+    + 'Länge, Lage, Öffnungen und Bemaßungen sind unverändert. Rückgängig: Strg+Z.', true);
+  render();
+  return true;
+}
+
 function render(){
   const gs = geschoss();
   undoPruefen();
@@ -1807,6 +2041,7 @@ function kopfSync(){
       + 'unsichtbare Maße.'
     : 'Bemaßungen ein- oder ausblenden. Reine Ansicht: Werte, Löser und Wandlagen bleiben unberührt ([K-5]).';
 
+  sammelSync();
   bemKopfSync();
   $('gp-undo').disabled = !GP.undo.length;
   $('gp-redo').disabled = !GP.redo.length;
@@ -2184,20 +2419,54 @@ function laengeHindernisse(we, laengeGrid){
 }
 
 /**
+ * Was einer neuen WANDHÖHE im Weg steht (#75) — das Gegenstück zu
+ * `laengeHindernisse` für den Sammel-Editor. Benannt wird alles, was der
+ * Rechenkern sonst abbrechen (Öffnung über der Wandhöhe) oder STILL klemmen
+ * würde (eine Staffelstufe wird in `normSteps` auf die Wandhöhe gekappt — das
+ * wäre eine unbemerkte Änderung einer fachlichen Eingabe).
+ * @param {any} we gespeichertes Wandelement
+ * @param {number} hoeheMm gewünschte gemeinsame Höhe
+ * @returns {string[]} leer = zulässig
+ */
+function hoehenHindernisse(we, hoeheMm){
+  const gruende = [];
+  if (!(Number.isInteger(hoeheMm) && hoeheMm >= 200 && hoeheMm % 200 === 0)) {
+    gruende.push(`Die Wandhöhe muss ein positives Vielfaches von 200 mm sein (Lagenraster) — `
+      + `${hoeheMm} mm passt nicht.`);
+    return gruende;                            // ohne gültiges Lagenraster erübrigt sich alles Weitere
+  }
+  const L = hoeheMm / 200;
+  const arten = { tuer: 'Tür', fenster: 'Fenster', durchbruch: 'Durchbruch' };
+  for (const op of (we.openings || [])) {
+    if (op.l1 > L) gruende.push(`${arten[op.art] || 'Öffnung'} reicht bis Lage ${op.l1} `
+      + `(${op.l1 * 200} mm) und läge über der neuen Höhe.`);
+  }
+  for (const s of (we.steps || [])) {
+    if (s.height_mm > hoeheMm) gruende.push(`Staffelstufe mit ${s.height_mm} mm läge über der neuen Höhe.`);
+  }
+  if (gruende.length) gruende.push('Erst in Modul 1 anpassen — hier wird nichts gekürzt oder entfernt.');
+  return gruende;
+}
+
+/**
  * Das gespeicherte Wandelement mit einer neuen Rasterlänge neu rechnen — ohne
  * jeden Speicherzugriff, damit ein Fehlschlag nichts hinterlässt.
  *
  * Der Auslegungsmodus wird genau so bestimmt wie in Modul 1 (`applyWand`): trägt
  * das Element eine Vorspannkraft, wird sie geprüft; sonst legt die Engine aus.
+ * Seit #75 nimmt der Sammel-Editor denselben Pfad für eine neue HÖHE: `hoeheMm`
+ * ist optional und ersetzt nur den Höheneingang derselben Rechnung — es bleibt
+ * genau EIN Engine-Pfad, kein zweiter Rechenkern.
  * @param {any} el Speichereintrag (`store.holeElement`)
  * @param {number} laengeGrid
+ * @param {number} [hoeheMm] neue Wandhöhe; fehlt sie, gilt die des Elements
  */
-function rechneWandelement(el, laengeGrid){
+function rechneWandelement(el, laengeGrid, hoeheMm){
   const we = el.wandelement;
   const vorg = {
     name: el.name || we.name,
     length_mm: laengeGrid * CON.GRID_MM,
-    height_mm: we.height_mm,                                   // Höhe gehört dem Wandelement
+    height_mm: hoeheMm != null ? hoeheMm : we.height_mm,       // Höhe gehört dem Wandelement
     openings: (we.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
     sides: we.sides || null,
     steps: (we.steps || []).map(s => ({ ...s })),
@@ -3231,6 +3500,12 @@ function binde(){
   $('gp-zoom-plus').addEventListener('click', () => zoomeAuf(1 / 1.3));
   $('gp-zoom-minus').addEventListener('click', () => zoomeAuf(1.3));
   $('gp-zoom-alles').addEventListener('click', zeigeAlles);
+
+  // Sammel-Editor (#75): die Häkchen schalten nur ihr Eingabefeld frei;
+  // geschrieben wird ausschließlich über „Übernehmen…“ nach Bestätigung.
+  $('gp-sammel-hoehe-an').addEventListener('change', sammelFelder);
+  $('gp-sammel-wandtyp-an').addEventListener('change', sammelFelder);
+  $('gp-sammel-go').addEventListener('click', sammelAnwenden);
 
   $('gp-drehen').addEventListener('click', drehe);
   $('gp-dupl').addEventListener('click', dupliziereWand);

@@ -57,7 +57,9 @@ const START = { 'gp-fang': { checked: false }, 'gp-plan-lock': { checked: true }
                 // #53: die beiden reinen Ansichtsschalter starten EIN, das
                 // Planblatt ist zu, der Kalibrierblock unsichtbar.
                 'gp-raster': { checked: true }, 'gp-masse': { checked: true },
-                'gp-planblatt': { hidden: true }, 'gp-kal-block': { hidden: true } };
+                'gp-planblatt': { hidden: true }, 'gp-kal-block': { hidden: true },
+                // #75: der Sammel-Editor startet wie im Markup verborgen.
+                'gp-sammel': { hidden: true } };
 const document = {
   _e: {},
   getElementById(id){
@@ -2797,6 +2799,173 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     store.holeElement(idA74) === null && !MAPPE.findeWand(store.holeMappe(), idA74)
     && GP.bemassungen().map(b => b.id).join(',') === bmBC.id
     && store.aktivId() === null && GP.undoStand.undo === undoDel + 1);
+}
+
+// --- #75: Mehrere Waende gemeinsam bearbeiten — der Sammel-Editor -----------
+{
+  // Kontrollierter Stand: eigenes Projekt/Geschoss, VIER real gezeichnete Waende
+  // mit gemischten Hoehen und Wandtypen; ein Mass A–B und eine Oeffnung in A.
+  const mappe75 = store.fuegeProjektHinzu('Projekt 75', { geschoss: 'EG75', hoehe_mm: 2600 });
+  const gs75 = MAPPE.alleGeschosse(mappe75)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs75);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const neueste = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const idA = neueste().id;
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2400'; $('gp-wandtyp').value = 'ohne_wind';
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const idB = neueste().id;
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2540, y: 4060 });   const idC = neueste().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 6000 }, { x: 1540, y: 6060 });   const idD = neueste().id;
+  await warte();
+  // Wand A bekommt eine echte Tuer — die Oeffnung muss jede Sammelaenderung
+  // unveraendert ueberleben, und eine zu kleine Hoehe muss an ihr scheitern.
+  const wandA = buildWall(store.holeElement(idA).name, 3000, 2600,
+    [new Opening(2, 8, 0, 10, 'tuer')]);
+  wandA.wandtyp = 'mit_wind';
+  store.speichere(store.holeElement(idA).name, wandA, idA);
+  GP.werkzeug('bemassen');
+  GP.tippe(GP.bezugsPunkt(idA, 'y', 'mitte'));
+  GP.tippe(GP.bezugsPunkt(idB, 'y', 'mitte'));
+  inlineEnter(2000);
+  await warte();
+  const ids75 = [idA, idB, idC];
+
+  // (a) Verfuegbarkeit und Anzeige: erst ab ZWEI ausgewaehlten Waenden, gemischte
+  // Ausgangswerte ausdruecklich als gemischt — nie als konkreter Wert.
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1500, y: 62.5 });                        // A aktiv (einzeln)
+  ok('#75 bei EINER ausgewaehlten Wand gibt es keinen Sammel-Editor',
+    GP.zustand.auswahl.length === 1 && $('gp-sammel').hidden === true);
+  GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });  // B dazu — echter Umschalt-Pfad
+  GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });   // C dazu — echter Strg-Pfad
+  ok('#75 drei Waende ueber Umschalt/Strg ausgewaehlt — der Sammel-Editor erscheint',
+    GP.zustand.auswahl.length === 3 && ids75.every(id => GP.zustand.auswahl.includes(id))
+    && $('gp-sammel').hidden === false);
+  ok('#75 der Sammel-Editor nennt die Anzahl und beide gemischten Ausgangswerte',
+    /<b>3<\/b>/.test($('gp-sammel-info').innerHTML)
+    && /gemischt/.test($('gp-sammel-ist').innerHTML)
+    && /2400/.test($('gp-sammel-ist').innerHTML) && /2600/.test($('gp-sammel-ist').innerHTML)
+    && /mit Wind/.test($('gp-sammel-ist').innerHTML) && /ohne Wind/.test($('gp-sammel-ist').innerHTML));
+  ok('#75 gemischte Ausgangswerte werden NIE als konkreter Wert vorbelegt',
+    $('gp-sammel-hoehe').value === '' && $('gp-sammel-wandtyp').value === '');
+
+  // (b) Vorschau und Bestaetigung: Anzahl + GENAU die gewaehlten Parameter;
+  // der Abbruch aendert weder Speicher noch Undo/Redo.
+  $('gp-sammel-hoehe-an').checked = true; $('gp-sammel-hoehe-an').dispatch('change');
+  $('gp-sammel-hoehe').value = '2800';
+  $('gp-sammel-wandtyp-an').checked = true; $('gp-sammel-wandtyp-an').dispatch('change');
+  $('gp-sammel-wandtyp').value = 'ohne_wind';
+  ok('#75 die Haekchen schalten ihre Eingabefelder frei',
+    $('gp-sammel-hoehe').disabled === false && $('gp-sammel-wandtyp').disabled === false);
+  const confirmEcht75 = globalThis.confirm;
+  let confirmText75 = null;
+  globalThis.confirm = (t) => { confirmText75 = String(t); return false; };
+  const standVor75 = { el: localStorage.getItem('sembla:elemente'),
+    mappe: localStorage.getItem('sembla:projekte'),
+    undo: GP.undoStand.undo, redo: GP.undoStand.redo };
+  $('gp-sammel-go').dispatch('click');
+  ok('#75 die Bestaetigung nennt Anzahl und GENAU die zu aendernden Parameter',
+    /^3 /.test(confirmText75) && /2800 mm/.test(confirmText75)
+    && /Windsituation/.test(confirmText75) && /ohne Wind/.test(confirmText75));
+  ok('#75 Abbruch vor der Bestaetigung aendert weder Wandspeicher noch Mappe noch Undo/Redo',
+    localStorage.getItem('sembla:elemente') === standVor75.el
+    && localStorage.getItem('sembla:projekte') === standVor75.mappe
+    && GP.undoStand.undo === standVor75.undo && GP.undoStand.redo === standVor75.redo
+    && /abgebrochen/.test($('gp-msg').textContent));
+
+  // (c) Eine benannte Vorpruefung: die Tuer in A reicht bis Lage 10 (2000 mm) —
+  // eine gemeinsame Hoehe von 1800 mm wird abgewiesen, ohne irgendetwas zu schreiben.
+  globalThis.confirm = () => true;
+  $('gp-sammel-hoehe').value = '1800';
+  $('gp-sammel-go').dispatch('click');
+  ok('#75 eine Hoehe unter einer Oeffnung wird benannt abgewiesen — nichts geschrieben',
+    localStorage.getItem('sembla:elemente') === standVor75.el
+    && GP.undoStand.undo === standVor75.undo
+    && /Lage 10/.test($('gp-msg').textContent) && /Modul 1/.test($('gp-msg').textContent));
+
+  // (d) Bestaetigte Uebernahme: Neuberechnung + Persistenz fuer ALLE drei Waende;
+  // Laengen, Lagen, Oeffnungen, Masse und die NICHT ausgewaehlte Wand D unveraendert.
+  $('gp-sammel-hoehe').value = '2800';
+  const laengenVor75 = ids75.map(id => store.holeElement(id).wandelement.length_mm);
+  const lagenVor75 = JSON.stringify(ids75.map(id => MAPPE.findeWand(store.holeMappe(), id).wand.lage));
+  const oeffnungenVor75 = JSON.stringify(store.holeElement(idA).wandelement.openings);
+  const masseVor75 = JSON.stringify(GP.bemassungen());
+  const wandDVor75 = JSON.stringify(store.holeElement(idD).wandelement);
+  const undoVor75 = GP.undoStand.undo;
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#75 alle DREI Waende tragen die gemeinsame Hoehe und Windsituation persistent',
+    ids75.every(id => { const el = store.holeElement(id);
+      return el.wandelement.height_mm === 2800
+        && store.normWandtyp(el.wandelement.wandtyp) === 'ohne_wind'; }));
+  ok('#75 jede Wand wurde ueber den Engine-Pfad NEU gerechnet (Lagenzahl und Steinlagen folgen der Hoehe)',
+    ids75.every(id => { const el = store.holeElement(id);
+      return el.wandelement.lagen === 14 && el.wandelement.courses.length === 14; }));
+  ok('#75 Laengen, Lagen, Oeffnungen und Bemassungen bleiben unveraendert',
+    ids75.every((id, i) => store.holeElement(id).wandelement.length_mm === laengenVor75[i])
+    && JSON.stringify(ids75.map(id => MAPPE.findeWand(store.holeMappe(), id).wand.lage)) === lagenVor75
+    && JSON.stringify(store.holeElement(idA).wandelement.openings) === oeffnungenVor75
+    && JSON.stringify(GP.bemassungen()) === masseVor75);
+  ok('#75 die NICHT ausgewaehlte Wand D bleibt bit-genau stehen',
+    JSON.stringify(store.holeElement(idD).wandelement) === wandDVor75);
+  ok('#75 die Sammelaenderung ist GENAU EIN Undo-Schritt', GP.undoStand.undo === undoVor75 + 1);
+
+  // (e) Undo/Redo: der eine Schritt traegt ALLE drei Wandspeicher-Eintraege.
+  GP.undo();
+  await warte();
+  ok('#75 Undo stellt alle drei Waende auf Hoehe UND Windsituation davor zurueck',
+    store.holeElement(idA).wandelement.height_mm === 2600
+    && store.holeElement(idB).wandelement.height_mm === 2400
+    && store.holeElement(idC).wandelement.height_mm === 2600
+    && store.normWandtyp(store.holeElement(idA).wandelement.wandtyp) === 'mit_wind'
+    && store.normWandtyp(store.holeElement(idB).wandelement.wandtyp) === 'ohne_wind'
+    && store.normWandtyp(store.holeElement(idC).wandelement.wandtyp) === 'mit_wind'
+    && GP.undoStand.undo === undoVor75 && GP.undoStand.redo === 1);
+  GP.redo();
+  await warte();
+  ok('#75 Redo setzt die Sammelaenderung vollstaendig wieder ein',
+    ids75.every(id => { const el = store.holeElement(id);
+      return el.wandelement.height_mm === 2800
+        && store.normWandtyp(el.wandelement.wandtyp) === 'ohne_wind'; })
+    && GP.undoStand.undo === undoVor75 + 1);
+
+  // (f) Simulierter Speicherfehler bei der ZWEITEN Wand: vollstaendiger Rollback,
+  // kein gemischter Bestand, kein Undo-Schritt, der Fehler wird benannt.
+  $('gp-sammel-hoehe').value = '2600';
+  $('gp-sammel-wandtyp').value = 'mit_wind';
+  const vorRollback75 = ids75.map(id => JSON.stringify({
+    w: store.holeElement(id).wandelement, e: store.holeElement(id).eingaben }));
+  const undoVorRb75 = GP.undoStand.undo;
+  const setItemEcht75 = localStorage.setItem.bind(localStorage);
+  let zuender75 = 2;
+  localStorage.setItem = (k, v) => {
+    if (k === 'sembla:elemente') {
+      zuender75 -= 1;
+      if (zuender75 === 0) {
+        localStorage.setItem = setItemEcht75;                 // der Rollback selbst darf schreiben
+        throw new Error('Kein Speicherplatz (Testfehler)');
+      }
+    }
+    setItemEcht75(k, v);
+  };
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  localStorage.setItem = setItemEcht75;
+  ok('#75 bei einem Teilfehler wird vollstaendig zurueckgerollt — kein gemischter Bestand',
+    ids75.every((id, i) => JSON.stringify({
+      w: store.holeElement(id).wandelement, e: store.holeElement(id).eingaben }) === vorRollback75[i]));
+  ok('#75 der Teilfehler wird benannt und bucht KEINEN Undo-Schritt',
+    GP.undoStand.undo === undoVorRb75 && /Testfehler/.test($('gp-msg').textContent)
+    && /nicht m/.test($('gp-msg').textContent));
+  globalThis.confirm = confirmEcht75;
 }
 
 // --- #43: Realer Pfad — der Reiter 0,5 fuehrt zum Geschossplaner des AKTIVEN Geschosses

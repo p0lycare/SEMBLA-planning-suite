@@ -720,3 +720,54 @@ getrennte Speicher; der Editor koordiniert beide je Aktion als **einen** Undo/Re
   inklusive localStorage-, Mappen-, Zeiger- und SVG-Prüfung. `smoke_storage.mjs` prüft
   `dupliziere()` und die Bemaßungsbereinigung von `loesche()` auf Speicherebene,
   `test-projektmappe.mjs` die Randfälle von `bemassungenOhneWand`.
+
+---
+
+## 15. Mehrere Wände gemeinsam bearbeiten (Issue #75, 2026-08-13)
+
+Issue #75 ändert **keine** [K]-Regel, keine Constraint-Mathematik und keine Format-/Schemaversion.
+Der Sammel-Editor ist reine Bedienung in `docs/geschossplan.html` auf der **vorhandenen**
+Mehrfachauswahl (Umschalt/Strg, C4a): ab **zwei** ausgewählten Wänden erscheint in der oberen
+Leiste ein Block, der die Anzahl und die Ausgangswerte der Auswahl zeigt und nach ausdrücklicher
+Bestätigung eine gemeinsame **Wandhöhe** und/oder **Windsituation** für alle ausgewählten Wände
+setzt. Einzelbearbeitung, Auswahl- und Zieh-Semantik bleiben unverändert.
+
+- **Genau zwei Parameter — eine bewusste Zuständigkeitsentscheidung.** Bisher galt: der Editor
+  schreibt an Bestandswänden nur die Länge (#56), die Höhe gehört Modul 1, und der Wandtyp wird
+  ausschließlich bei der Anlage gewählt. Mit #75 besitzt der Editor **zusätzlich** den
+  Sammel-Schreibweg für Höhe und Windsituation **ausgewählter Bestandswände** — genau die beiden
+  Parameter, die er bei der Anlage ohnehin führt. Kanonisch bleiben `height_mm` und `wandtyp` je
+  **Wandspeicher-Eintrag**; die Oberfläche hält keinen zweiten Bestand (keine DOM-Schattenwerte),
+  und **kein weiterer** Modul-1-Parameter wandert in den Sammel-Editor. Modul 1 bearbeitet die
+  Höhe einzelner Wände unverändert weiter.
+- **Gemischt heißt gemischt.** Der Block aggregiert die Ausgangswerte über die Auswahl: ein
+  einheitlicher Wert wird als Wert gezeigt und vorbelegt, verschiedene Werte stehen ausdrücklich
+  als „gemischt (…)“ — Höhenfeld leer, Wandtyp auf einer nicht wählbaren „– gemischt –“-Zeile.
+  Vereinheitlicht wird **nur** durch eine ausdrückliche Nutzerwahl; Höhe und Windsituation sind
+  über eigene Häkchen **unabhängig** aktivierbar. Ein verwaister Eintrag ([L-4]) in der Auswahl
+  wird benannt und lässt die Sammeländerung mit benanntem Grund scheitern — nie werden Werte
+  geraten. Die Vorbelegung wird nur beim **Wechsel** der Auswahl neu gesetzt; eine laufende
+  Eingabe überschreibt kein `render()`.
+- **Erst prüfen, dann bestätigen, dann rechnen, dann schreiben.** `sammelAnwenden()` prüft vor
+  jedem Schreiben Eingaben, verwaiste Einträge und die neuen **Höhen-Hindernisse**
+  (`hoehenHindernisse()`, das Gegenstück zu `laengeHindernisse()`): eine Höhe außerhalb des
+  200-mm-Lagenrasters, eine Öffnung oder eine Staffelstufe über der neuen Höhe werden **benannt
+  abgewiesen** — der Rechenkern würde die Stufe sonst still auf die Wandhöhe kappen. Dann verlangt
+  ein Dialog die Bestätigung mit **Anzahl und genau den zu ändernden Parametern**; ein Abbruch
+  ändert weder Wandspeicher noch Undo/Redo-Stapel. Erst danach wird **jede** Wand vollständig
+  gerechnet: die Höhe läuft durch `rechneWandelement()` — denselben Engine-Pfad wie die Länge
+  seit #56, nur um den optionalen Höheneingang erweitert —, die Windsituation wird als
+  kanonischer `wandtyp` gesetzt (sie hängt nicht am Core; eine reine Wandtyp-Änderung rechnet
+  nichts neu). Scheitert eine Rechnung, ist nichts geschrieben.
+- **Atomar mit Rollback.** Geschrieben wird je Wand über `store.speichere()`; scheitert ein
+  Speichervorgang, werden alle bereits geschriebenen Wände aus ihren Momentaufnahmen
+  zurückgesetzt und der Fehler benannt — es bleibt **kein gemischter Bestand** aus alten und
+  neuen Werten. Der ganze Vorgang ist **genau ein** Undo/Redo-Schritt über alle betroffenen
+  Wandspeicher-Einträge (`buchen` trägt Mehr-Element-Schritte seit #56); Länge, Lage, Öffnungen,
+  Bemaßungen, die Projektmappe und **nicht ausgewählte** Wände bleiben unberührt.
+- **Tests.** `smoke_geschossplan.mjs` wählt real gezeichnete Wände mit gemischten Höhen und
+  Wandtypen über den echten Umschalt- **und** Strg-Pfad aus, prüft Sichtbarkeit ab zwei Wänden,
+  Anzahl- und Gemischt-Anzeige, die Bestätigung samt Abbruch, eine benannte Höhen-Abweisung an
+  einer echten Öffnung, Neuberechnung und Persistenz (Lagenzahl folgt der Höhe) bei unveränderten
+  Längen/Lagen/Öffnungen/Maßen und unveränderter Fremdwand, genau einen Undo/Redo-Schritt sowie
+  den vollständigen Rollback bei einem simulierten Speicherfehler mitten in der Schreibphase.

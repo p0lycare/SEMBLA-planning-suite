@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "26631b35",
+  "signatur": "cf63bda2",
   "entscheidungen": [
     {
       "issue": 41,
@@ -86,19 +86,19 @@ export const PLAN = {
   },
   "weitere": [
     {
-      "issue": 59,
-      "titel": "Geschossplan: Ursprungsdarstellung fachlich abnehmen",
+      "issue": 75,
+      "titel": "Geschosseditor: Mehrere Wände gemeinsam bearbeiten",
       "prio": "high",
-      "status": "ohne",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
     },
     {
-      "issue": 75,
-      "titel": "Geschosseditor: Mehrere Wände gemeinsam bearbeiten",
+      "issue": 59,
+      "titel": "Geschossplan: Ursprungsdarstellung fachlich abnehmen",
       "prio": "high",
-      "status": "ready",
+      "status": "ohne",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true

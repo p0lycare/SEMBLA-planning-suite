@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-08",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 75,
+    titel: "Im Geschosseditor lassen sich mehrere ausgewählte Wände gemeinsam auf eine Wandhöhe und Windsituation setzen",
+    testbitte: "Im Geschosseditor mehrere Wände mit Umschalt oder Strg auswählen: der Sammel-Editor zeigt Anzahl und gemischte Ausgangswerte, „Übernehmen…“ fragt nach und ändert alle ausgewählten Wände; ein Strg+Z nimmt alles gemeinsam zurück.",
+  },
+  {
     id: "chg-20260813-07",
     datum: "2026-08-13",
     typ: "feature",
