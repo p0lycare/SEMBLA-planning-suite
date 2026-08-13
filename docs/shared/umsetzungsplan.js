@@ -24,8 +24,8 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-08-12",
-  "signatur": "3b5a09e4",
+  "stand": "2026-08-13",
+  "signatur": "43167387",
   "entscheidungen": [
     {
       "issue": 41,
@@ -85,6 +85,15 @@ export const PLAN = {
     "begruendung": "Der Neuanlegefehler ist behoben. Offen bleiben die übrigen Komponenten, gemeinsame Einbauteil-IDs und die Realwand-Abnahme; als angefangene Sicherheitsausgabe bleibt #15 nach der berechneten Portfolio-Ordnung vorn."
   },
   "weitere": [
+    {
+      "issue": 43,
+      "titel": "Geschossplaner: Shortcut als Reiter 0,5 zwischen Start und Wand",
+      "prio": "high",
+      "status": "ohne",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
     {
       "issue": 59,
       "titel": "Bemaßung im Geschossplan: Elementbreite bemaßbar machen und Ursprungsdarstellung fachlich abnehmen",
