@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-13",
-  "signatur": "0bac52ae",
+  "signatur": "b93609d0",
   "entscheidungen": [
     {
       "issue": 41,
@@ -47,6 +47,27 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
+    },
+    {
+      "issue": 77,
+      "titel": "Vorspannsystem mit realen Bauteilmaßen und Einbaulagen fachlich klären",
+      "prio": "high",
+      "status": "decision needed",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true,
+      "frage": "Welche realen Bauteilmaße und Einbaulagen sind für das Vorspannsystem verbindlich?",
+      "optionen": [
+        {
+          "text": "Die verbindlichen Maße und Einbaulagen anhand eines freigegebenen Referenzaufbaus festlegen.",
+          "wirkung": "Core, Darstellung und Stückliste können anschließend gegen dieselbe fachliche Quelle umgesetzt werden."
+        },
+        {
+          "text": "Die bisherigen Annahmen vorläufig beibehalten.",
+          "wirkung": "Die Planung bleibt nutzbar, bildet aber weiterhin keinen fachlich bestätigten Realaufbau ab."
+        }
+      ],
+      "empfehlung": "Einen freigegebenen Referenzaufbau mit Maßkette bereitstellen und erst danach die Rechen- und Darstellungslogik ändern."
     }
   ],
   "naechstes": {
@@ -57,7 +78,7 @@ export const PLAN = {
     "sicherheit": true,
     "abhaengig_von": [],
     "zyklus": true,
-    "begruendung": "Der Neuanlegefehler ist behoben. Offen bleiben die übrigen Komponenten, gemeinsame Einbauteil-IDs und die Realwand-Abnahme; als angefangene Sicherheitsausgabe bleibt #15 nach der berechneten Portfolio-Ordnung vorn."
+    "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
   },
   "weitere": [
     {
@@ -70,12 +91,68 @@ export const PLAN = {
       "zyklus": true
     },
     {
-      "issue": 75,
-      "titel": "Geschosseditor: Mehrere Wände gemeinsam bearbeiten",
+      "issue": 76,
+      "titel": "Geschossursprung frei verschieben",
       "prio": "high",
-      "status": "in progress",
-      "sicherheit": false,
+      "status": "ready",
+      "sicherheit": true,
       "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 78,
+      "titel": "Statischen Einzelnachweis aus Modul 1 entfernen",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 79,
+      "titel": "Brandschutz F0 oder F30 je Wand klassifizieren",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 80,
+      "titel": "Geschossplan als Hintergrund im Lageplan anzeigen",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 81,
+      "titel": "Manuelle Stücklisten-Overrides mit wählbarem Export",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 82,
+      "titel": "Frei positionierbare Verzahnungsbereiche im Steinverband",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 83,
+      "titel": "Passende Wandverzahnungen von der Kollisionsprüfung ausnehmen",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [
+        82
+      ],
       "zyklus": true
     },
     {
@@ -88,29 +165,11 @@ export const PLAN = {
       "zyklus": true
     },
     {
-      "issue": 84,
-      "titel": "Geschosseditor und Lageplan: Vorder- und Rückseite kennzeichnen",
-      "prio": "ohne",
-      "status": "in progress",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
       "issue": 68,
-      "titel": "Projektanlage-Kopfdaten: übrige Felder fachlich in die Zeichnung verlagern",
+      "titel": "Projektanlage-Kopfdaten fachlich neu zuordnen",
       "prio": "ohne",
       "status": "ohne",
       "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 67,
-      "titel": "Hierarchischen Projektexport statt Gesamtstücklisten-Sammeldialog anbieten",
-      "prio": "ohne",
-      "status": "in progress",
-      "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
     }
@@ -127,8 +186,8 @@ export const PLAN = {
         15
       ],
       "zyklus": true,
-      "ursache": "Bewusst am Zyklusende: die Validierung setzt bestätigte Regeln und die priorisierte Wandzeichnung voraus. Zudem fehlt die fachliche Freigabe der 20 realen Wände durch das Projektteam.",
-      "naechster_schritt": "Freigabe und stabile Referenzen der 20 datensparsamen Wandfälle beim Projektteam anfordern, danach #41 entscheiden und die Wandzeichnung bereitstellen.",
+      "ursache": "Die Validierung setzt bestätigte Regeln, die priorisierte Wandzeichnung und freigegebene reale Wandfälle voraus.",
+      "naechster_schritt": "Freigabe stabiler, datensparsamer Referenzwände einholen und danach Regelreview sowie Wandzeichnung abschließen.",
       "blockiert_durch": [
         41,
         15
