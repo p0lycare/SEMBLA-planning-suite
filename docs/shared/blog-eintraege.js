@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260813-02",
+    datum: "2026-08-13",
+    typ: "feature",
+    issue: 73,
+    titel: "Der Lageplan kennzeichnet Wände mit außenliegenden Nummernblasen samt Führungslinie statt Zahlen im Wandrechteck",
+    testbitte: "Modul 9 mit waagerechten und senkrechten Wänden öffnen: Jede verortete Wand trägt eine Nummernblase außerhalb des Rechtecks mit Führungslinie, die Liste nennt weiter den Namen, und der Block Vollständigkeit unter der Liste ist entfallen.",
+  },
+  {
     id: "chg-20260813-01",
     datum: "2026-08-13",
     typ: "feature",

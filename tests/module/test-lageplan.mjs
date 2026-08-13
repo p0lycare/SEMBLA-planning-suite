@@ -97,17 +97,20 @@ const wD = daten.waende.find((w) => w.id === "w-d");
 t("[L-4] ein verwaister Eintrag wird als solcher gefuehrt — ohne geratene Hoehe",
   wD.verwaist === true && wD.hoehe_mm === null && wD.wandtyp === null);
 
-// --- [#59] kurze Nummer in der Zeichnung, voller Name in der Liste ---------
+// --- [#59]/[#73] kurze Nummer als Aussenblase, voller Name in der Liste -----
 //
 // Der lange Wandname war regelmaessig laenger als das Bauteil (eine 125 mm breite
 // Wand ist bei 1:50 nur 2,5 Papier-mm breit) und ueberdeckte Nachbarwaende und
-// Masse. Beschriftet wird deshalb nur noch die laufende Nummer; identifizierbar
-// bleibt die Wand ueber `data-wand` (stabile Kennung) und `<title>` (voller Name).
+// Masse (#59). Seit #73 steht auch die kurze Nummer NICHT mehr im Wandrechteck,
+// sondern in einer aussenliegenden Nummernblase mit Fuehrungslinie zur Wand;
+// identifizierbar bleibt die Wand ueber `data-wand` (stabile Kennung) und
+// `<title>` (voller Name).
 
 /**
  * Die `lpwand`-Gruppen des Blattes, je Gruppe: stabile Kennung, `<title>` und —
- * falls vorhanden — der eine Beschriftungstext. Gezielt je Gruppe, nicht global:
- * Ursprungskreuz („0/0") und Massbeschriftungen sind eigene Knoten.
+ * falls vorhanden — ein Beschriftungstext IM Rechteck (muss seit #73 immer fehlen).
+ * Gezielt je Gruppe, nicht global: Ursprungskreuz („0/0") und Massbeschriftungen
+ * sind eigene Knoten.
  */
 const wandGruppen = (s) => [...s.matchAll(/<g class="lpwand[^"]*" data-wand="([^"]*)">([\s\S]*?)<\/g>/g)]
   .map((m) => ({
@@ -115,6 +118,35 @@ const wandGruppen = (s) => [...s.matchAll(/<g class="lpwand[^"]*" data-wand="([^
     title: (m[2].match(/<title>([^<]*)<\/title>/) || [, null])[1],
     text: (m[2].match(/<text\b[^>]*>([^<]*)<\/text>/) || [, null])[1],
   }));
+
+/**
+ * Die Nummernblasen (#73): eigene `lpmarker`-Gruppen mit `data-wand`,
+ * Fuehrungslinie, Kreis und unrotierter Nummer — alles in Papier-mm.
+ */
+const markerVon = (s) => [...s.matchAll(/<g class="lpmarker" data-wand="([^"]*)">([\s\S]*?)<\/g>/g)]
+  .map((m) => {
+    const c = m[2].match(/<circle cx="([^"]*)" cy="([^"]*)" r="([^"]*)"/);
+    const l = m[2].match(/<line x1="([^"]*)" y1="([^"]*)" x2="([^"]*)" y2="([^"]*)"/);
+    const t = m[2].match(/<text\b([^>]*)>([^<]*)<\/text>/);
+    return {
+      id: m[1],
+      text: t ? t[2] : null,
+      gedreht: t ? /transform=/.test(t[1]) : null,
+      kreis: c ? { x: +c[1], y: +c[2], r: +c[3] } : null,
+      linie: l ? { x1: +l[1], y1: +l[2], x2: +l[3], y2: +l[4] } : null,
+    };
+  });
+
+/** Das gezeichnete Wandrechteck (Papier-mm) einer `lpwand`-Gruppe. */
+const rechteckVon = (s, id) => {
+  const m = new RegExp(`<g class="lpwand[^"]*" data-wand="${id}">`
+    + `<rect x="([^"]*)" y="([^"]*)" width="([^"]*)" height="([^"]*)"`).exec(s);
+  return m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
+};
+
+/** Liegt die Blase vollstaendig ausserhalb des Rechtecks? */
+const ausserhalb = (k, r) => k.x + k.r <= r.x || k.x - k.r >= r.x + r.w
+  || k.y + k.r <= r.y || k.y - k.r >= r.y + r.h;
 
 const LANG = (() => {
   let m = MAPPE.leereMappe("Langnamen", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
@@ -136,14 +168,42 @@ const LANG = (() => {
 })();
 const langBlatt = LP.blattHtml(LANG);
 const langGruppen = wandGruppen(langBlatt.svg);
+const langMarker = markerVon(langBlatt.svg);
 
 t("[#59] jede Wand traegt eine eindeutige Nummer — auch unverortete und verwaiste",
   LANG.waende.map((w) => `${w.id}=${w.nr}`).join(",") === "L1=1,L2=2,L3=3,L4=4,L5=5"
   && new Set(LANG.waende.map((w) => w.nr)).size === 5);
-t("[#59] die Zeichnung beschriftet die verorteten Waende NUR mit der kurzen Nummer",
-  langGruppen.map((g) => g.id + ":" + g.text).join(",") === "L1:1,L2:2,L3:3,L5:5");
+t("[#73] jede verortete Wand traegt eine Nummernblase mit ihrer kurzen Nummer",
+  langMarker.map((g) => g.id + ":" + g.text).join(",") === "L1:1,L2:2,L3:3,L5:5"
+  && langMarker.every((g) => g.kreis && g.linie));
+t("[#73] keine Nummer steht mehr als Text im Wandrechteck",
+  langGruppen.length === 4 && langGruppen.every((g) => g.text === null));
+t("[#73] die Blase liegt bei der horizontalen Wand ausserhalb — oberhalb des Rechtecks",
+  (() => {
+    const g = langMarker.find((x) => x.id === "L1"), r = rechteckVon(langBlatt.svg, "L1");
+    return !!g && !!r && ausserhalb(g.kreis, r) && g.kreis.y + g.kreis.r <= r.y;
+  })());
+t("[#73] die Blase liegt bei der vertikalen Wand ausserhalb — links des Rechtecks",
+  (() => {
+    const g = langMarker.find((x) => x.id === "L2"), r = rechteckVon(langBlatt.svg, "L2");
+    return !!g && !!r && ausserhalb(g.kreis, r) && g.kreis.x + g.kreis.r <= r.x;
+  })());
+t("[#73] die Fuehrungslinie laeuft vom Blasenrand auf die Wandkante",
+  (() => {
+    // Endpunkte exakt (identische Rundung im SVG), der Blasenrand mit 0,002-mm-Toleranz
+    // (die Zeichenkette rundet auf 3 Dezimalen, die Addition r + cy hier nicht).
+    const nah = (a, b) => Math.abs(a - b) < 0.002;
+    const g1 = langMarker.find((x) => x.id === "L1"), r1 = rechteckVon(langBlatt.svg, "L1");
+    const g2 = langMarker.find((x) => x.id === "L2"), r2 = rechteckVon(langBlatt.svg, "L2");
+    return g1.linie.x2 === g1.kreis.x && g1.linie.y2 === r1.y
+      && nah(g1.linie.y1, g1.kreis.y + g1.kreis.r)
+      && g2.linie.y2 === g2.kreis.y && g2.linie.x2 === r2.x
+      && nah(g2.linie.x1, g2.kreis.x + g2.kreis.r);
+  })());
+t("[#73] die Nummer in der Blase ist unrotiert — bei beiden Richtungen gleich lesbar",
+  langMarker.every((g) => g.gedreht === false));
 t("[#59] kein Wandname steht mehr als Beschriftung in der Zeichnung",
-  langGruppen.every((g) => !/[A-Za-zÄÖÜäöüß]/.test(String(g.text)))
+  langMarker.every((g) => !/[A-Za-zÄÖÜäöüß]/.test(String(g.text)))
   && !/<text[^>]*>Wand Erdgeschoss/.test(langBlatt.svg));
 t("[#59] `title` und `data-wand` behalten vollen Namen und stabile Kennung",
   langGruppen.every((g) => g.title === LANG.waende.find((w) => w.id === g.id).name)
@@ -151,6 +211,11 @@ t("[#59] `title` und `data-wand` behalten vollen Namen und stabile Kennung",
 t("[#59] die unverortete Wand wird weiterhin nicht gezeichnet, sondern gemeldet",
   !langBlatt.svg.includes('data-wand="L4"')
   && LANG.meldungen.some((x) => x.art === "unverortet" && /noch nicht eingezeichnet/.test(x.text)));
+t("[#73] die unverortete und die verwaiste Wand bekommen keine erfundene Markerlage",
+  !langMarker.some((g) => g.id === "L4")
+  // L5 ist verwaist, aber VERORTET — sie wird gezeichnet und traegt regulaer eine
+  // Blase; nur die unverortete L4 hat keinerlei Lage im Plan.
+  && langMarker.some((g) => g.id === "L5"));
 
 // Die rechte Tabelle ist der Schluessel von der Zahl zum Namen (Muss 3).
 const tabelle = LP.wandTabelleHtml(LANG);
@@ -163,7 +228,7 @@ t("[#59] die Tabelle beginnt mit der Nummer und nennt daneben den vollen Namen",
   && tabZeilen.map((z) => z.nr).join(",") === "1,2,3,4,5"
   && tabZeilen[0].name === "Wand Erdgeschoss Nord tragend, Achse A/1–A/5");
 t("[#59] Zeichnung und Liste sind damit eindeutig zugeordnet",
-  langGruppen.every((g) => {
+  langMarker.every((g) => {
     const z = tabZeilen.find((x) => x.name === LANG.waende.find((w) => w.id === g.id).name);
     return !!z && z.nr === String(g.text);
   }));
@@ -179,15 +244,17 @@ t("[#59] Vorschau, Dokument und SVG-Datei zeigen bitgenau dieselbe Nummerierung"
   (() => {
     const dok = LP.lageplanDokument(LANG, langBlatt.optionen);
     const svgD = LP.lageplanSvgDatei(LANG, langBlatt.optionen);
-    const s = (x) => wandGruppen(x).map((g) => g.id + ":" + g.text).join(",");
+    const s = (x) => markerVon(x).map((g) => g.id + ":" + g.text).join(",");
     return s(dok) === s(langBlatt.svg) && s(svgD) === s(langBlatt.svg)
       && dok.includes(tabelle);
   })());
 t("[#59] die Nummer ist reine Darstellung — keine zweite Wandkennung im Datensatz",
   LANG.waende.every((w) => w.id !== String(w.nr))
   && !/data-nr=|data-nummer=/.test(langBlatt.svg));
-t("[#59] die Legende erklaert die Zahl im Wandrechteck",
-  /Nummer der Wand/.test(LP.legendeHtml()) && /Wände im Geschoss/.test(langBlatt.html));
+t("[#73] die Legende erklaert die Nummernblase",
+  /Nummernblase der Wand/.test(LP.legendeHtml()) && /Wände im Geschoss/.test(langBlatt.html));
+t("[#73] der Block „Darstellung“ mit der Legende bleibt auf dem Blatt bestehen",
+  langBlatt.html.includes(`<div class="lpbox"><h4>Darstellung</h4>${LP.legendeHtml()}</div>`));
 
 // --- [N-4] geloeste Positionen schlagen Rohpositionen ----------------------
 
@@ -449,8 +516,25 @@ t("[N-7] der Widerspruch wird mit Differenz in mm benannt ([K-6])",
 t("[N-7] die Kollision wird mit Ueberlappungsmass benannt ([K-13])",
   arten.includes("kollision") && /Wand Kollision/.test(text) && /125/.test(text));
 t("[N-7] der Stand gilt damit als NICHT vollstaendig", datenK.vollstaendig === false);
-t("[N-7] das Blatt sagt das sichtbar und listet die Meldungen",
-  /nicht vollständig/i.test(LP.blattHtml(datenK).html) && /Wand ohne Lage/.test(LP.blattHtml(datenK).html));
+t("[N-7] das Blatt sagt das sichtbar — im Schriftfeld-Feld „Stand“",
+  /nicht vollständig/i.test(LP.blattHtml(datenK).html));
+// [#73]: der fruehere Block „Vollstaendigkeit" unter der Wandliste ist ersatzlos
+// entfallen — samt Erfolgs-, Warn- und Hinweistexten. [N-7] bleibt Aussagewahrheit:
+// Stand im Schriftfeld, `meldungen`/`hinweise` weiter in der Ableitung.
+const blockSpuren = /lpmeld|>Vollständigkeit<|Dieser Lageplan ist nicht vollständig|Hinweise \(kein Mangel\)|Vollständig: alle eingetragenen|Vollständig: keine offenen/;
+t("[#73] der Block Vollstaendigkeit fehlt im unvollstaendigen Blatt vollstaendig",
+  !blockSpuren.test(LP.blattHtml(datenK).html));
+t("[#73] auch das vollstaendige Blatt traegt keinen Erfolgs-/Hinweistext mehr",
+  !blockSpuren.test(LP.blattHtml(datenOG).html)
+  && !blockSpuren.test(LP.lageplanDokument(datenK))
+  && !blockSpuren.test(LP.lageplanSvgDatei(datenK)));
+t("[#73] entfallen ist NUR die Vollstaendigkeit — Wandliste und Darstellung bleiben",
+  [LP.blattHtml(datenK).html, LP.blattHtml(datenOG).html].every((s) =>
+    s.includes("<h4>Wände im Geschoss</h4>") && s.includes("<h4>Darstellung</h4>")
+    && s.includes(LP.legendeHtml()) && !/>Vollständigkeit</.test(s)));
+t("[#73] die Ableitung selbst bleibt unveraendert — Meldungen und Hinweise stehen weiter darin",
+  datenK.meldungen.length > 0 && Array.isArray(datenK.hinweise)
+  && typeof datenK.vollstaendig === "boolean");
 t("[N-7] ein sauberer Stand wird als vollstaendig ausgegeben und meldet nichts Falsches",
   datenOG.vollstaendig === true && datenOG.meldungen.length === 0
   && !/nicht vollständig/i.test(LP.blattHtml(datenOG).html));
@@ -527,12 +611,12 @@ t("Optionen: unbekannte Werte fallen auf den Standard zurueck",
 t("Optionen: ohne Bemassung verschwinden die Masse — die Waende bleiben",
   (() => { const s = LP.lageplanSvg(daten, { masse: false });
     return !s.svg.includes('data-bemassung="bm-1"') && s.svg.includes('data-wand="w-a"'); })());
-// Geprueft wird die BESCHRIFTUNG, nicht der `<title>`-Tooltip der Wand: der bleibt
-// bewusst stehen, damit die Wand in der Vorschau weiter identifizierbar ist.
-t("Optionen: ohne Wandkennzeichnung fehlt die Beschriftung, nicht die Wand",
+// Geprueft wird die BESCHRIFTUNG (die Nummernblase), nicht der `<title>`-Tooltip
+// der Wand: der bleibt bewusst stehen, damit die Wand identifizierbar bleibt.
+t("Optionen: ohne Wandkennzeichnung fehlt die Nummernblase, nicht die Wand",
   (() => { const s = LP.lageplanSvg(daten, { kennzeichnung: false });
-    return wandGruppen(s.svg).every((g) => g.text === null) && s.svg.includes('data-wand="w-a"')
-      && wandGruppen(LP.lageplanSvg(daten).svg).every((g) => g.text !== null); })());
+    return markerVon(s.svg).length === 0 && s.svg.includes('data-wand="w-a"')
+      && markerVon(LP.lageplanSvg(daten).svg).length === 4; })());
 
 // --- Determinismus und Reinheit ------------------------------------------
 

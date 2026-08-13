@@ -272,28 +272,65 @@ lp.render();
 ok('[#59] nach dem Wiederherstellen tragen die Felder wieder ihren Wert',
   kopfPaare(lp.blatt.html).find(p => p[0] === 'Plan Nr.')[1] === 'A-101'
   && kopfPaare(lp.blatt.html).find(p => p[0] === 'Index')[1] === 'b');
-// --- 5b) [#59] kurze Nummer im Plan, voller Name in der rechten Liste -----
+// --- 5b) [#59]/[#73] Nummernblase im Plan, voller Name in der rechten Liste
 //
 // Geprueft am ECHTEN Pfad: Storage → Mappe → lageplanDaten → blattHtml → Vorschau
 // und entpackte Exportbytes. Die Nummer darf an keiner der vier Stellen abweichen.
+// Seit #73 steht sie NICHT mehr im Wandrechteck, sondern in einer aussenliegenden
+// Nummernblase mit Fuehrungslinie zur Wand.
 const wandGruppen = (s) => [...s.matchAll(/<g class="lpwand[^"]*" data-wand="([^"]*)">([\s\S]*?)<\/g>/g)]
   .map((m) => ({
     id: m[1],
     title: (m[2].match(/<title>([^<]*)<\/title>/) || [, null])[1],
     text: (m[2].match(/<text\b[^>]*>([^<]*)<\/text>/) || [, null])[1],
   }));
+const markerVon = (s) => [...s.matchAll(/<g class="lpmarker" data-wand="([^"]*)">([\s\S]*?)<\/g>/g)]
+  .map((m) => {
+    const c = m[2].match(/<circle cx="([^"]*)" cy="([^"]*)" r="([^"]*)"/);
+    const l = m[2].match(/<line x1="([^"]*)" y1="([^"]*)" x2="([^"]*)" y2="([^"]*)"/);
+    const t = m[2].match(/<text\b([^>]*)>([^<]*)<\/text>/);
+    return {
+      id: m[1],
+      text: t ? t[2] : null,
+      gedreht: t ? /transform=/.test(t[1]) : null,
+      kreis: c ? { x: +c[1], y: +c[2], r: +c[3] } : null,
+      linie: l ? { x1: +l[1], y1: +l[2], x2: +l[3], y2: +l[4] } : null,
+    };
+  });
+const rechteckVon = (s, id) => {
+  const m = new RegExp(`<g class="lpwand[^"]*" data-wand="${id}">`
+    + `<rect x="([^"]*)" y="([^"]*)" width="([^"]*)" height="([^"]*)"`).exec(s);
+  return m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
+};
+const ausserhalb = (k, r) => k.x + k.r <= r.x || k.x - k.r >= r.x + r.w
+  || k.y + k.r <= r.y || k.y - k.r >= r.y + r.h;
 const gruppen = wandGruppen(lp.blatt.svg);
+const marker = markerVon(lp.blatt.svg);
 const nrVon = id => String(daten.waende.find(w => w.id === id).nr);
 
 ok('[#59] die Nummer ist Index+1 der kanonischen Mappenreihenfolge',
   daten.waende.map(w => w.nr).join(',') === '1,2,3'
   && daten.waende.map(w => w.id).join(',') === [idA, idB, idC].join(','));
-ok('[#59] die Zeichnung beschriftet jede verortete Wand NUR mit ihrer kurzen Nummer',
-  gruppen.length === 3
-  && gruppen.every(g => g.text === nrVon(g.id) && /^\d+$/.test(g.text)));
+ok('[#73] jede verortete Wand traegt eine Nummernblase mit ihrer kurzen Nummer',
+  marker.length === 3
+  && marker.every(g => g.text === nrVon(g.id) && /^\d+$/.test(g.text) && g.kreis && g.linie));
+ok('[#73] im Wandrechteck steht keine Nummer mehr',
+  gruppen.length === 3 && gruppen.every(g => g.text === null));
+ok('[#73] die Blase der horizontalen Wand liegt ausserhalb, oberhalb des Rechtecks',
+  (() => {
+    const g = marker.find(x => x.id === idA), r = rechteckVon(lp.blatt.svg, idA);
+    return !!g && !!r && ausserhalb(g.kreis, r) && g.kreis.y + g.kreis.r <= r.y
+      && g.linie.x2 === g.kreis.x && g.linie.y2 === r.y;
+  })());
+ok('[#73] die Blase der vertikalen Wand liegt ausserhalb, links des Rechtecks — unrotiert',
+  (() => {
+    const g = marker.find(x => x.id === idC), r = rechteckVon(lp.blatt.svg, idC);
+    return !!g && !!r && ausserhalb(g.kreis, r) && g.kreis.x + g.kreis.r <= r.x
+      && g.linie.y2 === g.kreis.y && g.linie.x2 === r.x && g.gedreht === false;
+  })());
 ok('[#59] kein langer Wandname steht mehr als Beschriftung im Plan',
   !/<text[^>]*>Wand [ABC] —/.test(lp.blatt.svg)
-  && gruppen.every(g => !/[A-Za-zÄÖÜäöüß]/.test(String(g.text))));
+  && marker.every(g => !/[A-Za-zÄÖÜäöüß]/.test(String(g.text))));
 ok('[#59] `title` und `data-wand` behalten vollen Namen und stabile Speicherkennung',
   gruppen.every(g => g.title === store.holeElement(g.id).name)
   && gruppen.map(g => g.id).sort().join(',') === [idA, idB, idC].sort().join(','));
@@ -308,21 +345,32 @@ ok('[#59] die rechte Wandliste beginnt mit der Nummer und nennt den vollen Namen
   && zeilenVorschau.map(z => z.nr).join(',') === '1,2,3'
   && zeilenVorschau[0].name === NAME_A && zeilenVorschau[2].name === NAME_C);
 ok('[#59] Zeichnung und Liste sind damit eindeutig zugeordnet',
-  gruppen.every(g => {
+  marker.every(g => {
     const z = zeilenVorschau.find(x => x.name === store.holeElement(g.id).name);
     return !!z && z.nr === g.text;
   }));
-// Muss 4: dieselbe Nummerierung in Vorschau, Blatt-HTML und beiden Exportdateien —
-// nachgewiesen an den ENTPACKTEN BYTES, nicht an einem zweiten Aufruf.
-const sig = s => wandGruppen(s).map(g => g.id + ':' + g.text).join(',');
-ok('[#59] Vorschau, exportiertes HTML und exportiertes SVG zeigen dieselbe Nummerierung',
-  sig(lp.blatt.svg) === sig($('lp-blatt').innerHTML)
+// Muss 4/6: dieselbe Marker- und Nummernabbildung in Vorschau, Blatt-HTML und beiden
+// Exportdateien — nachgewiesen an den ENTPACKTEN BYTES, nicht an einem zweiten Aufruf.
+const sig = s => markerVon(s)
+  .map(g => `${g.id}:${g.text}@${g.kreis.x}/${g.kreis.y}>${g.linie.x2}/${g.linie.y2}`).join(',');
+ok('[#73] Vorschau, exportiertes HTML und exportiertes SVG zeigen dieselben Marker',
+  sig(lp.blatt.svg) !== '' && sig(lp.blatt.svg) === sig($('lp-blatt').innerHTML)
   && sig(alsText[rumpf + '.html']) === sig(lp.blatt.svg)
   && sig(alsText[rumpf + '.svg']) === sig(lp.blatt.svg));
 ok('[#59] die exportierte HTML-Datei traegt dieselbe nummerierte Wandliste',
   JSON.stringify(tabZeilen(alsText[rumpf + '.html'])) === JSON.stringify(zeilenVorschau));
 ok('[#59] die Nummer wird NICHT gespeichert (keine neue Datenstruktur)',
   !/"nr"/.test(JSON.stringify([...localStorage.m.entries()])));
+// [#73]: der Block „Vollstaendigkeit" unter der Wandliste ist ersatzlos entfallen —
+// samt Erfolgs-, Warn- und Hinweistexten, in Vorschau UND beiden Exportdateien.
+const blockSpuren = /lpmeld|>Vollständigkeit<|Dieser Lageplan ist nicht vollständig|Hinweise \(kein Mangel\)|Vollständig: alle eingetragenen|Vollständig: keine offenen/;
+ok('[#73] der Block Vollstaendigkeit fehlt in Vorschau, Blatt und Exportbytes',
+  [$('lp-blatt').innerHTML, lp.blatt.html, alsText[rumpf + '.html'], alsText[rumpf + '.svg']]
+    .every(s => !blockSpuren.test(s)));
+ok('[#73] Wandliste und Darstellung/Legende bleiben in Vorschau und exportiertem HTML bestehen',
+  [$('lp-blatt').innerHTML, lp.blatt.html, alsText[rumpf + '.html']]
+    .every(s => s.includes('<h4>Wände im Geschoss</h4>') && s.includes('<h4>Darstellung</h4>')
+      && s.includes(LP.legendeHtml())));
 
 ok('Muss 11: es gibt keinen Modul-0-Weg fuer den Lageplan',
   !/[Ll]ageplan/.test(startseite.replace(/9:'[^']*'/g, '').replace(/9:\s*'[^']*'/g, ''))
@@ -357,6 +405,10 @@ ok('[N-7] der Stand wird sichtbar als NICHT vollstaendig ausgegeben',
 ok('[N-7] auch der Export traegt den unvollstaendigen Stand',
   /nicht vollständig/i.test(LP.lageplanDokument(lp.daten, lp.optionen))
   && /nicht vollständig/i.test(LP.lageplanSvgDatei(lp.daten, lp.optionen)));
+ok('[#73] auch der unvollstaendige Stand listet die Punkte nicht mehr auf dem Blatt',
+  !blockSpuren.test(lp.blatt.html)
+  && !blockSpuren.test(LP.lageplanDokument(lp.daten, lp.optionen))
+  && !blockSpuren.test(LP.lageplanSvgDatei(lp.daten, lp.optionen)));
 // [#59] Muss 5: unverortete und verwaiste Eintraege zaehlen mit und bleiben in der
 // Liste — es wird weder eine Lage noch eine Ersatzkennung erfunden.
 const zeilenSpaeter = tabZeilen(lp.blatt.html);
@@ -367,9 +419,10 @@ ok('[#59] alle sechs Eintraege stehen nummeriert mit vollem Namen in der Liste',
   zeilenSpaeter.map(z => z.nr).join(',') === '1,2,3,4,5,6'
   && zeilenSpaeter[3].name === 'Wand ohne Lage' && zeilenSpaeter[3].lage === 'unverortet'
   && zeilenSpaeter[4].name === 'Wand Verwaist');
-ok('[#59] die unverortete Wand bleibt ungezeichnet — Nummer nur in der Liste',
+ok('[#59]/[#73] die unverortete Wand bleibt ungezeichnet und bekommt keinen Marker',
   !lp.blatt.svg.includes(`data-wand="${idFrei}"`)
-  && wandGruppen(lp.blatt.svg).map(g => g.text).join(',') === '1,2,3,5,6');
+  && markerVon(lp.blatt.svg).map(g => g.text).join(',') === '1,2,3,5,6'
+  && !markerVon(lp.blatt.svg).some(g => g.id === idFrei));
 ok('Muss 8: die Wandkennungen der Ausgabe sind die des Wandspeichers',
   lp.daten.waende.filter(w => !w.verwaist).every(w => !!store.holeElement(w.id)));
 

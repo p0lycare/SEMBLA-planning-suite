@@ -6,8 +6,11 @@
  * Erzeugt aus den KANONISCHEN Daten — Projektmappe (Struktur, Lage, Bemassungen),
  * Wandspeicher (Hoehe, Wandtyp) und dem deterministischen Constraint-Loeser — das
  * masstabsgetreue Lageplanblatt: Draufsicht aller zugeordneten und gueltig
- * verorteten Waende, vorhandene treibende Bemassungen, Legende, Wandkennzeichnung,
- * Vollstaendigkeitsmeldungen und Schriftfeld.
+ * verorteten Waende, vorhandene treibende Bemassungen, Legende, Wandkennzeichnung
+ * (aussenliegende Nummernblasen mit Fuehrungslinie, #73) und Schriftfeld. Die
+ * Vollstaendigkeit wird weiter abgeleitet ([N-7]) und im Schriftfeld-Feld „Stand"
+ * ausgewiesen; einen eigenen Meldungsblock traegt das Blatt seit #73 nicht mehr —
+ * [N-7] ist Aussagewahrheit, keine Darstellungspflicht.
  *
  * Abgrenzung — was dieses Modul ausdruecklich NICHT ist:
  *   * **keine Bearbeitung.** Der Layout-Editor (`geschossplan.html`) bleibt der
@@ -84,6 +87,16 @@ const LEER_FELD_MM = 10000;
 
 /** Papier-mm, um die die Massbeschriftung ueber ihrer Masslinie steht. */
 const MASSTEXT_MM = 1.6;
+
+/**
+ * Nummernblase der Wandkennzeichnung (#73), beide Werte in PAPIER-mm: Radius der
+ * Blase und Abstand ihres Mittelpunkts von der Wandkante. Papier-mm statt Welt-mm,
+ * damit die Blase in jedem Massstab gleich gross und lesbar bleibt; die Summe liegt
+ * bewusst unter PAD_MM — die Blase steht damit immer im Zeichnungsrand des Blattes
+ * und veraendert weder `ausdehnung()` noch den gewaehlten Massstab.
+ */
+const MARKER_R_MM = 2.1;
+const MARKER_ABSTAND_MM = 4.5;
 
 /**
  * Darstellungsschluessel des Blattes. `fehler` uebernimmt bewusst die Fehlerfarbe
@@ -413,19 +426,32 @@ export function lageplanSvg(daten, opts) {
     const my1 = w.richtung === "x" ? y + bh / 2 : y, my2 = w.richtung === "x" ? my1 : y + bh;
     st.push(`<line x1="${_n(mx1)}" y1="${_n(my1)}" x2="${_n(mx2)}" y2="${_n(my2)}"`
       + ` stroke="${FARBE.mittellinie}" stroke-width="0.1" stroke-dasharray="1.2 0.8"/>`);
-    if (o.kennzeichnung) {
-      const cx = x + bw / 2, cy = y + bh / 2;
-      const dreh = w.richtung === "y" ? ` transform="rotate(-90 ${_n(cx)} ${_n(cy)})"` : "";
-      // Beschriftet wird NUR die kurze laufende Nummer (#59). Der vollstaendige Name
-      // war regelmaessig laenger als das Bauteil — eine 125 mm breite Wand ist bei 1:50
-      // nur 2,5 Papier-mm breit — und ueberdeckte Nachbarwaende und Masse. Der Name
-      // steht unveraendert im `<title>` der Wand und mit derselben Nummer in der
-      // rechten Wandtabelle des Blattes.
-      st.push(`<text x="${_n(cx)}" y="${_n(cy + 0.75)}" font-size="2.1" text-anchor="middle"`
-        + ` fill="${FARBE.text}"${dreh}>${_esc(w.nr)}</text>`);
-    }
     st.push("</g>");
     teile.push(st.join(""));
+    if (o.kennzeichnung) {
+      // Aussenliegende Nummernblase mit Fuehrungslinie (#73). Die kurze laufende
+      // Nummer (#59) steht NICHT mehr im Wandrechteck — eine 125 mm breite Wand ist
+      // bei 1:50 nur 2,5 Papier-mm breit, die Zahl lag also praktisch auf
+      // Mittellinie und Nachbarmassen. Die Blase sitzt in festem Papier-mm-Abstand
+      // QUER zur Wandrichtung (x-Wand: oberhalb, y-Wand: links) — deterministisch
+      // und unrotiert, damit sie bei beiden Richtungen gleich lesbar ist; die
+      // Fuehrungslinie laeuft vom Blasenrand auf die Wandkante. Der volle Name steht
+      // unveraendert im `<title>` der Wand und mit derselben Nummer in der rechten
+      // Wandtabelle; die Blase traegt `data-wand` fuer die eindeutige Zuordnung.
+      const quer = w.richtung !== "y";
+      const cx = quer ? x + bw / 2 : x - MARKER_ABSTAND_MM;
+      const cy = quer ? y - MARKER_ABSTAND_MM : y + bh / 2;
+      const ax = quer ? cx : x, ay = quer ? y : cy;          // Ankerpunkt Wandkante
+      const lx = quer ? cx : cx + MARKER_R_MM;               // Beginn am Blasenrand
+      const ly = quer ? cy + MARKER_R_MM : cy;
+      teile.push(`<g class="lpmarker" data-wand="${_esc(w.id)}">`
+        + `<line x1="${_n(lx)}" y1="${_n(ly)}" x2="${_n(ax)}" y2="${_n(ay)}"`
+        + ` stroke="${FARBE.mittellinie}" stroke-width="0.12"/>`
+        + `<circle cx="${_n(cx)}" cy="${_n(cy)}" r="${_n(MARKER_R_MM)}" fill="#ffffff"`
+        + ` stroke="${farbe}" stroke-width="0.18"/>`
+        + `<text x="${_n(cx)}" y="${_n(cy + 0.75)}" font-size="2.1" text-anchor="middle"`
+        + ` fill="${FARBE.text}">${_esc(w.nr)}</text></g>`);
+    }
   }
 
   if (o.masse) {
@@ -550,9 +576,9 @@ export function legendeHtml() {
     + `<span>${i(FARBE.wand, "plate")}Wand (125 mm breit)</span>`
     + `<span>${i(FARBE.mittellinie)}Mittellinie (Bezug, [K-2])</span>`
     + `<span>${i(FARBE.mass)}treibende Bemaßung ([K-3])</span>`
-    // #59: die Zahl im Wandrechteck ist eine reine Lesehilfe des Blattes und keine
+    // #59/#73: die Nummernblase ist eine reine Lesehilfe des Blattes und keine
     // Wandkennung — nachgeschlagen wird sie in der Wandliste.
-    + `<span><b>1</b> Nummer der Wand — Name s. „Wände im Geschoss"</span>`
+    + `<span><b>1</b> Nummernblase der Wand — Name s. „Wände im Geschoss"</span>`
     + `<span>${i(FARBE.fehler, "plate")}Widerspruch / Kollision ([K-6]/[K-13])</span>`
     + `</div>`;
 }
@@ -560,9 +586,9 @@ export function legendeHtml() {
 /**
  * Wandtabelle: Nummer, Name, Länge, Höhe, Wandtyp, Bestimmtheit.
  *
- * Die Nummer der ersten Spalte ist GENAU die, mit der die Wand in der Draufsicht
- * beschriftet ist (#59) — die Tabelle ist damit der Schluessel von der kurzen Zahl
- * im Plan zum vollstaendigen Wandnamen. Unverortete und verwaiste Eintraege stehen
+ * Die Nummer der ersten Spalte ist GENAU die, die in der Draufsicht in der
+ * Nummernblase der Wand steht (#59/#73) — die Tabelle ist damit der Schluessel von
+ * der kurzen Zahl im Plan zum vollstaendigen Wandnamen. Unverortete und verwaiste Eintraege stehen
  * weiter mit ihrer Nummer in der Liste; es wird keine Lage und keine Ersatzkennung
  * erfunden ([L-4]/[N-7]).
  */
@@ -579,27 +605,6 @@ export function wandTabelleHtml(daten) {
     + `<th class="r">Länge</th>`
     + `<th class="r">Höhe</th><th>Wandtyp</th><th>Lage</th></tr></thead>`
     + `<tbody>${zeilen || '<tr><td colspan="6">keine Wand eingetragen</td></tr>'}</tbody></table>`;
-}
-
-/**
- * Meldungen und Hinweise auf dem Blatt ([N-7]). Ein unvollstaendiger Stand steht
- * ausdruecklich als solcher da — er wird nie als vollstaendig ausgegeben.
- */
-export function meldungenHtml(daten) {
-  const liste = (arr, cls) => arr.map((m) => `<li class="${cls}">${_esc(m.text)}</li>`).join("");
-  if (!daten.meldungen.length && !daten.hinweise.length) {
-    return `<div class="lpmeld"><p class="ok">Vollständig: alle eingetragenen Wände sind verortet, `
-      + `keine Widersprüche, keine Kollisionen.</p></div>`;
-  }
-  return `<div class="lpmeld">`
-    + (daten.meldungen.length
-      ? `<p class="warn"><b>Dieser Lageplan ist nicht vollständig</b> — `
-        + `${daten.meldungen.length} Punkt(e):</p><ul>${liste(daten.meldungen, "warn")}</ul>`
-      : `<p class="ok">Vollständig: keine offenen Punkte.</p>`)
-    + (daten.hinweise.length
-      ? `<p class="hint">Hinweise (kein Mangel):</p><ul>${liste(daten.hinweise, "hint")}</ul>`
-      : "")
-    + `</div>`;
 }
 
 /**
@@ -625,7 +630,10 @@ export function blattHtml(daten, opts) {
     + `<aside class="lpside">`
     + `<div class="lpbox"><h4>Wände im Geschoss</h4>${wandTabelleHtml(daten)}</div>`
     + `<div class="lpbox"><h4>Darstellung</h4>${legendeHtml()}</div>`
-    + `<div class="lpbox"><h4>Vollständigkeit</h4>${meldungenHtml(daten)}</div>`
+    // Der fruehere Block „Vollstaendigkeit" ist mit #73 ersatzlos entfallen: das
+    // Blatt ist Ausfuehrungsunterlage, keine Pruefliste. [N-7] bleibt gewahrt —
+    // das Schriftfeld weist den Stand aus, und `daten.meldungen`/`hinweise` stehen
+    // Aufrufern (Modul-9-Seitenleiste) unveraendert zur Verfuegung.
     + `</aside>`
     + schriftfeldHtml(mit, z.masstab, o)
     + `</div>`;
@@ -669,13 +677,6 @@ export const LAGEPLAN_CSS = `
   .lplegende span{display:flex;align-items:center;gap:4px}
   .lplegende i{width:14px;height:4px;border-radius:2px;display:inline-block}
   .lplegende i.plate{height:9px;width:11px}
-  .lpmeld{font-size:9.5px;line-height:1.45}
-  .lpmeld p{margin:0 0 3px}
-  .lpmeld ul{margin:0 0 5px;padding-left:14px}
-  .lpmeld li{margin:1px 0}
-  .lpmeld .warn{color:#7d2a10}
-  .lpmeld .ok{color:#1f6f45}
-  .lpmeld .hint{color:#6b7682}
   /* Fuenf Spalten zu je zwei Feldern (#59): der Kopf ist damit ZWEI statt drei Zeilen
      hoch, und die gewonnene Hoehe faellt ueber grid-template-rows:1fr auto an
      Draufsicht und Wandliste. Der Wert bricht bei Bedarf um — abgeschnitten wird
@@ -735,7 +736,9 @@ export function lageplanSvgDatei(daten, opts) {
   // am Massstab steht. Leere Felder fallen weg — kein Platzhalter.
   const felder = kopfFelder({ ...daten, _passt: z.passt }, z.masstab);
   const stuecke = felder.filter((f) => f.v !== "").map((f) => `${f.k}: ${f.v}`);
-  if (!daten.vollstaendig) stuecke.push(`${daten.meldungen.length} Punkt(e), s. Blatt`);
+  // Nur die Anzahl — die Einzelmeldungen stehen seit #73 nicht mehr auf dem Blatt,
+  // ein Verweis „s. Blatt" waere also falsch. Nachgesehen wird in Modul 9 selbst.
+  if (!daten.vollstaendig) stuecke.push(`${daten.meldungen.length} Punkt(e) offen`);
 
   // Die Fusszeile wird deterministisch nach GESCHAETZTER Breite umgebrochen
   // (Zeichenbreite ~ 0,5 · Schriftgroesse), damit sie auch bei einem schmalen Geschoss

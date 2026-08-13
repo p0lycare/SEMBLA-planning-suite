@@ -258,11 +258,13 @@ function render(){
   st.textContent = DATEN.vollstaendig ? 'vollständig' : 'nicht vollständig';
   bezugSync();
   // [N-7]: der unvollständige Stand wird benannt — mit Zahl, nicht mit Gefühl.
+  // Seit #73 listet das Blatt die Punkte nicht mehr selbst; das Schriftfeld weist
+  // den Stand aus, behoben wird im Geschossplaner.
   if (!DATEN.vollstaendig) {
     zeige(`Dieser Lageplan ist nicht vollständig: ${DATEN.meldungen.length} Punkt(e) `
-      + '— sie stehen auf dem Blatt.', false);
+      + '— behoben wird im Geschossplaner; das Schriftfeld weist den Stand aus.', false);
   } else if (DATEN.hinweise.length) {
-    zeige(`Vollständig; ${DATEN.hinweise.length} Hinweis(e) auf dem Blatt (kein Mangel).`, true);
+    zeige(`Vollständig; ${DATEN.hinweise.length} Hinweis(e) (kein Mangel).`, true);
   } else {
     zeige('Vollständig: alle eingetragenen Wände sind verortet.', true);
   }
