@@ -69,6 +69,10 @@ const A=globalThis.window.__ifc;
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 const $=id=>document.getElementById(id);
 
+// #72: der einleitende Beschreibungsabsatz ist ersatzlos entfallen (samt totem CSS).
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\b/.test(html));
+
 // Start: aktives Element aus dem Storage geladen + 3D gebaut
 ok('Start mit aktivem Element -> Wandelement geladen', A.wall && A.wall.length_mm===3000);
 ok('Übersicht Maße gesetzt', /m/.test($('ovDim').textContent));

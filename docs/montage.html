@@ -5,8 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SEMBLA · Montageanleitung</title>
 <style>
-  .intro{max-width:1180px;margin:14px auto 0;padding:0 20px;color:var(--sb-muted);font-size:13px}
-  .intro b{color:var(--sb-ink)}
   .wrap{display:flex;gap:18px;padding:14px 20px 22px;align-items:flex-start;flex-wrap:wrap;max-width:1180px;margin:0 auto}
   .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
   .controls{width:340px;flex:0 0 340px}
@@ -41,7 +39,7 @@
      ausgeblendet werden, sonst schwebt sie samt Wandelement-Auswahlfeld ueber dem PDF. */
   #printdoc{display:none}
   @media print{
-    .sb-nav,.intro,#app{display:none!important}
+    .sb-nav,#app{display:none!important}
     body{background:#fff;margin:0}
     #printdoc{display:block}
     /* keine schwebenden/klebenden Bedienelemente im Druck */
@@ -51,14 +49,6 @@
 </style>
 </head>
 <body>
-<p class="intro"><b>Montageanleitung.</b> Ereignis- und baugruppenbasierte Anleitung aus dem
-  <b>aktiven Wandelement</b> (aus „Wand planen"): je Abschnitt das auslösende Ereignis
-  (erste Gewindestange, Kopplung/neue Stange, oberer Abschluss) und die anschließend zu montierenden,
-  durchgehend nummerierten Steinreihen. Voran steht <b>Schnitt 0</b>: nur Bodenblech/Grundplatte und die
-  ersten Gewindestangen, noch ohne Steine. Alle Baugruppenbilder haben denselben Maßstab.
-  Abschnitte durchklicken oder die komplette Anleitung drucken —
-  Vorschau und zentraler Export nutzen dieselbe Ableitung. Dieses Modul liest das Wandelement und ändert es nicht.</p>
-
 <div id="app" class="wrap">
   <div class="panel controls">
     <h2>Wandelement</h2>

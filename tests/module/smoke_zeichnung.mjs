@@ -92,6 +92,11 @@ const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => _e[id];
 const Z = globalThis.window.__z;
 
+// #72: der einleitende Beschreibungsabsatz ist ersatzlos entfallen (samt totem CSS und
+// dem toten .intro-Bezug in der Druckregel).
+ok("[#72] kein einleitender intro-Absatz mehr auf der Seite",
+  !/class="intro"/.test(html) && !/\.intro\b/.test(html));
+
 // --- 1) Startzustand: aktives Wandelement geladen -------------------------
 ok("aktives Wandelement geladen", Z.wall === W);
 ok("Wandinfo nennt den Namen als Text (kein Markup)",

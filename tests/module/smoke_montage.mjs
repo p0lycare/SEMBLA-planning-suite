@@ -47,6 +47,11 @@ const M=globalThis.window.__m;
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
 const $=id=>document.getElementById(id);
 
+// #72: der einleitende Beschreibungsabsatz ist ersatzlos entfallen (samt totem CSS und
+// dem toten .intro-Bezug in der Druckregel).
+ok('[#72] kein einleitender intro-Absatz mehr auf der Seite',
+  !/class="intro"/.test(html) && !/\.intro\b/.test(html));
+
 // Start: aktives Element aus dem Storage geladen
 ok('Start mit aktivem Element -> Wandelement geladen', M.wall && M.wall.length_mm===3000);
 ok('Übersicht Maße gesetzt', /m/.test($('ovDim').textContent));
@@ -188,8 +193,8 @@ ok('montage.html hat einen @media-print-Block', !!printCss);
 const pc = printCss ? printCss[1] : '';
 ok('Druck: die ECHTE Kopfleiste .sb-nav wird ausgeblendet (nicht der frühere Tippfehler .sb-navbar)',
   new RegExp('(^|[,{\\s])\\.'+navKlasse[1]+'([,\\s{])').test(pc) && !/\.sb-navbar/.test(html));
-ok('Druck: Bedienpanel und Intro ausgeblendet', /#app/.test(pc) && /\.intro/.test(pc)
-  && /display:none!important/.test(pc));
+ok('Druck: Bedienpanel ausgeblendet (kein toter .intro-Bezug mehr, #72)',
+  /#app/.test(pc) && !/\.intro/.test(pc) && /display:none!important/.test(pc));
 ok('Druck: schwebende Eingabe-/Bedienelemente ausgeblendet',
   /input[^}]*display:none!important/.test(pc.replace(/\s+/g,''))
   || /input,select,textarea,button\{display:none!important\}/.test(pc.replace(/\s+/g,'')));
