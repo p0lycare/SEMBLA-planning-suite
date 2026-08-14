@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260814-04",
+    datum: "2026-08-14",
+    typ: "feature",
+    issue: 79,
+    titel: "Brandschutzklassifikation F0 oder F30 je Wand in Modul 1 wählbar — Standard F0, kein Nachweis daraus",
+    testbitte: "In Modul 1 bei einer Wand F30 wählen, die Seite neu laden und die Wand exportieren: Die Angabe bleibt erhalten; im Geschosseditor die Länge ändern — F30 bleibt stehen, und Stückliste sowie Nachweis ändern sich nicht.",
+  },
+  {
     id: "chg-20260814-03",
     datum: "2026-08-14",
     typ: "feature",

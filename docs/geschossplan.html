@@ -2564,6 +2564,10 @@ function rechneWandelement(el, laengeGrid, hoeheMm){
   const neu = erg.wandelement;
   neu.wandtyp = we.wandtyp;         // hängt nicht am Core und wird nur bei der Anlage gewählt
   neu.abdichtung = we.abdichtung;   // [A-6]/#71: Fachmerkmal der Wand, gewählt in Modul 1
+  // #79: Die Brandschutzklassifikation wird hier NUR MITGEFÜHRT — gewählt wird sie
+  // ausschließlich in Modul 1. Ohne diese Zeile setzte jede Längen- oder Höhenänderung
+  // eine gewählte F30 still auf F0 zurück, weil `buildWall()` das Wandelement neu erzeugt.
+  neu.brandklasse = we.brandklasse;
   return neu;
 }
 

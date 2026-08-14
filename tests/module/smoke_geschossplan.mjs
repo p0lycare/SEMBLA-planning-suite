@@ -2343,9 +2343,14 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   // geschrieben haette. Der Geschosseditor waehlt das Merkmal nicht, muss es beim Neurechnen
   // der Laenge aber unveraendert mitfuehren; ginge es verloren, verloere die Wand
   // stillschweigend ihre Dichtstreifen.
+  // #79: Ebenso die Brandschutzklassifikation — sie wird in Modul 1 auf F30 gestellt.
+  // Der Geschosseditor waehlt sie nicht, muss sie beim Neurechnen der Laenge aber
+  // unveraendert mitfuehren; ginge sie verloren, stuende die Wand stillschweigend
+  // wieder als F0 da (und damit als nicht gekennzeichnet).
   {
     const elAb = store.holeElement(id56);
-    store.speichere(elAb.name, Object.assign(elAb.wandelement, { abdichtung: 'abgedichtet' }), id56);
+    store.speichere(elAb.name,
+      Object.assign(elAb.wandelement, { abdichtung: 'abgedichtet', brandklasse: 'F30' }), id56);
   }
 
   // (b) Muss 3 — Endgriff: ein Bedienvorgang, beide Staende wandern mit.
@@ -2365,6 +2370,8 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     store.holeElement(id56).wandelement.abdichtung === 'abgedichtet'
     && BOM56.semblaBomItems(store.holeElement(id56).wandelement)
          .filter(p => p.key === 'dicht' || p.key === 'dicht_stk').length === 2);
+  ok('#79 die Brandschutzklassifikation ueberlebt die Laengenaenderung am Endgriff',
+    store.holeElement(id56).wandelement.brandklasse === 'F30');
 
   // (c) Muss 8 — Rueckgaengig/Wiederholen stellen BEIDE Staende her.
   GP.undo(); await warte();
@@ -2392,6 +2399,8 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     GP.bemassungen().some(b => b.id === lm.id) && einig(id56, 1500) && ableitungPasst(id56));
   ok('[A-6]/#71 die Abdichtung ueberlebt auch Laengenmass, Rueckgaengig und Wiederholen',
     store.holeElement(id56).wandelement.abdichtung === 'abgedichtet');
+  ok('#79 die Brandschutzklassifikation ueberlebt Laengenmass, Rueckgaengig und Wiederholen',
+    store.holeElement(id56).wandelement.brandklasse === 'F30');
 
   // (e) Nicht-Ziel 1 — was ungueltig wuerde, wird benannt ABGEWIESEN. Nichts wird
   //     geklemmt, gefiltert oder ersetzt, und es bleibt nichts halb geschrieben.

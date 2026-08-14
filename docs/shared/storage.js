@@ -124,7 +124,9 @@ const K_AKTIV_GS = "sembla:aktiv:geschoss";
 export const SCHEMA_VERSION = 6;
 
 /** Version des OEFFENTLICHEN Projekt-Dateiformats (Export/Import).
- *  Bleibt 2: `wandtyp` (Wandelement) sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
+ *  Bleibt 2: `wandtyp`, `abdichtung` und `brandklasse` (alle am Wandelement, alle
+ *  OPTIONAL — eine Datei ohne sie wird beim Lesen normalisiert, nicht abgelehnt)
+ *  sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
  *  `eingaben.planung`, `eingaben.aufbau.produkte` und `eingaben.zeichnung` sind
  *  OPTIONAL (Darstellungsoptionen, [D-7]). Der v2-Parser
  *  (`parseImport`) uebernimmt `obj.eingaben` unveraendert und ohne Feld-Whitelist,
@@ -211,6 +213,36 @@ export const ABDICHTUNG_DEFAULT = "nicht_abgedichtet";
 /** Normalisiert die Abdichtung; unbekannt/fehlend -> „nicht abgedichtet“. */
 export function normAbdichtung(a) {
   return ABDICHTUNGEN.includes(a) ? a : ABDICHTUNG_DEFAULT;
+}
+
+// --- Brandschutzklassifikation (Planungskennzeichnung, Issue #79) ---------
+// Jede Wand traegt eine eindeutige Klassifikation F0 oder F30. Sie ist eine reine
+// PLANUNGSKENNZEICHNUNG: aus ihr wird NICHTS abgeleitet — kein Nachweis, keine
+// Freigabe, keine Materialregel. Sie gehoert an das WANDELEMENT (Single Source of
+// Truth) und wird — wie die Abdichtung — in Modul 1 gewaehlt; der Geschosseditor
+// fuehrt sie beim Neuaufbau unveraendert mit. Vererbt wird sie NICHT, weder vom
+// Geschoss noch vom Projekt.
+//
+// Anders als die Abdichtung hat sie GAR KEINE Wirkung im Betrieb: Tiling, Vorspannung,
+// Stueckliste und statischer Nachweis rechnen unveraendert, und sie ist darum — wie
+// Wandtyp und Abdichtung — bewusst NICHT Teil des Cores/der Engine.
+//
+// Wie bei der Abdichtung gibt es KEIN Alt-Feld, aus dem sich etwas ableiten liesse:
+// vorher war der Brandschutz nirgends erfasst. Deshalb gibt es KEINE Migration und
+// keinen Sprung der SCHEMA_VERSION — normalisiert wird beim LESEN an dieser EINEN
+// kanonischen Stelle, ein gespeichertes Wandelement wird nie stillschweigend
+// umgeschrieben. Der Standard ist der zurueckhaltende Fall: ohne ausdrueckliche Wahl
+// gilt die Wand als F0, nie als F30 und nie als geprueft.
+
+/** @type {ReadonlyArray<'F0'|'F30'>} */
+export const BRANDKLASSEN = ["F0", "F30"];
+
+/** Standard fuer neue Waende und jeden Altbestand ohne Feld. */
+export const BRANDKLASSE_DEFAULT = "F0";
+
+/** Normalisiert die Brandschutzklassifikation; unbekannt/fehlend -> „F0“. */
+export function normBrandklasse(b) {
+  return BRANDKLASSEN.includes(b) ? b : BRANDKLASSE_DEFAULT;
 }
 
 // --- interne Helfer -------------------------------------------------------

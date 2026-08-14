@@ -168,6 +168,71 @@ t("import Altdatei: mitWind nicht in den Standardwerten", !("mitWind" in store.s
 // Neues Feld ist im v2-Format optional -> Export bleibt v2
 t("export: Projektformat bleibt v2", store.projektObjekt(idAlt).version === 2);
 
+// 11b) Brandschutzklassifikation (Issue #79): kanonisches Wandfeld F0/F30 ----
+// Reine PLANUNGSKENNZEICHNUNG: aus ihr wird nichts abgeleitet. Anders als beim Wandtyp gibt
+// es KEIN Alt-Feld — deshalb keine Migration, kein SCHEMA_VERSION-Sprung und kein stilles
+// Umschreiben gespeicherter Wandelemente: normalisiert wird beim LESEN an EINER Stelle.
+{
+  t("[#79] kanonische Werte sind genau F0 und F30",
+    store.BRANDKLASSEN.join(",") === "F0,F30" && store.BRANDKLASSE_DEFAULT === "F0");
+  t("[#79] normBrandklasse: Unsinn/fehlend -> F0, F30 bleibt F30",
+    store.normBrandklasse("quatsch") === "F0" && store.normBrandklasse(undefined) === "F0"
+    && store.normBrandklasse(null) === "F0" && store.normBrandklasse("f30") === "F0"
+    && store.normBrandklasse("F30") === "F30" && store.normBrandklasse("F0") === "F0");
+
+  // Gespeichertes Wandelement OHNE das Feld: wird als F0 gelesen und NICHT umgeschrieben.
+  const idBk = store.speichere("Brandklasse alt", buildWall("Brandklasse alt", 2000, 2600, []));
+  t("[#79] neu angelegtes Wandelement traegt das Feld nicht",
+    !("brandklasse" in store.holeElement(idBk).wandelement));
+  t("[#79] Wandelement ohne Feld wird als F0 gelesen",
+    store.normBrandklasse(store.holeElement(idBk).wandelement.brandklasse) === "F0");
+  t("[#79] Lesen schreibt nichts zurueck (keine stille Migration)",
+    !localStorage.getItem("sembla:elemente").includes("brandklasse"));
+  t("[#79] es gibt keine Brandklassen-Migration und keinen Schemasprung", (() => {
+    store.migrieren();
+    return localStorage.getItem("sembla:version") === "6" && store.SCHEMA_VERSION === 6
+      && !("brandklasse" in store.holeElement(idBk).wandelement);
+  })());
+
+  // Gesetzte F30 ueberlebt Export UND Import unveraendert.
+  const weF30 = Object.assign(buildWall("Brandklasse F30", 2000, 2600, []), { brandklasse: "F30" });
+  const idF30 = store.speichere("Brandklasse F30", weF30);
+  const pF30 = store.projektObjekt(idF30);
+  t("[#79] Export traegt die Klassifikation im Wandelement", pF30.wandelement.brandklasse === "F30");
+  t("[#79] Export bleibt Projektformat v2 (Feld ist optional)",
+    pF30.version === 2 && store.PROJEKT_VERSION === 2);
+  t("[#79] die Klassifikation liegt NICHT in eingaben",
+    !JSON.stringify(pF30.eingaben).includes("brandklasse")
+    && !JSON.stringify(pF30.eingaben).includes("F30"));
+  const idF30imp = store.importiereText(JSON.stringify(pF30), "BrandklasseF30.json");
+  t("[#79] Import erhaelt die Klassifikation unveraendert",
+    store.holeElement(idF30imp).wandelement.brandklasse === "F30");
+  t("[#79] Import aendert die uebrige Wandgeometrie nicht",
+    store.holeElement(idF30imp).wandelement.length_mm === 2000
+    && store.holeElement(idF30imp).wandelement.courses.length
+       === weF30.courses.length);
+
+  // Datei OHNE das Feld: der Import erfindet nichts und liest F0 — nie F30.
+  const ohneFeld = JSON.stringify({
+    format: "SEMBLA-Projekt", version: 2, name: "OhneBrandklasse",
+    wandelement: buildWall("OhneBrandklasse", 2000, 2600, []),
+    eingaben: {},
+  });
+  const idOhne = store.importiereText(ohneFeld, "OhneBrandklasse.json");
+  t("[#79] Datei ohne Feld: Import traegt nichts ein und liest F0",
+    !("brandklasse" in store.holeElement(idOhne).wandelement)
+    && store.normBrandklasse(store.holeElement(idOhne).wandelement.brandklasse) === "F0");
+  t("[#79] Altbestand wird nie als F30 gelesen",
+    store.normBrandklasse(store.holeElement(idOhne).wandelement.brandklasse) !== "F30");
+  // Roundtrip einer F0-Wahl: ausdrueckliches F0 bleibt ausdrueckliches F0.
+  const idF0 = store.speichere("Brandklasse F0",
+    Object.assign(buildWall("Brandklasse F0", 2000, 2600, []), { brandklasse: "F0" }));
+  const idF0imp = store.importiereText(JSON.stringify(store.projektObjekt(idF0)), "F0.json");
+  t("[#79] ausdrueckliches F0 ueberlebt den Roundtrip unveraendert",
+    store.holeElement(idF0imp).wandelement.brandklasse === "F0");
+  for (const x of [idBk, idF30, idF30imp, idOhne, idF0, idF0imp]) store.loesche(x);
+}
+
 // 12) Bauteilkatalog (Issue #21): eigene Ressource + Auswahl als Referenz ---
 // Synthetische Fantasiedaten, keine realen Produkt-/Preisangaben.
 const KATALOG = {

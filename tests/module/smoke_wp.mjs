@@ -26,7 +26,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   setAttribute(){} getBoundingClientRect(){return {left:0,width:1000};} get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
-const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet'};
+const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
 
@@ -685,6 +685,68 @@ store.setzeKatalog(KATALOG);
   ok('[A-6] zweite Wand erbt die Auswahl nicht (Merkmal ist wandbezogen)',
     document.getElementById('abdichtung').value==='nicht_abgedichtet'
     && store.holeElement(idAb).wandelement.abdichtung==='abgedichtet');
+  store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
+// ---- #79 Brandschutzklassifikation F0/F30: echte Oberflaeche, echter Speicherpfad --------
+// Reine PLANUNGSKENNZEICHNUNG — aus ihr wird nichts abgeleitet. Gewaehlt wird ueber das reale
+// Auswahlfeld (change wie im Browser), geschrieben ueber den regulaeren Auto-Speicher-Pfad.
+// Geprueft werden Standard F0, die Wahl F30, das Ueberleben des kompletten Neuaufbaus durch
+// buildWall(), die Unveraendertheit aller uebrigen Wandelementwerte und der Reload.
+{
+  const idBk=store.speichere('Brandklasse', buildWall('Brandklasse',2000,2600,[]));
+  store.setzeAktiv(idBk);
+  globalThis.window.__wpInit();                        // frischer Seitenaufruf
+  const feld=document.getElementById('brandklasse');
+  ok('[#79] Auswahlfeld F0/F30 ist in Modul 1 vorhanden',
+    /id="brandklasse"/.test(html) && /value="F0"/.test(html) && /value="F30"/.test(html));
+  ok('[#79] Wand ohne Feld: Oberflaeche zeigt den Standard F0', feld.value==='F0');
+  // Das blosse LADEN schreibt nichts zurueck: der Altbestand bleibt ohne Feld und gilt beim
+  // Lesen als F0 — normalisiert, nicht migriert (kein SCHEMA_VERSION-Sprung).
+  ok('[#79] Laden normalisiert nur, es schreibt den Standard nicht zurueck',
+    !('brandklasse' in store.aktivesWandelement()));
+  ok('[#79] Altbestand ohne Feld wird als F0 gelesen, nie als F30',
+    store.normBrandklasse(store.aktivesWandelement().brandklasse)==='F0');
+  document.getElementById('hgt').value='2.40'; document.getElementById('hgt').dispatch('input');
+  ok('[#79] erste echte Bedienung schreibt den Standard ans Wandelement',
+    store.aktivesWandelement().brandklasse==='F0');
+  document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
+  // Alle uebrigen Wandelementwerte VOR der Umstellung merken (Akzeptanztest 2).
+  const vorher=store.aktivesWandelement();
+  const bar=x=>JSON.stringify({c:x.courses,t:x.tension_columns,b:x.bom,p:x.prestress,
+    l:x.length_mm,h:x.height_mm,v:x.verification,val:x.validation});
+  const vorherBar=bar(vorher);
+  feld.value='F30'; feld.dispatch('change');           // echter Bedienweg
+  ok('[#79] Wahl F30 steht am gespeicherten Wandelement',
+    store.aktivesWandelement().brandklasse==='F30');
+  ok('[#79] Neuberechnung fuehrt die Klassifikation unveraendert mit', (()=>{
+    WP.run(); return WP.RESULT.wandelement.brandklasse==='F30'
+      && store.aktivesWandelement().brandklasse==='F30'; })());
+  ok('[#79] uebrige Wandelementwerte bleiben unveraendert (kein Nachweis, keine Menge)',
+    bar(store.aktivesWandelement())===vorherBar);
+  // Akzeptanztest 3: eine bestehende F30 wird ohne Auswahlaenderung nie zu F0 — weder beim
+  // Laden noch bei einer anderen Bedienung noch bei einer weiteren Neuberechnung.
+  globalThis.window.__wpInit();                        // Reload: alles frisch aus dem Storage
+  ok('[#79] Reload: Auswahl bleibt erhalten und steht im Auswahlfeld',
+    store.aktivesWandelement().brandklasse==='F30'
+    && document.getElementById('brandklasse').value==='F30');
+  ok('[#79] fremde Bedienung ueberschreibt eine bestehende F30 nicht', (()=>{
+    document.getElementById('hgt').value='2.40'; document.getElementById('hgt').dispatch('input');
+    const a=store.aktivesWandelement().brandklasse==='F30';
+    document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
+    WP.run();
+    return a && store.aktivesWandelement().brandklasse==='F30'; })());
+  // Wandbezogen: eine zweite Wand erbt nichts von der ersten (keine Vererbung).
+  const idBk2=store.speichere('Brandklasse 2', buildWall('Brandklasse 2',2000,2600,[]));
+  store.setzeAktiv(idBk2); globalThis.window.__wpInit();
+  ok('[#79] zweite Wand erbt die Klassifikation nicht (Merkmal ist wandbezogen)',
+    document.getElementById('brandklasse').value==='F0'
+    && store.holeElement(idBk).wandelement.brandklasse==='F30');
+  // Aus der Kennzeichnung wird nichts abgeleitet: sie erreicht den Core nie und steht in
+  // keinem `eingaben`-Abschnitt ([P-13] bleibt unberuehrt).
+  ok('[#79] die Klassifikation steht in keinem eingaben-Abschnitt',
+    !JSON.stringify(store.holeEingaben(idBk)).includes('brandklasse')
+    && !JSON.stringify(store.holeEingaben(idBk)).includes('F30'));
   store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 

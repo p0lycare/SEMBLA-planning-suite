@@ -108,6 +108,11 @@
         title="Je Wand: werden die Stoßfugen mit Dichtstreifen abgedichtet? Nur bei „abgedichtet“ führt die Stückliste Dichtstreifen ([A-6])."><option value="nicht_abgedichtet" selected>nicht abgedichtet (Standard)</option><option value="abgedichtet">abgedichtet</option></select></label>
       <div class="lockhint" id="abdichtHinweis"></div>
     </div>
+    <div class="grp"><h3>Brandschutz</h3>
+      <label><span>Klassifikation</span><select id="brandklasse"
+        title="Planungskennzeichnung je Wand (Issue #79). Aus ihr wird kein Nachweis und keine Freigabe abgeleitet."><option value="F0" selected>F0 (Standard)</option><option value="F30">F30</option></select></label>
+      <div class="lockhint" id="brandHinweis"></div>
+    </div>
 
     <h2 style="margin-top:6px">2 · Auslegung</h2>
     <div class="grp"><h3>Last (horizontal, Fläche)</h3>
@@ -251,6 +256,9 @@ function readSides(){ return { vorne:{funktion:$('sideVorne').value}, hinten:{fu
 // [A-6]/#71: kanonischer Wert der Abdichtung. Normalisiert wird ueber die Speicherschicht —
 // die kanonischen Werte stehen dort an EINER Stelle und werden hier nicht zweitgeschrieben.
 function leseAbdichtung(){ return store&&store.normAbdichtung ? store.normAbdichtung($('abdichtung').value) : 'nicht_abgedichtet'; }
+// #79: kanonischer Wert der Brandschutzklassifikation. Normalisiert wird ebenfalls ueber die
+// Speicherschicht — die kanonischen Werte stehen dort an EINER Stelle, nicht zweitgeschrieben.
+function leseBrandklasse(){ return store&&store.normBrandklasse ? store.normBrandklasse($('brandklasse').value) : 'F0'; }
 function dims(){ let L=snap(+$('len').value*M,GRID); if(L<2*GRID)L=2*GRID; let H=snap(+$('hgt').value*M,COURSE); if(H<COURSE)H=COURSE; return {L,H,N:L/GRID,Lg:H/COURSE}; }
 function buildOpenings(N,Lg){
   const out=[];
@@ -317,6 +325,15 @@ function run(){
   $('abdichtHinweis').textContent = leseAbdichtung()==='abgedichtet'
     ? 'Stoßfugen abgedichtet — die Stückliste führt Dichtstreifen ([A-6]).'
     : 'Nicht abgedichtet — die Stückliste führt keine Dichtstreifen ([A-6]).';
+  // #79: Die Brandschutzklassifikation ist eine Planungskennzeichnung DIESER Wand und wird
+  // hier gewaehlt. Wie Wandtyp und Abdichtung haengt sie nicht am Core und wird nach dem
+  // Neuaufbau durch buildWall() wieder angehaengt. Abgeleitet wird aus ihr NICHTS — kein
+  // Nachweis, keine Freigabe, keine Materialregel; Tiling, Vorspannung, Stueckliste und
+  // Nachweis rechnen unveraendert.
+  RESULT.wandelement.brandklasse=leseBrandklasse();
+  $('brandHinweis').textContent = leseBrandklasse()==='F30'
+    ? 'F30 — Planungskennzeichnung; ein Nachweis ist damit nicht geführt.'
+    : 'F0 — keine Brandschutzanforderung gekennzeichnet.';
   // Der statische Einzelnachweis ist aus Modul 1 entfernt (#78) — der Nachweis liegt allein in
   // Modul 3. Das Badge meldet nur noch den konstruktiven Zustand und behauptet keine Pruefung.
   const w=RESULT.wandelement, v=w.verification;
@@ -553,6 +570,10 @@ function applyWand(w){
   // frisch gezeichnete Wand) gilt beim Lesen als „nicht abgedichtet“ — normalisiert, nicht
   // zurueckgeschrieben. Erst eine Auslegung schreibt den Wert ans Element.
   $('abdichtung').value=(store&&store.normAbdichtung)?store.normAbdichtung(w.abdichtung):'nicht_abgedichtet';
+  // #79: Ebenso die Brandschutzklassifikation — ein Wandelement ohne das Feld (Altbestand,
+  // frisch gezeichnete Wand) gilt beim Lesen als F0. Normalisiert, nicht zurueckgeschrieben:
+  // bloßes Laden faellt nie in ein Speichern, und F30 wird niemals behauptet.
+  $('brandklasse').value=(store&&store.normBrandklasse)?store.normBrandklasse(w.brandklasse):'F0';
   $('len').value=(w.length_mm/1000).toFixed(3); $('hgt').value=(w.height_mm/1000).toFixed(2);
   if(w.sides){ $('sideVorne').value=(w.sides.vorne&&w.sides.vorne.funktion)||'fassade'; $('sideHinten').value=(w.sides.hinten&&w.sides.hinten.funktion)||'innenausbau'; }
   openings=(w.openings||[]).map(o=>({art:o.art||'tuer',x:o.g0*125/1000,w:(o.g1-o.g0)*125/1000,sill:(o.art==='fenster')?o.l0*200/1000:0,h:(o.l1-o.l0)*200/1000}));
@@ -730,7 +751,7 @@ function bindEvents(){
   // `len` steht bewusst NICHT in dieser Liste (Issue #56): das Feld ist nur Anzeige, und
   // es gibt hier keinen — auch keinen indirekten — Schreibweg fuer die Wandlaenge mehr.
   ['hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
-  ['sideVorne','sideHinten','modus','topConn','startAchse','abdichtung'].forEach(id=>$(id).addEventListener('change',run));
+  ['sideVorne','sideHinten','modus','topConn','startAchse','abdichtung','brandklasse'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });
