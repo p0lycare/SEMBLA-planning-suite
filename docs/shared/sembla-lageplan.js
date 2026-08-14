@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * SEMBLA Lageplan — technische Draufsicht eines Geschosses als Planblatt
- * (Modul 9, Kapitel 16.11, [N-1] … [N-8]).
+ * (Modul 9, Kapitel 16.11, [N-1] … [N-9]).
  *
  * Erzeugt aus den KANONISCHEN Daten — Projektmappe (Struktur, Lage, Bemassungen),
  * Wandspeicher (Hoehe, Wandtyp) und dem deterministischen Constraint-Loeser — das
@@ -24,8 +24,12 @@
  *   * **keine zweite Lagehaltung.** Jede Ausgabe entsteht frisch aus
  *     (Mappe, Geschoss, Loeserergebnis) ([N-3]); wo Masse bestimmen, ist das
  *     Loesungsergebnis maszgebend und nicht die gespeicherte Rohposition ([N-4]).
- *   * **kein Planbild.** Der Geschossplan ist Hintergrund der Verortung und keine
- *     Datenquelle ([L-9]); im Ausgabeblatt hat ein Rasterbild nichts zu suchen.
+ *   * **keine Bildauswertung.** Der Geschossplan liegt seit #80 als HINTERGRUND unter
+ *     der Zeichnung ([N-9]) — aber er bleibt, was [L-9] sagt: keine Datenquelle. Aus
+ *     dem Bild wird nichts abgeleitet; uebergeben wird ein fertiger Rahmen in
+ *     WELT-MILLIMETERN samt Bilddaten, gerechnet hat ihn `planRahmenMm()` in
+ *     `sembla-plan.js` aus dem GESPEICHERTEN Massstab und Versatz. Dieses Modul
+ *     kennt weder Bildspeicher noch Pixel und rechnet keinen Massstab nach.
  *   * **kein IFC/BIM, keine Planerkennung, keine Mengen-/Kostenrechnung.**
  *
  * Massstab: `waehleMasstab()` waehlt aus der Bauzeichnungsreihe den GROESSTEN
@@ -139,7 +143,22 @@ const PLANINHALT = "Lageplan (Draufsicht)";
  * schreibt keinen `eingaben`-Abschnitt.
  */
 export function standardOptionen() {
-  return { format: "a3", masse: true, kennzeichnung: true, raster: false, wasserzeichen: false };
+  return { format: "a3", masse: true, kennzeichnung: true, raster: false, wasserzeichen: false,
+    transparenz: TRANSPARENZ_STANDARD };
+}
+
+/**
+ * Standardtransparenz des Planhintergrunds in Prozent (#80, [N-9]): 30 % —
+ * also 70 % Deckkraft. Der Grundriss ist damit klar zu erkennen, Wandkanten und
+ * Masszahlen behalten aber ihren Kontrast. Der Wert ist eine Vorgabe, keine
+ * Rechenregel; verstellt wird er in Modul 9 und nirgends gespeichert.
+ */
+export const TRANSPARENZ_STANDARD = 30;
+
+/** Prozentwert 0…100, ganzzahlig — ausserhalb wird geklemmt, Unsinn faellt auf `ersatz`. */
+function _prozent(v, ersatz) {
+  if (v === undefined || v === null || v === "" || !Number.isFinite(+v)) return ersatz;
+  return Math.min(100, Math.max(0, Math.round(+v)));
 }
 
 /** Optionen normalisieren (unbekannt/fehlend -> Standard). */
@@ -152,6 +171,66 @@ export function normOptionen(o) {
     kennzeichnung: z.kennzeichnung === undefined ? s.kennzeichnung : !!z.kennzeichnung,
     raster: z.raster === undefined ? s.raster : !!z.raster,
     wasserzeichen: !!z.wasserzeichen,
+    // #80/[N-9]: reine Darstellung, ganzzahlige Prozent, NIE gespeichert.
+    transparenz: _prozent(z.transparenz, s.transparenz),
+  };
+}
+
+// -------------------------------------------------------- Planhintergrund [N-9]
+
+/**
+ * Zustaende des Planhintergrunds (#80, [N-9]) — genau einer je Blatt:
+ *
+ *   `keiner`           dem Geschoss ist kein Plan hinterlegt: es gibt nichts zu sagen.
+ *   `gesetzt`          kalibrierter Plan mit Bild — der Hintergrund wird gezeichnet.
+ *   `nicht_kalibriert` Plan hinterlegt, aber ohne gesetzten Massstab ([L-9]): KEIN
+ *                      Hintergrund. Der vorlaeufige Editorfaktor 1 Bildpunkt = 1 mm
+ *                      ist eine Bedienhilfe und hat in einer maszstaeblichen
+ *                      Unterlage nichts zu suchen — geschaetzt wird nichts.
+ *   `bild_fehlt`       Massstab und Versatz stehen, das Bild liegt aber nicht in
+ *                      diesem Browser ([L-8]) — benannt, nicht ersetzt.
+ *   `unbrauchbar`      als gesetzt uebergeben, aber ohne Bilddaten oder ohne
+ *                      brauchbare Rahmengeometrie — ebenfalls benannt, nie geraten.
+ */
+export const HINTERGRUND_TEXT = {
+  keiner: "",
+  gesetzt: "Der hinterlegte Geschossplan liegt mit seinem gespeicherten Maßstab und Versatz "
+    + "als Hintergrund unter der Zeichnung. Aus dem Bild wird nichts abgeleitet ([L-9]/[N-9]).",
+  nicht_kalibriert: "Für den hinterlegten Geschossplan ist kein Maßstab gesetzt — er erscheint "
+    + "deshalb nicht als Hintergrund. Kalibriert wird im Geschossplaner ([L-9]).",
+  bild_fehlt: "Zum hinterlegten Geschossplan liegt in diesem Browser kein Bild — Maßstab und "
+    + "Versatz bleiben erhalten, ein Hintergrund wird nicht gezeichnet ([L-8]).",
+  unbrauchbar: "Der übergebene Planhintergrund ist unbrauchbar (Bilddaten oder Bildmaße fehlen) "
+    + "— es wird kein Hintergrund gezeichnet und keine Lage geraten ([L-9]).",
+};
+
+/**
+ * Den uebergebenen Planhintergrund normalisieren. Erwartet wird ein FERTIGER Rahmen
+ * in Welt-Millimetern — gerechnet von `planRahmenMm()` in `sembla-plan.js` aus dem
+ * gespeicherten `mm_je_pixel` und Versatz ([N-9]). Hier wird nichts umgerechnet und
+ * nichts geschaetzt: fehlen Bilddaten oder Masse, ist der Hintergrund `unbrauchbar`.
+ *
+ * @param {any} h `{status, url, x, y, breite, hoehe, name?, mm_je_pixel?}`
+ * @returns {{status:string, url:string|null, x:number, y:number, breite:number,
+ *            hoehe:number, name:string|null, mm_je_pixel:number|null, text:string}}
+ */
+export function normHintergrund(h) {
+  const z = h && typeof h === "object" ? h : {};
+  const zahl = (v) => (Number.isFinite(+v) ? +v : null);
+  const roh = String(z.status || "keiner");
+  const bekannt = Object.prototype.hasOwnProperty.call(HINTERGRUND_TEXT, roh);
+  let status = bekannt ? roh : "unbrauchbar";
+  const url = z.url == null || z.url === "" ? null : String(z.url);
+  const x = zahl(z.x), y = zahl(z.y), b = zahl(z.breite), hh = zahl(z.hoehe);
+  const brauchbar = !!url && x != null && y != null && b != null && hh != null && b > 0 && hh > 0;
+  if (status === "gesetzt" && !brauchbar) status = "unbrauchbar";
+  return {
+    status,
+    url: status === "gesetzt" ? url : null,
+    x: x || 0, y: y || 0, breite: b || 0, hoehe: hh || 0,
+    name: z.name == null || z.name === "" ? null : String(z.name),
+    mm_je_pixel: zahl(z.mm_je_pixel),
+    text: HINTERGRUND_TEXT[status] || HINTERGRUND_TEXT.unbrauchbar,
   };
 }
 
@@ -177,13 +256,16 @@ export function waehleMasstab(breite_mm, hoehe_mm, format = "a3") {
  * keine zweite Lagehaltung.
  *
  * @param {{mappe:any, geschossId:string,
- *          elemente?:Array<{id:string,name?:string,wandelement?:any}>}} arg
+ *          elemente?:Array<{id:string,name?:string,wandelement?:any}>,
+ *          hintergrund?:any}} arg
  *   `elemente` sind die vorhandenen Wandelemente (Form von `listeElemente()`).
  *   Sie liefern AUSSCHLIESSLICH Hoehe und Wandtyp — die Mappe kennt beides nicht
  *   und bekommt keine Kopie ([P-1]). Fehlt ein Element, ist der Eintrag verwaist
  *   ([L-4]) und es wird nichts geraten.
+ *   `hintergrund` ist der fertige Planrahmen in Welt-mm (#80, [N-9], s.
+ *   `normHintergrund`) — read-only durchgereicht, nie hier berechnet.
  */
-export function lageplanDaten({ mappe, geschossId, elemente }) {
+export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
   const treffer = geschossId ? findeGeschoss(mappe, geschossId) : null;
   if (!treffer) {
     throw new Error(`Geschoss „${geschossId || "—"}“ gibt es in dieser Projektmappe nicht.`);
@@ -314,6 +396,16 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
       `Bemaßung „${r.bemassung}“ wiederholt in ${r.achse} widerspruchsfrei einen bereits `
       + "bestimmten Abstand (redundant) — Hinweis, kein Fehler; sie bleibt wirksam ([K-7])." });
   }
+  // Planhintergrund (#80, [N-9]): ein fehlender oder unkalibrierter Plan ist ein
+  // HINWEIS, kein Mangel — er sagt nichts ueber die Vollstaendigkeit der Planung
+  // ([N-7]) und darf `vollstaendig` deshalb nicht kippen. Benannt wird er trotzdem,
+  // sichtbar auf dem Blatt (`hintergrundHtml`), damit niemand einen fehlenden
+  // Hintergrund fuer eine leere Bestandsfläche haelt.
+  const hg = normHintergrund(hintergrund);
+  if (hg.status !== "keiner" && hg.status !== "gesetzt") {
+    hinweise.push({ art: "planhintergrund", text: hg.text });
+  }
+
   if (!waende.some((w) => w.rechteck)) {
     meldungen.push({ art: "leer", text:
       "In diesem Geschoss ist keine Wand verortet — der Plan bleibt leer. Es wird keine Lage "
@@ -327,6 +419,8 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
     /** Der gespeicherte Grundbezug ([K-4], #76) — Zeichnung und Ausdehnung nutzen ihn. */
     ursprung,
     kopfdaten: projekt,
+    /** Der durchgereichte Planhintergrund (#80, [N-9]) — read-only, nie gerechnet. */
+    hintergrund: hg,
     waende,
     bemassungen: bemassungenRoh,
     massbilder,
@@ -401,6 +495,34 @@ export function lageplanSvg(daten, opts) {
   const breite_mm = bW / masstab + RAND_X, hoehe_mm = bH / masstab + RAND_Y;
 
   const teile = [];
+
+  // ---- Planhintergrund (#80, [N-9]) -------------------------------------
+  //
+  // ZUERST, damit alles Gezeichnete darueber liegt: SVG malt in Dokumentreihenfolge,
+  // Wand-, Seiten-, Marker- und Massknoten folgen unten. Platziert wird ueber
+  // GENAU dieselben Abbildungen wie die Wandgeometrie (`X`/`Y`/`S`); der Rahmen
+  // selbst ist bereits in Welt-mm und kommt aus `planRahmenMm()` — hier wird kein
+  // Massstab nachgerechnet und `ausdehnung()`/`waehleMasstab()` bleiben unberuehrt,
+  // das Bild verschiebt also weder Blattmassstab noch Wandlage.
+  //
+  // Die Deckkraft ist ein ATTRIBUT, kein Stil: die eigenstaendige SVG-Datei traegt
+  // kein Stylesheet, und Vorschau, Druck-HTML und Exportdatei entstehen aus genau
+  // dieser einen Zeichenkette. Bei 100 % Transparenz entfaellt das Bild ganz —
+  // ein unsichtbares Bild waere sonst reine Dateilast.
+  const hg = daten.hintergrund;
+  if (hg && hg.status === "gesetzt" && hg.url && o.transparenz < 100) {
+    const deck = (100 - o.transparenz) / 100;
+    // Geklippt auf das Blattfeld: der Plan ist meist groesser als der Wandbestand,
+    // und `lageplanSvgDatei()` schiebt diese Zeichnung unter eine Kopfzeile — ohne
+    // Klippung ueberdeckte ein Ueberstand Titel und Fusszeile.
+    teile.push(`<g class="lpbg">`
+      + `<clipPath id="lpbg-clip"><rect x="0" y="0" width="${_n(breite_mm)}"`
+      + ` height="${_n(hoehe_mm)}"/></clipPath>`
+      + `<image clip-path="url(#lpbg-clip)" href="${_esc(hg.url)}"`
+      + ` x="${_n(X(hg.x))}" y="${_n(Y(hg.y))}"`
+      + ` width="${_n(S(hg.breite))}" height="${_n(S(hg.hoehe))}"`
+      + ` preserveAspectRatio="none" opacity="${_n(deck)}"/></g>`);
+  }
 
   if (o.raster) {
     // Reine Orientierungshilfe im 125-mm-Raster ([G-1]) — nur, wenn sie ueberhaupt
@@ -630,6 +752,28 @@ export function legendeHtml() {
 }
 
 /**
+ * Der Planhintergrund als Blattangabe (#80, [N-9]). Ist dem Geschoss gar kein Plan
+ * hinterlegt, entsteht KEIN Kasten — dann gibt es nichts zu berichten, und das Blatt
+ * bleibt bitgenau das bisherige. In allen anderen Faellen steht hier, ob der
+ * Hintergrund gezeichnet ist, und wenn nicht, WARUM nicht.
+ *
+ * Das ist eine Angabe, kein Mangel: die Vollstaendigkeit ([N-7]) bleibt unberuehrt.
+ * @param {any} daten @param {any} [opts] normalisierte Optionen (fuer die Transparenz)
+ */
+export function hintergrundHtml(daten, opts) {
+  const hg = daten && daten.hintergrund ? daten.hintergrund : normHintergrund(null);
+  if (hg.status === "keiner") return "";
+  const o = normOptionen(opts);
+  const gezeigt = hg.status === "gesetzt" && o.transparenz < 100;
+  const zusatz = hg.status !== "gesetzt" ? ""
+    : gezeigt
+      ? ` Dargestellt mit ${_fmt(o.transparenz)} % Transparenz${hg.name ? ` (${_esc(hg.name)})` : ""}.`
+      : " Die Transparenz steht auf 100 % — der Hintergrund ist deshalb ausgeblendet.";
+  return `<div class="lpbox"><h4>Planhintergrund</h4>`
+    + `<p class="lpbg-info">${_esc(hg.text)}${zusatz}</p></div>`;
+}
+
+/**
  * Wandtabelle: Nummer, Name, Länge, Höhe, Wandtyp, Bestimmtheit.
  *
  * Die Nummer der ersten Spalte ist GENAU die, die in der Draufsicht in der
@@ -676,6 +820,9 @@ export function blattHtml(daten, opts) {
     + `<aside class="lpside">`
     + `<div class="lpbox"><h4>Wände im Geschoss</h4>${wandTabelleHtml(daten)}</div>`
     + `<div class="lpbox"><h4>Darstellung</h4>${legendeHtml()}</div>`
+    // #80/[N-9]: nur vorhanden, wenn dem Geschoss ein Plan hinterlegt ist — sonst
+    // waere es ein Kasten ueber eine Sache, die es nicht gibt.
+    + hintergrundHtml(daten, o)
     // Der fruehere Block „Vollstaendigkeit" ist mit #73 ersatzlos entfallen: das
     // Blatt ist Ausfuehrungsunterlage, keine Pruefliste. [N-7] bleibt gewahrt —
     // das Schriftfeld weist den Stand aus, und `daten.meldungen`/`hinweise` stehen
@@ -719,6 +866,8 @@ export const LAGEPLAN_CSS = `
   table.lptab td.nr,table.lptab th.nr{width:20px;text-align:right;padding-right:5px;
                                       font-variant-numeric:tabular-nums}
   table.lptab td.nr{font-weight:700;color:#1c2430}
+  /* #80: Angabe zum Planhintergrund — nur vorhanden, wenn ein Plan hinterlegt ist. */
+  .lpbg-info{margin:0;font-size:10px;line-height:1.45;color:#4a5663}
   .lplegende{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px}
   .lplegende span{display:flex;align-items:center;gap:4px}
   .lplegende i{width:14px;height:4px;border-radius:2px;display:inline-block}

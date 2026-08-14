@@ -71,6 +71,15 @@
       <label class="f"><input type="checkbox" id="lp-kennz" checked> Wände kennzeichnen</label>
       <label class="f"><input type="checkbox" id="lp-raster"> 125-mm-Raster andeuten</label>
       <label class="f"><input type="checkbox" id="lp-wm"> Vorabzug (Wasserzeichen)</label>
+      <!-- #80/[N-9]: der kalibrierte Geschossplan als Hintergrund. Die Transparenz ist eine
+           reine Darstellungsoption (0–100 %) und wird NICHT gespeichert; bei 100 % entfällt
+           der Hintergrund ganz. Hochgeladen und kalibriert wird ausschließlich im
+           Geschossplaner — hier gibt es keinen Uploadweg. -->
+      <label class="feld">Planhintergrund — Transparenz <span id="lp-transv">30 %</span>
+        <input type="range" id="lp-trans" min="0" max="100" step="1" value="30"
+               title="Transparenz des Geschossplans unter der Zeichnung. 0 % = deckend, 100 % = kein Hintergrund. Wird nicht gespeichert.">
+      </label>
+      <p class="hint" id="lp-planstatus"></p>
     </div>
 
     <div style="margin-top:16px"><h2>Übersicht</h2>
@@ -93,8 +102,13 @@
       Geschoss ([L-10]) — so lässt sich ein fremdes Geschoss ausgeben, ohne den Arbeitskontext zu
       verschieben. Der Export liefert <b>ein ZIP</b> mit dem druckbaren HTML-Blatt und dem
       maßstabsgetreuen SVG desselben Stands; ein Weg über „Start" gibt es dafür nicht. Der
-      <b>Geschossplan</b> (Planbild) ist Hintergrund der Verortung und keine Datenquelle — er
-      erscheint deshalb nicht im Lageplan ([L-9]).</div>
+      <b>Geschossplan</b> liegt als <b>Hintergrund</b> unter der Zeichnung, sobald er im
+      Geschossplaner hinterlegt <b>und kalibriert</b> ist ([N-9]) — mit seinem gespeicherten
+      Maßstab und Versatz, in Vorschau, Druck und Export gleich. Er bleibt dabei
+      <b>keine Datenquelle</b> ([L-9]): aus dem Bild wird keine Wand, keine Länge und kein
+      Maßstab abgeleitet. Ohne Kalibrierung oder ohne Bild in diesem Browser gibt es
+      <b>keinen</b> Hintergrund; der Grund steht auf dem Blatt. Hochgeladen und kalibriert wird
+      allein im Geschossplaner.</div>
   </div>
 
   <div class="panel stage">
@@ -122,7 +136,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
 const fehlerText = e => (e && e.message ? e.message : String(e));
 
 // aus window.SEMBLA (in __lpInit gebunden):
-let store, MAPPE, LP, ZIP;
+let store, MAPPE, LP, ZIP, PLAN;
 
 /**
  * Der Blattbezug ([N-2]). Solange hier NICHTS ausdrücklich gewählt wurde, folgt er dem
@@ -133,6 +147,14 @@ let store, MAPPE, LP, ZIP;
  */
 const AUSWAHL = { projekt: null, geschoss: null, projektGewaehlt: false, geschossGewaehlt: false };
 let DATEN = null, BLATT = null, OPT = null;
+
+/**
+ * Der Planhintergrund des gewählten Geschosses (#80, [N-9]) — read-only geladen und
+ * rein flüchtig: `{ status, url, x, y, breite, hoehe, name, mm_je_pixel }`. `HG_FUER`
+ * merkt sich, für welches Geschoss der Stand gilt, damit nicht bei jedem Neuzeichnen
+ * erneut in die Bilddatenbank gegriffen wird. Gespeichert wird hier NICHTS.
+ */
+let HG = { status: 'keiner' }, HG_FUER = null;
 
 function zeige(text, ok){
   const m = $('lp-msg');
@@ -148,7 +170,101 @@ function optionenAusUi(){
     kennzeichnung: $('lp-kennz').checked,
     raster: $('lp-raster').checked,
     wasserzeichen: $('lp-wm').checked,
+    transparenz: $('lp-trans').value,
   });
+}
+
+/**
+ * Bilddaten als **Data-URL** (#80). Bewusst keine `blob:`-URL: die wäre in der
+ * exportierten SVG-Datei ein toter Verweis, und Vorschau, Druck-HTML und Export
+ * müssen bitgleich dasselbe zeigen. Umkodiert oder verkleinert wird nichts — die
+ * Bytes des hinterlegten Bildes gehen unverändert in die Base64-Darstellung.
+ */
+async function datenUrl(blob, typ){
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return 'data:' + (typ || 'image/png') + ';base64,' + btoa(s);
+}
+
+/**
+ * Den Planhintergrund des gewählten Geschosses laden ([N-9]) — ausschließlich lesend:
+ * `holePlan()` aus derselben Bilddatenbank wie der Geschossplaner ([L-8]) und
+ * `planRahmenMm()` aus dem GESPEICHERTEN Maßstab und Versatz der Projektmappe ([L-9]).
+ *
+ * Der vorläufige Editorfaktor 1 Bildpunkt = 1 mm wird ausdrücklich NICHT benutzt: er
+ * ist eine Bedienhilfe zum Kalibrieren und hätte in einer maßstäblichen Unterlage
+ * nichts zu suchen. Ohne Kalibrierung oder ohne Bild gibt es keinen Hintergrund, und
+ * der Grund wird benannt statt geraten.
+ */
+async function ladeHintergrund(){
+  const m = mappe();
+  const gs = m && AUSWAHL.geschoss ? MAPPE.findeGeschoss(m, AUSWAHL.geschoss) : null;
+  const plan = gs && gs.geschoss.plan ? gs.geschoss.plan : null;
+  if (!plan || !plan.datei) return { status: 'keiner' };
+  let bild = null;
+  try { bild = await PLAN.holePlan(AUSWAHL.geschoss); } catch { bild = null; }
+  if (!bild || !bild.blob) return { status: 'bild_fehlt' };
+  const rahmen = PLAN.planRahmenMm(plan, bild);
+  if (!rahmen) return { status: 'nicht_kalibriert' };
+  let url = null;
+  try { url = await datenUrl(bild.blob, bild.typ || plan.typ); } catch { url = null; }
+  if (!url) return { status: 'unbrauchbar' };
+  return { status: 'gesetzt', url, x: rahmen.x, y: rahmen.y,
+    breite: rahmen.breite, hoehe: rahmen.hoehe, mm_je_pixel: rahmen.mm_je_pixel,
+    name: plan.datei };
+}
+
+/**
+ * Der Hintergrund, den das gerade gezeichnete Blatt bekommt: nur der Stand, der zum
+ * GEWÄHLTEN Geschoss geladen wurde. Solange er noch lädt (oder zu einem anderen
+ * Geschoss gehört), gibt es keinen Hintergrund — statt kurz den falschen Grundriss
+ * unter die Wände zu legen.
+ */
+function hintergrundFuerRender(){
+  return HG_FUER === AUSWAHL.geschoss ? HG : { status: 'keiner' };
+}
+
+/**
+ * Den Planhintergrund laden und danach neu zeichnen. Der Ladeweg ist asynchron
+ * (Bilddatenbank), `render()` bleibt synchron und deterministisch — es liest nur den
+ * bereits geladenen Stand. Ist die Auswahl weitergelaufen, wird das Ergebnis
+ * verworfen statt einem fremden Geschoss zugeschlagen.
+ */
+async function aktualisiere(){
+  const ziel = AUSWAHL.geschoss;
+  let hg;
+  try { hg = await ladeHintergrund(); } catch { hg = { status: 'unbrauchbar' }; }
+  if (ziel !== AUSWAHL.geschoss) return;
+  HG = hg; HG_FUER = ziel;
+  render();
+}
+
+/** Nachladen, wenn der geladene Stand nicht zum gewählten Geschoss gehört. */
+function frischeHintergrund(erzwinge){
+  if (!erzwinge && HG_FUER === AUSWAHL.geschoss) return;
+  aktualisiere().catch(() => {});
+}
+
+/** Der Planhintergrund als Klartext neben den Bedienelementen (reine Anzeige). */
+function planStatusSync(){
+  const host = $('lp-planstatus');
+  if (!DATEN) { host.innerHTML = ''; return; }   // ohne Blattbezug gibt es nichts zu sagen
+  const hg = DATEN.hintergrund;
+  if (!hg || hg.status === 'keiner') {
+    host.innerHTML = 'Diesem Geschoss ist kein Plan hinterlegt — hochgeladen und kalibriert '
+      + 'wird im Geschossplaner.';
+    return;
+  }
+  const p = hg.status === 'gesetzt'
+    ? (OPT && OPT.transparenz >= 100
+        ? 'Plan kalibriert; bei 100 % Transparenz wird kein Hintergrund gezeichnet.'
+        : `Plan als Hintergrund: ${hg.name || 'Bild'} · 1 Bildpunkt = `
+          + `${Number(hg.mm_je_pixel).toFixed(3)} mm (gespeicherter Maßstab).`)
+    : hg.text;
+  host.innerHTML = esc(p);
 }
 
 /** Die Mappe des gewählten Projekts — gelesen, nie aktiv gesetzt. */
@@ -215,6 +331,7 @@ function leeren(text){
   $('lp-ovScale').textContent = '–'; $('lp-ovSheet').textContent = '–';
   $('lp-stand').className = 'badge'; $('lp-stand').textContent = '–';
   bezugSync();
+  planStatusSync();
   zeige(text, false);
 }
 
@@ -225,11 +342,13 @@ function leeren(text){
  */
 function render(){
   OPT = optionenAusUi();
+  $('lp-transv').textContent = OPT.transparenz + ' %';
   const m = mappe();
   if (!m) { leeren('Kein Projekt vorhanden — in „Start" ein Projekt anlegen.'); return; }
   if (!AUSWAHL.geschoss) { leeren('Kein Geschoss in diesem Projekt — in „Start" ein Geschoss anlegen.'); return; }
   try {
-    DATEN = LP.lageplanDaten({ mappe: m, geschossId: AUSWAHL.geschoss, elemente: store.listeElemente() });
+    DATEN = LP.lageplanDaten({ mappe: m, geschossId: AUSWAHL.geschoss,
+      elemente: store.listeElemente(), hintergrund: hintergrundFuerRender() });
   } catch (e) { leeren('Nicht darstellbar: ' + fehlerText(e)); return; }
   BLATT = LP.blattHtml(DATEN, OPT);
   $('lp-hinweis').innerHTML = '';
@@ -246,6 +365,7 @@ function render(){
   st.className = 'badge ' + (DATEN.vollstaendig ? 'ok' : 'no');
   st.textContent = DATEN.vollstaendig ? 'vollständig' : 'nicht vollständig';
   bezugSync();
+  planStatusSync();
   // [N-7]: der unvollständige Stand wird benannt — mit Zahl, nicht mit Gefühl.
   // Seit #73 listet das Blatt die Punkte nicht mehr selbst; das Schriftfeld weist
   // den Stand aus, behoben wird im Geschossplaner.
@@ -273,6 +393,7 @@ function waehleProjekt(id){
   projekteSync();
   geschosseSync();
   render();
+  frischeHintergrund();
 }
 
 /** Ein anderes Geschoss in den Blattbezug nehmen — ohne es aktiv zu setzen ([N-2]). */
@@ -281,6 +402,7 @@ function waehleGeschoss(id){
   AUSWAHL.geschossGewaehlt = !!id;
   geschosseSync();
   render();
+  frischeHintergrund();
 }
 
 /** Darstellungsoption geändert: neu zeichnen. Gespeichert wird dabei nichts. */
@@ -311,9 +433,12 @@ function drucken(){
 function bindEvents(){
   $('lp-projekt').addEventListener('change', () => waehleProjekt($('lp-projekt').value));
   $('lp-geschoss').addEventListener('change', () => waehleGeschoss($('lp-geschoss').value));
-  for (const id of ['lp-fmt', 'lp-masse', 'lp-kennz', 'lp-raster', 'lp-wm']) {
+  for (const id of ['lp-fmt', 'lp-masse', 'lp-kennz', 'lp-raster', 'lp-wm', 'lp-trans']) {
     $(id).addEventListener('change', optionGeaendert);
   }
+  // Der Schieber soll schon beim Ziehen wirken; `input` und `change` laufen durch
+  // denselben Behandler, gezeichnet wird also in jedem Fall genau derselbe Stand.
+  $('lp-trans').addEventListener('input', optionGeaendert);
   $('lp-print').addEventListener('click', drucken);
   $('lp-export').addEventListener('click', exportiere);
 }
@@ -321,21 +446,25 @@ function bindEvents(){
 /** Prüfhilfen — sie laufen durch dieselben Funktionen wie die Bedienung. */
 window.__lp = {
   render, exportiere, optionGeaendert, waehleProjekt, waehleGeschoss,
+  // #80: der Ladeweg des Planhintergrunds ist asynchron — awaitbar, damit ein Test
+  // denselben Weg geht wie die Bedienung und nicht auf einen Zufallszeitpunkt trifft.
+  laden: () => aktualisiere(),
   get daten(){ return DATEN; }, get blatt(){ return BLATT; }, get optionen(){ return OPT; },
-  get auswahl(){ return AUSWAHL; },
+  get auswahl(){ return AUSWAHL; }, get hintergrund(){ return HG; },
 };
 
 window.__lpInit = function(){
   const S = window.SEMBLA || {};
-  store = S.store; MAPPE = S.MAPPE; LP = S.LP; ZIP = S.ZIP;
+  store = S.store; MAPPE = S.MAPPE; LP = S.LP; ZIP = S.ZIP; PLAN = S.PLAN;
   $('lpcss').textContent = LP.LAGEPLAN_CSS;      // Blatt-CSS aus dem gemeinsamen Baustein
   bindEvents();
   // Ein Wechsel im Speicher (andere Seite, andere Wand) frischt die Anzeige auf —
   // die getroffene Auswahl bleibt dabei stehen, solange sie es noch gibt.
-  store.abonniere(() => { projekteSync(); geschosseSync(); render(); });
+  store.abonniere(() => { projekteSync(); geschosseSync(); render(); frischeHintergrund(); });
   projekteSync();
   geschosseSync();
   render();
+  frischeHintergrund();
 };
 </script>
 
@@ -344,8 +473,11 @@ window.__lpInit = function(){
   import * as MAPPE from './shared/sembla-projektmappe.js';
   import * as LP from './shared/sembla-lageplan.js';
   import * as ZIP from './shared/zip.js';
+  // #80/[N-9]: der LESENDE Zugang zum Planbild (`holePlan`) und die kanonische
+  // Umrechnung des gespeicherten Maßstabs (`planRahmenMm`) — kein Uploadweg.
+  import * as PLAN from './shared/sembla-plan.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { store, MAPPE, LP, ZIP };
+  window.SEMBLA = { store, MAPPE, LP, ZIP, PLAN };
   mountNavbar(9);
   window.__lpInit();
 </script>

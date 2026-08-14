@@ -65,13 +65,38 @@ const store = await import("../../docs/shared/storage.js");
 const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
 const LP = await import("../../docs/shared/sembla-lageplan.js");
 const ZIP = await import("../../docs/shared/zip.js");
+// #80/[N-9]: derselbe Baustein, aus dem der Geschosseditor sein Planbild liest —
+// hier LESEND (`holePlan`) und mit eingeschleuster Bilddatenbank.
+const PLAN = await import("../../docs/shared/sembla-plan.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
 const { MODULE } = await import("../../docs/shared/navbar.js");
 
 const html = readFileSync(new URL("../../docs/lageplan.html", import.meta.url), "utf8");
 const startseite = readFileSync(new URL("../../docs/index.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, LP, ZIP };
+globalThis.window.SEMBLA = { store, MAPPE, LP, ZIP, PLAN };
+
+/** Minimaler IndexedDB-Ersatz — derselbe wie im Editor- und Modul-0-Test ([L-8]). */
+function fakeIndexedDB(){
+  const daten = new Map();
+  const spaeter = (wert) => {
+    const req = { result: undefined, error: null, onsuccess: null, onerror: null };
+    queueMicrotask(() => { req.result = wert(); if (req.onsuccess) req.onsuccess(); });
+    return req;
+  };
+  const st = {
+    put: (s) => spaeter(() => { daten.set(String(s.id), s); return s.id; }),
+    get: (id) => spaeter(() => daten.get(String(id))),
+    delete: (id) => spaeter(() => { daten.delete(String(id)); return undefined; }),
+    getAllKeys: () => spaeter(() => [...daten.keys()]),
+  };
+  const db = { objectStoreNames: { contains: () => true }, createObjectStore: () => st,
+               transaction: () => ({ objectStore: () => st }), close(){} };
+  return { open(){ const req = { result: db, onsuccess: null, onerror: null, onupgradeneeded: null };
+    queueMicrotask(() => { if (req.onupgradeneeded) req.onupgradeneeded(); if (req.onsuccess) req.onsuccess(); });
+    return req; } };
+}
+PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
@@ -487,6 +512,134 @@ ok('[#59] Vorschau und Export stimmen ueberein und zeigen das 3000er-Mass weiter
   && nulText[nulRumpf + '.html'].includes(lp.blatt.svg));
 ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
   lp.blatt.svg.includes(`data-wand="${idA}"`));
+
+// --- 9) #80/[N-9] der kalibrierte Geschossplan als Hintergrund -------------
+//
+// Gegangen wird der ECHTE Pfad: das Bild liegt in der eingeschleusten Bilddatenbank
+// von `sembla-plan.js` (dieselbe, die der Geschossplaner benutzt), Maßstab und Versatz
+// stehen im Planblock der Projektmappe. Modul 9 liest beides — und darf nichts davon
+// schreiben. Das Testbild ist ABSICHTLICH winzig (1×1 PNG): geprueft wird die
+// Darstellung und die Byte-Gleichheit, nicht die Bildgroesse.
+{
+  const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+  const bytes = Buffer.from(PNG_B64, "base64");
+  // Blob-Ersatz mit genau der einen Faehigkeit, die die Seite braucht.
+  const bild = { arrayBuffer: async () => bytes.buffer.slice(
+    bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+  const BILD_PX = { breite_px: 800, hoehe_px: 600 };
+  const PLANBLOCK = { datei: "grundriss-eg.png", typ: "image/png", ...BILD_PX,
+    mm_je_pixel: 12.5, versatz_x_mm: -1500, versatz_y_mm: -250 };
+
+  // Zuerst ohne Kalibrierung: Plan hinterlegt, Maßstab offen ([L-9]).
+  store.setzeMappe(MAPPE.setzePlan(store.projektMappe(prjA.projekt.id), gsEG,
+    { ...PLANBLOCK, mm_je_pixel: null }));
+  await PLAN.speicherePlan(gsEG, bild, { name: PLANBLOCK.datei, typ: "image/png", ...BILD_PX });
+  await warte();
+  lp.waehleGeschoss(gsEG);
+  await lp.laden();
+  ok('[N-9] ein unkalibrierter Plan liefert keinen Hintergrund — der Grund steht auf dem Blatt',
+    lp.daten.hintergrund.status === 'nicht_kalibriert'
+    && !lp.blatt.svg.includes('<g class="lpbg">')
+    && /<h4>Planhintergrund<\/h4>/.test(lp.blatt.html)
+    && /kein Maßstab gesetzt/.test(lp.blatt.html)
+    && /kein Maßstab gesetzt/.test($('lp-planstatus').innerHTML));
+  const vollstaendigVorher = lp.daten.vollstaendig;
+
+  // Jetzt kalibriert — Maßstab und Versatz kommen aus dem gespeicherten Planblock.
+  store.setzeMappe(MAPPE.setzePlan(store.projektMappe(prjA.projekt.id), gsEG, PLANBLOCK));
+  await warte();
+  const standVorHg = JSON.stringify([...localStorage.m.entries()].sort());
+  await lp.laden();
+  const bildVon = (s) => {
+    const g = /<g class="lpbg">([\s\S]*?)<\/g>/.exec(s);
+    const i = g ? /<image ([^>]*)\/>/.exec(g[1]) : null;
+    if (!i) return null;
+    const attr = n => (new RegExp(`\\b${n}="([^"]*)"`).exec(i[1]) || [, null])[1];
+    return { href: attr('href'), x: +attr('x'), y: +attr('y'), breite: +attr('width'),
+      hoehe: +attr('height'), opacity: attr('opacity'), roh: g[0] };
+  };
+  const hgBild = bildVon(lp.blatt.svg);
+  const rahmen = PLAN.planRahmenMm(PLANBLOCK, BILD_PX);
+  const a = LP.ausdehnung(lp.daten, lp.optionen);
+  const nah = (p, q) => Math.abs(p - q) < 0.002;
+  ok('[N-9] der Hintergrund erscheint mit gespeichertem Maßstab und Versatz',
+    lp.daten.hintergrund.status === 'gesetzt' && !!hgBild
+    && hgBild.href === 'data:image/png;base64,' + PNG_B64
+    && nah(hgBild.x, LP.PAD_MM + (rahmen.x - a.x_min) / lp.blatt.masstab)
+    && nah(hgBild.y, LP.PAD_MM + (rahmen.y - a.y_min) / lp.blatt.masstab)
+    && nah(hgBild.breite, rahmen.breite / lp.blatt.masstab)
+    && nah(hgBild.hoehe, rahmen.hoehe / lp.blatt.masstab));
+  ok('[N-9] die Standardtransparenz der Oberflaeche ist die des Bausteins',
+    lp.optionen.transparenz === LP.TRANSPARENZ_STANDARD
+    && hgBild.opacity === String((100 - LP.TRANSPARENZ_STANDARD) / 100));
+  ok('[N-9] alles Gezeichnete liegt ueber dem Hintergrund',
+    ['<g class="lpwand', '<g class="lpseiten', '<g class="lpmarker', '<g class="lpmass']
+      .every(k => lp.blatt.svg.indexOf(k) > lp.blatt.svg.indexOf('<g class="lpbg">'))
+    && lp.blatt.html.indexOf('<g class="lpbg">') < lp.blatt.html.indexOf('class="lptitleblock"'));
+  ok('[N-9] der Hintergrund kippt die Vollstaendigkeit nicht ([N-7])',
+    lp.daten.vollstaendig === vollstaendigVorher
+    && !lp.daten.meldungen.some(m => m.art === 'planhintergrund'));
+  ok('[N-9] Modul 9 schreibt beim Laden des Planbilds NICHTS in den Speicher',
+    JSON.stringify([...localStorage.m.entries()].sort()) === standVorHg);
+
+  // Transparenz verstellen — ueber denselben Behandler wie im Browser.
+  const masstabVor = lp.blatt.masstab, waendeVor = lp.blatt.svg.match(/<g class="lpwand[\s\S]*/)[0];
+  $('lp-trans').value = '70'; $('lp-trans').dispatch('change');
+  await warte();
+  const hg70 = bildVon(lp.blatt.svg);
+  ok('[N-9] die verstellte Transparenz wirkt und bleibt fluechtig',
+    lp.optionen.transparenz === 70 && hg70.opacity === '0.3'
+    && $('lp-transv').textContent === '70 %'
+    && JSON.stringify([...localStorage.m.entries()].sort()) === standVorHg);
+  ok('[N-9] Maßstab und Wandgeometrie aendern sich durch die Transparenz nicht',
+    lp.blatt.masstab === masstabVor
+    && lp.blatt.svg.match(/<g class="lpwand[\s\S]*/)[0] === waendeVor);
+
+  // Muss: die exportierten BYTES zeigen denselben Hintergrund wie die Vorschau.
+  letzterBlob = null;
+  $('lp-export').dispatch('click');
+  await warte();
+  const hgEintraege = await ZIP.entpacke(letzterBlob.teile[0]);
+  const hgText = Object.fromEntries(hgEintraege.map(e => [e.name, dec.decode(e.data)]));
+  const hgRumpf = LP.dateiRumpf(lp.daten);
+  ok('[N-9] Vorschau, exportiertes HTML und exportiertes SVG zeigen bit-genau dasselbe Bild',
+    hgText[hgRumpf + '.html'].includes(hg70.roh) && hgText[hgRumpf + '.svg'].includes(hg70.roh)
+    && $('lp-blatt').innerHTML.includes(hg70.roh)
+    && JSON.stringify(bildVon(hgText[hgRumpf + '.svg'])) === JSON.stringify(hg70));
+  ok('[N-9] die exportierte SVG-Datei ist eigenstaendig (Data-URL, kein blob:-Verweis)',
+    hgText[hgRumpf + '.svg'].includes('data:image/png;base64,' + PNG_B64)
+    && !/href="blob:/.test(hgText[hgRumpf + '.svg']));
+
+  // 100 % Transparenz: kein Bild — auch nicht in den Exportbytes.
+  $('lp-trans').value = '100'; $('lp-trans').dispatch('change');
+  await warte();
+  letzterBlob = null;
+  $('lp-export').dispatch('click');
+  await warte();
+  const ausText = Object.fromEntries((await ZIP.entpacke(letzterBlob.teile[0]))
+    .map(e => [e.name, dec.decode(e.data)]));
+  ok('[N-9] bei 100 % Transparenz enthaelt keine Ausgabe Bilddaten',
+    bildVon(lp.blatt.svg) === null
+    && Object.values(ausText).every(s => !s.includes('data:image/png'))
+    && /ausgeblendet/.test(lp.blatt.html));
+
+  // Fehlendes Bild: Maßstab und Versatz bleiben, das Blatt bleibt vollstaendig.
+  await PLAN.loeschePlan(gsEG);
+  $('lp-trans').value = '30'; $('lp-trans').dispatch('change');
+  await lp.laden();
+  ok('[N-9] ohne Bild in diesem Browser wird das benannt, das Blatt bleibt vollstaendig',
+    lp.daten.hintergrund.status === 'bild_fehlt'
+    && !lp.blatt.svg.includes('<g class="lpbg">')
+    && /kein Bild/.test(lp.blatt.html)
+    && lp.daten.vollstaendig === vollstaendigVorher
+    && MAPPE.findeGeschoss(store.projektMappe(prjA.projekt.id), gsEG).geschoss.plan.mm_je_pixel
+       === 12.5);
+  ok('[N-9] die Seite hat keinen Uploadweg und keinen zweiten Speicherort',
+    !/speicherePlan|loeschePlan|setzePlan|type="file"/.test(html)
+    && /holePlan/.test(html) && /planRahmenMm/.test(html)
+    // der vorlaeufige Editorfaktor wird ausdruecklich NICHT benutzt
+    && !/planAnsichtRahmen|planVorschauRahmen/.test(html));
+}
 
 // --- Bericht -------------------------------------------------------------
 let fail = 0;

@@ -432,7 +432,7 @@ Wände, die **ohne eigenes Maß** über die starre Gruppe bestimmt sind ([K-9]);
 verschiedene Auswege und deshalb **verschiedene Meldungen**. Knopf und Taste **R** laufen durch
 dieselbe Funktion.
 
-**Lageplan als eigene Projektausgabe (Modul 9, Issue #54, Kapitel 16.11, [N-1]…[N-8]).** Der im
+**Lageplan als eigene Projektausgabe (Modul 9, Issues #54/#80, Kapitel 16.11, [N-1]…[N-9]).** Der im
 Geschossplaner erzeugte Wandgrundriss wird als **prüf- und druckbare Unterlage** ausgegeben —
 `docs/lageplan.html` plus die DOM-freie Ableitung `docs/shared/sembla-lageplan.js`. Die Richtung ist
 **eigenes Modul, keine zweite Bearbeitungsansicht**: der **Geschossplaner bleibt der einzige Ort der
@@ -457,9 +457,30 @@ bei 1:500 nicht, wird es **sichtbar als zu groß gemeldet** und **nie** beschnit
 ([N-8]). **Vorschau und Export sind derselbe DOM-freie Pfad** (Muss 9, `blattHtml`/`lageplanDateien` —
 im Smoke an den exportierten **Bytes** geprüft); der **Export-Knopf liegt allein in Modul 9** (ZIP mit
 druckbarem HTML + maßstabsgetreuem SVG), der **zentrale Modul-0-Export bleibt unberührt**. Bewusst
-**nicht** dabei: Planbild im Blatt ([L-9]), IFC/BIM, Planerkennung, Mengen-/Kostenrechnung und **jede**
+**nicht** dabei: IFC/BIM, Planerkennung, Mengen-/Kostenrechnung und **jede**
 neue Datenstruktur — die Darstellungsoptionen des Moduls sind **flüchtig** und werden nicht
 gespeichert (kein Schema-/Formatbump, kein neuer `eingaben`-Abschnitt).
+
+**Der kalibrierte Geschossplan liegt als Hintergrund unter der Zeichnung (#80, [N-9]).** Das frühere
+Nicht-Ziel „kein Planbild im Blatt" aus #54 ist damit **ersetzt** — ersetzt ist aber ausschließlich
+die **Umfangsaussage**: **[L-9] gilt unverändert**, der Plan bleibt Hintergrund und **keine
+Datenquelle** (keine Wand, keine Länge, kein Maßstab aus dem Bild), und das **Bearbeiten** von
+Planbildern bleibt Nicht-Ziel — hochgeladen und kalibriert wird allein im Geschossplaner, es gibt
+keinen zweiten Uploadweg und keinen zweiten Speicherort. Gelesen wird **read-only**: das Bild über
+`holePlan()` aus derselben IndexedDB ([L-8]), Maßstab und Versatz aus der Planansicht der Mappe;
+die Bildlage in Welt-mm rechnet die **kanonische** `planRahmenMm()` aus `sembla-plan.js`, und
+`sembla-lageplan.js` bekommt sie fertig — es kennt keinen Bildspeicher und rechnet **keinen**
+Maßstab nach. In das Blatt gelangt das Bild als **Data-URL** (`<image>` als **erstes** Element, vor
+allen Wand-, Maß-, Marker- und Schriftfeldangaben, auf das Blattfeld geklippt): nur so zeigt die
+**eigenständige** SVG-Exportdatei ohne Fremdverweis dasselbe wie Vorschau und Druck-HTML. Die
+**Transparenz** ist eine flüchtige Darstellungsoption (`optionen.transparenz`, ganze Prozent 0…100,
+Standard 30) — sie wirkt als `opacity`-**Attribut** am Bild und wird **nirgends** gespeichert; bei
+100 % entfällt das Bild ganz. **Ohne Kalibrierung kein Hintergrund:** der vorläufige Editorfaktor
+1 Bildpunkt = 1 mm ist eine Bedienhilfe und wird hier ausdrücklich **nicht** benutzt. Fehlendes Bild
+und fehlender Maßstab sind **Hinweise**, kein Mangel — sie stehen als eigener Kasten
+„Planhintergrund" benannt auf dem Blatt und ändern den Vollständigkeitsvermerk ([N-7]) nicht.
+`ausdehnung()`/`waehleMasstab()` und die Wandgeometrie bleiben unberührt: der Hintergrund
+verschiebt weder Blattmaßstab noch Wandlage. **Kein Schema-/Formatbump.**
 
 **Bauteilkatalog (`sembla:kataloge`, Format `SEMBLA-Bauteilkatalog` v1, Regel [L-12]).** Der
 Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/Platten, Verbinder,
@@ -755,13 +776,15 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      Trefferflächen und der **laufende** Zug bleiben in der jeweiligen Oberfläche; `linie_mm`
      (ganze Darstellung quer) und `text_mm` (nur die Zahl) wirken **nur hier** und erreichen den
      Löser nie ([K-5]). Rein/DOM-frei, eigene Tests (`tests/module/test-massbild.mjs`).
-   - `sembla-lageplan.js` — **Lageplanblatt** (Modul 9, Kapitel 16.11, [N-1]…[N-8]):
+   - `sembla-lageplan.js` — **Lageplanblatt** (Modul 9, Kapitel 16.11, [N-1]…[N-9]):
      `lageplanDaten` (die eine frische Ableitung aus Mappe + Löserergebnis), `waehleMasstab`
      (eigene Reihe 50/100/200/250/500), `lageplanSvg`, `schriftfeldHtml` (aus
      `mappe.projekt.kopfdaten`), `wandTabelleHtml`, `meldungenHtml`, `blattHtml`, `LAGEPLAN_CSS`,
-     `druckCss`, `lageplanDokument`, `lageplanSvgDatei`, `lageplanDateien`, `dateiRumpf`.
-     Rein/DOM-frei, **liest nur** (keine Schreib-, Speicher- oder Planbildpfade), eigene Tests
-     (`tests/module/test-lageplan.mjs`).
+     `druckCss`, `lageplanDokument`, `lageplanSvgDatei`, `lageplanDateien`, `dateiRumpf` sowie den
+     **Planhintergrund** (`normHintergrund`/`HINTERGRUND_TEXT`/`hintergrundHtml`/
+     `TRANSPARENZ_STANDARD`, [N-9]) — als fertigen Rahmen in Welt-mm entgegengenommen, nie selbst
+     gerechnet. Rein/DOM-frei, **liest nur** (keine Schreib-, Speicher- oder Bildspeicherpfade;
+     der Maßstab wird nicht nachgerechnet), eigene Tests (`tests/module/test-lageplan.mjs`).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
      **Katalogspeicher** (`listeKataloge`/`katalogNachId`/`katalogStatus`/`setzeProjektKatalog`),
      **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
@@ -813,7 +836,7 @@ der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv �
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 | 8 | `blog.html` | **Umsetzungsplan & Änderungen** (#55, mobile-first, read-only, **streng statisch**): genau zwei Ansichten — **„Umsetzungsplan"** (Standard) aus dem versionierten Artefakt `umsetzungsplan.js` via `sembla-umsetzungsplan.js` (Entscheidungen für Tibor · nächstes Issue mit Begründung · geordnete weitere · blockierte mit Ursache und nächstem Schritt) und **„Was ist neu?"** aus `blog-eintraege.js` via `sembla-blog.js`. Der frühere „Projektstatus" samt GitHub-Live-Abruf und Anzeigecache ist **entfallen**: **kein `fetch`, kein `localStorage`**, kein Login/Backend. Fehlender/ungültiger Plan ⇒ **sichtbar gemeldet, nichts geraten**. Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben` |
-| 9 | `lageplan.html` | **Lageplan des Geschosses** (#54, Kapitel 16.11, [N-1]…[N-8]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. **Kein Planbild** im Blatt ([L-9]), kein IFC, keine Mengen/Kosten |
+| 9 | `lageplan.html` | **Lageplan des Geschosses** (#54/#80, Kapitel 16.11, [N-1]…[N-9]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. Der **kalibrierte Geschossplan** liegt seit #80 als **Hintergrund** unter der Zeichnung ([N-9]) — read-only aus derselben Bilddatenbank, mit gespeichertem Maßstab/Versatz, **flüchtig** einstellbarer Transparenz (0…100 %, Standard 30) und in Vorschau, Druck und Export gleich; unkalibriert oder ohne Bild gibt es **keinen** Hintergrund und der Grund steht benannt auf dem Blatt. Aus dem Bild wird weiter **nichts** abgeleitet ([L-9]); kein IFC, keine Mengen/Kosten |
 
 **Module 2, 3 und 5 sind vorübergehend ausgeblendet (Zyklus-Fokus, Issue #20).** Der laufende
 AWG-Zyklus nimmt Statik-Ausbau (Modul 3), Modul-2-Ausbau und die stückweise Montageanleitung

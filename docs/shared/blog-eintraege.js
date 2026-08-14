@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260814-03",
+    datum: "2026-08-14",
+    typ: "feature",
+    issue: 80,
+    titel: "Kalibrierter Geschossplan liegt im Lageplan als Hintergrund — Transparenz frei einstellbar",
+    testbitte: "In Modul 9 ein Geschoss mit kalibriertem Plan wählen: Der Grundriss liegt unter den Wänden; den Transparenzschieber ziehen und exportieren — HTML und SVG zeigen dasselbe Bild, bei 100 % keines.",
+  },
+  {
     id: "chg-20260814-02",
     datum: "2026-08-14",
     typ: "feature",

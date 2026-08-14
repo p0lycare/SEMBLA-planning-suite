@@ -10,6 +10,7 @@
 //   [N-6] Schriftfeld aus mappe.projekt.kopfdaten
 //   [N-7] unvollstaendiger Stand wird konkret benannt, nie als vollstaendig ausgegeben
 //   [N-8] genau EIN Blatt je Geschoss, eigene Massstabsreihe, nie beschneiden
+//   [N-9] der kalibrierte Geschossplan als Hintergrund, flüchtige Transparenz (#80)
 //
 // Aufruf:  node tests/module/test-lageplan.mjs
 
@@ -627,8 +628,13 @@ t("[K-5] gleicher Stand ⇒ bitgenau gleiches Blatt",
 
 const quelle = readFileSync(new URL("../../docs/shared/sembla-lageplan.js", import.meta.url), "utf8");
 t("das Modul ist DOM-frei", !/document\.|window\.|localStorage|indexedDB/.test(quelle));
-t("das Modul kennt weder Speicher noch Planbild (Nicht-Ziele)",
-  !/storage\.js|sembla-plan\.js/.test(quelle));
+// Geprueft werden die IMPORTE, nicht die Prosa: seit #80 nennt der Kopfkommentar
+// `sembla-plan.js` ausdruecklich als die Stelle, an der der Planrahmen gerechnet wird —
+// genau das ist der Punkt. Eingebunden werden darf beides hier weiterhin nicht: kein
+// Speicherzugriff, kein Bildspeicher, keine eigene Massstabsrechnung.
+t("das Modul bindet weder Speicher noch Planbaustein ein (Nicht-Ziele)",
+  !/from\s+["'][^"']*(storage|sembla-plan)\.js["']/.test(quelle)
+  && !/import\s*\(/.test(quelle));
 t("das Modul schreibt nichts (keine setz-/aendere-Aufrufe der Mappe)",
   !/setzeWand|setzeBemassung|setzeLage|aendereMappe|setzePlan/.test(quelle));
 t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
@@ -763,6 +769,138 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
       svg.data === LP.lageplanSvgDatei(dU)
       && !/class="lpursprung"/.test(LP.lageplanDateien(d0).find((f) => /\.svg$/.test(f.name)).data));
   }
+}
+
+// --- #80/[N-9]: der kalibrierte Geschossplan als Hintergrund --------------
+//
+// Der Rahmen kommt NICHT aus diesem Modul: gerechnet hat ihn `planRahmenMm()` in
+// `sembla-plan.js` aus dem GESPEICHERTEN `mm_je_pixel` und Versatz des Planblocks —
+// genau derselbe Weg, den die Seite geht. Geprueft wird deshalb hier gegen diese
+// kanonische Rechnung und nicht gegen nachgerechnete Zahlen.
+{
+  const PLAN = await import("../../docs/shared/sembla-plan.js");
+  const BILD = { breite_px: 800, hoehe_px: 600 };
+  const PLANBLOCK = { datei: "grundriss.png", typ: "image/png", ...BILD,
+    mm_je_pixel: 12.5, versatz_x_mm: -1500, versatz_y_mm: -250 };
+  const URL_PNG = "data:image/png;base64,iVBORw0KGgo=";
+
+  const { m, gsEG } = bau();
+  const mitPlan = MAPPE.setzePlan(m, gsEG, PLANBLOCK);
+  const plan = MAPPE.findeGeschoss(mitPlan, gsEG).geschoss.plan;
+  const rahmen = PLAN.planRahmenMm(plan, BILD);
+  const hg = { status: "gesetzt", url: URL_PNG, name: plan.datei, mm_je_pixel: rahmen.mm_je_pixel,
+    x: rahmen.x, y: rahmen.y, breite: rahmen.breite, hoehe: rahmen.hoehe };
+
+  const dOhne = LP.lageplanDaten({ mappe: mitPlan, geschossId: gsEG, elemente: ELEMENTE });
+  const dMit = LP.lageplanDaten({ mappe: mitPlan, geschossId: gsEG, elemente: ELEMENTE,
+    hintergrund: hg });
+  const zMit = LP.lageplanSvg(dMit, { transparenz: 40 });
+  const blattMit = LP.blattHtml(dMit, { transparenz: 40 });
+
+  /** Das Bildelement des Blattes (Papier-mm). */
+  const bildVon = (s) => {
+    const m2 = /<g class="lpbg">([\s\S]*?)<\/g>/.exec(s);
+    if (!m2) return null;
+    const i = /<image ([^>]*)\/>/.exec(m2[1]);
+    if (!i) return null;
+    const attr = (n) => (new RegExp(`\\b${n}="([^"]*)"`).exec(i[1]) || [, null])[1];
+    return { href: attr("href"), x: +attr("x"), y: +attr("y"),
+      breite: +attr("width"), hoehe: +attr("height"),
+      opacity: attr("opacity"), clip: attr("clip-path"), roh: m2[0] };
+  };
+
+  const bild = bildVon(zMit.svg);
+  // Erwartete Papier-mm: derselbe Weg wie die Wandgeometrie — PAD_MM + (Welt − Rand) / Massstab.
+  const a = LP.ausdehnung(dMit, { masse: true });
+  const erwX = LP.PAD_MM + (rahmen.x - a.x_min) / zMit.masstab;
+  const erwY = LP.PAD_MM + (rahmen.y - a.y_min) / zMit.masstab;
+  const nah = (p, q) => Math.abs(p - q) < 0.002;
+
+  t("#80 der Hintergrund steht mit dem GESPEICHERTEN Massstab und Versatz im Blatt",
+    !!bild && bild.href === URL_PNG
+    && nah(bild.x, erwX) && nah(bild.y, erwY)
+    && nah(bild.breite, (BILD.breite_px * PLANBLOCK.mm_je_pixel) / zMit.masstab)
+    && nah(bild.hoehe, (BILD.hoehe_px * PLANBLOCK.mm_je_pixel) / zMit.masstab));
+  t("#80 die gesetzte Transparenz steht als Deckkraft am Bild (40 % ⇒ 0,6)",
+    bild.opacity === "0.6" && bild.clip === "url(#lpbg-clip)");
+  t("#80 der Hintergrund liegt VOR allen Wand-, Seiten-, Marker- und Massknoten",
+    (() => {
+      const i = zMit.svg.indexOf('<g class="lpbg">');
+      return i >= 0 && ['<g class="lpwand', '<g class="lpseiten', '<g class="lpmarker',
+        '<g class="lpmass'].every((k) => zMit.svg.indexOf(k) > i);
+    })());
+  t("#80 im Blatt liegt er auch vor dem Schriftfeld",
+    blattMit.html.indexOf('<g class="lpbg">') < blattMit.html.indexOf('class="lptitleblock"'));
+  t("#80 Wandgeometrie und Massstab bleiben vom Hintergrund unberuehrt ([N-8])",
+    zMit.masstab === LP.lageplanSvg(dOhne, { transparenz: 40 }).masstab
+    && JSON.stringify(LP.ausdehnung(dMit)) === JSON.stringify(LP.ausdehnung(dOhne))
+    && JSON.stringify(dMit.waende.map((w) => w.rechteck))
+       === JSON.stringify(dOhne.waende.map((w) => w.rechteck)));
+  t("#80 der gezeichnete Hintergrund ist kein Mangel und kein Hinweis",
+    dMit.vollstaendig === dOhne.vollstaendig
+    && !dMit.hinweise.some((h) => h.art === "planhintergrund"));
+  t("#80 das Blatt benennt den Hintergrund samt Transparenz",
+    /<h4>Planhintergrund<\/h4>/.test(blattMit.html)
+    && /40 % Transparenz/.test(blattMit.html) && /grundriss\.png/.test(blattMit.html));
+
+  // Muss: Vorschau, Druck-HTML und SVG-Datei zeigen dasselbe Bildelement — bitgenau.
+  const dok = LP.lageplanDokument(dMit, { transparenz: 40 });
+  const svgD = LP.lageplanSvgDatei(dMit, { transparenz: 40 });
+  t("#80 Blatt, Druck-HTML und SVG-Datei tragen bit-genau dasselbe Bildelement",
+    dok.includes(bild.roh) && svgD.includes(bild.roh)
+    && JSON.stringify(bildVon(svgD)) === JSON.stringify(bildVon(zMit.svg)));
+  t("#80 die SVG-Datei ist eigenstaendig — die Bilddaten stecken als Data-URL darin",
+    svgD.includes("data:image/png;base64,") && !/href="blob:/.test(svgD));
+
+  // Transparenz: ganzzahlig, geklemmt, 100 % = kein Bild.
+  t("#80 die Transparenz ist ganzzahlig und auf 0…100 geklemmt",
+    LP.normOptionen({ transparenz: 150 }).transparenz === 100
+    && LP.normOptionen({ transparenz: -20 }).transparenz === 0
+    && LP.normOptionen({ transparenz: 33.6 }).transparenz === 34
+    && LP.normOptionen({ transparenz: "abc" }).transparenz === LP.TRANSPARENZ_STANDARD
+    && LP.standardOptionen().transparenz === LP.TRANSPARENZ_STANDARD);
+  t("#80 bei 0 % Transparenz ist das Bild deckend",
+    bildVon(LP.lageplanSvg(dMit, { transparenz: 0 }).svg).opacity === "1");
+  t("#80 bei 100 % Transparenz entfaellt das Bild vollstaendig",
+    bildVon(LP.lageplanSvg(dMit, { transparenz: 100 }).svg) === null
+    && !LP.lageplanSvgDatei(dMit, { transparenz: 100 }).includes("data:image/png"));
+  t("#80 das Blatt sagt es, wenn der Hintergrund auf 100 % ausgeblendet ist",
+    /ausgeblendet/.test(LP.blattHtml(dMit, { transparenz: 100 }).html));
+
+  // Ausfaelle: unkalibriert, Bild fehlt, unbrauchbar — benannt, kein Hintergrund,
+  // KEIN Mangel: die Vollstaendigkeit bleibt die des Blattes ohne Plan ([N-7]).
+  const ohneMassstab = MAPPE.setzePlan(m, gsEG, { ...PLANBLOCK, mm_je_pixel: null });
+  const planUnkal = MAPPE.findeGeschoss(ohneMassstab, gsEG).geschoss.plan;
+  t("#80 ein unkalibrierter Plan liefert gar keinen Rahmen (kein Ersatzmassstab)",
+    PLAN.planRahmenMm(planUnkal, BILD) === null);
+
+  for (const [status, muster] of [["nicht_kalibriert", /kein Maßstab gesetzt/],
+    ["bild_fehlt", /kein Bild/], ["unbrauchbar", /unbrauchbar/]]) {
+    const d = LP.lageplanDaten({ mappe: mitPlan, geschossId: gsEG, elemente: ELEMENTE,
+      hintergrund: { status } });
+    const b = LP.blattHtml(d, { transparenz: 40 });
+    t(`#80 ${status}: kein Hintergrund, Grund benannt, Blatt sonst vollstaendig`,
+      d.hintergrund.status === status && d.hintergrund.url === null
+      && !b.svg.includes('<g class="lpbg">')
+      && muster.test(b.html) && /<h4>Planhintergrund<\/h4>/.test(b.html)
+      && d.hinweise.some((h) => h.art === "planhintergrund" && muster.test(h.text))
+      && d.vollstaendig === dOhne.vollstaendig
+      && b.html.includes(LP.wandTabelleHtml(d)) && b.html.includes(LP.legendeHtml()));
+  }
+  t("#80 als gesetzt uebergeben, aber ohne Bilddaten ⇒ unbrauchbar statt geraten",
+    LP.normHintergrund({ status: "gesetzt", x: 0, y: 0, breite: 100, hoehe: 100 }).status
+      === "unbrauchbar"
+    && LP.normHintergrund({ status: "gesetzt", url: URL_PNG, x: 0, y: 0, breite: 0, hoehe: 100 })
+      .status === "unbrauchbar"
+    && LP.normHintergrund({ status: "erfunden" }).status === "unbrauchbar");
+  t("#80 ohne hinterlegten Plan bleibt das Blatt bitgenau das bisherige",
+    LP.normHintergrund(null).status === "keiner"
+    && !LP.blattHtml(dOhne, { transparenz: 40 }).html.includes("Planhintergrund")
+    && LP.blattHtml(dOhne, { transparenz: 40 }).html
+       === LP.blattHtml(LP.lageplanDaten({ mappe: m, geschossId: gsEG, elemente: ELEMENTE }),
+         { transparenz: 40 }).html);
+  t("#80 das Modul rechnet den Massstab des Bildes nicht selbst (kein zweiter Weg)",
+    !/mm_je_pixel\s*[*/]|breite_px|hoehe_px/.test(quelle));
 }
 
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);
