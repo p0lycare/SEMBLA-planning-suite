@@ -82,6 +82,14 @@ export const BEZUEGE = /** @type {ReadonlyArray<'min'|'mitte'|'max'>} */ (["min"
 export const URSPRUNG = "@ursprung";
 
 /**
+ * Lage des Geschossursprungs, wenn keine gespeichert ist (#76). Das ist
+ * zugleich die verlustfreie Deutung eines Altstands ohne das Feld: „Feld fehlt"
+ * und „Feld ist 0/0" bedeuten exakt dasselbe, weshalb die Uebernahme idempotent
+ * ist und ohne Formatbump auskommt.
+ */
+export const URSPRUNG_STANDARD = Object.freeze({ x: 0, y: 0 });
+
+/**
  * Zustaende einer Wand und ihre Farben ([K-8]).
  * Vorrang: fehler > aktiv > bestimmt > frei.
  */
@@ -178,6 +186,103 @@ export function lageFehler(lage, bezeichnung) {
     f.push(`${wo}Länge muss ganzzahlig in Rastereinheiten und mindestens 1 sein (gefunden: ${l.laenge_grid ?? "—"}) — [L-1].`);
   }
   return f;
+}
+
+// --- Geschossursprung ([K-4], #76) ----------------------------------------
+
+/**
+ * Die Lage des Geschossursprungs normalisieren (#76). Fehlt der Punkt oder eine
+ * seiner Koordinaten, gilt 0 — genau der Stand vor #76, als der Ursprung fest
+ * auf (0,0) sass. Ein VORHANDENER, aber unbrauchbarer Wert wird NICHT auf 0
+ * gebogen: er bleibt `null` und faellt in `ursprungFehler` auf ([P-9]).
+ * @param {any} u @returns {{x:number|null, y:number|null}}
+ */
+export function normUrsprung(u) {
+  const o = (u && typeof u === "object") ? u : {};
+  const koord = (v) => (v == null || v === "") ? 0 : _zahlOderNull(v);
+  return { x: koord(o.x), y: koord(o.y) };
+}
+
+/**
+ * Fehler einer Ursprungslage (#76). Zulaessig sind Vielfache von 0,5 mm — dasselbe
+ * Positionsraster wie die Wandlage ([L-1]); der Ursprung ist ein Punkt in
+ * derselben Welt und bekommt kein eigenes, feineres Raster.
+ * @param {any} u @param {string} [bezeichnung] @returns {string[]}
+ */
+export function ursprungFehler(u, bezeichnung) {
+  const wo = bezeichnung ? `Geschoss „${bezeichnung}“: ` : "";
+  if (u == null) return [];                                   // fehlt = 0/0 ([K-4])
+  if (typeof u !== "object") return [`${wo}Ursprung ist kein Punkt.`];
+  const n = normUrsprung(u);
+  const f = [];
+  for (const a of ACHSEN) {
+    if (!_istHalbe(n[a])) {
+      f.push(`${wo}Ursprung ${a} muss ein Vielfaches von 0,5 mm sein (gefunden: ${n[a] ?? "—"}) — [K-4]/[L-1].`);
+    }
+  }
+  return f;
+}
+
+/**
+ * Der WIRKSAME Ursprung: normalisiert, und bei fehlerhafter Angabe der Standard.
+ * Der Loeser darf nie mit `null` rechnen — ein kaputtes Feld wird an seiner
+ * Fundstelle gemeldet (`ursprungFehler`/`validiereMappe`) und hier nicht ein
+ * zweites Mal stillschweigend gedeutet.
+ * @param {any} u @returns {{x:number, y:number}}
+ */
+export function ursprungPunkt(u) {
+  const n = normUrsprung(u);
+  return {
+    x: _istHalbe(n.x) ? /** @type {number} */ (n.x) : URSPRUNG_STANDARD.x,
+    y: _istHalbe(n.y) ? /** @type {number} */ (n.y) : URSPRUNG_STANDARD.y,
+  };
+}
+
+/**
+ * Die deterministische Nachfuehrung der Ursprungsmasse beim VERSCHIEBEN des
+ * Ursprungs (#76).
+ *
+ * Ein Ursprungsmass misst `mass = wert(bis) − U[achse]` ([K-4]: der Ursprung ist
+ * immer der START). Soll die Wand stehen bleiben, folgt der neue Wert in
+ * geschlossener Form:
+ *
+ *     mass' = mass − (U'[achse] − U[achse])
+ *
+ * Vorzeichen und Bezugsseite bleiben dabei KONSTRUKTIV erhalten: es gibt keine
+ * zweite Leserichtung, und `bis` wird nicht angefasst. Masse zwischen zwei
+ * Wandbezuegen sind Differenzen und von U unabhaengig — sie kommen nicht vor.
+ *
+ * Geprueft wird das Ergebnis mit `bemassungFehler`, also der EINEN vorhandenen
+ * Massregel ([K-3] nicht negativ, [K-12] ganzzahlig). Es wird nichts gerundet,
+ * gedreht oder geloescht: unbrauchbare Ergebnisse stehen in `ungueltig` und der
+ * Aufrufer weist die ganze Uebernahme ab.
+ *
+ * @param {any[]} bemassungen @param {any} alt @param {any} neu
+ * @param {Map<string,any>} [lagen] bekannte Waende (fuer die Massregeln)
+ * @returns {{delta:{x:number,y:number},
+ *            aenderungen:{id:string, achse:'x'|'y', alt_mm:number, neu_mm:number, bemassung:any}[],
+ *            ungueltig:{id:string, achse:'x'|'y', alt_mm:number, neu_mm:number, fehler:string[]}[]}}
+ */
+export function ursprungNachfuehrung(bemassungen, alt, neu, lagen) {
+  const a = ursprungPunkt(alt);
+  const b = ursprungPunkt(neu);
+  const delta = { x: b.x - a.x, y: b.y - a.y };
+  const aenderungen = [];
+  const ungueltig = [];
+  for (const roh of (Array.isArray(bemassungen) ? bemassungen : [])) {
+    const n = normBemassung(roh);
+    if (n.von != null) continue;                              // kein Ursprungsmass
+    const achse = /** @type {'x'|'y'} */ (n.achse);
+    if (!ACHSEN.includes(achse) || !delta[achse]) continue;   // andere Achse: unberuehrt
+    if (n.mass_mm == null) continue;                          // schon ohne Mass: faellt anderswo auf
+    const neu_mm = n.mass_mm - delta[achse];
+    const bem = { ...n, mass_mm: neu_mm };
+    const fehler = bemassungFehler(bem, lagen);
+    const eintrag = { id: n.id, achse, alt_mm: n.mass_mm, neu_mm };
+    if (fehler.length) ungueltig.push({ ...eintrag, fehler });
+    else aenderungen.push({ ...eintrag, bemassung: bem });
+  }
+  return { delta, aenderungen, ungueltig };
 }
 
 /** Wandlaenge in mm aus der Lage. `null` = unverortet/ungueltig. @param {any} lage */
@@ -529,8 +634,11 @@ function _neueMenge() {
  *
  * @param {Wandeintrag[]} waende Nur verortete Waende werden geloest; `lage: null` wird uebergangen.
  * @param {any[]} [bemassungen]
+ * @param {any} [ursprung] Lage des Geschossursprungs ([K-4], #76). Fehlt sie, gilt 0/0 —
+ *   damit rechnen Altstaende und Alt-Aufrufer bitgenau wie zuvor.
  */
-export function loese(waende, bemassungen) {
+export function loese(waende, bemassungen, ursprung) {
+  const U = ursprungPunkt(ursprung);
   /** @type {Map<string,any>} */
   const lagen = new Map();
   const ids = [];
@@ -616,7 +724,9 @@ export function loese(waende, bemassungen) {
       const gespeichert = Number(normLage(lagen.get(id))?.start_mm[a]);
       let wert;
       if (wurzel === wurzelVonUrsprung) {
-        wert = offset - mengen[a].finde(URSPRUNG).offset;            // relativ zum Ursprung = absolut
+        // Relativ zum Ursprung, PLUS dessen eigene Lage (#76). Vor #76 sass er fest
+        // auf 0 — `U` ist dann 0 und die Rechnung bitgenau die alte.
+        wert = U[a] + offset - mengen[a].finde(URSPRUNG).offset;
         (bestimmt[id] = bestimmt[id] || { x: false, y: false })[a] = true;
       } else {
         const ankerId = /** @type {string} */ (anker.get(wurzel));
@@ -730,9 +840,10 @@ export function farbe(wandId, ergebnis, opt) {
  * @param {any[]} bemassungen
  * @param {string} wandId
  * @param {{x?:number, y?:number}} versatz ganzzahlig in mm ([K-12])
+ * @param {any} [ursprung] Lage des Geschossursprungs ([K-4], #76)
  */
-export function verschiebe(waende, bemassungen, wandId, versatz) {
-  const erg = loese(waende, bemassungen);
+export function verschiebe(waende, bemassungen, wandId, versatz, ursprung) {
+  const erg = loese(waende, bemassungen, ursprung);
   const gesperrt = { x: false, y: false };
   const meldungen = [];
   /** @type {Record<'x'|'y', number>} */
@@ -777,9 +888,10 @@ export function verschiebe(waende, bemassungen, wandId, versatz) {
  * Loesen und Kollisionspruefung in einem Aufruf — das, was die Oberflaeche
  * nach jeder Aenderung braucht.
  * @param {Wandeintrag[]} waende @param {any[]} [bemassungen]
+ * @param {any} [ursprung] Lage des Geschossursprungs ([K-4], #76)
  */
-export function pruefeGeschoss(waende, bemassungen) {
-  const erg = loese(waende, bemassungen);
+export function pruefeGeschoss(waende, bemassungen, ursprung) {
+  const erg = loese(waende, bemassungen, ursprung);
   const koll = kollisionen(waende, erg.positionen);
   return { ...erg, kollisionen: koll };
 }

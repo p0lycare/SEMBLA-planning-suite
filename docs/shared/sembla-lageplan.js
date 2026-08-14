@@ -46,6 +46,7 @@
 import {
   ACHSEN, FARBEN, GRID_MM, HALB_BREITE_MM, SEITEN,
   normLage, lageFehler, laengeMm, wandRechteck, wandSeiten, pruefeGeschoss, zustand,
+  ursprungPunkt,
 } from "./sembla-constraints.js";
 import { massKontext, massGeometrie, massTextLayout, massAnker, massPfad } from "./sembla-massbild.js";
 import { findeGeschoss, kopfdaten as mappeKopfdaten, laengenAbgleich } from "./sembla-projektmappe.js";
@@ -198,11 +199,14 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
 
   const waendeRoh = geschoss.waende;
   const bemassungenRoh = geschoss.bemassungen || [];
+  // Der GESPEICHERTE Geschossursprung ([K-4], #76) — der Lageplan liest ihn wie
+  // jedes andere kanonische Datum und zeichnet ihn dort, wo er steht ([N-3]).
+  const ursprung = ursprungPunkt(geschoss.ursprung_mm);
   // Der kanonische Loeser — dieselbe Funktion, die der Editor nach jeder Aenderung
   // fährt. Iteration, Toleranz oder Startwerte gibt es hier so wenig wie dort ([K-5]).
-  const erg = pruefeGeschoss(waendeRoh, bemassungenRoh);
+  const erg = pruefeGeschoss(waendeRoh, bemassungenRoh, ursprung);
   const koll = erg.kollisionen || [];
-  const ctx = massKontext(waendeRoh, erg);
+  const ctx = massKontext(waendeRoh, erg, ursprung);
 
   /** @type {Array<{art:string,text:string}>} */
   const meldungen = [];
@@ -320,6 +324,8 @@ export function lageplanDaten({ mappe, geschossId, elemente }) {
     projekt: { id: (mappe && mappe.projekt && mappe.projekt.id) || null, name: projekt.name },
     gebaeude: { id: gebaeude.id, name: gebaeude.name },
     geschoss: { id: geschoss.id, name: geschoss.name, hoehe_mm: geschoss.hoehe_mm },
+    /** Der gespeicherte Grundbezug ([K-4], #76) — Zeichnung und Ausdehnung nutzen ihn. */
+    ursprung,
     kopfdaten: projekt,
     waende,
     bemassungen: bemassungenRoh,
@@ -413,12 +419,16 @@ export function lageplanSvg(daten, opts) {
     }
   }
 
-  // Der Geschossursprung ist der einzige Grundbezug ([K-4]) und gehoert damit ins Blatt.
-  if (a.x_min <= 0 && a.x_max >= 0 && a.y_min <= 0 && a.y_max >= 0) {
+  // Der Geschossursprung ist der einzige Grundbezug ([K-4]) und gehoert damit ins
+  // Blatt — seit #76 an seiner GESPEICHERTEN Stelle statt fest bei 0/0. Die
+  // Beschriftung bleibt „0/0“: sie benennt den Nullpunkt des MASSSYSTEMS, und
+  // genau das ist er auch nach dem Verschieben.
+  const u = ursprungPunkt(daten.ursprung);
+  if (a.x_min <= u.x && a.x_max >= u.x && a.y_min <= u.y && a.y_max >= u.y) {
     const k = 2.2;
-    teile.push(`<g class="lpursprung"><path d="M${_n(X(0) - k)} ${_n(Y(0))}H${_n(X(0) + k)}`
-      + `M${_n(X(0))} ${_n(Y(0) - k)}V${_n(Y(0) + k)}" fill="none" stroke="${FARBE.ursprung}"`
-      + ` stroke-width="0.2"/><text x="${_n(X(0) + k + 0.6)}" y="${_n(Y(0) - 0.8)}"`
+    teile.push(`<g class="lpursprung"><path d="M${_n(X(u.x) - k)} ${_n(Y(u.y))}H${_n(X(u.x) + k)}`
+      + `M${_n(X(u.x))} ${_n(Y(u.y) - k)}V${_n(Y(u.y) + k)}" fill="none" stroke="${FARBE.ursprung}"`
+      + ` stroke-width="0.2"/><text x="${_n(X(u.x) + k + 0.6)}" y="${_n(Y(u.y) - 0.8)}"`
       + ` font-size="1.8" fill="${FARBE.ursprung}">0/0</text></g>`);
   }
 

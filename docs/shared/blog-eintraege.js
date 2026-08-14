@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260814-02",
+    datum: "2026-08-14",
+    typ: "feature",
+    issue: 76,
+    titel: "Geschossursprung frei im Plan verschiebbar — Ursprungsmaße werden mitgeführt, Wände bleiben stehen",
+    testbitte: "Eine Wand gegen den Ursprung bemaßen, dann Werkzeug „Ursprung“ wählen und einen Punkt anklicken: Die Vorschau zeigt alten und neuen Punkt samt geändertem Maß; nach dem Übernehmen steht die Wand unverändert, Strg+Z nimmt beides zurück.",
+  },
+  {
     id: "chg-20260814-01",
     datum: "2026-08-14",
     typ: "feature",

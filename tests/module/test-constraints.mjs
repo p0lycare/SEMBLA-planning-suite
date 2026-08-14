@@ -680,5 +680,102 @@ t("[K-11] krummes Laengenmass faellt in der Validierung auf",
   })());
 }
 
+// --- [K-4] Der Ursprung ist ein gespeicherter Punkt (#76) -----------------
+{
+  t("#76 fehlender Ursprung = 0/0 (Altstand)",
+    K.ursprungPunkt(null).x === 0 && K.ursprungPunkt(undefined).y === 0);
+  t("#76 fehlende Einzelkoordinate = 0",
+    K.ursprungPunkt({ x: 500 }).x === 500 && K.ursprungPunkt({ x: 500 }).y === 0);
+  t("#76 halbe Millimeter sind zulaessig, Viertel nicht",
+    K.ursprungFehler({ x: 62.5, y: 0 }).length === 0
+    && K.ursprungFehler({ x: 0.25, y: 0 }).some((m) => /0,5 mm/.test(m)));
+  t("#76 ein unbrauchbarer Wert wird gemeldet, nicht auf 0 gebogen",
+    K.ursprungFehler({ x: "links", y: 0 }).length === 1
+    && K.normUrsprung({ x: "links", y: 0 }).x === null);
+
+  const waende = [w("A", 0, 0, "x", 8), w("B", 5000, 0, "x", 8)];
+  const masse = [
+    b("u", "x", null, p("A", "min"), 1000),          // Ursprungsmass ([K-4])
+    b("ab", "x", p("A", "min"), p("B", "min"), 4000), // Wand ↔ Wand: von U unabhaengig
+  ];
+
+  // Ohne Ursprungsangabe rechnet der Loeser bitgenau wie vor #76.
+  t("#76 ohne Ursprungsangabe bleibt die Loesung bitgenau die alte",
+    JSON.stringify(K.loese(waende, masse)) === JSON.stringify(K.loese(waende, masse, { x: 0, y: 0 })));
+
+  const nullpunkt = K.loese(waende, masse, { x: 0, y: 0 });
+  t("#76 [K-4] das Ursprungsmass wird gegen den GESPEICHERTEN Ursprung geloest",
+    K.loese(waende, masse, { x: 3000, y: 0 }).positionen.A.x === 4000
+    && nullpunkt.positionen.A.x === 1000);
+  t("#76 der Ursprung verschiebt nur die bestimmte Kette, nicht die Bemassung selbst",
+    K.loese(waende, masse, { x: 3000, y: 0 }).positionen.B.x === 8000);
+  t("#76 eine freie Wand bleibt auf ihrer gespeicherten Position",
+    K.loese([w("F", 7000, 0, "x", 8)], [], { x: 3000, y: 0 }).positionen.F.x === 7000);
+
+  // Der Kern des Pakets: Ursprung verschieben + Masse nachfuehren ⇒ Positionen
+  // bitgenau unveraendert. `mass' = mass − ΔU` ist geschlossen, nicht iterativ.
+  {
+    const alt = { x: 0, y: 0 }, neu = { x: 3000, y: -500 };
+    const lagen = new Map(waende.map((x) => [x.id, x.lage]));
+    const nf = K.ursprungNachfuehrung(masse, alt, neu, lagen);
+    t("#76 betrachtet wird genau das Ursprungsmass der betroffenen Achse",
+      nf.aenderungen.length + nf.ungueltig.length === 1
+      && [...nf.aenderungen, ...nf.ungueltig][0].id === "u");
+    t("#76 das Mass zwischen zwei Waenden wird NICHT angefasst",
+      !nf.aenderungen.some((a) => a.id === "ab") && !nf.ungueltig.some((a) => a.id === "ab"));
+    t("#76 das Delta steht als Rechenweg dabei",
+      nf.delta.x === 3000 && nf.delta.y === -500);
+
+    // Hier wird ein negatives Mass erzwungen ⇒ es steht in `ungueltig` und die
+    // Uebernahme ist damit abzuweisen ([K-3]) — nichts wird gerundet oder geloescht.
+    t("#76 [K-3] ein negativ werdendes Mass wird benannt, nicht gerundet",
+      nf.ungueltig.length === 1 && nf.ungueltig[0].id === "u"
+      && nf.ungueltig[0].neu_mm === -2000
+      && nf.ungueltig[0].fehler.some((m) => /negativ/.test(m))
+      && !nf.aenderungen.length);
+  }
+  {
+    // Gueltiger Fall: der Ursprung wandert um 500 mm, das Mass bleibt positiv.
+    const alt = { x: 0, y: 0 }, neu = { x: 500, y: 0 };
+    const lagen = new Map(waende.map((x) => [x.id, x.lage]));
+    const nf = K.ursprungNachfuehrung(masse, alt, neu, lagen);
+    t("#76 mass' = mass − ΔU (geschlossene Form)",
+      nf.aenderungen.length === 1 && nf.aenderungen[0].neu_mm === 500);
+    const nachher = masse.map((m) => {
+      const a = nf.aenderungen.find((x) => x.id === m.id);
+      return a ? a.bemassung : m;
+    });
+    t("#76 INVARIANTE: Ursprung verschoben + Masse nachgefuehrt ⇒ bitgenau dieselben Positionen",
+      JSON.stringify(K.loese(waende, nachher, neu).positionen)
+      === JSON.stringify(K.loese(waende, masse, alt).positionen));
+    t("#76 die Bestimmtheit bleibt dabei unveraendert",
+      JSON.stringify(K.loese(waende, nachher, neu).bestimmt)
+      === JSON.stringify(K.loese(waende, masse, alt).bestimmt));
+    t("#76 Bezuege, Achse und Richtung des Masses bleiben unangetastet",
+      nf.aenderungen[0].bemassung.von === null
+      && nf.aenderungen[0].bemassung.bis.wand === "A"
+      && nf.aenderungen[0].bemassung.bis.bezug === "min"
+      && nf.aenderungen[0].bemassung.achse === "x");
+  }
+  {
+    // [K-12]: ein halber Millimeter Versatz macht jedes Ursprungsmass krumm.
+    const lagen = new Map(waende.map((x) => [x.id, x.lage]));
+    const nf = K.ursprungNachfuehrung(masse, { x: 0, y: 0 }, { x: 62.5, y: 0 }, lagen);
+    t("#76 [K-12] ein krumm werdendes Mass wird benannt, nicht gerundet",
+      nf.ungueltig.length === 1 && nf.ungueltig[0].neu_mm === 937.5
+      && nf.ungueltig[0].fehler.some((m) => /ganzzahlig/.test(m))
+      && !nf.aenderungen.length);
+  }
+  t("#76 ohne Verschiebung wird nichts nachgefuehrt",
+    K.ursprungNachfuehrung(masse, { x: 0, y: 0 }, { x: 0, y: 0 }).aenderungen.length === 0);
+  t("#76 `verschiebe` rechnet mit demselben Ursprung ([K-9] bleibt unberuehrt)",
+    K.verschiebe(waende, masse, "A", { x: 100 }, { x: 3000, y: 0 }).gesperrt.x === true);
+
+  // Kein Rueckschreiben: die Nachfuehrung liefert neue Objekte und laesst die
+  // uebergebenen Masse unangetastet.
+  t("#76 `ursprungNachfuehrung` ist rein",
+    masse[0].mass_mm === 1000);
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

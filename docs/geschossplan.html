@@ -185,6 +185,7 @@
             <button id="wz-auswahl" data-wz="auswahl" title="Auswählen &amp; ziehen — Wand anklicken, am Körper oder Mittelgriff verschieben, an den Endgriffen die Länge ändern (Esc)"><span class="k">↖</span> Auswahl</button>
             <button id="wz-wand" data-wz="wand" title="Wand zeichnen — drücken, ziehen, loslassen; orthogonal, Länge im 125-mm-Raster (W)"><span class="k">▭</span> Wand</button>
             <button id="wz-bemassen" data-wz="bemassen" title="Bemaßen — zwei parallele Bezüge anklicken (auch die Linien des Geschossursprungs), Maß in mm direkt im Plan eintragen (D)"><span class="k">↔</span> Maß</button>
+            <button id="wz-ursprung" data-wz="ursprung" title="Geschossursprung setzen — Punkt im Plan anklicken, Auswirkung auf die Ursprungsmaße prüfen, dann übernehmen (U). Wandlagen bleiben unverändert."><span class="k">✛</span> Ursprung</button>
             <span class="trenner"></span>
             <button class="btn-s" id="gp-undo" disabled title="Rückgängig (Strg+Z) — nur Lagen und Bemaßungen ([K-10])">↶</button>
             <button class="btn-s" id="gp-redo" disabled title="Wiederholen (Strg+Umschalt+Z)">↷</button>
@@ -214,6 +215,19 @@
               </select></div>
           </div>
           <div class="hint" id="gp-hoehe-hinweis" style="margin-top:2px"></div>
+        </div>
+
+        <!-- Auswirkungsvorschau des Ursprungswerkzeugs (#76): sichtbar genau dann,
+             wenn ein Punkt gewählt ist. Übernommen wird erst hier — der Klick auf
+             die Bühne schreibt nichts ([K-3]-Muster wie beim Bemaßen). -->
+        <div id="wz-ursprung-parameter" hidden>
+          <div class="row" style="align-items:flex-end">
+            <div class="field" style="flex:1 1 auto">
+              <div class="hint" id="gp-ursprung-vorschau"></div>
+            </div>
+            <button class="btn-s" id="gp-ursprung-ok">Ursprung übernehmen</button>
+            <button class="btn-s" id="gp-ursprung-weg">Verwerfen</button>
+          </div>
         </div>
 
         <div class="kontext">
@@ -416,6 +430,11 @@ const GP = {
   // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
   // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
   kal: { an: false, punkte: [] },
+  // Geschossursprung verschieben (#76): der ANGEKLICKTE, noch nicht übernommene
+  // Punkt. Solange er hier steht, ist er reine Vorschau — geschrieben wird
+  // ausschließlich über „Übernehmen“, und dann Ursprung samt nachgeführter
+  // Ursprungsmaße in EINEM Schritt.
+  ursprungEntwurf: null,      // { x, y } | null
   // Bemaßen (D): `bem` hält die LAUFENDE Eingabe, `bemAktiv` das angeklickte,
   // schon gespeicherte Maß. Beides ist Bedienung — gespeichert wird erst mit
   // „Maß setzen“ ([K-3]).
@@ -459,7 +478,7 @@ const V = { x0: -1000, y0: -1000, mm: 12 };
 const MM_JE_PX_MIN = 0.5, MM_JE_PX_MAX = 400;
 
 /** Alle Werkzeugzustände der Zeichenfläche (§4.2). */
-const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen'];
+const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen', 'ursprung'];
 
 /**
  * Die Werkzeuge der oberen Leiste (#53). „plan“ steht bewusst NICHT darin: das
@@ -467,7 +486,7 @@ const WERKZEUGE = ['auswahl', 'wand', 'plan', 'bemassen'];
  * (Knopf „Plan verschieben“, Taste P) eingeschaltet — es gibt keinen zweiten
  * Bedienweg dafür.
  */
-const WZ_KNOEPFE = ['auswahl', 'wand', 'bemassen'];
+const WZ_KNOEPFE = ['auswahl', 'wand', 'bemassen', 'ursprung'];
 
 function zeige(text, ok){ const m = $('gp-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
 
@@ -481,8 +500,21 @@ function bemassungen(){ const gs = geschoss(); return gs ? (gs.bemassungen || []
 function plan(){ const gs = geschoss(); return gs ? gs.plan : null; }
 function wand(id){ return waende().find(w => w.id === id) || null; }
 
+/**
+ * Der GESPEICHERTE Geschossursprung ([K-4], #76) — der eine Grundbezug. Fehlt er
+ * (jeder Altstand), ist er 0/0; erfunden wird nichts.
+ */
+function ursprung(){ const gs = geschoss(); return CON.ursprungPunkt(gs ? gs.ursprung_mm : null); }
+
+/**
+ * Der Ursprung, wie er GERADE zu zeichnen ist: während des Ursprungswerkzeugs der
+ * unbestätigte Entwurf, sonst der gespeicherte. Reine Vorschau — geschrieben wird
+ * erst mit „Übernehmen“.
+ */
+function ursprungVorschau(){ return GP.ursprungEntwurf || ursprung(); }
+
 /** Lösen + Kollisionsprüfung — nach jeder Änderung frisch, nie gespeichert ([K-5]). */
-function loesen(){ return CON.pruefeGeschoss(waende(), bemassungen()); }
+function loesen(){ return CON.pruefeGeschoss(waende(), bemassungen(), ursprung()); }
 
 /** Position einer Wand: das Lösungsergebnis, sonst die gespeicherte Lage. */
 function position(id, erg){
@@ -794,12 +826,29 @@ function rasterSvg(f){
  */
 function ursprungSvg(f){
   const x1 = V.x0 + f.breite * V.mm, y1 = V.y0 + f.hoehe * V.mm;
-  return `<path class="ursprunglinie" d="M${r2(V.x0)} 0H${r2(x1)}M0 ${r2(V.y0)}V${r2(y1)}"`
-    + ` fill="none" stroke="#33415c" stroke-opacity=".3" stroke-width="${r2(strich(1))}"`
+  const u = ursprungVorschau();
+  const g = ursprung();
+  const teile = [];
+  // Während des Ursprungswerkzeugs steht der ALTE Ursprung blass daneben, damit
+  // sichtbar ist, woher wohin verschoben wird (#76). Er ist reine Vorschau.
+  if (GP.ursprungEntwurf) {
+    teile.push(`<path class="ursprungalt" d="${PLAN.kreuzPfad(g.x, g.y, V.mm)}" fill="none"`
+      + ` stroke="#33415c" stroke-opacity=".35" stroke-width="${r2(strich(1.4))}"`
+      + ` stroke-dasharray="${r2(strich(4))} ${r2(strich(3))}"/>`
+      + `<line class="ursprungzug" x1="${r2(g.x)}" y1="${r2(g.y)}" x2="${r2(u.x)}" y2="${r2(u.y)}"`
+      + ` stroke="#c2571a" stroke-opacity=".7" stroke-width="${r2(strich(1))}"`
+      + ` stroke-dasharray="${r2(strich(5))} ${r2(strich(4))}"/>`);
+  }
+  const farbe = GP.ursprungEntwurf ? '#c2571a' : '#33415c';
+  teile.push(`<path class="ursprunglinie" d="M${r2(V.x0)} ${r2(u.y)}H${r2(x1)}`
+    + `M${r2(u.x)} ${r2(V.y0)}V${r2(y1)}"`
+    + ` fill="none" stroke="${farbe}" stroke-opacity=".3" stroke-width="${r2(strich(1))}"`
     + ` stroke-dasharray="${r2(strich(10))} ${r2(strich(4))} ${r2(strich(2))} ${r2(strich(4))}"/>`
-    + `<path class="ursprung" d="${PLAN.kreuzPfad(0, 0, V.mm)}" fill="none" stroke="#33415c"`
+    + `<path class="ursprung" d="${PLAN.kreuzPfad(u.x, u.y, V.mm)}" fill="none" stroke="${farbe}"`
     + ` stroke-width="${r2(strich(1.4))}"/>`
-    + `<text x="${r2(14 * V.mm)}" y="${r2(-8 * V.mm)}" font-size="${r2(11 * V.mm)}" fill="#33415c">0/0</text>`;
+    + `<text x="${r2(u.x + 14 * V.mm)}" y="${r2(u.y - 8 * V.mm)}" font-size="${r2(11 * V.mm)}"`
+    + ` fill="${farbe}">0/0</text>`);
+  return teile.join('');
 }
 
 function planSvgTeil(){
@@ -1054,9 +1103,11 @@ function bezugsLinien(w, erg){
  */
 function ursprungBezuege(f){
   const x1 = V.x0 + f.breite * V.mm, y1 = V.y0 + f.hoehe * V.mm;
+  // Seit #76 liegen sie dort, wo der Ursprung GESPEICHERT ist — nicht mehr fest auf 0.
+  const u = ursprung();
   return [
-    { wand: null, achse: 'x', bezug: URSPRUNG_BEZUG, wert: 0, a: V.y0, b: y1 },
-    { wand: null, achse: 'y', bezug: URSPRUNG_BEZUG, wert: 0, a: V.x0, b: x1 },
+    { wand: null, achse: 'x', bezug: URSPRUNG_BEZUG, wert: u.x, a: V.y0, b: y1 },
+    { wand: null, achse: 'y', bezug: URSPRUNG_BEZUG, wert: u.y, a: V.x0, b: x1 },
   ];
 }
 
@@ -1163,7 +1214,7 @@ function bezuegeSvg(erg){
  * Position je Wand des Geschosses ([K-3]-Fassung C4b(c)).
  */
 function massKontext(erg){
-  return MB.massKontext(waende(), erg);
+  return MB.massKontext(waende(), erg, ursprung());
 }
 
 /**
@@ -1884,7 +1935,7 @@ function render(){
   buehne.className = 'gp-buehne'
     + (GP.pan ? ' zieht' : GP.kal.an ? ' zeichnet' : GP.werkzeug === 'wand' ? ' zeichnet'
       : GP.werkzeug === 'plan' ? ' schiebt'
-      : GP.werkzeug === 'bemassen' ? ' zeichnet' : '');
+      : GP.werkzeug === 'bemassen' || GP.werkzeug === 'ursprung' ? ' zeichnet' : '');
   inlineSync();
   statusSync(erg, koll);
   listeSync(erg, koll);
@@ -1977,6 +2028,12 @@ function kopfSync(){
       + 'Linien des <b>Geschossursprungs</b>, je eine je Achse — in beliebiger Reihenfolge; '
       + 'gespeichert wird das als ganz normales Maß mit <code>von: null</code> ([K-4]). Ein '
       + 'vorhandenes Maß lässt sich anklicken und ändern oder löschen.'
+    : GP.werkzeug === 'ursprung'
+    ? 'Punkt im Plan anklicken — er wird der <b>Geschossursprung</b>, der eine Grundbezug ([K-4]). '
+      + 'Die Vorschau zeigt den alten und den neuen Punkt sowie jedes <b>Ursprungsmaß</b>, das dabei '
+      + 'mitgeführt wird; <b>Wandlagen bleiben unverändert</b> ([L-1]). Geschrieben wird erst mit '
+      + '„Übernehmen“ — und dann Punkt und Maße als <b>ein</b> Schritt ([K-10]). Der <b>Planversatz</b> '
+      + 'ist etwas anderes und wird nicht mitbewegt ([L-9]).'
     : GP.werkzeug === 'wand'
     ? 'Maustaste am Startpunkt <b>drücken</b>, halten und zum Endpunkt ziehen — die Vorschau läuft '
       + 'mit. Die Wand liegt <b>orthogonal</b> ([L-2]), die Länge rastet auf 125 mm und die '
@@ -2065,6 +2122,7 @@ function kopfSync(){
 
   sammelSync();
   bemKopfSync();
+  ursprungKopfSync();
   $('gp-undo').disabled = !GP.undo.length;
   $('gp-redo').disabled = !GP.redo.length;
   $('gp-undo').title = `Rückgängig (Strg+Z) · ${GP.undo.length} Schritt(e). Zurückgenommen werden nur `
@@ -2335,7 +2393,7 @@ function ziehenFertig(id, delta){
   const d = { x: Math.round(delta.x / q) * q, y: Math.round(delta.y / q) * q };
   if (!d.x && !d.y) { render(); return; }
   const alt = waende();
-  const r = CON.verschiebe(alt, bemassungen(), id, d);
+  const r = CON.verschiebe(alt, bemassungen(), id, d, ursprung());
   // Geschrieben werden AUSSCHLIESSLICH die Wände, die dieser Zug wirklich bewegt
   // (`r.bewegt` = die starre Gruppe der freien Achsen). Ohne diese Schranke würde
   // jeder Zug nebenbei die gelöste Position ALLER Wände in die Mappe zurückschreiben —
@@ -3021,6 +3079,7 @@ function beiKlick(ev){
 function beiDoppelklick(ev){
   if (!geschoss()) return;
   if (GP.kal.an) return;                          // im Messmodus öffnet nichts (#52)
+  if (GP.werkzeug === 'ursprung') return;         // ebenso wenig beim Setzen des Ursprungs (#76)
   const id = bemTreffer(weltPunkt(ev.clientX, ev.clientY), loesen());
   if (!id) return;
   GP.bemZieh = null;
@@ -3044,6 +3103,14 @@ function beiZeigerAb(ev){
   // Pan und Zoom bleiben nutzbar, sie sind oben bzw. am Mausrad abgehandelt.
   if (GP.kal.an) {
     kalKlickWelt(weltPunkt(ev.clientX, ev.clientY));
+    if (ev.preventDefault) ev.preventDefault();
+    return;
+  }
+  // Das Ursprungswerkzeug (#76) liegt aus demselben Grund vor allem anderen: solange
+  // es läuft, ist die Bühne ein Setzwerkzeug — kein Auswählen, kein Maßtreffer, kein
+  // Zeichnen. Geschrieben wird dabei nichts; das tut erst „Übernehmen“.
+  if (GP.werkzeug === 'ursprung') {
+    ursprungKlickWelt(weltPunkt(ev.clientX, ev.clientY));
     if (ev.preventDefault) ev.preventDefault();
     return;
   }
@@ -3340,6 +3407,125 @@ function kalUebernehmen(){
 }
 
 // ---------------------------------------------------------------------------
+//  Geschossursprung verschieben (#76, [K-4])
+// ---------------------------------------------------------------------------
+// Der Ursprung ist der EINE Grundbezug ([K-4]) und seit #76 ein gespeicherter
+// Punkt am Geschoss statt einer festen Null. Verschoben wird er ausschließlich
+// hier — ein Klick setzt den Entwurf, die Vorschau zeigt die Auswirkung, und erst
+// „Übernehmen“ schreibt. Geschrieben werden dann Ursprung UND die nachgeführten
+// Ursprungsmaße in EINEM Vorgang, damit die Wände wirklich stehen bleiben und der
+// Schritt als einer zurückgeht ([K-10]).
+//
+// Ausdrücklich unberührt bleiben Planbild, Maßstab und Planversatz ([L-8]/[L-9]) —
+// die Bildlage ist etwas anderes als der Grundbezug und wird nicht mitbewegt.
+
+/**
+ * Die deterministische Nachführung zum aktuellen Entwurf. Gerechnet wird das im
+ * Kern (`CON.ursprungNachfuehrung`, `mass' = mass − ΔU`); hier steht nur, womit.
+ */
+function ursprungNachfuehrung(){
+  const lagen = new Map(waende().map(w => [w.id, w.lage]));
+  return CON.ursprungNachfuehrung(bemassungen(), ursprung(), ursprungVorschau(), lagen);
+}
+
+/** Den Entwurf verwerfen — geschrieben wurde nie etwas. */
+function ursprungAbbrechen(still){
+  if (!GP.ursprungEntwurf) return false;
+  GP.ursprungEntwurf = null;
+  if (!still) zeige('Ursprung verworfen — er steht unverändert auf seinem gespeicherten Punkt.', true);
+  render();
+  return true;
+}
+
+/** Ein Klick auf der Bühne im Ursprungswerkzeug: Punkt merken, nichts schreiben. */
+function ursprungKlickWelt(welt){
+  // Gefangen wird mit dem allgemeinen Rasterfang (#52) — derselbe Schalter wie beim
+  // Zeichnen und Ziehen. Ohne Fang bleibt es das 0,5-mm-Raster der Lage ([L-1]).
+  GP.ursprungEntwurf = fange(welt);
+  render();
+}
+
+/**
+ * Übernehmen: Ursprung setzen und die Ursprungsmaße nachführen — EIN
+ * `aendereMappe`, EIN Rückgängig-Schritt.
+ *
+ * Würde die Nachführung ein Maß negativ ([K-3]) oder krumm ([K-12]) machen, wird
+ * die GANZE Übernahme abgewiesen und die betroffenen Maße werden genannt. Es wird
+ * nichts gerundet, nichts gedreht und nichts gelöscht — der Nutzer entscheidet,
+ * ob er den Punkt anders wählt oder die Maße zuvor selbst ändert.
+ */
+function uebernehmeUrsprung(){
+  const gs = geschoss();
+  if (!gs) { zeige('Kein aktives Geschoss.', false); return false; }
+  const ziel = GP.ursprungEntwurf;
+  if (!ziel) { zeige('Erst einen Punkt im Plan anklicken.', false); return false; }
+  const nf = ursprungNachfuehrung();
+  if (nf.ungueltig.length) {
+    zeige('Ursprung nicht übernommen: ' + nf.ungueltig.map(u =>
+      `Maß „${u.id}“ (${u.achse}) käme auf ${r2(u.neu_mm)} mm — ${u.fehler.join(' ')}`).join(' ')
+      + ' Nichts geändert; die Maße bleiben unangetastet.', false);
+    return false;
+  }
+  if (!nf.delta.x && !nf.delta.y) {
+    GP.ursprungEntwurf = null;
+    zeige('Der Ursprung liegt bereits auf diesem Punkt — nichts geändert.', true);
+    render();
+    return false;
+  }
+  const vor = mappenStand();
+  try {
+    store.aendereMappe(m => {
+      let n = MAPPE.setzeUrsprung(m, gs.id, ziel);
+      // Dieselbe Bemaßung, nur der Wert nachgeführt — Bezüge, Achse und die
+      // Darstellungsversätze bleiben unverändert.
+      for (const a of nf.aenderungen) n = MAPPE.setzeBemassung(n, gs.id, a.bemassung);
+      return n;
+    });
+  } catch (e) { zeige('Ursprung nicht übernommen: ' + fehlerText(e), false); return false; }
+  buchen(vor, []);
+  GP.ursprungEntwurf = null;
+  zeige(`Geschossursprung auf ${r2(ziel.x)} / ${r2(ziel.y)} mm gesetzt `
+    + `(verschoben um ${r2(nf.delta.x)} / ${r2(nf.delta.y)} mm). `
+    + (nf.aenderungen.length
+      ? `${nf.aenderungen.length} Ursprungsmaß(e) nachgeführt: `
+        + nf.aenderungen.map(a => `„${a.id}“ ${a.alt_mm} → ${a.neu_mm} mm`).join(', ') + '. '
+      : 'Es hängt kein Ursprungsmaß daran. ')
+    + 'Die Wandlagen sind unverändert ([L-1]); Strg+Z nimmt beides zusammen zurück.', true);
+  render();
+  return true;
+}
+
+/** Vorschau und Knöpfe des Werkzeugs (reine Anzeige). */
+function ursprungKopfSync(){
+  const an = GP.werkzeug === 'ursprung';
+  $('wz-ursprung-parameter').hidden = !an || !GP.ursprungEntwurf;
+  if (!an || !GP.ursprungEntwurf) return;
+  const g = ursprung(), u = GP.ursprungEntwurf;
+  const nf = ursprungNachfuehrung();
+  const teile = [`Ursprung <b>${r2(g.x)} / ${r2(g.y)}</b> → <b>${r2(u.x)} / ${r2(u.y)}</b> mm `
+    + `(Δ ${r2(nf.delta.x)} / ${r2(nf.delta.y)} mm).`];
+  if (!nf.delta.x && !nf.delta.y) {
+    teile.push('Das ist der bisherige Punkt — es ändert sich nichts.');
+  } else if (!nf.aenderungen.length && !nf.ungueltig.length) {
+    teile.push('Kein Maß hängt am Ursprung — es wird nur der Punkt gesetzt.');
+  } else {
+    if (nf.aenderungen.length) {
+      teile.push('Diese Ursprungsmaße werden mitgeführt: '
+        + nf.aenderungen.map(a => `<b>${esc(a.id)}</b> (${a.achse}) ${a.alt_mm} → ${a.neu_mm} mm`).join(' · ')
+        + '. Die Wände bleiben dabei stehen.');
+    }
+    if (nf.ungueltig.length) {
+      teile.push('<span class="err">Nicht übernehmbar: '
+        + nf.ungueltig.map(a => `<b>${esc(a.id)}</b> (${a.achse}) käme auf ${r2(a.neu_mm)} mm`).join(' · ')
+        + ' — ein Maß darf nicht negativ ([K-3]) und muss ganzzahlig sein ([K-12]). Es wird nichts '
+        + 'gerundet oder gelöscht: einen anderen Punkt wählen oder die Maße zuvor ändern.</span>');
+    }
+  }
+  $('gp-ursprung-vorschau').innerHTML = teile.join(' ');
+  $('gp-ursprung-ok').disabled = !!nf.ungueltig.length || (!nf.delta.x && !nf.delta.y);
+}
+
+// ---------------------------------------------------------------------------
 //  Planverwaltung: Blatt von unten, EINZIGER Uploadweg (#53, [L-8]/[L-9])
 // ---------------------------------------------------------------------------
 // Hochladen, Ersetzen und Entfernen des Geschossplans sind mit #53 vollständig
@@ -3481,6 +3667,7 @@ function werkzeug(name){
   inlineSchliesse();                            // … und die offene Inline-Eingabe (nichts gespeichert)
   bemAbbrechen(true);                           // eine laufende Bemaßung überlebt den Werkzeugwechsel nicht
   kalAbbrechen(true);                           // ebenso wenig eine laufende Messung (#52) — ohne zu schreiben
+  ursprungAbbrechen(true);                      // und ebenso wenig ein Ursprungsentwurf (#76)
   render();
 }
 
@@ -3490,6 +3677,8 @@ function binde(){
   }
   $('gp-undo').addEventListener('click', undo);
   $('gp-redo').addEventListener('click', redo);
+  $('gp-ursprung-ok').addEventListener('click', uebernehmeUrsprung);
+  $('gp-ursprung-weg').addEventListener('click', () => ursprungAbbrechen());
   const buehne = $('gp-buehne');
   buehne.addEventListener('click', beiKlick);
   buehne.addEventListener('pointerdown', beiZeigerAb);
@@ -3619,6 +3808,7 @@ function beiTaste(ev){
   if (ev.key === ' ') { GP.raumTaste = true; return; }
   if (ev.key === 'Escape') {
     if (kalAbbrechen()) return;                   // Messmodus zuerst (#52) — geschrieben wird nichts
+    if (ursprungAbbrechen()) return;              // dann ein Ursprungsentwurf (#76) — ebenfalls ungeschrieben
     // Eine offene Inline-Eingabe verwirft Escape zuerst — auch dann, wenn das Feld
     // nach einer abgelehnten Eingabe den Fokus verloren hat (#51).
     if (GP.inline) {
@@ -3651,6 +3841,7 @@ function beiTaste(ev){
   if (k === 'w') werkzeug('wand');
   else if (k === 'p') planSchieben();          // Plan verschieben lebt in der Planverwaltung (#53)
   else if (k === 'd') werkzeug('bemassen');
+  else if (k === 'u') werkzeug('ursprung');    // Geschossursprung setzen (#76)
   else if (k === 'r') { if (ev.shiftKey) wende(); else drehe(); }   // Umschalt+R wendet (#84)
   else if (k === '0') zeigeAlles();
   else if (k === '+') zoomeAuf(1 / 1.3);
@@ -3720,6 +3911,19 @@ window.__gp = {
     beiDoppelklick({ clientX: p.x, clientY: p.y, preventDefault(){} });
   },
   bemassungen: () => bemassungen(),
+  /** Geschossursprung (#76) — gespeicherter Punkt, Übernahme und Verwerfen. */
+  ursprung: () => ursprung(),
+  uebernehmeUrsprung,
+  ursprungAbbrechen: () => ursprungAbbrechen(),
+  get ursprungStand(){
+    const f = $('gp-ursprung-vorschau'), ok = $('gp-ursprung-ok');
+    return {
+      entwurf: GP.ursprungEntwurf,
+      sichtbar: !$('wz-ursprung-parameter').hidden,
+      vorschau: f ? f.innerHTML : '',
+      uebernehmbar: !!(ok && !ok.disabled),
+    };
+  },
   get undoStand(){ return { undo: GP.undo.length, redo: GP.redo.length }; },
   /**
    * Klick an einem WELTpunkt (mm) — wie im Browser pointerdown, pointerup, click,

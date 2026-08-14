@@ -696,5 +696,74 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     && d2.vollstaendig === false);
 }
 
+// --- [K-4]/#76: der verschobene Geschossursprung -------------------------
+{
+  const { m, gsEG } = bau();
+  // Der Blattinhalt liegt bei y ≥ 1000 mm: 0/0 faellt also aus der Ausdehnung,
+  // dieser Punkt liegt mittendrin. Genau daran ist zu sehen, dass die Zeichnung
+  // den GESPEICHERTEN Punkt prueft und nicht mehr die feste Null.
+  const U = { x: 500, y: 1500 };
+  const mU = MAPPE.setzeUrsprung(m, gsEG, U);
+
+  const d0 = LP.lageplanDaten({ mappe: m, geschossId: gsEG, elemente: [] });
+  const dU = LP.lageplanDaten({ mappe: mU, geschossId: gsEG, elemente: [] });
+
+  t("#76 die Ableitung traegt den gespeicherten Ursprung",
+    d0.ursprung.x === 0 && dU.ursprung.x === 500 && dU.ursprung.y === 1500);
+
+  // Ohne Ursprungsmass hängt keine Wand am Ursprung — die Lagen sind also von
+  // ihm unabhaengig und muessen bitgenau gleich bleiben ([L-1]).
+  t("#76 [L-1] das Verschieben des Ursprungs bewegt keine Wandlage",
+    JSON.stringify(d0.waende.map((w) => w.rechteck))
+    === JSON.stringify(dU.waende.map((w) => w.rechteck)));
+
+  // Das Blatt: das Kreuz steht an SEINER Stelle, nicht mehr fest bei 0/0.
+  const svg0 = LP.lageplanSvg(d0).svg, svgU = LP.lageplanSvg(dU).svg;
+  t("#76 der gespeicherte Ursprung wird an seiner Stelle gezeichnet",
+    /class="lpursprung"/.test(svgU));
+  t("#76 die Beschriftung bleibt „0/0“ — sie benennt den Nullpunkt des Massystems",
+    />0\/0</.test(svgU));
+
+  // Ursprungsausdehnung: geprueft wird gegen die tatsaechliche Ausdehnung des
+  // Blattinhalts — der Punkt 0/0 liegt hier ausserhalb und wird nicht gezeichnet.
+  t("#76 ein Ursprung ausserhalb des Blattinhalts wird nicht gezeichnet",
+    !/class="lpursprung"/.test(svg0));
+  t("#76 die Ausdehnung des Blattinhalts bleibt vom Ursprung unberuehrt "
+    + "(der Massstab aendert sich nicht, [N-8])",
+    JSON.stringify(LP.ausdehnung(dU)) === JSON.stringify(LP.ausdehnung(d0))
+    && LP.lageplanSvg(dU).masstab === LP.lageplanSvg(d0).masstab);
+
+  // [N-5]: Editor und Blatt rechnen dieselbe Massgeometrie — inklusive Ursprung.
+  {
+    let mm = MAPPE.setzeBemassung(mU, gsEG, { id: "bm-u", achse: "y",
+      von: null, bis: { wand: "w-a", bezug: "min" }, mass_mm: 500 });
+    const d = LP.lageplanDaten({ mappe: mm, geschossId: gsEG, elemente: [] });
+    const gs = MAPPE.findeGeschoss(mm, gsEG).geschoss;
+    const erg = CON.pruefeGeschoss(gs.waende, gs.bemassungen, gs.ursprung_mm);
+    const ctx = MB.massKontext(gs.waende, erg, gs.ursprung_mm);
+    const eigen = MB.massTextLayout(gs.bemassungen.map((b, i) => MB.massGeometrie(b, i, ctx)));
+    t("#76 [N-5] die Massgeometrie des Blattes ist bitgenau die gemeinsame",
+      JSON.stringify(d.massbilder) === JSON.stringify(eigen));
+    const gU = d.massbilder[gs.bemassungen.findIndex((b) => b.id === "bm-u")];
+    // Achse y: laengs steht der Ursprung auf U.y, quer auf U.x.
+    t("#76 [N-5] das Ursprungsmass beginnt am verschobenen Ursprung",
+      gU.v1 === 1500 && gU.q1 === 500);
+    t("#76 [K-4] das Ursprungsmass bestimmt die Wand gegen den gespeicherten Punkt",
+      erg.bestimmt["w-a"].y === true
+      && d.waende.find((w) => w.id === "w-a").rechteck.y_min === 2000);
+  }
+
+  // Muss 9: Vorschau und Export gehen denselben Weg — an den BYTES geprueft.
+  {
+    const dateien = LP.lageplanDateien(dU);
+    const svg = dateien.find((f) => /\.svg$/.test(f.name));
+    t("#76 auch die exportierten Bytes tragen den verschobenen Ursprung",
+      !!svg && /class="lpursprung"/.test(svg.data) && />0\/0</.test(svg.data));
+    t("#76 Export und Vorschau sind derselbe Pfad (Muss 9)",
+      svg.data === LP.lageplanSvgDatei(dU)
+      && !/class="lpursprung"/.test(LP.lageplanDateien(d0).find((f) => /\.svg$/.test(f.name)).data));
+  }
+}
+
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

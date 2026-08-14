@@ -3125,6 +3125,148 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && dateien84.some(d => /Vorderseite der Wand/.test(d.data)));
 }
 
+// --- #76: Geschossursprung grafisch verschieben ---------------------------
+// Realer Pfad: eine gezeichnete Wand, ein Ursprungsmass ueber das echte
+// Massewerkzeug, dann der Ursprung ueber das echte Ursprungswerkzeug neu gesetzt,
+// die angezeigte Vorschau bestaetigt und uebernommen. Geprueft werden danach
+// Projektmappe, Loeser, SVG und ein GEMEINSAMER Rueckgaengig-/Wiederholen-Schritt.
+{
+  const gs76 = store.aktivesGeschossId();
+  const mappe76 = () => MAPPE.findeGeschoss(store.holeMappe(), gs76).geschoss;
+  const wandVon76 = (id) => MAPPE.findeWand(store.holeMappe(), id).wand;
+
+  ok('#76 [K-4] das Ursprungswerkzeug ist genau EIN Bedienweg in der Werkzeugleiste',
+    /id="wz-ursprung"/.test(html) && /data-wz="ursprung"/.test(html)
+    && (html.match(/data-wz="ursprung"/g) || []).length === 1);
+
+  // (a) Ausgangslage: ein frisch gezeichnetes Paar aus Wand und Ursprungsmass.
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 60000, y: 60060 }, { x: 61000, y: 60070 });
+  await warte();
+  const id76 = GP.zustand.aktiv;
+  ok('#76 Vorbereitung: die Wand ist verortet', !!wandVon76(id76).lage);
+
+  GP.werkzeug('bemassen');
+  GP.tippe(gp('bezugsPunkt', null, 'x'));
+  GP.tippe(gp('bezugsPunkt', id76, 'x', 'min'));
+  inlineEnter(60000);
+  await warte();
+  const bm76 = GP.bemassungen().find(b => b.von === null && b.achse === 'x'
+    && b.bis.wand === id76);
+  ok('#76 Vorbereitung: ein Ursprungsmass haengt an der Wand ([K-4])',
+    !!bm76 && bm76.mass_mm === 60000 && GP.loesen().bestimmt[id76].x === true);
+
+  const ursprungVor = GP.ursprung();
+  const lagenVor = JSON.stringify(mappe76().waende.map(w => w.lage));
+  const posVor = JSON.stringify(GP.loesen().positionen);
+  const elementVor = JSON.stringify(store.holeElement(id76).wandelement);
+  const undoVor = GP.undoStand.undo;
+  ok('#76 vor der Aenderung steht der Ursprung auf 0/0',
+    ursprungVor.x === 0 && ursprungVor.y === 0);
+
+  // (b) Der Ursprung wird GRAFISCH gesetzt — ein Klick auf der Buehne. Er
+  //     schreibt nichts: Vorschau ist Vorschau ([K-3]-Muster).
+  GP.werkzeug('ursprung');
+  const mappeVorKlick = localStorage.getItem('sembla:projekte');
+  GP.tippe({ x: 1000, y: 500 });
+  ok('#76 der Klick setzt nur den Entwurf und schreibt nichts',
+    GP.ursprungStand.entwurf.x === 1000 && GP.ursprungStand.entwurf.y === 500
+    && localStorage.getItem('sembla:projekte') === mappeVorKlick
+    && GP.undoStand.undo === undoVor
+    && GP.ursprung().x === 0);
+  ok('#76 die Vorschau nennt alten und neuen Ursprung und das betroffene Mass',
+    GP.ursprungStand.sichtbar
+    && /0 \/ 0/.test(GP.ursprungStand.vorschau)
+    && /1000 \/ 500/.test(GP.ursprungStand.vorschau)
+    && GP.ursprungStand.vorschau.includes(bm76.id)
+    && /60000 → 59000/.test(GP.ursprungStand.vorschau)
+    && GP.ursprungStand.uebernehmbar);
+  ok('#76 die Buehne zeigt den Entwurf samt altem Kreuz',
+    /class="ursprungalt"/.test(GP.svg) && /class="ursprungzug"/.test(GP.svg));
+
+  // (c) Uebernehmen — EIN Schritt fuer Ursprung UND nachgefuehrte Masse.
+  GP.uebernehmeUrsprung();
+  await warte();
+  ok('#76 der Ursprung steht jetzt am gewaehlten Punkt der Projektmappe',
+    GP.ursprung().x === 1000 && GP.ursprung().y === 500
+    && mappe76().ursprung_mm.x === 1000 && mappe76().ursprung_mm.y === 500);
+  ok('#76 das Ursprungsmass ist deterministisch nachgefuehrt (mass − ΔU)',
+    GP.bemassungen().find(b => b.id === bm76.id).mass_mm === 59000);
+  ok('#76 Bezuege und Achse des Masses sind dabei unangetastet geblieben',
+    (() => { const b = GP.bemassungen().find(x => x.id === bm76.id);
+      return b.von === null && b.bis.wand === id76 && b.bis.bezug === 'min' && b.achse === 'x'; })());
+  ok('#76 [L-1] KEINE Wandlage wurde verschoben',
+    JSON.stringify(mappe76().waende.map(w => w.lage)) === lagenVor);
+  ok('#76 der Loeser liefert bitgenau dieselben Positionen wie vorher',
+    JSON.stringify(GP.loesen().positionen) === posVor);
+  ok('#76 [P-1] das Wandelement ist unberuehrt',
+    JSON.stringify(store.holeElement(id76).wandelement) === elementVor);
+  ok('#76 das SVG zeichnet den Ursprung an seiner neuen Stelle',
+    GP.svg.includes(`d="${PLAN.kreuzPfad(1000, 500, GP.blick.mm)}"`)
+    && !/class="ursprungalt"/.test(GP.svg));
+  ok('#76 die Ursprungslinien als Massbezuege wandern mit',
+    gp('bezugsPunkt', null, 'x').x === 1000 && gp('bezugsPunkt', null, 'y').y === 500);
+  ok('#76 der Vorgang ist GENAU EIN Rueckgaengig-Schritt',
+    GP.undoStand.undo === undoVor + 1);
+
+  // (d) Rueckgaengig und Wiederholen nehmen beides gemeinsam.
+  GP.undo();
+  await warte();
+  ok('#76 Rueckgaengig nimmt Ursprung UND Mass zusammen zurueck',
+    GP.ursprung().x === 0 && GP.ursprung().y === 0
+    && GP.bemassungen().find(b => b.id === bm76.id).mass_mm === 60000
+    && JSON.stringify(GP.loesen().positionen) === posVor);
+  GP.redo();
+  await warte();
+  ok('#76 Wiederholen setzt beides gemeinsam wieder',
+    GP.ursprung().x === 1000 && GP.ursprung().y === 500
+    && GP.bemassungen().find(b => b.id === bm76.id).mass_mm === 59000
+    && JSON.stringify(GP.loesen().positionen) === posVor);
+
+  // (e) Ungueltige Nachfuehrung: die GANZE Uebernahme wird benannt abgewiesen —
+  //     nichts gerundet, nichts geloescht, nichts halb geschrieben.
+  {
+    const standVor = localStorage.getItem('sembla:projekte');
+    const undoJetzt = GP.undoStand.undo;
+    GP.werkzeug('ursprung');
+    GP.tippe({ x: 130000, y: 500 });                 // Mass kaeme auf −69 000 mm
+    ok('#76 [K-3] die Vorschau nennt das unbrauchbar werdende Mass und sperrt die Uebernahme',
+      /Nicht übernehmbar/.test(GP.ursprungStand.vorschau)
+      && GP.ursprungStand.vorschau.includes(bm76.id)
+      && !GP.ursprungStand.uebernehmbar);
+    GP.uebernehmeUrsprung();
+    ok('#76 [K-3] die Uebernahme wird abgewiesen und der Speicher bleibt unveraendert',
+      /nicht übernommen/i.test($('gp-msg').textContent)
+      && localStorage.getItem('sembla:projekte') === standVor
+      && GP.undoStand.undo === undoJetzt
+      && GP.ursprung().x === 1000
+      && GP.bemassungen().find(b => b.id === bm76.id).mass_mm === 59000);
+    // [K-12]: ein halber Millimeter macht jedes ganzzahlige Ursprungsmass krumm.
+    $('gp-fang').checked = false; $('gp-fang').dispatch('change');
+    GP.tippe({ x: 1062.5, y: 500 });
+    ok('#76 [K-12] auch ein krumm werdendes Mass sperrt die Uebernahme, statt zu runden',
+      /Nicht übernehmbar/.test(GP.ursprungStand.vorschau) && !GP.ursprungStand.uebernehmbar);
+    gp('taste', 'Escape');
+    ok('#76 Escape verwirft den Entwurf, ohne etwas zu schreiben',
+      !GP.ursprungStand.entwurf && localStorage.getItem('sembla:projekte') === standVor
+      && GP.undoStand.undo === undoJetzt);
+    $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  }
+
+  // (f) [L-9]: der Planversatz ist etwas anderes und bleibt getrennt.
+  {
+    const vorU = JSON.stringify(GP.ursprung());
+    store.setzeGeschossPlan(gs76, { datei: 'eg76.png', typ: 'image/png',
+      breite_px: 800, hoehe_px: 600, mm_je_pixel: 10 });
+    store.setzeGeschossPlanAnsicht(gs76, { versatz_x_mm: 7000, versatz_y_mm: 7000 });
+    await warte();
+    ok('#76 [L-9] ein Planversatz laesst den Geschossursprung unberuehrt',
+      JSON.stringify(GP.ursprung()) === vorU && GP.ursprung().x === 1000);
+  }
+  GP.werkzeug('auswahl');
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

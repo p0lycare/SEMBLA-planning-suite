@@ -47,7 +47,7 @@
  * Einheiten: Millimeter (Weltkoordinaten des Geschosses).
  */
 
-import { ACHSEN, normBemassung, bezugsWert, wandRechteck, normLage } from "./sembla-constraints.js";
+import { ACHSEN, normBemassung, bezugsWert, wandRechteck, normLage, andereAchse, ursprungPunkt } from "./sembla-constraints.js";
 
 /**
  * Abstand der Masslinie vom Bauteil, je Mass gestaffelt, damit sich Masse nicht
@@ -63,11 +63,17 @@ export const MASS_ABSTAND_MM = 250;
  * bestimmen, ist das Loesungsergebnis maszgebend, und `lage.start_mm` bleibt der
  * letzte gueltige gespeicherte Stand (kein Rueckschreiben, keine zweite Wahrheit).
  *
+ * Dazu traegt er die Lage des GESCHOSSURSPRUNGS (#76): sie ist der Endpunkt jedes
+ * Ursprungsmasses ([K-4]). Fehlt sie, gilt 0/0 — dann rechnet dieses Modul
+ * bitgenau wie vor #76.
+ *
  * @param {Array<{id:string, lage:any}>} waende
  * @param {{positionen?:Record<string,{x:number,y:number}>}} [ergebnis] Ergebnis von `loese`/`pruefeGeschoss`
- * @returns {{lage:(id:string)=>any, position:(id:string)=>({x:number,y:number}|undefined)}}
+ * @param {any} [ursprung] Lage des Geschossursprungs ([K-4], #76)
+ * @returns {{lage:(id:string)=>any, position:(id:string)=>({x:number,y:number}|undefined),
+ *            ursprung:{x:number,y:number}}}
  */
-export function massKontext(waende, ergebnis) {
+export function massKontext(waende, ergebnis, ursprung) {
   /** @type {Map<string,any>} */
   const lagen = new Map();
   for (const w of (Array.isArray(waende) ? waende : [])) {
@@ -78,6 +84,7 @@ export function massKontext(waende, ergebnis) {
   return {
     lage: (id) => (lagen.has(String(id)) ? lagen.get(String(id)) : undefined),
     position: (id) => pos[String(id)],
+    ursprung: ursprungPunkt(ursprung),
   };
 }
 
@@ -86,13 +93,21 @@ export function massKontext(waende, ergebnis) {
  * `null` (Endpunkt) = Geschossursprung ([K-4]); `null` (Rueckgabe) = nicht
  * darstellbar (unbekannte oder unverortete Wand) — es wird keine Null geraten.
  *
+ * Der Ursprung liegt seit #76 dort, wo er GESPEICHERT ist (`ctx.ursprung`) — laengs
+ * auf seiner Achskoordinate, quer auf der anderen. Ohne Angabe ist das 0/0 und
+ * damit der Stand davor. Hier ist die EINE Stelle, an der `von: null` in
+ * Weltgeometrie uebersetzt wird; Editor und Blatt haengen beide daran ([N-5]).
+ *
  * @param {any} p Endpunkt `{wand,bezug}` oder `null`
  * @param {'x'|'y'} achse
- * @param {{lage:(id:string)=>any, position:(id:string)=>any}} ctx
+ * @param {{lage:(id:string)=>any, position:(id:string)=>any, ursprung?:{x:number,y:number}}} ctx
  * @returns {{wert:number, quer:number}|null}
  */
 export function massEndpunkt(p, achse, ctx) {
-  if (p == null) return { wert: 0, quer: 0 };
+  if (p == null) {
+    const u = ursprungPunkt(ctx && ctx.ursprung);
+    return { wert: u[achse], quer: u[andereAchse(achse)] };
+  }
   const lage = ctx.lage(p.wand);
   if (lage == null) return null;
   const pos = ctx.position(p.wand);

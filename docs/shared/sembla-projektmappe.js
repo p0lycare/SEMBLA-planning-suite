@@ -27,7 +27,14 @@
  *
  * Die Lage-/Bemassungsmathematik selbst liegt in `sembla-constraints.js`
  * (Kapitel 16.10, [K-*]); hier steht nur die Struktur drumherum. Bemassungen
- * gehoeren dem GESCHOSS ([K-10]).
+ * gehoeren dem GESCHOSS ([K-10]) — und seit #76 ebenso sein URSPRUNG:
+ *
+ *   geschoss.ursprung_mm = { x, y }   // der eine Grundbezug ([K-4]), frei platzierbar
+ *
+ * Das Feld ist OPTIONAL und abwaertskompatibel — KEIN Formatbump: fehlt es, gilt
+ * 0/0, also genau die Lage, auf der der Ursprung vor #76 fest sass. Es liegt
+ * bewusst NEBEN dem Planblock und nicht darin: `versatz_x_mm`/`versatz_y_mm`
+ * beschreiben die BILDlage ([L-9]) und werden beim Bildwechsel zurueckgesetzt.
  *
  * Dieses Modul ist REIN und DOM-frei (keine Datei-, keine localStorage-, keine
  * DOM-Zugriffe). Alle Struktur-Operationen liefern eine NEUE Mappe zurueck und
@@ -40,6 +47,7 @@
 import {
   normLage, lageFehler, laengeMm,
   normBemassung, bemassungenFehler,
+  normUrsprung, ursprungFehler, ursprungPunkt, URSPRUNG_STANDARD,
 } from "./sembla-constraints.js";
 
 /** Version des OEFFENTLICHEN Projektmappen-Dateiformats (eigene Achse, getrennt
@@ -112,6 +120,10 @@ export function neuesGeschossObjekt(name, hoehe_mm) {
     name: (name || "Geschoss").toString(),
     hoehe_mm: (hoehe_mm == null || !Number.isFinite(+hoehe_mm)) ? null : +hoehe_mm,
     plan: null,
+    // Der eine Grundbezug des Geschosses ([K-4]) — frei platzierbar seit #76,
+    // Standard 0/0. Er steht bewusst NICHT im Planblock: `versatz_*_mm` dort ist
+    // die BILDlage ([L-9]) und wird beim Bildwechsel zurueckgesetzt.
+    ursprung_mm: { ...URSPRUNG_STANDARD },
     waende: [],
     bemassungen: [],
   };
@@ -128,7 +140,7 @@ function _zahlOderNull(v) {
  * ganze Lage-/Bemassungsmathematik ([L-1], [K-*]). Hier nur weitergereicht,
  * damit die bisherigen Aufrufer der Mappe unveraendert weiterarbeiten.
  */
-export { normLage, lageFehler, normBemassung };
+export { normLage, lageFehler, normBemassung, normUrsprung, ursprungFehler, ursprungPunkt };
 
 /** Einen Wandeintrag normalisieren (Struktur/Lage — nie Geometrie). */
 export function normWand(w) {
@@ -192,6 +204,10 @@ export function normGeschoss(g) {
     name: (o.name == null ? "" : String(o.name)),
     hoehe_mm: _zahlOderNull(o.hoehe_mm),
     plan: normPlan(o.plan),
+    // Geschossursprung ([K-4], #76). Fehlt das Feld (jeder Altstand), ist es 0/0 —
+    // exakt die Lage, auf der er vor #76 fest sass. Die Uebernahme ist damit
+    // verlustfrei und idempotent und braucht keinen Formatbump.
+    ursprung_mm: normUrsprung(o.ursprung_mm),
     waende: Array.isArray(o.waende) ? o.waende.map(normWand) : [],
     // Bemassungen leben im GESCHOSS, nie am Wandelement ([K-10]). Fehlt das
     // Feld (Altstand v1), ist es schlicht leer — es wird keines erfunden.
@@ -263,6 +279,7 @@ export function validiereMappe(m) {
         f.push(`Geschoss „${gs.name || gs.id}“: Standard-Wandhöhe muss positiv sein.`);
       }
       f.push(...planFehler(gs?.plan, gs?.name || gs?.id));
+      f.push(...ursprungFehler(gs?.ursprung_mm, gs?.name || gs?.id));
       if (!Array.isArray(gs?.waende)) { f.push(`Geschoss „${gs?.name || gs?.id}“ ohne Wandliste.`); continue; }
       /** @type {Map<string,any>} */
       const lagen = new Map();
@@ -646,6 +663,38 @@ export function migriereMappe(m) {
 export function bemassungen(m, geschossId) {
   const gs = alleGeschosse(m).find((x) => x.geschoss.id === geschossId);
   return gs ? gs.geschoss.bemassungen : [];
+}
+
+/**
+ * Der wirksame Geschossursprung ([K-4], #76). Unbekanntes Geschoss oder fehlendes
+ * Feld ⇒ 0/0 — es wird keiner erfunden, denn 0/0 IST der Altstand.
+ * @param {any} m @param {string} geschossId @returns {{x:number,y:number}}
+ */
+export function ursprung(m, geschossId) {
+  const gs = alleGeschosse(m).find((x) => x.geschoss.id === geschossId);
+  return ursprungPunkt(gs ? gs.geschoss.ursprung_mm : null);
+}
+
+/**
+ * Den Geschossursprung setzen ([K-4], #76). Rein: liefert eine NEUE Mappe.
+ *
+ * Geschrieben wird AUSSCHLIESSLICH dieses Feld. Wandlagen bleiben unberuehrt —
+ * dass die Masse dazu nachgefuehrt werden muessen, entscheidet und veranlasst der
+ * Aufrufer im selben Schreibvorgang (`ursprungNachfuehrung` + `setzeBemassung`);
+ * hier wird nichts stillschweigend mitgeaendert. Ein unbrauchbarer Punkt wird
+ * ABGEWIESEN statt gerundet ([P-9]).
+ *
+ * @param {any} m @param {string} geschossId @param {{x:number,y:number}} punkt
+ */
+export function setzeUrsprung(m, geschossId, punkt) {
+  const n = normMappe(m);
+  if (!alleGeschosse(n).some((x) => x.geschoss.id === geschossId)) {
+    throw new Error(`Geschoss „${geschossId}“ gibt es nicht.`);
+  }
+  const fehler = ursprungFehler(punkt == null ? {} : punkt);
+  if (fehler.length) throw new Error(fehler.join("\n"));
+  const u = normUrsprung(punkt);
+  return _mitGeschoss(n, geschossId, (gs) => ({ ...gs, ursprung_mm: { x: u.x, y: u.y } }));
 }
 
 /**

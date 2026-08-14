@@ -85,8 +85,32 @@ t("in Achse y stehen laengs und quer getauscht — die Zahl ist um −90° gedre
 
 const gU = MB.massGeometrie(
   { id: "fix", achse: "y", von: null, bis: p("a", "min"), mass_mm: 1000 }, 0, ctx());
-t("[K-4] `von: null` ist der Geschossursprung: Wert 0, quer 0",
+t("[K-4] `von: null` ist der Geschossursprung: ohne Angabe Wert 0, quer 0",
   gU.v1 === 0 && gU.q1 === 0 && gU.v2 === 1000);
+
+// Seit #76 ist der Ursprung ein GESPEICHERTER Punkt. Hier ist die eine Stelle,
+// an der `von: null` in Weltgeometrie uebersetzt wird — Editor und Lageplan
+// haengen beide daran ([N-5]), deshalb steht die Zusicherung hier.
+{
+  const ctxU = MB.massKontext(WAENDE, ERG, { x: 250, y: -500 });
+  const gV = MB.massGeometrie(
+    { id: "fix", achse: "y", von: null, bis: p("a", "min"), mass_mm: 1000 }, 0, ctxU);
+  t("#76 der Ursprungsendpunkt liegt laengs auf seiner Achskoordinate",
+    gV.v1 === -500);
+  t("#76 … und quer auf der anderen — nicht mehr fest bei 0",
+    gV.q1 === 250);
+  t("#76 der Wandendpunkt bleibt davon voellig unberuehrt",
+    gV.v2 === gU.v2 && gV.q2 === gU.q2);
+  t("#76 der Kontext traegt den normalisierten Punkt",
+    ctxU.ursprung.x === 250 && ctxU.ursprung.y === -500);
+  t("#76 ohne Ursprungsangabe bleibt die Geometrie bitgenau die alte",
+    JSON.stringify(MB.massGeometrie(
+      { id: "fix", achse: "y", von: null, bis: p("a", "min"), mass_mm: 1000 }, 0, ctx()))
+    === JSON.stringify(gU));
+  t("#76 ein Altstand-Kontext ohne das Feld faellt auf 0/0 zurueck",
+    MB.massKontext(WAENDE, ERG, null).ursprung.x === 0
+    && MB.massEndpunkt(null, "y", { lage: () => null, position: () => undefined }).wert === 0);
+}
 
 // --- Nichts wird erfunden ------------------------------------------------
 

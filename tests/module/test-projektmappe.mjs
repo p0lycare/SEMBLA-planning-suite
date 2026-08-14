@@ -416,5 +416,76 @@ t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
     M.validiereMappe(M.setzeBemassung(mitBm, g, { ...bm, id: "bm-2", mass_mm: 2400 })).length === 0);
 }
 
+// --- [K-4] Geschossursprung: gespeicherter, verschiebbarer Punkt (#76) -----
+{
+  const gsRef = (m) => m.gebaeude[0].geschosse[0];
+
+  t("#76 [K-4] ein neues Geschoss hat den Ursprung 0/0",
+    gsRef(leer).ursprung_mm.x === 0 && gsRef(leer).ursprung_mm.y === 0);
+  t("#76 [K-4] `ursprung()` liefert den Punkt des Geschosses",
+    M.ursprung(leer, gs0).x === 0 && M.ursprung(leer, gs0).y === 0);
+
+  // Altstand-Migration: das Feld fehlt schlicht — 0/0 IST der Stand vor #76,
+  // deshalb ist die Uebernahme verlustfrei und braucht keinen Formatbump.
+  const alt = JSON.parse(JSON.stringify(M.mappeObjekt(leer)));
+  delete gsRef(alt).ursprung_mm;
+  t("#76 Altstand ohne Feld: keine Migrationsluecke, nur 0/0",
+    gsRef(alt).ursprung_mm === undefined
+    && gsRef(M.normMappe(alt)).ursprung_mm.x === 0 && gsRef(M.normMappe(alt)).ursprung_mm.y === 0);
+  t("#76 Altstand bleibt gueltig (kein neuer Pflichtfehler)",
+    M.validiereMappe(M.normMappe(alt)).length === 0);
+  t("#76 die Uebernahme ist idempotent",
+    JSON.stringify(M.normMappe(M.normMappe(alt))) === JSON.stringify(M.normMappe(alt)));
+  t("#76 MAPPE_VERSION bleibt 2 — das Feld ist optional, kein Formatbruch",
+    M.MAPPE_VERSION === 2 && M.normMappe(alt).version === 2);
+
+  // Setzen
+  const verschoben = M.setzeUrsprung(leer, gs0, { x: 1000, y: -500 });
+  t("#76 setzeUrsprung schreibt genau den Punkt",
+    gsRef(verschoben).ursprung_mm.x === 1000 && gsRef(verschoben).ursprung_mm.y === -500);
+  t("#76 setzeUrsprung ist rein — die Ausgangsmappe bleibt auf 0/0",
+    gsRef(leer).ursprung_mm.x === 0);
+  t("#76 halbe Millimeter sind zulaessig (dasselbe Raster wie die Lage, [L-1])",
+    M.ursprung(M.setzeUrsprung(leer, gs0, { x: 62.5, y: 0 }), gs0).x === 62.5);
+  t("#76 ein Viertelmillimeter wird ABGEWIESEN, nicht gerundet",
+    wirft(() => M.setzeUrsprung(leer, gs0, { x: 0.25, y: 0 }), /0,5 mm/));
+  t("#76 ein unbrauchbarer Wert wird abgewiesen",
+    wirft(() => M.setzeUrsprung(leer, gs0, { x: "links", y: 0 })));
+  t("#76 ein unbekanntes Geschoss wird benannt abgewiesen",
+    wirft(() => M.setzeUrsprung(leer, "gs-gibt-es-nicht", { x: 0, y: 0 }), /gibt es nicht/));
+  t("#76 ein kaputter Ursprung faellt in der Validierung auf",
+    M.validiereMappe({ ...M.mappeObjekt(leer),
+      gebaeude: [{ ...leer.gebaeude[0],
+        geschosse: [{ ...gsRef(leer), ursprung_mm: { x: 0.25, y: 0 } }] }] })
+      .some((f) => /Ursprung x/.test(f)));
+
+  // [L-9]: der Ursprung liegt NICHT im Planblock und wird davon nicht beruehrt.
+  t("#76 der Ursprung steht neben dem Planblock, nicht darin",
+    gsRef(verschoben).plan === null && gsRef(verschoben).ursprung_mm.x === 1000);
+  {
+    const mitPlan = M.setzePlanAnsicht(
+      M.setzePlan(verschoben, gs0, { datei: "eg.png", typ: "image/png", breite_px: 800, hoehe_px: 600 }),
+      gs0, { versatz_x_mm: 4000, versatz_y_mm: 4000 });
+    t("#76 [L-9] ein Planversatz bewegt den Ursprung nicht",
+      M.ursprung(mitPlan, gs0).x === 1000 && M.ursprung(mitPlan, gs0).y === -500);
+  }
+
+  // Verlustfreier Datei-Roundtrip samt nachgefuehrtem Ursprungsmass.
+  {
+    let m = M.setzeWand(verschoben, gs0, { id: "wU", name: "U",
+      lage: { start_mm: { x: 2000, y: 0 }, richtung: "x", laenge_grid: 8 } });
+    m = M.setzeBemassung(m, gs0, { id: "bm-u", achse: "x",
+      von: null, bis: { wand: "wU", bezug: "min" }, mass_mm: 1000 });
+    const zurueck = M.parseMappe(JSON.stringify(M.mappeObjekt(m)));
+    t("#76 der verschobene Ursprung uebersteht den Datei-Roundtrip",
+      M.ursprung(zurueck, gs0).x === 1000 && M.ursprung(zurueck, gs0).y === -500);
+    t("#76 das Ursprungsmass uebersteht ihn mit",
+      M.bemassungen(zurueck, gs0)[0].mass_mm === 1000
+      && M.bemassungen(zurueck, gs0)[0].von === null);
+    t("#76 der Roundtrip ist bitgenau",
+      JSON.stringify(M.mappeObjekt(zurueck)) === JSON.stringify(M.mappeObjekt(m)));
+  }
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);
