@@ -185,6 +185,34 @@ function _normalisiereWandtyp(eintrag) {
   return w.wandtyp !== vorher;
 }
 
+// --- Abdichtung (Fachmerkmal der Wand, Issue #71) ------------------------
+// Es gibt abgedichtete und nicht abgedichtete Waende. Die Entscheidung faellt JE WAND
+// (Sampler-Team, 2026-08-13), gehoert damit an das WANDELEMENT (Single Source of Truth)
+// und wird in Modul 1 gewaehlt; der Geschosseditor fuehrt sie beim Neuaufbau unveraendert
+// mit. Vererbt wird sie NICHT — weder vom Geschoss noch vom Projekt.
+//
+// Wirkung hat sie an genau EINER Stelle: `semblaBomItems()` (sembla-bom.js) laesst die
+// Dichtstreifenpositionen `dicht_stk`/`dicht` fuer eine nicht abgedichtete Wand weg ([A-6]).
+// Auf Tiling, Vorspannung und die Core-Mengen (`bom.stossfugen`/`bom.dichtstreifen_mm`)
+// hat sie keinen Einfluss und ist darum — wie der Wandtyp — bewusst NICHT Teil des Cores.
+//
+// Anders als beim Wandtyp gibt es KEIN Alt-Feld, aus dem sich etwas ableiten liesse: vorher
+// war die Abdichtung nirgends erfasst. Deshalb gibt es hier auch KEINE Migration und keinen
+// Sprung der SCHEMA_VERSION — normalisiert wird beim LESEN, ein gespeichertes Wandelement
+// wird nie stillschweigend umgeschrieben. Der Standard ist der sichere Fall: ohne
+// ausdrueckliche Wahl gilt die Wand als NICHT abgedichtet, nie umgekehrt.
+
+/** @type {ReadonlyArray<'nicht_abgedichtet'|'abgedichtet'>} */
+export const ABDICHTUNGEN = ["nicht_abgedichtet", "abgedichtet"];
+
+/** Standard fuer neue Waende und jeden Altbestand ohne Feld. */
+export const ABDICHTUNG_DEFAULT = "nicht_abgedichtet";
+
+/** Normalisiert die Abdichtung; unbekannt/fehlend -> „nicht abgedichtet“. */
+export function normAbdichtung(a) {
+  return ABDICHTUNGEN.includes(a) ? a : ABDICHTUNG_DEFAULT;
+}
+
 // --- interne Helfer -------------------------------------------------------
 
 /** @returns {Record<string, any>} die rohe Elemente-Map (nie null). */

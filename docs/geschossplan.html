@@ -2505,6 +2505,7 @@ function rechneWandelement(el, laengeGrid, hoeheMm){
     ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg);
   const neu = erg.wandelement;
   neu.wandtyp = we.wandtyp;         // hängt nicht am Core und wird nur bei der Anlage gewählt
+  neu.abdichtung = we.abdichtung;   // [A-6]/#71: Fachmerkmal der Wand, gewählt in Modul 1
   return neu;
 }
 

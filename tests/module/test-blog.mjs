@@ -39,87 +39,95 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-ok("der entfallene Einzelnachweis in Modul 1 (Issue 78) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260813-10" && EINTRAEGE[0]?.issue === 78);
+ok("die wandbezogene Abdichtung (Issue 71) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260814-01" && EINTRAEGE[0]?.issue === 71);
+ok("der Abdichtungs-Eintrag benennt beide Zustaende, den Ort der Wahl und die Wirkung aussagewahr",
+  /Abdichtung je Wand/.test(EINTRAEGE[0]?.titel || "")
+  && /Dichtstreifen/.test(EINTRAEGE[0]?.titel || "")
+  && /Modul 1/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
+  && /nicht abgedichtet/.test(EINTRAEGE[0]?.testbitte || ""));
+ok("der entfallene Einzelnachweis in Modul 1 (Issue 78) folgt direkt danach",
+  EINTRAEGE[1]?.id === "chg-20260813-10" && EINTRAEGE[1]?.issue === 78);
 ok("der Nachweis-Eintrag benennt Wegfall, erhaltene Auslegung und Modul 3 aussagewahr",
-  /keinen statischen Einzelnachweis/.test(EINTRAEGE[0]?.titel || "")
-  && /Modul 3/.test(EINTRAEGE[0]?.titel || "")
-  && /fester Auslegung/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Spannachsen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /entfallen/.test(EINTRAEGE[0]?.testbitte || ""));
-ok("die Wandseiten-Kennzeichnung (Issue 84) folgt direkt danach",
-  EINTRAEGE[1]?.id === "chg-20260813-09" && EINTRAEGE[1]?.issue === 84);
+  /keinen statischen Einzelnachweis/.test(EINTRAEGE[1]?.titel || "")
+  && /Modul 3/.test(EINTRAEGE[1]?.titel || "")
+  && /fester Auslegung/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Spannachsen/.test(EINTRAEGE[1]?.testbitte || "")
+  && /entfallen/.test(EINTRAEGE[1]?.testbitte || ""));
+ok("die Wandseiten-Kennzeichnung (Issue 84) bleibt als dritter aktueller Eintrag erhalten",
+  EINTRAEGE[2]?.id === "chg-20260813-09" && EINTRAEGE[2]?.issue === 84);
 ok("der Wandseiten-Eintrag benennt V/R-Kanten, beide Drehwege und den Lageplan aussagewahr",
-  /Vorder- und Rückseite/.test(EINTRAEGE[1]?.titel || "")
-  && /V und R/.test(EINTRAEGE[1]?.testbitte || "")
-  && /90°/.test(EINTRAEGE[1]?.testbitte || "")
-  && /180°/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Lageplan/.test(EINTRAEGE[1]?.testbitte || ""));
-ok("das gemeinsame Bearbeiten mehrerer Wände (Issue 75) bleibt als dritter aktueller Eintrag erhalten",
-  EINTRAEGE[2]?.id === "chg-20260813-08" && EINTRAEGE[2]?.issue === 75);
+  /Vorder- und Rückseite/.test(EINTRAEGE[2]?.titel || "")
+  && /V und R/.test(EINTRAEGE[2]?.testbitte || "")
+  && /90°/.test(EINTRAEGE[2]?.testbitte || "")
+  && /180°/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Lageplan/.test(EINTRAEGE[2]?.testbitte || ""));
+ok("das gemeinsame Bearbeiten mehrerer Wände (Issue 75) bleibt als vierter aktueller Eintrag erhalten",
+  EINTRAEGE[3]?.id === "chg-20260813-08" && EINTRAEGE[3]?.issue === 75);
 ok("der Sammel-Editor-Eintrag benennt Mehrfachauswahl, Bestätigung und Rückgängig aussagewahr",
-  /gemeinsam/.test(EINTRAEGE[2]?.titel || "")
-  && /Umschalt|Strg/.test(EINTRAEGE[2]?.testbitte || "")
-  && /gemischte/.test(EINTRAEGE[2]?.testbitte || "")
-  && /fragt nach/.test(EINTRAEGE[2]?.testbitte || "")
-  && /zurück/.test(EINTRAEGE[2]?.testbitte || ""));
-ok("das Duplizieren und Löschen im Geschosseditor (Issue 74) bleibt als vierter aktueller Eintrag erhalten",
-  EINTRAEGE[3]?.id === "chg-20260813-07" && EINTRAEGE[3]?.issue === 74);
-ok("der Editor-Eintrag zu Issue 74 benennt Kopie, Bestätigung und Rückgängig aussagewahr",
-  /duplizieren/.test(EINTRAEGE[3]?.titel || "")
-  && /Kopie/.test(EINTRAEGE[3]?.testbitte || "")
+  /gemeinsam/.test(EINTRAEGE[3]?.titel || "")
+  && /Umschalt|Strg/.test(EINTRAEGE[3]?.testbitte || "")
+  && /gemischte/.test(EINTRAEGE[3]?.testbitte || "")
   && /fragt nach/.test(EINTRAEGE[3]?.testbitte || "")
-  && /rückgängig/.test(EINTRAEGE[3]?.testbitte || ""));
-ok("die textfreien Modulstarts 8 und 9 (Issue 72, drittes Paket) bleiben als fünfter aktueller Eintrag erhalten",
-  EINTRAEGE[4]?.id === "chg-20260813-06" && EINTRAEGE[4]?.issue === 72);
+  && /zurück/.test(EINTRAEGE[3]?.testbitte || ""));
+ok("das Duplizieren und Löschen im Geschosseditor (Issue 74) bleibt als fünfter aktueller Eintrag erhalten",
+  EINTRAEGE[4]?.id === "chg-20260813-07" && EINTRAEGE[4]?.issue === 74);
+ok("der Editor-Eintrag zu Issue 74 benennt Kopie, Bestätigung und Rückgängig aussagewahr",
+  /duplizieren/.test(EINTRAEGE[4]?.titel || "")
+  && /Kopie/.test(EINTRAEGE[4]?.testbitte || "")
+  && /fragt nach/.test(EINTRAEGE[4]?.testbitte || "")
+  && /rückgängig/.test(EINTRAEGE[4]?.testbitte || ""));
+ok("die textfreien Modulstarts 8 und 9 (Issue 72, drittes Paket) bleiben als sechster aktueller Eintrag erhalten",
+  EINTRAEGE[5]?.id === "chg-20260813-06" && EINTRAEGE[5]?.issue === 72);
 ok("der Intro-Eintrag 8/9 benennt Modulbereich und unveränderte Funktionen aussagewahr",
-  /Module 8 und 9/.test(EINTRAEGE[4]?.titel || "")
-  && /Kopfleiste/.test(EINTRAEGE[4]?.testbitte || "")
-  && /unverändert/.test(EINTRAEGE[4]?.testbitte || ""));
-ok("die textfreien Modulstarts 5 bis 7 (Issue 72, zweites Paket) bleiben als sechster aktueller Eintrag erhalten",
-  EINTRAEGE[5]?.id === "chg-20260813-05" && EINTRAEGE[5]?.issue === 72);
-ok("der zweite Intro-Eintrag benennt Modulbereich und unveränderte Funktionen aussagewahr",
-  /Module 5 bis 7/.test(EINTRAEGE[5]?.titel || "")
+  /Module 8 und 9/.test(EINTRAEGE[5]?.titel || "")
   && /Kopfleiste/.test(EINTRAEGE[5]?.testbitte || "")
   && /unverändert/.test(EINTRAEGE[5]?.testbitte || ""));
-ok("die textfreien Modulstarts 1 bis 4 (Issue 72, erstes Paket) bleiben als siebter aktueller Eintrag erhalten",
-  EINTRAEGE[6]?.id === "chg-20260813-04" && EINTRAEGE[6]?.issue === 72);
-ok("der erste Intro-Eintrag benennt Modulbereich und unveränderte Funktionen aussagewahr",
-  /Module 1 bis 4/.test(EINTRAEGE[6]?.titel || "")
+ok("die textfreien Modulstarts 5 bis 7 (Issue 72, zweites Paket) bleiben als siebter aktueller Eintrag erhalten",
+  EINTRAEGE[6]?.id === "chg-20260813-05" && EINTRAEGE[6]?.issue === 72);
+ok("der zweite Intro-Eintrag benennt Modulbereich und unveränderte Funktionen aussagewahr",
+  /Module 5 bis 7/.test(EINTRAEGE[6]?.titel || "")
   && /Kopfleiste/.test(EINTRAEGE[6]?.testbitte || "")
   && /unverändert/.test(EINTRAEGE[6]?.testbitte || ""));
-ok("der Geschossplaner-Reiter 0,5 (Issue 43) bleibt als achter aktueller Eintrag erhalten",
-  EINTRAEGE[7]?.id === "chg-20260813-03" && EINTRAEGE[7]?.issue === 43);
+ok("die textfreien Modulstarts 1 bis 4 (Issue 72, erstes Paket) bleiben als achter aktueller Eintrag erhalten",
+  EINTRAEGE[7]?.id === "chg-20260813-04" && EINTRAEGE[7]?.issue === 72);
+ok("der erste Intro-Eintrag benennt Modulbereich und unveränderte Funktionen aussagewahr",
+  /Module 1 bis 4/.test(EINTRAEGE[7]?.titel || "")
+  && /Kopfleiste/.test(EINTRAEGE[7]?.testbitte || "")
+  && /unverändert/.test(EINTRAEGE[7]?.testbitte || ""));
+ok("der Geschossplaner-Reiter 0,5 (Issue 43) bleibt als neunter aktueller Eintrag erhalten",
+  EINTRAEGE[8]?.id === "chg-20260813-03" && EINTRAEGE[8]?.issue === 43);
 ok("der Reiter-Eintrag benennt Kopfleiste, aktives Geschoss und unveränderte Auswahl aussagewahr",
-  /Reiter 0,5/.test(EINTRAEGE[7]?.titel || "")
-  && /aktive Geschoss/.test(EINTRAEGE[7]?.testbitte || "")
-  && /Auswahl/.test(EINTRAEGE[7]?.testbitte || ""));
-ok("die Lageplan-Nummernblasen (Issue 73) bleiben als neunter aktueller Eintrag erhalten",
-  EINTRAEGE[8]?.id === "chg-20260813-02" && EINTRAEGE[8]?.issue === 73);
+  /Reiter 0,5/.test(EINTRAEGE[8]?.titel || "")
+  && /aktive Geschoss/.test(EINTRAEGE[8]?.testbitte || "")
+  && /Auswahl/.test(EINTRAEGE[8]?.testbitte || ""));
+ok("die Lageplan-Nummernblasen (Issue 73) bleiben als zehnter aktueller Eintrag erhalten",
+  EINTRAEGE[9]?.id === "chg-20260813-02" && EINTRAEGE[9]?.issue === 73);
 ok("der Marker-Eintrag benennt Außenblase und entfallenen Vollständigkeitsblock aussagewahr",
-  /Nummernblase/.test(EINTRAEGE[8]?.testbitte || "")
-  && /Vollständigkeit/.test(EINTRAEGE[8]?.testbitte || "")
-  && /entfallen/.test(EINTRAEGE[8]?.testbitte || ""));
-ok("der hierarchische Export (Issue 67) bleibt als zehnter aktueller Eintrag erhalten",
-  EINTRAEGE[9]?.id === "chg-20260813-01" && EINTRAEGE[9]?.issue === 67);
+  /Nummernblase/.test(EINTRAEGE[9]?.testbitte || "")
+  && /Vollständigkeit/.test(EINTRAEGE[9]?.testbitte || "")
+  && /entfallen/.test(EINTRAEGE[9]?.testbitte || ""));
+ok("der hierarchische Export (Issue 67) bleibt als elfter aktueller Eintrag erhalten",
+  EINTRAEGE[10]?.id === "chg-20260813-01" && EINTRAEGE[10]?.issue === 67);
 ok("der Export-Eintrag benennt den Wegfall des Planbild-Transports aussagewahr",
-  /Planbilder/.test(EINTRAEGE[9]?.testbitte || "") && /entfallen/.test(EINTRAEGE[9]?.testbitte || ""));
-ok("die kollisionsfreien Maßzahlen (Issue 59) bleiben als elfter aktueller Eintrag erhalten",
-  EINTRAEGE[10]?.id === "chg-20260812-10" && EINTRAEGE[10]?.issue === 59);
-ok("die textfreie Eingabespalte in Modul 1 (Issue 69, zweite Kürzung) bleibt als zwölfter aktueller Eintrag erhalten",
-  EINTRAEGE[11]?.id === "chg-20260812-09" && EINTRAEGE[11]?.issue === 69);
-ok("die fokussierte Projektanlage (Issue 68) bleibt als dreizehnter aktueller Eintrag erhalten",
-  EINTRAEGE[12]?.id === "chg-20260812-08" && EINTRAEGE[12]?.issue === 68);
-ok("die Wandbezeichnung in der Stückliste (Issue 70) bleibt als vierzehnter aktueller Eintrag erhalten",
-  EINTRAEGE[13]?.id === "chg-20260812-07" && EINTRAEGE[13]?.issue === 70);
-ok("die kompakte Eingabespalte in Modul 1 (Issue 69, erste Kürzung) bleibt als fünfzehnter aktueller Eintrag erhalten",
-  EINTRAEGE[14]?.id === "chg-20260812-06" && EINTRAEGE[14]?.issue === 69);
-ok("die aktive Wand im Geschosseditor (Issue 66) bleibt als sechzehnter aktueller Eintrag erhalten",
-  EINTRAEGE[15]?.id === "chg-20260812-05" && EINTRAEGE[15]?.issue === 66);
-ok("die Blattreduktion zu Issue 61 bleibt als siebzehnter aktueller Eintrag erhalten",
-  EINTRAEGE[16]?.id === "chg-20260812-04" && EINTRAEGE[16]?.issue === 61);
-ok("der kompakte Lageplankopf zu Issue 59 bleibt als achtzehnter aktueller Eintrag erhalten",
-  EINTRAEGE[17]?.id === "chg-20260812-03" && EINTRAEGE[17]?.issue === 59);
+  /Planbilder/.test(EINTRAEGE[10]?.testbitte || "") && /entfallen/.test(EINTRAEGE[10]?.testbitte || ""));
+ok("die kollisionsfreien Maßzahlen (Issue 59) bleiben als zwölfter aktueller Eintrag erhalten",
+  EINTRAEGE[11]?.id === "chg-20260812-10" && EINTRAEGE[11]?.issue === 59);
+ok("die textfreie Eingabespalte in Modul 1 (Issue 69, zweite Kürzung) bleibt als dreizehnter aktueller Eintrag erhalten",
+  EINTRAEGE[12]?.id === "chg-20260812-09" && EINTRAEGE[12]?.issue === 69);
+ok("die fokussierte Projektanlage (Issue 68) bleibt als vierzehnter aktueller Eintrag erhalten",
+  EINTRAEGE[13]?.id === "chg-20260812-08" && EINTRAEGE[13]?.issue === 68);
+ok("die Wandbezeichnung in der Stückliste (Issue 70) bleibt als fünfzehnter aktueller Eintrag erhalten",
+  EINTRAEGE[14]?.id === "chg-20260812-07" && EINTRAEGE[14]?.issue === 70);
+ok("die kompakte Eingabespalte in Modul 1 (Issue 69, erste Kürzung) bleibt als sechzehnter aktueller Eintrag erhalten",
+  EINTRAEGE[15]?.id === "chg-20260812-06" && EINTRAEGE[15]?.issue === 69);
+ok("die aktive Wand im Geschosseditor (Issue 66) bleibt als siebzehnter aktueller Eintrag erhalten",
+  EINTRAEGE[16]?.id === "chg-20260812-05" && EINTRAEGE[16]?.issue === 66);
+ok("die Blattreduktion zu Issue 61 bleibt als achtzehnter aktueller Eintrag erhalten",
+  EINTRAEGE[17]?.id === "chg-20260812-04" && EINTRAEGE[17]?.issue === 61);
+ok("der kompakte Lageplankopf zu Issue 59 bleibt als neunzehnter aktueller Eintrag erhalten",
+  EINTRAEGE[18]?.id === "chg-20260812-03" && EINTRAEGE[18]?.issue === 59);
 
 // --- 2) Validator: jede Regel schlaegt einzeln an -------------------------
 const gut = { id: "chg-20260805-01", datum: "2026-08-05", typ: "feature", issue: 48, titel: "Titel" };

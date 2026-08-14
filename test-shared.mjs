@@ -9,8 +9,13 @@ const cases=[
   ["ref3_fenster",2000,2600,[new Opening(6,10,4,10,"fenster")]],
   ["gross",      4500,2600,[new Opening(4,8,0,10,"tuer"),new Opening(12,16,4,9,"fenster")]],
 ];
+// [A-6]/#71: Die Dichtstreifenpositionen entstehen nur fuer eine ABGEDICHTETE Wand. `buildWall`
+// kennt das Merkmal nicht (es haengt nicht am Core) — eine so gebaute Wand traegt kein Feld und
+// gilt damit als nicht abgedichtet. Fuer die Positionspruefungen wird es hier ausdruecklich
+// gesetzt; der Gegenfall steht als eigener Block am Ende.
+const abgedichtet = w => Object.assign(w, { abdichtung: "abgedichtet" });
 for(const [name,l,h,ops] of cases){
-  const w=buildWall(name,l,h,ops); const b=semblaBom(w);
+  const w=abgedichtet(buildWall(name,l,h,ops)); const b=semblaBom(w);
   t(name+" · i3",              b.i3===w.bom.i3);
   t(name+" · i2",              b.i2===w.bom.i2);
   t(name+" · Gewindestangen",  b.gewindestangen_gesamt===w.bom.gewindestangen);
@@ -88,8 +93,8 @@ for(const [name,l,h,ops] of cases){
 {
   // Fixture mit Standardteil (zwei Standardlaengen), ZWEI verschiedenen Sonderzuschnittlaengen
   // und Reststueck ([Z-6]) — konfliktfrei, damit kein Segment ohne Zuschnitt bleibt.
-  const w=buildWall("einbauteile",3000,3000,[new Opening(6,10,4,10,"fenster")],null,
-    {rod_lengths_mm:[1000,500],rod_rest_mm:300});
+  const w=abgedichtet(buildWall("einbauteile",3000,3000,[new Opening(6,10,4,10,"fenster")],null,
+    {rod_lengths_mm:[1000,500],rod_rest_mm:300}));
   const teile=einbauteile(w), items=semblaBomItems(w);
   const rod=items.filter(it=>it.key.startsWith('rod_'));
   t("P-19 · Einbauteile = Core-Gesamtzahl der Gewindestangen", teile.length===w.bom.gewindestangen);
@@ -126,6 +131,39 @@ for(const [name,l,h,ops] of cases){
     einbauteile(leer).length===teile.length-w.tension_columns[0].segments[0].stuecke.length);
   t("P-19 · Ableitung ist deterministisch (zweimal gleich)",
     JSON.stringify(einbauteile(w))===JSON.stringify(einbauteile(w)));
+}
+// ---- [A-6]/#71 Abdichtung je Wand ------------------------------------------------------
+// Die Abdichtung entscheidet AUSSCHLIESSLICH ueber die beiden Dichtstreifenpositionen. Alles
+// andere — Mengen des Rechenkerns, uebrige Positionen, deren Reihenfolge und Inhalt — muss
+// zwischen abgedichteter und nicht abgedichteter Wand bitgenau gleich bleiben.
+{
+  const roh=buildWall("abdicht",2000,2600,[new Opening(5,11,0,10,"tuer")]);
+  const ohne=JSON.parse(JSON.stringify(roh));                       // kein Feld -> nicht abgedichtet
+  const mit=Object.assign(JSON.parse(JSON.stringify(roh)),{abdichtung:"abgedichtet"});
+  const nein=Object.assign(JSON.parse(JSON.stringify(roh)),{abdichtung:"nicht_abgedichtet"});
+  const iOhne=semblaBomItems(ohne), iMit=semblaBomItems(mit), iNein=semblaBomItems(nein);
+  const dichtKeys=its=>its.filter(it=>it.key==='dicht'||it.key==='dicht_stk').map(it=>it.key);
+  t("A-6 · ohne Feld: keine Dichtstreifenposition (sicherer Standard)", dichtKeys(iOhne).length===0);
+  t("A-6 · ausdruecklich nicht abgedichtet: keine Dichtstreifenposition", dichtKeys(iNein).length===0);
+  t("A-6 · abgedichtet: beide Dichtstreifenpositionen", dichtKeys(iMit).join()==='dicht_stk,dicht');
+  // Unbekannter Wert bringt NIE Material in die Liste (striktes Opt-in).
+  t("A-6 · unbekannter Wert gilt als nicht abgedichtet",
+    dichtKeys(semblaBomItems(Object.assign(JSON.parse(JSON.stringify(roh)),{abdichtung:"ja"}))).length===0);
+  t("A-6 · Mengen des Rechenkerns bleiben unabhaengig von der Abdichtung",
+    semblaBom(ohne).dichtstreifen_mm===semblaBom(mit).dichtstreifen_mm
+    && semblaBom(ohne).stossfugen===semblaBom(mit).stossfugen
+    && semblaBom(mit).dichtstreifen_mm===roh.bom.dichtstreifen_mm);
+  t("A-6 · Dichtstreifen stehen an unveraenderter Stelle (nach blech_kopf, am Listenende)",
+    iMit.map(it=>it.key).slice(-3).join()==='blech_kopf,dicht_stk,dicht');
+  t("A-6 · alle uebrigen Positionen bitgenau gleich", (()=>{
+    const strip=its=>JSON.stringify(its.filter(it=>it.key!=='dicht'&&it.key!=='dicht_stk'));
+    return strip(iMit)===strip(iOhne) && strip(iNein)===strip(iOhne); })());
+  t("A-6 · abgedichtete Positionen unveraendert (Menge, Einheit, nachrichtlich)", (()=>{
+    const stk=iMit.find(it=>it.key==='dicht_stk'), ges=iMit.find(it=>it.key==='dicht');
+    return stk.unit==='Stk' && stk.menge===roh.bom.stossfugen && !stk.nachrichtlich
+      && ges.unit==='m' && ges.menge===+((roh.bom.dichtstreifen_mm/1000).toFixed(2))
+      && ges.nachrichtlich===true; })());
+  t("A-6 · Positionszahl unterscheidet sich um genau zwei", iMit.length===iOhne.length+2);
 }
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail?1:0);

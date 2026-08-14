@@ -75,7 +75,12 @@ function egVoll(){
   return e;
 }
 // Storage-Mock: aktives Element vorhanden -> Modul laedt es + Eingaben + Katalog beim Start.
-const W=buildWall('Testwand', 2000, 2600, [new Opening(5,11,0,10,'tuer')]);
+// [A-6]/#71: Die Testwand ist ausdruecklich ABGEDICHTET — nur dann fuehrt die Stueckliste
+// Dichtstreifen. Damit bleiben alle bestehenden Dicht-Pruefungen unten der Nachweis, dass sich
+// fuer eine abgedichtete Wand Mengen und Preise nicht geaendert haben; der Gegenfall steht als
+// eigener Block am Ende (Wand ohne Feld und Wand mit ausdruecklichem „nicht abgedichtet“).
+const W=Object.assign(buildWall('Testwand', 2000, 2600, [new Opening(5,11,0,10,'tuer')]),
+  { abdichtung:'abgedichtet' });
 // `_name` ist der Name des WANDEINTRAGS (#70) — getrennt von `_we.name`, genau wie im echten
 // Speicher: `storage.umbenennen()` aendert nur den Eintrag, nie das gerechnete Wandelement.
 // Standard `null` = kein Eintragsname, damit alle Altpruefungen weiter den Wandelementnamen sehen.
@@ -801,6 +806,48 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     ok('#44 Ebene und Preisschalter schreiben nichts ins Datenmodell',
       _merges.length===vorher && !/setzeMappe|verorteWand|speichere\(/.test(script));
   }
+}
+
+// ---- [A-6]/#71 Abdichtung je Wand am echten Stuecklistenpfad -----------------------------
+// Zwei Waende mit verschiedenem Zustand laufen durch DIESELBE Ableitung, die auch Modul 5,
+// Modul 7 und der zentrale Export benutzen (`stuecklistePositionen`). Geprueft wird beides:
+// die nicht abgedichtete Wand fuehrt KEINE der beiden Positionen, und die abgedichtete Wand
+// liefert unveraenderte Mengen UND Preise.
+{
+  const wOhne=JSON.parse(JSON.stringify(W)); delete wOhne.abdichtung;      // Altbestand: kein Feld
+  const wNein=Object.assign(JSON.parse(JSON.stringify(W)),{abdichtung:'nicht_abgedichtet'});
+  const pMit=stuecklistePositionen(W, egVoll(), KATALOG);
+  const pOhne=stuecklistePositionen(wOhne, egVoll(), KATALOG);
+  const pNein=stuecklistePositionen(wNein, egVoll(), KATALOG);
+  const dichtKeys=ps=>ps.filter(p=>p.key==='dicht'||p.key==='dicht_stk').map(p=>p.key);
+  ok('[A-6] nicht abgedichtet: keine der beiden Dichtstreifenpositionen',
+    dichtKeys(pNein).length===0 && dichtKeys(pOhne).length===0);
+  ok('[A-6] abgedichtet: beide Positionen, Mengen unveraendert',
+    dichtKeys(pMit).join()==='dicht_stk,dicht'
+    && pMit.find(p=>p.key==='dicht_stk').menge===W.bom.stossfugen
+    && Math.abs(pMit.find(p=>p.key==='dicht').menge - W.bom.dichtstreifen_mm/1000)<0.01);
+  ok('[A-6] abgedichtet: Preisaufloesung unveraendert (Einbauposition bepreist, Laenge nachrichtlich)',
+    pMit.find(p=>p.key==='dicht_stk').ep===0.3 && pMit.find(p=>p.key==='dicht_stk').gp>0
+    && pMit.find(p=>p.key==='dicht').ep===null && pMit.find(p=>p.key==='dicht').status==='nachrichtlich');
+  ok('[A-6] alle uebrigen Positionen bleiben bitgenau gleich', (()=>{
+    const strip=ps=>JSON.stringify(ps.filter(p=>p.key!=='dicht'&&p.key!=='dicht_stk'));
+    return strip(pOhne)===strip(pMit) && strip(pNein)===strip(pMit); })());
+  ok('[A-6] Summe der nicht abgedichteten Wand ist um genau den Dichtstreifen-GP kleiner', (()=>{
+    const sMit=stuecklisteSumme(pMit), sOhne=stuecklisteSumme(pOhne);
+    return Math.abs((sMit.summe - sOhne.summe) - pMit.find(p=>p.key==='dicht_stk').gp)<1e-9; })());
+  // Die Oberflaeche zeigt genau das — kein zweiter Filter im Modul, nur diese eine Ableitung.
+  ok('[A-6] Modul 4 filtert nicht selbst (kein Abdichtungs-Zweig im Modulskript)',
+    !/abdichtung/i.test(script));
+  ok('[A-6] Oberflaeche einer nicht abgedichteten Wand nennt keine Dichtstreifen', (()=>{
+    const vorherWe=_we, vorherId=_aktiv, vorherEg=_eg;
+    // Beide Zustaende ausdruecklich setzen — `_we` traegt an dieser Stelle des Laufs laengst
+    // eine andere Wand, ein „vorher/nachher“ auf ihr wuerde nichts ueber die Abdichtung sagen.
+    _aktiv='w-nicht-abgedichtet'; _we=wNein; _eg=egVoll(); _subs.forEach(cb=>cb());
+    const treffer=!/Dichtstreifen/.test(document.getElementById('tbody').innerHTML);
+    _aktiv='w-abgedichtet'; _we=W; _eg=egVoll(); _subs.forEach(cb=>cb());
+    const zurueck=/Dichtstreifen/.test(document.getElementById('tbody').innerHTML);
+    _aktiv=vorherId; _we=vorherWe; _eg=vorherEg; _subs.forEach(cb=>cb());
+    return treffer && zurueck; })());
 }
 
 // #70 Gesamtnachweis ueber den KOMPLETTEN Lauf: Modul 4 hat `eingaben.projekt` kein einziges Mal

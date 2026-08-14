@@ -2339,6 +2339,14 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   const hoehe56 = store.holeElement(id56).wandelement.height_mm;
   const typ56 = store.holeElement(id56).wandelement.wandtyp;
   const rollen56 = JSON.stringify(store.holeProdukte(1, id56).rollen);
+  // [A-6]/#71: Die Wand wird ABGEDICHTET — genau so, wie Modul 1 es an dieses Wandelement
+  // geschrieben haette. Der Geschosseditor waehlt das Merkmal nicht, muss es beim Neurechnen
+  // der Laenge aber unveraendert mitfuehren; ginge es verloren, verloere die Wand
+  // stillschweigend ihre Dichtstreifen.
+  {
+    const elAb = store.holeElement(id56);
+    store.speichere(elAb.name, Object.assign(elAb.wandelement, { abdichtung: 'abgedichtet' }), id56);
+  }
 
   // (b) Muss 3 — Endgriff: ein Bedienvorgang, beide Staende wandern mit.
   GP.werkzeug('auswahl');
@@ -2352,6 +2360,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     store.holeElement(id56).wandelement.height_mm === hoehe56
     && store.holeElement(id56).wandelement.wandtyp === typ56
     && JSON.stringify(store.holeProdukte(1, id56).rollen) === rollen56);
+  const BOM56 = await import("../../docs/shared/sembla-bom.js");
+  ok('[A-6]/#71 die Abdichtung ueberlebt die Laengenaenderung am Endgriff',
+    store.holeElement(id56).wandelement.abdichtung === 'abgedichtet'
+    && BOM56.semblaBomItems(store.holeElement(id56).wandelement)
+         .filter(p => p.key === 'dicht' || p.key === 'dicht_stk').length === 2);
 
   // (c) Muss 8 — Rueckgaengig/Wiederholen stellen BEIDE Staende her.
   GP.undo(); await warte();
@@ -2377,6 +2390,8 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   GP.redo(); await warte();
   ok('#56 (Muss 8) und Wiederholen stellt alle drei wieder her',
     GP.bemassungen().some(b => b.id === lm.id) && einig(id56, 1500) && ableitungPasst(id56));
+  ok('[A-6]/#71 die Abdichtung ueberlebt auch Laengenmass, Rueckgaengig und Wiederholen',
+    store.holeElement(id56).wandelement.abdichtung === 'abgedichtet');
 
   // (e) Nicht-Ziel 1 — was ungueltig wuerde, wird benannt ABGEWIESEN. Nichts wird
   //     geklemmt, gefiltert oder ersetzt, und es bleibt nichts halb geschrieben.

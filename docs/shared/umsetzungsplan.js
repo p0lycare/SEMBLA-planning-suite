@@ -24,8 +24,8 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-08-13",
-  "signatur": "ce003770",
+  "stand": "2026-08-14",
+  "signatur": "c2d9db2d",
   "entscheidungen": [
     {
       "issue": 41,
@@ -81,15 +81,6 @@ export const PLAN = {
     "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
   },
   "weitere": [
-    {
-      "issue": 71,
-      "titel": "Dichtstreifen je Wand ein- oder ausschließen",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
     {
       "issue": 76,
       "titel": "Geschossursprung frei verschieben",

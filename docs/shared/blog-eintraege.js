@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260814-01",
+    datum: "2026-08-14",
+    typ: "feature",
+    issue: 71,
+    titel: "Abdichtung je Wand wählbar — Dichtstreifen stehen nur noch in der Stückliste abgedichteter Wände",
+    testbitte: "In Modul 1 bei einer Wand „abgedichtet“ wählen und in Modul 4 die beiden Dichtstreifenzeilen prüfen; danach auf „nicht abgedichtet“ stellen — beide Zeilen verschwinden, alle übrigen Mengen und Preise bleiben gleich.",
+  },
+  {
     id: "chg-20260813-10",
     datum: "2026-08-13",
     typ: "feature",

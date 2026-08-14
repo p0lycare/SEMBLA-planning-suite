@@ -224,6 +224,20 @@ export function semblaBom(w) {
 }
 
 /**
+ * Ist die Wand abgedichtet ([A-6], Issue #71)? Die Entscheidung faellt JE WAND und steht als
+ * `wandelement.abdichtung` am Wandelement (kanonische Werte und `normAbdichtung()` in
+ * `storage.js`).
+ *
+ * Hier steht bewusst eine STRIKTE Inline-Pruefung statt eines Imports: `sembla-bom.js` ist
+ * importfrei und soll es bleiben — der Mengenbaustein darf nicht an die localStorage-Schicht
+ * haengen. Strikt heisst: NUR der kanonische Wert schaltet die Dichtstreifen ein. Alles
+ * andere — fehlendes Feld, Altbestand, Tippfehler — gilt als NICHT abgedichtet. Damit kann
+ * ein unbekannter Wert nie stillschweigend Material in die Stueckliste bringen.
+ * @param {any} w Wandelement
+ */
+function _abgedichtet(w) { return !!w && w.abdichtung === "abgedichtet"; }
+
+/**
  * Kanonische Positions-Liste für die Stückliste — überall identisch.
  * unit 'Stk' = Stückzahl, 'm' = Länge in Metern (dezimal).
  *
@@ -231,6 +245,13 @@ export function semblaBom(w) {
  * gezählte Ware nur noch anders ausdrückt (Dichtstreifen-Gesamtlänge, [A-6]). Sie ist
  * eine Mengenangabe zur Information und wird NIE bepreist — sonst stünde dieselbe Ware
  * zweimal in einer Summe.
+ *
+ * Die beiden Dichtstreifenpositionen entstehen nur für eine ABGEDICHTETE Wand ([A-6],
+ * Issue #71) — und zwar GENAU HIER, weil dies die einzige Erzeugungsstelle ist. Modul 4,
+ * Modul 5, Modul 7, die Gesamtstückliste und der zentrale Export lesen alle diese Liste
+ * und brauchen deshalb keine eigene Filterung (die waere ein zweiter, driftfaehiger Ort).
+ * `semblaBom()` bleibt unberuehrt: `stossfugen` und `dichtstreifen_mm` sind Mengen des
+ * Rechenkerns und bleiben unabhaengig von der Abdichtung lesbar.
  * @param {any} w Wandelement
  */
 export function semblaBomItems(w) {
@@ -280,9 +301,12 @@ export function semblaBomItems(w) {
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
     { key: "blech_boden", label: "Bodenblech-Modul (" + bd + " mm)",  unit: "Stk", menge: b.stahlblech_module_boden },
     { key: "blech_kopf",  label: "Kopfblech-Modul (" + bd + " mm)",   unit: "Stk", menge: b.stahlblech_module_kopf },
+    // Nur bei abgedichteter Wand — an unveraenderter Stelle in der Liste ([A-6]/#71).
+    ...(_abgedichtet(w) ? [
     { key: "dicht_stk",   label: "Dichtstreifen 20 cm (Schallschutz)", unit: "Stk", menge: b.stossfugen },
     { key: "dicht",       label: "Dichtstreifen – Gesamtlänge",       unit: "m",   menge: +((b.dichtstreifen_mm / 1000).toFixed(2)),
       nachrichtlich: true },
+    ] : []),
   ]);
 }
 

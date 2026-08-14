@@ -26,7 +26,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   setAttribute(){} getBoundingClientRect(){return {left:0,width:1000};} get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
-const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech'};
+const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
 
@@ -641,6 +641,51 @@ store.setzeKatalog(KATALOG);
     document.getElementById('hgt').value='2.60'; WP.run();
     return treffer; })());
   store.setzeKatalog(KATALOG); store.setzeAktiv(idA); WP.renderProdukte();
+}
+
+// ---- [A-6]/#71 Abdichtung je Wand: echte Oberflaeche, echter Speicherpfad ----------------
+// Gewaehlt wird ueber das reale Auswahlfeld (change-Ereignis wie im Browser); geschrieben wird
+// ueber den regulaeren Auto-Speicher-Pfad. Geprueft werden Standard, beide Zustaende, das
+// Ueberleben des kompletten Neuaufbaus durch buildWall() und der Fortbestand ueber einen Reload.
+{
+  const idAb=store.speichere('Abdichtung', buildWall('Abdichtung',2000,2600,[]));
+  store.setzeAktiv(idAb);
+  globalThis.window.__wpInit();                        // frischer Seitenaufruf
+  const feld=document.getElementById('abdichtung');
+  ok('[A-6] Wand ohne Feld: Oberflaeche zeigt den Standard „nicht abgedichtet“',
+    feld.value==='nicht_abgedichtet');
+  // Das blosse LADEN schreibt nichts zurueck: der gespeicherte Altbestand bleibt ohne Feld und
+  // gilt beim Lesen als „nicht abgedichtet“. Geschrieben wird erst durch eine echte Bedienung.
+  ok('[A-6] Laden normalisiert nur, es schreibt den Standard nicht zurueck',
+    !('abdichtung' in store.aktivesWandelement()));
+  document.getElementById('hgt').value='2.40'; document.getElementById('hgt').dispatch('input');
+  ok('[A-6] erste echte Bedienung schreibt den Standard ans Wandelement',
+    store.aktivesWandelement().abdichtung==='nicht_abgedichtet');
+  document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
+  feld.value='abgedichtet'; feld.dispatch('change');   // echter Bedienweg
+  ok('[A-6] Wahl „abgedichtet“ steht am gespeicherten Wandelement',
+    store.aktivesWandelement().abdichtung==='abgedichtet');
+  ok('[A-6] Wahl ueberlebt den Neuaufbau durch buildWall()', (()=>{
+    WP.run(); return WP.RESULT.wandelement.abdichtung==='abgedichtet'
+      && store.aktivesWandelement().abdichtung==='abgedichtet'; })());
+  ok('[A-6] Auswahl aendert weder Geometrie noch Vorspannung', (()=>{
+    const w=store.aktivesWandelement();
+    feld.value='nicht_abgedichtet'; feld.dispatch('change');
+    const n=store.aktivesWandelement();
+    const bar=x=>JSON.stringify({c:x.courses,t:x.tension_columns,b:x.bom,p:x.prestress});
+    return bar(w)===bar(n); })());
+  feld.value='abgedichtet'; feld.dispatch('change');
+  globalThis.window.__wpInit();                        // Reload: alles frisch aus dem Storage
+  ok('[A-6] Reload: Auswahl bleibt erhalten und steht im Auswahlfeld',
+    store.aktivesWandelement().abdichtung==='abgedichtet'
+    && document.getElementById('abdichtung').value==='abgedichtet');
+  // Wandbezogen: eine zweite Wand erbt nichts von der ersten.
+  const idAb2=store.speichere('Abdichtung 2', buildWall('Abdichtung 2',2000,2600,[]));
+  store.setzeAktiv(idAb2); globalThis.window.__wpInit();
+  ok('[A-6] zweite Wand erbt die Auswahl nicht (Merkmal ist wandbezogen)',
+    document.getElementById('abdichtung').value==='nicht_abgedichtet'
+    && store.holeElement(idAb).wandelement.abdichtung==='abgedichtet');
+  store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 
 // Reload (erneutes __wpInit(): das Modul liest alles frisch aus dem Storage)
