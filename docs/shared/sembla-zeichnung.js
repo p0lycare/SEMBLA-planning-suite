@@ -19,6 +19,11 @@
  *   * Zuschnittkonflikte des Kerns stehen als Mangelblock auf dem Blatt ([Z-5]/[Z-6]):
  *     ein unvollstaendiger Zuschnitt wird nie als vollstaendiges Blatt ausgegeben.
  *
+ * Brandschutzklassifikation (#79): das Blatt weist sie als Kurztext im Zeichnungsrand
+ * aus und erklaert beide Klassen in der Legende. Sie wird AUSSCHLIESSLICH GELESEN —
+ * gewaehlt wird sie in Modul 1 —, ist eine reine Planungskennzeichnung und veraendert
+ * an dieser Zeichnung nichts (kein Masstab, keine Geometrie, keine Menge).
+ *
  * Masstab: `waehleMasstab()` waehlt aus der Normreihe den GROESSTEN Masstab, bei dem
  * die Wand ins nutzbare Zeichenfeld des Blattformats passt. Das SVG traegt
  * `width`/`height` in Papier-mm, ist also im Druck masstabsgetreu ([D-2]).
@@ -33,6 +38,11 @@
 
 import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
 import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL } from "./sembla-montage.js";
+// #79: NUR der reine Normalisierer der Brandschutzklassifikation (F0/F30, Standard
+// F0) — kein Speicherzugriff, keine Lese- oder Schreibfunktion. Er liegt kanonisch in
+// storage.js, weil Modul 1 (der einzige Schreibweg) dieselbe Stelle nutzt; eine zweite
+// Werteliste hier waere genau die Drift, die das verhindert.
+import { normBrandklasse } from "./storage.js";
 
 const GRID_FALLBACK = 125, COURSE_FALLBACK = 200, ROD_FALLBACK = 1100;
 
@@ -155,6 +165,52 @@ export const FARBE = {
   platte: "#14559c", mutter: "#0b3a73",
   mass: "#46505e", staffel: "#0a7f8c", reihe: "#8f96a0",
 };
+
+/**
+ * Brandschutzklassifikation auf dem Blatt (#79) — Darstellung, sonst nichts. Die
+ * Klassifikation ist eine reine PLANUNGSKENNZEICHNUNG: aus ihr wird kein Nachweis,
+ * keine Freigabe und keine Materialregel abgeleitet, und sie veraendert weder
+ * Wandabwicklung noch Masstab, Bemassung, Stueckliste oder Schriftfeld.
+ *
+ * Getragen wird die Unterscheidung OHNE Farbe: der `kuerzel`-Kurztext steht im
+ * freien oberen Zeichnungsrand des Blattes, `name` benennt ihn in Worten in der
+ * Legende. Beides bleibt im Schwarz-Weiss-Ausdruck lesbar; `farbe` kommt nur
+ * additiv dazu.
+ *
+ * Anders als im Lageplan (Modul 9) und im Geschosseditor gibt es hier BEWUSST
+ * KEINE Schraffur: dort ist die Wand ein leeres Rechteck der Draufsicht, hier ist
+ * die Wandflaeche der Zeichnungsinhalt selbst (Steine je Lage, Oeffnungen,
+ * Vorspannstraenge, Stangenstuecke, Bleche). Ein Muster darueber verdeckte genau
+ * das Ausfuehrungsnoetige.
+ *
+ * Wortlaut und Kennfarbe muessen zu `BRANDKLASSE` in `sembla-lageplan.js` und in
+ * `geschossplan.html` passen. Importiert wird von dort NICHTS: zwei Ausgabemodule
+ * duerfen nicht aneinanderhaengen, und die Geometrie ist ohnehin verschieden
+ * (dort Draufsicht, hier Abwicklung). Kanonisch sind allein die WERTE F0/F30 samt
+ * Standard — sie kommen aus `storage.js` (`normBrandklasse`), nicht von hier.
+ */
+export const BRANDKLASSE = Object.freeze({
+  F0: Object.freeze({ kuerzel: "F0", name: "ohne Brandschutzklassifikation", farbe: "#5b6673" }),
+  F30: Object.freeze({ kuerzel: "F30", name: "Brandschutzklassifikation F30", farbe: "#0b7285" }),
+});
+
+/**
+ * Der Kurztext im Blatt wird ausgeschrieben („Brandschutz F30"), weil die
+ * eigenstaendige SVG-Datei keine Legende traegt und fuer sich lesbar sein muss.
+ * Legendenschluessel bleibt das blosse Kuerzel.
+ */
+export const BRAND_PRAEFIX = "Brandschutz ";
+
+/**
+ * Lage des Kurztextes in PAPIER-mm: Abstand von der rechten Zeichnungskante,
+ * Grundlinie von oben, Schriftgroesse. Er sitzt im ohnehin vorhandenen
+ * Zeichnungsrand (`PAD_MM`) UEBER der Wandoberkante — die einzige nachweislich
+ * freie Zone: unten liegt die Gesamtlaengenkette, links Hoehenkette und
+ * Reihennummern, in der Flaeche die Wand selbst. `PAD_MM`, `RAND_X`/`RAND_Y` und
+ * `waehleMasstab()` bleiben damit unberuehrt — die Angabe kostet keinen Millimeter
+ * Zeichenfeld und verschiebt den Masstab nicht.
+ */
+const BRAND_RAND_MM = 1, BRAND_BASIS_MM = 3.4, BRAND_FS_MM = 3;
 
 // --------------------------------------------------------- Blatt-Ueberschriften
 
@@ -343,6 +399,22 @@ export function zeichnungSvg(w, opts = {}) {
   for (let r = 0; r < _lagen(w); r++) {
     const yc = Y((r + 0.5) * C);
     s += `<text x="${_n(pad - 3)}" y="${_n(yc + 1)}" font-size="${_n(Math.min(3, LF))}" fill="${FARBE.reihe}" text-anchor="end">${r + 1}</text>`;
+  }
+
+  // Brandschutzklassifikation (#79): eigene Gruppe ZULETZT — sie kann damit von
+  // nichts ueberzeichnet werden und verdeckt selbst nichts, weil sie im freien
+  // oberen Zeichnungsrand steht (s. BRAND_*). Anders als im Lageplan gibt es keine
+  // Auszeichnung Wand fuer Wand: das Blatt zeigt GENAU EINE Wand, die Angabe gilt
+  // also dem Blatt. Gelesen wird nur; gewaehlt wird sie ausschliesslich in Modul 1.
+  // Fehlt das Feld oder traegt es einen unbekannten Wert, gilt F0 — nie eine
+  // geratene oder als geprueft dargestellte Angabe.
+  {
+    const bk = BRANDKLASSE[normBrandklasse(w.brandklasse)];
+    s += `<g class="brand" data-brandklasse="${bk.kuerzel}">`
+      + `<text x="${_n(vbW - BRAND_RAND_MM)}" y="${_n(BRAND_BASIS_MM)}" font-size="${_n(BRAND_FS_MM)}" `
+      + `text-anchor="end" fill="${bk.farbe}">${BRAND_PRAEFIX}${bk.kuerzel}`
+      + `<title>${_esc(bk.name)} — Planungskennzeichnung, kein Nachweis; `
+      + `gewählt wird sie in Modul 1.</title></text></g>`;
   }
 
   const viewBox = `0 0 ${_n(vbW)} ${_n(vbH)}`;
@@ -558,6 +630,16 @@ export function legendeHtml() {
     + `<span>${i(FARBE.stahl, "plate")}Boden-/Kopfblech</span>`
     + `<span>${i(FARBE.i3, "plate")}i3 (37,5 cm)</span>`
     + `<span>${i(FARBE.i2, "plate")}i2 (25 cm)</span>`
+    // Brandschutzklassifikation (#79): BEIDE Klassen stehen hier, jede mit ihrer
+    // Bedeutung in Worten — der Kurztext auf dem Blatt ist sonst nicht aufloesbar.
+    // Schluessel ist das KUERZEL, kein Farbfeld: `FARBE.stahl` ist dieselbe Farbe
+    // wie die kanonische F0-Kennfarbe, ein Farbfeld hiesse also zugleich
+    // „Boden-/Kopfblech". Der Buchstabenschluessel folgt ohnehin dem ■/◆/▲-Muster
+    // aus [P-19] und traegt schwarz-weiss.
+    + `<span><b style="color:${BRANDKLASSE.F0.farbe}">${BRANDKLASSE.F0.kuerzel}</b>`
+    + ` ${BRANDKLASSE.F0.name}</span>`
+    + `<span><b style="color:${BRANDKLASSE.F30.farbe}">${BRANDKLASSE.F30.kuerzel}</b>`
+    + ` ${BRANDKLASSE.F30.name}</span>`
     + `</div>`
     // [P-19] Der Kennzeichnungsschluessel der Einbauteile steht ausdruecklich MIT Symbolen
     // dabei: Farbe allein waere im Schwarz-Weiss-Druck keine Kennzeichnung.

@@ -127,7 +127,9 @@ und keinen `SCHEMA_VERSION`-Sprung**: normalisiert wird an genau **einer** Stell
 gespeichertes Wandelement wird nie stillschweigend umgeschrieben (bloßes Laden in Modul 1 schreibt
 nichts zurück; erst eine echte Bedienung setzt den Wert). Das Feld liegt **nicht** in `eingaben`,
 nicht in der Projektmappe und nicht im Katalog und ist im Projektformat **optional** ⇒
-`PROJEKT_VERSION` bleibt 2. Die **Darstellung** ist für den **Lageplan (Modul 9) umgesetzt**: je Wand
+`PROJEKT_VERSION` bleibt 2. Die **Darstellung** ist in **allen drei geforderten Ansichten umgesetzt**
+— Lageplan (Modul 9), Geschosseditor und technische Wandzeichnung (Modul 7) —, die Anforderung aus
+#79 ist damit **vollständig** abgedeckt. Im **Lageplan** je Wand
 ein Kurztext „F0"/„F30" an der Wandkante, für F30 zusätzlich eine **Schraffur** über der Wandfläche,
 dazu die Kennfarbe, ein Legendeneintrag je Klasse mit dem Merkmal **in Worten** und eine eigene
 Spalte „Brandschutz" der Wandtabelle — in Vorschau, Druck und Export gleich. Getragen wird die
@@ -150,8 +152,26 @@ aus `sembla-lageplan.js` importiert — der Editor ist die Bearbeitung und darf 
 hängen, und die Geometrie ist ohnehin verschieden (dort Papier-mm, hier Welt-mm am Blick); Wortlaut
 und Kennfarbe müssen aber übereinstimmen, und die kanonischen **Werte** kommen weiterhin nur aus
 `storage.js`. Der Editor hat dafür **kein Bedienelement** und **keinen Schreibweg** (auch nicht im
-Sammel-Editor); seine einzige Berührung bleibt das Mitführen in `rechneWandelement()`. Offen ist
-allein noch die Darstellung in der **Zeichnung (Modul 7)** — eigenes Paket.
+Sammel-Editor); seine einzige Berührung bleibt das Mitführen in `rechneWandelement()`.
+
+In der **technischen Wandzeichnung (Modul 7)** ist sie seit #79 ebenfalls **umgesetzt** — und dort
+bewusst **anders getragen**: Das Blatt zeigt **genau eine** Wand, es gibt also keine Auszeichnung
+Wand für Wand, und die Wandfläche ist hier der **Zeichnungsinhalt selbst** (Steine je Lage,
+Öffnungen, Stränge, Stangenstücke, Bleche). Eine **Schraffur** darüber verdeckte genau das
+Ausführungsnötige und entfällt deshalb; getragen wird die Unterscheidung vom **Kurztext**
+(„Brandschutz F0"/„Brandschutz F30") und vom **Klartext in der Legende** — beides ohne Farbe lesbar,
+Kennfarbe nur additiv. Der Kurztext steht als eigene Gruppe (`class="brand"`, `data-brandklasse`)
+**zuletzt** im Blatt-SVG und im ohnehin vorhandenen **Zeichnungsrand über der Wandoberkante**: er
+verdeckt nichts und lässt `PAD_MM`, Norm-Maßstab, Bemaßung, Tabellen und Schriftfeld **bit-gleich**.
+Weil er in `zeichnungSvg()` entsteht, tragen **Vorschau, Druck-HTML und die eigenständige
+SVG-Datei** (auch die des zentralen Exports) dieselbe Zeichenkette — **ein** Zeichenpfad ([D-6]).
+Der **Darstellungsschlüssel liegt lokal** in `sembla-zeichnung.js`; aus `sembla-lageplan.js` wird
+**nichts** importiert (zwei Ausgabemodule dürfen nicht aneinanderhängen), Wortlaut und Kennfarbe
+müssen aber übereinstimmen — geprüft im Test, nicht verdrahtet. Die kanonischen **Werte** kommen
+auch hier nur aus `storage.js` (`normBrandklasse`, der **einzige** Import von dort). Modul 7 hat
+**kein Bedienelement** und **keinen Schreibweg**; es **zeigt** die Klasse zusätzlich in seiner
+Übersicht an. Abgeleitet wird nichts: Stückliste, Vorspannkennzahlen und Mangelblock rechnen
+unverändert.
 
 **Stangenlänge nur aus dem Katalog — kein Eingabefeld ([Z-1]).** Modul 1 hat **kein** Feld für die
 Gewindestangenlänge mehr (ersatzlos entfernt, nicht nur gesperrt): es gibt keinen zweiten Weg, die
@@ -799,6 +819,11 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      erzeugen keine Zeile** (kein „–", kein „###"). Der statische Nachweis ist ausdrücklich
      **nicht** Bestandteil der Zeichnung — kein Ergebnis, kein Nachweismodell (**[D-8]**); der
      frühere Pflichtsatz dazu ist samt `NACHWEIS_TEXT` entfallen, auch in `zeichnungSvgDatei`.
+     Dazu der **Brandschutz-Darstellungsschlüssel** (`BRANDKLASSE`/`BRAND_PRAEFIX`, Kurztext und
+     Kennfarbe je F0/F30, #79) — **ohne** Schraffur, weil die Wandfläche hier der Zeichnungsinhalt
+     ist. **Eine** benannte Ausnahme beim Import: `normBrandklasse` aus `storage.js` — ein reiner
+     Normalisierer ohne Speicherzugriff, der die kanonischen Werte F0/F30 samt Standard mitbringt;
+     aus `sembla-lageplan.js` wird **nichts** importiert (Wortlaut-/Farbgleichheit sichert der Test).
    - `sembla-ifc.js` — IFC4-Export (`wandelementToIfc` + `parseObj`/`meshStats`; genutzt vom zentralen Export).
    - `sembla-export.js` — baut die Export-Dateien (Stückliste/Zuschnitt-CSV, Montage-HTML,
      **Zeichnung als SVG + druckbares HTML**, **Statischer-Nachweis-HTML**, IFC-Text) für Modul 0. Das
@@ -909,7 +934,7 @@ der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv �
 | 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only bei Preisen**: sie werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar sind `waehrung` und — seit #81 — die **manuelle Menge je Position** ([P-20], **einziger Schreibweg**): berechnete und wirksame Menge stehen gleichzeitig in der Mengenzelle, jede Übersteuerung ist einzeln rücksetzbar, ganze Zahlen ab 0, sonst benannt abgewiesen; sie wirkt nur auf der **Wandebene** und nicht in den Exportdateien (beides steht am Blatt), nicht zuordenbare Einträge werden gemeldet statt gelöscht → `eingaben.kosten`. Nicht eindeutige Preiszuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
 | 5 | `montage.html` | Montageanleitung: **Baugruppenabschnitte nach Montageereignissen** (erste Stange, Kopplung/neue Stange, oberer Abschluss) mit durchgehend nummerierten Steinreihen, A4-paginiert druckbar (`sembla-montage.js`; identisch zum zentralen Export) |
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
-| 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
+| 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Die **Brandschutzklassifikation F0/F30** (#79) steht als **Kurztext** („Brandschutz F0"/„Brandschutz F30") im freien Zeichnungsrand über der Wandoberkante und mit ihrer Bedeutung **in Worten** in der Legende — auch **schwarz-weiß** lesbar, in Vorschau, Druck-HTML und exportierter SVG-Datei dieselbe Zeichenkette. **Ohne** Schraffur (die Wandfläche ist hier der Zeichnungsinhalt), ohne Eintrag im Schriftfeld, ohne jede Ableitung; ein Wandelement ohne das Feld wird als F0 ausgewiesen. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement hier — die Übersicht zeigt die Klasse nur an). Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 | 8 | `blog.html` | **Umsetzungsplan & Änderungen** (#55, mobile-first, read-only, **streng statisch**): genau zwei Ansichten — **„Umsetzungsplan"** (Standard) aus dem versionierten Artefakt `umsetzungsplan.js` via `sembla-umsetzungsplan.js` (Entscheidungen für Tibor · nächstes Issue mit Begründung · geordnete weitere · blockierte mit Ursache und nächstem Schritt) und **„Was ist neu?"** aus `blog-eintraege.js` via `sembla-blog.js`. Der frühere „Projektstatus" samt GitHub-Live-Abruf und Anzeigecache ist **entfallen**: **kein `fetch`, kein `localStorage`**, kein Login/Backend. Fehlender/ungültiger Plan ⇒ **sichtbar gemeldet, nichts geraten**. Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben` |
 | 9 | `lageplan.html` | **Lageplan des Geschosses** (#54/#80, Kapitel 16.11, [N-1]…[N-9]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. Der **kalibrierte Geschossplan** liegt seit #80 als **Hintergrund** unter der Zeichnung ([N-9]) — read-only aus derselben Bilddatenbank, mit gespeichertem Maßstab/Versatz, **flüchtig** einstellbarer Transparenz (0…100 %, Standard 30) und in Vorschau, Druck und Export gleich; unkalibriert oder ohne Bild gibt es **keinen** Hintergrund und der Grund steht benannt auf dem Blatt. Aus dem Bild wird weiter **nichts** abgeleitet ([L-9]); kein IFC, keine Mengen/Kosten. Die **Brandschutzklassifikation F0/F30** (#79) steht seit diesem Paket je Wand im Blatt: Kurztext an der Wandkante, für F30 zusätzlich **Schraffur**, dazu Kennfarbe, Legendeneintrag je Klasse mit dem Merkmal in Worten und die Spalte **„Brandschutz"** der Wandtabelle — auch **schwarz-weiß** unterscheidbar, in Vorschau, Druck und Export gleich. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement hier); eine verwaiste Wand bleibt **ohne** Angabe, und abgeleitet wird daraus nichts |
 

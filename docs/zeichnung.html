@@ -78,6 +78,7 @@
         <div class="k">Spannachsen</div><div class="v" id="ovCols">–</div>
         <div class="k">Maßstab</div><div class="v" id="ovScale">–</div>
         <div class="k">Blattgröße</div><div class="v" id="ovSheet">–</div>
+        <div class="k">Brandschutz</div><div class="v" id="ovBrand">–</div>
         <div class="k">Status</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
       </div>
     </div>
@@ -87,7 +88,9 @@
       Wandelements dar. Das Blatt zeigt <b>nur das Ausführungsnötige</b>: die maßstäbliche Wand mit
       Maßen, Steinreihen, Öffnungen, Spannachsen und den konkreten Stangenstücken, daneben
       Baustellenstückliste, Einbauteil-IDs, Vorspannkennzahlen, etwaige Zuschnittkonflikte und den
-      Darstellungsschlüssel. <b>Regeltexte trägt es nicht</b> — das Fachregelwerk steht im Handbuch.
+      Darstellungsschlüssel. Die <b>Brandschutzklassifikation</b> (F0/F30) steht als Kurztext auf
+      dem Blatt und in der Legende; gewählt wird sie in „Wandplanung“ — dieses Modul zeigt sie nur an.
+      <b>Regeltexte trägt es nicht</b> — das Fachregelwerk steht im Handbuch.
       Der statische Nachweis ist <b>nicht Bestandteil dieser Zeichnung</b> — er entsteht in Modul
       „Statik" und liegt als eigenes Dokument im zentralen Export.
       Dateien (SVG maßstabsgetreu + druckbares HTML) gibt es ausschließlich über den
@@ -175,12 +178,22 @@ function render(){
     +' · Feld '+bl.feld_mm.w+' × '+bl.feld_mm.h+' mm';
 }
 
+/* Brandschutzklassifikation (#79) — NUR ANZEIGE. Gewählt wird sie ausschließlich in
+   Modul 1; dieses Modul hat dafür kein Bedienelement und keinen Schreibweg. Normalisiert
+   wird über die kanonische Stelle (store.normBrandklasse, storage.js): fehlt das Feld oder
+   ist es unbekannt, gilt F0 — hier wird nichts geraten und nichts zurückgeschrieben. Das
+   Blatt selbst zeichnet die Angabe im gemeinsamen Baustein, nicht hier. */
+function brandklasse(w){
+  return (store&&store.normBrandklasse) ? store.normBrandklasse(w&&w.brandklasse) : 'F0';
+}
+
 function applyWand(w){
   WALL=w;
   $('leer').style.display='none';
   $('ovDim').textContent=fmt(w.length_mm/1000,3)+' × '+fmt(w.height_mm/1000,2)+' m';
   $('ovGrid').textContent=w.N_grid+' Raster · '+w.lagen+' Steinreihen';
   $('ovCols').textContent=String((w.tension_columns||[]).length);
+  $('ovBrand').textContent=brandklasse(w);
   const b=$('ovBadge');
   if(w.validation && w.validation.buildable===false){ b.className='badge no'; b.textContent='Nicht baubar'; }
   else { b.className='badge ok'; b.textContent='Baubar'; }
@@ -218,7 +231,7 @@ function clearWall(){
   WALL=null; MASSSTAB=null;
   $('blattwrap').innerHTML=''; setzeVorschauMassstab(); $('leer').style.display='';
   $('ovDim').textContent='—'; $('ovGrid').textContent='—'; $('ovCols').textContent='—';
-  $('ovScale').textContent='—'; $('ovSheet').textContent='—';
+  $('ovScale').textContent='—'; $('ovSheet').textContent='—'; $('ovBrand').textContent='—';
   $('ovBadge').className='badge'; $('ovBadge').textContent='—';
   $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
 }

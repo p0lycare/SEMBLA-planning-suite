@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-01",
+    datum: "2026-08-16",
+    typ: "feature",
+    issue: 79,
+    titel: "Brandschutz F0/F30 steht jetzt auch auf der technischen Wandzeichnung — als Kurztext und in der Legende",
+    testbitte: "In Modul 1 eine Wand auf F30 stellen und Modul 7 öffnen: Der Kurztext steht am oberen "
+      + "Blattrand, die Legende erklärt F0 und F30 in Worten; Druckansicht und die exportierte "
+      + "SVG-Datei zeigen dieselbe Angabe — auch schwarz-weiß lesbar.",
+  },
+  {
     id: "chg-20260815-03",
     datum: "2026-08-15",
     typ: "feature",

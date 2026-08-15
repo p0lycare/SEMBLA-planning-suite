@@ -17,6 +17,10 @@ import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen }
   from "../../docs/shared/sembla-zeichnung.js";
 import { zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
+// #79: der ECHTE Normalisierer aus der Speicherschicht — der Storage-Mock reicht ihn
+// unveraendert durch (wie `window.SEMBLA.store` im Browser), damit hier kein zweites,
+// erfundenes F0/F30-Verhalten getestet wird.
+import { normBrandklasse } from "../../docs/shared/storage.js";
 
 const html = readFileSync(new URL("../../docs/zeichnung.html", import.meta.url), "utf8");
 // erstes attributloses <script> ist die App-Logik (das zweite ist type="module")
@@ -79,6 +83,7 @@ const storeMock = {
   aktiveEingaben: () => JSON.parse(JSON.stringify(_eing)),
   mergeEingaben: (teil, patch) => { schreib.push({ teil, patch }); _eing[teil] = { ..._eing[teil], ...patch }; return _aktiv; },
   abonniere: cb => { _subs.push(cb); return () => {}; },
+  normBrandklasse,                                  // #79: kanonisch, kein Nachbau
 };
 const fireStore = () => _subs.forEach(cb => cb());
 
@@ -107,6 +112,9 @@ ok("Uebersicht: Masse", $("ovDim").textContent === "3,000 × 2,60 m");
 ok("Uebersicht: Raster/Steinreihen", $("ovGrid").textContent === W.N_grid + " Raster · " + W.lagen + " Steinreihen");
 ok("Uebersicht: Spannachsen", $("ovCols").textContent === String(W.tension_columns.length));
 ok("Uebersicht: Status baubar", $("ovBadge").textContent === "Baubar");
+// [#79] Wand ohne das Feld: die Uebersicht weist F0 aus (Standard), nichts wird geraten.
+ok("[#79] Uebersicht: Brandschutz einer Wand ohne das Feld ist F0",
+  !("brandklasse" in W) && $("ovBrand").textContent === "F0");
 
 // --- 2) Blattvorschau = gemeinsame Ableitung ([D-6]) ---------------------
 const soll = blattHtml(W, _eing, normOptionen(EING.zeichnung));
@@ -285,6 +293,44 @@ ok("Export-Dokument nutzt dieselbe CSS-Basis und dasselbe @page wie die Vorschau
   && $("pagestyle").textContent === druckCss(Z.opt.format));
 ok("Export-SVG ist die Zeichnung dieses Blattes",
   zeichnungSvgText(W, _eing).includes(blattHtml(W, _eing, Z.opt).svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")));
+
+// --- 7b) #79 Brandschutzklassifikation im ECHTEN Seitenpfad --------------
+// Aktives Wandelement mit F30 (so, wie Modul 1 es gespeichert hat). Geprueft wird das
+// von DIESER Seite erzeugte Blatt — Kurztext, Legende, Uebersicht — und dass Druck-HTML
+// und SVG-Datei des zentralen Exports dieselbe Zeichenkette tragen ([D-6]).
+const W79 = buildWall("IW-79", 3000, 2600, []);
+W79.brandklasse = "F30";
+_aktiv = "w-79"; _we = W79; _eing = JSON.parse(JSON.stringify(EING));
+fireStore();
+const sicht79 = $("blattwrap").innerHTML;
+const g79 = (sicht79.match(/<g class="brand"[\s\S]*?<\/g>/) || [])[0] || "";
+ok("[#79] Uebersicht zeigt die Klassifikation der aktiven Wand", $("ovBrand").textContent === "F30");
+ok("[#79] das erzeugte Blatt traegt den Kurztext F30",
+  /<g class="brand" data-brandklasse="F30">/.test(sicht79) && sicht79.includes("Brandschutz F30"));
+ok("[#79] die Legende des Blattes benennt beide Klassifikationen in Worten",
+  sicht79.includes("ohne Brandschutzklassifikation")
+  && sicht79.includes("Brandschutzklassifikation F30"));
+ok("[#79] Druck-HTML und SVG-Datei des zentralen Exports tragen dieselbe Angabe",
+  g79.length > 0 && zeichnungHtml(W79, _eing).includes(g79)
+  && zeichnungSvgText(W79, _eing).includes(g79));
+globalThis.__printed = false;
+$("print").dispatch("click");
+ok("[#79] gedruckt wird genau dieses Blatt (kein zweites Rendering)",
+  globalThis.__printed === true && $("blattwrap").innerHTML === sicht79);
+ok("[#79] die Seite schreibt die Klassifikation nirgends zurueck",
+  W79.brandklasse === "F30" && schreib.every(s => s.teil === "zeichnung")
+  && !JSON.stringify(_eing).includes("brandklasse")
+  && !/brandklasse/.test(JSON.stringify(_eing)));
+// Dieselbe Seite, Wand OHNE das Feld: F0 in Blatt und Uebersicht — nichts geraten,
+// und das Wandelement bekommt das Feld dabei nicht untergeschoben.
+const W79b = buildWall("IW-79b", 2000, 2600, []);
+_aktiv = "w-79b"; _we = W79b;
+fireStore();
+ok("[#79] Wand ohne das Feld: Blatt und Uebersicht weisen F0 aus",
+  $("ovBrand").textContent === "F0"
+  && /<g class="brand" data-brandklasse="F0">/.test($("blattwrap").innerHTML)
+  && $("blattwrap").innerHTML.includes("Brandschutz F0")
+  && !("brandklasse" in W79b));
 
 // --- 8) Modul-Oberflaeche: keine dezentrale Dateifunktion ---------------
 ok("kein Datei-Download / kein Datei-Upload im Modul",

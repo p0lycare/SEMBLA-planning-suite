@@ -24,6 +24,10 @@ import { einbauteile, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL } from "../../docs/shared/sembla-montage.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
+// #79 NUR als Vergleichsmassstab fuer Wortlaut und Kennfarbe (Drift-Waechter). Der
+// Produktivcode der Zeichnung importiert daraus AUSDRUECKLICH NICHTS — zwei
+// Ausgabemodule duerfen nicht aneinanderhaengen; genau das prueft dieser Test mit.
+import * as LP from "../../docs/shared/sembla-lageplan.js";
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 
@@ -458,6 +462,152 @@ ok("SVG-Datei nennt Projekt, Plan-Nr. und Index", datei.includes("Rettungswache"
   && datei.includes("Plan A-12") && datei.includes("Index 2"));
 ok("SVG-Datei enthaelt die Zeichnung selbst", (datei.match(/<rect/g) || []).length >= steine);
 
+// --- 6c) #79 Brandschutzklassifikation: Kurztext + Legende, schwarz-weiss lesbar ---
+// Reine PLANUNGSKENNZEICHNUNG: gelesen aus dem Wandelement, normalisiert ueber die
+// kanonische Stelle (storage.js). Geprueft wird (a) dass sie auf dem Blatt steht,
+// (b) dass sie ohne Farbe lesbar ist, (c) dass Vorschau, Druck-HTML und SVG-Datei
+// DIESELBE Zeichenkette tragen ([D-6]) und (d) dass sonst nichts anders wird.
+console.log("\n[#79] Brandschutzklassifikation auf dem Zeichnungsblatt");
+{
+  // Dieselbe Wand dreimal — nur das Feld unterscheidet sich. Nur so ist der
+  // Bitvergleich „ausser der Kennzeichnung unveraendert" ueberhaupt aussagekraeftig.
+  const W79 = buildWall("IW-79", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")]);
+  const W79ohne = JSON.parse(JSON.stringify(W79));                       // kein Feld -> F0
+  const W79f30 = JSON.parse(JSON.stringify(W79)); W79f30.brandklasse = "F30";
+  const W79f0 = JSON.parse(JSON.stringify(W79)); W79f0.brandklasse = "F0";
+  const W79krumm = JSON.parse(JSON.stringify(W79)); W79krumm.brandklasse = "F90";
+
+  /** Die Kennzeichnungsgruppe des SVG als Zeichenkette (leer, wenn es keine gibt). */
+  const gruppe = s => (s.match(/<g class="brand"[\s\S]*?<\/g>/) || [])[0] || "";
+  const svg30 = Z.zeichnungSvg(W79f30, { format: "a3" }).svg;
+  const svgOhne = Z.zeichnungSvg(W79ohne, { format: "a3" }).svg;
+  const g30 = gruppe(svg30), gOhne = gruppe(svgOhne);
+
+  ok("[#79] F30-Wand traegt den Kurztext F30 im Blatt-SVG",
+    g30.includes("Brandschutz F30") && /data-brandklasse="F30"/.test(g30));
+  ok("[#79] Wand OHNE das Feld wird als F0 ausgewiesen (Standard, nichts geraten)",
+    gOhne.includes("Brandschutz F0") && /data-brandklasse="F0"/.test(gOhne)
+    && !("brandklasse" in W79ohne));
+  ok("[#79] unbekannter Wert gilt als F0 und wird nie als F30 dargestellt",
+    gruppe(Z.zeichnungSvg(W79krumm, {}).svg).includes("Brandschutz F0")
+    && !gruppe(Z.zeichnungSvg(W79krumm, {}).svg).includes("F30"));
+  ok("[#79] ausdruecklich gesetztes F0 zeichnet wie ein fehlendes Feld",
+    gruppe(Z.zeichnungSvg(W79f0, {}).svg) === gruppe(Z.zeichnungSvg(W79ohne, {}).svg));
+
+  // Der Kurztext steht im ohnehin vorhandenen Zeichnungsrand UEBER der Wandoberkante
+  // (y < PAD_MM) und liegt damit nachweislich nicht auf der Wandflaeche.
+  const y30 = +(g30.match(/ y="([\d.]+)"/) || [])[1];
+  ok("[#79] der Kurztext liegt im Zeichnungsrand, nicht auf der Wand",
+    y30 > 0 && y30 < Z.PAD_MM);
+  // Zuletzt gezeichnet: nichts kann ihn ueberdecken.
+  ok("[#79] die Kennzeichnung ist die letzte Gruppe des SVG",
+    svg30.endsWith(g30 + "</svg>"));
+
+  // Legende: BEIDE Klassen, jede mit ihrer Bedeutung in Worten.
+  const leg = Z.legendeHtml();
+  ok("[#79] Legende benennt beide Klassifikationen mit ihrer Bedeutung in Worten",
+    leg.includes(Z.BRANDKLASSE.F0.name) && leg.includes(Z.BRANDKLASSE.F30.name)
+    && /<b[^>]*>F0<\/b>/.test(leg) && /<b[^>]*>F30<\/b>/.test(leg));
+  const blatt30 = Z.blattHtml(W79f30, eingaben, { format: "a3" }).html;
+  ok("[#79] die Legendeneintraege stehen im gerenderten Blatt",
+    blatt30.includes(Z.BRANDKLASSE.F0.name) && blatt30.includes(Z.BRANDKLASSE.F30.name));
+
+  // Schwarz-weiss: nach Entfernen ALLER Farbangaben bleibt die Angabe lesbar und
+  // F0/F30 unterscheidbar. Farbe ist damit nachweislich nur additiv.
+  const ohneFarbe = s => s.replace(/(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, "")
+    .replace(/style="color:#[0-9a-fA-F]{3,8}"/g, "");
+  ok("[#79] die Angabe haengt nicht an einer Farbe (Schwarz-Weiss-Ausdruck)",
+    ohneFarbe(g30).includes("Brandschutz F30")
+    && !ohneFarbe(g30).includes("Brandschutz F0")
+    && ohneFarbe(gOhne).includes("Brandschutz F0")
+    && ohneFarbe(Z.legendeHtml()).includes(Z.BRANDKLASSE.F30.name)
+    && ohneFarbe(Z.legendeHtml()).includes(Z.BRANDKLASSE.F0.name));
+
+  // [D-6] EIN Pfad: Vorschau, Druck-HTML, eigenstaendige SVG-Datei und die Dateien des
+  // zentralen Exports tragen BYTEWEISE dieselbe Kennzeichnungsgruppe.
+  ok("[#79] Druck-Dokument und SVG-Datei tragen dieselbe Angabe wie die Vorschau",
+    g30.length > 0
+    && Z.zeichnungDokument(W79f30, eingaben, { format: "a3" }).includes(g30)
+    && Z.zeichnungSvgDatei(W79f30, eingaben, { format: "a3" }).includes(g30));
+  ok("[#79] der zentrale Export nutzt dieselbe Ableitung (HTML + SVG)",
+    zeichnungHtml(W79f30, eingaben).includes(g30)
+    && zeichnungSvgText(W79f30, eingaben).includes(g30));
+  {
+    const p79 = { format: "SEMBLA-Projekt", version: 2, name: "IW-79", wandelement: W79f30, eingaben };
+    const d79 = baueDateien(p79, ["zeichnung"]);
+    ok("[#79] beide Zeichnungsdateien des ZIP-Exports tragen die Angabe",
+      d79.length === 2 && d79.every(f => f.data.includes(g30)));
+  }
+
+  // Nichts sonst aendert sich: Masstab, Blattmasse, Steine, Masstexte, Schriftfeld.
+  const z30 = Z.zeichnungSvg(W79f30, { format: "a3" }), z0 = Z.zeichnungSvg(W79ohne, { format: "a3" });
+  ok("[#79] Masstab und Blattmasse sind mit und ohne F30 identisch",
+    z30.masstab === z0.masstab && z30.breite_mm === z0.breite_mm && z30.hoehe_mm === z0.hoehe_mm
+    && z30.viewBox === z0.viewBox);
+  ok("[#79] die Wandabwicklung ist ausser der Kennzeichnung bitgleich",
+    svg30.replace(g30, "") === svgOhne.replace(gOhne, ""));
+  ok("[#79] keine Schraffur/kein Muster ueber der Wandflaeche (nichts verdeckt)",
+    !/<pattern/.test(svg30) && !/url\(#/.test(svg30)
+    && (svg30.match(/<rect/g) || []).length === (svgOhne.match(/<rect/g) || []).length);
+  ok("[#79] die Bemassung bleibt unveraendert",
+    massTexte(svg30).join("|") === massTexte(svgOhne).join("|") && massTexte(svg30).length > 0);
+  ok("[#79] der Schriftfeld-Feldsatz bleibt unveraendert", (() => {
+    const felder = t => [...t.matchAll(/<div class="ztb-row"><div class="k">([^<]*)<\/div>/g)]
+      .map(m => m[1]).join("|");
+    return felder(blatt30) === felder(Z.blattHtml(W79ohne, eingaben, { format: "a3" }).html)
+      && felder(blatt30) === "Projekt|Wand|Planinhalt|Plan Nr.|Index|Maßstab|Einheit|Gez.";
+  })());
+  ok("[#79] die Klassifikation steht NICHT im Schriftfeld", (() => {
+    const tb = (blatt30.match(/<div class="ztitleblock">[\s\S]*?$/) || [""])[0];
+    return !/Brandschutz/.test(tb) && !/F30/.test(tb);
+  })());
+
+  // Keine Ableitung, kein Nachweisanspruch, keine Regelkunde auf dem Blatt.
+  ok("[#79] aus der Klassifikation folgt nichts (Stueckliste/Kennzahlen unveraendert)",
+    JSON.stringify(Z.bomZeilen(W79f30)) === JSON.stringify(Z.bomZeilen(W79ohne))
+    && JSON.stringify(Z.vorspannZeilen(W79f30)) === JSON.stringify(Z.vorspannZeilen(W79ohne))
+    && JSON.stringify(Z.konfliktZeilen(W79f30)) === JSON.stringify(Z.konfliktZeilen(W79ohne)));
+  ok("[#79] das F30-Blatt behauptet keine Pruefung und traegt keinen Regel-Fusstext",
+    !/bestanden/i.test(blatt30) && !/erfüllt/i.test(blatt30) && !/eingehalten/.test(blatt30)
+    && !/Zielregel/.test(blatt30) && !/Planungshinweis/.test(blatt30)
+    && !/Freigabe/.test(blatt30) && !/>Statik</.test(blatt30));
+
+  // Nur gelesen: das Wandelement wird durch keine Ausgabe veraendert.
+  {
+    const vorher = JSON.stringify(W79f30);
+    Z.blattHtml(W79f30, eingaben, {});
+    Z.zeichnungDokument(W79f30, eingaben, {});
+    Z.zeichnungSvgDatei(W79f30, eingaben, {});
+    zeichnungHtml(W79f30, eingaben); zeichnungSvgText(W79f30, eingaben);
+    ok("[#79] die Zeichnung liest nur — das Wandelement bleibt unveraendert",
+      JSON.stringify(W79f30) === vorher);
+  }
+
+  // Herkunft der Werte: genau EIN storage.js-Import, und der holt nur den reinen
+  // Normalisierer. Kein Speicherzugriff, kein Schreibweg, keine zweite Werteliste.
+  // Die Importliste steht bewusst als `{…}` im Muster: `[\s\S]*?` liefe sonst vom
+  // ERSTEN import der Datei bis hierher und pruefte gar nicht die eigene Zeile.
+  const storageImporte = [...zSrc.matchAll(/import\s+(\{[^}]*\})\s+from\s+"\.\/storage\.js"/g)];
+  ok("[#79] aus dem Speicher kommt genau EIN Import — und der holt nur normBrandklasse",
+    storageImporte.length === 1 && storageImporte[0][1].trim() === "{ normBrandklasse }"
+    && (zSrc.match(/from\s+"\.\/storage\.js"/g) || []).length === 1);
+  ok("[#79] der Zeichnungsbaustein hat keinen Speicher-/Schreibpfad",
+    !/localStorage|setItem|getItem|mergeEingaben|setzeAktiv|speichere/.test(zSrc));
+  ok("[#79] kein Produktionsimport aus sembla-lageplan.js und kein dynamischer Import",
+    !/from\s+"\.\/sembla-lageplan\.js"/.test(zSrc) && !/import\s*\(/.test(zSrc));
+  ok("[#79] die Zeichnung fuehrt keine eigene Werteliste F0/F30",
+    !/BRANDKLASSEN|BRANDKLASSE_DEFAULT/.test(zSrc)
+    && (zSrc.match(/normBrandklasse\(/g) || []).length === 1);
+  // Wortlaut und Kennfarbe muessen zum Lageplan passen — geprueft, nicht verdrahtet.
+  ok("[#79] Wortlaut und Kennfarbe stimmen mit dem Lageplan ueberein (kein Drift)",
+    ["F0", "F30"].every(k => Z.BRANDKLASSE[k].kuerzel === LP.BRANDKLASSE[k].kuerzel
+      && Z.BRANDKLASSE[k].name === LP.BRANDKLASSE[k].name
+      && Z.BRANDKLASSE[k].farbe === LP.BRANDKLASSE[k].farbe));
+  ok("[#79] die Klassifikation ist keine gespeicherte Darstellungsoption",
+    !("brandklasse" in Z.standardOptionen())
+    && Object.keys(Z.standardOptionen()).sort().join(",") === "format,masse,planinhalt,steintypen,wasserzeichen");
+}
+
 // --- 6b) #61 Blattgeometrie: Vorschau und Druck aus DENSELBEN BLATT-Daten ---
 // Die Vorschau darf nicht das aeussere Papierverhaeltnis zeigen, waehrend gedruckt der
 // Innenbereich ausgegeben wird — und die Blattgroesse darf nur EINMAL definiert sein.
@@ -545,6 +695,17 @@ ok("Modul 7 nutzt den gemeinsamen Baustein (kein eigenes SVG-Zeichnen)",
 ok("Modul 7 haengt sich als Modul 7 in die Navbar", /mountNavbar\(7\)/.test(modul));
 ok("Modul 7 zeigt ohne aktives Wandelement einen Verweis auf Modul 0 (kein Demo)",
   /Kein aktives Wandelement/.test(modul) && !/function demo\(/.test(modul));
+// [#79] Die Klassifikation wird angezeigt, nie gesetzt: kein Auswahlfeld, kein
+// Schreibweg, keine eigene Werteliste — normalisiert wird ueber die kanonische Stelle.
+ok("[#79] Modul 7 hat KEIN Bedienelement fuer die Brandschutzklassifikation",
+  !/<select[^>]*brandklasse/i.test(modul) && !/<input[^>]*brandklasse/i.test(modul)
+  && !/value="F30"/.test(modul));
+ok("[#79] Modul 7 zeigt die Klassifikation nur an und schreibt sie nicht",
+  /ovBrand/.test(modul) && /store\.normBrandklasse\(/.test(modul)
+  && !/\.brandklasse\s*=/.test(modul)
+  && !/mergeEingaben\('(?!zeichnung)/.test(modul));
+ok("[#79] Modul 7 fuehrt keine eigene F0/F30-Liste und zeichnet die Angabe nicht selbst",
+  !/BRANDKLASSEN|'F30'\s*:/.test(modul) && !/<g class="brand"/.test(modul));
 // #61: keine unabhaengigen Papiermasse und kein zweiter Renderer in der Oberflaeche —
 // die Papiergroesse kommt ausschliesslich aus BLATT/blattInnen().
 ok("Modul 7 hat keine eigenen Papiermasse und kein eigenes Seitenverhaeltnis",
