@@ -630,13 +630,29 @@ const quelle = readFileSync(new URL("../../docs/shared/sembla-lageplan.js", impo
 t("das Modul ist DOM-frei", !/document\.|window\.|localStorage|indexedDB/.test(quelle));
 // Geprueft werden die IMPORTE, nicht die Prosa: seit #80 nennt der Kopfkommentar
 // `sembla-plan.js` ausdruecklich als die Stelle, an der der Planrahmen gerechnet wird —
-// genau das ist der Punkt. Eingebunden werden darf beides hier weiterhin nicht: kein
-// Speicherzugriff, kein Bildspeicher, keine eigene Massstabsrechnung.
-t("das Modul bindet weder Speicher noch Planbaustein ein (Nicht-Ziele)",
-  !/from\s+["'][^"']*(storage|sembla-plan)\.js["']/.test(quelle)
+// genau das ist der Punkt. Der Bildspeicher bleibt draussen, ebenso jeder dynamische
+// Import: kein Bildspeicher, keine eigene Massstabsrechnung.
+t("das Modul bindet den Planbaustein nicht ein und importiert nichts dynamisch (Nicht-Ziele)",
+  !/from\s+["'][^"']*sembla-plan\.js["']/.test(quelle)
   && !/import\s*\(/.test(quelle));
+// #79: aus `storage.js` kommt GENAU EINE Sache — der reine Normalisierer
+// `normBrandklasse`. Er traegt die kanonischen Werte F0/F30 samt Standard F0 und ist
+// selbst kein Speicherzugriff; eine zweite Werteliste hier waere genau die Drift, die
+// die kanonische Stelle verhindert. Geprueft wird deshalb nicht mehr pauschal „kein
+// storage.js", sondern eng: ein einziger Import, und der holt nichts anderes.
+const storageImporte = [...quelle.matchAll(
+  /import\s*([^;]*?)\s*from\s*["'][^"']*storage\.js["']/g)];
+t("#79 aus dem Speicher kommt genau EIN Import — und der holt nur normBrandklasse",
+  storageImporte.length === 1 && storageImporte[0][1].trim() === "{ normBrandklasse }");
+// Geprueft wird der CODE, nicht die Prosa: der Kopfkommentar von `lageplanDaten`
+// nennt `listeElemente()` als die Form der uebergebenen Liste — das ist eine
+// Erklaerung und kein Aufruf. Kommentare werden deshalb vorher entfernt.
+const codeOhneKommentar = quelle.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+t("das Modul greift auf keine Lese-/Schreibfunktion des Speichers zu",
+  !/\b(listeElemente|holeElement|holeEingaben|holeMappe|projektMappe|abonniere)\s*\(/
+    .test(codeOhneKommentar));
 t("das Modul schreibt nichts (keine setz-/aendere-Aufrufe der Mappe)",
-  !/setzeWand|setzeBemassung|setzeLage|aendereMappe|setzePlan/.test(quelle));
+  !/setzeWand|setzeBemassung|setzeLage|aendereMappe|setzePlan|speichere/.test(quelle));
 t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   /sembla-massbild\.js/.test(quelle) && !/MASS_ABSTAND_MM\s*=\s*\d/.test(quelle));
 
@@ -901,6 +917,140 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
          { transparenz: 40 }).html);
   t("#80 das Modul rechnet den Massstab des Bildes nicht selbst (kein zweiter Weg)",
     !/mm_je_pixel\s*[*/]|breite_px|hoehe_px/.test(quelle));
+}
+
+// --- #79: Brandschutzklassifikation F0/F30 im Blatt -----------------------
+//
+// Die Klassifikation ist eine reine PLANUNGSKENNZEICHNUNG am Wandelement mit Modul 1
+// als einzigem Schreibweg. Modul 9 liest sie ueber DIESELBE Bahn wie Hoehe und
+// Wandtyp und normalisiert sie mit `normBrandklasse` (kanonisch in storage.js):
+// fehlendes oder unbekanntes Feld ⇒ F0, kein Wandelement ⇒ gar keine Angabe.
+// Dargestellt wird sie so, dass die Unterscheidung OHNE Farbe traegt.
+{
+  const { m, gsEG } = bau();
+  const el = [
+    // ausdruecklich F30
+    { id: "w-a", name: "Wand A",
+      wandelement: { height_mm: 2600, wandtyp: "mit_wind", length_mm: 2000, brandklasse: "F30" } },
+    // Feld fehlt ganz (Altbestand/Neuanlage) ⇒ F0
+    { id: "w-b", name: "Wand B",
+      wandelement: { height_mm: 2600, wandtyp: "ohne_wind", length_mm: 2000 } },
+    // unbekannter Wert ⇒ F0, nie F30 und nie „geprueft"
+    { id: "w-c", name: "Wand C",
+      wandelement: { height_mm: 2600, wandtyp: "mit_wind", length_mm: 2875, brandklasse: "f30" } },
+    // w-d hat ABSICHTLICH kein Wandelement — verwaist ([L-4])
+  ];
+  const d = LP.lageplanDaten({ mappe: m, geschossId: gsEG, elemente: el });
+  const bkVon = (id) => d.waende.find((w) => w.id === id).brandklasse;
+
+  t("#79 die Ableitung fuehrt die ausdrueckliche Klassifikation als eigenes Feld",
+    bkVon("w-a") === "F30");
+  t("#79 ein Wandelement ohne das Feld gilt als F0 (Standard, nie F30)",
+    bkVon("w-b") === "F0" && !("brandklasse" in el[1].wandelement));
+  t("#79 ein unbekannter Wert faellt ebenfalls auf F0 — normalisiert, nicht geraten",
+    bkVon("w-c") === "F0");
+  t("#79 eine verwaiste Wand bekommt KEINE erfundene Klassifikation",
+    d.waende.find((w) => w.id === "w-d").verwaist === true && bkVon("w-d") === null);
+
+  // --- Darstellung: zwei Merkmale, davon eines ohne jede Farbe ------------
+  const z = LP.lageplanSvg(d, {});
+  /** Die `lpbrand`-Gruppen des Blattes: Kennung, Klasse, Inhalt und Rohtext. */
+  const brandGruppen = (s) => [...s.matchAll(
+    /<g class="lpbrand" data-wand="([^"]*)" data-brandklasse="([^"]*)">([\s\S]*?)<\/g>/g)]
+    .map((mm) => ({ id: mm[1], klasse: mm[2], inhalt: mm[3], roh: mm[0] }));
+  const bg = brandGruppen(z.svg);
+  const gA = bg.find((g) => g.id === "w-a"), gB = bg.find((g) => g.id === "w-b");
+
+  t("#79 jede verortete Wand mit Wandelement traegt ihre Klassifikation im Plan",
+    bg.length === 3 && bg.map((g) => g.id + ":" + g.klasse).join(",")
+      === "w-a:F30,w-b:F0,w-c:F0");
+  t("#79 die verwaiste — aber verortete — Wand bleibt im Plan ohne Klassifikation",
+    z.svg.includes('data-wand="w-d"') && !bg.some((g) => g.id === "w-d"));
+  t("#79 F0 und F30 nutzen verschiedene Darstellungsmerkmale",
+    gA.roh !== gB.roh
+    && /<rect class="lpbrand-flaeche"[^>]*fill="url\(#[^"]*\)"/.test(gA.inhalt)
+    && !/lpbrand-flaeche/.test(gB.inhalt)
+    && />F30</.test(gA.inhalt) && />F0</.test(gB.inhalt));
+  // DER Punkt der Regel: Farbe allein genuegt nicht. Werden ALLE Farbangaben
+  // entfernt, muessen sich die beiden Gruppen immer noch unterscheiden.
+  const ohneFarbe = (s) => s.replace(/\s(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, "");
+  t("#79 die Unterscheidung haengt nicht an einer Farbangabe (S/W-Ausdruck)",
+    ohneFarbe(gA.roh) !== ohneFarbe(gB.roh)
+    && ohneFarbe(gA.roh).includes(">F30<") && ohneFarbe(gB.roh).includes(">F0<")
+    && ohneFarbe(gA.roh).includes("lpbrand-flaeche")
+    && !ohneFarbe(gB.roh).includes("lpbrand-flaeche"));
+  t("#79 das Schraffurmuster steht im Zeichnungsinhalt (und damit in jeder Ausgabe)",
+    /<defs><pattern id="[^"]*"[\s\S]*?<\/pattern><\/defs>/.test(z.inner)
+    && z.inner.indexOf("<defs>") === 0);
+  t("#79 ohne F30-Wand entsteht auch kein Muster — das F0-Blatt bleibt das bisherige",
+    (() => {
+      const nurF0 = LP.lageplanDaten({ mappe: m, geschossId: gsEG,
+        elemente: el.map((e) => ({ ...e,
+          wandelement: { ...e.wandelement, brandklasse: "F0" } })) });
+      return !LP.lageplanSvg(nurF0, {}).svg.includes("<defs>");
+    })());
+  t("#79 die Kennzeichnung haengt nicht am Schalter „Wände kennzeichnen“",
+    brandGruppen(LP.lageplanSvg(d, { kennzeichnung: false }).svg).length === 3);
+
+  // --- Legende und Wandtabelle nennen beide Klassen im Klartext -----------
+  const leg = LP.legendeHtml();
+  t("#79 die Legende benennt beide Klassifikationen mit ihrem Merkmal in Worten",
+    leg.includes("<b>F0</b>") && leg.includes("<b>F30</b>")
+    && leg.includes(LP.BRANDKLASSE.F0.name) && leg.includes(LP.BRANDKLASSE.F30.name)
+    && leg.includes("ohne Schraffur") && leg.includes("diagonal schraffiert"));
+  t("#79 die Legende sagt, dass die Angabe kein Nachweis ist",
+    /Planungskennzeichnung, kein Nachweis/.test(leg));
+  const tab = LP.wandTabelleHtml(d);
+  const tabBrand = [...tab.matchAll(
+    /<tr><td class="nr">(\d+)<\/td>[\s\S]*?<td>[^<]*<\/td><td>([^<]*)<\/td><td>[^<]*<\/td><\/tr>/g)]
+    .map((mm) => mm[2]);
+  t("#79 die Wandtabelle traegt die Klassifikation je Wand als Text",
+    /<th>Brandschutz<\/th>/.test(tab) && tabBrand.join(",") === "F30,F0,F0,–");
+  t("#79 die Tabellenspalte steht vor der Lagespalte — die Lage bleibt letzte Zelle",
+    tab.indexOf("<th>Brandschutz</th>") < tab.indexOf("<th>Lage</th>")
+    && /<td>unverortet<\/td><\/tr>|<td>x\/y<\/td><\/tr>|<td>frei<\/td><\/tr>/.test(tab));
+
+  // --- Ein Pfad: Vorschau, Druck-HTML und SVG-Datei zeigen dasselbe -------
+  const b = LP.blattHtml(d, {});
+  const dok = LP.lageplanDokument(d, {});
+  const svgD = LP.lageplanSvgDatei(d, {});
+  t("#79 Blatt, Druck-HTML und SVG-Datei tragen bit-genau dieselben Kennzeichnungen",
+    bg.every((g) => b.svg.includes(g.roh) && dok.includes(g.roh) && svgD.includes(g.roh))
+    && JSON.stringify(brandGruppen(svgD)) === JSON.stringify(bg)
+    && JSON.stringify(brandGruppen(dok)) === JSON.stringify(bg));
+  t("#79 das Muster reist in die eigenstaendige SVG-Datei mit (sonst leere Schraffur)",
+    svgD.includes("<defs><pattern id=") && dok.includes("<defs><pattern id="));
+  t("#79 auch die exportierten Bytes zeigen dieselbe Kennzeichnung",
+    (() => {
+      const dateien = LP.lageplanDateien(d, {});
+      const svg = dateien.find((f) => /\.svg$/.test(f.name));
+      const htm = dateien.find((f) => /\.html$/.test(f.name));
+      return svg.data === svgD && htm.data === dok
+        && bg.every((g) => svg.data.includes(g.roh) && htm.data.includes(g.roh))
+        && htm.data.includes(LP.wandTabelleHtml(d)) && htm.data.includes(leg);
+    })());
+
+  // --- Nicht angefasst: Geometrie, Massstab, Masse, Vollstaendigkeit ------
+  const dF0 = LP.lageplanDaten({ mappe: m, geschossId: gsEG,
+    elemente: el.map((e) => ({ ...e, wandelement: { ...e.wandelement, brandklasse: "F0" } })) });
+  const zF0 = LP.lageplanSvg(dF0, {});
+  t("#79 Massstab, Ausdehnung und Wandgeometrie sind mit und ohne F30 identisch",
+    z.masstab === zF0.masstab
+    && JSON.stringify(LP.ausdehnung(d)) === JSON.stringify(LP.ausdehnung(dF0))
+    && JSON.stringify(d.waende.map((w) => w.rechteck))
+       === JSON.stringify(dF0.waende.map((w) => w.rechteck)));
+  t("#79 die Massdarstellung bleibt bitgenau dieselbe",
+    JSON.stringify(d.massbilder) === JSON.stringify(dF0.massbilder)
+    && massTexte(z.svg).join(",") === massTexte(zF0.svg).join(","));
+  t("#79 die Klassifikation erzeugt weder Meldung noch Hinweis noch Statuswechsel",
+    d.vollstaendig === dF0.vollstaendig
+    && !d.meldungen.some((x) => /Brand/i.test(x.art + x.text))
+    && !d.hinweise.some((x) => /Brand/i.test(x.art + x.text))
+    && JSON.stringify(d.meldungen) === JSON.stringify(dF0.meldungen));
+  t("#79 die Klassifikation liegt nur in der Ableitung — nichts wird zurueckgeschrieben",
+    !JSON.stringify(m).includes("brandklasse")
+    && el.every((e) => !("brandklasse" in e.wandelement)
+      || typeof e.wandelement.brandklasse === "string"));
 }
 
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);

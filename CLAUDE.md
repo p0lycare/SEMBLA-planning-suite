@@ -127,8 +127,15 @@ und keinen `SCHEMA_VERSION`-Sprung**: normalisiert wird an genau **einer** Stell
 gespeichertes Wandelement wird nie stillschweigend umgeschrieben (bloßes Laden in Modul 1 schreibt
 nichts zurück; erst eine echte Bedienung setzt den Wert). Das Feld liegt **nicht** in `eingaben`,
 nicht in der Projektmappe und nicht im Katalog und ist im Projektformat **optional** ⇒
-`PROJEKT_VERSION` bleibt 2. Die farbliche/textliche **Darstellung** in Geschosseditor, Lageplan
-(Modul 9) und Zeichnung (Modul 7) ist ausdrücklich **noch offen** und folgt als eigenes Paket.
+`PROJEKT_VERSION` bleibt 2. Die **Darstellung** ist für den **Lageplan (Modul 9) umgesetzt**: je Wand
+ein Kurztext „F0"/„F30" an der Wandkante, für F30 zusätzlich eine **Schraffur** über der Wandfläche,
+dazu die Kennfarbe, ein Legendeneintrag je Klasse mit dem Merkmal **in Worten** und eine eigene
+Spalte „Brandschutz" der Wandtabelle — in Vorschau, Druck und Export gleich. Getragen wird die
+Unterscheidung von **zwei nicht farblichen** Merkmalen (Kurztext, Schraffur/keine Schraffur), damit
+sie den **Schwarz-Weiß-Ausdruck** übersteht; Farbe kommt nur additiv dazu. Gelesen wird
+ausschließlich (dieselbe Bahn wie Höhe und Wandtyp, normalisiert über `normBrandklasse`), eine
+verwaiste Wand bleibt **ohne** Angabe. Die Darstellung in **Geschosseditor** und **Zeichnung
+(Modul 7)** ist weiterhin **offen** und folgt als eigenes Paket.
 
 **Stangenlänge nur aus dem Katalog — kein Eingabefeld ([Z-1]).** Modul 1 hat **kein** Feld für die
 Gewindestangenlänge mehr (ersatzlos entfernt, nicht nur gesperrt): es gibt keinen zweiten Weg, die
@@ -458,7 +465,8 @@ Geschossplaner erzeugte Wandgrundriss wird als **prüf- und druckbare Unterlage*
 **eigenes Modul, keine zweite Bearbeitungsansicht**: der **Geschossplaner bleibt der einzige Ort der
 Bearbeitung** ([N-1]), Modul 9 hat kein Werkzeug, keinen Schreibweg und keine eigene Wandgeometrie.
 Gelesen werden ausschließlich **kanonische** Daten — Projektmappe (Struktur, Lage, Bemaßungen),
-Wandspeicher (**nur** Höhe und Wandtyp, [P-1]) und das deterministische **Löserergebnis**; abgeleitet
+Wandspeicher (**nur** Höhe, Wandtyp und Brandschutzklassifikation, [P-1]) und das deterministische
+**Löserergebnis**; abgeleitet
 wird bei **jeder** Ausgabe frisch ([N-3]), und wo Maße bestimmen, schlägt die **gelöste** Position die
 gespeicherte Rohposition ([N-4]). **Maße stehen exakt wie im Editor** ([N-5]): dieselben Bezüge,
 Werte, Staffelung und dieselben gespeicherten Darstellungsversätze `linie_mm`/`text_mm` — technisch
@@ -823,9 +831,14 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      `mappe.projekt.kopfdaten`), `wandTabelleHtml`, `meldungenHtml`, `blattHtml`, `LAGEPLAN_CSS`,
      `druckCss`, `lageplanDokument`, `lageplanSvgDatei`, `lageplanDateien`, `dateiRumpf` sowie den
      **Planhintergrund** (`normHintergrund`/`HINTERGRUND_TEXT`/`hintergrundHtml`/
-     `TRANSPARENZ_STANDARD`, [N-9]) — als fertigen Rahmen in Welt-mm entgegengenommen, nie selbst
-     gerechnet. Rein/DOM-frei, **liest nur** (keine Schreib-, Speicher- oder Bildspeicherpfade;
-     der Maßstab wird nicht nachgerechnet), eigene Tests (`tests/module/test-lageplan.mjs`).
+     `TRANSPARENZ_STANDARD`, [N-9]) und den **Brandschutz-Darstellungsschlüssel** (`BRANDKLASSE`,
+     Kurztext/Schraffur/Kennfarbe je F0 und F30, #79) — der Planrahmen wird als fertiger Rahmen in
+     Welt-mm entgegengenommen, nie selbst gerechnet. Rein/DOM-frei, **liest nur** (keine Schreib-,
+     Speicher- oder Bildspeicherpfade; der Maßstab wird nicht nachgerechnet). **Eine** benannte
+     Ausnahme beim Import: `normBrandklasse` aus `storage.js` — ein reiner Normalisierer ohne
+     Speicherzugriff, der die kanonischen Werte F0/F30 samt Standard mitbringt; eine zweite
+     Werteliste hier wäre Drift. Eigene Tests (`tests/module/test-lageplan.mjs`, sie prüfen genau
+     diesen einen Import).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
      **Katalogspeicher** (`listeKataloge`/`katalogNachId`/`katalogStatus`/`setzeProjektKatalog`),
      **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
@@ -879,7 +892,7 @@ der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv �
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 | 8 | `blog.html` | **Umsetzungsplan & Änderungen** (#55, mobile-first, read-only, **streng statisch**): genau zwei Ansichten — **„Umsetzungsplan"** (Standard) aus dem versionierten Artefakt `umsetzungsplan.js` via `sembla-umsetzungsplan.js` (Entscheidungen für Tibor · nächstes Issue mit Begründung · geordnete weitere · blockierte mit Ursache und nächstem Schritt) und **„Was ist neu?"** aus `blog-eintraege.js` via `sembla-blog.js`. Der frühere „Projektstatus" samt GitHub-Live-Abruf und Anzeigecache ist **entfallen**: **kein `fetch`, kein `localStorage`**, kein Login/Backend. Fehlender/ungültiger Plan ⇒ **sichtbar gemeldet, nichts geraten**. Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben` |
-| 9 | `lageplan.html` | **Lageplan des Geschosses** (#54/#80, Kapitel 16.11, [N-1]…[N-9]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. Der **kalibrierte Geschossplan** liegt seit #80 als **Hintergrund** unter der Zeichnung ([N-9]) — read-only aus derselben Bilddatenbank, mit gespeichertem Maßstab/Versatz, **flüchtig** einstellbarer Transparenz (0…100 %, Standard 30) und in Vorschau, Druck und Export gleich; unkalibriert oder ohne Bild gibt es **keinen** Hintergrund und der Grund steht benannt auf dem Blatt. Aus dem Bild wird weiter **nichts** abgeleitet ([L-9]); kein IFC, keine Mengen/Kosten |
+| 9 | `lageplan.html` | **Lageplan des Geschosses** (#54/#80, Kapitel 16.11, [N-1]…[N-9]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. Der **kalibrierte Geschossplan** liegt seit #80 als **Hintergrund** unter der Zeichnung ([N-9]) — read-only aus derselben Bilddatenbank, mit gespeichertem Maßstab/Versatz, **flüchtig** einstellbarer Transparenz (0…100 %, Standard 30) und in Vorschau, Druck und Export gleich; unkalibriert oder ohne Bild gibt es **keinen** Hintergrund und der Grund steht benannt auf dem Blatt. Aus dem Bild wird weiter **nichts** abgeleitet ([L-9]); kein IFC, keine Mengen/Kosten. Die **Brandschutzklassifikation F0/F30** (#79) steht seit diesem Paket je Wand im Blatt: Kurztext an der Wandkante, für F30 zusätzlich **Schraffur**, dazu Kennfarbe, Legendeneintrag je Klasse mit dem Merkmal in Worten und die Spalte **„Brandschutz"** der Wandtabelle — auch **schwarz-weiß** unterscheidbar, in Vorschau, Druck und Export gleich. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement hier); eine verwaiste Wand bleibt **ohne** Angabe, und abgeleitet wird daraus nichts |
 
 **Module 2, 3 und 5 sind vorübergehend ausgeblendet (Zyklus-Fokus, Issue #20).** Der laufende
 AWG-Zyklus nimmt Statik-Ausbau (Modul 3), Modul-2-Ausbau und die stückweise Montageanleitung

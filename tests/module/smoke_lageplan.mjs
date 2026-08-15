@@ -641,6 +641,89 @@ ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
     && !/planAnsichtRahmen|planVorschauRahmen/.test(html));
 }
 
+// --- 10) #79 Brandschutzklassifikation F0/F30 im Blatt -------------------
+//
+// Der ECHTE Nutzerpfad: die Klassifikation steht am Wandelement und wird
+// ausschliesslich in Modul 1 gewaehlt — hier wird deshalb genau das gespeichert, was
+// Modul 1 schreibt, und ueber die regulaeren Wege (`speichere`/`verorteWand`) in das
+// Geschoss gebracht. Modul 9 liest sie nur. Geprueft wird an der sichtbaren Vorschau
+// UND an den entpackten Exportbytes.
+{
+  const F30 = Object.assign(buildWall('Wand F30 — Treppenhauswand', 1000, 2600, []),
+    { brandklasse: 'F30' });
+  const F0 = Object.assign(buildWall('Wand F0 — Innenwand', 1000, 2600, []),
+    { brandklasse: 'F0' });
+  const idF30 = store.speichere('Wand F30 — Treppenhauswand', F30);
+  const idF0 = store.speichere('Wand F0 — Innenwand', F0);
+  store.verorteWand(idF30, gsEG,
+    { lage: { start_mm: { x: 0, y: 6062.5 }, richtung: 'x', laenge_grid: 8 } });
+  store.verorteWand(idF0, gsEG,
+    { lage: { start_mm: { x: 0, y: 7062.5 }, richtung: 'x', laenge_grid: 8 } });
+  await warte();
+  lp.waehleGeschoss(gsEG);
+  await lp.laden();
+
+  const brandGruppen = (s) => [...s.matchAll(
+    /<g class="lpbrand" data-wand="([^"]*)" data-brandklasse="([^"]*)">([\s\S]*?)<\/g>/g)]
+    .map(m => ({ id: m[1], klasse: m[2], roh: m[0] }));
+  const bg = brandGruppen(lp.blatt.svg);
+  const gF30 = bg.find(g => g.id === idF30), gF0 = bg.find(g => g.id === idF0);
+  const bkVon = id => lp.daten.waende.find(w => w.id === id).brandklasse;
+
+  ok('[#79] die Ableitung liest die in Modul 1 gesetzte Klassifikation',
+    bkVon(idF30) === 'F30' && bkVon(idF0) === 'F0');
+  ok('[#79] eine Wand ohne das Feld gilt am echten Pfad als F0',
+    !('brandklasse' in store.holeElement(idA).wandelement) && bkVon(idA) === 'F0');
+  ok('[#79] der verwaiste Eintrag bleibt ohne Klassifikation ([L-4])',
+    bkVon('verwaist-1') === null && !bg.some(g => g.id === 'verwaist-1'));
+  ok('[#79] die Vorschau zeigt beide Klassifikationen verschieden',
+    !!gF30 && !!gF0 && gF30.roh !== gF0.roh
+    && /lpbrand-flaeche/.test(gF30.roh) && !/lpbrand-flaeche/.test(gF0.roh)
+    && gF30.roh.includes('>F30<') && gF0.roh.includes('>F0<'));
+  // Farbe allein genuegt nicht: ohne jede Farbangabe bleiben die Gruppen verschieden.
+  const ohneFarbe = s => s.replace(/\s(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, '');
+  ok('[#79] die Unterscheidung ueberlebt den Schwarz-Weiss-Ausdruck',
+    ohneFarbe(gF30.roh) !== ohneFarbe(gF0.roh)
+    && ohneFarbe(gF30.roh).includes('lpbrand-flaeche')
+    && ohneFarbe(gF30.roh).includes('>F30<') && ohneFarbe(gF0.roh).includes('>F0<'));
+  ok('[#79] Legende und Wandtabelle benennen beide Klassifikationen im Klartext',
+    lp.blatt.html.includes('<b>F30</b>') && lp.blatt.html.includes('<b>F0</b>')
+    && /<th>Brandschutz<\/th>/.test(lp.blatt.html)
+    && /Planungskennzeichnung, kein Nachweis/.test(lp.blatt.html));
+
+  // Muss: die exportierten BYTES zeigen dieselbe Kennzeichnung wie die Vorschau.
+  const standVorBk = JSON.stringify([...localStorage.m.entries()].sort());
+  letzterBlob = null;
+  $('lp-export').dispatch('click');
+  await warte();
+  const bkText = Object.fromEntries((await ZIP.entpacke(letzterBlob.teile[0]))
+    .map(e => [e.name, dec.decode(e.data)]));
+  const bkRumpf = LP.dateiRumpf(lp.daten);
+  ok('[#79] Druck-HTML und SVG-Datei tragen bit-genau dieselben Kennzeichnungen',
+    [bkText[bkRumpf + '.html'], bkText[bkRumpf + '.svg']].every(s =>
+      JSON.stringify(brandGruppen(s)) === JSON.stringify(bg)
+      && s.includes('<defs><pattern id='))
+    && $('lp-blatt').innerHTML.includes(gF30.roh)
+    && bkText[bkRumpf + '.html'].includes(LP.wandTabelleHtml(lp.daten)));
+  ok('[#79] das exportierte HTML fuehrt die Klassifikation auch in der Wandliste',
+    /<th>Brandschutz<\/th>/.test(bkText[bkRumpf + '.html'])
+    && /<td>F30<\/td>/.test(bkText[bkRumpf + '.html'])
+    && /<td>F0<\/td>/.test(bkText[bkRumpf + '.html']));
+  ok('[#79] Anzeigen und Exportieren schreiben nichts — die Klassifikation bleibt Modul 1',
+    JSON.stringify([...localStorage.m.entries()].sort()) === standVorBk
+    && store.holeElement(idF30).wandelement.brandklasse === 'F30'
+    && store.holeElement(idF0).wandelement.brandklasse === 'F0');
+  ok('[#79] die Seite bietet kein Bedienelement fuer die Klassifikation',
+    !/(?:id|name)="[^"]*brand[^"]*"/i.test(html)
+    && !/brandklasse\s*[:=]/.test(html.replace(/data-brandklasse/g, ''))
+    && /Modul 1/.test(html));
+  // Massstab und Wandgeometrie bleiben unberuehrt: geprueft an derselben Bezugswand
+  // wie vor der Klassifikation (die neuen Waende erweitern das Blatt zwangslaeufig).
+  ok('[#79] die Klassifikation aendert weder Meldungen noch Vollstaendigkeit',
+    !lp.daten.meldungen.some(m => /Brand/i.test(m.art + m.text))
+    && !lp.daten.hinweise.some(m => /Brand/i.test(m.art + m.text)));
+}
+
 // --- Bericht -------------------------------------------------------------
 let fail = 0;
 for (const [n, c] of checks) { if (!c) fail++; console.log((c ? '  ok  ' : '  FAIL ') + n); }

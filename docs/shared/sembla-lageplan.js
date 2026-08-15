@@ -4,7 +4,8 @@
  * (Modul 9, Kapitel 16.11, [N-1] … [N-9]).
  *
  * Erzeugt aus den KANONISCHEN Daten — Projektmappe (Struktur, Lage, Bemassungen),
- * Wandspeicher (Hoehe, Wandtyp) und dem deterministischen Constraint-Loeser — das
+ * Wandspeicher (Hoehe, Wandtyp, Brandschutzklassifikation) und dem deterministischen
+ * Constraint-Loeser — das
  * masstabsgetreue Lageplanblatt: Draufsicht aller zugeordneten und gueltig
  * verorteten Waende, vorhandene treibende Bemassungen, Legende, Wandkennzeichnung
  * (aussenliegende Nummernblasen mit Fuehrungslinie, #73) und Schriftfeld. Die
@@ -14,9 +15,14 @@
  *
  * Abgrenzung — was dieses Modul ausdruecklich NICHT ist:
  *   * **keine Bearbeitung.** Der Layout-Editor (`geschossplan.html`) bleibt der
- *     einzige Ort, an dem Lage und Bemassungen entstehen ([N-1]). Hier wird nur
+ *     einzige Ort, an dem Lage und Bemassungen entstehen ([N-1]); die
+ *     Brandschutzklassifikation gehoert allein Modul 1 (#79). Hier wird nur
  *     gelesen: es gibt keine Schreibfunktion, keinen Speicherzugriff, keinen
- *     zweiten Verortungsweg.
+ *     zweiten Verortungsweg. Aus `storage.js` kommt AUSSCHLIESSLICH der reine
+ *     Normalisierer `normBrandklasse` — die eine kanonische Stelle, an der die
+ *     Werte F0/F30 und der Standard F0 definiert sind. Eine zweite Werteliste
+ *     hier waere genau die Drift, die das verhindert; ein Speicherzugriff
+ *     entsteht dadurch nicht.
  *   * **keine eigene Wandgeometrie.** Rechtecke, Bezuege und Masse kommen aus
  *     `sembla-constraints.js` und `sembla-massbild.js` — demselben Baustein, mit
  *     dem der Editor zeichnet ([N-5]). Eine nachgebaute zweite Zeichenrechnung
@@ -54,6 +60,10 @@ import {
 } from "./sembla-constraints.js";
 import { massKontext, massGeometrie, massTextLayout, massAnker, massPfad } from "./sembla-massbild.js";
 import { findeGeschoss, kopfdaten as mappeKopfdaten, laengenAbgleich } from "./sembla-projektmappe.js";
+// #79: NUR der reine Normalisierer der Brandschutzklassifikation (F0/F30, Standard
+// F0) — kein Speicherzugriff, keine Lese- oder Schreibfunktion. Er liegt kanonisch in
+// storage.js, weil Modul 1 (Schreibweg) und der Geschosseditor dieselbe Stelle nutzen.
+import { normBrandklasse } from "./storage.js";
 
 // ------------------------------------------------------------ Blatt & Masstab
 
@@ -113,6 +123,46 @@ export const FARBE = {
   fehler: FARBEN.fehler, frei: "#5b6673",
   mass: "#33415c", text: "#1c2430", raster: "#c9d2dc", ursprung: "#33415c",
 };
+
+/**
+ * Brandschutzklassifikation im Blatt (#79) — Darstellung, sonst nichts. Die
+ * Klassifikation ist eine reine PLANUNGSKENNZEICHNUNG: aus ihr wird kein Nachweis,
+ * keine Freigabe und keine Materialregel abgeleitet, und sie veraendert weder
+ * Wandgeometrie noch Massstab, Bemassung oder Vollstaendigkeit.
+ *
+ * Getragen wird die Unterscheidung von ZWEI Merkmalen, die BEIDE ohne Farbe
+ * auskommen — der Schwarz-Weiss-Ausdruck muss sie zeigen, Farbe allein genuegt
+ * nicht:
+ *   * `kuerzel` steht als Kurztext an der Wand, in PAPIER-mm. Eine 125 mm breite
+ *     Wand ist bei 1:100 nur 1,25 Papier-mm breit; eine Kennzeichnung IN der
+ *     Flaeche waere in den groben Massstaeben unlesbar, der Kurztext bleibt es
+ *     in jedem.
+ *   * `schraffur` legt bei F30 zusaetzlich das Schraffurmuster ueber die
+ *     Wandflaeche — die gelaeufige Bauzeichnungskonvention, auf einen Blick
+ *     erkennbar. F0 bleibt bewusst OHNE Schraffur und damit darstellungsgleich
+ *     zum bisherigen Blatt.
+ * `farbe` kommt nur additiv dazu und ist bewusst keine der Zustandsfarben ([K-8])
+ * und keine der V/R-Farben (#84).
+ */
+export const BRANDKLASSE = Object.freeze({
+  F0: Object.freeze({ kuerzel: "F0", name: "ohne Brandschutzklassifikation",
+    merkmal: "ohne Schraffur", farbe: "#5b6673", schraffur: false }),
+  F30: Object.freeze({ kuerzel: "F30", name: "Brandschutzklassifikation F30",
+    merkmal: "diagonal schraffiert", farbe: "#0b7285", schraffur: true }),
+});
+
+/** Kennung und Kachelmass (Papier-mm) der F30-Schraffur. */
+const SCHRAFFUR_ID = "lpbrand-f30";
+const SCHRAFFUR_MM = 0.9;
+
+/**
+ * Papier-mm, um die der Brandschutz-Kurztext neben der Wandkante steht — auf der
+ * der Nummernblase GEGENUEBERLIEGENDEN Seite (x-Wand unten, y-Wand rechts), damit
+ * sich beide Kennzeichnungen nicht ins Gehege kommen. Wie die Blase liegt er damit
+ * im Zeichnungsrand (< PAD_MM) und veraendert weder `ausdehnung()` noch den
+ * gewaehlten Massstab.
+ */
+const BRAND_ABSTAND_MM = 2.6;
 
 // ------------------------------------------------------------------- Helfer
 
@@ -259,9 +309,9 @@ export function waehleMasstab(breite_mm, hoehe_mm, format = "a3") {
  *          elemente?:Array<{id:string,name?:string,wandelement?:any}>,
  *          hintergrund?:any}} arg
  *   `elemente` sind die vorhandenen Wandelemente (Form von `listeElemente()`).
- *   Sie liefern AUSSCHLIESSLICH Hoehe und Wandtyp — die Mappe kennt beides nicht
- *   und bekommt keine Kopie ([P-1]). Fehlt ein Element, ist der Eintrag verwaist
- *   ([L-4]) und es wird nichts geraten.
+ *   Sie liefern AUSSCHLIESSLICH Hoehe, Wandtyp und Brandschutzklassifikation — die
+ *   Mappe kennt nichts davon und bekommt keine Kopie ([P-1]). Fehlt ein Element, ist
+ *   der Eintrag verwaist ([L-4]) und es wird nichts geraten.
  *   `hintergrund` ist der fertige Planrahmen in Welt-mm (#80, [N-9], s.
  *   `normHintergrund`) — read-only durchgereicht, nie hier berechnet.
  */
@@ -325,6 +375,12 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
       laenge_mm: laengeMm(w.lage),
       hoehe_mm: we && Number.isFinite(+we.height_mm) ? +we.height_mm : null,
       wandtyp: we && we.wandtyp ? String(we.wandtyp) : null,
+      // Brandschutzklassifikation (#79): dieselbe Bahn wie Hoehe und Wandtyp, aber
+      // NORMALISIERT — ein Wandelement ohne das Feld (Neuanlage, Altbestand,
+      // importierte Datei) gilt als F0, ein unbekannter Wert ebenfalls. Ohne
+      // Wandelement bleibt sie `null`: eine verwaiste Wand bekommt keine erfundene
+      // Klassifikation und steht in der Tabelle ohne Angabe ([L-4]/[P-9]).
+      brandklasse: we ? normBrandklasse(we.brandklasse) : null,
       rechteck,
       bestimmt,
       zustand: zustand(w.id, erg, { kollisionen: koll }),
@@ -496,6 +552,21 @@ export function lageplanSvg(daten, opts) {
 
   const teile = [];
 
+  // ---- Schraffurmuster der Brandschutzklassifikation (#79) ---------------
+  //
+  // `<defs>` zeichnet selbst nichts und steht deshalb vorn — die Reihenfolge der
+  // sichtbaren Knoten (Hintergrund, Wand, Seiten, Marker, Masse) bleibt unberuehrt.
+  // Es gehoert zwingend in `inner`: `lageplanSvgDatei()` uebernimmt genau diese
+  // Zeichenkette, ein Muster am Wurzelelement fehlte in der Exportdatei. Erzeugt
+  // wird es nur, wenn es auch gebraucht wird — sonst waere das Blatt einer reinen
+  // F0-Planung nicht mehr das bisherige.
+  if (daten.waende.some((w) => w.rechteck && w.brandklasse === "F30")) {
+    teile.push(`<defs><pattern id="${SCHRAFFUR_ID}" width="${_n(SCHRAFFUR_MM)}"`
+      + ` height="${_n(SCHRAFFUR_MM)}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`
+      + `<line x1="0" y1="0" x2="0" y2="${_n(SCHRAFFUR_MM)}"`
+      + ` stroke="${BRANDKLASSE.F30.farbe}" stroke-width="0.18"/></pattern></defs>`);
+  }
+
   // ---- Planhintergrund (#80, [N-9]) -------------------------------------
   //
   // ZUERST, damit alles Gezeichnete darueber liegt: SVG malt in Dokumentreihenfolge,
@@ -571,6 +642,30 @@ export function lageplanSvg(daten, opts) {
       + ` stroke="${FARBE.mittellinie}" stroke-width="0.1" stroke-dasharray="1.2 0.8"/>`);
     st.push("</g>");
     teile.push(st.join(""));
+    // Brandschutzklassifikation (#79): eigene Gruppe NACH dem Wandknoten und VOR
+    // Seitenkanten und Nummernblase — die Schraffur liegt damit auf der Wandflaeche,
+    // aber unter V/R-Kante und Blase. Eigene Gruppe (wie #84/#73), damit der
+    // Wandknoten selbst unveraendert bleibt. Getragen wird die Unterscheidung ohne
+    // Farbe: F30 zusaetzlich schraffiert, und BEIDE Klassen tragen ihren Kurztext.
+    // Sie ist reine Kennzeichnung und haengt deshalb NICHT am Schalter
+    // „Wände kennzeichnen" — der gehoert der Nummernblase als Lesehilfe.
+    const bk = w.brandklasse ? BRANDKLASSE[w.brandklasse] : null;
+    if (bk) {
+      const querB = w.richtung !== "y";
+      const btx = querB ? x + bw / 2 : x + bw + BRAND_ABSTAND_MM;
+      const bty = querB ? y + bh + BRAND_ABSTAND_MM : y + bh / 2 + 0.65;
+      const bg = [`<g class="lpbrand" data-wand="${_esc(w.id)}"`
+        + ` data-brandklasse="${_esc(w.brandklasse)}">`];
+      if (bk.schraffur) {
+        bg.push(`<rect class="lpbrand-flaeche" x="${_n(x)}" y="${_n(y)}" width="${_n(bw)}"`
+          + ` height="${_n(bh)}" fill="url(#${SCHRAFFUR_ID})"/>`);
+      }
+      bg.push(`<text class="lpbrand-kz" x="${_n(btx)}" y="${_n(bty)}" font-size="1.8"`
+        + ` text-anchor="${querB ? "middle" : "start"}" fill="${bk.farbe}">`
+        + `${_esc(bk.kuerzel)}</text>`);
+      bg.push("</g>");
+      teile.push(bg.join(""));
+    }
     if (w.seiten) {
       // Vorder-/Rueckkante (#84): dieselbe Ableitung wie im Editor (`wandSeiten`),
       // hier nur in Papier-mm umgerechnet. Kantenlinie plus Kennbuchstabe AUSSEN —
@@ -743,6 +838,14 @@ export function legendeHtml() {
     // #84: Vorder-/Rueckkante — Kennbuchstabe UND Farbe, nie nur Farbe.
     + `<span>${i(SEITEN.vorder.farbe)}<b>V</b> ${SEITEN.vorder.name} der Wand</span>`
     + `<span>${i(SEITEN.rueck.farbe)}<b>R</b> ${SEITEN.rueck.name} der Wand</span>`
+    // #79: Brandschutzklassifikation — beide Klassen benannt, und das
+    // unterscheidende Merkmal steht IN WORTEN dabei, damit der Schluessel auch im
+    // Schwarz-Weiss-Ausdruck traegt. Der Zusatz sagt, was die Angabe nicht ist.
+    + `<span>${i(BRANDKLASSE.F0.farbe)}<b>${BRANDKLASSE.F0.kuerzel}</b> `
+    + `${BRANDKLASSE.F0.name} — Wandfläche ${BRANDKLASSE.F0.merkmal}</span>`
+    + `<span>${i(BRANDKLASSE.F30.farbe, "plate")}<b>${BRANDKLASSE.F30.kuerzel}</b> `
+    + `${BRANDKLASSE.F30.name} — Wandfläche ${BRANDKLASSE.F30.merkmal} `
+    + `(Planungskennzeichnung, kein Nachweis)</span>`
     + `<span>${i(FARBE.mass)}treibende Bemaßung ([K-3])</span>`
     // #59/#73: die Nummernblase ist eine reine Lesehilfe des Blattes und keine
     // Wandkennung — nachgeschlagen wird sie in der Wandliste.
@@ -774,27 +877,33 @@ export function hintergrundHtml(daten, opts) {
 }
 
 /**
- * Wandtabelle: Nummer, Name, Länge, Höhe, Wandtyp, Bestimmtheit.
+ * Wandtabelle: Nummer, Name, Länge, Höhe, Wandtyp, Brandschutz, Bestimmtheit.
  *
  * Die Nummer der ersten Spalte ist GENAU die, die in der Draufsicht in der
  * Nummernblase der Wand steht (#59/#73) — die Tabelle ist damit der Schluessel von
  * der kurzen Zahl im Plan zum vollstaendigen Wandnamen. Unverortete und verwaiste Eintraege stehen
  * weiter mit ihrer Nummer in der Liste; es wird keine Lage und keine Ersatzkennung
  * erfunden ([L-4]/[N-7]).
+ *
+ * Die Spalte „Brandschutz" (#79) nennt die Klassifikation als Text — damit steht sie
+ * auch dort, wo die Zeichnung klein ist, und ein verwaister Eintrag bleibt sichtbar
+ * OHNE Angabe („–"), statt still als F0 zu erscheinen.
  */
 export function wandTabelleHtml(daten) {
   const typ = (t) => (t === "ohne_wind" ? "ohne Wind" : t === "mit_wind" ? "mit Wind" : "–");
+  const brand = (b) => (b && BRANDKLASSE[b] ? BRANDKLASSE[b].kuerzel : "–");
   const best = (b) => (b.x && b.y ? "x/y" : b.x ? "nur x" : b.y ? "nur y" : "frei");
   const zeilen = daten.waende.map((w) => `<tr><td class="nr">${_esc(w.nr)}</td>`
     + `<td>${_esc(w.name)}</td>`
     + `<td class="r">${w.laenge_mm == null ? "–" : _fmt(w.laenge_mm) + " mm"}</td>`
     + `<td class="r">${w.hoehe_mm == null ? "–" : _fmt(w.hoehe_mm) + " mm"}</td>`
     + `<td>${_esc(typ(w.wandtyp))}</td>`
+    + `<td>${_esc(brand(w.brandklasse))}</td>`
     + `<td>${w.rechteck ? _esc(best(w.bestimmt)) : "unverortet"}</td></tr>`).join("");
   return `<table class="lptab"><thead><tr><th class="nr">Nr.</th><th>Wand</th>`
     + `<th class="r">Länge</th>`
-    + `<th class="r">Höhe</th><th>Wandtyp</th><th>Lage</th></tr></thead>`
-    + `<tbody>${zeilen || '<tr><td colspan="6">keine Wand eingetragen</td></tr>'}</tbody></table>`;
+    + `<th class="r">Höhe</th><th>Wandtyp</th><th>Brandschutz</th><th>Lage</th></tr></thead>`
+    + `<tbody>${zeilen || '<tr><td colspan="7">keine Wand eingetragen</td></tr>'}</tbody></table>`;
 }
 
 /**

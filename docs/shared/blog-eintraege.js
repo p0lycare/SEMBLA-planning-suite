@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260815-02",
+    datum: "2026-08-15",
+    typ: "feature",
+    issue: 79,
+    titel: "Brandschutzklassifikation F0/F30 im Lageplan sichtbar — schraffiert, beschriftet, in der Legende",
+    testbitte: "In Modul 1 eine Wand auf F30 stellen, Modul 9 öffnen und exportieren: Die F30-Wand ist "
+      + "schraffiert und beschriftet, die Legende erklärt beide Klassen, die Wandliste zeigt die Spalte "
+      + "Brandschutz — auch schwarz-weiß unterscheidbar.",
+  },
+  {
     id: "chg-20260815-01",
     datum: "2026-08-15",
     typ: "feature",
