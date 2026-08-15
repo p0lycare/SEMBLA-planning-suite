@@ -46,6 +46,26 @@
   td.art.sonder{font-weight:600}
   /* Herkunft (#44): je Wand Name und Teilmenge — die Aggregation bleibt bis zur Wand auflösbar. */
   td.herk{text-align:left;font-size:11px;color:#46505e}
+  /* Mengenübersteuerung ([P-20], #81): die WIRKSAME Menge steht oben, die BERECHNETE
+     unmittelbar darunter — beide gleichzeitig, damit der Originalwert nie verdeckt wird.
+     Das Bedienelement liegt in derselben Zelle (keine zusätzliche Spalte) und ist im
+     Druck ausgeblendet; die beiden Zahlen bleiben als Text stehen. */
+  td.menge.ueber{background:#fff8ef}
+  td.menge .wirk{font-weight:700}
+  td.menge .chip{display:inline-block;margin-left:5px;padding:0 5px;border-radius:8px;
+                 background:#f0d8b8;color:#7a4b00;font-size:10px;font-weight:700;vertical-align:1px}
+  td.menge .orig{font-size:11px;color:var(--sb-muted);font-weight:400;margin-top:1px}
+  td.menge .mfeld{margin-top:3px;display:flex;gap:4px;justify-content:flex-end;align-items:center}
+  td.menge .mfeld input{width:74px;padding:2px 5px;border:1px solid var(--sb-line);border-radius:5px;
+                        font-size:12px;text-align:right;background:#fff}
+  td.menge .mfeld button{padding:1px 7px;font-size:12px;line-height:1.5;font-weight:600}
+  td.menge .mfehler{font-size:11px;color:#a3271b;font-weight:600;margin-top:2px}
+  /* Hinweise zur Übersteuerung ([P-20]): nicht zuordenbare und unzulässige Einträge werden
+     BENANNT und nie still entfernt; dazu die Abgrenzung zu Ebenen und Exportdateien. */
+  .mhinweis{margin-top:10px;font-size:12px;border:1px solid #cfd8e3;background:#f7f9fb;
+            border-radius:8px;padding:8px 10px;color:#3a4653}
+  .mhinweis b{color:var(--sb-ink)}
+  .mhinweis ul{margin:4px 0 0;padding-left:18px} .mhinweis li{margin:2px 0}
   .kennz{font-size:11.5px;color:var(--sb-muted);margin-top:10px;line-height:1.6}
   .kennz b{color:var(--sb-ink)}
   .kennz .sym{font-weight:700;margin-right:3px}
@@ -109,6 +129,10 @@
          (tr.sum) — ein zweiter Summenblock darunter waere genau die erklaerende Wiederholung,
          die #62 abstellt. Die Lueckenliste (#44) ist etwas anderes: sie nennt fehlende WÄNDE. -->
     <div class="luecken" id="luecken" hidden></div>
+    <!-- Mengenübersteuerung ([P-20]): Abgrenzung (Ebene, Exportdatei) und BENANNTE
+         Einträge, die zu keiner gerechneten Position mehr passen oder unzulässig sind.
+         Bewusst ein eigener Block — die Lückenliste darüber meint fehlende WÄNDE. -->
+    <div class="mhinweis" id="mhinweis" hidden></div>
     <div class="kennz" id="kennz"></div>
   </div>
 </div>
@@ -154,6 +178,21 @@
    letzter Schreiber, obwohl Kopfdaten nach [L-11] ausschliesslich am Projekt leben. Der Block
    wird hier weder gelesen noch geschrieben; Altbestand bleibt unangetastet im Projekt stehen.
 
+   MENGENÜBERSTEUERUNG ([P-20], #81): Je Position kann eine MANUELLE Menge gesetzt werden —
+   für den Fall, dass auf der Baustelle nachweislich eine andere Stückzahl gebraucht wird als
+   die Rechnung ergibt (Bruch, Reserve, vorhandenes Material). Sie steht NEBEN der berechneten
+   Menge, nie an deren Stelle: `sembla-bom.js` und der Rechenkern bleiben unangetastet, die
+   berechnete Menge wird weiter bei jeder Ausgabe frisch abgeleitet und in derselben Zelle
+   sichtbar mitgeführt. Gespeichert wird ausschliesslich in `eingaben.kosten.mengen` der WAND
+   (Kennung `<Stücklistenschlüssel>@<Fertigmaß>` -> ganze Zahl ≥ 0); Modul 4 ist der einzige
+   Schreibweg. Der GESAMTPREIS der übersteuerten Zeile folgt der wirksamen Menge bei
+   unverändertem Einzelpreis — sonst trüge das Blatt zwei Mengenstände. Die Preisauflösung
+   selbst ([P-14]) wird dabei nicht angefasst. Wirksam ist die Übersteuerung NUR auf der
+   Wandebene; auf den Gesamtebenen (#44) und in den Exportdateien aus Modul 0 stehen die
+   berechneten Mengen — beides wird am Blatt benannt, nicht stillschweigend unterschlagen.
+   Ein Eintrag, der zu keiner gerechneten Position mehr passt, und ein unzulässiger Wert
+   werden BENANNT und nie still gelöscht oder umgehängt ([P-9]).
+
    ARBEITSBLATT (#58/#62): Die Anzeige ist auf das reduziert, was auf der Baustelle gebraucht
    wird — Einbauteil, Art, Fertigmaß und Menge. Die
    WANDREFERENZ steht EINMAL im Blattkopf statt in jeder Zeile: auf der Wandebene ist die Liste
@@ -166,6 +205,9 @@ const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigi
 const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 let WALL=null, EINGABEN=null, KATALOG=null, currentId=null, WNAME=null;
 let EBENE='wand', PREISE=true;          // beides fluechtig: kein Datum, keine Speicherung
+// Abgewiesene Mengeneingabe ([P-20]): NUR Anzeige. Sie steht an genau der Zeile, an der sie
+// entstanden ist, und verschwindet mit der nächsten gültigen Eingabe. Gespeichert wird sie nie.
+let MFEHLER=null;
 // aus window.SEMBLA (in __slInit gebunden):
 let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten, standText;
 
@@ -220,6 +262,85 @@ function leser(){
 }
 function daten(){ return gesamtDaten(umfang(mappe(), EBENE, zeiger()), leser()); }
 
+/* ---- Mengenübersteuerung ([P-20]) ---------------------------------------------------------
+   Gelesen wird aus den Eingaben der aktiven Wand, gerechnet wird NICHTS neu: die berechnete
+   Menge jeder Position bleibt erhalten (`__berechnet`) und die manuelle tritt daneben
+   (`__ueber`). Kennung und Wertprüfung kommen aus der Speicherschicht — es gibt genau eine
+   Fassung dieser Regeln, und die Oberfläche baut sich keine zweite. */
+function mengenMap(){
+  const m=(eg().kosten||{}).mengen;
+  return (m && typeof m==='object' && !Array.isArray(m)) ? m : {};
+}
+function kennungVon(p){ return (store&&store.mengenKennung) ? store.mengenKennung(p) : null; }
+function pruefeMenge(w){
+  return (store&&store.pruefeMenge) ? store.pruefeMenge(w)
+    : { ok:false, fehler:'Mengen sind ohne Speicherschicht nicht prüfbar.' };
+}
+/**
+ * Positionen um die gespeicherten Übersteuerungen ergänzen — nur auf der Wandebene.
+ * Jede Position trägt danach `__berechnet` (unverändert aus der Ableitung), `__ueber`
+ * (manuelle Menge oder null) und `__kennung`. Nicht zuordenbare und unzulässige Einträge
+ * werden GEMELDET, nie entfernt und nie auf eine andere Position gelegt.
+ */
+function mengenStand(positionen){
+  const wandebene = EBENE==='wand';
+  const map = mengenMap();
+  const bekannt=new Set(), ungueltig=[]; let anzahl=0;
+  const angepasst = positionen.map(p=>{
+    const k = wandebene ? kennungVon(p) : null;
+    if(k) bekannt.add(k);
+    const hat = k && Object.prototype.hasOwnProperty.call(map,k);
+    const q = { ...p, __kennung:k, __berechnet:p.menge, __ueber:null };
+    if(hat){
+      const g = pruefeMenge(map[k]);
+      if(g.ok){
+        q.__ueber = g.wert; q.menge = g.wert;
+        // Der Einzelpreis bleibt exakt der aufgelöste ([P-14]); nur die Menge ist eine andere.
+        q.gp = (p.ep==null ? null : g.wert*p.ep);
+        anzahl++;
+      } else {
+        ungueltig.push({ kennung:k, label:p.label, wert:map[k], grund:g.fehler });
+      }
+    }
+    return q;
+  });
+  const fremd = wandebene ? Object.keys(map).filter(k=>!bekannt.has(k)) : [];
+  return { positionen:angepasst, anzahl, ungueltig, fremd, gespeichert:Object.keys(map).length };
+}
+/** Eine Mengenzelle: wirksame Menge, bei Übersteuerung zusätzlich die berechnete, dazu das
+ *  Bedienelement (im Druck ausgeblendet — die beiden Zahlen bleiben als Text stehen). */
+function mengeZelle(r, nk){
+  const einheit = esc(r.unit);
+  const wirksam = fmt(r.menge,nk)+' '+einheit;
+  const k = r.__kennung;
+  const fehler = (MFEHLER && k && MFEHLER.kennung===k)
+    ? `<div class="mfehler">${esc(MFEHLER.text)}</div>` : '';
+  const feld = k
+    ? `<div class="mfeld"><input type="number" step="1" min="0" data-menge="${esc(k)}"`
+      + ` value="${r.__ueber!=null?esc(r.__ueber):''}" placeholder="${esc(r.__berechnet)}"`
+      + ` aria-label="Menge manuell übersteuern" title="Manuelle Menge (ganze Zahl ab 0); leer = berechnete Menge">`
+      + (r.__ueber!=null
+          ? `<button type="button" data-menge-reset="${esc(k)}" title="Übersteuerung zurücksetzen">zurücksetzen</button>`
+          : '')
+      + `</div>` : '';
+  if(r.__ueber==null) return `<td class="menge">${wirksam}${feld}${fehler}</td>`;
+  return `<td class="menge ueber"><span class="wirk">${wirksam}</span><span class="chip">manuell</span>`
+    + `<div class="orig">berechnet ${fmt(r.__berechnet,nk)} ${einheit}</div>${feld}${fehler}</td>`;
+}
+/** Genau EIN Schreibweg für die manuelle Menge; `null` setzt zurück. */
+function mengeSetzen(kennung, wert){
+  if(!store || !store.setzeMengenUebersteuerung){
+    MFEHLER={ kennung, text:'Ohne Speicherschicht wird keine manuelle Menge gespeichert.' };
+    render(); return;
+  }
+  try{
+    const id=store.setzeMengenUebersteuerung(kennung, wert);
+    MFEHLER = id ? null : { kennung, text:'Keine aktive Wand — es wurde nichts gespeichert.' };
+  }catch(e){ MFEHLER={ kennung, text:(e&&e.message)||String(e) }; }
+  EINGABEN = (store&&store.aktiveEingaben) ? store.aktiveEingaben() : EINGABEN;
+  render();
+}
+
 /* ---- Spalten des Blattes ---------------------------------------------------------------
    Wandebene: die sechs Spalten aus #62 (die ID-Spalte ist ersatzlos entfallen). Gesamtebenen:
    genau eine Spalte mehr (Herkunft). Der Preisschalter entfernt ausschliesslich EP und GP. */
@@ -268,6 +389,7 @@ function renderLeer(){
   renderKopfzeile(spalten());
   renderKopf({bezug:{},quellen:[],waende:[],titel:'Baustellenstückliste Wand'});
   $('kennz').innerHTML=''; $('luecken').hidden=true; $('luecken').innerHTML='';
+  $('mhinweis').hidden=true; $('mhinweis').innerHTML='';
   $('tbody').innerHTML=`<tr><td colspan="${spalten().length}" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>`;
 }
 
@@ -278,7 +400,13 @@ function render(){
   const cur=d.waehrung||'EUR';
   renderKopfzeile(sp);
   renderKopf(d);
-  const rs=d.positionen; const s=d.summe;
+  // [P-20]: Die Ableitung bleibt unangetastet; die manuellen Mengen treten daneben. Summe und
+  // Betragsfähigkeit werden aus GENAU DIESEN Zeilen gerechnet — sonst zeigte die Summenzeile
+  // einen anderen Mengenstand als die Tabelle darüber. Ohne Übersteuerung ist das Ergebnis
+  // bit-genau `d.summe`, weil `stuecklisteSumme` genau dieselbe Funktion ist.
+  const mstand=mengenStand(d.positionen);
+  const rs=mstand.positionen; const s=stuecklisteSumme(rs);
+  const betragMoeglich = s.bepreist>0 && !d.waehrungKonflikt;
   // Ohne Katalog hätte JEDE Zeile denselben Grund — das wäre wieder Fülltext. Er steht dann
   // einmal an der Summe (s. u.), die Preiszellen bleiben trotzdem „n.a.“.
   const keinKatalog=!KATALOG;
@@ -300,7 +428,7 @@ function render(){
     const preis = v => v==null ? '<td class="na">n.a.</td>' : `<td>${fmt(v,2)}</td>`;
     html+=`<tr><td>${esc(r.label)}${grund}</td>${art}`
         +`<td>${mass}</td>`
-        +`<td>${fmt(r.menge,nk)} ${esc(r.unit)}</td>`
+        +mengeZelle(r,nk)
         +herk
         +(PREISE?preis(r.ep)+preis(r.gp):'')+`</tr>`;
   });
@@ -317,8 +445,9 @@ function render(){
     html+=`<tr class="sum"><td class="stand" colspan="${SPALTEN-1}">${esc(stand)}`
         +`${keinKatalog?' · kein Katalog geladen':''}`
         +`${EBENE!=='wand'?' · '+esc(standText(d)):''}`
-        +`${d.waehrungKonflikt?' · kein Gesamtbetrag: uneinheitliche Währung':''}</td>`
-        +(d.betragMoeglich ? `<td>${fmt(s.summe,2)} ${esc(cur)}</td>` : '<td class="na">n.a.</td>')
+        +`${d.waehrungKonflikt?' · kein Gesamtbetrag: uneinheitliche Währung':''}`
+        +`${mstand.anzahl?' · '+mstand.anzahl+' Position(en) mit manueller Menge':''}</td>`
+        +(betragMoeglich ? `<td>${fmt(s.summe,2)} ${esc(cur)}</td>` : '<td class="na">n.a.</td>')
         +`</tr>`;
   } else {
     html+=`<tr class="sum"><td class="stand" colspan="${SPALTEN}">Preise ausgeblendet`
@@ -326,7 +455,35 @@ function render(){
   }
   $('tbody').innerHTML=html;
   renderLuecken(d);
+  renderMengenHinweis(mstand);
   renderKennzeichnung(rs);
+}
+
+// Hinweise zur Mengenübersteuerung ([P-20]). Der Block sagt genau drei Dinge, und keines
+// davon still: wo die manuelle Menge wirkt (nur Wandebene) und wo nicht (Gesamtebenen,
+// Exportdateien aus Modul 0), welche gespeicherte Übersteuerung zu keiner gerechneten
+// Position mehr passt und welche unzulässig ist. Bereinigt wird nichts.
+function renderMengenHinweis(m){
+  const el=$('mhinweis'); const teile=[];
+  if(EBENE!=='wand'){
+    if(m.gespeichert) teile.push('<b>Manuelle Mengen wirken nur auf der Wandebene.</b> '
+      + 'Diese Ebene zeigt durchgehend die berechneten Mengen; die '+m.gespeichert
+      + ' gespeicherte(n) Übersteuerung(en) der aktiven Wand bleiben unverändert erhalten.');
+  } else if(m.anzahl){
+    teile.push('<b>'+m.anzahl+' Position(en) mit manueller Menge.</b> '
+      + 'Die berechnete Menge steht unverändert daneben. Die Stücklistendateien des zentralen '
+      + 'Exports in Modul 0 führen die berechneten Mengen.');
+  }
+  if(m.fremd.length) teile.push('<b>Nicht zuordenbar:</b> die gespeicherte(n) Übersteuerung(en) '
+    + m.fremd.map(k=>'<code>'+esc(k)+'</code>').join(', ')
+    + ' gehören zu keiner aktuell gerechneten Position. Sie bleiben gespeichert und werden '
+    + 'auf keine andere Position übertragen.');
+  if(m.ungueltig.length) teile.push('<b>Unzulässig gespeichert:</b><ul>'
+    + m.ungueltig.map(u=>`<li>${esc(u.label)} (<code>${esc(u.kennung)}</code>): `
+        + `${esc(u.grund)} Es gilt die berechnete Menge.</li>`).join('')
+    + '</ul>');
+  el.hidden = teile.length===0;
+  el.innerHTML = teile.map(t=>'<div>'+t+'</div>').join('');
 }
 
 // Lücken (#44): fehlende, verwaiste oder nicht ableitbare Wände und widersprüchliche
@@ -372,6 +529,7 @@ function syncInputs(){ const k=eg().kosten||{};
 
 // ---- Aktives Wandelement + Eingaben + Katalog (localStorage) ----
 function loadModel(){
+  MFEHLER=null;                 // eine abgewiesene Eingabe gehört zur Wand, an der sie entstand
   currentId = store&&store.aktivId ? store.aktivId() : null;
   EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : eg();
   KATALOG = store&&store.holeKatalog ? store.holeKatalog() : null;
@@ -404,9 +562,21 @@ function bindEvents(){
   // Die Währung ist die EINZIGE persistente Eingabe der Wandebene (#70).
   $('cur').addEventListener('input',()=>{ eg().kosten.waehrung=$('cur').value; persist('kosten',{waehrung:$('cur').value}); render(); });
   // Ebene und Preisschalter sind reine Ansicht: kein Schreibvorgang, keine Speicherung.
-  $('ebene').addEventListener('change',()=>{ EBENE=$('ebene').value||'wand'; syncInputs(); render(); });
+  $('ebene').addEventListener('change',()=>{ EBENE=$('ebene').value||'wand'; MFEHLER=null; syncInputs(); render(); });
   $('preise').addEventListener('change',()=>{ PREISE=!!$('preise').checked; render(); });
   $('print').addEventListener('click',()=>window.print());
+  // Mengenübersteuerung ([P-20]): Die Bedienelemente liegen IN der Tabelle, die `render()`
+  // bei jeder Änderung komplett neu schreibt — ein Behandler am einzelnen Feld wäre danach
+  // weg. Gehört wird deshalb an der Tabelle selbst; die Kennung steht am Element.
+  const tb=$('tbody');
+  tb.addEventListener('change',ev=>{
+    const t=ev&&ev.target, k=t&&t.dataset?t.dataset.menge:null;
+    if(k) mengeSetzen(k, t.value);
+  });
+  tb.addEventListener('click',ev=>{
+    const t=ev&&ev.target, k=t&&t.dataset?t.dataset.mengeReset:null;
+    if(k) mengeSetzen(k, null);
+  });
 }
 
 // Testhaken (kein setPrice mehr — Modul 4 pflegt keine Preise, [P-13]).

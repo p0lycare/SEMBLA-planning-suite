@@ -93,7 +93,8 @@ gespeicherte Länge aber nur an; die Module 2–9 lesen das Wandelement.
 `eingaben`-Block: `{ projekt, planung, aufbau, kosten, statik, katalog }` (Standardwerte in
 `storage.standardEingaben()`). Jedes Modul schreibt **nur seinen eigenen Abschnitt** via
 `store.mergeEingaben(teil, patch)` zurück — Modul 0→`projekt` (Kopfdaten am aktiven Element),
-Modul 1→`planung`, Modul 2→`aufbau`, Modul 4→`kosten` (nur noch `waehrung`), Modul 3→`statik`.
+Modul 1→`planung`, Modul 2→`aufbau`, Modul 4→`kosten` (`waehrung` und die Mengenübersteuerung
+`mengen` nach [P-20] — Letztere über einen **eigenen** Setter, s. u.), Modul 3→`statik`.
 Abgeleitete Werte (Stückliste, Layout, Nachweis) werden immer **neu gerechnet, nie gespeichert**.
 Modul 3 speichert nur seine Kennwerte; Geometrie (h/L/t/Öffnungszahl) **und Wandtyp** kommen aus dem
 Wandelement. `eingaben.katalog` ist **unwirksamer Altbestand** (s. u.) und wird von niemandem mehr
@@ -560,6 +561,27 @@ als *n von m bepreist* gekennzeichnet; der Auswahlstatus ist schon in Modul 1/2 
 `eingaben.kosten.preise` ist damit **keine Preisquelle mehr** (bleibt in Altprojekten erhalten, wird
 weder gelesen noch geschrieben, ist kein Standardwert mehr).
 
+**Mengenübersteuerung je Stücklistenposition (`eingaben.kosten.mengen`, Regel [P-20], #81).** Die
+**berechnete** Menge bleibt ausschließlich abgeleitet (`sembla-bom.js` → `stuecklistePositionen`) und
+wird bei jeder Ausgabe neu gerechnet; **daneben** — nie an ihrer Stelle — kann jede Position eine
+**manuelle Menge** tragen (Bruch, Reserve, vorhandenes Material). Gespeichert wird sie wandbezogen als
+flache Abbildung `{"<key>@<fertigmass_mm|->": <ganze Zahl ≥ 0>}`; die Kennung baut
+`storage.mengenKennung(pos)` und enthält **zwingend das Fertigmaß**, weil mehrere Positionen
+denselben `key` tragen und sich nur darin unterscheiden ([Z-2]). **Modul 4 ist der einzige
+Schreibweg**, und er läuft über `store.setzeMengenUebersteuerung(kennung, wert|null)` — eine
+**eigene** Funktion statt `mergeEingaben`, weil der Patch-Weg tief zusammenführt und einen Schlüssel
+deshalb nie **entfernen** könnte; das Rücksetzen ist aber genau das. Geprüft wird an **einer** Stelle
+(`pruefeMenge()`): ganze Zahl ≥ 0, sonst **benannt abgewiesen** statt gerundet ([P-9]) — die
+Oberfläche validiert nicht selbst, sondern zeigt die geworfene Meldung an der Zeile. Wirksam ist die
+Übersteuerung **nur auf der Wandebene** von Modul 4: der **Gesamtpreis** der Zeile folgt der
+wirksamen Menge bei unverändertem Einzelpreis (die [P-14]-Auflösung wird **nicht** angefasst); auf den
+Gesamtebenen (#44) und in den Stücklistendateien des zentralen Exports stehen die **berechneten**
+Mengen — beides steht sichtbar am Blatt. Nicht zuordenbare und unzulässig gespeicherte Einträge
+werden **namentlich gemeldet**, nie gelöscht und nie umgehängt. Der Abschnitt liegt **nicht** im
+Wandelement, **nicht** in der Projektmappe und **nicht** im Katalog; im Projektformat ist er
+**optional** ⇒ `PROJEKT_VERSION` bleibt 2, und weil `holeEingaben` fehlende Felder beim Lesen
+auffüllt, gibt es **keine Migration** und **keinen `SCHEMA_VERSION`-Sprung**.
+
 **Altbestand (`eingaben.katalog`, Regel [P-15]).** Die früher zentral in Modul 0 gepflegte
 `auswahl` je Kategorie ist **unwirksam**: sie wird nicht mehr geschrieben, nicht als Filter angewendet
 und **nicht** in Verwendungsrollen übersetzt (eine Kategorie→Rolle-Übersetzung wäre mehrdeutig). Sie
@@ -809,7 +831,9 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
      **Projektliste** (`listeProjekte`/`projektMappe`/`fuegeProjektHinzu`/`loescheProjekt`/
      `setzeAktivesProjekt`/`holeMappe`/`setzeMappe`/`aendereMappe`/`verorteWand`/`mappeReferenzen`),
-     **Kopfdaten** (`setzeKopfdaten`/`wirksameKopfdaten`/`eingabenMitKopfdaten`), Import/Export).
+     **Kopfdaten** (`setzeKopfdaten`/`wirksameKopfdaten`/`eingabenMitKopfdaten`),
+     **Mengenübersteuerung** (`mengenKennung`/`pruefeMenge`/`holeMengen`/`setzeMengenUebersteuerung`,
+     [P-20]), Import/Export).
    - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–9, aktiver Pfad **Projekt · Geschoss · Wand**
      und die nach [L-10] überhaupt aktivierbare Wandauswahl).
    - `sembla-blog.js` — **Änderungsliste „Was ist neu?"** (Modul 8): Validator, Karten-HTML,
@@ -850,7 +874,7 @@ der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv �
 | 1 | `wandplanung.html` | Wandhöhe, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse), **Abdichtung** ([A-6]) und die **Brandschutzklassifikation F0/F30** (#79, reine Planungskennzeichnung — einziger Schreibweg, Standard F0); die im Geschosseditor geführte Länge ist nur Anzeige. Schreibt die übrige Wandplanung und **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
-| 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only**: Preise werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar nur `waehrung` → `eingaben.kosten`. Nicht eindeutige Zuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
+| 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only bei Preisen**: sie werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar sind `waehrung` und — seit #81 — die **manuelle Menge je Position** ([P-20], **einziger Schreibweg**): berechnete und wirksame Menge stehen gleichzeitig in der Mengenzelle, jede Übersteuerung ist einzeln rücksetzbar, ganze Zahlen ab 0, sonst benannt abgewiesen; sie wirkt nur auf der **Wandebene** und nicht in den Exportdateien (beides steht am Blatt), nicht zuordenbare Einträge werden gemeldet statt gelöscht → `eingaben.kosten`. Nicht eindeutige Preiszuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
 | 5 | `montage.html` | Montageanleitung: **Baugruppenabschnitte nach Montageereignissen** (erste Stange, Kopplung/neue Stange, oberer Abschluss) mit durchgehend nummerierten Steinreihen, A4-paginiert druckbar (`sembla-montage.js`; identisch zum zentralen Export) |
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |

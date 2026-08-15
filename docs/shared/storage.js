@@ -127,8 +127,9 @@ export const SCHEMA_VERSION = 6;
  *  Bleibt 2: `wandtyp`, `abdichtung` und `brandklasse` (alle am Wandelement, alle
  *  OPTIONAL — eine Datei ohne sie wird beim Lesen normalisiert, nicht abgelehnt)
  *  sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
- *  `eingaben.planung`, `eingaben.aufbau.produkte` und `eingaben.zeichnung` sind
- *  OPTIONAL (Darstellungsoptionen, [D-7]). Der v2-Parser
+ *  `eingaben.planung`, `eingaben.aufbau.produkte`, `eingaben.zeichnung`
+ *  (Darstellungsoptionen, [D-7]) und `eingaben.kosten.mengen`
+ *  (Mengenuebersteuerung der Stueckliste, [P-20]) sind OPTIONAL. Der v2-Parser
  *  (`parseImport`) uebernimmt `obj.eingaben` unveraendert und ohne Feld-Whitelist,
  *  `holeEingaben` fuellt fehlende Felder auf und `projektObjekt` exportiert alles
  *  wieder — unbekannte/neue Teile reisen also in beide Richtungen verlustfrei mit.
@@ -1516,10 +1517,14 @@ export function standardEingaben() {
     // gedoppelt. Kanonische Werte/Normalisierung: sembla-zeichnung.js.
     zeichnung: { format: "a3", masse: true, steintypen: true, planinhalt: "Wandabwicklung", wasserzeichen: false },
     // Modul 4 — Stueckliste & Kosten. Preise liegen NICHT mehr hier: sie werden je
-    // Position aus dem Bauteilkatalog aufgeloest ([P-14]). Editierbar bleibt nur die
-    // Waehrung. Gespeicherte Alt-Preise (`kosten.preise`) bleiben in Altprojekten
-    // erhalten, werden aber nicht mehr gelesen und nicht mehr geschrieben.
-    kosten: { waehrung: "EUR" },
+    // Position aus dem Bauteilkatalog aufgeloest ([P-14]). Editierbar bleibt die
+    // Waehrung und — seit [P-20] — die MENGENUEBERSTEUERUNG je Stuecklistenposition
+    // (`kosten.mengen`, Kennung -> ganze Zahl >= 0). Sie ist eine Zusatzangabe NEBEN der
+    // berechneten Menge: die Ableitung aus dem Wandelement bleibt unveraendert, und ein
+    // fehlender Abschnitt bedeutet schlicht „keine Uebersteuerung“ (Altprojekte laden
+    // damit warnungsfrei). Gespeicherte Alt-Preise (`kosten.preise`) bleiben in
+    // Altprojekten erhalten, werden aber nicht mehr gelesen und nicht mehr geschrieben.
+    kosten: { waehrung: "EUR", mengen: {} },
     // Modul 3 — Statischer Nachweis (Schermer-Kennwerte; Geometrie, Oeffnungszahl
     // UND Wandtyp/Windsituation kommen aus dem Wandelement und werden NICHT hier
     // gespeichert). Flach nach Input-ID, damit der Projektstand des Nachweises
@@ -1572,6 +1577,96 @@ export function mergeEingaben(teil, patch, id) {
   if (!eid || !map[eid]) return null;
   const cur = map[eid].eingaben || {};
   cur[teil] = _merge(cur[teil], patch);
+  map[eid].eingaben = cur;
+  map[eid].geaendert = _jetzt();
+  _schreibenMap(map);
+  return eid;
+}
+
+// --- Mengenuebersteuerung der Baustellenstueckliste ([P-20]) --------------
+// Die berechnete Menge bleibt unangetastet: sie kommt weiterhin ausschliesslich aus
+// `sembla-bom.js` und wird bei jeder Ausgabe neu gerechnet ([P-6]). Daneben — nicht
+// darin — steht je Position eine ausdrueckliche manuelle Menge. Gespeichert wird sie
+// wandbezogen in `eingaben.kosten.mengen`, geschrieben AUSSCHLIESSLICH von Modul 4.
+//
+// Warum eine eigene Funktion statt `mergeEingaben`: der Patch-Weg fuehrt zusammen und
+// kann einen Schluessel deshalb nie ENTFERNEN. Das Ruecksetzen einer einzelnen
+// Uebersteuerung ist aber genau das (und nicht das Setzen eines Ersatzwerts), also
+// ersetzt diese Funktion die Abbildung als Ganzes.
+
+/**
+ * Stabile Kennung einer Stuecklistenposition: Stuecklistenschluessel + Fertigmass.
+ *
+ * Das Fertigmass gehoert zwingend dazu — bei Gewindestangen tragen mehrere Positionen
+ * denselben `key` und unterscheiden sich NUR darin ([Z-2]/[Z-4]). Bezeichnung, Produkt
+ * und Preis taugen nicht als Kennung: sie wandern mit Katalog und Formatierung.
+ * @param {{key:string, fertigmass_mm?:number|null}} pos
+ * @returns {string} z. B. „rod_std@1000“ oder „i3@-“
+ */
+export function mengenKennung(pos) {
+  const key = pos && pos.key != null ? String(pos.key) : "";
+  const mass = pos && pos.fertigmass_mm != null ? String(pos.fertigmass_mm) : "-";
+  return key + "@" + mass;
+}
+
+/**
+ * Pruefung einer eingegebenen Menge ([P-20]): ganze Zahl, nicht negativ. Es wird NICHT
+ * gerundet und nichts zurechtgebogen — ein unzulaessiger Wert wird benannt abgewiesen
+ * ([P-9]).
+ * @param {any} roh
+ * @returns {{ok:true, wert:number}|{ok:false, fehler:string}}
+ */
+export function pruefeMenge(roh) {
+  const text = typeof roh === "string" ? roh.trim().replace(",", ".") : roh;
+  if (text === "" || text === null || text === undefined) {
+    return { ok: false, fehler: "Menge fehlt — bitte eine ganze Zahl ab 0 eingeben." };
+  }
+  const n = Number(text);
+  if (!Number.isFinite(n)) return { ok: false, fehler: `„${roh}“ ist keine Zahl.` };
+  if (!Number.isInteger(n)) return { ok: false, fehler: `Menge ${n} ist nicht ganzzahlig — nur ganze Stück sind einbaubar.` };
+  if (n < 0) return { ok: false, fehler: `Menge ${n} ist negativ — zulässig sind ganze Zahlen ab 0.` };
+  return { ok: true, wert: n };
+}
+
+/**
+ * Gespeicherte Mengenuebersteuerungen einer Wand — ROH, so wie sie im Projekt stehen.
+ *
+ * Bewusst ungefiltert: ein unzuordenbarer oder unzulaessiger Eintrag (etwa aus einer
+ * importierten Datei) wird von der Oberflaeche BENANNT und nicht hier stillschweigend
+ * entfernt ([P-9]/[P-20]).
+ * @param {string} [id] @returns {Record<string, any>}
+ */
+export function holeMengen(id) {
+  const m = (holeEingaben(id).kosten || {}).mengen;
+  return (m && typeof m === "object" && !Array.isArray(m)) ? { ...m } : {};
+}
+
+/**
+ * EINE Mengenuebersteuerung setzen oder zuruecksetzen ([P-20]).
+ * `wert === null` (oder leerer Text) entfernt genau diesen Eintrag; danach gilt wieder
+ * die berechnete Menge. Ein unzulaessiger Wert wirft und laesst den Speicher unveraendert.
+ * @param {string} kennung @param {any} wert @param {string} [id]
+ * @returns {string|null} id des Elements (null = kein Element gewaehlt)
+ */
+export function setzeMengenUebersteuerung(kennung, wert, id) {
+  const k = kennung == null ? "" : String(kennung).trim();
+  if (!k || !/^[^@]+@(-|\d+(\.\d+)?)$/.test(k)) {
+    throw new Error(`Unbekannte Positionskennung „${kennung}“.`);
+  }
+  const leer = wert === null || wert === undefined || (typeof wert === "string" && wert.trim() === "");
+  const geprueft = leer ? null : pruefeMenge(wert);
+  if (geprueft && !geprueft.ok) throw new Error(geprueft.fehler);
+
+  const map = _lesenMap();
+  const eid = (id && map[id]) ? id : aktivId();
+  if (!eid || !map[eid]) return null;
+  const cur = map[eid].eingaben || {};
+  const kosten = { ...(cur.kosten || {}) };
+  const roh = kosten.mengen;
+  const mengen = (roh && typeof roh === "object" && !Array.isArray(roh)) ? { ...roh } : {};
+  if (leer) delete mengen[k]; else mengen[k] = geprueft.wert;
+  kosten.mengen = mengen;                 // ERSETZEN, nicht mergen — sonst bliebe der Schluessel
+  cur.kosten = kosten;
   map[eid].eingaben = cur;
   map[eid].geaendert = _jetzt();
   _schreibenMap(map);

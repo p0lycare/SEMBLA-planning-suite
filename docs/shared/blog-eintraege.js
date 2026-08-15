@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260815-01",
+    datum: "2026-08-15",
+    typ: "feature",
+    issue: 81,
+    titel: "Menge je Stücklistenposition manuell übersteuerbar — die berechnete Menge bleibt daneben sichtbar",
+    testbitte: "In Modul 4 eine Menge eintragen: Wirksame und berechnete Menge stehen nebeneinander, "
+      + "der Preis folgt der wirksamen. Nach dem Neuladen ist sie noch da, „zurücksetzen“ stellt die "
+      + "Rechnung her; krumme und negative Werte werden abgewiesen.",
+  },
+  {
     id: "chg-20260814-04",
     datum: "2026-08-14",
     typ: "feature",

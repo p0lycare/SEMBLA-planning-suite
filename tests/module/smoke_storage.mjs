@@ -833,6 +833,78 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     && M.bemassungen(store.holeMappe(), g74).length === 1);
 }
 
+// 16) [P-20]/#81: Mengenuebersteuerung der Baustellenstueckliste -------------
+// Geprueft wird der SPEICHERWEG: setzen, einzeln zuruecksetzen, unzulaessige Werte,
+// der Weg durch Projekt-Export/-Import und das warnungsfreie Laden eines Altprojekts
+// ohne diesen Abschnitt.
+{
+  const idM = store.speichere("Mengenwand", buildWall("Mengenwand", 2000, 2600, []));
+  store.setzeAktiv(idM);
+  const kSt = store.mengenKennung({ key: "i3", fertigmass_mm: null });
+  const kRod = store.mengenKennung({ key: "rod_std", fertigmass_mm: 1100 });
+  t("[P-20] die Kennung enthaelt zwingend das Fertigmass",
+    kSt === "i3@-" && kRod === "rod_std@1100");
+  t("[P-20] ohne Uebersteuerung ist der Abschnitt leer",
+    Object.keys(store.holeMengen(idM)).length === 0
+    && JSON.stringify(store.standardEingaben().kosten.mengen) === "{}");
+
+  store.setzeMengenUebersteuerung(kSt, 12, idM);
+  store.setzeMengenUebersteuerung(kRod, 4, idM);
+  t("[P-20] setzen: beide Uebersteuerungen stehen im Eingabenabschnitt der Wand",
+    store.holeMengen(idM)[kSt] === 12 && store.holeEingaben(idM).kosten.mengen[kRod] === 4);
+  t("[P-20] das Wandelement bleibt unberuehrt",
+    !JSON.stringify(store.holeElement(idM).wandelement).includes("mengen"));
+  t("[P-20] die Uebersteuerung liegt weder in der Mappe noch im Katalog",
+    !(localStorage.getItem("sembla:projekte") || "").includes(kRod)
+    && !(localStorage.getItem("sembla:kataloge") || "").includes(kRod));
+
+  store.setzeMengenUebersteuerung(kSt, null, idM);
+  t("[P-20] zuruecksetzen entfernt GENAU einen Schluessel (kein Rest, kein Ersatzwert)",
+    !(kSt in store.holeMengen(idM)) && store.holeMengen(idM)[kRod] === 4
+    && Object.keys(store.holeMengen(idM)).length === 1);
+
+  const werfen = (wert) => {
+    try { store.setzeMengenUebersteuerung(kRod, wert, idM); return null; }
+    catch (e) { return e.message; }
+  };
+  t("[P-20] eine nicht ganzzahlige Menge wird benannt abgewiesen",
+    /ganzzahlig/.test(werfen(2.5) || "") && store.holeMengen(idM)[kRod] === 4);
+  t("[P-20] eine negative Menge wird benannt abgewiesen",
+    /negativ/.test(werfen(-1) || "") && store.holeMengen(idM)[kRod] === 4);
+  t("[P-20] eine unbekannte Positionskennung wird abgewiesen", (() => {
+    try { store.setzeMengenUebersteuerung("ohne-fertigmass", 3, idM); return false; }
+    catch (e) { return /Positionskennung/.test(e.message); }
+  })());
+  t("[P-20] pruefeMenge: 0 ist zulaessig, Text nicht, Ziffernfolge wird gedeutet",
+    store.pruefeMenge(0).ok === true && store.pruefeMenge("abc").ok === false
+    && store.pruefeMenge("7").wert === 7 && store.pruefeMenge("").ok === false);
+
+  // Projekt-Export -> Import: die Uebersteuerung reist unveraendert mit ([P-2], ohne Bump).
+  const datei = JSON.stringify(store.projektObjekt(idM));
+  t("[P-20] die Projektdatei traegt den Abschnitt und bleibt Version 2",
+    JSON.parse(datei).version === 2 && JSON.parse(datei).eingaben.kosten.mengen[kRod] === 4);
+  const idImp = store.importiereText(datei, "Mengenwand.json");
+  t("[P-20] M4: Export und Import lassen die Uebersteuerung unveraendert",
+    idImp !== idM && store.holeMengen(idImp)[kRod] === 4
+    && Object.keys(store.holeMengen(idImp)).length === 1);
+
+  // Altprojekt OHNE den Abschnitt: laedt warnungsfrei und ganz ohne Uebersteuerungen.
+  const altText = JSON.stringify({
+    format: "SEMBLA-Projekt", version: 2, name: "Altwand ohne Mengen",
+    wandelement: buildWall("Altwand ohne Mengen", 2000, 2600, []),
+    eingaben: { kosten: { waehrung: "EUR", preise: { i3: 9.5 } } },
+  });
+  const idAltM = store.importiereText(altText, "AltwandOhneMengen.json");
+  t("[P-20] ein Altprojekt ohne den Abschnitt laedt ohne Uebersteuerungen",
+    Object.keys(store.holeMengen(idAltM)).length === 0
+    && store.holeEingaben(idAltM).kosten.waehrung === "EUR"
+    && store.holeEingaben(idAltM).kosten.preise.i3 === 9.5);
+  // Kein Formatsprung und keine Migration: der Abschnitt ist optional und wird beim LESEN
+  // aus `standardEingaben()` aufgefuellt.
+  t("[P-20] die Versionsachsen bleiben unveraendert",
+    store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6
+    && store.migrieren() === 6);
+}
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

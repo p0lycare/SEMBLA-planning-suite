@@ -15,7 +15,11 @@ import { umfang, gesamtDaten, standText } from "../../docs/shared/sembla-gesamts
 import { leereMappe, fuegeGeschossHinzu, setzeWand } from "../../docs/shared/sembla-projektmappe.js";
 import { blattHtml } from "../../docs/shared/sembla-zeichnung.js";
 import { berechneAufbau } from "../../docs/shared/sembla-aufbau.js";
-import { standardEingaben } from "../../docs/shared/storage.js";
+import { standardEingaben, mengenKennung } from "../../docs/shared/storage.js";
+// Die ECHTE Speicherschicht — fuer den realen Pfad der Mengenuebersteuerung ([P-20]) am Ende
+// dieser Datei. Sie wird dort gegen einen In-Memory-localStorage betrieben; alle uebrigen
+// Pruefungen laufen unveraendert gegen den leichtgewichtigen Storage-Mock.
+import * as echterStore from "../../docs/shared/storage.js";
 
 /** Deutsche Zahlformatierung wie im Modul (fuer Erwartungswerte der Oberflaechen-Pruefung). */
 const fmtDe = n => n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -27,7 +31,11 @@ const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 const script = scripts[scripts.length - 1][1];   // klassische App-Logik
 
 class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={};this.files=[];this.listeners={};this.dataset={};this.hidden=false;}
-  addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);} dispatch(e){(this.listeners[e]||[]).forEach(f=>f({target:this}));}
+  // `ziel` bildet die Ereignis-DELEGATION nach: im Browser meldet sich der Behandler an der
+  // Tabelle an und bekommt im `target` das tatsaechlich bediente Feld. Ohne diesen Parameter
+  // verhaelt sich `dispatch` unveraendert (Ziel = das Element selbst).
+  addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);}
+  dispatch(e,ziel){(this.listeners[e]||[]).forEach(f=>f({target:ziel||this,preventDefault(){}}));}
   get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelectorAll(){return [];} appendChild(){} click(){}}
 const dv={cur:'EUR'};   // #70: kein `proj` mehr — Modul 4 hat kein Projekt-Eingabefeld
@@ -88,6 +96,11 @@ let _subs=[]; let _aktiv='w-1'; let _we=W; let _eg=egVoll(); let _merges=[]; let
 let _name=null;
 const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we, aktiveEingaben:()=>_eg, holeKatalog:()=>_kat,
   aktivesElement:()=>_we?{ id:_aktiv, name:_name, wandelement:_we }:null,
+  // [P-20]: die Kennung einer Position ist die ECHTE Funktion der Speicherschicht — der Mock baut
+  // sie nicht nach. Einen Schreibweg (`setzeMengenUebersteuerung`) hat er bewusst NICHT: dieser
+  // Block prueft nur, dass die Bedienelemente entstehen und nichts anderes verschieben; gesetzt und
+  // zurueckgenommen wird ausschliesslich am Ende gegen die echte Speicherschicht.
+  mengenKennung, pruefeMenge:echterStore.pruefeMenge,
   mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); _eg[teil]=merge(_eg[teil],patch); return _aktiv; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
 globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock,
@@ -114,8 +127,18 @@ const sumZeile = () => (document.getElementById('tbody').innerHTML.split('<tr').
 ok('Start mit aktivem Element -> Wandelement geladen', SL.wall && SL.wall.length_mm===2000);
 ok('Katalog als Preisquelle geladen', SL.katalog && SL.katalog.name==='Testkatalog M4');
 
-// M3: Modul 4 hat KEINE editierbaren Preisfelder mehr
-ok('kein Preis-Eingabefeld im Markup', !/type="number"[^>]*data-key/.test(html) && !/id="tbody"[\s\S]*<input/.test(html));
+// M3: Modul 4 hat KEINE editierbaren Preisfelder mehr.
+// Geprueft wird genau das — ein PREIS-Feld. Die Tabelle traegt seit [P-20] ein Mengenfeld je Zeile;
+// die fruehere Pauschalpruefung „gar kein <input> unterhalb der Tabelle“ meinte nie das Mengenfeld,
+// sondern die abgeschaffte Preispflege, und ist deshalb auf die Preisbindung geschaerft.
+ok('kein Preis-Eingabefeld im Markup',
+  !/type="number"[^>]*data-key/.test(html)
+  && !/<input[^>]*data-(preis|ep|gp)\b/.test(html)
+  && !/<input[^>]*data-key/.test(html));
+ok('[P-20] das einzige Eingabefeld der Tabelle ist die Mengenübersteuerung', (()=>{
+  const felder=[...script.matchAll(/<input[^>]*>/g)].map(m=>m[0]);
+  return felder.length===1 && /data-menge=/.test(felder[0]) && /type="number"/.test(felder[0]);
+})());
 ok('setPrice-API entfernt (Modul 4 pflegt keine Preise)', typeof SL.setPrice==='undefined');
 ok('kein Schreiben von kosten.preise', !/kosten\.preise/.test(script) && !_merges.some(([t,p])=>t==='kosten'&&p&&p.preise));
 // #72: der Pflegeort-Satz stand nur im entfernten intro-Absatz — er ist mit ihm entfallen
@@ -848,6 +871,195 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const zurueck=/Dichtstreifen/.test(document.getElementById('tbody').innerHTML);
     _aktiv=vorherId; _we=vorherWe; _eg=vorherEg; _subs.forEach(cb=>cb());
     return treffer && zurueck; })());
+}
+
+// ---- [P-20]/#81 Mengenuebersteuerung am REALEN Pfad ---------------------------------------
+// Ab hier laeuft das Modul gegen die ECHTE Speicherschicht (docs/shared/storage.js) auf einem
+// In-Memory-localStorage — kein Storage-Mock mehr. Bedient wird ueber das Bedienelement, das die
+// Seite selbst in die Mengenzelle rendert: der Test liest dessen Attribute aus dem gerenderten
+// Blatt und stellt genau daraus das Ereignisziel her. Weicht das gerenderte Markup vom Behandler
+// ab, schlaegt das hier fehl.
+{
+  class MemStorage {
+    constructor(){ this.m=new Map(); }
+    getItem(k){ return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k,v){ this.m.set(String(k), String(v)); }
+    removeItem(k){ this.m.delete(k); }
+    clear(){ this.m.clear(); }
+  }
+  globalThis.localStorage = new MemStorage();
+
+  // Minimaler, gueltiger Katalog: er wird von der echten Schicht validiert und muss deshalb
+  // wirklich der Kategorietabelle genuegen (der grosse Testkatalog oben laeuft nie durch sie).
+  const KAT_ECHT = { format:'SEMBLA-Bauteilkatalog', version:1, id:'kat-p20', name:'Katalog P20',
+    produkte:[{ id:'stein-i3', kategorie:'stein', bezeichnung:'Stein i3', einheit:'Stk',
+                preis:9.5, breite_mm:375 }] };
+
+  const WU = buildWall('Übersteuerungswand', 2000, 2600, []);
+  const wid = echterStore.speichere('Übersteuerungswand', WU);
+  echterStore.setzeAktiv(wid);
+  echterStore.setzeKatalog(KAT_ECHT);
+  echterStore.setzeProduktrolle('i3', ['stein-i3'], wid);
+
+  // Umschalten auf die echte Schicht und die Seite neu starten (wie ein Seitenaufruf).
+  globalThis.window.SEMBLA.store = echterStore;
+  globalThis.window.__slInit();
+
+  const tbodyEl = document.getElementById('tbody');
+  const zeilen = () => tbodyEl.innerHTML.split('<tr').slice(1);
+  const zeileVon = (kennung) => zeilen().find(z=>z.includes('data-menge="'+kennung+'"')) || '';
+  /** Attribute eines Elements aus dem gerenderten Blatt lesen (Markup ist die Quelle). */
+  const attrsVon = (zeile, tag) => {
+    const m = zeile.match(new RegExp('<'+tag+'\\b([^>]*)>'));
+    if(!m) return null;
+    const a={}; for(const t of m[1].matchAll(/([\w-]+)="([^"]*)"/g)) a[t[1]]=t[2];
+    return a;
+  };
+  /** data-* -> dataset (camelCase), genau wie der Browser es dem Behandler uebergibt. */
+  const dsVon = (attrs) => {
+    const ds={};
+    for(const [k,v] of Object.entries(attrs||{})){
+      if(k.startsWith('data-')) ds[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=v;
+    }
+    return ds;
+  };
+  const bediene = (kennung, wert) => {
+    const attrs = attrsVon(zeileVon(kennung),'input');
+    tbodyEl.dispatch('change', { dataset: dsVon(attrs), value: wert });
+  };
+  const setzeZurueck = (kennung) => {
+    const attrs = attrsVon(zeileVon(kennung),'button');
+    tbodyEl.dispatch('click', { dataset: dsVon(attrs) });
+  };
+  const gespeichert = () => echterStore.holeMengen(wid);
+  const berechnetI3 = SL.rows().find(r=>r.key==='i3').menge;
+  const kennungI3 = mengenKennung({ key:'i3', fertigmass_mm:null });
+
+  ok('[P-20] echte Speicherschicht aktiv: Wand, Katalog und Preis stehen',
+    echterStore.aktivId()===wid && !!echterStore.holeKatalog()
+    && SL.rows().find(r=>r.key==='i3').ep===9.5 && berechnetI3>0);
+  ok('[P-20] Start ohne Übersteuerung: keine gespeicherten Mengen, kein Hinweisblock',
+    Object.keys(gespeichert()).length===0 && document.getElementById('mhinweis').hidden===true);
+  ok('[P-20] jede Zeile trägt ein Mengenfeld mit ihrer stabilen Kennung', (()=>{
+    const rsK=SL.rows();
+    return rsK.every(r=>zeileVon(mengenKennung(r)).length>0)
+      && zeileVon(kennungI3).includes('placeholder="'+berechnetI3+'"'); })());
+
+  // (1) Setzen — M1/M2: berechnete Menge bleibt, beide Werte stehen gleichzeitig im Blatt.
+  bediene(kennungI3, '3');
+  {
+    const z=zeileVon(kennungI3);
+    ok('[P-20] manuelle Menge wird über das Bedienelement gespeichert',
+      gespeichert()[kennungI3]===3 && echterStore.holeEingaben(wid).kosten.mengen[kennungI3]===3);
+    ok('[P-20] M1: die berechnete Menge bleibt unverändert abgeleitet',
+      SL.rows().find(r=>r.key==='i3').menge===berechnetI3
+      && stuecklistePositionen(WU, echterStore.holeEingaben(wid), echterStore.holeKatalog())
+           .find(r=>r.key==='i3').menge===berechnetI3);
+    ok('[P-20] M2: wirksame und berechnete Menge stehen gleichzeitig in der Zelle',
+      /class="menge ueber"/.test(z) && /<span class="wirk">3 Stk<\/span>/.test(z)
+      && z.includes('berechnet '+berechnetI3+' Stk') && /class="chip">manuell</.test(z));
+    ok('[P-20] Gesamtpreis folgt der wirksamen Menge bei unverändertem Einzelpreis',
+      z.includes('<td>'+fmtDe2(9.5)+'</td>') && z.includes('<td>'+fmtDe2(3*9.5)+'</td>'));
+    ok('[P-20] die Summenzeile weist die Übersteuerung aus',
+      /1 Position\(en\) mit manueller Menge/.test(sumZeile()));
+    ok('[P-20] der Hinweisblock nennt Wirkung und Exportstand',
+      !document.getElementById('mhinweis').hidden
+      && /Die Stücklistendateien des zentralen Exports in Modul 0 führen die berechneten Mengen/
+           .test(document.getElementById('mhinweis').innerHTML));
+    ok('[P-20] das Wandelement bleibt unangetastet',
+      JSON.stringify(echterStore.holeElement(wid).wandelement)===JSON.stringify(WU));
+  }
+
+  // (2) Neuladen — M4 (erste Hälfte): der Stand überlebt den Seitenaufruf.
+  globalThis.window.__slInit();
+  ok('[P-20] M4: die Übersteuerung überlebt das Neuladen der Seite',
+    gespeichert()[kennungI3]===3
+    && /<span class="wirk">3 Stk<\/span>/.test(zeileVon(kennungI3)));
+
+  // (3) Ändern und Zurücksetzen — M3, einzeln.
+  bediene(kennungI3, '7');
+  ok('[P-20] M3: eine Übersteuerung ist einzeln änderbar',
+    gespeichert()[kennungI3]===7 && /<span class="wirk">7 Stk<\/span>/.test(zeileVon(kennungI3)));
+  setzeZurueck(kennungI3);
+  {
+    const z=zeileVon(kennungI3);
+    ok('[P-20] M3: Zurücksetzen entfernt genau diesen Eintrag, danach gilt die berechnete Menge',
+      !(kennungI3 in gespeichert()) && !/class="menge ueber"/.test(z)
+      && z.includes('>'+berechnetI3+' Stk<') && !/class="chip">manuell</.test(z));
+    ok('[P-20] nach dem Zurücksetzen ist der Hinweisblock wieder leer',
+      document.getElementById('mhinweis').hidden===true);
+  }
+
+  // (4) M6: unzulässige Eingaben werden benannt abgewiesen und ändern nichts.
+  bediene(kennungI3, '4');
+  {
+    const stand = JSON.stringify(gespeichert());
+    bediene(kennungI3, '-3');
+    const zNeg = zeileVon(kennungI3);
+    ok('[P-20] M6: eine negative Menge wird benannt abgewiesen und ändert nichts',
+      JSON.stringify(gespeichert())===stand && /class="mfehler">[^<]*negativ/.test(zNeg)
+      && /<span class="wirk">4 Stk<\/span>/.test(zNeg));
+    bediene(kennungI3, '2,5');
+    const zKrumm = zeileVon(kennungI3);
+    ok('[P-20] M6: eine nicht ganzzahlige Menge wird benannt abgewiesen und ändert nichts',
+      JSON.stringify(gespeichert())===stand && /class="mfehler">[^<]*ganzzahlig/.test(zKrumm));
+    bediene(kennungI3, '5');
+    ok('[P-20] nach einer gültigen Eingabe ist die Fehlermeldung wieder weg',
+      gespeichert()[kennungI3]===5 && !/class="mfehler"/.test(zeileVon(kennungI3)));
+  }
+
+  // (5) M5: eine Übersteuerung ohne passende Position wird benannt — nie umgehängt, nie gelöscht.
+  {
+    const fremd='rod_std@999999';
+    echterStore.setzeMengenUebersteuerung(fremd, 12, wid);
+    globalThis.window.__slInit();
+    const hin=document.getElementById('mhinweis').innerHTML;
+    ok('[P-20] M5: nicht zuordenbare Übersteuerung wird namentlich gemeldet',
+      !document.getElementById('mhinweis').hidden && hin.includes(fremd)
+      && /Nicht zuordenbar/.test(hin));
+    ok('[P-20] M5: sie bleibt gespeichert und wird auf keine andere Position gelegt',
+      gespeichert()[fremd]===12
+      && SL.rows().filter(r=>r.key==='rod_std').every(r=>!zeileVon(mengenKennung(r)).includes('class="menge ueber"')));
+    // Ein unzulaessig GESPEICHERTER Wert (etwa aus einer fremden Datei) wird ebenso benannt und
+    // NICHT stillschweigend angewendet oder bereinigt.
+    const roh=echterStore.holeElement(wid);
+    roh.eingaben.kosten.mengen[kennungI3]='viele';
+    echterStore.speichere(roh.name, roh.wandelement, wid, { kosten:{ mengen:{ [kennungI3]:'viele' } } });
+    globalThis.window.__slInit();
+    ok('[P-20] unzulässig gespeicherter Wert: benannt, berechnete Menge gilt, nichts gelöscht',
+      /Unzulässig gespeichert/.test(document.getElementById('mhinweis').innerHTML)
+      && zeileVon(kennungI3).includes('>'+berechnetI3+' Stk<')
+      && gespeichert()[kennungI3]==='viele');
+    echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
+    echterStore.setzeMengenUebersteuerung(fremd, null, wid);
+  }
+
+  // (6) Die Gesamtebenen bleiben bei den berechneten Mengen — und sagen es.
+  {
+    echterStore.setzeMengenUebersteuerung(kennungI3, 3, wid);
+    globalThis.window.__slInit();
+    SL.setzeEbene('projekt');
+    const tb=tbodyEl.innerHTML;
+    ok('[P-20] Gesamtebene: kein Mengenfeld, keine übersteuerte Zelle, und die Grenze steht dran',
+      !/data-menge=/.test(tb) && !/class="menge ueber"/.test(tb)
+      && /Manuelle Mengen wirken nur auf der Wandebene/
+           .test(document.getElementById('mhinweis').innerHTML));
+    SL.setzeEbene('wand');
+    ok('[P-20] zurück auf der Wandebene wirkt die Übersteuerung unverändert',
+      /<span class="wirk">3 Stk<\/span>/.test(zeileVon(kennungI3)));
+    echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
+  }
+
+  // (7) Der zentrale Export bleibt bei den berechneten Mengen (N4) — geprüft an den CSV-Bytes.
+  {
+    echterStore.setzeMengenUebersteuerung(kennungI3, 3, wid);
+    const eingabenMit=echterStore.holeEingaben(wid);
+    const csvMit=stuecklisteCsv(WU, eingabenMit, {datum:'01.01.2026'}, KAT_ECHT);
+    echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
+    const csvOhne=stuecklisteCsv(WU, echterStore.holeEingaben(wid), {datum:'01.01.2026'}, KAT_ECHT);
+    ok('[P-20] die Stücklisten-CSV des zentralen Exports ist bitgenau unverändert',
+      csvMit===csvOhne);
+  }
 }
 
 // #70 Gesamtnachweis ueber den KOMPLETTEN Lauf: Modul 4 hat `eingaben.projekt` kein einziges Mal
