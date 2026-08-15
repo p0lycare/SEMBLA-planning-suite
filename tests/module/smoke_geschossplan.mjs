@@ -3276,6 +3276,173 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   GP.werkzeug('auswahl');
 }
 
+// --- #79: Brandschutzklassifikation F0/F30 im Geschosseditor --------------
+// Realer Pfad: Waende werden GEZEICHNET; eine davon wird anschliessend so auf F30
+// gestellt, wie es Modul 1 tut (einziger Schreibweg). Geprueft werden die ECHTE
+// Zeichenflaeche (`GP.svg`), die Legende im Markup und die Wandliste — und vor
+// allem, was NICHT passiert: kein Schreibweg im Editor, kein Bedienelement, keine
+// veraenderte [K-8]-Farbe, keine angetastete Geometrie.
+{
+  const prj79 = store.fuegeProjektHinzu('#79-Pruefprojekt', { geschoss: 'EG79', hoehe_mm: 2600 });
+  const gs79 = MAPPE.alleGeschosse(prj79)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs79);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const neueste79 = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 2000, y: 60 });        const id30 = neueste79().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2000, y: 2060 });   const idOhne79 = neueste79().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2000, y: 4060 });   const idKrumm79 = neueste79().id;
+  // Ein VERORTETER verwaister Eintrag ([L-4]): er wird gezeichnet, hat aber kein
+  // Wandelement — also auch keine Klassifikation, die man zeigen koennte.
+  store.aendereMappe(m => MAPPE.setzeWand(m, gs79, { id: 'wnd-verwaist-79', name: 'Verwaist 79',
+    lage: { start_mm: { x: 0, y: 6062.5 }, richtung: 'x', orientierung: '+x', laenge_grid: 8 } }));
+  await warte();
+  GP.zeigeAlles();
+
+  /** Die ganze Gruppe einer Wand im echten Editor-SVG. */
+  const gruppeVon = (id) => (GP.svg.split('<g class="wand')
+    .find(s => s.includes(`data-wand="${id}"`)) || '');
+  /** Die Brandschutz-Gruppe DARIN — sie liegt in der Wandgruppe und hat kein eigenes data-wand. */
+  const brandVon = (id) => {
+    const b = gruppeVon(id).split('<g class="brand"')[1];
+    return b ? '<g class="brand"' + b.split('</g>')[0] + '</g>' : '';
+  };
+  /** Dieselbe Gruppe ohne Koordinaten — so sind zwei Waende vergleichbar. */
+  const merkmalVon = (id) => brandVon(id).replace(/ (?:x|y|width|height)="[^"]*"/g, '');
+  /** Der WANDknoten selbst — Rechteck, Mittellinie und V/R-Kanten, ohne die Brandgruppe. */
+  const wandKnotenVon = (id) => gruppeVon(id).split('<g class="brand"')[0];
+  const zeile79 = (id) => (liste().split('class="gp-zeile')
+    .find(s => s.includes(`data-wand="${id}"`)) || '');
+  /** Alle Farbangaben entfernen — bleibt die Unterscheidung dann noch? */
+  const ohneFarbe = (s) => s.replace(/(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, '');
+
+  ok('#79 Pruefaufbau: frisch gezeichnete Waende tragen das Feld GAR NICHT',
+    [id30, idOhne79, idKrumm79].every(id => store.holeElement(id).wandelement.brandklasse == null)
+    && !!MAPPE.findeWand(store.holeMappe(), 'wnd-verwaist-79'));
+
+  // Stand VOR der Klassifikation — daran wird gemessen, dass sich am Wandknoten,
+  // am Loeser und an den Kollisionen nichts aendert.
+  const knotenVor79 = wandKnotenVon(id30);
+  const loeserVor79 = JSON.stringify(GP.loesen());
+  ok('#79 Pruefaufbau: der Wandknoten traegt Zustandsfarbe, Mittellinie und V/R-Kanten',
+    knotenVor79.includes(CON.FARBEN[CON.zustand(id30, GP.loesen(), { aktiv: GP.zustand.aktiv })])
+    && /class="mittellinie"/.test(knotenVor79)
+    && /class="seite seite-vorder"/.test(knotenVor79)
+    && !/class="brand"/.test(knotenVor79));
+
+  /** Die Klassifikation setzen — genau so, wie Modul 1 sie schreibt. */
+  const setzeKlasse79 = (id, wert) => {
+    const el = store.holeElement(id);
+    store.speichere(el.name, { ...el.wandelement, brandklasse: wert }, id);
+  };
+  setzeKlasse79(id30, 'F30');
+  setzeKlasse79(idKrumm79, 'F90');          // unbekannter Wert aus einem fremden Stand
+  await warte();
+  GP.render();
+
+  // (a) Muss 1 — verschiedene Darstellungsmerkmale in der Zeichenflaeche.
+  ok('#79 (Muss 1) F30 und „ohne Feld" tragen verschiedene Merkmale in der Zeichenflaeche',
+    brandVon(id30) !== '' && brandVon(idOhne79) !== ''
+    && merkmalVon(id30) !== merkmalVon(idOhne79)
+    && /data-brandklasse="F30"/.test(brandVon(id30))
+    && /data-brandklasse="F0"/.test(brandVon(idOhne79)));
+
+  // (b) Muss 2 — die Unterscheidung haengt NICHT an der Farbe.
+  ok('#79 (Muss 2) auch ohne jede Farbangabe bleiben die beiden Merkmale verschieden',
+    ohneFarbe(merkmalVon(id30)) !== ohneFarbe(merkmalVon(idOhne79))
+    && ohneFarbe(merkmalVon(id30)) !== '' && ohneFarbe(merkmalVon(idOhne79)) !== '');
+  ok('#79 (Muss 2) getragen wird sie von Schraffur und Kurztext — beides ohne Farbe lesbar',
+    /class="brandflaeche"[^>]*fill="url\(#gp-brand-f30\)"/.test(brandVon(id30))
+    && !/brandflaeche/.test(brandVon(idOhne79))
+    && /class="brand-kz"[^>]*>F30</.test(brandVon(id30))
+    && /class="brand-kz"[^>]*>F0</.test(brandVon(idOhne79)));
+  ok('#79 das Schraffurmuster steht genau einmal im SVG und vor allen sichtbaren Knoten',
+    (GP.svg.match(/<pattern id="gp-brand-f30"/g) || []).length === 1
+    && GP.svg.indexOf('<defs>') < GP.svg.indexOf('<g class="wand'));
+
+  // (c) Muss 3 — die Legende benennt beide Klassen samt Merkmal in WORTEN.
+  {
+    const legende79 = (html.split('<div class="legende">')[1] || '').split('</div>')[0];
+    ok('#79 (Muss 3) die Legende benennt beide Klassifikationen mit ihrem Merkmal in Worten',
+      /F0<\/b>[^<]*ohne Brandschutzklassifikation/.test(legende79)
+      && /ohne Schraffur/.test(legende79)
+      && /F30<\/b>[^<]*Brandschutzklassifikation F30/.test(legende79)
+      && /diagonal schraffiert/.test(legende79));
+    ok('#79 (Muss 3) sie sagt zugleich, dass es eine Planungskennzeichnung ist',
+      /Planungskennzeichnung/.test(legende79) && /kein Nachweis/.test(legende79)
+      && /Modul 1/.test(legende79));
+  }
+
+  // (d) Muss 4/5/6 — Wandliste, Standard F0 und der verwaiste Eintrag.
+  ok('#79 (Muss 4) die Wandliste zeigt die Klassifikation je Wand als Text',
+    /F30/.test(zeile79(id30)) && /F0/.test(zeile79(idOhne79))
+    && !/F30/.test(zeile79(idOhne79)));
+  ok('#79 (Muss 5) ohne Feld UND mit unbekanntem Wert wird als F0 dargestellt und beschriftet',
+    /data-brandklasse="F0"/.test(brandVon(idKrumm79))
+    && /class="brand-kz"[^>]*>F0</.test(brandVon(idKrumm79))
+    && !/brandflaeche/.test(brandVon(idKrumm79))
+    && /F0/.test(zeile79(idKrumm79)));
+  ok('#79 (Muss 5) dabei wird NICHTS zurueckgeschrieben — der gespeicherte Wert bleibt roh',
+    store.holeElement(idKrumm79).wandelement.brandklasse === 'F90'
+    && store.holeElement(idOhne79).wandelement.brandklasse == null);
+  ok('#79 (Muss 6) ein verwaister Eintrag wird gezeichnet, bleibt aber ohne Klassifikation',
+    GP.svg.includes('data-wand="wnd-verwaist-79"')
+    && brandVon('wnd-verwaist-79') === ''
+    && !/F0|F30/.test(zeile79('wnd-verwaist-79'))
+    && /verwaist/i.test(zeile79('wnd-verwaist-79')));
+
+  // (e) Must-not — [K-8], Geometrie, Loeser und Kollisionen unveraendert.
+  ok('#79 (must-not) der Wandknoten ist mit und ohne F30 byte-gleich — Zustandsfarbe [K-8], '
+    + 'Mittellinie und V/R-Kanten unveraendert',
+    wandKnotenVon(id30) === knotenVor79 && knotenVor79 !== '');
+  ok('#79 (must-not) Wandlage, Loeserergebnis und Kollisionspruefung sind unveraendert',
+    JSON.stringify(GP.loesen()) === loeserVor79);
+  {
+    const vorM79 = localStorage.getItem('sembla:projekte');
+    const vorE79 = localStorage.getItem('sembla:elemente');
+    const vorU79 = GP.undoStand.undo;
+    GP.render(); GP.render();
+    ok('#79 (must-not) das blosse Zeichnen schreibt weder Mappe noch Wandspeicher und bucht nichts',
+      localStorage.getItem('sembla:projekte') === vorM79
+      && localStorage.getItem('sembla:elemente') === vorE79
+      && GP.undoStand.undo === vorU79);
+  }
+
+  // (f) Must-not — kein Bedienelement, kein zweiter Schreibweg.
+  ok('#79 (must-not) der Editor hat kein Bedienelement fuer die Klassifikation',
+    !/id="gp-brand/.test(html) && !/id="gp-sammel-brand/.test(html)
+    && !/<select[^>]*brandklasse/.test(html)
+    && !/brand/i.test((html.split('id="gp-sammel"')[1] || '').split('id="gp-liste"')[0]));
+  ok('#79 (must-not) geschrieben wird sie nirgends — es gibt genau EINE Zuweisung, '
+    + 'das Mitfuehren beim Neurechnen (#56/#75)',
+    (html.match(/\.brandklasse\s*=/g) || []).length === 1
+    && /neu\.brandklasse = we\.brandklasse/.test(html)
+    && /store\.normBrandklasse\(/.test(html));
+  ok('#79 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+
+  // (g) Realer Nutzerpfad zu Ende gedacht: der in Modul 1 gesetzte Wert ueberlebt
+  //     eine Laengenaenderung im Editor und wird danach weiter richtig gezeigt.
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1000, y: 62.5 });
+  {
+    const g79 = GP.griffe().find(x => x.ende === 'max');
+    GP.ziehe(g79, { x: g79.x - 500, y: g79.y });
+    await warte();
+    ok('#79 nach einer Laengenaenderung bleibt die Wand F30 — in Speicher, Zeichnung und Liste',
+      store.holeElement(id30).wandelement.brandklasse === 'F30'
+      && /data-brandklasse="F30"/.test(brandVon(id30))
+      && /brandflaeche/.test(brandVon(id30))
+      && /F30/.test(zeile79(id30)));
+  }
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

@@ -81,6 +81,15 @@
   .legende{font-size:11.5px;color:var(--sb-muted)}
   .legende span{display:inline-flex;align-items:center;gap:5px;margin-right:9px}
   .legende i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  /* Brandschutzklassifikation (#79): das Muster steht im Farbfeld selbst, damit
+     die Legende dieselben ZWEI Merkmale zeigt wie die Zeichnung — Kurztext und
+     Schraffur. Die Kennfarbe liegt hier in der Regel und nicht als `style`:
+     das Kurzschreibweise-`background` im Attribut würde `background-image`
+     zurücksetzen und die Schraffur wieder wegnehmen. */
+  .legende i.brand-f0{background:#5b6673}
+  .legende i.brand-f30{background:#0b7285;
+      background-image:repeating-linear-gradient(45deg,
+        rgba(255,255,255,.9) 0 1px,transparent 1px 3px)}
 
   /* Gemeinsame Grundform der schwebenden Bereiche (#53). */
   .gp-leiste{position:absolute;background:rgba(255,255,255,.95);border:1px solid var(--sb-line);
@@ -294,6 +303,12 @@
           <span><i style="background:#1a1a1a"></i>bestimmt</span>
           <span><i style="background:#1f9d4d"></i>aktiv</span>
           <span><i style="background:#d92b2b"></i>Fehler</span>
+          <!-- Brandschutzklassifikation (#79): reine Planungskennzeichnung. Beide
+               Klassen werden mit ihrem Darstellungsmerkmal in WORTEN benannt —
+               die Unterscheidung darf nicht an der Farbe hängen. Gewählt wird sie
+               ausschließlich in Modul 1; hier wird nur angezeigt. -->
+          <span title="Brandschutzklassifikation der Wand — reine Planungskennzeichnung (#79), kein Nachweis und keine Freigabe. Gewählt wird sie in Modul 1 (Wandplanung)."><i class="brand-f0"></i><b>F0</b>&nbsp;ohne Brandschutzklassifikation — Wandfläche ohne Schraffur</span>
+          <span title="Brandschutzklassifikation der Wand — reine Planungskennzeichnung (#79), kein Nachweis und keine Freigabe. Gewählt wird sie in Modul 1 (Wandplanung)."><i class="brand-f30"></i><b>F30</b>&nbsp;Brandschutzklassifikation F30 — Wandfläche diagonal schraffiert</span>
         </div>
       </div>
 
@@ -499,6 +514,37 @@ function waende(){ const gs = geschoss(); return gs ? gs.waende : []; }
 function bemassungen(){ const gs = geschoss(); return gs ? (gs.bemassungen || []) : []; }
 function plan(){ const gs = geschoss(); return gs ? gs.plan : null; }
 function wand(id){ return waende().find(w => w.id === id) || null; }
+
+/**
+ * Die Wandspeicher-Einträge EINMAL je `render()` — als Nachschlagetabelle für
+ * Zeichnung und Wandliste.
+ *
+ * `render()` läuft bei jedem Zeigerereignis, und `store.holeElement()` liest den
+ * ganzen Wandspeicher neu. Je Wand einmal in der Zeichnung und ein zweites Mal in
+ * der Liste wären damit 2 × n Vollparsen je Bild. Gelesen wird deshalb genau
+ * einmal; die Quelle bleibt dieselbe (`store.listeElemente()`), es entsteht kein
+ * zweiter Speicherpfad und nichts wird zwischengespeichert.
+ */
+function elementeMap(){
+  const m = new Map();
+  for (const e of store.listeElemente()) m.set(e.id, e);
+  return m;
+}
+
+/**
+ * Die Brandschutzklassifikation einer Wand (#79). Sie ist ein Feld des
+ * WANDELEMENTS und wird hier ausschließlich GELESEN — über denselben kanonischen
+ * Normalisierer wie Höhe und Wandtyp (`store.normBrandklasse` aus `storage.js`,
+ * Standard „F0“ für Altbestand ohne Feld). Gewählt wird sie allein in Modul 1;
+ * dieser Editor hat dafür kein Bedienelement und schreibt sie nie ([P-1]).
+ *
+ * Ohne Wandelement (verwaister Eintrag, [L-4]) gibt es `null`: dann bleibt die
+ * Wand ohne Angabe, statt eine Klassifikation zu erfinden.
+ * @returns {'F0'|'F30'|null}
+ */
+function brandklasse(el){
+  return el && el.wandelement ? store.normBrandklasse(el.wandelement.brandklasse) : null;
+}
 
 /**
  * Der GESPEICHERTE Geschossursprung ([K-4], #76) — der eine Grundbezug. Fehlt er
@@ -967,8 +1013,61 @@ function griffTreffer(p){
   return null;
 }
 
+/**
+ * Darstellungsschlüssel der Brandschutzklassifikation (#79) — Darstellung, sonst
+ * nichts. Die Klassifikation ist eine reine PLANUNGSKENNZEICHNUNG: aus ihr wird
+ * kein Nachweis, keine Freigabe und keine Materialregel abgeleitet, und sie
+ * verändert weder Wandgeometrie noch Lage, Bemaßung, Löserergebnis oder
+ * Kollisionsprüfung.
+ *
+ * Getragen wird die Unterscheidung von ZWEI Merkmalen, die BEIDE ohne Farbe
+ * auskommen — Farbe allein genügt nicht:
+ *   * `kuerzel` steht als Kurztext an der Wand und ist in jedem Zoom lesbar;
+ *   * `schraffur` legt bei F30 zusätzlich ein dünnes, NICHT deckendes
+ *     Schraffurmuster über die Wandfläche (die geläufige Bauzeichnungs-
+ *     konvention). F0 bleibt bewusst OHNE Schraffur und damit
+ *     darstellungsgleich zur bisherigen Zeichnung.
+ * `farbe` kommt nur additiv dazu und ist bewusst keine der Zustandsfarben
+ * ([K-8]) und keine der V/R-Farben (#84).
+ *
+ * Wortlaut und Kennfarbe müssen zu `BRANDKLASSE` in
+ * `docs/shared/sembla-lageplan.js` passen — dort steht derselbe Schlüssel für das
+ * Lageplanblatt. Er ist hier bewusst NICHT importiert: der Editor ist die
+ * Bearbeitung und darf nicht am Ausgabemodul hängen, und die Geometrie ist
+ * ohnehin verschieden (dort Papier-mm, hier Welt-mm am Blick). Kanonisch sind
+ * allein die WERTE F0/F30 samt Standard — sie kommen aus `storage.js`
+ * (`store.normBrandklasse`), nicht von hier.
+ */
+const BRANDKLASSE = {
+  F0: { kuerzel: 'F0', name: 'ohne Brandschutzklassifikation',
+        merkmal: 'ohne Schraffur', farbe: '#5b6673', schraffur: false },
+  F30: { kuerzel: 'F30', name: 'Brandschutzklassifikation F30',
+         merkmal: 'diagonal schraffiert', farbe: '#0b7285', schraffur: true },
+};
+
+/** Kennung und Kachelmaß (Schirmpixel) der F30-Schraffur. */
+const BRAND_SCHRAFFUR_ID = 'gp-brand-f30';
+const BRAND_SCHRAFFUR_PX = 7;
+
+/** Abstand des Brandschutz-Kurztexts vom Wandende, in Schirmpixeln. */
+const BRAND_TEXT_PX = 12;
+
+/**
+ * Das Schraffurmuster als `<defs>`. Kachelmaß und Strichbreite hängen am Blick
+ * (`V.mm`), damit die Schraffur beim Zoomen gleich fein bleibt — wie jede andere
+ * Linie der Bühne. Erzeugt wird es nur, wenn eine F30-Wand im Geschoss steht:
+ * eine reine F0-Planung zeichnet damit bit-genau wie bisher.
+ */
+function brandDefs(){
+  const s = r2(BRAND_SCHRAFFUR_PX * V.mm);
+  return `<defs><pattern id="${BRAND_SCHRAFFUR_ID}" width="${s}" height="${s}"`
+    + ' patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
+    + `<line x1="0" y1="0" x2="0" y2="${s}" stroke="${BRANDKLASSE.F30.farbe}"`
+    + ` stroke-width="${r2(strich(1.1))}"/></pattern></defs>`;
+}
+
 /** Eine Wand als Rechteck samt Mittellinie ([K-2]) und Zustandsfarbe ([K-8]). */
-function wandSvg(w, erg, koll){
+function wandSvg(w, erg, koll, els){
   const pos = position(w.id, erg);
   const rect = CON.wandRechteck(w.lage, pos);
   if (!rect) return '';
@@ -1004,6 +1103,37 @@ function wandSvg(w, erg, koll){
         + ` font-size="${r2(10 * V.mm)}" text-anchor="middle" fill="${sf.farbe}">`
         + `${sf.kuerzel}<title>${sf.name} („${esc(seiten.orientierung)}“)</title></text>`);
     }
+  }
+  // Brandschutzklassifikation (#79): eigene Gruppe NACH Wandrechteck, Mittellinie
+  // und V/R-Kanten — die Schraffur liegt damit auf der Wandfläche, aber unter
+  // Auswahlrahmen, Griffen und Beschriftung. Der Wandknoten selbst bleibt dabei
+  // unverändert, und die Zustandsfarbe ([K-8]) wird weder ersetzt noch verdeckt:
+  // die Schraffur ist ein dünnes Linienmuster, kein deckender Anstrich.
+  // Getragen wird die Unterscheidung OHNE Farbe — F30 zusätzlich schraffiert, und
+  // BEIDE Klassen tragen ihren Kurztext. Gelesen wird nur; gewählt wird sie
+  // ausschließlich in Modul 1.
+  // Die Gruppe trägt bewusst KEIN eigenes `data-wand`: sie liegt IN der Wandgruppe,
+  // die die Kennung schon führt — ein zweites Vorkommen je Wand wäre eine doppelte
+  // Zuordnung (und zählte in jeder Auswertung über `data-wand=` mit).
+  const bk = BRANDKLASSE[brandklasse(els && els.get(w.id))] || null;
+  if (bk) {
+    const brand = [`<g class="brand" data-brandklasse="${bk.kuerzel}">`];
+    if (bk.schraffur) {
+      brand.push(`<rect class="brandflaeche" x="${r2(rect.x_min)}" y="${r2(rect.y_min)}"`
+        + ` width="${r2(b)}" height="${r2(h)}" fill="url(#${BRAND_SCHRAFFUR_ID})"/>`);
+    }
+    // Der Kurztext steht AUSSERHALB der Wand am Min-Ende: die Wandmitte gehört
+    // der Namensbeschriftung, die Mitten der Längskanten den V/R-Buchstaben (#84).
+    const ab = BRAND_TEXT_PX * V.mm;
+    const laengs = l.richtung === 'x';
+    const tx = laengs ? rect.x_min - ab : (rect.x_min + rect.x_max) / 2;
+    const ty = laengs ? (rect.y_min + rect.y_max) / 2 + 3.5 * V.mm : rect.y_min - ab;
+    brand.push(`<text class="brand-kz" x="${r2(tx)}" y="${r2(ty)}"`
+      + ` font-size="${r2(10 * V.mm)}" text-anchor="${laengs ? 'end' : 'middle'}"`
+      + ` fill="${bk.farbe}">${bk.kuerzel}<title>${bk.name} — Wandfläche ${bk.merkmal}. `
+      + 'Planungskennzeichnung, kein Nachweis; gewählt wird sie in Modul 1.</title></text>');
+    brand.push('</g>');
+    teile.push(brand.join(''));
   }
   if (istAusgewaehlt(w.id) && GP.aktiv !== w.id) {
     // AUSGEWÄHLT, aber nicht aktiv: nur ein Rahmen. Ausgewählt sein können mehrere
@@ -1519,19 +1649,20 @@ function bestimmtText(b){
 
 /**
  * Die Wandliste des aktiven Geschosses. Sie liest ausschließlich — Länge und
- * Bestimmtheit aus Lage und Löser, Höhe und Wandtyp aus dem Wandelement (die
- * Mappe kennt beides nicht). Fehlt das Wandelement, steht das da; geraten wird
- * nichts ([L-4]).
+ * Bestimmtheit aus Lage und Löser, Höhe, Wandtyp und Brandschutzklassifikation
+ * (#79) aus dem Wandelement (die Mappe kennt nichts davon). Fehlt das
+ * Wandelement, steht das da; geraten wird nichts ([L-4]).
  */
-function listeSync(erg, koll){
+function listeSync(erg, koll, els){
   const p = $('gp-liste');
   if (!geschoss()) {
     p.innerHTML = '<div class="gp-liste-leer">Kein aktives Geschoss.</div>';
     return;
   }
+  const map = els || elementeMap();
   const liste = waende();
   const zeilen = liste.map(w => {
-    const el = store.holeElement(w.id);
+    const el = map.get(w.id) || null;
     const we = el && el.wandelement;
     const zu = CON.zustand(w.id, erg, { aktiv: GP.aktiv, kollisionen: koll });
     // AKTIV (genau eine, in Bearbeitung) und AUSGEWÄHLT (mehrere) bleiben getrennt —
@@ -1542,6 +1673,9 @@ function listeSync(erg, koll){
       w.lage ? `${CON.laengeMm(w.lage)} mm` : 'unverortet',
       we ? `h ${we.height_mm} mm` : '–',
       we ? (store.normWandtyp(we.wandtyp) === 'ohne_wind' ? 'ohne Wind' : 'mit Wind') : '–',
+      // Brandschutzklassifikation als Text (#79) — dieselbe Bahn wie Höhe und
+      // Wandtyp. Ein verwaister Eintrag bleibt ohne Angabe ([L-4]).
+      brandklasse(el) || '–',
       w.lage ? bestimmtText(erg.bestimmt[w.id]) : 'frei',
     ];
     // „Planen“ nur, wo es ein Wandelement GIBT: ein verwaister Eintrag bekommt keinen
@@ -1921,11 +2055,18 @@ function render(){
   auswahlPruefen();
   const erg = loesen();
   const koll = erg.kollisionen || [];
+  // Die Wandelemente EINMAL lesen — Zeichnung und Liste teilen sich dieselbe
+  // Nachschlagetabelle (Höhe, Wandtyp, Brandschutzklassifikation).
+  const els = elementeMap();
   const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
     + `${r2(f.breite * V.mm)} ${r2(f.hoehe * V.mm)}">`,
     `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
     planSvgTeil(), rasterSvg(f), ursprungSvg(f)];
-  for (const w of waende()) teile.push(wandSvg(w, erg, koll));
+  // Das Schraffurmuster (#79) zeichnet selbst nichts und steht deshalb vorn — die
+  // Reihenfolge der sichtbaren Knoten bleibt unberührt. Erzeugt wird es nur, wenn
+  // es auch gebraucht wird.
+  if (waende().some(w => brandklasse(els.get(w.id)) === 'F30')) teile.push(brandDefs());
+  for (const w of waende()) teile.push(wandSvg(w, erg, koll, els));
   // Ausgeblendete Bemaßungen werden nicht gezeichnet — die Staffelung (`i`) bleibt
   // dieselbe, damit sie beim Einblenden bit-genau wieder dort stehen (#53).
   if (GP.masseAn) bemLayout(erg).forEach(g => teile.push(bemassungSvg(g, erg)));
@@ -1938,7 +2079,7 @@ function render(){
       : GP.werkzeug === 'bemassen' || GP.werkzeug === 'ursprung' ? ' zeichnet' : '');
   inlineSync();
   statusSync(erg, koll);
-  listeSync(erg, koll);
+  listeSync(erg, koll, els);
   kopfSync();
 }
 

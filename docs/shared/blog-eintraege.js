@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260815-03",
+    datum: "2026-08-15",
+    typ: "feature",
+    issue: 79,
+    titel: "Brandschutz F0/F30 im Geschosseditor erkennbar — schraffiert, beschriftet, in Legende und Wandliste",
+    testbitte: "In Modul 1 eine Wand auf F30 stellen und das Geschoss öffnen: Die F30-Wand ist "
+      + "schraffiert und beschriftet, F0-Wände tragen nur den Kurztext, Legende und Wandliste nennen "
+      + "beide Klassen — auch schwarz-weiß unterscheidbar.",
+  },
+  {
     id: "chg-20260815-02",
     datum: "2026-08-15",
     typ: "feature",
