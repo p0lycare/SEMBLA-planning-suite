@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-02",
+    datum: "2026-08-16",
+    typ: "feature",
+    issue: 81,
+    titel: "Beim Export ist wählbar, ob die Stückliste die berechneten oder die angepassten Mengen enthält",
+    testbitte: "In Modul 4 eine Menge übersteuern, in Modul 0 an der Wand exportieren und "
+      + "„angepasst“ wählen: Die Stückliste trägt die manuelle Menge, nennt die Fassung im "
+      + "Dateikopf und führt die berechnete Menge daneben.",
+  },
+  {
     id: "chg-20260816-01",
     datum: "2026-08-16",
     typ: "feature",

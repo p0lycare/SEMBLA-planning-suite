@@ -376,6 +376,22 @@
     <div class="opt-zusatz" id="exp-gesamt-optionen" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
       <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="exp-preise" checked>Preise in der Gesamtstückliste</label>
     </div>
+    <!-- Mengenfassung der Baustellenstückliste ([P-20], #81). Die manuelle Menge aus Modul 4
+         steht NEBEN der berechneten, nie an ihrer Stelle — welche von beiden in die Datei
+         geht, ist deshalb eine ausdrückliche Wahl und keine Voreinstellung, die man erraten
+         müsste. Ohne Zutun gilt „berechnet“; die Wahl gilt nur für diesen Exportlauf, wird
+         nirgends gespeichert und ändert keine gespeicherte Übersteuerung — Modul 4 bleibt
+         der einzige Schreibweg. -->
+    <div class="opt-zusatz" id="exp-stueckliste-optionen" style="margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span>Mengen der Baustellenstückliste:</span>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-fassung" id="exp-fassung-berechnet" checked>berechnet</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-fassung" id="exp-fassung-angepasst">angepasst (manuelle Mengen aus Modul&nbsp;4)</label>
+      </div>
+      <div style="margin-top:3px">Die gewählte Fassung steht im Kopf der Datei. Die
+        <b>Einzelteilliste</b> der Gewindestangen bleibt in beiden Fällen abgeleitet — eine
+        manuelle Menge ließe sich dort nur mit erfundenen Einbauteil-IDs abbilden ([P-19]).</div>
+    </div>
     <div class="modal-actions">
       <button class="btn-s" id="exp-cancel">Abbrechen</button>
       <button class="btn-p" id="exp-go">ZIP herunterladen</button>
@@ -1729,7 +1745,7 @@
     waende: ['Wandelementdateien (JSON je Wand)', 'Je enthaltener Wand eine SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben). Fehlende Wandelemente werden benannt, nie ersetzt ([L-4]).'],
     wand: ['Wanddatei (JSON)', 'Diese Wand als SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben) — hier wieder importierbar.'],
     katalog: ['Bauteilkatalog (JSON)', 'Der dem Projekt zugeordnete Katalog als eigene SEMBLA-Bauteilkatalog-Datei ([L-12]) — nie in Mappe oder Wanddatei eingebettet.'],
-    stueckliste: ['Baustellenstückliste (2× CSV)', 'Real einzubauende Teile in Fertigmaßen — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs.'],
+    stueckliste: ['Baustellenstückliste (2× CSV)', 'Real einzubauende Teile in Fertigmaßen — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs. Die <b>Mengenfassung</b> der aggregierten Liste wird unten gewählt ([P-20]).'],
   };
 
   /**
@@ -1769,6 +1785,13 @@
     ).join('');
     // Der Preisschalter gehoert zur Gesamtstückliste — auf der Wandebene gibt es sie nicht.
     $('exp-gesamt-optionen').hidden = !ARCHIV.exportOptionen(kontext.ebene).includes('gesamt');
+    // Die Mengenfassung ([P-20]) gehoert zur Baustellenstückliste — die gibt es nur auf der
+    // Wandebene. Sie startet bei JEDEM Öffnen wieder auf „berechnet“: welche Mengen in eine
+    // Baustellenunterlage gehen, ist eine fachliche Entscheidung, die nicht aus einem
+    // früheren Exportlauf nachhängen darf.
+    $('exp-stueckliste-optionen').hidden = !ARCHIV.exportOptionen(kontext.ebene).includes('stueckliste');
+    $('exp-fassung-berechnet').checked = true;
+    $('exp-fassung-angepasst').checked = false;
     overlay.hidden = false;
   }
   function schliesseExport(){ overlay.hidden = true; expKontext = null; }
@@ -1804,6 +1827,9 @@
         // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
         projektObjekt: (id) => store.projektObjekt(id),
         preise: $('exp-preise').checked,
+        // Ausgabeentscheidung dieses Laufs ([P-20]) — sie wird nur durchgereicht und
+        // nirgends gespeichert; gerechnet wird die wirksame Menge in sembla-export.js.
+        fassung: $('exp-fassung-angepasst').checked ? 'angepasst' : 'berechnet',
       });
       // Fehlendes wird VOR dem Download benannt — kein stilles Teilergebnis ([L-4]/[L-12]).
       if (erg.luecken.length && !confirm('Dieser Export wird NICHT vollständig:\n\n– '

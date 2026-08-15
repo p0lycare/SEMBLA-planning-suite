@@ -21,7 +21,11 @@ import { montageDokument } from "./sembla-montage.js";
 import { optionenAusEingaben, zeichnungDokument, zeichnungSvgDatei } from "./sembla-zeichnung.js";
 import { wandelementToIfc } from "./sembla-ifc.js";
 import { nachweise, nachweisParams } from "./sembla-statik.js";
-import { sicherName } from "./storage.js";
+// Aus der Speicherschicht kommen ausschliesslich REINE Funktionen: `sicherName` (Dateiname),
+// `mengenKennung` und `pruefeMenge` (Kennung und Wertpruefung der Mengenuebersteuerung nach
+// [P-20]). Keine davon liest oder schreibt einen Speicher — sie bringen nur die kanonische
+// Fassung dieser Regeln mit, die hier sonst ein zweites Mal entstuende.
+import { mengenKennung, pruefeMenge, sicherName } from "./storage.js";
 
 const _fmt = (n, d = 2) => (isFinite(n) ? n : 0).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -113,6 +117,81 @@ export function stuecklisteSumme(rs) {
   };
 }
 
+// ---------- Wirksame Menge: berechnet + manuelle Uebersteuerung ([P-20]) ----------
+//
+// Die BERECHNETE Menge bleibt ausschliesslich abgeleitet (sembla-bom.js) und wird hier nie
+// veraendert; sie bleibt an jeder Position als `__berechnet` stehen. Daneben — nicht an ihrer
+// Stelle — tritt die manuelle Menge aus `eingaben.kosten.mengen`.
+//
+// Diese Funktion ist die EINE Fassung dieser Verrechnung: Modul 4 (Anzeige) und der zentrale
+// Export (Datei) rufen sie beide auf. Eine zweite Fassung — etwa inline in der Oberflaeche —
+// waere genau der Drift, den [P-6] ausschliesst.
+
+/** Kanonische Bezeichnung der beiden Mengenfassungen einer Stuecklistenausgabe ([P-20]). */
+export const MENGEN_FASSUNG = {
+  berechnet: "berechnet – abgeleitet aus dem Wandelement",
+  angepasst: "angepasst – mit den manuellen Mengen aus Modul 4",
+};
+
+/**
+ * Fassungsvermerk der EINZELTEILLISTE. Sie fuehrt **stets** die abgeleiteten Einzelteile:
+ * eine manuelle Menge liesse sich dort nur durch erfundene Einbauteil-IDs abbilden, was
+ * [P-19]/[P-9] ausschliessen. Der Zusatz steht ausdruecklich in der Datei, statt das
+ * Abweichen von der gewaehlten Fassung stillschweigend zu lassen.
+ */
+// Bewusst OHNE Semikolon formuliert: in der semikolongetrennten Datei zwaenge es den Wert
+// sonst in Anfuehrungszeichen und machte den Vermerk schlechter lesbar.
+export const EINZELTEIL_FASSUNG = "berechnet – Einzelteile werden stets abgeleitet, "
+  + "eine manuelle Menge wird hier nie angewandt (Einbauteil-IDs werden nicht erfunden)";
+
+/** Fassungswahl auf einen der beiden kanonischen Werte normalisieren; Default = berechnet. */
+export function normFassung(v) { return String(v) === "angepasst" ? "angepasst" : "berechnet"; }
+
+/**
+ * Positionen um die gespeicherten Mengenuebersteuerungen ergaenzen ([P-20]).
+ *
+ * Jede Position traegt danach `__berechnet` (unveraendert aus der Ableitung), `__ueber`
+ * (manuelle Menge oder null) und `__kennung`. Bei wirksamer Uebersteuerung folgt `menge` der
+ * manuellen Zahl und `gp` ihr bei **unveraendertem** Einzelpreis — die Preisaufloesung nach
+ * [P-14] wird nicht angefasst und waehlt kein anderes Produkt.
+ *
+ * Nicht zuordenbare (`fremd`) und unzulaessig gespeicherte (`ungueltig`) Eintraege werden
+ * GEMELDET, nie entfernt und nie auf eine andere Position gelegt ([P-9]).
+ *
+ * @param {Array<object>} positionen aus `stuecklistePositionen()`
+ * @param {Record<string, any>|null|undefined} mengenRoh `eingaben.kosten.mengen`, ungefiltert
+ * @param {{anwenden?:boolean}} [opts] `anwenden:false` = berechnete Fassung: es wird nichts
+ *   uebersteuert und keine Kennung vergeben, die gespeicherten Eintraege werden aber gezaehlt
+ *   (fuer die Aussage „hier wirkt die Uebersteuerung nicht“).
+ * @returns {{positionen:Array<object>, anzahl:number,
+ *   ungueltig:Array<{kennung:string,label:string,wert:any,grund:string}>,
+ *   fremd:string[], gespeichert:number}}
+ */
+export function wirksameMengen(positionen, mengenRoh, opts = {}) {
+  const anwenden = opts.anwenden !== false;
+  const map = (mengenRoh && typeof mengenRoh === "object" && !Array.isArray(mengenRoh)) ? mengenRoh : {};
+  const bekannt = new Set(); const ungueltig = []; let anzahl = 0;
+  const angepasst = (positionen || []).map(p => {
+    const k = anwenden ? mengenKennung(p) : null;
+    if (k) bekannt.add(k);
+    const q = { ...p, __kennung: k, __berechnet: p.menge, __ueber: null };
+    if (k && Object.prototype.hasOwnProperty.call(map, k)) {
+      const g = pruefeMenge(map[k]);
+      if (g.ok) {
+        q.__ueber = g.wert; q.menge = g.wert;
+        // Nur die Menge ist eine andere — der Einzelpreis bleibt exakt der aufgeloeste ([P-14]).
+        q.gp = (p.ep == null ? null : g.wert * p.ep);
+        anzahl++;
+      } else {
+        ungueltig.push({ kennung: k, label: p.label, wert: map[k], grund: g.fehler });
+      }
+    }
+    return q;
+  });
+  const fremd = anwenden ? Object.keys(map).filter(k => !bekannt.has(k)) : [];
+  return { positionen: angepasst, anzahl, ungueltig, fremd, gespeichert: Object.keys(map).length };
+}
+
 /**
  * Baustellenstückliste als AoA (Array-of-Arrays) — Basis fuer CSV/Excel. Enthaelt je
  * Einbauteil-Position Art, Fertigmaß, Wandreferenz und die Einbauteil-IDs ([P-19]) sowie
@@ -121,33 +200,72 @@ export function stuecklisteSumme(rs) {
  *
  * Die Art wird mit SYMBOL UND KLARTEXT geschrieben ([P-19]) — eine CSV hat keine Farbe, und
  * genau darum darf die Kennzeichnung nie an der Farbe haengen.
- * @param {object} w @param {object} eingaben @param {{datum?:string}} [opts] @param {object|null} [katalog]
+ *
+ * MENGENFASSUNG ([P-20]): `opts.fassung` waehlt zwischen der **berechneten** (Default) und der
+ * **angepassten** Fassung. Die Datei benennt die gewaehlte Fassung in ihrem Kopf — eine
+ * Stuecklistendatei, der man ihre Mengenfassung nicht ansieht, waere unbrauchbar. In der
+ * angepassten Fassung traegt jede Position ihre wirksame Menge, die **berechnete steht in einer
+ * eigenen Spalte daneben** (beide Werte gleichzeitig, [P-20]), und der Gesamtpreis folgt der
+ * wirksamen Menge bei unveraendertem Einzelpreis. Nicht zuordenbare und unzulaessig
+ * gespeicherte Uebersteuerungen stehen als eigene Kopfzeilen — benannt, nicht angewandt,
+ * nicht geloescht. Die berechnete Fassung bleibt ausser der Kopfzeile unveraendert.
+ * @param {object} w @param {object} eingaben
+ * @param {{datum?:string, fassung?:string}} [opts] @param {object|null} [katalog]
  */
 export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
   const kosten = eingaben.kosten || {}, projekt = eingaben.projekt || {};
   const cur = kosten.waehrung || "EUR";
-  const rs = stuecklistePositionen(w, eingaben, katalog);
+  const fassung = normFassung(opts.fassung);
+  const angepasst = fassung === "angepasst";
+  // Die Ableitung bleibt unangetastet; die manuellen Mengen treten nur daneben. Summe und
+  // Vollstaendigkeit werden aus GENAU DIESEN Zeilen gerechnet, damit die Summenzeile nie einen
+  // anderen Mengenstand zeigt als die Tabelle darueber.
+  const m = wirksameMengen(stuecklistePositionen(w, eingaben, katalog), kosten.mengen,
+    { anwenden: angepasst });
+  const rs = m.positionen;
   const s = stuecklisteSumme(rs);
   const datum = opts.datum || _heute();
   const n2 = v => (v == null ? "" : +v.toFixed(2));
-  return [
+
+  const kopf = [
     ["SEMBLA – Baustellenstückliste (Einbauteile)"],
     ["Projekt", projekt.name || w.name || "SEMBLA-Projekt"],
     ["Wand", w.name || "Wandelement"],
     ["Maße", _fmt(w.length_mm / 1000, 3) + " × " + _fmt(w.height_mm / 1000, 2) + " m"],
     ["Datum", datum],
     ["Katalog", katalog ? (katalog.name || "Bauteilkatalog") : "kein Bauteilkatalog geladen"],
+    ["Mengen", MENGEN_FASSUNG[fassung] + (angepasst
+      ? " · " + m.anzahl + " von " + rs.length + " Position(en) manuell"
+      : (m.gespeichert ? " · " + m.gespeichert + " gespeicherte Übersteuerung(en) NICHT angewandt" : ""))],
     ["Kennzeichnung", ART_KENNZEICHNUNG],
-    [],
-    ["Einbauteil", "Art", "Fertigmaß (mm)", "Wand", "Einheit", "Menge", "Einbauteil-IDs",
-      "EP (" + cur + ")", "GP (" + cur + ")", "Produkt (Katalog)", "Preisbasis", "Zuordnung"],
-    ...rs.map(r => [r.label, _artText(r), r.fertigmass_mm == null ? "" : r.fertigmass_mm,
+  ];
+  // Jede nicht anwendbare Uebersteuerung steht mit Kennung und Ursache als eigene Zeile —
+  // eine Datei, die sie verschweigt, saehe vollstaendig aus, ohne es zu sein ([P-9]).
+  for (const k of m.fremd) {
+    kopf.push(["Übersteuerung nicht zuordenbar", k,
+      "gehört zu keiner gerechneten Position – nicht angewandt, nicht gelöscht"]);
+  }
+  for (const u of m.ungueltig) {
+    kopf.push(["Übersteuerung unzulässig", u.kennung,
+      u.label + ": " + u.grund + " Es gilt die berechnete Menge."]);
+  }
+
+  const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Wand", "Einheit", "Menge", "Einbauteil-IDs",
+    "EP (" + cur + ")", "GP (" + cur + ")", "Produkt (Katalog)", "Preisbasis", "Zuordnung"];
+  if (angepasst) spalten.splice(6, 0, "Menge berechnet", "Mengenherkunft");
+  const zeilen = rs.map(r => {
+    const z = [r.label, _artText(r), r.fertigmass_mm == null ? "" : r.fertigmass_mm,
       r.wand || "", r.unit, r.menge, r.ids.join(" "),
-      n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText]),
-    [],
-    ["Summe netto", "", "", "", "", "", "", "", +s.summe.toFixed(2), "", "",
+      n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText];
+    if (angepasst) z.splice(6, 0, r.__berechnet, r.__ueber == null ? "berechnet" : "manuell");
+    return z;
+  });
+  const leer = new Array(angepasst ? 9 : 7).fill("");
+  return [
+    ...kopf, [], spalten, ...zeilen, [],
+    ["Summe netto", ...leer, +s.summe.toFixed(2), "", "",
       s.vollstaendig ? "alle Positionen bepreist" : `unvollständig – ${s.bepreist} von ${s.bepreisbar} Positionen bepreist`],
-    ["€/m² Wandfläche", "", "", "", "", "", "", "", +(s.summe / wandflaeche(w)).toFixed(2)],
+    ["€/m² Wandfläche", ...leer, +(s.summe / wandflaeche(w)).toFixed(2)],
   ];
 }
 
@@ -163,6 +281,10 @@ export const ART_KENNZEICHNUNG = ART_SYMBOL.standard + " " + ART_LABEL.standard 
  * EINZELTEILLISTE der Gewindestangen als AoA ([P-19]): eine Zeile je real eingebautem
  * Stück, mit ID, Art, Fertigmaß, Wandreferenz und Einbauort (Spannachse, Segment, Höhenlage).
  * Damit bleibt jede aggregierte Position der Stückliste bis auf das Einzelteil auflösbar.
+ *
+ * Diese Liste ist von der Fassungswahl nach [P-20] ausdruecklich AUSGENOMMEN und traegt das
+ * auch als Vermerk: sie fuehrt reale Einzelteile mit ihrer kanonischen ID, und eine manuelle
+ * Menge liesse sich hier nur durch erfundene IDs abbilden ([P-19]/[P-9]).
  * @param {object} w @param {object} [eingaben] @param {{datum?:string}} [opts]
  */
 export function einbauteileAoa(w, eingaben = {}, opts = {}) {
@@ -173,6 +295,7 @@ export function einbauteileAoa(w, eingaben = {}, opts = {}) {
     ["Projekt", projekt.name || w.name || "SEMBLA-Projekt"],
     ["Wand", w.name || "Wandelement"],
     ["Datum", opts.datum || _heute()],
+    ["Mengen", EINZELTEIL_FASSUNG],
     ["Kennzeichnung", ART_KENNZEICHNUNG],
     [],
     ["Einbauteil-ID", "Kategorie", "Art", "Fertigmaß (mm)", "Wand", "Spannachse", "Segment",
@@ -197,7 +320,12 @@ export function aoaToCsv(aoa) {
   }).join(";")).join("\n");
 }
 
-/** Baustellenstückliste direkt als CSV-Text. @param {object|null} [katalog] */
+/**
+ * Baustellenstückliste direkt als CSV-Text.
+ * @param {object} w @param {object} eingaben
+ * @param {{datum?:string, fassung?:string}} [opts] `fassung` s. `stuecklisteAoa` ([P-20])
+ * @param {object|null} [katalog]
+ */
 export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
   return aoaToCsv(stuecklisteAoa(w, eingaben, opts, katalog));
 }
@@ -601,9 +729,12 @@ function _heute() { try { return new Date().toLocaleDateString("de-DE"); } catch
  * @param {object|null} [katalog] geladener Bauteilkatalog — Preisquelle der Stückliste
  *   ([P-14]). Ohne Katalog entsteht die Datei weiterhin, aber ohne Preise und mit
  *   benanntem Grund je Position (nie mit Nullpreisen).
+ * @param {{fassung?:string}} [opts] Mengenfassung der Stückliste ([P-20]): `'berechnet'`
+ *   (Default, auch ohne Angabe) oder `'angepasst'`. Die Wahl ist eine Ausgabeentscheidung
+ *   je Exportlauf und wird nirgends gespeichert.
  * @returns {Array<{name:string,data:string}>}
  */
-export function baueDateien(projekt, auswahl, katalog = null) {
+export function baueDateien(projekt, auswahl, katalog = null, opts = {}) {
   const w = projekt.wandelement, eingaben = projekt.eingaben;
   const base = sicherName(projekt.name || w.name);
   const set = new Set(auswahl);
@@ -612,8 +743,10 @@ export function baueDateien(projekt, auswahl, katalog = null) {
   if (set.has("stueckliste")) {
     // Zwei Dateien aus EINER Ableitung ([P-19]): die aggregierte Baustellenstückliste und die
     // Einzelteilliste mit den IDs. Beide lesen dieselbe Einbauteilliste — es gibt keinen
-    // zweiten Mengen- oder Identitätspfad.
-    files.push({ name: "Baustellenstueckliste_" + base + ".csv", data: stuecklisteCsv(w, eingaben, undefined, katalog) });
+    // zweiten Mengen- oder Identitätspfad. Die Fassungswahl nach [P-20] wirkt allein auf die
+    // aggregierte Liste; die Einzelteilliste bleibt abgeleitet und sagt das (EINZELTEIL_FASSUNG).
+    files.push({ name: "Baustellenstueckliste_" + base + ".csv",
+      data: stuecklisteCsv(w, eingaben, { fassung: normFassung(opts.fassung) }, katalog) });
     files.push({ name: "Einbauteile_Gewindestangen_" + base + ".csv", data: einbauteileCsv(w, eingaben) });
   }
   if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben, katalog) });

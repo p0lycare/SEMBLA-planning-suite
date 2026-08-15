@@ -187,9 +187,11 @@
    (Kennung `<Stücklistenschlüssel>@<Fertigmaß>` -> ganze Zahl ≥ 0); Modul 4 ist der einzige
    Schreibweg. Der GESAMTPREIS der übersteuerten Zeile folgt der wirksamen Menge bei
    unverändertem Einzelpreis — sonst trüge das Blatt zwei Mengenstände. Die Preisauflösung
-   selbst ([P-14]) wird dabei nicht angefasst. Wirksam ist die Übersteuerung NUR auf der
-   Wandebene; auf den Gesamtebenen (#44) und in den Exportdateien aus Modul 0 stehen die
-   berechneten Mengen — beides wird am Blatt benannt, nicht stillschweigend unterschlagen.
+   selbst ([P-14]) wird dabei nicht angefasst. Wirksam ist die Übersteuerung in der ANZEIGE nur
+   auf der Wandebene; auf den Gesamtebenen (#44) stehen die berechneten Mengen, und das wird am
+   Blatt benannt statt unterschlagen. Beim zentralen Export in Modul 0 ist die Fassung seit #81
+   ausdrücklich WÄHLBAR (berechnet oder angepasst, Default berechnet) — gerechnet wird sie dort
+   mit derselben Funktion wie hier (`wirksameMengen`), es gibt also keinen zweiten Mengenpfad.
    Ein Eintrag, der zu keiner gerechneten Position mehr passt, und ein unzulässiger Wert
    werden BENANNT und nie still gelöscht oder umgehängt ([P-9]).
 
@@ -209,7 +211,8 @@ let EBENE='wand', PREISE=true;          // beides fluechtig: kein Datum, keine S
 // entstanden ist, und verschwindet mit der nächsten gültigen Eingabe. Gespeichert wird sie nie.
 let MFEHLER=null;
 // aus window.SEMBLA (in __slInit gebunden):
-let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten, standText;
+let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten,
+    standText, wirksameMengen;
 
 function eg(){ return EINGABEN || (EINGABEN={kosten:{waehrung:'EUR'},projekt:{},aufbau:{},planung:{}}); }
 function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben(teil,patch); }
@@ -263,49 +266,31 @@ function leser(){
 function daten(){ return gesamtDaten(umfang(mappe(), EBENE, zeiger()), leser()); }
 
 /* ---- Mengenübersteuerung ([P-20]) ---------------------------------------------------------
-   Gelesen wird aus den Eingaben der aktiven Wand, gerechnet wird NICHTS neu: die berechnete
-   Menge jeder Position bleibt erhalten (`__berechnet`) und die manuelle tritt daneben
-   (`__ueber`). Kennung und Wertprüfung kommen aus der Speicherschicht — es gibt genau eine
-   Fassung dieser Regeln, und die Oberfläche baut sich keine zweite. */
+   Gerechnet wird hier NICHTS: die Verrechnung von berechneter und manueller Menge liegt seit
+   #81 in `wirksameMengen()` (sembla-export.js) — derselben Funktion, die auch die
+   Stücklistendatei des zentralen Exports füllt. Damit gibt es genau EINE Fassung dieser Regel;
+   eine zweite hier wäre der Drift, den [P-6] ausschliesst. Die Oberfläche liest nur die
+   Übersteuerungen der aktiven Wand und reicht sie hinein. */
 function mengenMap(){
   const m=(eg().kosten||{}).mengen;
   return (m && typeof m==='object' && !Array.isArray(m)) ? m : {};
 }
-function kennungVon(p){ return (store&&store.mengenKennung) ? store.mengenKennung(p) : null; }
-function pruefeMenge(w){
-  return (store&&store.pruefeMenge) ? store.pruefeMenge(w)
-    : { ok:false, fehler:'Mengen sind ohne Speicherschicht nicht prüfbar.' };
-}
 /**
  * Positionen um die gespeicherten Übersteuerungen ergänzen — nur auf der Wandebene.
  * Jede Position trägt danach `__berechnet` (unverändert aus der Ableitung), `__ueber`
- * (manuelle Menge oder null) und `__kennung`. Nicht zuordenbare und unzulässige Einträge
- * werden GEMELDET, nie entfernt und nie auf eine andere Position gelegt.
+ * (manuelle Menge oder null) und `__kennung`. Auf den Gesamtebenen wird nichts angewandt
+ * (`anwenden:false`), die gespeicherten Einträge werden aber gezählt — das Blatt sagt dort
+ * ausdrücklich, dass die Übersteuerung nicht wirkt. Nicht zuordenbare und unzulässige
+ * Einträge werden GEMELDET, nie entfernt und nie auf eine andere Position gelegt.
  */
 function mengenStand(positionen){
-  const wandebene = EBENE==='wand';
-  const map = mengenMap();
-  const bekannt=new Set(), ungueltig=[]; let anzahl=0;
-  const angepasst = positionen.map(p=>{
-    const k = wandebene ? kennungVon(p) : null;
-    if(k) bekannt.add(k);
-    const hat = k && Object.prototype.hasOwnProperty.call(map,k);
-    const q = { ...p, __kennung:k, __berechnet:p.menge, __ueber:null };
-    if(hat){
-      const g = pruefeMenge(map[k]);
-      if(g.ok){
-        q.__ueber = g.wert; q.menge = g.wert;
-        // Der Einzelpreis bleibt exakt der aufgelöste ([P-14]); nur die Menge ist eine andere.
-        q.gp = (p.ep==null ? null : g.wert*p.ep);
-        anzahl++;
-      } else {
-        ungueltig.push({ kennung:k, label:p.label, wert:map[k], grund:g.fehler });
-      }
-    }
-    return q;
-  });
-  const fremd = wandebene ? Object.keys(map).filter(k=>!bekannt.has(k)) : [];
-  return { positionen:angepasst, anzahl, ungueltig, fremd, gespeichert:Object.keys(map).length };
+  if(!wirksameMengen){
+    // Ohne den gemeinsamen Baustein wird KEINE Ersatzrechnung aufgemacht ([P-6]): die Liste
+    // zeigt dann die berechneten Mengen, und die Zellen bekommen kein Bedienelement.
+    return { positionen:positionen.map(p=>({ ...p, __kennung:null, __berechnet:p.menge, __ueber:null })),
+             anzahl:0, ungueltig:[], fremd:[], gespeichert:Object.keys(mengenMap()).length };
+  }
+  return wirksameMengen(positionen, mengenMap(), { anwenden: EBENE==='wand' });
 }
 /** Eine Mengenzelle: wirksame Menge, bei Übersteuerung zusätzlich die berechnete, dazu das
  *  Bedienelement (im Druck ausgeblendet — die beiden Zahlen bleiben als Text stehen). */
@@ -471,8 +456,11 @@ function renderMengenHinweis(m){
       + ' gespeicherte(n) Übersteuerung(en) der aktiven Wand bleiben unverändert erhalten.');
   } else if(m.anzahl){
     teile.push('<b>'+m.anzahl+' Position(en) mit manueller Menge.</b> '
-      + 'Die berechnete Menge steht unverändert daneben. Die Stücklistendateien des zentralen '
-      + 'Exports in Modul 0 führen die berechneten Mengen.');
+      + 'Die berechnete Menge steht unverändert daneben. Beim zentralen Export in Modul 0 ist '
+      + 'ausdrücklich wählbar, ob die Baustellenstückliste die <b>berechneten</b> oder die '
+      + '<b>angepassten</b> Mengen enthält; ohne Wahl gilt „berechnet“, und die Datei nennt die '
+      + 'Fassung in ihrem Kopf. Die Einzelteilliste der Gewindestangen bleibt in beiden Fällen '
+      + 'abgeleitet ([P-19]).');
   }
   if(m.fremd.length) teile.push('<b>Nicht zuordenbar:</b> die gespeicherte(n) Übersteuerung(en) '
     + m.fremd.map(k=>'<code>'+esc(k)+'</code>').join(', ')
@@ -592,6 +580,7 @@ window.__slInit=function(){
   stuecklistePositionen=S.stuecklistePositionen; stuecklisteSumme=S.stuecklisteSumme;
   wandflaeche=S.wandflaeche; store=S.store; einbauteile=S.einbauteile;
   umfang=S.umfang; gesamtDaten=S.gesamtDaten; standText=S.standText;
+  wirksameMengen=S.wirksameMengen;
   bindEvents();
   setupStoreSync();
   loadModel();
@@ -599,13 +588,13 @@ window.__slInit=function(){
 </script>
 
 <script type="module">
-  import { stuecklistePositionen, stuecklisteSumme, wandflaeche } from './shared/sembla-export.js';
+  import { stuecklistePositionen, stuecklisteSumme, wandflaeche, wirksameMengen } from './shared/sembla-export.js';
   import { einbauteile } from './shared/sembla-bom.js';
   import { umfang, gesamtDaten, standText } from './shared/sembla-gesamtstueckliste.js';
   import * as store from './shared/storage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store,
-                    umfang, gesamtDaten, standText };
+                    umfang, gesamtDaten, standText, wirksameMengen };
   mountNavbar(4);
   window.__slInit();
 </script>

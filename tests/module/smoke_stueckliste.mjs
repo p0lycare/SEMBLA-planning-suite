@@ -9,7 +9,7 @@
 // (kein Nullpreis, kein Ersatzprodukt) und veraendert niemals die Menge.
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, zuschnittCsv } from "../../docs/shared/sembla-export.js";
+import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, wirksameMengen, zuschnittCsv } from "../../docs/shared/sembla-export.js";
 import { einbauteile } from "../../docs/shared/sembla-bom.js";
 import { umfang, gesamtDaten, standText } from "../../docs/shared/sembla-gesamtstueckliste.js";
 import { leereMappe, fuegeGeschossHinzu, setzeWand } from "../../docs/shared/sembla-projektmappe.js";
@@ -103,8 +103,11 @@ const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we, aktiveEingaben
   mengenKennung, pruefeMenge:echterStore.pruefeMenge,
   mergeEingaben:(teil,patch)=>{ _merges.push([teil,patch]); _eg[teil]=merge(_eg[teil],patch); return _aktiv; },
   abonniere:(cb)=>{ _subs.push(cb); return ()=>{}; } };
+// [P-20]/#81: `wirksameMengen` ist die EINE Verrechnung von berechneter und manueller Menge.
+// Sie kommt hier wie im Browser aus sembla-export.js — dieselbe Funktion, die auch die
+// Stuecklistendatei des zentralen Exports fuellt; das Modul rechnet sie nicht nach.
 globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock,
-  umfang, gesamtDaten, standText };
+  umfang, gesamtDaten, standText, wirksameMengen };
 
 eval(script);
 globalThis.window.__slInit();
@@ -962,10 +965,10 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       z.includes('<td>'+fmtDe2(9.5)+'</td>') && z.includes('<td>'+fmtDe2(3*9.5)+'</td>'));
     ok('[P-20] die Summenzeile weist die Übersteuerung aus',
       /1 Position\(en\) mit manueller Menge/.test(sumZeile()));
-    ok('[P-20] der Hinweisblock nennt Wirkung und Exportstand',
+    ok('[P-20] der Hinweisblock nennt Wirkung und die Fassungswahl des Exports (#81)',
       !document.getElementById('mhinweis').hidden
-      && /Die Stücklistendateien des zentralen Exports in Modul 0 führen die berechneten Mengen/
-           .test(document.getElementById('mhinweis').innerHTML));
+      && /ausdrücklich wählbar/.test(document.getElementById('mhinweis').innerHTML)
+      && /ohne Wahl gilt „berechnet“/.test(document.getElementById('mhinweis').innerHTML));
     ok('[P-20] das Wandelement bleibt unangetastet',
       JSON.stringify(echterStore.holeElement(wid).wandelement)===JSON.stringify(WU));
   }
@@ -1050,15 +1053,109 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
   }
 
-  // (7) Der zentrale Export bleibt bei den berechneten Mengen (N4) — geprüft an den CSV-Bytes.
+  // (7) #81: Die Mengenfassung der Exportdatei ist WÄHLBAR — geprüft an den CSV-Bytes.
+  // Dieselbe Wand, dieselbe gespeicherte Übersteuerung: als berechnete Fassung steht die
+  // abgeleitete Menge in der Datei, als angepasste die manuelle. Beide nennen ihre Fassung
+  // im Kopf, und die Preisauflösung ([P-14]) wird in keiner von beiden angefasst.
   {
     echterStore.setzeMengenUebersteuerung(kennungI3, 3, wid);
     const eingabenMit=echterStore.holeEingaben(wid);
-    const csvMit=stuecklisteCsv(WU, eingabenMit, {datum:'01.01.2026'}, KAT_ECHT);
+    const opt={datum:'01.01.2026'};
+    const csvBer=stuecklisteCsv(WU, eingabenMit, opt, KAT_ECHT);
+    const csvAng=stuecklisteCsv(WU, eingabenMit, {...opt, fassung:'angepasst'}, KAT_ECHT);
+    /** Zeile einer Position aus der CSV (Spalte 0 = Bezeichnung). */
+    const csvZeile=(csv,label)=>csv.split('\n').map(z=>z.split(';')).find(z=>z[0]===label)||[];
+    const labelI3=SL.rows().find(r=>r.key==='i3').label;
+
+    ok('#81 dieselbe Wand: berechnete Fassung trägt die abgeleitete Menge',
+      csvZeile(csvBer,labelI3)[5]===String(berechnetI3));
+    ok('#81 dieselbe Wand: angepasste Fassung trägt die manuelle Menge',
+      csvZeile(csvAng,labelI3)[5]==='3');
+    ok('#81 die angepasste Fassung führt die berechnete Menge in einer eigenen Spalte mit ([P-20])',
+      /Menge;Menge berechnet;Mengenherkunft;/.test(csvAng)
+      && csvZeile(csvAng,labelI3)[6]===String(berechnetI3)
+      && csvZeile(csvAng,labelI3)[7]==='manuell'
+      && !/Menge berechnet/.test(csvBer));
+    ok('#81 beide Dateien benennen ihre Fassung im Kopf',
+      /\nMengen;berechnet – abgeleitet aus dem Wandelement/.test(csvBer)
+      && /\nMengen;angepasst – mit den manuellen Mengen aus Modul 4 · 1 von \d+ Position\(en\) manuell/.test(csvAng));
+    ok('#81 die berechnete Fassung sagt, dass die gespeicherte Übersteuerung NICHT angewandt wurde',
+      /1 gespeicherte Übersteuerung\(en\) NICHT angewandt/.test(csvBer));
+    ok('#81 Gesamtpreis folgt der wirksamen Menge bei unverändertem Einzelpreis', (()=>{
+      const b=csvZeile(csvBer,labelI3), a=csvZeile(csvAng,labelI3);
+      // EP steht in beiden Fassungen an derselben Stelle relativ zum Zeilenende.
+      return b[b.length-5]==='9.5' && a[a.length-5]==='9.5'
+        && b[b.length-4]===String(berechnetI3*9.5) && a[a.length-4]===String(3*9.5); })());
+    ok('#81 ohne Fassungsangabe gilt die berechnete Fassung (Default)',
+      stuecklisteCsv(WU, eingabenMit, opt, KAT_ECHT)===csvBer
+      && stuecklisteCsv(WU, eingabenMit, {...opt, fassung:'quatsch'}, KAT_ECHT)===csvBer);
+    ok('#81 die berechnete Fassung rechnet die Übersteuerung nirgends ein', (()=>{
+      echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
+      const ohne=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
+      echterStore.setzeMengenUebersteuerung(kennungI3, 3, wid);
+      // Bis auf den Kopfvermerk (Anzahl nicht angewandter Übersteuerungen) sind beide gleich.
+      const ohneKopf=t=>t.split('\n').filter(z=>!/^Mengen;/.test(z)).join('\n');
+      return ohneKopf(ohne)===ohneKopf(csvBer); })());
+
+    // Das ZIP-Bündel: die Fassung wirkt genau auf die aggregierte Liste, die Einzelteilliste
+    // bleibt abgeleitet ([P-19]: IDs werden nicht erfunden) und sagt das in ihrem Kopf.
+    const proj={ name:'Übersteuerungswand', wandelement:WU, eingaben:eingabenMit };
+    const fBer=baueDateien(proj, ['stueckliste'], KAT_ECHT);
+    const fAng=baueDateien(proj, ['stueckliste'], KAT_ECHT, { fassung:'angepasst' });
+    ok('#81 baueDateien reicht die Fassung an die aggregierte Liste durch',
+      fBer[0].data===stuecklisteCsv(WU, eingabenMit, undefined, KAT_ECHT)
+      && fAng[0].data===stuecklisteCsv(WU, eingabenMit, { fassung:'angepasst' }, KAT_ECHT)
+      && fBer[0].data!==fAng[0].data);
+    ok('#81 die Einzelteilliste bleibt in beiden Fassungen bitgleich und benennt das',
+      fBer[1].data===fAng[1].data
+      && /\nMengen;berechnet – Einzelteile werden stets abgeleitet/.test(fAng[1].data));
+
+    // M5 in der Datei: nicht zuordenbare und unzulässig gespeicherte Übersteuerungen werden
+    // in der angepassten Fassung BENANNT und nie angewandt ([P-9]).
+    {
+      echterStore.setzeMengenUebersteuerung('rod_std@999999', 12, wid);
+      const e2=echterStore.holeEingaben(wid);
+      const mitFremd=stuecklisteCsv(WU, e2, {...opt, fassung:'angepasst'}, KAT_ECHT);
+      ok('#81 nicht zuordenbare Übersteuerung: in der Datei benannt und nicht angewandt',
+        /Übersteuerung nicht zuordenbar;rod_std@999999;/.test(mitFremd)
+        && csvZeile(mitFremd,labelI3)[5]==='3');
+      echterStore.setzeMengenUebersteuerung('rod_std@999999', null, wid);
+
+      const roh=echterStore.holeElement(wid);
+      echterStore.speichere(roh.name, roh.wandelement, wid,
+        { kosten:{ mengen:{ [kennungI3]:'viele' } } });
+      const mitKrumm=stuecklisteCsv(WU, echterStore.holeEingaben(wid),
+        {...opt, fassung:'angepasst'}, KAT_ECHT);
+      ok('#81 unzulässig gespeicherter Wert: in der Datei benannt, berechnete Menge gilt',
+        new RegExp('Übersteuerung unzulässig;'+kennungI3+';').test(mitKrumm)
+        && csvZeile(mitKrumm,labelI3)[5]===String(berechnetI3)
+        && echterStore.holeMengen(wid)[kennungI3]==='viele');
+      echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
+    }
+  }
+
+  // (8) #81: Modul 4 und der Export bilden die wirksame Menge über DIESELBE Funktion.
+  // Belegt an drei Stellen: die Oberfläche bekommt sie über window.SEMBLA, sie rechnet
+  // nichts nach (kein eigener Verrechnungszweig mehr im Modulskript), und ihr Ergebnis ist
+  // bitgleich dem, was die Datei zeigt.
+  {
+    echterStore.setzeMengenUebersteuerung(kennungI3, 4, wid);
+    globalThis.window.__slInit();
+    ok('#81 Modul 4 benutzt die gemeinsame Funktion aus sembla-export.js',
+      /wirksameMengen=S\.wirksameMengen/.test(script)
+      && /return wirksameMengen\(positionen, mengenMap\(\)/.test(script));
+    ok('#81 das Modul rechnet die Verrechnung nicht selbst nach',
+      !/__ueber\s*=\s*g\.wert/.test(script) && !/ungueltig\.push/.test(script)
+      && !/Object\.keys\(map\)\.filter/.test(script));
+    ok('#81 Anzeige und Datei zeigen dieselbe wirksame Menge', (()=>{
+      const eng=echterStore.holeEingaben(wid);
+      const soll=wirksameMengen(stuecklistePositionen(WU, eng, KAT_ECHT), eng.kosten.mengen)
+        .positionen.find(p=>p.key==='i3');
+      const csv=stuecklisteCsv(WU, eng, {datum:'01.01.2026', fassung:'angepasst'}, KAT_ECHT);
+      const zeile=csv.split('\n').map(z=>z.split(';')).find(z=>z[0]===soll.label)||[];
+      return soll.menge===4 && zeile[5]==='4'
+        && /<span class="wirk">4 Stk<\/span>/.test(zeileVon(kennungI3)); })());
     echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
-    const csvOhne=stuecklisteCsv(WU, echterStore.holeEingaben(wid), {datum:'01.01.2026'}, KAT_ECHT);
-    ok('[P-20] die Stücklisten-CSV des zentralen Exports ist bitgenau unverändert',
-      csvMit===csvOhne);
   }
 }
 

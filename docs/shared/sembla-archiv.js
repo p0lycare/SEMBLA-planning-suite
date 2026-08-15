@@ -35,7 +35,7 @@
 import { alleGeschosse, alleWaende, findeGebaeude, findeGeschoss, mappeObjekt, normMappe, parseMappe } from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
 import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
-import { baueDateien, gesamtstuecklisteDateien } from "./sembla-export.js";
+import { baueDateien, gesamtstuecklisteDateien, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
 
 /** Name der Mappendatei im Archiv — das Erkennungsmerkmal eines Projektarchivs. */
 export const DATEI_MAPPE = "projekt.json";
@@ -486,6 +486,33 @@ function _umfangGeschosse(m, ebene, ids) {
 }
 
 /**
+ * Nicht anwendbare Mengenuebersteuerungen einer Wand als Lueckentexte ([P-20]).
+ *
+ * Gerechnet wird NICHTS eigenes: dieselbe `wirksameMengen`-Ableitung, die auch die Datei
+ * fuellt, liefert `fremd` und `ungueltig`. Hier werden sie nur in Satzform gebracht, damit
+ * der Bestaetigungsdialog sie VOR dem Download nennen kann.
+ * @param {{wandelement:any, eingaben:any}} projekt @param {object|null} katalog @param {string} wandName
+ * @returns {string[]}
+ */
+function _mengenLuecken(projekt, katalog, wandName) {
+  const eingaben = (projekt && projekt.eingaben) || {};
+  const mengen = (eingaben.kosten || {}).mengen;
+  if (!mengen || typeof mengen !== "object" || Array.isArray(mengen)) return [];
+  const m = wirksameMengen(stuecklistePositionen(projekt.wandelement, eingaben, katalog), mengen);
+  const wand = wandName ? `„${wandName}“: ` : "";
+  const out = [];
+  for (const k of m.fremd) {
+    out.push(`${wand}Die gespeicherte Mengenübersteuerung „${k}“ gehört zu keiner gerechneten `
+      + "Position — sie wird nicht angewandt und bleibt gespeichert ([P-20]).");
+  }
+  for (const u of m.ungueltig) {
+    out.push(`${wand}Die gespeicherte Mengenübersteuerung „${u.kennung}“ (${u.label}) ist unzulässig: `
+      + `${u.grund} Es gilt die berechnete Menge.`);
+  }
+  return out;
+}
+
+/**
  * Dateien des hierarchischen Exports bauen — exakt die Auswahl, Luecken benannt.
  *
  * Rein: die Leser (Wandspeicher, Wanddatei, Katalog) werden UEBERGEBEN; die Funktion
@@ -496,11 +523,15 @@ function _umfangGeschosse(m, ebene, ids) {
  * @param {{mappe?:object|null, ebene:string, gebaeudeId?:string|null, geschossId?:string|null,
  *   wandId?:string|null, wandName?:string|null, katalog?:object|null,
  *   holeElement?:(id:string)=>any, holeEingaben?:(id:string)=>any,
- *   projektObjekt?:(id:string)=>any, preise?:boolean}} p
+ *   projektObjekt?:(id:string)=>any, preise?:boolean, fassung?:string}} p
+ *   `fassung` waehlt die Mengenfassung der Baustellenstueckliste ([P-20]): `'berechnet'`
+ *   (Default) oder `'angepasst'`. Sie wirkt ausschliesslich auf der Wandebene und wird
+ *   nur durchgereicht; die Gesamtstueckliste bleibt unveraendert berechnet.
  * @returns {{dateien:Array<{name:string,data:string}>, luecken:string[], zipName:string, bezug:string}}
  */
 export function hierarchieExport(auswahl, p) {
   const ebene = String(p.ebene || "");
+  const fassung = normFassung(p.fassung);
   const erlaubt = EXPORT_OPTIONEN[ebene];
   if (!erlaubt) throw new Error(`Unbekannte Exportebene „${ebene}“.`);
   const gewaehlt = [...new Set((auswahl || []).map(String))];
@@ -559,14 +590,22 @@ export function hierarchieExport(auswahl, p) {
 
   if (gewaehlt.includes("stueckliste")) {
     // Baustellenstueckliste der Wand: exakt der bestehende Wandpfad (baueDateien),
-    // inkl. Preisaufloesung nach [P-14] aus dem uebergebenen Katalog.
+    // inkl. Preisaufloesung nach [P-14] aus dem uebergebenen Katalog. Die Mengenfassung
+    // ([P-20]) wird nur DURCHGEREICHT — gerechnet wird sie in sembla-export.js.
     const ref = umf.waende[0];
     let el = null;
     try { el = ref ? holeElement(ref.wandId) : null; } catch { el = null; }
     if (!el) {
       luecken.push(`Wandelement „${ref ? ref.name : p.wandId}“ fehlt im Wandspeicher — verwaister Eintrag ([L-4]); keine Baustellenstückliste im ZIP.`);
     } else {
-      dateien.push(...baueDateien(projektObjekt(ref.wandId), ["stueckliste"], p.katalog || null));
+      const obj = projektObjekt(ref.wandId);
+      dateien.push(...baueDateien(obj, ["stueckliste"], p.katalog || null, { fassung }));
+      // Nicht anwendbare Uebersteuerungen gehoeren VOR den Download: sie stehen zwar auch
+      // im Dateikopf, aber ein Nutzer, der die angepasste Fassung ausdruecklich waehlt,
+      // muss vor dem Speichern erfahren, dass ein Teil davon nicht wirkt ([P-9]/[P-20]).
+      if (fassung === "angepasst") {
+        for (const l of _mengenLuecken(obj, p.katalog || null, ref ? ref.name : "")) luecken.push(l);
+      }
     }
   }
 

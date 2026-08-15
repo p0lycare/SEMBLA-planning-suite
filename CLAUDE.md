@@ -617,14 +617,41 @@ Schreibweg**, und er läuft über `store.setzeMengenUebersteuerung(kennung, wert
 deshalb nie **entfernen** könnte; das Rücksetzen ist aber genau das. Geprüft wird an **einer** Stelle
 (`pruefeMenge()`): ganze Zahl ≥ 0, sonst **benannt abgewiesen** statt gerundet ([P-9]) — die
 Oberfläche validiert nicht selbst, sondern zeigt die geworfene Meldung an der Zeile. Wirksam ist die
-Übersteuerung **nur auf der Wandebene** von Modul 4: der **Gesamtpreis** der Zeile folgt der
-wirksamen Menge bei unverändertem Einzelpreis (die [P-14]-Auflösung wird **nicht** angefasst); auf den
-Gesamtebenen (#44) und in den Stücklistendateien des zentralen Exports stehen die **berechneten**
-Mengen — beides steht sichtbar am Blatt. Nicht zuordenbare und unzulässig gespeicherte Einträge
-werden **namentlich gemeldet**, nie gelöscht und nie umgehängt. Der Abschnitt liegt **nicht** im
+Übersteuerung in der **Anzeige** nur auf der Wandebene von Modul 4: der **Gesamtpreis** der Zeile
+folgt der wirksamen Menge bei unverändertem Einzelpreis (die [P-14]-Auflösung wird **nicht**
+angefasst); auf den Gesamtebenen (#44) stehen die **berechneten** Mengen, und das steht sichtbar am
+Blatt. Nicht zuordenbare und unzulässig gespeicherte Einträge werden **namentlich gemeldet**, nie
+gelöscht und nie umgehängt. Der Abschnitt liegt **nicht** im
 Wandelement, **nicht** in der Projektmappe und **nicht** im Katalog; im Projektformat ist er
 **optional** ⇒ `PROJEKT_VERSION` bleibt 2, und weil `holeEingaben` fehlende Felder beim Lesen
 auffüllt, gibt es **keine Migration** und **keinen `SCHEMA_VERSION`-Sprung**.
+
+**Die Mengenfassung des zentralen Exports ist wählbar (#81, Nachtrag zu [P-20]).** Die
+Baustellenstückliste einer Wand entsteht in Modul 0 wahlweise als **berechnete** oder als
+**angepasste** Fassung; ohne ausdrückliche Wahl gilt **berechnet**, und die erzeugte Datei **benennt
+im Kopf** (Zeile `Mengen`), welche der beiden sie enthält. Die angepasste Fassung trägt je Position
+die wirksame Menge, führt die **berechnete in einer eigenen Spalte daneben** (beide Werte
+gleichzeitig, wie [P-20] es verlangt) und lässt den Gesamtpreis der wirksamen Menge folgen — bei
+**unverändertem** Einzelpreis. Die Wahl ist eine **Ausgabeentscheidung je Exportlauf**: sie wird
+nirgends gespeichert, startet bei jedem Öffnen des Dialogs wieder auf „berechnet" und ändert **keine**
+gespeicherte Übersteuerung (Modul 4 bleibt einziger Schreibweg). Nicht anwendbare Einträge stehen in
+der angepassten Fassung als eigene Kopfzeilen **in der Datei** und zusätzlich **vor** dem Download im
+Bestätigungsdialog. Ausgenommen ist die **Einzelteilliste** der Gewindestangen: sie führt **stets**
+die abgeleiteten Einzelteile und sagt das in ihrem Kopf (`EINZELTEIL_FASSUNG`) — eine manuelle Menge
+ließe sich dort nur durch **erfundene** Einbauteil-IDs abbilden ([P-19]/[P-9]). Die **Geschoss- und
+Projektaggregation** bleibt unverändert berechnet und ist ausdrücklich noch offen.
+
+**Eine Verrechnung, zwei Leser.** Die wirksame Menge entsteht an **genau einer** Stelle:
+`wirksameMengen(positionen, mengen, {anwenden})` in `docs/shared/sembla-export.js`. Modul 4 bezieht
+sie über `window.SEMBLA` und rechnet nichts nach; `stuecklisteAoa` benutzt dieselbe Funktion für die
+Datei — `anwenden:false` ist die berechnete Fassung (nichts wird übersteuert, die gespeicherten
+Einträge werden aber gezählt, damit das Blatt sagen kann, dass sie nicht wirken). Kennung und
+Wertprüfung kommen weiterhin aus `storage.js` (`mengenKennung`, `pruefeMenge` — reine Funktionen ohne
+Speicherzugriff, wie schon `sicherName`). Der Weg der Wahl ist **reine Durchreichung**: Dialog
+(`#exp-fassung-*`) → `ARCHIV.hierarchieExport({fassung})` → `baueDateien(…, opts)` →
+`stuecklisteCsv(…, {fassung})`; `sembla-archiv.js` rechnet dabei nichts Eigenes, es bringt die nicht
+anwendbaren Einträge nur zusätzlich als Lücke in den Bestätigungsdialog. Kein neues gespeichertes
+Feld, kein Schema- oder Formatversionssprung.
 
 **Altbestand (`eingaben.katalog`, Regel [P-15]).** Die früher zentral in Modul 0 gepflegte
 `auswahl` je Kategorie ist **unwirksam**: sie wird nicht mehr geschrieben, nicht als Filter angewendet
@@ -831,7 +858,12 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      und ist als prüfpflichtige Planungshilfe gekennzeichnet. Die Montageanleitung ist reine
      Delegation an `sembla-montage.js` (keine eigene Zeichenlogik, kein Duplikat zu Modul 5); die
      Zeichnung ebenso an `sembla-zeichnung.js` (Häkchen `zeichnung` ⇒ zwei Dateien, kein Duplikat zu
-     Modul 7).
+     Modul 7). Hier liegt seit #81 auch die **eine** Verrechnung der wirksamen Menge
+     (`wirksameMengen`, **[P-20]**) samt Fassungsvokabular (`MENGEN_FASSUNG`/`EINZELTEIL_FASSUNG`/
+     `normFassung`) — sie speist **Modul 4** (über `window.SEMBLA`) **und** `stuecklisteAoa`; eine
+     zweite Fassung in der Oberfläche wäre der Drift, den [P-6] ausschließt. Aus `storage.js`
+     kommen dafür ausschließlich **reine** Funktionen: `mengenKennung` und `pruefeMenge` (neben dem
+     schon vorhandenen `sicherName`) — kein Speicherzugriff, nur die kanonische Fassung dieser Regeln.
    - `zip.js` — `zipSync`/`downloadZip` (STORE+CRC32, ohne Fremd-Lib) für den zentralen ZIP-Export.
    - `sembla-katalog.js` — **Bauteilkatalog**: Kategorien/Einheiten, Validierung, Austauschformat
      (`parseKatalog`/`katalogObjekt`), **Verwendungsrollen** (`ROLLEN`, `rollenVonModul`, `produktRollen`,
@@ -925,13 +957,13 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor**. Popups pflegen Projekt, Geschoss, Wandname/Import und Bauteilkatalog; reguläre Wände werden seit #56 nur im Geschosseditor angelegt. Dazu Modulübersicht, zentraler Export/Import je Wand und Export/Import der Projektmappe. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor**. Popups pflegen Projekt, Geschoss, Wandname/Import und Bauteilkatalog; reguläre Wände werden seit #56 nur im Geschosseditor angelegt. Dazu Modulübersicht, zentraler Export/Import je Wand und Export/Import der Projektmappe. Im Exportdialog ist auf der Wandebene seit #81 die **Mengenfassung der Baustellenstückliste** wählbar (berechnet/angepasst, Default berechnet, [P-20]) — reine Durchreichung an `hierarchieExport`, flüchtig, kein Schreibweg. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
 | – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], **Kalibrieren auf der Bühne selbst** ([L-9], #52 —
 der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet aus #51 die Eingabe **an Ort und Stelle**, erkannt im **Zeigerstrom** statt am `dblclick`, schreibt aber weiter über `bemSetzen`) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg). Aus #50 (Paket 1) dazu: **kein** linker „Neue Wand"-Abschnitt mehr — Zielwahl, **Standard-Wandhöhe** und Wandtyp sind Parameter **des Werkzeugs** „Wand zeichnen", der Fang gehört zur Ansicht; je Wand mit Wandelement ein Knopf **„Planen"** in der Liste (aktiv setzen + Modul 1, gemeinsame `planeWand()`, kein Knopf bei verwaistem Eintrag). Aus #51 (Paket 2): **Inline-Eingabe des Maßwerts** an der Maßzahl (Enter/Escape/Blur, ungültig ⇒ keine Änderung + rotes Feld) und die **verschiebbare Maßzahl** (`text_mm`, reine Darstellung, Schwelle 3 px, Speichern erst bei `pointerup`). Aus #52: der Plan liegt **sofort** als Hintergrund (unkalibriert vorläufig 1 px = 1 mm, ohne 125-mm-Raster), **kalibriert wird auf der Bühne** („Maßstab aus Plan übernehmen“, Zoom/Pan bleiben nutzbar, kein Popup), und der **Rasterfang** ist ein allgemeiner Schalter für alle Wände, der **aus** startet. Aus #53 (Paket 3): **kein linkes Panel** mehr — obere **Werkzeugleiste** (Auswahl/Wand/Maß/Fix + Undo/Redo + Drehen, **ohne** „Plan verschieben“), untere **Ansichtsleiste** (Zoom, Fang, **Raster** und **Bemaßungen** als flüchtige Schalter, Zugang „Plan…“), rechte **Wandliste** und die **Planverwaltung als Blatt von unten** — der **einzige Uploadweg** der Suite (hochladen/ersetzen/entfernen/kalibrieren/Maßstab/Versatz/Plan verschieben), beim Kalibrieren auf Status und Abbruch verkleinert. Das **Referenzgeschoss ist entfallen**, und **Drehen** ist gesperrt, sobald eine Bemaßung unmittelbar an der Wand hängt. Die **Brandschutzklassifikation F0/F30** (#79) ist je Wand erkennbar: Kurztext am Wandende, für F30 zusätzlich **Schraffur** über der Wandfläche, dazu Kennfarbe, zwei Legendeneinträge mit dem Merkmal in Worten und die Angabe in der Wandliste — auch **schwarz-weiß** unterscheidbar. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement und kein Sammel-Parameter); die [K-8]-Zustandsfarbe bleibt unverändert, ein verwaister Eintrag bleibt **ohne** Angabe. Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) — Maßstab/Versatz bleiben Plan-Ansichtsparameter ([L-9]), Planbild und Ansichtsschalter stehen in keinem Undo-Schritt |
 | 1 | `wandplanung.html` | Wandhöhe, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Startachse der Vorspannung** (1./2. Rasterachse), **Abdichtung** ([A-6]) und die **Brandschutzklassifikation F0/F30** (#79, reine Planungskennzeichnung — einziger Schreibweg, Standard F0); die im Geschosseditor geführte Länge ist nur Anzeige. Schreibt die übrige Wandplanung und **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
 | 2 | `wandaufbau.html` | Horizontaler Wandaufbau: Verbinderachsen + Latten-Zuschnitt (`sembla-aufbau.js`, **ohne Dämmung**); Eingaben → `eingaben.aufbau`; **Produkte des Aufbaus** (Lattenstange, Beplankungsplatte, Verbinderprodukt — Typ bleibt aus Modul 1, **[U-9]**) → `eingaben.aufbau.produkte` |
 | 3 | `statik.html` | Statischer Nachweis (voller Schermer-Nachweis, `sembla-statik.js`); Kennwerte → `eingaben.statik`, Geometrie **und Wandtyp** read-only aus dem Wandelement. Dasselbe Modell speist das Nachweis-Dokument des zentralen Exports |
-| 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only bei Preisen**: sie werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar sind `waehrung` und — seit #81 — die **manuelle Menge je Position** ([P-20], **einziger Schreibweg**): berechnete und wirksame Menge stehen gleichzeitig in der Mengenzelle, jede Übersteuerung ist einzeln rücksetzbar, ganze Zahlen ab 0, sonst benannt abgewiesen; sie wirkt nur auf der **Wandebene** und nicht in den Exportdateien (beides steht am Blatt), nicht zuordenbare Einträge werden gemeldet statt gelöscht → `eingaben.kosten`. Nicht eindeutige Preiszuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
+| 4 | `stueckliste.html` | Stückliste & Kosten (`sembla-bom.js`); **read-only bei Preisen**: sie werden je Position aus dem Katalog aufgelöst ([P-14]), keine Preisfelder. Editierbar sind `waehrung` und — seit #81 — die **manuelle Menge je Position** ([P-20], **einziger Schreibweg**): berechnete und wirksame Menge stehen gleichzeitig in der Mengenzelle, jede Übersteuerung ist einzeln rücksetzbar, ganze Zahlen ab 0, sonst benannt abgewiesen; in der **Anzeige** wirkt sie nur auf der Wandebene (die Gesamtebenen zeigen die berechneten Mengen, das steht am Blatt), für den **Export** ist die Fassung seit #81 in Modul 0 wählbar; nicht zuordenbare Einträge werden gemeldet statt gelöscht → `eingaben.kosten`. Verrechnet wird die wirksame Menge in der **gemeinsamen** Funktion `wirksameMengen` (`sembla-export.js`) — dieselbe, aus der die Exportdatei entsteht; Modul 4 rechnet sie nicht nach. Nicht eindeutige Preiszuordnung ⇒ **kein Preis** + benannter Grund + „n von m bepreist" (Export läuft zentral über Modul 0, mit derselben Auflösung) |
 | 5 | `montage.html` | Montageanleitung: **Baugruppenabschnitte nach Montageereignissen** (erste Stange, Kopplung/neue Stange, oberer Abschluss) mit durchgehend nummerierten Steinreihen, A4-paginiert druckbar (`sembla-montage.js`; identisch zum zentralen Export) |
 | 6 | `ifc-3d.html` | **Experimentell:** Three.js-3D-Vorschau + OBJ-Upload (IFC4-Export läuft zentral über Modul 0) |
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Die **Brandschutzklassifikation F0/F30** (#79) steht als **Kurztext** („Brandschutz F0"/„Brandschutz F30") im freien Zeichnungsrand über der Wandoberkante und mit ihrer Bedeutung **in Worten** in der Legende — auch **schwarz-weiß** lesbar, in Vorschau, Druck-HTML und exportierter SVG-Datei dieselbe Zeichenkette. **Ohne** Schraffur (die Wandfläche ist hier der Zeichnungsinhalt), ohne Eintrag im Schriftfeld, ohne jede Ableitung; ein Wandelement ohne das Feld wird als F0 ausgewiesen. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement hier — die Übersicht zeigt die Klasse nur an). Nur Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |

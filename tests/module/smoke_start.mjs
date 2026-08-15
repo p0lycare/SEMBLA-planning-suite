@@ -323,6 +323,106 @@ ok('#67 ZIP-Name folgt Ebene und Wand',
   zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Wand_' + ARCHIV.sicherStamm('Wand kaputt') + '.zip');
 ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
 
+// --- 4a) #81: Mengenfassung der Baustellenstueckliste ist im Dialog waehlbar ---------------
+// Der ECHTE Modul-0-Pfad an einer Wand MIT gespeicherter Mengenuebersteuerung: Exportdialog
+// oeffnen, die angepasste Fassung waehlen, ZIP-Bytes pruefen. Geprueft wird an den erzeugten
+// Dateien, nicht an einem Zwischenstand — und ausdruecklich auch, dass die Voreinstellung
+// „berechnet“ die bisherige Datei unveraendert laesst.
+{
+  const EXP = await import("../../docs/shared/sembla-export.js");
+  const wandId = aktivId;
+  // Uebersteuerung setzen — ueber den EINEN Schreibweg der Speicherschicht, den Modul 4 nutzt.
+  const posI3 = stuecklistePositionen(store.holeElement(wandId).wandelement,
+    store.holeEingaben(wandId), null).find(p => p.key === 'i3');
+  const kennung = store.mengenKennung(posI3);
+  store.setzeMengenUebersteuerung(kennung, 99, wandId);
+  const berechnet = posI3.menge;
+  ok('#81 Ausgangslage: eine gespeicherte Mengenuebersteuerung an der aktiven Wand',
+    store.holeMengen(wandId)[kennung] === 99 && berechnet !== 99);
+
+  ok('#81 der Dialog bietet die Fassungswahl im Markup an',
+    /id="exp-stueckliste-optionen"/.test(html)
+    && /id="exp-fassung-berechnet"[^>]*checked/.test(html)
+    && /id="exp-fassung-angepasst"/.test(html));
+
+  // (a) Voreinstellung: berechnete Fassung — bitgleich dem bestehenden Wandpfad.
+  zipCalls.length = 0;
+  baum('wand-export', wandId);
+  ok('#81 die Fassungswahl ist auf der Wandebene sichtbar und startet auf „berechnet“',
+    $('exp-stueckliste-optionen').hidden === false
+    && $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
+  $('exp-overlay')._sel = [{ value: 'stueckliste' }];
+  $('exp-go').dispatch('click');
+  const csvBer = zipCalls.length ? zipCalls[0].files[0].data : '';
+  ok('#81 ohne Zutun enthaelt die Datei die BERECHNETE Menge und benennt die Fassung',
+    csvBer === EXP.baueDateien(store.projektObjekt(wandId), ['stueckliste'], null)[0].data
+    && /\nMengen;berechnet – abgeleitet aus dem Wandelement/.test(csvBer)
+    && csvBer.split('\n').map(z => z.split(';')).find(z => z[0] === posI3.label)[5] === String(berechnet));
+
+  // (b) Angepasste Fassung — ueber genau das Bedienelement des Dialogs.
+  zipCalls.length = 0;
+  baum('wand-export', wandId);
+  $('exp-fassung-berechnet').checked = false;
+  $('exp-fassung-angepasst').checked = true;
+  $('exp-overlay')._sel = [{ value: 'stueckliste' }];
+  $('exp-go').dispatch('click');
+  const csvAng = zipCalls.length ? zipCalls[0].files[0].data : '';
+  ok('#81 gewaehlte angepasste Fassung: die manuelle Menge steht in der Datei',
+    csvAng.split('\n').map(z => z.split(';')).find(z => z[0] === posI3.label)[5] === '99');
+  ok('#81 die Datei benennt die gewaehlte Fassung in ihrem Kopf',
+    /\nMengen;angepasst – mit den manuellen Mengen aus Modul 4 · 1 von \d+ Position\(en\) manuell/.test(csvAng));
+  ok('#81 bitgleich der gemeinsamen Ableitung (kein zweiter Mengenpfad)',
+    csvAng === EXP.baueDateien(store.projektObjekt(wandId), ['stueckliste'], null,
+      { fassung: 'angepasst' })[0].data);
+  ok('#81 die Einzelteilliste bleibt in beiden Faellen bitgleich und sagt das',
+    zipCalls[0].files[1].data === EXP.baueDateien(store.projektObjekt(wandId), ['stueckliste'],
+      null, { fassung: 'angepasst' })[1].data
+    && zipCalls[0].files[1].data === EXP.baueDateien(store.projektObjekt(wandId),
+      ['stueckliste'], null)[1].data
+    && /\nMengen;berechnet – Einzelteile werden stets abgeleitet/.test(zipCalls[0].files[1].data));
+
+  // (c) Die Wahl ist fluechtig: ein neu geoeffneter Dialog startet wieder auf „berechnet“.
+  baum('wand-export', wandId);
+  ok('#81 die Wahl haengt nicht aus dem vorigen Lauf nach',
+    $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
+  $('exp-cancel').dispatch('click');
+  ok('#81 nichts davon wird gespeichert — die Uebersteuerung bleibt unveraendert stehen',
+    store.holeMengen(wandId)[kennung] === 99
+    && !/exp-fassung/.test(JSON.stringify(store.holeEingaben(wandId))));
+
+  // (d) Auf den uebrigen Ebenen gibt es die Baustellenstueckliste nicht — also auch keine Wahl.
+  baum('prj-export', store.aktivesProjektId());
+  ok('#81 auf der Projektebene ist die Fassungswahl ausgeblendet',
+    $('exp-stueckliste-optionen').hidden === true);
+  $('exp-cancel').dispatch('click');
+
+  // (e) Eine nicht anwendbare Uebersteuerung wird VOR dem Download benannt ([P-9]).
+  store.setzeMengenUebersteuerung('rod_std@424242', 5, wandId);
+  confirmAntwort = false;
+  zipCalls.length = 0;
+  baum('wand-export', wandId);
+  $('exp-fassung-angepasst').checked = true;
+  $('exp-overlay')._sel = [{ value: 'stueckliste' }];
+  $('exp-go').dispatch('click');
+  ok('#81 nicht zuordenbare Uebersteuerung: benannt vor dem Download, ohne Bestaetigung kein ZIP',
+    zipCalls.length === 0 && /nichts geschrieben/.test(trMsgTxt()));
+  confirmAntwort = true;
+  $('exp-fassung-angepasst').checked = true;
+  $('exp-overlay')._sel = [{ value: 'stueckliste' }];
+  $('exp-go').dispatch('click');
+  ok('#81 mit Bestaetigung: Datei entsteht, der Eintrag wird benannt und nicht angewandt',
+    zipCalls.length === 1 && /rod_std@424242/.test(trMsgTxt())
+    && /Übersteuerung nicht zuordenbar;rod_std@424242;/.test(zipCalls[0].files[0].data)
+    && store.holeMengen(wandId)['rod_std@424242'] === 5);
+  confirmAntwort = false;
+
+  // Ausgangslage wiederherstellen: die folgenden Abschnitte rechnen mit der unveraenderten Wand.
+  store.setzeMengenUebersteuerung('rod_std@424242', null, wandId);
+  store.setzeMengenUebersteuerung(kennung, null, wandId);
+  ok('#81 Aufraeumen: keine gespeicherte Uebersteuerung mehr an dieser Wand',
+    Object.keys(store.holeMengen(wandId)).length === 0);
+}
+
 // --- 4b) Wanddatei-Option: bestehendes Format SEMBLA-Projekt v2 --------------
 zipCalls.length = 0;
 baum('wand-export', aktivId);
