@@ -2694,6 +2694,9 @@ function rechneWandelement(el, laengeGrid, hoeheMm){
     openings: (we.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
     sides: we.sides || null,
     steps: (we.steps || []).map(s => ({ ...s })),
+    // #82: Verzahnungsbereiche werden hier NUR MITGEFÜHRT — gewählt werden sie
+    // ausschließlich in Modul 1. Sie reisen über den Engine-Pfad in `buildWall()`.
+    interlocks: (we.interlocks || []).map(i => ({ ...i })),
     prestress: { ...(we.prestress || {}) },
     load: { ...LAST_VORGABE },
     // Materialkennwerte reisen im Nachweis des Elements mit; fehlen sie (frisch

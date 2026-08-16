@@ -345,6 +345,113 @@ class InvalidInputs(unittest.TestCase):
             Opening(2, 6, 5, 5)   # l1<=l0
 
 
+class Verzahnung(unittest.TestCase):
+    """Verzahnungsbereich ([G-10]/[G-11]/[G-12]).
+
+    DIESELBEN Erwartungswerte stehen wortgleich in test-sembla-core.mjs —
+    sie sind der Paritaetsvertrag.
+    """
+
+    def test_verzahnung_start_parity_0(self):
+        # 1000mm = 8 Raster, 800mm = 4 Lagen
+        w = build_wall("vz0", 1000, 800, [], interlocks=[{"g0": 0, "g1": 3, "start_parity": 0}])
+        self.assertEqual(len(w["interlocks"]), 1)
+        self.assertEqual(len(w["validation"]["interlock_fehler"]), 0)
+        # Lage 0 und 2 (gerade) sind im Bereich [0,3) ausgespart
+        for li in (0, 2):
+            steine = [s for s in w["courses"][li]["stones"] if s["x0"] // GRID < 3]
+            self.assertEqual(len(steine), 0, f"Lage {li}: sollte 0 Steine im Bereich haben")
+        # Lage 1 und 3 (ungerade) haben Steine im Bereich
+        for li in (1, 3):
+            steine = [s for s in w["courses"][li]["stones"] if s["x0"] // GRID < 3]
+            self.assertGreater(len(steine), 0, f"Lage {li}: sollte Steine im Bereich haben")
+
+    def test_verzahnung_start_parity_1(self):
+        w = build_wall("vz1", 1000, 800, [], interlocks=[{"g0": 0, "g1": 3, "start_parity": 1}])
+        self.assertEqual(len(w["interlocks"]), 1)
+        # Lage 1 und 3 (ungerade) sind im Bereich ausgespart
+        for li in (1, 3):
+            steine = [s for s in w["courses"][li]["stones"] if s["x0"] // GRID < 3]
+            self.assertEqual(len(steine), 0, f"Lage {li}: sollte 0 Steine im Bereich haben")
+        # Lage 0 und 2 (gerade) haben Steine im Bereich
+        for li in (0, 2):
+            steine = [s for s in w["courses"][li]["stones"] if s["x0"] // GRID < 3]
+            self.assertGreater(len(steine), 0, f"Lage {li}: sollte Steine im Bereich haben")
+
+    def test_vorspannung_identisch_mit_und_ohne_verzahnung(self):
+        # [G-11] Vorspannung bleibt bitgleich
+        ohne = build_wall("ohneVz", 2000, 2000, [])
+        mit = build_wall("mitVz", 2000, 2000, [], interlocks=[{"g0": 0, "g1": 3, "start_parity": 0}])
+        ohne_ks = [c["k"] for c in ohne["tension_columns"]]
+        mit_ks = [c["k"] for c in mit["tension_columns"]]
+        self.assertEqual(ohne_ks, mit_ks)
+        for i, (o, m) in enumerate(zip(ohne["tension_columns"], mit["tension_columns"])):
+            self.assertEqual(len(o["segments"]), len(m["segments"]), f"col {i}: Segmente verschieden")
+            for j, (os, ms) in enumerate(zip(o["segments"], m["segments"])):
+                self.assertEqual(os["z0_mm"], ms["z0_mm"])
+                self.assertEqual(os["z1_mm"], ms["z1_mm"])
+                self.assertEqual(os["stuecke"], ms["stuecke"])
+
+    def test_bom_steinmenge_reduziert(self):
+        ohne = build_wall("ohneVz", 1000, 800, [])
+        mit = build_wall("mitVz", 1000, 800, [], interlocks=[{"g0": 0, "g1": 3, "start_parity": 0}])
+        ohne_steine = ohne["bom"]["i2"] + ohne["bom"]["i3"]
+        mit_steine = mit["bom"]["i2"] + mit["bom"]["i3"]
+        self.assertLess(mit_steine, ohne_steine)
+        # Stossfugen bleiben gleich (basieren auf vollstaendigem Verband)
+        self.assertEqual(ohne["bom"]["stossfugen"], mit["bom"]["stossfugen"])
+
+    def test_ungueltige_verzahnung_gemeldet(self):
+        # Bereich ausserhalb der Wand
+        w1 = build_wall("vzErr", 1000, 800, [], interlocks=[{"g0": 5, "g1": 12, "start_parity": 0}])
+        self.assertEqual(len(w1["interlocks"]), 0)
+        self.assertTrue(any(f["grund"] == "ausserhalb_wand" for f in w1["validation"]["interlock_fehler"]))
+        # Ungueltige Paritaet
+        w2 = build_wall("vzErr", 1000, 800, [], interlocks=[{"g0": 0, "g1": 3, "start_parity": 2}])
+        self.assertEqual(len(w2["interlocks"]), 0)
+        self.assertTrue(any(f["grund"] == "ungueltige_paritaet" for f in w2["validation"]["interlock_fehler"]))
+        # Leeres Intervall
+        w3 = build_wall("vzErr", 1000, 800, [], interlocks=[{"g0": 5, "g1": 3, "start_parity": 0}])
+        self.assertEqual(len(w3["interlocks"]), 0)
+        self.assertTrue(any(f["grund"] == "leeres_intervall" for f in w3["validation"]["interlock_fehler"]))
+
+    def test_verzahnung_aendert_buildable_nicht(self):
+        # Fehlerhafte Verzahnung aendert buildable nicht
+        w = build_wall("vzBuild", 1000, 800, [], interlocks=[{"g0": 100, "g1": 200, "start_parity": 0}])
+        self.assertTrue(w["validation"]["buildable"])
+        self.assertGreater(len(w["validation"]["interlock_fehler"]), 0)
+
+    def test_ohne_verzahnung_interlocks_leer(self):
+        w = build_wall("noVz", 1000, 800, [])
+        self.assertEqual(len(w["interlocks"]), 0)
+        self.assertEqual(len(w["validation"]["interlock_fehler"]), 0)
+        self.assertEqual(len(w["validation"]["interlock_invalid_segments"]), 0)
+
+    def test_kein_stein_ragt_in_ausgesparten_bereich(self):
+        # In ausgesparten Lagen darf kein Stein den Bereich [0,3) beruehren
+        w = build_wall("vzRagt", 1000, 800, [], interlocks=[{"g0": 0, "g1": 3, "start_parity": 0}])
+        for li in (0, 2):
+            for st in w["courses"][li]["stones"]:
+                a, b = st["x0"] // GRID, st["x1"] // GRID
+                # Stein darf den Bereich [0,3) nicht beruehren
+                self.assertTrue(b <= 0 or a >= 3, f"Lage {li}: Stein [{a},{b}) ragt in Bereich [0,3)")
+        # In Lagen 1 und 3 sind Steine im Bereich erlaubt
+        for li in (1, 3):
+            hat_stein = any(st["x0"] // GRID < 3 and st["x1"] // GRID > 0 for st in w["courses"][li]["stones"])
+            self.assertTrue(hat_stein, f"Lage {li}: sollte Steine im Bereich haben")
+
+    def test_interlock_invalid_segments_gemeldet(self):
+        # Verzahnungsbereich [0,4) auf 8-Raster-Wand: nach Aussparen bleibt Segment mit 4 Rastern
+        w = build_wall("vzInv", 1000, 800, [], interlocks=[{"g0": 0, "g1": 4, "start_parity": 0}])
+        # Wand ohne Verzahnungsproblem baubar (8 Raster)
+        self.assertTrue(w["validation"]["buildable"])
+        # Aber nach Verzahnung gibt es nicht baubare Segmente
+        self.assertGreater(len(w["validation"]["interlock_invalid_segments"]), 0)
+        # Die gemeldeten Segmente haben Breite 4 (nicht baubar)
+        seg = w["validation"]["interlock_invalid_segments"][0]
+        self.assertEqual(seg["breite_grid"], 4)
+
+
 class BomConsistency(unittest.TestCase):
     def test_bom_matches_courses_and_columns(self):
         for key in REFERENCE_WALLS:

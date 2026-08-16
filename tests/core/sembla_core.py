@@ -152,6 +152,9 @@ class InvalidDimensionError(SemblaError):
 class InvalidOpeningError(SemblaError):
     """Oeffnung ungueltig (Grenzen, Ueberlappung, Maße)."""
 
+class InvalidInterlockError(SemblaError):
+    """Verzahnungsbereich ungueltig (Grenzen, Ueberlappung, Paritaet)."""
+
 
 # ---- Oeffnung ----
 @dataclass(frozen=True)
@@ -322,8 +325,76 @@ def _norm_steps(steps, length_mm, height_mm):
             out.append({"x0_mm": x0, "x1_mm": x1, "height_mm": h})
     return out
 
+
+# ---- Verzahnungsbereich ([G-10]/[G-11]/[G-12]) ----
+# Ein Verzahnungsbereich ist ein Laengsabschnitt [g0, g1) der Wand, in dem alternierend in jeder
+# zweiten Lage die Steine fehlen. Die Startparitaet (0 = unterste Lage ausgespart, 1 = erst die
+# zweite Lage ausgespart) ist frei waehlbar.
+# [G-11] Die Vorspannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
+# Verzahnungsaussparungen — Vorspannung bleibt also bitgleich.
+
+def norm_interlocks(arr, N, openings=None):
+    """Normalisiert und validiert Verzahnungsbereiche.
+    arr: rohe interlocks
+    N: Wandlaenge in Rastern
+    openings: Liste von Opening-Objekten (zur Ueberlappungspruefung)
+    Gibt (interlocks, fehler) zurueck."""
+    if not arr or not isinstance(arr, (list, tuple)):
+        return [], []
+    openings = openings or []
+    out = []
+    fehler = []
+    for raw in arr:
+        g0 = raw.get("g0")
+        g1 = raw.get("g1")
+        sp = raw.get("start_parity")
+        bereich = {"g0": g0, "g1": g1, "start_parity": sp}
+        # Ganzzahlig, gueltiges Intervall, innerhalb der Wand
+        try:
+            g0 = int(g0)
+            g1 = int(g1)
+        except (TypeError, ValueError):
+            fehler.append({"grund": "nicht_ganzzahlig", "bereich": bereich})
+            continue
+        if g1 <= g0:
+            fehler.append({"grund": "leeres_intervall", "bereich": bereich})
+            continue
+        if g0 < 0 or g1 > N:
+            fehler.append({"grund": "ausserhalb_wand", "bereich": bereich})
+            continue
+        try:
+            sp = int(sp)
+        except (TypeError, ValueError):
+            sp = -1
+        if sp not in (0, 1):
+            fehler.append({"grund": "ungueltige_paritaet", "bereich": bereich})
+            continue
+        # Ueberlappung mit Oeffnungen
+        overlap = False
+        for op in openings:
+            if g0 < op.g1 and op.g0 < g1:
+                overlap = True
+                break
+        if overlap:
+            fehler.append({"grund": "ueberlappt_oeffnung", "bereich": bereich})
+            continue
+        out.append({"g0": g0, "g1": g1, "start_parity": sp})
+    # Sortieren nach g0
+    out.sort(key=lambda x: x["g0"])
+    # Ueberlappung untereinander pruefen
+    i = 0
+    while i < len(out) - 1:
+        if out[i]["g1"] > out[i + 1]["g0"]:
+            fehler.append({"grund": "ueberlappt_verzahnung", "bereich": out[i + 1]})
+            out.pop(i + 1)
+        else:
+            i += 1
+    return out, fehler
+
+
 def build_wall(name: str, length_mm: int, height_mm: int,
-               openings: Iterable[Opening] | None = None, sides=None, prestress=None, steps=None) -> dict:
+               openings: Iterable[Opening] | None = None, sides=None, prestress=None, steps=None,
+               interlocks=None) -> dict:
     _PS = _norm_prestress(prestress)
     _maxspan = _PS["max_span_grid"]
     _rod = _PS["rod_mm"]
@@ -337,6 +408,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     openings = list(openings or [])
     _validate_inputs(length_mm, height_mm, openings)
     N, L = length_mm // GRID, height_mm // COURSE
+    # [G-10]/[G-12] Verzahnungsbereiche normalisieren und validieren
+    _IL_interlocks, _IL_fehler = norm_interlocks(interlocks, N, openings)
 
     # Staffelung / getreppter Aufbau: je Spalte lokale Oberkante (Anzahl Lagen)
     _STEPS = _norm_steps(steps, length_mm, height_mm)
@@ -360,6 +433,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         if start is not None: runs.append((start, N))
         return runs
 
+    # ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ und Vorspannung) ----
+    # [G-11] Die Spannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
+    # Verzahnungsaussparungen. Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen.
     courses, prev, rigid_lagen, invalid_segments = [], set(), [], []
     for li in range(L):
         cuts = _runs_at(li)
@@ -399,13 +475,73 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             versatz_ok = False
             viol.append({"zwischen_lagen": [li, li + 1], "fugen_grid": sorted(bad)})
 
-    # Vorspannstraenge: Segmente je durchgehend belegtem Bereich (ueber/unter Oeffnungen, getreppt)
+    # `occ`, `stein_iv_voll` und `wunsch_voll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
     occ = [[False] * N for _ in range(L)]
+    stein_iv_voll = []
+    # [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — VOR dem Aussparen!
+    wunsch_voll = set()
     for c in courses:
         for st in c["stones"]:
             a, b = st["x0"] // GRID, st["x1"] // GRID
             for cc in range(a, b):
                 occ[c["lage"]][cc] = True
+            stein_iv_voll.append((a, b))
+            # [V-3] Nur unterste Lage (lage 0), nur i3 (Breite 3 Raster) — hat eine echte Rastermitte
+            if c["lage"] == 0 and b - a == 3:
+                wunsch_voll.add(a + 1)
+
+    # ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
+    # Bei gueltigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
+    # Bereiche werden wie Luecken aus den runs/cuts herausgeschnitten, bevor `_pick_tiling` laeuft.
+    # So endet kein Stein im Bereich und der verbleibende Verband wird deterministisch neu gelegt.
+    # Stossfugen und occ bleiben beim vollstaendigen Verband — Vorspannung bleibt bitgleich ([G-11]).
+    interlock_invalid_segments = []
+    if _IL_interlocks:
+        prev_il = set()
+        for li in range(L):
+            # Pruefen, ob diese Lage in mindestens einem Verzahnungsbereich ausgespart wird
+            relevant_ils = [il for il in _IL_interlocks if li % 2 == il["start_parity"]]
+            if not relevant_ils:
+                # Keine Aussparung in dieser Lage — Steine bleiben unveraendert, prev fuer naechste Lage
+                prev_il = set(courses[li]["joints_grid"])
+                continue
+            # cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
+            cuts = _runs_at(li)
+            for op in openings:
+                if op.l0 <= li < op.l1:
+                    nc = []
+                    for (s, e) in cuts:
+                        if op.g1 <= s or op.g0 >= e:
+                            nc.append((s, e)); continue
+                        if op.g0 > s: nc.append((s, op.g0))
+                        if op.g1 < e: nc.append((op.g1, e))
+                    cuts = nc
+            # Verzahnungsbereiche DIESER Lage (passende Paritaet) wie Luecken herausschneiden
+            for il in relevant_ils:
+                nc = []
+                for (s, e) in cuts:
+                    if il["g1"] <= s or il["g0"] >= e:
+                        nc.append((s, e)); continue
+                    if il["g0"] > s: nc.append((s, il["g0"]))
+                    if il["g1"] < e: nc.append((il["g1"], e))
+                cuts = nc
+            # Neues Tiling fuer die reduzierte Lage
+            stones = []
+            for (s, e) in cuts:
+                w = e - s
+                # Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den strukturellen)
+                if w in FORBIDDEN_N:
+                    seg = {"lage": li, "start_grid": s, "breite_grid": w}
+                    if seg not in interlock_invalid_segments:
+                        interlock_invalid_segments.append(seg)
+                comp = _pick_tiling(s, w, prev_il)
+                g = s
+                for b in comp:
+                    stones.append({"type": "i2" if b == 2 else "i3", "x0": g * GRID, "x1": (g + b) * GRID})
+                    g += b
+            courses[li]["stones"] = stones
+            # prev fuer die naechste Lage kommt aus dem vollstaendigen Verband (joints_grid unveraendert)
+            prev_il = set(courses[li]["joints_grid"])
     # ---- Spannachsen ---------------------------------------------------------------
     # Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-2] Steinabdeckung (MUSS)
     # > [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-3] Mitte i3 unterste Lage
@@ -415,9 +551,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # [V-2] impliziert den Abstand NICHT (sonst entstehen Luecken bis 5 Raster = 625 mm, obwohl
     # jeder Stein gehalten ist), und umgekehrt beweist ein eingehaltenes Maximalraster die
     # Abdeckung nicht. Beide Regeln sind unabhaengig und beide gelten.
-    stein_iv = [(st["x0"] // GRID, st["x1"] // GRID) for c in courses for st in c["stones"]]
+    # [G-11] Steinabdeckung basiert auf dem VOLLSTAENDIGEN Verband (stein_iv_voll, vor dem Aussparen).
     # Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
-    stein_iv.sort(key=lambda p: (p[1], p[0]))
+    stein_iv_voll.sort(key=lambda p: (p[1], p[0]))
 
     def _gehalten(S, a, b):
         """Wird das Rasterintervall [a,b) von mindestens einer Achse aus S durchgangen?"""
@@ -440,24 +576,20 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         for k in range(N - 1):
             if _top_lage[k] != _top_lage[k + 1]:
                 colset.add(k); colset.add(k + 1)
-        # [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage. Ein i2 hat keine
-        # Rastermitte (zwei Zellen) und liefert deshalb keine Wunschposition — es wird nicht geraten.
-        wunsch = set()
-        for st in (courses[0]["stones"] if courses else []):
-            a, b = st["x0"] // GRID, st["x1"] // GRID
-            if b - a == 3:
-                wunsch.add(a + 1)
+        # [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — aus dem VOLLSTAENDIGEN
+        # Verband (wunsch_voll, oben berechnet). Ein i2 hat keine Rastermitte (zwei Zellen) und
+        # liefert deshalb keine Wunschposition — es wird nichts geraten.
         # [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
         # Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
         # die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Liegt im Stein eine
         # Wunschposition nach [V-3], hat diese Vorrang vor der Reichweite — sie kostet hoechstens
         # zusaetzliche Achsen, nie die Abdeckung.
-        for a, b in stein_iv:
+        for a, b in stein_iv_voll:
             if _gehalten(colset, a, b):
                 continue
             pos = b - 1
             for k in range(b - 1, a - 1, -1):
-                if k in wunsch:
+                if k in wunsch_voll:
                     pos = k
                     break
             colset.add(pos)
@@ -603,6 +735,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         "N_grid": N, "lagen": L,
         "openings": [op.as_dict() for op in openings],
         "steps": _STEPS,
+        # [G-10] Verzahnungsbereiche (optional, nur die validen)
+        "interlocks": _IL_interlocks,
         "sides": _norm_sides(sides),
         "prestress": _PS,
         "base_plate": base_plate, "top_plate": top_plate,
@@ -612,7 +746,11 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        "rigid_lagen": rigid_lagen, "invalid_segments": invalid_segments,
                        "zuschnitt_konflikte": zuschnitt_konflikte,
                        # [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuell: echter Befund.
-                       "ungehaltene_steine": ungehaltene_steine},
+                       "ungehaltene_steine": ungehaltene_steine,
+                       # [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)
+                       "interlock_fehler": _IL_fehler,
+                       # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
+                       "interlock_invalid_segments": interlock_invalid_segments},
         "courses": courses,
     }
 
@@ -623,6 +761,7 @@ def is_buildable(w: dict) -> bool:
 def save(w: dict, path: str):
     with open(path, "w") as f:
         json.dump(w, f, indent=2, ensure_ascii=False)
+        f.write("\n")  # abschließender Zeilenumbruch
 
 
 # Referenzfaelle (Test-Vertrag)

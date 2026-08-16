@@ -18,6 +18,7 @@
     }
   ],
   "steps": [],
+  "interlocks": [],
   "sides": {
     "vorne": {
       "funktion": "fassade"
@@ -495,7 +496,9 @@
         "fertigmass_mm": 400
       }
     ],
-    "ungehaltene_steine": []
+    "ungehaltene_steine": [],
+    "interlock_fehler": [],
+    "interlock_invalid_segments": []
   },
   "courses": [
     {

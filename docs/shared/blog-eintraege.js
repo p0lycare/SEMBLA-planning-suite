@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-04",
+    datum: "2026-08-16",
+    typ: "feature",
+    issue: 82,
+    titel: "Verzahnungsbereiche in Modul 1 festlegen — Steine alternierend ausgelassen, Mengen folgen dem Verband",
+    testbitte: "In Modul 1 einen Verzahnungsbereich zeichnen: In jeder zweiten Lage fehlen dort die "
+      + "Steine, die Steinmengen spiegeln das, und Vorspannung sowie Gewindestangen bleiben unverändert.",
+  },
+  {
     id: "chg-20260816-03",
     datum: "2026-08-16",
     typ: "fix",

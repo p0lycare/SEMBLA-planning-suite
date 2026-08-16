@@ -765,6 +765,77 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   KAT.anzahlAuswahl(KAT.produktRollen(store.aktiveEingaben()))===0
   && store.holeProdukte(1, idA).rollen.rod_std.length===1);
 
+// ---- Issue #82: Verzahnungswerkzeug ([G-10]/[G-11]/[G-12]) --------------------------------
+// Nutzerpfad: Ein Nutzer oeffnet Modul 1 fuer eine Wand, legt ueber das Verzahnungswerkzeug
+// einen Bereich mit Startlage in der untersten Lage an und sieht danach in der Wandansicht
+// die alternierend ausgesparten Steine sowie die entsprechend verringerte Steinmenge.
+{
+  const idIl=store.speichere('Verzahnung', buildWall('Verzahnung',2000,2600,[]));
+  store.setzeAktiv(idIl);
+  globalThis.window.__wpInit();
+  // Pruefe, dass das UI-Element vorhanden ist
+  ok('[#82] Verzahnungs-UI im Markup vorhanden',
+    /id="interlockList"/.test(html) && /id="addInterlock"/.test(html));
+  ok('[#82] Verzahnungs-Warnbereich im Markup vorhanden', /id="interlockWarns"/.test(html));
+  // Ohne Verzahnung: leere Liste
+  ok('[#82] ohne Verzahnung: leere Liste', WP.interlocks.length===0);
+  ok('[#82] ohne Verzahnung: kein interlocks am Wandelement',
+    (WP.RESULT.wandelement.interlocks||[]).length===0);
+  // Verzahnung ueber den realen Button hinzufuegen
+  WP.addInterlock();
+  ok('[#82] Verzahnung hinzugefuegt', WP.interlocks.length===1);
+  // Default-Werte: g0=0, breite=3, start_parity=0 (unterste Lage ausgespart)
+  ok('[#82] Default-Werte: Position 0, Breite 3, unterste Lage ausgespart',
+    WP.interlocks[0].g0===0 && WP.interlocks[0].breite===3 && WP.interlocks[0].start_parity===0);
+  // Pruefe, dass die Verzahnung am Wandelement steht (ueber vorgaben -> buildWall)
+  const vil=WP.vorgaben().interlocks;
+  ok('[#82] interlocks in vorgaben() enthalten', Array.isArray(vil) && vil.length===1);
+  ok('[#82] vorgaben().interlocks hat korrektes Format (g0, g1, start_parity)',
+    vil[0].g0===0 && vil[0].g1===3 && vil[0].start_parity===0);
+  // Pruefen, dass die Verzahnung im gespeicherten Wandelement steht
+  const wil=store.aktivesWandelement();
+  ok('[#82] Verzahnung im gespeicherten Wandelement',
+    Array.isArray(wil.interlocks) && wil.interlocks.length===1);
+  ok('[#82] gespeichertes Wandelement hat korrekte Verzahnungswerte',
+    wil.interlocks[0].g0===0 && wil.interlocks[0].g1===3 && wil.interlocks[0].start_parity===0);
+  // Pruefe, dass ausgesparte Steine in der Wandansicht fehlen
+  // Im Verzahnungsbereich (Raster 0-2) werden in alternierenden Lagen Steine ausgespart
+  // Bei start_parity=0: unterste Lage (0) ist ausgespart, Lage 1 ist voll, Lage 2 ausgespart usw.
+  const courses0=wil.courses.filter(c=>c.lage%2===0);   // gerade Lagen (0, 2, 4, ...) sind ausgespart
+  const courses1=wil.courses.filter(c=>c.lage%2===1);   // ungerade Lagen (1, 3, 5, ...) sind voll
+  // In ausgesparten Lagen: keine Steine im Bereich 0-375mm (3 Raster = 375mm)
+  const ausgespart0=courses0.every(c=>{
+    const imBereich=c.stones.filter(s=>s.x0<375);
+    // Die Steine im Bereich 0-375mm duerfen nicht existieren (sie wurden ausgespart)
+    // oder sie beginnen erst NACH dem Bereich
+    return imBereich.length===0 || imBereich.every(s=>s.x0>=375);
+  });
+  ok('[#82] in ausgesparten Lagen fehlen Steine im Verzahnungsbereich', ausgespart0);
+  // Pruefe, dass in vollen Lagen die Steine im Bereich vorhanden sind
+  const voll1=courses1.every(c=>{
+    const imBereich=c.stones.filter(s=>s.x0<375);
+    return imBereich.length>0;   // mindestens ein Stein beginnt im Bereich
+  });
+  ok('[#82] in vollen Lagen sind Steine im Verzahnungsbereich vorhanden', voll1);
+  // Pruefe, dass die Wandansicht den Verzahnungsbereich kennzeichnet
+  const planHtmlIl=document.getElementById('plan').innerHTML;
+  ok('[#82] Verzahnungsbereich in der Wandansicht gekennzeichnet',
+    /Verzahnung/.test(planHtmlIl) && /verzPattern/.test(planHtmlIl));
+  // Pruefe, dass die Steinmenge sich verringert hat (weniger Steine als ohne Verzahnung)
+  const ohneIl=buildWall('Ohne',2000,2600,[]);
+  const mitIl=wil;
+  ok('[#82] Steinmenge mit Verzahnung geringer',
+    (mitIl.bom.i3+mitIl.bom.i2)<(ohneIl.bom.i3+ohneIl.bom.i2));
+  // Pruefe, dass Vorspannung/Strangabstand identisch sind (keine Aenderung an Segmenten)
+  ok('[#82] Vorspannung bleibt unveraendert (Achsen identisch)',
+    JSON.stringify(mitIl.tension_columns.map(c=>c.k))===JSON.stringify(ohneIl.tension_columns.map(c=>c.k)));
+  // Roundtrip: Wandelement mit Verzahnung laden
+  WP.applyWand(wil);
+  ok('[#82] Roundtrip: Verzahnung bleibt nach applyWand erhalten',
+    WP.interlocks.length===1 && WP.interlocks[0].g0===0 && WP.interlocks[0].breite===3);
+  store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.
 const anzahlVorher=store.listeElemente().length;
 store.setzeAktiv(null);

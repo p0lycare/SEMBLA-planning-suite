@@ -22,6 +22,7 @@ export const ROD_OVERHANG = 10;         // Ueberstand des Reststuecks ueber die 
 export class SemblaError extends Error {}
 export class InvalidDimensionError extends SemblaError {}
 export class InvalidOpeningError extends SemblaError {}
+export class InvalidInterlockError extends SemblaError {}
 
 /**
  * @typedef {{g0:number,g1:number,l0:number,l1:number,art:string}} OpeningLike
@@ -297,13 +298,72 @@ function normSteps(steps, lengthMm, heightMm) {
   return out;
 }
 
-export function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null, steps = []) {
+// ---------- Verzahnungsbereich ([G-10]/[G-11]/[G-12]) ----------
+// Ein Verzahnungsbereich ist ein Laengsabschnitt [g0, g1) der Wand, in dem alternierend in jeder
+// zweiten Lage die Steine fehlen — Zweck ist das konstruktive Ineinandergreifen rechtwinklig
+// kreuzender Einzelwaende. Die Startparitaet (0 = unterste Lage ausgespart, 1 = erst die zweite
+// Lage ausgespart) ist frei waehlbar und bleibt ueber alle Lagen identisch.
+// [G-11] Die Vorspannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
+// Verzahnungsaussparungen — Vorspannung bleibt also bitgleich.
+
+/**
+ * Normalisiert und validiert Verzahnungsbereiche.
+ * @param {Array|null} arr rohe interlocks
+ * @param {number} N Wandlaenge in Rastern
+ * @param {Array<{g0:number,g1:number}>} openings Oeffnungen (zur Ueberlappungspruefung)
+ * @returns {{interlocks:Array<{g0:number,g1:number,start_parity:number}>,fehler:Array<{grund:string,bereich:object}>}}
+ */
+export function normInterlocks(arr, N, openings = []) {
+  if (!Array.isArray(arr) || !arr.length) return { interlocks: [], fehler: [] };
+  const out = [], fehler = [];
+  for (const raw of arr) {
+    const g0 = Number(raw.g0), g1 = Number(raw.g1);
+    const sp = Number(raw.start_parity);
+    const bereich = { g0: raw.g0, g1: raw.g1, start_parity: raw.start_parity };
+    // Ganzzahlig, gueltiges Intervall, innerhalb der Wand
+    if (!Number.isInteger(g0) || !Number.isInteger(g1)) {
+      fehler.push({ grund: "nicht_ganzzahlig", bereich }); continue;
+    }
+    if (g1 <= g0) {
+      fehler.push({ grund: "leeres_intervall", bereich }); continue;
+    }
+    if (g0 < 0 || g1 > N) {
+      fehler.push({ grund: "ausserhalb_wand", bereich }); continue;
+    }
+    if (sp !== 0 && sp !== 1) {
+      fehler.push({ grund: "ungueltige_paritaet", bereich }); continue;
+    }
+    // Ueberlappung mit Oeffnungen
+    let overlap = false;
+    for (const op of openings) {
+      if (g0 < op.g1 && op.g0 < g1) { overlap = true; break; }
+    }
+    if (overlap) {
+      fehler.push({ grund: "ueberlappt_oeffnung", bereich }); continue;
+    }
+    out.push({ g0, g1, start_parity: sp });
+  }
+  // Sortieren nach g0
+  out.sort((a, b) => a.g0 - b.g0);
+  // Ueberlappung untereinander pruefen
+  for (let i = 0; i < out.length - 1; i++) {
+    if (out[i].g1 > out[i + 1].g0) {
+      fehler.push({ grund: "ueberlappt_verzahnung", bereich: out[i + 1] });
+      out.splice(i + 1, 1); i--;
+    }
+  }
+  return { interlocks: out, fehler };
+}
+
+export function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null, steps = [], interlocks = null) {
   const PS = normPrestress(prestress);
   const maxSpan = PS.max_span_grid;
   const ROD_ = PS.rod_mm;
   const TOP = PS.top_connection;   // 'blech' (Kopfblech) | 'spannplatte'
   validateInputs(lengthMm, heightMm, openings);
   const N = lengthMm / GRID, L = heightMm / COURSE;
+  // [G-10]/[G-12] Verzahnungsbereiche normalisieren und validieren
+  const IL = normInterlocks(interlocks, N, openings);
 
   // Staffelung / getreppter Aufbau: je Spalte eine lokale Oberkante (Anzahl Lagen)
   const STEPS = normSteps(steps, lengthMm, heightMm);
@@ -317,6 +377,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     for (let k = 0; k < N; k++) { const present = topLage[k] > li; if (present) { if (s === null) s = k; } else if (s !== null) { runs.push([s, k]); s = null; } }
     if (s !== null) runs.push([s, N]); return runs; };
 
+  // ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ und Vorspannung) ----
+  // [G-11] Die Spannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
+  // Verzahnungsaussparungen. Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen.
   const courses = []; let prev = new Set();
   const rigidLagen = []; const invalidSegments = [];
   for (let li = 0; li < L; li++) {
@@ -361,9 +424,80 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     if (bad.length) { versatzOk = false; viol.push({ zwischen_lagen: [li, li + 1], fugen_grid: bad.slice().sort((p, q) => p - q) }); }
   }
 
-  // ---- Vorspannstränge: Segmente je durchgehend belegtem Bereich (über/unter Öffnungen) ----
+  // `occ`, `steinIvVoll` und `wunschVoll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
   const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
-  for (const c of courses) for (const st of c.stones) { const a = st.x0 / GRID, b = st.x1 / GRID; for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true; }
+  const steinIvVoll = [];
+  // [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — VOR dem Aussparen!
+  const wunschVoll = new Set();
+  for (const c of courses) for (const st of c.stones) {
+    const a = st.x0 / GRID, b = st.x1 / GRID;
+    for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true;
+    steinIvVoll.push([a, b]);
+    // [V-3] Nur unterste Lage (lage 0), nur i3 (Breite 3 Raster) — hat eine echte Rastermitte
+    if (c.lage === 0 && b - a === 3) wunschVoll.add(a + 1);
+  }
+
+  // ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
+  // Bei gültigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
+  // Bereiche werden wie Luecken aus den runs/cuts herausgeschnitten, bevor `pickTiling` laeuft.
+  // So endet kein Stein im Bereich und der verbleibende Verband wird deterministisch neu gelegt.
+  // Stoßfugen und occ bleiben beim vollstaendigen Verband — Vorspannung bleibt bitgleich ([G-11]).
+  const interlockInvalidSegments = [];
+  if (IL.interlocks.length) {
+    let prevIl = new Set();
+    for (let li = 0; li < L; li++) {
+      // Pruefen, ob diese Lage in mindestens einem Verzahnungsbereich ausgespart wird
+      const relevantIls = IL.interlocks.filter(il => li % 2 === il.start_parity);
+      if (!relevantIls.length) {
+        // Keine Aussparung in dieser Lage — Steine bleiben unveraendert, prev fuer naechste Lage
+        prevIl = new Set(courses[li].joints_grid);
+        continue;
+      }
+      // cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
+      let cuts = runsAt(li);
+      for (const op of openings) {
+        if (op.l0 <= li && li < op.l1) {
+          const nc = [];
+          for (const [s, e] of cuts) {
+            if (op.g1 <= s || op.g0 >= e) { nc.push([s, e]); continue; }
+            if (op.g0 > s) nc.push([s, op.g0]);
+            if (op.g1 < e) nc.push([op.g1, e]);
+          }
+          cuts = nc;
+        }
+      }
+      // Verzahnungsbereiche DIESER Lage (passende Paritaet) wie Luecken herausschneiden
+      for (const il of relevantIls) {
+        const nc = [];
+        for (const [s, e] of cuts) {
+          if (il.g1 <= s || il.g0 >= e) { nc.push([s, e]); continue; }
+          if (il.g0 > s) nc.push([s, il.g0]);
+          if (il.g1 < e) nc.push([il.g1, e]);
+        }
+        cuts = nc;
+      }
+      // Neues Tiling fuer die reduzierte Lage
+      const stones = [];
+      for (const [s, e] of cuts) {
+        const w = e - s;
+        // Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den strukturellen)
+        if (FORBIDDEN_N.has(w)) {
+          const seg = { lage: li, start_grid: s, breite_grid: w };
+          if (!interlockInvalidSegments.some(x => x.lage === li && x.start_grid === s && x.breite_grid === w))
+            interlockInvalidSegments.push(seg);
+        }
+        const comp = pickTiling(s, w, prevIl);
+        let g = s;
+        for (const b of comp) {
+          stones.push({ type: b === 2 ? "i2" : "i3", x0: g * GRID, x1: (g + b) * GRID });
+          g += b;
+        }
+      }
+      courses[li].stones = stones;
+      // prev fuer die naechste Lage kommt aus dem vollstaendigen Verband (joints_grid unveraendert)
+      prevIl = new Set(courses[li].joints_grid);
+    }
+  }
   // ---- Spannachsen ----------------------------------------------------------------
   // Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-2] Steinabdeckung (MUSS)
   // > [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-3] Mitte i3 unterste Lage
@@ -373,10 +507,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // [V-2] impliziert den Abstand NICHT (nachweisbar entstehen sonst Luecken bis 5 Raster =
   // 625 mm, obwohl jeder Stein gehalten ist), und umgekehrt beweist ein eingehaltenes
   // Maximalraster die Abdeckung nicht. Beide Regeln sind unabhaengig und beide gelten.
-  const steinIv = [];
-  for (const c of courses) for (const st of c.stones) steinIv.push([st.x0 / GRID, st.x1 / GRID]);
+  // [G-11] Steinabdeckung basiert auf dem VOLLSTAENDIGEN Verband (steinIvVoll, vor dem Aussparen).
   // Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
-  steinIv.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
+  steinIvVoll.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
   /** Wird das Rasterintervall [a,b) von mindestens einer Achse aus `S` durchgangen? */
   const gehalten = (S, a, b) => { for (let k = a; k < b; k++) if (S.has(k)) return true; return false; };
 
@@ -394,22 +527,18 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     for (const op of openings) { if (op.g0 - 1 >= 0) colSet.add(op.g0 - 1); if (op.g1 <= N - 1) colSet.add(op.g1); }
     // [V-7] Stufenkanten: an jeder Höhenstufe ein Strang beidseitig der Kante.
     for (let k = 0; k < N - 1; k++) { if (topLage[k] !== topLage[k + 1]) { colSet.add(k); colSet.add(k + 1); } }
-    // [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage. Ein i2 hat keine
-    // Rastermitte (zwei Zellen) und liefert deshalb keine Wunschposition — es wird geraten nicht.
-    const wunsch = new Set();
-    for (const st of (courses[0] ? courses[0].stones : [])) {
-      const a = st.x0 / GRID, b = st.x1 / GRID;
-      if (b - a === 3) wunsch.add(a + 1);
-    }
+    // [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — aus dem VOLLSTAENDIGEN
+    // Verband (wunschVoll, oben berechnet). Ein i2 hat keine Rastermitte (zwei Zellen) und
+    // liefert deshalb keine Wunschposition — es wird nichts geraten.
     // [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
     // Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
     // die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Liegt im Stein eine
     // Wunschposition nach [V-3], hat diese Vorrang vor der Reichweite — sie kostet hoechstens
     // zusaetzliche Achsen, nie die Abdeckung.
-    for (const [a, b] of steinIv) {
+    for (const [a, b] of steinIvVoll) {
       if (gehalten(colSet, a, b)) continue;
       let pos = b - 1;
-      for (let k = b - 1; k >= a; k--) if (wunsch.has(k)) { pos = k; break; }
+      for (let k = b - 1; k >= a; k--) if (wunschVoll.has(k)) { pos = k; break; }
       colSet.add(pos);
     }
     // [V-4] Obergrenze: verbleibende Luecken > max_span_grid balanciert auffuellen (rein additiv,
@@ -548,6 +677,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     N_grid: N, lagen: L,
     openings: openings.map(op => op.asDict()),
     steps: STEPS,
+    // [G-10] Verzahnungsbereiche (optional, nur die validen)
+    interlocks: IL.interlocks,
     sides: normSides(sides),
     prestress: PS,
     base_plate: basePlate, top_plate: topPlate,
@@ -558,6 +689,10 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       zuschnitt_konflikte: zuschnittKonflikte,
       // [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuelle Achsen: echter Befund.
       ungehaltene_steine: ungehalteneSteine,
+      // [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)
+      interlock_fehler: IL.fehler,
+      // [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
+      interlock_invalid_segments: interlockInvalidSegments,
     },
     courses,
   };

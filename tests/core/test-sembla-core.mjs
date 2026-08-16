@@ -261,5 +261,120 @@ t("Fallback ohne Laengensatz ist bit-genau der Altstand", () => {
   }
 });
 
+// ---- Verzahnungsbereich ([G-10]/[G-11]/[G-12]) ----
+// DIESELBEN Erwartungswerte stehen wortgleich in test_sembla_core.py — sie sind der Paritaetsvertrag.
+console.log("VERZAHNUNG [G-10]/[G-11]/[G-12] (Paritaetsvertrag mit dem Python-Orakel):");
+t("[G-10] Verzahnung start_parity=0: Lage 0 ausgespart", () => {
+  // 1000mm = 8 Raster, 800mm = 4 Lagen
+  const w = buildWall("vz0", 1000, 800, [], null, null, [], [{ g0: 0, g1: 3, start_parity: 0 }]);
+  assert(w.interlocks.length === 1, "ein gueltiger Bereich");
+  assert(w.validation.interlock_fehler.length === 0, "keine Fehler");
+  // Lage 0 und 2 (gerade) sind im Bereich [0,3) ausgespart
+  // Lage 1 und 3 (ungerade) haben Steine im Bereich [0,3)
+  const steineMenge = w.courses.map(c => c.stones.filter(s => s.x0 / GRID < 3).length);
+  // Erwartet: gerade Lagen (0, 2) = 0 Steine im Bereich, ungerade Lagen (1, 3) > 0
+  assert(steineMenge[0] === 0, `Lage 0 sollte 0 Steine im Bereich haben: ${steineMenge[0]}`);
+  assert(steineMenge[1] > 0, `Lage 1 sollte Steine im Bereich haben: ${steineMenge[1]}`);
+  assert(steineMenge[2] === 0, `Lage 2 sollte 0 Steine im Bereich haben: ${steineMenge[2]}`);
+  assert(steineMenge[3] > 0, `Lage 3 sollte Steine im Bereich haben: ${steineMenge[3]}`);
+});
+t("[G-10] Verzahnung start_parity=1: Lage 1 ausgespart", () => {
+  const w = buildWall("vz1", 1000, 800, [], null, null, [], [{ g0: 0, g1: 3, start_parity: 1 }]);
+  assert(w.interlocks.length === 1, "ein gueltiger Bereich");
+  const steineMenge = w.courses.map(c => c.stones.filter(s => s.x0 / GRID < 3).length);
+  // Erwartet: ungerade Lagen (1, 3) = 0 Steine im Bereich, gerade Lagen (0, 2) > 0
+  assert(steineMenge[0] > 0, `Lage 0 sollte Steine im Bereich haben: ${steineMenge[0]}`);
+  assert(steineMenge[1] === 0, `Lage 1 sollte 0 Steine im Bereich haben: ${steineMenge[1]}`);
+  assert(steineMenge[2] > 0, `Lage 2 sollte Steine im Bereich haben: ${steineMenge[2]}`);
+  assert(steineMenge[3] === 0, `Lage 3 sollte 0 Steine im Bereich haben: ${steineMenge[3]}`);
+});
+t("[G-11] Vorspannung bleibt mit und ohne Verzahnung identisch", () => {
+  // Gleiche Wand, einmal ohne, einmal mit Verzahnung
+  const ohne = buildWall("ohneVz", 2000, 2000, [], null, null, []);
+  const mit = buildWall("mitVz", 2000, 2000, [], null, null, [], [{ g0: 0, g1: 3, start_parity: 0 }]);
+  // Spannachsen, Segmente, Stangenstuecke muessen identisch sein
+  const ohneKs = ohne.tension_columns.map(c => c.k);
+  const mitKs = mit.tension_columns.map(c => c.k);
+  assert(JSON.stringify(ohneKs) === JSON.stringify(mitKs), `Achsen verschieden: ${JSON.stringify(ohneKs)} vs ${JSON.stringify(mitKs)}`);
+  // Segmente
+  for (let i = 0; i < ohne.tension_columns.length; i++) {
+    const o = ohne.tension_columns[i], m = mit.tension_columns[i];
+    assert(o.segments.length === m.segments.length, `col ${i}: Segmente verschieden`);
+    for (let j = 0; j < o.segments.length; j++) {
+      const os = o.segments[j], ms = m.segments[j];
+      assert(os.z0_mm === ms.z0_mm && os.z1_mm === ms.z1_mm, `Segment ${i}/${j}: Hoehe verschieden`);
+      assert(JSON.stringify(os.stuecke) === JSON.stringify(ms.stuecke), `Segment ${i}/${j}: Stuecke verschieden`);
+    }
+  }
+});
+t("[G-10] BOM-Steinmenge ist mit Verzahnung reduziert", () => {
+  const ohne = buildWall("ohneVz", 1000, 800, [], null, null, []);
+  const mit = buildWall("mitVz", 1000, 800, [], null, null, [], [{ g0: 0, g1: 3, start_parity: 0 }]);
+  // i2 + i3 muss mit Verzahnung kleiner sein
+  const ohneSteine = ohne.bom.i2 + ohne.bom.i3;
+  const mitSteine = mit.bom.i2 + mit.bom.i3;
+  assert(mitSteine < ohneSteine, `Steinmenge sollte reduziert sein: ${mitSteine} >= ${ohneSteine}`);
+  // Stossfugen bleiben gleich (basieren auf vollstaendigem Verband)
+  assert(ohne.bom.stossfugen === mit.bom.stossfugen, `Stossfugen verschieden: ${ohne.bom.stossfugen} vs ${mit.bom.stossfugen}`);
+});
+t("[G-12] Ungueltige Verzahnung wird benannt abgewiesen", () => {
+  // Bereich ausserhalb der Wand
+  const w1 = buildWall("vzErr", 1000, 800, [], null, null, [], [{ g0: 5, g1: 12, start_parity: 0 }]);
+  assert(w1.interlocks.length === 0, "ausserhalb_wand: kein gueltiger Bereich");
+  assert(w1.validation.interlock_fehler.some(f => f.grund === "ausserhalb_wand"), "ausserhalb_wand gemeldet");
+  // Ungueltige Paritaet
+  const w2 = buildWall("vzErr", 1000, 800, [], null, null, [], [{ g0: 0, g1: 3, start_parity: 2 }]);
+  assert(w2.interlocks.length === 0, "ungueltige_paritaet: kein gueltiger Bereich");
+  assert(w2.validation.interlock_fehler.some(f => f.grund === "ungueltige_paritaet"), "ungueltige_paritaet gemeldet");
+  // Leeres Intervall
+  const w3 = buildWall("vzErr", 1000, 800, [], null, null, [], [{ g0: 5, g1: 3, start_parity: 0 }]);
+  assert(w3.interlocks.length === 0, "leeres_intervall: kein gueltiger Bereich");
+  assert(w3.validation.interlock_fehler.some(f => f.grund === "leeres_intervall"), "leeres_intervall gemeldet");
+});
+t("[G-12] Verzahnung und buildable: keine Aenderung", () => {
+  // Fehlerhafte Verzahnung aendert buildable nicht
+  const w = buildWall("vzBuild", 1000, 800, [], null, null, [], [{ g0: 100, g1: 200, start_parity: 0 }]);
+  assert(w.validation.buildable === true, "buildable bleibt true");
+  assert(w.validation.interlock_fehler.length > 0, "Fehler gemeldet");
+});
+t("ohne Verzahnung bleibt das Wandelement unveraendert (interlocks leer)", () => {
+  const w = buildWall("noVz", 1000, 800, [], null, null, []);
+  assert(w.interlocks.length === 0, "interlocks leer");
+  assert(w.validation.interlock_fehler.length === 0, "keine Fehler");
+  assert(w.validation.interlock_invalid_segments.length === 0, "keine interlock_invalid_segments");
+  // Steinmengen pruefen gegen Referenz (goldene Fixture bleibt unveraendert)
+});
+t("[G-10] kein Stein ragt in den ausgesparten Bereich hinein", () => {
+  // 1000mm = 8 Raster, 800mm = 4 Lagen, Verzahnung [0,3), start_parity=0
+  const w = buildWall("vzRagt", 1000, 800, [], null, null, [], [{ g0: 0, g1: 3, start_parity: 0 }]);
+  // In Lagen 0 und 2 (gerade) darf KEIN Stein im Bereich [0,3) beginnen, enden oder ihn ueberdecken
+  for (const li of [0, 2]) {
+    const c = w.courses[li];
+    for (const st of c.stones) {
+      const a = st.x0 / GRID, b = st.x1 / GRID;
+      // Stein darf den Bereich [0,3) nicht beruehren: entweder ganz links davon (b <= 0) oder ganz rechts (a >= 3)
+      assert(b <= 0 || a >= 3, `Lage ${li}: Stein [${a},${b}) ragt in Bereich [0,3)`);
+    }
+  }
+  // In Lagen 1 und 3 (ungerade) sind Steine im Bereich erlaubt
+  for (const li of [1, 3]) {
+    const c = w.courses[li];
+    const hatStein = c.stones.some(st => st.x0 / GRID < 3 && st.x1 / GRID > 0);
+    assert(hatStein, `Lage ${li}: sollte Steine im Bereich haben`);
+  }
+});
+t("[G-10] interlock_invalid_segments meldet nicht baubare Restbreiten", () => {
+  // Verzahnungsbereich [0,4) auf einer 8-Raster-Wand: nach Aussparen bleibt ein Segment mit 4 Rastern
+  // Das ist nicht baubar und muss gemeldet werden
+  const w = buildWall("vzInv", 1000, 800, [], null, null, [], [{ g0: 0, g1: 4, start_parity: 0 }]);
+  // Die Wand selbst ist ohne Verzahnung baubar (8 Raster)
+  assert(w.validation.buildable === true, "Wand ohne Verzahnungsproblem baubar");
+  // Aber nach Verzahnung gibt es nicht baubare Segmente
+  assert(w.validation.interlock_invalid_segments.length > 0, "interlock_invalid_segments gemeldet");
+  // Die gemeldeten Segmente haben Breite 4 (nicht baubar)
+  const seg = w.validation.interlock_invalid_segments[0];
+  assert(seg.breite_grid === 4, `Erwartete Breite 4, bekommen ${seg.breite_grid}`);
+});
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);
