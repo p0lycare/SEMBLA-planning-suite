@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-16",
-  "signatur": "8646b471",
+  "signatur": "2815e109",
   "entscheidungen": [
     {
       "issue": 41,
@@ -47,6 +47,31 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
+    },
+    {
+      "issue": 59,
+      "titel": "Lageplan: Ursprungsdarstellung fachlich abnehmen",
+      "prio": "high",
+      "status": "decision needed",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true,
+      "frage": "Der Geschossursprung steht im Lageplanblatt als Achsenkreuz mit dem Kurztext 0/0, Fixierungen gegen ihn stehen als normale Bemaßungen daneben. Reicht das als Abnahme oder fehlt konkret etwas?",
+      "optionen": [
+        {
+          "text": "Den Ist-Stand abnehmen; keine Änderung am Blatt.",
+          "wirkung": "Der letzte offene Punkt des Issues ist erledigt und es entsteht kein weiterer Blattinhalt."
+        },
+        {
+          "text": "Zwei beschriftete Bezugsachsen durch den Ursprung ergänzen.",
+          "wirkung": "Die Bezugsrichtung ist ohne Maß erkennbar; kleines Paket im Lageplanmodul ohne gespeichertes Feld."
+        },
+        {
+          "text": "Den Ursprung zusätzlich mit seiner Weltkoordinate beschriften.",
+          "wirkung": "Verlangt eine fachliche Festlegung des Bezugs und damit eine neue Regel."
+        }
+      ],
+      "empfehlung": "Den Ist-Stand abnehmen, weil der Ursprung bereits eindeutig markiert ist und jede Fixierung bemaßt daneben steht."
     },
     {
       "issue": 77,
@@ -129,15 +154,6 @@ export const PLAN = {
       "abhaengig_von": [
         82
       ],
-      "zyklus": true
-    },
-    {
-      "issue": 59,
-      "titel": "Geschossplan: Ursprungsdarstellung fachlich abnehmen",
-      "prio": "high",
-      "status": "ohne",
-      "sicherheit": false,
-      "abhaengig_von": [],
       "zyklus": true
     }
   ],
