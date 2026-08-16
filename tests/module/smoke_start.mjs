@@ -390,10 +390,13 @@ ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
     store.holeMengen(wandId)[kennung] === 99
     && !/exp-fassung/.test(JSON.stringify(store.holeEingaben(wandId))));
 
-  // (d) Auf den uebrigen Ebenen gibt es die Baustellenstueckliste nicht — also auch keine Wahl.
+  // (d) Seit #81 gilt die Wahl fuer JEDE Stuecklistendatei — auf der Projektebene also
+  // fuer die Gesamtstueckliste. Sichtbar ist sie deshalb auch dort, und sie startet
+  // ebenso auf „berechnet“.
   baum('prj-export', store.aktivesProjektId());
-  ok('#81 auf der Projektebene ist die Fassungswahl ausgeblendet',
-    $('exp-stueckliste-optionen').hidden === true);
+  ok('#81 auf der Projektebene ist die Fassungswahl sichtbar (Gesamtstückliste)',
+    $('exp-stueckliste-optionen').hidden === false
+    && $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
   $('exp-cancel').dispatch('click');
 
   // (e) Eine nicht anwendbare Uebersteuerung wird VOR dem Download benannt ([P-9]).
@@ -2215,6 +2218,77 @@ globalThis.fetch = echtesFetch;
   ok('#67 CSV fuehrt die Einbauteil-IDs als Wand-ID:ID',
     new RegExp(idG1 + ':GS-k').test(gCsv) && new RegExp(idG2 + ':GS-k').test(gCsv));
   ok('#67 der Geschoss-Export setzt keinen Zeiger um', zeigerJetzt() === zeiger9);
+
+  // (a2) #81: Mengenfassung der GESAMTSTÜCKLISTE — der echte Nutzerpfad auf Geschossebene.
+  // Genau ein Geschoss, zwei Waende, eine davon mit gespeicherter Uebersteuerung: der
+  // Dialog wird geoeffnet, die angepasste Fassung gewaehlt und an den ZIP-BYTES geprueft.
+  {
+    const posI3 = stuecklistePositionen(store.holeElement(idG1).wandelement,
+      store.holeEingaben(idG1), katalogG).find(p => p.key === 'i3');
+    const kennung = store.mengenKennung(posI3);
+    const berechnetG = [idG1, idG2].reduce((a, id) => a + stuecklistePositionen(
+      store.holeElement(id).wandelement, store.holeEingaben(id), katalogG)
+      .find(p => p.key === 'i3').menge, 0);
+    store.setzeMengenUebersteuerung(kennung, 7, idG1);
+    const wirksamG = berechnetG - posI3.menge + 7;
+    /** Kanonische Ableitung der Ebene — dieselbe, die auch Modul 4 benutzt. */
+    const sollDatei = (fassung) => {
+      const d = GES.gesamtDaten(GES.umfang(store.holeMappe(), 'geschoss', { geschossId: gsG }),
+        { holeElement: (id) => store.holeElement(id), holeEingaben: (id) => store.holeEingaben(id),
+          katalog: katalogG }, { fassung });
+      return gesamtstuecklisteDateien(d, { preise: true, rumpf: GES.dateiRumpf(d) })[0].data;
+    };
+    const zeileI3 = (csv) => csvZeilen(csv).find(z => z[0] === posI3.label);
+
+    // Voreinstellung: berechnet — die Datei bleibt der bisherige Stand.
+    zipCalls.length = 0;
+    baum('gs-export', gsG);
+    ok('#81 auf der Geschossebene ist die Fassungswahl sichtbar und startet auf „berechnet“',
+      $('exp-stueckliste-optionen').hidden === false
+      && $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
+    $('exp-overlay')._sel = [{ value: 'gesamt' }];
+    $('exp-go').dispatch('click');
+    const gBer = zipCalls.length ? zipCalls[0].files[0].data : '';
+    ok('#81 ohne Zutun traegt die Gesamtstueckliste die BERECHNETEN Mengen',
+      gBer === sollDatei('berechnet') && +zeileI3(gBer)[4] === berechnetG
+      && /\nMengen;berechnet – abgeleitet aus dem Wandelement/.test(gBer)
+      && /1 gespeicherte Übersteuerung\(en\) NICHT angewandt/.test(gBer));
+
+    // Angepasst — ueber genau das Bedienelement des Dialogs.
+    zipCalls.length = 0;
+    baum('gs-export', gsG);
+    $('exp-fassung-berechnet').checked = false;
+    $('exp-fassung-angepasst').checked = true;
+    $('exp-overlay')._sel = [{ value: 'gesamt' }];
+    $('exp-go').dispatch('click');
+    const gAng = zipCalls.length ? zipCalls[0].files[0].data : '';
+    ok('#81 gewaehlte angepasste Fassung: die Gesamtstueckliste traegt die wirksamen Mengen',
+      +zeileI3(gAng)[4] === wirksamG && wirksamG !== berechnetG);
+    ok('#81 die berechnete Menge steht in einer eigenen Spalte daneben',
+      csvZeilen(gAng).find(z => z[0] === 'Einbauteil')[5] === 'Menge berechnet'
+      && +zeileI3(gAng)[5] === berechnetG && zeileI3(gAng)[6] === 'manuell');
+    ok('#81 die Datei benennt die gewaehlte Fassung in ihrem Kopf',
+      /\nMengen;angepasst – mit den manuellen Mengen aus Modul 4 · 1 von \d+ Zeile\(n\) betroffen/.test(gAng));
+    ok('#81 bitgleich der gemeinsamen Ableitung (kein zweiter Mengenpfad)',
+      gAng === sollDatei('angepasst') && gAng !== gBer);
+    ok('#81 der Einzelpreis bleibt unveraendert, nur der Gesamtpreis folgt', (() => {
+      const kopf = csvZeilen(gAng).find(z => z[0] === 'Einbauteil');
+      const ep = kopf.indexOf('EP (EUR)'), gp = kopf.indexOf('GP (EUR)');
+      const zB = zeileI3(gBer), zA = zeileI3(gAng);
+      const epB = csvZeilen(gBer).find(z => z[0] === 'Einbauteil').indexOf('EP (EUR)');
+      return zA[ep] === zB[epB] && Math.abs(+zA[gp] - wirksamG * +zA[ep]) < 1e-6;
+    })());
+    ok('#81 ein neu geoeffneter Dialog startet wieder auf „berechnet“ (nichts haengt nach)',
+      (() => { baum('gs-export', gsG); const b = $('exp-fassung-berechnet').checked === true
+        && $('exp-fassung-angepasst').checked === false; $('exp-cancel').dispatch('click'); return b; })());
+    ok('#81 der Export hat die gespeicherte Uebersteuerung nicht angetastet',
+      store.holeMengen(idG1)[kennung] === 7);
+
+    // Aufraeumen: die folgenden Abschnitte rechnen mit den berechneten Mengen.
+    store.setzeMengenUebersteuerung(kennung, null, idG1);
+    ok('#81 Aufraeumen: keine gespeicherte Uebersteuerung mehr im Geschoss',
+      Object.keys(store.holeMengen(idG1)).length === 0);
+  }
 
   // (b) Preisschalter im Export
   zipCalls.length = 0;

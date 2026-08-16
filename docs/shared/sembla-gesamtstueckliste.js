@@ -28,13 +28,22 @@
  * Einzelteil-Id erfunden, und wo der Rechenkern keine Id kennt (Steine, Muttern, Bleche,
  * Dichtstreifen), bleibt die Liste leer.
  *
+ * MENGENFASSUNG ([P-20], #81). Die Aggregation entsteht wahlweise aus den BERECHNETEN Mengen
+ * (Default) oder aus den WIRKSAMEN, also den in Modul 4 wandbezogen uebersteuerten. Gerechnet
+ * wird das nicht hier, sondern in `wirksameMengen()` (sembla-export.js) — je Wand einmal, mit
+ * genau der Uebersteuerung DIESER Wand. Diese Datei faltet nur, was von dort kommt, und fuehrt
+ * die berechnete Menge je Zeile daneben mit; ein zweiter Mengenpfad entstuende sonst genau hier.
+ * Nicht zuordenbare und unzulaessig gespeicherte Eintraege werden MIT WANDBEZUG benannt und nie
+ * angewandt; sie stehen bewusst in `mengen` und nicht in `luecken` — `luecken`/`vollstaendig`
+ * sagen etwas ueber FEHLENDE WAENDE, und eine unpassende Uebersteuerung laesst keine Wand fehlen.
+ *
  * LÜCKEN. Fehlende, verwaiste oder nicht ableitbare Wandelemente und uneinheitliche Waehrungen
  * werden mit Projektpfad und Ursache gemeldet ([L-4]); die Ausgabe ist dann sichtbar
  * unvollstaendig. Es entsteht dabei nie eine Nullmenge, nie ein Ersatzpreis und nie eine
  * Summe ueber verschiedene Waehrungen.
  */
 import { findeGebaeude, findeGeschoss, findeWand, normMappe } from "./sembla-projektmappe.js";
-import { stuecklistePositionen, stuecklisteSumme } from "./sembla-export.js";
+import { normFassung, stuecklistePositionen, stuecklisteSumme, wirksameMengen } from "./sembla-export.js";
 
 /** Die vier waehlbaren Ebenen — mehr gibt es nicht, und geraten wird keine. */
 export const EBENEN = /** @type {ReadonlyArray<'wand'|'geschoss'|'gebaeude'|'projekt'>} */ ([
@@ -160,17 +169,26 @@ function _summeMenge(werte) {
  *
  * @param {ReturnType<typeof umfang>} umf
  * @param {{holeElement?:(id:string)=>any, holeEingaben?:(id:string)=>any, katalog?:object|null}} [leser]
+ * @param {{fassung?:string}} [opts] Mengenfassung nach [P-20]: `'berechnet'` (Default) oder
+ *   `'angepasst'`. Ohne ausdrueckliche Wahl bleibt die Ableitung bit-genau die bisherige.
  * @returns {{ebene:string, titel:string, ebene_label:string, bezug:object, pfad:string,
  *   waende:Array<object>, quellen:Array<object>, positionen:Array<object>, luecken:Array<object>,
  *   vollstaendig:boolean, waehrung:string, waehrungen:string[], waehrungKonflikt:boolean,
  *   summe:{summe:number,bepreist:number,bepreisbar:number,vollstaendig:boolean,offen:number},
- *   betragMoeglich:boolean, katalog:object|null}}
+ *   betragMoeglich:boolean, katalog:object|null, fassung:string,
+ *   mengen:{fassung:string, anzahl:number, gespeichert:number,
+ *     fremd:Array<{wandId:string,wand:string,pfad:string,kennung:string}>,
+ *     ungueltig:Array<{wandId:string,wand:string,pfad:string,kennung:string,label:string,grund:string}>}}}
  */
-export function gesamtDaten(umf, leser = {}) {
+export function gesamtDaten(umf, leser = {}, opts = {}) {
   const holeElement = leser.holeElement || (() => null);
   const holeEingaben = leser.holeEingaben || (() => ({}));
   const katalog = leser.katalog || null;
+  const fassung = normFassung(opts.fassung);
+  const angepasst = fassung === "angepasst";
   const luecken = [], quellen = [];
+  // Mengenstand ueber alle Waende ([P-20]) — je Wand aus IHRER Uebersteuerung, nie vermischt.
+  const mengen = { fassung, anzahl: 0, gespeichert: 0, fremd: [], ungueltig: [] };
 
   if (!umf.ok) luecken.push({ art: "ebene", wandId: null, wand: null, pfad: pfadText(umf.bezug), grund: umf.grund });
 
@@ -199,8 +217,19 @@ export function gesamtDaten(umf, leser = {}) {
         grund: "Stückliste nicht ableitbar: " + ((err && err.message) || String(err)) });
       continue;
     }
+    // Wirksame Menge dieser Wand ([P-20]) — DIESELBE Funktion, aus der auch die
+    // Wanddatei entsteht. Hier wird nichts nachgerechnet und nichts geprueft.
+    const wm = wirksameMengen(positionen, (eingaben.kosten || {}).mengen, { anwenden: angepasst });
+    mengen.anzahl += wm.anzahl;
+    mengen.gespeichert += wm.gespeichert;
+    const name = ref.name || el.name || ref.wandId;
+    for (const k of wm.fremd) mengen.fremd.push({ wandId: ref.wandId, wand: name, pfad, kennung: k });
+    for (const u of wm.ungueltig) {
+      mengen.ungueltig.push({ wandId: ref.wandId, wand: name, pfad, kennung: u.kennung,
+        label: u.label, grund: u.grund });
+    }
     quellen.push({
-      ...ref, name: ref.name || el.name || ref.wandId, pfad, positionen,
+      ...ref, name, pfad, positionen: wm.positionen,
       waehrung: ((eingaben.kosten || {}).waehrung || "EUR"),
     });
   }
@@ -224,7 +253,7 @@ export function gesamtDaten(umf, leser = {}) {
       let ziel = map.get(k);
       if (!ziel) {
         ziel = {
-          key: p.key, label: p.label, unit: p.unit, menge: 0,
+          key: p.key, label: p.label, unit: p.unit, menge: 0, menge_berechnet: 0, manuell: false,
           art: p.art, art_label: p.art_label, art_symbol: p.art_symbol,
           fertigmass_mm: p.fertigmass_mm,
           ep: p.ep, gp: null, status: p.status, statusText: p.statusText,
@@ -233,10 +262,15 @@ export function gesamtDaten(umf, leser = {}) {
         };
         map.set(k, ziel);
       }
+      // Beide Werte reisen bis in die Zeile mit ([P-20]): die wirksame Menge und die
+      // berechnete daneben — auch je Wand, damit die Aggregation aufloesbar bleibt.
+      const berechnet = p.__berechnet == null ? p.menge : p.__berechnet;
+      if (p.__ueber != null) ziel.manuell = true;
       ziel.herkunft.push({
         wandId: q.wandId, wand: q.name, gebaeudeId: q.gebaeudeId, gebaeude: q.gebaeude,
         geschossId: q.geschossId, geschoss: q.geschoss, pfad: q.pfad,
-        menge: p.menge, ids: (p.ids || []).slice(),
+        menge: p.menge, menge_berechnet: berechnet, manuell: p.__ueber != null,
+        ids: (p.ids || []).slice(),
       });
       // Qualifiziertes Paar (stabile Wand-Id, vorhandene Einbauteil-Id) — die Einzel-Id des
       // Rechenkerns ist wandlokal und allein nicht eindeutig. Erfunden wird keine.
@@ -246,6 +280,9 @@ export function gesamtDaten(umf, leser = {}) {
   }
   const positionen = [...map.values()].map((p) => {
     p.menge = _summeMenge(p.herkunft.map((h) => h.menge));
+    p.menge_berechnet = _summeMenge(p.herkunft.map((h) => h.menge_berechnet));
+    // Nur die Menge ist gegebenenfalls eine andere — der Einzelpreis bleibt der
+    // aufgeloeste ([P-14]), die Preisaufloesung wird nicht angefasst.
     p.gp = p.ep == null ? null : p.menge * p.ep;
     return p;
   });
@@ -260,7 +297,7 @@ export function gesamtDaten(umf, leser = {}) {
     waehrung: waehrungen.length === 1 ? waehrungen[0] : (waehrungen[0] || "EUR"),
     waehrungen, waehrungKonflikt,
     summe, betragMoeglich: summe.bepreist > 0 && !waehrungKonflikt,
-    katalog,
+    katalog, fassung, mengen,
   };
 }
 

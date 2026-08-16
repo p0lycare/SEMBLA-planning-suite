@@ -7,7 +7,7 @@
 // `stuecklistePositionen`-Aufrufe ihrer Waende entsprechen. Wo das nicht gilt, waere ein
 // zweites Mengenmodell entstanden — genau das soll der Test unmoeglich machen.
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { standardEingaben } from "../../docs/shared/storage.js";
+import { mengenKennung, standardEingaben } from "../../docs/shared/storage.js";
 import {
   stuecklistePositionen, gesamtstuecklisteAoa, gesamtstuecklisteCsv, gesamtstuecklisteDateien, baueDateien,
 } from "../../docs/shared/sembla-export.js";
@@ -20,7 +20,8 @@ import {
 } from "../../docs/shared/sembla-projektmappe.js";
 import { katalogObjekt } from "../../docs/shared/sembla-katalog.js";
 import {
-  EXPORT_OPTIONEN, exportOptionen, geschossTeilmappe, geschossPfad, hierarchieExport, wandPfad, sicherStamm,
+  EXPORT_OPTIONEN, exportOptionen, geschossTeilmappe, geschossPfad, gesamtMengenLuecken,
+  hierarchieExport, wandPfad, sicherStamm,
 } from "../../docs/shared/sembla-archiv.js";
 
 const checks = [];
@@ -437,6 +438,189 @@ const P = (ueber = {}) => ({
   const stWeg = hierarchieExport(["stueckliste"], P({ ebene: "wand", wandId: "w-verwaist", wandName: "Verwaiste Wand", mappe: ML }));
   ok("#67 Baustellenstueckliste ohne Wandelement: Luecke statt erfundener Datei",
     stWeg.dateien.length === 0 && /L-4/.test(stWeg.luecken[0]));
+}
+
+// ==== 11. Mengenfassung der Gesamtstückliste ([P-20], Issue #81) ==========================
+// Die manuelle Menge aus Modul 4 ist WANDBEZOGEN. Geprüft wird deshalb an einer Ebene mit
+// ZWEI baugleichen Wänden, von denen nur EINE eine Übersteuerung trägt: nur so fällt auf,
+// wenn eine Übersteuerung auf die falsche Wand wirkt oder die Aggregation sie doppelt zählt.
+{
+  const posA = stuecklistePositionen(ELEMENTE["w-a"].wandelement, eingabenFuer(), KATALOG);
+  const posI3 = posA.find((p) => p.key === "i3");
+  const KENN = mengenKennung(posI3);
+  const BER = posI3.menge;                       // berechnete Menge JE WAND
+  const UEBER = BER + 7;                         // bewusst != berechnet und != 0
+  const FREMD = "rod_std@424242";                // gehört zu keiner gerechneten Position
+
+  /** Nur Wand A trägt Übersteuerungen — Wand B bleibt unangetastet. */
+  const mengenA = { [KENN]: UEBER };
+  const leserM = (extra = {}) => ({
+    ...leser(),
+    holeEingaben: (id) => {
+      const e = eingabenFuer();
+      if (id === "w-a") e.kosten.mengen = { ...mengenA, ...extra };
+      return e;
+    },
+  });
+  const umfG = () => umfang(M, "geschoss", Z);
+  const zeileI3 = (d) => d.positionen.find((p) => p.key === "i3");
+
+  // (a) BERECHNETE Fassung: bitgleich die bisherigen Mengen, trotz gespeicherter Übersteuerung.
+  {
+    const dOhne = gesamtDaten(umfG(), leser());                       // ohne Übersteuerung
+    const dBer = gesamtDaten(umfG(), leserM());                       // mit, aber berechnet
+    ok("#81 berechnete Fassung ist der Default (ohne opts)", dBer.fassung === "berechnet"
+      && gesamtDaten(umfG(), leserM(), {}).fassung === "berechnet"
+      && gesamtDaten(umfG(), leserM(), { fassung: "quatsch" }).fassung === "berechnet");
+    ok("#81 berechnete Fassung: Mengen bitgleich dem bisherigen Pfad",
+      gleich(ist(dBer), erwartet(["w-a", "w-b"]))
+      && JSON.stringify(dBer.positionen.map((p) => p.menge)) === JSON.stringify(dOhne.positionen.map((p) => p.menge)));
+    ok("#81 berechnete Fassung: auch Preise, Status und IDs bleiben unverändert",
+      JSON.stringify(dBer.positionen.map((p) => [p.key, p.ep, p.gp, p.status, p.ids.join(" ")]))
+      === JSON.stringify(dOhne.positionen.map((p) => [p.key, p.ep, p.gp, p.status, p.ids.join(" ")])));
+    ok("#81 berechnete Fassung: keine Zeile ist als manuell gekennzeichnet",
+      dBer.positionen.every((p) => p.manuell === false && p.menge_berechnet === p.menge)
+      && dBer.mengen.anzahl === 0 && dBer.mengen.fremd.length === 0 && dBer.mengen.ungueltig.length === 0);
+    ok("#81 die gespeicherte Übersteuerung wird trotzdem gezählt (sie wirkt hier nur nicht)",
+      dBer.mengen.gespeichert === 1);
+  }
+
+  // (b) ANGEPASSTE Fassung: wirksame Menge je Wand, berechnete daneben, EP unverändert.
+  {
+    const dBer = gesamtDaten(umfG(), leserM());
+    const dAng = gesamtDaten(umfG(), leserM(), { fassung: "angepasst" });
+    const i3Ber = zeileI3(dBer), i3Ang = zeileI3(dAng);
+    ok("#81 angepasste Fassung: die Zeile folgt der wirksamen Menge ihrer Wände",
+      i3Ang.menge === UEBER + BER && i3Ber.menge === 2 * BER);
+    ok("#81 angepasste Fassung: die berechnete Menge steht daneben, nicht an ihrer Stelle",
+      i3Ang.menge_berechnet === 2 * BER && i3Ang.manuell === true);
+    ok("#81 die Übersteuerung bleibt wandbezogen — nur Wand A ist betroffen", (() => {
+      const hA = i3Ang.herkunft.find((h) => h.wandId === "w-a");
+      const hB = i3Ang.herkunft.find((h) => h.wandId === "w-b");
+      return hA.menge === UEBER && hA.menge_berechnet === BER && hA.manuell === true
+        && hB.menge === BER && hB.menge_berechnet === BER && hB.manuell === false;
+    })());
+    ok("#81 Einzelpreis unverändert nach [P-14], nur der Gesamtpreis folgt",
+      i3Ang.ep === i3Ber.ep && i3Ang.produktId === i3Ber.produktId && i3Ang.status === i3Ber.status
+      && Math.abs(i3Ang.gp - (UEBER + BER) * i3Ang.ep) < 1e-9);
+    ok("#81 jede nicht übersteuerte Zeile bleibt bitgleich der berechneten Fassung",
+      dAng.positionen.filter((p) => p.key !== "i3")
+        .every((p, i) => p.menge === dBer.positionen.filter((q) => q.key !== "i3")[i].menge && p.manuell === false));
+    ok("#81 Zusammenführung und Fertigmaßtrennung bleiben unverändert",
+      dAng.positionen.length === dBer.positionen.length
+      && JSON.stringify(dAng.positionen.map((p) => [p.key, p.fertigmass_mm, p.produktId]))
+        === JSON.stringify(dBer.positionen.map((p) => [p.key, p.fertigmass_mm, p.produktId])));
+    ok("#81 die Aggregation schreibt keine Übersteuerung zurück",
+      JSON.stringify(mengenA) === JSON.stringify({ [KENN]: UEBER }));
+  }
+
+  // (c) Die Datei benennt ihre Fassung im Kopf und führt beide Mengen nebeneinander.
+  {
+    const dBer = gesamtDaten(umfG(), leserM());
+    const dAng = gesamtDaten(umfG(), leserM(), { fassung: "angepasst" });
+    const aoaBer = gesamtstuecklisteAoa(dBer, { datum: "01.01.2026" });
+    const aoaAng = gesamtstuecklisteAoa(dAng, { datum: "01.01.2026" });
+    const zeile = (aoa) => aoa.find((z) => z[0] === "Mengen");
+    ok("#81 die berechnete Fassung benennt sich und sagt, dass die Übersteuerung nicht wirkt",
+      /^berechnet – abgeleitet aus dem Wandelement/.test(zeile(aoaBer)[1])
+      && /1 gespeicherte Übersteuerung\(en\) NICHT angewandt/.test(zeile(aoaBer)[1]));
+    ok("#81 die angepasste Fassung benennt sich im Kopf",
+      /^angepasst – mit den manuellen Mengen aus Modul 4/.test(zeile(aoaAng)[1])
+      && /1 von \d+ Zeile\(n\) betroffen, 1 manuelle Menge\(n\)/.test(zeile(aoaAng)[1]));
+    const kopfBer = aoaBer.find((z) => z[0] === "Einbauteil");
+    const kopfAng = aoaAng.find((z) => z[0] === "Einbauteil");
+    ok("#81 nur die angepasste Fassung hat die Spalte „Menge berechnet“",
+      !kopfBer.includes("Menge berechnet") && kopfAng.includes("Menge berechnet")
+      && kopfAng.indexOf("Menge berechnet") === kopfAng.indexOf("Menge") + 1
+      && kopfAng.includes("Mengenherkunft"));
+    ok("#81 die Zeile trägt wirksame und berechnete Menge nebeneinander", (() => {
+      const z = aoaAng.slice(aoaAng.indexOf(kopfAng) + 1).find((r) => r[0] === zeileI3(dAng).label);
+      const i = kopfAng.indexOf("Menge");
+      return z[i] === UEBER + BER && z[i + 1] === 2 * BER && z[i + 2] === "manuell";
+    })());
+    ok("#81 der Summenbetrag steht auch in der breiteren Fassung unter seiner Spalte", (() => {
+      const s = aoaAng.find((r) => String(r[0]).startsWith("Summe netto"));
+      return s.length === kopfAng.length && typeof s[kopfAng.indexOf("GP (EUR)")] === "number";
+    })());
+    ok("#81 der Preisschalter wirkt in beiden Fassungen gleich", (() => {
+      const ohne = gesamtstuecklisteAoa(dAng, { datum: "01.01.2026", preise: false });
+      const k = ohne.find((z) => z[0] === "Einbauteil");
+      return k.includes("Menge berechnet") && !k.includes("EP (EUR)") && k.length === kopfAng.length - 2;
+    })());
+  }
+
+  // (d) Nicht anwendbare Übersteuerung: MIT WANDBEZUG benannt, nie angewandt ([P-9]).
+  {
+    const dAng = gesamtDaten(umfG(), leserM({ [FREMD]: 5 }), { fassung: "angepasst" });
+    ok("#81 nicht zuordenbare Übersteuerung wird mit Wandbezug gemeldet",
+      dAng.mengen.fremd.length === 1 && dAng.mengen.fremd[0].kennung === FREMD
+      && dAng.mengen.fremd[0].wandId === "w-a" && dAng.mengen.fremd[0].wand === "Wand A"
+      && /Haus Nord › EG › Wand A/.test(dAng.mengen.fremd[0].pfad));
+    ok("#81 sie wird nicht angewandt — die Mengen bleiben wie ohne sie", (() => {
+      const rein = gesamtDaten(umfG(), leserM(), { fassung: "angepasst" });
+      return JSON.stringify(dAng.positionen.map((p) => p.menge)) === JSON.stringify(rein.positionen.map((p) => p.menge));
+    })());
+    ok("#81 sie ist KEINE Lücke im Sinne der Vollständigkeit (es fehlt keine Wand)",
+      dAng.luecken.length === 0 && dAng.vollstaendig === true && /vollständig/.test(standText(dAng)));
+    const csv = gesamtstuecklisteCsv(dAng, { datum: "01.01.2026" });
+    ok("#81 der Dateikopf nennt sie mit Wand und Kennung",
+      new RegExp("Übersteuerung nicht zuordenbar;Wand A;" + FREMD + ";").test(csv));
+    ok("#81 vor dem Download wird sie als Lücke mit Wandbezug benannt", (() => {
+      const l = gesamtMengenLuecken(dAng);
+      return l.length === 1 && /Gesamtstückliste, „Wand A“/.test(l[0]) && /nicht angewandt/.test(l[0]);
+    })());
+    // Unzulässiger Wert: benannt, nie gerundet, nie gelöscht.
+    const dBad = gesamtDaten(umfG(), leserM({ [KENN]: 2.5 }), { fassung: "angepasst" });
+    ok("#81 unzulässig gespeicherter Wert: benannt mit Wandbezug, es gilt die berechnete Menge",
+      dBad.mengen.ungueltig.length === 1 && dBad.mengen.ungueltig[0].wand === "Wand A"
+      && dBad.mengen.ungueltig[0].kennung === KENN && zeileI3(dBad).menge === 2 * BER);
+    ok("#81 der Dateikopf nennt auch den unzulässigen Wert",
+      /Übersteuerung unzulässig;Wand A;/.test(gesamtstuecklisteCsv(dBad, { datum: "01.01.2026" })));
+  }
+
+  // (e) Ein Exportlauf, EINE Fassung — für Wand- und Gesamtstückliste (Muss 5).
+  {
+    const PM = (ueber = {}) => P({ ...leserM(), ebene: "geschoss", ...ueber });
+    const egBer = hierarchieExport(["gesamt"], PM());
+    const egAng = hierarchieExport(["gesamt"], PM({ fassung: "angepasst" }));
+    ok("#81 der Export reicht die Fassung an die Gesamtstückliste durch", (() => {
+      const soll = gesamtstuecklisteDateien(
+        gesamtDaten(umfang(MK, "geschoss", Z), leserM(), { fassung: "angepasst" }),
+        { preise: true, rumpf: "Gesamtstueckliste_Geschoss_EG" })[0];
+      return egAng.dateien[0].data === soll.data && egAng.dateien[0].data !== egBer.dateien[0].data;
+    })());
+    ok("#81 ohne Angabe bleibt die Gesamtstückliste bitgleich dem bisherigen Stand", (() => {
+      const soll = gesamtstuecklisteDateien(
+        gesamtDaten(umfang(MK, "geschoss", Z), leserM()),
+        { preise: true, rumpf: "Gesamtstueckliste_Geschoss_EG" })[0];
+      return egBer.dateien[0].data === soll.data;
+    })());
+    // Beide Stücklistenarten in EINEM Lauf: dieselbe Fassung, geprüft an den Bytes.
+    const MW = setzeWand(MK, EG, { id: "w-a", name: "Wand A" });
+    const beides = hierarchieExport(["gesamt", "waende"], PM({ mappe: MW, fassung: "angepasst" }));
+    ok("#81 ein Exportlauf verwendet für alle Stücklistendateien dieselbe Fassung", (() => {
+      const gs = beides.dateien.find((x) => x.name.endsWith(".csv"));
+      return /\nMengen;angepasst – mit den manuellen Mengen aus Modul 4/.test(gs.data);
+    })());
+    const wandAng = hierarchieExport(["stueckliste"], P({ ...leserM(), ebene: "wand", fassung: "angepasst" }));
+    ok("#81 dieselbe Wahl trägt auch die Baustellenstückliste der Wand",
+      /\nMengen;angepasst – mit den manuellen Mengen aus Modul 4/.test(wandAng.dateien[0].data));
+    ok("#81 die Einzelteilliste bleibt in beiden Fassungen abgeleitet und sagt das", (() => {
+      const berW = hierarchieExport(["stueckliste"], P({ ...leserM(), ebene: "wand" }));
+      return wandAng.dateien[1].data === berW.dateien[1].data
+        && /\nMengen;berechnet – Einzelteile werden stets abgeleitet/.test(wandAng.dateien[1].data);
+    })());
+    ok("#81 nicht anwendbare Übersteuerungen stehen auch im Export vor dem Download", (() => {
+      const mitFremd = hierarchieExport(["gesamt"], P({
+        ...leserM({ [FREMD]: 5 }), ebene: "geschoss", fassung: "angepasst",
+      }));
+      return mitFremd.luecken.some((l) => /Gesamtstückliste, „Wand A“/.test(l) && l.includes(FREMD));
+    })());
+    ok("#81 in der berechneten Fassung wird nichts als Lücke gemeldet, was nicht wirkt", (() => {
+      const berFremd = hierarchieExport(["gesamt"], P({ ...leserM({ [FREMD]: 5 }), ebene: "geschoss" }));
+      return !berFremd.luecken.some((l) => l.includes(FREMD));
+    })());
+  }
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

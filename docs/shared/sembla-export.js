@@ -344,6 +344,14 @@ export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
  * Mengen, Herkunft, Einbauteil-IDs und der Vollstaendigkeitsstand bleiben unveraendert — eine
  * Liste ohne Preise ist dieselbe Liste.
  *
+ * MENGENFASSUNG ([P-20], #81): Welche der beiden Fassungen die Datei traegt, steht bewusst
+ * NICHT in `opts`, sondern in der uebergebenen Ableitung (`daten.fassung`) — sonst koennte der
+ * Kopfvermerk von den Zahlen abweichen, die darunter stehen. In der angepassten Fassung traegt
+ * jede Zeile die wirksame Menge und die berechnete in einer eigenen Spalte daneben; nicht
+ * anwendbare Uebersteuerungen stehen MIT WANDBEZUG als eigene Kopfzeilen — benannt, nicht
+ * angewandt, nicht geloescht ([P-9]). Die berechnete Fassung bleibt ausser der Kopfzeile
+ * unveraendert.
+ *
  * @param {object} daten Ergebnis von `gesamtDaten()`
  * @param {{preise?:boolean, datum?:string}} [opts]
  */
@@ -352,6 +360,10 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   const cur = daten.waehrung || "EUR";
   const b = daten.bezug || {};
   const n2 = v => (v == null ? "" : +v.toFixed(2));
+  const mengen = daten.mengen
+    || { fassung: "berechnet", anzahl: 0, gespeichert: 0, fremd: [], ungueltig: [] };
+  const fassung = normFassung(daten.fassung || mengen.fassung);
+  const angepasst = fassung === "angepasst";
   const kopf = [
     ["SEMBLA – " + daten.titel],
     ["Ebene", daten.ebene_label],
@@ -364,21 +376,45 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   kopf.push(["Katalog", daten.katalog ? (daten.katalog.name || "Bauteilkatalog") : "kein Bauteilkatalog geladen"]);
   kopf.push(["Wände", daten.quellen.length + " von " + daten.waende.length]);
   kopf.push(["Vollständigkeit", _standTextDatei(daten)]);
+  // Die Mengenfassung gehoert in den Kopf: eine Stuecklistendatei, der man ihre Fassung
+  // nicht ansieht, ist unbrauchbar ([P-20]). Gezaehlt werden BEIDE Groessen ehrlich — die
+  // betroffenen Zeilen der Aggregation und die manuellen Mengen der einzelnen Waende.
+  const zeilenManuell = daten.positionen.filter(r => r.manuell).length;
+  kopf.push(["Mengen", MENGEN_FASSUNG[fassung] + (angepasst
+    ? " · " + zeilenManuell + " von " + daten.positionen.length + " Zeile(n) betroffen, "
+      + mengen.anzahl + " manuelle Menge(n) aus den Wänden"
+    : (mengen.gespeichert
+      ? " · " + mengen.gespeichert + " gespeicherte Übersteuerung(en) NICHT angewandt" : ""))]);
   kopf.push(["Kennzeichnung", ART_KENNZEICHNUNG]);
   // Jede Luecke steht als eigene Zeile mit Projektpfad und Ursache — eine unvollstaendige
   // Datei sagt, WELCHE Wand fehlt und warum, statt still weniger zu zeigen.
   for (const l of daten.luecken) kopf.push(["Lücke", l.pfad || "", l.grund]);
+  // Nicht anwendbare Uebersteuerungen stehen MIT WANDBEZUG: ueber mehrere Waende hinweg
+  // waere die Kennung allein nicht auflösbar. Sie sind bewusst KEINE „Lücke“ — es fehlt
+  // keine Wand —, werden aber genauso benannt und nie angewandt.
+  for (const f of mengen.fremd) {
+    kopf.push(["Übersteuerung nicht zuordenbar", f.wand || "", f.kennung,
+      "gehört zu keiner gerechneten Position dieser Wand – nicht angewandt, nicht gelöscht"]);
+  }
+  for (const u of mengen.ungueltig) {
+    kopf.push(["Übersteuerung unzulässig", u.wand || "", u.kennung,
+      u.label + ": " + u.grund + " Es gilt die berechnete Menge."]);
+  }
 
   const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge",
     "Wände (Herkunft)", "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung"];
-  if (preise) spalten.splice(7, 0, "EP (" + cur + ")", "GP (" + cur + ")");
+  // Beide Werte gleichzeitig ([P-20]): die wirksame Menge in „Menge“, die berechnete
+  // daneben — Wortlaut wie in der Wanddatei, damit beide Blaetter gleich zu lesen sind.
+  if (angepasst) spalten.splice(5, 0, "Menge berechnet", "Mengenherkunft");
+  if (preise) spalten.splice(angepasst ? 9 : 7, 0, "EP (" + cur + ")", "GP (" + cur + ")");
 
   const zeilen = daten.positionen.map(r => {
     const z = [r.label, r.art ? r.art_symbol + " " + r.art_label : "",
       r.fertigmass_mm == null ? "" : r.fertigmass_mm, r.unit, r.menge,
       r.herkunft.map(h => h.wand + ": " + h.menge).join(" | "), r.ids.join(" "),
       r.produktId || "", r.statusText];
-    if (preise) z.splice(7, 0, n2(r.ep), n2(r.gp));
+    if (angepasst) z.splice(5, 0, r.menge_berechnet, r.manuell ? "manuell" : "berechnet");
+    if (preise) z.splice(angepasst ? 9 : 7, 0, n2(r.ep), n2(r.gp));
     return z;
   });
 
@@ -389,9 +425,14 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
     const s = daten.summe;
     const betrag = daten.betragMoeglich ? +s.summe.toFixed(2)
       : (daten.waehrungKonflikt ? "kein Gesamtbetrag – uneinheitliche Währung" : "kein Gesamtbetrag – keine Position bepreist");
+    // Der Betrag steht unter SEINER Spalte, egal wie breit die Fassung die Tabelle macht.
+    const summenzeile = new Array(spalten.length).fill("");
+    summenzeile[0] = "Summe netto (" + cur + ")";
+    summenzeile[spalten.indexOf("GP (" + cur + ")")] = betrag;
+    summenzeile[spalten.length - 1] = s.vollstaendig ? "alle Positionen bepreist"
+      : `unvollständig – ${s.bepreist} von ${s.bepreisbar} Positionen bepreist`;
     aoa.push([]);
-    aoa.push(["Summe netto (" + cur + ")", "", "", "", "", "", "", "", betrag, "",
-      s.vollstaendig ? "alle Positionen bepreist" : `unvollständig – ${s.bepreist} von ${s.bepreisbar} Positionen bepreist`]);
+    aoa.push(summenzeile);
   }
   return aoa;
 }

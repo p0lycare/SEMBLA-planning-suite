@@ -376,19 +376,22 @@
     <div class="opt-zusatz" id="exp-gesamt-optionen" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
       <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="exp-preise" checked>Preise in der Gesamtstückliste</label>
     </div>
-    <!-- Mengenfassung der Baustellenstückliste ([P-20], #81). Die manuelle Menge aus Modul 4
+    <!-- Mengenfassung der Stücklisten ([P-20], #81). Die manuelle Menge aus Modul 4
          steht NEBEN der berechneten, nie an ihrer Stelle — welche von beiden in die Datei
          geht, ist deshalb eine ausdrückliche Wahl und keine Voreinstellung, die man erraten
          müsste. Ohne Zutun gilt „berechnet“; die Wahl gilt nur für diesen Exportlauf, wird
          nirgends gespeichert und ändert keine gespeicherte Übersteuerung — Modul 4 bleibt
-         der einzige Schreibweg. -->
+         der einzige Schreibweg. Sie gilt für ALLE Stücklistendateien dieses Laufs: die
+         Baustellenstückliste der Wand UND die Gesamtstückliste der Ebene. -->
     <div class="opt-zusatz" id="exp-stueckliste-optionen" style="margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <span>Mengen der Baustellenstückliste:</span>
+        <span>Mengen der Stückliste:</span>
         <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-fassung" id="exp-fassung-berechnet" checked>berechnet</label>
         <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-fassung" id="exp-fassung-angepasst">angepasst (manuelle Mengen aus Modul&nbsp;4)</label>
       </div>
-      <div style="margin-top:3px">Die gewählte Fassung steht im Kopf der Datei. Die
+      <div style="margin-top:3px">Die gewählte Fassung gilt für <b>alle</b> Stücklistendateien
+        dieses Exportlaufs und steht im Kopf jeder Datei; in der Gesamtstückliste folgt jede
+        Zeile den wirksamen Mengen ihrer Wände und führt die berechnete daneben. Die
         <b>Einzelteilliste</b> der Gewindestangen bleibt in beiden Fällen abgeleitet — eine
         manuelle Menge ließe sich dort nur mit erfundenen Einbauteil-IDs abbilden ([P-19]).</div>
     </div>
@@ -1739,7 +1742,7 @@
   /** Beschriftung je Option — die Schlüssel sind EXPORT_OPTIONEN (sembla-archiv.js). */
   const EXP_TEXTE = {
     mappe: ['Projektmappe — nur Struktur (JSON)', 'Struktur, Lage, Bemaßungen, Kopfdaten und Katalogverweis ([L-13]) — ohne Wandelemente, Planbilder und Katalog; hier wieder importierbar.'],
-    gesamt: ['Gesamtstückliste (CSV)', 'Summe der Baustellenstücklisten aller Wände dieses Umfangs — mit Herkunft je Wand, Einbauteil-IDs als <b>Wand-ID:ID</b> und benannten Lücken.'],
+    gesamt: ['Gesamtstückliste (CSV)', 'Summe der Baustellenstücklisten aller Wände dieses Umfangs — mit Herkunft je Wand, Einbauteil-IDs als <b>Wand-ID:ID</b> und benannten Lücken. Die <b>Mengenfassung</b> wird unten gewählt ([P-20]).'],
     geschosse: ['Geschossdaten (JSON je Geschoss)', 'Je enthaltenem Geschoss eine Teilmappe im Format SEMBLA-Projektmappe v2 — genau das eine Gebäude mit genau diesem Geschoss.'],
     geschoss: ['Geschossdaten (JSON)', 'Dieses Geschoss als Teilmappe im Format SEMBLA-Projektmappe v2 — genau das eine Gebäude mit genau diesem Geschoss, ohne die vollständige Projektmappe.'],
     waende: ['Wandelementdateien (JSON je Wand)', 'Je enthaltener Wand eine SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben). Fehlende Wandelemente werden benannt, nie ersetzt ([L-4]).'],
@@ -1784,12 +1787,17 @@
       `<label class="opt"><input type="checkbox" value="${o}" checked><span><span class="t">${EXP_TEXTE[o][0]}</span><br><span class="d">${EXP_TEXTE[o][1]}</span></span></label>`
     ).join('');
     // Der Preisschalter gehoert zur Gesamtstückliste — auf der Wandebene gibt es sie nicht.
-    $('exp-gesamt-optionen').hidden = !ARCHIV.exportOptionen(kontext.ebene).includes('gesamt');
-    // Die Mengenfassung ([P-20]) gehoert zur Baustellenstückliste — die gibt es nur auf der
-    // Wandebene. Sie startet bei JEDEM Öffnen wieder auf „berechnet“: welche Mengen in eine
+    const optionen = ARCHIV.exportOptionen(kontext.ebene);
+    $('exp-gesamt-optionen').hidden = !optionen.includes('gesamt');
+    // Die Mengenfassung ([P-20]) gehoert zu JEDER Stücklistendatei: der Baustellenstückliste
+    // der Wand und — seit #81 — der Gesamtstückliste von Geschoss, Gebäude und Projekt.
+    // Sichtbar ist die Wahl deshalb, sobald die Ebene überhaupt eine Stückliste anbietet
+    // (wie beim Preisschalter); ist das Häkchen abgewählt, entsteht ohnehin keine Datei.
+    // Sie startet bei JEDEM Öffnen wieder auf „berechnet“: welche Mengen in eine
     // Baustellenunterlage gehen, ist eine fachliche Entscheidung, die nicht aus einem
     // früheren Exportlauf nachhängen darf.
-    $('exp-stueckliste-optionen').hidden = !ARCHIV.exportOptionen(kontext.ebene).includes('stueckliste');
+    $('exp-stueckliste-optionen').hidden =
+      !(optionen.includes('stueckliste') || optionen.includes('gesamt'));
     $('exp-fassung-berechnet').checked = true;
     $('exp-fassung-angepasst').checked = false;
     overlay.hidden = false;

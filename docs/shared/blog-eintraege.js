@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-05",
+    datum: "2026-08-16",
+    typ: "feature",
+    issue: 81,
+    titel: "Beim Export gilt die Mengenfassung jetzt auch für die Gesamtstückliste von Geschoss, Gebäude und Projekt",
+    testbitte: "In Modul 4 eine Menge übersteuern, in Modul 0 das Geschoss exportieren und "
+      + "„angepasst“ wählen: Die Gesamtstückliste trägt die wirksamen Mengen, führt die berechneten "
+      + "daneben und nennt die Fassung im Dateikopf.",
+  },
+  {
     id: "chg-20260816-04",
     datum: "2026-08-16",
     typ: "feature",

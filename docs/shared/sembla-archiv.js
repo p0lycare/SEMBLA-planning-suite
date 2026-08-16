@@ -513,6 +513,31 @@ function _mengenLuecken(projekt, katalog, wandName) {
 }
 
 /**
+ * Dasselbe fuer die GESAMTSTÜCKLISTE ([P-20], #81) — mit Wandbezug.
+ *
+ * Gerechnet wird auch hier nichts: `gesamtDaten()` hat die Eintraege bereits ueber
+ * `wirksameMengen()` je Wand gesammelt. Hier entsteht nur der Satz fuer den
+ * Bestaetigungsdialog. Ohne Wandnamen waere die Kennung ueber mehrere Waende hinweg
+ * nicht auflösbar — deshalb steht er zwingend davor.
+ * @param {{mengen?:{fremd:Array<any>, ungueltig:Array<any>}}} daten Ergebnis von `gesamtDaten()`
+ * @returns {string[]}
+ */
+export function gesamtMengenLuecken(daten) {
+  const mg = (daten && daten.mengen) || { fremd: [], ungueltig: [] };
+  const out = [];
+  for (const f of mg.fremd) {
+    out.push(`Gesamtstückliste, „${f.wand}“: Die gespeicherte Mengenübersteuerung „${f.kennung}“ `
+      + "gehört zu keiner gerechneten Position dieser Wand — sie wird nicht angewandt und bleibt "
+      + "gespeichert ([P-20]).");
+  }
+  for (const u of mg.ungueltig) {
+    out.push(`Gesamtstückliste, „${u.wand}“: Die gespeicherte Mengenübersteuerung „${u.kennung}“ `
+      + `(${u.label}) ist unzulässig: ${u.grund} Es gilt die berechnete Menge.`);
+  }
+  return out;
+}
+
+/**
  * Dateien des hierarchischen Exports bauen — exakt die Auswahl, Luecken benannt.
  *
  * Rein: die Leser (Wandspeicher, Wanddatei, Katalog) werden UEBERGEBEN; die Funktion
@@ -524,9 +549,10 @@ function _mengenLuecken(projekt, katalog, wandName) {
  *   wandId?:string|null, wandName?:string|null, katalog?:object|null,
  *   holeElement?:(id:string)=>any, holeEingaben?:(id:string)=>any,
  *   projektObjekt?:(id:string)=>any, preise?:boolean, fassung?:string}} p
- *   `fassung` waehlt die Mengenfassung der Baustellenstueckliste ([P-20]): `'berechnet'`
- *   (Default) oder `'angepasst'`. Sie wirkt ausschliesslich auf der Wandebene und wird
- *   nur durchgereicht; die Gesamtstueckliste bleibt unveraendert berechnet.
+ *   `fassung` waehlt die Mengenfassung der Stuecklisten ([P-20]): `'berechnet'` (Default)
+ *   oder `'angepasst'`. Sie wird nur DURCHGEREICHT — an die Baustellenstueckliste der Wand
+ *   und an die Gesamtstueckliste der Ebene, und zwar aus GENAU EINER Variablen: ein
+ *   Exportlauf kann damit gar nicht zwei Mengenfassungen im selben ZIP haben (#81).
  * @returns {{dateien:Array<{name:string,data:string}>, luecken:string[], zipName:string, bezug:string}}
  */
 export function hierarchieExport(auswahl, p) {
@@ -610,12 +636,17 @@ export function hierarchieExport(auswahl, p) {
   }
 
   if (gewaehlt.includes("gesamt")) {
+    // Dieselbe `fassung` wie oben ([P-20]/#81): die Aggregation rechnet sie NICHT selbst,
+    // sie reicht sie an `wirksameMengen()` je Wand weiter.
     const daten = gesamtDaten(umf, {
       holeElement, holeEingaben: p.holeEingaben, katalog: p.katalog || null,
-    });
+    }, { fassung });
     for (const l of daten.luecken) {
       luecken.push(`Gesamtstückliste: ${l.pfad ? l.pfad + " — " : ""}${l.grund}`);
     }
+    // Nicht anwendbare Uebersteuerungen gehoeren auch hier VOR den Download — mit
+    // WANDBEZUG, weil die Kennung ueber mehrere Waende hinweg nicht auflösbar waere.
+    for (const l of gesamtMengenLuecken(daten)) luecken.push(l);
     dateien.push(...gesamtstuecklisteDateien(daten, { preise: p.preise !== false, rumpf: dateiRumpf(daten) }));
   }
 
