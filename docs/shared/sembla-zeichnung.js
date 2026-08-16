@@ -19,6 +19,13 @@
  *   * Zuschnittkonflikte des Kerns stehen als Mangelblock auf dem Blatt ([Z-5]/[Z-6]):
  *     ein unvollstaendiger Zuschnitt wird nie als vollstaendiges Blatt ausgegeben.
  *
+ * Verzahnungsbereiche (#82, [G-10]): der vom Rechenkern gerechnete Verband zeigt sie nur
+ * als Luecke; das Blatt kennzeichnet sie deshalb ausdruecklich an ihrer Rasterlage
+ * (gestrichelte Begrenzung, Schraffur der ausgesparten Zellen, Kurztext) und erklaert das
+ * in der Legende. Regelwidrige Bereiche und die dadurch nicht baubaren Restbreiten stehen
+ * benannt in einem eigenen Mangelkasten. Gelesen wird nur — angelegt werden sie in Modul 1;
+ * abgeleitet wird daraus nichts (Vorspannung bleibt nach [G-11] unberuehrt).
+ *
  * Brandschutzklassifikation (#79): das Blatt weist sie als Kurztext im Zeichnungsrand
  * aus und erklaert beide Klassen in der Legende. Sie wird AUSSCHLIESSLICH GELESEN —
  * gewaehlt wird sie in Modul 1 —, ist eine reine Planungskennzeichnung und veraendert
@@ -164,6 +171,10 @@ export const FARBE = {
   stange: STUECK_FARBE.standard, stange_sonder: STUECK_FARBE.sonder, stange_rest: STUECK_FARBE.rest,
   platte: "#14559c", mutter: "#0b3a73",
   mass: "#46505e", staffel: "#0a7f8c", reihe: "#8f96a0",
+  // Verzahnung (#82): bewusst NICHT die Oeffnungsfarbe — ein Verzahnungsbereich ist
+  // keine Oeffnung und kein Durchbruch ([G-10]) und darf mit ihnen nicht verwechselt
+  // werden. Derselbe Kennwert wie in der Wandansicht von Modul 1.
+  verzahnung: "#8b5cf6",
 };
 
 /**
@@ -212,6 +223,37 @@ export const BRAND_PRAEFIX = "Brandschutz ";
  */
 const BRAND_RAND_MM = 1, BRAND_BASIS_MM = 3.4, BRAND_FS_MM = 3;
 
+/**
+ * Verzahnungsbereich auf dem Blatt (#82, [G-10]) — Darstellung, sonst nichts.
+ *
+ * Ein Verzahnungsbereich ist ein Laengsabschnitt der Wand, in dem alternierend in jeder
+ * zweiten Lage die Steine fehlen, damit eine rechtwinklig kreuzende Wand konstruktiv
+ * eingreifen kann. Im Verband ist er bisher nur eine LUECKE und damit von einem Fehler
+ * nicht zu unterscheiden; das Blatt weist ihn deshalb ausdruecklich aus.
+ *
+ * Getragen wird die Unterscheidung OHNE Farbe, durch zwei nicht farbliche Merkmale:
+ * die GESTRICHELTEN Begrenzungslinien an den beiden Bereichsraendern (ueber die volle
+ * Hoehe des Bereichs) und die SCHRAFFUR in den ausgesparten Zellen. `name` benennt
+ * beides in Worten in der Legende, `kuerzel` ist der Kurztext im Bereich selbst;
+ * `FARBE.verzahnung` kommt nur additiv dazu.
+ *
+ * Anders als bei der Brandschutzklassifikation (#79) ist die Schraffur hier zulaessig
+ * und sogar das treffende Mittel: sie liegt AUSSCHLIESSLICH auf den ausgesparten,
+ * also steinfreien Zellen und verdeckt damit nichts vom Ausfuehrungsnoetigen.
+ *
+ * Gelesen wird ausschliesslich `wandelement.interlocks` — die vom Rechenkern bereits
+ * normalisierten und validierten Bereiche. Abgeleitet wird daraus NICHTS: Tiling,
+ * Vorspannung ([G-11]), Stueckliste und Nachweis bleiben unberuehrt.
+ */
+export const VERZAHNUNG = Object.freeze({
+  kuerzel: "Verzahnung",
+  name: "Verzahnungsbereich — gestrichelt begrenzt, in jeder zweiten Lage schraffierte "
+    + "Aussparung für den Anschluss einer rechtwinklig kreuzenden Wand",
+});
+
+/** Schraffurabstand und Strichstaerken der Verzahnungskennzeichnung in PAPIER-mm. */
+const VZ_SCHRAFFUR_MM = 1.6, VZ_LW = 0.18, VZ_RAND_LW = 0.3;
+
 // --------------------------------------------------------- Blatt-Ueberschriften
 
 /**
@@ -228,6 +270,18 @@ const BRAND_RAND_MM = 1, BRAND_BASIS_MM = 3.4, BRAND_FS_MM = 3;
 /** Ueberschrift des Mangelblocks — Zuschnittkonflikte des Kerns ([Z-5]/[Z-6]). */
 export const MANGEL_TITEL = "Zuschnittkonflikte – Blatt unvollständig";
 
+/**
+ * Ueberschrift des Verzahnungs-Mangelblocks ([G-10]/[G-12], #82).
+ *
+ * Bewusst ein EIGENER Kasten neben den Zuschnittkonflikten und nicht deren Ueberschrift:
+ * ein abgewiesener Verzahnungsbereich ist nach [G-12] ausdruecklich KEIN
+ * Baubarkeitsausschluss, das Blatt darf sich deshalb nicht pauschal fuer unvollstaendig
+ * erklaeren. Was gezeichnet ist, ist vollstaendig — der abgewiesene Bereich ist schlicht
+ * nicht ausgefuehrt, und genau das steht hier ([D-5]: Geprueftes und Ungeprueftes nie
+ * vermischen).
+ */
+export const VERZAHNUNG_TITEL = "Verzahnung – regelwidrige Bereiche";
+
 /** Titel der Einbauteil-ID-Tabelle des Blattes ([P-19]). */
 export const EINBAUTEIL_TITEL = "Einbauteile Gewindestangen – IDs je Spannachse";
 
@@ -243,6 +297,99 @@ function _segmente(w, col) {
 function _obenBei(w, x_mm) {
   for (const st of (w.steps || [])) if (x_mm >= st.x0_mm && x_mm < st.x1_mm) return st.height_mm;
   return w.height_mm;
+}
+
+/**
+ * Diagonalschraffur eines Rechtecks (Papier-mm) als einzelne Linien.
+ *
+ * Bewusst OHNE `<pattern>`/`url(#…)`: das Blatt-SVG wird in Vorschau, Druck-HTML und
+ * eigenstaendiger Datei ausgeliefert und kann mehrfach in einem Dokument stehen — eine
+ * Musterdefinition braeuchte eine dokumentweit eindeutige ID und waere damit ein zweiter,
+ * kontextabhaengiger Mechanismus. Die Linien werden exakt am Rechteck GEKAPPT (kein
+ * Clip-Pfad), die Ausgabe ist deshalb rein rechnerisch und deterministisch.
+ */
+function _schraffur(x, y, w, h, farbe) {
+  if (!(w > 0) || !(h > 0)) return "";
+  let s = "";
+  // Geradenschar x + y = c (Richtung „/"), c laeuft ueber die Diagonale des Rechtecks.
+  const c0 = x + y, c1 = x + w + y + h;
+  for (let c = c0 + VZ_SCHRAFFUR_MM; c < c1; c += VZ_SCHRAFFUR_MM) {
+    const xa = Math.max(x, c - (y + h)), xb = Math.min(x + w, c - y);
+    if (!(xb > xa)) continue;
+    s += `<line x1="${_n(xa)}" y1="${_n(c - xa)}" x2="${_n(xb)}" y2="${_n(c - xb)}" `
+      + `stroke="${farbe}" stroke-width="${VZ_LW}"/>`;
+  }
+  return s;
+}
+
+/**
+ * Kennzeichnung der Verzahnungsbereiche (#82, [G-10]) als eigene SVG-Gruppe.
+ *
+ * Gelesen wird ausschliesslich `w.interlocks` — die vom Rechenkern normalisierten,
+ * GUELTIGEN Bereiche; ein abgewiesener Bereich steht dort nicht und wird deshalb auch
+ * nicht gezeichnet (er erscheint benannt im Mangelblock). Die Hoehe kommt je Rasterspalte
+ * aus `topLagen()`, also aus derselben kanonischen Kontur wie Wandumriss und Kopfblech
+ * ([D-4]): ueber einer Spalte ohne Wand (Staffelung, lokale Hoehe 0) wird NICHTS
+ * gezeichnet, statt eine Kennzeichnung ins Leere zu setzen.
+ *
+ * Drei Bestandteile, davon zwei ohne jede Farbe lesbar:
+ *   (a) Schraffur GENAU in den ausgesparten Zellen (Lage `li` mit `li % 2 === start_parity`,
+ *       zusammenhaengende Spaltenlaeufe der Bereichsbreite) — dort steht kein Stein,
+ *       es wird also nichts verdeckt,
+ *   (b) gestrichelte Begrenzungslinien an beiden Bereichsraendern ueber die volle
+ *       lokale Hoehe,
+ *   (c) der Kurztext im obersten ausgesparten Feld — dieses ist konstruktionsbedingt
+ *       steinfrei; er entfaellt, wenn das Feld dafuer zu klein ist (wie die
+ *       Steintyp-Beschriftung).
+ *
+ * Ohne Verzahnungsbereich wird die leere Zeichenkette geliefert — keine leere Gruppe.
+ */
+function _verzahnungSvg(w, X, Y, sc, tl, G, C, LF) {
+  const ils = (w.interlocks || []);
+  if (!ils.length) return "";
+  const F = FARBE.verzahnung;
+  let s = `<g class="verzahnung">`;
+  for (const il of ils) {
+    const k0 = Math.max(0, Math.round(il.g0)), k1 = Math.min(tl.length, Math.round(il.g1));
+    if (!(k1 > k0)) continue;
+    const par = il.start_parity === 1 ? 1 : 0;
+    let obenLage = 0;
+    for (let k = k0; k < k1; k++) obenLage = Math.max(obenLage, tl[k]);
+    if (obenLage <= 0) continue;                     // keine Wand -> keine Kennzeichnung
+    s += `<g data-verzahnung="${k0}-${k1}">`;
+    // (a) Schraffur je ausgesparter Lage, zusammenhaengende Spaltenlaeufe in einem Zug
+    let letzteLage = -1, textLauf = null;
+    for (let li = par; li < obenLage; li += 2) {
+      let a = null;
+      for (let k = k0; k <= k1; k++) {
+        const da = k < k1 && tl[k] > li;
+        if (da && a === null) a = k;
+        if (!da && a !== null) {
+          s += _schraffur(X(a * G), Y((li + 1) * C), (k - a) * G * sc, C * sc, F);
+          if (li > letzteLage) { letzteLage = li; textLauf = [a, k]; }
+          else if (textLauf && (k - a) > (textLauf[1] - textLauf[0])) textLauf = [a, k];
+          a = null;
+        }
+      }
+    }
+    // (b) Begrenzungslinien an den Bereichsraendern (gestrichelt, volle lokale Hoehe)
+    for (const [k, h] of [[k0, tl[k0]], [k1, tl[k1 - 1]]]) {
+      if (h <= 0) continue;
+      s += `<line x1="${_n(X(k * G))}" y1="${_n(Y(0))}" x2="${_n(X(k * G))}" y2="${_n(Y(h * C))}" `
+        + `stroke="${F}" stroke-width="${VZ_RAND_LW}" stroke-dasharray="1.6 1.1"/>`;
+    }
+    // (c) Kurztext im obersten ausgesparten Feld (steinfrei) — nur, wenn er dort hinpasst
+    if (textLauf) {
+      const [a, b] = textLauf, breite = (b - a) * G * sc, fs = Math.min(2.6, LF);
+      if (breite > VERZAHNUNG.kuerzel.length * fs * 0.6 && C * sc > 3) {
+        s += `<text x="${_n(X((a + b) / 2 * G))}" y="${_n(Y((letzteLage + 0.5) * C) + fs * 0.35)}" `
+          + `font-size="${_n(fs)}" fill="${F}" text-anchor="middle">${VERZAHNUNG.kuerzel}`
+          + `<title>${_esc(VERZAHNUNG.name)}</title></text>`;
+      }
+    }
+    s += `</g>`;
+  }
+  return s + `</g>`;
 }
 
 /**
@@ -335,8 +482,17 @@ export function zeichnungSvg(w, opts = {}) {
       + `fill="${FARBE.oeffnung}" text-anchor="middle">${op.art === "fenster" ? "Fenster" : (op.art === "durchbruch" ? "Durchbruch" : "Tür")}</text>`;
   }
 
-  // Gestufte Wandkontur (aus topLagen -> dieselbe Konturableitung wie die Montage)
+  // Wandkontur je Rasterspalte (lokale Oberkante) — die kanonische Ableitung aus
+  // `sembla-montage.js`. Sie traegt Wandumriss, Kopfbleche UND die Verzahnungskennzeichnung;
+  // eine zweite Konturrechnung waere nach [A-1]/[D-4] unzulaessig.
   const tl = topLagen(w), N = tl.length;
+
+  // Verzahnungsbereiche (#82, [G-10]): eigene Gruppe unmittelbar NACH den Steinen und
+  // VOR Kontur, Blechen, Straengen, Bemassung und Brandschutz-Kurztext. Damit verdeckt sie
+  // nichts vom Ausfuehrungsnoetigen, und die Brandschutzgruppe bleibt die letzte des SVG.
+  s += _verzahnungSvg(w, X, Y, sc, tl, G, C, LF);
+
+  // Gestufte Wandkontur (aus topLagen -> dieselbe Konturableitung wie die Montage)
   {
     const pts = [[0, 0], [0, tl[0] * C]];
     for (let k = 0; k < N; k++) {
@@ -564,6 +720,78 @@ export function konfliktZeilen(w) {
 }
 
 /**
+ * Klartext der Verzahnungsbefunde ([G-10]/[G-12], #82) — je Grund ein Satz. Die Gruende sind
+ * die des Rechenkerns (`validation.interlock_fehler[].grund`); ein unbekannter Grund wird
+ * unveraendert benannt statt weggelassen.
+ */
+export const VERZAHNUNG_GRUND = {
+  nicht_ganzzahlig: "Position oder Breite nicht ganzzahlig ([G-10]) — Bereich abgewiesen.",
+  leeres_intervall: "Leeres Intervall, Breite kleiner oder gleich null ([G-10]) — Bereich abgewiesen.",
+  ausserhalb_wand: "Bereich liegt außerhalb der Wandgrenzen ([G-10]) — Bereich abgewiesen.",
+  ungueltige_paritaet: "Ungültige Startlage, erwartet wird die unterste oder die zweite Lage ([G-10]) — Bereich abgewiesen.",
+  ueberlappt_oeffnung: "Bereich überlappt eine Öffnung ([G-10]) — Bereich abgewiesen.",
+  ueberlappt_verzahnung: "Bereich überlappt einen anderen Verzahnungsbereich ([G-10]) — Bereich abgewiesen.",
+};
+
+/** Klartext der nicht baubaren Restbreite, die erst durch die Aussparung entsteht ([G-6]). */
+export const VERZAHNUNG_RESTSEGMENT = "Restbreite neben der Aussparung nicht baubar ([G-6]) — "
+  + "Bereichsbreite oder Wandlänge ändern.";
+
+/**
+ * Verzahnungsbefunde des Wandelements als Blattzeilen ([G-10]/[G-12], #82).
+ *
+ * Zwei Quellen, beide unveraendert aus dem Rechenkern gelesen und hier weder nachgerechnet
+ * noch bewertet ([D-1]):
+ *   * `validation.interlock_fehler` — abgewiesene Bereiche samt Grund und Rasterlage. Sie
+ *     stehen NICHT in `wandelement.interlocks` und sind deshalb im Verband auch nicht
+ *     ausgefuehrt; genau darum muessen sie benannt werden ([P-9]).
+ *   * `validation.interlock_invalid_segments` — Restbreiten, die erst durch die Aussparung
+ *     nicht mehr baubar sind ([G-6]), mit Steinreihe und Rasterlage.
+ * Die Rasterlage eines abgewiesenen Bereichs kann roh und damit unbrauchbar sein (z.B. nicht
+ * ganzzahlig) — sie wird dann als fehlend benannt statt gerundet.
+ */
+export function verzahnungZeilen(w) {
+  const v = (w && w.validation) || {};
+  const zeilen = [];
+  for (const f of (v.interlock_fehler || [])) {
+    const g = String(f.grund || "unbekannt");
+    const b = f.bereich || {};
+    const ganz = Number.isInteger(b.g0) && Number.isInteger(b.g1);
+    zeilen.push({
+      art: "bereich", grund: g, text: VERZAHNUNG_GRUND[g] || g,
+      wo: ganz ? `Raster ${b.g0}–${b.g1}` : "Rasterlage nicht auswertbar",
+    });
+  }
+  for (const seg of (v.interlock_invalid_segments || [])) {
+    zeilen.push({
+      art: "restsegment", grund: "restbreite_nicht_baubar", text: VERZAHNUNG_RESTSEGMENT,
+      wo: `Steinreihe ${seg.lage + 1}, Raster ${seg.start_grid}, Breite ${seg.breite_grid} Raster`,
+    });
+  }
+  return zeilen;
+}
+
+/**
+ * Verzahnungs-Mangelblock des Blattes ([G-10]/[G-12], #82) — leer, wenn es keinen Befund
+ * gibt (kein leerer Kasten, wie bei der Legende in [D-4]).
+ *
+ * Der Schlusssatz sagt genau, was gilt: der abgewiesene Bereich ist im gezeichneten Verband
+ * nicht ausgefuehrt. Er behauptet ausdruecklich NICHT, das Blatt sei unvollstaendig — nach
+ * [G-12] ist das kein Baubarkeitsausschluss, und die Zeichnung zeigt den tatsaechlich
+ * gerechneten Verband.
+ */
+export function verzahnungMaengelHtml(w) {
+  const z = verzahnungZeilen(w);
+  if (!z.length) return "";
+  return `<div class="zmangel">`
+    + z.map(e => `<div><span class="chip"></span><span>${_esc(e.text)} ${_esc(e.wo)}.</span></div>`).join("")
+    + `</div><div class="zfuss">Abgewiesene Bereiche sind im gezeichneten Verband `
+    + `<b>nicht ausgeführt</b>: die Steine stehen dort wie ohne Verzahnung. Der Anschluss ist `
+    + `in „Wandplanung" zu berichtigen — hier wird nichts angenommen und nichts stillschweigend `
+    + `zurechtgerückt.</div>`;
+}
+
+/**
  * Mangelblock des Blattes ([Z-5]/[Z-6]) — leer, wenn es keinen Konflikt gibt (kein leerer
  * Kasten, wie bei der Legende in [D-4]).
  */
@@ -618,8 +846,16 @@ export function schriftfeldHtml(w, eingaben = {}, masstab = 25, opts = {}) {
     + `</div></div>`;
 }
 
-/** Legende des Darstellungsschluessels ([D-4]). */
-export function legendeHtml() {
+/**
+ * Legende des Darstellungsschluessels ([D-4]).
+ *
+ * Das Wandelement ist OPTIONAL und wird nur fuer die Eintraege gebraucht, die es nicht
+ * immer gibt: der Verzahnungseintrag (#82) erscheint ausschliesslich, wenn die Wand
+ * wirklich einen Verzahnungsbereich fuehrt — ein Schluessel fuer eine nicht gezeichnete
+ * Kennzeichnung waere derselbe leere Kasten, den [D-4] schon fuer die Legende ausschliesst.
+ * Ohne Argument bleibt die Legende zeichengleich zum bisherigen Stand.
+ */
+export function legendeHtml(w) {
   const i = (c, cls) => `<i class="${cls || ""}" style="background:${c}"></i>`;
   return `<div class="zlegende">`
     + `<span>${i(FARBE.stange)}Gewindestange (${STUECK_LABEL.standard})</span>`
@@ -640,6 +876,14 @@ export function legendeHtml() {
     + ` ${BRANDKLASSE.F0.name}</span>`
     + `<span><b style="color:${BRANDKLASSE.F30.farbe}">${BRANDKLASSE.F30.kuerzel}</b>`
     + ` ${BRANDKLASSE.F30.name}</span>`
+    // Verzahnung (#82): NUR bei vorhandenem Bereich, und wie beim Brandschutz als
+    // BUCHSTABENSCHLUESSEL statt Farbfeld — die Kennzeichnung selbst traegt ohne Farbe
+    // (gestrichelte Begrenzung + Schraffur der Aussparungen), also darf auch ihr
+    // Legendeneintrag nicht an einer Farbe haengen.
+    + (((w && w.interlocks) || []).length
+        ? `<span><b style="color:${FARBE.verzahnung}">${VERZAHNUNG.kuerzel}</b>`
+          + ` ${VERZAHNUNG.name}</span>`
+        : "")
     + `</div>`
     // [P-19] Der Kennzeichnungsschluessel der Einbauteile steht ausdruecklich MIT Symbolen
     // dabei: Farbe allein waere im Schwarz-Weiss-Druck keine Kennzeichnung.
@@ -676,10 +920,15 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
     // [Z-5]/[Z-6] Zuschnittkonflikte stehen VOR der Legende und nur, wenn es welche gibt:
     // ein unvollstaendiger Zuschnitt darf auf dem Blatt nicht als vollstaendig erscheinen.
     + (maengelHtml(w) ? `<div class="zbox mangel"><h4>${MANGEL_TITEL}</h4>${maengelHtml(w)}</div>` : "")
+    // [G-10]/[G-12] Regelwidrige Verzahnungsbereiche und die dadurch nicht mehr baubaren
+    // Restbreiten stehen als EIGENER Kasten daneben (#82) — sie sind kein Zuschnittkonflikt
+    // und ausdruecklich kein Baubarkeitsausschluss; ohne Befund gibt es keinen Kasten.
+    + (verzahnungMaengelHtml(w)
+        ? `<div class="zbox mangel"><h4>${VERZAHNUNG_TITEL}</h4>${verzahnungMaengelHtml(w)}</div>` : "")
     // Der Darstellungsschluessel bleibt — ohne ihn sind Stueckart und Einbauteil-ID am
     // Blatt nicht lesbar ([D-4]/[P-19]). Regellisten stehen hier NICHT mehr (#61, s. o.);
     // die frei werdende Flaeche bleibt der Zeichnung und wird nicht neu belegt.
-    + `<div class="zbox"><h4>Darstellung</h4>${legendeHtml()}</div>`
+    + `<div class="zbox"><h4>Darstellung</h4>${legendeHtml(w)}</div>`
     + `</aside>`
     + schriftfeldHtml(w, eingaben, z.masstab, o)
     + `</div>`;

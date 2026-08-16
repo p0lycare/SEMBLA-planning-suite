@@ -14,7 +14,8 @@
 
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen }
+import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
+  PAD_MM, FARBE, VERZAHNUNG, VERZAHNUNG_TITEL, VERZAHNUNG_GRUND, VERZAHNUNG_RESTSEGMENT }
   from "../../docs/shared/sembla-zeichnung.js";
 import { zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
 // #79: der ECHTE Normalisierer aus der Speicherschicht — der Storage-Mock reicht ihn
@@ -331,6 +332,163 @@ ok("[#79] Wand ohne das Feld: Blatt und Uebersicht weisen F0 aus",
   && /<g class="brand" data-brandklasse="F0">/.test($("blattwrap").innerHTML)
   && $("blattwrap").innerHTML.includes("Brandschutz F0")
   && !("brandklasse" in W79b));
+
+// --- 7c) #82 Verzahnungsbereiche im ECHTEN Seitenpfad --------------------
+// Gebaut wird ueber den echten Rechenkern (buildWall mit `interlocks`), gezeigt wird das
+// von DIESER Seite erzeugte Blatt. Geprueft werden Kennzeichnung an der Rasterlage,
+// Legende, Mangelblock und die Deckungsgleichheit mit Druck-HTML und SVG-Datei ([D-6]).
+//
+// Wandelement-Gruppen werden BALANCIERT ausgeschnitten (nicht per gierigem Muster):
+// die Verzahnungsgruppe enthaelt je Bereich eine eigene Untergruppe.
+function gruppe(svg, klasse) {
+  const start = svg.indexOf(`<g class="${klasse}"`);
+  if (start < 0) return "";
+  let i = start, tiefe = 0;
+  while (i < svg.length) {
+    if (svg.startsWith("<g", i)) { tiefe++; i = svg.indexOf(">", i) + 1; continue; }
+    if (svg.startsWith("</g>", i)) { tiefe--; i += 4; if (!tiefe) return svg.slice(start, i); continue; }
+    i++;
+  }
+  return "";
+}
+/** Gezeichnete Steinrechtecke eines Blatt-SVG als {x,y,w,h,typ} (Papier-mm). */
+const steinRechtecke = (svg) => [...svg.matchAll(
+  /<rect x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="(#[0-9a-f]{6})"/g)]
+  .filter(m => m[5] === FARBE.i3 || m[5] === FARBE.i2)
+  .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4], typ: m[5] === FARBE.i3 ? "i3" : "i2" }));
+
+// 3000 mm = 24 Raster; Bereich 5…8 laesst links 5 und rechts 16 Raster stehen — beides
+// baubare Restbreiten, der Fall ist also regelkonform ([G-6]).
+const W82 = buildWall("IW-82", 3000, 2600, [], null, null, [], [{ g0: 5, g1: 8, start_parity: 0 }]);
+const W82ohne = buildWall("IW-82", 3000, 2600, []);
+ok("[#82] Testwand traegt genau einen gueltigen Verzahnungsbereich (Voraussetzung)",
+  W82.interlocks.length === 1 && W82.interlocks[0].g0 === 5 && W82.interlocks[0].g1 === 8
+  && W82.validation.interlock_fehler.length === 0
+  && W82.validation.interlock_invalid_segments.length === 0
+  && W82ohne.interlocks.length === 0);
+
+_aktiv = "w-82"; _we = W82; _eing = JSON.parse(JSON.stringify(EING));
+fireStore();
+const sicht82 = $("blattwrap").innerHTML;
+const svg82 = (sicht82.match(/<svg[\s\S]*?<\/svg>/) || [""])[0];
+const g82 = gruppe(svg82, "verzahnung");
+const M82 = Z.masstab;                       // Masstab genau dieses Blattes
+
+ok("[#82] Uebersicht nennt die Verzahnungsbereiche der aktiven Wand",
+  $("ovVerzahnung").textContent === "1 Bereich");
+ok("[#82] das erzeugte Blatt traegt eine eigene Kennzeichnungsgruppe je Bereich",
+  g82.length > 0 && g82.includes('data-verzahnung="5-8"'));
+// Rasterlage: die beiden gestrichelten Begrenzungslinien stehen exakt auf g0 und g1.
+{
+  const x = k => PAD_MM + k * 125 / M82;
+  const senkrecht = [...g82.matchAll(
+    /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"[^>]*stroke-dasharray/g)]
+    .map(m => ({ x: +m[1], y0: +m[2], y1: +m[4] }));
+  ok("[#82] die Kennzeichnung sitzt auf der realen Rasterlage des Bereichs",
+    senkrecht.length === 2
+    && Math.abs(senkrecht[0].x - x(5)) < 5e-4 && Math.abs(senkrecht[1].x - x(8)) < 5e-4);
+  // … und laeuft ueber die volle Wandhoehe des Bereichs (Wandfuss bis Oberkante).
+  const hPx = W82.height_mm / M82;
+  ok("[#82] die Kennzeichnung laeuft ueber die volle Hoehe des Bereichs",
+    senkrecht.every(l => Math.abs(l.y0 - (PAD_MM + hPx)) < 5e-4 && Math.abs(l.y1 - PAD_MM) < 5e-4));
+}
+ok("[#82] die Aussparungen sind schraffiert (zweites, nicht farbliches Merkmal)",
+  (g82.match(/<line /g) || []).length > 10);
+ok("[#82] die Legende des Blattes erklaert die Kennzeichnung in Worten",
+  sicht82.includes(VERZAHNUNG.name) && sicht82.includes(">" + VERZAHNUNG.kuerzel + "</b>"));
+// Schwarz-Weiss: ohne jede Farbangabe bleiben Kurztext, Strichelung und Legende lesbar.
+{
+  const ohneFarbe = s => s.replace(/(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, "")
+    .replace(/style="color:#[0-9a-fA-F]{3,8}"/g, "");
+  ok("[#82] die Kennzeichnung haengt nicht an einer Farbe (Schwarz-Weiss-Ausdruck)",
+    ohneFarbe(g82).includes(">" + VERZAHNUNG.kuerzel + "<")
+    && /stroke-dasharray/.test(ohneFarbe(g82))
+    && ohneFarbe(sicht82).includes(VERZAHNUNG.name));
+}
+ok("[#82] Druck-HTML und SVG-Datei des zentralen Exports tragen dieselbe Zeichenkette",
+  zeichnungHtml(W82, _eing).includes(g82) && zeichnungSvgText(W82, _eing).includes(g82));
+globalThis.__printed = false;
+$("print").dispatch("click");
+ok("[#82] gedruckt wird genau dieses Blatt (kein zweites Rendering)",
+  globalThis.__printed === true && $("blattwrap").innerHTML === sicht82);
+// Der gezeichnete Verband ist GENAU der des Wandelements — kein Stein mehr, keiner weniger.
+{
+  const soll = W82.courses.flatMap(c => c.stones.map(st => ({
+    x: PAD_MM + st.x0 / M82, w: (st.x1 - st.x0) / M82, typ: st.type })));
+  const ist = steinRechtecke(svg82);
+  ok("[#82] gezeichnete Steine entsprechen genau den Steinen des Wandelements",
+    ist.length === soll.length && soll.every(s => ist.some(r => r.typ === s.typ
+      && Math.abs(r.x - s.x) < 5e-4 && Math.abs(r.w - s.w) < 5e-4)));
+}
+ok("[#82] die Brandschutzgruppe bleibt die letzte Gruppe des Blatt-SVG",
+  svg82.endsWith(gruppe(svg82, "brand") + "</svg>"));
+ok("[#82] ohne Befund kein Verzahnungs-Mangelblock", !sicht82.includes(VERZAHNUNG_TITEL));
+
+// Dieselbe Wand OHNE Verzahnungsbereich: keine Kennzeichnung, kein Legendeneintrag —
+// und Vorschau, Druck-HTML und SVG-Datei bleiben untereinander deckungsgleich.
+_aktiv = "w-82b"; _we = W82ohne;
+fireStore();
+{
+  const sichtOhne = $("blattwrap").innerHTML;
+  const svgOhne = (sichtOhne.match(/<svg[\s\S]*?<\/svg>/) || [""])[0];
+  ok("[#82] Wand ohne Verzahnung: weder Kennzeichnung noch Legendeneintrag",
+    !/class="verzahnung"/.test(sichtOhne) && !sichtOhne.includes(VERZAHNUNG.name)
+    && !sichtOhne.includes(VERZAHNUNG_TITEL));
+  ok("[#82] Wand ohne Verzahnung: Vorschau, Druck-HTML und SVG-Datei sind deckungsgleich",
+    zeichnungHtml(W82ohne, _eing).includes(sichtOhne)
+    && zeichnungSvgText(W82ohne, _eing).includes(svgOhne.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")));
+  ok("[#82] Masstab und Blattformat sind mit und ohne Verzahnung gleich",
+    Z.masstab === M82 && $("ovVerzahnung").textContent === "keine");
+}
+
+// Regelwidriger Bereich: er wird NICHT gezeichnet (er steht nicht im Verband), sondern
+// benannt im eigenen Mangelblock — zusammen mit der dadurch nicht baubaren Restbreite.
+const W82f = buildWall("IW-82f", 3000, 2600, [new Opening(10, 16, 0, 10, "tuer")], null, null, [],
+  [{ g0: 1, g1: 4, start_parity: 0 }, { g0: 11, g1: 13, start_parity: 1 }]);
+ok("[#82] Testwand: ein Bereich abgewiesen, ein Restsegment nicht baubar (Voraussetzung)",
+  W82f.interlocks.length === 1
+  && W82f.validation.interlock_fehler.some(f => f.grund === "ueberlappt_oeffnung")
+  && W82f.validation.interlock_invalid_segments.length > 0);
+_aktiv = "w-82f"; _we = W82f; _eing = JSON.parse(JSON.stringify(EING));
+fireStore();
+{
+  const sichtF = $("blattwrap").innerHTML;
+  const svgF = (sichtF.match(/<svg[\s\S]*?<\/svg>/) || [""])[0];
+  ok("[#82] der regelwidrige Bereich steht benannt im Mangelblock des Blattes",
+    sichtF.includes(VERZAHNUNG_TITEL) && sichtF.includes(VERZAHNUNG_GRUND.ueberlappt_oeffnung)
+    && sichtF.includes("Raster 11–13"));
+  ok("[#82] das nicht baubare Restsegment steht mit Steinreihe und Rasterlage dabei",
+    sichtF.includes(VERZAHNUNG_RESTSEGMENT) && /Steinreihe 1, Raster 0, Breite 1 Raster/.test(sichtF));
+  ok("[#82] gezeichnet wird nur der gueltige Bereich (nichts wird erfunden)",
+    gruppe(svgF, "verzahnung").includes('data-verzahnung="1-4"')
+    && !svgF.includes('data-verzahnung="11-13"'));
+  ok("[#82] auch hier entsprechen die gezeichneten Steine genau dem Wandelement", (() => {
+    const m = Z.masstab;
+    const soll = W82f.courses.flatMap(c => c.stones.map(st => ({
+      x: PAD_MM + st.x0 / m, w: (st.x1 - st.x0) / m, typ: st.type })));
+    const ist = steinRechtecke(svgF);
+    return ist.length === soll.length && soll.every(s => ist.some(r => r.typ === s.typ
+      && Math.abs(r.x - s.x) < 5e-4 && Math.abs(r.w - s.w) < 5e-4));
+  })());
+  ok("[#82] derselbe Mangel steht im Druck-HTML des zentralen Exports ([D-6])",
+    zeichnungHtml(W82f, _eing).includes(VERZAHNUNG_GRUND.ueberlappt_oeffnung)
+    && zeichnungHtml(W82f, _eing).includes(VERZAHNUNG_RESTSEGMENT));
+  // [G-12] ist KEIN Baubarkeitsausschluss: der eigene Kasten sagt, dass der Bereich nicht
+  // ausgefuehrt ist — er erklaert das Blatt nicht fuer unvollstaendig. Geprueft ab dem
+  // Verzahnungstitel, damit ein etwaiger Zuschnitt-Mangelblock davor nicht mitzaehlt.
+  ok("[#82] der Verzahnungsmangel erklaert das Blatt nicht fuer unvollstaendig",
+    sichtF.includes("nicht ausgeführt")
+    && !/unvollständig/.test(sichtF.slice(sichtF.indexOf(VERZAHNUNG_TITEL))));
+}
+ok("[#82] die Seite schreibt die Verzahnung nirgends zurueck",
+  JSON.stringify(_we.interlocks) === JSON.stringify(W82f.interlocks)
+  && schreib.every(s => s.teil === "zeichnung")
+  && !JSON.stringify(_eing).includes("interlock"));
+ok("[#82] Modul 7 hat kein Bedienelement fuer Verzahnungsbereiche und zeichnet sie nicht selbst",
+  !/<select[^>]*verzahn/i.test(html) && !/<input[^>]*verzahn/i.test(html)
+  && !/interlocks\s*=/.test(html) && !/<g class="verzahnung"/.test(html));
+_aktiv = "w-1"; _we = W; _eing = JSON.parse(JSON.stringify(EING));
+fireStore();
 
 // --- 8) Modul-Oberflaeche: keine dezentrale Dateifunktion ---------------
 ok("kein Datei-Download / kein Datei-Upload im Modul",

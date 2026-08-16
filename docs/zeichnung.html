@@ -79,6 +79,7 @@
         <div class="k">Maßstab</div><div class="v" id="ovScale">–</div>
         <div class="k">Blattgröße</div><div class="v" id="ovSheet">–</div>
         <div class="k">Brandschutz</div><div class="v" id="ovBrand">–</div>
+        <div class="k">Verzahnung</div><div class="v" id="ovVerzahnung">–</div>
         <div class="k">Status</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
       </div>
     </div>
@@ -90,6 +91,9 @@
       Baustellenstückliste, Einbauteil-IDs, Vorspannkennzahlen, etwaige Zuschnittkonflikte und den
       Darstellungsschlüssel. Die <b>Brandschutzklassifikation</b> (F0/F30) steht als Kurztext auf
       dem Blatt und in der Legende; gewählt wird sie in „Wandplanung“ — dieses Modul zeigt sie nur an.
+      <b>Verzahnungsbereiche</b> (Mauerwerksanschluss) sind auf dem Blatt gekennzeichnet und in der
+      Legende erklärt, regelwidrige Bereiche stehen benannt daneben; angelegt werden auch sie in
+      „Wandplanung“.
       <b>Regeltexte trägt es nicht</b> — das Fachregelwerk steht im Handbuch.
       Der statische Nachweis ist <b>nicht Bestandteil dieser Zeichnung</b> — er entsteht in Modul
       „Statik" und liegt als eigenes Dokument im zentralen Export.
@@ -187,6 +191,16 @@ function brandklasse(w){
   return (store&&store.normBrandklasse) ? store.normBrandklasse(w&&w.brandklasse) : 'F0';
 }
 
+/* Verzahnungsbereiche (#82) — NUR ANZEIGE. Angelegt werden sie ausschließlich in Modul 1;
+   dieses Modul hat dafür kein Bedienelement und keinen Schreibweg. Gezählt werden genau die
+   GÜLTIGEN Bereiche des Wandelements — abgewiesene stehen dort nicht und werden auf dem
+   Blatt im eigenen Mangelkasten benannt. Gezeichnet wird die Kennzeichnung im gemeinsamen
+   Baustein, nicht hier. */
+function verzahnungText(w){
+  const n=((w&&w.interlocks)||[]).length;
+  return n ? (n===1 ? '1 Bereich' : n+' Bereiche') : 'keine';
+}
+
 function applyWand(w){
   WALL=w;
   $('leer').style.display='none';
@@ -194,6 +208,7 @@ function applyWand(w){
   $('ovGrid').textContent=w.N_grid+' Raster · '+w.lagen+' Steinreihen';
   $('ovCols').textContent=String((w.tension_columns||[]).length);
   $('ovBrand').textContent=brandklasse(w);
+  $('ovVerzahnung').textContent=verzahnungText(w);
   const b=$('ovBadge');
   if(w.validation && w.validation.buildable===false){ b.className='badge no'; b.textContent='Nicht baubar'; }
   else { b.className='badge ok'; b.textContent='Baubar'; }
@@ -232,6 +247,7 @@ function clearWall(){
   $('blattwrap').innerHTML=''; setzeVorschauMassstab(); $('leer').style.display='';
   $('ovDim').textContent='—'; $('ovGrid').textContent='—'; $('ovCols').textContent='—';
   $('ovScale').textContent='—'; $('ovSheet').textContent='—'; $('ovBrand').textContent='—';
+  $('ovVerzahnung').textContent='—';
   $('ovBadge').className='badge'; $('ovBadge').textContent='—';
   $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
 }

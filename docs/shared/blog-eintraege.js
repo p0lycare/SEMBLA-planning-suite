@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-07",
+    datum: "2026-08-16",
+    typ: "feature",
+    issue: 82,
+    titel: "Verzahnungsbereiche stehen jetzt auch auf der technischen Wandzeichnung — gekennzeichnet und erklärt",
+    testbitte: "In Modul 1 einen Verzahnungsbereich anlegen und Modul 7 öffnen: Der Bereich ist an "
+      + "seiner Rasterlage gekennzeichnet, die Legende erklärt ihn, ein regelwidriger Bereich steht "
+      + "benannt daneben — auch schwarz-weiß und in der SVG-Datei.",
+  },
+  {
     id: "chg-20260816-06",
     datum: "2026-08-16",
     typ: "fix",
