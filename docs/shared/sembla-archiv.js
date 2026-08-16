@@ -28,6 +28,15 @@
  *    schreibt nichts. Erst wenn alles zusammenpasst, darf persistiert werden.
  *  - NICHTS WIRD GERATEN: fehlende, doppelte, ungueltige oder ueberzaehlige
  *    Dateien werden benannt, nicht repariert und nicht stillschweigend uebergangen.
+ *  - NUR TRANSPORT, KEINE FACHLICHE ABLEITUNG: die Wanddatei reist als GANZES
+ *    SEMBLA-Projekt-v2-Objekt (Wandelement samt aller optionalen Felder), die Lage
+ *    als Teil der Mappe. Fachliche BEZIEHUNGEN zwischen Waenden werden hier weder
+ *    gespeichert noch nachgerechnet — es gibt sie als Datum nicht. Die zulaessige
+ *    Wandverzahnung ([K-13.1]) etwa entsteht bei jeder Pruefung und jeder
+ *    Ausgabe NEU aus kanonischer Wandlage und den Verzahnungsbereichen des
+ *    Wandelements (`pruefeGeschoss`, sembla-constraints.js). Genau deshalb
+ *    ueberstehen sie Export, Import und Duplizieren, ohne dass dieses Modul davon
+ *    etwas wissen muesste — ein eigenes Beziehungsfeld waere eine zweite Wahrheit.
  *
  * Rein und DOM-frei; eigene Tests (tests/module/test-archiv.mjs) — shared-Regel (b).
  */

@@ -9,6 +9,7 @@
 // traversierende und ueberzaehlige Eintraege muessen benannt werden.
 // Alle Daten sind synthetisch (Minimalbilder aus wenigen Bytes).
 
+import { readFileSync } from "node:fs";
 import * as ARCHIV from "../../docs/shared/sembla-archiv.js";
 import * as MAPPE from "../../docs/shared/sembla-projektmappe.js";
 import { zipSync, entpacke } from "../../docs/shared/zip.js";
@@ -324,6 +325,175 @@ ok("[#82] Altbestand ohne interlocks-Feld laedt ohne Fehler",
 ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
   !altIlGelesen.waende[0].wandelement.interlocks
   || altIlGelesen.waende[0].wandelement.interlocks.length === 0);
+
+// --- [#83] Die Verzahnungsbeziehung uebersteht Archiv und Duplizieren ------
+//
+// #82 hat belegt, dass die FELDER am Wandelement (`interlocks`) den Roundtrip
+// ueberstehen (s. o.). Offen war der Nachweis fuer die BEZIEHUNG zwischen zwei
+// Waenden: dass also nach Export und Import derselben Stelle weiterhin eine
+// zulaessige Verzahnung statt einer Kollision bescheinigt wird ([K-13.1]).
+//
+// Der Punkt der Regel ist, dass es diese Beziehung als Datum GAR NICHT GIBT: sie
+// wird bei jeder Pruefung neu aus kanonischer Wandlage (Projektmappe) und
+// kanonischen Verzahnungsbereichen (Wandelement) gerechnet — in `pruefeGeschoss`.
+// Genau deshalb kann der Archivweg sie auch nicht verlieren; nachgewiesen wird das
+// hier am ECHTEN Pfad statt an nachgebauten Datenstrukturen:
+//
+//   echte Speicherschicht (storage.js) → echter Rechenkern (buildWall)
+//   → exportPlan/archivDateien → zipSync/entpacke → leseArchiv/schreibeArchiv
+//   → LEERER Zielspeicher → Bewertung und Lageplanblatt aus dem importierten Stand.
+{
+  class MemStorage {
+    constructor() { this.m = new Map(); }
+    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k, v) { this.m.set(k, String(v)); }
+    removeItem(k) { this.m.delete(k); }
+  }
+  globalThis.localStorage = new MemStorage();
+  const store = await import("../../docs/shared/storage.js");
+  const CON = await import("../../docs/shared/sembla-constraints.js");
+  const LP = await import("../../docs/shared/sembla-lageplan.js");
+
+  // Zwei rechtwinklige Waende mit GENAU EINEM gemeinsamen Rasterfeld (0/0 je Wand):
+  // x-Wand x[0…2000] y[1000…1125], y-Wand x[0…125] y[1000…2000].
+  const LAGE_X = { start_mm: { x: 0, y: 1062.5 }, richtung: "x", laenge_grid: 16 };
+  const LAGE_Y = { start_mm: { x: 62.5, y: 1000 }, richtung: "y", laenge_grid: 8 };
+
+  /**
+   * Ein Projekt mit zwei so gelegten Waenden aufbauen, als vollstaendiges
+   * Projektarchiv exportieren und in einen LEEREN Speicher importieren.
+   * Zurueck kommt beides: der Stand vor dem Export und der importierte.
+   */
+  async function archivProbe(ilX, ilY) {
+    globalThis.localStorage = new MemStorage();          // leerer Ausgangsspeicher
+    const prj = store.fuegeProjektHinzu("Verzahnprobe", { geschoss: "EG", hoehe_mm: 2600 });
+    const gsId = prj.gebaeude[0].geschosse[0].id;
+    store.speichere("Wand X", buildWall("Wand X", 2000, 2600, [], null, null, [], ilX), "wnd-vx");
+    store.speichere("Wand Y", buildWall("Wand Y", 1000, 2600, [], null, null, [], ilY), "wnd-vy");
+    store.verorteWand("wnd-vx", gsId, { lage: LAGE_X });
+    store.verorteWand("wnd-vy", gsId, { lage: LAGE_Y });
+
+    const mappeVor = store.holeMappe();
+    const elementeVor = store.listeElemente();
+    const plan = ARCHIV.exportPlan(mappeVor, elementeVor.map((e) => e.id), []);
+    const files = ARCHIV.archivDateien(mappeVor, plan, (id) => store.projektObjekt(id), () => null);
+    const w = ARCHIV.archivName(mappeVor);
+    const zip = zipSync(files.map((d) => ({ name: w + "/" + d.name, data: d.data })));
+
+    globalThis.localStorage = new MemStorage();          // leerer Zielspeicher
+    const gelesen = ARCHIV.leseArchiv(await entpacke(zip),
+      { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) });
+    const erg = await store.schreibeArchiv(gelesen, {});
+    return { gsId, gelesen, erg, mappeVor, elementeVor,
+      mappe: store.holeMappe(), elemente: store.listeElemente() };
+  }
+
+  /** Die Verzahnungstabelle GENAU so bilden wie `verzahnungenMap()` im Geschosseditor. */
+  const verzTabelle = (mappe) => {
+    const t = new Map();
+    for (const { wand } of MAPPE.alleWaende(mappe)) {
+      const el = store.holeElement(wand.id);
+      const il = el && el.wandelement ? el.wandelement.interlocks : null;
+      if (Array.isArray(il) && il.length) t.set(String(wand.id), il);
+    }
+    return t;
+  };
+  /** Die Bewertung, wie der Geschosseditor sie in `loesen()` holt (`pruefeGeschoss`). */
+  const editorBewertung = (mappe, gsId) => {
+    const gs = MAPPE.findeGeschoss(mappe, gsId).geschoss;
+    return CON.pruefeGeschoss(gs.waende, gs.bemassungen, gs.ursprung_mm, verzTabelle(mappe));
+  };
+
+  const PASSEND_X = [{ g0: 0, g1: 1, start_parity: 0 }];
+  const PASSEND_Y = [{ g0: 0, g1: 1, start_parity: 1 }];
+
+  const p = await archivProbe(PASSEND_X, PASSEND_Y);
+
+  // --- Muss 1: Kennungen, Lagen und Verzahnungsbereiche kommen zurueck -----
+  ok("[#83] das Archiv wird fehlerfrei gelesen und geschrieben",
+    p.gelesen.fehler.length === 0 && p.gelesen.waende.length === 2 && p.erg.waende === 2);
+  ok("[#83] dieselben stabilen Wandkennungen stehen wieder im Geschoss",
+    MAPPE.alleWaende(p.mappe).map((x) => x.wand.id).sort().join() === "wnd-vx,wnd-vy");
+  ok("[#83] die Wandlagen sind nach dem Archivweg wertgleich",
+    JSON.stringify(MAPPE.alleWaende(p.mappe).map((x) => x.wand.lage))
+    === JSON.stringify(MAPPE.alleWaende(p.mappeVor).map((x) => x.wand.lage))
+    && MAPPE.findeWand(p.mappe, "wnd-vx").wand.lage.start_mm.y === 1062.5
+    && MAPPE.findeWand(p.mappe, "wnd-vy").wand.lage.richtung === "y");
+  ok("[#83] die Verzahnungsbereiche beider Waende sind wertgleich erhalten",
+    JSON.stringify(store.holeElement("wnd-vx").wandelement.interlocks) === JSON.stringify(PASSEND_X)
+    && JSON.stringify(store.holeElement("wnd-vy").wandelement.interlocks) === JSON.stringify(PASSEND_Y));
+
+  // --- Muss 2/3: der Lageplan des IMPORTIERTEN Standes ---------------------
+  const dNach = LP.lageplanDaten({ mappe: p.mappe, geschossId: p.gsId, elemente: p.elemente });
+  const bNach = LP.blattHtml(dNach);
+  ok("[#83] der Lageplan meldet die Stelle als zulaessige Verzahnung, nicht als Kollision",
+    dNach.kollisionen.length === 0 && dNach.verzahnungen.length === 1
+    && dNach.verzahnungen[0].name_a === "Wand X" && dNach.verzahnungen[0].name_b === "Wand Y");
+  ok("[#83] beide Wandnamen stehen dafuer auf dem Blatt",
+    /<h4>Verzahnungen<\/h4>/.test(bNach.html) && /„Wand X“ und „Wand Y“/.test(bNach.html));
+  ok("[#83] der Vollstaendigkeitsvermerk weist an dieser Stelle keinen Mangel aus",
+    dNach.vollstaendig === true && dNach.meldungen.length === 0
+    && !/nicht vollständig/i.test(bNach.html));
+
+  // --- Muss 4: derselbe importierte Stand im Geschosseditor ----------------
+  // Nachgewiesen an der KANONISCHEN Bewertung mit exakt dem Eingang, den
+  // `loesen()` in docs/geschossplan.html bildet — es gibt keinen zweiten Weg.
+  const eNach = editorBewertung(p.mappe, p.gsId);
+  ok("[#83] der Geschosseditor bewertet dieselbe Stelle ebenfalls als Verzahnung",
+    eNach.kollisionen.length === 0 && eNach.verzahnungen.length === 1
+    && eNach.verzahnungen[0].a === "wnd-vx" && eNach.verzahnungen[0].b === "wnd-vy");
+  ok("[#83] Editor und Lageplan sagen dasselbe — dieselbe Rechnung, dieselbe Stelle",
+    JSON.stringify(eNach.verzahnungen.map((v) => v.raster))
+    === JSON.stringify(dNach.verzahnungen.map((v) => v.raster))
+    && eNach.verzahnungen[0].raster.a === 0 && eNach.verzahnungen[0].raster.b === 0);
+
+  // --- Muss 5: eine unzulaessige Ueberlagerung bleibt Kollision ------------
+  const q = await archivProbe(PASSEND_X, [{ g0: 0, g1: 1, start_parity: 0 }]);
+  const dQ = LP.lageplanDaten({ mappe: q.mappe, geschossId: q.gsId, elemente: q.elemente });
+  ok("[#83] gleiche Startparitaet bleibt nach demselben Archivweg eine Kollision",
+    dQ.kollisionen.length === 1 && dQ.verzahnungen.length === 0
+    && dQ.meldungen.some((x) => x.art === "kollision")
+    && dQ.vollstaendig === false
+    && /nicht vollständig/i.test(LP.blattHtml(dQ).html));
+  ok("[#83] auch der Geschosseditor bleibt bei der Kollision",
+    (() => { const e = editorBewertung(q.mappe, q.gsId);
+      return e.kollisionen.length === 1 && e.verzahnungen.length === 0; })());
+
+  // --- Muss 6: Duplizieren aendert die Bewertung des Paares nicht ----------
+  // Die Kopie traegt eine NEUE id und ist nach #74 ausdruecklich unverortet — sie
+  // kann damit gar keine Ueberlagerung erzeugen. Verglichen wird bitgenau.
+  const r = await archivProbe(PASSEND_X, PASSEND_Y);
+  const vorherBewertung = JSON.stringify(editorBewertung(r.mappe, r.gsId));
+  const vorherBlatt = LP.blattHtml(LP.lageplanDaten(
+    { mappe: r.mappe, geschossId: r.gsId, elemente: r.elemente })).html;
+  const vorherWandX = JSON.stringify(store.holeElement("wnd-vx"));
+  const kopieId = store.dupliziere("wnd-vx");
+  const nachherMappe = store.holeMappe();
+  ok("[#83] die Kopie ist eine eigene Wand mit eigenen Verzahnungsbereichen",
+    kopieId !== "wnd-vx"
+    && JSON.stringify(store.holeElement(kopieId).wandelement.interlocks) === JSON.stringify(PASSEND_X)
+    && store.holeElement(kopieId).name === "Wand X (Kopie)");
+  ok("[#83] sie ist unverortet und steht in keinem Geschoss",
+    !MAPPE.findeWand(nachherMappe, kopieId)
+    && store.mappeReferenzen().unverortet.includes(kopieId));
+  ok("[#83] die Ausgangswand bleibt bit-genau unveraendert",
+    JSON.stringify(store.holeElement("wnd-vx")) === vorherWandX);
+  ok("[#83] die Bewertung des bestehenden Paares ist danach bitgleich",
+    JSON.stringify(editorBewertung(nachherMappe, r.gsId)) === vorherBewertung);
+  ok("[#83] auch das Lageplanblatt des Geschosses bleibt bitgleich",
+    LP.blattHtml(LP.lageplanDaten({ mappe: nachherMappe, geschossId: r.gsId,
+      elemente: store.listeElemente() })).html === vorherBlatt);
+
+  // --- Muss-not: es entsteht KEIN gespeichertes Beziehungsfeld -------------
+  ok("[#83] weder Mappe noch Wandelement tragen eine gespeicherte Verzahnungsbeziehung",
+    !JSON.stringify(nachherMappe).includes("verzahnung")
+    && !JSON.stringify(nachherMappe).includes("interlock")
+    && !JSON.stringify(store.holeElement("wnd-vx")).includes("verzahnung"));
+  ok("[#83] das Archivmodul rechnet keine eigene Verzahnungsgeometrie",
+    !/start_parity|interlock|verzahn/i.test(
+      readFileSync(new URL("../../docs/shared/sembla-archiv.js", import.meta.url), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")));
+}
 
 // --- Ausgabe --------------------------------------------------------------
 let fail = 0;

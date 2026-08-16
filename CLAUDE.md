@@ -194,6 +194,22 @@ Bereiche keinen Einfluss ([G-11])** — Spannachsen werden aus dem vollständige
 Verzahnungsaussparungen berechnet. Der Verzahnungsbereich ändert aber die **Steinmengen** (weniger
 Steine in den ausgesparten Lagen) und die **Stoßfugenzahl**.
 
+**Die Verzahnungs*beziehung* zwischen zwei Wänden gibt es als Datum nicht ([K-13.1], #83).** Ob eine
+Überlagerung eine zulässige Verzahnung oder eine Kollision ist, entsteht bei **jeder** Prüfung und
+**jeder** Ausgabe **neu** in `pruefeGeschoss` aus zwei kanonischen Quellen: der **Wandlage** der
+Projektmappe und den **Verzahnungsbereichen** der beteiligten Wandelemente. Gespeichert ist davon
+**nichts** — kein Beziehungsfeld in Mappe, Wandelement oder `eingaben`. Genau deshalb übersteht die
+Bewertung **Export und Import eines vollständigen Projektarchivs** ([L-13]) und das **Duplizieren**:
+das Archiv reicht Lage und `interlocks` unverändert durch (`sembla-archiv.js` **transportiert** nur
+und rechnet keine Verzahnungsgeometrie), und `store.dupliziere` legt eine **eigene, unverortete**
+Kopie an, die das bestehende Wandpaar nicht berührt. Die beiden Leser bilden ihre Tabelle rein
+lesend — `verzahnungenMap()` in `geschossplan.html`, `verzahnungsTabelle` in `sembla-lageplan.js` —,
+**Modul 1 bleibt der einzige Schreibweg**. Nachgewiesen ist das am **echten Pfad** (Speicherschicht →
+Core → Archivexport → ZIP → Import in einen leeren Speicher → Lageplanblatt und Bewertung) in
+`tests/module/test-archiv.mjs` und `tests/module/test-lageplan.mjs`, samt Gegenprobe, dass eine
+unzulässige Überlagerung denselben Weg als Kollision übersteht. **Kein** neues Feld, **kein**
+Schema-/Format-Sprung.
+
 **Stangenlänge nur aus dem Katalog — kein Eingabefeld ([Z-1]).** Modul 1 hat **kein** Feld für die
 Gewindestangenlänge mehr (ersatzlos entfernt, nicht nur gesperrt): es gibt keinen zweiten Weg, die
 Vorspann-Geometrie zu setzen. Die **unterste** Stange ist immer die **größte** gewählte

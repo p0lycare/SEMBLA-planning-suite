@@ -39,9 +39,10 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// #81 (Kommentar je Stuecklistenposition) ist der NEUESTE Eintrag; die bisherige Reihe
-// rueckt geschlossen um eins nach hinten und zaehlt deshalb ueber `NEU`:
-// #82 (Verzahnungs-Roundtrip), #83 (Lageplan), #59 (vollstaendig sichtbare Nummernblasen
+// #83 (Nachweis, dass die Verzahnungsbewertung Archiv und Duplizieren uebersteht) ist
+// der NEUESTE Eintrag; die bisherige Reihe rueckt geschlossen um eins nach hinten.
+// Ueber `NEU` zaehlen deshalb: #81 (Kommentar je Stuecklistenposition), #82
+// (Verzahnungs-Roundtrip), #83 (Lageplan), #59 (vollstaendig sichtbare Nummernblasen
 // im Lageplan), #82 (Verzahnung auf der technischen Wandzeichnung) und #83 (zulaessige
 // Verzahnung im Geschosseditor). Die darauf folgenden Zusicherungen zaehlen ueber
 // `AKTUELL`: #81 (Mengenfassung der Gesamtstueckliste), #82 (Verzahnungsbereiche in
@@ -50,30 +51,52 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const NEU = EINTRAEGE.slice(1);
-const AKTUELL = EINTRAEGE.slice(6);
-const AELTER = EINTRAEGE.slice(16);
-// Der neueste Eintrag ergaenzt die Mengenuebersteuerung um den Kommentar. Aussagewahr
-// heisst hier: er steht NEBEN Menge und Preis und aendert die Rechnung NICHT — kein
-// Export, keine Summe, keine Menge. Genau das darf versprochen werden, mehr nicht ([P-20]).
-ok("der Kommentar je Stuecklistenposition (Issue 81) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260816-11" && EINTRAEGE[0]?.issue === 81
-  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-16");
+const NEU = EINTRAEGE.slice(2);
+const AKTUELL = EINTRAEGE.slice(7);
+const AELTER = EINTRAEGE.slice(17);
+// Der neueste Eintrag ist der DETERMINISTISCHE NACHWEIS, dass die Verzahnungsbewertung
+// Projektarchiv und Duplizieren uebersteht — sie entsteht bei jeder Ausgabe frisch
+// ([K-13.1]). Aussagewahr heisst hier: es wurde NICHTS an der Bewertung geaendert und
+// kein neues Bedienelement gebaut; entstanden sind Nachweis und Doku. Deshalb „intern“ —
+// ein „feature“ waere hier eine Uebertreibung ([P-9]).
+ok("der Verzahnungs-Nachweis (Issue 83) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260816-12" && EINTRAEGE[0]?.issue === 83
+  && EINTRAEGE[0]?.typ === "intern" && EINTRAEGE[0]?.datum === "2026-08-16");
+ok("der Nachweis-Eintrag benennt beide Wege und verspricht keine neue Funktion",
+  /Verzahnungsbewertung/.test(EINTRAEGE[0]?.titel || "")
+  && /Projektarchiv/.test(EINTRAEGE[0]?.titel || "")
+  && /Duplizieren/.test(EINTRAEGE[0]?.titel || "")
+  && /unverändert/.test(EINTRAEGE[0]?.titel || "")
+  // Es ist KEIN neues Bedienelement und keine geaenderte Darstellung entstanden.
+  && !/neu|wählbar|Schalter/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Nachweis-Testbitte benennt Export, leeren Browser, Ort und die unveraenderte Bewertung",
+  /exportieren/.test(EINTRAEGE[0]?.testbitte || "")
+  && /leeren Browser/.test(EINTRAEGE[0]?.testbitte || "")
+  && /importieren/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
+  && /statt einer Kollision/.test(EINTRAEGE[0]?.testbitte || "")
+  && /nichts geändert/.test(EINTRAEGE[0]?.testbitte || ""));
+// Davor ergaenzte der Kommentar die Mengenuebersteuerung. Aussagewahr heisst dort:
+// er steht NEBEN Menge und Preis und aendert die Rechnung NICHT — kein Export, keine
+// Summe, keine Menge. Genau das darf versprochen werden, mehr nicht ([P-20]).
+ok("der Kommentar je Stuecklistenposition (Issue 81) folgt direkt danach",
+  EINTRAEGE[1]?.id === "chg-20260816-11" && EINTRAEGE[1]?.issue === 81
+  && EINTRAEGE[1]?.typ === "feature" && EINTRAEGE[1]?.datum === "2026-08-16");
 ok("der Kommentar-Eintrag benennt Ort, Nachbarschaft und die unveraenderte Rechnung aussagewahr",
-  /Kommentar/.test(EINTRAEGE[0]?.titel || "")
-  && /Stücklistenposition/.test(EINTRAEGE[0]?.titel || "")
-  && /Modul 4/.test(EINTRAEGE[0]?.titel || "")
-  && /Menge und Preis/.test(EINTRAEGE[0]?.titel || "")
-  && /ohne die Rechnung zu ändern/.test(EINTRAEGE[0]?.titel || "")
+  /Kommentar/.test(EINTRAEGE[1]?.titel || "")
+  && /Stücklistenposition/.test(EINTRAEGE[1]?.titel || "")
+  && /Modul 4/.test(EINTRAEGE[1]?.titel || "")
+  && /Menge und Preis/.test(EINTRAEGE[1]?.titel || "")
+  && /ohne die Rechnung zu ändern/.test(EINTRAEGE[1]?.titel || "")
   // Der Kommentar steht in KEINER Exportdatei — das darf der Titel nicht andeuten.
-  && !/Export|Datei/.test(EINTRAEGE[0]?.titel || ""));
+  && !/Export|Datei/.test(EINTRAEGE[1]?.titel || ""));
 ok("die Kommentar-Testbitte benennt Ort, Position, Persistenz, Ruecknahme und die erhaltene Rechnung",
-  /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
-  && /an genau dieser/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Neuladen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /einzeln wieder entfernen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Mengen, Preise und Summe/.test(EINTRAEGE[0]?.testbitte || "")
-  && /unverändert/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Modul 4/.test(EINTRAEGE[1]?.testbitte || "")
+  && /an genau dieser/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Neuladen/.test(EINTRAEGE[1]?.testbitte || "")
+  && /einzeln wieder entfernen/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Mengen, Preise und Summe/.test(EINTRAEGE[1]?.testbitte || "")
+  && /unverändert/.test(EINTRAEGE[1]?.testbitte || ""));
 // Danach schliesst der Verzahnungs-Roundtrip die Verzahnungsarbeit ab: Export, Import
 // und Duplizieren muessen verlustfrei sein. Aussagewahr heisst hier: Grenzen UND
 // Startparitaet bleiben erhalten — dieselben Daten, nicht nur dieselbe Wirkung.
@@ -154,13 +177,15 @@ ok("die Testbitte benennt Anlageort, Rasterlage, Legende, Mangel, Schwarz-Weiss 
   && /regelwidriger Bereich/.test(NEU[3]?.testbitte || "")
   && /schwarz-weiß/.test(NEU[3]?.testbitte || "")
   && /SVG-Datei/.test(NEU[3]?.testbitte || ""));
-// #83 hat ZWEI Eintraege, weil es zwei getrennte Nutzerergebnisse waren: erst die
-// Ausnahme im Geschosseditor, dann dieselbe Aussage im Lageplan — die dort
-// ausdruecklich offen gebliebene Haelfte. Beide zusammen decken das Issue ab.
+// #83 hat DREI Eintraege, weil es drei getrennte Ergebnisse waren: erst die Ausnahme im
+// Geschosseditor, dann dieselbe Aussage im Lageplan — die dort ausdruecklich offen
+// gebliebene Haelfte — und zuletzt der deterministische Nachweis, dass die Bewertung
+// Projektarchiv und Duplizieren uebersteht. Die drei zusammen decken das Issue ab.
 const neu83 = EINTRAEGE.filter(e => e.issue === 83);
-ok("genau zwei Eintraege fuer Issue 83 — Geschosseditor und Lageplan",
-  neu83.length === 2
-  && neu83.map(e => e.id).join(",") === "chg-20260816-09,chg-20260816-06");
+ok("genau drei Eintraege fuer Issue 83 — Geschosseditor, Lageplan und Archivnachweis",
+  neu83.length === 3
+  && neu83.map(e => e.id).join(",")
+    === "chg-20260816-12,chg-20260816-09,chg-20260816-06");
 ok("die zulaessige Verzahnung im Geschosseditor (Issue 83) folgt direkt danach",
   NEU[4]?.id === "chg-20260816-06" && NEU[4]?.issue === 83
   && NEU[4]?.typ === "fix" && NEU[4]?.datum === "2026-08-16");

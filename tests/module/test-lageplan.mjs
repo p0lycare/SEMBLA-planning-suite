@@ -1636,5 +1636,107 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
       .test(codeOhneKommentar));
 }
 
+// --- #83: die Verzahnung uebersteht den Archivweg -------------------------
+//
+// Die Bloecke oben pruefen die Bewertung an einer im Test gebauten Mappe. Offen
+// war der Nachweis, dass dasselbe Blatt auch aus einem EXPORTIERTEN UND WIEDER
+// IMPORTIERTEN Projekt entsteht ([K-13.1]): die Verzahnung ist kein gespeichertes
+// Feld, sondern wird bei JEDER Ausgabe frisch aus kanonischer Wandlage (Mappe) und
+// kanonischen Verzahnungsbereichen (Wandelement) gerechnet — verlieren kann der
+// Archivweg sie also gar nicht, und genau das wird hier am echten Pfad belegt:
+// storage.js → buildWall → Archivexport → ZIP → Archivimport in einen LEEREN
+// Speicher → `lageplanDaten`/`blattHtml` aus genau diesem Stand.
+{
+  class MemStorage {
+    constructor() { this.m = new Map(); }
+    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k, v) { this.m.set(k, String(v)); }
+    removeItem(k) { this.m.delete(k); }
+  }
+  globalThis.localStorage = new MemStorage();
+  const store = await import("../../docs/shared/storage.js");
+  const ARCHIV = await import("../../docs/shared/sembla-archiv.js");
+  const ZIP = await import("../../docs/shared/zip.js");
+  const { buildWall } = await import("../../docs/shared/sembla-core.js");
+
+  // Derselbe Pruefaufbau wie oben (`bauVerz`), nur diesmal ueber die echte
+  // Speicherschicht: x-Wand x[0…2000] y[1000…1125], y-Wand x[0…125] y[1000…2000],
+  // Ueberlagerung exakt ein Rasterfeld.
+  async function archivStand(ilX, ilY) {
+    globalThis.localStorage = new MemStorage();
+    const prj = store.fuegeProjektHinzu("Verzahnprobe", { geschoss: "EG", hoehe_mm: 2600 });
+    const gsId = prj.gebaeude[0].geschosse[0].id;
+    store.speichere("Wand X", buildWall("Wand X", 2000, 2600, [], null, null, [], ilX), "wnd-vx");
+    store.speichere("Wand Y", buildWall("Wand Y", 1000, 2600, [], null, null, [], ilY), "wnd-vy");
+    store.verorteWand("wnd-vx", gsId,
+      { lage: { start_mm: { x: 0, y: 1062.5 }, richtung: "x", laenge_grid: 16 } });
+    store.verorteWand("wnd-vy", gsId,
+      { lage: { start_mm: { x: 62.5, y: 1000 }, richtung: "y", laenge_grid: 8 } });
+
+    const mappeVor = store.holeMappe();
+    const plan = ARCHIV.exportPlan(mappeVor, store.listeElemente().map((e) => e.id), []);
+    const files = ARCHIV.archivDateien(mappeVor, plan, (id) => store.projektObjekt(id), () => null);
+    const wurzel = ARCHIV.archivName(mappeVor);
+    const zip = ZIP.zipSync(files.map((d) => ({ name: wurzel + "/" + d.name, data: d.data })));
+
+    globalThis.localStorage = new MemStorage();          // leerer Zielspeicher
+    const gelesen = ARCHIV.leseArchiv(await ZIP.entpacke(zip),
+      { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) });
+    await store.schreibeArchiv(gelesen, {});
+    return { gsId, gelesen, mappeVor, mappe: store.holeMappe(), elemente: store.listeElemente() };
+  }
+
+  const PASSEND = [[{ g0: 0, g1: 1, start_parity: 0 }], [{ g0: 0, g1: 1, start_parity: 1 }]];
+  const st = await archivStand(PASSEND[0], PASSEND[1]);
+  const dA = LP.lageplanDaten({ mappe: st.mappe, geschossId: st.gsId, elemente: st.elemente });
+  const bA = LP.blattHtml(dA);
+
+  t("#83 der Archivweg stellt Kennungen, Lagen und Verzahnungsbereiche wieder her",
+    st.gelesen.fehler.length === 0
+    && JSON.stringify(MAPPE.alleWaende(st.mappe).map((x) => [x.wand.id, x.wand.lage]))
+       === JSON.stringify(MAPPE.alleWaende(st.mappeVor).map((x) => [x.wand.id, x.wand.lage]))
+    && JSON.stringify(store.holeElement("wnd-vy").wandelement.interlocks)
+       === JSON.stringify(PASSEND[1]));
+  t("#83 aus dem importierten Stand ist die Stelle weiterhin eine Verzahnung",
+    dA.kollisionen.length === 0 && dA.verzahnungen.length === 1
+    && dA.verzahnungen[0].name_a === "Wand X" && dA.verzahnungen[0].name_b === "Wand Y");
+  t("#83 das importierte Blatt nennt beide Wandnamen und meldet keinen Mangel",
+    /<h4>Verzahnungen<\/h4>/.test(bA.html) && /„Wand X“ und „Wand Y“/.test(bA.html)
+    && dA.vollstaendig === true && dA.meldungen.length === 0
+    && !/nicht vollständig/i.test(bA.html));
+  t("#83 bewertet hat auch hier der Kern — mit den Bereichen aus dem Wandspeicher",
+    (() => {
+      const gs = MAPPE.findeGeschoss(st.mappe, st.gsId).geschoss;
+      const tab = new Map(MAPPE.alleWaende(st.mappe)
+        .map(({ wand }) => [wand.id, store.holeElement(wand.id).wandelement.interlocks]));
+      const ref = CON.pruefeGeschoss(gs.waende, gs.bemassungen, gs.ursprung_mm, tab);
+      return ref.kollisionen.length === 0
+        && JSON.stringify(ref.verzahnungen.map((v) => v.raster))
+           === JSON.stringify(dA.verzahnungen.map((v) => v.raster));
+    })());
+
+  // Gegenprobe: derselbe Archivweg mit gleicher Startparitaet bleibt Kollision.
+  const stK = await archivStand(PASSEND[0], [{ g0: 0, g1: 1, start_parity: 0 }]);
+  const dK = LP.lageplanDaten({ mappe: stK.mappe, geschossId: stK.gsId, elemente: stK.elemente });
+  t("#83 eine unzulaessige Ueberlagerung bleibt nach dem Archivweg Kollision",
+    dK.kollisionen.length === 1 && dK.verzahnungen.length === 0
+    && dK.meldungen.some((x) => x.art === "kollision" && /Wand X/.test(x.text))
+    && dK.vollstaendig === false
+    && /nicht vollständig/i.test(LP.blattHtml(dK).html));
+
+  // Duplizieren: die Kopie ist eine neue, unverortete Wand — das bestehende Paar
+  // wird davon nicht beruehrt, das Blatt bleibt bitgleich.
+  const vorher = LP.blattHtml(dA).html;
+  globalThis.localStorage = new MemStorage();
+  const st2 = await archivStand(PASSEND[0], PASSEND[1]);
+  const kopie = store.dupliziere("wnd-vx");
+  const dD = LP.lageplanDaten({ mappe: store.holeMappe(), geschossId: st2.gsId,
+    elemente: store.listeElemente() });
+  t("#83 das Duplizieren aendert die Bewertung des bestehenden Paares nicht",
+    kopie !== "wnd-vx" && !MAPPE.findeWand(store.holeMappe(), kopie)
+    && dD.kollisionen.length === 0 && dD.verzahnungen.length === 1
+    && LP.blattHtml(dD).html === vorher);
+}
+
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

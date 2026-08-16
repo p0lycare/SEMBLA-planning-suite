@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-12",
+    datum: "2026-08-16",
+    typ: "intern",
+    issue: 83,
+    titel: "Nachgewiesen: Die Verzahnungsbewertung übersteht Projektarchiv und Duplizieren unverändert",
+    testbitte: "Ein Projekt mit zwei passend verzahnten Wänden exportieren, in einem leeren Browser "
+      + "importieren und Modul 9 öffnen: weiterhin die benannte Verbindung statt einer Kollision. "
+      + "An der Bewertung selbst wurde nichts geändert.",
+  },
+  {
     id: "chg-20260816-11",
     datum: "2026-08-16",
     typ: "feature",
