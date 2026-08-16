@@ -24,8 +24,8 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-08-14",
-  "signatur": "c2d9db2d",
+  "stand": "2026-08-16",
+  "signatur": "8646b471",
   "entscheidungen": [
     {
       "issue": 41,
@@ -68,6 +68,27 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Einen freigegebenen Referenzaufbau mit Maßkette bereitstellen und erst danach die Rechen- und Darstellungslogik ändern."
+    },
+    {
+      "issue": 68,
+      "titel": "Projektanlage-Kopfdaten fachlich neu zuordnen",
+      "prio": "ohne",
+      "status": "decision needed",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true,
+      "frage": "Planverfasser und Phase haben seit der Blattreduktion bewusst keine Zeile im Schriftfeld. Sollen sie in Modul 7 nur pflegbar werden, oder soll das Schriftfeld um zwei Zeilen wachsen?",
+      "optionen": [
+        {
+          "text": "Alle fuenf Angaben werden in Modul 7 pflegbar; im Schriftfeld erscheinen weiterhin nur Plan-Nr., Index und Gez.",
+          "wirkung": "Kein Regelbruch und kleiner Umfang; Planverfasser und Phase stehen dafuer auf keinem Blatt."
+        },
+        {
+          "text": "Das Schriftfeld erhaelt zusaetzlich Zeilen fuer Planverfasser und Phase.",
+          "wirkung": "Der ausdrueckliche Entscheid zur Blattreduktion wird insoweit revidiert; es entsteht eine neue Fachregel und ein groesserer Umfang."
+        }
+      ],
+      "empfehlung": "Erste Option, weil der Wunsch aus dem Issue die Bedienstelle meint und die Blattreduktion juengeren Datums ist."
     }
   ],
   "naechstes": {
@@ -81,33 +102,6 @@ export const PLAN = {
     "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
   },
   "weitere": [
-    {
-      "issue": 76,
-      "titel": "Geschossursprung frei verschieben",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 79,
-      "titel": "Brandschutz F0 oder F30 je Wand klassifizieren",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 80,
-      "titel": "Geschossplan als Hintergrund im Lageplan anzeigen",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
     {
       "issue": 81,
       "titel": "Manuelle Stücklisten-Overrides mit wählbarem Export",
@@ -143,15 +137,6 @@ export const PLAN = {
       "prio": "high",
       "status": "ohne",
       "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 68,
-      "titel": "Projektanlage-Kopfdaten fachlich neu zuordnen",
-      "prio": "ohne",
-      "status": "ohne",
-      "sicherheit": true,
       "abhaengig_von": [],
       "zyklus": true
     }
