@@ -616,6 +616,34 @@ function blaseFlaeche(cx, cy, nr) {
   return _flaeche(cx - halb, cy - MARKER_R_MM, cx + halb, cy + MARKER_R_MM);
 }
 
+/**
+ * Der TATSAECHLICHE Ueberstand der platzierten Nummernblasen ueber den bisherigen
+ * Zeichenbereich `[0,0] … [breite,hoehe]` (Papier-mm, je Seite, nie negativ).
+ *
+ * Warum es das braucht (#59): Kandidat 0 sitzt `MARKER_ABSTAND_MM + MARKER_R_MM`
+ * = 6,6 mm vor der Wandkante und damit sicher im `PAD_MM`-Rand (10 mm). Jede
+ * Ausweichstufe zieht aber `MARKER_SCHRITT_MM` = 4,6 mm ab — ab der zweiten Stufe
+ * laeuft die Blase zwangslaeufig aus dem Blatt und war bisher abgeschnitten. Der
+ * Rand wird deshalb NACH der Platzierung um genau das gemessene Mass erweitert.
+ *
+ * Gemessen wird an den GEZEICHNETEN Blasen, mit derselben Huellflaeche, mit der sie
+ * einander ausweichen — Kreis UND Zahl, ein zweites Flaechenmodell gibt es nicht.
+ * Ohne Ausweichen ist jeder Wert 0: das Blatt bleibt dann bitgenau das bisherige.
+ *
+ * @param {Array<{x_min:number,y_min:number,x_max:number,y_max:number}>} blasen
+ * @param {number} breite_mm @param {number} hoehe_mm
+ */
+function blasenRand(blasen, breite_mm, hoehe_mm) {
+  let links = 0, oben = 0, rechts = 0, unten = 0;
+  for (const f of blasen) {
+    links = Math.max(links, -f.x_min);
+    oben = Math.max(oben, -f.y_min);
+    rechts = Math.max(rechts, f.x_max - breite_mm);
+    unten = Math.max(unten, f.y_max - hoehe_mm);
+  }
+  return { links, oben, rechts, unten };
+}
+
 // ------------------------------------------------------------------ Zeichnung
 
 /**
@@ -624,7 +652,12 @@ function blaseFlaeche(cx, cy, nr) {
  * @param {any} daten Ergebnis von `lageplanDaten`
  * @param {any} [opts]
  * @returns {{svg:string, inner:string, masstab:number, passt:boolean,
- *            breite_mm:number, hoehe_mm:number, benoetigt:number}}
+ *            breite_mm:number, hoehe_mm:number, benoetigt:number,
+ *            rand:{links:number,oben:number,rechts:number,unten:number},
+ *            voll_breite_mm:number, voll_hoehe_mm:number}}
+ *   `breite_mm`/`hoehe_mm` sind unveraendert der Zeichenbereich der Zeichnung
+ *   selbst; `rand` und `voll_*` sind die AUSGEGEBENE Flaeche einschliesslich des
+ *   Blasenueberstands (#59) — `inner` ist in beiden Faellen dieselbe Zeichenkette.
  */
 export function lageplanSvg(daten, opts) {
   const o = normOptionen(opts);
@@ -636,10 +669,6 @@ export function lageplanSvg(daten, opts) {
   const bW = Math.max(GRID_MM, a.x_max - a.x_min), bH = Math.max(GRID_MM, a.y_max - a.y_min);
   const masstab = waehleMasstab(bW, bH, /** @type {any} */ (o.format));
   const benoetigt = Math.max(bW / Math.max(1, feld.w - RAND_X), bH / Math.max(1, feld.h - RAND_Y));
-  // [N-8]: Passt es selbst im groebsten Massstab nicht, bleibt der Massstab in der
-  // Reihe und das Blatt sagt es. Beschnitten oder gekachelt wird NICHTS — die
-  // Zeichnung bleibt vollstaendig, auch wenn sie dann ueber das Feld hinausragt.
-  const passt = benoetigt <= masstab;
 
   /** Welt-mm -> Papier-mm. */
   const X = (v) => PAD_MM + (v - a.x_min) / masstab;
@@ -767,6 +796,13 @@ export function lageplanSvg(daten, opts) {
     hindernisse.push(masstextFlaeche(mp.p, mp.text), ...masslinienFlaechen(mp.p));
   }
 
+  /**
+   * Die TATSAECHLICH platzierten Blasenflaechen — dieselben Objekte, die auch
+   * Hindernis werden. Aus ihnen entsteht nach der Schleife der Ueberstand ueber den
+   * Zeichenbereich (#59); gerechnet wird nichts nach, gespeichert wird nichts.
+   */
+  const blasen = [];
+
   for (const w of daten.waende) {
     if (!w.rechteck) continue;                       // unverortet: gemeldet, nicht gezeichnet
     const r = w.rechteck;
@@ -866,7 +902,11 @@ export function lageplanSvg(daten, opts) {
       const cx = m.x, cy = m.y;
       // Die eigene Flaeche wird Hindernis fuer die folgenden Waende: die erste Blase
       // bleibt stehen, jede weitere weicht ihr aus (Reihenfolge = Mappenreihenfolge).
-      hindernisse.push(blaseFlaeche(cx, cy, w.nr));
+      // Dieselbe Flaeche geht in `blasen` und traegt damit den Ueberstand (#59) —
+      // eine zweite, nachgerechnete Flaeche koennte davon abweichen.
+      const eigen = blaseFlaeche(cx, cy, w.nr);
+      hindernisse.push(eigen);
+      blasen.push(eigen);
       const ax = quer ? cx : x, ay = quer ? y : cy;          // Ankerpunkt Wandkante
       const lx = quer ? cx : cx + MARKER_R_MM;               // Beginn am Blasenrand
       const ly = quer ? cy + MARKER_R_MM : cy;
@@ -917,11 +957,46 @@ export function lageplanSvg(daten, opts) {
   }
 
   const inner = teile.join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${_n(breite_mm)} ${_n(hoehe_mm)}"`
-    + ` width="${_n(breite_mm)}mm" height="${_n(hoehe_mm)}mm" class="lpdraw">`
-    + `<rect x="0" y="0" width="${_n(breite_mm)}" height="${_n(hoehe_mm)}" fill="#ffffff"/>`
+
+  // ---- Ausgegebener Zeichenbereich (#59) ---------------------------------
+  //
+  // Erst JETZT steht fest, wie weit die Nummernblasen ausgewichen sind. Der Bereich
+  // waechst um genau ihren gemessenen Ueberstand — und zwar AUSSCHLIESSLICH am
+  // Wurzelelement: die viewBox bekommt einen negativen Ursprung, jede Zeichen-
+  // koordinate in `inner` bleibt damit unangetastet. Wandlagen, Bemassungen,
+  // Marker, Planhintergrund (samt seiner Klippung auf `breite_mm`/`hoehe_mm`) und
+  // Schriftfeld behalten so ihre Lage, und ohne Ueberstand ist die Zeichenkette
+  // bitgenau die bisherige.
+  //
+  // Was ausdruecklich NICHT geschieht: `ausdehnung()` und `waehleMasstab()` sehen
+  // die Blasen nach wie vor nicht — der gewaehlte Massstab bleibt unveraendert. Ein
+  // Rueckgriff waere zirkulaer (Massstab bestimmt die Blasenlage, die Blasenlage
+  // bestimmte den Massstab).
+  const rand = blasenRand(blasen, breite_mm, hoehe_mm);
+  const voll_breite_mm = breite_mm + rand.links + rand.rechts;
+  const voll_hoehe_mm = hoehe_mm + rand.oben + rand.unten;
+  const vbX = rand.links ? -rand.links : 0, vbY = rand.oben ? -rand.oben : 0;
+
+  // [N-8]: Passt es selbst im groebsten Massstab nicht, bleibt der Massstab in der
+  // Reihe und das Blatt sagt es. Beschnitten oder gekachelt wird NICHTS — die
+  // Zeichnung bleibt vollstaendig, auch wenn sie dann ueber das Feld hinausragt.
+  // Geprueft wird die TATSAECHLICH ausgegebene Flaeche: ein zu breiter Blasenrand
+  // laesst das Blatt die Zeichnung ebenso herunterskalieren wie ein zu grobes
+  // Geschoss, und dann waere ein unkommentiertes „1 : x" im Schriftfeld unwahr.
+  // Bewusst als Konjunktion: ohne Ueberstand ist das bitgenau der bisherige
+  // Ausdruck, ohne jede Fliesskomma-Umformung.
+  const passt = benoetigt <= masstab
+    && (rand.links + rand.oben + rand.rechts + rand.unten === 0
+      || (voll_breite_mm <= feld.w && voll_hoehe_mm <= feld.h));
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${_n(vbX)} ${_n(vbY)}`
+    + ` ${_n(voll_breite_mm)} ${_n(voll_hoehe_mm)}"`
+    + ` width="${_n(voll_breite_mm)}mm" height="${_n(voll_hoehe_mm)}mm" class="lpdraw">`
+    + `<rect x="${_n(vbX)}" y="${_n(vbY)}" width="${_n(voll_breite_mm)}"`
+    + ` height="${_n(voll_hoehe_mm)}" fill="#ffffff"/>`
     + inner + `</svg>`;
-  return { svg, inner, masstab, passt, breite_mm, hoehe_mm, benoetigt };
+  return { svg, inner, masstab, passt, breite_mm, hoehe_mm, benoetigt,
+    rand, voll_breite_mm, voll_hoehe_mm };
 }
 
 // -------------------------------------------------------------- Blattbausteine
@@ -1071,7 +1146,8 @@ export function wandTabelleHtml(daten) {
  * nutzen GENAU diese Funktion — es gibt keine zweite Blatt-/Zeichenlogik (Muss 9).
  *
  * @param {any} daten @param {any} [opts]
- * @returns {{html:string, svg:string, masstab:number, passt:boolean, format:string, optionen:any}}
+ * @returns {{html:string, svg:string, masstab:number, passt:boolean, benoetigt:number,
+ *            format:string, optionen:any}}
  */
 export function blattHtml(daten, opts) {
   const o = normOptionen(opts);
@@ -1080,11 +1156,24 @@ export function blattHtml(daten, opts) {
   const html = `<div class="lpsheet fmt-${o.format}${o.wasserzeichen ? " wm" : ""}">`
     + (o.wasserzeichen ? `<div class="lpwm"><span>Vorabzug</span></div>` : "")
     + `<div class="lpdrawbox"><div class="lpcap">${_esc(lageplanTitel(daten, z.masstab))}</div>`
-    + (z.passt ? "" : `<div class="lpzugross">Das Geschoss ist für dieses Blatt <b>zu groß</b>: `
+    // Zwei GETRENNTE Gruende, warum die Zeichnung nicht ins Feld passt — sie haben
+    // verschiedene Auswege und deshalb verschiedene Texte. Der Massstabsfall steht
+    // unveraendert; der zweite kommt mit #59 dazu: der Massstab reicht, aber die
+    // ausgewichenen Nummernblasen brauchen mehr Rand, als das Feld hergibt. Ein
+    // gemeinsamer Text behauptete ein zu grosses Geschoss, das es nicht gibt.
+    + (z.passt ? "" : z.benoetigt > z.masstab
+      ? `<div class="lpzugross">Das Geschoss ist für dieses Blatt <b>zu groß</b>: `
       + `selbst 1 : ${MASSSTAEBE[MASSSTAEBE.length - 1]} genügt nicht `
       + `(benötigt wären 1 : ${Math.ceil(z.benoetigt)}). Die Zeichnung bleibt vollständig und wird `
       + `weder beschnitten noch gekachelt — der Ausdruck ist dann aber <b>nicht maßstabsgetreu</b>. `
-      + `Größeres Blattformat wählen oder das Geschoss fachlich teilen ([N-8]).</div>`)
+      + `Größeres Blattformat wählen oder das Geschoss fachlich teilen ([N-8]).</div>`
+      : `<div class="lpzugross">Der Maßstab 1 : ${z.masstab} passt, aber die ausgewichenen `
+      + `<b>Nummernblasen</b> brauchen mehr Zeichnungsrand, als dieses Blattfeld hergibt `
+      + `(${_fmt(z.voll_breite_mm, 1)} × ${_fmt(z.voll_hoehe_mm, 1)} mm bei einem Feld von `
+      + `${_fmt((BLATT[o.format] || BLATT.a3).feld_mm.w)} × `
+      + `${_fmt((BLATT[o.format] || BLATT.a3).feld_mm.h)} mm). Jede Blase bleibt vollständig `
+      + `sichtbar und wird nicht beschnitten — der Ausdruck ist dann aber <b>nicht `
+      + `maßstabsgetreu</b>. Größeres Blattformat wählen ([N-8]).</div>`)
     + `<div class="lpsvg">${z.svg}</div></div>`
     + `<aside class="lpside">`
     + `<div class="lpbox"><h4>Wände im Geschoss</h4>${wandTabelleHtml(daten)}</div>`
@@ -1099,7 +1188,10 @@ export function blattHtml(daten, opts) {
     + `</aside>`
     + schriftfeldHtml(mit, z.masstab, o)
     + `</div>`;
-  return { html, svg: z.svg, masstab: z.masstab, passt: z.passt, format: o.format, optionen: o };
+  // `benoetigt` reist mit, damit ein Aufrufer die beiden Gruende eines `passt: false`
+  // unterscheiden kann, ohne die Zeichnung ein zweites Mal abzuleiten (#59).
+  return { html, svg: z.svg, masstab: z.masstab, passt: z.passt, benoetigt: z.benoetigt,
+    format: o.format, optionen: o };
 }
 
 /** CSS des Blattes — von Vorschau (Modul 9) und Export-Dokument gemeinsam genutzt. */
@@ -1208,8 +1300,10 @@ export function lageplanSvgDatei(daten, opts) {
   // (Zeichenbreite ~ 0,5 · Schriftgroesse), damit sie auch bei einem schmalen Geschoss
   // im Blatt bleibt: abgeschnitten wird nichts, die Datei waechst stattdessen um die
   // noetigen Zeilen. Der Massstab der Zeichnung bleibt davon unberuehrt.
+  // Gerechnet wird mit der AUSGEGEBENEN Breite (#59) — sie schliesst den Rand der
+  // ausgewichenen Nummernblasen ein und ist ohne Ueberstand bitgenau `breite_mm`.
   const FS = 2, RAND = 3, ZEILE = FS + 0.6;
-  const proZeile = Math.max(24, Math.floor((z.breite_mm - 2 * RAND) / (FS * 0.5)));
+  const proZeile = Math.max(24, Math.floor((z.voll_breite_mm - 2 * RAND) / (FS * 0.5)));
   /** @type {string[]} */
   const zeilen = [];
   for (const s of stuecke) {
@@ -1217,7 +1311,13 @@ export function lageplanSvgDatei(daten, opts) {
     if (i >= 0 && (zeilen[i] + " · " + s).length <= proZeile) zeilen[i] += " · " + s;
     else zeilen.push(s);
   }
-  const vbW = z.breite_mm, vbH = z.hoehe_mm + kopf + 4 + Math.max(0, zeilen.length - 1) * ZEILE;
+  // Die Datei zeichnet in einem bei 0/0 beginnenden Blatt und schiebt die Zeichnung
+  // per `translate` unter die Kopfzeile. Der Blasenrand (#59) waechst deshalb hier
+  // in die Blattmasse UND in die Verschiebung — sonst liefe eine nach links oder
+  // oben ausgewichene Blase aus der Datei heraus oder in die Kopfzeile hinein. Ohne
+  // Ueberstand sind beide Summanden 0 und die Datei ist bitgenau die bisherige.
+  const vbW = z.voll_breite_mm;
+  const vbH = z.voll_hoehe_mm + kopf + 4 + Math.max(0, zeilen.length - 1) * ZEILE;
   // `class="lpkopf"` macht die Kopfangaben unterscheidbar von der Massbeschriftung der
   // Zeichnung (gleiche Schriftgroesse) — fuer Leser der Datei wie fuer den Test.
   const fuss = zeilen.map((s, i) =>
@@ -1233,7 +1333,7 @@ export function lageplanSvgDatei(daten, opts) {
     + `<text x="${RAND}" y="4" font-size="2.8" font-family="sans-serif" fill="${FARBE.wand_rand}">`
     + `${_esc(titel)}</text>\n`
     + fuss
-    + `<g transform="translate(0 ${kopf})">${z.inner}</g>\n`
+    + `<g transform="translate(${_n(z.rand.links)} ${_n(kopf + z.rand.oben)})">${z.inner}</g>\n`
     + `</svg>\n`;
 }
 

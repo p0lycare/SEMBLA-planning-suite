@@ -1199,13 +1199,19 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     freiBlatt.html === langBlatt.html && freiBlatt.svg === langBlatt.svg);
   // Der Rest der Zeichnung bleibt unberuehrt: ohne die Markergruppen ist die
   // Zeichenkette exakt die des Blattes ohne Wandkennzeichnung.
+  //
+  // Verglichen wird der ZEICHENINHALT (`inner`), nicht die ganze Datei: seit dem
+  // Blasenrand (#59) waechst bei ausgewichenen Blasen das Wurzelelement (viewBox,
+  // Blattmasse, Grundrechteck) — und genau das ist der Zweck. Die Zusicherung ist
+  // damit sogar schaerfer: `inner` muss IMMER gleich sein, mit und ohne Ueberstand.
   const ohneMarker = (s) => s.replace(/<g class="lpmarker"[\s\S]*?<\/g>/g, "");
   t("[#59] ausserhalb der Blasen aendert sich an der Zeichnung nichts",
-    ohneMarker(freiBlatt.svg) === LP.lageplanSvg(LANG, { kennzeichnung: false }).svg
-    && ohneMarker(LP.lageplanSvg(NAH).svg)
-       === LP.lageplanSvg(NAH, { kennzeichnung: false }).svg
-    && ohneMarker(LP.lageplanSvg(AUF_MASS).svg)
-       === LP.lageplanSvg(AUF_MASS, { kennzeichnung: false }).svg);
+    ohneMarker(LP.lageplanSvg(LANG).inner)
+       === LP.lageplanSvg(LANG, { kennzeichnung: false }).inner
+    && ohneMarker(LP.lageplanSvg(NAH).inner)
+       === LP.lageplanSvg(NAH, { kennzeichnung: false }).inner
+    && ohneMarker(LP.lageplanSvg(AUF_MASS).inner)
+       === LP.lageplanSvg(AUF_MASS, { kennzeichnung: false }).inner);
   t("[#59] Massstab, Ausdehnung und Wandgeometrie bleiben vom Ausweichen unberuehrt",
     LP.lageplanSvg(NAH).masstab === LP.lageplanSvg(NAH, { kennzeichnung: false }).masstab
     && JSON.stringify(LP.ausdehnung(NAH))
@@ -1213,6 +1219,190 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   t("[K-5] das Ausweichen ist deterministisch — gleicher Stand, gleiches Blatt",
     LP.blattHtml(NAH).svg === LP.blattHtml(NAH).svg
     && LP.blattHtml(AUF_MASS).svg === amBlatt.svg);
+
+  // --- [#59] die ausgewichene Blase bleibt vollstaendig im Blatt ------------
+  //
+  // Bekannte Grenze des ersten Ausweich-Pakets: Kandidat 0 sitzt 6,6 Papier-mm vor
+  // der Wandkante und damit im PAD_MM-Rand (10 mm) — jede Ausweichstufe zieht aber
+  // 4,6 mm ab. Ab der zweiten Stufe lief die Blase aus dem Zeichenbereich und war
+  // abgeschnitten. Der ausgegebene Bereich waechst jetzt um genau den gemessenen
+  // Ueberstand; Massstab, Wand- und Masslage bleiben unberuehrt.
+  //
+  // Geprueft wird an der ERZEUGTEN Zeichenkette und mit unabhaengig gerechneter
+  // Geometrie (eigene Zahlenhuelle statt der Modulnaeherung).
+
+  /** Die viewBox einer Ausgabe (Papier-mm) — der tatsaechlich ausgegebene Bereich. */
+  const viewBoxVon = (s) => {
+    const m = /viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"/.exec(s);
+    return m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
+  };
+  /** Die Blasen samt Ankerpunkt UND Schriftgroesse ihrer Zahl (Papier-mm). */
+  const blasenVon = (s) => [...s.matchAll(
+    /<g class="lpmarker" data-wand="([^"]*)">[\s\S]*?<circle cx="([^"]*)" cy="([^"]*)" r="([^"]*)"[\s\S]*?<text x="([^"]*)" y="([^"]*)" font-size="([^"]*)"[^>]*>([^<]*)<\/text>/g)]
+    .map((m) => ({ id: m[1], cx: +m[2], cy: +m[3], r: +m[4],
+      tx: +m[5], ty: +m[6], fs: +m[7], text: m[8] }));
+  /**
+   * Huellflaeche von Kreis UND Zahl — im Test eigenstaendig gerechnet: Kreis exakt,
+   * die Zahl konservativ aus Ankerpunkt, Schriftgroesse und Zeichenzahl (Ober-/
+   * Unterlaenge grosszuegig). Die Modulnaeherung wird bewusst nicht benutzt.
+   */
+  const blaseHuelle = (b) => ({
+    x_min: Math.min(b.cx - b.r, b.tx - (b.text.length * b.fs * 0.5) / 2),
+    x_max: Math.max(b.cx + b.r, b.tx + (b.text.length * b.fs * 0.5) / 2),
+    y_min: Math.min(b.cy - b.r, b.ty - b.fs),
+    y_max: Math.max(b.cy + b.r, b.ty + b.fs * 0.3),
+  });
+  const drin = (f, v) => f.x_min >= v.x && f.y_min >= v.y
+    && f.x_max <= v.x + v.w && f.y_max <= v.y + v.h;
+
+  // (d) Der Prueffall aus (a): die Blase der zweiten Wand weicht zweimal aus und
+  // laege ohne Erweiterung mit ihrer ganzen Flaeche oberhalb des Blattes.
+  const nahSvg = LP.lageplanSvg(NAH);
+  const nahOhne = LP.lageplanSvg(NAH, { kennzeichnung: false });
+  const nahBlasen = blasenVon(nahSvg.svg);
+  const nahVb = viewBoxVon(nahSvg.svg);
+
+  t("[#59] Pruefaufbau: mindestens eine Blase ragt ueber den bisherigen Bereich hinaus",
+    nahBlasen.length === 3
+    && nahBlasen.some((b) => blaseHuelle(b).y_min < 0)
+    && nahSvg.rand.oben > 0);
+  t("[#59] jede Blase liegt mit Kreis UND Zahl vollstaendig im ausgegebenen Bereich",
+    !!nahVb && nahBlasen.every((b) => drin(blaseHuelle(b), nahVb)));
+  // Der Sollwert wird aus den GEZEICHNETEN (auf 3 Dezimalen gerundeten) Koordinaten
+  // nachgerechnet, der Rand aus den ungerundeten — verglichen wird deshalb mit
+  // derselben 0,002-mm-Toleranz wie an den uebrigen Blasenmassen dieses Tests.
+  t("[#59] der Bereich waechst um GENAU den gemessenen Ueberstand — nicht mehr",
+    Math.abs(nahVb.x + nahSvg.rand.links) < 0.002
+    && Math.abs(nahVb.y + nahSvg.rand.oben) < 0.002 && nahVb.y < 0
+    && Math.abs(nahVb.w - (nahSvg.breite_mm + nahSvg.rand.links + nahSvg.rand.rechts)) < 0.002
+    && Math.abs(nahVb.h - (nahSvg.hoehe_mm + nahSvg.rand.oben + nahSvg.rand.unten)) < 0.002
+    && Math.abs(nahSvg.rand.oben
+       - Math.max(...nahBlasen.map((b) => -blaseHuelle(b).y_min).concat([0]))) < 0.002);
+  t("[#59] das SVG traegt die erweiterten Papiermasse (kein Beschnitt, keine Kachel)",
+    nahSvg.svg.includes(`width="${nahVb.w}mm" height="${nahVb.h}mm"`)
+    && nahSvg.svg.includes(`<rect x="${nahVb.x}" y="${nahVb.y}" width="${nahVb.w}"`
+      + ` height="${nahVb.h}" fill="#ffffff"/>`));
+
+  // Massstab und Papierlage bleiben, was sie ohne die Blasen waeren — verglichen
+  // gegen dieselbe Ableitung ohne Wandkennzeichnung (dort gibt es keinen Rand).
+  const massTextAlle = (s) => [...s.matchAll(
+    /<g class="lpmass[^"]*" data-bemassung="([^"]*)">.*?<text x="([^"]*)" y="([^"]*)"/g)]
+    .map((m) => m[1] + "@" + m[2] + "/" + m[3]).join(",");
+  const wandRechtecke = (s) => [...s.matchAll(
+    /<g class="lpwand[^"]*" data-wand="([^"]*)"><rect x="([^"]*)" y="([^"]*)"/g)]
+    .map((m) => m[1] + "@" + m[2] + "/" + m[3]).join(",");
+
+  t("[#59] der gewaehlte Blattmassstab bleibt gegenueber dem heutigen Stand gleich",
+    nahSvg.masstab === nahOhne.masstab
+    && LP.lageplanSvg(AUF_MASS).masstab === LP.lageplanSvg(AUF_MASS, { kennzeichnung: false }).masstab
+    && nahSvg.breite_mm === nahOhne.breite_mm && nahSvg.hoehe_mm === nahOhne.hoehe_mm
+    && nahOhne.rand.links === 0 && nahOhne.rand.oben === 0);
+  t("[#59] Waende und Masse behalten ihre Papierlage — Koordinate fuer Koordinate",
+    wandRechtecke(nahSvg.svg) === wandRechtecke(nahOhne.svg)
+    && wandRechtecke(nahSvg.svg) !== ""
+    && massTextAlle(LP.lageplanSvg(AUF_MASS).svg)
+       === massTextAlle(LP.lageplanSvg(AUF_MASS, { kennzeichnung: false }).svg)
+    && massTextAlle(LP.lageplanSvg(AUF_MASS).svg) !== "");
+  t("[#59] `ausdehnung` und `waehleMasstab` sehen die Blasen weiterhin nicht",
+    JSON.stringify(LP.ausdehnung(NAH)) === JSON.stringify(LP.ausdehnung(NAH, {}))
+    && LP.waehleMasstab(nahOhne.breite_mm, nahOhne.hoehe_mm) === LP.waehleMasstab(
+      nahOhne.breite_mm, nahOhne.hoehe_mm));
+
+  // (e) Ohne Ueberstand ist das Blatt bitgenau die Konstruktion von vor #59:
+  // Ursprung 0/0, Masse exakt breite × hoehe, Datei ohne Zusatzversatz.
+  const langSvg = LP.lageplanSvg(LANG);
+  const langVb = viewBoxVon(langSvg.svg);
+  t("[#59] ohne ausgewichene Blase bleibt der Bereich unveraendert (0/0, breite × hoehe)",
+    langSvg.rand.links === 0 && langSvg.rand.oben === 0
+    && langSvg.rand.rechts === 0 && langSvg.rand.unten === 0
+    && langVb.x === 0 && langVb.y === 0
+    && langVb.w === langSvg.breite_mm && langVb.h === langSvg.hoehe_mm
+    && langSvg.svg.startsWith(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 `));
+  t("[#59] und die Blasen stehen darin vollstaendig, ohne dass etwas erweitert wurde",
+    blasenVon(langSvg.svg).length === 4
+    && blasenVon(langSvg.svg).every((b) => drin(blaseHuelle(b), langVb)));
+  t("[#59] auch die SVG-Datei bleibt dann die bisherige (Verschiebung nur um die Kopfzeile)",
+    LP.lageplanSvgDatei(LANG).includes(`<g transform="translate(0 6)">`)
+    && LP.lageplanSvgDatei(LANG).includes(`viewBox="0 0 ${langSvg.breite_mm} `));
+
+  // (f) Die eigenstaendige Datei traegt denselben Zeicheninhalt und schiebt ihn um
+  // den Blasenrand mit — sonst liefe die Blase in die Kopfzeile oder aus der Datei.
+  const nahDatei = LP.lageplanSvgDatei(NAH);
+  const nahDateiVb = viewBoxVon(nahDatei);
+  const KOPF_MM = 6;
+  t("[#59] Vorschau und SVG-Datei tragen zeichengleich denselben Zeicheninhalt",
+    nahDatei.includes(nahSvg.inner)
+    && LP.lageplanDokument(NAH).includes(nahSvg.svg)
+    && LP.lageplanDateien(NAH).find((f) => /\.svg$/.test(f.name)).data === nahDatei
+    && LP.lageplanDateien(NAH).find((f) => /\.html$/.test(f.name)).data
+       === LP.lageplanDokument(NAH));
+  t("[#59] die Datei verschiebt die Zeichnung um Kopfzeile UND Blasenrand",
+    nahDatei.includes(`<g transform="translate(${nahSvg.rand.links} `
+      + `${KOPF_MM + nahSvg.rand.oben})">`)
+    && nahDateiVb.w === nahSvg.voll_breite_mm);
+  t("[#59] auch in der Datei liegt jede Blase vollstaendig im Blatt",
+    blasenVon(nahDatei).length === 3
+    && blasenVon(nahDatei).every((b) => drin(
+      // Die Datei verschiebt den Zeicheninhalt; die Blasenkoordinaten stehen darin
+      // unveraendert und werden hier um dieselbe Verschiebung gerechnet.
+      (() => { const f = blaseHuelle(b);
+        const dx = nahSvg.rand.links, dy = KOPF_MM + nahSvg.rand.oben;
+        return { x_min: f.x_min + dx, x_max: f.x_max + dx,
+          y_min: f.y_min + dy, y_max: f.y_max + dy }; })(), nahDateiVb)));
+
+  // (g) Der Ueberstand ist fluechtig: kein gespeichertes Feld, kein Bedienelement.
+  // Gesucht wird das FELD, nicht die Zeichenfolge: „rand" steckt auch in
+  // „brandklasse" — ein blosses `includes` schluege dort faelschlich an.
+  t("[#59] der Blasenrand steht in keinem Datenstand und in keiner Option",
+    !/"(rand|ueberstand|voll_breite_mm|voll_hoehe_mm)"\s*:/.test(JSON.stringify(NAH.waende))
+    && NAH.waende.every((w) => !("rand" in w) && !("blase" in w))
+    && !("rand" in LP.standardOptionen())
+    && !("rand" in LP.normOptionen({ rand: { links: 99 } })));
+
+  // (h) Reicht der Massstab, aber nicht der Rand, sagt das Blatt GENAU DAS — mit
+  // der vorhandenen Meldung, aber nicht mit dem Text des zu grossen Geschosses.
+  // Aufbau: A4, Blattinhalt exakt 5750 mm hoch (= 115 nutzbare Papier-mm bei 1:50,
+  // also haargenau das Feld) und oben drei dicht liegende Waende, deren Blasen
+  // ausweichen muessen.
+  const ENG = (() => {
+    let m = MAPPE.leereMappe("Eng", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
+    const gs = m.gebaeude[0].geschosse[0].id;
+    [1062.5, 1187.5, 1312.5, 6687.5].forEach((y, i) => {
+      m = MAPPE.setzeWand(m, gs, { id: `e${i + 1}`, name: `Wand ${i + 1}`,
+        lage: { start_mm: { x: 0, y }, richtung: "x", laenge_grid: 16 } });
+    });
+    return LP.lageplanDaten({ mappe: m, geschossId: gs,
+      elemente: el(["e1", "e2", "e3", "e4"]) });
+  })();
+  const engMit = LP.lageplanSvg(ENG, { format: "a4" });
+  const engOhne = LP.lageplanSvg(ENG, { format: "a4", kennzeichnung: false });
+  const engBlatt = LP.blattHtml(ENG, { format: "a4" });
+
+  t("[#59] Pruefaufbau: ohne Blasenrand passt das Blatt exakt — mit ihm nicht mehr",
+    engOhne.passt === true && engOhne.hoehe_mm === LP.BLATT.a4.feld_mm.h
+    && engMit.rand.oben > 0 && engMit.voll_hoehe_mm > LP.BLATT.a4.feld_mm.h
+    && engMit.benoetigt <= engMit.masstab);
+  t("[#59] das Hinausragen kommt an die vorhandene Meldung — sie greift jetzt",
+    engMit.passt === false && engMit.masstab === engOhne.masstab
+    && /class="lpzugross"/.test(engBlatt.html));
+  t("[#59] die Meldung nennt den richtigen Grund (Blasenrand statt zu grosses Geschoss)",
+    /Nummernblasen/.test(engBlatt.html) && /Blattfeld/.test(engBlatt.html)
+    && !/zu groß/.test(engBlatt.html)
+    && /\(Blatt zu klein\)/.test(engBlatt.html));
+  t("[#59] und beschnitten wird trotzdem nichts — jede Blase steht vollstaendig darin",
+    blasenVon(engMit.svg).every((b) => drin(blaseHuelle(b), viewBoxVon(engMit.svg)))
+    && ["e1", "e2", "e3", "e4"].every((id) => engMit.svg.includes(`data-wand="${id}"`)));
+  t("[#59] der Massstabsfall behaelt seinen bisherigen Text",
+    (() => {
+      let m = MAPPE.leereMappe("Riesig", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
+      const gs = m.gebaeude[0].geschosse[0].id;
+      m = MAPPE.setzeWand(m, gs, { id: "r1", name: "Sehr lange Wand",
+        lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 3000 } });
+      const d = LP.lageplanDaten({ mappe: m, geschossId: gs, elemente: el(["r1"]) });
+      const b = LP.blattHtml(d);
+      return b.passt === false && b.benoetigt > b.masstab
+        && /zu groß/.test(b.html) && !/Nummernblasen/.test(b.html);
+    })());
 }
 
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);

@@ -383,10 +383,17 @@ function render(){
   } else {
     zeige('Vollständig: alle eingetragenen Wände sind verortet.', true);
   }
+  // Zwei getrennte Gründe für ein `passt: false` — sie haben verschiedene Auswege und
+  // deshalb verschiedene Meldungen (#59). Beim zweiten reicht der Maßstab; nur die
+  // ausgewichenen Nummernblasen brauchen mehr Rand, als das Blattfeld hergibt.
   if (!BLATT.passt) {
-    zeige('Das Geschoss ist für dieses Blatt zu groß — auch 1 : '
-      + LP.MASSSTAEBE[LP.MASSSTAEBE.length - 1] + ' genügt nicht. Die Zeichnung bleibt '
-      + 'vollständig, der Ausdruck ist aber nicht maßstabsgetreu ([N-8]).', false);
+    zeige(BLATT.benoetigt > BLATT.masstab
+      ? 'Das Geschoss ist für dieses Blatt zu groß — auch 1 : '
+        + LP.MASSSTAEBE[LP.MASSSTAEBE.length - 1] + ' genügt nicht. Die Zeichnung bleibt '
+        + 'vollständig, der Ausdruck ist aber nicht maßstabsgetreu ([N-8]).'
+      : 'Der Maßstab 1 : ' + BLATT.masstab + ' passt, aber die ausgewichenen Nummernblasen '
+        + 'brauchen mehr Zeichnungsrand, als dieses Blattfeld hergibt. Jede Blase bleibt '
+        + 'vollständig sichtbar, der Ausdruck ist aber nicht maßstabsgetreu ([N-8]).', false);
   }
 }
 

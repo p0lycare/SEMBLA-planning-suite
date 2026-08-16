@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-08",
+    datum: "2026-08-16",
+    typ: "fix",
+    issue: 59,
+    titel: "Im Lageplan bleiben ausgewichene Wandnummern vollständig sichtbar, statt am Blattrand abgeschnitten zu werden",
+    testbitte: "In Modul 9 ein Geschoss mit dicht beieinander liegenden, bemaßten Wänden öffnen: "
+      + "Jede Nummernblase steht samt Zahl vollständig im Blatt — in der Vorschau, im Druck und in "
+      + "der exportierten SVG-Datei; der Maßstab bleibt derselbe.",
+  },
+  {
     id: "chg-20260816-07",
     datum: "2026-08-16",
     typ: "feature",
