@@ -138,10 +138,19 @@ ok('kein Preis-Eingabefeld im Markup',
   !/type="number"[^>]*data-key/.test(html)
   && !/<input[^>]*data-(preis|ep|gp)\b/.test(html)
   && !/<input[^>]*data-key/.test(html));
-ok('[P-20] das einzige Eingabefeld der Tabelle ist die Mengenübersteuerung', (()=>{
+ok('[P-20] die Tabelle trägt genau zwei Eingabefelder: Menge und Kommentar', (()=>{
   const felder=[...script.matchAll(/<input[^>]*>/g)].map(m=>m[0]);
-  return felder.length===1 && /data-menge=/.test(felder[0]) && /type="number"/.test(felder[0]);
+  const menge=felder.filter(f=>/data-menge=/.test(f));
+  const komm=felder.filter(f=>/data-kommentar=/.test(f));
+  return felder.length===2 && menge.length===1 && /type="number"/.test(menge[0])
+    && komm.length===1 && /type="text"/.test(komm[0])
+    // [P-9]: kein `maxlength` — ein zu langer Kommentar wird benannt abgewiesen, nie still gekürzt.
+    && !/maxlength/.test(komm[0]);
 })());
+// #62: Der Kommentar bekommt KEINE eigene Spalte — die reduzierte Spaltenfolge bleibt unberührt.
+ok('[P-20] der Kommentar erzeugt keine neue Tabellenspalte',
+  !/<th>Kommentar<\/th>/.test(html)
+  && (html.match(/<col style="width:\d+%">/g)||[]).length===6);
 ok('setPrice-API entfernt (Modul 4 pflegt keine Preise)', typeof SL.setPrice==='undefined');
 ok('kein Schreiben von kosten.preise', !/kosten\.preise/.test(script) && !_merges.some(([t,p])=>t==='kosten'&&p&&p.preise));
 // #72: der Pflegeort-Satz stand nur im entfernten intro-Absatz — er ist mit ihm entfallen
@@ -911,9 +920,14 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
   const tbodyEl = document.getElementById('tbody');
   const zeilen = () => tbodyEl.innerHTML.split('<tr').slice(1);
   const zeileVon = (kennung) => zeilen().find(z=>z.includes('data-menge="'+kennung+'"')) || '';
-  /** Attribute eines Elements aus dem gerenderten Blatt lesen (Markup ist die Quelle). */
-  const attrsVon = (zeile, tag) => {
-    const m = zeile.match(new RegExp('<'+tag+'\\b([^>]*)>'));
+  /**
+   * Attribute eines Elements aus dem gerenderten Blatt lesen (Markup ist die Quelle).
+   * `merkmal` benennt das gesuchte Element eindeutig: seit dem Kommentarfeld ([P-20]) trägt
+   * eine Zeile mehrere `<input>`/`<button>`, und „das erste“ wäre eine stille Wette darauf,
+   * in welcher Reihenfolge die Zelleninhalte stehen.
+   */
+  const attrsVon = (zeile, tag, merkmal) => {
+    const m = zeile.match(new RegExp('<'+tag+'\\b([^>]*\\b'+(merkmal||'')+'[^>]*)>'));
     if(!m) return null;
     const a={}; for(const t of m[1].matchAll(/([\w-]+)="([^"]*)"/g)) a[t[1]]=t[2];
     return a;
@@ -927,11 +941,11 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     return ds;
   };
   const bediene = (kennung, wert) => {
-    const attrs = attrsVon(zeileVon(kennung),'input');
+    const attrs = attrsVon(zeileVon(kennung),'input','data-menge=');
     tbodyEl.dispatch('change', { dataset: dsVon(attrs), value: wert });
   };
   const setzeZurueck = (kennung) => {
-    const attrs = attrsVon(zeileVon(kennung),'button');
+    const attrs = attrsVon(zeileVon(kennung),'button','data-menge-reset=');
     tbodyEl.dispatch('click', { dataset: dsVon(attrs) });
   };
   const gespeichert = () => echterStore.holeMengen(wid);
@@ -1045,8 +1059,15 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const tb=tbodyEl.innerHTML;
     ok('[P-20] Gesamtebene: kein Mengenfeld, keine übersteuerte Zelle, und die Grenze steht dran',
       !/data-menge=/.test(tb) && !/class="menge ueber"/.test(tb)
-      && /Manuelle Mengen wirken nur auf der Wandebene/
+      && /Manuelle Mengen wirken in der Anzeige nur auf der Wandebene/
            .test(document.getElementById('mhinweis').innerHTML));
+    // #81: Die Einschränkung auf die Wandebene betrifft AUSDRÜCKLICH nur die Anzeige — für die
+    // Exportdateien ist die Fassung wählbar. Ohne diesen Satz läse sich der Hinweis so, als
+    // bliebe die Übersteuerung überhaupt folgenlos.
+    ok('[P-20] der Hinweis sagt, dass die Wandebenen-Grenze allein die Anzeige betrifft', (()=>{
+      const h=document.getElementById('mhinweis').innerHTML;
+      return /betrifft <b>allein die Anzeige<\/b>/.test(h)
+        && /Exports in Modul 0 ist die Mengenfassung ausdrücklich wählbar/.test(h); })());
     SL.setzeEbene('wand');
     ok('[P-20] zurück auf der Wandebene wirkt die Übersteuerung unverändert',
       /<span class="wirk">3 Stk<\/span>/.test(zeileVon(kennungI3)));
@@ -1156,6 +1177,161 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       return soll.menge===4 && zeile[5]==='4'
         && /<span class="wirk">4 Stk<\/span>/.test(zeileVon(kennungI3)); })());
     echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
+  }
+
+  // (9) #81: KOMMENTAR je Position — am realen Pfad, über das reale Bedienelement.
+  // Der Kommentar ist eine reine Zusatzangabe: er wird gespeichert, angezeigt und einzeln
+  // entfernt, ohne Menge, Einzelpreis oder Summe des Blattes anzufassen.
+  {
+    globalThis.window.__slInit();
+    const kommentare = () => echterStore.holeKommentare(wid);
+    /** Bedient das Kommentarfeld GENAU der Zeile — Attribute kommen aus dem gerenderten Blatt. */
+    const kommentiere = (kennung, text) => {
+      const attrs = attrsVon(zeileVon(kennung),'input','data-kommentar=');
+      tbodyEl.dispatch('change', { dataset: dsVon(attrs), value: text });
+    };
+    /** „Entfernen“-Knopf der Kommentarzeile (nur vorhanden, wenn ein Kommentar steht). */
+    const kommentarZurueck = (kennung) => {
+      const attrs = attrsVon(zeileVon(kennung),'button','data-kommentar-reset=');
+      tbodyEl.dispatch('click', { dataset: dsVon(attrs) });
+    };
+    /** Momentaufnahme aller Mengen-, Preis- und Summenwerte des Blattes. */
+    const rechenstand = () => JSON.stringify(SL.rows().map(r=>[r.key,r.fertigmass_mm,r.menge,r.ep,r.gp]))
+      + '|' + JSON.stringify(SL.summe()) + '|' + sumZeile();
+
+    ok('[P-20] jede Zeile trägt ein Kommentarfeld mit ihrer stabilen Kennung', (()=>{
+      const rsK = SL.rows();
+      return rsK.every(r=>zeileVon(mengenKennung(r)).includes('data-kommentar="'+mengenKennung(r)+'"'))
+        && Object.keys(kommentare()).length===0; })());
+
+    const standVorher = rechenstand();
+    kommentiere(kennungI3, '  zwei Steine gebrochen  ');
+    {
+      const z = zeileVon(kennungI3);
+      ok('[P-20] der Kommentar wird über das reale Bedienelement gespeichert — getrimmt',
+        kommentare()[kennungI3]==='zwei Steine gebrochen'
+        && echterStore.holeEingaben(wid).kosten.kommentare[kennungI3]==='zwei Steine gebrochen');
+      ok('[P-20] er steht als Text an genau dieser Zeile (im Druck lesbar, dort ohne Bedienzeile)',
+        /<div class="kommtext">.*?zwei Steine gebrochen<\/div>/.test(z)
+        && /\.kfeld\{display:none!important\}/.test(html));
+      ok('[P-20] er steht an keiner anderen Zeile',
+        zeilen().filter(x=>x.includes('zwei Steine gebrochen')).length===1);
+      ok('[P-20] Mengen, Einzelpreise und Summen des Blattes bleiben unverändert',
+        rechenstand()===standVorher);
+      ok('[P-20] das Wandelement bleibt unangetastet',
+        JSON.stringify(echterStore.holeElement(wid).wandelement)===JSON.stringify(WU));
+      ok('[P-20] der Hinweisblock nennt den Kommentar als Zusatzangabe ohne Ableitung',
+        /1 Position\(en\) mit Kommentar/.test(document.getElementById('mhinweis').innerHTML)
+        && /ändert keine berechnete Menge, keinen Einzelpreis und keine Summe/
+             .test(document.getElementById('mhinweis').innerHTML));
+    }
+
+    // Neuladen: der Kommentar überlebt den Seitenaufruf an derselben Position.
+    globalThis.window.__slInit();
+    ok('[P-20] der Kommentar überlebt das Neuladen der Seite an seiner Position',
+      kommentare()[kennungI3]==='zwei Steine gebrochen'
+      && zeileVon(kennungI3).includes('zwei Steine gebrochen')
+      && rechenstand()===standVorher);
+
+    // Ändern und einzeln entfernen.
+    kommentiere(kennungI3, 'Reserve eingerechnet');
+    ok('[P-20] ein Kommentar ist einzeln änderbar',
+      kommentare()[kennungI3]==='Reserve eingerechnet'
+      && zeileVon(kennungI3).includes('Reserve eingerechnet'));
+    kommentarZurueck(kennungI3);
+    ok('[P-20] Leeren über das Bedienelement entfernt genau diesen Kommentar',
+      !(kennungI3 in kommentare()) && Object.keys(kommentare()).length===0
+      && !/class="kommtext"/.test(zeileVon(kennungI3))
+      && rechenstand()===standVorher);
+
+    // Unzulässige Eingabe: benannt abgewiesen, nichts gespeichert, nichts gekürzt.
+    kommentiere(kennungI3, 'x'.repeat(201));
+    ok('[P-20] ein zu langer Kommentar wird an der Zeile benannt abgewiesen und nicht gekürzt',
+      Object.keys(kommentare()).length===0
+      && /class="kfehler">[^<]*201 Zeichen/.test(zeileVon(kennungI3))
+      && rechenstand()===standVorher);
+    kommentiere(kennungI3, 'wieder gültig');
+    ok('[P-20] nach einer gültigen Eingabe ist die Fehlermeldung weg',
+      kommentare()[kennungI3]==='wieder gültig' && !/class="kfehler"/.test(zeileVon(kennungI3)));
+    kommentiere(kennungI3, '');
+
+    // Nicht zuordenbar und unzulässig gespeichert: beides benannt, beides bleibt stehen.
+    {
+      const fremdK='rod_std@888888';
+      echterStore.setzeKommentar(fremdK, 'gehört zu nichts mehr', wid);
+      echterStore.speichere('Übersteuerungswand', WU, wid,
+        { kosten:{ kommentare:{ [kennungI3]: 42 } } });
+      globalThis.window.__slInit();
+      const hin=document.getElementById('mhinweis').innerHTML;
+      ok('[P-20] ein nicht zuordenbarer Kommentar wird namentlich gemeldet und bleibt gespeichert',
+        /Kommentar nicht zuordenbar/.test(hin) && hin.includes(fremdK)
+        && kommentare()[fremdK]==='gehört zu nichts mehr');
+      ok('[P-20] ein unzulässig gespeicherter Kommentar wird benannt und nicht angewandt',
+        /Kommentar unzulässig gespeichert/.test(hin) && hin.includes(kennungI3)
+        && !/class="kommtext"/.test(zeileVon(kennungI3))
+        && kommentare()[kennungI3]===42);
+      ok('[P-20] keiner von beiden verändert Mengen, Preise oder Summe',
+        rechenstand()===standVorher);
+      echterStore.setzeKommentar(fremdK, null, wid);
+      echterStore.setzeKommentar(kennungI3, null, wid);
+    }
+
+    // Der Kommentar bleibt aus jeder Exportdatei heraus (in diesem Paket nicht entschieden).
+    {
+      echterStore.setzeKommentar(kennungI3, 'nur für die Anzeige', wid);
+      const eng=echterStore.holeEingaben(wid);
+      const opt={datum:'01.01.2026'};
+      ok('#81 der Kommentar steht in keiner Stücklistendatei',
+        !stuecklisteCsv(WU, eng, opt, KAT_ECHT).includes('nur für die Anzeige')
+        && !stuecklisteCsv(WU, eng, {...opt, fassung:'angepasst'}, KAT_ECHT).includes('nur für die Anzeige')
+        && !einbauteileCsv(WU, eng, opt).includes('nur für die Anzeige'));
+      ok('#81 die Exportdateien bleiben bitgleich zu denen ohne Kommentar', (()=>{
+        const mit=stuecklisteCsv(WU, eng, opt, KAT_ECHT);
+        echterStore.setzeKommentar(kennungI3, null, wid);
+        const ohne=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
+        return mit===ohne; })());
+    }
+
+    // Auf den Gesamtebenen gibt es kein Kommentarfeld (dort fehlt die Positionskennung).
+    {
+      echterStore.setzeKommentar(kennungI3, 'wandbezogen', wid);
+      globalThis.window.__slInit();
+      SL.setzeEbene('projekt');
+      const tbG=tbodyEl.innerHTML;
+      ok('[P-20] Gesamtebene: kein Kommentarfeld, kein Kommentartext, und es steht dran',
+        !/data-kommentar=/.test(tbG) && !/class="kommtext"/.test(tbG)
+        && /Kommentare gehören zu einer einzelnen Wand/
+             .test(document.getElementById('mhinweis').innerHTML));
+      SL.setzeEbene('wand');
+      ok('[P-20] zurück auf der Wandebene steht der Kommentar unverändert',
+        zeileVon(kennungI3).includes('wandbezogen'));
+      echterStore.setzeKommentar(kennungI3, null, wid);
+    }
+
+    // Der Kommentar hat mit der Mengenübersteuerung nichts zu tun — beide sind unabhängig.
+    {
+      echterStore.setzeMengenUebersteuerung(kennungI3, 6, wid);
+      globalThis.window.__slInit();
+      kommentiere(kennungI3, 'Bruchreserve');
+      ok('[P-20] Kommentar und manuelle Menge stehen unabhängig nebeneinander',
+        echterStore.holeMengen(wid)[kennungI3]===6
+        && kommentare()[kennungI3]==='Bruchreserve'
+        && /<span class="wirk">6 Stk<\/span>/.test(zeileVon(kennungI3))
+        && zeileVon(kennungI3).includes('Bruchreserve'));
+      setzeZurueck(kennungI3);
+      ok('[P-20] das Zurücksetzen der Menge lässt den Kommentar stehen',
+        !(kennungI3 in echterStore.holeMengen(wid))
+        && kommentare()[kennungI3]==='Bruchreserve');
+      kommentarZurueck(kennungI3);
+      ok('[P-20] das Entfernen des Kommentars lässt die Mengenübersteuerung unberührt', (()=>{
+        echterStore.setzeMengenUebersteuerung(kennungI3, 6, wid);
+        globalThis.window.__slInit();
+        kommentiere(kennungI3, 'noch einer');
+        kommentarZurueck(kennungI3);
+        const ok2 = echterStore.holeMengen(wid)[kennungI3]===6 && Object.keys(kommentare()).length===0;
+        echterStore.setzeMengenUebersteuerung(kennungI3, null, wid);
+        return ok2; })());
+    }
   }
 }
 

@@ -128,8 +128,9 @@ export const SCHEMA_VERSION = 6;
  *  OPTIONAL — eine Datei ohne sie wird beim Lesen normalisiert, nicht abgelehnt)
  *  sowie die Eingaben-Zusatzfelder `eingaben.katalog`,
  *  `eingaben.planung`, `eingaben.aufbau.produkte`, `eingaben.zeichnung`
- *  (Darstellungsoptionen, [D-7]) und `eingaben.kosten.mengen`
- *  (Mengenuebersteuerung der Stueckliste, [P-20]) sind OPTIONAL. Der v2-Parser
+ *  (Darstellungsoptionen, [D-7]), `eingaben.kosten.mengen`
+ *  (Mengenuebersteuerung der Stueckliste, [P-20]) und `eingaben.kosten.kommentare`
+ *  (Kommentar je Stuecklistenposition, [P-20]) sind OPTIONAL. Der v2-Parser
  *  (`parseImport`) uebernimmt `obj.eingaben` unveraendert und ohne Feld-Whitelist,
  *  `holeEingaben` fuellt fehlende Felder auf und `projektObjekt` exportiert alles
  *  wieder — unbekannte/neue Teile reisen also in beide Richtungen verlustfrei mit.
@@ -1522,9 +1523,12 @@ export function standardEingaben() {
     // (`kosten.mengen`, Kennung -> ganze Zahl >= 0). Sie ist eine Zusatzangabe NEBEN der
     // berechneten Menge: die Ableitung aus dem Wandelement bleibt unveraendert, und ein
     // fehlender Abschnitt bedeutet schlicht „keine Uebersteuerung“ (Altprojekte laden
-    // damit warnungsfrei). Gespeicherte Alt-Preise (`kosten.preise`) bleiben in
-    // Altprojekten erhalten, werden aber nicht mehr gelesen und nicht mehr geschrieben.
-    kosten: { waehrung: "EUR", mengen: {} },
+    // damit warnungsfrei). Dazu — an DERSELBEN Positionskennung — der KOMMENTAR je
+    // Position (`kosten.kommentare`, Kennung -> kurzer Text): eine reine Zusatzangabe,
+    // aus der NICHTS abgeleitet wird (keine Menge, kein Preis, keine Summe). Gespeicherte
+    // Alt-Preise (`kosten.preise`) bleiben in Altprojekten erhalten, werden aber nicht
+    // mehr gelesen und nicht mehr geschrieben.
+    kosten: { waehrung: "EUR", mengen: {}, kommentare: {} },
     // Modul 3 — Statischer Nachweis (Schermer-Kennwerte; Geometrie, Oeffnungszahl
     // UND Wandtyp/Windsituation kommen aus dem Wandelement und werden NICHT hier
     // gespeichert). Flach nach Input-ID, damit der Projektstand des Nachweises
@@ -1610,6 +1614,23 @@ export function mengenKennung(pos) {
 }
 
 /**
+ * Eine uebergebene Positionskennung pruefen und normalisieren (getrimmt).
+ *
+ * Bewusst EINE Fassung fuer alle wandbezogenen Zusatzangaben an einer Stueckliste
+ * (Menge nach [P-20], Kommentar): zwei Kennungsformen nebeneinander waeren genau der
+ * Drift, den [P-6] ausschliesst. Unbekannte Form -> Fehler, nie stillschweigend
+ * zurechtgebogen ([P-9]).
+ * @param {any} kennung @returns {string}
+ */
+function _pruefeKennung(kennung) {
+  const k = kennung == null ? "" : String(kennung).trim();
+  if (!k || !/^[^@]+@(-|\d+(\.\d+)?)$/.test(k)) {
+    throw new Error(`Unbekannte Positionskennung „${kennung}“.`);
+  }
+  return k;
+}
+
+/**
  * Pruefung einer eingegebenen Menge ([P-20]): ganze Zahl, nicht negativ. Es wird NICHT
  * gerundet und nichts zurechtgebogen — ein unzulaessiger Wert wird benannt abgewiesen
  * ([P-9]).
@@ -1649,10 +1670,7 @@ export function holeMengen(id) {
  * @returns {string|null} id des Elements (null = kein Element gewaehlt)
  */
 export function setzeMengenUebersteuerung(kennung, wert, id) {
-  const k = kennung == null ? "" : String(kennung).trim();
-  if (!k || !/^[^@]+@(-|\d+(\.\d+)?)$/.test(k)) {
-    throw new Error(`Unbekannte Positionskennung „${kennung}“.`);
-  }
+  const k = _pruefeKennung(kennung);
   const leer = wert === null || wert === undefined || (typeof wert === "string" && wert.trim() === "");
   const geprueft = leer ? null : pruefeMenge(wert);
   if (geprueft && !geprueft.ok) throw new Error(geprueft.fehler);
@@ -1666,6 +1684,86 @@ export function setzeMengenUebersteuerung(kennung, wert, id) {
   const mengen = (roh && typeof roh === "object" && !Array.isArray(roh)) ? { ...roh } : {};
   if (leer) delete mengen[k]; else mengen[k] = geprueft.wert;
   kosten.mengen = mengen;                 // ERSETZEN, nicht mergen — sonst bliebe der Schluessel
+  cur.kosten = kosten;
+  map[eid].eingaben = cur;
+  map[eid].geaendert = _jetzt();
+  _schreibenMap(map);
+  return eid;
+}
+
+// --- Kommentar je Stuecklistenposition ([P-20]) ---------------------------
+// Eine reine ZUSATZANGABE neben Menge und Preis: aus ihr wird NICHTS abgeleitet —
+// keine Menge, kein Einzelpreis, keine Summe, keine Positionsauswahl. Sie haengt an
+// DERSELBEN stabilen Positionskennung wie die Mengenuebersteuerung (`mengenKennung`),
+// liegt wandbezogen in `eingaben.kosten.kommentare` und wird AUSSCHLIESSLICH von
+// Modul 4 geschrieben.
+//
+// Warum eine eigene Funktion statt `mergeEingaben` — dieselbe Begruendung wie oben:
+// der Patch-Weg fuehrt zusammen und koennte einen Schluessel nie ENTFERNEN. Das
+// Loeschen eines einzelnen Kommentars ist aber genau das.
+
+/** Groesste zulaessige Laenge eines Kommentars (Zeichen, nach dem Trimmen). */
+export const KOMMENTAR_MAX = 200;
+
+/**
+ * Pruefung eines eingegebenen Kommentars: einzeilige Zeichenkette, getrimmt,
+ * hoechstens `KOMMENTAR_MAX` Zeichen. Es wird NICHT gekuerzt und nichts
+ * zurechtgebogen — ein unzulaessiger Wert wird benannt abgewiesen ([P-9]).
+ *
+ * Ein leerer Text ist hier KEIN Fehler, sondern das Loeschen (siehe `setzeKommentar`);
+ * geprueft wird deshalb nur, was tatsaechlich stehen bleiben soll.
+ * @param {any} roh
+ * @returns {{ok:true, wert:string}|{ok:false, fehler:string}}
+ */
+export function pruefeKommentar(roh) {
+  if (typeof roh !== "string") {
+    return { ok: false, fehler: `Kommentar ist kein Text (${roh === null ? "null" : typeof roh}).` };
+  }
+  if (/[\r\n]/.test(roh)) {
+    return { ok: false, fehler: "Kommentar ist mehrzeilig — zulässig ist eine einzelne Zeile." };
+  }
+  const text = roh.trim();
+  if (text.length > KOMMENTAR_MAX) {
+    return { ok: false, fehler: `Kommentar ist ${text.length} Zeichen lang — zulässig sind höchstens ${KOMMENTAR_MAX}.` };
+  }
+  return { ok: true, wert: text };
+}
+
+/**
+ * Gespeicherte Kommentare einer Wand — ROH, so wie sie im Projekt stehen.
+ *
+ * Bewusst ungefiltert (wie `holeMengen`): ein nicht zuordenbarer oder unzulaessiger
+ * Eintrag wird von der Oberflaeche BENANNT und nicht hier stillschweigend entfernt
+ * ([P-9]/[P-20]).
+ * @param {string} [id] @returns {Record<string, any>}
+ */
+export function holeKommentare(id) {
+  const m = (holeEingaben(id).kosten || {}).kommentare;
+  return (m && typeof m === "object" && !Array.isArray(m)) ? { ...m } : {};
+}
+
+/**
+ * EINEN Kommentar setzen oder loeschen ([P-20]).
+ * `null`/leerer Text entfernt genau diesen Eintrag. Ein unzulaessiger Wert wirft und
+ * laesst den Speicher unveraendert; die Mengenuebersteuerung wird dabei NIE angefasst.
+ * @param {string} kennung @param {any} text @param {string} [id]
+ * @returns {string|null} id des Elements (null = kein Element gewaehlt)
+ */
+export function setzeKommentar(kennung, text, id) {
+  const k = _pruefeKennung(kennung);
+  const leer = text === null || text === undefined || (typeof text === "string" && text.trim() === "");
+  const geprueft = leer ? null : pruefeKommentar(text);
+  if (geprueft && !geprueft.ok) throw new Error(geprueft.fehler);
+
+  const map = _lesenMap();
+  const eid = (id && map[id]) ? id : aktivId();
+  if (!eid || !map[eid]) return null;
+  const cur = map[eid].eingaben || {};
+  const kosten = { ...(cur.kosten || {}) };
+  const roh = kosten.kommentare;
+  const kommentare = (roh && typeof roh === "object" && !Array.isArray(roh)) ? { ...roh } : {};
+  if (leer) delete kommentare[k]; else kommentare[k] = geprueft.wert;
+  kosten.kommentare = kommentare;         // ERSETZEN, nicht mergen — sonst bliebe der Schluessel
   cur.kosten = kosten;
   map[eid].eingaben = cur;
   map[eid].geaendert = _jetzt();

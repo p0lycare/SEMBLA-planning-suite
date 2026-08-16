@@ -60,6 +60,18 @@
                         font-size:12px;text-align:right;background:#fff}
   td.menge .mfeld button{padding:1px 7px;font-size:12px;line-height:1.5;font-weight:600}
   td.menge .mfehler{font-size:11px;color:#a3271b;font-weight:600;margin-top:2px}
+  /* Kommentar je Position ([P-20], #81): eine reine ZUSATZANGABE — er steht in der
+     bestehenden Einbauteil-Zelle unter Bezeichnung und Preisgrund, NICHT in einer
+     eigenen Spalte (die reduzierte Spaltenfolge aus #62 bleibt unverändert). Der Text
+     steht als Text da und übersteht damit den Druck, in dem jedes Eingabefeld
+     ausgeblendet wird; das Feld darunter ist die Bedienung. */
+  td .kommtext{font-size:11.5px;color:#3a4653;margin-top:2px;overflow-wrap:anywhere}
+  td .kommtext .kmark{color:var(--sb-muted);font-weight:700;margin-right:4px}
+  td .kfeld{margin-top:3px;display:flex;gap:4px;align-items:center}
+  td .kfeld input{flex:1 1 auto;min-width:0;padding:2px 5px;border:1px solid var(--sb-line);
+                  border-radius:5px;font-size:12px;background:#fff}
+  td .kfeld button{padding:1px 7px;font-size:12px;line-height:1.5;font-weight:600}
+  td .kfehler{font-size:11px;color:#a3271b;font-weight:600;margin-top:2px}
   /* Hinweise zur Übersteuerung ([P-20]): nicht zuordenbare und unzulässige Einträge werden
      BENANNT und nie still entfernt; dazu die Abgrenzung zu Ebenen und Exportdateien. */
   .mhinweis{margin-top:10px;font-size:12px;border:1px solid #cfd8e3;background:#f7f9fb;
@@ -84,6 +96,9 @@
   @media print{
     .sb-nav,.kopfleiste{display:none!important}
     input,select,textarea,button{display:none!important}
+    /* Die Bedienzeile des Kommentars entfällt im Druck vollständig — der Kommentar
+       selbst steht als Text darüber und bleibt gedruckt lesbar ([P-20]). */
+    .kfeld{display:none!important}
     html,body{background:#fff;margin:0}
     .wrap{padding:0;margin:0;max-width:none}
     .blatt{border:none;border-radius:0;padding:0;background:#fff;box-shadow:none}
@@ -195,6 +210,22 @@
    Ein Eintrag, der zu keiner gerechneten Position mehr passt, und ein unzulässiger Wert
    werden BENANNT und nie still gelöscht oder umgehängt ([P-9]).
 
+   KOMMENTAR JE POSITION ([P-20], #81): Neben der Menge trägt jede Position einen kurzen
+   Kommentar — warum eine Zeile abweicht, was auf der Baustelle dazu zu beachten ist. Er ist
+   eine reine ZUSATZANGABE: aus ihm wird NICHTS abgeleitet — keine Menge, kein Einzelpreis,
+   keine Summe, keine Positionsauswahl. Gebunden wird er an DIESELBE stabile Positionskennung
+   wie die manuelle Menge (`r.__kennung`, gebaut von `storage.mengenKennung`); eine zweite
+   Kennungsform wäre der Drift, den [P-6] ausschliesst. Gespeichert wird wandbezogen in
+   `eingaben.kosten.kommentare`, geschrieben ausschliesslich von hier. Er steht in der
+   BESTEHENDEN Einbauteil-Zelle — keine neue Spalte, die reduzierte Spaltenfolge aus #62
+   bleibt unverändert — und zwar als Text plus Eingabefeld: im Druck wird jedes Feld
+   ausgeblendet, der Text bleibt stehen. Zulässig ist eine einzeilige Zeichenkette bis 200
+   Zeichen; alles andere wird BENANNT abgewiesen und nie gekürzt ([P-9]). Leeren löscht genau
+   diesen einen Eintrag. Ein Kommentar, der zu keiner gerechneten Position mehr passt, und
+   ein unzulässig gespeicherter Wert werden — wie bei der Menge — benannt und nicht
+   angewandt, aber nie gelöscht und nie umgehängt. Die Exportdateien aus Modul 0 führen ihn
+   nicht; ob sie das sollen, ist bewusst offen und wird hier nicht vorweggenommen.
+
    ARBEITSBLATT (#58/#62): Die Anzeige ist auf das reduziert, was auf der Baustelle gebraucht
    wird — Einbauteil, Art, Fertigmaß und Menge. Die
    WANDREFERENZ steht EINMAL im Blattkopf statt in jeder Zeile: auf der Wandebene ist die Liste
@@ -210,6 +241,9 @@ let EBENE='wand', PREISE=true;          // beides fluechtig: kein Datum, keine S
 // Abgewiesene Mengeneingabe ([P-20]): NUR Anzeige. Sie steht an genau der Zeile, an der sie
 // entstanden ist, und verschwindet mit der nächsten gültigen Eingabe. Gespeichert wird sie nie.
 let MFEHLER=null;
+// Dasselbe für eine abgewiesene KOMMENTAR-Eingabe — getrennt gehalten, damit eine ungültige
+// Menge nicht die Kommentarzeile rot färbt und umgekehrt.
+let KFEHLER=null;
 // aus window.SEMBLA (in __slInit gebunden):
 let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten,
     standText, wirksameMengen;
@@ -312,6 +346,74 @@ function mengeZelle(r, nk){
   return `<td class="menge ueber"><span class="wirk">${wirksam}</span><span class="chip">manuell</span>`
     + `<div class="orig">berechnet ${fmt(r.__berechnet,nk)} ${einheit}</div>${feld}${fehler}</td>`;
 }
+/* ---- Kommentar je Position ([P-20]) -------------------------------------------------------
+   Reine ZUSATZANGABE: hier wird nichts gerechnet und nichts ausgewählt. Zugeordnet wird über
+   `r.__kennung` — genau die Kennung, die auch die manuelle Menge trägt. Auf den Gesamtebenen
+   gibt es sie nicht (`anwenden:false` vergibt keine Kennung), also gibt es dort auch kein
+   Kommentarfeld: eine Zeile steht dort für mehrere Wände und damit für mehrere Kommentare. */
+function kommentarMap(){
+  const k=(eg().kosten||{}).kommentare;
+  return (k && typeof k==='object' && !Array.isArray(k)) ? k : {};
+}
+/**
+ * Gespeicherte Kommentare gegen die gerechneten Positionen halten.
+ * Ergebnis: `text` je Kennung (nur zulässige), dazu die BENANNTEN Ausreißer — `fremd`
+ * (gehört zu keiner gerechneten Position) und `unzulaessig` (unzulässig gespeichert).
+ * Bereinigt wird nichts, umgehängt wird nichts ([P-9]).
+ */
+function kommentarStand(positionen){
+  const map=kommentarMap();
+  const roh=Object.keys(map);
+  const text={}, unzulaessig=[]; const bekannt=new Set();
+  let anzahl=0, zuordenbar=false;
+  for(const p of positionen){
+    const k=p.__kennung;
+    if(!k) continue;
+    zuordenbar=true; bekannt.add(k);
+    if(!Object.prototype.hasOwnProperty.call(map,k)) continue;
+    const g=(store&&store.pruefeKommentar) ? store.pruefeKommentar(map[k])
+      : { ok:false, fehler:'Ohne Speicherschicht wird kein Kommentar angewandt.' };
+    if(g.ok && g.wert){ text[k]=g.wert; anzahl++; }
+    else if(!g.ok) unzulaessig.push({ kennung:k, label:p.label, grund:g.fehler });
+  }
+  // Ohne zuordenbare Kennung (Gesamtebenen) wird NICHTS als „fremd“ gemeldet — dort ist die
+  // Zuordnung schlicht nicht möglich, und eine Fremdmeldung wäre eine falsche Aussage.
+  const fremd = zuordenbar ? roh.filter(k=>!bekannt.has(k)) : [];
+  return { text, anzahl, unzulaessig, fremd, gespeichert:roh.length };
+}
+/** Kommentartext + Bedienfeld einer Zeile — beides in der bestehenden Einbauteil-Zelle. */
+function kommentarTeil(r, kstand){
+  const k=r.__kennung;
+  if(!k) return '';
+  const txt=kstand.text[k];
+  const anzeige = txt
+    ? `<div class="kommtext"><span class="kmark">Kommentar</span>${esc(txt)}</div>` : '';
+  const fehler = (KFEHLER && KFEHLER.kennung===k)
+    ? `<div class="kfehler">${esc(KFEHLER.text)}</div>` : '';
+  // Bewusst OHNE `maxlength`: ein Attribut, das die Eingabe stillschweigend abschneidet,
+  // wäre genau das Zurechtbiegen, das [P-9] ausschliesst. Zu lang wird BENANNT abgewiesen.
+  const feld = `<div class="kfeld"><input type="text" data-kommentar="${esc(k)}"`
+    + ` value="${txt?esc(txt):''}"`
+    + ` aria-label="Kommentar zu dieser Position"`
+    + ` placeholder="Kommentar (optional)" title="Kurzer Kommentar zu dieser Position; leer = kein Kommentar">`
+    + (txt ? `<button type="button" data-kommentar-reset="${esc(k)}" title="Kommentar entfernen">entfernen</button>` : '')
+    + `</div>`;
+  return anzeige+feld+fehler;
+}
+/** Genau EIN Schreibweg für den Kommentar; leerer Text entfernt ihn. */
+function kommentarSetzen(kennung, text){
+  if(!store || !store.setzeKommentar){
+    KFEHLER={ kennung, text:'Ohne Speicherschicht wird kein Kommentar gespeichert.' };
+    render(); return;
+  }
+  try{
+    const id=store.setzeKommentar(kennung, text);
+    KFEHLER = id ? null : { kennung, text:'Keine aktive Wand — es wurde nichts gespeichert.' };
+  }catch(e){ KFEHLER={ kennung, text:(e&&e.message)||String(e) }; }
+  EINGABEN = (store&&store.aktiveEingaben) ? store.aktiveEingaben() : EINGABEN;
+  render();
+}
+
 /** Genau EIN Schreibweg für die manuelle Menge; `null` setzt zurück. */
 function mengeSetzen(kennung, wert){
   if(!store || !store.setzeMengenUebersteuerung){
@@ -391,6 +493,9 @@ function render(){
   // bit-genau `d.summe`, weil `stuecklisteSumme` genau dieselbe Funktion ist.
   const mstand=mengenStand(d.positionen);
   const rs=mstand.positionen; const s=stuecklisteSumme(rs);
+  // Der Kommentar tritt NEBEN diese Zeilen: er wird aus `rs` nur gelesen (Kennung) und
+  // fliesst in keine Menge, keinen Preis und keine Summe ein.
+  const kstand=kommentarStand(rs);
   const betragMoeglich = s.bepreist>0 && !d.waehrungKonflikt;
   // Ohne Katalog hätte JEDE Zeile denselben Grund — das wäre wieder Fülltext. Er steht dann
   // einmal an der Summe (s. u.), die Preiszellen bleiben trotzdem „n.a.“.
@@ -411,7 +516,8 @@ function render(){
     const grund = (r.gp==null && r.status!=='nicht_erforderlich' && !keinKatalog)
       ? `<div class="grund">${esc(r.statusText)}</div>` : '';
     const preis = v => v==null ? '<td class="na">n.a.</td>' : `<td>${fmt(v,2)}</td>`;
-    html+=`<tr><td>${esc(r.label)}${grund}</td>${art}`
+    // [P-20]: Der Kommentar steht in DIESER Zelle — keine neue Spalte (#62).
+    html+=`<tr><td>${esc(r.label)}${grund}${kommentarTeil(r,kstand)}</td>${art}`
         +`<td>${mass}</td>`
         +mengeZelle(r,nk)
         +herk
@@ -440,35 +546,59 @@ function render(){
   }
   $('tbody').innerHTML=html;
   renderLuecken(d);
-  renderMengenHinweis(mstand);
+  renderMengenHinweis(mstand, kstand);
   renderKennzeichnung(rs);
 }
 
-// Hinweise zur Mengenübersteuerung ([P-20]). Der Block sagt genau drei Dinge, und keines
-// davon still: wo die manuelle Menge wirkt (nur Wandebene) und wo nicht (Gesamtebenen,
-// Exportdateien aus Modul 0), welche gespeicherte Übersteuerung zu keiner gerechneten
-// Position mehr passt und welche unzulässig ist. Bereinigt wird nichts.
-function renderMengenHinweis(m){
+// Hinweise zu Mengenübersteuerung und Kommentar ([P-20]). Der Block sagt seine Punkte, und
+// keinen davon still: wo die manuelle Menge wirkt (in der ANZEIGE nur auf der Wandebene) und
+// wo nicht, welche gespeicherte Übersteuerung zu keiner gerechneten Position mehr passt und
+// welche unzulässig ist — und dasselbe für die Kommentare. Bereinigt wird nichts.
+function renderMengenHinweis(m, k){
   const el=$('mhinweis'); const teile=[];
+  const kom = k || { anzahl:0, fremd:[], unzulaessig:[], gespeichert:0 };
   if(EBENE!=='wand'){
-    if(m.gespeichert) teile.push('<b>Manuelle Mengen wirken nur auf der Wandebene.</b> '
+    if(m.gespeichert) teile.push('<b>Manuelle Mengen wirken in der Anzeige nur auf der Wandebene.</b> '
       + 'Diese Ebene zeigt durchgehend die berechneten Mengen; die '+m.gespeichert
-      + ' gespeicherte(n) Übersteuerung(en) der aktiven Wand bleiben unverändert erhalten.');
-  } else if(m.anzahl){
-    teile.push('<b>'+m.anzahl+' Position(en) mit manueller Menge.</b> '
-      + 'Die berechnete Menge steht unverändert daneben. Beim zentralen Export in Modul 0 ist '
-      + 'ausdrücklich wählbar, ob die Baustellenstückliste die <b>berechneten</b> oder die '
-      + '<b>angepassten</b> Mengen enthält; ohne Wahl gilt „berechnet“, und die Datei nennt die '
-      + 'Fassung in ihrem Kopf. Die Einzelteilliste der Gewindestangen bleibt in beiden Fällen '
-      + 'abgeleitet ([P-19]).');
+      + ' gespeicherte(n) Übersteuerung(en) der aktiven Wand bleiben unverändert erhalten. '
+      + 'Diese Einschränkung betrifft <b>allein die Anzeige</b>: für die Dateien des zentralen '
+      + 'Exports in Modul 0 ist die Mengenfassung ausdrücklich wählbar, und die angepasste '
+      + 'Fassung wirkt dort auch über mehrere Wände hinweg.');
+    if(kom.gespeichert) teile.push('<b>Kommentare gehören zu einer einzelnen Wand.</b> '
+      + 'Auf dieser Ebene steht eine Zeile für mehrere Wände; die '+kom.gespeichert
+      + ' gespeicherte(n) Kommentar(e) der aktiven Wand bleiben unverändert erhalten und werden '
+      + 'hier nicht angezeigt.');
+  } else {
+    if(m.anzahl){
+      teile.push('<b>'+m.anzahl+' Position(en) mit manueller Menge.</b> '
+        + 'Die berechnete Menge steht unverändert daneben. Dass die Übersteuerung nur auf dieser '
+        + 'Wandebene erscheint, betrifft <b>allein die Anzeige</b>: beim zentralen Export in '
+        + 'Modul 0 ist ausdrücklich wählbar, ob die Baustellenstückliste die <b>berechneten</b> '
+        + 'oder die <b>angepassten</b> Mengen enthält; ohne Wahl gilt „berechnet“, und die Datei '
+        + 'nennt die Fassung in ihrem Kopf. Die Einzelteilliste der Gewindestangen bleibt in '
+        + 'beiden Fällen abgeleitet ([P-19]).');
+    }
+    if(kom.anzahl){
+      teile.push('<b>'+kom.anzahl+' Position(en) mit Kommentar.</b> '
+        + 'Der Kommentar ist eine reine Zusatzangabe zu dieser Wand: er ändert keine berechnete '
+        + 'Menge, keinen Einzelpreis und keine Summe und steht in keiner Exportdatei.');
+    }
   }
   if(m.fremd.length) teile.push('<b>Nicht zuordenbar:</b> die gespeicherte(n) Übersteuerung(en) '
-    + m.fremd.map(k=>'<code>'+esc(k)+'</code>').join(', ')
+    + m.fremd.map(x=>'<code>'+esc(x)+'</code>').join(', ')
     + ' gehören zu keiner aktuell gerechneten Position. Sie bleiben gespeichert und werden '
     + 'auf keine andere Position übertragen.');
   if(m.ungueltig.length) teile.push('<b>Unzulässig gespeichert:</b><ul>'
     + m.ungueltig.map(u=>`<li>${esc(u.label)} (<code>${esc(u.kennung)}</code>): `
         + `${esc(u.grund)} Es gilt die berechnete Menge.</li>`).join('')
+    + '</ul>');
+  if(kom.fremd.length) teile.push('<b>Kommentar nicht zuordenbar:</b> '
+    + kom.fremd.map(x=>'<code>'+esc(x)+'</code>').join(', ')
+    + ' gehört zu keiner aktuell gerechneten Position. Der Text bleibt gespeichert und wird '
+    + 'auf keine andere Position übertragen.');
+  if(kom.unzulaessig.length) teile.push('<b>Kommentar unzulässig gespeichert:</b><ul>'
+    + kom.unzulaessig.map(u=>`<li>${esc(u.label)} (<code>${esc(u.kennung)}</code>): `
+        + `${esc(u.grund)} Er wird nicht angezeigt und bleibt gespeichert.</li>`).join('')
     + '</ul>');
   el.hidden = teile.length===0;
   el.innerHTML = teile.map(t=>'<div>'+t+'</div>').join('');
@@ -517,7 +647,7 @@ function syncInputs(){ const k=eg().kosten||{};
 
 // ---- Aktives Wandelement + Eingaben + Katalog (localStorage) ----
 function loadModel(){
-  MFEHLER=null;                 // eine abgewiesene Eingabe gehört zur Wand, an der sie entstand
+  MFEHLER=null; KFEHLER=null;   // eine abgewiesene Eingabe gehört zur Wand, an der sie entstand
   currentId = store&&store.aktivId ? store.aktivId() : null;
   EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : eg();
   KATALOG = store&&store.holeKatalog ? store.holeKatalog() : null;
@@ -550,7 +680,7 @@ function bindEvents(){
   // Die Währung ist die EINZIGE persistente Eingabe der Wandebene (#70).
   $('cur').addEventListener('input',()=>{ eg().kosten.waehrung=$('cur').value; persist('kosten',{waehrung:$('cur').value}); render(); });
   // Ebene und Preisschalter sind reine Ansicht: kein Schreibvorgang, keine Speicherung.
-  $('ebene').addEventListener('change',()=>{ EBENE=$('ebene').value||'wand'; MFEHLER=null; syncInputs(); render(); });
+  $('ebene').addEventListener('change',()=>{ EBENE=$('ebene').value||'wand'; MFEHLER=null; KFEHLER=null; syncInputs(); render(); });
   $('preise').addEventListener('change',()=>{ PREISE=!!$('preise').checked; render(); });
   $('print').addEventListener('click',()=>window.print());
   // Mengenübersteuerung ([P-20]): Die Bedienelemente liegen IN der Tabelle, die `render()`
@@ -558,12 +688,18 @@ function bindEvents(){
   // weg. Gehört wird deshalb an der Tabelle selbst; die Kennung steht am Element.
   const tb=$('tbody');
   tb.addEventListener('change',ev=>{
-    const t=ev&&ev.target, k=t&&t.dataset?t.dataset.menge:null;
-    if(k) mengeSetzen(k, t.value);
+    const t=ev&&ev.target, ds=t&&t.dataset?t.dataset:null;
+    if(!ds) return;
+    if(ds.menge) mengeSetzen(ds.menge, t.value);
+    // Der Kommentar läuft über denselben delegierten Behandler — ein eigener am Feld wäre
+    // nach dem nächsten `render()` weg. Leerer Text bedeutet „entfernen“ ([P-20]).
+    else if(ds.kommentar) kommentarSetzen(ds.kommentar, t.value);
   });
   tb.addEventListener('click',ev=>{
-    const t=ev&&ev.target, k=t&&t.dataset?t.dataset.mengeReset:null;
-    if(k) mengeSetzen(k, null);
+    const t=ev&&ev.target, ds=t&&t.dataset?t.dataset:null;
+    if(!ds) return;
+    if(ds.mengeReset) mengeSetzen(ds.mengeReset, null);
+    else if(ds.kommentarReset) kommentarSetzen(ds.kommentarReset, null);
   });
 }
 

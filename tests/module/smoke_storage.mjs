@@ -904,6 +904,79 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   t("[P-20] die Versionsachsen bleiben unveraendert",
     store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6
     && store.migrieren() === 6);
+
+  // --- Kommentar je Position ([P-20], #81) ---------------------------------
+  // Reine Zusatzangabe an DERSELBEN Positionskennung. Geprueft wird der Speicherweg:
+  // setzen, einzeln entfernen, unzulaessige Werte, die Unabhaengigkeit von der
+  // Mengenuebersteuerung derselben Wand und der Roundtrip ueber die Projektdatei.
+  t("[P-20] ohne Kommentar ist der Abschnitt leer",
+    Object.keys(store.holeKommentare(idM)).length === 0
+    && JSON.stringify(store.standardEingaben().kosten.kommentare) === "{}");
+
+  const mengenVorher = JSON.stringify(store.holeMengen(idM));
+  store.setzeKommentar(kSt, "  zwei Steine gebrochen  ", idM);
+  store.setzeKommentar(kRod, "Reserve fuer Nachschnitt", idM);
+  t("[P-20] Kommentar landet unter der Positionskennung der Wand — getrimmt",
+    store.holeKommentare(idM)[kSt] === "zwei Steine gebrochen"
+    && store.holeEingaben(idM).kosten.kommentare[kRod] === "Reserve fuer Nachschnitt");
+  t("[P-20] der Kommentar laesst die Mengenuebersteuerung derselben Wand unberuehrt",
+    JSON.stringify(store.holeMengen(idM)) === mengenVorher
+    && store.holeMengen(idM)[kRod] === 4);
+  t("[P-20] der Kommentar steht nicht im Wandelement",
+    !JSON.stringify(store.holeElement(idM).wandelement).includes("kommentare")
+    && !JSON.stringify(store.holeElement(idM).wandelement).includes("gebrochen"));
+  t("[P-20] der Kommentar liegt weder in der Mappe noch im Katalog",
+    !(localStorage.getItem("sembla:projekte") || "").includes("gebrochen")
+    && !(localStorage.getItem("sembla:kataloge") || "").includes("gebrochen"));
+
+  store.setzeKommentar(kSt, "", idM);
+  t("[P-20] Leeren entfernt GENAU einen Kommentar (kein Rest, kein Ersatztext)",
+    !(kSt in store.holeKommentare(idM))
+    && store.holeKommentare(idM)[kRod] === "Reserve fuer Nachschnitt"
+    && Object.keys(store.holeKommentare(idM)).length === 1);
+  store.setzeKommentar(kSt, "wieder da", idM);
+  store.setzeKommentar(kSt, null, idM);
+  t("[P-20] auch null entfernt genau diesen Kommentar",
+    !(kSt in store.holeKommentare(idM)) && Object.keys(store.holeKommentare(idM)).length === 1);
+
+  const werfenK = (wert) => {
+    try { store.setzeKommentar(kRod, wert, idM); return null; }
+    catch (e) { return e.message; }
+  };
+  t("[P-20] ein mehrzeiliger Kommentar wird benannt abgewiesen",
+    /mehrzeilig/.test(werfenK("erste\nzweite") || "")
+    && store.holeKommentare(idM)[kRod] === "Reserve fuer Nachschnitt");
+  t("[P-20] ein zu langer Kommentar wird benannt abgewiesen, nie gekuerzt",
+    /Zeichen/.test(werfenK("x".repeat(store.KOMMENTAR_MAX + 1)) || "")
+    && store.holeKommentare(idM)[kRod] === "Reserve fuer Nachschnitt");
+  t("[P-20] ein Nicht-Text wird benannt abgewiesen",
+    /kein Text/.test(werfenK(42) || "") && store.holeKommentare(idM)[kRod] === "Reserve fuer Nachschnitt");
+  t("[P-20] eine unbekannte Positionskennung wird auch beim Kommentar abgewiesen", (() => {
+    try { store.setzeKommentar("ohne-fertigmass", "x", idM); return false; }
+    catch (e) { return /Positionskennung/.test(e.message); }
+  })());
+  t("[P-20] pruefeKommentar: genau die Laengengrenze ist noch zulaessig",
+    store.KOMMENTAR_MAX === 200
+    && store.pruefeKommentar("x".repeat(store.KOMMENTAR_MAX)).ok === true
+    && store.pruefeKommentar("x".repeat(store.KOMMENTAR_MAX + 1)).ok === false
+    && store.pruefeKommentar("").ok === true && store.pruefeKommentar(null).ok === false);
+
+  // Projekt-Export -> Import: der Kommentar reist unveraendert mit ([P-2], ohne Bump).
+  const dateiK = JSON.stringify(store.projektObjekt(idM));
+  t("[P-20] die Projektdatei traegt den Kommentar und bleibt Version 2",
+    JSON.parse(dateiK).version === 2
+    && JSON.parse(dateiK).eingaben.kosten.kommentare[kRod] === "Reserve fuer Nachschnitt");
+  const idImpK = store.importiereText(dateiK, "MengenwandK.json");
+  t("[P-20] Export und Import lassen den Kommentar unveraendert",
+    store.holeKommentare(idImpK)[kRod] === "Reserve fuer Nachschnitt"
+    && Object.keys(store.holeKommentare(idImpK)).length === 1
+    && store.holeMengen(idImpK)[kRod] === 4);
+
+  // Altprojekt ohne den Abschnitt: laedt warnungsfrei und ganz ohne Kommentare.
+  t("[P-20] ein Altprojekt ohne den Abschnitt laedt ohne Kommentare",
+    Object.keys(store.holeKommentare(idAltM)).length === 0);
+  t("[P-20] der Kommentar bringt keinen Schema- oder Formatsprung",
+    store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6 && store.migrieren() === 6);
 }
 
 // 17) [#82]: Verzahnungsbereiche ueberstehen Export, Import und Duplizieren unveraendert

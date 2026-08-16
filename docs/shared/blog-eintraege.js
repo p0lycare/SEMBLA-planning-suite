@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-11",
+    datum: "2026-08-16",
+    typ: "feature",
+    issue: 81,
+    titel: "Kommentar je Stücklistenposition in Modul 4 — neben Menge und Preis, ohne die Rechnung zu ändern",
+    testbitte: "In Modul 4 zu einer Position einen Kommentar eintragen: Er steht danach an genau dieser "
+      + "Zeile, überlebt das Neuladen und lässt sich einzeln wieder entfernen; Mengen, Preise und Summe "
+      + "bleiben unverändert.",
+  },
+  {
     id: "chg-20260816-10",
     datum: "2026-08-16",
     typ: "feature",
