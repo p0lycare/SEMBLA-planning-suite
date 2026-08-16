@@ -37,8 +37,9 @@
  * und verlustfrei auf die POSITIVE Richtung ihrer Achse normalisiert.
  *
  * Dieses Modul ist REIN und DOM-frei und importiert nichts. Es kennt weder
- * Projektmappe noch Speicher — es rechnet auf Listen von {id, lage} und
- * Bemassungen. Persistenz liegt in `storage.js`, die Struktur in
+ * Projektmappe noch Speicher — es rechnet auf Listen von {id, lage},
+ * Bemassungen und (seit #83) einer DURCHGEREICHTEN Nachschlagetabelle der
+ * Verzahnungsbereiche. Persistenz liegt in `storage.js`, die Struktur in
  * `sembla-projektmappe.js`, die Bedienung in `docs/geschossplan.html`.
  *
  * Eigene Datei nach shared-Regel (b): eigene Tests (tests/module/test-constraints.mjs).
@@ -765,34 +766,144 @@ function _betroffeneWaende(liste, widersprueche) {
   return [...out].sort();
 }
 
+// --- Verzahnung: die eine Ausnahme von [K-13] (#83) ------------------------
+
+/**
+ * Die Verzahnungsbereiche EINER Wand, defensiv gelesen ([G-10], #83).
+ *
+ * Kanonisch stehen sie im WANDELEMENT (`wandelement.interlocks`), gewaehlt
+ * werden sie allein in Modul 1, und validiert werden sie im Rechenkern
+ * (`normInterlocks`, [G-12]). Dieses Modul kennt weder Speicher noch Kern: es
+ * bekommt die Liste durchgereicht und LIEST sie nur. Was hier durchfaellt —
+ * krumme Grenzen, leeres Intervall, fremde Paritaet —, erzeugt schlicht KEINE
+ * Ausnahme; es wird nichts zurechtgebogen und keine zweite Validierungsregel
+ * aufgemacht. Ein Bereich ist das halboffene Rasterintervall [g0, g1) in der
+ * LOKALEN Laengskoordinate der Wand.
+ * @param {any} roh
+ * @returns {{g0:number,g1:number,start_parity:number}[]}
+ */
+export function verzahnungsBereiche(roh) {
+  const out = [];
+  for (const b of (Array.isArray(roh) ? roh : [])) {
+    if (!b || typeof b !== "object") continue;
+    const g0 = Number(b.g0), g1 = Number(b.g1), p = Number(b.start_parity);
+    if (!_istGanzzahl(g0) || !_istGanzzahl(g1) || g1 <= g0) continue;
+    if (p !== 0 && p !== 1) continue;
+    out.push({ g0, g1, start_parity: p });
+  }
+  return out;
+}
+
+/**
+ * Nachschlagen in der durchgereichten Tabelle. Zugelassen sind eine `Map` und
+ * ein einfaches Objekt — die Oberflaeche haelt eine Map, Tests schreiben lieber
+ * ein Objekt. Fehlt die Tabelle oder der Eintrag, gibt es keine Bereiche.
+ */
+function _verzahnungVon(tabelle, id) {
+  if (!tabelle) return [];
+  if (typeof tabelle.get === "function") return verzahnungsBereiche(tabelle.get(id));
+  return Object.prototype.hasOwnProperty.call(tabelle, id)
+    ? verzahnungsBereiche(tabelle[id]) : [];
+}
+
+/**
+ * Der Bereich, der GENAU das Rasterfeld `g` der Wand vollstaendig enthaelt.
+ * Teilweise ueberdeckt genuegt ausdruecklich nicht (#83).
+ */
+function _bereichAn(bereiche, g) {
+  return bereiche.find((b) => b.g0 <= g && g + 1 <= b.g1) || null;
+}
+
+/**
+ * Greifen zwei ueberlappende Waende an ihren WECHSELSEITIG PASSENDEN
+ * Verzahnungsbereichen ineinander? Dann — und nur dann — ist die Ueberlagerung
+ * keine Kollision ([K-13]-Ausnahme, #83). Geprueft wird ausschliesslich aus
+ * kanonischer LAGE und kanonischen VERZAHNUNGSDATEN; Naehe, Wandenden und eine
+ * pauschale Eckausnahme kommen nicht vor, und es gibt KEINE Toleranz.
+ *
+ * Alle vier Bedingungen muessen zutreffen:
+ *  1. RECHTWINKLIG — zwei parallele Waende koennen nicht verzahnen.
+ *  2. GENAU EIN VOLLES RASTERFELD: die Ueberlappung ist 125 × 125 mm, also die
+ *     volle Breite BEIDER Waende. Jede angeschnittene Ueberlagerung bleibt eine
+ *     Kollision (Teilueberdeckung).
+ *  3. DER ORT je Wand: das ueberlappte Feld liegt in der lokalen Laengskoordinate
+ *     der Wand auf einem GANZZAHLIGEN Rasterindex (eine um einen halben Millimeter
+ *     danebenliegende Wand faellt exakt durch, es wird nichts gerundet) und wird
+ *     von einem Verzahnungsbereich VOLLSTAENDIG enthalten. Fehlt der Bereich auf
+ *     einer der beiden Seiten — einseitige Markierung —, bleibt es eine Kollision.
+ *  4. WECHSELSEITIGE ERGAENZUNG: die Startparitaeten sind VERSCHIEDEN. Wand A ist
+ *     in den Lagen `li % 2 === parityA` ausgespart, Wand B in `li % 2 === parityB`;
+ *     nur bei ungleicher Paritaet belegt in JEDER Lage genau eine der beiden das
+ *     Feld. Gleiche Paritaet hiesse: beide sparen dieselben Lagen aus und beide
+ *     belegen dieselben anderen — das ist echte Durchdringung.
+ *
+ * Der lokale Nullpunkt der Rasterindizes ist `start_mm`, also das Wandende mit
+ * der KLEINEREN Koordinate — dieselbe Verankerung, die `wandRechteck` und
+ * `bezugsOffset` benutzen. Die gerichtete Orientierung (#84) bleibt dabei
+ * bewusst wirkungslos.
+ *
+ * @returns {{a:string, b:string, ort_mm:{x:number,y:number},
+ *            raster:{a:number,b:number},
+ *            bereich_a:{g0:number,g1:number,start_parity:number},
+ *            bereich_b:{g0:number,g1:number,start_parity:number},
+ *            meldung:string}|null}
+ */
+function _passendeVerzahnung(A, B, ux, uy, tabelle) {
+  if (!A.lage || !B.lage) return null;
+  if (A.lage.richtung === B.lage.richtung) return null;               // 1.
+  if (ux !== BREITE_MM || uy !== BREITE_MM) return null;              // 2.
+  const ort = { x: Math.max(A.r.x_min, B.r.x_min), y: Math.max(A.r.y_min, B.r.y_min) };
+  const stelle = (W) => {
+    const a = /** @type {'x'|'y'} */ (W.lage.richtung);
+    const g = (ort[a] - (a === "x" ? W.r.x_min : W.r.y_min)) / GRID_MM;
+    if (!_istGanzzahl(g) || g < 0 || g >= Number(W.lage.laenge_grid)) return null;
+    const b = _bereichAn(_verzahnungVon(tabelle, W.id), g);           // 3.
+    return b ? { g, bereich: b } : null;
+  };
+  const sa = stelle(A), sb = stelle(B);
+  if (!sa || !sb) return null;
+  if (sa.bereich.start_parity === sb.bereich.start_parity) return null;   // 4.
+  return {
+    a: A.id, b: B.id,
+    ort_mm: ort,
+    raster: { a: sa.g, b: sb.g },
+    bereich_a: sa.bereich, bereich_b: sb.bereich,
+    meldung: `Wände „${A.id}“ und „${B.id}“ greifen an ihren Verzahnungsbereichen ineinander `
+      + `(Rasterfeld ${sa.g} bzw. ${sb.g}, Lagen wechselseitig ausgespart) — zulässige `
+      + "Verzahnung, keine Kollision ([K-13]/[G-10]).",
+  };
+}
+
 // --- Kollisionen ([K-13]) -------------------------------------------------
 
 /**
- * Ueberlappende Waende finden. Bündiges Beruehren (Ueberschneidung 0) ist
- * ZULAESSIG und keine Kollision. Es wird nichts verschoben oder gekuerzt —
- * nur gemeldet ([K-13]).
- *
- * @param {Wandeintrag[]} waende
- * @param {Record<string,{x:number,y:number}>} [positionen] geloeste Positionen (Standard: gespeicherte Lage)
- * @returns {{a:string,b:string,ueberlappung_mm:{x:number,y:number},meldung:string}[]}
+ * Der EINE Paarvergleich: er trennt echte Kollisionen von zulaessigen
+ * Verzahnungen, damit beide Aussagen aus derselben Rechnung stammen und nicht
+ * auseinanderlaufen koennen.
  */
-export function kollisionen(waende, positionen) {
+function _paare(waende, positionen, verzahnungen) {
   const eintraege = [];
   for (const w of (Array.isArray(waende) ? waende : [])) {
     const id = w && w.id != null ? String(w.id) : "";
     if (!id || w.lage == null) continue;
     const r = wandRechteck(w.lage, positionen ? positionen[id] : undefined);
-    if (r) eintraege.push({ id, r });
+    if (r) eintraege.push({ id, r, lage: normLage(w.lage) });
   }
   eintraege.sort((p, q) => (p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
 
   const out = [];
+  const stellen = [];
   for (let i = 0; i < eintraege.length; i++) {
     for (let j = i + 1; j < eintraege.length; j++) {
       const A = eintraege[i], B = eintraege[j];
       const ux = Math.min(A.r.x_max, B.r.x_max) - Math.max(A.r.x_min, B.r.x_min);
       const uy = Math.min(A.r.y_max, B.r.y_max) - Math.max(A.r.y_min, B.r.y_min);
       if (ux > 0 && uy > 0) {
+        // Die EINZIGE Ausnahme: eine wechselseitig passende Verzahnung (#83).
+        // Ohne durchgereichte Verzahnungsdaten kann sie nie greifen — das
+        // Ergebnis ist dann bit-genau das von vor #83.
+        const v = _passendeVerzahnung(A, B, ux, uy, verzahnungen);
+        if (v) { stellen.push(v); continue; }
         out.push({
           a: A.id, b: B.id,
           ueberlappung_mm: { x: ux, y: uy },
@@ -801,7 +912,41 @@ export function kollisionen(waende, positionen) {
       }
     }
   }
-  return out;
+  return { kollisionen: out, verzahnungen: stellen };
+}
+
+/**
+ * Ueberlappende Waende finden. Bündiges Beruehren (Ueberschneidung 0) ist
+ * ZULAESSIG und keine Kollision. Es wird nichts verschoben oder gekuerzt —
+ * nur gemeldet ([K-13]).
+ *
+ * Seit #83 gibt es GENAU EINE weitere Ausnahme: eine Ueberlagerung an
+ * wechselseitig passenden Verzahnungsbereichen beider Waende ([G-10], s.
+ * `_passendeVerzahnung`). Sie greift ausschliesslich, wenn die optionale
+ * Tabelle `verzahnungen` uebergeben wird; ohne sie rechnet die Funktion
+ * bit-genau wie zuvor.
+ *
+ * @param {Wandeintrag[]} waende
+ * @param {Record<string,{x:number,y:number}>} [positionen] geloeste Positionen (Standard: gespeicherte Lage)
+ * @param {Map<string,any>|Record<string,any>} [verzahnungen] Verzahnungsbereiche je Wandkennung
+ * @returns {{a:string,b:string,ueberlappung_mm:{x:number,y:number},meldung:string}[]}
+ */
+export function kollisionen(waende, positionen, verzahnungen) {
+  return _paare(waende, positionen, verzahnungen).kollisionen;
+}
+
+/**
+ * Die als zulaessig erkannten Verzahnungsstellen (#83) — dieselbe Rechnung, die
+ * `kollisionen()` die entsprechenden Paare entzieht. Sie werden ausgegeben,
+ * damit die Oberflaeche sie BENENNEN kann, statt eine Kollision kommentarlos
+ * verschwinden zu lassen.
+ *
+ * @param {Wandeintrag[]} waende
+ * @param {Record<string,{x:number,y:number}>} [positionen]
+ * @param {Map<string,any>|Record<string,any>} [verzahnungen]
+ */
+export function verzahnungsstellen(waende, positionen, verzahnungen) {
+  return _paare(waende, positionen, verzahnungen).verzahnungen;
 }
 
 // --- Zustand und Farbe ([K-8]) --------------------------------------------
@@ -887,11 +1032,18 @@ export function verschiebe(waende, bemassungen, wandId, versatz, ursprung) {
 /**
  * Loesen und Kollisionspruefung in einem Aufruf — das, was die Oberflaeche
  * nach jeder Aenderung braucht.
+ *
+ * `verzahnungen` ist die optionale Nachschlagetabelle der Verzahnungsbereiche
+ * je Wandkennung (#83). Sie wird nur DURCHGEREICHT: dieses Modul liest keinen
+ * Speicher und kein Wandelement. Fehlt sie, ist das Ergebnis bit-genau das von
+ * vor #83, und `verzahnungen` ist leer.
+ *
  * @param {Wandeintrag[]} waende @param {any[]} [bemassungen]
  * @param {any} [ursprung] Lage des Geschossursprungs ([K-4], #76)
+ * @param {Map<string,any>|Record<string,any>} [verzahnungen] Verzahnungsbereiche je Wandkennung
  */
-export function pruefeGeschoss(waende, bemassungen, ursprung) {
+export function pruefeGeschoss(waende, bemassungen, ursprung, verzahnungen) {
   const erg = loese(waende, bemassungen, ursprung);
-  const koll = kollisionen(waende, erg.positionen);
-  return { ...erg, kollisionen: koll };
+  const p = _paare(waende, erg.positionen, verzahnungen);
+  return { ...erg, kollisionen: p.kollisionen, verzahnungen: p.verzahnungen };
 }

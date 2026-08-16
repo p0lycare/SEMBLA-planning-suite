@@ -3,7 +3,9 @@
 // [K-3] treibende Masse, [K-4] ein Grundbezug, [K-5] deterministische Loesung,
 // [K-6] Widerspruch, [K-7] Redundanz, [K-8] Zustand/Farbe, [K-9] Ziehen,
 // [K-10] Positionsdaten im Geschoss, [K-11] Laengenmass, [K-12] Millimeter,
-// [K-13] Kollision. Dazu [L-1] Positions-/Laengenraster und [L-2] Orthogonalitaet.
+// [K-13] Kollision samt der einen Ausnahme fuer wechselseitig passende
+// Verzahnungsbereiche (#83). Dazu [L-1] Positions-/Laengenraster und
+// [L-2] Orthogonalitaet.
 //
 // Aufruf:  node tests/module/test-constraints.mjs
 
@@ -775,6 +777,146 @@ t("[K-11] krummes Laengenmass faellt in der Validierung auf",
   // uebergebenen Masse unangetastet.
   t("#76 `ursprungNachfuehrung` ist rein",
     masse[0].mass_mm === 1000);
+}
+
+// --- #83 Verzahnung: die EINE Ausnahme von [K-13] --------------------------
+// Zwei rechtwinklige Waende duerfen sich ueberlagern, wenn beide an genau diesem
+// Ort einen Verzahnungsbereich fuehren ([G-10]) und deren Startparitaeten sich
+// wechselseitig ergaenzen. Alles andere bleibt unveraendert streng — geprueft
+// wird deshalb vor allem, was WEITERHIN eine Kollision ist.
+{
+  /** Ein Verzahnungsbereich, wie ihn Modul 1 ins Wandelement schreibt. */
+  const V = (g0, g1, paritaet) => [{ g0, g1, start_parity: paritaet }];
+
+  // A laeuft in x ueber die Rasterfelder 0…15 (Rechteck x 0…2000, y 0…125).
+  // B kreuzt in y (Rechteck x 500…625, y −1000…1000). Die Ueberlagerung ist
+  // damit GENAU EIN volles Rasterfeld: bei A das Feld 4, bei B das Feld 8.
+  const A3 = w("A", 0, 62.5, "x", 16);
+  const B3 = w("B", 562.5, -1000, "y", 16);
+  const passend = { A: V(4, 5, 0), B: V(8, 9, 1) };
+
+  t("#83 ohne Verzahnungsdaten bleibt es bit-genau die Kollision von vorher",
+    JSON.stringify(K.kollisionen([A3, B3])) === JSON.stringify(K.kollisionen([A3, B3], undefined, {}))
+    && K.kollisionen([A3, B3]).length === 1);
+
+  t("#83 wechselseitig passende Verzahnungsbereiche sind KEINE Kollision (Wandmitte)",
+    K.kollisionen([A3, B3], undefined, passend).length === 0);
+  t("#83 die zulaessige Verzahnung wird ausgegeben, statt kommentarlos zu verschwinden", (() => {
+    const v = K.verzahnungsstellen([A3, B3], undefined, passend);
+    return v.length === 1 && v[0].a === "A" && v[0].b === "B"
+      && v[0].raster.a === 4 && v[0].raster.b === 8
+      && v[0].ort_mm.x === 500 && v[0].ort_mm.y === 0
+      && /Verzahnungsbereichen/.test(v[0].meldung) && /K-13/.test(v[0].meldung);
+  })());
+  t("#83 eine Map wird genauso gelesen wie ein einfaches Objekt",
+    K.kollisionen([A3, B3], undefined,
+      new Map([["A", passend.A], ["B", passend.B]])).length === 0);
+
+  // Verzahnung an der WANDKANTE: B endet buendig an der fernen Laengskante von A
+  // und greift mit seinem LETZTEN Rasterfeld hinein (T-Stoss statt Kreuzung).
+  {
+    const B4 = w("B", 562.5, -1000, "y", 9);        // Rechteck y −1000…125
+    t("#83 dieselbe Ausnahme greift an der Wandkante (T-Stoss, letztes Rasterfeld)",
+      K.kollisionen([A3, B4], undefined, passend).length === 0
+      && K.verzahnungsstellen([A3, B4], undefined, passend)[0].raster.b === 8);
+  }
+  // … und am ENDE von A: die Ueberlagerung liegt auf A-Feld 15.
+  {
+    const B5 = w("B", 1937.5, -1000, "y", 16);      // Rechteck x 1875…2000
+    t("#83 die Ausnahme haengt am ORT, nicht an der Wandmitte (A-Feld 15)",
+      K.kollisionen([A3, B5], undefined, { A: V(15, 16, 0), B: V(8, 9, 1) }).length === 0
+      && K.kollisionen([A3, B5], undefined, passend).length === 1);
+  }
+
+  // --- und jetzt alles, was WEITERHIN eine Kollision ist --------------------
+  t("#83 gleiche Startparitaet bleibt eine Kollision (beide sparen dieselben Lagen aus)",
+    K.kollisionen([A3, B3], undefined, { A: V(4, 5, 0), B: V(8, 9, 0) }).length === 1
+    && K.kollisionen([A3, B3], undefined, { A: V(4, 5, 1), B: V(8, 9, 1) }).length === 1);
+  t("#83 nur einseitig markiert bleibt eine Kollision",
+    K.kollisionen([A3, B3], undefined, { A: V(4, 5, 0) }).length === 1
+    && K.kollisionen([A3, B3], undefined, { B: V(8, 9, 1) }).length === 1);
+  t("#83 ein Bereich am FALSCHEN Ort hilft nicht",
+    K.kollisionen([A3, B3], undefined, { A: V(4, 5, 0), B: V(9, 10, 1) }).length === 1
+    && K.kollisionen([A3, B3], undefined, { A: V(5, 6, 0), B: V(8, 9, 1) }).length === 1);
+  t("#83 ein Bereich muss das Rasterfeld VOLLSTAENDIG enthalten", (() => {
+    // [4,5) liegt in [2,6), aber nicht in [2,5)+[5,6) getrennt und nicht in [0,4).
+    const drin = K.kollisionen([A3, B3], undefined, { A: V(2, 6, 0), B: V(6, 10, 1) });
+    const halb = K.kollisionen([A3, B3], undefined, { A: V(0, 4, 0), B: V(8, 9, 1) });
+    return drin.length === 0 && halb.length === 1;
+  })());
+  t("#83 eine nur TEILWEISE Ueberdeckung bleibt eine Kollision (kein volles Rasterfeld)", (() => {
+    // B reicht nur 62,5 mm in A hinein — halb verzahnt gibt es nicht.
+    const halb = w("B", 562.5, -1062.5, "y", 9);    // Rechteck y −1062,5…62,5
+    const k = K.kollisionen([A3, halb], undefined, passend);
+    return k.length === 1 && k[0].ueberlappung_mm.y === 62.5;
+  })());
+  t("#83 eine quer auf halbem Rasterfeld liegende Wand faellt exakt durch (keine Toleranz)",
+    // Mittellinie auf der Rasterlinie statt auf der Feldmitte ⇒ A-Feld 3,5.
+    K.kollisionen([A3, w("B", 500, -1000, "y", 16)], undefined, passend).length === 1
+    // … und ebenso ein einzelner Millimeter Versatz.
+    && K.kollisionen([A3, w("B", 563, -1000, "y", 16)], undefined, passend).length === 1);
+  t("#83 zwei PARALLELE Waende koennen nie verzahnen — auch nicht deckungsgleich",
+    K.kollisionen([w("A", 0, 62.5, "x", 16), w("B", 0, 62.5, "x", 16)], undefined,
+      { A: V(0, 16, 0), B: V(0, 16, 1) }).length === 1);
+  t("#83 eine Wand OHNE Verzahnungsdaten aendert ihr Kollisionsergebnis in keinem Fall",
+    K.kollisionen([A3, B3], undefined, {}).length === 1
+    && K.kollisionen([A3, B3], undefined, { A: [], B: [] }).length === 1
+    && K.kollisionen([A3, B3], undefined, { A: null, B: null }).length === 1);
+  t("#83 unbrauchbare Verzahnungsangaben werden nicht zurechtgebogen", (() => {
+    const krumm = K.kollisionen([A3, B3], undefined,
+      { A: [{ g0: 4.5, g1: 5.5, start_parity: 0 }], B: V(8, 9, 1) });
+    const leer = K.kollisionen([A3, B3], undefined,
+      { A: [{ g0: 5, g1: 5, start_parity: 0 }], B: V(8, 9, 1) });
+    const paritaet = K.kollisionen([A3, B3], undefined,
+      { A: [{ g0: 4, g1: 5, start_parity: 2 }], B: V(8, 9, 1) });
+    return krumm.length === 1 && leer.length === 1 && paritaet.length === 1;
+  })());
+  t("#83 `verzahnungsBereiche` liest defensiv und erfindet nichts", (() => {
+    const gut = K.verzahnungsBereiche([{ g0: 4, g1: 5, start_parity: 1 }]);
+    return gut.length === 1 && gut[0].g0 === 4 && gut[0].start_parity === 1
+      && K.verzahnungsBereiche(null).length === 0
+      && K.verzahnungsBereiche([{ g0: 1, g1: 0, start_parity: 0 }]).length === 0
+      && K.verzahnungsBereiche(["x", 7, null]).length === 0;
+  })());
+  t("#83 buendiges Beruehren bleibt ohne Verzahnung zulaessig (unveraendert)",
+    K.kollisionen([A3, w("B", 562.5, 125, "y", 8)], undefined, passend).length === 0
+    && K.verzahnungsstellen([A3, w("B", 562.5, 125, "y", 8)], undefined, passend).length === 0);
+
+  // --- Der Weg durch `pruefeGeschoss`: geprueft wird die GELOESTE Lage -------
+  {
+    const waende = [A3, w("B", 99999, 99999, "y", 16)];
+    const masse = [
+      b("fx", "x", null, p("A", "min"), 0),
+      b("fy", "y", null, p("A", "min"), 0),
+      b("dx", "x", p("A", "min"), p("B", "min"), 500),
+      b("dy", "y", p("B", "min"), p("A", "min"), 1000),
+    ];
+    const streng = K.pruefeGeschoss(waende, masse);
+    const mitV = K.pruefeGeschoss(waende, masse, undefined, passend);
+    t("#83 an der geloesten Lage greift dieselbe Ausnahme",
+      streng.kollisionen.length === 1 && mitV.kollisionen.length === 0
+      && mitV.verzahnungen.length === 1 && mitV.verzahnungen[0].raster.a === 4);
+    t("#83 [K-8] ohne Kollision bleiben beide Waende in ihrer normalen Zustandsfarbe",
+      K.zustand("A", streng, { kollisionen: streng.kollisionen }) === "fehler"
+      && K.zustand("A", mitV, { kollisionen: mitV.kollisionen }) !== "fehler"
+      && K.zustand("B", mitV, { kollisionen: mitV.kollisionen }) !== "fehler");
+    t("#83 [K-5] Loeser, Positionen und Bestimmtheit bleiben davon unberuehrt",
+      JSON.stringify(streng.positionen) === JSON.stringify(mitV.positionen)
+      && JSON.stringify(streng.bestimmt) === JSON.stringify(mitV.bestimmt)
+      && streng.widersprueche.length === 0 && mitV.widersprueche.length === 0);
+    t("#83 ohne Verzahnungsdaten meldet `pruefeGeschoss` eine leere Liste, nie `undefined`",
+      Array.isArray(streng.verzahnungen) && streng.verzahnungen.length === 0);
+  }
+
+  t("#83 die Bewertung ist deterministisch und reihenfolgeunabhaengig", (() => {
+    const a = JSON.stringify(K.verzahnungsstellen([A3, B3], undefined, passend));
+    const c = JSON.stringify(K.verzahnungsstellen([A3, B3], undefined, passend));
+    const gedreht = JSON.stringify(K.verzahnungsstellen([B3, A3], undefined, passend));
+    return a === c && a === gedreht && a !== "[]";
+  })());
+  t("#83 die Eingabelisten bleiben unangetastet — es wird kein Bereich erzeugt oder geaendert",
+    JSON.stringify(passend) === JSON.stringify({ A: V(4, 5, 0), B: V(8, 9, 1) })
+    && A3.lage.start_mm.x === 0 && B3.lage.laenge_grid === 16);
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

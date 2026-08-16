@@ -3443,6 +3443,155 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   }
 }
 
+// --- #83: passende Verzahnungen sind keine Kollision -----------------------
+// Realer Pfad: zwei Wandelemente tragen — wie aus Modul 1 — zueinander passende
+// Verzahnungsbereiche ([G-10]); verortet werden sie mit dem ECHTEN Wandwerkzeug,
+// sodass sie sich an genau diesen Bereichen ueberlagern. Geprueft werden danach
+// die tatsaechlich gerenderte Meldezeile, die Statuszeile und die Zustandsfarben
+// der beiden Waende — und vor allem, was weiterhin streng gemeldet wird.
+{
+  const prj83 = store.fuegeProjektHinzu('#83-Pruefprojekt', { geschoss: 'EG83', hoehe_mm: 2600 });
+  const gs83 = MAPPE.alleGeschosse(prj83)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs83);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  /** Eine unverortete Wand MIT Verzahnungsbereich anlegen — so, wie Modul 1 sie schreibt. */
+  const legeAn83 = (name, interlocks) => {
+    const id = store.speichere(name, buildWall(name, 2000, 2600, [], null, null, [], interlocks));
+    store.verorteWand(id, gs83, { name, lage: null });
+    return id;
+  };
+  /** Die Verzahnungsbereiche einer Wand ersetzen — ebenfalls der Weg von Modul 1. */
+  const setzeVerzahnung83 = (id, interlocks) => {
+    const el = store.holeElement(id);
+    store.speichere(el.name, buildWall(el.name, el.wandelement.length_mm, el.wandelement.height_mm,
+      [], null, null, [], interlocks), id);
+  };
+  /** Mit dem ECHTEN Wandwerkzeug verorten (Ziel waehlen, druecken, ziehen, loslassen). */
+  const verorte83 = async (id, von, nach) => {
+    $('gp-ziel').value = id; $('gp-ziel').dispatch('change');
+    GP.werkzeug('wand');
+    GP.zeichne(von, nach);
+    await warte();
+  };
+  const gruppe83 = (id) => (GP.svg.split('<g class="wand')
+    .find(s => s.includes(`data-wand="${id}"`)) || '');
+  const rot83 = (id) => gruppe83(id).includes(CON.FARBEN.fehler);
+
+  // A laeuft in x ueber die Rasterfelder 0…15, verzahnt in Feld 4 (Startparitaet 0).
+  // B kreuzt in y, verzahnt in Feld 8 (Startparitaet 1) — genau am selben Ort.
+  const idA83 = legeAn83('Verzahnung A', [{ g0: 4, g1: 5, start_parity: 0 }]);
+  const idB83 = legeAn83('Verzahnung B', [{ g0: 8, g1: 9, start_parity: 1 }]);
+  await warte();
+  ok('#83 Pruefaufbau: beide Wandelemente tragen ihren Verzahnungsbereich aus dem Kern ([G-10])',
+    store.holeElement(idA83).wandelement.interlocks.length === 1
+    && store.holeElement(idB83).wandelement.interlocks[0].start_parity === 1);
+
+  await verorte83(idA83, { x: 0, y: 62.5 }, { x: 2000, y: 62.5 });
+  await verorte83(idB83, { x: 562.5, y: -1000 }, { x: 562.5, y: 1000 });
+  const lage83 = (id) => MAPPE.findeWand(store.holeMappe(), id).wand.lage;
+  ok('#83 Pruefaufbau: die beiden Waende greifen an genau einem vollen Rasterfeld ineinander',
+    lage83(idA83).start_mm.x === 0 && lage83(idA83).start_mm.y === 62.5
+    && lage83(idB83).start_mm.x === 562.5 && lage83(idB83).start_mm.y === -1000
+    && lage83(idA83).laenge_grid === 16 && lage83(idB83).laenge_grid === 16);
+
+  // (a) Muss 1/2 — keine Kollisionsmeldung, keine Fehlerfarbe.
+  ok('#83 (Muss 1) die passende Verzahnung wird NICHT als Kollision gemeldet',
+    GP.loesen().kollisionen.length === 0 && GP.loesen().verzahnungen.length === 1);
+  ok('#83 (Muss 1) und die Statuszeile fuehrt keine Kollision mehr auf',
+    !/Kollision\(en\)/.test($('gp-status').innerHTML)
+    && !/class="err"/.test($('gp-status').innerHTML));
+  ok('#83 keine der beiden Waende ist rot ([K-8])',
+    !rot83(idA83) && !rot83(idB83) && gruppe83(idA83) !== '' && gruppe83(idB83) !== '');
+
+  // (b) Muss 6 — die zulaessige Verzahnung wird BENANNT, in Meldezeile und Status.
+  ok('#83 (Muss 6) die Meldezeile benennt die zulaessige Verzahnung nach dem Verorten',
+    /zulässige Verzahnung/.test($('gp-msg').textContent)
+    && /keine Kollision/.test($('gp-msg').textContent));
+  // Die Paarreihenfolge folgt den (zufaelligen) Wandkennungen und ist deshalb
+  // lauf-, aber nicht inhaltsabhaengig — geprueft werden beide Leserichtungen.
+  ok('#83 (Muss 6) die Statuszeile benennt sie samt Rasterfeldern — ohne Fehlerfarbe',
+    /zulässige Verzahnung/.test($('gp-status').innerHTML)
+    && /Rasterfeld (?:4 bzw\. 8|8 bzw\. 4)/.test($('gp-status').innerHTML)
+    && !/class="err"[^>]*>[^<]*Verzahnung/.test($('gp-status').innerHTML));
+
+  // (c) Muss 2/3/5 — falsche Paritaet, einseitige Markierung und die gewoehnliche
+  //     Ueberlagerung bleiben unveraendert streng.
+  setzeVerzahnung83(idB83, [{ g0: 8, g1: 9, start_parity: 0 }]);
+  await warte(); GP.render();
+  ok('#83 (Muss 2) gleiche Startparitaet ist weiterhin eine Kollision',
+    GP.loesen().kollisionen.length === 1 && /Kollision/.test($('gp-status').innerHTML)
+    && rot83(idA83) && rot83(idB83));
+  setzeVerzahnung83(idB83, []);
+  await warte(); GP.render();
+  ok('#83 (Muss 3) eine nur einseitig markierte Verzahnung bleibt eine Kollision',
+    GP.loesen().kollisionen.length === 1 && rot83(idA83) && rot83(idB83));
+  setzeVerzahnung83(idB83, [{ g0: 8, g1: 9, start_parity: 1 }]);
+  await warte(); GP.render();
+  ok('#83 nach dem Zurueckstellen ist es wieder die zulaessige Verzahnung',
+    GP.loesen().kollisionen.length === 0 && GP.loesen().verzahnungen.length === 1);
+
+  // (d) Muss 7 — Verschieben, Groessenaenderung und Rueckgaengig fuehren zu
+  //     derselben deterministischen Bewertung; gespeichert wird dabei nichts Zusaetzliches.
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 562.5, y: 500 });
+  ok('#83 Pruefaufbau: die kreuzende Wand ist aktiv', GP.zustand.aktiv === idB83);
+  GP.ziehe({ x: 562.5, y: 500 }, { x: 687.5, y: 500 });
+  await warte();
+  ok('#83 (Muss 5) ein Rasterfeld weiter ist es wieder eine ganz normale Kollision',
+    lage83(idB83).start_mm.x === 687.5 && GP.loesen().kollisionen.length === 1
+    && /Kollision/.test($('gp-msg').textContent) && rot83(idB83));
+  GP.undo();
+  await warte();
+  ok('#83 (Muss 7) Rueckgaengig fuehrt zu genau derselben Bewertung wie vorher',
+    lage83(idB83).start_mm.x === 562.5 && GP.loesen().kollisionen.length === 0
+    && GP.loesen().verzahnungen.length === 1 && !rot83(idB83));
+  {
+    // Groessenaenderung am max-Griff: der Anker (und damit der Rasterindex) bleibt —
+    // die Verzahnung ueberlebt, und der Bereich reist durch die Neurechnung mit.
+    GP.tippe({ x: 1000, y: 62.5 });
+    const g83 = GP.griffe().find(x => x.ende === 'max');
+    GP.ziehe(g83, { x: 1000, y: g83.y });
+    await warte();
+    ok('#83 (Muss 7) nach dem Kuerzen am max-Griff bleibt die Bewertung zulaessig',
+      lage83(idA83).laenge_grid === 8
+      && store.holeElement(idA83).wandelement.interlocks[0].g0 === 4
+      && GP.loesen().kollisionen.length === 0 && GP.loesen().verzahnungen.length === 1);
+    GP.undo();
+    await warte();
+    ok('#83 (Muss 7) und Rueckgaengig stellt Laenge, Wandelement und Bewertung gemeinsam her',
+      lage83(idA83).laenge_grid === 16
+      && store.holeElement(idA83).wandelement.length_mm === 2000
+      && GP.loesen().kollisionen.length === 0 && GP.loesen().verzahnungen.length === 1);
+  }
+  {
+    const vorM83 = localStorage.getItem('sembla:projekte');
+    const vorE83 = localStorage.getItem('sembla:elemente');
+    const vorU83 = GP.undoStand.undo;
+    GP.render(); GP.render();
+    ok('#83 (must-not) die Bewertung ist fluechtig — sie schreibt nichts und bucht nichts',
+      localStorage.getItem('sembla:projekte') === vorM83
+      && localStorage.getItem('sembla:elemente') === vorE83
+      && GP.undoStand.undo === vorU83
+      // … und nichts von der Bewertung steht in der Projektmappe (kein neues Feld).
+      && !/interlock|start_parity|kollision/i.test(vorM83));
+  }
+
+  // (e) Must-not — kein Bedienelement, kein Schreibweg, kein Formatbump.
+  ok('#83 (must-not) der Editor hat kein Bedienelement fuer Verzahnungsbereiche',
+    !/id="gp-verzahn/.test(html) && !/data-verzahn/.test(html)
+    && !/<select[^>]*interlock/.test(html) && !/<input[^>]*interlock/.test(html));
+  ok('#83 (must-not) geschrieben wird kein Bereich — es gibt genau EINE Zuweisung, '
+    + 'das Mitfuehren beim Neurechnen (#82)',
+    (html.match(/interlocks:/g) || []).length === 1
+    && /interlocks: \(we\.interlocks \|\| \[\]\)\.map/.test(html));
+  ok('#83 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

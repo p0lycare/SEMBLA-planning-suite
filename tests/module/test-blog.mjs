@@ -39,15 +39,35 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// #81 (Mengenfassung der Gesamtstueckliste) ist der NEUESTE Eintrag, #82
-// (Verzahnungsbereiche in Modul 1) der zweit-, #59 (ueberdeckungsfreie Nummernblasen)
-// der dritt-, #81 (waehlbare Mengenfassung der Wand) der viert-, #79 (technische
-// Wandzeichnung) der fuenft-, #79 (Geschosseditor) der sechst-, #79 (Lageplan) der
-// siebt-, #81 (Mengenuebersteuerung) der acht-, #79 (Wahl in Modul 1) der neunt- und
-// #80 der zehntneueste. Die folgenden Zusicherungen prüfen die Reihenfolge der älteren
-// Einträge und zählen deshalb ab dem elften — so bleibt jede Positionsaussage erhalten,
-// ohne 60 Indizes zu drehen.
-const AELTER = EINTRAEGE.slice(10);
+// #83 (zulaessige Verzahnung im Geschosseditor) ist der NEUESTE Eintrag; die
+// darauf folgenden Zusicherungen zaehlen deshalb ueber `AKTUELL` ab dem zweiten:
+// #81 (Mengenfassung der Gesamtstueckliste), #82 (Verzahnungsbereiche in Modul 1),
+// #59 (ueberdeckungsfreie Nummernblasen), #81 (waehlbare Mengenfassung der Wand),
+// #79 (technische Wandzeichnung), #79 (Geschosseditor), #79 (Lageplan),
+// #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
+// zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
+// zu drehen.
+const AKTUELL = EINTRAEGE.slice(1);
+const AELTER = EINTRAEGE.slice(11);
+// Genau EIN Eintrag fuer #83: die Ausnahme der Kollisionspruefung ist ein einziges
+// Nutzerergebnis. Aussagewahr heisst hier, dass die Strenge fuer alles andere
+// ausdruecklich mitgesagt wird — sonst laese es sich als generelle Lockerung.
+const neu83 = EINTRAEGE.filter(e => e.issue === 83);
+ok("genau ein Eintrag fuer Issue 83 (zulaessige Verzahnung)", neu83.length === 1);
+ok("die zulaessige Verzahnung (Issue 83) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260816-06" && EINTRAEGE[0]?.issue === 83
+  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-16");
+ok("der Verzahnungs-Eintrag benennt Ort, Ausnahme UND die erhaltene Strenge aussagewahr",
+  /Geschosseditor/.test(EINTRAEGE[0]?.titel || "")
+  && /Verzahnungen/.test(EINTRAEGE[0]?.titel || "")
+  && /Kollision/.test(EINTRAEGE[0]?.titel || "")
+  && /andere Überlagerung/.test(EINTRAEGE[0]?.titel || ""));
+ok("die Verzahnungs-Testbitte benennt Aufbau, beide Merkmale und den Gegenfall",
+  /rechtwinklige Wände/.test(EINTRAEGE[0]?.testbitte || "")
+  && /keine Kollisionsmeldung/.test(EINTRAEGE[0]?.testbitte || "")
+  && /keine rote Wand/.test(EINTRAEGE[0]?.testbitte || "")
+  && /benannt/.test(EINTRAEGE[0]?.testbitte || "")
+  && /gleicher Startlage/.test(EINTRAEGE[0]?.testbitte || ""));
 // #79 hat VIER Einträge, weil es vier getrennte Nutzerergebnisse waren: erst die Wahl
 // am Wandelement (Modul 1), dann die Darstellung im Lageplan, im Geschosseditor und
 // zuletzt auf der technischen Wandzeichnung. Damit sind alle geforderten Ansichten
@@ -64,179 +84,179 @@ const neu81 = EINTRAEGE.filter(e => e.issue === 81);
 ok("genau drei Eintraege fuer Issue 81 — Uebersteuerung, Fassungswahl an der Wand, Fassungswahl der Gesamtliste",
   neu81.length === 3
   && neu81.map(e => e.id).join(",") === "chg-20260816-05,chg-20260816-02,chg-20260815-01");
-ok("die Mengenfassung der Gesamtstueckliste (Issue 81) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260816-05" && EINTRAEGE[0]?.issue === 81
-  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-16");
+ok("die Mengenfassung der Gesamtstueckliste (Issue 81) folgt direkt danach",
+  AKTUELL[0]?.id === "chg-20260816-05" && AKTUELL[0]?.issue === 81
+  && AKTUELL[0]?.typ === "feature" && AKTUELL[0]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: die Wahl gilt jetzt auch fuer die AGGREGIERTE Liste, beide
 // Mengen stehen weiter nebeneinander, und die Datei benennt ihre Fassung. Behauptet
 // werden darf kein neuer Schreibweg — gesetzt wird die Menge weiter in Modul 4 ([P-20]).
 ok("der Gesamtlisten-Eintrag benennt Ort, Ebenen und die betroffene Ausgabe aussagewahr",
-  /Export/.test(EINTRAEGE[0]?.titel || "")
-  && /Mengenfassung/.test(EINTRAEGE[0]?.titel || "")
-  && /Gesamtstückliste/.test(EINTRAEGE[0]?.titel || "")
-  && /Geschoss/.test(EINTRAEGE[0]?.titel || "")
-  && /Projekt/.test(EINTRAEGE[0]?.titel || ""));
+  /Export/.test(AKTUELL[0]?.titel || "")
+  && /Mengenfassung/.test(AKTUELL[0]?.titel || "")
+  && /Gesamtstückliste/.test(AKTUELL[0]?.titel || "")
+  && /Geschoss/.test(AKTUELL[0]?.titel || "")
+  && /Projekt/.test(AKTUELL[0]?.titel || ""));
 ok("die Gesamtlisten-Testbitte benennt Schreibort, Wahl, beide Mengen und den Dateikopf",
-  /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
-  && /angepasst/.test(EINTRAEGE[0]?.testbitte || "")
-  && /wirksamen Mengen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /berechneten/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Dateikopf/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Modul 4/.test(AKTUELL[0]?.testbitte || "")
+  && /Modul 0/.test(AKTUELL[0]?.testbitte || "")
+  && /angepasst/.test(AKTUELL[0]?.testbitte || "")
+  && /wirksamen Mengen/.test(AKTUELL[0]?.testbitte || "")
+  && /berechneten/.test(AKTUELL[0]?.testbitte || "")
+  && /Dateikopf/.test(AKTUELL[0]?.testbitte || ""));
 ok("die Verzahnungsbereiche in Modul 1 (Issue 82) folgen direkt danach",
-  EINTRAEGE[1]?.id === "chg-20260816-04" && EINTRAEGE[1]?.issue === 82
-  && EINTRAEGE[1]?.typ === "feature" && EINTRAEGE[1]?.datum === "2026-08-16");
+  AKTUELL[1]?.id === "chg-20260816-04" && AKTUELL[1]?.issue === 82
+  && AKTUELL[1]?.typ === "feature" && AKTUELL[1]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: die Steine fehlen alternierend in JEDER ZWEITEN Lage, die
 // Steinmengen in der Stueckliste folgen dem Verband, Vorspannung und Gewindestangen
 // bleiben unveraendert. Es darf keine Wirkung behauptet werden, die nicht da ist.
 ok("der Verzahnungs-Eintrag benennt Ort, Verband und Mengenwirkung aussagewahr",
-  /Modul 1/.test(EINTRAEGE[1]?.titel || "")
-  && /Verzahnungsbereiche/.test(EINTRAEGE[1]?.titel || "")
-  && /alternierend/.test(EINTRAEGE[1]?.titel || "")
-  && /Mengen/.test(EINTRAEGE[1]?.titel || ""));
+  /Modul 1/.test(AKTUELL[1]?.titel || "")
+  && /Verzahnungsbereiche/.test(AKTUELL[1]?.titel || "")
+  && /alternierend/.test(AKTUELL[1]?.titel || "")
+  && /Mengen/.test(AKTUELL[1]?.titel || ""));
 ok("die Verzahnungs-Testbitte benennt Ort, Lage, Mengen und unveraenderte Vorspannung",
-  /Modul 1/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Verzahnungsbereich/.test(EINTRAEGE[1]?.testbitte || "")
-  && /jeder zweiten Lage/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Steinmengen/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Vorspannung/.test(EINTRAEGE[1]?.testbitte || "")
-  && /unverändert/.test(EINTRAEGE[1]?.testbitte || ""));
+  /Modul 1/.test(AKTUELL[1]?.testbitte || "")
+  && /Verzahnungsbereich/.test(AKTUELL[1]?.testbitte || "")
+  && /jeder zweiten Lage/.test(AKTUELL[1]?.testbitte || "")
+  && /Steinmengen/.test(AKTUELL[1]?.testbitte || "")
+  && /Vorspannung/.test(AKTUELL[1]?.testbitte || "")
+  && /unverändert/.test(AKTUELL[1]?.testbitte || ""));
 ok("die ueberdeckungsfreien Nummernblasen im Lageplan (Issue 59) folgen direkt danach",
-  EINTRAEGE[2]?.id === "chg-20260816-03" && EINTRAEGE[2]?.issue === 59
-  && EINTRAEGE[2]?.typ === "fix" && EINTRAEGE[2]?.datum === "2026-08-16");
+  AKTUELL[2]?.id === "chg-20260816-03" && AKTUELL[2]?.issue === 59
+  && AKTUELL[2]?.typ === "fix" && AKTUELL[2]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: es weicht die NUMMER aus — nicht das Mass und nicht die Wand.
 // Versprochen werden darf genau das, was die Regel zusichert: keine Ueberdeckung von
 // Blase, Masszahl oder Masslinie, gleichbleibender Bezug zur Wandkante und dieselbe
 // Anordnung in Vorschau, Druck und Export. Kein Bedienelement, keine gespeicherte Lage.
 ok("der Blasen-Eintrag benennt Ausweichen, Ort und die beiden gemiedenen Dinge aussagewahr",
-  /Lageplan/.test(EINTRAEGE[2]?.titel || "")
-  && /weichen/.test(EINTRAEGE[2]?.titel || "")
-  && /überdecken/.test(EINTRAEGE[2]?.titel || "")
-  && /Bemaßung/.test(EINTRAEGE[2]?.titel || "")
-  && !/verschieb/i.test(EINTRAEGE[2]?.titel || ""));
+  /Lageplan/.test(AKTUELL[2]?.titel || "")
+  && /weichen/.test(AKTUELL[2]?.titel || "")
+  && /überdecken/.test(AKTUELL[2]?.titel || "")
+  && /Bemaßung/.test(AKTUELL[2]?.titel || "")
+  && !/verschieb/i.test(AKTUELL[2]?.titel || ""));
 ok("die Blasen-Testbitte benennt Ausgangslage, Wandkante und die drei Ausgaben",
-  /Modul 9/.test(EINTRAEGE[2]?.testbitte || "")
-  && /bemaßten Wänden/.test(EINTRAEGE[2]?.testbitte || "")
-  && /Führungslinie/.test(EINTRAEGE[2]?.testbitte || "")
-  && /Wandkante/.test(EINTRAEGE[2]?.testbitte || "")
-  && /SVG-Datei/.test(EINTRAEGE[2]?.testbitte || ""));
+  /Modul 9/.test(AKTUELL[2]?.testbitte || "")
+  && /bemaßten Wänden/.test(AKTUELL[2]?.testbitte || "")
+  && /Führungslinie/.test(AKTUELL[2]?.testbitte || "")
+  && /Wandkante/.test(AKTUELL[2]?.testbitte || "")
+  && /SVG-Datei/.test(AKTUELL[2]?.testbitte || ""));
 ok("die waehlbare Mengenfassung der Wanddatei (Issue 81) folgt direkt danach",
-  EINTRAEGE[3]?.id === "chg-20260816-02" && EINTRAEGE[3]?.issue === 81
-  && EINTRAEGE[3]?.typ === "feature" && EINTRAEGE[3]?.datum === "2026-08-16");
+  AKTUELL[3]?.id === "chg-20260816-02" && AKTUELL[3]?.issue === 81
+  && AKTUELL[3]?.typ === "feature" && AKTUELL[3]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: die Wahl besteht zwischen GENAU zwei Fassungen, und beide
 // Werte bleiben nebeneinander stehen — die berechnete Menge wird nie ersetzt ([P-20]).
 // Behauptet werden darf kein neuer Schreibweg: gesetzt wird die Menge weiter in Modul 4.
 ok("der Fassungs-Eintrag benennt beide Fassungen und den Ort der Wahl aussagewahr",
-  /Export/.test(EINTRAEGE[3]?.titel || "")
-  && /wählbar/.test(EINTRAEGE[3]?.titel || "")
-  && /berechneten/.test(EINTRAEGE[3]?.titel || "")
-  && /angepassten/.test(EINTRAEGE[3]?.titel || "")
-  && /Stückliste/.test(EINTRAEGE[3]?.titel || ""));
+  /Export/.test(AKTUELL[3]?.titel || "")
+  && /wählbar/.test(AKTUELL[3]?.titel || "")
+  && /berechneten/.test(AKTUELL[3]?.titel || "")
+  && /angepassten/.test(AKTUELL[3]?.titel || "")
+  && /Stückliste/.test(AKTUELL[3]?.titel || ""));
 ok("die Fassungs-Testbitte benennt Schreibort, Wahl, Dateikopf und die erhaltene Rechnung",
-  /Modul 4/.test(EINTRAEGE[3]?.testbitte || "")
-  && /Modul 0/.test(EINTRAEGE[3]?.testbitte || "")
-  && /angepasst/.test(EINTRAEGE[3]?.testbitte || "")
-  && /Dateikopf/.test(EINTRAEGE[3]?.testbitte || "")
-  && /berechnete Menge/.test(EINTRAEGE[3]?.testbitte || ""));
+  /Modul 4/.test(AKTUELL[3]?.testbitte || "")
+  && /Modul 0/.test(AKTUELL[3]?.testbitte || "")
+  && /angepasst/.test(AKTUELL[3]?.testbitte || "")
+  && /Dateikopf/.test(AKTUELL[3]?.testbitte || "")
+  && /berechnete Menge/.test(AKTUELL[3]?.testbitte || ""));
 ok("die Darstellung in der technischen Zeichnung (Issue 79) folgt direkt danach",
-  EINTRAEGE[4]?.id === "chg-20260816-01" && EINTRAEGE[4]?.issue === 79
-  && EINTRAEGE[4]?.typ === "feature" && EINTRAEGE[4]?.datum === "2026-08-16");
+  AKTUELL[4]?.id === "chg-20260816-01" && AKTUELL[4]?.issue === 79
+  && AKTUELL[4]?.typ === "feature" && AKTUELL[4]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: beide Klassen, die NICHT farblichen Merkmale (Kurztext und
 // Legende) und der Ort, an dem gewaehlt wird. Modul 7 zeigt nur an; behauptet werden
 // darf kein Nachweis und keine Wirkung ([P-9]). Eine Schraffur gibt es dort bewusst
 // nicht — sie darf hier also auch nicht versprochen werden.
 ok("der Zeichnungs-Eintrag benennt beide Klassen, Kurztext und Legende aussagewahr",
-  /F0\/F30|F0 und F30/.test(EINTRAEGE[4]?.titel || "")
-  && /Wandzeichnung/.test(EINTRAEGE[4]?.titel || "")
-  && /Kurztext/.test(EINTRAEGE[4]?.titel || "")
-  && /Legende/.test(EINTRAEGE[4]?.titel || "")
-  && !/schraffiert/.test(EINTRAEGE[4]?.titel || ""));
+  /F0\/F30|F0 und F30/.test(AKTUELL[4]?.titel || "")
+  && /Wandzeichnung/.test(AKTUELL[4]?.titel || "")
+  && /Kurztext/.test(AKTUELL[4]?.titel || "")
+  && /Legende/.test(AKTUELL[4]?.titel || "")
+  && !/schraffiert/.test(AKTUELL[4]?.titel || ""));
 ok("die Zeichnungs-Testbitte benennt Wahlort, Ausgabeweg, Export und Schwarz-Weiss",
-  /Modul 1/.test(EINTRAEGE[4]?.testbitte || "")
-  && /Modul 7/.test(EINTRAEGE[4]?.testbitte || "")
-  && /Legende/.test(EINTRAEGE[4]?.testbitte || "")
-  && /SVG-Datei/.test(EINTRAEGE[4]?.testbitte || "")
-  && /schwarz-weiß/.test(EINTRAEGE[4]?.testbitte || ""));
+  /Modul 1/.test(AKTUELL[4]?.testbitte || "")
+  && /Modul 7/.test(AKTUELL[4]?.testbitte || "")
+  && /Legende/.test(AKTUELL[4]?.testbitte || "")
+  && /SVG-Datei/.test(AKTUELL[4]?.testbitte || "")
+  && /schwarz-weiß/.test(AKTUELL[4]?.testbitte || ""));
 ok("die Darstellung im Geschosseditor (Issue 79) folgt direkt danach",
-  EINTRAEGE[5]?.id === "chg-20260815-03" && EINTRAEGE[5]?.issue === 79
-  && EINTRAEGE[5]?.typ === "feature" && EINTRAEGE[5]?.datum === "2026-08-15");
+  AKTUELL[5]?.id === "chg-20260815-03" && AKTUELL[5]?.issue === 79
+  && AKTUELL[5]?.typ === "feature" && AKTUELL[5]?.datum === "2026-08-15");
 // Aussagewahr heisst hier: beide Klassen, die NICHT farblichen Merkmale (Schraffur und
 // Beschriftung), Legende UND Wandliste — und der Ort, an dem gewaehlt wird. Der Editor
 // zeigt nur an; behauptet werden darf kein Nachweis und keine Wirkung ([P-9]).
 ok("der Geschosseditor-Eintrag benennt beide Klassen, Schraffur, Legende und Wandliste aussagewahr",
-  /F0\/F30|F0 und F30/.test(EINTRAEGE[5]?.titel || "")
-  && /Geschosseditor/.test(EINTRAEGE[5]?.titel || "")
-  && /schraffiert/.test(EINTRAEGE[5]?.titel || "")
-  && /Legende/.test(EINTRAEGE[5]?.titel || "")
-  && /Wandliste/.test(EINTRAEGE[5]?.titel || ""));
+  /F0\/F30|F0 und F30/.test(AKTUELL[5]?.titel || "")
+  && /Geschosseditor/.test(AKTUELL[5]?.titel || "")
+  && /schraffiert/.test(AKTUELL[5]?.titel || "")
+  && /Legende/.test(AKTUELL[5]?.titel || "")
+  && /Wandliste/.test(AKTUELL[5]?.titel || ""));
 ok("die Geschosseditor-Testbitte benennt Wahlort, beide Klassen, Wandliste und Schwarz-Weiss",
-  /Modul 1/.test(EINTRAEGE[5]?.testbitte || "")
-  && /F30-Wand/.test(EINTRAEGE[5]?.testbitte || "")
-  && /F0-Wände/.test(EINTRAEGE[5]?.testbitte || "")
-  && /Wandliste/.test(EINTRAEGE[5]?.testbitte || "")
-  && /schwarz-weiß/.test(EINTRAEGE[5]?.testbitte || ""));
+  /Modul 1/.test(AKTUELL[5]?.testbitte || "")
+  && /F30-Wand/.test(AKTUELL[5]?.testbitte || "")
+  && /F0-Wände/.test(AKTUELL[5]?.testbitte || "")
+  && /Wandliste/.test(AKTUELL[5]?.testbitte || "")
+  && /schwarz-weiß/.test(AKTUELL[5]?.testbitte || ""));
 ok("die Lageplan-Darstellung (Issue 79) folgt direkt danach",
-  EINTRAEGE[6]?.id === "chg-20260815-02" && EINTRAEGE[6]?.issue === 79
-  && EINTRAEGE[6]?.typ === "feature" && EINTRAEGE[6]?.datum === "2026-08-15");
+  AKTUELL[6]?.id === "chg-20260815-02" && AKTUELL[6]?.issue === 79
+  && AKTUELL[6]?.typ === "feature" && AKTUELL[6]?.datum === "2026-08-15");
 // Aussagewahr heisst hier: beide Klassen, das NICHT farbliche Merkmal (Schraffur und
 // Beschriftung), die Legende — und der Ort, an dem gewaehlt wird. Der Lageplan zeigt
 // nur an; behauptet werden darf kein Nachweis und keine Wirkung ([P-9]).
 ok("der Lageplan-Eintrag benennt beide Klassen, Schraffur, Beschriftung und Legende aussagewahr",
-  /F0\/F30|F0 und F30/.test(EINTRAEGE[6]?.titel || "")
-  && /Lageplan/.test(EINTRAEGE[6]?.titel || "")
-  && /schraffiert/.test(EINTRAEGE[6]?.titel || "")
-  && /Legende/.test(EINTRAEGE[6]?.titel || ""));
+  /F0\/F30|F0 und F30/.test(AKTUELL[6]?.titel || "")
+  && /Lageplan/.test(AKTUELL[6]?.titel || "")
+  && /schraffiert/.test(AKTUELL[6]?.titel || "")
+  && /Legende/.test(AKTUELL[6]?.titel || ""));
 ok("die Lageplan-Testbitte benennt Wahlort, Ausgabe, Wandliste und Schwarz-Weiss",
-  /Modul 1/.test(EINTRAEGE[6]?.testbitte || "")
-  && /Modul 9/.test(EINTRAEGE[6]?.testbitte || "")
-  && /exportieren/.test(EINTRAEGE[6]?.testbitte || "")
-  && /Wandliste/.test(EINTRAEGE[6]?.testbitte || "")
-  && /schwarz-weiß/.test(EINTRAEGE[6]?.testbitte || ""));
+  /Modul 1/.test(AKTUELL[6]?.testbitte || "")
+  && /Modul 9/.test(AKTUELL[6]?.testbitte || "")
+  && /exportieren/.test(AKTUELL[6]?.testbitte || "")
+  && /Wandliste/.test(AKTUELL[6]?.testbitte || "")
+  && /schwarz-weiß/.test(AKTUELL[6]?.testbitte || ""));
 ok("die Mengenuebersteuerung (Issue 81) folgt direkt danach",
-  EINTRAEGE[7]?.id === "chg-20260815-01" && EINTRAEGE[7]?.issue === 81
-  && EINTRAEGE[7]?.typ === "feature" && EINTRAEGE[7]?.datum === "2026-08-15");
+  AKTUELL[7]?.id === "chg-20260815-01" && AKTUELL[7]?.issue === 81
+  && AKTUELL[7]?.typ === "feature" && AKTUELL[7]?.datum === "2026-08-15");
 // Aussagewahr heisst hier: die Menge ist MANUELL uebersteuerbar und der berechnete Wert
 // bleibt daneben stehen — kein Ersetzen. Die Testbitte nennt Anzeige beider Werte,
 // Persistenz, Ruecknahme und die Abweisung unzulaessiger Eingaben ([P-20]).
 ok("der Mengen-Eintrag benennt Uebersteuerung UND erhaltenen Originalwert aussagewahr",
-  /Menge je Stücklistenposition/.test(EINTRAEGE[7]?.titel || "")
-  && /manuell/.test(EINTRAEGE[7]?.titel || "")
-  && /berechnete Menge/.test(EINTRAEGE[7]?.titel || "")
-  && /daneben sichtbar/.test(EINTRAEGE[7]?.titel || ""));
+  /Menge je Stücklistenposition/.test(AKTUELL[7]?.titel || "")
+  && /manuell/.test(AKTUELL[7]?.titel || "")
+  && /berechnete Menge/.test(AKTUELL[7]?.titel || "")
+  && /daneben sichtbar/.test(AKTUELL[7]?.titel || ""));
 ok("die Mengen-Testbitte benennt Anzeige, Persistenz, Ruecknahme und Abweisung",
-  /Modul 4/.test(EINTRAEGE[7]?.testbitte || "")
-  && /nebeneinander/.test(EINTRAEGE[7]?.testbitte || "")
-  && /Neuladen/.test(EINTRAEGE[7]?.testbitte || "")
-  && /zurücksetzen/.test(EINTRAEGE[7]?.testbitte || "")
-  && /abgewiesen/.test(EINTRAEGE[7]?.testbitte || ""));
+  /Modul 4/.test(AKTUELL[7]?.testbitte || "")
+  && /nebeneinander/.test(AKTUELL[7]?.testbitte || "")
+  && /Neuladen/.test(AKTUELL[7]?.testbitte || "")
+  && /zurücksetzen/.test(AKTUELL[7]?.testbitte || "")
+  && /abgewiesen/.test(AKTUELL[7]?.testbitte || ""));
 ok("die Brandschutz-Wahl in Modul 1 (Issue 79) folgt direkt danach",
-  EINTRAEGE[8]?.id === "chg-20260814-04" && EINTRAEGE[8]?.issue === 79
-  && EINTRAEGE[8]?.typ === "feature" && EINTRAEGE[8]?.datum === "2026-08-14");
+  AKTUELL[8]?.id === "chg-20260814-04" && AKTUELL[8]?.issue === 79
+  && AKTUELL[8]?.typ === "feature" && AKTUELL[8]?.datum === "2026-08-14");
 // Aussagewahr heisst hier: beide Werte, der EINE Ort der Wahl, der Standard und die
 // ausdrueckliche Abwesenheit einer abgeleiteten Wirkung — nichts davon darf fehlen,
 // und es darf kein Nachweis behauptet werden ([P-9]).
 ok("der Brandschutz-Eintrag benennt beide Klassen, den Ort der Wahl und den Standard aussagewahr",
-  /F0/.test(EINTRAEGE[8]?.titel || "") && /F30/.test(EINTRAEGE[8]?.titel || "")
-  && /Modul 1/.test(EINTRAEGE[8]?.titel || "")
-  && /Standard F0/.test(EINTRAEGE[8]?.titel || "")
-  && /kein Nachweis/.test(EINTRAEGE[8]?.titel || ""));
+  /F0/.test(AKTUELL[8]?.titel || "") && /F30/.test(AKTUELL[8]?.titel || "")
+  && /Modul 1/.test(AKTUELL[8]?.titel || "")
+  && /Standard F0/.test(AKTUELL[8]?.titel || "")
+  && /kein Nachweis/.test(AKTUELL[8]?.titel || ""));
 ok("die Brandschutz-Testbitte benennt Fortbestand, Neuberechnung und unveraenderte Ableitung",
-  /neu laden/.test(EINTRAEGE[8]?.testbitte || "")
-  && /exportieren/.test(EINTRAEGE[8]?.testbitte || "")
-  && /Geschosseditor/.test(EINTRAEGE[8]?.testbitte || "")
-  && /Länge ändern/.test(EINTRAEGE[8]?.testbitte || "")
-  && /Stückliste/.test(EINTRAEGE[8]?.testbitte || ""));
+  /neu laden/.test(AKTUELL[8]?.testbitte || "")
+  && /exportieren/.test(AKTUELL[8]?.testbitte || "")
+  && /Geschosseditor/.test(AKTUELL[8]?.testbitte || "")
+  && /Länge ändern/.test(AKTUELL[8]?.testbitte || "")
+  && /Stückliste/.test(AKTUELL[8]?.testbitte || ""));
 ok("der Planhintergrund im Lageplan (Issue 80) folgt direkt danach",
-  EINTRAEGE[9]?.id === "chg-20260814-03" && EINTRAEGE[9]?.issue === 80
-  && EINTRAEGE[9]?.typ === "feature" && EINTRAEGE[9]?.datum === "2026-08-14");
+  AKTUELL[9]?.id === "chg-20260814-03" && AKTUELL[9]?.issue === 80
+  && AKTUELL[9]?.typ === "feature" && AKTUELL[9]?.datum === "2026-08-14");
 ok("der Planhintergrund-Eintrag benennt Quelle, Einstellung und Ausgabe aussagewahr",
-  /Geschossplan/.test(EINTRAEGE[9]?.titel || "")
-  && /kalibriert/i.test(EINTRAEGE[9]?.titel || "")
-  && /Hintergrund/.test(EINTRAEGE[9]?.titel || "")
-  && /Transparenz/.test(EINTRAEGE[9]?.titel || "")
-  && /Modul 9/.test(EINTRAEGE[9]?.testbitte || "")
-  && /exportieren/.test(EINTRAEGE[9]?.testbitte || "")
-  && /100 %/.test(EINTRAEGE[9]?.testbitte || ""));
+  /Geschossplan/.test(AKTUELL[9]?.titel || "")
+  && /kalibriert/i.test(AKTUELL[9]?.titel || "")
+  && /Hintergrund/.test(AKTUELL[9]?.titel || "")
+  && /Transparenz/.test(AKTUELL[9]?.titel || "")
+  && /Modul 9/.test(AKTUELL[9]?.testbitte || "")
+  && /exportieren/.test(AKTUELL[9]?.testbitte || "")
+  && /100 %/.test(AKTUELL[9]?.testbitte || ""));
 ok("der verschiebbare Geschossursprung (Issue 76) folgt direkt danach",
   AELTER[0]?.id === "chg-20260814-02" && AELTER[0]?.issue === 76);
 ok("der Ursprungs-Eintrag benennt Bedienweg, Auswirkung und Ruecknahme aussagewahr",

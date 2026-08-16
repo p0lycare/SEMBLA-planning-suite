@@ -547,6 +547,33 @@ function brandklasse(el){
 }
 
 /**
+ * Die Verzahnungsbereiche aller Wände als Nachschlagetabelle für die
+ * Kollisionsprüfung (#83).
+ *
+ * Sie sind ein Feld des WANDELEMENTS ([G-10]) und werden hier — wie Höhe,
+ * Wandtyp und Brandschutzklassifikation — ausschließlich GELESEN: gewählt
+ * werden sie allein in Modul 1, dieser Editor hat dafür kein Bedienelement und
+ * schreibt sie nie ([P-1]). Gebaut wird die Tabelle aus derselben `els`-Karte,
+ * die `render()` ohnehin einmal je Bild liest — es entsteht kein zusätzlicher
+ * Vollparse des Wandspeichers und kein zweiter Speicherpfad.
+ *
+ * `sembla-constraints.js` bekommt sie durchgereicht; es kennt weder Speicher
+ * noch Wandelement. Ein verwaister Eintrag ([L-4]) steht gar nicht erst darin
+ * und kann damit nie eine Ausnahme begründen.
+ * @param {Map<string,any>} els
+ * @returns {Map<string,any[]>}
+ */
+function verzahnungenMap(els){
+  const m = new Map();
+  for (const w of waende()) {
+    const el = els.get(w.id);
+    const il = el && el.wandelement ? el.wandelement.interlocks : null;
+    if (Array.isArray(il) && il.length) m.set(w.id, il);
+  }
+  return m;
+}
+
+/**
  * Der GESPEICHERTE Geschossursprung ([K-4], #76) — der eine Grundbezug. Fehlt er
  * (jeder Altstand), ist er 0/0; erfunden wird nichts.
  */
@@ -559,8 +586,44 @@ function ursprung(){ const gs = geschoss(); return CON.ursprungPunkt(gs ? gs.urs
  */
 function ursprungVorschau(){ return GP.ursprungEntwurf || ursprung(); }
 
-/** Lösen + Kollisionsprüfung — nach jeder Änderung frisch, nie gespeichert ([K-5]). */
-function loesen(){ return CON.pruefeGeschoss(waende(), bemassungen(), ursprung()); }
+/**
+ * Nur die VERORTUNG lösen: Positionen, Bestimmtheit, Gruppen, Widersprüche
+ * ([K-5]). Das ist der Aufruf für alles, was **Geometrie** braucht —
+ * Treffersuche, Griffe, Bezüge, Maßgeometrie, Blick, Drehsperre.
+ *
+ * Er läuft ausdrücklich OHNE Kollisionsprüfung und rührt den Wandspeicher
+ * deshalb nicht an. Zwei Gründe, beide wichtig:
+ *  - Diese Aufrufe hängen in Zeigerbehandlern und laufen mehrfach je Tick. Ein
+ *    `store.listeElemente()` je Aufruf wäre ein Rückschritt gegen die
+ *    Vollparse-Bilanz von #79 (genau EIN Lesen des Wandspeichers je Bild).
+ *  - Das Ergebnis trägt gar KEIN `kollisionen`-Feld. Damit kann hier auch
+ *    niemand versehentlich eine zweite, verzahnungsblinde Kollisionswahrheit
+ *    ablesen — sie existiert nicht, statt bloß unbenutzt danebenzuliegen.
+ * Wer Kollisionen oder Verzahnungen ANZEIGT, nimmt `loesen()`.
+ */
+function verortung(){ return CON.loese(waende(), bemassungen(), ursprung()); }
+
+/**
+ * Verortung + Kollisionsprüfung — nach jeder Änderung frisch, nie gespeichert
+ * ([K-5]). Genau DREI Stellen brauchen das, weil nur sie das Ergebnis auch
+ * zeigen: die Zeichnung (`render`), die Meldung nach dem Ziehen
+ * (`ziehenFertig`) und die Folgemeldung einer Längenänderung (`folgen`).
+ *
+ * Seit #83 reisen die Verzahnungsbereiche mit: eine Überlagerung an wechselseitig
+ * passenden Bereichen ist keine Kollision ([K-13]-Ausnahme). Gerechnet wird das
+ * im Kern; hier steht nur, womit. Gespeichert wird dabei nichts — die Bewertung
+ * entsteht bei jedem Aufruf neu und ist deshalb nach Verschieben,
+ * Größenänderung und Rückgängig zwangsläufig dieselbe.
+ *
+ * `els` ist die Wandspeicher-Karte des laufenden `render()`; wo sie fehlt, wird
+ * sie einmal gelesen — das trifft nur die beiden Meldewege, die je abgeschlossener
+ * Bedienhandlung genau einmal laufen, nie einen Zeigertick.
+ * @param {Map<string,any>} [els]
+ */
+function loesen(els){
+  return CON.pruefeGeschoss(waende(), bemassungen(), ursprung(),
+    verzahnungenMap(els || elementeMap()));
+}
 
 /** Position einer Wand: das Lösungsergebnis, sonst die gespeicherte Lage. */
 function position(id, erg){
@@ -791,7 +854,7 @@ function zoomeAuf(faktor, clientX, clientY){
 
 /** Blick auf alles Vorhandene setzen (Wände + Planbild). Ohne Inhalt: Ursprung zeigen. */
 function zeigeAlles(){
-  const erg = loesen();
+  const erg = verortung();
   let min = { x: Infinity, y: Infinity }, max = { x: -Infinity, y: -Infinity };
   const dazu = (x0, y0, x1, y1) => {
     min.x = Math.min(min.x, x0); min.y = Math.min(min.y, y0);
@@ -993,7 +1056,7 @@ function auswahlPruefen(){
  * @returns {{ende:'min'|'max'|'mitte', x:number, y:number}[]}
  */
 function griffe(w, rect, lage){
-  const r = rect || CON.wandRechteck(w.lage, position(w.id, loesen()));
+  const r = rect || CON.wandRechteck(w.lage, position(w.id, verortung()));
   const l = lage || CON.normLage(w.lage);
   if (!r || !l) return [];
   const cx = (r.x_min + r.x_max) / 2, cy = (r.y_min + r.y_max) / 2;
@@ -1459,7 +1522,7 @@ function bemTreffer(p, erg){
 
 /** Mitte der Maßzahl eines Maßes als Weltpunkt (Zeichnen und Treffen, s. o.). */
 function bemTextPunkt(id){
-  const erg = loesen();
+  const erg = verortung();
   const i = bemassungen().findIndex(b => b.id === id);
   if (i < 0) return null;
   const g = bemLayout(erg)[i];
@@ -1526,7 +1589,7 @@ function bemEntwurfSvg(erg){
 function bemEntwurfTextPunkt(){
   if (!GP.bem || !GP.bem.bis) return null;
   const g = bemGeometrie({ id: '@entwurf', achse: GP.bem.achse, von: kanon(GP.bem.von),
-    bis: kanon(GP.bem.bis), mass_mm: 0 }, bemassungen().length, loesen());
+    bis: kanon(GP.bem.bis), mass_mm: 0 }, bemassungen().length, verortung());
   return g ? bemText(g).mitte : null;
 }
 
@@ -2053,11 +2116,13 @@ function render(){
   }
   const f = flaeche();
   auswahlPruefen();
-  const erg = loesen();
-  const koll = erg.kollisionen || [];
-  // Die Wandelemente EINMAL lesen — Zeichnung und Liste teilen sich dieselbe
-  // Nachschlagetabelle (Höhe, Wandtyp, Brandschutzklassifikation).
+  // Die Wandelemente EINMAL lesen — Zeichnung, Liste und Kollisionsprüfung teilen
+  // sich dieselbe Nachschlagetabelle (Höhe, Wandtyp, Brandschutzklassifikation
+  // und seit #83 die Verzahnungsbereiche). Sie steht deshalb VOR dem Lösen.
   const els = elementeMap();
+  const erg = loesen(els);
+  const koll = erg.kollisionen || [];
+  const verz = erg.verzahnungen || [];
   const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
     + `${r2(f.breite * V.mm)} ${r2(f.hoehe * V.mm)}">`,
     `<rect x="${r2(V.x0)}" y="${r2(V.y0)}" width="${r2(f.breite * V.mm)}" height="${r2(f.hoehe * V.mm)}" fill="#f6f8fb"/>`,
@@ -2078,7 +2143,7 @@ function render(){
       : GP.werkzeug === 'plan' ? ' schiebt'
       : GP.werkzeug === 'bemassen' || GP.werkzeug === 'ursprung' ? ' zeichnet' : '');
   inlineSync();
-  statusSync(erg, koll);
+  statusSync(erg, koll, verz);
   listeSync(erg, koll, els);
   kopfSync();
 }
@@ -2100,7 +2165,7 @@ function inlineSync(){
 // ---------------------------------------------------------------------------
 //  Oberfläche außerhalb der Zeichenfläche
 // ---------------------------------------------------------------------------
-function statusSync(erg, koll){
+function statusSync(erg, koll, verz){
   const verortet = waende().filter(w => w.lage != null).length;
   const teile = [
     `<span><b>${waende().length}</b> Wand/Wände · <b>${verortet}</b> verortet</span>`,
@@ -2110,6 +2175,15 @@ function statusSync(erg, koll){
     teile.push(`<span class="err"><b>${koll.length}</b> Kollision(en): `
       + esc(koll.map(k => `${namen(k.a)} ↔ ${namen(k.b)} (${k.ueberlappung_mm.x} × `
         + `${k.ueberlappung_mm.y} mm)`).join(', ')) + ' — [K-13]</span>');
+  }
+  // Zulässige Verzahnungen werden BENANNT (#83) — eine Überlagerung darf nicht
+  // kommentarlos aus der Kollisionsliste verschwinden. Bewusst OHNE Fehlerfarbe:
+  // das ist der geplante Anschluss, kein Mangel.
+  if ((verz || []).length) {
+    teile.push(`<span><b>${verz.length}</b> zulässige Verzahnung(en): `
+      + esc(verz.map(v => `${namen(v.a)} ↔ ${namen(v.b)} (Rasterfeld ${v.raster.a} bzw. `
+        + `${v.raster.b}, Lagen wechselseitig ausgespart)`).join(', '))
+      + ' — keine Kollision ([K-13]/[G-10])</span>');
   }
   if (erg.widersprueche.length) {
     // [K-6]: benannt wird das beteiligte Maß und die Differenz in mm — nie gemittelt,
@@ -2291,7 +2365,7 @@ function kopfSync(){
 function drehSperre(id, erg){
   const masse = bemassungenAn(id);
   if (masse.length) return { grund: 'direkt', masse, achsen: [] };
-  const e = erg || loesen();
+  const e = erg || verortung();
   const b = e.bestimmt[id];
   const achsen = b ? CON.ACHSEN.filter(a => b[a]) : [];
   return achsen.length ? { grund: 'bestimmt', masse: [], achsen } : { grund: null, masse: [], achsen: [] };
@@ -2510,7 +2584,7 @@ function naechsterName(){
 // ---------------------------------------------------------------------------
 /** Wand unter einem Weltpunkt (die zuletzt gezeichnete gewinnt, sie liegt oben). */
 function treffer(p){
-  const erg = loesen();
+  const erg = verortung();
   const luft = 2 * V.mm;                        // 2 Schirmpixel Toleranz
   const liste = waende();
   for (let i = liste.length - 1; i >= 0; i--) {
@@ -2560,10 +2634,12 @@ function ziehenFertig(id, delta){
     });
   } catch (e) { zeige('Nicht verschoben: ' + fehlerText(e), false); render(); return; }
   buchen(vor, []);
-  const koll = loesen().kollisionen || [];
+  const nachher = loesen();
+  const koll = nachher.kollisionen || [];
   zeige(`Verschoben: ${geaendert.length} Wand/Wände um ${d.x} / ${d.y} mm.`
     + (r.meldungen.length ? ' ' + r.meldungen.join(' ') : '')
-    + (koll.length ? ` ⚠ ${koll.length} Kollision(en) — gemeldet, nicht korrigiert ([K-13]).` : ''),
+    + (koll.length ? ` ⚠ ${koll.length} Kollision(en) — gemeldet, nicht korrigiert ([K-13]).` : '')
+    + verzahnungText(nachher),
     !r.meldungen.length && !koll.length);
 }
 
@@ -2773,14 +2849,29 @@ function speichereLage(id, lage, was){
   return true;
 }
 
-/** Meldung über Längenabweichung ([L-3]) und Kollisionen ([K-13]) nach einer Änderung. */
+/**
+ * Der Satz über zulässige Verzahnungen für die Meldezeile (#83) — dieselbe
+ * Aussage wie in der Statuszeile, nur kurz. Er steht überall dort, wo auch die
+ * Kollisionen gemeldet werden: eine Überlagerung verschwindet nie kommentarlos.
+ */
+function verzahnungText(erg){
+  const v = (erg && erg.verzahnungen) || [];
+  return v.length
+    ? ` ${v.length} zulässige Verzahnung(en) — die Wände greifen an ihren `
+      + 'Verzahnungsbereichen ineinander, das ist keine Kollision ([K-13]/[G-10]).'
+    : '';
+}
+
+/** Meldung über Längenabweichung ([L-3]), Kollisionen und Verzahnungen ([K-13]) nach einer Änderung. */
 function folgen(id, lage){
   const el = store.holeElement(id);
   const ab = MAPPE.laengenAbgleich(lage, el && el.wandelement ? el.wandelement.length_mm : null);
-  const koll = loesen().kollisionen || [];
+  const erg = loesen();
+  const koll = erg.kollisionen || [];
   return (ab.abweichung ? ` Das Wandelement ist ${ab.wand_mm} mm lang — die Abweichung wird gemeldet, `
       + 'nicht angeglichen ([L-3]).' : '')
-    + (koll.length ? ` ⚠ ${koll.length} Kollision(en) — gemeldet, nicht korrigiert ([K-13]).` : '');
+    + (koll.length ? ` ⚠ ${koll.length} Kollision(en) — gemeldet, nicht korrigiert ([K-13]).` : '')
+    + verzahnungText(erg);
 }
 
 /** Größenziehen abschließen: nur die Länge (und bei „min“ der Anker) ändern sich. */
@@ -2789,7 +2880,7 @@ function groesseFertig(){
   if (!g) return;
   const w = wand(g.id);
   const alt = CON.normLage(w && w.lage);
-  const lage = groesseLage(loesen());          // noch mit gesetztem GP.groesse rechnen
+  const lage = groesseLage(verortung());          // noch mit gesetztem GP.groesse rechnen
   GP.groesse = null;
   if (!alt || !lage) { render(); return; }
   if (lage.laenge_grid === alt.laenge_grid
@@ -2826,7 +2917,7 @@ function groesseFertig(){
 function drehe(){
   const w = GP.aktiv ? wand(GP.aktiv) : null;
   if (!w || w.lage == null) { zeige('Keine aktive, verortete Wand — nichts gedreht.', false); return; }
-  const erg = loesen();
+  const erg = verortung();
   // Zwei verschiedene Sperren, zwei verschiedene Auswege — deshalb zwei Meldungen (#53).
   const sperre = drehSperre(w.id, erg);
   if (sperre.grund === 'direkt') {
@@ -2945,7 +3036,7 @@ function speichereBemassung(bem, was){
   }
   GP.bem = null;
   GP.bemAktiv = bem.id;
-  const erg = loesen();
+  const erg = verortung();
   const streit = erg.widersprueche.filter(w => w.bemassung === bem.id || w.konflikt_mit === bem.id);
   const doppelt = erg.redundanzen.some(w => w.bemassung === bem.id);
   zeige(`${was}: ${bem.mass_mm} mm in Achse ${bem.achse}.`
@@ -3086,7 +3177,7 @@ function inlineBlur(){
 
 /** Klick des Werkzeugs D auf die Zeichenfläche. */
 function bemKlick(p){
-  const erg = loesen();
+  const erg = verortung();
   const achse = GP.bem ? GP.bem.achse : null;
   const b = bezugTreffer(p, erg, achse);
   if (!b) {
@@ -3196,7 +3287,7 @@ function beiKlick(ev){
   // hier bleibt nur das Abwählen mit einem Klick ins Leere.
   if (GP.werkzeug === 'auswahl' && !GP.ziehen && !GP.groesse) {
     const welt = weltPunkt(ev.clientX, ev.clientY);
-    if (!griffTreffer(welt) && !treffer(welt) && !bemTreffer(welt, loesen())) {
+    if (!griffTreffer(welt) && !treffer(welt) && !bemTreffer(welt, verortung())) {
       waehle(null, ev.shiftKey || ev.ctrlKey || ev.metaKey);
       GP.bemAktiv = null;
       render();
@@ -3228,7 +3319,7 @@ function beiDoppelklick(ev){
   if (!geschoss()) return;
   if (GP.kal.an) return;                          // im Messmodus öffnet nichts (#52)
   if (GP.werkzeug === 'ursprung') return;         // ebenso wenig beim Setzen des Ursprungs (#76)
-  const id = bemTreffer(weltPunkt(ev.clientX, ev.clientY), loesen());
+  const id = bemTreffer(weltPunkt(ev.clientX, ev.clientY), verortung());
   if (!id) return;
   GP.bemZieh = null;
   if (!waehleBemassung(id)) return;
@@ -3268,8 +3359,8 @@ function beiZeigerAb(ev){
   const weltMass = weltPunkt(ev.clientX, ev.clientY);
   const mod = ev.shiftKey || ev.ctrlKey || ev.metaKey;
   const zielHatVorrang = GP.werkzeug === 'bemassen' && GP.bem
-    && bezugTreffer(weltMass, loesen(), GP.bem.achse);
-  const massId = mod || zielHatVorrang ? null : bemTreffer(weltMass, loesen());
+    && bezugTreffer(weltMass, verortung(), GP.bem.achse);
+  const massId = mod || zielHatVorrang ? null : bemTreffer(weltMass, verortung());
   if (massId) {
     waehleBemassung(massId);
     const bm = bemassungen().find(b => b.id === massId);
@@ -3322,7 +3413,7 @@ function beiZeigerAb(ev){
   const id = g ? GP.aktiv : treffer(welt);
   if (!id) {
     // Keine Wand getroffen: dann vielleicht ein Maß — anklickbar zum Ändern/Löschen (§4.3).
-    const bid = bemTreffer(welt, loesen());
+    const bid = bemTreffer(welt, verortung());
     if (bid) { waehleBemassung(bid); render(); }
     return;
   }
@@ -3382,7 +3473,7 @@ function beiZeigerBewegung(ev){
   if (GP.werkzeug === 'bemassen') {
     const welt = weltPunkt(ev.clientX, ev.clientY);
     if (GP.bem && !GP.bem.bis) GP.bemZeiger = welt;
-    const b = bezugTreffer(welt, loesen(), GP.bem ? GP.bem.achse : null);
+    const b = bezugTreffer(welt, verortung(), GP.bem ? GP.bem.achse : null);
     const vorher = GP.bemHover;
     GP.bemHover = b ? { wand: b.wand, achse: b.achse, bezug: b.bezug } : null;
     const gleich = (!b && !vorher)
@@ -4000,14 +4091,14 @@ function beiTaste(ev){
 window.__gp = {
   render, werkzeug, zeigeAlles, auffrischen, drehe, wende, undo, redo,
   entwurfLage, fange, fangeQuer, weltPunkt, schirmPunkt, treffer, griffTreffer, loesen,
-  bezugTreffer: (welt, achse) => bezugTreffer(welt, loesen(), achse),
-  bemTreffer: (welt) => bemTreffer(welt, loesen()),
+  bezugTreffer: (welt, achse) => bezugTreffer(welt, verortung(), achse),
+  bemTreffer: (welt) => bemTreffer(welt, verortung()),
   /**
    * Weltpunkt eines Bezugs — damit klickt der Test dieselben Stellen wie die Maus.
    * `wandId === null` meint die Linie des Geschossursprungs der jeweiligen Achse (#60).
    */
   bezugsPunkt(wandId, achse, bezug){
-    const erg = loesen();
+    const erg = verortung();
     const b = (wandId == null
       ? ursprungBezuege(flaeche())
       : bezugsLinien(wand(wandId) || {}, erg))
@@ -4021,7 +4112,7 @@ window.__gp = {
   },
   /** Maßlinie eines gespeicherten Maßes als Weltpunkt (zum Anklicken). */
   bemPunkt(id){
-    const erg = loesen();
+    const erg = verortung();
     const liste = bemassungen();
     const i = liste.findIndex(b => b.id === id);
     if (i < 0) return null;
@@ -4033,9 +4124,9 @@ window.__gp = {
   /** Mitte der dargestellten Maßzahl als Weltpunkt — dort klickt auch die Maus. */
   bemTextPunkt,
   /** Nur die Maßzahl (enger als `bemTreffer`) — dort beginnt der Zug (#51). */
-  bemTextTreffer: (welt) => bemTextTreffer(welt, loesen()),
+  bemTextTreffer: (welt) => bemTextTreffer(welt, verortung()),
   /** Die kollisionsfrei angeordneten Maßgeometrien in Mappenreihenfolge (#59). */
-  bemLayout: () => bemLayout(loesen()),
+  bemLayout: () => bemLayout(verortung()),
   /** Mitte des vollständigen, noch ungespeicherten Maßentwurfs. */
   bemEntwurfTextPunkt,
   /** Die Inline-Eingabe: dieselben Behandler wie Tastatur und Fokus im Browser. */

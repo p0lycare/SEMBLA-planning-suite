@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-06",
+    datum: "2026-08-16",
+    typ: "fix",
+    issue: 83,
+    titel: "Passende Verzahnungen im Geschosseditor gelten nicht mehr als Kollision — jede andere Überlagerung schon",
+    testbitte: "Zwei rechtwinklige Wände mit passenden Verzahnungsbereichen im Geschosseditor "
+      + "ineinanderzeichnen: keine Kollisionsmeldung, keine rote Wand, die Verzahnung wird benannt. "
+      + "Bei gleicher Startlage bleibt es eine Kollision.",
+  },
+  {
     id: "chg-20260816-05",
     datum: "2026-08-16",
     typ: "feature",
