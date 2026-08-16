@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-03",
+    datum: "2026-08-16",
+    typ: "fix",
+    issue: 59,
+    titel: "Im Lageplan weichen die Wandnummern aus, statt einander oder eine Bemaßung zu überdecken",
+    testbitte: "In Modul 9 ein Geschoss mit dicht beieinander liegenden, bemaßten Wänden öffnen: "
+      + "Jede Nummer steht frei lesbar neben ihrer Wand, die Führungslinie endet weiter an derselben "
+      + "Wandkante, und Druck wie SVG-Datei zeigen dieselbe Anordnung.",
+  },
+  {
     id: "chg-20260816-02",
     datum: "2026-08-16",
     typ: "feature",

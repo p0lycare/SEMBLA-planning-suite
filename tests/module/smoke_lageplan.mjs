@@ -724,6 +724,127 @@ ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
     && !lp.daten.hinweise.some(m => /Brand/i.test(m.art + m.text)));
 }
 
+// --- 11) [#59] Nummernblasen ueberdeckungsfrei am ECHTEN Pfad -------------
+//
+// Der Nutzerpfad: mehrere dicht benachbarte, bemasste Waende in einem Geschoss.
+// Angelegt wird ueber die regulaeren Wege (`speichere`/`verorteWand`/`setzeBemassung`),
+// gezeigt und exportiert ueber die Seite selbst. Geprueft wird an der sichtbaren
+// Vorschau UND an den ENTPACKTEN Exportbytes: keine Blase darf eine andere, keine
+// Masszahl und keine Masslinie ueberdecken, und HTML wie SVG muessen dieselbe
+// Platzierung tragen. Die Geometrie rechnet der Test SELBST (Kreis gegen Kreis,
+// Kreis gegen Streckenzug) — nicht mit den Huellflaechen des Moduls.
+{
+  const gsNah = MAPPE.fuegeGeschossHinzu(store.projektMappe(prjA.projekt.id),
+    store.projektMappe(prjA.projekt.id).gebaeude[0].id, 'Dichtes Geschoss', 2600);
+  store.setzeMappe(gsNah.mappe);
+  const gsN = gsNah.id;
+  // Drei parallele Waende im 125-mm-Achsabstand: bei 1:50 nur 2,5 Papier-mm — die
+  // Blasen (4,2 mm Durchmesser) laegen ohne Ausweichen uebereinander.
+  const ids = [1062.5, 1187.5, 1312.5].map((y, i) => {
+    const nm = `Wand dicht ${i + 1}`;
+    const id = store.speichere(nm, buildWall(nm, 2000, 2600, []));
+    store.verorteWand(id, gsN,
+      { lage: { start_mm: { x: 0, y }, richtung: 'x', laenge_grid: 16 } });
+    return id;
+  });
+  // Eine quer laufende Wand und ein Mass, dessen Masslinie per gespeichertem
+  // `linie_mm` genau unter die Ausgangslage der ersten Blase gezogen wird.
+  const idQ1 = store.speichere('Wand quer links', buildWall('Wand quer links', 2875, 2600, []));
+  const idQ2 = store.speichere('Wand quer rechts', buildWall('Wand quer rechts', 2875, 2600, []));
+  store.verorteWand(idQ1, gsN,
+    { lage: { start_mm: { x: 62.5, y: 1375 }, richtung: 'y', laenge_grid: 23 } });
+  store.verorteWand(idQ2, gsN,
+    { lage: { start_mm: { x: 1937.5, y: 1375 }, richtung: 'y', laenge_grid: 23 } });
+  store.setzeMappe(MAPPE.setzeBemassung(store.projektMappe(prjA.projekt.id), gsN, {
+    id: 'bm-quer', achse: 'x', von: { wand: idQ1, bezug: 'mitte' },
+    bis: { wand: idQ2, bezug: 'mitte' }, mass_mm: 1875, linie_mm: -2287.5,
+  }));
+  await warte();
+  lp.waehleGeschoss(gsN);
+  await lp.laden();
+
+  const abstandZuStrecke = (p, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+    const t = l2 === 0 ? 0 : Math.max(0, Math.min(1,
+      ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
+    return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  };
+  const strecken = s => {
+    const raus = [];
+    for (const g of s.matchAll(/<g class="lpmass[^"]*"[^>]*><path d="([^"]*)"/g)) {
+      const pkt = [...g[1].matchAll(/([ML])(-?[\d.]+) (-?[\d.]+)/g)]
+        .map(m => ({ art: m[1], x: +m[2], y: +m[3] }));
+      for (let i = 1; i < pkt.length; i++) if (pkt[i].art === 'L') raus.push([pkt[i - 1], pkt[i]]);
+    }
+    return raus;
+  };
+  const textPunkte = s => [...s.matchAll(
+    /<g class="lpmass[^"]*"[^>]*>.*?<text x="(-?[\d.]+)" y="(-?[\d.]+)"/g)]
+    .map(m => ({ x: +m[1], y: +m[2] }));
+  /** Ueberdeckungsfrei gegen Blasen, Masszahlen und Masslinien? */
+  const frei = s => {
+    const mk = markerVon(s), st = strecken(s), tp = textPunkte(s);
+    return mk.length > 0
+      && mk.every((a, i) => mk.slice(i + 1).every(b =>
+        Math.hypot(a.kreis.x - b.kreis.x, a.kreis.y - b.kreis.y) >= a.kreis.r + b.kreis.r))
+      && mk.every(g => st.every(([a, b]) => abstandZuStrecke(g.kreis, a, b) >= g.kreis.r))
+      && mk.every(g => tp.every(p =>
+        Math.hypot(p.x - g.kreis.x, p.y - g.kreis.y) > g.kreis.r));
+  };
+
+  const nahMarker = markerVon(lp.blatt.svg);
+  ok('[#59] Pruefaufbau: fuenf Waende, davon drei im dichtesten Abstand, plus Bemassung',
+    lp.daten.waende.length === 5 && nahMarker.length === 5
+    && ids.every(id => nahMarker.some(g => g.id === id))
+    && lp.blatt.svg.includes('data-bemassung="bm-quer"'));
+  ok('[#59] in der Vorschau ueberdeckt keine Blase eine andere, keine Zahl, keine Masslinie',
+    frei(lp.blatt.svg) && frei($('lp-blatt').innerHTML));
+  ok('[#59] mindestens eine Blase ist dafuer ausgewichen — auf derselben Normalen',
+    nahMarker.some(g => {
+      const r = rechteckVon(lp.blatt.svg, g.id);
+      const quer = lp.daten.waende.find(w => w.id === g.id).richtung !== 'y';
+      return quer ? g.kreis.y < r.y - 4.5 - 0.002 : g.kreis.x < r.x - 4.5 - 0.002;
+    }));
+  ok('[#59] jede Fuehrungslinie endet weiterhin auf der Kante ihrer eigenen Wand',
+    nahMarker.every(g => {
+      const r = rechteckVon(lp.blatt.svg, g.id);
+      const quer = lp.daten.waende.find(w => w.id === g.id).richtung !== 'y';
+      return quer
+        ? g.linie.x2 === g.kreis.x && g.linie.y2 === r.y
+        : g.linie.y2 === g.kreis.y && g.linie.x2 === r.x;
+    }));
+
+  // Muss 9: an den ENTPACKTEN Exportbytes — HTML und SVG tragen dieselbe Platzierung.
+  const standVorBlase = JSON.stringify([...localStorage.m.entries()].sort());
+  letzterBlob = null;
+  $('lp-export').dispatch('click');
+  await warte();
+  const nahText = Object.fromEntries((await ZIP.entpacke(letzterBlob.teile[0]))
+    .map(e => [e.name, dec.decode(e.data)]));
+  const nahRumpf = LP.dateiRumpf(lp.daten);
+  const sigBlase = s => markerVon(s)
+    .map(g => `${g.id}@${g.kreis.x}/${g.kreis.y}>${g.linie.x2}/${g.linie.y2}`).join(',');
+  ok('[#59] auch die exportierten Bytes sind ueberdeckungsfrei',
+    frei(nahText[nahRumpf + '.html']) && frei(nahText[nahRumpf + '.svg']));
+  ok('[#59] Vorschau, exportiertes HTML und exportiertes SVG zeigen dieselbe Platzierung',
+    sigBlase(lp.blatt.svg) === sigBlase($('lp-blatt').innerHTML)
+    && sigBlase(nahText[nahRumpf + '.html']) === sigBlase(lp.blatt.svg)
+    && sigBlase(nahText[nahRumpf + '.svg']) === sigBlase(lp.blatt.svg));
+  ok('[#59] die Ausweichlage ist fluechtig — Anzeigen und Exportieren schreiben nichts',
+    JSON.stringify([...localStorage.m.entries()].sort()) === standVorBlase
+    && !/"cx"|"blase"|"marker"/.test(JSON.stringify([...localStorage.m.entries()])));
+  ok('[#59] Masswert und gespeicherter Darstellungsversatz bleiben unveraendert',
+    MAPPE.bemassungen(store.projektMappe(prjA.projekt.id), gsN)
+      .find(b => b.id === 'bm-quer').linie_mm === -2287.5
+    && massTexte(lp.blatt.svg).join(',') === '1875');
+  ok('[#59] Nummerierung und Wandliste bleiben unberuehrt',
+    lp.daten.waende.map(w => w.nr).join(',') === '1,2,3,4,5'
+    && nahMarker.map(g => g.text).join(',') === '1,2,3,4,5'
+    && tabZeilen(lp.blatt.html).map(z => z.nr).join(',') === '1,2,3,4,5');
+  ok('[K-5] gleicher Stand ⇒ bitgenau dieselbe Platzierung',
+    (() => { const vorher = lp.blatt.svg; lp.render(); return lp.blatt.svg === vorher; })());
+}
+
 // --- Bericht -------------------------------------------------------------
 let fail = 0;
 for (const [n, c] of checks) { if (!c) fail++; console.log((c ? '  ok  ' : '  FAIL ') + n); }

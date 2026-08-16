@@ -39,13 +39,14 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// #81 (waehlbare Mengenfassung im Export) ist der NEUESTE Eintrag, #79 (technische
-// Wandzeichnung) der zweit-, #79 (Geschosseditor) der dritt-, #79 (Lageplan) der viert-,
-// #81 (Mengenuebersteuerung) der fuenft-, #79 (Wahl in Modul 1) der sechst- und #80 der
-// siebtneueste. Die folgenden Zusicherungen prüfen die Reihenfolge der älteren Einträge
-// und zählen deshalb ab dem achten — so bleibt jede Positionsaussage erhalten, ohne 60
+// #59 (ueberdeckungsfreie Nummernblasen im Lageplan) ist der NEUESTE Eintrag, #81
+// (waehlbare Mengenfassung im Export) der zweit-, #79 (technische Wandzeichnung) der
+// dritt-, #79 (Geschosseditor) der viert-, #79 (Lageplan) der fuenft-, #81
+// (Mengenuebersteuerung) der sechst-, #79 (Wahl in Modul 1) der siebt- und #80 der
+// achtneueste. Die folgenden Zusicherungen prüfen die Reihenfolge der älteren Einträge
+// und zählen deshalb ab dem neunten — so bleibt jede Positionsaussage erhalten, ohne 60
 // Indizes zu drehen.
-const AELTER = EINTRAEGE.slice(7);
+const AELTER = EINTRAEGE.slice(8);
 // #79 hat VIER Einträge, weil es vier getrennte Nutzerergebnisse waren: erst die Wahl
 // am Wandelement (Modul 1), dann die Darstellung im Lageplan, im Geschosseditor und
 // zuletzt auf der technischen Wandzeichnung. Damit sind alle geforderten Ansichten
@@ -61,123 +62,142 @@ const neu81 = EINTRAEGE.filter(e => e.issue === 81);
 ok("genau zwei Eintraege fuer Issue 81 — Uebersteuerung in Modul 4 und Fassungswahl im Export",
   neu81.length === 2
   && neu81.map(e => e.id).join(",") === "chg-20260816-02,chg-20260815-01");
-ok("die waehlbare Mengenfassung im Export (Issue 81) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260816-02" && EINTRAEGE[0]?.issue === 81
-  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-16");
+ok("die ueberdeckungsfreien Nummernblasen im Lageplan (Issue 59) sind der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260816-03" && EINTRAEGE[0]?.issue === 59
+  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-16");
+// Aussagewahr heisst hier: es weicht die NUMMER aus — nicht das Mass und nicht die Wand.
+// Versprochen werden darf genau das, was die Regel zusichert: keine Ueberdeckung von
+// Blase, Masszahl oder Masslinie, gleichbleibender Bezug zur Wandkante und dieselbe
+// Anordnung in Vorschau, Druck und Export. Kein Bedienelement, keine gespeicherte Lage.
+ok("der Blasen-Eintrag benennt Ausweichen, Ort und die beiden gemiedenen Dinge aussagewahr",
+  /Lageplan/.test(EINTRAEGE[0]?.titel || "")
+  && /weichen/.test(EINTRAEGE[0]?.titel || "")
+  && /überdecken/.test(EINTRAEGE[0]?.titel || "")
+  && /Bemaßung/.test(EINTRAEGE[0]?.titel || "")
+  && !/verschieb/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Blasen-Testbitte benennt Ausgangslage, Wandkante und die drei Ausgaben",
+  /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
+  && /bemaßten Wänden/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Führungslinie/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Wandkante/.test(EINTRAEGE[0]?.testbitte || "")
+  && /SVG-Datei/.test(EINTRAEGE[0]?.testbitte || ""));
+ok("die waehlbare Mengenfassung im Export (Issue 81) folgt direkt danach",
+  EINTRAEGE[1]?.id === "chg-20260816-02" && EINTRAEGE[1]?.issue === 81
+  && EINTRAEGE[1]?.typ === "feature" && EINTRAEGE[1]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: die Wahl besteht zwischen GENAU zwei Fassungen, und beide
 // Werte bleiben nebeneinander stehen — die berechnete Menge wird nie ersetzt ([P-20]).
 // Behauptet werden darf kein neuer Schreibweg: gesetzt wird die Menge weiter in Modul 4.
 ok("der Fassungs-Eintrag benennt beide Fassungen und den Ort der Wahl aussagewahr",
-  /Export/.test(EINTRAEGE[0]?.titel || "")
-  && /wählbar/.test(EINTRAEGE[0]?.titel || "")
-  && /berechneten/.test(EINTRAEGE[0]?.titel || "")
-  && /angepassten/.test(EINTRAEGE[0]?.titel || "")
-  && /Stückliste/.test(EINTRAEGE[0]?.titel || ""));
+  /Export/.test(EINTRAEGE[1]?.titel || "")
+  && /wählbar/.test(EINTRAEGE[1]?.titel || "")
+  && /berechneten/.test(EINTRAEGE[1]?.titel || "")
+  && /angepassten/.test(EINTRAEGE[1]?.titel || "")
+  && /Stückliste/.test(EINTRAEGE[1]?.titel || ""));
 ok("die Fassungs-Testbitte benennt Schreibort, Wahl, Dateikopf und die erhaltene Rechnung",
-  /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
-  && /angepasst/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Dateikopf/.test(EINTRAEGE[0]?.testbitte || "")
-  && /berechnete Menge/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Modul 4/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Modul 0/.test(EINTRAEGE[1]?.testbitte || "")
+  && /angepasst/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Dateikopf/.test(EINTRAEGE[1]?.testbitte || "")
+  && /berechnete Menge/.test(EINTRAEGE[1]?.testbitte || ""));
 ok("die Darstellung in der technischen Zeichnung (Issue 79) folgt direkt danach",
-  EINTRAEGE[1]?.id === "chg-20260816-01" && EINTRAEGE[1]?.issue === 79
-  && EINTRAEGE[1]?.typ === "feature" && EINTRAEGE[1]?.datum === "2026-08-16");
+  EINTRAEGE[2]?.id === "chg-20260816-01" && EINTRAEGE[2]?.issue === 79
+  && EINTRAEGE[2]?.typ === "feature" && EINTRAEGE[2]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: beide Klassen, die NICHT farblichen Merkmale (Kurztext und
 // Legende) und der Ort, an dem gewaehlt wird. Modul 7 zeigt nur an; behauptet werden
 // darf kein Nachweis und keine Wirkung ([P-9]). Eine Schraffur gibt es dort bewusst
 // nicht — sie darf hier also auch nicht versprochen werden.
 ok("der Zeichnungs-Eintrag benennt beide Klassen, Kurztext und Legende aussagewahr",
-  /F0\/F30|F0 und F30/.test(EINTRAEGE[1]?.titel || "")
-  && /Wandzeichnung/.test(EINTRAEGE[1]?.titel || "")
-  && /Kurztext/.test(EINTRAEGE[1]?.titel || "")
-  && /Legende/.test(EINTRAEGE[1]?.titel || "")
-  && !/schraffiert/.test(EINTRAEGE[1]?.titel || ""));
+  /F0\/F30|F0 und F30/.test(EINTRAEGE[2]?.titel || "")
+  && /Wandzeichnung/.test(EINTRAEGE[2]?.titel || "")
+  && /Kurztext/.test(EINTRAEGE[2]?.titel || "")
+  && /Legende/.test(EINTRAEGE[2]?.titel || "")
+  && !/schraffiert/.test(EINTRAEGE[2]?.titel || ""));
 ok("die Zeichnungs-Testbitte benennt Wahlort, Ausgabeweg, Export und Schwarz-Weiss",
-  /Modul 1/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Modul 7/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Legende/.test(EINTRAEGE[1]?.testbitte || "")
-  && /SVG-Datei/.test(EINTRAEGE[1]?.testbitte || "")
-  && /schwarz-weiß/.test(EINTRAEGE[1]?.testbitte || ""));
+  /Modul 1/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Modul 7/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Legende/.test(EINTRAEGE[2]?.testbitte || "")
+  && /SVG-Datei/.test(EINTRAEGE[2]?.testbitte || "")
+  && /schwarz-weiß/.test(EINTRAEGE[2]?.testbitte || ""));
 ok("die Darstellung im Geschosseditor (Issue 79) folgt direkt danach",
-  EINTRAEGE[2]?.id === "chg-20260815-03" && EINTRAEGE[2]?.issue === 79
-  && EINTRAEGE[2]?.typ === "feature" && EINTRAEGE[2]?.datum === "2026-08-15");
+  EINTRAEGE[3]?.id === "chg-20260815-03" && EINTRAEGE[3]?.issue === 79
+  && EINTRAEGE[3]?.typ === "feature" && EINTRAEGE[3]?.datum === "2026-08-15");
 // Aussagewahr heisst hier: beide Klassen, die NICHT farblichen Merkmale (Schraffur und
 // Beschriftung), Legende UND Wandliste — und der Ort, an dem gewaehlt wird. Der Editor
 // zeigt nur an; behauptet werden darf kein Nachweis und keine Wirkung ([P-9]).
 ok("der Geschosseditor-Eintrag benennt beide Klassen, Schraffur, Legende und Wandliste aussagewahr",
-  /F0\/F30|F0 und F30/.test(EINTRAEGE[2]?.titel || "")
-  && /Geschosseditor/.test(EINTRAEGE[2]?.titel || "")
-  && /schraffiert/.test(EINTRAEGE[2]?.titel || "")
-  && /Legende/.test(EINTRAEGE[2]?.titel || "")
-  && /Wandliste/.test(EINTRAEGE[2]?.titel || ""));
+  /F0\/F30|F0 und F30/.test(EINTRAEGE[3]?.titel || "")
+  && /Geschosseditor/.test(EINTRAEGE[3]?.titel || "")
+  && /schraffiert/.test(EINTRAEGE[3]?.titel || "")
+  && /Legende/.test(EINTRAEGE[3]?.titel || "")
+  && /Wandliste/.test(EINTRAEGE[3]?.titel || ""));
 ok("die Geschosseditor-Testbitte benennt Wahlort, beide Klassen, Wandliste und Schwarz-Weiss",
-  /Modul 1/.test(EINTRAEGE[2]?.testbitte || "")
-  && /F30-Wand/.test(EINTRAEGE[2]?.testbitte || "")
-  && /F0-Wände/.test(EINTRAEGE[2]?.testbitte || "")
-  && /Wandliste/.test(EINTRAEGE[2]?.testbitte || "")
-  && /schwarz-weiß/.test(EINTRAEGE[2]?.testbitte || ""));
+  /Modul 1/.test(EINTRAEGE[3]?.testbitte || "")
+  && /F30-Wand/.test(EINTRAEGE[3]?.testbitte || "")
+  && /F0-Wände/.test(EINTRAEGE[3]?.testbitte || "")
+  && /Wandliste/.test(EINTRAEGE[3]?.testbitte || "")
+  && /schwarz-weiß/.test(EINTRAEGE[3]?.testbitte || ""));
 ok("die Lageplan-Darstellung (Issue 79) folgt direkt danach",
-  EINTRAEGE[3]?.id === "chg-20260815-02" && EINTRAEGE[3]?.issue === 79
-  && EINTRAEGE[3]?.typ === "feature" && EINTRAEGE[3]?.datum === "2026-08-15");
+  EINTRAEGE[4]?.id === "chg-20260815-02" && EINTRAEGE[4]?.issue === 79
+  && EINTRAEGE[4]?.typ === "feature" && EINTRAEGE[4]?.datum === "2026-08-15");
 // Aussagewahr heisst hier: beide Klassen, das NICHT farbliche Merkmal (Schraffur und
 // Beschriftung), die Legende — und der Ort, an dem gewaehlt wird. Der Lageplan zeigt
 // nur an; behauptet werden darf kein Nachweis und keine Wirkung ([P-9]).
 ok("der Lageplan-Eintrag benennt beide Klassen, Schraffur, Beschriftung und Legende aussagewahr",
-  /F0\/F30|F0 und F30/.test(EINTRAEGE[3]?.titel || "")
-  && /Lageplan/.test(EINTRAEGE[3]?.titel || "")
-  && /schraffiert/.test(EINTRAEGE[3]?.titel || "")
-  && /Legende/.test(EINTRAEGE[3]?.titel || ""));
+  /F0\/F30|F0 und F30/.test(EINTRAEGE[4]?.titel || "")
+  && /Lageplan/.test(EINTRAEGE[4]?.titel || "")
+  && /schraffiert/.test(EINTRAEGE[4]?.titel || "")
+  && /Legende/.test(EINTRAEGE[4]?.titel || ""));
 ok("die Lageplan-Testbitte benennt Wahlort, Ausgabe, Wandliste und Schwarz-Weiss",
-  /Modul 1/.test(EINTRAEGE[3]?.testbitte || "")
-  && /Modul 9/.test(EINTRAEGE[3]?.testbitte || "")
-  && /exportieren/.test(EINTRAEGE[3]?.testbitte || "")
-  && /Wandliste/.test(EINTRAEGE[3]?.testbitte || "")
-  && /schwarz-weiß/.test(EINTRAEGE[3]?.testbitte || ""));
+  /Modul 1/.test(EINTRAEGE[4]?.testbitte || "")
+  && /Modul 9/.test(EINTRAEGE[4]?.testbitte || "")
+  && /exportieren/.test(EINTRAEGE[4]?.testbitte || "")
+  && /Wandliste/.test(EINTRAEGE[4]?.testbitte || "")
+  && /schwarz-weiß/.test(EINTRAEGE[4]?.testbitte || ""));
 ok("die Mengenuebersteuerung (Issue 81) folgt direkt danach",
-  EINTRAEGE[4]?.id === "chg-20260815-01" && EINTRAEGE[4]?.issue === 81
-  && EINTRAEGE[4]?.typ === "feature" && EINTRAEGE[4]?.datum === "2026-08-15");
+  EINTRAEGE[5]?.id === "chg-20260815-01" && EINTRAEGE[5]?.issue === 81
+  && EINTRAEGE[5]?.typ === "feature" && EINTRAEGE[5]?.datum === "2026-08-15");
 // Aussagewahr heisst hier: die Menge ist MANUELL uebersteuerbar und der berechnete Wert
 // bleibt daneben stehen — kein Ersetzen. Die Testbitte nennt Anzeige beider Werte,
 // Persistenz, Ruecknahme und die Abweisung unzulaessiger Eingaben ([P-20]).
 ok("der Mengen-Eintrag benennt Uebersteuerung UND erhaltenen Originalwert aussagewahr",
-  /Menge je Stücklistenposition/.test(EINTRAEGE[4]?.titel || "")
-  && /manuell/.test(EINTRAEGE[4]?.titel || "")
-  && /berechnete Menge/.test(EINTRAEGE[4]?.titel || "")
-  && /daneben sichtbar/.test(EINTRAEGE[4]?.titel || ""));
+  /Menge je Stücklistenposition/.test(EINTRAEGE[5]?.titel || "")
+  && /manuell/.test(EINTRAEGE[5]?.titel || "")
+  && /berechnete Menge/.test(EINTRAEGE[5]?.titel || "")
+  && /daneben sichtbar/.test(EINTRAEGE[5]?.titel || ""));
 ok("die Mengen-Testbitte benennt Anzeige, Persistenz, Ruecknahme und Abweisung",
-  /Modul 4/.test(EINTRAEGE[4]?.testbitte || "")
-  && /nebeneinander/.test(EINTRAEGE[4]?.testbitte || "")
-  && /Neuladen/.test(EINTRAEGE[4]?.testbitte || "")
-  && /zurücksetzen/.test(EINTRAEGE[4]?.testbitte || "")
-  && /abgewiesen/.test(EINTRAEGE[4]?.testbitte || ""));
+  /Modul 4/.test(EINTRAEGE[5]?.testbitte || "")
+  && /nebeneinander/.test(EINTRAEGE[5]?.testbitte || "")
+  && /Neuladen/.test(EINTRAEGE[5]?.testbitte || "")
+  && /zurücksetzen/.test(EINTRAEGE[5]?.testbitte || "")
+  && /abgewiesen/.test(EINTRAEGE[5]?.testbitte || ""));
 ok("die Brandschutz-Wahl in Modul 1 (Issue 79) folgt direkt danach",
-  EINTRAEGE[5]?.id === "chg-20260814-04" && EINTRAEGE[5]?.issue === 79
-  && EINTRAEGE[5]?.typ === "feature" && EINTRAEGE[5]?.datum === "2026-08-14");
+  EINTRAEGE[6]?.id === "chg-20260814-04" && EINTRAEGE[6]?.issue === 79
+  && EINTRAEGE[6]?.typ === "feature" && EINTRAEGE[6]?.datum === "2026-08-14");
 // Aussagewahr heisst hier: beide Werte, der EINE Ort der Wahl, der Standard und die
 // ausdrueckliche Abwesenheit einer abgeleiteten Wirkung — nichts davon darf fehlen,
 // und es darf kein Nachweis behauptet werden ([P-9]).
 ok("der Brandschutz-Eintrag benennt beide Klassen, den Ort der Wahl und den Standard aussagewahr",
-  /F0/.test(EINTRAEGE[5]?.titel || "") && /F30/.test(EINTRAEGE[5]?.titel || "")
-  && /Modul 1/.test(EINTRAEGE[5]?.titel || "")
-  && /Standard F0/.test(EINTRAEGE[5]?.titel || "")
-  && /kein Nachweis/.test(EINTRAEGE[5]?.titel || ""));
+  /F0/.test(EINTRAEGE[6]?.titel || "") && /F30/.test(EINTRAEGE[6]?.titel || "")
+  && /Modul 1/.test(EINTRAEGE[6]?.titel || "")
+  && /Standard F0/.test(EINTRAEGE[6]?.titel || "")
+  && /kein Nachweis/.test(EINTRAEGE[6]?.titel || ""));
 ok("die Brandschutz-Testbitte benennt Fortbestand, Neuberechnung und unveraenderte Ableitung",
-  /neu laden/.test(EINTRAEGE[5]?.testbitte || "")
-  && /exportieren/.test(EINTRAEGE[5]?.testbitte || "")
-  && /Geschosseditor/.test(EINTRAEGE[5]?.testbitte || "")
-  && /Länge ändern/.test(EINTRAEGE[5]?.testbitte || "")
-  && /Stückliste/.test(EINTRAEGE[5]?.testbitte || ""));
-ok("der Planhintergrund im Lageplan (Issue 80) folgt direkt danach",
-  EINTRAEGE[6]?.id === "chg-20260814-03" && EINTRAEGE[6]?.issue === 80
-  && EINTRAEGE[6]?.typ === "feature" && EINTRAEGE[6]?.datum === "2026-08-14");
-ok("der Planhintergrund-Eintrag benennt Quelle, Einstellung und Ausgabe aussagewahr",
-  /Geschossplan/.test(EINTRAEGE[6]?.titel || "")
-  && /kalibriert/i.test(EINTRAEGE[6]?.titel || "")
-  && /Hintergrund/.test(EINTRAEGE[6]?.titel || "")
-  && /Transparenz/.test(EINTRAEGE[6]?.titel || "")
-  && /Modul 9/.test(EINTRAEGE[6]?.testbitte || "")
+  /neu laden/.test(EINTRAEGE[6]?.testbitte || "")
   && /exportieren/.test(EINTRAEGE[6]?.testbitte || "")
-  && /100 %/.test(EINTRAEGE[6]?.testbitte || ""));
+  && /Geschosseditor/.test(EINTRAEGE[6]?.testbitte || "")
+  && /Länge ändern/.test(EINTRAEGE[6]?.testbitte || "")
+  && /Stückliste/.test(EINTRAEGE[6]?.testbitte || ""));
+ok("der Planhintergrund im Lageplan (Issue 80) folgt direkt danach",
+  EINTRAEGE[7]?.id === "chg-20260814-03" && EINTRAEGE[7]?.issue === 80
+  && EINTRAEGE[7]?.typ === "feature" && EINTRAEGE[7]?.datum === "2026-08-14");
+ok("der Planhintergrund-Eintrag benennt Quelle, Einstellung und Ausgabe aussagewahr",
+  /Geschossplan/.test(EINTRAEGE[7]?.titel || "")
+  && /kalibriert/i.test(EINTRAEGE[7]?.titel || "")
+  && /Hintergrund/.test(EINTRAEGE[7]?.titel || "")
+  && /Transparenz/.test(EINTRAEGE[7]?.titel || "")
+  && /Modul 9/.test(EINTRAEGE[7]?.testbitte || "")
+  && /exportieren/.test(EINTRAEGE[7]?.testbitte || "")
+  && /100 %/.test(EINTRAEGE[7]?.testbitte || ""));
 ok("der verschiebbare Geschossursprung (Issue 76) folgt direkt danach",
   AELTER[0]?.id === "chg-20260814-02" && AELTER[0]?.issue === 76);
 ok("der Ursprungs-Eintrag benennt Bedienweg, Auswirkung und Ruecknahme aussagewahr",

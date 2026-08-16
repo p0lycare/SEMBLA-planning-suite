@@ -104,6 +104,24 @@ const LEER_FELD_MM = 10000;
 const MASSTEXT_MM = 1.6;
 
 /**
+ * Schriftgroesse der Masszahl in Papier-mm. Sie steht als Konstante da, weil sie an
+ * ZWEI Stellen gebraucht wird: in der gezeichneten Zahl und in der Huellflaeche, mit
+ * der die Nummernblase ihr ausweicht (#59). Zwei Literale liefen auseinander.
+ */
+const MASSTEXT_FS_MM = 2;
+
+/**
+ * Geschaetzte Zeichenbreite als Anteil der Schriftgroesse. DOM-frei gibt es keine
+ * Textmetrik; derselbe Faktor liegt schon dem Zeilenumbruch der SVG-Datei zugrunde.
+ * Bewusst eher grosszuegig — eine zu breit angenommene Zahl laesst die Blase einen
+ * Schritt weiter ausweichen, eine zu schmale liesse sie auf der Zahl liegen.
+ */
+const ZEICHEN_BREITE = 0.5;
+
+/** Halbe Strichbreite der Masslinien (Papier-mm) fuer die Ueberdeckungspruefung. */
+const MASS_LINIE_HALB_MM = 0.16;
+
+/**
  * Nummernblase der Wandkennzeichnung (#73), beide Werte in PAPIER-mm: Radius der
  * Blase und Abstand ihres Mittelpunkts von der Wandkante. Papier-mm statt Welt-mm,
  * damit die Blase in jedem Massstab gleich gross und lesbar bleibt; die Summe liegt
@@ -112,6 +130,16 @@ const MASSTEXT_MM = 1.6;
  */
 const MARKER_R_MM = 2.1;
 const MARKER_ABSTAND_MM = 4.5;
+
+/** Schriftgroesse der Nummer in der Blase (Papier-mm) — gezeichnet UND geprueft. */
+const MARKER_FS_MM = 2.1;
+
+/**
+ * Schrittweite des Ausweichens (#59) in Papier-mm: ein Blasendurchmesser plus ein
+ * schmaler Spalt. Kleiner waere ein Schleichweg (viele Schritte, bis es reicht),
+ * groesser risse die Blase unnoetig weit von ihrer Wand weg.
+ */
+const MARKER_SCHRITT_MM = 2 * MARKER_R_MM + 0.4;
 
 /**
  * Darstellungsschluessel des Blattes. `fehler` uebernimmt bewusst die Fehlerfarbe
@@ -519,6 +547,75 @@ export function ausdehnung(daten, o) {
   return Number.isFinite(x_min) ? { x_min, y_min, x_max, y_max } : null;
 }
 
+// ------------------------------------------- Ueberdeckungsfreie Blasen (#59)
+//
+// Die Nummernblase steht seit #73 an fester Papier-mm-Stelle quer zur Wand. In einem
+// dicht bebauten, bemassten Geschoss liegt sie damit regelmaessig AUF einer anderen
+// Blase oder auf einer Masszahl/Masslinie — die Nummer ist dann unlesbar oder nicht
+// mehr eindeutig zuzuordnen. Die folgenden Helfer bilden die dafuer noetigen
+// Huellflaechen in PAPIER-mm; ausgewichen wird in `lageplanSvg()`.
+//
+// Alles hier ist FLUECHTIGE Darstellung: gerechnet bei jeder Ausgabe neu, nirgends
+// gespeichert, ohne jede Rueckwirkung auf Masswert, Masslinie, Wandgeometrie,
+// Massstab, Blattausdehnung oder die Anordnung aus `massTextLayout`.
+
+/** Achsparallele Huellflaeche aus zwei Ecken. */
+const _flaeche = (x1, y1, x2, y2) => ({
+  x_min: Math.min(x1, x2), x_max: Math.max(x1, x2),
+  y_min: Math.min(y1, y2), y_max: Math.max(y1, y2),
+});
+
+/** Ueberdecken sich zwei Flaechen? Beruehrung allein ist KEINE Ueberdeckung. */
+const _ueberdeckt = (a, b) => !(a.x_min >= b.x_max || b.x_min >= a.x_max
+  || a.y_min >= b.y_max || b.y_min >= a.y_max);
+
+/**
+ * Huellflaeche der GEZEICHNETEN Masszahl in Papier-mm. Abgeleitet wird sie aus
+ * demselben Ankerpunkt (`massAnker`) und demselben Hub (`MASSTEXT_MM`), mit dem die
+ * Zahl auch gesetzt wird — ein zweites Textmodell gibt es nicht. In Achse y ist die
+ * Zahl um −90° um den Anker gedreht; laengs und quer tauschen deshalb die Seiten.
+ *
+ * @param {any} p Massgeometrie in Papier-mm @param {string} text die dargestellte Zahl
+ */
+function masstextFlaeche(p, text) {
+  const t = massAnker(p, 0).anker;
+  const b = Math.max(1, String(text).length) * MASSTEXT_FS_MM * ZEICHEN_BREITE;
+  // Von der Grundlinie aus: Oberlaenge nach oben, ein Rest nach unten.
+  const oben = MASSTEXT_MM + MASSTEXT_FS_MM, unten = MASSTEXT_MM - MASSTEXT_FS_MM * 0.25;
+  if (p.achse === "x") return _flaeche(t.x - b / 2, t.y - oben, t.x + b / 2, t.y - unten);
+  return _flaeche(t.x - oben, t.y - b / 2, t.x - unten, t.y + b / 2);
+}
+
+/**
+ * Huellflaechen der GEZEICHNETEN Masslinie und ihrer beiden Hilfslinien in Papier-mm
+ * — dieselben drei Strecken, die `massPfad(p, 1, …)` zeichnet. Sie gehoeren zur
+ * Massdarstellung und werden deshalb mitgeprueft; eine Blase auf der Masslinie ist so
+ * wenig lesbar wie eine auf der Zahl.
+ */
+function masslinienFlaechen(p) {
+  const pt = (laengs, quer) => (p.achse === "x" ? { x: laengs, y: quer } : { x: quer, y: laengs });
+  const ueber = p.q + 1;                            // derselbe `tick` wie beim Zeichnen
+  const seg = (a, b) => _flaeche(
+    Math.min(a.x, b.x) - MASS_LINIE_HALB_MM, Math.min(a.y, b.y) - MASS_LINIE_HALB_MM,
+    Math.max(a.x, b.x) + MASS_LINIE_HALB_MM, Math.max(a.y, b.y) + MASS_LINIE_HALB_MM);
+  return [
+    seg(pt(p.v1, p.q1), pt(p.v1, ueber)),
+    seg(pt(p.v2, p.q2), pt(p.v2, ueber)),
+    seg(pt(p.v1, p.q), pt(p.v2, p.q)),
+  ];
+}
+
+/**
+ * Huellflaeche einer Nummernblase samt ihrer Zahl (Papier-mm). Der Kreis wird als
+ * achsparalleles Huellrechteck genommen — konservativ und deterministisch; eine
+ * dreistellige Nummer ragt ueber den Kreis hinaus und verbreitert die Flaeche.
+ */
+function blaseFlaeche(cx, cy, nr) {
+  const halb = Math.max(MARKER_R_MM,
+    String(nr).length * MARKER_FS_MM * ZEICHEN_BREITE / 2);
+  return _flaeche(cx - halb, cy - MARKER_R_MM, cx + halb, cy + MARKER_R_MM);
+}
+
 // ------------------------------------------------------------------ Zeichnung
 
 /**
@@ -625,6 +722,51 @@ export function lageplanSvg(daten, opts) {
       + ` font-size="1.8" fill="${FARBE.ursprung}">0/0</text></g>`);
   }
 
+  // ---- Massdarstellung in Papier-mm: EINMAL gerechnet (#59) --------------
+  //
+  // Vorgezogen wird nur die RECHNUNG, nicht die Ausgabe: die Massgruppen entstehen
+  // unveraendert nach den Waenden (SVG malt in Dokumentreihenfolge). Gebraucht wird
+  // sie hier, weil die Nummernblase den Massen ausweichen muss und diese sonst zum
+  // Zeitpunkt ihrer Platzierung noch gar nicht gerechnet waeren. Beide Seiten nutzen
+  // damit dieselben Zahlen — ein zweiter Rechenweg koennte auseinanderlaufen.
+  const streitig = new Set((daten.ergebnis.widersprueche || [])
+    .flatMap((w) => [w.bemassung, w.konflikt_mit]).filter(Boolean));
+  const doppelt = new Set((daten.ergebnis.redundanzen || []).map((r) => r.bemassung));
+  /**
+   * Parallel zu `daten.massbilder`: `null`, wo NICHTS gezeichnet wird (Bemassung
+   * ausgeblendet, nicht darstellbar oder Nullmass, s. u.). Nur Gezeichnetes ist ein
+   * Hindernis — einem unsichtbaren Mass auszuweichen waere nicht nachvollziehbar.
+   */
+  const massPapier = daten.massbilder.map((g) => {
+    if (!g || !o.masse || g.mass === 0) return null;
+    return {
+      p: {
+        achse: g.achse,
+        v1: g.achse === "x" ? X(g.v1) : Y(g.v1), v2: g.achse === "x" ? X(g.v2) : Y(g.v2),
+        q1: g.achse === "x" ? Y(g.q1) : X(g.q1), q2: g.achse === "x" ? Y(g.q2) : X(g.q2),
+        q: g.achse === "x" ? Y(g.q) : X(g.q),
+        versatz: { x: S(g.versatz.x), y: S(g.versatz.y) },
+      },
+      text: String(g.mass) + (streitig.has(g.id) ? " ⚠" : ""),
+    };
+  });
+
+  /**
+   * Die Flaechen, denen eine Nummernblase ausweicht (#59): Masszahlen, Masslinien
+   * samt Hilfslinien — und, waehrend der Wandschleife wachsend, die bereits
+   * platzierten Blasen. Wandflaechen stehen ausdruecklich NICHT darin: sie duerfen
+   * notfalls ueberdeckt werden, sonst gaebe es Faelle ohne Loesung.
+   *
+   * Die gespeicherten Darstellungsversaetze `linie_mm`/`text_mm` und die Anordnung
+   * aus `massTextLayout` stecken bereits in `daten.massbilder` — sie wirken damit
+   * ZUERST und gehen unveraendert in die Pruefung ein.
+   */
+  const hindernisse = [];
+  for (const mp of massPapier) {
+    if (!mp) continue;
+    hindernisse.push(masstextFlaeche(mp.p, mp.text), ...masslinienFlaechen(mp.p));
+  }
+
   for (const w of daten.waende) {
     if (!w.rechteck) continue;                       // unverortet: gemeldet, nicht gezeichnet
     const r = w.rechteck;
@@ -699,8 +841,32 @@ export function lageplanSvg(daten, opts) {
       // unveraendert im `<title>` der Wand und mit derselben Nummer in der rechten
       // Wandtabelle; die Blase traegt `data-wand` fuer die eindeutige Zuordnung.
       const quer = w.richtung !== "y";
-      const cx = quer ? x + bw / 2 : x - MARKER_ABSTAND_MM;
-      const cy = quer ? y - MARKER_ABSTAND_MM : y + bh / 2;
+      // Ueberdeckungsfreie Platzierung (#59). Kandidat 0 ist BITGENAU die Lage von
+      // #73; jeder weitere schiebt die Blase auf DERSELBEN Normalen um einen festen
+      // Schritt weiter nach aussen (x-Wand nach oben, y-Wand nach links). Ankerpunkt
+      // und Richtung der Fuehrungslinie bleiben dabei unveraendert — sie wird nur
+      // laenger und zeigt weiter auf dieselbe Wandkante.
+      //
+      // Terminiert ohne Kappe (wie `massTextLayout`): `hindernisse` ist endlich und
+      // jeder Schritt bewegt die Flaeche monoton nach aussen — jenseits des am
+      // weitesten aussen liegenden Hindernisses ist sie zwangslaeufig frei. Eine
+      // feste Obergrenze liesse bei genuegend Nachbarn wieder eine Ueberdeckung zu.
+      const mitte = (k) => ({
+        x: quer ? x + bw / 2 : x - MARKER_ABSTAND_MM - k * MARKER_SCHRITT_MM,
+        y: quer ? y - MARKER_ABSTAND_MM - k * MARKER_SCHRITT_MM : y + bh / 2,
+      });
+      let stufe = 0;
+      for (;;) {
+        const m = mitte(stufe);
+        const f = blaseFlaeche(m.x, m.y, w.nr);
+        if (!hindernisse.some((h) => _ueberdeckt(f, h))) break;
+        stufe++;
+      }
+      const m = mitte(stufe);
+      const cx = m.x, cy = m.y;
+      // Die eigene Flaeche wird Hindernis fuer die folgenden Waende: die erste Blase
+      // bleibt stehen, jede weitere weicht ihr aus (Reihenfolge = Mappenreihenfolge).
+      hindernisse.push(blaseFlaeche(cx, cy, w.nr));
       const ax = quer ? cx : x, ay = quer ? y : cy;          // Ankerpunkt Wandkante
       const lx = quer ? cx : cx + MARKER_R_MM;               // Beginn am Blasenrand
       const ly = quer ? cy + MARKER_R_MM : cy;
@@ -709,15 +875,13 @@ export function lageplanSvg(daten, opts) {
         + ` stroke="${FARBE.mittellinie}" stroke-width="0.12"/>`
         + `<circle cx="${_n(cx)}" cy="${_n(cy)}" r="${_n(MARKER_R_MM)}" fill="#ffffff"`
         + ` stroke="${farbe}" stroke-width="0.18"/>`
-        + `<text x="${_n(cx)}" y="${_n(cy + 0.75)}" font-size="2.1" text-anchor="middle"`
+        + `<text x="${_n(cx)}" y="${_n(cy + 0.75)}" font-size="${MARKER_FS_MM}"`
+        + ` text-anchor="middle"`
         + ` fill="${FARBE.text}">${_esc(w.nr)}</text></g>`);
     }
   }
 
   if (o.masse) {
-    const streitig = new Set((daten.ergebnis.widersprueche || [])
-      .flatMap((w) => [w.bemassung, w.konflikt_mit]).filter(Boolean));
-    const doppelt = new Set((daten.ergebnis.redundanzen || []).map((r) => r.bemassung));
     daten.massbilder.forEach((g, i) => {
       if (!g) return;
       // Nullmasse werden NICHT gezeichnet (#59): eine Bemassung mit 0 mm — typisch die
@@ -731,15 +895,11 @@ export function lageplanSvg(daten, opts) {
       // bitgenau die des Editors ([N-5]). Verglichen wird strikt gegen exakt 0, damit
       // `null` (kein Mass) seine bestehende Behandlung behaelt.
       if (g.mass === 0) return;
-      // Umgerechnet wird die GEMEINSAME Geometrie — Werte, Bezuege, Staffelung,
-      // `linie_mm` und `text_mm` stehen damit exakt wie im Editor ([N-5]).
-      const p = {
-        achse: g.achse,
-        v1: g.achse === "x" ? X(g.v1) : Y(g.v1), v2: g.achse === "x" ? X(g.v2) : Y(g.v2),
-        q1: g.achse === "x" ? Y(g.q1) : X(g.q1), q2: g.achse === "x" ? Y(g.q2) : X(g.q2),
-        q: g.achse === "x" ? Y(g.q) : X(g.q),
-        versatz: { x: S(g.versatz.x), y: S(g.versatz.y) },
-      };
+      // Umgerechnet wurde die GEMEINSAME Geometrie schon oben (#59) — Werte, Bezuege,
+      // Staffelung, `linie_mm` und `text_mm` stehen damit exakt wie im Editor ([N-5]),
+      // und die Nummernblase hat GENAU diese Zahlen gemieden. Ein zweites Umrechnen
+      // hier waere ein zweiter Rechenweg fuer dieselbe Darstellung.
+      const p = massPapier[i].p;
       const streit = streitig.has(g.id);
       const farbe = streit ? FARBE.fehler : FARBE.mass;
       const t = massAnker(p, 0).anker;
@@ -748,11 +908,11 @@ export function lageplanSvg(daten, opts) {
         + ` data-bemassung="${_esc(g.id)}">`
         + `<path d="${massPfad(p, 1, _n)}" fill="none" stroke="${farbe}" stroke-width="0.16"`
         + (doppelt.has(g.id) && !streit ? ` stroke-dasharray="1.4 0.8"` : "") + `/>`
-        + `<text x="${_n(t.x)}" y="${_n(t.y - MASSTEXT_MM)}" font-size="2" text-anchor="middle"`
+        + `<text x="${_n(t.x)}" y="${_n(t.y - MASSTEXT_MM)}" font-size="${MASSTEXT_FS_MM}"`
+        + ` text-anchor="middle"`
         // Reine Millimeterzahl ohne Suffix (#64) — genau wie im Editor ([N-5]);
         // die Einheit steht einmal im Schriftfeld.
         + ` fill="${farbe}"${dreh}>${_esc(String(g.mass))}${streit ? " ⚠" : ""}</text></g>`);
-      void i;
     });
   }
 

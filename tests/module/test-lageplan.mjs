@@ -1053,5 +1053,167 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
       || typeof e.wandelement.brandklasse === "string"));
 }
 
+// --- [#59] Nummernblasen weichen aus, statt sich zu ueberdecken -----------
+//
+// Seit #73 steht die Nummer als aussenliegende Blase an FESTER Papier-mm-Stelle quer
+// zur Wand — ohne jede Pruefung, ob dort schon etwas steht. Bei dicht benachbarten
+// oder bemassten Waenden lag sie damit regelmaessig auf einer anderen Blase, einer
+// Masszahl oder einer Masslinie. Sie weicht jetzt deterministisch auf DERSELBEN
+// Normalen nach aussen aus; die Wandflaeche selbst darf sie notfalls ueberdecken.
+//
+// Geprueft wird an der ERZEUGTEN Zeichenkette und mit unabhaengiger Geometrie
+// (Kreis gegen Kreis, Kreis gegen Streckenzug) — nicht mit den Huellflaechen des
+// Moduls, sonst pruefte der Test seine eigene Naeherung.
+{
+  /** Abstand Punkt ↔ Strecke — fuer „Kreis schneidet Masslinie". */
+  const abstandZuStrecke = (p, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const l2 = dx * dx + dy * dy;
+    const t = l2 === 0 ? 0 : Math.max(0, Math.min(1,
+      ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
+    return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  };
+  /** Die drei Strecken einer Massdarstellung aus ihrem gezeichneten Pfad. */
+  const strecken = (svg) => {
+    const raus = [];
+    for (const g of svg.matchAll(/<g class="lpmass[^"]*"[^>]*><path d="([^"]*)"/g)) {
+      const pkt = [...g[1].matchAll(/([ML])(-?[\d.]+) (-?[\d.]+)/g)]
+        .map((m) => ({ art: m[1], x: +m[2], y: +m[3] }));
+      for (let i = 1; i < pkt.length; i++) {
+        if (pkt[i].art === "L") raus.push([pkt[i - 1], pkt[i]]);
+      }
+    }
+    return raus;
+  };
+  /** Die Ankerpunkte der gezeichneten Masszahlen (Papier-mm). */
+  const massTextPunkte = (svg) => [...svg.matchAll(
+    /<g class="lpmass[^"]*"[^>]*>.*?<text x="(-?[\d.]+)" y="(-?[\d.]+)"/g)]
+    .map((m) => ({ x: +m[1], y: +m[2] }));
+
+  const el = (ids) => ids.map((id) => ({ id, name: id,
+    wandelement: { height_mm: 2600, wandtyp: "mit_wind", length_mm: 2000 } }));
+
+  // (a) Zwei sehr nah beieinander liegende Waende — die Blasen der zweiten und
+  // dritten Wand laegen ohne Ausweichen deckungsgleich auf der ersten.
+  const NAH = (() => {
+    let m = MAPPE.leereMappe("Nah", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
+    const gs = m.gebaeude[0].geschosse[0].id;
+    // 125 mm Achsabstand = bei 1:50 nur 2,5 Papier-mm; die Blase misst 4,2 im Durchmesser.
+    [1062.5, 1187.5, 1312.5].forEach((y, i) => {
+      m = MAPPE.setzeWand(m, gs, { id: `n${i + 1}`, name: `Wand ${i + 1}`,
+        lage: { start_mm: { x: 0, y }, richtung: "x", laenge_grid: 16 } });
+    });
+    return LP.lageplanDaten({ mappe: m, geschossId: gs, elemente: el(["n1", "n2", "n3"]) });
+  })();
+  const nahBlatt = LP.blattHtml(NAH);
+  const nahMarker = markerVon(nahBlatt.svg);
+
+  t("[#59] Pruefaufbau: drei Waende so dicht, dass die Blasen sich sonst deckten",
+    nahMarker.length === 3
+    && Math.abs(rechteckVon(nahBlatt.svg, "n2").y - rechteckVon(nahBlatt.svg, "n1").y)
+       < 2 * nahMarker[0].kreis.r);
+  t("[#59] keine zwei Nummernblasen ueberdecken einander",
+    nahMarker.every((a, i) => nahMarker.slice(i + 1).every((b) =>
+      Math.hypot(a.kreis.x - b.kreis.x, a.kreis.y - b.kreis.y) >= a.kreis.r + b.kreis.r)));
+  t("[#59] jede Blase liegt weiterhin ausserhalb ihrer Wand, oberhalb der Kante",
+    nahMarker.every((g) => {
+      const r = rechteckVon(nahBlatt.svg, g.id);
+      return ausserhalb(g.kreis, r) && g.kreis.y + g.kreis.r <= r.y;
+    }));
+  t("[#59] die Fuehrungslinie endet auch nach dem Ausweichen auf derselben Wandkante",
+    nahMarker.every((g) => {
+      const r = rechteckVon(nahBlatt.svg, g.id);
+      return g.linie.x2 === g.kreis.x && g.linie.y2 === r.y
+        && Math.abs(g.linie.y1 - (g.kreis.y + g.kreis.r)) < 0.002;
+    }));
+  t("[#59] Nummer und Zuordnung bleiben unveraendert — nur die Lage weicht aus",
+    nahMarker.map((g) => g.id + ":" + g.text).join(",") === "n1:1,n2:2,n3:3");
+  t("[#59] die Blasenlage steht nirgends im Datenstand (fluechtig, kein neues Feld)",
+    !JSON.stringify(NAH.waende).includes("cx")
+    && NAH.waende.every((w) => !("marker" in w) && !("blase" in w)));
+
+  // (b) Eine Blase, deren AUSGANGSLAGE genau auf Masslinie und Masszahl liegt: das
+  // Mass wird per gespeichertem `linie_mm` unter die Wandoberkante gezogen.
+  const AUF_MASS = (() => {
+    let m = MAPPE.leereMappe("AufMass", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
+    const gs = m.gebaeude[0].geschosse[0].id;
+    m = MAPPE.setzeWand(m, gs, { id: "m-a", name: "Wand A",
+      lage: { start_mm: { x: 0, y: 1062.5 }, richtung: "x", laenge_grid: 16 } });
+    m = MAPPE.setzeWand(m, gs, { id: "m-c", name: "Wand C",
+      lage: { start_mm: { x: 62.5, y: 1125 }, richtung: "y", laenge_grid: 23 } });
+    m = MAPPE.setzeWand(m, gs, { id: "m-d", name: "Wand D",
+      lage: { start_mm: { x: 1937.5, y: 1125 }, richtung: "y", laenge_grid: 23 } });
+    m = MAPPE.setzeBemassung(m, gs, { id: "bm-x", achse: "x",
+      von: { wand: "m-c", bezug: "mitte" }, bis: { wand: "m-d", bezug: "mitte" },
+      mass_mm: 1875, linie_mm: -2037.5 });
+    return LP.lageplanDaten({ mappe: m, geschossId: gs, elemente: el(["m-a", "m-c", "m-d"]) });
+  })();
+  const amBlatt = LP.blattHtml(AUF_MASS);
+  const amMarker = markerVon(amBlatt.svg);
+  const amA = amMarker.find((g) => g.id === "m-a");
+  const amRect = rechteckVon(amBlatt.svg, "m-a");
+  const amStrecken = strecken(amBlatt.svg);
+  // Die Ausgangslage von #73: mittig ueber der Wand, im festen Blasenabstand.
+  const ausgang = { x: amRect.x + amRect.w / 2, y: amRect.y - 4.5 };
+
+  t("[#59] Pruefaufbau: die Ausgangslage laege wirklich auf einer Masslinie",
+    amStrecken.some(([a, b]) => abstandZuStrecke(ausgang, a, b) < amA.kreis.r));
+  t("[#59] die Blase ist deshalb ausgewichen — weiter nach aussen, gleiche Normale",
+    amA.kreis.x === ausgang.x && amA.kreis.y < ausgang.y);
+  t("[#59] sie liegt danach auf keiner Masslinie und keiner Hilfslinie mehr",
+    amStrecken.every(([a, b]) => abstandZuStrecke(amA.kreis, a, b) >= amA.kreis.r));
+  t("[#59] auch keine Masszahl steht mehr unter ihr",
+    massTextPunkte(amBlatt.svg).every((p) =>
+      Math.hypot(p.x - amA.kreis.x, p.y - amA.kreis.y) > amA.kreis.r));
+  t("[#59] die Fuehrungslinie zeigt weiterhin auf dieselbe Wandkante",
+    amA.linie.x2 === amA.kreis.x && amA.linie.y2 === amRect.y
+    && Math.abs(amA.linie.y1 - (amA.kreis.y + amA.kreis.r)) < 0.002);
+  t("[#59] Masswert, Masszahl und gespeicherte Bemassung bleiben unberuehrt",
+    massTexte(amBlatt.svg).join(",") === "1875"
+    && AUF_MASS.massbilder[0].q === 775 && AUF_MASS.massbilder[0].mass === 1875
+    && AUF_MASS.bemassungen[0].linie_mm === -2037.5
+    && AUF_MASS.bemassungen[0].text_mm == null);
+  // Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Platzierung — ein Zeichenpfad.
+  const amSig = (s) => markerVon(s)
+    .map((g) => `${g.id}@${g.kreis.x}/${g.kreis.y}>${g.linie.x2}/${g.linie.y2}`).join(",");
+  t("[#59] Blatt, Druckdokument und SVG-Datei zeigen dieselbe Blasenplatzierung",
+    amSig(amBlatt.svg) !== ""
+    && amSig(LP.lageplanDokument(AUF_MASS)) === amSig(amBlatt.svg)
+    && amSig(LP.lageplanSvgDatei(AUF_MASS)) === amSig(amBlatt.svg)
+    && amSig(LP.lageplanDateien(AUF_MASS).find((f) => /\.svg$/.test(f.name)).data)
+       === amSig(amBlatt.svg));
+
+  // (c) Ohne jede Ueberdeckung bleibt alles, wie es war.
+  const freiBlatt = LP.blattHtml(LANG);
+  const freiMarker = markerVon(freiBlatt.svg);
+  t("[#59] ohne Ueberdeckung steht jede Blase im unveraenderten festen Abstand (#73)",
+    freiMarker.length === 4 && freiMarker.every((g) => {
+      const r = rechteckVon(freiBlatt.svg, g.id);
+      const w = LANG.waende.find((x) => x.id === g.id);
+      const soll = w.richtung !== "y"
+        ? { x: r.x + r.w / 2, y: r.y - 4.5 } : { x: r.x - 4.5, y: r.y + r.h / 2 };
+      return Math.abs(g.kreis.x - soll.x) < 0.002 && Math.abs(g.kreis.y - soll.y) < 0.002
+        && g.kreis.r === 2.1;
+    }));
+  t("[#59] und das Blatt ist bitgenau das aus dem Bestand bekannte",
+    freiBlatt.html === langBlatt.html && freiBlatt.svg === langBlatt.svg);
+  // Der Rest der Zeichnung bleibt unberuehrt: ohne die Markergruppen ist die
+  // Zeichenkette exakt die des Blattes ohne Wandkennzeichnung.
+  const ohneMarker = (s) => s.replace(/<g class="lpmarker"[\s\S]*?<\/g>/g, "");
+  t("[#59] ausserhalb der Blasen aendert sich an der Zeichnung nichts",
+    ohneMarker(freiBlatt.svg) === LP.lageplanSvg(LANG, { kennzeichnung: false }).svg
+    && ohneMarker(LP.lageplanSvg(NAH).svg)
+       === LP.lageplanSvg(NAH, { kennzeichnung: false }).svg
+    && ohneMarker(LP.lageplanSvg(AUF_MASS).svg)
+       === LP.lageplanSvg(AUF_MASS, { kennzeichnung: false }).svg);
+  t("[#59] Massstab, Ausdehnung und Wandgeometrie bleiben vom Ausweichen unberuehrt",
+    LP.lageplanSvg(NAH).masstab === LP.lageplanSvg(NAH, { kennzeichnung: false }).masstab
+    && JSON.stringify(LP.ausdehnung(NAH))
+       === JSON.stringify(LP.ausdehnung(NAH, { masse: true })));
+  t("[K-5] das Ausweichen ist deterministisch — gleicher Stand, gleiches Blatt",
+    LP.blattHtml(NAH).svg === LP.blattHtml(NAH).svg
+    && LP.blattHtml(AUF_MASS).svg === amBlatt.svg);
+}
+
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);
