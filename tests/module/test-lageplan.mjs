@@ -1405,5 +1405,236 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     })());
 }
 
+// --- #83: passende Wandverzahnung ist eine Verbindung, keine Kollision -----
+//
+// Eine wechselseitig passende Verzahnung ist die EINE Ausnahme von [K-13] ([G-10]).
+// Bewertet wird sie kanonisch in `pruefeGeschoss`; der Lageplan hatte die noetigen
+// Verzahnungsbereiche bisher nicht durchgereicht und meldete dieselbe Stelle deshalb
+// als Kollision samt Vollstaendigkeitsmangel — waehrend der Geschosseditor sie
+// laengst als Verbindung zeigte. Geprueft wird an einer echten Projektmappe mit
+// echten Wandelementen, ueber `lageplanDaten` und die tatsaechlich erzeugten Dateien.
+{
+  /** Zwei rechtwinklige Waende mit GENAU EINEM gemeinsamen Rasterfeld (0/0 je Wand). */
+  const bauVerz = () => {
+    let m = MAPPE.leereMappe("Verzahnt", { gebaeude: "Haus", geschoss: "EG", hoehe_mm: 2600 });
+    const gs = m.gebaeude[0].geschosse[0].id;
+    // x-Wand: Rechteck x[0…2000], y[1000…1125].
+    m = MAPPE.setzeWand(m, gs, { id: "v-x", name: "Wand X",
+      lage: { start_mm: { x: 0, y: 1062.5 }, richtung: "x", laenge_grid: 16 } });
+    // y-Wand: Rechteck x[0…125], y[1000…2000] — Ueberlagerung exakt 125 × 125 mm.
+    m = MAPPE.setzeWand(m, gs, { id: "v-y", name: "Wand Y",
+      lage: { start_mm: { x: 62.5, y: 1000 }, richtung: "y", laenge_grid: 8 } });
+    return { m, gs };
+  };
+  /** Wandelemente mit — wahlweise — Verzahnungsbereichen am kanonischen Ort. */
+  const elVerz = (interlocks) => [
+    { id: "v-x", name: "Wand X", wandelement: { height_mm: 2600, wandtyp: "mit_wind",
+      length_mm: 2000, ...(interlocks && interlocks["v-x"] ? { interlocks: interlocks["v-x"] } : {}) } },
+    { id: "v-y", name: "Wand Y", wandelement: { height_mm: 2600, wandtyp: "mit_wind",
+      length_mm: 1000, ...(interlocks && interlocks["v-y"] ? { interlocks: interlocks["v-y"] } : {}) } },
+  ];
+  const PASSEND = { "v-x": [{ g0: 0, g1: 1, start_parity: 0 }],
+    "v-y": [{ g0: 0, g1: 1, start_parity: 1 }] };
+
+  const { m: mV, gs: gsV } = bauVerz();
+  const dOhne = LP.lageplanDaten({ mappe: mV, geschossId: gsV, elemente: elVerz(null) });
+  const dVerz = LP.lageplanDaten({ mappe: mV, geschossId: gsV, elemente: elVerz(PASSEND) });
+
+  // Pruefaufbau: OHNE Verzahnungsdaten ist genau diese Stelle eine Kollision.
+  t("#83 Pruefaufbau: dieselbe Lage ist ohne Verzahnungsbereiche eine Kollision",
+    dOhne.kollisionen.length === 1 && dOhne.vollstaendig === false
+    && dOhne.meldungen.some((x) => x.art === "kollision"));
+
+  // --- Muss: keine Kollisionsmeldung, benannte Verbindung, vollstaendig ---
+  t("#83 die zulaessige Verzahnung erzeugt keine Kollision mehr",
+    dVerz.kollisionen.length === 0
+    && !dVerz.meldungen.some((x) => x.art === "kollision"));
+  t("#83 das Geschoss gilt damit als vollstaendig",
+    dVerz.vollstaendig === true && dVerz.meldungen.length === 0);
+  t("#83 die Stelle wird mit BEIDEN Wandnamen als Verbindung benannt",
+    dVerz.verzahnungen.length === 1
+    && dVerz.verzahnungen[0].name_a === "Wand X" && dVerz.verzahnungen[0].name_b === "Wand Y"
+    && /Wand X/.test(dVerz.verzahnungen[0].text) && /Wand Y/.test(dVerz.verzahnungen[0].text));
+  t("#83 sie steht als HINWEIS in der Ableitung, nie als Mangel",
+    dVerz.hinweise.some((h) => h.art === "verzahnung" && /Wand X/.test(h.text)
+      && /Wand Y/.test(h.text))
+    && !dVerz.meldungen.some((x) => x.art === "verzahnung"));
+  t("#83 die beteiligten Waende sind nicht mehr im Fehlerzustand ([K-8])",
+    dVerz.waende.every((w) => w.zustand !== "fehler")
+    && dOhne.waende.every((w) => w.zustand === "fehler"));
+  // Die Bewertung kommt aus dem Kern, nicht aus diesem Modul: dieselbe Mappe,
+  // dieselbe Tabelle, direkt gegen `pruefeGeschoss` gefahren.
+  t("#83 bewertet hat der Kern — der Lageplan reicht nur durch",
+    (() => {
+      const gsObj = MAPPE.findeGeschoss(mV, gsV).geschoss;
+      const ref = CON.pruefeGeschoss(gsObj.waende, gsObj.bemassungen, gsObj.ursprung_mm,
+        PASSEND);
+      return ref.kollisionen.length === 0 && ref.verzahnungen.length === 1
+        && JSON.stringify(dVerz.verzahnungen.map((v) => v.raster))
+           === JSON.stringify(ref.verzahnungen.map((v) => v.raster));
+    })());
+
+  // --- Muss: die Verbindung steht auf dem BLATT ---------------------------
+  const bVerz = LP.blattHtml(dVerz);
+  const zVerz = LP.lageplanSvg(dVerz);
+  /** Die Verzahnungsgruppen der Zeichnung: beide Kennungen, Inhalt und Rohtext. */
+  const verzGruppen = (s) => [...s.matchAll(
+    /<g class="lpverzahnung" data-wand-a="([^"]*)" data-wand-b="([^"]*)">([\s\S]*?)<\/g>/g)]
+    .map((mm) => ({ a: mm[1], b: mm[2], inhalt: mm[3], roh: mm[0] }));
+  const vg = verzGruppen(zVerz.svg);
+
+  t("#83 die Zeichnung kennzeichnet die Stelle als eigene Gruppe mit beiden Kennungen",
+    vg.length === 1 && vg[0].a === "v-x" && vg[0].b === "v-y");
+  t("#83 der Kurztext der Zeichnung nennt beide Wandnamen",
+    /<text class="lpverzahnung-kz"[^>]*>[^<]*Wand X[^<]*Wand Y[^<]*<\/text>/.test(vg[0].inhalt));
+  t("#83 die Kennzeichnung traegt ein Merkmal OHNE Farbe (S/W-Ausdruck)",
+    (() => {
+      const ohneFarbe = vg[0].roh.replace(/\s(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, "");
+      return /stroke-dasharray/.test(ohneFarbe) && /Wand X/.test(ohneFarbe)
+        && /Wand Y/.test(ohneFarbe);
+    })());
+  t("#83 das Blatt fuehrt die Verbindung als eigenen Kasten mit beiden Namen",
+    /<h4>Verzahnungen<\/h4>/.test(bVerz.html)
+    && /„Wand X“ und „Wand Y“/.test(bVerz.html)
+    && /keine Kollision/.test(bVerz.html)
+    && bVerz.html.includes(LP.verzahnungHtml(dVerz)));
+  t("#83 der Kasten entsteht nur, wenn es eine Verzahnung gibt",
+    LP.verzahnungHtml(dOhne) === "" && LP.verzahnungHtml({}) === ""
+    && !/Verzahnungen/.test(LP.blattHtml(dOhne).html));
+  t("#83 das Schriftfeld weist den Stand als vollstaendig aus",
+    !/nicht vollständig/i.test(bVerz.html)
+    && /nicht vollständig/i.test(LP.blattHtml(dOhne).html));
+
+  // --- Muss: ein Pfad — Vorschau, Druck-HTML, SVG-Datei, Exportbytes ------
+  const dokV = LP.lageplanDokument(dVerz);
+  const svgDV = LP.lageplanSvgDatei(dVerz);
+  const dateienV = LP.lageplanDateien(dVerz);
+  t("#83 Vorschau, Druck-HTML und SVG-Datei tragen bit-genau dieselbe Kennzeichnung",
+    bVerz.svg.includes(vg[0].roh) && dokV.includes(vg[0].roh) && svgDV.includes(vg[0].roh)
+    && JSON.stringify(verzGruppen(dokV)) === JSON.stringify(vg)
+    && JSON.stringify(verzGruppen(svgDV)) === JSON.stringify(vg));
+  t("#83 auch die exportierten Bytes zeigen dieselbe Aussage",
+    dateienV.find((f) => /\.svg$/.test(f.name)).data === svgDV
+    && dateienV.find((f) => /\.html$/.test(f.name)).data === dokV
+    && verzGruppen(dateienV.find((f) => /\.svg$/.test(f.name)).data).length === 1
+    && /<h4>Verzahnungen<\/h4>/.test(dateienV.find((f) => /\.html$/.test(f.name)).data));
+
+  // --- Nicht-Ziele: Geometrie, Massstab, Blasen und Masse bleiben ---------
+  const zOhne = LP.lageplanSvg(dOhne);
+  const koord = (s) => [...s.matchAll(
+    /<g class="lpwand[^"]*" data-wand="([^"]*)"><rect x="([^"]*)" y="([^"]*)" width="([^"]*)" height="([^"]*)"/g)]
+    .map((mm) => mm.slice(1, 6).join("/")).join(",");
+  const blasenMitte = (s) => markerVon(s)
+    .map((g) => `${g.id}@${g.kreis.x}/${g.kreis.y}`).join(",");
+  t("#83 Wandlagen, Blattmassstab und Ausdehnung sind unveraendert",
+    koord(zVerz.svg) === koord(zOhne.svg) && koord(zVerz.svg) !== ""
+    && zVerz.masstab === zOhne.masstab
+    && JSON.stringify(LP.ausdehnung(dVerz)) === JSON.stringify(LP.ausdehnung(dOhne))
+    && zVerz.voll_breite_mm === zOhne.voll_breite_mm
+    && zVerz.voll_hoehe_mm === zOhne.voll_hoehe_mm);
+  t("#83 die Nummernblasen stehen unveraendert — die Kennzeichnung ist kein Hindernis",
+    blasenMitte(zVerz.svg) === blasenMitte(zOhne.svg) && blasenMitte(zVerz.svg) !== ""
+    && JSON.stringify(zVerz.rand) === JSON.stringify(zOhne.rand));
+  t("#83 die Massdarstellung und der Feldsatz des Schriftfelds bleiben dieselben",
+    JSON.stringify(dVerz.massbilder) === JSON.stringify(dOhne.massbilder)
+    && LP.kopfFelder(dVerz, 100).map((f) => f.k).join("|")
+       === LP.kopfFelder(dOhne, 100).map((f) => f.k).join("|"));
+  t("#83 die Gruppe steht ZULETZT — sie verdeckt weder Wand noch Mass noch Blase",
+    zVerz.inner.indexOf('<g class="lpverzahnung"')
+      > Math.max(zVerz.inner.indexOf('<g class="lpwand'),
+        zVerz.inner.indexOf('<g class="lpmarker"')));
+  t("#83 die Stelle steht in keinem Datenstand — fluechtig, kein neues Feld",
+    !JSON.stringify(mV).includes("interlocks")
+    && !JSON.stringify(mV).includes("verzahnung")
+    && dVerz.waende.every((w) => !("verzahnung" in w) && !("interlocks" in w)));
+
+  // --- Muss: unzulaessige Ueberlagerungen bleiben Kollision ---------------
+  //
+  // Verglichen wird jeweils gegen dasselbe Blatt OHNE Verzahnungsdaten: es muss
+  // bitgleich sein — die Ausnahme darf hier nirgends durchschlagen.
+  const faelle = [
+    ["falsche Startparitaet (beide sparen dieselben Lagen aus)",
+      { "v-x": [{ g0: 0, g1: 1, start_parity: 0 }],
+        "v-y": [{ g0: 0, g1: 1, start_parity: 0 }] }],
+    ["einseitige Markierung (nur eine Wand ist verzahnt)",
+      { "v-x": [{ g0: 0, g1: 1, start_parity: 0 }] }],
+    ["Bereich am falschen Ort (Rasterfeld nicht enthalten)",
+      { "v-x": [{ g0: 3, g1: 5, start_parity: 0 }],
+        "v-y": [{ g0: 3, g1: 5, start_parity: 1 }] }],
+  ];
+  for (const [was, il] of faelle) {
+    const d = LP.lageplanDaten({ mappe: mV, geschossId: gsV, elemente: elVerz(il) });
+    t(`#83 ${was}: weiterhin Kollision samt Vollstaendigkeitsmangel`,
+      d.kollisionen.length === 1 && d.verzahnungen.length === 0
+      && d.meldungen.some((x) => x.art === "kollision" && /Wand X/.test(x.text)
+        && /Wand Y/.test(x.text))
+      && d.vollstaendig === false
+      && !d.hinweise.some((h) => h.art === "verzahnung")
+      && LP.blattHtml(d).html === LP.blattHtml(dOhne).html);
+  }
+  // Eine GEWOEHNLICHE Ueberlagerung — zwei parallele Waende uebereinander — bleibt
+  // Kollision, auch wenn beide Waende Verzahnungsbereiche fuehren.
+  t("#83 gewoehnliche Ueberlagerung bleibt Kollision, auch mit Verzahnungsbereichen",
+    (() => {
+      const doppelt = MAPPE.setzeWand(mV, gsV, { id: "v-p", name: "Wand P",
+        lage: { start_mm: { x: 0, y: 1062.5 }, richtung: "x", laenge_grid: 16 } });
+      const el = [...elVerz(PASSEND), { id: "v-p", name: "Wand P",
+        wandelement: { height_mm: 2600, wandtyp: "mit_wind", length_mm: 2000,
+          interlocks: [{ g0: 0, g1: 16, start_parity: 1 }] } }];
+      const d = LP.lageplanDaten({ mappe: doppelt, geschossId: gsV, elemente: el });
+      return d.meldungen.some((x) => x.art === "kollision" && /Wand P/.test(x.text))
+        && d.vollstaendig === false
+        // Die zulaessige Verzahnung der beiden anderen bleibt davon unberuehrt.
+        && d.verzahnungen.length === 1;
+    })());
+
+  // --- Muss: ohne Wandelement bleibt alles, wie es ohne Verzahnungsdaten war
+  t("#83 fehlt das Wandelement, ist die Bewertung genau die ohne Verzahnungsdaten ([L-4])",
+    (() => {
+      const nurEine = LP.lageplanDaten({ mappe: mV, geschossId: gsV,
+        elemente: elVerz(PASSEND).filter((e) => e.id === "v-x") });
+      const ohneEl = LP.lageplanDaten({ mappe: mV, geschossId: gsV,
+        elemente: elVerz(null).filter((e) => e.id === "v-x") });
+      return nurEine.kollisionen.length === 1 && nurEine.verzahnungen.length === 0
+        && nurEine.vollstaendig === false
+        && nurEine.waende.find((w) => w.id === "v-y").verwaist === true
+        && JSON.stringify(nurEine.kollisionen) === JSON.stringify(ohneEl.kollisionen)
+        && LP.blattHtml(nurEine).html === LP.blattHtml(ohneEl).html;
+    })());
+
+  // --- Muss-not: ein Geschoss OHNE Verzahnungsbereiche bleibt bitgleich ---
+  t("#83 ein Geschoss ohne Verzahnungsbereiche liefert ein bitgleiches Blatt",
+    (() => {
+      const leer = LP.lageplanDaten({ mappe: MAPPE0, geschossId: gsEG,
+        elemente: ELEMENTE.map((e) => ({ ...e,
+          wandelement: { ...e.wandelement, interlocks: [] } })) });
+      return LP.blattHtml(leer).html === blatt.html
+        && LP.lageplanSvgDatei(leer) === LP.lageplanSvgDatei(daten)
+        && leer.verzahnungen.length === 0
+        && !/lpverzahnung|Verzahnungen/.test(blatt.html)
+        && !/lpverzahnung/.test(LP.lageplanSvgDatei(daten))
+        && JSON.stringify(leer.meldungen) === JSON.stringify(daten.meldungen);
+    })());
+  t("#83 unbrauchbare Bereichsangaben begruenden keine Ausnahme (nichts geraten)",
+    (() => {
+      const krumm = LP.lageplanDaten({ mappe: mV, geschossId: gsV,
+        elemente: elVerz({ "v-x": [{ g0: 0.5, g1: 1, start_parity: 0 }],
+          "v-y": [{ g0: 0, g1: 1, start_parity: 7 }] }) });
+      return krumm.kollisionen.length === 1 && krumm.verzahnungen.length === 0
+        && LP.blattHtml(krumm).html === LP.blattHtml(dOhne).html;
+    })());
+  t("[K-5] die Kennzeichnung ist deterministisch — gleicher Stand, gleiches Blatt",
+    LP.blattHtml(dVerz).html === bVerz.html
+    && LP.blattHtml(LP.lageplanDaten({ mappe: mV, geschossId: gsV,
+      elemente: elVerz(PASSEND) })).html === bVerz.html);
+  // Geprueft wird der CODE: die Bewertungsmerkmale (Startparitaet, Bereichssuche)
+  // duerfen hier nicht vorkommen. `ueberlappung_mm` steht weiter im Meldetext — das
+  // ist ein GELESENES Feld des Kernergebnisses und keine eigene Rechnung.
+  t("#83 der Lageplan rechnet keine eigene Ueberlappungs-/Verzahnungsgeometrie",
+    !/start_parity|passendeVerzahnung|bereichAn|kollisionen\s*\(/.test(codeOhneKommentar)
+    && /pruefeGeschoss\(waendeRoh, bemassungenRoh, ursprung, verzahnungsTabelle\)/
+      .test(codeOhneKommentar));
+}
+
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

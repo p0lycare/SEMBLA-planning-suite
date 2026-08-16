@@ -27,6 +27,11 @@
  *     `sembla-constraints.js` und `sembla-massbild.js` — demselben Baustein, mit
  *     dem der Editor zeichnet ([N-5]). Eine nachgebaute zweite Zeichenrechnung
  *     waere genau die Drift, die das verhindert.
+ *   * **keine eigene Bewertung von Kollision und Verzahnung.** Beides trennt
+ *     `pruefeGeschoss` in EINEM Durchgang ([K-13] samt der Verzahnungsausnahme aus
+ *     #83/[G-10]); dieses Modul reicht die Verzahnungsbereiche der uebergebenen
+ *     Wandelemente nur durch und BENENNT das Ergebnis. Es rechnet keine
+ *     Ueberlappung nach und lockert keine Regel.
  *   * **keine zweite Lagehaltung.** Jede Ausgabe entsteht frisch aus
  *     (Mappe, Geschoss, Loeserergebnis) ([N-3]); wo Masse bestimmen, ist das
  *     Loesungsergebnis maszgebend und nicht die gespeicherte Rohposition ([N-4]).
@@ -54,7 +59,7 @@
  */
 
 import {
-  ACHSEN, FARBEN, GRID_MM, HALB_BREITE_MM, SEITEN,
+  ACHSEN, BREITE_MM, FARBEN, GRID_MM, HALB_BREITE_MM, SEITEN,
   normLage, lageFehler, laengeMm, wandRechteck, wandSeiten, pruefeGeschoss, zustand,
   ursprungPunkt,
 } from "./sembla-constraints.js";
@@ -182,6 +187,30 @@ export const BRANDKLASSE = Object.freeze({
 /** Kennung und Kachelmass (Papier-mm) der F30-Schraffur. */
 const SCHRAFFUR_ID = "lpbrand-f30";
 const SCHRAFFUR_MM = 0.9;
+
+/**
+ * Zulaessige Wandverzahnung im Blatt (#83) — Darstellung, sonst nichts.
+ *
+ * Zwei rechtwinklig aneinanderstossende Waende duerfen sich an wechselseitig
+ * passenden Verzahnungsbereichen ueberlagern; das ist die eine Ausnahme von
+ * [K-13] ([G-10]). BEWERTET wird sie ausschliesslich kanonisch in
+ * `pruefeGeschoss` — dieses Modul rechnet weder Kollisions- noch
+ * Verzahnungsgeometrie nach, es ZEIGT nur, was der Kern als zulaessig ausweist.
+ *
+ * Getragen wird die Kennzeichnung von zwei Merkmalen OHNE Farbe: dem
+ * gestrichelten Feld an der Verbindungsstelle und dem Kurztext, der BEIDE
+ * Wandnamen nennt. `farbe` kommt nur additiv dazu und ist bewusst weder eine
+ * Zustandsfarbe ([K-8]) noch eine der V/R- oder Brandschutzfarben.
+ */
+export const VERZAHNUNG = Object.freeze({
+  name: "zulässige Wandverzahnung",
+  merkmal: "gestricheltes Feld an der Verbindungsstelle",
+  farbe: "#0f6b3c",
+});
+
+/** Schriftgroesse (Papier-mm) und Abstand des Verzahnungs-Kurztexts vom Feld. */
+const VERZ_FS_MM = 1.8;
+const VERZ_ABSTAND_MM = 1.4;
 
 /**
  * Papier-mm, um die der Brandschutz-Kurztext neben der Wandkante steht — auf der
@@ -337,9 +366,10 @@ export function waehleMasstab(breite_mm, hoehe_mm, format = "a3") {
  *          elemente?:Array<{id:string,name?:string,wandelement?:any}>,
  *          hintergrund?:any}} arg
  *   `elemente` sind die vorhandenen Wandelemente (Form von `listeElemente()`).
- *   Sie liefern AUSSCHLIESSLICH Hoehe, Wandtyp und Brandschutzklassifikation — die
- *   Mappe kennt nichts davon und bekommt keine Kopie ([P-1]). Fehlt ein Element, ist
- *   der Eintrag verwaist ([L-4]) und es wird nichts geraten.
+ *   Sie liefern AUSSCHLIESSLICH Hoehe, Wandtyp, Brandschutzklassifikation und die
+ *   Verzahnungsbereiche (#83) — die Mappe kennt nichts davon und bekommt keine Kopie
+ *   ([P-1]). Fehlt ein Element, ist der Eintrag verwaist ([L-4]) und es wird nichts
+ *   geraten.
  *   `hintergrund` ist der fertige Planrahmen in Welt-mm (#80, [N-9], s.
  *   `normHintergrund`) — read-only durchgereicht, nie hier berechnet.
  */
@@ -362,9 +392,27 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
   // Der GESPEICHERTE Geschossursprung ([K-4], #76) — der Lageplan liest ihn wie
   // jedes andere kanonische Datum und zeichnet ihn dort, wo er steht ([N-3]).
   const ursprung = ursprungPunkt(geschoss.ursprung_mm);
+  // Verzahnungsbereiche (#83): Nachschlagetabelle je Wandkennung, gebaut aus
+  // DENSELBEN uebergebenen Wandelementen, die schon Hoehe, Wandtyp und
+  // Brandschutzklassifikation liefern — es entsteht kein zweiter Datenweg und kein
+  // Speicherzugriff. Kanonisch stehen die Bereiche im Wandelement ([G-10]), gewaehlt
+  // werden sie allein in Modul 1; hier werden sie ausschliesslich GELESEN und
+  // unveraendert an den Kern durchgereicht, der allein bewertet.
+  //
+  // Ein verwaister Eintrag ([L-4]) steht gar nicht erst darin und kann damit nie eine
+  // Ausnahme begruenden — seine Bewertung bleibt genau die ohne Verzahnungsdaten.
+  // Dasselbe gilt fuer ein Geschoss ohne Bereiche: die Tabelle ist dann leer, und
+  // `pruefeGeschoss` rechnet bit-genau wie vor #83.
+  /** @type {Map<string, any>} */
+  const verzahnungsTabelle = new Map();
+  for (const w of waendeRoh) {
+    const el = nachId.get(w.id);
+    const il = el && el.wandelement ? el.wandelement.interlocks : null;
+    if (Array.isArray(il) && il.length) verzahnungsTabelle.set(String(w.id), il);
+  }
   // Der kanonische Loeser — dieselbe Funktion, die der Editor nach jeder Aenderung
   // fährt. Iteration, Toleranz oder Startwerte gibt es hier so wenig wie dort ([K-5]).
-  const erg = pruefeGeschoss(waendeRoh, bemassungenRoh, ursprung);
+  const erg = pruefeGeschoss(waendeRoh, bemassungenRoh, ursprung, verzahnungsTabelle);
   const koll = erg.kollisionen || [];
   const ctx = massKontext(waendeRoh, erg, ursprung);
 
@@ -472,6 +520,26 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
       + `${_fmt(k.ueberlappung_mm.x)} × ${_fmt(k.ueberlappung_mm.y)} mm — gemeldet, nichts `
       + "verschoben ([K-13])." });
   }
+  // Zulaessige Wandverzahnungen (#83): DIESELBE Rechnung, die den Paaren oben ihre
+  // Kollisionsmeldung entzogen hat — `pruefeGeschoss` trennt beide Aussagen in einem
+  // Durchgang. Sie werden BENANNT, statt eine Ueberlagerung kommentarlos verschwinden
+  // zu lassen, und zwar als HINWEIS: eine zulaessige Verbindung ist kein Mangel und
+  // darf die Vollstaendigkeit ([N-7]) nicht kippen. Hier wird nichts nachgerechnet —
+  // Ort, Rasterfelder und die Zulaessigkeit selbst kommen fertig aus dem Kern.
+  const verzahnungen = (erg.verzahnungen || []).map((v) => {
+    const na = name(v.a), nb = name(v.b);
+    return {
+      a: v.a, b: v.b, name_a: na, name_b: nb,
+      ort_mm: v.ort_mm, raster: v.raster,
+      /** Kurztext der Zeichnung — er nennt BEIDE Wandnamen. */
+      kurztext: `Verzahnung: „${na}“ und „${nb}“`,
+      text: `Zulässige Verzahnung: „${na}“ und „${nb}“ greifen an ihren `
+        + `Verzahnungsbereichen ineinander (Rasterfeld ${v.raster.a} bzw. ${v.raster.b}, `
+        + `Lagen wechselseitig ausgespart) — benannte Verbindung, keine Kollision `
+        + "([K-13]/[G-10]).",
+    };
+  });
+  for (const v of verzahnungen) hinweise.push({ art: "verzahnung", text: v.text });
   for (const f of (erg.fehler || [])) {
     meldungen.push({ art: "massfehler", text: `Ungültige Bemaßung: ${f}` });
   }
@@ -510,6 +578,8 @@ export function lageplanDaten({ mappe, geschossId, elemente, hintergrund }) {
     massbilder,
     ergebnis: erg,
     kollisionen: koll,
+    /** Die vom Kern als zulaessig ausgewiesenen Verzahnungsstellen (#83), benannt. */
+    verzahnungen,
     meldungen,
     hinweise,
     /** [N-7]: nur ein mangelfreier Stand wird als vollstaendig ausgegeben. */
@@ -956,6 +1026,39 @@ export function lageplanSvg(daten, opts) {
     });
   }
 
+  // ---- Zulaessige Wandverzahnungen (#83) ---------------------------------
+  //
+  // ZULETZT, damit die Kennzeichnung nichts verdeckt bekommt — und ausdruecklich
+  // NACH der Wandschleife: sie geht damit weder in `hindernisse` noch in `blasen`
+  // ein, die Nummernblasen (#59) stehen also bit-genau, wo sie ohne sie staenden.
+  // `ausdehnung()` und `waehleMasstab()` sehen sie ebenso wenig: Blattmassstab,
+  // Wandlagen und Bemassungen bleiben unberuehrt.
+  //
+  // Bewertet wurde die Stelle im Kern (`pruefeGeschoss`); hier wird sie nur
+  // gezeichnet. Getragen wird sie von zwei Merkmalen OHNE Farbe: dem gestrichelten
+  // Feld ueber der 125 × 125 mm grossen Ueberlagerung und dem Kurztext, der BEIDE
+  // Wandnamen nennt. Weil das hier in `inner` entsteht, tragen Vorschau, Druck-HTML
+  // und die eigenstaendige SVG-Datei zwangslaeufig dieselbe Zeichenkette. Ohne
+  // Verzahnungsstelle entsteht gar nichts — das Blatt bleibt dann das bisherige.
+  for (const v of (daten.verzahnungen || [])) {
+    const vx = X(v.ort_mm.x), vy = Y(v.ort_mm.y), vs = S(BREITE_MM);
+    // Der Kurztext wird waagerecht in den Zeichenbereich geklemmt: eine Verzahnung
+    // liegt oft am Blattrand, und der Name zweier Waende ist breiter als der
+    // Zeichnungsrand. Geschaetzt wird die Breite mit demselben Faktor wie anderswo
+    // (DOM-frei gibt es keine Textmetrik); geklemmt wird deterministisch, und der
+    // ORT bleibt am gestrichelten Feld erkennbar. Der Bereich waechst dafuer NICHT.
+    const halb = Math.max(1, v.kurztext.length) * VERZ_FS_MM * ZEICHEN_BREITE / 2;
+    const tx = Math.min(Math.max(vx + vs / 2, halb), Math.max(halb, breite_mm - halb));
+    teile.push(`<g class="lpverzahnung" data-wand-a="${_esc(v.a)}" data-wand-b="${_esc(v.b)}">`
+      + `<title>${_esc(v.text)}</title>`
+      + `<rect class="lpverzahnung-feld" x="${_n(vx)}" y="${_n(vy)}" width="${_n(vs)}"`
+      + ` height="${_n(vs)}" fill="none" stroke="${VERZAHNUNG.farbe}" stroke-width="0.3"`
+      + ` stroke-dasharray="0.9 0.6"/>`
+      + `<text class="lpverzahnung-kz" x="${_n(tx)}" y="${_n(vy - VERZ_ABSTAND_MM)}"`
+      + ` font-size="${VERZ_FS_MM}" text-anchor="middle" fill="${VERZAHNUNG.farbe}">`
+      + `${_esc(v.kurztext)}</text></g>`);
+  }
+
   const inner = teile.join("");
 
   // ---- Ausgegebener Zeichenbereich (#59) ---------------------------------
@@ -1112,6 +1215,27 @@ export function hintergrundHtml(daten, opts) {
 }
 
 /**
+ * Die zulaessigen Wandverzahnungen als Blattangabe (#83). Gibt es keine, entsteht
+ * KEIN Kasten — dann waere es eine Aussage ueber etwas, das es nicht gibt, und das
+ * Blatt bleibt bitgenau das bisherige.
+ *
+ * Genannt wird jede Stelle mit BEIDEN Wandnamen: eine Ueberlagerung, die keine
+ * Kollisionsmeldung mehr erzeugt, darf nicht kommentarlos verschwinden. Das ist eine
+ * Angabe, kein Mangel — die Vollstaendigkeit ([N-7]) bleibt unberuehrt.
+ */
+export function verzahnungHtml(daten) {
+  const liste = (daten && daten.verzahnungen) || [];
+  if (!liste.length) return "";
+  const zeilen = liste.map((v) => `<li>„${_esc(v.name_a)}“ und „${_esc(v.name_b)}“ `
+    + `— Rasterfeld ${_esc(v.raster.a)} bzw. ${_esc(v.raster.b)}</li>`).join("");
+  return `<div class="lpbox"><h4>Verzahnungen</h4>`
+    + `<p class="lpverz-info">Diese Wände greifen an ihren Verzahnungsbereichen `
+    + `ineinander — zulässige Verbindung, keine Kollision ([K-13]/[G-10]). Im Plan ist `
+    + `die Stelle als ${_esc(VERZAHNUNG.merkmal)} gekennzeichnet.</p>`
+    + `<ul class="lpverz-liste">${zeilen}</ul></div>`;
+}
+
+/**
  * Wandtabelle: Nummer, Name, Länge, Höhe, Wandtyp, Brandschutz, Bestimmtheit.
  *
  * Die Nummer der ersten Spalte ist GENAU die, die in der Draufsicht in der
@@ -1181,6 +1305,9 @@ export function blattHtml(daten, opts) {
     // #80/[N-9]: nur vorhanden, wenn dem Geschoss ein Plan hinterlegt ist — sonst
     // waere es ein Kasten ueber eine Sache, die es nicht gibt.
     + hintergrundHtml(daten, o)
+    // #83: ebenso — nur vorhanden, wenn der Kern wirklich eine zulaessige Verzahnung
+    // ausweist. Ohne sie bleibt das Blatt bitgenau das bisherige.
+    + verzahnungHtml(daten)
     // Der fruehere Block „Vollstaendigkeit" ist mit #73 ersatzlos entfallen: das
     // Blatt ist Ausfuehrungsunterlage, keine Pruefliste. [N-7] bleibt gewahrt —
     // das Schriftfeld weist den Stand aus, und `daten.meldungen`/`hinweise` stehen
@@ -1229,6 +1356,9 @@ export const LAGEPLAN_CSS = `
   table.lptab td.nr{font-weight:700;color:#1c2430}
   /* #80: Angabe zum Planhintergrund — nur vorhanden, wenn ein Plan hinterlegt ist. */
   .lpbg-info{margin:0;font-size:10px;line-height:1.45;color:#4a5663}
+  /* #83: zulaessige Wandverzahnungen — nur vorhanden, wenn es welche gibt. */
+  .lpverz-info{margin:0;font-size:10px;line-height:1.45;color:#4a5663}
+  .lpverz-liste{margin:4px 0 0;padding-left:16px;font-size:10.5px}
   .lplegende{display:flex;flex-wrap:wrap;gap:3px 10px;font-size:10px}
   .lplegende span{display:flex;align-items:center;gap:4px}
   .lplegende i{width:14px;height:4px;border-radius:2px;display:inline-block}

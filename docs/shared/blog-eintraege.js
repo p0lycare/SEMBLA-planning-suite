@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-09",
+    datum: "2026-08-16",
+    typ: "fix",
+    issue: 83,
+    titel: "Im Lageplan gilt eine passende Wandverzahnung als benannte Verbindung statt als Kollision",
+    testbitte: "In Modul 9 ein Geschoss mit zwei passend verzahnten Wänden öffnen: keine "
+      + "Kollisionsmeldung mehr, die Verbindung steht mit beiden Wandnamen im Blatt, das Geschoss "
+      + "gilt als vollständig — jede andere Überlagerung bleibt Kollision.",
+  },
+  {
     id: "chg-20260816-08",
     datum: "2026-08-16",
     typ: "fix",
