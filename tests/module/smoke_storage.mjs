@@ -906,5 +906,88 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     && store.migrieren() === 6);
 }
 
+// 17) [#82]: Verzahnungsbereiche ueberstehen Export, Import und Duplizieren unveraendert
+// Geprueft wird der Roundtrip ueber die echten Pfade: Wandelement mit Verzahnung ueber
+// buildWall() erzeugen, speichern, projektObjekt() exportieren, importiereText() importieren
+// und dupliziere() kopieren — die Bereiche muessen wertgleich erhalten bleiben.
+{
+  // Wand mit zwei Verzahnungsbereichen: g0=0, g1=2 mit start_parity=0 und g0=6, g1=8 mit start_parity=1
+  const ilWand = buildWall("Verzahnt", 2000, 2600, [], null, null, [],
+    [{ g0: 0, g1: 2, start_parity: 0 }, { g0: 6, g1: 8, start_parity: 1 }]);
+  t("[#82] buildWall erzeugt das interlocks-Feld",
+    Array.isArray(ilWand.interlocks) && ilWand.interlocks.length === 2);
+  t("[#82] die Bereiche haben die richtigen Grenzen und Startparitaeten",
+    ilWand.interlocks[0].g0 === 0 && ilWand.interlocks[0].g1 === 2 && ilWand.interlocks[0].start_parity === 0
+    && ilWand.interlocks[1].g0 === 6 && ilWand.interlocks[1].g1 === 8 && ilWand.interlocks[1].start_parity === 1);
+
+  const idIl = store.speichere("Verzahnt", ilWand);
+  store.setzeAktiv(idIl);
+  t("[#82] gespeichertes Wandelement traegt die Verzahnungsbereiche",
+    store.holeElement(idIl).wandelement.interlocks.length === 2);
+
+  // Einzelwand-Export -> Import: interlocks muessen wertgleich erhalten bleiben
+  const pIl = store.projektObjekt(idIl);
+  t("[#82] Export traegt die Verzahnungsbereiche im Wandelement",
+    pIl.wandelement.interlocks.length === 2
+    && pIl.wandelement.interlocks[0].start_parity === 0
+    && pIl.wandelement.interlocks[1].start_parity === 1);
+  t("[#82] Export bleibt Projektformat v2 (interlocks ist optionales Feld)",
+    pIl.version === 2 && store.PROJEKT_VERSION === 2);
+  t("[#82] die Verzahnungsbereiche liegen NICHT in eingaben",
+    !JSON.stringify(pIl.eingaben).includes("interlocks"));
+
+  const jsonIl = JSON.stringify(pIl);
+  const idIlImp = store.importiereText(jsonIl, "Verzahnt.json");
+  t("[#82] Import erhaelt die Verzahnungsbereiche unveraendert",
+    store.holeElement(idIlImp).wandelement.interlocks.length === 2);
+  t("[#82] Import erhaelt Grenzen und Startparitaeten wertgleich",
+    store.holeElement(idIlImp).wandelement.interlocks[0].g0 === 0
+    && store.holeElement(idIlImp).wandelement.interlocks[0].g1 === 2
+    && store.holeElement(idIlImp).wandelement.interlocks[0].start_parity === 0
+    && store.holeElement(idIlImp).wandelement.interlocks[1].g0 === 6
+    && store.holeElement(idIlImp).wandelement.interlocks[1].g1 === 8
+    && store.holeElement(idIlImp).wandelement.interlocks[1].start_parity === 1);
+  t("[#82] Import aendert die uebrige Wandgeometrie nicht",
+    store.holeElement(idIlImp).wandelement.length_mm === 2000
+    && store.holeElement(idIlImp).wandelement.courses.length === ilWand.courses.length);
+
+  // Duplizieren: tiefe Kopie ohne geteilte Referenz
+  const idIlKopie = store.dupliziere(idIl, "Verzahnt (Kopie)");
+  t("[#82] dupliziere uebernimmt die Verzahnungsbereiche",
+    store.holeElement(idIlKopie).wandelement.interlocks.length === 2
+    && store.holeElement(idIlKopie).wandelement.interlocks[0].start_parity === 0);
+  // Pruefen, dass es eine echte Kopie ist (keine geteilte Referenz)
+  store.holeElement(idIlKopie).wandelement.interlocks[0].g0 = 999;
+  t("[#82] dupliziere: keine geteilte Referenz (Quelle bleibt unveraendert)",
+    store.holeElement(idIl).wandelement.interlocks[0].g0 === 0);
+
+  // Wand OHNE Verzahnungsbereiche: bleibt ohne und laedt meldungsfrei
+  const ohneIl = buildWall("Ohne Verzahnung", 2000, 2600, []);
+  t("[#82] Wand ohne interlocks hat leeres Array oder fehlendes Feld",
+    !ohneIl.interlocks || ohneIl.interlocks.length === 0);
+  const idOhneIl = store.speichere("Ohne Verzahnung", ohneIl);
+  const pOhneIl = store.projektObjekt(idOhneIl);
+  const idOhneIlImp = store.importiereText(JSON.stringify(pOhneIl), "OhneVerzahnung.json");
+  t("[#82] Wand ohne Verzahnung ueberlebt den Roundtrip ohne Bereiche",
+    !store.holeElement(idOhneIlImp).wandelement.interlocks
+    || store.holeElement(idOhneIlImp).wandelement.interlocks.length === 0);
+
+  // Altbestand-Datei OHNE das Feld: laedt meldungsfrei als Wand ohne Verzahnung
+  const altOhneIl = JSON.stringify({
+    format: "SEMBLA-Projekt", version: 2, name: "Altwand ohne interlocks",
+    wandelement: (() => { const w = buildWall("Altwand", 2000, 2600, []); delete w.interlocks; return w; })(),
+    eingaben: {},
+  });
+  const idAltOhneIl = store.importiereText(altOhneIl, "AltwandOhneInterlocks.json");
+  t("[#82] Altbestand ohne interlocks-Feld laedt meldungsfrei",
+    store.holeElement(idAltOhneIl) !== null);
+  t("[#82] Altbestand erfindet keine Verzahnungsbereiche",
+    !store.holeElement(idAltOhneIl).wandelement.interlocks
+    || store.holeElement(idAltOhneIl).wandelement.interlocks.length === 0);
+
+  // Aufraeumen
+  for (const x of [idIl, idIlImp, idIlKopie, idOhneIl, idOhneIlImp, idAltOhneIl]) store.loesche(x);
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

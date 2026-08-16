@@ -248,6 +248,83 @@ ok("Bauteilkatalog wird als solcher benannt", katalogDatei.fehler.some(f => /Bau
 const wandAlsMappe = ARCHIV.leseArchiv([{ name: ARCHIV.DATEI_MAPPE, data: JSON.stringify(wandDatei("x")) }]);
 ok("Einzelne Wanddatei wird als solche benannt", wandAlsMappe.fehler.some(f => /einzelne Wanddatei/.test(f)));
 
+// --- [#82] Verzahnungsbereiche ueberstehen den Archiv-Roundtrip ------------
+// Das Archiv nutzt die echten Wanddateien; die interlocks muessen wertgleich erhalten bleiben.
+import { buildWall } from "../../docs/shared/sembla-core.js";
+
+// Wandelement mit Verzahnung ueber den echten Rechenkern erzeugen
+const ilWandElement = buildWall("Verzahnt", 2000, 2600, [], null, null, [],
+  [{ g0: 0, g1: 2, start_parity: 0 }, { g0: 6, g1: 8, start_parity: 1 }]);
+ok("[#82] buildWall erzeugt interlocks-Feld fuer Archivtest",
+  Array.isArray(ilWandElement.interlocks) && ilWandElement.interlocks.length === 2);
+
+// Wanddatei mit Verzahnung fuer das Archiv
+function wandDateiMitVerzahnung() {
+  return {
+    format: "SEMBLA-Projekt", version: 2, name: "Verzahnt",
+    wandelement: ilWandElement,
+    eingaben: { planung: { produkte: { quelle: null, rollen: {} } } },
+  };
+}
+
+// Archiv mit verzahnter Wand bauen
+let ilMappe0 = MAPPE.leereMappe("Archiv mit Verzahnung", { geschoss: "EG", hoehe_mm: 2400 });
+const ilGsId = MAPPE.alleGeschosse(ilMappe0)[0].geschoss.id;
+const ilMappeNorm = MAPPE.setzeWand(ilMappe0, ilGsId, { id: "wnd-il", name: "Verzahnt", lage: null });
+const ilPlan = ARCHIV.exportPlan(ilMappeNorm, ["wnd-il"], []);
+const ilDateien = ARCHIV.archivDateien(ilMappeNorm, ilPlan, () => wandDateiMitVerzahnung(), () => null);
+
+ok("[#82] Archiv enthaelt die Verzahnungswand", ilDateien.length === 2); // projekt.json + 1 Wand
+
+// Wanddatei im Archiv pruefen
+const ilWandDateiJson = ilDateien.find(d => d.name.includes("wnd-il"));
+const ilWandDateiObj = JSON.parse(ilWandDateiJson.data);
+ok("[#82] Archiv-Wanddatei traegt die Verzahnungsbereiche",
+  ilWandDateiObj.wandelement.interlocks.length === 2);
+ok("[#82] Archiv-Wanddatei traegt Grenzen und Startparitaeten",
+  ilWandDateiObj.wandelement.interlocks[0].g0 === 0
+  && ilWandDateiObj.wandelement.interlocks[0].g1 === 2
+  && ilWandDateiObj.wandelement.interlocks[0].start_parity === 0
+  && ilWandDateiObj.wandelement.interlocks[1].g0 === 6
+  && ilWandDateiObj.wandelement.interlocks[1].g1 === 8
+  && ilWandDateiObj.wandelement.interlocks[1].start_parity === 1);
+
+// ZIP bauen und lesen (vollstaendiger Roundtrip)
+const ilWurzel = ARCHIV.archivName(ilMappeNorm);
+const ilMitWurzel = ilDateien.map(d => ({ name: ilWurzel + "/" + d.name, data: d.data }));
+const ilBytes = zipSync(ilMitWurzel);
+const ilGelesenRoh = await entpacke(ilBytes);
+const ilGelesen = ARCHIV.leseArchiv(ilGelesenRoh);
+
+ok("[#82] Archiv-Roundtrip ohne Fehler", ilGelesen.fehler.length === 0);
+ok("[#82] Archiv-Roundtrip erhaelt die Wand", ilGelesen.waende.length === 1);
+ok("[#82] Archiv-Roundtrip erhaelt die Verzahnungsbereiche",
+  ilGelesen.waende[0].wandelement.interlocks.length === 2);
+ok("[#82] Archiv-Roundtrip erhaelt Grenzen und Startparitaeten wertgleich",
+  ilGelesen.waende[0].wandelement.interlocks[0].g0 === 0
+  && ilGelesen.waende[0].wandelement.interlocks[0].g1 === 2
+  && ilGelesen.waende[0].wandelement.interlocks[0].start_parity === 0
+  && ilGelesen.waende[0].wandelement.interlocks[1].g0 === 6
+  && ilGelesen.waende[0].wandelement.interlocks[1].g1 === 8
+  && ilGelesen.waende[0].wandelement.interlocks[1].start_parity === 1);
+
+// Altbestand: Wanddatei OHNE interlocks-Feld laedt meldungsfrei
+const altIlDatei = {
+  format: "SEMBLA-Projekt", version: 2, name: "Altwand",
+  wandelement: (() => { const w = buildWall("Altwand", 2000, 2600, []); delete w.interlocks; return w; })(),
+  eingaben: {},
+};
+const altIlEintraege = [
+  { name: ARCHIV.DATEI_MAPPE, data: JSON.stringify(ARCHIV.mappeFuerArchiv(ilMappeNorm, [{ id: "wnd-il", pfad: "waende/Altwand__wnd-il.json" }])) },
+  { name: "waende/Altwand__wnd-il.json", data: JSON.stringify(altIlDatei) },
+];
+const altIlGelesen = ARCHIV.leseArchiv(altIlEintraege);
+ok("[#82] Altbestand ohne interlocks-Feld laedt ohne Fehler",
+  altIlGelesen.fehler.length === 0 && altIlGelesen.waende.length === 1);
+ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
+  !altIlGelesen.waende[0].wandelement.interlocks
+  || altIlGelesen.waende[0].wandelement.interlocks.length === 0);
+
 // --- Ausgabe --------------------------------------------------------------
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

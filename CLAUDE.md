@@ -173,6 +173,26 @@ auch hier nur aus `storage.js` (`normBrandklasse`, der **einzige** Import von do
 Übersicht an. Abgeleitet wird nichts: Stückliste, Vorspannkennzahlen und Mangelblock rechnen
 unverändert.
 
+**Verzahnungsbereiche (`wandelement.interlocks`, #82).** Mehrere rechtwinklige Einzelwände können
+konstruktiv ineinandergreifen. Die Verzahnungsbereiche werden in **Modul 1** je Wand festgelegt
+(beliebige Position im Steinverband, alternierende Aussparung je Lage). Für jeden Bereich wird
+gewählt, ob die Aussparung in der **untersten** Lage oder **eine Lage darüber** beginnt
+(**Startparität** `start_parity`, 0 oder 1). Die Grenzen stehen als Rasterpositionen `g0`/`g1` im
+Feld `wandelement.interlocks` — ein Array aus `{g0, g1, start_parity}`. Das Feld ist **optional**
+und liegt **ausschließlich** am Wandelement, **nie** in `eingaben`, der Projektmappe oder dem
+Katalog; im Projektformat ist es **optional** ⇒ `PROJEKT_VERSION` bleibt 2. Ein Altbestand ohne
+das Feld ist eine Wand ohne Verzahnung — es wird nichts erfunden und nichts migriert. Die Bereiche
+werden vom Core (`buildWall`, Regel [G-10]) normalisiert und nach [G-12] validiert: ein Bereich
+außerhalb der Wand, mit nicht ganzzahligem Intervall, überlappend mit einer Öffnung oder einem
+anderen Verzahnungsbereich oder mit ungültiger Startparität steht in
+`validation.interlock_fehler` — **kein** Baubarkeitsausschluss, aber eine sichtbare Warnung. Der
+Import/Export-Pfad (`projektObjekt`/`parseImport`/`dupliziere`) reicht das **ganze Wandelement**
+unverändert weiter ⇒ der Roundtrip über Einzelwanddatei, Projektarchiv und Duplizieren ist
+verlustfrei. **Auf Spannachsenverteilung, Segmentbildung und Gewindestangen-Stückliste haben die
+Bereiche keinen Einfluss ([G-11])** — Spannachsen werden aus dem vollständigen Steinverband ohne
+Verzahnungsaussparungen berechnet. Der Verzahnungsbereich ändert aber die **Steinmengen** (weniger
+Steine in den ausgesparten Lagen) und die **Stoßfugenzahl**.
+
 **Stangenlänge nur aus dem Katalog — kein Eingabefeld ([Z-1]).** Modul 1 hat **kein** Feld für die
 Gewindestangenlänge mehr (ersatzlos entfernt, nicht nur gesperrt): es gibt keinen zweiten Weg, die
 Vorspann-Geometrie zu setzen. Die **unterste** Stange ist immer die **größte** gewählte

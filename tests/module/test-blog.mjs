@@ -39,86 +39,98 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// #83 (zulaessige Verzahnung im Lageplan) ist der NEUESTE Eintrag, davor #59
-// (vollstaendig sichtbare Nummernblasen im Lageplan), #82 (Verzahnung auf der
+// #82 (Verzahnungs-Roundtrip) ist der NEUESTE Eintrag, davor #83 (Lageplan),
+// #59 (vollstaendig sichtbare Nummernblasen im Lageplan), #82 (Verzahnung auf der
 // technischen Wandzeichnung) und #83 (zulaessige Verzahnung im Geschosseditor); die
-// darauf folgenden Zusicherungen zaehlen deshalb ueber `AKTUELL` ab dem fuenften:
+// darauf folgenden Zusicherungen zaehlen deshalb ueber `AKTUELL` ab dem sechsten:
 // #81 (Mengenfassung der Gesamtstueckliste), #82 (Verzahnungsbereiche in Modul 1),
 // #59 (ueberdeckungsfreie Nummernblasen), #81 (waehlbare Mengenfassung der Wand),
 // #79 (technische Wandzeichnung), #79 (Geschosseditor), #79 (Lageplan),
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const AKTUELL = EINTRAEGE.slice(4);
-const AELTER = EINTRAEGE.slice(14);
-// Der neueste Eintrag schliesst die zu #83 ausdruecklich offen gebliebene Haelfte: der
-// Geschosseditor zeigte die passende Verzahnung laengst als Verbindung, der Lageplan
-// meldete dieselbe Stelle weiter als Kollision. Aussagewahr heisst hier: KEINE
-// Kollisionsmeldung mehr, die Verbindung wird mit beiden Wandnamen benannt, das
-// Geschoss gilt als vollstaendig — und die Strenge fuer jede andere Ueberlagerung wird
-// ausdruecklich mitgesagt, sonst laese es sich als generelle Lockerung.
-ok("die zulaessige Verzahnung im Lageplan (Issue 83) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260816-09" && EINTRAEGE[0]?.issue === 83
-  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-16");
+const AKTUELL = EINTRAEGE.slice(5);
+const AELTER = EINTRAEGE.slice(15);
+// Der neueste Eintrag schliesst die Verzahnungsarbeit ab: der Roundtrip ueber Export,
+// Import und Duplizieren muss verlustfrei sein. Aussagewahr heisst hier: Grenzen UND
+// Startparitaet bleiben erhalten — dieselben Daten, nicht nur dieselbe Wirkung.
+ok("der Verzahnungs-Roundtrip (Issue 82) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260816-10" && EINTRAEGE[0]?.issue === 82
+  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-16");
+ok("der Roundtrip-Eintrag benennt Export, Import, Duplizieren und die erhaltenen Felder aussagewahr",
+  /Export/.test(EINTRAEGE[0]?.titel || "")
+  && /Import/.test(EINTRAEGE[0]?.titel || "")
+  && /Duplizieren/.test(EINTRAEGE[0]?.titel || "")
+  && /Grenzen/.test(EINTRAEGE[0]?.titel || "")
+  && /Startparität/.test(EINTRAEGE[0]?.titel || ""));
+ok("die Roundtrip-Testbitte benennt Anlageort, beide Wege und das Archiv",
+  /Modul 1/.test(EINTRAEGE[0]?.testbitte || "")
+  && /exportieren/.test(EINTRAEGE[0]?.testbitte || "")
+  && /reimportieren/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Duplizieren/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Projektarchiv/.test(EINTRAEGE[0]?.testbitte || ""));
+// Der vorherige neueste Eintrag (zulaessige Verzahnung im Lageplan) rueckt auf Platz 2.
+ok("die zulaessige Verzahnung im Lageplan (Issue 83) folgt direkt danach",
+  EINTRAEGE[1]?.id === "chg-20260816-09" && EINTRAEGE[1]?.issue === 83
+  && EINTRAEGE[1]?.typ === "fix" && EINTRAEGE[1]?.datum === "2026-08-16");
 ok("der Lageplan-Verzahnungseintrag benennt Ort, Ergebnis und die erhaltene Strenge aussagewahr",
-  /Lageplan/.test(EINTRAEGE[0]?.titel || "")
-  && /Wandverzahnung/.test(EINTRAEGE[0]?.titel || "")
-  && /Verbindung/.test(EINTRAEGE[0]?.titel || "")
-  && /Kollision/.test(EINTRAEGE[0]?.titel || ""));
+  /Lageplan/.test(EINTRAEGE[1]?.titel || "")
+  && /Wandverzahnung/.test(EINTRAEGE[1]?.titel || "")
+  && /Verbindung/.test(EINTRAEGE[1]?.titel || "")
+  && /Kollision/.test(EINTRAEGE[1]?.titel || ""));
 ok("die Lageplan-Verzahnungstestbitte benennt Ort, beide Namen, Vollstaendigkeit und den Gegenfall",
-  /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
-  && /keine Kollisionsmeldung/.test(EINTRAEGE[0]?.testbitte || "")
-  && /beiden Wandnamen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /vollständig/.test(EINTRAEGE[0]?.testbitte || "")
-  && /andere Überlagerung bleibt Kollision/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Modul 9/.test(EINTRAEGE[1]?.testbitte || "")
+  && /keine Kollisionsmeldung/.test(EINTRAEGE[1]?.testbitte || "")
+  && /beiden Wandnamen/.test(EINTRAEGE[1]?.testbitte || "")
+  && /vollständig/.test(EINTRAEGE[1]?.testbitte || "")
+  && /andere Überlagerung bleibt Kollision/.test(EINTRAEGE[1]?.testbitte || ""));
 // #59 hat mehrere Eintraege, weil es mehrere getrennte Nutzerergebnisse waren. Dieser
 // schliesst die im Ausweich-Paket ausdruecklich offen gelassene Grenze: eine mehrfach
 // ausgewichene Blase lief ueber den Zeichnungsrand hinaus. Aussagewahr heisst
 // hier, dass die BLASE vollstaendig sichtbar bleibt — und dass der Massstab dabei
 // derselbe bleibt; behauptet werden darf keine geaenderte Wand- oder Masslage.
 ok("die vollstaendig sichtbaren Nummernblasen (Issue 59) folgen direkt danach",
-  EINTRAEGE[1]?.id === "chg-20260816-08" && EINTRAEGE[1]?.issue === 59
-  && EINTRAEGE[1]?.typ === "fix" && EINTRAEGE[1]?.datum === "2026-08-16");
+  EINTRAEGE[2]?.id === "chg-20260816-08" && EINTRAEGE[2]?.issue === 59
+  && EINTRAEGE[2]?.typ === "fix" && EINTRAEGE[2]?.datum === "2026-08-16");
 ok("der Blasenrand-Eintrag benennt Ort, Ergebnis und den behobenen Mangel aussagewahr",
-  /Lageplan/.test(EINTRAEGE[1]?.titel || "")
-  && /Wandnummern/.test(EINTRAEGE[1]?.titel || "")
-  && /vollständig sichtbar/.test(EINTRAEGE[1]?.titel || "")
-  && /abgeschnitten/.test(EINTRAEGE[1]?.titel || "")
-  && !/Maßstab|verschob/i.test(EINTRAEGE[1]?.titel || ""));
+  /Lageplan/.test(EINTRAEGE[2]?.titel || "")
+  && /Wandnummern/.test(EINTRAEGE[2]?.titel || "")
+  && /vollständig sichtbar/.test(EINTRAEGE[2]?.titel || "")
+  && /abgeschnitten/.test(EINTRAEGE[2]?.titel || "")
+  && !/Maßstab|verschob/i.test(EINTRAEGE[2]?.titel || ""));
 ok("die Blasenrand-Testbitte benennt Ort, Vollstaendigkeit, alle drei Ausgaben und den Massstab",
-  /Modul 9/.test(EINTRAEGE[1]?.testbitte || "")
-  && /vollständig im Blatt/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Vorschau/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Druck/.test(EINTRAEGE[1]?.testbitte || "")
-  && /SVG-Datei/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Maßstab bleibt derselbe/.test(EINTRAEGE[1]?.testbitte || ""));
-// #82 hat ZWEI Eintraege, weil es zwei getrennte Nutzerergebnisse waren: erst das
-// Festlegen des Verzahnungsbereichs samt Verband in Modul 1, dann seine Darstellung
-// auf dem Blatt der technischen Wandzeichnung. Beide zusammen decken das Issue ab.
+  /Modul 9/.test(EINTRAEGE[2]?.testbitte || "")
+  && /vollständig im Blatt/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Vorschau/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Druck/.test(EINTRAEGE[2]?.testbitte || "")
+  && /SVG-Datei/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Maßstab bleibt derselbe/.test(EINTRAEGE[2]?.testbitte || ""));
+// #82 hat DREI Eintraege, weil es drei getrennte Nutzerergebnisse waren: Festlegen in
+// Modul 1, Darstellung auf der Wandzeichnung und Roundtrip ueber Export/Import/Duplizieren.
 const neu82 = EINTRAEGE.filter(e => e.issue === 82);
-ok("genau zwei Eintraege fuer Issue 82 — Festlegen in Modul 1 und Darstellung im Blatt",
-  neu82.length === 2
-  && neu82.map(e => e.id).join(",") === "chg-20260816-07,chg-20260816-04");
+ok("genau drei Eintraege fuer Issue 82 — Festlegen in Modul 1, Darstellung im Blatt und Roundtrip",
+  neu82.length === 3
+  && neu82.map(e => e.id).join(",") === "chg-20260816-10,chg-20260816-07,chg-20260816-04");
 ok("die Verzahnung auf der Wandzeichnung (Issue 82) folgt direkt danach",
-  EINTRAEGE[2]?.id === "chg-20260816-07" && EINTRAEGE[2]?.issue === 82
-  && EINTRAEGE[2]?.typ === "feature" && EINTRAEGE[2]?.datum === "2026-08-16");
+  EINTRAEGE[3]?.id === "chg-20260816-07" && EINTRAEGE[3]?.issue === 82
+  && EINTRAEGE[3]?.typ === "feature" && EINTRAEGE[3]?.datum === "2026-08-16");
 // Aussagewahr heisst hier: das Blatt KENNZEICHNET und ERKLAERT den Bereich — mehr nicht.
 // Modul 7 zeigt nur an; behauptet werden darf keine Wahlmoeglichkeit, keine Ableitung
 // und keine Wirkung auf Vorspannung oder Mengen ([G-11]/[P-9]).
 ok("der Zeichnungs-Verzahnungseintrag benennt Ort, Kennzeichnung und Erklaerung aussagewahr",
-  /Wandzeichnung/.test(EINTRAEGE[2]?.titel || "")
-  && /Verzahnungsbereiche/.test(EINTRAEGE[2]?.titel || "")
-  && /gekennzeichnet/.test(EINTRAEGE[2]?.titel || "")
-  && /erklärt/.test(EINTRAEGE[2]?.titel || "")
-  && !/wählbar|Vorspannung/.test(EINTRAEGE[2]?.titel || ""));
+  /Wandzeichnung/.test(EINTRAEGE[3]?.titel || "")
+  && /Verzahnungsbereiche/.test(EINTRAEGE[3]?.titel || "")
+  && /gekennzeichnet/.test(EINTRAEGE[3]?.titel || "")
+  && /erklärt/.test(EINTRAEGE[3]?.titel || "")
+  && !/wählbar|Vorspannung/.test(EINTRAEGE[3]?.titel || ""));
 ok("die Testbitte benennt Anlageort, Rasterlage, Legende, Mangel, Schwarz-Weiss und die Datei",
-  /Modul 1/.test(EINTRAEGE[2]?.testbitte || "")
-  && /Modul 7/.test(EINTRAEGE[2]?.testbitte || "")
-  && /Rasterlage/.test(EINTRAEGE[2]?.testbitte || "")
-  && /Legende/.test(EINTRAEGE[2]?.testbitte || "")
-  && /regelwidriger Bereich/.test(EINTRAEGE[2]?.testbitte || "")
-  && /schwarz-weiß/.test(EINTRAEGE[2]?.testbitte || "")
-  && /SVG-Datei/.test(EINTRAEGE[2]?.testbitte || ""));
+  /Modul 1/.test(EINTRAEGE[3]?.testbitte || "")
+  && /Modul 7/.test(EINTRAEGE[3]?.testbitte || "")
+  && /Rasterlage/.test(EINTRAEGE[3]?.testbitte || "")
+  && /Legende/.test(EINTRAEGE[3]?.testbitte || "")
+  && /regelwidriger Bereich/.test(EINTRAEGE[3]?.testbitte || "")
+  && /schwarz-weiß/.test(EINTRAEGE[3]?.testbitte || "")
+  && /SVG-Datei/.test(EINTRAEGE[3]?.testbitte || ""));
 // #83 hat ZWEI Eintraege, weil es zwei getrennte Nutzerergebnisse waren: erst die
 // Ausnahme im Geschosseditor, dann dieselbe Aussage im Lageplan — die dort
 // ausdruecklich offen gebliebene Haelfte. Beide zusammen decken das Issue ab.
@@ -127,19 +139,19 @@ ok("genau zwei Eintraege fuer Issue 83 — Geschosseditor und Lageplan",
   neu83.length === 2
   && neu83.map(e => e.id).join(",") === "chg-20260816-09,chg-20260816-06");
 ok("die zulaessige Verzahnung im Geschosseditor (Issue 83) folgt direkt danach",
-  EINTRAEGE[3]?.id === "chg-20260816-06" && EINTRAEGE[3]?.issue === 83
-  && EINTRAEGE[3]?.typ === "fix" && EINTRAEGE[3]?.datum === "2026-08-16");
+  EINTRAEGE[4]?.id === "chg-20260816-06" && EINTRAEGE[4]?.issue === 83
+  && EINTRAEGE[4]?.typ === "fix" && EINTRAEGE[4]?.datum === "2026-08-16");
 ok("der Verzahnungs-Eintrag benennt Ort, Ausnahme UND die erhaltene Strenge aussagewahr",
-  /Geschosseditor/.test(EINTRAEGE[3]?.titel || "")
-  && /Verzahnungen/.test(EINTRAEGE[3]?.titel || "")
-  && /Kollision/.test(EINTRAEGE[3]?.titel || "")
-  && /andere Überlagerung/.test(EINTRAEGE[3]?.titel || ""));
+  /Geschosseditor/.test(EINTRAEGE[4]?.titel || "")
+  && /Verzahnungen/.test(EINTRAEGE[4]?.titel || "")
+  && /Kollision/.test(EINTRAEGE[4]?.titel || "")
+  && /andere Überlagerung/.test(EINTRAEGE[4]?.titel || ""));
 ok("die Verzahnungs-Testbitte benennt Aufbau, beide Merkmale und den Gegenfall",
-  /rechtwinklige Wände/.test(EINTRAEGE[3]?.testbitte || "")
-  && /keine Kollisionsmeldung/.test(EINTRAEGE[3]?.testbitte || "")
-  && /keine rote Wand/.test(EINTRAEGE[3]?.testbitte || "")
-  && /benannt/.test(EINTRAEGE[3]?.testbitte || "")
-  && /gleicher Startlage/.test(EINTRAEGE[3]?.testbitte || ""));
+  /rechtwinklige Wände/.test(EINTRAEGE[4]?.testbitte || "")
+  && /keine Kollisionsmeldung/.test(EINTRAEGE[4]?.testbitte || "")
+  && /keine rote Wand/.test(EINTRAEGE[4]?.testbitte || "")
+  && /benannt/.test(EINTRAEGE[4]?.testbitte || "")
+  && /gleicher Startlage/.test(EINTRAEGE[4]?.testbitte || ""));
 // #79 hat VIER Einträge, weil es vier getrennte Nutzerergebnisse waren: erst die Wahl
 // am Wandelement (Modul 1), dann die Darstellung im Lageplan, im Geschosseditor und
 // zuletzt auf der technischen Wandzeichnung. Damit sind alle geforderten Ansichten

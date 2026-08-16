@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260816-10",
+    datum: "2026-08-16",
+    typ: "feature",
+    issue: 82,
+    titel: "Verzahnungsbereiche bleiben beim Export, Import und Duplizieren mit Grenzen und Startparität erhalten",
+    testbitte: "In Modul 1 einen Verzahnungsbereich anlegen, die Wand exportieren und reimportieren: "
+      + "Der Bereich steht unverändert an derselben Stelle mit derselben Startparität — ebenso beim "
+      + "Duplizieren und im Projektarchiv.",
+  },
+  {
     id: "chg-20260816-09",
     datum: "2026-08-16",
     typ: "fix",

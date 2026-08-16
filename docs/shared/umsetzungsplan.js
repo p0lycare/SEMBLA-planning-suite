@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-08-16",
-  "signatur": "2815e109",
+  "signatur": "460a807d",
   "entscheidungen": [
     {
       "issue": 41,
@@ -137,23 +137,12 @@ export const PLAN = {
       "zyklus": true
     },
     {
-      "issue": 82,
-      "titel": "Frei positionierbare Verzahnungsbereiche im Steinverband",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
       "issue": 83,
       "titel": "Passende Wandverzahnungen von der Kollisionsprüfung ausnehmen",
       "prio": "high",
       "status": "ready",
       "sicherheit": true,
-      "abhaengig_von": [
-        82
-      ],
+      "abhaengig_von": [],
       "zyklus": true
     }
   ],
