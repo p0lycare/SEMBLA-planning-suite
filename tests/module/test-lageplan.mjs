@@ -1823,5 +1823,142 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
     && LP.blattHtml(dD).html === vorher);
 }
 
+// --- #89: Blattgeometrie in Papier-mm, EINE Wahrheit fuer Bildschirm und Druck
+//
+// Die Vorschau muss dieselbe Blattgeometrie und dieselben Flaechenanteile zeigen wie
+// der Ausdruck. Dafuer gibt es genau EINE Groesse — `blattInnen()` aus Papiermass und
+// Rand; das frueher gepflegte `druckhoehe_mm` und das aeussere `aspect-ratio` waren
+// zwei weitere Wahrheiten, an denen beide Medien auseinandergelaufen sind.
+{
+  const DIN = { a3: { w: 420, h: 297 }, a4: { w: 297, h: 210 } };
+  // Genau die Zahlen, die frueher als `druckhoehe_mm` im Modul standen — sie sind
+  // jetzt ABGELEITET und muessen unveraendert herauskommen.
+  const FRUEHER = { a3: 277, a4: 194 };
+
+  let papierEcht = true, innenAbgeleitet = true;
+  for (const f of LP.FORMATE) {
+    const b = LP.BLATT[f], i = LP.blattInnen(f);
+    if (b.papier_mm.w !== DIN[f].w || b.papier_mm.h !== DIN[f].h) papierEcht = false;
+    if (i.w !== DIN[f].w - 2 * b.rand_mm || i.h !== DIN[f].h - 2 * b.rand_mm) innenAbgeleitet = false;
+    if (i.h !== FRUEHER[f]) innenAbgeleitet = false;
+    if ("druckhoehe_mm" in b) innenAbgeleitet = false;
+  }
+  t("#89 die Blattformate tragen das reale Papiermass (A3/A4 quer)", papierEcht);
+  t("#89 die Blattinnenflaeche wird aus Papier und Rand abgeleitet — kein zweites Feld",
+    innenAbgeleitet);
+  t("#89 ein unbekanntes Format faellt deterministisch auf A3 zurueck",
+    LP.blattInnen(/** @type {any} */ ("a0")).w === LP.blattInnen("a3").w);
+
+  // Die CSS-Basis traegt die Blattgroesse als Papiermass — nicht als Seitenverhaeltnis.
+  t("#89 die Blatt-CSS gibt jedem Format seine Papiergroesse in mm",
+    LP.FORMATE.every((f) => LP.LAGEPLAN_CSS.includes(
+      `.lpsheet.fmt-${f}{width:${LP.blattInnen(f).w}mm;height:${LP.blattInnen(f).h}mm}`)));
+  t("#89 kein aeusseres Papierverhaeltnis mehr in der Blatt-CSS-Basis",
+    !/aspect-ratio/.test(LP.LAGEPLAN_CSS));
+  // Der Blattrahmen darf die Boxgeometrie nicht veraendern (sonst waere die Vorschau
+  // um 2 px breiter als das Papier) — deshalb `outline` statt `border`.
+  t("#89 der Blattrahmen veraendert die Boxgeometrie nicht (outline, border-box)",
+    /\.lpsheet\{[^}]*box-sizing:border-box/.test(LP.LAGEPLAN_CSS)
+    && /\.lpsheet\{[^}]*outline:1px solid/.test(LP.LAGEPLAN_CSS)
+    && !/\.lpsheet\{[^}]*border:1px solid/.test(LP.LAGEPLAN_CSS));
+
+  // Das Druck-CSS setzt KEINE Geometrie mehr — sonst gaebe es wieder eine nur im
+  // Druck wirksame Hoehe, und genau daran ist die Aufteilung auseinandergelaufen.
+  let druckOhneGeometrie = true;
+  for (const f of LP.FORMATE) {
+    const css = LP.druckCss(f);
+    for (const regel of css.split("}")) {
+      if (!/\.lpsheet\s*\{/.test(regel)) continue;
+      if (/width|height|aspect-ratio/.test(regel)) druckOhneGeometrie = false;
+    }
+    if (!css.includes(`@page{size:${LP.BLATT[f].seite};margin:${LP.BLATT[f].rand_mm}mm}`)) {
+      druckOhneGeometrie = false;
+    }
+  }
+  t("#89 das Druck-CSS traegt nur Seitenformat und Rand — keine Blattgeometrie",
+    druckOhneGeometrie);
+  t("#89 ein Formatwechsel bewegt Blattklasse und Druck-CSS gemeinsam",
+    LP.blattHtml(daten, { format: "a4" }).html.includes('class="lpsheet fmt-a4')
+    && /A4 landscape/.test(LP.druckCss("a4"))
+    && LP.blattHtml(daten, { format: "a3" }).html.includes('class="lpsheet fmt-a3')
+    && /A3 landscape/.test(LP.druckCss("a3")));
+
+  // Die relativen Flaechenanteile stehen fuer BEIDE Medien in derselben Quelle:
+  // eine einzige `.lpsheet`-Grundregel mit Zeichenfeld, Seitenspalte und Schriftfeld.
+  t("#89 Zeichenfeld, Seitenspalte und Schriftfeld werden nur EINMAL aufgeteilt",
+    (LP.LAGEPLAN_CSS.match(/grid-template-columns:1fr 300px/g) || []).length === 1
+    && !/grid-template-columns/.test(LP.druckCss("a3")));
+
+  // --- Muss: die Zeichnung selbst bleibt unberuehrt ------------------------
+  //
+  // `lageplanSvg()` liest aus BLATT ausschliesslich `feld_mm`; das Papiermass
+  // erreicht sie nicht. Beides wird hier geprueft — am Code und am Ergebnis.
+  t("#89 die Zeichnung liest weiter nur das Zeichenfeld, nie das Papiermass",
+    !/papier_mm|blattInnen/.test(codeOhneKommentar.slice(
+      codeOhneKommentar.indexOf("export function lageplanSvg"),
+      codeOhneKommentar.indexOf("export function lageplanTitel"))));
+  t("#89 das Zeichenfeld ist unveraendert (A3 345×200, A4 195×135 mm)",
+    LP.BLATT.a3.feld_mm.w === 345 && LP.BLATT.a3.feld_mm.h === 200
+    && LP.BLATT.a4.feld_mm.w === 195 && LP.BLATT.a4.feld_mm.h === 135);
+  // Der Massstab haengt am Zeichenfeld — er darf sich durch die Blattgeometrie
+  // nicht bewegt haben ([N-8] unveraendert).
+  t("#89 der Massstab folgt weiter dem Zeichenfeld, nicht dem Papiermass",
+    LP.waehleMasstab(10000, 5000, "a3") === 50 && LP.waehleMasstab(60000, 5000, "a3") === 200
+    && LP.waehleMasstab(400000, 5000, "a3") === 500);
+
+  // Bit-Gleichheit ueber die AUSGEGEBENEN Bytes: die Zeichnung und die
+  // eigenstaendige SVG-Datei sind in beiden Formaten unabhaengig von der
+  // Blattgeometrie — sie enthalten kein Papiermass und keine Blattklasse.
+  for (const f of LP.FORMATE) {
+    const z = LP.lageplanSvg(daten, { format: f });
+    const datei = LP.lageplanSvgDatei(daten, { format: f });
+    t(`#89 die Zeichnung (${f}) traegt kein Papiermass und keine Blattgeometrie`,
+      !/lpsheet|aspect-ratio|@page/.test(z.svg)
+      && !new RegExp(`\\b${LP.blattInnen(f).w}mm\\b`).test(z.svg));
+    t(`#89 die SVG-Datei (${f}) bleibt eigenstaendig und blattgeometriefrei`,
+      datei.includes(z.inner) && !/lpsheet|aspect-ratio|@page/.test(datei));
+  }
+  // Im Blatt-Markup steht keine Blattgroesse: der Formatunterschied ist die Klasse
+  // (und der daraus folgende Massstab) — die Geometrie steckt allein in der CSS.
+  t("#89 das Blatt-Markup traegt keine Papiergroesse",
+    LP.FORMATE.every((f) => {
+      const h = LP.blattHtml(daten, { format: f }).html;
+      return !new RegExp(`${LP.blattInnen(f).w}\\s*(mm|×)`).test(h)
+        && !/aspect-ratio|@page/.test(h);
+    }));
+
+  // Muss 9 bleibt: Vorschau und Export sind derselbe Pfad. Das Druck-Dokument
+  // traegt genau das Blatt der Vorschau (Bytes), plus CSS drumherum.
+  for (const f of LP.FORMATE) {
+    const b = LP.blattHtml(daten, { format: f });
+    const dok = LP.lageplanDokument(daten, { format: f });
+    const dateien = LP.lageplanDateien(daten, { format: f });
+    t(`#89 das Druck-HTML (${f}) traegt bytegleich das Blatt der Vorschau`,
+      dok.includes(b.html) && dateien[0].data === dok
+      && dateien[1].data === LP.lageplanSvgDatei(daten, { format: f })
+      && dok.includes(LP.LAGEPLAN_CSS) && dok.includes(LP.druckCss(f)));
+  }
+}
+
+// --- #89: die Vorschau von Modul 9 skaliert, statt umzubrechen -------------
+{
+  const modul = readFileSync(new URL("../../docs/lageplan.html", import.meta.url), "utf8");
+  // Kein hartkodiertes Papiermass im Modul — die Papiermasse kommen ausschliesslich
+  // aus BLATT/blattInnen(). `96/25.4` ist die CSS-Definition des Millimeters und
+  // bleibt erlaubt.
+  t("#89 das Modul haelt kein eigenes Papiermass und kein Seitenverhaeltnis",
+    !/\b(420|277|281|194)\b/.test(modul) && !/aspect-ratio/.test(modul));
+  t("#89 die Vorschaugeometrie kommt aus dem gemeinsamen Baustein (LP.blattInnen)",
+    /LP\.blattInnen\(/.test(modul));
+  t("#89 die Vorschau skaliert das ganze Blatt gleichmaessig (ein Bildschirmfaktor)",
+    /transform:scale\(var\(--lpskala,1\)\)/.test(modul)
+    && /transform-origin:top left/.test(modul)
+    && /--lpskala/.test(modul));
+  t("#89 im Druck wird der Bildschirmfaktor zurueckgenommen",
+    /@media print\{[\s\S]*?transform:none/.test(modul));
+  t("#89 der Bildschirmfaktor vergroessert nie (Math.min(1, …))",
+    /Math\.min\(1,\s*verf\s*\/\s*\(innen\.w\s*\*\s*PX_JE_MM\)\)/.test(modul));
+}
+
 console.log(`\ntest-lageplan: ${pass} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

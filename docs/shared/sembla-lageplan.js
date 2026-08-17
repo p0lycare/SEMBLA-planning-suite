@@ -80,17 +80,43 @@ import { normBrandklasse } from "./storage.js";
 export const MASSSTAEBE = [50, 100, 200, 250, 500];
 
 /**
- * Blattformate (quer). `feld_mm` = nutzbares Zeichenfeld nach Abzug von Rand,
- * Seitenspalte (Legende/Tabelle/Meldungen) und Schriftfeld; `druckhoehe_mm` =
- * Blatt-Innenhoehe, damit das Blatt im Druck genau eine Seite fuellt.
+ * Blattformate (quer). `papier_mm` = reales Papiermass, `rand_mm` = Druckrand
+ * (`@page margin`), `feld_mm` = nutzbares Zeichenfeld nach Abzug von Rand,
+ * Seitenspalte (Legende/Tabelle/Meldungen) und Schriftfeld.
+ *
+ * Die druckbare Innenflaeche steht seit #89 NICHT mehr als eigenes Feld daneben
+ * (frueher `druckhoehe_mm`), sondern wird ueber `blattInnen()` aus Papiermass und
+ * Rand gerechnet: sonst gaebe es zwei Wahrheiten fuer dieselbe Groesse — und genau
+ * daran sind Vorschau und Ausdruck auseinandergelaufen. Die Zahlen sind dieselben
+ * geblieben (A3 277 mm, A4 194 mm Innenhoehe), sie werden nur nicht mehr gepflegt.
  */
 export const BLATT = {
-  a3: { label: "A3 quer", seite: "A3 landscape", rand_mm: 10, feld_mm: { w: 345, h: 200 }, druckhoehe_mm: 277 },
-  a4: { label: "A4 quer", seite: "A4 landscape", rand_mm: 8, feld_mm: { w: 195, h: 135 }, druckhoehe_mm: 194 },
+  a3: { label: "A3 quer", seite: "A3 landscape", papier_mm: { w: 420, h: 297 }, rand_mm: 10, feld_mm: { w: 345, h: 200 } },
+  a4: { label: "A4 quer", seite: "A4 landscape", papier_mm: { w: 297, h: 210 }, rand_mm: 8, feld_mm: { w: 195, h: 135 } },
 };
 
 /** @type {ReadonlyArray<'a3'|'a4'>} */
 export const FORMATE = ["a3", "a4"];
+
+/**
+ * Druckbare Innenflaeche des Blattes in Papier-mm (Papiermass abzueglich Rand) —
+ * die kanonische Blattgeometrie fuer Bildschirm UND Druck (#89).
+ *
+ * `LAGEPLAN_CSS` gibt `.lpsheet` genau dieses Mass; damit ist das Blatt in der
+ * Vorschau dieselbe Box wie auf dem Papier, und die Pixelmasse im Blattinneren
+ * (Seitenspalte, Raender, Schriftgroessen) stehen in beiden Medien zu derselben
+ * Bezugsbreite. Der Bildschirm skaliert das fertige Blatt nur noch gleichmaessig.
+ *
+ * Ausdruecklich UNBERUEHRT bleibt `feld_mm`: das nutzbare Zeichenfeld ist eine
+ * eigene, kleinere Groesse (Blatt abzueglich Seitenspalte und Schriftfeld) und
+ * darf nicht aus dem Papiermass abgeleitet werden — an ihm haengen
+ * `waehleMasstab()`, `benoetigt` und die Aussage nach [N-8].
+ * @param {'a3'|'a4'} [format] @returns {{w:number,h:number}}
+ */
+export function blattInnen(format = "a3") {
+  const b = BLATT[FORMATE.includes(/** @type {any} */ (format)) ? format : "a3"];
+  return { w: b.papier_mm.w - 2 * b.rand_mm, h: b.papier_mm.h - 2 * b.rand_mm };
+}
 
 /** Zeichnungsrand (Papier-mm) fuer Wandnamen und Massbeschriftung. */
 export const PAD_MM = 10;
@@ -1363,14 +1389,22 @@ export function blattHtml(daten, opts) {
     format: o.format, optionen: o };
 }
 
-/** CSS des Blattes — von Vorschau (Modul 9) und Export-Dokument gemeinsam genutzt. */
+/**
+ * CSS des Blattes — von Vorschau (Modul 9) und Export-Dokument gemeinsam genutzt.
+ *
+ * Die Blattgroesse steht seit #89 FEST in Papier-mm (aus `blattInnen()`) statt als
+ * Seitenverhaeltnis: eine nur bildschirmbreite Box haette dieselben Pixelmasse im
+ * Blattinneren (Seitenspalte 300px, Raender, Schriftgroessen) zu einer ganz anderen
+ * Bezugsbreite gestellt als der Druck — die Vorschau haette also umbrochen statt
+ * skaliert. Der Rahmen ist bewusst `outline`, weil er die Boxgeometrie nicht
+ * veraendern darf; im Druck faellt er weg.
+ */
 export const LAGEPLAN_CSS = `
-  .lpsheet{position:relative;background:#fff;color:#1c2430;
+  .lpsheet{position:relative;box-sizing:border-box;background:#fff;color:#1c2430;
            font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-           border:1px solid #b9c0c8;padding:14px;display:grid;
-           grid-template-columns:1fr 300px;grid-template-rows:1fr auto;gap:10px}
-  .lpsheet.fmt-a3{aspect-ratio:420/297}
-  .lpsheet.fmt-a4{aspect-ratio:297/210}
+           outline:1px solid #b9c0c8;padding:14px;display:grid;
+           grid-template-columns:1fr 300px;grid-template-rows:1fr auto;gap:10px;overflow:hidden}
+${FORMATE.map((f) => `  .lpsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blattInnen(f).h}mm}`).join("\n")}
   .lpwm{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
         pointer-events:none;z-index:20;overflow:hidden}
   .lpwm span{transform:rotate(-32deg);font-size:150px;font-weight:800;letter-spacing:8px;
@@ -1424,13 +1458,19 @@ export const LAGEPLAN_CSS = `
   .lptb-row .v.warn{color:#7d2a10}
 `;
 
-/** Druck-CSS je Blattformat (eine Seite, quer) — @page + Blatt-Innenhoehe. */
+/**
+ * Druck-CSS je Blattformat (eine Seite, quer) — `@page` aus denselben `BLATT`-Daten.
+ *
+ * Die Blattgeometrie steht seit #89 ausschliesslich in `LAGEPLAN_CSS`; hier wird sie
+ * NICHT noch einmal gesetzt. Eine nur im Druck wirksame Hoehenkorrektur hatte
+ * Vorschau und Ausgabe verschieden proportioniert — uebrig bleiben Seitenformat,
+ * Rand und die reine Druckkosmetik.
+ */
 export function druckCss(format = "a3") {
   const b = BLATT[FORMATE.includes(/** @type {any} */ (format)) ? format : "a3"];
   return `@page{size:${b.seite};margin:${b.rand_mm}mm}`
     + `@media print{html,body{background:#fff;margin:0;padding:0}`
-    + `.lpsheet{width:auto;max-width:none;border:none;box-shadow:none;aspect-ratio:auto;`
-    + `height:${b.druckhoehe_mm}mm;overflow:hidden}`
+    + `.lpsheet{outline:none;box-shadow:none}`
     + `.lpwm span{color:rgba(201,70,28,.22)}}`;
 }
 

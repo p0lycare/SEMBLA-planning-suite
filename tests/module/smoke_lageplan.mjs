@@ -29,7 +29,13 @@ globalThis.localStorage = new MemStorage();
 class El {
   constructor(id){
     this.id = id; this.value = ''; this.textContent = ''; this._h = ''; this.className = '';
-    this.hidden = false; this.checked = false; this.disabled = false; this.style = {};
+    this.hidden = false; this.checked = false; this.disabled = false;
+    // #89: der Bildschirmmassstab der Blattvorschau setzt eine CSS-Variable und liest
+    // die verfuegbare Breite — beides muss der Double koennen, sonst laeuft der
+    // Vorschaupfad hier anders als im Browser. `clientWidth` ist im Test SETZBAR
+    // (im Browser kommt sie aus dem Layout), damit sich eine Fensterbreite vorgeben laesst.
+    this.clientWidth = 0;
+    this.style = { _v: {}, setProperty(k, v){ this._v[k] = v; } };
     this.dataset = {}; this.listeners = {}; this.geklickt = 0;
   }
   addEventListener(e, f){ (this.listeners[e] || (this.listeners[e] = [])).push(f); }
@@ -990,6 +996,97 @@ ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
       return z.rand.links === 0 && z.rand.oben === 0
         && z.rand.rechts === 0 && z.rand.unten === 0;
     })());
+}
+
+// --- #89: die Blattvorschau im echten Papierverhaeltnis --------------------
+//
+// Geprueft wird der ECHTE Bedienpfad: Blattbezug waehlen, Format umstellen, Fenster
+// schmaler/breiter machen — und zwar an der Geometrie, die die Seite tatsaechlich
+// setzt (`lp.blattgeometrie`), nicht an einer im Test nachgerechneten.
+{
+  lp.waehleGeschoss(gsEG);
+  await lp.laden();
+  const PX_JE_MM = 96 / 25.4;
+  const wrap = $('lp-blatt');
+  const standVor89 = JSON.stringify([...localStorage.m.entries()].sort());
+
+  // --- A3 bei 800 px Fensterbreite ---------------------------------------
+  $('lp-fmt').value = 'a3'; $('lp-fmt').dispatch('change');
+  wrap.clientWidth = 800;
+  const gA3 = lp.setzeVorschauMassstab();
+  const innenA3 = LP.blattInnen('a3');
+  ok('[#89] die Vorschau uebernimmt die Blattmasse aus BLATT (A3: 400 × 277 mm)',
+    gA3.format === 'a3' && gA3.breite_mm === innenA3.w && gA3.hoehe_mm === innenA3.h
+    && innenA3.w === 400 && innenA3.h === 277);
+  ok('[#89] verkleinert wird ueber EINEN gleichmaessigen Bildschirmfaktor',
+    Math.abs(gA3.skala - 800 / (innenA3.w * PX_JE_MM)) < 1e-12
+    && wrap.style._v['--lpskala'] === String(gA3.skala));
+  const hoeheA3 = parseFloat(String(wrap.style.height));
+  ok('[#89] der Rahmen traegt die skalierte Blatthoehe (transform hat keine Layouthoehe)',
+    Math.abs(hoeheA3 - innenA3.h * PX_JE_MM * gA3.skala) < 1e-9);
+  ok('[#89] damit steht die Vorschau im Verhaeltnis der realen Querformatseite',
+    Math.abs(hoeheA3 / 800 - innenA3.h / innenA3.w) < 1e-12);
+
+  // --- Formatwechsel bewegt Geometrie UND Druck-CSS gemeinsam -------------
+  $('lp-fmt').value = 'a4'; $('lp-fmt').dispatch('change');
+  const gA4 = lp.blattgeometrie;
+  const innenA4 = LP.blattInnen('a4');
+  ok('[#89] der Formatwechsel stellt die Vorschaugeometrie mit um (A4: 281 × 194 mm)',
+    gA4.format === 'a4' && gA4.breite_mm === innenA4.w && gA4.hoehe_mm === innenA4.h
+    && gA4.breite_mm !== innenA3.w);
+  ok('[#89] A4 hat ein anderes Papierverhaeltnis als A3 — und die Vorschau zeigt es',
+    Math.abs(parseFloat(String(wrap.style.height)) / 800 - innenA4.h / innenA4.w) < 1e-12
+    && Math.abs(innenA4.h / innenA4.w - innenA3.h / innenA3.w) > 1e-6);
+  ok('[#89] Blattklasse, Druck-CSS und Vorschaugeometrie wechseln gemeinsam',
+    lp.blatt.format === 'a4' && lp.blatt.html.includes('class="lpsheet fmt-a4')
+    && $('pagestyle').textContent === LP.druckCss('a4')
+    && /A4 landscape/.test($('pagestyle').textContent));
+
+  // --- Vorschau und Druck teilen sich EINE Blattgeometrie ------------------
+  ok('[#89] die Blattgeometrie steht nur in der gemeinsamen CSS, nicht im Druck-CSS',
+    LP.LAGEPLAN_CSS.includes(`.lpsheet.fmt-a4{width:${innenA4.w}mm;height:${innenA4.h}mm}`)
+    && !/width|height|aspect-ratio/.test(
+      LP.druckCss('a4').split('.lpsheet{')[1].split('}')[0]));
+  ok('[#89] die Vorschau zeigt bytegleich das Blatt, das der Export ausliefert',
+    wrap.innerHTML === lp.blatt.html
+    && LP.lageplanDokument(lp.daten, lp.optionen).includes(lp.blatt.html));
+
+  // --- Der Faktor ist reine Anzeige --------------------------------------
+  wrap.clientWidth = 5000;
+  ok('[#89] ein breites Fenster vergroessert das Blatt nicht (Faktor bleibt 1)',
+    lp.setzeVorschauMassstab().skala === 1);
+  wrap.clientWidth = 0;
+  ok('[#89] ohne bekannte Breite bleibt der Faktor deterministisch 1 — nichts geraten',
+    lp.setzeVorschauMassstab().skala === 1);
+  wrap.clientWidth = 800;
+  $('lp-fmt').value = 'a3'; $('lp-fmt').dispatch('change');
+  ok('[#89] der Bildschirmfaktor schreibt nichts in den Speicher',
+    JSON.stringify([...localStorage.m.entries()].sort()) === standVor89);
+  ok('[#89] und er erreicht weder Blatt noch Zeichnung noch Exportdatei',
+    !lp.blatt.html.includes('lpskala') && !lp.blatt.svg.includes('lpskala')
+    && !LP.lageplanSvgDatei(lp.daten, lp.optionen).includes('lpskala'));
+
+  // --- [N-8]: die Meldung bleibt in Vorschau und Blatt dieselbe -----------
+  const gsGross = MAPPE.fuegeGeschossHinzu(store.projektMappe(prjA.projekt.id),
+    store.projektMappe(prjA.projekt.id).gebaeude[0].id, 'Zu grosses Geschoss', 2600);
+  store.setzeMappe(gsGross.mappe);
+  // Gross wird die LAGE gemacht, nicht das Wandelement: die Blattausdehnung haengt an
+  // der gezeichneten Lage ([N-4]), und ein 375-m-Wandelement waere nur Rechenzeit.
+  // Die daraus folgende Laengenabweichung ([L-3]) ist hier ohne Belang.
+  const idGross = store.speichere('Sehr lange Wand', buildWall('Sehr lange Wand', 2000, 2600, []));
+  store.verorteWand(idGross, gsGross.id,
+    { lage: { start_mm: { x: 0, y: 62.5 }, richtung: 'x', laenge_grid: 3000 } });
+  await warte();
+  lp.waehleGeschoss(gsGross.id);
+  await lp.laden();
+  ok('[N-8]/#89 ein zu grosses Geschoss wird in Vorschau UND Blatt gleich gemeldet',
+    lp.blatt.passt === false && /zu groß/i.test(lp.blatt.html)
+    && wrap.innerHTML === lp.blatt.html
+    && /zu groß|nicht maßstabsgetreu/i.test($('lp-msg').textContent)
+    && LP.lageplanDokument(lp.daten, lp.optionen).includes(lp.blatt.html));
+  ok('[N-8]/#89 auch dann bleibt die Vorschaugeometrie die des gewaehlten Formats',
+    lp.blattgeometrie.breite_mm === LP.blattInnen(lp.optionen.format).w
+    && lp.blattgeometrie.hoehe_mm === LP.blattInnen(lp.optionen.format).h);
 }
 
 // --- Bericht -------------------------------------------------------------

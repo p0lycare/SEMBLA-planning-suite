@@ -57,34 +57,56 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(4);
-const NEU = EINTRAEGE.slice(10);
-const AKTUELL = EINTRAEGE.slice(15);
-const AELTER = EINTRAEGE.slice(25);
-// Der NEUESTE Eintrag nimmt die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
+const VORHER = EINTRAEGE.slice(5);
+const NEU = EINTRAEGE.slice(11);
+const AKTUELL = EINTRAEGE.slice(16);
+const AELTER = EINTRAEGE.slice(26);
+// Der NEUESTE Eintrag stellt die BLATTVORSCHAU von Modul 9 auf das echte Papierverhaeltnis
+// des gewaehlten Formats um (#89): Vorschau und Ausdruck zeigen dieselbe Aufteilung, beim
+// Verkleinern des Fensters skaliert das ganze Blatt gleichmaessig. Aussagewahr heisst hier:
+// geaendert hat sich die DARSTELLUNG des Blattes — nicht die Zeichnung, nicht der Massstab
+// und kein gespeicherter Wert ([N-1]/[N-4]/[N-8]/[P-9]).
+ok("die formatgetreue Blattvorschau (Issue 89) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260818-01" && EINTRAEGE[0]?.issue === 89
+  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-18");
+ok("der Vorschau-Eintrag benennt Gegenstand, Ort und Nutzerergebnis aussagewahr",
+  /Lageplan/.test(EINTRAEGE[0]?.titel || "")
+  && /Blattvorschau/.test(EINTRAEGE[0]?.titel || "")
+  && /Papierverhältnis/.test(EINTRAEGE[0]?.titel || "")
+  && /gewählten Formats/.test(EINTRAEGE[0]?.titel || "")
+  // Weder Zeichnung noch Massstab noch ein gespeicherter Wert haben sich geaendert.
+  && !/Maßstab|gespeichert|neue Option|Zeichnung geändert/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Vorschau-Testbitte benennt Ort, Bedienung und die erwartete Wirkung",
+  /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
+  && /A3 quer und A4 quer/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Aufteilung/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Ausdrucks/.test(EINTRAEGE[0]?.testbitte || "")
+  && /als Ganzes kleiner/.test(EINTRAEGE[0]?.testbitte || ""));
+const SEITEN = EINTRAEGE[1];
+// Davor nahm der Eintrag die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
 // Rueckseite bleiben als farbige Kanten erkennbar und werden in der Legende
 // aufgeschluesselt. Aussagewahr heisst hier: die Unterscheidung bleibt erhalten — es darf
 // NICHT klingen, als seien die Seiten selbst weggefallen. Behauptet werden darf ausserdem
 // kein Bedienelement in Modul 9 und keine geaenderte Wandgeometrie, Bemassung oder
 // Massstabswahl ([N-1]/[N-4]/[P-1]/[P-9]).
-ok("die buchstabenfreien Wandseiten (Issue 89) sind der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260817-08" && EINTRAEGE[0]?.issue === 89
-  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-17");
+ok("die buchstabenfreien Wandseiten (Issue 89) folgen direkt danach",
+  SEITEN?.id === "chg-20260817-08" && SEITEN?.issue === 89
+  && SEITEN?.typ === "fix" && SEITEN?.datum === "2026-08-17");
 ok("der Seiten-Eintrag benennt Gegenstand, Ort und Nutzerergebnis aussagewahr",
-  /Lageplan/.test(EINTRAEGE[0]?.titel || "")
-  && /Vorder- und Rückseite/.test(EINTRAEGE[0]?.titel || "")
-  && /Kennbuchstaben/.test(EINTRAEGE[0]?.titel || "")
-  && /Legende/.test(EINTRAEGE[0]?.titel || "")
+  /Lageplan/.test(SEITEN?.titel || "")
+  && /Vorder- und Rückseite/.test(SEITEN?.titel || "")
+  && /Kennbuchstaben/.test(SEITEN?.titel || "")
+  && /Legende/.test(SEITEN?.titel || "")
   // Die Seiten selbst bleiben — entfallen ist nur ihre Beschriftung an der Wand.
-  && !/entfällt die Rückseite|abgeschafft|keine Vorderseite/i.test(EINTRAEGE[0]?.titel || "")
-  && !/Maßstab|Bedien|einstellbar/i.test(EINTRAEGE[0]?.titel || ""));
+  && !/entfällt die Rückseite|abgeschafft|keine Vorderseite/i.test(SEITEN?.titel || "")
+  && !/Maßstab|Bedien|einstellbar/i.test(SEITEN?.titel || ""));
 ok("die Seiten-Testbitte benennt Ort, Erwartung und die erhaltene Unterscheidung",
-  /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Geschoss/.test(EINTRAEGE[0]?.testbitte || "")
-  && /keine V\/R-Buchstaben/.test(EINTRAEGE[0]?.testbitte || "")
-  && /farbigen Vorder- und Rückkanten/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Legende/.test(EINTRAEGE[0]?.testbitte || ""));
-const BLASEN = EINTRAEGE[1];
+  /Modul 9/.test(SEITEN?.testbitte || "")
+  && /Geschoss/.test(SEITEN?.testbitte || "")
+  && /keine V\/R-Buchstaben/.test(SEITEN?.testbitte || "")
+  && /farbigen Vorder- und Rückkanten/.test(SEITEN?.testbitte || "")
+  && /Legende/.test(SEITEN?.testbitte || ""));
+const BLASEN = EINTRAEGE[2];
 // Davor machte der Eintrag die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
 // jetzt auch den Wandflaechen aus, nicht mehr nur einander und den Massen. Aussagewahr
 // heisst hier: die Zuordnung bleibt — die Fuehrungslinie zeigt weiter auf dieselbe
@@ -106,13 +128,14 @@ ok("die Blasen-Testbitte benennt Ort, Erwartung und die erhaltene Zuordnung",
   && /Keine Nummernblase liegt/.test(BLASEN?.testbitte || "")
   && /Führungslinie/.test(BLASEN?.testbitte || "")
   && /dieselbe Wandkante/.test(BLASEN?.testbitte || ""));
-// Drei Eintraege fuer #89 — und das ist richtig so: der erste (chg-20260817-05) raeumte
-// das Blatt auf, der zweite machte die Blasen wandfrei, dieser nimmt die V/R-Buchstaben
-// von der Wand. Drei Nutzerergebnisse, drei Commits, drei Eintraege.
-ok("genau drei Eintraege fuer Issue 89, neu vor alt",
+// Vier Eintraege fuer #89 — und das ist richtig so: der erste (chg-20260817-05) raeumte
+// das Blatt auf, der zweite machte die Blasen wandfrei, der dritte nahm die V/R-Buchstaben
+// von der Wand, dieser stellt die Vorschau aufs Papierverhaeltnis um. Vier
+// Nutzerergebnisse, vier Commits, vier Eintraege.
+ok("genau vier Eintraege fuer Issue 89, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 89).map(e => e.id).join(",")
-    === "chg-20260817-08,chg-20260817-07,chg-20260817-05");
-const PLANKOPF = EINTRAEGE[2];
+    === "chg-20260818-01,chg-20260817-08,chg-20260817-07,chg-20260817-05");
+const PLANKOPF = EINTRAEGE[3];
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -148,7 +171,7 @@ ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
     === "chg-20260817-06,chg-20260812-08");
 // Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
-const LETZTER = EINTRAEGE[3];
+const LETZTER = EINTRAEGE[4];
 ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
   LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
   && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");

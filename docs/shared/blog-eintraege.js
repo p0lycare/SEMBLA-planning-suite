@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260818-01",
+    datum: "2026-08-18",
+    typ: "fix",
+    issue: 89,
+    titel: "Lageplan: die Blattvorschau steht jetzt im echten Papierverhältnis des gewählten Formats",
+    testbitte: "Modul 9 öffnen, zwischen A3 quer und A4 quer wechseln und das Fenster "
+      + "schmaler ziehen: Die Vorschau behält die Proportionen und die Aufteilung des "
+      + "späteren Ausdrucks und wird nur als Ganzes kleiner.",
+  },
+  {
     id: "chg-20260817-08",
     datum: "2026-08-17",
     typ: "fix",

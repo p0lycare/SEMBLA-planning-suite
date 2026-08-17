@@ -27,9 +27,15 @@
   .hint{color:var(--sb-muted);font-size:12.5px}
   .msg{margin:8px 0 0;font-size:12.5px;min-height:18px}
   .msg.ok{color:var(--sb-ok)} .msg.err{color:#c9461c}
-  /* Blattvorschau: das Blatt selbst wird von sembla-lageplan.js (LAGEPLAN_CSS) gestaltet. */
-  #lp-blatt{max-width:100%;overflow:auto}
-  #lp-blatt .lpsheet{box-shadow:0 3px 18px rgba(20,32,46,.10)}
+  /* Blattvorschau: das Blatt selbst wird von sembla-lageplan.js (LAGEPLAN_CSS) gestaltet und
+     hat dort seine ECHTE Papiergroesse in mm (#89). Hier wird ausschliesslich der
+     Bildschirmmassstab angelegt: das vollstaendige Blatt wird gleichmaessig verkleinert
+     (--lpskala, aus BLATT gerechnet in setzeVorschauMassstab()) — kein eigenes Papiermass,
+     kein Umbruch einzelner Bereiche. Weil `transform` die Layouthoehe nicht mitnimmt, setzt
+     die Logik die Hoehe des Rahmens auf die skalierte Blatthoehe. */
+  #lp-blatt{max-width:100%;overflow:hidden}
+  #lp-blatt .lpsheet{box-shadow:0 3px 18px rgba(20,32,46,.10);
+                     transform:scale(var(--lpskala,1));transform-origin:top left}
   /* Druck: nur das Blatt (dieselbe Ableitung wie der Export). Die Kopfleiste aus
      navbar.js (.sb-nav, sticky) MUSS ausgeblendet werden, sonst schwebt sie über dem PDF.
      Das @page-Format kommt aus druckCss() und wird in #pagestyle eingehängt. */
@@ -39,8 +45,9 @@
     .stage{min-width:0}
     .panel{border:none;border-radius:0;padding:0;background:#fff}
     .stage h2{display:none}
-    #lp-blatt{overflow:visible}
-    #lp-blatt .lpsheet{box-shadow:none}
+    /* Auf Papier gilt die Papiergroesse selbst — der Bildschirmmassstab wird zurueckgenommen. */
+    #lp-blatt{overflow:visible;height:auto!important}
+    #lp-blatt .lpsheet{box-shadow:none;transform:none}
     input,select,textarea,button{display:none!important}
   }
 </style>
@@ -153,6 +160,12 @@ let store, MAPPE, LP, ZIP, PLAN;
  */
 const AUSWAHL = { projekt: null, geschoss: null, projektGewaehlt: false, geschossGewaehlt: false };
 let DATEN = null, BLATT = null, OPT = null;
+
+/* CSS-Millimeter sind fest definiert (1 px = 1/96 Zoll) — das ist die Umrechnung des
+   Bildschirmmassstabs, KEIN Papiermass. Die Papiermasse kommen ausschließlich aus BLATT. */
+const PX_JE_MM = 96 / 25.4;
+/** Zuletzt gesetzte Vorschaugeometrie (Papier-mm aus BLATT + reiner Bildschirmfaktor). */
+let GEO = { format: 'a3', breite_mm: 0, hoehe_mm: 0, skala: 1 };
 
 /**
  * Der Planhintergrund des gewählten Geschosses (#80, [N-9]) — read-only geladen und
@@ -273,6 +286,28 @@ function planStatusSync(){
   host.innerHTML = esc(p);
 }
 
+/**
+ * Bildschirmmaßstab der Vorschau setzen (#89) — das EINZIGE, was hier von der
+ * Papiergröße abweichen darf. Das Blatt hat aus LAGEPLAN_CSS bereits seine echte
+ * Papiergröße; es wird nur vollständig und gleichmäßig auf die verfügbare Breite
+ * verkleinert (nie vergrößert). Ist die Breite unbekannt (kein Layout), bleibt der
+ * Faktor deterministisch 1 — es wird nichts geraten.
+ *
+ * Der Faktor ist reine Anzeige: er erreicht keinen Papier-mm-Wert, geht in kein
+ * `blattHtml()`, keine Exportdatei und keine Zeichnung ein.
+ */
+function setzeVorschauMassstab(){
+  const innen = LP.blattInnen(OPT ? OPT.format : 'a3');
+  const wrap = $('lp-blatt');
+  const verf = wrap.clientWidth || 0;
+  const skala = verf > 0 ? Math.min(1, verf / (innen.w * PX_JE_MM)) : 1;
+  GEO = { format: OPT ? OPT.format : 'a3', breite_mm: innen.w, hoehe_mm: innen.h, skala };
+  if (wrap.style.setProperty) wrap.style.setProperty('--lpskala', String(skala));
+  // `transform` trägt keine Layouthöhe — der Rahmen bekommt die skalierte Blatthöhe.
+  wrap.style.height = BLATT ? (innen.h * PX_JE_MM * skala) + 'px' : '';
+  return GEO;
+}
+
 /** Die Mappe des gewählten Projekts — gelesen, nie aktiv gesetzt. */
 function mappe(){
   return AUSWAHL.projekt ? store.projektMappe(AUSWAHL.projekt) : null;
@@ -332,6 +367,7 @@ function bezugSync(){
 function leeren(text){
   DATEN = null; BLATT = null;
   $('lp-blatt').innerHTML = '';
+  setzeVorschauMassstab();
   $('lp-hinweis').innerHTML = esc(text);
   $('lp-ovWaende').textContent = '–'; $('lp-ovMasse').textContent = '–';
   $('lp-ovScale').textContent = '–'; $('lp-ovSheet').textContent = '–';
@@ -360,13 +396,18 @@ function render(){
   $('lp-hinweis').innerHTML = '';
   $('lp-blatt').innerHTML = BLATT.html;
   $('pagestyle').textContent = LP.druckCss(BLATT.format);
+  // Vorschaugeometrie und Druck-CSS werden gemeinsam mit dem Blatt gesetzt (#89) —
+  // ein Formatwechsel kann die beiden damit nicht auseinanderlaufen lassen.
+  setzeVorschauMassstab();
 
   const verortet = DATEN.waende.filter(w => w.rechteck).length;
   $('lp-ovWaende').textContent = `${verortet} von ${DATEN.waende.length}`;
   $('lp-ovMasse').textContent = String(DATEN.bemassungen.length);
   $('lp-ovScale').textContent = '1 : ' + BLATT.masstab + (BLATT.passt ? '' : ' (Blatt zu klein)');
   const bl = LP.BLATT[BLATT.format] || LP.BLATT.a3;
-  $('lp-ovSheet').textContent = `${bl.label} · Feld ${bl.feld_mm.w} × ${bl.feld_mm.h} mm`;
+  const innen = LP.blattInnen(BLATT.format);
+  $('lp-ovSheet').textContent = `${bl.label} · Blatt ${innen.w} × ${innen.h} mm`
+    + ` · Feld ${bl.feld_mm.w} × ${bl.feld_mm.h} mm`;
   const st = $('lp-stand');
   st.className = 'badge ' + (DATEN.vollstaendig ? 'ok' : 'no');
   st.textContent = DATEN.vollstaendig ? 'vollständig' : 'nicht vollständig';
@@ -454,11 +495,17 @@ function bindEvents(){
   $('lp-trans').addEventListener('input', optionGeaendert);
   $('lp-print').addEventListener('click', drucken);
   $('lp-export').addEventListener('click', exportiere);
+  // Der Bildschirmmaßstab folgt der verfügbaren Breite — das Blatt wird dabei
+  // gleichmäßig skaliert, nie neu aufgeteilt (#89).
+  if (window.addEventListener) window.addEventListener('resize', setzeVorschauMassstab);
 }
 
 /** Prüfhilfen — sie laufen durch dieselben Funktionen wie die Bedienung. */
 window.__lp = {
-  render, exportiere, optionGeaendert, waehleProjekt, waehleGeschoss,
+  render, exportiere, optionGeaendert, waehleProjekt, waehleGeschoss, setzeVorschauMassstab,
+  // #89: die zuletzt gesetzte Vorschaugeometrie — Papier-mm aus BLATT plus reiner
+  // Bildschirmfaktor. Sie ist Anzeige und steht in keiner Datei.
+  get blattgeometrie(){ return GEO; },
   // #80: der Ladeweg des Planhintergrunds ist asynchron — awaitbar, damit ein Test
   // denselben Weg geht wie die Bedienung und nicht auf einen Zufallszeitpunkt trifft.
   laden: () => aktualisiere(),
