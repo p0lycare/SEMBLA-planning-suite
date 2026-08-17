@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260817-05",
+    datum: "2026-08-17",
+    typ: "feature",
+    issue: 89,
+    titel: "Lageplan aufgeräumt: Brandschutz nur noch über Legende, Wandliste auf Nummer, Bezeichnung und Höhe",
+    testbitte: "Modul 9 für ein Geschoss mit F0- und F30-Wänden öffnen: An den Wänden steht "
+      + "kein F0/F30 mehr, F30 bleibt schraffiert, und die Bedeutung steht in der Legende; "
+      + "die Liste „Wände im Geschoss“ zeigt genau Nr., Wand und Höhe.",
+  },
+  {
     id: "chg-20260817-04",
     datum: "2026-08-17",
     typ: "fix",

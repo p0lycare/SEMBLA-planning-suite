@@ -368,9 +368,12 @@ ok('[#59] `title` und `data-wand` behalten vollen Namen und stabile Speicherkenn
   gruppen.every(g => g.title === store.holeElement(g.id).name)
   && gruppen.map(g => g.id).sort().join(',') === [idA, idB, idC].sort().join(','));
 // Muss 3: die rechte Tabelle ist der Schluessel von der Zahl zum vollen Namen.
+// #89: die Liste fuehrt nur noch Nummer, Namen und Hoehe — Laenge, Wandtyp,
+// Brandschutz und Lage sind entfallen. Die Schluesselfunktion Zahl → voller Name,
+// um die es hier geht, bleibt davon unberuehrt.
 const tabZeilen = s => [...s.matchAll(
-  /<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td>[\s\S]*?<td>([^<]*)<\/td><\/tr>/g)]
-  .map(m => ({ nr: m[1], name: m[2], lage: m[3] }));
+  /<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td><td class="r">([^<]*)<\/td><\/tr>/g)]
+  .map(m => ({ nr: m[1], name: m[2], hoehe: m[3] }));
 const zeilenVorschau = tabZeilen(lp.blatt.html);
 ok('[#59] die rechte Wandliste beginnt mit der Nummer und nennt den vollen Namen',
   /<th class="nr">Nr\.<\/th><th>Wand<\/th>/.test(lp.blatt.html)
@@ -450,8 +453,12 @@ ok('[#59] unverortete und verwaiste Eintraege tragen ebenfalls eine Nummer',
   && lp.daten.waende.map(w => w.id).join(',') === [idA, idB, idC, idFrei, 'verwaist-1', idKoll].join(','));
 ok('[#59] alle sechs Eintraege stehen nummeriert mit vollem Namen in der Liste',
   zeilenSpaeter.map(z => z.nr).join(',') === '1,2,3,4,5,6'
-  && zeilenSpaeter[3].name === 'Wand ohne Lage' && zeilenSpaeter[3].lage === 'unverortet'
-  && zeilenSpaeter[4].name === 'Wand Verwaist');
+  && zeilenSpaeter[3].name === 'Wand ohne Lage'
+  && zeilenSpaeter[4].name === 'Wand Verwaist'
+  // #89: die Spalte „Lage" ist entfallen — dass der unverortete Eintrag als solcher
+  // erkennbar bleibt, traegt jetzt allein die Meldung ([N-7], nicht gekuerzt).
+  && lp.daten.meldungen.some(m => m.art === 'unverortet'
+    && m.text.includes('Wand ohne Lage')));
 ok('[#59]/[#73] die unverortete Wand bleibt ungezeichnet und bekommt keinen Marker',
   !lp.blatt.svg.includes(`data-wand="${idFrei}"`)
   && markerVon(lp.blatt.svg).map(g => g.text).join(',') === '1,2,3,5,6'
@@ -676,20 +683,28 @@ ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
     !('brandklasse' in store.holeElement(idA).wandelement) && bkVon(idA) === 'F0');
   ok('[#79] der verwaiste Eintrag bleibt ohne Klassifikation ([L-4])',
     bkVon('verwaist-1') === null && !bg.some(g => g.id === 'verwaist-1'));
-  ok('[#79] die Vorschau zeigt beide Klassifikationen verschieden',
-    !!gF30 && !!gF0 && gF30.roh !== gF0.roh
-    && /lpbrand-flaeche/.test(gF30.roh) && !/lpbrand-flaeche/.test(gF0.roh)
-    && gF30.roh.includes('>F30<') && gF0.roh.includes('>F0<'));
-  // Farbe allein genuegt nicht: ohne jede Farbangabe bleiben die Gruppen verschieden.
+  // #89: nur F30 traegt ueberhaupt noch einen Brandschutzknoten — F0 ist die
+  // Abwesenheit der Schraffur, und der frueher an jeder Wand gesetzte Kurztext ist
+  // ersatzlos entfallen. Erklaert wird der Schluessel allein in der Legende.
+  ok('[#89] die Vorschau zeichnet nur die F30-Wand, F0 bleibt ohne Knoten',
+    !!gF30 && !gF0 && /lpbrand-flaeche/.test(gF30.roh));
+  ok('[#89] an keiner Wand der Vorschau steht ein Brandschutz-Kurztext',
+    !/>F30</.test(lp.blatt.svg) && !/>F0</.test(lp.blatt.svg)
+    && !/lpbrand-kz/.test(lp.blatt.svg));
+  // Farbe allein genuegt nicht: die Schraffur ist ein Knoten, kein Farbwert, und
+  // ueberlebt deshalb den reinen Schwarz-Weiss-Ausdruck.
   const ohneFarbe = s => s.replace(/\s(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, '');
   ok('[#79] die Unterscheidung ueberlebt den Schwarz-Weiss-Ausdruck',
-    ohneFarbe(gF30.roh) !== ohneFarbe(gF0.roh)
-    && ohneFarbe(gF30.roh).includes('lpbrand-flaeche')
-    && ohneFarbe(gF30.roh).includes('>F30<') && ohneFarbe(gF0.roh).includes('>F0<'));
-  ok('[#79] Legende und Wandtabelle benennen beide Klassifikationen im Klartext',
+    ohneFarbe(gF30.roh).includes('lpbrand-flaeche')
+    && brandGruppen(ohneFarbe(lp.blatt.svg)).length === 1);
+  ok('[#79]/[#89] die Legende benennt beide Klassifikationen mit Merkmal im Klartext',
     lp.blatt.html.includes('<b>F30</b>') && lp.blatt.html.includes('<b>F0</b>')
-    && /<th>Brandschutz<\/th>/.test(lp.blatt.html)
+    && lp.blatt.html.includes('ohne Schraffur')
+    && lp.blatt.html.includes('diagonal schraffiert')
     && /Planungskennzeichnung, kein Nachweis/.test(lp.blatt.html));
+  ok('[#89] die Wandtabelle des Blattes hat genau drei Spalten',
+    [...LP.wandTabelleHtml(lp.daten).matchAll(/<th[^>]*>([^<]*)<\/th>/g)]
+      .map(m => m[1]).join('|') === 'Nr.|Wand|Höhe');
 
   // Muss: die exportierten BYTES zeigen dieselbe Kennzeichnung wie die Vorschau.
   const standVorBk = JSON.stringify([...localStorage.m.entries()].sort());
@@ -705,10 +720,14 @@ ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
       && s.includes('<defs><pattern id='))
     && $('lp-blatt').innerHTML.includes(gF30.roh)
     && bkText[bkRumpf + '.html'].includes(LP.wandTabelleHtml(lp.daten)));
-  ok('[#79] das exportierte HTML fuehrt die Klassifikation auch in der Wandliste',
-    /<th>Brandschutz<\/th>/.test(bkText[bkRumpf + '.html'])
-    && /<td>F30<\/td>/.test(bkText[bkRumpf + '.html'])
-    && /<td>F0<\/td>/.test(bkText[bkRumpf + '.html']));
+  ok('[#89] das exportierte HTML fuehrt die Klassifikation nur noch in der Legende',
+    bkText[bkRumpf + '.html'].includes(LP.legendeHtml())
+    && !/<th>Brandschutz<\/th>/.test(bkText[bkRumpf + '.html'])
+    && !/<td>F30<\/td>/.test(bkText[bkRumpf + '.html'])
+    && !/<td>F0<\/td>/.test(bkText[bkRumpf + '.html'])
+    // und in der SVG-Datei steht an den Waenden ebenfalls kein Kurztext mehr
+    && !/>F30</.test(bkText[bkRumpf + '.svg'])
+    && !/>F0</.test(bkText[bkRumpf + '.svg']));
   ok('[#79] Anzeigen und Exportieren schreiben nichts — die Klassifikation bleibt Modul 1',
     JSON.stringify([...localStorage.m.entries()].sort()) === standVorBk
     && store.holeElement(idF30).wandelement.brandklasse === 'F30'

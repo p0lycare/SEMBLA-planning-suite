@@ -221,8 +221,8 @@ t("[#73] die unverortete und die verwaiste Wand bekommen keine erfundene Markerl
 // Die rechte Tabelle ist der Schluessel von der Zahl zum Namen (Muss 3).
 const tabelle = LP.wandTabelleHtml(LANG);
 const tabZeilen = [...tabelle.matchAll(
-  /<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td>[\s\S]*?<td>([^<]*)<\/td><\/tr>/g)]
-  .map((m) => ({ nr: m[1], name: m[2], lage: m[3] }));
+  /<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td><td class="r">([^<]*)<\/td><\/tr>/g)]
+  .map((m) => ({ nr: m[1], name: m[2], hoehe: m[3] }));
 t("[#59] die Tabelle beginnt mit der Nummer und nennt daneben den vollen Namen",
   /<th class="nr">Nr\.<\/th><th>Wand<\/th>/.test(tabelle)
   && tabZeilen.length === 5
@@ -233,9 +233,13 @@ t("[#59] Zeichnung und Liste sind damit eindeutig zugeordnet",
     const z = tabZeilen.find((x) => x.name === LANG.waende.find((w) => w.id === g.id).name);
     return !!z && z.nr === String(g.text);
   }));
-t("[#59] der unverortete Eintrag steht mit Nummer in der Liste — ohne erfundene Lage",
+// #89: die Spalte „Lage" ist entfallen — sie stand doppelt. Dass der unverortete
+// Eintrag als solcher erkennbar bleibt, traegt jetzt allein die Meldung ([N-7]).
+t("[#59]/[#89] der unverortete Eintrag steht mit Nummer in der Liste — ohne erfundene Lage",
   tabZeilen[3].nr === "4" && /noch nicht eingezeichnet/.test(tabZeilen[3].name)
-  && tabZeilen[3].lage === "unverortet");
+  && LANG.waende[3].rechteck === null
+  && LANG.meldungen.some((x) => x.art === "unverortet"
+    && x.text.includes(LANG.waende[3].name)));
 t("[#59] der verwaiste Eintrag steht mit Nummer und vollem Namen in der Liste ([L-4])",
   tabZeilen[4].nr === "5" && /verwaister Eintrag/.test(tabZeilen[4].name)
   && LANG.waende[4].verwaist === true && LANG.waende[4].hoehe_mm === null);
@@ -952,33 +956,36 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   t("#79 eine verwaiste Wand bekommt KEINE erfundene Klassifikation",
     d.waende.find((w) => w.id === "w-d").verwaist === true && bkVon("w-d") === null);
 
-  // --- Darstellung: zwei Merkmale, davon eines ohne jede Farbe ------------
+  // --- Darstellung: EIN Merkmal ohne jede Farbe, erklaert in der Legende ---
+  //
+  // #89: der Kurztext „F0"/„F30" an der Wand ist ersatzlos entfallen — bei mehreren
+  // Waenden je Geschoss stand er neben Nummernblase, V/R-Buchstaben und Massziffern.
+  // Getragen wird die Unterscheidung jetzt allein von der Schraffur; erklaert wird sie
+  // in der Legende. Eine F0-Wand bekommt gar keinen Brandschutzknoten mehr.
   const z = LP.lageplanSvg(d, {});
   /** Die `lpbrand`-Gruppen des Blattes: Kennung, Klasse, Inhalt und Rohtext. */
   const brandGruppen = (s) => [...s.matchAll(
     /<g class="lpbrand" data-wand="([^"]*)" data-brandklasse="([^"]*)">([\s\S]*?)<\/g>/g)]
     .map((mm) => ({ id: mm[1], klasse: mm[2], inhalt: mm[3], roh: mm[0] }));
   const bg = brandGruppen(z.svg);
-  const gA = bg.find((g) => g.id === "w-a"), gB = bg.find((g) => g.id === "w-b");
+  const gA = bg.find((g) => g.id === "w-a");
 
-  t("#79 jede verortete Wand mit Wandelement traegt ihre Klassifikation im Plan",
-    bg.length === 3 && bg.map((g) => g.id + ":" + g.klasse).join(",")
-      === "w-a:F30,w-b:F0,w-c:F0");
+  t("#89 nur die F30-Wand traegt eine Brandschutzgruppe — F0 bleibt ohne Knoten",
+    bg.length === 1 && bg[0].id === "w-a" && bg[0].klasse === "F30");
+  t("#89 an keiner Wand steht mehr ein Brandschutz-Kurztext",
+    !/>F30</.test(z.svg) && !/>F0</.test(z.svg) && !/lpbrand-kz/.test(z.svg));
   t("#79 die verwaiste — aber verortete — Wand bleibt im Plan ohne Klassifikation",
     z.svg.includes('data-wand="w-d"') && !bg.some((g) => g.id === "w-d"));
-  t("#79 F0 und F30 nutzen verschiedene Darstellungsmerkmale",
-    gA.roh !== gB.roh
-    && /<rect class="lpbrand-flaeche"[^>]*fill="url\(#[^"]*\)"/.test(gA.inhalt)
-    && !/lpbrand-flaeche/.test(gB.inhalt)
-    && />F30</.test(gA.inhalt) && />F0</.test(gB.inhalt));
+  t("#79/#89 F30 ist an der Schraffur ueber der Wandflaeche erkennbar, F0 an ihrem Fehlen",
+    /<rect class="lpbrand-flaeche"[^>]*fill="url\(#[^"]*\)"/.test(gA.inhalt)
+    && !bg.some((g) => g.klasse === "F0"));
   // DER Punkt der Regel: Farbe allein genuegt nicht. Werden ALLE Farbangaben
-  // entfernt, muessen sich die beiden Gruppen immer noch unterscheiden.
+  // entfernt, muss die F30-Wand immer noch von der F0-Wand unterscheidbar sein —
+  // die Schraffur ist ein Knoten, kein Farbwert, und ueberlebt das.
   const ohneFarbe = (s) => s.replace(/\s(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, "");
   t("#79 die Unterscheidung haengt nicht an einer Farbangabe (S/W-Ausdruck)",
-    ohneFarbe(gA.roh) !== ohneFarbe(gB.roh)
-    && ohneFarbe(gA.roh).includes(">F30<") && ohneFarbe(gB.roh).includes(">F0<")
-    && ohneFarbe(gA.roh).includes("lpbrand-flaeche")
-    && !ohneFarbe(gB.roh).includes("lpbrand-flaeche"));
+    ohneFarbe(gA.roh).includes("lpbrand-flaeche")
+    && brandGruppen(ohneFarbe(z.svg)).length === 1);
   t("#79 das Schraffurmuster steht im Zeichnungsinhalt (und damit in jeder Ausgabe)",
     /<defs><pattern id="[^"]*"[\s\S]*?<\/pattern><\/defs>/.test(z.inner)
     && z.inner.indexOf("<defs>") === 0);
@@ -990,25 +997,31 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
       return !LP.lageplanSvg(nurF0, {}).svg.includes("<defs>");
     })());
   t("#79 die Kennzeichnung haengt nicht am Schalter „Wände kennzeichnen“",
-    brandGruppen(LP.lageplanSvg(d, { kennzeichnung: false }).svg).length === 3);
+    brandGruppen(LP.lageplanSvg(d, { kennzeichnung: false }).svg).length === 1);
 
-  // --- Legende und Wandtabelle nennen beide Klassen im Klartext -----------
+  // --- Die Legende traegt den Schluessel jetzt allein ---------------------
   const leg = LP.legendeHtml();
-  t("#79 die Legende benennt beide Klassifikationen mit ihrem Merkmal in Worten",
+  // #89: Weil an der Wand nichts mehr steht, ist die Legende der EINZIGE Ort, an dem
+  // der Schluessel erklaert wird. Ihr Wortlaut bleibt deshalb bitgleich und wird hier
+  // festgeschrieben — auch das nicht farbliche Merkmal IN WORTEN, damit der
+  // Schwarz-Weiss-Ausdruck traegt.
+  t("#79/#89 die Legende benennt beide Klassifikationen mit ihrem Merkmal in Worten",
     leg.includes("<b>F0</b>") && leg.includes("<b>F30</b>")
     && leg.includes(LP.BRANDKLASSE.F0.name) && leg.includes(LP.BRANDKLASSE.F30.name)
     && leg.includes("ohne Schraffur") && leg.includes("diagonal schraffiert"));
   t("#79 die Legende sagt, dass die Angabe kein Nachweis ist",
     /Planungskennzeichnung, kein Nachweis/.test(leg));
   const tab = LP.wandTabelleHtml(d);
-  const tabBrand = [...tab.matchAll(
-    /<tr><td class="nr">(\d+)<\/td>[\s\S]*?<td>[^<]*<\/td><td>([^<]*)<\/td><td>[^<]*<\/td><\/tr>/g)]
-    .map((mm) => mm[2]);
-  t("#79 die Wandtabelle traegt die Klassifikation je Wand als Text",
-    /<th>Brandschutz<\/th>/.test(tab) && tabBrand.join(",") === "F30,F0,F0,–");
-  t("#79 die Tabellenspalte steht vor der Lagespalte — die Lage bleibt letzte Zelle",
-    tab.indexOf("<th>Brandschutz</th>") < tab.indexOf("<th>Lage</th>")
-    && /<td>unverortet<\/td><\/tr>|<td>x\/y<\/td><\/tr>|<td>frei<\/td><\/tr>/.test(tab));
+  t("#89 die Wandtabelle hat genau die drei Spalten Nummer, Wand und Höhe",
+    [...tab.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((mm) => mm[1]).join("|")
+      === "Nr.|Wand|Höhe");
+  t("#89 Brandschutz, Länge, Wandtyp und Lage sind keine Tabellenspalten mehr",
+    !/<th[^>]*>(?:Brandschutz|Länge|Wandtyp|Lage)<\/th>/.test(tab)
+    && !/<td>(?:F0|F30|unverortet|frei|x\/y|nur x|nur y|mit Wind|ohne Wind)<\/td>/.test(tab));
+  t("#89 jede Zeile traegt genau drei Zellen — Nummer, voller Name, Höhe",
+    [...tab.matchAll(/<tr><td class="nr">(\d+)<\/td><td>([^<]*)<\/td><td class="r">([^<]*)<\/td><\/tr>/g)]
+      .map((mm) => mm[1] + ":" + mm[3]).join(",") === "1:2.600 mm,2:2.600 mm,3:2.600 mm,4:–"
+    && (tab.match(/<td/g) || []).length === 12);
 
   // --- Ein Pfad: Vorschau, Druck-HTML und SVG-Datei zeigen dasselbe -------
   const b = LP.blattHtml(d, {});
@@ -1042,6 +1055,13 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   t("#79 die Massdarstellung bleibt bitgenau dieselbe",
     JSON.stringify(d.massbilder) === JSON.stringify(dF0.massbilder)
     && massTexte(z.svg).join(",") === massTexte(zF0.svg).join(","));
+  // #89: Der entfallene Kurztext war nie Hindernis oder Kandidatenflaeche der
+  // Ausweichlogik (#59) — die Blasen muessen deshalb bitgenau dort stehen wie vorher,
+  // und zwar unabhaengig von der Brandklasse.
+  t("#89 Nummernblasen und Wandknoten sind mit und ohne F30 zeichengleich",
+    JSON.stringify(markerVon(z.svg)) === JSON.stringify(markerVon(zF0.svg))
+    && [...z.svg.matchAll(/<g class="lpwand[^"]*" data-wand="[^"]*">[\s\S]*?<\/g>/g)].join("")
+       === [...zF0.svg.matchAll(/<g class="lpwand[^"]*" data-wand="[^"]*">[\s\S]*?<\/g>/g)].join(""));
   t("#79 die Klassifikation erzeugt weder Meldung noch Hinweis noch Statuswechsel",
     d.vollstaendig === dF0.vollstaendig
     && !d.meldungen.some((x) => /Brand/i.test(x.art + x.text))

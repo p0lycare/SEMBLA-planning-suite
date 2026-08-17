@@ -163,17 +163,20 @@ export const FARBE = {
  * keine Freigabe und keine Materialregel abgeleitet, und sie veraendert weder
  * Wandgeometrie noch Massstab, Bemassung oder Vollstaendigkeit.
  *
- * Getragen wird die Unterscheidung von ZWEI Merkmalen, die BEIDE ohne Farbe
- * auskommen — der Schwarz-Weiss-Ausdruck muss sie zeigen, Farbe allein genuegt
- * nicht:
- *   * `kuerzel` steht als Kurztext an der Wand, in PAPIER-mm. Eine 125 mm breite
- *     Wand ist bei 1:100 nur 1,25 Papier-mm breit; eine Kennzeichnung IN der
- *     Flaeche waere in den groben Massstaeben unlesbar, der Kurztext bleibt es
- *     in jedem.
- *   * `schraffur` legt bei F30 zusaetzlich das Schraffurmuster ueber die
- *     Wandflaeche — die gelaeufige Bauzeichnungskonvention, auf einen Blick
- *     erkennbar. F0 bleibt bewusst OHNE Schraffur und damit darstellungsgleich
- *     zum bisherigen Blatt.
+ * Getragen wird die Unterscheidung im Blatt von `schraffur` — einem Merkmal OHNE
+ * jede Farbe, das der Schwarz-Weiss-Ausdruck zeigt: F30 traegt das Schraffurmuster
+ * ueber der Wandflaeche (die gelaeufige Bauzeichnungskonvention), F0 bleibt bewusst
+ * OHNE Schraffur und damit darstellungsgleich zum Blatt vor #79. Erklaert wird
+ * beides IN WORTEN in der Legende (`merkmal`) — dort steht der Schluessel einmal,
+ * statt an jeder Wand.
+ *
+ * Der frueher zusaetzlich an jede Wand gesetzte Kurztext „F0"/„F30" ist mit #89
+ * ersatzlos ENTFALLEN: bei mehreren Waenden je Geschoss stand er neben Nummernblase,
+ * V/R-Buchstaben und Massziffern und machte das Blatt unlesbar. `kuerzel` bleibt
+ * deshalb, wird aber nur noch von der Legende gesetzt. Eine F0-Wand bekommt im Plan
+ * gar keinen Brandschutzknoten mehr — genau wie das Schraffurmuster nur entsteht,
+ * wenn es gebraucht wird.
+ *
  * `farbe` kommt nur additiv dazu und ist bewusst keine der Zustandsfarben ([K-8])
  * und keine der V/R-Farben (#84).
  */
@@ -211,15 +214,6 @@ export const VERZAHNUNG = Object.freeze({
 /** Schriftgroesse (Papier-mm) und Abstand des Verzahnungs-Kurztexts vom Feld. */
 const VERZ_FS_MM = 1.8;
 const VERZ_ABSTAND_MM = 1.4;
-
-/**
- * Papier-mm, um die der Brandschutz-Kurztext neben der Wandkante steht — auf der
- * der Nummernblase GEGENUEBERLIEGENDEN Seite (x-Wand unten, y-Wand rechts), damit
- * sich beide Kennzeichnungen nicht ins Gehege kommen. Wie die Blase liegt er damit
- * im Zeichnungsrand (< PAD_MM) und veraendert weder `ausdehnung()` noch den
- * gewaehlten Massstab.
- */
-const BRAND_ABSTAND_MM = 2.6;
 
 // ------------------------------------------------------------------- Helfer
 
@@ -890,29 +884,26 @@ export function lageplanSvg(daten, opts) {
       + ` stroke="${FARBE.mittellinie}" stroke-width="0.1" stroke-dasharray="1.2 0.8"/>`);
     st.push("</g>");
     teile.push(st.join(""));
-    // Brandschutzklassifikation (#79): eigene Gruppe NACH dem Wandknoten und VOR
+    // Brandschutzklassifikation (#79/#89): eigene Gruppe NACH dem Wandknoten und VOR
     // Seitenkanten und Nummernblase — die Schraffur liegt damit auf der Wandflaeche,
     // aber unter V/R-Kante und Blase. Eigene Gruppe (wie #84/#73), damit der
     // Wandknoten selbst unveraendert bleibt. Getragen wird die Unterscheidung ohne
-    // Farbe: F30 zusaetzlich schraffiert, und BEIDE Klassen tragen ihren Kurztext.
+    // Farbe von der Schraffur allein; erklaert wird sie in der Legende (#89), der
+    // frueher zusaetzlich gesetzte Kurztext an der Wand ist entfallen.
+    //
+    // Deshalb entsteht die Gruppe NUR fuer F30: fuer F0 gaebe es nichts zu zeichnen,
+    // und eine leere Gruppe waere ein toter Knoten in jeder Ausgabedatei. Ein reines
+    // F0-Blatt ist damit bitgenau das Blatt vor #79 — dieselbe Begruendung wie beim
+    // Schraffurmuster, das ebenfalls nur entsteht, wenn es gebraucht wird.
+    //
     // Sie ist reine Kennzeichnung und haengt deshalb NICHT am Schalter
     // „Wände kennzeichnen" — der gehoert der Nummernblase als Lesehilfe.
     const bk = w.brandklasse ? BRANDKLASSE[w.brandklasse] : null;
-    if (bk) {
-      const querB = w.richtung !== "y";
-      const btx = querB ? x + bw / 2 : x + bw + BRAND_ABSTAND_MM;
-      const bty = querB ? y + bh + BRAND_ABSTAND_MM : y + bh / 2 + 0.65;
-      const bg = [`<g class="lpbrand" data-wand="${_esc(w.id)}"`
-        + ` data-brandklasse="${_esc(w.brandklasse)}">`];
-      if (bk.schraffur) {
-        bg.push(`<rect class="lpbrand-flaeche" x="${_n(x)}" y="${_n(y)}" width="${_n(bw)}"`
-          + ` height="${_n(bh)}" fill="url(#${SCHRAFFUR_ID})"/>`);
-      }
-      bg.push(`<text class="lpbrand-kz" x="${_n(btx)}" y="${_n(bty)}" font-size="1.8"`
-        + ` text-anchor="${querB ? "middle" : "start"}" fill="${bk.farbe}">`
-        + `${_esc(bk.kuerzel)}</text>`);
-      bg.push("</g>");
-      teile.push(bg.join(""));
+    if (bk && bk.schraffur) {
+      teile.push(`<g class="lpbrand" data-wand="${_esc(w.id)}"`
+        + ` data-brandklasse="${_esc(w.brandklasse)}">`
+        + `<rect class="lpbrand-flaeche" x="${_n(x)}" y="${_n(y)}" width="${_n(bw)}"`
+        + ` height="${_n(bh)}" fill="url(#${SCHRAFFUR_ID})"/></g>`);
     }
     if (w.seiten) {
       // Vorder-/Rueckkante (#84): dieselbe Ableitung wie im Editor (`wandSeiten`),
@@ -1236,7 +1227,7 @@ export function verzahnungHtml(daten) {
 }
 
 /**
- * Wandtabelle: Nummer, Name, Länge, Höhe, Wandtyp, Brandschutz, Bestimmtheit.
+ * Wandtabelle: Nummer, Name, Höhe — und sonst nichts (#89).
  *
  * Die Nummer der ersten Spalte ist GENAU die, die in der Draufsicht in der
  * Nummernblase der Wand steht (#59/#73) — die Tabelle ist damit der Schluessel von
@@ -1244,25 +1235,20 @@ export function verzahnungHtml(daten) {
  * weiter mit ihrer Nummer in der Liste; es wird keine Lage und keine Ersatzkennung
  * erfunden ([L-4]/[N-7]).
  *
- * Die Spalte „Brandschutz" (#79) nennt die Klassifikation als Text — damit steht sie
- * auch dort, wo die Zeichnung klein ist, und ein verwaister Eintrag bleibt sichtbar
- * OHNE Angabe („–"), statt still als F0 zu erscheinen.
+ * Die frueheren Spalten Laenge, Wandtyp, Brandschutz und Lage sind mit #89 entfallen:
+ * die Laenge steht als treibende Bemassung massstaeblich im Plan, die
+ * Brandschutzklassifikation im Darstellungsschluessel der Legende, und Lage und
+ * Bestimmtheit standen hier DOPPELT — sie werden unveraendert namentlich gemeldet
+ * (unverortet, ungueltige Lage, verwaist, Laengenabweichung, unbestimmt). Der Wegfall
+ * der Spalte nimmt also keine einzige Aussage vom Blatt ([N-7] bleibt vollstaendig).
  */
 export function wandTabelleHtml(daten) {
-  const typ = (t) => (t === "ohne_wind" ? "ohne Wind" : t === "mit_wind" ? "mit Wind" : "–");
-  const brand = (b) => (b && BRANDKLASSE[b] ? BRANDKLASSE[b].kuerzel : "–");
-  const best = (b) => (b.x && b.y ? "x/y" : b.x ? "nur x" : b.y ? "nur y" : "frei");
   const zeilen = daten.waende.map((w) => `<tr><td class="nr">${_esc(w.nr)}</td>`
     + `<td>${_esc(w.name)}</td>`
-    + `<td class="r">${w.laenge_mm == null ? "–" : _fmt(w.laenge_mm) + " mm"}</td>`
-    + `<td class="r">${w.hoehe_mm == null ? "–" : _fmt(w.hoehe_mm) + " mm"}</td>`
-    + `<td>${_esc(typ(w.wandtyp))}</td>`
-    + `<td>${_esc(brand(w.brandklasse))}</td>`
-    + `<td>${w.rechteck ? _esc(best(w.bestimmt)) : "unverortet"}</td></tr>`).join("");
+    + `<td class="r">${w.hoehe_mm == null ? "–" : _fmt(w.hoehe_mm) + " mm"}</td></tr>`).join("");
   return `<table class="lptab"><thead><tr><th class="nr">Nr.</th><th>Wand</th>`
-    + `<th class="r">Länge</th>`
-    + `<th class="r">Höhe</th><th>Wandtyp</th><th>Brandschutz</th><th>Lage</th></tr></thead>`
-    + `<tbody>${zeilen || '<tr><td colspan="7">keine Wand eingetragen</td></tr>'}</tbody></table>`;
+    + `<th class="r">Höhe</th></tr></thead>`
+    + `<tbody>${zeilen || '<tr><td colspan="3">keine Wand eingetragen</td></tr>'}</tbody></table>`;
 }
 
 /**
