@@ -90,6 +90,16 @@
   .legende i.brand-f30{background:#0b7285;
       background-image:repeating-linear-gradient(45deg,
         rgba(255,255,255,.9) 0 1px,transparent 1px 3px)}
+  /* Verzahnungsbereich (#90): dieselbe Machart wie die Brandschutzkachel — das
+     Merkmal steht im Farbfeld selbst. Getragen wird es von einem GITTER (nicht
+     von einer Diagonalen) und einer eigenen Umrandung; genau diese beiden
+     Merkmale unterscheiden die Fläche in der Zeichnung auch schwarz-weiß von
+     der F30-Schraffur. */
+  .legende i.verzahnung{background:#8a5a00;border:1px dashed #8a5a00;
+      background-image:repeating-linear-gradient(0deg,
+        rgba(255,255,255,.92) 0 1px,transparent 1px 4px),
+        repeating-linear-gradient(90deg,
+        rgba(255,255,255,.92) 0 1px,transparent 1px 4px)}
 
   /* Gemeinsame Grundform der schwebenden Bereiche (#53). */
   .gp-leiste{position:absolute;background:rgba(255,255,255,.95);border:1px solid var(--sb-line);
@@ -309,6 +319,11 @@
                ausschließlich in Modul 1; hier wird nur angezeigt. -->
           <span title="Brandschutzklassifikation der Wand — reine Planungskennzeichnung (#79), kein Nachweis und keine Freigabe. Gewählt wird sie in Modul 1 (Wandplanung)."><i class="brand-f0"></i><b>F0</b>&nbsp;ohne Brandschutzklassifikation — Wandfläche ohne Schraffur</span>
           <span title="Brandschutzklassifikation der Wand — reine Planungskennzeichnung (#79), kein Nachweis und keine Freigabe. Gewählt wird sie in Modul 1 (Wandplanung)."><i class="brand-f30"></i><b>F30</b>&nbsp;Brandschutzklassifikation F30 — Wandfläche diagonal schraffiert</span>
+          <!-- Verzahnungsbereich (#90): die Stelle, an der eine rechtwinklig
+               anschließende Wand in den Steinverband greift. Sie wird in Modul 1
+               festgelegt; hier wird sie nur angezeigt, damit die zweite Wand
+               daran ausgerichtet werden kann. -->
+          <span title="Verzahnungsbereich der Wand — an dieser Rasterstelle greift eine rechtwinklig anschließende Wand in den Steinverband ([G-10]). Festgelegt wird er in Modul 1 (Wandplanung); hier wird er nur angezeigt."><i class="verzahnung"></i><b>Verzahnungsbereich</b>&nbsp;— Fläche gitterschraffiert mit gestrichelter Umrandung</span>
         </div>
       </div>
 
@@ -618,11 +633,17 @@ function verortung(){ return CON.loese(waende(), bemassungen(), ursprung()); }
  * `els` ist die Wandspeicher-Karte des laufenden `render()`; wo sie fehlt, wird
  * sie einmal gelesen — das trifft nur die beiden Meldewege, die je abgeschlossener
  * Bedienhandlung genau einmal laufen, nie einen Zeigertick.
+ *
+ * `verz` ist die schon gebaute Verzahnungstabelle. Seit #90 braucht `render()`
+ * sie auch für die ZEICHNUNG und baut sie deshalb selbst — sie wird hier
+ * durchgereicht statt ein zweites Mal aufgebaut. Ohne sie ändert sich nichts:
+ * dann entsteht sie wie bisher aus `els`.
  * @param {Map<string,any>} [els]
+ * @param {Map<string,any[]>} [verz]
  */
-function loesen(els){
+function loesen(els, verz){
   return CON.pruefeGeschoss(waende(), bemassungen(), ursprung(),
-    verzahnungenMap(els || elementeMap()));
+    verz || verzahnungenMap(els || elementeMap()));
 }
 
 /** Position einer Wand: das Lösungsergebnis, sonst die gespeicherte Lage. */
@@ -1129,8 +1150,83 @@ function brandDefs(){
     + ` stroke-width="${r2(strich(1.1))}"/></pattern></defs>`;
 }
 
+/**
+ * Darstellungsschlüssel des Verzahnungsbereichs (#90) — Darstellung, sonst nichts.
+ *
+ * Ein Verzahnungsbereich ist die Rasterstelle, an der eine rechtwinklig
+ * anschließende Wand in den Steinverband greift ([G-10]). Er wird ausschließlich
+ * in Modul 1 festgelegt; hier wird er nur GEZEICHNET, damit die zweite Wand
+ * überhaupt daran ausgerichtet werden kann. Abgeleitet wird daraus nichts: weder
+ * Lage noch Länge noch Bemaßung, Löserergebnis oder Kollisionsbewertung ändern
+ * sich dadurch. Ob eine Überlagerung zweier Wände eine zulässige Verzahnung ist,
+ * entscheidet unverändert allein der Kern ([K-13.1]) — diese Fläche ist keine
+ * Aussage darüber, sondern zeigt nur, WO der Bereich liegt.
+ *
+ * Getragen wird die Unterscheidung von ZWEI Merkmalen, die BEIDE ohne Farbe
+ * auskommen und beide von der F30-Schraffur (#79, EINFACHE Diagonale) verschieden
+ * sind:
+ *   * ein achsparalleles GITTER als nicht deckendes Muster und
+ *   * eine eigene, gestrichelte UMRANDUNG des Bereichsrechtecks (die
+ *     Brandschutzfläche hat gar keine).
+ * `farbe` kommt nur additiv dazu und ist bewusst keine der Zustandsfarben
+ * ([K-8]), keine der V/R-Farben (#84) und keine der Brandschutzfarben (#79). Der
+ * Wortlaut muss zur Legende in dieser Datei passen.
+ */
+const VERZAHNUNG = {
+  name: 'Verzahnungsbereich',
+  merkmal: 'gitterschraffiert mit gestrichelter Umrandung',
+  farbe: '#8a5a00',
+};
+
+/**
+ * Kennung und Kachelmaß (Schirmpixel) des Verzahnungsmusters.
+ *
+ * Die Kennung beginnt bewusst NICHT mit „gp-verzahn“: der Regressionstest aus
+ * #83 weist über genau dieses Präfix nach, dass der Editor kein Bedienelement
+ * für Verzahnungsbereiche hat. Ein Musterknoten ist keines — er darf diesen
+ * Nachweis aber auch nicht aufweichen.
+ */
+const VERZAHN_MUSTER_ID = 'gp-ilock-gitter';
+const VERZAHN_MUSTER_PX = 6;
+
+/**
+ * Das Gittermuster als `<defs>` — dieselbe Machart wie `brandDefs()`: Kachelmaß
+ * und Strichbreite hängen am Blick (`V.mm`), damit das Muster beim Zoomen gleich
+ * fein bleibt. Es zeichnet selbst nichts und steht deshalb VOR den sichtbaren
+ * Knoten; erzeugt wird es nur, wenn im Geschoss überhaupt ein Bereich steht —
+ * eine Planung ohne Verzahnung zeichnet damit bit-genau wie bisher.
+ */
+function verzahnungDefs(){
+  const s = r2(VERZAHN_MUSTER_PX * V.mm);
+  return `<defs><pattern id="${VERZAHN_MUSTER_ID}" width="${s}" height="${s}"`
+    + ' patternUnits="userSpaceOnUse">'
+    + `<path d="M0 0V${s}M0 0H${s}" fill="none" stroke="${VERZAHNUNG.farbe}"`
+    + ` stroke-width="${r2(strich(1.1))}"/></pattern></defs>`;
+}
+
+/**
+ * Die zu zeichnenden Verzahnungsbereiche EINER Wand (#90).
+ *
+ * Gelesen wird ausschließlich die durchgereichte Tabelle aus `verzahnungenMap()`
+ * — dieselbe, mit der auch die Kollisionsprüfung rechnet ([K-13.1]); normalisiert
+ * wird mit `CON.verzahnungsBereiche()`, also der EINEN kanonischen, defensiven
+ * Lesung aus `sembla-constraints.js`. Es entsteht hier weder eine zweite
+ * Normalisierung noch eine zweite Gültigkeitsprüfung.
+ *
+ * Ein Bereich JENSEITS der Wandlänge wird nicht gezeichnet: dort gibt es keine
+ * Wandfläche, und es wird weder eine erfunden noch der Bereich stillschweigend
+ * auf die Wand geklemmt. Gemeldet wird ein solcher Bereich vom Rechenkern
+ * ([G-12]) und in Modul 1 — der Editor erfindet dazu keine eigene Aussage.
+ * @returns {{g0:number,g1:number,start_parity:number}[]}
+ */
+function verzahnungenVon(verz, id, lage){
+  const roh = verz && typeof verz.get === 'function' ? verz.get(id) : null;
+  const n = lage ? Number(lage.laenge_grid) : 0;
+  return CON.verzahnungsBereiche(roh).filter(b => b.g0 >= 0 && b.g1 <= n);
+}
+
 /** Eine Wand als Rechteck samt Mittellinie ([K-2]) und Zustandsfarbe ([K-8]). */
-function wandSvg(w, erg, koll, els){
+function wandSvg(w, erg, koll, els, verz){
   const pos = position(w.id, erg);
   const rect = CON.wandRechteck(w.lage, pos);
   if (!rect) return '';
@@ -1197,6 +1293,37 @@ function wandSvg(w, erg, koll, els){
       + 'Planungskennzeichnung, kein Nachweis; gewählt wird sie in Modul 1.</title></text>');
     brand.push('</g>');
     teile.push(brand.join(''));
+  }
+  // Verzahnungsbereiche (#90): eigene Gruppe NACH Wandrechteck, Mittellinie,
+  // V/R-Kanten und der Brandschutzgruppe — sie liegt damit auf der Wandfläche,
+  // aber unter Auswahlrahmen, Griffen und Beschriftung. Der Wandknoten selbst
+  // bleibt unverändert, und die Zustandsfarbe ([K-8]) wird weder ersetzt noch
+  // verdeckt: das Gitter ist ein dünnes Linienmuster, kein deckender Anstrich.
+  // Wie die Brandschutzgruppe trägt sie bewusst KEIN eigenes `data-wand` — sie
+  // liegt IN der Wandgruppe, die die Kennung schon führt; Auswahl und
+  // Treffersuche laufen unverändert über die Wandgruppe.
+  // Gelesen wird nur; festgelegt werden die Bereiche ausschließlich in Modul 1.
+  const laengsWand = l.richtung === 'x';
+  for (const bz of verzahnungenVon(verz, w.id, l)) {
+    // JE Bereich eine eigene Gruppe mit genau einer Fläche — zwei Bereiche sind
+    // zwei getrennte Stellen der Wand und keine zusammenhängende.
+    //
+    // Rasterposition → Welt-mm entlang der WANDRICHTUNG: der lokale Nullpunkt ist
+    // das Min-Ende (`rect.[x|y]_min`), dieselbe Verankerung, mit der auch der Kern
+    // die Verzahnungsstelle bestimmt. Quer reicht die Fläche über die volle
+    // Wandbreite.
+    const laenge = (bz.g1 - bz.g0) * CON.GRID_MM;
+    const vx = laengsWand ? rect.x_min + bz.g0 * CON.GRID_MM : rect.x_min;
+    const vy = laengsWand ? rect.y_min : rect.y_min + bz.g0 * CON.GRID_MM;
+    teile.push('<g class="verzahnung">'
+      + `<rect class="verzahnflaeche" x="${r2(vx)}" y="${r2(vy)}"`
+      + ` width="${r2(laengsWand ? laenge : b)}" height="${r2(laengsWand ? h : laenge)}"`
+      + ` fill="url(#${VERZAHN_MUSTER_ID})"`
+      + ` stroke="${VERZAHNUNG.farbe}" stroke-width="${r2(strich(1.6))}"`
+      + ` stroke-dasharray="${r2(strich(5))} ${r2(strich(3))}">`
+      + `<title>${VERZAHNUNG.name} Raster ${bz.g0}–${bz.g1} — Wandfläche `
+      + `${VERZAHNUNG.merkmal}. Hier greift eine rechtwinklig anschließende Wand in den `
+      + 'Steinverband ([G-10]); festgelegt wird der Bereich in Modul 1.</title></rect></g>');
   }
   if (istAusgewaehlt(w.id) && GP.aktiv !== w.id) {
     // AUSGEWÄHLT, aber nicht aktiv: nur ein Rahmen. Ausgewählt sein können mehrere
@@ -2178,7 +2305,12 @@ function render(){
   // sich dieselbe Nachschlagetabelle (Höhe, Wandtyp, Brandschutzklassifikation
   // und seit #83 die Verzahnungsbereiche). Sie steht deshalb VOR dem Lösen.
   const els = elementeMap();
-  const erg = loesen(els);
+  // Die Verzahnungsbereiche je Wand entstehen EINMAL je Bild aus derselben Karte:
+  // die Kollisionsprüfung bekommt sie durchgereicht ([K-13.1]), und seit #90
+  // zeichnet die Bühne daraus die Bereichsflächen. Eine zweite Tabelle gäbe es
+  // damit nicht — es bleibt bei genau einem Lesen des Wandspeichers je `render()`.
+  const verzMap = verzahnungenMap(els);
+  const erg = loesen(els, verzMap);
   const koll = erg.kollisionen || [];
   const verz = erg.verzahnungen || [];
   const teile = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(V.x0)} ${r2(V.y0)} `
@@ -2189,7 +2321,13 @@ function render(){
   // Reihenfolge der sichtbaren Knoten bleibt unberührt. Erzeugt wird es nur, wenn
   // es auch gebraucht wird.
   if (waende().some(w => brandklasse(els.get(w.id)) === 'F30')) teile.push(brandDefs());
-  for (const w of waende()) teile.push(wandSvg(w, erg, koll, els));
+  // Dasselbe gilt für das Gittermuster der Verzahnungsbereiche (#90): es zeichnet
+  // selbst nichts, steht deshalb vorn und entsteht nur, wenn eine verortete Wand
+  // wirklich einen darstellbaren Bereich trägt.
+  if (waende().some(w => verzahnungenVon(verzMap, w.id, CON.normLage(w.lage)).length)) {
+    teile.push(verzahnungDefs());
+  }
+  for (const w of waende()) teile.push(wandSvg(w, erg, koll, els, verzMap));
   // Ausgeblendete Bemaßungen werden nicht gezeichnet — die Staffelung (`i`) bleibt
   // dieselbe, damit sie beim Einblenden bit-genau wieder dort stehen (#53).
   if (GP.masseAn) bemLayout(erg).forEach(g => teile.push(bemassungSvg(g, erg)));

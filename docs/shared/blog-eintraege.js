@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260817-03",
+    datum: "2026-08-17",
+    typ: "feature",
+    issue: 90,
+    titel: "Verzahnungsbereiche einer Wand sind im Geschossplan als Fläche an ihrer Rasterstelle sichtbar",
+    testbitte: "In Modul 1 an einer Wand einen Verzahnungsbereich festlegen und das Geschoss "
+      + "öffnen: Die Stelle ist als gitterschraffierte Fläche mit gestrichelter Umrandung markiert "
+      + "und in der Legende benannt; Wände ohne Bereich sehen unverändert aus.",
+  },
+  {
     id: "chg-20260817-02",
     datum: "2026-08-17",
     typ: "fix",

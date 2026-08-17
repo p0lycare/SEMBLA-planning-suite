@@ -39,9 +39,10 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// #88 (Initialposition duplizierter und zugeordneter Waende) ist der NEUESTE Eintrag;
-// die bisherige Reihe rueckt geschlossen um eins nach hinten. Ueber `EINTRAEGE` zaehlen
-// damit: #88, #85 (Mitloeschen), #83 (Verzahnungs-Nachweis) und #81 (Kommentar je
+// #90 (sichtbare Verzahnungsbereiche im Geschossplan) ist der NEUESTE Eintrag; die
+// bisherige Reihe rueckt geschlossen um eins nach hinten. Ueber `EINTRAEGE` zaehlen
+// damit: #90, #88 (Initialposition duplizierter und zugeordneter Waende), #85
+// (Mitloeschen), #83 (Verzahnungs-Nachweis) und #81 (Kommentar je
 // Stuecklistenposition).
 // Ueber `NEU` zaehlen deshalb: #82
 // (Verzahnungs-Roundtrip), #83 (Lageplan), #59 (vollstaendig sichtbare Nummernblasen
@@ -53,34 +54,60 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const NEU = EINTRAEGE.slice(4);
-const AKTUELL = EINTRAEGE.slice(9);
-const AELTER = EINTRAEGE.slice(19);
-// Der neueste Eintrag ist die INITIALPOSITION duplizierter und zugeordneter Waende (#88).
+const NEU = EINTRAEGE.slice(5);
+const AKTUELL = EINTRAEGE.slice(10);
+const AELTER = EINTRAEGE.slice(20);
+// Der neueste Eintrag macht die VERZAHNUNGSBEREICHE im Geschossplan sichtbar (#90).
+// Aussagewahr heisst hier: die Bereiche werden GEZEIGT — an ihrer Rasterstelle, mit
+// einem benannten Merkmal und in der Legende. Behauptet werden darf KEINE Bedienung
+// im Editor (festgelegt werden sie in Modul 1), keine geaenderte Kollisionspruefung
+// und keine Wirkung auf Mengen oder Vorspannung ([K-13.1]/[G-11]/[P-9]).
+ok("die sichtbaren Verzahnungsbereiche (Issue 90) sind der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260817-03" && EINTRAEGE[0]?.issue === 90
+  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-17");
+ok("der Verzahnungs-Sichtbarkeitseintrag benennt Gegenstand, Ort und Stelle aussagewahr",
+  /Verzahnungsbereiche/.test(EINTRAEGE[0]?.titel || "")
+  && /Geschossplan/.test(EINTRAEGE[0]?.titel || "")
+  && /Fläche/.test(EINTRAEGE[0]?.titel || "")
+  && /Rasterstelle/.test(EINTRAEGE[0]?.titel || "")
+  // Es ist KEIN Bedienelement und keine geaenderte Bewertung entstanden.
+  && !/festlegen|wählbar|Werkzeug|Kollision/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Verzahnungs-Sichtbarkeitstestbitte benennt Festlegeort, Merkmal, Legende und den Gegenfall",
+  /Modul 1/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Verzahnungsbereich/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Geschoss/.test(EINTRAEGE[0]?.testbitte || "")
+  && /gitterschraffierte Fläche/.test(EINTRAEGE[0]?.testbitte || "")
+  && /gestrichelter Umrandung/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Legende/.test(EINTRAEGE[0]?.testbitte || "")
+  && /ohne Bereich sehen unverändert aus/.test(EINTRAEGE[0]?.testbitte || ""));
+// Genau EIN Eintrag fuer #90: die Sichtbarkeit ist EIN Nutzerergebnis.
+ok("genau ein Eintrag fuer Issue 90 (sichtbare Verzahnungsbereiche)",
+  EINTRAEGE.filter(e => e.issue === 90).length === 1);
+// Davor stand die INITIALPOSITION duplizierter und zugeordneter Waende (#88).
 // Aussagewahr heisst hier: die Kopie liegt SOFORT sichtbar neben dem Original, die
 // zugeordnete Wand am Geschossursprung — beide UNBEMASST und frei verschiebbar, und der
 // Vorgang bleibt EIN Rueckgaengig-Schritt. Behauptet werden darf kein neues Werkzeug,
 // keine Bemassung und keine geaenderte Kollisionspruefung ([K-13]/[P-9]).
-ok("die Initialposition duplizierter Waende (Issue 88) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260817-02" && EINTRAEGE[0]?.issue === 88
-  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-17");
+ok("die Initialposition duplizierter Waende (Issue 88) folgt direkt danach",
+  EINTRAEGE[1]?.id === "chg-20260817-02" && EINTRAEGE[1]?.issue === 88
+  && EINTRAEGE[1]?.typ === "fix" && EINTRAEGE[1]?.datum === "2026-08-17");
 ok("der Initialpositions-Eintrag benennt beide Wege, das Ergebnis und den behobenen Mangel aussagewahr",
-  /Duplizierte/.test(EINTRAEGE[0]?.titel || "")
-  && /zugeordnete/.test(EINTRAEGE[0]?.titel || "")
-  && /sofort sichtbar/.test(EINTRAEGE[0]?.titel || "")
-  && /Geschossplan/.test(EINTRAEGE[0]?.titel || "")
-  && /unverortet/.test(EINTRAEGE[0]?.titel || "")
+  /Duplizierte/.test(EINTRAEGE[1]?.titel || "")
+  && /zugeordnete/.test(EINTRAEGE[1]?.titel || "")
+  && /sofort sichtbar/.test(EINTRAEGE[1]?.titel || "")
+  && /Geschossplan/.test(EINTRAEGE[1]?.titel || "")
+  && /unverortet/.test(EINTRAEGE[1]?.titel || "")
   // Es ist KEIN Werkzeug und KEINE Bemassung entstanden.
-  && !/Werkzeug|Bemaßung|bemaßt/i.test(EINTRAEGE[0]?.titel || ""));
+  && !/Werkzeug|Bemaßung|bemaßt/i.test(EINTRAEGE[1]?.titel || ""));
 ok("die Initialpositions-Testbitte benennt Ort, Versatz, Unbemasstheit, Ruecknahme und den zweiten Weg",
-  /Geschosseditor/.test(EINTRAEGE[0]?.testbitte || "")
-  && /duplizieren/.test(EINTRAEGE[0]?.testbitte || "")
-  && /250 mm/.test(EINTRAEGE[0]?.testbitte || "")
-  && /unbemaßt/.test(EINTRAEGE[0]?.testbitte || "")
-  && /frei verschiebbar/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Strg\+Z/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Geschossursprung/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Geschosseditor/.test(EINTRAEGE[1]?.testbitte || "")
+  && /duplizieren/.test(EINTRAEGE[1]?.testbitte || "")
+  && /250 mm/.test(EINTRAEGE[1]?.testbitte || "")
+  && /unbemaßt/.test(EINTRAEGE[1]?.testbitte || "")
+  && /frei verschiebbar/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Strg\+Z/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Modul 0/.test(EINTRAEGE[1]?.testbitte || "")
+  && /Geschossursprung/.test(EINTRAEGE[1]?.testbitte || ""));
 // Genau EIN Eintrag fuer #88: beide Wege sind EIN Nutzerergebnis, kein zweites.
 ok("genau ein Eintrag fuer Issue 88 (Initialposition)",
   EINTRAEGE.filter(e => e.issue === 88).length === 1);
@@ -90,66 +117,66 @@ ok("genau ein Eintrag fuer Issue 88 (Initialposition)",
 // Behauptet werden darf kein zweiter Loeschweg und keine Gebaeude-Bedienung — die gibt
 // es in Modul 0 nicht ([L-6]).
 ok("das wahlweise Mitloeschen (Issue 85) folgt direkt danach",
-  EINTRAEGE[1]?.id === "chg-20260817-01" && EINTRAEGE[1]?.issue === 85
-  && EINTRAEGE[1]?.typ === "feature" && EINTRAEGE[1]?.datum === "2026-08-17");
+  EINTRAEGE[2]?.id === "chg-20260817-01" && EINTRAEGE[2]?.issue === 85
+  && EINTRAEGE[2]?.typ === "feature" && EINTRAEGE[2]?.datum === "2026-08-17");
 ok("der Mitloesch-Eintrag benennt Ort, Nachfrage und Gegenstand aussagewahr",
-  /Löschen/.test(EINTRAEGE[1]?.titel || "")
-  && /Geschoss/.test(EINTRAEGE[1]?.titel || "")
-  && /Projekt/.test(EINTRAEGE[1]?.titel || "")
-  && /zugeordneten Wandelemente/.test(EINTRAEGE[1]?.titel || "")
-  && /Nachfrage/.test(EINTRAEGE[1]?.titel || "")
+  /Löschen/.test(EINTRAEGE[2]?.titel || "")
+  && /Geschoss/.test(EINTRAEGE[2]?.titel || "")
+  && /Projekt/.test(EINTRAEGE[2]?.titel || "")
+  && /zugeordneten Wandelemente/.test(EINTRAEGE[2]?.titel || "")
+  && /Nachfrage/.test(EINTRAEGE[2]?.titel || "")
   // Ohne Nachfrage passiert nichts — „automatisch“ waere die Unwahrheit.
-  && !/automatisch|immer/i.test(EINTRAEGE[1]?.titel || ""));
+  && !/automatisch|immer/i.test(EINTRAEGE[2]?.titel || ""));
 ok("die Mitloesch-Testbitte benennt Ort, beide Abfragen, die Anzahl und beide Antworten",
-  /Modul 0/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Sicherheitsabfrage/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Anzahl/.test(EINTRAEGE[1]?.testbitte || "")
-  && /Abbrechen lässt sie erhalten/.test(EINTRAEGE[1]?.testbitte || "")
-  && /OK entfernt sie/.test(EINTRAEGE[1]?.testbitte || "")
-  && /beide Zahlen/.test(EINTRAEGE[1]?.testbitte || ""));
+  /Modul 0/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Sicherheitsabfrage/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Anzahl/.test(EINTRAEGE[2]?.testbitte || "")
+  && /Abbrechen lässt sie erhalten/.test(EINTRAEGE[2]?.testbitte || "")
+  && /OK entfernt sie/.test(EINTRAEGE[2]?.testbitte || "")
+  && /beide Zahlen/.test(EINTRAEGE[2]?.testbitte || ""));
 // Davor der DETERMINISTISCHE NACHWEIS, dass die Verzahnungsbewertung Projektarchiv und
 // Duplizieren uebersteht — sie entsteht bei jeder Ausgabe frisch ([K-13.1]). Aussagewahr
 // heisst dort: es wurde NICHTS an der Bewertung geaendert und kein neues Bedienelement
 // gebaut; entstanden sind Nachweis und Doku. Deshalb „intern“ — ein „feature“ waere
 // dort eine Uebertreibung ([P-9]).
 ok("der Verzahnungs-Nachweis (Issue 83) folgt direkt danach",
-  EINTRAEGE[2]?.id === "chg-20260816-12" && EINTRAEGE[2]?.issue === 83
-  && EINTRAEGE[2]?.typ === "intern" && EINTRAEGE[2]?.datum === "2026-08-16");
+  EINTRAEGE[3]?.id === "chg-20260816-12" && EINTRAEGE[3]?.issue === 83
+  && EINTRAEGE[3]?.typ === "intern" && EINTRAEGE[3]?.datum === "2026-08-16");
 ok("der Nachweis-Eintrag benennt beide Wege und verspricht keine neue Funktion",
-  /Verzahnungsbewertung/.test(EINTRAEGE[2]?.titel || "")
-  && /Projektarchiv/.test(EINTRAEGE[2]?.titel || "")
-  && /Duplizieren/.test(EINTRAEGE[2]?.titel || "")
-  && /unverändert/.test(EINTRAEGE[2]?.titel || "")
+  /Verzahnungsbewertung/.test(EINTRAEGE[3]?.titel || "")
+  && /Projektarchiv/.test(EINTRAEGE[3]?.titel || "")
+  && /Duplizieren/.test(EINTRAEGE[3]?.titel || "")
+  && /unverändert/.test(EINTRAEGE[3]?.titel || "")
   // Es ist KEIN neues Bedienelement und keine geaenderte Darstellung entstanden.
-  && !/neu|wählbar|Schalter/i.test(EINTRAEGE[2]?.titel || ""));
+  && !/neu|wählbar|Schalter/i.test(EINTRAEGE[3]?.titel || ""));
 ok("die Nachweis-Testbitte benennt Export, leeren Browser, Ort und die unveraenderte Bewertung",
-  /exportieren/.test(EINTRAEGE[2]?.testbitte || "")
-  && /leeren Browser/.test(EINTRAEGE[2]?.testbitte || "")
-  && /importieren/.test(EINTRAEGE[2]?.testbitte || "")
-  && /Modul 9/.test(EINTRAEGE[2]?.testbitte || "")
-  && /statt einer Kollision/.test(EINTRAEGE[2]?.testbitte || "")
-  && /nichts geändert/.test(EINTRAEGE[2]?.testbitte || ""));
+  /exportieren/.test(EINTRAEGE[3]?.testbitte || "")
+  && /leeren Browser/.test(EINTRAEGE[3]?.testbitte || "")
+  && /importieren/.test(EINTRAEGE[3]?.testbitte || "")
+  && /Modul 9/.test(EINTRAEGE[3]?.testbitte || "")
+  && /statt einer Kollision/.test(EINTRAEGE[3]?.testbitte || "")
+  && /nichts geändert/.test(EINTRAEGE[3]?.testbitte || ""));
 // Davor ergaenzte der Kommentar die Mengenuebersteuerung. Aussagewahr heisst dort:
 // er steht NEBEN Menge und Preis und aendert die Rechnung NICHT — kein Export, keine
 // Summe, keine Menge. Genau das darf versprochen werden, mehr nicht ([P-20]).
 ok("der Kommentar je Stuecklistenposition (Issue 81) folgt direkt danach",
-  EINTRAEGE[3]?.id === "chg-20260816-11" && EINTRAEGE[3]?.issue === 81
-  && EINTRAEGE[3]?.typ === "feature" && EINTRAEGE[3]?.datum === "2026-08-16");
+  EINTRAEGE[4]?.id === "chg-20260816-11" && EINTRAEGE[4]?.issue === 81
+  && EINTRAEGE[4]?.typ === "feature" && EINTRAEGE[4]?.datum === "2026-08-16");
 ok("der Kommentar-Eintrag benennt Ort, Nachbarschaft und die unveraenderte Rechnung aussagewahr",
-  /Kommentar/.test(EINTRAEGE[3]?.titel || "")
-  && /Stücklistenposition/.test(EINTRAEGE[3]?.titel || "")
-  && /Modul 4/.test(EINTRAEGE[3]?.titel || "")
-  && /Menge und Preis/.test(EINTRAEGE[3]?.titel || "")
-  && /ohne die Rechnung zu ändern/.test(EINTRAEGE[3]?.titel || "")
+  /Kommentar/.test(EINTRAEGE[4]?.titel || "")
+  && /Stücklistenposition/.test(EINTRAEGE[4]?.titel || "")
+  && /Modul 4/.test(EINTRAEGE[4]?.titel || "")
+  && /Menge und Preis/.test(EINTRAEGE[4]?.titel || "")
+  && /ohne die Rechnung zu ändern/.test(EINTRAEGE[4]?.titel || "")
   // Der Kommentar steht in KEINER Exportdatei — das darf der Titel nicht andeuten.
-  && !/Export|Datei/.test(EINTRAEGE[3]?.titel || ""));
+  && !/Export|Datei/.test(EINTRAEGE[4]?.titel || ""));
 ok("die Kommentar-Testbitte benennt Ort, Position, Persistenz, Ruecknahme und die erhaltene Rechnung",
-  /Modul 4/.test(EINTRAEGE[3]?.testbitte || "")
-  && /an genau dieser/.test(EINTRAEGE[3]?.testbitte || "")
-  && /Neuladen/.test(EINTRAEGE[3]?.testbitte || "")
-  && /einzeln wieder entfernen/.test(EINTRAEGE[3]?.testbitte || "")
-  && /Mengen, Preise und Summe/.test(EINTRAEGE[3]?.testbitte || "")
-  && /unverändert/.test(EINTRAEGE[3]?.testbitte || ""));
+  /Modul 4/.test(EINTRAEGE[4]?.testbitte || "")
+  && /an genau dieser/.test(EINTRAEGE[4]?.testbitte || "")
+  && /Neuladen/.test(EINTRAEGE[4]?.testbitte || "")
+  && /einzeln wieder entfernen/.test(EINTRAEGE[4]?.testbitte || "")
+  && /Mengen, Preise und Summe/.test(EINTRAEGE[4]?.testbitte || "")
+  && /unverändert/.test(EINTRAEGE[4]?.testbitte || ""));
 // Genau EIN Eintrag fuer #85: das Mitloeschen ist ein Nutzerergebnis, kein zweites.
 ok("genau ein Eintrag fuer Issue 85 (Mitloeschen)",
   EINTRAEGE.filter(e => e.issue === 85).length === 1);

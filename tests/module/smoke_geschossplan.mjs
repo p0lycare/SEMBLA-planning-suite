@@ -3756,6 +3756,237 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 }
 
+// --- #90: Verzahnungsbereiche sind im Geschosseditor als Draufsicht sichtbar
+// Realer Pfad: zwei Waende werden GEZEICHNET und verortet; an einer davon werden
+// anschliessend Verzahnungsbereiche gesetzt — genau so, wie Modul 1 sie schreibt
+// (buildWall, [G-10]). Geprueft wird die ECHTE Zeichenflaeche (`GP.svg`) auf
+// Vorhandensein, Anzahl und WELTKOORDINATEN der Bereichsflaechen — und vor allem,
+// was NICHT passiert: unveraenderter Wandknoten, unveraendertes Loeserergebnis,
+// kein Bedienelement, kein Schreibweg.
+{
+  const prj90 = store.fuegeProjektHinzu('#90-Pruefprojekt', { geschoss: 'EG90', hoehe_mm: 2600 });
+  const gs90 = MAPPE.alleGeschosse(prj90)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs90);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const neueste90 = () => store.listeElemente()[0];
+  // A laeuft in x ueber die Rasterfelder 0…15 (Rechteck 0/0 … 2000/125),
+  // B kreuzt in y weit daneben (Rechteck 6000/0 … 6125/2000) — sie ueberlagern
+  // sich NICHT, damit die Kollisions-/Verzahnungsbewertung des Loesers
+  // nachweislich unberuehrt bleibt.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 2000, y: 60 });          const idA90 = neueste90().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 6060, y: 0 }, { x: 6070, y: 2000 });     const idB90 = neueste90().id;
+  // Eine eingetragene, aber UNVERORTETE Wand — mit Bereich, aber ohne Lage.
+  const idFrei90 = store.speichere('Frei 90',
+    buildWall('Frei 90', 2000, 2600, [], null, null, [], [{ g0: 2, g1: 3, start_parity: 0 }]));
+  store.verorteWand(idFrei90, gs90, { name: 'Frei 90', lage: null });
+  // Ein VERORTETER verwaister Eintrag ([L-4]) — kein Wandelement, also auch keine
+  // Bereiche, die man zeigen koennte.
+  store.aendereMappe(m => MAPPE.setzeWand(m, gs90, { id: 'wnd-verwaist-90', name: 'Verwaist 90',
+    lage: { start_mm: { x: 0, y: 4062.5 }, richtung: 'x', orientierung: '+x', laenge_grid: 8 } }));
+  await warte();
+  GP.zeigeAlles();
+
+  /** Die ganze Gruppe einer Wand im echten Editor-SVG. */
+  const gruppe90 = (id) => (GP.svg.split('<g class="wand')
+    .find(s => s.includes(`data-wand="${id}"`)) || '');
+  /** Alle Verzahnungsgruppen DARIN — je Bereich eine, ohne eigenes data-wand. */
+  const verzGruppen = (id) =>
+    (gruppe90(id).match(/<g class="verzahnung">[\s\S]*?<\/g>/g) || []);
+  /** Die Weltkoordinaten der Flaeche einer Verzahnungsgruppe. */
+  const verzRechteck = (s) => {
+    const m = /<rect class="verzahnflaeche" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/
+      .exec(s);
+    return m ? { x: Number(m[1]), y: Number(m[2]), b: Number(m[3]), h: Number(m[4]) } : null;
+  };
+  /** Der WANDknoten selbst — Rechteck, Mittellinie und V/R-Kanten. */
+  const wandKnoten90 = (id) => gruppe90(id).split('<g class="brand"')[0];
+  /** Alle Farbangaben entfernen — bleibt die Unterscheidung dann noch? */
+  const ohneFarbe90 = (s) => s.replace(/(?:fill|stroke)="#[0-9a-fA-F]{3,8}"/g, '');
+  /** Die Verzahnungsbereiche einer Wand setzen — der Weg von Modul 1 ([G-10]). */
+  const setzeVerzahnung90 = (id, interlocks) => {
+    const el = store.holeElement(id);
+    store.speichere(el.name, buildWall(el.name, el.wandelement.length_mm,
+      el.wandelement.height_mm, [], null, null, [], interlocks), id);
+  };
+  const rechteck90 = (id) => CON.wandRechteck(MAPPE.findeWand(store.holeMappe(), id).wand.lage,
+    GP.loesen().positionen[id]);
+
+  ok('#90 Pruefaufbau: zwei verortete Waende ohne Bereiche, eine unverortete mit Bereich, '
+    + 'ein verwaister Eintrag',
+    rechteck90(idA90).x_min === 0 && rechteck90(idA90).y_min === 0
+    && rechteck90(idB90).x_min === 6000 && rechteck90(idB90).y_min === 0
+    && (store.holeElement(idA90).wandelement.interlocks || []).length === 0
+    && store.holeElement(idFrei90).wandelement.interlocks.length === 1
+    && MAPPE.findeWand(store.holeMappe(), idFrei90).wand.lage === null
+    && !!MAPPE.findeWand(store.holeMappe(), 'wnd-verwaist-90'));
+
+  // Stand VOR den Bereichen — daran wird gemessen, dass sich am Wandknoten, am
+  // Loeser und an den Wandlagen nichts aendert.
+  const knotenVor90 = wandKnoten90(idA90);
+  const loeserVor90 = JSON.stringify(GP.loesen());
+  const mappeVor90 = localStorage.getItem('sembla:projekte');
+  ok('#90 Pruefaufbau: ohne Bereiche zeichnet der Editor keine Verzahnungsflaeche',
+    verzGruppen(idA90).length === 0 && !/class="verzahnung"/.test(GP.svg)
+    && !/gp-ilock-gitter/.test(GP.svg)
+    && /class="mittellinie"/.test(knotenVor90));
+
+  // (a) Akzeptanztest 1 — ein Bereich ⇒ GENAU EINE Gruppe, Laengskoordinaten
+  //     entsprechen g0 und g1 in Welt-Millimetern.
+  setzeVerzahnung90(idA90, [{ g0: 4, g1: 5, start_parity: 0 }]);
+  await warte();
+  GP.render();
+  {
+    const g = verzGruppen(idA90);
+    const r = g.length ? verzRechteck(g[0]) : null;
+    const rw = rechteck90(idA90);
+    ok('#90 (Muss 1) ein Verzahnungsbereich ergibt GENAU EINE Gruppe class="verzahnung" '
+      + 'in der Wandgruppe',
+      g.length === 1 && !!r);
+    ok('#90 (Muss 1) ihre Laengskoordinaten entsprechen g0 und g1 in Welt-Millimetern',
+      !!r && r.x === rw.x_min + 4 * CON.GRID_MM && r.b === 1 * CON.GRID_MM);
+    ok('#90 (Muss 1) quer reicht die Flaeche ueber die volle Wandbreite',
+      !!r && r.y === rw.y_min && r.h === rw.y_max - rw.y_min);
+    ok('#90 (Muss 2) die Gruppe traegt KEIN eigenes data-wand — Auswahl und Treffersuche '
+      + 'laufen weiter ueber die Wandgruppe',
+      g.length === 1 && !/data-wand/.test(g[0])
+      && (GP.svg.match(new RegExp(`data-wand="${idA90}"`, 'g')) || []).length === 1);
+    ok('#90 (Muss 2) sie steht NACH Wandrechteck, Mittellinie und V/R-Kanten',
+      gruppe90(idA90).indexOf('<g class="verzahnung">') > gruppe90(idA90).indexOf('class="mittellinie"')
+      && gruppe90(idA90).indexOf('<g class="verzahnung">')
+        > gruppe90(idA90).indexOf('class="seite seite-vorder"'));
+  }
+
+  // (b) Muss 3 — schwarz-weiss von der Brandschutzschraffur unterscheidbar.
+  {
+    const g = verzGruppen(idA90)[0] || '';
+    ok('#90 (Muss 3) getragen wird die Flaeche von einem EIGENEN Muster und einer '
+      + 'eigenen gestrichelten Umrandung',
+      /fill="url\(#gp-ilock-gitter\)"/.test(g) && /stroke-dasharray="/.test(g)
+      && (GP.svg.match(/<pattern id="gp-ilock-gitter"/g) || []).length === 1
+      && GP.svg.indexOf('<pattern id="gp-ilock-gitter"') < GP.svg.indexOf('<g class="wand'));
+    ok('#90 (Muss 3) ohne jede Farbangabe bleibt sie von der F30-Schraffur verschieden',
+      ohneFarbe90(g) !== '' && !/url\(#gp-brand-f30\)/.test(ohneFarbe90(g))
+      && /url\(#gp-ilock-gitter\)/.test(ohneFarbe90(g))
+      // … und die beiden Musterdefinitionen selbst sind es auch (Gitter vs. 45°-Diagonale).
+      && !/patternTransform/.test(
+        (GP.svg.split('<pattern id="gp-ilock-gitter"')[1] || '').split('</pattern>')[0]));
+    ok('#90 (Muss 3) die Zustandsfarbe der Wand nach [K-8] bleibt sichtbar',
+      wandKnoten90(idA90).includes(
+        CON.FARBEN[CON.zustand(idA90, GP.loesen(), { aktiv: GP.zustand.aktiv })]));
+  }
+
+  // (c) Muss 4 — die Legende benennt die Flaeche in WORTEN.
+  {
+    const legende90 = (html.split('<div class="legende">')[1] || '').split('</div>')[0];
+    ok('#90 (Muss 4) die Legende der Zeichenflaeche benennt den Verzahnungsbereich in Worten',
+      /Verzahnungsbereich/.test(legende90) && /gitterschraffiert/.test(legende90)
+      && /gestrichelter Umrandung/.test(legende90));
+    ok('#90 (Muss 4) sie sagt zugleich, dass er in Modul 1 festgelegt wird',
+      /Modul 1/.test((legende90.split('Verzahnungsbereich')[0] || '')
+        + (legende90.split('Verzahnungsbereich')[1] || '')));
+  }
+
+  // (d) Akzeptanztest 2 — zwei Bereiche ⇒ zwei Flaechen; ohne Bereich, unverortet
+  //     und verwaist ⇒ keine.
+  setzeVerzahnung90(idA90, [{ g0: 4, g1: 5, start_parity: 0 },
+                            { g0: 10, g1: 12, start_parity: 1 }]);
+  await warte();
+  GP.render();
+  {
+    const g = verzGruppen(idA90).map(verzRechteck);
+    const rw = rechteck90(idA90);
+    ok('#90 (Muss 1) zwei Bereiche ergeben zwei getrennte Flaechen an ihren Rasterstellen',
+      g.length === 2 && g.every(Boolean)
+      && g[0].x === rw.x_min + 4 * CON.GRID_MM && g[0].b === CON.GRID_MM
+      && g[1].x === rw.x_min + 10 * CON.GRID_MM && g[1].b === 2 * CON.GRID_MM);
+  }
+  ok('#90 (Muss 5) eine Wand OHNE Bereiche erzeugt keine Verzahnungsgruppe',
+    verzGruppen(idB90).length === 0);
+  ok('#90 (Muss 5) eine unverortete Wand mit Bereich wird gar nicht gezeichnet',
+    !GP.svg.includes(`data-wand="${idFrei90}"`) && verzGruppen(idFrei90).length === 0);
+  ok('#90 (Muss 5) ein verwaister Eintrag wird gezeichnet, bleibt aber ohne Verzahnungsflaeche',
+    GP.svg.includes('data-wand="wnd-verwaist-90"')
+    && verzGruppen('wnd-verwaist-90').length === 0);
+
+  // (e) Akzeptanztest 3/4 — Wandknoten zeichengleich, Loeserergebnis unveraendert.
+  ok('#90 (Akzeptanz 3) der Wandknoten vor der Verzahnungsgruppe ist zeichengleich mit '
+    + 'dem Knoten derselben Wand ohne Bereiche',
+    wandKnoten90(idA90) === knotenVor90 && knotenVor90 !== '');
+  ok('#90 (Akzeptanz 4) Loeserergebnis, Wandlagen, Bemassungen und Kollisionsmeldung sind '
+    + 'mit und ohne Bereiche identisch',
+    JSON.stringify(GP.loesen()) === loeserVor90
+    && localStorage.getItem('sembla:projekte') === mappeVor90
+    && GP.loesen().kollisionen.length === 0 && GP.loesen().verzahnungen.length === 0);
+
+  // (f) y-Wand: der Bereich laeuft entlang der Wandrichtung, quer bleibt die Breite.
+  setzeVerzahnung90(idB90, [{ g0: 2, g1: 3, start_parity: 1 }]);
+  await warte();
+  GP.render();
+  {
+    const r = verzRechteck(verzGruppen(idB90)[0] || '');
+    const rw = rechteck90(idB90);
+    ok('#90 bei einer y-Wand laeuft der Bereich in y — quer bleibt es die Wandbreite',
+      !!r && r.y === rw.y_min + 2 * CON.GRID_MM && r.h === CON.GRID_MM
+      && r.x === rw.x_min && r.b === rw.x_max - rw.x_min);
+  }
+
+  // (g) Grenzfall aus einem ALTBESTAND: ein Bereich jenseits der Wandlaenge und ein
+  //     krummer Bereich bekommen keine Flaeche — es wird weder eine erfunden noch
+  //     etwas still auf die Wand geklemmt. Ueber den Modul-1-Weg entsteht so etwas
+  //     gar nicht (der Kern verwirft es nach [G-12] und meldet es); roh gespeichert
+  //     kann es aber im Bestand stehen, und dann liest der Editor defensiv.
+  {
+    const elB = store.holeElement(idB90);
+    store.speichere(elB.name, { ...elB.wandelement,
+      interlocks: [{ g0: 20, g1: 21, start_parity: 0 }, { g0: 2, g1: 2.5, start_parity: 0 },
+                   { g0: 4, g1: 5, start_parity: 7 }] }, idB90);
+    await warte();
+    GP.render();
+    ok('#90 ein Bereich jenseits der Wandlaenge oder mit krummen Grenzen wird NICHT gezeichnet',
+      verzGruppen(idB90).length === 0
+      && store.holeElement(idB90).wandelement.interlocks.length === 3);
+    ok('#90 dabei wird nichts zurueckgeschrieben — der gespeicherte Wert bleibt roh',
+      store.holeElement(idB90).wandelement.interlocks[0].g0 === 20
+      && store.holeElement(idB90).wandelement.interlocks[1].g1 === 2.5);
+  }
+  setzeVerzahnung90(idB90, []);
+  await warte();
+  GP.render();
+  ok('#90 nach dem Entfernen der Bereiche ist die Flaeche wieder weg',
+    verzGruppen(idB90).length === 0);
+
+  // (h) Must-not — kein Schreibweg, kein Rueckgaengig-Schritt, kein Formatsprung.
+  {
+    const vorM90 = localStorage.getItem('sembla:projekte');
+    const vorE90 = localStorage.getItem('sembla:elemente');
+    const vorU90 = GP.undoStand.undo;
+    GP.render(); GP.render();
+    ok('#90 (must-not) das blosse Zeichnen schreibt weder Mappe noch Wandspeicher '
+      + 'und bucht nichts',
+      localStorage.getItem('sembla:projekte') === vorM90
+      && localStorage.getItem('sembla:elemente') === vorE90
+      && GP.undoStand.undo === vorU90);
+  }
+  ok('#90 (must-not) nichts von der Darstellung steht in der Projektmappe (kein neues Feld)',
+    // „Verzahnung A/B" sind Wandnamen aus #83 — gesucht sind Felder, nicht Namen.
+    !/interlock|start_parity|verzahnflaeche|verzahnungsbereich/i
+      .test(localStorage.getItem('sembla:projekte')));
+  ok('#90 (must-not) normalisiert wird ausschliesslich mit der kanonischen Lesung des Kerns — '
+    + 'keine zweite Normalisierung, keine zweite Gueltigkeitspruefung',
+    // GENAU eine Lesestelle der Rohdaten, und die laeuft durch sembla-constraints.js.
+    (html.match(/CON\.verzahnungsBereiche\(roh\)/g) || []).length === 1
+    // Die Startparitaet wird hier nirgends ausgewertet — sie gehoert dem Kern ([K-13.1]).
+    && !/start_parity\s*(?:===|!==|==|<|>)/.test(html));
+  ok('#90 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);
