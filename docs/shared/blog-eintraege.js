@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260817-01",
+    datum: "2026-08-17",
+    typ: "feature",
+    issue: 85,
+    titel: "Beim Löschen von Geschoss oder Projekt lassen sich die zugeordneten Wandelemente auf Nachfrage mitlöschen",
+    testbitte: "In Modul 0 ein Geschoss mit zwei Wänden löschen: Nach der Sicherheitsabfrage kommt "
+      + "die Frage nach den Wandelementen samt Anzahl. Abbrechen lässt sie erhalten, OK entfernt sie, "
+      + "und die Meldung nennt beide Zahlen.",
+  },
+  {
     id: "chg-20260816-12",
     datum: "2026-08-16",
     typ: "intern",

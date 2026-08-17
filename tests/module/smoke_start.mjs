@@ -69,7 +69,18 @@ const document = {
 globalThis.document = document;
 globalThis.prompt = () => null;
 let confirmAntwort = false;                       // vom Test gesteuert (Loeschen/Ersetzen)
-globalThis.confirm = () => confirmAntwort;
+// Manche Bedienwege stellen ZWEI getrennte Abfragen hintereinander — seit #85 das
+// Loeschen einer Struktur: erst die Sicherheitsabfrage, dann die Frage nach den
+// zugeordneten Wandelementen. `confirmFolge` beantwortet sie EINZELN und in genau
+// dieser Reihenfolge; ist die Folge leer, gilt weiter `confirmAntwort`. Der Test
+// sagt damit nie pauschal „Ja zu allem“, und die geleerte Folge belegt zugleich,
+// WIE VIELE Abfragen wirklich kamen. `confirmTexte` haelt ihren Wortlaut fest.
+let confirmFolge = [];
+const confirmTexte = [];
+globalThis.confirm = (t) => {
+  confirmTexte.push(String(t == null ? '' : t));
+  return confirmFolge.length ? confirmFolge.shift() : confirmAntwort;
+};
 
 /**
  * Minimaler IndexedDB-Ersatz fuer die Plan-Ablage ([L-8]). Bildet genau das ab, was
@@ -1519,14 +1530,25 @@ globalThis.fetch = echtesFetch;
     return hier !== dort;
   })());
 
-  // 8j) Projekt loeschen: Struktur weg, Wandelemente bleiben ([L-4]/[L-10]) -
+  // 8j) Projekt loeschen: Struktur weg — die zugeordneten Wandelemente gehen NUR
+  //     auf ausdrueckliche Nachfrage mit ([L-4], #85). Beide Antworten werden hier
+  //     einzeln gefahren; die zweite Abfrage wird nie pauschal mitbejaht.
+  confirmFolge = [];
   confirmAntwort = false;
   const anzahlPrjVor = projekte().length;
   baum('prj-loeschen', pB.projekt.id);
   ok('Loeschen ohne Bestaetigung passiert nicht', projekte().length === anzahlPrjVor);
-  confirmAntwort = true;
+
+  // (i) Sicherheitsabfrage JA, Zusatzfrage NEIN — das bisher zugesicherte Verhalten
   const elementeVor = store.listeElemente().length;
+  confirmTexte.length = 0;
+  confirmFolge = [true, false];
   baum('prj-loeschen', pB.projekt.id);
+  ok('#85 es kommen GENAU ZWEI getrennte Abfragen — Struktur und Wandelemente',
+    confirmFolge.length === 0 && confirmTexte.length === 2);
+  ok('#85 die Zusatzfrage nennt Anzahl und Namen VOR dem Loeschen',
+    /1 zugeordnete\(s\) Wandelement\(e\)/.test(confirmTexte[1])
+    && /Wand Süd 1/.test(confirmTexte[1]));
   ok('[L-4] Projekt entfernt, Wandelemente bleiben erhalten',
     projekte().length === anzahlPrjVor - 1 && store.listeElemente().length === elementeVor
     && store.holeElement(idB) !== null);
@@ -1535,7 +1557,25 @@ globalThis.fetch = echtesFetch;
   ok('[L-10] die Zeiger des geloeschten Projekts sind aufgehoben',
     store.aktivesProjektId() === null && store.aktivesGeschossId() === null);
   ok('Loeschmeldung nennt den Verbleib der Wandelemente',
-    /nicht gelöscht/.test(trMsgTxt()) && !trFehler());
+    /0 Wandelement\(e\) entfernt, 1 erhalten/.test(trMsgTxt())
+    && /nicht eingetragen/.test(trMsgTxt()) && !trFehler());
+
+  // (ii) Beide Abfragen JA — die zugeordnete Wand geht mit, fremde bleiben (#85)
+  const pC = await projektAnlegen('Mitloeschprojekt #85');
+  const idC = wandAnlegen(store.aktivesGeschossId(), { name: 'Wand C1' });
+  const elementeVorC = store.listeElemente().length;
+  confirmTexte.length = 0;
+  confirmFolge = [true, true];
+  baum('prj-loeschen', pC.projekt.id);
+  ok('#85 auch hier zwei getrennte Abfragen', confirmFolge.length === 0 && confirmTexte.length === 2);
+  ok('#85 Zusatzfrage bejaht: das zugeordnete Wandelement ist mit entfernt',
+    store.holeElement(idC) === null && store.listeElemente().length === elementeVorC - 1
+    && store.projektMappe(pC.projekt.id) === null);
+  ok('#85 kein Wandelement ausserhalb des geloeschten Projekts',
+    store.holeElement(idB) !== null && store.holeElement(idOhneWind) !== null);
+  ok('#85 die Meldung bilanziert entfernte und erhaltene Wandelemente',
+    /1 Wandelement\(e\) entfernt, 0 erhalten/.test(trMsgTxt()) && !trFehler());
+  confirmFolge = [];
 
   // 8k) Mappen-Datei: Sichern und Wiedereinlesen ----------------------------
   store.setzeAktivesProjekt(prj0.projekt.id);
@@ -1743,12 +1783,22 @@ globalThis.fetch = echtesFetch;
   store.setzeGeschossPlan(gsProbe, { datei: 'probe.png', typ: 'image/png',
     breite_px: 100, hoehe_px: 100, mm_je_pixel: null, versatz_x_mm: 0, versatz_y_mm: 0 });
   ok('Probegeschoss hat ein Planbild', !!(await PLAN.holePlan(gsProbe)));
-  confirmAntwort = true;
+  // Das Probegeschoss hat KEINE Wand: die Zusatzfrage aus #85 entfaellt dann ganz —
+  // gefragt wird nur, was auch etwas zu entscheiden hat. Beantwortet wird ausdruecklich
+  // genau eine Abfrage; eine zweite wuerde die Folge nicht leeren.
+  confirmTexte.length = 0;
+  confirmFolge = [true];
   baum('gs-loeschen', gsProbe);
   await new Promise(r => setTimeout(r, 0));
+  ok('#85 ohne zugeordnetes Wandelement wird nur EINMAL gefragt',
+    confirmFolge.length === 0 && confirmTexte.length === 1);
   ok('[L-8] mit dem Geschoss verschwindet auch sein Planbild',
     (await PLAN.holePlan(gsProbe)) === null && !mappeSlot().includes(gsProbe));
-  ok('Loeschmeldung nennt den mitentfernten Plan', /Plan wurde mit entfernt/.test(trMsgTxt()));
+  ok('Loeschmeldung nennt den mitentfernten Plan',
+    /hinterlegte\(r\) Geschossplan\/-pläne wurden mit entfernt/.test(trMsgTxt())
+    && /\[L-8\]/.test(trMsgTxt()));
+  ok('#85 die Bilanz nennt auch hier beide Zahlen (0 entfernt, 0 erhalten)',
+    /0 Wandelement\(e\) entfernt, 0 erhalten/.test(trMsgTxt()) && !trFehler());
 }
 
 // --- 11) Vollstaendiges Projektarchiv ([L-13], Etappe C5) ------------------

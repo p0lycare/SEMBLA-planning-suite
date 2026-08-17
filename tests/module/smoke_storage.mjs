@@ -1062,5 +1062,195 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   for (const x of [idIl, idIlImp, idIlKopie, idOhneIl, idOhneIlImp, idAltOhneIl]) store.loesche(x);
 }
 
+// 18) #85: Struktur loeschen — wahlweise MIT den zugeordneten Wandelementen -
+// Geprueft wird der ECHTE Pfad: Projekt, zwei Geschosse und drei Wandelemente ueber
+// die regulaeren Funktionen anlegen und verorten, daneben ein FREMDES Projekt mit
+// einer Wand, die nie angefasst werden darf. Dann Geschoss, Gebaeude und Projekt je
+// einmal mit und einmal ohne Mitloeschen entfernen und Elementliste,
+// Mappenreferenzen und Rueckgabemeldung pruefen.
+{
+  const PM = await import("../../docs/shared/sembla-projektmappe.js");
+
+  /** Ausgangslage: „Löschprojekt“ (EG: zwei Wände, OG: eine Wand) + „Fremdprojekt“. */
+  function baue() {
+    localStorage.m.clear();
+    const p = store.fuegeProjektHinzu("Löschprojekt", { geschoss: "EG", hoehe_mm: 2600 });
+    const eg = PM.alleGeschosse(p)[0].geschoss.id;
+    const geb = p.gebaeude[0].id;
+    let og = null;
+    store.aendereMappe((m) => {
+      const r = PM.fuegeGeschossHinzu(m, geb, "OG", 2600);
+      og = r.id;
+      return r.mappe;
+    });
+    const w1 = store.speichere("Wand 1", buildWall("Wand 1", 2000, 2600, []));
+    const w2 = store.speichere("Wand 2", buildWall("Wand 2", 1000, 2600, []));
+    const w3 = store.speichere("Wand 3", buildWall("Wand 3", 1500, 2600, []));
+    store.verorteWand(w1, eg, { name: "Wand 1",
+      lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 16 } });
+    store.verorteWand(w2, eg, { name: "Wand 2", lage: null });
+    store.verorteWand(w3, og, { name: "Wand 3", lage: null });
+    // Das fremde Projekt entsteht ZULETZT (es wird dabei aktiv) — seine Wand ist die
+    // Gegenprobe fuer „nichts ausserhalb der geloeschten Struktur“.
+    const pf = store.fuegeProjektHinzu("Fremdprojekt", { geschoss: "Fremd-EG" });
+    const gsF = PM.alleGeschosse(pf)[0].geschoss.id;
+    const wF = store.speichere("Fremdwand", buildWall("Fremdwand", 3000, 2600, []));
+    store.verorteWand(wF, gsF, { name: "Fremdwand", lage: null });
+    return { p: p.projekt.id, geb, eg, og, w1, w2, w3, wF, fremd: pf.projekt.id };
+  }
+  const geschossWeg = (pid, gsId) => {
+    const m = store.projektMappe(pid);
+    return !!m && PM.findeGeschoss(m, gsId) === null;
+  };
+
+  // 18a) Vorschau: die EINE Quelle der Anzahl — sie schreibt nichts ------------
+  {
+    const f = baue();
+    const vorher = localStorage.getItem("sembla:elemente");
+    const info = store.strukturWaende("geschoss", f.eg);
+    t("[#85] Vorschau zaehlt genau die Waende dieses Geschosses",
+      info.waende.length === 2 && info.vorhanden.length === 2 && info.verwaist.length === 0
+      && info.name === "EG" && info.projekt === "Löschprojekt");
+    t("[#85] Vorschau nennt die Geschosse (fuer die Planbild-Aufraeumung, [L-8])",
+      info.geschosse.length === 1 && info.geschosse[0].id === f.eg && info.geschosse[0].hatPlan === false);
+    t("[#85] Vorschau ueber das Projekt umfasst beide Geschosse und alle drei Waende",
+      store.strukturWaende("projekt", f.p).waende.length === 3
+      && store.strukturWaende("projekt", f.p).geschosse.length === 2);
+    t("[#85] Vorschau ueber das Gebaeude ebenso",
+      store.strukturWaende("gebaeude", f.geb).waende.length === 3);
+    t("[#85] die Vorschau schreibt nichts", localStorage.getItem("sembla:elemente") === vorher);
+    t("[#85] unbekannte Kennung -> null, kein geratener Treffer",
+      store.strukturWaende("geschoss", "gs-gibtsnicht") === null
+      && store.loescheGeschoss("gs-gibtsnicht") === null);
+  }
+
+  // 18b) Geschoss mit zwei Waenden, Zusatzfrage JA ---------------------------
+  {
+    const f = baue();
+    const erg = store.loescheGeschoss(f.eg, { mitWaenden: true });
+    t("[#85] Ja: beide Wandelemente sind aus dem Wandspeicher verschwunden",
+      store.holeElement(f.w1) === null && store.holeElement(f.w2) === null);
+    t("[#85] Ja: der Geschosseintrag ist ebenfalls weg", geschossWeg(f.p, f.eg));
+    t("[#85] Ja: die Bilanz nennt entfernte und erhaltene Wandelemente",
+      erg.entfernt.length === 2 && erg.erhalten.length === 0
+      && erg.entfernt.map((w) => w.name).sort().join(",") === "Wand 1,Wand 2");
+    t("[#85] Ja: kein Wandelement ausserhalb der geloeschten Struktur",
+      store.holeElement(f.w3) !== null && store.holeElement(f.wF) !== null
+      && store.wandVerortung(f.w3) !== null && store.wandVerortung(f.wF) !== null);
+    t("[#85] Ja: es bleibt kein verwaister Eintrag zurueck",
+      store.mappeReferenzen().verwaist.length === 0);
+  }
+
+  // 18c) Gleiche Ausgangslage, Zusatzfrage NEIN ------------------------------
+  {
+    const f = baue();
+    const erg = store.loescheGeschoss(f.eg, { mitWaenden: false });
+    t("[#85] Nein: beide Wandelemente existieren unveraendert weiter",
+      store.holeElement(f.w1).wandelement.length_mm === 2000
+      && store.holeElement(f.w2).wandelement.length_mm === 1000);
+    t("[#85] Nein: sie gelten danach als nicht eingetragen ([L-4])",
+      store.wandVerortung(f.w1) === null && store.wandVerortung(f.w2) === null
+      && store.mappeReferenzen().unverortet.includes(f.w1)
+      && store.mappeReferenzen().unverortet.includes(f.w2));
+    t("[#85] Nein: die Bilanz weist 0 entfernte und 2 erhaltene aus",
+      erg.entfernt.length === 0 && erg.erhalten.length === 2 && erg.mitWaenden === false);
+    t("[#85] Nein: der Geschosseintrag ist trotzdem weg", geschossWeg(f.p, f.eg));
+    // OHNE Angabe gilt genau dasselbe — mitgeloescht wird nie ohne ausdrueckliches Ja.
+    const ergOg = store.loescheGeschoss(f.og);
+    t("[#85] ohne Angabe wird NICHT mitgeloescht (keine Vorbelegung)",
+      store.holeElement(f.w3) !== null && ergOg.mitWaenden === false && ergOg.erhalten.length === 1);
+  }
+
+  // 18d) Projekt mit zwei Geschossen und je einer Wand, JA -------------------
+  {
+    const f = baue();
+    store.setzeAktivesProjekt(f.p);
+    store.setzeAktivesGeschoss(f.eg);
+    store.setzeAktiv(f.w1);
+    const fremdVorher = JSON.stringify(store.holeElement(f.wF));
+    const erg = store.loescheProjekt(f.p, { mitWaenden: true });
+    t("[#85] Projekt/Ja: alle drei zugeordneten Wandelemente sind weg",
+      store.holeElement(f.w1) === null && store.holeElement(f.w2) === null
+      && store.holeElement(f.w3) === null && erg.entfernt.length === 3);
+    t("[#85] Projekt/Ja: die Wand des anderen Projekts bleibt bit-genau erhalten",
+      JSON.stringify(store.holeElement(f.wF)) === fremdVorher
+      && store.wandVerortung(f.wF).mappe.projekt.id === f.fremd);
+    t("[#85] Projekt/Ja: das Projekt selbst ist entfernt",
+      store.projektMappe(f.p) === null && store.listeProjekte().length === 1);
+    t("[#85] Projekt/Ja: die Zeiger darunter sind aufgehoben ([L-10])",
+      store.aktivesProjektId() === null && store.aktivesGeschossId() === null
+      && store.aktivId() === null);
+    t("[#85] Projekt/Ja: die entfernte Mappe steht im Bericht",
+      erg.mappe.projekt.id === f.p && erg.name === "Löschprojekt");
+  }
+  {
+    // Gegenprobe NEIN auf Projektebene: die Struktur geht, die Wandelemente bleiben.
+    const f = baue();
+    const erg = store.loescheProjekt(f.p, { mitWaenden: false });
+    t("[#85] Projekt/Nein: alle drei Wandelemente bleiben und sind nicht eingetragen",
+      store.holeElement(f.w1) !== null && store.holeElement(f.w2) !== null
+      && store.holeElement(f.w3) !== null && erg.erhalten.length === 3
+      && [f.w1, f.w2, f.w3].every((id) => store.mappeReferenzen().unverortet.includes(id)));
+  }
+
+  // 18e) Verwaister Mappeneintrag: uebergangen und BENANNT ([L-4]) -----------
+  {
+    const f = baue();
+    store.setzeMappe(PM.setzeWand(store.projektMappe(f.p), f.eg,
+      { id: "w-geist", name: "Geisterwand" }));
+    const info = store.strukturWaende("geschoss", f.eg);
+    t("[#85] die Vorschau trennt vorhandene und verwaiste Eintraege",
+      info.waende.length === 3 && info.vorhanden.length === 2
+      && info.verwaist.length === 1 && info.verwaist[0].name === "Geisterwand");
+    const erg = store.loescheGeschoss(f.eg, { mitWaenden: true });
+    t("[#85] der Vorgang laeuft durch und benennt den verwaisten Eintrag",
+      erg.entfernt.length === 2 && erg.verwaist.length === 1
+      && erg.verwaist[0].name === "Geisterwand");
+    t("[#85] Geschoss weg, kein verwaister Rest, fremde Waende unberuehrt",
+      geschossWeg(f.p, f.eg) && store.mappeReferenzen().verwaist.length === 0
+      && store.holeElement(f.w3) !== null && store.holeElement(f.wF) !== null);
+  }
+
+  // 18f) Gebaeude — nur Speicherfunktion, kein Bedienelement in Modul 0 ------
+  {
+    const f = baue();
+    const erg = store.loescheGebaeude(f.geb, { mitWaenden: false });
+    t("[#85] Gebaeude/Nein: alle drei Wandelemente bleiben erhalten",
+      store.holeElement(f.w1) !== null && store.holeElement(f.w2) !== null
+      && store.holeElement(f.w3) !== null && erg.erhalten.length === 3);
+    t("[#85] Gebaeude/Nein: Gebaeude samt Geschossen ist aus der Mappe entfernt",
+      store.projektMappe(f.p).gebaeude.length === 0
+      && PM.alleWaende(store.projektMappe(f.p)).length === 0);
+  }
+  {
+    const f = baue();
+    store.setzeAktivesProjekt(f.p);
+    store.setzeAktivesGeschoss(f.og);
+    const erg = store.loescheGebaeude(f.geb, { mitWaenden: true });
+    t("[#85] Gebaeude/Ja: alle drei zugeordneten Wandelemente sind weg",
+      store.holeElement(f.w1) === null && store.holeElement(f.w2) === null
+      && store.holeElement(f.w3) === null && erg.entfernt.length === 3);
+    t("[#85] Gebaeude/Ja: die Wand des anderen Projekts bleibt",
+      store.holeElement(f.wF) !== null && store.wandVerortung(f.wF) !== null);
+    t("[#85] Gebaeude/Ja: Gebaeude- und Geschosszeiger sind aufgehoben ([L-10])",
+      store.aktivesGebaeudeId() === null && store.aktivesGeschossId() === null
+      && store.aktivesProjektId() === f.p);
+    t("[#85] Gebaeude/Ja: das Projekt selbst bleibt bestehen",
+      store.projektMappe(f.p) !== null && store.projektMappe(f.p).gebaeude.length === 0);
+  }
+
+  // 18g) Kein neues Feld, kein Versionssprung --------------------------------
+  {
+    const f = baue();
+    store.loescheGeschoss(f.eg, { mitWaenden: true });
+    t("[#85] es entsteht kein gespeichertes Feld fuer diese Wahl",
+      !(localStorage.getItem("sembla:projekte") || "").includes("mitWaenden")
+      && !(localStorage.getItem("sembla:elemente") || "").includes("mitWaenden"));
+    t("[#85] die Versionsachsen bleiben unveraendert",
+      store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
+      && PM.MAPPE_VERSION === 2 && store.migrieren() === 6);
+  }
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

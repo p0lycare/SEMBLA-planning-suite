@@ -62,6 +62,8 @@
 import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rolle,
          rollenIds, rollenVonModul, validiereKatalog } from "./sembla-katalog.js";
 import { alleGeschosse, alleWaende, bemassungenOhneWand, benenneUm as benenneInMappeUm,
+         entferneGebaeude as entferneGebaeudeAusMappe,
+         entferneGeschoss as entferneGeschossAusMappe,
          entferneWand as entferneWandAusMappe,
          findeGebaeude, findeGeschoss, findeWand, kopfdaten as mappeKopfdaten,
          leereMappe, mappeObjekt, migriereMappe, neueId as neueMappenId, normMappe, parseMappe, pruefeReferenzen,
@@ -955,24 +957,171 @@ export function fuegeProjektHinzu(name, opt) {
 }
 
 /**
- * Ein Projekt samt Struktur entfernen. Die WANDELEMENTE bleiben erhalten und gelten
- * danach als „nicht eingetragen“ ([L-4] — keine stille Bereinigung); Planbilder haengen
- * an der Geschoss-Kennung und werden von der Oberflaeche getrennt entfernt ([L-8]).
- * War das Projekt aktiv, werden die Zeiger darunter nach [L-10] aufgehoben.
- * @param {string} id @returns {object|null} die entfernte Mappe
+ * Ein Projekt samt Struktur entfernen. Ohne die ausdrueckliche Wahl `mitWaenden`
+ * bleiben die WANDELEMENTE erhalten und gelten danach als „nicht eingetragen“
+ * ([L-4] — keine stille Bereinigung); mit ihr werden genau die diesem Projekt
+ * zugeordneten Wandelemente ueber `loesche()` mit entfernt (#85, siehe
+ * `_loescheStruktur`). Planbilder haengen an der Geschoss-Kennung und werden von
+ * der Oberflaeche getrennt entfernt ([L-8]) — die betroffenen Geschosse stehen
+ * dafuer in der Rueckgabe. War das Projekt aktiv, werden die Zeiger darunter nach
+ * [L-10] aufgehoben.
+ * @param {string} id @param {{mitWaenden?:boolean}} [opts]
+ * @returns {object|null} Loeschbericht (`mappe` = die entfernte Mappe) oder null
  */
-export function loescheProjekt(id) {
-  const weg = projektMappe(id);
-  if (!weg) return null;
-  const liste = _leseProjekteRoh().filter((m) => String(m?.projekt?.id) !== String(id));
-  localStorage.setItem(K_PROJEKTE, JSON.stringify(liste));
-  if (aktivesProjektId() === String(id)) {
-    localStorage.removeItem(K_AKTIV_PRJ);
-    localStorage.removeItem(K_AKTIV_GEB);
-    localStorage.removeItem(K_AKTIV_GS);
+export function loescheProjekt(id, opts) {
+  return _loescheStruktur("projekt", id, opts);
+}
+
+/**
+ * Ein Geschoss samt seiner Wandeintraege entfernen — wahlweise mit den zugeordneten
+ * Wandelementen (#85). Ohne die Wahl verhaelt es sich wie bisher: die Struktur geht,
+ * die Wandelemente bleiben und gelten als „nicht eingetragen“ ([L-4]).
+ * @param {string} geschossId @param {{mitWaenden?:boolean}} [opts]
+ * @returns {object|null} Loeschbericht oder null (unbekanntes Geschoss)
+ */
+export function loescheGeschoss(geschossId, opts) {
+  return _loescheStruktur("geschoss", geschossId, opts);
+}
+
+/**
+ * Ein Gebaeude samt seiner Geschosse entfernen — wahlweise mit den darunter
+ * zugeordneten Wandelementen (#85). Modul 0 zeigt die Gebaeudeebene nach [L-6]
+ * nicht; dieser Weg ist deshalb bewusst nur die Speicherfunktion und hat kein
+ * Bedienelement.
+ * @param {string} gebaeudeId @param {{mitWaenden?:boolean}} [opts]
+ * @returns {object|null} Loeschbericht oder null (unbekanntes Gebaeude)
+ */
+export function loescheGebaeude(gebaeudeId, opts) {
+  return _loescheStruktur("gebaeude", gebaeudeId, opts);
+}
+
+// --- Struktur loeschen, wahlweise mit den zugeordneten Waenden (#85) -------
+// Bisher blieben die Wandelemente beim Loeschen einer Struktur IMMER erhalten
+// ([L-4]: gemeldet, nie still bereinigt) und waren nur einzeln loeschbar. DANEBEN —
+// nie an ihrer Stelle — steht jetzt die ausdrueckliche Wahl, die zugeordneten
+// Wandelemente mitzuloeschen. Es entsteht dabei KEIN neues Datum: gefragt wird in
+// Modul 0, entschieden wird je Aufruf, gespeichert wird davon nichts (kein neues
+// Feld, kein Sprung von SCHEMA_VERSION/MAPPE_VERSION/PROJEKT_VERSION).
+//
+// Gemeinsame Regeln aller drei Wege:
+//  – Betroffen ist ausschliesslich, was IN der geloeschten Struktur eingetragen ist;
+//    fremde Wandelemente werden nie angefasst.
+//  – Geloescht wird je Wand ueber den EINEN bestehenden Loeschweg `loesche()`: er
+//    entfernt Wandelement und wandbezogene `eingaben` gemeinsam und raeumt
+//    Mappeneintrag samt anhaengender Bemassungen mit (#74).
+//  – Ein VERWAISTER Eintrag (Mappeneintrag ohne Wandelement) wird uebergangen und
+//    benannt, nicht als Fehler behandelt ([L-4]).
+//  – Der Vorgang ist unteilbar: scheitert etwas mittendrin, steht der vorherige
+//    Stand vollstaendig wieder (`momentaufnahme`/`stelleWiederHer`).
+//  – Das PLANBILD liegt in der eigenen IndexedDB ([L-8]) und wird hier NIE angefasst;
+//    die betroffenen Geschosse stehen in der Rueckgabe, damit die Oberflaeche sie
+//    wie bisher aufraeumen kann.
+
+/**
+ * Rein lesende Vorschau: was haengt an dieser Struktur? Sie ist die EINE Quelle
+ * fuer die Anzahl VOR der Abfrage und fuer die Planbildliste — gezaehlt wird nie
+ * an zwei Stellen verschieden. Schreibt nichts.
+ * @param {'projekt'|'gebaeude'|'geschoss'} art @param {string} id
+ * @returns {{art:string,id:string,name:string,projekt:string,mappe:object,
+ *            geschosse:Array<{id:string,name:string,hatPlan:boolean}>,
+ *            waende:Array<{id:string,name:string,geschoss:string}>,
+ *            vorhanden:Array<{id:string,name:string,geschoss:string}>,
+ *            verwaist:Array<{id:string,name:string,geschoss:string}>}|null}
+ */
+export function strukturWaende(art, id) {
+  const a = String(art || "");
+  const kennung = String(id == null ? "" : id);
+  for (const m of listeProjekte()) {
+    let name = null, geschosse = null;
+    if (a === "projekt") {
+      if (m.projekt.id !== kennung) continue;
+      name = m.projekt.name;
+      geschosse = alleGeschosse(m).map((x) => x.geschoss);
+    } else if (a === "gebaeude") {
+      const g = findeGebaeude(m, kennung);
+      if (!g) continue;
+      name = g.name; geschosse = g.geschosse;
+    } else if (a === "geschoss") {
+      const t = findeGeschoss(m, kennung);
+      if (!t) continue;
+      name = t.geschoss.name; geschosse = [t.geschoss];
+    } else {
+      throw new Error(`Unbekannte Strukturart „${art}“.`);
+    }
+    const waende = [], vorhanden = [], verwaist = [];
+    for (const gs of geschosse) {
+      for (const w of gs.waende) {
+        const el = holeElement(w.id);
+        // Der Anzeigename kommt aus dem Wandelement, sonst aus dem Eintrag — ein
+        // verwaister Eintrag muss BENENNBAR bleiben ([L-4]).
+        const eintrag = { id: w.id, name: (el && el.name) || w.name || w.id, geschoss: gs.name };
+        waende.push(eintrag);
+        (el ? vorhanden : verwaist).push(eintrag);
+      }
+    }
+    return {
+      art: a, id: kennung, name, projekt: m.projekt.name, mappe: m,
+      geschosse: geschosse.map((gs) => ({ id: gs.id, name: gs.name, hatPlan: !!gs.plan })),
+      waende, vorhanden, verwaist,
+    };
+  }
+  return null;
+}
+
+/**
+ * Der eine Loeschweg hinter `loescheProjekt`/`loescheGeschoss`/`loescheGebaeude`.
+ * @param {'projekt'|'gebaeude'|'geschoss'} art @param {string} id
+ * @param {{mitWaenden?:boolean}} [opts]
+ */
+function _loescheStruktur(art, id, opts) {
+  const info = strukturWaende(art, id);
+  if (!info) return null;
+  const mitWaenden = !!(opts && opts.mitWaenden === true);
+  const sicherung = momentaufnahme();
+  const entfernt = [], bemassungen = [];
+  try {
+    if (mitWaenden) {
+      // NUR die Waende mit Wandelement — `loesche()` kehrt fuer einen verwaisten
+      // Eintrag ohnehin wirkungslos zurueck; er geht unten mit der Struktur.
+      for (const w of info.vorhanden) {
+        const r = loesche(w.id);
+        bemassungen.push(...((r && r.bemassungen) || []));
+        entfernt.push(w);
+      }
+    }
+    if (art === "projekt") {
+      const liste = _leseProjekteRoh().filter((m) => String(m?.projekt?.id) !== info.id);
+      localStorage.setItem(K_PROJEKTE, JSON.stringify(liste));
+      if (aktivesProjektId() === info.id) {
+        localStorage.removeItem(K_AKTIV_PRJ);
+        localStorage.removeItem(K_AKTIV_GEB);
+        localStorage.removeItem(K_AKTIV_GS);
+      }
+    } else {
+      // FRISCH lesen: jedes `loesche()` oben hat die Mappe selbst fortgeschrieben,
+      // `info.mappe` ist danach ein veralteter Stand und wuerde die Wandeintraege
+      // wieder herstellen.
+      const frisch = listeProjekte().find((m) => (art === "geschoss"
+        ? findeGeschoss(m, info.id) : findeGebaeude(m, info.id)));
+      if (!frisch) throw new Error(`„${info.name}“ ist nicht mehr vorhanden.`);
+      setzeMappe(art === "geschoss"
+        ? entferneGeschossAusMappe(frisch, info.id, { mitWaenden: true })
+        : entferneGebaeudeAusMappe(frisch, info.id, { mitInhalt: true }));
+      // Zeiger nach [L-10] aufheben statt auf Fremdes biegen.
+      if (art === "gebaeude" && aktivesGebaeudeId() === info.id) localStorage.removeItem(K_AKTIV_GEB);
+      const gsAktiv = aktivesGeschossId();
+      if (gsAktiv && info.geschosse.some((g) => g.id === gsAktiv)) localStorage.removeItem(K_AKTIV_GS);
+    }
+  } catch (e) {
+    stelleWiederHer(sicherung);
+    throw new Error("Nicht gelöscht — der vorherige Stand wurde vollständig wiederhergestellt. "
+      + "Grund: " + (e && e.message ? e.message : e));
   }
   _benachrichtige();
-  return weg;
+  return {
+    ...info, mitWaenden, entfernt, bemassungen,
+    erhalten: mitWaenden ? [] : info.vorhanden,
+  };
 }
 
 /** Aktive Mappe liefern oder ein neues Projekt anlegen (Struktur nach [L-6]). */

@@ -132,8 +132,10 @@
       Wandelement zurückgeschrieben ([L-5]). Eine neue oder importierte Wand wird im Geschoss
       <b>ohne Lage</b> eingetragen — gezeichnet ist noch nichts ([L-4]); maßgebend für Länge und Höhe
       bleibt das Wandelement, eine Abweichung zur gezeichneten Lage wird <b>gemeldet, nicht
-      angeglichen</b> ([L-3]). Das <b>Löschen</b> eines Projekts oder Geschosses entfernt nur die
-      Struktur; die Wandelemente bleiben erhalten und gelten danach als „nicht eingetragen“.<br>
+      angeglichen</b> ([L-3]). Beim <b>Löschen</b> eines Projekts oder Geschosses wird nach der
+      Sicherheitsabfrage <b>getrennt gefragt</b>, ob die zugeordneten Wandelemente aus dem Speicher
+      entfernt werden (#85). Ohne dieses ausdrückliche Ja geht nur die Struktur; die Wandelemente
+      bleiben erhalten und gelten danach als „nicht eingetragen“.<br>
       Der Zustand liegt im <b>localStorage dieses Browsers</b> (pro Gerät, weg bei „Websitedaten
       löschen“) — wichtige Stände als Datei exportieren.</div>
   </div>
@@ -737,39 +739,80 @@
     }
   }
 
+  // --- Struktur löschen, wahlweise mit den zugeordneten Wänden (#85) -------
+  // Die Sicherheitsabfrage („wirklich löschen?“) und die Frage nach den
+  // Wandelementen sind bewusst ZWEI getrennte Abfragen: die erste entscheidet über
+  // die Struktur, die zweite über fremdes Eigentum — das Wandelement gehört Modul 1
+  // und dem Geschosseditor. Die zweite Frage ist nicht vorbelegt, und „Abbrechen“
+  // (auch Escape) heißt dort NEIN: die Wandelemente bleiben erhalten. Gezählt,
+  // gelöscht und bilanziert wird ausschließlich in der Speicherschicht
+  // (store.strukturWaende / store.loescheGeschoss / store.loescheProjekt) — hier
+  // wird nichts nachgerechnet und nichts selbst gelöscht.
+
+  /**
+   * Zusatzfrage nach den zugeordneten Wandelementen. Sie nennt die Anzahl und die
+   * Namen VOR dem Löschen; gibt es kein Wandelement, wird gar nicht erst gefragt.
+   * @param {object} info Rückgabe von store.strukturWaende
+   * @returns {boolean} true = mitlöschen
+   */
+  function trFrageMitWaenden(info){
+    if (!info.vorhanden.length) return false;
+    return confirm(`${info.vorhanden.length} zugeordnete(s) Wandelement(e) ebenfalls aus dem `
+      + `Speicher entfernen?\n\n${info.vorhanden.map(w => w.name).join(', ')}\n\n`
+      + 'OK: Wandelement und wandbezogene Eingaben werden gelöscht — das kann nicht rückgängig '
+      + 'gemacht werden.\n'
+      + 'Abbrechen: die Wandelemente bleiben erhalten und gelten danach als „nicht eingetragen“.'
+      + (info.verwaist.length ? `\n\nÜbergangen werden ${info.verwaist.length} Eintrag/Einträge `
+        + `ohne Wandelement: ${info.verwaist.map(w => w.name).join(', ')}.` : ''));
+  }
+
+  /** Bilanz nach dem Löschen: was ging, was blieb, was wurde übergangen (#85). */
+  function trLoeschBilanz(erg){
+    const teile = [`${erg.entfernt.length} Wandelement(e) entfernt, ${erg.erhalten.length} erhalten`
+      + (erg.erhalten.length ? ' — sie gelten jetzt als „nicht eingetragen“ ([L-4])' : '') + '.'];
+    if (erg.verwaist.length) {
+      teile.push(`${erg.verwaist.length} Eintrag/Einträge ohne Wandelement wurden übergangen: `
+        + erg.verwaist.map(w => w.name).join(', ') + ' ([L-4]).');
+    }
+    if (erg.bemassungen.length) teile.push(`${erg.bemassungen.length} anhängende Bemaßung(en) entfernt.`);
+    const mitPlan = erg.geschosse.filter(g => g.hatPlan).length;
+    if (mitPlan) teile.push(`${mitPlan} hinterlegte(r) Geschossplan/-pläne wurden mit entfernt ([L-8]).`);
+    return teile.join(' ');
+  }
+
   function trProjektLoeschen(id){
-    const m = store.projektMappe(id);
-    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
-    const gsListe = MAPPE.alleGeschosse(m).map(x => x.geschoss);
-    const anzW = MAPPE.alleWaende(m).length;
-    if (!confirm(`Projekt „${m.projekt.name}“ löschen?`
-      + (gsListe.length ? ` Es enthält ${gsListe.length} Geschoss(e) mit ${anzW} eingetragenen Wand/Wänden.` : '')
-      + ' Die Wandelemente selbst bleiben erhalten — nur Struktur, Lage und Kopfdaten gehen verloren.'
+    const info = store.strukturWaende('projekt', id);
+    if (!info) { trZeige('Unbekanntes Projekt.', false); return; }
+    if (!confirm(`Projekt „${info.name}“ löschen?`
+      + (info.geschosse.length ? ` Es enthält ${info.geschosse.length} Geschoss(e) mit `
+        + `${info.waende.length} eingetragenen Wand/Wänden.` : '')
+      + ' Struktur, Lage, Bemaßungen und Kopfdaten gehen verloren.'
       + ' Das kann nicht rückgängig gemacht werden.')) return;
-    const mitPlan = gsListe.filter(gs => gs.plan);
-    store.loescheProjekt(id);
-    for (const gs of gsListe) PLAN.loeschePlan(gs.id).catch(() => {});
-    trZeige(`Projekt „${m.projekt.name}“ entfernt. ${anzW} Wandelement(e) sind jetzt keinem Projekt `
-      + 'mehr zugeordnet — sie sind nicht gelöscht.'
-      + (mitPlan.length ? ` ${mitPlan.length} hinterlegte(r) Geschossplan/-pläne wurden mit entfernt ([L-8]).` : ''), true);
+    const mitWaenden = trFrageMitWaenden(info);
+    let erg;
+    try { erg = store.loescheProjekt(id, { mitWaenden }); }
+    catch (e) { trZeige('Nicht gelöscht: ' + fehlerText(e), false); return; }
+    if (!erg) { trZeige('Projekt ist nicht mehr vorhanden.', false); return; }
+    // Die Planbilder hängen an der Geschoss-Kennung und wären sonst unerreichbarer
+    // Rest ([L-8]); die Liste stammt aus dem Bericht, also aus dem Stand VOR dem Löschen.
+    for (const gs of erg.geschosse) PLAN.loeschePlan(gs.id).catch(() => {});
+    trZeige(`Projekt „${erg.name}“ entfernt. ` + trLoeschBilanz(erg), true);
   }
 
   function trGeschossLoeschen(id){
-    const ort = trFindeGeschoss(id);
-    if (!ort) { trZeige('Unbekanntes Geschoss.', false); return; }
-    const gs = ort.geschoss;
-    if (!confirm(`Geschoss „${gs.name}“ aus Projekt „${ort.mappe.projekt.name}“ löschen?`
-      + (gs.waende.length ? ` Es enthält ${gs.waende.length} eingetragene Wand/Wände.` : '')
-      + ' Die Wandelemente selbst bleiben erhalten — nur ihre Lage und Zuordnung gehen verloren.')) return;
-    const hattePlan = !!gs.plan;
-    try { store.setzeMappe(MAPPE.entferneGeschoss(ort.mappe, id, { mitWaenden: true })); }
+    const info = store.strukturWaende('geschoss', id);
+    if (!info) { trZeige('Unbekanntes Geschoss.', false); return; }
+    if (!confirm(`Geschoss „${info.name}“ aus Projekt „${info.projekt}“ löschen?`
+      + (info.waende.length ? ` Es enthält ${info.waende.length} eingetragene Wand/Wände.` : '')
+      + ' Struktur, Lage und Bemaßungen dieses Geschosses gehen verloren.'
+      + ' Das kann nicht rückgängig gemacht werden.')) return;
+    const mitWaenden = trFrageMitWaenden(info);
+    let erg;
+    try { erg = store.loescheGeschoss(id, { mitWaenden }); }
     catch (e) { trZeige('Nicht gelöscht: ' + fehlerText(e), false); return; }
-    // Das Planbild haengt an der Geschoss-Kennung und waere sonst unerreichbarer Rest ([L-8]).
+    if (!erg) { trZeige('Geschoss ist nicht mehr vorhanden.', false); return; }
     PLAN.loeschePlan(id).catch(() => {});
-    if (store.aktivesGeschossId() === id) { try { store.setzeAktivesGeschoss(null); } catch { /* Zeiger verwaist */ } }
-    trZeige(`Geschoss „${gs.name}“ entfernt. ${gs.waende.length} Wandelement(e) sind jetzt nicht mehr `
-      + 'eingetragen — sie sind nicht gelöscht.'
-      + (hattePlan ? ' Der hinterlegte Plan wurde mit entfernt.' : ''), true);
+    trZeige(`Geschoss „${erg.name}“ entfernt. ` + trLoeschBilanz(erg), true);
   }
 
   /** Ein Geschoss ueber ALLE Projekte finden (die Baumliste zeigt auch nicht aktive). */
