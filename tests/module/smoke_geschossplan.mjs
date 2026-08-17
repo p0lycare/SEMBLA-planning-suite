@@ -3289,12 +3289,17 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && JSON.stringify(eintragV.seiten) === JSON.stringify(CON.wandSeiten(wandVon(idV).lage,
       daten84.ergebnis.positionen[idV])));
   const svg84 = LP84.lageplanSvg(daten84, { kennzeichnung: true }).svg;
-  ok('#84 das Lageplan-SVG kennzeichnet Vorder- und Rueckkanten mit V/R',
+  // #89: das Lageplanblatt kennzeichnet die Seiten nur noch FARBLICH — der frueher
+  // aussen gesetzte Kennbuchstabe ist dort entfallen und wird ueber die Legende
+  // aufgeschluesselt. Der Editor selbst setzt seine `seite-kz` unveraendert weiter
+  // (s. Abschnitt (c)); die beiden Darstellungen sind getrennt.
+  ok('#84/#89 das Lageplan-SVG kennzeichnet Vorder- und Rueckkanten farbig, ohne Buchstaben',
     /class="lpseite lpseite-vorder"/.test(svg84) && /class="lpseite lpseite-rueck"/.test(svg84)
-    && /class="lpseite-kz"[^>]*>V</.test(svg84) && /class="lpseite-kz"[^>]*>R</.test(svg84));
+    && !/lpseite-kz/.test(svg84)
+    && (svg84.match(/<g class="lpseiten"[\s\S]*?<\/g>/g) || []).every(g => !/<text/.test(g)));
   const dateien84 = LP84.lageplanDateien(daten84, {});
-  ok('#84 die Export-Bytes tragen dieselbe Kennzeichnung samt Legende',
-    dateien84.every(d => /lpseite-vorder/.test(d.data))
+  ok('#84/#89 die Export-Bytes tragen dieselben farbigen Kanten samt Legendeneintrag',
+    dateien84.every(d => /lpseite-vorder/.test(d.data) && !/lpseite-kz/.test(d.data))
     && dateien84.some(d => /Vorderseite der Wand/.test(d.data)));
 }
 

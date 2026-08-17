@@ -39,10 +39,10 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Der NEUESTE Eintrag sind die wandfreien Nummernblasen des Lageplans (#89) — er wird
-// als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe rueckt
-// geschlossen um eins nach hinten und zaehlt ueber `PLANKOPF`, `LETZTER`, `VORHER`,
-// `NEU`, `AKTUELL` und `AELTER`, damit keine 85 Indizes zu drehen sind.
+// Der NEUESTE Eintrag sind die buchstabenfreien Wandseiten des Lageplans (#89) — er
+// wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe rueckt
+// geschlossen um eins nach hinten und zaehlt ueber `BLASEN`, `PLANKOPF`, `LETZTER`,
+// `VORHER`, `NEU`, `AKTUELL` und `AELTER`, damit keine 85 Indizes zu drehen sind.
 // Ueber `VORHER` zaehlen damit: #88 (Auswahl), #90 (sichtbare
 // Verzahnungsbereiche), #88 (Initialposition duplizierter und zugeordneter Waende), #85
 // (Mitloeschen), #83 (Verzahnungs-Nachweis) und #81 (Kommentar je
@@ -57,37 +57,62 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(3);
-const NEU = EINTRAEGE.slice(9);
-const AKTUELL = EINTRAEGE.slice(14);
-const AELTER = EINTRAEGE.slice(24);
-// Der NEUESTE Eintrag macht die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
+const VORHER = EINTRAEGE.slice(4);
+const NEU = EINTRAEGE.slice(10);
+const AKTUELL = EINTRAEGE.slice(15);
+const AELTER = EINTRAEGE.slice(25);
+// Der NEUESTE Eintrag nimmt die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
+// Rueckseite bleiben als farbige Kanten erkennbar und werden in der Legende
+// aufgeschluesselt. Aussagewahr heisst hier: die Unterscheidung bleibt erhalten — es darf
+// NICHT klingen, als seien die Seiten selbst weggefallen. Behauptet werden darf ausserdem
+// kein Bedienelement in Modul 9 und keine geaenderte Wandgeometrie, Bemassung oder
+// Massstabswahl ([N-1]/[N-4]/[P-1]/[P-9]).
+ok("die buchstabenfreien Wandseiten (Issue 89) sind der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260817-08" && EINTRAEGE[0]?.issue === 89
+  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-17");
+ok("der Seiten-Eintrag benennt Gegenstand, Ort und Nutzerergebnis aussagewahr",
+  /Lageplan/.test(EINTRAEGE[0]?.titel || "")
+  && /Vorder- und Rückseite/.test(EINTRAEGE[0]?.titel || "")
+  && /Kennbuchstaben/.test(EINTRAEGE[0]?.titel || "")
+  && /Legende/.test(EINTRAEGE[0]?.titel || "")
+  // Die Seiten selbst bleiben — entfallen ist nur ihre Beschriftung an der Wand.
+  && !/entfällt die Rückseite|abgeschafft|keine Vorderseite/i.test(EINTRAEGE[0]?.titel || "")
+  && !/Maßstab|Bedien|einstellbar/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Seiten-Testbitte benennt Ort, Erwartung und die erhaltene Unterscheidung",
+  /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Geschoss/.test(EINTRAEGE[0]?.testbitte || "")
+  && /keine V\/R-Buchstaben/.test(EINTRAEGE[0]?.testbitte || "")
+  && /farbigen Vorder- und Rückkanten/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Legende/.test(EINTRAEGE[0]?.testbitte || ""));
+const BLASEN = EINTRAEGE[1];
+// Davor machte der Eintrag die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
 // jetzt auch den Wandflaechen aus, nicht mehr nur einander und den Massen. Aussagewahr
 // heisst hier: die Zuordnung bleibt — die Fuehrungslinie zeigt weiter auf dieselbe
 // Wandkante. Behauptet werden darf KEIN Bedienelement, keine geaenderte Wandlage,
 // Bemassung oder Massstabswahl ([N-1]/[N-4]/[P-9]).
-ok("die wandfreien Nummernblasen (Issue 89) sind der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260817-07" && EINTRAEGE[0]?.issue === 89
-  && EINTRAEGE[0]?.typ === "fix" && EINTRAEGE[0]?.datum === "2026-08-17");
+ok("die wandfreien Nummernblasen (Issue 89) folgen direkt danach",
+  BLASEN?.id === "chg-20260817-07" && BLASEN?.issue === 89
+  && BLASEN?.typ === "fix" && BLASEN?.datum === "2026-08-17");
 ok("der Blasen-Eintrag benennt Gegenstand, Ort und Nutzerergebnis aussagewahr",
-  /Lageplan/.test(EINTRAEGE[0]?.titel || "")
-  && /Nummernblasen/.test(EINTRAEGE[0]?.titel || "")
-  && /Wandflächen/.test(EINTRAEGE[0]?.titel || "")
-  && /weichen/.test(EINTRAEGE[0]?.titel || "")
+  /Lageplan/.test(BLASEN?.titel || "")
+  && /Nummernblasen/.test(BLASEN?.titel || "")
+  && /Wandflächen/.test(BLASEN?.titel || "")
+  && /weichen/.test(BLASEN?.titel || "")
   // Weder Wandgeometrie noch Massstab noch ein Bedienelement haben sich geaendert.
-  && !/Maßstab|Bedien|einstellbar|verschoben werden/i.test(EINTRAEGE[0]?.titel || ""));
+  && !/Maßstab|Bedien|einstellbar|verschoben werden/i.test(BLASEN?.titel || ""));
 ok("die Blasen-Testbitte benennt Ort, Erwartung und die erhaltene Zuordnung",
-  /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Geschoss/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Keine Nummernblase liegt/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Führungslinie/.test(EINTRAEGE[0]?.testbitte || "")
-  && /dieselbe Wandkante/.test(EINTRAEGE[0]?.testbitte || ""));
-// Zwei Eintraege fuer #89 — und das ist richtig so: der erste (chg-20260817-05) raeumte
-// das Blatt auf, dieser macht die Blasen wandfrei. Zwei Nutzerergebnisse, zwei Commits.
-ok("genau zwei Eintraege fuer Issue 89, neu vor alt",
+  /Modul 9/.test(BLASEN?.testbitte || "")
+  && /Geschoss/.test(BLASEN?.testbitte || "")
+  && /Keine Nummernblase liegt/.test(BLASEN?.testbitte || "")
+  && /Führungslinie/.test(BLASEN?.testbitte || "")
+  && /dieselbe Wandkante/.test(BLASEN?.testbitte || ""));
+// Drei Eintraege fuer #89 — und das ist richtig so: der erste (chg-20260817-05) raeumte
+// das Blatt auf, der zweite machte die Blasen wandfrei, dieser nimmt die V/R-Buchstaben
+// von der Wand. Drei Nutzerergebnisse, drei Commits, drei Eintraege.
+ok("genau drei Eintraege fuer Issue 89, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 89).map(e => e.id).join(",")
-    === "chg-20260817-07,chg-20260817-05");
-const PLANKOPF = EINTRAEGE[1];
+    === "chg-20260817-08,chg-20260817-07,chg-20260817-05");
+const PLANKOPF = EINTRAEGE[2];
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -123,7 +148,7 @@ ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
     === "chg-20260817-06,chg-20260812-08");
 // Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
-const LETZTER = EINTRAEGE[2];
+const LETZTER = EINTRAEGE[3];
 ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
   LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
   && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");

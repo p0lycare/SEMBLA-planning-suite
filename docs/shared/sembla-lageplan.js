@@ -942,11 +942,22 @@ export function lageplanSvg(daten, opts) {
     }
     if (w.seiten) {
       // Vorder-/Rueckkante (#84): dieselbe Ableitung wie im Editor (`wandSeiten`),
-      // hier nur in Papier-mm umgerechnet. Kantenlinie plus Kennbuchstabe AUSSEN —
-      // nie nur Farbe. Eigene Gruppe NACH dem Wandknoten (wie die Nummernblase,
-      // #73); `data-orientierung` traegt den kanonischen Wert. Der Buchstabe sitzt
-      // am Viertelpunkt der Kante, damit er der mittigen Nummernblase und ihrer
-      // Fuehrungslinie nicht in die Quere kommt.
+      // hier nur in Papier-mm umgerechnet. Eigene Gruppe NACH dem Wandknoten (wie
+      // die Nummernblase, #73); `data-orientierung` traegt den kanonischen Wert.
+      //
+      // Der frueher zusaetzlich aussen an jede Kante gesetzte Kennbuchstabe „V"/„R"
+      // ist mit #89 ersatzlos ENTFALLEN — aus demselben Grund wie der
+      // Brandschutz-Kurztext (s. `BRANDKLASSE`): bei mehreren Waenden je Geschoss
+      // stand er zwischen Nummernblase, Massziffern und Nachbarwand und machte das
+      // Blatt unlesbar. Der Schluessel steht jetzt EINMAL in der Legende statt an
+      // jeder Wand; nachgeschlagen wird die Kante ueber ihre Kennfarbe.
+      //
+      // Damit traegt das Lageplanblatt die Seiten NUR NOCH farblich. Das weicht
+      // bewusst vom Kopfkommentar zu `SEITEN` in `sembla-constraints.js` ab („die
+      // Kennzeichnung ist nie nur Farbe") — dort bleibt alles unveraendert, und
+      // fuer den Geschosseditor (#84) gilt die Aussage weiter: er setzt seine
+      // Kennbuchstaben `seite-kz` unveraendert. Fuer dieses Blatt hat Tibor die
+      // rein farbliche Kennzeichnung in #89 ausdruecklich entschieden.
       const sg = [`<g class="lpseiten" data-wand="${_esc(w.id)}"`
         + ` data-orientierung="${_esc(w.seiten.orientierung)}">`];
       for (const [art, s] of [["vorder", w.seiten.vorder], ["rueck", w.seiten.rueck]]) {
@@ -954,10 +965,6 @@ export function lageplanSvg(daten, opts) {
         const ax = X(s.a.x), ay = Y(s.a.y), bx = X(s.b.x), by = Y(s.b.y);
         sg.push(`<line class="lpseite lpseite-${art}" x1="${_n(ax)}" y1="${_n(ay)}"`
           + ` x2="${_n(bx)}" y2="${_n(by)}" stroke="${sf.farbe}" stroke-width="0.4"/>`);
-        const tx = ax + (bx - ax) * 0.25 + s.aussen.x * 1.7;
-        const ty = ay + (by - ay) * 0.25 + s.aussen.y * 1.7;
-        sg.push(`<text class="lpseite-kz" x="${_n(tx)}" y="${_n(ty + 0.65)}" font-size="1.8"`
-          + ` text-anchor="middle" fill="${sf.farbe}">${sf.kuerzel}</text>`);
       }
       sg.push("</g>");
       teile.push(sg.join(""));
@@ -1208,9 +1215,14 @@ export function legendeHtml() {
   return `<div class="lplegende">`
     + `<span>${i(FARBE.wand, "plate")}Wand (125 mm breit)</span>`
     + `<span>${i(FARBE.mittellinie)}Mittellinie (Bezug, [K-2])</span>`
-    // #84: Vorder-/Rueckkante — Kennbuchstabe UND Farbe, nie nur Farbe.
-    + `<span>${i(SEITEN.vorder.farbe)}<b>V</b> ${SEITEN.vorder.name} der Wand</span>`
-    + `<span>${i(SEITEN.rueck.farbe)}<b>R</b> ${SEITEN.rueck.name} der Wand</span>`
+    // #84/#89: Vorder-/Rueckkante. Das Blatt traegt seit #89 KEINE Kennbuchstaben
+    // mehr an der Wand; hier stuende ein Kuerzel deshalb fuer nichts und ist mit
+    // entfallen. Nachgeschlagen wird ueber die Kennfarbe, benannt wird die Seite
+    // in Worten.
+    + `<span>${i(SEITEN.vorder.farbe)}Kante in Kennfarbe: `
+    + `${SEITEN.vorder.name} der Wand</span>`
+    + `<span>${i(SEITEN.rueck.farbe)}Kante in Kennfarbe: `
+    + `${SEITEN.rueck.name} der Wand</span>`
     // #79: Brandschutzklassifikation — beide Klassen benannt, und das
     // unterscheidende Merkmal steht IN WORTEN dabei, damit der Schluessel auch im
     // Schwarz-Weiss-Ausdruck traegt. Der Zusatz sagt, was die Angabe nicht ist.

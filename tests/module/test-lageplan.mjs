@@ -710,15 +710,23 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   t("#84 das Blatt zeichnet je verorteter Wand genau eine Vorder- und eine Rueckkante",
     (z.svg.match(/class="lpseite lpseite-vorder"/g) || []).length === verortet
     && (z.svg.match(/class="lpseite lpseite-rueck"/g) || []).length === verortet);
-  t("#84 die V/R-Kennbuchstaben stehen im Blatt — Kennzeichnung nie nur Farbe",
-    /class="lpseite-kz"[^>]*>V</.test(z.svg) && /class="lpseite-kz"[^>]*>R</.test(z.svg));
+  // #89: umgekehrte Aussage zu #84. Tibor hat entschieden, dass die Kennbuchstaben
+  // am Blatt entfallen — bei mehreren Waenden je Geschoss standen sie zwischen
+  // Nummernblase, Massziffern und Nachbarwand (dieselbe Ursache wie beim
+  // Brandschutz-Kurztext). Die Seiten sind hier deshalb NUR NOCH farblich
+  // gekennzeichnet und werden in der Legende aufgeschluesselt.
+  t("#89 in der Seitengruppe steht kein Kennbuchstaben-Textelement mehr",
+    !/lpseite-kz/.test(z.svg)
+    && (z.svg.match(/<g class="lpseiten"[\s\S]*?<\/g>/g) || [])
+      .every((g) => !/<text/.test(g)));
   t("#84 der Wandknoten traegt die kanonische Orientierung als data-Attribut",
     /data-orientierung="\+x"/.test(z.svg) && /data-orientierung="-y"/.test(z.svg));
-  t("#84 die Legende nennt beide Seiten mit Kennbuchstabe UND Kennfarbe",
+  t("#89 die Legende nennt beide Seiten mit Kennfarbe und Namen in Worten — ohne Kuerzel",
     LP.legendeHtml().includes("Vorderseite der Wand")
     && LP.legendeHtml().includes("Rückseite der Wand")
     && LP.legendeHtml().includes(CON.SEITEN.vorder.farbe)
-    && LP.legendeHtml().includes(CON.SEITEN.rueck.farbe));
+    && LP.legendeHtml().includes(CON.SEITEN.rueck.farbe)
+    && !/<b>V<\/b>/.test(LP.legendeHtml()) && !/<b>R<\/b>/.test(LP.legendeHtml()));
 
   // Vorschau und Export sind derselbe Pfad: exakt dieselben Kantenzeilen.
   const kante = (z.svg.match(/<line class="lpseite lpseite-vorder"[^>]*\/>/g) || [])[0];

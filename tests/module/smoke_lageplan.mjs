@@ -69,6 +69,9 @@ const ZIP = await import("../../docs/shared/zip.js");
 // hier LESEND (`holePlan`) und mit eingeschleuster Bilddatenbank.
 const PLAN = await import("../../docs/shared/sembla-plan.js");
 const { buildWall } = await import("../../docs/shared/sembla-core.js");
+// #84/#89: die kanonischen Seitenfarben und -namen — der Test haelt KEINE zweite
+// Liste, sondern prueft gegen dieselbe Quelle, aus der das Blatt zeichnet.
+const CON = await import("../../docs/shared/sembla-constraints.js");
 const { MODULE } = await import("../../docs/shared/navbar.js");
 
 const html = readFileSync(new URL("../../docs/lageplan.html", import.meta.url), "utf8");
@@ -741,6 +744,58 @@ ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
   ok('[#79] die Klassifikation aendert weder Meldungen noch Vollstaendigkeit',
     !lp.daten.meldungen.some(m => /Brand/i.test(m.art + m.text))
     && !lp.daten.hinweise.some(m => /Brand/i.test(m.art + m.text)));
+}
+
+// --- 10b) [#89] Vorder-/Rueckseite nur farbig, Schluessel in der Legende --
+//
+// Der ECHTE Nutzerpfad: dasselbe Geschoss mit verorteten Waenden, gezeigt und
+// exportiert ueber die Seite selbst. Die Seitenableitung bleibt `wandSeiten`; am
+// Blatt tragen die Kanten seit #89 KEINEN Kennbuchstaben mehr, sondern nur noch
+// ihre Kennfarbe — aufgeschluesselt wird sie einmal in der Legende. Geprueft wird
+// an der sichtbaren Vorschau UND an den entpackten Exportbytes.
+{
+  lp.waehleGeschoss(gsEG);
+  await lp.laden();
+  const seitenGruppen = (s) => [...s.matchAll(
+    /<g class="lpseiten" data-wand="([^"]*)" data-orientierung="([^"]*)">([\s\S]*?)<\/g>/g)]
+    .map(m => ({ id: m[1], orientierung: m[2], inhalt: m[3], roh: m[0] }));
+  const sg = seitenGruppen(lp.blatt.svg);
+  const kante = (art) => new RegExp(`^<line class="lpseite lpseite-${art}"`
+    + `[^>]*stroke="${CON.SEITEN[art].farbe}" stroke-width="0\\.4"/>$`);
+  ok('[#84] jede verortete Wand traegt weiterhin beide farbigen Kantenlinien',
+    sg.length === lp.daten.waende.filter(w => w.rechteck).length && sg.length > 0
+    && sg.every(g => {
+      const linien = g.inhalt.match(/<line[^>]*\/>/g) || [];
+      return linien.length === 2 && kante('vorder').test(linien[0])
+        && kante('rueck').test(linien[1]);
+    }));
+  ok('[#89] in der Seitengruppe steht kein Kennbuchstaben-Textelement mehr',
+    sg.every(g => !/<text/.test(g.inhalt))
+    && !/lpseite-kz/.test(lp.blatt.svg) && !/lpseite-kz/.test(lp.blatt.html));
+  ok('[#89] die Legende schluesselt beide Seiten mit Kennfarbe und Namen in Worten auf',
+    [CON.SEITEN.vorder, CON.SEITEN.rueck].every(s =>
+      new RegExp(`background:${s.farbe}[^>]*></i>[^<]*${s.name}`).test(LP.legendeHtml()))
+    && lp.blatt.html.includes(LP.legendeHtml())
+    // das Kuerzel ist mit dem Buchstaben am Blatt entfallen — es verwiese ins Leere
+    && !/<b>V<\/b>/.test(lp.blatt.html) && !/<b>R<\/b>/.test(lp.blatt.html));
+
+  const standVorSeiten = JSON.stringify([...localStorage.m.entries()].sort());
+  letzterBlob = null;
+  $('lp-export').dispatch('click');
+  await warte();
+  const seText = Object.fromEntries((await ZIP.entpacke(letzterBlob.teile[0]))
+    .map(e => [e.name, dec.decode(e.data)]));
+  const seRumpf = LP.dateiRumpf(lp.daten);
+  ok('[#89] Druck-HTML und SVG-Datei tragen bit-genau dieselben Seitengruppen',
+    [seText[seRumpf + '.html'], seText[seRumpf + '.svg']].every(s =>
+      JSON.stringify(seitenGruppen(s)) === JSON.stringify(sg) && !/lpseite-kz/.test(s))
+    && $('lp-blatt').innerHTML.includes(sg[0].roh));
+  ok('[#89] beide Legendeneintraege stehen in HTML UND SVG-Datei-Begleitung',
+    seText[seRumpf + '.html'].includes(LP.legendeHtml())
+    && [CON.SEITEN.vorder.farbe, CON.SEITEN.rueck.farbe]
+      .every(f => seText[seRumpf + '.svg'].includes(f)));
+  ok('[#89] Anzeigen und Exportieren schreiben nichts',
+    JSON.stringify([...localStorage.m.entries()].sort()) === standVorSeiten);
 }
 
 // --- 11) [#59] Nummernblasen ueberdeckungsfrei am ECHTEN Pfad -------------
