@@ -1318,6 +1318,13 @@ globalThis.fetch = echtesFetch;
     && !/id="pp-phase"/.test(html) && !/id="pp-plannr"/.test(html)
     && !/id="pp-index"/.test(html) && !/id="pp-gez"/.test(html)
     && /<select id="pp-katalog"/.test(html) && /\[L-11\]/.test(html) && /\[L-12\]/.test(html));
+  // #68 (Restpunkt): der Dialog laesst den Nutzer nicht im Unklaren, WO die uebrigen
+  // Kopfdaten gepflegt werden — er nennt Modul 7 als Pflegeort. Ein blosses „wird hier
+  // nicht bearbeitet" waere eine Sackgasse ([P-9]).
+  ok('#68 der Projekt-Dialog nennt Modul 7 als Pflegeort der uebrigen Kopfdaten',
+    /Planverfasser, Phase, Plan-Nr\., Index, Gez\./.test(html)
+    && /Modul 7 „Zeichnung“/.test(html)
+    && !/werden hier nicht bearbeitet/.test(html));
 
   // 8b) Mehrere Projekte nebeneinander ([L-6]) ------------------------------
   const vorher = projekte().length;

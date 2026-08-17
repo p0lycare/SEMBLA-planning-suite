@@ -71,6 +71,35 @@
       <label class="f"><input type="checkbox" id="wm"> Vorabzug (Wasserzeichen)</label>
     </div>
 
+    <!-- Plankopf (#68): die Projekt-Kopfdaten des Schriftfelds. Sie leben am PROJEKT
+         ([L-11]) — geschrieben wird ausschliesslich ueber store.setzeKopfdaten, nie in
+         `eingaben.projekt` und nie ins Wandelement. Projektname und Bauherrenschaft
+         gehoeren weiterhin nach „Start" und stehen deshalb hier nicht. -->
+    <div style="margin-top:16px"><h2>Plankopf (Schriftfeld)</h2>
+      <div class="hint" id="kd-status">–</div>
+      <label class="feld">Planverfasser
+        <input type="text" id="kd-planverfasser" placeholder="Büro / Verfasser">
+      </label>
+      <label class="feld">Phase
+        <input type="text" id="kd-phase" placeholder="z. B. Ausführungsplanung">
+      </label>
+      <label class="feld">Plan-Nr.
+        <input type="text" id="kd-plannr">
+      </label>
+      <label class="feld">Index
+        <input type="text" id="kd-index">
+      </label>
+      <label class="feld">Gez.
+        <input type="text" id="kd-gez">
+      </label>
+      <div class="hint" id="kd-hinweis"><b>Plan-Nr., Index</b> und <b>Gez.</b> stehen unmittelbar
+        im Schriftfeld dieses Blattes. <b>Planverfasser</b> und <b>Phase</b> werden am Projekt
+        gespeichert, erscheinen aber auf <b>keinem</b> Blatt — das Schriftfeld führt sie
+        bewusst nicht. Ein leeres Feld entfernt die Angabe; im Schriftfeld entsteht dafür
+        keine Zeile. Die Angaben gelten für das <b>ganze Projekt</b>, nicht nur für diese Wand.</div>
+      <div class="hint" id="kd-msg"></div>
+    </div>
+
     <div style="margin-top:16px"><h2>Übersicht</h2>
       <div class="res">
         <div class="k">Maße</div><div class="v" id="ovDim">–</div>
@@ -94,6 +123,8 @@
       <b>Verzahnungsbereiche</b> (Mauerwerksanschluss) sind auf dem Blatt gekennzeichnet und in der
       Legende erklärt, regelwidrige Bereiche stehen benannt daneben; angelegt werden auch sie in
       „Wandplanung“.
+      Der <b>Plankopf</b> (Planverfasser, Phase, Plan-Nr., Index, Gez.) wird hier gepflegt und
+      gehört zum <b>Projekt</b> ([L-11]) — Projektname und Bauherrenschaft bleiben in „Start“.
       <b>Regeltexte trägt es nicht</b> — das Fachregelwerk steht im Handbuch.
       Der statische Nachweis ist <b>nicht Bestandteil dieser Zeichnung</b> — er entsteht in Modul
       „Statik" und liegt als eigenes Dokument im zentralen Export.
@@ -115,8 +146,11 @@
    EINE Zeichenableitung ([D-6]). Storage wird vom Modul-Skript unten als window.SEMBLA
    bereitgestellt und in __zInit() gebunden — so bleibt diese Logik im Node-Smoke-Test ohne
    Modulauflösung evaluierbar.
-   Reiner Konsument: liest das aktive Wandelement + eingaben.projekt, schreibt das Wandelement NIE.
-   Geschrieben wird ausschließlich der eigene Abschnitt eingaben.zeichnung (Darstellungsoptionen). */
+   Reiner Konsument des Wandelements: es wird gelesen und NIE geschrieben.
+   Geschrieben werden ausschließlich (a) der eigene Abschnitt eingaben.zeichnung
+   (Darstellungsoptionen) und (b) seit #68 die Projekt-Kopfdaten des Schriftfelds über
+   store.setzeKopfdaten — die leben am PROJEKT ([L-11]), nicht am Wandelement und nicht in
+   eingaben.projekt (dieser Altbestand wird hier ausschließlich gelesen). */
 const $ = id => document.getElementById(id);
 const fmt = (n,d=0)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 let WALL=null, EING={}, OPT=null, currentId=null, MASSSTAB=null;
@@ -222,6 +256,96 @@ function optionGeaendert(){
   render();
 }
 
+/* ---- Plankopf: Projekt-Kopfdaten des Schriftfelds ([L-11], #68) ----------------
+   Die Kopfdaten leben am PROJEKT und nirgends sonst. Diese Seite ist ein zweiter
+   BEDIENORT derselben einen Quelle — keine zweite Quelle: gelesen wird über
+   store.eingabenMitKopfdaten() (ersetzt den Abschnitt `projekt`, führt nichts
+   zusammen), geschrieben ausschließlich über store.setzeKopfdaten().
+   Projektname und Bauherrenschaft bleiben Modul 0 und stehen deshalb NICHT in
+   dieser Abbildung. */
+const KD_FELDER = { planverfasser:'kd-planverfasser', phase:'kd-phase',
+                    plan_nr:'kd-plannr', index:'kd-index', gez:'kd-gez' };
+
+/** Patch aus den fünf Bedienelementen. Leerer Wert = Angabe entfernen (wie in Modul 0). */
+function kopfdatenAusUi(){
+  const p={};
+  for(const k in KD_FELDER) p[k]=$(KD_FELDER[k]).value;
+  return p;
+}
+/** Bedienelemente aus den WIRKSAMEN Kopfdaten füllen (fehlend ⇒ leer, nie geraten). */
+function uiAusKopfdaten(p){
+  const k=p||{};
+  for(const key in KD_FELDER) $(KD_FELDER[key]).value = k[key]!=null ? k[key] : '';
+}
+
+/**
+ * Darf diese Seite die Kopfdaten schreiben, und wohin?
+ *
+ * store.setzeKopfdaten schreibt in das AKTIVE Projekt. Nach [L-10] ist das genau das
+ * Projekt der aktiven Wand — aber nur, solange der Zeigerpfad steht. Deshalb wird beides
+ * ausdrücklich geprüft: dass die Wand überhaupt einem Projekt zugeordnet ist (sonst gälte
+ * nur der Alt-Rückfall `eingaben.projekt`, und der ist hier strikt read-only) und dass
+ * dieses Projekt das aktive ist. Jede Abweichung wird BENANNT und schreibt nichts ([P-9]).
+ * @returns {{ok:boolean, projekt?:string, grund?:string}}
+ */
+function kopfdatenZiel(){
+  if(!store || !store.setzeKopfdaten || !store.wirksameKopfdaten){
+    return {ok:false, grund:'Kopfdaten sind hier nicht pflegbar — die Speicherschicht fehlt.'};
+  }
+  const id = store.aktivId ? store.aktivId() : null;
+  if(!id) return {ok:false, grund:'Kein aktives Wandelement — in „Start“ anlegen oder wählen.'};
+  if(store.wirksameKopfdaten(id).quelle !== 'projekt'){
+    return {ok:false, grund:'Diese Wand ist keinem Projekt zugeordnet — Kopfdaten gehören zum '
+      + 'Projekt ([L-11]). Angezeigt wird nur der Altbestand am Wandelement; hier wird nichts '
+      + 'gespeichert. Die Wand ist zuerst in „Start“ einem Geschoss zuzuordnen.'};
+  }
+  const ort = store.wandVerortung ? store.wandVerortung(id) : null;
+  const aktiv = store.aktivesProjektId ? store.aktivesProjektId() : null;
+  if(!ort || !ort.mappe) return {ok:false, grund:'Das Projekt dieser Wand ist nicht auffindbar — es wird nichts gespeichert.'};
+  if(ort.mappe.projekt.id !== aktiv){
+    return {ok:false, grund:'Das Projekt dieser Wand („'+ort.mappe.projekt.name+'“) ist nicht das '
+      + 'aktive Projekt — hier wird nichts gespeichert, damit die Angabe nicht in ein fremdes '
+      + 'Projekt gerät. Zuerst in „Start“ dieses Projekt aktiv setzen ([L-10]).'};
+  }
+  return {ok:true, projekt: ort.mappe.projekt.name};
+}
+
+/** Meldezeile des Plankopfs (Textknoten — der Text enthält Nutzereingaben). */
+function kdMelde(text){ $('kd-msg').textContent = text || ''; }
+
+/**
+ * Bedienbarkeit und Statuszeile des Plankopfs nachführen. Ist kein Schreibweg da,
+ * werden die Felder gesperrt statt eine Pflege vorzutäuschen, die nichts speichert.
+ */
+function kopfdatenUiStand(){
+  const ziel=kopfdatenZiel();
+  for(const key in KD_FELDER) $(KD_FELDER[key]).disabled = !ziel.ok;
+  $('kd-status').textContent = ziel.ok
+    ? 'Gepflegt am Projekt „'+ziel.projekt+'“ — die Angaben gelten für alle Wände dieses Projekts ([L-11]).'
+    : ziel.grund;
+  return ziel;
+}
+
+/** Kopfdatum geändert: prüfen, am Projekt speichern, Blatt unmittelbar neu zeichnen. */
+function kopfdatenGeaendert(){
+  const ziel=kopfdatenUiStand();
+  if(!ziel.ok){ uiAusKopfdaten(EING.projekt); kdMelde(ziel.grund); return; }
+  try {
+    store.setzeKopfdaten(kopfdatenAusUi());
+  } catch(e){
+    uiAusKopfdaten(EING.projekt);                 // nichts gespeichert ⇒ nichts anzeigen
+    kdMelde('Nicht gespeichert: '+((e && e.message) || e));
+    return;
+  }
+  // Frisch aus der EINEN Quelle nachlesen statt die Eingabe zu spiegeln — so steht im
+  // Blatt genau das, was gespeichert ist. Der Abonnent unten lädt nur bei GEWECHSELTER
+  // Wand neu, deshalb hier ausdrücklich; eine Schleife entsteht dadurch nicht.
+  EING = store.eingabenMitKopfdaten();
+  uiAusKopfdaten(EING.projekt);
+  render();
+  kdMelde('Am Projekt „'+ziel.projekt+'“ gespeichert.');
+}
+
 // ---- Aktives Wandelement (localStorage) ----
 function loadFromStore(we,label){
   // Kopfdaten des Schriftfelds kommen nach [L-11] aus dem PROJEKT (Rueckfall: der
@@ -231,6 +355,8 @@ function loadFromStore(we,label){
       :(store&&store.aktiveEingaben)?store.aktiveEingaben():{};
   OPT=normOptionen(EING.zeichnung);
   uiAusOptionen(OPT);
+  uiAusKopfdaten(EING.projekt);          // #68: die gespeicherten Kopfdaten des Projekts
+  kopfdatenUiStand(); kdMelde('');
   applyWand(we);
   // Der Wandelementname ist nutzereingegeben und wird deshalb NIE als Markup gesetzt:
   // Beschriftung als Textknoten, Name als textContent eines <b>-Knotens (kein innerHTML,
@@ -250,6 +376,7 @@ function clearWall(){
   $('ovVerzahnung').textContent='—';
   $('ovBadge').className='badge'; $('ovBadge').textContent='—';
   $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
+  uiAusKopfdaten({}); kopfdatenUiStand(); kdMelde('');
 }
 function loadInitial(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
@@ -275,6 +402,7 @@ function bindEvents(){
   $('steintypen').addEventListener('change',optionGeaendert);
   $('wm').addEventListener('change',optionGeaendert);
   $('planinhalt').addEventListener('change',optionGeaendert);
+  for(const key in KD_FELDER) $(KD_FELDER[key]).addEventListener('change',kopfdatenGeaendert);
   $('print').addEventListener('click',()=>{ if(!WALL){ alert('Kein aktives Wandelement — in „Start“ anlegen oder wählen.'); return; } window.print(); });
   // Fenstergroesse geaendert: nur den Bildschirmfaktor nachziehen, nicht neu zeichnen.
   if(window.addEventListener) window.addEventListener('resize',setzeVorschauMassstab);

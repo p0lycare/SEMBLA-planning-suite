@@ -1,11 +1,23 @@
 // Smoke-Test Modul 7 (docs/zeichnung.html): evaluiert das klassische App-Skript unter einem
 // DOM-Mock — also den ECHTEN Produktpfad der Blattvorschau. Der Zeichnungsbaustein
-// (sembla-zeichnung.js) und Storage werden — wie im Browser via window.SEMBLA — aus
-// docs/shared/ bzw. per Mock bereitgestellt und vor __zInit() gebunden.
+// (sembla-zeichnung.js) und die ECHTE Speicherschicht (storage.js, auf einem
+// MemStorage-Polyfill) werden — wie im Browser via window.SEMBLA — bereitgestellt und vor
+// __zInit() gebunden.
+//
+// Seit #68 laeuft dieser Smoke auf dem ECHTEN storage.js statt auf einem Storage-Mock
+// (Muster: smoke_start.mjs/smoke_storage.mjs). Grund ist der neue Schreibweg des
+// Plankopfs: die Kopfdaten leben in `mappe.projekt.kopfdaten` ([L-11]) und werden ueber
+// `wandVerortung`/`wirksameKopfdaten`/`setzeKopfdaten` aufgeloest — ein nachgebauter Mock
+// haette genau die Regel getestet, die er selbst erfindet. Die Polyfills stehen deshalb
+// VOR den Importen, und die Module werden dynamisch geladen: storage.js migriert beim
+// Laden (localStorage) und haengt sich an `window`.
 //
 // Schwerpunkte:
-//   * reiner Konsument: laedt das aktive Wandelement, schreibt es NIE zurueck ([D-1]),
-//   * schreibt nur seinen eigenen Eingaben-Abschnitt `zeichnung` ([D-7]),
+//   * reiner Konsument des Wandelements: laedt es, schreibt es NIE zurueck ([D-1]),
+//   * schreibt an Eingaben nur seinen eigenen Abschnitt `zeichnung` ([D-7]),
+//   * Plankopf (#68): Plan-Nr./Index/Gez. sofort im Schriftfeld, Planverfasser/Phase
+//     gespeichert aber auf KEINEM Blatt, geschrieben nur ueber `store.setzeKopfdaten`
+//     und nur ins Projekt der aktiven Wand ([L-11]),
 //   * ohne aktives Wandelement klarer Verweis auf Modul 0, KEIN Demo-Wandelement,
 //   * Vorschau und zentraler Export sind deckungsgleich (dieselbe Ableitung, [D-6]),
 //   * kein eigener Datei-Download im Modul (Dateien nur ueber Modul 0).
@@ -13,19 +25,15 @@
 // Checkout-autark: Testwaende synthetisch aus dem Core, keine Fixtures.
 
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
-  PAD_MM, FARBE, VERZAHNUNG, VERZAHNUNG_TITEL, VERZAHNUNG_GRUND, VERZAHNUNG_RESTSEGMENT }
-  from "../../docs/shared/sembla-zeichnung.js";
-import { zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
-// #79: der ECHTE Normalisierer aus der Speicherschicht — der Storage-Mock reicht ihn
-// unveraendert durch (wie `window.SEMBLA.store` im Browser), damit hier kein zweites,
-// erfundenes F0/F30-Verhalten getestet wird.
-import { normBrandklasse } from "../../docs/shared/storage.js";
 
-const html = readFileSync(new URL("../../docs/zeichnung.html", import.meta.url), "utf8");
-// erstes attributloses <script> ist die App-Logik (das zweite ist type="module")
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+// --- Polyfills (VOR den Modul-Importen, s. o.) ----------------------------
+class MemStorage {
+  constructor() { this.m = new Map(); }
+  getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
+  setItem(k, v) { this.m.set(k, String(v)); }
+  removeItem(k) { this.m.delete(k); }
+}
+globalThis.localStorage = new MemStorage();
 
 // Der Mock unterscheidet bewusst zwischen Markup (innerHTML) und Textknoten
 // (textContent/appendChild) — nur so ist nachweisbar, dass ein Wandelementname als TEXT
@@ -65,30 +73,59 @@ const fireFenster = e => (_fenster[e] || []).forEach(f => f());
 let alertMsg = null;
 globalThis.alert = m => { alertMsg = m; };
 
+// --- Module (dynamisch, nach den Polyfills) -------------------------------
+const { buildWall, Opening } = await import("../../docs/shared/sembla-core.js");
+const { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
+  PAD_MM, FARBE, VERZAHNUNG, VERZAHNUNG_TITEL, VERZAHNUNG_GRUND, VERZAHNUNG_RESTSEGMENT }
+  = await import("../../docs/shared/sembla-zeichnung.js");
+const { zeichnungHtml, zeichnungSvgText } = await import("../../docs/shared/sembla-export.js");
+const store = await import("../../docs/shared/storage.js");
+
+const html = readFileSync(new URL("../../docs/zeichnung.html", import.meta.url), "utf8");
+// erstes attributloses <script> ist die App-Logik (das zweite ist type="module")
+const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+
 // Testwaende (baubar, synthetisch): Tuer + Staffelung, 2600 mm -> 13 Steinreihen.
 const W = buildWall("IW-01", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null, null,
   [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
 const W2 = buildWall("IW-02", 6000, 3000, [new Opening(8, 14, 4, 10, "fenster")]);
 
-const EING = {
-  projekt: { name: "Rettungswache", bauherr: "Landkreis", planverfasser: "Polycare", phase: "Ausführungsplanung", plan_nr: "A-12", index: "2", gez: "TB" },
-  zeichnung: { format: "a3", masse: true, steintypen: true, planinhalt: "Wandabwicklung", wasserzeichen: false },
-};
+// --- Echter Speicherstand: EIN Projekt mit Kopfdaten, ein Geschoss --------
+// Die Kopfdaten liegen dort, wo sie hingehoeren ([L-11]) — nicht in `eingaben.projekt`.
+const PRJ = store.fuegeProjektHinzu("Rettungswache");
+const GESCHOSS = PRJ.gebaeude[0].geschosse[0].id;
+store.setzeAktivesGeschoss(GESCHOSS);
+store.setzeKopfdaten({ bauherr: "Landkreis", planverfasser: "Polycare",
+  phase: "Ausführungsplanung", plan_nr: "A-12", index: "2", gez: "TB" });
 
-// Storage-Mock: aktives Element vorhanden; mergeEingaben protokolliert die Schreibzugriffe.
-let _subs = [], _aktiv = "w-1", _we = W, _eing = JSON.parse(JSON.stringify(EING));
-const schreib = [];
-const storeMock = {
-  aktivId: () => _aktiv,
-  aktivesWandelement: () => _we,
-  aktiveEingaben: () => JSON.parse(JSON.stringify(_eing)),
-  mergeEingaben: (teil, patch) => { schreib.push({ teil, patch }); _eing[teil] = { ..._eing[teil], ...patch }; return _aktiv; },
-  abonniere: cb => { _subs.push(cb); return () => {}; },
-  normBrandklasse,                                  // #79: kanonisch, kein Nachbau
-};
-const fireStore = () => _subs.forEach(cb => cb());
+/**
+ * Eine Wand ueber den ECHTEN Pfad bereitstellen: speichern, im aktiven Geschoss
+ * eintragen ([L-4]), aktiv setzen ([L-10]). `setzeAktiv` benachrichtigt die Seite —
+ * ein eigenes „fireStore" gibt es damit nicht mehr.
+ * @param {object} we @param {object} [eingaben] optionaler Eingaben-Patch
+ */
+function stelleAktiv(we, eingaben) {
+  const id = store.speichere(we.name, we, undefined, eingaben);
+  store.verorteWand(id, GESCHOSS, { name: we.name });
+  store.setzeAktiv(id);
+  return id;
+}
+/** Die wirksamen Eingaben der aktiven Wand — genau das, was das Modul liest. */
+const eingIst = (id) => store.eingabenMitKopfdaten(id);
+/** Der ROHE gespeicherte Eingabenstand (Standardwerte + Gespeichertes), fuer Diffs. */
+const eingStand = (id) => JSON.parse(JSON.stringify(store.holeEingaben(id)));
+/** Welche Eingaben-Abschnitte unterscheiden sich zwischen zwei Staenden? */
+function geaenderteAbschnitte(a, b) {
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])]
+    .filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k])).sort();
+}
+/** Kopfdaten des Projekts der aktiven Wand — die EINE Quelle ([L-11]). */
+const kopfIst = () => store.holeMappe().projekt.kopfdaten;
 
-globalThis.window.SEMBLA = { store: storeMock, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen };
+const idW = stelleAktiv(W, { zeichnung: { format: "a3", masse: true, steintypen: true,
+  planinhalt: "Wandabwicklung", wasserzeichen: false } });
+
+globalThis.window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen };
 
 // App-Logik evaluieren und wie im Browser initialisieren.
 new Function(script)();
@@ -104,7 +141,9 @@ ok("[#72] kein einleitender intro-Absatz mehr auf der Seite",
   !/class="intro"/.test(html) && !/\.intro\b/.test(html));
 
 // --- 1) Startzustand: aktives Wandelement geladen -------------------------
-ok("aktives Wandelement geladen", Z.wall === W);
+// Verglichen wird der INHALT, nicht die Objektidentitaet: der echte Speicher reicht das
+// Wandelement ueber JSON durch (wie im Browser), es ist also nie dasselbe Objekt.
+ok("aktives Wandelement geladen", JSON.stringify(Z.wall) === JSON.stringify(W));
 ok("Wandinfo nennt den Namen als Text (kein Markup)",
   /IW-01/.test($("wandinfo").textContent) && $("wandinfo").innerHTML === ""
   && $("wandinfo").kinder.length === 1 && $("wandinfo").kinder[0].tagName === "b");
@@ -118,7 +157,7 @@ ok("[#79] Uebersicht: Brandschutz einer Wand ohne das Feld ist F0",
   !("brandklasse" in W) && $("ovBrand").textContent === "F0");
 
 // --- 2) Blattvorschau = gemeinsame Ableitung ([D-6]) ---------------------
-const soll = blattHtml(W, _eing, normOptionen(EING.zeichnung));
+const soll = blattHtml(W, eingIst(), normOptionen(eingIst().zeichnung));
 ok("Vorschau ist genau blattHtml() des gemeinsamen Bausteins", $("blattwrap").innerHTML === soll.html);
 ok("Vorschau enthaelt die Zeichnung", /<svg/.test($("blattwrap").innerHTML) && /<rect/.test($("blattwrap").innerHTML));
 ok("Vorschau enthaelt das Schriftfeld", /ztitleblock/.test($("blattwrap").innerHTML));
@@ -155,7 +194,7 @@ fireFenster("resize");
 ok("breites Fenster vergroessert das Blatt nicht ueber Papiergroesse", Z.blattgeometrie.skala === 1);
 $("blattwrap").clientWidth = 800;
 fireFenster("resize");
-ok("Projekt-Kopfdaten aus Modul 0 im Blatt", /Rettungswache/.test($("blattwrap").innerHTML) && /A-12/.test($("blattwrap").innerHTML));
+ok("Projekt-Kopfdaten des Projekts im Blatt", /Rettungswache/.test($("blattwrap").innerHTML) && /A-12/.test($("blattwrap").innerHTML));
 ok("kein Nachweis-Ergebnis im Blatt", !/bestanden/i.test($("blattwrap").innerHTML));
 
 // --- 2c) #61 Reduzierter Blattinhalt in Vorschau UND zentralem Export, A3 und A4 ----
@@ -178,7 +217,7 @@ const entfernt = (t) => !/nicht automatisch geprüft/.test(t) && !/Zielregel/.te
   && !/>Statik</.test(t) && !/<div class="v">–<\/div>/.test(t) && !t.includes("###");
 for (const f of ["a3", "a4"]) {
   $("fmt").value = f; $("fmt").dispatch("change");            // echter Format-Handler
-  const sicht = $("blattwrap").innerHTML, exp = zeichnungHtml(W, _eing);
+  const sicht = $("blattwrap").innerHTML, exp = zeichnungHtml(W, eingIst());
   ok(`Vorschau ${f.toUpperCase()}: Pflichtinhalt vollstaendig`, pflicht(sicht));
   ok(`Vorschau ${f.toUpperCase()}: entfernte Text-/Verwaltungsbloecke fehlen`, entfernt(sicht));
   ok(`Export ${f.toUpperCase()}: Pflichtinhalt vollstaendig`, pflicht(exp));
@@ -192,16 +231,23 @@ ok("#61 Druck bleibt window.print() auf genau die reduzierte Vorschau",
   globalThis.__printed === true && pflicht($("blattwrap").innerHTML)
   && entfernt($("blattwrap").innerHTML));
 $("fmt").value = "a3"; $("fmt").dispatch("change");
-schreib.length = 0;                                           // Formatwechsel der Pruefung nicht mitzaehlen
 
 // --- 3) Darstellungsoptionen: nur eigener Abschnitt wird geschrieben ([D-7]) ---
+// Statt eines Mock-Protokolls wird der ECHTE gespeicherte Eingabenstand vorher/nachher
+// verglichen — das ist die schaerfere Aussage: es zaehlt, was im Speicher steht.
+const vorFormat = eingStand(), kopfVorOptionen = JSON.stringify(kopfIst());
 $("fmt").value = "a4";
 $("fmt").dispatch("change");
-ok("Formatwechsel schreibt eingaben.zeichnung", schreib.length === 1 && schreib[0].teil === "zeichnung");
-ok("Patch enthaelt nur Darstellungsoptionen",
-  Object.keys(schreib[0].patch).sort().join(",") === "format,masse,planinhalt,steintypen,wasserzeichen");
+const nachFormat = eingStand();
+ok("Formatwechsel schreibt genau den Abschnitt eingaben.zeichnung",
+  geaenderteAbschnitte(vorFormat, nachFormat).join(",") === "zeichnung");
+ok("gespeichert sind nur Darstellungsoptionen",
+  Object.keys(nachFormat.zeichnung).sort().join(",") === "format,masse,planinhalt,steintypen,wasserzeichen"
+  && nachFormat.zeichnung.format === "a4");
+ok("ein Formatwechsel ruehrt die Projekt-Kopfdaten nicht an ([L-11])",
+  JSON.stringify(kopfIst()) === kopfVorOptionen);
 ok("A4 fuehrt zu gleichem oder groberem Masstab", Z.masstab >= soll.masstab);
-ok("Vorschau nach Formatwechsel neu gezeichnet", $("blattwrap").innerHTML === blattHtml(W, _eing, Z.opt).html);
+ok("Vorschau nach Formatwechsel neu gezeichnet", $("blattwrap").innerHTML === blattHtml(W, eingIst(), Z.opt).html);
 ok("Druck-CSS auf A4 umgestellt", $("pagestyle").textContent === druckCss("a4"));
 // #61: Der Formatwechsel fuehrt Blattbaustein, Vorschaugeometrie und Druck-CSS GEMEINSAM nach.
 const geoA4 = Z.blattgeometrie;
@@ -224,20 +270,26 @@ $("wm").checked = false; $("wm").dispatch("change");
 $("planinhalt").value = "Ausführungsplan Wand"; $("planinhalt").dispatch("change");
 ok("Planinhalt wirkt im Blatt", /Ausführungsplan Wand/.test($("blattwrap").innerHTML));
 $("fmt").value = "a3"; $("fmt").dispatch("change");
-ok("kein Schreibzugriff auf einen fremden Abschnitt", schreib.every(s => s.teil === "zeichnung"));
+ok("kein Schreibzugriff auf einen fremden Abschnitt",
+  geaenderteAbschnitte(vorFormat, eingStand()).join(",") === "zeichnung");
 
 // --- 4) Wandelement wird nie geschrieben ---------------------------------
-ok("Storage-Mock hat keine Schreib-API fuer das Wandelement benutzt",
-  !("setzeWandelement" in storeMock) && JSON.stringify(_we) === JSON.stringify(W));
+// Am ECHTEN Speicher geprueft: das gespeicherte Wandelement ist nach allen Bedienschritten
+// byte-gleich dem gerechneten. Dass die Seite dafuer gar keinen Weg hat, sichert zusaetzlich
+// die Quelltextpruefung.
+ok("das gespeicherte Wandelement ist unveraendert",
+  JSON.stringify(store.holeElement(idW).wandelement) === JSON.stringify(W));
 ok("Modulquelltext schreibt kein Wandelement",
   !/setzeWandelement|speichereWandelement|neuesElement|buildWall/.test(html));
+ok("der Altbestand eingaben.projekt bleibt leer ([L-11])",
+  JSON.stringify(eingStand().projekt) === "{}");
 
 // --- 5) Elementwechsel von aussen (Kopfleiste/Startseite) ----------------
-_aktiv = "w-2"; _we = W2; _eing = { projekt: { name: "Halle" }, zeichnung: { format: "a4" } };
-fireStore();
-ok("externer Wechsel laedt das neue Wandelement", Z.wall === W2 && /IW-02/.test($("wandinfo").textContent));
+const idW2 = stelleAktiv(W2, { zeichnung: { format: "a4" } });
+ok("externer Wechsel laedt das neue Wandelement",
+  JSON.stringify(Z.wall) === JSON.stringify(W2) && /IW-02/.test($("wandinfo").textContent));
 ok("Optionen des neuen Elements uebernommen", Z.opt.format === "a4" && $("fmt").value === "a4");
-ok("Vorschau zeigt das neue Element", $("blattwrap").innerHTML === blattHtml(W2, _eing, Z.opt).html);
+ok("Vorschau zeigt das neue Element", $("blattwrap").innerHTML === blattHtml(W2, eingIst(), Z.opt).html);
 
 // --- 5b) Regression: schaedlicher Wandelementname wird nie als Markup gesetzt ---
 // Der Name kommt vom Nutzer (Modul 0) und reist im Projekt-JSON mit, ist also nicht
@@ -245,8 +297,7 @@ ok("Vorschau zeigt das neue Element", $("blattwrap").innerHTML === blattHtml(W2,
 // als HTML interpretieren.
 const BOESE = '<img src=x onerror="alert(1)"><script>alert(2)</' + 'script>';
 const WX = buildWall(BOESE, 3000, 2600, []);
-_aktiv = "w-3"; _we = WX; _eing = { projekt: { name: BOESE }, zeichnung: { format: "a3" } };
-fireStore();
+stelleAktiv(WX, { zeichnung: { format: "a3" } });
 const info = $("wandinfo");
 ok("boeser Name landet als Textknoten, nicht als Markup",
   info.kinder.length === 1 && info.kinder[0].tagName === "b"
@@ -257,12 +308,11 @@ ok("Blatt escaped den Namen (Kopfzeile, Schriftfeld, SVG-Beschriftung)",
   !/<img src=x|<script>alert/i.test($("blattwrap").innerHTML)
   && /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/.test($("blattwrap").innerHTML));
 ok("Exportdateien escapen den Namen ebenfalls",
-  !/<img src=x|<script>alert/i.test(zeichnungHtml(WX, _eing))
-  && !/<img src=x|<script>alert/i.test(zeichnungSvgText(WX, _eing)));
+  !/<img src=x|<script>alert/i.test(zeichnungHtml(WX, eingIst()))
+  && !/<img src=x|<script>alert/i.test(zeichnungSvgText(WX, eingIst())));
 
 // --- 6) Ohne aktives Wandelement: Verweis auf Modul 0, kein Demo ---------
-_aktiv = null; _we = null;
-fireStore();
+store.setzeAktiv(null);
 ok("ohne aktives Element keine Zeichnung", Z.wall === null && $("blattwrap").innerHTML === "");
 ok("Hinweis verweist auf die Startseite", /Kein aktives Wandelement/.test($("wandinfo").textContent));
 ok("Uebersicht zurueckgesetzt", $("ovDim").textContent === "—" && $("ovScale").textContent === "—");
@@ -272,16 +322,15 @@ ok("Druck ohne Wandelement wird abgelehnt (Hinweis statt leerem Blatt)",
   globalThis.__printed === false && /Kein aktives Wandelement/.test(alertMsg || ""));
 
 // --- 7) Druck: dasselbe Blatt wie Vorschau und Export -------------------
-_aktiv = "w-1"; _we = W; _eing = JSON.parse(JSON.stringify(EING));
-fireStore();
+store.setzeAktiv(idW);
 $("print").dispatch("click");
 ok("Druck loest window.print() aus", globalThis.__printed === true);
 ok("gedruckt wird die Vorschau selbst (kein zweites Rendering)",
-  $("blattwrap").innerHTML === blattHtml(W, _eing, Z.opt).html
+  $("blattwrap").innerHTML === blattHtml(W, eingIst(), Z.opt).html
   && !/printdoc/.test(html));
 // Deckungsgleichheit zum zentralen Export: das Blatt der Vorschau steckt unveraendert
 // im Export-Dokument, und das Export-SVG ist dasselbe Blatt-SVG.
-const exportDok = zeichnungHtml(W, _eing);
+const exportDok = zeichnungHtml(W, eingIst());
 ok("Blatt der Vorschau steckt identisch im Export-Dokument", exportDok.includes($("blattwrap").innerHTML));
 // #61: Gedruckt wird genau die sichtbare Vorschau — dieselbe Blattgeometrie, dieselbe
 // CSS-Basis, dasselbe @page. Vom Papier weicht allein der Bildschirmfaktor ab.
@@ -293,7 +342,7 @@ ok("Export-Dokument nutzt dieselbe CSS-Basis und dasselbe @page wie die Vorschau
   exportDok.includes(ZEICHNUNG_CSS) && exportDok.includes(druckCss(Z.opt.format))
   && $("pagestyle").textContent === druckCss(Z.opt.format));
 ok("Export-SVG ist die Zeichnung dieses Blattes",
-  zeichnungSvgText(W, _eing).includes(blattHtml(W, _eing, Z.opt).svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")));
+  zeichnungSvgText(W, eingIst()).includes(blattHtml(W, eingIst(), Z.opt).svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")));
 
 // --- 7b) #79 Brandschutzklassifikation im ECHTEN Seitenpfad --------------
 // Aktives Wandelement mit F30 (so, wie Modul 1 es gespeichert hat). Geprueft wird das
@@ -301,8 +350,7 @@ ok("Export-SVG ist die Zeichnung dieses Blattes",
 // und SVG-Datei des zentralen Exports dieselbe Zeichenkette tragen ([D-6]).
 const W79 = buildWall("IW-79", 3000, 2600, []);
 W79.brandklasse = "F30";
-_aktiv = "w-79"; _we = W79; _eing = JSON.parse(JSON.stringify(EING));
-fireStore();
+const vor79 = eingStand(stelleAktiv(W79));
 const sicht79 = $("blattwrap").innerHTML;
 const g79 = (sicht79.match(/<g class="brand"[\s\S]*?<\/g>/) || [])[0] || "";
 ok("[#79] Uebersicht zeigt die Klassifikation der aktiven Wand", $("ovBrand").textContent === "F30");
@@ -312,21 +360,20 @@ ok("[#79] die Legende des Blattes benennt beide Klassifikationen in Worten",
   sicht79.includes("ohne Brandschutzklassifikation")
   && sicht79.includes("Brandschutzklassifikation F30"));
 ok("[#79] Druck-HTML und SVG-Datei des zentralen Exports tragen dieselbe Angabe",
-  g79.length > 0 && zeichnungHtml(W79, _eing).includes(g79)
-  && zeichnungSvgText(W79, _eing).includes(g79));
+  g79.length > 0 && zeichnungHtml(W79, eingIst()).includes(g79)
+  && zeichnungSvgText(W79, eingIst()).includes(g79));
 globalThis.__printed = false;
 $("print").dispatch("click");
 ok("[#79] gedruckt wird genau dieses Blatt (kein zweites Rendering)",
   globalThis.__printed === true && $("blattwrap").innerHTML === sicht79);
 ok("[#79] die Seite schreibt die Klassifikation nirgends zurueck",
-  W79.brandklasse === "F30" && schreib.every(s => s.teil === "zeichnung")
-  && !JSON.stringify(_eing).includes("brandklasse")
-  && !/brandklasse/.test(JSON.stringify(_eing)));
+  W79.brandklasse === "F30"
+  && JSON.stringify(eingStand()) === JSON.stringify(vor79)
+  && !JSON.stringify(eingStand()).includes("brandklasse"));
 // Dieselbe Seite, Wand OHNE das Feld: F0 in Blatt und Uebersicht — nichts geraten,
 // und das Wandelement bekommt das Feld dabei nicht untergeschoben.
 const W79b = buildWall("IW-79b", 2000, 2600, []);
-_aktiv = "w-79b"; _we = W79b;
-fireStore();
+stelleAktiv(W79b);
 ok("[#79] Wand ohne das Feld: Blatt und Uebersicht weisen F0 aus",
   $("ovBrand").textContent === "F0"
   && /<g class="brand" data-brandklasse="F0">/.test($("blattwrap").innerHTML)
@@ -367,8 +414,7 @@ ok("[#82] Testwand traegt genau einen gueltigen Verzahnungsbereich (Voraussetzun
   && W82.validation.interlock_invalid_segments.length === 0
   && W82ohne.interlocks.length === 0);
 
-_aktiv = "w-82"; _we = W82; _eing = JSON.parse(JSON.stringify(EING));
-fireStore();
+const id82 = stelleAktiv(W82);
 const sicht82 = $("blattwrap").innerHTML;
 const svg82 = (sicht82.match(/<svg[\s\S]*?<\/svg>/) || [""])[0];
 const g82 = gruppe(svg82, "verzahnung");
@@ -406,7 +452,7 @@ ok("[#82] die Legende des Blattes erklaert die Kennzeichnung in Worten",
     && ohneFarbe(sicht82).includes(VERZAHNUNG.name));
 }
 ok("[#82] Druck-HTML und SVG-Datei des zentralen Exports tragen dieselbe Zeichenkette",
-  zeichnungHtml(W82, _eing).includes(g82) && zeichnungSvgText(W82, _eing).includes(g82));
+  zeichnungHtml(W82, eingIst()).includes(g82) && zeichnungSvgText(W82, eingIst()).includes(g82));
 globalThis.__printed = false;
 $("print").dispatch("click");
 ok("[#82] gedruckt wird genau dieses Blatt (kein zweites Rendering)",
@@ -426,8 +472,7 @@ ok("[#82] ohne Befund kein Verzahnungs-Mangelblock", !sicht82.includes(VERZAHNUN
 
 // Dieselbe Wand OHNE Verzahnungsbereich: keine Kennzeichnung, kein Legendeneintrag —
 // und Vorschau, Druck-HTML und SVG-Datei bleiben untereinander deckungsgleich.
-_aktiv = "w-82b"; _we = W82ohne;
-fireStore();
+stelleAktiv(W82ohne);
 {
   const sichtOhne = $("blattwrap").innerHTML;
   const svgOhne = (sichtOhne.match(/<svg[\s\S]*?<\/svg>/) || [""])[0];
@@ -435,8 +480,8 @@ fireStore();
     !/class="verzahnung"/.test(sichtOhne) && !sichtOhne.includes(VERZAHNUNG.name)
     && !sichtOhne.includes(VERZAHNUNG_TITEL));
   ok("[#82] Wand ohne Verzahnung: Vorschau, Druck-HTML und SVG-Datei sind deckungsgleich",
-    zeichnungHtml(W82ohne, _eing).includes(sichtOhne)
-    && zeichnungSvgText(W82ohne, _eing).includes(svgOhne.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")));
+    zeichnungHtml(W82ohne, eingIst()).includes(sichtOhne)
+    && zeichnungSvgText(W82ohne, eingIst()).includes(svgOhne.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "")));
   ok("[#82] Masstab und Blattformat sind mit und ohne Verzahnung gleich",
     Z.masstab === M82 && $("ovVerzahnung").textContent === "keine");
 }
@@ -449,8 +494,8 @@ ok("[#82] Testwand: ein Bereich abgewiesen, ein Restsegment nicht baubar (Voraus
   W82f.interlocks.length === 1
   && W82f.validation.interlock_fehler.some(f => f.grund === "ueberlappt_oeffnung")
   && W82f.validation.interlock_invalid_segments.length > 0);
-_aktiv = "w-82f"; _we = W82f; _eing = JSON.parse(JSON.stringify(EING));
-fireStore();
+const id82f = stelleAktiv(W82f);
+const vor82f = eingStand(id82f);
 {
   const sichtF = $("blattwrap").innerHTML;
   const svgF = (sichtF.match(/<svg[\s\S]*?<\/svg>/) || [""])[0];
@@ -471,8 +516,8 @@ fireStore();
       && Math.abs(r.x - s.x) < 5e-4 && Math.abs(r.w - s.w) < 5e-4));
   })());
   ok("[#82] derselbe Mangel steht im Druck-HTML des zentralen Exports ([D-6])",
-    zeichnungHtml(W82f, _eing).includes(VERZAHNUNG_GRUND.ueberlappt_oeffnung)
-    && zeichnungHtml(W82f, _eing).includes(VERZAHNUNG_RESTSEGMENT));
+    zeichnungHtml(W82f, eingIst()).includes(VERZAHNUNG_GRUND.ueberlappt_oeffnung)
+    && zeichnungHtml(W82f, eingIst()).includes(VERZAHNUNG_RESTSEGMENT));
   // [G-12] ist KEIN Baubarkeitsausschluss: der eigene Kasten sagt, dass der Bereich nicht
   // ausgefuehrt ist — er erklaert das Blatt nicht fuer unvollstaendig. Geprueft ab dem
   // Verzahnungstitel, damit ein etwaiger Zuschnitt-Mangelblock davor nicht mitzaehlt.
@@ -481,14 +526,118 @@ fireStore();
     && !/unvollständig/.test(sichtF.slice(sichtF.indexOf(VERZAHNUNG_TITEL))));
 }
 ok("[#82] die Seite schreibt die Verzahnung nirgends zurueck",
-  JSON.stringify(_we.interlocks) === JSON.stringify(W82f.interlocks)
-  && schreib.every(s => s.teil === "zeichnung")
-  && !JSON.stringify(_eing).includes("interlock"));
+  JSON.stringify(store.holeElement(id82f).wandelement.interlocks) === JSON.stringify(W82f.interlocks)
+  && JSON.stringify(eingStand(id82f)) === JSON.stringify(vor82f)
+  && !JSON.stringify(eingStand(id82f)).includes("interlock"));
 ok("[#82] Modul 7 hat kein Bedienelement fuer Verzahnungsbereiche und zeichnet sie nicht selbst",
   !/<select[^>]*verzahn/i.test(html) && !/<input[^>]*verzahn/i.test(html)
   && !/interlocks\s*=/.test(html) && !/<g class="verzahnung"/.test(html));
-_aktiv = "w-1"; _we = W; _eing = JSON.parse(JSON.stringify(EING));
-fireStore();
+store.setzeAktiv(idW);
+
+// --- 7d) #68 Plankopf: die Kopfdaten des Projekts in Modul 7 pflegen -----
+// Der ECHTE Nutzerpfad an den echten Bedienelementen, gegen den ECHTEN Speicher:
+// eintragen -> im Projekt gespeichert ([L-11]) -> unmittelbar im Schriftfeld. Die
+// Trennung nach Option A (2026-08-17) wird dabei mitgeprueft: Planverfasser und Phase
+// werden gespeichert, erscheinen aber auf KEINEM Blatt (#61/[D-8]).
+{
+  // (a) Beim Oeffnen stehen die gespeicherten Kopfdaten des Projekts in den Feldern.
+  ok("[#68] die Felder zeigen die gespeicherten Kopfdaten des Projekts der aktiven Wand",
+    $("kd-planverfasser").value === "Polycare" && $("kd-phase").value === "Ausführungsplanung"
+    && $("kd-plannr").value === "A-12" && $("kd-index").value === "2" && $("kd-gez").value === "TB");
+  ok("[#68] die Statuszeile benennt das Projekt, an dem gepflegt wird",
+    /Rettungswache/.test($("kd-status").textContent) && $("kd-plannr").disabled === false);
+  ok("[#68] Projektname und Bauherrenschaft sind hier NICHT bearbeitbar",
+    !/<input[^>]*id="kd-(name|bauherr|projekt)"/.test(html));
+
+  // (b) Plan-Nr. eintragen: im Projekt gespeichert und SOFORT im Schriftfeld.
+  const eingVorKd = eingStand(), weVorKd = JSON.stringify(store.holeElement(idW).wandelement);
+  $("kd-plannr").value = "A-99"; $("kd-plannr").dispatch("change");
+  ok("[#68] die Plan-Nr. wird im Projekt der aktiven Wand gespeichert ([L-11])",
+    kopfIst().plan_nr === "A-99");
+  ok("[#68] sie steht ohne Neuladen im Schriftfeld der Vorschau",
+    $("blattwrap").innerHTML.includes('<div class="k">Plan Nr.</div><div class="v">A-99</div>')
+    && !$("blattwrap").innerHTML.includes("A-12"));
+  ok("[#68] das Blatt bleibt genau blattHtml() — Vorschau und Export decken sich ([D-6])",
+    $("blattwrap").innerHTML === blattHtml(W, eingIst(), Z.opt).html
+    && zeichnungHtml(W, eingIst()).includes($("blattwrap").innerHTML));
+  ok("[#68] geschrieben wird NUR am Projekt: weder Eingaben noch Wandelement aendern sich",
+    JSON.stringify(eingStand()) === JSON.stringify(eingVorKd)
+    && JSON.stringify(eingStand().projekt) === "{}"
+    && JSON.stringify(store.holeElement(idW).wandelement) === weVorKd);
+
+  // (c) Index und Gez. verhalten sich gleich.
+  $("kd-index").value = "3"; $("kd-index").dispatch("change");
+  $("kd-gez").value = "MM"; $("kd-gez").dispatch("change");
+  ok("[#68] Index und Gez. stehen ebenfalls unmittelbar im Schriftfeld",
+    kopfIst().index === "3" && kopfIst().gez === "MM"
+    && $("blattwrap").innerHTML.includes('<div class="k">Index</div><div class="v">3</div>')
+    && $("blattwrap").innerHTML.includes('<div class="k">Gez.</div><div class="v">MM</div>'));
+
+  // (d) Option A: Planverfasser und Phase werden gespeichert, stehen aber auf KEINEM Blatt.
+  $("kd-planverfasser").value = "Polycare Planung"; $("kd-planverfasser").dispatch("change");
+  $("kd-phase").value = "Genehmigungsplanung"; $("kd-phase").dispatch("change");
+  const blattKd = $("blattwrap").innerHTML;
+  ok("[#68] Planverfasser und Phase werden am Projekt gespeichert",
+    kopfIst().planverfasser === "Polycare Planung" && kopfIst().phase === "Genehmigungsplanung");
+  ok("[#68] sie erscheinen auf KEINEM Blatt — Vorschau, Druck-HTML und SVG-Datei (Option A)",
+    !blattKd.includes("Polycare Planung") && !blattKd.includes("Genehmigungsplanung")
+    && !zeichnungHtml(W, eingIst()).includes("Polycare Planung")
+    && !zeichnungHtml(W, eingIst()).includes("Genehmigungsplanung")
+    && !zeichnungSvgText(W, eingIst()).includes("Polycare Planung")
+    && !zeichnungSvgText(W, eingIst()).includes("Genehmigungsplanung")
+    // und die Regressionszusicherung gegen die beiden Schriftfeldzeilen haelt weiter
+    && entfernt(blattKd));
+  ok("[#68] die Oberflaeche sagt ausdruecklich, dass beide auf keinem Blatt erscheinen",
+    /erscheinen aber auf <b>keinem<\/b> Blatt/.test(html));
+
+  // (e) Ein leer gelassenes Feld entfernt die Angabe — und erzeugt keine Schriftfeldzeile.
+  $("kd-index").value = ""; $("kd-index").dispatch("change");
+  ok("[#68] ein leeres Feld entfernt die Angabe und laesst die Schriftfeldzeile entfallen",
+    kopfIst().index === undefined
+    && !$("blattwrap").innerHTML.includes('<div class="k">Index</div>')
+    && !$("blattwrap").innerHTML.includes('<div class="v">–</div>')
+    && entfernt($("blattwrap").innerHTML));
+
+  // (f) Wand ohne Projektzuordnung: benannt gemeldet, NICHTS gespeichert.
+  const WF = buildWall("IW-frei", 2000, 2600, []);
+  const idFrei = store.speichere(WF.name, WF);          // ausdruecklich NICHT verortet ([L-4])
+  store.setzeAktiv(idFrei);
+  const kopfVorFrei = JSON.stringify(kopfIst());
+  const prjVorFrei = localStorage.getItem("sembla:projekte");
+  ok("[#68] ohne Projektzuordnung sind die Felder gesperrt und der Grund steht benannt da",
+    $("kd-plannr").disabled === true && $("kd-planverfasser").disabled === true
+    && /keinem Projekt zugeordnet/.test($("kd-status").textContent));
+  $("kd-plannr").value = "X-1"; $("kd-plannr").dispatch("change");
+  ok("[#68] eine Eingabe an einer projektlosen Wand speichert nichts und wird gemeldet",
+    JSON.stringify(kopfIst()) === kopfVorFrei
+    && localStorage.getItem("sembla:projekte") === prjVorFrei
+    && /keinem Projekt zugeordnet/.test($("kd-msg").textContent));
+  ok("[#68] das Feld faellt auf den angezeigten Stand zurueck (nichts Erfundenes bleibt stehen)",
+    $("kd-plannr").value === "");
+  ok("[#68] der Altbestand eingaben.projekt bleibt dabei read-only und leer",
+    JSON.stringify(store.holeEingaben(idFrei).projekt) === "{}");
+
+  // (g) Die Schranke ist Gurt UND Hosentraeger: [L-10] macht den Fremdprojekt-Fall schon
+  // unerreichbar — ein Projektwechsel hebt den Wandzeiger auf, und die Wand des anderen
+  // Projekts laesst sich nicht aktiv setzen.
+  const PRJ2 = store.fuegeProjektHinzu("Zweitprojekt");
+  ok("[#68]/[L-10] ein Projektwechsel hebt den Wandzeiger auf",
+    store.aktivId() === null && Z.wall === null);
+  let verweigert = false;
+  try { store.setzeAktiv(idW); } catch { verweigert = true; }
+  ok("[#68]/[L-10] eine Wand des anderen Projekts laesst sich gar nicht aktiv setzen", verweigert);
+  store.loescheProjekt(PRJ2.projekt.id);
+  store.setzeAktivesProjekt(PRJ.projekt.id);
+  store.setzeAktivesGeschoss(GESCHOSS);
+  store.setzeAktiv(idW);
+
+  // (h) Ein Schreibweg, kein zweiter: Kopfdaten laufen ausschliesslich ueber setzeKopfdaten.
+  ok("[#68] Kopfdaten werden ausschliesslich ueber store.setzeKopfdaten geschrieben",
+    // genau EIN Aufruf, und er uebergibt genau den Patch der fuenf Bedienelemente
+    (html.match(/store\.setzeKopfdaten\(kopfdatenAusUi\(\)\)/g) || []).length === 1
+    && !/mergeEingaben\(['"]projekt['"]/.test(html)
+    && !/store\.setzeMappe|store\.aendereMappe|store\.verorteWand/.test(html));
+}
 
 // --- 8) Modul-Oberflaeche: keine dezentrale Dateifunktion ---------------
 ok("kein Datei-Download / kein Datei-Upload im Modul",

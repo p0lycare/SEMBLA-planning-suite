@@ -57,10 +57,10 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(1);
-const NEU = EINTRAEGE.slice(7);
-const AKTUELL = EINTRAEGE.slice(12);
-const AELTER = EINTRAEGE.slice(22);
+const VORHER = EINTRAEGE.slice(2);
+const NEU = EINTRAEGE.slice(8);
+const AKTUELL = EINTRAEGE.slice(13);
+const AELTER = EINTRAEGE.slice(23);
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -68,21 +68,50 @@ const AELTER = EINTRAEGE.slice(22);
 // als sei die Klassifikation selbst weggefallen. Behauptet werden darf ausserdem kein
 // Bedienelement in Modul 9 (gewaehlt wird sie in Modul 1) und keine geaenderte
 // Wandgeometrie, Bemassung oder Vollstaendigkeit ([N-1]/[N-7]/[P-1]/[P-9]).
-ok("das entschlackte Lageplanblatt (Issue 89) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260817-05" && EINTRAEGE[0]?.issue === 89
+// Der NEUESTE Eintrag gibt den PLANKOPF eine Bedienstelle zurueck (#68): Planverfasser,
+// Phase, Plan-Nr., Index und Gez. sind in Modul 7 pflegbar. Aussagewahr heisst hier: nur
+// Plan-Nr., Index und Gez. stehen im Schriftfeld — Planverfasser und Phase werden
+// gespeichert, erscheinen aber auf KEINEM Blatt (Option A zu #68, #61/[D-8] bleibt).
+// Behauptet werden darf kein neues Schriftfeld, keine geaenderte Zeichnung und kein
+// zweiter Speicherort ([L-11]/[P-9]).
+ok("der wieder pflegbare Plankopf (Issue 68) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260817-06" && EINTRAEGE[0]?.issue === 68
   && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-17");
+ok("der Plankopf-Eintrag benennt Gegenstand und Ort aussagewahr",
+  /Plankopf/.test(EINTRAEGE[0]?.titel || "")
+  && /Planverfasser, Phase, Plan-Nr\., Index und Gez\./.test(EINTRAEGE[0]?.titel || "")
+  && /Zeichnung/.test(EINTRAEGE[0]?.titel || "")
+  // Das Schriftfeld hat KEINE neuen Zeilen bekommen und die Zeichnung ist unveraendert.
+  && !/Schriftfeld erhält|neue Zeile|Bauherr|Projektname/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Plankopf-Testbitte benennt Ort, Sofortwirkung, die Ausnahme und das Wiederfinden",
+  /Modul 7/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Plan-Nr\./.test(EINTRAEGE[0]?.testbitte || "")
+  && /sofort im Schriftfeld/.test(EINTRAEGE[0]?.testbitte || "")
+  && /auf keinem Blatt/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Neuladen/.test(EINTRAEGE[0]?.testbitte || ""));
+// Zwei Eintraege fuer #68 — und das ist richtig so: der erste (2026-08-12) betraf die
+// entschlackte Projektanlage, dieser den nachgereichten Pflegeort. Zwei getrennte
+// Nutzerergebnisse, zwei Commits, zwei Eintraege — in dieser Reihenfolge.
+ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
+  EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
+    === "chg-20260817-06,chg-20260812-08");
+// Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
+const LETZTER = EINTRAEGE[1];
+ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
+  LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
+  && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");
 ok("der Lageplan-Eintrag benennt beide Nutzerergebnisse aussagewahr",
-  /Lageplan/.test(EINTRAEGE[0]?.titel || "")
-  && /Legende/.test(EINTRAEGE[0]?.titel || "")
-  && /Nummer, Bezeichnung und Höhe/.test(EINTRAEGE[0]?.titel || "")
+  /Lageplan/.test(LETZTER?.titel || "")
+  && /Legende/.test(LETZTER?.titel || "")
+  && /Nummer, Bezeichnung und Höhe/.test(LETZTER?.titel || "")
   // Die Klassifikation bleibt — entfallen ist nur ihre Beschriftung an der Wand.
-  && !/entfällt|entfallen|abgeschafft|keine Brandschutz/i.test(EINTRAEGE[0]?.titel || ""));
+  && !/entfällt|entfallen|abgeschafft|keine Brandschutz/i.test(LETZTER?.titel || ""));
 ok("die Lageplan-Testbitte benennt Ort, beide Klassen und das erwartete Bild",
-  /Modul 9/.test(EINTRAEGE[0]?.testbitte || "")
-  && /F30/.test(EINTRAEGE[0]?.testbitte || "")
-  && /schraffiert/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Legende/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Wände im Geschoss/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Modul 9/.test(LETZTER?.testbitte || "")
+  && /F30/.test(LETZTER?.testbitte || "")
+  && /schraffiert/.test(LETZTER?.testbitte || "")
+  && /Legende/.test(LETZTER?.testbitte || "")
+  && /Wände im Geschoss/.test(LETZTER?.testbitte || ""));
 ok("genau ein Eintrag fuer Issue 89", EINTRAEGE.filter(e => e.issue === 89).length === 1);
 // Davor machte der Eintrag die gemeinte Wand unter UEBEREINANDERLIEGENDEN Waenden
 // waehlbar (#88, offener Restpunkt). Aussagewahr heisst hier: es wird durch erneutes

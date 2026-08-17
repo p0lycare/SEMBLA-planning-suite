@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260817-06",
+    datum: "2026-08-17",
+    typ: "feature",
+    issue: 68,
+    titel: "Plankopf wieder pflegbar: Planverfasser, Phase, Plan-Nr., Index und Gez. stehen in der Zeichnung",
+    testbitte: "In Modul 7 für eine Wand eines Projekts eine Plan-Nr. eintragen: Sie steht "
+      + "sofort im Schriftfeld, Index und Gez. ebenso; Planverfasser und Phase werden nur "
+      + "gespeichert und stehen auf keinem Blatt. Nach dem Neuladen sind alle fünf da.",
+  },
+  {
     id: "chg-20260817-05",
     datum: "2026-08-17",
     typ: "feature",
