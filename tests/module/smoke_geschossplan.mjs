@@ -3987,6 +3987,191 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 }
 
+// --- #88 (Restpunkt): bei uebereinanderliegenden Waenden ist waehlbar, welche gemeint ist
+// Realer Nutzerpfad des Issues: eine Wand wird GEZEICHNET, ueber den echten Knopf
+// DUPLIZIERT und die Kopie mit einem echten Zug vollstaendig ueber das Original
+// geschoben. Danach wird dieselbe Weltkoordinate mehrfach angeklickt (echte
+// Zeigerbehandler) und je Klick geprueft: aktive Wandkennung, Meldezeile,
+// unveraenderte Wandlagen und ein leer gebliebener Rueckgaengig-Stapel.
+{
+  const mappe88b = store.fuegeProjektHinzu('Projekt 88b', { geschoss: 'EG88b', hoehe_mm: 2600 });
+  const gs88b = MAPPE.alleGeschosse(mappe88b)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs88b);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const msg88 = () => $('gp-msg').textContent;
+  const lageB = (id) => MAPPE.findeWand(store.holeMappe(), id).wand.lage;
+  const nameB = (id) => MAPPE.findeWand(store.holeMappe(), id).wand.name;
+  /** Genau die Meldung, die eine aktive Wand beim Namen nennt (#88). */
+  const nennt = (id, k, n) => msg88().includes(`„${nameB(id)}“ ist aktiv`)
+    && msg88().includes(`Treffer ${k} von ${n} an dieser Stelle`);
+  /** Alles, was ein Auswahlwechsel NICHT anfassen darf. */
+  const stand88 = () => JSON.stringify({
+    loeser: GP.loesen(), masse: GP.bemassungen(),
+    mappe: localStorage.getItem('sembla:projekte'),
+    elemente: localStorage.getItem('sembla:elemente'),
+    undo: GP.undoStand,
+  });
+
+  // (a) Pruefaufbau ueber den echten Pfad: zeichnen, duplizieren, Kopie darueber ziehen.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 2000, y: 60 });
+  await warte();
+  const idOrig = GP.zustand.aktiv;
+  const idsVor88b = new Set(store.listeElemente().map(e => e.id));
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 500, y: 62.5 });
+  $('gp-dupl').dispatch('click');
+  await warte();
+  const idKopie = (store.listeElemente().find(e => !idsVor88b.has(e.id)) || {}).id;
+  ok('#88 Pruefaufbau: die Kopie liegt zunaechst 250 mm daneben und ist aktiv',
+    !!idKopie && lageB(idKopie).start_mm.y === 312.5 && GP.zustand.aktiv === idKopie);
+  GP.ziehe({ x: 500, y: 312.5 }, { x: 500, y: 62.5 });
+  await warte();
+  ok('#88 Pruefaufbau: nach dem Zug liegen beide Waende vollstaendig uebereinander',
+    lageB(idKopie).start_mm.y === 62.5 && lageB(idOrig).start_mm.y === 62.5
+    && lageB(idKopie).laenge_grid === lageB(idOrig).laenge_grid
+    && GP.loesen().kollisionen.length === 1);
+
+  // Ein Punkt auf der gemeinsamen Flaeche, abseits aller Griffe.
+  const P = { x: 500, y: 62.5 };
+  const ids88 = gp('trefferListe', P) || [];
+  ok('#88 (Muss 1) `trefferListe` nennt BEIDE Waende, oben zuerst — und `treffer` bleibt '
+    + 'bitgenau ihr erstes Element',
+    ids88.length === 2 && ids88.includes(idOrig) && ids88.includes(idKopie)
+    && GP.treffer(P) === ids88[0]
+    // Die Reihenfolge ist die bisherige: zuletzt in der Mappe = oben.
+    && ids88[0] === MAPPE.findeGeschoss(store.holeMappe(), gs88b)
+      .geschoss.waende.slice(-1)[0].id);
+
+  // (b) Akzeptanztest 1 — erster Klick oberste, zweiter die andere, dritter zurueck.
+  const vorZyklus = stand88();
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 9000, y: 9000 });                    // definierter Ausgangsstand: nichts aktiv
+  GP.tippe(P);
+  ok('#88 (Akzeptanz 1) der erste Klick macht die OBERE der beiden Waende aktiv',
+    GP.zustand.aktiv === ids88[0] && GP.zustand.auswahl.length === 1
+    && nennt(ids88[0], 1, 2));
+  GP.tippe(P);
+  ok('#88 (Akzeptanz 1/Muss 2) der zweite Klick auf dieselbe Stelle schaltet zur anderen weiter — '
+    + 'die Meldezeile nennt sie mit Namen und Position',
+    GP.zustand.aktiv === ids88[1] && GP.zustand.auswahl.length === 1
+    && nennt(ids88[1], 2, 2));
+  GP.tippe(P);
+  ok('#88 (Akzeptanz 1/Muss 2) der dritte Klick laeuft wieder auf die erste zurueck',
+    GP.zustand.aktiv === ids88[0] && nennt(ids88[0], 1, 2));
+  ok('#88 (Muss 4) aktiv ist immer genau EINE — und sie ist auch kanonisch aktiv (#66)',
+    GP.zustand.auswahl.length === 1 && store.aktivId() === ids88[0]);
+
+  // (c) Muss 3 — eine andere Stelle beginnt die Reihenfolge neu bei der obersten.
+  GP.tippe({ x: 1500, y: 62.5 });
+  ok('#88 (Muss 3) ein Klick an einer ANDEREN Stelle beginnt neu bei der obersten Wand',
+    GP.zustand.aktiv === ids88[0] && nennt(ids88[0], 1, 2));
+
+  // (d) Der Mittelgriff der aktiven Wand liegt bei deckungsgleichen Waenden mitten
+  //     auf der gemeinsamen Flaeche — auch dort ist weitergeschaltet moeglich.
+  {
+    const M = { x: 1000, y: 62.5 };
+    ok('#88 Pruefaufbau: die Wandmitte ist der Mittelgriff der aktiven Wand',
+      !!gp('griffTreffer', M) && gp('griffTreffer', M).ende === 'mitte'
+      && (gp('trefferListe', M) || []).length === 2);
+    GP.tippe(M);
+    const erst = GP.zustand.aktiv;
+    GP.tippe(M);
+    ok('#88 auch am Mittelgriff schaltet der zweite Klick zur anderen Wand weiter',
+      GP.zustand.aktiv !== erst && ids88.includes(GP.zustand.aktiv)
+      && /Treffer \d von 2 an dieser Stelle/.test(msg88()));
+  }
+
+  // (e) Akzeptanztest 4 / must-not — nichts von alldem aendert Daten oder Stapel.
+  ok('#88 (Akzeptanz 4) Loeserergebnis, Bemassungen, Kollisionsmeldung, Speicher und '
+    + 'Rueckgaengig-Stapel sind nach beliebig vielen Auswahlwechseln identisch',
+    stand88() === vorZyklus);
+
+  // (f) Akzeptanztest 3 — nach dem Weiterschalten verschiebt ein Zug GENAU diese Wand.
+  {
+    GP.tippe({ x: 9000, y: 9000 });
+    GP.tippe(P);
+    GP.tippe(P);
+    const gemeint = GP.zustand.aktiv;
+    const andere = ids88.find(id => id !== gemeint);
+    ok('#88 (Akzeptanz 3) Pruefaufbau: die zweite der beiden Waende ist aktiv',
+      gemeint === ids88[1] && !!andere);
+    const lageAndereVor = JSON.stringify(lageB(andere));
+    GP.ziehe(P, { x: P.x, y: P.y + 250 });
+    await warte();
+    ok('#88 (Akzeptanz 3/Muss 5) der Zug bewegt genau die weitergeschaltete Wand …',
+      lageB(gemeint).start_mm.y === 312.5 && GP.zustand.aktiv === gemeint);
+    ok('#88 (Akzeptanz 3) … und laesst die andere unveraendert stehen',
+      JSON.stringify(lageB(andere)) === lageAndereVor);
+    GP.undo();
+    await warte();
+  }
+
+  // (g) Muss 6 — bei GENAU EINEM Treffer bleibt alles, wie es war: dieselbe aktive
+  //     Wand wie `treffer()`, keine Trefferliste in der Meldezeile, kein Zyklusstand.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2000, y: 4060 });
+  await warte();
+  const idEinzeln = GP.zustand.aktiv;
+  {
+    const E = { x: 500, y: 4062.5 };
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 9000, y: 9000 });
+    $('gp-msg').textContent = 'MARKE';               // sagt der Ein-Treffer-Fall wirklich nichts?
+    GP.tippe(E);
+    ok('#88 (Muss 6) bei genau einer getroffenen Wand bleibt Auswahl UND Meldung unveraendert',
+      (gp('trefferListe', E) || []).length === 1
+      && GP.zustand.aktiv === idEinzeln && GP.zustand.aktiv === GP.treffer(E)
+      && GP.zustand.auswahl.length === 1
+      && msg88() === 'MARKE' && GP.zustand.wandZyklus === null);
+    GP.tippe(E);
+    ok('#88 (Muss 6) auch ein zweiter Klick darauf schaltet nichts weiter und sagt nichts',
+      GP.zustand.aktiv === idEinzeln && msg88() === 'MARKE');
+  }
+
+  // (h) Must-not 4 — Umschalt/Strg bleibt unangetastet: dieselbe Wand toggelt, es
+  //     wird nicht weitergeschaltet.
+  {
+    GP.tippe({ x: 500, y: 4062.5 });                 // einzelne Wand aktiv
+    GP.tippe(P, { shiftKey: true });
+    ok('#88 (must-not) Umschalt-Klick auf die Ueberlagerung nimmt die OBERSTE dazu — '
+      + 'ohne Weiterschalten',
+      GP.zustand.auswahl.length === 2 && GP.zustand.aktiv === ids88[0]
+      && GP.zustand.auswahl.includes(idEinzeln));
+    GP.tippe(P, { shiftKey: true });
+    ok('#88 (must-not) ein zweiter Umschalt-Klick waehlt sie wie bisher ab (kein Zyklus)',
+      GP.zustand.auswahl.length === 1 && GP.zustand.aktiv === idEinzeln);
+  }
+
+  // (i) Ein Werkzeugwechsel beendet das Weiterschalten — der naechste Klick beginnt neu.
+  {
+    GP.tippe(P);
+    GP.werkzeug('bemassen');
+    ok('#88 ein Werkzeugwechsel verwirft den Zyklusstand', GP.zustand.wandZyklus === null);
+    GP.werkzeug('auswahl');
+    GP.tippe(P);
+    ok('#88 danach beginnt die Reihenfolge wieder bei der obersten Wand',
+      GP.zustand.aktiv === ids88[0] && nennt(ids88[0], 1, 2));
+  }
+
+  // (j) Must-not 1/5 — kein gespeichertes Feld, kein zweiter Auswahlweg, kein Bump.
+  ok('#88 (must-not) die Auswahlreihenfolge steht in keinem Speicher',
+    !/wandZyklus|zyklus|trefferliste|zeichenindex/i.test(localStorage.getItem('sembla:projekte'))
+    && !/wandZyklus|zyklus|trefferliste|zeichenindex/i.test(localStorage.getItem('sembla:elemente')));
+  ok('#88 (must-not) es gibt kein Auswahlmenue und kein Popup — nur Buehne und Wandliste',
+    !/id="gp-zyklus/.test(html) && !/auswahlmenue/i.test(html) && !/<dialog/.test(html));
+  ok('#88 (must-not) gewaehlt wird ueber die EINE vorhandene Auswahlfunktion',
+    /waehle\(ids\[n\]\)/.test(html)
+    && (html.match(/function trefferListe/g) || []).length === 1
+    && /function treffer\(p\)\{?[\s\S]{0,120}trefferListe\(p\)/.test(html));
+  ok('#88 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

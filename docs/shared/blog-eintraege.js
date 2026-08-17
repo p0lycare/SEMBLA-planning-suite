@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260817-04",
+    datum: "2026-08-17",
+    typ: "fix",
+    issue: 88,
+    titel: "Bei übereinanderliegenden Wänden im Geschossplan ist durch erneutes Klicken wählbar, welche gemeint ist",
+    testbitte: "Im Geschosseditor zwei Wände übereinanderlegen und die Stelle mehrfach "
+      + "anklicken: Jeder Klick macht die nächste der dort liegenden Wände aktiv und benennt sie "
+      + "in der Meldezeile; ein Zug verschiebt genau diese, die andere bleibt liegen.",
+  },
+  {
     id: "chg-20260817-03",
     datum: "2026-08-17",
     typ: "feature",

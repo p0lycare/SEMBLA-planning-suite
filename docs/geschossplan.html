@@ -436,6 +436,12 @@ const GP = {
   // mit Griffen und grün nach [K-8] — ist immer genau EINE davon.
   aktiv: null,                // Kennung der aktiven Wand (grün, mit Griffen)
   auswahl: [],                // Kennungen aller ausgewählten Wände (enthält `aktiv`)
+  // Weiterschalten zwischen ÜBEREINANDERLIEGENDEN Wänden (#88). Liegen an einer
+  // Stelle mehrere Wände, wählt der erste Klick die oberste und jeder weitere auf
+  // dieselbe Stelle die nächste. Der Zustand ist reine Bedienung: er wird nirgends
+  // gespeichert (kein Feld in Mappe, Wandelement oder `eingaben`), steht in keinem
+  // Rückgängig-Schritt ([K-10]) und ändert weder Lage noch Löserergebnis.
+  wandZyklus: null,           // { schluessel, ort:{x,y}, weiter } | null
   // EIN allgemeiner Schalter für alle Wände und alle drei Wandoperationen
   // (Zeichnen, Verschieben, Größenziehen) — und beim Start AUS (#52). Er ist
   // Bedienung und wird bewusst nicht gespeichert.
@@ -2454,7 +2460,9 @@ function kopfSync(){
         : 'Plan mit der Maus ziehen. Verschoben wird der <b>Plan</b>, keine Wandlage ([L-1]/[L-9]).')
       : 'Wand anklicken (Umschalt/Strg wählt mehrere) und am Körper oder Mittelgriff ziehen. Bewegt '
         + 'wird die ganze starre Gruppe; eine in einer Achse <b>bestimmte</b> Wand lässt sich dort '
-        + 'nicht ziehen ([K-9]). Die <b>Endgriffe</b> ändern die Länge, <b>R</b> dreht um 90°.';
+        + 'nicht ziehen ([K-9]). Die <b>Endgriffe</b> ändern die Länge, <b>R</b> dreht um 90°. '
+        + 'Liegen mehrere Wände <b>übereinander</b>, schaltet ein erneuter Klick auf dieselbe '
+        + 'Stelle zur nächsten weiter (#88) — welche gerade aktiv ist, steht in der Meldezeile.';
 
   // Die Parameter gehören zum Werkzeug „Wand zeichnen“ und erscheinen nur mit ihm (#50):
   // es gibt genau EINEN Erzeugungsweg, und der ist das Zeichnen.
@@ -2778,18 +2786,107 @@ function naechsterName(){
 // ---------------------------------------------------------------------------
 //  Auswahl und Ziehen ([K-9])
 // ---------------------------------------------------------------------------
-/** Wand unter einem Weltpunkt (die zuletzt gezeichnete gewinnt, sie liegt oben). */
-function treffer(p){
+/**
+ * ALLE Wände unter einem Weltpunkt (#88) — vorn die zuletzt gezeichnete, sie liegt
+ * oben; danach die darunter liegenden in derselben Reihenfolge wie bisher.
+ *
+ * Gelesen werden ausschließlich die kanonischen Quellen: die Wandlagen der
+ * Projektmappe und die **gelöste** Position ([K-3]-Fassung C4b(c)). Toleranz
+ * (2 Schirmpixel), Reihenfolge und Rechteckprüfung sind bit-genau die der
+ * bisherigen einwertigen Suche — `treffer()` ist genau das erste Element dieser
+ * Liste und damit unverändert.
+ * @returns {string[]}
+ */
+function trefferListe(p){
   const erg = verortung();
   const luft = 2 * V.mm;                        // 2 Schirmpixel Toleranz
   const liste = waende();
+  const out = [];
   for (let i = liste.length - 1; i >= 0; i--) {
     const r = CON.wandRechteck(liste[i].lage, position(liste[i].id, erg));
     if (!r) continue;
     if (p.x >= r.x_min - luft && p.x <= r.x_max + luft
-      && p.y >= r.y_min - luft && p.y <= r.y_max + luft) return liste[i].id;
+      && p.y >= r.y_min - luft && p.y <= r.y_max + luft) out.push(liste[i].id);
   }
-  return null;
+  return out;
+}
+
+/** Wand unter einem Weltpunkt (die zuletzt gezeichnete gewinnt, sie liegt oben). */
+function treffer(p){
+  const l = trefferListe(p);
+  return l.length ? l[0] : null;
+}
+
+// --- Übereinanderliegende Wände auswählen (#88) -----------------------------
+// Vollständig überdeckte Wände waren über die Bühne nicht erreichbar: der Klick
+// traf immer dieselbe (die zuletzt in der Mappe stehende), und die darunter ließ
+// sich nur über die Wandliste wählen — dort ist die Überlagerung aber nicht zu
+// sehen. Wiederholtes Klicken auf dieselbe Stelle schaltet deshalb deterministisch
+// von einer getroffenen Wand zur nächsten weiter und läuft nach der letzten wieder
+// auf die erste zurück.
+//
+// Weitergeschaltet wird ausdrücklich erst beim ZUGLOSEN Loslassen, nie beim
+// Drücken. Nur so bewegt ein anschließender Zug genau die Wand, die der Nutzer
+// zuletzt als aktiv gesehen hat; ein Weiterschalten im `pointerdown` würde die
+// nächste Wand verschieben. Gespeichert wird nichts, gebucht wird nichts.
+
+/** Ab wie vielen Schirmpixeln Abstand ein Klick eine ANDERE Stelle ist (#88). */
+const ZYKLUS_PX = 6;
+
+/** Kennung einer Trefferliste — verschiedene Wände heißen: anderer Zyklus. */
+function zyklusSchluessel(ids){ return ids.join('|'); }
+
+/** „Praktisch dieselbe Stelle“ — Klickzittern ist keine neue Stelle. */
+function zyklusNah(a, b){
+  if (!a || !b) return false;
+  const luft = ZYKLUS_PX * V.mm;
+  return Math.abs(a.x - b.x) <= luft && Math.abs(a.y - b.y) <= luft;
+}
+
+/**
+ * Den Zyklus für dieses Drücken ansetzen. Bei einem Treffer (oder mit
+ * Umschalt/Strg) gibt es keinen — dann bleibt alles bit-genau wie bisher.
+ *
+ * Ein LAUFENDER Zyklus an derselben Stelle lässt die gemeinte Wand stehen und
+ * merkt sich nur, dass das zuglose Loslassen weiterschalten darf. Eine andere
+ * Stelle beginnt neu bei der obersten dort getroffenen Wand.
+ * @returns {{id:string, frisch:boolean}|null}
+ */
+function zyklusAnsetzen(welt, ids){
+  if (!ids || ids.length < 2) { GP.wandZyklus = null; return null; }
+  const schluessel = zyklusSchluessel(ids);
+  const z = GP.wandZyklus;
+  if (z && z.schluessel === schluessel && zyklusNah(z.ort, welt)) {
+    z.weiter = true;
+    return { id: ids.indexOf(GP.aktiv) >= 0 ? GP.aktiv : ids[0], frisch: false };
+  }
+  GP.wandZyklus = { schluessel, ort: { x: welt.x, y: welt.y }, weiter: false };
+  return { id: ids[0], frisch: true };
+}
+
+/**
+ * Weiterschalten nach einem zuglosen Tipp auf eine Stelle mit mehreren Wänden.
+ * Gewählt wird über die EINE vorhandene Auswahlfunktion (`waehle`) — es entsteht
+ * kein zweiter Auswahlzustand, und aktiv bleibt genau eine Wand.
+ * @returns {boolean} true = weitergeschaltet (dann ist nichts zu verschieben)
+ */
+function zyklusWeiter(welt){
+  const z = GP.wandZyklus;
+  if (!z || !z.weiter || !welt) return false;
+  const ids = trefferListe(welt);
+  if (ids.length < 2 || zyklusSchluessel(ids) !== z.schluessel) { GP.wandZyklus = null; return false; }
+  const i = ids.indexOf(GP.aktiv);
+  const n = (i + 1) % ids.length;               // i === -1 ⇒ 0: wieder die oberste
+  waehle(ids[n]);
+  zyklusMelde(ids, n);
+  return true;
+}
+
+/** Welche der übereinanderliegenden Wände jetzt aktiv ist — mit Name und Position. */
+function zyklusMelde(ids, i){
+  zeige(`„${namenRoh(ids[i])}“ ist aktiv — Treffer ${i + 1} von ${ids.length} an dieser Stelle. `
+    + 'Erneut auf dieselbe Stelle klicken schaltet zur nächsten überlagerten Wand weiter; '
+    + 'Verschieben, Größenziehen und die Griffe wirken auf die aktive Wand.', true);
 }
 
 /**
@@ -3601,12 +3698,21 @@ function beiZeigerAb(ev){
   const dazu = !!(ev.shiftKey || ev.ctrlKey || ev.metaKey);
   const g = dazu ? null : griffTreffer(welt);
   if (g && g.ende !== 'mitte') {
+    GP.wandZyklus = null;                       // Größenziehen ist kein Auswahlklick (#88)
     GP.groesse = { id: GP.aktiv, ende: g.ende, zeiger: welt };
     if (ev.preventDefault) ev.preventDefault();
     render();
     return;
   }
-  const id = g ? GP.aktiv : treffer(welt);
+  // Übereinanderliegende Wände (#88): ALLE Treffer dieser Stelle, in der bisherigen
+  // Reihenfolge. Mit Umschalt/Strg geht es um die Mehrfachauswahl — die bleibt
+  // unangetastet und nimmt am Weiterschalten nicht teil. Der Mittelgriff der aktiven
+  // Wand liegt bei deckungsgleichen Wänden mitten auf der gemeinsamen Fläche;
+  // deshalb wird der Zyklus auch in diesem Zweig geführt (die Auswahl selbst bleibt
+  // dort unverändert stehen).
+  const ids = dazu ? [] : trefferListe(welt);
+  const z = zyklusAnsetzen(welt, ids);
+  const id = g ? GP.aktiv : (z ? z.id : treffer(welt));
   if (!id) {
     // Keine Wand getroffen: dann vielleicht ein Maß — anklickbar zum Ändern/Löschen (§4.3).
     const bid = bemTreffer(welt, verortung());
@@ -3614,6 +3720,9 @@ function beiZeigerAb(ev){
     return;
   }
   if (!g) waehle(id, dazu);
+  // Der erste Klick an einer Stelle mit mehreren Wänden benennt, welche davon jetzt
+  // aktiv ist; weitergeschaltet wird erst beim zuglosen Loslassen (s. `beiZeigerAuf`).
+  if (z && z.frisch) zyklusMelde(ids, ids.indexOf(id) >= 0 ? ids.indexOf(id) : 0);
   if (GP.aktiv === id) GP.ziehen = { id, von: welt, delta: { x: 0, y: 0 } };
   if (ev.preventDefault) ev.preventDefault();
   render();
@@ -3730,11 +3839,27 @@ function beiZeigerAuf(ev){
     return;
   }
   if (GP.ziehen) {
-    const { id, delta } = GP.ziehen;
+    const { id, delta, von } = GP.ziehen;
     GP.ziehen = null;
+    // Zugloser Tipp auf eine Stelle mit mehreren übereinanderliegenden Wänden (#88):
+    // weiterschalten statt verschieben. „Zuglos“ ist dabei genau die Bedingung, unter
+    // der `ziehenFertig` ohnehin nichts täte — der gerundete Versatz ist 0/0. Ein
+    // echter Zug verschiebt deshalb unverändert und schaltet NICHT weiter; damit
+    // bewegt er immer genau die Wand, die zuletzt sichtbar aktiv war.
+    if (zuglos(delta) && zyklusWeiter(von)) { render(); return; }
     ziehenFertig(id, delta);
     render();
   }
+}
+
+/**
+ * Hat dieses Drücken die Wand gar nicht bewegt? Gerechnet wird mit derselben
+ * Rasterung wie in `ziehenFertig` ([K-12]) — ist der gerundete Versatz 0/0, war es
+ * ein Klick und kein Zug.
+ */
+function zuglos(delta){
+  const q = GP.fang ? CON.GRID_MM : 1;
+  return !Math.round(delta.x / q) && !Math.round(delta.y / q);
 }
 
 // ---------------------------------------------------------------------------
@@ -4096,6 +4221,7 @@ function werkzeug(name){
   }
   GP.zeichnen = null;
   GP.groesse = null;
+  GP.wandZyklus = null;                         // ein Werkzeugwechsel beendet das Weiterschalten (#88)
   GP.bemHover = null;
   GP.bemZeiger = null;
   GP.bemZieh = null;
@@ -4286,7 +4412,8 @@ function beiTaste(ev){
 // --- Prüfhilfen (Smoke-Test): dieselben Pfade wie die echte Bedienung -------
 window.__gp = {
   render, werkzeug, zeigeAlles, auffrischen, drehe, wende, undo, redo,
-  entwurfLage, fange, fangeQuer, weltPunkt, schirmPunkt, treffer, griffTreffer, loesen,
+  entwurfLage, fange, fangeQuer, weltPunkt, schirmPunkt, treffer, trefferListe,
+  griffTreffer, loesen,
   bezugTreffer: (welt, achse) => bezugTreffer(welt, verortung(), achse),
   bemTreffer: (welt) => bemTreffer(welt, verortung()),
   /**
