@@ -845,10 +845,42 @@ export function lageplanSvg(daten, opts) {
   });
 
   /**
-   * Die Flaechen, denen eine Nummernblase ausweicht (#59): Masszahlen, Masslinien
-   * samt Hilfslinien — und, waehrend der Wandschleife wachsend, die bereits
-   * platzierten Blasen. Wandflaechen stehen ausdruecklich NICHT darin: sie duerfen
-   * notfalls ueberdeckt werden, sonst gaebe es Faelle ohne Loesung.
+   * Die verorteten Wandrechtecke in PAPIER-mm: EINMAL gerechnet (#89) und vor der
+   * Wandschleife, weil sie an zwei Stellen gebraucht werden — gezeichnet wird daraus
+   * der Wandknoten, und ausgewichen wird ihnen (s. `hindernisse`). Ein zweiter
+   * Rechenweg fuer dasselbe Rechteck koennte auseinanderlaufen und die Blase auf eine
+   * Flaeche setzen, die anderswo liegt, als sie geprueft wurde.
+   *
+   * Vorgezogen wird nur die RECHNUNG, nicht die Ausgabe: die Wandknoten entstehen
+   * unveraendert in der Schleife darunter, in Mappenreihenfolge. Unverortete und
+   * damit ungezeichnete Eintraege ([N-7]) sind hier wie dort ausgelassen — was nicht
+   * im Blatt steht, ist auch kein Hindernis.
+   */
+  const gezeichnet = [];
+  for (const w of daten.waende) {
+    if (!w.rechteck) continue;                       // unverortet: gemeldet, nicht gezeichnet
+    const r = w.rechteck;
+    gezeichnet.push({ w,
+      x: X(r.x_min), y: Y(r.y_min), bw: S(r.x_max - r.x_min), bh: S(r.y_max - r.y_min) });
+  }
+
+  /**
+   * Die Flaechen, denen eine Nummernblase ausweicht: Masszahlen, Masslinien samt
+   * Hilfslinien, die WANDFLAECHEN (#89) — und, waehrend der Wandschleife wachsend,
+   * die bereits platzierten Blasen.
+   *
+   * Die Wandflaechen standen bis #89 ausdruecklich NICHT darin („notfalls
+   * ueberdeckbar"), weil eine ausgewichene Blase damals aus dem Zeichenbereich lief
+   * und abgeschnitten wurde — es haette also Faelle ohne brauchbare Loesung gegeben.
+   * Dieser Grund ist entfallen: der ausgegebene Bereich waechst seither um genau den
+   * gemessenen Blasenueberstand (`blasenRand`), die Blase darf deshalb so weit nach
+   * aussen, wie sie muss. Auf einer Wandflaeche ist die Nummer so wenig lesbar wie
+   * auf einer Masszahl — beides ist jetzt gleich behandelt.
+   *
+   * Aufgenommen wird die achsparallele Wandflaeche selbst. Die FUEHRUNGSLINIE darf
+   * Waende weiterhin kreuzen: sie ist ein duenner Strich und traegt keine Schrift;
+   * verlangte man auch fuer sie Freiheit, gaebe es bei eingeschlossenen Waenden
+   * wieder Faelle ohne Loesung. Hindernis ist allein die Blasenflaeche samt Zahl.
    *
    * Die gespeicherten Darstellungsversaetze `linie_mm`/`text_mm` und die Anordnung
    * aus `massTextLayout` stecken bereits in `daten.massbilder` — sie wirken damit
@@ -859,6 +891,12 @@ export function lageplanSvg(daten, opts) {
     if (!mp) continue;
     hindernisse.push(masstextFlaeche(mp.p, mp.text), ...masslinienFlaechen(mp.p));
   }
+  // Alle Wandflaechen VOR der Schleife: sonst waere eine erst spaeter gezeichnete
+  // Wand fuer eine frueh platzierte Blase kein Hindernis, und die Ueberdeckungs-
+  // freiheit haenge an der Mappenreihenfolge.
+  for (const g of gezeichnet) {
+    hindernisse.push(_flaeche(g.x, g.y, g.x + g.bw, g.y + g.bh));
+  }
 
   /**
    * Die TATSAECHLICH platzierten Blasenflaechen — dieselben Objekte, die auch
@@ -867,11 +905,8 @@ export function lageplanSvg(daten, opts) {
    */
   const blasen = [];
 
-  for (const w of daten.waende) {
-    if (!w.rechteck) continue;                       // unverortet: gemeldet, nicht gezeichnet
-    const r = w.rechteck;
+  for (const { w, x, y, bw, bh } of gezeichnet) {
     const farbe = w.zustand === "fehler" ? FARBE.fehler : FARBE.wand_rand;
-    const x = X(r.x_min), y = Y(r.y_min), bw = S(r.x_max - r.x_min), bh = S(r.y_max - r.y_min);
     const st = [`<g class="lpwand z-${w.zustand}" data-wand="${_esc(w.id)}">`,
       `<rect x="${_n(x)}" y="${_n(y)}" width="${_n(bw)}" height="${_n(bh)}"`
       + ` fill="${w.zustand === "fehler" ? FARBE.fehler : FARBE.wand}"`
@@ -938,16 +973,25 @@ export function lageplanSvg(daten, opts) {
       // unveraendert im `<title>` der Wand und mit derselben Nummer in der rechten
       // Wandtabelle; die Blase traegt `data-wand` fuer die eindeutige Zuordnung.
       const quer = w.richtung !== "y";
-      // Ueberdeckungsfreie Platzierung (#59). Kandidat 0 ist BITGENAU die Lage von
-      // #73; jeder weitere schiebt die Blase auf DERSELBEN Normalen um einen festen
-      // Schritt weiter nach aussen (x-Wand nach oben, y-Wand nach links). Ankerpunkt
-      // und Richtung der Fuehrungslinie bleiben dabei unveraendert — sie wird nur
-      // laenger und zeigt weiter auf dieselbe Wandkante.
+      // Ueberdeckungsfreie Platzierung (#59, seit #89 auch gegen die Wandflaechen).
+      // Kandidat 0 ist BITGENAU die Lage von #73; jeder weitere schiebt die Blase auf
+      // DERSELBEN Normalen um einen festen Schritt weiter nach aussen (x-Wand nach
+      // oben, y-Wand nach links). Ankerpunkt und Richtung der Fuehrungslinie bleiben
+      // dabei unveraendert — sie wird nur laenger und zeigt weiter auf dieselbe
+      // Wandkante.
+      //
+      // Die EIGENE Wandflaeche verwirft Kandidat 0 nie: er sitzt
+      // `MARKER_ABSTAND_MM + MARKER_R_MM` = 6,6 mm vor der Kante, seine Huelle endet
+      // also 2,4 mm davor. Ein Sonderfall „eigene Wand ueberspringen" waere ein
+      // zweiter Weg fuer nichts; `_ueberdeckt` bleibt strikt (Beruehrung allein ist
+      // keine Ueberdeckung).
       //
       // Terminiert ohne Kappe (wie `massTextLayout`): `hindernisse` ist endlich und
-      // jeder Schritt bewegt die Flaeche monoton nach aussen — jenseits des am
-      // weitesten aussen liegenden Hindernisses ist sie zwangslaeufig frei. Eine
-      // feste Obergrenze liesse bei genuegend Nachbarn wieder eine Ueberdeckung zu.
+      // beschraenkt, und jeder Schritt bewegt die Flaeche monoton nach aussen —
+      // jenseits des am weitesten aussen liegenden Hindernisses ist sie
+      // zwangslaeufig frei. Eine feste Obergrenze liesse bei genuegend Nachbarn
+      // wieder eine Ueberdeckung zu; dass die Blase dabei aus dem bisherigen
+      // Zeichenbereich laeuft, faengt `blasenRand` auf.
       const mitte = (k) => ({
         x: quer ? x + bw / 2 : x - MARKER_ABSTAND_MM - k * MARKER_SCHRITT_MM,
         y: quer ? y - MARKER_ABSTAND_MM - k * MARKER_SCHRITT_MM : y + bh / 2,

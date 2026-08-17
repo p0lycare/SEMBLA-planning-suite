@@ -145,6 +145,22 @@ const rechteckVon = (s, id) => {
   return m ? { x: +m[1], y: +m[2], w: +m[3], h: +m[4] } : null;
 };
 
+/** ALLE gezeichneten Wandrechtecke (Papier-mm) samt Kennung — fuer #89. */
+const alleRechteckeVon = (s) => [...s.matchAll(
+  /<g class="lpwand[^"]*" data-wand="([^"]*)"><rect x="([^"]*)" y="([^"]*)" width="([^"]*)" height="([^"]*)"/g)]
+  .map((m) => ({ id: m[1], x: +m[2], y: +m[3], w: +m[4], h: +m[5] }));
+
+/**
+ * Ueberdeckt der KREIS der Blase das Rechteck? Unabhaengig gerechnet (naechster Punkt
+ * im Rechteck gegen den Mittelpunkt), nicht mit der Huellflaeche des Moduls: die ist
+ * groesser, ein damit freier Kreis ist also erst recht frei.
+ */
+const kreisTrifft = (k, r) => {
+  const nx = Math.max(r.x, Math.min(k.x, r.x + r.w));
+  const ny = Math.max(r.y, Math.min(k.y, r.y + r.h));
+  return Math.hypot(k.x - nx, k.y - ny) < k.r;
+};
+
 /** Liegt die Blase vollstaendig ausserhalb des Rechtecks? */
 const ausserhalb = (k, r) => k.x + k.r <= r.x || k.x - k.r >= r.x + r.w
   || k.y + k.r <= r.y || k.y - k.r >= r.y + r.h;
@@ -1239,6 +1255,47 @@ t("Anti-Drift: das Blatt rechnet die Massgeometrie nicht selbst",
   t("[K-5] das Ausweichen ist deterministisch — gleicher Stand, gleiches Blatt",
     LP.blattHtml(NAH).svg === LP.blattHtml(NAH).svg
     && LP.blattHtml(AUF_MASS).svg === amBlatt.svg);
+
+  // --- [#89] die Blase weicht auch der WANDFLAECHE aus ----------------------
+  //
+  // Bis #89 war die Wandflaeche ausdruecklich kein Hindernis: eine weit ausgewichene
+  // Blase lief damals aus dem Zeichenbereich. Seit dem Blasenrand (#59) waechst der
+  // ausgegebene Bereich um genau den Ueberstand — die Wandflaechen gehoeren deshalb
+  // jetzt zu den Hindernissen. Geprueft wird an der ERZEUGTEN Zeichenkette mit
+  // unabhaengiger Geometrie (Kreis gegen Rechteck), nicht mit der Modulnaeherung.
+  const nahRechtecke = alleRechteckeVon(nahBlatt.svg);
+  t("[#89] Pruefaufbau: die Ausgangslage laege wirklich auf einer fremden Wandflaeche",
+    nahRechtecke.length === 3 && (() => {
+      const r2 = nahRechtecke.find((r) => r.id === "n2");
+      const ausgang = { x: r2.x + r2.w / 2, y: r2.y - 4.5, r: 2.1 };
+      return nahRechtecke.some((r) => r.id !== "n2" && kreisTrifft(ausgang, r));
+    })());
+  t("[#89] keine Nummernblase ueberdeckt eine Wandflaeche — auch keine fremde",
+    nahMarker.every((g) => nahRechtecke.every((r) => !kreisTrifft(g.kreis, r))));
+  t("[#89] auch im bemassten Fall bleibt jede Blase von den Wandflaechen frei",
+    amMarker.length === 3 && amMarker.every((g) =>
+      alleRechteckeVon(amBlatt.svg).every((r) => !kreisTrifft(g.kreis, r))));
+  t("[#89] die Fuehrungslinie darf Wandflaechen weiterhin kreuzen",
+    (() => {
+      // Die Linien sind achsparallel (x-Wand senkrecht, y-Wand waagerecht).
+      const kreuzt = (l, r) => Math.min(l.x1, l.x2) <= r.x + r.w && Math.max(l.x1, l.x2) >= r.x
+        && Math.min(l.y1, l.y2) <= r.y + r.h && Math.max(l.y1, l.y2) >= r.y;
+      return nahMarker.some((g) =>
+        nahRechtecke.some((r) => r.id !== g.id && kreuzt(g.linie, r)));
+    })());
+  t("[#89] Massstab, Ausdehnung und Wandrechtecke bleiben davon unberuehrt",
+    LP.lageplanSvg(NAH).masstab === LP.lageplanSvg(NAH, { kennzeichnung: false }).masstab
+    && JSON.stringify(nahRechtecke)
+       === JSON.stringify(alleRechteckeVon(LP.lageplanSvg(NAH, { kennzeichnung: false }).svg)));
+  // Gegenprobe: im ueberdeckungsfreien Fall aendert sich NICHTS. Dass `LANG` wirklich
+  // dieser Fall ist, wird hier ausgesprochen — sonst waere die Bitgleichheit oben
+  // (`freiBlatt.html === langBlatt.html`) nur zufaellig aussagekraeftig.
+  t("[#89] `LANG` ist der ueberdeckungsfreie Fall — keine Blase auf einer Wandflaeche",
+    freiMarker.length === 4 && freiMarker.every((g) =>
+      alleRechteckeVon(freiBlatt.svg).every((r) => !kreisTrifft(g.kreis, r))));
+  t("[#89] und sein Blatt ist damit bitgenau der Stand vor der Aenderung",
+    freiBlatt.svg === langBlatt.svg && LP.lageplanSvgDatei(LANG) === LP.lageplanSvgDatei(LANG)
+    && LP.lageplanSvg(LANG).rand.oben === 0 && LP.lageplanSvg(LANG).rand.links === 0);
 
   // --- [#59] die ausgewichene Blase bleibt vollstaendig im Blatt ------------
   //

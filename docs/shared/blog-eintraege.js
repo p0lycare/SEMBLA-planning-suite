@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260817-07",
+    datum: "2026-08-17",
+    typ: "fix",
+    issue: 89,
+    titel: "Lageplan: die Nummernblasen weichen jetzt auch den Wandflächen aus",
+    testbitte: "Modul 9 für ein dicht bebautes Geschoss öffnen: Keine Nummernblase liegt "
+      + "mehr auf einer Wand; die Führungslinie zeigt weiter auf dieselbe Wandkante.",
+  },
+  {
     id: "chg-20260817-06",
     datum: "2026-08-17",
     typ: "feature",

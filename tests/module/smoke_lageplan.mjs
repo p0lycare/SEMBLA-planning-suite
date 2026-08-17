@@ -862,6 +862,79 @@ ok('[#59] die fixierte Wand selbst wird ganz normal gezeichnet',
     && tabZeilen(lp.blatt.html).map(z => z.nr).join(',') === '1,2,3,4,5');
   ok('[K-5] gleicher Stand ⇒ bitgenau dieselbe Platzierung',
     (() => { const vorher = lp.blatt.svg; lp.render(); return lp.blatt.svg === vorher; })());
+
+  // --- [#89] die Blase weicht auch der WANDFLAECHE aus, am ECHTEN Pfad -----
+  //
+  // Bis #89 durfte sie eine Wandflaeche notfalls ueberdecken — genau daran war die
+  // Nummer im dicht bebauten Geschoss nicht mehr lesbar. Geprueft wird an der
+  // sichtbaren Vorschau UND an den entpackten Exportbytes, mit unabhaengig
+  // gerechneter Geometrie (Kreis gegen Rechteck) statt mit der Modulnaeherung.
+  const alleRechteckeVon = s => [...s.matchAll(
+    /<g class="lpwand[^"]*" data-wand="([^"]*)"><rect x="([^"]*)" y="([^"]*)" width="([^"]*)" height="([^"]*)"/g)]
+    .map(m => ({ id: m[1], x: +m[2], y: +m[3], w: +m[4], h: +m[5] }));
+  const kreisTrifft = (k, r) => {
+    const nx = Math.max(r.x, Math.min(k.x, r.x + r.w));
+    const ny = Math.max(r.y, Math.min(k.y, r.y + r.h));
+    return Math.hypot(k.x - nx, k.y - ny) < k.r;
+  };
+  /** Keine Blase auf einer Wandflaeche — eigener noch fremder. */
+  const wandfrei = s => {
+    const mk = markerVon(s), re = alleRechteckeVon(s);
+    return mk.length > 0 && re.length > 0
+      && mk.every(g => re.every(r => !kreisTrifft(g.kreis, r)));
+  };
+
+  const nahRechtecke = alleRechteckeVon(lp.blatt.svg);
+  ok('[#89] Pruefaufbau: die Ausgangslage laege wirklich auf einer fremden Wandflaeche',
+    nahRechtecke.length === 5 && nahRechtecke.some(r0 => {
+      const ausgang = { x: r0.x + r0.w / 2, y: r0.y - 4.5, r: 2.1 };
+      return nahRechtecke.some(r => r.id !== r0.id && kreisTrifft(ausgang, r));
+    }));
+  ok('[#89] in der Vorschau ueberdeckt keine Blase eine Wandflaeche',
+    wandfrei(lp.blatt.svg) && wandfrei($('lp-blatt').innerHTML));
+  ok('[#89] auch die exportierten Bytes sind wandflaechenfrei — HTML wie SVG',
+    wandfrei(nahText[nahRumpf + '.html']) && wandfrei(nahText[nahRumpf + '.svg']));
+  ok('[#89] die Fuehrungslinie darf Waende weiterhin kreuzen',
+    (() => {
+      const kreuzt = (l, r) => Math.min(l.x1, l.x2) <= r.x + r.w && Math.max(l.x1, l.x2) >= r.x
+        && Math.min(l.y1, l.y2) <= r.y + r.h && Math.max(l.y1, l.y2) >= r.y;
+      return markerVon(lp.blatt.svg).some(g =>
+        nahRechtecke.some(r => r.id !== g.id && kreuzt(g.linie, r)));
+    })());
+
+  // Gegenprobe am echten Pfad: ein eigenes, weitraeumiges Geschoss ohne jede
+  // Ueberdeckung — zwei Waende im Abstand mehrerer Meter, keine Bemassung. Dort steht
+  // jede Blase weiterhin an der festen Stelle von #73, und der Zeichenbereich waechst
+  // um nichts; das Blatt ist damit der Stand vor der Aenderung.
+  const gsWeitH = MAPPE.fuegeGeschossHinzu(store.projektMappe(prjA.projekt.id),
+    store.projektMappe(prjA.projekt.id).gebaeude[0].id, 'Weites Geschoss', 2600);
+  store.setzeMappe(gsWeitH.mappe);
+  const gsW = gsWeitH.id;
+  [0, 6000].forEach((y, i) => {
+    const nm = `Wand weit ${i + 1}`;
+    const id = store.speichere(nm, buildWall(nm, 2000, 2600, []));
+    store.verorteWand(id, gsW,
+      { lage: { start_mm: { x: 0, y: y + 62.5 }, richtung: 'x', laenge_grid: 16 } });
+  });
+  await warte();
+  lp.waehleGeschoss(gsW);
+  await lp.laden();
+  const freiMk = markerVon(lp.blatt.svg);
+  ok('[#89] Gegenprobe: im ueberdeckungsfreien Geschoss liegt keine Blase auf einer Wand',
+    wandfrei(lp.blatt.svg));
+  ok('[#89] dort steht jede Blase unveraendert im festen Abstand von #73',
+    freiMk.length > 0 && freiMk.every(g => {
+      const r = rechteckVon(lp.blatt.svg, g.id);
+      const quer = lp.daten.waende.find(w => w.id === g.id).richtung !== 'y';
+      const soll = quer ? { x: r.x + r.w / 2, y: r.y - 4.5 } : { x: r.x - 4.5, y: r.y + r.h / 2 };
+      return Math.abs(g.kreis.x - soll.x) < 0.002 && Math.abs(g.kreis.y - soll.y) < 0.002;
+    }));
+  ok('[#89] und der Zeichenbereich waechst dort um nichts (kein Blasenueberstand)',
+    (() => {
+      const z = LP.lageplanSvg(lp.daten, lp.optionen);
+      return z.rand.links === 0 && z.rand.oben === 0
+        && z.rand.rechts === 0 && z.rand.unten === 0;
+    })());
 }
 
 // --- Bericht -------------------------------------------------------------
