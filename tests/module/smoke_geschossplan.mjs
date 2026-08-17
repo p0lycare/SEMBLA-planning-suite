@@ -2742,6 +2742,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   const bemVor74 = JSON.stringify(GP.bemassungen());
   const idsVor74 = new Set(store.listeElemente().map(e => e.id));
   const undoDupl = GP.undoStand.undo;
+  // #88: Die Kopie bekommt eine sichtbare Initialposition — 250 mm quer neben dem
+  // Original. Gemessen wird an der GELOESTEN Position der Ausgangswand: A haengt am
+  // Mass A–B, ihre gespeicherte Rohlage ist deshalb nicht zwangslaeufig die
+  // gezeichnete ([K-3]-Fassung C4b(c)). Der Test liest dieselbe Quelle wie der Editor.
+  const posA74 = GP.loesen().positionen[idA74];
   $('gp-dupl').dispatch('click');
   await warte();
   const kopie74 = store.listeElemente().find(e => !idsVor74.has(e.id)) || null;
@@ -2752,8 +2757,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#74 die Kopie traegt Wandelement UND Eingaben der Ausgangswand',
     !!kopie74 && JSON.stringify(kopie74.wandelement) === JSON.stringify(store.holeElement(idA74).wandelement)
     && kopie74.eingaben?.statik?.merkmal === 'original');
-  ok('#74 die Kopie steht im aktiven Geschoss mit lage null — ohne kopierte Masse',
-    !!kopieEintrag && kopieEintrag.geschoss.id === gs74 && kopieEintrag.wand.lage === null
+  ok('#74/#88 die Kopie steht im aktiven Geschoss — verortet 250 mm quer neben dem Original, '
+    + 'ohne kopierte Masse',
+    !!kopieEintrag && kopieEintrag.geschoss.id === gs74
+    && kopieEintrag.wand.lage.richtung === 'x' && kopieEintrag.wand.lage.laenge_grid === 24
+    && kopieEintrag.wand.lage.start_mm.x === posA74.x
+    && kopieEintrag.wand.lage.start_mm.y === posA74.y + 250
     && anMass(kopie74.id).length === 0 && JSON.stringify(GP.bemassungen()) === bemVor74);
   ok('#74 die Kopie ist danach ausgewaehlt, aktiv und kanonisch aktiv gesetzt',
     GP.zustand.aktiv === kopie74.id && GP.zustand.auswahl.includes(kopie74.id)
@@ -2779,9 +2788,9 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && store.aktivId() === idA74 && GP.undoStand.undo === undoDupl && GP.undoStand.redo === 1);
   GP.redo();
   await warte();
-  ok('#74 Redo legt die Kopie unter DERSELBEN id wieder an — Eintrag mit lage null, Zeiger auf der Kopie',
+  ok('#74/#88 Redo legt die Kopie unter DERSELBEN id samt Initialposition wieder an, Zeiger auf der Kopie',
     store.holeElement(kopie74.id) !== null
-    && MAPPE.findeWand(store.holeMappe(), kopie74.id).wand.lage === null
+    && MAPPE.findeWand(store.holeMappe(), kopie74.id).wand.lage.start_mm.y === posA74.y + 250
     && store.aktivId() === kopie74.id && GP.undoStand.undo === undoDupl + 1);
 
   // (b) Loeschen: erst die abgebrochene Bestaetigung — nichts aendert sich.
@@ -2838,6 +2847,161 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     store.holeElement(idA74) === null && !MAPPE.findeWand(store.holeMappe(), idA74)
     && GP.bemassungen().map(b => b.id).join(',') === bmBC.id
     && store.aktivId() === null && GP.undoStand.undo === undoDel + 1);
+}
+
+// --- #88: die duplizierte Wand liegt sofort sichtbar neben dem Original -----
+// Realer Pfad: Waende werden GEZEICHNET, ausgewaehlt und ueber den echten Knopf
+// dupliziert; geprueft wird die GESPEICHERTE Lage in der Projektmappe. Der Editor
+// zeichnet nur verortete Waende — ohne Initialposition waere die Kopie unsichtbar
+// und muesste in der Liste gesucht werden. Geprueft wird zugleich, was NICHT
+// passiert: keine erfundene Position, keine Bemassung, keine fremde Wand bewegt.
+{
+  const mappe88 = store.fuegeProjektHinzu('Projekt 88', { geschoss: 'EG88', hoehe_mm: 2600 });
+  const gs88 = MAPPE.alleGeschosse(mappe88)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs88);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const lage88 = (id) => {
+    const t = MAPPE.findeWand(store.holeMappe(), id);
+    return t ? t.wand.lage : null;
+  };
+  /** Alle Wandlagen des Geschosses AUSSER den genannten — Nachweis fuer „nichts Fremdes bewegt". */
+  const fremdLagen88 = (ausser) => JSON.stringify(MAPPE.findeGeschoss(store.holeMappe(), gs88)
+    .geschoss.waende.filter(w => !ausser.includes(w.id)).map(w => [w.id, w.lage]));
+  /** Auswaehlen wie ein Nutzer: verortet ueber die Buehne, unverortet ueber die Liste. */
+  const waehle88 = (id, welt) => {
+    GP.werkzeug('auswahl');
+    if (welt) GP.tippe(welt); else gp('listeKlick', id);
+    return GP.zustand.aktiv === id;
+  };
+  /** Der echte Duplizierknopf — zurueck kommt die neu entstandene Kopie. */
+  const dupl88 = async () => {
+    const vor = new Set(store.listeElemente().map(e => e.id));
+    $('gp-dupl').dispatch('click');
+    await warte();
+    return store.listeElemente().find(e => !vor.has(e.id)) || null;
+  };
+
+  // (a) Muss 1 — x-Wand: die Kopie liegt genau 250 mm in y versetzt.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 2000, y: 60 });
+  await warte();
+  const idX88 = GP.zustand.aktiv;
+  const lageXVor = JSON.stringify(lage88(idX88));
+  const elXVor = JSON.stringify(store.holeElement(idX88));
+  const fremdVorX = fremdLagen88([]);
+  const undoVorX = GP.undoStand.undo;
+  ok('#88 Pruefaufbau: eine gezeichnete x-Wand, 16 Raster, Mittellinie auf 62,5 mm',
+    waehle88(idX88, { x: 1000, y: 62.5 })
+    && lage88(idX88).richtung === 'x' && lage88(idX88).laenge_grid === 16
+    && lage88(idX88).start_mm.x === 0 && lage88(idX88).start_mm.y === 62.5);
+  const kopieX = await dupl88();
+  ok('#88 (Muss 1) die Kopie einer x-Wand liegt genau 250 mm in y versetzt — '
+    + 'gleiche Richtung, gleiche Laenge, gleiche Orientierung',
+    !!kopieX && !!lage88(kopieX.id)
+    && lage88(kopieX.id).start_mm.x === 0 && lage88(kopieX.id).start_mm.y === 312.5
+    && lage88(kopieX.id).richtung === 'x' && lage88(kopieX.id).laenge_grid === 16
+    && lage88(kopieX.id).orientierung === lage88(idX88).orientierung);
+  ok('#88 (Muss 1) die Kopie ist damit wirklich gezeichnet — sie steht in der Buehne',
+    GP.svg.includes(`data-wand="${kopieX.id}"`));
+  ok('#88 die Meldung benennt die Initialposition und die freie Verschiebbarkeit',
+    /250 mm neben dem Original/.test($('gp-msg').textContent)
+    && /frei verschiebbar/.test($('gp-msg').textContent));
+  ok('#88 (must-not) die Ausgangswand bleibt bit-genau — Lage und Wandelement unveraendert',
+    JSON.stringify(lage88(idX88)) === lageXVor
+    && JSON.stringify(store.holeElement(idX88)) === elXVor);
+  ok('#88 (must-not) keine fremde Wand wurde bewegt', fremdLagen88([kopieX.id]) === fremdVorX);
+  ok('#88 (Muss 2) die Kopie traegt keine Bemassung und keine Fixierung — sie ist frei ([K-8])',
+    GP.bemassungen().length === 0
+    && CON.zustand(kopieX.id, GP.loesen(), {}) === 'frei');
+
+  // (b) Muss 3 — Anlegen und Verorten sind GENAU EIN Rueckgaengig-Schritt.
+  ok('#88 (Muss 3) das Duplizieren bucht genau einen Schritt', GP.undoStand.undo === undoVorX + 1);
+  GP.undo();
+  await warte();
+  ok('#88 (Muss 3) ein Rueckgaengig nimmt Kopie UND ihre Lage zusammen zurueck',
+    store.holeElement(kopieX.id) === null && !MAPPE.findeWand(store.holeMappe(), kopieX.id)
+    && GP.undoStand.undo === undoVorX && JSON.stringify(lage88(idX88)) === lageXVor);
+  GP.redo();
+  await warte();
+  ok('#88 (Muss 3) Wiederholen stellt Kopie und Initialposition gemeinsam wieder her',
+    !!store.holeElement(kopieX.id) && lage88(kopieX.id).start_mm.y === 312.5);
+
+  // (c) Muss 1 — y-Wand: quer ist dort x.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 4000, y: 0 }, { x: 4060, y: 2000 });
+  await warte();
+  const idY88 = GP.zustand.aktiv;
+  ok('#88 Pruefaufbau: eine gezeichnete y-Wand, Mittellinie auf 4062,5 mm',
+    waehle88(idY88, { x: 4062.5, y: 1000 })
+    && lage88(idY88).richtung === 'y' && lage88(idY88).laenge_grid === 16
+    && lage88(idY88).start_mm.x === 4062.5 && lage88(idY88).start_mm.y === 0);
+  const kopieY = await dupl88();
+  ok('#88 (Muss 1) die Kopie einer y-Wand liegt genau 250 mm in x versetzt',
+    !!kopieY && !!lage88(kopieY.id)
+    && lage88(kopieY.id).start_mm.x === 4312.5 && lage88(kopieY.id).start_mm.y === 0
+    && lage88(kopieY.id).richtung === 'y' && lage88(kopieY.id).laenge_grid === 16);
+
+  // (d) Muss 5 — unverortete Ausgangswand: keine Lage, Grund benannt ([P-9]).
+  const idFrei88 = store.speichere('Frei 88', buildWall('Frei 88', 1000, 2600, []));
+  store.verorteWand(idFrei88, gs88, { name: 'Frei 88', lage: null });
+  await warte();
+  GP.render();
+  ok('#88 Pruefaufbau: eine eingetragene, aber unverortete Wand ist ueber die Liste waehlbar',
+    waehle88(idFrei88) && lage88(idFrei88) === null);
+  const kopieFrei = await dupl88();
+  ok('#88 (Muss 5) das Duplizieren einer unverorteten Wand erzeugt KEINE Lage und benennt den Grund',
+    !!kopieFrei && MAPPE.findeWand(store.holeMappe(), kopieFrei.id).wand.lage === null
+    && /nicht verortet/.test($('gp-msg').textContent)
+    && /keine Position erfunden/.test($('gp-msg').textContent));
+
+  // (e) Muss 5 — verwaister Eintrag: keine Kopie, keine Lage, benannt ([L-4]).
+  store.aendereMappe(m => MAPPE.setzeWand(m, gs88,
+    { id: 'wnd-verwaist-88', name: 'Verwaist 88', lage: null }));
+  await warte();
+  GP.render();
+  waehle88('wnd-verwaist-88');
+  {
+    const vorEl = store.listeElemente().length;
+    const vorUndo = GP.undoStand.undo;
+    ok('#88 (Muss 5) der Duplizierknopf ist bei einem verwaisten Eintrag gesperrt',
+      $('gp-dupl').disabled === true);
+    $('gp-dupl').dispatch('click');
+    await warte();
+    ok('#88 (Muss 5) auch der ausgeloeste Knopf legt nichts an und nennt den Grund ([L-4])',
+      store.listeElemente().length === vorEl && GP.undoStand.undo === vorUndo
+      && /verwaister Eintrag/.test($('gp-msg').textContent));
+  }
+
+  // (f) Muss 6 — eine ueberlappende Initialposition ist eine gemeldete Kollision,
+  //     kein Grund, das Eintragen zu verweigern ([K-13]).
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 8000, y: 0 }, { x: 10000, y: 60 });
+  await warte();
+  const idK1 = GP.zustand.aktiv;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 8000, y: 250 }, { x: 10000, y: 310 });
+  await warte();
+  const idK2 = GP.zustand.aktiv;
+  ok('#88 Pruefaufbau: zwei x-Waende genau 250 mm auseinander',
+    lage88(idK1).start_mm.y === 62.5 && lage88(idK2).start_mm.y === 312.5
+    && GP.loesen().kollisionen.length === 0);
+  ok('#88 Pruefaufbau: die untere Wand ist aktiv', waehle88(idK1, { x: 9000, y: 62.5 }));
+  const kopieK = await dupl88();
+  ok('#88 (Muss 6) die Kopie wird trotz Ueberlappung eingetragen — und die Kollision gemeldet',
+    !!kopieK && !!lage88(kopieK.id) && lage88(kopieK.id).start_mm.y === 312.5
+    && GP.loesen().kollisionen.some(k => k.a === kopieK.id || k.b === kopieK.id)
+    && /Kollision/.test($('gp-msg').textContent)
+    && /nicht korrigiert/.test($('gp-msg').textContent));
+
+  // (g) Must-not — kein neues gespeichertes Feld, kein Versionssprung.
+  ok('#88 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  ok('#88 (must-not) die Initialposition steht als gewoehnliche Lage in der Mappe — kein Zusatzfeld',
+    !/initial|kopie_versatz|dupl/i.test(localStorage.getItem('sembla:projekte')));
 }
 
 // --- #75: Mehrere Waende gemeinsam bearbeiten — der Sammel-Editor -----------

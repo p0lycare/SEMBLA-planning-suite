@@ -129,10 +129,12 @@
       — der gesperrte Weg wird benannt, nichts wird still mitaktiviert. Umgekehrt hebt ein
       Projektwechsel die Zeiger darunter <b>auf</b>, statt sie auf Fremdes zu biegen.<br>
       Die <b>Standard-Wandhöhe</b> ist nur eine <b>Vorgabe</b> für neu angelegte Wände und wird nie aus dem
-      Wandelement zurückgeschrieben ([L-5]). Eine neue oder importierte Wand wird im Geschoss
-      <b>ohne Lage</b> eingetragen — gezeichnet ist noch nichts ([L-4]); maßgebend für Länge und Höhe
-      bleibt das Wandelement, eine Abweichung zur gezeichneten Lage wird <b>gemeldet, nicht
-      angeglichen</b> ([L-3]). Beim <b>Löschen</b> eines Projekts oder Geschosses wird nach der
+      Wandelement zurückgeschrieben ([L-5]). Eine importierte oder hier zugeordnete Wand wird im
+      Geschoss <b>am Geschossursprung</b> eingetragen (Richtung x, Länge aus dem Wandelement) — sie ist
+      damit im Geschosseditor sofort sichtbar, <b>unbemaßt</b> und frei verschiebbar (#88); ohne
+      ableitbare Länge bleibt sie unverortet und der Grund wird <b>benannt</b> ([L-4]/[P-9]). Maßgebend
+      für Länge und Höhe bleibt das Wandelement, eine Abweichung zur gezeichneten Lage wird
+      <b>gemeldet, nicht angeglichen</b> ([L-3]). Beim <b>Löschen</b> eines Projekts oder Geschosses wird nach der
       Sicherheitsabfrage <b>getrennt gefragt</b>, ob die zugeordneten Wandelemente aus dem Speicher
       entfernt werden (#85). Ohne dieses ausdrückliche Ja geht nur die Struktur; die Wandelemente
       bleiben erhalten und gelten danach als „nicht eingetragen“.<br>
@@ -224,7 +226,8 @@
   <div class="modal">
     <h3 id="wp-titel">Wand importieren</h3>
     <p class="sub" id="wp-sub">Eine gespeicherte Wanddatei wird im gewählten Geschoss eingetragen —
-      <b>ohne Lage im Raster</b>, denn gezeichnet ist noch nichts ([L-4]).</p>
+      <b>am Geschossursprung</b>, damit sie im Geschosseditor sofort sichtbar ist; sie ist dort
+      <b>unbemaßt</b> und frei verschiebbar (#88).</p>
     <div class="row">
       <div class="field"><label for="f-name">Name</label>
         <input id="f-name" type="text" placeholder="z. B. Wand A" value="Neue Wand"></div>
@@ -447,6 +450,10 @@
   import * as ARCHIV from './shared/sembla-archiv.js';
   import * as KAT from './shared/sembla-katalog.js';
   import * as MAPPE from './shared/sembla-projektmappe.js';
+  // Die Lage-Mathematik ([L-1]/[K-2]) für die Initialposition zugeordneter Wände (#88):
+  // Rastermaß, halbe Wandbreite und die eine Lageprüfung kommen kanonisch von dort —
+  // eine 62,5 hier im Modul wäre eine zweite Wahrheit. Geschrieben wird nichts.
+  import * as CON from './shared/sembla-constraints.js';
   import * as PLAN from './shared/sembla-plan.js';
 
   mountNavbar(0);
@@ -732,9 +739,13 @@
       const gs = aktGeschoss();
       if (!gs) { trZeige('Kein aktives Geschoss.', false); return; }
       const e = store.holeElement(id);
+      // Seit #88 mit sichtbarer Initialposition am Geschossursprung — sonst wäre die
+      // zugeordnete Wand im Geschosseditor nicht darstellbar.
+      const init = trInitialLage(gs.id, id);
       try {
-        store.verorteWand(id, gs.id, { name: e ? e.name : id, lage: null });
-        trZeige(`„${e ? e.name : id}“ ist jetzt in Geschoss „${gs.name}“ eingetragen (ohne Lage im Raster).`, true);
+        store.verorteWand(id, gs.id, { name: e ? e.name : id, lage: init.lage });
+        trZeige(`„${e ? e.name : id}“ ist jetzt in Geschoss „${gs.name}“ eingetragen — `
+          + trInitialText(init) + '.', true);
       } catch (err) { trZeige('Nicht eingetragen: ' + fehlerText(err), false); }
     }
   }
@@ -822,6 +833,64 @@
       if (t) return { mappe: m, ...t };
     }
     return null;
+  }
+
+  /**
+   * Initialposition einer von HIER einem Geschoss zugeordneten Wand (#88).
+   *
+   * Bis dahin wurde jede von aussen zugeordnete Wand mit `lage: null` eingetragen
+   * und war damit im Geschosseditor unsichtbar — er zeichnet nur verortete Waende.
+   * Sie liegt deshalb sofort AM GESCHOSSURSPRUNG: Richtung x, `start_mm` auf der
+   * Mittellinie eine halbe Wandbreite neben dem Ursprung (dort ist der Anker die
+   * Mittellinie, laengs die Stirnkante — [K-2]), Laenge aus dem Wandelement.
+   * 62,5 mm ist selbst ein halber Millimeter, das 0,5-mm-Positionsraster nach
+   * [L-1] bleibt also exakt gewahrt.
+   *
+   * Der Ursprung ist der GESPEICHERTE Punkt des Geschosses ([K-4], #76) — nicht
+   * fest 0/0 — und wird nur gelesen. Abgeleitet wird ausschliesslich aus
+   * kanonischen Daten (Mappe + Wandelement); aus einem Planbild oder einem
+   * unkalibrierten Massstab kommt hier nichts ([L-9]).
+   *
+   * Es wird nichts erfunden: fehlt das Wandelement oder ist seine Laenge kein
+   * Vielfaches des Rasters, bleibt die Lage `null` und der Grund wird BENANNT
+   * ([P-9]/[L-4]). Eine Bemassung entsteht dabei nie — die Wand ist nach [K-8]
+   * „frei“ und im Geschosseditor frei verschiebbar.
+   * @param {string} geschossId @param {string} wandId
+   * @returns {{lage:object|null, grund:string|null, fehler:string[]}}
+   */
+  function trInitialLage(geschossId, wandId){
+    const ort = trFindeGeschoss(geschossId);
+    if (!ort) return { lage: null, grund: 'das Geschoss ist nicht auffindbar', fehler: [] };
+    const el = store.holeElement(wandId);
+    const we = el ? el.wandelement : null;
+    const laenge = (we && Number.isFinite(+we.length_mm)) ? +we.length_mm : null;
+    if (laenge == null) {
+      return { lage: null, grund: 'zu diesem Eintrag gibt es kein Wandelement mit Länge ([L-4])', fehler: [] };
+    }
+    const grid = laenge / CON.GRID_MM;
+    if (!Number.isInteger(grid) || grid < 1) {
+      return { lage: null, fehler: [],
+        grund: `die Wandlänge ${laenge} mm ist kein Vielfaches von ${CON.GRID_MM} mm — die Länge `
+          + 'der Lage steht zwingend im Raster ([L-1])' };
+    }
+    const u = MAPPE.ursprung(ort.mappe, geschossId);
+    const lage = { start_mm: { x: u.x, y: u.y + CON.HALB_BREITE_MM },
+                   richtung: 'x', orientierung: '+x', laenge_grid: grid };
+    const fehler = CON.lageFehler(lage);
+    if (fehler.length) {
+      return { lage: null, grund: 'die Lage am Geschossursprung wäre ungültig', fehler };
+    }
+    return { lage, grund: null, fehler: [] };
+  }
+
+  /** Kurztext der Initialposition für die Meldungen (#88). */
+  function trInitialText(init){
+    return init.lage
+      ? `am Geschossursprung (${init.lage.start_mm.x}/${init.lage.start_mm.y} mm, Richtung x, `
+        + `${init.lage.laenge_grid}×125 mm) — unbemaßt und im Geschosseditor frei verschiebbar`
+      : `ohne Lage im Raster: ${init.grund}`
+        + (init.fehler.length ? ' (' + init.fehler.join(' ') + ')' : '')
+        + ' — es wird keine Position erfunden ([P-9])';
   }
 
   // Der frühere eigene Mappen-Download („nur Struktur (JSON)") ist seit #67 eine
@@ -1157,8 +1226,9 @@
       ? 'Hier ist nur der <b>Name</b> änderbar. Öffnungen und Auslegung gehören in '
         + '<b>Modul&nbsp;1</b>; die <b>Länge</b> einer verorteten Wand wird im '
         + '<b>Geschosseditor</b> geführt ([P-1]).'
-      : 'Eine gespeicherte Wanddatei wird im Geschoss eingetragen — <b>ohne Lage im Raster</b>, denn '
-        + 'gezeichnet ist noch nichts ([L-4]).';
+      : 'Eine gespeicherte Wanddatei wird im Geschoss eingetragen — <b>am Geschossursprung</b>, damit '
+        + 'sie im Geschosseditor sofort sichtbar ist; sie ist dort <b>unbemaßt</b> und frei '
+        + 'verschiebbar (#88).';
     $('wp-quellen').hidden = bearbeiten;
     $('wp-neu-hinweis').hidden = bearbeiten;
     // Der einzige Schreibknopf dieses Popups ist das Umbenennen — angelegt wird hier nichts (#56).
@@ -1200,9 +1270,12 @@
   });
 
   /**
-   * Neu angelegte/importierte Wand im Geschoss eintragen — ohne Lage, denn gezeichnet
-   * ist noch nichts ([L-4]/[L-7]). Danach wird sie aktiv gesetzt, sofern ihr Geschoss
-   * aktiv ist ([L-10]); sonst wird das benannt statt still mitaktiviert.
+   * Importierte Wand im Geschoss eintragen — seit #88 mit einer sichtbaren
+   * Initialposition am Geschossursprung (`trInitialLage`), damit sie im
+   * Geschosseditor überhaupt erscheint; ohne ableitbare Länge bleibt sie
+   * unverortet und der Grund wird benannt ([L-4]/[L-7]/[P-9]). Danach wird sie
+   * aktiv gesetzt, sofern ihr Geschoss aktiv ist ([L-10]); sonst wird das benannt
+   * statt still mitaktiviert.
    * @param {string} wandId @param {string} name @param {string|null} geschossId
    * @returns {string} Zusatz zur Meldung
    */
@@ -1213,17 +1286,19 @@
       try { store.setzeAktiv(wandId); } catch { /* nicht aktivierbar: wird gemeldet */ }
       return ' · keinem Geschoss zugeordnet (in der Warnbox unten zuordenbar)';
     }
-    try { store.verorteWand(wandId, gsId, { name, lage: null }); }
+    const init = trInitialLage(gsId, wandId);
+    try { store.verorteWand(wandId, gsId, { name, lage: init.lage }); }
     catch (e) { return ' · nicht eingetragen (' + fehlerText(e) + ')'; }
+    const lageText = ' (' + trInitialText(init) + ')';
     const gsAktiv = aktGeschoss();
     if (gsAktiv && gsAktiv.id === gsId) {
       try { store.setzeAktiv(wandId); } catch (e) { return ' · eingetragen, aber nicht aktiviert (' + fehlerText(e) + ')'; }
       const ort = store.wandVerortung(wandId);
-      return ` · eingetragen in Geschoss „${ort.geschoss.name}“ und aktiv gesetzt (noch ohne Lage im Raster)`;
+      return ` · eingetragen in Geschoss „${ort.geschoss.name}“ und aktiv gesetzt` + lageText;
     }
     const ort = store.wandVerortung(wandId);
-    return ` · eingetragen in Geschoss „${ort ? ort.geschoss.name : gsId}“ — dieses Geschoss ist nicht `
-      + 'aktiv, die Wand wurde deshalb nicht aktiv gesetzt ([L-10])';
+    return ` · eingetragen in Geschoss „${ort ? ort.geschoss.name : gsId}“${lageText} — dieses Geschoss `
+      + 'ist nicht aktiv, die Wand wurde deshalb nicht aktiv gesetzt ([L-10])';
   }
 
   // --- Wandimport (Bestaetigung VOR der Persistenz) ------------------------
@@ -1319,8 +1394,9 @@
     const { parse, geschossId } = impOffen;
     try {
       const id = store.speichere(name, parse.wandelement, undefined, parse.eingaben);
-      // Auch importierte Waende gehoeren in die Struktur — die Datei bringt keine Lage
-      // mit, also bleibt sie leer ([L-4]): es wird keine erfunden.
+      // Auch importierte Waende gehoeren in die Struktur. Die Datei bringt keine Lage mit;
+      // seit #88 bekommt die Wand deshalb die Initialposition am Geschossursprung —
+      // abgeleitet aus Mappe und Wandelement, nie geraten ([P-9]).
       const ort = wandEintragen(id, name, geschossId);
       neuId = id; neuScroll = true;
       impSchliesse();

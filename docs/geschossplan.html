@@ -200,7 +200,7 @@
             <button class="btn-s" id="gp-redo" disabled title="Wiederholen (Strg+Umschalt+Z)">↷</button>
             <button class="btn-s" id="gp-drehen" disabled title="Aktive Wand um 90° um ihre Min-Ecke drehen (R) — die Vorderseite dreht mit. Gesperrt, sobald ein Maß an der Wand hängt.">⟳</button>
             <button class="btn-s" id="gp-wenden" disabled title="Aktive Wand um 180° wenden (Umschalt+R) — tauscht nur Vorder- und Rückseite; Lage, Länge, Maße und Bezüge bleiben unverändert (#84)">⇆ 180°</button>
-            <button class="btn-s" id="gp-dupl" disabled title="Aktive Wand duplizieren (#74) — unabhängige Kopie von Wandelement und Eingaben unter neuem Namen, unverortet im aktiven Geschoss eingetragen; Bemaßungen wandern nicht mit">⧉ Duplizieren</button>
+            <button class="btn-s" id="gp-dupl" disabled title="Aktive Wand duplizieren (#74) — unabhängige Kopie von Wandelement und Eingaben unter neuem Namen, sofort sichtbar zwei Rasterfelder (250 mm) neben dem Original verortet (#88); Bemaßungen wandern nicht mit, die Kopie ist frei verschiebbar">⧉ Duplizieren</button>
             <span class="trenner"></span>
             <button class="btn-d" id="gp-lage-weg" disabled title="Lage der aktiven Wand aufheben — die Wand bleibt im Geschoss eingetragen ([L-4])">Lage aufheben</button>
             <button class="btn-d" id="gp-wand-loeschen" disabled title="Aktive Wand nach Bestätigung vollständig löschen (#74) — Wandelement, Geschosseintrag und genau die Maße dieses Geschosses, die an der Wand hängen; rückgängig mit Strg+Z">Wand löschen</button>
@@ -1808,14 +1808,60 @@ function kopieName(basis){
 }
 
 /**
+ * Querversatz der Kopie in RASTERFELDERN (#88). Zwei Felder = 250 mm: die Kopie
+ * liegt sichtbar neben dem Original, ohne es zu überdecken, und mit 2 × 125 mm
+ * behält sie dessen Rasterlage exakt — aus einer Feldmitte wird wieder eine
+ * Feldmitte. Als reine Zahl, weil `CON` erst in `__gpInit()` gebunden wird.
+ */
+const KOPIE_VERSATZ_GRID = 2;
+
+/**
+ * Die Initialposition einer duplizierten Wand (#88).
+ *
+ * Bis dahin wurde die Kopie mit `lage: null` eingetragen und war damit
+ * unsichtbar — der Editor zeichnet nur verortete Wände, die Kopie musste in der
+ * Liste gesucht und über „Wand zeichnen“ erst verortet werden. Sie bekommt
+ * deshalb sofort eine Lage: gleiche Richtung, gleiche gerichtete Orientierung
+ * (#84), gleiche Länge, quer um genau `KOPIE_VERSATZ_GRID` Rasterfelder versetzt.
+ *
+ * Bezugspunkt ist die GELÖSTE Position des Originals (dieselbe Bahn wie `drehe`
+ * und `groesseLage`): wo Maße bestimmen, ist das Lösungsergebnis maßgebend
+ * ([K-3]-Fassung C4b(c)) — an der gespeicherten Rohlage gemessen, läge die Kopie
+ * sichtbar woanders als „zwei Felder neben dem Original“. Das Original selbst
+ * wird dabei nur GELESEN und nie geschrieben.
+ *
+ * Es wird nichts erfunden: eine unverortete oder ungültige Ausgangslage liefert
+ * `lage: null` samt Grund ([P-9]). Bemaßt wird die Kopie nicht — sie ist nach
+ * [K-8] „frei“ und frei verschiebbar; der Rasterfang ist unbeteiligt, weil der
+ * Versatz fest und exakt ist.
+ * @returns {{lage:object|null, grund:string|null, versatz:number, quer:string, fehler:string[]}}
+ */
+function kopieLage(id, erg){
+  const l = CON.normLage(wand(id) && wand(id).lage);
+  const pos = l ? position(id, erg) : null;
+  if (!l || !pos) return { lage: null, grund: 'unverortet', versatz: 0, quer: '', fehler: [] };
+  const quer = l.richtung === 'x' ? 'y' : 'x';
+  const versatz = KOPIE_VERSATZ_GRID * CON.GRID_MM;
+  const start = { x: pos.x, y: pos.y };
+  start[quer] = start[quer] + versatz;
+  const lage = { start_mm: start, richtung: l.richtung, orientierung: l.orientierung,
+                 laenge_grid: l.laenge_grid };
+  const fehler = CON.lageFehler(lage);
+  if (fehler.length) return { lage: null, grund: 'ungueltig', versatz, quer, fehler };
+  return { lage, grund: null, versatz, quer, fehler: [] };
+}
+
+/**
  * Aktive Wand duplizieren (#74): eine tiefe, unabhängige Kopie von Wandelement
  * und sämtlichen wandbezogenen Eingaben unter NEUER stabiler id und
- * unterscheidbarem Namen. Eingetragen wird sie im aktiven Geschoss mit
- * `lage: null` — gezeichnet ist sie noch nirgends, und Bemaßungen hängen an der
- * id der Ausgangswand, sie wandern konstruktiv nicht mit. Die Ausgangswand
- * bleibt samt Lage und Maßen bit-genau stehen. Danach ist die Kopie ausgewählt
- * und aktiv; der ganze Vorgang ist GENAU EIN Undo-Schritt über Wandspeicher,
- * Projektmappe und Aktiv-Zeiger.
+ * unterscheidbarem Namen. Eingetragen wird sie im aktiven Geschoss — seit #88
+ * mit einer sichtbaren Initialposition zwei Rasterfelder neben dem Original
+ * (`kopieLage`), sonst unverortet mit benanntem Grund. Bemaßungen hängen an der
+ * id der Ausgangswand und wandern konstruktiv nicht mit; die Kopie ist damit
+ * unbemaßt und frei verschiebbar. Die Ausgangswand bleibt samt Lage und Maßen
+ * bit-genau stehen. Danach ist die Kopie ausgewählt und aktiv; der ganze Vorgang
+ * ist GENAU EIN Undo-Schritt über Wandspeicher, Projektmappe und Aktiv-Zeiger —
+ * Anlegen und Verorten laufen bewusst in DENSELBEN `verorteWand`-Aufruf.
  */
 function dupliziereWand(){
   const gs = geschoss();
@@ -1829,10 +1875,12 @@ function dupliziereWand(){
   const vor = mappenStand();
   const aktivVor = store.aktivId();
   const name = kopieName(el.name || w.id);
+  // VOR dem Anlegen gerechnet: gemessen wird am Stand der Ausgangswand.
+  const k = kopieLage(w.id, verortung());
   let id;
   try {
     id = store.dupliziere(w.id, name);
-    store.verorteWand(id, gs.id, { name, lage: null });
+    store.verorteWand(id, gs.id, { name, lage: k.lage });
   } catch (e) {
     // Kein halber Stand: eine schon angelegte, aber nicht eingetragene Kopie geht wieder.
     if (id) { try { store.loesche(id); } catch { /* schon weg */ } }
@@ -1841,8 +1889,18 @@ function dupliziereWand(){
   }
   waehle(id);
   buchen(vor, [id], [], { aktivVor, aktivNach: store.aktivId() });
-  zeige(`„${name}“ als unabhängige Kopie von „${el.name || w.id}“ angelegt — unverortet im Geschoss `
-    + '(verorten über „Wand zeichnen“). Die Ausgangswand samt Lage und Maßen bleibt unverändert.', true);
+  zeige(`„${name}“ als unabhängige Kopie von „${el.name || w.id}“ angelegt — `
+    + (k.lage
+      ? `verortet ${k.versatz} mm neben dem Original (Achse ${k.quer}), ohne Bemaßung und damit `
+        + 'frei verschiebbar (#88).'
+      : k.grund === 'ungueltig'
+        ? 'unverortet, weil die Lage der Ausgangswand ungültig ist ('
+          + k.fehler.join(' ') + ') — es wird keine Position erfunden ([P-9]). '
+          + 'Verorten über „Wand zeichnen“.'
+        : 'unverortet, denn auch die Ausgangswand ist nicht verortet — es wird keine Position '
+          + 'erfunden ([P-9]). Verorten über „Wand zeichnen“.')
+    + ' Die Ausgangswand samt Lage und Maßen bleibt unverändert.'
+    + (k.lage ? folgen(id, k.lage) : ''), true);
   render();
   return id;
 }

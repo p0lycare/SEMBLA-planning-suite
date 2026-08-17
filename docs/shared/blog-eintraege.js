@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260817-02",
+    datum: "2026-08-17",
+    typ: "fix",
+    issue: 88,
+    titel: "Duplizierte und zugeordnete Wände liegen sofort sichtbar im Geschossplan statt unverortet in der Liste",
+    testbitte: "Im Geschosseditor eine verortete Wand duplizieren: Die Kopie liegt 250 mm neben dem "
+      + "Original, unbemaßt und frei verschiebbar; Strg+Z nimmt sie in einem Schritt zurück. Eine in "
+      + "Modul 0 zugeordnete Wand liegt am Geschossursprung.",
+  },
+  {
     id: "chg-20260817-01",
     datum: "2026-08-17",
     typ: "feature",

@@ -168,6 +168,9 @@ const { baueDateien, gesamtstuecklisteDateien, stuecklistePositionen } = await i
 const GES = await import("../../docs/shared/sembla-gesamtstueckliste.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
 const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
+// Seit #88 rechnet Modul 0 die Initialposition einer zugeordneten Wand — mit der
+// KANONISCHEN Lage-Mathematik (Rastermass, halbe Wandbreite, Lagepruefung).
+const CON = await import("../../docs/shared/sembla-constraints.js");
 const PLAN = await import("../../docs/shared/sembla-plan.js");
 const ARCHIV = await import("../../docs/shared/sembla-archiv.js");
 const { entpacke, zipSync } = await import("../../docs/shared/zip.js");
@@ -178,13 +181,13 @@ const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
 const BINDUNGEN = ["mountNavbar","MODULE","store","WA","baueDateien","gesamtstuecklisteDateien",
                    "gesamtUmfang","gesamtDaten","gesamtDateiRumpf","downloadZip",
-                   "entpacke","ARCHIV","KAT","MAPPE","PLAN"];
+                   "entpacke","ARCHIV","KAT","MAPPE","CON","PLAN"];
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
 new Function(...BINDUNGEN, src)(
   () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
   GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
   (name, files) => zipCalls.push({ name, files }),
-  entpacke, ARCHIV, KAT, MAPPE, PLAN
+  entpacke, ARCHIV, KAT, MAPPE, CON, PLAN
 );
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
@@ -903,8 +906,19 @@ ok('Dialog ist geschlossen', $('imp-overlay').hidden === true);
 ok('sichtbares Erfolgsfeedback nennt Name, Import und den Ort in der Struktur',
   /Halle Ost/.test(trMsgTxt()) && /importiert/.test(trMsgTxt())
   && /eingetragen in Geschoss/.test(trMsgTxt()) && !trFehler());
-ok('[L-4] die importierte Wand ist im Geschoss eingetragen — ohne erfundene Lage',
-  store.wandVerortung(neu.id)?.geschoss.id === gs0 && store.wandVerortung(neu.id).wand.lage === null);
+// #88: Die importierte Wand ist im Geschoss eingetragen — und liegt seit #88 sofort
+// sichtbar AM GESCHOSSURSPRUNG (Richtung x, Laenge aus dem Wandelement). Ohne diese
+// Initialposition waere sie im Geschosseditor unsichtbar; erfunden wird dabei nichts,
+// die Laenge kommt aus dem importierten Wandelement.
+ok('#88 die importierte Wand ist im Geschoss eingetragen — verortet am Geschossursprung',
+  store.wandVerortung(neu.id)?.geschoss.id === gs0
+  && store.wandVerortung(neu.id).wand.lage.richtung === 'x'
+  && store.wandVerortung(neu.id).wand.lage.orientierung === '+x'
+  && store.wandVerortung(neu.id).wand.lage.start_mm.x === 0
+  && store.wandVerortung(neu.id).wand.lage.start_mm.y === CON.HALB_BREITE_MM
+  && store.wandVerortung(neu.id).wand.lage.laenge_grid
+     === store.holeElement(neu.id).wandelement.length_mm / CON.GRID_MM
+  && /am Geschossursprung/.test(trMsgTxt()));
 ok('neue Wand ist in der Baumliste hervorgehoben',
   new RegExp('class="knoten wand[^"]*neu" data-wand="' + neu.id + '"').test($('tr-baum').innerHTML));
 ok('scrollIntoView wurde am neu gerenderten Datensatz aufgerufen',
@@ -1481,11 +1495,43 @@ globalThis.fetch = echtesFetch;
     $('tr-warn').hidden === false && /keinem Projekt/.test($('tr-warn').innerHTML)
     && /Streuner/.test($('tr-warn').innerHTML)
     && new RegExp('data-act="wand-zuordnen" data-id="' + idFrei + '"').test($('tr-warn').innerHTML));
+  // #88: Zugeordnet wird ins aktive Geschoss — mit einer sichtbaren Initialposition am
+  // GESPEICHERTEN Geschossursprung ([K-4]). Abgeleitet wird ausschliesslich aus Mappe und
+  // Wandelement: Richtung x, Mittellinie eine halbe Wandbreite neben dem Ursprung, Laenge
+  // aus dem Wandelement (1000 mm = 8 Raster). Erfunden wird nichts.
   baum('wand-zuordnen', idFrei, 'tr-warn');
-  ok('[L-4] Zuordnen traegt sie ohne erfundene Lage ins aktive Geschoss ein',
-    store.wandVerortung(idFrei)?.geschoss.id === gsNeu
-    && store.wandVerortung(idFrei).wand.lage === null
-    && !store.mappeReferenzen().unverortet.includes(idFrei));
+  {
+    const u88 = MAPPE.ursprung(store.holeMappe(), gsNeu);
+    const l88 = store.wandVerortung(idFrei) ? store.wandVerortung(idFrei).wand.lage : null;
+    ok('#88 Zuordnen traegt sie ins aktive Geschoss ein — verortet am Geschossursprung',
+      store.wandVerortung(idFrei)?.geschoss.id === gsNeu
+      && !!l88 && l88.richtung === 'x' && l88.orientierung === '+x'
+      && l88.start_mm.x === u88.x && l88.start_mm.y === u88.y + CON.HALB_BREITE_MM
+      && l88.laenge_grid === store.holeElement(idFrei).wandelement.length_mm / CON.GRID_MM
+      && l88.laenge_grid === 8
+      && !store.mappeReferenzen().unverortet.includes(idFrei));
+    ok('#88 [L-1] die Initialposition ist eine gueltige Lage und wird benannt',
+      CON.lageFehler(l88).length === 0
+      && /am Geschossursprung/.test(trMsgTxt()) && /frei verschiebbar/.test(trMsgTxt())
+      && !trFehler());
+    ok('#88 sie ist unbemasst — es entsteht keine Bemassung und keine Fixierung',
+      MAPPE.bemassungen(store.holeMappe(), gsNeu).length === 0);
+    ok('#88 (must-not) kein Schema-, Mappen- oder Projektformatsprung, Mappe gueltig',
+      store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+      && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  }
+  // #88: Ohne ableitbare Rasterlaenge wird KEINE Position erfunden — der Grund steht da.
+  {
+    const krumm = store.speichere('Krumme Laenge 88',
+      { ...buildWall('Krumme Laenge 88', 1000, 2000, []), length_mm: 1010 });
+    baum('wand-zuordnen', krumm, 'tr-warn');
+    ok('#88 (Muss 5) eine Wand ohne Rasterlaenge wird ohne Lage eingetragen und der Grund benannt',
+      store.wandVerortung(krumm)?.geschoss.id === gsNeu
+      && store.wandVerortung(krumm).wand.lage === null
+      && /kein Vielfaches von 125 mm/.test(trMsgTxt())
+      && /keine Position erfunden/.test(trMsgTxt()));
+    store.loesche(krumm);
+  }
   ok('[L-4] verwaister Eintrag wird gemeldet, loescht aber nie ein Wandelement', (() => {
     store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsNeu, { id:'w-geist', name:'Geist' }));
     return /Verwaiste Einträge/.test($('tr-warn').innerHTML)
@@ -2506,7 +2552,7 @@ globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return {
 new Function(...BINDUNGEN, src)(
   () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
   GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
-  () => {}, entpacke, ARCHIV, KAT, MAPPE, PLAN);
+  () => {}, entpacke, ARCHIV, KAT, MAPPE, CON, PLAN);
 const frischKatalog = globalThis.localStorage.getItem('sembla:kataloge');
 const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
 globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
