@@ -24,8 +24,8 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-08-16",
-  "signatur": "460a807d",
+  "stand": "2026-08-18",
+  "signatur": "869118af",
   "entscheidungen": [
     {
       "issue": 41,
@@ -49,31 +49,6 @@ export const PLAN = {
       "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
     },
     {
-      "issue": 59,
-      "titel": "Lageplan: Ursprungsdarstellung fachlich abnehmen",
-      "prio": "high",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true,
-      "frage": "Der Geschossursprung steht im Lageplanblatt als Achsenkreuz mit dem Kurztext 0/0, Fixierungen gegen ihn stehen als normale Bemaßungen daneben. Reicht das als Abnahme oder fehlt konkret etwas?",
-      "optionen": [
-        {
-          "text": "Den Ist-Stand abnehmen; keine Änderung am Blatt.",
-          "wirkung": "Der letzte offene Punkt des Issues ist erledigt und es entsteht kein weiterer Blattinhalt."
-        },
-        {
-          "text": "Zwei beschriftete Bezugsachsen durch den Ursprung ergänzen.",
-          "wirkung": "Die Bezugsrichtung ist ohne Maß erkennbar; kleines Paket im Lageplanmodul ohne gespeichertes Feld."
-        },
-        {
-          "text": "Den Ursprung zusätzlich mit seiner Weltkoordinate beschriften.",
-          "wirkung": "Verlangt eine fachliche Festlegung des Bezugs und damit eine neue Regel."
-        }
-      ],
-      "empfehlung": "Den Ist-Stand abnehmen, weil der Ursprung bereits eindeutig markiert ist und jede Fixierung bemaßt daneben steht."
-    },
-    {
       "issue": 77,
       "titel": "Vorspannsystem mit realen Bauteilmaßen und Einbaulagen fachlich klären",
       "prio": "high",
@@ -95,25 +70,46 @@ export const PLAN = {
       "empfehlung": "Einen freigegebenen Referenzaufbau mit Maßkette bereitstellen und erst danach die Rechen- und Darstellungslogik ändern."
     },
     {
-      "issue": 68,
-      "titel": "Projektanlage-Kopfdaten fachlich neu zuordnen",
+      "issue": 19,
+      "titel": "Zuschnitt- und Layoutplanung für Platten, Latten und Gewindestangen",
+      "prio": "medium",
+      "status": "decision needed",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false,
+      "frage": "Das Gewindestangen-Slicing ist vollständig umgesetzt; offen ist nur die aus dem Zyklus genommene Platten- und Latten-Zuschnittplanung. Soll das Issue geschlossen werden?",
+      "optionen": [
+        {
+          "text": "Schließen; die Platten- und Latten-Zuschnittplanung wird bei Bedarf im Folgezyklus als neues Issue angelegt.",
+          "wirkung": "Der Backlog trägt keinen Sammelrest mit; der Folgeumfang startet klein geschnitten mit frischem Stand."
+        },
+        {
+          "text": "Offen lassen als Merkposten für den Folgezyklus.",
+          "wirkung": "Der Umfang bleibt sichtbar, das Issue bleibt aber dauerhaft ohne umsetzbaren Anteil im aktuellen Zyklus."
+        }
+      ],
+      "empfehlung": "Schließen — der umsetzbare Anteil ist vollständig erledigt, und ein Folgezyklus-Issue lässt sich sauberer schneiden."
+    },
+    {
+      "issue": 87,
+      "titel": "Gleiche Wandnamen führen zu Fehlzuweisungen",
       "prio": "ohne",
       "status": "decision needed",
       "sicherheit": false,
       "abhaengig_von": [],
-      "zyklus": true,
-      "frage": "Planverfasser und Phase haben seit der Blattreduktion bewusst keine Zeile im Schriftfeld. Sollen sie in Modul 7 nur pflegbar werden, oder soll das Schriftfeld um zwei Zeilen wachsen?",
+      "zyklus": false,
+      "frage": "Die eindeutige Wand-ID existiert bereits und ist überall die Zuordnungsbasis; Namen sind reine Anzeige. Wo trat die beobachtete Fehlzuweisung auf?",
       "optionen": [
         {
-          "text": "Alle fuenf Angaben werden in Modul 7 pflegbar; im Schriftfeld erscheinen weiterhin nur Plan-Nr., Index und Gez.",
-          "wirkung": "Kein Regelbruch und kleiner Umfang; Planverfasser und Phase stehen dafuer auf keinem Blatt."
+          "text": "Anzeigeproblem: gleichnamige Wände sind in Wandliste und Kopfleiste optisch nicht unterscheidbar.",
+          "wirkung": "Kleines Paket, das die Anzeige eindeutig macht, etwa mit Geschoss-Kontext neben dem Namen; keine Datenänderung."
         },
         {
-          "text": "Das Schriftfeld erhaelt zusaetzlich Zeilen fuer Planverfasser und Phase.",
-          "wirkung": "Der ausdrueckliche Entscheid zur Blattreduktion wird insoweit revidiert; es entsteht eine neue Fachregel und ein groesserer Umfang."
+          "text": "Echter Datenfehler bei einer konkreten Aktion, etwa beim Projektimport.",
+          "wirkung": "Dann werden die Schritte gebraucht (Aktion, Modul, falsche Zuordnung danach), um die Ursache gezielt zu finden."
         }
       ],
-      "empfehlung": "Erste Option, weil der Wunsch aus dem Issue die Bedienstelle meint und die Blattreduktion juengeren Datums ist."
+      "empfehlung": "Kurz die konkrete Situation beschreiben, in der die Fehlzuweisung sichtbar wurde — ohne Repro wird nichts umgebaut."
     }
   ],
   "naechstes": {
@@ -137,13 +133,13 @@ export const PLAN = {
       "zyklus": true
     },
     {
-      "issue": 83,
-      "titel": "Passende Wandverzahnungen von der Kollisionsprüfung ausnehmen",
-      "prio": "high",
+      "issue": 86,
+      "titel": "Projektimport: zentraler Importdialog für beide ZIP-Fassungen",
+      "prio": "ohne",
       "status": "ready",
-      "sicherheit": true,
+      "sicherheit": false,
       "abhaengig_von": [],
-      "zyklus": true
+      "zyklus": false
     }
   ],
   "blockiert": [
