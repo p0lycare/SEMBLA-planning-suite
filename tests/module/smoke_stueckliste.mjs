@@ -741,7 +741,7 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const roh=stuecklistePositionen(EL['w-a'].wandelement, egVoll(), KATALOG);
     ok('#44 Wandebene: Überschrift unverändert Baustellenstückliste',
       document.getElementById('printkopf').innerHTML.includes('Baustellenstückliste · Einbauteile'));
-    ok('#44 Wandebene: keine Herkunftsspalte, genau die sechs Spalten des Blattes (#62)',
+    ok('#44/#81 Wandebene: genau die sechs Spalten des Blattes (#62), unverändert',
       JSON.stringify(kopfSpalten())===JSON.stringify(['Einbauteil','Art','Fertigmaß','Menge','EP','GP']));
     ok('#44 Wandebene: Zeilen entsprechen exakt dem bestehenden Wandpfad',
       zeilen().length===roh.length && roh.every(r=>document.getElementById('tbody').innerHTML.includes(esc0(r.label))));
@@ -761,10 +761,16 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       document.getElementById('printkopf').innerHTML.includes(titel+' · Einbauteile'));
     ok(`#44 ${ebene}: Mengen = reine Aggregation der Wandstücklisten`, gleich(istAus(d), erwartet(ids)));
     ok(`#44 ${ebene}: eine Tabellenzeile je aggregierter Position`, zeilen().length===d.positionen.length);
-    ok(`#44 ${ebene}: Herkunftsspalte kommt hinzu und nennt jede Wand`, (()=>{
+    // #81: Die Herkunftsspalte ist ersatzlos entfallen — der Spaltensatz ist auf JEDER Ebene
+    // derselbe wie auf der Wandebene, und kein Wandname steht mehr in einer Zeile.
+    ok(`#81 ${ebene}: keine Herkunftsspalte, derselbe Spaltensatz wie die Wandebene`, (()=>{
       const sp=kopfSpalten(); const tb=document.getElementById('tbody').innerHTML;
-      return sp[4]==='Wände (Herkunft)' && sp.length===7
-        && ids.every(id=>tb.includes(EL[id].name)); })());
+      return JSON.stringify(sp)===JSON.stringify(['Einbauteil','Art','Fertigmaß','Menge','EP','GP'])
+        && !/class="herk"/.test(tb)
+        && !ids.some(id=>tb.includes(EL[id].name)); })());
+    ok(`#81 ${ebene}: die Herkunft bleibt in der ABLEITUNG vollständig auflösbar`,
+      d.positionen.every(p=>p.herkunft.length>=1 && p.herkunft.every(h=>h.wandId && h.wand))
+      && d.positionen.every(p=>Math.abs(p.menge-p.herkunft.reduce((a,h)=>a+h.menge,0))<1e-9));
     ok(`#44 ${ebene}: verwaiste Wand steht als benannte Lücke am Blatt`, (()=>{
       const l=document.getElementById('luecken');
       return !l.hidden && /Verwaiste Wand/.test(l.innerHTML) && /verwaister Eintrag/.test(l.innerHTML)
@@ -783,7 +789,7 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const alle=d.positionen.flatMap(p=>p.ids);
     ok('#44 Gesamtebene: jede ID ist als Wand-ID:ID eindeutig',
       alle.length>0 && new Set(alle).size===alle.length && alle.every(x=>/^w-[a-z]+:GS-k/.test(x)));
-    ok('#44 Gesamtebene: die Herkunft bleibt je Wand mit ihren IDs auflösbar',
+    ok('#44/#81 Gesamtebene: die Herkunft bleibt je Wand mit ihren IDs auflösbar — nur in den Daten',
       d.positionen.filter(p=>p.herkunft.filter(h=>h.ids.length).length>1).length>0
       && d.positionen.every(p=>p.ids.length===p.herkunft.reduce((a,h)=>a+h.ids.length,0)));
     ok('#44/#62 Gesamtebene: keine qualifizierte ID im Blatt, keine Legende dazu',
@@ -796,10 +802,10 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     SL.setzeEbene('geschoss'); SL.setzePreise(true);
     const mit=document.getElementById('tbody').innerHTML, mitKopf=kopfSpalten();
     const d=SL.daten();
-    // Einbauteil..Herkunft. Das schliessende </tr> wird vorher entfernt: ohne Preise ist die
-    // Herkunft die LETZTE Zelle der Zeile und truege es sonst mit — ein Artefakt dieses
-    // Vergleichs, keine Aussage ueber die Zelle selbst.
-    const mengen=z=>z.replace(/<\/tr>\s*$/,'').split('<td').slice(1,6).join('<td');
+    // Einbauteil..Menge (seit #81 ohne Herkunftszelle). Das schliessende </tr> wird vorher
+    // entfernt: ohne Preise ist die Mengenzelle die LETZTE der Zeile und truege es sonst mit —
+    // ein Artefakt dieses Vergleichs, keine Aussage ueber die Zelle selbst.
+    const mengen=z=>z.replace(/<\/tr>\s*$/,'').split('<td').slice(1,5).join('<td');
     const mitZeilen=zeilen().map(mengen);
     SL.setzePreise(false);
     const ohne=document.getElementById('tbody').innerHTML, ohneKopf=kopfSpalten();
@@ -809,7 +815,7 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     ok('#44 Preisschalter: keine Preiszelle und kein Summenbetrag mehr',
       !/<td class="na">n\.a\.<\/td>/.test(ohne) && !/EUR<\/td>/.test(ohne)
       && /Preise ausgeblendet/.test(ohne));
-    ok('#44 Preisschalter: Mengen und Herkunft bleiben Zeichen für Zeichen gleich',
+    ok('#44 Preisschalter: die Mengenzellen bleiben Zeichen für Zeichen gleich',
       JSON.stringify(zeilen().map(mengen))===JSON.stringify(mitZeilen));
     ok('#44/#62 Preisschalter: das Blatt bleibt in beiden Stellungen ohne Einbauteil-IDs',
       !/GS-k/.test(mit) && !/GS-k/.test(ohne)

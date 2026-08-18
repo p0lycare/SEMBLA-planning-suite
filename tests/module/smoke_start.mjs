@@ -2297,16 +2297,25 @@ globalThis.fetch = echtesFetch;
   ok('#67 CSV nennt Blatt, Ebene und Geschoss',
     /^SEMBLA – Gesamtstückliste Geschoss/.test(gCsv)
     && new RegExp('Ebene;Geschoss').test(gCsv) && gCsv.includes('Geschoss;' + gsName));
-  ok('#67 CSV nennt beide Waende als Herkunft und ist vollstaendig',
-    /Wände;2 von 2/.test(gCsv) && /Vollständigkeit;vollständig/.test(gCsv)
-    && gCsv.includes('Export Wand 1') && gCsv.includes('Export Wand 2'));
+  // #81: Die Wandherkunft ist ersatzlos entfallen — der KOPF nennt weiter beide Waende als
+  // Zahl und den Vollstaendigkeitsstand, die Positionszeilen nennen keinen Wandnamen mehr.
+  ok('#81 CSV nennt Wandzahl und Vollstaendigkeit, aber keinen Wandnamen in einer Zeile', (() => {
+    const zeilen = csvZeilen(gCsv);
+    const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
+    const positionen = zeilen.slice(kopf + 1)
+      .filter(z => z[0] && !z[0].startsWith('Summe netto') && z.length > 5);
+    return /Wände;2 von 2/.test(gCsv) && /Vollständigkeit;vollständig/.test(gCsv)
+      && !zeilen[kopf].some(t => /Herkunft/.test(t))
+      && positionen.length > 0
+      && !positionen.some(z => z.some(v => /Export Wand [12]/.test(v)));
+  })());
   ok('#67 CSV-Mengen sind bitgleich die Summe der Wandstuecklisten', (() => {
     const zeilen = csvZeilen(gCsv);
     const kopf = zeilen.findIndex(z => z[0] === 'Einbauteil');
     const ist = new Map();
     for (const z of zeilen.slice(kopf + 1)) {
       if (!z[0] || z[0].startsWith('Summe netto') || z.length < 7) continue;
-      // Spalten: Einbauteil;Art;Fertigmaß;Einheit;Menge;Herkunft;IDs;...
+      // Spalten: Einbauteil;Art;Fertigmaß;Einheit;Menge;IDs;... (ohne Herkunft seit #81)
       const art = z[1] ? ({ '■': 'standard', '◆': 'sonder', '▲': 'rest' })[z[1][0]] || '' : '';
       const k = [null, z[3], art, z[2] === '' ? '' : +z[2]].join('|');
       ist.set(k, (ist.get(k) || 0) + +z[4]);
@@ -2402,10 +2411,16 @@ globalThis.fetch = echtesFetch;
   const oCsv = zipCalls.length ? zipCalls[0].files[0].data : '';
   ok('#67 Export ohne Preise: keine EP/GP-Spalte, kein Summenbetrag',
     !/EP \(EUR\)/.test(oCsv) && !/GP \(EUR\)/.test(oCsv) && !/Summe netto/.test(oCsv));
-  ok('#67 Export ohne Preise: Mengen, Herkunft und IDs unveraendert', (() => {
-    const nurMengen = t => csvZeilen(t).filter(z => z.length > 6 && z[0] && !z[0].startsWith('Summe netto'))
-      .map(z => [z[0], z[3], z[4], z[5], z[6]].join('|')).join('\n');
-    return nurMengen(oCsv) === nurMengen(gCsv); })());
+  ok('#67 Export ohne Preise: Mengen und IDs unveraendert', (() => {
+    // Verglichen wird ueber die SPALTENNAMEN: seit #81 ist die Tabelle eine Spalte schmaler,
+    // und mit/ohne Preise liegen die hinteren Spalten ohnehin verschoben.
+    const namen = ['Einbauteil', 'Einheit', 'Menge', 'Einbauteil-IDs (Wand-ID:ID)', 'Zuordnung'];
+    const nurMengen = t => { const zeilen = csvZeilen(t);
+      const kopf = zeilen[zeilen.findIndex(z => z[0] === 'Einbauteil')];
+      return zeilen.filter(z => z.length > 5 && z[0] && !z[0].startsWith('Summe netto')
+        && z[0] !== 'Einbauteil')
+        .map(z => namen.map(n => z[kopf.indexOf(n)]).join('|')).join('\n'); };
+    return nurMengen(oCsv) === nurMengen(gCsv) && nurMengen(gCsv).length > 0; })());
   $('exp-preise').checked = true;
 
   // (c) Ein NICHT aktives Geschoss ist genauso exportierbar — ohne Zeigerwechsel ([L-10])

@@ -341,8 +341,15 @@ export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
  * genau einen Mengenpfad: Oberflaeche und Datei sehen dasselbe Objekt.
  *
  * Der PREISSCHALTER blendet ausschliesslich Einzelpreis, Gesamtpreis und Summenbetrag aus.
- * Mengen, Herkunft, Einbauteil-IDs und der Vollstaendigkeitsstand bleiben unveraendert — eine
- * Liste ohne Preise ist dieselbe Liste.
+ * Mengen, Einbauteil-IDs und der Vollstaendigkeitsstand bleiben unveraendert — eine Liste ohne
+ * Preise ist dieselbe Liste.
+ *
+ * KEINE WANDHERKUNFT (#81). Die frueher mitgefuehrte Spalte „Wände (Herkunft)“ ist ersatzlos
+ * entfallen: welche Wand welchen Anteil an einer aggregierten Position hat, wird auf diesem Blatt
+ * nicht gebraucht — dieselbe Begruendung, mit der #62 die Einbauteil-IDs aus dem Modul-4-Blatt
+ * genommen hat. Die Aufloesbarkeit selbst bleibt vollstaendig: `daten.positionen[].herkunft` und
+ * die qualifizierten IDs (Wand-ID:ID) stehen unveraendert in der Ableitung, sie werden hier nur
+ * nicht mehr ausgegeben.
  *
  * MENGENFASSUNG ([P-20], #81): Welche der beiden Fassungen die Datei traegt, steht bewusst
  * NICHT in `opts`, sondern in der uebergebenen Ableitung (`daten.fassung`) — sonst koennte der
@@ -402,19 +409,23 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   }
 
   const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge",
-    "Wände (Herkunft)", "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung"];
+    "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung"];
   // Beide Werte gleichzeitig ([P-20]): die wirksame Menge in „Menge“, die berechnete
   // daneben — Wortlaut wie in der Wanddatei, damit beide Blaetter gleich zu lesen sind.
+  // Eingefuegt wird unmittelbar hinter „Menge“ (Index 4), unabhaengig davon, welche
+  // Spalten danach folgen; „Mengenherkunft“ unterscheidet manuell/berechnet und hat mit
+  // der entfallenen Wandherkunft (#81) nichts zu tun.
   if (angepasst) spalten.splice(5, 0, "Menge berechnet", "Mengenherkunft");
-  if (preise) spalten.splice(angepasst ? 9 : 7, 0, "EP (" + cur + ")", "GP (" + cur + ")");
+  // EP/GP stehen unmittelbar VOR „Produkt (Katalog)“ — der Index folgt der Breite der
+  // Fassung (ohne Wandherkunft zwei Spalten frueher als bis #81).
+  if (preise) spalten.splice(angepasst ? 8 : 6, 0, "EP (" + cur + ")", "GP (" + cur + ")");
 
   const zeilen = daten.positionen.map(r => {
     const z = [r.label, r.art ? r.art_symbol + " " + r.art_label : "",
       r.fertigmass_mm == null ? "" : r.fertigmass_mm, r.unit, r.menge,
-      r.herkunft.map(h => h.wand + ": " + h.menge).join(" | "), r.ids.join(" "),
-      r.produktId || "", r.statusText];
+      r.ids.join(" "), r.produktId || "", r.statusText];
     if (angepasst) z.splice(5, 0, r.menge_berechnet, r.manuell ? "manuell" : "berechnet");
-    if (preise) z.splice(angepasst ? 9 : 7, 0, n2(r.ep), n2(r.gp));
+    if (preise) z.splice(angepasst ? 8 : 6, 0, n2(r.ep), n2(r.gp));
     return z;
   });
 

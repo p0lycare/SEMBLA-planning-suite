@@ -44,8 +44,6 @@
   td.art .sym{font-weight:700;margin-right:4px}
   td.art.standard .sym{color:#1f6feb} td.art.sonder .sym{color:#e8702a} td.art.rest .sym{color:#7a3fd6}
   td.art.sonder{font-weight:600}
-  /* Herkunft (#44): je Wand Name und Teilmenge — die Aggregation bleibt bis zur Wand auflösbar. */
-  td.herk{text-align:left;font-size:11px;color:#46505e}
   /* Mengenübersteuerung ([P-20], #81): die WIRKSAME Menge steht oben, die BERECHNETE
      unmittelbar darunter — beide gleichzeitig, damit der Originalwert nie verdeckt wird.
      Das Bedienelement liegt in derselben Zelle (keine zusätzliche Spalte) und ist im
@@ -102,7 +100,7 @@
     html,body{background:#fff;margin:0}
     .wrap{padding:0;margin:0;max-width:none}
     .blatt{border:none;border-radius:0;padding:0;background:#fff;box-shadow:none}
-    table{font-size:10.5px} td.herk{font-size:9px}
+    table{font-size:10.5px}
     thead{display:table-header-group}
     tr{break-inside:avoid;page-break-inside:avoid}
     *{box-shadow:none!important}
@@ -230,7 +228,11 @@
    wird — Einbauteil, Art, Fertigmaß und Menge. Die
    WANDREFERENZ steht EINMAL im Blattkopf statt in jeder Zeile: auf der Wandebene ist die Liste
    immer genau eine Wand, und die Wiederholung war reine Fülle (die CSV behält ihre Zeilen-Spalte
-   unverändert). Auf den Gesamtebenen tritt dafür genau eine Herkunftsspalte hinzu.
+   unverändert). Auf den Gesamtebenen gilt seit #81 dasselbe: die Spalte „Wände (Herkunft)“ ist
+   ERSATZLOS entfallen — welche Wand welchen Anteil an einer aggregierten Position hat, wird auf
+   dem Blatt nicht gebraucht (dieselbe Begründung wie bei den Einbauteil-IDs in #62). Die
+   Aufloesbarkeit bleibt vollständig in der Ableitung (`positionen[].herkunft`), sie wird hier nur
+   nicht mehr gezeigt; der Spaltensatz ist damit auf ALLEN Ebenen derselbe.
    Ein fehlender Preis ist einheitlich „n.a.“ — die Preiszelle trägt NIE einen Status und NIE
    eine 0. Der nach [P-14] sichtbare GRUND steht knapp und sekundär unter dem Einbauteilnamen. */
 const $=id=>document.getElementById(id);
@@ -429,11 +431,11 @@ function mengeSetzen(kennung, wert){
 }
 
 /* ---- Spalten des Blattes ---------------------------------------------------------------
-   Wandebene: die sechs Spalten aus #62 (die ID-Spalte ist ersatzlos entfallen). Gesamtebenen:
-   genau eine Spalte mehr (Herkunft). Der Preisschalter entfernt ausschliesslich EP und GP. */
+   Die sechs Spalten aus #62 (die ID-Spalte ist ersatzlos entfallen) — auf JEDER Ebene dieselben:
+   seit #81 tritt auf den Gesamtebenen keine Herkunftsspalte mehr hinzu. Der Preisschalter
+   entfernt ausschliesslich EP und GP. */
 function spalten(){
   const s=[{t:'Einbauteil',w:26},{t:'Art',w:12},{t:'Fertigmaß',w:10},{t:'Menge',w:10}];
-  if(EBENE!=='wand') s.push({t:'Wände (Herkunft)',w:16});
   if(PREISE) s.push({t:'EP',w:8},{t:'GP',w:8});
   const summe=s.reduce((a,c)=>a+c.w,0);
   return s.map(c=>({...c,w:Math.round(c.w*100/summe)}));
@@ -510,8 +512,6 @@ function render(){
       : `<td class="art">–</td>`;
     const mass = r.fertigmass_mm!=null ? fmt(r.fertigmass_mm/10,1)+' cm' : '–';
     const nk=(r.unit==='m²'||r.unit==='m')?2:0;
-    const herk = EBENE==='wand' ? ''
-      : `<td class="herk">${esc(r.herkunft.map(h=>h.wand+': '+fmt(h.menge,nk)).join(' · '))}</td>`;
     // [P-14] Grund knapp und sekundär unter dem Namen — nie in der Preiszelle.
     const grund = (r.gp==null && r.status!=='nicht_erforderlich' && !keinKatalog)
       ? `<div class="grund">${esc(r.statusText)}</div>` : '';
@@ -520,7 +520,6 @@ function render(){
     html+=`<tr><td>${esc(r.label)}${grund}${kommentarTeil(r,kstand)}</td>${art}`
         +`<td>${mass}</td>`
         +mengeZelle(r,nk)
-        +herk
         +(PREISE?preis(r.ep)+preis(r.gp):'')+`</tr>`;
   });
   // Summenzeile: Betrag UND Vollständigkeit stehen hier — und nur hier ([P-14]).

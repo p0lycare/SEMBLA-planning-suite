@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260818-02",
+    datum: "2026-08-18",
+    typ: "feature",
+    issue: 81,
+    titel: "Stückliste: die Spalte mit den Herkunftswänden entfällt in Anzeige und Gesamtstückliste-Export",
+    testbitte: "Modul 4 auf Geschoss-, Gebäude- und Projektebene: „Wände (Herkunft)“ ist "
+      + "weg, Mengen, Einbauteil-IDs und Preise bleiben. In Modul 0 exportieren — ohne "
+      + "Herkunft in beiden Mengenfassungen; die Baustellenstückliste der Wand bleibt gleich.",
+  },
+  {
     id: "chg-20260818-01",
     datum: "2026-08-18",
     typ: "fix",

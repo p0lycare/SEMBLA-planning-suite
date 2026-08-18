@@ -261,8 +261,22 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   ok("CSV-Kopf nennt Blatt, Ebene und Bezug", mitPreis[0][0] === "SEMBLA – Gesamtstückliste Geschoss"
     && mitPreis.some(z => z[0] === "Ebene" && z[1] === "Geschoss")
     && mitPreis.some(z => z[0] === "Geschoss" && z[1] === "EG"));
-  ok("CSV nennt Herkunft und qualifizierte IDs",
-    kopfMit.includes("Wände (Herkunft)") && kopfMit.includes("Einbauteil-IDs (Wand-ID:ID)"));
+  // #81: Die Wandherkunft ist ersatzlos entfallen — die qualifizierten IDs bleiben.
+  ok("#81 CSV führt KEINE Herkunftsspalte mehr, die qualifizierten IDs bleiben",
+    !kopfMit.includes("Wände (Herkunft)") && !kopfOhne.includes("Wände (Herkunft)")
+    && !kopfMit.some((t) => /Herkunft/.test(t))
+    && kopfMit.includes("Einbauteil-IDs (Wand-ID:ID)"));
+  ok("#81 kein Wandname mehr in einer Positionszeile", (() => {
+    const zeilen = mitPreis.slice(mitPreis.indexOf(kopfMit) + 1)
+      .filter((z) => z.length > 1 && !String(z[0]).startsWith("Summe netto"));
+    return zeilen.length > 0 && !zeilen.some((z) => z.some((v) => /Wand A|Wand B/.test(String(v))));
+  })());
+  ok("#81 EP/GP stehen unmittelbar vor „Produkt (Katalog)“",
+    kopfMit.indexOf("GP (EUR)") === kopfMit.indexOf("Produkt (Katalog)") - 1
+    && kopfMit.indexOf("EP (EUR)") === kopfMit.indexOf("GP (EUR)") - 1);
+  ok("#81 die Spaltenfolge der Gesamtdatei ist genau der neue Satz",
+    JSON.stringify(kopfMit) === JSON.stringify(["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit",
+      "Menge", "Einbauteil-IDs (Wand-ID:ID)", "EP (EUR)", "GP (EUR)", "Produkt (Katalog)", "Zuordnung"]));
   ok("Preisschalter entfernt genau EP und GP",
     kopfMit.includes("EP (EUR)") && kopfMit.includes("GP (EUR)")
     && !kopfOhne.includes("EP (EUR)") && !kopfOhne.includes("GP (EUR)")
@@ -270,11 +284,22 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   ok("Preisschalter entfernt den Summenbetrag",
     mitPreis.some(z => String(z[0]).startsWith("Summe netto"))
     && !ohnePreis.some(z => String(z[0]).startsWith("Summe netto")));
-  ok("Preisschalter lässt Mengen, Herkunft und IDs unverändert", (() => {
+  ok("Preisschalter lässt Mengen und IDs unverändert", (() => {
+    // Verglichen wird ueber die SPALTENNAMEN, nicht ueber feste Indizes: sonst haengt der Test
+    // an der Breite der Fassung (#81 hat sie geaendert).
+    const namen = ["Einbauteil", "Einheit", "Menge", "Einbauteil-IDs (Wand-ID:ID)", "Zuordnung"];
     const spalten = (aoa, kopf) => aoa.slice(aoa.indexOf(kopf) + 1)
       .filter(z => z.length > 1 && !String(z[0]).startsWith("Summe netto"))
-      .map(z => [z[0], z[3], z[4], z[5], z[6]].join("|"));
+      .map(z => namen.map((n) => z[kopf.indexOf(n)]).join("|"));
     return JSON.stringify(spalten(mitPreis, kopfMit)) === JSON.stringify(spalten(ohnePreis, kopfOhne));
+  })());
+  ok("#81 die Mengen der Datei sind wertgleich der Aggregation (nur die Spalte fiel)", (() => {
+    const iM = kopfMit.indexOf("Menge"), iE = kopfMit.indexOf("Einheit");
+    const zeilen = mitPreis.slice(mitPreis.indexOf(kopfMit) + 1)
+      .filter((z) => z.length > 1 && !String(z[0]).startsWith("Summe netto"));
+    return zeilen.length === d.positionen.length
+      && d.positionen.every((p, i) => zeilen[i][iM] === p.menge && zeilen[i][iE] === p.unit)
+      && gleich(ist(d), erwartet(["w-a", "w-b"]));
   })());
   ok("CSV meldet Vollständigkeit", mitPreis.some(z => z[0] === "Vollständigkeit" && /vollständig – 2 von 2/.test(z[1])));
   const csv = gesamtstuecklisteCsv(d, { datum: "01.01.2026" });
@@ -533,6 +558,12 @@ const P = (ueber = {}) => ({
       !kopfBer.includes("Menge berechnet") && kopfAng.includes("Menge berechnet")
       && kopfAng.indexOf("Menge berechnet") === kopfAng.indexOf("Menge") + 1
       && kopfAng.includes("Mengenherkunft"));
+    ok("#81 „Mengenherkunft“ (manuell/berechnet) bleibt — sie ist nicht die Wandherkunft",
+      kopfAng.indexOf("Mengenherkunft") === kopfAng.indexOf("Menge berechnet") + 1
+      && !kopfAng.includes("Wände (Herkunft)"));
+    ok("#81 auch in der angepassten Fassung stehen EP/GP vor „Produkt (Katalog)“",
+      kopfAng.indexOf("GP (EUR)") === kopfAng.indexOf("Produkt (Katalog)") - 1
+      && kopfAng.indexOf("EP (EUR)") === kopfAng.indexOf("GP (EUR)") - 1);
     ok("#81 die Zeile trägt wirksame und berechnete Menge nebeneinander", (() => {
       const z = aoaAng.slice(aoaAng.indexOf(kopfAng) + 1).find((r) => r[0] === zeileI3(dAng).label);
       const i = kopfAng.indexOf("Menge");
