@@ -1110,9 +1110,10 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       /1 gespeicherte Übersteuerung\(en\) NICHT angewandt/.test(csvBer));
     ok('#81 Gesamtpreis folgt der wirksamen Menge bei unverändertem Einzelpreis', (()=>{
       const b=csvZeile(csvBer,labelI3), a=csvZeile(csvAng,labelI3);
-      // EP steht in beiden Fassungen an derselben Stelle relativ zum Zeilenende.
-      return b[b.length-5]==='9.5' && a[a.length-5]==='9.5'
-        && b[b.length-4]===String(berechnetI3*9.5) && a[a.length-4]===String(3*9.5); })());
+      // EP steht in beiden Fassungen an derselben Stelle relativ zum Zeilenende — seit #81
+      // liegt hinter „Zuordnung“ noch die angehängte Kommentarspalte.
+      return b[b.length-6]==='9.5' && a[a.length-6]==='9.5'
+        && b[b.length-5]===String(berechnetI3*9.5) && a[a.length-5]===String(3*9.5); })());
     ok('#81 ohne Fassungsangabe gilt die berechnete Fassung (Default)',
       stuecklisteCsv(WU, eingabenMit, opt, KAT_ECHT)===csvBer
       && stuecklisteCsv(WU, eingabenMit, {...opt, fassung:'quatsch'}, KAT_ECHT)===csvBer);
@@ -1282,20 +1283,98 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       echterStore.setzeKommentar(kennungI3, null, wid);
     }
 
-    // Der Kommentar bleibt aus jeder Exportdatei heraus (in diesem Paket nicht entschieden).
+    // #81: Der Kommentar steht in der Baustellenstückliste der WANDEBENE — als eigene,
+    // angehängte Spalte, in beiden Mengenfassungen gleich, und ohne jede Ableitung. Geprüft
+    // an den erzeugten Bytes derselben Datei, die der zentrale Export in Modul 0 schreibt.
     {
-      echterStore.setzeKommentar(kennungI3, 'nur für die Anzeige', wid);
-      const eng=echterStore.holeEingaben(wid);
       const opt={datum:'01.01.2026'};
-      ok('#81 der Kommentar steht in keiner Stücklistendatei',
-        !stuecklisteCsv(WU, eng, opt, KAT_ECHT).includes('nur für die Anzeige')
-        && !stuecklisteCsv(WU, eng, {...opt, fassung:'angepasst'}, KAT_ECHT).includes('nur für die Anzeige')
-        && !einbauteileCsv(WU, eng, opt).includes('nur für die Anzeige'));
-      ok('#81 die Exportdateien bleiben bitgleich zu denen ohne Kommentar', (()=>{
-        const mit=stuecklisteCsv(WU, eng, opt, KAT_ECHT);
-        echterStore.setzeKommentar(kennungI3, null, wid);
-        const ohne=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
-        return mit===ohne; })());
+      /** Zeile einer Position als Zellen (Spalte 0 = Bezeichnung). */
+      const zellen=(csv,label)=>csv.split('\n').map(z=>z.split(';')).find(z=>z[0]===label)||[];
+      /** Kopfzeile der Tabelle (die Zeile, die mit „Einbauteil“ beginnt). */
+      const spaltenkopf=csv=>(csv.split('\n').find(z=>z.startsWith('Einbauteil;'))||'').split(';');
+      const labelI3=SL.rows().find(r=>r.key==='i3').label;
+      const labelRod=SL.rows().find(r=>r.key==='rod_std').label;
+
+      // Erst der Vergleichsstand OHNE Kommentare — er trägt die Spalte trotzdem.
+      const csvLeer=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
+      ok('#81 die Kommentarspalte steht immer als letzte Spalte der Wandstückliste',
+        spaltenkopf(csvLeer).at(-1)==='Kommentar'
+        && /\nKommentare;0 von \d+ Position\(en\) kommentiert/.test(csvLeer));
+      ok('#81 eine Position ohne Kommentar hat eine leere Zelle ohne Platzhalter',
+        zellen(csvLeer,labelI3).at(-1)===''
+        && zellen(csvLeer,labelRod).at(-1)==='');
+
+      echterStore.setzeKommentar(kennungI3, 'zwei Steine gebrochen', wid);
+      const eng=echterStore.holeEingaben(wid);
+      const csvBer2=stuecklisteCsv(WU, eng, opt, KAT_ECHT);
+      const csvAng2=stuecklisteCsv(WU, eng, {...opt, fassung:'angepasst'}, KAT_ECHT);
+      ok('#81 der Kommentar steht in der Datei an genau seiner Position',
+        zellen(csvBer2,labelI3).at(-1)==='zwei Steine gebrochen'
+        && zellen(csvBer2,labelRod).at(-1)===''
+        && /\nKommentare;1 von \d+ Position\(en\) kommentiert/.test(csvBer2));
+      ok('#81 beide Mengenfassungen tragen denselben Kommentar an derselben Position',
+        zellen(csvAng2,labelI3).at(-1)==='zwei Steine gebrochen'
+        && zellen(csvAng2,labelRod).at(-1)===''
+        && spaltenkopf(csvAng2).at(-1)==='Kommentar');
+
+      // [P-20]: keine Ableitung — SPALTENWEISE gegen den Stand ohne Kommentar geprüft.
+      // Ein Roh-Byte-Vergleich der ganzen Datei ginge nicht: die Spalte ist immer da.
+      ok('#81 alle übrigen Spalten und die Summen bleiben wertgleich', (()=>{
+        const zeilenOhne=csvLeer.split('\n'), zeilenMit=csvBer2.split('\n');
+        if(zeilenOhne.length!==zeilenMit.length) return false;
+        return zeilenOhne.every((zo,i)=>{
+          const zm=zeilenMit[i];
+          if(/^Kommentare;/.test(zo)) return /^Kommentare;/.test(zm);
+          // Datenzeilen: alles bis auf die letzte (Kommentar-)Zelle muss gleich sein.
+          const a=zo.split(';'), b=zm.split(';');
+          return a.length===b.length && a.slice(0,-1).join(';')===b.slice(0,-1).join(';');
+        }); })());
+      ok('#81 der Kommentar ändert Menge, Einzelpreis und Gesamtsumme nicht',
+        zellen(csvBer2,labelI3)[5]===zellen(csvLeer,labelI3)[5]
+        && zellen(csvBer2,labelI3).at(-6)===zellen(csvLeer,labelI3).at(-6)
+        && csvBer2.split('\n').find(z=>z.startsWith('Summe netto;'))
+           ===csvLeer.split('\n').find(z=>z.startsWith('Summe netto;')));
+
+      // Die Einzelteilliste bleibt ausdrücklich unberührt ([P-19]).
+      ok('#81 die Einzelteilliste der Gewindestangen führt keinen Kommentar',
+        !einbauteileCsv(WU, eng, opt).includes('zwei Steine gebrochen')
+        && !/Kommentar/.test(einbauteileCsv(WU, eng, opt)));
+
+      // Sonderzeichen: ein Kommentar mit Semikolon und Anführungszeichen muss die CSV
+      // nicht zerlegen — er läuft durch dasselbe Quoting wie jede andere Zelle.
+      {
+        echterStore.setzeKommentar(kennungI3, 'Bruch; "Rest" bleibt', wid);
+        const csvQ=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
+        const zeile=csvQ.split('\n').find(z=>z.startsWith(labelI3+';'))||'';
+        ok('#81 ein Kommentar mit Semikolon/Anführungszeichen wird korrekt maskiert',
+          zeile.endsWith(';"Bruch; ""Rest"" bleibt"')
+          && csvQ.split('\n').length===csvBer2.split('\n').length);
+        echterStore.setzeKommentar(kennungI3, 'zwei Steine gebrochen', wid);
+      }
+
+      // Nicht zuordenbar / unzulässig gespeichert: benannt, nie als Positionswert ([P-9]).
+      {
+        const fremdK='rod_std@999999';
+        echterStore.setzeKommentar(fremdK, 'gehört zu nichts mehr', wid);
+        const csvF=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
+        ok('#81 ein nicht zuordenbarer Kommentar wird in der Datei benannt, nicht angewandt',
+          csvF.includes('Kommentar nicht zuordenbar;'+fremdK+';')
+          && zellen(csvF,labelRod).at(-1)===''
+          && echterStore.holeKommentare(wid)[fremdK]==='gehört zu nichts mehr');
+        echterStore.setzeKommentar(fremdK, null, wid);
+
+        const roh=echterStore.holeElement(wid);
+        echterStore.speichere(roh.name, roh.wandelement, wid,
+          { kosten:{ kommentare:{ [kennungI3]: 42 } } });
+        const csvU=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
+        ok('#81 ein unzulässig gespeicherter Kommentar wird benannt und bleibt gespeichert',
+          new RegExp('Kommentar unzulässig gespeichert;'+kennungI3+';').test(csvU)
+          && zellen(csvU,labelI3).at(-1)===''
+          && echterStore.holeKommentare(wid)[kennungI3]===42);
+      }
+      echterStore.setzeKommentar(kennungI3, null, wid);
+      ok('#81 ohne gespeicherten Kommentar ist die Datei wieder der Ausgangsstand',
+        stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT)===csvLeer);
     }
 
     // Auf den Gesamtebenen gibt es kein Kommentarfeld (dort fehlt die Positionskennung).

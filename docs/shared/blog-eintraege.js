@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260818-03",
+    datum: "2026-08-18",
+    typ: "feature",
+    issue: 81,
+    titel: "Stückliste: der Kommentar einer Position steht jetzt in der exportierten Wandstückliste",
+    testbitte: "In Modul 4 auf der Wandebene eine Position kommentieren, dann in Modul 0 die "
+      + "Wand mit Baustellenstückliste exportieren: Die letzte Spalte „Kommentar“ trägt den "
+      + "Text an dieser Position, in beiden Mengenfassungen; Mengen und Preise bleiben.",
+  },
+  {
     id: "chg-20260818-02",
     datum: "2026-08-18",
     typ: "feature",

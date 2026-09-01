@@ -22,10 +22,11 @@ import { optionenAusEingaben, zeichnungDokument, zeichnungSvgDatei } from "./sem
 import { wandelementToIfc } from "./sembla-ifc.js";
 import { nachweise, nachweisParams } from "./sembla-statik.js";
 // Aus der Speicherschicht kommen ausschliesslich REINE Funktionen: `sicherName` (Dateiname),
-// `mengenKennung` und `pruefeMenge` (Kennung und Wertpruefung der Mengenuebersteuerung nach
-// [P-20]). Keine davon liest oder schreibt einen Speicher — sie bringen nur die kanonische
+// `mengenKennung` (Positionskennung), `pruefeMenge` (Wertpruefung der Mengenuebersteuerung)
+// und `pruefeKommentar` (Wertpruefung des Positionskommentars) — beide nach [P-20].
+// Keine davon liest oder schreibt einen Speicher — sie bringen nur die kanonische
 // Fassung dieser Regeln mit, die hier sonst ein zweites Mal entstuende.
-import { mengenKennung, pruefeMenge, sicherName } from "./storage.js";
+import { mengenKennung, pruefeKommentar, pruefeMenge, sicherName } from "./storage.js";
 
 const _fmt = (n, d = 2) => (isFinite(n) ? n : 0).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -192,6 +193,53 @@ export function wirksameMengen(positionen, mengenRoh, opts = {}) {
   return { positionen: angepasst, anzahl, ungueltig, fremd, gespeichert: Object.keys(map).length };
 }
 
+// ---------- Kommentar je Stuecklistenposition ([P-20]) ----------
+//
+// Der Kommentar ist eine reine ZUSATZANGABE: aus ihm wird NICHTS abgeleitet — keine Menge,
+// kein Einzelpreis, keine Summe, keine Positionsauswahl. Er haengt an DERSELBEN stabilen
+// Positionskennung wie die Mengenuebersteuerung (`mengenKennung`) und liegt wandbezogen in
+// `eingaben.kosten.kommentare`; geschrieben wird er ausschliesslich in Modul 4.
+//
+// NACHZIEHPUNKT ([P-6]): Modul 4 haelt dieselbe Zuordnung derzeit noch inline
+// (`kommentarStand` in docs/stueckliste.html). Bei der Mengenuebersteuerung zieht die
+// Oberflaeche `wirksameMengen` ueber `window.SEMBLA` — genau so gehoert auch diese Funktion
+// dorthin. Das Umstellen von Modul 4 ist bewusst NICHT Teil dieses Pakets (die Bedienung und
+// ihr Schreibweg bleiben dort unberuehrt) und bleibt als benannter Nachziehpunkt offen; bis
+// dahin ist DIESE Funktion die kanonische Fassung fuer jeden Ausgabeweg.
+
+/**
+ * Gespeicherte Positionskommentare gegen die gerechneten Positionen halten ([P-20]).
+ *
+ * Die Kennung wird hier SELBST gebaut (`mengenKennung`) und nicht aus `__kennung`
+ * uebernommen: die vergibt `wirksameMengen` nur in der angepassten Fassung, der Kommentar
+ * gilt aber in BEIDEN Mengenfassungen gleich.
+ *
+ * Nicht zuordenbare (`fremd`) und unzulaessig gespeicherte (`unzulaessig`) Eintraege werden
+ * GEMELDET, nie angewandt, nie entfernt und nie auf eine andere Position gelegt ([P-9]).
+ *
+ * @param {Array<{key:string,fertigmass_mm?:number|null,label?:string}>} positionen
+ * @param {Record<string, any>|null|undefined} kommentareRoh `eingaben.kosten.kommentare`, ungefiltert
+ * @returns {{text:Record<string,string>, anzahl:number,
+ *   unzulaessig:Array<{kennung:string,label:string,wert:any,grund:string}>,
+ *   fremd:string[], gespeichert:number}}
+ */
+export function wirksameKommentare(positionen, kommentareRoh) {
+  const map = (kommentareRoh && typeof kommentareRoh === "object" && !Array.isArray(kommentareRoh))
+    ? kommentareRoh : {};
+  const text = {}; const unzulaessig = []; const bekannt = new Set(); let anzahl = 0;
+  for (const p of positionen || []) {
+    const k = mengenKennung(p);
+    bekannt.add(k);
+    if (!Object.prototype.hasOwnProperty.call(map, k)) continue;
+    const g = pruefeKommentar(map[k]);
+    if (!g.ok) { unzulaessig.push({ kennung: k, label: p.label, wert: map[k], grund: g.fehler }); continue; }
+    // Ein leer gespeicherter Text ist kein Kommentar — die Zelle bleibt leer, ohne Platzhalter.
+    if (g.wert) { text[k] = g.wert; anzahl++; }
+  }
+  const fremd = Object.keys(map).filter(k => !bekannt.has(k));
+  return { text, anzahl, unzulaessig, fremd, gespeichert: Object.keys(map).length };
+}
+
 /**
  * Baustellenstückliste als AoA (Array-of-Arrays) — Basis fuer CSV/Excel. Enthaelt je
  * Einbauteil-Position Art, Fertigmaß, Wandreferenz und die Einbauteil-IDs ([P-19]) sowie
@@ -209,6 +257,15 @@ export function wirksameMengen(positionen, mengenRoh, opts = {}) {
  * wirksamen Menge bei unveraendertem Einzelpreis. Nicht zuordenbare und unzulaessig
  * gespeicherte Uebersteuerungen stehen als eigene Kopfzeilen — benannt, nicht angewandt,
  * nicht geloescht. Die berechnete Fassung bleibt ausser der Kopfzeile unveraendert.
+ *
+ * KOMMENTAR ([P-20], #81): Die LETZTE Spalte fuehrt den in Modul 4 erfassten Kommentar der
+ * Position — in BEIDEN Mengenfassungen mit demselben Inhalt, denn er haengt an der Position
+ * und nicht an der Menge. Er wird ausschliesslich GELESEN und nichts daraus abgeleitet:
+ * Mengen, Einzelpreise, Summen und alle uebrigen Spalten sind wertgleich zum Stand ohne
+ * Kommentare. Die Spalte steht ANGEHAENGT — jede andere Stelle verschoebe die GP-Spalte und
+ * damit die Summenzeilen. Eine Position ohne Kommentar hat eine LEERE Zelle (kein „–“).
+ * Nicht zuordenbare und unzulaessig gespeicherte Kommentare stehen als eigene Kopfzeilen,
+ * getrennt von den Mengenzeilen — benannt, nicht angewandt, nicht geloescht ([P-9]).
  * @param {object} w @param {object} eingaben
  * @param {{datum?:string, fassung?:string}} [opts] @param {object|null} [katalog]
  */
@@ -223,6 +280,9 @@ export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
   const m = wirksameMengen(stuecklistePositionen(w, eingaben, katalog), kosten.mengen,
     { anwenden: angepasst });
   const rs = m.positionen;
+  // Der Kommentar tritt NEBEN diese Zeilen: gelesen wird nur, gerechnet wird daran nichts.
+  // Er ist von der Fassungswahl unabhaengig — er gehoert der Position, nicht der Menge.
+  const kom = wirksameKommentare(rs, kosten.kommentare);
   const s = stuecklisteSumme(rs);
   const datum = opts.datum || _heute();
   const n2 = v => (v == null ? "" : +v.toFixed(2));
@@ -238,6 +298,8 @@ export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
       ? " · " + m.anzahl + " von " + rs.length + " Position(en) manuell"
       : (m.gespeichert ? " · " + m.gespeichert + " gespeicherte Übersteuerung(en) NICHT angewandt" : ""))],
     ["Kennzeichnung", ART_KENNZEICHNUNG],
+    // Eigene Zeile, bewusst NICHT in den Mengenvermerk gemischt: das sind zwei Aussagen.
+    ["Kommentare", kom.anzahl + " von " + rs.length + " Position(en) kommentiert"],
   ];
   // Jede nicht anwendbare Uebersteuerung steht mit Kennung und Ursache als eigene Zeile —
   // eine Datei, die sie verschweigt, saehe vollstaendig aus, ohne es zu sein ([P-9]).
@@ -249,14 +311,29 @@ export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
     kopf.push(["Übersteuerung unzulässig", u.kennung,
       u.label + ": " + u.grund + " Es gilt die berechnete Menge."]);
   }
+  // Dasselbe fuer die Kommentare — getrennt gehalten, damit nie offenbleibt, ob eine
+  // Meldung die Menge oder den Kommentar betrifft.
+  for (const k of kom.fremd) {
+    kopf.push(["Kommentar nicht zuordenbar", k,
+      "gehört zu keiner gerechneten Position – nicht angewandt, nicht gelöscht"]);
+  }
+  for (const u of kom.unzulaessig) {
+    kopf.push(["Kommentar unzulässig gespeichert", u.kennung,
+      u.label + ": " + u.grund + " Die Position bleibt ohne Kommentar."]);
+  }
 
   const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Wand", "Einheit", "Menge", "Einbauteil-IDs",
-    "EP (" + cur + ")", "GP (" + cur + ")", "Produkt (Katalog)", "Preisbasis", "Zuordnung"];
+    "EP (" + cur + ")", "GP (" + cur + ")", "Produkt (Katalog)", "Preisbasis", "Zuordnung",
+    // ANGEHAENGT (s. o.): so bleiben die Indizes aller uebrigen Spalten und der Summenzeilen
+    // unveraendert. Die Spalte gibt es IMMER — ein Spaltensatz, der davon abhaengt, ob jemand
+    // kommentiert hat, waere maschinell nicht vergleichbar.
+    "Kommentar"];
   if (angepasst) spalten.splice(6, 0, "Menge berechnet", "Mengenherkunft");
   const zeilen = rs.map(r => {
     const z = [r.label, _artText(r), r.fertigmass_mm == null ? "" : r.fertigmass_mm,
       r.wand || "", r.unit, r.menge, r.ids.join(" "),
-      n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText];
+      n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText,
+      kom.text[mengenKennung(r)] || ""];
     if (angepasst) z.splice(6, 0, r.__berechnet, r.__ueber == null ? "berechnet" : "manuell");
     return z;
   });

@@ -39,9 +39,10 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Der NEUESTE Eintrag sind die buchstabenfreien Wandseiten des Lageplans (#89) — er
+// Der NEUESTE Eintrag ist der Kommentar in der exportierten Wandstueckliste (#81) — er
 // wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe rueckt
-// geschlossen um eins nach hinten und zaehlt ueber `BLASEN`, `PLANKOPF`, `LETZTER`,
+// geschlossen um eins nach hinten und zaehlt ueber `HERKUNFT`, `VORSCHAU`, `SEITEN`,
+// `BLASEN`, `PLANKOPF`, `LETZTER`,
 // `VORHER`, `NEU`, `AKTUELL` und `AELTER`, damit keine 85 Indizes zu drehen sind.
 // Ueber `VORHER` zaehlen damit: #88 (Auswahl), #90 (sichtbare
 // Verzahnungsbereiche), #88 (Initialposition duplizierter und zugeordneter Waende), #85
@@ -57,34 +58,56 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(6);
-const NEU = EINTRAEGE.slice(12);
-const AKTUELL = EINTRAEGE.slice(17);
-const AELTER = EINTRAEGE.slice(27);
-// Der NEUESTE Eintrag nimmt die WANDHERKUNFT aus Modul 4 und der Gesamtstueckliste-Datei
+const VORHER = EINTRAEGE.slice(7);
+const NEU = EINTRAEGE.slice(13);
+const AKTUELL = EINTRAEGE.slice(18);
+const AELTER = EINTRAEGE.slice(28);
+// Der NEUESTE Eintrag bringt den KOMMENTAR je Stuecklistenposition in die exportierte
+// Baustellenstueckliste der Wandebene (#81): eine eigene, angehaengte Spalte, in beiden
+// Mengenfassungen gleich. Aussagewahr heisst hier: hinzugekommen ist allein ein AUSGABEWEG —
+// erfasst wird weiter nur in Modul 4, und abgeleitet wird daraus nichts ([P-20]).
+ok("der Kommentar in der Wandstückliste (Issue 81) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260818-03" && EINTRAEGE[0]?.issue === 81
+  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-18");
+ok("der Kommentar-Eintrag benennt Gegenstand, Ausgabeweg und die Ebene",
+  /Stückliste/.test(EINTRAEGE[0]?.titel || "")
+  && /Kommentar/.test(EINTRAEGE[0]?.titel || "")
+  && /exportierte/.test(EINTRAEGE[0]?.titel || "")
+  && /Wandstückliste/.test(EINTRAEGE[0]?.titel || "")
+  // Keine geaenderte Menge, kein Preis, kein neues Feld, keine Gesamtebene.
+  && !/Menge geändert|Preis|neues Feld|Gesamtstückliste/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Kommentar-Testbitte benennt beide Module, die Spalte und was unveraendert bleibt",
+  /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Kommentar/.test(EINTRAEGE[0]?.testbitte || "")
+  && /beiden Mengenfassungen/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Mengen und Preise bleiben/.test(EINTRAEGE[0]?.testbitte || ""));
+
+const HERKUNFT = EINTRAEGE[1];
+// Der bisher neueste Eintrag nimmt die WANDHERKUNFT aus Modul 4 und der Gesamtstueckliste-Datei
 // (#81): auf den Gesamtebenen faellt die Spalte „Wände (Herkunft)“ ersatzlos weg. Aussagewahr
 // heisst hier: geaendert hat sich allein die DARSTELLUNG — Mengen, Einbauteil-IDs, Preise und
 // die Wandebene bleiben, und die Aufloesbarkeit steckt weiter in der Ableitung ([P-19]/[P-20]).
-ok("die entfallene Wandherkunft (Issue 81) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260818-02" && EINTRAEGE[0]?.issue === 81
-  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-18");
+ok("die entfallene Wandherkunft (Issue 81) folgt direkt auf den neuesten Eintrag",
+  HERKUNFT?.id === "chg-20260818-02" && HERKUNFT?.issue === 81
+  && HERKUNFT?.typ === "feature" && HERKUNFT?.datum === "2026-08-18");
 ok("der Herkunfts-Eintrag benennt Gegenstand, beide Ausgabewege und das Nutzerergebnis",
-  /Stückliste/.test(EINTRAEGE[0]?.titel || "")
-  && /Herkunftswänden/.test(EINTRAEGE[0]?.titel || "")
-  && /entfällt/.test(EINTRAEGE[0]?.titel || "")
-  && /Anzeige/.test(EINTRAEGE[0]?.titel || "")
-  && /Export/.test(EINTRAEGE[0]?.titel || "")
+  /Stückliste/.test(HERKUNFT?.titel || "")
+  && /Herkunftswänden/.test(HERKUNFT?.titel || "")
+  && /entfällt/.test(HERKUNFT?.titel || "")
+  && /Anzeige/.test(HERKUNFT?.titel || "")
+  && /Export/.test(HERKUNFT?.titel || "")
   // Keine neue Menge, kein neuer Preis, kein neues Feld und keine geaenderte Wandebene.
-  && !/Menge geändert|Preis|neues Feld|Wandebene/i.test(EINTRAEGE[0]?.titel || ""));
+  && !/Menge geändert|Preis|neues Feld|Wandebene/i.test(HERKUNFT?.titel || ""));
 ok("die Herkunfts-Testbitte benennt Ebenen, beide Orte und was unveraendert bleibt",
-  /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Geschoss-, Gebäude- und Projektebene/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Einbauteil-IDs/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Mengenfassungen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Baustellenstückliste der Wand bleibt gleich/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Modul 4/.test(HERKUNFT?.testbitte || "")
+  && /Modul 0/.test(HERKUNFT?.testbitte || "")
+  && /Geschoss-, Gebäude- und Projektebene/.test(HERKUNFT?.testbitte || "")
+  && /Einbauteil-IDs/.test(HERKUNFT?.testbitte || "")
+  && /Mengenfassungen/.test(HERKUNFT?.testbitte || "")
+  && /Baustellenstückliste der Wand bleibt gleich/.test(HERKUNFT?.testbitte || ""));
 
-const VORSCHAU = EINTRAEGE[1];
+const VORSCHAU = EINTRAEGE[2];
 // Der bisher neueste Eintrag stellt die BLATTVORSCHAU von Modul 9 auf das echte Papierverhaeltnis
 // des gewaehlten Formats um (#89): Vorschau und Ausdruck zeigen dieselbe Aufteilung, beim
 // Verkleinern des Fensters skaliert das ganze Blatt gleichmaessig. Aussagewahr heisst hier:
@@ -106,7 +129,7 @@ ok("die Vorschau-Testbitte benennt Ort, Bedienung und die erwartete Wirkung",
   && /Aufteilung/.test(VORSCHAU?.testbitte || "")
   && /Ausdrucks/.test(VORSCHAU?.testbitte || "")
   && /als Ganzes kleiner/.test(VORSCHAU?.testbitte || ""));
-const SEITEN = EINTRAEGE[2];
+const SEITEN = EINTRAEGE[3];
 // Davor nahm der Eintrag die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
 // Rueckseite bleiben als farbige Kanten erkennbar und werden in der Legende
 // aufgeschluesselt. Aussagewahr heisst hier: die Unterscheidung bleibt erhalten — es darf
@@ -130,7 +153,7 @@ ok("die Seiten-Testbitte benennt Ort, Erwartung und die erhaltene Unterscheidung
   && /keine V\/R-Buchstaben/.test(SEITEN?.testbitte || "")
   && /farbigen Vorder- und Rückkanten/.test(SEITEN?.testbitte || "")
   && /Legende/.test(SEITEN?.testbitte || ""));
-const BLASEN = EINTRAEGE[3];
+const BLASEN = EINTRAEGE[4];
 // Davor machte der Eintrag die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
 // jetzt auch den Wandflaechen aus, nicht mehr nur einander und den Massen. Aussagewahr
 // heisst hier: die Zuordnung bleibt — die Fuehrungslinie zeigt weiter auf dieselbe
@@ -159,7 +182,7 @@ ok("die Blasen-Testbitte benennt Ort, Erwartung und die erhaltene Zuordnung",
 ok("genau vier Eintraege fuer Issue 89, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 89).map(e => e.id).join(",")
     === "chg-20260818-01,chg-20260817-08,chg-20260817-07,chg-20260817-05");
-const PLANKOPF = EINTRAEGE[4];
+const PLANKOPF = EINTRAEGE[5];
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -195,7 +218,7 @@ ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
     === "chg-20260817-06,chg-20260812-08");
 // Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
-const LETZTER = EINTRAEGE[5];
+const LETZTER = EINTRAEGE[6];
 ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
   LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
   && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");
@@ -473,16 +496,17 @@ ok("genau vier Eintraege fuer Issue 79 — Wahl in Modul 1, Lageplan, Geschossed
   neu79.length === 4
   && neu79.map(e => e.id).join(",")
     === "chg-20260816-01,chg-20260815-03,chg-20260815-02,chg-20260814-04");
-// #81 hat FUENF Eintraege, weil es fuenf getrennte Nutzerergebnisse waren: erst die
+// #81 hat SECHS Eintraege, weil es sechs getrennte Nutzerergebnisse waren: erst die
 // manuelle Menge in Modul 4, dann die waehlbare Mengenfassung der Wanddatei im
 // zentralen Export, dieselbe Wahl fuer die Gesamtstueckliste der Ebene, der Kommentar
-// je Position — das im fachlichen Gate als optional benannte zweite Feld — und zuletzt
-// die entfallene Wandherkunft in Anzeige und Gesamtstueckliste-Datei.
+// je Position — das im fachlichen Gate als optional benannte zweite Feld —, die
+// entfallene Wandherkunft in Anzeige und Gesamtstueckliste-Datei und zuletzt der
+// Kommentar als angehaengte Spalte in der exportierten Wandstueckliste.
 const neu81 = EINTRAEGE.filter(e => e.issue === 81);
-ok("genau fuenf Eintraege fuer Issue 81 — Uebersteuerung, beide Fassungswahlen, Kommentar, Herkunft",
-  neu81.length === 5
+ok("genau sechs Eintraege fuer Issue 81 — Uebersteuerung, Fassungswahlen, Kommentar, Herkunft, Exportspalte",
+  neu81.length === 6
   && neu81.map(e => e.id).join(",")
-    === "chg-20260818-02,chg-20260816-11,chg-20260816-05,chg-20260816-02,chg-20260815-01");
+    === "chg-20260818-03,chg-20260818-02,chg-20260816-11,chg-20260816-05,chg-20260816-02,chg-20260815-01");
 ok("die Mengenfassung der Gesamtstueckliste (Issue 81) folgt direkt danach",
   AKTUELL[0]?.id === "chg-20260816-05" && AKTUELL[0]?.issue === 81
   && AKTUELL[0]?.typ === "feature" && AKTUELL[0]?.datum === "2026-08-16");

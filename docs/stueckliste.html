@@ -221,8 +221,12 @@
    Zeichen; alles andere wird BENANNT abgewiesen und nie gekürzt ([P-9]). Leeren löscht genau
    diesen einen Eintrag. Ein Kommentar, der zu keiner gerechneten Position mehr passt, und
    ein unzulässig gespeicherter Wert werden — wie bei der Menge — benannt und nicht
-   angewandt, aber nie gelöscht und nie umgehängt. Die Exportdateien aus Modul 0 führen ihn
-   nicht; ob sie das sollen, ist bewusst offen und wird hier nicht vorweggenommen.
+   angewandt, aber nie gelöscht und nie umgehängt. Die Baustellenstückliste der WANDEBENE aus
+   Modul 0 führt ihn seit #81 als eigene, angehängte Spalte — in beiden Mengenfassungen gleich
+   und ohne jede Ableitung (`wirksameKommentare` in sembla-export.js liest ihn nur). Die
+   Gesamtstücklisten der Geschoss-, Gebäude- und Projektebene und die Einzelteilliste der
+   Gewindestangen führen ihn weiterhin NICHT: ein Kommentar gilt nur für die Ebene, auf der er
+   erfasst wurde, und dort gibt es keine Positionskennung.
 
    ARBEITSBLATT (#58/#62): Die Anzeige ist auf das reduziert, was auf der Baustelle gebraucht
    wird — Einbauteil, Art, Fertigmaß und Menge. Die
