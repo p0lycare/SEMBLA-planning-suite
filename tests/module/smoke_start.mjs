@@ -2206,6 +2206,173 @@ globalThis.fetch = echtesFetch;
     (await PLAN.holePlan(gsEg)) === null && /nie enthalten/.test(trMsgTxt())
     && store.geschossPlan(gsEg).datei === 'eg.png');
 
+  // 11l) #86 Teilauswahl: nur ein Geschoss oder nur eine einzelne Wand -----
+  // Der Nutzerpfad des Folgepakets: dieselbe Export-ZIP, uebernommen wird aber nur ein
+  // AUSSCHNITT. Gelesen und geprueft wird weiterhin die GANZE Datei ([L-13]) — die
+  // Auswahl schraenkt allein die Uebernahme ein. Alles laeuft ueber die ECHTE
+  // Oberflaeche: Importknopf, Prueferdialog, Auswahlfelder, „Importieren“.
+  //
+  // `vergleich()` oben misst den GANZEN Projektstand und bleibt fuer die
+  // Vollimport-Abschnitte unveraendert; die Teiluebernahme braucht eine eigene
+  // Messlatte. `fremdStand` nimmt das ZIELprojekt (und damit auch die aktiven Zeiger,
+  // die zur Aktion gehoeren) aus und prueft alle uebrigen Projekte BYTEGLEICH.
+  const fremdStand = (ausser) => JSON.stringify(store.listeProjekte()
+    .filter(m => m.projekt.id !== ausser)
+    .map(m => m.projekt.id + '=' + JSON.stringify(m)).sort());
+
+  ok('#86 die Teilauswahl steht als eigener Block im Prueferdialog',
+    /id="arc-teil"/.test(html) && /id="arc-umfang"/.test(html)
+    && /id="arc-gs"/.test(html) && /id="arc-wd"/.test(html)
+    && /id="arc-ziel-prj"/.test(html) && /id="arc-ziel-prj-name"/.test(html)
+    && /id="arc-ziel-gs"/.test(html) && /id="arc-umfang-bericht"/.test(html));
+
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  const tlZiel = store.fuegeProjektHinzu('Mein Projekt', { geschoss: 'Bestand', hoehe_mm: 2500 });
+  const tlZielGs = tlZiel.gebaeude[0].geschosse[0].id;
+  const tlFremd = store.fuegeProjektHinzu('Unbeteiligt', { geschoss: 'UG' });
+  store.setzeAktivesProjekt(tlZiel.projekt.id);
+  const tlFremdVor = fremdStand(tlZiel.projekt.id);
+
+  await $('pi-datei').dispatch('change', {
+    target: { files: [zipDatei('teil-geschoss.zip', expBytes)], value: 'x' } });
+  await warte();
+  ok('#86 der Dialog bietet die Teilauswahl VOR der Bestaetigung an — ohne Zutun ganzes Projekt',
+    $('arc-overlay').hidden === false && $('arc-teil').hidden === false
+    && $('arc-umfang').value === 'projekt'
+    && $('arc-teil-geschoss').hidden === true && $('arc-teil-wand').hidden === true
+    && /GANZE Projekt/.test($('arc-umfang-bericht').innerHTML)
+    && store.listeElemente().length === 0);
+  ok('#86 beide Geschosse der Quelle, beide Zielprojekte und „neu anlegen“ stehen zur Wahl',
+    $('arc-gs').innerHTML.includes(gsEg) && $('arc-gs').innerHTML.includes(gsOg)
+    && $('arc-ziel-prj').innerHTML.includes(tlZiel.projekt.id)
+    && $('arc-ziel-prj').innerHTML.includes(tlFremd.projekt.id)
+    && /Neues Projekt anlegen/.test($('arc-ziel-prj').innerHTML)
+    && $('arc-ziel-gs').innerHTML.includes(tlZielGs)
+    && $('arc-wd').innerHTML.includes(wEg) && $('arc-wd').innerHTML.includes(wOg));
+
+  $('arc-umfang').value = 'geschoss';
+  $('arc-umfang').dispatch('change');
+  $('arc-gs').value = gsEg;
+  $('arc-gs').dispatch('change');
+  $('arc-ziel-prj').value = tlZiel.projekt.id;
+  $('arc-ziel-prj').dispatch('change');
+  ok('#86 mit der Geschosswahl erscheint die Zielwahl, und der Umfang steht im Bericht',
+    $('arc-teil-geschoss').hidden === false && $('arc-teil-wand').hidden === true
+    && $('arc-ziel-prj-neu').hidden === true
+    && /Geschoss/.test($('arc-umfang-bericht').innerHTML)
+    && /Mein Projekt/.test($('arc-umfang-bericht').innerHTML)
+    && store.listeProjekte().length === 2 && store.listeElemente().length === 0);
+  ok('#86 der Konflikttext benennt, was wirklich passiert — das Zielprojekt wird ergaenzt',
+    $('arc-ueber-box').hidden === false && $('arc-ueber').checked === false
+    && /wird ein Geschoss ergänzt/.test($('arc-ueber-text').textContent)
+    && /bestehenden Zielprojekt/.test($('arc-ueber-titel').textContent));
+
+  $('arc-ueber').checked = true;
+  $('arc-go').dispatch('click');
+  await warte();
+  const tlM1 = store.projektMappe(tlZiel.projekt.id);
+  const tlNeu1 = MAPPE.alleGeschosse(tlM1).find(t => t.geschoss.id !== tlZielGs);
+  ok('#86 genau das gewaehlte Geschoss ist im gewaehlten Projekt angekommen',
+    $('arc-overlay').hidden === true && MAPPE.alleGeschosse(tlM1).length === 2
+    && !!tlNeu1 && !!MAPPE.findeWand(tlM1, wEg) && !MAPPE.findeWand(tlM1, wOg)
+    && store.aktivesProjektId() === tlZiel.projekt.id);
+  ok('#86 es traegt eine NEUE Geschoss-Kennung, die Wand-ID bleibt ([L-4]/[L-8])',
+    tlNeu1.geschoss.id !== gsEg && store.listeElemente().map(e => e.id).join() === wEg);
+  ok('#86 Wandelement, Lage und Bemassung reisen ueber die Wand-ID mit ([K-10])',
+    MAPPE.findeWand(tlM1, wEg).wand.lage.laenge_grid === 24
+    && store.holeElement(wEg).wandelement.length_mm === 3000
+    && MAPPE.bemassungen(tlM1, tlNeu1.geschoss.id).length === 1
+    && MAPPE.bemassungen(tlM1, tlNeu1.geschoss.id)[0].id !== 'bm-1');
+  ok('#86 das zweite Geschoss bleibt liegen, der uebrige Speicherbestand ist unveraendert',
+    store.holeElement(wOg) === null
+    && MAPPE.findeGeschoss(tlM1, tlZielGs).geschoss.waende.length === 0
+    && fremdStand(tlZiel.projekt.id) === tlFremdVor);
+  ok('#86 die Meldung benennt Umfang und Zielprojekt',
+    /Geschoss/.test(trMsgTxt()) && /Mein Projekt/.test(trMsgTxt()));
+
+  // --- Dasselbe Geschoss in ein DABEI neu angelegtes Projekt --------------
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  await $('pi-datei').dispatch('change', {
+    target: { files: [zipDatei('teil-neu.zip', expBytes)], value: 'x' } });
+  await warte();
+  $('arc-umfang').value = 'geschoss';
+  $('arc-umfang').dispatch('change');
+  $('arc-gs').value = gsOg;
+  $('arc-gs').dispatch('change');
+  ok('#86 ohne bestehendes Projekt steht die Zielwahl auf „neues Projekt anlegen“',
+    $('arc-ziel-prj').value === '__neu' && $('arc-ziel-prj-neu').hidden === false
+    && $('arc-ziel-prj-name').value === 'Archivprojekt');
+  $('arc-ziel-prj-name').value = 'Vom Kollegen';
+  $('arc-ziel-prj-name').dispatch('change');
+  ok('#86 der Bericht nennt das neu anzulegende Projekt, ohne Konfliktfrage',
+    /NEU anzulegende Projekt „Vom Kollegen“/.test($('arc-umfang-bericht').innerHTML)
+    && $('arc-ueber-box').hidden === true && $('arc-go').disabled === false);
+  $('arc-go').dispatch('click');
+  await warte();
+  const tlM2 = store.holeMappe();
+  ok('#86 das Geschoss landet im neu angelegten Projekt — ohne leeres Geschoss daneben',
+    store.listeProjekte().length === 1 && tlM2.projekt.name === 'Vom Kollegen'
+    && MAPPE.alleGeschosse(tlM2).length === 1
+    && !!MAPPE.findeWand(tlM2, wOg) && store.listeElemente().map(e => e.id).join() === wOg
+    && store.aktivesProjektId() === tlM2.projekt.id);
+
+  // --- Eine einzelne Wand — und der Fall ohne jedes Zielgeschoss ----------
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  await $('pi-datei').dispatch('change', {
+    target: { files: [zipDatei('teil-wand-leer.zip', expBytes)], value: 'x' } });
+  await warte();
+  $('arc-umfang').value = 'wand';
+  $('arc-umfang').dispatch('change');
+  ok('#86 ohne jedes Geschoss im Browser wird der Wandweg BENANNT gesperrt',
+    $('arc-teil-wand').hidden === false && $('arc-go').disabled === true
+    && /Nicht übernehmbar/.test($('arc-umfang-bericht').innerHTML)
+    && /Ohne Zielgeschoss/.test($('arc-umfang-bericht').innerHTML)
+    && store.listeProjekte().length === 0);
+  $('arc-cancel').dispatch('click');
+
+  const tlZiel3 = store.fuegeProjektHinzu('Zielprojekt', { geschoss: 'Bestand' });
+  const tlGs3 = tlZiel3.gebaeude[0].geschosse[0].id;
+  await $('pi-datei').dispatch('change', {
+    target: { files: [zipDatei('teil-wand.zip', expBytes)], value: 'x' } });
+  await warte();
+  $('arc-umfang').value = 'wand';
+  $('arc-umfang').dispatch('change');
+  $('arc-wd').value = wOg;
+  $('arc-wd').dispatch('change');
+  $('arc-ziel-gs').value = tlGs3;
+  $('arc-ziel-gs').dispatch('change');
+  ok('#86 der Dialog sagt vorher, dass die Wand ohne Lage kommt und die Masse nicht mitreisen',
+    /ohne Lage/.test($('arc-umfang-bericht').innerHTML)
+    && /NICHT mit/.test($('arc-umfang-bericht').innerHTML)
+    && $('arc-go').disabled === false);
+  $('arc-ueber').checked = true;
+  $('arc-go').dispatch('click');
+  await warte();
+  const tlM3 = store.projektMappe(tlZiel3.projekt.id);
+  ok('#86 die einzelne Wand ist im gewaehlten Zielgeschoss eingetragen — ohne Lage ([L-1])',
+    !!MAPPE.findeWand(tlM3, wOg) && MAPPE.findeWand(tlM3, wOg).geschoss.id === tlGs3
+    && MAPPE.findeWand(tlM3, wOg).wand.lage === null
+    && store.holeElement(wOg).wandelement.length_mm === 2000);
+  ok('#86 weder Quellgeschoss noch fremde Waende noch Masse kommen dabei mit',
+    MAPPE.alleGeschosse(tlM3).length === 1 && store.listeProjekte().length === 1
+    && store.listeElemente().map(e => e.id).join() === wOg
+    && MAPPE.bemassungen(tlM3, tlGs3).length === 0);
+
+  // --- Fehlerhafte Quelle: keine Teilauswahl, der Grund steht oben --------
+  await $('pi-datei').dispatch('change', {
+    target: { files: [zipDatei('teil-boese.zip', boese)], value: 'x' } });
+  await warte();
+  ok('#86 bei fehlerhafter Quelle gibt es keine Teilauswahl und keinen Import',
+    $('arc-teil').hidden === true && $('arc-go').disabled === true
+    && $('arc-fehler').hidden === false && $('arc-ueber-box').hidden === true);
+  $('arc-cancel').dispatch('click');
+
   ok('der Einzelwand-Weg ist unberuehrt vorhanden',
     /id="f-import"/.test(html) && /id="exp-go"/.test(html)
     // Das Verhalten selbst wurde oben ueber die echte Ereignisdelegation

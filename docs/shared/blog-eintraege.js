@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260902-01",
+    datum: "2026-09-02",
+    typ: "feature",
+    issue: 86,
+    titel: "Projektimport: aus einer Projektdatei lässt sich auch nur ein Geschoss oder eine einzelne Wand übernehmen",
+    testbitte: "In Modul 0 über „Projekt importieren…“ eine ZIP mit zwei Geschossen laden, unter "
+      + "„Was übernehmen?“ ein Geschoss wählen, ein Zielprojekt wählen oder neu anlegen "
+      + "lassen und bestätigen: Nur dieses Geschoss kommt an, mit Wänden und Maßen.",
+  },
+  {
     id: "chg-20260818-04",
     datum: "2026-08-18",
     typ: "feature",

@@ -45,7 +45,11 @@
  * Rein und DOM-frei; eigene Tests (tests/module/test-archiv.mjs) — shared-Regel (b).
  */
 
-import { alleGeschosse, alleWaende, findeGebaeude, findeGeschoss, mappeObjekt, normMappe, parseMappe } from "./sembla-projektmappe.js";
+import {
+  alleGeschosse, alleWaende, benenneUm, findeGebaeude, findeGeschoss, findeWand,
+  fuegeGebaeudeHinzu, fuegeGeschossHinzu, leereMappe, mappeObjekt, neueId, normMappe,
+  parseMappe, setzeBemassung, setzeGeschossHoehe, setzePlan, setzeUrsprung, setzeWand,
+} from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
 import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
 import { baueDateien, gesamtstuecklisteDateien, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
@@ -703,6 +707,321 @@ export function leseStruktur(text) {
 export function leseProjektQuelle(eintraege, opt) {
   if (istArchivQuelle(eintraege)) return { quelle: QUELLE_ARCHIV, ...leseArchiv(eintraege, opt) };
   return leseExport(eintraege, opt);
+}
+
+// --- Import: Teilauswahl der Uebernahme (#86) ------------------------------
+//
+// Gelesen und GEPRUEFT wird immer die GANZE Datei (s. o.); die Teilauswahl schraenkt
+// ausschliesslich die UEBERNAHME ein. Sie sitzt deshalb ZWISCHEN Pruefergebnis und
+// Schreibweg und liefert wieder ein Objekt in genau der Form von `leseArchiv`. Damit
+// laeuft jede Auswahl durch DENSELBEN einen Schreibweg (`store.schreibeArchiv` mit
+// Konfliktbestaetigung, Momentaufnahme und vollstaendigem Ruecksprung) und dieselbe
+// Konfliktpruefung (`store.archivKonflikte`) — es gibt keinen zweiten Importpfad und
+// keinen zweiten Umfangsbegriff.
+//
+// Grundsaetze:
+//
+//  - EIN GESCHOSS GIBT ES NUR IM PROJEKT (Entscheid 2026-08-17): das gewaehlte Geschoss
+//    wird einem BESTEHENDEN Projekt zugeordnet oder einem im selben Uebernahmeschritt
+//    neu angelegten hinzugefuegt. Ohne ausdrueckliches Ziel wird abgewiesen — nie still
+//    einsortiert.
+//  - ZIELSTRUKTUR NUR UEBER DIE BESTEHENDEN REINEN OPERATIONEN der Projektmappe
+//    (`leereMappe`/`fuegeGeschossHinzu`/`setzeWand`/`setzeUrsprung`/`setzePlan`/
+//    `setzeBemassung`). Hier wird keine Struktur von Hand zusammengesetzt, sonst gaebe
+//    es eine zweite Strukturwahrheit neben `sembla-projektmappe.js`.
+//  - WANDKENNUNGEN BLEIBEN UNVERAENDERT ([L-4]): sie sind die Zuordnung zum Wandelement.
+//    GESCHOSS- und BEMASSUNGSkennung bekommen dagegen eine NEUE Kennung. Grund: die
+//    Geschoss-Kennung ist ueber ALLE Projekte hinweg der Schluessel der Planbild-
+//    Datenbank ([L-8]), `validiereMappe` prueft Eindeutigkeit aber nur INNERHALB einer
+//    Mappe — eine mitgenommene Quellkennung koennte also unsichtbar das Planbild eines
+//    fremden Projekts treffen. Und `setzeBemassung` ersetzt nach Kennung: mit den
+//    Quellkennungen ueberschriebe ein zweiter Import desselben Geschosses fremde Masse.
+//  - GEPRUEFT BLEIBT GEPRUEFT: `fehler` reist UNVERAENDERT mit. Ein Fehler der Quelle
+//    sperrt damit auch jede Teiluebernahme — sonst liesse sich aus einer kaputten Datei
+//    ein Ausschnitt herausholen, den niemand geprueft hat.
+
+/** Umfaenge der Uebernahme — mehr bietet der Dialog nicht an. */
+export const UMFANG_PROJEKT = "projekt";
+export const UMFANG_GESCHOSS = "geschoss";
+export const UMFANG_WAND = "wand";
+export const UMFAENGE = [UMFANG_PROJEKT, UMFANG_GESCHOSS, UMFANG_WAND];
+
+/** Klartext der Umfaenge fuer Dialog und Bericht. */
+export const UMFANG_TEXT = {
+  [UMFANG_PROJEKT]: "das ganze Projekt",
+  [UMFANG_GESCHOSS]: "ein einzelnes Geschoss",
+  [UMFANG_WAND]: "eine einzelne Wand",
+};
+
+/**
+ * Was die gepruefte Quelle zur Auswahl anbietet. REIN BESCHREIBEND: es wird nichts
+ * geschrieben und nichts vorausgewaehlt.
+ *
+ * Bei den Waenden stehen nur die mit BEILIEGENDEM Wandelement — zu einem blossen
+ * Eintrag gibt es nichts zu uebernehmen, er waere nach dem Import verwaist ([L-4]).
+ * Bei einer Strukturdatei („nur Struktur (JSON)“) ist die Liste deshalb leer; das
+ * benennt der Dialog, statt einen Weg vorzutaeuschen, den es nicht gibt.
+ *
+ * @param {{mappe:object|null, waende?:Array<{id:string}>}} gelesen
+ * @returns {{geschosse:Array<{id:string,name:string,gebaeude:string,waende:number,
+ *            elemente:number,bemassungen:number,plan:boolean}>,
+ *            waende:Array<{id:string,name:string,geschoss:string}>}}
+ */
+export function teilauswahlOptionen(gelesen) {
+  if (!gelesen || !gelesen.mappe) return { geschosse: [], waende: [] };
+  const m = normMappe(gelesen.mappe);
+  const mitElement = new Set((gelesen.waende || []).map((w) => String(w.id)));
+  const geschosse = alleGeschosse(m).map(({ gebaeude, geschoss }) => ({
+    id: geschoss.id,
+    name: geschoss.name || geschoss.id,
+    gebaeude: gebaeude.name || gebaeude.id,
+    waende: geschoss.waende.length,
+    elemente: geschoss.waende.filter((w) => mitElement.has(String(w.id))).length,
+    bemassungen: geschoss.bemassungen.length,
+    plan: !!geschoss.plan,
+  }));
+  const waende = [];
+  for (const { geschoss, wand } of alleWaende(m)) {
+    if (!mitElement.has(String(wand.id))) continue;
+    waende.push({ id: wand.id, name: wand.name || wand.id, geschoss: geschoss.name || geschoss.id });
+  }
+  return { geschosse, waende };
+}
+
+/** Waende, die im ZIEL schon eingetragen sind — `setzeWand` verschiebt sie sonst still. */
+function _schonImZiel(ziel, ids) {
+  const out = [];
+  for (const { geschoss, wand } of alleWaende(ziel)) {
+    if (ids.has(String(wand.id))) out.push(`${wand.name || wand.id} (bisher ${geschoss.name || geschoss.id})`);
+  }
+  return out;
+}
+
+/** Hinweis zur Katalogzuordnung: sie gehoert dem ZIELprojekt und reist nie mit ([L-12]). */
+function _katalogHinweis(quelle, ziel, hinweise) {
+  if (!quelle.katalog || String(quelle.katalog) === String(ziel.katalog || "")) return;
+  hinweise.push(`Die Katalogzuordnung „${quelle.katalog}“ der Quelle gilt dem dortigen Projekt und `
+    + `reist bei einer Teilübernahme nicht mit: im Zielprojekt „${ziel.projekt.name}“ bleibt `
+    + (ziel.katalog ? `die vorhandene Zuordnung „${ziel.katalog}“` : "es bei keiner Zuordnung")
+    + " ([L-12]).");
+}
+
+/** Ein einzelnes Geschoss in ein bestehendes oder neu angelegtes Projekt uebernehmen. */
+function _uebernahmeGeschoss(gelesen, w, zielMappe) {
+  const quelle = normMappe(gelesen.mappe);
+  const treffer = findeGeschoss(quelle, String(w.geschossId || ""));
+  if (!treffer) {
+    throw new Error(`Das Geschoss „${w.geschossId || "—"}“ steht nicht in der geprüften Quelle — `
+      + "übernommen wird nur, was wirklich gelesen und geprüft wurde.");
+  }
+  const gs = treffer.geschoss;
+
+  const neuerName = (w.neuesProjekt == null) ? null : String(w.neuesProjekt).trim();
+  let ziel, neu = false;
+  if (neuerName != null) {
+    if (!neuerName) throw new Error("Für das neue Projekt fehlt der Name — es wird keiner erfunden ([P-9]).");
+    ziel = normMappe(leereMappe(neuerName));
+    neu = true;
+  } else {
+    if (!zielMappe) {
+      throw new Error("Ohne Zielprojekt wird ein Geschoss nicht übernommen: Geschosse außerhalb von "
+        + "Projekten gibt es nicht ([L-6]). Ein bestehendes Projekt wählen oder ein neues anlegen lassen.");
+    }
+    ziel = normMappe(zielMappe);
+  }
+  if (!ziel.gebaeude.length) ziel = fuegeGebaeudeHinzu(ziel, "Gebäude 1").mappe;
+  const gebId = ziel.gebaeude[0].id;
+
+  // Die Schale bekommt eine NEUE Geschoss-Kennung (s. Abschnittskopf). Bei einem neu
+  // angelegten Projekt wird das von `leereMappe` mitgelieferte LEERE Geschoss dafuer
+  // benutzt und umbenannt — sonst stuende daneben ein leeres „Geschoss 1“.
+  const erstes = ziel.gebaeude[0].geschosse[0];
+  let schaleId;
+  if (neu && ziel.gebaeude[0].geschosse.length === 1 && erstes
+      && !erstes.waende.length && !erstes.bemassungen.length && !erstes.plan) {
+    schaleId = erstes.id;
+    ziel = benenneUm(ziel, schaleId, gs.name);
+  } else {
+    const r = fuegeGeschossHinzu(ziel, gebId, gs.name, gs.hoehe_mm);
+    ziel = r.mappe;
+    schaleId = r.id;
+  }
+  const vorherImZiel = _schonImZiel(ziel, new Set(gs.waende.map((x) => String(x.id))));
+
+  // Reihenfolge ist zwingend: erst die Waende, dann die Masse — `bemassungenFehler`
+  // weist einen Bezug auf eine noch unbekannte Wand ab ([K-10]).
+  ziel = setzeGeschossHoehe(ziel, schaleId, gs.hoehe_mm);
+  ziel = setzeUrsprung(ziel, schaleId, gs.ursprung_mm);
+  if (gs.plan) ziel = setzePlan(ziel, schaleId, gs.plan);
+  for (const wd of gs.waende) {
+    ziel = setzeWand(ziel, schaleId, { id: wd.id, name: wd.name, datei: null, lage: wd.lage });
+  }
+  for (const b of gs.bemassungen) ziel = setzeBemassung(ziel, schaleId, { ...b, id: neueId("bm") });
+
+  const idsGs = new Set(gs.waende.map((x) => String(x.id)));
+  const waende = (gelesen.waende || []).filter((x) => idsGs.has(String(x.id)));
+  // Das Planbild haengt an der Geschoss-Kennung ([L-8]) — es zieht auf die NEUE um.
+  const bilder = (gelesen.bilder || [])
+    .filter((b) => String(b.geschossId) === String(gs.id))
+    .map((b) => ({ ...b, geschossId: schaleId }));
+
+  const hinweise = [...(gelesen.hinweise || [])];
+  hinweise.push(`Übernommen wird ausschließlich das Geschoss „${gs.name || gs.id}“ `
+    + `(${gs.waende.length} Wandeintrag/-einträge, ${waende.length} davon mit Wandelement, `
+    + `${gs.bemassungen.length} Maß(e), ${bilder.length} Planbild(er)) `
+    + (neu ? "in das dabei neu angelegte " : "in das bestehende ")
+    + `Projekt „${ziel.projekt.name}“. Alles Übrige der Quelle bleibt liegen.`);
+  hinweise.push("Das Geschoss und seine Maße erhalten im Zielprojekt neue Kennungen; die "
+    + "WANDKENNUNGEN bleiben unverändert ([L-4]) — nur über sie läuft die Zuordnung zum "
+    + "Wandelement. Ein bestehendes Geschoss wird dadurch nie berührt.");
+  if (waende.length < gs.waende.length) {
+    hinweise.push(`${gs.waende.length - waende.length} Wandeintrag/-einträge dieses Geschosses liegen `
+      + "ohne Wandelement bei; sie reisen mit und bleiben nach dem Import verwaist ([L-4]) — "
+      + "sie werden gemeldet, nicht stillschweigend weggelassen.");
+  }
+  if (vorherImZiel.length) {
+    hinweise.push(`Diese Wand/Wände ist/sind im Zielprojekt bereits eingetragen und wird/werden in das `
+      + `übernommene Geschoss VERSCHOBEN (eine Wand steht nie zweimal in einer Mappe): `
+      + `${vorherImZiel.join(", ")}.`);
+  }
+  _katalogHinweis(quelle, ziel, hinweise);
+
+  return {
+    quelle: gelesen.quelle,
+    mappe: mappeObjekt(ziel),
+    waende, bilder,
+    ueberzaehlig: gelesen.ueberzaehlig || [],
+    hinweise,
+    fehler: gelesen.fehler || [],
+    ziel: {
+      art: UMFANG_GESCHOSS, projektId: ziel.projekt.id, projektName: ziel.projekt.name, neu,
+      geschossId: schaleId, geschossName: gs.name || gs.id,
+      wandId: null, wandName: null,
+      waende: gs.waende.length, elemente: waende.length, bemassungen: gs.bemassungen.length,
+    },
+  };
+}
+
+/** Eine einzelne Wand in ein vorhandenes Zielgeschoss uebernehmen — OHNE Lage. */
+function _uebernahmeWand(gelesen, w, zielMappe) {
+  const quelle = normMappe(gelesen.mappe);
+  const t = findeWand(quelle, String(w.wandId || ""));
+  if (!t) {
+    throw new Error(`Die Wand „${w.wandId || "—"}“ steht nicht in der geprüften Quelle — `
+      + "übernommen wird nur, was wirklich gelesen und geprüft wurde.");
+  }
+  const el = (gelesen.waende || []).find((x) => String(x.id) === String(t.wand.id));
+  if (!el) {
+    throw new Error(`Zur Wand „${t.wand.name || t.wand.id}“ liegt der Quelle kein Wandelement bei — `
+      + "es gibt nichts zu übernehmen; der Eintrag allein wäre sofort verwaist ([L-4]).");
+  }
+  if (!zielMappe) {
+    throw new Error("Ohne Zielgeschoss wird eine einzelne Wand nicht übernommen: in diesem Browser gibt "
+      + "es noch kein Geschoss, in das sie eingetragen werden könnte. Erst ein Projekt mit Geschoss "
+      + "anlegen — oder das ganze Projekt übernehmen.");
+  }
+  const ziel0 = normMappe(zielMappe);
+  const zt = findeGeschoss(ziel0, String(w.zielGeschossId || ""));
+  if (!zt) {
+    throw new Error(`Unbekanntes Zielgeschoss „${w.zielGeschossId || "—"}“ — eine Wand wird nur in ein `
+      + "ausdrücklich gewähltes, vorhandenes Geschoss eingetragen ([L-10]).");
+  }
+  const vorherImZiel = _schonImZiel(ziel0, new Set([String(t.wand.id)]));
+  // OHNE Lage ([L-1]): die gespeicherte Lage galt im QUELLgeschoss und hat im Zielgeschoss
+  // keine Bedeutung. Es wird keine erfunden ([P-9]); verortet wird im Geschosseditor.
+  const ziel = setzeWand(ziel0, zt.geschoss.id, {
+    id: t.wand.id, name: t.wand.name, datei: null, lage: null,
+  });
+
+  const hinweise = [...(gelesen.hinweise || [])];
+  hinweise.push(`Übernommen wird ausschließlich die Wand „${t.wand.name || t.wand.id}“ in das Geschoss `
+    + `„${zt.geschoss.name || zt.geschoss.id}“ des Projekts „${ziel.projekt.name}“ — `
+    + "mit Wandelement und Eingaben, aber OHNE Lage: die gespeicherte Lage galt im Quellgeschoss "
+    + "([L-1]). Verortet wird im Geschosseditor; es wird keine Position erfunden.");
+  hinweise.push(`Die Maße des Quellgeschosses „${t.geschoss.name || t.geschoss.id}“ reisen dabei `
+    + "ausdrücklich NICHT mit: ein Maß ohne verortete Bezugswand hätte keinen Sinn ([K-10]). "
+    + "Alles Übrige der Quelle bleibt liegen.");
+  if (vorherImZiel.length) {
+    hinweise.push(`Diese Wand ist im Zielprojekt bereits eingetragen und wird in das gewählte Geschoss `
+      + `VERSCHOBEN (eine Wand steht nie zweimal in einer Mappe): ${vorherImZiel.join(", ")}.`);
+  }
+  _katalogHinweis(quelle, ziel, hinweise);
+
+  return {
+    quelle: gelesen.quelle,
+    mappe: mappeObjekt(ziel),
+    waende: [el],
+    bilder: [],
+    ueberzaehlig: gelesen.ueberzaehlig || [],
+    hinweise,
+    fehler: gelesen.fehler || [],
+    ziel: {
+      art: UMFANG_WAND, projektId: ziel.projekt.id, projektName: ziel.projekt.name, neu: false,
+      geschossId: zt.geschoss.id, geschossName: zt.geschoss.name || zt.geschoss.id,
+      wandId: t.wand.id, wandName: t.wand.name || t.wand.id,
+      waende: 1, elemente: 1, bemassungen: 0,
+    },
+  };
+}
+
+/**
+ * DER eine Weg von der gepruefte Quelle zur Uebernahme (#86). Rueckgabe hat die Form
+ * von `leseArchiv` und geht unveraendert in `store.schreibeArchiv`.
+ *
+ * `zielMappe` ist die Mappe des gewaehlten ZIELprojekts (bei `wand` die des Projekts,
+ * dem das Zielgeschoss gehoert). Sie wird UEBERGEBEN, weil dieses Modul rein bleibt und
+ * keinen Speicher liest. Eine unerfuellbare Wahl wird BENANNT abgewiesen ([P-9]).
+ *
+ * @param {ReturnType<typeof leseExport>} gelesen
+ * @param {{umfang?:string, geschossId?:string, wandId?:string, zielGeschossId?:string,
+ *          neuesProjekt?:string|null}} [wahl]
+ * @param {object|null} [zielMappe]
+ */
+export function uebernahme(gelesen, wahl, zielMappe) {
+  if (!gelesen || !gelesen.mappe) throw new Error("Ohne geprüfte Quelle gibt es nichts zu übernehmen.");
+  const w = (wahl && typeof wahl === "object") ? wahl : {};
+  const umfang = String(w.umfang || UMFANG_PROJEKT);
+  if (!UMFAENGE.includes(umfang)) throw new Error(`Unbekannter Übernahmeumfang „${umfang}“.`);
+  if (umfang === UMFANG_PROJEKT) {
+    const m = normMappe(gelesen.mappe);
+    return {
+      ...gelesen,
+      ziel: {
+        art: UMFANG_PROJEKT, projektId: m.projekt.id, projektName: m.projekt.name, neu: false,
+        geschossId: null, geschossName: null, wandId: null, wandName: null,
+        waende: alleWaende(m).length, elemente: (gelesen.waende || []).length,
+        bemassungen: alleGeschosse(m).reduce((s, t) => s + t.geschoss.bemassungen.length, 0),
+      },
+    };
+  }
+  return umfang === UMFANG_GESCHOSS
+    ? _uebernahmeGeschoss(gelesen, w, zielMappe)
+    : _uebernahmeWand(gelesen, w, zielMappe);
+}
+
+/**
+ * Kurzfassung der UEBERNAHME fuer die Oberflaeche — eine Zeile je Punkt, in fester
+ * Reihenfolge. Getrennt von `berichtZeilen`: der beschreibt die gelesene QUELLE, dieser
+ * das, was wirklich geschrieben wuerde.
+ * @param {ReturnType<typeof uebernahme>} u @returns {string[]}
+ */
+export function uebernahmeZeilen(u) {
+  if (!u || !u.ziel) return [];
+  const z = u.ziel;
+  const out = [];
+  if (z.art === UMFANG_PROJEKT) {
+    out.push(`Übernommen wird das GANZE Projekt „${z.projektName}“ — ${z.waende} Wandeintrag/-einträge, `
+      + `${z.elemente} mit Wandelement, ${z.bemassungen} Maß(e), ${(u.bilder || []).length} Planbild(er).`);
+  } else if (z.art === UMFANG_GESCHOSS) {
+    out.push(`Übernommen wird das Geschoss „${z.geschossName}“ `
+      + (z.neu ? `in das NEU anzulegende Projekt „${z.projektName}“` : `in das Projekt „${z.projektName}“`)
+      + ` — ${z.waende} Wandeintrag/-einträge, ${z.elemente} mit Wandelement, ${z.bemassungen} Maß(e), `
+      + `${(u.bilder || []).length} Planbild(er).`);
+  } else {
+    out.push(`Übernommen wird die Wand „${z.wandName}“ in das Geschoss „${z.geschossName}“ des Projekts `
+      + `„${z.projektName}“ — ohne Lage, ohne Maße.`);
+  }
+  return out;
 }
 
 // --- Hierarchischer Export (Issue #67) --------------------------------------

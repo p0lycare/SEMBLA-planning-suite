@@ -379,13 +379,54 @@
 <div class="overlay" id="arc-overlay" hidden>
   <div class="modal" style="max-width:620px">
     <h3 id="arc-titel">Projektimport prüfen</h3>
-    <p class="sub">Die Quelle <b id="arc-quelle">–</b> wurde gelesen und geprüft, aber
-      <b>noch nichts gespeichert</b>. Der Bauteilkatalog reist nie mit ([L-12]) —
-      er wird getrennt importiert.</p>
+    <p class="sub">Die Quelle <b id="arc-quelle">–</b> wurde <b>vollständig</b> gelesen und geprüft,
+      aber <b>noch nichts gespeichert</b>. Übernommen wird, was unten gewählt ist — ohne Zutun
+      das <b>ganze Projekt</b>; wahlweise nur ein <b>Geschoss</b> oder eine einzelne <b>Wand</b>.
+      Der Bauteilkatalog reist nie mit ([L-12]) — er wird getrennt importiert.</p>
     <div class="zus" id="arc-bericht"></div>
     <div class="warn" id="arc-fehler" hidden></div>
+    <!-- Teilauswahl (#86): NACH der Vorabprüfung, VOR der Bestätigung. Geprüft ist immer
+         die GANZE Datei; die Auswahl schränkt allein die Übernahme ein ([L-13]). Ein
+         Geschoss gibt es nicht außerhalb eines Projekts — die Zielwahl ist deshalb Pflicht
+         und steht sichtbar hier, nicht in einem zweiten Schritt ([L-6]/[L-10]). Der Zustand
+         lebt flüchtig in `arcOffen.wahl` und wird nirgends gespeichert. -->
+    <div id="arc-teil" hidden style="margin:12px 0 2px">
+      <div class="field" style="max-width:100%">
+        <label for="arc-umfang">Was übernehmen?</label>
+        <select id="arc-umfang" style="width:100%">
+          <option value="projekt">Das ganze Projekt</option>
+          <option value="geschoss">Nur ein einzelnes Geschoss</option>
+          <option value="wand">Nur eine einzelne Wand</option>
+        </select>
+      </div>
+      <div id="arc-teil-geschoss" hidden>
+        <div class="field" style="max-width:100%;margin-top:7px">
+          <label for="arc-gs">Geschoss aus der Quelle</label>
+          <select id="arc-gs" style="width:100%"></select>
+        </div>
+        <div class="field" style="max-width:100%;margin-top:7px">
+          <label for="arc-ziel-prj">Zielprojekt — ein Geschoss gibt es nur im Projekt</label>
+          <select id="arc-ziel-prj" style="width:100%"></select>
+        </div>
+        <div class="field" id="arc-ziel-prj-neu" hidden style="max-width:100%;margin-top:7px">
+          <label for="arc-ziel-prj-name">Name des neuen Projekts</label>
+          <input id="arc-ziel-prj-name" type="text" style="width:100%">
+        </div>
+      </div>
+      <div id="arc-teil-wand" hidden>
+        <div class="field" style="max-width:100%;margin-top:7px">
+          <label for="arc-wd">Wand aus der Quelle (nur Wände mit beiliegendem Wandelement)</label>
+          <select id="arc-wd" style="width:100%"></select>
+        </div>
+        <div class="field" style="max-width:100%;margin-top:7px">
+          <label for="arc-ziel-gs">Zielgeschoss — die Wand kommt dort ohne Lage an</label>
+          <select id="arc-ziel-gs" style="width:100%"></select>
+        </div>
+      </div>
+      <div class="zus" id="arc-umfang-bericht"></div>
+    </div>
     <label class="opt" id="arc-ueber-box" hidden><input type="checkbox" id="arc-ueber"><span>
-      <span class="t">Vorhandene Einträge überschreiben</span><br>
+      <span class="t" id="arc-ueber-titel">Vorhandene Einträge überschreiben</span><br>
       <span class="d" id="arc-ueber-text"></span></span></label>
     <div class="msg" id="arc-msg"></div>
     <div class="modal-actions">
@@ -988,14 +1029,22 @@
     ev.target.value = '';
   });
 
-  // --- Prüfbericht, Bestätigung, erst dann schreiben ([L-13]) --------------
+  // --- Prüfbericht, Teilauswahl, Bestätigung, erst dann schreiben ([L-13]) ---
   const arcOverlay = $('arc-overlay');
-  let arcOffen = null;              // { gelesen, quelle } — nur im Speicher der Seite
+  let arcOffen = null;              // { gelesen, quelle, wahl, uebernommen } — nur im Seitenspeicher
+
+  /** Wert des Zielprojekt-Feldes für „neues Projekt anlegen“ (kein Projekt trägt diese Kennung). */
+  const ARC_NEU_PRJ = '__neu';
 
   /** Prüfbericht anzeigen — bis „Importieren“ wird nichts geschrieben ([L-13]). */
   function arcPruefe(gelesen, quelle){
     piSchliesse();
-    arcOffen = { gelesen, quelle };
+    // Ohne Zutun gilt das GANZE Projekt: die Teilauswahl ist ein Angebot, keine
+    // Voreinstellung, die man erraten müsste (#86).
+    arcOffen = { gelesen, quelle, wahl: {
+      umfang: ARCHIV.UMFANG_PROJEKT, geschossId: '', wandId: '',
+      zielProjektId: ARC_NEU_PRJ, zielGeschossId: '',
+    }, uebernommen: null };
     $('arc-quelle').textContent = quelle;
     $('arc-bericht').innerHTML = ARCHIV.berichtZeilen(gelesen).map(z => '<div>' + esc(z) + '</div>').join('')
       || '<div>Keine Angaben.</div>';
@@ -1004,23 +1053,160 @@
     fehlerBox.innerHTML = gelesen.fehler.length
       ? '<b>Diese Quelle ist nicht importierbar:</b>' + gelesen.fehler.map(f => '<div>– ' + esc(f) + '</div>').join('')
       : '';
-
-    const konf = gelesen.mappe ? store.archivKonflikte(gelesen) : { projekt: null, waende: [] };
-    const box = $('arc-ueber-box');
-    box.hidden = !(konf.projekt || konf.waende.length);
+    $('arc-umfang').value = ARCHIV.UMFANG_PROJEKT;
+    $('arc-ziel-prj-name').value = '';
     $('arc-ueber').checked = false;
-    if (!box.hidden) {
+    $('arc-msg').textContent = '';
+    $('arc-msg').className = 'msg';
+    arcTeilRender();
+    arcOverlay.hidden = false;
+  }
+
+  /**
+   * Die Übernahme aus der aktuellen Auswahl rechnen — REIN, schreibt nichts. Die
+   * Zielmappe wird hier gelesen und übergeben; `sembla-archiv.js` kennt keinen Speicher.
+   * Eine unerfüllbare Wahl wirft mit benanntem Grund ([P-9]).
+   */
+  function arcUebernahme(){
+    const { gelesen, wahl } = arcOffen;
+    if (wahl.umfang === ARCHIV.UMFANG_GESCHOSS) {
+      const neu = wahl.zielProjektId === ARC_NEU_PRJ;
+      const ziel = neu ? null : store.projektMappe(wahl.zielProjektId);
+      if (!neu && !ziel) throw new Error('Das gewählte Zielprojekt gibt es nicht mehr.');
+      return ARCHIV.uebernahme(gelesen, {
+        umfang: wahl.umfang, geschossId: wahl.geschossId,
+        neuesProjekt: neu ? String($('arc-ziel-prj-name').value || '') : null,
+      }, ziel);
+    }
+    if (wahl.umfang === ARCHIV.UMFANG_WAND) {
+      // Das Zielgeschoss bestimmt das Projekt — nicht umgekehrt. Ohne Treffer wird `null`
+      // übergeben und der Grund kommt aus der einen Prüfung in sembla-archiv.js.
+      const ziel = store.listeProjekte().find(m => MAPPE.findeGeschoss(m, wahl.zielGeschossId)) || null;
+      return ARCHIV.uebernahme(gelesen, {
+        umfang: wahl.umfang, wandId: wahl.wandId, zielGeschossId: wahl.zielGeschossId,
+      }, ziel);
+    }
+    return ARCHIV.uebernahme(gelesen, { umfang: ARCHIV.UMFANG_PROJEKT });
+  }
+
+  /** Auswahl vom Formular in den Zustand lesen und neu rechnen. */
+  function arcTeilAendern(){
+    if (!arcOffen) return;
+    const w = arcOffen.wahl;
+    w.umfang = $('arc-umfang').value || ARCHIV.UMFANG_PROJEKT;
+    w.geschossId = $('arc-gs').value || '';
+    w.wandId = $('arc-wd').value || '';
+    w.zielProjektId = $('arc-ziel-prj').value || ARC_NEU_PRJ;
+    w.zielGeschossId = $('arc-ziel-gs').value || '';
+    // Ein Häkchen, das für eine ANDERE Auswahl gesetzt wurde, darf nicht stehen bleiben.
+    $('arc-ueber').checked = false;
+    arcTeilRender();
+  }
+
+  /** Auswahlfelder, Umfangsbericht und Konfliktbestätigung neu aufbauen. */
+  function arcTeilRender(){
+    const { gelesen, wahl } = arcOffen;
+    const teil = $('arc-teil');
+    // Bei fehlerhafter Quelle gibt es nichts zu wählen — der Grund steht schon oben.
+    teil.hidden = !gelesen.mappe || gelesen.fehler.length > 0;
+    $('arc-teil-geschoss').hidden = teil.hidden || wahl.umfang !== ARCHIV.UMFANG_GESCHOSS;
+    $('arc-teil-wand').hidden = teil.hidden || wahl.umfang !== ARCHIV.UMFANG_WAND;
+    const ueberBox = $('arc-ueber-box');
+    if (teil.hidden) {
+      ueberBox.hidden = true;
+      $('arc-umfang-bericht').innerHTML = '';
+      $('arc-go').disabled = true;
+      arcOffen.uebernommen = null;
+      return;
+    }
+
+    const opt = (v, t) => `<option value="${esc(v)}">${esc(t)}</option>`;
+    const angebot = ARCHIV.teilauswahlOptionen(gelesen);
+
+    const gsSel = $('arc-gs');
+    gsSel.innerHTML = angebot.geschosse.map(g => opt(g.id,
+      `${g.name} — ${g.waende} Wand/Wände, ${g.elemente} mit Wandelement, ${g.bemassungen} Maß(e)`
+      + (g.plan ? ', mit Planangabe' : ''))).join('');
+    if (!angebot.geschosse.some(g => g.id === wahl.geschossId)) {
+      wahl.geschossId = angebot.geschosse.length ? angebot.geschosse[0].id : '';
+    }
+    gsSel.value = wahl.geschossId;
+
+    const wdSel = $('arc-wd');
+    wdSel.innerHTML = angebot.waende.length
+      ? angebot.waende.map(w => opt(w.id, `${w.name} (aus ${w.geschoss})`)).join('')
+      : opt('', 'Keine Wand mit beiliegendem Wandelement');
+    if (!angebot.waende.some(w => w.id === wahl.wandId)) {
+      wahl.wandId = angebot.waende.length ? angebot.waende[0].id : '';
+    }
+    wdSel.value = wahl.wandId;
+
+    const projekte = store.listeProjekte();
+    const prjSel = $('arc-ziel-prj');
+    prjSel.innerHTML = projekte.map(m => opt(m.projekt.id, m.projekt.name)).join('')
+      + opt(ARC_NEU_PRJ, 'Neues Projekt anlegen…');
+    if (wahl.zielProjektId !== ARC_NEU_PRJ && !projekte.some(m => m.projekt.id === wahl.zielProjektId)) {
+      wahl.zielProjektId = projekte.length ? projekte[0].projekt.id : ARC_NEU_PRJ;
+    }
+    prjSel.value = wahl.zielProjektId;
+    $('arc-ziel-prj-neu').hidden = wahl.zielProjektId !== ARC_NEU_PRJ;
+    if (wahl.zielProjektId === ARC_NEU_PRJ && !$('arc-ziel-prj-name').value && gelesen.mappe) {
+      $('arc-ziel-prj-name').value = gelesen.mappe.projekt.name || '';
+    }
+
+    const zielGs = [];
+    for (const m of projekte) {
+      for (const t of MAPPE.alleGeschosse(m)) {
+        zielGs.push({ id: t.geschoss.id, label: `${m.projekt.name} · ${t.geschoss.name || t.geschoss.id}` });
+      }
+    }
+    const zgSel = $('arc-ziel-gs');
+    zgSel.innerHTML = zielGs.length
+      ? zielGs.map(g => opt(g.id, g.label)).join('')
+      : opt('', 'Kein Geschoss vorhanden');
+    if (!zielGs.some(g => g.id === wahl.zielGeschossId)) {
+      wahl.zielGeschossId = zielGs.length ? zielGs[0].id : '';
+    }
+    zgSel.value = wahl.zielGeschossId;
+
+    // Was wirklich geschrieben würde — und die Hinweise, die genau dazu gehören.
+    // `uebernahme` HÄNGT seine Hinweise an die der Quelle an; die vorderen stehen
+    // schon im Prüfbericht oben, hier kommen nur die neuen dazu.
+    let u = null, grund = null;
+    try { u = arcUebernahme(); } catch (e) { grund = fehlerText(e); }
+    arcOffen.uebernommen = u;
+    const zeilen = u
+      ? ARCHIV.uebernahmeZeilen(u).concat(u.hinweise.slice((gelesen.hinweise || []).length))
+      : ['Nicht übernehmbar: ' + grund];
+    $('arc-umfang-bericht').innerHTML = zeilen.map(z => '<div>' + esc(z) + '</div>').join('');
+
+    const konf = u ? store.archivKonflikte(u) : { projekt: null, waende: [] };
+    ueberBox.hidden = !(konf.projekt || konf.waende.length);
+    if (!ueberBox.hidden) {
+      const ganz = u.ziel.art === ARCHIV.UMFANG_PROJEKT;
+      $('arc-ueber-titel').textContent = ganz
+        ? 'Vorhandene Einträge überschreiben'
+        : 'Änderung am bestehenden Zielprojekt bestätigen';
       $('arc-ueber-text').textContent =
-        (konf.projekt ? `Projekt „${konf.projekt.name}“ ist bereits vorhanden. ` : '')
+        (konf.projekt
+          ? (ganz
+            ? `Projekt „${konf.projekt.name}“ ist bereits vorhanden. `
+            : (u.ziel.art === ARCHIV.UMFANG_GESCHOSS
+              ? `In Projekt „${konf.projekt.name}“ wird ein Geschoss ergänzt. `
+              : `In Projekt „${konf.projekt.name}“ wird eine Wand eingetragen. `))
+          : '')
         + (konf.waende.length ? `${konf.waende.length} Wandelement(e) werden ersetzt `
           + `(${konf.waende.map(w => w.name).join(', ')}). ` : '')
         + 'Die stabilen Kennungen bleiben erhalten — es wird keine Ausweichkennung vergeben ([L-4]).';
     }
-    $('arc-go').disabled = gelesen.fehler.length > 0;
-    $('arc-msg').textContent = '';
-    $('arc-msg').className = 'msg';
-    arcOverlay.hidden = false;
+    $('arc-go').disabled = gelesen.fehler.length > 0 || !u;
   }
+
+  for (const id of ['arc-umfang', 'arc-gs', 'arc-wd', 'arc-ziel-prj', 'arc-ziel-gs']) {
+    $(id).addEventListener('change', arcTeilAendern);
+  }
+  $('arc-ziel-prj-name').addEventListener('input', arcTeilAendern);
+  $('arc-ziel-prj-name').addEventListener('change', arcTeilAendern);
 
   function arcSchliesse(){ arcOverlay.hidden = true; arcOffen = null; }
   $('arc-cancel').addEventListener('click', () => { arcSchliesse(); trZeige('Import abgebrochen — es wurde nichts gespeichert.', false); });
@@ -1030,15 +1216,28 @@
     if (!arcOffen) return;
     const { gelesen } = arcOffen;
     try {
-      const erg = await store.schreibeArchiv(gelesen, {
+      // Frisch gerechnet: die Auswahl gilt genau so, wie sie im Dialog steht. Geschrieben
+      // wird über DENSELBEN einen Weg wie beim ganzen Projekt — mit Konfliktbestätigung
+      // und vollständigem Rücksprung ([L-13]).
+      const u = arcUebernahme();
+      const erg = await store.schreibeArchiv(u, {
         plan: PLAN, ueberschreiben: $('arc-ueber').checked,
       });
-      KLAPP.add(gelesen.mappe.projekt.id);
+      const z = u.ziel;
+      KLAPP.add(z.projektId);
+      if (z.geschossId) KLAPP.add(z.geschossId);
       arcSchliesse();
-      trZeige(`Projekt „${erg.projekt.projekt.name}“ importiert und aktiv gesetzt: `
-        + `${erg.waende} Wandelement(e), ${erg.bilder} Planbild(er), Struktur mit Lage und Bemaßungen `
-        + `(${ARCHIV.QUELLE_TEXT[gelesen.quelle] || 'Projektdaten'}).`
-        + (gelesen.hinweise.length ? ' Hinweise: ' + gelesen.hinweise.join(' ') : '')
+      const was = z.art === ARCHIV.UMFANG_PROJEKT
+        ? `Projekt „${erg.projekt.projekt.name}“ importiert und aktiv gesetzt: `
+          + `${erg.waende} Wandelement(e), ${erg.bilder} Planbild(er), Struktur mit Lage und Bemaßungen`
+        : z.art === ARCHIV.UMFANG_GESCHOSS
+          ? `Geschoss „${z.geschossName}“ in das ${z.neu ? 'neu angelegte ' : ''}Projekt `
+            + `„${erg.projekt.projekt.name}“ übernommen: ${erg.waende} Wandelement(e), `
+            + `${z.bemassungen} Maß(e), ${erg.bilder} Planbild(er)`
+          : `Wand „${z.wandName}“ in das Geschoss „${z.geschossName}“ des Projekts `
+            + `„${erg.projekt.projekt.name}“ übernommen — ohne Lage, ohne Maße`;
+      trZeige(was + ` (${ARCHIV.QUELLE_TEXT[gelesen.quelle] || 'Projektdaten'}).`
+        + (u.hinweise.length ? ' Hinweise: ' + u.hinweise.join(' ') : '')
         + (erg.katalogFehlt ? ` ⚠ Der zugeordnete Bauteilkatalog „${erg.katalogFehlt}“ liegt nicht in `
           + 'diesem Browser — die Zuordnung bleibt bestehen, der Katalog ist getrennt zu importieren ([L-12]).' : ''),
         !erg.katalogFehlt);

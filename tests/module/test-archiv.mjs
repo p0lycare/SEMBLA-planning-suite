@@ -738,6 +738,277 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
     && MAPPE.alleWaende(store.holeMappe()).every(({ wand }) => wand.datei === null));
 }
 
+// --- [#86] Teilauswahl: ein einzelnes Geschoss oder eine einzelne Wand ------
+//
+// Nach dem Vorpaket uebernahm der eine Importdialog nur das GANZE Projekt. Geprueft
+// wird die Teilauswahl hier am ECHTEN Pfad, nicht an nachgebauten Datenstrukturen:
+//
+//   echte Speicherschicht (storage.js) -> echter Rechenkern (buildWall)
+//   -> ECHTER Exportweg (hierarchieExport) -> zipSync/entpacke
+//   -> leseProjektQuelle -> uebernahme -> schreibeArchiv
+//   -> Projektmappe und Wandelemente aus dem SPEICHER zurueckgelesen.
+//
+// Massgebend ist dabei durchgehend die WANDKENNUNG; Geschoss und Bemassungen
+// bekommen im Ziel neue Kennungen (s. Abschnittskopf in sembla-archiv.js).
+{
+  class MemStorage {
+    constructor() { this.m = new Map(); }
+    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k, v) { this.m.set(k, String(v)); }
+    removeItem(k) { this.m.delete(k); }
+  }
+  globalThis.localStorage = new MemStorage();
+  const store = await import("../../docs/shared/storage.js");
+  const PARSE = { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) };
+  const wandEl = (n, l) => ({ ...buildWall(n, l, 2600, []), wandtyp: "mit_wind" });
+  const roh = () => [localStorage.getItem("sembla:projekte"), localStorage.getItem("sembla:elemente")].join(" ");
+
+  // --- Quelle: EIN Projekt mit ZWEI Geschossen, drei Waenden, einem Mass ---
+  globalThis.localStorage = new MemStorage();
+  const qPrj = store.fuegeProjektHinzu("Kollegenprojekt", { geschoss: "EG", hoehe_mm: 2600 });
+  const qEg = qPrj.gebaeude[0].geschosse[0].id;
+  store.setzeMappe(MAPPE.fuegeGeschossHinzu(store.holeMappe(), qPrj.gebaeude[0].id, "OG", 2800).mappe);
+  const qOg = MAPPE.alleGeschosse(store.holeMappe()).find((t) => t.geschoss.name === "OG").geschoss.id;
+  store.speichere("EG-W01", wandEl("EG-W01", 2000), "q-eg1");
+  store.speichere("EG-W02", wandEl("EG-W02", 1000), "q-eg2");
+  store.speichere("OG-W01", wandEl("OG-W01", 3000), "q-og1");
+  store.verorteWand("q-eg1", qEg, { lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 16 } });
+  store.verorteWand("q-eg2", qEg, { lage: { start_mm: { x: 0, y: 562.5 }, richtung: "x", laenge_grid: 8 } });
+  store.verorteWand("q-og1", qOg, { lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 24 } });
+  store.setzeMappe(MAPPE.setzeBemassung(store.holeMappe(), qEg, {
+    id: "bm-quelle", achse: "y",
+    von: { wand: "q-eg1", bezug: "mitte" }, bis: { wand: "q-eg2", bezug: "mitte" }, mass_mm: 500,
+  }));
+
+  const exp = ARCHIV.hierarchieExport(["mappe", "geschosse", "waende"], {
+    mappe: store.holeMappe(), ebene: "projekt",
+    holeElement: (id) => store.holeElement(id),
+    holeEingaben: (id) => store.holeEingaben(id),
+    projektObjekt: (id) => store.projektObjekt(id),
+  });
+  const teilEintraege = await entpacke(zipSync(exp.dateien));
+
+  // --- Gelesen und geprueft wird die GANZE Datei ---------------------------
+  globalThis.localStorage = new MemStorage();
+  const gelesenT = ARCHIV.leseProjektQuelle(teilEintraege, PARSE);
+  ok("[#86] die Quelle mit zwei Geschossen wird fehlerfrei und vollstaendig geprueft",
+    gelesenT.fehler.length === 0 && gelesenT.waende.length === 3
+    && MAPPE.alleGeschosse(gelesenT.mappe).length === 2);
+
+  const angebot = ARCHIV.teilauswahlOptionen(gelesenT);
+  const egOpt = angebot.geschosse.find((g) => g.name === "EG");
+  ok("[#86] die Teilauswahl bietet beide Geschosse und alle Waende mit Wandelement an",
+    angebot.geschosse.length === 2 && angebot.waende.length === 3
+    && egOpt.waende === 2 && egOpt.elemente === 2 && egOpt.bemassungen === 1
+    && angebot.waende.every((w) => !!gelesenT.waende.find((x) => x.id === w.id)));
+
+  // --- Zielspeicher: ein bestehendes Projekt plus ein UNBETEILIGTES --------
+  globalThis.localStorage = new MemStorage();
+  const zPrj = store.fuegeProjektHinzu("Mein Projekt", { geschoss: "Bestand", hoehe_mm: 2500 });
+  const zGs = zPrj.gebaeude[0].geschosse[0].id;
+  store.speichere("Bestand-W01", wandEl("Bestand-W01", 1250), "z-w1");
+  store.verorteWand("z-w1", zGs, { lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 10 } });
+  const fremdPrj = store.fuegeProjektHinzu("Unbeteiligt", { geschoss: "UG" });
+  store.setzeAktivesProjekt(zPrj.projekt.id);
+  const fremdVor = JSON.stringify(store.projektMappe(fremdPrj.projekt.id));
+  const bestandVor = JSON.stringify(store.holeElement("z-w1"));
+
+  // === Akzeptanztest 1: ein Geschoss in ein BESTEHENDES Projekt ============
+  const u1 = ARCHIV.uebernahme(gelesenT, {
+    umfang: ARCHIV.UMFANG_GESCHOSS, geschossId: egOpt.id,
+  }, store.projektMappe(zPrj.projekt.id));
+  ok("[#86] uebernommen wird genau das gewaehlte Geschoss — mit seinen zwei Waenden",
+    u1.waende.map((w) => w.id).sort().join() === "q-eg1,q-eg2"
+    && u1.ziel.art === ARCHIV.UMFANG_GESCHOSS && u1.ziel.neu === false
+    && u1.ziel.projektId === zPrj.projekt.id);
+  ok("[#86] die Fehlerliste der Quelle reist UNVERAENDERT mit (gepruefte Datei bleibt gepruefte Datei)",
+    u1.fehler === gelesenT.fehler);
+  ok("[#86] der Umfangsbericht benennt Geschoss, Zielprojekt und Mengen VOR der Bestaetigung", (() => {
+    const t = ARCHIV.uebernahmeZeilen(u1).join(" | ");
+    return /Geschoss „EG“/.test(t) && /Mein Projekt/.test(t) && /2 mit Wandelement/.test(t)
+      && /1 Maß\(e\)/.test(t);
+  })());
+
+  const erg1 = await store.schreibeArchiv(u1, { ueberschreiben: true });
+  const zMappe1 = store.projektMappe(zPrj.projekt.id);
+  const neuGs1 = MAPPE.alleGeschosse(zMappe1).find((t) => t.geschoss.name === "EG");
+  ok("[#86] das Geschoss steht als eigenes Geschoss im Zielprojekt — neben dem Bestand",
+    MAPPE.alleGeschosse(zMappe1).length === 2 && !!neuGs1
+    && MAPPE.alleGeschosse(zMappe1).some((t) => t.geschoss.id === zGs));
+  ok("[#86] es bekommt eine NEUE Geschoss-Kennung (Planbild-Datenbank je Kennung, [L-8])",
+    neuGs1.geschoss.id !== egOpt.id && neuGs1.geschoss.hoehe_mm === 2600);
+  ok("[#86] die Waende kommen ueber die WANDKENNUNG an — samt Lage ([L-1])", (() => {
+    const w1 = MAPPE.findeWand(zMappe1, "q-eg1"), w2 = MAPPE.findeWand(zMappe1, "q-eg2");
+    return !!w1 && !!w2 && w1.geschoss.id === neuGs1.geschoss.id && w2.geschoss.id === neuGs1.geschoss.id
+      && w1.wand.lage.laenge_grid === 16 && w1.wand.lage.start_mm.y === 62.5
+      && w2.wand.lage.laenge_grid === 8 && w2.wand.lage.start_mm.y === 562.5
+      && w1.wand.datei === null && w2.wand.datei === null;
+  })());
+  ok("[#86] die Wandelemente selbst liegen im Speicher (Zuordnung ueber die id, nie den Namen)",
+    store.holeElement("q-eg1").wandelement.length_mm === 2000
+    && store.holeElement("q-eg2").wandelement.length_mm === 1000
+    && erg1.waende === 2);
+  ok("[K-10] die Bemassung reist mit — gleiche Bezuege und gleicher Wert, NEUE Kennung", (() => {
+    const b = MAPPE.bemassungen(zMappe1, neuGs1.geschoss.id);
+    return b.length === 1 && b[0].mass_mm === 500 && b[0].achse === "y"
+      && b[0].von.wand === "q-eg1" && b[0].bis.wand === "q-eg2" && b[0].id !== "bm-quelle";
+  })());
+  ok("[#86] das ZWEITE Geschoss der Quelle bleibt liegen — Struktur und Wandelement",
+    !MAPPE.alleGeschosse(zMappe1).some((t) => t.geschoss.name === "OG")
+    && !MAPPE.findeWand(zMappe1, "q-og1") && store.holeElement("q-og1") === null);
+  ok("[#86] der uebrige Speicherbestand bleibt unveraendert (fremdes Projekt bitgleich)",
+    JSON.stringify(store.projektMappe(fremdPrj.projekt.id)) === fremdVor
+    && JSON.stringify(store.holeElement("z-w1")) === bestandVor
+    && MAPPE.findeWand(zMappe1, "z-w1").wand.lage.laenge_grid === 10);
+  ok("[L-4] nach der Teiluebernahme gibt es keine verwaisten Eintraege",
+    store.mappeReferenzen().verwaist.length === 0);
+  ok("[#86] kein neues gespeichertes Feld, keine gebrochene Versionsachse",
+    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2 && MAPPE.MAPPE_VERSION === 2
+    && JSON.stringify(Object.keys(neuGs1.geschoss).sort())
+      === JSON.stringify(["bemassungen", "hoehe_mm", "id", "name", "plan", "ursprung_mm", "waende"]));
+
+  // === Akzeptanztest 2: dasselbe Geschoss in ein NEU angelegtes Projekt ====
+  globalThis.localStorage = new MemStorage();
+  const u2 = ARCHIV.uebernahme(gelesenT, {
+    umfang: ARCHIV.UMFANG_GESCHOSS, geschossId: egOpt.id, neuesProjekt: "Vom Kollegen",
+  }, null);
+  ok("[#86] ohne bestehendes Projekt entsteht eines im selben Uebernahmeschritt",
+    u2.ziel.neu === true && u2.ziel.projektName === "Vom Kollegen");
+  await store.schreibeArchiv(u2, {});
+  const m2 = store.holeMappe();
+  ok("[#86] das neue Projekt traegt GENAU das uebernommene Geschoss (kein leeres daneben)",
+    store.listeProjekte().length === 1 && m2.projekt.name === "Vom Kollegen"
+    && MAPPE.alleGeschosse(m2).length === 1
+    && MAPPE.alleGeschosse(m2)[0].geschoss.name === "EG");
+  ok("[#86] Wandinhalte, Lage und Mass sind auch hier vollstaendig da", (() => {
+    const gs = MAPPE.alleGeschosse(m2)[0].geschoss;
+    return gs.waende.length === 2 && MAPPE.bemassungen(m2, gs.id).length === 1
+      && store.holeElement("q-eg1").wandelement.length_mm === 2000
+      && store.holeElement("q-eg2").wandelement.length_mm === 1000
+      && store.listeElemente().length === 2
+      && store.aktivesProjektId() === m2.projekt.id;
+  })());
+  ok("[#86] ein leerer Projektname wird BENANNT abgewiesen statt erfunden ([P-9])", (() => {
+    try {
+      ARCHIV.uebernahme(gelesenT, { umfang: ARCHIV.UMFANG_GESCHOSS, geschossId: egOpt.id, neuesProjekt: "  " }, null);
+      return false;
+    } catch (e) { return /fehlt der Name/.test(e.message); }
+  })());
+  ok("[#86] ohne Zielprojekt wird ein Geschoss NIE uebernommen ([L-6])", (() => {
+    try {
+      ARCHIV.uebernahme(gelesenT, { umfang: ARCHIV.UMFANG_GESCHOSS, geschossId: egOpt.id }, null);
+      return false;
+    } catch (e) { return /Ohne Zielprojekt/.test(e.message) && /außerhalb von Projekten/.test(e.message); }
+  })());
+
+  // === Akzeptanztest 3: eine einzelne Wand + ein Fehlerfall ===============
+  globalThis.localStorage = new MemStorage();
+  const z3 = store.fuegeProjektHinzu("Zielprojekt", { geschoss: "Bestand", hoehe_mm: 2500 });
+  const z3Gs = z3.gebaeude[0].geschosse[0].id;
+  const u3 = ARCHIV.uebernahme(gelesenT, {
+    umfang: ARCHIV.UMFANG_WAND, wandId: "q-og1", zielGeschossId: z3Gs,
+  }, store.projektMappe(z3.projekt.id));
+  ok("[#86] eine einzelne Wand kommt allein — ohne Nachbarwaende und ohne Planbild",
+    u3.waende.length === 1 && u3.waende[0].id === "q-og1" && u3.bilder.length === 0
+    && u3.ziel.geschossId === z3Gs && u3.ziel.wandName === "OG-W01");
+  ok("[#86] der Dialog sagt VOR der Bestaetigung, dass Lage und Masse nicht mitreisen", (() => {
+    const t = ARCHIV.uebernahmeZeilen(u3).concat(u3.hinweise).join(" | ");
+    return /ohne Lage/i.test(t) && /NICHT mit/.test(t);
+  })());
+
+  const vor3 = roh();
+  let grund3 = "";
+  try { await store.schreibeArchiv(u3, {}); } catch (e) { grund3 = e.message; }
+  ok("[L-13] ein Fehlerfall laesst den Speicher VOLLSTAENDIG unveraendert",
+    /ausdrückliche Bestätigung/.test(grund3) && roh() === vor3
+    && store.listeElemente().length === 0);
+
+  await store.schreibeArchiv(u3, { ueberschreiben: true });
+  const m3 = store.projektMappe(z3.projekt.id);
+  ok("[#86] die Wand ist im gewaehlten Zielgeschoss eingetragen — OHNE Lage ([L-1])", (() => {
+    const t = MAPPE.findeWand(m3, "q-og1");
+    return !!t && t.geschoss.id === z3Gs && t.wand.lage === null
+      && store.holeElement("q-og1").wandelement.length_mm === 3000;
+  })());
+  ok("[#86] weder Quellgeschoss noch fremde Waende noch Masse kommen dabei mit",
+    MAPPE.alleGeschosse(m3).length === 1 && store.listeElemente().length === 1
+    && MAPPE.bemassungen(m3, z3Gs).length === 0 && store.listeProjekte().length === 1);
+  ok("[#86] ohne vorhandenes Zielgeschoss wird die Wand BENANNT abgewiesen", (() => {
+    try {
+      ARCHIV.uebernahme(gelesenT, { umfang: ARCHIV.UMFANG_WAND, wandId: "q-og1", zielGeschossId: "gs-gibtsnicht" }, null);
+      return false;
+    } catch (e) { return /Ohne Zielgeschoss/.test(e.message) && /kein Geschoss/.test(e.message); }
+  })());
+
+  // --- must 1: dieselbe Teilauswahl an der ARCHIVfassung (projekt.json) ----
+  globalThis.localStorage = new MemStorage();
+  const zA = store.fuegeProjektHinzu("Archivziel", { geschoss: "Bestand" });
+  const gelA = ARCHIV.leseProjektQuelle(eintraege, PARSE);
+  const optA = ARCHIV.teilauswahlOptionen(gelA);
+  const egA = optA.geschosse.find((g) => g.name === "EG");
+  ok("[#86] die Archivfassung bietet dieselbe Teilauswahl an",
+    gelA.quelle === ARCHIV.QUELLE_ARCHIV && gelA.fehler.length === 0
+    && optA.geschosse.length === 2 && egA.plan === true && egA.bemassungen === 1);
+  const uA = ARCHIV.uebernahme(gelA, {
+    umfang: ARCHIV.UMFANG_GESCHOSS, geschossId: egA.id,
+  }, store.projektMappe(zA.projekt.id));
+  ok("[L-8] das Planbild zieht auf die NEUE Geschoss-Kennung um",
+    uA.bilder.length === 1 && uA.bilder[0].geschossId === uA.ziel.geschossId
+    && uA.bilder[0].geschossId !== egA.id);
+
+  const vorA = roh();
+  let grundA = "";
+  try {
+    await store.schreibeArchiv(uA, { ueberschreiben: true, plan: {
+      speicherePlan: () => { throw new Error("Speicher voll (Test)"); },
+      holePlan: async () => null, loeschePlan: async () => {},
+    } });
+  } catch (e) { grundA = e.message; }
+  ok("[L-13] faellt der Planspeicher aus, kommt der vorherige Stand vollstaendig zurueck",
+    /vollständig wiederhergestellt/.test(grundA) && roh() === vorA
+    && store.listeElemente().length === 0
+    && MAPPE.alleGeschosse(store.projektMappe(zA.projekt.id)).length === 1);
+
+  const plaene = new Map();
+  const ergA = await store.schreibeArchiv(uA, { ueberschreiben: true, plan: {
+    speicherePlan: async (id, blob, meta) => { plaene.set(String(id), { blob, ...meta }); },
+    holePlan: async (id) => plaene.get(String(id)) || null,
+    loeschePlan: async (id) => { plaene.delete(String(id)); },
+  } });
+  const mA = store.projektMappe(zA.projekt.id);
+  const gsA = MAPPE.alleGeschosse(mA).find((t) => t.geschoss.name === "EG").geschoss;
+  ok("[#86] auch aus dem vollstaendigen Archiv kommt genau EIN Geschoss an",
+    MAPPE.alleGeschosse(mA).length === 2 && gsA.waende.length === 1
+    && !!MAPPE.findeWand(mA, "wnd-1") && !MAPPE.findeWand(mA, "wnd-2")
+    && store.listeElemente().map((e) => e.id).join() === "wnd-1");
+  ok("[L-8]/[L-9] das Bild liegt unter der neuen Kennung, Massstab und Datei bleiben",
+    ergA.bilder === 1 && plaene.has(gsA.id) && !plaene.has(egA.id)
+    && gsA.plan.datei === "eg.png" && gsA.plan.mm_je_pixel === 12.5);
+
+  // --- must 1/R9: die Strukturdatei geht denselben Weg --------------------
+  const strukt = ARCHIV.leseStruktur(exp.dateien.find((d) => /^SEMBLA_Projektmappe_/.test(d.name)).data);
+  const optS = ARCHIV.teilauswahlOptionen(strukt);
+  ok("[#86] eine Strukturdatei bietet ihre Geschosse an, aber keine einzelne Wand",
+    strukt.quelle === ARCHIV.QUELLE_STRUKTUR && optS.geschosse.length === 2 && optS.waende.length === 0);
+  ok("[#86] eine Wand ohne beiliegendes Wandelement wird BENANNT abgewiesen ([L-4])", (() => {
+    try {
+      ARCHIV.uebernahme(strukt, { umfang: ARCHIV.UMFANG_WAND, wandId: "q-og1", zielGeschossId: z3Gs },
+        store.projektMappe(zA.projekt.id));
+      return false;
+    } catch (e) { return /kein Wandelement bei/.test(e.message); }
+  })());
+  ok("[#86] ein unbekannter Umfang wird abgewiesen statt geraten", (() => {
+    try { ARCHIV.uebernahme(gelesenT, { umfang: "alles" }, null); return false; }
+    catch (e) { return /Unbekannter Übernahmeumfang/.test(e.message); }
+  })());
+  ok("[#86] „ganzes Projekt“ bleibt der unveraenderte Weg von zuvor", (() => {
+    const u = ARCHIV.uebernahme(gelesenT, { umfang: ARCHIV.UMFANG_PROJEKT });
+    return u.mappe === gelesenT.mappe && u.waende === gelesenT.waende
+      && u.bilder === gelesenT.bilder && u.fehler === gelesenT.fehler
+      && u.hinweise === gelesenT.hinweise && u.ziel.art === ARCHIV.UMFANG_PROJEKT;
+  })());
+}
+
 // --- Ausgabe --------------------------------------------------------------
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
