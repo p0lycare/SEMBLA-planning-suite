@@ -24,9 +24,30 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-08-18",
-  "signatur": "869118af",
+  "stand": "2026-09-02",
+  "signatur": "02083b0e",
   "entscheidungen": [
+    {
+      "issue": 81,
+      "titel": "Manuelle Stücklisten-Overrides mit wählbarem Export",
+      "prio": "high",
+      "status": "decision needed",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true,
+      "frage": "Menge, Kommentar samt Exportspalte der Wandebene und die wählbare Mengenfassung sind umgesetzt. Kommentare gelten je Erfassungsebene — sollen zusätzlich Geschoss- oder Projektebene eigene Kommentare bekommen?",
+      "optionen": [
+        {
+          "text": "Nein — Kommentare bleiben eine Angabe der Wandebene.",
+          "wirkung": "Kein neues gespeichertes Feld; der gesamte Issue-Umfang ist damit erledigt und das Issue abschließbar."
+        },
+        {
+          "text": "Ja — eigene Kommentare je Geschoss- oder Projektebene.",
+          "wirkung": "Eigenes Paket mit eigener Speicherstelle außerhalb der Wand-Eingaben; die Gesamtstückliste-Dateien erhalten je Ebene eine eigene Kommentarspalte."
+        }
+      ],
+      "empfehlung": "Nein wählen: die Wandebene deckt die Baustellenangabe ab, und jede weitere Ebene bräuchte eine eigene Speicherstelle ohne erkennbaren Bedarf."
+    },
     {
       "issue": 41,
       "titel": "Fachreview: SEMBLA-Regelwerk korrigieren und offene Regeln bestätigen",
@@ -70,6 +91,27 @@ export const PLAN = {
       "empfehlung": "Einen freigegebenen Referenzaufbau mit Maßkette bereitstellen und erst danach die Rechen- und Darstellungslogik ändern."
     },
     {
+      "issue": 59,
+      "titel": "Lageplan-Feedback",
+      "prio": "high",
+      "status": "ohne",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false,
+      "frage": "Alle Rückmeldepunkte sind umgesetzt, zurückgezogen oder abgenommen; die Ursprungsdarstellung ist mit Option A bestätigt. Soll das Issue geschlossen werden?",
+      "optionen": [
+        {
+          "text": "Schließen — der gesamte Rückmeldeumfang ist erledigt.",
+          "wirkung": "Der Backlog trägt keinen erledigten Rest mit; neue Lageplan-Rückmeldungen starten als eigenes, klein geschnittenes Issue."
+        },
+        {
+          "text": "Offen lassen als Sammelstelle für weitere Lageplan-Rückmeldungen.",
+          "wirkung": "Neue Rückmeldungen landen im selben Issue, der Plan führt es aber dauerhaft ohne umsetzbaren Anteil."
+        }
+      ],
+      "empfehlung": "Schließen — es gibt keinen offenen Punkt mehr, und getrennte neue Issues bleiben klein und prüfbar."
+    },
+    {
       "issue": 19,
       "titel": "Zuschnitt- und Layoutplanung für Platten, Latten und Gewindestangen",
       "prio": "medium",
@@ -89,27 +131,6 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Schließen — der umsetzbare Anteil ist vollständig erledigt, und ein Folgezyklus-Issue lässt sich sauberer schneiden."
-    },
-    {
-      "issue": 87,
-      "titel": "Gleiche Wandnamen führen zu Fehlzuweisungen",
-      "prio": "ohne",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false,
-      "frage": "Die eindeutige Wand-ID existiert bereits und ist überall die Zuordnungsbasis; Namen sind reine Anzeige. Wo trat die beobachtete Fehlzuweisung auf?",
-      "optionen": [
-        {
-          "text": "Anzeigeproblem: gleichnamige Wände sind in Wandliste und Kopfleiste optisch nicht unterscheidbar.",
-          "wirkung": "Kleines Paket, das die Anzeige eindeutig macht, etwa mit Geschoss-Kontext neben dem Namen; keine Datenänderung."
-        },
-        {
-          "text": "Echter Datenfehler bei einer konkreten Aktion, etwa beim Projektimport.",
-          "wirkung": "Dann werden die Schritte gebraucht (Aktion, Modul, falsche Zuordnung danach), um die Ursache gezielt zu finden."
-        }
-      ],
-      "empfehlung": "Kurz die konkrete Situation beschreiben, in der die Fehlzuweisung sichtbar wurde — ohne Repro wird nichts umgebaut."
     }
   ],
   "naechstes": {
@@ -122,26 +143,7 @@ export const PLAN = {
     "zyklus": true,
     "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
   },
-  "weitere": [
-    {
-      "issue": 81,
-      "titel": "Manuelle Stücklisten-Overrides mit wählbarem Export",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 86,
-      "titel": "Projektimport: zentraler Importdialog für beide ZIP-Fassungen",
-      "prio": "ohne",
-      "status": "ready",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false
-    }
-  ],
+  "weitere": [],
   "blockiert": [
     {
       "issue": 38,
