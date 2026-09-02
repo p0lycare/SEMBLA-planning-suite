@@ -1647,14 +1647,23 @@ globalThis.fetch = echtesFetch;
     !mappeDatei.includes('courses') && !mappeDatei.includes('length_mm'));
   ok('die Mappen-Datei traegt die Kopfdaten des Projekts ([L-11])',
     'kopfdaten' in JSON.parse(mappeDatei).projekt);
-  await $('tr-mappe-import').dispatch('change', {
+  // Seit #86 laeuft auch die Mappendatei ueber den EINEN Importdialog: erst der
+  // Pruefbericht, dann die Bestaetigung — geschrieben wird nichts vorher.
+  await $('pi-datei').dispatch('change', {
     target: { files: [kFile(mappeDatei, 'mappe.json')], value: 'x' } });
+  ok('#86 die Mappendatei zeigt erst den Pruefbericht, bevor etwas geschrieben wird',
+    $('arc-overlay').hidden === false && $('pi-overlay').hidden === true
+    && /nur Struktur/.test($('arc-bericht').innerHTML));
+  $('arc-ueber').checked = true;           // dasselbe Projekt ist vorhanden ([L-13])
+  await $('arc-go').dispatch('click');
   ok('Mappen-Import stellt dasselbe Projekt wieder her (Kennung bleibt)',
     store.holeMappe().projekt.id === prj0.projekt.id && projekte().length === anzahlPrjVor - 1);
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [kFile(JSON.stringify(store.projektObjekt(idOg)), 'wand.json')], value: 'x' } });
   ok('eine Wanddatei im Mappen-Import wird benannt abgewiesen',
-    trFehler() && /Wanddatei/.test(trMsgTxt()));
+    $('arc-fehler').hidden === false && /Wanddatei/.test($('arc-fehler').innerHTML)
+    && $('arc-go').disabled === true);
+  $('arc-cancel').dispatch('click');
 
   // 8l) Das Projektformat der Wanddateien bleibt unberuehrt
   ok('Projektformat der Wanddateien bleibt v2 (kein Bruch durch die Mappen-Liste)',
@@ -1994,7 +2003,7 @@ globalThis.fetch = echtesFetch;
     && (await PLAN.holePlan(gsEg)) === null);
 
   // 11d) Import des ZIP: erst Bericht, dann schreiben ----------------------
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [zipDatei('SEMBLA_Projekt_Archivprojekt.zip', archivBytes)], value: 'x' } });
   await warte();
   ok('[L-13] der Prueferbericht erscheint, bevor irgendetwas geschrieben wird',
@@ -2025,7 +2034,7 @@ globalThis.fetch = echtesFetch;
     /kat-nichtdabei/.test(trMsgTxt()) && store.holeMappe().katalog === 'kat-nichtdabei');
 
   // 11e) Zweiter Import derselben Bytes: Konflikt, Abbruch, Bestaetigung ----
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [zipDatei('nochmal.zip', archivBytes)], value: 'x' } });
   await warte();
   ok('[L-13] vorhandene Kennungen werden als Konflikt gemeldet',
@@ -2047,7 +2056,7 @@ globalThis.fetch = echtesFetch;
   globalThis.localStorage = new MemStorage();
   PLAN.setzeIndexedDB(fakeIndexedDB());
   store.migrieren();
-  await $('tr-ordner-import').dispatch('change', {
+  await $('pi-ordner').dispatch('change', {
     target: { files: archivDateien.map(d => ordnerDatei(d.name, d.data)), value: 'x' } });
   await warte();
   ok('[L-13] der Ordnerimport zeigt denselben Bericht', $('arc-overlay').hidden === false);
@@ -2063,7 +2072,7 @@ globalThis.fetch = echtesFetch;
   store.migrieren();
   const deflateBytes = await zipDeflate(archivDateien);
   ok('das Deflate-Archiv ist wirklich komprimiert', deflateBytes.length < archivBytes.length);
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [zipDatei('komprimiert.zip', deflateBytes)], value: 'x' } });
   await warte();
   $('arc-go').dispatch('click');
@@ -2074,7 +2083,7 @@ globalThis.fetch = echtesFetch;
   globalThis.localStorage = new MemStorage();
   store.migrieren();
   PLAN.setzeIndexedDB(fakeIndexedDBMitFehler(2));   // das ZWEITE Planbild scheitert
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [zipDatei('rollback.zip', archivBytes)], value: 'x' } });
   await warte();
   $('arc-go').dispatch('click');
@@ -2090,7 +2099,7 @@ globalThis.fetch = echtesFetch;
 
   // 11i) Kaputte Archive: benannt, nicht geraten ---------------------------
   const boese = zipSync([...archivDateien, { name: '../boese.json', data: '{}' }]);
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [zipDatei('boese.zip', boese)], value: 'x' } });
   await warte();
   ok('[L-13] Traversal wird im Dialog benannt und der Import gesperrt',
@@ -2100,7 +2109,7 @@ globalThis.fetch = echtesFetch;
   ok('Abbruch schreibt nichts', store.listeProjekte().length === 0 && !!/nichts gespeichert/.test(trMsgTxt()));
 
   const ohneWandDatei = zipSync(archivDateien.filter(d => !d.name.includes('/waende/')));
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [zipDatei('unvollstaendig.zip', ohneWandDatei)], value: 'x' } });
   await warte();
   ok('[L-13] fehlende Wanddateien sperren den Import',
@@ -2109,18 +2118,20 @@ globalThis.fetch = echtesFetch;
   $('arc-cancel').dispatch('click');
 
   // 11j) Der Struktur-JSON-Weg bleibt daneben bestehen ---------------------
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [zipDatei('leer.zip', zipSync([{ name: 'nur/text.txt', data: 'hallo' }]))], value: 'x' } });
   await warte();
-  ok('[L-13] ein ZIP ohne projekt.json wird benannt abgewiesen',
-    /kein SEMBLA-Projektarchiv/.test($('arc-fehler').innerHTML) && $('arc-go').disabled === true);
+  ok('[L-13] ein ZIP ohne jede Projektdatei wird benannt abgewiesen',
+    /Keine Projektdaten erkannt/.test($('arc-fehler').innerHTML) && $('arc-go').disabled === true);
   $('arc-cancel').dispatch('click');
 
   globalThis.localStorage = new MemStorage();
   store.migrieren();
   const nurStruktur = JSON.parse(archivDateien.find(d => d.name.endsWith('projekt.json')).data);
-  await $('tr-mappe-import').dispatch('change', {
+  await $('pi-datei').dispatch('change', {
     target: { files: [kFile(JSON.stringify(nurStruktur), 'nur-struktur.json')], value: 'x' } });
+  await warte();
+  $('arc-go').dispatch('click');
   await warte();
   ok('der Struktur-JSON-Weg funktioniert unveraendert weiter',
     store.holeMappe()?.projekt.id === prjA.projekt.id && store.listeElemente().length === 0);
@@ -2130,7 +2141,71 @@ globalThis.fetch = echtesFetch;
     // Der Struktur-Export heisst weiterhin ausdruecklich „nur Struktur (JSON)"
     // ([L-13]) — seit #67 als Option des zentralen Exportdialogs.
     /nur Struktur \(JSON\)/.test(html) && /Exportieren/.test(html)
-    && /Projektordner wählen/.test(html) && /webkitdirectory/.test(html));
+    && /Entpackten Ordner wählen/.test(html) && /webkitdirectory/.test(html));
+
+  // 11k) #86: EIN Importeinstieg — und die Projekt-ZIP des zentralen Exports
+  // Der Nutzerpfad des Issues: exportieren, weitergeben, beim Empfaenger ueber
+  // denselben einen Dialog wieder einlesen. Gebaut wird die ZIP hier ueber die
+  // ECHTE Exportoberflaeche (Baumknopf + Dialog), gelesen ueber den echten Import.
+  ok('#86 genau EIN Importeinstieg fuer Projektdaten, drei benannte Quellen dahinter',
+    /id="tr-import"/.test(html) && !/tr-mappe-import/.test(html) && !/tr-ordner-import/.test(html)
+    && /id="pi-overlay"/.test(html) && /id="pi-datei"/.test(html) && /id="pi-ordner"/.test(html)
+    && /webkitdirectory/.test(html));
+
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  await $('pi-datei').dispatch('change', {
+    target: { files: [zipDatei('wiederher.zip', archivBytes)], value: 'x' } });
+  await warte();
+  $('arc-go').dispatch('click');
+  await warte();
+
+  zipCalls.length = 0;
+  baum('prj-export', prjA.projekt.id);
+  $('exp-overlay')._sel = [{ value: 'mappe' }, { value: 'geschosse' }, { value: 'waende' }];
+  $('exp-go').dispatch('click');
+  const expDateien = zipCalls.length ? zipCalls[0].files : [];
+  ok('#86 die Export-ZIP traegt keine projekt.json und keine Wandzuordnung in der Mappe',
+    expDateien.length === 5
+    && !expDateien.some(d => /(^|\/)projekt\.json$/.test(d.name))
+    && MAPPE.alleWaende(JSON.parse(expDateien.find(d => /^SEMBLA_Projektmappe_/.test(d.name)).data))
+      .every(({ wand }) => wand.datei === null));
+  const expBytes = zipSync(expDateien);
+
+  globalThis.localStorage = new MemStorage();
+  PLAN.setzeIndexedDB(fakeIndexedDB());
+  store.migrieren();
+  $('tr-import').dispatch('click');
+  ok('#86 der Importdialog oeffnet und schreibt dabei nichts',
+    $('pi-overlay').hidden === false && store.listeProjekte().length === 0);
+  await $('pi-datei').dispatch('change', {
+    target: { files: [zipDatei('SEMBLA_Export_Projekt_Archivprojekt.zip', expBytes)], value: 'x' } });
+  await warte();
+  ok('#86 der gepruefte Inhalt steht VOR der Bestaetigung im Bericht',
+    $('arc-overlay').hidden === false && $('pi-overlay').hidden === true
+    && store.listeProjekte().length === 0 && store.listeElemente().length === 0
+    && /Projekt-ZIP des zentralen Exports/.test($('arc-bericht').innerHTML)
+    && /Archivprojekt/.test($('arc-bericht').innerHTML)
+    && /Geschosse \(2\)/.test($('arc-bericht').innerHTML)
+    && /EG-W01/.test($('arc-bericht').innerHTML) && /OG-W01/.test($('arc-bericht').innerHTML)
+    && /kat-nichtdabei/.test($('arc-bericht').innerHTML)
+    && $('arc-go').disabled === false);
+  $('arc-go').dispatch('click');
+  await warte();
+  ok('#86 die Bestaetigung uebernimmt das GANZE Projekt',
+    $('arc-overlay').hidden === true && store.aktivesProjektId() === prjA.projekt.id
+    && store.listeElemente().length === 2
+    && MAPPE.alleWaende(store.holeMappe()).length === 2);
+  ok('#86 zugeordnet wurde ueber die Wandkennung, nicht ueber den Namen',
+    !!store.holeElement(wEg) && !!store.holeElement(wOg)
+    && store.mappeReferenzen().verwaist.length === 0);
+  ok('#86 Struktur, Lage, Bemassungen und Eingaben sind fachlich identisch',
+    vergleich() === standVorher);
+  ok('#86 das fehlende Planbild ist ein Hinweis, kein Fehler ([L-8])',
+    (await PLAN.holePlan(gsEg)) === null && /nie enthalten/.test(trMsgTxt())
+    && store.geschossPlan(gsEg).datei === 'eg.png');
+
   ok('der Einzelwand-Weg ist unberuehrt vorhanden',
     /id="f-import"/.test(html) && /id="exp-go"/.test(html)
     // Das Verhalten selbst wurde oben ueber die echte Ereignisdelegation

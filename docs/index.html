@@ -110,10 +110,7 @@
   <div class="panel">
     <div class="row">
       <button class="btn-p" id="tr-projekt-neu">Projekt anlegen…</button>
-      <label class="btn-s" for="tr-mappe-import">Projekt hochladen (ZIP/JSON)…</label>
-      <input id="tr-mappe-import" type="file" accept=".zip,.json,application/zip,application/json" hidden>
-      <label class="btn-s" for="tr-ordner-import">Projektordner wählen…</label>
-      <input id="tr-ordner-import" type="file" webkitdirectory directory multiple hidden>
+      <button class="btn-s" id="tr-import">Projekt importieren…</button>
       <div class="muted" id="tr-stand" style="font-size:12.5px;padding-bottom:8px">–</div>
     </div>
     <div class="msg" id="tr-msg"></div>
@@ -344,14 +341,46 @@
   </div>
 </div>
 
-<!-- Projektarchiv ([L-13]): Bericht VOR jedem Schreiben. Bis „Importieren“ liegt das
-     geprüfte Archiv nur im Speicher der Seite; ein Fehler beim Schreiben setzt den
-     vorherigen Stand vollständig zurück (store.schreibeArchiv). -->
+<!-- EIN Importeinstieg für Projektdaten (#86). Die beiden früheren Einstiege
+     („Projekt hochladen (ZIP/JSON)…", „Projektordner wählen…") sind ersetzt: ZIP-Datei
+     und Ordner sind gleichwertige Quellen DESSELBEN Weges, die Mappendatei („nur
+     Struktur (JSON)", [L-13]) ist die dritte. Welche Fassung vorliegt, entscheidet der
+     INHALT (sembla-archiv.js), nicht der Dateiname. Geschrieben wird in jedem Fall erst
+     nach dem bestätigten Prüfbericht. Einzelwand- und Katalogimport bleiben getrennte,
+     eigens benannte Wege ([L-12]). -->
+<div class="overlay" id="pi-overlay" hidden>
+  <div class="modal">
+    <h3>Projekt importieren</h3>
+    <p class="sub"><b>ZIP-Datei und Ordner sind gleichwertig.</b> Erkannt werden das vollständige
+      <b>Projektarchiv</b> (mit <code>projekt.json</code> und Planbildern) und die <b>Projekt-ZIP des
+      zentralen Exports</b>; eine einzelne <b>Mappendatei</b> („nur Struktur", JSON) geht denselben Weg.
+      Der Inhalt wird zuerst <b>gelesen, geprüft und angezeigt</b> — gespeichert wird erst nach
+      Bestätigung ([L-13]).</p>
+    <div class="row">
+      <label class="btn-s" for="pi-datei">ZIP- oder JSON-Datei wählen…</label>
+      <input id="pi-datei" type="file" accept=".zip,.json,application/zip,application/json" hidden>
+      <label class="btn-s" for="pi-ordner">Entpackten Ordner wählen…</label>
+      <input id="pi-ordner" type="file" webkitdirectory directory multiple hidden>
+    </div>
+    <div class="hint">Getrennt bleiben: eine <b>einzelne Wand</b> über „Wand hinzufügen…" am Geschoss,
+      ein <b>Bauteilkatalog</b> über „Katalog importieren…" ([L-12]). Liegt eine Katalogdatei im ZIP,
+      wird sie <b>benannt übergangen</b> statt still mitimportiert; ein <b>Planbild</b> ist in der ZIP des
+      zentralen Exports nie enthalten ([L-8]) — das ist dort ein Hinweis, kein Fehler.</div>
+    <div class="msg" id="pi-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="pi-cancel">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prüfbericht ([L-13]): Bericht VOR jedem Schreiben — für ALLE drei Quellen. Bis
+     „Importieren“ liegt der geprüfte Stand nur im Speicher der Seite; ein Fehler beim
+     Schreiben setzt den vorherigen Stand vollständig zurück (store.schreibeArchiv). -->
 <div class="overlay" id="arc-overlay" hidden>
   <div class="modal" style="max-width:620px">
-    <h3 id="arc-titel">Projektarchiv importieren</h3>
+    <h3 id="arc-titel">Projektimport prüfen</h3>
     <p class="sub">Die Quelle <b id="arc-quelle">–</b> wurde gelesen und geprüft, aber
-      <b>noch nichts gespeichert</b>. Der Bauteilkatalog ist nicht Teil des Archivs ([L-12]) —
+      <b>noch nichts gespeichert</b>. Der Bauteilkatalog reist nie mit ([L-12]) —
       er wird getrennt importiert.</p>
     <div class="zus" id="arc-bericht"></div>
     <div class="warn" id="arc-fehler" hidden></div>
@@ -894,70 +923,78 @@
         + ' — es wird keine Position erfunden ([P-9])';
   }
 
-  // Der frühere eigene Mappen-Download („nur Struktur (JSON)") ist seit #67 eine
-  // Option des zentralen Exportdialogs; der IMPORT darunter bleibt unverändert.
-  $('tr-mappe-import').addEventListener('change', async (ev) => {
+  // =====================================================================
+  //  EIN Importeinstieg für Projektdaten (#86)
+  // =====================================================================
+  // Die beiden früheren Einstiege sind durch EINEN Dialog ersetzt. Er nimmt drei
+  // gleichwertige Quellen — ZIP-Datei, entpackten Ordner und die Mappendatei
+  // („nur Struktur (JSON)", [L-13]) — und führt sie alle über DENSELBEN Weg:
+  // deuten/prüfen in sembla-archiv.js (rein, schreibt nichts), Prüfbericht,
+  // Bestätigung, dann store.schreibeArchiv mit vollständigem Rücksprung.
+  // Welche ZIP-Fassung vorliegt (vollständiges Archiv mit projekt.json oder die
+  // Projekt-ZIP des zentralen Exports), entscheidet der INHALT, nicht der Name.
+
+  const piOverlay = $('pi-overlay');
+  /** Wanddateien laufen durch den EINEN vorhandenen Wandparser ([P-6]). */
+  const PI_OPT = { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) };
+
+  function piOeffne(){
+    $('pi-msg').textContent = ''; $('pi-msg').className = 'msg';
+    piOverlay.hidden = false;
+  }
+  function piSchliesse(){ piOverlay.hidden = true; }
+  function piAbbruch(){ piSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
+  /** Ursache benennen, nicht pauschal „nicht möglich" ([P-9]) — der Dialog bleibt offen. */
+  function piFehler(e){
+    const b = $('pi-msg');
+    b.textContent = 'Import nicht möglich: ' + fehlerText(e);
+    b.className = 'msg err';
+  }
+
+  $('tr-import').addEventListener('click', piOeffne);
+  $('pi-cancel').addEventListener('click', piAbbruch);
+  piOverlay.addEventListener('click', (ev) => { if (ev.target === piOverlay) piAbbruch(); });
+
+  $('pi-datei').addEventListener('change', async (ev) => {
     const file = ev.target.files && ev.target.files[0];
     if (!file) return;
-    // ZIP oder Struktur-JSON — entschieden wird an der Endung bzw. am MIME-Typ,
-    // nicht am Inhalt: ein ZIP ist keine JSON und umgekehrt ([L-13]).
+    // ZIP oder Mappendatei — an der Endung bzw. am MIME-Typ getrennt, weil ein ZIP
+    // keine JSON ist und umgekehrt. WELCHE ZIP-Fassung es ist, entscheidet danach
+    // der Inhalt (ARCHIV.leseProjektQuelle), nicht der Dateiname.
     const istZip = /\.zip$/i.test(file.name || '') || String(file.type || '') === 'application/zip';
     try {
-      if (istZip) await arcAusZip(file);
-      else {
-        const m = store.importiereMappeText(await file.text());
-        store.setzeAktivesProjekt(m.projekt.id);
-        KLAPP.add(m.projekt.id);
-        trZeige(`Projekt „${m.projekt.name}“ importiert und aktiv gesetzt (nur Struktur — `
-          + 'Wandelemente und Planbilder waren nicht Teil dieser Datei). Verwaiste Einträge werden '
-          + 'unten gemeldet, nicht bereinigt ([L-4]).', true);
+      if (istZip) {
+        const puffer = await file.arrayBuffer();
+        arcPruefe(ARCHIV.leseProjektQuelle(await entpacke(new Uint8Array(puffer)), PI_OPT), file.name);
+      } else {
+        arcPruefe(ARCHIV.leseStruktur(await file.text()), file.name);
       }
-    } catch (e) { trZeige('Import fehlgeschlagen: ' + fehlerText(e), false); }
+    } catch (e) { piFehler(e); }
     ev.target.value = '';
   });
 
-  $('tr-ordner-import').addEventListener('change', async (ev) => {
+  $('pi-ordner').addEventListener('change', async (ev) => {
     const files = [...(ev.target.files || [])];
     if (!files.length) return;
-    try { await arcAusDateien(files, 'Ordner mit ' + files.length + ' Datei(en)'); }
-    catch (e) { trZeige('Import fehlgeschlagen: ' + fehlerText(e), false); }
+    try {
+      const eintraege = [];
+      for (const f of files) {
+        const pfad = f.webkitRelativePath || f.name;
+        const puffer = await f.arrayBuffer();
+        eintraege.push({ name: pfad, data: new Uint8Array(puffer) });
+      }
+      arcPruefe(ARCHIV.leseProjektQuelle(eintraege, PI_OPT), 'Ordner mit ' + files.length + ' Datei(en)');
+    } catch (e) { piFehler(e); }
     ev.target.value = '';
   });
 
-  // =====================================================================
-  //  Vollständiges Projektarchiv ([L-13]) — ZIP/Ordner-IMPORT
-  // =====================================================================
-  // Genau EINE Mappe je Archiv, alle referenzierten Wände und alle vorhandenen
-  // Planbilder. Der Bauteilkatalog gehört NICHT hinein ([L-12]) — nur seine
-  // Referenz. Gelesen/geprüft wird in sembla-archiv.js (rein), geschrieben in
-  // store.schreibeArchiv (mit vollständigem Rücksprung bei jedem Fehler).
-  // Der frühere Archiv-EXPORT-Knopf ist mit #67 dem hierarchischen Export
-  // gewichen; bestehende Archive bleiben über diesen Weg importierbar.
-
-  // --- Import: lesen, prüfen, bestätigen, erst dann schreiben --------------
+  // --- Prüfbericht, Bestätigung, erst dann schreiben ([L-13]) --------------
   const arcOverlay = $('arc-overlay');
   let arcOffen = null;              // { gelesen, quelle } — nur im Speicher der Seite
 
-  async function arcAusZip(file){
-    const puffer = await file.arrayBuffer();
-    const eintraege = await entpacke(new Uint8Array(puffer));
-    arcPruefe(eintraege, file.name);
-  }
-
-  async function arcAusDateien(files, quelle){
-    const eintraege = [];
-    for (const f of files) {
-      const pfad = f.webkitRelativePath || f.name;
-      // Nur was ein Archiv ausmacht wird gelesen — ein Ordner enthält oft mehr.
-      const puffer = await f.arrayBuffer();
-      eintraege.push({ name: pfad, data: new Uint8Array(puffer) });
-    }
-    arcPruefe(eintraege, quelle);
-  }
-
   /** Prüfbericht anzeigen — bis „Importieren“ wird nichts geschrieben ([L-13]). */
-  function arcPruefe(eintraege, quelle){
-    const gelesen = ARCHIV.leseArchiv(eintraege, { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) });
+  function arcPruefe(gelesen, quelle){
+    piSchliesse();
     arcOffen = { gelesen, quelle };
     $('arc-quelle').textContent = quelle;
     $('arc-bericht').innerHTML = ARCHIV.berichtZeilen(gelesen).map(z => '<div>' + esc(z) + '</div>').join('')
@@ -965,7 +1002,7 @@
     const fehlerBox = $('arc-fehler');
     fehlerBox.hidden = gelesen.fehler.length === 0;
     fehlerBox.innerHTML = gelesen.fehler.length
-      ? '<b>Das Archiv ist nicht importierbar:</b>' + gelesen.fehler.map(f => '<div>– ' + esc(f) + '</div>').join('')
+      ? '<b>Diese Quelle ist nicht importierbar:</b>' + gelesen.fehler.map(f => '<div>– ' + esc(f) + '</div>').join('')
       : '';
 
     const konf = gelesen.mappe ? store.archivKonflikte(gelesen) : { projekt: null, waende: [] };
@@ -999,7 +1036,9 @@
       KLAPP.add(gelesen.mappe.projekt.id);
       arcSchliesse();
       trZeige(`Projekt „${erg.projekt.projekt.name}“ importiert und aktiv gesetzt: `
-        + `${erg.waende} Wandelement(e), ${erg.bilder} Planbild(er), Struktur mit Lage und Bemaßungen.`
+        + `${erg.waende} Wandelement(e), ${erg.bilder} Planbild(er), Struktur mit Lage und Bemaßungen `
+        + `(${ARCHIV.QUELLE_TEXT[gelesen.quelle] || 'Projektdaten'}).`
+        + (gelesen.hinweise.length ? ' Hinweise: ' + gelesen.hinweise.join(' ') : '')
         + (erg.katalogFehlt ? ` ⚠ Der zugeordnete Bauteilkatalog „${erg.katalogFehlt}“ liegt nicht in `
           + 'diesem Browser — die Zuordnung bleibt bestehen, der Katalog ist getrennt zu importieren ([L-12]).' : ''),
         !erg.katalogFehlt);
@@ -1929,6 +1968,7 @@
     if (ev.key !== 'Escape') return;
     if (!overlay.hidden) schliesseExport();
     if (!arcOverlay.hidden) arcSchliesse();     // Abbruch schreibt nichts ([L-13])
+    if (!piOverlay.hidden) piSchliesse();       // dito: der Importdialog schreibt nie selbst
     if (!impOverlay.hidden) impSchliesse();
     if (!kpOverlay.hidden) kpAbbruch();         // Produktpflege: Abbruch schreibt nichts ([P-16])
     else if (!katOverlay.hidden) katSchliesse();

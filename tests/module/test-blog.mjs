@@ -58,37 +58,59 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(7);
-const NEU = EINTRAEGE.slice(13);
-const AKTUELL = EINTRAEGE.slice(18);
-const AELTER = EINTRAEGE.slice(28);
-// Der NEUESTE Eintrag bringt den KOMMENTAR je Stuecklistenposition in die exportierte
-// Baustellenstueckliste der Wandebene (#81): eine eigene, angehaengte Spalte, in beiden
-// Mengenfassungen gleich. Aussagewahr heisst hier: hinzugekommen ist allein ein AUSGABEWEG —
-// erfasst wird weiter nur in Modul 4, und abgeleitet wird daraus nichts ([P-20]).
-ok("der Kommentar in der Wandstückliste (Issue 81) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260818-03" && EINTRAEGE[0]?.issue === 81
+const VORHER = EINTRAEGE.slice(8);
+const NEU = EINTRAEGE.slice(14);
+const AKTUELL = EINTRAEGE.slice(19);
+const AELTER = EINTRAEGE.slice(29);
+// Der NEUESTE Eintrag ist der EINE Projektimport-Dialog (#86): er liest neben dem
+// vollstaendigen Projektarchiv jetzt auch die ZIP des zentralen Exports und uebernimmt
+// das ganze Projekt. Aussagewahr heisst hier: hinzugekommen ist allein ein LESEWEG —
+// die Exportseite ist unveraendert, es entsteht kein Feld und kein Versionssprung.
+ok("der eine Projektimport-Dialog (Issue 86) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260818-04" && EINTRAEGE[0]?.issue === 86
   && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-08-18");
-ok("der Kommentar-Eintrag benennt Gegenstand, Ausgabeweg und die Ebene",
-  /Stückliste/.test(EINTRAEGE[0]?.titel || "")
-  && /Kommentar/.test(EINTRAEGE[0]?.titel || "")
-  && /exportierte/.test(EINTRAEGE[0]?.titel || "")
-  && /Wandstückliste/.test(EINTRAEGE[0]?.titel || "")
-  // Keine geaenderte Menge, kein Preis, kein neues Feld, keine Gesamtebene.
-  && !/Menge geändert|Preis|neues Feld|Gesamtstückliste/i.test(EINTRAEGE[0]?.titel || ""));
-ok("die Kommentar-Testbitte benennt beide Module, die Spalte und was unveraendert bleibt",
-  /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Kommentar/.test(EINTRAEGE[0]?.testbitte || "")
-  && /beiden Mengenfassungen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Mengen und Preise bleiben/.test(EINTRAEGE[0]?.testbitte || ""));
+ok("der Import-Eintrag benennt Gegenstand, Quelle und Nutzerergebnis",
+  /Projektimport/.test(EINTRAEGE[0]?.titel || "")
+  && /Dialog/.test(EINTRAEGE[0]?.titel || "")
+  && /Projekt-ZIP/.test(EINTRAEGE[0]?.titel || "")
+  && /ganze Projekt/.test(EINTRAEGE[0]?.titel || "")
+  // Keine Teilauswahl, kein geaenderter Export, kein neues Format.
+  && !/Teilauswahl|neues Format|Export geändert/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Import-Testbitte benennt den Weg, den Bericht und die Bestätigung",
+  /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
+  && /exportieren/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Bericht/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Katalogkennung/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Importieren/.test(EINTRAEGE[0]?.testbitte || ""));
 
-const HERKUNFT = EINTRAEGE[1];
+// Der Kommentar je Stuecklistenposition in der exportierten Baustellenstueckliste der
+// Wandebene (#81) folgt darauf: eine eigene, angehaengte Spalte, in beiden Mengenfassungen
+// gleich. Aussagewahr heisst dort: hinzugekommen ist allein ein AUSGABEWEG — erfasst wird
+// weiter nur in Modul 4, und abgeleitet wird daraus nichts ([P-20]).
+const KOMMENTAR = EINTRAEGE[1];
+ok("der Kommentar in der Wandstückliste (Issue 81) folgt direkt auf den neuesten Eintrag",
+  KOMMENTAR?.id === "chg-20260818-03" && KOMMENTAR?.issue === 81
+  && KOMMENTAR?.typ === "feature" && KOMMENTAR?.datum === "2026-08-18");
+ok("der Kommentar-Eintrag benennt Gegenstand, Ausgabeweg und die Ebene",
+  /Stückliste/.test(KOMMENTAR?.titel || "")
+  && /Kommentar/.test(KOMMENTAR?.titel || "")
+  && /exportierte/.test(KOMMENTAR?.titel || "")
+  && /Wandstückliste/.test(KOMMENTAR?.titel || "")
+  // Keine geaenderte Menge, kein Preis, kein neues Feld, keine Gesamtebene.
+  && !/Menge geändert|Preis|neues Feld|Gesamtstückliste/i.test(KOMMENTAR?.titel || ""));
+ok("die Kommentar-Testbitte benennt beide Module, die Spalte und was unveraendert bleibt",
+  /Modul 4/.test(KOMMENTAR?.testbitte || "")
+  && /Modul 0/.test(KOMMENTAR?.testbitte || "")
+  && /Kommentar/.test(KOMMENTAR?.testbitte || "")
+  && /beiden Mengenfassungen/.test(KOMMENTAR?.testbitte || "")
+  && /Mengen und Preise bleiben/.test(KOMMENTAR?.testbitte || ""));
+
+const HERKUNFT = EINTRAEGE[2];
 // Der bisher neueste Eintrag nimmt die WANDHERKUNFT aus Modul 4 und der Gesamtstueckliste-Datei
 // (#81): auf den Gesamtebenen faellt die Spalte „Wände (Herkunft)“ ersatzlos weg. Aussagewahr
 // heisst hier: geaendert hat sich allein die DARSTELLUNG — Mengen, Einbauteil-IDs, Preise und
 // die Wandebene bleiben, und die Aufloesbarkeit steckt weiter in der Ableitung ([P-19]/[P-20]).
-ok("die entfallene Wandherkunft (Issue 81) folgt direkt auf den neuesten Eintrag",
+ok("die entfallene Wandherkunft (Issue 81) folgt darauf",
   HERKUNFT?.id === "chg-20260818-02" && HERKUNFT?.issue === 81
   && HERKUNFT?.typ === "feature" && HERKUNFT?.datum === "2026-08-18");
 ok("der Herkunfts-Eintrag benennt Gegenstand, beide Ausgabewege und das Nutzerergebnis",
@@ -107,7 +129,7 @@ ok("die Herkunfts-Testbitte benennt Ebenen, beide Orte und was unveraendert blei
   && /Mengenfassungen/.test(HERKUNFT?.testbitte || "")
   && /Baustellenstückliste der Wand bleibt gleich/.test(HERKUNFT?.testbitte || ""));
 
-const VORSCHAU = EINTRAEGE[2];
+const VORSCHAU = EINTRAEGE[3];
 // Der bisher neueste Eintrag stellt die BLATTVORSCHAU von Modul 9 auf das echte Papierverhaeltnis
 // des gewaehlten Formats um (#89): Vorschau und Ausdruck zeigen dieselbe Aufteilung, beim
 // Verkleinern des Fensters skaliert das ganze Blatt gleichmaessig. Aussagewahr heisst hier:
@@ -129,7 +151,7 @@ ok("die Vorschau-Testbitte benennt Ort, Bedienung und die erwartete Wirkung",
   && /Aufteilung/.test(VORSCHAU?.testbitte || "")
   && /Ausdrucks/.test(VORSCHAU?.testbitte || "")
   && /als Ganzes kleiner/.test(VORSCHAU?.testbitte || ""));
-const SEITEN = EINTRAEGE[3];
+const SEITEN = EINTRAEGE[4];
 // Davor nahm der Eintrag die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
 // Rueckseite bleiben als farbige Kanten erkennbar und werden in der Legende
 // aufgeschluesselt. Aussagewahr heisst hier: die Unterscheidung bleibt erhalten — es darf
@@ -153,7 +175,7 @@ ok("die Seiten-Testbitte benennt Ort, Erwartung und die erhaltene Unterscheidung
   && /keine V\/R-Buchstaben/.test(SEITEN?.testbitte || "")
   && /farbigen Vorder- und Rückkanten/.test(SEITEN?.testbitte || "")
   && /Legende/.test(SEITEN?.testbitte || ""));
-const BLASEN = EINTRAEGE[4];
+const BLASEN = EINTRAEGE[5];
 // Davor machte der Eintrag die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
 // jetzt auch den Wandflaechen aus, nicht mehr nur einander und den Massen. Aussagewahr
 // heisst hier: die Zuordnung bleibt — die Fuehrungslinie zeigt weiter auf dieselbe
@@ -182,7 +204,7 @@ ok("die Blasen-Testbitte benennt Ort, Erwartung und die erhaltene Zuordnung",
 ok("genau vier Eintraege fuer Issue 89, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 89).map(e => e.id).join(",")
     === "chg-20260818-01,chg-20260817-08,chg-20260817-07,chg-20260817-05");
-const PLANKOPF = EINTRAEGE[5];
+const PLANKOPF = EINTRAEGE[6];
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -218,7 +240,7 @@ ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
     === "chg-20260817-06,chg-20260812-08");
 // Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
-const LETZTER = EINTRAEGE[6];
+const LETZTER = EINTRAEGE[7];
 ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
   LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
   && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");

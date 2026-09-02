@@ -495,6 +495,249 @@ ok("[#82] Altbestand erfindet keine Verzahnungsbereiche",
         .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")));
 }
 
+// --- [#86] Die Projekt-ZIP des zentralen Exports ist importierbar ----------
+//
+// Modul 0 erzeugt seit #67 eine Projekt-ZIP, fuer die es keinen Importweg gab: sie
+// traegt keine `projekt.json` (Erkennungsmerkmal des Archivs, [L-13]) und ihre
+// Mappendatei fuehrt in `wand.datei` durchgehend `null`. Geprueft wird hier am
+// ECHTEN Pfad, nicht an nachgebauten Datenstrukturen:
+//
+//   echte Speicherschicht (storage.js) -> echter Rechenkern (buildWall)
+//   -> ECHTER Exportweg (hierarchieExport) -> zipSync/entpacke
+//   -> leseProjektQuelle/schreibeArchiv -> LEERER Zielspeicher -> zurueckgelesen.
+{
+  class MemStorage {
+    constructor() { this.m = new Map(); }
+    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k, v) { this.m.set(k, String(v)); }
+    removeItem(k) { this.m.delete(k); }
+  }
+  globalThis.localStorage = new MemStorage();
+  const store = await import("../../docs/shared/storage.js");
+  const PARSE = { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) };
+
+  /** Die kanonische Lesesicht des gesamten Standes - daran wird der Import gemessen. */
+  const stand = () => JSON.stringify({
+    mappe: MAPPE.mappeObjekt(store.holeMappe()),
+    waende: store.listeElemente()
+      .map((e) => ({ id: e.id, name: e.name, we: e.wandelement, ein: store.holeEingaben(e.id) }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  });
+
+  // --- Ausgangsstand ueber die echten Wege aufbauen ------------------------
+  globalThis.localStorage = new MemStorage();
+  const prj = store.fuegeProjektHinzu("Exportprobe", { geschoss: "EG", hoehe_mm: 2600 });
+  const gsId = prj.gebaeude[0].geschosse[0].id;
+  // Wandtyp gehoert ans Wandelement und wird beim Anlegen gesetzt; ohne ihn ergaenzte
+  // ihn erst der Import (Normalisierung) und der Vergleich vor/nach waere unfair.
+  const wand = (n, l) => ({ ...buildWall(n, l, 2600, []), wandtyp: "mit_wind" });
+  store.speichere("EG-W01", wand("EG-W01", 2000), "wnd-e1");
+  store.speichere("EG-W02", wand("EG-W02", 1000), "wnd-e2");
+  store.verorteWand("wnd-e1", gsId, { lage: { start_mm: { x: 0, y: 62.5 }, richtung: "x", laenge_grid: 16 } });
+  store.verorteWand("wnd-e2", gsId, { lage: { start_mm: { x: 2062.5, y: 0 }, richtung: "y", laenge_grid: 8 } });
+  store.setzeMappe(MAPPE.setzeKatalogRef(store.holeMappe(), "kat-extern"));
+  store.setzeKopfdaten({ bauherr: "AWG Musterstadt", plan_nr: "A-07" });
+  const standVor = stand();
+  const prjId = store.holeMappe().projekt.id;
+
+  // --- Der ECHTE Exportweg (#67) ------------------------------------------
+  const exp = ARCHIV.hierarchieExport(["mappe", "geschosse", "waende"], {
+    mappe: store.holeMappe(), ebene: "projekt",
+    holeElement: (id) => store.holeElement(id),
+    holeEingaben: (id) => store.holeEingaben(id),
+    projektObjekt: (id) => store.projektObjekt(id),
+  });
+  const expMappe = exp.dateien.find((d) => /^SEMBLA_Projektmappe_/.test(d.name));
+  ok("[#86] der zentrale Export legt die Mappe unter EIGENEM Namen ab (keine projekt.json)",
+    !!expMappe && !exp.dateien.some((d) => d.name.endsWith(ARCHIV.DATEI_MAPPE)));
+  ok("[#86] und genau daran scheiterte der Import: alle Wandreferenzen tragen datei: null",
+    MAPPE.alleWaende(JSON.parse(expMappe.data)).every(({ wand }) => wand.datei === null));
+  ok("[#86] die Wandkennung steht ausschliesslich im Archivpfad der Wanddatei",
+    exp.dateien.filter((d) => d.name.startsWith(ARCHIV.ORDNER_WAENDE + "/")).length === 2
+    && exp.dateien.filter((d) => d.name.startsWith(ARCHIV.ORDNER_WAENDE + "/"))
+      .every((d) => !("id" in JSON.parse(d.data)) && !("id" in JSON.parse(d.data).wandelement)));
+
+  const expZip = zipSync(exp.dateien);
+  const expEintraege = await entpacke(expZip);
+
+  // --- Import in einen LEEREN Speicher ------------------------------------
+  globalThis.localStorage = new MemStorage();
+  const gelesen = ARCHIV.leseProjektQuelle(expEintraege, PARSE);
+  ok("[#86] die Export-ZIP wird als eigene Fassung erkannt", gelesen.quelle === ARCHIV.QUELLE_EXPORT);
+  ok("[#86] sie wird fehlerfrei geprueft und traegt beide Waende",
+    gelesen.fehler.length === 0 && gelesen.waende.length === 2);
+  ok("[#86] zugeordnet wird ueber die stabile Wandkennung, nicht ueber den Namen",
+    gelesen.waende.map((w) => w.id).sort().join() === "wnd-e1,wnd-e2"
+    && gelesen.waende.every((w) => ARCHIV.wandIdAusPfad(w.pfad) === w.id));
+  ok("[#86] der Bericht nennt Projekt, Geschosse, Wandnamen und Katalogkennung", (() => {
+    const t = ARCHIV.berichtZeilen(gelesen).join(" | ");
+    return /Exportprobe/.test(t) && /Geschosse \(1\): EG/.test(t)
+      && /EG-W01/.test(t) && /EG-W02/.test(t) && /kat-extern/.test(t);
+  })());
+  ok("[#86] vor der Bestaetigung ist der Zielspeicher unveraendert leer",
+    store.listeProjekte().length === 0 && store.listeElemente().length === 0);
+
+  const erg = await store.schreibeArchiv(gelesen, {});
+  ok("[#86] der Import stellt den fachlichen Stand vollstaendig wieder her", stand() === standVor);
+  ok("[#86] Struktur, Lage und Kopfdaten sind zurueck",
+    MAPPE.alleWaende(store.holeMappe()).length === 2
+    && MAPPE.findeWand(store.holeMappe(), "wnd-e2").wand.lage.richtung === "y"
+    && store.holeMappe().projekt.kopfdaten.plan_nr === "A-07");
+  ok("[L-12] der Katalog reist nicht mit - die Kennung bleibt, das Fehlen wird benannt",
+    erg.katalogFehlt === "kat-extern" && store.holeMappe().katalog === "kat-extern"
+    && store.listeKataloge().length === 0);
+
+  // --- Dieselbe ZIP, entpackt in einen Wurzelordner (Ordnerimport) ---------
+  globalThis.localStorage = new MemStorage();
+  const imOrdner = ARCHIV.leseProjektQuelle(
+    expEintraege.map((e) => ({ name: "SEMBLA_Export_Projekt_Exportprobe/" + e.name, data: e.data })), PARSE);
+  await store.schreibeArchiv(imOrdner, {});
+  ok("[#86] der Ordnerimport derselben Dateien fuehrt zum selben Stand", stand() === standVor);
+
+  // --- Fremddateien im ZIP: benannt uebergangen, nie mit importiert --------
+  globalThis.localStorage = new MemStorage();
+  const mitFremd = ARCHIV.leseProjektQuelle([...expEintraege,
+    { name: "SEMBLA_Bauteilkatalog_Standard.json", data: '{"format":"SEMBLA-Bauteilkatalog","version":1,"name":"X","produkte":[]}' },
+    { name: "SEMBLA_Stueckliste_EG-W01.csv", data: "a;b" }], PARSE);
+  ok("[L-12] die Katalogdatei im ZIP wird benannt und NICHT importiert",
+    mitFremd.fehler.length === 0
+    && mitFremd.hinweise.some((h) => /Bauteilkatalogdatei/.test(h) && /nicht mit importiert/i.test(h)));
+  await store.schreibeArchiv(mitFremd, {});
+  ok("[L-12] nach dem Import liegt kein Katalog im Speicher", store.listeKataloge().length === 0);
+  ok("[#86] die Stuecklistendatei wird als ueberzaehlig benannt, nicht stillschweigend uebergangen",
+    mitFremd.ueberzaehlig.includes("SEMBLA_Stueckliste_EG-W01.csv"));
+
+  // --- Ein Planbild fehlt hier IMMER: Hinweis, kein Fehler -----------------
+  globalThis.localStorage = new MemStorage();
+  await store.schreibeArchiv(ARCHIV.leseProjektQuelle(expEintraege, PARSE), {});
+  store.setzeGeschossPlan(gsId, { datei: "eg.png", typ: "image/png", breite_px: 800, hoehe_px: 600,
+    mm_je_pixel: 2, versatz_x_mm: 0, versatz_y_mm: 0 });
+  const mitPlanExp = ARCHIV.hierarchieExport(["mappe", "waende"], {
+    mappe: store.holeMappe(), ebene: "projekt",
+    holeElement: (id) => store.holeElement(id), projektObjekt: (id) => store.projektObjekt(id),
+  });
+  const mitPlan = ARCHIV.leseProjektQuelle(await entpacke(zipSync(mitPlanExp.dateien)), PARSE);
+  ok("[#86] ein fehlendes Planbild ist in der Export-Fassung ein HINWEIS, kein Fehler",
+    mitPlan.fehler.length === 0 && mitPlan.bilder.length === 0
+    && mitPlan.hinweise.some((h) => /Planbild/.test(h) && /nie enthalten/.test(h)));
+  ok("[L-9] Massstab und Versatz bleiben dabei in der Mappe erhalten",
+    MAPPE.findeGeschoss(mitPlan.mappe, gsId).geschoss.plan.mm_je_pixel === 2);
+
+  // --- Die Archivfassung bleibt unveraendert ------------------------------
+  {
+    globalThis.localStorage = new MemStorage();
+    await store.schreibeArchiv(ARCHIV.leseProjektQuelle(expEintraege, PARSE), {});
+    const m = store.holeMappe();
+    const plan = ARCHIV.exportPlan(m, store.listeElemente().map((e) => e.id), []);
+    const files = ARCHIV.archivDateien(m, plan, (id) => store.projektObjekt(id), () => null);
+    const zip = zipSync(files.map((d) => ({ name: "SEMBLA_Projekt_Exportprobe/" + d.name, data: d.data })));
+    const eintraege = await entpacke(zip);
+    const ueber = ARCHIV.leseProjektQuelle(eintraege, PARSE);
+    const direkt = ARCHIV.leseArchiv(eintraege, PARSE);
+    ok("[L-13] ein Archiv mit projekt.json wird weiterhin als Archiv gelesen",
+      ueber.quelle === ARCHIV.QUELLE_ARCHIV && ueber.fehler.length === 0 && ueber.waende.length === 2);
+    ok("[L-13] und zwar bit-genau so wie bisher ueber leseArchiv",
+      JSON.stringify({ f: ueber.fehler, h: ueber.hinweise, u: ueber.ueberzaehlig, w: ueber.waende })
+      === JSON.stringify({ f: direkt.fehler, h: direkt.hinweise, u: direkt.ueberzaehlig, w: direkt.waende }));
+    globalThis.localStorage = new MemStorage();
+    await store.schreibeArchiv(ueber, {});
+    ok("[L-13] der Archivweg stellt denselben Stand her wie zuvor", stand() === standVor);
+  }
+
+  // --- Echter Fehlerfall: Ursache benannt, Speicher vollstaendig unveraendert
+  {
+    globalThis.localStorage = new MemStorage();
+    await store.schreibeArchiv(ARCHIV.leseProjektQuelle(expEintraege, PARSE), {});
+    const vorher = stand();
+    const roh = () => [localStorage.getItem("sembla:projekte"), localStorage.getItem("sembla:elemente")].join(" ");
+    const rohVorher = roh();
+    const nochmal = ARCHIV.leseProjektQuelle(expEintraege, PARSE);
+    ok("[L-13] ein vorhandenes Projekt wird als Konflikt gemeldet",
+      store.archivKonflikte(nochmal).projekt.id === prjId
+      && store.archivKonflikte(nochmal).waende.length === 2);
+    let grund = "";
+    try { await store.schreibeArchiv(nochmal, {}); } catch (e) { grund = e.message; }
+    ok("[L-13] ohne ausdrueckliche Bestaetigung wird die Ursache benannt und NICHTS geschrieben",
+      /ausdrückliche Bestätigung/.test(grund) && stand() === vorher && roh() === rohVorher);
+
+    // Ein Schreibfehler mitten im Lauf: vollstaendiger Ruecksprung ([L-13]).
+    const kaputt = ARCHIV.leseProjektQuelle(expEintraege, PARSE);
+    kaputt.bilder = [{ geschossId: gsId, bytes: new Uint8Array([1]), typ: "image/png", pfad: "x.png", plan: {} }];
+    let grund2 = "";
+    try {
+      await store.schreibeArchiv(kaputt, { ueberschreiben: true,
+        plan: { speicherePlan: () => { throw new Error("Speicher voll (Test)"); },
+                holePlan: () => null, loeschePlan: () => undefined } });
+    } catch (e) { grund2 = e.message; }
+    ok("[L-13] ein Schreibfehler nennt den Grund und setzt den Speicher vollstaendig zurueck",
+      /Speicher voll \(Test\)/.test(grund2) && /wiederhergestellt/.test(grund2)
+      && roh() === rohVorher);
+  }
+
+  // --- Abweisungen nennen die tatsaechliche Ursache ------------------------
+  const nurWand = ARCHIV.leseProjektQuelle([
+    { name: "waende/EG-W01__wnd-e1.json", data: exp.dateien.find((d) => d.name.includes("wnd-e1")).data },
+    { name: "SEMBLA_Stueckliste_EG-W01.csv", data: "a;b" }], PARSE);
+  ok("[#86] eine Wand-ZIP verweist auf den Wandimport, statt pauschal abzuweisen",
+    nurWand.fehler.some((f) => /Wandimport/.test(f)) && nurWand.mappe === null);
+
+  const nurKatalog = ARCHIV.leseProjektQuelle([
+    { name: "SEMBLA_Bauteilkatalog_X.json", data: '{"format":"SEMBLA-Bauteilkatalog","version":1,"name":"X","produkte":[]}' }], PARSE);
+  ok("[L-12] eine reine Katalog-ZIP verweist auf den Katalogimport",
+    nurKatalog.fehler.some((f) => /Katalogimport/.test(f)));
+
+  const zweiMappen = ARCHIV.leseProjektQuelle([
+    { name: "a/SEMBLA_Projektmappe_A.json", data: expMappe.data },
+    { name: "b/SEMBLA_Projektmappe_B.json", data: expMappe.data }], PARSE);
+  ok("[#86] mehrere gleichrangige Mappen werden benannt, nichts wird zusammengefuehrt",
+    zweiMappen.fehler.some((f) => /zusammengeführt/.test(f)) && zweiMappen.mappe === null);
+
+  const geschossExp = ARCHIV.hierarchieExport(["geschoss", "waende"], {
+    mappe: store.holeMappe(), ebene: "geschoss", geschossId: gsId,
+    holeElement: (id) => store.holeElement(id), projektObjekt: (id) => store.projektObjekt(id),
+  });
+  const geschossEintraege = await entpacke(zipSync(geschossExp.dateien));
+  const nurGeschosse = ARCHIV.leseProjektQuelle(geschossEintraege, PARSE);
+  ok("[#86] ein Geschoss-Export ohne volle Mappe wird ueber seine Teilmappe gelesen",
+    nurGeschosse.fehler.length === 0 && nurGeschosse.quelle === ARCHIV.QUELLE_EXPORT
+    && nurGeschosse.waende.length === 2);
+  const zweiGeschosse = ARCHIV.leseProjektQuelle([...geschossEintraege,
+    { name: "geschosse/OG__gs-zweit.json",
+      data: geschossExp.dateien.find((d) => d.name.startsWith("geschosse/")).data }], PARSE);
+  ok("[#86] zwei gleichrangige Teilmappen werden benannt statt zusammengefuehrt",
+    zweiGeschosse.fehler.some((f) => /zusammengeführt/.test(f)));
+
+  const widerspruch = ARCHIV.leseProjektQuelle([
+    { name: "SEMBLA_Projektmappe_A.json", data: expMappe.data },
+    { name: "geschosse/EG__fremd.json", data: expMappe.data.split(prjId).join("prj-fremd") }], PARSE);
+  ok("[#86] widerspruechliche Projektkennungen werden benannt",
+    widerspruch.fehler.some((f) => /anderes/.test(f) && /Projekt/.test(f)));
+
+  const ohneKennung = ARCHIV.leseProjektQuelle([
+    { name: "SEMBLA_Projektmappe_A.json", data: expMappe.data },
+    { name: "waende/EG-W01.json", data: exp.dateien.find((d) => d.name.includes("wnd-e1")).data }], PARSE);
+  ok("[#86] eine Wanddatei ohne Kennung im Pfad wird benannt - der Name zaehlt nie",
+    ohneKennung.fehler.some((f) => /Wandkennung im Pfad/.test(f)));
+
+  const nichtDabei = ARCHIV.leseProjektQuelle(
+    expEintraege.filter((e) => !e.name.includes("wnd-e2")), PARSE);
+  ok("[L-4] eine nicht mitgelieferte Wand bleibt verwaist - Hinweis, kein Fehler",
+    nichtDabei.fehler.length === 0 && nichtDabei.waende.length === 1
+    && nichtDabei.hinweise.some((h) => /verwaist/.test(h)));
+
+  // --- Die Kennung kommt aus dem Pfad, nie aus dem Namen -------------------
+  ok("[#86] wandIdAusPfad liest genau den Teil hinter dem letzten Doppelstrich",
+    ARCHIV.wandIdAusPfad("waende/EG-W01__w-123.json") === "w-123"
+    && ARCHIV.wandIdAusPfad("waende/A__B__w-9.json") === "w-9"
+    && ARCHIV.wandIdAusPfad("waende/ohne-kennung.json") === null);
+
+  // --- Muss-not: kein neues gespeichertes Feld, kein Versionssprung --------
+  ok("[#86] der Importweg legt kein neues Feld an und bricht keine Versionsachse",
+    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
+    && MAPPE.MAPPE_VERSION === 2
+    && MAPPE.alleWaende(store.holeMappe()).every(({ wand }) => wand.datei === null));
+}
+
 // --- Ausgabe --------------------------------------------------------------
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

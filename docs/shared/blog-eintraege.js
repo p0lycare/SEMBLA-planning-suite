@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260818-04",
+    datum: "2026-08-18",
+    typ: "feature",
+    issue: 86,
+    titel: "Projektimport: ein Dialog liest jetzt auch die exportierte Projekt-ZIP und übernimmt das ganze Projekt",
+    testbitte: "In Modul 0 ein Projekt exportieren (Mappe, Geschosse, Wände), dann über "
+      + "„Projekt importieren…“ dieselbe ZIP laden: Der Bericht nennt Projekt, Geschosse, "
+      + "Wandnamen und Katalogkennung — erst „Importieren“ schreibt.",
+  },
+  {
     id: "chg-20260818-03",
     datum: "2026-08-18",
     typ: "feature",

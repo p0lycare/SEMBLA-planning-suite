@@ -38,6 +38,10 @@
  *    ueberstehen sie Export, Import und Duplizieren, ohne dass dieses Modul davon
  *    etwas wissen muesste — ein eigenes Beziehungsfeld waere eine zweite Wahrheit.
  *
+ * Seit #86 liegt hier ausserdem der EINE Lesepfad des Projektimports: derselbe Dialog
+ * liest neben diesem Archiv auch die Projekt-ZIP des zentralen Exports (#67) und die
+ * einzelne Mappendatei — s. Abschnitt „Import: die zweite Fassung“ weiter unten.
+ *
  * Rein und DOM-frei; eigene Tests (tests/module/test-archiv.mjs) — shared-Regel (b).
  */
 
@@ -251,6 +255,27 @@ export function findeWurzel(pfade) {
   return { wurzel: p === DATEI_MAPPE ? "" : p.slice(0, p.length - DATEI_MAPPE.length) };
 }
 
+/**
+ * Die Eintraege einer Quelle zu einer Pfad→Inhalt-Abbildung normalisieren.
+ * Gemeinsamer Schritt 1 ALLER Importfassungen: absolute Pfade, Laufwerksbuchstaben,
+ * Traversal und doppelte Pfade werden BENANNT abgewiesen, nie repariert.
+ * @param {Array<{name:string, data:(string|Uint8Array)}>} eintraege
+ * @param {string[]} fehler Sammelliste (wird ergaenzt)
+ * @param {string} wort Bezeichnung der Quelle fuer die Meldung
+ * @returns {Map<string, string|Uint8Array>}
+ */
+function _sammleRoh(eintraege, fehler, wort) {
+  /** @type {Map<string, string|Uint8Array>} */
+  const roh = new Map();
+  for (const e of (eintraege || [])) {
+    const r = normPfad(e && e.name);
+    if ("fehler" in r) { fehler.push(r.fehler); continue; }
+    if (roh.has(r.pfad)) { fehler.push(`Der Pfad „${r.pfad}“ kommt im ${wort} mehrfach vor.`); continue; }
+    roh.set(r.pfad, e.data);
+  }
+  return roh;
+}
+
 // --- Import: lesen und pruefen (schreibt NICHTS) ---------------------------
 
 /** Strukturpruefung einer Wanddatei, falls der Aufrufer keinen Parser stellt. */
@@ -289,14 +314,7 @@ export function leseArchiv(eintraege, opt) {
   const leer = { mappe: null, waende: [], bilder: [], ueberzaehlig, hinweise, fehler };
 
   // (1) Pfade normalisieren, Doppelungen und Traversal abweisen.
-  /** @type {Map<string, string|Uint8Array>} */
-  const roh = new Map();
-  for (const e of (eintraege || [])) {
-    const r = normPfad(e && e.name);
-    if ("fehler" in r) { fehler.push(r.fehler); continue; }
-    if (roh.has(r.pfad)) { fehler.push(`Der Pfad „${r.pfad}“ kommt im Archiv mehrfach vor.`); continue; }
-    roh.set(r.pfad, e.data);
-  }
+  const roh = _sammleRoh(eintraege, fehler, "Archiv");
   if (!roh.size) { fehler.push("Das Archiv enthält keine lesbaren Dateien."); return leer; }
 
   // (2) Wurzelordner bestimmen — der Fundort von projekt.json entscheidet.
@@ -408,9 +426,20 @@ export function leseArchiv(eintraege, opt) {
  */
 export function berichtZeilen(gelesen) {
   const z = [];
+  if (gelesen.quelle && QUELLE_TEXT[gelesen.quelle]) z.push("Erkannt: " + QUELLE_TEXT[gelesen.quelle]);
   if (gelesen.mappe) {
     z.push(`Projekt „${gelesen.mappe.projekt.name}“ · ${alleGeschosse(gelesen.mappe).length} Geschoss(e) · `
       + `${gelesen.waende.length} Wanddatei(en) · ${gelesen.bilder.length} Planbild(er)`);
+    // Was genau uebernommen wuerde — NAMENTLICH, damit die Bestaetigung eine
+    // Entscheidung ist und keine Zustimmung zu einer Zahl (#86).
+    const gs = alleGeschosse(gelesen.mappe).map((t) => t.geschoss.name || t.geschoss.id);
+    if (gs.length) z.push(`Geschosse (${gs.length}): ${gs.join(", ")}`);
+    const wn = (gelesen.waende || []).map((w) => w.name || w.id);
+    z.push(`Wände mit Wandelement (${wn.length})` + (wn.length ? `: ${wn.join(", ")}` : " — keine"));
+    z.push(gelesen.mappe.katalog
+      ? `Bauteilkatalog (Kennung): ${gelesen.mappe.katalog} — er ist eine eigene Ressource, reist nie `
+        + "mit und wird getrennt über den Katalogimport geladen ([L-12])."
+      : "Bauteilkatalog: dem Projekt ist keiner zugeordnet ([L-12]).");
   }
   for (const h of gelesen.hinweise) z.push(h);
   if (gelesen.ueberzaehlig.length) {
@@ -418,6 +447,262 @@ export function berichtZeilen(gelesen) {
       + `werden nicht importiert: ${gelesen.ueberzaehlig.join(", ")}`);
   }
   return z;
+}
+
+// --- Import: die zweite Fassung — Projekt-ZIP des zentralen Exports (#86) ---
+//
+// Modul 0 erzeugt seit #67 ZWEI verschiedene Projekt-ZIPs, hatte aber nur fuer eine
+// davon einen Importweg: das vollstaendige Archiv mit `projekt.json` ([L-13]). Die ZIP
+// des zentralen Exports traegt bewusst KEINE `projekt.json` (s. Kommentar dort) und
+// ihre Mappe fuehrt in `wand.datei` durchgehend `null` — beim Archivimport wird sie
+// deshalb schon an der Wurzelsuche abgewiesen, und selbst danach waere keine einzige
+// Wand zuzuordnen. Genau diese zweite Fassung wird hier gelesen.
+//
+// Unterschiede zur Archivfassung — und WARUM sie zulaessig sind:
+//
+//  - ERKANNT WIRD AM INHALT, nicht am Dateinamen: jede `*.json` wird gedeutet und ueber
+//    ihr Feld `format` eingeordnet. Ein umbenanntes ZIP aendert daran nichts.
+//  - ZUGEORDNET WIRD UEBER DIE WAND-KENNUNG, nie ueber den Anzeigenamen. Die Wanddatei
+//    (SEMBLA-Projekt v2) fuehrt selbst keine Kennung — die Exportseite bleibt unveraendert,
+//    also steht sie ausschliesslich im ARCHIVPFAD `waende/<Stamm>__<id>.json`, den
+//    `wandPfad()` deterministisch erzeugt. Der Pfad ist damit hier der Traeger der
+//    Zuordnung, so wie es in der Archivfassung `wand.datei` ist; der NAME davor ist
+//    weiterhin reine Kosmetik und wird nie ausgewertet.
+//  - PLANBILDER sind in dieser Fassung NIE enthalten (sie liegen in der Bilddatenbank,
+//    [L-8], und der zentrale Export packt sie nicht ein). Ein fehlendes Bild ist deshalb
+//    ein HINWEIS und kein Fehler — anders als im Archiv, wo ein angekuendigtes, aber
+//    fehlendes Bild ein echter Mangel ist. Massstab und Versatz bleiben erhalten.
+//  - DER BAUTEILKATALOG wird auch dann nicht uebernommen, wenn seine Datei im ZIP liegt
+//    ([L-12]): er ist eine eigene Ressource mit eigenem Importweg. Er wird benannt.
+//
+// Gleich bleibt alles Uebrige: geprueft wird VOLLSTAENDIG und OHNE zu schreiben, das
+// Ergebnis hat dieselbe Form wie `leseArchiv` und laeuft durch denselben Schreibweg
+// (`store.schreibeArchiv` mit Konfliktbestaetigung und vollstaendigem Ruecksprung).
+
+/** Vollstaendiges Projektarchiv ([L-13]) — Erkennungsmerkmal `projekt.json`. */
+export const QUELLE_ARCHIV = "archiv";
+/** Projekt-ZIP des zentralen Exports (#67) — Mappendatei, Geschossdaten, Wanddateien. */
+export const QUELLE_EXPORT = "export";
+/** Einzelne Mappendatei ([L-13]: „nur Struktur (JSON)“) — ohne Waende und Bilder. */
+export const QUELLE_STRUKTUR = "struktur";
+
+/** Klartext der erkannten Fassung fuer den Pruefbericht. */
+export const QUELLE_TEXT = {
+  [QUELLE_ARCHIV]: "vollständiges Projektarchiv (projekt.json, Wanddateien, Planbilder)",
+  [QUELLE_EXPORT]: "Projekt-ZIP des zentralen Exports (Mappendatei, Geschossdaten, Wanddateien)",
+  [QUELLE_STRUKTUR]: "nur Struktur (JSON) — Projektmappe ohne Wandelemente und Planbilder",
+};
+
+/**
+ * Die Wand-Kennung aus dem Archivpfad einer Wanddatei (`waende/<Stamm>__<id>.json`).
+ * `null` = keine Kennung im Pfad — dann wird NICHTS geraten (schon gar nicht der Name).
+ * @param {string} pfad @returns {string|null}
+ */
+export function wandIdAusPfad(pfad) {
+  const basis = String(pfad == null ? "" : pfad).split("/").pop() || "";
+  const ohne = basis.replace(/\.json$/i, "");
+  const i = ohne.lastIndexOf("__");
+  if (i < 0) return null;
+  const id = ohne.slice(i + 2).trim();
+  return id || null;
+}
+
+/** Liegt in der Quelle eine `projekt.json`? Dann ist es die Archivfassung ([L-13]). */
+export function istArchivQuelle(eintraege) {
+  for (const e of (eintraege || [])) {
+    const r = normPfad(e && e.name);
+    if ("fehler" in r) continue;
+    if (r.pfad === DATEI_MAPPE || r.pfad.endsWith("/" + DATEI_MAPPE)) return true;
+  }
+  return false;
+}
+
+/** Ist der Pfad eine Geschoss-Teilmappe (`geschosse/…json`) statt der vollen Mappe? */
+function _istTeilmappe(pfad) {
+  return new RegExp(`(^|/)${ORDNER_GESCHOSSE}/[^/]+$`).test(pfad);
+}
+
+/**
+ * Die Projekt-ZIP des zentralen Exports lesen, deuten und VOLLSTAENDIG pruefen —
+ * ohne irgendetwas zu schreiben. Rueckgabeform identisch zu `leseArchiv`.
+ * @param {Array<{name:string, data:(string|Uint8Array)}>} eintraege
+ * @param {{parseWand?:(obj:any)=>{name:string,wandelement:any,eingaben?:any}}} [opt]
+ */
+export function leseExport(eintraege, opt) {
+  const parseWand = (opt && opt.parseWand) || _standardWandParser;
+  /** @type {string[]} */ const fehler = [];
+  /** @type {string[]} */ const hinweise = [];
+  /** @type {string[]} */ const ueberzaehlig = [];
+  const leer = { quelle: QUELLE_EXPORT, mappe: null, waende: [], bilder: [], ueberzaehlig, hinweise, fehler };
+
+  const dateien = _sammleRoh(eintraege, fehler, "Projekt");
+  if (!dateien.size) { fehler.push("Die Quelle enthält keine lesbaren Dateien."); return leer; }
+
+  // (1) Klassifizieren — am Feld `format`, nie am Dateinamen.
+  const benutzt = new Set();
+  const uebrig = (p) => { benutzt.add(p); ueberzaehlig.push(p); };
+  /** @type {Array<{pfad:string, obj:any}>} */ const mappen = [];
+  /** @type {Array<{pfad:string, obj:any}>} */ const wanddateien = [];
+  /** @type {string[]} */ const kataloge = [];
+  for (const [pfad, data] of dateien) {
+    if (_istBeiwerk(pfad)) { benutzt.add(pfad); continue; }
+    if (!/\.json$/i.test(pfad)) { uebrig(pfad); continue; }
+    let obj = null;
+    try { obj = JSON.parse(_text(data)); } catch { obj = null; }
+    const format = (obj && typeof obj === "object") ? obj.format : null;
+    if (format === "SEMBLA-Projektmappe") mappen.push({ pfad, obj });
+    else if (format === "SEMBLA-Projekt") wanddateien.push({ pfad, obj });
+    else if (format === "SEMBLA-Bauteilkatalog") {
+      benutzt.add(pfad);
+      kataloge.push(pfad);
+      hinweise.push(`Die Bauteilkatalogdatei „${pfad}“ wird NICHT mit importiert: der Katalog ist eine `
+        + "eigene Ressource mit eigenem Importweg ([L-12]). Die Zuordnung des Projekts bleibt erhalten; "
+        + "der Katalog ist getrennt über „Bauteilkatalog → Katalog importieren…“ zu laden.");
+    } else uebrig(pfad);
+  }
+
+  // (2) Ohne Mappe gibt es kein Projekt — der GRUND wird benannt, nicht pauschal abgewiesen.
+  if (!mappen.length) {
+    if (wanddateien.length) {
+      fehler.push(`Diese Quelle enthält ${wanddateien.length} Wanddatei(en), aber keine Projektmappe — `
+        + "das ist ein Wand-Export. Eine einzelne Wand gehört in den Wandimport (Wand → „Wand hinzufügen…“), "
+        + "nicht in den Projektimport.");
+    } else if (kataloge.length) {
+      fehler.push("Diese Quelle enthält nur einen Bauteilkatalog — er gehört in den Katalogimport ([L-12]).");
+    } else {
+      fehler.push(`Keine Projektdaten erkannt: weder eine „${DATEI_MAPPE}“ (vollständiges Projektarchiv) `
+        + "noch eine Projektmappendatei (SEMBLA-Projektmappe) ist enthalten.");
+    }
+    return leer;
+  }
+
+  // (3) Die LEITMAPPE: die volle Mappe schlaegt die Geschoss-Teilmappen. Mehrere
+  //     gleichrangige werden BENANNT — zusammengefuehrt wird nichts ([L-13]).
+  const voll = mappen.filter((m) => !_istTeilmappe(m.pfad));
+  const kandidaten = voll.length ? voll : mappen;
+  if (kandidaten.length > 1) {
+    fehler.push("Mehrere gleichrangige Projektmappen gefunden ("
+      + kandidaten.map((m) => m.pfad).sort().join(", ")
+      + ") — welche das Projekt beschreibt, wird nicht geraten und es wird nichts zusammengeführt.");
+    return leer;
+  }
+  const leit = kandidaten[0];
+  const leitId = String(leit.obj?.projekt?.id ?? "");
+  const fremd = mappen.filter((m) => m !== leit && String(m.obj?.projekt?.id ?? "") !== leitId);
+  if (fremd.length) {
+    fehler.push(`Die Datei(en) ${fremd.map((m) => `„${m.pfad}“`).join(", ")} beschreiben ein anderes `
+      + "Projekt als die Mappe — eine Quelle enthält genau ein Projekt; welches gilt, wird nicht geraten.");
+    return leer;
+  }
+
+  // (4) Die Mappe deuten — ueber DENSELBEN einen Mappenparser wie ueberall.
+  let mappe = null;
+  try { mappe = parseMappe(_text(dateien.get(leit.pfad))); }
+  catch (e) { fehler.push(`${leit.pfad}: ${e && e.message ? e.message : e}`); return leer; }
+  benutzt.add(leit.pfad);
+  for (const m of mappen) {
+    if (m === leit) continue;
+    benutzt.add(m.pfad);
+    hinweise.push(`Die Geschossdatei „${m.pfad}“ beschreibt einen Ausschnitt desselben Projekts und wird `
+      + `nicht getrennt übernommen — maßgebend ist „${leit.pfad}“.`);
+  }
+
+  // (5) Wanddateien — zugeordnet AUSSCHLIESSLICH ueber die Kennung im Archivpfad (#86).
+  /** @type {Map<string, {pfad:string, obj:any}>} */ const nachId = new Map();
+  for (const w of wanddateien) {
+    const id = wandIdAusPfad(w.pfad);
+    if (!id) {
+      fehler.push(`Der Wanddatei „${w.pfad}“ fehlt die Wandkennung im Pfad (erwartet `
+        + `„${ORDNER_WAENDE}/<Name>__<Kennung>.json“) — zugeordnet wird ausschließlich über die `
+        + "Kennung, nie über den Namen.");
+      continue;
+    }
+    const vorher = nachId.get(id);
+    if (vorher) {
+      fehler.push(`Die Wandkennung „${id}“ kommt in mehreren Dateien vor („${vorher.pfad}“, `
+        + `„${w.pfad}“) — das wird nicht aufgelöst.`);
+      continue;
+    }
+    nachId.set(id, w);
+  }
+
+  const waende = [];
+  const gesehen = new Set();
+  for (const { geschoss, wand } of alleWaende(mappe)) {
+    if (gesehen.has(wand.id)) { fehler.push(`Wandkennung „${wand.id}“ kommt mehrfach vor.`); continue; }
+    gesehen.add(wand.id);
+    const treffer = nachId.get(wand.id);
+    if (!treffer) {
+      hinweise.push(`„${wand.name || wand.id}“ (${geschoss.name}) liegt der Datei nicht bei — der `
+        + "Eintrag bleibt verwaist und wird nach dem Import gemeldet ([L-4]).");
+      continue;
+    }
+    benutzt.add(treffer.pfad);
+    try {
+      const p = parseWand(treffer.obj);
+      waende.push({ id: wand.id, name: wand.name || p.name, wandelement: p.wandelement,
+                    eingaben: p.eingaben, pfad: treffer.pfad });
+    } catch (e) {
+      fehler.push(`Wanddatei „${treffer.pfad}“ ist unbrauchbar: ${e && e.message ? e.message : e}`);
+    }
+  }
+
+  // (6) Planbilder: in dieser Fassung NIE enthalten — Hinweis, kein Fehler.
+  const mitPlan = alleGeschosse(mappe).filter((t) => t.geschoss.plan);
+  if (mitPlan.length) {
+    hinweise.push(`Planbild(er) sind in einer Projekt-ZIP des zentralen Exports nie enthalten (sie liegen `
+      + `in der Bilddatenbank des Browsers, [L-8]): ${mitPlan.map((t) => t.geschoss.name || t.geschoss.id).join(", ")}. `
+      + "Maßstab und Versatz bleiben erhalten, das Bild ist im Geschosseditor erneut zu hinterlegen. "
+      + "Im vollständigen Projektarchiv wäre dasselbe ein Fehler ([L-13]) — hier ist es keiner.");
+  }
+
+  // (7) Alles Uebrige benennen — stillschweigend ignoriert wird nichts.
+  for (const p of dateien.keys()) if (!benutzt.has(p)) ueberzaehlig.push(p);
+  ueberzaehlig.sort();
+
+  return { quelle: QUELLE_EXPORT, mappe, waende, bilder: [], ueberzaehlig, hinweise, fehler };
+}
+
+/**
+ * Die dritte Quelle: eine einzelne Mappendatei ([L-13]: „nur Struktur (JSON)“).
+ * Sie traegt keine Wandelemente und keine Planbilder — genau das wird gesagt, statt
+ * es als vollstaendigen Projektstand auszugeben. Rueckgabeform wie oben.
+ * @param {string} text @returns {ReturnType<typeof leseExport>}
+ */
+export function leseStruktur(text) {
+  /** @type {string[]} */ const fehler = [];
+  /** @type {string[]} */ const hinweise = [];
+  /** @type {string[]} */ const ueberzaehlig = [];
+  let mappe = null;
+  try { mappe = parseMappe(String(text == null ? "" : text)); }
+  catch (e) {
+    fehler.push(e && e.message ? e.message : String(e));
+    return { quelle: QUELLE_STRUKTUR, mappe: null, waende: [], bilder: [], ueberzaehlig, hinweise, fehler };
+  }
+  const w = alleWaende(mappe);
+  if (w.length) {
+    hinweise.push(`Diese Datei enthält nur die Struktur: ${w.length} Wandeintrag/-einträge kommen OHNE `
+      + `Wandelement und bleiben nach dem Import verwaist ([L-4]) — ${w.map((t) => t.wand.name || t.wand.id).join(", ")}. `
+      + "Die Wandelemente sind getrennt zu importieren.");
+  }
+  const mitPlan = alleGeschosse(mappe).filter((t) => t.geschoss.plan);
+  if (mitPlan.length) {
+    hinweise.push("Planbilder sind in einer Strukturdatei nie enthalten ([L-8]) — Maßstab und Versatz "
+      + `bleiben erhalten, das Bild ist im Geschosseditor erneut zu hinterlegen: ${mitPlan.map((t) => t.geschoss.name || t.geschoss.id).join(", ")}.`);
+  }
+  return { quelle: QUELLE_STRUKTUR, mappe, waende: [], bilder: [], ueberzaehlig, hinweise, fehler };
+}
+
+/**
+ * DER eine Lesepfad des Projektimports (#86): erkennt die Fassung und deutet sie.
+ * ZIP-Datei und Ordner sind gleichwertige Quellen desselben Weges — beide liefern
+ * dieselbe Eintragsliste, und beide Fassungen liefern dasselbe Pruefergebnis.
+ * @param {Array<{name:string, data:(string|Uint8Array)}>} eintraege
+ * @param {{parseWand?:(obj:any)=>{name:string,wandelement:any,eingaben?:any}}} [opt]
+ */
+export function leseProjektQuelle(eintraege, opt) {
+  if (istArchivQuelle(eintraege)) return { quelle: QUELLE_ARCHIV, ...leseArchiv(eintraege, opt) };
+  return leseExport(eintraege, opt);
 }
 
 // --- Hierarchischer Export (Issue #67) --------------------------------------
