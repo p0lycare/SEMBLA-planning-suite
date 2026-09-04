@@ -192,6 +192,26 @@ ok("Bildschirmfaktor liegt als CSS-Variable am Vorschaurahmen",
 $("blattwrap").clientWidth = 5000;
 fireFenster("resize");
 ok("breites Fenster vergroessert das Blatt nicht ueber Papiergroesse", Z.blattgeometrie.skala === 1);
+
+// --- 2b') #99 Vorschaurahmen ist am Bildschirm mindestens fensterhoch --------
+// Geprueft wird die ECHTE ausgelieferte Seite: `.stage` ist der Container mit der
+// Ueberschrift „Blattvorschau". Die Mindesthoehe ist reine Bildschirmdarstellung und
+// haengt an keinem Inhalt — sie wirkt mit Zeichnung UND im Leerzustand, weil clearWall()
+// nur #blattwrap leert. Im Druck MUSS sie zurueckgenommen werden, sonst waere `100vh`
+// eine volle Seitenhoehe und erzwaenge eine zweite Seite.
+{
+  const druckBlock = html.slice(html.indexOf("@media print{"), html.indexOf("</style>"));
+  const bildschirm = html.slice(0, html.indexOf("@media print{"));
+  const stageRegel = (t) => (t.match(/\.stage\{[^}]*\}/g) || []);
+  ok("[#99] `.stage` traegt im Bildschirm-CSS min-height:100vh",
+    stageRegel(bildschirm).some(r => /min-height:\s*100vh/.test(r)));
+  ok("[#99] die Mindesthoehe steht ausserhalb des Druckblocks (gilt am Bildschirm immer)",
+    !/min-height:\s*100vh/.test(druckBlock) && /min-height:\s*100vh/.test(bildschirm));
+  ok("[#99] das Druck-CSS hebt die Mindesthoehe von `.stage` wieder auf",
+    stageRegel(druckBlock).some(r => /min-height:\s*0\b/.test(r)));
+  ok("[#99] die Mindesthoehe haengt an keinem Zustand und an keinem JS-Eingriff",
+    !/min-height/.test(script) && !/style\.minHeight/.test(html));
+}
 $("blattwrap").clientWidth = 800;
 fireFenster("resize");
 ok("Projekt-Kopfdaten des Projekts im Blatt", /Rettungswache/.test($("blattwrap").innerHTML) && /A-12/.test($("blattwrap").innerHTML));

@@ -8,7 +8,10 @@
   .wrap{display:flex;gap:18px;padding:14px 20px 22px;align-items:flex-start;flex-wrap:wrap;max-width:1320px;margin:0 auto}
   .panel{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:12px;padding:16px 18px}
   .controls{width:320px;flex:0 0 320px}
-  .stage{flex:1 1 700px;min-width:520px}
+  /* Der Vorschaurahmen ist am Bildschirm mindestens fensterhoch (#99) — unabhaengig davon,
+     wie hoch das skalierte Blatt selbst ausfaellt, und auch ohne aktives Wandelement.
+     Reine Bildschirmangabe: im Druck wird sie unten wieder aufgehoben. */
+  .stage{flex:1 1 700px;min-width:520px;min-height:100vh}
   h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--sb-muted);margin:0 0 10px}
   .btnrow{display:flex;gap:8px;margin-top:14px}
   button{flex:1;padding:9px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
@@ -38,7 +41,9 @@
   @media print{
     .sb-nav,.controls{display:none!important}
     .wrap{display:block;padding:0;margin:0;max-width:none}
-    .stage{min-width:0}
+    /* Die reine Bildschirm-Mindesthoehe (#99) faellt weg — sonst waere `100vh` hier eine
+       volle Seitenhoehe und erzwaenge eine zusaetzliche Druckseite. */
+    .stage{min-width:0;min-height:0}
     .panel{border:none;border-radius:0;padding:0;background:#fff}
     .stage h2{display:none}
     /* Auf Papier gilt die Papiergroesse selbst — der Bildschirmmassstab wird zurueckgenommen. */

@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-12",
+    datum: "2026-09-04",
+    typ: "fix",
+    issue: 99,
+    titel: "Blattvorschau der technischen Zeichnung nimmt jetzt mindestens die volle Höhe des Browserfensters ein",
+    testbitte: "Modul 7 öffnen: der Bereich „Blattvorschau“ reicht bis zum unteren Fensterrand — "
+      + "auch bei A4 quer und ohne aktives Wandelement; das gedruckte Blatt bleibt einseitig.",
+  },
+  {
     id: "chg-20260904-11",
     datum: "2026-09-04",
     typ: "fix",
