@@ -44,7 +44,8 @@
  */
 
 import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
-import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL } from "./sembla-montage.js";
+import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
+         bodenblechSvg, bodenblechTeile, bodenblechStoesse } from "./sembla-montage.js";
 // #79: NUR der reine Normalisierer der Brandschutzklassifikation (F0/F30, Standard
 // F0) — kein Speicherzugriff, keine Lese- oder Schreibfunktion. Er liegt kanonisch in
 // storage.js, weil Modul 1 (der einzige Schreibweg) dieselbe Stelle nutzt; eine zweite
@@ -504,11 +505,19 @@ export function zeichnungSvg(w, opts = {}) {
       + `stroke="${FARBE.kontur}" stroke-width="${_n(SW * 2.4)}"/>`;
   }
 
-  // Anschluesse: Bodenblech durchgehend, Kopfblech je Rasterspalte (wenn oben Blech)
+  // Anschluesse: Bodenblech als REALE TEILFOLGE mit Stoessen ([A-10]/[A-11]/[A-12]),
+  // Kopfblech unveraendert je Rasterspalte (wenn oben Blech).
+  //
+  // Gezeichnet wird ueber `bodenblechSvg()` aus `sembla-montage.js` — dieselbe
+  // Ableitung, die Baugruppenbild und Wandueberblick von Modul 5 benutzen. Damit sind
+  // Teilgrenzen und Stosspositionen zwischen den Ausgaben zwangslaeufig gleich, und es
+  // entsteht KEINE zweite Blechzerlegung im Ausgabemodul ([A-1]/[D-4]) — genau dasselbe
+  // Muster wie bei `topLagen()` und `stangenStuecke()`. Weil das Blatt-SVG hier
+  // entsteht, tragen Vorschau, Druck-HTML und die eigenstaendige SVG-Datei dieselbe
+  // Zeichenkette ([D-6]). Masstab, Bemassung und Kopfblech bleiben unberuehrt.
   const bth = Math.max(1.2, (w.bom && w.bom.stahlblech_dicke_mm ? w.bom.stahlblech_dicke_mm : 15) * sc);
   const topConn = (w.prestress && w.prestress.top_connection) || "blech";
-  s += `<rect x="${_n(X(0))}" y="${_n(Y(0))}" width="${_n(L * sc)}" height="${_n(bth)}" `
-    + `fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="${_n(SW * 0.5)}"/>`;
+  s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
       const h = tl[k] * C;
@@ -864,6 +873,16 @@ export function legendeHtml(w) {
     + `<span>${i(FARBE.mutter, "dot")}Kopplung / Verankerung</span>`
     + `<span>${i(FARBE.platte, "plate")}Spannplatte</span>`
     + `<span>${i(FARBE.stahl, "plate")}Boden-/Kopfblech</span>`
+    // Reale Bodenblechteile ([A-10]/[A-11]/[A-12]): Stoss und Sonderzuschnitt stehen
+    // NUR dann in der Legende, wenn sie im Blatt auch gezeichnet wurden — ein
+    // Alt-Wandelement ohne `base_plate.teile` zeigt eine durchgehende Platte und
+    // bekommt deshalb keinen dieser Eintraege ([D-4]). Der Sonderzuschnitt traegt sein
+    // NICHT FARBLICHES Merkmal (die Schraffur) ausdruecklich in Worten, damit er im
+    // Schwarz-Weiss-Ausdruck aufloesbar bleibt.
+    + (bodenblechStoesse(w).length
+        ? `<span>${i(FARBE.kontur, "dot")}Blechstoß (Bodenblech)</span>` : "")
+    + (bodenblechTeile(w).some(t => t.art === "sonder")
+        ? `<span>${i(FARBE.stange_sonder, "plate")}Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : "")
     + `<span>${i(FARBE.i3, "plate")}i3 (37,5 cm)</span>`
     + `<span>${i(FARBE.i2, "plate")}i2 (25 cm)</span>`
     // Brandschutzklassifikation (#79): BEIDE Klassen stehen hier, jede mit ihrer

@@ -28,7 +28,7 @@ import {
   montageEreignisse, montageAbschnitte, abschnittSvg, konturSvg,
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
   STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt, stangenEnden, stangenStuecke,
-  topLagen, oberkantenAbschnitte,
+  topLagen, oberkantenAbschnitte, bodenblechTeile, bodenblechStoesse,
 } from "../../docs/shared/sembla-montage.js";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
 import { FARBE as Z_FARBE } from "../../docs/shared/sembla-zeichnung.js";
@@ -357,7 +357,15 @@ ok("ohne Fussereignis entsteht KEIN Schnitt 0 (sicherer Leerfall, keine leere Se
 // Bezugspunkt: Oberkante von Steinreihe 1 (identische Weltkoordinate 200 mm) muss in
 // JEDEM Baugruppenbild auf derselben y-Position liegen; ebenso Bodenblech und Skalierung.
 const yBoden = svg => +(/<rect x="[\d.]+" y="([\d.]+)"[^>]*fill="#5b6673"/.exec(svg) || [])[1];
-const bodenBreite = svg => +(/<rect x="[\d.]+" y="[\d.]+" width="([\d.]+)"[^>]*fill="#5b6673"/.exec(svg) || [])[1];
+// Das Bodenblech ist seit der Core-Zerlegung eine TEILFOLGE ([A-10]): die Skalierung
+// steckt in der SUMME der Teilbreiten, nicht in der ersten. Gefiltert wird auf die
+// y-Position des Wandfusses, damit das Farbfeld der Legende nicht mitzaehlt.
+const bodenRects = svg => {
+  const y = yBoden(svg);
+  return [...svg.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"[^>]*fill="(?:#5b6673|#e8702a)"/g)]
+    .filter(m => +m[2] === y);
+};
+const bodenBreite = svg => bodenRects(svg).reduce((a, m) => a + +m[3], 0);
 for (const [name, w, alle] of [["Rechteck", WR, alleR], ["AWG", WAWG, alleA], ["Tuer", WT, alleT]]) {
   const bilder = alle.map(a => abschnittSvg(w, a, 900, 430));
   const yB = bilder.map(yBoden), bB = bilder.map(bodenBreite);
@@ -458,8 +466,13 @@ ok("Alt-Bundle ohne `stuecke`: stuecke_sicht bleibt leer",
 ok("Alt-Bundle faellt auf die Einzellinie je Strang zurueck (kein Zeichenfehler)",
   (svgAlt.match(new RegExp(`stroke="${STUECK_FARBE.standard}" stroke-width="2.4"`, "g")) || []).length
     === alleAlt[alleAlt.length - 1].straenge.length);
-ok("Alt-Bundle zeigt KEINE Zuschnitt-Legende (nichts erfinden)",
-  !/Zuschnitt:/.test(svgAlt) && !svgAlt.includes(STUECK_LABEL.rest));
+// Der Legendenkasten selbst kann durch die realen Bodenblechstoesse belegt sein (die
+// WERDEN gezeichnet und muessen nach [D-4] aufloesbar bleiben); ohne `stuecke` darf aber
+// keine STUECKART des Stangenzuschnitts darin stehen. Der Sonderzuschnitt wird als exakter
+// Textknoten geprueft, damit der Bodenblech-Eintrag nicht mit ihm verwechselt wird.
+ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfinden)",
+  !svgAlt.includes(STUECK_LABEL.rest) && !svgAlt.includes(STUECK_LABEL.standard)
+  && !new RegExp(`>${STUECK_LABEL.sonder}<`).test(svgAlt));
 
 // --- Abschnitte der lokalen Wandoberkante (Issue #24, [A-1]/[D-4]) ---------
 // `oberkantenAbschnitte()` ist die KANONISCHE Ableitung der horizontalen Abschnitte der
@@ -575,6 +588,112 @@ ok("Alt-Bundle zeigt KEINE Zuschnitt-Legende (nichts erfinden)",
       const p = s.stuecke_sicht[s.stuecke_sicht.length - 1];
       return p.art === "rest" && p.z1_mm === s.seg_z1_mm + 10 && p.z1_mm - p.z0_mm === 100;
     }));
+}
+
+
+// --- 15) Reale Bodenblechteile und ihre Stoesse im Bild (#91, [A-10]/[A-11]/[A-12]) ----
+// Die Zerlegung gehoert dem Rechenkern; Modul 5 darf sie nur ZEIGEN. Geprueft wird am
+// echten Pfad: buildWall -> abschnittSvg/konturSvg -> erzeugtes SVG.
+{
+  // Alle Blechrechtecke eines Bildes an der y-Position des Wandfusses, in Zeichenreihenfolge.
+  // Literale Regexe (keine `new RegExp`-Zeichenketten): die Farbwerte stehen ausgeschrieben,
+  // damit die Zusicherung nicht an einer Escaping-Ebene haengt. #5b6673 = FARBE.stahl,
+  // #e8702a = STUECK_FARBE.sonder, #13202e = FARBE.kontur (Stosslinie).
+  const RE_BLECH = /<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"[^>]*fill="(#5b6673|#e8702a)"/g;
+  ok("[D-4] Testfarben sind die kanonischen Werte des Darstellungsschluessels",
+    STUECK_FARBE.sonder === "#e8702a" && Z_FARBE.stahl === "#5b6673"
+    && Z_FARBE.kontur === "#13202e");
+  const rects = (svg) => {
+    const alle = [...svg.matchAll(RE_BLECH)]
+      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], sonder: m[4] === "#e8702a" }));
+    return alle.length ? alle.filter(r => r.y === alle[0].y) : [];
+  };
+  // Stosslinien liegen auf der OBERKANTE des Blechstreifens; die gleichfarbige Musterlinie
+  // der Legende steht tiefer im Blatt und wird deshalb ueber ihre y-Position ausgeschlossen.
+  const stossX = (svg) => {
+    const r = rects(svg);
+    if (!r.length) return [];
+    return [...svg.matchAll(/<line x1="([\d.]+)" y1="([\d.]+)" x2="[\d.]+" y2="[\d.]+" stroke="#13202e"/g)]
+      .filter(m => +m[2] === r[0].y).map(m => +m[1]).sort((a, b) => a - b);
+  };
+
+  // (a) Mehrteilig, ungleiche Teile -> genau die kanonischen Stoesse, KEINE Modulfugen
+  const WM = buildWall("Blech-mehr", 4625, 2600, [], null, { blech_lengths_mm: [1250, 1125] });
+  const teileM = bodenblechTeile(WM);
+  ok("[A-10] Testwand hat mehrere Bodenblechteile ungleicher Laenge (Voraussetzung)",
+    teileM.length > 2 && new Set(teileM.map(t => t.raster_mm)).size > 1
+    && teileM.every(t => t.art === "standard"));
+  const abM = montageAbschnitte(WM), bildM = abschnittSvg(WM, abM[abM.length - 1], 900, 430);
+  const rM = rects(bildM);
+  ok("Modul 5 zeichnet je Bodenblechteil genau ein Rechteck, in Reihenfolge",
+    rM.length === teileM.length
+    && rM.every((r, i) => Math.abs(r.x - rM[0].x - teileM[i].x0_mm * (rM[0].w / teileM[0].raster_mm)) < 1e-6));
+  const scM = rM[0].w / teileM[0].raster_mm;
+  ok("[#91] Σ gezeichnete Teilbreiten == Wandlaenge (Rastermass, nicht Bauteilmass)",
+    Math.abs(rM.reduce((a, r) => a + r.w, 0) - WM.length_mm * scM) < 1e-9
+    // jede Breite ist das RASTERMASS; das um BLECH_SPIEL kuerzere Bauteilmass waere messbar
+    // schmaler und wuerde die Summe unter die Wandlaenge druecken.
+    && rM.every((r, i) => Math.abs(r.w - teileM[i].raster_mm * scM) < 1e-9)
+    && rM.every((r, i) => Math.abs(r.w - (teileM[i].raster_mm - 2) * scM) > 1e-6)
+    && teileM.some(t => t.raster_mm !== teileM[0].raster_mm));
+  ok("[A-11] Stosslinien liegen genau an den kumulierten Rastermassen",
+    stossX(bildM).length === bodenblechStoesse(WM).length
+    && bodenblechStoesse(WM).every((xm, i) => Math.abs(stossX(bildM)[i] - (rM[0].x + xm * scM)) < 1e-6));
+  ok("[#91] keine fiktiven gleichmaessigen Modulfugen (Stoesse != Vielfache von modul_mm)",
+    bodenblechStoesse(WM).some(xm => xm % WM.base_plate.modul_mm !== 0));
+  ok("Wandueberblick zeigt dieselben kanonischen Stosspositionen wie das Baugruppenbild",
+    (() => {
+      const k = konturSvg(WM, null, 900, 250), rk = rects(k), sk = stossX(k);
+      const sck = rk[0].w / teileM[0].raster_mm;
+      return rk.length === teileM.length && sk.length === bodenblechStoesse(WM).length
+        && bodenblechStoesse(WM).every((xm, i) => Math.abs(sk[i] - (rk[0].x + xm * sck)) < 1e-6);
+    })());
+
+  // (b) Erzwungener Sonderzuschnitt: eigene Position, Farbe UND nicht farbliches Merkmal
+  const WS = buildWall("Blech-sonder", 2000, 2600, [], null, { blech_lengths_mm: [1250] });
+  const teileS = bodenblechTeile(WS);
+  ok("[A-10] erzwungener Sonderzuschnitt am Wandende (Voraussetzung)",
+    teileS.length === 2 && teileS[1].art === "sonder" && teileS[1].x0_mm === 1250
+    && teileS[1].raster_mm === 750);
+  const abS = montageAbschnitte(WS), bildS = abschnittSvg(WS, abS[abS.length - 1], 900, 430);
+  const rS = rects(bildS);
+  ok("Sonderzuschnitt steht an seiner Position und ist farblich gekennzeichnet",
+    rS.length === 2 && !rS[0].sonder && rS[1].sonder
+    && Math.abs(rS[1].x - (rS[0].x + rS[0].w)) < 1e-9);
+  // Die Schraffur besteht aus senkrechten Strichen INNERHALB des Sonderteils. Sie ist das
+  // Merkmal, das den Sonderzuschnitt auch im Schwarz-Weiss-Ausdruck traegt — geprueft wird
+  // deshalb ausdruecklich Geometrie, nicht Farbe: senkrecht (x1 == x2), im Teil liegend,
+  // und im Standardteil daneben darf sie NICHT vorkommen.
+  const schraffur = (svg, r) =>
+    [...svg.matchAll(/<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" stroke="#3a4350"/g)]
+      .map(m => ({ x1: +m[1], y0: +m[2], x2: +m[3], y1: +m[4] }))
+      .filter(t => t.x1 === t.x2 && t.y1 > t.y0 && t.x1 > r.x && t.x1 < r.x + r.w);
+  ok("[#91] Sonderzuschnitt traegt zusaetzlich ein NICHT FARBLICHES Merkmal (Schraffur)",
+    schraffur(bildS, rS[1]).length >= 2 && schraffur(bildS, rS[0]).length === 0);
+  ok("[D-4] die Legende benennt Blechstoss und Bodenblech-Sonderzuschnitt in Worten",
+    /Blechstoß/.test(bildS) && /Bodenblech Sonderzuschnitt \(schraffiert\)/.test(bildS));
+
+  // (c) Alt-Wandelement ohne `teile`: EIN durchgehendes Blech, nichts erfunden
+  const WA = JSON.parse(JSON.stringify(WM));
+  delete WA.base_plate.teile;
+  ok("Alt-Fall: bodenblechTeile liefert genau ein Teil ueber die volle Laenge",
+    (() => { const t = bodenblechTeile(WA);
+      return t.length === 1 && t[0].x0_mm === 0 && t[0].raster_mm === WA.length_mm
+        && t[0].art === "standard" && bodenblechStoesse(WA).length === 0; })());
+  const abA = montageAbschnitte(WA), bildA = abschnittSvg(WA, abA[abA.length - 1], 900, 430);
+  const rA = rects(bildA);
+  ok("Alt-Fall: Baugruppenbild zeigt EIN durchgehendes Bodenblech ohne Stosslinie",
+    rA.length === 1 && Math.abs(rA[0].w - WA.length_mm * scM) < 1e-9
+    && stossX(bildA).length === 0 && !rA[0].sonder);
+  ok("Alt-Fall: Wandueberblick zeigt ebenfalls EIN durchgehendes Bodenblech",
+    (() => { const k = konturSvg(WA, null, 900, 250);
+      return rects(k).length === 1 && stossX(k).length === 0; })());
+  ok("Alt-Fall: keine erfundene Blech-Legende (weder Stoss noch Sonderzuschnitt)",
+    !/Blechstoß/.test(bildA) && !/Bodenblech Sonderzuschnitt/.test(bildA));
+
+  // (d) Vorschau == Export: das Blech steckt im GETEILTEN SVG, nicht im Modul
+  ok("[D-6] die Teilfolge steckt im geteilten Baugruppen-SVG (Vorschau == Export)",
+    montageDokument(WS, eingaben).includes(bildS));
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

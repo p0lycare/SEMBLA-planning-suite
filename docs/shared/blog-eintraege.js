@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-05",
+    datum: "2026-09-04",
+    typ: "feature",
+    issue: 91,
+    titel: "Montageanleitung und Wandzeichnung zeigen die realen Bodenblechteile mit ihren Stößen",
+    testbitte: "Eine Wand mit mehreren Bodenblechteilen in Modul 5 und Modul 7 öffnen: "
+      + "beide zeigen dieselben Teile und Stoßlinien wie die Stückliste in Modul 4. Ein "
+      + "Sonderzuschnitt ist zusätzlich schraffiert und bleibt schwarz-weiß erkennbar.",
+  },
+  {
     id: "chg-20260904-04",
     datum: "2026-09-04",
     typ: "feature",

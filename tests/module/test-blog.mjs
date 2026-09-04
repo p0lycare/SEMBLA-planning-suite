@@ -39,10 +39,10 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Der NEUESTE Eintrag ist die einpassbare Wandansicht (#100) — er wird als
+// Der NEUESTE Eintrag ist die Bodenblech-Stossdarstellung (#91) — er wird als
 // einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe rueckt
 // geschlossen um eins nach hinten und zaehlt ueber `HERKUNFT`, `VORSCHAU`, `SEITEN`,
-// `BLASEN`, `PLANKOPF`, `LETZTER`,
+// `BLASEN`, `PLANKOPF`, `LETZTER`, `ZOOM`,
 // `VORHER`, `NEU`, `AKTUELL` und `AELTER`, damit keine 85 Indizes zu drehen sind.
 // Ueber `VORHER` zaehlen damit: #88 (Auswahl), #90 (sichtbare
 // Verzahnungsbereiche), #88 (Initialposition duplizierter und zugeordneter Waende), #85
@@ -58,10 +58,10 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(13);
-const NEU = EINTRAEGE.slice(19);
-const AKTUELL = EINTRAEGE.slice(24);
-const AELTER = EINTRAEGE.slice(34);
+const VORHER = EINTRAEGE.slice(14);
+const NEU = EINTRAEGE.slice(20);
+const AKTUELL = EINTRAEGE.slice(25);
+const AELTER = EINTRAEGE.slice(35);
 // Der NEUESTE Eintrag ist die TEILAUSWAHL des Projektimports (#86): aus einer geprueften
 // Projektdatei laesst sich auch nur ein Geschoss oder eine einzelne Wand uebernehmen.
 // Aussagewahr heisst hier: geprueft wird weiter die GANZE Datei, die Exportseite ist
@@ -80,23 +80,47 @@ const AELTER = EINTRAEGE.slice(34);
 // steht beim Oeffnen vollstaendig im Fenster und laesst sich stufenweise vergroessern.
 // Aussagewahr heisst hier: versprochen wird allein die DARSTELLUNG in Modul 1 — keine
 // geaenderte Wandgeometrie, kein Druck-/Exportversprechen und kein gespeicherter Zustand.
-ok("die einpassbare Wandansicht (Issue 100) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260904-04" && EINTRAEGE[0]?.issue === 100
+// Der NEUESTE Eintrag ist die Darstellung der realen Bodenblechteile in Modul 5 und
+// Modul 7 (#91, Abschlusspaket). Aussagewahr heisst hier: versprochen wird allein die
+// DARSTELLUNG — die Zerlegung selbst kam mit chg-20260904-02 aus dem Rechenkern, und es
+// aendert sich keine Menge, kein Preis, kein Masstab und kein Format.
+ok("die Bodenblech-Stossdarstellung (Issue 91) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260904-05" && EINTRAEGE[0]?.issue === 91
   && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-09-04");
-ok("der Zoom-Eintrag benennt Bedienort, Gegenstand und Nutzerergebnis",
-  /Modul 1/.test(EINTRAEGE[0]?.titel || "")
-  && /Wandansicht/.test(EINTRAEGE[0]?.titel || "")
-  && /(zoom|Zoom)/.test(EINTRAEGE[0]?.titel || "")
-  && /Fenster/.test(EINTRAEGE[0]?.titel || "")
-  // Keine Zeichnungs-/Druck-/Preis-/Formatzusage — es ist reine Oberflaeche.
-  && !/Zeichnung|Druck|Export|Preis|neues Format|neue Regel/i.test(EINTRAEGE[0]?.titel || ""));
-ok("die Zoom-Testbitte benennt Modul, Bedienelemente und die Startgroesse",
-  /Modul 1/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Größer/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Kleiner/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Einpassen/.test(EINTRAEGE[0]?.testbitte || ""));
+ok("der Stossdarstellungs-Eintrag benennt beide Ausgaben, das Bauteil und das Nutzerergebnis",
+  /Montageanleitung/.test(EINTRAEGE[0]?.titel || "")
+  && /Wandzeichnung/.test(EINTRAEGE[0]?.titel || "")
+  && /Bodenblechteile/.test(EINTRAEGE[0]?.titel || "")
+  && /Stöße/.test(EINTRAEGE[0]?.titel || "")
+  // Keine Mengen-/Preis-/Masstabs-/Formatzusage — gezeigt wird, was schon gerechnet ist.
+  && !/Menge|Preis|Maßstab|neues Format|neue Regel/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Stossdarstellungs-Testbitte benennt beide Module, den Abgleich und den Sonderzuschnitt",
+  /Modul 5/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Modul 7/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Stoßlinien/.test(EINTRAEGE[0]?.testbitte || "")
+  && /schraffiert/.test(EINTRAEGE[0]?.testbitte || ""));
 
-const VORRATSSATZ = EINTRAEGE[1];
+// Die einpassbare Wandansicht (#100) rueckt geschlossen um eins nach hinten und zaehlt
+// ab hier ueber `ZOOM`, damit keine Indizes zu drehen sind.
+const ZOOM = EINTRAEGE[1];
+ok("die einpassbare Wandansicht (Issue 100) folgt darauf",
+  ZOOM?.id === "chg-20260904-04" && ZOOM?.issue === 100
+  && ZOOM?.typ === "feature" && ZOOM?.datum === "2026-09-04");
+ok("der Zoom-Eintrag benennt Bedienort, Gegenstand und Nutzerergebnis",
+  /Modul 1/.test(ZOOM?.titel || "")
+  && /Wandansicht/.test(ZOOM?.titel || "")
+  && /(zoom|Zoom)/.test(ZOOM?.titel || "")
+  && /Fenster/.test(ZOOM?.titel || "")
+  // Keine Zeichnungs-/Druck-/Preis-/Formatzusage — es ist reine Oberflaeche.
+  && !/Zeichnung|Druck|Export|Preis|neues Format|neue Regel/i.test(ZOOM?.titel || ""));
+ok("die Zoom-Testbitte benennt Modul, Bedienelemente und die Startgroesse",
+  /Modul 1/.test(ZOOM?.testbitte || "")
+  && /Größer/.test(ZOOM?.testbitte || "")
+  && /Kleiner/.test(ZOOM?.testbitte || "")
+  && /Einpassen/.test(ZOOM?.testbitte || ""));
+
+const VORRATSSATZ = EINTRAEGE[2];
 ok("die Bodenblech-Auswahlanbindung (Issue 91) folgt darauf",
   VORRATSSATZ?.id === "chg-20260904-03" && VORRATSSATZ?.issue === 91
   && VORRATSSATZ?.typ === "feature" && VORRATSSATZ?.datum === "2026-09-04");
@@ -114,15 +138,16 @@ ok("die Vorratssatz-Testbitte benennt die Auswahl, das Ergebnis und den Fall ohn
   && /Rastermaße/.test(VORRATSSATZ?.testbitte || "")
   && /[Oo]hne\s+Auswahl/.test(VORRATSSATZ?.testbitte || ""));
 
-// Zwei Eintraege fuer #91 — und das ist richtig so: der erste (chg-20260904-02) hat das
-// Bodenblech im Rechenkern in reale Teile zerlegt, dieser bindet die KATALOGAUSWAHL daran an.
-// Verschiedene Nutzerergebnisse, verschiedene Testbitten.
-ok("beide #91-Eintraege stehen in der Liste, neu vor alt",
+// DREI Eintraege fuer #91 — und das ist richtig so, weil es drei getrennte
+// Nutzerergebnisse mit drei getrennten Testbitten sind: chg-20260904-02 hat das Bodenblech
+// im Rechenkern in reale Teile zerlegt, chg-20260904-03 bindet die KATALOGAUSWAHL daran an,
+// und chg-20260904-05 ZEIGT die Teile samt Stoessen in Montage und Zeichnung.
+ok("alle drei #91-Eintraege stehen in der Liste, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 91).map(e => e.id).join(",")
-    === "chg-20260904-03,chg-20260904-02");
+    === "chg-20260904-05,chg-20260904-03,chg-20260904-02");
 
 // Die Zerlegung im Rechenkern (#91, Kernpaket) folgt darauf.
-const ZERLEGUNG = EINTRAEGE[2];
+const ZERLEGUNG = EINTRAEGE[3];
 ok("die Bodenblech-Zerlegung (Issue 91) folgt als zweiter Eintrag",
   ZERLEGUNG?.id === "chg-20260904-02" && ZERLEGUNG?.issue === 91
   && ZERLEGUNG?.typ === "feature" && ZERLEGUNG?.datum === "2026-09-04");
@@ -140,7 +165,7 @@ ok("die Bodenblech-Testbitte benennt Modul, Maße und die Fugenregel",
   && /Steinfuge/.test(ZERLEGUNG?.testbitte || ""));
 
 // Die manuelle Menge der Geschossebene (#81) folgt darauf.
-const GESCHOSSMENGE = EINTRAEGE[3];
+const GESCHOSSMENGE = EINTRAEGE[4];
 ok("die manuelle Menge der Geschossebene (Issue 81) folgt als zweiter Eintrag",
   GESCHOSSMENGE?.id === "chg-20260904-01" && GESCHOSSMENGE?.issue === 81
   && GESCHOSSMENGE?.typ === "feature" && GESCHOSSMENGE?.datum === "2026-09-04");
@@ -159,7 +184,7 @@ ok("die Geschossmengen-Testbitte benennt Ebene, Anzeige und Exportfassung",
   && /angepasst/.test(GESCHOSSMENGE?.testbitte || ""));
 
 // Die Teilauswahl des Projektimports (#86) folgt darauf.
-const TEILAUSWAHL = EINTRAEGE[4];
+const TEILAUSWAHL = EINTRAEGE[5];
 ok("die Teilauswahl des Projektimports (Issue 86) folgt als dritter Eintrag",
   TEILAUSWAHL?.id === "chg-20260902-01" && TEILAUSWAHL?.issue === 86
   && TEILAUSWAHL?.typ === "feature" && TEILAUSWAHL?.datum === "2026-09-02");
@@ -180,7 +205,7 @@ ok("die Teilauswahl-Testbitte benennt Weg, Wahl, Ziel und Bestätigung",
 // Projektarchiv auch die ZIP des zentralen Exports und uebernimmt das ganze Projekt.
 // Aussagewahr heisst dort: hinzugekommen ist allein ein LESEWEG — die Exportseite ist
 // unveraendert, es entsteht kein Feld und kein Versionssprung.
-const IMPORTDIALOG = EINTRAEGE[5];
+const IMPORTDIALOG = EINTRAEGE[6];
 ok("der eine Projektimport-Dialog (Issue 86) folgt als dritter Eintrag",
   IMPORTDIALOG?.id === "chg-20260818-04" && IMPORTDIALOG?.issue === 86
   && IMPORTDIALOG?.typ === "feature" && IMPORTDIALOG?.datum === "2026-08-18");
@@ -202,7 +227,7 @@ ok("die Import-Testbitte benennt den Weg, den Bericht und die Bestätigung",
 // Wandebene (#81) folgt darauf: eine eigene, angehaengte Spalte, in beiden Mengenfassungen
 // gleich. Aussagewahr heisst dort: hinzugekommen ist allein ein AUSGABEWEG — erfasst wird
 // weiter nur in Modul 4, und abgeleitet wird daraus nichts ([P-20]).
-const KOMMENTAR = EINTRAEGE[6];
+const KOMMENTAR = EINTRAEGE[7];
 ok("der Kommentar in der Wandstückliste (Issue 81) folgt direkt auf den neuesten Eintrag",
   KOMMENTAR?.id === "chg-20260818-03" && KOMMENTAR?.issue === 81
   && KOMMENTAR?.typ === "feature" && KOMMENTAR?.datum === "2026-08-18");
@@ -220,7 +245,7 @@ ok("die Kommentar-Testbitte benennt beide Module, die Spalte und was unveraender
   && /beiden Mengenfassungen/.test(KOMMENTAR?.testbitte || "")
   && /Mengen und Preise bleiben/.test(KOMMENTAR?.testbitte || ""));
 
-const HERKUNFT = EINTRAEGE[7];
+const HERKUNFT = EINTRAEGE[8];
 // Der bisher neueste Eintrag nimmt die WANDHERKUNFT aus Modul 4 und der Gesamtstueckliste-Datei
 // (#81): auf den Gesamtebenen faellt die Spalte „Wände (Herkunft)“ ersatzlos weg. Aussagewahr
 // heisst hier: geaendert hat sich allein die DARSTELLUNG — Mengen, Einbauteil-IDs, Preise und
@@ -244,7 +269,7 @@ ok("die Herkunfts-Testbitte benennt Ebenen, beide Orte und was unveraendert blei
   && /Mengenfassungen/.test(HERKUNFT?.testbitte || "")
   && /Baustellenstückliste der Wand bleibt gleich/.test(HERKUNFT?.testbitte || ""));
 
-const VORSCHAU = EINTRAEGE[8];
+const VORSCHAU = EINTRAEGE[9];
 // Der bisher neueste Eintrag stellt die BLATTVORSCHAU von Modul 9 auf das echte Papierverhaeltnis
 // des gewaehlten Formats um (#89): Vorschau und Ausdruck zeigen dieselbe Aufteilung, beim
 // Verkleinern des Fensters skaliert das ganze Blatt gleichmaessig. Aussagewahr heisst hier:
@@ -266,7 +291,7 @@ ok("die Vorschau-Testbitte benennt Ort, Bedienung und die erwartete Wirkung",
   && /Aufteilung/.test(VORSCHAU?.testbitte || "")
   && /Ausdrucks/.test(VORSCHAU?.testbitte || "")
   && /als Ganzes kleiner/.test(VORSCHAU?.testbitte || ""));
-const SEITEN = EINTRAEGE[9];
+const SEITEN = EINTRAEGE[10];
 // Davor nahm der Eintrag die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
 // Rueckseite bleiben als farbige Kanten erkennbar und werden in der Legende
 // aufgeschluesselt. Aussagewahr heisst hier: die Unterscheidung bleibt erhalten — es darf
@@ -290,7 +315,7 @@ ok("die Seiten-Testbitte benennt Ort, Erwartung und die erhaltene Unterscheidung
   && /keine V\/R-Buchstaben/.test(SEITEN?.testbitte || "")
   && /farbigen Vorder- und Rückkanten/.test(SEITEN?.testbitte || "")
   && /Legende/.test(SEITEN?.testbitte || ""));
-const BLASEN = EINTRAEGE[10];
+const BLASEN = EINTRAEGE[11];
 // Davor machte der Eintrag die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
 // jetzt auch den Wandflaechen aus, nicht mehr nur einander und den Massen. Aussagewahr
 // heisst hier: die Zuordnung bleibt — die Fuehrungslinie zeigt weiter auf dieselbe
@@ -319,7 +344,7 @@ ok("die Blasen-Testbitte benennt Ort, Erwartung und die erhaltene Zuordnung",
 ok("genau vier Eintraege fuer Issue 89, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 89).map(e => e.id).join(",")
     === "chg-20260818-01,chg-20260817-08,chg-20260817-07,chg-20260817-05");
-const PLANKOPF = EINTRAEGE[11];
+const PLANKOPF = EINTRAEGE[12];
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -355,7 +380,7 @@ ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
     === "chg-20260817-06,chg-20260812-08");
 // Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
-const LETZTER = EINTRAEGE[12];
+const LETZTER = EINTRAEGE[13];
 ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
   LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
   && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");

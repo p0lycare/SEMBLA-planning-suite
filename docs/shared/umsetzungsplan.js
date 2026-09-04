@@ -25,8 +25,29 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-09-04",
-  "signatur": "591c7ef0",
+  "signatur": "4b556da7",
   "entscheidungen": [
+    {
+      "issue": 91,
+      "titel": "Bodenblech-Slicing: Standardlängen und Sonderzuschnitte statt durchgehender Platte",
+      "prio": "high",
+      "status": "in progress",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true,
+      "frage": "Zerlegung im Rechenkern, Anbindung der Katalog-Standardlängen und die Darstellung der realen Blechstöße in Montageansicht und Wandzeichnung sind umgesetzt und getestet. Soll das Issue geschlossen werden?",
+      "optionen": [
+        {
+          "text": "Schließen — der gesamte Umfang von #91 ist geliefert.",
+          "wirkung": "Der Backlog trägt keinen erledigten Rest mit; weitere Blech- oder Zuschnittwünsche starten als eigenes, klein geschnittenes Issue."
+        },
+        {
+          "text": "Offen lassen, bis das Bodenblech am realen AWG-Projekt abgenommen ist.",
+          "wirkung": "Das Issue bleibt als Abnahmeklammer sichtbar, führt im Plan aber dauerhaft keinen umsetzbaren Anteil mehr."
+        }
+      ],
+      "empfehlung": "Schließen — es bleibt kein offener Punkt, und eine Abnahme am Projekt ist über den Zyklusrahmen #20 ohnehin abgedeckt."
+    },
     {
       "issue": 41,
       "titel": "Fachreview: SEMBLA-Regelwerk korrigieren und offene Regeln bestätigen",
@@ -105,15 +126,6 @@ export const PLAN = {
     {
       "issue": 20,
       "titel": "Zyklusrahmen: Aschersleben/AWG-Projekt vollständig begleiten",
-      "prio": "high",
-      "status": "in progress",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 91,
-      "titel": "Bodenblech-Slicing: Standardlängen und Sonderzuschnitte statt durchgehender Platte",
       "prio": "high",
       "status": "in progress",
       "sicherheit": false,

@@ -58,6 +58,46 @@ export function stueckFarbe(art) {
   return Object.prototype.hasOwnProperty.call(STUECK_FARBE, art) ? STUECK_FARBE[art] : STUECK_FARBE.standard;
 }
 
+/**
+ * Reale Bodenblechteile einer Wand ([A-10]/[A-11]/[A-12]) — KANONISCHER LESER.
+ *
+ * Zerlegt wird ausschliesslich im Rechenkern (`zerlegeBodenblech()` in `sembla-core.js`);
+ * `w.base_plate.teile` ist die einzige Quelle fuer Teilgrenzen, Rastermasse und
+ * Sonderzuschnittart. Diese Funktion RECHNET NICHTS NACH — sie liest, normalisiert die
+ * Art auf `standard`/`sonder` und liefert den Alt-Fallback. Eine zweite Zerlegung in
+ * einem Ausgabemodul waere nach [A-1]/[D-4] unzulaessig.
+ *
+ * Gezeichnet wird `raster_mm` (die Teile summieren sich per Konstruktion exakt auf
+ * `length_mm`), NIE das um `BLECH_SPIEL` = 2 mm kuerzere `bauteil_mm`: das ist das
+ * Fertigungsmass und im Bild keine Luecke.
+ *
+ * Alt-Wandelemente ohne das Feld (vor der Core-Zerlegung gebaut) liefern GENAU EIN
+ * Teil ueber die volle Wandlaenge — die bisherige durchgehende Darstellung, ohne eine
+ * Teilung zu erfinden.
+ *
+ * @param {any} w Wandelement
+ * @returns {Array<{x0_mm:number,raster_mm:number,art:"standard"|"sonder"}>}
+ */
+export function bodenblechTeile(w) {
+  const L = (w && +w.length_mm) || 0;
+  const t = (w && w.base_plate && Array.isArray(w.base_plate.teile)) ? w.base_plate.teile : null;
+  if (!t || !t.length) return [{ x0_mm: 0, raster_mm: L, art: "standard" }];
+  return t.map(p => ({ x0_mm: +p.x0_mm, raster_mm: +p.raster_mm,
+                       art: p.art === "sonder" ? "sonder" : "standard" }));
+}
+
+/**
+ * INNERE Stossfugen des Bodenblechs als absolute x-Positionen in mm — die kumulierten
+ * Rastermasse aus `bodenblechTeile()`. Das Wandende ist kein Stoss (dort endet das Blech
+ * ohnehin), ein einteiliges bzw. Alt-Blech liefert deshalb eine leere Liste.
+ * @param {any} w @returns {number[]}
+ */
+export function bodenblechStoesse(w) {
+  const t = bodenblechTeile(w), out = [];
+  for (let i = 0; i < t.length - 1; i++) out.push(t[i].x0_mm + t[i].raster_mm);
+  return out;
+}
+
 /** Reihenfolge mehrerer Ereignisse auf derselben Hoehe: erst schliessen, dann koppeln, dann neu ansetzen. */
 const ART_RANG = { abschluss: 0, kopplung: 1, fuss: 2, neustart: 3 };
 
@@ -537,6 +577,65 @@ const FARBE = {
   raster: "#8a93a0", oeffnung: "#c9461c", text: "#6b7682",
 };
 
+/**
+ * Bodenblech als REALE TEILFOLGE zeichnen — EIN Zeichenweg fuer alle Ausgaben ([D-4]).
+ *
+ * Genutzt vom Baugruppenbild und vom Wandueberblick (Modul 5) UND von der technischen
+ * Zeichnung (Modul 7, per Import). Damit koennen Teilgrenzen und Stosspositionen
+ * zwischen den Modulen nicht auseinanderlaufen; eine modul-eigene Blechzeichnung waere
+ * genau die zweite Wahrheit, die [A-1]/[D-4] ausschliessen.
+ *
+ * Getragen wird die Unterscheidung Standardteil/Sonderzuschnitt von ZWEI Merkmalen:
+ * der Kennfarbe aus `STUECK_FARBE` (derselbe Schluessel wie beim Stangenzuschnitt) UND
+ * einer Schraffur quer ueber das Teil — sie haelt den Sonderzuschnitt im
+ * Schwarz-Weiss-Ausdruck lesbar. Anders als bei der Brandschutzkennzeichnung liegt sie
+ * NICHT ueber der Wandflaeche, sondern nur im 15-mm-Blechstreifen unter der Wand: sie
+ * verdeckt also nichts vom Ausfuehrungsnoetigen, sie IST die Ausfuehrungsangabe.
+ *
+ * Das 2-mm-Spiel zwischen den realen Bauteilen wird BEWUSST NICHT gezeichnet — bei
+ * 1:50 waeren das 0,04 mm Papier: als Luecke unsichtbar, als Mass irrefuehrend. Der
+ * Stoss ist eine Linie, keine Luecke.
+ *
+ * @param {any} w Wandelement
+ * @param {(x:number)=>number} X Weltkoordinate x (mm) -> Zeichenkoordinate
+ * @param {(z:number)=>number} Y Weltkoordinate z (mm) -> Zeichenkoordinate
+ * @param {number} sc Massstabsfaktor (Zeichenkoordinaten je mm)
+ * @param {number} bth Blechdicke in Zeichenkoordinaten
+ * @param {{n?:(v:number)=>any,rand?:number,stoss?:number,schraffur?:number}} [opts]
+ *        `n` = Zahlenformatierer des aufrufenden Moduls (Modul 7 rundet auf Papier-mm),
+ *        `rand`/`stoss`/`schraffur` = Strichstaerken in Zeichenkoordinaten.
+ */
+export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
+  const n = opts.n || (v => v);
+  const rand = opts.rand != null ? opts.rand : 0.6;
+  const sStoss = opts.stoss != null ? opts.stoss : Math.max(0.8, rand * 2.2);
+  const sSchr = opts.schraffur != null ? opts.schraffur : Math.max(0.4, rand * 0.9);
+  const y0 = Y(0);
+  let s = "";
+  for (const t of bodenblechTeile(w)) {
+    const x = X(t.x0_mm), bw = t.raster_mm * sc;
+    s += `<rect x="${n(x)}" y="${n(y0)}" width="${n(bw)}" height="${n(bth)}" `
+      + `fill="${t.art === "sonder" ? STUECK_FARBE.sonder : FARBE.stahl}" `
+      + `stroke="${FARBE.stahl_rand}" stroke-width="${n(rand)}"/>`;
+    // Nicht farbliches Merkmal des Sonderzuschnitts: Schraffur quer im Streifen.
+    if (t.art === "sonder") {
+      // Abstand am Streifen ausgerichtet, nach unten aber so gekappt, dass auch ein
+      // kurzes Teil bei kleinem Masstab noch mindestens zwei Striche traegt — ein
+      // einzelner Strich waere als Muster nicht erkennbar.
+      const step = Math.min(Math.max(3, bth * 2.5), bw / 3);
+      for (let hx = x + step; hx < x + bw - step * 0.4; hx += step)
+        s += `<line x1="${n(hx)}" y1="${n(y0)}" x2="${n(hx)}" y2="${n(y0 + bth)}" `
+          + `stroke="${FARBE.stahl_rand}" stroke-width="${n(sSchr)}"/>`;
+    }
+  }
+  // Stossfugen an den KUMULIERTEN Rastermassen — nach unten aus dem Streifen heraus
+  // verlaengert, damit sie auch bei duennem Blech sichtbar sind und keinen Stein verdecken.
+  for (const xm of bodenblechStoesse(w))
+    s += `<line x1="${n(X(xm))}" y1="${n(y0)}" x2="${n(X(xm))}" y2="${n(y0 + bth * 1.7)}" `
+      + `stroke="${FARBE.kontur}" stroke-width="${n(sStoss)}"/>`;
+  return s;
+}
+
 /** Konturzug der Wand (Aussenkante inkl. Staffelung) als Punktliste in mm. */
 function _konturPunkte(w) {
   const G = _grid(w), C = _course(w), tl = topLagen(w);
@@ -603,9 +702,12 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   if (ab.art !== "schnitt0")
     s += `<polyline points="${_konturPunkte(w).map(p => X(p[0]) + "," + Y(Math.min(p[1], zTop))).join(" ")}" `
       + `fill="none" stroke="${FARBE.kontur}" stroke-width="1.2" stroke-opacity="0.55"/>`;
-  // Bodenblech
+  // Bodenblech als reale Teilfolge mit Stoessen ([A-10]/[A-11]/[A-12]) — gezeichnet
+  // ueber den gemeinsamen `bodenblechSvg()`, also identisch zu Wandueberblick und
+  // technischer Zeichnung. Alt-Wandelemente ohne `base_plate.teile` ergeben dort
+  // genau ein Teil ueber die volle Laenge und damit die bisherige Vollplatte.
   const bth = Math.max(3, 15 * sc);
-  s += `<rect x="${X(0)}" y="${Y(0)}" width="${L * sc}" height="${bth}" fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="0.6"/>`;
+  s += bodenblechSvg(w, X, Y, sc, bth, { rand: 0.6 });
 
   // Kopfblech-Abschnitte der in diesem Abschnitt abgeschlossenen Straenge
   for (const e of ab.ereignisse) {
@@ -666,7 +768,7 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   // Zuschnitt-Legende — Teil des SVG, damit Vorschau (Modul 5) und Export garantiert
   // dasselbe Bild zeigen. Nur die Arten, die in DIESEM Abschnitt gezeichnet wurden;
   // ohne `stuecke` (Alt-Bundle) entfaellt sie ersatzlos ([D-4]).
-  s += _zuschnittLegende(ab, padL, vbH - 6);
+  s += _zuschnittLegende(w, ab, padL, vbH - 6);
 
   // Kopfzeile
   if (ab.art === "schnitt0") {
@@ -689,11 +791,19 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
  * Legende des Zuschnitts (Stueckarten) fuer ein Baugruppenbild — dieselbe Reihenfolge
  * und dieselben Texte wie in Modul 1 und Modul 7 ([D-4]). Leer, wenn nichts stueckweise
  * gezeichnet wurde.
+ *
+ * Seit der realen Bodenblechzerlegung fuehrt sie zusaetzlich den Blechstoss und — nur
+ * bei tatsaechlich vorhandenem Teil — den Sonderzuschnitt des Bodenblechs samt seinem
+ * NICHT FARBLICHEN Merkmal in Worten. Beides steht ausdruecklich nur dann da, wenn es
+ * auch gezeichnet wurde: eine Kennzeichnung ohne Gegenstand waere derselbe leere
+ * Kasten, den [D-4] schon fuer die Stueckarten ausschliesst.
  */
-function _zuschnittLegende(ab, x0, y) {
+function _zuschnittLegende(w, ab, x0, y) {
   const arten = ["standard", "sonder", "rest"]
     .filter(a => (ab.straenge || []).some(st => (st.stuecke_sicht || []).some(p => p.art === a)));
-  if (!arten.length) return "";
+  const stoss = bodenblechStoesse(w).length > 0;
+  const sonderBlech = bodenblechTeile(w).some(t => t.art === "sonder");
+  if (!arten.length && !stoss && !sonderBlech) return "";
   let lx = x0;
   let s = `<text x="${lx}" y="${y}" font-size="9" fill="${FARBE.text}">Zuschnitt:</text>`;
   lx += 52;
@@ -701,6 +811,20 @@ function _zuschnittLegende(ab, x0, y) {
     s += `<line x1="${lx}" y1="${y - 3}" x2="${lx + 14}" y2="${y - 3}" stroke="${stueckFarbe(a)}" stroke-width="2.6"/>`
       + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${STUECK_LABEL[a]}</text>`;
     lx += 26 + STUECK_LABEL[a].length * 5;
+  }
+  if (stoss) {
+    const t = "Blechstoß";
+    s += `<line x1="${lx + 7}" y1="${y - 8}" x2="${lx + 7}" y2="${y - 0.5}" stroke="${FARBE.kontur}" stroke-width="1.6"/>`
+      + `<text x="${lx + 14}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
+    lx += 22 + t.length * 5;
+  }
+  if (sonderBlech) {
+    const t = `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)`;
+    s += `<rect x="${lx}" y="${y - 7}" width="14" height="6" fill="${STUECK_FARBE.sonder}" `
+      + `stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
+      + `<line x1="${lx + 5}" y1="${y - 7}" x2="${lx + 5}" y2="${y - 1}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
+      + `<line x1="${lx + 10}" y1="${y - 7}" x2="${lx + 10}" y2="${y - 1}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
+      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
   }
   return s;
 }
@@ -775,8 +899,11 @@ export function konturSvg(w, ab = null, vbW = 900, vbH = 250, opts = {}) {
       + `fill="#fff" stroke="${FARBE.oeffnung}" stroke-width="1.1" stroke-dasharray="4 3"/>`;
   s += `<polyline points="${_konturPunkte(w).map(p => X(p[0]) + "," + Y(p[1])).join(" ")}" fill="none" `
     + `stroke="${FARBE.kontur}" stroke-width="1.3"/>`;
+  // Auch der Wandueberblick zeigt die realen Bodenblechteile und ihre Stoesse — sonst
+  // stuende ueber dem Baugruppenbild eine widerspruechliche Vollplatte. Derselbe
+  // gemeinsame Zeichenweg, dieselben kumulierten Stosspositionen.
   const bth = Math.max(2.5, 15 * sc);
-  s += `<rect x="${X(0)}" y="${Y(0)}" width="${L * sc}" height="${bth}" fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`;
+  s += bodenblechSvg(w, X, Y, sc, bth, { rand: 0.5 });
   for (const col of (w.tension_columns || [])) for (const sg of _segmente(w, col))
     s += `<line x1="${X(col.x_mm)}" y1="${Y(sg.z0_mm)}" x2="${X(col.x_mm)}" y2="${Y(sg.z1_mm)}" `
       + `stroke="${FARBE.stange}" stroke-width="0.9" stroke-opacity="0.55"/>`;

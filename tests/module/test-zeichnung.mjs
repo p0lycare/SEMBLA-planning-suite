@@ -21,7 +21,8 @@ import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import { einbauteile, semblaBomItems } from "../../docs/shared/sembla-bom.js";
-import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL } from "../../docs/shared/sembla-montage.js";
+import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
+         bodenblechTeile, bodenblechStoesse, abschnittSvg, montageAbschnitte } from "../../docs/shared/sembla-montage.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
 // #79 NUR als Vergleichsmassstab fuer Wortlaut und Kennfarbe (Drift-Waechter). Der
@@ -715,6 +716,117 @@ ok("Modul 7 bezieht die Blattgeometrie aus dem gemeinsamen Baustein",
 ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   /transform:scale\(var\(--zskala/.test(modul) && /Math\.min\(1,/.test(modul)
   && /transform:none/.test(modul));
+
+// --- Reale Bodenblechteile und ihre Stoesse im Blatt (#91, [A-10]/[A-11]/[A-12]) -------
+// Modul 7 ZEIGT die Zerlegung des Rechenkerns, es leitet keine eigene ab: gezeichnet wird
+// ueber `bodenblechSvg()` aus `sembla-montage.js` — dieselbe Ableitung wie in Modul 5.
+// Geprueft wird am echten Pfad buildWall -> zeichnungSvg und zusaetzlich, dass Vorschau,
+// Druck-HTML und die eigenstaendige SVG-Datei dieselbe Zeichenkette tragen ([D-6]).
+{
+  // Blechrechtecke an der y-Position des Wandfusses; #5b6673 = FARBE.stahl,
+  // #e8702a = STUECK_FARBE.sonder, #13202e = FARBE.kontur (Stosslinie).
+  const rects = (svg) => {
+    const alle = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)"[^>]*fill="(#5b6673|#e8702a)"/g)]
+      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], sonder: m[4] === "#e8702a" }));
+    return alle.length ? alle.filter(r => r.y === alle[0].y) : [];
+  };
+  const stossX = (svg) => {
+    const r = rects(svg);
+    if (!r.length) return [];
+    return [...svg.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="[-\d.]+" y2="[-\d.]+" stroke="#13202e"/g)]
+      .filter(m => +m[2] === r[0].y).map(m => +m[1]).sort((a, b) => a - b);
+  };
+  ok("[D-4] Testfarben sind die kanonischen Werte (Blech, Sonderzuschnitt, Kontur)",
+    Z.FARBE.stahl === "#5b6673" && STUECK_FARBE.sonder === "#e8702a"
+    && Z.FARBE.kontur === "#13202e");
+
+  // (a) Mehrteilig mit ungleichen Teilen: genau die kanonischen Stoesse, keine Modulfugen
+  const WBM = buildWall("Blech-mehr", 4625, 2600, [], null, { blech_lengths_mm: [1250, 1125] });
+  const tM = bodenblechTeile(WBM);
+  ok("[A-10] Testwand hat mehrere Bodenblechteile ungleicher Laenge (Voraussetzung)",
+    tM.length > 2 && new Set(tM.map(t => t.raster_mm)).size > 1);
+  const svgM = Z.zeichnungSvg(WBM, { format: "a3" }).svg;
+  const rM = rects(svgM), scM = rM.length ? rM[0].w / tM[0].raster_mm : 0;
+  ok("Modul 7 zeichnet je Bodenblechteil genau ein Rechteck, in Reihenfolge",
+    rM.length === tM.length
+    && rM.every((r, i) => Math.abs(r.x - (rM[0].x + tM[i].x0_mm * scM)) < 5e-3));
+  ok("[#91] Σ gezeichnete Teilbreiten == Wandlaenge (Rastermass, nicht Bauteilmass)",
+    Math.abs(rM.reduce((a, r) => a + r.w, 0) - WBM.length_mm * scM) < 5e-3
+    && rM.every((r, i) => Math.abs(r.w - tM[i].raster_mm * scM) < 5e-3)
+    && rM.every((r, i) => Math.abs(r.w - (tM[i].raster_mm - 2) * scM) > 1e-9));
+  ok("[A-11] Stosslinien liegen genau an den kumulierten Rastermassen",
+    stossX(svgM).length === bodenblechStoesse(WBM).length
+    && bodenblechStoesse(WBM).every((xm, i) => Math.abs(stossX(svgM)[i] - (rM[0].x + xm * scM)) < 5e-3));
+  ok("[#91] keine fiktiven gleichmaessigen Modulfugen (Stoesse != Vielfache von modul_mm)",
+    bodenblechStoesse(WBM).some(xm => xm % WBM.base_plate.modul_mm !== 0));
+
+  // (b) Modul 5 und Modul 7 zeigen DIESELBE Teilfolge: gleiche Anzahl, gleiche
+  // Sonderarten und gleiche RELATIVE Stosslagen (die Massstaebe sind verschieden).
+  const rel = (r, st) => st.map(x => (x - r[0].x) / r.reduce((a, z) => a + z.w, 0));
+  const abM5 = montageAbschnitte(WBM);
+  const svg5 = abschnittSvg(WBM, abM5[abM5.length - 1], 900, 430);
+  const r5 = rects(svg5);
+  ok("[#91] Modul 5 und Modul 7 zeigen dieselbe Teilfolge und dieselben relativen Stoesse",
+    r5.length === rM.length
+    && r5.every((r, i) => r.sonder === rM[i].sonder)
+    && rel(r5, stossX(svg5)).every((v, i) => Math.abs(v - rel(rM, stossX(svgM))[i]) < 1e-6));
+
+  // (c) Erzwungener Sonderzuschnitt: eigene Position, Farbe UND Schraffur
+  const WBS = buildWall("Blech-sonder", 2000, 2600, [], null, { blech_lengths_mm: [1250] });
+  const tS = bodenblechTeile(WBS);
+  ok("[A-10] erzwungener Sonderzuschnitt am Wandende (Voraussetzung)",
+    tS.length === 2 && tS[1].art === "sonder" && tS[1].x0_mm === 1250 && tS[1].raster_mm === 750);
+  const svgS = Z.zeichnungSvg(WBS, { format: "a3" }).svg;
+  const rS = rects(svgS);
+  ok("Sonderzuschnitt steht an seiner Position und ist farblich gekennzeichnet",
+    rS.length === 2 && !rS[0].sonder && rS[1].sonder
+    && Math.abs(rS[1].x - (rS[0].x + rS[0].w)) < 5e-3);
+  // Nicht farbliches Merkmal: senkrechte Schraffurstriche INNERHALB des Sonderteils —
+  // geprueft wird Geometrie, nicht Farbe, und im Standardteil darf sie nicht vorkommen.
+  const schraffur = (svg, r) =>
+    [...svg.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#3a4350"/g)]
+      .map(m => ({ x1: +m[1], y0: +m[2], x2: +m[3], y1: +m[4] }))
+      .filter(t => t.x1 === t.x2 && t.y1 > t.y0 && t.x1 > r.x && t.x1 < r.x + r.w);
+  ok("[#91] Sonderzuschnitt traegt zusaetzlich ein NICHT FARBLICHES Merkmal (Schraffur)",
+    schraffur(svgS, rS[1]).length >= 2 && schraffur(svgS, rS[0]).length === 0);
+  ok("[D-4] die Legende benennt Blechstoss und Bodenblech-Sonderzuschnitt in Worten",
+    /Blechstoß \(Bodenblech\)/.test(Z.legendeHtml(WBS))
+    && Z.legendeHtml(WBS).includes(`Bodenblech ${STUECK_LABEL.sonder} (schraffiert)`));
+
+  // (d) EIN Zeichenpfad: Vorschau, Druck-HTML und eigenstaendige SVG-Datei sind gleich
+  const blechGruppe = svgS.slice(svgS.indexOf(`fill="${STUECK_FARBE.sonder}"`) - 120,
+                                svgS.indexOf(`fill="${STUECK_FARBE.sonder}"`) + 40);
+  ok("[D-6] Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Blech-Zeichenkette",
+    blechGruppe.length > 40
+    && Z.blattHtml(WBS, eingaben, { format: "a3" }).html.includes(blechGruppe)
+    && Z.zeichnungDokument(WBS, eingaben, { format: "a3" }).includes(blechGruppe)
+    && Z.zeichnungSvgDatei(WBS, eingaben, { format: "a3" }).includes(blechGruppe)
+    && zeichnungHtml(WBS, eingaben, { format: "a3" }).includes(blechGruppe));
+
+  // (e) Alt-Wandelement ohne `teile`: EIN durchgehendes Blech, nichts erfunden
+  const WBA = JSON.parse(JSON.stringify(WBM));
+  delete WBA.base_plate.teile;
+  const svgA = Z.zeichnungSvg(WBA, { format: "a3" }).svg, rA = rects(svgA);
+  ok("Alt-Fall: Blatt zeigt EIN durchgehendes Bodenblech ohne Stosslinie",
+    rA.length === 1 && !rA[0].sonder && stossX(svgA).length === 0
+    && Math.abs(rA[0].w - WBA.length_mm * scM) < 5e-3);
+  ok("Alt-Fall: keine erfundene Blech-Legende (weder Stoss noch Sonderzuschnitt)",
+    !/Blechstoß/.test(Z.legendeHtml(WBA)) && !/Bodenblech Sonderzuschnitt/.test(Z.legendeHtml(WBA)));
+  ok("Alt-Fall: die Legende ohne Argument bleibt zeichengleich zum bisherigen Stand",
+    !/Blechstoß/.test(Z.legendeHtml()) && !/Bodenblech Sonderzuschnitt/.test(Z.legendeHtml()));
+
+  // (f) Nicht-Ziele: Masstab und Kopfblech bleiben unberuehrt
+  ok("[#91] Nicht-Ziel: der Blattmasstab bleibt unveraendert",
+    Z.zeichnungSvg(WBM, { format: "a3" }).masstab === Z.zeichnungSvg(WBA, { format: "a3" }).masstab);
+  ok("[#91] Nicht-Ziel: das Kopfblech bleibt eine Modulfolge je Rasterspalte",
+    (() => {
+      const kopf = (svg) => [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)"[^>]*fill="#5b6673"/g)]
+        .map(m => ({ y: +m[2], w: +m[3] })).filter(r => r.y !== rects(svg)[0].y);
+      const a = kopf(svgM), b = kopf(svgA);
+      return a.length > 1 && a.length === b.length
+        && a.every((r, i) => Math.abs(r.w - b[i].w) < 1e-9 && Math.abs(r.y - b[i].y) < 1e-9);
+    })());
+}
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
