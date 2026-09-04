@@ -2893,5 +2893,119 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
     && !$('modul-grid').innerHTML.includes('geschossplan.html'));
 }
 
+// --- Issue #101: das Wand-Dropdown der Kopfleiste sortiert natuerlich und stabil ---
+// Gemountet wird die ECHTE gemeinsame Navbar gegen einen FRISCHEN echten Storage: nur so
+// steht fest, welche Waende das Dropdown ueberhaupt kennt. Angelegt wird ueber
+// `store.speichere` mit echten, durch kurze Pausen VERSCHIEDENEN Aenderungszeiten — die
+// Speicherreihenfolge ([listeElemente] = neueste zuerst) laeuft dadurch der erwarteten
+// Sichtreihenfolge bewusst entgegen. Gelesen wird die Reihenfolge der gerenderten
+// <option>-Elemente aus dem Kopfleisten-Dropdown.
+{
+  const alt101Storage = globalThis.localStorage;
+  globalThis.localStorage = new MemStorage();
+  // Schemastand des leeren Speichers EINMAL setzen: `mountNavbar` ruft `store.migrieren()`,
+  // und das wuerde einen frischen Speicher spaeter mitten im Aufbau uebernehmen ([L-7]).
+  store.migrieren();
+  const nav101 = new El('sb-nav');
+  const alt101Query = document.querySelector;
+  document.querySelector = (sel) => (sel === '.sb-nav' ? nav101 : null);
+  const warte = () => new Promise(r => setTimeout(r, 3));   // echte, verschiedene Zeitstempel
+
+  const m101 = store.fuegeProjektHinzu('Reihenfolge #101', { geschoss: 'EG', hoehe_mm: 2500 });
+  const gsEg101 = m101.gebaeude[0].geschosse[0].id;
+  const gsOg101 = (() => {
+    const r = MAPPE.fuegeGeschossHinzu(store.holeMappe(), m101.gebaeude[0].id, 'OG');
+    store.setzeMappe(r.mappe);
+    return r.id;
+  })();
+  store.setzeAktivesGeschoss(gsEg101);
+
+  /** Wand anlegen und (optional) einem Geschoss zuordnen — echter Pfad, feste id. */
+  const wand101 = async (id, name, gs) => {
+    store.speichere(name, { name }, id);
+    if (gs) store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gs, { id, name }));
+    await warte();
+    return id;
+  };
+  // Anlagereihenfolge 1 -> 2 -> 10: im Storage steht danach 10, 2, 1 (neueste zuerst).
+  await wand101('w101-1',  'Wand 1',  gsEg101);
+  await wand101('w101-2',  'Wand 2',  gsEg101);
+  await wand101('w101-10', 'Wand 10', gsEg101);
+
+  /** Die sichtbare Reihenfolge des Dropdowns: [{id, name, aktiv}]. */
+  const optionen101 = () => [...String($('sb-active').innerHTML)
+    .matchAll(/<option value="([^"]+)"([^>]*)>([^<]*)<\/option>/g)]
+    .map(m => ({ id: m[1], name: m[3], aktiv: /\bselected\b/.test(m[2]) }));
+  const namen101 = () => optionen101().map(o => o.name).join(',');
+  const ids101 = () => optionen101().map(o => o.id).join(',');
+  const speicher101 = () => store.listeElemente().map(e => e.name).join(',');
+
+  mountNavbar(0);
+  ok('#101 das Dropdown sortiert natuerlich: Wand 1, Wand 2, Wand 10',
+    namen101() === 'Wand 1,Wand 2,Wand 10');
+  ok('#101 Gegenprobe: der Storage liefert dabei die umgekehrte Reihenfolge (neueste zuerst)',
+    speicher101() === 'Wand 10,Wand 2,Wand 1');
+
+  // (b) Auswahl aendert die Reihenfolge nicht — geprueft auf dem automatischen Neuaufbau
+  // ueber store.abonniere UND auf einem frischen Mount.
+  let stabilAuswahl = true, markiert = true;
+  for (const id of ['w101-10', 'w101-1', 'w101-2', 'w101-10']) {
+    store.setzeAktiv(id);                                   // loest den echten Neuaufbau aus
+    if (namen101() !== 'Wand 1,Wand 2,Wand 10') stabilAuswahl = false;
+    if (optionen101().filter(o => o.aktiv).map(o => o.id).join(',') !== id) markiert = false;
+    mountNavbar(0);
+    if (namen101() !== 'Wand 1,Wand 2,Wand 10') stabilAuswahl = false;
+  }
+  ok('#101 ein Wechsel der aktiven Wand veraendert die sichtbare Reihenfolge nicht',
+    stabilAuswahl);
+  ok('#101 markiert ist dabei immer genau die aktive Wand', markiert);
+
+  // (c) Bearbeitung mit neuem Zeitstempel: der Storage ordnet um, das Dropdown nicht.
+  await warte();
+  store.speichere('Wand 2', { name: 'Wand 2', bearbeitet: true }, 'w101-2');
+  mountNavbar(0);
+  ok('#101 die Bearbeitung wandert im Storage nach vorn — Gegenprobe',
+    speicher101() === 'Wand 2,Wand 10,Wand 1');
+  ok('#101 trotz geaenderter Speicherreihenfolge bleibt die Sichtreihenfolge gleich',
+    namen101() === 'Wand 1,Wand 2,Wand 10');
+
+  // (d) Die Filterung nach [L-10] bleibt unveraendert: fremdes Geschoss NEIN,
+  // unverortet JA — und die unverortete Wand wird mitsortiert, nicht angehaengt.
+  await wand101('w101-3', 'Wand 3', gsOg101);               // fremdes Geschoss
+  await wand101('w101-0', 'Wand 0', null);                  // unverortet
+  mountNavbar(0);
+  ok('#101 Filterung erhalten: unverortete Wand dabei, Wand des fremden Geschosses nicht',
+    namen101() === 'Wand 0,Wand 1,Wand 2,Wand 10'
+    && !ids101().includes('w101-3')
+    && store.listeElemente().some(e => e.id === 'w101-3'));
+
+  // (e) Gleiche sichtbare Namen: der Stich ist die unveraenderliche id, nicht die Zeit.
+  await wand101('w101-b', 'Wand 7', gsEg101);
+  await wand101('w101-a', 'Wand 7', gsEg101);
+  mountNavbar(0);
+  const gleich1 = optionen101().filter(o => o.name === 'Wand 7').map(o => o.id).join(',');
+  await warte();
+  store.speichere('Wand 7', { name: 'Wand 7' }, 'w101-b');  // Zeitstempel der spaeteren id
+  mountNavbar(0);
+  const gleich2 = optionen101().filter(o => o.name === 'Wand 7').map(o => o.id).join(',');
+  ok('#101 gleiche Namen sind ueber die stabile id eindeutig geordnet',
+    gleich1 === 'w101-a,w101-b' && gleich2 === gleich1
+    && namen101() === 'Wand 0,Wand 1,Wand 2,Wand 7,Wand 7,Wand 10');
+
+  // (f) Nicht-Ziel: der Storage bleibt unberuehrt — Zusage „neueste zuerst" gilt weiter,
+  // und kein Name/keine id/kein Zeitstempel wurde umgeschrieben.
+  const roh101 = store.listeElemente();
+  ok('#101 store.listeElemente() ordnet weiterhin nach geaendert (absteigend)',
+    roh101.every((e, i) => i === 0 || roh101[i - 1].geaendert >= e.geaendert)
+    && roh101[0].id === 'w101-b');
+  ok('#101 Namen und ids sind unveraendert geblieben',
+    roh101.filter(e => e.id.startsWith('w101-')).length === 7
+    && store.holeElement('w101-10').name === 'Wand 10'
+    && store.holeElement('w101-0').name === 'Wand 0');
+
+  document.querySelector = alt101Query;
+  globalThis.localStorage = alt101Storage;
+}
+
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

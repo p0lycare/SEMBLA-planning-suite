@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-07",
+    datum: "2026-09-04",
+    typ: "fix",
+    issue: 101,
+    titel: "Die Wandauswahl in der Kopfleiste steht fest: Wand 1, Wand 2, Wand 10 statt zuletzt bearbeitet",
+    testbitte: "Mehrere nummerierte Wände eines Geschosses anlegen, im Kopfleisten-Dropdown "
+      + "wechseln und eine davon in Modul 1 bearbeiten: die Reihenfolge bleibt danach "
+      + "dieselbe, und „Wand 2“ steht weiter vor „Wand 10“.",
+  },
+  {
     id: "chg-20260904-06",
     datum: "2026-09-04",
     typ: "intern",

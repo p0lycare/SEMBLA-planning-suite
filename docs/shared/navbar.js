@@ -127,6 +127,13 @@ export function mountNavbar(activeIndex = 0) {
  * des aktiven Geschosses und die (noch) keinem Geschoss zugeordneten. Waende fremder
  * Geschosse fehlen bewusst — sie werden in Modul 0 aktiviert, wo sich ihr Geschoss
  * ausdruecklich aktiv setzen laesst. Es wird nie ein Eltern-Zeiger still mitgesetzt.
+ *
+ * SORTIERT wird ausschliesslich diese ANSICHT (Issue #101): `store.listeElemente()`
+ * liefert nach seiner Zusage die zuletzt GEAENDERTE Wand zuerst — im Dropdown waere
+ * das ein bewegliches Ziel, weil jede Bearbeitung ihre Wand nach vorn zieht. Hier
+ * gilt darum die natuerliche Namensreihenfolge („Wand 2" vor „Wand 10"), zweitrangig
+ * die unveraenderliche `id`. Der Storage bleibt unberuehrt: die Liste ist eine frische
+ * Kopie, und weder Reihenfolgezusage noch `geaendert` werden angetastet.
  */
 function _renderAktiv() {
   _renderPfad();
@@ -137,7 +144,7 @@ function _renderAktiv() {
   const waehlbar = store.listeElemente().filter((e) => {
     const ort = store.wandVerortung(e.id);
     return !ort || (gs && ort.geschoss.id === gs.geschoss.id);
-  });
+  }).sort((a, b) => _natVergleich(a.name, b.name) || _idVergleich(a.id, b.id));
 
   if (!waehlbar.length) {
     host.innerHTML = store.listeElemente().length
@@ -173,6 +180,49 @@ function _renderPfad() {
   host.innerHTML = teil("Projekt", m ? m.projekt.name : null)
     + teil("Geschoss", gs ? gs.geschoss.name : null)
     + teil("Wand", w ? w.name : null);
+}
+
+/**
+ * Natuerlicher Namensvergleich fuer die Wandauswahl (Issue #101): Ziffernfolgen zaehlen
+ * als ZAHL, alles andere zeichenweise. Damit steht „Wand 2" vor „Wand 10".
+ *
+ * BEWUSST von Hand statt `Intl.Collator(…, {numeric:true})`: dessen Ordnung der
+ * Nicht-Ziffern haengt an der ICU-Fassung der Laufzeit — hier soll die Reihenfolge in
+ * jedem Browser und im Test dieselbe sein. Verglichen wird deshalb nur mit `<`/`>` auf
+ * Zeichenwerten (erst kleingeschrieben, dann als Stich in Originalschreibung), nie
+ * gebietsabhaengig. Der Vergleich ist rein und beruehrt keine gespeicherten Daten.
+ * @param {string} a @param {string} b
+ */
+function _natVergleich(a, b) {
+  const bloecke = (s) => String(s == null ? "" : s).match(/\d+|\D+/g) || [];
+  const A = bloecke(a), B = bloecke(b);
+  const n = Math.max(A.length, B.length);
+  for (let i = 0; i < n; i++) {
+    const x = A[i], y = B[i];
+    if (x === undefined) return -1;          // kuerzerer Name zuerst
+    if (y === undefined) return 1;
+    const zx = /^\d/.test(x), zy = /^\d/.test(y);
+    if (zx !== zy) return zx ? -1 : 1;       // Zahl vor Text an derselben Stelle
+    if (zx) {
+      // Ziffernfolge beliebiger Laenge ohne Number() (keine Genauigkeitsgrenze):
+      // Fuehrungsnullen weg, dann laengere Zahl = groessere Zahl.
+      const nx = x.replace(/^0+(?=\d)/, ""), ny = y.replace(/^0+(?=\d)/, "");
+      if (nx.length !== ny.length) return nx.length - ny.length;
+      if (nx !== ny) return nx < ny ? -1 : 1;
+      if (x.length !== y.length) return x.length - y.length;   // „01" vor „001"
+      continue;
+    }
+    const xl = x.toLowerCase(), yl = y.toLowerCase();
+    if (xl !== yl) return xl < yl ? -1 : 1;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/** Stich bei gleichem Namen: die stabile, nie umgeschriebene `id` ([P-1]). */
+function _idVergleich(a, b) {
+  const x = String(a), y = String(b);
+  return x < y ? -1 : (x > y ? 1 : 0);
 }
 
 function _esc(s) {
