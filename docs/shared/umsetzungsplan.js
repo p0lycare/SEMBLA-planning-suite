@@ -24,30 +24,9 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-09-02",
-  "signatur": "02083b0e",
+  "stand": "2026-09-04",
+  "signatur": "3ab61be2",
   "entscheidungen": [
-    {
-      "issue": 81,
-      "titel": "Manuelle Stücklisten-Overrides mit wählbarem Export",
-      "prio": "high",
-      "status": "decision needed",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true,
-      "frage": "Menge, Kommentar samt Exportspalte der Wandebene und die wählbare Mengenfassung sind umgesetzt. Kommentare gelten je Erfassungsebene — sollen zusätzlich Geschoss- oder Projektebene eigene Kommentare bekommen?",
-      "optionen": [
-        {
-          "text": "Nein — Kommentare bleiben eine Angabe der Wandebene.",
-          "wirkung": "Kein neues gespeichertes Feld; der gesamte Issue-Umfang ist damit erledigt und das Issue abschließbar."
-        },
-        {
-          "text": "Ja — eigene Kommentare je Geschoss- oder Projektebene.",
-          "wirkung": "Eigenes Paket mit eigener Speicherstelle außerhalb der Wand-Eingaben; die Gesamtstückliste-Dateien erhalten je Ebene eine eigene Kommentarspalte."
-        }
-      ],
-      "empfehlung": "Nein wählen: die Wandebene deckt die Baustellenangabe ab, und jede weitere Ebene bräuchte eine eigene Speicherstelle ohne erkennbaren Bedarf."
-    },
     {
       "issue": 41,
       "titel": "Fachreview: SEMBLA-Regelwerk korrigieren und offene Regeln bestätigen",
@@ -110,27 +89,6 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Schließen — es gibt keinen offenen Punkt mehr, und getrennte neue Issues bleiben klein und prüfbar."
-    },
-    {
-      "issue": 19,
-      "titel": "Zuschnitt- und Layoutplanung für Platten, Latten und Gewindestangen",
-      "prio": "medium",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false,
-      "frage": "Das Gewindestangen-Slicing ist vollständig umgesetzt; offen ist nur die aus dem Zyklus genommene Platten- und Latten-Zuschnittplanung. Soll das Issue geschlossen werden?",
-      "optionen": [
-        {
-          "text": "Schließen; die Platten- und Latten-Zuschnittplanung wird bei Bedarf im Folgezyklus als neues Issue angelegt.",
-          "wirkung": "Der Backlog trägt keinen Sammelrest mit; der Folgeumfang startet klein geschnitten mit frischem Stand."
-        },
-        {
-          "text": "Offen lassen als Merkposten für den Folgezyklus.",
-          "wirkung": "Der Umfang bleibt sichtbar, das Issue bleibt aber dauerhaft ohne umsetzbaren Anteil im aktuellen Zyklus."
-        }
-      ],
-      "empfehlung": "Schließen — der umsetzbare Anteil ist vollständig erledigt, und ein Folgezyklus-Issue lässt sich sauberer schneiden."
     }
   ],
   "naechstes": {
@@ -143,7 +101,89 @@ export const PLAN = {
     "zyklus": true,
     "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
   },
-  "weitere": [],
+  "weitere": [
+    {
+      "issue": 81,
+      "titel": "Manuelle Stücklisten-Overrides: Mengenübersteuerung auf Geschossebene",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": true,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 20,
+      "titel": "Zyklusrahmen: Aschersleben/AWG-Projekt vollständig begleiten",
+      "prio": "high",
+      "status": "in progress",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 91,
+      "titel": "Bodenblech-Slicing: Standardlängen und Sonderzuschnitte statt durchgehender Platte",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 92,
+      "titel": "Spannsystem: reale Einbaulagen, Sechskantschraube, Überstand ab OK Spannplatte, Unterlegscheibe",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 93,
+      "titel": "Einlegeblech und Zwischenspannung als Bauteil mit Editiermodus und Slicing-Sperrzone",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 94,
+      "titel": "Baugruppen und Sets im Bauteilkatalog mit Auflösung in die flache Stückliste",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 95,
+      "titel": "Deckenanschluss: Verteilung auf Spannachsen, Editiermodus und Winkelbaugruppe",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 96,
+      "titel": "Bodenausgleich: Ausgleichspunkte und Ausgleichsbleche unter dem Bodenblech",
+      "prio": "high",
+      "status": "ready",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 97,
+      "titel": "Zeichnung: schematische Symbole für Spannplatte, Einlegeblech und Deckenanschluss vervollständigen",
+      "prio": "medium",
+      "status": "ready",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    }
+  ],
   "blockiert": [
     {
       "issue": 38,
