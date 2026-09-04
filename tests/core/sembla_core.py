@@ -407,8 +407,10 @@ def _norm_prestress(p):
     # gesetzt und leer heisst: keine Standardlaenge gewaehlt — dann wird keine erfunden.
     _bll = p.get("blech_lengths_mm")
     blech_l = norm_blech_laengen(_bll) if isinstance(_bll, (list, tuple)) else list(BLECH_LAENGEN)
+    # Oberer Anschluss ([A-2], #92): DEFAULT ist die SPANNPLATTE — bit-genau wie der JS-Core.
+    # Kopfblech bleibt waehlbar, muss dafuer aber ausgesprochen werden.
     top = p.get("top_connection")
-    top = top if top in ("spannplatte", "blech") else "blech"
+    top = top if top in ("spannplatte", "blech") else "spannplatte"
     cg = p.get("columns_grid")
     if isinstance(cg, (list, tuple)):
         cg = sorted({int(k) for k in cg if isinstance(k, (int, float)) and int(k) >= 0})

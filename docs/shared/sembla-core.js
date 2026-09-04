@@ -407,7 +407,10 @@ function normPrestress(p) {
   // meldet `keine_standardlaenge` und weist das Bodenblech als Sonderzuschnitt aus.
   const blechExplizit = Array.isArray(p && p.blech_lengths_mm);
   const blechL = blechExplizit ? normBlechLaengen(p.blech_lengths_mm) : BLECH_LAENGEN.slice();
-  const top = (p && (p.top_connection === "spannplatte" || p.top_connection === "blech")) ? p.top_connection : "blech";
+  // Oberer Anschluss ([A-2], #92): DEFAULT ist die SPANNPLATTE. Fehlt das Feld oder traegt es
+  // einen unbekannten Wert, gilt der beschlossene Standard — Kopfblech bleibt waehlbar, muss
+  // dafuer aber AUSGESPROCHEN werden. Ein gespeichertes "blech" wird hier nie umgeschrieben.
+  const top = (p && (p.top_connection === "spannplatte" || p.top_connection === "blech")) ? p.top_connection : "spannplatte";
   // manuelle Spannachsen (Rasterindizes) – wenn gesetzt, exakt diese statt Auto-Verteilung
   let cg = Array.isArray(p && p.columns_grid) ? p.columns_grid.map(Number).filter(k => Number.isInteger(k) && k >= 0) : null;
   cg = (cg && cg.length) ? [...new Set(cg)].sort((a, b) => a - b) : null;

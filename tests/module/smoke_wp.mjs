@@ -294,7 +294,9 @@ ok('höhere Last -> höhere N', Nhi>Nlo);
 // Durchbruch: auf einer SAUBEREN Wand ohne die Tür von oben. Sonst bliebe zwischen Tür und
 // Durchbruch ein 1-Raster-Streifen, der sich mit i2/i3 gar nicht belegen laesst — der Strang
 // dort waere dann wegen des unbelegbaren Streifens segmentiert, nicht wegen der Öffnung.
-WP.applyWand(buildWall('Wand A',2000,2600,[]));
+// Kopfblech-Referenzfall (#92): `top_connection` wird AUSGESPROCHEN, damit die folgenden
+// Abschnitte weiter am Kopfblech messen und nicht am neuen Spannplatten-Default haengen.
+WP.applyWand(buildWall('Wand A',2000,2600,[],null,{top_connection:'blech'}));
 document.getElementById('modus').value='auto'; document.getElementById('modus').dispatch('change');
 // (a) schmaler Durchbruch (eine Zelle, Spalte 3, Lagen 5-6)
 WP.toggleVoid(5,3); WP.toggleVoid(6,3);
@@ -371,6 +373,39 @@ ok('Bodenblech gezeichnet', /Bodenblech/.test(planHtml));
 ok('Reihennummern gezeichnet', (()=>{ for(let r=1;r<=wfr.lagen;r++) if(!planHtml.includes('>'+r+'</text>')) return false; return true; })());
 document.getElementById('topConn').value='spannplatte'; document.getElementById('topConn').dispatch('change');
 ok('Umschaltung Spannplatte wirkt', WP.RESULT.wandelement.prestress.top_connection==='spannplatte' && WP.RESULT.wandelement.top_plate===null);
+document.getElementById('topConn').value='blech'; document.getElementById('topConn').dispatch('change');
+
+// --- Issue #92 / [A-2]: Spannplatte ist der Standard des oberen Anschlusses ----------------
+// Geprueft werden (a) die SICHTBARE Vorauswahl im Markup, (b) der reale Modul-1-Aufbaupfad
+// ohne jede Anschlusswahl bis ins gespeicherte Wandelement und (c) der Bestand: eine Wand mit
+// ausdruecklich gespeichertem `blech` laedt mit Kopfblech und behaelt es beim Neuaufbau.
+// Die Harness-Vorbelegung `dv.topConn` bleibt bewusst 'blech' (Pinnung der uebrigen
+// Kopfblech-Faelle dieser Datei); dieser Abschnitt setzt den Feldwert lokal und stellt ihn
+// danach wieder her.
+{
+  const sel=html.match(/<select id="topConn"[\s\S]*?<\/select>/)[0];
+  const vorauswahl=(sel.match(/<option value="([^"]+)" selected>/)||[])[1];
+  ok('[#92] sichtbare Vorauswahl „Oberer Anschluss" ist die Spannplatte',
+    vorauswahl==='spannplatte' && /<option value="spannplatte" selected>Spannplatte \(Standard\)</.test(sel)
+    && !/<option value="blech" selected/.test(sel));
+  // (b) Realpfad: Feld auf der Vorauswahl -> echter Modul-1-Lauf -> Wandelement im Speicher.
+  document.getElementById('topConn').value=vorauswahl; WP.run();
+  ok('[#92] Neuaufbau ohne Anschlusswahl liefert die Spannplatte (kein Kopfblech)',
+    WP.RESULT.wandelement.prestress.top_connection==='spannplatte'
+    && WP.RESULT.wandelement.top_plate===null
+    && store.aktivesWandelement().prestress.top_connection==='spannplatte');
+  // (c) Bestandswand mit ausdruecklich gespeichertem Kopfblech.
+  const bestand=buildWall('Wand A',2000,2600,[],null,{top_connection:'blech'});
+  ok('[#92] Testvoraussetzung: der Bestand traegt wirklich `blech`',
+    bestand.prestress.top_connection==='blech' && bestand.top_plate!==null);
+  WP.applyWand(bestand);
+  ok('[#92] gespeichertes `blech` laedt als Kopfblech ins Feld',
+    document.getElementById('topConn').value==='blech');
+  ok('[#92] … und bleibt beim Neuaufbau erhalten (keine stille Umschreibung)',
+    WP.RESULT.wandelement.prestress.top_connection==='blech'
+    && WP.RESULT.wandelement.top_plate!==null
+    && store.aktivesWandelement().prestress.top_connection==='blech');
+}
 document.getElementById('topConn').value='blech'; document.getElementById('topConn').dispatch('change');
 
 // Feature: manueller Spannachsen-Editor (Sonderkonstruktion)
@@ -455,7 +490,9 @@ ok('#56 Oeffnung hinzufuegen laesst die gespeicherte Laenge unberuehrt',
   nachOp.length_mm===vorLaenge && nachOp.openings.length===1);
 // Ausgangszustand fuer die folgenden Abschnitte wiederherstellen (glatte 2,00-m-Wand).
 document.getElementById('qk').value='1.00';
-WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[]),{wandtyp:'mit_wind'}));
+// Ebenfalls ausdruecklich Kopfblech (#92): die nachfolgenden Abschnitte messen
+// Kopfblech-Module am aktiven Wandelement.
+WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[],null,{top_connection:'blech'}),{wandtyp:'mit_wind'}));
 
 // ---- Issue #69: linke Eingabespalte ohne statische Anleitungstexte ------------------
 // Geprueft wird der ECHTE linke Bedienbereich der HTML-Quelle — und zwar OHNE Kommentare:
@@ -528,7 +565,9 @@ ok('[#69] lange Bedienhilfen haengen als Tooltip am Bedienelement',
   /id="axisTool"[^>]*title="[^"]+"/.test(LINKS) && /id="addStep"[^>]*title="[^"]+"/.test(LINKS)
   && /id="startAchse"[^>]*title="[^"]+"/.test(LINKS) && /id="topConn"[^>]*title="[^"]+"/.test(LINKS));
 WP.setManualCols(null);   // Achsen-Editor hinterlaesst keinen Zustand fuer die naechsten Abschnitte
-WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[]),{wandtyp:'mit_wind'}));
+// Ebenfalls ausdruecklich Kopfblech (#92): die nachfolgenden Abschnitte messen
+// Kopfblech-Module am aktiven Wandelement.
+WP.applyWand(Object.assign(buildWall('Alt',2000,2600,[],null,{top_connection:'blech'}),{wandtyp:'mit_wind'}));
 
 // ---- Issue #35: Produkte dieser Wand (echte Modul-1-Oberfläche) ----------------------
 // Modul 1 wählt DIREKT aus dem vollständigen Katalog; es gibt keinen Freigabepool in Modul 0.

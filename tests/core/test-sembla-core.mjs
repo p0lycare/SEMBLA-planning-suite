@@ -322,6 +322,21 @@ t("[A-11] `blech_mm` bleibt allein die Kopfblech-Modullaenge", () => {
   assert(blechKurz(a) === blechKurz(b), "Bodenblech unabhaengig von blech_mm");
   assert(b.top_plate.module === 6 && a.top_plate.module === 3, "Kopfblech folgt blech_mm");
 });
+// [A-2]/#92: DEFAULT ist die Spannplatte. Geprueft werden alle Faelle nebeneinander —
+// fehlend, leer, ungueltig und ausdruecklich `blech`. Das Python-Orakel traegt denselben
+// Default (`sembla_core.py`), sodass die Paritaetsfixtures unveraendert bleiben.
+t("[A-2] oberer Anschluss: Default Spannplatte, `blech` nur ausgesprochen", () => {
+  const fehlt = buildWall("a2f", 2000, 2600, []);
+  const leer = buildWall("a2l", 2000, 2600, [], null, {});
+  const falsch = buildWall("a2x", 2000, 2600, [], null, { top_connection: "kopfblech" });
+  const blech = buildWall("a2b", 2000, 2600, [], null, { top_connection: "blech" });
+  for (const w of [fehlt, leer, falsch]) {
+    assert(w.prestress.top_connection === "spannplatte", w.name + ": " + w.prestress.top_connection);
+    assert(w.top_plate === null, w.name + ": kein Kopfblech");
+  }
+  assert(blech.prestress.top_connection === "blech" && blech.top_plate !== null,
+    "ausdruecklich gewaehltes Kopfblech bleibt erhalten");
+});
 // Gegenfall der Abnahme: die frueher benutzte Tiefensuche nahm einen Sonderabschluss als
 // Erfolg und brach damit im ersten grossen Ast ab — 1000+625+625+250S —, obwohl 4 x 625 exakt
 // deckt. [A-10] verlangt: existiert IRGENDEINE exakte Standardkombination, entsteht KEIN

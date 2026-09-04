@@ -157,7 +157,7 @@
       <label><span>Kopfblech-Modullänge</span><input type="number" id="blechCm" value="100" step="10" min="20"
         title="Modullänge des KOPFBLECHS an der Wandoberkante. Das Bodenblech hängt nicht daran: es wird aus den im Katalog gewählten Standardlängen zusammengesetzt ([A-10]) — Rolle „Bodenblech“ unten."><small>cm</small></label>
       <label><span>Oberer Anschluss</span><select id="topConn"
-        title="Fuß immer Bodenblech (15 mm). Kopf wahlweise Kopfblech-Module oder Spannplatten auf der Steinkante."><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte</option></select></label>
+        title="Fuß immer Bodenblech (15 mm). Kopf wahlweise Spannplatten auf der Steinkante (Standard) oder Kopfblech-Module."><option value="blech">Kopfblech</option><option value="spannplatte" selected>Spannplatte (Standard)</option></select></label>
       <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"
         title="Überstand des Reststücks über die Wandoberkante (Platz für Kopfblech/Spannplatte und Spannmutter)."><small>mm</small></label>
       <div class="lockhint" id="rodRestQuelle"></div>
@@ -338,7 +338,8 @@ function vorgaben(){
   if(blechL.length) hw.blech_lengths_mm=blechL;
   // Reine KOPFBLECH-Modullänge ([A-10]: das Bodenblech hängt nicht mehr daran).
   const blech_mm=Math.max(200, Math.round((+$('blechCm').value||100)*10));
-  const top_connection=($('topConn').value==='spannplatte')?'spannplatte':'blech';
+  // [A-2]/#92: Standard ist die SPANNPLATTE — Kopfblech nur, wenn es ausdruecklich gewaehlt ist.
+  const top_connection=($('topConn').value==='blech')?'blech':'spannplatte';
   const start_axis_grid=(+$('startAchse').value===1)?1:0;               // 1. (Standard) oder 2. Rasterachse
   if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, ...hw, blech_mm, top_connection, start_axis_grid };
   else v.prestress={ ...hw, blech_mm, top_connection, start_axis_grid };   // Auto-Modus: N/Abstand optimiert die Engine

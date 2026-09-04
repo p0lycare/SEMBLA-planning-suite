@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-08",
+    datum: "2026-09-04",
+    typ: "feature",
+    issue: 92,
+    titel: "Neue Wände schließen oben standardmäßig mit der Spannplatte ab; Kopfblech bleibt wählbar",
+    testbitte: "Im Geschosseditor eine neue Wand zeichnen und in Modul 1 öffnen: „Oberer "
+      + "Anschluss“ steht auf „Spannplatte (Standard)“. Eine bestehende Wand mit Kopfblech "
+      + "öffnen: sie behält das Kopfblech auch nach dem Neuberechnen.",
+  },
+  {
     id: "chg-20260904-07",
     datum: "2026-09-04",
     typ: "fix",

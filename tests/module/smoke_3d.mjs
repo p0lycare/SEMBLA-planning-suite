@@ -50,7 +50,9 @@ globalThis.requestAnimationFrame=()=>0; globalThis.alert=m=>{globalThis.__alert=
 globalThis.Blob=class{constructor(parts){this.parts=parts;}}; globalThis.URL.createObjectURL=()=>'blob:x'; globalThis.URL.revokeObjectURL=()=>{};
 
 // --- Shared via window.SEMBLA (wie im Browser) ---
-const W  = buildWall('IW-01', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}});
+// Kopfblech-Referenzfall (#92): seit dem Spannplatten-Default ([A-2]) wird `top_connection`
+// hier AUSGESPROCHEN — die Kopfblech-Pruefungen unten messen genau diesen Fall weiter.
+const W  = buildWall('IW-01', 3000, 2600, [new Opening(4,8,0,10,'tuer')], {vorne:{funktion:'fassade'},hinten:{funktion:'innenausbau'}}, {top_connection:'blech'});
 const WF = buildWall('Fensterwand', 5000, 2600, [new Opening(6,12,3,9,'fenster')]);
 
 // Storage-Mock inkl. OBJ-Schicht (setzeObj/holeObj/loescheObj)
@@ -135,7 +137,8 @@ ok('Store-Sync: neues aktives Element geladen', A.wall && A.wall.length_mm===500
     segR[0].x0_mm===0 && segR[0].x1_mm===W.length_mm && segR[0].hoehe_mm===W.height_mm);
 
   // Musterwand AWG: vier Hoehen 2600/2200/1800/1400
-  const W4=buildWall('AWG vier Stufen',4000,2600,[],null,null,[
+  // Ebenfalls ausdruecklich Kopfblech (#92).
+  const W4=buildWall('AWG vier Stufen',4000,2600,[],null,{top_connection:'blech'},[
     {x0_mm:1000,x1_mm:2000,height_mm:2200},
     {x0_mm:2000,x1_mm:3000,height_mm:1800},
     {x0_mm:3000,x1_mm:4000,height_mm:1400}]);

@@ -91,8 +91,11 @@ function egVoll(){
 // Dichtstreifen. Damit bleiben alle bestehenden Dicht-Pruefungen unten der Nachweis, dass sich
 // fuer eine abgedichtete Wand Mengen und Preise nicht geaendert haben; der Gegenfall steht als
 // eigener Block am Ende (Wand ohne Feld und Wand mit ausdruecklichem „nicht abgedichtet“).
-const W=Object.assign(buildWall('Testwand', 2000, 2600, [new Opening(5,11,0,10,'tuer')]),
-  { abdichtung:'abgedichtet' });
+// Kopfblech-Referenzfall (#92): seit dem Spannplatten-Default ([A-2]) wird `top_connection`
+// hier AUSGESPROCHEN — die Blech-Pruefungen unten messen weiter den Kopfblech-Fall (der
+// Spannplatten-Fall steht unveraendert als eigener Block „Menge 0 braucht kein Produkt“).
+const W=Object.assign(buildWall('Testwand', 2000, 2600, [new Opening(5,11,0,10,'tuer')],
+  null, {top_connection:'blech'}), { abdichtung:'abgedichtet' });
 // `_name` ist der Name des WANDEINTRAGS (#70) — getrennt von `_we.name`, genau wie im echten
 // Speicher: `storage.umbenennen()` aendert nur den Eintrag, nie das gerechnete Wandelement.
 // Standard `null` = kein Eintragsname, damit alle Altpruefungen weiter den Wandelementnamen sehen.
