@@ -1149,7 +1149,7 @@ ok('Kennzeichnung „vorläufig" ueberlebt die Persistenz',
 ok('geladene Produkte tragen die Produktvorgaben der Suite',
   KAT.produkt(kat(), 'stein-i3-375').preis === 9.5 && KAT.produkt(kat(), 'stein-i2-250').preis === 7.2
   && KAT.produkt(kat(), 'gewindestange-m10-1000').laenge_mm === 1000);
-// [P-18] Der Standardkatalog macht die Suite startklar: Standardlaengen 1000/850, EIN Reststueck
+// [P-18] Der Standardkatalog macht die Suite startklar: Standardlaengen 1000/920, EIN Reststueck
 // 100 mm, EINE Kopplungsmutter fuer Stoß und Fuß, und jede waehlbare Rolle ist vorbelegt.
 ok('Standardkatalog belegt jede waehlbare Verwendungsstelle vor ([P-18])',
   KAT.rollenOhneVorschlag(kat()).length === 0);
@@ -2628,7 +2628,7 @@ globalThis.fetch = echtesFetch;
     && neueStaende.every(v => !JSON.stringify(JSON.parse(v)[idZ]).includes('1100')));
   ok('#15 schon der erste geschriebene Stand traegt Kataloglaengen und Reststueck',
     JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_rest_mm === 100
-    && JSON.stringify(JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_lengths_mm) === '[1000,850]');
+    && JSON.stringify(JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_lengths_mm) === '[1000,920]');
   ok('[P-18] und im selben Stand stehen bereits die vorbelegten Verwendungsstellen',
     (JSON.parse(neueStaende[0])[idZ].eingaben?.planung?.produkte?.rollen?.rod_std || []).length === 2);
   ok('#15 der Anlagepfad benennt den Zuschnitt genau einmal — nie einen Zwischenstand',
@@ -2638,14 +2638,14 @@ globalThis.fetch = echtesFetch;
   ok('#15 der geladene Katalog belegt die Verwendungsstellen vor ([P-18])',
     !!store.holeKatalog() && store.holeProdukte(1, idZ).rollen.rod_std.length === 2);
   ok('#15 das unmittelbar gespeicherte JSON traegt die Kataloglaengen',
-    JSON.stringify(wZ.prestress.rod_lengths_mm) === '[1000,850]' && wZ.rod_mm === 1000);
+    JSON.stringify(wZ.prestress.rod_lengths_mm) === '[1000,920]' && wZ.rod_mm === 1000);
   ok('#15 [Z-6] das Reststueck steht in der Vorspannung und oben in den Stuecken',
     wZ.prestress.rod_rest_mm === 100
     && wZ.tension_columns.every(c => c.segments.every(sg =>
          sg.z1_mm !== wZ.height_mm || sg.stuecke[sg.stuecke.length - 1].art === 'rest')));
   ok('#62 keine erfundene 1100-mm-Stange im gespeicherten Stand',
     !JSON.stringify(wZ).includes('1100')
-    && stuecke(wZ).every(s => s.len_mm === 1000 || s.len_mm === 850 || s.art !== 'standard'));
+    && stuecke(wZ).every(s => s.len_mm === 1000 || s.len_mm === 920 || s.art !== 'standard'));
   ok('#62 Baustellenstueckliste und Zeichnung leiten OHNE Modul 1 denselben Satz ab',
     BOM.einbauteile(wZ).length === stuecke(wZ).length
     && BOM.semblaBomItems(wZ).filter(p => /^rod_/.test(p.key) && p.menge > 0)

@@ -40,12 +40,12 @@
     {
       "id": "gewindestange-m10-850",
       "kategorie": "gewindestange",
-      "bezeichnung": "Gewindestange M10 850 mm (8.8) (vorläufig)",
+      "bezeichnung": "Gewindestange M10 920 mm (8.8) (vorläufig)",
       "einheit": "Stk",
       "preis": 3.3,
       "gewinde": "M10",
       "guete": "8.8",
-      "laenge_mm": 850,
+      "laenge_mm": 920,
       "rollen": ["rod_std"],
       "hinweis": "vorläufig — fachlich unbestätigt: zweite Standardlänge des Vorratssatzes, Preis frei angenommen."
     },

@@ -444,8 +444,31 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   const v = KAT.produktrollenVorschlag(std);
   ok("Standardkatalog ist gueltig und belegt JEDE waehlbare Rolle vor ([P-18])",
     KAT.rollenOhneVorschlag(std).length === 0);
-  ok("Standardkatalog fuehrt die Standardlaengen 1000 und 850 mm",
-    (v.rod_std || []).map((id) => KAT.produkt(std, id).laenge_mm).sort((a, b) => b - a).join() === "1000,850");
+  ok("Standardkatalog fuehrt die Standardlaengen 1000 und 920 mm",
+    (v.rod_std || []).map((id) => KAT.produkt(std, id).laenge_mm).sort((a, b) => b - a).join() === "1000,920");
+
+  // --- #103 Die zweite Standardlaenge ist 920 mm ------------------------------------------
+  // Geprueft wird am AUSGELIEFERTEN Datensatz derselben Datei, die der Browser laedt: der Wert
+  // UND die sichtbare Bezeichnung muessen 920 nennen. Eine Bezeichnung, die noch 850 nennt,
+  // waere eine zweite, falsche Maßangabe neben `laenge_mm` — genau der Drift aus [P-6].
+  const gs920 = (v.rod_std || []).map((id) => KAT.produkt(std, id))
+    .find((pr) => +pr.laenge_mm === 920);
+  ok("#103 die zweite Standardlaenge der Vorlage ist 920 mm", !!gs920);
+  ok("#103 die sichtbare Bezeichnung nennt 920 mm und nirgends mehr 850",
+    !!gs920 && /\b920 mm\b/.test(gs920.bezeichnung) && !/850/.test(gs920.bezeichnung));
+  ok("#103 keine Produktbezeichnung der Vorlage nennt noch 850",
+    std.produkte.every((pr) => !/850/.test(pr.bezeichnung || "")));
+  // Fachattribute bleiben unveraendert: Rolle, Gewinde, Guete, Kategorie, Einheit, Preis.
+  ok("#103 Rolle rod_std, M10 und Guete 8.8 sind unveraendert",
+    !!gs920 && (gs920.rollen || []).includes("rod_std")
+    && gs920.gewinde === "M10" && gs920.guete === "8.8"
+    && gs920.kategorie === "gewindestange" && gs920.einheit === "Stk" && +gs920.preis === 3.3
+    && KAT.validiereProdukt(gs920).length === 0);
+  // Die Aenderung ist ein DATENWERT, keine neue Rolle: es bleiben genau zwei Standardlaengen.
+  ok("#103 rod_std fuehrt weiterhin genau zwei Standardlaengen",
+    (v.rod_std || []).length === 2
+    && KAT.standardLaengen({ planung: { produkte: { rollen: { rod_std: v.rod_std } } } }, std,
+      "rod_std").laengen_mm.join() === "1000,920");
   ok("Standardkatalog fuehrt genau EIN Reststueck mit 100 mm ([Z-6])",
     (v.rod_rest || []).length === 1 && KAT.produkt(std, v.rod_rest[0]).laenge_mm === 100);
   ok("Standardkatalog fuehrt nur EINE Kopplungsmutter (keine Fuß-Sonderausfuehrung)",

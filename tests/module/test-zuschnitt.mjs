@@ -414,8 +414,9 @@ console.log("\n[Z-6] Standardkatalog:");
   const gs = kat.produkte.filter(p => p.kategorie === "gewindestange");
   ok("Standardkatalog laesst sich unveraendert parsen", kat.produkte.length > 0);
   ok("enthaelt ein Reststueck-Produkt (100 mm)", gs.some(p => +p.laenge_mm === 100));
-  ok("enthaelt die Standardlaengen 1000 und 850 mm",
-    gs.some(p => +p.laenge_mm === 1000) && gs.some(p => +p.laenge_mm === 850));
+  ok("enthaelt die Standardlaengen 1000 und 920 mm (#103)",
+    gs.some(p => +p.laenge_mm === 1000) && gs.some(p => +p.laenge_mm === 920)
+    && !gs.some(p => +p.laenge_mm === 850));
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

@@ -2258,11 +2258,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#62 zu KEINEM Zeitpunkt stand ein 1100-mm-Zwischenstand dieser Wand im Speicher',
     staendeDieserWand.length > 0 && staendeDieserWand.every(e => !JSON.stringify(e).includes('1100')));
   ok('#15 schon der erste geschriebene Stand traegt Kataloglaengen, Reststueck und Rollen',
-    JSON.stringify(JSON.parse(neueStaende[0])[idMit].wandelement.prestress.rod_lengths_mm) === '[1000,850]'
+    JSON.stringify(JSON.parse(neueStaende[0])[idMit].wandelement.prestress.rod_lengths_mm) === '[1000,920]'
     && JSON.parse(neueStaende[0])[idMit].wandelement.prestress.rod_rest_mm === 100
     && (JSON.parse(neueStaende[0])[idMit].eingaben?.planung?.produkte?.rollen?.rod_std || []).length === 2);
   ok('#15 die gezeichnete Wand traegt sofort die Kataloglaengen',
-    JSON.stringify(wMit.prestress.rod_lengths_mm) === '[1000,850]' && wMit.rod_mm === 1000);
+    JSON.stringify(wMit.prestress.rod_lengths_mm) === '[1000,920]' && wMit.rod_mm === 1000);
   ok('#15 [Z-6] samt Reststueck am oberen Wandabschluss',
     wMit.prestress.rod_rest_mm === 100
     && wMit.tension_columns.every(c => c.segments.every(sg =>
@@ -2284,7 +2284,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   const zurueckMit = store.holeElement(idMit);
   ok('… und Wiederholen stellt genau den katalogbasierten Stand wieder her',
     !!zurueckMit
-    && JSON.stringify(zurueckMit.wandelement.prestress.rod_lengths_mm) === '[1000,850]'
+    && JSON.stringify(zurueckMit.wandelement.prestress.rod_lengths_mm) === '[1000,920]'
     && zurueckMit.wandelement.prestress.rod_rest_mm === 100);
 }
 

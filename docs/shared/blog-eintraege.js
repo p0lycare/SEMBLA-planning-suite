@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-11",
+    datum: "2026-09-04",
+    typ: "fix",
+    issue: 103,
+    titel: "Standardkatalog: die zweite Gewindestange ist jetzt 920 mm lang und heißt auch so",
+    testbitte: "In Modul 0 „Standardkatalog laden“ und den Katalog öffnen: die zweite "
+      + "M10-Gewindestange nennt 920 mm als Länge und in der Bezeichnung; eigene Kataloge "
+      + "bleiben unverändert.",
+  },
+  {
     id: "chg-20260904-10",
     datum: "2026-09-04",
     typ: "fix",
