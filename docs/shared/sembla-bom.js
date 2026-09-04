@@ -20,8 +20,11 @@
  * erfunden — der Rechenkern kennt dort keine Einzelteil-Identität ([P-9]).
  *
  * Boden- und Kopfblech werden hier aus den realen Platten (`base_plate`/`top_plate`)
- * in getrennte Positionen aufgeteilt ([A-1]); der Rechenkern bleibt unverändert und
- * aggregiert sie weiter in `bom.stahlblech_module` (Summe bleibt identisch).
+ * in getrennte Positionen aufgeteilt ([A-1]). Das BODENBLECH kommt seit #91 als reale
+ * Teilliste aus dem Rechenkern (`base_plate.teile`, [A-10]/[A-11]/[A-12]) und steht je
+ * Standardlänge bzw. je Sonder-Fertigmaß als eigene Position — abgeleitet, nie nachgerechnet.
+ * Das Kopfblech bleibt eine Modulzählung. `bom.stahlblech_module` bleibt als Aggregat
+ * erhalten (Anzahl Bodenblechteile + Kopfblechmodule).
  *
  * Eigene Datei (shared/-Regel b): mehrere mögliche Nutzer (Modul 4 Stückliste)
  * und eigene Tests (`test-shared.mjs` prüft gegen die Core-BOM). Früher lag der
@@ -207,6 +210,27 @@ export function semblaBom(w) {
   const blechBoden = bpModule != null
     ? bpModule
     : Math.min(blechModule, Math.ceil((w.length_mm || 0) / blechModulMm));
+  // [A-10]/[A-12] Bodenblech-TEILE: der Rechenkern fuehrt die realen Bleche je Wand
+  // (`base_plate.teile` mit Rastermass und Bauteilmass). Hier wird NUR abgeleitet: gleiche
+  // Teile werden zu je einer Position gefaltet — je Standardlaenge eine, je Sonder-Fertigmass
+  // eine. Fehlt die Teilliste (Alt-Bundle, gespeichertes Wandelement vor #91), bleibt es bei
+  // der bisherigen EINEN Position aus der Modulzahl; es wird nichts nachgerechnet und nichts
+  // erfunden.
+  const bpTeile = (w.base_plate && Array.isArray(w.base_plate.teile)) ? w.base_plate.teile : null;
+  let blechBodenTeile = null;
+  if (bpTeile) {
+    const grp = new Map();
+    for (const t of bpTeile) {
+      const art = t.art === "sonder" ? "sonder" : "standard";
+      const raster = +t.raster_mm, bauteil = +t.bauteil_mm;
+      const k = art + "@" + raster;
+      if (!grp.has(k)) grp.set(k, { art, raster_mm: raster, bauteil_mm: bauteil, anzahl: 0 });
+      grp.get(k).anzahl += 1;
+    }
+    // Deterministische Reihenfolge: Standardlaengen absteigend, danach die Sonderzuschnitte.
+    blechBodenTeile = [...grp.values()].sort((a, b2) =>
+      (a.art === b2.art ? b2.raster_mm - a.raster_mm : (a.art === "standard" ? -1 : 1)));
+  }
   const blechKopf = ("top_plate" in (w || {}))
     ? ((w.top_plate && Number.isFinite(+w.top_plate.module)) ? +w.top_plate.module : 0)
     : Math.max(0, blechModule - blechBoden);
@@ -218,7 +242,7 @@ export function semblaBom(w) {
            senkkopfschrauben: senkkopf, kopplungsmuttern_basis: kopplBasis,
            spannplatten, spannmuttern,
            stahlblech_module: blechModule, stahlblech_module_boden: blechBoden,
-           stahlblech_module_kopf: blechKopf,
+           stahlblech_module_kopf: blechKopf, blech_boden_teile: blechBodenTeile,
            stahlblech_mm: blechMm, stahlblech_dicke_mm: blechDicke,
            stossfugen, dichtstreifen_mm: dichtMm };
 }
@@ -299,7 +323,24 @@ export function semblaBomItems(w) {
     { key: "senkkopf",    label: "Senkkopfschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
     { key: "spannmutter", label: "Spannmutter",                       unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
-    { key: "blech_boden", label: "Bodenblech-Modul (" + bd + " mm)",  unit: "Stk", menge: b.stahlblech_module_boden },
+    // [A-10]/[A-12] Bodenblech: je verwendeter Standardlänge und je Sonder-Fertigmaß eine
+    // eigene Position — keine Modulzählung mehr. `mass_mm` ist das RASTERMASS (der
+    // Preis-Diskriminator gegen das Katalogprodukt nach [P-14]), `fertigmass_mm` das reale
+    // BAUTEILMASS (Rastermaß − 2 mm). Das Bauteilmaß ist damit ausgewiesen UND macht die
+    // Positionskennung nach [P-20] je Länge eindeutig. Der Sonderzuschnitt trägt seine eigene
+    // Rolle (`blech_boden_sonder`, nicht wählbar, nicht bepreist — wie `rod_sonder`).
+    ...(b.blech_boden_teile
+      ? b.blech_boden_teile.map(t => t.art === "sonder"
+        ? { key: "blech_boden_sonder",
+            label: "Bodenblech Sonderzuschnitt " + _semNum(t.bauteil_mm) + " mm (Raster "
+              + _semNum(t.raster_mm) + " mm, " + bd + " mm)",
+            unit: "Stk", menge: t.anzahl, mass_mm: t.raster_mm, fertigmass_mm: t.bauteil_mm }
+        : { key: "blech_boden",
+            label: "Bodenblech " + _semNum(t.raster_mm) + " mm (Bauteilmaß "
+              + _semNum(t.bauteil_mm) + " mm, " + bd + " mm)",
+            unit: "Stk", menge: t.anzahl, mass_mm: t.raster_mm, fertigmass_mm: t.bauteil_mm })
+      : [{ key: "blech_boden", label: "Bodenblech-Modul (" + bd + " mm)", unit: "Stk",
+           menge: b.stahlblech_module_boden }]),
     { key: "blech_kopf",  label: "Kopfblech-Modul (" + bd + " mm)",   unit: "Stk", menge: b.stahlblech_module_kopf },
     // Nur bei abgedichteter Wand — an unveraenderter Stelle in der Liste ([A-6]/#71).
     ...(_abgedichtet(w) ? [

@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-09-04",
-  "signatur": "82bb3fb7",
+  "signatur": "591c7ef0",
   "entscheidungen": [
     {
       "issue": 41,
@@ -115,7 +115,7 @@ export const PLAN = {
       "issue": 91,
       "titel": "Bodenblech-Slicing: Standardlängen und Sonderzuschnitte statt durchgehender Platte",
       "prio": "high",
-      "status": "ready",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-02",
+    datum: "2026-09-04",
+    typ: "feature",
+    issue: 91,
+    titel: "Stückliste: das Bodenblech steht jetzt als reale Blechteile je Standardlänge statt als Modulzahl",
+    testbitte: "In Modul 1 eine 5 m lange Wand planen, dann Modul 4 öffnen: das Bodenblech "
+      + "steht je Standardlänge als eigene Zeile mit Rastermaß und Bauteilmaß, keine "
+      + "Blechfuge auf einer Steinfuge der untersten Reihe.",
+  },
+  {
     id: "chg-20260904-01",
     datum: "2026-09-04",
     typ: "feature",

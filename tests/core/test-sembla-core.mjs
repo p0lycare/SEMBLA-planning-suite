@@ -7,6 +7,7 @@ import {
   GRID, ROD, CHAMBER_OFFSET, MAX_SPAN_GRID, FORBIDDEN_N,
   InvalidDimensionError, InvalidOpeningError,
   kombiniereLaengen, quelleFuerMass,
+  zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
 } from "../../docs/shared/sembla-core.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -259,6 +260,102 @@ t("Fallback ohne Laengensatz ist bit-genau der Altstand", () => {
     assert(sg.gewindestangen === st && sg.letzte_stange_mm === h - (st - 1) * ROD
       && sg.verschnitt_mm === st * ROD - h, "h=" + h);
   }
+});
+
+// ---- Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]) ----
+// DIESELBEN Faelle stehen wortgleich in test_sembla_core.py — sie sind der Paritaetsvertrag
+// der Bodenblech-Zerlegung zwischen Betriebskopie und Python-Orakel.
+console.log("BODENBLECH [A-10]/[A-11]/[A-12] (Paritaetsvertrag mit dem Python-Orakel):");
+const blechKurz = (w) => w.base_plate.teile
+  .map(tl => tl.raster_mm + "/" + tl.bauteil_mm + (tl.art === "sonder" ? "S" : "")).join("+");
+t("[A-10] Fallback ist die volle Standardreihe 375…1250 mm", () => {
+  const w = buildWall("bb", 5000, 2600, []);
+  assert(JSON.stringify(w.prestress.blech_lengths_mm) === JSON.stringify(BLECH_LAENGEN),
+    JSON.stringify(w.prestress.blech_lengths_mm));
+  assert(JSON.stringify(normBlechLaengen([1250, 300, 1500, 1000, 1000, 0]))
+    === "[1250,1000]", "nur Vielfache von 125 im Bereich 375…1250");
+});
+t("[A-10]/[A-11] 5000-mm-Wand: nur Standardteile, Summe = Wandlaenge, stossfrei", () => {
+  const w = buildWall("bb5", 5000, 2600, []);
+  assert(blechKurz(w) === "1125/1123+1125/1123+1125/1123+1125/1123+500/498", blechKurz(w));
+  assert(w.base_plate.teile.every(tl => tl.art === "standard"), "nur Standardlaengen");
+  assert(w.base_plate.teile.reduce((a, tl) => a + tl.raster_mm, 0) === 5000, "Summe");
+  assert(w.base_plate.module === 5 && w.bom.stahlblech_module === 5 + w.top_plate.module, "Aggregat");
+  assert(w.validation.blech_konflikte.length === 0, "keine Konflikte");
+  // Das Ausweichen ist echt: 4x1250 waere groesser, liegt aber auf dem Steinstoss bei Raster 10.
+  const fugen = new Set(w.courses[0].joints_grid);
+  assert(fugen.has(10), "Gegenprobe: Raster 10 IST ein Steinstoss");
+  let x = 0;
+  for (const tl of w.base_plate.teile) { x += tl.raster_mm;
+    assert(x >= 5000 || !fugen.has(x / GRID), "Stoss auf Steinstoss bei " + x); }
+});
+t("[A-12] jedes Teil fuehrt Rastermass und Bauteilmass (Rastermass - 2 mm)", () => {
+  for (const L of [1000, 2000, 3000, 5000, 250]) {
+    const w = buildWall("bbm", L, 2600, []);
+    assert(w.base_plate.teile.every(tl => tl.bauteil_mm === tl.raster_mm - BLECH_SPIEL), "L=" + L);
+    assert(w.base_plate.teile.every(tl => tl.raster_mm % GRID === 0), "Raster L=" + L);
+  }
+});
+t("[A-11] kein stossfreies Ausweichen moeglich -> deterministisch + benannter Konflikt", () => {
+  const w = buildWall("bb1250", 5000, 2600, [], null, { blech_lengths_mm: [1250] });
+  assert(blechKurz(w) === "1250/1248+1250/1248+1250/1248+1250/1248", blechKurz(w));
+  assert(JSON.stringify(w.validation.blech_konflikte)
+    === '[{"grund":"stoss_auf_steinstoss","x_mm":1250,"grid":10}]',
+    JSON.stringify(w.validation.blech_konflikte));
+  assert(w.validation.buildable, "kein Baubarkeitsausschluss");
+});
+t("[A-10] nicht deckbare Laenge -> genau EIN gekennzeichneter Sonderzuschnitt", () => {
+  const w = buildWall("bbs", 250, 2600, []);
+  assert(blechKurz(w) === "250/248S", blechKurz(w));
+  assert(w.base_plate.teile.filter(tl => tl.art === "sonder").length === 1, "genau einer");
+  assert(w.validation.blech_konflikte.length === 0 && w.validation.buildable, "kein Konflikt");
+});
+t("[A-10] ausdruecklich leerer Vorratssatz: gemeldet, keine Laenge erfunden", () => {
+  const w = buildWall("bb0", 5000, 2600, [], null, { blech_lengths_mm: [] });
+  assert(JSON.stringify(w.prestress.blech_lengths_mm) === "[]", "leer bleibt leer");
+  assert(blechKurz(w) === "5000/4998S", blechKurz(w));
+  assert(w.validation.blech_konflikte.some(k => k.grund === "keine_standardlaenge"), "gemeldet");
+});
+t("[A-11] `blech_mm` bleibt allein die Kopfblech-Modullaenge", () => {
+  const a = buildWall("bbk", 3000, 2600, []);
+  const b = buildWall("bbk", 3000, 2600, [], null, { blech_mm: 500 });
+  assert(blechKurz(a) === blechKurz(b), "Bodenblech unabhaengig von blech_mm");
+  assert(b.top_plate.module === 6 && a.top_plate.module === 3, "Kopfblech folgt blech_mm");
+});
+// Gegenfall der Abnahme: die frueher benutzte Tiefensuche nahm einen Sonderabschluss als
+// Erfolg und brach damit im ersten grossen Ast ab — 1000+625+625+250S —, obwohl 4 x 625 exakt
+// deckt. [A-10] verlangt: existiert IRGENDEINE exakte Standardkombination, entsteht KEIN
+// Sonderzuschnitt.
+t("[A-10] exakte Standardkombination schlaegt jeden Sonderzuschnitt (2500 aus 1000/625/375)", () => {
+  const r = zerlegeBodenblech(2500, [1000, 625, 375], []);
+  assert(r.teile.map(tl => tl.raster_mm).join("+") === "625+625+625+625",
+    JSON.stringify(r.teile.map(tl => tl.raster_mm)));
+  assert(r.teile.every(tl => tl.art === "standard"), "kein Sonderzuschnitt");
+  assert(r.teile.reduce((a, tl) => a + tl.raster_mm, 0) === 2500 && r.konflikte.length === 0);
+});
+t("[A-10] geringste Teilezahl schlaegt die reine Groessenpraeferenz (2625 aus 1000/875/375)", () => {
+  // Groesste zuerst ergaebe 1000+1000+375+250S (4 Teile, davon einer Sonder);
+  // exakt und kuerzer sind 3 x 875.
+  const r = zerlegeBodenblech(2625, [1000, 875, 375], []);
+  assert(r.teile.map(tl => tl.raster_mm).join("+") === "875+875+875",
+    JSON.stringify(r.teile.map(tl => tl.raster_mm)));
+  assert(r.teile.every(tl => tl.art === "standard") && r.konflikte.length === 0);
+});
+t("[A-11] Stossregel schlaegt die geringste Teilezahl (2500, Steinstoss auf Raster 10)", () => {
+  // Ohne Stoss ist 1250+1250 die kuerzeste exakte Kombination; der Steinstoss bei 1250 mm
+  // sperrt sie, also gilt die kuerzeste STOSSFREIE exakte Kombination — und die ist laenger.
+  assert(zerlegeBodenblech(2500, BLECH_LAENGEN, []).teile.map(tl => tl.raster_mm).join("+")
+    === "1250+1250", "Gegenprobe ohne Stoss");
+  const r = zerlegeBodenblech(2500, BLECH_LAENGEN, [10]);
+  assert(r.teile.map(tl => tl.raster_mm).join("+") === "1125+1000+375",
+    JSON.stringify(r.teile.map(tl => tl.raster_mm)));
+  assert(r.teile.every(tl => tl.art === "standard"), "kein Sonderzuschnitt zum Ausweichen");
+  assert(r.konflikte.length === 0, "stossfrei, also nichts zu melden");
+});
+t("zerlegeBodenblech ist eine reine Funktion (ohne Stossmenge keine Konflikte)", () => {
+  const r = zerlegeBodenblech(3000, BLECH_LAENGEN, []);
+  assert(r.teile.map(tl => tl.raster_mm).join("+") === "1250+1250+500", JSON.stringify(r.teile));
+  assert(r.konflikte.length === 0);
 });
 
 // ---- Verzahnungsbereich ([G-10]/[G-11]/[G-12]) ----

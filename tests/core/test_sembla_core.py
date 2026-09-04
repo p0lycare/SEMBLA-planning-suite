@@ -313,6 +313,110 @@ class ZuschnittKombination(unittest.TestCase):
                 self.assertEqual(sg["verschnitt_mm"], st * ROD - h)
 
 
+class Bodenblech(unittest.TestCase):
+    """Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]).
+
+    DIESELBEN Faelle stehen wortgleich in test-sembla-core.mjs — sie sind der
+    Paritaetsvertrag der Zerlegung zwischen Orakel und Betriebskopie.
+    """
+    @staticmethod
+    def kurz(w):
+        return "+".join(str(t["raster_mm"]) + "/" + str(t["bauteil_mm"])
+                        + ("S" if t["art"] == "sonder" else "")
+                        for t in w["base_plate"]["teile"])
+
+    def test_fallback_ist_volle_standardreihe(self):
+        w = build_wall("bb", 5000, 2600, [])
+        self.assertEqual(w["prestress"]["blech_lengths_mm"], list(sc.BLECH_LAENGEN))
+        self.assertEqual(sc.norm_blech_laengen([1250, 300, 1500, 1000, 1000, 0]), [1250, 1000])
+
+    def test_5000er_wand_nur_standardteile_stossfrei(self):
+        w = build_wall("bb5", 5000, 2600, [])
+        self.assertEqual(self.kurz(w), "1125/1123+1125/1123+1125/1123+1125/1123+500/498")
+        self.assertTrue(all(t["art"] == "standard" for t in w["base_plate"]["teile"]))
+        self.assertEqual(sum(t["raster_mm"] for t in w["base_plate"]["teile"]), 5000)
+        self.assertEqual(w["base_plate"]["module"], 5)
+        self.assertEqual(w["bom"]["stahlblech_module"], 5 + w["top_plate"]["module"])
+        self.assertEqual(w["validation"]["blech_konflikte"], [])
+        # Das Ausweichen ist echt: 4x1250 waere groesser, liegt aber auf dem Steinstoss Raster 10.
+        fugen = set(w["courses"][0]["joints_grid"])
+        self.assertIn(10, fugen)
+        x = 0
+        for t in w["base_plate"]["teile"]:
+            x += t["raster_mm"]
+            self.assertTrue(x >= 5000 or (x // GRID) not in fugen, f"Stoss bei {x}")
+
+    def test_rastermass_und_bauteilmass(self):
+        for L in (1000, 2000, 3000, 5000, 250):
+            w = build_wall("bbm", L, 2600, [])
+            with self.subTest(L=L):
+                for t in w["base_plate"]["teile"]:
+                    self.assertEqual(t["bauteil_mm"], t["raster_mm"] - sc.BLECH_SPIEL)
+                    self.assertEqual(t["raster_mm"] % GRID, 0)
+
+    def test_kein_ausweichen_moeglich_konflikt_gemeldet(self):
+        w = build_wall("bb1250", 5000, 2600, [], prestress={"blech_lengths_mm": [1250]})
+        self.assertEqual(self.kurz(w), "1250/1248+1250/1248+1250/1248+1250/1248")
+        self.assertEqual(w["validation"]["blech_konflikte"],
+                         [{"grund": "stoss_auf_steinstoss", "x_mm": 1250, "grid": 10}])
+        self.assertTrue(w["validation"]["buildable"])
+
+    def test_nicht_deckbare_laenge_genau_ein_sonderzuschnitt(self):
+        w = build_wall("bbs", 250, 2600, [])
+        self.assertEqual(self.kurz(w), "250/248S")
+        self.assertEqual(len([t for t in w["base_plate"]["teile"] if t["art"] == "sonder"]), 1)
+        self.assertEqual(w["validation"]["blech_konflikte"], [])
+        self.assertTrue(w["validation"]["buildable"])
+
+    def test_leerer_vorratssatz_wird_gemeldet(self):
+        w = build_wall("bb0", 5000, 2600, [], prestress={"blech_lengths_mm": []})
+        self.assertEqual(w["prestress"]["blech_lengths_mm"], [])
+        self.assertEqual(self.kurz(w), "5000/4998S")
+        self.assertTrue(any(k["grund"] == "keine_standardlaenge"
+                            for k in w["validation"]["blech_konflikte"]))
+
+    def test_blech_mm_bleibt_kopfblech_modullaenge(self):
+        a = build_wall("bbk", 3000, 2600, [])
+        b = build_wall("bbk", 3000, 2600, [], prestress={"blech_mm": 500})
+        self.assertEqual(self.kurz(a), self.kurz(b))
+        self.assertEqual(a["top_plate"]["module"], 3)
+        self.assertEqual(b["top_plate"]["module"], 6)
+
+    # Gegenfall der Abnahme: die frueher benutzte Tiefensuche nahm einen Sonderabschluss als
+    # Erfolg und brach im ersten grossen Ast ab — 1000+625+625+250S —, obwohl 4 x 625 exakt
+    # deckt. [A-10] verlangt: existiert IRGENDEINE exakte Standardkombination, entsteht KEIN
+    # Sonderzuschnitt.
+    def test_exakte_kombination_schlaegt_sonderzuschnitt(self):
+        r = sc.zerlege_bodenblech(2500, [1000, 625, 375], [])
+        self.assertEqual([t["raster_mm"] for t in r["teile"]], [625, 625, 625, 625])
+        self.assertTrue(all(t["art"] == "standard" for t in r["teile"]))
+        self.assertEqual(sum(t["raster_mm"] for t in r["teile"]), 2500)
+        self.assertEqual(r["konflikte"], [])
+
+    def test_geringste_teilezahl_schlaegt_groessenpraeferenz(self):
+        # Groesste zuerst ergaebe 1000+1000+375+250S (4 Teile, davon einer Sonder);
+        # exakt und kuerzer sind 3 x 875.
+        r = sc.zerlege_bodenblech(2625, [1000, 875, 375], [])
+        self.assertEqual([t["raster_mm"] for t in r["teile"]], [875, 875, 875])
+        self.assertTrue(all(t["art"] == "standard" for t in r["teile"]))
+        self.assertEqual(r["konflikte"], [])
+
+    def test_stossregel_schlaegt_geringste_teilezahl(self):
+        # Ohne Stoss ist 1250+1250 die kuerzeste exakte Kombination; der Steinstoss bei 1250 mm
+        # sperrt sie, also gilt die kuerzeste STOSSFREIE exakte Kombination — und die ist laenger.
+        ohne = sc.zerlege_bodenblech(2500, sc.BLECH_LAENGEN, [])
+        self.assertEqual([t["raster_mm"] for t in ohne["teile"]], [1250, 1250])
+        r = sc.zerlege_bodenblech(2500, sc.BLECH_LAENGEN, [10])
+        self.assertEqual([t["raster_mm"] for t in r["teile"]], [1125, 1000, 375])
+        self.assertTrue(all(t["art"] == "standard" for t in r["teile"]))
+        self.assertEqual(r["konflikte"], [])
+
+    def test_zerlege_bodenblech_ist_reine_funktion(self):
+        r = sc.zerlege_bodenblech(3000, sc.BLECH_LAENGEN, [])
+        self.assertEqual([t["raster_mm"] for t in r["teile"]], [1250, 1250, 500])
+        self.assertEqual(r["konflikte"], [])
+
+
 class InvalidInputs(unittest.TestCase):
     def test_length_not_on_grid(self):
         with self.assertRaises(InvalidDimensionError):

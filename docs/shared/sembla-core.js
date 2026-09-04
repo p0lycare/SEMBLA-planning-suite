@@ -11,8 +11,15 @@ export const GRID = 125;
 export const COURSE = 200;
 export const THICK = 125;
 export const ROD = 1100;
-export const BLECH = 1000;              // Standard-Modullänge der Stahlbleche (Boden/Kopf)
+export const BLECH = 1000;              // Standard-Modullänge des Kopfblechs (Modulzählung)
 export const BLECH_THICK = 15;          // Stahlblech-Dicke (mm)
+// Bodenblech-Zerlegung ([A-10]/[A-11]/[A-12]): das Bodenblech ist KEINE durchgehende Platte,
+// sondern eine Folge realer Bleche aus dem Vorratssatz der Standardlängen.
+export const BLECH_MIN_MM = 375;        // kleinste Bodenblech-Standardlänge (3 Raster)
+export const BLECH_MAX_MM = 1250;       // groesste Bodenblech-Standardlänge (10 Raster)
+export const BLECH_SPIEL = 2;           // Bauteilmass = Rastermass - 2 mm ([A-12])
+/** Volle Standardreihe 375…1250 mm im 125-mm-Raster (deterministischer Fallback, [A-10]). */
+export const BLECH_LAENGEN = [1250, 1125, 1000, 875, 750, 625, 500, 375];
 export const CHAMBER_OFFSET = 62.5;     // Kammerzentrum -> Lattice x = 62.5 + 125k
 export const MAX_SPAN_GRID = 3;         // Vorspannung max. alle 3 Raster (375mm)
 export const FORBIDDEN_N = new Set([1, 4]);
@@ -162,6 +169,128 @@ export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm
   return { stuecke: [...k.stuecke, restStueck], konflikt: k.konflikt, bedarf_mm: bedarf };
 }
 
+// ---------- Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]) ----------
+// Das Bodenblech ist kein wandlanges Einzelteil, sondern eine Folge REALER Bleche. Zerlegt wird
+// deterministisch aus dem VORRATSSATZ der Standardlaengen (Vielfache von 125 mm, 375…1250 mm):
+// moeglichst wenige und moeglichst grosse Teile (die Ordnung dieser beiden Kriterien steht
+// unten) — verwandt mit der Groessenpraeferenz aus [Z-2] beim Gewindestangenzuschnitt.
+//
+// [A-10] Der Sonderzuschnitt ist die AUSNAHME und keine Abkuerzung: existiert IRGENDEINE exakte
+// Kombination aus Standardlaengen, entsteht kein Sonderzuschnitt. Gewaehlt wird deshalb in ZWEI
+// getrennten Stufen — erst wird der Raum der EXAKTEN Kombinationen vollstaendig ausgewertet, und
+// nur wenn er leer ist, kommt der Sonderpfad. (Eine Tiefensuche, die einen Sonderabschluss als
+// Erfolg nimmt, bricht zu frueh ab: sie akzeptiert in einem frueh betretenen grossen Ast einen
+// Rest, obwohl ein anderer Ast exakt aufgeht — z. B. 2500 mm aus {1000, 625, 375}, wo
+// 4 x 625 exakt deckt.)
+//
+// Unter den exakten Kombinationen entscheidet zuerst die GERINGSTE Teilezahl, danach
+// deterministisch die groessten Teile (groesste Standardlaenge zuerst). Beides zusammen ist
+// "moeglichst wenige und moeglichst grosse Teile" aus [A-10]: gerechnet wird als Minimum ueber
+// die Restlaenge (je Position gemerkt), und weil die Laengen absteigend durchlaufen werden und
+// nur eine STRIKT kleinere Teilezahl gewinnt, ist das Ergebnis die lexikographisch groesste
+// unter den kuerzesten Kombinationen.
+//
+// [A-11] ist ein MUSS und steht UEBER dieser Optimierung: kein Blechstoss darf auf einem
+// Steinstoss der untersten Lage liegen. Optimiert wird deshalb zuerst unter den STOSSFREIEN
+// exakten Kombinationen. Gibt es exakte, aber keine stossfreie, wird die nach obiger Ordnung
+// beste EXAKTE genommen und jeder verletzte Stoss BENANNT gemeldet — nie still verletzt und
+// nie zugunsten eines Sonderzuschnitts umgangen.
+//
+// Nur wenn KEINE exakte Kombination die Laenge deckt, greift der Sonderpfad: Groessenpraeferenz
+// von unten, und GENAU EIN Sonderzuschnitt am Ende — fuer den Rest, in den keine Standardlaenge
+// mehr passt. Auch dieser Pfad weicht Stoessen zuerst aus und meldet, was uebrig bleibt.
+
+/** Vorratssatz auf zulaessige Bodenblech-Standardlaengen eingrenzen. @param {number[]} l */
+export function normBlechLaengen(l) {
+  return normLaengen(l).filter((x) => Number.isInteger(x) && x % GRID === 0
+    && x >= BLECH_MIN_MM && x <= BLECH_MAX_MM);
+}
+
+/**
+ * Bodenblech einer Wand deterministisch in reale Teile zerlegen ([A-10]/[A-11]/[A-12]).
+ * @param {number} lengthMm Wandlaenge (Vielfaches von 125 mm)
+ * @param {number[]} laengenMm Vorratssatz der Standardlaengen
+ * @param {number[]} [stossGrid] Rasterpositionen der Steinstoesse der untersten Lage
+ * @returns {{teile:Array<{x0_mm:number,raster_mm:number,bauteil_mm:number,art:"standard"|"sonder"}>,
+ *            konflikte:Array<{grund:string,x_mm?:number,grid?:number}>}}
+ */
+export function zerlegeBodenblech(lengthMm, laengenMm, stossGrid = []) {
+  const L = normBlechLaengen(laengenMm);
+  const stoss = new Set((stossGrid || []).map(Number));
+  const konflikte = [];
+  if (!L.length) konflikte.push({ grund: "keine_standardlaenge" });
+  // Das Wandende ist kein Stoss — dort endet das Bodenblech ohnehin.
+  const frei = (x) => x >= lengthMm || !stoss.has(x / GRID);
+
+  // Stufe 1: EXAKTE Kombination — geringste Teilezahl, darunter die groessten Teile.
+  // `strict` = die Stossregel [A-11] wird eingehalten.
+  const exakt = (strict) => {
+    /** @type {Map<number, {anzahl:number,teile:any[]}|null>} */
+    const memo = new Map();
+    const rec = (x) => {
+      if (x === lengthMm) return { anzahl: 0, teile: [] };
+      if (memo.has(x)) return memo.get(x);
+      let best = null;
+      for (const l of L) {                                 // absteigend: groesste zuerst
+        if (x + l > lengthMm) continue;
+        if (strict && !frei(x + l)) continue;              // [A-11]
+        const t = rec(x + l);
+        if (!t) continue;
+        // Nur eine STRIKT kleinere Teilezahl gewinnt -> bei Gleichstand bleibt die zuerst
+        // gefundene, also die mit der groesseren Laenge an dieser Stelle.
+        if (best === null || t.anzahl + 1 < best.anzahl) {
+          best = { anzahl: t.anzahl + 1,
+                   teile: [{ x0_mm: x, raster_mm: l, art: "standard" }, ...t.teile] };
+        }
+      }
+      memo.set(x, best);
+      return best;
+    };
+    const r = rec(0);
+    return r ? r.teile : null;
+  };
+
+  // Stufe 2: Sonderpfad — nur wenn keine exakte Kombination existiert. Groessenpraeferenz von
+  // unten; GENAU EIN Sonderzuschnitt am Ende fuer den Rest, in den keine Standardlaenge passt.
+  const mitSonder = (strict) => {
+    /** @type {Map<number, any[]|null>} */
+    const memo = new Map();
+    const rec = (x) => {
+      if (x === lengthMm) return [];
+      if (memo.has(x)) return memo.get(x);
+      let out = null;
+      for (const l of L) {                                 // absteigend: groesste zuerst
+        if (x + l > lengthMm) continue;
+        if (strict && !frei(x + l)) continue;              // [A-11]
+        const t = rec(x + l);
+        if (t) { out = [{ x0_mm: x, raster_mm: l, art: "standard" }, ...t]; break; }
+      }
+      if (!out) {
+        const rest = lengthMm - x;
+        // [A-10] Sonderzuschnitt nur, wenn arithmetisch KEINE Standardlaenge mehr passt.
+        if (rest > 0 && !L.some((l) => l <= rest)) out = [{ x0_mm: x, raster_mm: rest, art: "sonder" }];
+      }
+      memo.set(x, out);
+      return out;
+    };
+    return rec(0);
+  };
+
+  // Reihenfolge der Wahl: stossfrei exakt -> exakt (Stoss gemeldet) -> stossfrei mit
+  // Sonderzuschnitt -> mit Sonderzuschnitt (Stoss gemeldet). Gemeldet wird danach an EINER
+  // Stelle aus der gewaehlten Folge, damit kein Pfad still eine Stossverletzung durchlaesst.
+  const teile = exakt(true) || exakt(false) || mitSonder(true) || mitSonder(false) || [];
+  for (const tl of teile) {
+    const e = tl.x0_mm + tl.raster_mm;
+    if (!frei(e)) konflikte.push({ grund: "stoss_auf_steinstoss", x_mm: e, grid: e / GRID });
+  }
+  return {
+    teile: teile.map((tl) => ({ x0_mm: tl.x0_mm, raster_mm: tl.raster_mm,
+      bauteil_mm: tl.raster_mm - BLECH_SPIEL, art: tl.art })),
+    konflikte,
+  };
+}
+
 /** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
 function segJoints(startGrid, tiling) {
   const js = new Set(); let c = startGrid;
@@ -270,6 +399,14 @@ function normPrestress(p) {
   else if (rodExplizit) rod = null;
   else { rod = (p && p.rod_mm != null && +p.rod_mm > 0) ? +p.rod_mm : ROD; rodL = [rod]; }
   const blech = (p && p.blech_mm != null && +p.blech_mm > 0) ? +p.blech_mm : BLECH;
+  // Bodenblech-Standardlaengen ([A-10]): der VORRATSSATZ ist Core-Parameter. Fehlt das Feld,
+  // gilt der deterministische Fallback mit der vollen Standardreihe 375…1250 mm — es wird
+  // also nie eine Laenge geraten und nie aus `blech_mm` abgeleitet (das bleibt allein die
+  // Modullaenge des Kopfblechs). Ist das Feld AUSDRUECKLICH gesetzt und leer, hat der Aufrufer
+  // die Auswahl bereits ausgewertet: dann wird keine Standardlaenge erfunden, die Zerlegung
+  // meldet `keine_standardlaenge` und weist das Bodenblech als Sonderzuschnitt aus.
+  const blechExplizit = Array.isArray(p && p.blech_lengths_mm);
+  const blechL = blechExplizit ? normBlechLaengen(p.blech_lengths_mm) : BLECH_LAENGEN.slice();
   const top = (p && (p.top_connection === "spannplatte" || p.top_connection === "blech")) ? p.top_connection : "blech";
   // manuelle Spannachsen (Rasterindizes) – wenn gesetzt, exakt diese statt Auto-Verteilung
   let cg = Array.isArray(p && p.columns_grid) ? p.columns_grid.map(Number).filter(k => Number.isInteger(k) && k >= 0) : null;
@@ -283,6 +420,7 @@ function normPrestress(p) {
   const rr = (p && p.rod_rest_mm != null && +p.rod_rest_mm > 0) ? +p.rod_rest_mm : 0;
   const ue = (p && p.rod_overhang_mm != null && +p.rod_overhang_mm >= 0) ? +p.rod_overhang_mm : ROD_OVERHANG;
   return { max_span_grid: m, force_kN: fk, rod_mm: rod, rod_lengths_mm: rodL, blech_mm: blech,
+           blech_lengths_mm: blechL,
            top_connection: top, columns_grid: cg, start_axis_grid: sa,
            rod_rest_mm: rr, rod_overhang_mm: ue };
 }
@@ -630,12 +768,17 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // Stoßfugen (vertikale Fugen zwischen Steinen) -> Dichtstreifen (je 200 mm hoch = 1 Steinreihe)
   const stossfugen = courses.reduce((a, c) => a + c.joints_grid.length, 0);
 
-  // Stahlbleche: Bodenblech immer über die volle Wandlänge; Kopfblech nur bei top_connection=='blech'
+  // Stahlbleche: das Bodenblech liegt über die volle Wandlänge, besteht dort aber aus REALEN
+  // Teilen ([A-10]/[A-11]/[A-12]) statt aus einer Modulzählung; Kopfblech unverändert nur bei
+  // top_connection=='blech' und weiterhin in Modulen der Blechlänge (Slicing folgt getrennt).
   const occCols = topLage.filter(t => t > 0).length;
   const topEdgeLen = occCols * GRID;
-  const bodenModule = Math.ceil(lengthMm / PS.blech_mm);
+  const bodenZerlegung = zerlegeBodenblech(lengthMm, PS.blech_lengths_mm,
+    courses.length ? courses[0].joints_grid : []);
+  const bodenTeile = bodenZerlegung.teile;
+  const bodenModule = bodenTeile.length;      // Anzahl REALER Bodenblechteile
   const kopfModule = (TOP === "blech") ? Math.ceil(topEdgeLen / PS.blech_mm) : 0;
-  const basePlate = { rolle: "bodenblech", laenge_mm: lengthMm, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: bodenModule };
+  const basePlate = { rolle: "bodenblech", laenge_mm: lengthMm, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: bodenModule, teile: bodenTeile };
   const topPlate = (TOP === "blech")
     ? { rolle: "kopfblech", laenge_mm: topEdgeLen, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: kopfModule }
     : null;
@@ -687,6 +830,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       buildable, versatz_ok: versatzOk, versatz_violations: viol,
       tension_span_ok: spanOk, rigid_lagen: rigidLagen, invalid_segments: invalidSegments,
       zuschnitt_konflikte: zuschnittKonflikte,
+      // [A-11] Blechstoesse, die auf einem Steinstoss der untersten Lage liegen, sowie ein
+      // leerer Vorratssatz — sichtbare Meldung, KEIN Baubarkeitsausschluss.
+      blech_konflikte: bodenZerlegung.konflikte,
       // [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuelle Achsen: echter Befund.
       ungehaltene_steine: ungehalteneSteine,
       // [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)

@@ -32,8 +32,14 @@ GRID          = 125    # mm Laengsraster
 COURSE        = 200    # mm Lagenhoehe
 THICK         = 125    # mm Wandstaerke
 ROD           = 1100   # mm Gewindestange (wird abgelaengt)
-BLECH         = 1000   # mm Standard-Modullaenge der Stahlbleche (Boden/Kopf)
+BLECH         = 1000   # mm Standard-Modullaenge des Kopfblechs (Modulzaehlung)
 BLECH_THICK   = 15     # mm Stahlblech-Dicke
+# Bodenblech-Zerlegung ([A-10]/[A-11]/[A-12]): das Bodenblech ist KEINE durchgehende Platte,
+# sondern eine Folge realer Bleche aus dem Vorratssatz der Standardlaengen.
+BLECH_MIN_MM  = 375    # mm kleinste Bodenblech-Standardlaenge (3 Raster)
+BLECH_MAX_MM  = 1250   # mm groesste Bodenblech-Standardlaenge (10 Raster)
+BLECH_SPIEL   = 2      # mm Bauteilmass = Rastermass - 2 mm ([A-12])
+BLECH_LAENGEN = [1250, 1125, 1000, 875, 750, 625, 500, 375]  # volle Standardreihe ([A-10])
 CHAMBER_OFFSET = 62.5  # mm Kammerzentrum ab Steinanfang -> Lattice x=62.5+125k
 MAX_SPAN_GRID = 3      # Vorspannung max. alle 3 Raster (375 mm)
 FORBIDDEN_N   = frozenset({1, 4})  # nicht baubare / nicht versetzbare Segmentbreiten
@@ -180,6 +186,112 @@ class Opening:
 
 
 # ---- Tiling-Hilfen ----
+# ---- Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]) ----
+# Bit-genaues Gegenstueck zu zerlegeBodenblech() in docs/shared/sembla-core.js.
+# Das Bodenblech ist kein wandlanges Einzelteil, sondern eine Folge REALER Bleche aus dem
+# Vorratssatz (Vielfache von 125 mm, 375…1250 mm): moeglichst wenige und moeglichst grosse
+# Teile (die Ordnung dieser beiden Kriterien steht unten) — verwandt mit [Z-2].
+# [A-10] Der Sonderzuschnitt ist die AUSNAHME: existiert IRGENDEINE exakte Kombination aus
+# Standardlaengen, entsteht keiner. Gewaehlt wird in ZWEI Stufen — erst der Raum der EXAKTEN
+# Kombinationen (geringste Teilezahl, darunter die groessten Teile), und nur wenn er leer ist,
+# der Sonderpfad. Eine Tiefensuche, die einen Sonderabschluss als Erfolg nimmt, bricht zu frueh
+# ab (z. B. 2500 mm aus {1000, 625, 375}, wo 4 x 625 exakt deckt).
+# [A-11] ist ein MUSS ueber dieser Optimierung: kein Blechstoss auf einem Steinstoss der
+# untersten Lage. Optimiert wird zuerst unter den STOSSFREIEN exakten Kombinationen; gibt es
+# exakte, aber keine stossfreie, wird die beste exakte genommen und jeder verletzte Stoss
+# BENANNT gemeldet — nie zugunsten eines Sonderzuschnitts umgangen.
+
+def norm_blech_laengen(l):
+    """Vorratssatz auf zulaessige Bodenblech-Standardlaengen eingrenzen."""
+    return [x for x in norm_laengen(l)
+            if isinstance(x, int) and x % GRID == 0 and BLECH_MIN_MM <= x <= BLECH_MAX_MM]
+
+
+def zerlege_bodenblech(length_mm, laengen_mm, stoss_grid=()):
+    """Bodenblech deterministisch in reale Teile zerlegen ([A-10]/[A-11]/[A-12])."""
+    L = norm_blech_laengen(laengen_mm)
+    stoss = {int(g) for g in (stoss_grid or ())}
+    konflikte = []
+    if not L:
+        konflikte.append({"grund": "keine_standardlaenge"})
+
+    def frei(x):                       # das Wandende ist kein Stoss
+        return x >= length_mm or (x // GRID) not in stoss
+
+    def exakt(strict):
+        """Stufe 1: exakte Kombination — geringste Teilezahl, darunter die groessten Teile."""
+        memo = {}
+
+        def rec(x):
+            if x == length_mm:
+                return (0, [])
+            if x in memo:
+                return memo[x]
+            best = None
+            for l in L:                # absteigend: groesste zuerst
+                if x + l > length_mm or (strict and not frei(x + l)):
+                    continue
+                t = rec(x + l)
+                if t is None:
+                    continue
+                # Nur eine STRIKT kleinere Teilezahl gewinnt -> bei Gleichstand bleibt die
+                # zuerst gefundene, also die mit der groesseren Laenge an dieser Stelle.
+                if best is None or t[0] + 1 < best[0]:
+                    best = (t[0] + 1,
+                            [{"x0_mm": x, "raster_mm": l, "art": "standard"}] + t[1])
+            memo[x] = best
+            return best
+
+        r = rec(0)
+        return r[1] if r is not None else None
+
+    def mit_sonder(strict):
+        """Stufe 2: Groessenpraeferenz, GENAU EIN Sonderzuschnitt am Ende."""
+        memo = {}
+
+        def rec(x):
+            if x == length_mm:
+                return []
+            if x in memo:
+                return memo[x]
+            out = None
+            for l in L:                # absteigend: groesste zuerst
+                if x + l > length_mm or (strict and not frei(x + l)):
+                    continue
+                t = rec(x + l)
+                if t is not None:
+                    out = [{"x0_mm": x, "raster_mm": l, "art": "standard"}] + t
+                    break
+            if out is None:
+                rest = length_mm - x
+                # [A-10] Sonderzuschnitt nur, wenn keine Standardlaenge mehr passt
+                if rest > 0 and not any(l <= rest for l in L):
+                    out = [{"x0_mm": x, "raster_mm": rest, "art": "sonder"}]
+            memo[x] = out
+            return out
+
+        return rec(0)
+
+    # Reihenfolge der Wahl: stossfrei exakt -> exakt (Stoss gemeldet) -> stossfrei mit
+    # Sonderzuschnitt -> mit Sonderzuschnitt (Stoss gemeldet). Gemeldet wird danach an EINER
+    # Stelle aus der gewaehlten Folge, damit kein Pfad still eine Stossverletzung durchlaesst.
+    teile = None
+    for kandidat in (lambda: exakt(True), lambda: exakt(False),
+                     lambda: mit_sonder(True), lambda: mit_sonder(False)):
+        teile = kandidat()
+        if teile:
+            break
+    teile = teile or []
+    for tl in teile:
+        e = tl["x0_mm"] + tl["raster_mm"]
+        if not frei(e):
+            konflikte.append({"grund": "stoss_auf_steinstoss", "x_mm": e, "grid": e // GRID})
+    return {"teile": [{"x0_mm": t["x0_mm"], "raster_mm": t["raster_mm"],
+                       "bauteil_mm": t["raster_mm"] - BLECH_SPIEL, "art": t["art"]}
+                      for t in teile],
+            "konflikte": konflikte}
+
+
 def _seg_joints(start_grid: int, tiling: list[int]) -> set[int]:
     """Absolute Rasterpositionen der INNEREN Fugen (ohne Segmentenden)."""
     js, c = set(), start_grid
@@ -289,6 +401,12 @@ def _norm_prestress(p):
         bl = BLECH
     else:
         bl = int(bl) if float(bl) == int(float(bl)) else float(bl)
+    # Bodenblech-Standardlaengen ([A-10]): der VORRATSSATZ ist Core-Parameter. Fehlt das Feld,
+    # gilt der deterministische Fallback mit der vollen Standardreihe 375…1250 mm — nie aus
+    # `blech_mm` abgeleitet (das bleibt allein die Modullaenge des Kopfblechs). Ausdruecklich
+    # gesetzt und leer heisst: keine Standardlaenge gewaehlt — dann wird keine erfunden.
+    _bll = p.get("blech_lengths_mm")
+    blech_l = norm_blech_laengen(_bll) if isinstance(_bll, (list, tuple)) else list(BLECH_LAENGEN)
     top = p.get("top_connection")
     top = top if top in ("spannplatte", "blech") else "blech"
     cg = p.get("columns_grid")
@@ -311,7 +429,8 @@ def _norm_prestress(p):
     if _ue is not None and float(_ue) >= 0:
         ue = int(_ue) if float(_ue) == int(float(_ue)) else float(_ue)
     return {"max_span_grid": m, "force_kN": fk if fk is not None else None,
-            "rod_mm": rod, "rod_lengths_mm": rod_l, "blech_mm": bl, "top_connection": top,
+            "rod_mm": rod, "rod_lengths_mm": rod_l, "blech_mm": bl,
+            "blech_lengths_mm": blech_l, "top_connection": top,
             "columns_grid": cg, "start_axis_grid": sa,
             "rod_rest_mm": rr, "rod_overhang_mm": ue}
 
@@ -694,13 +813,18 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # Stossfugen (vertikale Fugen zwischen Steinen) -> Dichtstreifen (je 200 mm hoch = 1 Steinreihe)
     stossfugen = sum(len(c["joints_grid"]) for c in courses)
 
-    # Stahlbleche: Bodenblech ueber volle Wandlaenge; Kopfblech nur bei top_connection=='blech'
+    # Stahlbleche: das Bodenblech liegt ueber die volle Wandlaenge, besteht dort aber aus REALEN
+    # Teilen ([A-10]/[A-11]/[A-12]) statt aus einer Modulzaehlung; Kopfblech unveraendert.
     occ_cols = sum(1 for t in _top_lage if t > 0)
     top_edge_len = occ_cols * GRID
-    boden_module = math.ceil(length_mm / _PS["blech_mm"])
+    boden_zerlegung = zerlege_bodenblech(length_mm, _PS["blech_lengths_mm"],
+                                         courses[0]["joints_grid"] if courses else [])
+    boden_teile = boden_zerlegung["teile"]
+    boden_module = len(boden_teile)          # Anzahl REALER Bodenblechteile
     kopf_module = math.ceil(top_edge_len / _PS["blech_mm"]) if _top == "blech" else 0
     base_plate = {"rolle": "bodenblech", "laenge_mm": length_mm, "breite_mm": THICK,
-                  "dicke_mm": BLECH_THICK, "modul_mm": _PS["blech_mm"], "module": boden_module}
+                  "dicke_mm": BLECH_THICK, "modul_mm": _PS["blech_mm"], "module": boden_module,
+                  "teile": boden_teile}
     top_plate = ({"rolle": "kopfblech", "laenge_mm": top_edge_len, "breite_mm": THICK,
                   "dicke_mm": BLECH_THICK, "modul_mm": _PS["blech_mm"], "module": kopf_module}
                  if _top == "blech" else None)
@@ -745,6 +869,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        "versatz_violations": viol, "tension_span_ok": span_ok,
                        "rigid_lagen": rigid_lagen, "invalid_segments": invalid_segments,
                        "zuschnitt_konflikte": zuschnitt_konflikte,
+                       # [A-11] Blechstoesse auf einem Steinstoss der untersten Lage sowie ein
+                       # leerer Vorratssatz — sichtbar, KEIN Baubarkeitsausschluss.
+                       "blech_konflikte": boden_zerlegung["konflikte"],
                        # [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuell: echter Befund.
                        "ungehaltene_steine": ungehaltene_steine,
                        # [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)

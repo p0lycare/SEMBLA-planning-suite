@@ -64,7 +64,10 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
   { id:'spannmutter', kategorie:'verbrauch', bezeichnung:'Spannmutter', einheit:'Stk', preis:0.9 },
   { id:'dicht-stk', kategorie:'verbrauch', bezeichnung:'Dichtstreifen 20 cm', einheit:'Stk', preis:0.3 },
   { id:'dicht-rolle', kategorie:'verbrauch', bezeichnung:'Dichtstreifen Rollenware', einheit:'m', preis:1.5 },
-  { id:'blech-boden', kategorie:'blech_platte', bezeichnung:'Bodenblech 1000', einheit:'Stk', preis:18, breite_mm:1000, hoehe_mm:125, dicke_mm:15 },
+  // [A-10]: Das Bodenblech wird aus REALEN Standardlaengen kombiniert — der Testkatalog
+  // fuehrt deshalb die von der Testwand (2000 mm) benutzten Laengen 1250 und 750 mm.
+  { id:'blech-boden-1250', kategorie:'blech_platte', bezeichnung:'Bodenblech 1250', einheit:'Stk', preis:18, breite_mm:1250, hoehe_mm:125, dicke_mm:15 },
+  { id:'blech-boden-750', kategorie:'blech_platte', bezeichnung:'Bodenblech 750', einheit:'Stk', preis:12, breite_mm:750, hoehe_mm:125, dicke_mm:15 },
   { id:'blech-kopf', kategorie:'blech_platte', bezeichnung:'Kopfblech 1000', einheit:'Stk', preis:21, breite_mm:1000, hoehe_mm:125, dicke_mm:15 },
   { id:'spannplatte', kategorie:'blech_platte', bezeichnung:'Spannplatte 120', einheit:'Stk', preis:2.4, breite_mm:120, hoehe_mm:120, dicke_mm:15,
     hinweis:'vorläufig — fachlich unbestätigt: Beispielmaße.' },
@@ -75,7 +78,8 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
 // [P-18] rod_sonder wird nicht mehr gewaehlt (Beschaffung), Kopplungsmuttern sind bauteilgleich.
 const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'],
   kupplung:['kuppl-stoss'], senkkopf:['senkkopf'], spannmutter:['spannmutter'],
-  spannplatte:['spannplatte'], blech_boden:['blech-boden'], blech_kopf:['blech-kopf'], dicht_stk:['dicht-stk'] };
+  spannplatte:['spannplatte'], blech_boden:['blech-boden-1250','blech-boden-750'],
+  blech_kopf:['blech-kopf'], dicht_stk:['dicht-stk'] };
 function egVoll(){
   const e=standardEingaben();
   e.planung.produkte={ quelle:{name:KATALOG.name,version:1}, rollen:JSON.parse(JSON.stringify(ROLLEN_VOLL)) };
@@ -259,10 +263,22 @@ ok('GP = Menge × EP', Math.abs(find('i3').gp - find('i3').menge*find('i3').ep)<
 
 // C ([A-1]): Boden- und Kopfblech als getrennte, getrennt bepreiste Positionen
 ok('keine aggregierte Blech-Position mehr', !byKey('blech'));
-ok('Bodenblech-Position = base_plate.module', byKey('blech_boden').menge===W.base_plate.module);
+// [A-10]/[A-12]: je Standardlaenge des Bodenblechs eine eigene Zeile mit Rastermass als
+// maßgebendem Maß und Bauteilmass (-2 mm) als Fertigmass — keine Modulzaehlung mehr.
+const bodenZeilen=()=>rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder');
+ok('Bodenblech: je Kern-Teilgruppe eine Position', (()=>{
+  const gr=new Map();
+  for(const t of W.base_plate.teile){ const k=t.raster_mm; gr.set(k,(gr.get(k)||0)+1); }
+  const z=bodenZeilen();
+  return z.length===gr.size && z.every(r=>gr.get(r.fertigmass_mm+2)===r.menge); })());
+ok('Bodenblech: keine Modulzaehlung mehr', !rs.some(r=>/Bodenblech-Modul/.test(r.label)));
+ok('Bodenblech: Summe der Rastermasse = Wandlaenge',
+  W.base_plate.teile.reduce((a,t)=>a+t.raster_mm,0)===W.length_mm);
 ok('Kopfblech-Position = top_plate.module', byKey('blech_kopf').menge===(W.top_plate?W.top_plate.module:0));
-ok('Blech-Summe unverändert = Core-Gesamtzahl', byKey('blech_boden').menge+byKey('blech_kopf').menge===W.bom.stahlblech_module);
-ok('Bleche getrennt bepreist (eigene EP)', byKey('blech_boden').ep===18 && byKey('blech_kopf').ep===21);
+ok('Aggregat = Bodenblechteile + Kopfblechmodule',
+  bodenZeilen().reduce((a,r)=>a+r.menge,0)+byKey('blech_kopf').menge===W.bom.stahlblech_module);
+ok('Bleche getrennt bepreist (eigene EP je Standardlaenge)',
+  bodenZeilen().every(r=>r.bepreisbar && r.ep!==null) && byKey('blech_kopf').ep===21);
 
 // D ([A-6]): Dichtstreifen-Gesamtlänge nachrichtlich, nur die Einbauposition wird bepreist
 ok('Dicht-Gesamtlänge ist nachrichtlich und nicht bepreisbar',
@@ -288,8 +304,9 @@ ok('[P-19] Gewindestangen-Kopplung bleibt enthalten', !!byKey('kupplung') && byK
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
 const nRest=rs.filter(r=>r.key==='rod_rest').length;
 // [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
-ok('Positionen = 10 Wand + Stangengruppen (ohne Aufbau)',
-  rs.length===10+nRod+nSonder+nRest && rs.length>=12);
+const nBoden=rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder').length;
+ok('Positionen = 9 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
+  rs.length===9+nRod+nSonder+nRest+nBoden && rs.length>=12);
 ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
   rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
@@ -463,7 +480,9 @@ const keineWarnliste = () => !document.getElementById('tbody').innerHTML.include
   ok('CSV: Produkt- und Zuordnungsspalte vorhanden', /Produkt \(Katalog\);Preisbasis;Zuordnung/.test(csv));
   ok('CSV: Einbauteil-Spalten vorhanden',
     /Einbauteil;Art;Fertigmaß \(mm\);Wand;Einheit;Menge;Einbauteil-IDs;/.test(csv));
-  ok('CSV: Bodenblech und Kopfblech getrennt', /Bodenblech-Modul/.test(csv) && /Kopfblech-Modul/.test(csv));
+  ok('CSV: Bodenblech je Standardlaenge und Kopfblech getrennt',
+    /Bodenblech 1\.250 mm \(Bauteilmaß 1\.248 mm/.test(csv) && /Bodenblech 750 mm \(Bauteilmaß 748 mm/.test(csv)
+    && /Kopfblech-Modul/.test(csv));
   ok('CSV: nachrichtliche Dicht-Gesamtlänge ohne Preis', /Gesamtlänge;;;Testwand;m;[\d.,]+;;;;;;nachrichtliche Menge/.test(csv));
   ok('CSV: vollständige Summe wird als solche benannt', /alle Positionen bepreist/.test(csv));
   ok('CSV: keine Latten/Verbinder/Platten-Zeile', !/Lattenstange/.test(csv) && !/^Verbinder/m.test(csv));

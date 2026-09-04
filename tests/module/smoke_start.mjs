@@ -832,7 +832,10 @@ ok('Projekt-Datei traegt nur Produkt-IDs (keine Preise/Bezeichnungen)',
 ok('Stueckliste-CSV traegt Produktzuordnung und Grund statt Nullpreisen',
   (() => { const csv = projektDateien[1].data;
            return /Produkt \(Katalog\);Preisbasis;Zuordnung/.test(csv)
-             && /Bodenblech-Modul/.test(csv) && /Kopfblech-Modul/.test(csv); })());
+             // [A-10]: Das Bodenblech steht je Standardlaenge mit Raster- UND Bauteilmass
+             // in der Datei (keine Modulzaehlung mehr); das Kopfblech unveraendert.
+             && /Bodenblech \d[\d.]* mm \(Bauteilmaß \d[\d.]* mm/.test(csv)
+             && !/Bodenblech-Modul/.test(csv) && /Kopfblech-Modul/.test(csv); })());
 
 // --- 6) Projekt-/Wandimport mit Bestaetigung (Issue #28) -------------------
 // Alles ueber den ECHTEN Modul-0-Handler: Dateiauswahl an #f-import, Dialogfelder,
@@ -1064,8 +1067,23 @@ ok('Wandvorlage enthaelt keinen Produktstamm (Ressourcentrennung)',
 // 7c) Kanonische AWG-Geometrie: heutiger Core aus denselben fachlichen Eingaben
 const wv = wandRoh.wandelement;
 const neuGebaut = buildWall(wandRoh.name, wv.length_mm, wv.height_mm, wv.openings, wv.sides, wv.prestress, wv.steps);
-ok('Wandelement der Vorlage ist exakt die Ausgabe des heutigen Cores',
-  JSON.stringify(neuGebaut) === JSON.stringify(wv));
+// #91 hat den Kern ADDITIV erweitert: der Vorratssatz der Bodenblech-Standardlaengen
+// (prestress.blech_lengths_mm), die reale Teilliste des Bodenblechs (base_plate.teile, dort
+// zugleich die neue Bedeutung von `module` = Anzahl Teile) und die Konfliktmeldung
+// (validation.blech_konflikte). Die VORLAGE selbst wird dafuer bewusst NICHT angefasst — sie
+// ist Altbestand ohne diese Felder. Verglichen wird deshalb ohne genau diese Felder, und
+// zusaetzlich wird geprueft, dass es AUSSCHLIESSLICH sie sind, die hinzukommen.
+const ohneBlech91 = (w) => { const c = JSON.parse(JSON.stringify(w));
+  delete c.prestress.blech_lengths_mm; delete c.base_plate.teile; delete c.base_plate.module;
+  delete c.validation.blech_konflikte; delete c.bom.stahlblech_module; return c; };
+ok('Wandelement der Vorlage ist exakt die Ausgabe des heutigen Cores (ohne die #91-Zusatzfelder)',
+  JSON.stringify(ohneBlech91(neuGebaut)) === JSON.stringify(ohneBlech91(wv)));
+ok('#91 ist die einzige Abweichung zur Vorlage (Altbestand ohne Bodenblech-Teile)',
+  !('blech_lengths_mm' in wv.prestress) && !('teile' in wv.base_plate)
+  && !('blech_konflikte' in wv.validation)
+  && Array.isArray(neuGebaut.base_plate.teile)
+  && neuGebaut.base_plate.teile.reduce((a, t) => a + t.raster_mm, 0) === wv.length_mm
+  && neuGebaut.validation.blech_konflikte.length === 0);
 // Harte Erwartungswerte aus dem freigegebenen AWG-Anhang (Identitaetsnachweis ohne Anhangdatei)
 ok('AWG-Maße/Raster unveraendert',
   wv.length_mm === 3000 && wv.height_mm === 2600 && wv.thickness_mm === 125

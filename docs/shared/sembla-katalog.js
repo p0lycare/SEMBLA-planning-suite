@@ -421,7 +421,18 @@ export const ROLLEN = [
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "blech_boden", label: "Bodenblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
-    bepreist: true },
+    bepreist: true, kombinierbar: true,
+    hinweis: "Das Bodenblech besteht aus REALEN Blechen: mehrere Standardlängen (375…1250 mm im "
+      + "125-mm-Raster) werden kombiniert ([A-10]). Mehrere gewählte Größen sind deshalb der "
+      + "Regelfall und keine Mehrdeutigkeit — jede Länge steht als eigene Stücklistenposition "
+      + "mit ihrem eigenen maßgebenden Maß." },
+  { id: "blech_boden_sonder", label: "Bodenblech – Sonderzuschnitt", kategorie: "blech_platte",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: false,
+    waehlbar: false, status_frei: "beschaffung",
+    hinweis: "Deckt keine Kombination der Standardlängen die Wandlänge, bleibt ein Reststück: es "
+      + "steht mit seinem Fertigmaß als Bedarf der Baustelle in der Stückliste. AUS WELCHEM "
+      + "Ausgangsblech es geschnitten wird, ist Sache des Einkaufs — dazu wird hier kein Produkt "
+      + "gewählt und keine Zuschnitt-/Verschnittplanung gerechnet ([P-18])." },
   { id: "blech_kopf", label: "Kopfblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true },

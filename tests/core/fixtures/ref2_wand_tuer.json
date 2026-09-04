@@ -35,6 +35,16 @@
       1100
     ],
     "blech_mm": 1000,
+    "blech_lengths_mm": [
+      1250,
+      1125,
+      1000,
+      875,
+      750,
+      625,
+      500,
+      375
+    ],
     "top_connection": "blech",
     "columns_grid": null,
     "start_axis_grid": 0,
@@ -47,7 +57,21 @@
     "breite_mm": 125,
     "dicke_mm": 15,
     "modul_mm": 1000,
-    "module": 2
+    "module": 2,
+    "teile": [
+      {
+        "x0_mm": 0,
+        "raster_mm": 1250,
+        "bauteil_mm": 1248,
+        "art": "standard"
+      },
+      {
+        "x0_mm": 1250,
+        "raster_mm": 750,
+        "bauteil_mm": 748,
+        "art": "standard"
+      }
+    ]
   },
   "top_plate": {
     "rolle": "kopfblech",
@@ -496,6 +520,7 @@
         "fertigmass_mm": 400
       }
     ],
+    "blech_konflikte": [],
     "ungehaltene_steine": [],
     "interlock_fehler": [],
     "interlock_invalid_segments": []

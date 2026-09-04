@@ -29,8 +29,11 @@ for(const [name,l,h,ops] of cases){
   // Positionsliste: 10 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
   // Sonderzuschnitt-Fertigmaß eine eigene Position ([Z-2]/[Z-4]). Kopplungsmuttern sind
   // bauteilgleich und stehen als EINE Position ([P-18]).
-  t(name+" · Positionen = 10 + Stangengruppen",
-    semblaBomItems(w).length === 10 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length));
+  // 9 feste Positionen (Bodenblech steht nicht mehr darunter) + je Gewindestangengruppe eine
+  // + je Bodenblech-Teilgruppe eine ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß).
+  t(name+" · Positionen = 9 + Stangen- und Bodenblechgruppen",
+    semblaBomItems(w).length === 9 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
+      + b.blech_boden_teile.length);
   // [P-18] Kopplungsmutter: eine Position, Menge = Stangenstöße + Fußkopplungen.
   t(name+" · Kopplungsmutter als EINE Position mit Gesamtmenge", (()=>{
     const its=semblaBomItems(w), k=its.filter(it=>it.key==='kupplung');
@@ -46,15 +49,37 @@ for(const [name,l,h,ops] of cases){
   t(name+" · Dichtstreifen-Stück = Stoßfugen", semblaBomItems(w).find(it=>it.key==='dicht_stk').menge===w.bom.stossfugen);
   t(name+" · rodStd+Sonder = gesamt", b.rodStd+b.rodSonder===b.gewindestangen_gesamt);
   // [A-1]: Boden-/Kopfblech getrennt bepreisbar — abgeleitet aus den REALEN Platten des
-  // Wandelements. Die Summe muss exakt die Core-Gesamtzahl bleiben (keine Doppelzählung,
-  // keine Fehlmenge), und je Position muss die reale Modulzahl der Platte stehen.
+  // Wandelements. Das BODENBLECH ist seit #91 keine Modulzählung mehr, sondern die reale
+  // Teilliste des Rechenkerns ([A-10]…[A-12]): geprüft wird die ABLEITUNG selbst, nicht eine
+  // nachgerechnete Zahl — je Standardlänge bzw. Sonder-Fertigmaß genau eine Position, mit
+  // Rastermaß als `mass_mm` und Bauteilmaß als `fertigmass_mm`.
   const items=semblaBomItems(w);
-  const bo=items.find(it=>it.key==='blech_boden'), ko=items.find(it=>it.key==='blech_kopf');
-  t(name+" · Blech getrennt (boden+kopf)", !!bo && !!ko && !items.find(it=>it.key==='blech'));
-  t(name+" · Blech Summe = Core-Gesamtzahl", bo.menge+ko.menge===w.bom.stahlblech_module);
-  t(name+" · Bodenblech = base_plate.module", bo.menge===w.base_plate.module);
+  const boAlle=items.filter(it=>it.key==='blech_boden'||it.key==='blech_boden_sonder');
+  const ko=items.find(it=>it.key==='blech_kopf');
+  t(name+" · Blech getrennt (boden+kopf)", boAlle.length>0 && !!ko && !items.find(it=>it.key==='blech'));
+  t(name+" · keine Bodenblech-Modulzählung mehr", !items.some(it=>/Bodenblech-Modul/.test(it.label)));
+  t(name+" · Bodenblech: Position je Teilgruppe des Kerns", (()=>{
+    const gr=new Map();
+    for(const tl of w.base_plate.teile){
+      const k=(tl.art==='sonder'?'blech_boden_sonder':'blech_boden')+'@'+tl.raster_mm;
+      gr.set(k,(gr.get(k)||0)+1); }
+    return boAlle.length===gr.size
+      && boAlle.every(it=>gr.get(it.key+'@'+it.mass_mm)===it.menge); })());
+  t(name+" · Bodenblech: Rastermaß als mass_mm, Bauteilmaß (−2 mm) als fertigmass_mm",
+    boAlle.every(it=>it.mass_mm>0 && it.fertigmass_mm===it.mass_mm-2));
+  t(name+" · Bodenblech: Summe der Rastermaße = Wandlänge",
+    w.base_plate.teile.reduce((a,tl)=>a+tl.raster_mm,0)===w.length_mm
+      && boAlle.reduce((a,it)=>a+it.menge*it.mass_mm,0)===w.length_mm);
+  t(name+" · Bodenblech: kein Stoß auf einem Steinstoß der untersten Lage ([A-11])", (()=>{
+    const fugen=new Set(w.courses[0].joints_grid); let x=0;
+    return w.base_plate.teile.every(tl=>{ x+=tl.raster_mm;
+      return x>=w.length_mm || !fugen.has(x/125); })
+      && w.validation.blech_konflikte.length===0; })());
   t(name+" · Kopfblech = top_plate.module",  ko.menge===(w.top_plate?w.top_plate.module:0));
-  t(name+" · Blech-Split auch in semblaBom", b.stahlblech_module_boden===bo.menge && b.stahlblech_module_kopf===ko.menge);
+  t(name+" · Aggregat = Bodenblechteile + Kopfblechmodule",
+    boAlle.reduce((a,it)=>a+it.menge,0)+ko.menge===w.bom.stahlblech_module);
+  t(name+" · Blech-Split auch in semblaBom",
+    b.stahlblech_module_boden===boAlle.reduce((a,it)=>a+it.menge,0) && b.stahlblech_module_kopf===ko.menge);
   // [A-6]: Dichtstreifen-Gesamtlänge ist nachrichtlich (nie bepreist) — die Einbauposition nicht.
   t(name+" · Dicht-Gesamtlänge nachrichtlich", items.find(it=>it.key==='dicht').nachrichtlich===true
     && !items.find(it=>it.key==='dicht_stk').nachrichtlich);
@@ -69,7 +94,9 @@ for(const [name,l,h,ops] of cases){
   t("spannplatte_top · top_plate ist null", w.top_plate===null);
   t("spannplatte_top · Kopfblech-Position = 0", ko.menge===0);
   t("spannplatte_top · Bodenblech > 0", bo.menge>0);
-  t("spannplatte_top · Summe = Core-Gesamtzahl", bo.menge+ko.menge===w.bom.stahlblech_module);
+  t("spannplatte_top · Summe = Core-Gesamtzahl",
+    items.filter(it=>it.key==='blech_boden'||it.key==='blech_boden_sonder')
+      .reduce((a,it)=>a+it.menge,0)+ko.menge===w.bom.stahlblech_module);
 }
 
 // Alt-Bundle ohne base_plate/top_plate: der Split wird aus Wandlänge/Modullänge nachgerechnet,
