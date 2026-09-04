@@ -19,7 +19,7 @@ globalThis.localStorage = new MemStorage();
 
 const html=readFileSync(new URL("../../docs/wandplanung.html", import.meta.url),"utf8");
 const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische (attributlose) Skript
-class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={};this.listeners={};this._tb=null;this.checked=false;this.dataset={};}
+class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={setProperty(k,v){this[k]=v;}};this.listeners={};this._tb=null;this.checked=false;this.dataset={};}
   addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);}
   // Ereignisobjekt darf vom Test gestellt werden (delegierte Hoerer auf gerenderten Elementen).
   dispatch(e,ev){(this.listeners[e]||[]).forEach(f=>f(ev||{target:this}));}
@@ -28,7 +28,9 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   querySelectorAll(){return [];} appendChild(){} }
 const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
-globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},addEventListener:()=>{}}; globalThis.alert=()=>{};
+globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},
+  _h:{}, addEventListener(e,f){(this._h[e]||(this._h[e]=[])).push(f);},
+  dispatch(e,ev){(this._h[e]||[]).forEach(f=>f(ev||{}));}}; globalThis.alert=()=>{};
 
 const store = await import("../../docs/shared/storage.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
@@ -122,6 +124,121 @@ const legendeStimmt=()=>{
   return alle.length>0 && /Kopplung/.test(L);
 };
 ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legendeStimmt());
+// ---- Issue #100: Wandansicht passt ins Fenster und laesst sich zoomen ---------------
+// Gefahren wird der ECHTE Bedienpfad: die im Markup sichtbaren Schalter werden geklickt und
+// die Fenstergroessenaenderung ueber den echten window-Hoerer ausgeloest. Markup und CSS
+// werden gegen die ECHTE HTML-Quelle geprueft — der DOM-Stub legt unbekannte Elemente bei
+// Bedarf an und koennte fehlendes Markup nie als fehlend melden.
+{
+  const box=document.getElementById('planBox'), wert=document.getElementById('zoomWert');
+  const zoomVar=()=>box.style['--zoom'];
+  const klick=id=>document.getElementById(id).dispatch('click');
+  const planHtml=()=>document.getElementById('plan').innerHTML;
+
+  // (a) Hoehenbegrenzter Zeichenbereich mit lokalem Scrollen
+  ok('[#100] das Plan-SVG liegt in einem eigenen Zeichenbereich',
+    /<div class="planbox" id="planBox">\s*<svg id="plan"/.test(html));
+  ok('[#100] der Zeichenbereich ist auf die verfuegbare Fensterhoehe begrenzt', (()=>{
+    const css=(html.match(/\.planbox\{[^}]*\}/)||[''])[0];
+    return /--planh:calc\(100vh/.test(css) && /max-height:var\(--planh\)/.test(css); })());
+  ok('[#100] Uebergroesse scrollt lokal und blaeht die Seite nicht horizontal auf', (()=>{
+    const css=(html.match(/\.planbox\{[^}]*\}/)||[''])[0];
+    return /overflow:auto/.test(css) && /max-width:100%/.test(css); })());
+  ok('[#100] das SVG wird proportional in die verfuegbare Hoehe eingepasst', (()=>{
+    const css=(html.match(/\.planbox>svg\{[^}]*\}/)||[''])[0];
+    return /height:auto/.test(css)
+      && /max-height:calc\(var\(--planh\) \* var\(--zoom\)\)/.test(css)
+      && /width:calc\(100% \* var\(--zoom\)\)/.test(css)
+      && /<svg id="plan"[^>]*preserveAspectRatio="xMidYMid meet"/.test(html); })());
+  ok('[#100] der frühere unbegrenzte globale svg-Selektor ist entfallen',
+    !/^\s*svg\{width:100%;height:auto/m.test(html));
+
+  // (b) Bedienelemente: echte <button> (damit nativ per Tastatur bedienbar), klar beschriftet,
+  //     und sie stehen an der Ansicht — NICHT in der linken Eingabespalte (#69).
+  const KOPF=html.match(/<div class="stage panel">[\s\S]*?<div class="planbox"/)[0];
+  ok('[#100] beschriftete Schalter fuer Vergroessern, Verkleinern und Einpassen',
+    /<button type="button" id="zoomIn" class="mini"[^>]*>[^<]*Größer</.test(KOPF)
+    && /<button type="button" id="zoomOut" class="mini"[^>]*>[^<]*Kleiner</.test(KOPF)
+    && /<button type="button" id="zoomFit" class="mini"[^>]*>Einpassen</.test(KOPF));
+  ok('[#100] die Schalter sind per Tastatur bedienbar (native Knoepfe, kein div-Ersatz)',
+    !/id="zoom(In|Out|Fit)"/.test(KOPF.replace(/<button[^>]*>/g,'')));
+  ok('[#100] der Zoomwert steht sichtbar an den Bedienelementen', /id="zoomWert"/.test(KOPF));
+  ok('[#100] die Schalter stehen an der Ansicht, nicht in der linken Eingabespalte',
+    !/id="zoom/.test(html.match(/<div class="controls panel">[\s\S]*?<div class="stage panel">/)[0]));
+
+  // (c) Standardstellung = eingepasst
+  ok('[#100] Standardstellung ist die eingepasste Ansicht (100 %), Wert sichtbar',
+    WP.zoomPct===WP.ZOOM_FIT && wert.textContent==='100 %'
+    && zoomVar()==='1' && box.dataset.zoom==='100');
+
+  // (d) Zoom aendert AUSSCHLIESSLICH die Darstellungsgroesse
+  const planVor=planHtml(), wandVor=JSON.stringify(store.aktivesWandelement());
+  klick('zoomIn');
+  ok('[#100] Vergroessern hebt den Faktor und den sichtbaren Prozentwert',
+    WP.zoomPct===125 && wert.textContent==='125 %' && zoomVar()==='1.25' && box.dataset.zoom==='125');
+  ok('[#100] die Zeichnung selbst bleibt dabei unveraendert (nur der Rahmen skaliert)',
+    planHtml()===planVor && JSON.stringify(store.aktivesWandelement())===wandVor);
+  klick('zoomOut'); klick('zoomOut');
+  ok('[#100] Verkleinern senkt den Faktor schrittweise',
+    WP.zoomPct===75 && wert.textContent==='75 %' && zoomVar()==='0.75');
+
+  // (e) Grenzen: der Faktor laeuft nie ueber Mindest-/Hoechstwert hinaus
+  for(let i=0;i<40;i++) klick('zoomIn');
+  ok('[#100] der Faktor ist nach oben begrenzt',
+    WP.zoomPct===WP.ZOOM_MAX && wert.textContent===WP.ZOOM_MAX+' %'
+    && document.getElementById('zoomIn').disabled===true);
+  for(let i=0;i<40;i++) klick('zoomOut');
+  ok('[#100] der Faktor ist nach unten begrenzt',
+    WP.zoomPct===WP.ZOOM_MIN && wert.textContent===WP.ZOOM_MIN+' %'
+    && document.getElementById('zoomOut').disabled===true);
+
+  // (f) Zuruecksetzen stellt die eingepasste Standardansicht wieder her
+  klick('zoomFit');
+  ok('[#100] Zuruecksetzen stellt die eingepasste Ansicht wieder her',
+    WP.zoomPct===WP.ZOOM_FIT && wert.textContent==='100 %' && zoomVar()==='1'
+    && document.getElementById('zoomIn').disabled===false
+    && document.getElementById('zoomOut').disabled===false);
+
+  // (g) Fenstergroessenaenderung: die Einpassung wird neu angewandt, der GEWAEHLTE Faktor bleibt
+  klick('zoomIn'); klick('zoomIn');
+  box.dataset.zoom='';                      // Beweis, dass das Resize wirklich neu anwendet
+  globalThis.window.dispatch('resize');
+  ok('[#100] Resize bewahrt den gewaehlten Zoom und wendet die Einpassung neu an',
+    WP.zoomPct===150 && wert.textContent==='150 %' && zoomVar()==='1.5'
+    && box.dataset.zoom==='150');
+
+  // (h) Bei gewaehltem Zoom bleibt die gesamte Ansicht voll bedienbar
+  WP.setzeZoom(200);
+  WP.run();
+  ok('[#100] Neuberechnung laeuft bei gewaehltem Zoom unveraendert',
+    WP.RESULT && WP.RESULT.status==='konvergiert' && WP.zoomPct===200);
+  const showDimEl=document.getElementById('showDim'), showRasterEl=document.getElementById('showRaster');
+  showRasterEl.checked=true; showRasterEl.dispatch('change');
+  ok('[#100] Raster laesst sich bei gewaehltem Zoom einschalten', /Raster 12,5 × 20 cm/.test(planHtml()));
+  showRasterEl.checked=false; showRasterEl.dispatch('change');
+  ok('[#100] Raster laesst sich wieder ausschalten', !/Raster 12,5 × 20 cm/.test(planHtml()));
+  showDimEl.checked=false; showDimEl.dispatch('change');
+  const ohneMasse=planHtml();
+  showDimEl.checked=true; showDimEl.dispatch('change');
+  const masszahl=h=>(h.match(/transform="rotate\(-90/g)||[]).length;   // nur die Bemassungsschicht
+  ok('[#100] Masse lassen sich bei gewaehltem Zoom aus- und einschalten',
+    masszahl(ohneMasse)===0 && masszahl(planHtml())>0 && /2,00 m</.test(planHtml()));
+  klick('viewToggle');
+  ok('[#100] Ansichtsumschaltung wirkt bei gewaehltem Zoom', /Rückseite/.test(planHtml()));
+  klick('viewToggle');
+  ok('[#100] und wieder zurueck auf die Vorderseite', !/Rückseite/.test(planHtml()));
+
+  // (i) Der Zoomzustand wird NIRGENDS gespeichert und beruehrt die Zeichengeometrie nicht.
+  const zoomQuelle=html.match(/function applyZoom\(\)\{[\s\S]*?function zoomEinpassen[^\n]*\n/)[0];
+  ok('[#100] die Zoomlogik ruehrt weder viewBox noch Speicher an',
+    !/viewBox/.test(zoomQuelle) && !/store\./.test(zoomQuelle)
+    && !/localStorage/.test(zoomQuelle) && !/mergeEingaben/.test(zoomQuelle));
+  ok('[#100] kein Zoomzustand in den gespeicherten Eingaben oder im localStorage',
+    !/zoom/i.test(JSON.stringify(store.aktiveEingaben()))
+    && !/zoom/i.test(localStorage.getItem('sembla:elemente')||''));
+  WP.setzeZoom(WP.ZOOM_FIT);   // Ausgangszustand fuer die folgenden Abschnitte
+}
+
 // ---- Issue #78: kein statischer Einzelnachweis mehr in Modul 1 ----------------------
 // Geprueft am ECHTEN HTML: der DOM-Stub legt unbekannte Elemente bei Bedarf an und koennte
 // entferntes Markup nie als fehlend melden. Der Nachweis liegt allein in Modul 3.

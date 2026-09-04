@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-04",
+    datum: "2026-09-04",
+    typ: "feature",
+    issue: 100,
+    titel: "Modul 1: die Wandansicht passt jetzt ins Fenster und lässt sich stufenweise zoomen",
+    testbitte: "Modul 1 mit einer 2,60 m hohen Wand öffnen: die Ansicht ist ohne Scrollen "
+      + "vollständig zu sehen. Mit „Größer“ und „Kleiner“ die Darstellung ändern — der "
+      + "Prozentwert steht daneben, „Einpassen“ stellt die Startgröße wieder her.",
+  },
+  {
     id: "chg-20260904-03",
     datum: "2026-09-04",
     typ: "feature",

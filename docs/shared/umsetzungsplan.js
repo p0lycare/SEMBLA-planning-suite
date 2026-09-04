@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-09-04",
-  "signatur": "deb2687b",
+  "signatur": "591c7ef0",
   "entscheidungen": [
     {
       "issue": 41,
@@ -102,15 +102,6 @@ export const PLAN = {
     "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
   },
   "weitere": [
-    {
-      "issue": 100,
-      "titel": "Wandansicht in Modul 1 auf Browserhöhe begrenzen und zoombar machen",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": false
-    },
     {
       "issue": 20,
       "titel": "Zyklusrahmen: Aschersleben/AWG-Projekt vollständig begleiten",

@@ -34,7 +34,23 @@
   .pill.ok{background:#e3f5ea;color:var(--sb-ok)} .pill.no{background:#fbe6dd;color:var(--sb-warn)}
   .op{border:1px solid var(--sb-line);border-radius:8px;padding:8px 10px;margin:8px 0;background:#fbfcfd}
   .op .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px} .op .head b{font-size:12.5px}
-  svg{width:100%;height:auto;display:block;background:#fff;border:1px solid var(--sb-line);border-radius:8px;margin-top:6px}
+  /* Wandansicht (Issue #100): eigener hoehenbegrenzter Zeichenbereich mit lokalem Zoom.
+     Vorher liess `svg{width:100%;height:auto}` die Ansicht mit dem viewBox-Seitenverhaeltnis
+     ungebremst in den Seitenfluss wachsen (2,6-m-Wand => rund 1000 px hoch). Begrenzt wird
+     hier ausschliesslich das LAYOUT — viewBox und Zeichnung bleiben Sache von draw().
+     `--planh` ist die im Fenster verfuegbare Hoehe (vh-basiert, also nach jedem Resize von
+     selbst richtig), `--zoom` der vom Planer gewaehlte Faktor. Bei Zoom 1 passt das Blatt
+     dank `max-height` vollstaendig hinein (preserveAspectRatio="meet" haelt es proportional);
+     darueber laeuft der Ueberhang in den lokalen Scrollbereich und nicht in die Seite. */
+  .planbox{--zoom:1;--planh:calc(100vh - 240px);
+    max-width:100%;max-height:var(--planh);min-height:120px;overflow:auto;
+    margin-top:6px;border:1px solid var(--sb-line);border-radius:8px;background:#fff}
+  .planbox>svg{display:block;background:#fff;width:calc(100% * var(--zoom));height:auto;
+    max-height:calc(var(--planh) * var(--zoom))}
+  .zoombar{display:flex;align-items:center;gap:4px}
+  .zoombar .zwert{font-size:12px;color:var(--sb-muted);font-variant-numeric:tabular-nums;
+    min-width:46px;text-align:center}
+  button:disabled{background:#f2f4f7;color:#8a9098;cursor:not-allowed}
   .warns{margin-top:8px;font-size:12.5px;color:var(--sb-warn)}
   /* Zuschnittlegende (Issue #63): eigener Bereich AUSSERHALB des Plan-SVG. Im Bild lag sie im
      46-px-Kopfraum und verdeckte dort Reststueck-Ueberstand ([Z-6]), Kopfblech/Spannplatten,
@@ -169,8 +185,16 @@
       <label class="mini" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="showRaster"> Raster</label>
       <button id="viewToggle" class="mini">Ansicht: Vorderseite</button>
       <span class="badge" id="sideBadge" style="background:#eef2f7;color:#1c2430">–</span>
+      <span class="zoombar" role="group" aria-label="Darstellungsgröße der Wandansicht">
+        <button type="button" id="zoomOut" class="mini" title="Wandansicht verkleinern">− Kleiner</button>
+        <span class="zwert" id="zoomWert" aria-live="polite">100 %</span>
+        <button type="button" id="zoomIn" class="mini" title="Wandansicht vergrößern">+ Größer</button>
+        <button type="button" id="zoomFit" class="mini" title="Wandansicht wieder ins Fenster einpassen">Einpassen</button>
+      </span>
     </div>
-    <svg id="plan" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="planbox" id="planBox">
+      <svg id="plan" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
     <div class="zlegende" id="zLegende"></div>
     <div class="warns" id="warns"></div>
 
@@ -831,6 +855,31 @@ function bindProdukte(){
   });
 }
 
+// ---- Darstellungsgroesse der Wandansicht (Issue #100) ------------------------------
+// REINE Oberflaeche von Modul 1: der Faktor lebt in dieser Modulvariablen und wird NIRGENDS
+// gespeichert — kein `eingaben`-Abschnitt, kein localStorage, kein Feld im Wandelement. Er
+// beruehrt weder viewBox noch draw(): applyZoom() setzt allein die beiden CSS-Variablen des
+// Zeichenrahmens. Eingepasst wird ueber die Fensterhoehe (`--planh` in vh), ein Resize rechnet
+// die Einpassung also von selbst neu, waehrend der gewaehlte Faktor stehen bleibt.
+const ZOOM_MIN=25, ZOOM_MAX=400, ZOOM_SCHRITT=25, ZOOM_FIT=100;
+let zoomPct=ZOOM_FIT;
+function applyZoom(){
+  const box=$('planBox');
+  box.style.setProperty('--zoom', String(zoomPct/100));
+  box.dataset.zoom=String(zoomPct);
+  $('zoomWert').textContent=zoomPct+' %';
+  $('zoomOut').disabled = zoomPct<=ZOOM_MIN;
+  $('zoomIn').disabled  = zoomPct>=ZOOM_MAX;
+}
+// Einziger Schreibweg des Faktors — hier und nur hier wird begrenzt (nie gerundet gemeldet,
+// nie ueber die Grenze hinaus gerechnet).
+function setzeZoom(p){
+  zoomPct=Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(p)));
+  applyZoom();
+}
+function zoomSchritt(richtung){ setzeZoom(zoomPct + richtung*ZOOM_SCHRITT); }
+function zoomEinpassen(){ setzeZoom(ZOOM_FIT); }
+
 // ---- Spannachsen-Editor (Feature: manuelle Achsen für Sonderkonstruktionen) ----
 function pxToK(e){ if(!LASTDRAW) return 0; const r=$('plan').getBoundingClientRect();
   const sx=(e.clientX-r.left)/r.width*1000; const {pad,sc,L,back,N}=LASTDRAW;
@@ -870,6 +919,11 @@ function bindEvents(){
   $('addInterlock').addEventListener('click',addInterlock);
   $('viewToggle').addEventListener('click',()=>{ VIEW=VIEW==='vorne'?'hinten':'vorne'; $('viewToggle').textContent='Ansicht: '+(VIEW==='vorne'?'Vorderseite':'Rückseite'); run(); });
   $('run').addEventListener('click',run);
+  $('zoomIn').addEventListener('click',()=>zoomSchritt(+1));
+  $('zoomOut').addEventListener('click',()=>zoomSchritt(-1));
+  $('zoomFit').addEventListener('click',zoomEinpassen);
+  // Nur die Einpassung neu anwenden — der gewaehlte Faktor bleibt unangetastet.
+  window.addEventListener('resize',applyZoom);
 }
 
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},
@@ -877,7 +931,9 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
   vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();},
   get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,
-  addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks };
+  addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
+  setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},
+  ZOOM_MIN, ZOOM_MAX, ZOOM_SCHRITT, ZOOM_FIT };
 
 window.__wpInit=function(){
   const S=window.SEMBLA||{};
@@ -887,6 +943,7 @@ window.__wpInit=function(){
   stangenStuecke=S.stangenStuecke;
   bindEvents();
   bindProdukte();
+  applyZoom();     // Standardstellung: eingepasst
   setupStoreSync();
   // [P-18]/[Z-1]: Die Vorbelegung MUSS vor der ersten Berechnung stehen — sie liefert die
   // maßgebenden Standardlängen und das Reststück. Sonst rechnete loadInitial() noch mit der
