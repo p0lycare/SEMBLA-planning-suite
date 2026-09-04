@@ -331,7 +331,7 @@ class Bodenblech(unittest.TestCase):
         self.assertEqual(sc.norm_blech_laengen([1250, 300, 1500, 1000, 1000, 0]), [1250, 1000])
 
     def test_5000er_wand_nur_standardteile_stossfrei(self):
-        w = build_wall("bb5", 5000, 2600, [])
+        w = build_wall("bb5", 5000, 2600, [], prestress={"top_connection": "blech"})
         self.assertEqual(self.kurz(w), "1125/1123+1125/1123+1125/1123+1125/1123+500/498")
         self.assertTrue(all(t["art"] == "standard" for t in w["base_plate"]["teile"]))
         self.assertEqual(sum(t["raster_mm"] for t in w["base_plate"]["teile"]), 5000)
@@ -376,8 +376,9 @@ class Bodenblech(unittest.TestCase):
                             for k in w["validation"]["blech_konflikte"]))
 
     def test_blech_mm_bleibt_kopfblech_modullaenge(self):
-        a = build_wall("bbk", 3000, 2600, [])
-        b = build_wall("bbk", 3000, 2600, [], prestress={"blech_mm": 500})
+        a = build_wall("bbk", 3000, 2600, [], prestress={"top_connection": "blech"})
+        b = build_wall("bbk", 3000, 2600, [],
+                       prestress={"blech_mm": 500, "top_connection": "blech"})
         self.assertEqual(self.kurz(a), self.kurz(b))
         self.assertEqual(a["top_plate"]["module"], 3)
         self.assertEqual(b["top_plate"]["module"], 6)

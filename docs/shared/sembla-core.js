@@ -851,7 +851,11 @@ export const REFERENCE_WALLS = {
   ref2_wand_tuer: ["ref2_wand_tuer", 2000, 2600, [new Opening(5, 11, 0, 10, "tuer")]],
   ref3_wand_fenster: ["ref3_wand_fenster", 2000, 2600, [new Opening(6, 10, 4, 10, "fenster")]],
 };
+// Die Referenzwaende sind ausdrueckliche KOPFBLECH-Faelle: ihre goldenen Fixtures tragen
+// `top_connection: "blech"`. Der Wert wird hier AUSGESPROCHEN statt dem Default ueberlassen —
+// sonst verschoebe ein spaeterer Wechsel des allgemeinen Defaults die Goldwerte still.
+// Der Default in `normPrestress` bleibt davon unberuehrt.
 export function buildReference(key) {
   const [name, l, h, ops] = REFERENCE_WALLS[key];
-  return buildWall(name, l, h, ops);
+  return buildWall(name, l, h, ops, null, { top_connection: "blech" });
 }

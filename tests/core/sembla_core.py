@@ -898,9 +898,13 @@ REFERENCE_WALLS = {
     "ref3_wand_fenster":("ref3_wand_fenster", 2000, 2600, [Opening(6, 10, 4, 10, "fenster")]),
 }
 
+# Die Referenzwaende sind ausdrueckliche KOPFBLECH-Faelle: ihre goldenen Fixtures tragen
+# `top_connection: "blech"`. Der Wert wird hier AUSGESPROCHEN statt dem Default ueberlassen —
+# sonst verschoebe ein spaeterer Wechsel des allgemeinen Defaults die Goldwerte still.
+# Der Default in `_norm_prestress` bleibt davon unberuehrt (Paritaet zu buildReference im JS-Core).
 def build_reference(key: str) -> dict:
     name, l, h, ops = REFERENCE_WALLS[key]
-    return build_wall(name, l, h, ops)
+    return build_wall(name, l, h, ops, prestress={"top_connection": "blech"})
 
 
 if __name__ == "__main__":

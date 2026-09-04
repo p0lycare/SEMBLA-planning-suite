@@ -34,7 +34,10 @@ const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 
 // --- Referenzfaelle (synthetisch aus dem Core) -----------------------------
 // W  : Wand mit Tuer, gestaffelt -> Oeffnungs-, Bruestungs- und Staffelungsmasse
-const W = buildWall("IW-01", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null, null,
+// W ist ein ausdruecklicher KOPFBLECH-Fall: das Blatt zeigt Boden- UND Kopfblech. Der obere
+// Anschluss wird deshalb AUSGESPROCHEN und nicht dem allgemeinen Default ueberlassen.
+const W = buildWall("IW-01", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null,
+  { top_connection: "blech" },
   [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
 // WF : Fenster mit Bruestung (l0 > 0)
 const WF = buildWall("IW-02", 4000, 2600, [new Opening(8, 14, 4, 10, "fenster")]);
@@ -741,7 +744,8 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
     && Z.FARBE.kontur === "#13202e");
 
   // (a) Mehrteilig mit ungleichen Teilen: genau die kanonischen Stoesse, keine Modulfugen
-  const WBM = buildWall("Blech-mehr", 4625, 2600, [], null, { blech_lengths_mm: [1250, 1125] });
+  const WBM = buildWall("Blech-mehr", 4625, 2600, [], null,
+    { blech_lengths_mm: [1250, 1125], top_connection: "blech" });
   const tM = bodenblechTeile(WBM);
   ok("[A-10] Testwand hat mehrere Bodenblechteile ungleicher Laenge (Voraussetzung)",
     tM.length > 2 && new Set(tM.map(t => t.raster_mm)).size > 1);

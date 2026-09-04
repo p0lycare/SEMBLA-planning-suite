@@ -276,7 +276,7 @@ t("[A-10] Fallback ist die volle Standardreihe 375…1250 mm", () => {
     === "[1250,1000]", "nur Vielfache von 125 im Bereich 375…1250");
 });
 t("[A-10]/[A-11] 5000-mm-Wand: nur Standardteile, Summe = Wandlaenge, stossfrei", () => {
-  const w = buildWall("bb5", 5000, 2600, []);
+  const w = buildWall("bb5", 5000, 2600, [], null, { top_connection: "blech" });
   assert(blechKurz(w) === "1125/1123+1125/1123+1125/1123+1125/1123+500/498", blechKurz(w));
   assert(w.base_plate.teile.every(tl => tl.art === "standard"), "nur Standardlaengen");
   assert(w.base_plate.teile.reduce((a, tl) => a + tl.raster_mm, 0) === 5000, "Summe");
@@ -317,8 +317,8 @@ t("[A-10] ausdruecklich leerer Vorratssatz: gemeldet, keine Laenge erfunden", ()
   assert(w.validation.blech_konflikte.some(k => k.grund === "keine_standardlaenge"), "gemeldet");
 });
 t("[A-11] `blech_mm` bleibt allein die Kopfblech-Modullaenge", () => {
-  const a = buildWall("bbk", 3000, 2600, []);
-  const b = buildWall("bbk", 3000, 2600, [], null, { blech_mm: 500 });
+  const a = buildWall("bbk", 3000, 2600, [], null, { top_connection: "blech" });
+  const b = buildWall("bbk", 3000, 2600, [], null, { blech_mm: 500, top_connection: "blech" });
   assert(blechKurz(a) === blechKurz(b), "Bodenblech unabhaengig von blech_mm");
   assert(b.top_plate.module === 6 && a.top_plate.module === 3, "Kopfblech folgt blech_mm");
 });

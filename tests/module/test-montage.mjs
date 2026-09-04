@@ -40,10 +40,14 @@ const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 // (1) Rechteckwand, (2) gestaffelte Wand wie die Musterwand AWG (3,00 x 2,60 m,
 // ohne Oeffnungen, drei Hoehenstufen -> Stangenendhoehen 2600/2000/1400),
 // (3) Tuerwand (Segment oberhalb der Oeffnung -> neue Stange mitten in der Wand).
-const WR = buildWall("IW-Rechteck", 3000, 2600, []);
-const WAWG = buildWall("Musterwand AWG", 3000, 2600, [], null, null,
+// Alle drei sind ausdrueckliche KOPFBLECH-Faelle: ihre Abschluss-Ereignisse, `anker_oben` und
+// die Seitentexte haengen am oberen Anschluss. `top_connection` wird deshalb AUSGESPROCHEN und
+// nicht dem allgemeinen Default ueberlassen.
+const PS_BLECH = { top_connection: "blech" };
+const WR = buildWall("IW-Rechteck", 3000, 2600, [], null, PS_BLECH);
+const WAWG = buildWall("Musterwand AWG", 3000, 2600, [], null, PS_BLECH,
   [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }, { x0_mm: 2250, x1_mm: 3000, height_mm: 1400 }]);
-const WT = buildWall("Tuerwand", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")]);
+const WT = buildWall("Tuerwand", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null, PS_BLECH);
 // (4)/(5) Waende MIT bestimmtem Reststueck ([Z-6]): einmal reines Rechteck (alle Segmente mit
 // Oberkantenbezug), einmal mit Fenster (Bruestung/Sturz OHNE Oberkantenbezug daneben) — nur so
 // ist die Fallunterscheidung des Ueberstands ueberhaupt pruefbar.
@@ -487,7 +491,7 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     && aR[0].hoehe_mm === 2600 && aR[0].lagen === 13);
 
   // Musterwand AWG mit vier Hoehen 2600/2200/1800/1400 (Fall aus Issue #24)
-  const W4 = buildWall("AWG vier Stufen", 4000, 2600, [], null, null, [
+  const W4 = buildWall("AWG vier Stufen", 4000, 2600, [], null, PS_BLECH, [
     { x0_mm: 1000, x1_mm: 2000, height_mm: 2200 },
     { x0_mm: 2000, x1_mm: 3000, height_mm: 1800 },
     { x0_mm: 3000, x1_mm: 4000, height_mm: 1400 },
@@ -516,7 +520,7 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     JSON.stringify(oberkantenAbschnitte(W4sp)) === JSON.stringify(a4) && W4sp.top_plate === null);
 
   // Stufe auf Hoehe 0: dort steht keine Wand -> kein Abschnitt, echte Luecke
-  const W0 = buildWall("Wand mit Aussparung", 4000, 2600, [], null, null,
+  const W0 = buildWall("Wand mit Aussparung", 4000, 2600, [], null, PS_BLECH,
     [{ x0_mm: 1000, x1_mm: 2000, height_mm: 0 }]);
   const a0 = oberkantenAbschnitte(W0);
   ok("Stufe auf Hoehe 0 erzeugt keinen schwebenden Abschnitt (echte Luecke)",

@@ -37,6 +37,13 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-06",
+    datum: "2026-09-04",
+    typ: "intern",
+    issue: 92,
+    titel: "Vorarbeit Spannplatte: die Kopfblech-Fälle der Tests sind ausdrücklich festgeschrieben",
+  },
+  {
     id: "chg-20260904-05",
     datum: "2026-09-04",
     typ: "feature",

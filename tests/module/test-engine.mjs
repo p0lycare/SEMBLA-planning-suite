@@ -91,11 +91,13 @@ t("[A-10] ohne Feld gilt unveraendert der Core-Fallback", ()=>{
   A(rasterMasse(ohne.wandelement).some(x=>x>1000), "Fallback nutzt Laengen ueber 1000 mm");
 });
 
+// Ein KOPFBLECH-Fall: `top_connection` wird ausdruecklich gewaehlt, damit die Erwartung an
+// `top_plate` nicht am allgemeinen Default haengt.
 t("[A-10] Kopfblech-Modulzaehlung haengt weiter allein an blech_mm", ()=>{
   const a=autoAuslegung({...base, length_mm:4000,
-    prestress:{blech_mm:1000, blech_lengths_mm:[1250,1000]}, load:{qk_area:0.5,gammaQ:1.5}});
+    prestress:{blech_mm:1000, blech_lengths_mm:[1250,1000], top_connection:"blech"}, load:{qk_area:0.5,gammaQ:1.5}});
   const b=autoAuslegung({...base, length_mm:4000,
-    prestress:{blech_mm:500,  blech_lengths_mm:[1250,1000]}, load:{qk_area:0.5,gammaQ:1.5}});
+    prestress:{blech_mm:500,  blech_lengths_mm:[1250,1000], top_connection:"blech"}, load:{qk_area:0.5,gammaQ:1.5}});
   A(JSON.stringify(rasterMasse(a.wandelement))===JSON.stringify(rasterMasse(b.wandelement)),
     "Bodenblechteile unveraendert");
   A(b.wandelement.top_plate.module > a.wandelement.top_plate.module,
