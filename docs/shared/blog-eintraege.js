@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260905-01",
+    datum: "2026-09-05",
+    typ: "feature",
+    issue: 98,
+    titel: "Alle Zeichnungen eines Projekts geschossweise als PDF — ein Klick, ein ZIP",
+    testbitte: "In Modul 0 am Projekt „Zeichnungen als PDF“ drücken: es kommt genau ein ZIP "
+      + "mit einer PDF je Geschoss; darin steht der Lageplan auf Seite 1 und danach je Wand "
+      + "ein Blatt. Fehlt ein Wandelement, wird es vor dem Download benannt.",
+  },
+  {
     id: "chg-20260904-12",
     datum: "2026-09-04",
     typ: "fix",

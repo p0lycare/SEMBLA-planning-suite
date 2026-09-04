@@ -534,6 +534,12 @@
   // eine 62,5 hier im Modul wäre eine zweite Wahrheit. Geschrieben wird nichts.
   import * as CON from './shared/sembla-constraints.js';
   import * as PLAN from './shared/sembla-plan.js';
+  // Gesammelte Zeichnungs-PDFs je Geschoss (#98). Der Baustein zeichnet nichts: er
+  // rendert die BESTEHENDEN Vollblattableitungen der Ausgabemodule 9 und 7 und
+  // verpackt sie — genau eine PDF je Geschoss. Modul 0 bindet die beiden Module
+  // ausdrücklich NICHT selbst ein und ruft keine ihrer Ausgabefunktionen auf: der
+  // einzige Zugang ist ZPDF ([N-1]/[D-6]).
+  import * as ZPDF from './shared/sembla-zeichnungspdf.js';
 
   mountNavbar(0);
 
@@ -630,6 +636,9 @@
         // ANGEKLICKTEN Projekt ab und setzt dabei keinen Zeiger um ([L-10]) — deshalb
         // ist der Knopf auch an nicht aktiven Projekten nutzbar.
         + knopf('prj-export', m.projekt.id, 'Exportieren', 'btn-p')
+        // #98: eigener Ausgang neben dem Datei-Export — er liefert Blaetter, keine
+        // Daten, und laesst Projektarchiv und hierarchischen ZIP-Export unberuehrt.
+        + knopf('prj-zeichnungen', m.projekt.id, 'Zeichnungen als PDF')
         + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d')
         + `</span></div>`;
       if (!offen) return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}</div>`;
@@ -752,15 +761,18 @@
   }
 
   // --- Aktionen der Baumliste ---------------------------------------------
+  // Der Rueckgabewert wird durchgereicht: der Zeichnungsexport (#98) ist asynchron
+  // (Rastern der Blaetter), und ohne dieses `return` waere sein Ende von aussen —
+  // auch im Smoke-Test — nicht abwartbar. Fuer alle uebrigen Aktionen ist es wirkungslos.
   $('tr-baum').addEventListener('click', (ev) => {
     const btn = ev.target.closest ? ev.target.closest('button[data-act]') : null;
     if (!btn) return;
-    trAktion(btn.dataset.act, btn.dataset.id);
+    return trAktion(btn.dataset.act, btn.dataset.id);
   });
   $('tr-warn').addEventListener('click', (ev) => {
     const btn = ev.target.closest ? ev.target.closest('button[data-act]') : null;
     if (!btn) return;
-    trAktion(btn.dataset.act, btn.dataset.id);
+    return trAktion(btn.dataset.act, btn.dataset.id);
   });
 
   function trAktion(act, id){
@@ -777,6 +789,7 @@
     }
     if (act === 'prj-bearbeiten') { ppOeffne(id); return; }
     if (act === 'prj-export') { oeffneExport('projekt', id); return; }
+    if (act === 'prj-zeichnungen') { return zpdfExport(id); }
     if (act === 'prj-loeschen') { trProjektLoeschen(id); return; }
     if (act === 'gs-neu') { gpOeffne(id, null); return; }
     if (act === 'gs-aktiv') {
@@ -2273,6 +2286,90 @@
       trZeige('Export fehlgeschlagen: ' + fehlerText(e), false);
     }
   });
+
+  // =====================================================================
+  //  Gesammelte Zeichnungs-PDFs je Geschoss (#98)
+  // =====================================================================
+  // Reiner Lesepfad: es wird kein Zeiger umgesetzt ([L-10]) und weder Mappe noch
+  // Wandelement, Eingaben oder Planbild geschrieben. Gezeichnet wird hier nichts —
+  // ZPDF rendert die bestehenden Vollblattableitungen. Projektarchiv ([L-13]) und
+  // hierarchischer Export (#67) bleiben unberührt, und es entsteht GENAU EIN Download.
+
+  /** Bilddaten als Data-URL — dieselbe Umrechnung, mit der Modul 9 sein Blatt füllt. */
+  async function zpdfDatenUrl(blob, typ){
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return 'data:' + (typ || 'image/png') + ';base64,' + btoa(s);
+  }
+
+  /**
+   * Der Planhintergrund eines Geschosses ([N-9]) — ausschließlich LESEND und über
+   * dieselben kanonischen Funktionen wie Modul 9: `PLAN.holePlan()` aus der
+   * Bilddatenbank ([L-8]) und `PLAN.planRahmenMm()` aus dem GESPEICHERTEN Maßstab
+   * und Versatz ([L-9]). Der vorläufige Editorfaktor 1 Bildpunkt = 1 mm wird
+   * ausdrücklich nicht benutzt: ohne Kalibrierung gibt es keinen Hintergrund, und
+   * das Blatt benennt den Grund selbst.
+   */
+  async function zpdfHintergrund(gs){
+    const plan = gs && gs.plan ? gs.plan : null;
+    if (!plan || !plan.datei) return { status: 'keiner' };
+    let bild = null;
+    try { bild = await PLAN.holePlan(gs.id); } catch { bild = null; }
+    if (!bild || !bild.blob) return { status: 'bild_fehlt' };
+    const rahmen = PLAN.planRahmenMm(plan, bild);
+    if (!rahmen) return { status: 'nicht_kalibriert' };
+    let url = null;
+    try { url = await zpdfDatenUrl(bild.blob, bild.typ || plan.typ); } catch { url = null; }
+    if (!url) return { status: 'unbrauchbar' };
+    return { status: 'gesetzt', url, x: rahmen.x, y: rahmen.y, breite: rahmen.breite,
+      hoehe: rahmen.hoehe, mm_je_pixel: rahmen.mm_je_pixel, name: plan.datei };
+  }
+
+  /**
+   * Der Bedienweg: ein Klick, ein ZIP, je Geschoss eine PDF (Lageplan zuerst,
+   * danach die Wandblätter). Zwei getrennte Schritte mit Absicht — erst die
+   * vollständige, rein gerechnete Blattfolge (darüber wird VOR dem Download
+   * geredet), dann das Rastern.
+   */
+  async function zpdfExport(prjId){
+    const m = store.projektMappe(prjId);
+    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
+    try {
+      trZeige(`Zeichnungen für „${m.projekt.name}“ werden erzeugt …`, true);
+      // Der Planhintergrund kommt aus der Bilddatenbank und damit asynchron; das
+      // Blattbauen selbst bleibt synchron und deterministisch.
+      const hintergruende = new Map();
+      for (const o of MAPPE.alleGeschosse(m)) {
+        hintergruende.set(o.geschoss.id, await zpdfHintergrund(o.geschoss));
+      }
+      const plan = ZPDF.blaetterProjekt({
+        mappe: m,
+        elemente: store.listeElemente(),
+        // Kopfdaten nach [L-11] aus dem Projekt der Wand (Rückfall: Altbestand).
+        leseEingaben: (id) => store.eingabenMitKopfdaten(id),
+        hintergruende,
+      });
+      if (!plan.geschosse.length) {
+        trZeige('Keine PDF erzeugt: ' + (plan.luecken.join(' ') || 'Das Projekt hat kein Geschoss.'), false);
+        return;
+      }
+      // Fehlendes wird VOR dem Download benannt — kein stilles Teilergebnis ([L-4]/[P-9]).
+      if (plan.luecken.length && !confirm('Diese Zeichnungsausgabe wird NICHT vollständig:\n\n– '
+        + plan.luecken.join('\n– ') + '\n\nTrotzdem herunterladen?')) {
+        trZeige('Abgebrochen — es wurde nichts heruntergeladen.', false); return;
+      }
+      const dateien = await ZPDF.pdfDateien(plan, { rendere: (seite, dpi) => ZPDF.blattBild(seite, dpi) });
+      downloadZip(plan.zipName + '.zip', dateien);
+      const seiten = plan.geschosse.reduce((n, g) => n + g.seiten.length, 0);
+      trZeige(`Zeichnungen exportiert: ${dateien.length} PDF (je Geschoss eine) mit ${seiten} Blatt im ZIP.`
+        + (plan.luecken.length ? ' ⚠ Unvollständig: ' + plan.luecken.join(' ') : ''), !plan.luecken.length);
+    } catch (e) {
+      trZeige('Zeichnungsexport fehlgeschlagen: ' + fehlerText(e), false);
+    }
+  }
 
   // --- Auffrischen ---------------------------------------------------------
   store.abonniere(trRender);

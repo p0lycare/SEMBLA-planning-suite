@@ -173,6 +173,10 @@ const MAPPE = await import("../../docs/shared/sembla-projektmappe.js");
 const CON = await import("../../docs/shared/sembla-constraints.js");
 const PLAN = await import("../../docs/shared/sembla-plan.js");
 const ARCHIV = await import("../../docs/shared/sembla-archiv.js");
+// #98: der gesammelte Zeichnungs-PDF-Export. Der Baustein ist bis auf seine
+// Rasterhilfe rein; genau die wird hier ersetzt (s. `zpdfRenderer`), damit der
+// Bedienweg ohne Browser laeuft und trotzdem eine ECHTE PDF entsteht.
+const ZPDF_ECHT = await import("../../docs/shared/sembla-zeichnungspdf.js");
 const { entpacke, zipSync } = await import("../../docs/shared/zip.js");
 
 // --- Produktcode aus docs/index.html laden --------------------------------
@@ -181,13 +185,26 @@ const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
 const BINDUNGEN = ["mountNavbar","MODULE","store","WA","baueDateien","gesamtstuecklisteDateien",
                    "gesamtUmfang","gesamtDaten","gesamtDateiRumpf","downloadZip",
-                   "entpacke","ARCHIV","KAT","MAPPE","CON","PLAN"];
+                   "entpacke","ARCHIV","KAT","MAPPE","CON","PLAN","ZPDF"];
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
+// Ersatz fuer die EINE DOM-nutzende Funktion des Zeichnungsexports (#98): statt das
+// Blatt zu rastern, liefert sie ein festes, winziges JPEG. Alles andere — Blattfolge,
+// Seitengroesse, Reihenfolge, PDF-Struktur — bleibt der echte Produktcode. Die
+// gerenderten Blaetter werden mitprotokolliert, damit der Test nachsehen kann, WAS
+// gerendert werden sollte.
+const zpdfSeiten = [];
+const MINI_JPEG = new Uint8Array([0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x01, 0xFF, 0xD9]);
+let zpdfFehlerAb = null;                                      // Titel, ab dem das Rastern scheitert
+const ZPDF = { ...ZPDF_ECHT, blattBild: async (seite) => {
+  zpdfSeiten.push(seite);
+  if (zpdfFehlerAb && seite.titel === zpdfFehlerAb) throw new Error('Rasterhilfe im Test abgeschaltet');
+  return { daten: MINI_JPEG, typ: 'jpeg', breite_px: 40, hoehe_px: 28 };
+} };
 new Function(...BINDUNGEN, src)(
   () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
   GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
   (name, files) => zipCalls.push({ name, files }),
-  entpacke, ARCHIV, KAT, MAPPE, CON, PLAN
+  entpacke, ARCHIV, KAT, MAPPE, CON, PLAN, ZPDF
 );
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
@@ -198,7 +215,9 @@ const $=id=>document.getElementById(id);
 // der Test stellt nur das <button data-act data-id> nach, das der Produktcode rendert.
 function baum(act, id, host = 'tr-baum'){
   const btn = new El('b'); btn.dataset = { act, id: id == null ? '' : String(id) };
-  $(host).dispatch('click', { target: { closest: sel => sel === 'button[data-act]' ? btn : null } });
+  // Rueckgabe durchreichen: der Zeichnungsexport (#98) ist asynchron und muss
+  // abwartbar sein. Fuer alle uebrigen Aktionen ist der Wert `undefined`.
+  return $(host).dispatch('click', { target: { closest: sel => sel === 'button[data-act]' ? btn : null } });
 }
 const trMsgTxt = () => $('tr-msg').textContent;
 const trFehler = () => $('tr-msg').className === 'msg err';
@@ -3175,6 +3194,116 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
 
   document.querySelector = alt101Query;
   globalThis.localStorage = alt101Storage;
+}
+
+// --- 13) #98: gesammelte Zeichnungs-PDFs je Geschoss ----------------------
+// Geprueft wird der ECHTE Bedienweg der Startseite: ein Klick am Projekteintrag,
+// GENAU EIN ZIP-Download, je Geschoss genau eine gueltige PDF, Lageplan als erste
+// Seite — und der sichtbare Fehlerpfad, wenn ein Wandblatt fehlt.
+{
+  const zpdfPrj = await projektAnlegen('Zeichnungsprojekt');
+  const zpdfPrjId = zpdfPrj.projekt.id;
+  const zpdfEG = store.aktivesGeschossId();
+  const zpdfOG = geschossAnlegen(zpdfPrjId, 'OG ohne Wand', 2400);
+  // Zurueck ins EG: dort entstehen die Waende ([L-10]).
+  store.setzeAktivesGeschoss(zpdfEG);
+  const wA = wandAnlegen(zpdfEG, { name: 'Wand PDF A', laenge: 2000, hoehe: 2600 });
+  const wB = wandAnlegen(zpdfEG, { name: 'Wand PDF B', laenge: 3000, hoehe: 2600 });
+  // Ein verwaister Eintrag ([L-4]): ein Geschosseintrag ohne Wandelement — so, wie er
+  // nach dem Import einer Mappe ohne die zugehoerige Wanddatei entsteht.
+  store.setzeMappe(MAPPE.setzeWand(store.projektMappe(zpdfPrjId), zpdfEG,
+    { id: 'w98-verwaist', name: 'Wand PDF verwaist', lage: null }));
+
+  ok('#98 die Baumliste bietet den Zeichnungsexport am Projekt an',
+    /data-act="prj-zeichnungen"/.test($('tr-baum').innerHTML)
+    && /Zeichnungen als PDF/.test($('tr-baum').innerHTML));
+
+  // (a) Fehlerpfad: der verwaiste Eintrag wird VOR dem Download benannt; „Nein" laedt nichts.
+  const vorAbbruch = zipCalls.length;
+  confirmTexte.length = 0;
+  confirmFolge = [false];
+  await baum('prj-zeichnungen', zpdfPrjId);
+  ok('#98 der verwaiste Eintrag wird vor dem Download namentlich benannt ([L-4])',
+    confirmTexte.length === 1 && /Wand PDF verwaist/.test(confirmTexte[0])
+    && /NICHT vollständig/.test(confirmTexte[0]));
+  ok('#98 „Nein" laedt nichts herunter und sagt das',
+    zipCalls.length === vorAbbruch && trFehler() && /Abgebrochen/.test(trMsgTxt()));
+
+  // (b) Regulaerer Lauf: genau EIN ZIP mit genau einer PDF je Geschoss.
+  const zeigerVor = [store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()].join('|');
+  const mappeVor = JSON.stringify(store.projektMappe(zpdfPrjId));
+  const elementeVor = JSON.stringify(store.listeElemente());
+  zpdfSeiten.length = 0;
+  confirmFolge = [true];
+  await baum('prj-zeichnungen', zpdfPrjId);
+  const lauf = zipCalls.slice(vorAbbruch);
+  ok('#98 genau EIN ZIP-Download — keine Folge einzelner PDF-Downloads', lauf.length === 1);
+  const dateien = lauf.length ? lauf[0].files : [];
+  ok('#98 der ZIP-Name nennt das Projekt',
+    lauf.length === 1 && lauf[0].name === 'SEMBLA_Zeichnungen_Zeichnungsprojekt.zip');
+  ok('#98 genau eine PDF je Geschoss, keine weitere Datei',
+    dateien.length === 2 && dateien.every(f => /\.pdf$/.test(f.name)));
+  ok('#98 die Dateinamen benennen Gebaeude und Geschoss nachvollziehbar',
+    dateien.map(f => f.name).join(',') === 'Gebaeude_1_Geschoss_1.pdf,Gebaeude_1_OG_ohne_Wand.pdf');
+
+  const alsText = (f) => Buffer.from(f.data).toString('latin1');
+  ok('#98 jede Datei ist eine PDF mit vollstaendigem Rumpf',
+    dateien.length === 2 && dateien.every(f => f.data instanceof Uint8Array
+      && alsText(f).startsWith('%PDF-1.') && alsText(f).trimEnd().endsWith('%%EOF')
+      && /\nxref\n/.test(alsText(f)) && /\/Root 1 0 R/.test(alsText(f))));
+
+  const eg = dateien.find(f => f.name === 'Gebaeude_1_Geschoss_1.pdf');
+  const og = dateien.find(f => f.name === 'Gebaeude_1_OG_ohne_Wand.pdf');
+  ok('#98 das EG traegt Lageplan + zwei Wandblaetter, das leere OG nur den Lageplan',
+    !!eg && /\/Type \/Pages \/Kids \[[^\]]+\] \/Count 3 /.test(alsText(eg))
+    && !!og && /\/Type \/Pages \/Kids \[[^\]]+\] \/Count 1 /.test(alsText(og)));
+  ok('#98 ein Geschoss ohne Wand bekommt trotzdem seine PDF', !!og);
+
+  // Die Seitenreihenfolge steht im Dokument selbst: je Seite ein Lesezeichen mit
+  // dem Blatt-Titel, in derselben Kette wie die Seiten.
+  const titel = (f) => [...alsText(f).matchAll(/\/Title <FEFF([0-9A-F]+)>/g)].map(m =>
+    m[1].match(/..../g).map(h => String.fromCharCode(parseInt(h, 16))).join(''));
+  const tEG = titel(eg);
+  ok('#98 Seite 1 ist der Lageplan, danach folgt je Wand genau ein Blatt',
+    tEG.length === 3 && /Lageplan/.test(tEG[0])
+    && /Wand PDF A/.test(tEG[1]) && /Wand PDF B/.test(tEG[2]));
+  ok('#98 die Wandfolge ist die stabile Reihenfolge der Projektmappe',
+    tEG.slice(1).join(' < ').indexOf('Wand PDF A') < tEG.slice(1).join(' < ').indexOf('Wand PDF B'));
+  ok('#98 der Lageplan des leeren Geschosses steht als einziges Blatt darin',
+    titel(og).length === 1 && /Lageplan/.test(titel(og)[0]));
+
+  // Gerastert wurde das VOLLSTAENDIGE Blatt — Zeichnung, Tabellen, Legende und
+  // Schriftfeld, mit dem in Papier-mm gesetzten Blattmass.
+  const wandSeite = zpdfSeiten.find(x => x.art === 'wand');
+  ok('#98 gerendert wird das vollstaendige Wandblatt (Schriftfeld und Stueckliste dabei)',
+    !!wandSeite && /class="zsheet/.test(wandSeite.html)
+    && /Baustellenstückliste/.test(wandSeite.html) && /<svg/.test(wandSeite.html));
+  ok('#98 das Blattmass ist das kanonische Papiermass (A3: 400 × 277 mm im Rand 10)',
+    !!wandSeite && wandSeite.blatt_mm.w === 400 && wandSeite.blatt_mm.h === 277
+    && wandSeite.rand_mm === 10 && wandSeite.papier_mm.w === 420);
+  const lpSeite = zpdfSeiten.find(x => x.art === 'lageplan');
+  ok('#98 gerendert wird das vollstaendige Lageplanblatt (Wandtabelle und Legende dabei)',
+    !!lpSeite && /class="lpsheet/.test(lpSeite.html) && /Wände im Geschoss/.test(lpSeite.html));
+
+  // (c) Der Lauf ist rein lesend.
+  ok('#98 kein Zeiger wurde umgesetzt ([L-10])',
+    [store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()].join('|') === zeigerVor);
+  ok('#98 Projektmappe und Wandelemente sind unveraendert ([P-1])',
+    JSON.stringify(store.projektMappe(zpdfPrjId)) === mappeVor
+    && JSON.stringify(store.listeElemente()) === elementeVor);
+
+  // (d) Scheitert ein Blatt, wird der ganze Lauf benannt abgebrochen — es gibt kein
+  // ZIP, das vollstaendig aussieht und es nicht ist.
+  const vorFehler = zipCalls.length;
+  zpdfFehlerAb = tEG[2];
+  confirmFolge = [true];
+  await baum('prj-zeichnungen', zpdfPrjId);
+  zpdfFehlerAb = null;
+  ok('#98 ein nicht darstellbares Blatt bricht den Lauf sichtbar ab, ohne Download',
+    zipCalls.length === vorFehler && trFehler()
+    && /fehlgeschlagen/.test(trMsgTxt()) && /Wand PDF B/.test(trMsgTxt()));
+
+  confirmFolge = [];
 }
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }
