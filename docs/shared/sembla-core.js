@@ -90,15 +90,119 @@ export function quelleFuerMass(massMm, laengenMm) {
   return out;
 }
 
+// ---------- Gesperrte Stosshoehen ([Z-7]) ----------
+// Auf der Hoehe eines wirksamen Zwischenspannpunkts sitzt das Einlegeblech in seiner
+// Vertiefung ([A-14]); dort darf keine Kopplungsmutter liegen. Gesperrt ist die EXAKTE
+// lagengenaue Hoehe — es gibt keine vertikale Sperrzone, weil es dafuer kein bestaetigtes
+// Mass gibt und ein geratenes Band den Zuschnitt still verschoebe.
+
+/** Sperrhoehen auf die fuer diese Strecke wirksamen eingrenzen (sortiert, dedupliziert). */
+function normSperren(sperrenMm, bedarfMm, letztesEndeStoss) {
+  const b = _mm(bedarfMm);
+  const arr = (Array.isArray(sperrenMm) ? sperrenMm : []).map(Number)
+    .filter((x) => Number.isFinite(x) && x > 1e-9
+      && (x < b - 1e-9 || (letztesEndeStoss && Math.abs(x - b) < 1e-9)))
+    .map(_mm);
+  return [...new Set(arr)].sort((a, b2) => a - b2);
+}
+
+/** true, wenn `hMm` eine gesperrte Hoehe ist (uebliche mm-Epsilon-Gleichheit, keine Zone). */
+function _gesperrt(hMm, SP) { return SP.some((z) => Math.abs(z - hMm) < 1e-9); }
+
+/** true, wenn die Stueckfolge einen STOSS auf einer gesperrten Hoehe hat. */
+function _stossTrifft(stuecke, SP, bedarfMm, letztesEndeStoss) {
+  if (!SP.length || !stuecke || !stuecke.length) return false;
+  let z = 0;
+  for (let i = 0; i < stuecke.length; i++) {
+    z = _mm(z + stuecke[i].len_mm);
+    const istStoss = (i < stuecke.length - 1) || letztesEndeStoss;
+    if (istStoss && _gesperrt(z, SP)) return true;
+  }
+  return false;
+}
+
+/**
+ * Stossfreie Kombination in der Vorzugsordnung aus [Z-2] ([Z-5] bleibt zwingend).
+ *
+ * Gesucht wird mit Tiefensuche in genau der Reihenfolge, in der die ungesperrte Kombination
+ * waehlt (groesste zulaessige Groesse zuerst): die zuerst gefundene stossfreie Folge ist damit
+ * die nach [Z-2] bevorzugte unter allen stossfreien. Gemerkt wird je Restlaenge — die
+ * kumulierte Hoehe ist aus ihr eindeutig bestimmt (`bedarf − rest`), das Ergebnis also
+ * unabhaengig vom Suchweg. Nicht nach [Z-5] einbaubare Folgen zaehlen NICHT als stossfrei:
+ * sie waeren ein Konflikt hoeheren Rangs und werden dem regulaeren Weg ueberlassen.
+ * @returns {Array<{len_mm:number,art:"standard"|"sonder",quelle_mm:number}>|null}
+ */
+function _kombiniereStossfrei(bedarfMm, laengenMm, SP, minMm, letztesEndeStoss) {
+  const L = normLaengen(laengenMm);
+  if (!L.length) return null;
+  const b = _mm(bedarfMm);
+  /** @type {Map<number, any[]|null>} */
+  const memo = new Map();
+  const rec = (rest) => {
+    if (rest <= 1e-9) return [];
+    if (memo.has(rest)) return memo.get(rest);
+    memo.set(rest, null);                       // Zyklusschutz (kann nicht auftreten, kostet nichts)
+    const pos = _mm(b - rest);
+    let out = null;
+    const passend = L.filter((l) => l <= rest + 1e-9);
+    if (!passend.length) {
+      // Sonderzuschnitt fuer den Restbetrag — sein oberes Ende ist das Ende der Strecke.
+      const q = quelleFuerMass(rest, L);
+      if (q != null && rest >= minMm - 1e-9
+        && !(letztesEndeStoss && _gesperrt(_mm(pos + rest), SP))) {
+        out = [{ len_mm: rest, art: "sonder", quelle_mm: q }];
+      }
+    } else {
+      for (const l of passend) {                // absteigend: groesste zuerst ([Z-2])
+        const r2 = _mm(rest - l);
+        // [Z-5] unveraendert zwingend: Rest danach 0, >= Mindestmass oder weiter auffuellbar.
+        if (!(r2 <= 1e-9 || r2 >= minMm - 1e-9 || L.some((x) => x <= r2 + 1e-9))) continue;
+        const ende = _mm(pos + l);
+        const istStoss = r2 > 1e-9 || letztesEndeStoss;
+        if (istStoss && _gesperrt(ende, SP)) continue;
+        const t = rec(r2);
+        if (t) { out = [{ len_mm: l, art: "standard", quelle_mm: l }, ...t]; break; }
+      }
+    }
+    memo.set(rest, out);
+    return out;
+  };
+  return rec(_mm(b));
+}
+
 /**
  * Bedarf deterministisch aus den ausgewaehlten Standardlaengen kombinieren ([Z-2]).
+ *
+ * `sperrenMm` sind Hoehen UEBER DEM FUSS der Strecke, auf denen KEIN Stoss liegen darf
+ * ([Z-7], Zwischenspannpunkte nach [A-14]/[A-15]). Ohne Sperren laeuft bit-genau der
+ * bisherige Weg — die Sperrpruefung ist ein eigener, nachgeschalteter Pfad und veraendert
+ * das Ergebnis der ungesperrten Kombination an keiner Stelle.
+ *
  * @param {number} bedarfMm benoetigte Gesamtlaenge (Geometrie, wird NIE veraendert)
  * @param {number[]} laengenMm ausgewaehlte Standardlaengen
  * @param {number} [minMm] Mindest-Fertigmass ([Z-5])
+ * @param {number[]|null} [sperrenMm] Hoehen ueber dem Fuss, auf denen kein Stoss liegen darf
+ * @param {boolean} [letztesEndeStoss] true, wenn auch das obere Ende der Strecke ein Stoss ist
+ *        (Kopplung zum Reststueck [Z-6]); false, wenn dort das Bauteilende liegt
  * @returns {{stuecke:Array<{len_mm:number,art:"standard"|"sonder",quelle_mm:number}>,
  *            konflikt:string|null}}
  */
-export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM) {
+export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM,
+                                  sperrenMm = null, letztesEndeStoss = false) {
+  const SP = normSperren(sperrenMm, bedarfMm, letztesEndeStoss);
+  if (SP.length) {
+    // [Z-7] Erst wird eine stossfreie Kombination gesucht — in DERSELBEN Vorzugsordnung wie
+    // unten ([Z-2] groesste zuerst) und nur unter den nach [Z-5] zulaessigen Wahlen. Gibt es
+    // keine, bleibt die Geometrie und die regulaere Kombination unveraendert und der Konflikt
+    // wird BENANNT (nie still verletzt, nie ein erfundenes Mass, [P-6]/[P-9]).
+    const frei = _kombiniereStossfrei(bedarfMm, laengenMm, SP, minMm, letztesEndeStoss);
+    if (frei) return { stuecke: frei, konflikt: null };
+    const k = kombiniereLaengen(bedarfMm, laengenMm, minMm);
+    // Ein bereits gemeldeter Zuschnittkonflikt ([Z-5]/Vorratssatz) bleibt die genannte Ursache:
+    // ein Segment fuehrt genau EINEN Grund, und die hoeher stehende Regel wird nicht verdeckt.
+    if (!_stossTrifft(k.stuecke, SP, bedarfMm, letztesEndeStoss)) return k;
+    return { stuecke: k.stuecke, konflikt: k.konflikt || "stoss_auf_zwischenpunkt" };
+  }
   const L = normLaengen(laengenMm);
   const stuecke = [];
   if (!L.length) return { stuecke, konflikt: "keine_standardlaenge" };
@@ -145,18 +249,27 @@ export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM
  * @param {boolean} obenAnOk true, wenn das Segment an der Wandoberkante endet
  * @param {number} restMm Laenge des gewaehlten Reststueck-Produkts (0/null = keins gewaehlt)
  * @param {number} ueberstandMm Ueberstand des Reststuecks ueber die Wandoberkante
+ * @param {number[]|null} [sperrenMm] Hoehen ueber dem Segmentfuss ohne Stoss ([Z-7])
  * @param {number} [minMm] Mindest-Fertigmass ([Z-5])
  * @returns {{stuecke:Array<{len_mm:number,art:"standard"|"sonder"|"rest",quelle_mm:number}>,
  *            konflikt:string|null, bedarf_mm:number}}
  */
-export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm, minMm = MIN_FERTIGMASS_MM) {
+export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm,
+                                  sperrenMm = null, minMm = MIN_FERTIGMASS_MM) {
   const R = (+restMm > 0) ? _mm(+restMm) : 0;
   const UE = (+ueberstandMm > 0) ? _mm(+ueberstandMm) : 0;
   // Ohne Oberkantenbezug oder ohne gewaehltes Reststueck bleibt alles wie bisher ([Z-2]).
   if (!obenAnOk || !R) {
-    const k = kombiniereLaengen(hMm, laengenMm, minMm);
+    // Das obere Ende der Strecke ist hier das Segmentende (Anker), also kein Stoss.
+    const k = kombiniereLaengen(hMm, laengenMm, minMm, sperrenMm, false);
     // Fehlendes Reststueck an der Oberkante ist ein SICHTBARER Konflikt, keine stille Ausnahme.
-    if (obenAnOk && !R) return { ...k, konflikt: k.konflikt || "kein_reststueck", bedarf_mm: _mm(hMm) };
+    // Rangfolge: [Z-6] steht UEBER der Stosssperre [Z-7]. Ein Segment fuehrt genau einen Grund,
+    // und der fehlende obere Abschluss darf nicht von der niedriger stehenden Sperre verdeckt
+    // werden; jeder andere bestehende Grund behaelt seinen Vorrang unveraendert.
+    if (obenAnOk && !R) {
+      const g = (k.konflikt && k.konflikt !== "stoss_auf_zwischenpunkt") ? k.konflikt : "kein_reststueck";
+      return { ...k, konflikt: g, bedarf_mm: _mm(hMm) };
+    }
     return { ...k, bedarf_mm: _mm(hMm) };
   }
   const bedarf = _mm(hMm + UE);
@@ -164,9 +277,123 @@ export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm
   if (unten < -1e-9) return { stuecke: [], konflikt: "reststueck_zu_lang", bedarf_mm: bedarf };
   const restStueck = { len_mm: R, art: "rest", quelle_mm: R };
   if (unten <= 1e-9) return { stuecke: [restStueck], konflikt: null, bedarf_mm: bedarf };
-  const k = kombiniereLaengen(unten, laengenMm, minMm);
+  // Unterhalb des Reststuecks ist AUCH das obere Ende ein Stoss: die Kopplung zum Reststueck
+  // ([Z-6]). Sie unterliegt der Sperre nach [Z-7] wie jede andere Kopplung.
+  const k = kombiniereLaengen(unten, laengenMm, minMm, sperrenMm, true);
   if (!k.stuecke.length) return { stuecke: [], konflikt: k.konflikt || "kein_ausgangsprodukt", bedarf_mm: bedarf };
   return { stuecke: [...k.stuecke, restStueck], konflikt: k.konflikt, bedarf_mm: bedarf };
+}
+
+// ---------- Zwischenspannpunkte ([A-14]/[A-15]/[A-17], #93) ----------
+// Ein Zwischenspannpunkt ist ein EINLEGEBLECH in einer Vertiefung der Steinlage, das die
+// Gewindestange waehrend der Montage temporaer fixiert und zentriert; angezogen wird es mit
+// GENAU EINER Mutter von oben ([A-16]). Fachlich ist das etwas anderes als die Spannplatte am
+// Segmentende einer Oeffnung ([A-3]) — die bleibt unveraendert.
+//
+// Die Punkte sind LAGENGENAU: sie liegen auf einer Steinlagen-Oberkante ECHT INNERHALB des
+// Segments. Die Segmentenden selbst sind Anker und keine Zwischenpunkte; ein Segment ohne
+// innere Lagen-Oberkante (genau eine Lage) erzeugt deshalb KEINEN Punkt — es wird keiner
+// erfunden.
+//
+// Abgeleitet wird bei JEDER Rechnung frisch. Das Ergebnis der Ableitung wird NICHT gespeichert
+// und NICHT als manueller Wert ausgegeben: gespeichert ist ausschliesslich ein ausdruecklich
+// gesetzter Override in `prestress.zwischenpunkte_mm` ([A-17]).
+
+/**
+ * Steinlagen-Oberkanten ECHT INNERHALB eines Segments (aufsteigend).
+ * @param {number} z0Mm Segmentfuss @param {number} z1Mm Segmentkopf @param {number} [courseMm]
+ * @returns {number[]}
+ */
+export function lagenOberkantenInnen(z0Mm, z1Mm, courseMm = COURSE) {
+  const out = [];
+  if (!(courseMm > 0)) return out;
+  const erste = Math.floor(z0Mm / courseMm) + 1;
+  for (let r = erste; r * courseMm < z1Mm - 1e-9; r++) {
+    const z = r * courseMm;
+    if (z > z0Mm + 1e-9) out.push(z);
+  }
+  return out;
+}
+
+/**
+ * Automatischer Zwischenspannpunkt eines Segments ([A-15]).
+ *
+ * Genommen wird die innere Lagen-Oberkante mit dem KLEINSTEN ABSTAND zur halben Segmenthoehe;
+ * bei Gleichstand deterministisch die NIEDRIGERE (die Kandidaten laufen aufsteigend, und nur ein
+ * strikt kleinerer Abstand gewinnt). Ohne innere Lagen-Oberkante gibt es keinen Punkt -> null.
+ * @param {number} z0Mm @param {number} z1Mm @param {number} [courseMm]
+ * @returns {number|null}
+ */
+export function autoZwischenpunkt(z0Mm, z1Mm, courseMm = COURSE) {
+  const kand = lagenOberkantenInnen(z0Mm, z1Mm, courseMm);
+  if (!kand.length) return null;
+  const mitte = (z0Mm + z1Mm) / 2;
+  let best = kand[0], bestD = Math.abs(kand[0] - mitte);
+  for (const z of kand.slice(1)) {
+    const d = Math.abs(z - mitte);
+    if (d < bestD - 1e-9) { best = z; bestD = d; }
+  }
+  return best;
+}
+
+/**
+ * Manuelle Zwischenspannpunkte normalisieren und validieren ([A-17]).
+ *
+ * Zulaessig sind ganzzahlige Vielfache der Lagenhoehe ECHT INNERHALB der Wand. Ein unzulaessiger
+ * Wert wird NICHT auf eine andere Lage gerundet — er wird benannt (`fehler`) und nicht angewandt
+ * ([P-9]); gerundet entstuende still ein anderer Punkt als der gesetzte.
+ *
+ * `punkte === null` heisst „kein Override" (Auto-Ableitung). Eine AUSDRUECKLICH leere Liste ist
+ * dagegen die Aussage „diese Wand hat keine Zwischenspannpunkte" und faellt nicht auf Auto zurueck.
+ * @param {number[]|null|undefined} arr @param {number} heightMm Wandhoehe @param {number} [courseMm]
+ * @returns {{punkte:number[]|null,fehler:Array<{grund:string,wert:any}>}}
+ */
+export function normZwischenpunkte(arr, heightMm, courseMm = COURSE) {
+  if (!Array.isArray(arr)) return { punkte: null, fehler: [] };
+  const out = [], fehler = [];
+  for (const raw of arr) {
+    const z = Number(raw);
+    if (!Number.isInteger(z)) { fehler.push({ grund: "nicht_ganzzahlig", wert: raw }); continue; }
+    if (z % courseMm !== 0) { fehler.push({ grund: "nicht_auf_lagen_oberkante", wert: raw }); continue; }
+    if (z <= 0 || z >= heightMm) { fehler.push({ grund: "ausserhalb_wand", wert: raw }); continue; }
+    out.push(z);
+  }
+  return { punkte: [...new Set(out)].sort((a, b) => a - b), fehler };
+}
+
+/**
+ * Wirksame Zwischenspannpunkte EINES Segments (aufsteigend, absolute Hoehen in mm).
+ *
+ * Mit Override gelten genau die gesetzten Punkte, die in diesem Segment eine innere
+ * Lagen-Oberkante sind — nichts wird verschoben und nichts ergaenzt. Ohne Override gilt die
+ * Ableitung nach [A-15].
+ * @param {number} z0Mm @param {number} z1Mm @param {number[]|null} [override] @param {number} [courseMm]
+ * @returns {number[]}
+ */
+export function zwischenpunkteSegment(z0Mm, z1Mm, override = null, courseMm = COURSE) {
+  const innen = lagenOberkantenInnen(z0Mm, z1Mm, courseMm);
+  if (Array.isArray(override))
+    return innen.filter((z) => override.some((o) => Math.abs(Number(o) - z) < 1e-9));
+  const a = autoZwischenpunkt(z0Mm, z1Mm, courseMm);
+  return a == null ? [] : [a];
+}
+
+/**
+ * Wirksame Zwischenspannpunkte eines fertigen Wandelements — die EINE Ableitung fuer jede
+ * Ausgabe, die sie zeigt. Frisch gerechnet, nie gespeichert.
+ * @param {any} w Wandelement
+ * @returns {Array<{k:number,x_mm:number,z_mm:number,z0_mm:number,z1_mm:number}>}
+ */
+export function wirksameZwischenpunkte(w) {
+  if (!w || !Array.isArray(w.tension_columns)) return [];
+  const C = (w.course_mm > 0) ? w.course_mm : COURSE;
+  const ov = (w.prestress && Array.isArray(w.prestress.zwischenpunkte_mm))
+    ? w.prestress.zwischenpunkte_mm : null;
+  const out = [];
+  for (const col of w.tension_columns) for (const sg of (col.segments || []))
+    for (const z of zwischenpunkteSegment(sg.z0_mm, sg.z1_mm, ov, C))
+      out.push({ k: col.k, x_mm: col.x_mm, z_mm: z, z0_mm: sg.z0_mm, z1_mm: sg.z1_mm });
+  return out;
 }
 
 // ---------- Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]) ----------
@@ -422,10 +649,16 @@ function normPrestress(p) {
   // Wandoberkante — konfigurierbar, weil er von Kopfblech/Spannplatte + Spannmutter abhaengt.
   const rr = (p && p.rod_rest_mm != null && +p.rod_rest_mm > 0) ? +p.rod_rest_mm : 0;
   const ue = (p && p.rod_overhang_mm != null && +p.rod_overhang_mm >= 0) ? +p.rod_overhang_mm : ROD_OVERHANG;
-  return { max_span_grid: m, force_kN: fk, rod_mm: rod, rod_lengths_mm: rodL, blech_mm: blech,
+  const out = { max_span_grid: m, force_kN: fk, rod_mm: rod, rod_lengths_mm: rodL, blech_mm: blech,
            blech_lengths_mm: blechL,
            top_connection: top, columns_grid: cg, start_axis_grid: sa,
            rod_rest_mm: rr, rod_overhang_mm: ue };
+  // Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
+  // er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
+  // nirgends gespeichert wird, entsteht im Wandelement AUCH KEIN Feld dafuer. `buildWall`
+  // ersetzt die rohe Liste unten durch die validierte (dedupliziert, sortiert).
+  if (Array.isArray(p && p.zwischenpunkte_mm)) out.zwischenpunkte_mm = p.zwischenpunkte_mm.slice();
+  return out;
 }
 
 function normSteps(steps, lengthMm, heightMm) {
@@ -505,6 +738,10 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   const N = lengthMm / GRID, L = heightMm / COURSE;
   // [G-10]/[G-12] Verzahnungsbereiche normalisieren und validieren
   const IL = normInterlocks(interlocks, N, openings);
+  // [A-17] Manuelle Zwischenspannpunkte validieren. Ohne Override bleibt `punkte` null und die
+  // Auto-Ableitung nach [A-15] greift je Segment — gespeichert wird davon nichts.
+  const ZP = normZwischenpunkte(PS.zwischenpunkte_mm, heightMm, COURSE);
+  if (ZP.punkte) PS.zwischenpunkte_mm = ZP.punkte;
 
   // Staffelung / getreppter Aufbau: je Spalte eine lokale Oberkante (Anzahl Lagen)
   const STEPS = normSteps(steps, lengthMm, heightMm);
@@ -723,7 +960,12 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // Kopplungen (Montage) und Mengen (BOM) lesen ausschliesslich sie, es gibt keine zweite
       // Rechnung aus einer pauschalen Stangenlaenge. Nur SEGMENTE MIT OBERKANTENBEZUG erhalten
       // Reststueck und Ueberstand — Bruestung/Sturz an einer Oeffnung bleiben unveraendert.
-      const kombi = kombiniereSegment(h, PS.rod_lengths_mm, topReach, PS.rod_rest_mm, PS.rod_overhang_mm);
+      // [A-14]/[A-15]/[Z-7] Wirksame Zwischenspannpunkte dieses Segments; ihre Hoehen sind fuer
+      // Kopplungen gesperrt. Uebergeben werden sie RELATIV zum Segmentfuss, weil die Kombination
+      // die Strecke rechnet und ihre absolute Lage nicht kennt.
+      const zpSeg = zwischenpunkteSegment(z0, z1, ZP.punkte, COURSE);
+      const kombi = kombiniereSegment(h, PS.rod_lengths_mm, topReach, PS.rod_rest_mm,
+        PS.rod_overhang_mm, zpSeg.map((z) => z - z0));
       const stuecke = kombi.stuecke, stueck = stuecke.length;
       const quelleSumme = stuecke.reduce((a, s) => a + s.quelle_mm, 0);
       const ankerUnten = bottomBase ? "bodenblech" : "spannplatte";
@@ -840,6 +1082,10 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       ungehaltene_steine: ungehalteneSteine,
       // [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)
       interlock_fehler: IL.fehler,
+      // [A-17] Abgewiesene manuelle Zwischenspannpunkte — benannt, nicht angewandt, nie gerundet.
+      // Der Schluessel entsteht NUR im Fehlerfall: eine Wand ohne Override soll kein Feld
+      // bekommen, das es vorher nicht gab (das gilt fuer die Auto-Ableitung ebenso).
+      ...(ZP.fehler.length ? { zwischenpunkt_fehler: ZP.fehler } : {}),
       // [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
       interlock_invalid_segments: interlockInvalidSegments,
     },

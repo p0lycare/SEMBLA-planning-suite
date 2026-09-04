@@ -6,7 +6,7 @@
 // lassen sich das Auto-Speichern, die wandbezogene Produktauswahl (Issue #35) und deren
 // Fortbestand ueber einen Reload (erneutes __wpInit()) am echten Datenpfad pruefen.
 import { readFileSync } from "node:fs";
-import { buildWall, Opening, GRID, COURSE } from "../../docs/shared/sembla-core.js";
+import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import { autoAuslegung, nachweisPruefen } from "../../docs/shared/sembla-engine.js";
 
 class MemStorage {
@@ -45,7 +45,11 @@ const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wi
 const idA=store.speichere('Wand A', startWand); store.setzeAktiv(idA);
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
   STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL,
-  stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke };
+  stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke,
+  // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs kommen — wie der
+  // Zuschnittschluessel — aus sembla-montage.js; die wirksamen Punkte aus dem Rechenkern.
+  ZWISCHENPUNKT: MONT.ZWISCHENPUNKT, zwischenpunktSvg: MONT.zwischenpunktSvg,
+  wirksameZwischenpunkte };
 
 eval(script);
 globalThis.window.__wpInit();
@@ -419,6 +423,100 @@ WP.delAxis(8); ok('Achse löschen (k=8)', !WP.manualCols.includes(8));
 WP.setAxisEdit(true); ok('Achsen-Editor an + Griffe gezeichnet', WP.axisEdit===true && /cursor:grab/.test(document.getElementById('plan').innerHTML));
 WP.setManualCols(null); ok('Zurück zu Auto (columns_grid null)', WP.RESULT.wandelement.prestress.columns_grid===null && WP.manualCols===null);
 WP.setAxisEdit(false);
+
+// ---------------------------------------------------------------------------------------------
+// Issue #93: Zwischenspannpunkte (Einlegeblech) lagengenau planen — Auto-Anzeige, Hinzufuegen,
+// Verschieben, Loeschen, „Zurueck zu Auto" bis zum GESPEICHERTEN Wandelement, plus das
+// gemeinsame C-Profil-Symbol aus sembla-montage.js.
+setzeLaenge(2000); document.getElementById('hgt').value='2.60';
+document.getElementById('modus').value='auto'; WP.run();
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  // [A-15] Auto: je Segment die innere Lagen-Oberkante mit kleinstem Abstand zur halben
+  // Segmenthoehe, Gleichstand zur NIEDRIGEREN (2600 -> 1200 statt 1400).
+  const zp=WP.zwischenpunkte;
+  ok('[#93] Auto: je Spannachse genau ein Punkt',
+    zp.length===WP.RESULT.wandelement.tension_columns.length);
+  ok('[#93] Auto: lagengenau auf 1200 mm (Gleichstand -> niedrigere Oberkante)',
+    zp.length>0 && zp.every(x=>x.z_mm===1200));
+  ok('[#93] Auto wird NICHT gespeichert (kein Feld im Wandelement)',
+    !('zwischenpunkte_mm' in store.aktivesWandelement().prestress)
+    && WP.RESULT.wandelement.prestress.zwischenpunkte_mm===undefined);
+  // [A-14] Das Symbol ist das GETEILTE aus sembla-montage.js — Zeichenkette und Kennfarbe
+  // muessen exakt uebereinstimmen (kein modul-eigenes Symbol, kein lokaler Hex-Wert).
+  const einPunkt=zp[0];
+  ok('[#93] Wandansicht zeichnet je Punkt das gemeinsame C-Profil-Symbol',
+    (svg().match(/<polyline class="zsp"/g)||[]).length===zp.length);
+  ok('[#93] C-Profil ist nach UNTEN geoeffnet (Balken oben, zwei Schenkel nach unten)', (()=>{
+    const m=svg().match(/<polyline class="zsp" points="([^"]+)"/);
+    if(!m) return false;
+    const p=m[1].split(' ').map(t=>t.split(',').map(Number));
+    // SVG-y waechst nach unten: die beiden Enden liegen UNTER dem Balken, der Balken ist waagerecht.
+    return p.length===4 && p[1][1]===p[2][1] && p[0][1]>p[1][1] && p[3][1]>p[2][1]
+      && p[0][0]===p[1][0] && p[2][0]===p[3][0];
+  })());
+  ok('[#93] Kennfarbe und Klartext kommen aus sembla-montage.js',
+    svg().includes(MONT.ZWISCHENPUNKT.farbe) && zleg().includes(MONT.ZWISCHENPUNKT.label)
+    && !/#0a7d6b/.test(html));
+  ok('[#93] Symbolgeometrie ist die geteilte Funktion (identische Zeichenkette)',
+    svg().includes(MONT.zwischenpunktSvg(0,0,{klasse:'zsp'}).slice(0,26)));
+  // Hinzufuegen: aus dem Auto-Stand wird ein Override, der ans Wandelement geht.
+  WP.setZpEdit(true);
+  ok('[#93] Werkzeug an + Hoehenlinien gezeichnet', WP.zpEdit===true && /stroke-dasharray="6 4"/.test(svg()));
+  WP.addZpAt(400); WP.run();
+  ok('[#93] Punkt hinzufuegen (400 mm) landet im gespeicherten Override',
+    JSON.stringify(store.aktivesWandelement().prestress.zwischenpunkte_mm)==='[400,1200]');
+  ok('[#93] beide Punkte wirksam gezeichnet',
+    (svg().match(/<polyline class="zsp"/g)||[]).length===2*WP.RESULT.wandelement.tension_columns.length);
+  // Verschieben: 400 -> 800 (weiterhin lagengenau)
+  WP.setManualZp([800,1200]);
+  ok('[#93] Punkt verschieben (400 -> 800)',
+    JSON.stringify(store.aktivesWandelement().prestress.zwischenpunkte_mm)==='[800,1200]');
+  // Loeschen ueber die Auswahl (wie im Bedienweg „Punkt loeschen")
+  WP.selZp(800); WP.delZp(800); WP.run();
+  ok('[#93] Punkt loeschen laesst genau den anderen stehen',
+    JSON.stringify(store.aktivesWandelement().prestress.zwischenpunkte_mm)==='[1200]');
+  // [A-17] Ausdrueckliche LEERE Auswahl ist „keine Punkte" und faellt NICHT auf Auto zurueck.
+  WP.setManualZp([]);
+  ok('[#93] leere Auswahl: keine Punkte, kein Rueckfall auf Auto',
+    WP.zwischenpunkte.length===0
+    && JSON.stringify(store.aktivesWandelement().prestress.zwischenpunkte_mm)==='[]'
+    && !/<polyline class="zsp"/.test(svg()));
+  // Ungueltige Werte werden benannt und NICHT auf eine andere Lage gerundet.
+  WP.setManualZp([1200,1250,9999]);
+  ok('[#93] ungueltige Werte benannt statt gerundet',
+    JSON.stringify(WP.RESULT.wandelement.prestress.zwischenpunkte_mm)==='[1200]'
+    && (WP.RESULT.wandelement.validation.zwischenpunkt_fehler||[]).length===2
+    && /Zwischenspannpunkte \[A-17\]/.test(document.getElementById('warns').textContent));
+  // Zurueck zu Auto: Override verschwindet vollstaendig aus dem gespeicherten Element.
+  WP.zpAuto();
+  ok('[#93] Zurueck zu Auto: Override entfernt, nichts Abgeleitetes gespeichert',
+    WP.manualZp===null && !('zwischenpunkte_mm' in store.aktivesWandelement().prestress)
+    && WP.zwischenpunkte.every(x=>x.z_mm===1200));
+  WP.setZpEdit(false);
+  ok('[#93] Werkzeug aus: Hoehenlinien verschwinden, Symbole bleiben',
+    !/stroke-dasharray="6 4"/.test(svg()) && /<polyline class="zsp"/.test(svg()));
+  // Bloßes LADEN darf keinen Punkt schreiben ([P-1]): ein Element ohne Override bleibt ohne.
+  // Verglichen wird der Vorspannblock, nicht das ganze Wandelement: applyWand() schaltet bei
+  // gespeichertem `force_kN` auf den Nachweis-Modus und ändert dadurch zwei `verification`-
+  // Felder — bestehendes Verhalten, das mit den Zwischenspannpunkten nichts zu tun hat.
+  const vorher=JSON.stringify(store.aktivesWandelement().prestress);
+  WP.applyWand(store.aktivesWandelement());
+  ok('[#93] bloßes Laden schreibt keinen Punkt ins Element',
+    JSON.stringify(store.aktivesWandelement().prestress)===vorher
+    && !('zwischenpunkte_mm' in store.aktivesWandelement().prestress) && WP.manualZp===null);
+  // [Z-7] Der Zuschnitt legt keine Kopplung auf eine wirksame Punkthoehe.
+  ok('[#93]/[Z-7] keine Kopplung auf einer Zwischenspannpunkt-Hoehe', (()=>{
+    const w=WP.RESULT.wandelement;
+    const hoehen=new Set(wirksameZwischenpunkte(w).map(x=>x.k+'@'+x.z_mm));
+    for(const col of w.tension_columns) for(const sg of col.segments){
+      const enden=MONT.stangenEnden(w,sg);
+      for(const z of enden.slice(0,-1)) if(hoehen.has(col.k+'@'+z)) return false;
+    }
+    return true;
+  })());
+}
+document.getElementById('hgt').value='2.60'; WP.run();
 
 // Issue #13: Startachse der Vorspannung (1./2. Rasterachse) über den echten Handler.
 // N=16 (2,00 m) ist bewusst nicht glatt durch den Strangabstand teilbar.

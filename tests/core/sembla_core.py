@@ -25,6 +25,8 @@ __all__ = [
     "build_wall", "is_buildable", "save",
     "MIN_FERTIGMASS_MM", "ROD_OVERHANG", "norm_laengen", "quelle_fuer_mass",
     "kombiniere_laengen", "kombiniere_segment",
+    "lagen_oberkanten_innen", "auto_zwischenpunkt", "norm_zwischenpunkte",
+    "zwischenpunkte_segment", "wirksame_zwischenpunkte",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -79,8 +81,98 @@ def quelle_fuer_mass(mass_mm, laengen_mm):
     return out
 
 
-def kombiniere_laengen(bedarf_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM):
+# ---- Gesperrte Stosshoehen ([Z-7]) ----
+# Bit-genaues Gegenstueck zu normSperren/_gesperrt/_stossTrifft/_kombiniereStossfrei in
+# docs/shared/sembla-core.js. Auf der Hoehe eines wirksamen Zwischenspannpunkts sitzt das
+# Einlegeblech ([A-14]); dort darf keine Kopplungsmutter liegen. Gesperrt ist die EXAKTE
+# lagengenaue Hoehe — es gibt keine vertikale Sperrzone.
+def norm_sperren(sperren_mm, bedarf_mm, letztes_ende_stoss):
+    """Sperrhoehen auf die fuer diese Strecke wirksamen eingrenzen (sortiert, dedupliziert)."""
+    b = _mm(bedarf_mm)
+    out = []
+    for raw in (sperren_mm or []):
+        x = _mm(float(raw))
+        if x <= 1e-9:
+            continue
+        if x < b - 1e-9 or (letztes_ende_stoss and abs(x - b) < 1e-9):
+            out.append(x)
+    return sorted(set(out))
+
+
+def _gesperrt(h_mm, SP):
+    """True, wenn `h_mm` eine gesperrte Hoehe ist (mm-Epsilon-Gleichheit, keine Zone)."""
+    return any(abs(z - h_mm) < 1e-9 for z in SP)
+
+
+def _stoss_trifft(stuecke, SP, bedarf_mm, letztes_ende_stoss):
+    """True, wenn die Stueckfolge einen STOSS auf einer gesperrten Hoehe hat."""
+    if not SP or not stuecke:
+        return False
+    z = 0
+    for i, st in enumerate(stuecke):
+        z = _mm(z + st["len_mm"])
+        ist_stoss = (i < len(stuecke) - 1) or letztes_ende_stoss
+        if ist_stoss and _gesperrt(z, SP):
+            return True
+    return False
+
+
+def _kombiniere_stossfrei(bedarf_mm, laengen_mm, SP, min_mm, letztes_ende_stoss):
+    """Stossfreie Kombination in der Vorzugsordnung aus [Z-2] ([Z-5] bleibt zwingend)."""
+    L = norm_laengen(laengen_mm)
+    if not L:
+        return None
+    b = _mm(bedarf_mm)
+    memo = {}
+
+    def rec(rest):
+        if rest <= 1e-9:
+            return []
+        if rest in memo:
+            return memo[rest]
+        memo[rest] = None                       # Zyklusschutz
+        pos = _mm(b - rest)
+        out = None
+        passend = [l for l in L if l <= rest + 1e-9]
+        if not passend:
+            q = quelle_fuer_mass(rest, L)
+            if (q is not None and rest >= min_mm - 1e-9
+                    and not (letztes_ende_stoss and _gesperrt(_mm(pos + rest), SP))):
+                out = [{"len_mm": rest, "art": "sonder", "quelle_mm": q}]
+        else:
+            for l in passend:                   # absteigend: groesste zuerst ([Z-2])
+                r2 = _mm(rest - l)
+                # [Z-5] unveraendert zwingend
+                if not (r2 <= 1e-9 or r2 >= min_mm - 1e-9 or any(x <= r2 + 1e-9 for x in L)):
+                    continue
+                ende = _mm(pos + l)
+                ist_stoss = r2 > 1e-9 or letztes_ende_stoss
+                if ist_stoss and _gesperrt(ende, SP):
+                    continue
+                t = rec(r2)
+                if t is not None:
+                    out = [{"len_mm": l, "art": "standard", "quelle_mm": l}] + t
+                    break
+        memo[rest] = out
+        return out
+
+    return rec(_mm(b))
+
+
+def kombiniere_laengen(bedarf_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM,
+                       sperren_mm=None, letztes_ende_stoss=False):
     """Bedarf deterministisch aus den ausgewaehlten Standardlaengen kombinieren ([Z-2])."""
+    SP = norm_sperren(sperren_mm, bedarf_mm, letztes_ende_stoss)
+    if SP:
+        # [Z-7] Erst stossfrei suchen (gleiche Vorzugsordnung); gibt es keine solche Folge,
+        # bleibt die regulaere Kombination unveraendert und der Konflikt wird benannt.
+        frei = _kombiniere_stossfrei(bedarf_mm, laengen_mm, SP, min_mm, letztes_ende_stoss)
+        if frei is not None:
+            return {"stuecke": frei, "konflikt": None}
+        k = kombiniere_laengen(bedarf_mm, laengen_mm, min_mm)
+        if not _stoss_trifft(k["stuecke"], SP, bedarf_mm, letztes_ende_stoss):
+            return k
+        return {"stuecke": k["stuecke"], "konflikt": k["konflikt"] or "stoss_auf_zwischenpunkt"}
     L = norm_laengen(laengen_mm)
     stuecke = []
     if not L:
@@ -122,16 +214,20 @@ def kombiniere_laengen(bedarf_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM):
 # `ueberstand_mm` ueber die Oberkante (Kopfblech/Spannplatte + Spannmutter), zu bestuecken ist
 # also h + ueberstand. Segmente ohne Oberkantenbezug (Bruestung/Sturz) bleiben unveraendert.
 def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
-                       min_mm=MIN_FERTIGMASS_MM):
-    """Stueckliste eines Strangsegments ([Z-2] + [Z-6])."""
+                       sperren_mm=None, min_mm=MIN_FERTIGMASS_MM):
+    """Stueckliste eines Strangsegments ([Z-2] + [Z-6] + [Z-7])."""
     R = _mm(float(rest_mm)) if rest_mm and float(rest_mm) > 0 else 0
     UE = _mm(float(ueberstand_mm)) if ueberstand_mm and float(ueberstand_mm) > 0 else 0
     if not oben_an_ok or not R:
-        k = kombiniere_laengen(h_mm, laengen_mm, min_mm)
+        # Oberes Ende der Strecke ist das Segmentende (Anker), also kein Stoss.
+        k = kombiniere_laengen(h_mm, laengen_mm, min_mm, sperren_mm, False)
         out = {"stuecke": k["stuecke"], "konflikt": k["konflikt"], "bedarf_mm": _mm(h_mm)}
         # Fehlendes Reststueck an der Oberkante ist ein sichtbarer Konflikt, keine stille Ausnahme.
+        # Rangfolge: [Z-6] steht ueber der Stosssperre [Z-7]; jeder andere Grund behaelt Vorrang.
         if oben_an_ok and not R:
-            out["konflikt"] = k["konflikt"] or "kein_reststueck"
+            g = k["konflikt"] if (k["konflikt"] and k["konflikt"] != "stoss_auf_zwischenpunkt") \
+                else "kein_reststueck"
+            out["konflikt"] = g
         return out
     bedarf = _mm(h_mm + UE)
     unten = _mm(bedarf - R)
@@ -140,12 +236,104 @@ def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
     rest_stueck = {"len_mm": R, "art": "rest", "quelle_mm": R}
     if unten <= 1e-9:
         return {"stuecke": [rest_stueck], "konflikt": None, "bedarf_mm": bedarf}
-    k = kombiniere_laengen(unten, laengen_mm, min_mm)
+    # Unterhalb des Reststuecks ist auch das obere Ende ein Stoss (Kopplung zum Reststueck).
+    k = kombiniere_laengen(unten, laengen_mm, min_mm, sperren_mm, True)
     if not k["stuecke"]:
         return {"stuecke": [], "konflikt": k["konflikt"] or "kein_ausgangsprodukt",
                 "bedarf_mm": bedarf}
     return {"stuecke": k["stuecke"] + [rest_stueck], "konflikt": k["konflikt"],
             "bedarf_mm": bedarf}
+
+
+# ---- Zwischenspannpunkte ([A-14]/[A-15]/[A-17], #93) ----
+# Bit-genaues Gegenstueck zu lagenOberkantenInnen/autoZwischenpunkt/normZwischenpunkte/
+# zwischenpunkteSegment/wirksameZwischenpunkte in docs/shared/sembla-core.js.
+#
+# Ein Zwischenspannpunkt ist ein Einlegeblech in einer Vertiefung der Steinlage, das die
+# Gewindestange waehrend der Montage temporaer fixiert und zentriert (genau eine Mutter von
+# oben, [A-16]). Fachlich verschieden von der Spannplatte am Segmentende einer Oeffnung
+# ([A-3]), die unveraendert bleibt. Die Punkte liegen lagengenau ECHT INNERHALB des Segments;
+# ein Segment mit nur einer Lage erzeugt keinen Punkt. Abgeleitet wird bei jeder Rechnung
+# frisch und NIE gespeichert — gespeichert ist nur ein ausdruecklicher Override.
+def lagen_oberkanten_innen(z0_mm, z1_mm, course_mm=COURSE):
+    """Steinlagen-Oberkanten echt innerhalb eines Segments (aufsteigend)."""
+    out = []
+    if not course_mm > 0:
+        return out
+    r = math.floor(z0_mm / course_mm) + 1
+    while r * course_mm < z1_mm - 1e-9:
+        z = r * course_mm
+        if z > z0_mm + 1e-9:
+            out.append(_mm(z))
+        r += 1
+    return out
+
+
+def auto_zwischenpunkt(z0_mm, z1_mm, course_mm=COURSE):
+    """Automatischer Zwischenspannpunkt eines Segments ([A-15]).
+
+    Innere Lagen-Oberkante mit dem kleinsten Abstand zur halben Segmenthoehe; bei Gleichstand
+    deterministisch die NIEDRIGERE (aufsteigende Kandidaten, nur strikt kleinerer Abstand
+    gewinnt). Ohne innere Lagen-Oberkante -> None.
+    """
+    kand = lagen_oberkanten_innen(z0_mm, z1_mm, course_mm)
+    if not kand:
+        return None
+    mitte = (z0_mm + z1_mm) / 2
+    best, best_d = kand[0], abs(kand[0] - mitte)
+    for z in kand[1:]:
+        d = abs(z - mitte)
+        if d < best_d - 1e-9:
+            best, best_d = z, d
+    return best
+
+
+def norm_zwischenpunkte(arr, height_mm, course_mm=COURSE):
+    """Manuelle Zwischenspannpunkte normalisieren und validieren ([A-17]).
+
+    Zulaessig sind ganzzahlige Vielfache der Lagenhoehe echt innerhalb der Wand. Ein
+    unzulaessiger Wert wird NICHT auf eine andere Lage gerundet, sondern benannt und nicht
+    angewandt. `None` heisst „kein Override"; eine ausdruecklich leere Liste heisst „keine
+    Zwischenspannpunkte" und faellt nicht auf Auto zurueck.
+    """
+    if not isinstance(arr, (list, tuple)):
+        return None, []
+    out, fehler = [], []
+    for raw in arr:
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            fehler.append({"grund": "nicht_ganzzahlig", "wert": raw}); continue
+        if raw % course_mm != 0:
+            fehler.append({"grund": "nicht_auf_lagen_oberkante", "wert": raw}); continue
+        if raw <= 0 or raw >= height_mm:
+            fehler.append({"grund": "ausserhalb_wand", "wert": raw}); continue
+        out.append(raw)
+    return sorted(set(out)), fehler
+
+
+def zwischenpunkte_segment(z0_mm, z1_mm, override=None, course_mm=COURSE):
+    """Wirksame Zwischenspannpunkte EINES Segments (aufsteigend, absolute Hoehen in mm)."""
+    innen = lagen_oberkanten_innen(z0_mm, z1_mm, course_mm)
+    if isinstance(override, (list, tuple)):
+        return [z for z in innen if any(abs(float(o) - z) < 1e-9 for o in override)]
+    a = auto_zwischenpunkt(z0_mm, z1_mm, course_mm)
+    return [] if a is None else [a]
+
+
+def wirksame_zwischenpunkte(w):
+    """Wirksame Zwischenspannpunkte eines fertigen Wandelements (frisch, nie gespeichert)."""
+    if not w or not isinstance(w.get("tension_columns"), list):
+        return []
+    C = w.get("course_mm") or COURSE
+    ov = (w.get("prestress") or {}).get("zwischenpunkte_mm")
+    if not isinstance(ov, (list, tuple)):
+        ov = None
+    out = []
+    for col in w["tension_columns"]:
+        for sg in col.get("segments", []):
+            for z in zwischenpunkte_segment(sg["z0_mm"], sg["z1_mm"], ov, C):
+                out.append({"k": col["k"], "x_mm": col["x_mm"], "z_mm": z,
+                            "z0_mm": sg["z0_mm"], "z1_mm": sg["z1_mm"]})
+    return out
 
 
 # ---- Fehlertypen ----
@@ -430,11 +618,19 @@ def _norm_prestress(p):
     ue = ROD_OVERHANG
     if _ue is not None and float(_ue) >= 0:
         ue = int(_ue) if float(_ue) == int(float(_ue)) else float(_ue)
-    return {"max_span_grid": m, "force_kN": fk if fk is not None else None,
-            "rod_mm": rod, "rod_lengths_mm": rod_l, "blech_mm": bl,
-            "blech_lengths_mm": blech_l, "top_connection": top,
-            "columns_grid": cg, "start_axis_grid": sa,
-            "rod_rest_mm": rr, "rod_overhang_mm": ue}
+    out = {"max_span_grid": m, "force_kN": fk if fk is not None else None,
+           "rod_mm": rod, "rod_lengths_mm": rod_l, "blech_mm": bl,
+           "blech_lengths_mm": blech_l, "top_connection": top,
+           "columns_grid": cg, "start_axis_grid": sa,
+           "rod_rest_mm": rr, "rod_overhang_mm": ue}
+    # Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
+    # er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
+    # nirgends gespeichert wird, entsteht im Wandelement auch kein Feld dafuer. `build_wall`
+    # ersetzt die rohe Liste durch die validierte (dedupliziert, sortiert).
+    _zp = p.get("zwischenpunkte_mm")
+    if isinstance(_zp, (list, tuple)):
+        out["zwischenpunkte_mm"] = list(_zp)
+    return out
 
 def _norm_steps(steps, length_mm, height_mm):
     out = []
@@ -531,6 +727,11 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     N, L = length_mm // GRID, height_mm // COURSE
     # [G-10]/[G-12] Verzahnungsbereiche normalisieren und validieren
     _IL_interlocks, _IL_fehler = norm_interlocks(interlocks, N, openings)
+    # [A-17] Manuelle Zwischenspannpunkte validieren. Ohne Override bleibt `_ZP` None und die
+    # Auto-Ableitung nach [A-15] greift je Segment — gespeichert wird davon nichts.
+    _ZP, _ZP_fehler = norm_zwischenpunkte(_PS.get("zwischenpunkte_mm"), height_mm, COURSE)
+    if _ZP is not None:
+        _PS["zwischenpunkte_mm"] = _ZP
 
     # Staffelung / getreppter Aufbau: je Spalte lokale Oberkante (Anzahl Lagen)
     _STEPS = _norm_steps(steps, length_mm, height_mm)
@@ -754,8 +955,13 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             # [Z-2]/[Z-3]/[Z-6] kanonische Stueckliste des Segments (echte Standardlaengen +
             # hoechstens ein Sonderzuschnitt, an der Oberkante darueber das Reststueck) —
             # keine zweite Rechnung aus einer Pauschallaenge.
+            # [A-14]/[A-15]/[Z-7] Wirksame Zwischenspannpunkte dieses Segments; ihre Hoehen
+            # sind fuer Kopplungen gesperrt. Uebergeben RELATIV zum Segmentfuss, weil die
+            # Kombination die Strecke rechnet und ihre absolute Lage nicht kennt.
+            _zp_seg = zwischenpunkte_segment(z0, z1, _ZP, COURSE)
             _kombi = kombiniere_segment(h, _PS["rod_lengths_mm"], top_reach,
-                                        _PS["rod_rest_mm"], _PS["rod_overhang_mm"])
+                                        _PS["rod_rest_mm"], _PS["rod_overhang_mm"],
+                                        [z - z0 for z in _zp_seg])
             _stuecke = _kombi["stuecke"]
             stueck = len(_stuecke)
             _quelle_summe = sum(s["quelle_mm"] for s in _stuecke)
@@ -878,6 +1084,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        "ungehaltene_steine": ungehaltene_steine,
                        # [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)
                        "interlock_fehler": _IL_fehler,
+                       # [A-17] Abgewiesene manuelle Zwischenspannpunkte — benannt, nicht
+                       # angewandt, nie gerundet. Der Schluessel entsteht NUR im Fehlerfall.
+                       **({"zwischenpunkt_fehler": _ZP_fehler} if _ZP_fehler else {}),
                        # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
                        "interlock_invalid_segments": interlock_invalid_segments},
         "courses": courses,

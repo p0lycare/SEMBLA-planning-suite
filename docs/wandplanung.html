@@ -62,6 +62,9 @@
   .zlegende span{display:inline-flex;align-items:center;gap:5px}
   .zlegende i{display:inline-block;width:16px;height:0;border-top:3px solid currentColor}
   .zlegende i.kop{width:0;height:11px;border-top:0;border-left:2px solid currentColor}
+  /* Einlegeblech ([A-14]): nach unten offenes eckiges C — dieselbe Form wie im Bild. */
+  .zlegende i.zsp{width:14px;height:6px;border-top:2px solid currentColor;
+                  border-left:2px solid currentColor;border-right:2px solid currentColor}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -109,6 +112,15 @@
       <div class="btnrow"><button class="mini" id="durchTool">Durchbruch-Modus</button><button class="mini" id="durchClear">Durchbrüche leeren</button></div>
       <div class="btnrow" style="margin-top:6px"><button class="mini" id="axisTool"
         title="Sonderkonstruktion: manuell gesetzte Achsen sperren die Auto-Verteilung, bis „Zurück zu Auto“.">Spannachsen bearbeiten</button><button class="mini" id="axisDel">Achse löschen</button><button class="mini" id="axisAuto">Zurück zu Auto</button></div>
+    </div>
+    <div class="grp"><h3>Zwischenspannpunkte (Einlegeblech)</h3>
+      <!-- [A-14]…[A-17]/#93: lagengenaue Punkte auf Steinlagen-Oberkanten. Ohne eigene Auswahl
+           leitet der Rechenkern je Spannachsensegment einen Punkt nahe der halben Segmenthöhe ab
+           ([A-15]); dieses Auto-Ergebnis wird NICHT gespeichert. Erst eine hier getroffene Wahl
+           ist ein gespeicherter Override — „Zurück zu Auto“ nimmt ihn wieder zurück. -->
+      <div class="btnrow"><button class="mini" id="zpTool"
+        title="Punkte auf Lagen-Oberkanten setzen, verschieben (ziehen) und löschen (Doppelklick). Manuelle Punkte sperren die Auto-Ableitung, bis „Zurück zu Auto“.">Zwischenspannpunkte bearbeiten</button><button class="mini" id="zpDel">Punkt löschen</button><button class="mini" id="zpAuto">Zurück zu Auto</button></div>
+      <div id="zpHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
     </div>
     <div class="grp"><h3>Staffelung (getreppter Aufbau)</h3>
       <div id="stepsList"></div>
@@ -229,6 +241,9 @@ const M=1000;
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store, KAT;
 // Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
 let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
+// Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
+// sembla-montage.js; die wirksamen Punkte liefert die eine Ableitung des Rechenkerns.
+let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
 // hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
@@ -281,6 +296,10 @@ function dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H){
 }
 let voids=new Set(), editMode=false;
 let axisEdit=false, manualCols=null, selAxis=null, LASTDRAW=null;
+// Zwischenspannpunkte ([A-14]…[A-17], #93): `manualZp === null` heißt AUTO (der Rechenkern
+// leitet ab, gespeichert wird nichts). Eine Liste — auch eine LEERE — ist der ausdrückliche
+// Override „genau diese Punkte“ und wird als solcher gespeichert.
+let zpEdit=false, manualZp=null, selZp=null;
 
 function snap(v,s){ return Math.round(v/s)*s; }
 function readSides(){ return { vorne:{funktion:$('sideVorne').value}, hinten:{funktion:$('sideHinten').value} }; }
@@ -344,6 +363,10 @@ function vorgaben(){
   if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, ...hw, blech_mm, top_connection, start_axis_grid };
   else v.prestress={ ...hw, blech_mm, top_connection, start_axis_grid };   // Auto-Modus: N/Abstand optimiert die Engine
   if(manualCols && manualCols.length) v.prestress.columns_grid=manualCols.slice();   // Sonderkonstruktion: feste Achsen
+  // [A-17] Nur ein ausdrücklicher Override reist mit — im Auto-Modus wird das Feld gar nicht
+  // gesetzt, damit im Wandelement kein abgeleiteter Punkt landet. Eine leere Liste ist eine
+  // echte Aussage („keine Zwischenspannpunkte“) und wird deshalb mitgegeben.
+  if(manualZp) v.prestress.zwischenpunkte_mm=manualZp.slice();
   return v;
 }
 
@@ -400,14 +423,26 @@ function run(){
   if(!vv.buildable) warns.push('⚠ Wand strukturell nicht baubar (ungültige Vorspann-Segmente).');
   // [Z-5] Zuschnitt-Konflikt: der Vorratssatz lässt kein einbaubares Fertigmaß zu. Sichtbar
   // gemeldet statt still ein nicht einbaubares Kurzstück auszugeben.
-  const zk=vv.zuschnitt_konflikte||[];
+  const zkAlle=vv.zuschnitt_konflikte||[];
+  // [Z-7] Der Stoß auf einer Zwischenspannpunkt-Höhe ist ein EIGENER Grund und wird getrennt
+  // benannt — nie als [Z-5]-Meldung mitgezählt.
+  const zs=zkAlle.filter(k=>k.grund==='stoss_auf_zwischenpunkt');
+  const zk=zkAlle.filter(k=>k.grund!=='stoss_auf_zwischenpunkt');
   if(zk.length) warns.push('⚠ Zuschnitt [Z-5]: '+zk.length+' Segment(e) mit Fertigmaß unter '
     +'20 cm (z. B. '+fmt(zk[0].fertigmass_mm/10,1)+' cm) — weitere Standardlänge wählen, '
     +'damit die Kombination ein einbaubares Restmaß ergibt.');
+  if(zs.length) warns.push('⚠ Zuschnitt [Z-7]: '+zs.length+' Segment(e) ohne stoßfreie '
+    +'Kombination — eine Kopplung liegt auf der Höhe eines Zwischenspannpunkts (Einlegeblech). '
+    +'Weitere Standardlänge wählen oder den Punkt auf eine andere Lage setzen.');
+  // [A-17] Abgewiesene manuelle Punkte: benannt, nicht angewandt, nie auf eine andere Lage gerundet.
+  const zpf=vv.zwischenpunkt_fehler||[];
+  if(zpf.length) warns.push('⚠ Zwischenspannpunkte [A-17]: '+zpf.length+' Wert(e) abgewiesen ('
+    +ZP_GRUND[zpf[0].grund]+', z. B. '+zpf[0].wert+' mm) — nicht angewandt, nichts gerundet.');
   $('warns').textContent=warns.join('   ');
   // Verzahnungs-Validierung anzeigen ([G-10]/[G-11]/[G-12])
   renderInterlockWarns(vv);
   draw(w);
+  renderZpHinweis();
   persistAktiv(w);
   // Maßgebende Werte der Preis-Zuordnung (Stangenlänge, Blech-Modullänge) können sich mit
   // jeder Auslegung ändern -> Auswahlstatus frisch anzeigen, nie zwischenspeichern.
@@ -425,6 +460,7 @@ function renderLeer(){
   $('plan').setAttribute('viewBox','0 0 1000 120');
   $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.</text>';
   renderZLegende(null);   // ohne Wand keine irreführende Zuschnittlegende (Issue #63)
+  renderZpHinweis();      // … und keine stehengebliebene Aussage zu Zwischenspannpunkten
   if(KAT) renderProdukte();
 }
 function renderIter(its){ const tb=$('itTable').querySelector('tbody'); tb.innerHTML='';
@@ -512,6 +548,24 @@ function draw(w){
       else { s+=`<circle cx="${x}" cy="${Y(g.z1_mm)}" r="2.6" fill="${NUT}"/>`; }   // im Kopfblech verankert (Spannmutter)
     } }
 
+  // ---- Zwischenspannpunkte: Einlegeblech je wirksamem Punkt ([A-14]/#93) ----
+  // Gezeichnet werden die WIRKSAMEN Punkte aus der einen Ableitung des Rechenkerns
+  // (`wirksameZwischenpunkte`) — hier wird nichts nachgerechnet und nichts erfunden. Geometrie,
+  // Kennfarbe und Klartext kommen aus sembla-montage.js ([D-4]), also dieselbe Quelle wie der
+  // Zuschnitt-Farbschlüssel; lokale Hex-Werte oder eine eigene Symbolgeometrie wären Drift.
+  const zpListe=wirksameZwischenpunkte(w);
+  for(const zp of zpListe){
+    const zx=X(zp.x_mm), zy=Y(zp.z_mm);
+    const on=(zpEdit && selZp===zp.z_mm);
+    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe});
+  }
+  // Im Bearbeitungsmodus zusätzlich je Punkthöhe eine Griff-/Hilfslinie über die Wandbreite,
+  // damit die Lagen-Oberkante als Ganzes greifbar ist (reine Bedienhilfe, kein Bauteil).
+  if(zpEdit){ const hoehen=[...new Set(zpListe.map(zp=>zp.z_mm))].sort((a,b)=>a-b);
+    for(const z of hoehen){ const on=(selZp===z); const zy=Y(z);
+      s+=`<line x1="${Math.min(X(0),X(L))}" y1="${zy}" x2="${Math.max(X(0),X(L))}" y2="${zy}" stroke="${on?'#c9461c':ZWISCHENPUNKT.farbe}" stroke-width="${on?1.6:1}" stroke-dasharray="6 4" stroke-opacity="0.85"/>`;
+      s+=`<text x="${Math.max(X(0),X(L))+4}" y="${zy+3}" font-size="9" fill="${on?'#c9461c':ZWISCHENPUNKT.farbe}">${fmt(z/10,1)}</text>`; } }
+
   // ---- Reihennummern der Steinreihen (links) ----
   for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
     s+=`<text x="${pad-10}" y="${yc+3}" font-size="9" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
@@ -536,8 +590,12 @@ function draw(w){
 // Klartexte kommen unverändert aus sembla-montage.js ([D-4]) — hier wird nichts erfunden.
 function renderZLegende(w){
   const box=$('zLegende'); if(!box) return;
+  // [A-14] Der Zwischenspannpunkt steht als eigener Eintrag daneben — genannt nur, wenn es
+  // wirklich einen wirksamen Punkt gibt, und mit dem Klartext aus sembla-montage.js.
+  const zpEintrag = (w && wirksameZwischenpunkte(w).length)
+    ? `<span><i class="zsp" style="color:${ZWISCHENPUNKT.farbe}"></i>${ZWISCHENPUNKT.label}</span>` : '';
   const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
-  if(!alle.length){ box.innerHTML=''; return; }   // kein bestimmter Zuschnitt -> keine Legende
+  if(!alle.length){ box.innerHTML=zpEintrag; return; }   // kein bestimmter Zuschnitt -> keine Zuschnittlegende
   // Auch die Standardlänge wird nur genannt, wenn sie wirklich vorkommt: ein Stand aus reinem
   // Sonderzuschnitt plus Reststück ([Z-2]/[Z-6]) hat keine Standardlänge, und die Legende darf
   // keine behaupten. Reihenfolge bleibt standard · sonder · rest.
@@ -545,7 +603,8 @@ function renderZLegende(w){
   const teile=['standard','sonder','rest'].filter(hat);
   box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
     + teile.map(a=>`<span><i style="color:${stueckFarbe(a)}"></i>${STUECK_LABEL[a]}</span>`).join('')
-    + '<span><i class="kop" style="color:#0b3a73"></i>Kopplung</span>';
+    + '<span><i class="kop" style="color:#0b3a73"></i>Kopplung</span>'
+    + zpEintrag;
 }
 
 // ---------- Öffnungs-UI ----------
@@ -595,6 +654,12 @@ function buildInterlocks(N){
   // Wandelement-Format: [{g0, g1, start_parity}] — g0 inklusive, g1 exklusiv
   return interlocksArr.map(il=>({ g0: Math.max(0,Math.round(il.g0)), g1: Math.min(N, Math.max(0,Math.round(il.g0))+Math.max(1,Math.round(il.breite))), start_parity: il.start_parity===1?1:0 }));
 }
+// Klartext der abgewiesenen manuellen Zwischenspannpunkte ([A-17]).
+const ZP_GRUND={
+  nicht_ganzzahlig:'nicht ganzzahlig',
+  nicht_auf_lagen_oberkante:'nicht auf einer Lagen-Oberkante',
+  ausserhalb_wand:'außerhalb der Wandhöhe'
+};
 const INTERLOCK_GRUND={
   nicht_ganzzahlig:'Position/Breite nicht ganzzahlig',
   leeres_intervall:'leeres Intervall (Breite ≤ 0)',
@@ -686,6 +751,10 @@ function applyWand(w){
     // Ueberstand ([Z-6]): fehlt er im Altstand, bleibt der Default des Feldes stehen.
     if(w.prestress.rod_overhang_mm!=null) $('rodUeber').value=Math.round(w.prestress.rod_overhang_mm); }
   manualCols=(w.prestress&&Array.isArray(w.prestress.columns_grid)&&w.prestress.columns_grid.length)?w.prestress.columns_grid.slice():null;
+  // [A-17] Gespeicherter Override wird übernommen (auch die leere Liste); fehlt das Feld, gilt
+  // Auto. Bloßes Laden normalisiert nichts zurück und schreibt nichts.
+  manualZp=(w.prestress&&Array.isArray(w.prestress.zwischenpunkte_mm))?w.prestress.zwischenpunkte_mm.slice():null;
+  selZp=null;
   if(w.name) aktName=w.name;
   renderSteps(); renderOps(); renderInterlocks(); run();
 }
@@ -890,11 +959,47 @@ function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelemen
 function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
 function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
 function setManualCols(arr){ manualCols=(arr&&arr.length)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAxis=null; run(); }
-function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
+function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; syncZpTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
   $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; if(RESULT) draw(RESULT.wandelement); }
 
+// ---- Zwischenspannpunkte ([A-14]…[A-17], #93) ----------------------------------------------
+// Bedienung nach demselben Muster wie der Spannachsen-Editor: Punkt setzen, auswählen, ziehen,
+// löschen, „Zurück zu Auto". Geschrieben wird ausschließlich der Override in `prestress`
+// (über vorgaben() -> Rechenkern -> persistAktiv); die Auto-Ableitung landet nie im Element.
+/** Zeigerposition -> nächste Steinlagen-Oberkante (mm). */
+function pxToZ(e){ if(!LASTDRAW) return COURSE; const r=$('plan').getBoundingClientRect();
+  const {pad,sc,hPx}=LASTDRAW;
+  const sy=(e.clientY-(r.top||0))*(1000/(r.width||1000));
+  const z=(pad+hPx-sy)/sc;
+  const H=RESULT?RESULT.wandelement.height_mm:COURSE;
+  const lage=Math.round(z/COURSE);
+  return Math.max(COURSE, Math.min(H-COURSE, lage*COURSE));   // nur INNERE Oberkanten ([A-15])
+}
+/** Aus dem Auto-Stand einen bearbeitbaren Override machen (die wirksamen Höhen, nichts Neues). */
+function ensureManualZp(){ if(!manualZp) manualZp = RESULT
+  ? [...new Set(wirksameZwischenpunkte(RESULT.wandelement).map(zp=>zp.z_mm))].sort((a,b)=>a-b)
+  : []; }
+function addZpAt(z){ ensureManualZp(); if(!manualZp.includes(z)){ manualZp.push(z); manualZp.sort((a,b)=>a-b); } }
+function delZp(z){ ensureManualZp(); const i=manualZp.indexOf(z); if(i>=0) manualZp.splice(i,1); if(selZp===z) selZp=null; }
+function setManualZp(arr){ manualZp=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selZp=null; run(); }
+function syncZpTool(){ $('zpTool').style.background=zpEdit?'#1f6feb':''; $('zpTool').style.color=zpEdit?'#fff':''; }
+function setZpEdit(v){ zpEdit=!!v; if(zpEdit){ editMode=false; axisEdit=false;
+    $('axisTool').style.background=''; $('axisTool').style.color='';
+    $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualZp(); }
+  syncZpTool(); if(RESULT) draw(RESULT.wandelement); renderZpHinweis(); }
+/** Zustand benennen: abgeleitet oder ausdrücklich gewählt — nie beides behaupten. */
+function renderZpHinweis(){
+  const el=$('zpHinweis'); if(!el) return;
+  if(!RESULT){ el.textContent=''; return; }
+  const n=wirksameZwischenpunkte(RESULT.wandelement).length;
+  el.textContent = manualZp
+    ? 'Eigene Auswahl: '+manualZp.length+' Höhe(n) '+(manualZp.length?'('+manualZp.map(z=>fmt(z/10,1)).join(' · ')+' cm)':'')
+      +' — gespeichert am Wandelement; '+n+' wirksame(r) Punkt(e).'
+    : 'Automatisch abgeleitet ([A-15]): '+n+' wirksame(r) Punkt(e) nahe der halben Segmenthöhe — nicht gespeichert.';
+}
+
 // ---------- Ereignis-Bindung + Start ----------
-let axisDragging=false;
+let axisDragging=false, zpDragging=false;
 function bindEvents(){
   // `len` steht bewusst NICHT in dieser Liste (Issue #56): das Feld ist nur Anzeige, und
   // es gibt hier keinen — auch keinen indirekten — Schreibweg fuer die Wandlaenge mehr.
@@ -912,6 +1017,16 @@ function bindEvents(){
     if(k!==selAxis && !manualCols.includes(k)){ const i=manualCols.indexOf(selAxis); if(i>=0){ manualCols[i]=k; manualCols.sort((a,b)=>a-b); selAxis=k; run(); } } });
   window.addEventListener('pointerup',()=>{ axisDragging=false; });
   $('plan').addEventListener('dblclick',e=>{ if(!axisEdit) return; const k=pxToK(e); if(manualCols&&manualCols.includes(k)){ delAxis(k); run(); } });
+  // Zwischenspannpunkte: setzen/auswählen (pointerdown), ziehen (pointermove), löschen (dblclick)
+  $('zpTool').addEventListener('click',()=>setZpEdit(!zpEdit));
+  $('zpDel').addEventListener('click',()=>{ if(selZp!=null){ delZp(selZp); run(); } });
+  $('zpAuto').addEventListener('click',()=>{ manualZp=null; selZp=null; run(); });
+  $('plan').addEventListener('pointerdown',e=>{ if(!zpEdit) return; const z=pxToZ(e); ensureManualZp();
+    if(manualZp.includes(z)){ selZp=z; zpDragging=true; } else { addZpAt(z); selZp=z; run(); } if(RESULT) draw(RESULT.wandelement); });
+  $('plan').addEventListener('pointermove',e=>{ if(!zpEdit||!zpDragging||selZp==null) return; const z=pxToZ(e);
+    if(z!==selZp && !manualZp.includes(z)){ const i=manualZp.indexOf(selZp); if(i>=0){ manualZp[i]=z; manualZp.sort((a,b)=>a-b); selZp=z; run(); } } });
+  window.addEventListener('pointerup',()=>{ zpDragging=false; });
+  $('plan').addEventListener('dblclick',e=>{ if(!zpEdit) return; const z=pxToZ(e); if(manualZp&&manualZp.includes(z)){ delZp(z); run(); } });
   $('showDim').addEventListener('change',e=>{ showDim=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('addTuer').addEventListener('click',()=>addOpening('tuer'));
@@ -929,6 +1044,9 @@ function bindEvents(){
 
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},
   setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;},
+  setZpEdit, setManualZp, addZpAt, delZp, zpAuto:()=>{ manualZp=null; selZp=null; run(); },
+  selZp:(z)=>{ selZp=z; }, get manualZp(){return manualZp;}, get zpEdit(){return zpEdit;},
+  get zwischenpunkte(){ return RESULT?wirksameZwischenpunkte(RESULT.wandelement):[]; },
   renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
   vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();},
   get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,
@@ -942,6 +1060,8 @@ window.__wpInit=function(){
   autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store; KAT=S.KAT;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
+  ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
+  wirksameZwischenpunkte=S.wirksameZwischenpunkte;
   bindEvents();
   bindProdukte();
   applyZoom();     // Standardstellung: eingepasst
@@ -957,14 +1077,16 @@ window.__wpInit=function(){
 </script>
 
 <script type="module">
-  import { buildWall, Opening, GRID, COURSE } from './shared/sembla-core.js';
+  import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte } from './shared/sembla-core.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
-  import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke } from './shared/sembla-montage.js';
+  import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
+           ZWISCHENPUNKT, zwischenpunktSvg } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
-                    STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke };
+                    STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
+                    ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte };
   mountNavbar(1);
   window.__wpInit();
 </script>

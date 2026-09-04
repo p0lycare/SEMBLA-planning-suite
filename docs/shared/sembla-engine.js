@@ -93,12 +93,19 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // gewaehlten Bodenblech-Standardlaengen bestimmt die Zerlegung in reale Teile. Faellt er in der
 // Iteration weg, griffe der Core-Fallback der vollen Standardreihe — die Aufteilung nach der
 // Auslegung waere dann eine andere als davor, mit Blechen, die niemand gewaehlt hat.
+// Und zuletzt aus demselben Grund `zwischenpunkte_mm` ([A-17]): der in Modul 1 gesetzte
+// Override der Zwischenspannpunkte bestimmt, welche Hoehen fuer eine Kopplung gesperrt sind
+// ([Z-7]) — faellt er in der Iteration weg, rechnete der Core mit seiner Auto-Ableitung
+// ([A-15]) weiter, und die gewaehlten Punkte waeren unwirksam. FEHLT das Feld, bleibt es
+// `undefined` und damit kein Array: der Core setzt dann kein Feld, und der Auto-Weg bleibt
+// bit-genau wie zuvor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
   return { ...extra, rod_mm: p.rod_mm, rod_lengths_mm: p.rod_lengths_mm, blech_mm: p.blech_mm,
            blech_lengths_mm: p.blech_lengths_mm,
            top_connection: p.top_connection, columns_grid: p.columns_grid,
            start_axis_grid: p.start_axis_grid,
-           rod_rest_mm: p.rod_rest_mm, rod_overhang_mm: p.rod_overhang_mm }; }
+           rod_rest_mm: p.rod_rest_mm, rod_overhang_mm: p.rod_overhang_mm,
+           zwischenpunkte_mm: p.zwischenpunkte_mm }; }
 function buildN(vorg, sp) {
   return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg), interlocksOf(vorg));
 }

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-09",
+    datum: "2026-09-04",
+    typ: "feature",
+    issue: 93,
+    titel: "Zwischenspannpunkte fürs Einlegeblech: automatisch nahe halber Höhe, lagengenau bearbeitbar",
+    testbitte: "Wand in Modul 1 öffnen: das Einlegeblech-Symbol steht je Strang nahe halber "
+      + "Höhe auf einer Lagen-Oberkante. „Zwischenspannpunkte bearbeiten“, dann Punkt setzen, "
+      + "ziehen, löschen — „Zurück zu Auto“ stellt die Vorgabe her.",
+  },
+  {
     id: "chg-20260904-08",
     datum: "2026-09-04",
     typ: "feature",

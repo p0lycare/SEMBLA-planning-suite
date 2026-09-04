@@ -575,5 +575,165 @@ class BomConsistency(unittest.TestCase):
                                  sum(c["gewindestangen"] for c in w["tension_columns"]))
 
 
+class Zwischenspannpunkte(unittest.TestCase):
+    """[A-14]/[A-15]/[A-17] + Stosssperre [Z-7] — Paritaetsvertrag mit dem JS-Core.
+
+    Der JS-Core prueft dieselben Faelle in tests/core/test-sembla-core.mjs; die goldenen
+    Fixtures kennen keinen Override und koennen den manuellen Zweig deshalb nicht abdecken.
+    """
+
+    def test_innere_lagen_oberkanten(self):
+        self.assertEqual(sc.lagen_oberkanten_innen(0, 1000), [200, 400, 600, 800])
+        self.assertEqual(sc.lagen_oberkanten_innen(800, 2600),
+                         [1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400])
+        # Genau eine Lage -> keine innere Oberkante (die Segmentenden sind Anker).
+        self.assertEqual(sc.lagen_oberkanten_innen(0, 200), [])
+        self.assertEqual(sc.lagen_oberkanten_innen(2000, 2200), [])
+
+    def test_auto_punkt_lagengenau(self):
+        # Naechste innere Oberkante zur halben Segmenthoehe.
+        self.assertEqual(sc.auto_zwischenpunkt(0, 1200), 600)
+        self.assertEqual(sc.auto_zwischenpunkt(800, 2600), 1600)
+        self.assertIsNone(sc.auto_zwischenpunkt(0, 200))
+
+    def test_auto_punkt_gleichstand_niedrigere_oberkante(self):
+        # 2600 -> Mitte 1300, Kandidaten 1200 und 1400 sind gleich weit: die NIEDRIGERE gilt.
+        self.assertEqual(sc.auto_zwischenpunkt(0, 2600), 1200)
+        self.assertEqual(sc.auto_zwischenpunkt(0, 1000), 400)
+        self.assertEqual(sc.auto_zwischenpunkt(2000, 2600), 2200)
+        # Deterministisch bei Wiederholung (reine Funktion, kein Zustand).
+        for _ in range(3):
+            self.assertEqual(sc.auto_zwischenpunkt(0, 2600), 1200)
+
+    def test_manuelle_mehrfachpunkte(self):
+        punkte, fehler = sc.norm_zwischenpunkte([1200, 400, 1200], 2600)
+        self.assertEqual(punkte, [400, 1200])       # sortiert, dedupliziert
+        self.assertEqual(fehler, [])
+        self.assertEqual(sc.zwischenpunkte_segment(0, 2600, [400, 1200, 2400]),
+                         [400, 1200, 2400])
+        # Ein Punkt aus einem anderen Segment gilt hier nicht und wird nicht hineingezogen.
+        self.assertEqual(sc.zwischenpunkte_segment(2000, 2600, [400, 2200]), [2200])
+
+    def test_unzulaessige_werte_werden_benannt_nicht_gerundet(self):
+        punkte, fehler = sc.norm_zwischenpunkte([1250, 333.5, 0, 2600, 2800, 800], 2600)
+        self.assertEqual(punkte, [800])
+        gruende = sorted(f["grund"] for f in fehler)
+        self.assertEqual(gruende, ["ausserhalb_wand"] * 3
+                         + ["nicht_auf_lagen_oberkante", "nicht_ganzzahlig"])
+        self.assertNotIn(1200, punkte)              # 1250 wird NICHT auf 1200 gerundet
+
+    def test_kein_override_vs_leere_liste(self):
+        self.assertIsNone(sc.norm_zwischenpunkte(None, 2600)[0])
+        self.assertEqual(sc.norm_zwischenpunkte([], 2600)[0], [])
+        # Die ausdrueckliche leere Liste faellt NICHT auf die Auto-Ableitung zurueck.
+        self.assertEqual(sc.zwischenpunkte_segment(0, 2600, []), [])
+        self.assertEqual(sc.zwischenpunkte_segment(0, 2600, None), [1200])
+
+    def test_auto_wird_nicht_gespeichert(self):
+        w = build_wall("zpAuto", 1000, 2000, [])
+        self.assertNotIn("zwischenpunkte_mm", w["prestress"])
+        self.assertNotIn("zwischenpunkt_fehler", w["validation"])
+        self.assertNotIn("zwischenpunkt", json.dumps(w))
+        # Abgeleitet wird er trotzdem — frisch, je Achse einer.
+        zp = sc.wirksame_zwischenpunkte(w)
+        self.assertEqual(len(zp), len(w["tension_columns"]))
+        self.assertTrue(all(x["z_mm"] == 1000 for x in zp))
+
+    def test_override_reist_mit_und_wird_validiert(self):
+        w = build_wall("zpMan", 1000, 2000, [],
+                       prestress={"zwischenpunkte_mm": [1400, 400, 333]})
+        self.assertEqual(w["prestress"]["zwischenpunkte_mm"], [400, 1400])
+        self.assertEqual(len(w["validation"]["zwischenpunkt_fehler"]), 1)
+        self.assertEqual([x["z_mm"] for x in sc.wirksame_zwischenpunkte(w) if x["k"] == 0],
+                         [400, 1400])
+        self.assertTrue(is_buildable(w))
+
+    def test_auto_je_segment_an_einer_oeffnung(self):
+        w = build_wall("zpSeg", 2000, 2600, [Opening(6, 10, 4, 10, "fenster")])
+        col = next(c for c in w["tension_columns"] if 6 <= c["k"] < 10)
+        self.assertEqual(len(col["segments"]), 2)
+        zp = [x["z_mm"] for x in sc.wirksame_zwischenpunkte(w) if x["k"] == col["k"]]
+        self.assertEqual(zp, [400, 2200])
+
+    def test_z7_kopplung_weicht_aus(self):
+        # 2000 aus {1000, 500}: ungesperrt 1000+1000 (Stoss auf 1000). Stossfrei ist 500+1000+500.
+        self.assertEqual([x["len_mm"] for x in sc.kombiniere_laengen(2000, [1000, 500])["stuecke"]],
+                         [1000, 1000])
+        mit = sc.kombiniere_laengen(2000, [1000, 500], 200, [1000], False)
+        self.assertEqual([x["len_mm"] for x in mit["stuecke"]], [500, 1000, 500])
+        self.assertIsNone(mit["konflikt"])
+        self.assertEqual(sum(x["len_mm"] for x in mit["stuecke"]), 2000)
+
+    def test_z7_ohne_sperren_unveraendert(self):
+        for bedarf, L in ((1700, [1000, 500]), (3000, [1000]), (400, [1000, 600]), (2600, [1100])):
+            with self.subTest(bedarf=bedarf):
+                erwartet = sc.kombiniere_laengen(bedarf, L)
+                self.assertEqual(sc.kombiniere_laengen(bedarf, L, 200, None, False), erwartet)
+                self.assertEqual(sc.kombiniere_laengen(bedarf, L, 200, [], True), erwartet)
+
+    def test_z7_streckenende_nur_mit_reststueck_kopplung(self):
+        offen = sc.kombiniere_laengen(2000, [1000], 200, [2000], False)
+        self.assertEqual([x["len_mm"] for x in offen["stuecke"]], [1000, 1000])
+        self.assertIsNone(offen["konflikt"])
+        gekoppelt = sc.kombiniere_laengen(2000, [1000], 200, [2000], True)
+        self.assertEqual(gekoppelt["konflikt"], "stoss_auf_zwischenpunkt")
+        self.assertEqual([x["len_mm"] for x in gekoppelt["stuecke"]], [1000, 1000])
+
+    def test_z7_unloesbar_wird_benannt(self):
+        # Ohne Reststueck bleibt [Z-6] die genannte Ursache (hoeherer Rang).
+        w = build_wall("zpK", 1000, 2000, [], prestress={"rod_lengths_mm": [1000]})
+        self.assertTrue(all(k["grund"] == "kein_reststueck"
+                            for k in w["validation"]["zuschnitt_konflikte"]))
+        # Mit Reststueck greift die Sperre und wird mit eigenem Grund benannt.
+        v = build_wall("zpK2", 1000, 2000, [], prestress={
+            "rod_lengths_mm": [1000], "rod_rest_mm": 210, "rod_overhang_mm": 10})
+        kk = v["validation"]["zuschnitt_konflikte"]
+        self.assertTrue(kk and all(k["grund"] == "stoss_auf_zwischenpunkt" for k in kk))
+        self.assertTrue(is_buildable(v))
+        sg = v["tension_columns"][0]["segments"][0]
+        self.assertEqual(sum(x["len_mm"] for x in sg["stuecke"]), sg["bedarf_mm"])
+
+    def test_z7_steht_unter_z5(self):
+        k = sc.kombiniere_laengen(1200, [1000], 200, [1000], False)
+        self.assertEqual([x["len_mm"] for x in k["stuecke"]], [1000, 200])
+        self.assertEqual(k["konflikt"], "stoss_auf_zwischenpunkt")
+
+    def test_z7_kein_stoss_auf_punkthoehe(self):
+        w = build_wall("zpFrei", 2000, 2600, [], prestress={
+            "rod_lengths_mm": [1000, 500], "rod_rest_mm": 300, "rod_overhang_mm": 10})
+        sperr = {(x["k"], x["z_mm"]) for x in sc.wirksame_zwischenpunkte(w)}
+        for col in w["tension_columns"]:
+            for sg in col["segments"]:
+                z = sg["z0_mm"]
+                for st in sg["stuecke"][:-1]:
+                    z += st["len_mm"]
+                    self.assertNotIn((col["k"], z), sperr)
+        self.assertEqual(w["validation"]["zuschnitt_konflikte"], [])
+
+    def test_punkte_aendern_achsen_und_anker_nicht(self):
+        ops = [Opening(5, 11, 0, 10, "tuer")]
+        a = build_wall("zpA", 2000, 2600, ops)
+        b = build_wall("zpB", 2000, 2600, [Opening(5, 11, 0, 10, "tuer")],
+                       prestress={"zwischenpunkte_mm": [600, 1800]})
+        self.assertEqual([c["k"] for c in a["tension_columns"]],
+                         [c["k"] for c in b["tension_columns"]])
+        self.assertEqual([[(s["z0_mm"], s["z1_mm"]) for s in c["segments"]]
+                          for c in a["tension_columns"]],
+                         [[(s["z0_mm"], s["z1_mm"]) for s in c["segments"]]
+                          for c in b["tension_columns"]])
+        for f in ("spannplatten", "spannmuttern", "senkkopfschrauben", "kopplungsmuttern_basis"):
+            with self.subTest(feld=f):
+                self.assertEqual(a["bom"][f], b["bom"][f])
+
+    def test_kombiniere_segment_sperrt_kopplung_zum_reststueck(self):
+        a = sc.kombiniere_segment(1700, [1000, 500], True, 210, 10)
+        self.assertEqual([x["len_mm"] for x in a["stuecke"]], [1000, 500, 210])
+        b = sc.kombiniere_segment(1700, [1000, 500], True, 210, 10, [1000])
+        self.assertEqual([x["len_mm"] for x in b["stuecke"]], [500, 1000, 210])
+        self.assertIsNone(b["konflikt"])
+        c = sc.kombiniere_segment(1700, [1000, 500], True, 210, 10, [1500])
+        self.assertEqual(c["konflikt"], "stoss_auf_zwischenpunkt")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

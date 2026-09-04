@@ -59,6 +59,42 @@ export function stueckFarbe(art) {
 }
 
 /**
+ * Darstellungsschluessel des Zwischenspannpunkts ([A-14], #93) — Kennfarbe und Klartext.
+ *
+ * Er liegt hier und nicht im Modul, weil die Zeichengeometrie desselben Bauteils in mehreren
+ * Ausgaben gleich aussehen muss ([D-4]); ein modul-eigener Schluessel waere Drift. Die Farbe
+ * ist bewusst KEINE der Zuschnittfarben (`STUECK_FARBE`) und keine der Anschlussfarben
+ * (`FARBE.platte`/`FARBE.mutter`): das Einlegeblech ist ein eigenes Bauteil und darf mit
+ * Stangenstueck, Spannplatte ([A-3]) und Mutter nicht verwechselt werden.
+ */
+export const ZWISCHENPUNKT = { farbe: "#0a7d6b", label: "Einlegeblech (Zwischenspannpunkt)" };
+
+/**
+ * Symbol eines Zwischenspannpunkts: nach unten geoeffnetes eckiges C-Profil auf der
+ * Lagen-Oberkante ([A-14]).
+ *
+ * Die Angaben `breite`/`schenkel` sind ZEICHENMASSE in Zeichenkoordinaten — bewusst KEINE
+ * Bauteilmasse: fuer das Einlegeblech gibt es noch keine bestaetigten Abmessungen, und ein
+ * hier gesetztes mm-Mass laese sich als solche lesen. Aus dem Symbol wird nichts abgeleitet.
+ *
+ * @param {number} x Zeichenkoordinate der Spannachse
+ * @param {number} y Zeichenkoordinate der Lagen-Oberkante
+ * @param {{breite?:number,schenkel?:number,strich?:number,farbe?:string,klasse?:string}} [opts]
+ * @returns {string} SVG-Fragment (offener Polylinienzug, nicht gefuellt)
+ */
+export function zwischenpunktSvg(x, y, opts = {}) {
+  const b = (opts.breite != null ? opts.breite : 22) / 2;
+  const h = opts.schenkel != null ? opts.schenkel : 8;
+  const sw = opts.strich != null ? opts.strich : 2;
+  const farbe = opts.farbe || ZWISCHENPUNKT.farbe;
+  const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
+  // Querbalken auf der Oberkante, beide Schenkel nach UNTEN -> die Oeffnung zeigt nach unten.
+  const pts = `${x - b},${y + h} ${x - b},${y} ${x + b},${y} ${x + b},${y + h}`;
+  return `<polyline${kl} points="${pts}" fill="none" stroke="${farbe}" `
+    + `stroke-width="${sw}" stroke-linejoin="miter"/>`;
+}
+
+/**
  * Reale Bodenblechteile einer Wand ([A-10]/[A-11]/[A-12]) — KANONISCHER LESER.
  *
  * Zerlegt wird ausschliesslich im Rechenkern (`zerlegeBodenblech()` in `sembla-core.js`);

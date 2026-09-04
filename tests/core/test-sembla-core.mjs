@@ -6,8 +6,10 @@ import {
   buildWall, buildReference, Opening, isBuildable, REFERENCE_WALLS,
   GRID, ROD, CHAMBER_OFFSET, MAX_SPAN_GRID, FORBIDDEN_N,
   InvalidDimensionError, InvalidOpeningError,
-  kombiniereLaengen, quelleFuerMass,
+  kombiniereLaengen, quelleFuerMass, kombiniereSegment,
   zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
+  lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
+  wirksameZwischenpunkte, COURSE,
 } from "../../docs/shared/sembla-core.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -486,6 +488,166 @@ t("[G-10] interlock_invalid_segments meldet nicht baubare Restbreiten", () => {
   // Die gemeldeten Segmente haben Breite 4 (nicht baubar)
   const seg = w.validation.interlock_invalid_segments[0];
   assert(seg.breite_grid === 4, `Erwartete Breite 4, bekommen ${seg.breite_grid}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// ZWISCHENSPANNPUNKTE [A-14]/[A-15]/[A-17] + Stosssperre [Z-7] (Paritaetsvertrag mit dem Orakel)
+console.log("ZWISCHENSPANNPUNKTE [A-14]/[A-15]/[A-17] + [Z-7] (Paritaetsvertrag mit dem Python-Orakel):");
+
+t("[A-15] innere Lagen-Oberkanten: Segmentenden gehoeren NICHT dazu", () => {
+  deepEqual(lagenOberkantenInnen(0, 1000), [200, 400, 600, 800]);
+  deepEqual(lagenOberkantenInnen(800, 2600), [1000, 1200, 1400, 1600, 1800, 2000, 2200, 2400]);
+  deepEqual(lagenOberkantenInnen(0, 200), []);          // genau eine Lage -> keine innere Oberkante
+  deepEqual(lagenOberkantenInnen(2000, 2200), []);
+});
+t("[A-15] Auto-Punkt: naechste innere Oberkante zur halben Segmenthoehe", () => {
+  assert(autoZwischenpunkt(0, 1000) === 400 || autoZwischenpunkt(0, 1000) === 600,
+    "1000 mm: 400 oder 600");
+  assert(autoZwischenpunkt(0, 1000) === 400, "Gleichstand -> niedrigere Oberkante");
+  assert(autoZwischenpunkt(0, 2600) === 1200, "2600 mm: Gleichstand 1200/1400 -> 1200");
+  assert(autoZwischenpunkt(0, 1400) === 600, "1400 mm: exakt halbe Hoehe 700 -> 600 (Gleichstand)");
+  assert(autoZwischenpunkt(0, 1200) === 600, "1200 mm: 600 ist exakt die Mitte");
+  assert(autoZwischenpunkt(800, 2600) === 1600, "verschobenes Segment: Mitte 1700 -> 1600");
+  assert(autoZwischenpunkt(0, 200) === null, "eine Lage -> kein Punkt");
+  assert(autoZwischenpunkt(2000, 2600) === 2200, "600er Segment: Gleichstand 2200/2400 -> 2200");
+});
+t("[A-15] Auto ist rein: gleiche Eingabe -> gleiches Ergebnis, kein Zustand", () => {
+  for (let i = 0; i < 3; i++) assert(autoZwischenpunkt(0, 2600) === 1200);
+});
+t("[A-17] manuelle Punkte: normalisiert, sortiert, dedupliziert", () => {
+  const r = normZwischenpunkte([1200, 400, 1200], 2600);
+  deepEqual(r.punkte, [400, 1200]);
+  deepEqual(r.fehler, []);
+});
+t("[A-17] unzulaessige Werte werden benannt und NICHT gerundet", () => {
+  const r = normZwischenpunkte([1250, 333.5, 0, 2600, 2800, 800], 2600);
+  deepEqual(r.punkte, [800]);
+  assert(r.fehler.length === 5, JSON.stringify(r.fehler));
+  const gr = r.fehler.map(f => f.grund);
+  assert(gr.filter(g => g === "nicht_auf_lagen_oberkante").length === 1, JSON.stringify(gr));
+  assert(gr.filter(g => g === "nicht_ganzzahlig").length === 1, JSON.stringify(gr));
+  assert(gr.filter(g => g === "ausserhalb_wand").length === 3, JSON.stringify(gr));
+  // Keine 1250 -> 1200 Rundung: der abgewiesene Wert taucht in keiner Form als Punkt auf.
+  assert(!r.punkte.includes(1200) && !r.punkte.includes(1250));
+});
+t("[A-17] kein Override vs. ausdruecklich leere Liste", () => {
+  assert(normZwischenpunkte(null, 2600).punkte === null, "kein Override -> null (Auto)");
+  assert(normZwischenpunkte(undefined, 2600).punkte === null);
+  deepEqual(normZwischenpunkte([], 2600).punkte, []);         // ausdruecklich: keine Punkte
+  deepEqual(zwischenpunkteSegment(0, 2600, []), []);          // faellt NICHT auf Auto zurueck
+  deepEqual(zwischenpunkteSegment(0, 2600, null), [1200]);
+});
+t("[A-17] Override gilt verbatim je Segment (mehrere Punkte, nichts ergaenzt/verschoben)", () => {
+  deepEqual(zwischenpunkteSegment(0, 2600, [400, 1200, 2400]), [400, 1200, 2400]);
+  // Ein Punkt ausserhalb DIESES Segments gilt dort nicht — und wird nicht hineingezogen.
+  deepEqual(zwischenpunkteSegment(2000, 2600, [400, 2200]), [2200]);
+  deepEqual(zwischenpunkteSegment(2000, 2600, [400]), []);
+});
+t("[A-15] Auto-Ergebnis steht in KEINEM Feld des Wandelements", () => {
+  const w = buildWall("zpAuto", 1000, 2000, []);
+  assert(!("zwischenpunkte_mm" in w.prestress), "kein Feld im Vorspannblock");
+  assert(!("zwischenpunkt_fehler" in w.validation), "kein Fehlerfeld ohne Fehler");
+  assert(JSON.stringify(w).indexOf("zwischenpunkt") === -1, "nichts serialisiert");
+  // … abgeleitet wird er trotzdem, frisch bei jeder Ausgabe:
+  const zp = wirksameZwischenpunkte(w);
+  assert(zp.length === w.tension_columns.length, "je Achse ein Punkt");
+  assert(zp.every(x => x.z_mm === 1000), JSON.stringify(zp));
+});
+t("[A-17] Override reist im Wandelement mit und wird validiert", () => {
+  const w = buildWall("zpMan", 1000, 2000, [], null, { zwischenpunkte_mm: [1400, 400, 333] });
+  deepEqual(w.prestress.zwischenpunkte_mm, [400, 1400]);
+  assert(w.validation.zwischenpunkt_fehler.length === 1, "der ungueltige Wert ist benannt");
+  deepEqual(wirksameZwischenpunkte(w).filter(x => x.k === 0).map(x => x.z_mm), [400, 1400]);
+  assert(w.validation.buildable, "kein Baubarkeitsausschluss");
+});
+t("[A-15] Auto je SEGMENT: Bruestung/Sturz an einer Oeffnung bekommen eigene Punkte", () => {
+  const w = buildWall("zpSeg", 2000, 2600, [new Opening(6, 10, 4, 10, "fenster")]);
+  const inFenster = w.tension_columns.find(c => c.k >= 6 && c.k < 10);
+  assert(inFenster && inFenster.segments.length === 2, "unter und ueber dem Fenster je ein Segment");
+  const zp = wirksameZwischenpunkte(w).filter(x => x.k === inFenster.k).map(x => x.z_mm);
+  // Bruestung 0…800 -> Mitte 400; Sturzbereich 2000…2600 -> Gleichstand 2200/2400 -> 2200
+  deepEqual(zp, [400, 2200]);
+});
+t("[Z-7] Kopplung weicht der Punkthoehe aus (Vorzugsordnung bleibt [Z-2])", () => {
+  // 2000 mm aus {1000, 500}: ungesperrt 1000+1000 (Stoss auf 1000 = Punkt). Stossfrei ist
+  // 500+1000+500 — die nach [Z-2] bevorzugte unter den stossfreien.
+  const ohne = kombiniereLaengen(2000, [1000, 500]);
+  deepEqual(ohne.stuecke.map(x => x.len_mm), [1000, 1000]);
+  const mit = kombiniereLaengen(2000, [1000, 500], 200, [1000], false);
+  deepEqual(mit.stuecke.map(x => x.len_mm), [500, 1000, 500]);
+  assert(mit.konflikt === null, "loesbar -> kein Konflikt");
+  assert(mit.stuecke.reduce((a, x) => a + x.len_mm, 0) === 2000, "Geometrie unveraendert");
+});
+t("[Z-7] ohne Sperren bit-genau der bisherige Weg", () => {
+  for (const [b, L] of [[1700, [1000, 500]], [3000, [1000]], [400, [1000, 600]], [2600, [1100]]]) {
+    deepEqual(kombiniereLaengen(b, L, 200, null, false), kombiniereLaengen(b, L));
+    deepEqual(kombiniereLaengen(b, L, 200, [], true), kombiniereLaengen(b, L));
+  }
+});
+t("[Z-7] das Ende der Strecke ist nur mit Reststueck-Kopplung ein Stoss", () => {
+  // Sperre genau am oberen Ende: ohne Reststueck-Kopplung ist dort ein Anker -> keine Wirkung.
+  deepEqual(kombiniereLaengen(2000, [1000], 200, [2000], false).stuecke.map(x => x.len_mm),
+    [1000, 1000]);
+  // Mit Kopplung zum Reststueck ist dieselbe Hoehe ein Stoss -> nicht loesbar, benannt.
+  const k = kombiniereLaengen(2000, [1000], 200, [2000], true);
+  assert(k.konflikt === "stoss_auf_zwischenpunkt", k.konflikt);
+  deepEqual(k.stuecke.map(x => x.len_mm), [1000, 1000]);       // Geometrie unveraendert
+});
+t("[Z-7] unloesbar -> eigener Grund, Geometrie und Mengen unveraendert", () => {
+  const w = buildWall("zpKonf", 1000, 2000, [], null, { rod_lengths_mm: [1000] });
+  const kk = w.validation.zuschnitt_konflikte;
+  assert(kk.length > 0 && kk.every(x => x.grund === "kein_reststueck"),
+    "ohne Reststueck bleibt [Z-6] die genannte Ursache: " + JSON.stringify(kk[0]));
+  // Mit Reststueck greift die Sperre und wird mit EIGENEM Grund benannt.
+  const v = buildWall("zpKonf2", 1000, 2000, [], null,
+    { rod_lengths_mm: [1000], rod_rest_mm: 210, rod_overhang_mm: 10 });
+  const vk = v.validation.zuschnitt_konflikte;
+  assert(vk.length > 0 && vk.every(x => x.grund === "stoss_auf_zwischenpunkt"),
+    JSON.stringify(vk[0]));
+  assert(v.validation.buildable, "kein Baubarkeitsausschluss");
+  const sg = v.tension_columns[0].segments[0];
+  assert(sg.stuecke.reduce((a, x) => a + x.len_mm, 0) === sg.bedarf_mm, "Geometrie unveraendert");
+});
+t("[Z-7] steht UNTER [Z-5]: eine nicht einbaubare Folge gilt nicht als stossfrei", () => {
+  // 1200 aus {1000}: ungesperrt 1000 + 200 (genau Mindestmass). Sperre auf 1000 laesst keine
+  // andere einbaubare Wahl -> Geometrie bleibt, der Stoss wird benannt.
+  const k = kombiniereLaengen(1200, [1000], 200, [1000], false);
+  deepEqual(k.stuecke.map(x => x.len_mm), [1000, 200]);
+  assert(k.konflikt === "stoss_auf_zwischenpunkt", k.konflikt);
+});
+t("[Z-7]/[A-16] die Punkte aendern Achsen, Segmente und Ankerzaehlung nicht", () => {
+  const a = buildWall("zpA", 2000, 2600, [new Opening(5, 11, 0, 10, "tuer")]);
+  const b = buildWall("zpB", 2000, 2600, [new Opening(5, 11, 0, 10, "tuer")], null,
+    { zwischenpunkte_mm: [600, 1800] });
+  deepEqual(a.tension_columns.map(c => c.k), b.tension_columns.map(c => c.k));
+  deepEqual(a.tension_columns.map(c => c.segments.map(s => [s.z0_mm, s.z1_mm])),
+    b.tension_columns.map(c => c.segments.map(s => [s.z0_mm, s.z1_mm])));
+  for (const f of ["spannplatten", "spannmuttern", "senkkopfschrauben", "kopplungsmuttern_basis"])
+    assert(a.bom[f] === b.bom[f], f);
+});
+t("[Z-7] kein Stoss auf einer wirksamen Punkthoehe (loesbarer Fall, ganze Wand)", () => {
+  const w = buildWall("zpFrei", 2000, 2600, [], null,
+    { rod_lengths_mm: [1000, 500], rod_rest_mm: 300, rod_overhang_mm: 10 });
+  const sperr = new Set(wirksameZwischenpunkte(w).map(x => x.k + "@" + x.z_mm));
+  for (const col of w.tension_columns) for (const sg of col.segments) {
+    let z = sg.z0_mm;
+    for (let i = 0; i < sg.stuecke.length - 1; i++) {
+      z += sg.stuecke[i].len_mm;
+      assert(!sperr.has(col.k + "@" + z), `Kopplung auf Punkthoehe k=${col.k} z=${z}`);
+    }
+  }
+  assert(w.validation.zuschnitt_konflikte.length === 0, JSON.stringify(w.validation.zuschnitt_konflikte));
+});
+t("kombiniereSegment: Sperren wirken auch auf die Kopplung zum Reststueck ([Z-6]/[Z-7])", () => {
+  // h=1700, Reststueck 210, Ueberstand 10 -> bedarf 1710, unten 1500. Aus {1000,500} waere das
+  // 1000+500 (Stoss auf 1000 und die Kopplung 1500 zum Reststueck).
+  const a = kombiniereSegment(1700, [1000, 500], true, 210, 10);
+  deepEqual(a.stuecke.map(x => x.len_mm + ":" + x.art), ["1000:standard", "500:standard", "210:rest"]);
+  const b = kombiniereSegment(1700, [1000, 500], true, 210, 10, [1000]);
+  deepEqual(b.stuecke.map(x => x.len_mm + ":" + x.art), ["500:standard", "1000:standard", "210:rest"]);
+  assert(b.konflikt === null, b.konflikt);
+  const c = kombiniereSegment(1700, [1000, 500], true, 210, 10, [1500]);
+  assert(c.konflikt === "stoss_auf_zwischenpunkt", "Kopplung zum Reststueck ist gesperrt: " + c.konflikt);
 });
 
 console.log(`\n${pass} ok, ${fail} fail`);
