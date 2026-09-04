@@ -89,8 +89,13 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // Auslegungs-Iteration auf den Einzelwert/Default zurueck und die Kombination waere unwirksam.
 // Aus demselben Grund reisen `rod_rest_mm`/`rod_overhang_mm` ([Z-6]) mit: sonst verlöre jede
 // Iteration das Reststueck am oberen Abschluss und die Stueckzahl waere eine andere.
+// Und aus genau demselben Grund `blech_lengths_mm` ([A-10]): der Vorratssatz der in Modul 1
+// gewaehlten Bodenblech-Standardlaengen bestimmt die Zerlegung in reale Teile. Faellt er in der
+// Iteration weg, griffe der Core-Fallback der vollen Standardreihe — die Aufteilung nach der
+// Auslegung waere dann eine andere als davor, mit Blechen, die niemand gewaehlt hat.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
   return { ...extra, rod_mm: p.rod_mm, rod_lengths_mm: p.rod_lengths_mm, blech_mm: p.blech_mm,
+           blech_lengths_mm: p.blech_lengths_mm,
            top_connection: p.top_connection, columns_grid: p.columns_grid,
            start_axis_grid: p.start_axis_grid,
            rod_rest_mm: p.rod_rest_mm, rod_overhang_mm: p.rod_overhang_mm }; }

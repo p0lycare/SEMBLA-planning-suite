@@ -451,6 +451,52 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   ok("Standardkatalog fuehrt nur EINE Kopplungsmutter (keine Fuß-Sonderausfuehrung)",
     (v.kupplung || []).length === 1
     && std.produkte.filter((p) => /kopplungsmutter/i.test(p.id)).length === 1);
+
+  // --- [A-10] Bodenblech-Standardlaengen der Vorlage --------------------------------------
+  // Die Vorlage muss den vollen Vorratssatz 375…1250 mm im 125-mm-Raster mitbringen, sonst kann
+  // [P-18] die Rolle nicht sinnvoll vorbelegen und die Zerlegung faende nichts zu kombinieren.
+  const RASTER = [1250, 1125, 1000, 875, 750, 625, 500, 375];
+  // Maßgebend ist DASSELBE Feld wie in loesePreis/rollenStatus: das erste belegte aus
+  // `mass.felder`. Der Test liest die Definition, statt `breite_mm` zu wiederholen.
+  const FELDER = KAT.rolle("blech_boden").mass.felder;
+  const massVon = (pr) => FELDER.map((f) => +pr[f]).find((x) => Number.isFinite(x) && x > 0);
+  const bbIds = v.blech_boden || [];
+  const bbProd = bbIds.map((id) => KAT.produkt(std, id));
+
+  ok("[A-10] Standardkatalog fuehrt je Rastermaß 375…1250 mm ein Bodenblech",
+    bbProd.map(massVon).sort((a, b) => b - a).join() === RASTER.join());
+  ok("[A-10] jedes Bodenblech ist ein gueltiges Produkt seiner Kategorie",
+    bbProd.length === 8 && bbProd.every((pr) => pr.kategorie === "blech_platte"
+      && pr.einheit === "Stk" && KAT.validiereProdukt(pr).length === 0));
+  // Kein kollidierendes Maß: `hoehe_mm` (Wanddicke) darf nie ein Rastermaß sein, sonst traefe
+  // loesePreis ueber `some()` das falsche Feld, und `laenge_mm` wuerde die Gruppierung in
+  // rollenStatus verschieben (dort entscheidet das ERSTE belegte Feld).
+  ok("[A-10] kein kollidierendes Maßfeld an den Bodenblechen",
+    bbProd.every((pr) => pr.laenge_mm == null && pr.hoehe_mm === 125
+      && !RASTER.includes(pr.hoehe_mm) && pr.dicke_mm === 15));
+  ok("[A-10] Bodenbleche sind als vorlaeufig gekennzeichnet und nennen das Bauteilmaß ([A-12])",
+    bbProd.every((pr) => /vorläufig/.test(pr.hinweis || "")
+      && new RegExp("\\b" + (massVon(pr) - 2) + " mm").test(pr.hinweis || "")));
+
+  // [P-18]: die leere Rolle wird aus der Vorlage vorbelegt — und zwar mit allen acht.
+  ok("[P-18] Vorbelegung fuellt die leere Rolle blech_boden vollstaendig",
+    bbIds.length === 8 && !KAT.rollenOhneVorschlag(std).includes("blech_boden"));
+  const eingStd = { planung: { produkte: { rollen: { blech_boden: bbIds } } } };
+  ok("[A-10] acht verschiedene Standardgroeßen sind kombiniert, nicht mehrdeutig",
+    KAT.rollenStatus("blech_boden", eingStd, std, {}).status === "kombiniert");
+
+  // [P-14]: je Position grenzt `mass_mm` (Rastermaß) auf GENAU das maßgleiche Produkt ein —
+  // kein Erstkandidat, keine Umrechnung, kein Ersatzprodukt.
+  ok("[P-14] jede Standardlaenge trifft genau ihr maßgleiches Produkt", RASTER.every((L) => {
+    const r = KAT.loesePreis({ key: "blech_boden", unit: "Stk", menge: 2, mass_mm: L },
+      { blech_boden: bbIds }, std, {});
+    return r.status === "ok" && massVon(r.produkt) === L && r.ep === +KAT.produkt(std, r.produkt.id).preis;
+  }));
+  ok("[P-14] ein Rastermaß ohne Produkt bleibt unbepreist statt Erstkandidat", (() => {
+    const r = KAT.loesePreis({ key: "blech_boden", unit: "Stk", menge: 1, mass_mm: 1375 },
+      { blech_boden: bbIds }, std, {});
+    return r.status === "mass_abweichend" && r.ep === null && r.produkt === null;
+  })());
 }
 
 let fail = 0;

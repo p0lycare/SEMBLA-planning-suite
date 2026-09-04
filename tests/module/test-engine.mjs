@@ -46,6 +46,62 @@ t("Materialannahmen übersteuerbar (fcd senkt Randdruck-Reserve)", ()=>{
   A(r.wandelement.verification.material.fcd_Nmm2===5, "fcd übernommen");
 });
 
+// ---- [A-10] Bodenblech-Vorratssatz ueberlebt die Auslegungsiteration -------------------
+// `psOf` reicht die Prestress-Hardware Feld fuer Feld weiter. Faellt `blech_lengths_mm` dabei
+// heraus, greift in JEDER Iteration der Core-Fallback der vollen Standardreihe 375…1250 — die
+// Wand haette nach der Auslegung eine andere Blechaufteilung als davor, mit Laengen, die niemand
+// gewaehlt hat. Geprueft wird deshalb am Ergebnis der VOLLEN Auslegung, nicht an psOf selbst.
+const rasterMasse=(w)=>w.base_plate.teile.map(t=>t.raster_mm);
+
+t("[A-10] gewaehlter Vorratssatz ueberlebt die Auto-Auslegung", ()=>{
+  const r=autoAuslegung({...base, length_mm:4500,
+    prestress:{blech_lengths_mm:[1250,1000]}, load:{qk_area:0.5,gammaQ:1.5}});
+  A(r.status==="konvergiert", "status "+r.status);
+  A(JSON.stringify(r.wandelement.prestress.blech_lengths_mm)==="[1250,1000]",
+    "Vorratssatz im Wandelement: "+JSON.stringify(r.wandelement.prestress.blech_lengths_mm));
+  const m=rasterMasse(r.wandelement);
+  A(m.length>0 && m.every(x=>x===1250||x===1000), "nur gewaehlte Rastermaße: "+m.join(","));
+  A(m.reduce((a,b)=>a+b,0)===4500, "Teile decken die Wandlaenge: "+m.join("+"));
+});
+
+t("[A-10] Aufteilung ist vor und nach der Auslegung dieselbe", ()=>{
+  const vorg={...base, length_mm:4500, prestress:{blech_lengths_mm:[1250,1000]},
+    load:{qk_area:0.5,gammaQ:1.5}};
+  // Vor der Auslegung: derselbe Vorratssatz ohne Iteration (fester Nachweis-Modus).
+  const fest=nachweisPruefen({...vorg, prestress:{...vorg.prestress, max_span_grid:3, force_kN:60}});
+  const auto=autoAuslegung(vorg);
+  A(JSON.stringify(rasterMasse(fest.wandelement))===JSON.stringify(rasterMasse(auto.wandelement)),
+    "Aufteilung identisch: "+rasterMasse(fest.wandelement).join(",")+" vs "+rasterMasse(auto.wandelement).join(","));
+});
+
+t("[A-10] enger Vorratssatz erzwingt genau seine Laengen (kein Fallback-Blech)", ()=>{
+  const r=autoAuslegung({...base, length_mm:3750,
+    prestress:{blech_lengths_mm:[1250]}, load:{qk_area:0.5,gammaQ:1.5}});
+  A(JSON.stringify(rasterMasse(r.wandelement))==="[1250,1250,1250]",
+    "3x1250 statt Fallback-Kombination: "+rasterMasse(r.wandelement).join(","));
+});
+
+t("[A-10] ohne Feld gilt unveraendert der Core-Fallback", ()=>{
+  const ohne=autoAuslegung({...base, length_mm:4500, load:{qk_area:0.5,gammaQ:1.5}});
+  const eng =autoAuslegung({...base, length_mm:4500,
+    prestress:{blech_lengths_mm:[1000]}, load:{qk_area:0.5,gammaQ:1.5}});
+  // Der Fallback nimmt die groesstmoeglichen Teile der vollen Reihe; der enge Satz kann das nicht.
+  A(JSON.stringify(rasterMasse(ohne.wandelement))!==JSON.stringify(rasterMasse(eng.wandelement)),
+    "Fallback unterscheidet sich vom engen Satz");
+  A(rasterMasse(ohne.wandelement).some(x=>x>1000), "Fallback nutzt Laengen ueber 1000 mm");
+});
+
+t("[A-10] Kopfblech-Modulzaehlung haengt weiter allein an blech_mm", ()=>{
+  const a=autoAuslegung({...base, length_mm:4000,
+    prestress:{blech_mm:1000, blech_lengths_mm:[1250,1000]}, load:{qk_area:0.5,gammaQ:1.5}});
+  const b=autoAuslegung({...base, length_mm:4000,
+    prestress:{blech_mm:500,  blech_lengths_mm:[1250,1000]}, load:{qk_area:0.5,gammaQ:1.5}});
+  A(JSON.stringify(rasterMasse(a.wandelement))===JSON.stringify(rasterMasse(b.wandelement)),
+    "Bodenblechteile unveraendert");
+  A(b.wandelement.top_plate.module > a.wandelement.top_plate.module,
+    "Kopfblech-Module aendern sich: "+a.wandelement.top_plate.module+" -> "+b.wandelement.top_plate.module);
+});
+
 const demo=autoAuslegung({...base, load:{qk_area:3.0,gammaQ:1.5}});
 console.log("\nOptimierung (qk=3,0): sp="+demo.wandelement.verification.auslegung.max_span_grid+
   " N="+demo.wandelement.verification.auslegung.force_kN+"kN Stränge="+demo.wandelement.verification.auslegung.strands+

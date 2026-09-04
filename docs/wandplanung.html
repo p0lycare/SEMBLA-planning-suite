@@ -138,7 +138,8 @@
     </div>
     <div class="grp"><h3>Vorspann-Hardware</h3>
       <div class="lockhint" id="rodQuelle"></div>
-      <label><span>Blechlänge (Module)</span><input type="number" id="blechCm" value="100" step="10" min="20"><small>cm</small></label>
+      <label><span>Kopfblech-Modullänge</span><input type="number" id="blechCm" value="100" step="10" min="20"
+        title="Modullänge des KOPFBLECHS an der Wandoberkante. Das Bodenblech hängt nicht daran: es wird aus den im Katalog gewählten Standardlängen zusammengesetzt ([A-10]) — Rolle „Bodenblech“ unten."><small>cm</small></label>
       <label><span>Oberer Anschluss</span><select id="topConn"
         title="Fuß immer Bodenblech (15 mm). Kopf wahlweise Kopfblech-Module oder Spannplatten auf der Steinkante."><option value="blech" selected>Kopfblech (Standard)</option><option value="spannplatte">Spannplatte</option></select></label>
       <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"
@@ -305,6 +306,13 @@ function vorgaben(){
   // der Core meldet den offenen oberen Abschluss je Strang. Konfigurierbar ist nur der Überstand.
   hw.rod_rest_mm = rodRestMm();
   hw.rod_overhang_mm = Math.max(0, Math.round(+$('rodUeber').value||0));
+  // [A-10] Bodenblech-Vorratssatz: nur bei echter Auswahl mitgeben. Ein AUSDRÜCKLICH leeres Feld
+  // hieße im Core „keine Standardlänge gewählt" (Konflikt + Sonderzuschnitt) — hier ist aber der
+  // dokumentierte Fallback der vollen Standardreihe gemeint, und den gibt es nur, wenn das Feld
+  // ganz fehlt. Die fehlende Auswahl meldet der Rollenstatus an der Rolle „Bodenblech".
+  const blechL=blechLaengenMm();
+  if(blechL.length) hw.blech_lengths_mm=blechL;
+  // Reine KOPFBLECH-Modullänge ([A-10]: das Bodenblech hängt nicht mehr daran).
   const blech_mm=Math.max(200, Math.round((+$('blechCm').value||100)*10));
   const top_connection=($('topConn').value==='spannplatte')?'spannplatte':'blech';
   const start_axis_grid=(+$('startAchse').value===1)?1:0;               // 1. (Standard) oder 2. Rasterachse
@@ -432,15 +440,17 @@ function draw(w){
 
   // ---- Anschlüsse: Bodenblech (immer), Kopfblech oder Spannplatten ----
   const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
-  const blMm=(w.prestress&&w.prestress.blech_mm)||1000;
   // SPANN (Spannplatte) ist bewusst NICHT die Sonderzuschnittsfarbe ([D-4]): das Bauteil
   // darf mit dem Zuschnitt nicht verwechselt werden — gleicher Wert wie in Modul 5/7.
   const STEEL='#5b6673', SPANN='#14559c', NUT='#0b3a73';
   const bth=Math.max(4, 15*sc);   // 15 mm Blechdicke, skaliert (min 4px sichtbar)
   const xL=Math.min(X(0),X(L)), xR=Math.max(X(0),X(L));
-  // Bodenblech als durchgehender Balken unter dem Wandfuß
+  // Bodenblech als durchgehender Balken unter dem Wandfuß. Die früheren Teilstriche im Abstand
+  // `blech_mm` sind ERSATZLOS entfallen: das Bodenblech ist keine Modulzählung mehr, sondern eine
+  // Folge realer Teile aus dem Vorratssatz ([A-10]) — `blech_mm` ist allein die Kopfblech-
+  // Modullänge und hätte hier eine Teilung gezeigt, die es nicht gibt. Die ECHTEN Stöße aus
+  // `base_plate.teile` zu zeichnen ist ausdrücklich NICHT Sache dieser Vorschau (eigenes Paket).
   s+=`<rect x="${xL}" y="${Y(0)}" width="${xR-xL}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.8"/>`;
-  for(let xx=blMm; xx<L-1; xx+=blMm) s+=`<line x1="${X(xx)}" y1="${Y(0)}" x2="${X(xx)}" y2="${Y(0)+bth}" stroke="#cfd7df" stroke-width="0.8"/>`;
   s+=`<text x="${xL+3}" y="${Y(0)+bth-2}" font-size="8" fill="#eef2f6">Bodenblech 15 mm</text>`;
   // Kopfblech (nur bei top_connection=='blech') entlang der Oberkante
   if(topConn==='blech'){ for(let k=0;k<N2;k++){ const h=topH(k); if(h<=0) continue; const lx=Math.min(X(k*GRID),X((k+1)*GRID));
@@ -672,6 +682,27 @@ function prodSpez(){ const k=prodKatalog(); return k?KAT.produktSpezifikation(pr
 function rodLaengenMm(){ const s=prodSpez(); return s?s.rod.laengen_mm.slice():[]; }
 // Reststücklänge ([Z-6]): nur bei EINDEUTIG gewähltem Produkt, sonst 0 (sichtbarer Konflikt).
 function rodRestMm(){ const s=prodSpez(); return (s&&s.rod.rest_mm!=null)?s.rod.rest_mm:0; }
+// Bodenblech-Standardlängen ([A-10]): der VORRATSSATZ kommt ausschließlich aus den in der Rolle
+// `blech_boden` gewählten Katalogprodukten — dieselbe Einbahnstraße wie bei den Gewindestangen
+// ([Z-1]), nur mit einem anderen Maßfeld.
+//
+// Maßgebend ist DASSELBE Feld, nach dem `loesePreis`/`rollenStatus` eine Bodenblechposition ihrem
+// Produkt zuordnen: das erste belegte aus `rolle('blech_boden').mass.felder`. Die Feldreihenfolge
+// wird also GELESEN und nicht wiederholt — sonst liefe eine Wand hier unter einem anderen Maß als
+// in der Preisauflösung ([P-6]). `standardLaengen()` ist dafür bewusst NICHT benutzt: es liest
+// `laenge_mm`, während Bleche ihre Modullänge in `breite_mm` führen.
+//
+// Sortiert, entdoppelt und auf zulässige Rastermaße gefiltert wird im Core (`normBlechLaengen`) —
+// hier wird nichts gerundet und nichts verworfen, damit ein unpassendes Produkt dort sichtbar
+// herausfällt statt still zurechtgebogen zu werden.
+function blechLaengenMm(){
+  const k=prodKatalog(); if(!k) return [];
+  const r=KAT.rolle('blech_boden'), felder=(r&&r.mass&&r.mass.felder)||[];
+  const p=KAT.produkteZuRolle(prodEingaben(),k,'blech_boden').produkte;
+  const v=p.map(x=>felder.map(f=>+x[f]).find(n=>Number.isFinite(n)&&n>0))
+           .filter(n=>Number.isFinite(n)&&n>0);
+  return [...new Set(v)];
+}
 // Maßgebende Wandwerte: aus dem gerechneten Wandelement, sonst aus dem gespeicherten.
 function prodKontext(){
   const w = (RESULT&&RESULT.wandelement) || (store&&store.aktivesWandelement&&store.aktivesWandelement()) || null;
@@ -719,7 +750,9 @@ function vorbelegeProdukte(){
   // muss das Wandelement deshalb NEU GERECHNET UND GESPEICHERT werden — sonst stünde im JSON
   // weiter die alte Zerlegung (ohne Reststück), und alle lesenden Module (5/7, Export) zeigten
   // sie ebenfalls. Nur Rollen mit Maßwirkung loesen das aus; das Neurechnen ist idempotent.
-  const massWirksam=gesetzt.some(r=>r==='rod_std'||r==='rod_rest');
+  // `blech_boden` gehört dazu, seit der Vorratssatz der Bodenblech-Standardlängen aus der Auswahl
+  // kommt ([A-10]): ohne Neurechnen stünde im gespeicherten JSON weiter die Fallback-Aufteilung.
+  const massWirksam=gesetzt.some(r=>r==='rod_std'||r==='rod_rest'||r==='blech_boden');
   if(massWirksam) VB_MASS_OFFEN=true;
   return massWirksam;
 }
@@ -842,7 +875,8 @@ function bindEvents(){
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},
   setAxisEdit, setManualCols, addAxisAt, delAxis, get manualCols(){return manualCols;}, get axisEdit(){return axisEdit;},
   renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
-  vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();}, syncLegacyFelder,
+  vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();},
+  get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks };
 
 window.__wpInit=function(){

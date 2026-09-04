@@ -98,15 +98,100 @@
       "hinweis": "vorläufig — fachlich unbestätigt: Plattenformat folgt dem Panelraster aus eingaben.aufbau (62,5×150 cm); Dicke und Preis sind angenommene Beispielwerte."
     },
     {
+      "id": "blech-bodenblech-1250",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech 1250×125 mm, 15 mm (Bauteil 1248 mm)",
+      "einheit": "Stk",
+      "preis": 22.5,
+      "breite_mm": 1250,
+      "hoehe_mm": 125,
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (1248 mm, [A-12])."
+    },
+    {
+      "id": "blech-bodenblech-1125",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech 1125×125 mm, 15 mm (Bauteil 1123 mm)",
+      "einheit": "Stk",
+      "preis": 20.25,
+      "breite_mm": 1125,
+      "hoehe_mm": 125,
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (1123 mm, [A-12])."
+    },
+    {
       "id": "blech-bodenblech-1000",
       "kategorie": "blech_platte",
-      "bezeichnung": "Bodenblech-Modul 1000×125 mm, 15 mm",
+      "bezeichnung": "Bodenblech 1000×125 mm, 15 mm (Bauteil 998 mm)",
       "einheit": "Stk",
       "preis": 18.0,
       "breite_mm": 1000,
       "hoehe_mm": 125,
       "dicke_mm": 15,
-      "rollen": ["blech_boden"]
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (998 mm, [A-12])."
+    },
+    {
+      "id": "blech-bodenblech-875",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech 875×125 mm, 15 mm (Bauteil 873 mm)",
+      "einheit": "Stk",
+      "preis": 15.75,
+      "breite_mm": 875,
+      "hoehe_mm": 125,
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (873 mm, [A-12])."
+    },
+    {
+      "id": "blech-bodenblech-750",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech 750×125 mm, 15 mm (Bauteil 748 mm)",
+      "einheit": "Stk",
+      "preis": 13.5,
+      "breite_mm": 750,
+      "hoehe_mm": 125,
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (748 mm, [A-12])."
+    },
+    {
+      "id": "blech-bodenblech-625",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech 625×125 mm, 15 mm (Bauteil 623 mm)",
+      "einheit": "Stk",
+      "preis": 11.25,
+      "breite_mm": 625,
+      "hoehe_mm": 125,
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (623 mm, [A-12])."
+    },
+    {
+      "id": "blech-bodenblech-500",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech 500×125 mm, 15 mm (Bauteil 498 mm)",
+      "einheit": "Stk",
+      "preis": 9.0,
+      "breite_mm": 500,
+      "hoehe_mm": 125,
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (498 mm, [A-12])."
+    },
+    {
+      "id": "blech-bodenblech-375",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Bodenblech 375×125 mm, 15 mm (Bauteil 373 mm)",
+      "einheit": "Stk",
+      "preis": 6.75,
+      "breite_mm": 375,
+      "hoehe_mm": 125,
+      "dicke_mm": 15,
+      "rollen": ["blech_boden"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (373 mm, [A-12])."
     },
     {
       "id": "blech-kopfblech-1000",

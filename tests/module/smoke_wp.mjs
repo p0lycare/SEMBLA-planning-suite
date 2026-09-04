@@ -35,6 +35,8 @@ const KAT = await import("../../docs/shared/sembla-katalog.js");
 // Farbschluessel des Zuschnitts ([D-4]): Modul 1 fuehrt keine eigenen Hex-Werte, sondern
 // bezieht ihn — wie Modul 5/7 — aus sembla-montage.js.
 const MONT = await import("../../docs/shared/sembla-montage.js");
+// Stuecklistenpositionen fuer den Realpfad-Nachweis der Bodenblech-Bepreisung ([A-10]/[P-14]).
+const BOM = await import("../../docs/shared/sembla-bom.js");
 // Aktives Element ist in Modul 0 angelegt worden (inkl. Wandtyp) — Modul 1 legt selbst KEINS an.
 // Der Leerfall wird am Ende separat geprüft.
 const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
@@ -424,6 +426,8 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'rod-1000', kategorie:'gewindestange', bezeichnung:'Stange 1000', einheit:'Stk', preis:3.5, gewinde:'M10', laenge_mm:1000 },
   { id:'rod-1100b', kategorie:'gewindestange', bezeichnung:'Stange 1100 Zweitquelle', einheit:'Stk', preis:4.1, gewinde:'M10', laenge_mm:1100 },
   { id:'blech-boden', kategorie:'blech_platte', bezeichnung:'Bodenblech 1000', einheit:'Stk', preis:18, breite_mm:1000, hoehe_mm:125, dicke_mm:15 },
+  // Zweite Standardlaenge fuer den Vorratssatz nach [A-10] (Rastermaß in `breite_mm`).
+  { id:'blech-boden-1250', kategorie:'blech_platte', bezeichnung:'Bodenblech 1250', einheit:'Stk', preis:22.5, breite_mm:1250, hoehe_mm:125, dicke_mm:15 },
   { id:'blech-kopf', kategorie:'blech_platte', bezeichnung:'Kopfblech 1000', einheit:'Stk', preis:19, breite_mm:1000, hoehe_mm:125, dicke_mm:15 },
   { id:'dicht-stk', kategorie:'verbrauch', bezeichnung:'Dichtstreifen 20 cm', einheit:'Stk', preis:0.3 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1500', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
@@ -565,6 +569,81 @@ document.getElementById('blechCm').value='80'; WP.run();
 ok('[P-14] maßfremdes Blechprodukt bleibt ohne Preis', WP.prodStatus('blech_boden').status==='mass_abweichend');
 document.getElementById('blechCm').value='100'; WP.run();
 ok('zurück auf 100 cm -> Blech wieder zugeordnet', WP.prodStatus('blech_boden').status==='ok');
+
+// ---- [A-10] Bodenblech-Vorratssatz: der ECHTE Pfad von der Auswahl bis zur Bepreisung ------
+// Gefahren wird der Weg, den ein Planer nimmt: Produkte ueber den echten Aenderungs-Handler in
+// der Speicherschicht waehlen -> Modul 1 rechnet mit derselben Engine neu -> `base_plate.teile`
+// -> Stuecklistenpositionen -> `loesePreis`. Nichts davon ist nachgebaut.
+{
+  const rasterMasse=(w)=>w.base_plate.teile.map(t=>t.raster_mm);
+  // Der vorangehende [P-14]-Block hat `blech-boden` gewaehlt; hier beginnt der Pfad bewusst
+  // beim LEEREN Zustand, damit der Fallback echt gemessen und nicht vorausgesetzt wird.
+  setzen('blech_boden','blech-boden',false);
+  // Wandlaenge 4500 mm: aus {1250,1000} exakt kombinierbar, aus der vollen Standardreihe aber
+  // ANDERS — nur so zeigt sich, ob die Auswahl wirklich wirkt.
+  setzeLaenge(4500); WP.run();
+  const fallback=rasterMasse(WP.RESULT.wandelement).join(',');
+  ok('[A-10] ohne Auswahl gilt der Core-Fallback (Feld gar nicht gesetzt)',
+    WP.vorgaben().prestress.blech_lengths_mm===undefined && fallback.length>0);
+  ok('[A-10] ohne Auswahl meldet der Rollenstatus die fehlende Auswahl',
+    WP.prodStatus('blech_boden').status==='keine_auswahl');
+
+  setzen('blech_boden','blech-boden-1250',true);
+  setzen('blech_boden','blech-boden',true);
+  ok('[A-10] Auswahl liegt in eingaben.planung.produkte (Ownership Modul 1)',
+    JSON.stringify(store.holeProdukte(1).rollen.blech_boden)==='["blech-boden-1250","blech-boden"]');
+  ok('[A-10] Modul 1 leitet den Vorratssatz aus den gewaehlten Produkten ab',
+    JSON.stringify(WP.blechLaengen)==='[1250,1000]'
+    && JSON.stringify(WP.vorgaben().prestress.blech_lengths_mm)==='[1250,1000]');
+  ok('[A-10] der Satz steht im gerechneten Wandelement (Core normalisiert absteigend)',
+    JSON.stringify(WP.RESULT.wandelement.prestress.blech_lengths_mm)==='[1250,1000]');
+  const mit=rasterMasse(WP.RESULT.wandelement);
+  ok('[A-10] base_plate.teile besteht AUSSCHLIESSLICH aus den gewaehlten Rastermaßen',
+    mit.length>0 && mit.every(x=>x===1250||x===1000) && mit.reduce((a,b)=>a+b,0)===4500);
+  ok('[A-10] die Auswahl aendert die Aufteilung wirklich (nicht zufaellig gleich dem Fallback)',
+    mit.join(',')!==fallback);
+  ok('[A-10] das gespeicherte Wandelement traegt denselben Stand (kein Zwischenstand)',
+    JSON.stringify(store.aktivesWandelement().base_plate.teile.map(t=>t.raster_mm))===JSON.stringify(mit));
+  ok('[A-10] kein Produktdatum im Wandelement (Ownership)',
+    !JSON.stringify(store.aktivesWandelement()).includes('blech-boden'));
+
+  // Stueckliste: je Rastermaß eine Position mit `mass_mm`, ueber das [P-14] eindeutig aufloest.
+  const posAlle=BOM.semblaBomItems(store.aktivesWandelement());
+  const pos=posAlle.filter(x=>x.key==='blech_boden');
+  ok('[A-10] je verwendetem Rastermaß genau EINE Stuecklistenposition',
+    pos.length===new Set(mit).size && pos.every(x=>[1250,1000].includes(x.mass_mm))
+    && pos.reduce((a,x)=>a+x.menge,0)===mit.length);
+  ok('[A-12] die Position nennt das reale Bauteilmaß (Rastermaß - 2 mm)',
+    pos.every(x=>x.fertigmass_mm===x.mass_mm-2));
+  ok('[A-10] kein Sonderzuschnitt bei exakt kombinierbarer Laenge',
+    !posAlle.some(x=>x.key==='blech_boden_sonder'));
+  const rollenIds=KAT.produktRollen(store.aktiveEingaben());
+  const ktx=KAT.preisKontext(store.aktivesWandelement(), store.aktiveEingaben(), store.holeKatalog());
+  ok('[P-14] jede Bodenblechposition trifft ueber mass_mm genau ihr maßgleiches Produkt',
+    pos.every(x=>{
+      const r=KAT.loesePreis(x, rollenIds, store.holeKatalog(), ktx);
+      return r.status==='ok' && r.produkt && +r.produkt.breite_mm===x.mass_mm
+        && r.ep===(x.mass_mm===1250?22.5:18);
+    }));
+
+  // [Z-1]-Gegenprobe: die Kopfblech-Modullaenge darf das Bodenblech nicht mehr anfassen.
+  const kopfVor=store.aktivesWandelement().top_plate.module;
+  document.getElementById('blechCm').value='50'; document.getElementById('blechCm').dispatch('input');
+  ok('[A-10] Aenderung der Kopfblech-Modullaenge laesst base_plate.teile unveraendert',
+    JSON.stringify(rasterMasse(WP.RESULT.wandelement))===JSON.stringify(mit));
+  ok('[A-10] … aendert aber weiterhin die Kopfblech-Module',
+    WP.RESULT.wandelement.top_plate.module>kopfVor);
+  document.getElementById('blechCm').value='100'; document.getElementById('blechCm').dispatch('input');
+
+  // Auswahl wieder aufloesen: der Fallback muss BITGLEICH zurueckkommen.
+  setzen('blech_boden','blech-boden-1250',false);
+  setzen('blech_boden','blech-boden',false);
+  ok('[A-10] Auswahl aufgeloest -> bitgleich derselbe Core-Fallback wie zu Beginn',
+    WP.vorgaben().prestress.blech_lengths_mm===undefined
+    && rasterMasse(WP.RESULT.wandelement).join(',')===fallback);
+  setzeLaenge(2000); WP.run();
+}
+
 
 // Rolle des falschen Moduls darf hier nicht geschrieben werden (Ownership Modul 2)
 ok('Modul-2-Rolle landet nicht im Modul-1-Block', (()=>{

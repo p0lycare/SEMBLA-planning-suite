@@ -1045,11 +1045,18 @@ ok('Hinweis kennzeichnet die vorlaeufigen Katalogwerte',
 
 // 7b) Die Vorlagendateien selbst: valide, versioniert, Ressourcen getrennt
 const katRoh = JSON.parse(vorlageDatei(V_KAT));
+// Die erwartete Produktzahl wird AUS DER VORLAGE gelesen, nicht hier gepflegt. Sie waechst mit
+// jeder fachlich begruendeten Ergaenzung (zuletzt die Bodenblech-Standardlaengen 375…1250 mm
+// nach [A-10]); eine hier eingetragene Zahl waere eine zweite Wahrheit, die bei jeder Ergaenzung
+// bricht, ohne dass fachlich etwas falsch waere. Geprueft wird damit weiterhin genau das
+// Richtige: dass Parser, Laden, Speichern und Roundtrip KEIN Produkt verlieren oder erfinden.
+const V_KAT_ANZ = katRoh.produkte.length;
 const wandRoh = JSON.parse(vorlageDatei(V_WAND));
 ok('Katalogvorlage traegt Katalogformat v1',
   katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === KAT.KATALOG_VERSION);
 ok('Katalogvorlage ist gegen den echten Validator fehlerfrei',
-  KAT.validiereKatalog(katRoh).length === 0 && KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length === 20);
+  KAT.validiereKatalog(katRoh).length === 0
+  && KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length === V_KAT_ANZ);
 ok('Katalogvorlage enthaelt kein Wandelement/Projekt (Ressourcentrennung)',
   !('wandelement' in katRoh) && !('eingaben' in katRoh) && !('courses' in katRoh));
 ok('jede Katalogkategorie ist belegt',
@@ -1127,7 +1134,7 @@ ok('Ausgangslage: ein anderer Katalog ist zugeordnet',
   store.holeKatalog() && store.holeKatalog().name === 'Direktkatalog');
 await $('k-vorlage').dispatch('click');
 ok('Standardkatalog geladen und dem Projekt zugeordnet',
-  kAnzahl() === 20 && /Standardkatalog/.test(kat().name));
+  kAnzahl() === V_KAT_ANZ && /Standardkatalog/.test(kat().name));
 ok('[L-12] der bisherige Katalog bleibt erhalten und ist wieder waehlbar',
   store.katalogNachId(katVorherId)?.name === 'Direktkatalog' && store.listeKataloge().length >= 2);
 ok('Erfolgsmeldung nennt die vorlaeufigen Werte',
@@ -1136,7 +1143,7 @@ ok('Erfolgsmeldung nennt die vorlaeufigen Werte',
 ok('Katalogname erscheint im Eingabefeld', $('k-name').value === kat().name);
 ok('Standardkatalog liegt im eigenen localStorage-Speicher',
   Object.values(JSON.parse(localStorage.getItem('sembla:kataloge')))
-    .find(k => k.id === kat().id).produkte.length === 20);
+    .find(k => k.id === kat().id).produkte.length === V_KAT_ANZ);
 ok('Kennzeichnung „vorläufig" ueberlebt die Persistenz',
   KAT.produkt(kat(), 'latte-40-60-1500').hinweis.startsWith('vorläufig — fachlich unbestätigt'));
 ok('geladene Produkte tragen die Produktvorgaben der Suite',
@@ -1165,8 +1172,8 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
     && /hinweis/.test($('kp-extra').innerHTML) && !/fachfremd/.test($('kp-extra').innerHTML));
   kpSpeichern();
   ok('unveraendertes Speichern laesst das v1-Produkt inhaltlich identisch',
-    kanon(KAT.produkt(kat(), 'latte-40-60-1500')) === vorher && kAnzahl() === 20);
-  ok('alle 20 Vorlagenprodukte bleiben gegen den echten Validator fehlerfrei',
+    kanon(KAT.produkt(kat(), 'latte-40-60-1500')) === vorher && kAnzahl() === V_KAT_ANZ);
+  ok('alle Vorlagenprodukte bleiben gegen den echten Validator fehlerfrei',
     kat().produkte.every(p => KAT.validiereProdukt(p, { ids: [] }).length === 0));
   ok('jedes Pflichtfeld einer Kategorie ist in ihrer Maske pflegbar (eine Pflichtquelle)',
     KAT.KATEGORIEN.every(k => (k.pflicht || []).every(f => KAT.maskeFelder(k.id).includes(f))));
@@ -1175,7 +1182,7 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
       p[f] === undefined || KAT.maskeFelder(p.kategorie).includes(f))));
   ok('Katalog-Formatversion bleibt 1 (kein Bruch durch [P-16])',
     KAT.KATALOG_VERSION === 1 && KAT.katalogObjekt(kat()).version === 1
-    && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === 20);
+    && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === V_KAT_ANZ);
 }
 
 ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
@@ -1187,7 +1194,7 @@ confirmAntwort = true;
 $('k-entfernen').dispatch('click');
 confirmAntwort = false;                                   // wuerde ein confirm ablehnen
 await $('k-vorlage').dispatch('click');
-ok('ohne geladenen Katalog laedt die Vorlage ohne Rueckfrage', kAnzahl() === 20);
+ok('ohne geladenen Katalog laedt die Vorlage ohne Rueckfrage', kAnzahl() === V_KAT_ANZ);
 
 // 7e) Musterwand laden: bestehender Bestaetigungsdialog, kein stilles Schreiben
 const wAnzahlVor = anzahl(), wAktivVor = store.aktivId(), wStandVor = stand();
@@ -1258,13 +1265,22 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
     rsMw.find(r => r.key === 'blech_boden').ep === 18 && rsMw.find(r => r.key === 'blech_kopf').ep === 18
     && rsMw.find(r => r.key === 'blech_boden').menge + rsMw.find(r => r.key === 'blech_kopf').menge
        === mw.wandelement.bom.stahlblech_module);
-  // Die Latte war die einzige vorlaeufige Position der Musterwand; mit dem Wegfall der
-  // Beplankung ([Z-4]) nutzt sie keinen vorlaeufigen Katalogwert mehr. Die Faehigkeit selbst
-  // bleibt geprueft: ein Produkt-Hinweis wird an der Position sichtbar weitergefuehrt ([P-12]).
+  // Mit dem Wegfall der Beplankung ([Z-4]) hatte die Musterwand voruebergehend GAR keinen
+  // vorlaeufigen Katalogwert mehr, und der Test hielt genau das fest. Seit die Vorlage die
+  // Bodenblech-Standardlaengen fuehrt ([A-10]), gibt es wieder einen — ausdruecklich gewollt:
+  // die Bleche sind fachlich unbestaetigte Beispielwerte und MUESSEN als solche gekennzeichnet
+  // sein. Geprueft wird deshalb nicht mehr ihre Abwesenheit, sondern die Faehigkeit, um die es
+  // immer ging: ein vorlaeufiger Wert bleibt an seiner Position als vorlaeufig ERKENNBAR
+  // ([P-12]) — sonst stuende eine unbestaetigte Zahl unmarkiert in der Baustellenliste.
   ok('Vorlage: Produkt-Hinweise werden an der Position weitergefuehrt ([P-12])',
     rsMw.some(r => r.produkt && r.produkt.hinweis && r.hinweis === r.produkt.hinweis));
-  ok('Vorlage nutzt keinen vorläufigen Katalogwert mehr (Beplankung entfallen, [Z-4])',
-    !rsMw.some(r => r.produkt && /vorläufig/.test(r.produkt.hinweis || '')));
+  const vorlaeufig = rsMw.filter(r => r.produkt && /vorläufig/.test(r.produkt.hinweis || ''));
+  ok('jeder vorläufige Katalogwert ist an seiner Position als vorläufig erkennbar ([P-12])',
+    vorlaeufig.length > 0 && vorlaeufig.every(r => r.hinweis === r.produkt.hinweis
+      && /vorläufig/.test(r.hinweis)));
+  ok('[A-10] der vorläufige Wert der Musterwand ist das Bodenblech — nicht Latte oder Beplankung',
+    vorlaeufig.every(r => r.key === 'blech_boden')
+    && !rsMw.some(r => ['latte', 'beplankung'].includes(r.key)));
   ok('Vorlage bleibt im oeffentlichen Projektformat v2 (kein Bruch)',
     store.projektObjekt(mw.id).version === 2 && JSON.parse(vorlageDatei(V_WAND)).version === 2);
 }
@@ -1272,7 +1288,7 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
 // 7f) Ressourcen-/Formattrennung bleibt auch fuer die Vorlagen bestehen
 await $('k-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_WAND), V_WAND)], value:'x' } });
 ok('Wandvorlage im Katalog-Import -> klare Meldung, Katalog unveraendert',
-  kFehler() && /Projekt-\/Wandelement-Datei/.test(kMsgTxt()) && kAnzahl() === 20);
+  kFehler() && /Projekt-\/Wandelement-Datei/.test(kMsgTxt()) && kAnzahl() === V_KAT_ANZ);
 await $('f-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_KAT), V_KAT)], value:'x' } });
 ok('Katalogvorlage im Projekt-Import -> klare Meldung, kein Dialog',
   /Bauteilkatalog/.test(msgTxt()) && $('msg').className === 'msg err' && $('imp-overlay').hidden === true);

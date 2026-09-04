@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-03",
+    datum: "2026-09-04",
+    typ: "feature",
+    issue: 91,
+    titel: "Modul 1: die gewählten Bodenblech-Standardlängen bestimmen jetzt die Aufteilung in der Stückliste",
+    testbitte: "In Modul 1 unter „Bodenblech“ nur 1250 und 1000 mm anhaken, dann Modul 4 "
+      + "öffnen: die Blechzeilen tragen ausschließlich diese beiden Rastermaße. Ohne "
+      + "Auswahl bleibt die bisherige Aufteilung, und die Rolle meldet das.",
+  },
+  {
     id: "chg-20260904-02",
     datum: "2026-09-04",
     typ: "feature",
