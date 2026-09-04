@@ -47,7 +47,7 @@
 
 import {
   alleGeschosse, alleWaende, benenneUm, findeGebaeude, findeGeschoss, findeWand,
-  fuegeGebaeudeHinzu, fuegeGeschossHinzu, leereMappe, mappeObjekt, neueId, normMappe,
+  fuegeGebaeudeHinzu, fuegeGeschossHinzu, geschossMengen, leereMappe, mappeObjekt, neueId, normMappe,
   parseMappe, setzeBemassung, setzeGeschossHoehe, setzePlan, setzeUrsprung, setzeWand,
 } from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
@@ -1147,6 +1147,26 @@ export function gesamtMengenLuecken(daten) {
     out.push(`Gesamtstückliste, „${u.wand}“: Die gespeicherte Mengenübersteuerung „${u.kennung}“ `
       + `(${u.label}) ist unzulässig: ${u.grund} Es gilt die berechnete Menge.`);
   }
+  // Manuelle Mengen der GESCHOSSEBENE ([P-20], #81): sie gehoeren keiner Wand, also steht hier
+  // KEIN Wandname davor — ein leeres „“ waere eine falsche Auskunft. Eigene Saetze, damit nie
+  // offenbleibt, welche Ebene eine Meldung betrifft.
+  const eb = (daten && daten.mengen && daten.mengen.ebene) || null;
+  if (eb) {
+    for (const f of eb.fremd) {
+      out.push(`Gesamtstückliste (Geschoss): Die gespeicherte Mengenübersteuerung „${f}“ gehört `
+        + "zu keiner gerechneten Position dieser Ebene — sie wird nicht angewandt und bleibt "
+        + "gespeichert ([P-20]).");
+    }
+    for (const u of eb.ungueltig) {
+      out.push(`Gesamtstückliste (Geschoss): Die gespeicherte Mengenübersteuerung „${u.kennung}“ `
+        + `(${u.label}) ist unzulässig: ${u.grund} Es gilt die berechnete Menge.`);
+    }
+    for (const d of eb.mehrdeutig) {
+      out.push(`Gesamtstückliste (Geschoss): Die gespeicherte Mengenübersteuerung „${d.kennung}“ `
+        + `(${d.label}) ist mehrdeutig — ${d.zeilen} Zeilen tragen diese Positionskennung. Sie `
+        + "wird auf keine davon angewandt und bleibt gespeichert ([P-20]).");
+    }
+  }
   return out;
 }
 
@@ -1251,9 +1271,14 @@ export function hierarchieExport(auswahl, p) {
   if (gewaehlt.includes("gesamt")) {
     // Dieselbe `fassung` wie oben ([P-20]/#81): die Aggregation rechnet sie NICHT selbst,
     // sie reicht sie an `wirksameMengen()` je Wand weiter.
+    // Die manuellen Mengen der GESCHOSSEBENE ([P-20], #81) werden nur GELESEN und
+    // DURCHGEREICHT — gerechnet wird sie in `gesamtDaten`, angewandt nur in der angepassten
+    // Fassung (dieselbe eine `fassung` wie oben). Oberhalb des Geschosses gibt es sie nicht.
+    const ebenenMengen = (m && ebene === "geschoss" && p.geschossId)
+      ? geschossMengen(m, p.geschossId) : null;
     const daten = gesamtDaten(umf, {
       holeElement, holeEingaben: p.holeEingaben, katalog: p.katalog || null,
-    }, { fassung });
+    }, { fassung, ebenenMengen });
     for (const l of daten.luecken) {
       luecken.push(`Gesamtstückliste: ${l.pfad ? l.pfad + " — " : ""}${l.grund}`);
     }

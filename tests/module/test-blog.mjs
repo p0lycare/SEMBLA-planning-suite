@@ -58,36 +58,60 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(9);
-const NEU = EINTRAEGE.slice(15);
-const AKTUELL = EINTRAEGE.slice(20);
-const AELTER = EINTRAEGE.slice(30);
+const VORHER = EINTRAEGE.slice(10);
+const NEU = EINTRAEGE.slice(16);
+const AKTUELL = EINTRAEGE.slice(21);
+const AELTER = EINTRAEGE.slice(31);
 // Der NEUESTE Eintrag ist die TEILAUSWAHL des Projektimports (#86): aus einer geprueften
 // Projektdatei laesst sich auch nur ein Geschoss oder eine einzelne Wand uebernehmen.
 // Aussagewahr heisst hier: geprueft wird weiter die GANZE Datei, die Exportseite ist
 // unveraendert, es entsteht kein Feld und kein Versionssprung.
-ok("die Teilauswahl des Projektimports (Issue 86) ist der neueste Eintrag",
-  EINTRAEGE[0]?.id === "chg-20260902-01" && EINTRAEGE[0]?.issue === 86
-  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-09-02");
-ok("der Teilauswahl-Eintrag benennt Gegenstand, Umfang und Nutzerergebnis",
-  /Projektimport/.test(EINTRAEGE[0]?.titel || "")
+// Der NEUESTE Eintrag ist die manuelle Menge auf der GESCHOSSEBENE (#81): je aggregierter
+// Position der Geschoss-Gesamtstueckliste laesst sich eine Menge setzen, und die angepasste
+// Fassung des Exports traegt sie. Aussagewahr heisst hier: die berechnete Menge bleibt
+// abgeleitet und sichtbar, der Einzelpreis wird nicht angefasst, und ueber dem Geschoss
+// (Gebaeude/Projekt) wirkt sie ausdruecklich nicht.
+ok("die manuelle Menge der Geschossebene (Issue 81) ist der neueste Eintrag",
+  EINTRAEGE[0]?.id === "chg-20260904-01" && EINTRAEGE[0]?.issue === 81
+  && EINTRAEGE[0]?.typ === "feature" && EINTRAEGE[0]?.datum === "2026-09-04");
+ok("der Geschossmengen-Eintrag benennt Gegenstand, Ebene und Nutzerergebnis",
+  /Stückliste/.test(EINTRAEGE[0]?.titel || "")
+  && /Menge/.test(EINTRAEGE[0]?.titel || "")
   && /Geschoss/.test(EINTRAEGE[0]?.titel || "")
-  && /Wand/.test(EINTRAEGE[0]?.titel || "")
-  && /übernehmen/.test(EINTRAEGE[0]?.titel || "")
+  && /manuell/.test(EINTRAEGE[0]?.titel || "")
+  // Kein Preisversprechen, keine neue Regel, kein Formatsprung.
+  && !/Preis|neues Format|neue Regel/i.test(EINTRAEGE[0]?.titel || ""));
+ok("die Geschossmengen-Testbitte benennt Ebene, Anzeige und Exportfassung",
+  /Modul 4/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
+  && /Geschoss/.test(EINTRAEGE[0]?.testbitte || "")
+  && /nebeneinander/.test(EINTRAEGE[0]?.testbitte || "")
+  && /angepasst/.test(EINTRAEGE[0]?.testbitte || ""));
+
+// Die Teilauswahl des Projektimports (#86) folgt darauf.
+const TEILAUSWAHL = EINTRAEGE[1];
+ok("die Teilauswahl des Projektimports (Issue 86) folgt als zweiter Eintrag",
+  TEILAUSWAHL?.id === "chg-20260902-01" && TEILAUSWAHL?.issue === 86
+  && TEILAUSWAHL?.typ === "feature" && TEILAUSWAHL?.datum === "2026-09-02");
+ok("der Teilauswahl-Eintrag benennt Gegenstand, Umfang und Nutzerergebnis",
+  /Projektimport/.test(TEILAUSWAHL?.titel || "")
+  && /Geschoss/.test(TEILAUSWAHL?.titel || "")
+  && /Wand/.test(TEILAUSWAHL?.titel || "")
+  && /übernehmen/.test(TEILAUSWAHL?.titel || "")
   // Kein geaenderter Export, kein neues Format, keine neue Fachregel.
-  && !/neues Format|Export geändert|neue Regel/i.test(EINTRAEGE[0]?.titel || ""));
+  && !/neues Format|Export geändert|neue Regel/i.test(TEILAUSWAHL?.titel || ""));
 ok("die Teilauswahl-Testbitte benennt Weg, Wahl, Ziel und Bestätigung",
-  /Modul 0/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Was übernehmen/.test(EINTRAEGE[0]?.testbitte || "")
-  && /Zielprojekt/.test(EINTRAEGE[0]?.testbitte || "")
-  && /bestätigen/.test(EINTRAEGE[0]?.testbitte || ""));
+  /Modul 0/.test(TEILAUSWAHL?.testbitte || "")
+  && /Was übernehmen/.test(TEILAUSWAHL?.testbitte || "")
+  && /Zielprojekt/.test(TEILAUSWAHL?.testbitte || "")
+  && /bestätigen/.test(TEILAUSWAHL?.testbitte || ""));
 
 // Der EINE Projektimport-Dialog (#86) folgt darauf: er liest neben dem vollstaendigen
 // Projektarchiv auch die ZIP des zentralen Exports und uebernimmt das ganze Projekt.
 // Aussagewahr heisst dort: hinzugekommen ist allein ein LESEWEG — die Exportseite ist
 // unveraendert, es entsteht kein Feld und kein Versionssprung.
-const IMPORTDIALOG = EINTRAEGE[1];
-ok("der eine Projektimport-Dialog (Issue 86) folgt als zweiter Eintrag",
+const IMPORTDIALOG = EINTRAEGE[2];
+ok("der eine Projektimport-Dialog (Issue 86) folgt als dritter Eintrag",
   IMPORTDIALOG?.id === "chg-20260818-04" && IMPORTDIALOG?.issue === 86
   && IMPORTDIALOG?.typ === "feature" && IMPORTDIALOG?.datum === "2026-08-18");
 ok("der Import-Eintrag benennt Gegenstand, Quelle und Nutzerergebnis",
@@ -108,7 +132,7 @@ ok("die Import-Testbitte benennt den Weg, den Bericht und die Bestätigung",
 // Wandebene (#81) folgt darauf: eine eigene, angehaengte Spalte, in beiden Mengenfassungen
 // gleich. Aussagewahr heisst dort: hinzugekommen ist allein ein AUSGABEWEG — erfasst wird
 // weiter nur in Modul 4, und abgeleitet wird daraus nichts ([P-20]).
-const KOMMENTAR = EINTRAEGE[2];
+const KOMMENTAR = EINTRAEGE[3];
 ok("der Kommentar in der Wandstückliste (Issue 81) folgt direkt auf den neuesten Eintrag",
   KOMMENTAR?.id === "chg-20260818-03" && KOMMENTAR?.issue === 81
   && KOMMENTAR?.typ === "feature" && KOMMENTAR?.datum === "2026-08-18");
@@ -126,7 +150,7 @@ ok("die Kommentar-Testbitte benennt beide Module, die Spalte und was unveraender
   && /beiden Mengenfassungen/.test(KOMMENTAR?.testbitte || "")
   && /Mengen und Preise bleiben/.test(KOMMENTAR?.testbitte || ""));
 
-const HERKUNFT = EINTRAEGE[3];
+const HERKUNFT = EINTRAEGE[4];
 // Der bisher neueste Eintrag nimmt die WANDHERKUNFT aus Modul 4 und der Gesamtstueckliste-Datei
 // (#81): auf den Gesamtebenen faellt die Spalte „Wände (Herkunft)“ ersatzlos weg. Aussagewahr
 // heisst hier: geaendert hat sich allein die DARSTELLUNG — Mengen, Einbauteil-IDs, Preise und
@@ -150,7 +174,7 @@ ok("die Herkunfts-Testbitte benennt Ebenen, beide Orte und was unveraendert blei
   && /Mengenfassungen/.test(HERKUNFT?.testbitte || "")
   && /Baustellenstückliste der Wand bleibt gleich/.test(HERKUNFT?.testbitte || ""));
 
-const VORSCHAU = EINTRAEGE[4];
+const VORSCHAU = EINTRAEGE[5];
 // Der bisher neueste Eintrag stellt die BLATTVORSCHAU von Modul 9 auf das echte Papierverhaeltnis
 // des gewaehlten Formats um (#89): Vorschau und Ausdruck zeigen dieselbe Aufteilung, beim
 // Verkleinern des Fensters skaliert das ganze Blatt gleichmaessig. Aussagewahr heisst hier:
@@ -172,7 +196,7 @@ ok("die Vorschau-Testbitte benennt Ort, Bedienung und die erwartete Wirkung",
   && /Aufteilung/.test(VORSCHAU?.testbitte || "")
   && /Ausdrucks/.test(VORSCHAU?.testbitte || "")
   && /als Ganzes kleiner/.test(VORSCHAU?.testbitte || ""));
-const SEITEN = EINTRAEGE[5];
+const SEITEN = EINTRAEGE[6];
 // Davor nahm der Eintrag die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
 // Rueckseite bleiben als farbige Kanten erkennbar und werden in der Legende
 // aufgeschluesselt. Aussagewahr heisst hier: die Unterscheidung bleibt erhalten — es darf
@@ -196,7 +220,7 @@ ok("die Seiten-Testbitte benennt Ort, Erwartung und die erhaltene Unterscheidung
   && /keine V\/R-Buchstaben/.test(SEITEN?.testbitte || "")
   && /farbigen Vorder- und Rückkanten/.test(SEITEN?.testbitte || "")
   && /Legende/.test(SEITEN?.testbitte || ""));
-const BLASEN = EINTRAEGE[6];
+const BLASEN = EINTRAEGE[7];
 // Davor machte der Eintrag die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
 // jetzt auch den Wandflaechen aus, nicht mehr nur einander und den Massen. Aussagewahr
 // heisst hier: die Zuordnung bleibt — die Fuehrungslinie zeigt weiter auf dieselbe
@@ -225,7 +249,7 @@ ok("die Blasen-Testbitte benennt Ort, Erwartung und die erhaltene Zuordnung",
 ok("genau vier Eintraege fuer Issue 89, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 89).map(e => e.id).join(",")
     === "chg-20260818-01,chg-20260817-08,chg-20260817-07,chg-20260817-05");
-const PLANKOPF = EINTRAEGE[7];
+const PLANKOPF = EINTRAEGE[8];
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -261,7 +285,7 @@ ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
     === "chg-20260817-06,chg-20260812-08");
 // Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
-const LETZTER = EINTRAEGE[8];
+const LETZTER = EINTRAEGE[9];
 ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
   LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
   && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");
@@ -539,17 +563,18 @@ ok("genau vier Eintraege fuer Issue 79 — Wahl in Modul 1, Lageplan, Geschossed
   neu79.length === 4
   && neu79.map(e => e.id).join(",")
     === "chg-20260816-01,chg-20260815-03,chg-20260815-02,chg-20260814-04");
-// #81 hat SECHS Eintraege, weil es sechs getrennte Nutzerergebnisse waren: erst die
+// #81 hat SIEBEN Eintraege, weil es sieben getrennte Nutzerergebnisse waren: erst die
 // manuelle Menge in Modul 4, dann die waehlbare Mengenfassung der Wanddatei im
 // zentralen Export, dieselbe Wahl fuer die Gesamtstueckliste der Ebene, der Kommentar
 // je Position — das im fachlichen Gate als optional benannte zweite Feld —, die
-// entfallene Wandherkunft in Anzeige und Gesamtstueckliste-Datei und zuletzt der
-// Kommentar als angehaengte Spalte in der exportierten Wandstueckliste.
+// entfallene Wandherkunft in Anzeige und Gesamtstueckliste-Datei, der Kommentar als
+// angehaengte Spalte in der exportierten Wandstueckliste und zuletzt die manuelle Menge
+// auf der GESCHOSSEBENE (eine eigene Angabe am Geschoss, nicht die der Waende).
 const neu81 = EINTRAEGE.filter(e => e.issue === 81);
-ok("genau sechs Eintraege fuer Issue 81 — Uebersteuerung, Fassungswahlen, Kommentar, Herkunft, Exportspalte",
-  neu81.length === 6
+ok("genau sieben Eintraege fuer Issue 81 — Uebersteuerungen, Fassungswahlen, Kommentar, Herkunft, Exportspalte",
+  neu81.length === 7
   && neu81.map(e => e.id).join(",")
-    === "chg-20260818-03,chg-20260818-02,chg-20260816-11,chg-20260816-05,chg-20260816-02,chg-20260815-01");
+    === "chg-20260904-01,chg-20260818-03,chg-20260818-02,chg-20260816-11,chg-20260816-05,chg-20260816-02,chg-20260815-01");
 ok("die Mengenfassung der Gesamtstueckliste (Issue 81) folgt direkt danach",
   AKTUELL[0]?.id === "chg-20260816-05" && AKTUELL[0]?.issue === 81
   && AKTUELL[0]?.typ === "feature" && AKTUELL[0]?.datum === "2026-08-16");

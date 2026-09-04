@@ -13,10 +13,11 @@ import {
 } from "../../docs/shared/sembla-export.js";
 import {
   EBENEN, ebeneTitel, umfang, gesamtDaten, standText, herkunftText, dateiRumpf,
+  wirksameEbenenMengen,
 } from "../../docs/shared/sembla-gesamtstueckliste.js";
 import {
   leereMappe, fuegeGebaeudeHinzu, fuegeGeschossHinzu, setzeWand, setzeKatalogRef,
-  mappeObjekt, validiereMappe,
+  geschossMengen, setzeGeschossMenge, mappeObjekt, validiereMappe,
 } from "../../docs/shared/sembla-projektmappe.js";
 import { katalogObjekt } from "../../docs/shared/sembla-katalog.js";
 import {
@@ -651,6 +652,225 @@ const P = (ueber = {}) => ({
       const berFremd = hierarchieExport(["gesamt"], P({ ...leserM({ [FREMD]: 5 }), ebene: "geschoss" }));
       return !berFremd.luecken.some((l) => l.includes(FREMD));
     })());
+  }
+}
+
+// ==== 12. Manuelle Menge der GESCHOSSEBENE ([P-20], Issue #81) =============================
+// Die Uebersteuerung gilt hier der AGGREGIERTEN Zeile und liegt am Geschoss der Projektmappe.
+// Geprueft wird am REALEN Pfad: Mappe ueber die reine Operation -> umfang()/gesamtDaten() ->
+// angepasste Geschossdatei ueber hierarchieExport, und zwar am erzeugten Zeileninhalt.
+{
+  const posA = stuecklistePositionen(ELEMENTE["w-a"].wandelement, eingabenFuer(), KATALOG);
+  const posI3 = posA.find((p) => p.key === "i3");
+  const KENN = mengenKennung(posI3);                 // „i3@-“
+  const BER_JE_WAND = posI3.menge;
+  const BER_GESAMT = 2 * BER_JE_WAND;                // Geschoss EG traegt Wand A und B
+  const EBENEN_MENGE = BER_GESAMT + 11;              // != berechnet und != 0
+  const FREMD = "rod_std@424242";
+  const EP = posI3.ep;
+
+  const Zg = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
+  // Die Mappe bekommt die Uebersteuerung ueber die NEUE reine Operation — kein Handgriff
+  // am Objekt, damit der Test denselben Weg geht wie Modul 4.
+  const MG = setzeGeschossMenge(MK, EG, KENN, EBENEN_MENGE);
+  const roh = (m) => geschossMengen(m, EG);
+  const d = (mappe, opts) => gesamtDaten(umfang(mappe, "geschoss", Zg), leser(),
+    { ...(opts || {}), ebenenMengen: roh(mappe) });
+  const zeileI3 = (dat) => dat.positionen.find((p) => p.key === "i3");
+  const csvZeile = (dat, praefix) => gesamtstuecklisteCsv(dat, { datum: "01.01.2026" })
+    .split("\n").find((z) => z.startsWith(praefix));
+
+  // (a) Angepasste Fassung: wirksame Menge, berechnete daneben, GP folgt, EP unveraendert.
+  {
+    const dOhne = gesamtDaten(umfang(MK, "geschoss", Zg), leser());
+    const dBer = d(MG);
+    const dAng = d(MG, { fassung: "angepasst" });
+    const i3 = zeileI3(dAng);
+    ok("#81 Geschoss: die aggregierte Zeile folgt der manuellen Menge des Geschosses",
+      i3.menge === EBENEN_MENGE && zeileI3(dBer).menge === BER_GESAMT);
+    ok("#81 Geschoss: die berechnete Menge steht daneben, nicht an ihrer Stelle",
+      i3.menge_berechnet === BER_GESAMT && i3.manuell_ebene === true);
+    ok("#81 Geschoss: der Gesamtpreis folgt der wirksamen Menge bei unveraendertem Einzelpreis",
+      i3.ep === EP && Math.abs(i3.gp - EBENEN_MENGE * EP) < 1e-9);
+    ok("#81 Geschoss: jede andere Zeile bleibt bitgleich der berechneten Fassung",
+      JSON.stringify(dAng.positionen.filter((p) => p.key !== "i3").map((p) => [p.key, p.menge, p.gp]))
+      === JSON.stringify(dBer.positionen.filter((p) => p.key !== "i3").map((p) => [p.key, p.menge, p.gp])));
+    ok("#81 Geschoss: die WANDbezogenen Herkuenfte bleiben unangetastet auflösbar",
+      i3.herkunft.length === 2 && i3.herkunft.every((h) => h.menge === BER_JE_WAND));
+    ok("#81 Geschoss: die Summe folgt der wirksamen Menge (kein zweiter Mengenstand)",
+      Math.abs(dAng.summe.summe - (dBer.summe.summe + (EBENEN_MENGE - BER_GESAMT) * EP)) < 1e-9);
+    ok("#81 Geschoss: die Aggregation schreibt nichts in die Mappe zurueck",
+      roh(MG)[KENN] === EBENEN_MENGE && Object.keys(roh(MG)).length === 1);
+    // In der berechneten Fassung wird die Zeile NICHT ANGEFASST — sie traegt deshalb nicht
+    // einmal ein `manuell_ebene: false`. Genau das ist der Nachweis der Byte-Gleichheit.
+    ok("#81 Geschoss: die berechnete Fassung ist wertgleich dem Stand ohne Uebersteuerung",
+      gleich(ist(dBer), ist(dOhne)) && zeileI3(dBer).manuell_ebene === undefined
+      && dBer.mengen.ebene.anzahl === 0 && dBer.mengen.ebene.gespeichert === 1
+      && JSON.stringify(dBer.positionen) === JSON.stringify(dOhne.positionen));
+
+    // Die Datei ist der eigentliche Nachweis: beide Werte gleichzeitig in einer Zeile.
+    const zAng = csvZeile(dAng, "Stein i3");
+    const zBer = csvZeile(dBer, "Stein i3");
+    ok("#81 Geschoss: die angepasste Datei traegt wirksame UND berechnete Menge",
+      zAng.includes(";" + EBENEN_MENGE + ";" + BER_GESAMT + ";manuell (Geschoss);"));
+    ok("#81 Geschoss: die Datei nennt die Herkunft der Uebersteuerung als Geschoss",
+      /;manuell \(Geschoss\);/.test(zAng) && !/;manuell;/.test(zAng));
+    ok("#81 Geschoss: der Dateikopf zaehlt Wand- und Geschossherkunft getrennt",
+      /\nMengen Geschoss;1 von \d+ Zeile\(n\) mit manueller Menge des Geschosses \(1 gespeichert\)/
+        .test(gesamtstuecklisteCsv(dAng, { datum: "01.01.2026" }))
+      && /\nMengen;angepasst – mit den manuellen Mengen aus Modul 4 · 0 von/
+        .test(gesamtstuecklisteCsv(dAng, { datum: "01.01.2026" })));
+    ok("#81 Geschoss: die berechnete Fassung sagt, dass die Uebersteuerung nicht wirkt",
+      /\nMengen Geschoss;1 gespeicherte Übersteuerung\(en\) des Geschosses NICHT angewandt/
+        .test(gesamtstuecklisteCsv(dBer, { datum: "01.01.2026" }))
+      && zBer.includes(";" + BER_GESAMT + ";"));
+  }
+
+  // (b) Ruecksetzen: der Schluessel ist weg, die Ausgabe ist der Ausgangsstand.
+  {
+    const zurueck = setzeGeschossMenge(MG, EG, KENN, null);
+    ok("#81 Geschoss: Ruecksetzen entfernt den Schluessel vollstaendig",
+      !Object.prototype.hasOwnProperty.call(roh(zurueck), KENN)
+      && JSON.stringify(mappeObjekt(zurueck)) === JSON.stringify(mappeObjekt(MK)));
+    const dOhne = gesamtDaten(umfang(MK, "geschoss", Zg), leser());
+    ok("#81 Geschoss: danach ist die berechnete Fassung wertgleich dem Stand ohne Uebersteuerung",
+      gesamtstuecklisteCsv(d(zurueck), { datum: "01.01.2026" })
+      === gesamtstuecklisteCsv(dOhne, { datum: "01.01.2026" }));
+    ok("#81 Geschoss: und auch die angepasste Fassung uebersteuert dann nichts",
+      d(zurueck, { fassung: "angepasst" }).positionen.every((p) => p.manuell_ebene === false));
+  }
+
+  // (c) Nicht zuordenbar, unzulaessig, mehrdeutig — benannt und NICHT angewandt ([P-9]).
+  {
+    const mitFremd = setzeGeschossMenge(MG, EG, FREMD, 5);
+    const dF = d(mitFremd, { fassung: "angepasst" });
+    ok("#81 Geschoss: eine nicht zuordenbare Kennung wird namentlich gemeldet",
+      dF.mengen.ebene.fremd.length === 1 && dF.mengen.ebene.fremd[0] === FREMD);
+    ok("#81 Geschoss: sie wird nicht angewandt und ist keine Vollstaendigkeitsluecke",
+      dF.positionen.filter((p) => p.manuell_ebene).length === 1
+      && dF.luecken.length === 0 && dF.vollstaendig === true);
+    ok("#81 Geschoss: die Datei nennt sie mit Kennung, ohne Wandnamen",
+      /\nGeschoss-Übersteuerung nicht zuordenbar;;rod_std@424242;/
+        .test(gesamtstuecklisteCsv(dF, { datum: "01.01.2026" })));
+    ok("#81 Geschoss: sie bleibt gespeichert (nicht geloescht, nicht umgehaengt)",
+      roh(mitFremd)[FREMD] === 5);
+
+    // Ein unzulaessig GESPEICHERTER Wert (etwa aus einer fremden Datei) — die reine
+    // Operation nimmt ihn nicht an, die Mappe kann ihn aber tragen.
+    const mitMuell = JSON.parse(JSON.stringify(mappeObjekt(MK)));
+    for (const g of mitMuell.gebaeude) {
+      for (const gs of g.geschosse) if (gs.id === EG) gs.mengen = { [KENN]: "viele" };
+    }
+    const dU = gesamtDaten(umfang(mitMuell, "geschoss", Zg), leser(),
+      { fassung: "angepasst", ebenenMengen: geschossMengen(mitMuell, EG) });
+    ok("#81 Geschoss: ein unzulaessiger Wert wird benannt, es gilt die berechnete Menge",
+      dU.mengen.ebene.ungueltig.length === 1
+      && dU.mengen.ebene.ungueltig[0].kennung === KENN
+      && zeileI3(dU).menge === BER_GESAMT && zeileI3(dU).manuell_ebene === false);
+    ok("#81 Geschoss: die Datei nennt auch ihn",
+      /\nGeschoss-Übersteuerung unzulässig;;i3@-;/
+        .test(gesamtstuecklisteCsv(dU, { datum: "01.01.2026" })));
+    ok("#81 Geschoss: er wird von der Ableitung nicht bereinigt",
+      geschossMengen(mitMuell, EG)[KENN] === "viele"
+      && validiereMappe(mitMuell).length === 0);
+
+    // MEHRDEUTIG: dieselbe Positionskennung, zwei gefaltete Zeilen (Wand B ohne
+    // Steinauswahl -> anderer Auflösungsstatus und kein EP). Dann wirkt sie auf KEINE.
+    {
+      const leserZwei = () => ({
+        ...leser(),
+        holeEingaben: (id) => {
+          const e = eingabenFuer();
+          if (id === "w-b") e.planung.produkte.rollen.i3 = [];
+          return e;
+        },
+      });
+      const dM = gesamtDaten(umfang(MG, "geschoss", Zg), leserZwei(),
+        { fassung: "angepasst", ebenenMengen: roh(MG) });
+      const i3Zeilen = dM.positionen.filter((p) => p.key === "i3");
+      ok("#81 Geschoss: die Faltung erzeugt hier wirklich zwei Zeilen derselben Kennung",
+        i3Zeilen.length === 2 && i3Zeilen.every((p) => mengenKennung(p) === KENN));
+      ok("#81 Geschoss: eine mehrdeutige Kennung wird gemeldet, nicht angewandt",
+        dM.mengen.ebene.mehrdeutig.length === 1
+        && dM.mengen.ebene.mehrdeutig[0].kennung === KENN
+        && dM.mengen.ebene.mehrdeutig[0].zeilen === 2
+        && dM.mengen.ebene.anzahl === 0
+        && i3Zeilen.every((p) => p.manuell_ebene === false && p.menge === p.menge_berechnet));
+      ok("#81 Geschoss: keine Doppelwirkung und keine stille Wahl",
+        i3Zeilen.reduce((a, p) => a + p.menge, 0) === BER_GESAMT
+        && i3Zeilen.every((p) => p.__emehrdeutig === true));
+      ok("#81 Geschoss: die Datei nennt die Mehrdeutigkeit mit Zeilenzahl",
+        /\nGeschoss-Übersteuerung mehrdeutig;;i3@-;.*2 Zeilen tragen diese Positionskennung/
+          .test(gesamtstuecklisteCsv(dM, { datum: "01.01.2026" })));
+    }
+  }
+
+  // (d) must_not 4: Gebaeude- und Projektebene bleiben unberuehrt — nicht angewandt,
+  // nicht gezaehlt, nicht erwaehnt, und die Datei ist BYTE-gleich.
+  {
+    for (const ebene of ["gebaeude", "projekt"]) {
+      const ohne = gesamtDaten(umfang(MK, ebene, Zg), leser(), { fassung: "angepasst" });
+      const mit = gesamtDaten(umfang(MG, ebene, Zg), leser(),
+        { fassung: "angepasst", ebenenMengen: roh(MG) });
+      ok(`#81 ${ebene}: die Geschoss-Uebersteuerung wirkt dort nicht und wird nicht gezaehlt`,
+        mit.mengen.ebene === null && ohne.mengen.ebene === null
+        && mit.positionen.every((p) => !p.manuell_ebene));
+      ok(`#81 ${ebene}: die Datei ist byte-gleich dem Stand ohne Uebersteuerung`,
+        gesamtstuecklisteCsv(mit, { datum: "01.01.2026" })
+        === gesamtstuecklisteCsv(ohne, { datum: "01.01.2026" }));
+    }
+    const wandEbene = gesamtDaten(umfang(MG, "wand", Zg), leser(),
+      { fassung: "angepasst", ebenenMengen: roh(MG) });
+    ok("#81 wand: die Geschoss-Uebersteuerung erreicht die Wandebene nicht",
+      wandEbene.mengen.ebene === null && wandEbene.positionen.every((p) => !p.manuell_ebene));
+  }
+
+  // (e) Der REALE Exportpfad: hierarchieExport liest die Mappe selbst und reicht durch.
+  {
+    const PG = (ueber = {}) => P({ mappe: MG, ebene: "geschoss", ...ueber });
+    const ang = hierarchieExport(["gesamt"], PG({ fassung: "angepasst" }));
+    const ber = hierarchieExport(["gesamt"], PG());
+    const csvVon = (erg) => erg.dateien.find((x) => x.name.endsWith(".csv")).data;
+    ok("#81 Export: die angepasste Geschossdatei traegt die manuelle Menge des Geschosses",
+      csvVon(ang).split("\n").find((z) => z.startsWith("Stein i3"))
+        .includes(";" + EBENEN_MENGE + ";" + BER_GESAMT + ";manuell (Geschoss);"));
+    ok("#81 Export: die berechnete Geschossdatei traegt die abgeleitete Menge",
+      csvVon(ber).split("\n").find((z) => z.startsWith("Stein i3")).includes(";" + BER_GESAMT + ";"));
+    ok("#81 Export: die Datei ist bitgleich der direkten Ableitung (kein zweiter Pfad)",
+      csvVon(ang) === gesamtstuecklisteCsv(
+        gesamtDaten(umfang(MG, "geschoss", { ...Zg }), leser(),
+          { fassung: "angepasst", ebenenMengen: roh(MG) }),
+        { datum: csvVon(ang).split("\n").find((z) => z.startsWith("Datum;")).slice(6) }));
+    ok("#81 Export: ohne Mappe/Geschossbezug bleibt die Ableitung bitgleich dem Altstand",
+      csvVon(hierarchieExport(["gesamt"], P({ mappe: MK, ebene: "geschoss", fassung: "angepasst" })))
+      === csvVon(hierarchieExport(["gesamt"], PG({ mappe: MK, fassung: "angepasst" }))));
+    ok("#81 Export: eine nicht anwendbare Geschoss-Uebersteuerung steht VOR dem Download",
+      hierarchieExport(["gesamt"],
+        P({ mappe: setzeGeschossMenge(MG, EG, FREMD, 5), ebene: "geschoss", fassung: "angepasst" }))
+        .luecken.some((l) => /Gesamtstückliste \(Geschoss\)/.test(l) && l.includes(FREMD)));
+    ok("#81 Export: in der berechneten Fassung wird nichts als Luecke gemeldet, was nicht wirkt",
+      !hierarchieExport(["gesamt"],
+        P({ mappe: setzeGeschossMenge(MG, EG, FREMD, 5), ebene: "geschoss" }))
+        .luecken.some((l) => l.includes(FREMD)));
+    ok("#81 Export: gesamtMengenLuecken nennt Geschoss-Eintraege ohne Wandnamen",
+      gesamtMengenLuecken(d(setzeGeschossMenge(MG, EG, FREMD, 5), { fassung: "angepasst" }))
+        .every((l) => !/„undefined“|, „“/.test(l)));
+  }
+
+  // (f) Die Verrechnung selbst: in der berechneten Fassung wird NICHTS angefasst.
+  {
+    const zeilen = [{ key: "i3", label: "Stein i3", menge: 5, menge_berechnet: 5, ep: 2, gp: 10, fertigmass_mm: null }];
+    const e = wirksameEbenenMengen(zeilen, { "i3@-": 9 }, { anwenden: false });
+    ok("#81 wirksameEbenenMengen: berechnete Fassung laesst die Zeilen unberuehrt",
+      e.positionen === zeilen && e.anzahl === 0 && e.gespeichert === 1
+      && e.fremd.length === 0 && e.ungueltig.length === 0 && e.mehrdeutig.length === 0);
+    const a = wirksameEbenenMengen(zeilen, { "i3@-": 9 }, { anwenden: true });
+    ok("#81 wirksameEbenenMengen: angepasste Fassung setzt Menge und GP, nie den EP",
+      a.positionen[0].menge === 9 && a.positionen[0].menge_berechnet === 5
+      && a.positionen[0].gp === 18 && a.positionen[0].ep === 2 && a.anzahl === 1
+      && zeilen[0].menge === 5);
+    ok("#81 wirksameEbenenMengen: ohne gespeicherte Menge bleibt alles wie berechnet",
+      wirksameEbenenMengen(zeilen, null, { anwenden: true }).positionen[0].menge === 5);
   }
 }
 

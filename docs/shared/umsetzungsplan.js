@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-09-04",
-  "signatur": "3ab61be2",
+  "signatur": "82bb3fb7",
   "entscheidungen": [
     {
       "issue": 41,
@@ -102,15 +102,6 @@ export const PLAN = {
     "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
   },
   "weitere": [
-    {
-      "issue": 81,
-      "titel": "Manuelle Stücklisten-Overrides: Mengenübersteuerung auf Geschossebene",
-      "prio": "high",
-      "status": "ready",
-      "sicherheit": true,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
     {
       "issue": 20,
       "titel": "Zyklusrahmen: Aschersleben/AWG-Projekt vollständig begleiten",

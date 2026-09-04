@@ -487,5 +487,103 @@ t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
   }
 }
 
+// --- [P-20] Manuelle Mengen der Geschoss-Gesamtstueckliste (#81) ----------
+// Das Feld liegt AM GESCHOSS, ist optional und braucht keinen Formatbump. Geprueft wird
+// hier ausschliesslich die Speicherseite: die reine Operation, das vollstaendige
+// Ruecksetzen, der verlustfreie Roundtrip und dass die Validierung Werte NICHT abweist
+// (ein unzulaessiger Wert wird verrechnungsseitig gemeldet, nicht hier verworfen).
+{
+  const gsRef = (m) => m.gebaeude[0].geschosse[0];
+  const basis = M.leereMappe("Mengenprojekt");
+  const gsM = gsRef(basis).id;
+
+  t("#81 ein neues Geschoss startet ohne Uebersteuerung",
+    JSON.stringify(gsRef(basis).mengen) === "{}"
+    && JSON.stringify(M.geschossMengen(basis, gsM)) === "{}");
+  t("#81 eine Mappe OHNE das Feld bleibt gueltig und laedt als leer",
+    (() => {
+      const roh = M.mappeObjekt(basis);
+      delete roh.gebaeude[0].geschosse[0].mengen;
+      const zurueck = M.parseMappe(JSON.stringify(roh));
+      return M.validiereMappe(zurueck).length === 0
+        && JSON.stringify(M.geschossMengen(zurueck, gsM)) === "{}";
+    })());
+
+  const mitEiner = M.setzeGeschossMenge(basis, gsM, "i3@-", 7);
+  t("#81 die reine Operation setzt genau einen Eintrag",
+    M.geschossMengen(mitEiner, gsM)["i3@-"] === 7
+    && Object.keys(M.geschossMengen(mitEiner, gsM)).length === 1);
+  t("#81 die uebergebene Mappe bleibt unveraendert (rein)",
+    JSON.stringify(M.geschossMengen(basis, gsM)) === "{}");
+
+  const mitZwei = M.setzeGeschossMenge(mitEiner, gsM, "rod_std@1000", 0);
+  t("#81 mehrere Eintraege stehen unabhaengig nebeneinander, 0 ist zulaessig",
+    M.geschossMengen(mitZwei, gsM)["i3@-"] === 7
+    && M.geschossMengen(mitZwei, gsM)["rod_std@1000"] === 0);
+  t("#81 ein Eintrag ist einzeln aenderbar",
+    M.geschossMengen(M.setzeGeschossMenge(mitZwei, gsM, "i3@-", 9), gsM)["i3@-"] === 9);
+
+  const zurueckgesetzt = M.setzeGeschossMenge(mitZwei, gsM, "i3@-", null);
+  t("#81 Ruecksetzen entfernt den Schluessel VOLLSTAENDIG",
+    !Object.prototype.hasOwnProperty.call(M.geschossMengen(zurueckgesetzt, gsM), "i3@-")
+    && M.geschossMengen(zurueckgesetzt, gsM)["rod_std@1000"] === 0);
+  t("#81 nach dem Ruecksetzen aller Eintraege ist der Stand der Ausgangsstand",
+    JSON.stringify(M.mappeObjekt(M.setzeGeschossMenge(zurueckgesetzt, gsM, "rod_std@1000", null)))
+      === JSON.stringify(M.mappeObjekt(basis)));
+
+  t("#81 eine nicht ganzzahlige Menge wird abgewiesen statt gerundet",
+    wirft(() => M.setzeGeschossMenge(basis, gsM, "i3@-", 2.5), /nicht ganzzahlig/));
+  t("#81 eine negative Menge wird abgewiesen",
+    wirft(() => M.setzeGeschossMenge(basis, gsM, "i3@-", -1), /negativ/));
+  t("#81 eine leere Positionskennung wird abgewiesen",
+    wirft(() => M.setzeGeschossMenge(basis, gsM, "  ", 3), /Positionskennung/));
+  t("#81 ein unbekanntes Geschoss wird benannt abgewiesen",
+    wirft(() => M.setzeGeschossMenge(basis, "gs-gibt-es-nicht", "i3@-", 3), /gibt es nicht/));
+
+  // Der Roundtrip ist der eigentliche Punkt: `normGeschoss` baut ein explizites Objekt,
+  // ein nicht mitgefuehrtes Feld ginge hier verloren — und damit auch im Archiv ([L-13]).
+  {
+    const zurueck = M.parseMappe(JSON.stringify(M.mappeObjekt(mitZwei)));
+    t("#81 der Roundtrip Objekt -> JSON -> parse ist verlustfrei",
+      JSON.stringify(M.geschossMengen(zurueck, gsM))
+        === JSON.stringify(M.geschossMengen(mitZwei, gsM)));
+    t("#81 der Roundtrip ist bitgenau",
+      JSON.stringify(M.mappeObjekt(zurueck)) === JSON.stringify(M.mappeObjekt(mitZwei)));
+    t("#81 die Formatversion bleibt 2 (kein Bump)",
+      zurueck.version === 2 && M.MAPPE_VERSION === 2);
+  }
+  // Struktur-Operationen laufen alle durch `_klon`/`normMappe` — auch dort muss das Feld
+  // ueberleben, sonst raeumte jedes Umbenennen oder Verorten es stillschweigend weg.
+  {
+    let m = M.setzeWand(mitZwei, gsM, { id: "w1", name: "W1", lage: null });
+    m = M.benenneUm(m, gsM, "EG neu");
+    m = M.setzeGeschossHoehe(m, gsM, 2400);
+    t("#81 das Feld uebersteht Verorten, Umbenennen und Hoehenvorgabe",
+      M.geschossMengen(m, gsM)["i3@-"] === 7 && gsRef(m).name === "EG neu");
+  }
+
+  // [P-20]/[P-9]: `validiereMappe` laeuft bei JEDEM Schreibvorgang und bei jedem Import.
+  // Ein unzulaessiger WERT darf die Mappe deshalb nicht unladbar machen — er wird in der
+  // Verrechnung gemeldet. Geprueft wird hier nur die STRUKTUR.
+  {
+    const mitMuell = { ...M.mappeObjekt(basis),
+      gebaeude: [{ ...basis.gebaeude[0],
+        geschosse: [{ ...gsRef(basis), mengen: { "i3@-": "viele", "rod_std@1000": -3 } }] }] };
+    t("#81 ein unzulaessiger WERT macht die Mappe nicht ungueltig",
+      M.validiereMappe(mitMuell).length === 0);
+    const geladen = M.parseMappe(JSON.stringify(mitMuell));
+    t("#81 er wird beim Lesen weder verworfen noch zurechtgebogen",
+      M.geschossMengen(geladen, gsM)["i3@-"] === "viele"
+      && M.geschossMengen(geladen, gsM)["rod_std@1000"] === -3);
+    t("#81 eine Liste statt einer Abbildung faellt strukturell auf",
+      M.mengenFehler(["i3@-"], "EG").length === 1
+      && /keine Abbildung/.test(M.mengenFehler(["i3@-"], "EG")[0]));
+    t("#81 ein Eintrag ohne Positionskennung faellt strukturell auf",
+      M.mengenFehler({ "": 3 }, "EG").length === 1);
+    t("#81 fehlendes Feld ist kein Fehler und wird nicht erfunden",
+      M.mengenFehler(null).length === 0 && JSON.stringify(M.normMengen(undefined)) === "{}");
+  }
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

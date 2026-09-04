@@ -446,6 +446,10 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   const n2 = v => (v == null ? "" : +v.toFixed(2));
   const mengen = daten.mengen
     || { fassung: "berechnet", anzahl: 0, gespeichert: 0, fremd: [], ungueltig: [] };
+  // Manuelle Mengen der GESCHOSSEBENE ([P-20], #81). Sie sind eine EIGENE Herkunft und werden
+  // getrennt gezaehlt und benannt — ein Satz, der beides vermischte, waere unwahr. Auf
+  // Gebaeude- und Projektebene ist `mengen.ebene` null; dort bleibt das Blatt byte-gleich.
+  const eb = (mengen.ebene && mengen.ebene.gespeichert) ? mengen.ebene : null;
   const fassung = normFassung(daten.fassung || mengen.fassung);
   const angepasst = fassung === "angepasst";
   const kopf = [
@@ -469,6 +473,15 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
       + mengen.anzahl + " manuelle Menge(n) aus den Wänden"
     : (mengen.gespeichert
       ? " · " + mengen.gespeichert + " gespeicherte Übersteuerung(en) NICHT angewandt" : ""))]);
+  // Zweite Zeile, bewusst NICHT in die erste gemischt: Wand- und Geschossherkunft sind zwei
+  // Aussagen, und die Zahl der einen darf nicht als die der anderen lesbar sein.
+  if (eb) {
+    const zeilenEbene = daten.positionen.filter(r => r.manuell_ebene).length;
+    kopf.push(["Mengen Geschoss", eb.fassung === "angepasst"
+      ? zeilenEbene + " von " + daten.positionen.length + " Zeile(n) mit manueller Menge "
+        + "des Geschosses (" + eb.gespeichert + " gespeichert)"
+      : eb.gespeichert + " gespeicherte Übersteuerung(en) des Geschosses NICHT angewandt"]);
+  }
   kopf.push(["Kennzeichnung", ART_KENNZEICHNUNG]);
   // Jede Luecke steht als eigene Zeile mit Projektpfad und Ursache — eine unvollstaendige
   // Datei sagt, WELCHE Wand fehlt und warum, statt still weniger zu zeigen.
@@ -483,6 +496,23 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   for (const u of mengen.ungueltig) {
     kopf.push(["Übersteuerung unzulässig", u.wand || "", u.kennung,
       u.label + ": " + u.grund + " Es gilt die berechnete Menge."]);
+  }
+  // Dasselbe fuer die GESCHOSSEBENE — ohne Wandbezug, weil sie keiner Wand gehoert. Getrennt
+  // benannt, damit nie offenbleibt, welche Ebene eine Meldung betrifft ([P-9]).
+  if (eb) {
+    for (const f of eb.fremd) {
+      kopf.push(["Geschoss-Übersteuerung nicht zuordenbar", "", f,
+        "gehört zu keiner gerechneten Position dieser Ebene – nicht angewandt, nicht gelöscht"]);
+    }
+    for (const u of eb.ungueltig) {
+      kopf.push(["Geschoss-Übersteuerung unzulässig", "", u.kennung,
+        u.label + ": " + u.grund + " Es gilt die berechnete Menge."]);
+    }
+    for (const d of eb.mehrdeutig) {
+      kopf.push(["Geschoss-Übersteuerung mehrdeutig", "", d.kennung,
+        d.label + ": " + d.zeilen + " Zeilen tragen diese Positionskennung – "
+        + "nicht angewandt, nicht gelöscht; es gilt die berechnete Menge."]);
+    }
   }
 
   const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge",
@@ -501,7 +531,12 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
     const z = [r.label, r.art ? r.art_symbol + " " + r.art_label : "",
       r.fertigmass_mm == null ? "" : r.fertigmass_mm, r.unit, r.menge,
       r.ids.join(" "), r.produktId || "", r.statusText];
-    if (angepasst) z.splice(5, 0, r.menge_berechnet, r.manuell ? "manuell" : "berechnet");
+    // Die Herkunft nennt die EBENE, auf der uebersteuert wurde — sonst saehe eine
+    // Geschossuebersteuerung wie eine der Waende aus ([P-20]).
+    if (angepasst) {
+      z.splice(5, 0, r.menge_berechnet,
+        r.manuell_ebene ? "manuell (Geschoss)" : (r.manuell ? "manuell" : "berechnet"));
+    }
     if (preise) z.splice(angepasst ? 8 : 6, 0, n2(r.ep), n2(r.gp));
     return z;
   });

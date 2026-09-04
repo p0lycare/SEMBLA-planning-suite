@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-01",
+    datum: "2026-09-04",
+    typ: "feature",
+    issue: 81,
+    titel: "Stückliste: die Menge einer Position lässt sich jetzt auch für ein ganzes Geschoss manuell setzen",
+    testbitte: "In Modul 4 die Ebene „Geschoss“ wählen und bei einer Position eine Menge "
+      + "eintragen: wirksame und berechnete Menge stehen nebeneinander. In Modul 0 dasselbe "
+      + "Geschoss als „angepasst“ exportieren — die Datei trägt genau diese Menge.",
+  },
+  {
     id: "chg-20260902-01",
     datum: "2026-09-02",
     typ: "feature",

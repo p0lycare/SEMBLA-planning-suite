@@ -67,6 +67,7 @@ import { alleGeschosse, alleWaende, bemassungenOhneWand, benenneUm as benenneInM
          entferneWand as entferneWandAusMappe,
          findeGebaeude, findeGeschoss, findeWand, kopfdaten as mappeKopfdaten,
          leereMappe, mappeObjekt, migriereMappe, neueId as neueMappenId, normMappe, parseMappe, pruefeReferenzen,
+         geschossMengen as mappenGeschossMengen, setzeGeschossMenge as setzeMappenGeschossMenge,
          setzeKatalogRef, setzeKopfdaten as setzeMappenKopfdaten,
          setzePlan, setzePlanAnsicht, setzeWand,
          uebernehmeElemente, validiereMappe } from "./sembla-projektmappe.js";
@@ -1918,6 +1919,59 @@ export function setzeKommentar(kennung, text, id) {
   map[eid].geaendert = _jetzt();
   _schreibenMap(map);
   return eid;
+}
+
+// --- Manuelle Mengen der GESCHOSS-Gesamtstueckliste ([P-20], #81) ---------
+// Dieselbe Regel eine Ebene hoeher: die berechnete Menge der aggregierten Position
+// bleibt abgeleitet, daneben tritt eine ausdrueckliche manuelle Menge. Sie liegt am
+// GESCHOSS der Projektmappe (nicht in `eingaben` — sie gehoert keiner einzelnen
+// Wand) und wird ausschliesslich von Modul 4 geschrieben.
+//
+// Kennung und Wertpruefung sind BEWUSST dieselben wie auf der Wandebene
+// (`mengenKennung`, `_pruefeKennung`, `pruefeMenge`): zwei Fassungen derselben
+// Regel waeren genau der Drift, den [P-6] ausschliesst.
+
+/** Das Geschoss dieses Schreibvorgangs bestimmen — streng hierarchisch ([L-10]). */
+function _geschossZumSchreiben(geschossId) {
+  const m = holeMappe();
+  if (!m) throw new Error("Kein aktives Projekt — manuelle Mengen der Gesamtstückliste gehören zum Geschoss ([L-10]).");
+  const id = geschossId ? String(geschossId) : aktivesGeschossId();
+  if (!id) throw new Error("Kein aktives Geschoss — in Modul 0 ein Geschoss aktiv setzen ([L-10]).");
+  if (!findeGeschoss(m, id)) {
+    throw new Error(`Das Geschoss „${id}“ gehört nicht zum aktiven Projekt „${m.projekt.name}“ — erst dessen Projekt aktiv setzen ([L-10]).`);
+  }
+  return id;
+}
+
+/**
+ * Manuelle Mengen EINES Geschosses — ROH, ungefiltert (wie `holeMengen`).
+ * Ohne Zeiger/ohne Projekt schlicht leer: gemeldet wird beim Schreiben, gelesen
+ * wird nichts erfunden.
+ * @param {string} [geschossId] @returns {Record<string, any>}
+ */
+export function holeGeschossMengen(geschossId) {
+  const m = holeMappe();
+  if (!m) return {};
+  const id = geschossId ? String(geschossId) : aktivesGeschossId();
+  if (!id || !findeGeschoss(m, id)) return {};
+  return mappenGeschossMengen(m, id);
+}
+
+/**
+ * EINE manuelle Menge der Geschoss-Gesamtstueckliste setzen oder zuruecksetzen
+ * ([P-20]). `wert === null` (oder leerer Text) entfernt genau diesen Eintrag.
+ * Ein unzulaessiger Wert wirft und laesst den Speicher unveraendert ([P-9]).
+ * @param {string} kennung @param {any} wert @param {string} [geschossId]
+ * @returns {string} id des Geschosses
+ */
+export function setzeGeschossMengeUebersteuerung(kennung, wert, geschossId) {
+  const k = _pruefeKennung(kennung);
+  const leer = wert === null || wert === undefined || (typeof wert === "string" && wert.trim() === "");
+  const geprueft = leer ? null : pruefeMenge(wert);
+  if (geprueft && !geprueft.ok) throw new Error(geprueft.fehler);
+  const id = _geschossZumSchreiben(geschossId);
+  aendereMappe((m) => setzeMappenGeschossMenge(m, id, k, leer ? null : geprueft.wert));
+  return id;
 }
 
 // --- Projekt-Export / -Import (JSON: Wandelement + Eingaben in einem) ------

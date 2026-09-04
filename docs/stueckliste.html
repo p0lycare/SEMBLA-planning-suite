@@ -200,13 +200,29 @@
    (Kennung `<Stücklistenschlüssel>@<Fertigmaß>` -> ganze Zahl ≥ 0); Modul 4 ist der einzige
    Schreibweg. Der GESAMTPREIS der übersteuerten Zeile folgt der wirksamen Menge bei
    unverändertem Einzelpreis — sonst trüge das Blatt zwei Mengenstände. Die Preisauflösung
-   selbst ([P-14]) wird dabei nicht angefasst. Wirksam ist die Übersteuerung in der ANZEIGE nur
-   auf der Wandebene; auf den Gesamtebenen (#44) stehen die berechneten Mengen, und das wird am
-   Blatt benannt statt unterschlagen. Beim zentralen Export in Modul 0 ist die Fassung seit #81
-   ausdrücklich WÄHLBAR (berechnet oder angepasst, Default berechnet) — gerechnet wird sie dort
-   mit derselben Funktion wie hier (`wirksameMengen`), es gibt also keinen zweiten Mengenpfad.
-   Ein Eintrag, der zu keiner gerechneten Position mehr passt, und ein unzulässiger Wert
-   werden BENANNT und nie still gelöscht oder umgehängt ([P-9]).
+   selbst ([P-14]) wird dabei nicht angefasst. Wirksam ist die WANDbezogene Übersteuerung in der
+   ANZEIGE nur auf der Wandebene; auf den Gesamtebenen (#44) wird sie nicht angewandt, und das
+   wird am Blatt benannt statt unterschlagen. Beim zentralen Export in Modul 0 ist die Fassung
+   seit #81 ausdrücklich WÄHLBAR (berechnet oder angepasst, Default berechnet) — gerechnet wird
+   sie dort mit derselben Funktion wie hier (`wirksameMengen`), es gibt also keinen zweiten
+   Mengenpfad. Ein Eintrag, der zu keiner gerechneten Position mehr passt, und ein unzulässiger
+   Wert werden BENANNT und nie still gelöscht oder umgehängt ([P-9]).
+
+   MENGENÜBERSTEUERUNG DER GESCHOSSEBENE ([P-20], #81): Dieselbe Regel eine Ebene höher — je
+   AGGREGIERTER Position der Geschoss-Gesamtstückliste kann ebenfalls eine manuelle Menge
+   gesetzt werden, für den Fall, dass für ein ganzes Geschoss nachweislich eine andere Stückzahl
+   gebraucht wird. Sie ist eine Angabe des GESCHOSSES und keine der Wände: gespeichert wird sie
+   in `geschoss.mengen` der Projektmappe (dieselbe Kennungsform `<Schlüssel>@<Fertigmaß>`,
+   [P-6]), und Modul 4 ist auch hier der einzige Schreibweg (`store.
+   setzeGeschossMengeUebersteuerung`). Sie ERSETZT auf dieser Ebene die aus den Wandmengen
+   aggregierte Menge; die berechnete steht unverändert daneben, der Gesamtpreis folgt der
+   wirksamen Menge bei unverändertem Einzelpreis. Verrechnet wird sie an genau EINER Stelle
+   (`wirksameEbenenMengen` in sembla-gesamtstueckliste.js) — derselben, aus der die
+   Exportdatei entsteht. Gebäude- und Projektebene haben KEINE eigene Übersteuerung; dort wirkt
+   auch die des Geschosses nicht und wird nicht erwähnt. Ein nicht zuordenbarer, ein unzulässig
+   gespeicherter und ein MEHRDEUTIGER Eintrag (mehrere gefaltete Zeilen mit derselben
+   Positionskennung — die Faltung trägt mehr Merkmale als die Kennung) werden BENANNT und auf
+   KEINE Zeile angewandt: keine Doppelwirkung, keine stille Wahl.
 
    KOMMENTAR JE POSITION ([P-20], #81): Neben der Menge trägt jede Position einen kurzen
    Kommentar — warum eine Zeile abweicht, was auf der Baustelle dazu zu beachten ist. Er ist
@@ -303,7 +319,24 @@ function leser(){
     katalog:KATALOG,
   };
 }
-function daten(){ return gesamtDaten(umfang(mappe(), EBENE, zeiger()), leser()); }
+/* Manuelle Mengen des GESCHOSSES ([P-20], #81) — ROH aus der Projektmappe gelesen und an die
+   eine Verrechnungsstelle (`gesamtDaten` → `wirksameEbenenMengen`) durchgereicht. Hier wird
+   nichts gerechnet, nichts geprüft und nichts bereinigt. */
+function geschossMengenMap(){
+  if(EBENE!=='geschoss') return null;
+  try{
+    const gs=zeiger().geschossId;
+    return (gs && store && store.holeGeschossMengen) ? store.holeGeschossMengen(gs) : null;
+  }catch(e){ return null; }
+}
+/* Auf der Geschossebene wird die Geschoss-Übersteuerung ausdrücklich ANGEWANDT (`ebenenAnwenden`),
+   damit wirksame und berechnete Menge nebeneinander sichtbar sind. Die WANDbezogenen
+   Übersteuerungen bleiben davon unberührt: sie gehören der Wandebene und werden hier weiter
+   nicht angewandt (`mengenStand` mit `anwenden: EBENE==='wand'`). */
+function daten(){
+  return gesamtDaten(umfang(mappe(), EBENE, zeiger()), leser(),
+    EBENE==='geschoss' ? { ebenenMengen:geschossMengenMap(), ebenenAnwenden:true } : {});
+}
 
 /* ---- Mengenübersteuerung ([P-20]) ---------------------------------------------------------
    Gerechnet wird hier NICHTS: die Verrechnung von berechneter und manueller Menge liegt seit
@@ -332,25 +365,49 @@ function mengenStand(positionen){
   }
   return wirksameMengen(positionen, mengenMap(), { anwenden: EBENE==='wand' });
 }
+/* Woran hängt die Menge dieser Zeile? Genau EINE Stelle beantwortet das, damit Zelle und
+   Schreibweg nie auseinanderlaufen:
+     Wandebene     — Kennung/Übersteuerung aus `wirksameMengen` (`__kennung`/`__ueber`);
+     Geschossebene — aus `wirksameEbenenMengen` (`__ekennung`/`__eueber`, #81); die berechnete
+                     Menge ist dort die AGGREGIERTE (`menge_berechnet`), nie `__berechnet`;
+     darüber       — keine Kennung, also kein Bedienelement (must_not 4).
+   Die Kennungsform ist auf beiden Ebenen dieselbe (`storage.mengenKennung`, [P-6]). */
+function mengenBezug(r){
+  if(EBENE==='wand'){
+    return { kennung:r.__kennung||null, ueber:r.__ueber, berechnet:r.__berechnet, mehrdeutig:false };
+  }
+  if(EBENE==='geschoss'){
+    return { kennung:r.__ekennung||null, ueber:r.__eueber==null?null:r.__eueber,
+             berechnet:r.menge_berechnet, mehrdeutig:!!r.__emehrdeutig };
+  }
+  return { kennung:null, ueber:null, berechnet:r.menge, mehrdeutig:false };
+}
 /** Eine Mengenzelle: wirksame Menge, bei Übersteuerung zusätzlich die berechnete, dazu das
  *  Bedienelement (im Druck ausgeblendet — die beiden Zahlen bleiben als Text stehen). */
 function mengeZelle(r, nk){
   const einheit = esc(r.unit);
   const wirksam = fmt(r.menge,nk)+' '+einheit;
-  const k = r.__kennung;
+  const b = mengenBezug(r);
+  const k = b.kennung;
   const fehler = (MFEHLER && k && MFEHLER.kennung===k)
     ? `<div class="mfehler">${esc(MFEHLER.text)}</div>` : '';
-  const feld = k
+  // Eine mehrdeutige Kennung bekommt KEIN Feld: die Übersteuerung wirkt dort nach #81 auf
+  // keine der Zeilen, und ein Feld, dessen Eingabe nichts tut, wäre eine falsche Zusage.
+  const feld = (k && !b.mehrdeutig)
     ? `<div class="mfeld"><input type="number" step="1" min="0" data-menge="${esc(k)}"`
-      + ` value="${r.__ueber!=null?esc(r.__ueber):''}" placeholder="${esc(r.__berechnet)}"`
+      + ` value="${b.ueber!=null?esc(b.ueber):''}" placeholder="${esc(b.berechnet)}"`
       + ` aria-label="Menge manuell übersteuern" title="Manuelle Menge (ganze Zahl ab 0); leer = berechnete Menge">`
-      + (r.__ueber!=null
+      + (b.ueber!=null
           ? `<button type="button" data-menge-reset="${esc(k)}" title="Übersteuerung zurücksetzen">zurücksetzen</button>`
           : '')
       + `</div>` : '';
-  if(r.__ueber==null) return `<td class="menge">${wirksam}${feld}${fehler}</td>`;
+  const doppelt = b.mehrdeutig
+    ? `<div class="mfehler">Positionskennung <code>${esc(k)}</code> kommt auf dieser Ebene mehrfach `
+      + `vor — hier ist keine manuelle Menge möglich; eine gespeicherte wirkt auf keine der Zeilen.</div>`
+    : '';
+  if(b.ueber==null) return `<td class="menge">${wirksam}${feld}${doppelt}${fehler}</td>`;
   return `<td class="menge ueber"><span class="wirk">${wirksam}</span><span class="chip">manuell</span>`
-    + `<div class="orig">berechnet ${fmt(r.__berechnet,nk)} ${einheit}</div>${feld}${fehler}</td>`;
+    + `<div class="orig">berechnet ${fmt(b.berechnet,nk)} ${einheit}</div>${feld}${fehler}</td>`;
 }
 /* ---- Kommentar je Position ([P-20]) -------------------------------------------------------
    Reine ZUSATZANGABE: hier wird nichts gerechnet und nichts ausgewählt. Zugeordnet wird über
@@ -420,8 +477,22 @@ function kommentarSetzen(kennung, text){
   render();
 }
 
-/** Genau EIN Schreibweg für die manuelle Menge; `null` setzt zurück. */
+/** Genau EIN Schreibweg für die manuelle Menge; `null` setzt zurück. Welcher Speicherort
+ *  gemeint ist, entscheidet die ANGEZEIGTE Ebene — die Wandübersteuerung liegt an der Wand
+ *  (`eingaben.kosten.mengen`), die der Geschossebene am Geschoss der Projektmappe
+ *  (`geschoss.mengen`, #81). Beide laufen durch dieselbe Wertprüfung (`storage.pruefeMenge`). */
 function mengeSetzen(kennung, wert){
+  if(EBENE==='geschoss'){
+    if(!store || !store.setzeGeschossMengeUebersteuerung){
+      MFEHLER={ kennung, text:'Ohne Speicherschicht wird keine manuelle Menge gespeichert.' };
+      render(); return;
+    }
+    try{
+      store.setzeGeschossMengeUebersteuerung(kennung, wert, zeiger().geschossId);
+      MFEHLER=null;
+    }catch(e){ MFEHLER={ kennung, text:(e&&e.message)||String(e) }; }
+    render(); return;
+  }
   if(!store || !store.setzeMengenUebersteuerung){
     MFEHLER={ kennung, text:'Ohne Speicherschicht wird keine manuelle Menge gespeichert.' };
     render(); return;
@@ -549,7 +620,7 @@ function render(){
   }
   $('tbody').innerHTML=html;
   renderLuecken(d);
-  renderMengenHinweis(mstand, kstand);
+  renderMengenHinweis(mstand, kstand, d);
   renderKennzeichnung(rs);
 }
 
@@ -557,11 +628,33 @@ function render(){
 // keinen davon still: wo die manuelle Menge wirkt (in der ANZEIGE nur auf der Wandebene) und
 // wo nicht, welche gespeicherte Übersteuerung zu keiner gerechneten Position mehr passt und
 // welche unzulässig ist — und dasselbe für die Kommentare. Bereinigt wird nichts.
-function renderMengenHinweis(m, k){
+function renderMengenHinweis(m, k, d){
   const el=$('mhinweis'); const teile=[];
   const kom = k || { anzahl:0, fremd:[], unzulaessig:[], gespeichert:0 };
-  if(EBENE!=='wand'){
-    if(m.gespeichert) teile.push('<b>Manuelle Mengen wirken in der Anzeige nur auf der Wandebene.</b> '
+  // Manuelle Mengen der GESCHOSSEBENE ([P-20], #81) — eine eigene Angabe am Geschoss, nicht
+  // die der Wände. Oberhalb des Geschosses gibt es sie nicht und sie wird dort auch nicht
+  // erwähnt: sie wirkt ausschliesslich auf der Geschossebene.
+  const eb = (d && d.mengen && d.mengen.ebene) || null;
+  if(EBENE==='geschoss'){
+    teile.push('<b>Manuelle Mengen sind hier eine Angabe des Geschosses.</b> '
+      + 'Sie hängen an der aggregierten Position und liegen am Geschoss des Projekts — sie '
+      + 'wirken auf dieser Ebene und in der <b>angepassten</b> Fassung der '
+      + 'Geschoss-Gesamtstückliste des zentralen Exports (Modul 0); ohne Wahl gilt dort '
+      + '„berechnet“, und die Datei nennt die Fassung in ihrem Kopf. Die berechnete Menge steht '
+      + 'unverändert daneben, der Einzelpreis bleibt der aufgelöste.');
+    if(m.gespeichert) teile.push('<b>Die manuellen Mengen der Wände wirken hier nicht.</b> '
+      + 'Sie gehören der Wandebene; die '+m.gespeichert+' gespeicherte(n) Übersteuerung(en) der '
+      + 'aktiven Wand bleiben unverändert erhalten und werden in dieser Aggregation nicht '
+      + 'angewandt. Für die Dateien des zentralen Exports ist die Mengenfassung wählbar.');
+    if(eb && eb.anzahl) teile.push('<b>'+eb.anzahl+' Zeile(n) mit manueller Menge des '
+      + 'Geschosses.</b> Jede ist einzeln rücksetzbar; danach gilt wieder die berechnete Menge.');
+    if(kom.gespeichert) teile.push('<b>Kommentare gehören zu einer einzelnen Wand.</b> '
+      + 'Auf dieser Ebene steht eine Zeile für mehrere Wände; die '+kom.gespeichert
+      + ' gespeicherte(n) Kommentar(e) der aktiven Wand bleiben unverändert erhalten und werden '
+      + 'hier nicht angezeigt.');
+  } else if(EBENE!=='wand'){
+    if(m.gespeichert) teile.push('<b>Manuelle Mengen wirken in der Anzeige nur auf der Wand- und '
+      + 'der Geschossebene.</b> '
       + 'Diese Ebene zeigt durchgehend die berechneten Mengen; die '+m.gespeichert
       + ' gespeicherte(n) Übersteuerung(en) der aktiven Wand bleiben unverändert erhalten. '
       + 'Diese Einschränkung betrifft <b>allein die Anzeige</b>: für die Dateien des zentralen '
@@ -602,6 +695,20 @@ function renderMengenHinweis(m, k){
   if(kom.unzulaessig.length) teile.push('<b>Kommentar unzulässig gespeichert:</b><ul>'
     + kom.unzulaessig.map(u=>`<li>${esc(u.label)} (<code>${esc(u.kennung)}</code>): `
         + `${esc(u.grund)} Er wird nicht angezeigt und bleibt gespeichert.</li>`).join('')
+    + '</ul>');
+  // Dasselbe für die Geschossebene — getrennt benannt, nie angewandt, nie gelöscht ([P-9]).
+  if(eb && eb.fremd.length) teile.push('<b>Geschoss-Übersteuerung nicht zuordenbar:</b> '
+    + eb.fremd.map(x=>'<code>'+esc(x)+'</code>').join(', ')
+    + ' gehört zu keiner aktuell gerechneten Position dieser Ebene. Sie bleibt gespeichert und '
+    + 'wird auf keine andere Position übertragen.');
+  if(eb && eb.ungueltig.length) teile.push('<b>Geschoss-Übersteuerung unzulässig gespeichert:</b><ul>'
+    + eb.ungueltig.map(u=>`<li>${esc(u.label)} (<code>${esc(u.kennung)}</code>): `
+        + `${esc(u.grund)} Es gilt die berechnete Menge.</li>`).join('')
+    + '</ul>');
+  if(eb && eb.mehrdeutig.length) teile.push('<b>Geschoss-Übersteuerung mehrdeutig:</b><ul>'
+    + eb.mehrdeutig.map(u=>`<li>${esc(u.label)} (<code>${esc(u.kennung)}</code>): `
+        + `${u.zeilen} Zeilen tragen diese Positionskennung — sie wird auf keine davon `
+        + `angewandt und bleibt gespeichert.</li>`).join('')
     + '</ul>');
   el.hidden = teile.length===0;
   el.innerHTML = teile.map(t=>'<div>'+t+'</div>').join('');

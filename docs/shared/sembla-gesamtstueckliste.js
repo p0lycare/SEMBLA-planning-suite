@@ -37,6 +37,17 @@
  * angewandt; sie stehen bewusst in `mengen` und nicht in `luecken` — `luecken`/`vollstaendig`
  * sagen etwas ueber FEHLENDE WAENDE, und eine unpassende Uebersteuerung laesst keine Wand fehlen.
  *
+ * MANUELLE MENGE DER GESCHOSSEBENE ([P-20], #81). Ueber der wandbezogenen Uebersteuerung
+ * steht je AGGREGIERTER Position eine eigene manuelle Menge; sie liegt am Geschoss der
+ * Projektmappe (`geschoss.mengen`) und wird als ROHE Abbildung uebergeben — diese Datei liest
+ * keinen Speicher. Verrechnet wird sie an GENAU EINER Stelle (`wirksameEbenenMengen`), und
+ * zwar NACH dem Falten: sie ersetzt die aus den Wandmengen aggregierte wirksame Menge, laesst
+ * die berechnete unveraendert daneben stehen und den Einzelpreis unberuehrt ([P-14]). Sie gilt
+ * ausschliesslich auf der GESCHOSSEBENE — auf Gebaeude- und Projektebene wird sie weder
+ * angewandt noch gezaehlt noch erwaehnt. Nicht zuordenbare, unzulaessig gespeicherte und
+ * MEHRDEUTIGE Eintraege (mehrere gefaltete Zeilen mit derselben Positionskennung) werden
+ * benannt und NICHT angewandt — keine Doppelwirkung, keine stille Wahl.
+ *
  * LÜCKEN. Fehlende, verwaiste oder nicht ableitbare Wandelemente und uneinheitliche Waehrungen
  * werden mit Projektpfad und Ursache gemeldet ([L-4]); die Ausgabe ist dann sichtbar
  * unvollstaendig. Es entsteht dabei nie eine Nullmenge, nie ein Ersatzpreis und nie eine
@@ -44,6 +55,12 @@
  */
 import { findeGebaeude, findeGeschoss, findeWand, normMappe } from "./sembla-projektmappe.js";
 import { normFassung, stuecklistePositionen, stuecklisteSumme, wirksameMengen } from "./sembla-export.js";
+// Aus der Speicherschicht kommen ausschliesslich REINE Funktionen: `mengenKennung`
+// (Positionskennung) und `pruefeMenge` (Wertpruefung) nach [P-20]. Keine davon liest oder
+// schreibt einen Speicher — sie bringen nur die kanonische Fassung dieser Regeln mit, die
+// hier sonst ein zweites Mal entstuende ([P-6]); dieselbe benannte Ausnahme wie in
+// `sembla-export.js`.
+import { mengenKennung, pruefeMenge } from "./storage.js";
 
 /** Die vier waehlbaren Ebenen — mehr gibt es nicht, und geraten wird keine. */
 export const EBENEN = /** @type {ReadonlyArray<'wand'|'geschoss'|'gebaeude'|'projekt'>} */ ([
@@ -165,12 +182,90 @@ function _summeMenge(werte) {
 }
 
 /**
+ * Die manuellen Mengen der GESCHOSSEBENE auf die gefalteten Zeilen anwenden ([P-20], #81).
+ *
+ * Das ist die EINE Verrechnungsstelle dieser Regel — Anzeige (Modul 4) und Datei (zentraler
+ * Export) laufen beide hier durch. Gerechnet wird ausdruecklich NACH dem Falten: die
+ * Uebersteuerung gilt der aggregierten Zeile, nicht einer Wand.
+ *
+ * Angewandt wird nur bei `anwenden:true` (angepasste Fassung). In der berechneten Fassung
+ * bleiben die Zeilen BIT-GENAU unveraendert — es wird nicht einmal eine Kennung vergeben —,
+ * die gespeicherten Eintraege werden aber gezaehlt, damit das Blatt sagen kann, dass sie
+ * hier nicht wirken (genau wie `wirksameMengen` auf der Wandebene).
+ *
+ * NICHT ANGEWANDT, aber BENANNT werden drei Faelle ([P-9]):
+ *   `fremd`      — die Kennung gehoert zu keiner gerechneten Zeile;
+ *   `ungueltig`  — der gespeicherte Wert ist unzulaessig (`pruefeMenge`);
+ *   `mehrdeutig` — mehrere gefaltete Zeilen tragen dieselbe Positionskennung. Die Kennung ist
+ *                  `key@Fertigmass` ([P-6]), gefaltet wird aber ueber mehr Merkmale
+ *                  (`_faltSchluessel`: Einheit, Stueckart, Produkt, Status, EP). Zwei Zeilen
+ *                  koennen sie deshalb teilen. Dann wirkt die Uebersteuerung auf KEINE von
+ *                  beiden: eine Doppelwirkung waere falsch, eine stille Wahl unzulaessig.
+ *
+ * Geloescht, gekuerzt oder umgehaengt wird nie ein Eintrag.
+ *
+ * @param {Array<object>} positionen die GEFALTETEN Zeilen der Ebene
+ * @param {Record<string, any>|null|undefined} mengenRoh `geschoss.mengen`, ungefiltert
+ * @param {{anwenden?:boolean}} [opts]
+ * @returns {{positionen:Array<object>, anzahl:number, gespeichert:number, fremd:string[],
+ *   ungueltig:Array<{kennung:string,label:string,wert:any,grund:string}>,
+ *   mehrdeutig:Array<{kennung:string,label:string,zeilen:number}>}}
+ */
+export function wirksameEbenenMengen(positionen, mengenRoh, opts = {}) {
+  const anwenden = opts.anwenden === true;
+  const map = (mengenRoh && typeof mengenRoh === "object" && !Array.isArray(mengenRoh)) ? mengenRoh : {};
+  const gespeichert = Object.keys(map).length;
+  const leer = { anzahl: 0, gespeichert, fremd: [], ungueltig: [], mehrdeutig: [] };
+  // Berechnete Fassung: die Zeilen werden NICHT angefasst (dieselbe Array-Instanz), damit die
+  // Ausgabe bit-genau der ohne jede Uebersteuerung entspricht.
+  if (!anwenden) return { positionen: positionen || [], ...leer };
+
+  const zeilen = positionen || [];
+  /** @type {Map<string, number>} */
+  const wieOft = new Map();
+  for (const p of zeilen) {
+    const k = mengenKennung(p);
+    wieOft.set(k, (wieOft.get(k) || 0) + 1);
+  }
+  const ungueltig = [], mehrdeutig = [], gemeldet = new Set();
+  let anzahl = 0;
+  const out = zeilen.map((p) => {
+    const k = mengenKennung(p);
+    const doppelt = (wieOft.get(k) || 0) > 1;
+    const q = { ...p, __ekennung: k, __eueber: null, __emehrdeutig: doppelt, manuell_ebene: false };
+    if (!Object.prototype.hasOwnProperty.call(map, k)) return q;
+    if (doppelt) {
+      if (!gemeldet.has(k)) {
+        gemeldet.add(k);
+        mehrdeutig.push({ kennung: k, label: p.label, zeilen: wieOft.get(k) });
+      }
+      return q;
+    }
+    const g = pruefeMenge(map[k]);
+    if (!g.ok) { ungueltig.push({ kennung: k, label: p.label, wert: map[k], grund: g.fehler }); return q; }
+    q.__eueber = g.wert; q.menge = g.wert; q.manuell_ebene = true;
+    // Nur die Menge ist eine andere — der Einzelpreis bleibt exakt der aufgeloeste ([P-14]).
+    q.gp = p.ep == null ? null : g.wert * p.ep;
+    anzahl++;
+    return q;
+  });
+  const fremd = Object.keys(map).filter((k) => !wieOft.has(k));
+  return { positionen: out, anzahl, gespeichert, fremd, ungueltig, mehrdeutig };
+}
+
+/**
  * Vollstaendige Ableitung der gewaehlten Ebene.
  *
  * @param {ReturnType<typeof umfang>} umf
  * @param {{holeElement?:(id:string)=>any, holeEingaben?:(id:string)=>any, katalog?:object|null}} [leser]
- * @param {{fassung?:string}} [opts] Mengenfassung nach [P-20]: `'berechnet'` (Default) oder
- *   `'angepasst'`. Ohne ausdrueckliche Wahl bleibt die Ableitung bit-genau die bisherige.
+ * @param {{fassung?:string, ebenenMengen?:Record<string,any>|null, ebenenAnwenden?:boolean}} [opts]
+ *   `fassung` = Mengenfassung nach [P-20]: `'berechnet'` (Default) oder `'angepasst'`. Ohne
+ *   ausdrueckliche Wahl bleibt die Ableitung bit-genau die bisherige.
+ *   `ebenenMengen` = die ROHEN manuellen Mengen des Geschosses (`geschoss.mengen`, #81); sie
+ *   werden UEBERGEBEN, damit diese Datei rein bleibt und keinen Speicher liest.
+ *   `ebenenAnwenden` = ob sie wirken; ohne Angabe folgt das der `fassung`. Modul 4 setzt es auf
+ *   der Geschossebene ausdruecklich auf `true`, um sie ANZUZEIGEN, ohne dabei die
+ *   wandbezogenen Uebersteuerungen anzuwenden (die bleiben nach [P-20] der Wandebene).
  * @returns {{ebene:string, titel:string, ebene_label:string, bezug:object, pfad:string,
  *   waende:Array<object>, quellen:Array<object>, positionen:Array<object>, luecken:Array<object>,
  *   vollstaendig:boolean, waehrung:string, waehrungen:string[], waehrungKonflikt:boolean,
@@ -178,7 +273,10 @@ function _summeMenge(werte) {
  *   betragMoeglich:boolean, katalog:object|null, fassung:string,
  *   mengen:{fassung:string, anzahl:number, gespeichert:number,
  *     fremd:Array<{wandId:string,wand:string,pfad:string,kennung:string}>,
- *     ungueltig:Array<{wandId:string,wand:string,pfad:string,kennung:string,label:string,grund:string}>}}}
+ *     ungueltig:Array<{wandId:string,wand:string,pfad:string,kennung:string,label:string,grund:string}>,
+ *     ebene:null|{fassung:string, anzahl:number, gespeichert:number, fremd:string[],
+ *       ungueltig:Array<{kennung:string,label:string,wert:any,grund:string}>,
+ *       mehrdeutig:Array<{kennung:string,label:string,zeilen:number}>}}}}
  */
 export function gesamtDaten(umf, leser = {}, opts = {}) {
   const holeElement = leser.holeElement || (() => null);
@@ -188,7 +286,9 @@ export function gesamtDaten(umf, leser = {}, opts = {}) {
   const angepasst = fassung === "angepasst";
   const luecken = [], quellen = [];
   // Mengenstand ueber alle Waende ([P-20]) — je Wand aus IHRER Uebersteuerung, nie vermischt.
-  const mengen = { fassung, anzahl: 0, gespeichert: 0, fremd: [], ungueltig: [] };
+  // `ebene` bleibt auf jeder anderen Ebene NULL: eine Geschoss-Uebersteuerung wirkt nach
+  // #81 ausschliesslich auf der Geschossebene und wird darueber nicht einmal gezaehlt.
+  const mengen = { fassung, anzahl: 0, gespeichert: 0, fremd: [], ungueltig: [], ebene: null };
 
   if (!umf.ok) luecken.push({ art: "ebene", wandId: null, wand: null, pfad: pfadText(umf.bezug), grund: umf.grund });
 
@@ -278,7 +378,7 @@ export function gesamtDaten(umf, leser = {}, opts = {}) {
       if (!ziel.wandIds.includes(q.wandId)) ziel.wandIds.push(q.wandId);
     }
   }
-  const positionen = [...map.values()].map((p) => {
+  let positionen = [...map.values()].map((p) => {
     p.menge = _summeMenge(p.herkunft.map((h) => h.menge));
     p.menge_berechnet = _summeMenge(p.herkunft.map((h) => h.menge_berechnet));
     // Nur die Menge ist gegebenenfalls eine andere — der Einzelpreis bleibt der
@@ -287,6 +387,22 @@ export function gesamtDaten(umf, leser = {}, opts = {}) {
     return p;
   });
 
+  // Manuelle Menge der GESCHOSSEBENE ([P-20], #81) — die eine Verrechnungsstelle, und zwar
+  // NACH dem Falten: sie gilt der aggregierten Zeile. Sie ERSETZT die aus den Wandmengen
+  // aggregierte wirksame Menge; `menge_berechnet` bleibt unveraendert daneben stehen.
+  if (umf.ebene === "geschoss") {
+    const anwenden = opts.ebenenAnwenden === undefined ? angepasst : opts.ebenenAnwenden === true;
+    const e = wirksameEbenenMengen(positionen, opts.ebenenMengen, { anwenden });
+    positionen = e.positionen;
+    mengen.ebene = {
+      fassung: anwenden ? "angepasst" : "berechnet",
+      anzahl: e.anzahl, gespeichert: e.gespeichert,
+      fremd: e.fremd, ungueltig: e.ungueltig, mehrdeutig: e.mehrdeutig,
+    };
+  }
+
+  // Summe NACH der Uebersteuerung: sonst zeigte die Summenzeile einen anderen Mengenstand
+  // als die Tabelle darueber.
   const summe = stuecklisteSumme(positionen);
   const ebene = umf.ebene;
   return {

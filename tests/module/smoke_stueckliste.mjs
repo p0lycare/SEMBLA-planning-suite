@@ -1057,7 +1057,10 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     echterStore.setzeMengenUebersteuerung(fremd, null, wid);
   }
 
-  // (6) Die Gesamtebenen bleiben bei den berechneten Mengen — und sagen es.
+  // (6) Gebäude- und Projektebene bleiben bei den berechneten Mengen — und sagen es.
+  // #81: „nur auf der Wandebene“ ist seit der Geschoss-Übersteuerung nicht mehr wahr; der
+  // Hinweis nennt jetzt BEIDE Ebenen, auf denen eine manuelle Menge in der Anzeige wirkt.
+  // Geprüft wird hier weiter die PROJEKTebene: dort wirkt keine von beiden (must_not 4).
   {
     echterStore.setzeMengenUebersteuerung(kennungI3, 3, wid);
     globalThis.window.__slInit();
@@ -1065,7 +1068,7 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const tb=tbodyEl.innerHTML;
     ok('[P-20] Gesamtebene: kein Mengenfeld, keine übersteuerte Zelle, und die Grenze steht dran',
       !/data-menge=/.test(tb) && !/class="menge ueber"/.test(tb)
-      && /Manuelle Mengen wirken in der Anzeige nur auf der Wandebene/
+      && /Manuelle Mengen wirken in der Anzeige nur auf der Wand- und der Geschossebene/
            .test(document.getElementById('mhinweis').innerHTML));
     // #81: Die Einschränkung auf die Wandebene betrifft AUSDRÜCKLICH nur die Anzeige — für die
     // Exportdateien ist die Fassung wählbar. Ohne diesen Satz läse sich der Hinweis so, als

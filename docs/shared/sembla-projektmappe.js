@@ -36,6 +36,18 @@
  * bewusst NEBEN dem Planblock und nicht darin: `versatz_x_mm`/`versatz_y_mm`
  * beschreiben die BILDlage ([L-9]) und werden beim Bildwechsel zurueckgesetzt.
  *
+ * Seit #81 traegt das Geschoss ausserdem die MANUELLEN MENGEN seiner
+ * Gesamtstueckliste ([P-20]):
+ *
+ *   geschoss.mengen = { "<Stuecklistenschluessel>@<Fertigmass|->": <ganze Zahl >= 0> }
+ *
+ * Ebenfalls OPTIONAL und abwaertskompatibel — KEIN Formatbump (`MAPPE_VERSION`
+ * bleibt 2): fehlt das Feld, gibt es keine Uebersteuerung, und es wird keine
+ * erfunden. Die Kennung ist dieselbe wie auf der Wandebene
+ * (`storage.mengenKennung`) — eine zweite Kennungsform waere der Drift, den [P-6]
+ * ausschliesst. Geprueft wird hier nur die STRUKTUR (`mengenFehler`), verrechnet
+ * und gemeldet wird ausschliesslich in `sembla-gesamtstueckliste.js`.
+ *
  * Dieses Modul ist REIN und DOM-frei (keine Datei-, keine localStorage-, keine
  * DOM-Zugriffe). Alle Struktur-Operationen liefern eine NEUE Mappe zurueck und
  * veraendern die uebergebene nicht. Persistenz und aktive Zeiger liegen in
@@ -126,6 +138,10 @@ export function neuesGeschossObjekt(name, hoehe_mm) {
     ursprung_mm: { ...URSPRUNG_STANDARD },
     waende: [],
     bemassungen: [],
+    // Manuelle Mengen der Geschoss-Gesamtstueckliste ([P-20], #81). Leer = keine
+    // Uebersteuerung; erfunden wird keine. Das Feld ist OPTIONAL und
+    // abwaertskompatibel — KEIN Formatbump (s. `normMengen`).
+    mengen: {},
   };
 }
 
@@ -196,6 +212,55 @@ export function planFehler(plan, bezeichnung) {
   return f;
 }
 
+/**
+ * Manuelle Mengen eines Geschosses normalisieren ([P-20], #81).
+ *
+ * Die Abbildung ist flach: Positionskennung (`storage.mengenKennung`, also
+ * `<Stuecklistenschluessel>@<Fertigmass|->`) -> ganze Zahl >= 0. Normalisiert wird
+ * ausschliesslich die STRUKTUR — die WERTE reisen unveraendert mit:
+ *
+ *   Ein unzulaessig gespeicherter Wert (etwa aus einer fremden Datei) muss nach
+ *   [P-20]/[P-9] BENANNT und nicht angewandt werden. Wuerde er hier weggeworfen
+ *   oder zurechtgebogen, gaebe es nichts mehr zu melden — und ein bloszes Laden
+ *   schriebe den Speicher still um. Geprueft und gemeldet wird deshalb erst in der
+ *   Verrechnung (`sembla-gesamtstueckliste.js`).
+ *
+ * Fehlt das Feld (jeder Altstand), ist es leer — verlustfrei, idempotent und ohne
+ * Formatbump; `MAPPE_VERSION` bleibt 2.
+ * @param {any} v @returns {Record<string, any>}
+ */
+export function normMengen(v) {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const [k, w] of Object.entries(v)) {
+    const key = String(k).trim();
+    if (key) out[key] = w;
+  }
+  return out;
+}
+
+/**
+ * Fehler der manuellen Mengen EINES Geschosses ([P-20], #81) — ausdruecklich nur
+ * STRUKTURELL: eine Abbildung mit nicht leeren Schluesseln, kein Array.
+ *
+ * Die WERTE werden hier NICHT geprueft, und das ist Absicht: `validiereMappe` laeuft
+ * bei jedem Schreibvorgang (`storage.setzeMappe`) und bei jedem Import
+ * (`parseMappe`). Ein einziger unzulaessiger Wert machte die Mappe sonst unladbar
+ * und unschreibbar — statt, wie [P-20] es verlangt, benannt und nicht angewandt zu
+ * werden.
+ * @param {any} mengen @param {string} [bezeichnung] @returns {string[]}
+ */
+export function mengenFehler(mengen, bezeichnung) {
+  if (mengen == null) return [];
+  const wo = bezeichnung ? `Geschoss „${bezeichnung}“: ` : "";
+  if (typeof mengen !== "object" || Array.isArray(mengen)) {
+    return [`${wo}Manuelle Mengen sind keine Abbildung Positionskennung → Menge ([P-20]).`];
+  }
+  const leer = Object.keys(mengen).filter((k) => !String(k).trim()).length;
+  return leer ? [`${wo}Manuelle Mengen enthalten ${leer} Eintrag/Eintraege ohne Positionskennung ([P-20]).`] : [];
+}
+
 /** Ein Geschoss normalisieren. */
 export function normGeschoss(g) {
   const o = (g && typeof g === "object") ? g : {};
@@ -212,6 +277,11 @@ export function normGeschoss(g) {
     // Bemassungen leben im GESCHOSS, nie am Wandelement ([K-10]). Fehlt das
     // Feld (Altstand v1), ist es schlicht leer — es wird keines erfunden.
     bemassungen: Array.isArray(o.bemassungen) ? o.bemassungen.map(normBemassung) : [],
+    // Manuelle Mengen der Geschoss-Gesamtstueckliste ([P-20], #81). Das Feld MUSS
+    // hier stehen: diese Funktion baut ein explizites Objekt, ein nicht genanntes
+    // Feld ginge bei jedem `_klon`/`mappeObjekt` verloren — also bei jedem
+    // Schreibvorgang und im Projektarchiv ([L-13]).
+    mengen: normMengen(o.mengen),
   };
 }
 
@@ -280,6 +350,9 @@ export function validiereMappe(m) {
       }
       f.push(...planFehler(gs?.plan, gs?.name || gs?.id));
       f.push(...ursprungFehler(gs?.ursprung_mm, gs?.name || gs?.id));
+      // Nur STRUKTURELL ([P-20], s. `mengenFehler`): ein unzulaessiger WERT wird
+      // gemeldet, nicht abgewiesen — sonst waere die Mappe deswegen unladbar.
+      f.push(...mengenFehler(gs?.mengen, gs?.name || gs?.id));
       if (!Array.isArray(gs?.waende)) { f.push(`Geschoss „${gs?.name || gs?.id}“ ohne Wandliste.`); continue; }
       /** @type {Map<string,any>} */
       const lagen = new Map();
@@ -740,6 +813,67 @@ export function bemassungenOhneWand(m, geschossId, wandId) {
   const neu = _mitGeschoss(n, geschossId,
     (gs) => ({ ...gs, bemassungen: gs.bemassungen.filter((b) => !betroffen.includes(b.id)) }));
   return { mappe: neu, entfernt: betroffen };
+}
+
+// --- Manuelle Mengen der Geschoss-Gesamtstueckliste ([P-20], #81) ---------
+// Die BERECHNETE Menge bleibt ausschliesslich abgeleitet (sembla-bom.js -> die
+// Aggregation in sembla-gesamtstueckliste.js) und wird bei jeder Ausgabe neu
+// gerechnet. Daneben — nicht an ihrer Stelle — steht je aggregierter Position eine
+// ausdrueckliche manuelle Menge.
+//
+// Sie liegt AM GESCHOSS, wie Bemassungen ([K-10]) und Ursprung ([K-4]): die
+// Aggregation selbst ist fluechtig und koennte nichts tragen, und im Wandelement
+// oder in `eingaben` waere sie eine Wandangabe, die sie nicht ist. Geschrieben wird
+// ausschliesslich von Modul 4 ueber `storage.setzeGeschossMengeUebersteuerung`.
+
+/**
+ * Manuelle Mengen eines Geschosses — ROH, so wie sie in der Mappe stehen.
+ *
+ * Bewusst ungefiltert (wie `storage.holeMengen` auf der Wandebene): ein nicht
+ * zuordenbarer oder unzulaessiger Eintrag wird von der Verrechnung BENANNT und
+ * nicht hier stillschweigend entfernt ([P-9]/[P-20]).
+ * @param {any} m @param {string} geschossId @returns {Record<string, any>}
+ */
+export function geschossMengen(m, geschossId) {
+  const gs = alleGeschosse(m).find((x) => x.geschoss.id === String(geschossId));
+  return gs ? { ...gs.geschoss.mengen } : {};
+}
+
+/**
+ * EINE manuelle Menge eines Geschosses setzen oder zuruecksetzen ([P-20], #81).
+ * Rein: liefert eine NEUE Mappe.
+ *
+ * `wert === null` entfernt genau diesen Eintrag VOLLSTAENDIG — danach gilt wieder
+ * die berechnete Menge. Genau deshalb ist das eine eigene Operation und kein Patch:
+ * ein zusammenfuehrender Weg koennte einen Schluessel nie entfernen.
+ *
+ * Geprueft und gemeldet wird der Wert kanonisch in `storage.pruefeMenge` (der
+ * Schreibweg laeuft dort durch); die Pruefung hier ist die letzte strukturelle
+ * Schranke einer reinen Operation — sie WEIST AB statt zu runden ([P-9]) und
+ * erfindet nie eine Menge.
+ *
+ * @param {any} m @param {string} geschossId @param {string} kennung
+ * @param {number|null} wert ganze Zahl >= 0 oder null (zuruecksetzen)
+ * @returns {object} neue Mappe
+ */
+export function setzeGeschossMenge(m, geschossId, kennung, wert) {
+  const k = kennung == null ? "" : String(kennung).trim();
+  if (!k) throw new Error("Manuelle Menge ohne Positionskennung ([P-20]).");
+  if (wert !== null && wert !== undefined) {
+    if (!Number.isInteger(wert)) {
+      throw new Error(`Menge ${wert} ist nicht ganzzahlig — nur ganze Stück sind einbaubar ([P-20]).`);
+    }
+    if (wert < 0) throw new Error(`Menge ${wert} ist negativ — zulässig sind ganze Zahlen ab 0 ([P-20]).`);
+  }
+  const n = normMappe(m);
+  if (!alleGeschosse(n).some((x) => x.geschoss.id === String(geschossId))) {
+    throw new Error(`Geschoss „${geschossId}“ gibt es nicht.`);
+  }
+  return _mitGeschoss(n, String(geschossId), (gs) => {
+    const mengen = { ...(gs.mengen || {}) };
+    if (wert === null || wert === undefined) delete mengen[k]; else mengen[k] = wert;
+    return { ...gs, mengen };
+  });
 }
 
 /** Ein Geschoss ersetzen (rein). @param {any} n @param {string} geschossId @param {(gs:any)=>any} fn */
