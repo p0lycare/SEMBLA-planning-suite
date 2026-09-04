@@ -41,6 +41,51 @@ export const KATALOG_VERSION = 1;
 /** Kennung des oeffentlichen Katalogformats. */
 export const KATALOG_FORMAT = "SEMBLA-Bauteilkatalog";
 
+// --- Kanonische Vorlagenidentitaet (#102) ----------------------------------
+// Der mitgelieferte Standardkatalog ist eine UNVERAENDERLICHE Vorlage. Damit
+// „Standardkatalog“ im Browser immer denselben Inhalt bedeutet, braucht die
+// daraus geladene Ressource eine Identitaet, die NICHT am Katalognamen haengt:
+// der Name ist ein freies Anzeigefeld und wurde bisher zum Wiedererkennen
+// benutzt — dadurch galt eine lokal veraenderte Ressource als „Repo-Vorlage“,
+// und ein umbenannter Katalog war gar nicht mehr auffindbar.
+//
+// Die Identitaet leitet sich ALLEIN aus dem VORLAGENPFAD ab. Sie steht damit
+// nicht in der Datei (parseKatalog nimmt ohnehin nur format/version/name/
+// produkte an) und reist nicht in Exporte (katalogObjekt streicht sie), d. h.
+// KATALOG_VERSION bleibt 1 und das oeffentliche Dateiformat ist unberuehrt.
+
+/** Pfad der mitgelieferten Standardkatalog-Vorlage (relativ zu `docs/`). */
+export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog.json";
+
+/** Feldname des Vorlagenmarkers an der gespeicherten Browserressource. */
+export const VORLAGE_FELD = "vorlage";
+
+/**
+ * Kanonische Kennung der aus einer Repo-Vorlage geladenen Browserressource.
+ * Deterministisch aus dem Pfad — nie aus Name, Inhalt oder Reihenfolge.
+ * @param {string} pfad @returns {string}
+ */
+export function vorlageKatalogId(pfad) {
+  const roh = String(pfad == null ? "" : pfad).trim()
+    .replace(/^\.?\/+/, "").replace(/\.json$/i, "");
+  const slug = roh.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!slug) throw new Error("Vorlagenpfad fehlt — ohne Pfad gibt es keine kanonische Vorlagenidentität.");
+  return "kat-vorlage-" + slug;
+}
+
+/**
+ * Traegt eine gespeicherte Katalogressource die kanonische Vorlagenidentitaet?
+ * Geprueft wird der Marker UND die dazu passende Kennung — beides kommt nur aus
+ * dem Ladeweg der Vorlage, nie aus einer Datei und nie aus dem Namen.
+ * @param {any} k @returns {boolean}
+ */
+export function istVorlagenKatalog(k) {
+  if (!k || typeof k !== "object") return false;
+  const pfad = k[VORLAGE_FELD];
+  if (typeof pfad !== "string" || !pfad.trim()) return false;
+  try { return String(k.id) === vorlageKatalogId(pfad); } catch { return false; }
+}
+
 /** Zulaessige Einheiten = explizite Preisbasis. */
 export const EINHEITEN = ["Stk", "m", "m2"];
 

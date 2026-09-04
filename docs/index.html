@@ -296,11 +296,19 @@
       <b>Modul&nbsp;1</b> (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) und
       <b>Modul&nbsp;2</b> (Lattenstange, Beplankungsplatte, Verbinderprodukt) — jeweils direkt aus dem
       vollständigen Katalog.<br>
-      „<b>Standardkatalog laden</b>“ liest die mitgelieferte Repo-Vorlage
-      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) als <b>neuen</b> Katalog
-      und ordnet ihn dem aktiven Projekt zu; der bisherige Katalog bleibt erhalten und lässt sich
+      „<b>Standardkatalog laden</b>“ liest bei jeder Bedienung die mitgelieferte Repo-Vorlage
+      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) <b>frisch</b> und
+      ordnet sie dem aktiven Projekt zu; der bisherige Katalog bleibt erhalten und lässt sich
       oben im Projekt-Dialog wieder auswählen. Ist noch <b>gar kein</b> Katalog zugeordnet, ist er
       hier zu laden, bevor die erste Wand gezeichnet wird — sonst startet die Planung leer.<br>
+      <b>Der Standardkatalog ist eine unveränderliche Vorlage.</b> Erkannt wird sie an einer
+      kanonischen, aus dem Vorlagenpfad abgeleiteten Kennung — <b>nie am Katalognamen</b>. Erneutes
+      Laden stellt deshalb immer den aktuellen Repo-Stand her und ersetzt <b>nur</b> diese eine
+      Ressource. Die <b>erste Bearbeitung</b> (Katalogname, Produkt anlegen, bearbeiten oder löschen)
+      legt <b>automatisch eine eigene Projektkopie</b> mit neuer Kennung an, ordnet sie
+      <b>nur dem aktiven Projekt</b> zu und speichert die Änderung dort — die Vorlage, andere
+      Projekte, eigene Kataloge und frühere Kopien bleiben unverändert. Zusammengeführt oder
+      rekonstruiert wird nichts, und es gibt keine Katalog-Historie.<br>
       <b>Startklar statt leer ([P-18]):</b> Jedes Produkt kann im Feld <code>rollen</code> die
       Verwendungsstelle nennen, die es im Regelfall ausführt. Beim Anlegen einer Wand und beim
       Laden/Importieren eines Katalogs übernehmen <b>nur noch leere</b> Verwendungsstellen diese
@@ -1267,13 +1275,18 @@
     $('pp-katalog').innerHTML =
       (mitVorlage ? `<option value="${PP_VORLAGE}">SEMBLA Standardkatalog (Repo-Vorlage)</option>` : '')
       + '<option value="">– kein Katalog zugeordnet –</option>'
+      // #102: Die Vorlagenressource wird an ihrer kanonischen Kennung erkannt — nie am
+      // Namen — und in der Auswahl als unveraenderlich ausgewiesen.
       + alle.map(k => `<option value="${esc(k.id)}"${k.id === gewaehlt ? ' selected' : ''}>`
-        + `${esc(k.name)} (${(k.produkte || []).length} Produkte)</option>`).join('');
+        + `${esc(k.name)} (${(k.produkte || []).length} Produkte)`
+        + (KAT.istVorlagenKatalog(k) ? ' — unveränderliche Vorlage' : '') + '</option>').join('');
     $('pp-katalog').value = mitVorlage ? PP_VORLAGE : (gewaehlt || '');
     $('pp-katalog-hinweis').innerHTML = mitVorlage
       ? 'Vorbelegt ist der mitgelieferte <b>SEMBLA-Standardkatalog</b> (#68) — geladen und diesem '
-        + 'Projekt zugeordnet wird er erst mit „Speichern“ ([L-12]); ein bereits vorhandener '
-        + 'Standardkatalog wird dabei wiederverwendet, nicht doppelt angelegt. Abbrechen schreibt nichts.'
+        + 'Projekt zugeordnet wird er erst mit „Speichern“ ([L-12]). Er ist die <b>unveränderliche '
+        + 'Vorlage</b>: geladen wird immer der aktuelle Repo-Stand in genau eine Ressource (nie '
+        + 'doppelt), und die erste Bearbeitung legt automatisch eine eigene Projektkopie an. '
+        + 'Abbrechen schreibt nichts.'
       : (alle.length
         ? 'Der zugeordnete Katalog ist die Preisquelle dieses Projekts ([P-14]). Ohne Zuordnung wird '
           + 'das in Modul 1/2/4 <b>gemeldet</b> — es wird kein Katalog geraten ([L-12]).'
@@ -1306,15 +1319,18 @@
    * Die Standardkatalog-Vorbelegung der Anlage einloesen (#68, [L-12]). Erst NACH dem
    * Aktivsetzen des neuen Projekts aufrufen: `setzeKatalog`/`setzeProjektKatalog` ordnen
    * dem AKTIVEN Projekt zu — frueher aufgerufen bekaeme das vorher aktive Projekt still
-   * eine neue Zuordnung. Ein bereits gespeicherter Katalog mit dem Namen der Vorlage wird
-   * wiederverwendet statt als identische Ressource doppelt angelegt.
+   * eine neue Zuordnung.
+   *
+   * #102: Erkannt wird die Vorlage ueber ihre KANONISCHE, vom Vorlagenpfad abgeleitete
+   * Kennung — nie mehr ueber den Katalognamen (ein freies Anzeigefeld: umbenannt war die
+   * Vorlage unauffindbar, und ein gleichnamiger eigener Katalog wurde gekapert). Geladen
+   * wird immer der AKTUELLE Repo-Stand; er ersetzt genau den Vorlagen-Slot, waehrend
+   * eigene Kataloge und frueher angelegte Kopien unangetastet bleiben.
    */
   async function ppStandardkatalog(){
-    const vorlage = KAT.parseKatalog(await vorlageText(VORLAGE.katalog.pfad)); // prueft nur, speichert nichts
-    const vorhanden = store.listeKataloge().find(k => k.name === vorlage.name);
-    if (vorhanden) { store.setzeProjektKatalog(vorhanden.id); return { name: vorhanden.name, neu: false }; }
-    const k = store.setzeKatalog(vorlage);          // persistiert + ordnet dem aktiven Projekt zu
-    return { name: k.name, neu: true };
+    const vorher = !!store.holeVorlagenKatalog();
+    const k = store.ladeVorlagenKatalog(await vorlageText(VORLAGE.katalog.pfad), VORLAGE.katalog.pfad);
+    return { name: k.name, neu: !vorher };
   }
 
   $('pp-speichern').addEventListener('click', async () => {
@@ -1345,8 +1361,10 @@
       if (mitVorlage) {
         try {
           const k = await ppStandardkatalog();
-          katText = k.neu ? ` Der Standardkatalog „${k.name}“ wurde geladen und zugeordnet.`
-                          : ` Der vorhandene Standardkatalog „${k.name}“ wurde zugeordnet.`;
+          katText = ` Der Standardkatalog „${k.name}“ wurde aus der Repo-Vorlage geladen und `
+            + `zugeordnet — als unveränderliche Vorlage${k.neu ? '' : ' (die vorhandene Vorlagenressource '
+            + 'wurde durch den aktuellen Repo-Stand ersetzt)'}. Die erste Bearbeitung legt automatisch `
+            + 'eine eigene Projektkopie an.';
         } catch (e) {
           // Das Projekt ist angelegt; die fehlende Zuordnung wird benannt, nie geraten ([L-12]).
           katOk = false;
@@ -1605,7 +1623,10 @@
   // --- Repo-Vorlagen (bewusste Wahl, KEIN Autoload) ------------------------
   const VORLAGE = {
     wand:    { pfad: './vorlagen/SEMBLA_Musterwand.json',      quelle: 'SEMBLA_Musterwand.json (Repo-Vorlage)' },
-    katalog: { pfad: './vorlagen/SEMBLA_Standardkatalog.json', quelle: 'SEMBLA_Standardkatalog.json (Repo-Vorlage)' },
+    // Der Katalogpfad kommt aus sembla-katalog.js — er definiert zugleich die kanonische
+    // Vorlagenidentitaet der geladenen Browserressource (#102). Zwei Pfadangaben waeren zwei
+    // Identitaeten.
+    katalog: { pfad: KAT.VORLAGE_KATALOG_PFAD, quelle: 'SEMBLA_Standardkatalog.json (Repo-Vorlage)' },
   };
 
   /** Vorlagentext holen. Fehler werden benannt, nicht stillschweigend geschluckt. */
@@ -1745,6 +1766,20 @@
   function kKatalog(){
     return store.holeKatalog()
       || KAT.leererKatalog($('k-name').value.trim() || 'Neuer Katalog');
+  }
+
+  /**
+   * Meldungszusatz, wenn der Schreibvorgang den Kopierschutz ausgeloest hat (#102).
+   * Der Standardkatalog ist eine unveraenderliche Vorlage: `store.setzeKatalog` legt
+   * VOR der Aenderung eine eigenstaendige Kopie mit neuer Kennung an, ordnet sie dem
+   * AKTIVEN Projekt zu und laesst die Vorlage unberuehrt. Das wird hier benannt, nie
+   * stillschweigend getan.
+   */
+  function kopieText(erg){
+    if (!erg || !erg.kopie_von) return '';
+    return ' Der Standardkatalog ist die unveränderliche Vorlage — die Änderung wurde deshalb auf '
+      + `einer automatisch angelegten Projektkopie „${erg.name}“ gespeichert und diese dem aktiven `
+      + 'Projekt zugeordnet. Die Vorlage selbst und andere Projekte bleiben unverändert.';
   }
 
   // --- Produktpflege-Dialog ([P-16]) --------------------------------------
@@ -1898,14 +1933,16 @@
       kat.produkte.push(p);
     }
     kat.name = $('k-name').value.trim() || kat.name;
-    try { store.setzeKatalog(kat); }
+    let erg;
+    try { erg = store.setzeKatalog(kat); }
     catch (e) { kpZeige('Katalog nicht gespeichert: ' + fehlerText(e), false); return; }
     const war = kEditId != null, umbenannt = war && String(kEditId) !== String(p.id);
     const alteId = kEditId, modus = kpModus;
-    kpSchliesse();
+    kpSchliesse(); katLaden();
     kZeige((war ? 'Produkt geändert: ' : modus === 'duplizieren' ? 'Kopie angelegt: ' : 'Produkt angelegt: ')
       + p.bezeichnung + ' (' + p.id + ')'
-      + (umbenannt ? ` — ID von „${alteId}“ geändert; Projekte mit der alten Referenz warnen jetzt.` : ''), true);
+      + (umbenannt ? ` — ID von „${alteId}“ geändert; Projekte mit der alten Referenz warnen jetzt.` : '')
+      + kopieText(erg), true);
   });
 
   $('k-filter').addEventListener('change', (ev) => {
@@ -1953,9 +1990,15 @@
 
   $('k-vorlage').addEventListener('click', async () => {
     try {
-      const k = await store.importiereKatalogText(await vorlageText(VORLAGE.katalog.pfad));
+      // #102: Bei JEDER Bedienung wird die aktuelle Repo-Vorlage frisch gelesen und
+      // ausschliesslich der kanonische Vorlagen-Slot durch diesen Inhalt ersetzt. Eigene
+      // Kataloge und frueher entstandene Projektkopien behalten ihre Kennungen und bleiben
+      // unangetastet — es wird nichts zusammengefuehrt und nichts rekonstruiert.
+      const k = store.ladeVorlagenKatalog(await vorlageText(VORLAGE.katalog.pfad), VORLAGE.katalog.pfad);
       kpSchliesse(); katLaden();
       kZeige(`Standardkatalog geladen und zugeordnet: ${k.name} (${k.produkte.length} Produkt(e)). `
+        + 'Er ist die unveränderliche Vorlage — die erste Bearbeitung legt automatisch eine eigene '
+        + 'Projektkopie an. '
         + 'Vorläufige, fachlich unbestätigte Beispielwerte sind je Produkt gekennzeichnet.'
         + vorbelegText(), true);
     } catch (e) {
@@ -1986,7 +2029,15 @@
     const k = store.holeKatalog(); if (!k) return;
     const name = $('k-name').value.trim();
     if (!name) return;                                  // leerer Name wird nicht gespeichert
-    try { store.setzeKatalog({ ...k, name }); } catch { /* Meldung erst beim Speichern eines Produkts */ }
+    // #102: Auch der Katalogname ist ein Schreibweg und laeuft deshalb durch denselben
+    // Kopierschutz. Der Zusatz wird genau EINMAL gemeldet — naemlich bei dem Schreibvorgang,
+    // der die Kopie erzeugt hat; danach liefert `holeKatalog()` bereits die Kopie, ein
+    // zweites Kopieren kann nicht auftreten. Das Eingabefeld selbst wird nicht neu
+    // geschrieben (katRender laeuft ueber das Abo), damit die Eingabe nicht springt.
+    let erg;
+    try { erg = store.setzeKatalog({ ...k, name }); }
+    catch { return; }                                   // Meldung erst beim Speichern eines Produkts
+    if (erg && erg.kopie_von) kZeige('Katalogname geändert.' + kopieText(erg), true);
   });
 
   // Zeilenaktionen (Ereignisdelegation: Bearbeiten/Duplizieren/Löschen)
@@ -2009,10 +2060,13 @@
       if (!confirm(`Produkt „${p.bezeichnung}“ aus dem Katalog löschen? Projekte, die es referenzieren, `
         + 'zeigen danach eine Warnung — die Auswahl wird nicht automatisch bereinigt.')) return;
       kat.produkte = kat.produkte.filter(x => String(x.id) !== String(p.id));
-      try { store.setzeKatalog(kat); }
+      let erg;
+      try { erg = store.setzeKatalog(kat); }
       catch (e) { kZeige('Fehler: ' + fehlerText(e), false); return; }
       if (String(kEditId) === String(p.id)) kpSchliesse();
-      kZeige('Gelöscht: ' + p.bezeichnung + '. Projektauswahl wurde nicht bereinigt.', true);
+      katLaden();
+      kZeige('Gelöscht: ' + p.bezeichnung + '. Projektauswahl wurde nicht bereinigt.'
+        + kopieText(erg), true);
     }
   });
 
@@ -2065,6 +2119,11 @@
     $('k-info').textContent = kat
       ? `Geladen: „${kat.name}“ · ${liste.length} Produkt(e) · Katalogformat v${KAT.KATALOG_VERSION}`
         + (m ? ` · zugeordnet zu Projekt „${m.projekt.name}“` : ' · keinem Projekt zugeordnet')
+        // #102: Vorlage und bearbeitbare Kopie sind sichtbar zu unterscheiden.
+        + (st.vorlage
+            ? ' · unveränderliche Repo-Vorlage — die erste Bearbeitung legt automatisch eine '
+              + 'eigene Projektkopie an'
+            : ' · bearbeitbarer Katalog')
       : st.status === 'fehlt' ? 'Der zugeordnete Katalog fehlt in diesem Browser.'
       : st.status === 'mehrdeutig' ? 'Mehrere Kataloge, kein aktives Projekt — es wird keiner geraten ([L-12]).'
       : 'Kein Katalog zugeordnet — neu anlegen, ein Produkt anlegen oder eine Katalog-Datei importieren.';

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260904-10",
+    datum: "2026-09-04",
+    typ: "fix",
+    issue: 102,
+    titel: "Standardkatalog bleibt unveränderliche Vorlage — die erste Bearbeitung legt automatisch eine Projektkopie an",
+    testbitte: "In Modul 0 „Standardkatalog laden“, dann Katalognamen oder ein Produkt ändern: "
+      + "die Meldung nennt die automatisch angelegte Projektkopie; erneutes Laden zeigt wieder "
+      + "den unveränderten Repo-Inhalt, eigene Kataloge bleiben erhalten.",
+  },
+  {
     id: "chg-20260904-09",
     datum: "2026-09-04",
     typ: "feature",

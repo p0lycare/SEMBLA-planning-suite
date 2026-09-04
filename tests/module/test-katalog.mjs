@@ -499,6 +499,51 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   })());
 }
 
+// --- 12) Kanonische Vorlagenidentitaet (#102) -----------------------------
+// Der mitgelieferte Standardkatalog ist eine UNVERAENDERLICHE Vorlage. Erkannt wird die
+// daraus geladene Browserressource an einer Kennung, die ALLEIN aus dem Vorlagenpfad
+// folgt — nie am Katalognamen (freies Anzeigefeld) und nie am Inhalt.
+{
+  const PFAD = KAT.VORLAGE_KATALOG_PFAD;
+  ok("#102 der Vorlagenpfad zeigt auf die mitgelieferte Repo-Datei",
+    PFAD === "./vorlagen/SEMBLA_Standardkatalog.json");
+  const id = KAT.vorlageKatalogId(PFAD);
+  ok("#102 die Kennung ist deterministisch und pfadabgeleitet",
+    id === "kat-vorlage-vorlagen-sembla-standardkatalog"
+    && KAT.vorlageKatalogId(PFAD) === id
+    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog.json") === id);
+  ok("#102 ein anderer Pfad ergibt eine andere Kennung",
+    KAT.vorlageKatalogId("./vorlagen/Anderer.json") !== id);
+  let warfLeer = false;
+  try { KAT.vorlageKatalogId("   "); } catch { warfLeer = true; }
+  ok("#102 ohne Pfad gibt es keine Identitaet — benannt abgewiesen statt geraten", warfLeer);
+
+  // Erkannt wird NUR die Kombination aus Marker und passender Kennung.
+  const echt = { id, [KAT.VORLAGE_FELD]: PFAD, name: "SEMBLA Standardkatalog", produkte: [] };
+  ok("#102 die Vorlagenressource wird an Marker UND Kennung erkannt", KAT.istVorlagenKatalog(echt));
+  ok("#102 der blosse NAME macht keinen Katalog zur Vorlage",
+    !KAT.istVorlagenKatalog({ id: "kat-1", name: "SEMBLA Standardkatalog", produkte: [] }));
+  ok("#102 ein Marker mit fremder Kennung zaehlt nicht (Kopie bleibt Kopie)",
+    !KAT.istVorlagenKatalog({ ...echt, id: "kat-1" }));
+  ok("#102 eine Kennung ohne Marker zaehlt nicht",
+    !KAT.istVorlagenKatalog({ id, name: "x", produkte: [] }));
+  ok("#102 leere/kaputte Eingaben sind keine Vorlage",
+    !KAT.istVorlagenKatalog(null) && !KAT.istVorlagenKatalog(undefined)
+    && !KAT.istVorlagenKatalog({ ...echt, [KAT.VORLAGE_FELD]: "" }));
+
+  // Die Identitaet ist BROWSERZUSTAND: sie steht nicht in der Datei und reist nicht mit.
+  const roh = readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const datei = JSON.parse(roh);
+  ok("#102 die Vorlagendatei traegt weder Kennung noch Marker",
+    !("id" in datei) && !(KAT.VORLAGE_FELD in datei));
+  ok("#102 parseKatalog uebernimmt keine Identitaet aus der Datei",
+    !("id" in KAT.parseKatalog(roh)) && !(KAT.VORLAGE_FELD in KAT.parseKatalog(roh)));
+  ok("#102 katalogObjekt streicht Kennung und Marker — kein Formatbump",
+    !("id" in KAT.katalogObjekt(echt)) && !(KAT.VORLAGE_FELD in KAT.katalogObjekt(echt))
+    && KAT.katalogObjekt(echt).version === KAT.KATALOG_VERSION && KAT.KATALOG_VERSION === 1);
+}
+
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

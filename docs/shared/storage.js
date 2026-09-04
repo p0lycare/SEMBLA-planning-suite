@@ -59,8 +59,9 @@
  * ES-Modul: wird im Browser per <script type="module"> geladen. Kein Node-Betrieb.
  */
 
-import { katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag, rolle,
-         rollenIds, rollenVonModul, validiereKatalog } from "./sembla-katalog.js";
+import { istVorlagenKatalog, katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag,
+         rolle, rollenIds, rollenVonModul, validiereKatalog,
+         VORLAGE_FELD, VORLAGE_KATALOG_PFAD, vorlageKatalogId } from "./sembla-katalog.js";
 import { alleGeschosse, alleWaende, bemassungenOhneWand, benenneUm as benenneInMappeUm,
          entferneGebaeude as entferneGebaeudeAusMappe,
          entferneGeschoss as entferneGeschossAusMappe,
@@ -692,7 +693,7 @@ export function katalogNachId(id) {
 
 /**
  * Zuordnungsstatus des wirksamen Katalogs ([L-12]) — die Begruendung zu `holeKatalog`.
- * @returns {{status:'ok'|'kein_projekt'|'nicht_zugeordnet'|'fehlt'|'mehrdeutig', katalog:object|null, id:string|null}}
+ * @returns {{status:string, katalog:object|null, id:string|null, vorlage:boolean}}
  */
 export function katalogStatus() {
   const m = holeMappe();
@@ -704,13 +705,13 @@ export function katalogStatus() {
     let zeiger = null;
     try { zeiger = localStorage.getItem(K_AKTIV_KAT); } catch { /* ignore */ }
     const k = zeiger ? katalogNachId(zeiger) : null;
-    return k ? { status: "ok", katalog: k, id: String(zeiger) }
-             : { status: "kein_projekt", katalog: null, id: null };
+    return k ? { status: "ok", katalog: k, id: String(zeiger), vorlage: istVorlagenKatalog(k) }
+             : { status: "kein_projekt", katalog: null, id: null, vorlage: false };
   }
-  if (!m.katalog) return { status: "nicht_zugeordnet", katalog: null, id: null };
+  if (!m.katalog) return { status: "nicht_zugeordnet", katalog: null, id: null, vorlage: false };
   const k = katalogNachId(m.katalog);
-  return k ? { status: "ok", katalog: k, id: String(m.katalog) }
-           : { status: "fehlt", katalog: null, id: String(m.katalog) };
+  return k ? { status: "ok", katalog: k, id: String(m.katalog), vorlage: istVorlagenKatalog(k) }
+           : { status: "fehlt", katalog: null, id: String(m.katalog), vorlage: false };
 }
 
 /** @returns {object|null} der wirksame Katalog des aktiven Projekts ([L-12]). */
@@ -719,26 +720,81 @@ export function holeKatalog() {
 }
 
 /**
+ * EIN Katalog-Slot schreiben und — sofern ein Projekt aktiv ist — diesem zuordnen.
+ * Der EINZIGE Weg in `sembla:kataloge`; genau EIN Schluessel wird angefasst, alle
+ * uebrigen Kataloge bleiben unveraendert.
+ * @param {object} katalog @param {string} id @param {string|null} vorlagePfad
+ * @returns {object} der gespeicherte Katalog
+ */
+function _speichereKatalog(katalog, id, vorlagePfad) {
+  const fehler = validiereKatalog(katalog);
+  if (fehler.length) throw new Error("Katalog ungueltig:\n– " + fehler.join("\n– "));
+  const m = holeMappe();
+  // katalogObjekt() streicht alle internen Zusatzfelder — Kennung, Zeitstempel und
+  // der Vorlagenmarker werden deshalb AUSDRUECKLICH wieder gesetzt.
+  const gespeichert = { ...katalogObjekt(katalog), id: String(id), geaendert: _jetzt() };
+  if (vorlagePfad) gespeichert[VORLAGE_FELD] = String(vorlagePfad);
+  const speicher = _leseKataloge();
+  speicher[gespeichert.id] = gespeichert;
+  _schreibeKataloge(speicher);
+  localStorage.setItem(K_AKTIV_KAT, gespeichert.id);   // greift nur ohne aktives Projekt
+  if (m && m.katalog !== gespeichert.id) _schreibeMappe(setzeKatalogRef(m, gespeichert.id));
+  _benachrichtige();
+  return gespeichert;
+}
+
+/**
  * Katalog speichern und — sofern ein Projekt aktiv ist — diesem zuordnen ([L-12]).
  * Ungueltige Kataloge werden abgelehnt (Fehler), nie stillschweigend zurechtgebogen.
  * Die Kennung bleibt stabil: ein Katalog MIT Kennung wird an ihr fortgeschrieben,
  * einer ohne bekommt eine neue. So ueberschreibt ein neu angelegter oder
  * importierter Katalog nie den bisherigen — er tritt neben ihn und wird zugeordnet.
+ *
+ * KOPIERSCHUTZ (#102): Zeigt die Kennung auf die kanonische VORLAGENRESSOURCE
+ * (der aus `docs/vorlagen/` geladene Standardkatalog), wird sie NICHT veraendert.
+ * Stattdessen entsteht VOR der Aenderung eine eigenstaendige Kopie mit NEUER
+ * Kennung und ohne Vorlagenmarker; nur das AKTIVE Projekt zieht auf sie um.
+ * Weil jeder Schreibweg der Oberflaeche (Katalogname, Produkt anlegen/bearbeiten/
+ * loeschen, Import) durch genau diese Funktion laeuft, gibt es dazu keinen
+ * ungeschuetzten Nebenweg. Massgebend ist der GESPEICHERTE Stand der Kennung —
+ * nie ein vom Aufrufer mitgebrachter Marker und nie der Katalogname.
+ * Der Rueckgabewert nennt eine erzeugte Kopie in `kopie_von`; gespeichert wird
+ * dieses Feld nicht (es ist Meldung, kein Datum — keine Historie, [P-1]).
  * @param {object} katalog @returns {object} der gespeicherte Katalog
  */
 export function setzeKatalog(katalog) {
-  const fehler = validiereKatalog(katalog);
-  if (fehler.length) throw new Error("Katalog ungueltig:\n– " + fehler.join("\n– "));
-  const m = holeMappe();
-  const id = String((katalog && katalog.id) || neueMappenId("kat"));
-  const gespeichert = { ...katalogObjekt(katalog), id, geaendert: _jetzt() };
-  const speicher = _leseKataloge();
-  speicher[id] = gespeichert;
-  _schreibeKataloge(speicher);
-  localStorage.setItem(K_AKTIV_KAT, id);          // greift nur ohne aktives Projekt
-  if (m && m.katalog !== id) _schreibeMappe(setzeKatalogRef(m, id));
-  _benachrichtige();
-  return gespeichert;
+  const id = String((katalog && katalog.id) || "");
+  const bestand = id ? _leseKataloge()[id] : null;
+  if (id && istVorlagenKatalog(bestand)) {
+    const kopie = _speichereKatalog(katalog, String(neueMappenId("kat")), null);
+    return { ...kopie, kopie_von: id };
+  }
+  return _speichereKatalog(katalog, id || String(neueMappenId("kat")), null);
+}
+
+/** Kanonische Kennung der Standardkatalog-Vorlage ([#102]). @param {string} [pfad] */
+export function vorlagenKatalogId(pfad) {
+  return vorlageKatalogId(pfad || VORLAGE_KATALOG_PFAD);
+}
+
+/** Die gespeicherte Vorlagenressource (null = nicht in diesem Browser). @param {string} [pfad] */
+export function holeVorlagenKatalog(pfad) {
+  const k = katalogNachId(vorlagenKatalogId(pfad));
+  return istVorlagenKatalog(k) ? k : null;
+}
+
+/**
+ * Den Text der Repo-Vorlage als UNVERAENDERLICHE Standardkatalog-Ressource ablegen
+ * ([#102]). Der EINZIGE Weg, der den kanonischen Vorlagen-Slot schreiben darf — und
+ * damit bewusst am Kopierschutz von `setzeKatalog` vorbei. Ersetzt ausschliesslich
+ * diesen einen Slot durch den frisch gelesenen Inhalt: eigene Kataloge und frueher
+ * angelegte Kopien behalten ihre eigenen Kennungen und bleiben unangetastet.
+ * Rekonstruiert wird nichts — der Inhalt kommt allein aus dem uebergebenen Text.
+ * @param {string} text @param {string} [pfad] @returns {object} der gespeicherte Katalog
+ */
+export function ladeVorlagenKatalog(text, pfad) {
+  const p = String(pfad || VORLAGE_KATALOG_PFAD);
+  return _speichereKatalog(parseKatalog(text), vorlageKatalogId(p), p);
 }
 
 /**

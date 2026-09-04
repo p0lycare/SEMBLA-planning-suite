@@ -1387,7 +1387,9 @@ globalThis.fetch = echtesFetch;
     && store.holeMappe().projekt.kopfdaten.plan_nr === '07');
   const idB = wandAnlegen(gsB, { name:'Wand Süd 1' });
   // #56: Der Katalog wird ausdruecklich geladen (frueher tat das der entfallene
-  // Anlegen-Handler nebenbei) — je Projekt ein eigener, s. [L-12] weiter unten.
+  // Anlegen-Handler nebenbei). Seit #102 ist der Standardkatalog EINE unveraenderliche
+  // Vorlagenressource mit kanonischer Kennung: beide Projekte zeigen darauf, und getrennt
+  // werden sie erst durch den Kopierschutz beim ersten Schreiben (s. [L-12] weiter unten).
   $('k-vorlage').dispatch('click');
   await new Promise(r => setTimeout(r, 0));
   ok('[L-11] die Wand des Projekts bekommt dessen Kopfdaten', (() => {
@@ -1589,9 +1591,13 @@ globalThis.fetch = echtesFetch;
     return st.status === 'ok' && st.id === store.holeMappe().katalog
       && st.katalog.id === store.holeKatalog().id;
   })());
-  ok('[L-12] das andere Projekt haengt an einem EIGENEN Katalog',
-    !!store.projektMappe(pB.projekt.id).katalog
-    && store.projektMappe(pB.projekt.id).katalog !== store.holeMappe().katalog);
+  // #102: Beide Projekte zeigen hier auf DIESELBE unveraenderliche Vorlagenressource — genau
+  // das ist gewollt, weil „Standardkatalog" immer denselben Repo-Inhalt bedeuten muss. Eigene
+  // Kataloge bleiben davon unberuehrt (Gegenprobe), und getrennt wird erst beim Schreiben.
+  ok('[L-12] das andere Projekt haengt an der kanonischen Standardvorlage',
+    store.projektMappe(pB.projekt.id).katalog === store.vorlagenKatalogId()
+    && store.projektMappe(pB.projekt.id).katalog === store.holeMappe().katalog
+    && KAT.istVorlagenKatalog(store.katalogNachId(store.vorlagenKatalogId())));
   // Zuordnung ausdruecklich aufheben — danach wird das gemeldet, nicht geraten
   baum('prj-aktiv', pB.projekt.id);
   baum('prj-bearbeiten', pB.projekt.id);
@@ -1789,6 +1795,170 @@ globalThis.fetch = echtesFetch;
     && katSlot() === katZwischen);
 
   // Zurueck zur Ausgangslage der Folgeabschnitte: das Testprojekt bleibt der aktive Stand.
+  store.setzeAktivesProjekt(prj0.projekt.id);
+}
+
+// --- 8n) #102 Standardkatalog: unveraenderliche Vorlage, Kopie beim Bearbeiten --
+// Der ECHTE Nutzerpfad an der echten Oberflaeche und gegen die ECHTE Repo-Datei
+// (installFetch liefert docs/vorlagen/SEMBLA_Standardkatalog.json aus dem Checkout):
+// Standardkatalog ueber den Knopf laden, Produkt und Katalognamen bearbeiten, Kennungen
+// und Projektzuordnungen pruefen, danach denselben Knopf erneut druecken und den
+// unveraenderten Repo-Inhalt sehen. Dazu der Mehrprojektfall: die Bearbeitung in Projekt A
+// laesst Inhalt UND Zuordnung von Projekt B unberuehrt.
+{
+  const kataloge = () => JSON.parse(localStorage.getItem('sembla:kataloge') || '{}');
+  const dateiKat = JSON.parse(vorlageDatei(V_KAT));
+  const vId = store.vorlagenKatalogId();
+
+  // Ausgangslage: zwei frische Projekte, dazu ein bewusst eigener Katalog in Projekt B.
+  const p102A = await projektAnlegen('Kopierschutz A');
+  const p102B = await projektAnlegen('Kopierschutz B');
+  const eigen102 = store.setzeKatalog(KAT.leererKatalog('Eigener Katalog #102'));
+  const eigenStand = JSON.stringify(kataloge()[eigen102.id]);
+
+  // (a) Laden: kanonische Kennung, dem aktiven Projekt zugeordnet, sichtbar als Vorlage
+  store.setzeAktivesProjekt(p102A.projekt.id);
+  await $('k-vorlage').dispatch('click');
+  ok('#102 der Knopf laedt die Repo-Vorlage unter der kanonischen Kennung',
+    !kFehler() && kat().id === vId && KAT.istVorlagenKatalog(kat())
+    && kAnzahl() === V_KAT_ANZ && kat().name === dateiKat.name
+    && store.holeMappe().katalog === vId);
+  ok('#102 die Vorlage wird aus der ECHTEN Repo-Datei gelesen',
+    fetchLog[fetchLog.length - 1] === KAT.VORLAGE_KATALOG_PFAD);
+  ok('#102 die Oberflaeche weist sie sichtbar als unveraenderliche Vorlage aus',
+    /unveränderliche Repo-Vorlage/.test($('k-info').textContent)
+    && !/bearbeitbarer Katalog/.test($('k-info').textContent));
+  ok('#102 die Erfolgsmeldung kuendigt die automatische Projektkopie an',
+    /unveränderliche Vorlage/.test(kMsgTxt()) && /Projektkopie/.test(kMsgTxt()));
+  ok('#102 der eigene Katalog bleibt beim Laden unangetastet',
+    JSON.stringify(kataloge()[eigen102.id]) === eigenStand);
+
+  // (b) Projekt B haengt an DERSELBEN Vorlagenressource — der Mehrprojektfall
+  baum('prj-aktiv', p102B.projekt.id);
+  baum('prj-bearbeiten', p102B.projekt.id);
+  $('pp-katalog').value = vId;
+  await $('pp-speichern').dispatch('click');
+  ok('#102 auch Projekt B ist der Vorlage zugeordnet',
+    store.projektMappe(p102B.projekt.id).katalog === vId);
+  ok('#102 die Auswahl weist die Vorlage als unveraenderlich aus',
+    /unveränderliche Vorlage/.test($('pp-katalog').innerHTML));
+
+  // (c) Produkt bearbeiten in Projekt A -> Kopie mit NEUER Kennung, nur A zieht um
+  baum('prj-aktiv', p102A.projekt.id);
+  const vorlageStand = JSON.stringify(kataloge()[vId]);
+  const anzahlVor102 = Object.keys(kataloge()).length;
+  kZeile('bearbeiten', 'stein-i3-375');
+  $('kp-preis').value = '11.11';
+  kpSpeichern();
+  const kopie102 = kat();
+  ok('#102 die Produktaenderung landet auf einer Kopie mit neuer Kennung',
+    kopie102.id !== vId && KAT.produkt(kopie102, 'stein-i3-375').preis === 11.11
+    && Object.keys(kataloge()).length === anzahlVor102 + 1);
+  ok('#102 die Erfolgsmeldung nennt die automatisch angelegte Projektkopie',
+    !kFehler() && /automatisch angelegten Projektkopie/.test(kMsgTxt())
+    && /Vorlage/.test(kMsgTxt()));
+  ok('#102 die Kopie ist selbst keine Vorlage mehr',
+    !KAT.istVorlagenKatalog(kataloge()[kopie102.id]) && !kFehler()
+    && /bearbeitbarer Katalog/.test($('k-info').textContent));
+  ok('#102 die Vorlage bleibt byte-unveraendert',
+    JSON.stringify(kataloge()[vId]) === vorlageStand
+    && KAT.produkt(kataloge()[vId], 'stein-i3-375').preis === 9.5);
+  ok('#102 nur das aktive Projekt zieht auf die Kopie um — Projekt B bleibt an der Vorlage',
+    store.projektMappe(p102A.projekt.id).katalog === kopie102.id
+    && store.projektMappe(p102B.projekt.id).katalog === vId);
+  ok('#102 der eigene Katalog wurde dabei nicht angefasst',
+    JSON.stringify(kataloge()[eigen102.id]) === eigenStand);
+
+  // (d) Der Kopierschutz greift GENAU EINMAL — die zweite Aenderung bleibt auf der Kopie
+  kZeile('bearbeiten', 'stein-i2-250');
+  $('kp-preis').value = '8.88';
+  kpSpeichern();
+  ok('#102 die zweite Aenderung kopiert NICHT erneut',
+    kat().id === kopie102.id && KAT.produkt(kat(), 'stein-i2-250').preis === 8.88
+    && Object.keys(kataloge()).length === anzahlVor102 + 1
+    && !/automatisch angelegten Projektkopie/.test(kMsgTxt()));
+
+  // (e) Auch der KATALOGNAME ist ein geschuetzter Schreibweg
+  baum('prj-aktiv', p102B.projekt.id);
+  ok('#102 Projekt B arbeitet weiter mit der unveraenderten Vorlage',
+    kat().id === vId && KAT.produkt(kat(), 'stein-i3-375').preis === 9.5);
+  const anzahlVorName = Object.keys(kataloge()).length;
+  $('k-name').value = 'Umbenannt in B';
+  $('k-name').dispatch('input');
+  const kopieB = kat();
+  ok('#102 auch die Namensaenderung erzeugt zuerst eine Kopie',
+    kopieB.id !== vId && kopieB.name === 'Umbenannt in B'
+    && Object.keys(kataloge()).length === anzahlVorName + 1
+    && kataloge()[vId].name === dateiKat.name);
+  ok('#102 die Namensaenderung meldet die Projektkopie sichtbar',
+    !kFehler() && /automatisch angelegten Projektkopie/.test(kMsgTxt()));
+  ok('#102 nur Projekt B zieht um — Projekt A bleibt auf seiner eigenen Kopie',
+    store.projektMappe(p102B.projekt.id).katalog === kopieB.id
+    && store.projektMappe(p102A.projekt.id).katalog === kopie102.id);
+  // Weitertippen darf KEINE zweite Kopie erzeugen
+  $('k-name').value = 'Umbenannt in B2';
+  $('k-name').dispatch('input');
+  ok('#102 Weitertippen schreibt dieselbe Kopie fort, statt erneut zu kopieren',
+    kat().id === kopieB.id && kat().name === 'Umbenannt in B2'
+    && Object.keys(kataloge()).length === anzahlVorName + 1);
+
+  // (f) Produkt LOESCHEN ist ebenfalls geschuetzt
+  baum('prj-aktiv', p102A.projekt.id);
+  store.setzeProjektKatalog(vId);
+  const anzahlVorLoesch = Object.keys(kataloge()).length;
+  confirmAntwort = true;
+  kZeile('produkt-loeschen', 'stein-i2-250');
+  ok('#102 auch das Loeschen eines Produkts kopiert zuerst',
+    kat().id !== vId && !KAT.produkt(kat(), 'stein-i2-250')
+    && !!KAT.produkt(kataloge()[vId], 'stein-i2-250')
+    && Object.keys(kataloge()).length === anzahlVorLoesch + 1
+    && /automatisch angelegten Projektkopie/.test(kMsgTxt()));
+  const loeschKopie = kat().id;
+  confirmAntwort = false;
+
+  // (g) Erneutes Laden stellt den unveraenderten Repo-Stand her — Kopien bleiben
+  const kopieStand = JSON.stringify(kataloge()[kopie102.id]);
+  const anzahlVorReload = Object.keys(kataloge()).length;
+  await $('k-vorlage').dispatch('click');
+  ok('#102 erneutes Laden liefert wieder den unveraenderten Repo-Inhalt',
+    !kFehler() && kat().id === vId && kAnzahl() === V_KAT_ANZ
+    && kat().name === dateiKat.name
+    && KAT.produkt(kat(), 'stein-i3-375').preis === 9.5
+    && !!KAT.produkt(kat(), 'stein-i2-250'));
+  ok('#102 dabei entsteht KEIN Duplikat — nur der Vorlagen-Slot wird ersetzt',
+    Object.keys(kataloge()).length === anzahlVorReload);
+  ok('#102 bestehende Kopien und eigene Kataloge ueberleben das Laden unveraendert',
+    JSON.stringify(kataloge()[kopie102.id]) === kopieStand
+    && kataloge()[kopieB.id].name === 'Umbenannt in B2'
+    && !KAT.produkt(kataloge()[loeschKopie], 'stein-i2-250')
+    && JSON.stringify(kataloge()[eigen102.id]) === eigenStand);
+  ok('#102 der Inhalt der Vorlagenressource ist der Inhalt der Repo-Datei',
+    JSON.stringify(KAT.katalogObjekt(kataloge()[vId]))
+      === JSON.stringify(KAT.katalogObjekt(KAT.parseKatalog(vorlageDatei(V_KAT)))));
+
+  // (h) Kein Namensvergleich mehr: ein gleichnamiger eigener Katalog wird nie gekapert
+  const doppelt = store.setzeKatalog({ ...KAT.leererKatalog(dateiKat.name),
+    produkte: [{ id:'x-1', kategorie:'verbinder', bezeichnung:'X', einheit:'Stk', preis:1 }] });
+  ok('#102 ein gleichnamiger eigener Katalog ist keine Vorlage',
+    doppelt.id !== vId && !KAT.istVorlagenKatalog(kataloge()[doppelt.id]));
+  const doppeltStand = JSON.stringify(kataloge()[doppelt.id]);
+  await $('k-vorlage').dispatch('click');
+  ok('#102 das Laden fasst ihn nicht an und ordnet weiterhin die Vorlage zu',
+    JSON.stringify(kataloge()[doppelt.id]) === doppeltStand
+    && store.holeMappe().katalog === vId && kAnzahl() === V_KAT_ANZ);
+  const doppeltNeu = store.setzeKatalog({ ...kataloge()[doppelt.id], name: 'Doch eigen' });
+  ok('#102 ein eigener Katalog wird nie automatisch kopiert oder umbenannt',
+    doppeltNeu.id === doppelt.id && !doppeltNeu.kopie_von);
+
+  // (i) Kein neues oeffentliches Feld, kein Versionssprung
+  ok('#102 Kennung und Vorlagenmarker bleiben Browserzustand',
+    !localStorage.getItem('sembla:projekte').includes('"' + KAT.VORLAGE_FELD + '"')
+    && !localStorage.getItem('sembla:elemente').includes('"' + KAT.VORLAGE_FELD + '"')
+    && !(KAT.VORLAGE_FELD in KAT.katalogObjekt(kataloge()[vId])));
+  ok('#102 die Versionsachsen bleiben unveraendert',
+    KAT.KATALOG_VERSION === 1 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6);
+
+  // Zurueck zur Ausgangslage der Folgeabschnitte.
   store.setzeAktivesProjekt(prj0.projekt.id);
 }
 

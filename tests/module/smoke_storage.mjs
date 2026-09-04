@@ -1252,5 +1252,120 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
   }
 }
 
+// --- 19) Standardkatalog: unveraenderliche Vorlage + Copy-on-write (#102) ---
+// Der ausgelieferte Standardkatalog darf im Browser nie etwas anderes bedeuten als die
+// Repo-Vorlage. Geprueft wird die Speicherschicht am ECHTEN Vorlagentext aus dem Checkout:
+// kanonische, pfadabgeleitete Kennung; frisches Laden ersetzt genau diesen einen Slot;
+// der erste Schreibzugriff erzeugt EINMALIG eine Kopie mit neuer Kennung, die nur das
+// AKTIVE Projekt zugeordnet bekommt. Eigene Kataloge und frueher entstandene Kopien
+// bleiben dabei unangetastet.
+{
+  const { readFileSync } = await import("node:fs");
+  // globalThis.URL ist hier durch das Blob-Polyfill ersetzt — der echte WHATWG-URL
+  // kommt deshalb ausdruecklich aus node:url.
+  const { URL: NodeURL } = await import("node:url");
+  const PM = await import("../../docs/shared/sembla-projektmappe.js");
+  const PFAD = KAT.VORLAGE_KATALOG_PFAD;
+  const vorlageText = () =>
+    readFileSync(new NodeURL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const kataloge = () => JSON.parse(localStorage.getItem("sembla:kataloge") || "{}");
+
+  // Sauberer Ausgangsstand: zwei Projekte, dazu ein bewusst eigener Katalog.
+  localStorage.removeItem("sembla:projekte");
+  localStorage.removeItem("sembla:kataloge");
+  localStorage.removeItem("sembla:aktiv:projekt");
+  localStorage.removeItem("sembla:aktiv:katalog");
+  const pA102 = store.fuegeProjektHinzu("Projekt A");
+  const pB102 = store.fuegeProjektHinzu("Projekt B");
+  store.setzeAktivesProjekt(pA102.projekt.id);
+  const eigen = store.setzeKatalog(KAT.leererKatalog("Eigener Katalog"));
+  const eigenStand = JSON.stringify(kataloge()[eigen.id]);
+
+  // (a) Kanonische, pfadabgeleitete Identitaet — nie ueber den Namen
+  const vId = store.vorlagenKatalogId();
+  t("[#102] die Vorlagenkennung kommt aus dem Pfad", vId === KAT.vorlageKatalogId(PFAD));
+  t("[#102] ohne geladene Vorlage gibt es keine Vorlagenressource",
+    store.holeVorlagenKatalog() === null);
+  const v1 = store.ladeVorlagenKatalog(vorlageText(), PFAD);
+  const dateiProdukte = JSON.parse(vorlageText()).produkte.length;
+  t("[#102] Laden legt die Ressource unter der kanonischen Kennung ab",
+    v1.id === vId && KAT.istVorlagenKatalog(v1) && v1.produkte.length === dateiProdukte
+    && store.holeVorlagenKatalog().id === vId);
+  t("[#102] die Vorlage wird dem aktiven Projekt zugeordnet ([L-12])",
+    store.holeMappe().katalog === vId && store.holeKatalog().id === vId
+    && store.katalogStatus().vorlage === true);
+  t("[#102] der eigene Katalog bleibt dabei unveraendert erhalten",
+    JSON.stringify(kataloge()[eigen.id]) === eigenStand && store.listeKataloge().length === 2);
+
+  // (b) Erneutes Laden ersetzt GENAU diesen Slot — es entsteht kein Duplikat
+  const v2 = store.ladeVorlagenKatalog(vorlageText(), PFAD);
+  t("[#102] erneutes Laden ersetzt denselben Slot statt zu duplizieren",
+    v2.id === vId && Object.keys(kataloge()).length === 2);
+
+  // (c) Projekt B haengt ebenfalls an der Vorlage — dieselbe kanonische Ressource
+  store.setzeAktivesProjekt(pB102.projekt.id);
+  store.setzeProjektKatalog(vId);
+  store.setzeAktivesProjekt(pA102.projekt.id);
+
+  // (d) Copy-on-write: der erste Schreibzugriff kopiert VOR der Aenderung
+  const vorlageStand = JSON.stringify(kataloge()[vId]);
+  const kopie = store.setzeKatalog({ ...store.holeKatalog(), name: "Bearbeitet in A" });
+  t("[#102] der Schreibzugriff erzeugt eine Kopie mit NEUER Kennung",
+    kopie.id !== vId && kopie.kopie_von === vId && kopie.name === "Bearbeitet in A");
+  t("[#102] die Kopie ist keine Vorlage mehr (kein Marker)",
+    !KAT.istVorlagenKatalog(kataloge()[kopie.id])
+    && !(KAT.VORLAGE_FELD in kataloge()[kopie.id]));
+  t("[#102] die Vorlage selbst bleibt byte-unveraendert",
+    JSON.stringify(kataloge()[vId]) === vorlageStand
+    && kataloge()[vId].name !== "Bearbeitet in A");
+  t("[#102] nur das AKTIVE Projekt zieht auf die Kopie um",
+    store.projektMappe(pA102.projekt.id).katalog === kopie.id
+    && store.projektMappe(pB102.projekt.id).katalog === vId);
+  t("[#102] die Kopie ist der Anzeigename der Speicherung — kein zweiter Slot",
+    Object.keys(kataloge()).length === 3
+    && !("kopie_von" in kataloge()[kopie.id]));   // Meldung, kein gespeichertes Datum
+
+  // (e) Der Kopierschutz greift GENAU EINMAL — danach wird die Kopie fortgeschrieben
+  const zweite = store.setzeKatalog({ ...store.holeKatalog(), name: "Nochmal bearbeitet" });
+  t("[#102] der zweite Schreibzugriff kopiert NICHT erneut",
+    zweite.id === kopie.id && !zweite.kopie_von
+    && Object.keys(kataloge()).length === 3
+    && kataloge()[kopie.id].name === "Nochmal bearbeitet");
+
+  // (f) Ein eigener Katalog wird NIE kopiert
+  store.setzeProjektKatalog(eigen.id);
+  const eigenNeu = store.setzeKatalog({ ...store.holeKatalog(), name: "Eigener Katalog v2" });
+  t("[#102] ein eigener Katalog wird an seiner Kennung fortgeschrieben, nie kopiert",
+    eigenNeu.id === eigen.id && !eigenNeu.kopie_von
+    && Object.keys(kataloge()).length === 3);
+
+  // (g) Erneutes Laden stellt den Repo-Stand her und laesst Kopien unberuehrt
+  store.setzeProjektKatalog(vId);
+  const kopieStand = JSON.stringify(kataloge()[kopie.id]);
+  const v3 = store.ladeVorlagenKatalog(vorlageText(), PFAD);
+  t("[#102] erneutes Laden liefert wieder den unveraenderten Repo-Inhalt",
+    v3.id === vId && v3.name === JSON.parse(vorlageText()).name
+    && v3.produkte.length === dateiProdukte);
+  t("[#102] bestehende Kopien und eigene Kataloge werden dabei nicht angetastet",
+    JSON.stringify(kataloge()[kopie.id]) === kopieStand
+    && kataloge()[eigen.id].name === "Eigener Katalog v2"
+    && Object.keys(kataloge()).length === 3);
+
+  // (h) Ein ungueltiger Text schreibt NICHTS
+  const standVor = localStorage.getItem("sembla:kataloge");
+  let warf102 = false;
+  try { store.ladeVorlagenKatalog('{"format":"SEMBLA-Projekt"}', PFAD); } catch { warf102 = true; }
+  t("[#102] ungueltige Vorlage wird abgewiesen — der Speicher bleibt unveraendert",
+    warf102 && localStorage.getItem("sembla:kataloge") === standVor);
+
+  // (i) Kein neues oeffentliches Feld, kein Versionssprung
+  t("[#102] Identitaet und Marker sind Browserzustand und reisen nicht mit",
+    !(KAT.VORLAGE_FELD in KAT.katalogObjekt(kataloge()[vId]))
+    && !("id" in KAT.katalogObjekt(kataloge()[vId])));
+  t("[#102] die Versionsachsen bleiben unveraendert",
+    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
+    && KAT.KATALOG_VERSION === 1 && PM.MAPPE_VERSION === 2);
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);
