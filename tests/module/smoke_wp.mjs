@@ -684,6 +684,15 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'blech-boden-1250', kategorie:'blech_platte', bezeichnung:'Bodenblech 1250', einheit:'Stk', preis:22.5, breite_mm:1250, hoehe_mm:125, dicke_mm:15 },
   { id:'blech-kopf', kategorie:'blech_platte', bezeichnung:'Kopfblech 1000', einheit:'Stk', preis:19, breite_mm:1000, hoehe_mm:125, dicke_mm:15 },
   { id:'dicht-stk', kategorie:'verbrauch', bezeichnung:'Dichtstreifen 20 cm', einheit:'Stk', preis:0.3 },
+  // #92 Einbaulagen: die Kopplungsmutter traegt ihre EINBAUHOEHE, die Spannplatte ihre DICKE.
+  // `hoehe_mm` an einem Verbrauchsprodukt ist ein regulaeres optionales Massfeld — die
+  // Eingabemaske der Kategorie bleibt unveraendert (eigenes Folgepaket), der Wert kommt hier
+  // wie im Betrieb aus einer Katalogdatei.
+  { id:'kuppl-50', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M10', einheit:'Stk', preis:0.65, hoehe_mm:50 },
+  { id:'kuppl-30', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M10 kurz', einheit:'Stk', preis:0.55, hoehe_mm:30 },
+  { id:'kuppl-ohne', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter ohne Maßangabe', einheit:'Stk', preis:0.6 },
+  { id:'platte-12', kategorie:'blech_platte', bezeichnung:'Spannplatte 12', einheit:'Stk', preis:6.4, breite_mm:125, hoehe_mm:125, dicke_mm:12 },
+  { id:'rod-rest-210', kategorie:'gewindestange', bezeichnung:'Reststück 210', einheit:'Stk', preis:1.2, gewinde:'M10', laenge_mm:210 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1500', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
 ]};
 // Modul-1-Rollen decken die bestehenden Wand-/Vorspann-/Anschluss-/Fugen-Positionen ab.
@@ -913,6 +922,105 @@ ok('gelöschtes Produkt: Referenz bleibt erhalten', JSON.stringify(store.holePro
 ok('gelöschtes Produkt: Status fehlt + sichtbare Warnung',
   WP.prodStatus('rod_std').status==='fehlt' && /nicht auflösbar/.test(prodHtml()));
 store.setzeKatalog(KATALOG);
+
+// ---- #92 Einbaulagen des Spannsystems: der ECHTE Pfad Katalog -> Modul 1 -> Core ----
+// Gefahren wird der Planerweg: Anschlussprodukte ueber den echten Aenderungs-Handler waehlen ->
+// `vorgaben()` leitet Fussoffset und Kopfzuschlag ab -> dieselbe Engine rechnet neu -> die
+// Stangenstuecke des gerechneten Wandelements. Danach der Fehlerpfad: fehlt ein Pflichtmass,
+// steht es benannt in der Oberflaeche und der Bedarf bleibt unveraendert.
+//
+// Bezugspunkt ist die OBERKANTE BODENBLECH (= Steinunterkante, z = 0): der Fussoffset ist die
+// HALBE Kopplungsmutterhoehe, die Blechdicke geht nicht ein und wird hier auch nicht verlangt.
+{
+  const seg0=()=>WP.RESULT.wandelement.tension_columns[0].segments[0];
+  const meld=()=>document.getElementById('einbauQuelle').innerHTML;
+  const leere=(rolle)=>((store.holeProdukte(1).rollen||{})[rolle]||[]).slice()
+    .forEach(id=>setzen(rolle,id,false));
+  const ROLLEN92=['rod_std','rod_rest','blech_boden','kupplung','spannplatte'];
+  // Der vorangehende Auswahlstand gehoert den frueheren Bloecken: er wird gesichert und am
+  // Ende genau so wiederhergestellt, damit dieser Abschnitt keine Nebenwirkung hinterlaesst.
+  const vorher=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
+  for(const r of ROLLEN92) leere(r);
+  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  document.getElementById('topConn').value='spannplatte';
+  document.getElementById('rodUeber').value='10';
+  // Vorratssatz und Reststueck, damit [Z-2]/[Z-6] ueberhaupt eine Zerlegung liefern.
+  setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
+  WP.run();
+  const ohne=seg0().bedarf_mm;
+  const stueckeOhne=seg0().stuecke.map(x=>x.len_mm+':'+x.art).join(',');
+  ok('#92 ohne Anschlussprodukte kein Einbaumass (nichts geraten)',
+    WP.fussOffset===null && WP.kopfZuschlag===null
+    && WP.vorgaben().prestress.rod_fuss_offset_mm===undefined
+    && WP.vorgaben().prestress.rod_kopf_zuschlag_mm===undefined
+    && !('rod_fuss_offset_mm' in WP.RESULT.wandelement.prestress)
+    && ohne===2000+10);
+  ok('#92 jedes fehlende Pflichtmass wird einzeln und konkret benannt',
+    /Rolle „Kopplungsmutter“/.test(meld()) && /Rolle „Spannplatte“/.test(meld()));
+  // Die Bodenblechdicke ist KEIN Pflichtmass dieser Rechnung (z = 0 ist die Blechoberkante) —
+  // sie wird deshalb auch nicht als fehlend gemeldet.
+  ok('#92 die Bodenblechdicke wird nicht als Einbaumass verlangt', !/Bodenblech/.test(meld()));
+
+  // Vollstaendige Auswahl: Kopplungsmutter 50 mm -> Fussoffset 25 mm; Spannplatte 12 mm.
+  setzen('blech_boden','blech-boden',true);
+  setzen('kupplung','kuppl-50',true);
+  setzen('spannplatte','platte-12',true);
+  WP.run();
+  ok('#92 Modul 1 leitet den Fussoffset aus der halben Kopplungsmutterhoehe ab',
+    WP.fussOffset===25 && WP.vorgaben().prestress.rod_fuss_offset_mm===25);
+  ok('#92 Modul 1 leitet den Kopfzuschlag aus der Spannplattendicke ab',
+    WP.kopfZuschlag===12 && WP.vorgaben().prestress.rod_kopf_zuschlag_mm===12);
+  ok('#92 im fehlerfreien Zustand steht keine Meldung', meld()==='');
+  ok('#92 der Bedarf ist Segmenthoehe - Fussoffset + Plattendicke + Ueberstand',
+    seg0().bedarf_mm===2000-25+12+10 && seg0().bedarf_mm!==ohne);
+  ok('#92 die Stangenstuecke sind gegenueber dem Altstand wirklich verschoben',
+    seg0().stuecke.map(x=>x.len_mm+':'+x.art).join(',')!==stueckeOhne
+    && /:rest$/.test(seg0().stuecke.map(x=>x.len_mm+':'+x.art).join(',')));
+  ok('#92 z0_mm bleibt Steingeometrie (kein zweites Geometriemodell am Segment)',
+    seg0().z0_mm===0 && !('stangen_z0_mm' in seg0()) && !('fuss_offset_mm' in seg0()));
+  ok('#92 der gespeicherte Stand traegt dieselben Einbaulagen (kein Zwischenstand)', (()=>{
+    const w=store.aktivesWandelement();
+    return w.prestress.rod_fuss_offset_mm===25 && w.prestress.rod_kopf_zuschlag_mm===12
+      && w.tension_columns[0].segments[0].bedarf_mm===1997; })());
+  ok('#92 kein Produktdatum im Wandelement (Ownership)', (()=>{
+    const j=JSON.stringify(store.aktivesWandelement());
+    return !j.includes('kuppl-50') && !j.includes('platte-12')
+      && !j.includes('Spannplatte 12') && !j.includes('preis'); })());
+
+  // Fehlerpfad 1: gewaehltes Produkt OHNE Mass -> benannt, kein Ersatzmass.
+  setzen('kupplung','kuppl-50',false); setzen('kupplung','kuppl-ohne',true);
+  WP.run();
+  ok('#92 Produkt ohne Kopplungsmutterhoehe: benannt, nicht ersetzt',
+    /Kopplungsmutterhöhe fehlt/.test(meld()) && WP.fussOffset===null
+    && WP.vorgaben().prestress.rod_fuss_offset_mm===undefined
+    && !('rod_fuss_offset_mm' in WP.RESULT.wandelement.prestress)
+    && seg0().bedarf_mm===2000+12+10);
+
+  // Fehlerpfad 2: mehrdeutige Auswahl -> benannt, nichts bevorzugt.
+  setzen('kupplung','kuppl-ohne',false);
+  setzen('kupplung','kuppl-50',true); setzen('kupplung','kuppl-30',true);
+  WP.run();
+  ok('#92 mehrere Mutterhoehen: mehrdeutig gemeldet, keine bevorzugt',
+    /Kopplungsmutterhöhe mehrdeutig/.test(meld()) && /50 mm, 30 mm/.test(meld())
+    && WP.fussOffset===null && seg0().bedarf_mm===2000+12+10);
+
+  // Fehlerpfad 3: fehlende Spannplattendicke — der Kopfzuschlag bleibt offen.
+  setzen('kupplung','kuppl-30',false); setzen('spannplatte','platte-12',false);
+  WP.run();
+  ok('#92 fehlende Spannplatte: benannt, Kopfzuschlag bleibt offen',
+    /Rolle „Spannplatte“/.test(meld()) && WP.kopfZuschlag===null
+    && seg0().bedarf_mm===2000-25+10);
+
+  // Kopfblech: es gibt keine Spannplatte, also auch keinen Zuschlag und keine Meldung dazu.
+  document.getElementById('topConn').value='blech'; WP.run();
+  ok('#92 Kopfblech verlangt keine Spannplattendicke und bekommt keinen Zuschlag',
+    WP.kopfZuschlag===null && !/Spannplatte/.test(meld())
+    && seg0().bedarf_mm===2000-25+10);
+
+  document.getElementById('topConn').value='spannplatte';
+  for(const r of ROLLEN92){ leere(r); (vorher[r]||[]).forEach(id=>setzen(r,id,true)); }
+  WP.run();
+}
 
 // ---- [P-18] Vorbelegung aus der Katalog-Standardauswahl ---------------------
 // Produkte ohne `rollen` haben oben nie etwas vorbelegt (das erste „Ausgangslage: keine

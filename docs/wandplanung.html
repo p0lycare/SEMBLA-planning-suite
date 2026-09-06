@@ -171,8 +171,9 @@
       <label><span>Oberer Anschluss</span><select id="topConn"
         title="Fuß immer Bodenblech (15 mm). Kopf wahlweise Spannplatten auf der Steinkante (Standard) oder Kopfblech-Module."><option value="blech">Kopfblech</option><option value="spannplatte" selected>Spannplatte (Standard)</option></select></label>
       <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"
-        title="Überstand des Reststücks über die Wandoberkante (Platz für Kopfblech/Spannplatte und Spannmutter)."><small>mm</small></label>
+        title="Überstand des Reststücks über die OBERKANTE SPANNPLATTE (Platz für die Spannmutter). Die Plattendicke selbst kommt aus dem Katalog und wird zusätzlich bestückt (#92)."><small>mm</small></label>
       <div class="lockhint" id="rodRestQuelle"></div>
+      <div class="lockhint" id="einbauQuelle"></div>
     </div>
     <div class="grp"><h3>Materialannahmen</h3>
       <label><span>f<sub>cd</sub></span><input type="number" id="fcd" value="20" step="1"><small>N/mm²</small></label>
@@ -349,6 +350,11 @@ function vorgaben(){
   // der Core meldet den offenen oberen Abschluss je Strang. Konfigurierbar ist nur der Überstand.
   hw.rod_rest_mm = rodRestMm();
   hw.rod_overhang_mm = Math.max(0, Math.round(+$('rodUeber').value||0));
+  // #92 Einbaulagen: nur bei eindeutigem Katalogmaß mitgeben. Fehlt oder widerspricht eines,
+  // bleibt das Feld ganz weg — der Core rechnet dann bit-genau wie zuvor, und die Lücke steht
+  // sichtbar im Formular statt still gefüllt zu werden.
+  const fo=fussOffsetMm(); if(fo!=null) hw.rod_fuss_offset_mm=fo;
+  const kz=kopfZuschlagMm(); if(kz!=null) hw.rod_kopf_zuschlag_mm=kz;
   // [A-10] Bodenblech-Vorratssatz: nur bei echter Auswahl mitgeben. Ein AUSDRÜCKLICH leeres Feld
   // hieße im Core „keine Standardlänge gewählt" (Konflikt + Sonderzuschnitt) — hier ist aber der
   // dokumentierte Fallback der vollen Standardreihe gemeint, und den gibt es nur, wenn das Feld
@@ -776,6 +782,64 @@ function prodSpez(){ const k=prodKatalog(); return k?KAT.produktSpezifikation(pr
 function rodLaengenMm(){ const s=prodSpez(); return s?s.rod.laengen_mm.slice():[]; }
 // Reststücklänge ([Z-6]): nur bei EINDEUTIG gewähltem Produkt, sonst 0 (sichtbarer Konflikt).
 function rodRestMm(){ const s=prodSpez(); return (s&&s.rod.rest_mm!=null)?s.rod.rest_mm:0; }
+// #92 Einbaulagen des Spannsystems. Beide Werte sind ABGELEITET und kommen ausschließlich aus
+// den tatsächlich gewählten Katalogprodukten dieser Wand — es gibt kein Eingabefeld dafür und
+// keinen Default. Fehlt oder widerspricht ein Maß, bleibt der Wert `null`: der Core rechnet dann
+// bit-genau wie zuvor, und `einbauMeldungen()` benennt die Lücke. Es wird NIE ein Maß erfunden
+// und keines aus `BLECH_THICK`, dem Kopfblech oder einem anderen Produkt geborgt.
+//
+// Gelesen wird — wie bei `blechLaengenMm()` — HIER im Modul über `KAT.produkteZuRolle`, nicht
+// über eine neue Funktion in `sembla-katalog.js`: die Rollen `kupplung`/`spannplatte` führen
+// kein `mass` (sie sind keine Preis-Diskriminatoren nach [P-14]), das Maßfeld ist also allein
+// eine Frage dieser Rechnung und gehört nicht in den gemeinsamen Katalogbaustein.
+/** Ein Maßfeld der gewählten Produkte einer Rolle: genau ein Wert, sonst `null` samt Grund. */
+function einbauMass(rolleId, feld){
+  const k=prodKatalog(); if(!k) return { wert:null, grund:'kein_katalog' };
+  const auf=KAT.produkteZuRolle(prodEingaben(), k, rolleId);
+  if(!auf.ids.length) return { wert:null, grund:'keine_auswahl' };
+  const v=[...new Set(auf.produkte.map(p=>+p[feld]).filter(n=>Number.isFinite(n)&&n>0))];
+  if(v.length===1) return { wert:v[0], grund:null };
+  // Mehrere verschiedene Maße heißen: das Einbaumaß bleibt offen. Es wird keines bevorzugt
+  // und keines gemittelt ([P-9]).
+  return { wert:null, grund:v.length?'mehrdeutig':'mass_fehlt', werte:v };
+}
+// Fußoffset = halbe Kopplungsmutterhöhe. Die Sechskantschraube kommt von unten durch das
+// Bodenblech und steckt zur Hälfte in der Mutter, die erste Gewindestange von oben in dieselbe
+// Mutter. Bezugspunkt ist die OBERKANTE BODENBLECH — und die ist die Steinunterkante, also
+// z = 0 im Rechenkern. Die Bodenblechdicke geht deshalb NICHT ein und wird hier bewusst weder
+// gelesen noch verlangt: ein Maß ohne Rechenbeitrag wäre eine erfundene Pflicht.
+function fussOffsetMm(){
+  const h=einbauMass('kupplung','hoehe_mm').wert;
+  return (h>0)?h/2:null;
+}
+// Kopfzuschlag = Spannplattendicke. Nur bei tatsächlich gewählter Spannplatte am oberen
+// Anschluss — bei Kopfblech gibt es keine Platte, und es wird keine ersatzweise angenommen.
+function kopfZuschlagMm(){
+  if($('topConn').value==='blech') return null;
+  return einbauMass('spannplatte','dicke_mm').wert;
+}
+// Was fehlt bzw. widerspricht — je Maß EIN konkreter Satz, nie eine Sammelmeldung.
+function einbauMeldungen(){
+  const out=[];
+  const pruef=(rolleId,feld,label,was)=>{
+    const m=einbauMass(rolleId,feld);
+    if(m.wert!=null || m.grund==='kein_katalog') return;
+    if(m.grund==='keine_auswahl')
+      out.push('<b>Kein Produkt der Rolle „'+label+'“ gewählt</b> — '+was
+        +' bleibt offen, der Stangenbedarf unverändert.');
+    else if(m.grund==='mehrdeutig')
+      out.push('<b>'+was+' mehrdeutig</b> — die gewählten Produkte der Rolle „'+label
+        +'“ tragen '+m.werte.map(x=>x+' mm').join(', ')+'; es wird keines bevorzugt.');
+    else
+      out.push('<b>'+was+' fehlt</b> — das gewählte Produkt der Rolle „'+label
+        +'“ trägt kein Maß; in Modul 0 nachpflegen.');
+  };
+  pruef('kupplung','hoehe_mm','Kopplungsmutter','Kopplungsmutterhöhe');
+  // Nur wo eine Spannplatte wirklich eingebaut wird: bei Kopfblech gibt es keine.
+  if($('topConn').value!=='blech')
+    pruef('spannplatte','dicke_mm','Spannplatte','Spannplattendicke');
+  return out;
+}
 // Bodenblech-Standardlängen ([A-10]): der VORRATSSATZ kommt ausschließlich aus den in der Rolle
 // `blech_boden` gewählten Katalogprodukten — dieselbe Einbahnstraße wie bei den Gewindestangen
 // ([Z-1]), nur mit einem anderen Maßfeld.
@@ -819,6 +883,10 @@ function syncLegacyFelder(){
       ? '<b>Reststück mehrdeutig</b> — mehrere Produkte gewählt; die Stränge bleiben oben offen.'
       : '<b>Kein Reststück gewählt</b> — der obere Wandabschluss bleibt je Strang offen.';
   }
+  // #92 Die Einbaulagen sind Pflichtmaße der Berechnung: im fehlerfreien Zustand steht hier
+  // NICHTS, jede Lücke wird einzeln und konkret benannt statt gefüllt.
+  const em=einbauMeldungen();
+  $('einbauQuelle').innerHTML=em.length?em.join('<br>'):'';
 }
 // [P-18] Startklar statt leer: bevor die Auswahl gezeigt wird, uebernehmen ALLE noch leeren
 // Verwendungsstellen die Standardauswahl des Katalogs (Produktfeld `rollen`). Eine bereits
@@ -846,7 +914,10 @@ function vorbelegeProdukte(){
   // sie ebenfalls. Nur Rollen mit Maßwirkung loesen das aus; das Neurechnen ist idempotent.
   // `blech_boden` gehört dazu, seit der Vorratssatz der Bodenblech-Standardlängen aus der Auswahl
   // kommt ([A-10]): ohne Neurechnen stünde im gespeicherten JSON weiter die Fallback-Aufteilung.
-  const massWirksam=gesetzt.some(r=>r==='rod_std'||r==='rod_rest'||r==='blech_boden');
+  // `kupplung`/`spannplatte` gehören seit #92 dazu: aus ihren Maßen entstehen Fußoffset und
+  // Kopfzuschlag, also ein anderer Stangenbedarf.
+  const massWirksam=gesetzt.some(r=>r==='rod_std'||r==='rod_rest'||r==='blech_boden'
+    ||r==='kupplung'||r==='spannplatte');
   if(massWirksam) VB_MASS_OFFEN=true;
   return massWirksam;
 }
@@ -1050,6 +1121,8 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
   vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();},
   get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,
+  get fussOffset(){return fussOffsetMm();}, get kopfZuschlag(){return kopfZuschlagMm();},
+  get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},
   ZOOM_MIN, ZOOM_MAX, ZOOM_SCHRITT, ZOOM_FIT };

@@ -1,5 +1,6 @@
 // Paritaets- und Regeltests fuer den JS-Core. Lauf: node test-sembla-core.mjs
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
@@ -11,6 +12,10 @@ import {
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
 } from "../../docs/shared/sembla-core.js";
+// Der Auslegungsadapter gehoert zum Paritaetsvertrag: `psOf()` ist eine WHITELIST, und ein
+// dort fehlendes Feld faellt in jeder Iteration still weg. Deshalb wird der ECHTE Adapter
+// geladen und nicht nachgebaut.
+import { autoAuslegung, nachweisPruefen } from "../../docs/shared/sembla-engine.js";
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 let pass = 0, fail = 0;
@@ -648,6 +653,160 @@ t("kombiniereSegment: Sperren wirken auch auf die Kopplung zum Reststueck ([Z-6]
   assert(b.konflikt === null, b.konflikt);
   const c = kombiniereSegment(1700, [1000, 500], true, 210, 10, [1500]);
   assert(c.konflikt === "stoss_auf_zwischenpunkt", "Kopplung zum Reststueck ist gesperrt: " + c.konflikt);
+});
+
+// ---------------------------------------------------------------------------
+// Einbaulagen des Spannsystems (#92): Fussoffset am Fuss, Spannplattendicke am Kopf.
+// Gerechnet wird beides im Core; die Werte selbst leitet Modul 1 aus dem Katalog ab
+// (Fussoffset = halbe Kopplungsmutterhoehe, Kopfzuschlag = Spannplattendicke).
+//
+// Das Python-Orakel wird als ECHTER Unterprozess gefahren, nicht ueber ein eingefrorenes
+// Fixture: die Faelle hier sind neu, es gaebe also gar kein Fixture dafuer. Fehlt `python3`
+// oder bricht der Aufruf ab, MUSS der Test hart fehlschlagen — ein stilles Ueberspringen
+// waere ein gruener Lauf ohne Paritaetsnachweis. Zumutbar ist das, weil `npm run test:core`
+// ohnehin mit `python3 tests/core/test_sembla_core.py` beginnt.
+// ---------------------------------------------------------------------------
+const PYDIR = dirname(fileURLToPath(import.meta.url));
+const PY_ORAKEL = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import build_wall
+a = json.loads(sys.argv[1])
+print(json.dumps(build_wall(a["name"], a["length_mm"], a["height_mm"], [], None, a["prestress"])))
+`;
+/** Die Wand aus dem ECHTEN Python-Orakel (Unterprozess), nicht aus einem Fixture. */
+function orakel(arg) {
+  return JSON.parse(execFileSync("python3", ["-c", PY_ORAKEL, JSON.stringify(arg)],
+    { encoding: "utf8" }));
+}
+// Kopplungsmutter 50 mm hoch -> Fussoffset 25 mm (halbe Hoehe); Spannplatte 12 mm dick.
+// Die Bodenblechdicke geht NICHT ein: z = 0 ist die Oberkante Bodenblech (= Steinunterkante).
+const PS92 = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+  top_connection: "spannplatte", rod_fuss_offset_mm: 25, rod_kopf_zuschlag_mm: 12 };
+const WAND92 = { name: "einbaulagen", length_mm: 6 * GRID, height_mm: 2000 };
+
+t("#92 Fussoffset verkuerzt den Bedarf und verschiebt die Stueckzerlegung", () => {
+  const w = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null, PS92);
+  const sg = w.tension_columns[0].segments[0];
+  assert(sg.z0_mm === 0, "z0_mm bleibt Steingeometrie: " + sg.z0_mm);
+  assert(w.prestress.rod_fuss_offset_mm === 25, "Fussoffset im Wandelement: " + w.prestress.rod_fuss_offset_mm);
+  // 2000 - 25 (Fuss) + 12 (Platte) + 10 (Ueberstand) = 1997
+  assert(sg.bedarf_mm === 1997, "Bedarf: " + sg.bedarf_mm);
+  assert(sg.ueberstand_mm === 22, "Ueberstand ueber der Steinkante: " + sg.ueberstand_mm);
+  // Die Zerlegung verschiebt sich mit — und zwar sichtbar bis in die Reihenfolge: mit Offset
+  // liegt die erste Kopplung auf 1025 mm und ist frei, es gilt also die Groessenpraeferenz
+  // [Z-2]. Ohne Offset laege sie auf dem Zwischenspannpunkt 1000 mm, und [Z-7] tauschte die
+  // beiden Standardlaengen. Der Sonderzuschnitt wird zugleich um den Offset kuerzer.
+  deepEqual(sg.stuecke.map(x => x.len_mm + ":" + x.art),
+    ["1000:standard", "500:standard", "287:sonder", "210:rest"]);
+  const ohne = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null,
+    { ...PS92, rod_fuss_offset_mm: 0 });
+  const sg0 = ohne.tension_columns[0].segments[0];
+  assert(sg0.bedarf_mm === 2022, "ohne Fussoffset: " + sg0.bedarf_mm);
+  deepEqual(sg0.stuecke.map(x => x.len_mm + ":" + x.art),
+    ["500:standard", "1000:standard", "312:sonder", "210:rest"]);
+  // Ohne Katalogmass entsteht KEIN Prestress-Schluessel — der Altstand bleibt bit-genau.
+  assert(!("rod_fuss_offset_mm" in ohne.prestress),
+    "kein erfundenes Feld: " + Object.keys(ohne.prestress).join(","));
+  // `z0_mm` bleibt in BEIDEN Faellen die Steingeometrie: der Offset ist eine Bedarfsgroesse
+  // und erzeugt kein zweites Geometriemodell am Segment.
+  assert(!("fuss_offset_mm" in sg) && !("stangen_z0_mm" in sg),
+    "kein Zusatzfeld am Segment: " + Object.keys(sg).join(","));
+});
+
+t("#92 Oberer Bedarf = Segmenthoehe + Spannplattendicke + Ueberstand (echtes Python-Orakel)", () => {
+  // Reiner Kopffall (kein Fussoffset): der Bedarf ist exakt h + Platte + Ueberstand.
+  const ps = { ...PS92, rod_fuss_offset_mm: 0 };
+  const js = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null, ps);
+  const py = orakel({ ...WAND92, prestress: ps });
+  const sg = js.tension_columns[0].segments[0];
+  assert(sg.bedarf_mm === WAND92.height_mm + 12 + 10, "Bedarf: " + sg.bedarf_mm);
+  assert(py.tension_columns[0].segments[0].bedarf_mm === sg.bedarf_mm,
+    "Orakel-Bedarf: " + py.tension_columns[0].segments[0].bedarf_mm);
+  deepEqual(js, py);                       // bit-genau, ganzes Wandelement
+});
+
+t("#92 Fussoffset, oberer Bedarf, Stueckzerlegung und Konflikte sind py/mjs bit-gleich", () => {
+  const faelle = [
+    PS92,                                                        // Fuss + Kopf
+    { ...PS92, rod_fuss_offset_mm: 27.5 },                       // halbe Mutterhoehe -> 0,5 mm
+    { ...PS92, top_connection: "blech" },                        // Kopfblech: kein Plattenzuschlag
+    { ...PS92, rod_rest_mm: 0 },                                 // [Z-6]-Konflikt bleibt sichtbar
+    { ...PS92, rod_lengths_mm: [] },                             // keine Standardlaenge gewaehlt
+  ];
+  for (const ps of faelle) {
+    const js = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null, ps);
+    deepEqual(js, orakel({ ...WAND92, prestress: ps }));
+  }
+});
+
+t("#92 Kopfblech bekommt keinen Plattenzuschlag (kein Ersatzmass, [A-2])", () => {
+  const w = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null,
+    { ...PS92, top_connection: "blech", rod_fuss_offset_mm: 0 });
+  const sg = w.tension_columns[0].segments[0];
+  assert(sg.anker_oben === "kopfblech", sg.anker_oben);
+  assert(sg.bedarf_mm === WAND92.height_mm + 10, "nur Ueberstand: " + sg.bedarf_mm);
+});
+
+t("#92 Der Fussoffset zieht die Zwischenpunkt-Sperren mit ([Z-7] unveraendert)", () => {
+  // Zwischenpunkt auf 1000 mm; die Kopplung liegt bei Stangenbeginn + 1000 = 1025 und ist
+  // damit frei. Ohne Mitziehen des Offsets waere hier faelschlich gesperrt worden.
+  const ps = { ...PS92, rod_rest_mm: 0, rod_kopf_zuschlag_mm: 0, zwischenpunkte_mm: [1000] };
+  const w = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null, ps);
+  const sg = w.tension_columns[0].segments[0];
+  deepEqual(sg.stuecke.map(x => x.len_mm), [1000, 500, 475]);
+  deepEqual(w, orakel({ ...WAND92, prestress: ps }));
+  // Gegenprobe: die Sperre auf der wirklichen Kopplungshoehe greift weiterhin.
+  const gesperrt = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null,
+    { ...ps, zwischenpunkte_mm: [1000, 1200] });
+  assert(gesperrt.tension_columns[0].segments[0].stuecke.length > 0);
+});
+
+t("#92 Ohne Einbaumasse ist das Ergebnis bit-genau der Altstand", () => {
+  const alt = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+    top_connection: "spannplatte" };
+  const a = buildWall("alt", 6 * GRID, 2000, [], null, alt);
+  const b = buildWall("alt", 6 * GRID, 2000, [], null,
+    { ...alt, rod_fuss_offset_mm: 0, rod_kopf_zuschlag_mm: null });
+  deepEqual(a, b);
+  assert(!("rod_fuss_offset_mm" in a.prestress) && !("rod_kopf_zuschlag_mm" in a.prestress),
+    "kein Schluessel ohne Angabe: " + Object.keys(a.prestress).join(","));
+});
+
+// #92 Die Einbaulagen muessen durch `psOf()` (sembla-engine.js) reisen: fielen sie in der
+// Auslegungs-Iteration weg, rechnete der Core mit einem anderen Bedarf als die Anzeige davor.
+const ENGINE_BASE = { name: "W", length_mm: 2000, height_mm: 2600, openings: [], sides: null };
+
+t("#92 Fussoffset und Kopfzuschlag reisen durch psOf() (Auto-Modus)", () => {
+  const ps = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+    top_connection: "spannplatte", rod_fuss_offset_mm: 25, rod_kopf_zuschlag_mm: 12 };
+  const r = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ps,
+    load: { qk_area: 0.5, gammaQ: 1.5 } });
+  const w = r.wandelement;
+  assert(w.prestress.rod_fuss_offset_mm === 25, "Fussoffset im Ergebnis: " + w.prestress.rod_fuss_offset_mm);
+  assert(w.prestress.rod_kopf_zuschlag_mm === 12, "Kopfzuschlag: " + w.prestress.rod_kopf_zuschlag_mm);
+  const sg = w.tension_columns[0].segments[0];
+  assert(sg.bedarf_mm === 2000 - 25 + 12 + 10, "Bedarf nach der Iteration: " + sg.bedarf_mm);
+});
+
+t("#92 Nachweis-Modus reicht dieselben Einbaulagen durch", () => {
+  const ps = { max_span_grid: 3, force_kN: 60, rod_lengths_mm: [1000, 500], rod_rest_mm: 210,
+    rod_overhang_mm: 10, top_connection: "spannplatte", rod_fuss_offset_mm: 25, rod_kopf_zuschlag_mm: 12 };
+  const w = nachweisPruefen({ ...ENGINE_BASE, height_mm: 2000, prestress: ps,
+    load: { qk_area: 1.0, gammaQ: 1.5 } }).wandelement;
+  assert(w.prestress.rod_fuss_offset_mm === 25 && w.prestress.rod_kopf_zuschlag_mm === 12, "Durchreiche");
+  assert(w.tension_columns[0].segments[0].bedarf_mm === 1997, "Bedarf im Nachweis-Modus");
+});
+
+t("#92 ohne Einbaulagen bleibt die Auslegung bit-genau der Altstand", () => {
+  const ps = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+    top_connection: "spannplatte" };
+  const a = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ps,
+    load: { qk_area: 0.5, gammaQ: 1.5 } });
+  const b = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, load: { qk_area: 0.5, gammaQ: 1.5 },
+    prestress: { ...ps, rod_fuss_offset_mm: 0, rod_kopf_zuschlag_mm: null } });
+  assert(JSON.stringify(a.wandelement) === JSON.stringify(b.wandelement), "bit-gleich");
+  assert(!("rod_fuss_offset_mm" in a.wandelement.prestress), "kein Schluessel ohne Angabe");
 });
 
 console.log(`\n${pass} ok, ${fail} fail`);

@@ -99,12 +99,18 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // ([A-15]) weiter, und die gewaehlten Punkte waeren unwirksam. FEHLT das Feld, bleibt es
 // `undefined` und damit kein Array: der Core setzt dann kein Feld, und der Auto-Weg bleibt
 // bit-genau wie zuvor.
+// Und aus demselben Grund `rod_fuss_offset_mm`/`rod_kopf_zuschlag_mm` (#92): die aus den
+// gewaehlten Katalogprodukten abgeleiteten Einbaulagen bestimmen, wo die erste Stange beginnt
+// und wieviel oben ueber der Steinkante zu bestuecken ist. Fielen sie in der Iteration weg,
+// rechnete die Auslegung mit einem anderen Bedarf als die Anzeige davor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
   return { ...extra, rod_mm: p.rod_mm, rod_lengths_mm: p.rod_lengths_mm, blech_mm: p.blech_mm,
            blech_lengths_mm: p.blech_lengths_mm,
            top_connection: p.top_connection, columns_grid: p.columns_grid,
            start_axis_grid: p.start_axis_grid,
            rod_rest_mm: p.rod_rest_mm, rod_overhang_mm: p.rod_overhang_mm,
+           rod_fuss_offset_mm: p.rod_fuss_offset_mm,
+           rod_kopf_zuschlag_mm: p.rod_kopf_zuschlag_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm }; }
 function buildN(vorg, sp) {
   return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg), interlocksOf(vorg));

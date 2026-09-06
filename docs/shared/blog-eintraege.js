@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260906-01",
+    datum: "2026-09-06",
+    typ: "feature",
+    issue: 92,
+    titel: "Stangenbedarf aus den realen Einbaulagen: halbe Kopplungsmutter unten, Spannplatte oben",
+    testbitte: "In Modul 1 Kopplungsmutter (mit Einbauhöhe) und Spannplatte wählen: der "
+      + "Stangenbedarf beginnt eine halbe Mutterhöhe höher und deckt oben Plattendicke plus "
+      + "Überstand ab. Fehlt ein Maß, steht es benannt im Formular und nichts ändert sich.",
+  },
+  {
     id: "chg-20260905-01",
     datum: "2026-09-05",
     typ: "feature",

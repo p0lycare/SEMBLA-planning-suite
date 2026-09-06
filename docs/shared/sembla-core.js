@@ -249,30 +249,46 @@ export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM
  * @param {boolean} obenAnOk true, wenn das Segment an der Wandoberkante endet
  * @param {number} restMm Laenge des gewaehlten Reststueck-Produkts (0/null = keins gewaehlt)
  * @param {number} ueberstandMm Ueberstand des Reststuecks ueber die Wandoberkante
- * @param {number[]|null} [sperrenMm] Hoehen ueber dem Segmentfuss ohne Stoss ([Z-7])
+ * @param {number[]|null} [sperrenMm] Hoehen ueber dem STANGENFUSS ohne Stoss ([Z-7])
  * @param {number} [minMm] Mindest-Fertigmass ([Z-5])
+ * @param {number} [fussOffsetMm] Fussoffset (#92): um so viel beginnt die Stange HOEHER als
+ *        der Segmentfuss (halbe Kopplungsmutterhoehe)
+ * @param {number} [kopfZuschlagMm] Spannplattendicke ueber der Steinoberkante (#92)
  * @returns {{stuecke:Array<{len_mm:number,art:"standard"|"sonder"|"rest",quelle_mm:number}>,
  *            konflikt:string|null, bedarf_mm:number}}
  */
 export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm,
-                                  sperrenMm = null, minMm = MIN_FERTIGMASS_MM) {
+                                  sperrenMm = null, minMm = MIN_FERTIGMASS_MM,
+                                  fussOffsetMm = 0, kopfZuschlagMm = 0) {
   const R = (+restMm > 0) ? _mm(+restMm) : 0;
   const UE = (+ueberstandMm > 0) ? _mm(+ueberstandMm) : 0;
+  // #92 Der Fuss ist der REALE Stangenbeginn, nicht die Steinunterkante: die Sechskantschraube
+  // kommt von unten durch das Bodenblech und steckt zur Haelfte in der Kopplungsmutter, die
+  // erste Gewindestange von oben in dieselbe Mutter. Sie beginnt damit eine HALBE Mutterhoehe
+  // ueber Oberkante Bodenblech — und die ist die Steinunterkante, also z = 0; die Blechdicke
+  // geht deshalb NICHT ein. Der Offset verkuerzt die zu bestueckende Strecke und gilt
+  // unabhaengig vom oberen Abschluss. Ohne Katalogmass ist er 0 und alles bleibt bit-genau.
+  const FO = (+fussOffsetMm > 0) ? _mm(+fussOffsetMm) : 0;
   // Ohne Oberkantenbezug oder ohne gewaehltes Reststueck bleibt alles wie bisher ([Z-2]).
   if (!obenAnOk || !R) {
     // Das obere Ende der Strecke ist hier das Segmentende (Anker), also kein Stoss.
-    const k = kombiniereLaengen(hMm, laengenMm, minMm, sperrenMm, false);
+    const k = kombiniereLaengen(_mm(hMm - FO), laengenMm, minMm, sperrenMm, false);
     // Fehlendes Reststueck an der Oberkante ist ein SICHTBARER Konflikt, keine stille Ausnahme.
     // Rangfolge: [Z-6] steht UEBER der Stosssperre [Z-7]. Ein Segment fuehrt genau einen Grund,
     // und der fehlende obere Abschluss darf nicht von der niedriger stehenden Sperre verdeckt
     // werden; jeder andere bestehende Grund behaelt seinen Vorrang unveraendert.
     if (obenAnOk && !R) {
       const g = (k.konflikt && k.konflikt !== "stoss_auf_zwischenpunkt") ? k.konflikt : "kein_reststueck";
-      return { ...k, konflikt: g, bedarf_mm: _mm(hMm) };
+      return { ...k, konflikt: g, bedarf_mm: _mm(hMm - FO) };
     }
-    return { ...k, bedarf_mm: _mm(hMm) };
+    return { ...k, bedarf_mm: _mm(hMm - FO) };
   }
-  const bedarf = _mm(hMm + UE);
+  // #92 Der Ueberstand beginnt an der OBERKANTE SPANNPLATTE, nicht an der Steinoberkante:
+  // zu bestuecken ist zusaetzlich die Plattendicke. Sie haengt am SELBEN Gate wie der
+  // Ueberstand — es gibt genau eine Bedarfsdefinition. Ohne Spannplatte (Kopfblech) ist der
+  // Zuschlag 0; ein Kopfblechmass wird dafuer NIE ersatzweise herangezogen.
+  const KZ = (+kopfZuschlagMm > 0) ? _mm(+kopfZuschlagMm) : 0;
+  const bedarf = _mm(hMm - FO + KZ + UE);
   const unten = _mm(bedarf - R);
   if (unten < -1e-9) return { stuecke: [], konflikt: "reststueck_zu_lang", bedarf_mm: bedarf };
   const restStueck = { len_mm: R, art: "rest", quelle_mm: R };
@@ -658,6 +674,19 @@ function normPrestress(p) {
   // nirgends gespeichert wird, entsteht im Wandelement AUCH KEIN Feld dafuer. `buildWall`
   // ersetzt die rohe Liste unten durch die validierte (dedupliziert, sortiert).
   if (Array.isArray(p && p.zwischenpunkte_mm)) out.zwischenpunkte_mm = p.zwischenpunkte_mm.slice();
+  // Einbaulagen des Spannsystems ([Z-6]/#92) — beide ABGELEITETE Rechenwerte, die Modul 1 aus
+  // den gewaehlten Katalogprodukten bildet (Praezedenz `rod_rest_mm`): der Fussoffset aus der
+  // halben Kopplungsmutterhoehe, der Kopfzuschlag aus der Spannplattendicke.
+  // KEIN Produktmass, keine Produkt-ID und kein Preis wandert dadurch ins Wandelement.
+  //
+  // Beide Felder sind OPTIONAL: fehlt eines oder ist es ungueltig, entsteht der Schluessel
+  // gar nicht erst — der Bedarf ist dann bit-genau der bisherige. Ein fehlendes Katalogmass
+  // wird NIE durch BLECH_THICK oder irgendeinen anderen Altwert ersetzt; Modul 1 meldet die
+  // Luecke sichtbar, statt sie zu fuellen.
+  const fo = (p && p.rod_fuss_offset_mm != null && +p.rod_fuss_offset_mm > 0) ? +p.rod_fuss_offset_mm : 0;
+  const kz = (p && p.rod_kopf_zuschlag_mm != null && +p.rod_kopf_zuschlag_mm > 0) ? +p.rod_kopf_zuschlag_mm : 0;
+  if (fo > 0) out.rod_fuss_offset_mm = fo;
+  if (kz > 0) out.rod_kopf_zuschlag_mm = kz;
   return out;
 }
 
@@ -963,13 +992,22 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // [A-14]/[A-15]/[Z-7] Wirksame Zwischenspannpunkte dieses Segments; ihre Hoehen sind fuer
       // Kopplungen gesperrt. Uebergeben werden sie RELATIV zum Segmentfuss, weil die Kombination
       // die Strecke rechnet und ihre absolute Lage nicht kennt.
-      const zpSeg = zwischenpunkteSegment(z0, z1, ZP.punkte, COURSE);
-      const kombi = kombiniereSegment(h, PS.rod_lengths_mm, topReach, PS.rod_rest_mm,
-        PS.rod_overhang_mm, zpSeg.map((z) => z - z0));
-      const stuecke = kombi.stuecke, stueck = stuecke.length;
-      const quelleSumme = stuecke.reduce((a, s) => a + s.quelle_mm, 0);
       const ankerUnten = bottomBase ? "bodenblech" : "spannplatte";
       const ankerOben = topReach ? (TOP === "blech" ? "kopfblech" : "spannplatte") : "spannplatte";
+      // #92 Einbaulagen: der Fussoffset gilt NUR am Bodenblech (ein Segment ueber einer
+      // Oeffnung sitzt auf einer Spannplatte und beginnt unveraendert am Segmentfuss), der
+      // Kopfzuschlag NUR unter einer wirklich gewaehlten Spannplatte — bei Kopfblech gibt es
+      // keine Platte, und ein Kopfblechmass wird dafuer nicht ersatzweise genommen.
+      const fussOffset = bottomBase ? (PS.rod_fuss_offset_mm || 0) : 0;
+      const kopfZuschlag = (ankerOben === "spannplatte") ? (PS.rod_kopf_zuschlag_mm || 0) : 0;
+      const zpSeg = zwischenpunkteSegment(z0, z1, ZP.punkte, COURSE);
+      // Die Sperren sind relativ zur bestueckten Strecke — also zum STANGENFUSS, nicht zum
+      // Segmentfuss. Ohne den Offset wanderte jede [Z-7]-Sperre um genau diesen Betrag.
+      const kombi = kombiniereSegment(h, PS.rod_lengths_mm, topReach, PS.rod_rest_mm,
+        PS.rod_overhang_mm, zpSeg.map((z) => z - z0 - fussOffset), MIN_FERTIGMASS_MM,
+        fussOffset, kopfZuschlag);
+      const stuecke = kombi.stuecke, stueck = stuecke.length;
+      const quelleSumme = stuecke.reduce((a, s) => a + s.quelle_mm, 0);
       let segSenkkopf = 0, segSpannmutter = 0, segSpannplatten = 0;
       if (bottomBase) segSenkkopf++; else { segSpannmutter++; segSpannplatten++; }
       if (ankerOben === "kopfblech") segSpannmutter++; else { segSpannmutter++; segSpannplatten++; }
@@ -979,7 +1017,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         // `bedarf_mm` = tatsaechlich zu bestueckende Stanglaenge (an der Oberkante h + Ueberstand,
         // sonst h). Der Verschnitt misst sich daran, damit der Ueberstand NICHT als Verschnitt
         // erscheint — er ist eingebautes Material.
-        bedarf_mm: kombi.bedarf_mm, ueberstand_mm: kombi.bedarf_mm - h,
+        // `ueberstand_mm` misst weiterhin das Material UEBER der Steinoberkante (jetzt
+        // Spannplattendicke + Ueberstand) — der Fussoffset kuerzt unten und gehoert nicht hinein.
+        bedarf_mm: kombi.bedarf_mm, ueberstand_mm: kombi.bedarf_mm - h + fussOffset,
         letzte_stange_mm: stueck ? stuecke[stueck - 1].len_mm : h,
         // Ein Zuschnittkonflikt kann `stuecke` LEER lassen ([Z-6]: `reststueck_zu_lang`,
         // `kein_ausgangsprodukt`). Dann gibt es keine Stange, also auch keine Kopplung und
@@ -988,6 +1028,16 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         verschnitt_mm: stueck ? quelleSumme - kombi.bedarf_mm : 0,
         verbindungsmuttern: Math.max(0, stueck - 1), anker_unten: ankerUnten, anker_oben: ankerOben,
         senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter });
+      // `z0_mm` bleibt STEINGEOMETRIE (daran haengen Lagen, Belegung und die Zwischenpunkte).
+      // Der reale Stangenbeginn liegt um `fussOffset` hoeher, bekommt hier aber BEWUSST KEIN
+      // eigenes Feld: kein Leser im Umfang dieses Pakets wertet eines aus, und ein Datum ohne
+      // Leser waere ein zweites, ungeprueftes Geometriemodell neben `bedarf_mm`/`stuecke`.
+      //
+      // BEKANNTE LUECKE (#97, bewusst offen): die ZEICHNENDEN Leser stapeln ihre Stuecke
+      // weiterhin ab `z0_mm` (`stangenStuecke` in sembla-montage.js). Die gezeichnete Stange
+      // beginnt daher weiter an der Steinunterkante, waehrend der gerechnete Bedarf schon
+      // verkuerzt ist. Das ist Darstellung und wird in #97 nachgezogen — hier wird dafuer
+      // NICHTS ersatzweise angepasst.
       r = r2 + 1;
     }
     if (!segs.length) continue;

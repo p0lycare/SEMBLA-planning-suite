@@ -214,14 +214,22 @@ def kombiniere_laengen(bedarf_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM,
 # `ueberstand_mm` ueber die Oberkante (Kopfblech/Spannplatte + Spannmutter), zu bestuecken ist
 # also h + ueberstand. Segmente ohne Oberkantenbezug (Bruestung/Sturz) bleiben unveraendert.
 def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
-                       sperren_mm=None, min_mm=MIN_FERTIGMASS_MM):
-    """Stueckliste eines Strangsegments ([Z-2] + [Z-6] + [Z-7])."""
+                       sperren_mm=None, min_mm=MIN_FERTIGMASS_MM,
+                       fuss_offset_mm=0, kopf_zuschlag_mm=0):
+    """Stueckliste eines Strangsegments ([Z-2] + [Z-6] + [Z-7] + #92)."""
     R = _mm(float(rest_mm)) if rest_mm and float(rest_mm) > 0 else 0
     UE = _mm(float(ueberstand_mm)) if ueberstand_mm and float(ueberstand_mm) > 0 else 0
+    # #92 Der Fuss ist der REALE Stangenbeginn, nicht die Steinunterkante: die Sechskantschraube
+    # kommt von unten durch das Bodenblech und steckt zur Haelfte in der Kopplungsmutter, die
+    # erste Gewindestange von oben in dieselbe Mutter. Sie beginnt damit eine HALBE Mutterhoehe
+    # ueber Oberkante Bodenblech — und die ist die Steinunterkante, also z = 0; die Blechdicke
+    # geht deshalb NICHT ein. Der Offset verkuerzt die zu bestueckende Strecke und gilt
+    # unabhaengig vom oberen Abschluss; ohne Katalogmass ist er 0.
+    FO = _mm(float(fuss_offset_mm)) if fuss_offset_mm and float(fuss_offset_mm) > 0 else 0
     if not oben_an_ok or not R:
         # Oberes Ende der Strecke ist das Segmentende (Anker), also kein Stoss.
-        k = kombiniere_laengen(h_mm, laengen_mm, min_mm, sperren_mm, False)
-        out = {"stuecke": k["stuecke"], "konflikt": k["konflikt"], "bedarf_mm": _mm(h_mm)}
+        k = kombiniere_laengen(_mm(h_mm - FO), laengen_mm, min_mm, sperren_mm, False)
+        out = {"stuecke": k["stuecke"], "konflikt": k["konflikt"], "bedarf_mm": _mm(h_mm - FO)}
         # Fehlendes Reststueck an der Oberkante ist ein sichtbarer Konflikt, keine stille Ausnahme.
         # Rangfolge: [Z-6] steht ueber der Stosssperre [Z-7]; jeder andere Grund behaelt Vorrang.
         if oben_an_ok and not R:
@@ -229,7 +237,12 @@ def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
                 else "kein_reststueck"
             out["konflikt"] = g
         return out
-    bedarf = _mm(h_mm + UE)
+    # #92 Der Ueberstand beginnt an der OBERKANTE SPANNPLATTE, nicht an der Steinoberkante:
+    # zu bestuecken ist zusaetzlich die Plattendicke. Sie haengt am SELBEN Gate wie der
+    # Ueberstand — es gibt genau eine Bedarfsdefinition. Ohne Spannplatte (Kopfblech) ist der
+    # Zuschlag 0; ein Kopfblechmass wird dafuer nie ersatzweise herangezogen.
+    KZ = _mm(float(kopf_zuschlag_mm)) if kopf_zuschlag_mm and float(kopf_zuschlag_mm) > 0 else 0
+    bedarf = _mm(h_mm - FO + KZ + UE)
     unten = _mm(bedarf - R)
     if unten < -1e-9:
         return {"stuecke": [], "konflikt": "reststueck_zu_lang", "bedarf_mm": bedarf}
@@ -623,6 +636,17 @@ def _norm_prestress(p):
            "blech_lengths_mm": blech_l, "top_connection": top,
            "columns_grid": cg, "start_axis_grid": sa,
            "rod_rest_mm": rr, "rod_overhang_mm": ue}
+    # Einbaulagen des Spannsystems ([Z-6]/#92) — beide ABGELEITETE Rechenwerte aus Modul 1
+    # (Praezedenz `rod_rest_mm`): Fussoffset = halbe Kopplungsmutterhoehe, Kopfzuschlag =
+    # Spannplattendicke. Kein Produktmass, keine ID, kein Preis reist mit.
+    # Beide OPTIONAL: fehlend/ungueltig -> der Schluessel entsteht gar nicht, das Ergebnis ist
+    # bit-genau das bisherige. Ein fehlendes Katalogmass wird NIE durch BLECH_THICK ersetzt.
+    _fo = p.get("rod_fuss_offset_mm")
+    if _fo is not None and float(_fo) > 0:
+        out["rod_fuss_offset_mm"] = int(_fo) if float(_fo) == int(float(_fo)) else float(_fo)
+    _kz = p.get("rod_kopf_zuschlag_mm")
+    if _kz is not None and float(_kz) > 0:
+        out["rod_kopf_zuschlag_mm"] = int(_kz) if float(_kz) == int(float(_kz)) else float(_kz)
     # Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
     # er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
     # nirgends gespeichert wird, entsteht im Wandelement auch kein Feld dafuer. `build_wall`
@@ -958,15 +982,24 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             # [A-14]/[A-15]/[Z-7] Wirksame Zwischenspannpunkte dieses Segments; ihre Hoehen
             # sind fuer Kopplungen gesperrt. Uebergeben RELATIV zum Segmentfuss, weil die
             # Kombination die Strecke rechnet und ihre absolute Lage nicht kennt.
+            anker_unten = "bodenblech" if bottom_base else "spannplatte"
+            anker_oben = ("kopfblech" if _top == "blech" else "spannplatte") if top_reach else "spannplatte"
+            # #92 Einbaulagen: Fussoffset nur am Bodenblech (ein Segment ueber einer
+            # Oeffnung sitzt auf einer Spannplatte), Kopfzuschlag nur unter einer wirklich
+            # gewaehlten Spannplatte — bei Kopfblech gibt es keine Platte, und ein Kopfblechmass
+            # wird dafuer nicht ersatzweise genommen.
+            _fuss_offset = _PS.get("rod_fuss_offset_mm", 0) if bottom_base else 0
+            _kopf_zuschlag = _PS.get("rod_kopf_zuschlag_mm", 0) if anker_oben == "spannplatte" else 0
             _zp_seg = zwischenpunkte_segment(z0, z1, _ZP, COURSE)
+            # Die Sperren sind relativ zur bestueckten Strecke — also zum STANGENFUSS, nicht zum
+            # Segmentfuss. Ohne den Offset wanderte jede [Z-7]-Sperre um genau diesen Betrag.
             _kombi = kombiniere_segment(h, _PS["rod_lengths_mm"], top_reach,
                                         _PS["rod_rest_mm"], _PS["rod_overhang_mm"],
-                                        [z - z0 for z in _zp_seg])
+                                        [z - z0 - _fuss_offset for z in _zp_seg],
+                                        MIN_FERTIGMASS_MM, _fuss_offset, _kopf_zuschlag)
             _stuecke = _kombi["stuecke"]
             stueck = len(_stuecke)
             _quelle_summe = sum(s["quelle_mm"] for s in _stuecke)
-            anker_unten = "bodenblech" if bottom_base else "spannplatte"
-            anker_oben = ("kopfblech" if _top == "blech" else "spannplatte") if top_reach else "spannplatte"
             seg_senkkopf = 0; seg_spannmutter = 0; seg_spannplatten = 0
             if bottom_base:
                 seg_senkkopf += 1
@@ -982,8 +1015,11 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                          # `bedarf_mm` = tatsaechlich zu bestueckende Stanglaenge (an der
                          # Oberkante h + Ueberstand, sonst h). Der Verschnitt misst sich daran,
                          # damit der Ueberstand nicht als Verschnitt erscheint.
+                         # `ueberstand_mm` misst weiterhin das Material UEBER der Steinoberkante
+                         # (jetzt Spannplattendicke + Ueberstand) — der Fussoffset kuerzt unten
+                         # und gehoert nicht hinein.
                          "bedarf_mm": _kombi["bedarf_mm"],
-                         "ueberstand_mm": _kombi["bedarf_mm"] - h,
+                         "ueberstand_mm": _kombi["bedarf_mm"] - h + _fuss_offset,
                          "letzte_stange_mm": (_stuecke[stueck - 1]["len_mm"] if stueck else h),
                          # Ein Zuschnittkonflikt kann `stuecke` LEER lassen ([Z-6]:
                          # `reststueck_zu_lang`, `kein_ausgangsprodukt`). Dann gibt es keine
@@ -992,6 +1028,17 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                          "verschnitt_mm": (_quelle_summe - _kombi["bedarf_mm"] if stueck else 0),
                          "verbindungsmuttern": max(0, stueck - 1), "anker_unten": anker_unten, "anker_oben": anker_oben,
                          "senkkopfschrauben": seg_senkkopf, "spannplatten": seg_spannplatten, "spannmuttern": seg_spannmutter})
+            # `z0_mm` bleibt STEINGEOMETRIE (daran haengen Lagen, Belegung und die
+            # Zwischenpunkte). Der reale Stangenbeginn liegt um `_fuss_offset` hoeher, bekommt
+            # hier aber BEWUSST KEIN eigenes Feld: kein Leser im Umfang dieses Pakets wertet
+            # eines aus, und ein Datum ohne Leser waere ein zweites, ungeprueftes
+            # Geometriemodell neben `bedarf_mm`/`stuecke`.
+            #
+            # BEKANNTE LUECKE (#97, bewusst offen): die ZEICHNENDEN Leser stapeln ihre Stuecke
+            # weiterhin ab `z0_mm` (`stangenStuecke` in sembla-montage.js). Die gezeichnete
+            # Stange beginnt daher weiter an der Steinunterkante, waehrend der gerechnete Bedarf
+            # schon verkuerzt ist. Das ist Darstellung und wird in #97 nachgezogen — hier wird
+            # dafuer nichts ersatzweise angepasst.
             r = r2 + 1
         if not segs:
             continue
