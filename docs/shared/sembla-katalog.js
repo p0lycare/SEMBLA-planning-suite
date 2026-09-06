@@ -17,7 +17,8 @@
  *     (`loesePreis`, [P-14]) und dort nicht gepflegt.
  *
  * Drei Versionsachsen, streng getrennt (Formattrennung):
- *   KATALOG_VERSION  — oeffentliches Katalog-Dateiformat (hier, v1)
+ *   KATALOG_VERSION  — oeffentliches Katalog-Dateiformat (hier, v2 seit #94:
+ *                      Baugruppen/Sets; v1 wird beim Import verlustfrei migriert)
  *   PROJEKT_VERSION  — oeffentliches Projekt-Dateiformat (storage.js, bleibt 2;
  *                      die Produkt-Bloecke sind dort optionale Zusatzfelder)
  *   SCHEMA_VERSION   — interner localStorage-Stand (storage.js, bleibt 3;
@@ -36,7 +37,7 @@
  */
 
 /** Version des OEFFENTLICHEN Katalog-Dateiformats. */
-export const KATALOG_VERSION = 1;
+export const KATALOG_VERSION = 2;
 
 /** Kennung des oeffentlichen Katalogformats. */
 export const KATALOG_FORMAT = "SEMBLA-Bauteilkatalog";
@@ -51,8 +52,8 @@ export const KATALOG_FORMAT = "SEMBLA-Bauteilkatalog";
 //
 // Die Identitaet leitet sich ALLEIN aus dem VORLAGENPFAD ab. Sie steht damit
 // nicht in der Datei (parseKatalog nimmt ohnehin nur format/version/name/
-// produkte an) und reist nicht in Exporte (katalogObjekt streicht sie), d. h.
-// KATALOG_VERSION bleibt 1 und das oeffentliche Dateiformat ist unberuehrt.
+// produkte/sets an) und reist nicht in Exporte (katalogObjekt streicht sie) —
+// sie beruehrt das oeffentliche Dateiformat also nicht.
 
 /** Pfad der mitgelieferten Standardkatalog-Vorlage (relativ zu `docs/`). */
 export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog.json";
@@ -201,7 +202,8 @@ export function kategorieLabel(id) {
 
 /** Leerer Katalog (Neuanlage). @param {string} [name] */
 export function leererKatalog(name) {
-  return { format: KATALOG_FORMAT, version: KATALOG_VERSION, name: (name || "Neuer Katalog").toString(), produkte: [] };
+  return { format: KATALOG_FORMAT, version: KATALOG_VERSION,
+           name: (name || "Neuer Katalog").toString(), produkte: [], sets: [] };
 }
 
 /**
@@ -268,6 +270,163 @@ export function massText(p) {
   if (paar.length) t.push(paar.join(" × ") + " mm");
   if (p.laenge_mm != null) t.push("L " + p.laenge_mm + " mm");
   return t.join(" · ") || "–";
+}
+
+// --- Baugruppen / Sets ([P-21], Katalogformat v2) -------------------------
+// Ein SET ist eine benannte Liste von Positionen — die DEFINITIONSEBENE des Katalogs
+// fuer wiederkehrende Bauteilgruppen (Wandabschluss, Deckenanschluss). Es lebt
+// AUSSCHLIESSLICH am Katalog (`katalog.sets`), nie im Wandelement, nie in `eingaben`
+// und nie in der Projektmappe.
+//
+// Eine Position benennt GENAU EINE Sache: entweder ein Katalogprodukt (`produkt`)
+// oder eine Verwendungsrolle (`rolle`) — dazu eine ganzzahlige Menge >= 1. Die beiden
+// Felder sind DISJUNKT: beide gesetzt oder keines gesetzt ist ein Fehler, kein Vorrang.
+// Dasselbe Bauteil darf in beliebig vielen Sets vorkommen (die Unterlegscheibe steht in
+// „Wandabschluss" UND in „Deckenanschluss") — das ist ausdruecklich zulaessig.
+//
+// VERSCHACHTELUNG IST AUSGESCHLOSSEN: ein Set ist nie Position eines anderen Sets. Der
+// Fall bekommt eine EIGENE Meldung, damit der Ausschluss sichtbar ist und nicht als
+// unspezifisches „unbekannte Positionsform" untergeht.
+//
+// Dieses Modul DEFINIERT und PRUEFT Sets — es loest sie NICHT auf. Die Stueckliste
+// bleibt flach ([P-19]); eine Aufloesung in Mengen gibt es hier bewusst nicht.
+
+/** Leeres Set-Geruest (Startwerte des Anlage-Formulars). @param {string} [name] */
+export function neuesSet(name) {
+  return { id: "", name: String(name == null ? "" : name), positionen: [] };
+}
+
+/** Vorschlag fuer eine sprechende, stabile Set-Kennung. @param {string} name */
+export function vorschlagSetId(name) {
+  const sl = _slug(name);
+  return sl ? "set-" + sl : "set";
+}
+
+/**
+ * Ein Set auf die kanonische Form bringen — REIN und OHNE stille Korrektur:
+ * Zeichenketten werden getrimmt, die Positionsliste wird kopiert, unbekannte
+ * Zusatzfelder bleiben erhalten (Vorwaertskompatibilitaet). Ungueltige Werte
+ * (Menge 0, fehlende Referenz) bleiben stehen und werden von `validiereSet`
+ * benannt — hier wird nichts zurechtgebogen.
+ * @param {any} s
+ */
+export function normSet(s) {
+  const roh = (s && typeof s === "object") ? s : {};
+  return {
+    ...roh,
+    id: String(roh.id == null ? "" : roh.id).trim(),
+    name: String(roh.name == null ? "" : roh.name).trim(),
+    positionen: (Array.isArray(roh.positionen) ? roh.positionen : [])
+      .map((pos) => (pos && typeof pos === "object" ? { ...pos } : pos)),
+  };
+}
+
+/** Eine Set-Liste normalisieren (nie null, Reihenfolge unveraendert). @param {any} liste */
+export function normSets(liste) {
+  return (Array.isArray(liste) ? liste : []).map(normSet);
+}
+
+/** Traegt die Position eine Produkt-Angabe? (leere Zeichenkette zaehlt nicht) */
+function _hatFeld(pos, feld) {
+  const v = pos ? pos[feld] : undefined;
+  return v !== undefined && v !== null && String(v).trim() !== "";
+}
+
+/**
+ * Ein Set pruefen. Liefert eine Liste konkreter Fehlermeldungen (leer = ok).
+ * Es wird NIE stillschweigend korrigiert ([P-9]).
+ * @param {any} s Set
+ * @param {{produktIds?:string[], setIds?:string[]}} [opts] `setIds` = bereits vergebene
+ *   Set-Kennungen (Eindeutigkeit), `produktIds` = Produkte dieses Katalogs
+ * @returns {string[]}
+ */
+export function validiereSet(s, opts = {}) {
+  const e = [];
+  if (!s || typeof s !== "object" || Array.isArray(s)) return ["Set ist kein Objekt."];
+
+  const id = s.id == null ? "" : String(s.id).trim();
+  if (!id) e.push("Kennung fehlt.");
+  else if (/\s/.test(id)) e.push(`Kennung „${id}“ darf keine Leerzeichen enthalten.`);
+  else if ((opts.setIds || []).includes(id)) e.push(`Kennung „${id}“ ist bereits vergeben.`);
+
+  if (!String(s.name == null ? "" : s.name).trim()) e.push("Name fehlt.");
+
+  if (!Array.isArray(s.positionen)) return e.concat("Feld „positionen“ fehlt oder ist keine Liste.");
+
+  const produktIds = (opts.produktIds || []).map(String);
+  s.positionen.forEach((pos, i) => {
+    const nr = `Position ${i + 1}: `;
+    if (!pos || typeof pos !== "object" || Array.isArray(pos)) { e.push(nr + "keine Position."); return; }
+
+    // Verschachtelung bekommt eine EIGENE Meldung — der Ausschluss ist fachlich, nicht
+    // bloss eine unbekannte Form ([P-21]).
+    if (_hatFeld(pos, "set") || _hatFeld(pos, "sets")) {
+      e.push(nr + "verschachtelte Sets sind unzulässig — ein Set enthält nur Produkte und "
+        + "Verwendungsrollen, nie ein weiteres Set.");
+      return;
+    }
+
+    const hatP = _hatFeld(pos, "produkt"), hatR = _hatFeld(pos, "rolle");
+    if (hatP && hatR) {
+      e.push(nr + "es ist genau eine Angabe zulässig — entweder ein Produkt oder eine "
+        + "Verwendungsrolle, nicht beides.");
+    } else if (!hatP && !hatR) {
+      e.push(nr + "weder ein Produkt noch eine Verwendungsrolle angegeben.");
+    } else if (hatP) {
+      const pid = String(pos.produkt).trim();
+      if (!produktIds.includes(pid)) e.push(nr + `Produkt „${pid}“ ist in diesem Katalog nicht vorhanden.`);
+    } else {
+      const rid = String(pos.rolle).trim();
+      const r = rolle(rid);
+      if (!r) e.push(nr + `Unbekannte Verwendungsrolle „${rid}“.`);
+      else if (!_waehlbar(r)) {
+        e.push(nr + `Verwendungsrolle „${rid}“ ist nicht wählbar und kann nicht in einem Set stehen.`);
+      }
+    }
+
+    const menge = pos.menge;
+    if (menge === undefined || menge === null || String(menge).trim() === "") {
+      e.push(nr + "Menge fehlt (ganze Zahl ≥ 1).");
+    } else {
+      const n = Number(menge);
+      if (!Number.isFinite(n)) e.push(nr + `Menge „${menge}“ ist keine Zahl.`);
+      else if (!Number.isInteger(n)) e.push(nr + `Menge ${n} muss eine ganze Zahl sein.`);
+      else if (n < 1) e.push(nr + `Menge ${n} muss mindestens 1 sein.`);
+    }
+  });
+  return e;
+}
+
+/** Set per Kennung finden. @param {any} k @param {string} id */
+export function set(k, id) {
+  return normSets(k && k.sets).find((s) => s.id === String(id).trim()) || null;
+}
+
+/**
+ * Positionen EINES Sets — reine Leseansicht, ausdruecklich OHNE Aufloesung in
+ * Stuecklistenmengen ([P-19]/[P-21]). Jede Position nennt ihre Art, die Referenz,
+ * die Menge und einen Klartext fuer die Oberflaeche; eine unaufloesbare Referenz
+ * wird als solche GEMELDET, nie ersetzt.
+ * @param {any} k @param {string} id
+ * @returns {Array<{art:"produkt"|"rolle"|"unbekannt",ref:string,menge:any,text:string,fehlt:boolean}>}
+ */
+export function setPositionen(k, id) {
+  const s = set(k, id);
+  if (!s) return [];
+  return s.positionen.map((pos) => {
+    if (_hatFeld(pos, "produkt")) {
+      const ref = String(pos.produkt).trim();
+      const p = produkt(k, ref);
+      return { art: "produkt", ref, menge: pos.menge, fehlt: !p,
+               text: p ? (String(p.bezeichnung || "").trim() || ref) : ref };
+    }
+    if (_hatFeld(pos, "rolle")) {
+      const ref = String(pos.rolle).trim();
+      const r = rolle(ref);
+      return { art: "rolle", ref, menge: pos.menge, fehlt: !r, text: r ? r.label : ref };
+    }
+    return { art: "unbekannt", ref: "", menge: pos && pos.menge, fehlt: true, text: "—" };
+  });
 }
 
 // --- Validierung ----------------------------------------------------------
@@ -352,6 +511,19 @@ export function validiereKatalog(k) {
     const id = p && p.id != null ? String(p.id).trim() : "";
     if (id) ids.push(id);
   });
+  // Sets sind OPTIONAL ([P-22]): ein Katalog ohne das Feld ist ein Katalog ohne
+  // Baugruppen — es wird nichts erfunden und nichts migriert.
+  if (k.sets !== undefined) {
+    if (!Array.isArray(k.sets)) return e.concat("Feld „sets“ ist keine Liste.");
+    const setIds = [];
+    k.sets.forEach((s, i) => {
+      const name = s && s.name != null ? String(s.name).trim() : "";
+      const kopf = `Set ${i + 1}` + (name ? ` („${name}“)` : "") + ": ";
+      for (const msg of validiereSet(s, { produktIds: ids, setIds })) e.push(kopf + msg);
+      const sid = s && s.id != null ? String(s.id).trim() : "";
+      if (sid) setIds.push(sid);
+    });
+  }
   return e;
 }
 
@@ -359,7 +531,7 @@ export function validiereKatalog(k) {
  * Katalog-Text (Datei) deuten und streng pruefen. Erkennt verwechselte Formate
  * und nennt den richtigen Weg. Unbekannte Zusatzfelder bleiben erhalten
  * (Vorwaertskompatibilitaet).
- * @param {string} text @returns {{format:string,version:number,name:string,produkte:any[]}}
+ * @param {string} text @returns {{format:string,version:number,name:string,produkte:any[],sets:any[]}}
  */
 export function parseKatalog(text) {
   let obj;
@@ -377,10 +549,22 @@ export function parseKatalog(text) {
     throw new Error(`Katalogformat Version ${v} wird nicht unterstützt (diese Suite kennt Version ${KATALOG_VERSION}).`);
   }
   if (!Array.isArray(obj.produkte)) throw new Error("Feld „produkte“ fehlt oder ist keine Liste.");
+  // MIGRATION v1 -> v2 ([P-22]): ein gueltiger v1-Katalog wird VERLUSTFREI uebernommen —
+  // seine Produkte unveraendert, dazu eine LEERE Set-Liste. Es wird kein Set erfunden und
+  // kein Produktfeld angefasst. Baugruppen gibt es erst ab v2, ein `sets`-Feld an einer
+  // v1-Datei ist deshalb kein v1-Inhalt und wird nicht uebernommen.
+  if (v < 2 && obj.sets !== undefined) {
+    throw new Error("Diese Datei nennt sich Katalogformat Version 1, führt aber Baugruppen "
+      + `(Feld „sets“) — die gibt es erst ab Version ${KATALOG_VERSION}. Die Versionsangabe der `
+      + "Datei ist zu korrigieren; hier wird nichts geraten.");
+  }
+  const sets = v < 2 ? [] : (obj.sets === undefined ? [] : obj.sets);
+  if (!Array.isArray(sets)) throw new Error("Feld „sets“ ist keine Liste.");
   const kat = {
-    format: KATALOG_FORMAT, version: v,
+    format: KATALOG_FORMAT, version: KATALOG_VERSION,
     name: String(obj.name == null || String(obj.name).trim() === "" ? "Importierter Katalog" : obj.name),
     produkte: obj.produkte.map((p) => ({ ...p })),
+    sets: normSets(sets),
   };
   const fehler = validiereKatalog(kat);
   if (fehler.length) throw new Error("Katalog ungültig:\n– " + fehler.join("\n– "));
@@ -390,13 +574,17 @@ export function parseKatalog(text) {
 /**
  * Katalog als oeffentliches Datei-Objekt (Export). Interne Zusatzfelder des
  * Browserzustands (z. B. `geaendert`) reisen NICHT mit.
- * @param {any} k @returns {{format:string,version:number,name:string,produkte:any[]}}
+ * @param {any} k @returns {{format:string,version:number,name:string,produkte:any[],sets:any[]}}
  */
 export function katalogObjekt(k) {
   return {
     format: KATALOG_FORMAT, version: KATALOG_VERSION,
     name: String((k && k.name) || "Bauteilkatalog"),
     produkte: ((k && k.produkte) || []).map((p) => ({ ...p })),
+    // Die Whitelist ist zugleich der Normalisierer JEDES Schreibvorgangs
+    // (storage._speichereKatalog) — fehlte `sets` hier, verschwaende jede gepflegte
+    // Baugruppe still beim naechsten Speichern.
+    sets: normSets(k && k.sets),
   };
 }
 

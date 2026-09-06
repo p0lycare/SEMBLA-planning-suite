@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260906-02",
+    datum: "2026-09-06",
+    typ: "feature",
+    issue: 94,
+    titel: "Baugruppen im Bauteilkatalog: benannte Bauteilgruppen anlegen, pflegen und mitnehmen",
+    testbitte: "In Modul 0 den Bauteilkatalog öffnen und unter „Baugruppen“ ein Set anlegen, "
+      + "je eine Produkt- und eine Rollenposition mit Menge ergänzen, umbenennen und den Katalog "
+      + "exportieren und wieder importieren: die Baugruppe kommt unverändert zurück.",
+  },
+  {
     id: "chg-20260906-01",
     datum: "2026-09-06",
     typ: "feature",

@@ -15,7 +15,7 @@ const ok = (n, c) => checks.push([n, !!c]);
 
 // --- 1) Formatkonstanten / Trennung der Versionsachsen --------------------
 ok("Katalogformat heisst SEMBLA-Bauteilkatalog", KAT.KATALOG_FORMAT === "SEMBLA-Bauteilkatalog");
-ok("Katalogformat ist Version 1", KAT.KATALOG_VERSION === 1);
+ok("Katalogformat ist Version 2 (Baugruppen, #94)", KAT.KATALOG_VERSION === 2);
 ok("Einheiten = Stk/m/m2 (explizite Preisbasis)",
   KAT.EINHEITEN.join(",") === "Stk,m,m2"
   && KAT.EINHEIT_LABEL.Stk === "€/Stk" && KAT.EINHEIT_LABEL.m === "€/m" && KAT.EINHEIT_LABEL.m2 === "€/m²");
@@ -96,7 +96,7 @@ const gelesen = KAT.parseKatalog(t(KATALOG));
 ok("parse: Roundtrip liefert alle Produkte", gelesen.produkte.length === 3 && gelesen.name === "Katalog Musterlieferant");
 ok("parse: kaputtes JSON wirft", wirft("{ kein json", /kein gültiges JSON/));
 ok("parse: fehlendes format wirft", wirft(t({ version: 1, produkte: [] }), /SEMBLA-Bauteilkatalog/));
-ok("parse: zu neue Version wirft", wirft(t({ ...KATALOG, version: 2 }), /Version 2 wird nicht unterstützt/));
+ok("parse: zu neue Version wirft", wirft(t({ ...KATALOG, version: 3 }), /Version 3 wird nicht unterstützt/));
 ok("parse: fehlende Version wirft", wirft(t({ format: KAT.KATALOG_FORMAT, produkte: [] }), /Version fehlt/));
 ok("parse: fehlende produkte-Liste wirft", wirft(t({ format: KAT.KATALOG_FORMAT, version: 1 }), /produkte/));
 ok("parse: ungueltiges Produkt wirft mit Begruendung",
@@ -116,7 +116,7 @@ ok("parse: unbekannte Zusatzfelder bleiben erhalten",
 ok("katalogObjekt: nur oeffentliche Felder, feste Version",
   (() => {
     const o = KAT.katalogObjekt({ ...KATALOG, geaendert: "2026-01-01T00:00:00.000Z" });
-    return o.version === 1 && o.format === KAT.KATALOG_FORMAT && !("geaendert" in o) && o.produkte.length === 3;
+    return o.version === 2 && o.format === KAT.KATALOG_FORMAT && !("geaendert" in o) && o.produkte.length === 3;
   })());
 
 // --- 7) Anlage-Helfer ---------------------------------------------------
@@ -385,7 +385,7 @@ ok("jede Rolle mit Maß-Diskriminator hat mindestens ein Diskriminatorfeld in ih
   KAT.ROLLEN.filter((r) => r.mass).every((r) =>
     r.mass.felder.some((f) => KAT.maskeFelder(r.kategorie).includes(f))));
 ok("Maske veraendert nichts an Kategorien, Rollen oder Formatversion",
-  KAT.KATEGORIEN.length === 7 && KAT.KATALOG_VERSION === 1
+  KAT.KATEGORIEN.length === 7 && KAT.KATALOG_VERSION === 2
   && typeof KAT.loesePreis === "function");
 
 // --- Standardauswahl aus dem Katalog ([P-18]) ------------------------------
@@ -563,9 +563,106 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     !("id" in KAT.parseKatalog(roh)) && !(KAT.VORLAGE_FELD in KAT.parseKatalog(roh)));
   ok("#102 katalogObjekt streicht Kennung und Marker — kein Formatbump",
     !("id" in KAT.katalogObjekt(echt)) && !(KAT.VORLAGE_FELD in KAT.katalogObjekt(echt))
-    && KAT.katalogObjekt(echt).version === KAT.KATALOG_VERSION && KAT.KATALOG_VERSION === 1);
+    && KAT.katalogObjekt(echt).version === KAT.KATALOG_VERSION && KAT.KATALOG_VERSION === 2);
 }
 
+
+// --- Baugruppen / Sets ([P-21]) und Katalogformat v2 ([P-22], #94) --------
+// Das Set ist DEFINITIONSEBENE des Katalogs: geprueft werden Form, Referenzen,
+// Mengen, Eindeutigkeit, das Verschachtelungsverbot, die verlustfreie Migration
+// v1 -> v2 und der Roundtrip. Aufgeloest wird hier NICHTS ([P-19]).
+{
+  const V1 = { format: KAT.KATALOG_FORMAT, version: 1, name: "Altkatalog",
+               produkte: [P_ROD, P_LATTE, P_PLATTE] };
+  const mig = KAT.parseKatalog(t(V1));
+
+  // (a) Migration v1 -> v2: Produkte bitgleich, leere Set-Liste, Version gehoben
+  ok("[P-22] v1 wird auf v2 migriert", mig.version === 2 && KAT.KATALOG_VERSION === 2);
+  ok("[P-22] v1-Migration laesst die Produkte bitgleich",
+    JSON.stringify(mig.produkte) === JSON.stringify(V1.produkte));
+  ok("[P-22] v1-Migration liefert eine LEERE Set-Liste",
+    Array.isArray(mig.sets) && mig.sets.length === 0);
+  ok("[P-22] eine v1-Datei mit Baugruppen ist widerspruechlich und wird benannt abgewiesen",
+    wirft(t({ ...V1, sets: [{ id: "s", name: "N", positionen: [] }] }), /Version 1.*Baugruppen|Baugruppen.*Version/s));
+  ok("[P-22] ein Katalog ohne sets-Feld bleibt gueltig (kein Mangel)",
+    KAT.validiereKatalog(V1).length === 0);
+
+  // (b) Roundtrip v2 mit mehreren Sets — Kennung, Name, Reihenfolge, Art, Menge
+  const SETS = [
+    { id: "set-wandabschluss", name: "Wandabschluss",
+      positionen: [{ produkt: P_ROD.id, menge: 2 }, { rolle: "kupplung", menge: 4 },
+                   { produkt: P_PLATTE.id, menge: 1 }] },
+    // Dasselbe Bauteil in einer ZWEITEN Baugruppe ist ausdruecklich zulaessig ([P-21]).
+    { id: "set-deckenanschluss", name: "Deckenanschluss",
+      positionen: [{ produkt: P_PLATTE.id, menge: 3 }, { rolle: "spannmutter", menge: 8 }] },
+  ];
+  const V2 = { ...mig, sets: SETS };
+  ok("[P-21] gueltiger v2-Katalog mit mehreren Sets", KAT.validiereKatalog(V2).length === 0);
+  ok("[P-21] dasselbe Produkt darf in mehreren Baugruppen stehen",
+    SETS.filter((s) => s.positionen.some((p) => p.produkt === P_PLATTE.id)).length === 2
+    && KAT.validiereKatalog(V2).length === 0);
+  const rt = KAT.parseKatalog(t(KAT.katalogObjekt(V2)));
+  ok("[P-22] Roundtrip Export -> Import erhaelt alle Set-Definitionen",
+    JSON.stringify(rt.sets) === JSON.stringify(SETS));
+  ok("[P-22] katalogObjekt fuehrt sets — sonst ginge jede Baugruppe beim Speichern verloren",
+    "sets" in KAT.katalogObjekt(V2) && KAT.katalogObjekt(V2).sets.length === 2);
+  ok("[P-22] katalogObjekt eines Katalogs ohne sets liefert eine leere Liste",
+    JSON.stringify(KAT.katalogObjekt(V1).sets) === "[]");
+  ok("[P-22] die Migration ruehrt keine Produktreferenz an (Rollenangaben unveraendert)",
+    JSON.stringify(KAT.produktrollenVorschlag(rt)) === JSON.stringify(KAT.produktrollenVorschlag(V1)));
+
+  // (c) Fehlerformen — jede EINZELN und konkret benannt ([P-9])
+  const setFehler = (positionen) =>
+    KAT.validiereKatalog({ ...mig, sets: [{ id: "s1", name: "Probe", positionen }] }).join("|");
+  ok("[P-21] unbekanntes Produkt wird konkret benannt",
+    /Set 1 .*Probe.*Position 1: Produkt „gibt-es-nicht“ ist in diesem Katalog nicht vorhanden/
+      .test(setFehler([{ produkt: "gibt-es-nicht", menge: 1 }])));
+  ok("[P-21] unbekannte Verwendungsrolle wird konkret benannt",
+    /Position 1: Unbekannte Verwendungsrolle „keine-rolle“/.test(setFehler([{ rolle: "keine-rolle", menge: 1 }])));
+  ok("[P-21] nicht waehlbare Rolle wird abgewiesen (Sonderzuschnitt, [P-18])",
+    /Position 1: Verwendungsrolle „rod_sonder“ ist nicht wählbar/.test(setFehler([{ rolle: "rod_sonder", menge: 1 }])));
+  ok("[P-21] Menge 0 wird benannt abgewiesen",
+    /Position 1: Menge 0 muss mindestens 1 sein/.test(setFehler([{ produkt: P_ROD.id, menge: 0 }])));
+  ok("[P-21] nicht ganzzahlige Menge wird benannt abgewiesen, nie gerundet",
+    /Position 1: Menge 1.5 muss eine ganze Zahl sein/.test(setFehler([{ produkt: P_ROD.id, menge: 1.5 }])));
+  ok("[P-21] fehlende Menge wird benannt",
+    /Position 1: Menge fehlt/.test(setFehler([{ produkt: P_ROD.id }])));
+  ok("[P-21] Set als Position -> EIGENE Meldung (Verschachtelungsverbot)",
+    /Position 1: verschachtelte Sets sind unzulässig/.test(setFehler([{ set: "set-wandabschluss", menge: 1 }])));
+  ok("[P-21] Produkt UND Rolle zugleich -> unzulaessige Positionsform",
+    /Position 1: es ist genau eine Angabe zulässig/.test(setFehler([{ produkt: P_ROD.id, rolle: "kupplung", menge: 1 }])));
+  ok("[P-21] weder Produkt noch Rolle -> unzulaessige Positionsform",
+    /Position 1: weder ein Produkt noch eine Verwendungsrolle/.test(setFehler([{ menge: 1 }])));
+  ok("[P-21] doppelte Set-Kennung wird mit Zeilennummer benannt",
+    /Set 2 .*B.*: Kennung „doppelt“ ist bereits vergeben/.test(KAT.validiereKatalog({ ...mig,
+      sets: [{ id: "doppelt", name: "A", positionen: [] }, { id: "doppelt", name: "B", positionen: [] }] }).join("|")));
+  ok("[P-21] Set ohne Namen und ohne Kennung wird benannt",
+    /Kennung fehlt/.test(KAT.validiereKatalog({ ...mig, sets: [{ id: "", name: "", positionen: [] }] }).join("|"))
+    && /Name fehlt/.test(KAT.validiereKatalog({ ...mig, sets: [{ id: "s", name: "", positionen: [] }] }).join("|")));
+  ok("[P-21] sets als Nicht-Liste wird benannt",
+    /Feld „sets“ ist keine Liste/.test(KAT.validiereKatalog({ ...mig, sets: {} }).join("|")));
+  ok("[P-21] ein ungueltiges Set laesst parseKatalog werfen (nichts wird halb gelesen)",
+    wirft(t({ ...mig, sets: [{ id: "s", name: "N", positionen: [{ produkt: "weg", menge: 1 }] }] }),
+      /Katalog ungültig[\s\S]*nicht vorhanden/));
+
+  // (d) Leseansicht: benennt Art, Referenz und Menge — loest NICHTS auf ([P-19])
+  const pos = KAT.setPositionen(V2, "set-wandabschluss");
+  ok("[P-21] setPositionen benennt Art und Menge je Position",
+    pos.length === 3 && pos[0].art === "produkt" && pos[0].menge === 2
+    && pos[1].art === "rolle" && pos[1].ref === "kupplung" && pos[1].text === "Kopplungsmutter"
+    && pos.every((x) => !x.fehlt));
+  ok("[P-21] eine unaufloesbare Position wird GEMELDET, nicht ersetzt",
+    KAT.setPositionen({ ...mig, sets: [{ id: "x", name: "X", positionen: [{ produkt: "weg", menge: 1 }] }] }, "x")[0].fehlt === true);
+  ok("[P-21] normSet korrigiert nichts still (Menge 0 bleibt Menge 0)",
+    KAT.normSet({ id: " a ", name: " N ", positionen: [{ produkt: "p", menge: 0 }] }).positionen[0].menge === 0);
+  ok("[P-21] normSets liefert bei fehlendem Feld eine leere Liste",
+    KAT.normSets(undefined).length === 0 && KAT.normSets(null).length === 0);
+  ok("[P-21] leererKatalog bringt eine leere Baugruppenliste mit",
+    Array.isArray(KAT.leererKatalog("T").sets) && KAT.leererKatalog("T").sets.length === 0);
+  ok("[P-21] neuesSet/vorschlagSetId liefern ein pflegbares Geruest",
+    KAT.neuesSet("Wandabschluss").positionen.length === 0
+    && KAT.vorschlagSetId("Wandabschluss") === "set-wandabschluss");
+}
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

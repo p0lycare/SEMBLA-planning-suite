@@ -269,8 +269,8 @@ t("katalog: ungueltiger Katalog wird abgelehnt", warfK && store.holeKatalog().pr
 // Export = eigene Datei im oeffentlichen Katalogformat (nicht im Projekt-ZIP)
 store.exportiereKatalog();
 const kExp = JSON.parse(letzterDownload);
-t("katalog-export: eigenes Format v1",
-  kExp.format === "SEMBLA-Bauteilkatalog" && kExp.version === 1 && kExp.produkte.length === 4);
+t("katalog-export: eigenes Format v2",
+  kExp.format === "SEMBLA-Bauteilkatalog" && kExp.version === 2 && kExp.produkte.length === 4);
 t("katalog-export: kein Wandelement/keine Eingaben in der Datei",
   !("wandelement" in kExp) && !("eingaben" in kExp) && !("geaendert" in kExp));
 
@@ -331,7 +331,7 @@ t("produkte: reisen im Projekt-JSON mit (nur IDs)",
   && !JSON.stringify(pK.eingaben.planung).includes("Latte 40×60"));
 t("produkte: oeffentliches Projektformat bleibt Version 2", pK.version === 2 && store.PROJEKT_VERSION === 2);
 t("produkte: interne Schema-Version ist 6 (Lage in mm)", store.SCHEMA_VERSION === 6);
-t("produkte: Katalog-Formatversion getrennt", KAT.KATALOG_VERSION === 1);
+t("produkte: Katalog-Formatversion getrennt", KAT.KATALOG_VERSION === 2);
 const idKimp = store.importiereText(JSON.stringify(pK), "Katalogwand.json");
 t("produkte: nach Projekt-Import wieder geladen",
   store.holeProdukte(2, idKimp).rollen.latte.length === 2
@@ -1364,7 +1364,7 @@ t("altbestand: reist im Projekt-Export unveraendert mit (Nachvollziehbarkeit)",
     && !("id" in KAT.katalogObjekt(kataloge()[vId])));
   t("[#102] die Versionsachsen bleiben unveraendert",
     store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
-    && KAT.KATALOG_VERSION === 1 && PM.MAPPE_VERSION === 2);
+    && KAT.KATALOG_VERSION === 2 && PM.MAPPE_VERSION === 2);
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

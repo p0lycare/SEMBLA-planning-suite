@@ -53,6 +53,7 @@ class El {
              scrollIntoView(opts){ scrollAufrufe.push({ id:m[1], opts }); } };
   }
   closest(){ return null; }
+  click(){}                                       // echtes <a>: der Katalogexport ruft es
   remove(){}
 }
 let letzterAnker = null;                          // zuletzt erzeugtes <a> (Download pruefen)
@@ -530,7 +531,7 @@ ok('separater Katalog-Import und -Export als eigene Bedienelemente',
 ok('Projekt-ZIP-Dialog hat KEIN Katalog-Haekchen (Formate nicht verwechseln)',
   !/type="checkbox" value="katalog"/.test(html));
 ok('Hinweis nennt eigenes Dateiformat und Trennung vom Projekt',
-  /SEMBLA-Bauteilkatalog<\/b>, Format-Version&nbsp;1/.test(html)
+  /SEMBLA-Bauteilkatalog<\/b>, Format-Version&nbsp;2/.test(html)
   && /getrennt vom Projekt-Export/.test(html));
 ok('Hinweis nennt Modul 0 als alleinigen Pflegeort und Modul 1/2 als Auswahlort',
   /Modul 0 ist der alleinige Pflegeort/.test(html)
@@ -549,7 +550,7 @@ ok('vor der Anlage ist kein Katalog geladen', kat() === null);
 $('k-name').value = 'Katalog Musterlieferant';
 $('k-neu').dispatch('click');
 ok('Katalog angelegt (leer, mit Namen)', !!kat() && kat().name === 'Katalog Musterlieferant' && kAnzahl() === 0);
-ok('Kopfzeile meldet Katalogformat v1', /Katalogformat v1/.test($('k-info').textContent));
+ok('Kopfzeile meldet Katalogformat v2', /Katalogformat v2/.test($('k-info').textContent));
 
 // 5c) Gewindestange anlegen — kategoriegerechte Maske + Vorschlags-ID ([P-16])
 const slotVorAnlage = kSlot();
@@ -766,8 +767,8 @@ ok('Projekt-JSON traegt die Auswahl, Format bleibt v2',
 const zipVorher = zipCalls.length;
 $('k-export').dispatch('click');
 const kExpDatei = JSON.parse(letzterDownload);
-ok('Katalog-Export erzeugt eigene JSON-Datei mit Katalogformat v1',
-  kExpDatei.format === 'SEMBLA-Bauteilkatalog' && kExpDatei.version === 1 && kExpDatei.produkte.length === 4);
+ok('Katalog-Export erzeugt eigene JSON-Datei mit Katalogformat v2',
+  kExpDatei.format === 'SEMBLA-Bauteilkatalog' && kExpDatei.version === 2 && kExpDatei.produkte.length === 4);
 ok('Katalog-Export enthaelt kein Projekt/Wandelement',
   !('wandelement' in kExpDatei) && !('eingaben' in kExpDatei) && !('geaendert' in kExpDatei));
 ok('Katalog-Dateiname ist klar unterscheidbar',
@@ -1071,8 +1072,14 @@ const katRoh = JSON.parse(vorlageDatei(V_KAT));
 // Richtige: dass Parser, Laden, Speichern und Roundtrip KEIN Produkt verlieren oder erfinden.
 const V_KAT_ANZ = katRoh.produkte.length;
 const wandRoh = JSON.parse(vorlageDatei(V_WAND));
-ok('Katalogvorlage traegt Katalogformat v1',
-  katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === KAT.KATALOG_VERSION);
+// #94: Die Vorlagendatei bleibt bewusst bei v1 — sie ist damit der REALE Migrationsbeleg
+// des Ladewegs. Geprueft wird deshalb beides: die Datei ist v1, und `parseKatalog` hebt sie
+// verlustfrei auf v2 (Produkte unveraendert, leere Baugruppenliste, [P-22]).
+ok('Katalogvorlage traegt Katalogformat v1 und wird beim Laden verlustfrei auf v2 migriert',
+  katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === 1 && KAT.KATALOG_VERSION === 2
+  && KAT.parseKatalog(vorlageDatei(V_KAT)).version === 2
+  && JSON.stringify(KAT.parseKatalog(vorlageDatei(V_KAT)).produkte) === JSON.stringify(katRoh.produkte)
+  && KAT.parseKatalog(vorlageDatei(V_KAT)).sets.length === 0);
 ok('Katalogvorlage ist gegen den echten Validator fehlerfrei',
   KAT.validiereKatalog(katRoh).length === 0
   && KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length === V_KAT_ANZ);
@@ -1199,9 +1206,126 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
   ok('kein Vorlagenprodukt traegt ein fuer seine Kategorie fachfremdes Maßfeld',
     kat().produkte.every(p => KAT.MASSFELDER.every(f =>
       p[f] === undefined || KAT.maskeFelder(p.kategorie).includes(f))));
-  ok('Katalog-Formatversion bleibt 1 (kein Bruch durch [P-16])',
-    KAT.KATALOG_VERSION === 1 && KAT.katalogObjekt(kat()).version === 1
+  ok('Katalog-Formatversion ist 2 (kein Bruch durch [P-16])',
+    KAT.KATALOG_VERSION === 2 && KAT.katalogObjekt(kat()).version === 2
     && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === V_KAT_ANZ);
+}
+
+// 7d3) Baugruppen/Sets ([P-21]/[P-22], #94) am ECHTEN Katalogdialog
+// Der reale Nutzerpfad: Set anlegen, Produkt- und Rollenposition pflegen, umbenennen,
+// Position aendern und entfernen, loeschen — dazwischen der Export ueber den echten Knopf
+// und der Import ueber das echte Dateifeld. Geschrieben wird ausschliesslich ueber die
+// Bedienelemente; aufgeloest wird nichts ([P-19]).
+{
+  /** Zeilenaktion der Set-Tabelle (Ereignisdelegation wie im Browser). */
+  const sZeile = (act, set, pos) =>
+    $('ks-tbody').dispatch('click', { target: { dataset: { act, set, pos } } });
+  const sets = () => KAT.normSets(kat().sets);
+  const sFind = (id) => sets().find(x => x.id === id) || null;
+  /** Eine Position ueber die drei echten Felder setzen und den Knopf druecken. */
+  function sPos(art, ref, menge){
+    $('ks-art').value = art; $('ks-art').dispatch('change');
+    $('ks-ref').value = ref; $('ks-menge').value = String(menge);
+    $('ks-pos-add').dispatch('click');
+  }
+
+  ok('#94 der Katalog startet ohne Baugruppe (v1-Vorlage, [P-22])', sets().length === 0);
+
+  // (a) Anlegen — die Kennung entsteht aus dem Namen, gespeichert wird ueber denselben
+  //     Weg wie jede Produktaenderung (der Kopierschutz #102 greift dabei unveraendert).
+  $('ks-name').value = 'Wandabschluss';
+  $('ks-neu').dispatch('click');
+  ok('#94 Set angelegt und gemeldet',
+    sets().length === 1 && sFind('set-wandabschluss')?.name === 'Wandabschluss'
+    && /Baugruppe angelegt/.test(kMsgTxt()) && !kFehler());
+  ok('#94 die neue Baugruppe steht in der Tabelle',
+    /data-set="set-wandabschluss"/.test($('ks-tbody').innerHTML)
+    && /Wandabschluss/.test($('ks-tbody').innerHTML) && $('ks-leer').hidden === true);
+  $('ks-name').value = '';
+  $('ks-neu').dispatch('click');
+  ok('#94 ein Set ohne Namen wird benannt abgewiesen',
+    sets().length === 1 && kFehler() && /Namen/.test(kMsgTxt()));
+
+  // (b) Positionen: eine Produkt- und eine Rollenposition
+  sPos('produkt', 'gewindestange-m10-1000', 2);
+  ok('#94 Produktposition hinzugefuegt',
+    sFind('set-wandabschluss').positionen.length === 1
+    && sFind('set-wandabschluss').positionen[0].produkt === 'gewindestange-m10-1000'
+    && sFind('set-wandabschluss').positionen[0].menge === 2 && !kFehler());
+  sPos('rolle', 'kupplung', 4);
+  ok('#94 Rollenposition hinzugefuegt — beide Positionsformen im selben Set',
+    sFind('set-wandabschluss').positionen.length === 2
+    && sFind('set-wandabschluss').positionen[1].rolle === 'kupplung'
+    && sFind('set-wandabschluss').positionen[1].menge === 4);
+  ok('#94 die Positionen stehen mit Art und Menge in der Oberflaeche',
+    /2 × /.test($('ks-tbody').innerHTML) && /Kopplungsmutter/.test($('ks-tbody').innerHTML)
+    && /Verwendungsrolle/.test($('ks-tbody').innerHTML));
+
+  // (c) Der Validierungsfehler ist SICHTBAR und aendert nichts ([P-9])
+  const vorFehler = kSlot();
+  sPos('produkt', 'gewindestange-m10-1000', 0);
+  ok('#94 Menge 0 wird sichtbar abgewiesen und speichert nichts',
+    kFehler() && /mindestens 1/.test(kMsgTxt()) && kSlot() === vorFehler
+    && sFind('set-wandabschluss').positionen.length === 2);
+
+  // (d) Umbenennen — die Kennung bleibt stabil ([P-21])
+  $('ks-name').value = 'Wandabschluss oben';
+  sZeile('set-umbenennen', 'set-wandabschluss');
+  ok('#94 Set umbenannt, Kennung unveraendert',
+    sFind('set-wandabschluss')?.name === 'Wandabschluss oben'
+    && /umbenannt/.test(kMsgTxt()) && !kFehler());
+
+  // (e) Position bearbeiten und entfernen
+  sZeile('pos-bearbeiten', 'set-wandabschluss', 0);
+  ok('#94 Bearbeiten laedt die Position in die Felder',
+    $('ks-art').value === 'produkt' && $('ks-ref').value === 'gewindestange-m10-1000'
+    && $('ks-menge').value === '2' && $('ks-pos-add').textContent === 'Position übernehmen');
+  $('ks-menge').value = '5';
+  $('ks-pos-add').dispatch('click');
+  ok('#94 geaenderte Menge uebernommen — keine zusaetzliche Position',
+    sFind('set-wandabschluss').positionen.length === 2
+    && sFind('set-wandabschluss').positionen[0].menge === 5
+    && $('ks-pos-add').textContent === 'Position hinzufügen');
+  sZeile('pos-loeschen', 'set-wandabschluss', 1);
+  ok('#94 Position entfernt — nur diese eine',
+    sFind('set-wandabschluss').positionen.length === 1
+    && sFind('set-wandabschluss').positionen[0].produkt === 'gewindestange-m10-1000');
+  sPos('rolle', 'kupplung', 4);          // wieder herstellen fuer den Roundtrip
+
+  // (f) DIE Whitelist-Probe: eine ganz normale Produktaenderung darf die Baugruppe
+  //     nicht verschlucken (`katalogObjekt` normalisiert JEDEN Schreibvorgang).
+  kZeile('bearbeiten', 'latte-40-60-1500');
+  kpSpeichern();
+  ok('#94 Set ueberlebt eine Produktbearbeitung (katalogObjekt fuehrt sets)',
+    sets().length === 1 && sFind('set-wandabschluss').positionen.length === 2
+    && kAnzahl() === V_KAT_ANZ);
+
+  // (g) Export ueber den echten Knopf -> Import ueber das echte Dateifeld
+  $('k-export').dispatch('click');
+  const dateiText = letzterDownload;              // genau die Bytes des echten Downloads
+  const dateiObj = JSON.parse(dateiText);
+  ok('#94 die Exportdatei traegt Katalogformat v2 und die Baugruppen',
+    dateiObj.version === 2 && dateiObj.sets.length === 1
+    && dateiObj.sets[0].positionen.length === 2 && /Katalog exportiert/.test(kMsgTxt()));
+  const vorImport = JSON.stringify(sets());
+  await $('k-import').dispatch('change', { target: { files: [kFile(dateiText, 'sets.json')], value: 'x' } });
+  ok('#94 Import: dieselben Set-Definitionen, verlustfrei',
+    JSON.stringify(sets()) === vorImport && kAnzahl() === V_KAT_ANZ && !kFehler());
+  ok('#94 der Roundtrip laesst Kennung, Name, Art, Reihenfolge und Menge unveraendert',
+    sFind('set-wandabschluss').name === 'Wandabschluss oben'
+    && sFind('set-wandabschluss').positionen[0].produkt === 'gewindestange-m10-1000'
+    && sFind('set-wandabschluss').positionen[0].menge === 5
+    && sFind('set-wandabschluss').positionen[1].rolle === 'kupplung');
+  ok('#94 der Import ruehrt keine Produktreferenz einer Wand an ([P-13])',
+    KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);
+
+  // (h) Loeschen entfernt NUR die Definition — die Produkte bleiben
+  confirmAntwort = true;
+  sZeile('set-loeschen', 'set-wandabschluss');
+  confirmAntwort = false;
+  ok('#94 Set geloescht, Produkte unberuehrt',
+    sets().length === 0 && kAnzahl() === V_KAT_ANZ && /gelöscht/.test(kMsgTxt())
+    && $('ks-leer').hidden === false);
 }
 
 ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
@@ -1975,7 +2099,7 @@ globalThis.fetch = echtesFetch;
     && !localStorage.getItem('sembla:elemente').includes('"' + KAT.VORLAGE_FELD + '"')
     && !(KAT.VORLAGE_FELD in KAT.katalogObjekt(kataloge()[vId])));
   ok('#102 die Versionsachsen bleiben unveraendert',
-    KAT.KATALOG_VERSION === 1 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6);
+    KAT.KATALOG_VERSION === 2 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6);
 
   // Zurueck zur Ausgangslage der Folgeabschnitte.
   store.setzeAktivesProjekt(prj0.projekt.id);

@@ -257,8 +257,10 @@
 <div class="overlay" id="kat-overlay" hidden>
   <div class="modal breit">
     <h3>Bauteilkatalog</h3>
-    <p class="sub">Eigene Ressource mit eigener Datei (<b>SEMBLA-Bauteilkatalog</b>, Format-Version&nbsp;1)
-      — getrennt vom Projekt-Export. Zugeordnet wird genau <b>ein Katalog je Projekt</b> ([L-12]).</p>
+    <p class="sub">Eigene Ressource mit eigener Datei (<b>SEMBLA-Bauteilkatalog</b>, Format-Version&nbsp;2)
+      — getrennt vom Projekt-Export. Zugeordnet wird genau <b>ein Katalog je Projekt</b> ([L-12]).
+      Eine Datei der <b>Version&nbsp;1</b> wird beim Import verlustfrei übernommen: alle Produkte
+      unverändert, dazu eine leere Baugruppenliste ([P-22]).</p>
     <div class="row">
       <div class="field">
         <label for="k-name">Katalogname</label>
@@ -290,6 +292,42 @@
       <tbody id="k-tbody"></tbody>
     </table>
     <div class="empty" id="k-leer" hidden>Noch kein Produkt im Katalog — oben anlegen oder einen Katalog importieren.</div>
+    <div class="subh">Baugruppen (Sets)
+      <span class="muted" style="text-transform:none;letter-spacing:0">
+        · benannte Bauteilgruppen dieses Katalogs — Definitionsebene, keine Stücklistenhierarchie ([P-21])</span>
+    </div>
+    <div class="row" style="margin-bottom:6px">
+      <div class="field">
+        <label for="ks-name">Name der Baugruppe</label>
+        <input id="ks-name" type="text" placeholder="z. B. Wandabschluss" style="width:230px">
+      </div>
+      <button class="btn-p" id="ks-neu">Set anlegen</button>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Baugruppe</th><th>Positionen</th><th></th></tr>
+      </thead>
+      <tbody id="ks-tbody"></tbody>
+    </table>
+    <div class="empty" id="ks-leer" hidden>Noch keine Baugruppe in diesem Katalog — oben eine anlegen.</div>
+    <div class="row" id="ks-pos" hidden style="margin-top:6px">
+      <div class="field">
+        <label for="ks-art">Position</label>
+        <select id="ks-art" style="width:150px">
+          <option value="produkt">Produkt</option>
+          <option value="rolle">Verwendungsrolle</option>
+        </select>
+      </div>
+      <div class="field"><label for="ks-ref">Bauteil</label><select id="ks-ref" style="width:280px"></select></div>
+      <div class="field"><label for="ks-menge">Menge</label><input id="ks-menge" class="s" type="number" step="1" min="1" value="1"></div>
+      <button class="btn-s" id="ks-pos-add">Position hinzufügen</button>
+    </div>
+    <div class="hint">Eine Baugruppe ist eine benannte Liste aus Positionen; jede Position nennt
+      <b>genau eine</b> Sache — ein <b>Katalogprodukt</b> oder eine <b>Verwendungsrolle</b> — mit einer
+      <b>ganzen Menge ab 1</b>. Dasselbe Bauteil darf in <b>mehreren</b> Baugruppen vorkommen.
+      Eine Baugruppe enthält <b>nie</b> eine andere Baugruppe ([P-21]).<br>
+      Baugruppen sind derzeit <b>reine Definition</b>: aus ihnen wird noch <b>keine</b> Stücklistenmenge
+      abgeleitet und noch <b>keine</b> Zuordnung an Wänden erzeugt. Die Stückliste bleibt flach ([P-19]).</div>
     <div class="hint">Im Projekt stehen nur <b>Produkt-IDs</b> je Verwendungsstelle, keine Preise und
       keine Maße. <b>Modul 0 ist der alleinige Pflegeort</b> für Produkte und Preise. <b>Welche</b>
       Produkte eine konkrete Wand verwendet, wird dort gewählt, wo es fachlich hingehört: in
@@ -297,7 +335,8 @@
       <b>Modul&nbsp;2</b> (Lattenstange, Beplankungsplatte, Verbinderprodukt) — jeweils direkt aus dem
       vollständigen Katalog.<br>
       „<b>Standardkatalog laden</b>“ liest bei jeder Bedienung die mitgelieferte Repo-Vorlage
-      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1) <b>frisch</b> und
+      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1 — sie wird beim
+      Laden nach v2 migriert) <b>frisch</b> und
       ordnet sie dem aktiven Projekt zu; der bisherige Katalog bleibt erhalten und lässt sich
       oben im Projekt-Dialog wieder auswählen. Ist noch <b>gar kein</b> Katalog zugeordnet, ist er
       hier zu laden, bevor die erste Wand gezeichnet wird — sonst startet die Planung leer.<br>
@@ -2113,6 +2152,18 @@
       }
     }
     if (kat) {
+      // Sets mit unaufloesbaren Referenzen ([P-21]): GEMELDET, nie bereinigt und nie
+      // umgehaengt — genau wie beim Loeschen eines referenzierten Produkts.
+      const offen = [];
+      for (const st2 of KAT.normSets(kat.sets)) {
+        const fehlt = KAT.setPositionen(kat, st2.id).filter(x => x.fehlt);
+        if (fehlt.length) offen.push(st2.name + ' (' + fehlt.map(x => x.ref || '—').join(', ') + ')');
+      }
+      if (offen.length) {
+        teile.push('<b>Baugruppe(n) mit nicht auflösbarer Position:</b> ' + esc(offen.join(' · '))
+          + '. Die Definition bleibt erhalten und wird <b>nicht</b> bereinigt — die Position ist '
+          + 'zu korrigieren oder zu entfernen.');
+      }
       const vorl = kat.produkte.filter(p => p && p.hinweis);
       if (vorl.length) {
         teile.push('<b>' + vorl.length + ' Produkt(e) mit vorläufigen, fachlich unbestätigten Werten</b> '
@@ -2153,7 +2204,191 @@
           <button class="btn-s" data-act="duplizieren" data-pid="${esc(p.id)}">Duplizieren</button>
           <button class="btn-d" data-act="produkt-loeschen" data-pid="${esc(p.id)}">Löschen</button>
         </td></tr>`).join('');
+    ksRender();
     katWarnungen(kat, aktiv);
+  }
+
+  // --- Baugruppen / Sets ([P-21], Katalogformat v2) -----------------------
+  // Modul 0 ist auch hier der ALLEINIGE Pflegeort. Geschrieben wird ausschliesslich
+  // ueber `store.setzeKatalog` — denselben Weg wie jede Produktaenderung; damit greifen
+  // Validierung, Kopierschutz (#102) und Projektzuordnung ([L-12]) unveraendert, und es
+  // entsteht kein zweiter Schreibweg. Aufgeloest wird hier NICHTS: Sets sind Definition,
+  // die Stueckliste bleibt flach ([P-19]).
+  let ksAktiv = null;        // Kennung des aufgeklappten Sets (null = keines)
+  let ksPosIndex = null;     // Index der gerade bearbeiteten Position (null = neue)
+
+  /** Alle waehlbaren Verwendungsrollen (Modul 1 und Modul 2) in Anzeigereihenfolge. */
+  const ksRollen = () => KAT.rollenVonModul(1).concat(KAT.rollenVonModul(2));
+
+  /** Auswahlliste „Bauteil“ je nach Positionsart fuellen (bestehende Wahl bleibt, wenn zulaessig). */
+  function ksRefOptionen(){
+    const kat = store.holeKatalog();
+    const art = $('ks-art').value;
+    const sel = $('ks-ref'), vorher = sel.value;
+    const opt = art === 'rolle'
+      ? ksRollen().map(r => [r.id, r.label + ' · ' + r.gruppe])
+      : ((kat && kat.produkte) || []).map(p => [String(p.id), (p.bezeichnung || p.id) + ' · ' + p.id]);
+    sel.innerHTML = opt.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+    sel.value = opt.some(([v]) => v === vorher) ? vorher : (opt.length ? opt[0][0] : '');
+  }
+
+  /** Positionsfelder zuruecksetzen (nach Uebernahme/Abbruch) — schreibt nichts. */
+  function ksPosLeeren(){
+    ksPosIndex = null;
+    $('ks-menge').value = '1';
+    $('ks-pos-add').textContent = 'Position hinzufügen';
+  }
+
+  /** Menge aus dem Eingabefeld — unveraendert durchgereicht, damit der Validator meldet. */
+  function ksMenge(){
+    const roh = String($('ks-menge').value == null ? '' : $('ks-menge').value).trim();
+    if (!roh) return '';
+    const n = Number(roh.replace(',', '.'));
+    return Number.isFinite(n) ? n : roh;
+  }
+
+  /** Sets des wirksamen Katalogs (nie null) — reine Leseansicht. */
+  const ksListe = () => KAT.normSets((store.holeKatalog() || {}).sets);
+
+  /**
+   * Eine geaenderte Set-Liste speichern. Geprueft wird VOR dem Schreiben mit dem
+   * kanonischen Validator; ein Fehler wird benannt und der Katalog bleibt unveraendert.
+   * @param {any[]} sets @param {string} meldung
+   */
+  function ksSpeichere(sets, meldung){
+    const kat = store.holeKatalog();
+    if (!kat) { kZeige('Diesem Projekt ist kein Bauteilkatalog zugeordnet — erst einen anlegen, importieren oder den Standardkatalog laden.', false); return false; }
+    let erg;
+    try { erg = store.setzeKatalog({ ...kat, sets }); }
+    catch (e) { kZeige('Nicht gespeichert: ' + fehlerText(e), false); return false; }
+    katLaden();
+    kZeige(meldung + kopieText(erg), true);
+    return true;
+  }
+
+  /** Fehler EINES Set-Entwurfs gegen den kanonischen Validator (leer = ok). */
+  function ksFehler(entwurf, andere){
+    const kat = store.holeKatalog() || {};
+    return KAT.validiereSet(entwurf, {
+      produktIds: ((kat.produkte) || []).map(p => String(p.id)),
+      setIds: andere.map(x => String(x.id)),
+    });
+  }
+
+  $('ks-art').addEventListener('change', ksRefOptionen);
+
+  $('ks-neu').addEventListener('click', () => {
+    const name = $('ks-name').value.trim();
+    if (!name) { kZeige('Nicht angelegt — die Baugruppe braucht einen Namen.', false); return; }
+    const sets = ksListe();
+    const entwurf = { id: KAT.vorschlagSetId(name), name, positionen: [] };
+    let n = 2, basis = entwurf.id;
+    while (sets.some(x => x.id === entwurf.id)) entwurf.id = basis + '-' + (n++);
+    const fehler = ksFehler(entwurf, sets);
+    if (fehler.length) { kZeige('Nicht angelegt — ' + fehler.join(' '), false); return; }
+    if (ksSpeichere(sets.concat(entwurf), `Baugruppe angelegt: ${name} (${entwurf.id}).`)) {
+      ksAktiv = entwurf.id; ksPosLeeren(); katRender();
+    }
+  });
+
+  $('ks-pos-add').addEventListener('click', () => {
+    const sets = ksListe();
+    const i = sets.findIndex(x => x.id === String(ksAktiv));
+    if (i < 0) { kZeige('Keine Baugruppe gewählt — links „Positionen“ anklicken.', false); return; }
+    const art = $('ks-art').value === 'rolle' ? 'rolle' : 'produkt';
+    const pos = { [art]: String($('ks-ref').value || '').trim(), menge: ksMenge() };
+    const positionen = sets[i].positionen.slice();
+    if (ksPosIndex != null && positionen[ksPosIndex]) positionen[ksPosIndex] = pos;
+    else positionen.push(pos);
+    const entwurf = { ...sets[i], positionen };
+    const fehler = ksFehler(entwurf, sets.filter((_, j) => j !== i));
+    if (fehler.length) { kZeige('Nicht gespeichert — ' + fehler.join(' '), false); return; }
+    const war = ksPosIndex != null;
+    sets[i] = entwurf;
+    if (ksSpeichere(sets, (war ? 'Position geändert in ' : 'Position hinzugefügt zu ') + `„${entwurf.name}“.`)) {
+      ksPosLeeren(); katRender();
+    }
+  });
+
+  // Zeilenaktionen (Ereignisdelegation wie bei den Produkten)
+  $('ks-tbody').addEventListener('click', (ev) => {
+    const el = (ev.target.closest && ev.target.closest('button[data-act]')) || ev.target;
+    const act = el && el.dataset ? el.dataset.act : null;
+    if (!act) return;
+    const sets = ksListe();
+    const i = sets.findIndex(x => x.id === String(el.dataset.set));
+    if (i < 0) { kZeige('Diese Baugruppe ist nicht mehr im Katalog.', false); return; }
+    const s = sets[i];
+    if (act === 'set-oeffnen') {
+      ksAktiv = ksAktiv === s.id ? null : s.id;
+      ksPosLeeren(); katRender();
+      if (ksAktiv) kZeige(`Baugruppe „${s.name}“ — Positionen pflegen.`, true);
+    } else if (act === 'set-umbenennen') {
+      const name = $('ks-name').value.trim();
+      if (!name) { kZeige('Nicht umbenannt — oben den neuen Namen eintragen.', false); return; }
+      const entwurf = { ...s, name };
+      const fehler = ksFehler(entwurf, sets.filter((_, j) => j !== i));
+      if (fehler.length) { kZeige('Nicht umbenannt — ' + fehler.join(' '), false); return; }
+      sets[i] = entwurf;
+      ksSpeichere(sets, `Baugruppe umbenannt: „${s.name}“ → „${name}“. Die Kennung „${s.id}“ bleibt unverändert.`);
+    } else if (act === 'set-loeschen') {
+      if (!confirm(`Baugruppe „${s.name}“ aus dem Katalog löschen? Die enthaltenen Produkte `
+        + 'bleiben unverändert im Katalog — nur die Baugruppendefinition entfällt.')) return;
+      if (ksAktiv === s.id) ksAktiv = null;
+      ksPosLeeren();
+      ksSpeichere(sets.filter((_, j) => j !== i), `Baugruppe gelöscht: ${s.name}.`);
+    } else if (act === 'pos-bearbeiten') {
+      const idx = Number(el.dataset.pos);
+      const pos = s.positionen[idx];
+      if (!pos) { kZeige('Diese Position ist nicht mehr vorhanden.', false); return; }
+      ksAktiv = s.id;
+      $('ks-art').value = (pos.rolle != null && String(pos.rolle) !== '') ? 'rolle' : 'produkt';
+      ksRefOptionen();
+      $('ks-ref').value = String($('ks-art').value === 'rolle' ? pos.rolle : pos.produkt || '');
+      $('ks-menge').value = pos.menge != null ? String(pos.menge) : '';
+      ksPosIndex = idx;
+      $('ks-pos-add').textContent = 'Position übernehmen';
+      katRender();
+      kZeige('Position wird bearbeitet — „Position übernehmen“ speichert die Änderung.', true);
+    } else if (act === 'pos-loeschen') {
+      const idx = Number(el.dataset.pos);
+      if (!s.positionen[idx]) { kZeige('Diese Position ist nicht mehr vorhanden.', false); return; }
+      sets[i] = { ...s, positionen: s.positionen.filter((_, j) => j !== idx) };
+      ksPosLeeren();
+      ksSpeichere(sets, `Position aus „${s.name}“ entfernt.`);
+    }
+  });
+
+  /** Set-Tabelle zeichnen — reine Anzeige, schreibt nichts. */
+  function ksRender(){
+    const kat = store.holeKatalog();
+    const sets = ksListe();
+    $('ks-leer').hidden = sets.length > 0;
+    if (ksAktiv && !sets.some(s => s.id === ksAktiv)) { ksAktiv = null; ksPosLeeren(); }
+    $('ks-pos').hidden = !ksAktiv;
+    $('ks-tbody').innerHTML = sets.map(s => {
+      const offen = s.id === ksAktiv;
+      const pos = KAT.setPositionen(kat, s.id);
+      const liste = !offen
+        ? `<span class="muted">${pos.length} Position(en)</span>`
+        : (pos.length
+            ? pos.map((x, j) => `<div style="margin:2px 0">${esc(String(x.menge))} × `
+                + `<b>${esc(x.text)}</b> <span class="muted">· `
+                + (x.art === 'rolle' ? 'Verwendungsrolle' : 'Produkt')
+                + (x.fehlt ? ' · <b>nicht auflösbar</b>' : '') + `</span> `
+                + `<button class="btn-s" data-act="pos-bearbeiten" data-set="${esc(s.id)}" data-pos="${j}">Bearbeiten</button> `
+                + `<button class="btn-d" data-act="pos-loeschen" data-set="${esc(s.id)}" data-pos="${j}">Entfernen</button></div>`).join('')
+            : '<span class="muted">noch keine Position — unten hinzufügen</span>');
+      return `<tr data-set="${esc(s.id)}">
+        <td><b>${esc(s.name)}</b><br><span class="muted" style="font-size:11.5px">${esc(s.id)}</span></td>
+        <td>${liste}</td>
+        <td class="actions">
+          <button class="btn-s" data-act="set-oeffnen" data-set="${esc(s.id)}">${offen ? 'Schließen' : 'Positionen'}</button>
+          <button class="btn-s" data-act="set-umbenennen" data-set="${esc(s.id)}">Umbenennen</button>
+          <button class="btn-d" data-act="set-loeschen" data-set="${esc(s.id)}">Löschen</button>
+        </td></tr>`;
+    }).join('');
+    ksRefOptionen();
   }
 
   /** Katalog neu in die Oberfläche laden (Name + Tabelle) — nach Anlegen/Import/Entfernen. */
