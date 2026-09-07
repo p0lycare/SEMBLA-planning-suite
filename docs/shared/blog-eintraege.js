@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-04",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 104,
+    titel: "Das Auswahlfeld für die erste Vorspannachse ist aus Modul 1 und dem Zeichnungsblatt entfernt",
+    testbitte: "Modul 1 öffnen: unter „Auslegung“ gibt es kein Feld für die erste Vorspannachse "
+      + "mehr, und die Zeichnung derselben Wand nennt keine Startachse. Achsen und Mengen bleiben "
+      + "unverändert; gespeicherte Projekte bleiben lesbar.",
+  },
+  {
     id: "chg-20260907-03",
     datum: "2026-09-07",
     typ: "fix",

@@ -1109,17 +1109,27 @@ const neuGebaut = buildWall(wandRoh.name, wv.length_mm, wv.height_mm, wv.opening
 // (validation.blech_konflikte). Die VORLAGE selbst wird dafuer bewusst NICHT angefasst — sie
 // ist Altbestand ohne diese Felder. Verglichen wird deshalb ohne genau diese Felder, und
 // zusaetzlich wird geprueft, dass es AUSSCHLIESSLICH sie sind, die hinzukommen.
-const ohneBlech91 = (w) => { const c = JSON.parse(JSON.stringify(w));
+//
+// #104 hat eine ZWEITE, umgekehrte Ausnahme hinzugefuegt: `prestress.start_axis_grid`. Die
+// Startachse ist durch [V-3]/[V-11] abgeloest und aus der VORLAGE entfernt; der Rechenkern
+// bleibt dabei unveraendert und setzt das Feld weiterhin unbedingt mit seinem Default 0. Es
+// bewegt keine Achse mehr — der Unterschied ist also erwartet und wird beidseitig
+// herausgenommen, statt ihn im Kern oder in der Vorlage zu kaschieren.
+const ohneZusatz = (w) => { const c = JSON.parse(JSON.stringify(w));
   delete c.prestress.blech_lengths_mm; delete c.base_plate.teile; delete c.base_plate.module;
-  delete c.validation.blech_konflikte; delete c.bom.stahlblech_module; return c; };
-ok('Wandelement der Vorlage ist exakt die Ausgabe des heutigen Cores (ohne die #91-Zusatzfelder)',
-  JSON.stringify(ohneBlech91(neuGebaut)) === JSON.stringify(ohneBlech91(wv)));
-ok('#91 ist die einzige Abweichung zur Vorlage (Altbestand ohne Bodenblech-Teile)',
+  delete c.validation.blech_konflikte; delete c.bom.stahlblech_module;
+  delete c.prestress.start_axis_grid; return c; };
+ok('Wandelement der Vorlage ist exakt die Ausgabe des heutigen Cores (ohne die #91-/#104-Zusatzfelder)',
+  JSON.stringify(ohneZusatz(neuGebaut)) === JSON.stringify(ohneZusatz(wv)));
+ok('#91 und #104 sind die einzigen Abweichungen zur Vorlage (Bodenblech-Teile, Startachse)',
   !('blech_lengths_mm' in wv.prestress) && !('teile' in wv.base_plate)
   && !('blech_konflikte' in wv.validation)
   && Array.isArray(neuGebaut.base_plate.teile)
   && neuGebaut.base_plate.teile.reduce((a, t) => a + t.raster_mm, 0) === wv.length_mm
-  && neuGebaut.validation.blech_konflikte.length === 0);
+  && neuGebaut.validation.blech_konflikte.length === 0
+  // #104: die Vorlage traegt die Startachse NICHT mehr, der unveraenderte Core liefert sie weiter.
+  && !('start_axis_grid' in wv.prestress)
+  && neuGebaut.prestress.start_axis_grid === 0);
 // Harte Erwartungswerte aus dem freigegebenen AWG-Anhang (Identitaetsnachweis ohne Anhangdatei)
 ok('AWG-Maße/Raster unveraendert',
   wv.length_mm === 3000 && wv.height_mm === 2600 && wv.thickness_mm === 125

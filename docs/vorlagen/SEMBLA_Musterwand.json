@@ -49,7 +49,6 @@
       "blech_mm": 1000,
       "top_connection": "blech",
       "columns_grid": null,
-      "start_axis_grid": 0,
       "rod_rest_mm": 0,
       "rod_overhang_mm": 10
     },

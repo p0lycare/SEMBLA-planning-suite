@@ -26,7 +26,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   setAttribute(){} getBoundingClientRect(){return {left:0,width:1000};} get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
-const dv={len:'2.00',hgt:'2.60',startAchse:'0',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
+const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},
   _h:{}, addEventListener(e,f){(this._h[e]||(this._h[e]=[])).push(f);},
@@ -518,54 +518,52 @@ document.getElementById('modus').value='auto'; WP.run();
 }
 document.getElementById('hgt').value='2.60'; WP.run();
 
-// Issue #104: Die Startachse ist im RECHENKERN abgeloest ([V-5] -> [V-3]/[V-11]). Das
-// Bedienelement und das gespeicherte Feld bleiben in diesem Paket ausdruecklich bestehen
-// (der sichtbare Rueckbau ist das Folgepaket) — geprueft wird deshalb beides: dass das Feld
-// unveraendert durchreist UND dass es die Achsen nicht mehr bewegt.
+// Issue #104: Die Startachse ist ERSATZLOS zurueckgebaut. Der Rechenkern leitet die
+// Grundachsen seit a70e169 allein aus dem Verband der untersten Lage ab ([V-3]/[V-11]);
+// [V-5] ist abgeloest. Geprueft wird deshalb dreierlei: dass das Bedienelement in der
+// ECHTEN HTML-Quelle nicht mehr existiert, dass Modul 1 ohne dieses Feld unveraendert
+// rechnet, und dass ein Altbestand MIT gespeichertem Wert weiterhin ladbar und gueltig
+// bleibt (der Wert ist wirkungslos, es haengt nichts daran).
 // N=16 (2,00 m) ist bewusst nicht glatt durch den Strangabstand teilbar.
 WP.applyWand(Object.assign(buildWall('T13',2000,2600,[]),{wandtyp:'mit_wind'}));
 document.getElementById('modus').value='nachweis'; document.getElementById('spacing').value='3';
 document.getElementById('force').value='60'; WP.run();
-ok('Auswahlfeld Startachse in Modul 1 vorhanden (Rueckbau erst im Folgepaket)', /id="startAchse"/.test(html));
+// Gegen die ECHTE HTML-Quelle, nicht gegen den DOM-Stub: der legt Elemente bei Bedarf an
+// und koennte ein entferntes Bedienelement nie als fehlend melden.
+ok('#104 Auswahlfeld der ersten Vorspannachse ersatzlos entfernt',
+   !/id="startAchse"/.test(html) && !/Erste Vorspannung/.test(html)
+   && !/Rasterachse \(Standard\)/.test(html) && !/2\. Rasterachse/.test(html));
+ok('#104 Modul 1 leitet keinen Startachsenwert mehr ab (kein Schreibweg im Skript)',
+   !/start_axis_grid\s*[:=]/.test(html));
 const ks0=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
 // [V-3]/[V-11]: unterste Lage [i2,i2,i3,i3,i3,i3] -> Grundachsen 1 (i2 am Anfang) und die
 // i3-Mitten 5/8/11/14; 14 = N-2 traegt das rechte Wandende. 3 und 13 ergaenzt [V-2]/[V-4].
-ok('#104 Grundachsen aus dem Verband, kein Randfeld', JSON.stringify(ks0)==='[1,3,5,8,11,13,14]'
-   && WP.RESULT.wandelement.prestress.start_axis_grid===0);
+ok('#104 Grundachsen aus dem Verband, kein Randfeld — ohne das Bedienfeld unveraendert',
+   JSON.stringify(ks0)==='[1,3,5,8,11,13,14]');
 ok('#104 weder 1. Rasterachse noch Endachse N-1 belegt', !ks0.includes(0) && !ks0.includes(15));
-document.getElementById('startAchse').value='1'; document.getElementById('startAchse').dispatch('change');
-const w13=WP.RESULT.wandelement, ks1=w13.tension_columns.map(c=>c.k), x13=w13.prestress.max_span_grid;
-ok('#104/[N5] Auswahl reist weiterhin ins Wandelement (Feld bleibt lesbar)', w13.prestress.start_axis_grid===1);
-ok('#104/[M5] die Startachse bewegt die Achsen NICHT mehr',
-   JSON.stringify(ks1)===JSON.stringify(ks0) && x13===3);
-ok('alle Abstände <= Strangabstand x', ks1.every((k,i)=>i===0||k-ks1[i-1]<=x13));
-ok('[V-2] Steinabdeckung dabei lückenlos', w13.validation.ungehaltene_steine.length===0);
-document.getElementById('startAchse').value='0'; document.getElementById('startAchse').dispatch('change');
-ok('#104 zurück auf 0 ändert die Achsen ebenso wenig',
-   WP.RESULT.wandelement.prestress.start_axis_grid===0 &&
-   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))===JSON.stringify(ks0));
-// auch im Auto-Modus (Strangabstand von der Engine optimiert) bleibt die Startachse wirkungslos
+const x0=WP.RESULT.wandelement.prestress.max_span_grid;
+ok('alle Abstände <= Strangabstand x', x0===3 && ks0.every((k,i)=>i===0||k-ks0[i-1]<=x0));
+ok('[V-2] Steinabdeckung dabei lückenlos',
+   WP.RESULT.wandelement.validation.ungehaltene_steine.length===0);
+// auch im Auto-Modus (Strangabstand von der Engine optimiert) — die Iteration gibt dem
+// Rechenkern keine Startachse mehr vor (`psOf` in sembla-engine.js).
 document.getElementById('modus').value='auto'; WP.run();
-const ksAuto=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
-document.getElementById('startAchse').value='1'; document.getElementById('startAchse').dispatch('change');
 const wA=WP.RESULT.wandelement, ksA=wA.tension_columns.map(c=>c.k);
-ok('#104/[M5] Auto-Modus: Startachse 2 bleibt ohne Wirkung', wA.prestress.start_axis_grid===1 &&
-   JSON.stringify(ksA)===JSON.stringify(ksAuto));
 ok('#104 Auto-Modus: Wandenden auf 1 und N-2, Abstände <= optimiertem x',
    ksA[0]===1 && ksA.includes(wA.N_grid-2) && !ksA.includes(0) && !ksA.includes(wA.N_grid-1)
    && ksA.every((k,i)=>i===0||k-ksA[i-1]<=wA.prestress.max_span_grid));
-document.getElementById('modus').value='nachweis'; document.getElementById('startAchse').value='0';
-document.getElementById('startAchse').dispatch('change');
-// Wiederherstellung beim Laden eines gespeicherten Wandelements ([N5]: Feld bleibt erhalten)
+document.getElementById('modus').value='nachweis'; WP.run();
+// Altbestand: ein gespeichertes Wandelement MIT `start_axis_grid: 1` bleibt ladbar, gueltig
+// und liefert dieselben Achsen wie ein Altstand ohne das Feld. Modul 1 wertet es nicht mehr
+// aus, migriert nichts und loescht nichts; der Wert ist wirkungslos.
 WP.applyWand(Object.assign(buildWall('Gespeichert',2000,2600,[],null,{start_axis_grid:1}),{wandtyp:'mit_wind'}));
-ok('Startachse aus gespeichertem Wandelement wiederhergestellt',
-   document.getElementById('startAchse').value==='1' && WP.RESULT.wandelement.prestress.start_axis_grid===1);
-ok('#104 gespeicherte Startachse 1 liefert dieselben Achsen wie ein Altstand ohne Feld',
-   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,14]');
+ok('#104 Altbestand mit gespeicherter Startachse 1 bleibt ladbar und gueltig',
+   !!WP.RESULT && WP.RESULT.wandelement.validation.buildable
+   && JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,14]');
 const alt=buildWall('Alt',2000,2600,[]); delete alt.prestress.start_axis_grid;   // Altstand ohne Feld
 WP.applyWand(Object.assign(alt,{wandtyp:'mit_wind'}));
-ok('Altstand ohne Feld -> Anzeige 1. Rasterachse, Achsen aus dem Verband',
-   document.getElementById('startAchse').value==='0' && WP.RESULT.wandelement.tension_columns[0].k===1);
+ok('#104 Altstand ohne Feld liefert bit-genau dieselben Achsen',
+   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,14]');
 
 // Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element.
 // Gefahren wird das ueber die HOEHE — die Laenge ist seit #56 kein Bedienweg mehr (s. u.).
@@ -639,13 +637,13 @@ ok('[#69] Materialwerte gehen unveraendert in die Vorgaben', (()=>{
   return m.fcd_Nmm2===20 && m.cfd===0.60 && m.rho===14; })());
 ok('[#69] Gruppenueberschriften und Bedienelemente bleiben in derselben Reihenfolge', (()=>{
   const soll=['1 · Wand','Öffnungen','Staffelung (getreppter Aufbau)','Seiten (Funktion)',
-    '2 · Auslegung','Last (horizontal, Fläche)','Modus','Spannachsen','Vorspann-Hardware',
+    '2 · Auslegung','Last (horizontal, Fläche)','Modus','Vorspann-Hardware',
     'Materialannahmen','3 · Produkte (Bauteilkatalog)'];
   let pos=-1;
   for(const t of soll){ const i=LINKS.indexOf('>'+t+'<'); if(i<=pos) return false; pos=i; }
   const felder=['len','hgt','addTuer','addFenster','durchTool','durchClear','axisTool','axisDel',
     'axisAuto','addStep','sideVorne','sideHinten','qk','gammaQ','modus','spacing','force',
-    'startAchse','blechCm','topConn','rodUeber','fcd','cfd','rho','prodRollen','run'];
+    'blechCm','topConn','rodUeber','fcd','cfd','rho','prodRollen','run'];
   return felder.every(id=>LINKS.includes('id="'+id+'"')); })());
 ok('[#69] dynamische Zustandsanzeigen bleiben im linken Bereich erhalten',
   ['rodQuelle','rodRestQuelle','prodInfo','prodRollen','saveHint']
@@ -669,7 +667,7 @@ ok('[#69] Spannachsen-Werkzeug bedienbar: Achsgriffe erscheinen und verschwinden
   return an && !/cursor:grab/.test(document.getElementById('plan').innerHTML); })());
 ok('[#69] lange Bedienhilfen haengen als Tooltip am Bedienelement',
   /id="axisTool"[^>]*title="[^"]+"/.test(LINKS) && /id="addStep"[^>]*title="[^"]+"/.test(LINKS)
-  && /id="startAchse"[^>]*title="[^"]+"/.test(LINKS) && /id="topConn"[^>]*title="[^"]+"/.test(LINKS));
+  && /id="topConn"[^>]*title="[^"]+"/.test(LINKS));
 WP.setManualCols(null);   // Achsen-Editor hinterlaesst keinen Zustand fuer die naechsten Abschnitte
 // Ebenfalls ausdruecklich Kopfblech (#92): die nachfolgenden Abschnitte messen
 // Kopfblech-Module am aktiven Wandelement.

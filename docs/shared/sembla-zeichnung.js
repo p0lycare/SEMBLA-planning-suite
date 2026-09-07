@@ -631,7 +631,6 @@ export function vorspannZeilen(w) {
   const rows = [
     { label: "Spannachsen", wert: String(cols.length) },
     { label: "max. Achsabstand", wert: ps.max_span_grid != null ? ps.max_span_grid + " Raster" : "–" },
-    { label: "Startachse", wert: (ps.start_axis_grid ? 2 : 1) + ". Rasterachse" },
     { label: "Vorspannkraft N", wert: ps.force_kN != null ? _fmt(ps.force_kN, 0) + " kN" : "–" },
     { label: "Gewindestange", wert: _fmt(_rod(w) / 10, 0) + " cm" },
     { label: "Stangenstücke", wert: stangen + "×" },

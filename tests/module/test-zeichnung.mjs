@@ -209,8 +209,16 @@ ok("Vorspann-Kennzahlen im Blatt",
   blatt.html.includes("Spannachsen") && blatt.html.includes("Gewindestange") && blatt.html.includes("Sonderlängen"));
 ok("Spannachsen-Zahl stimmt mit dem Wandelement",
   Z.vorspannZeilen(W).find(r => r.label === "Spannachsen").wert === String(W.tension_columns.length));
-ok("Startachse wird aus prestress abgelesen",
-  Z.vorspannZeilen(W).find(r => r.label === "Startachse").wert === "1. Rasterachse");
+// [#104] Die Startachse ist ersatzlos zurueckgebaut: [V-5] ist durch [V-3]/[V-11] abgeloest,
+// das Feld ist wirkungslos und wird im Blatt nicht mehr genannt. Die uebrigen Kennzahlen
+// bleiben in Reihenfolge und Wortlaut unveraendert stehen.
+ok("[#104] Vorspann-Kennzahlen fuehren keine Startachse mehr",
+  !Z.vorspannZeilen(W).some(r => r.label === "Startachse")
+  && !/Startachse/.test(blatt.html));
+ok("[#104] die uebrigen Vorspann-Kennzahlen stehen unveraendert in dieser Reihenfolge",
+  JSON.stringify(Z.vorspannZeilen(W).map(r => r.label))
+  === JSON.stringify(["Spannachsen", "max. Achsabstand", "Vorspannkraft N", "Gewindestange",
+    "Stangenstücke", "Sonderlängen", "Reststück oben", "oberer Anschluss"]));
 ok("Strangzeilen je Spannachse", Z.strangZeilen(W).length === W.tension_columns.length);
 
 // --- [P-19] Einbauteil-IDs: Liste und Zeichnung benennen dieselben KONKRETEN Stuecke -------

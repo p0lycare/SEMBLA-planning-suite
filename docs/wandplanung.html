@@ -160,10 +160,6 @@
         <label><span>Vorspannkraft N</span><input type="number" id="force" value="60" step="5"><small>kN/Strang</small></label>
       </div>
     </div>
-    <div class="grp"><h3>Spannachsen</h3>
-      <label><span>Erste Vorspannung</span><select id="startAchse"
-        title="Ab dieser Achse werden die weiteren Spannachsen im gewählten Strangabstand fortgeführt."><option value="0" selected>1. Rasterachse (Standard)</option><option value="1">2. Rasterachse</option></select></label>
-    </div>
     <div class="grp"><h3>Vorspann-Hardware</h3>
       <div class="lockhint" id="rodQuelle"></div>
       <label><span>Kopfblech-Modullänge</span><input type="number" id="blechCm" value="100" step="10" min="20"
@@ -365,9 +361,12 @@ function vorgaben(){
   const blech_mm=Math.max(200, Math.round((+$('blechCm').value||100)*10));
   // [A-2]/#92: Standard ist die SPANNPLATTE — Kopfblech nur, wenn es ausdruecklich gewaehlt ist.
   const top_connection=($('topConn').value==='blech')?'blech':'spannplatte';
-  const start_axis_grid=(+$('startAchse').value===1)?1:0;               // 1. (Standard) oder 2. Rasterachse
-  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, ...hw, blech_mm, top_connection, start_axis_grid };
-  else v.prestress={ ...hw, blech_mm, top_connection, start_axis_grid };   // Auto-Modus: N/Abstand optimiert die Engine
+  // #104: Die Startachse ist ersatzlos zurueckgebaut. [V-5] ist durch [V-3]/[V-11] abgeloest —
+  // die Randlage der Spannachsen folgt allein dem Verband der untersten Lage. Modul 1 leitet
+  // dafuer KEINEN Wert mehr ab und gibt dem Core keinen vor; `prestress.start_axis_grid` ist
+  // nur noch ein Ausgabefeld des unveraenderten Rechenkerns.
+  if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, ...hw, blech_mm, top_connection };
+  else v.prestress={ ...hw, blech_mm, top_connection };   // Auto-Modus: N/Abstand optimiert die Engine
   if(manualCols && manualCols.length) v.prestress.columns_grid=manualCols.slice();   // Sonderkonstruktion: feste Achsen
   // [A-17] Nur ein ausdrücklicher Override reist mit — im Auto-Modus wird das Feld gar nicht
   // gesetzt, damit im Wandelement kein abgeleiteter Punkt landet. Eine leere Liste ist eine
@@ -753,7 +752,6 @@ function applyWand(w){
   else { $('modus').value='auto'; }
   if(w.prestress){ if(w.prestress.blech_mm) $('blechCm').value=Math.round(w.prestress.blech_mm/10);
     if(w.prestress.top_connection) $('topConn').value=w.prestress.top_connection;
-    $('startAchse').value=(+w.prestress.start_axis_grid===1)?'1':'0';     // fehlt (Altstand) -> 1. Achse
     // Ueberstand ([Z-6]): fehlt er im Altstand, bleibt der Default des Feldes stehen.
     if(w.prestress.rod_overhang_mm!=null) $('rodUeber').value=Math.round(w.prestress.rod_overhang_mm); }
   manualCols=(w.prestress&&Array.isArray(w.prestress.columns_grid)&&w.prestress.columns_grid.length)?w.prestress.columns_grid.slice():null;
@@ -1075,7 +1073,7 @@ function bindEvents(){
   // `len` steht bewusst NICHT in dieser Liste (Issue #56): das Feld ist nur Anzeige, und
   // es gibt hier keinen — auch keinen indirekten — Schreibweg fuer die Wandlaenge mehr.
   ['hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
-  ['sideVorne','sideHinten','modus','topConn','startAchse','abdichtung','brandklasse'].forEach(id=>$(id).addEventListener('change',run));
+  ['sideVorne','sideHinten','modus','topConn','abdichtung','brandklasse'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });

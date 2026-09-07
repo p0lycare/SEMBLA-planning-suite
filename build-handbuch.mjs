@@ -334,7 +334,7 @@ push(note("localStorage ist pro Browser und Gerät und geht bei „Websitedaten 
 // ---------- 7 Modul 1 ----------
 push(H1("7 · Modul 1 · Wand planen & auslegen"));
 push(P("Zweck: erzeugt das geprüfte Wandelement – zeichnen + statisch auslegen in einem Schritt."));
-push(P("Eingaben: Länge, Höhe, Seiten-Funktionen, Öffnungen (inkl. Durchbrüche per Klick), Staffelung, Gewindestangenlänge, Startachse der Vorspannung (1./2. Rasterachse) sowie Auslegungsparameter. Der Wandtyp wird nicht hier gewählt, sondern aus dem in Modul 0 angelegten Element unverändert mitgeführt.", {}));
+push(P("Eingaben: Länge, Höhe, Seiten-Funktionen, Öffnungen (inkl. Durchbrüche per Klick), Staffelung, Gewindestangenlänge sowie Auslegungsparameter. Eine wählbare Startachse der Vorspannung gibt es nicht mehr (Issue #104): die Randlage der Spannachsen folgt allein dem Verband der untersten Lage ([V-3]/[V-11]). Der Wandtyp wird nicht hier gewählt, sondern aus dem in Modul 0 angelegten Element unverändert mitgeführt.", {}));
 push(P("Ablauf: Verband i3-maximiert, Stränge (mit Segmenten über/unter Öffnungen) regelbasiert abgeleitet, dann Auslegungs-Engine (Kap. 4). Ergebnis ist das automatisch im aktiven Element gespeicherte Wandelement mit maßstäblichem Wandbild und Machbarkeits-/Nachweisinformationen."));
 push(bullet("**Versatz-/Baubarkeits-Warnung:** bei Verstoß rote Warnung + Status-Badge „Verband regelwidrig”."));
 push(bullet("**Durchbrüche:** Steine per Klick entfernen/auffüllen; über/unter allen Öffnungen Vorspannung unterbrochen."));
