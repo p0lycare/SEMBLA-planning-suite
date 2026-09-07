@@ -518,6 +518,21 @@
         <b>Einzelteilliste</b> der Gewindestangen bleibt in beiden Fällen abgeleitet — eine
         manuelle Menge ließe sich dort nur mit erfundenen Einbauteil-IDs abbilden ([P-19]).</div>
     </div>
+    <!-- Zeichnungen als PDF (#98/#107). Ausgelöst wird das hier, im EINEN Exportdialog —
+         die frühere eigene Projekt-Schaltfläche ist ersatzlos entfallen: sie stand neben
+         „Exportieren“ und erzeugte einen zweiten Download für denselben Bezug. Das Häkchen
+         ist wie der Preisschalter und die Mengenfassung KEINE Datei der Archivauswahl
+         (deshalb steht es außerhalb von #exp-opts), sondern eine Ausgabeentscheidung dieses
+         Laufs: es startet AUS, wird nirgends gespeichert und schreibt nichts. Angeboten wird
+         es nur auf der Projektebene — die Blattfolge ist eine PDF je Geschoss des Projekts. -->
+    <div class="opt-zusatz" id="exp-zeichnungen-optionen" style="margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
+      <label style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" id="exp-zeichnungen" style="margin-top:2px">
+        <span><b>Zeichnungen als PDF (je Geschoss eine)</b><br>
+        Je Geschoss dieses Projekts eine PDF im selben ZIP (Ordner <code>zeichnungen/</code>):
+        Seite&nbsp;1 der frisch abgeleitete Lageplan (Modul&nbsp;9), danach je zugeordneter Wand
+        das vollständige Wandblatt (Modul&nbsp;7) in Reihenfolge der Projektmappe. Die Blätter
+        werden im Browser gerastert — das dauert bei vielen Wänden einen Moment.</span></label>
+    </div>
     <div class="modal-actions">
       <button class="btn-s" id="exp-cancel">Abbrechen</button>
       <button class="btn-p" id="exp-go">ZIP herunterladen</button>
@@ -674,10 +689,10 @@
         // EIN Exportzugang je Eintrag (#67): der Dialog leitet seinen Umfang aus dem
         // ANGEKLICKTEN Projekt ab und setzt dabei keinen Zeiger um ([L-10]) — deshalb
         // ist der Knopf auch an nicht aktiven Projekten nutzbar.
+        // Seit #107 fuehrt dieser EINE Knopf auch die Zeichnungs-PDFs (#98): sie sind
+        // dort ein Haekchen des Dialogs. Ein zweiter Knopf am Projekt hat sich als nicht
+        // praktikabel erwiesen — zwei Ausgaenge fuer denselben Bezug, zwei Downloads.
         + knopf('prj-export', m.projekt.id, 'Exportieren', 'btn-p')
-        // #98: eigener Ausgang neben dem Datei-Export — er liefert Blaetter, keine
-        // Daten, und laesst Projektarchiv und hierarchischen ZIP-Export unberuehrt.
-        + knopf('prj-zeichnungen', m.projekt.id, 'Zeichnungen als PDF')
         + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d')
         + `</span></div>`;
       if (!offen) return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}</div>`;
@@ -828,7 +843,6 @@
     }
     if (act === 'prj-bearbeiten') { ppOeffne(id); return; }
     if (act === 'prj-export') { oeffneExport('projekt', id); return; }
-    if (act === 'prj-zeichnungen') { return zpdfExport(id); }
     if (act === 'prj-loeschen') { trProjektLoeschen(id); return; }
     if (act === 'gs-neu') { gpOeffne(id, null); return; }
     if (act === 'gs-aktiv') {
@@ -2465,6 +2479,11 @@
       !(optionen.includes('stueckliste') || optionen.includes('gesamt'));
     $('exp-fassung-berechnet').checked = true;
     $('exp-fassung-angepasst').checked = false;
+    // Zeichnungs-PDFs (#98/#107): nur auf der Projektebene, und bei JEDEM Öffnen wieder
+    // AUS. Sie sind der teuerste Teil des Laufs (jedes Blatt wird gerastert) und dürfen
+    // deshalb nicht aus einem früheren Export nachhängen.
+    $('exp-zeichnungen-optionen').hidden = kontext.ebene !== 'projekt';
+    $('exp-zeichnungen').checked = false;
     overlay.hidden = false;
   }
   function schliesseExport(){ overlay.hidden = true; expKontext = null; }
@@ -2482,41 +2501,80 @@
     if (!gpOverlay.hidden) gpAbbruch();
     if (!ppOverlay.hidden) ppAbbruch();
   });
-  $('exp-go').addEventListener('click', () => {
-    // Nur die Haekchen der Dateiauswahl (in #exp-opts) — der Preisschalter ist keine Datei.
+  $('exp-go').addEventListener('click', async () => {
+    // Nur die Haekchen der Dateiauswahl (in #exp-opts) — Preisschalter, Mengenfassung und
+    // das Zeichnungshaekchen (#98/#107) sind keine Dateien der Archivauswahl.
     const auswahl = [...overlay.querySelectorAll('#exp-opts .opt > input[type=checkbox]:checked')].map(c => c.value);
-    if (!auswahl.length) { trZeige('Bitte mindestens eine Datei auswählen.', false); return; }
+    // Die Zeichnungs-PDFs (#98/#107) sind keine Datei der Archivauswahl, sondern eine
+    // eigene Ausgabe desselben Laufs — sie zählen deshalb hier mit, wenn es um „ist
+    // überhaupt etwas gewählt?" geht.
+    const mitZeichnungen = !$('exp-zeichnungen-optionen').hidden && $('exp-zeichnungen').checked;
+    if (!auswahl.length && !mitZeichnungen) { trZeige('Bitte mindestens eine Datei auswählen.', false); return; }
     if (!expKontext) { trZeige('Kein Exportbezug — Dialog bitte über die Baumliste öffnen.', false); return; }
     try {
       const k = expKontext;
-      // Der Katalog des ANGEKLICKTEN Projekts ([L-12]) — nicht der des aktiven.
-      const katalog = k.mappe && k.mappe.katalog ? store.katalogNachId(k.mappe.katalog) : null;
-      const erg = ARCHIV.hierarchieExport(auswahl, {
-        mappe: k.mappe, ebene: k.ebene,
-        gebaeudeId: k.gebaeudeId, geschossId: k.geschossId,
-        wandId: k.wandId, wandName: k.wandName,
-        katalog,
-        holeElement: (id) => store.holeElement(id),
-        holeEingaben: (id) => store.holeEingaben(id),
-        // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
-        projektObjekt: (id) => store.projektObjekt(id),
-        preise: $('exp-preise').checked,
-        // Ausgabeentscheidung dieses Laufs ([P-20]) — sie wird nur durchgereicht und
-        // nirgends gespeichert; gerechnet wird die wirksame Menge in sembla-export.js.
-        fassung: $('exp-fassung-angepasst').checked ? 'angepasst' : 'berechnet',
-      });
-      // Fehlendes wird VOR dem Download benannt — kein stilles Teilergebnis ([L-4]/[L-12]).
-      if (erg.luecken.length && !confirm('Dieser Export wird NICHT vollständig:\n\n– '
-        + erg.luecken.join('\n– ') + '\n\nTrotzdem exportieren?')) {
+      /** @type {Array<{name:string,data:any}>} */
+      let dateien = [];
+      let luecken = [];
+      let zipStamm = null;
+      if (auswahl.length) {
+        // Der Katalog des ANGEKLICKTEN Projekts ([L-12]) — nicht der des aktiven.
+        const katalog = k.mappe && k.mappe.katalog ? store.katalogNachId(k.mappe.katalog) : null;
+        const erg = ARCHIV.hierarchieExport(auswahl, {
+          mappe: k.mappe, ebene: k.ebene,
+          gebaeudeId: k.gebaeudeId, geschossId: k.geschossId,
+          wandId: k.wandId, wandName: k.wandName,
+          katalog,
+          holeElement: (id) => store.holeElement(id),
+          holeEingaben: (id) => store.holeEingaben(id),
+          // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
+          projektObjekt: (id) => store.projektObjekt(id),
+          preise: $('exp-preise').checked,
+          // Ausgabeentscheidung dieses Laufs ([P-20]) — sie wird nur durchgereicht und
+          // nirgends gespeichert; gerechnet wird die wirksame Menge in sembla-export.js.
+          fassung: $('exp-fassung-angepasst').checked ? 'angepasst' : 'berechnet',
+        });
+        dateien = erg.dateien.slice();
+        luecken = erg.luecken.slice();
+        zipStamm = erg.zipName;
+      }
+      // Die Blattfolge entsteht VOR der Bestätigung und ohne zu rastern: erst danach
+      // wird gerechnet, was Zeit kostet ([P-9] — kein Download vor der Aussage).
+      let plan = null;
+      if (mitZeichnungen) {
+        trZeige(`Zeichnungen für „${k.mappe.projekt.name}“ werden abgeleitet …`, true);
+        plan = await zpdfPlan(k.mappe);
+        for (const l of plan.luecken) luecken.push(l);
+        if (!plan.geschosse.length) {
+          luecken.push('Keine PDF erzeugt: ' + (plan.luecken.join(' ') || 'Das Projekt hat kein Geschoss.'));
+          plan = null;
+        }
+        if (!zipStamm && plan) zipStamm = plan.zipName;
+      }
+      // Fehlendes wird VOR dem Download benannt — kein stilles Teilergebnis
+      // ([L-4]/[L-12]/[N-7]); beide Wege stehen in EINER Bestätigung.
+      if (luecken.length && !confirm('Dieser Export wird NICHT vollständig:\n\n– '
+        + luecken.join('\n– ') + '\n\nTrotzdem exportieren?')) {
         trZeige('Export abgebrochen — es wurde nichts geschrieben.', false); return;
       }
-      if (!erg.dateien.length) {
-        trZeige('Keine Datei erzeugt: ' + (erg.luecken.join(' ') || 'leere Auswahl.'), false); return;
+      // Erst jetzt rastern — und wenn ein Blatt scheitert, bricht der GANZE Lauf mit
+      // Nennung ab: eine PDF, der eine Wand fehlt, sieht vollständig aus und ist es nicht.
+      let seiten = 0;
+      if (plan) {
+        trZeige('Blätter werden gerendert …', true);
+        const pdfs = await ZPDF.pdfDateien(plan, { rendere: (seite, dpi) => ZPDF.blattBild(seite, dpi) });
+        for (const f of pdfs) dateien.push({ name: 'zeichnungen/' + f.name, data: f.data });
+        seiten = plan.geschosse.reduce((n, g) => n + g.seiten.length, 0);
       }
-      downloadZip(erg.zipName + '.zip', erg.dateien);
+      if (!dateien.length) {
+        trZeige('Keine Datei erzeugt: ' + (luecken.join(' ') || 'leere Auswahl.'), false); return;
+      }
+      // GENAU EIN Download — Archivdateien und Zeichnungen liegen im selben ZIP.
+      downloadZip((zipStamm || 'SEMBLA_Export') + '.zip', dateien);
       schliesseExport();
-      trZeige('Exportiert: ' + erg.dateien.length + ' Datei(en) im ZIP.'
-        + (erg.luecken.length ? ' ⚠ Unvollständig: ' + erg.luecken.join(' ') : ''), !erg.luecken.length);
+      trZeige('Exportiert: ' + dateien.length + ' Datei(en) im ZIP.'
+        + (plan ? ` Darin ${plan.geschosse.length} PDF (je Geschoss eine) mit ${seiten} Blatt.` : '')
+        + (luecken.length ? ' ⚠ Unvollständig: ' + luecken.join(' ') : ''), !luecken.length);
     } catch (e) {
       trZeige('Export fehlgeschlagen: ' + fehlerText(e), false);
     }
@@ -2564,46 +2622,23 @@
   }
 
   /**
-   * Der Bedienweg: ein Klick, ein ZIP, je Geschoss eine PDF (Lageplan zuerst,
-   * danach die Wandblätter). Zwei getrennte Schritte mit Absicht — erst die
-   * vollständige, rein gerechnete Blattfolge (darüber wird VOR dem Download
-   * geredet), dann das Rastern.
+   * Die vollständige, rein gerechnete Blattfolge eines Projekts — die Fassung, über die
+   * VOR dem Download geredet wird ([P-9]). Gerastert wird erst danach, im Exportdialog.
+   * Der Planhintergrund kommt aus der Bilddatenbank und damit asynchron; das Blattbauen
+   * selbst bleibt synchron und deterministisch.
    */
-  async function zpdfExport(prjId){
-    const m = store.projektMappe(prjId);
-    if (!m) { trZeige('Unbekanntes Projekt.', false); return; }
-    try {
-      trZeige(`Zeichnungen für „${m.projekt.name}“ werden erzeugt …`, true);
-      // Der Planhintergrund kommt aus der Bilddatenbank und damit asynchron; das
-      // Blattbauen selbst bleibt synchron und deterministisch.
-      const hintergruende = new Map();
-      for (const o of MAPPE.alleGeschosse(m)) {
-        hintergruende.set(o.geschoss.id, await zpdfHintergrund(o.geschoss));
-      }
-      const plan = ZPDF.blaetterProjekt({
-        mappe: m,
-        elemente: store.listeElemente(),
-        // Kopfdaten nach [L-11] aus dem Projekt der Wand (Rückfall: Altbestand).
-        leseEingaben: (id) => store.eingabenMitKopfdaten(id),
-        hintergruende,
-      });
-      if (!plan.geschosse.length) {
-        trZeige('Keine PDF erzeugt: ' + (plan.luecken.join(' ') || 'Das Projekt hat kein Geschoss.'), false);
-        return;
-      }
-      // Fehlendes wird VOR dem Download benannt — kein stilles Teilergebnis ([L-4]/[P-9]).
-      if (plan.luecken.length && !confirm('Diese Zeichnungsausgabe wird NICHT vollständig:\n\n– '
-        + plan.luecken.join('\n– ') + '\n\nTrotzdem herunterladen?')) {
-        trZeige('Abgebrochen — es wurde nichts heruntergeladen.', false); return;
-      }
-      const dateien = await ZPDF.pdfDateien(plan, { rendere: (seite, dpi) => ZPDF.blattBild(seite, dpi) });
-      downloadZip(plan.zipName + '.zip', dateien);
-      const seiten = plan.geschosse.reduce((n, g) => n + g.seiten.length, 0);
-      trZeige(`Zeichnungen exportiert: ${dateien.length} PDF (je Geschoss eine) mit ${seiten} Blatt im ZIP.`
-        + (plan.luecken.length ? ' ⚠ Unvollständig: ' + plan.luecken.join(' ') : ''), !plan.luecken.length);
-    } catch (e) {
-      trZeige('Zeichnungsexport fehlgeschlagen: ' + fehlerText(e), false);
+  async function zpdfPlan(m){
+    const hintergruende = new Map();
+    for (const o of MAPPE.alleGeschosse(m)) {
+      hintergruende.set(o.geschoss.id, await zpdfHintergrund(o.geschoss));
     }
+    return ZPDF.blaetterProjekt({
+      mappe: m,
+      elemente: store.listeElemente(),
+      // Kopfdaten nach [L-11] aus dem Projekt der Wand (Rückfall: Altbestand).
+      leseEingaben: (id) => store.eingabenMitKopfdaten(id),
+      hintergruende,
+    });
   }
 
   // --- Auffrischen ---------------------------------------------------------

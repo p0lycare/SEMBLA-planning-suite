@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-10",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 98,
+    titel: "Der Zeichnungs-PDF-Export lädt wieder herunter — und wird im Exportdialog ausgelöst",
+    testbitte: "In Modul 0 am Projekt „Exportieren“ drücken, „Zeichnungen als PDF“ ankreuzen "
+      + "und herunterladen: es kommt genau ein ZIP mit einer PDF je Geschoss (Lageplan auf "
+      + "Seite 1), auch bei Geschossen mit kalibriertem Planhintergrund.",
+  },
+  {
     id: "chg-20260907-09",
     datum: "2026-09-07",
     typ: "fix",

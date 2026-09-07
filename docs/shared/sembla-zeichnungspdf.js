@@ -1,65 +1,93 @@
 // @ts-check
 /**
- * SEMBLA Zeichnungs-PDF — die gesammelte Blattausgabe je Geschoss (Issue #98).
+ * SEMBLA Zeichnungs-PDF — die gesammelte Blattausgabe je Geschoss (Issues #98/#107).
  *
- * ZWECK. Bis hierher gab es in der Suite ueberhaupt keinen Dateiweg fuer eine
- * Zeichnung: Modul 7 und Modul 9 drucken ihr Blatt (`window.print()`), und der
- * zentrale Export in Modul 0 bietet Zeichnungen nicht an. Wer die Unterlagen eines
- * Geschosses braucht, druckt heute Blatt fuer Blatt von Hand — mit einem
- * Zeigerwechsel je Wand. Dieser Baustein macht daraus EINEN Download: ein ZIP mit
- * genau einer PDF je Geschoss, darin zuerst der Lageplan und danach je zugeordneter
- * Wand genau ein technisches Wandblatt.
+ * ZWECK. Modul 7 und Modul 9 drucken ihr Blatt (`window.print()`); wer die
+ * Unterlagen eines Geschosses braucht, druckt sonst Blatt fuer Blatt von Hand — mit
+ * einem Zeigerwechsel je Wand. Dieser Baustein macht daraus EINEN Download: je
+ * Geschoss genau eine PDF, darin zuerst der Lageplan und danach je zugeordneter Wand
+ * genau ein technisches Wandblatt. Ausgeloest wird das im zentralen Exportdialog von
+ * Modul 0 (#107) — es gibt keinen zweiten Ausgang.
  *
- * ABLEITUNG ≠ RASTERUNG — der Punkt, an dem dieser Baustein haengt. Hier wird
- * NICHTS gezeichnet und NICHTS gerechnet: keine Geometrie, kein Masstab, keine
- * Kontur, keine Menge, kein Schriftfeld. Gelesen werden ausschliesslich die beiden
- * KANONISCHEN Vollblattableitungen —
+ * ABLEITUNG ≠ DARSTELLUNG — der Punkt, an dem dieser Baustein haengt. Gerechnet wird
+ * hier NICHTS: keine Geometrie, kein Masstab, keine Kontur, keine Menge, kein
+ * Schriftfeldinhalt. Die ZEICHNUNGEN kommen unveraendert aus den kanonischen
+ * Ableitungen —
  *
- *     `sembla-lageplan.js`  blattHtml(daten, opts)   ([N-1] … [N-9])
- *     `sembla-zeichnung.js` blattHtml(w, eing, opts) ([D-6]: „es gibt keine zweite
- *                                                     Blatt-/Zeichenlogik")
+ *     `sembla-lageplan.js`  lageplanSvg(daten, opts)  ([N-1] … [N-9])
+ *     `sembla-zeichnung.js` zeichnungSvg(w, opts)     ([D-6])
  *
- * — und in ein anderes Dateiformat verpackt. Das Verhaeltnis dieses Bausteins zum
- * Blatt ist dasselbe wie das von `zip.js` zu den Dateien: er kennt seinen Inhalt
- * nicht. Ein zweiter Zeichen- oder Rechenpfad entsteht dadurch nicht.
+ * — und werden als `inner` in ihr Blattfeld gesetzt, genau wie es
+ * `lageplanSvgDatei()`/`zeichnungSvgDatei()` schon tun. Alle Blattzahlen und -texte
+ * stammen aus den dort exportierten DATENLISTEN (`bomZeilen`, `vorspannZeilen`,
+ * `einbauteilZeilen`, `konfliktZeilen`, `verzahnungZeilen`, `kopfFelder`) und
+ * Darstellungsschluesseln (`FARBE`, `BRANDKLASSE`, `VERZAHNUNG`, `ART_SYMBOL`).
  *
- * PAPIERGENAU OHNE UMRECHNUNG. `ZEICHNUNG_CSS`/`LAGEPLAN_CSS` geben `.zsheet`/
- * `.lpsheet` seit #61/#89 ihre Groesse FEST in Papier-mm (`blattInnen(format)`),
- * damit Vorschau und Ausdruck dieselbe Box sind. Genau davon lebt die PDF-Seite:
- * MediaBox = `BLATT[format].papier_mm`, das Blattbild sitzt bei `rand_mm` und ist
- * exakt `blattInnen()` gross. Das ist eine reine Platzierung — kein Reskalieren,
- * kein Umbruch; der Norm-Masstab nach [D-2]/[N-8] bleibt unberuehrt.
+ * WARUM DAS BLATT HIER SVG-NATIV GESETZT WIRD (und nicht das Blatt-HTML gerastert).
+ * Bis c74837c wurde `blattHtml()` samt CSS in ein `<foreignObject>` gepackt und als
+ * Bild in eine Leinwand gezeichnet. Das ist reproduzierbar gescheitert:
+ *
+ *     Failed to execute 'toBlob' on 'HTMLCanvasElement':
+ *     Tainted canvases may not be exported.
+ *
+ * Blink fuehrt ein SVG-Bild als NICHT single-origin, sobald sein Baum ueberhaupt ein
+ * `foreignObject` enthaelt — unabhaengig von Inhalt und Herkunft. Die Leinwand ist
+ * damit verunreinigt und `toBlob()` wirft. Das traf JEDES Blatt; der Lageplan ist
+ * nur Seite 1 und brach deshalb zuerst ab. Der Planhintergrund war NICHT die
+ * Ursache: er steckt als Data-URL im Blatt und ist single-origin (#98/#107).
+ *
+ * Daraus folgt die Invariante dieses Bausteins: **jedes in die Leinwand gerenderte
+ * Blatt ist eine reine, selbstgenuegsame SVG-Zeichenkette** — kein `foreignObject`,
+ * kein externer Verweis, kein Stylesheet, keine Fremdbibliothek. Genau diese
+ * Zeichenkette liefert `blattSvg()`, und genau sie wird im Test geprueft.
+ *
+ * Der Preis ist benannt: Tabellen, Legende, Schriftfeld und Fusstexte werden hier
+ * SVG-nativ gesetzt (Rechtecke, Linien, `<text>` mit eigener Umbruchrechnung) statt
+ * vom Browser aus HTML/CSS gelayoutet. Das Blatt ist damit INHALTSGLEICH, nicht
+ * pixelgleich: Wortlaut, Farben, Reihenfolge und Werte sind dieselben, Zeilenumbruch
+ * und Kastenhoehen weichen ab. Die Masse der Bloecke sind aus `ZEICHNUNG_CSS`/
+ * `LAGEPLAN_CSS` uebernommen (ueber `MM_JE_PX`), damit das Zeichenfeld dieselbe
+ * Groesse hat wie im Druck und der Norm-Masstab nach [D-2]/[N-8] unberuehrt bleibt.
+ * Die Wortlaute stehen bewusst LOKAL (wie der Brandschutzschluessel in
+ * `sembla-zeichnung.js` seit #79): `sembla-zeichnung.js` bleibt unberuehrt, und die
+ * Gleichheit sichert der Test statt einer Verdrahtung.
+ *
+ * PAPIERGENAU OHNE UMRECHNUNG. Das Blatt-SVG rechnet in Papier-mm und ist genau
+ * `blattInnen(format)` gross; die PDF-Seite hat `BLATT[format].papier_mm` als
+ * MediaBox und setzt das Blattbild bei `rand_mm`. Eine reine Platzierung — kein
+ * Reskalieren, kein Umbruch.
  *
  * GERASTERT, UND DAS AUSDRUECKLICH. Eine Seite traegt genau EIN Bild des fertigen
- * Blattes. Das ist der Preis dafuer, das VOLLSTAENDIGE Blatt (Zeichnung UND
- * Tabellen UND Legende UND Schriftfeld) zu zeigen, ohne seine Darstellung ein
- * zweites Mal zu bauen — Text im PDF ist deshalb nicht markierbar. Der
- * Planhintergrund ([N-9]) reist dabei ohne Zutun mit: er steckt als Data-URL im
- * Blatt und wird mitgerastert.
+ * Blattes; Text im PDF ist deshalb nicht markierbar. Der Planhintergrund ([N-9])
+ * reist ohne Zutun mit.
  *
- * REIN UND LESEND. Kein Speicherzugriff, kein aktiver Zeiger, keine Mutation:
- * Mappe, Wandelemente, Eingaben und Planbilder werden nur GELESEN, und die Leser
- * werden uebergeben (dasselbe Muster wie `hierarchieExport`). Kein neues
- * gespeichertes Feld, kein Schema-/Formatversionssprung, keine neue Regel-ID.
+ * REIN UND LESEND. Kein Speicherzugriff, kein aktiver Zeiger, keine Mutation. Kein
+ * neues gespeichertes Feld, kein Schema-/Formatversionssprung, keine neue Regel-ID.
  *
- * DOM. Wie `zip.js` („kein DOM ausser der Download-Hilfe") enthaelt diese Datei
- * genau EINE DOM-nutzende Funktion: `blattBild()`, die Rasterhilfe des Browsers.
- * Alles andere ist rein und laeuft in Node — deshalb ist die PDF-Struktur im Test
- * deterministisch pruefbar, waehrend die Pixel dem Browser gehoeren.
+ * DOM. Genau EINE DOM-nutzende Funktion: `blattBild()`, die Rasterhilfe des
+ * Browsers. Alles andere ist rein und laeuft in Node — deshalb sind Blattfolge,
+ * Blatt-SVG und PDF-Struktur im Test deterministisch pruefbar, waehrend die
+ * Bildpunkte dem Browser gehoeren.
  *
  * ES-Modul.
  */
 
+import { ART_LABEL, ART_SYMBOL } from "./sembla-bom.js";
+import { SEITEN } from "./sembla-constraints.js";
+import {
+  BLATT as BLATT_LP, blattInnen as blattInnenLp, BRANDKLASSE as BRAND_LP,
+  FARBE as FARBE_LP, kopfFelder, lageplanDaten, lageplanSvg, lageplanTitel,
+  MASSSTAEBE as MASSSTAEBE_LP, normOptionen as normOptionenLp,
+  VERZAHNUNG as VERZAHNUNG_LP,
+} from "./sembla-lageplan.js";
+import { bodenblechStoesse, bodenblechTeile, STUECK_LABEL } from "./sembla-montage.js";
 import * as MAPPE from "./sembla-projektmappe.js";
 import {
-  BLATT as BLATT_LP, blattHtml as lageplanBlatt, blattInnen as blattInnenLp,
-  druckCss as druckCssLp, lageplanDaten, lageplanTitel, LAGEPLAN_CSS,
-  normOptionen as normOptionenLp,
-} from "./sembla-lageplan.js";
-import {
-  BLATT as BLATT_Z, blattHtml as wandBlatt, blattInnen as blattInnenZ,
-  druckCss as druckCssZ, normOptionen as normOptionenZ, optionenAusEingaben,
-  zeichnungTitel, ZEICHNUNG_CSS,
+  BLATT as BLATT_Z, blattInnen as blattInnenZ, bomZeilen, BRANDKLASSE as BRAND_Z,
+  einbauteilZeilen, EINBAUTEIL_TITEL, FARBE as FARBE_Z, konfliktZeilen, MANGEL_TITEL,
+  normOptionen as normOptionenZ, optionenAusEingaben, verzahnungZeilen,
+  VERZAHNUNG as VERZAHNUNG_Z, VERZAHNUNG_TITEL, vorspannZeilen, zeichnungSvg,
+  zeichnungTitel,
 } from "./sembla-zeichnung.js";
 
 // --------------------------------------------------------------- Konstanten
@@ -74,18 +102,702 @@ import {
  */
 export const DPI = 300;
 
-/** CSS-Referenzaufloesung: 1 CSS-Pixel = 1/96 Zoll (fest in jedem Browser). */
-const CSS_DPI = 96;
+/**
+ * 1 CSS-Pixel in Papier-mm (1/96 Zoll, fest in jedem Browser). Damit werden die
+ * Blockmasse der beiden Blatt-Stylesheets in die mm-Welt des Blatt-SVG uebernommen,
+ * statt neue zu erfinden — das Zeichenfeld ist dadurch so gross wie im Druck.
+ */
+const MM_JE_PX = 25.4 / 96;
+const _mmPx = (px) => px * MM_JE_PX;
+
+// Blattraster — woertlich `.zsheet`/`.lpsheet` (padding 14px, Spalte 300px, gap 10px).
+const RAND_MM = _mmPx(14), SPALTE_MM = _mmPx(300), LUECKE_MM = _mmPx(10);
+// Kasten (`.zbox`/`.lpbox`: padding 7px 9px) und Abstand der Kaesten (gap 8px).
+const KASTEN_PAD_X = _mmPx(9), KASTEN_PAD_Y = _mmPx(7), KASTEN_LUECKE = _mmPx(8);
+
+// Schriftgroessen in Papier-mm — dieselben Werte wie im Blatt-CSS.
+const FS_CAP = _mmPx(12);        // .zcap/.lpcap
+const FS_H4 = _mmPx(10);         // .zbox h4/.lpbox h4
+const FS_TAB = _mmPx(11);        // table.ztab
+const FS_TAB_LP = _mmPx(10.5);   // table.lptab
+const FS_KOPFZEILE = _mmPx(9);   // table.lptab th
+const FS_IDS = _mmPx(9);         // .zbox.zids table.ztab
+const FS_KLEIN = _mmPx(10);      // .zlegende/.lplegende/.zmangel/.lpbg-info
+const FS_FUSS = _mmPx(9.5);      // .zfuss
+const FS_WARN = _mmPx(10.5);     // .lpzugross
+const FS_KOPF_V = _mmPx(11);     // .ztb-row .v
+const FS_KOPF_K = _mmPx(9.5);    // .ztb-row .k
+
+/** Zeilenabstand als Vielfaches der Schriftgroesse (CSS: line-height ~1.4). */
+const ZEILE_F = 1.4;
 
 /**
- * Die Regeln, die `druckCss()` im `@media print`-Block setzt und die beim Rastern
- * sonst ausfielen — der Bildschirmrahmen ist eine Bildschirmzugabe und gehoert
- * nicht aufs Papier. Erfunden wird hier nichts: es ist woertlich die Entscheidung
- * der beiden Ausgabemodule (`.zsheet{outline:none;box-shadow:none}` bzw.
- * `.lpsheet{…}`), nur ohne die Medienabfrage, die im Bild nie greifen kann.
+ * Geschaetzte Zeichenbreite als Vielfaches der Schriftgroesse. SVG kennt keinen
+ * Umbruch; gerechnet wird deshalb wie in `lageplanSvgDatei()` mit ~0,5 · Schrift-
+ * groesse je Zeichen. Das ist bei proportionaler Schrift eine Schaetzung — sie
+ * bricht eher zu frueh um, statt Text aus dem Kasten laufen zu lassen.
  */
-const DRUCK_ZUSATZ = ".zsheet{outline:none;box-shadow:none}"
-  + ".lpsheet{outline:none;box-shadow:none}";
+const ZEICHEN_F = 0.5;
+
+/** Schriftfamilie des Blatt-SVG. */
+const SCHRIFT = "sans-serif";
+
+// Farben der Blattbeigaben — woertlich aus `ZEICHNUNG_CSS`/`LAGEPLAN_CSS`.
+const TINTE = "#1c2430", GRAU = "#6b7682", RAHMEN = "#dfe3e8", LINIE = "#f1f3f6";
+const TRENN = "#e3e7ec", KOPF_GRUND = "#f4f6f8", KOPF_RAHMEN = "#13202e";
+const CAP_FARBE = "#33414f", MANGEL_FARBE = "#c9461c", INFO_FARBE = "#4a5663";
+const WARN_GRUND = "#fbe6dd", WARN_RAHMEN = "#f0cdbe", WARN_FARBE = "#7d2a10";
+
+/** Kennungen der Klipppfade des Blattes — je Seite genau ein SVG, also eindeutig. */
+const CLIP_SPALTE = "zpdf-spalte", CLIP_FELD = "zpdf-feld";
+
+// ------------------------------------------------------------- SVG-Bausteine
+
+const _esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g,
+  (c) => /** @type {any} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+/** Zahl auf 3 Dezimalen kuerzen — haelt die SVG-Zeichenkette stabil/vergleichbar. */
+const _n = (v) => (Math.round((Number.isFinite(v) ? v : 0) * 1000) / 1000).toString();
+
+/** Deutsche Zahlschreibweise — dieselbe wie in den Blattbausteinen. */
+const _fmt = (n, d = 0) => (Number.isFinite(n) ? n : 0)
+  .toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+/**
+ * Millimetermass im Schriftfeld der Wandzeichnung — woertlich `_mm()` aus
+ * `sembla-zeichnung.js` (eine Dezimale, Komma, KEIN Tausenderpunkt). Eine andere
+ * Schreibweise waere hier ein zweites Mass fuer dieselbe Wand.
+ */
+const _mmMass = (v) => (Math.round((Number.isFinite(v) ? v : 0) * 10) / 10)
+  .toString().replace(".", ",");
+
+/** Eine Textzeile. @param {{fs?:number, farbe?:string, fett?:boolean, anker?:string}} [o] */
+function _text(x, y, text, o = {}) {
+  const t = String(text == null ? "" : text);
+  if (t === "") return "";
+  return `<text x="${_n(x)}" y="${_n(y)}" font-size="${_n(o.fs || FS_TAB)}"`
+    + ` font-family="${SCHRIFT}"${o.fett ? ` font-weight="600"` : ""}`
+    + `${o.anker ? ` text-anchor="${o.anker}"` : ""} fill="${o.farbe || TINTE}">${_esc(t)}</text>`;
+}
+
+/** Ein Rechteck (Flaeche und/oder Rahmen). */
+function _rect(x, y, w, h, o = {}) {
+  return `<rect x="${_n(x)}" y="${_n(y)}" width="${_n(Math.max(0, w))}"`
+    + ` height="${_n(Math.max(0, h))}" fill="${o.fuellung || "none"}"`
+    + `${o.rahmen ? ` stroke="${o.rahmen}" stroke-width="${_n(o.lw || 0.2)}"` : ""}`
+    + `${o.rund ? ` rx="${_n(o.rund)}"` : ""}/>`;
+}
+
+/** Eine waagerechte Linie. */
+function _hlinie(x, y, w, farbe) {
+  return `<line x1="${_n(x)}" y1="${_n(y)}" x2="${_n(x + w)}" y2="${_n(y)}"`
+    + ` stroke="${farbe}" stroke-width="0.15"/>`;
+}
+
+/**
+ * Text auf eine Kastenbreite umbrechen. Ein einzelnes ueberlanges Wort (eine
+ * Einbauteil-ID-Kette etwa) wird hart getrennt statt aus dem Kasten geschoben.
+ * @returns {string[]} mindestens eine (moeglicherweise leere) Zeile
+ */
+function _umbruch(text, breite, fs) {
+  const max = Math.max(4, Math.floor(breite / (fs * ZEICHEN_F)));
+  const worte = String(text == null ? "" : text).split(/\s+/).filter(Boolean);
+  /** @type {string[]} */
+  const zeilen = [];
+  let akt = "";
+  const schiebe = () => { if (akt) { zeilen.push(akt); akt = ""; } };
+  for (let wort of worte) {
+    while (wort.length > max) {
+      schiebe();
+      zeilen.push(wort.slice(0, max));
+      wort = wort.slice(max);
+    }
+    if (!akt) akt = wort;
+    else if (akt.length + 1 + wort.length <= max) akt += " " + wort;
+    else { schiebe(); akt = wort; }
+  }
+  schiebe();
+  return zeilen.length ? zeilen : [""];
+}
+
+/**
+ * Die Marke eines Legenden- oder Mangeleintrags. `bar`/`plate`/`dot` sind woertlich
+ * die `<i>`-Kaestchen der HTML-Legende (14 × 4, 11 × 9, 8 × 8 Pixel), `chip` der
+ * Mangelpunkt (10 × 10) und `kuerzel` der Buchstabenschluessel (#79/#82) — er traegt
+ * schwarz-weiss und haengt deshalb nicht an einer Farbe.
+ * @returns {{svg:string, breite:number}}
+ */
+function _marke(x, basis, fs, z) {
+  if (z.form === "kuerzel") {
+    const t = String(z.kuerzel || "");
+    return { svg: _text(x, basis, t, { fs, farbe: z.marke_farbe, fett: true }),
+      breite: t.length * fs * ZEICHEN_F + fs * 0.5 };
+  }
+  if (z.form === "dot") {
+    const r = _mmPx(4);
+    return { svg: `<circle cx="${_n(x + r)}" cy="${_n(basis - fs * 0.32)}" r="${_n(r)}"`
+      + ` fill="${z.marke_farbe}"/>`, breite: 2 * r + fs * 0.4 };
+  }
+  if (z.form === "chip") {
+    const s = _mmPx(10);
+    return { svg: _rect(x, basis - s * 0.85, s, s, { fuellung: MANGEL_FARBE, rund: _mmPx(2) }),
+      breite: s + fs * 0.5 };
+  }
+  const w = z.form === "plate" ? _mmPx(11) : _mmPx(14);
+  const h = z.form === "plate" ? _mmPx(9) : _mmPx(4);
+  return { svg: _rect(x, basis - h * (z.form === "plate" ? 0.85 : 1.1), w, h,
+    { fuellung: z.marke_farbe, rund: _mmPx(2) }), breite: w + fs * 0.4 };
+}
+
+/**
+ * Eine Zeilenliste in eine Kastenbreite setzen — der eine Fluss-Setzer des Blattes.
+ *
+ * Zeilenarten: `tab` (Bezeichnung links, Wert rechts — die HTML-Tabellen der
+ * Seitenspalte), `spalten` (mehrspaltige Tabellenzeile mit Anteilen), `punkte`
+ * (Legendenreihe, fliessend wie flex-wrap), `punkt` (Marke + Text, ein Eintrag
+ * je Zeile: die Mangelpunkte), `text` (Fliesstext) und `luecke`.
+ * Jede Art bricht innerhalb ihrer Spaltenbreite um; abgeschnitten wird nichts.
+ * @returns {{svg:string, hoehe:number}}
+ */
+function _fluss(x, y, breite, zeilen) {
+  let s = "", yy = y;
+  for (const z of zeilen) {
+    if (!z) continue;
+    const fs = z.fs || FS_TAB;
+    const zh = fs * ZEILE_F;
+    if (z.art === "luecke") { yy += z.hoehe == null ? zh * 0.35 : z.hoehe; continue; }
+    if (z.art === "tab") {
+      // Der Wert steht rechtsbuendig wie `td.r`, und die Bezeichnung bekommt den
+      // Platz, den sie braucht — genau wie in der HTML-Tabelle, deren Wertspalte nur
+      // so breit ist wie ihr Inhalt. Bei der ID-Tabelle ([P-19]) ist es umgekehrt:
+      // dort ist die Bezeichnung kurz und die ID-Kette lang, also richtet sich die
+      // Bezeichnungsspalte nach ihrem Text und der Wert steht linksbuendig.
+      const labelB = z.wertLinks
+        ? Math.min(breite * 0.45,
+          String(z.label == null ? "" : z.label).length * fs * ZEICHEN_F + fs)
+        : breite * 0.82 - fs * 0.5;
+      const wertB = breite - labelB - fs * 0.5;
+      const l = _umbruch(z.label, labelB, fs);
+      // Passt der Wert nicht in seine Spalte, bekommt er eigene Zeilen UNTER der
+      // Bezeichnung — quer ueber die ganze Kastenbreite. Sonst muesste ein langes Wort
+      // („Zuschnittkonflikte") mitten im Wort getrennt werden, und das liest sich wie
+      // ein anderer Begriff.
+      const eigen = !z.wertLinks
+        && String(z.wert == null ? "" : z.wert).length * fs * ZEICHEN_F > wertB;
+      const v = _umbruch(z.wert, eigen ? breite : wertB, fs);
+      l.forEach((t, i) => { s += _text(x, yy + (i + 1) * zh, t, { fs }); });
+      const vy = eigen ? l.length : 0;
+      v.forEach((t, i) => {
+        s += z.wertLinks
+          ? _text(x + labelB + fs * 0.5, yy + (i + 1) * zh, t, { fs })
+          : _text(x + breite, yy + (vy + i + 1) * zh, t, { fs, anker: "end", fett: true });
+      });
+      yy += (eigen ? l.length + v.length : Math.max(l.length, v.length)) * zh;
+      continue;
+    }
+    if (z.art === "spalten") {
+      const summe = z.zellen.reduce((a, c) => a + (c.anteil || 1), 0);
+      let zx = x, reihen = 1;
+      const teile = [];
+      for (const c of z.zellen) {
+        const cb = breite * (c.anteil || 1) / summe;
+        const t = _umbruch(c.text, cb - fs * 0.4, fs);
+        reihen = Math.max(reihen, t.length);
+        teile.push({ t, zx, cb, c });
+        zx += cb;
+      }
+      for (const p of teile) {
+        p.t.forEach((t, i) => {
+          const yb = yy + (i + 1) * zh;
+          s += p.c.anker === "end"
+            ? _text(p.zx + p.cb - fs * 0.4, yb, t, { fs, fett: p.c.fett, farbe: p.c.farbe, anker: "end" })
+            : _text(p.zx, yb, t, { fs, fett: p.c.fett, farbe: p.c.farbe });
+        });
+      }
+      yy += reihen * zh;
+      if (z.linie) s += _hlinie(x, yy + zh * 0.12, breite, z.linie);
+      continue;
+    }
+    if (z.art === "punkte") {
+      // Wie `.zlegende`/`.lplegende` (display:flex;flex-wrap:wrap): die Eintraege
+      // fliessen nebeneinander und brechen erst am Kastenrand um. Einer je Zeile
+      // waere kein anderer Inhalt, aber ein deutlich hoeherer Kasten — und in der
+      // Seitenspalte kostet Hoehe am Ende sichtbare Eintraege.
+      const lueckeX = _mmPx(10);
+      /** @type {Array<Array<{e:any, b:number}>>} */
+      const reihen = [];
+      let reihe = [], frei = breite;
+      for (const e of z.eintraege) {
+        const mb = _marke(0, 0, fs, e).breite;
+        const b = mb + String(e.text).length * fs * ZEICHEN_F;
+        if (reihe.length && b > frei) { reihen.push(reihe); reihe = []; frei = breite; }
+        reihe.push({ e, b: Math.min(b, breite) });
+        frei -= b + lueckeX;
+      }
+      if (reihe.length) reihen.push(reihe);
+      for (const r of reihen) {
+        let hoch = 1, rx = x;
+        for (const { e, b } of r) {
+          const basis = yy + zh;
+          const m = _marke(rx, basis, fs, e);
+          const t = _umbruch(e.text, Math.max(b, breite / r.length) - m.breite, fs);
+          hoch = Math.max(hoch, t.length);
+          s += m.svg;
+          t.forEach((tt, i) => { s += _text(rx + m.breite, basis + i * zh, tt, { fs, farbe: e.farbe }); });
+          rx += b + lueckeX;
+        }
+        yy += hoch * zh;
+      }
+      continue;
+    }
+    if (z.art === "punkt") {
+      const basis = yy + zh;
+      const m = _marke(x, basis, fs, z);
+      const t = _umbruch(z.text, breite - m.breite, fs);
+      s += m.svg;
+      t.forEach((tt, i) => { s += _text(x + m.breite, basis + i * zh, tt, { fs, farbe: z.farbe }); });
+      yy += t.length * zh;
+      continue;
+    }
+    for (const t of _umbruch(z.text, breite, fs)) {
+      yy += zh;
+      s += _text(x, yy, t, { fs, farbe: z.farbe, fett: z.fett });
+    }
+  }
+  return { svg: s, hoehe: yy - y };
+}
+
+/**
+ * Ein Kasten der Seitenspalte (`.zbox`/`.lpbox`): Rahmen, Ueberschrift, Fluss.
+ * Die Ueberschrift bleibt in ihrer Originalschreibweise — `text-transform` ist eine
+ * Darstellungsangabe des Stylesheets und kein anderer Wortlaut.
+ * @returns {{svg:string, hoehe:number}}
+ */
+function _kasten(x, y, breite, titel, zeilen, o = {}) {
+  const innen = breite - 2 * KASTEN_PAD_X;
+  const kopfH = titel ? FS_H4 * ZEILE_F + _mmPx(5) : 0;
+  const f = _fluss(x + KASTEN_PAD_X, y + KASTEN_PAD_Y + kopfH, innen, zeilen);
+  const hoehe = 2 * KASTEN_PAD_Y + kopfH + f.hoehe;
+  let s = _rect(x, y, breite, hoehe, {
+    rahmen: o.mangel ? MANGEL_FARBE : RAHMEN, lw: o.mangel ? 0.4 : 0.25, rund: _mmPx(3),
+  });
+  if (titel) {
+    s += _text(x + KASTEN_PAD_X, y + KASTEN_PAD_Y + FS_H4, titel,
+      { fs: FS_H4, farbe: o.mangel ? MANGEL_FARBE : GRAU, fett: true });
+  }
+  return { svg: s + f.svg, hoehe };
+}
+
+/**
+ * Das Schriftfeld (`.ztitleblock`/`.lptitleblock`): Spalten mit Anteilen, je Spalte
+ * k/v-Zeilen. Die Reihenhoehe folgt dem groessten Umbruchbedarf der Reihe — ein
+ * langer Projektname bekommt eine zweite Zeile, statt abgeschnitten zu werden.
+ * Zurueckgegeben wird erst das MASS: die Blattaufteilung braucht die Hoehe, bevor
+ * gezeichnet werden kann.
+ * @returns {{hoehe:number, zeichne:(x:number,y:number)=>string}}
+ */
+function _schriftfeld(breite, spalten, kBreite) {
+  const summe = spalten.reduce((a, c) => a + c.anteil, 0);
+  const breiten = spalten.map((c) => breite * c.anteil / summe);
+  const reihen = spalten.reduce((m, c) => Math.max(m, c.felder.length), 0);
+  const teile = spalten.map((c, i) => c.felder.map(
+    (f) => _umbruch(f.v, breiten[i] - kBreite - _mmPx(12), FS_KOPF_V)));
+  /** @type {number[]} */
+  const reihenH = [];
+  for (let r = 0; r < reihen; r++) {
+    let n = 1;
+    for (const sp of teile) if (sp[r]) n = Math.max(n, sp[r].length);
+    reihenH.push(n * FS_KOPF_V * ZEILE_F + _mmPx(8));
+  }
+  const hoehe = reihenH.reduce((a, b) => a + b, 0);
+  return {
+    hoehe,
+    zeichne(x, y) {
+      let s = _rect(x, y, breite, hoehe, { fuellung: "#ffffff", rahmen: KOPF_RAHMEN, lw: 0.4, rund: _mmPx(3) });
+      let cx = x;
+      spalten.forEach((c, ci) => {
+        const cb = breiten[ci];
+        if (ci) s += `<line x1="${_n(cx)}" y1="${_n(y)}" x2="${_n(cx)}" y2="${_n(y + hoehe)}"`
+          + ` stroke="#cfd5db" stroke-width="0.15"/>`;
+        let fy = y;
+        c.felder.forEach((f, ri) => {
+          const rh = reihenH[ri];
+          s += _rect(cx, fy, kBreite, rh, { fuellung: KOPF_GRUND });
+          if (ri) s += _hlinie(cx, fy, cb, TRENN);
+          s += _text(cx + _mmPx(6), fy + FS_KOPF_K + _mmPx(4), f.k, { fs: FS_KOPF_K, farbe: GRAU });
+          teile[ci][ri].forEach((t, i) => {
+            s += _text(cx + kBreite + _mmPx(6), fy + FS_KOPF_V * ZEILE_F * (i + 1) - _mmPx(1), t,
+              { fs: FS_KOPF_V, fett: true, farbe: f.warn ? WARN_FARBE : TINTE });
+          });
+          fy += rh;
+        });
+        cx += cb;
+      });
+      return s;
+    },
+  };
+}
+
+/**
+ * Die kanonische Zeichnung in ihr Blattfeld setzen — in NATUERLICHER Papier-mm-Groesse
+ * und zentriert; nur wenn sie nicht ins Feld passt, wird sie gleichmaessig verkleinert
+ * (genau das tut `.zsvg svg{max-width:100%;max-height:100%;width:auto}` im Blatt).
+ * Vergroessert wird NIE — der angeschriebene Masstab waere sonst unwahr ([D-2]/[N-8]).
+ * Eingebettet wird `inner` unveraendert in einem verschachtelten `<svg>` mit der
+ * originalen viewBox, wie in `lageplanSvgDatei()`/`zeichnungSvgDatei()`.
+ */
+function _zeichnungInFeld(feld, inner, vb) {
+  const sc = Math.min(1, feld.w / Math.max(0.001, vb.w), feld.h / Math.max(0.001, vb.h));
+  const w = vb.w * sc, h = vb.h * sc;
+  const x = feld.x + (feld.w - w) / 2, y = feld.y + (feld.h - h) / 2;
+  return `<svg x="${_n(x)}" y="${_n(y)}" width="${_n(w)}" height="${_n(h)}"`
+    + ` viewBox="${_n(vb.x)} ${_n(vb.y)} ${_n(vb.w)} ${_n(vb.h)}"`
+    + ` preserveAspectRatio="xMidYMid meet">${inner}</svg>`;
+}
+
+/**
+ * Wasserzeichen „Vorabzug" (`.zwm`/`.lpwm`) — dieselbe Farbe und Drehung wie im
+ * Blatt. Gross geschrieben, weil das Stylesheet `text-transform:uppercase` setzt.
+ */
+function _wasserzeichen(blatt) {
+  const cx = blatt.w / 2, cy = blatt.h / 2;
+  return `<g class="wm" transform="rotate(-32 ${_n(cx)} ${_n(cy)})">`
+    + `<text x="${_n(cx)}" y="${_n(cy + _mmPx(50))}" font-size="${_n(_mmPx(150))}"`
+    + ` font-family="${SCHRIFT}" font-weight="800" letter-spacing="${_n(_mmPx(8))}"`
+    + ` text-anchor="middle" fill="rgba(201,70,28,.14)">VORABZUG</text></g>`;
+}
+
+/** Die drei Felder des Blattes aus Blattmass und Schriftfeldhoehe. */
+function _blattfelder(blatt, kopfH) {
+  const innen = blatt.w - 2 * RAND_MM;
+  const h = blatt.h - 2 * RAND_MM - LUECKE_MM - kopfH;
+  return {
+    zeichnung: { x: RAND_MM, y: RAND_MM, w: innen - SPALTE_MM - LUECKE_MM, h },
+    spalte: { x: RAND_MM + innen - SPALTE_MM, y: RAND_MM, w: SPALTE_MM, h },
+    kopf: { x: RAND_MM, y: blatt.h - RAND_MM - kopfH, w: innen, h: kopfH },
+  };
+}
+
+/** Die Kaesten der Seitenspalte stapeln — geklippt wie `overflow:hidden` im Blatt. */
+function _seitenspalte(feld, kaesten) {
+  let s = `<clipPath id="${CLIP_SPALTE}">`
+    + _rect(feld.x, feld.y, feld.w, feld.h, { fuellung: "#000" }) + `</clipPath>`
+    + `<g clip-path="url(#${CLIP_SPALTE})">`;
+  let y = feld.y;
+  for (const k of kaesten) {
+    if (!k) continue;
+    const box = _kasten(feld.x, y, feld.w, k.titel, k.zeilen, k);
+    s += box.svg;
+    y += box.hoehe + KASTEN_LUECKE;
+  }
+  return s + `</g>`;
+}
+
+/** Der Zeichnungskasten mit Titelzeile und optionalen Warnabsaetzen. */
+function _zeichnungskasten(feld, titel, warnungen, inner, vb) {
+  let s = _rect(feld.x, feld.y, feld.w, feld.h, { rahmen: RAHMEN, lw: 0.25, rund: _mmPx(3) });
+  let y = feld.y;
+  const capH = FS_CAP * ZEILE_F + _mmPx(4);
+  s += _text(feld.x + _mmPx(8), y + FS_CAP + _mmPx(5), titel, { fs: FS_CAP, fett: true, farbe: CAP_FARBE });
+  y += capH;
+  s += _hlinie(feld.x, y, feld.w, RAHMEN);
+  for (const text of (warnungen || [])) {
+    const z = _umbruch(text, feld.w - 2 * _mmPx(8), FS_WARN);
+    const h = z.length * FS_WARN * ZEILE_F + _mmPx(6);
+    s += _rect(feld.x, y, feld.w, h, { fuellung: WARN_GRUND });
+    z.forEach((t, i) => {
+      s += _text(feld.x + _mmPx(8), y + _mmPx(3) + (i + 1) * FS_WARN * ZEILE_F, t,
+        { fs: FS_WARN, farbe: WARN_FARBE });
+    });
+    y += h;
+    s += _hlinie(feld.x, y, feld.w, WARN_RAHMEN);
+  }
+  const innenFeld = { x: feld.x + _mmPx(6), y: y + _mmPx(6),
+    w: feld.w - 2 * _mmPx(6), h: feld.y + feld.h - y - 2 * _mmPx(6) };
+  return s + _zeichnungInFeld(innenFeld, inner, vb);
+}
+
+// ------------------------------------------------- Wortlaut der Blattbeigaben
+//
+// Diese Texte stehen bewusst LOKAL — dasselbe Muster wie der
+// Brandschutz-Darstellungsschluessel in `sembla-zeichnung.js` seit #79: zwei
+// Ausgabewege duerfen nicht aneinanderhaengen, `sembla-zeichnung.js` bleibt
+// unberuehrt, und die Wortlaut- und Farbgleichheit zu `legendeHtml()`/
+// `maengelHtml()`/`schriftfeldHtml()` sichert der Test — nicht eine Verdrahtung.
+// Alle Kennfarben, Kuerzel und Bauteilnamen kommen dagegen aus den kanonischen
+// Konstanten (`FARBE`, `BRANDKLASSE`, `VERZAHNUNG`, `ART_*`, `STUECK_LABEL`,
+// `SEITEN`); eine zweite Werteliste gaebe es hier nicht.
+
+/** Fusstext des Mangelblocks der Wandzeichnung ([Z-5]/[Z-6]). */
+export const MANGEL_FUSS = "Bis zur Behebung sind Zeichnung und Stückliste dieses Blattes "
+  + "unvollständig: Für die betroffenen Segmente ist kein Zuschnitt bestimmt — es wird "
+  + "ausdrücklich keine Länge und keine Ersatzstange angenommen.";
+
+/** Fusstext des Verzahnungs-Mangelblocks ([G-10]/[G-12]). */
+export const VERZAHNUNG_FUSS = "Abgewiesene Bereiche sind im gezeichneten Verband "
+  + "nicht ausgeführt: die Steine stehen dort wie ohne Verzahnung. Der Anschluss ist "
+  + "in „Wandplanung\" zu berichtigen — hier wird nichts angenommen und nichts "
+  + "stillschweigend zurechtgerückt.";
+
+/** Kennzeichnungsschluessel der Einbauteile unter der Legende ([P-19]). */
+export const EINBAUTEIL_FUSS = `${ART_SYMBOL.standard} ${ART_LABEL.standard} · `
+  + `${ART_SYMBOL.sonder} ${ART_LABEL.sonder} · ${ART_SYMBOL.rest} ${ART_LABEL.rest} · `
+  + "Einbauteil-ID GS-k<Spannachse>.<Segment von unten>.<Stück von unten> — "
+  + "dieselben IDs führt die Baustellenstückliste (Modul 4).";
+
+/** Erklaerung des Verzahnungskastens im Lageplanblatt (#83). */
+export const VERZAHNUNG_INFO = "Diese Wände greifen an ihren Verzahnungsbereichen "
+  + "ineinander — zulässige Verbindung, keine Kollision ([K-13]/[G-10]). Im Plan ist "
+  + `die Stelle als ${VERZAHNUNG_LP.merkmal} gekennzeichnet.`;
+
+/**
+ * Der Darstellungsschluessel des LAGEPLANblattes (#79/#83/#84) als Datenliste —
+ * dieselben Eintraege, dieselbe Reihenfolge und derselbe Wortlaut wie
+ * `legendeHtml()` in `sembla-lageplan.js`.
+ */
+export function legendeLageplan() {
+  return [
+    { form: "plate", marke_farbe: FARBE_LP.wand, text: "Wand (125 mm breit)" },
+    { form: "bar", marke_farbe: FARBE_LP.mittellinie, text: "Mittellinie (Bezug, [K-2])" },
+    { form: "bar", marke_farbe: SEITEN.vorder.farbe,
+      text: `Kante in Kennfarbe: ${SEITEN.vorder.name} der Wand` },
+    { form: "bar", marke_farbe: SEITEN.rueck.farbe,
+      text: `Kante in Kennfarbe: ${SEITEN.rueck.name} der Wand` },
+    { form: "bar", marke_farbe: BRAND_LP.F0.farbe,
+      text: `${BRAND_LP.F0.kuerzel} ${BRAND_LP.F0.name} — Wandfläche ${BRAND_LP.F0.merkmal}` },
+    { form: "plate", marke_farbe: BRAND_LP.F30.farbe,
+      text: `${BRAND_LP.F30.kuerzel} ${BRAND_LP.F30.name} — Wandfläche `
+        + `${BRAND_LP.F30.merkmal} (Planungskennzeichnung, kein Nachweis)` },
+    { form: "bar", marke_farbe: FARBE_LP.mass, text: "treibende Bemaßung ([K-3])" },
+    { form: "kuerzel", kuerzel: "1", marke_farbe: TINTE,
+      text: "Nummernblase der Wand — Name s. „Wände im Geschoss\"" },
+    { form: "plate", marke_farbe: FARBE_LP.fehler, text: "Widerspruch / Kollision ([K-6]/[K-13])" },
+  ];
+}
+
+/**
+ * Der Darstellungsschluessel des WANDblattes ([D-4]/[P-19], #79/#82) als Datenliste —
+ * dieselben Eintraege, dieselbe Reihenfolge und derselbe Wortlaut wie `legendeHtml(w)`
+ * in `sembla-zeichnung.js`. Die bedingten Eintraege haengen an genau denselben
+ * Abfragen: ein Alt-Wandelement ohne reale Blechteile bekommt sie nicht ([D-4]).
+ */
+export function legendeWand(w) {
+  const el = w || {};
+  return [
+    { form: "bar", marke_farbe: FARBE_Z.stange, text: `Gewindestange (${STUECK_LABEL.standard})` },
+    { form: "bar", marke_farbe: FARBE_Z.stange_sonder, text: `${STUECK_LABEL.sonder} / abgelängt` },
+    { form: "bar", marke_farbe: FARBE_Z.stange_rest, text: `${STUECK_LABEL.rest} ([Z-6])` },
+    { form: "dot", marke_farbe: FARBE_Z.mutter, text: "Kopplung / Verankerung" },
+    { form: "plate", marke_farbe: FARBE_Z.platte, text: "Spannplatte" },
+    { form: "plate", marke_farbe: FARBE_Z.stahl, text: "Boden-/Kopfblech" },
+    ...(bodenblechStoesse(el).length
+      ? [{ form: "dot", marke_farbe: FARBE_Z.kontur, text: "Blechstoß (Bodenblech)" }] : []),
+    ...(bodenblechTeile(el).some((t) => t.art === "sonder")
+      ? [{ form: "plate", marke_farbe: FARBE_Z.stange_sonder,
+        text: `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)` }] : []),
+    { form: "plate", marke_farbe: FARBE_Z.i3, text: "i3 (37,5 cm)" },
+    { form: "plate", marke_farbe: FARBE_Z.i2, text: "i2 (25 cm)" },
+    { form: "kuerzel", kuerzel: BRAND_Z.F0.kuerzel, marke_farbe: BRAND_Z.F0.farbe,
+      text: BRAND_Z.F0.name },
+    { form: "kuerzel", kuerzel: BRAND_Z.F30.kuerzel, marke_farbe: BRAND_Z.F30.farbe,
+      text: BRAND_Z.F30.name },
+    ...((el.interlocks || []).length
+      ? [{ form: "kuerzel", kuerzel: VERZAHNUNG_Z.kuerzel, marke_farbe: FARBE_Z.verzahnung,
+        text: VERZAHNUNG_Z.name }] : []),
+  ];
+}
+
+// -------------------------------------------------------- Blattkomposition
+
+/**
+ * Das LAGEPLANblatt als reine, selbstgenuegsame SVG-Zeichenkette ([N-1] … [N-9]).
+ *
+ * Gerechnet wird nichts: `lageplanSvg()` liefert Zeichnung und Masstab,
+ * `kopfFelder()` das Schriftfeld ([N-6]/[L-11]), `daten.waende` die Wandtabelle und
+ * `daten.hintergrund`/`daten.verzahnungen` die beiden bedingten Kaesten. Der
+ * Planhintergrund steckt als Data-URL in `inner` und reist unveraendert mit ([N-9]).
+ * @returns {{inhalt:string, titel:string, format:string, masstab:number, blatt_mm:{w:number,h:number}}}
+ */
+export function lageplanBlattInhalt(daten, opts) {
+  const o = normOptionenLp(opts);
+  const z = lageplanSvg(daten, o);
+  const blatt = blattInnenLp(/** @type {any} */ (o.format));
+  const titel = lageplanTitel(daten, z.masstab);
+
+  // Schriftfeld zuerst: die Blattaufteilung braucht seine Hoehe. Fuenf Spalten zu je
+  // zwei Feldern — genau die Aufteilung von `schriftfeldHtml()` (#59).
+  const felder = kopfFelder({ ...daten, _passt: z.passt }, z.masstab);
+  const spalten = [];
+  const anteile = [1.5, 1.2, 1, 1, 0.9];
+  for (let i = 0; i < felder.length; i += 2) {
+    spalten.push({ anteil: anteile[spalten.length] || 1, felder: felder.slice(i, i + 2) });
+  }
+  const kopf = _schriftfeld(blatt.w - 2 * RAND_MM, spalten, _mmPx(70));
+  const f = _blattfelder(blatt, kopf.hoehe);
+
+  // Warnabsaetze: zwei GETRENNTE Gruende mit verschiedenen Auswegen ([N-8], #59).
+  const warnungen = [];
+  if (!z.passt) {
+    warnungen.push(z.benoetigt > z.masstab
+      ? `Das Geschoss ist für dieses Blatt zu groß: selbst 1 : `
+        + `${MASSSTAEBE_LP[MASSSTAEBE_LP.length - 1]} genügt nicht (benötigt wären 1 : `
+        + `${Math.ceil(z.benoetigt)}). Die Zeichnung bleibt vollständig und wird weder `
+        + `beschnitten noch gekachelt — der Ausdruck ist dann aber nicht maßstabsgetreu. `
+        + `Größeres Blattformat wählen oder das Geschoss fachlich teilen ([N-8]).`
+      : `Der Maßstab 1 : ${z.masstab} passt, aber die ausgewichenen Nummernblasen `
+        + `brauchen mehr Zeichnungsrand, als dieses Blattfeld hergibt `
+        + `(${_fmt(z.voll_breite_mm, 1)} × ${_fmt(z.voll_hoehe_mm, 1)} mm bei einem Feld von `
+        + `${_fmt((BLATT_LP[o.format] || BLATT_LP.a3).feld_mm.w)} × `
+        + `${_fmt((BLATT_LP[o.format] || BLATT_LP.a3).feld_mm.h)} mm). Jede Blase bleibt `
+        + `vollständig sichtbar und wird nicht beschnitten — der Ausdruck ist dann aber `
+        + `nicht maßstabsgetreu. Größeres Blattformat wählen ([N-8]).`);
+  }
+
+  // Wandtabelle: Nummer (= Nummernblase im Plan), Wandname, Hoehe — und sonst nichts (#89).
+  const tabelle = [{ art: "spalten", fs: FS_KOPFZEILE, linie: TRENN, zellen: [
+    { text: "Nr.", anteil: 0.11, anker: "end", farbe: GRAU, fett: true },
+    { text: "Wand", anteil: 0.59, farbe: GRAU, fett: true },
+    { text: "Höhe", anteil: 0.3, anker: "end", farbe: GRAU, fett: true },
+  ] }];
+  if (daten.waende.length) {
+    for (const w of daten.waende) {
+      tabelle.push({ art: "spalten", fs: FS_TAB_LP, linie: LINIE, zellen: [
+        { text: String(w.nr), anteil: 0.11, anker: "end", fett: true },
+        { text: w.name, anteil: 0.59 },
+        { text: w.hoehe_mm == null ? "–" : _fmt(w.hoehe_mm) + " mm", anteil: 0.3, anker: "end" },
+      ] });
+    }
+  } else {
+    tabelle.push({ art: "text", fs: FS_TAB_LP, text: "keine Wand eingetragen" });
+  }
+
+  // Planhintergrund (#80/[N-9]) und Verzahnungen (#83) nur, wenn es sie gibt — sonst
+  // waere es ein Kasten ueber eine Sache, die es nicht gibt.
+  const hg = daten.hintergrund || null;
+  let hgZeile = null;
+  if (hg && hg.status !== "keiner") {
+    const gezeigt = hg.status === "gesetzt" && o.transparenz < 100;
+    const zusatz = hg.status !== "gesetzt" ? ""
+      : gezeigt
+        ? ` Dargestellt mit ${_fmt(o.transparenz)} % Transparenz${hg.name ? ` (${hg.name})` : ""}.`
+        : " Die Transparenz steht auf 100 % — der Hintergrund ist deshalb ausgeblendet.";
+    hgZeile = { art: "text", fs: FS_KLEIN, farbe: INFO_FARBE, text: hg.text + zusatz };
+  }
+  const verz = (daten.verzahnungen || []).map((v) => ({
+    art: "text", fs: FS_TAB_LP,
+    text: `• „${v.name_a}“ und „${v.name_b}“ — Rasterfeld ${v.raster.a} bzw. ${v.raster.b}`,
+  }));
+
+  const inhalt = _rect(0, 0, blatt.w, blatt.h, { fuellung: "#ffffff" })
+    + (o.wasserzeichen ? _wasserzeichen(blatt) : "")
+    + _zeichnungskasten(f.zeichnung, titel, warnungen, z.inner,
+      { x: z.rand.links ? -z.rand.links : 0, y: z.rand.oben ? -z.rand.oben : 0,
+        w: z.voll_breite_mm, h: z.voll_hoehe_mm })
+    + _seitenspalte(f.spalte, [
+      { titel: "Wände im Geschoss", zeilen: tabelle },
+      { titel: "Darstellung", zeilen: [
+        { art: "punkte", fs: FS_KLEIN, eintraege: legendeLageplan() }] },
+      hgZeile ? { titel: "Planhintergrund", zeilen: [hgZeile] } : null,
+      verz.length ? { titel: "Verzahnungen", zeilen: [
+        { art: "text", fs: FS_KLEIN, farbe: INFO_FARBE, text: VERZAHNUNG_INFO }, ...verz,
+      ] } : null,
+    ])
+    + kopf.zeichne(f.kopf.x, f.kopf.y);
+
+  return { inhalt, titel, format: o.format, masstab: z.masstab, blatt_mm: blatt };
+}
+
+/**
+ * Das WANDblatt als reine, selbstgenuegsame SVG-Zeichenkette ([D-1] … [D-8]).
+ *
+ * Zeichnung, Mengen, Kennzahlen, IDs und Maengel kommen unveraendert aus
+ * `sembla-zeichnung.js`; das Format folgt der in Modul 7 getroffenen
+ * Darstellungswahl dieser Wand ([D-7]).
+ * @returns {{inhalt:string, titel:string, format:string, masstab:number, blatt_mm:{w:number,h:number}}}
+ */
+export function wandBlattInhalt(w, eingaben = {}, opts = {}) {
+  const o = normOptionenZ(opts);
+  const z = zeichnungSvg(w, o);
+  const blatt = blattInnenZ(/** @type {any} */ (o.format));
+  const titel = zeichnungTitel(w, z.masstab, o.planinhalt);
+
+  // Schriftfeld: GENAU die zwingenden Angaben ([D-8], #61). Ein leeres optionales
+  // Feld erzeugt keine Zeile — kein „–", kein „###".
+  const p = (eingaben && eingaben.projekt) || {};
+  const dim = _mmMass(w.length_mm) + " × " + _mmMass(w.height_mm);
+  const nurGesetzt = (arr) => arr.filter((f) => f.v !== undefined && f.v !== null && String(f.v) !== "");
+  const kopf = _schriftfeld(blatt.w - 2 * RAND_MM, [
+    { anteil: 2.2, felder: nurGesetzt([
+      { k: "Projekt", v: p.name || w.name }, { k: "Wand", v: (w.name || "") + " · " + dim }]) },
+    { anteil: 1.2, felder: nurGesetzt([
+      { k: "Planinhalt", v: o.planinhalt }, { k: "Plan Nr.", v: p.plan_nr },
+      { k: "Index", v: p.index }]) },
+    { anteil: 1.1, felder: nurGesetzt([
+      { k: "Maßstab", v: `1 : ${z.masstab}` }, { k: "Einheit", v: "mm" },
+      { k: "Gez.", v: p.gez }]) },
+  ], _mmPx(96));
+  const f = _blattfelder(blatt, kopf.hoehe);
+
+  const ids = einbauteilZeilen(w);
+  const mangel = konfliktZeilen(w);
+  const vz = verzahnungZeilen(w);
+
+  const inhalt = _rect(0, 0, blatt.w, blatt.h, { fuellung: "#ffffff" })
+    + (o.wasserzeichen ? _wasserzeichen(blatt) : "")
+    + _zeichnungskasten(f.zeichnung, titel, null, z.inner,
+      { x: 0, y: 0, w: z.breite_mm, h: z.hoehe_mm })
+    + _seitenspalte(f.spalte, [
+      { titel: "Baustellenstückliste (Mengen)", zeilen: bomZeilen(w)
+        .map((r) => ({ art: "tab", fs: FS_TAB, label: r.label, wert: r.menge })) },
+      ids.length ? { titel: EINBAUTEIL_TITEL, zeilen: ids
+        .map((r) => ({ art: "tab", fs: FS_IDS, wertLinks: true, label: r.label, wert: r.wert })) } : null,
+      { titel: "Vorspannung", zeilen: vorspannZeilen(w)
+        .map((r) => ({ art: "tab", fs: FS_TAB, label: r.label, wert: r.wert })) },
+      mangel.length ? { titel: MANGEL_TITEL, mangel: true, zeilen: [
+        ...mangel.map((e) => ({ art: "punkt", form: "chip", fs: FS_KLEIN,
+          text: `${e.text} Betrifft ${e.anzahl} Segment(e)`
+            + (e.straenge.length ? ` in Spannachse ${e.straenge.map((k) => "k" + k).join(", ")}` : "")
+            + "." })),
+        { art: "text", fs: FS_FUSS, farbe: GRAU, text: MANGEL_FUSS },
+      ] } : null,
+      vz.length ? { titel: VERZAHNUNG_TITEL, mangel: true, zeilen: [
+        ...vz.map((e) => ({ art: "punkt", form: "chip", fs: FS_KLEIN,
+          text: `${e.text} ${e.wo}.` })),
+        { art: "text", fs: FS_FUSS, farbe: GRAU, text: VERZAHNUNG_FUSS },
+      ] } : null,
+      { titel: "Darstellung", zeilen: [
+        { art: "punkte", fs: FS_KLEIN, eintraege: legendeWand(w) },
+        { art: "text", fs: FS_FUSS, farbe: GRAU, text: EINBAUTEIL_FUSS },
+      ] },
+    ])
+    + kopf.zeichne(f.kopf.x, f.kopf.y);
+
+  return { inhalt, titel, format: o.format, masstab: z.masstab, blatt_mm: blatt };
+}
+
+/**
+ * Die Zeichenkette, die TATSAECHLICH gerastert wird — der Ort der Invariante aus
+ * #98/#107: kein `foreignObject`, kein externer Verweis, kein Stylesheet.
+ *
+ * Ohne Pixelmasse traegt das Wurzelelement seine Papier-mm und ist damit eine
+ * eigenstaendig lesbare Blattdatei; mit Pixelmassen rastert der Browser dieselbe
+ * `viewBox` auf die Zieldichte (der Zeichnungsinhalt wird dabei nicht umbrochen,
+ * sondern gleichmaessig vergroessert).
+ * @param {{titel?:string, inhalt:string, blatt_mm:{w:number,h:number}}} seite
+ * @param {{breite_px?:number, hoehe_px?:number}} [px]
+ */
+export function blattSvg(seite, px = {}) {
+  const w = seite.blatt_mm.w, h = seite.blatt_mm.h;
+  const mitPx = Number.isFinite(px.breite_px) && Number.isFinite(px.hoehe_px);
+  const groesse = mitPx
+    ? ` width="${_n(px.breite_px)}" height="${_n(px.hoehe_px)}"`
+    : ` width="${_n(w)}mm" height="${_n(h)}mm"`;
+  return `<svg xmlns="http://www.w3.org/2000/svg"${groesse}`
+    + ` viewBox="0 0 ${_n(w)} ${_n(h)}">`
+    + `<title>${_esc(seite.titel || "")}</title>`
+    + `<clipPath id="${CLIP_FELD}">${_rect(0, 0, w, h, { fuellung: "#000" })}</clipPath>`
+    + `<g clip-path="url(#${CLIP_FELD})">${seite.inhalt}</g></svg>`;
+}
 
 // ------------------------------------------------------------- Dateinamen
 
@@ -97,13 +809,13 @@ const DRUCK_ZUSATZ = ".zsheet{outline:none;box-shadow:none}"
  * @param {any} name @returns {string}
  */
 export function sicherStamm(name) {
-  const um = { "\u00e4": "ae", "\u00f6": "oe", "\u00fc": "ue", "\u00c4": "Ae", "\u00d6": "Oe",
-    "\u00dc": "Ue", "\u00df": "ss" };
+  const um = { "ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe",
+    "Ü": "Ue", "ß": "ss" };
   return String(name == null ? "" : name)
     // Umlaute werden UEBERTRAGEN statt getilgt: „Gebaeude" liest sich, „Geb_ude"
     // nicht. Das ist eine Schreibweise fuer Dateinamen und beruehrt keinen
     // gespeicherten Namen — in Mappe und Blatt steht weiter der echte.
-    .replace(/[\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]/g, (c) => um[c])
+    .replace(/[äöüÄÖÜß]/g, (c) => um[c])
     .replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "unbenannt";
 }
 
@@ -139,9 +851,9 @@ export function zipName(mappe) {
  * genau ein Wandblatt — beides in der Reihenfolge der Projektmappe.
  *
  * Gerechnet wird nichts: `lageplanDaten()` leitet nach [N-3] bei jedem Aufruf
- * frisch aus Mappe und kanonischem Loeserergebnis ab, `blattHtml()` baut daraus
- * das Blatt. Fehlt das Wandelement, ist das ein verwaister Eintrag ([L-4]): er
- * wird BENANNT und uebersprungen, nie durch geratene Werte ersetzt.
+ * frisch aus Mappe und kanonischem Loeserergebnis ab. Fehlt das Wandelement, ist
+ * das ein verwaister Eintrag ([L-4]): er wird BENANNT und uebersprungen, nie
+ * durch geratene Werte ersetzt.
  *
  * `format` betrifft AUSSCHLIESSLICH den Lageplan (Modul 9 kennt keine gespeicherte
  * Formatwahl, Standard A3); das Wandblatt folgt `eingaben.zeichnung` ([D-7]).
@@ -162,21 +874,19 @@ export function blaetterFuerGeschoss(p) {
   const ort = `${treffer.gebaeude.name} · ${gs.name}`;
 
   // --- Seite 1: der Lageplan des Geschosses ([N-1] … [N-9]) ---------------
-  const lpOpt = normOptionenLp({ format });
   const daten = lageplanDaten({
     mappe: p.mappe, geschossId: p.geschossId, elemente: p.elemente,
     hintergrund: p.hintergrund,
   });
-  const lp = lageplanBlatt(daten, lpOpt);
+  const lp = lageplanBlattInhalt(daten, { format });
   seiten.push({
     art: "lageplan",
-    titel: lageplanTitel(daten, lp.masstab),
-    html: lp.html,
-    css: LAGEPLAN_CSS + druckCssLp(lp.format) + DRUCK_ZUSATZ,
+    titel: lp.titel,
+    inhalt: lp.inhalt,
     format: lp.format,
     papier_mm: { ...BLATT_LP[lp.format].papier_mm },
     rand_mm: BLATT_LP[lp.format].rand_mm,
-    blatt_mm: blattInnenLp(/** @type {any} */ (lp.format)),
+    blatt_mm: lp.blatt_mm,
   });
 
   // --- Danach je Wand ein vollstaendiges Wandblatt ([D-6]) ----------------
@@ -198,10 +908,9 @@ export function blaetterFuerGeschoss(p) {
     // getroffene Darstellungswahl dieser Wand ([D-7]). Die Seite ist damit
     // buchstaeblich das Blatt, das Modul 7 druckt — auch wenn dadurch A3- und
     // A4-Seiten in einer Datei stehen (PDF bemasst jede Seite fuer sich).
-    const zOpt = normOptionenZ(optionenAusEingaben(eingaben));
     let blatt;
     try {
-      blatt = wandBlatt(el.wandelement, eingaben, zOpt);
+      blatt = wandBlattInhalt(el.wandelement, eingaben, optionenAusEingaben(eingaben));
     } catch (e) {
       luecken.push(`${ort} · „${w.name || w.id}“: das Wandblatt ist nicht ableitbar `
         + `(${e && e.message ? e.message : String(e)}); kein Wandblatt in der PDF.`);
@@ -209,13 +918,12 @@ export function blaetterFuerGeschoss(p) {
     }
     seiten.push({
       art: "wand",
-      titel: zeichnungTitel(el.wandelement, blatt.masstab, zOpt.planinhalt),
-      html: blatt.html,
-      css: ZEICHNUNG_CSS + druckCssZ(blatt.format) + DRUCK_ZUSATZ,
+      titel: blatt.titel,
+      inhalt: blatt.inhalt,
       format: blatt.format,
       papier_mm: { ...BLATT_Z[blatt.format].papier_mm },
       rand_mm: BLATT_Z[blatt.format].rand_mm,
-      blatt_mm: blattInnenZ(/** @type {any} */ (blatt.format)),
+      blatt_mm: blatt.blatt_mm,
     });
   }
   return { seiten, luecken };
@@ -270,32 +978,21 @@ export function blaetterProjekt(p) {
 /**
  * Ein fertiges Blatt als Bild — die EINZIGE DOM-nutzende Funktion dieser Datei.
  *
- * Gerendert wird das Blatt-HTML mit seinem eigenen CSS in einem `foreignObject`,
- * das als Bild in eine Leinwand gezeichnet wird. Damit rendert der BROWSER das
- * bestehende Blatt — es wird nichts nachgebaut, und `.zsheet`/`.lpsheet` behalten
- * ihre in Papier-mm gesetzte Groesse. Die aeussere SVG-Groesse in Bildpunkten
- * skaliert dieselbe Box auf die Zieldichte; der `viewBox` bleibt die
- * CSS-Pixelgroesse des Blattes, sonst wuerde umbrochen statt vergroessert.
+ * Gerastert wird GENAU die Zeichenkette aus `blattSvg()`: ein reines, in Papier-mm
+ * gerechnetes SVG ohne `foreignObject`, ohne Stylesheet und ohne jeden externen
+ * Verweis. Genau deshalb bleibt die Leinwand unverunreinigt und `toBlob()` darf
+ * lesen — der Fehler „Tainted canvases may not be exported" aus #98/#107 kann hier
+ * nicht mehr entstehen. Der Planhintergrund ([N-9]) steckt als Data-URL im Blatt
+ * und ist single-origin; er wird mitgerastert und bleibt sichtbar.
  *
- * Es wird nichts von aussen nachgeladen: der Planhintergrund steckt bereits als
- * Data-URL im Blatt. Deshalb bleibt die Leinwand unverunreinigt und `toBlob()`
- * darf lesen.
- *
- * @param {{html:string, css:string, blatt_mm:{w:number,h:number}}} seite
+ * @param {{titel?:string, inhalt:string, blatt_mm:{w:number,h:number}}} seite
  * @param {number} [dpi]
  * @returns {Promise<{daten:Uint8Array, typ:'jpeg'|'png', breite_px:number, hoehe_px:number}>}
  */
 export async function blattBild(seite, dpi = DPI) {
-  const cssPx = (mm) => mm * CSS_DPI / 25.4;
   const zielPx = (mm) => Math.max(1, Math.round(mm * dpi / 25.4));
-  const bw = seite.blatt_mm.w, bh = seite.blatt_mm.h;
-  const breite = zielPx(bw), hoehe = zielPx(bh);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${breite}" height="${hoehe}"`
-    + ` viewBox="0 0 ${cssPx(bw)} ${cssPx(bh)}">`
-    + `<foreignObject x="0" y="0" width="100%" height="100%">`
-    + `<div xmlns="http://www.w3.org/1999/xhtml">`
-    + `<style>*{box-sizing:border-box}${seite.css}</style>${seite.html}</div>`
-    + `</foreignObject></svg>`;
+  const breite = zielPx(seite.blatt_mm.w), hoehe = zielPx(seite.blatt_mm.h);
+  const svg = blattSvg(seite, { breite_px: breite, hoehe_px: hoehe });
   // Blob statt Data-URL: ein Blatt mit Planhintergrund wird schnell mehrere
   // Megabyte gross, und eine Data-URL dieser Laenge ist nicht überall zulaessig.
   const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
@@ -325,7 +1022,6 @@ export async function blattBild(seite, dpi = DPI) {
     URL.revokeObjectURL(url);
   }
 }
-
 // --------------------------------------------------------------- PDF-Bytes
 
 const _ENC = new TextEncoder();

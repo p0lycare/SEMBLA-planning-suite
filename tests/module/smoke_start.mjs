@@ -3407,11 +3407,13 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   globalThis.localStorage = alt101Storage;
 }
 
-// --- 13) #98: gesammelte Zeichnungs-PDFs je Geschoss ----------------------
-// Geprueft wird der ECHTE Bedienweg der Startseite: ein Klick am Projekteintrag,
-// GENAU EIN ZIP-Download, je Geschoss genau eine gueltige PDF, Lageplan als erste
+// --- 13) #98/#107: gesammelte Zeichnungs-PDFs je Geschoss -----------------
+// Geprueft wird der ECHTE Bedienweg der Startseite: der ZENTRALE Exportdialog des
+// Projekts (#107 — die frueher eigene Schaltflaeche „Zeichnungen als PDF" gibt es nicht
+// mehr), GENAU EIN ZIP-Download, je Geschoss genau eine gueltige PDF, Lageplan als erste
 // Seite — und der sichtbare Fehlerpfad, wenn ein Wandblatt fehlt.
 {
+  const warte = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 0)); };
   const zpdfPrj = await projektAnlegen('Zeichnungsprojekt');
   const zpdfPrjId = zpdfPrj.projekt.id;
   const zpdfEG = store.aktivesGeschossId();
@@ -3425,20 +3427,38 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   store.setzeMappe(MAPPE.setzeWand(store.projektMappe(zpdfPrjId), zpdfEG,
     { id: 'w98-verwaist', name: 'Wand PDF verwaist', lage: null }));
 
-  ok('#98 die Baumliste bietet den Zeichnungsexport am Projekt an',
-    /data-act="prj-zeichnungen"/.test($('tr-baum').innerHTML)
-    && /Zeichnungen als PDF/.test($('tr-baum').innerHTML));
+  ok('#107 die Baumliste hat KEINE eigene Schaltflaeche fuer den Zeichnungsexport mehr',
+    !/data-act="prj-zeichnungen"/.test($('tr-baum').innerHTML)
+    && !/Zeichnungen als PDF/.test($('tr-baum').innerHTML)
+    && new RegExp('data-act="prj-export"').test($('tr-baum').innerHTML));
+
+  /** Ein Lauf ueber den zentralen Exportdialog — nur die Zeichnungen, keine Archivdatei. */
+  const zpdfLauf = async () => {
+    baum('prj-export', zpdfPrjId);
+    $('exp-overlay')._sel = [];                 // keine Datei der Archivauswahl gewaehlt
+    $('exp-zeichnungen').checked = true;
+    $('exp-go').dispatch('click');
+    await warte();
+  };
+
+  baum('prj-export', zpdfPrjId);
+  ok('#107 der zentrale Exportdialog bietet die Zeichnungen an — und startet AUS',
+    $('exp-zeichnungen-optionen').hidden === false
+    && $('exp-zeichnungen').checked === false);
+  baum('gs-export', zpdfEG);
+  ok('#107 auf Geschoss- und Wandebene gibt es die Zeichnungswahl nicht',
+    $('exp-zeichnungen-optionen').hidden === true);
 
   // (a) Fehlerpfad: der verwaiste Eintrag wird VOR dem Download benannt; „Nein" laedt nichts.
   const vorAbbruch = zipCalls.length;
   confirmTexte.length = 0;
   confirmFolge = [false];
-  await baum('prj-zeichnungen', zpdfPrjId);
+  await zpdfLauf();
   ok('#98 der verwaiste Eintrag wird vor dem Download namentlich benannt ([L-4])',
     confirmTexte.length === 1 && /Wand PDF verwaist/.test(confirmTexte[0])
     && /NICHT vollständig/.test(confirmTexte[0]));
   ok('#98 „Nein" laedt nichts herunter und sagt das',
-    zipCalls.length === vorAbbruch && trFehler() && /Abgebrochen/.test(trMsgTxt()));
+    zipCalls.length === vorAbbruch && trFehler() && /abgebrochen/i.test(trMsgTxt()));
 
   // (b) Regulaerer Lauf: genau EIN ZIP mit genau einer PDF je Geschoss.
   const zeigerVor = [store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()].join('|');
@@ -3446,7 +3466,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   const elementeVor = JSON.stringify(store.listeElemente());
   zpdfSeiten.length = 0;
   confirmFolge = [true];
-  await baum('prj-zeichnungen', zpdfPrjId);
+  await zpdfLauf();
   const lauf = zipCalls.slice(vorAbbruch);
   ok('#98 genau EIN ZIP-Download — keine Folge einzelner PDF-Downloads', lauf.length === 1);
   const dateien = lauf.length ? lauf[0].files : [];
@@ -3455,7 +3475,8 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   ok('#98 genau eine PDF je Geschoss, keine weitere Datei',
     dateien.length === 2 && dateien.every(f => /\.pdf$/.test(f.name)));
   ok('#98 die Dateinamen benennen Gebaeude und Geschoss nachvollziehbar',
-    dateien.map(f => f.name).join(',') === 'Gebaeude_1_Geschoss_1.pdf,Gebaeude_1_OG_ohne_Wand.pdf');
+    dateien.map(f => f.name).join(',')
+      === 'zeichnungen/Gebaeude_1_Geschoss_1.pdf,zeichnungen/Gebaeude_1_OG_ohne_Wand.pdf');
 
   const alsText = (f) => Buffer.from(f.data).toString('latin1');
   ok('#98 jede Datei ist eine PDF mit vollstaendigem Rumpf',
@@ -3463,8 +3484,8 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
       && alsText(f).startsWith('%PDF-1.') && alsText(f).trimEnd().endsWith('%%EOF')
       && /\nxref\n/.test(alsText(f)) && /\/Root 1 0 R/.test(alsText(f))));
 
-  const eg = dateien.find(f => f.name === 'Gebaeude_1_Geschoss_1.pdf');
-  const og = dateien.find(f => f.name === 'Gebaeude_1_OG_ohne_Wand.pdf');
+  const eg = dateien.find(f => /Gebaeude_1_Geschoss_1\.pdf$/.test(f.name));
+  const og = dateien.find(f => /Gebaeude_1_OG_ohne_Wand\.pdf$/.test(f.name));
   ok('#98 das EG traegt Lageplan + zwei Wandblaetter, das leere OG nur den Lageplan',
     !!eg && /\/Type \/Pages \/Kids \[[^\]]+\] \/Count 3 /.test(alsText(eg))
     && !!og && /\/Type \/Pages \/Kids \[[^\]]+\] \/Count 1 /.test(alsText(og)));
@@ -3484,17 +3505,27 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
     titel(og).length === 1 && /Lageplan/.test(titel(og)[0]));
 
   // Gerastert wurde das VOLLSTAENDIGE Blatt — Zeichnung, Tabellen, Legende und
-  // Schriftfeld, mit dem in Papier-mm gesetzten Blattmass.
+  // Schriftfeld —, und zwar als REINE SVG-Zeichenkette: kein `foreignObject` und kein
+  // externer Verweis, sonst waere die Leinwand verunreinigt (#98/#107).
+  const svgVon = (seite) => ZPDF.blattSvg(seite);
   const wandSeite = zpdfSeiten.find(x => x.art === 'wand');
   ok('#98 gerendert wird das vollstaendige Wandblatt (Schriftfeld und Stueckliste dabei)',
-    !!wandSeite && /class="zsheet/.test(wandSeite.html)
-    && /Baustellenstückliste/.test(wandSeite.html) && /<svg/.test(wandSeite.html));
+    !!wandSeite && /Baustellenstückliste/.test(svgVon(wandSeite))
+    && /Maßstab/.test(svgVon(wandSeite)) && /<svg/.test(svgVon(wandSeite)));
   ok('#98 das Blattmass ist das kanonische Papiermass (A3: 400 × 277 mm im Rand 10)',
     !!wandSeite && wandSeite.blatt_mm.w === 400 && wandSeite.blatt_mm.h === 277
     && wandSeite.rand_mm === 10 && wandSeite.papier_mm.w === 420);
   const lpSeite = zpdfSeiten.find(x => x.art === 'lageplan');
   ok('#98 gerendert wird das vollstaendige Lageplanblatt (Wandtabelle und Legende dabei)',
-    !!lpSeite && /class="lpsheet/.test(lpSeite.html) && /Wände im Geschoss/.test(lpSeite.html));
+    !!lpSeite && /Wände im Geschoss/.test(svgVon(lpSeite)) && /Darstellung/.test(svgVon(lpSeite)));
+  ok('#98/#107 jedes gerasterte Blatt ist selbstgenuegsam — kein foreignObject, kein externer Verweis',
+    zpdfSeiten.length === 4 && zpdfSeiten.every(seite => {
+      const svg = svgVon(seite);
+      const fremd = [...svg.matchAll(/(?:href|xlink:href|src)\s*=\s*"([^"]*)"/g)]
+        .map(x => x[1]).filter(u => !/^(data:|#)/.test(u));
+      return !/foreignObject/i.test(svg) && !/<style|<link|<img|@import/i.test(svg)
+        && fremd.length === 0;
+    }));
 
   // (c) Der Lauf ist rein lesend.
   ok('#98 kein Zeiger wurde umgesetzt ([L-10])',
@@ -3508,7 +3539,7 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   const vorFehler = zipCalls.length;
   zpdfFehlerAb = tEG[2];
   confirmFolge = [true];
-  await baum('prj-zeichnungen', zpdfPrjId);
+  await zpdfLauf();
   zpdfFehlerAb = null;
   ok('#98 ein nicht darstellbares Blatt bricht den Lauf sichtbar ab, ohne Download',
     zipCalls.length === vorFehler && trFehler()

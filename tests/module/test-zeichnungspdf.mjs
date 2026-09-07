@@ -1,12 +1,22 @@
-// Logik-Test der gesammelten Zeichnungs-PDFs (docs/shared/sembla-zeichnungspdf.js, #98).
+// Logik-Test der gesammelten Zeichnungs-PDFs (docs/shared/sembla-zeichnungspdf.js, #98/#107).
 //
 // Geprueft wird die DOM-freie Ableitung, aus der der Sammelexport in Modul 0 entsteht:
 //
 //   * die Blattfolge je Geschoss — Lageplan zuerst, danach je zugeordneter Wand
 //     genau ein Wandblatt, beides in der Reihenfolge der Projektmappe;
-//   * dass dabei ausschliesslich die KANONISCHEN Vollblattableitungen benutzt werden
-//     ([D-6]/[N-1]): das erzeugte HTML ist byteweise das von `blattHtml()`, und die
+//   * die SELBSTGENUEGSAMKEIT der Zeichenkette, die TATSAECHLICH gerastert wird
+//     (`blattSvg()`, #98/#107): kein `foreignObject`, kein externer Verweis, kein
+//     Stylesheet — genau daran ist der Export mit c74837c gescheitert (Blink fuehrt ein
+//     SVG-Bild mit `foreignObject` als nicht single-origin, die Leinwand wird verunreinigt
+//     und `toBlob()` wirft „Tainted canvases may not be exported"). Geprueft wird das
+//     ausdruecklich AM PLANHINTERGRUND-FALL: das Bild reist als Data-URL mit;
+//   * dass die kanonischen ZEICHNUNGEN unveraendert eingebettet werden ([D-6]/[N-1]):
+//     das `inner` von `lageplanSvg()`/`zeichnungSvg()` steht byteweise im Blatt, und die
 //     Seitengeometrie ist das kanonische Papiermass (`BLATT`/`blattInnen`);
+//   * dass die SVG-nativ gesetzten Blattbeigaben (Legende, Schriftfeld, Fusstexte)
+//     wortlaut- und farbgleich zu den HTML-Bausteinen sind — sie stehen im PDF-Baustein
+//     lokal (wie der Brandschutzschluessel seit #79), gesichert wird das hier statt
+//     durch eine Verdrahtung;
 //   * dass ein verwaister Eintrag ([L-4]) benannt und uebersprungen wird;
 //   * kollisionsfreie, verstaendliche Dateinamen;
 //   * die ECHTE PDF-Struktur (Rumpf, xref mit richtigen Offsets, Seitenbaum,
@@ -14,7 +24,8 @@
 //     mit einer eingesetzten Rasterhilfe statt eines Browsers.
 //
 // Checkout-autark: alle Waende kommen synthetisch aus dem Core, keine Fixture-Dateien,
-// keine vertrauliche Geometrie, kein Netz.
+// keine vertrauliche Geometrie, kein Netz. Der Planhintergrund ist eine winzige
+// Data-URL — dieselbe Form, die Modul 0 aus der Bilddatenbank baut ([L-8]/[N-9]).
 //
 // Aufruf:  node tests/module/test-zeichnungspdf.mjs
 
@@ -66,6 +77,14 @@ const ELEMENTE = [
   // „w-weg" fehlt ABSICHTLICH: verwaister Eintrag ([L-4]).
 ];
 
+// Kalibrierter Planhintergrund des Geschosses „Haus A · EG" ([N-9]) — genau die Form,
+// die Modul 0 uebergibt: fertiger Rahmen in Welt-mm plus Bild als Data-URL.
+const HG_URL = "data:image/png;base64,"
+  + "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+const HINTERGRUND = { status: "gesetzt", url: HG_URL, x: -500, y: -500,
+  breite: 9000, hoehe: 7000, mm_je_pixel: 5, name: "eg-grundriss.png" };
+const HINTERGRUENDE = new Map([[gsA_EG, HINTERGRUND]]);
+
 const EINGABEN = standardEingaben();
 EINGABEN.projekt.name = "Pruefprojekt";
 EINGABEN.projekt.plan_nr = "A-101";
@@ -73,7 +92,8 @@ const leseEingaben = () => EINGABEN;
 
 // --- 1) Blattfolge eines Geschosses ---------------------------------------
 
-const egA = PDF.blaetterFuerGeschoss({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE, leseEingaben });
+const egA = PDF.blaetterFuerGeschoss({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE,
+  leseEingaben, hintergrund: HINTERGRUND });
 ok("Lageplan zuerst, danach je Wand genau ein Blatt",
   egA.seiten.length === 3 && egA.seiten[0].art === "lageplan"
   && egA.seiten[1].art === "wand" && egA.seiten[2].art === "wand");
@@ -90,29 +110,147 @@ ok("ein unbekanntes Geschoss wird benannt statt geraten",
   (() => { try { PDF.blaetterFuerGeschoss({ mappe: m, geschossId: "gibtsnicht", elemente: ELEMENTE, leseEingaben }); return false; }
     catch (e) { return /Geschoss/.test(String(e.message)); } })());
 
-// --- 2) Es ist die KANONISCHE Ableitung, nicht eine zweite ----------------
-// Der Vergleich ist byteweise: waere hier eine eigene Darstellung entstanden, wichen
-// die Zeichenketten ab. Genau das schliesst [D-6]/[N-1] aus.
+// --- 2) Es ist die KANONISCHE Zeichnung, nicht eine zweite ----------------
+// Der Vergleich ist byteweise: waere hier eine eigene Zeichenlogik entstanden, wichen
+// die Zeichenketten ab. Genau das schliesst [D-6]/[N-1] aus. Gesetzt werden hier nur die
+// Blattbeigaben (Tabellen, Legende, Schriftfeld) — der Zeichnungsinhalt selbst nie.
 
-const lpErwartet = LP.blattHtml(
-  LP.lageplanDaten({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE }), LP.normOptionen({ format: "a3" }));
-ok("das Lageplanblatt ist byteweise das von sembla-lageplan.js ([N-1])",
-  egA.seiten[0].html === lpErwartet.html && egA.seiten[0].titel
-    === LP.lageplanTitel(LP.lageplanDaten({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE }), lpErwartet.masstab));
+const lpDaten = LP.lageplanDaten({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE,
+  hintergrund: HINTERGRUND });
+const lpErwartet = LP.lageplanSvg(lpDaten, LP.normOptionen({ format: "a3" }));
+const lpSvg = PDF.blattSvg(egA.seiten[0]);
+ok("die Lageplanzeichnung steht byteweise im Blatt ([N-1])",
+  egA.seiten[0].inhalt.includes(lpErwartet.inner) && lpErwartet.inner.length > 500);
+ok("der Blatt-Titel ist der der Ausgabemodule",
+  egA.seiten[0].titel === LP.lageplanTitel(lpDaten, lpErwartet.masstab));
 
 const zOpt = Z.normOptionen(Z.optionenAusEingaben(EINGABEN));
-const wErwartet = Z.blattHtml(ELEMENTE[0].wandelement, EINGABEN, zOpt);
-ok("das Wandblatt ist byteweise das von sembla-zeichnung.js ([D-6])",
-  egA.seiten[1].html === wErwartet.html);
-ok("das vollstaendige Blatt reist mit — Zeichnung, Stueckliste, Legende, Schriftfeld",
-  /class="zsheet/.test(egA.seiten[1].html) && /<svg/.test(egA.seiten[1].html)
-  && /Baustellenstückliste/.test(egA.seiten[1].html) && /Darstellung/.test(egA.seiten[1].html)
-  && /ztitel|ztb-row|Schriftfeld|Plan/.test(egA.seiten[1].html));
+const wErwartet = Z.zeichnungSvg(ELEMENTE[0].wandelement, zOpt);
+const wSvg = PDF.blattSvg(egA.seiten[1]);
+ok("die Wandzeichnung steht byteweise im Blatt ([D-6])",
+  egA.seiten[1].inhalt.includes(wErwartet.inner) && wErwartet.inner.length > 500);
 ok("[D-7] das Wandblatt folgt der gespeicherten Formatwahl, nicht einer Vorgabe von aussen",
   egA.seiten[1].format === zOpt.format);
-ok("das mitgereichte CSS ist das der Ausgabemodule (kein eigenes Aussehen)",
-  egA.seiten[1].css.startsWith(Z.ZEICHNUNG_CSS) && egA.seiten[1].css.includes(Z.druckCss("a3"))
-  && egA.seiten[0].css.startsWith(LP.LAGEPLAN_CSS));
+ok("das vollstaendige Blatt reist mit — Zeichnung, Stueckliste, Vorspannung, Legende, Schriftfeld",
+  /Baustellenst\u00fcckliste \(Mengen\)/.test(wSvg) && /Vorspannung/.test(wSvg)
+  && /Darstellung/.test(wSvg) && /Ma\u00dfstab/.test(wSvg) && /Einheit/.test(wSvg)
+  && /Spannachsen/.test(wSvg) && /<svg /.test(wSvg));
+ok("der Lageplan traegt Wandtabelle, Legende, Planhintergrundangabe und Schriftfeld",
+  /W\u00e4nde im Geschoss/.test(lpSvg) && /Darstellung/.test(lpSvg)
+  && /Planhintergrund/.test(lpSvg) && /Plan Nr\./.test(lpSvg) && /Geschoss/.test(lpSvg));
+
+// --- 2b) Selbstgenuegsam: das ist der Kern von #98/#107 -------------------
+// Gepruefte Invariante an der Zeichenkette, die TATSAECHLICH gerastert wird — nicht am
+// Blatt-HTML der Ausgabemodule. Ein `foreignObject` verunreinigt in Blink jede Leinwand,
+// ein externer Verweis ebenso; beides darf hier nicht entstehen.
+
+/** Jeder Verweis, der NICHT auf eine Data-URL oder ein Dokumentfragment zeigt. */
+const fremdVerweise = (svg) => [...svg.matchAll(/(?:href|xlink:href|src)\s*=\s*"([^"]*)"/g)]
+  .map((x) => x[1]).filter((u) => !/^(data:|#)/.test(u));
+const alleBlaetter = PDF.blaetterProjekt({ mappe: m, elemente: ELEMENTE, leseEingaben,
+  hintergruende: HINTERGRUENDE }).geschosse.flatMap((g) => g.seiten);
+const alleSvg = alleBlaetter.map((s2) => PDF.blattSvg(s2));
+
+ok("kein einziges Blatt enthaelt ein foreignObject (#98/#107)",
+  alleSvg.length === 7 && alleSvg.every((svg) => !/foreignObject/i.test(svg)));
+ok("kein Blatt enthaelt einen externen Verweis — nur Data-URLs und Fragmente",
+  alleSvg.every((svg) => fremdVerweise(svg).length === 0));
+ok("kein Blatt bringt ein Stylesheet oder eine Fremd-Einbettung mit",
+  alleSvg.every((svg) => !/<style|@import|<link|<script|<iframe|<img/i.test(svg)));
+ok("jedes Blatt ist ein SVG-Wurzelelement in Papier-mm mit eigener viewBox",
+  alleSvg.every((svg) => /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" width="\d/.test(svg)
+    && /viewBox="0 0 [\d.]+ [\d.]+"/.test(svg) && svg.trimEnd().endsWith("</svg>")));
+ok("mit Pixelmassen traegt dasselbe Blatt die Zieldichte statt der mm-Angabe",
+  /width="4961" height="3508"/.test(PDF.blattSvg(egA.seiten[0], { breite_px: 4961, hoehe_px: 3508 }))
+  && PDF.blattSvg(egA.seiten[0], { breite_px: 4961, hoehe_px: 3508 })
+    .includes(egA.seiten[0].inhalt));
+ok("[N-9] der Planhintergrund reist als Data-URL im Blatt mit und wird nicht weggelassen",
+  lpSvg.includes(HG_URL) && /<image /.test(lpSvg)
+  && fremdVerweise(lpSvg).length === 0);
+
+// --- 2c) Wortlaut und Kennfarben sind die der HTML-Bausteine ---------------
+// Die Blattbeigaben sind hier SVG-nativ nachgebildet und stehen deshalb LOKAL. Gleichheit
+// wird geprueft, nicht verdrahtet (dasselbe Muster wie der Brandschutzschluessel, #79).
+
+/** HTML auf seinen reinen Text zurueckfuehren. */
+const nurText = (html) => String(html).replace(/<[^>]*>/g, " ")
+  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+  .replace(/\s+/g, " ").trim();
+/**
+ * Verglichen wird OHNE Leerraum: `<b>nicht ausgeführt</b>:` hinterlaesst beim
+ * Tag-Entfernen ein Leerzeichen vor dem Doppelpunkt, und das SVG bricht seine Zeilen
+ * selbst um. Der WORTLAUT ist der Pruefgegenstand, nicht der Satzspiegel.
+ */
+const kompakt = (t) => String(t).replace(/\s+/g, "");
+/**
+ * Der reine Text eines Blatt-SVG. Das SVG bricht seine Zeilen selbst um (SVG kennt
+ * keinen Umbruch), ein Satz steht dort also ueber mehrere `<text>` verteilt.
+ */
+const svgText = (svg) => [...String(svg).matchAll(/<text[^>]*>([^<]*)<\/text>/g)]
+  .map((x) => x[1]).join(" ")
+  .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+/** Zahl der Legendeneintraege eines HTML-Bausteins (ein `<span>` je Eintrag). */
+const spanZahl = (html) => (String(html).match(/<span>/g) || []).length;
+const eintragText = (e) => (e.kuerzel ? e.kuerzel + " " : "") + e.text;
+
+const lpLegHtml = nurText(LP.legendeHtml());
+const lpLeg = PDF.legendeLageplan();
+ok("die Lageplan-Legende hat dieselben Eintraege in derselben Reihenfolge",
+  lpLeg.length === spanZahl(LP.legendeHtml()) && lpLeg.length === 9
+  && kompakt(lpLegHtml).includes(lpLeg.map(eintragText).map(kompakt).join("")));
+ok("die Lageplan-Legende benutzt die kanonischen Kennfarben",
+  lpLeg.filter((e) => e.form !== "kuerzel")
+    .every((e) => LP.legendeHtml().includes(e.marke_farbe))
+  && lpLeg.some((e) => e.marke_farbe === LP.BRANDKLASSE.F30.farbe));
+
+const wLegHtml = nurText(Z.legendeHtml(ELEMENTE[1].wandelement));
+const wLeg = PDF.legendeWand(ELEMENTE[1].wandelement);
+ok("die Wandblatt-Legende hat dieselben Eintraege in derselben Reihenfolge",
+  wLeg.length === spanZahl(Z.legendeHtml(ELEMENTE[1].wandelement)) && wLeg.length === 11
+  && kompakt(wLegHtml).includes(wLeg.map(eintragText).map(kompakt).join("")));
+ok("die Wandblatt-Legende benutzt die kanonischen Kennfarben",
+  wLeg.every((e) => Z.legendeHtml(ELEMENTE[1].wandelement).includes(e.marke_farbe)));
+ok("die bedingten Legendeneintraege haengen an denselben Abfragen ([D-4])",
+  PDF.legendeWand({}).length === spanZahl(Z.legendeHtml({}))
+  && !PDF.legendeWand({}).some((e) => /Blechsto\u00df/.test(e.text))
+  && PDF.legendeWand(ELEMENTE[1].wandelement).some((e) => /Blechsto\u00df/.test(e.text)));
+ok("der Kennzeichnungsschluessel der Einbauteile ist derselbe ([P-19])",
+  kompakt(wLegHtml).includes(kompakt(PDF.EINBAUTEIL_FUSS)));
+
+// Ein Wandelement mit Zuschnittkonflikt: der Mangelblock steht wortgleich im Blatt.
+const mangelWand = ELEMENTE[0].wandelement;
+ok("Zuschnittkonflikte sind der Pruefstein des Mangelblocks",
+  Z.konfliktZeilen(mangelWand).length > 0);
+ok("der Mangelfusstext ist der der Wandzeichnung ([Z-5]/[Z-6])",
+  kompakt(nurText(Z.maengelHtml(mangelWand))).includes(kompakt(PDF.MANGEL_FUSS)));
+ok("der Mangelblock steht mit seinem Grund im gerasterten Blatt",
+  Z.konfliktZeilen(mangelWand).every((e) => kompakt(svgText(wSvg)).includes(kompakt(e.text)))
+  && wSvg.includes(Z.MANGEL_TITEL));
+ok("der Verzahnungsfusstext ist der der Wandzeichnung ([G-12])",
+  (() => {
+    const el = buildWall("V", 3000, 2600, [], null, null, [],
+      [{ g0: 0, g1: 2, start_parity: 9 }]);
+    const html = nurText(Z.verzahnungMaengelHtml(el));
+    return Z.verzahnungZeilen(el).length > 0
+      && kompakt(html).includes(kompakt(PDF.VERZAHNUNG_FUSS));
+  })());
+ok("die Verzahnungserklaerung des Lageplans ist die des Ausgabemoduls (#83)",
+  PDF.VERZAHNUNG_INFO.includes(LP.VERZAHNUNG.merkmal));
+
+// Schriftfeld: dieselben Feldnamen und Werte wie in den Blattbausteinen.
+const sfLp = nurText(LP.schriftfeldHtml({ ...lpDaten, _passt: lpErwartet.passt }, lpErwartet.masstab,
+  LP.normOptionen({ format: "a3" })));
+ok("das Lageplan-Schriftfeld traegt genau die kanonischen Kopffelder ([N-6]/[L-11])",
+  LP.kopfFelder({ ...lpDaten, _passt: lpErwartet.passt }, lpErwartet.masstab)
+    .every((f) => sfLp.includes(f.k) && lpSvg.includes(f.k)
+      && (f.v === "" || lpSvg.includes(f.v))));
+const sfZ = nurText(Z.schriftfeldHtml(ELEMENTE[0].wandelement, EINGABEN, wErwartet.masstab, zOpt));
+ok("das Wandblatt-Schriftfeld traegt dieselben Felder und Werte ([D-8])",
+  ["Projekt", "Wand", "Planinhalt", "Plan Nr.", "Ma\u00dfstab", "Einheit"]
+    .every((k) => sfZ.includes(k) && wSvg.includes(k))
+  && wSvg.includes("A-101") && sfZ.includes("A-101"));
+ok("ein leeres optionales Feld erzeugt im Wandblatt keine Zeile (kein \u201e\u2013\u201c)",
+  !/>\s*Gez\.\s*</.test(wSvg) && !sfZ.includes("Gez."));
 
 // --- 3) Blattgeometrie: kanonisches Papiermass, keine eigene Rechnung -----
 
@@ -127,7 +265,8 @@ ok("A3 ist 420 × 297 mm Papier mit 400 × 277 mm Blatt",
 
 // --- 4) Dateinamen: verstaendlich und kollisionsfrei ----------------------
 
-const plan = PDF.blaetterProjekt({ mappe: m, elemente: ELEMENTE, leseEingaben });
+const plan = PDF.blaetterProjekt({ mappe: m, elemente: ELEMENTE, leseEingaben,
+  hintergruende: HINTERGRUENDE });
 ok("je Geschoss genau eine Datei, in der Reihenfolge der Mappe",
   plan.geschosse.length === 4
   && plan.geschosse.map((g) => g.seiten.length).join(",") === "3,1,1,2");
@@ -214,7 +353,8 @@ ok("die Lesezeichen sind in Seitenreihenfolge verkettet",
 // --- 6) Determinismus ------------------------------------------------------
 
 const nochmal = await PDF.pdfDateien(
-  PDF.blaetterProjekt({ mappe: m, elemente: ELEMENTE, leseEingaben }), { rendere });
+  PDF.blaetterProjekt({ mappe: m, elemente: ELEMENTE, leseEingaben,
+    hintergruende: HINTERGRUENDE }), { rendere });
 ok("dieselben Seiten ergeben byteidentische PDFs (kein Datum, keine /ID, kein Zufall)",
   nochmal.length === dateien.length
   && nochmal.every((f, i) => f.name === dateien[i].name
