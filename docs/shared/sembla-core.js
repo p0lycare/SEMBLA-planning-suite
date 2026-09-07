@@ -1216,9 +1216,10 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
 
   // [A-20]…[A-23] Ausgleichspunkte unter dem Bodenblech. Gelesen werden ausschliesslich
   // FERTIGE Werte — Wandlaenge, die inneren Stoesse der Bodenblechteile und die Spannachsen;
-  // geschrieben wird in keine davon zurueck. Aus den Punkten wird hier NICHTS abgeleitet:
-  // keine Menge, keine Stuecklistenposition, kein statischer Nachweis der Auflagerpunkte
-  // (ausdruecklich Folgearbeit, siehe [A-18]).
+  // geschrieben wird in keine davon zurueck. Der Kern rechnet allein die LAGE der Punkte und
+  // leitet daraus selbst nichts ab. Die Stuecklistenmenge — genau ein Ausgleichsblech je Punkt
+  // ([A-18]) — entsteht in der gemeinsamen Ausgabeschicht `sembla-bom.js` aus der LAENGE dieser
+  // Liste; ein statischer Nachweis der Auflagerpunkte ist weiterhin ausdruecklich keiner.
   const bodenStoesse = bodenTeile.slice(0, -1).map((tl) => tl.x0_mm + tl.raster_mm);
   const ausgleichspunkte = verteileAusgleichspunkte(lengthMm, bodenStoesse,
     columns.map((c) => c.x_mm));

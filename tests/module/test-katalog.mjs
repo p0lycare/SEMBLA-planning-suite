@@ -617,6 +617,17 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     return /20 mm in Wandrichtung/.test(h) && /100 mm quer/.test(h)
       && !/100 mm in Wandrichtung/.test(h) && !/20 mm quer/.test(h);
   })());
+  // #96 Die Menge ist abgeleitet ([A-18]): der Hinweis darf nicht mehr behaupten, aus der Rolle
+  // entstehe keine Menge und keine Stuecklistenposition — er muss die Menge als Zahl der
+  // Ausgleichspunkte benennen. Ein Maß-Diskriminator bleibt trotzdem aus (kein Wandwert).
+  ok("Rolle ausgleichsblech: der Hinweis benennt die Menge als Zahl der Ausgleichspunkte (#96)", (() => {
+    const r = KAT.rolle("ausgleichsblech") || {};
+    const h = String(r.hinweis || "");
+    return /Ausgleichspunkte/.test(h) && /ein Blech je\s+Punkt|ein Blech je Punkt/.test(h)
+      && !/keine Menge/.test(h) && !/keine Stücklistenposition/.test(h)
+      && !/nicht festgelegt/.test(h)
+      && r.mass === null && r.bepreist === true;
+  })());
   ok("Standardkatalog: das Ausgleichsblech ist im Text ausdruecklich vorlaeufig (#96)", (() => {
     const pr = KAT.produkt(std, (v.ausgleichsblech || [])[0]);
     return /vorl\u00e4ufig/.test(pr.bezeichnung)

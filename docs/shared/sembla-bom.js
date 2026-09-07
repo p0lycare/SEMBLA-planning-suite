@@ -205,6 +205,15 @@ export function semblaBom(w) {
   const stossfugen   = num(bom.stossfugen, 0);
   const dichtMm      = num(bom.dichtstreifen_mm, stossfugen * 200);
 
+  // [A-18]/[A-20]…[A-23] Ausgleichsbleche unter dem Bodenblech: je Ausgleichspunkt genau EIN
+  // Blech. Quelle ist ausschliesslich die vom Rechenkern gerechnete Punktliste
+  // (`wandelement.ausgleichspunkte`) — die Menge ist deren LAENGE und wird hier nie
+  // nachgerechnet. Eine Ersatzrechnung aus der Wandlaenge (3 je Meter) waere eine zweite
+  // Mengenquelle neben dem Kern und damit genau der Drift, den [P-6] ausschliesst; sie steht
+  // deshalb ausdruecklich nicht hier. Fehlt das Feld (Altbestand, gespeichertes Wandelement vor
+  // #96), ist die Menge 0 — es wird keine Punktzahl erfunden ([P-9]).
+  const ausgleichspunkte = Array.isArray(w.ausgleichspunkte) ? w.ausgleichspunkte.length : 0;
+
   // Boden- und Kopfblech sind PHYSISCH GETRENNTE Bauteile ([A-1]) und werden hier — in der
   // gemeinsamen Ausgabeschicht — aus den REAL vorhandenen Platten des Wandelements getrennt.
   // Der Rechenkern bleibt unveraendert; er fuehrt `base_plate`/`top_plate` (je mit `module`)
@@ -251,6 +260,7 @@ export function semblaBom(w) {
            stahlblech_module: blechModule, stahlblech_module_boden: blechBoden,
            stahlblech_module_kopf: blechKopf, blech_boden_teile: blechBodenTeile,
            stahlblech_mm: blechMm, stahlblech_dicke_mm: blechDicke,
+           ausgleichspunkte,
            stossfugen, dichtstreifen_mm: dichtMm };
 }
 
@@ -358,6 +368,18 @@ function _flachePositionen(w, b) {
             unit: "Stk", menge: t.anzahl, mass_mm: t.raster_mm, fertigmass_mm: t.bauteil_mm })
       : [{ key: "blech_boden", label: "Bodenblech-Modul (" + bd + " mm)", unit: "Stk",
            menge: b.stahlblech_module_boden }]),
+    // [A-18] Ausgleichsblech: EINE Position, Menge = Zahl der Ausgleichspunkte ([A-20]…[A-23]).
+    // Die Stelle ist bewusst gewaehlt und nicht beliebig: das Blech liegt UNTER dem Bodenblech,
+    // es steht deshalb unmittelbar hinter dessen Gruppe und VOR dem Kopfblech. Eine Einfuegung
+    // dahinter verschoebe die Dichtstreifen aus ihrer geprueften Lage am Listenende ([A-6]);
+    // so bleibt jede bestehende Position in ihrer relativen Ordnung.
+    // Kein `mass_mm`/`fertigmass_mm`: die Rolle hat keinen Maß-Diskriminator, weil es keinen
+    // maßgebenden WANDwert gibt, an dem sich das Blech messen liesse (anders als Bodenblech
+    // ↔ Modullaenge oder Stange ↔ Stangenlaenge) — ein Maß hier waere ein erfundener Bezug.
+    // Auch NICHT `nachrichtlich`: das ist eine echte Einbauposition und keine zweite
+    // Ausdrucksform einer schon gezaehlten Ware ([A-6]) — sie wird regulaer bepreist ([P-14]).
+    { key: "ausgleichsblech", label: "Ausgleichsblech (unter dem Bodenblech)", unit: "Stk",
+      menge: b.ausgleichspunkte },
     { key: "blech_kopf",  label: "Kopfblech-Modul (" + bd + " mm)",   unit: "Stk", menge: b.stahlblech_module_kopf },
     // Nur bei abgedichteter Wand — an unveraenderter Stelle in der Liste ([A-6]/#71).
     ...(_abgedichtet(w) ? [

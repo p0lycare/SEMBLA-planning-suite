@@ -32,12 +32,26 @@ for(const [name,l,h,ops] of cases){
   // Positionsliste: 10 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
   // Sonderzuschnitt-Fertigmaß eine eigene Position ([Z-2]/[Z-4]). Kopplungsmuttern sind
   // bauteilgleich und stehen als EINE Position ([P-18]).
-  // 10 feste Positionen (Bodenblech steht nicht mehr darunter; die Unterlegscheibe aus #92 ist
-  // die zehnte) + je Gewindestangengruppe eine + je Bodenblech-Teilgruppe eine ([A-10]: je
-  // Standardlänge bzw. je Sonder-Fertigmaß).
-  t(name+" · Positionen = 10 + Stangen- und Bodenblechgruppen",
-    semblaBomItems(w).length === 10 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
+  // 11 feste Positionen (Bodenblech steht nicht mehr darunter; die Unterlegscheibe aus #92 ist
+  // die zehnte, das Ausgleichsblech aus #96 die elfte) + je Gewindestangengruppe eine + je
+  // Bodenblech-Teilgruppe eine ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß).
+  t(name+" · Positionen = 11 + Stangen- und Bodenblechgruppen",
+    semblaBomItems(w).length === 11 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
       + b.blech_boden_teile.length);
+  // [A-18]/#96 Ausgleichsblech: GENAU EINE Position, Menge = Laenge der vom Kern gerechneten
+  // Punktliste. Verglichen wird gegen `w.ausgleichspunkte.length` — NICHT gegen eine
+  // Ersatzrechnung aus der Wandlaenge; eine solche waere die zweite Mengenquelle aus [P-6].
+  t(name+" · Ausgleichsblech = Zahl der Ausgleichspunkte ([A-18])", (()=>{
+    const a=semblaBomItems(w).filter(it=>it.key==='ausgleichsblech');
+    return a.length===1 && a[0].unit==='Stk' && a[0].menge===w.ausgleichspunkte.length
+      && a[0].menge>0 && !a[0].nachrichtlich && a[0].mass_mm===undefined
+      && a[0].fertigmass_mm===undefined; })());
+  t(name+" · semblaBom fuehrt die Punktzahl selbst", b.ausgleichspunkte===w.ausgleichspunkte.length);
+  // M6: benannte Stelle — hinter der Bodenblechgruppe, vor dem Kopfblech.
+  t(name+" · Ausgleichsblech steht hinter dem Bodenblech und vor dem Kopfblech", (()=>{
+    const ks=semblaBomItems(w).map(it=>it.key), i=ks.indexOf('ausgleichsblech');
+    return i>0 && ks[i+1]==='blech_kopf'
+      && (ks[i-1]==='blech_boden' || ks[i-1]==='blech_boden_sonder'); })());
   // #92 Unterlegscheibe: eine eigene Position, Menge = Spannplatten (die Einbaustelle zwischen
   // Platte und Mutter). NICHT die Spannmutternzahl — die zaehlt auch Muttern auf dem Kopfblech.
   t(name+" · Unterlegscheibe = Spannplatten (#92)", (()=>{
@@ -127,6 +141,27 @@ for(const [name,l,h,ops] of cases){
     return einbauteile(alt).length===rod.reduce((a,it)=>a+it.menge,0); })());
 }
 
+// ---- [A-18]/#96 Ausgleichsblech: Nullfall und Additivität -------------------------------
+// Ein gespeichertes Wandelement VOR #96 kennt das Feld `ausgleichspunkte` nicht. Dann ist die
+// Menge 0 — es wird nichts nachgerechnet und keine Punktzahl erfunden ([P-9]); die Zeile bleibt
+// aber stehen, statt still zu verschwinden (wie das Kopfblech bei Menge 0). Und: die neue
+// Position ist rein ADDITIV — jede uebrige Position bleibt bitgenau gleich.
+{
+  const w=buildWall("ausgleich_alt",3250,2600,[]);
+  const alt=JSON.parse(JSON.stringify(w)); delete alt.ausgleichspunkte;
+  const iVoll=semblaBomItems(w), iAlt=semblaBomItems(alt);
+  const ag=iAlt.find(it=>it.key==='ausgleichsblech');
+  t("A-18 · 3,25-m-Wand: zehn Punkte, zehn Bleche",
+    w.ausgleichspunkte.length===10
+    && iVoll.find(it=>it.key==='ausgleichsblech').menge===10);
+  t("A-18 · ohne Feld `ausgleichspunkte`: Menge 0 statt geratener Zahl",
+    !!ag && ag.menge===0 && semblaBom(alt).ausgleichspunkte===0);
+  t("A-18 · uebrige Positionen bitgenau gleich (rein additiv)", (()=>{
+    const strip=its=>JSON.stringify(its.filter(it=>it.key!=='ausgleichsblech'));
+    return strip(iAlt)===strip(iVoll) && strip(iVoll).length>0; })());
+  t("A-18 · Positionszahl unterscheidet sich nicht (die Zeile bleibt stehen)",
+    iAlt.length===iVoll.length);
+}
 // ---- [P-19] Einbauteil-Identität der Gewindestangenstücke -------------------------------
 // Die Einbauteilliste ist die EINZIGE Stückableitung; die Stücklistenmengen sind ihre
 // Aggregation. Geprueft wird beides gegen die Core-Zahl und gegeneinander.

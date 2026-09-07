@@ -1082,12 +1082,22 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
     eMw.planung.produkte.rollen.dicht.length === 0);
   const rsMw = stuecklistePositionen(mw.wandelement, eMw, kat());
   const offen = rsMw.filter(r => r.bepreisbar && r.gp == null);
-  ok('Vorlage + Standardkatalog: alle Wandpositionen loesen auf',
-    rsMw.every(r => !r.bepreisbar || r.gp != null));
-  // [Z-4]/[P-19] Das Verbinderprodukt war die einzig offene Position. Seit die Beplankung in
-  // keiner Stueckliste mehr steht, gibt es diese Position nicht — und damit keine offene.
-  ok('keine offene Position mehr (Beplankung entfaellt, [Z-4])',
-    offen.length === 0 && !rsMw.some(r => ['verbinder', 'latte', 'beplankung'].includes(r.key)));
+  // #96 Seit dem Ausgleichsblech ([A-18]) hat die Wandstueckliste eine Position mehr, und die
+  // Vorlage waehlt dafuer KEIN Produkt: `SEMBLA_Musterwand.json` nennt die Rolle nicht, und
+  // Modul 0 vorbelegt nicht — die Standardauswahl nach [P-18] entsteht erst beim Rendern von
+  // Modul 1/2 (`vorbelegeProduktrollen` steht dort, nicht hier). Das ist der EHRLICHE Stand:
+  // genau eine offene Position mit BENANNTEM Grund, kein geratenes Produkt, kein Nullpreis
+  // ([P-9]). Geprueft wird deshalb nicht mehr „alles loest auf", sondern genau das.
+  ok('Vorlage + Standardkatalog: alles loest auf ausser dem nicht gewaehlten Ausgleichsblech (#96)',
+    offen.length === 1 && offen[0].key === 'ausgleichsblech'
+    && offen[0].status === 'keine_auswahl' && offen[0].ep === null && offen[0].gp === null
+    && eMw.planung.produkte.rollen.ausgleichsblech === undefined
+    && rsMw.filter(r => r.key !== 'ausgleichsblech').every(r => !r.bepreisbar || r.gp != null));
+  // [Z-4]/[P-19] Die Beplankung steht in keiner Stueckliste mehr — dafuer gibt es also weiter
+  // keine Position und keine offene Zeile.
+  ok('keine Beplankungsposition und keine offene Zeile daraus ([Z-4])',
+    !rsMw.some(r => ['verbinder', 'latte', 'beplankung'].includes(r.key))
+    && !offen.some(r => ['verbinder', 'latte', 'beplankung'].includes(r.key)));
   ok('Vorlage nutzt die zur Wand passende Stangenlänge (1000 mm)',
     rsMw.find(r => r.key === 'rod_std').produktId === 'gewindestange-m10-1000');
   ok('Vorlage: Boden- und Kopfblech getrennt bepreist',

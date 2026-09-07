@@ -71,6 +71,10 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
   { id:'blech-boden-1250', kategorie:'blech_platte', bezeichnung:'Bodenblech 1250', einheit:'Stk', preis:18, breite_mm:1250, hoehe_mm:125, dicke_mm:15 },
   { id:'blech-boden-750', kategorie:'blech_platte', bezeichnung:'Bodenblech 750', einheit:'Stk', preis:12, breite_mm:750, hoehe_mm:125, dicke_mm:15 },
   { id:'blech-kopf', kategorie:'blech_platte', bezeichnung:'Kopfblech 1000', einheit:'Stk', preis:21, breite_mm:1000, hoehe_mm:125, dicke_mm:15 },
+  // #96 Ausgleichsblech unter dem Bodenblech: 20 mm in Wandrichtung, 100 mm quer, 8 mm dick.
+  // Ohne Maß-Diskriminator an der Rolle — eindeutig ist die Auswahl allein durch GENAU EIN
+  // gewaehltes Produkt ([P-14]).
+  { id:'blech-ausgleich', kategorie:'blech_platte', bezeichnung:'Ausgleichsblech 20x100', einheit:'Stk', preis:0.45, breite_mm:20, hoehe_mm:100, dicke_mm:8 },
   { id:'spannplatte', kategorie:'blech_platte', bezeichnung:'Spannplatte 120', einheit:'Stk', preis:2.4, breite_mm:120, hoehe_mm:120, dicke_mm:15,
     hinweis:'vorläufig — fachlich unbestätigt: Beispielmaße.' },
   { id:'verb-fa1', kategorie:'verbinder', bezeichnung:'Verbinder FA-1', einheit:'Stk', preis:1.2 },
@@ -82,7 +86,7 @@ const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'],
   kupplung:['kuppl-stoss'], senkkopf:['senkkopf'], spannmutter:['spannmutter'],
   spannplatte:['spannplatte'], unterlegscheibe:['scheibe'],
   blech_boden:['blech-boden-1250','blech-boden-750'],
-  blech_kopf:['blech-kopf'], dicht_stk:['dicht-stk'] };
+  blech_kopf:['blech-kopf'], ausgleichsblech:['blech-ausgleich'], dicht_stk:['dicht-stk'] };
 function egVoll(){
   const e=standardEingaben();
   e.planung.produkte={ quelle:{name:KATALOG.name,version:1}, rollen:JSON.parse(JSON.stringify(ROLLEN_VOLL)) };
@@ -330,42 +334,82 @@ ok('[Z-4] keine Beplankungs-/Platten-Position', !byKey('beplankung') && !rs.find
 ok('KEINE Dämmung-Position (MVP)', !rs.find(r=>r.label.includes('Dämmung')));
 // Die Gewindestangen-KOPPLUNG ist kein Modul-2-Verbinder und bleibt ausdruecklich enthalten.
 ok('[P-19] Gewindestangen-Kopplung bleibt enthalten', !!byKey('kupplung') && byKey('kupplung').menge>0);
-// [Z-4]: 11 feste Wandpositionen (seit #92 mit der Unterlegscheibe) + je Gewindestangen-
-// Standardlänge, je Sonderzuschnitt-Fertigmaß und je Reststück-Fertigmaß eine Position.
-// Nichts aus dem Wandaufbau.
+// [Z-4]: 12 feste Wandpositionen (seit #92 mit der Unterlegscheibe, seit #96 mit dem
+// Ausgleichsblech) + je Gewindestangen-Standardlänge, je Sonderzuschnitt-Fertigmaß und je
+// Reststück-Fertigmaß eine Position. Nichts aus dem Wandaufbau.
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
 const nRest=rs.filter(r=>r.key==='rod_rest').length;
 // [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
 const nBoden=rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder').length;
-ok('Positionen = 10 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
-  rs.length===10+nRod+nSonder+nRest+nBoden && rs.length>=12);
+ok('Positionen = 11 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
+  rs.length===11+nRod+nSonder+nRest+nBoden && rs.length>=13);
 ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
   rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
   rs.filter(r=>r.key==='rod_std'||r.key==='rod_sonder').reduce((a,r)=>a+r.menge,0)===W.bom.gewindestangen);
 
-// --- #96 Ausgleichsblech: eigene Katalogrolle, aber KEINE Stuecklistenposition --------------
-// Das Bauteil ist im Katalog gefuehrt und in Modul 1 waehlbar; eine Menge (Zahl der
-// Ausgleichspunkte) wird in diesem Stand NICHT abgeleitet. Belegt wird das am realen Modulpfad:
-// die gerechneten Positionen einer realen Wand sind mit und ohne gewaehltes Ausgleichsblech
-// wertgleich — gleiche Keys, gleiche Mengen, gleiche Einzel- und Gesamtpreise.
+// --- #96 Ausgleichsblech: eigene Stuecklistenposition, Menge = Punktanzahl -----------------
+// Gefahren wird der REALE Pfad: `buildWall` -> `semblaBom` -> `stuecklistePositionen` mit einem
+// Katalog, der die Rolle belegt. Geprueft werden Menge, Nullfall, Bepreisung und — als Kern der
+// Additivitaet — die Wertgleichheit ALLER uebrigen Positionen in Menge und Einzelpreis.
 {
-  const katA={ ...KATALOG, produkte:[ ...KATALOG.produkte,
-    { id:'blech-ausgleich', kategorie:'blech_platte', bezeichnung:'Ausgleichsblech (vorläufig)',
-      einheit:'Stk', preis:0.45, breite_mm:100, hoehe_mm:20, dicke_mm:8 } ] };
-  const kanon=(l)=>JSON.stringify(l.map(r=>[r.key,r.menge,r.mass_mm??null,r.fertigmass_mm??null,
-    r.unit,r.ep,r.gp,r.status]));
-  const ohne=stuecklistePositionen(W, egVoll(), katA);
-  const eMit=egVoll(); eMit.planung.produkte.rollen.ausgleichsblech=['blech-ausgleich'];
-  const mit=stuecklistePositionen(W, eMit, katA);
-  ok('#96 keine Stuecklistenposition fuer das Ausgleichsblech',
-    !mit.some(r=>r.key==='ausgleichsblech') && !ohne.some(r=>r.key==='ausgleichsblech'));
-  ok('#96 Positionen und Mengen einer realen Wand bleiben unveraendert',
-    mit.length===ohne.length && kanon(mit)===kanon(ohne));
-  ok('#96 auch die Summe bleibt unveraendert', (()=>{
-    const a=stuecklisteSumme(ohne), b=stuecklisteSumme(mit);
-    return a.summe===b.summe && a.bepreist===b.bepreist && a.bepreisbar===b.bepreisbar
-      && a.vollstaendig===b.vollstaendig; })());
+  // 3250 mm: der Abnahmefall des Pakets. ceil(3 x 3,25) = 10 Punkte ([A-20]).
+  const W325=Object.assign(buildWall('Ausgleich 3,25 m', 3250, 2600, [], null,
+    {top_connection:'blech'}), { abdichtung:'abgedichtet' });
+  const p325=stuecklistePositionen(W325, egVoll(), KATALOG);
+  const ag=p325.filter(r=>r.key==='ausgleichsblech');
+  ok('#96 3,25-m-Wand: GENAU EINE Position Ausgleichsblech mit Menge 10', (()=>
+    ag.length===1 && ag[0].unit==='Stk' && ag[0].menge===10
+    && ag[0].menge===W325.ausgleichspunkte.length
+    && ag[0].label==='Ausgleichsblech (unter dem Bodenblech)')());
+  ok('#96 die Menge ist die Punktanzahl — fuer mehrere Laengen', (()=>
+    [1000,2000,3250,4500].every(L=>{
+      const w=buildWall('L'+L, L, 2600, []);
+      const r=stuecklistePositionen(w, egVoll(), KATALOG).filter(x=>x.key==='ausgleichsblech');
+      return r.length===1 && r[0].menge===w.ausgleichspunkte.length && r[0].menge>0; }))());
+  ok('#96 Bepreisung ueber die bestehende Rolle ([P-14])',
+    ag[0].status==='ok' && ag[0].ep===0.45 && ag[0].produktId==='blech-ausgleich'
+    && Math.abs(ag[0].gp - 10*0.45)<1e-9 && ag[0].bepreisbar===true);
+  // Ohne Auswahl: kein Preis, aber ein BENANNTER Grund — nie ein Nullpreis, nie ein Ersatzprodukt.
+  ok('#96 ohne Auswahl: kein Preis mit benanntem Grund', (()=>{
+    const e=egVoll(); e.planung.produkte.rollen.ausgleichsblech=[];
+    const r=stuecklistePositionen(W325, e, KATALOG).find(x=>x.key==='ausgleichsblech');
+    return r.menge===10 && r.ep===null && r.gp===null && r.produktId===null
+      && r.status==='keine_auswahl' && r.statusText==='kein Produkt gewählt'
+      && r.bepreisbar===true; })());
+  // Zwei gewaehlte Produkte derselben Rolle sind ohne Maß-Diskriminator echt mehrdeutig.
+  ok('#96 zwei Produkte: mehrdeutig statt bevorzugtem Kandidaten', (()=>{
+    const kat={ ...KATALOG, produkte:[ ...KATALOG.produkte,
+      { id:'blech-ausgleich-2', kategorie:'blech_platte', bezeichnung:'Ausgleichsblech 20x100 B',
+        einheit:'Stk', preis:0.6, breite_mm:20, hoehe_mm:100, dicke_mm:8 } ] };
+    const e=egVoll(); e.planung.produkte.rollen.ausgleichsblech=['blech-ausgleich','blech-ausgleich-2'];
+    const r=stuecklistePositionen(W325, e, kat).find(x=>x.key==='ausgleichsblech');
+    return r.status==='mehrdeutig' && r.ep===null && r.gp===null; })());
+  // Nullfall: ein gespeichertes Wandelement VOR #96 kennt das Feld nicht.
+  ok('#96 Wandelement ohne Feld `ausgleichspunkte`: Menge 0, kein Fehler, keine geratene Zahl', (()=>{
+    const alt=JSON.parse(JSON.stringify(W325)); delete alt.ausgleichspunkte;
+    const r=stuecklistePositionen(alt, egVoll(), KATALOG).find(x=>x.key==='ausgleichsblech');
+    return r.menge===0 && r.ep===null && r.gp===null && r.bepreisbar===false
+      && r.status==='nicht_erforderlich'; })());
+  // M6/N2: Die Position ist rein ADDITIV — Stelle benannt, alle uebrigen Werte gleich.
+  ok('#96 Stelle: hinter der Bodenblechgruppe, vor dem Kopfblech', (()=>{
+    const ks=p325.map(r=>r.key), i=ks.indexOf('ausgleichsblech');
+    return i>0 && ks[i+1]==='blech_kopf'
+      && (ks[i-1]==='blech_boden' || ks[i-1]==='blech_boden_sonder'); })());
+  ok('#96 alle uebrigen Positionen wertgleich in Menge und Einzelpreis', (()=>{
+    const alt=JSON.parse(JSON.stringify(W325)); delete alt.ausgleichspunkte;
+    const kanon=l=>JSON.stringify(l.filter(r=>r.key!=='ausgleichsblech')
+      .map(r=>[r.key,r.menge,r.fertigmass_mm??null,r.unit,r.ep,r.gp,r.status]));
+    // Gegenprobe gegen den Stand OHNE Punkte: identische Positionsfolge, identische Werte —
+    // die neue Zeile bewegt keine bestehende Menge und keinen bestehenden Preis.
+    return kanon(p325)===kanon(stuecklistePositionen(alt, egVoll(), KATALOG))
+      && kanon(p325).length>0; })());
+  ok('#96 die Summe waechst genau um den Beitrag der neuen Zeile', (()=>{
+    const e=egVoll(); e.planung.produkte.rollen.ausgleichsblech=[];
+    const sOhne=stuecklisteSumme(stuecklistePositionen(W325, e, KATALOG));
+    const sMit=stuecklisteSumme(p325);
+    return Math.abs((sMit.summe - sOhne.summe) - ag[0].gp)<1e-9
+      && sMit.bepreist===sOhne.bepreist+1 && sMit.bepreisbar===sOhne.bepreisbar; })());
 }
 
 // Vollständige Zuordnung -> Summe vollständig (Nenner = alle bepreisbaren Positionen)

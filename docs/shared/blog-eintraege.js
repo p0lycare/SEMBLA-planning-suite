@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-14",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 96,
+    titel: "Die St\u00fcckliste weist Ausgleichsbleche aus: ein Blech je gerechnetem Ausgleichspunkt",
+    testbitte: "Eine 3,25 m lange Wand planen und Modul 4 \u00f6ffnen: die Position "
+      + "„Ausgleichsblech“ steht mit Menge 10 vor dem Kopfblech und wird aus dem Katalog "
+      + "bepreist. Alle \u00fcbrigen Mengen und Preise bleiben unver\u00e4ndert.",
+  },
+  {
     id: "chg-20260907-13",
     datum: "2026-09-07",
     typ: "fix",
