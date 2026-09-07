@@ -1,5 +1,7 @@
 # Vertraulich – NICHT ins (öffentliche) Repo
 Uploads/
+# Interne Quelldokumente und daraus abgeleitete Analysen (nur lokal)
+doku/vertraulich/
 # Reale Bauteilgeometrie (nur lokal; Tools laden sie zur Laufzeit per Upload)
 Bauteil-OBJ/
 
