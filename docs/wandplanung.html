@@ -567,9 +567,16 @@ function draw(w){
   // Im Bearbeitungsmodus zusätzlich je Punkthöhe eine Griff-/Hilfslinie über die Wandbreite,
   // damit die Lagen-Oberkante als Ganzes greifbar ist (reine Bedienhilfe, kein Bauteil).
   if(zpEdit){ const hoehen=[...new Set(zpListe.map(zp=>zp.z_mm))].sort((a,b)=>a-b);
+    const x0=Math.min(X(0),X(L)), x1=Math.max(X(0),X(L));
+    // Freie innere Oberkanten (#106): blasse Strichlinie + `cursor:copy` — dort legt ein Klick
+    // einen neuen Punkt an. Belegte Hoehen tragen `cursor:grab`, sind also anfassbar. Dieselbe
+    // Trennung wie im Spannachsen-Editor, Fangweite fangZMm() = halbe Lagenhoehe.
+    for(let l=1; l*COURSE<=H-COURSE; l++){ const z=l*COURSE; if(hoehen.includes(z)) continue;
+      const zy=Y(z);
+      s+=`<line class="zneu" x1="${x0}" y1="${zy}" x2="${x1}" y2="${zy}" stroke="${ZWISCHENPUNKT.farbe}" stroke-width="1" stroke-dasharray="2 7" stroke-opacity="0.28" style="cursor:copy"/>`; }
     for(const z of hoehen){ const on=(selZp===z); const zy=Y(z);
-      s+=`<line x1="${Math.min(X(0),X(L))}" y1="${zy}" x2="${Math.max(X(0),X(L))}" y2="${zy}" stroke="${on?'#c9461c':ZWISCHENPUNKT.farbe}" stroke-width="${on?1.6:1}" stroke-dasharray="6 4" stroke-opacity="0.85"/>`;
-      s+=`<text x="${Math.max(X(0),X(L))+4}" y="${zy+3}" font-size="9" fill="${on?'#c9461c':ZWISCHENPUNKT.farbe}">${fmt(z/10,1)}</text>`; } }
+      s+=`<line x1="${x0}" y1="${zy}" x2="${x1}" y2="${zy}" stroke="${on?'#c9461c':ZWISCHENPUNKT.farbe}" stroke-width="${on?1.6:1}" stroke-dasharray="6 4" stroke-opacity="0.85" style="cursor:grab"/>`;
+      s+=`<text x="${x1+4}" y="${zy+3}" font-size="9" fill="${on?'#c9461c':ZWISCHENPUNKT.farbe}">${fmt(z/10,1)}</text>`; } }
 
   // ---- Reihennummern der Steinreihen (links) ----
   for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
@@ -581,8 +588,18 @@ function draw(w){
     for(let r=0;r<Lg;r++) for(let c=0;c<Ng;c++){ const lx=Math.min(X(c*GRID),X((c+1)*GRID));
       s+=`<rect class="cell" data-r="${r}" data-c="${c}" x="${lx}" y="${Y((r+1)*COURSE)}" width="${GRID*sc}" height="${COURSE*sc}" fill="transparent" stroke="#1f6feb" stroke-opacity="0.18" stroke-width="0.6" style="cursor:pointer"/>`; } }
   // ---- Spannachsen-Editor: Griffe je Achse + Auswahl ----
+  // Erkennbar getrennt (#106): eine BELEGTE Rasterspalte laesst sich anfassen (Griff, Achslinie,
+  // `cursor:grab`), eine FREIE zeigt als blasse Strichlinie samt `cursor:copy` an, dass ein Klick
+  // dort eine neue Achse anlegt. Die Zone ist genau die Fangweite fangKMm() = halbe Rasterzelle.
+  // Reine Bedienhilfe: kein Bauteil, keine Bemassung, nur im Editiermodus vorhanden.
+  if(axisEdit){ const belegt=new Set(w.tension_columns.map(c=>c.k));
+    for(let k=0;k<w.N_grid;k++){ if(belegt.has(k)) continue;
+      const hk=topH(k); if(hk<=0) continue;
+      const lx=Math.min(X(k*GRID),X((k+1)*GRID)), zx=X(62.5+GRID*k);
+      s+=`<rect class="neuzone" x="${lx}" y="${Y(hk)}" width="${GRID*sc}" height="${hk*sc}" fill="transparent" style="cursor:copy"/>`;
+      s+=`<line class="neuachse" x1="${zx}" y1="${Y(0)}" x2="${zx}" y2="${Y(hk)}" stroke="#1f6feb" stroke-width="1" stroke-opacity="0.22" stroke-dasharray="3 6" style="cursor:copy"/>`; } }
   if(axisEdit){ for(const col of w.tension_columns){ const x=X(col.x_mm); const on=(selAxis===col.k);
-      s+=`<line x1="${x}" y1="${Y(0)}" x2="${x}" y2="${Y(H)}" stroke="${on?'#c9461c':'#1f6feb'}" stroke-width="${on?3:2}" stroke-opacity="0.9"/>`;
+      s+=`<line x1="${x}" y1="${Y(0)}" x2="${x}" y2="${Y(H)}" stroke="${on?'#c9461c':'#1f6feb'}" stroke-width="${on?3:2}" stroke-opacity="0.9" style="cursor:grab"/>`;
       s+=`<circle cx="${x}" cy="${Y(H)-6}" r="6" fill="${on?'#c9461c':'#1f6feb'}" stroke="#fff" stroke-width="1.5" style="cursor:grab"/>`;
       s+=`<text x="${x}" y="${Y(H)-14}" font-size="9" fill="${on?'#c9461c':'#1f6feb'}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
   s+=dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H);
@@ -1019,11 +1036,51 @@ function setzeZoom(p){
 function zoomSchritt(richtung){ setzeZoom(zoomPct + richtung*ZOOM_SCHRITT); }
 function zoomEinpassen(){ setzeZoom(ZOOM_FIT); }
 
+// ---- Zeigerposition -> Zeichnung: die TATSAECHLICHE Koordinatenabbildung (Issue #106) ----
+// Der Rueckweg vom Zeiger in Wandmillimeter darf NICHT annehmen, die Elementbreite entspraeche
+// der viewBox-Breite. Seit #100 begrenzt `.planbox>svg` die Hoehe (`max-height`), waehrend die
+// Breite dem Zoomfaktor folgt — das Anzeigefeld hat damit regelmaessig ein ANDERES
+// Seitenverhaeltnis als der viewBox. `preserveAspectRatio="xMidYMid meet"` skaliert die
+// Zeichnung dann mit dem KLEINEREN der beiden Verhaeltnisse und ZENTRIERT sie; links/rechts
+// (oder oben/unten) bleibt Leerraum. Wer diesen Faktor und diesen Versatz weglaesst, trifft je
+// nach Zoom um mehrere Rasterfelder daneben — genau der Fehler aus #106.
+// Der viewBox wird NICHT aus dem DOM gelesen, sondern aus derselben Quelle gebildet, aus der
+// draw() ihn setzt (`LASTDRAW.pad`/`hPx`, Breite fest 1000) — kein zweites Mass, kein
+// zweiter Wahrheitsstand.
+const VB_BREITE=1000;
+function bildPunkt(e){
+  const el=$('plan');
+  const r=(el && el.getBoundingClientRect) ? (el.getBoundingClientRect()||{}) : {};
+  const vbH=Math.round(LASTDRAW.hPx+2*LASTDRAW.pad);
+  const rw=(r.width>0)?r.width:VB_BREITE, rh=(r.height>0)?r.height:vbH;
+  const s=Math.min(rw/VB_BREITE, rh/vbH);            // „meet": das kleinere Verhaeltnis gewinnt
+  const offX=(rw-VB_BREITE*s)/2, offY=(rh-vbH*s)/2;  // „xMidYMid": zentriert
+  return { sx: ((Number(e.clientX)||0)-(r.left||0)-offX)/s,
+           sy: ((Number(e.clientY)||0)-(r.top ||0)-offY)/s };
+}
+// Fangweite in WANDMILLIMETERN — also bei jedem Zoomgrad dieselbe Strecke an der Wand.
+// Sie ist die Rasterzelle selbst: eine halbe Rastereinheit zu jeder Seite der Achse bzw. eine
+// halbe Lagenhoehe zu jeder Seite der Punkthoehe. Damit ist sie LUECKENLOS — „ausserhalb der
+// Fangweite" heisst immer „in einer Zelle ohne Achse", tote Klicks gibt es nicht.
+// (Als Funktionen, weil GRID/COURSE erst in __wpInit() aus window.SEMBLA gesetzt werden.)
+function fangKMm(){ return GRID/2; }      // 62,5 mm
+function fangZMm(){ return COURSE/2; }    // 100 mm
+
 // ---- Spannachsen-Editor (Feature: manuelle Achsen für Sonderkonstruktionen) ----
-function pxToK(e){ if(!LASTDRAW) return 0; const r=$('plan').getBoundingClientRect();
-  const sx=(e.clientX-r.left)/r.width*1000; const {pad,sc,L,back,N}=LASTDRAW;
+/** Zeigerposition -> Wandmillimeter waagerecht, auf die Wand geklemmt. */
+function pxToXmm(e){ const {pad,sc,L,back}=LASTDRAW; const {sx}=bildPunkt(e);
   const xmm = back ? (L-(sx-pad)/sc) : ((sx-pad)/sc);
-  return Math.max(0, Math.min(N-1, Math.round((xmm-62.5)/125))); }
+  return Math.max(0, Math.min(L, xmm)); }
+function pxToK(e){ if(!LASTDRAW) return 0; const {N}=LASTDRAW;
+  return Math.max(0, Math.min(N-1, Math.round((pxToXmm(e)-62.5)/125))); }
+/**
+ * Vorhandene Achse innerhalb der Fangweite (Wandmillimeter) — sonst null. Entschieden wird
+ * ausdruecklich ueber den ABSTAND zur naechsten vorhandenen Achse, nicht ueber die Zellnummer.
+ */
+function achseImFang(e){ ensureManual();
+  const xmm=pxToXmm(e); let best=null, bd=Infinity;
+  for(const k of manualCols){ const d=Math.abs(xmm-(62.5+GRID*k)); if(d<bd){ bd=d; best=k; } }
+  return (best!=null && bd<=fangKMm()+1e-9) ? best : null; }
 function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelement.tension_columns.map(c=>c.k) : []; }
 function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
 function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
@@ -1036,14 +1093,20 @@ function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=fals
 // löschen, „Zurück zu Auto". Geschrieben wird ausschließlich der Override in `prestress`
 // (über vorgaben() -> Rechenkern -> persistAktiv); die Auto-Ableitung landet nie im Element.
 /** Zeigerposition -> nächste Steinlagen-Oberkante (mm). */
-function pxToZ(e){ if(!LASTDRAW) return COURSE; const r=$('plan').getBoundingClientRect();
-  const {pad,sc,hPx}=LASTDRAW;
-  const sy=(e.clientY-(r.top||0))*(1000/(r.width||1000));
-  const z=(pad+hPx-sy)/sc;
-  const H=RESULT?RESULT.wandelement.height_mm:COURSE;
-  const lage=Math.round(z/COURSE);
-  return Math.max(COURSE, Math.min(H-COURSE, lage*COURSE));   // nur INNERE Oberkanten ([A-15])
+function pxToZ(e){ if(!LASTDRAW) return COURSE;
+  const lage=Math.round(pxToZmm(e)/COURSE);
+  return zInnen(lage*COURSE);   // nur INNERE Oberkanten ([A-15])
 }
+/** Zeigerposition -> Wandmillimeter senkrecht, auf die inneren Oberkanten geklemmt. */
+function pxToZmm(e){ const {pad,sc,hPx}=LASTDRAW; const {sy}=bildPunkt(e);
+  return zInnen((pad+hPx-sy)/sc); }
+function zInnen(z){ const H=RESULT?RESULT.wandelement.height_mm:COURSE;
+  return Math.max(COURSE, Math.min(H-COURSE, z)); }
+/** Vorhandene Punkthoehe innerhalb der Fangweite (Wandmillimeter) — sonst null. */
+function zpImFang(e){ ensureManualZp();
+  const z=pxToZmm(e); let best=null, bd=Infinity;
+  for(const zz of manualZp){ const d=Math.abs(z-zz); if(d<bd){ bd=d; best=zz; } }
+  return (best!=null && bd<=fangZMm()+1e-9) ? best : null; }
 /** Aus dem Auto-Stand einen bearbeitbaren Override machen (die wirksamen Höhen, nichts Neues). */
 function ensureManualZp(){ if(!manualZp) manualZp = RESULT
   ? [...new Set(wirksameZwischenpunkte(RESULT.wandelement).map(zp=>zp.z_mm))].sort((a,b)=>a-b)
@@ -1080,22 +1143,29 @@ function bindEvents(){
   $('axisTool').addEventListener('click',()=>setAxisEdit(!axisEdit));
   $('axisDel').addEventListener('click',()=>{ if(selAxis!=null){ delAxis(selAxis); run(); } });
   $('axisAuto').addEventListener('click',()=>{ manualCols=null; selAxis=null; run(); });
-  $('plan').addEventListener('pointerdown',e=>{ if(!axisEdit) return; const k=pxToK(e); ensureManual();
-    if(manualCols.includes(k)){ selAxis=k; axisDragging=true; } else { addAxisAt(k); selAxis=k; run(); } if(RESULT) draw(RESULT.wandelement); });
+  // Innerhalb der Fangweite (fangKMm(), Wandmillimeter) wird die VORHANDENE Achse angefasst;
+  // erst ausserhalb entsteht eine neue — sonst verdoppelt jeder Griff die Achse (#106).
+  $('plan').addEventListener('pointerdown',e=>{ if(!axisEdit) return; ensureManual();
+    const treffer=achseImFang(e);
+    if(treffer!=null){ selAxis=treffer; axisDragging=true; }
+    else { const k=pxToK(e); addAxisAt(k); selAxis=k; run(); } if(RESULT) draw(RESULT.wandelement); });
   $('plan').addEventListener('pointermove',e=>{ if(!axisEdit||!axisDragging||selAxis==null) return; const k=pxToK(e);
     if(k!==selAxis && !manualCols.includes(k)){ const i=manualCols.indexOf(selAxis); if(i>=0){ manualCols[i]=k; manualCols.sort((a,b)=>a-b); selAxis=k; run(); } } });
   window.addEventListener('pointerup',()=>{ axisDragging=false; });
-  $('plan').addEventListener('dblclick',e=>{ if(!axisEdit) return; const k=pxToK(e); if(manualCols&&manualCols.includes(k)){ delAxis(k); run(); } });
+  $('plan').addEventListener('dblclick',e=>{ if(!axisEdit) return; const treffer=achseImFang(e); if(treffer!=null){ delAxis(treffer); run(); } });
   // Zwischenspannpunkte: setzen/auswählen (pointerdown), ziehen (pointermove), löschen (dblclick)
   $('zpTool').addEventListener('click',()=>setZpEdit(!zpEdit));
   $('zpDel').addEventListener('click',()=>{ if(selZp!=null){ delZp(selZp); run(); } });
   $('zpAuto').addEventListener('click',()=>{ manualZp=null; selZp=null; run(); });
-  $('plan').addEventListener('pointerdown',e=>{ if(!zpEdit) return; const z=pxToZ(e); ensureManualZp();
-    if(manualZp.includes(z)){ selZp=z; zpDragging=true; } else { addZpAt(z); selZp=z; run(); } if(RESULT) draw(RESULT.wandelement); });
+  // Gleiche Entscheidung wie bei den Spannachsen, nur in der Lagenachse (fangZMm()).
+  $('plan').addEventListener('pointerdown',e=>{ if(!zpEdit) return; ensureManualZp();
+    const treffer=zpImFang(e);
+    if(treffer!=null){ selZp=treffer; zpDragging=true; }
+    else { const z=pxToZ(e); addZpAt(z); selZp=z; run(); } if(RESULT) draw(RESULT.wandelement); });
   $('plan').addEventListener('pointermove',e=>{ if(!zpEdit||!zpDragging||selZp==null) return; const z=pxToZ(e);
     if(z!==selZp && !manualZp.includes(z)){ const i=manualZp.indexOf(selZp); if(i>=0){ manualZp[i]=z; manualZp.sort((a,b)=>a-b); selZp=z; run(); } } });
   window.addEventListener('pointerup',()=>{ zpDragging=false; });
-  $('plan').addEventListener('dblclick',e=>{ if(!zpEdit) return; const z=pxToZ(e); if(manualZp&&manualZp.includes(z)){ delZp(z); run(); } });
+  $('plan').addEventListener('dblclick',e=>{ if(!zpEdit) return; const treffer=zpImFang(e); if(treffer!=null){ delZp(treffer); run(); } });
   $('showDim').addEventListener('change',e=>{ showDim=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('addTuer').addEventListener('click',()=>addOpening('tuer'));

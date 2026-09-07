@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-09",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 106,
+    titel: "Achsen in der Wandansicht treffen dort, wo geklickt wird, und lassen sich verschieben statt verdoppeln",
+    testbitte: "In Modul 1 zoomen, den Spannachsen-Editor einschalten und eine Achse ziehen: "
+      + "sie wandert mit, ohne zweite. Ein Klick auf einen leeren Rasterpunkt legt sie genau dort "
+      + "an — ebenso im Zwischenspannpunkt-Editor.",
+  },
+  {
     id: "chg-20260907-08",
     datum: "2026-09-07",
     typ: "feature",

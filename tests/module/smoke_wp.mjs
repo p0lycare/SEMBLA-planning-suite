@@ -23,7 +23,11 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);}
   // Ereignisobjekt darf vom Test gestellt werden (delegierte Hoerer auf gerenderten Elementen).
   dispatch(e,ev){(this.listeners[e]||[]).forEach(f=>f(ev||{target:this}));}
-  setAttribute(){} getBoundingClientRect(){return {left:0,width:1000};} get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
+  setAttribute(){}
+  // Anzeigerechteck: standardmaessig deckungsgleich mit dem viewBox (1000 breit, Hoehe offen ->
+  // die Abbildung faellt auf die viewBox-Hoehe zurueck). Der #106-Abschnitt setzt `_rect`
+  // ausdruecklich auf ein Rechteck mit Rand, Zoom und abweichendem Seitenverhaeltnis.
+  getBoundingClientRect(){ return this._rect || {left:0,width:1000}; } get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
 const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
@@ -515,6 +519,161 @@ document.getElementById('modus').value='auto'; WP.run();
     }
     return true;
   })());
+}
+document.getElementById('hgt').value='2.60'; WP.run();
+
+// ---------------------------------------------------------------------------------------------
+// Issue #106 (Bedienteil): Achsen treffen dort, wo geklickt wird, und werden verschoben statt
+// verdoppelt. Gefahren wird der ECHTE Pfad: Musterwand ueber buildWall -> run() -> das erzeugte
+// SVG; aus ihm werden die BILDPUNKTE der gezeichneten Achsen entnommen und ueber die
+// Zeigerbehandler von `#plan` zurueckgespielt.
+//
+// Der Zoom wird nicht simuliert, sondern aus den ECHTEN CSS-Regeln von #100 abgeleitet:
+//   Breite  = Kastenbreite * Zoom            (`width:calc(100% * var(--zoom))`)
+//   Hoehe   = min(Breite * vbH/vbW,          (`height:auto`, also viewBox-Verhaeltnis)
+//                 planh * Zoom)              (`max-height:calc(var(--planh) * var(--zoom))`)
+// Genau diese Klemme macht das Anzeigefeld BREITER als das viewBox-Verhaeltnis; mit
+// `preserveAspectRatio="xMidYMid meet"` entsteht dadurch zentrierter Leerraum links/rechts.
+// Ein Rueckweg, der Elementbreite = viewBox-Breite annimmt, liegt hier um mehrere Rasterfelder
+// daneben — der Fehler aus #106. Rand (`left`/`top`) ist bewusst nicht 0.
+{
+  const planEl=document.getElementById('plan');
+  const PAD=46, VBW=1000, KASTEN_PX=900, PLANH_PX=520, RAND_L=17, RAND_T=29;
+  function view(){
+    const w=WP.RESULT.wandelement, L=w.length_mm, H=w.height_mm;
+    const sc=(VBW-2*PAD)/L, hPx=H*sc, vbH=Math.round(hPx+2*PAD);
+    const z=WP.zoomPct/100, rw=KASTEN_PX*z, rh=Math.min(rw*vbH/VBW, PLANH_PX*z);
+    const s=Math.min(rw/VBW, rh/vbH);
+    return {L,H,sc,hPx,vbH,rw,rh,s,offX:(rw-VBW*s)/2,offY:(rh-vbH*s)/2,back:/Rückseite/.test(planEl.innerHTML)};
+  }
+  function stelleRect(){ const v=view(); planEl._rect={left:RAND_L,top:RAND_T,width:v.rw,height:v.rh}; return v; }
+  /** viewBox-Punkt -> Client-Punkt (Umkehrung von „xMidYMid meet"). */
+  function ev(sx,sy){ const v=stelleRect();
+    return {clientX:RAND_L+v.offX+sx*v.s, clientY:RAND_T+v.offY+sy*v.s, pointerId:3, preventDefault(){}}; }
+  const feuer=(typ,sx,sy)=>planEl.dispatch(typ, ev(sx,sy));
+  const los=()=>globalThis.window.dispatch('pointerup',{});
+  /** Wandmillimeter -> viewBox-Punkt (dieselbe Abbildung wie X()/Y() in draw()). */
+  const sxVon=xmm=>{ const v=view(); return PAD+(v.back?(v.L-xmm):xmm)*v.sc; };
+  const syVon=zmm=>{ const v=view(); return PAD+v.hPx-zmm*v.sc; };
+  /** Bildpunkte der GEZEICHNETEN Spannachsen (Griffkreis) bzw. Punkthoehen (Griff-Linie). */
+  const achsPunkte=()=>[...planEl.innerHTML.matchAll(/<circle cx="([\d.-]+)" cy="([\d.-]+)" r="6"[^>]*cursor:grab/g)]
+    .map(m=>({sx:+m[1], sy:+m[2]}));
+  const zpPunkte=()=>[...planEl.innerHTML.matchAll(/<line x1="([\d.-]+)" y1="([\d.-]+)" x2="([\d.-]+)"[^>]*stroke-dasharray="6 4"[^>]*cursor:grab/g)]
+    .map(m=>({sx:(+m[1]+ +m[3])/2, sy:+m[2]}));
+  const gleich=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+
+  WP.applyWand(Object.assign(buildWall('T106',2000,2600,[]),{wandtyp:'ohne_wind'}));
+  document.getElementById('modus').value='auto'; WP.run();
+  WP.setAxisEdit(true);                       // ensureManual() uebernimmt die Auto-Achsen
+  const ZOOMS=[25,100,400];
+
+  // (a) Jeder gezeichnete Achs-Bildpunkt rechnet auf GENAU diese Achse zurueck: das Anfassen
+  //     legt keine zweite Achse an — bei jedem Zoomgrad und abweichendem Seitenverhaeltnis.
+  for(const z of ZOOMS){
+    WP.setzeZoom(z); const v=stelleRect();
+    const vorher=[...WP.manualCols], punkte=achsPunkte();
+    ok(`[#106] Zoom ${z} %: Anzeigefeld weicht vom viewBox-Verhaeltnis ab (Letterbox)`,
+      Math.abs(v.rw/v.rh - VBW/v.vbH)>0.2 && v.offX>1);
+    ok(`[#106] Zoom ${z} %: jede Achse ist mit Griff gezeichnet`, punkte.length===vorher.length && punkte.length>0);
+    let sauber=true;
+    for(const p of punkte){ feuer('pointerdown',p.sx,p.sy); los();
+      if(!gleich(WP.manualCols,vorher)) sauber=false; }
+    ok(`[#106] Zoom ${z} %: Anfassen einer vorhandenen Achse verdoppelt sie nicht`, sauber);
+  }
+
+  // (b) Ziehen: die ANGEFASSTE Achse wandert, die Achszahl bleibt — bei jedem Zoomgrad.
+  for(const z of ZOOMS){
+    WP.setzeZoom(z); stelleRect();
+    const vor=[...WP.manualCols], punkte=achsPunkte();
+    const kQuelle=vor[0], p0=punkte[0];
+    const kZiel=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!vor.includes(k));
+    feuer('pointerdown',p0.sx,p0.sy);
+    feuer('pointermove',sxVon(62.5+GRID*kZiel),p0.sy);
+    los();
+    const soll=[...vor.filter(k=>k!==kQuelle),kZiel].sort((a,b)=>a-b);
+    ok(`[#106] Zoom ${z} %: Ziehen verschiebt die Achse ${kQuelle} -> ${kZiel} ohne zweite Achse`,
+      gleich(WP.manualCols,soll));
+  }
+
+  // (c) Klick auf eine FREIE Rasterspalte legt die Achse genau dort an — nicht daneben.
+  for(const z of ZOOMS){
+    WP.setzeZoom(z); stelleRect();
+    const vor=[...WP.manualCols];
+    const kNeu=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!vor.includes(k));
+    feuer('pointerdown',sxVon(62.5+GRID*kNeu),syVon(WP.RESULT.wandelement.height_mm/2)); los();
+    ok(`[#106] Zoom ${z} %: neue Achse entsteht genau bei k=${kNeu}`,
+      gleich(WP.manualCols,[...vor,kNeu].sort((a,b)=>a-b)));
+  }
+  // Auch der ZellRAND traegt noch: 62,5 mm neben der Achse ist die Fangweite (halbe Rasterzelle).
+  {
+    WP.setzeZoom(100); stelleRect();
+    const vor=[...WP.manualCols], k=vor[0];
+    feuer('pointerdown',sxVon(62.5+GRID*k+62.4),syVon(1000)); los();
+    ok('[#106] Fangweite ist die halbe Rastereinheit (62,4 mm daneben fasst noch an)',
+      gleich(WP.manualCols,vor));
+  }
+
+  // (d) Dieselbe Umkehrung in der GESPIEGELTEN Ansicht (Rueckseite).
+  {
+    document.getElementById('viewToggle').dispatch('click');   // -> Rueckseite
+    WP.setzeZoom(100); stelleRect();
+    const vor=[...WP.manualCols], punkte=achsPunkte(), kQuelle=vor[0];
+    const kZiel=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!vor.includes(k));
+    feuer('pointerdown',punkte[0].sx,punkte[0].sy);
+    feuer('pointermove',sxVon(62.5+GRID*kZiel),punkte[0].sy);
+    los();
+    ok('[#106] Rueckseite: gespiegelte Abbildung trifft und verschiebt dieselbe Achse',
+      gleich(WP.manualCols,[...vor.filter(k=>k!==kQuelle),kZiel].sort((a,b)=>a-b)));
+    document.getElementById('viewToggle').dispatch('click');   // zurueck auf die Vorderseite
+  }
+
+  // (e) Anzeige: belegte Spalte anfassbar (`cursor:grab`), freie Spalte als Neuanlage
+  //     gekennzeichnet (`cursor:copy`) — nur im Editiermodus.
+  ok('[#106] Achsen-Editor zeigt Anfassen und Neuanlegen getrennt an',
+    /style="cursor:grab"/.test(planEl.innerHTML) && /class="neuzone"[^>]*cursor:copy/.test(planEl.innerHTML)
+    && /class="neuachse"[^>]*cursor:copy/.test(planEl.innerHTML));
+  WP.setManualCols(null); WP.setAxisEdit(false);
+  ok('[#106] ausserhalb des Editiermodus bleibt keine Bedienhilfe stehen',
+    !/cursor:grab/.test(planEl.innerHTML) && !/class="neuzone"/.test(planEl.innerHTML));
+
+  // (f) Zwischenspannachsen: identisches Verhalten in der Lagenachse.
+  WP.setZpEdit(true);                          // ensureManualZp() uebernimmt die Auto-Hoehen
+  for(const z of ZOOMS){
+    WP.setzeZoom(z); stelleRect();
+    const vorher=[...WP.manualZp], punkte=zpPunkte();
+    ok(`[#106] Zoom ${z} %: jede Zwischenspannachse ist mit Griff gezeichnet`,
+      punkte.length===vorher.length && punkte.length>0);
+    let sauber=true;
+    for(const p of punkte){ feuer('pointerdown',p.sx,p.sy); los();
+      if(!gleich(WP.manualZp,vorher)) sauber=false; }
+    ok(`[#106] Zoom ${z} %: Anfassen einer Zwischenspannachse verdoppelt sie nicht`, sauber);
+  }
+  {
+    WP.setzeZoom(400); stelleRect();
+    const vor=[...WP.manualZp], p0=zpPunkte()[0], zZiel=vor[0]+400;
+    feuer('pointerdown',p0.sx,p0.sy);
+    feuer('pointermove',p0.sx,syVon(zZiel));
+    los();
+    ok('[#106] Zwischenspannachse nach oben ziehen wechselt die Lagen-Oberkante',
+      WP.manualZp.length===vor.length && WP.manualZp.includes(zZiel) && !WP.manualZp.includes(vor[0]));
+    const vor2=[...WP.manualZp], zNeu=COURSE*2;
+    feuer('pointerdown',sxVon(1000),syVon(zNeu)); los();
+    ok('[#106] Klick auf eine freie Lagen-Oberkante legt den Punkt genau dort an',
+      gleich(WP.manualZp,[...vor2,zNeu].sort((a,b)=>a-b)));
+    ok('[#106] Zwischenspann-Editor zeigt Anfassen und Neuanlegen getrennt an',
+      /stroke-dasharray="6 4"[^>]*cursor:grab/.test(planEl.innerHTML)
+      && /class="zneu"[^>]*cursor:copy/.test(planEl.innerHTML));
+  }
+  WP.zpAuto(); WP.setZpEdit(false);
+  WP.setzeZoom(WP.ZOOM_FIT); planEl._rect=null;
+  ok('[#106] kein neues gespeichertes Feld: nur die bestehenden Uebersteuerungen',
+    store.aktivesWandelement().prestress.columns_grid===null
+    && !('zwischenpunkte_mm' in store.aktivesWandelement().prestress)
+    && !/fang|Fangweite/i.test(JSON.stringify(store.aktiveEingaben())));
+  ok('[#106] die Rueckrechnung nutzt kein getScreenCTM und liest den viewBox nicht aus dem DOM',
+    !/getScreenCTM|createSVGPoint/.test(html)
+    && /function bildPunkt\(e\)\{[\s\S]*?getBoundingClientRect/.test(html)
+    && !/getAttribute\('viewBox'\)/.test(html));
 }
 document.getElementById('hgt').value='2.60'; WP.run();
 
