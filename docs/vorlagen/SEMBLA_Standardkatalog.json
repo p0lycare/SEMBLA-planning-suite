@@ -194,6 +194,18 @@
       "hinweis": "vorläufig — fachlich unbestätigt: Preis ist ein angenommener Beispielwert. `breite_mm` ist das RASTERMASS, unter dem das Blech geführt und der Stückliste zugeordnet wird ([A-10]); das reale Bauteil misst 2 mm weniger (373 mm, [A-12])."
     },
     {
+      "id": "blech-ausgleich-100",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Ausgleichsblech 100\u00d720 mm, 8 mm (vorl\u00e4ufig)",
+      "einheit": "Stk",
+      "preis": 0.45,
+      "breite_mm": 100,
+      "hoehe_mm": 20,
+      "dicke_mm": 8,
+      "rollen": ["ausgleichsblech"],
+      "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Ausgleichsbleche liegen unter dem Bodenblech und richten den Bodenanschluss aus. Ma\u00dfe (100 mm in Wandrichtung als `breite_mm`, 20 mm quer als `hoehe_mm`, 8 mm Dicke) und Preis sind angenommene Beispielwerte; sp\u00e4ter sind verschiedene Dicken vorgesehen. Anzahl und Verteilung der Ausgleichspunkte sind noch nicht festgelegt."
+    },
+    {
       "id": "blech-kopfblech-1000",
       "kategorie": "blech_platte",
       "bezeichnung": "Kopfblech-Modul 1000×125 mm, 15 mm",

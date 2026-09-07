@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-06",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 96,
+    titel: "Das Ausgleichsblech unter dem Bodenblech ist jetzt ein eigenes Bauteil im Katalog",
+    testbitte: "In Modul 1 unter \u201eProdukte\u201c steht in der Gruppe Anschluss die Zeile "
+      + "\u201eAusgleichsblech\u201c, mit dem Standardkatalog schon auf das vorl\u00e4ufige Blech "
+      + "100 \u00d7 20 \u00d7 8 mm gesetzt und umw\u00e4hlbar. Mengen und Preise in Modul 4 bleiben gleich.",
+  },
+  {
     id: "chg-20260907-05",
     datum: "2026-09-07",
     typ: "feature",

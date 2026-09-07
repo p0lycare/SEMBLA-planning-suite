@@ -344,6 +344,30 @@ ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
   rs.filter(r=>r.key==='rod_std'||r.key==='rod_sonder').reduce((a,r)=>a+r.menge,0)===W.bom.gewindestangen);
 
+// --- #96 Ausgleichsblech: eigene Katalogrolle, aber KEINE Stuecklistenposition --------------
+// Das Bauteil ist im Katalog gefuehrt und in Modul 1 waehlbar; eine Menge (Zahl der
+// Ausgleichspunkte) wird in diesem Stand NICHT abgeleitet. Belegt wird das am realen Modulpfad:
+// die gerechneten Positionen einer realen Wand sind mit und ohne gewaehltes Ausgleichsblech
+// wertgleich — gleiche Keys, gleiche Mengen, gleiche Einzel- und Gesamtpreise.
+{
+  const katA={ ...KATALOG, produkte:[ ...KATALOG.produkte,
+    { id:'blech-ausgleich', kategorie:'blech_platte', bezeichnung:'Ausgleichsblech (vorläufig)',
+      einheit:'Stk', preis:0.45, breite_mm:100, hoehe_mm:20, dicke_mm:8 } ] };
+  const kanon=(l)=>JSON.stringify(l.map(r=>[r.key,r.menge,r.mass_mm??null,r.fertigmass_mm??null,
+    r.unit,r.ep,r.gp,r.status]));
+  const ohne=stuecklistePositionen(W, egVoll(), katA);
+  const eMit=egVoll(); eMit.planung.produkte.rollen.ausgleichsblech=['blech-ausgleich'];
+  const mit=stuecklistePositionen(W, eMit, katA);
+  ok('#96 keine Stuecklistenposition fuer das Ausgleichsblech',
+    !mit.some(r=>r.key==='ausgleichsblech') && !ohne.some(r=>r.key==='ausgleichsblech'));
+  ok('#96 Positionen und Mengen einer realen Wand bleiben unveraendert',
+    mit.length===ohne.length && kanon(mit)===kanon(ohne));
+  ok('#96 auch die Summe bleibt unveraendert', (()=>{
+    const a=stuecklisteSumme(ohne), b=stuecklisteSumme(mit);
+    return a.summe===b.summe && a.bepreist===b.bepreist && a.bepreisbar===b.bepreisbar
+      && a.vollstaendig===b.vollstaendig; })());
+}
+
 // Vollständige Zuordnung -> Summe vollständig (Nenner = alle bepreisbaren Positionen)
 {
   const s=SL.summe();

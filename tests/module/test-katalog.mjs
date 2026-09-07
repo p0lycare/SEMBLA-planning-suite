@@ -189,6 +189,47 @@ ok("Rolle unterlegscheibe ohne Auswahl: benannte Luecke statt Fehler (#92)", (()
   return st.status === "keine_auswahl" && st.text === KAT.STATUS_TEXT.keine_auswahl
     && st.produkt === null && st.ids.length === 0;
 })());
+// #96 Das Ausgleichsblech unter dem Bodenblech ist ein eigenes Bauteil (Bodenanschluss wird mit
+// Laser nivelliert). Es hat eine eigene Verwendungsrolle der Kategorie Blech/Platte, ist in
+// Modul 1 in der Gruppe des Anschlusses waehlbar und wird bepreist. Einen Maß-Diskriminator gibt
+// es bewusst NICHT: die Einbaumenge folgt der Zahl der Ausgleichspunkte, und die wird in diesem
+// Stand nicht abgeleitet — ein Kontextfeld waere ein erfundener Bezug.
+ok("Rolle ausgleichsblech: Modul 1, Gruppe Anschluss, Blech/Platte, bepreist, ohne Maß (#96)", (() => {
+  const r = KAT.rolle("ausgleichsblech");
+  return !!r && r.modul === 1 && r.gruppe === "Anschluss" && r.kategorie === "blech_platte"
+    && r.einheit === "Stk" && r.bepreist === true && r.mass === null
+    && KAT.rollenVonModul(1).some((x) => x.id === "ausgleichsblech")
+    && !KAT.rollenVonModul(2).some((x) => x.id === "ausgleichsblech");
+})());
+// Die Pflichtmaße kommen ALLEIN aus der Kategorie — die Rolle fuehrt keine eigene Pflichtliste
+// (die waere eine zweite Quelle neben KATEGORIEN[].pflicht).
+ok("#96 Ausgleichsblech verlangt dieselben Pflichtmaße wie jedes andere Blech seiner Kategorie", (() => {
+  const r = KAT.rolle("ausgleichsblech");
+  const basis = { kategorie: "blech_platte", bezeichnung: "X", einheit: "Stk", preis: 1,
+                  rollen: ["ausgleichsblech"] };
+  const ohneDicke = KAT.validiereProdukt({ id: "ausg-x", ...basis, breite_mm: 100, hoehe_mm: 20 });
+  const ohneHoehe = KAT.validiereProdukt({ id: "ausg-y", ...basis, breite_mm: 100, dicke_mm: 8 });
+  const voll = KAT.validiereProdukt({ id: "ausg-z", ...basis, breite_mm: 100, hoehe_mm: 20, dicke_mm: 8 });
+  return r.pflicht === undefined
+    && KAT.kategorie("blech_platte").pflicht.slice().sort().join() === "breite_mm,dicke_mm,hoehe_mm"
+    && ohneDicke.some((m) => /^dicke_mm ist f\u00fcr/.test(m))
+    && ohneHoehe.some((m) => /^hoehe_mm ist f\u00fcr/.test(m))
+    && voll.length === 0;
+})());
+// [P-9]/must 7: Ein Altprojekt ohne gewaehltes Ausgleichsblech bleibt gueltig — die Luecke wird
+// nur BENANNT, es wird kein Produkt geraten und kein Fehler erzeugt.
+ok("Rolle ausgleichsblech ohne Auswahl: benannte Luecke statt Fehler (#96)", (() => {
+  const st = KAT.rollenStatus("ausgleichsblech", eingabenMit({}), R_KAT, KTX);
+  return st.status === "keine_auswahl" && st.text === KAT.STATUS_TEXT.keine_auswahl
+    && st.produkt === null && st.ids.length === 0;
+})());
+ok("Rolle ausgleichsblech ist regulaer waehlbar und wird bepreist (#96)", (() => {
+  const eing = eingabenMit({ ausgleichsblech: ["ausg-1"] });
+  const kat = { produkte: [{ id: "ausg-1", kategorie: "blech_platte", bezeichnung: "Ausgleichsblech",
+                             einheit: "Stk", preis: 0.45, breite_mm: 100, hoehe_mm: 20, dicke_mm: 8 }] };
+  const st = KAT.rollenStatus("ausgleichsblech", eing, kat, KTX);
+  return st.status === "ok" && st.produkt.id === "ausg-1";
+})());
 ok("Rollen: Modul 2 besitzt genau Latte/Beplankung/Verbinder",
   KAT.rollenVonModul(2).map(r => r.id).sort().join() === "beplankung,latte,verbinder");
 ok("Rollen: kein Schluessel gehoert zwei Modulen",
@@ -540,6 +581,35 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     const pr = KAT.produkt(std, "verbrauch-unterlegscheibe");
     return /vorläufig/.test(pr.bezeichnung) && /vorläufig — fachlich unbestätigt/.test(pr.hinweis || "")
       && pr.breite_mm == null && pr.hoehe_mm == null && pr.laenge_mm == null && pr.dicke_mm == null;
+  })());
+  // #96 Die Vorlage bringt GENAU EIN vorlaeufiges Ausgleichsblech mit: 100 mm in Wandrichtung
+  // (breite_mm — die Kategoriemaske kennt kein laenge_mm), 20 mm quer (hoehe_mm), 8 mm dick.
+  ok("Standardkatalog belegt die Rolle ausgleichsblech mit genau EINEM Produkt vor (#96)", (() => {
+    const ids = v.ausgleichsblech || [];
+    if (ids.length !== 1) return false;
+    const pr = KAT.produkt(std, ids[0]);
+    return pr.kategorie === "blech_platte" && pr.einheit === "Stk"
+      && KAT.validiereProdukt(pr).length === 0
+      && !KAT.rollenOhneVorschlag(std).includes("ausgleichsblech");
+  })());
+  ok("Standardkatalog: das Ausgleichsblech misst 100 \u00d7 20 \u00d7 8 mm (#96)", (() => {
+    const pr = KAT.produkt(std, (v.ausgleichsblech || [])[0]);
+    return +pr.breite_mm === 100 && +pr.hoehe_mm === 20 && +pr.dicke_mm === 8
+      && pr.laenge_mm == null;
+  })());
+  ok("Standardkatalog: das Ausgleichsblech ist im Text ausdruecklich vorlaeufig (#96)", (() => {
+    const pr = KAT.produkt(std, (v.ausgleichsblech || [])[0]);
+    return /vorl\u00e4ufig/.test(pr.bezeichnung)
+      && /vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt/.test(pr.hinweis || "");
+  })());
+  // Vorbelegung fuer eine Wand OHNE eigene Wahl: die leere Rolle uebernimmt genau dieses Produkt
+  // und ist danach eine ganz normale, aufgeloeste Auswahl ([P-18]).
+  ok("#96 Vorbelegung: Wand ohne eigene Wahl fuehrt das vorlaeufige Ausgleichsblech", (() => {
+    const ids = v.ausgleichsblech || [];
+    const leer = KAT.rollenStatus("ausgleichsblech", { planung: { produkte: { rollen: {} } } }, std, {});
+    const eing = { planung: { produkte: { rollen: { ausgleichsblech: ids } } } };
+    const st = KAT.rollenStatus("ausgleichsblech", eing, std, {});
+    return leer.status === "keine_auswahl" && st.status === "ok" && st.produkt.id === ids[0];
   })());
   ok("Standardkatalog fuehrt die Standardlaengen 1000 und 920 mm",
     (v.rod_std || []).map((id) => KAT.produkt(std, id).laenge_mm).sort((a, b) => b - a).join() === "1000,920");
