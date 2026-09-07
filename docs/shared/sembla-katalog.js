@@ -655,7 +655,7 @@ export const ROLLEN = [
       + "stehen beide Einbaustellen als eine Position mit einer Menge ([P-18])." },
   { id: "spannmutter", label: "Spannmutter", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
-  { id: "senkkopf", label: "Senkkopfschraube Fuß", kategorie: "verbrauch", modul: 1,
+  { id: "senkkopf", label: "Sechskantschraube Fuß", kategorie: "verbrauch", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },

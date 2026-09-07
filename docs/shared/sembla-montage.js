@@ -392,7 +392,7 @@ function _ereignisTexte(e) {
     return {
       titel: "Bodenblech und erste Gewindestangen",
       text: `<b>Bodenblech</b> (15 mm, in Modulen) auf Höhe ${h} verlegen und ausrichten. An `
-        + `${straenge} je eine <b>Senkkopfschraube von unten</b> und eine <b>Kopplungsmutter oben</b> `
+        + `${straenge} je eine <b>Sechskantschraube von unten</b> und eine <b>Kopplungsmutter oben</b> `
         + `setzen, dann die erste <b>Gewindestange</b> einschrauben. Strangpositionen x = ${xs}.`,
     };
   }

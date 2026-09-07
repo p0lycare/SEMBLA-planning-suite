@@ -82,8 +82,8 @@ ok('Schnitt 0: Titel nennt Bodenblech und erste Gewindestangen',
   && /Bodenblech/.test($('absTitel').textContent) && /Gewindestange/.test($('absTitel').textContent));
 ok('Schnitt 0: Untertitel weist die Fuß-Baugruppe ohne Steinreihen aus',
   /ohne Steinreihen/.test($('absSub').textContent) && !/Reihen 1/.test($('absSub').textContent));
-ok('Schnitt 0: Ereignistext mit Senkkopfschraube + Kopplungsmutter',
-  /Senkkopfschraube/.test($('ereignisse').innerHTML) && /Kopplungsmutter/.test($('ereignisse').innerHTML));
+ok('Schnitt 0: Ereignistext mit Sechskantschraube + Kopplungsmutter',
+  /Sechskantschraube/.test($('ereignisse').innerHTML) && /Kopplungsmutter/.test($('ereignisse').innerHTML));
 ok('Schnitt 0: Navigations-Label', /^Schnitt 0 · Bild 1 von /.test($('absLab').textContent));
 const svg0=$('absSvg').innerHTML;
 ok('Schnitt-0-Bild: Bodenblech + Gewindestangen', /#5b6673/.test(svg0) && /#1f6feb/.test(svg0)
@@ -98,8 +98,8 @@ ok('Schnitt 0: Wandüberblick ohne Hervorhebung', $('mapSvg').innerHTML.length>4
 $('next').dispatch('click');
 ok('Abschnitt 1 nennt Bodenblech und erste Gewindestangen',
   /Bodenblech/.test($('absTitel').textContent) && /Gewindestange/.test($('absTitel').textContent));
-ok('Abschnitt 1: Ereignistext mit Senkkopfschraube + Kopplungsmutter (additiv, nicht verschoben)',
-  /Senkkopfschraube/.test($('ereignisse').innerHTML) && /Kopplungsmutter/.test($('ereignisse').innerHTML));
+ok('Abschnitt 1: Ereignistext mit Sechskantschraube + Kopplungsmutter (additiv, nicht verschoben)',
+  /Sechskantschraube/.test($('ereignisse').innerHTML) && /Kopplungsmutter/.test($('ereignisse').innerHTML));
 ok('Abschnitt 1: mehrere erste Steinreihen', /Reihen 1–5/.test($('absSub').textContent));
 ok('Ereignisliste hat Art-Label + Höhe', /class="art">Erste Stange · 0 cm/.test($('ereignisse').innerHTML));
 ok('Baugruppenbild gezeichnet', $('absSvg').innerHTML.length>600);

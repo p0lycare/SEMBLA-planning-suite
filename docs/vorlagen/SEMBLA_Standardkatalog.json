@@ -260,7 +260,7 @@
     {
       "id": "verbrauch-senkkopfschraube-fuss",
       "kategorie": "verbrauch",
-      "bezeichnung": "Senkkopfschraube (Fuß)",
+      "bezeichnung": "Sechskantschraube (Fuß)",
       "einheit": "Stk",
       "preis": 0.45,
       "rollen": ["senkkopf"]

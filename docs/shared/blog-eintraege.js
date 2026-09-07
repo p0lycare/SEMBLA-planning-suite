@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-02",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 92,
+    titel: "Die Schraube am Wandfuß heißt jetzt überall Sechskantschraube statt Senkkopfschraube",
+    testbitte: "Stückliste (Modul 4) und Montageanleitung (Modul 5) öffnen: am Wandfuß "
+      + "steht jetzt die Sechskantschraube, ebenso in der Produktauswahl von Modul 1. Mengen und "
+      + "Preise bleiben gleich, bestehende Kataloge und Projekte bleiben gültig.",
+  },
+  {
     id: "chg-20260907-01",
     datum: "2026-09-07",
     typ: "fix",

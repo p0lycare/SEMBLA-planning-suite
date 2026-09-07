@@ -71,7 +71,7 @@ for (const [name, w, abs] of [["Rechteck", WR, absR], ["AWG", WAWG, absA]]) {
   const a1 = abs[0], ev = a1.ereignisse[0];
   const fussK = new Set(w.tension_columns.filter(c => (c.segments || []).some(s => s.z0_mm === 0)).map(c => c.k));
   ok(`${name}: Abschnitt 1 beginnt mit dem Fuss-Ereignis (Bodenblech, erste Stangen)`,
-    ev.art === "fuss" && ev.z_mm === 0 && /Bodenblech/.test(ev.text) && /Senkkopfschraube/.test(ev.text));
+    ev.art === "fuss" && ev.z_mm === 0 && /Bodenblech/.test(ev.text) && /Sechskantschraube/.test(ev.text));
   ok(`${name}: Abschnitt 1 nennt ALLE Fussstraenge`,
     ev.straenge.length === fussK.size && ev.straenge.every(s => fussK.has(s.k)));
   ok(`${name}: Abschnitt 1 zeigt mehrere erste Steinreihen`,

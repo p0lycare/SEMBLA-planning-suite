@@ -160,6 +160,12 @@ ok("Rollen: Modul 1 besitzt Wand/Vorspannung/Anschluss/Fugen", (() => {
           "spannplatte","blech_boden","blech_kopf","dicht_stk","dicht"].every(x => ids.includes(x))
     && !ids.includes("rod_sonder") && !ids.includes("kuppl_basis");
 })());
+// #92 Die Fussschraube ist eine Sechskantschraube. Die Rollen-KENNUNG bleibt `senkkopf`,
+// damit bestehende Kataloge und Projekte gueltig bleiben; nur die Bezeichnung wechselt.
+ok("Rolle senkkopf heisst Sechskantschraube Fuß bei unveraenderter Kennung (#92)", (() => {
+  const r = KAT.ROLLEN.find((x) => x.id === "senkkopf");
+  return !!r && r.label === "Sechskantschraube Fuß" && !/Senkkopf/.test(r.label);
+})());
 ok("Rollen: Modul 2 besitzt genau Latte/Beplankung/Verbinder",
   KAT.rollenVonModul(2).map(r => r.id).sort().join() === "beplankung,latte,verbinder");
 ok("Rollen: kein Schluessel gehoert zwei Modulen",

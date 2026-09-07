@@ -60,7 +60,7 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
   { id:'rod-meterware', kategorie:'gewindestange', bezeichnung:'Gewindestange Meterware', einheit:'m', preis:2.9, gewinde:'M10', laenge_mm:1100 },
   { id:'kuppl-stoss', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter Stoß', einheit:'Stk', preis:0.65 },
   { id:'kuppl-fuss', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter Fuß', einheit:'Stk', preis:0.66 },
-  { id:'senkkopf', kategorie:'verbrauch', bezeichnung:'Senkkopfschraube', einheit:'Stk', preis:0.45 },
+  { id:'senkkopf', kategorie:'verbrauch', bezeichnung:'Sechskantschraube', einheit:'Stk', preis:0.45 },
   { id:'spannmutter', kategorie:'verbrauch', bezeichnung:'Spannmutter', einheit:'Stk', preis:0.9 },
   { id:'dicht-stk', kategorie:'verbrauch', bezeichnung:'Dichtstreifen 20 cm', einheit:'Stk', preis:0.3 },
   { id:'dicht-rolle', kategorie:'verbrauch', bezeichnung:'Dichtstreifen Rollenware', einheit:'m', preis:1.5 },
@@ -259,7 +259,11 @@ ok('[P-18] Kopplungsmuttern sind EINE Position mit der Gesamtmenge',
   && byKey('kupplung').menge===W.bom.verbindungsmuttern+W.bom.kopplungsmuttern_basis
   && byKey('kupplung').ep===0.65);
 ok('Spannplatten = bom', byKey('spannplatte').menge===W.bom.spannplatten);
-ok('Senkkopfschrauben = bom', byKey('senkkopf').menge===W.bom.senkkopfschrauben);
+// #92 Die Fussschraube heisst SECHSKANTSCHRAUBE — die Positionskennung `senkkopf` und die
+// Menge aus dem Rechenkern bleiben dabei unveraendert (keine Migration, kein Formatbump).
+ok('Fussschraube: Bezeichnung Sechskantschraube bei unveraenderter Kennung (#92)',
+  byKey('senkkopf').label==='Sechskantschraube (Fuß)' && !/Senkkopf/.test(byKey('senkkopf').label));
+ok('Fussschrauben = bom (Menge unveraendert)', byKey('senkkopf').menge===W.bom.senkkopfschrauben);
 const dicht=byKey('dicht');
 ok('Dichtstreifen in m = bom/1000', dicht.unit==='m' && Math.abs(dicht.menge - W.bom.dichtstreifen_mm/1000)<0.01);
 ok('GP = Menge × EP', Math.abs(find('i3').gp - find('i3').menge*find('i3').ep)<1e-9);

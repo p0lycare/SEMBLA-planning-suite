@@ -320,7 +320,7 @@ export function semblaBomItems(w) {
     // kopplungsmuttern_basis) — nur die Bestellzeile ist eine.
     { key: "kupplung",    label: "Kopplungsmutter (Stangenstöße und Fuß)", unit: "Stk",
       menge: b.verbindungsmuttern + b.kopplungsmuttern_basis },
-    { key: "senkkopf",    label: "Senkkopfschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
+    { key: "senkkopf",    label: "Sechskantschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
     { key: "spannmutter", label: "Spannmutter",                       unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
     // [A-10]/[A-12] Bodenblech: je verwendeter Standardlänge und je Sonder-Fertigmaß eine
