@@ -1,6 +1,6 @@
 {
   "format": "SEMBLA-Bauteilkatalog",
-  "version": 1,
+  "version": 2,
   "name": "SEMBLA Standardkatalog (Beispieldaten, teils vorläufig — fachlich unbestätigt)",
   "hinweis": "Übernimmt die im Produkt vorhandenen öffentlichen Preis-/Maßvorgaben (Preise aus eingaben.kosten.preise, Maße aus sembla-core.js und eingaben.aufbau). Produkte mit dem Feld „hinweis“ tragen vorläufige, frei angenommene Beispielwerte und sind KEINE bestätigten Kennwerte. Das Feld „rollen“ benennt je Produkt die Verwendungsstelle, die es im Regelfall ausführt — daraus belegen Modul 0/1/2 leere Auswahlen vor ([P-18]); umwählen ist jederzeit möglich.",
   "produkte": [
@@ -310,6 +310,18 @@
       "preis": 1.5,
       "rollen": ["dicht"],
       "hinweis": "vorläufig — fachlich unbestätigt: Meterpreis der Rollenware ist ein angenommener Beispielwert (das Produkt führt bisher nur den Stückpreis je 20-cm-Streifen)."
+    }
+  ],
+  "sets": [
+    {
+      "id": "set-wandabschluss",
+      "name": "Wandabschluss",
+      "hinweis": "Baugruppe an jeder Spannachse oben ([P-21]): Spannplatte, darauf die Unterlegscheibe, darauf die Spannmutter. Die Positionen benennen Verwendungsrollen und kein bestimmtes Produkt — welches Produkt eine Rolle ausfuehrt, waehlt die Wand ([P-13]). Aufgeloest wird die Baugruppe allein im Stuecklisten-Baustein ([P-23]); die Zahl der Einbaustellen kommt aus dem Rechenkern und nicht von hier.",
+      "positionen": [
+        { "rolle": "spannplatte", "menge": 1 },
+        { "rolle": "unterlegscheibe", "menge": 1 },
+        { "rolle": "spannmutter", "menge": 1 }
+      ]
     }
   ]
 }

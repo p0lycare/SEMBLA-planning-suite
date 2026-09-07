@@ -81,7 +81,10 @@ export function stuecklistePositionen(w, eingaben, katalog = null) {
   const rollenIdsMap = produktRollen(eingaben);
   const kontext = preisKontext(w, eingaben, katalog);
   // Genau die kanonischen Positionen des Wandelements — keine Aufbau-/Beplankungszeile mehr.
-  const items = semblaBomItems(w).filter(it => !BEPLANKUNG_KEYS.has(it.key));
+  // [P-23] Der Katalog wird DURCHGEREICHT: Baugruppen loest allein `semblaBomItems()` auf.
+  // Hier wird davon nichts nachgerechnet — Modul 4 und der zentrale Export sehen damit
+  // dieselbe aufgeloeste Stueckliste.
+  const items = semblaBomItems(w, katalog).filter(it => !BEPLANKUNG_KEYS.has(it.key));
   return items.map(it => {
     const r = loesePreis(it, rollenIdsMap, katalog, kontext);
     const p = r.produkt;

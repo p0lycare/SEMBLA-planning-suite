@@ -1,6 +1,9 @@
 // Drift-Schutz: die gemeinsame semblaBom() muss mit der Core-BOM übereinstimmen.
+import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "./docs/shared/sembla-core.js";
-import { einbauteile, semblaBom, semblaBomItems } from "./docs/shared/sembla-bom.js";
+import { einbauteile, semblaBom, semblaBomItems, semblaBomSets } from "./docs/shared/sembla-bom.js";
+import { parseKatalog } from "./docs/shared/sembla-katalog.js";
+import { stuecklistePositionen } from "./docs/shared/sembla-export.js";
 
 let pass=0, fail=0; const t=(n,c)=>{ if(c)pass++; else { fail++; console.log("FAIL  "+n); } };
 const cases=[
@@ -201,6 +204,110 @@ for(const [name,l,h,ops] of cases){
       && ges.unit==='m' && ges.menge===+((roh.bom.dichtstreifen_mm/1000).toFixed(2))
       && ges.nachrichtlich===true; })());
   t("A-6 · Positionszahl unterscheidet sich um genau zwei", iMit.length===iOhne.length+2);
+}
+// ---- [P-23]/#94 Baugruppen-Aufloesung am ECHTEN Pfad ------------------------------------
+// Gefahren wird der reale Weg: Repo-Vorlage einlesen -> `parseKatalog` -> `buildWall` ->
+// `semblaBomItems(w, katalog)` und `stuecklistePositionen(w, eingaben, katalog)`. Verglichen
+// wird Position fuer Position gegen den Aufruf OHNE Katalog: die Aufloesung darf die
+// ausgewiesene Menge NICHT bewegen (keine Doppelzaehlung, keine erfundene Menge).
+{
+  const KAT = parseKatalog(readFileSync(new URL("./docs/vorlagen/SEMBLA_Standardkatalog.json",
+    import.meta.url), "utf8"));
+  const EING = {};   // Mengen haengen nicht an der Produktwahl; Preise sind hier nicht Gegenstand
+  const spur = its => JSON.stringify(its.map(it => [it.key, it.mass_mm ?? null,
+    it.fertigmass_mm ?? null, it.menge]));
+
+  t("P-23 · Vorlage traegt Katalogformat v2 und genau eine Baugruppe „Wandabschluss“",
+    KAT.version === 2 && KAT.sets.length === 1 && KAT.sets[0].id === "set-wandabschluss"
+    && KAT.sets[0].name === "Wandabschluss");
+  t("P-23 · die Baugruppe fuehrt je eine Rollenposition mit Menge 1",
+    JSON.stringify(KAT.sets[0].positionen)
+      === JSON.stringify([{ rolle: "spannplatte", menge: 1 },
+                          { rolle: "unterlegscheibe", menge: 1 },
+                          { rolle: "spannmutter", menge: 1 }]));
+
+  const ohneSets = { ...KAT, sets: [] };
+  // Auch eine Wand mit KOPFBLECH ist dabei: dort gibt es keine Spannplatte und damit keine
+  // Baugruppe, die Spannmutter sitzt aber unmittelbar auf dem Blech und bleibt flacher Rest.
+  const faelle = [
+    ["glatt",   buildWall("set_glatt", 2000, 2600, [])],
+    ["tuer",    buildWall("set_tuer", 2500, 2600, [new Opening(5, 11, 0, 10, "tuer")])],
+    ["staffel", buildWall("set_staffel", 4500, 2600,
+      [new Opening(4, 8, 0, 10, "tuer"), new Opening(12, 16, 4, 9, "fenster")])],
+    ["kopfblech", buildWall("set_blech", 2000, 2600, [], null, { top_connection: "blech" })],
+  ];
+  for (const [nm, w] of faelle) {
+    const flach = semblaBomItems(w), auf = semblaBomItems(w, KAT);
+    t("P-23 · " + nm + " · Stueckliste mit Baugruppen ist mengengleich (Position fuer Position)",
+      spur(flach) === spur(auf));
+    t("P-23 · " + nm + " · keine neue und keine verlorene Position",
+      flach.length === auf.length && flach.map(x => x.key).join() === auf.map(x => x.key).join());
+    // Der Kern der Regel: die drei Einzelteile stehen je EINMAL, mit exakt der Kernmenge.
+    t("P-23 · " + nm + " · Spannplatte, Unterlegscheibe und Spannmutter je genau einmal", (() => {
+      const je = k => auf.filter(it => it.key === k);
+      return ["spannplatte", "unterlegscheibe", "spannmutter"].every(k => je(k).length === 1)
+        && je("spannplatte")[0].menge === w.bom.spannplatten
+        && je("unterlegscheibe")[0].menge === w.bom.spannplatten
+        && je("spannmutter")[0].menge === w.bom.spannmuttern; })());
+    // Instanzzahl ausschliesslich aus dem unveraenderten Rechenkern.
+    t("P-23 · " + nm + " · Instanzzahl = bom.spannplatten", (() => {
+      const st = semblaBomSets(w, KAT), i = st.instanzen[0];
+      return st.instanzen.length === 1 && i.feld === "spannplatten"
+        && i.anzahl === w.bom.spannplatten && st.meldungen.length === 0; })());
+    // Ein Katalog OHNE Baugruppen ergibt bitgenau den Stand ohne Baugruppen.
+    t("P-23 · " + nm + " · Katalog ohne Baugruppen = Stand ohne Baugruppen (bitgenau)",
+      JSON.stringify(semblaBomItems(w, ohneSets)) === JSON.stringify(flach));
+    t("P-23 · " + nm + " · ohne Katalog bleibt der Rueckgabewert bitgleich",
+      JSON.stringify(semblaBomItems(w)) === JSON.stringify(flach));
+    // Derselbe Weg durch `stuecklistePositionen` — Modul 4 und der zentrale Export.
+    const pMit = stuecklistePositionen(w, EING, KAT), pOhne = stuecklistePositionen(w, EING, ohneSets);
+    // `stuecklistePositionen` fuehrt kein `mass_mm` mit (nur `fertigmass_mm`) — verglichen
+    // werden deshalb Schluessel, Fertigmass und Menge.
+    const spurP = its => JSON.stringify(its.map(it => [it.key, it.fertigmass_mm ?? null, it.menge]));
+    t("P-23 · " + nm + " · stuecklistePositionen reicht den Katalog durch und bleibt mengengleich",
+      spurP(pMit) === spurP(pOhne)
+      && spurP(pMit) === spurP(flach.filter(it => !["latte", "verbinder", "beplankung"].includes(it.key))));
+  }
+
+  // Kopfblech-Gegenprobe: keine Baugruppe, die Spannmutter bleibt trotzdem vollstaendig stehen.
+  {
+    const w = faelle[3][1], st = semblaBomSets(w, KAT);
+    const mu = semblaBomItems(w, KAT).find(it => it.key === "spannmutter");
+    t("P-23 · Kopfblech: keine Baugruppen-Instanz, Spannmutter bleibt flacher Rest",
+      w.bom.spannplatten === 0 && st.instanzen[0].anzahl === 0 && st.positionen.length === 0
+      && mu.menge === w.bom.spannmuttern && mu.menge > 0 && st.meldungen.length === 0);
+  }
+
+  // Unbekannte Verwendungsrolle: BENANNT gemeldet, und keine Position bekommt eine geratene
+  // Menge — die Liste bleibt die ohne Baugruppen.
+  {
+    const w = faelle[0][1];
+    const kaputt = { ...KAT, sets: [{ id: "set-wandabschluss", name: "Wandabschluss",
+      positionen: [{ rolle: "gibtsnicht", menge: 1 }, { rolle: "spannplatte", menge: 1 }] }] };
+    const st = semblaBomSets(w, kaputt);
+    t("P-23 · unbekannte Verwendungsrolle wird benannt gemeldet",
+      st.meldungen.length === 1 && /gibtsnicht/.test(st.meldungen[0])
+      && /keine Position/.test(st.meldungen[0]));
+    t("P-23 · unbekannte Rolle erzeugt keine geratene Menge und keine Position",
+      st.positionen.length === 1 && st.positionen[0].key === "spannplatte"
+      && spur(semblaBomItems(w, kaputt)) === spur(semblaBomItems(w)));
+    // Eine Baugruppe ohne bekannte Instanzquelle bleibt unaufgeloest — und wird gesagt.
+    const fremd = { ...KAT, sets: [{ id: "set-irgendwas", name: "Irgendwas",
+      positionen: [{ rolle: "spannplatte", menge: 1 }] }] };
+    const stF = semblaBomSets(w, fremd);
+    t("P-23 · Baugruppe ohne bekannte Instanzquelle: gemeldet, nichts geraten",
+      stF.instanzen.length === 0 && stF.positionen.length === 0
+      && stF.meldungen.length === 1 && /Irgendwas/.test(stF.meldungen[0])
+      && JSON.stringify(semblaBomItems(w, fremd)) === JSON.stringify(semblaBomItems(w)));
+    // Fordert eine Baugruppe mehr, als der Rechenkern fuehrt: die gerechnete Menge gilt.
+    const zuviel = { ...KAT, sets: [{ id: "set-wandabschluss", name: "Wandabschluss",
+      positionen: [{ rolle: "spannplatte", menge: 3 }] }] };
+    t("P-23 · Ueberforderung: ausgewiesen bleibt die gerechnete Menge, Abweichung benannt", (() => {
+      const st2 = semblaBomSets(w, zuviel);
+      const pl = semblaBomItems(w, zuviel).find(it => it.key === "spannplatte");
+      return pl.menge === w.bom.spannplatten && st2.meldungen.length === 1
+        && /gerechnete/.test(st2.meldungen[0]); })());
+  }
 }
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail?1:0);

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-08",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 94,
+    titel: "Der Standardkatalog führt die Baugruppe „Wandabschluss“ — die Stückliste zeigt sie als Einzelteile",
+    testbitte: "In Modul 0 „Standardkatalog laden“ und den Katalog öffnen: die Baugruppe "
+      + "„Wandabschluss“ steht mit Spannplatte, Unterlegscheibe und Spannmutter darin. In Modul 4 "
+      + "stehen diese drei Teile mit unverändert denselben Mengen.",
+  },
+  {
     id: "chg-20260907-07",
     datum: "2026-09-07",
     typ: "doku",

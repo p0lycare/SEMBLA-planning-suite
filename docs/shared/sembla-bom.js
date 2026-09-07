@@ -26,6 +26,13 @@
  * Das Kopfblech bleibt eine Modulzählung. `bom.stahlblech_module` bleibt als Aggregat
  * erhalten (Anzahl Bodenblechteile + Kopfblechmodule).
  *
+ * Kennt der wirksame Bauteilkatalog BAUGRUPPEN ([P-21]), werden sie hier — und nur hier
+ * ([P-23]) — in Einzelteile aufgeloest und merkmalsgleich mit den flachen Positionen
+ * desselben Stuecklistenschluessels aggregiert. Die Ausgabe bleibt FLACH ([P-19]), und die
+ * ausgewiesene Menge bleibt exakt die des Rechenkerns: die Instanzzahl kommt aus der
+ * unveraenderten Core-BOM, und was eine Baugruppe beitraegt, wird der flachen Position
+ * zuvor abgezogen.
+ *
  * Eigene Datei (shared/-Regel b): mehrere mögliche Nutzer (Modul 4 Stückliste)
  * und eigene Tests (`test-shared.mjs` prüft gegen die Core-BOM). Früher lag der
  * Block in `sembla-shared.js` und wurde per `sync-shared.mjs` in die Tools kopiert —
@@ -262,7 +269,7 @@ export function semblaBom(w) {
 function _abgedichtet(w) { return !!w && w.abdichtung === "abgedichtet"; }
 
 /**
- * Kanonische Positions-Liste für die Stückliste — überall identisch.
+ * FLACHE Positions-Liste der Stückliste — die Bauteile, wie der Rechenkern sie führt.
  * unit 'Stk' = Stückzahl, 'm' = Länge in Metern (dezimal).
  *
  * `nachrichtlich: true` kennzeichnet eine Position, die eine bereits als Einbauposition
@@ -276,10 +283,12 @@ function _abgedichtet(w) { return !!w && w.abdichtung === "abgedichtet"; }
  * und brauchen deshalb keine eigene Filterung (die waere ein zweiter, driftfaehiger Ort).
  * `semblaBom()` bleibt unberührt: `stossfugen` und `dichtstreifen_mm` sind Mengen des
  * Rechenkerns und bleiben unabhaengig von der Abdichtung lesbar.
- * @param {any} w Wandelement
+ *
+ * Diese Funktion ist der FLACHE Stand: sie kennt keine Baugruppe. Die Aufloesung der
+ * Baugruppen nach [P-23] sitzt in `semblaBomItems()` darueber — genau eine Stelle.
+ * @param {any} w Wandelement @param {any} b Mengen aus `semblaBom(w)`
  */
-export function semblaBomItems(w) {
-  const b = semblaBom(w);
+function _flachePositionen(w, b) {
   const bd = _semNum(b.stahlblech_dicke_mm);
   const cm = mm => _semNum(mm / 10);
   // Gewindestangenstücke tragen zusätzlich die Einbauteil-Kennzeichnung ([P-19]): `art`
@@ -357,6 +366,205 @@ export function semblaBomItems(w) {
       nachrichtlich: true },
     ] : []),
   ]);
+}
+
+// ------------------------------------------------- Baugruppen-Aufloesung ([P-23], #94)
+//
+// Ein Set ist die DEFINITIONSEBENE des Katalogs ([P-21]); die Stueckliste bleibt FLACH ([P-19]).
+// Aufgeloest wird an GENAU DIESER STELLE — kein weiterer Leser (Modul 4, `stuecklistePositionen`,
+// Gesamtstueckliste, zentraler Export, Zeichnungsblatt) rechnet Baugruppen nach.
+//
+// Die Aufloesung ist eine RE-AUSDRUECKUNG des gerechneten Standes und KEINE zweite Mengenquelle:
+// je Instanz traegt eine Set-Position ihre Menge bei, und genau diese Menge wird der flachen
+// Position zuvor ABGEZOGEN. Die ausgewiesene Menge je Position bleibt damit exakt die des
+// Rechenkerns — es gibt keine Doppelzaehlung und keine erfundene Menge ([P-9]).
+
+/**
+ * Instanzquelle je Baugruppe: welches Feld der Core-BOM die Zahl der real eingebauten
+ * Baugruppen DIESER Wand nennt.
+ *
+ * Die Bindung liegt HIER und nicht im Katalog: die Instanzzahl ist eine Aussage des
+ * RECHENKERNS ueber die Wand und keine Katalogangabe — sie im Katalog zu fuehren hiesse,
+ * eine gerechnete Zahl konfigurierbar zu machen ([P-6]). Der Katalog definiert allein,
+ * WORAUS eine Baugruppe besteht ([P-21]).
+ *
+ * `set-wandabschluss` -> `spannplatten`: der Rechenkern zaehlt je Anker mit Spannplatte eine
+ * Platte (Segmentfuss ueber einer Oeffnung und Segmentkopf, sofern nicht Kopfblech). Genau dort
+ * sitzt der Wandabschluss. Die Muttern, die unmittelbar auf dem KOPFBLECH sitzen, stehen in
+ * `spannmuttern` und gehoeren KEINER Baugruppe an — sie bleiben flacher Rest (s. u.).
+ *
+ * Eine Baugruppe ohne Eintrag hier hat keine bekannte Instanzquelle: sie wird BENANNT GEMELDET
+ * und bleibt unaufgeloest — eine Anzahl wird nicht geraten ([P-9]).
+ */
+export const SET_INSTANZQUELLE = { "set-wandabschluss": "spannplatten" };
+
+/** Ganze Zahl ab 1 (Set-Positionsmenge nach [P-21])? */
+function _ganzAb1(v) { const n = Number(v); return Number.isInteger(n) && n >= 1; }
+
+/** Traegt die Set-Position eine nicht leere Angabe in diesem Feld? */
+function _ref(pos, feld) {
+  const v = pos ? pos[feld] : undefined;
+  if (v === undefined || v === null) return null;
+  const t = String(v).trim();
+  return t === "" ? null : t;
+}
+
+/**
+ * Baugruppen des wirksamen Katalogs in Einzelteilmengen aufloesen — REIN, ohne Speicherzugriff
+ * und ohne Import: `sembla-bom.js` ist importfrei und bleibt es (der Mengenbaustein darf nicht
+ * an die Katalog- oder Speicherschicht haengen).
+ *
+ * Weil der Rollenschluessel ZUGLEICH der Stuecklistenschluessel ist ([P-13]), braucht die
+ * Zuordnung Rolle -> Position keine zweite Achse und keine Rollentabelle. Eine Verwendungsstelle
+ * ohne Position in dieser Wand und eine mehrfach belegte (mehrere Standardlaengen je Fertigmass,
+ * [Z-2]) sind deshalb nicht eindeutig zuordenbar und werden GEMELDET, nicht geraten.
+ *
+ * @param {Array<any>} items flache Positionen dieser Wand
+ * @param {any} b Mengen aus `semblaBom(w)`
+ * @param {any} katalog wirksamer Bauteilkatalog (oder null)
+ * @returns {{instanzen:Array<{set:string,name:string,feld:string,anzahl:number}>,
+ *   positionen:Array<{set:string,key:string,je_instanz:number,stueck:number}>,
+ *   mengen:Map<string,number>, meldungen:string[]}|null} null = keine Baugruppen im Spiel
+ */
+function _setAufloesung(items, b, katalog) {
+  const sets = (katalog && Array.isArray(katalog.sets)) ? katalog.sets : [];
+  if (!sets.length) return null;
+  const produkte = (katalog && Array.isArray(katalog.produkte)) ? katalog.produkte : [];
+
+  const jeKey = new Map();
+  for (const it of items) jeKey.set(it.key, (jeKey.get(it.key) || 0) + 1);
+  const basisJeKey = new Map();
+  for (const it of items) if (jeKey.get(it.key) === 1) basisJeKey.set(it.key, it.menge);
+
+  const meldungen = [], instanzen = [], positionen = [], beitrag = new Map();
+
+  for (const s of sets) {
+    const id = String((s && s.id) || "").trim();
+    const name = String((s && s.name) || "").trim() || id || "ohne Namen";
+    const feld = Object.prototype.hasOwnProperty.call(SET_INSTANZQUELLE, id)
+      ? SET_INSTANZQUELLE[id] : null;
+    if (!feld) {
+      meldungen.push("Baugruppe „" + name + "“ hat keine bekannte Instanzquelle im "
+        + "Rechenkern — sie wird nicht aufgelöst, und eine Anzahl wird nicht geraten.");
+      continue;
+    }
+    const anzahl = Number(b[feld]) || 0;
+    instanzen.push({ set: id, name, feld, anzahl });
+    if (anzahl <= 0) continue;   // diese Einbaustelle gibt es an dieser Wand nicht
+    const liste = (s && Array.isArray(s.positionen)) ? s.positionen : [];
+    for (let i = 0; i < liste.length; i++) {
+      const pos = liste[i];
+      const nr = "Baugruppe „" + name + "“, Position " + (i + 1) + ": ";
+      const refP = _ref(pos, "produkt"), refR = _ref(pos, "rolle");
+      let key = null;
+      if (refP && refR) {
+        meldungen.push(nr + "es ist genau eine Angabe zulässig — entweder ein Produkt "
+          + "oder eine Verwendungsrolle, nicht beides.");
+        continue;
+      } else if (refR) {
+        key = refR;
+      } else if (refP) {
+        const p = produkte.find(x => x && String(x.id) === refP);
+        if (!p) {
+          meldungen.push(nr + "Produkt „" + refP + "“ ist im wirksamen Katalog nicht "
+            + "vorhanden.");
+          continue;
+        }
+        const rl = (Array.isArray(p.rollen) ? p.rollen : []).map(String);
+        if (rl.length !== 1) {
+          meldungen.push(nr + "Produkt „" + refP + "“ nennt "
+            + (rl.length === 0 ? "keine" : "mehrere") + " Verwendungsrollen — die "
+            + "Einbaustelle ist damit nicht eindeutig.");
+          continue;
+        }
+        key = rl[0];
+      } else {
+        meldungen.push(nr + "weder ein Produkt noch eine Verwendungsrolle angegeben.");
+        continue;
+      }
+      if (!_ganzAb1(pos && pos.menge)) {
+        meldungen.push(nr + "Menge „" + String(pos && pos.menge) + "“ ist keine ganze "
+          + "Zahl ab 1.");
+        continue;
+      }
+      if (!jeKey.has(key)) {
+        meldungen.push(nr + "Verwendungsstelle „" + key + "“ führt in der "
+          + "Stückliste dieser Wand keine Position — die Baugruppe bleibt dort "
+          + "unaufgelöst.");
+        continue;
+      }
+      if (jeKey.get(key) > 1) {
+        meldungen.push(nr + "Verwendungsstelle „" + key + "“ trägt mehrere "
+          + "Positionen (je Fertigmaß eine) — die Zuordnung ist nicht eindeutig und "
+          + "wird nicht geraten.");
+        continue;
+      }
+      const stueck = anzahl * Number(pos.menge);
+      beitrag.set(key, (beitrag.get(key) || 0) + stueck);
+      positionen.push({ set: id, key, je_instanz: Number(pos.menge), stueck });
+    }
+  }
+
+  const mengen = new Map();
+  for (const [key, stueck] of beitrag) {
+    const basis = basisJeKey.has(key) ? basisJeKey.get(key) : 0;
+    // Abgezogen wird nur, was der Rechenkern an dieser Einbaustelle wirklich fuehrt; der
+    // verbleibende REST gehoert keiner Baugruppe (die Spannmutter unmittelbar auf dem
+    // Kopfblech) und bleibt flach stehen. Fordert eine Baugruppe MEHR, bleibt die
+    // ausgewiesene Menge die gerechnete und die Abweichung wird benannt ([P-9]).
+    const gedeckt = Math.min(stueck, basis);
+    if (stueck > basis) {
+      meldungen.push("Baugruppen fordern " + stueck + "× „" + key + "“, der "
+        + "Rechenkern führt an dieser Wand " + basis + " — die ausgewiesene Menge "
+        + "bleibt die gerechnete; es wird nichts erfunden.");
+    }
+    const rest = basis - gedeckt;          // nicht von einer Baugruppe erfasst
+    mengen.set(key, rest + gedeckt);       // flacher Rest + aufgeloeste Einzelteile
+  }
+  return { instanzen, positionen, mengen, meldungen };
+}
+
+/**
+ * KANONISCHE Positionsliste der Stueckliste ([P-19]) — die flachen Bauteile dieser Wand,
+ * mit den Baugruppen des wirksamen Katalogs in Einzelteile aufgeloest ([P-23]).
+ *
+ * OHNE Katalog (oder ohne Baugruppen darin) ist der Rueckgabewert bit-gleich der flachen
+ * Liste: es gibt keinen zweiten Rechenweg und keinen Unterschied zum Stand vor den Baugruppen.
+ * Die Ausgabe bleibt FLACH — keine Vater-Kind-Beziehung, keine Baugruppenzeile, keine neue
+ * Position und kein geaendertes `key`/`mass_mm`/`fertigmass_mm` (die Positionskennung nach
+ * [P-20] haengt daran).
+ *
+ * @param {any} w Wandelement @param {any} [katalog] wirksamer Bauteilkatalog
+ */
+export function semblaBomItems(w, katalog = null) {
+  const b = semblaBom(w);
+  const items = _flachePositionen(w, b);
+  const auf = _setAufloesung(items, b, katalog);
+  if (!auf || !auf.mengen.size) return items;
+  return items.map(it => (auf.mengen.has(it.key)
+    ? { ...it, menge: auf.mengen.get(it.key) } : it));
+}
+
+/**
+ * Nachweis der Baugruppen-Aufloesung ([P-23]) — welche Baugruppen mit welcher Instanzzahl
+ * gegriffen haben und was NICHT aufloesbar war. Reine Leseansicht fuer die Oberflaeche und die
+ * Tests; `semblaBomItems()` bleibt eine reine Positionsliste und benutzt dieselbe Ableitung
+ * (es gibt nur eine).
+ *
+ * Eine unaufloesbare Baugruppenposition steht hier BENANNT und wird nirgends stillschweigend
+ * uebergangen; sie erzeugt weder eine Position noch eine Menge.
+ *
+ * @param {any} w Wandelement @param {any} [katalog] wirksamer Bauteilkatalog
+ * @returns {{instanzen:Array<{set:string,name:string,feld:string,anzahl:number}>,
+ *   positionen:Array<{set:string,key:string,je_instanz:number,stueck:number}>,
+ *   meldungen:string[]}}
+ */
+export function semblaBomSets(w, katalog = null) {
+  const b = semblaBom(w);
+  const auf = _setAufloesung(_flachePositionen(w, b), b, katalog);
+  return auf
+    ? { instanzen: auf.instanzen, positionen: auf.positionen, meldungen: auf.meldungen }
+    : { instanzen: [], positionen: [], meldungen: [] };
 }
 
 /** Wandreferenz an jede Position schreiben ([P-19]) — ohne die Positionsreihenfolge zu ändern. */

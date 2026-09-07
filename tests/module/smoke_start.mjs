@@ -1075,14 +1075,23 @@ const katRoh = JSON.parse(vorlageDatei(V_KAT));
 // Richtige: dass Parser, Laden, Speichern und Roundtrip KEIN Produkt verlieren oder erfinden.
 const V_KAT_ANZ = katRoh.produkte.length;
 const wandRoh = JSON.parse(vorlageDatei(V_WAND));
-// #94: Die Vorlagendatei bleibt bewusst bei v1 — sie ist damit der REALE Migrationsbeleg
-// des Ladewegs. Geprueft wird deshalb beides: die Datei ist v1, und `parseKatalog` hebt sie
-// verlustfrei auf v2 (Produkte unveraendert, leere Baugruppenliste, [P-22]).
-ok('Katalogvorlage traegt Katalogformat v1 und wird beim Laden verlustfrei auf v2 migriert',
-  katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === 1 && KAT.KATALOG_VERSION === 2
+// #94: Die Vorlagendatei traegt seit der Set-Aufloesung Katalogformat v2 und genau die eine
+// Baugruppe „Wandabschluss" ([P-23]) — Rollenpositionen, kein bestimmtes Produkt, je Menge 1.
+ok('Katalogvorlage traegt Katalogformat v2 und genau die Baugruppe „Wandabschluss"',
+  katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === 2 && KAT.KATALOG_VERSION === 2
   && KAT.parseKatalog(vorlageDatei(V_KAT)).version === 2
   && JSON.stringify(KAT.parseKatalog(vorlageDatei(V_KAT)).produkte) === JSON.stringify(katRoh.produkte)
-  && KAT.parseKatalog(vorlageDatei(V_KAT)).sets.length === 0);
+  && katRoh.sets.length === 1 && katRoh.sets[0].id === 'set-wandabschluss'
+  && JSON.stringify(katRoh.sets[0].positionen) === JSON.stringify(
+    [{ rolle: 'spannplatte', menge: 1 }, { rolle: 'unterlegscheibe', menge: 1 },
+     { rolle: 'spannmutter', menge: 1 }]));
+// Die v1-Migration bleibt geprueft ([P-22]) — am selben echten Ladeweg, mit einer aus der
+// Vorlage ABGELEITETEN v1-Fassung: Produkte unveraendert, leere Baugruppenliste.
+ok('eine v1-Fassung derselben Vorlage wird beim Laden verlustfrei auf v2 migriert', (() => {
+  const alt = { ...katRoh, version: 1 }; delete alt.sets;
+  const mig = KAT.parseKatalog(JSON.stringify(alt));
+  return mig.version === 2 && mig.sets.length === 0
+    && JSON.stringify(mig.produkte) === JSON.stringify(katRoh.produkte); })());
 ok('Katalogvorlage ist gegen den echten Validator fehlerfrei',
   KAT.validiereKatalog(katRoh).length === 0
   && KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length === V_KAT_ANZ);
@@ -1302,34 +1311,39 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
     $('ks-pos-add').dispatch('click');
   }
 
-  ok('#94 der Katalog startet ohne Baugruppe (v1-Vorlage, [P-22])', sets().length === 0);
+  // Die Vorlage bringt seit [P-23] die Baugruppe „Wandabschluss" mit; der Dialogtest legt
+  // daneben eine EIGENE an und laesst die Vorlagenbaugruppe unberuehrt.
+  ok('#94 der Katalog startet mit genau der Baugruppe der Vorlage ([P-23])',
+    sets().length === 1 && sFind('set-wandabschluss')?.name === 'Wandabschluss');
 
   // (a) Anlegen — die Kennung entsteht aus dem Namen, gespeichert wird ueber denselben
   //     Weg wie jede Produktaenderung (der Kopierschutz #102 greift dabei unveraendert).
-  $('ks-name').value = 'Wandabschluss';
+  $('ks-name').value = 'Probe';
   $('ks-neu').dispatch('click');
   ok('#94 Set angelegt und gemeldet',
-    sets().length === 1 && sFind('set-wandabschluss')?.name === 'Wandabschluss'
+    sets().length === 2 && sFind('set-probe')?.name === 'Probe'
     && /Baugruppe angelegt/.test(kMsgTxt()) && !kFehler());
   ok('#94 die neue Baugruppe steht in der Tabelle',
-    /data-set="set-wandabschluss"/.test($('ks-tbody').innerHTML)
-    && /Wandabschluss/.test($('ks-tbody').innerHTML) && $('ks-leer').hidden === true);
+    /data-set="set-probe"/.test($('ks-tbody').innerHTML)
+    && /Probe/.test($('ks-tbody').innerHTML) && $('ks-leer').hidden === true);
+  ok('#94 die Baugruppe der Vorlage bleibt dabei unberuehrt',
+    sFind('set-wandabschluss').positionen.length === 3);
   $('ks-name').value = '';
   $('ks-neu').dispatch('click');
   ok('#94 ein Set ohne Namen wird benannt abgewiesen',
-    sets().length === 1 && kFehler() && /Namen/.test(kMsgTxt()));
+    sets().length === 2 && kFehler() && /Namen/.test(kMsgTxt()));
 
   // (b) Positionen: eine Produkt- und eine Rollenposition
   sPos('produkt', 'gewindestange-m10-1000', 2);
   ok('#94 Produktposition hinzugefuegt',
-    sFind('set-wandabschluss').positionen.length === 1
-    && sFind('set-wandabschluss').positionen[0].produkt === 'gewindestange-m10-1000'
-    && sFind('set-wandabschluss').positionen[0].menge === 2 && !kFehler());
+    sFind('set-probe').positionen.length === 1
+    && sFind('set-probe').positionen[0].produkt === 'gewindestange-m10-1000'
+    && sFind('set-probe').positionen[0].menge === 2 && !kFehler());
   sPos('rolle', 'kupplung', 4);
   ok('#94 Rollenposition hinzugefuegt — beide Positionsformen im selben Set',
-    sFind('set-wandabschluss').positionen.length === 2
-    && sFind('set-wandabschluss').positionen[1].rolle === 'kupplung'
-    && sFind('set-wandabschluss').positionen[1].menge === 4);
+    sFind('set-probe').positionen.length === 2
+    && sFind('set-probe').positionen[1].rolle === 'kupplung'
+    && sFind('set-probe').positionen[1].menge === 4);
   ok('#94 die Positionen stehen mit Art und Menge in der Oberflaeche',
     /2 × /.test($('ks-tbody').innerHTML) && /Kopplungsmutter/.test($('ks-tbody').innerHTML)
     && /Verwendungsrolle/.test($('ks-tbody').innerHTML));
@@ -1339,30 +1353,30 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
   sPos('produkt', 'gewindestange-m10-1000', 0);
   ok('#94 Menge 0 wird sichtbar abgewiesen und speichert nichts',
     kFehler() && /mindestens 1/.test(kMsgTxt()) && kSlot() === vorFehler
-    && sFind('set-wandabschluss').positionen.length === 2);
+    && sFind('set-probe').positionen.length === 2);
 
   // (d) Umbenennen — die Kennung bleibt stabil ([P-21])
-  $('ks-name').value = 'Wandabschluss oben';
-  sZeile('set-umbenennen', 'set-wandabschluss');
+  $('ks-name').value = 'Probe oben';
+  sZeile('set-umbenennen', 'set-probe');
   ok('#94 Set umbenannt, Kennung unveraendert',
-    sFind('set-wandabschluss')?.name === 'Wandabschluss oben'
+    sFind('set-probe')?.name === 'Probe oben'
     && /umbenannt/.test(kMsgTxt()) && !kFehler());
 
   // (e) Position bearbeiten und entfernen
-  sZeile('pos-bearbeiten', 'set-wandabschluss', 0);
+  sZeile('pos-bearbeiten', 'set-probe', 0);
   ok('#94 Bearbeiten laedt die Position in die Felder',
     $('ks-art').value === 'produkt' && $('ks-ref').value === 'gewindestange-m10-1000'
     && $('ks-menge').value === '2' && $('ks-pos-add').textContent === 'Position übernehmen');
   $('ks-menge').value = '5';
   $('ks-pos-add').dispatch('click');
   ok('#94 geaenderte Menge uebernommen — keine zusaetzliche Position',
-    sFind('set-wandabschluss').positionen.length === 2
-    && sFind('set-wandabschluss').positionen[0].menge === 5
+    sFind('set-probe').positionen.length === 2
+    && sFind('set-probe').positionen[0].menge === 5
     && $('ks-pos-add').textContent === 'Position hinzufügen');
-  sZeile('pos-loeschen', 'set-wandabschluss', 1);
+  sZeile('pos-loeschen', 'set-probe', 1);
   ok('#94 Position entfernt — nur diese eine',
-    sFind('set-wandabschluss').positionen.length === 1
-    && sFind('set-wandabschluss').positionen[0].produkt === 'gewindestange-m10-1000');
+    sFind('set-probe').positionen.length === 1
+    && sFind('set-probe').positionen[0].produkt === 'gewindestange-m10-1000');
   sPos('rolle', 'kupplung', 4);          // wieder herstellen fuer den Roundtrip
 
   // (f) DIE Whitelist-Probe: eine ganz normale Produktaenderung darf die Baugruppe
@@ -1370,7 +1384,7 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
   kZeile('bearbeiten', 'latte-40-60-1500');
   kpSpeichern();
   ok('#94 Set ueberlebt eine Produktbearbeitung (katalogObjekt fuehrt sets)',
-    sets().length === 1 && sFind('set-wandabschluss').positionen.length === 2
+    sets().length === 2 && sFind('set-probe').positionen.length === 2
     && kAnzahl() === V_KAT_ANZ);
 
   // (g) Export ueber den echten Knopf -> Import ueber das echte Dateifeld
@@ -1378,27 +1392,27 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
   const dateiText = letzterDownload;              // genau die Bytes des echten Downloads
   const dateiObj = JSON.parse(dateiText);
   ok('#94 die Exportdatei traegt Katalogformat v2 und die Baugruppen',
-    dateiObj.version === 2 && dateiObj.sets.length === 1
-    && dateiObj.sets[0].positionen.length === 2 && /Katalog exportiert/.test(kMsgTxt()));
+    dateiObj.version === 2 && dateiObj.sets.length === 2
+    && dateiObj.sets[1].positionen.length === 2 && /Katalog exportiert/.test(kMsgTxt()));
   const vorImport = JSON.stringify(sets());
   await $('k-import').dispatch('change', { target: { files: [kFile(dateiText, 'sets.json')], value: 'x' } });
   ok('#94 Import: dieselben Set-Definitionen, verlustfrei',
     JSON.stringify(sets()) === vorImport && kAnzahl() === V_KAT_ANZ && !kFehler());
   ok('#94 der Roundtrip laesst Kennung, Name, Art, Reihenfolge und Menge unveraendert',
-    sFind('set-wandabschluss').name === 'Wandabschluss oben'
-    && sFind('set-wandabschluss').positionen[0].produkt === 'gewindestange-m10-1000'
-    && sFind('set-wandabschluss').positionen[0].menge === 5
-    && sFind('set-wandabschluss').positionen[1].rolle === 'kupplung');
+    sFind('set-probe').name === 'Probe oben'
+    && sFind('set-probe').positionen[0].produkt === 'gewindestange-m10-1000'
+    && sFind('set-probe').positionen[0].menge === 5
+    && sFind('set-probe').positionen[1].rolle === 'kupplung');
   ok('#94 der Import ruehrt keine Produktreferenz einer Wand an ([P-13])',
     KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);
 
   // (h) Loeschen entfernt NUR die Definition — die Produkte bleiben
   confirmAntwort = true;
-  sZeile('set-loeschen', 'set-wandabschluss');
+  sZeile('set-loeschen', 'set-probe');
   confirmAntwort = false;
   ok('#94 Set geloescht, Produkte unberuehrt',
-    sets().length === 0 && kAnzahl() === V_KAT_ANZ && /gelöscht/.test(kMsgTxt())
-    && $('ks-leer').hidden === false);
+    sets().length === 1 && sFind('set-wandabschluss') && kAnzahl() === V_KAT_ANZ
+    && /gelöscht/.test(kMsgTxt()) && $('ks-leer').hidden === true);
 }
 
 ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
