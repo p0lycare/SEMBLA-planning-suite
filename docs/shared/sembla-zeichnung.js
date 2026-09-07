@@ -45,7 +45,14 @@
 
 import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
 import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
-         bodenblechSvg, bodenblechTeile, bodenblechStoesse } from "./sembla-montage.js";
+         bodenblechSvg, bodenblechTeile, bodenblechStoesse,
+         // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
+         SPANN_FARBE, mutterSvg, kopplungsmutterSvg, spannplatteSvg,
+         // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
+         ZWISCHENPUNKT, zwischenpunktSvg } from "./sembla-montage.js";
+// #110: die wirksamen Zwischenspannpunkte kommen aus der EINEN Ableitung des Rechenkerns —
+// hier wird nichts nachgerechnet und keine Punkthoehe erfunden.
+import { wirksameZwischenpunkte } from "./sembla-core.js";
 // #79: NUR der reine Normalisierer der Brandschutzklassifikation (F0/F30, Standard
 // F0) — kein Speicherzugriff, keine Lese- oder Schreibfunktion. Er liegt kanonisch in
 // storage.js, weil Modul 1 (der einzige Schreibweg) dieselbe Stelle nutzt; eine zweite
@@ -170,7 +177,9 @@ export const FARBE = {
   i3: "#e3e6ea", i2: "#cbd0d6", stein_rand: "#9aa1a9", stein_text: "#7c838c",
   oeffnung: "#c9461c", kontur: "#13202e", stahl: "#5b6673", stahl_rand: "#3a4350",
   stange: STUECK_FARBE.standard, stange_sonder: STUECK_FARBE.sonder, stange_rest: STUECK_FARBE.rest,
-  platte: "#14559c", mutter: "#0b3a73",
+  // #110: Kennfarben der Spannkomponenten kommen — wie die Stangenfarben — aus
+  // sembla-montage.js; die WERTE sind unveraendert.
+  platte: SPANN_FARBE.platte, mutter: SPANN_FARBE.mutter,
   mass: "#46505e", staffel: "#0a7f8c", reihe: "#8f96a0",
   // Verzahnung (#82): bewusst NICHT die Oeffnungsfarbe — ein Verzahnungsbereich ist
   // keine Oeffnung und kein Durchbruch ([G-10]) und darf mit ihnen nicht verwechselt
@@ -528,7 +537,9 @@ export function zeichnungSvg(w, opts = {}) {
   }
 
   // Vorspannstraenge: reale Segmente + reale Stangenstuecke (Kopplungen, Sonderlaengen)
-  const pw = Math.max(2.2, 110 * sc);
+  // Bezugsmass aller Spannkomponenten-Symbole (#110): die Lagenhoehe in Papier-mm. `pw` ist
+  // nur noch die bisherige SICHTBARKEITSUNTERGRENZE der Plattenbreite, kein eigenes Mass.
+  const lage = C * sc, pw = 2.2;
   for (const col of (w.tension_columns || [])) {
     const x = X(col.x_mm), lt = _obenBei(w, col.x_mm);
     for (const sg of _segmente(w, col)) {
@@ -545,14 +556,42 @@ export function zeichnungSvg(w, opts = {}) {
         const dick = st.art === "rest" ? 3.4 : 2.6;
         s += `<line x1="${_n(x)}" y1="${_n(Y(st.z0_mm))}" x2="${_n(x)}" y2="${_n(Y(st.z1_mm))}" `
           + `stroke="${stueckFarbe(st.art)}" stroke-width="${_n(SW * dick)}"/>`;
-        if (!letzter) s += `<circle cx="${_n(x)}" cy="${_n(Y(st.z1_mm))}" r="${_n(SW * 3)}" fill="${FARBE.mutter}"/>`;
+        // Der Stoss traegt die KOPPLUNGSMUTTER — als langer Zylinder in Seitenansicht (#110),
+        // aus derselben Funktion wie die Wandansicht von Modul 1. Kreis und Sechseck entfallen.
+        if (!letzter) s += kopplungsmutterSvg(x, Y(st.z1_mm), lage, { n: _n });
       }
       const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
       const ao = sg.anker_oben || (sg.z1_mm === lt ? topConn : "spannplatte");
-      if (au === "bodenblech") s += `<circle cx="${_n(x)}" cy="${_n(Y(sg.z0_mm))}" r="${_n(SW * 3)}" fill="${FARBE.mutter}"/>`;
-      else s += `<rect x="${_n(x - pw / 2)}" y="${_n(Y(sg.z0_mm) - 1.8)}" width="${_n(pw)}" height="1.8" rx="0.3" fill="${FARBE.platte}"/>`;
-      if (ao === "spannplatte") s += `<rect x="${_n(x - pw / 2)}" y="${_n(Y(sg.z1_mm))}" width="${_n(pw)}" height="1.8" rx="0.3" fill="${FARBE.platte}"/>`;
-      else s += `<circle cx="${_n(x)}" cy="${_n(Y(sg.z1_mm))}" r="${_n(SW * 2.6)}" fill="${FARBE.mutter}"/>`;
+      // Mutter als kurzer, Spannplatte als langgezogenes flaches Rechteck — Geometrie und
+      // Kennfarbe geteilt ([D-4]/#110). Die Zeichenmasse haengen an der LAGENHOEHE `lage`
+      // (Papier-mm), in Modul 1 an derselben Groesse in Pixeln: das Verhaeltnis Symbol : Stein
+      // ist damit in beiden Ausgaben gleich und vom Blattmasstab unabhaengig. Nur die
+      // Plattenbreite bleibt masstabstreues Bauteilmass (110 mm, Untergrenze wie bisher).
+      if (au === "bodenblech") s += mutterSvg(x, Y(sg.z0_mm), lage, { n: _n });
+      else s += spannplatteSvg(x, Y(sg.z0_mm), lage, sc, { n: _n, min: pw, oben: false });
+      if (ao === "spannplatte") s += spannplatteSvg(x, Y(sg.z1_mm), lage, sc, { n: _n, min: pw, oben: true });
+      else s += mutterSvg(x, Y(sg.z1_mm), lage, { n: _n });
+    }
+  }
+
+  // Einlegebleche der Zwischenspannpunkte ([A-14]/#110): eigene Gruppe NACH den Straengen und
+  // VOR Bemassung und Brandschutzgruppe — sie verdeckt damit kein Ausfuehrungsmass, und die
+  // Brandschutzgruppe bleibt die letzte des Blattes. Gezeichnet werden die WIRKSAMEN Punkte
+  // des Rechenkerns; Symbol, Kennfarbe und die aufsitzende Mutter kommen aus
+  // sembla-montage.js — dieselben Formen wie in der Wandansicht von Modul 1, ohne eigene
+  // Geometrie, ohne neue Kennfarbe und ohne Bemassung am Bauteil.
+  {
+    const zp = wirksameZwischenpunkte(w);
+    if (zp.length) {
+      s += `<g class="zsp">`;
+      for (const p of zp)
+        s += zwischenpunktSvg(X(p.x_mm), Y(p.z_mm), {
+          // Formgleich zur Wandansicht: dort sind Balkenbreite 22 und Schenkel 8 auf eine
+          // Lagenhoehe von rund 91 px bezogen, also 0,24 bzw. 0,09 der Lagenhoehe. Hier
+          // dasselbe Verhaeltnis in Papier-mm — dieselbe Form, anderes Einheitensystem.
+          n: _n, lage, breite: lage * 0.24, schenkel: lage * 0.09, strich: SW * 1.6,
+        });
+      s += `</g>`;
     }
   }
 
@@ -865,11 +904,16 @@ export function schriftfeldHtml(w, eingaben = {}, masstab = 25, opts = {}) {
  */
 export function legendeHtml(w) {
   const i = (c, cls) => `<i class="${cls || ""}" style="background:${c}"></i>`;
+  // #110: das Einlegeblech ist ein offenes Profil, kein Farbblock — sein Legendenfeld traegt
+  // deshalb die Kontur (Rand statt Fuellung) und damit dieselbe Form wie im Blatt.
+  const ip = c => `<i class="zsp" style="border-color:${c}"></i>`;
   return `<div class="zlegende">`
     + `<span>${i(FARBE.stange)}Gewindestange (${STUECK_LABEL.standard})</span>`
     + `<span>${i(FARBE.stange_sonder)}${STUECK_LABEL.sonder} / abgelängt</span>`
     + `<span>${i(FARBE.stange_rest)}${STUECK_LABEL.rest} ([Z-6])</span>`
-    + `<span>${i(FARBE.mutter, "dot")}Kopplung / Verankerung</span>`
+    // #110: Legendenfeld ist der stehende Zylinder, nicht mehr der Punkt — die Formen im
+    // Blatt und in der Legende muessen dasselbe Bauteil zeigen ([D-4]). Wortlaut unveraendert.
+    + `<span>${i(FARBE.mutter, "zyl")}Kopplung / Verankerung</span>`
     + `<span>${i(FARBE.platte, "plate")}Spannplatte</span>`
     + `<span>${i(FARBE.stahl, "plate")}Boden-/Kopfblech</span>`
     // Reale Bodenblechteile ([A-10]/[A-11]/[A-12]): Stoss und Sonderzuschnitt stehen
@@ -882,6 +926,10 @@ export function legendeHtml(w) {
         ? `<span>${i(FARBE.kontur, "dot")}Blechstoß (Bodenblech)</span>` : "")
     + (bodenblechTeile(w).some(t => t.art === "sonder")
         ? `<span>${i(FARBE.stange_sonder, "plate")}Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : "")
+    // Einlegeblech der Zwischenspannpunkte ([A-14]/#110): genannt nur, wenn die Wand
+    // wirklich einen wirksamen Punkt fuehrt, und mit dem Klartext aus sembla-montage.js.
+    + ((w && wirksameZwischenpunkte(w).length)
+        ? `<span>${ip(ZWISCHENPUNKT.farbe)}${ZWISCHENPUNKT.label}</span>` : "")
     + `<span>${i(FARBE.i3, "plate")}i3 (37,5 cm)</span>`
     + `<span>${i(FARBE.i2, "plate")}i2 (25 cm)</span>`
     // Brandschutzklassifikation (#79): BEIDE Klassen stehen hier, jede mit ihrer
@@ -1001,6 +1049,10 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
   .zlegende i{width:14px;height:4px;border-radius:2px;display:inline-block}
   .zlegende i.plate{height:9px;width:11px}
   .zlegende i.dot{height:8px;width:8px;border-radius:50%}
+  /* #110: stehender Zylinder (Mutter/Kopplungsmutter) und offenes C-Profil (Einlegeblech) */
+  .zlegende i.zyl{height:11px;width:6px;border-radius:1px}
+  .zlegende i.zsp{background:none;height:6px;width:12px;border-radius:0;
+                  border-top:2px solid;border-left:2px solid;border-right:2px solid}
   .ztitleblock{grid-column:1 / span 2;grid-row:2;display:grid;
                grid-template-columns:2.2fr 1.2fr 1.1fr;border:1.5px solid #13202e;
                border-radius:3px;overflow:hidden;font-size:11px}

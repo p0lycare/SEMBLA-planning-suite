@@ -252,6 +252,7 @@ let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
 // sembla-montage.js; die wirksamen Punkte liefert die eine Ableitung des Rechenkerns.
 let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
+let SPANN_FARBE, mutterSvg, kopplungsmutterSvg, spannplatteSvg;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
 // hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
@@ -531,9 +532,14 @@ function draw(w){
 
   // ---- Anschlüsse: Bodenblech (immer), Kopfblech oder Spannplatten ----
   const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
-  // SPANN (Spannplatte) ist bewusst NICHT die Sonderzuschnittsfarbe ([D-4]): das Bauteil
-  // darf mit dem Zuschnitt nicht verwechselt werden — gleicher Wert wie in Modul 5/7.
-  const STEEL='#5b6673', SPANN='#14559c', NUT='#0b3a73';
+  // Bezugsmaß aller Spannkomponenten-Symbole (#110): die Lagenhöhe in ZEICHENKOORDINATEN.
+  // Sie bewegt sich mit `sc`, also bleibt das Verhältnis Symbol : Stein bei jeder Wandlänge
+  // gleich — und identisch zu Modul 7, das dieselbe Größe in Papier-mm übergibt.
+  const lage=COURSE*sc;
+  // Kennfarben der Spannkomponenten kommen aus SPANN_FARBE (sembla-montage.js, [D-4]/#110) —
+  // dieselbe Quelle wie Modul 7, keine lokalen Hex-Werte mehr. STEEL ist das Boden-/Kopfblech
+  // und gehoert nicht zu den Spannkomponenten.
+  const STEEL='#5b6673';
   const bth=Math.max(4, 15*sc);   // 15 mm Blechdicke, skaliert (min 4px sichtbar)
   const xL=Math.min(X(0),X(L)), xR=Math.max(X(0),X(L));
   // Bodenblech als durchgehender Balken unter dem Wandfuß. Die früheren Teilstriche im Abstand
@@ -564,18 +570,21 @@ function draw(w){
       const st=stangenStuecke(w,g);
       st.forEach((p,i)=>{
         s+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art)}" stroke-width="${p.art==='rest'?3:2.4}"/>`;
-        // Kopplung an jedem inneren Stoß (Stücke − 1) — quer zur Achse, damit sie sichtbar ist
-        if(i<st.length-1) s+=`<line class="kop" x1="${x-4}" y1="${Y(p.z1_mm)}" x2="${x+4}" y2="${Y(p.z1_mm)}" stroke="#0b3a73" stroke-width="2"/>`;
+        // Kopplung an jedem inneren Stoß (Stücke − 1): die KOPPLUNGSMUTTER als langer Zylinder
+        // in Seitenansicht (#110) — dieselbe Funktion wie in Modul 7, deutlich länger als eine
+        // normale Mutter. Die Klasse `kop` bleibt, sie trennt das Bauteil vom Legendenmuster.
+        if(i<st.length-1) s+=kopplungsmutterSvg(x,Y(p.z1_mm),lage,{klasse:'kop'});
       });
-      const pw=110*sc;
       const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
       const ao=g.anker_oben||((g.z1_mm===topH(col.k)*1)?topConn:'spannplatte');
-      // unterer Anker
-      if(au==='bodenblech'){ s+=`<circle cx="${x}" cy="${Y(g.z0_mm)}" r="3.2" fill="${NUT}"/>`; }   // Senkkopf+Kopplungsmutter am Fuß
-      else { s+=`<rect x="${x-pw/2}" y="${Y(g.z0_mm)-3.5}" width="${pw}" height="3.5" rx="1" fill="${SPANN}"/>`; }  // Spannplatte auf Kante
-      // oberer Anker
-      if(ao==='spannplatte'){ s+=`<rect x="${x-pw/2}" y="${Y(g.z1_mm)}" width="${pw}" height="3.5" rx="1" fill="${SPANN}"/>`; }
-      else { s+=`<circle cx="${x}" cy="${Y(g.z1_mm)}" r="2.6" fill="${NUT}"/>`; }   // im Kopfblech verankert (Spannmutter)
+      // Anker unten/oben: Mutter als kurzer Zylinder, Spannplatte als langgezogenes flaches
+      // Rechteck — Geometrie und Kennfarbe kommen aus sembla-montage.js ([D-4]/#110), damit
+      // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Zeichenmaße sind
+      // dort an die LAGENHÖHE gebunden und deshalb unabhängig von Wandlänge und Blattmaßstab.
+      if(au==='bodenblech'){ s+=mutterSvg(x,Y(g.z0_mm),lage); }   // Senkkopf+Kopplungsmutter am Fuß
+      else { s+=spannplatteSvg(x,Y(g.z0_mm),lage,sc,{oben:false}); }  // Spannplatte auf Kante
+      if(ao==='spannplatte'){ s+=spannplatteSvg(x,Y(g.z1_mm),lage,sc,{oben:true}); }
+      else { s+=mutterSvg(x,Y(g.z1_mm),lage); }   // im Kopfblech verankert (Spannmutter)
     } }
 
   // ---- Zwischenspannpunkte: Einlegeblech je wirksamem Punkt ([A-14]/#93) ----
@@ -587,7 +596,7 @@ function draw(w){
   for(const zp of zpListe){
     const zx=X(zp.x_mm), zy=Y(zp.z_mm);
     const on=(zpEdit && selZp===zp.z_mm);
-    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe});
+    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,lage});
   }
   // Im Bearbeitungsmodus zusätzlich je Punkthöhe eine Griff-/Hilfslinie über die Wandbreite,
   // damit die Lagen-Oberkante als Ganzes greifbar ist (reine Bedienhilfe, kein Bauteil).
@@ -663,7 +672,7 @@ function renderZLegende(w){
   const teile=['standard','sonder','rest'].filter(hat);
   box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
     + teile.map(a=>`<span><i style="color:${stueckFarbe(a)}"></i>${STUECK_LABEL[a]}</span>`).join('')
-    + '<span><i class="kop" style="color:#0b3a73"></i>Kopplung</span>'
+    + `<span><i class="kop" style="color:${SPANN_FARBE.mutter}"></i>Kopplung</span>`
     + zpEintrag;
 }
 
@@ -1310,6 +1319,9 @@ window.__wpInit=function(){
   stangenStuecke=S.stangenStuecke;
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
+  // #110: Symbolgeometrie und Kennfarben der Spannkomponenten — eine Quelle für Modul 1 und 7.
+  SPANN_FARBE=S.SPANN_FARBE; mutterSvg=S.mutterSvg;
+  kopplungsmutterSvg=S.kopplungsmutterSvg; spannplatteSvg=S.spannplatteSvg;
   bindEvents();
   bindProdukte();
   applyZoom();     // Standardstellung: eingepasst
@@ -1330,11 +1342,13 @@ window.__wpInit=function(){
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
   import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
-           ZWISCHENPUNKT, zwischenpunktSvg } from './shared/sembla-montage.js';
+           ZWISCHENPUNKT, zwischenpunktSvg, SPANN_FARBE, mutterSvg,
+           kopplungsmutterSvg, spannplatteSvg } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
-                    ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte };
+                    ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
+                    SPANN_FARBE, mutterSvg, kopplungsmutterSvg, spannplatteSvg };
   mountNavbar(1);
   window.__wpInit();
 </script>

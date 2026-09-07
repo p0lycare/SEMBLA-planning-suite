@@ -22,7 +22,11 @@ import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import { einbauteile, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
-         bodenblechTeile, bodenblechStoesse, abschnittSvg, montageAbschnitte } from "../../docs/shared/sembla-montage.js";
+         bodenblechTeile, bodenblechStoesse, abschnittSvg, montageAbschnitte,
+         // #110: die gemeinsame Symbolquelle der Spannkomponenten — das Blatt darf dafuer
+         // keine eigene Geometrie und keine eigenen Hex-Werte fuehren ([D-4]).
+         SPANN_FARBE, SPANN_PROP, mutterSvg, ZWISCHENPUNKT } from "../../docs/shared/sembla-montage.js";
+import { wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
 // #79 NUR als Vergleichsmassstab fuer Wortlaut und Kennfarbe (Drift-Waechter). Der
@@ -43,6 +47,8 @@ const W = buildWall("IW-01", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], nu
 const WF = buildWall("IW-02", 4000, 2600, [new Opening(8, 14, 4, 10, "fenster")]);
 // WL : lange Wand -> groberer Masstab
 const WL = buildWall("IW-03", 12000, 4000, []);
+// WSP: oberer Anschluss SPANNPLATTE ([A-2]) -> das Blatt zeigt die Platte am Strangende (#110)
+const WSP = buildWall("IW-05", 3000, 2600, [], null, { top_connection: "spannplatte" });
 
 const eingaben = standardEingaben();
 eingaben.projekt.name = "Rettungswache";
@@ -119,7 +125,84 @@ const sonderLinien = (svg.match(new RegExp(`stroke="${Z.FARBE.stange_sonder}"`, 
 ok("Stangen werden stueckweise aus den realen `stuecke` gezeichnet",
   stangenLinien + sonderLinien === stueckSoll && stueckSoll > W.tension_columns.length);
 ok("Sonderlaengen sind eigens gekennzeichnet", sonderSoll > 0 && sonderLinien === sonderSoll);
-ok("Kopplungen/Verankerungen sind markiert", svg.includes(Z.FARBE.mutter) && /<circle/.test(svg));
+// Kopplungen und Verankerungen sind markiert — seit #110 als ZYLINDER in Seitenansicht
+// (Rechteck + zwei Stirnkanten) statt als Kreis. Die Aussage der Pruefung ist unveraendert:
+// die Anker- und Kopplungsstellen sind im Blatt gekennzeichnet, und zwar in der Mutterfarbe.
+const RE_MUTTER = new RegExp(`<rect x="[-\\d.]+" y="[-\\d.]+" width="[-\\d.]+" `
+  + `height="([-\\d.]+)" fill="${Z.FARBE.mutter}"/>`, "g");
+const mutterHoehen = svg => [...svg.matchAll(RE_MUTTER)].map(m => +m[1]);
+ok("Kopplungen/Verankerungen sind markiert",
+  svg.includes(Z.FARBE.mutter) && mutterHoehen(svg).length > 0);
+ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
+  !/<circle/.test(svg) && !/<polygon/.test(svg));
+
+// #110: dieselben Symbolformen wie in der Wandansicht von Modul 1 — geprueft an der
+// GEMEINSAMEN Quelle: die Hoehen im Blatt sind genau die Vielfachen der Lagenhoehe, die
+// `SPANN_PROP` festlegt, und die Kopplungsmutter ist messbar laenger als die Mutter.
+{
+  const C = W.course_mm || 200, lage = C / zA3.masstab;
+  const rnd = v => Math.round(v * 1000) / 1000;
+  const hM = rnd(SPANN_PROP.mutter * lage), hK = rnd(SPANN_PROP.kupplung * lage);
+  const hoehen = mutterHoehen(svg);
+  // Erwartete Kopplungsmuttern: genau ein innerer Stoss je realem Stueckuebergang.
+  let stoesse = 0;
+  for (const col of W.tension_columns)
+    for (const sg of col.segments) stoesse += Math.max(0, stangenStuecke(W, sg).length - 1);
+  const lang = hoehen.filter(h => Math.abs(h - hK) < 1e-9).length;
+  const kurz = hoehen.filter(h => Math.abs(h - hM) < 1e-9).length;
+  ok("[#110] je Kopplung genau eine Kopplungsmutter im Blatt",
+    stoesse > 0 && lang === stoesse);
+  ok("[#110] die Kopplungsmutter ist im Blatt messbar laenger als die normale Mutter",
+    hK > hM && Math.abs(hK / hM - 2.5) < 1e-6 && kurz > 0);
+  ok("[#110] alle Mutternhoehen sind Vielfache der Lagenhoehe (nichts Festes im Blatt)",
+    hoehen.length === lang + kurz);
+  ok("[#110] Symbolgeometrie und Kennfarben kommen geteilt aus sembla-montage.js",
+    Z.FARBE.mutter === SPANN_FARBE.mutter && Z.FARBE.platte === SPANN_FARBE.platte
+    && svg.includes(mutterSvg(0, 0, lage, { n: v => rnd(v) }).slice(0, 9)));
+  // Die Spannplatte ist ein langgezogenes flaches Rechteck: an einer Wand mit Spannplatte
+  // oben steht sie im Blatt mit der Bauteilbreite (110 mm) und der relativen Dicke.
+  const svgSp = Z.zeichnungSvg(WSP, {}).svg, mSp = Z.zeichnungSvg(WSP, {}).masstab;
+  const lageSp = (WSP.course_mm || 200) / mSp;
+  const re = new RegExp(`<rect x="[-\\d.]+" y="[-\\d.]+" width="([-\\d.]+)" `
+    + `height="([-\\d.]+)" fill="${Z.FARBE.platte}"/>`);
+  const mm = re.exec(svgSp);
+  ok("[#110] die Spannplatte ist ein langgezogenes, flaches Rechteck (Bauteilbreite 110 mm)",
+    !!mm && Math.abs(+mm[1] - rnd(SPANN_PROP.platte_b_mm / mSp)) < 1e-3
+    && Math.abs(+mm[2] - rnd(SPANN_PROP.platte_h * lageSp)) < 1e-3 && +mm[1] > 4 * +mm[2]);
+}
+
+// #110: das Einlegeblech des Zwischenspannpunkts steht jetzt AUCH im Blatt — dieselbe
+// Symbolform wie in Modul 1, aus derselben Quelle, mit genau einer Mutter obenauf ([A-16]).
+{
+  const zp = wirksameZwischenpunkte(W);
+  const grp = /<g class="zsp">([\s\S]*?)<\/g>/.exec(svg);
+  ok("[#110] Zwischenspannpunkte werden als eigene Gruppe gezeichnet",
+    zp.length > 0 && !!grp);
+  const profile = grp ? (grp[1].match(/<polyline /g) || []).length : 0;
+  const muttern = grp ? (grp[1].match(/<rect /g) || []).length : 0;
+  ok("[#110] je wirksamem Punkt genau ein C-Profil und genau eine Mutter",
+    profile === zp.length && muttern === zp.length);
+  ok("[#110] das C-Profil ist nach unten geoeffnet und nicht gefuellt",
+    grp && /fill="none"/.test(grp[1]) && (() => {
+      const pts = /points="([^"]+)"/.exec(grp[1])[1].split(" ").map(t => t.split(",").map(Number));
+      return pts.length === 4 && pts[1][1] === pts[2][1]
+        && pts[0][1] > pts[1][1] && pts[3][1] > pts[2][1]; })());
+  ok("[#110] es traegt die Kennfarbe des Einlegeblechs, keine neue Farbe",
+    grp && grp[1].includes(ZWISCHENPUNKT.farbe));
+  // Die Gruppe liegt VOR Bemassung und Brandschutz: sie verdeckt kein Ausfuehrungsmass,
+  // und die Brandschutzgruppe bleibt die letzte des Blattes ([D-4]/#79).
+  ok("[#110] die Gruppe steht nach den Straengen und vor Bemassung/Brandschutz",
+    svg.indexOf('<g class="zsp">') > svg.lastIndexOf(`stroke="${Z.FARBE.stange}"`)
+    && svg.indexOf('<g class="zsp">') < svg.indexOf('<g class="brand"'));
+  ok("[#110] die Legende benennt das Einlegeblech in Worten",
+    Z.legendeHtml(W).includes(ZWISCHENPUNKT.label)
+    && !Z.legendeHtml(W).includes('class="dot" style="background:' + Z.FARBE.mutter));
+  ok("[#110] Modul 7 fuehrt keine eigene Symbolgeometrie und keine eigenen Hex-Werte", (() => {
+    const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
+    return /import \{[\s\S]*?mutterSvg[\s\S]*?\} from "\.\/sembla-montage\.js"/.test(q)
+      && !/"#14559c"/.test(q) && !/"#0b3a73"/.test(q)
+      && !/<circle cx=[^]]*FARBE\.mutter/.test(q); })());
+}
 
 // [D-4] gemeinsamer Farbschluessel: Modul 1, 5 und 7 einfaerben denselben Zuschnitt gleich.
 ok("Stangenfarben kommen aus STUECK_FARBE (sembla-montage.js), kein eigener Farbsatz",

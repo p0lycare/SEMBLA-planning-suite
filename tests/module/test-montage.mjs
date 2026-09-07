@@ -29,6 +29,8 @@ import {
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
   STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt, stangenEnden, stangenStuecke,
   topLagen, oberkantenAbschnitte, bodenblechTeile, bodenblechStoesse,
+  SPANN_FARBE, SPANN_PROP, mutterSvg, kopplungsmutterSvg, spannplatteSvg,
+  ZWISCHENPUNKT, zwischenpunktSvg,
 } from "../../docs/shared/sembla-montage.js";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
 import { FARBE as Z_FARBE } from "../../docs/shared/sembla-zeichnung.js";
@@ -698,6 +700,100 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   // (d) Vorschau == Export: das Blech steckt im GETEILTEN SVG, nicht im Modul
   ok("[D-6] die Teilfolge steckt im geteilten Baugruppen-SVG (Vorschau == Export)",
     montageDokument(WS, eingaben).includes(bildS));
+}
+
+// --- Spannkomponenten als vereinfachte Seitenansicht ([D-4], #110) ---------
+//
+// Geprueft wird die GEMEINSAME Symbolquelle, aus der Modul 1 und Modul 7 zeichnen: eine
+// Funktion je Bauteil, Zeichenmasse ausschliesslich als Vielfache der LAGENHOEHE, und die
+// Kennfarben unveraendert. Bezugsgroessen kommen aus dem realen Wandelement des Rechenkerns.
+{
+  // Lagenhoehe in Zeichenkoordinaten, wie sie die Aufrufer bilden: Modul 1 in Pixeln
+  // (sc = Pixel je mm), Modul 7 in Papier-mm (sc = 1/Masstab). Beide Faelle laufen hier.
+  const C = WR.course_mm || 200;
+  const scM1 = (1000 - 2 * 46) / WR.length_mm, lageM1 = C * scM1;   // Modul-1-Ansicht
+  const scM7 = 1 / 20, lageM7 = C * scM7;                          // Blatt 1:20
+  const num = (s, attr) => [...s.matchAll(new RegExp(attr + '="([-\\d.]+)"', "g"))].map(m => +m[1]);
+  const hoehe = s => num(s, "height")[0];
+  const breite = s => num(s, "width")[0];
+
+  ok("[#110] Kennfarben der Spannkomponenten sind die bisherigen Werte (keine neue Farbe)",
+    SPANN_FARBE.platte === "#14559c" && SPANN_FARBE.mutter === "#0b3a73");
+  ok("[#110] die Zeichnung (Modul 7) verdrahtet genau diesen Schluessel, kein zweiter Farbsatz",
+    Z_FARBE.platte === SPANN_FARBE.platte && Z_FARBE.mutter === SPANN_FARBE.mutter);
+
+  const mu = mutterSvg(100, 200, lageM1), ku = kopplungsmutterSvg(100, 200, lageM1);
+  ok("[#110] Mutter und Kopplungsmutter sind Zylinder in Seitenansicht (Rechteck + Stirnkanten)",
+    /^<rect /.test(mu) && (mu.match(/<line /g) || []).length === 2
+    && !/<circle/.test(mu) && !/<polygon/.test(mu)
+    && /^<rect /.test(ku) && !/<circle/.test(ku) && !/<polygon/.test(ku));
+  ok("[#110] beide tragen die Mutterfarbe",
+    mu.includes(SPANN_FARBE.mutter) && ku.includes(SPANN_FARBE.mutter));
+  // Das Akzeptanzkriterium: MESSBAR laenger, nicht nur "etwas groesser".
+  ok("[#110] die Kopplungsmutter ist messbar laenger als die normale Mutter (Faktor 2,5)",
+    hoehe(ku) > hoehe(mu) && Math.abs(hoehe(ku) / hoehe(mu) - 2.5) < 1e-9);
+  ok("[#110] beide Zylinder haben dieselbe Breite (dasselbe Gewinde)",
+    Math.abs(breite(ku) - breite(mu)) < 1e-9);
+  ok("[#110] der Zylinder ist auf seine Einbauhoehe zentriert",
+    Math.abs((num(mu, "y")[0] + hoehe(mu) / 2) - 200) < 1e-9);
+
+  // Zoom-/Masstabsunabhaengigkeit: dasselbe Bauteil in zwei Einheitensystemen; nur das
+  // VERHAELTNIS zur Lagenhoehe darf massgeblich sein.
+  const verh = (s, lage) => hoehe(s) / lage;
+  ok("[#110] Proportion zur Lagenhoehe ist in beiden Einheitensystemen identisch",
+    Math.abs(verh(mutterSvg(0, 0, lageM1), lageM1)
+           - verh(mutterSvg(0, 0, lageM7), lageM7)) < 1e-12
+    && Math.abs(verh(kopplungsmutterSvg(0, 0, lageM1), lageM1)
+              - verh(kopplungsmutterSvg(0, 0, lageM7), lageM7)) < 1e-12);
+  ok("[#110] doppelte Lagenhoehe -> doppelt so grosses Symbol (nichts Festes im Symbol)",
+    Math.abs(hoehe(mutterSvg(0, 0, 2 * lageM1)) - 2 * hoehe(mutterSvg(0, 0, lageM1))) < 1e-9
+    && Math.abs(breite(mutterSvg(0, 0, 2 * lageM1)) - 2 * breite(mutterSvg(0, 0, lageM1))) < 1e-9);
+
+  // Spannplatte: langgezogen und flach; Breite ist BAUTEILMASS (110 mm), nicht Proportion.
+  const plU = spannplatteSvg(100, 200, lageM1, scM1, { oben: false });
+  const plO = spannplatteSvg(100, 200, lageM1, scM1, { oben: true });
+  ok("[#110] die Spannplatte ist ein langgezogenes, flaches Rechteck in der Plattenfarbe",
+    /^<rect /.test(plU) && plU.includes(SPANN_FARBE.platte)
+    && breite(plU) > 4 * hoehe(plU) && !/<circle/.test(plU));
+  ok("[#110] Plattenbreite bleibt masstabstreues Bauteilmass (110 mm), nur die Dicke ist relativ",
+    Math.abs(breite(plU) - SPANN_PROP.platte_b_mm * scM1) < 1e-9
+    && Math.abs(hoehe(plU) - SPANN_PROP.platte_h * lageM1) < 1e-9);
+  ok("[#110] untere Platte liegt AUF der Kante, obere darunter (Auflagersinn)",
+    Math.abs((num(plU, "y")[0] + hoehe(plU)) - 200) < 1e-9
+    && Math.abs(num(plO, "y")[0] - 200) < 1e-9);
+  ok("[#110] die Platte ist deutlich breiter als der Mutternzylinder (langgezogen)",
+    breite(plU) > 3 * breite(mu));
+
+  // Einlegeblech: nach unten offenes C-Profil MIT genau einer Mutter obenauf ([A-16]).
+  const zp0 = zwischenpunktSvg(100, 200, { klasse: "zsp" });
+  const zpM = zwischenpunktSvg(100, 200, { klasse: "zsp", lage: lageM1 });
+  const pts = /points="([^"]+)"/.exec(zpM)[1].split(" ").map(t => t.split(",").map(Number));
+  ok("[#110] das C-Profil bleibt nach unten geoeffnet (beide Schenkel unter dem Querbalken)",
+    /^<polyline/.test(zpM) && /fill="none"/.test(zpM) && pts.length === 4
+    && pts[1][1] === 200 && pts[2][1] === 200 && pts[0][1] > 200 && pts[3][1] > 200);
+  ok("[#110] das Profil traegt GENAU EINE zusaetzliche Mutter ([A-16])",
+    (zpM.match(/<rect /g) || []).length === 1
+    && (zp0.match(/<rect /g) || []).length === 0);
+  ok("[#110] die Mutter sitzt OBEN AUF dem Querbalken (vollstaendig darueber)",
+    (() => { const y = num(zpM.slice(zpM.indexOf("<rect")), "y")[0];
+      const h = hoehe(zpM.slice(zpM.indexOf("<rect")));
+      return y + h <= 200 + 1e-9 && y < 200; })());
+  ok("[#110] die aufsitzende Mutter ist dasselbe Symbol wie jede andere Mutter",
+    zpM.includes(mutterSvg(100, 200 - SPANN_PROP.mutter * lageM1 / 2, lageM1,
+      { klasse: "zsp", farbe: SPANN_FARBE.mutter })));
+  ok("[#110] das Profil behaelt seine eigene Kennfarbe (keine Verwechslung mit der Mutter)",
+    zpM.includes(ZWISCHENPUNKT.farbe) && ZWISCHENPUNKT.farbe !== SPANN_FARBE.mutter
+    && ZWISCHENPUNKT.farbe !== SPANN_FARBE.platte);
+  ok("[#110] ohne Lagenhoehe bleibt das Profil zeichengleich zum Stand vor #110",
+    zp0 === '<polyline class="zsp" points="89,208 89,200 111,200 111,208" fill="none" '
+      + 'stroke="' + ZWISCHENPUNKT.farbe + '" stroke-width="2" stroke-linejoin="miter"/>');
+
+  // Die Symbolmasse sind ZEICHENMASSE: sie duerfen nirgends als Bauteilmass auftauchen.
+  ok("[#110] Symbolmasse sind Zeichenmasse — Modul 5 bleibt bit-gleich (Nachziehpunkt [P-6])",
+    (() => { const q = readFileSync(new URL("../../docs/shared/sembla-montage.js",
+      import.meta.url), "utf8");
+      return /NACHZIEHPUNKT \[P-6\] \(#110\)/.test(q)
+        && /r="2\.8" fill="\$\{FARBE\.mutter\}"/.test(q); })());
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

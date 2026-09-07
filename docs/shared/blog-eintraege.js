@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-19",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 110,
+    titel: "Spannkomponenten in Wandansicht und Zeichnung als dieselben vereinfachten "
+      + "Seitenansicht-Symbole",
+    testbitte: "Wand mit Kopplungen und Zwischenspannpunkten in Modul 1 ansehen: kurze "
+      + "Mutternzylinder, l\u00e4ngere Kopplungsmuttern, flache Spannplatten, Einlegeblech mit "
+      + "Mutter darauf. Modul 7 zeigt dieselben Formen.",
+  },
+  {
     id: "chg-20260907-18",
     datum: "2026-09-07",
     typ: "feature",

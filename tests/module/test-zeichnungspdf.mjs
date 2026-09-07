@@ -29,7 +29,9 @@
 //
 // Aufruf:  node tests/module/test-zeichnungspdf.mjs
 
-import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
+import { buildWall, Opening, wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
+// #110: Kennfarbe und Klartext des Einlegeblechs als Vergleichsmassstab beider Legenden.
+import * as MONT from "../../docs/shared/sembla-montage.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import * as MAPPE from "../../docs/shared/sembla-projektmappe.js";
 import * as LP from "../../docs/shared/sembla-lageplan.js";
@@ -205,8 +207,11 @@ ok("die Lageplan-Legende benutzt die kanonischen Kennfarben",
 
 const wLegHtml = nurText(Z.legendeHtml(ELEMENTE[1].wandelement));
 const wLeg = PDF.legendeWand(ELEMENTE[1].wandelement);
+// Gezaehlt wird gegen den HTML-Baustein, NICHT gegen eine im Test festgeschriebene Zahl:
+// eine feste Zahl muesste bei jedem neuen Schluesseleintrag mitgedreht werden und sagt
+// ueber die Gleichheit der beiden Legenden nichts aus (#110).
 ok("die Wandblatt-Legende hat dieselben Eintraege in derselben Reihenfolge",
-  wLeg.length === spanZahl(Z.legendeHtml(ELEMENTE[1].wandelement)) && wLeg.length === 11
+  wLeg.length === spanZahl(Z.legendeHtml(ELEMENTE[1].wandelement)) && wLeg.length > 6
   && kompakt(wLegHtml).includes(wLeg.map(eintragText).map(kompakt).join("")));
 ok("die Wandblatt-Legende benutzt die kanonischen Kennfarben",
   wLeg.every((e) => Z.legendeHtml(ELEMENTE[1].wandelement).includes(e.marke_farbe)));
@@ -214,6 +219,40 @@ ok("die bedingten Legendeneintraege haengen an denselben Abfragen ([D-4])",
   PDF.legendeWand({}).length === spanZahl(Z.legendeHtml({}))
   && !PDF.legendeWand({}).some((e) => /Blechsto\u00df/.test(e.text))
   && PDF.legendeWand(ELEMENTE[1].wandelement).some((e) => /Blechsto\u00df/.test(e.text)));
+// #110: derselbe Nachweis fuer das Einlegeblech — der Eintrag haengt an den WIRKSAMEN
+// Zwischenspannpunkten des Rechenkerns, in beiden Legenden an derselben Abfrage. Eine Wand
+// ohne wirksamen Punkt bekommt ihn in KEINER der beiden.
+{
+  const w1 = ELEMENTE[1].wandelement;
+  const hatPdf = (el) => PDF.legendeWand(el).some((e) => e.text === MONT.ZWISCHENPUNKT.label);
+  const hatHtml = (el) => Z.legendeHtml(el).includes(MONT.ZWISCHENPUNKT.label);
+  ok("[#110] der Einlegeblech-Eintrag haengt an derselben Abfrage wie im HTML",
+    wirksameZwischenpunkte(w1).length > 0 && hatPdf(w1) && hatHtml(w1)
+    && wirksameZwischenpunkte({}).length === 0 && !hatPdf({}) && !hatHtml({}));
+  ok("[#110] er ist wortgleich, farbgleich und steht an derselben Stelle der Reihe",
+    (() => {
+      // EINE Liste auswerten: jeder Aufruf liefert frische Objekte, `indexOf` ueber zwei
+      // Aufrufe waere immer -1.
+      const liste = PDF.legendeWand(w1);
+      const i = liste.findIndex((x) => x.text === MONT.ZWISCHENPUNKT.label);
+      const e = liste[i];
+      const texte = nurText(Z.legendeHtml(w1));
+      // Position im HTML: unmittelbar vor dem i3-Eintrag, genau wie in der Datenliste.
+      return !!e && e.marke_farbe === MONT.ZWISCHENPUNKT.farbe
+        && Z.legendeHtml(w1).includes(MONT.ZWISCHENPUNKT.farbe)
+        && liste[i + 1]?.text === "i3 (37,5 cm)"
+        && kompakt(texte).includes(kompakt(MONT.ZWISCHENPUNKT.label + "i3 (37,5 cm)")); })());
+  // Die Mutter ist kein Punkt mehr: der Spiegel fuehrt dieselbe Markenform wie das HTML.
+  ok("[#110] die Kopplungs-/Verankerungsmarke ist der stehende Zylinder, kein Kreis",
+    PDF.legendeWand(w1).find((e) => /Kopplung/.test(e.text))?.form === "zyl"
+    && Z.legendeHtml(w1).includes('class="zyl"')
+    && !PDF.legendeWand(w1).some((e) => e.form === "dot" && /Kopplung/.test(e.text)));
+  // Beide neuen Markenformen werden im Blatt wirklich gezeichnet (Profil ungefuellt).
+  ok("[#110] beide Markenformen erscheinen im gesetzten Blatt", (() => {
+    const svg = PDF.wandBlattInhalt(w1, EINGABEN, {}).inhalt;
+    return svg.includes(MONT.ZWISCHENPUNKT.farbe)
+      && /<polyline points="[^"]+" fill="none" stroke="/.test(svg); })());
+}
 ok("der Kennzeichnungsschluessel der Einbauteile ist derselbe ([P-19])",
   kompakt(wLegHtml).includes(kompakt(PDF.EINBAUTEIL_FUSS)));
 

@@ -53,6 +53,11 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs kommen — wie der
   // Zuschnittschluessel — aus sembla-montage.js; die wirksamen Punkte aus dem Rechenkern.
   ZWISCHENPUNKT: MONT.ZWISCHENPUNKT, zwischenpunktSvg: MONT.zwischenpunktSvg,
+  // #110: Symbolgeometrie und Kennfarben der Spannkomponenten (Mutter, Kopplungsmutter,
+  // Spannplatte) — dieselbe Quelle, aus der Modul 7 zeichnet; Modul 1 fuehrt dafuer keine
+  // eigene Geometrie und keine lokalen Hex-Werte mehr.
+  SPANN_FARBE: MONT.SPANN_FARBE, mutterSvg: MONT.mutterSvg,
+  kopplungsmutterSvg: MONT.kopplungsmutterSvg, spannplatteSvg: MONT.spannplatteSvg,
   wirksameZwischenpunkte };
 
 eval(script);
@@ -94,7 +99,10 @@ ok('Wandansicht zeichnet die einzelnen Stuecke, nicht einen Strich je Strang', (
   const kopplungen=w.tension_columns.flatMap(c=>c.segments)
     .reduce((a,g)=>a+Math.max(0,(g.stuecke||[]).length-1),0);
   const striche=(svg.match(/stroke="#1f6feb" stroke-width="2\.4"/g)||[]).length;
-  const marken=(svg.match(/<line class="kop"/g)||[]).length;   // Klasse trennt sie vom Legendenmuster
+  // Seit #110 ist die Kopplungsmarke die KOPPLUNGSMUTTER (Zylinder in Seitenansicht) statt
+  // eines Querstrichs. Die Aussage bleibt: genau eine Marke je Kopplung. Die Klasse `kop`
+  // trennt sie unveraendert vom Legendenmuster.
+  const marken=(svg.match(/<rect class="kop"/g)||[]).length;
   return stuecke.length>w.tension_columns.length      // es gibt ueberhaupt mehrere Stuecke
     && striche===stuecke.filter(p=>p.art==='standard').length
     && marken===kopplungen; })());
@@ -132,6 +140,68 @@ const legendeStimmt=()=>{
   return alle.length>0 && /Kopplung/.test(L);
 };
 ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legendeStimmt());
+// ---- Issue #110: Spannkomponenten als vereinfachte Seitenansicht ([D-4]) ------------
+// Geprueft wird die GERENDERTE Wandansicht am echten Speicherpfad: die Symbole muessen aus
+// der gemeinsamen Quelle kommen (Formgleichheit mit Modul 7), die Kopplungsmutter messbar
+// laenger sein als die normale Mutter, und Modul 1 darf fuer diese Bauteile keine eigene
+// Geometrie und keine lokalen Hex-Werte mehr fuehren.
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const w=()=>WP.RESULT.wandelement;
+  const lageOf=()=>{ const L=w().length_mm; return (w().course_mm||COURSE)*((1000-2*46)/L); };
+  const hoehen=re=>[...svg().matchAll(re)].map(m=>+m[1]);
+  const RE_KOP=/<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="[-\d.]+" height="([-\d.]+)"/g;
+  const RE_MUT=new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="[-\\d.]+" height="([-\\d.]+)"'
+    +' fill="'+MONT.SPANN_FARBE.mutter+'"','g');
+  ok('[#110] keine Kreisdarstellung der Spannkomponenten mehr in der Wandansicht', (()=>{
+    // Kreise gibt es nur noch als BEDIENGRIFFE (#106) — die tragen `cursor:grab/copy`.
+    const s=svg(); const kreise=[...s.matchAll(/<circle[^>]*>/g)].map(m=>m[0]);
+    return kreise.every(c=>/cursor:(grab|copy)/.test(c)); })());
+  ok('[#110] Kopplungsmutter und Mutter sind Zylinder mit der geteilten Kennfarbe',
+    hoehen(RE_KOP).length>0 && hoehen(RE_MUT).length>0
+    && svg().includes(MONT.SPANN_FARBE.mutter));
+  ok('[#110] die Kopplungsmutter ist in der Ansicht messbar laenger als die normale Mutter',
+    (()=>{ const k=hoehen(RE_KOP), m=hoehen(RE_MUT);
+      return Math.min(...k) > Math.max(...m)
+        && Math.abs(Math.max(...k)/Math.min(...m) - 2.5) < 1e-6; })());
+  ok('[#110] die Symbolhoehen sind genau die Vielfachen der Lagenhoehe (kein festes Pixelmass)',
+    (()=>{ const lage=lageOf();
+      const sollM=MONT.SPANN_PROP.mutter*lage, sollK=MONT.SPANN_PROP.kupplung*lage;
+      return hoehen(RE_MUT).every(h=>Math.abs(h-sollM)<1e-6)
+        && hoehen(RE_KOP).every(h=>Math.abs(h-sollK)<1e-6); })());
+  // Jede Marke muss BYTEGLEICH die der geteilten Funktion sein — nachgerechnet mit derselben
+  // Abbildung, die die Ansicht benutzt (pad 46, sc aus der Wandlaenge, y von unten).
+  ok('[#110] jede Kopplungsmarke ist bytegleich die der geteilten Funktion', (()=>{
+    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc, lage=lageOf();
+    const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+    const s=svg(); let n=0;
+    for(const col of wd.tension_columns) for(const g of col.segments){
+      const st=MONT.stangenStuecke(wd,g);
+      for(let i=0;i<st.length-1;i++){
+        const soll=MONT.kopplungsmutterSvg(X(col.x_mm),Y(st[i].z1_mm),lage,{klasse:'kop'});
+        if(!s.includes(soll)) return false;
+        n++;
+      }
+    }
+    return n>0; })());
+  ok('[#110] das Einlegeblech traegt genau eine Mutter je wirksamem Punkt', (()=>{
+    const n=wirksameZwischenpunkte(w()).length;
+    const zsp=(svg().match(/<polyline class="zsp"/g)||[]).length;
+    const mut=(svg().match(/<rect class="zsp"/g)||[]).length;
+    return n>0 && zsp===n && mut===n; })());
+  ok('[#110] das C-Profil bleibt nach unten geoeffnet und ungefuellt', (()=>{
+    const m=/<polyline class="zsp" points="([^"]+)" fill="none"/.exec(svg());
+    if(!m) return false;
+    const p=m[1].split(' ').map(t=>t.split(',').map(Number));
+    return p.length===4 && p[1][1]===p[2][1] && p[0][1]>p[1][1] && p[3][1]>p[2][1]; })());
+  ok('[#110] Modul 1 fuehrt fuer die Spannkomponenten keine eigene Geometrie/Hex-Werte',
+    /mutterSvg/.test(html) && /kopplungsmutterSvg/.test(html) && /spannplatteSvg/.test(html)
+    && !/const STEEL='#5b6673', SPANN=/.test(html)
+    && !new RegExp("'"+MONT.SPANN_FARBE.platte+"'|'"+MONT.SPANN_FARBE.mutter+"'").test(html)
+    && !/<circle cx="\$\{x\}" cy="\$\{Y\(g\.z0_mm\)\}"/.test(html));
+  ok('[#110] die Legende bezieht die Kopplungsfarbe aus der geteilten Quelle',
+    zleg().includes(MONT.SPANN_FARBE.mutter));
+}
 // ---- Issue #100: Wandansicht passt ins Fenster und laesst sich zoomen ---------------
 // Gefahren wird der ECHTE Bedienpfad: die im Markup sichtbaren Schalter werden geklickt und
 // die Fenstergroessenaenderung ueber den echten window-Hoerer ausgeloest. Markup und CSS

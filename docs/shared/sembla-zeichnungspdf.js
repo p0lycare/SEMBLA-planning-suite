@@ -80,7 +80,13 @@ import {
   MASSSTAEBE as MASSSTAEBE_LP, normOptionen as normOptionenLp,
   VERZAHNUNG as VERZAHNUNG_LP,
 } from "./sembla-lageplan.js";
-import { bodenblechStoesse, bodenblechTeile, STUECK_LABEL } from "./sembla-montage.js";
+import { bodenblechStoesse, bodenblechTeile, STUECK_LABEL,
+         // #110: Kennfarbe und Klartext des Einlegeblechs — derselbe Schluessel, den das
+         // Blatt-SVG benutzt; eine zweite Werteliste hier waere Drift ([D-4]).
+         ZWISCHENPUNKT } from "./sembla-montage.js";
+// #110: die wirksamen Zwischenspannpunkte kommen aus der EINEN Ableitung des Rechenkerns —
+// dieselbe Abfrage wie in `legendeHtml()`, damit der bedingte Eintrag gekoppelt bleibt.
+import { wirksameZwischenpunkte } from "./sembla-core.js";
 import * as MAPPE from "./sembla-projektmappe.js";
 import {
   BLATT as BLATT_Z, blattInnen as blattInnenZ, bomZeilen, BRANDKLASSE as BRAND_Z,
@@ -237,6 +243,25 @@ function _marke(x, basis, fs, z) {
     const r = _mmPx(4);
     return { svg: `<circle cx="${_n(x + r)}" cy="${_n(basis - fs * 0.32)}" r="${_n(r)}"`
       + ` fill="${z.marke_farbe}"/>`, breite: 2 * r + fs * 0.4 };
+  }
+  // #110: stehender Zylinder (Mutter/Kopplungsmutter, 6 x 11) und offenes C-Profil
+  // (Einlegeblech, 12 x 6 ohne Fuellung) — woertlich die `<i class="zyl">`- und
+  // `<i class="zsp">`-Kaestchen der HTML-Legende. `dot` (Kreis) waere genau die
+  // Darstellung, die #110 abgeschafft hat, `bar`/`plate` gefuellte Balken statt eines
+  // offenen Profils. Beide Formen liefern nur `svg`/`breite` an den Flusssetzer und
+  // beruehren Blattmass, Masstab, Bemassung, Tabellen und Schriftfeld nicht.
+  if (z.form === "zyl") {
+    const w = _mmPx(6), h = _mmPx(11);
+    return { svg: _rect(x, basis - h * 0.85, w, h,
+      { fuellung: z.marke_farbe, rund: _mmPx(1) }), breite: w + fs * 0.4 };
+  }
+  if (z.form === "profil") {
+    const w = _mmPx(12), h = _mmPx(6), lw = _mmPx(2);
+    const y0 = basis - h * 1.1, y1 = y0 + h;
+    return { svg: `<polyline points="${_n(x)},${_n(y1)} ${_n(x)},${_n(y0)}`
+      + ` ${_n(x + w)},${_n(y0)} ${_n(x + w)},${_n(y1)}" fill="none"`
+      + ` stroke="${z.marke_farbe}" stroke-width="${_n(lw)}" stroke-linejoin="miter"/>`,
+      breite: w + fs * 0.4 };
   }
   if (z.form === "chip") {
     const s = _mmPx(10);
@@ -576,7 +601,7 @@ export function legendeLageplan() {
 }
 
 /**
- * Der Darstellungsschluessel des WANDblattes ([D-4]/[P-19], #79/#82) als Datenliste —
+ * Der Darstellungsschluessel des WANDblattes ([D-4]/[P-19], #79/#82/#110) als Datenliste —
  * dieselben Eintraege, dieselbe Reihenfolge und derselbe Wortlaut wie `legendeHtml(w)`
  * in `sembla-zeichnung.js`. Die bedingten Eintraege haengen an genau denselben
  * Abfragen: ein Alt-Wandelement ohne reale Blechteile bekommt sie nicht ([D-4]).
@@ -587,7 +612,8 @@ export function legendeWand(w) {
     { form: "bar", marke_farbe: FARBE_Z.stange, text: `Gewindestange (${STUECK_LABEL.standard})` },
     { form: "bar", marke_farbe: FARBE_Z.stange_sonder, text: `${STUECK_LABEL.sonder} / abgelängt` },
     { form: "bar", marke_farbe: FARBE_Z.stange_rest, text: `${STUECK_LABEL.rest} ([Z-6])` },
-    { form: "dot", marke_farbe: FARBE_Z.mutter, text: "Kopplung / Verankerung" },
+    // #110: stehender Zylinder statt Punkt — dieselbe Markenform wie im HTML-Spiegel.
+    { form: "zyl", marke_farbe: FARBE_Z.mutter, text: "Kopplung / Verankerung" },
     { form: "plate", marke_farbe: FARBE_Z.platte, text: "Spannplatte" },
     { form: "plate", marke_farbe: FARBE_Z.stahl, text: "Boden-/Kopfblech" },
     ...(bodenblechStoesse(el).length
@@ -595,6 +621,11 @@ export function legendeWand(w) {
     ...(bodenblechTeile(el).some((t) => t.art === "sonder")
       ? [{ form: "plate", marke_farbe: FARBE_Z.stange_sonder,
         text: `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)` }] : []),
+    // #110: Einlegeblech der Zwischenspannpunkte — an GENAU DERSELBEN Abfrage wie im
+    // HTML (`wirksameZwischenpunkte`), an derselben Stelle der Reihe, mit demselben
+    // Wortlaut und derselben Kennfarbe. Eine Wand ohne wirksamen Punkt bekommt ihn nicht.
+    ...(wirksameZwischenpunkte(el).length
+      ? [{ form: "profil", marke_farbe: ZWISCHENPUNKT.farbe, text: ZWISCHENPUNKT.label }] : []),
     { form: "plate", marke_farbe: FARBE_Z.i3, text: "i3 (37,5 cm)" },
     { form: "plate", marke_farbe: FARBE_Z.i2, text: "i2 (25 cm)" },
     { form: "kuerzel", kuerzel: BRAND_Z.F0.kuerzel, marke_farbe: BRAND_Z.F0.farbe,
