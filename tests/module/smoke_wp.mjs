@@ -518,46 +518,54 @@ document.getElementById('modus').value='auto'; WP.run();
 }
 document.getElementById('hgt').value='2.60'; WP.run();
 
-// Issue #13: Startachse der Vorspannung (1./2. Rasterachse) über den echten Handler.
+// Issue #104: Die Startachse ist im RECHENKERN abgeloest ([V-5] -> [V-3]/[V-11]). Das
+// Bedienelement und das gespeicherte Feld bleiben in diesem Paket ausdruecklich bestehen
+// (der sichtbare Rueckbau ist das Folgepaket) — geprueft wird deshalb beides: dass das Feld
+// unveraendert durchreist UND dass es die Achsen nicht mehr bewegt.
 // N=16 (2,00 m) ist bewusst nicht glatt durch den Strangabstand teilbar.
-// Sauberer Ausgangszustand: glatte 2,00-m-Wand laden (setzt Öffnungen/Staffelung zurück),
-// fester Nachweis-Modus mit Strangabstand 3 -> deterministische Achsen.
 WP.applyWand(Object.assign(buildWall('T13',2000,2600,[]),{wandtyp:'mit_wind'}));
 document.getElementById('modus').value='nachweis'; document.getElementById('spacing').value='3';
 document.getElementById('force').value='60'; WP.run();
-ok('Auswahlfeld Startachse in Modul 1 vorhanden', /id="startAchse"/.test(html));
+ok('Auswahlfeld Startachse in Modul 1 vorhanden (Rueckbau erst im Folgepaket)', /id="startAchse"/.test(html));
 const ks0=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
-ok('Default = 1. Rasterachse (Bestand)', WP.RESULT.wandelement.prestress.start_axis_grid===0 && ks0[0]===0);
+// [V-3]/[V-11]: unterste Lage [i2,i2,i3,i3,i3,i3] -> Grundachsen 1 (i2 am Anfang) und die
+// i3-Mitten 5/8/11/14; 14 = N-2 traegt das rechte Wandende. 3 und 13 ergaenzt [V-2]/[V-4].
+ok('#104 Grundachsen aus dem Verband, kein Randfeld', JSON.stringify(ks0)==='[1,3,5,8,11,13,14]'
+   && WP.RESULT.wandelement.prestress.start_axis_grid===0);
+ok('#104 weder 1. Rasterachse noch Endachse N-1 belegt', !ks0.includes(0) && !ks0.includes(15));
 document.getElementById('startAchse').value='1'; document.getElementById('startAchse').dispatch('change');
 const w13=WP.RESULT.wandelement, ks1=w13.tension_columns.map(c=>c.k), x13=w13.prestress.max_span_grid;
-ok('Auswahl wirkt bis ins Wandelement (prestress)', w13.prestress.start_axis_grid===1);
-ok('Startanker auf 2. Rasterachse (k=1), keine Achse auf k=0', ks1[0]===1 && !ks1.includes(0));
-ok('Endanker bleibt letzte Achse N-1', ks1[ks1.length-1]===w13.N_grid-1);
+ok('#104/[N5] Auswahl reist weiterhin ins Wandelement (Feld bleibt lesbar)', w13.prestress.start_axis_grid===1);
+ok('#104/[M5] die Startachse bewegt die Achsen NICHT mehr',
+   JSON.stringify(ks1)===JSON.stringify(ks0) && x13===3);
 ok('alle Abstände <= Strangabstand x', ks1.every((k,i)=>i===0||k-ks1[i-1]<=x13));
-// Eingefrorene Verteilung: NICHT mehr die glatt balancierte Reihe von frueher — seit [V-2] setzt
-// die Steinabdeckung (Muss) die Achsen, [V-4] fuellt danach nur noch Luecken > x auf. Die Reihe
-// haelt trotzdem alle Regeln ein: Start bei 1, Ende bei N-1, jeder Abstand <= x, Abdeckung
-// lueckenlos (validation.ungehaltene_steine leer, unten geprueft).
-ok('Fortführung ab Startachse (nicht glatt teilbar)', JSON.stringify(ks1)==='[1,3,5,8,11,13,15]' && x13===3);
 ok('[V-2] Steinabdeckung dabei lückenlos', w13.validation.ungehaltene_steine.length===0);
 document.getElementById('startAchse').value='0'; document.getElementById('startAchse').dispatch('change');
-ok('Zurück auf 1. Rasterachse', WP.RESULT.wandelement.prestress.start_axis_grid===0 &&
-   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[0,3,5,8,11,13,15]');
-// auch im Auto-Modus (Strangabstand von der Engine optimiert) wirkt die Startachse
-document.getElementById('modus').value='auto'; document.getElementById('startAchse').value='1';
-document.getElementById('startAchse').dispatch('change');
+ok('#104 zurück auf 0 ändert die Achsen ebenso wenig',
+   WP.RESULT.wandelement.prestress.start_axis_grid===0 &&
+   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))===JSON.stringify(ks0));
+// auch im Auto-Modus (Strangabstand von der Engine optimiert) bleibt die Startachse wirkungslos
+document.getElementById('modus').value='auto'; WP.run();
+const ksAuto=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
+document.getElementById('startAchse').value='1'; document.getElementById('startAchse').dispatch('change');
 const wA=WP.RESULT.wandelement, ksA=wA.tension_columns.map(c=>c.k);
-ok('Auto-Modus: Startachse 2 wirkt, Abstände <= optimiertem x', wA.prestress.start_axis_grid===1 &&
-   ksA[0]===1 && ksA[ksA.length-1]===wA.N_grid-1 && ksA.every((k,i)=>i===0||k-ksA[i-1]<=wA.prestress.max_span_grid));
+ok('#104/[M5] Auto-Modus: Startachse 2 bleibt ohne Wirkung', wA.prestress.start_axis_grid===1 &&
+   JSON.stringify(ksA)===JSON.stringify(ksAuto));
+ok('#104 Auto-Modus: Wandenden auf 1 und N-2, Abstände <= optimiertem x',
+   ksA[0]===1 && ksA.includes(wA.N_grid-2) && !ksA.includes(0) && !ksA.includes(wA.N_grid-1)
+   && ksA.every((k,i)=>i===0||k-ksA[i-1]<=wA.prestress.max_span_grid));
 document.getElementById('modus').value='nachweis'; document.getElementById('startAchse').value='0';
 document.getElementById('startAchse').dispatch('change');
-// Wiederherstellung beim Laden eines gespeicherten Wandelements
+// Wiederherstellung beim Laden eines gespeicherten Wandelements ([N5]: Feld bleibt erhalten)
 WP.applyWand(Object.assign(buildWall('Gespeichert',2000,2600,[],null,{start_axis_grid:1}),{wandtyp:'mit_wind'}));
 ok('Startachse aus gespeichertem Wandelement wiederhergestellt',
    document.getElementById('startAchse').value==='1' && WP.RESULT.wandelement.prestress.start_axis_grid===1);
+ok('#104 gespeicherte Startachse 1 liefert dieselben Achsen wie ein Altstand ohne Feld',
+   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,14]');
 const alt=buildWall('Alt',2000,2600,[]); delete alt.prestress.start_axis_grid;   // Altstand ohne Feld
 WP.applyWand(Object.assign(alt,{wandtyp:'mit_wind'}));
-ok('Altstand ohne Feld -> 1. Rasterachse', document.getElementById('startAchse').value==='0' && WP.RESULT.wandelement.tension_columns[0].k===0);
+ok('Altstand ohne Feld -> Anzeige 1. Rasterachse, Achsen aus dem Verband',
+   document.getElementById('startAchse').value==='0' && WP.RESULT.wandelement.tension_columns[0].k===1);
 
 // Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element.
 // Gefahren wird das ueber die HOEHE — die Laenge ist seit #56 kein Bedienweg mehr (s. u.).

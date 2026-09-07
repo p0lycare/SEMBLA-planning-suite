@@ -1130,17 +1130,24 @@ ok('AWG-Vorspannvorgaben unveraendert',
 ok('AWG-Staffelung (3 Stufen) unveraendert',
   wv.steps.length === 3 && wv.steps[0].height_mm === 2200 && wv.steps[1].height_mm === 1800
   && wv.steps[2].height_mm === 1400 && wv.openings.length === 0);
-// Die Spannachsen folgen seit [V-2]/[V-3] der Steinabdeckung statt der reinen Abstands-
-// verteilung: aus 12 Achsen des AWG-Anhangs werden 14. Die AWG-EINGABEN (Geometrie, Staffelung,
-// Vorspannvorgaben) sind unveraendert — nur die abgeleitete Achsenlage folgt dem neuen Regelstand.
-ok('AWG-Spannachsen nach [V-2]/[V-3] (14 Achsen, jeder Stein gehalten)',
+// Die Spannachsen folgen seit Issue #104 dem Verband der untersten Lage ([V-3]/[V-11]) statt
+// einer waehlbaren Startachse: aus 12 Achsen des AWG-Anhangs werden 13. Die AWG-EINGABEN
+// (Geometrie, Staffelung, Vorspannvorgaben) sind unveraendert — nur die abgeleitete Achsenlage
+// folgt dem neuen Regelstand. Die unterste Lage ist durchgehend i3, beide Wandenden liegen
+// deshalb auf der Steinmitte: links k=1, rechts k=22 = N-2. Das aeussere Randfeld (0 und 23)
+// ist frei — genau die Forderung aus #104.
+ok('AWG-Spannachsen nach [V-3]/[V-11] (13 Achsen, jeder Stein gehalten)',
   wv.tension_columns.map(c => c.x_mm).join(',')
-  === '62.5,437.5,562.5,937.5,1187.5,1312.5,1562.5,1687.5,1937.5,2187.5,2312.5,2437.5,2687.5,2937.5'
-  && wv.tension_columns.map(c => c.k).join(',') === '0,3,4,7,9,10,12,13,15,17,18,19,21,23');
+  === '187.5,437.5,562.5,937.5,1187.5,1312.5,1562.5,1687.5,2062.5,2187.5,2312.5,2437.5,2812.5'
+  && wv.tension_columns.map(c => c.k).join(',') === '1,3,4,7,9,10,12,13,16,17,18,19,22');
+ok('#104 AWG: kein Strang im aeusseren Randfeld',
+  (() => { const ks = wv.tension_columns.map(c => c.k);
+           return !ks.includes(0) && !ks.includes(wv.N_grid - 1)
+             && ks.includes(1) && ks.includes(wv.N_grid - 2); })());
 ok('AWG-Tiling unveraendert (Kernmengen des Anhangs)',
   wv.bom.i2 === 20 && wv.bom.i3 === 70);
-ok('AWG-Vorspannmengen folgen den 14 Achsen',
-  wv.bom.gewindestangen === 35 && wv.bom.verbindungsmuttern === 21 && wv.bom.verschnitt_mm === 6600);
+ok('AWG-Vorspannmengen folgen den 13 Achsen',
+  wv.bom.gewindestangen === 33 && wv.bom.verbindungsmuttern === 20 && wv.bom.verschnitt_mm === 6000);
 ok('AWG-Wand erfuellt die Muss-Regel [V-2] (kein ungehaltener Stein)',
   wv.validation.ungehaltene_steine.length === 0);
 ok('AWG-Wand ist baubar geprueft', wv.validation.buildable === true && wv.validation.tension_span_ok === true);
@@ -1419,7 +1426,7 @@ ok('Musterwand ist aktiv und traegt den Vorlagennamen',
   store.aktivId() === mw.id && mw.id !== wAktivVor && mw.name === 'SEMBLA Musterwand (AWG)');
 ok('gespeichertes Wandelement ist die kanonische AWG-Wand',
   mw.wandelement.length_mm === 3000 && mw.wandelement.height_mm === 2600
-  && mw.wandelement.tension_columns.length === 14 && mw.wandelement.lagen === 13);
+  && mw.wandelement.tension_columns.length === 13 && mw.wandelement.lagen === 13);
 ok('Wandtyp wird beim Import normalisiert', store.WANDTYPEN.includes(mw.wandelement.wandtyp));
 ok('bestehendes Element wurde NICHT ueberschrieben',
   JSON.stringify(store.holeElement(wAktivVor)) === vorherAktivStand);

@@ -83,8 +83,8 @@
   },
   "tension_columns": [
     {
-      "k": 0,
-      "x_mm": 62.5,
+      "k": 1,
+      "x_mm": 187.5,
       "durchgehend": true,
       "segments": [
         {
@@ -392,8 +392,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 15,
-      "x_mm": 1937.5,
+      "k": 14,
+      "x_mm": 1812.5,
       "durchgehend": true,
       "segments": [
         {
@@ -464,7 +464,7 @@
     "invalid_segments": [],
     "zuschnitt_konflikte": [
       {
-        "k": 0,
+        "k": 1,
         "z0_mm": 0,
         "z1_mm": 2600,
         "grund": "kein_reststueck",
@@ -513,7 +513,7 @@
         "fertigmass_mm": 400
       },
       {
-        "k": 15,
+        "k": 14,
         "z0_mm": 0,
         "z1_mm": 2600,
         "grund": "kein_reststueck",

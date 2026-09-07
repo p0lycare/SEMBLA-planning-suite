@@ -583,6 +583,35 @@ function balancedFill(a, b, maxstep) {
   return out;
 }
 
+/**
+ * [V-3]/[V-11] Grundachsen der Auto-Verteilung aus dem Verband der UNTERSTEN Lage.
+ *
+ * `steine` sind die Rasterintervalle [a,b) der Lage 0 aus dem VOLLSTAENDIGEN Verband
+ * ([G-11], vor dem Aussparen der Verzahnungsbereiche), aufsteigend nach a sortiert.
+ *
+ *   [V-3]  i3 `[a,a+3)`  -> `a+1` (Rastermitte des Steins), an JEDER Stelle der Lage.
+ *   [V-11] i2 als ERSTER Stein  -> `a+1`  (2. Rasterachse, nicht das aeussere Randfeld).
+ *   [V-11] i2 als LETZTER Stein -> `a`    (2. Rasterachse von rechts, s. o.).
+ *   [V-11] i2 im Inneren -> KEINE Grundachse. Ein i2 hat keine Rastermitte (zwei Zellen);
+ *          es wird keine erfunden — die Abdeckung uebernimmt danach [V-2].
+ *
+ * Ist ein einzelner i2 zugleich erster UND letzter Stein, gilt die Anfangsregel: genau EINE
+ * Grundachse auf der 2. Rasterachse. Ohne diesen Vorrang stuenden `a+1` und `a` gegeneinander
+ * (bei N=2 also 1 gegen 0), und die kuerzeste Wand haette zwei Achsen statt einer.
+ */
+function grundachsen(steine, N) {
+  const klemm = (k) => Math.max(0, Math.min(N - 1, k));
+  const out = new Set();
+  for (let i = 0; i < steine.length; i++) {
+    const [a, b] = steine[i];
+    if (b - a === 3) { out.add(klemm(a + 1)); continue; }
+    if (b - a !== 2) continue;
+    if (i === 0) out.add(klemm(a + 1));
+    else if (i === steine.length - 1) out.add(klemm(a));
+  }
+  return out;
+}
+
 function validateInputs(lengthMm, heightMm, openings) {
   if (!Number.isInteger(lengthMm) || lengthMm % GRID !== 0)
     throw new InvalidDimensionError(`Wandlaenge ${lengthMm} ist kein Vielfaches von ${GRID} mm`);
@@ -834,15 +863,16 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // `occ`, `steinIvVoll` und `wunschVoll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
   const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
   const steinIvVoll = [];
-  // [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — VOR dem Aussparen!
-  const wunschVoll = new Set();
+  // [V-3]/[V-11] Der Verband der UNTERSTEN Lage traegt die Grundachsen — VOR dem Aussparen!
+  const lage0Voll = [];
   for (const c of courses) for (const st of c.stones) {
     const a = st.x0 / GRID, b = st.x1 / GRID;
     for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true;
     steinIvVoll.push([a, b]);
-    // [V-3] Nur unterste Lage (lage 0), nur i3 (Breite 3 Raster) — hat eine echte Rastermitte
-    if (c.lage === 0 && b - a === 3) wunschVoll.add(a + 1);
+    if (c.lage === 0) lage0Voll.push([a, b]);
   }
+  // Erster/letzter Stein der untersten Lage muessen eindeutig sein ([V-11]).
+  lage0Voll.sort((p, q) => p[0] - q[0]);
 
   // ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
   // Bei gültigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
@@ -906,9 +936,13 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     }
   }
   // ---- Spannachsen ----------------------------------------------------------------
-  // Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-2] Steinabdeckung (MUSS)
-  // > [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-3] Mitte i3 unterste Lage
-  // > [V-4] Maximalabstand als OBERGRENZE.
+  // Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11] Grundachsen aus dem
+  // Verband der untersten Lage > [V-2] Steinabdeckung (MUSS, additiv) > [V-7]/[V-8] Zusatzachsen
+  // an Stufen-/Oeffnungskanten > [V-4] Maximalabstand als OBERGRENZE.
+  //
+  // [V-3] ist seit Issue #104 eine GRUNDACHSE und keine blosse Wunschposition mehr: die Mitte
+  // jedes i3 der untersten Lage wird gesetzt, auch wenn der Stein ohnehin schon gehalten waere.
+  // [V-11] ergaenzt die Randlage aus demselben Verband. [V-5] (Startachse) ist damit ABGELOEST.
   //
   // [V-4] ist bewusst die LETZTE Stufe und nicht mehr die Verteilungsregel: die Steinabdeckung
   // [V-2] impliziert den Abstand NICHT (nachweisbar entstehen sonst Luecken bis 5 Raster =
@@ -927,26 +961,28 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     // Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
     colArr = PS.columns_grid.filter(k => k >= 0 && k < N).sort((a, b) => a - b);
   } else {
-    // [V-5] Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse) und letzte Achse N-1.
-    const a0 = Math.min(PS.start_axis_grid, N - 1);
-    const colSet = new Set([a0, N - 1]);
+    // [V-3]/[V-11] Grundachsen: allein aus dem Verband der untersten Lage (vollstaendiger
+    // Verband, [G-11]). Mitte jedes i3; bei einem i2 am Wandanfang die 2. Rasterachse, bei
+    // einem i2 am Wandende die 2. Rasterachse von rechts.
+    //
+    // [V-5] ist damit abgeloest: `PS.start_axis_grid` wird hier NICHT mehr gelesen. Das Feld
+    // bleibt im Datenmodell erhalten (normPrestress fuehrt es unveraendert weiter), damit
+    // gespeicherte Projekte lesbar bleiben — es ist unwirksamer Altbestand.
+    // Ebenfalls entfallen ist die frueher UNBEDINGTE Endachse N-1: sie lag im aeusseren
+    // Randfeld. Beide Wandenden landen jetzt auf 1 bzw. N-2 — bei i3 als Steinmitte, bei i2
+    // ueber [V-11]; die Randlage folgt also durchgehend dem Verband.
+    const colSet = grundachsen(lage0Voll, N);
     // [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
     for (const op of openings) { if (op.g0 - 1 >= 0) colSet.add(op.g0 - 1); if (op.g1 <= N - 1) colSet.add(op.g1); }
     // [V-7] Stufenkanten: an jeder Höhenstufe ein Strang beidseitig der Kante.
     for (let k = 0; k < N - 1; k++) { if (topLage[k] !== topLage[k + 1]) { colSet.add(k); colSet.add(k + 1); } }
-    // [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — aus dem VOLLSTAENDIGEN
-    // Verband (wunschVoll, oben berechnet). Ein i2 hat keine Rastermitte (zwei Zellen) und
-    // liefert deshalb keine Wunschposition — es wird nichts geraten.
     // [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
     // Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
-    // die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Liegt im Stein eine
-    // Wunschposition nach [V-3], hat diese Vorrang vor der Reichweite — sie kostet hoechstens
-    // zusaetzliche Achsen, nie die Abdeckung.
+    // die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Rein additiv — die
+    // Grundachsen aus [V-3]/[V-11] werden dabei nie verschoben oder ersetzt.
     for (const [a, b] of steinIvVoll) {
       if (gehalten(colSet, a, b)) continue;
-      let pos = b - 1;
-      for (let k = b - 1; k >= a; k--) if (wunschVoll.has(k)) { pos = k; break; }
-      colSet.add(pos);
+      colSet.add(b - 1);
     }
     // [V-4] Obergrenze: verbleibende Luecken > max_span_grid balanciert auffuellen (rein additiv,
     // die Abdeckung aus [V-2] bleibt dabei zwingend erhalten).

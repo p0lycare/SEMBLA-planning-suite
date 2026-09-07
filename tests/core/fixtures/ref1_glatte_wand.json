@@ -69,8 +69,8 @@
   },
   "tension_columns": [
     {
-      "k": 0,
-      "x_mm": 62.5,
+      "k": 1,
+      "x_mm": 187.5,
       "durchgehend": true,
       "segments": [
         {
@@ -153,50 +153,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 5,
-      "x_mm": 687.5,
-      "durchgehend": true,
-      "segments": [
-        {
-          "z0_mm": 0,
-          "z1_mm": 2000,
-          "lage0": 0,
-          "lage1": 10,
-          "gewindestangen": 2,
-          "stuecke": [
-            {
-              "len_mm": 1100,
-              "art": "standard",
-              "quelle_mm": 1100
-            },
-            {
-              "len_mm": 900,
-              "art": "sonder",
-              "quelle_mm": 1100
-            }
-          ],
-          "zuschnitt_konflikt": "kein_reststueck",
-          "bedarf_mm": 2000,
-          "ueberstand_mm": 0,
-          "letzte_stange_mm": 900,
-          "verschnitt_mm": 200,
-          "verbindungsmuttern": 1,
-          "anker_unten": "bodenblech",
-          "anker_oben": "kopfblech",
-          "senkkopfschrauben": 1,
-          "spannplatten": 0,
-          "spannmuttern": 1
-        }
-      ],
-      "gewindestangen": 2,
-      "verbindungsmuttern": 1,
-      "senkkopfschrauben": 1,
-      "spannplatten": 0,
-      "spannmuttern": 1
-    },
-    {
-      "k": 7,
-      "x_mm": 937.5,
+      "k": 6,
+      "x_mm": 812.5,
       "durchgehend": true,
       "segments": [
         {
@@ -240,18 +198,18 @@
   "bom": {
     "i2": 10,
     "i3": 20,
-    "gewindestangen": 8,
-    "verbindungsmuttern": 4,
-    "senkkopfschrauben": 4,
-    "kopplungsmuttern_basis": 4,
+    "gewindestangen": 6,
+    "verbindungsmuttern": 3,
+    "senkkopfschrauben": 3,
+    "kopplungsmuttern_basis": 3,
     "spannplatten": 0,
-    "spannmuttern": 4,
+    "spannmuttern": 3,
     "stahlblech_module": 2,
     "stahlblech_mm": 2000,
     "stahlblech_dicke_mm": 15,
     "stossfugen": 20,
     "dichtstreifen_mm": 4000,
-    "verschnitt_mm": 800
+    "verschnitt_mm": 600
   },
   "validation": {
     "buildable": true,
@@ -262,7 +220,7 @@
     "invalid_segments": [],
     "zuschnitt_konflikte": [
       {
-        "k": 0,
+        "k": 1,
         "z0_mm": 0,
         "z1_mm": 2000,
         "grund": "kein_reststueck",
@@ -276,14 +234,7 @@
         "fertigmass_mm": 900
       },
       {
-        "k": 5,
-        "z0_mm": 0,
-        "z1_mm": 2000,
-        "grund": "kein_reststueck",
-        "fertigmass_mm": 900
-      },
-      {
-        "k": 7,
+        "k": 6,
         "z0_mm": 0,
         "z1_mm": 2000,
         "grund": "kein_reststueck",

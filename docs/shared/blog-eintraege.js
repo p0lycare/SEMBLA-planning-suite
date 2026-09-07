@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-03",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 104,
+    titel: "Spannachsen liegen jetzt mittig im i3 und an einem i2-Wandrand auf der zweiten Achse",
+    testbitte: "Wand planen und die Vorspannung ansehen: an jedem i3 der untersten Reihe liegt eine Achse mittig, und an einem i2 am Wandanfang oder Wandende liegt sie auf der zweiten Achse statt im Randfeld.",
+  },
+  {
     id: "chg-20260907-02",
     datum: "2026-09-07",
     typ: "fix",

@@ -540,6 +540,38 @@ def _balanced_fill(a: int, b: int, maxstep: int) -> list[int]:
 
 
 # ---- Eingabe-Validierung ----
+def _grundachsen(steine, N: int) -> set[int]:
+    """[V-3]/[V-11] Grundachsen der Auto-Verteilung aus dem Verband der UNTERSTEN Lage.
+
+    `steine` sind die Rasterintervalle [a,b) der Lage 0 aus dem VOLLSTAENDIGEN Verband
+    ([G-11], vor dem Aussparen der Verzahnungsbereiche), aufsteigend nach a sortiert.
+
+      [V-3]  i3 `[a,a+3)`  -> `a+1` (Rastermitte des Steins), an JEDER Stelle der Lage.
+      [V-11] i2 als ERSTER Stein  -> `a+1`  (2. Rasterachse, nicht das aeussere Randfeld).
+      [V-11] i2 als LETZTER Stein -> `a`    (2. Rasterachse von rechts, s. o.).
+      [V-11] i2 im Inneren -> KEINE Grundachse. Ein i2 hat keine Rastermitte (zwei Zellen);
+             es wird keine erfunden — die Abdeckung uebernimmt danach [V-2].
+
+    Ist ein einzelner i2 zugleich erster UND letzter Stein, gilt die Anfangsregel: genau EINE
+    Grundachse auf der 2. Rasterachse. Ohne diesen Vorrang stuenden `a+1` und `a` gegeneinander
+    (bei N=2 also 1 gegen 0), und die kuerzeste Wand haette zwei Achsen statt einer.
+    """
+    def klemm(k: int) -> int:
+        return max(0, min(N - 1, k))
+    out: set[int] = set()
+    for i, (a, b) in enumerate(steine):
+        if b - a == 3:
+            out.add(klemm(a + 1))
+            continue
+        if b - a != 2:
+            continue
+        if i == 0:
+            out.add(klemm(a + 1))
+        elif i == len(steine) - 1:
+            out.add(klemm(a))
+    return out
+
+
 def _validate_inputs(length_mm: int, height_mm: int, openings: list[Opening]):
     if not isinstance(length_mm, int) or length_mm % GRID != 0:
         raise InvalidDimensionError(f"Wandlaenge {length_mm} ist kein Vielfaches von {GRID} mm")
@@ -824,17 +856,18 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # `occ`, `stein_iv_voll` und `wunsch_voll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
     occ = [[False] * N for _ in range(L)]
     stein_iv_voll = []
-    # [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — VOR dem Aussparen!
-    wunsch_voll = set()
+    # [V-3]/[V-11] Der Verband der UNTERSTEN Lage traegt die Grundachsen — VOR dem Aussparen!
+    lage0_voll = []
     for c in courses:
         for st in c["stones"]:
             a, b = st["x0"] // GRID, st["x1"] // GRID
             for cc in range(a, b):
                 occ[c["lage"]][cc] = True
             stein_iv_voll.append((a, b))
-            # [V-3] Nur unterste Lage (lage 0), nur i3 (Breite 3 Raster) — hat eine echte Rastermitte
-            if c["lage"] == 0 and b - a == 3:
-                wunsch_voll.add(a + 1)
+            if c["lage"] == 0:
+                lage0_voll.append((a, b))
+    # Erster/letzter Stein der untersten Lage muessen eindeutig sein ([V-11]).
+    lage0_voll.sort(key=lambda p: p[0])
 
     # ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
     # Bei gueltigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
@@ -889,9 +922,13 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             # prev fuer die naechste Lage kommt aus dem vollstaendigen Verband (joints_grid unveraendert)
             prev_il = set(courses[li]["joints_grid"])
     # ---- Spannachsen ---------------------------------------------------------------
-    # Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-2] Steinabdeckung (MUSS)
-    # > [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-3] Mitte i3 unterste Lage
-    # > [V-4] Maximalabstand als OBERGRENZE.
+    # Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11] Grundachsen aus dem
+    # Verband der untersten Lage > [V-2] Steinabdeckung (MUSS, additiv) > [V-7]/[V-8] Zusatzachsen
+    # an Stufen-/Oeffnungskanten > [V-4] Maximalabstand als OBERGRENZE.
+    #
+    # [V-3] ist seit Issue #104 eine GRUNDACHSE und keine blosse Wunschposition mehr: die Mitte
+    # jedes i3 der untersten Lage wird gesetzt, auch wenn der Stein ohnehin schon gehalten waere.
+    # [V-11] ergaenzt die Randlage aus demselben Verband. [V-5] (Startachse) ist damit ABGELOEST.
     #
     # [V-4] ist bewusst die LETZTE Stufe und nicht mehr die Verteilungsregel: die Steinabdeckung
     # [V-2] impliziert den Abstand NICHT (sonst entstehen Luecken bis 5 Raster = 625 mm, obwohl
@@ -911,9 +948,17 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         # Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
         col_ks = sorted(k for k in _PS["columns_grid"] if 0 <= k < N)
     else:
-        # [V-5] Startachse (0 = 1. Rasterachse, Standard; 1 = 2. Rasterachse) und letzte Achse N-1.
-        a0 = min(_PS["start_axis_grid"], N - 1)
-        colset = {a0, N - 1}
+        # [V-3]/[V-11] Grundachsen: allein aus dem Verband der untersten Lage (vollstaendiger
+        # Verband, [G-11]). Mitte jedes i3; bei einem i2 am Wandanfang die 2. Rasterachse, bei
+        # einem i2 am Wandende die 2. Rasterachse von rechts.
+        #
+        # [V-5] ist damit abgeloest: `_PS["start_axis_grid"]` wird hier NICHT mehr gelesen. Das
+        # Feld bleibt im Datenmodell erhalten (_norm_prestress fuehrt es unveraendert weiter),
+        # damit gespeicherte Projekte lesbar bleiben — es ist unwirksamer Altbestand.
+        # Ebenfalls entfallen ist die frueher UNBEDINGTE Endachse N-1: sie lag im aeusseren
+        # Randfeld. Beide Wandenden landen jetzt auf 1 bzw. N-2 — bei i3 als Steinmitte, bei i2
+        # ueber [V-11]; die Randlage folgt also durchgehend dem Verband.
+        colset = _grundachsen(lage0_voll, N)
         # [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
         for op in openings:
             if op.g0 - 1 >= 0: colset.add(op.g0 - 1)
@@ -922,23 +967,14 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         for k in range(N - 1):
             if _top_lage[k] != _top_lage[k + 1]:
                 colset.add(k); colset.add(k + 1)
-        # [V-3] Wunschpositionen: Mitte der i3-Steine der untersten Lage — aus dem VOLLSTAENDIGEN
-        # Verband (wunsch_voll, oben berechnet). Ein i2 hat keine Rastermitte (zwei Zellen) und
-        # liefert deshalb keine Wunschposition — es wird nichts geraten.
         # [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
         # Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
-        # die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Liegt im Stein eine
-        # Wunschposition nach [V-3], hat diese Vorrang vor der Reichweite — sie kostet hoechstens
-        # zusaetzliche Achsen, nie die Abdeckung.
+        # die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Rein additiv — die
+        # Grundachsen aus [V-3]/[V-11] werden dabei nie verschoben oder ersetzt.
         for a, b in stein_iv_voll:
             if _gehalten(colset, a, b):
                 continue
-            pos = b - 1
-            for k in range(b - 1, a - 1, -1):
-                if k in wunsch_voll:
-                    pos = k
-                    break
-            colset.add(pos)
+            colset.add(b - 1)
         # [V-4] Obergrenze: verbleibende Luecken > max_span_grid balanciert auffuellen (rein
         # additiv, die Abdeckung aus [V-2] bleibt dabei zwingend erhalten).
         roh = sorted(k for k in colset if 0 <= k < N)

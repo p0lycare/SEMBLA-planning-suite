@@ -102,12 +102,17 @@ class ChamberLattice(unittest.TestCase):
 
 class TensionRules(unittest.TestCase):
     def test_both_ends_have_columns(self):
+        # [V-3]/[V-11] (#104): beide Wandenden liegen auf der ZWEITEN Rasterachse — links 1,
+        # rechts N-2 — und nie im aeusseren Randfeld (0 bzw. N-1). Bei einem i3 folgt das aus
+        # der Steinmitte, bei einem i2 aus [V-11]; die frueher unbedingte Endachse N-1 ist weg.
         for key in REFERENCE_WALLS:
             w = build_reference(key)
             ks = {c["k"] for c in w["tension_columns"]}
             with self.subTest(wall=key):
-                self.assertIn(0, ks)
-                self.assertIn(w["N_grid"] - 1, ks)
+                self.assertIn(1, ks)
+                self.assertIn(w["N_grid"] - 2, ks)
+                self.assertNotIn(0, ks)
+                self.assertNotIn(w["N_grid"] - 1, ks)
 
     def test_columns_beside_openings(self):
         w = build_reference("ref2_wand_tuer")
@@ -116,29 +121,90 @@ class TensionRules(unittest.TestCase):
         self.assertIn(op["g0"] - 1, ks)   # links der Tuer
         self.assertIn(op["g1"], ks)       # rechts der Tuer
 
-    # Issue #13: Startachse der Auto-Verteilung (1. oder 2. Rasterachse), danach balanciert
-    # mit Abstaenden <= max_span_grid weiter. N=16 ist bewusst NICHT glatt durch 3 teilbar.
+    # ---- [V-3]/[V-11] Grundachsen aus dem Verband der untersten Lage (Issue #104) ----
+    # Die vier geforderten Randverbaende getrennt. N=16 (2,00 m) ist bewusst NICHT glatt durch
+    # den Strangabstand teilbar. Die Achslisten sind eingefroren, weil genau ihre Lage die
+    # Fachregel ist — nicht nur ihre Anzahl.
     @staticmethod
-    def _ks(**ps):
-        return [c["k"] for c in build_wall("sa", 2000, 2600, [], prestress=ps)["tension_columns"]]
+    def _ks(L=2000, H=2600, openings=(), **ps):
+        return [c["k"] for c in
+                build_wall("gr", L, H, list(openings), prestress=ps)["tension_columns"]]
 
-    def test_start_axis_default_is_first_axis(self):
-        ks = self._ks(max_span_grid=3)
-        self.assertEqual(ks[0], 0)
-        self.assertEqual(ks, self._ks(max_span_grid=3, start_axis_grid=0))
-        # [V-2]+[V-3]: 3 der 4 i3-Steine der untersten Lage (Mitten 5/8/11/14) werden mittig
-        # getroffen; 3 deckt den i2 [2,4), 13 den i3 [13,16) neben dem Endanker 15 ab.
-        self.assertEqual(ks, [0, 3, 5, 8, 11, 13, 15])
+    @staticmethod
+    def _lage0(L, H=2600, openings=()):
+        w = build_wall("gr", L, H, list(openings))
+        return [(st["x1"] - st["x0"]) // GRID for st in w["courses"][0]["stones"]]
 
-    def test_start_axis_second_axis(self):
-        N, x = 16, 3
-        ks = self._ks(max_span_grid=x, start_axis_grid=1)
-        self.assertEqual(ks[0], 1)              # Startanker
-        self.assertEqual(ks[-1], N - 1)         # Endanker
+    def test_v3_i3_an_beiden_raendern(self):
+        # Unterste Lage [i3, i3]: beide Grundachsen sind Steinmitten (1 und N-2 = 4).
+        self.assertEqual(self._lage0(6 * GRID), [3, 3])
+        ks = self._ks(6 * GRID, max_span_grid=3)
+        self.assertEqual(ks, [1, 3, 4])
         self.assertNotIn(0, ks)
-        for a, b in zip(ks, ks[1:]):
-            self.assertLessEqual(b - a, x, f"Abstand {a}->{b}")
-        self.assertEqual(ks, [1, 3, 5, 8, 11, 13, 15])
+        self.assertNotIn(5, ks)
+
+    def test_v11_i2_nur_am_anfang(self):
+        # Unterste Lage [i2, i3]: links [V-11] -> 1, rechts [V-3] Steinmitte -> 3 = N-2.
+        self.assertEqual(self._lage0(5 * GRID), [2, 3])
+        ks = self._ks(5 * GRID, max_span_grid=3)
+        self.assertEqual(ks, [1, 3])
+        self.assertNotIn(0, ks)
+        self.assertNotIn(4, ks)
+
+    def test_v11_i2_nur_am_ende(self):
+        # Unterste Lage [i3, i2] (Tuer bis zum Boden erzwingt den i2-Abschluss rechts):
+        # links [V-3] Steinmitte -> 1, rechts [V-11] -> 7 = N-2.
+        op = [Opening(3, 7, 0, 8, "tuer")]
+        self.assertEqual(self._lage0(9 * GRID, openings=op), [3, 2])
+        ks = self._ks(9 * GRID, openings=op, max_span_grid=3)
+        self.assertIn(1, ks)
+        self.assertIn(7, ks)          # N-2, nicht das Randfeld
+        self.assertNotIn(0, ks)
+        self.assertNotIn(8, ks)       # N-1 ist keine Achse mehr
+        self.assertEqual(ks, [1, 2, 5, 7])
+
+    def test_v11_i2_an_beiden_raendern(self):
+        # Unterste Lage [i2, i2]: links [V-11] -> 1, rechts [V-11] -> 2 = N-2.
+        self.assertEqual(self._lage0(4 * GRID), [2, 2])
+        ks = self._ks(4 * GRID, max_span_grid=3)
+        self.assertEqual(ks, [1, 2])
+        self.assertNotIn(0, ks)
+        self.assertNotIn(3, ks)
+
+    def test_v11_einzelner_i2_genau_eine_achse(self):
+        # Kuerzestmoegliche Wand: der einzige i2 ist erster UND letzter Stein. Dann gilt die
+        # Anfangsregel — genau EINE Grundachse auf der 2. Rasterachse, nicht zwei.
+        self.assertEqual(self._lage0(2 * GRID), [2])
+        self.assertEqual(self._ks(2 * GRID, max_span_grid=3), [1])
+
+    def test_v11_innerer_i2_erzeugt_keine_grundachse(self):
+        # [N3] Ein i2 im Inneren hat keine Rastermitte — es wird keine erfunden. Die Lage
+        # [i3, i3, i2, i2] traegt Grundachsen nur auf 1, 4 (Steinmitten) und 12 (= N-2).
+        op = [Opening(6, 10, 0, 8, "tuer")]
+        self.assertEqual(self._lage0(14 * GRID, openings=op), [3, 3, 2, 2])
+        ks = self._ks(14 * GRID, openings=op, max_span_grid=3)
+        for k in (1, 4, 12):
+            self.assertIn(k, ks)
+        self.assertNotIn(0, ks)
+        self.assertNotIn(13, ks)
+        self.assertEqual(ks, [1, 3, 4, 5, 8, 10, 12])
+
+    # ---- [V-5] abgeloest: die gespeicherte Startachse wirkt nicht mehr (M5) ----
+    def test_v5_startachse_ohne_wirkung(self):
+        for L in (2 * GRID, 4 * GRID, 5 * GRID, 2000, 3000):
+            a = build_wall("sa0", L, 2600, [], prestress={"max_span_grid": 3, "start_axis_grid": 0})
+            b = build_wall("sa1", L, 2600, [], prestress={"max_span_grid": 3, "start_axis_grid": 1})
+            with self.subTest(L=L):
+                self.assertEqual(a["tension_columns"], b["tension_columns"])
+                # Das Feld bleibt lesbarer Altbestand — es wird nur nicht mehr angewendet ([N5]).
+                self.assertEqual(a["prestress"]["start_axis_grid"], 0)
+                self.assertEqual(b["prestress"]["start_axis_grid"], 1)
+
+    def test_v5_altstand_ohne_feld_gleicht_gesetztem_feld(self):
+        ohne = build_wall("ohne", 2000, 2600, [], prestress={"max_span_grid": 3})
+        mit = build_wall("mit", 2000, 2600, [], prestress={"max_span_grid": 3, "start_axis_grid": 1})
+        self.assertEqual(ohne["tension_columns"], mit["tension_columns"])
+        self.assertEqual([c["k"] for c in ohne["tension_columns"]], [1, 3, 5, 8, 11, 13, 14])
 
     # ---- [V-2] MUSS: jeder Stein wird von mindestens einer Spannachse durchgangen ----
     @staticmethod
@@ -181,15 +247,26 @@ class TensionRules(unittest.TestCase):
             self.assertIn(e["typ"], ("i2", "i3"))
             self.assertIn("lage", e); self.assertIn("start_grid", e); self.assertIn("breite_grid", e)
 
-    # ---- [V-3] SOLL: automatische Achsen moeglichst mittig in den i3 der untersten Lage ----
+    # ---- [V-3] MUSS (#104): JEDE i3-Mitte der untersten Lage ist eine Grundachse ----
     def test_v3_achsen_mittig_in_i3_der_untersten_lage(self):
+        # Frueher eine Soll-Regel ("deutliche Mehrheit"), seit #104 vollstaendig: es gibt keine
+        # Start-/Endachse mehr, die eine Steinmitte verdraengen koennte.
         for L in (2000, 5000):
             w = build_wall("v3", L, 2600, [], prestress={"max_span_grid": 3})
             ks = {c["k"] for c in w["tension_columns"]}
             mitten = {st["x0"] // GRID + 1 for st in w["courses"][0]["stones"]
                       if (st["x1"] - st["x0"]) // GRID == 3}
-            # deutliche Mehrheit der i3-Mitten ist getroffen (nicht alle: Start-/Endanker binden)
-            self.assertGreaterEqual(len(mitten & ks) * 4, len(mitten) * 3, f"L={L}")
+            self.assertTrue(mitten, f"Testwand L={L} enthaelt keinen i3 in der untersten Lage")
+            self.assertEqual(mitten - ks, set(), f"L={L}")
+
+    def test_v3_gilt_auch_fuer_die_referenzwaende(self):
+        for key in REFERENCE_WALLS:
+            w = build_reference(key)
+            ks = {c["k"] for c in w["tension_columns"]}
+            mitten = {st["x0"] // GRID + 1 for st in w["courses"][0]["stones"]
+                      if (st["x1"] - st["x0"]) // GRID == 3}
+            with self.subTest(wall=key):
+                self.assertEqual(mitten - ks, set())
 
     def test_v3_erzwingt_keine_achse_im_i2(self):
         # i2 hat keine Rastermitte -> es darf keine Wunschposition erfunden werden.
@@ -198,12 +275,17 @@ class TensionRules(unittest.TestCase):
         self.assertEqual(ks, sorted(set(ks)))
         self.assertTrue(all(0 <= k < 16 for k in ks))
 
-    def test_start_axis_extras_and_manual_precedence(self):
+    def test_zusatzachsen_additiv_und_manuelle_haben_vorrang(self):
+        # [M6] Oeffnungskanten ([V-8]) ergaenzen die Grundachsen weiterhin additiv; das aeussere
+        # Randfeld bleibt dabei frei (weder 0 noch N-1).
         op = [Opening(5, 11, 0, 10, "tuer")]
         ks = {c["k"] for c in build_wall("sa", 2000, 2600, op,
-                                         prestress={"max_span_grid": 3, "start_axis_grid": 1})["tension_columns"]}
+                                         prestress={"max_span_grid": 3})["tension_columns"]}
         self.assertIn(4, ks); self.assertIn(11, ks)      # Oeffnungskanten additiv
-        self.assertNotIn(0, ks); self.assertIn(15, ks)
+        self.assertNotIn(0, ks); self.assertNotIn(15, ks)
+        self.assertIn(14, ks)                            # N-2 traegt das rechte Wandende
+        # [N1]/[V-9] Manuelle Achsen werden weder ergaenzt noch verschoben — auch nicht um die
+        # neuen Grundachsen. Eine gespeicherte Startachse aendert daran nichts.
         m = build_wall("sa", 2000, 2600, [], prestress={"max_span_grid": 3, "start_axis_grid": 1,
                                                         "columns_grid": [0, 8, 15]})
         self.assertEqual([c["k"] for c in m["tension_columns"]], [0, 8, 15])
@@ -644,7 +726,10 @@ class Zwischenspannpunkte(unittest.TestCase):
                        prestress={"zwischenpunkte_mm": [1400, 400, 333]})
         self.assertEqual(w["prestress"]["zwischenpunkte_mm"], [400, 1400])
         self.assertEqual(len(w["validation"]["zwischenpunkt_fehler"]), 1)
-        self.assertEqual([x["z_mm"] for x in sc.wirksame_zwischenpunkte(w) if x["k"] == 0],
+        # Geprueft wird der Override je Achse — welche Rasterlage die erste Achse hat, ist
+        # dafuer unerheblich (seit #104 ist es 1 statt 0).
+        k0 = w["tension_columns"][0]["k"]
+        self.assertEqual([x["z_mm"] for x in sc.wirksame_zwischenpunkte(w) if x["k"] == k0],
                          [400, 1400])
         self.assertTrue(is_buildable(w))
 
