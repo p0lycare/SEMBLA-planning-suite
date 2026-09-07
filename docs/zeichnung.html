@@ -159,6 +159,12 @@
 const $ = id => document.getElementById(id);
 const fmt = (n,d=0)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 let WALL=null, EING={}, OPT=null, currentId=null, MASSSTAB=null;
+/* Waechter fuer das EIGENE Speichern (Muster aus Modul 1, wandplanung.html): die
+   Kopfdaten laufen ueber store.setzeKopfdaten, und das benachrichtigt auch diese Seite.
+   Der Neuaufbau unten schreibt nichts, eine Schleife kann daraus also nicht entstehen —
+   er wuerde aber die eben gesetzte Bestaetigungszeile und den Feldstand wieder wegraeumen
+   und doppelt zeichnen. Deshalb wird der eigene Schreibvorgang markiert. */
+let _selfSave=false;
 // aus window.SEMBLA (in __zInit gebunden):
 let store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen;
 /* CSS-Millimeter sind fest definiert (1 px = 1/96 Zoll) — das ist die Umrechnung des
@@ -336,15 +342,16 @@ function kopfdatenGeaendert(){
   const ziel=kopfdatenUiStand();
   if(!ziel.ok){ uiAusKopfdaten(EING.projekt); kdMelde(ziel.grund); return; }
   try {
+    _selfSave=true;
     store.setzeKopfdaten(kopfdatenAusUi());
   } catch(e){
     uiAusKopfdaten(EING.projekt);                 // nichts gespeichert ⇒ nichts anzeigen
     kdMelde('Nicht gespeichert: '+((e && e.message) || e));
     return;
-  }
+  } finally { _selfSave=false; }
   // Frisch aus der EINEN Quelle nachlesen statt die Eingabe zu spiegeln — so steht im
-  // Blatt genau das, was gespeichert ist. Der Abonnent unten lädt nur bei GEWECHSELTER
-  // Wand neu, deshalb hier ausdrücklich; eine Schleife entsteht dadurch nicht.
+  // Blatt genau das, was gespeichert ist. Der Abonnent unten ist für den eigenen
+  // Schreibvorgang durch `_selfSave` stillgelegt, deshalb hier ausdrücklich.
   EING = store.eingabenMitKopfdaten();
   uiAusKopfdaten(EING.projekt);
   render();
@@ -389,15 +396,23 @@ function loadInitial(){
   if(we){ loadFromStore(we,'Aktives Wandelement:'); }
   else { OPT=standardOptionen(); uiAusOptionen(OPT); clearWall(); }
 }
+/* Auf Aenderungen des Speichers reagieren (#109).
+   Zwei Faelle, EIN Ladepfad: gewechselte Kennung und dieselbe, neu gerechnete Wand laufen
+   beide durch `loadFromStore()` — damit gibt es keinen zweiten Ladeweg und keinen eigenen
+   Wandstand in diesem Modul. Frisch gelesen wird ausschliesslich aus dem Speicher
+   (Wandelement, Eingaben/Kopfdaten, Optionen, Name); geschrieben wird hier nichts.
+   Ein alter Wandstand wird NIE als aktuell weitergezeichnet: liefert der Speicher kein
+   Wandelement, laeuft der benannte Leerzustand `clearWall()`. */
 function setupStoreSync(){
   if(!store||!store.abonniere) return;
   store.abonniere(()=>{
+    if(_selfSave) return;                        // eigenes Kopfdaten-Speichern (s. oben)
     const id = store.aktivId ? store.aktivId() : null;
-    if(id!==currentId){                          // aktives Element extern gewechselt (Kopfleiste/Startseite)
-      currentId=id;
-      const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
-      if(we){ loadFromStore(we,'Aktives Wandelement geladen:'); } else { clearWall(); }
-    }
+    const gewechselt = id!==currentId;           // extern gewechselt (Kopfleiste/Startseite)
+    if(gewechselt) currentId=id;
+    const we = store.aktivesWandelement ? store.aktivesWandelement() : null;
+    if(we){ loadFromStore(we, gewechselt?'Aktives Wandelement geladen:':'Aktives Wandelement:'); }
+    else { clearWall(); }
   });
 }
 

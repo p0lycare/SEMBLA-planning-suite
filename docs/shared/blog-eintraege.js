@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-16",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 109,
+    titel: "Modul 7 zeigt eine in Modul 1 ge\u00e4nderte Wand sofort neu \u2014 ohne Neuladen",
+    testbitte: "Modul 7 offen lassen, in Modul 1 die H\u00f6he derselben Wand \u00e4ndern und zu Modul 7 "
+      + "zur\u00fcckwechseln: Zeichnung, \u00dcbersicht, Ma\u00dfstab und Tabellen stehen auf dem neuen Stand, "
+      + "die gew\u00e4hlten Darstellungsoptionen bleiben erhalten.",
+  },
+  {
     id: "chg-20260907-15",
     datum: "2026-09-07",
     typ: "feature",

@@ -659,6 +659,75 @@ store.setzeAktiv(idW);
     && !/store\.setzeMappe|store\.aendereMappe|store\.verorteWand/.test(html));
 }
 
+// --- 7e) #109 Aenderung DERSELBEN aktiven Wand wirkt ohne Neuladen -------
+// Der ECHTE Speicherpfad, wie ihn Modul 1 geht: `speichereAktiv` schreibt das neu
+// gerechnete Wandelement unter DERSELBEN Kennung und benachrichtigt. Vorher war das
+// Blatt danach der alte Stand, weil der Abonnent nur auf eine gewechselte Kennung
+// reagierte. Mitgeprueft wird, dass der Neuaufbau rein lesend ist und die gesetzten
+// Darstellungsoptionen nicht auf Standardwerte zurueckfallen.
+{
+  const W109 = buildWall("IW-109", 3000, 2600, []);
+  const id109 = stelleAktiv(W109);
+  // Darstellungsoptionen ueber die ECHTEN Bedienelemente setzen (nicht Standard: A4 + Wasserzeichen).
+  $("fmt").value = "a4"; $("fmt").dispatch("change");
+  $("wm").checked = true; $("wm").dispatch("change");
+  const optVor = JSON.stringify(Z.opt);
+  ok("[#109] Voraussetzung: abweichende Darstellungsoptionen gesetzt",
+    Z.opt.format === "a4" && Z.opt.wasserzeichen === true);
+
+  // Dieselbe Wand, neu gerechnet: nur die Hoehe ist anders (2600 -> 3400 mm = 17 Steinreihen).
+  const W109neu = buildWall("IW-109", 3000, 3400, []);
+  ok("[#109] Voraussetzung: die neue Fassung unterscheidet sich wirklich",
+    W109neu.height_mm === 3400 && W109neu.lagen !== W109.lagen);
+  const kopfVor = JSON.stringify(kopfIst()), eingVor = JSON.stringify(eingStand(id109));
+  store.speichereAktiv(W109neu);                 // Modul-1-Pfad: schreibt + benachrichtigt
+
+  ok("[#109] die aktive Kennung ist dabei unveraendert geblieben (Voraussetzung)",
+    store.aktivId() === id109);
+  ok("[#109] Modul 7 hat das neu gerechnete Wandelement uebernommen",
+    JSON.stringify(Z.wall) === JSON.stringify(W109neu));
+  ok("[#109] die Uebersicht zeigt die neuen Wandmasse",
+    $("ovDim").textContent === "3,000 × 3,40 m"
+    && $("ovGrid").textContent === W109neu.N_grid + " Raster · " + W109neu.lagen + " Steinreihen");
+  ok("[#109] die Vorschau ist genau das Blatt der NEUEN Wand ([D-6])",
+    $("blattwrap").innerHTML === blattHtml(W109neu, eingIst(), Z.opt).html
+    && $("blattwrap").innerHTML !== blattHtml(W109, eingIst(), Z.opt).html);
+  ok("[#109] Masstab und Druck-CSS sind gemeinsam nachgefuehrt",
+    Z.masstab === blattHtml(W109neu, eingIst(), Z.opt).masstab
+    && $("ovScale").textContent === "1 : " + Z.masstab
+    && $("pagestyle").textContent === druckCss(Z.opt.format));
+  ok("[#109] die gesetzten Darstellungsoptionen stehen unveraendert (kein Rueckfall auf Standard)",
+    JSON.stringify(Z.opt) === optVor && $("fmt").value === "a4" && $("wm").checked === true
+    && JSON.stringify(Z.opt) !== JSON.stringify(standardOptionen()));
+  ok("[#109] der Wandname wird frisch gelesen", /IW-109/.test($("wandinfo").textContent));
+  ok("[#109] der Neuaufbau schreibt nichts zurueck",
+    JSON.stringify(store.holeElement(id109).wandelement) === JSON.stringify(W109neu)
+    && JSON.stringify(eingStand(id109)) === eingVor
+    && JSON.stringify(kopfIst()) === kopfVor);
+
+  // Der Kennungswechsel verhaelt sich unveraendert: anderes Wandelement, anderer Name,
+  // und die Optionen DIESES Elements werden uebernommen.
+  const id2 = stelleAktiv(W2, { zeichnung: { format: "a3" } });
+  ok("[#109] ein Kennungswechsel laedt weiterhin das andere Wandelement samt Namen",
+    store.aktivId() === id2 && JSON.stringify(Z.wall) === JSON.stringify(W2)
+    && /IW-02/.test($("wandinfo").textContent)
+    && $("blattwrap").innerHTML === blattHtml(W2, eingIst(), Z.opt).html);
+  ok("[#109] und uebernimmt die Optionen des neuen Elements", Z.opt.format === "a3");
+
+  // Leerer Speicher: benannter Leerzustand, KEIN altes Blatt (kein `|| WALL`-Rueckfall).
+  store.setzeAktiv(null);
+  ok("[#109] ohne aktives Wandelement bleibt der benannte Leerzustand, kein altes Blatt",
+    Z.wall === null && $("blattwrap").innerHTML === "" && $("ovDim").textContent === "—"
+    && /Kein aktives Wandelement/.test($("wandinfo").textContent));
+  ok("[#109] Modul 7 faellt nicht auf den zuletzt geladenen Wandstand zurueck",
+    !/IW-02|IW-109/.test($("blattwrap").innerHTML));
+  ok("[#109] der Behandler hat keinen eigenen Rueckfall auf den alten Wandstand",
+    !/aktivesWandelement\(\)\s*\|\|\s*WALL/.test(html));
+
+  store.setzeAktivesGeschoss(GESCHOSS);
+  store.setzeAktiv(idW);
+}
+
 // --- 8) Modul-Oberflaeche: keine dezentrale Dateifunktion ---------------
 ok("kein Datei-Download / kein Datei-Upload im Modul",
   !/downloadZip|createObjectURL|type="file"|FileReader/.test(html));
