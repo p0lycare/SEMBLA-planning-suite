@@ -24,29 +24,29 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-09-05",
-  "signatur": "4b556da7",
+  "stand": "2026-09-07",
+  "signatur": "99bc8669",
   "entscheidungen": [
     {
-      "issue": 91,
-      "titel": "Bodenblech-Slicing: Standardlängen und Sonderzuschnitte statt durchgehender Platte",
+      "issue": 77,
+      "titel": "Vorspannsystem mit realen Bauteilmaßen und Einbaulagen fachlich klären",
       "prio": "high",
       "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true,
-      "frage": "Zerlegung im Rechenkern, Anbindung der Katalog-Standardlängen und die Darstellung der realen Blechstöße in Montageansicht und Wandzeichnung sind umgesetzt und getestet. Soll das Issue geschlossen werden?",
+      "frage": "Welche realen Bauteilmaße und Einbaulagen sind für das Vorspannsystem verbindlich?",
       "optionen": [
         {
-          "text": "Schließen — der gesamte Umfang von #91 ist geliefert.",
-          "wirkung": "Der Backlog trägt keinen erledigten Rest mit; weitere Blech- oder Zuschnittwünsche starten als eigenes, klein geschnittenes Issue."
+          "text": "Die verbindlichen Maße und Einbaulagen anhand eines freigegebenen Referenzaufbaus festlegen.",
+          "wirkung": "Core, Darstellung und Stückliste können anschließend gegen dieselbe fachliche Quelle umgesetzt werden."
         },
         {
-          "text": "Offen lassen, bis das Bodenblech am realen AWG-Projekt abgenommen ist.",
-          "wirkung": "Das Issue bleibt als Abnahmeklammer sichtbar, führt im Plan aber dauerhaft keinen umsetzbaren Anteil mehr."
+          "text": "Die bisherigen Annahmen vorläufig beibehalten.",
+          "wirkung": "Die Planung bleibt nutzbar, bildet aber weiterhin keinen fachlich bestätigten Realaufbau ab."
         }
       ],
-      "empfehlung": "Schließen — es bleibt kein offener Punkt, und eine Abnahme am Projekt ist über den Zyklusrahmen #20 ohnehin abgedeckt."
+      "empfehlung": "Einen freigegebenen Referenzaufbau mit Maßkette bereitstellen und erst danach die Rechen- und Darstellungslogik ändern."
     },
     {
       "issue": 41,
@@ -70,46 +70,29 @@ export const PLAN = {
       "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
     },
     {
-      "issue": 77,
-      "titel": "Vorspannsystem mit realen Bauteilmaßen und Einbaulagen fachlich klären",
-      "prio": "high",
+      "issue": 105,
+      "titel": "Standardkatalog-Vorlage: reale Maße von Kopplungsmutter und Spannplatte eintragen",
+      "prio": "medium",
       "status": "decision needed",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true,
-      "frage": "Welche realen Bauteilmaße und Einbaulagen sind für das Vorspannsystem verbindlich?",
+      "frage": "Wie wird mit den beiden noch fehlenden Vorlagenmaßen umgegangen, bis die realen Werte für Kopplungsmutterhöhe und Spannplattendicke vorliegen?",
       "optionen": [
         {
-          "text": "Die verbindlichen Maße und Einbaulagen anhand eines freigegebenen Referenzaufbaus festlegen.",
-          "wirkung": "Core, Darstellung und Stückliste können anschließend gegen dieselbe fachliche Quelle umgesetzt werden."
+          "text": "Warten: sobald die beiden Maße vorliegen, wird daraus ein reines Stammdatenpaket auf der Vorlage.",
+          "wirkung": "Fußoffset und Kopfzuschlag rechnen weiter, bis dahin aber mit ausdrücklich als vorläufig gekennzeichneten Werten."
         },
         {
-          "text": "Die bisherigen Annahmen vorläufig beibehalten.",
-          "wirkung": "Die Planung bleibt nutzbar, bildet aber weiterhin keinen fachlich bestätigten Realaufbau ab."
-        }
-      ],
-      "empfehlung": "Einen freigegebenen Referenzaufbau mit Maßkette bereitstellen und erst danach die Rechen- und Darstellungslogik ändern."
-    },
-    {
-      "issue": 59,
-      "titel": "Lageplan-Feedback",
-      "prio": "high",
-      "status": "ohne",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false,
-      "frage": "Alle Rückmeldepunkte sind umgesetzt, zurückgezogen oder abgenommen; die Ursprungsdarstellung ist mit Option A bestätigt. Soll das Issue geschlossen werden?",
-      "optionen": [
-        {
-          "text": "Schließen — der gesamte Rückmeldeumfang ist erledigt.",
-          "wirkung": "Der Backlog trägt keinen erledigten Rest mit; neue Lageplan-Rückmeldungen starten als eigenes, klein geschnittenes Issue."
+          "text": "Die beiden Maße zusätzlich in der Oberfläche als vorläufig kennzeichnen.",
+          "wirkung": "Niemand liest die Stangenlängen als endgültig; es ändert aber keine Zahl und keine Rechnung."
         },
         {
-          "text": "Offen lassen als Sammelstelle für weitere Lageplan-Rückmeldungen.",
-          "wirkung": "Neue Rückmeldungen landen im selben Issue, der Plan führt es aber dauerhaft ohne umsetzbaren Anteil."
+          "text": "Die heutigen Werte als verbindlich übernehmen und den Restpunkt schließen.",
+          "wirkung": "Stangenbeginn und Stangenbedarf beruhten dauerhaft auf geschätzten Maßen; das widerspricht dem Nicht-Ziel, Maße zu schätzen."
         }
       ],
-      "empfehlung": "Schließen — es gibt keinen offenen Punkt mehr, und getrennte neue Issues bleiben klein und prüfbar."
+      "empfehlung": "Warten und die zwei Zahlen nachreichen: die Rechenwege stehen bereits, es fehlt ausschließlich die Messung."
     }
   ],
   "naechstes": {
@@ -133,10 +116,10 @@ export const PLAN = {
       "zyklus": true
     },
     {
-      "issue": 92,
-      "titel": "Spannsystem: reale Einbaulagen, Sechskantschraube, Überstand ab OK Spannplatte, Unterlegscheibe",
+      "issue": 81,
+      "titel": "Modul 4: Manuelle Stücklisten-Overrides mit wählbarem Export",
       "prio": "high",
-      "status": "ready",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
@@ -145,7 +128,7 @@ export const PLAN = {
       "issue": 93,
       "titel": "Einlegeblech und Zwischenspannung als Bauteil mit Editiermodus und Slicing-Sperrzone",
       "prio": "high",
-      "status": "ready",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
@@ -154,16 +137,7 @@ export const PLAN = {
       "issue": 94,
       "titel": "Baugruppen und Sets im Bauteilkatalog mit Auflösung in die flache Stückliste",
       "prio": "high",
-      "status": "ready",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true
-    },
-    {
-      "issue": 95,
-      "titel": "Deckenanschluss: Verteilung auf Spannachsen, Editiermodus und Winkelbaugruppe",
-      "prio": "high",
-      "status": "ready",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
@@ -172,19 +146,28 @@ export const PLAN = {
       "issue": 96,
       "titel": "Bodenausgleich: Ausgleichspunkte und Ausgleichsbleche unter dem Bodenblech",
       "prio": "high",
-      "status": "ready",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
     },
     {
-      "issue": 97,
-      "titel": "Zeichnung: schematische Symbole für Spannplatte, Einlegeblech und Deckenanschluss vervollständigen",
-      "prio": "medium",
-      "status": "ready",
+      "issue": 59,
+      "titel": "Lageplan-Feedback",
+      "prio": "high",
+      "status": "in progress",
       "sicherheit": false,
       "abhaengig_von": [],
-      "zyklus": true
+      "zyklus": false
+    },
+    {
+      "issue": 100,
+      "titel": "Darstellung der Wandansicht ist zu groß",
+      "prio": "high",
+      "status": "ohne",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false
     }
   ],
   "blockiert": [
@@ -195,15 +178,49 @@ export const PLAN = {
       "status": "blocked",
       "sicherheit": false,
       "abhaengig_von": [
-        41,
-        15
+        20
       ],
       "zyklus": true,
-      "ursache": "Die Validierung setzt bestätigte Regeln, die priorisierte Wandzeichnung und freigegebene reale Wandfälle voraus.",
-      "naechster_schritt": "Freigabe stabiler, datensparsamer Referenzwände einholen und danach Regelreview sowie Wandzeichnung abschließen.",
+      "ursache": "Die Validierung setzt den laufenden Zyklusrahmen und freigegebene reale Wandfälle voraus.",
+      "naechster_schritt": "Freigabe stabiler, datensparsamer Referenzwände einholen und den Zyklusrahmen so weit führen, dass die Regelfälle prüfbar sind.",
       "blockiert_durch": [
-        41,
-        15
+        20
+      ]
+    },
+    {
+      "issue": 95,
+      "titel": "Deckenanschluss: Verteilung auf Spannachsen, Editiermodus und Winkelbaugruppe",
+      "prio": "high",
+      "status": "blocked",
+      "sicherheit": false,
+      "abhaengig_von": [
+        94
+      ],
+      "zyklus": true,
+      "ursache": "Der Deckenanschluss wird als Baugruppe kalkuliert; deren Auflösung in die flache Stückliste entsteht erst in #94.",
+      "naechster_schritt": "Auflösung der Baugruppen im kanonischen Stücklistenpfad abschließen, danach die Winkelbaugruppe und die Verteilung auf die Anschlussachsen bauen.",
+      "blockiert_durch": [
+        94
+      ]
+    },
+    {
+      "issue": 97,
+      "titel": "Zeichnung: schematische Symbole für Spannplatte, Einlegeblech und Deckenanschluss vervollständigen",
+      "prio": "medium",
+      "status": "blocked",
+      "sicherheit": false,
+      "abhaengig_von": [
+        93,
+        95,
+        96
+      ],
+      "zyklus": true,
+      "ursache": "Ein Symbol lässt sich erst festlegen, wenn das dargestellte Bauteil samt Einbaulage steht; Einlegeblech, Deckenanschluss und Bodenausgleich sind noch in Arbeit.",
+      "naechster_schritt": "Einlegeblech, Deckenanschluss und Ausgleichspunkte fertigstellen und danach den gemeinsamen Darstellungsschlüssel in einem Zug ergänzen.",
+      "blockiert_durch": [
+        93,
+        95,
+        96
       ]
     }
   ]
