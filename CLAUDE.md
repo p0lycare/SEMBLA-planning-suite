@@ -26,7 +26,7 @@ SEMBLA Planungs-Suite — Werkzeuge zur Planung vorgespannter Trockenmauerwerksw
 **GitHub Pages**: live unter `https://p0lycare.github.io/SEMBLA-planning-suite/`. Kein Build-Schritt,
 kein Server — jeder Push auf `main` ist nach ~20 s live (Auslieferung s. „Deploy").
 
-Die App besteht aus **10 Modulen (0–9)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
+Die App besteht aus **11 Modulen (0–10)**, je eine eigenständige HTML-Seite in `docs/`. Gemeinsamer
 Code liegt **einmal** in `docs/shared/` und wird per `<script type="module">` geladen. Einstieg ist
 `docs/index.html` (Modul 0). Die Geschichte des Umbaus von der alten Single-File-Suite auf diesen
 MVP steht in [`doku/REFACTOR.md`](doku/REFACTOR.md); der abgelöste Alt-Stand liegt in `legacy/`.
@@ -653,16 +653,38 @@ Produktstamm (Steine, Gewindestangen/Vorspannsystem, Latten, Beplankung, Bleche/
 Verbrauchsmaterial) ist eine **eigene Ressource** — technisch und fachlich getrennt vom
 Wand-/Projekt-JSON: eigener Speicher **je Kennung** im localStorage, eigene Datei, eigene
 Formatversion (`KATALOG_VERSION`), Logik in
-`docs/shared/sembla-katalog.js` (rein/DOM-frei, validiert). **Modul 0 ist der alleinige Pflegeort**
-für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/löschen) sowie für den **separaten**
-Katalogimport/-export — der bewusst **nicht** über den Projekt-Import/das Projekt-ZIP läuft
-(verwechselte Formate werden benannt). Modul 0 hat **keine** wand-/projektbezogene Produktauswahl. **Ein Katalog je Projekt ([L-12]):** die
+`docs/shared/sembla-katalog.js` (rein/DOM-frei, validiert). **Modul 10 (`docs/katalog.html`) ist
+seit #108 der alleinige Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/
+löschen), für die **Baugruppen** ([P-21]) und für den **separaten** Katalogimport/-export — der
+bewusst **nicht** über den Projekt-Import/das Projekt-ZIP läuft (verwechselte Formate werden
+benannt). Dort ist **jeder gespeicherte Katalog bearbeitbar**, auch einer, der dem aktiven Projekt
+nicht zugeordnet ist; welcher bearbeitet wird und ob er zugeordnet ist, steht sichtbar auf der Seite.
+Die Wahl des bearbeiteten Katalogs ist **flüchtig** (kein gespeichertes Feld, kein Zeiger).
+Das frühere Pflege-Popup in Modul 0 (`#kat-overlay`) ist **ersatzlos entfallen**; Modul 0 behält
+**allein die Zuordnung** und verlinkt dorthin. Weil Modul 0 auch keine wand-/projektbezogene
+Produktauswahl hat ([P-13]), bleiben dort nur die zwei Meldungen, die zum **Zuordnungsort** gehören:
+der Zuordnungsstatus nach [L-12] und der unwirksame Altbestand der aktiven Wand nach [P-15] — beide
+kompakt im Warnkasten der Projektliste, ohne Popup.
+
+**Ein Katalog je Projekt ([L-12]):** die
 Zuordnung ist eine Kennung am Projekt (`mappe.katalog`), der wirksame Katalog folgt dem **aktiven
 Projekt** (`holeKatalog`/`katalogStatus`). Ohne Zuordnung gibt es **keinen** Katalog und eine
 Meldung — nie einen geratenen, insbesondere nicht den eines anderen Projekts. Ein neu angelegter
-oder importierter Katalog **ersetzt den bisherigen nicht**, sondern tritt neben ihn und wird
-zugeordnet. Solange **gar kein** Projekt existiert, gilt der zuletzt ausdrücklich gesetzte Katalog
+oder importierter Katalog **ersetzt den bisherigen nicht**, sondern tritt neben ihn. Solange
+**gar kein** Projekt existiert, gilt der zuletzt ausdrücklich gesetzte Katalog
 (`sembla:aktiv:katalog`).
+
+**Bearbeiten ist nicht zuordnen (#108).** Der Schreibweg bleibt der **eine** (`setzeKatalog` →
+`_speichereKatalog`); er trägt seit #108 die additive Option `zuordnen`. Modul 10 schreibt damit
+**nur den Katalog-Slot**: weder `sembla:aktiv:katalog` noch `mappe.katalog` werden angefasst, und
+`exportiereKatalog(id)`/`loescheKatalog(id)` arbeiten auf dem **gewählten** statt auf dem
+zugeordneten Katalog. Die Zuordnung berührt ein Schreibvorgang nur, wenn ohnehin **der zugeordnete**
+Katalog bearbeitet wird — dann zieht auch die Vorlagenkopie nach #102 die Zuordnung mit, sonst
+entsteht sie ohne jede Zuordnungsänderung. Alle bestehenden Aufrufer verhalten sich bit-gleich; es
+entsteht **kein** gespeichertes Feld und **kein** Sprung von `KATALOG_VERSION`, `SCHEMA_VERSION`,
+`MAPPE_VERSION` oder `PROJEKT_VERSION`, und `sembla-katalog.js` ist unberührt. Das **ausgebaute
+Varianten-Feedback** (Übersicht/Bestätigung beim Bearbeiten der Vorlage) ist ausdrücklich das
+**Folgepaket** zu #108 und nicht enthalten — benannt wird die Kopie im vorhandenen Wortlaut.
 
 **Wandbezogene Produktwahl (`eingaben.planung.produkte` / `eingaben.aufbau.produkte`, Regel [P-13]).**
 *Welche* Produkte eine Wand verwendet, wählt das fachlich zuständige Modul **direkt aus dem
@@ -1013,7 +1035,9 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      `produkteZuRolle`, `rollenStatus`) die **Standardauswahl** (`produktrollenVorschlag`/`rollenOhneVorschlag`, **[P-18]**)
      und die **deterministische Preisauflösung** (`loesePreis`,
      `preisKontext`, `STATUS_TEXT`) nach **[P-14]**; `pruefeAuswahl` bleibt nur als Meldepfad für den
-     Altbestand **[P-15]**. Rein/DOM-frei, genutzt von Modul 0/1/2 und `sembla-export.js`.
+     Altbestand **[P-15]**. Rein/DOM-frei, genutzt von Modul 10 (Pflege), Modul 0 (Zuordnung),
+     Modul 1/2 (Produktwahl) und `sembla-export.js`. Von #108 **unberührt** — der Umzug der
+     Pflege hat hier keine Zeile geändert.
    - `sembla-projektmappe.js` — **Projektstruktur und Wandlagen** (Modul 0, Etappe C1 von #26):
      Format `SEMBLA-Projektmappe` v1, Struktur-Operationen, Validierung, Referenzabgleich,
      Übernahme bestehender Stände, **Planbeschreibung** (`normPlan`/`planFehler`/`setzePlan`/
@@ -1059,7 +1083,10 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      Werteliste hier wäre Drift. Eigene Tests (`tests/module/test-lageplan.mjs`, sie prüfen genau
      diesen einen Import).
    - `storage.js` — localStorage-Schicht (Elemente, aktiv-Zeiger, **`eingaben`-Modell**, OBJ-Geometrie,
-     **Katalogspeicher** (`listeKataloge`/`katalogNachId`/`katalogStatus`/`setzeProjektKatalog`),
+     **Katalogspeicher** (`listeKataloge`/`katalogNachId`/`katalogStatus`/`setzeProjektKatalog`;
+     seit #108 schreibt `setzeKatalog(kat, {zuordnen})` wahlweise **ohne** Zuordnung, und
+     `exportiereKatalog(id)`/`loescheKatalog(id)` arbeiten auf einer **genannten** Kennung —
+     additiv, bestehende Aufrufer bit-gleich, kein neues Feld, kein Versionssprung),
      **Produktrollen** (`holeProdukte`/`setzeProduktrolle`/`vorbelegeProduktrollen`),
      **Projektliste** (`listeProjekte`/`projektMappe`/`fuegeProjektHinzu`/`loescheProjekt`/
      `setzeAktivesProjekt`/`holeMappe`/`setzeMappe`/`aendereMappe`/`verorteWand`/`mappeReferenzen`),
@@ -1068,7 +1095,7 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      [P-20]), **Kommentare je Position** (`KOMMENTAR_MAX`/`pruefeKommentar`/`holeKommentare`/
      `setzeKommentar`, [P-20] — dieselbe Kennung, gemeinsame Prüfung `_pruefeKennung`),
      Import/Export).
-   - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–9, aktiver Pfad **Projekt · Geschoss · Wand**
+   - `navbar.js` — gemeinsame Kopfleiste (Reiter 0–10, aktiver Pfad **Projekt · Geschoss · Wand**
      und die nach [L-10] überhaupt aktivierbare Wandauswahl).
    - `sembla-blog.js` — **Änderungsliste „Was ist neu?"** (Modul 8): Validator, Karten-HTML,
      Deep-Link-Anker und der **eine Textwächter** `pruefeText`/`VERBOTEN`, den auch der
@@ -1102,7 +1129,7 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
 
 | Nr. | Datei | Inhalt |
 |---|---|---|
-| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor**. Popups pflegen Projekt, Geschoss, Wandname/Import und Bauteilkatalog; reguläre Wände werden seit #56 nur im Geschosseditor angelegt. Am Projekt gepflegt werden hier **Name und Bauherrenschaft** — die übrigen Kopfdaten (Planverfasser, Phase, Plan-Nr., Index, Gez.) gehören seit #68 in **Modul 7**, und der Dialog sagt das ([L-11]). Dazu Modulübersicht, zentraler Export/Import je Wand und Export/Import der Projektmappe. Projektdaten kommen über **einen** Importdialog herein (ZIP-Datei, entpackter Ordner, Mappendatei — die Fassung entscheidet der Inhalt), und dort ist seit #86 der **Umfang wählbar**: ganzes Projekt (Default), einzelnes Geschoss mit Zielprojekt oder dabei neu angelegtem Projekt, oder einzelne Wand mit Zielgeschoss und ohne Lage — geprüft wird immer die ganze Datei ([L-13]). Im Exportdialog ist auf der Wandebene seit #81 die **Mengenfassung der Baustellenstückliste** wählbar (berechnet/angepasst, Default berechnet, [P-20]) — reine Durchreichung an `hierarchieExport`, flüchtig, kein Schreibweg. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) |
+| 0 | `index.html` | **Projektplaner** (#26, Pläne in `doku/PLAN-Projektplaner.md` und `doku/PLAN-Layout-Editor.md`): Kern der Seite ist die **Baumliste** Projekt → Geschoss → Wand mit dem Knopf **„Geschoss öffnen"** in den **Layout-Editor**. Popups pflegen Projekt, Geschoss und Wandname/Import; reguläre Wände werden seit #56 nur im Geschosseditor angelegt. Der **Bauteilkatalog** wird seit #108 in **Modul 10** gepflegt — Modul 0 führt allein die **Zuordnung** genau eines Katalogs je Projekt im Projekt-Dialog ([L-12]) und verlinkt dorthin; das frühere Pflege-Popup ist ersatzlos entfallen. Am Projekt gepflegt werden hier **Name und Bauherrenschaft** — die übrigen Kopfdaten (Planverfasser, Phase, Plan-Nr., Index, Gez.) gehören seit #68 in **Modul 7**, und der Dialog sagt das ([L-11]). Dazu Modulübersicht, zentraler Export/Import je Wand und Export/Import der Projektmappe. Projektdaten kommen über **einen** Importdialog herein (ZIP-Datei, entpackter Ordner, Mappendatei — die Fassung entscheidet der Inhalt), und dort ist seit #86 der **Umfang wählbar**: ganzes Projekt (Default), einzelnes Geschoss mit Zielprojekt oder dabei neu angelegtem Projekt, oder einzelne Wand mit Zielgeschoss und ohne Lage — geprüft wird immer die ganze Datei ([L-13]). Im Exportdialog ist auf der Wandebene seit #81 die **Mengenfassung der Baustellenstückliste** wählbar (berechnet/angepasst, Default berechnet, [P-20]) — reine Durchreichung an `hierarchieExport`, flüchtig, kein Schreibweg. **Keine** wand-/projektbezogene Produktauswahl ([P-13]); Altbestand wird sichtbar als unwirksam gemeldet ([P-15]) — beides samt dem [L-12]-Zuordnungsstatus kompakt im Warnkasten der Projektliste |
 | – | `geschossplan.html` | **Layout-Editor** des aktiven Geschosses (Etappen C4a/C4b, [K-1]…[K-13]) — **kein eigenes Modul** und kein Reiter (`mountNavbar(0)`), fachlich Teil von Modul 0; Aufruf dort über „Geschoss öffnen". Zeichenfläche in **Millimetern** ([L-1]) mit 125-mm-Raster, Planbild als Hintergrund, Werkzeuge **Auswählen/Ziehen** ([K-9] über `verschiebe()`), **Wand zeichnen** (neu anlegen oder eine unverortete Wand verorten) und **Plan verschieben** (Plan-Lock); Zustandsfarben [K-8], Kollisionsmeldung [K-13], **Kalibrieren auf der Bühne selbst** ([L-9], #52 —
 der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv ≠ ausgewählt** (s. u.), Endgriffe ändern die Länge, Mittelgriff/Körper die Lage, **R** dreht um 90°. Dazu **Bemaßen** (**D**) und **Fixieren** (**F**) über die sechs kanonischen Bezüge — die Achse folgt dem Bezug ([K-1]/[K-2]), Fixieren ist eine normale Bemaßung `von: null` je Achse ([K-4]) —, sichtbarer Widerspruch ([K-6]) und Redundanz ([K-7]), Längenmaß ([K-11]), **Doppelklick auf die Maßzahl** (öffnet aus #51 die Eingabe **an Ort und Stelle**, erkannt im **Zeigerstrom** statt am `dblclick`, schreibt aber weiter über `bemSetzen`) und **Undo/Redo**. Aus C4c dazu die **schwebende Bauteilliste** (Anzeige + Auswahl, kein Verortungsweg). Aus #50 (Paket 1) dazu: **kein** linker „Neue Wand"-Abschnitt mehr — Zielwahl, **Standard-Wandhöhe** und Wandtyp sind Parameter **des Werkzeugs** „Wand zeichnen", der Fang gehört zur Ansicht; je Wand mit Wandelement ein Knopf **„Planen"** in der Liste (aktiv setzen + Modul 1, gemeinsame `planeWand()`, kein Knopf bei verwaistem Eintrag). Aus #51 (Paket 2): **Inline-Eingabe des Maßwerts** an der Maßzahl (Enter/Escape/Blur, ungültig ⇒ keine Änderung + rotes Feld) und die **verschiebbare Maßzahl** (`text_mm`, reine Darstellung, Schwelle 3 px, Speichern erst bei `pointerup`). Aus #52: der Plan liegt **sofort** als Hintergrund (unkalibriert vorläufig 1 px = 1 mm, ohne 125-mm-Raster), **kalibriert wird auf der Bühne** („Maßstab aus Plan übernehmen“, Zoom/Pan bleiben nutzbar, kein Popup), und der **Rasterfang** ist ein allgemeiner Schalter für alle Wände, der **aus** startet. Aus #53 (Paket 3): **kein linkes Panel** mehr — obere **Werkzeugleiste** (Auswahl/Wand/Maß/Fix + Undo/Redo + Drehen, **ohne** „Plan verschieben“), untere **Ansichtsleiste** (Zoom, Fang, **Raster** und **Bemaßungen** als flüchtige Schalter, Zugang „Plan…“), rechte **Wandliste** und die **Planverwaltung als Blatt von unten** — der **einzige Uploadweg** der Suite (hochladen/ersetzen/entfernen/kalibrieren/Maßstab/Versatz/Plan verschieben), beim Kalibrieren auf Status und Abbruch verkleinert. Das **Referenzgeschoss ist entfallen**, und **Drehen** ist gesperrt, sobald eine Bemaßung unmittelbar an der Wand hängt. Die **Brandschutzklassifikation F0/F30** (#79) ist je Wand erkennbar: Kurztext am Wandende, für F30 zusätzlich **Schraffur** über der Wandfläche, dazu Kennfarbe, zwei Legendeneinträge mit dem Merkmal in Worten und die Angabe in der Wandliste — auch **schwarz-weiß** unterscheidbar. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement und kein Sammel-Parameter); die [K-8]-Zustandsfarbe bleibt unverändert, ein verwaister Eintrag bleibt **ohne** Angabe. Schreibt **nur** Lage und Bemaßungen im Geschoss ([K-10]) — Maßstab/Versatz bleiben Plan-Ansichtsparameter ([L-9]), Planbild und Ansichtsschalter stehen in keinem Undo-Schritt |
 | 1 | `wandplanung.html` | Wandhöhe, Öffnungen, Durchbrüche, Staffelung, Seiten, Auslegung (+ `sembla-engine.js`), **Abdichtung** ([A-6]) und die **Brandschutzklassifikation F0/F30** (#79, reine Planungskennzeichnung — einziger Schreibweg, Standard F0); die im Geschosseditor geführte Länge ist nur Anzeige. Schreibt die übrige Wandplanung und **Produkte dieser Wand** (Steine, Vorspannung, Anschluss inkl. getrennter Boden-/Kopfbleche, Fugen) → `eingaben.planung.produkte` |
@@ -1114,6 +1141,7 @@ der unkalibrierte Plan liegt dafür vorläufig darunter, ohne Raster). **Aktiv �
 | 7 | `zeichnung.html` | **Technische Zeichnung:** maßstabsgetreue Wandabwicklung (Verlege-/Vorspannplan, Bemaßung, Tabellen, Legende, Schriftfeld) als A3-/A4-Blatt, druckbar (`sembla-zeichnung.js`; identisch zum zentralen Export). **Blattinhalt seit #61 auf das Ausführungsnötige reduziert:** keine Regellisten, keine erklärenden Fußtexte, Schriftfeld nur mit den zwingenden Angaben und ohne Platzhalter. Die **Brandschutzklassifikation F0/F30** (#79) steht als **Kurztext** („Brandschutz F0"/„Brandschutz F30") im freien Zeichnungsrand über der Wandoberkante und mit ihrer Bedeutung **in Worten** in der Legende — auch **schwarz-weiß** lesbar, in Vorschau, Druck-HTML und exportierter SVG-Datei dieselbe Zeichenkette. **Ohne** Schraffur (die Wandfläche ist hier der Zeichnungsinhalt), ohne Eintrag im Schriftfeld, ohne jede Ableitung; ein Wandelement ohne das Feld wird als F0 ausgewiesen. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement hier — die Übersicht zeigt die Klasse nur an). Seit #68 ist hier der **Plankopf** pflegbar: **Planverfasser, Phase, Plan-Nr., Index, Gez.** — sie leben am **Projekt** ([L-11]) und werden ausschließlich über `store.setzeKopfdaten` geschrieben (Projektname und Bauherrenschaft bleiben Modul 0, `eingaben.projekt` wird nur gelesen). **Plan-Nr., Index und Gez.** stehen unmittelbar — ohne Neuladen — im Schriftfeld, ein leeres Feld erzeugt dort **keine** Zeile; **Planverfasser und Phase** werden gespeichert, erscheinen aber nach Option A auf **keinem** Blatt (#61/[D-8]), und die Oberfläche sagt das. Eine Wand ohne Projektzuordnung — oder deren Projekt nicht das aktive ist — wird **benannt gemeldet**, gespeichert wird dann **nichts** ([L-10]/[P-9]). Darstellungsoptionen → `eingaben.zeichnung`; **kein** eigener Datei-Download ([D-1]…[D-8]) |
 | 8 | `blog.html` | **Umsetzungsplan & Änderungen** (#55, mobile-first, read-only, **streng statisch**): genau zwei Ansichten — **„Umsetzungsplan"** (Standard) aus dem versionierten Artefakt `umsetzungsplan.js` via `sembla-umsetzungsplan.js` (Entscheidungen für Tibor · nächstes Issue mit Begründung · geordnete weitere · blockierte mit Ursache und nächstem Schritt) und **„Was ist neu?"** aus `blog-eintraege.js` via `sembla-blog.js`. Der frühere „Projektstatus" samt GitHub-Live-Abruf und Anzeigecache ist **entfallen**: **kein `fetch`, kein `localStorage`**, kein Login/Backend. Fehlender/ungültiger Plan ⇒ **sichtbar gemeldet, nichts geraten**. Steht **außerhalb** des Planungsdatenflusses: liest **kein** Wandelement, schreibt **keine** `eingaben` |
 | 9 | `lageplan.html` | **Lageplan des Geschosses** (#54/#80, Kapitel 16.11, [N-1]…[N-9]): technische **Draufsicht** aller zugeordneten und gültig verorteten Wände eines Geschosses — Wandkennzeichnung, die im Geschossplaner gesetzten **treibenden Bemaßungen** (identische Bezüge/Werte samt `linie_mm`/`text_mm`), Maßstab, Legende, Wandtabelle, Vollständigkeitsmeldungen und Schriftfeld aus `mappe.projekt.kopfdaten` — als A3-/A4-Blatt druckbar. **Reine Ausgabe:** kein Werkzeug, kein Schreibweg, keine eigene Wandgeometrie; gezeichnet wird die vom Löser **bestimmte** Lage ([N-4]). **Projekt und Geschoss** sind im Modul wählbar und setzen dabei **keinen** aktiven Zeiger ([L-10]) — maßgeblich ist der sichtbare **Blattbezug**. Der **Export-Knopf liegt allein hier** (ZIP mit druckbarem HTML + maßstabsgetreuem SVG, aus `lageplanDateien()`); der zentrale Modul-0-Export ist ausdrücklich **nicht** beteiligt. Der **kalibrierte Geschossplan** liegt seit #80 als **Hintergrund** unter der Zeichnung ([N-9]) — read-only aus derselben Bilddatenbank, mit gespeichertem Maßstab/Versatz, **flüchtig** einstellbarer Transparenz (0…100 %, Standard 30) und in Vorschau, Druck und Export gleich; unkalibriert oder ohne Bild gibt es **keinen** Hintergrund und der Grund steht benannt auf dem Blatt. Aus dem Bild wird weiter **nichts** abgeleitet ([L-9]); kein IFC, keine Mengen/Kosten. Die **Brandschutzklassifikation F0/F30** (#79) steht seit diesem Paket je Wand im Blatt: Kurztext an der Wandkante, für F30 zusätzlich **Schraffur**, dazu Kennfarbe, Legendeneintrag je Klasse mit dem Merkmal in Worten und die Spalte **„Brandschutz"** der Wandtabelle — auch **schwarz-weiß** unterscheidbar, in Vorschau, Druck und Export gleich. **Nur gelesen** (Modul 1 bleibt einziger Schreibweg, kein Bedienelement hier); eine verwaiste Wand bleibt **ohne** Angabe, und abgeleitet wird daraus nichts. Die **Nummernblasen** weichen seit #59 deterministisch aus, bis sie weder eine andere Blase noch eine Maßzahl/Maßlinie überdecken — quer nach außen auf derselben Normalen, Führungslinie weiter an derselben Wandkante, Wandfläche notfalls überdeckbar; ohne Überdeckung bleibt die Lage aus #73 **bitgenau**. Die Ausweichlage ist **flüchtig** (kein gespeichertes Feld, kein Bedienelement, kein Versionsbump) |
+| 10 | `katalog.html` | **Bauteilkatalog** (#108, [L-12]/[P-13]/[P-14]/[P-16]/[P-18]/[P-21]): der **alleinige Pflegeort** des Produktstamms — Katalog anlegen/umbenennen/löschen, Produkte anlegen/bearbeiten/duplizieren/löschen im kategoriegerechten Dialog ([P-16]), Baugruppen ([P-21]) und der **separate** Katalogimport/-export samt „Standardkatalog laden" (Repo-Vorlage, #102). Bearbeitbar ist **jeder gespeicherte Katalog**, auch einer, der dem aktiven Projekt **nicht** zugeordnet ist; welcher bearbeitet wird und ob er zugeordnet oder die unveränderliche Vorlage ist, steht **sichtbar** auf der Seite. Die Wahl ist **flüchtig** (kein gespeichertes Feld, kein Zeiger). **Zugeordnet wird hier nichts** ([L-12] bleibt Modul 0): geschrieben wird über den **einen** Weg `store.setzeKatalog(…, {zuordnen})`, der `sembla:aktiv:katalog` und `mappe.katalog` unangetastet lässt — die Zuordnung berührt nur der Fall, dass ohnehin der **zugeordnete** Katalog bearbeitet wird (dann zieht auch die Vorlagenkopie nach #102 mit). Vorbelegt ([P-18]) wird ausschließlich aus dem zugeordneten Katalog. **Nur „Speichern" schreibt**: Abbrechen, Escape und ein Klick neben den Dialog lassen die Katalogdaten unverändert ([P-16]); jeder Fehlschlag wird benannt. **Keine** wand-/projektbezogene Produktauswahl ([P-13]), kein Wandelement, keine `eingaben`, kein neues Format ([P-14] unberührt) |
 
 **Module 2, 3 und 5 sind vorübergehend ausgeblendet (Zyklus-Fokus, Issue #20).** Der laufende
 AWG-Zyklus nimmt Statik-Ausbau (Modul 3), Modul-2-Ausbau und die stückweise Montageanleitung
@@ -1124,7 +1152,8 @@ die Seiten bleiben per direkter URL erreichbar (und ihr Reiter erscheint wieder,
 ihnen steht), Datenfluss, `eingaben`-Abschnitte, Shared-Code, Tests und die Export-Häkchen bleiben
 **unverändert wirksam**. Rückgängig = Flag entfernen. **Kein Modul wurde je umnummeriert** — das
 ist der Punkt, um den es geht: die Nummern sind an die GitHub-Issues gebunden und bleiben stabil.
-Die Reihe ist mit Issue #54 **additiv** auf **0–9** gewachsen (Modul 9 = Lageplan); die frühere
+Die Reihe ist mit Issue #54 **additiv** auf **0–9** und mit Issue #108 **additiv** auf **0–10**
+gewachsen (Modul 9 = Lageplan, Modul 10 = Bauteilkatalog); die frühere
 Formulierung „Nummerierung 0–8 bleibt stabil / kein Modul 9" betraf den **Layout-Editor**
 (`geschossplan.html`), der weiterhin fachlich zu Modul 0 gehört und **kein** eigenes Modul ist.
 
@@ -1253,7 +1282,7 @@ Es gibt **keinen** Build-/Publish-Schritt für die App — `docs/` wird direkt e
 
 ```bash
 npm run test:core                 # Core-Parität (py + mjs) + BOM-Drift (test-shared.mjs) — die wichtigsten
-npm run test:modul0               # … bis test:modul9: Logik-/Smoke-Tests je Modul (tests/module/)
+npm run test:modul0               # … bis test:modul10: Logik-/Smoke-Tests je Modul (tests/module/)
 npm run test:all                  # Core + alle Modultests + Storage-Smoke in einem Rutsch
 npm run test:interop              # tests/interop/: Python-DXF/IFC-Referenz + web-ifc-Validierung (Orakel Modul 6)
 ```

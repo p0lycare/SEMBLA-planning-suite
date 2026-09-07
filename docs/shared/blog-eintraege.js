@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-11",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 108,
+    titel: "Der Bauteilkatalog ist ein eigenes Modul — dort ist jeder Katalog bearbeitbar, Modul 0 ordnet nur zu",
+    testbitte: "Reiter „10 Katalog“ öffnen, oben einen Katalog wählen, der dem aktiven "
+      + "Projekt NICHT zugeordnet ist, und ein Produkt bearbeiten: die Zuordnung bleibt "
+      + "unverändert und steht sichtbar auf der Seite. Zugeordnet wird weiter in Modul 0.",
+  },
+  {
     id: "chg-20260907-10",
     datum: "2026-09-07",
     typ: "fix",

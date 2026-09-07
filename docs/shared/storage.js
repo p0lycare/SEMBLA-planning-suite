@@ -723,10 +723,18 @@ export function holeKatalog() {
  * EIN Katalog-Slot schreiben und — sofern ein Projekt aktiv ist — diesem zuordnen.
  * Der EINZIGE Weg in `sembla:kataloge`; genau EIN Schluessel wird angefasst, alle
  * uebrigen Kataloge bleiben unveraendert.
+ *
+ * `zuordnen: false` (#108) schreibt AUSSCHLIESSLICH den Katalog-Slot: weder
+ * `sembla:aktiv:katalog` noch `mappe.katalog` werden angefasst. Das braucht Modul 10,
+ * weil dort JEDER gespeicherte Katalog bearbeitbar ist — auch einer, der dem aktiven
+ * Projekt nicht zugeordnet ist. Ohne diese Option waere „bearbeiten" zwangslaeufig
+ * „zuordnen", und die Zuordnung nach [L-12] wuerde nebenbei umgebogen. Der Schreibweg
+ * bleibt dieser eine; die Option schaltet nur den ZUORDNUNGS-Teil ab.
  * @param {object} katalog @param {string} id @param {string|null} vorlagePfad
+ * @param {boolean} [zuordnen] false = nur den Slot schreiben
  * @returns {object} der gespeicherte Katalog
  */
-function _speichereKatalog(katalog, id, vorlagePfad) {
+function _speichereKatalog(katalog, id, vorlagePfad, zuordnen = true) {
   const fehler = validiereKatalog(katalog);
   if (fehler.length) throw new Error("Katalog ungueltig:\n– " + fehler.join("\n– "));
   const m = holeMappe();
@@ -737,8 +745,10 @@ function _speichereKatalog(katalog, id, vorlagePfad) {
   const speicher = _leseKataloge();
   speicher[gespeichert.id] = gespeichert;
   _schreibeKataloge(speicher);
-  localStorage.setItem(K_AKTIV_KAT, gespeichert.id);   // greift nur ohne aktives Projekt
-  if (m && m.katalog !== gespeichert.id) _schreibeMappe(setzeKatalogRef(m, gespeichert.id));
+  if (zuordnen) {
+    localStorage.setItem(K_AKTIV_KAT, gespeichert.id); // greift nur ohne aktives Projekt
+    if (m && m.katalog !== gespeichert.id) _schreibeMappe(setzeKatalogRef(m, gespeichert.id));
+  }
   _benachrichtige();
   return gespeichert;
 }
@@ -760,16 +770,22 @@ function _speichereKatalog(katalog, id, vorlagePfad) {
  * nie ein vom Aufrufer mitgebrachter Marker und nie der Katalogname.
  * Der Rueckgabewert nennt eine erzeugte Kopie in `kopie_von`; gespeichert wird
  * dieses Feld nicht (es ist Meldung, kein Datum — keine Historie, [P-1]).
- * @param {object} katalog @returns {object} der gespeicherte Katalog
+ *
+ * `opts.zuordnen === false` (#108) schreibt nur den Katalog-Slot und laesst jede
+ * Zuordnung unberuehrt — auch die einer neu entstandenen Vorlagenkopie. Der
+ * Kopierschutz selbst bleibt davon unberuehrt: er greift immer.
+ * @param {object} katalog @param {{zuordnen?:boolean}} [opts]
+ * @returns {object} der gespeicherte Katalog
  */
-export function setzeKatalog(katalog) {
+export function setzeKatalog(katalog, opts = {}) {
+  const zuordnen = !(opts && opts.zuordnen === false);
   const id = String((katalog && katalog.id) || "");
   const bestand = id ? _leseKataloge()[id] : null;
   if (id && istVorlagenKatalog(bestand)) {
-    const kopie = _speichereKatalog(katalog, String(neueMappenId("kat")), null);
+    const kopie = _speichereKatalog(katalog, String(neueMappenId("kat")), null, zuordnen);
     return { ...kopie, kopie_von: id };
   }
-  return _speichereKatalog(katalog, id || String(neueMappenId("kat")), null);
+  return _speichereKatalog(katalog, id || String(neueMappenId("kat")), null, zuordnen);
 }
 
 /** Kanonische Kennung der Standardkatalog-Vorlage ([#102]). @param {string} [pfad] */
@@ -790,11 +806,13 @@ export function holeVorlagenKatalog(pfad) {
  * diesen einen Slot durch den frisch gelesenen Inhalt: eigene Kataloge und frueher
  * angelegte Kopien behalten ihre eigenen Kennungen und bleiben unangetastet.
  * Rekonstruiert wird nichts — der Inhalt kommt allein aus dem uebergebenen Text.
- * @param {string} text @param {string} [pfad] @returns {object} der gespeicherte Katalog
+ * @param {string} text @param {string} [pfad] @param {{zuordnen?:boolean}} [opts]
+ * @returns {object} der gespeicherte Katalog
  */
-export function ladeVorlagenKatalog(text, pfad) {
+export function ladeVorlagenKatalog(text, pfad, opts = {}) {
   const p = String(pfad || VORLAGE_KATALOG_PFAD);
-  return _speichereKatalog(parseKatalog(text), vorlageKatalogId(p), p);
+  return _speichereKatalog(parseKatalog(text), vorlageKatalogId(p), p,
+                           !(opts && opts.zuordnen === false));
 }
 
 /**
@@ -813,15 +831,24 @@ export function setzeProjektKatalog(id) {
 }
 
 /**
- * Zuordnung des aktiven Projekts aufheben und den Katalog entfernen, sofern ihn
- * kein anderes Projekt mehr verwendet. Produktreferenzen in den Projekten bleiben
- * bewusst stehen -> Warnung statt stiller Bereinigung.
+ * Einen Katalog entfernen, sofern ihn kein Projekt mehr verwendet, und eine
+ * bestehende Zuordnung des AKTIVEN Projekts auf genau diesen Katalog aufheben.
+ * Produktreferenzen in den Projekten bleiben bewusst stehen -> Warnung statt
+ * stiller Bereinigung.
+ *
+ * Ohne Kennung gilt — wie bisher — der wirksame Katalog des aktiven Projekts.
+ * Mit Kennung (#108, Modul 10) genau dieser eine: die Zuordnung wird nur dann
+ * angefasst, wenn das aktive Projekt eben ihn fuehrt. Das ist die unvermeidbare
+ * Folge des Loeschens, keine Zuordnungsaenderung nebenbei.
+ * @param {string} [id_]
  */
-export function loescheKatalog() {
+export function loescheKatalog(id_) {
   const st = katalogStatus();
   const m = holeMappe();
-  if (m && m.katalog) _schreibeMappe(setzeKatalogRef(m, null));
-  const id = st.id;
+  const id = (id_ != null && id_ !== "") ? String(id_) : st.id;
+  if (m && m.katalog && String(m.katalog) === String(id)) {
+    _schreibeMappe(setzeKatalogRef(m, null));
+  }
   if (id) {
     const nochGenutzt = listeProjekte().some((p) => p.katalog === id);
     if (!nochGenutzt) {
@@ -839,19 +866,31 @@ export function loescheKatalog() {
  * Katalog-Datei-Text importieren (streng geprueft, getrennt vom Projektimport).
  * @param {string} text @returns {object} der gespeicherte Katalog
  */
-export function importiereKatalogText(text) {
-  return setzeKatalog(parseKatalog(text));
+export function importiereKatalogText(text, opts = {}) {
+  return setzeKatalog(parseKatalog(text), opts);
 }
 
-/** Katalog-Datei (File) importieren. @param {File} file @returns {Promise<object>} */
-export function importiereKatalogDatei(file) {
-  return file.text().then((text) => importiereKatalogText(text));
+/**
+ * Katalog-Datei (File) importieren.
+ * @param {File} file @param {{zuordnen?:boolean}} [opts] @returns {Promise<object>}
+ */
+export function importiereKatalogDatei(file, opts = {}) {
+  return file.text().then((text) => importiereKatalogText(text, opts));
 }
 
-/** Geladenen Katalog als eigene JSON-Datei herunterladen (nicht im Projekt-ZIP). */
-export function exportiereKatalog() {
-  const k = holeKatalog();
-  if (!k) throw new Error("Kein Bauteilkatalog geladen.");
+/**
+ * Einen Katalog als eigene JSON-Datei herunterladen (nicht im Projekt-ZIP).
+ * Ohne Kennung der wirksame Katalog des aktiven Projekts, mit Kennung (#108,
+ * Modul 10) genau der gemeinte — gelesen wird, geschrieben nichts.
+ * @param {string} [id]
+ */
+export function exportiereKatalog(id) {
+  const k = (id != null && id !== "") ? katalogNachId(id) : holeKatalog();
+  if (!k) {
+    throw new Error((id != null && id !== "")
+      ? `Unbekannter Bauteilkatalog \u201e${id}\u201c.`
+      : "Kein Bauteilkatalog geladen.");
+  }
   const obj = katalogObjekt(k);
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);

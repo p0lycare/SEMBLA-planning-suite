@@ -475,271 +475,84 @@ ok('#67 die Wanddatei bleibt SEMBLA-Projekt v2 und bitgleich store.projektObjekt
     && wDatei.data === JSON.stringify(store.projektObjekt(aktivId), null, 2); })());
 ok('#67 Export setzt keinen aktiven Zeiger um', zeigerStand() === zeiger0);
 
-// --- 5) Bauteilkatalog (Issue #21) an der echten Modul-0-Oberflaeche -------
-// Bedienhilfen: genau die Wege, die ein Nutzer nimmt (Felder setzen -> Button klicken).
+// --- 5) Bauteilkatalog: Modul 0 ORDNET NUR ZU ([L-12], #108) ---------------
+// Die Katalogpflege — Produkte, Preise, Baugruppen, Katalogimport/-export — ist mit #108
+// nach MODUL 10 (docs/katalog.html) gezogen und wird dort am echten Bedienweg geprueft
+// (tests/module/smoke_katalog.mjs). Modul 0 behaelt genau zwei Dinge, und nur die stehen
+// hier: die ZUORDNUNG eines Katalogs zum Projekt und die beiden MELDUNGEN, die zum
+// Zuordnungsort gehoeren ([L-12]-Status und der unwirksame Altbestand nach [P-15]).
 const kat = () => store.holeKatalog();
 const kProd = (id) => KAT.produkt(kat(), id);
 const kAnzahl = () => (kat() ? kat().produkte.length : 0);
-const kMsgTxt = () => $('k-msg').textContent;
-const kFehler = () => $('k-msg').className === 'msg err';
-/** Byte-Stand des Katalog-Slots — Grundlage aller Abbruchpruefungen ([P-16]). */
+/** Byte-Stand des Katalog-Slots — Grundlage der Unberuehrtheitspruefungen. */
 const kSlot = () => localStorage.getItem('sembla:kataloge');
-/** Zeilenaktion der Produkttabelle (Ereignisdelegation wie im Browser). */
-function kZeile(act, pid){ $('k-tbody').dispatch('click', { target: { dataset:{ act, pid } } }); }
+const kFile = (text, name) => ({ name, text: async () => text });
 
-// --- Produktpflege-Dialog ([P-16], Issue #34) ------------------------------
-// Alles laeuft ueber die echten Bedienelemente: „Produkt anlegen…" bzw. eine Zeilenaktion
-// oeffnet den Dialog, die Maske wird vom Produktcode je Kategorie gerendert, gespeichert
-// wird nur ueber #kp-speichern.
-const kpOffen = () => $('kp-overlay').hidden === false;
-const kpMsgTxt = () => $('kp-msg').textContent;
-const kpFehler = () => $('kp-msg').className === 'msg err';
-const kpTitel = () => $('kp-titel').textContent;
-const kpMarkup = () => $('kp-felder').innerHTML;
-/** Tatsaechlich gerenderte Maskenfelder in Reihenfolge (aus dem echten Dialogmarkup). */
-const kpFelder = () => [...kpMarkup().matchAll(/id="kp-f-([a-z_]+)"/g)].map(m => m[1]);
-const kpNeu = () => $('k-produkt-neu').dispatch('click');
-const kpSpeichern = () => $('kp-speichern').dispatch('click');
-const kpAbbrechen = () => $('kp-cancel').dispatch('click');
-/** Kategorie im Dialog waehlen (echtes change-Ereignis: Maske + Preisbasen neu). */
-function kpKategorie(id){ $('kp-kat').value = id; $('kp-kat').dispatch('change'); }
-/** Grundfelder + Maskenfelder setzen; nicht genannte Maskenfelder werden geleert. */
-function kpSetze({ bez = '', id = '', preis = '', einheit = null, ...felder }){
-  $('kp-bez').value = String(bez); $('kp-id').value = String(id); $('kp-preis').value = String(preis);
-  if (einheit) $('kp-einheit').value = einheit;
-  for (const f of kpFelder()) $('kp-f-' + f).value = String(felder[f] != null ? felder[f] : '');
-}
-
-// 5a) Oberflaeche ist vorhanden und kommuniziert die Trennung/Nicht-Wirksamkeit
-ok('Katalogpflege liegt als Popup in Modul 0 ([L-12])',
-  /<div class="overlay" id="kat-overlay" hidden>/.test(html) && /<h3>Bauteilkatalog<\/h3>/.test(html)
-  && !/<h2>Bauteilkatalog/.test(html));
-ok('Kategorie-, Preisbasis- und Filterauswahl vorhanden',
-  /<select id="kp-kat"/.test(html) && /<select id="kp-einheit"/.test(html) && /<select id="k-filter"/.test(html));
-ok('Produktpflege liegt in einem eigenen Dialog/Overlay ([P-16])',
-  /<div class="overlay" id="kp-overlay" hidden>/.test(html) && /id="kp-felder"/.test(html)
-  && /id="kp-speichern">Speichern</.test(html) && /id="kp-cancel">Abbrechen</.test(html)
-  && /id="k-produkt-neu">Produkt anlegen…</.test(html));
-ok('keine generische Inline-Eingabezeile mehr in der Produktuebersicht',
-  !/id="k-gewinde"/.test(html) && !/id="k-add"/.test(html) && !/id="k-form-titel"/.test(html)
-  && !/id="kf-breite"/.test(html) && !/Breite \(mm\)/.test(html));
-ok('Hinweis nennt Dialog, kategoriegerechte Felder und „nur Speichern schreibt"',
-  /eigenen Dialog/.test(html) && /fachlich passenden Feldern/.test(html)
-  && /Nur „Speichern“ schreibt/.test(html) && /\[P-16\]/.test(html));
-ok('separater Katalog-Import und -Export als eigene Bedienelemente',
-  /id="k-import"[^>]*type="file"/.test(html) && /id="k-export"/.test(html) && /id="k-neu"/.test(html));
-ok('Projekt-ZIP-Dialog hat KEIN Katalog-Haekchen (Formate nicht verwechseln)',
+// 5a) Die Pflege ist ERSATZLOS aus Modul 0 verschwunden (#108, must 3)
+ok('[#108] kein Katalogpflege-Popup mehr in Modul 0',
+  !/id="kat-overlay"/.test(html) && !/<h3>Bauteilkatalog<\/h3>/.test(html)
+  && !/id="kat-close"/.test(html));
+ok('[#108] kein Produktpflege-Dialog und keine Produkttabelle mehr in Modul 0',
+  !/id="kp-overlay"/.test(html) && !/id="kp-felder"/.test(html)
+  && !/id="kp-speichern"/.test(html) && !/id="k-produkt-neu"/.test(html)
+  && !/id="k-tbody"/.test(html) && !/id="k-filter"/.test(html));
+ok('[#108] kein Katalog-Bedienelement mehr: anlegen, importieren, exportieren, loeschen',
+  !/id="k-neu"/.test(html) && !/id="k-import"/.test(html) && !/id="k-export"/.test(html)
+  && !/id="k-entfernen"/.test(html) && !/id="k-name"/.test(html) && !/id="k-vorlage"/.test(html));
+ok('[#108] auch die Baugruppenpflege ([P-21]) ist nicht mehr in Modul 0',
+  !/id="ks-neu"/.test(html) && !/id="ks-tbody"/.test(html) && !/id="ks-pos-add"/.test(html));
+ok('[#108] der Pflege-Knopf des Projekt-Dialogs ist ein Link nach Modul 10',
+  !/id="pp-katalog-pflege"/.test(html)
+  && /<a class="btn-s" href="katalog\.html" id="pp-katalog-link"/.test(html)
+  && !/katOeffne/.test(src));
+ok('[#108] Modul 0 hat keinen Katalog-SCHREIBWEG mehr (kein setzeKatalog/Import/Export)',
+  !/store\.setzeKatalog\(/.test(src) && !/importiereKatalogDatei/.test(src)
+  && !/exportiereKatalog/.test(src) && !/loescheKatalog/.test(src));
+ok('[L-12] die ZUORDNUNG bleibt: Auswahl im Projekt-Dialog samt Hinweis',
+  /<select id="pp-katalog"/.test(html) && /id="pp-katalog-hinweis"/.test(html)
+  && /genau einer je Projekt \(\[L-12\]\)/.test(html)
+  && /setzeKatalogRef/.test(src));
+ok('[L-12] der Hinweis nennt Modul 10 als Pflegeort und Modul 0 als Zuordnungsort',
+  /Modul 10 „Katalog“/.test(src) && /hier wird nur zugeordnet/.test(src));
+ok('Projekt-ZIP-Dialog hat weiterhin KEIN Katalog-Haekchen (Formate nicht verwechseln)',
   !/type="checkbox" value="katalog"/.test(html));
-ok('Hinweis nennt eigenes Dateiformat und Trennung vom Projekt',
-  /SEMBLA-Bauteilkatalog<\/b>, Format-Version&nbsp;2/.test(html)
-  && /getrennt vom Projekt-Export/.test(html));
-ok('Hinweis nennt Modul 0 als alleinigen Pflegeort und Modul 1/2 als Auswahlort',
-  /Modul 0 ist der alleinige Pflegeort/.test(html)
-  && /<b>Modul&nbsp;1<\/b>/.test(html) && /<b>Modul&nbsp;2<\/b>/.test(html));
-ok('Hinweis stellt klar, dass die Katalogpreise jetzt mitrechnen (kein Nullpreis)',
-  /Diese Preise rechnen mit/.test(html) && /ohne Preis<\/b> mit benanntem Grund/.test(html)
-  && !/rechnet noch nicht mit/.test(html));
-ok('keine zentrale Produktauswahl-UI mehr in Modul 0 ([P-13])',
+ok('keine zentrale Produktauswahl-UI in Modul 0 ([P-13])',
   !/data-act="auswahl"/.test(html) && !/<th>Für Projekt<\/th>/.test(html)
   && !/Häkchen „Für Projekt/.test(html));
-ok('Modul 0 hat keinen Schreibweg fuer die alte Auswahl mehr',
+ok('Modul 0 hat keinen Schreibweg fuer die alte Auswahl mehr ([P-15])',
   typeof store.setzeKatalogAuswahl === 'undefined' && !/setzeKatalogAuswahl/.test(html));
 
-// 5b) Katalog neu anlegen
-ok('vor der Anlage ist kein Katalog geladen', kat() === null);
-$('k-name').value = 'Katalog Musterlieferant';
-$('k-neu').dispatch('click');
-ok('Katalog angelegt (leer, mit Namen)', !!kat() && kat().name === 'Katalog Musterlieferant' && kAnzahl() === 0);
-ok('Kopfzeile meldet Katalogformat v2', /Katalogformat v2/.test($('k-info').textContent));
+// 5b) Der Katalogstand fuer die Folgeabschnitte — ueber den KANONISCHEN Speicherweg
+// (`store.setzeKatalog`, dieselbe Funktion, die Modul 10 aufruft). Fruehere Fassungen
+// dieses Tests klickten dafuer das Modul-0-Popup zusammen; das gibt es nicht mehr, und
+// der Bedienweg ist in smoke_katalog.mjs geprueft. Die Produkt-IDs sind unveraendert,
+// damit Auswahl-, Persistenz- und Exportpruefungen darunter denselben Stand vorfinden.
+ok('vor der Zuordnung ist kein Katalog geladen', kat() === null);
+store.setzeKatalog({ ...KAT.leererKatalog('Katalog Musterlieferant'), produkte: [
+  { id:'gewindestange-m10-1100', kategorie:'gewindestange',
+    bezeichnung:'Gewindestange M10 1100 mm', einheit:'Stk', preis:3.8,
+    gewinde:'M10', guete:'8.8', laenge_mm:1100 },
+  { id:'latte-40-60-3000', kategorie:'latte', bezeichnung:'Latte 40×60 3000 mm',
+    einheit:'m', preis:1.35, breite_mm:40, dicke_mm:60, laenge_mm:3000 },
+  { id:'latte-40-60-5000', kategorie:'latte', bezeichnung:'Latte 40×60 5000 mm',
+    einheit:'m', preis:1.19, breite_mm:40, dicke_mm:60, laenge_mm:5000 },
+  { id:'platte-gk-125', kategorie:'beplankung', bezeichnung:'Platte GK 12,5 mm',
+    einheit:'m2', preis:6.9, breite_mm:1250, hoehe_mm:2000, dicke_mm:12.5 },
+] });
+ok('[L-12] der Katalog ist dem aktiven Projekt zugeordnet und wirksam',
+  !!kat() && kat().name === 'Katalog Musterlieferant' && kAnzahl() === 4
+  && store.holeMappe().katalog === kat().id);
+ok('der Katalog liegt in seinem EIGENEN Speicher, nie im Wandelement ([L-12])',
+  Object.values(JSON.parse(kSlot())).find(k => k.id === kat().id).produkte.length === 4
+  && !JSON.stringify(store.aktivesWandelement()).includes('latte-40-60-3000'));
 
-// 5c) Gewindestange anlegen — kategoriegerechte Maske + Vorschlags-ID ([P-16])
-const slotVorAnlage = kSlot();
-kpNeu();
-ok('„Produkt anlegen…" oeffnet den getrennten Dialog',
-  kpOffen() && kpTitel() === 'Produkt anlegen' && kpMsgTxt() === '');
-kpKategorie('gewindestange');
-ok('Gewindestange: Maske ist Gewinde/Güte/Stangenlänge — keine Breite/Höhe/Dicke',
-  kpFelder().join() === 'gewinde,guete,laenge_mm');
-ok('Gewindestange: fachliche Beschriftung, Einheit und Pflichtkennzeichen',
-  /<label for="kp-f-gewinde">Gewinde <span class="muted">· Pflicht<\/span><\/label>/.test(kpMarkup())
-  && /Stangenlänge \(mm\) <span class="muted">· Pflicht<\/span>/.test(kpMarkup())
-  && /placeholder="M10"/.test(kpMarkup()) && />Güte</.test(kpMarkup()));
-ok('offener Dialog hat noch nichts geschrieben', kSlot() === slotVorAnlage && kAnzahl() === 0);
-kpSetze({ einheit:'Stk', preis:'3.80', gewinde:'M10', guete:'8.8', laenge_mm:'1100' });
-kpSpeichern();
-const rod = kProd('gewindestange-m10-1100');
-ok('Gewindestange ueber den echten Dialog angelegt', kAnzahl() === 1 && !!rod);
-ok('Dialog schliesst nach dem Speichern', !kpOffen());
-ok('Gewindestange: Gewinde/Laenge/Preisbasis/Preis gespeichert',
-  rod.gewinde === 'M10' && rod.guete === '8.8' && rod.laenge_mm === 1100
-  && rod.einheit === 'Stk' && rod.preis === 3.8);
-ok('Gewindestange: Bezeichnung vorgeschlagen', /Gewindestange M10 1100 mm/.test(rod.bezeichnung));
-ok('Rueckmeldung bestaetigt die Anlage', /Produkt angelegt/.test(kMsgTxt()) && !kFehler());
-
-// 5d) Zwei Latten (zwei Standardlaengen derselben Kategorie), Preisbasis €/m
-kpNeu();
-kpKategorie('latte');
-ok('Latte: Maske ist Querschnitt + Standardlänge — keine Höhe',
-  kpFelder().join() === 'breite_mm,dicke_mm,laenge_mm');
-ok('Latte: Querschnitt und Standardlänge fachlich beschriftet',
-  /Querschnitt Breite \(mm\)/.test(kpMarkup()) && /Querschnitt Dicke \(mm\)/.test(kpMarkup())
-  && /Standardlänge \(mm\)/.test(kpMarkup()) && !/kp-f-hoehe_mm/.test(kpMarkup())
-  && !/kp-f-gewinde/.test(kpMarkup()));
-kpSetze({ einheit:'m', preis:'1.25', breite_mm:'40', dicke_mm:'60', laenge_mm:'3000' });
-kpSpeichern();
-kpNeu();
-kpKategorie('latte');
-kpSetze({ einheit:'m', preis:'1.19', breite_mm:'40', dicke_mm:'60', laenge_mm:'5000' });
-kpSpeichern();
-ok('zwei Latten angelegt', kAnzahl() === 3 && !!kProd('latte-40-60-3000') && !!kProd('latte-40-60-5000'));
-ok('Latte: Preisbasis €/m und Querschnitt gespeichert',
-  kProd('latte-40-60-3000').einheit === 'm' && kProd('latte-40-60-3000').breite_mm === 40
-  && kProd('latte-40-60-3000').dicke_mm === 60 && kProd('latte-40-60-5000').laenge_mm === 5000);
-
-// 5e) Platte (Beplankung) mit Preisbasis €/m² — dritte, klar andere Maske
-kpNeu();
-kpKategorie('beplankung');
-ok('Beplankung: Plattenmaße ohne Gewinde- und Längenfeld',
-  kpFelder().join() === 'breite_mm,hoehe_mm,dicke_mm'
-  && /Plattenbreite \(mm\)/.test(kpMarkup()) && /Plattenhöhe \(mm\)/.test(kpMarkup())
-  && /Plattendicke \(mm\)/.test(kpMarkup()) && !/kp-f-gewinde/.test(kpMarkup())
-  && !/kp-f-laenge_mm/.test(kpMarkup()));
-kpSetze({ id:'platte-gk-125', einheit:'m2', preis:'6.90',
-          breite_mm:'1250', hoehe_mm:'2000', dicke_mm:'12.5' });
-kpSpeichern();
-const platte = kProd('platte-gk-125');
-ok('Platte mit eigener ID angelegt', kAnzahl() === 4 && !!platte);
-ok('Platte: Flaechenmaße + €/m² gespeichert',
-  platte.breite_mm === 1250 && platte.hoehe_mm === 2000 && platte.dicke_mm === 12.5 && platte.einheit === 'm2');
-
-// 5e2) Weitere Kategorien: Stein mit Preiszuordnungsmaß, Verbinder/Verbrauch ohne Maße
-kpNeu();
-kpKategorie('stein');
-ok('Stein: Maße optional, Steinbreite als Preiszuordnungsmaß benannt',
-  kpFelder().join() === 'breite_mm,hoehe_mm,dicke_mm'
-  && /Steinbreite \(mm\)<\/label>/.test(kpMarkup())
-  && /maßgebend für die Preiszuordnung der Steinpositionen/.test(kpMarkup())
-  && !/Pflicht/.test(kpMarkup()));
-kpKategorie('verbinder');
-ok('Verbinder: keine fachfremden Maßfelder', kpFelder().length === 0 && $('kp-leer').hidden === false);
-kpKategorie('verbrauch');
-// #92 Verbrauchsmaterial fuehrt GENAU EIN Mass — die Einbauhoehe des Kleinteils; Breite,
-// Dicke und Laenge bleiben fachfremd und werden weiterhin nicht angeboten.
-ok('Verbrauchsmaterial: allein die Einbauhöhe, keine weiteren Maßfelder',
-  kpFelder().join() === 'hoehe_mm');
-ok('Verbrauchsmaterial: kein Gewinde-/Güte-Feld (bewusst ausserhalb #34)',
-  !/kp-f-gewinde/.test(kpMarkup()) && !/kp-f-guete/.test(kpMarkup()));
-kpAbbrechen();
-ok('Abbruch nach Kategoriewechseln legt nichts an', kAnzahl() === 4 && !kpOffen());
-
-// 5f) Unvollstaendige/unzulaessige Eingabe: Meldung IM Dialog, nichts gespeichert
-const slotVorFehler = kSlot();
-kpNeu();
-kpKategorie('latte');
-kpSetze({ einheit:'m', preis:'1.00', breite_mm:'40', dicke_mm:'60' });   // Standardlaenge fehlt
-kpSpeichern();
-ok('Latte ohne Standardlaenge wird abgelehnt',
-  kAnzahl() === 4 && kpFehler() && /laenge_mm/.test(kpMsgTxt()) && kSlot() === slotVorFehler);
-ok('Dialog bleibt zur Korrektur offen', kpOffen());
-kpSetze({ einheit:'m2', preis:'1.00', breite_mm:'40', dicke_mm:'60', laenge_mm:'3000' });
-kpSpeichern();                                                    // €/m² ist fuer Latten unzulaessig
-ok('unzulaessige Preisbasis wird abgelehnt',
-  kAnzahl() === 4 && kpFehler() && /nicht zulässig/.test(kpMsgTxt()) && kSlot() === slotVorFehler);
-kpSetze({ id:'latte-40-60-5000', einheit:'m', preis:'1.00',
-          breite_mm:'40', dicke_mm:'60', laenge_mm:'3000' });
-kpSpeichern();
-ok('bereits vergebene ID wird abgelehnt',
-  kAnzahl() === 4 && kpFehler() && /bereits vergeben/.test(kpMsgTxt()) && kSlot() === slotVorFehler);
-kpAbbrechen();
-ok('Abbrechen nach Fehlern laesst den Katalog unveraendert',
-  kSlot() === slotVorFehler && !kpOffen() && /kein Produkt angelegt/.test(kMsgTxt()) && !kFehler());
-
-// 5g) Bearbeiten ueber die Tabelle — Dialog vorbelegt, Speichern ist der einzige Schreibweg
-kZeile('bearbeiten', 'latte-40-60-3000');
-ok('Bearbeiten oeffnet den Dialog mit dem Produkt',
-  kpOffen() && kpTitel() === 'Produkt bearbeiten: ' + kProd('latte-40-60-3000').bezeichnung
-  && $('kp-bez').value === kProd('latte-40-60-3000').bezeichnung
-  && $('kp-preis').value === '1.25' && $('kp-id').value === 'latte-40-60-3000');
-ok('Bearbeiten fuellt auch die kategoriespezifischen Felder',
-  $('kp-f-breite_mm').value === '40' && $('kp-f-dicke_mm').value === '60'
-  && $('kp-f-laenge_mm').value === '3000');
-// Abbruch im Bearbeitungsmodus: geaenderte Werte werden verworfen
-const slotVorEdit = kSlot();
-$('kp-preis').value = '99.00';
-kpAbbrechen();
-ok('Abbrechen verwirft die Aenderung vollstaendig',
-  kSlot() === slotVorEdit && kProd('latte-40-60-3000').preis === 1.25 && !kpOffen()
-  && /Bearbeitung abgebrochen/.test(kMsgTxt()));
-kZeile('bearbeiten', 'latte-40-60-3000');
-$('kp-preis').value = '1.35';
-kpSpeichern();
-ok('Preisaenderung gespeichert (kein neues Produkt)',
-  kAnzahl() === 4 && kProd('latte-40-60-3000').preis === 1.35 && !kpOffen());
-ok('Bearbeiten laesst die uebrigen Felder unveraendert',
-  kProd('latte-40-60-3000').breite_mm === 40 && kProd('latte-40-60-3000').dicke_mm === 60
-  && kProd('latte-40-60-3000').laenge_mm === 3000 && kProd('latte-40-60-3000').einheit === 'm');
-
-// 5g2) Escape und Klick neben den Dialog brechen ebenfalls ohne Schreibvorgang ab
-kZeile('bearbeiten', 'latte-40-60-3000');
-const slotVorEsc = kSlot();
-$('kp-preis').value = '77.00';
-document.dispatch('keydown', { key:'Escape' });
-ok('Escape bricht die Bearbeitung ohne Schreibvorgang ab',
-  !kpOffen() && kSlot() === slotVorEsc && kProd('latte-40-60-3000').preis === 1.35);
-kZeile('bearbeiten', 'latte-40-60-3000');
-$('kp-preis').value = '88.00';
-$('kp-overlay').dispatch('click', { target: $('kp-overlay') });
-ok('Klick neben den Dialog bricht ohne Schreibvorgang ab',
-  !kpOffen() && kSlot() === slotVorEsc && kProd('latte-40-60-3000').preis === 1.35);
-
-// 5h) Duplizieren: die Kopie entsteht ERST beim Speichern ([P-16])
-const slotVorDup = kSlot();
-kZeile('duplizieren', 'latte-40-60-3000');
-ok('Duplizieren oeffnet nur den vorbelegten Dialog',
-  kpOffen() && kpTitel() === 'Produkt duplizieren: ' + kProd('latte-40-60-3000').bezeichnung + ' (Kopie)'
-  && $('kp-id').value === 'latte-40-60-3000-kopie' && /\(Kopie\)/.test($('kp-bez').value));
-ok('Duplizieren schreibt noch NICHTS in den Katalog',
-  kAnzahl() === 4 && !kProd('latte-40-60-3000-kopie') && kSlot() === slotVorDup);
-kpAbbrechen();
-ok('Abbrechen nach Duplizieren legt keine Kopie an',
-  kAnzahl() === 4 && !kProd('latte-40-60-3000-kopie') && kSlot() === slotVorDup
-  && /Duplizieren abgebrochen/.test(kMsgTxt()));
-kZeile('duplizieren', 'latte-40-60-3000');
-kpSpeichern();
-ok('erst Speichern legt die Kopie an',
-  kAnzahl() === 5 && !!kProd('latte-40-60-3000-kopie') && !kpOffen()
-  && /Kopie angelegt/.test(kMsgTxt()));
-ok('die Kopie traegt die Werte des Originals',
-  kProd('latte-40-60-3000-kopie').preis === 1.35 && kProd('latte-40-60-3000-kopie').laenge_mm === 3000
-  && kProd('latte-40-60-3000-kopie').einheit === 'm');
-
-// 5h2) Kategoriewechsel im Dialog: fachfremde Maßfelder werden benannt und beim Speichern entfernt
-kZeile('bearbeiten', 'latte-40-60-3000-kopie');
-kpKategorie('verbinder');
-ok('Kategoriewechsel benennt die fachfremden Felder sichtbar',
-  $('kp-extra').hidden === false && /fachfremde Felder/.test($('kp-extra').innerHTML)
-  && /breite_mm/.test($('kp-extra').innerHTML) && /laenge_mm/.test($('kp-extra').innerHTML));
-kpAbbrechen();
-ok('Abbruch nach Kategoriewechsel aendert das Produkt nicht',
-  kProd('latte-40-60-3000-kopie').kategorie === 'latte'
-  && kProd('latte-40-60-3000-kopie').laenge_mm === 3000);
-
-// 5i) Loeschen (nur mit Bestaetigung)
-confirmAntwort = false;
-kZeile('produkt-loeschen', 'latte-40-60-3000-kopie');
-ok('Loeschen ohne Bestaetigung passiert nicht', kAnzahl() === 5);
-confirmAntwort = true;
-kZeile('produkt-loeschen', 'latte-40-60-3000-kopie');
-ok('Loeschen mit Bestaetigung entfernt das Produkt', kAnzahl() === 4 && !kProd('latte-40-60-3000-kopie'));
-
-// 5j) Modul 0 pflegt NUR den Produktstamm — die wandbezogene Auswahl gehoert Modul 1/2 ([P-13]).
-// Hier wird sie nur vorbereitet (ueber die Storage-Schicht, wie Modul 1/2 sie aufrufen), damit
-// die Persistenz-, Export- und Altbestandspruefungen darunter einen realistischen Stand haben.
+// 5c) Modul 0 pflegt NICHTS am Produktstamm — die wandbezogene Auswahl gehoert Modul 1/2
+// ([P-13]). Hier wird sie nur ueber die Storage-Schicht vorbereitet, wie Modul 1/2 sie
+// aufrufen, damit die Persistenz-, Export- und Altbestandspruefungen darunter einen
+// realistischen Stand haben.
 const aktivKat = store.aktivId();
 ok('Ausgangslage: keine Produktauswahl am aktiven Element',
   KAT.anzahlAuswahl(KAT.produktRollen(store.aktiveEingaben())) === 0);
-ok('Produkttabelle in Modul 0 zeigt keine Auswahlspalte',
-  !/data-act="auswahl"/.test($('k-tbody').innerHTML) && /data-act="bearbeiten"/.test($('k-tbody').innerHTML));
 store.setzeProduktrolle('latte', ['latte-40-60-3000', 'latte-40-60-5000']);
 store.setzeProduktrolle('rod_std', ['gewindestange-m10-1100']);
 store.setzeProduktrolle('beplankung', ['platte-gk-125']);
@@ -753,10 +566,7 @@ ok('Auswahl speichert nur IDs, keine Preise/Maße',
 ok('Wandelement bleibt frei von Katalogdaten (Ownership Modul 1)',
   !JSON.stringify(store.aktivesWandelement()).includes('latte-40-60-3000'));
 
-// 5k) Persistenz „nach Reload": alles steht im localStorage, nichts nur im DOM
-ok('Katalog liegt im eigenen localStorage-Schluessel ([L-12]: Speicher je Kennung)',
-  Object.values(JSON.parse(localStorage.getItem('sembla:kataloge')))
-    .find(k => k.id === kat().id).produkte.length === 4);
+// 5d) Persistenz „nach Reload": alles steht im localStorage, nichts nur im DOM
 ok('Auswahl liegt am Element im Projektstand',
   JSON.parse(localStorage.getItem('sembla:elemente'))[aktivKat].eingaben.aufbau.produkte.rollen.latte.length === 2);
 ok('Auswahl ist nach erneutem Laden wieder da (store liest frisch)',
@@ -766,78 +576,64 @@ ok('Projekt-JSON traegt die Auswahl, Format bleibt v2',
   && store.projektObjekt(aktivKat).eingaben.planung.produkte.rollen.rod_std.length === 1
   && store.projektObjekt(aktivKat).version === 2);
 
-// 5l) Separater Katalog-Export (eigene Datei, nicht im Projekt-ZIP)
-const zipVorher = zipCalls.length;
-$('k-export').dispatch('click');
-const kExpDatei = JSON.parse(letzterDownload);
-ok('Katalog-Export erzeugt eigene JSON-Datei mit Katalogformat v2',
-  kExpDatei.format === 'SEMBLA-Bauteilkatalog' && kExpDatei.version === 2 && kExpDatei.produkte.length === 4);
-ok('Katalog-Export enthaelt kein Projekt/Wandelement',
-  !('wandelement' in kExpDatei) && !('eingaben' in kExpDatei) && !('geaendert' in kExpDatei));
-ok('Katalog-Dateiname ist klar unterscheidbar',
-  /^SEMBLA_Bauteilkatalog_/.test(letzterAnker.download) && /\.json$/.test(letzterAnker.download));
-ok('Katalog-Export laeuft NICHT ueber den Projekt-ZIP', zipCalls.length === zipVorher);
-
-// 5m) Separater Katalog-Import (ersetzt den Slot) + Formatverwechslung
+// 5e) Eine Katalogdatei im PROJEKT-Import wird weiterhin hier abgewiesen: der Einstieg
+// „Projekt importieren" ist Modul 0, und die Formate duerfen nicht verwechselt werden.
 const fremdKatalog = JSON.stringify({
   format: 'SEMBLA-Bauteilkatalog', version: 1, name: 'Katalog Zweitlieferant',
   produkte: [{ id:'rod-m12-1500', kategorie:'gewindestange', bezeichnung:'Gewindestange M12 1500 mm',
                einheit:'Stk', preis:5.4, gewinde:'M12', laenge_mm:1500 }],
 });
-const kFile = (text, name) => ({ name, text: async () => text });
-await $('k-import').dispatch('change', { target: { files:[kFile(fremdKatalog, 'fremd.json')], value:'x' } });
-ok('Katalog-Import ersetzt den geladenen Katalog',
-  kat().name === 'Katalog Zweitlieferant' && kAnzahl() === 1 && !!kProd('rod-m12-1500'));
-ok('Katalogname erscheint im Eingabefeld', $('k-name').value === 'Katalog Zweitlieferant');
-ok('Import meldet Erfolg', /Katalog importiert/.test(kMsgTxt()) && !kFehler());
-
-await $('k-import').dispatch('change', {
-  target: { files:[kFile(JSON.stringify(store.projektObjekt(aktivKat)), 'projekt.json')], value:'x' } });
-ok('Projektdatei im Katalog-Import -> klare Meldung, Katalog unveraendert',
-  kFehler() && /Projekt-\/Wandelement-Datei/.test(kMsgTxt()) && kAnzahl() === 1);
-
+const slotVorFremd = kSlot();
 await $('f-import').dispatch('change', { target: { files:[kFile(fremdKatalog, 'fremd.json')], value:'x' } });
-ok('Katalogdatei im Projekt-Import -> klare Meldung',
-  /Bauteilkatalog/.test($('msg').textContent) && $('msg').className === 'msg err');
+ok('Katalogdatei im Projekt-Import -> klare Meldung, Kataloge unveraendert',
+  /Bauteilkatalog/.test($('msg').textContent) && $('msg').className === 'msg err'
+  && kSlot() === slotVorFremd);
 
-// 5n) Referenzen bleiben beim Katalogwechsel stehen (nie stille Bereinigung); die Meldung der
-// unaufloesbaren Referenzen gehoert jetzt an die waehlenden Oberflaechen (Modul 1/2) und in
-// Modul 4 — Modul 0 pflegt nur den Stamm.
-ok('Auswahl wurde durch den Katalogwechsel NICHT bereinigt',
+// 5f) Referenzen bleiben beim Zuordnungswechsel stehen (nie stille Bereinigung); die
+// Meldung der unaufloesbaren Referenzen gehoert an die waehlenden Oberflaechen (Modul 1/2)
+// und in Modul 4 — Modul 0 ordnet nur zu.
+const katMuster = kat().id;
+const katZweit = store.setzeKatalog(KAT.parseKatalog(fremdKatalog));
+ok('[L-12] die Zuordnung wechselt, der bisherige Katalog bleibt erhalten',
+  kat().id === katZweit.id && kat().name === 'Katalog Zweitlieferant' && kAnzahl() === 1
+  && store.katalogNachId(katMuster)?.produkte.length === 4);
+ok('Auswahl wurde durch den Zuordnungswechsel NICHT bereinigt',
   store.holeProdukte(2, aktivKat).rollen.latte.length === 2);
 ok('unaufloesbare Referenz ist nachweisbar (Meldung in Modul 1/2/4)',
   KAT.produkteZuRolle(store.holeEingaben(aktivKat), kat(), 'latte').fehlend.length === 2);
 
-confirmAntwort = true;
-$('k-entfernen').dispatch('click');
-ok('Katalog entfernt, Referenzen bleiben stehen',
-  kat() === null && store.holeProdukte(2, aktivKat).rollen.latte.length === 2);
+// [L-12] Ohne Zuordnung wird das GEMELDET — im Warnkasten der Projektliste, nicht im Popup.
+store.setzeProjektKatalog(null);
+
+ok('[L-12] ohne Zuordnung meldet Modul 0 das am Zuordnungsort, ohne einen Katalog zu raten',
+  kat() === null && store.katalogStatus().status === 'nicht_zugeordnet'
+  && $('tr-warn').hidden === false
+  && /kein Bauteilkatalog zugeordnet/.test($('tr-warn').innerHTML)
+  && /katalog\.html/.test($('tr-warn').innerHTML));
 ok('ohne Katalog ist keine Rolle aufloesbar (kein stiller Nullpreis)',
   KAT.rollenStatus('latte', store.holeEingaben(aktivKat), null, {}).status === 'kein_katalog');
 
-// 5n2) Altbestand der frueheren zentralen Freigabe wird sichtbar als UNWIRKSAM gemeldet ([P-15])
+// 5g) Altbestand der frueheren zentralen Freigabe wird sichtbar als UNWIRKSAM gemeldet
+// ([P-15]) — ebenfalls in Modul 0, weil er an der WAND haengt und nicht am Produktstamm.
 store.mergeEingaben('katalog', { auswahl: { latte: ['alt-latte-1', 'alt-latte-2'] },
                                  quelle: { name: 'Alt-Katalog', version: 1 } }, aktivKat);
-ok('Altbestand: Warnbox nennt ihn unwirksam und verweist auf Modul 1/2',
-  $('k-warn').hidden === false && /Unwirksamer Altbestand/.test($('k-warn').innerHTML)
-  && /2 Produktreferenz\(en\)/.test($('k-warn').innerHTML)
-  && /Modul 1<\/b>/.test($('k-warn').innerHTML) && /Modul 2<\/b>/.test($('k-warn').innerHTML));
-ok('Altbestand wird nicht angewendet und nicht in Rollen uebersetzt',
+
+ok('[P-15] Warnkasten nennt den Altbestand unwirksam und verweist auf Modul 1/2',
+  $('tr-warn').hidden === false && /Unwirksamer Altbestand/.test($('tr-warn').innerHTML)
+  && /2 Produktreferenz\(en\)/.test($('tr-warn').innerHTML)
+  && /Modul 1<\/b>/.test($('tr-warn').innerHTML) && /Modul 2<\/b>/.test($('tr-warn').innerHTML));
+ok('[P-15] Altbestand wird nicht angewendet und nicht in Rollen uebersetzt',
   !JSON.stringify(KAT.produktRollen(store.holeEingaben(aktivKat))).includes('alt-latte'));
-ok('Altbestand bleibt zur Nachvollziehbarkeit erhalten',
+ok('[P-15] Altbestand bleibt zur Nachvollziehbarkeit erhalten',
   store.katalogAuswahl(aktivKat).latte.length === 2);
 
-// 5o) Erstes Produkt ohne vorher angelegten Katalog legt einen Katalog an
-$('k-name').value = 'Direktkatalog';
-kpNeu();
-kpKategorie('gewindestange');
-kpSetze({ einheit:'Stk', preis:'9.90', gewinde:'M16', laenge_mm:'2000' });
-kpSpeichern();
-ok('Produktanlage ohne bestehenden Katalog erzeugt ihn',
-  !!kat() && kat().name === 'Direktkatalog' && kAnzahl() === 1);
+// Zurueck in einen zugeordneten Stand fuer die Folgeabschnitte.
+store.setzeProjektKatalog(katMuster);
+ok('Ausgangslage der Folgeabschnitte: der Musterkatalog ist wieder zugeordnet',
+  kat().id === katMuster && kAnzahl() === 4);
 
-// 5p) Zentraler Projekt-ZIP-Export bleibt unveraendert katalogfrei, nutzt den Katalog aber als
-// Preisquelle der Stueckliste ([P-14]) — dieselbe Auflösung wie Modul 4.
+// 5h) Zentraler Projekt-ZIP-Export bleibt unveraendert katalogfrei, nutzt den Katalog aber
+// als Preisquelle der Stueckliste ([P-14]) — dieselbe Auflösung wie Modul 4.
 const projektDateien = baueDateien(store.projektObjekt(aktivKat), ['projekt','stueckliste'], kat());
 // [P-19] Das Haekchen „Baustellenstueckliste" liefert ZWEI Dateien aus einer Ableitung:
 // die aggregierte Liste und die Einzelteilliste der Gewindestangen mit ihren IDs.
@@ -1035,12 +831,25 @@ ok('Datei ohne Wandelement -> Fehlermeldung, kein Dialog',
 ok('nach Fehler ist die Dateiauswahl wieder frei', $('f-import').value === '');
 
 // --- 7) Repo-Vorlagen: Standardkatalog + AWG-Musterwand (Issue #33) --------
-// Geuebt werden die ECHTEN Modul-0-Handler (#k-vorlage, #btn-vorlage-wand) gegen die
-// ECHTEN Dateien unter docs/vorlagen/. Kein Fixture, keine vertraulichen Daten:
-// beide Vorlagen liegen als gewoehnliche, oeffentliche Repo-Dateien im Checkout.
+// Geuebt wird der ECHTE Modul-0-Handler #btn-vorlage-wand gegen die ECHTEN Dateien unter
+// docs/vorlagen/. Kein Fixture, keine vertraulichen Daten: beide Vorlagen liegen als
+// gewoehnliche, oeffentliche Repo-Dateien im Checkout. Die KATALOGvorlage wird seit #108
+// in Modul 10 geladen — hier laeuft dafuer `ladeStandardkatalog()` ueber denselben
+// kanonischen Speicherweg, und der Bedienweg steht in smoke_katalog.mjs.
 const vorlagenBasis = new URL("../../docs/vorlagen/", import.meta.url);
 const vorlageDatei = (name) => readFileSync(new URL(name, vorlagenBasis), "utf8");
 const V_WAND = "SEMBLA_Musterwand.json", V_KAT = "SEMBLA_Standardkatalog.json";
+
+/**
+ * Standardkatalog aus der ECHTEN Repo-Vorlage laden und dem aktiven Projekt zuordnen.
+ * #108: Der Bedienknopf dafuer liegt seit dem Umzug in Modul 10 — hier laeuft deshalb
+ * dieselbe Funktion, die er aufruft (`store.ladeVorlagenKatalog` mit dem kanonischen
+ * Vorlagenpfad, also unveraendert der kanonische Schreibweg samt Vorlagenkennung).
+ * Reine Testvorbereitung fuer die Abschnitte, die einen Katalog brauchen.
+ */
+function ladeStandardkatalog(){
+  return store.ladeVorlagenKatalog(vorlageDatei(V_KAT), KAT.VORLAGE_KATALOG_PFAD);
+}
 
 /** fetch-Ersatz: liefert genau die Repo-Vorlagen (wie der Browser von GitHub Pages). */
 const fetchLog = [];
@@ -1056,15 +865,14 @@ function installFetch(){
 installFetch();
 
 // 7a) Bedienelemente sind an der echten Oberflaeche vorhanden
-ok('Button „Standardkatalog laden" im Katalog-Abschnitt',
-  /<button class="btn-s" id="k-vorlage">Standardkatalog laden<\/button>/.test(html));
+// #108: „Standardkatalog laden" ist mit der Katalogpflege nach MODUL 10 gezogen und wird
+// dort geprueft (tests/module/smoke_katalog.mjs) — Modul 0 hat den Knopf nicht mehr.
+ok('#108 Modul 0 hat keinen Knopf „Standardkatalog laden" mehr',
+  !/id="k-vorlage"/.test(html));
 ok('Button „Musterwand laden…" im Wand-Dialog',
   /<button class="btn-s" id="btn-vorlage-wand">Musterwand laden…<\/button>/.test(html));
-ok('Hinweis nennt beide Vorlagen als bewusst zu ladende Repo-Dateien',
-  /vorlagen\/SEMBLA_Musterwand\.json/.test(html) && /vorlagen\/SEMBLA_Standardkatalog\.json/.test(html)
-  && /bewusst auf Klick, nie/.test(html));
-ok('Hinweis kennzeichnet die vorlaeufigen Katalogwerte',
-  /vorläufige, fachlich unbestätigte Beispielwerte/.test(html));
+ok('Hinweis nennt die Wandvorlage als bewusst zu ladende Repo-Datei',
+  /vorlagen\/SEMBLA_Musterwand\.json/.test(html) && /bewusst auf Klick, nie/.test(html));
 
 // 7b) Die Vorlagendateien selbst: valide, versioniert, Ressourcen getrennt
 const katRoh = JSON.parse(vorlageDatei(V_KAT));
@@ -1184,19 +992,20 @@ ok('Wandvorlage traegt nur Produkt-IDs, keine Preise/Maße/Kosten',
   && Object.keys(wandRoh.eingaben.planung).join() === 'produkte'
   && Object.keys(wandRoh.eingaben.aufbau).join() === 'produkte');
 
-// 7d) Standardkatalog laden: er tritt NEBEN den bisherigen und wird zugeordnet ([L-12])
+// 7d) Der Standardkatalog macht die Suite startklar ([P-18]) — Inhalt der Repo-Vorlage
+// #108: GELADEN wird er seit dem Umzug in Modul 10; hier laeuft deshalb der kanonische
+// Speicherweg `store.ladeVorlagenKatalog` (dieselbe Funktion, die der Knopf dort aufruft).
+// Geprueft wird an dieser Stelle allein, WAS die Vorlage mitbringt — der Bedienweg samt
+// Kopierschutz steht in tests/module/smoke_katalog.mjs.
 const katVorherId = store.holeKatalog().id;
 ok('Ausgangslage: ein anderer Katalog ist zugeordnet',
-  store.holeKatalog() && store.holeKatalog().name === 'Direktkatalog');
-await $('k-vorlage').dispatch('click');
+  store.holeKatalog() && store.holeKatalog().name === 'Katalog Musterlieferant');
+store.ladeVorlagenKatalog(vorlageDatei(V_KAT), KAT.VORLAGE_KATALOG_PFAD);
 ok('Standardkatalog geladen und dem Projekt zugeordnet',
   kAnzahl() === V_KAT_ANZ && /Standardkatalog/.test(kat().name));
 ok('[L-12] der bisherige Katalog bleibt erhalten und ist wieder waehlbar',
-  store.katalogNachId(katVorherId)?.name === 'Direktkatalog' && store.listeKataloge().length >= 2);
-ok('Erfolgsmeldung nennt die vorlaeufigen Werte',
-  /Standardkatalog geladen/.test(kMsgTxt()) && /[Vv]orläufige/.test(kMsgTxt())
-  && /gekennzeichnet/.test(kMsgTxt()) && !kFehler());
-ok('Katalogname erscheint im Eingabefeld', $('k-name').value === kat().name);
+  store.katalogNachId(katVorherId)?.name === 'Katalog Musterlieferant'
+  && store.listeKataloge().length >= 2);
 ok('Standardkatalog liegt im eigenen localStorage-Speicher',
   Object.values(JSON.parse(localStorage.getItem('sembla:kataloge')))
     .find(k => k.id === kat().id).produkte.length === V_KAT_ANZ);
@@ -1212,219 +1021,9 @@ ok('Standardkatalog belegt jede waehlbare Verwendungsstelle vor ([P-18])',
 ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
   kat().produkte.filter(p => /kopplungsmutter/i.test(p.id)).length === 1
   && KAT.produktrollenVorschlag(kat()).kupplung.length === 1);
-// 7d2) Katalog-v1-Kompatibilitaet der Maske ([P-16]): jedes Produkt der v1-Vorlage laesst sich
-// im Dialog oeffnen und unveraendert wieder speichern — kein Feld faellt weg, Zusatzfelder
-// (hinweis nach [P-12]) bleiben erhalten, die Formatversion bleibt 1.
-{
-  /** Produkt schluesselunabhaengig vergleichen (die Reihenfolge darf sich aendern). */
-  const kanon = (p) => JSON.stringify(Object.keys(p).sort().map(k => [k, p[k]]));
-  const vorher = kanon(KAT.produkt(kat(), 'latte-40-60-1500'));
-  kZeile('bearbeiten', 'latte-40-60-1500');
-  ok('Vorlagenprodukt oeffnet mit gefuellter Lattenmaske',
-    kpFelder().join() === 'breite_mm,dicke_mm,laenge_mm' && $('kp-f-laenge_mm').value === '1500'
-    && $('kp-f-breite_mm').value === '40' && $('kp-f-dicke_mm').value === '60');
-  ok('Zusatzfeld „hinweis" wird als erhalten benannt, nicht als fachfremd',
-    $('kp-extra').hidden === false && /erhalten/.test($('kp-extra').innerHTML)
-    && /hinweis/.test($('kp-extra').innerHTML) && !/fachfremd/.test($('kp-extra').innerHTML));
-  kpSpeichern();
-  ok('unveraendertes Speichern laesst das v1-Produkt inhaltlich identisch',
-    kanon(KAT.produkt(kat(), 'latte-40-60-1500')) === vorher && kAnzahl() === V_KAT_ANZ);
-  ok('alle Vorlagenprodukte bleiben gegen den echten Validator fehlerfrei',
-    kat().produkte.every(p => KAT.validiereProdukt(p, { ids: [] }).length === 0));
-  ok('jedes Pflichtfeld einer Kategorie ist in ihrer Maske pflegbar (eine Pflichtquelle)',
-    KAT.KATEGORIEN.every(k => (k.pflicht || []).every(f => KAT.maskeFelder(k.id).includes(f))));
-  ok('kein Vorlagenprodukt traegt ein fuer seine Kategorie fachfremdes Maßfeld',
-    kat().produkte.every(p => KAT.MASSFELDER.every(f =>
-      p[f] === undefined || KAT.maskeFelder(p.kategorie).includes(f))));
-  ok('Katalog-Formatversion ist 2 (kein Bruch durch [P-16])',
-    KAT.KATALOG_VERSION === 2 && KAT.katalogObjekt(kat()).version === 2
-    && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === V_KAT_ANZ);
-}
-
-// 7d2b) Einbauhoehe eines Kleinteils am ECHTEN Dialog (Issue #92)
-// Der Dialog bezieht seine Maßfelder ausschliesslich aus `maskeVonKategorie` — deshalb genuegt
-// der Maskeneintrag der Kategorie „Sonstiges Verbrauchsmaterial", und `docs/index.html` bleibt
-// unveraendert. Geprueft wird der reale Nutzerpfad: Kopplungsmutter der Vorlage oeffnen, die
-// Einbauhoehe eintragen, ueber #kp-speichern speichern — und dass der Wert die Persistenz und
-// den Export/Import ueberlebt, statt wie zuvor als fachfremdes Feld entfernt zu werden.
-{
-  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
-  ok('[#92] der Dialog rendert fuer Verbrauchsmaterial das Höhenfeld aus der Maske',
-    kpFelder().join() === KAT.maskeFelder('verbrauch').join()
-    && kpFelder().join() === 'hoehe_mm' && $('kp-f-hoehe_mm') != null);
-  ok('[#92] das Feld ist als Einbauhöhe in Millimetern beschriftet',
-    /Einbauhöhe/.test(kpMarkup()) && /\(mm\)/.test(kpMarkup()));
-  ok('[#92] die Einbauhöhe ist nicht als Pflicht ausgezeichnet',
-    !/Pflicht/.test(kpMarkup()) && KAT.maskeVonKategorie('verbrauch')[0].pflicht === false);
-  ok('[#92] die Vorlage bringt kein erfundenes Einbaumaß mit',
-    $('kp-f-hoehe_mm').value === ''
-    && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === undefined);
-  ok('[#92] die Höhe wird nicht mehr als fachfremdes Feld angekuendigt',
-    !/fachfremd/.test($('kp-extra').innerHTML));
-
-  kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',
-            preis: '0.65', einheit: 'Stk', hoehe_mm: '17.5' });
-  kpSpeichern();
-  ok('[#92] gespeichert ohne Fehlermeldung, kein neues Produkt entstanden',
-    !kpOffen() && !kFehler() && kAnzahl() === V_KAT_ANZ);
-  ok('[#92] die Einbauhöhe steht am Produkt und ueberlebt die Persistenz',
-    KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === 17.5
-    && Object.values(JSON.parse(kSlot())).find(k => k.id === kat().id)
-         .produkte.find(p => p.id === 'verbrauch-kopplungsmutter').hoehe_mm === 17.5);
-  ok('[#92] Rollenangabe und Hinweis des Produkts bleiben unberuehrt',
-    KAT.produkt(kat(), 'verbrauch-kopplungsmutter').rollen.join() === 'kupplung'
-    && /Bauteilgleich/.test(KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hinweis || ''));
-  ok('[#92] die Einbauhöhe uebersteht Export und Import der Katalogdatei',
-    KAT.produkt(KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))),
-                'verbrauch-kopplungsmutter').hoehe_mm === 17.5);
-  // Optional bleibt optional: das Meterware-Kleinteil daneben wird nicht mit einem Maß versehen.
-  ok('[#92] ein anderes Verbrauchsmaterial bleibt ohne Einbauhöhe gueltig',
-    kat().produkte.filter(p => p.kategorie === 'verbrauch' && p.hoehe_mm === undefined).length >= 1
-    && kat().produkte.every(p => KAT.validiereProdukt(p, { ids: [] }).length === 0));
-
-  // Unzulaessiger Wert: benannt abgewiesen, NICHT gerundet und nicht still verworfen ([P-9]).
-  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
-  kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',
-            preis: '0.65', einheit: 'Stk', hoehe_mm: '0' });
-  kpSpeichern();
-  ok('[#92] Einbauhöhe 0 wird im Dialog benannt abgewiesen, der Katalog bleibt unveraendert',
-    kpOffen() && kpFehler() && /hoehe_mm/.test(kpMsgTxt())
-    && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === 17.5);
-  kpAbbrechen();
-}
-
-// 7d3) Baugruppen/Sets ([P-21]/[P-22], #94) am ECHTEN Katalogdialog
-// Der reale Nutzerpfad: Set anlegen, Produkt- und Rollenposition pflegen, umbenennen,
-// Position aendern und entfernen, loeschen — dazwischen der Export ueber den echten Knopf
-// und der Import ueber das echte Dateifeld. Geschrieben wird ausschliesslich ueber die
-// Bedienelemente; aufgeloest wird nichts ([P-19]).
-{
-  /** Zeilenaktion der Set-Tabelle (Ereignisdelegation wie im Browser). */
-  const sZeile = (act, set, pos) =>
-    $('ks-tbody').dispatch('click', { target: { dataset: { act, set, pos } } });
-  const sets = () => KAT.normSets(kat().sets);
-  const sFind = (id) => sets().find(x => x.id === id) || null;
-  /** Eine Position ueber die drei echten Felder setzen und den Knopf druecken. */
-  function sPos(art, ref, menge){
-    $('ks-art').value = art; $('ks-art').dispatch('change');
-    $('ks-ref').value = ref; $('ks-menge').value = String(menge);
-    $('ks-pos-add').dispatch('click');
-  }
-
-  // Die Vorlage bringt seit [P-23] die Baugruppe „Wandabschluss" mit; der Dialogtest legt
-  // daneben eine EIGENE an und laesst die Vorlagenbaugruppe unberuehrt.
-  ok('#94 der Katalog startet mit genau der Baugruppe der Vorlage ([P-23])',
-    sets().length === 1 && sFind('set-wandabschluss')?.name === 'Wandabschluss');
-
-  // (a) Anlegen — die Kennung entsteht aus dem Namen, gespeichert wird ueber denselben
-  //     Weg wie jede Produktaenderung (der Kopierschutz #102 greift dabei unveraendert).
-  $('ks-name').value = 'Probe';
-  $('ks-neu').dispatch('click');
-  ok('#94 Set angelegt und gemeldet',
-    sets().length === 2 && sFind('set-probe')?.name === 'Probe'
-    && /Baugruppe angelegt/.test(kMsgTxt()) && !kFehler());
-  ok('#94 die neue Baugruppe steht in der Tabelle',
-    /data-set="set-probe"/.test($('ks-tbody').innerHTML)
-    && /Probe/.test($('ks-tbody').innerHTML) && $('ks-leer').hidden === true);
-  ok('#94 die Baugruppe der Vorlage bleibt dabei unberuehrt',
-    sFind('set-wandabschluss').positionen.length === 3);
-  $('ks-name').value = '';
-  $('ks-neu').dispatch('click');
-  ok('#94 ein Set ohne Namen wird benannt abgewiesen',
-    sets().length === 2 && kFehler() && /Namen/.test(kMsgTxt()));
-
-  // (b) Positionen: eine Produkt- und eine Rollenposition
-  sPos('produkt', 'gewindestange-m10-1000', 2);
-  ok('#94 Produktposition hinzugefuegt',
-    sFind('set-probe').positionen.length === 1
-    && sFind('set-probe').positionen[0].produkt === 'gewindestange-m10-1000'
-    && sFind('set-probe').positionen[0].menge === 2 && !kFehler());
-  sPos('rolle', 'kupplung', 4);
-  ok('#94 Rollenposition hinzugefuegt — beide Positionsformen im selben Set',
-    sFind('set-probe').positionen.length === 2
-    && sFind('set-probe').positionen[1].rolle === 'kupplung'
-    && sFind('set-probe').positionen[1].menge === 4);
-  ok('#94 die Positionen stehen mit Art und Menge in der Oberflaeche',
-    /2 × /.test($('ks-tbody').innerHTML) && /Kopplungsmutter/.test($('ks-tbody').innerHTML)
-    && /Verwendungsrolle/.test($('ks-tbody').innerHTML));
-
-  // (c) Der Validierungsfehler ist SICHTBAR und aendert nichts ([P-9])
-  const vorFehler = kSlot();
-  sPos('produkt', 'gewindestange-m10-1000', 0);
-  ok('#94 Menge 0 wird sichtbar abgewiesen und speichert nichts',
-    kFehler() && /mindestens 1/.test(kMsgTxt()) && kSlot() === vorFehler
-    && sFind('set-probe').positionen.length === 2);
-
-  // (d) Umbenennen — die Kennung bleibt stabil ([P-21])
-  $('ks-name').value = 'Probe oben';
-  sZeile('set-umbenennen', 'set-probe');
-  ok('#94 Set umbenannt, Kennung unveraendert',
-    sFind('set-probe')?.name === 'Probe oben'
-    && /umbenannt/.test(kMsgTxt()) && !kFehler());
-
-  // (e) Position bearbeiten und entfernen
-  sZeile('pos-bearbeiten', 'set-probe', 0);
-  ok('#94 Bearbeiten laedt die Position in die Felder',
-    $('ks-art').value === 'produkt' && $('ks-ref').value === 'gewindestange-m10-1000'
-    && $('ks-menge').value === '2' && $('ks-pos-add').textContent === 'Position übernehmen');
-  $('ks-menge').value = '5';
-  $('ks-pos-add').dispatch('click');
-  ok('#94 geaenderte Menge uebernommen — keine zusaetzliche Position',
-    sFind('set-probe').positionen.length === 2
-    && sFind('set-probe').positionen[0].menge === 5
-    && $('ks-pos-add').textContent === 'Position hinzufügen');
-  sZeile('pos-loeschen', 'set-probe', 1);
-  ok('#94 Position entfernt — nur diese eine',
-    sFind('set-probe').positionen.length === 1
-    && sFind('set-probe').positionen[0].produkt === 'gewindestange-m10-1000');
-  sPos('rolle', 'kupplung', 4);          // wieder herstellen fuer den Roundtrip
-
-  // (f) DIE Whitelist-Probe: eine ganz normale Produktaenderung darf die Baugruppe
-  //     nicht verschlucken (`katalogObjekt` normalisiert JEDEN Schreibvorgang).
-  kZeile('bearbeiten', 'latte-40-60-1500');
-  kpSpeichern();
-  ok('#94 Set ueberlebt eine Produktbearbeitung (katalogObjekt fuehrt sets)',
-    sets().length === 2 && sFind('set-probe').positionen.length === 2
-    && kAnzahl() === V_KAT_ANZ);
-
-  // (g) Export ueber den echten Knopf -> Import ueber das echte Dateifeld
-  $('k-export').dispatch('click');
-  const dateiText = letzterDownload;              // genau die Bytes des echten Downloads
-  const dateiObj = JSON.parse(dateiText);
-  ok('#94 die Exportdatei traegt Katalogformat v2 und die Baugruppen',
-    dateiObj.version === 2 && dateiObj.sets.length === 2
-    && dateiObj.sets[1].positionen.length === 2 && /Katalog exportiert/.test(kMsgTxt()));
-  const vorImport = JSON.stringify(sets());
-  await $('k-import').dispatch('change', { target: { files: [kFile(dateiText, 'sets.json')], value: 'x' } });
-  ok('#94 Import: dieselben Set-Definitionen, verlustfrei',
-    JSON.stringify(sets()) === vorImport && kAnzahl() === V_KAT_ANZ && !kFehler());
-  ok('#94 der Roundtrip laesst Kennung, Name, Art, Reihenfolge und Menge unveraendert',
-    sFind('set-probe').name === 'Probe oben'
-    && sFind('set-probe').positionen[0].produkt === 'gewindestange-m10-1000'
-    && sFind('set-probe').positionen[0].menge === 5
-    && sFind('set-probe').positionen[1].rolle === 'kupplung');
-  ok('#94 der Import ruehrt keine Produktreferenz einer Wand an ([P-13])',
-    KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);
-
-  // (h) Loeschen entfernt NUR die Definition — die Produkte bleiben
-  confirmAntwort = true;
-  sZeile('set-loeschen', 'set-probe');
-  confirmAntwort = false;
-  ok('#94 Set geloescht, Produkte unberuehrt',
-    sets().length === 1 && sFind('set-wandabschluss') && kAnzahl() === V_KAT_ANZ
-    && /gelöscht/.test(kMsgTxt()) && $('ks-leer').hidden === true);
-}
-
 ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
   !JSON.stringify(store.aktivesWandelement()).includes('stein-i3-375')
   && KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);
-
-// leerer Slot: kein Ersetzen-Dialog noetig
-confirmAntwort = true;
-$('k-entfernen').dispatch('click');
-confirmAntwort = false;                                   // wuerde ein confirm ablehnen
-await $('k-vorlage').dispatch('click');
-ok('ohne geladenen Katalog laedt die Vorlage ohne Rueckfrage', kAnzahl() === V_KAT_ANZ);
 
 // 7e) Musterwand laden: bestehender Bestaetigungsdialog, kein stilles Schreiben
 const wAnzahlVor = anzahl(), wAktivVor = store.aktivId(), wStandVor = stand();
@@ -1516,9 +1115,8 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
 }
 
 // 7f) Ressourcen-/Formattrennung bleibt auch fuer die Vorlagen bestehen
-await $('k-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_WAND), V_WAND)], value:'x' } });
-ok('Wandvorlage im Katalog-Import -> klare Meldung, Katalog unveraendert',
-  kFehler() && /Projekt-\/Wandelement-Datei/.test(kMsgTxt()) && kAnzahl() === V_KAT_ANZ);
+// Die Gegenrichtung (Wandvorlage im KATALOG-Import) liegt seit #108 in Modul 10 und wird
+// dort geprueft; hier bleibt der Weg, der Modul 0 gehoert.
 await $('f-import').dispatch('change', { target: { files:[kFile(vorlageDatei(V_KAT), V_KAT)], value:'x' } });
 ok('Katalogvorlage im Projekt-Import -> klare Meldung, kein Dialog',
   /Bauteilkatalog/.test(msgTxt()) && $('msg').className === 'msg err' && $('imp-overlay').hidden === true);
@@ -1531,10 +1129,8 @@ await $('btn-vorlage-wand').dispatch('click');
 ok('fehlende Wandvorlage -> Fehlermeldung, kein Dialog, kein Element',
   $('imp-overlay').hidden === true && $('msg').className === 'msg err'
   && /Musterwand nicht geladen/.test(msgTxt()) && /HTTP 404/.test(msgTxt()) && stand() === standVorFehler);
-await $('k-vorlage').dispatch('click');
-ok('fehlende Katalogvorlage -> Fehlermeldung, Katalog unveraendert',
-  kFehler() && /Standardkatalog nicht geladen/.test(kMsgTxt())
-  && JSON.stringify(store.holeKatalog()) === katVorFehler);
+ok('der Katalog bleibt dabei unveraendert (die Wandvorlage ruehrt ihn nie an)',
+  JSON.stringify(store.holeKatalog()) === katVorFehler);
 globalThis.fetch = echtesFetch;
 
 // --- 8) Projektplaner-Baumliste (Etappe C3.1, Issue #26, [L-6]/[L-10]/[L-11]/[L-12]) ---
@@ -1562,11 +1158,12 @@ globalThis.fetch = echtesFetch;
     /<div id="tr-baum"><\/div>/.test(html)
     && !/<h2>Wandelement anlegen/.test(html) && !/<h2>Projekt-Kopfdaten/.test(html)
     && !/<h2>Gespeicherte Wandelemente/.test(html) && !/<h2>Projektplanung/.test(html));
-  ok('alle Formulare liegen in Popups (Projekt/Geschoss/Wand/Katalog)',
+  // #108: Der Katalog ist NICHT mehr dabei — seine Pflege ist eine eigene Seite (Modul 10).
+  ok('alle Formulare liegen in Popups (Projekt/Geschoss/Wand)',
     /<div class="overlay" id="pp-overlay" hidden>/.test(html)
     && /<div class="overlay" id="gp-overlay" hidden>/.test(html)
     && /<div class="overlay" id="wp-overlay" hidden>/.test(html)
-    && /<div class="overlay" id="kat-overlay" hidden>/.test(html));
+    && !/id="kat-overlay"/.test(html));
   ok('die alten Formularfelder der Projektplanung sind verschwunden',
     !/id="pl-geb"/.test(html) && !/id="pl-gs"/.test(html) && !/id="pl-neu"/.test(html)
     && !/id="w-filter"/.test(html) && !/id="tbody"/.test(html));
@@ -1620,8 +1217,7 @@ globalThis.fetch = echtesFetch;
   // Anlegen-Handler nebenbei). Seit #102 ist der Standardkatalog EINE unveraenderliche
   // Vorlagenressource mit kanonischer Kennung: beide Projekte zeigen darauf, und getrennt
   // werden sie erst durch den Kopierschutz beim ersten Schreiben (s. [L-12] weiter unten).
-  $('k-vorlage').dispatch('click');
-  await new Promise(r => setTimeout(r, 0));
+  ladeStandardkatalog();
   ok('[L-11] die Wand des Projekts bekommt dessen Kopfdaten', (() => {
     const k = store.wirksameKopfdaten(idB);
     return k.quelle === 'projekt' && k.kopfdaten.bauherr === 'AWG eG' && k.kopfdaten.name === 'Halle Süd';
@@ -1835,7 +1431,7 @@ globalThis.fetch = echtesFetch;
   await $('pp-speichern').dispatch('click');
   ok('[L-12] ohne Zuordnung wird das gemeldet, kein Katalog geraten',
     store.holeKatalog() === null && store.katalogStatus().status === 'nicht_zugeordnet'
-    && /kein Bauteilkatalog zugeordnet/.test($('k-warn').innerHTML));
+    && /kein Bauteilkatalog zugeordnet/.test($('tr-warn').innerHTML));
   baum('prj-bearbeiten', pB.projekt.id);
   ok('Projekt-Dialog bietet die vorhandenen Kataloge zur Wahl',
     /kein Katalog zugeordnet/.test($('pp-katalog').innerHTML)
@@ -2025,170 +1621,6 @@ globalThis.fetch = echtesFetch;
     && katSlot() === katZwischen);
 
   // Zurueck zur Ausgangslage der Folgeabschnitte: das Testprojekt bleibt der aktive Stand.
-  store.setzeAktivesProjekt(prj0.projekt.id);
-}
-
-// --- 8n) #102 Standardkatalog: unveraenderliche Vorlage, Kopie beim Bearbeiten --
-// Der ECHTE Nutzerpfad an der echten Oberflaeche und gegen die ECHTE Repo-Datei
-// (installFetch liefert docs/vorlagen/SEMBLA_Standardkatalog.json aus dem Checkout):
-// Standardkatalog ueber den Knopf laden, Produkt und Katalognamen bearbeiten, Kennungen
-// und Projektzuordnungen pruefen, danach denselben Knopf erneut druecken und den
-// unveraenderten Repo-Inhalt sehen. Dazu der Mehrprojektfall: die Bearbeitung in Projekt A
-// laesst Inhalt UND Zuordnung von Projekt B unberuehrt.
-{
-  const kataloge = () => JSON.parse(localStorage.getItem('sembla:kataloge') || '{}');
-  const dateiKat = JSON.parse(vorlageDatei(V_KAT));
-  const vId = store.vorlagenKatalogId();
-
-  // Ausgangslage: zwei frische Projekte, dazu ein bewusst eigener Katalog in Projekt B.
-  const p102A = await projektAnlegen('Kopierschutz A');
-  const p102B = await projektAnlegen('Kopierschutz B');
-  const eigen102 = store.setzeKatalog(KAT.leererKatalog('Eigener Katalog #102'));
-  const eigenStand = JSON.stringify(kataloge()[eigen102.id]);
-
-  // (a) Laden: kanonische Kennung, dem aktiven Projekt zugeordnet, sichtbar als Vorlage
-  store.setzeAktivesProjekt(p102A.projekt.id);
-  await $('k-vorlage').dispatch('click');
-  ok('#102 der Knopf laedt die Repo-Vorlage unter der kanonischen Kennung',
-    !kFehler() && kat().id === vId && KAT.istVorlagenKatalog(kat())
-    && kAnzahl() === V_KAT_ANZ && kat().name === dateiKat.name
-    && store.holeMappe().katalog === vId);
-  ok('#102 die Vorlage wird aus der ECHTEN Repo-Datei gelesen',
-    fetchLog[fetchLog.length - 1] === KAT.VORLAGE_KATALOG_PFAD);
-  ok('#102 die Oberflaeche weist sie sichtbar als unveraenderliche Vorlage aus',
-    /unveränderliche Repo-Vorlage/.test($('k-info').textContent)
-    && !/bearbeitbarer Katalog/.test($('k-info').textContent));
-  ok('#102 die Erfolgsmeldung kuendigt die automatische Projektkopie an',
-    /unveränderliche Vorlage/.test(kMsgTxt()) && /Projektkopie/.test(kMsgTxt()));
-  ok('#102 der eigene Katalog bleibt beim Laden unangetastet',
-    JSON.stringify(kataloge()[eigen102.id]) === eigenStand);
-
-  // (b) Projekt B haengt an DERSELBEN Vorlagenressource — der Mehrprojektfall
-  baum('prj-aktiv', p102B.projekt.id);
-  baum('prj-bearbeiten', p102B.projekt.id);
-  $('pp-katalog').value = vId;
-  await $('pp-speichern').dispatch('click');
-  ok('#102 auch Projekt B ist der Vorlage zugeordnet',
-    store.projektMappe(p102B.projekt.id).katalog === vId);
-  ok('#102 die Auswahl weist die Vorlage als unveraenderlich aus',
-    /unveränderliche Vorlage/.test($('pp-katalog').innerHTML));
-
-  // (c) Produkt bearbeiten in Projekt A -> Kopie mit NEUER Kennung, nur A zieht um
-  baum('prj-aktiv', p102A.projekt.id);
-  const vorlageStand = JSON.stringify(kataloge()[vId]);
-  const anzahlVor102 = Object.keys(kataloge()).length;
-  kZeile('bearbeiten', 'stein-i3-375');
-  $('kp-preis').value = '11.11';
-  kpSpeichern();
-  const kopie102 = kat();
-  ok('#102 die Produktaenderung landet auf einer Kopie mit neuer Kennung',
-    kopie102.id !== vId && KAT.produkt(kopie102, 'stein-i3-375').preis === 11.11
-    && Object.keys(kataloge()).length === anzahlVor102 + 1);
-  ok('#102 die Erfolgsmeldung nennt die automatisch angelegte Projektkopie',
-    !kFehler() && /automatisch angelegten Projektkopie/.test(kMsgTxt())
-    && /Vorlage/.test(kMsgTxt()));
-  ok('#102 die Kopie ist selbst keine Vorlage mehr',
-    !KAT.istVorlagenKatalog(kataloge()[kopie102.id]) && !kFehler()
-    && /bearbeitbarer Katalog/.test($('k-info').textContent));
-  ok('#102 die Vorlage bleibt byte-unveraendert',
-    JSON.stringify(kataloge()[vId]) === vorlageStand
-    && KAT.produkt(kataloge()[vId], 'stein-i3-375').preis === 9.5);
-  ok('#102 nur das aktive Projekt zieht auf die Kopie um — Projekt B bleibt an der Vorlage',
-    store.projektMappe(p102A.projekt.id).katalog === kopie102.id
-    && store.projektMappe(p102B.projekt.id).katalog === vId);
-  ok('#102 der eigene Katalog wurde dabei nicht angefasst',
-    JSON.stringify(kataloge()[eigen102.id]) === eigenStand);
-
-  // (d) Der Kopierschutz greift GENAU EINMAL — die zweite Aenderung bleibt auf der Kopie
-  kZeile('bearbeiten', 'stein-i2-250');
-  $('kp-preis').value = '8.88';
-  kpSpeichern();
-  ok('#102 die zweite Aenderung kopiert NICHT erneut',
-    kat().id === kopie102.id && KAT.produkt(kat(), 'stein-i2-250').preis === 8.88
-    && Object.keys(kataloge()).length === anzahlVor102 + 1
-    && !/automatisch angelegten Projektkopie/.test(kMsgTxt()));
-
-  // (e) Auch der KATALOGNAME ist ein geschuetzter Schreibweg
-  baum('prj-aktiv', p102B.projekt.id);
-  ok('#102 Projekt B arbeitet weiter mit der unveraenderten Vorlage',
-    kat().id === vId && KAT.produkt(kat(), 'stein-i3-375').preis === 9.5);
-  const anzahlVorName = Object.keys(kataloge()).length;
-  $('k-name').value = 'Umbenannt in B';
-  $('k-name').dispatch('input');
-  const kopieB = kat();
-  ok('#102 auch die Namensaenderung erzeugt zuerst eine Kopie',
-    kopieB.id !== vId && kopieB.name === 'Umbenannt in B'
-    && Object.keys(kataloge()).length === anzahlVorName + 1
-    && kataloge()[vId].name === dateiKat.name);
-  ok('#102 die Namensaenderung meldet die Projektkopie sichtbar',
-    !kFehler() && /automatisch angelegten Projektkopie/.test(kMsgTxt()));
-  ok('#102 nur Projekt B zieht um — Projekt A bleibt auf seiner eigenen Kopie',
-    store.projektMappe(p102B.projekt.id).katalog === kopieB.id
-    && store.projektMappe(p102A.projekt.id).katalog === kopie102.id);
-  // Weitertippen darf KEINE zweite Kopie erzeugen
-  $('k-name').value = 'Umbenannt in B2';
-  $('k-name').dispatch('input');
-  ok('#102 Weitertippen schreibt dieselbe Kopie fort, statt erneut zu kopieren',
-    kat().id === kopieB.id && kat().name === 'Umbenannt in B2'
-    && Object.keys(kataloge()).length === anzahlVorName + 1);
-
-  // (f) Produkt LOESCHEN ist ebenfalls geschuetzt
-  baum('prj-aktiv', p102A.projekt.id);
-  store.setzeProjektKatalog(vId);
-  const anzahlVorLoesch = Object.keys(kataloge()).length;
-  confirmAntwort = true;
-  kZeile('produkt-loeschen', 'stein-i2-250');
-  ok('#102 auch das Loeschen eines Produkts kopiert zuerst',
-    kat().id !== vId && !KAT.produkt(kat(), 'stein-i2-250')
-    && !!KAT.produkt(kataloge()[vId], 'stein-i2-250')
-    && Object.keys(kataloge()).length === anzahlVorLoesch + 1
-    && /automatisch angelegten Projektkopie/.test(kMsgTxt()));
-  const loeschKopie = kat().id;
-  confirmAntwort = false;
-
-  // (g) Erneutes Laden stellt den unveraenderten Repo-Stand her — Kopien bleiben
-  const kopieStand = JSON.stringify(kataloge()[kopie102.id]);
-  const anzahlVorReload = Object.keys(kataloge()).length;
-  await $('k-vorlage').dispatch('click');
-  ok('#102 erneutes Laden liefert wieder den unveraenderten Repo-Inhalt',
-    !kFehler() && kat().id === vId && kAnzahl() === V_KAT_ANZ
-    && kat().name === dateiKat.name
-    && KAT.produkt(kat(), 'stein-i3-375').preis === 9.5
-    && !!KAT.produkt(kat(), 'stein-i2-250'));
-  ok('#102 dabei entsteht KEIN Duplikat — nur der Vorlagen-Slot wird ersetzt',
-    Object.keys(kataloge()).length === anzahlVorReload);
-  ok('#102 bestehende Kopien und eigene Kataloge ueberleben das Laden unveraendert',
-    JSON.stringify(kataloge()[kopie102.id]) === kopieStand
-    && kataloge()[kopieB.id].name === 'Umbenannt in B2'
-    && !KAT.produkt(kataloge()[loeschKopie], 'stein-i2-250')
-    && JSON.stringify(kataloge()[eigen102.id]) === eigenStand);
-  ok('#102 der Inhalt der Vorlagenressource ist der Inhalt der Repo-Datei',
-    JSON.stringify(KAT.katalogObjekt(kataloge()[vId]))
-      === JSON.stringify(KAT.katalogObjekt(KAT.parseKatalog(vorlageDatei(V_KAT)))));
-
-  // (h) Kein Namensvergleich mehr: ein gleichnamiger eigener Katalog wird nie gekapert
-  const doppelt = store.setzeKatalog({ ...KAT.leererKatalog(dateiKat.name),
-    produkte: [{ id:'x-1', kategorie:'verbinder', bezeichnung:'X', einheit:'Stk', preis:1 }] });
-  ok('#102 ein gleichnamiger eigener Katalog ist keine Vorlage',
-    doppelt.id !== vId && !KAT.istVorlagenKatalog(kataloge()[doppelt.id]));
-  const doppeltStand = JSON.stringify(kataloge()[doppelt.id]);
-  await $('k-vorlage').dispatch('click');
-  ok('#102 das Laden fasst ihn nicht an und ordnet weiterhin die Vorlage zu',
-    JSON.stringify(kataloge()[doppelt.id]) === doppeltStand
-    && store.holeMappe().katalog === vId && kAnzahl() === V_KAT_ANZ);
-  const doppeltNeu = store.setzeKatalog({ ...kataloge()[doppelt.id], name: 'Doch eigen' });
-  ok('#102 ein eigener Katalog wird nie automatisch kopiert oder umbenannt',
-    doppeltNeu.id === doppelt.id && !doppeltNeu.kopie_von);
-
-  // (i) Kein neues oeffentliches Feld, kein Versionssprung
-  ok('#102 Kennung und Vorlagenmarker bleiben Browserzustand',
-    !localStorage.getItem('sembla:projekte').includes('"' + KAT.VORLAGE_FELD + '"')
-    && !localStorage.getItem('sembla:elemente').includes('"' + KAT.VORLAGE_FELD + '"')
-    && !(KAT.VORLAGE_FELD in KAT.katalogObjekt(kataloge()[vId])));
-  ok('#102 die Versionsachsen bleiben unveraendert',
-    KAT.KATALOG_VERSION === 2 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6);
-
-  // Zurueck zur Ausgangslage der Folgeabschnitte.
   store.setzeAktivesProjekt(prj0.projekt.id);
 }
 
@@ -2834,10 +2266,10 @@ globalThis.fetch = echtesFetch;
   store.setzeProjektKatalog(null);
   // #56: Das automatische Nachladen haing am entfallenen Anlegen-Handler von Modul 0.
   // Der Katalog wird jetzt ausdruecklich im Katalog-Popup geladen — ueber den echten Knopf.
-  $('k-vorlage').dispatch('click');
-  await warte();
-  ok('#56 der Standardkatalog wird ueber den echten Katalog-Knopf geladen und zugeordnet',
-    !!store.holeKatalog() && /Standardkatalog geladen und zugeordnet/.test($('k-msg').textContent));
+  ladeStandardkatalog();
+  ok('#56 der Standardkatalog wird ausdruecklich geladen und zugeordnet',
+    !!store.holeKatalog() && KAT.istVorlagenKatalog(store.holeKatalog())
+    && store.holeMappe().katalog === store.vorlagenKatalogId());
 
   // Jeden Schreibvorgang am Wandspeicher mitschreiben: so faellt ein initial persistierter
   // Fallback-Stand auf, selbst wenn er unmittelbar danach ueberschrieben wuerde (#15/#62).
@@ -2913,8 +2345,7 @@ globalThis.fetch = echtesFetch;
   const gsG = (await projektAnlegen('Exportprojekt #44')) && store.aktivesGeschossId();
   // Katalog ausdruecklich laden — er wird dem AKTIVEN Projekt zugeordnet ([L-12])
   // und belegt die Verwendungsstellen der Waende vor ([P-18]).
-  $('k-vorlage').dispatch('click');
-  await new Promise(r => setTimeout(r, 0));
+  ladeStandardkatalog();
   const idG1 = wandAnlegen(gsG, { name: 'Export Wand 1', laenge: 3000, hoehe: 3000 });
   const idG2 = wandAnlegen(gsG, { name: 'Export Wand 2', laenge: 2000, hoehe: 2600 });
   const prjId = store.aktivesProjektId();
@@ -3262,7 +2693,9 @@ ok('Initialisierung legt kein Wandelement an', frischElemente === null);
 // Vorbelegung beim Speichern der Projektanlage; alle drei liegen in Klick-Handlern.
 // Beim Initialisieren wird weiterhin nichts geholt (geprueft oben: kein fetch-Aufruf).
 ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
-  (src.match(/vorlageText\(/g) || []).length === 4           // 1 Definition + 3 Aufrufe
+  // #108: Der Katalogvorlagen-Knopf ist mit der Pflege nach Modul 10 gezogen; in Modul 0
+  // bleiben die Wandvorlage und die Standardkatalog-Vorbelegung der Projektanlage (#68).
+  (src.match(/vorlageText\(/g) || []).length === 3           // 1 Definition + 2 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
 
 
