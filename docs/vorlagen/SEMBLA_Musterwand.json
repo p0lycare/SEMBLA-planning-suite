@@ -68,6 +68,44 @@
       "modul_mm": 1000,
       "module": 3
     },
+    "ausgleichspunkte": [
+      {
+        "x_mm": 0,
+        "art": "wandende"
+      },
+      {
+        "x_mm": 417,
+        "art": "auffuellung"
+      },
+      {
+        "x_mm": 833,
+        "art": "auffuellung"
+      },
+      {
+        "x_mm": 1250,
+        "art": "blechstoss"
+      },
+      {
+        "x_mm": 1667,
+        "art": "auffuellung"
+      },
+      {
+        "x_mm": 2083,
+        "art": "auffuellung"
+      },
+      {
+        "x_mm": 2500,
+        "art": "blechstoss"
+      },
+      {
+        "x_mm": 2750,
+        "art": "auffuellung"
+      },
+      {
+        "x_mm": 3000,
+        "art": "wandende"
+      }
+    ],
     "tension_columns": [
       {
         "k": 1,

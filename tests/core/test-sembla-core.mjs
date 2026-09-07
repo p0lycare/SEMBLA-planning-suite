@@ -11,6 +11,7 @@ import {
   zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
+  AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M,
 } from "../../docs/shared/sembla-core.js";
 // Der Auslegungsadapter gehoert zum Paritaetsvertrag: `psOf()` ist eine WHITELIST, und ein
 // dort fehlendes Feld faellt in jeder Iteration still weg. Deshalb wird der ECHTE Adapter
@@ -972,6 +973,78 @@ for (const [titel, arg, sollK] of [
     assert(js.validation.ungehaltene_steine.length === 0, "[V-2] bleibt erfuellt");
   });
 }
+
+// ---------------------------------------------------------------------------
+// AUSGLEICHSPUNKTE [A-20]/[A-21]/[A-22]/[A-23] (Issue #96)
+// ---------------------------------------------------------------------------
+// Hier stehen genau die Abnahmefaelle, die die goldenen Fixtures NICHT tragen koennen: keine
+// der drei Referenzwaende ist 3,25 m lang, und die Abstandsaussage ist eine Eigenschaft ueber
+// viele Waende statt ueber drei. Gefahren wird derselbe `orakelRand()`-Weg wie bei den
+// Randverbaenden — das ECHTE Python-Orakel als Unterprozess —, damit die Bitgleichheit auch
+// dieser Faelle bewiesen ist und nicht nur die der eingefrorenen Fixtures.
+console.log("AUSGLEICHSPUNKTE [A-20]…[A-23] (Paritaetsvertrag mit dem Python-Orakel):");
+
+t("[A-20]/[A-21] 3,25-m-Wand: zehn Punkte, beide Wandenden eingerechnet (Core == Orakel)", () => {
+  const arg = { name: "ag325", length_mm: 3250, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3 } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+  // ceil(3 * 3,25) = 10 — und die Wandenden zaehlen in die Dichte hinein, stehen also als
+  // eigene Punkte in der Liste (Variante A der Entscheidung vom 2026-09-07).
+  assert(js.ausgleichspunkte.length === 10, "Punktzahl: " + js.ausgleichspunkte.length);
+  assert(js.ausgleichspunkte.length
+    === Math.ceil(AUSGLEICH_DICHTE_JE_M * arg.length_mm / 1000), "Dichte");
+  deepEqual(js.ausgleichspunkte.filter((p) => p.art === "wandende").map((p) => p.x_mm),
+    [0, 3250]);
+  // [A-21] Jede Bodenblech-Stossmitte traegt einen Pflichtpunkt. Diese Wand hat echte Stoesse
+  // (1250 + 1125 + 875) — die Zusicherung laeuft also nicht ins Leere.
+  const stoesse = js.base_plate.teile.slice(0, -1).map((tl) => tl.x0_mm + tl.raster_mm);
+  assert(stoesse.length === 2, "Testvoraussetzung Blechstoesse: " + JSON.stringify(stoesse));
+  for (const x of stoesse)
+    assert(js.ausgleichspunkte.some((p) => p.x_mm === x && p.art === "blechstoss"),
+      "Pflichtpunkt fehlt an der Stossmitte " + x);
+  // Aufsteigend, innerhalb der Wand, und die Dichte wird nirgends unterschritten.
+  for (let i = 1; i < js.ausgleichspunkte.length; i++)
+    assert(js.ausgleichspunkte[i].x_mm > js.ausgleichspunkte[i - 1].x_mm,
+      "nicht aufsteigend bei " + i);
+  assert(js.ausgleichspunkte.every((p) => p.x_mm >= 0 && p.x_mm <= arg.length_mm), "in der Wand");
+  // Zweimal rechnen ergibt dieselbe Liste (reine Funktion, kein Zustand).
+  deepEqual(js.ausgleichspunkte,
+    buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress).ausgleichspunkte);
+});
+
+t("[A-23] keine Auffuellung liegt naeher als 20 mm an einer Spannachse (Core == Orakel)", () => {
+  let geprueft = 0, geklemmt = 0;
+  for (const n of [2, 3, 5, 6, 7, 8, 9, 10, 13, 16, 20, 26, 33, 40]) {
+    const arg = { name: "agv" + n, length_mm: n * GRID, height_mm: 2600, openings: [],
+      prestress: { max_span_grid: 3 } };
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+    deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+    const achsen = js.tension_columns.map((c) => c.x_mm);
+    for (const p of js.ausgleichspunkte) {
+      if (p.art !== "auffuellung") continue;
+      const d = Math.min(...achsen.map((xa) => Math.abs(xa - p.x_mm)));
+      assert(d >= AUSGLEICH_ACHSVERSATZ, `L=${n * GRID}, x=${p.x_mm}: Abstand ${d}`);
+      // Ein Abstand von GENAU dem Versatz kann nur aus der Klemmung stammen: eine
+      // ungeklemmte Auffuellung liegt auf einem ganzen Millimeter, die Achse auf 62,5 + 125k,
+      // ihr Abstand ist also zwangslaeufig ein halber Millimeter und nie glatt 20.
+      if (d === AUSGLEICH_ACHSVERSATZ) geklemmt++;
+      geprueft++;
+    }
+  }
+  assert(geprueft > 0, "keine Auffuellung geprueft");
+  // Gegenprobe, dass die Regel kein totes Recht ist: in dieser Reihe wird wirklich geklemmt
+  // (875 mm und 4125 mm). Ohne diese Zusicherung wuerde ein versehentlich abgeschalteter
+  // Versatz gruen durchlaufen.
+  assert(geklemmt > 0, "der Achsversatz hat in der ganzen Reihe nie gegriffen");
+  // [A-21] Pflichtpunkte sind vom Versatz ausgenommen — sie liegen auf ganzen Rastermassen
+  // und damit ohnehin 62,5 mm neben jeder Achse; geprueft wird, dass keiner verschoben wurde.
+  const w = buildWall("agp", 5000, 2600, [], null, { top_connection: "blech" });
+  for (const p of w.ausgleichspunkte)
+    if (p.art !== "auffuellung")
+      assert(Number.isInteger(p.x_mm) && p.x_mm % GRID === 0,
+        "Pflichtpunkt verschoben: " + p.x_mm);
+});
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

@@ -25,6 +25,11 @@ export const MAX_SPAN_GRID = 3;         // Vorspannung max. alle 3 Raster (375mm
 export const FORBIDDEN_N = new Set([1, 4]);
 export const MIN_FERTIGMASS_MM = 200;   // kleinstes einbaubares Fertigmass eines Zuschnitts ([Z-5])
 export const ROD_OVERHANG = 10;         // Ueberstand des Reststuecks ueber die Wandoberkante ([Z-6])
+// Ausgleichspunkte unter dem Bodenblech ([A-20]…[A-23]): der Bodenanschluss wird mit Laser
+// nivelliert, unter die Bodenbleche kommen kleine Ausgleichsbleche. Beide Parameter stehen
+// GENAU HIER — der Achsversatz ist ausdruecklich variabel gehalten ([A-23]).
+export const AUSGLEICH_DICHTE_JE_M = 3;   // Zielpunktzahl je Meter Wandlaenge ([A-20])
+export const AUSGLEICH_ACHSVERSATZ = 20;  // Abstand einer Auffuellung zur Spannachse ([A-23])
 
 export class SemblaError extends Error {}
 export class InvalidDimensionError extends SemblaError {}
@@ -532,6 +537,101 @@ export function zerlegeBodenblech(lengthMm, laengenMm, stossGrid = []) {
       bauteil_mm: tl.raster_mm - BLECH_SPIEL, art: tl.art })),
     konflikte,
   };
+}
+
+// ---------- Ausgleichspunkte unter dem Bodenblech ([A-20]…[A-23]) ----------
+// Der Bodenanschluss wird mit Laser nivelliert; unter die Bodenbleche werden kleine
+// Ausgleichsbleche gelegt. WO die liegen, ist hier gerechnet — deterministisch aus Wandlaenge,
+// Bodenblech-Stoessen und Spannachsen, ohne Zufall und ohne Startwert.
+//
+// [A-21] Pflichtpunkte sind beide Wandenden und jede Bodenblech-Stossmitte; sie zaehlen in die
+// Dichte hinein und werden NIE verschoben. [A-20] Zielpunktzahl ist ceil(3 je Meter), wobei
+// mehr Pflichtpunkte ihre eigene Anzahl setzen. [A-22] Der Rest wird nach LAENGENANTEIL auf die
+// Luecken verteilt und darin gleichmaessig gesetzt. [A-23] Eine Auffuellung haelt mindestens den
+// Achsversatz zur naechsten Spannachse; liegt sie naeher, wird sie auf GENAU diesen Abstand
+// gesetzt — ohne Konfliktmeldung und ohne Validierungseintrag, weil es den Konfliktfall nach
+// fachlicher Festlegung nicht gibt (ein Bodenblechstoss liegt per Definition nie in einer
+// Spannachse, siehe [A-21]).
+
+/**
+ * [A-23] Eine Auffuellung mindestens `versatzMm` neben der naechsten Spannachse halten.
+ * @param {number} xMm @param {number[]} achsenXMm @param {number} versatzMm
+ */
+function achsversatz(xMm, achsenXMm, versatzMm) {
+  if (!(versatzMm > 0) || !achsenXMm.length) return xMm;
+  // Naechste Achse; bei genau gleichem Abstand gewinnt die zuerst gelistete (kleinste x).
+  // Ein solcher Gleichstand liegt zwangslaeufig 62,5 mm neben beiden Achsen und damit weit
+  // ausserhalb des Versatzes — er kann das Ergebnis also gar nicht erreichen.
+  let nah = achsenXMm[0];
+  for (const xa of achsenXMm) if (Math.abs(xa - xMm) < Math.abs(nah - xMm)) nah = xa;
+  const d = xMm - nah;
+  if (Math.abs(d) >= versatzMm) return xMm;
+  // Geschoben wird auf die Seite, auf der der Punkt schon liegt. `d === 0` ist arithmetisch
+  // unmoeglich (die Achse liegt auf 62,5 + 125k, der Punkt auf einem ganzen Millimeter); die
+  // Plusseite ist deshalb nur die ausgesprochene Festlegung und kein erreichter Zweig.
+  // Eine Kaskade gibt es nicht: der Achsabstand ist >= 125 mm, ein auf den Versatz gesetzter
+  // Punkt ist von jeder Nachbarachse >= 105 mm entfernt.
+  return nah + (d < 0 ? -versatzMm : versatzMm);
+}
+
+/**
+ * Ausgleichspunkte einer Wand deterministisch verteilen ([A-20]/[A-21]/[A-22]/[A-23]).
+ * Reine Funktion — gleiche Eingabe, gleiche Ausgabe, kein Zustand.
+ * @param {number} lengthMm Wandlaenge (Vielfaches von 125 mm)
+ * @param {number[]} [stossXMm] INNERE Blechstoesse des Bodenblechs in mm
+ * @param {number[]} [achsenXMm] Spannachsen in mm (62,5 + 125k), aufsteigend
+ * @param {number} [versatzMm] Abstand einer Auffuellung zur naechsten Spannachse
+ * @returns {Array<{x_mm:number,art:"wandende"|"blechstoss"|"auffuellung"}>}
+ */
+export function verteileAusgleichspunkte(lengthMm, stossXMm = [], achsenXMm = [],
+                                         versatzMm = AUSGLEICH_ACHSVERSATZ) {
+  // [A-21] Der Stoss IST der Punkt: die Blechmitte sitzt im Stosspunkt, damit beide Bleche
+  // aufliegen. Alle Pflichtwerte sind ganzzahlige mm (Vielfache von 125) — nichts zu runden.
+  const pflicht = new Map();
+  pflicht.set(0, "wandende");
+  pflicht.set(lengthMm, "wandende");
+  for (const x of stossXMm) if (x > 0 && x < lengthMm && !pflicht.has(x)) pflicht.set(x, "blechstoss");
+  const stellen = [...pflicht.keys()].sort((a, b) => a - b);
+
+  // [A-20] Zielpunktzahl. `AUSGLEICH_DICHTE_JE_M * lengthMm` ist ganzzahlig und lengthMm ein
+  // Vielfaches von 125, der Quotient also exakt darstellbar — die Aufrundung ist damit in
+  // beiden Cores dieselbe. Mehr Pflichtpunkte als die Dichte verlangt: dann gilt deren Anzahl.
+  const ziel = Math.max(stellen.length, Math.ceil(AUSGLEICH_DICHTE_JE_M * lengthMm / 1000));
+
+  // [A-22] Restpunkte nach Laengenanteil auf die Luecken — groesste-Reste-Verfahren in REINER
+  // Ganzzahlarithmetik. Weil die Luecken die Wand lueckenlos abdecken, ist die Summe ihrer
+  // Laengen exakt die Wandlaenge; der Quotient ist damit genau der Laengenanteil. Bei gleichem
+  // Rest gewinnt die KLEINERE Lueckennummer — die Gleichstandsregel ist ausgesprochen, nicht
+  // der Reihenfolge einer Datenstruktur ueberlassen.
+  const luecken = [];
+  for (let i = 0; i < stellen.length - 1; i++)
+    luecken.push({ i, a: stellen[i], b: stellen[i + 1], n: 0, r: 0 });
+  const rest = ziel - stellen.length;
+  if (rest > 0 && luecken.length) {
+    let vergeben = 0;
+    for (const lk of luecken) {
+      const z = rest * (lk.b - lk.a);
+      lk.n = Math.floor(z / lengthMm);
+      lk.r = z % lengthMm;
+      vergeben += lk.n;
+    }
+    const reihe = luecken.slice().sort((p, q) => (q.r - p.r) || (p.i - q.i));
+    for (let j = 0; j < rest - vergeben; j++) reihe[j].n++;
+  }
+
+  const out = [];
+  for (let i = 0; i < stellen.length; i++) {
+    out.push({ x_mm: stellen[i], art: pflicht.get(stellen[i]) });
+    const lk = luecken[i];
+    if (!lk || lk.n <= 0) continue;
+    for (let j = 1; j <= lk.n; j++) {
+      // Gleichmaessige Teilung der Luecke — dasselbe Muster wie `balancedFill()`, damit JS und
+      // Python bit-gleich runden (`pyRound` ist Pythons `round`, half-to-even).
+      const x = pyRound(lk.a + (lk.b - lk.a) * j / (lk.n + 1));
+      out.push({ x_mm: achsversatz(x, achsenXMm, versatzMm), art: "auffuellung" });
+    }
+  }
+  return out;
 }
 
 /** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
@@ -1114,6 +1214,15 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     ? { rolle: "kopfblech", laenge_mm: topEdgeLen, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: kopfModule }
     : null;
 
+  // [A-20]…[A-23] Ausgleichspunkte unter dem Bodenblech. Gelesen werden ausschliesslich
+  // FERTIGE Werte — Wandlaenge, die inneren Stoesse der Bodenblechteile und die Spannachsen;
+  // geschrieben wird in keine davon zurueck. Aus den Punkten wird hier NICHTS abgeleitet:
+  // keine Menge, keine Stuecklistenposition, kein statischer Nachweis der Auflagerpunkte
+  // (ausdruecklich Folgearbeit, siehe [A-18]).
+  const bodenStoesse = bodenTeile.slice(0, -1).map((tl) => tl.x0_mm + tl.raster_mm);
+  const ausgleichspunkte = verteileAusgleichspunkte(lengthMm, bodenStoesse,
+    columns.map((c) => c.x_mm));
+
   const bom = { i2: 0, i3: 0 };
   for (const c of courses) for (const s of c.stones) bom[s.type] += 1;
   bom.gewindestangen = columns.reduce((a, c) => a + c.gewindestangen, 0);
@@ -1156,6 +1265,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     sides: normSides(sides),
     prestress: PS,
     base_plate: basePlate, top_plate: topPlate,
+    // [A-20]…[A-23] Frisch gerechnet bei JEDER Rechnung, nie eine gespeicherte Quelle.
+    ausgleichspunkte,
     tension_columns: columns, bom,
     validation: {
       buildable, versatz_ok: versatzOk, versatz_violations: viol,

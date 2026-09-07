@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-12",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 96,
+    titel: "Die Ausgleichspunkte unter dem Bodenblech werden deterministisch berechnet — drei je Meter",
+    testbitte: "Eine 3,25 m lange Wand rechnen: es entstehen zehn Ausgleichspunkte, die "
+      + "beiden Wandenden eingerechnet, und an jeder Bodenblech-Stoßmitte sitzt einer. "
+      + "Zweimal rechnen ergibt dieselbe Liste. Menge und Darstellung folgen später.",
+  },
+  {
     id: "chg-20260907-11",
     datum: "2026-09-07",
     typ: "feature",

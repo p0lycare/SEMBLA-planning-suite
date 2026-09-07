@@ -81,6 +81,32 @@
     "modul_mm": 1000,
     "module": 2
   },
+  "ausgleichspunkte": [
+    {
+      "x_mm": 0,
+      "art": "wandende"
+    },
+    {
+      "x_mm": 375,
+      "art": "auffuellung"
+    },
+    {
+      "x_mm": 750,
+      "art": "auffuellung"
+    },
+    {
+      "x_mm": 1125,
+      "art": "blechstoss"
+    },
+    {
+      "x_mm": 1562,
+      "art": "auffuellung"
+    },
+    {
+      "x_mm": 2000,
+      "art": "wandende"
+    }
+  ],
   "tension_columns": [
     {
       "k": 1,

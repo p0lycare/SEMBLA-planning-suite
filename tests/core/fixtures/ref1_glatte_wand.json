@@ -67,6 +67,20 @@
     "modul_mm": 1000,
     "module": 1
   },
+  "ausgleichspunkte": [
+    {
+      "x_mm": 0,
+      "art": "wandende"
+    },
+    {
+      "x_mm": 500,
+      "art": "auffuellung"
+    },
+    {
+      "x_mm": 1000,
+      "art": "wandende"
+    }
+  ],
   "tension_columns": [
     {
       "k": 1,
