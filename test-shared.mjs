@@ -1,6 +1,6 @@
 // Drift-Schutz: die gemeinsame semblaBom() muss mit der Core-BOM übereinstimmen.
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "./docs/shared/sembla-core.js";
+import { buildWall, Opening, wirksameZwischenpunkte } from "./docs/shared/sembla-core.js";
 import { einbauteile, semblaBom, semblaBomItems, semblaBomSets } from "./docs/shared/sembla-bom.js";
 import { parseKatalog } from "./docs/shared/sembla-katalog.js";
 import { stuecklistePositionen } from "./docs/shared/sembla-export.js";
@@ -32,12 +32,37 @@ for(const [name,l,h,ops] of cases){
   // Positionsliste: 10 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
   // Sonderzuschnitt-Fertigmaß eine eigene Position ([Z-2]/[Z-4]). Kopplungsmuttern sind
   // bauteilgleich und stehen als EINE Position ([P-18]).
-  // 11 feste Positionen (Bodenblech steht nicht mehr darunter; die Unterlegscheibe aus #92 ist
-  // die zehnte, das Ausgleichsblech aus #96 die elfte) + je Gewindestangengruppe eine + je
-  // Bodenblech-Teilgruppe eine ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß).
-  t(name+" · Positionen = 11 + Stangen- und Bodenblechgruppen",
-    semblaBomItems(w).length === 11 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
+  // 13 feste Positionen (Bodenblech steht nicht mehr darunter; die Unterlegscheibe aus #92 ist
+  // die zehnte, das Ausgleichsblech aus #96 die elfte, Einlegeblech und Mutter aus [A-25]/#93
+  // die zwoelfte und dreizehnte) + je Gewindestangengruppe eine + je Bodenblech-Teilgruppe eine
+  // ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß).
+  t(name+" · Positionen = 13 + Stangen- und Bodenblechgruppen",
+    semblaBomItems(w).length === 13 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
       + b.blech_boden_teile.length);
+  // [A-25]/#93 Einlegeblech und Mutter: je GENAU EINE Position, Menge = Zahl der wirksamen
+  // Zwischenspannpunkte. Verglichen wird gegen `wirksameZwischenpunkte(w).length` — NICHT gegen
+  // eine Ersatzrechnung aus Segment-, Lagen- oder Hoehenzahl; eine solche waere die zweite
+  // Mengenquelle aus [P-6]. Gezaehlt wird je (Spannachse, Hoehe), also je real eingebautem Blech.
+  t(name+" · Einlegeblech und Mutter = Zahl der wirksamen Zwischenspannpunkte ([A-25])", (()=>{
+    const n=wirksameZwischenpunkte(w).length, its=semblaBomItems(w);
+    const bl=its.filter(it=>it.key==='einlegeblech'), mu=its.filter(it=>it.key==='zp_mutter');
+    return bl.length===1 && mu.length===1 && n>0
+      && bl[0].menge===n && mu[0].menge===n
+      && bl[0].unit==='Stk' && mu[0].unit==='Stk'
+      && !bl[0].nachrichtlich && !mu[0].nachrichtlich
+      && bl[0].mass_mm===undefined && bl[0].fertigmass_mm===undefined
+      && mu[0].mass_mm===undefined && mu[0].fertigmass_mm===undefined; })());
+  t(name+" · semblaBom fuehrt die Punktzahl selbst",
+    b.zwischenpunkte===wirksameZwischenpunkte(w).length);
+  // Benannte Stelle: hinter der Ankergruppe, VOR der Bodenblechgruppe — damit bleibt die nach
+  // [A-18] geprüfte Nachbarschaft Bodenblech -> Ausgleichsblech -> Kopfblech unberührt.
+  t(name+" · Einlegeblech und Mutter stehen hinter der Unterlegscheibe, vor dem Bodenblech", (()=>{
+    const ks=semblaBomItems(w).map(it=>it.key), i=ks.indexOf('einlegeblech');
+    return i>0 && ks[i-1]==='unterlegscheibe' && ks[i+1]==='zp_mutter'
+      && (ks[i+2]==='blech_boden' || ks[i+2]==='blech_boden_sonder'); })());
+  // Ein Zwischenspannpunkt ist KEIN Anker ([A-16]): die Ankerzaehlung bleibt unberührt.
+  t(name+" · Zwischenspannpunkte erhoehen keine Ankermenge ([A-16])",
+    b.spannplatten===w.bom.spannplatten && b.spannmuttern===w.bom.spannmuttern);
   // [A-18]/#96 Ausgleichsblech: GENAU EINE Position, Menge = Laenge der vom Kern gerechneten
   // Punktliste. Verglichen wird gegen `w.ausgleichspunkte.length` — NICHT gegen eine
   // Ersatzrechnung aus der Wandlaenge; eine solche waere die zweite Mengenquelle aus [P-6].
@@ -161,6 +186,43 @@ for(const [name,l,h,ops] of cases){
     return strip(iAlt)===strip(iVoll) && strip(iVoll).length>0; })());
   t("A-18 · Positionszahl unterscheidet sich nicht (die Zeile bleibt stehen)",
     iAlt.length===iVoll.length);
+}
+// ---- [A-25]/#93 Einlegeblech und Mutter: Nullfall und Additivität -----------------------
+// Die Menge kommt allein aus `wirksameZwischenpunkte()`. Ein Wandelement OHNE Zwischenspannpunkte
+// — hier: ein ausdruecklich leerer Override nach [A-17] sowie ein Altbestand ohne
+// `tension_columns` — fuehrt beide Positionen mit der Menge 0 statt einer geratenen Zahl ([P-9]);
+// die Zeilen bleiben stehen, statt still zu verschwinden. Und: die neuen Positionen sind rein
+// ADDITIV — jede uebrige Position bleibt bitgenau gleich.
+{
+  const ZP=new Set(['einlegeblech','zp_mutter']);
+  const w=buildWall("zp_auto",3250,2600,[]);
+  // Ausdruecklich leerer Override ([A-17]): „keine Zwischenspannpunkte" — kein Rueckfall auf Auto.
+  const leer=buildWall("zp_leer",3250,2600,[],null,{ zwischenpunkte_mm: [] });
+  const alt=JSON.parse(JSON.stringify(w)); delete alt.tension_columns;
+  const iVoll=semblaBomItems(w), iLeer=semblaBomItems(leer), iAlt=semblaBomItems(alt);
+  const nVoll=wirksameZwischenpunkte(w).length;
+  t("A-25 · Auto-Stand: beide Positionen tragen die wirksame Punktzahl", nVoll>0
+    && iVoll.find(it=>it.key==='einlegeblech').menge===nVoll
+    && iVoll.find(it=>it.key==='zp_mutter').menge===nVoll);
+  t("A-25 · leerer Override ([A-17]): Menge 0 statt geratener Zahl", (()=>{
+    const bl=iLeer.find(it=>it.key==='einlegeblech'), mu=iLeer.find(it=>it.key==='zp_mutter');
+    return !!bl && !!mu && bl.menge===0 && mu.menge===0
+      && semblaBom(leer).zwischenpunkte===0 && wirksameZwischenpunkte(leer).length===0; })());
+  t("A-25 · ohne `tension_columns` (Altbestand): Menge 0 statt geratener Zahl", (()=>{
+    const bl=iAlt.find(it=>it.key==='einlegeblech'), mu=iAlt.find(it=>it.key==='zp_mutter');
+    return !!bl && !!mu && bl.menge===0 && mu.menge===0
+      && semblaBom(alt).zwischenpunkte===0; })());
+  t("A-25 · Positionszahl unterscheidet sich nicht (die Zeilen bleiben stehen)",
+    iAlt.length===iVoll.length && iLeer.length===iVoll.length);
+  // Der Override aendert die Zwischenpunkte — und NUR sie. Verglichen wird deshalb gegen den
+  // Auto-Stand derselben Wand: jede uebrige Position muss bitgenau gleich bleiben.
+  t("A-25 · uebrige Positionen bitgenau gleich (rein additiv)", (()=>{
+    const strip=its=>JSON.stringify(its.filter(it=>!ZP.has(it.key)).map(it=>({...it, wand:null})));
+    return strip(iLeer)===strip(iVoll) && strip(iVoll).length>0; })());
+  // Der Override beruehrt die Ankerzaehlung nicht ([A-16]) — die Core-BOM bleibt gleich.
+  t("A-25 · leerer Override laesst die Core-Ankermengen unverändert",
+    leer.bom.spannplatten===w.bom.spannplatten && leer.bom.spannmuttern===w.bom.spannmuttern
+    && leer.bom.gewindestangen===w.bom.gewindestangen);
 }
 // ---- [P-19] Einbauteil-Identität der Gewindestangenstücke -------------------------------
 // Die Einbauteilliste ist die EINZIGE Stückableitung; die Stücklistenmengen sind ihre

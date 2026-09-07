@@ -655,6 +655,36 @@ export const ROLLEN = [
       + "stehen beide Einbaustellen als eine Position mit einer Menge ([P-18])." },
   { id: "spannmutter", label: "Spannmutter", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
+  // #93/#109 Zwischenspannpunkt: Zwischen den Ankern eines Vorspannsegments sitzt ein
+  // EINLEGEBLECH in einer Vertiefung der Steinlage ([A-14]); es wird mit GENAU EINER Mutter von
+  // oben gegen die Lage gezogen ([A-16]). Beides sind zwei verschiedene Bauteile aus zwei
+  // verschiedenen Kategorien und deshalb zwei GETRENNTE Rollen — getrennt auch von `spannmutter`
+  // (Anker am Segmentende/Kopf), `kupplung` (Stangenstoss und Fuss) und `spannplatte` (der
+  // Zwischenanker nach [A-3], der am SEGMENTENDE auf der Steinkante sitzt und in Bedeutung,
+  // Zaehlung und Rechnung unveraendert bleibt). Die EINBAUMENGE ist die Zahl der wirksamen
+  // Zwischenspannpunkte ([A-25]) und kommt allein aus dem Rechenkern; der Katalog liefert nur
+  // Bauteil, Masse und Preis. Ein Mass-Diskriminator gibt es bewusst NICHT: es existiert kein
+  // massgebender WANDwert, an dem sich Blech oder Mutter messen liesse (anders als Bodenblech ↔
+  // Modullaenge oder Stange ↔ Stangenlaenge) — ein Kontextfeld waere ein erfundener Bezug.
+  // Eindeutig wird die Auswahl deshalb allein ueber genau ein gewaehltes Produkt ([P-14]).
+  { id: "einlegeblech", label: "Einlegeblech", kategorie: "blech_platte", modul: 1,
+    gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Das Einlegeblech sitzt in einer Vertiefung der Steinlage INNERHALB eines "
+      + "Vorspannsegments und fixiert die Gewindestange temporär während der Montage ([A-14]). "
+      + "Es ist fachlich verschieden von der Spannplatte am Segmentende ([A-3]) und wird mit ihr "
+      + "nicht zusammengelegt. Bauteil und Maße kommen allein aus dem Katalog; vorläufig gilt ein "
+      + "Streifen 110 × 30 mm, 2 mm stark. Die Menge in der Stückliste ist die Zahl der wirksamen "
+      + "Zwischenspannpunkte der Wand — genau ein Blech je Punkt ([A-25]); ohne Punkte bleibt sie "
+      + "0. Es wird GENAU EIN Produkt gewählt: mehrere machen die Position mehrdeutig und damit "
+      + "preislos ([P-14]), denn ein Maß-Diskriminator ist bewusst nicht hinterlegt." },
+  { id: "zp_mutter", label: "Mutter Einlegeblech", kategorie: "verbrauch", modul: 1,
+    gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Das Einlegeblech wird mit GENAU EINER Mutter von oben gegen die Lage gezogen; "
+      + "unten sitzt keine ([A-16]). Es ist eine normale Sechskantmutter und ausdrücklich NICHT "
+      + "die Spannmutter des Ankers — beide bleiben getrennte Verwendungsstellen mit getrennten "
+      + "Produkten. Die Menge ist die Zahl der wirksamen Zwischenspannpunkte — genau eine Mutter "
+      + "je Punkt ([A-25]); ohne Punkte bleibt sie 0. Es wird GENAU EIN Produkt gewählt (kein "
+      + "Maß-Diskriminator, s. Einlegeblech)." },
   { id: "senkkopf", label: "Sechskantschraube Fuß", kategorie: "verbrauch", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,

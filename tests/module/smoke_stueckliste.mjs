@@ -8,7 +8,7 @@
 // Fehlende, mehrdeutige, kategorie-, einheiten- oder maßfremde Zuordnung ergibt KEINEN Preis
 // (kein Nullpreis, kein Ersatzprodukt) und veraendert niemals die Menge.
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
+import { buildWall, Opening, wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, wirksameMengen, zuschnittCsv } from "../../docs/shared/sembla-export.js";
 import { einbauteile, semblaBomItems as SEMBLA_BOM_ITEMS } from "../../docs/shared/sembla-bom.js";
 import { umfang, gesamtDaten, standText } from "../../docs/shared/sembla-gesamtstueckliste.js";
@@ -27,6 +27,9 @@ const fmtDe = n => n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximum
 const fmtDe2 = n => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const html = readFileSync(new URL("../../docs/stueckliste.html", import.meta.url), "utf8");
+// Der DOM-Mock weiter unten ersetzt das globale `URL`. Der Pfad des mitgelieferten
+// Standardkatalogs wird deshalb HIER aufgeloest — der reale Pfad am Dateiende liest ihn.
+const STD_KATALOG_PFAD = new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url);
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 const script = scripts[scripts.length - 1][1];   // klassische App-Logik
 
@@ -77,6 +80,11 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
   { id:'blech-ausgleich', kategorie:'blech_platte', bezeichnung:'Ausgleichsblech 20x100', einheit:'Stk', preis:0.45, breite_mm:20, hoehe_mm:100, dicke_mm:8 },
   { id:'spannplatte', kategorie:'blech_platte', bezeichnung:'Spannplatte 120', einheit:'Stk', preis:2.4, breite_mm:120, hoehe_mm:120, dicke_mm:15,
     hinweis:'vorläufig — fachlich unbestätigt: Beispielmaße.' },
+  // [A-25]/#93 Einlegeblech und Mutter am Zwischenspannpunkt: zwei GETRENNTE Bauteile aus zwei
+  // verschiedenen Kategorien. Beide Rollen ohne Maß-Diskriminator — eindeutig ist die Auswahl
+  // allein durch GENAU EIN gewaehltes Produkt ([P-14]).
+  { id:'blech-einlege', kategorie:'blech_platte', bezeichnung:'Einlegeblech 110x30', einheit:'Stk', preis:0.35, breite_mm:110, hoehe_mm:30, dicke_mm:2 },
+  { id:'mutter-einlege', kategorie:'verbrauch', bezeichnung:'Sechskantmutter M10 (Einlegeblech)', einheit:'Stk', preis:0.08 },
   { id:'verb-fa1', kategorie:'verbinder', bezeichnung:'Verbinder FA-1', einheit:'Stk', preis:1.2 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1,5 m', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
 ]};
@@ -86,7 +94,8 @@ const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'],
   kupplung:['kuppl-stoss'], senkkopf:['senkkopf'], spannmutter:['spannmutter'],
   spannplatte:['spannplatte'], unterlegscheibe:['scheibe'],
   blech_boden:['blech-boden-1250','blech-boden-750'],
-  blech_kopf:['blech-kopf'], ausgleichsblech:['blech-ausgleich'], dicht_stk:['dicht-stk'] };
+  blech_kopf:['blech-kopf'], ausgleichsblech:['blech-ausgleich'], dicht_stk:['dicht-stk'],
+  einlegeblech:['blech-einlege'], zp_mutter:['mutter-einlege'] };
 function egVoll(){
   const e=standardEingaben();
   e.planung.produkte={ quelle:{name:KATALOG.name,version:1}, rollen:JSON.parse(JSON.stringify(ROLLEN_VOLL)) };
@@ -334,15 +343,16 @@ ok('[Z-4] keine Beplankungs-/Platten-Position', !byKey('beplankung') && !rs.find
 ok('KEINE Dämmung-Position (MVP)', !rs.find(r=>r.label.includes('Dämmung')));
 // Die Gewindestangen-KOPPLUNG ist kein Modul-2-Verbinder und bleibt ausdruecklich enthalten.
 ok('[P-19] Gewindestangen-Kopplung bleibt enthalten', !!byKey('kupplung') && byKey('kupplung').menge>0);
-// [Z-4]: 12 feste Wandpositionen (seit #92 mit der Unterlegscheibe, seit #96 mit dem
-// Ausgleichsblech) + je Gewindestangen-Standardlänge, je Sonderzuschnitt-Fertigmaß und je
-// Reststück-Fertigmaß eine Position. Nichts aus dem Wandaufbau.
+// [Z-4]: 14 feste Wandpositionen (seit #92 mit der Unterlegscheibe, seit #96 mit dem
+// Ausgleichsblech, seit [A-25]/#93 mit Einlegeblech und Mutter) + je Gewindestangen-
+// Standardlänge, je Sonderzuschnitt-Fertigmaß und je Reststück-Fertigmaß eine Position.
+// Nichts aus dem Wandaufbau.
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
 const nRest=rs.filter(r=>r.key==='rod_rest').length;
 // [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
 const nBoden=rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder').length;
-ok('Positionen = 11 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
-  rs.length===11+nRod+nSonder+nRest+nBoden && rs.length>=13);
+ok('Positionen = 13 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
+  rs.length===13+nRod+nSonder+nRest+nBoden && rs.length>=15);
 ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
   rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
@@ -410,6 +420,111 @@ ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
     const sMit=stuecklisteSumme(p325);
     return Math.abs((sMit.summe - sOhne.summe) - ag[0].gp)<1e-9
       && sMit.bepreist===sOhne.bepreist+1 && sMit.bepreisbar===sOhne.bepreisbar; })());
+}
+
+// ---- [A-25]/#93/#109 Einlegeblech und Mutter am Zwischenspannpunkt ----------------------
+// Die Bleche waren in Modul 1 korrekt eingefuegt und dargestellt, fehlten in der Stueckliste
+// aber vollstaendig (#109). Geprueft wird gegen `wirksameZwischenpunkte()` — die kanonische
+// Ableitung des Rechenkerns — und NIE gegen eine Ersatzrechnung aus Segment- oder Lagenzahl.
+{
+  const WZ=Object.assign(buildWall('Zwischenspann 3,25 m', 3250, 2600, [], null,
+    {top_connection:'blech'}), { abdichtung:'abgedichtet' });
+  const pz=stuecklistePositionen(WZ, egVoll(), KATALOG);
+  const N=wirksameZwischenpunkte(WZ).length;
+  const bl=pz.filter(r=>r.key==='einlegeblech'), mu=pz.filter(r=>r.key==='zp_mutter');
+  ok('#93 GENAU EINE Position Einlegeblech und EINE Mutter, Menge = wirksame Punkte', (()=>
+    N>0 && bl.length===1 && mu.length===1
+    && bl[0].unit==='Stk' && mu[0].unit==='Stk'
+    && bl[0].menge===N && mu[0].menge===N
+    && bl[0].label==='Einlegeblech (Zwischenspannpunkt)'
+    && mu[0].label==='Mutter Einlegeblech (von oben)')());
+  ok('#93 die Menge folgt den Punkten — fuer mehrere Laengen und Hoehen', (()=>
+    [[1000,2600],[2000,2600],[3250,3000],[4500,2600]].every(([L,H])=>{
+      const w=buildWall('L'+L+'H'+H, L, H, []);
+      const n=wirksameZwischenpunkte(w).length;
+      const r=stuecklistePositionen(w, egVoll(), KATALOG);
+      const b=r.filter(x=>x.key==='einlegeblech'), m=r.filter(x=>x.key==='zp_mutter');
+      return b.length===1 && m.length===1 && n>0 && b[0].menge===n && m[0].menge===n; }))());
+  // Zwei Punkte AUSDRUECKLICH gesetzt ([A-17]): der Abnahmefall des Pakets. Genommen wird eine
+  // Wand mit GENAU EINER Spannachse, damit die Punktzahl gleich der Hoehenzahl ist — sonst
+  // zaehlt `wirksameZwischenpunkte` je (Spannachse, Hoehe) und liefert ein Vielfaches.
+  ok('#93 Abnahmefall: zwei wirksame Zwischenspannpunkte -> je Position die Menge 2', (()=>{
+    const w=buildWall('zwei Punkte', 250, 2600, [], null,
+      { zwischenpunkte_mm:[800,1600] });
+    if(wirksameZwischenpunkte(w).length!==2) return false;
+    const r=stuecklistePositionen(w, egVoll(), KATALOG);
+    const b=r.filter(x=>x.key==='einlegeblech'), m=r.filter(x=>x.key==='zp_mutter');
+    return b.length===1 && m.length===1 && b[0].menge===2 && m[0].menge===2; })());
+  ok('#93 Bepreisung ueber die bestehenden Rollen ([P-14])',
+    bl[0].status==='ok' && bl[0].ep===0.35 && bl[0].produktId==='blech-einlege'
+    && Math.abs(bl[0].gp - N*0.35)<1e-9 && bl[0].bepreisbar===true
+    && mu[0].status==='ok' && mu[0].ep===0.08 && mu[0].produktId==='mutter-einlege'
+    && Math.abs(mu[0].gp - N*0.08)<1e-9 && mu[0].bepreisbar===true);
+  // Ohne Auswahl: kein Preis, aber ein BENANNTER Grund — nie ein Nullpreis, nie ein Ersatzprodukt.
+  ok('#93 ohne Auswahl: Menge steht, kein Preis, benannter Grund', (()=>{
+    const e=egVoll(); e.planung.produkte.rollen.einlegeblech=[]; e.planung.produkte.rollen.zp_mutter=[];
+    const r=stuecklistePositionen(WZ, e, KATALOG);
+    const b=r.find(x=>x.key==='einlegeblech'), m=r.find(x=>x.key==='zp_mutter');
+    return [b,m].every(x=> x.menge===N && x.ep===null && x.gp===null && x.produktId===null
+      && x.status==='keine_auswahl' && x.statusText==='kein Produkt gewählt'
+      && x.bepreisbar===true); })());
+  // Zwei gewaehlte Produkte derselben Rolle sind ohne Maß-Diskriminator echt mehrdeutig.
+  ok('#93 zwei Produkte je Rolle: mehrdeutig statt bevorzugtem Kandidaten', (()=>{
+    const kat={ ...KATALOG, produkte:[ ...KATALOG.produkte,
+      { id:'blech-einlege-2', kategorie:'blech_platte', bezeichnung:'Einlegeblech B',
+        einheit:'Stk', preis:0.4, breite_mm:110, hoehe_mm:30, dicke_mm:2 },
+      { id:'mutter-einlege-2', kategorie:'verbrauch', bezeichnung:'Mutter M10 B',
+        einheit:'Stk', preis:0.09 } ] };
+    const e=egVoll();
+    e.planung.produkte.rollen.einlegeblech=['blech-einlege','blech-einlege-2'];
+    e.planung.produkte.rollen.zp_mutter=['mutter-einlege','mutter-einlege-2'];
+    const r=stuecklistePositionen(WZ, e, kat);
+    return ['einlegeblech','zp_mutter'].every(k=>{
+      const x=r.find(y=>y.key===k); return x.status==='mehrdeutig' && x.ep===null && x.gp===null; }); })());
+  // Nullfall 1: ausdruecklich leerer Override ([A-17]) — „keine Zwischenspannpunkte".
+  ok('#93 leerer Override: Menge 0, kein Fehler, keine geratene Zahl', (()=>{
+    const w=buildWall('ohne Punkte', 3250, 2600, [], null, { zwischenpunkte_mm:[] });
+    const r=stuecklistePositionen(w, egVoll(), KATALOG);
+    return wirksameZwischenpunkte(w).length===0
+      && ['einlegeblech','zp_mutter'].every(k=>{
+        const x=r.find(y=>y.key===k);
+        return x.menge===0 && x.ep===null && x.gp===null && x.bepreisbar===false
+          && x.status==='nicht_erforderlich'; }); })());
+  // Nullfall 2: ein gespeichertes Wandelement ohne `tension_columns` (Altbestand).
+  ok('#93 Wandelement ohne `tension_columns`: Menge 0 statt geratener Zahl', (()=>{
+    const alt=JSON.parse(JSON.stringify(WZ)); delete alt.tension_columns;
+    const r=stuecklistePositionen(alt, egVoll(), KATALOG);
+    return ['einlegeblech','zp_mutter'].every(k=>{
+      const x=r.find(y=>y.key===k); return x.menge===0 && x.ep===null && x.gp===null; }); })());
+  // Die Positionen sind rein ADDITIV — Stelle benannt, alle uebrigen Werte gleich.
+  ok('#93 Stelle: hinter der Ankergruppe, vor der Bodenblechgruppe', (()=>{
+    const ks=pz.map(r=>r.key), i=ks.indexOf('einlegeblech');
+    return i>0 && ks[i-1]==='unterlegscheibe' && ks[i+1]==='zp_mutter'
+      && (ks[i+2]==='blech_boden' || ks[i+2]==='blech_boden_sonder'); })());
+  ok('#93 Nachbarschaft Bodenblech -> Ausgleichsblech -> Kopfblech bleibt unberührt ([A-18])', (()=>{
+    const ks=pz.map(r=>r.key), i=ks.indexOf('ausgleichsblech');
+    return i>0 && ks[i+1]==='blech_kopf'
+      && (ks[i-1]==='blech_boden' || ks[i-1]==='blech_boden_sonder'); })());
+  ok('#93 alle uebrigen Positionen wertgleich in Menge und Einzelpreis', (()=>{
+    const ZP=new Set(['einlegeblech','zp_mutter']);
+    // Gegenprobe gegen dieselbe Wand mit leerem Override: identische Positionsfolge, identische
+    // Werte — die neuen Zeilen bewegen keine bestehende Menge und keinen bestehenden Preis.
+    const leer=Object.assign(buildWall('Zwischenspann 3,25 m', 3250, 2600, [], null,
+      {top_connection:'blech', zwischenpunkte_mm:[]}), { abdichtung:'abgedichtet' });
+    const kanon=l=>JSON.stringify(l.filter(r=>!ZP.has(r.key))
+      .map(r=>[r.key,r.menge,r.fertigmass_mm??null,r.unit,r.ep,r.gp,r.status]));
+    return kanon(pz)===kanon(stuecklistePositionen(leer, egVoll(), KATALOG))
+      && kanon(pz).length>0; })());
+  // Ein Zwischenspannpunkt ist KEIN Anker ([A-16]): die Ankerzaehlung bleibt unberührt.
+  ok('#93 keine zusaetzliche Spannplatte und keine zusaetzliche Spannmutter ([A-16])', (()=>{
+    const sp=pz.find(r=>r.key==='spannplatte'), sm=pz.find(r=>r.key==='spannmutter');
+    return sp.menge===WZ.bom.spannplatten && sm.menge===WZ.bom.spannmuttern; })());
+  ok('#93 die Summe waechst genau um den Beitrag der beiden neuen Zeilen', (()=>{
+    const e=egVoll(); e.planung.produkte.rollen.einlegeblech=[]; e.planung.produkte.rollen.zp_mutter=[];
+    const sOhne=stuecklisteSumme(stuecklistePositionen(WZ, e, KATALOG));
+    const sMit=stuecklisteSumme(pz);
+    return Math.abs((sMit.summe - sOhne.summe) - (bl[0].gp + mu[0].gp))<1e-9
+      && sMit.bepreist===sOhne.bepreist+2 && sMit.bepreisbar===sOhne.bepreisbar; })());
 }
 
 // Vollständige Zuordnung -> Summe vollständig (Nenner = alle bepreisbaren Positionen)
@@ -1566,6 +1681,83 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
 // angefasst — weder ueber ein Feld, noch beim Ebenenwechsel, noch beim Laden.
 ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
   !_merges.some(([t])=>t==='projekt') && _merges.length>0);
+
+// ---- [A-25]/#93/#109 REALER PFAD: echter Speicher + mitgelieferter Standardkatalog --------
+// Der Nachweis, der #109 schliesst: eine im RECHENKERN gerechnete Wand mit Zwischenspannpunkten
+// wird ueber die ECHTE Speicherschicht aktiv gesetzt, der MITGELIEFERTE Standardkatalog wird
+// geladen und nach [P-18] vorbelegt — und dann muss das im DOM gerenderte Blatt von Modul 4
+// beide Bauteile mit Menge UND Preis zeigen. Geprueft wird am gerenderten Markup, nicht an einer
+// Zwischenrechnung; die Menge wird gegen `wirksameZwischenpunkte()` gehalten.
+{
+  class MemStorage2 {
+    constructor(){ this.m=new Map(); }
+    getItem(k){ return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k,v){ this.m.set(String(k), String(v)); }
+    removeItem(k){ this.m.delete(k); }
+    clear(){ this.m.clear(); }
+  }
+  globalThis.localStorage = new MemStorage2();
+
+  const STD = JSON.parse(readFileSync(STD_KATALOG_PFAD, "utf8"));
+  const WR = buildWall('Einlegeblechwand', 3250, 2600, []);
+  const N = wirksameZwischenpunkte(WR).length;
+  const wid = echterStore.speichere('Einlegeblechwand', WR);
+  echterStore.setzeAktiv(wid);
+  echterStore.setzeKatalog(STD);
+  // [P-18] Standardauswahl: sie belegt NUR leere Rollen und ist danach eine ganz normale,
+  // sichtbare Auswahl. Genau das ist der Weg, den Modul 1 beim Rendern geht.
+  const vorbelegt = echterStore.vorbelegeProduktrollen(null, wid);
+
+  globalThis.window.SEMBLA.store = echterStore;
+  globalThis.window.__slInit();
+
+  const zeilenR = () => document.getElementById('tbody').innerHTML.split('<tr').slice(1);
+  const zeileMit = (label) => zeilenR().find(z=>z.includes(label)) || '';
+
+  ok('#109 realer Pfad: aktive Wand, geladener Standardkatalog, Punkte vorhanden',
+    echterStore.aktivId()===wid && !!echterStore.holeKatalog() && N>0);
+  ok('#93 der Standardkatalog belegt beide Rollen mit GENAU EINEM Produkt vor ([P-18])',
+    JSON.stringify(vorbelegt.gesetzt.einlegeblech)===JSON.stringify(['blech-einlegeblech-110'])
+    && JSON.stringify(vorbelegt.gesetzt.zp_mutter)===JSON.stringify(['verbrauch-mutter-m10-einlege'])
+    && !vorbelegt.offen.includes('einlegeblech') && !vorbelegt.offen.includes('zp_mutter'));
+  ok('#109 das gerenderte Blatt fuehrt Einlegeblech und Mutter ueberhaupt', (()=>
+    !!zeileMit('Einlegeblech (Zwischenspannpunkt)')
+    && !!zeileMit('Mutter Einlegeblech (von oben)'))());
+  ok('#109 beide Zeilen zeigen die Menge der wirksamen Zwischenspannpunkte', (()=>
+    ['Einlegeblech (Zwischenspannpunkt)','Mutter Einlegeblech (von oben)']
+      .every(l=>zeileMit(l).includes('>'+N.toLocaleString('de-DE')+' Stk')))());
+  ok('#109 beide Zeilen sind bepreist (Einzel- und Gesamtpreis stehen im Blatt)', (()=>{
+    const rs2=stuecklistePositionen(WR, echterStore.holeEingaben(wid), echterStore.holeKatalog());
+    const b=rs2.find(r=>r.key==='einlegeblech'), m=rs2.find(r=>r.key==='zp_mutter');
+    return b.status==='ok' && m.status==='ok' && b.menge===N && m.menge===N
+      && b.ep===0.35 && m.ep===0.08
+      && Math.abs(b.gp - N*0.35)<1e-9 && Math.abs(m.gp - N*0.08)<1e-9
+      && zeileMit('Einlegeblech (Zwischenspannpunkt)').includes(fmtDe2(N*0.35))
+      && zeileMit('Mutter Einlegeblech (von oben)').includes(fmtDe2(N*0.08)); })());
+  // Gegenprobe [P-14]: eine leergeraeumte Rolle bleibt leer (die Vorbelegung ueberschreibt nie
+  // eine getroffene Wahl) und die Zeile steht mit Menge, aber ohne Preis und mit Grund.
+  ok('#93 ohne Auswahl im echten Speicher: Menge steht, kein Preis, benannter Grund', (()=>{
+    echterStore.setzeProduktrolle('einlegeblech', [], wid);
+    globalThis.window.__slInit();
+    const rs2=stuecklistePositionen(WR, echterStore.holeEingaben(wid), echterStore.holeKatalog());
+    const b=rs2.find(r=>r.key==='einlegeblech');
+    const z=zeileMit('Einlegeblech (Zwischenspannpunkt)');
+    return b.menge===N && b.ep===null && b.gp===null && b.status==='keine_auswahl'
+      && z.includes('>'+N.toLocaleString('de-DE')+' Stk')
+      && /kein Produkt gew(ä|&auml;)hlt/.test(z); })());
+  // [P-18] Gegenprobe: Modul 4 belegt NICHT vor — die leergeraeumte Rolle bleibt beim erneuten
+  // Seitenaufruf leer. (Ein ausdruecklicher Vorbelegungslauf wuerde sie wieder fuellen; das ist
+  // der Weg von Modul 1 und hier ausdruecklich nicht gegangen.)
+  ok('#93 Modul 4 belegt nicht vor: die leergeraeumte Rolle bleibt ueber den Seitenaufruf leer', (()=>{
+    globalThis.window.__slInit();
+    const ids=echterStore.holeEingaben(wid).planung.produkte.rollen.einlegeblech;
+    return Array.isArray(ids) && ids.length===0
+      && stuecklistePositionen(WR, echterStore.holeEingaben(wid), echterStore.holeKatalog())
+           .find(r=>r.key==='einlegeblech').status==='keine_auswahl'; })());
+  // Das Wandelement bleibt unangetastet: Modul 4 liest nur ([P-1]).
+  ok('#109 Modul 4 hat das Wandelement nicht angefasst',
+    JSON.stringify(echterStore.holeElement(wid).wandelement)===JSON.stringify(WR));
+}
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

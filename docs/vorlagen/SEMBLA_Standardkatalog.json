@@ -206,6 +206,18 @@
       "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Ausgleichsbleche liegen unter dem Bodenblech und richten den Bodenanschluss aus. Ma\u00dfe (20 mm in Wandrichtung als `breite_mm`, 100 mm quer zur Wand als `hoehe_mm`, 8 mm Dicke) und Preis sind angenommene Beispielwerte; sp\u00e4ter sind verschiedene Dicken vorgesehen. Anzahl und Verteilung der Ausgleichspunkte sind noch nicht festgelegt."
     },
     {
+      "id": "blech-einlegeblech-110",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Einlegeblech 110\u00d730 mm, 2 mm (vorl\u00e4ufig)",
+      "einheit": "Stk",
+      "preis": 0.35,
+      "breite_mm": 110,
+      "hoehe_mm": 30,
+      "dicke_mm": 2,
+      "rollen": ["einlegeblech"],
+      "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Das Einlegeblech sitzt in einer Vertiefung der Steinlage innerhalb eines Vorspannsegments und fixiert die Gewindestange tempor\u00e4r w\u00e4hrend der Montage ([A-14]). Ma\u00dfe (110 mm breit, 30 mm hoch, 2 mm stark \u2014 ein flacher Streifen, passend in die Steinvertiefung an der Lagen-Oberkante, Gewindestange l\u00e4uft durch) und Preis sind angenommene Beispielwerte bis zur Freigabe durch Karl. Aus diesen Ma\u00dfen werden ausdr\u00fccklich keine Nachweis- oder Statikkennwerte abgeleitet; der Austausch nach der Freigabe ist ein reiner Katalog-Edit."
+    },
+    {
       "id": "blech-kopfblech-1000",
       "kategorie": "blech_platte",
       "bezeichnung": "Kopfblech-Modul 1000×125 mm, 15 mm",
@@ -284,6 +296,15 @@
       "einheit": "Stk",
       "preis": 0.9,
       "rollen": ["spannmutter"]
+    },
+    {
+      "id": "verbrauch-mutter-m10-einlege",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Sechskantmutter M10 (Einlegeblech, vorl\u00e4ufig)",
+      "einheit": "Stk",
+      "preis": 0.08,
+      "rollen": ["zp_mutter"],
+      "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Sie zieht das Einlegeblech von oben gegen die Steinlage; unten sitzt keine Mutter ([A-16]). Bewusst ein EIGENES Produkt neben der Spannmutter des Ankers \u2014 die beiden Verwendungsstellen bleiben getrennt, damit je Rolle genau ein Kandidat bleibt ([P-14]). Der Preis ist ein angenommener Beispielwert; ein Bauteilma\u00df ist \u00fcber das Gewinde M10 hinaus nicht hinterlegt und wird nicht angenommen."
     },
     {
       "id": "verbrauch-unterlegscheibe",

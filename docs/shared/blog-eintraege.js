@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-17",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 109,
+    titel: "Einlegeblech und Mutter stehen mit ihrer Menge in der St\u00fcckliste \u2014 je "
+      + "Zwischenspannpunkt eines von beiden",
+    testbitte: "In Modul 1 Zwischenspannpunkte setzen (Blech und Mutter sind vorbelegt), dann "
+      + "Modul 4: beide stehen als eigene Zeile mit der Punktzahl und einem Preis. Eine Auswahl "
+      + "leeren \u2014 Menge bleibt, Preis entf\u00e4llt mit Grund.",
+  },
+  {
     id: "chg-20260907-16",
     datum: "2026-09-07",
     typ: "fix",

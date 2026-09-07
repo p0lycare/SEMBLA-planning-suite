@@ -42,6 +42,15 @@
  * per `import`. Einheiten: mm (Kern), Ausgabe teils in cm/m (Labels).
  */
 
+// Der EINZIGE Import dieser Datei — und ausdruecklich der RECHENKERN, nicht die Katalog- oder
+// Speicherschicht: `wirksameZwischenpunkte()` ist die kanonische Ableitung der Zwischenspannpunkte
+// ([A-15]/[A-17]) und damit nach [A-25] die alleinige Mengenquelle fuer Einlegeblech und Mutter.
+// Anders als beim Ausgleichsblech ([A-18]) gibt es dafuer KEIN gespeichertes Feld am Wandelement,
+// das sich hier bloss auszaehlen liesse — die Punkte werden bei jeder Rechnung frisch abgeleitet.
+// Eine Zweitrechnung an dieser Stelle waere genau der Drift, den [P-6] ausschliesst; der Kern
+// importiert selbst nichts, es entsteht also kein Zyklus.
+import { wirksameZwischenpunkte } from "./sembla-core.js";
+
 /** Deutsche Tausendertrennung ohne Nachkommastellen (für Labels). */
 function _semNum(n) { return (isFinite(n) ? n : 0).toLocaleString("de-DE"); }
 
@@ -214,6 +223,16 @@ export function semblaBom(w) {
   // #96), ist die Menge 0 — es wird keine Punktzahl erfunden ([P-9]).
   const ausgleichspunkte = Array.isArray(w.ausgleichspunkte) ? w.ausgleichspunkte.length : 0;
 
+  // [A-25] Zwischenspannpunkte: je wirksamem Punkt genau EIN Einlegeblech ([A-14]) und genau
+  // EINE Mutter von oben ([A-16]). Quelle ist ausschliesslich `wirksameZwischenpunkte()` des
+  // Rechenkerns — sie zaehlt je (Spannachse, Hoehe) einen Punkt, also genau je real
+  // eingebautem Blech. Hier wird davon NICHTS nachgerechnet: keine Segment-, Lagen- oder
+  // Hoehenarithmetik, kein Ersatz aus Wandhoehe oder Segmentzahl ([P-6]). Ein Wandelement ohne
+  // Zwischenspannpunkte — Altbestand ohne `tension_columns`, ein ausdruecklich leerer Override
+  // nach [A-17] oder durchweg einlagige Segmente — liefert die Menge 0 statt einer geratenen
+  // Zahl ([P-9]); den Leerfall entscheidet der Kern selbst, nicht diese Datei.
+  const zwischenpunkte = wirksameZwischenpunkte(w).length;
+
   // Boden- und Kopfblech sind PHYSISCH GETRENNTE Bauteile ([A-1]) und werden hier — in der
   // gemeinsamen Ausgabeschicht — aus den REAL vorhandenen Platten des Wandelements getrennt.
   // Der Rechenkern bleibt unveraendert; er fuehrt `base_plate`/`top_plate` (je mit `module`)
@@ -260,7 +279,7 @@ export function semblaBom(w) {
            stahlblech_module: blechModule, stahlblech_module_boden: blechBoden,
            stahlblech_module_kopf: blechKopf, blech_boden_teile: blechBodenTeile,
            stahlblech_mm: blechMm, stahlblech_dicke_mm: blechDicke,
-           ausgleichspunkte,
+           ausgleichspunkte, zwischenpunkte,
            stossfugen, dichtstreifen_mm: dichtMm };
 }
 
@@ -269,9 +288,10 @@ export function semblaBom(w) {
  * `wandelement.abdichtung` am Wandelement (kanonische Werte und `normAbdichtung()` in
  * `storage.js`).
  *
- * Hier steht bewusst eine STRIKTE Inline-Pruefung statt eines Imports: `sembla-bom.js` ist
- * importfrei und soll es bleiben — der Mengenbaustein darf nicht an die localStorage-Schicht
- * haengen. Strikt heisst: NUR der kanonische Wert schaltet die Dichtstreifen ein. Alles
+ * Hier steht bewusst eine STRIKTE Inline-Pruefung statt eines Imports: `sembla-bom.js` haengt
+ * nicht an der localStorage- oder Katalogschicht und soll es nicht tun — der Mengenbaustein
+ * liegt HINTER dem Rechenkern und darf nur diesen kennen (s. den einen Import oben).
+ * Strikt heisst: NUR der kanonische Wert schaltet die Dichtstreifen ein. Alles
  * andere — fehlendes Feld, Altbestand, Tippfehler — gilt als NICHT abgedichtet. Damit kann
  * ein unbekannter Wert nie stillschweigend Material in die Stueckliste bringen.
  * @param {any} w Wandelement
@@ -350,6 +370,26 @@ function _flachePositionen(w, b) {
     // der ehrliche Stand und kein Fehler (neue Wände haben den Default "spannplatte"). Der
     // Rechenkern bleibt unberührt — die Zahl wird nur durchgereicht, nicht nachgerechnet.
     { key: "unterlegscheibe", label: "Unterlegscheibe (Wandabschluss)", unit: "Stk", menge: b.spannplatten },
+    // [A-25] Einlegeblech und Mutter am Zwischenspannpunkt: je wirksamem Punkt genau EIN Blech
+    // und genau EINE Mutter ([A-14]/[A-16]) — zwei GETRENNTE Positionen, weil es zwei
+    // verschiedene Bauteile aus zwei verschiedenen Kategorien sind (Blech/Platte bzw.
+    // Verbrauchsmaterial) und [P-14] je Position genau ein Katalogprodukt auflöst.
+    // Die Stelle ist bewusst gewaehlt: unmittelbar hinter der Ankergruppe (Spannmutter,
+    // Spannplatte, Unterlegscheibe) und VOR der Bodenblechgruppe. Damit bleiben die nach [A-18]
+    // benannte Nachbarschaft Bodenblech → Ausgleichsblech → Kopfblech und die geprüfte Lage der
+    // Dichtstreifen am Listenende ([A-6]) unberührt; jede bestehende Position behält ihre
+    // relative Ordnung.
+    // Kein `mass_mm`/`fertigmass_mm`: die Rollen haben keinen Maß-Diskriminator, weil es keinen
+    // maßgebenden WANDwert gibt, an dem sich Blech oder Mutter messen liessen (anders als
+    // Bodenblech ↔ Modullaenge oder Stange ↔ Stangenlaenge) — ein Maß hier waere ein erfundener
+    // Bezug. Auch NICHT `nachrichtlich`: das sind echte Einbaupositionen und keine zweite
+    // Ausdrucksform einer schon gezaehlten Ware ([A-6]) — sie werden regulaer bepreist ([P-14]).
+    // Ein Zwischenspannpunkt ist KEIN Anker: `spannplatten`/`spannmuttern` aus [A-2]/[A-3]
+    // bleiben davon unberührt, und die Bauteile werden mit ihnen nicht zusammengelegt.
+    { key: "einlegeblech", label: "Einlegeblech (Zwischenspannpunkt)", unit: "Stk",
+      menge: b.zwischenpunkte },
+    { key: "zp_mutter", label: "Mutter Einlegeblech (von oben)", unit: "Stk",
+      menge: b.zwischenpunkte },
     // [A-10]/[A-12] Bodenblech: je verwendeter Standardlänge und je Sonder-Fertigmaß eine
     // eigene Position — keine Modulzählung mehr. `mass_mm` ist das RASTERMASS (der
     // Preis-Diskriminator gegen das Katalogprodukt nach [P-14]), `fertigmass_mm` das reale
@@ -433,8 +473,9 @@ function _ref(pos, feld) {
 
 /**
  * Baugruppen des wirksamen Katalogs in Einzelteilmengen aufloesen — REIN, ohne Speicherzugriff
- * und ohne Import: `sembla-bom.js` ist importfrei und bleibt es (der Mengenbaustein darf nicht
- * an die Katalog- oder Speicherschicht haengen).
+ * und ohne Katalogimport: der wirksame Katalog wird DURCHGEREICHT, nicht geladen (der
+ * Mengenbaustein darf nicht an die Katalog- oder Speicherschicht haengen; der Rechenkern ist
+ * keine von beiden).
  *
  * Weil der Rollenschluessel ZUGLEICH der Stuecklistenschluessel ist ([P-13]), braucht die
  * Zuordnung Rolle -> Position keine zweite Achse und keine Rollentabelle. Eine Verwendungsstelle

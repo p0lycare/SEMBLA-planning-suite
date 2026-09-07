@@ -909,8 +909,15 @@ ok('jede Katalogkategorie ist belegt',
   KAT.KATEGORIEN.every(k => katRoh.produkte.some(p => p.kategorie === k.id)));
 ok('Katalogname weist die vorlaeufigen Werte aus', /vorläufig — fachlich unbestätigt/.test(katRoh.name));
 ok('jedes vorlaeufige Produkt ist einzeln gekennzeichnet',
-  // #96: mit dem vorlaeufigen Ausgleichsblech (20 mm laengs x 100 mm quer x 8 mm) sind es zwoelf.
-  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 12
+  // #96: mit dem vorlaeufigen Ausgleichsblech (20 mm laengs x 100 mm quer x 8 mm) waren es
+  // zwoelf. [A-25]/#93: das vorlaeufige Einlegeblech (110 x 30 mm, 2 mm) kommt hinzu -> dreizehn.
+  // Die Mutter M10 desselben Pakets ist ebenfalls vorlaeufig, faellt hier aber aus der Zaehlung:
+  // ihre Bezeichnung setzt die Klammer anders („(Einlegeblech, vorläufig)") und passt damit nicht
+  // auf das Muster `(vorläufig)`. Das ist ein benannter Schoenheitsfehler der Vorlage und KEINE
+  // fehlende Kennzeichnung — ihr `hinweis` beginnt regulaer mit „vorläufig — fachlich
+  // unbestätigt" (geprueft in test-katalog.mjs). Angeglichen wird die Bezeichnung nicht
+  // nebenbei: das waere eine Katalogaenderung ausserhalb dieses Pakets.
+  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 13
   && katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung))
        .every(p => (p.hinweis || '').startsWith('vorläufig — fachlich unbestätigt')));
 ok('Wandvorlage traegt Projektformat v2 (kein Formatbump)',
@@ -1086,13 +1093,34 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
   // Vorlage waehlt dafuer KEIN Produkt: `SEMBLA_Musterwand.json` nennt die Rolle nicht, und
   // Modul 0 vorbelegt nicht — die Standardauswahl nach [P-18] entsteht erst beim Rendern von
   // Modul 1/2 (`vorbelegeProduktrollen` steht dort, nicht hier). Das ist der EHRLICHE Stand:
-  // genau eine offene Position mit BENANNTEM Grund, kein geratenes Produkt, kein Nullpreis
-  // ([P-9]). Geprueft wird deshalb nicht mehr „alles loest auf", sondern genau das.
-  ok('Vorlage + Standardkatalog: alles loest auf ausser dem nicht gewaehlten Ausgleichsblech (#96)',
-    offen.length === 1 && offen[0].key === 'ausgleichsblech'
-    && offen[0].status === 'keine_auswahl' && offen[0].ep === null && offen[0].gp === null
-    && eMw.planung.produkte.rollen.ausgleichsblech === undefined
-    && rsMw.filter(r => r.key !== 'ausgleichsblech').every(r => !r.bepreisbar || r.gp != null));
+  // offene Positionen mit BENANNTEM Grund, kein geratenes Produkt, kein Nullpreis ([P-9]).
+  // Geprueft wird deshalb nicht „alles loest auf", sondern genau das.
+  //
+  // [A-25]/#93 Mit Einlegeblech und Mutter am Zwischenspannpunkt sind es DREI solche Positionen —
+  // aus demselben Grund und in derselben Aussagerichtung: die Vorlage nennt auch diese zwei
+  // Rollen nicht. Sie stehen als offene Zeilen und nicht als Menge 0, weil die Musterwand
+  // wirklich Zwischenspannpunkte hat: ihre Menge ist > 0 und damit `bepreisbar` — eine Position
+  // ohne Bedarf waere `nicht_erforderlich` und fiele aus `offen` heraus. Die Zahl 13 ist bewusst
+  // NICHT festgeschrieben (sie folgt der gerechneten Punktliste des Kerns, [P-6]); geprueft wird
+  // die Aussage „Bedarf vorhanden, Produkt nicht gewaehlt".
+  const OFFEN_ERWARTET = ['einlegeblech', 'zp_mutter', 'ausgleichsblech'];
+  ok('Vorlage + Standardkatalog: alles loest auf ausser den drei nicht gewaehlten Bauteilen (#96/#93)',
+    offen.length === OFFEN_ERWARTET.length
+    && offen.map(r => r.key).join() === OFFEN_ERWARTET.join()
+    && offen.every(r => r.status === 'keine_auswahl' && r.ep === null && r.gp === null
+                        && r.menge > 0)
+    && OFFEN_ERWARTET.every(k => eMw.planung.produkte.rollen[k] === undefined)
+    && rsMw.filter(r => !OFFEN_ERWARTET.includes(r.key))
+           .every(r => !r.bepreisbar || r.gp != null));
+  // Die beiden neuen Positionen tragen denselben Bedarf — je Zwischenspannpunkt eines von beiden
+  // ([A-25]) —, und der Bedarf ist der des Rechenkerns, nicht eine hier gehaltene Zahl.
+  ok('[A-25] Einlegeblech und Mutter tragen bei der Musterwand denselben Bedarf > 0',
+    (() => {
+      const bl = rsMw.find(r => r.key === 'einlegeblech');
+      const mu = rsMw.find(r => r.key === 'zp_mutter');
+      return !!bl && !!mu && bl.menge === mu.menge && bl.menge > 0
+        && bl.unit === 'Stk' && mu.unit === 'Stk';
+    })());
   // [Z-4]/[P-19] Die Beplankung steht in keiner Stueckliste mehr — dafuer gibt es also weiter
   // keine Position und keine offene Zeile.
   ok('keine Beplankungsposition und keine offene Zeile daraus ([Z-4])',

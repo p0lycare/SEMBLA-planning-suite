@@ -230,6 +230,94 @@ ok("Rolle ausgleichsblech ist regulaer waehlbar und wird bepreist (#96)", (() =>
   const st = KAT.rollenStatus("ausgleichsblech", eing, kat, KTX);
   return st.status === "ok" && st.produkt.id === "ausg-1";
 })());
+// [A-25]/#93/#109 Einlegeblech und Mutter am Zwischenspannpunkt: zwei eigene, waehlbare und
+// bepreiste Verwendungsrollen von Modul 1 in der Gruppe Vorspannung. Das Blech ist ein
+// Blech/Platte, die Mutter Verbrauchsmaterial — zwei Kategorien, also zwei Rollen. Einen
+// Maß-Diskriminator gibt es bewusst NICHT: es existiert kein maßgebender WANDwert, an dem sich
+// Blech oder Mutter messen liesse; ein Kontextfeld waere ein erfundener Bezug.
+ok("Rolle einlegeblech: Modul 1, Gruppe Vorspannung, Blech/Platte, bepreist, ohne Maß ([A-25])", (() => {
+  const r = KAT.rolle("einlegeblech");
+  return !!r && r.modul === 1 && r.gruppe === "Vorspannung" && r.kategorie === "blech_platte"
+    && r.einheit === "Stk" && r.bepreist === true && r.mass === null
+    && r.waehlbar !== false
+    && KAT.rollenVonModul(1).some((x) => x.id === "einlegeblech")
+    && !KAT.rollenVonModul(2).some((x) => x.id === "einlegeblech");
+})());
+ok("Rolle zp_mutter: Modul 1, Gruppe Vorspannung, Verbrauch, bepreist, ohne Maß ([A-25])", (() => {
+  const r = KAT.rolle("zp_mutter");
+  return !!r && r.modul === 1 && r.gruppe === "Vorspannung" && r.kategorie === "verbrauch"
+    && r.einheit === "Stk" && r.bepreist === true && r.mass === null
+    && r.waehlbar !== false
+    && KAT.rollenVonModul(1).some((x) => x.id === "zp_mutter")
+    && !KAT.rollenVonModul(2).some((x) => x.id === "zp_mutter");
+})());
+// Getrennt von den Ankerbauteilen: der Zwischenspannpunkt ist nach [A-16] KEIN Anker, und die
+// Spannplatte nach [A-3] sitzt am Segmentende auf der Steinkante. Vier verschiedene Rollen mit
+// vier verschiedenen Kennungen — nichts wird zusammengelegt und nichts umbenannt.
+ok("[A-25] Einlegeblech und Mutter sind getrennt von spannmutter, kupplung und spannplatte", (() => {
+  const ids = ["einlegeblech", "zp_mutter", "spannmutter", "kupplung", "spannplatte"];
+  const rs = ids.map((i) => KAT.rolle(i));
+  return rs.every(Boolean) && new Set(ids).size === 5
+    && KAT.rolle("spannplatte").gruppe === "Anschluss"
+    && KAT.rolle("einlegeblech").label !== KAT.rolle("spannplatte").label
+    && KAT.rolle("zp_mutter").label !== KAT.rolle("spannmutter").label
+    && KAT.rolle("zp_mutter").label !== KAT.rolle("kupplung").label;
+})());
+// Die Pflichtmaße kommen ALLEIN aus der Kategorie — die Rolle fuehrt keine eigene Pflichtliste.
+ok("[A-25] Einlegeblech verlangt die Pflichtmaße seiner Kategorie, die Mutter keine", (() => {
+  const rb = KAT.rolle("einlegeblech"), rm = KAT.rolle("zp_mutter");
+  const bBasis = { kategorie: "blech_platte", bezeichnung: "X", einheit: "Stk", preis: 1,
+                   rollen: ["einlegeblech"] };
+  const ohneDicke = KAT.validiereProdukt({ id: "ein-x", ...bBasis, breite_mm: 110, hoehe_mm: 30 });
+  const voll = KAT.validiereProdukt({ id: "ein-z", ...bBasis, breite_mm: 110, hoehe_mm: 30, dicke_mm: 2 });
+  // Verbrauchsmaterial hat keine Pflichtmaße — die Mutter braucht insbesondere KEIN `gewinde`
+  // (das ist nur bei der Kategorie Gewindestange pflichtig) und erfindet kein Maß.
+  const mVoll = KAT.validiereProdukt({ id: "mut-z", kategorie: "verbrauch", bezeichnung: "M10",
+                                       einheit: "Stk", preis: 0.08, rollen: ["zp_mutter"] });
+  return rb.pflicht === undefined && rm.pflicht === undefined
+    && KAT.kategorie("verbrauch").pflicht.length === 0
+    && ohneDicke.some((m) => /^dicke_mm ist für/.test(m))
+    && voll.length === 0 && mVoll.length === 0;
+})());
+// [P-9]: Eine Wand ohne gewaehltes Produkt bleibt gueltig — die Luecke wird nur BENANNT.
+ok("[A-25] beide Rollen ohne Auswahl: benannte Luecke statt Fehler", (() => {
+  const a = KAT.rollenStatus("einlegeblech", eingabenMit({}), R_KAT, KTX);
+  const b = KAT.rollenStatus("zp_mutter", eingabenMit({}), R_KAT, KTX);
+  return [a, b].every((st) => st.status === "keine_auswahl"
+    && st.text === KAT.STATUS_TEXT.keine_auswahl && st.produkt === null && st.ids.length === 0);
+})());
+ok("[A-25] beide Rollen sind regulaer waehlbar und werden bepreist", (() => {
+  const kat = { produkte: [
+    { id: "ein-1", kategorie: "blech_platte", bezeichnung: "Einlegeblech", einheit: "Stk",
+      preis: 0.35, breite_mm: 110, hoehe_mm: 30, dicke_mm: 2 },
+    { id: "mut-1", kategorie: "verbrauch", bezeichnung: "Mutter M10", einheit: "Stk", preis: 0.08 } ] };
+  const a = KAT.rollenStatus("einlegeblech", eingabenMit({ einlegeblech: ["ein-1"] }), kat, KTX);
+  const b = KAT.rollenStatus("zp_mutter", eingabenMit({ zp_mutter: ["mut-1"] }), kat, KTX);
+  return a.status === "ok" && a.produkt.id === "ein-1"
+    && b.status === "ok" && b.produkt.id === "mut-1";
+})());
+// Ohne Maß-Diskriminator entscheidet allein die Anzahl: zwei Produkte sind echt mehrdeutig.
+ok("[A-25] zwei Produkte je Rolle: mehrdeutig statt bevorzugtem Kandidaten", (() => {
+  const kat = { produkte: [
+    { id: "ein-1", kategorie: "blech_platte", bezeichnung: "A", einheit: "Stk", preis: 0.35,
+      breite_mm: 110, hoehe_mm: 30, dicke_mm: 2 },
+    { id: "ein-2", kategorie: "blech_platte", bezeichnung: "B", einheit: "Stk", preis: 0.4,
+      breite_mm: 110, hoehe_mm: 30, dicke_mm: 2 },
+    { id: "mut-1", kategorie: "verbrauch", bezeichnung: "M10 A", einheit: "Stk", preis: 0.08 },
+    { id: "mut-2", kategorie: "verbrauch", bezeichnung: "M10 B", einheit: "Stk", preis: 0.09 } ] };
+  const a = KAT.rollenStatus("einlegeblech", eingabenMit({ einlegeblech: ["ein-1", "ein-2"] }), kat, KTX);
+  const b = KAT.rollenStatus("zp_mutter", eingabenMit({ zp_mutter: ["mut-1", "mut-2"] }), kat, KTX);
+  return a.status === "mehrdeutig" && b.status === "mehrdeutig";
+})());
+// Eine fachfremde Kategorie an einer der neuen Rollen ist ein KATALOGFEHLER, keine Heuristik.
+ok("[A-25] fachfremdes Produkt an einer der neuen Rollen ist ein Katalogfehler", (() => {
+  const a = KAT.validiereProdukt({ id: "x1", kategorie: "verbrauch", bezeichnung: "X",
+                                   einheit: "Stk", preis: 1, rollen: ["einlegeblech"] });
+  const b = KAT.validiereProdukt({ id: "x2", kategorie: "blech_platte", bezeichnung: "Y",
+                                   einheit: "Stk", preis: 1, breite_mm: 1, hoehe_mm: 1,
+                                   dicke_mm: 1, rollen: ["zp_mutter"] });
+  return a.some((m) => /erwartet Kategorie/.test(m)) && b.some((m) => /erwartet Kategorie/.test(m));
+})());
 ok("Rollen: Modul 2 besitzt genau Latte/Beplankung/Verbinder",
   KAT.rollenVonModul(2).map(r => r.id).sort().join() === "beplankung,latte,verbinder");
 ok("Rollen: kein Schluessel gehoert zwei Modulen",
@@ -641,6 +729,67 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     const eing = { planung: { produkte: { rollen: { ausgleichsblech: ids } } } };
     const st = KAT.rollenStatus("ausgleichsblech", eing, std, {});
     return leer.status === "keine_auswahl" && st.status === "ok" && st.produkt.id === ids[0];
+  })());
+  // [A-25]/#93 Die Vorlage bringt GENAU EIN vorlaeufiges Einlegeblech und GENAU EINE Mutter
+  // mit. Die Blechmaße sind die Annahme aus dem Entscheid vom 2026-09-07 (110 x 30 mm, 2 mm)
+  // und stehen ausschliesslich hier — nicht im Rechenkern, nicht im Orakel, nicht in der
+  // Zeichnung. Der Austausch nach Karls Freigabe bleibt damit ein reiner Katalog-Edit.
+  ok("Standardkatalog belegt einlegeblech und zp_mutter mit je EINEM Produkt vor ([A-25])", (() => {
+    const bl = v.einlegeblech || [], mu = v.zp_mutter || [];
+    if (bl.length !== 1 || mu.length !== 1) return false;
+    const pb = KAT.produkt(std, bl[0]), pm = KAT.produkt(std, mu[0]);
+    return pb.kategorie === "blech_platte" && pb.einheit === "Stk"
+      && pm.kategorie === "verbrauch" && pm.einheit === "Stk"
+      && KAT.validiereProdukt(pb).length === 0 && KAT.validiereProdukt(pm).length === 0
+      && !KAT.rollenOhneVorschlag(std).includes("einlegeblech")
+      && !KAT.rollenOhneVorschlag(std).includes("zp_mutter");
+  })());
+  ok("Standardkatalog: das Einlegeblech misst 110 × 30 mm bei 2 mm Dicke ([A-25])", (() => {
+    const pr = KAT.produkt(std, (v.einlegeblech || [])[0]);
+    return +pr.breite_mm === 110 && +pr.hoehe_mm === 30 && +pr.dicke_mm === 2
+      && pr.laenge_mm == null;
+  })());
+  // Die Mutter erfindet kein Maß: ueber das Gewinde M10 hinaus ist nichts festgelegt.
+  ok("Standardkatalog: die Mutter nennt M10 und erfindet kein Maß ([A-25])", (() => {
+    const pr = KAT.produkt(std, (v.zp_mutter || [])[0]);
+    return /M10/.test(String(pr.bezeichnung))
+      && pr.breite_mm == null && pr.hoehe_mm == null && pr.laenge_mm == null && pr.dicke_mm == null;
+  })());
+  ok("Standardkatalog: beide neuen Eintraege sind ausdruecklich vorlaeufig ([A-25])", (() => {
+    const pb = KAT.produkt(std, (v.einlegeblech || [])[0]);
+    const pm = KAT.produkt(std, (v.zp_mutter || [])[0]);
+    return [pb, pm].every((pr) => /vorläufig/.test(pr.bezeichnung)
+      && /vorläufig — fachlich unbestätigt/.test(pr.hinweis || ""));
+  })());
+  // Der Rollenhinweis muss die Menge als Zahl der Zwischenspannpunkte benennen ([A-25]) und die
+  // Abgrenzung zur Spannplatte nach [A-3] aussprechen — sonst liesse sich beides verwechseln.
+  ok("Rolle einlegeblech: der Hinweis benennt die Menge und grenzt gegen die Spannplatte ab", (() => {
+    const h = String((KAT.rolle("einlegeblech") || {}).hinweis || "");
+    return /Zwischenspannpunkte/.test(h) && /ein Blech je Punkt/.test(h)
+      && /A-3/.test(h) && /Spannplatte/.test(h) && /A-25/.test(h)
+      && !/keine Menge/.test(h) && !/nicht implementiert/.test(h);
+  })());
+  ok("Rolle zp_mutter: der Hinweis benennt die Menge und die Abgrenzung zur Spannmutter", (() => {
+    const h = String((KAT.rolle("zp_mutter") || {}).hinweis || "");
+    return /Zwischenspannpunkte/.test(h) && /eine Mutter je Punkt/.test(h)
+      && /Spannmutter/.test(h) && /A-16/.test(h) && /A-25/.test(h);
+  })());
+  // Die vorlaeufigen Blechmaße stehen NUR im Katalog: keine Datei des Rechenwegs nennt sie.
+  ok("[A-25] die vorlaeufigen Blechmaße stehen nur im Katalog, nicht im Rechenweg", (() => {
+    const dateien = ["sembla-core.js", "sembla-bom.js", "sembla-zeichnung.js"]
+      .map((f) => readFileSync(new URL("../../docs/shared/" + f, import.meta.url), "utf8"));
+    const py = readFileSync(new URL("../../tests/core/sembla_core.py", import.meta.url), "utf8");
+    return [...dateien, py].every((t) => !/110\s*[x×]\s*30/.test(t));
+  })());
+  // Vorbelegung fuer eine Wand OHNE eigene Wahl ([P-18]).
+  ok("[A-25] Vorbelegung: Wand ohne eigene Wahl fuehrt beide vorlaeufigen Produkte", (() => {
+    const leerE = { planung: { produkte: { rollen: {} } } };
+    return ["einlegeblech", "zp_mutter"].every((rid) => {
+      const ids = v[rid] || [];
+      const leer = KAT.rollenStatus(rid, leerE, std, {});
+      const st = KAT.rollenStatus(rid, { planung: { produkte: { rollen: { [rid]: ids } } } }, std, {});
+      return leer.status === "keine_auswahl" && st.status === "ok" && st.produkt.id === ids[0];
+    });
   })());
   ok("Standardkatalog fuehrt die Standardlaengen 1000 und 920 mm",
     (v.rod_std || []).map((id) => KAT.produkt(std, id).laenge_mm).sort((a, b) => b - a).join() === "1000,920");
