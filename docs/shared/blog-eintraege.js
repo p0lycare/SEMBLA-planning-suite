@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-13",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 96,
+    titel: "Das vorl\u00e4ufige Ausgleichsblech tr\u00e4gt die richtige Ma\u00dforientierung: 20 mm in Wandrichtung",
+    testbitte: "In Modul 10 das vorl\u00e4ufige Ausgleichsblech \u00f6ffnen: Blechbreite 20 mm, "
+      + "Quermaß 100 mm, Dicke 8 mm, und der Hinweis nennt die 20 mm als Maß in Wandrichtung. "
+      + "Mengen und Preise in Modul 4 bleiben gleich.",
+  },
+  {
     id: "chg-20260907-12",
     datum: "2026-09-07",
     typ: "feature",

@@ -681,15 +681,17 @@ export const ROLLEN = [
       + "gewählt und keine Zuschnitt-/Verschnittplanung gerechnet ([P-18])." },
   // #96 Bodenausgleich: Unter das Bodenblech werden kleine Ausgleichsbleche gelegt (der
   // Bodenanschluss wird mit Laser nivelliert). Das BAUTEIL ist fachlich festgelegt, seine Masse
-  // sind vorlaeufig (100 x 20 x 8 mm) und stehen ausschliesslich im Katalog. Ein Maß-Diskriminator
+  // sind vorlaeufig (20 mm in Wandrichtung x 100 mm quer x 8 mm dick — Orientierung nach der
+  // Feststellung von Tibor vom 2026-09-07) und stehen ausschliesslich im Katalog. Ein Maß-Diskriminator
   // gibt es bewusst NICHT: es existiert kein maßgebender Wandwert, weil die Einbaumenge (Zahl der
   // Ausgleichspunkte) noch nicht abgeleitet wird — ein Kontextfeld waere ein erfundener Bezug.
   { id: "ausgleichsblech", label: "Ausgleichsblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
     hinweis: "Ausgleichsbleche liegen UNTER dem Bodenblech und richten den Bodenanschluss aus "
       + "(Laser-Nivellement). Bauteil und Maße kommen allein aus dem Katalog; vorläufig gilt ein "
-      + "Blech 100 × 20 × 8 mm. Anzahl und Verteilung der Ausgleichspunkte sind noch NICHT "
-      + "festgelegt — es entsteht daraus derzeit keine Menge und keine Stücklistenposition." },
+      + "Blech mit 20 mm in Wandrichtung, 100 mm quer zur Wand und 8 mm Dicke. Anzahl und "
+      + "Verteilung der Ausgleichspunkte sind noch NICHT festgelegt — es entsteht daraus derzeit "
+      + "keine Menge und keine Stücklistenposition." },
   { id: "blech_kopf", label: "Kopfblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true },

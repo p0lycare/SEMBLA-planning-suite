@@ -207,9 +207,9 @@ ok("#96 Ausgleichsblech verlangt dieselben Pflichtmaße wie jedes andere Blech s
   const r = KAT.rolle("ausgleichsblech");
   const basis = { kategorie: "blech_platte", bezeichnung: "X", einheit: "Stk", preis: 1,
                   rollen: ["ausgleichsblech"] };
-  const ohneDicke = KAT.validiereProdukt({ id: "ausg-x", ...basis, breite_mm: 100, hoehe_mm: 20 });
-  const ohneHoehe = KAT.validiereProdukt({ id: "ausg-y", ...basis, breite_mm: 100, dicke_mm: 8 });
-  const voll = KAT.validiereProdukt({ id: "ausg-z", ...basis, breite_mm: 100, hoehe_mm: 20, dicke_mm: 8 });
+  const ohneDicke = KAT.validiereProdukt({ id: "ausg-x", ...basis, breite_mm: 20, hoehe_mm: 100 });
+  const ohneHoehe = KAT.validiereProdukt({ id: "ausg-y", ...basis, breite_mm: 20, dicke_mm: 8 });
+  const voll = KAT.validiereProdukt({ id: "ausg-z", ...basis, breite_mm: 20, hoehe_mm: 100, dicke_mm: 8 });
   return r.pflicht === undefined
     && KAT.kategorie("blech_platte").pflicht.slice().sort().join() === "breite_mm,dicke_mm,hoehe_mm"
     && ohneDicke.some((m) => /^dicke_mm ist f\u00fcr/.test(m))
@@ -226,7 +226,7 @@ ok("Rolle ausgleichsblech ohne Auswahl: benannte Luecke statt Fehler (#96)", (()
 ok("Rolle ausgleichsblech ist regulaer waehlbar und wird bepreist (#96)", (() => {
   const eing = eingabenMit({ ausgleichsblech: ["ausg-1"] });
   const kat = { produkte: [{ id: "ausg-1", kategorie: "blech_platte", bezeichnung: "Ausgleichsblech",
-                             einheit: "Stk", preis: 0.45, breite_mm: 100, hoehe_mm: 20, dicke_mm: 8 }] };
+                             einheit: "Stk", preis: 0.45, breite_mm: 20, hoehe_mm: 100, dicke_mm: 8 }] };
   const st = KAT.rollenStatus("ausgleichsblech", eing, kat, KTX);
   return st.status === "ok" && st.produkt.id === "ausg-1";
 })());
@@ -582,8 +582,10 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     return /vorläufig/.test(pr.bezeichnung) && /vorläufig — fachlich unbestätigt/.test(pr.hinweis || "")
       && pr.breite_mm == null && pr.hoehe_mm == null && pr.laenge_mm == null && pr.dicke_mm == null;
   })());
-  // #96 Die Vorlage bringt GENAU EIN vorlaeufiges Ausgleichsblech mit: 100 mm in Wandrichtung
-  // (breite_mm — die Kategoriemaske kennt kein laenge_mm), 20 mm quer (hoehe_mm), 8 mm dick.
+  // #96 Die Vorlage bringt GENAU EIN vorlaeufiges Ausgleichsblech mit: 20 mm in Wandrichtung
+  // (breite_mm — die Kategoriemaske kennt kein laenge_mm), 100 mm quer zur Wand (hoehe_mm),
+  // 8 mm dick. Die Orientierung ist die Feststellung von Tibor vom 2026-09-07; zuvor stand sie
+  // vertauscht in der Vorlage.
   ok("Standardkatalog belegt die Rolle ausgleichsblech mit genau EINEM Produkt vor (#96)", (() => {
     const ids = v.ausgleichsblech || [];
     if (ids.length !== 1) return false;
@@ -592,10 +594,28 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
       && KAT.validiereProdukt(pr).length === 0
       && !KAT.rollenOhneVorschlag(std).includes("ausgleichsblech");
   })());
-  ok("Standardkatalog: das Ausgleichsblech misst 100 \u00d7 20 \u00d7 8 mm (#96)", (() => {
+  ok("Standardkatalog: das Ausgleichsblech misst 20 mm laengs \u00d7 100 mm quer \u00d7 8 mm (#96)", (() => {
     const pr = KAT.produkt(std, (v.ausgleichsblech || [])[0]);
-    return +pr.breite_mm === 100 && +pr.hoehe_mm === 20 && +pr.dicke_mm === 8
+    return +pr.breite_mm === 20 && +pr.hoehe_mm === 100 && +pr.dicke_mm === 8
       && pr.laenge_mm == null;
+  })());
+  // Text und Maßfelder muessen dieselbe Richtung nennen: die Kategoriemaske beschriftet
+  // `hoehe_mm` als „Blechhoehe“, deshalb traegt allein der Wortlaut die Orientierung.
+  ok("Standardkatalog: Bezeichnung und Hinweis nennen die Orientierung des Blechs (#96)", (() => {
+    const pr = KAT.produkt(std, (v.ausgleichsblech || [])[0]);
+    const t = String(pr.bezeichnung) + " " + String(pr.hinweis || "");
+    return /20\u00d7100 mm/.test(pr.bezeichnung)
+      && /20 mm in Wandrichtung/.test(pr.hinweis || "")
+      && /100 mm quer/.test(pr.hinweis || "")
+      && !/100 mm in Wandrichtung/.test(t)
+      && !/20 mm quer/.test(t)
+      && KAT.validiereProdukt(pr).length === 0;
+  })());
+  // Auch die Rollenbeschreibung darf keine zweite, gedrehte Aussage fuehren.
+  ok("Rolle ausgleichsblech: der Hinweis nennt dieselbe Orientierung (#96)", (() => {
+    const h = String((KAT.rolle("ausgleichsblech") || {}).hinweis || "");
+    return /20 mm in Wandrichtung/.test(h) && /100 mm quer/.test(h)
+      && !/100 mm in Wandrichtung/.test(h) && !/20 mm quer/.test(h);
   })());
   ok("Standardkatalog: das Ausgleichsblech ist im Text ausdruecklich vorlaeufig (#96)", (() => {
     const pr = KAT.produkt(std, (v.ausgleichsblech || [])[0]);
