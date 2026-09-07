@@ -25,7 +25,7 @@ export const PLAN_VERSION = 1;
 /** @type {any} */
 export const PLAN = {
   "stand": "2026-09-07",
-  "signatur": "99bc8669",
+  "signatur": "bf4e1d28",
   "entscheidungen": [
     {
       "issue": 77,
@@ -93,6 +93,27 @@ export const PLAN = {
         }
       ],
       "empfehlung": "Warten und die zwei Zahlen nachreichen: die Rechenwege stehen bereits, es fehlt ausschließlich die Messung."
+    },
+    {
+      "issue": 108,
+      "titel": "Bauteilkatalog: eigenes Bearbeitungsmodul oder Pflege in Modul 0 verbessern",
+      "prio": "ohne",
+      "status": "decision needed",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false,
+      "frage": "Bekommt die Katalogpflege ein eigenes Modul, oder bleibt sie in Modul 0 und nur die konkreten Maengel werden behoben?",
+      "optionen": [
+        {
+          "text": "Eigenes Katalog-Modul: die komplette Katalogpflege zieht auf eine eigene Seite um, Modul 0 behaelt nur die Zuordnung.",
+          "wirkung": "Mehr Uebersicht und klare Zustaendigkeit; der Katalog ist bereits eine eigene Ressource, es zieht nur die Bedienoberflaeche um."
+        },
+        {
+          "text": "Pflege bleibt in Modul 0; ergaenzt werden freie Katalogwahl zum Bearbeiten und Feedback bei neuen Katalogvarianten.",
+          "wirkung": "Schneller spuerbare Besserung, aber Modul 0 bleibt ueberfrachtet und das Uebersichtsproblem besteht weiter."
+        }
+      ],
+      "empfehlung": "Eigenes Modul, mit dem Varianten-Feedback als erstem Paket, damit der akute Mangel nicht auf den Umzug wartet."
     }
   ],
   "naechstes": {
@@ -154,6 +175,33 @@ export const PLAN = {
     {
       "issue": 59,
       "titel": "Lageplan-Feedback",
+      "prio": "high",
+      "status": "in progress",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
+      "issue": 98,
+      "titel": "Alle Wandzeichnungen je Geschoss als PDF exportieren: Exportfehler beheben",
+      "prio": "high",
+      "status": "in progress",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
+      "issue": 106,
+      "titel": "Darstellung der Bauteile vervollstaendigen",
+      "prio": "high",
+      "status": "in progress",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
+      "issue": 107,
+      "titel": "PDF-Export auf Projektebene: Fehler beheben und in den Exportdialog integrieren",
       "prio": "high",
       "status": "in progress",
       "sicherheit": false,
