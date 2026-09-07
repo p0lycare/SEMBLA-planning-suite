@@ -166,6 +166,29 @@ ok("Rolle senkkopf heisst Sechskantschraube Fuß bei unveraenderter Kennung (#92
   const r = KAT.ROLLEN.find((x) => x.id === "senkkopf");
   return !!r && r.label === "Sechskantschraube Fuß" && !/Senkkopf/.test(r.label);
 })());
+// #92 Die Unterlegscheibe des Wandabschlusses ist eine eigene Verwendungsrolle: sie liegt beim
+// Festspannen zwischen Spannplatte und Spannmutter und wird deshalb in Modul 1 in der Gruppe des
+// Anschlusses gewaehlt und bepreist. Ein Bauteilmass gibt es bewusst NICHT (kein Diskriminator).
+ok("Rolle unterlegscheibe: Modul 1, Gruppe Anschluss, bepreist, ohne Maß (#92)", (() => {
+  const r = KAT.rolle("unterlegscheibe");
+  return !!r && r.modul === 1 && r.gruppe === "Anschluss" && r.kategorie === "verbrauch"
+    && r.einheit === "Stk" && r.bepreist === true && r.mass === null
+    && KAT.rollenVonModul(1).some((x) => x.id === "unterlegscheibe")
+    && !KAT.rollenVonModul(2).some((x) => x.id === "unterlegscheibe");
+})());
+ok("Rolle unterlegscheibe ist regulaer waehlbar und wird bepreist (#92)", (() => {
+  const eing = eingabenMit({ unterlegscheibe: ["scheibe-1"] });
+  const kat = { produkte: [{ id: "scheibe-1", kategorie: "verbrauch", bezeichnung: "Scheibe",
+                             einheit: "Stk", preis: 0.12 }] };
+  const st = KAT.rollenStatus("unterlegscheibe", eing, kat, KTX);
+  return st.status === "ok" && st.produkt.id === "scheibe-1";
+})());
+// [P-9]/must 6: Ohne Auswahl bleibt die Wand gueltig — die Luecke wird nur BENANNT.
+ok("Rolle unterlegscheibe ohne Auswahl: benannte Luecke statt Fehler (#92)", (() => {
+  const st = KAT.rollenStatus("unterlegscheibe", eingabenMit({}), R_KAT, KTX);
+  return st.status === "keine_auswahl" && st.text === KAT.STATUS_TEXT.keine_auswahl
+    && st.produkt === null && st.ids.length === 0;
+})());
 ok("Rollen: Modul 2 besitzt genau Latte/Beplankung/Verbinder",
   KAT.rollenVonModul(2).map(r => r.id).sort().join() === "beplankung,latte,verbinder");
 ok("Rollen: kein Schluessel gehoert zwei Modulen",
@@ -504,6 +527,20 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   const v = KAT.produktrollenVorschlag(std);
   ok("Standardkatalog ist gueltig und belegt JEDE waehlbare Rolle vor ([P-18])",
     KAT.rollenOhneVorschlag(std).length === 0);
+  // #92 Die Vorlage bringt ein Produkt fuer die Unterlegscheibe mit — ausdruecklich vorlaeufig
+  // und OHNE Bauteilmass (Durchmesser/Dicke sind nicht festgelegt und werden nicht erfunden).
+  ok("Standardkatalog belegt die Rolle unterlegscheibe vor (#92)", (() => {
+    const ids = v.unterlegscheibe || [];
+    if (ids.length !== 1) return false;
+    const pr = KAT.produkt(std, ids[0]);
+    return pr.id === "verbrauch-unterlegscheibe" && pr.kategorie === "verbrauch"
+      && pr.einheit === "Stk" && !KAT.rollenOhneVorschlag(std).includes("unterlegscheibe");
+  })());
+  ok("Standardkatalog: Unterlegscheibe ist als vorlaeufig gekennzeichnet und erfindet kein Maß (#92)", (() => {
+    const pr = KAT.produkt(std, "verbrauch-unterlegscheibe");
+    return /vorläufig/.test(pr.bezeichnung) && /vorläufig — fachlich unbestätigt/.test(pr.hinweis || "")
+      && pr.breite_mm == null && pr.hoehe_mm == null && pr.laenge_mm == null && pr.dicke_mm == null;
+  })());
   ok("Standardkatalog fuehrt die Standardlaengen 1000 und 920 mm",
     (v.rod_std || []).map((id) => KAT.produkt(std, id).laenge_mm).sort((a, b) => b - a).join() === "1000,920");
 

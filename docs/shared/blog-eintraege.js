@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-05",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 92,
+    titel: "Die Unterlegscheibe des Wandabschlusses ist jetzt ein eigenes Bauteil mit eigener Stücklistenzeile",
+    testbitte: "In Modul 1 unter „Produkte“ steht in der Gruppe Anschluss die Zeile "
+      + "„Unterlegscheibe Wandabschluss“. In Modul 4 derselben Wand trägt die Position dieselbe "
+      + "Stückzahl wie die Spannplatte; ohne Auswahl bleibt der Preis offen.",
+  },
+  {
     id: "chg-20260907-04",
     datum: "2026-09-07",
     typ: "fix",

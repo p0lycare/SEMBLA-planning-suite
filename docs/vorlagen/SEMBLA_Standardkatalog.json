@@ -274,6 +274,15 @@
       "rollen": ["spannmutter"]
     },
     {
+      "id": "verbrauch-unterlegscheibe",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Unterlegscheibe Wandabschluss (vorl\u00e4ufig)",
+      "einheit": "Stk",
+      "preis": 0.12,
+      "rollen": ["unterlegscheibe"],
+      "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Sie liegt zwischen Spannplatte und Spannmutter (#92). Ein Bauteilma\u00df (Durchmesser, Dicke) ist bewusst NICHT hinterlegt \u2014 es ist noch nicht festgelegt und wird hier nicht angenommen. Der Preis ist ein frei angenommener Beispielwert."
+    },
+    {
       "id": "verbrauch-dichtstreifen-200",
       "kategorie": "verbrauch",
       "bezeichnung": "Dichtstreifen 20 cm (Schallschutz)",

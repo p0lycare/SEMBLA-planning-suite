@@ -659,6 +659,12 @@ export const ROLLEN = [
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
+  { id: "unterlegscheibe", label: "Unterlegscheibe Wandabschluss", kategorie: "verbrauch",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Sie liegt beim Festspannen ZWISCHEN Spannplatte und Spannmutter (#92). Gezählt "
+      + "wird deshalb je Spannplatte — nicht je Spannmutter: eine Mutter, die unmittelbar auf "
+      + "dem Kopfblech sitzt, hat diese Einbaustelle nicht. Ein Bauteilmaß ist bewusst nicht "
+      + "hinterlegt (kein Maß-Diskriminator); es wird keines erfunden." },
   { id: "blech_boden", label: "Bodenblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true, kombinierbar: true,

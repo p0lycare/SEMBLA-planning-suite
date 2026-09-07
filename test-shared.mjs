@@ -29,11 +29,21 @@ for(const [name,l,h,ops] of cases){
   // Positionsliste: 10 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
   // Sonderzuschnitt-Fertigmaß eine eigene Position ([Z-2]/[Z-4]). Kopplungsmuttern sind
   // bauteilgleich und stehen als EINE Position ([P-18]).
-  // 9 feste Positionen (Bodenblech steht nicht mehr darunter) + je Gewindestangengruppe eine
-  // + je Bodenblech-Teilgruppe eine ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß).
-  t(name+" · Positionen = 9 + Stangen- und Bodenblechgruppen",
-    semblaBomItems(w).length === 9 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
+  // 10 feste Positionen (Bodenblech steht nicht mehr darunter; die Unterlegscheibe aus #92 ist
+  // die zehnte) + je Gewindestangengruppe eine + je Bodenblech-Teilgruppe eine ([A-10]: je
+  // Standardlänge bzw. je Sonder-Fertigmaß).
+  t(name+" · Positionen = 10 + Stangen- und Bodenblechgruppen",
+    semblaBomItems(w).length === 10 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
       + b.blech_boden_teile.length);
+  // #92 Unterlegscheibe: eine eigene Position, Menge = Spannplatten (die Einbaustelle zwischen
+  // Platte und Mutter). NICHT die Spannmutternzahl — die zaehlt auch Muttern auf dem Kopfblech.
+  t(name+" · Unterlegscheibe = Spannplatten (#92)", (()=>{
+    const u=semblaBomItems(w).filter(it=>it.key==='unterlegscheibe');
+    return u.length===1 && u[0].unit==='Stk' && u[0].menge===w.bom.spannplatten
+      && !u[0].nachrichtlich && !u[0].mass_mm; })());
+  t(name+" · Unterlegscheibe steht direkt hinter der Spannplatte", (()=>{
+    const ks=semblaBomItems(w).map(it=>it.key);
+    return ks[ks.indexOf('spannplatte')+1]==='unterlegscheibe'; })());
   // [P-18] Kopplungsmutter: eine Position, Menge = Stangenstöße + Fußkopplungen.
   t(name+" · Kopplungsmutter als EINE Position mit Gesamtmenge", (()=>{
     const its=semblaBomItems(w), k=its.filter(it=>it.key==='kupplung');

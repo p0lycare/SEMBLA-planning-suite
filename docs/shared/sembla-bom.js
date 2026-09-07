@@ -274,7 +274,7 @@ function _abgedichtet(w) { return !!w && w.abdichtung === "abgedichtet"; }
  * Issue #71) — und zwar GENAU HIER, weil dies die einzige Erzeugungsstelle ist. Modul 4,
  * Modul 5, Modul 7, die Gesamtstückliste und der zentrale Export lesen alle diese Liste
  * und brauchen deshalb keine eigene Filterung (die waere ein zweiter, driftfaehiger Ort).
- * `semblaBom()` bleibt unberuehrt: `stossfugen` und `dichtstreifen_mm` sind Mengen des
+ * `semblaBom()` bleibt unberührt: `stossfugen` und `dichtstreifen_mm` sind Mengen des
  * Rechenkerns und bleiben unabhaengig von der Abdichtung lesbar.
  * @param {any} w Wandelement
  */
@@ -323,6 +323,14 @@ export function semblaBomItems(w) {
     { key: "senkkopf",    label: "Sechskantschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
     { key: "spannmutter", label: "Spannmutter",                       unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
+    // #92 Unterlegscheibe: Sie liegt beim Festspannen ZWISCHEN Spannplatte und Spannmutter, es
+    // gibt also genau EINE je Spannplatte. Maßgebend ist deshalb `spannplatten` und NICHT
+    // `spannmuttern` — Letztere zählt zusätzlich die Muttern, die unmittelbar auf dem
+    // Kopfblech sitzen; dort gibt es keine Platte und damit auch keine Scheibe. Eine Altwand
+    // mit ausdrücklichem `top_connection: "blech"` trägt hier folglich die Menge 0; das ist
+    // der ehrliche Stand und kein Fehler (neue Wände haben den Default "spannplatte"). Der
+    // Rechenkern bleibt unberührt — die Zahl wird nur durchgereicht, nicht nachgerechnet.
+    { key: "unterlegscheibe", label: "Unterlegscheibe (Wandabschluss)", unit: "Stk", menge: b.spannplatten },
     // [A-10]/[A-12] Bodenblech: je verwendeter Standardlänge und je Sonder-Fertigmaß eine
     // eigene Position — keine Modulzählung mehr. `mass_mm` ist das RASTERMASS (der
     // Preis-Diskriminator gegen das Katalogprodukt nach [P-14]), `fertigmass_mm` das reale

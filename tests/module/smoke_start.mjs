@@ -1092,7 +1092,7 @@ ok('jede Katalogkategorie ist belegt',
   KAT.KATEGORIEN.every(k => katRoh.produkte.some(p => p.kategorie === k.id)));
 ok('Katalogname weist die vorlaeufigen Werte aus', /vorläufig — fachlich unbestätigt/.test(katRoh.name));
 ok('jedes vorlaeufige Produkt ist einzeln gekennzeichnet',
-  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 10
+  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 11
   && katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung))
        .every(p => (p.hinweis || '').startsWith('vorläufig — fachlich unbestätigt')));
 ok('Wandvorlage traegt Projektformat v2 (kein Formatbump)',

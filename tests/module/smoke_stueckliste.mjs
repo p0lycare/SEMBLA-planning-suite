@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, wirksameMengen, zuschnittCsv } from "../../docs/shared/sembla-export.js";
-import { einbauteile } from "../../docs/shared/sembla-bom.js";
+import { einbauteile, semblaBomItems as SEMBLA_BOM_ITEMS } from "../../docs/shared/sembla-bom.js";
 import { umfang, gesamtDaten, standText } from "../../docs/shared/sembla-gesamtstueckliste.js";
 import { leereMappe, fuegeGeschossHinzu, setzeWand } from "../../docs/shared/sembla-projektmappe.js";
 import { blattHtml } from "../../docs/shared/sembla-zeichnung.js";
@@ -62,6 +62,8 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
   { id:'kuppl-fuss', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter Fuß', einheit:'Stk', preis:0.66 },
   { id:'senkkopf', kategorie:'verbrauch', bezeichnung:'Sechskantschraube', einheit:'Stk', preis:0.45 },
   { id:'spannmutter', kategorie:'verbrauch', bezeichnung:'Spannmutter', einheit:'Stk', preis:0.9 },
+  // #92 Unterlegscheibe des Wandabschlusses: ohne Bauteilmass (keines festgelegt, keines erfunden).
+  { id:'scheibe', kategorie:'verbrauch', bezeichnung:'Unterlegscheibe (vorläufig)', einheit:'Stk', preis:0.12 },
   { id:'dicht-stk', kategorie:'verbrauch', bezeichnung:'Dichtstreifen 20 cm', einheit:'Stk', preis:0.3 },
   { id:'dicht-rolle', kategorie:'verbrauch', bezeichnung:'Dichtstreifen Rollenware', einheit:'m', preis:1.5 },
   // [A-10]: Das Bodenblech wird aus REALEN Standardlaengen kombiniert — der Testkatalog
@@ -78,7 +80,8 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
 // [P-18] rod_sonder wird nicht mehr gewaehlt (Beschaffung), Kopplungsmuttern sind bauteilgleich.
 const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'],
   kupplung:['kuppl-stoss'], senkkopf:['senkkopf'], spannmutter:['spannmutter'],
-  spannplatte:['spannplatte'], blech_boden:['blech-boden-1250','blech-boden-750'],
+  spannplatte:['spannplatte'], unterlegscheibe:['scheibe'],
+  blech_boden:['blech-boden-1250','blech-boden-750'],
   blech_kopf:['blech-kopf'], dicht_stk:['dicht-stk'] };
 function egVoll(){
   const e=standardEingaben();
@@ -238,6 +241,10 @@ ok('#70 Modul 4 liest den Namen aus dem aktiven Wandeintrag',
 }
 
 const rs=SL.rows();
+// #92/must_not 2: Referenzstand aller Positionen AUSSER der neuen Unterlegscheibe. Er wird
+// unabhaengig von `rs` aus der Kernbaugruppe gebildet, damit der Vergleich nicht tautologisch ist.
+const kennung92=it=>it.key+'@'+(it.fertigmass_mm==null?'-':it.fertigmass_mm)+'='+it.menge;
+const VOR_92=SEMBLA_BOM_ITEMS(W).filter(it=>it.key!=='unterlegscheibe').map(kennung92).join('|');
 const find=l=>rs.find(r=>r.label.includes(l));
 const byKey=k=>rs.find(r=>r.key===k);
 ok('i3-Menge = bom.i3', find('i3').menge===W.bom.i3);
@@ -259,6 +266,23 @@ ok('[P-18] Kopplungsmuttern sind EINE Position mit der Gesamtmenge',
   && byKey('kupplung').menge===W.bom.verbindungsmuttern+W.bom.kopplungsmuttern_basis
   && byKey('kupplung').ep===0.65);
 ok('Spannplatten = bom', byKey('spannplatte').menge===W.bom.spannplatten);
+// #92 Die Unterlegscheibe liegt zwischen Spannplatte und Spannmutter — also EINE je Spannplatte.
+// Geprueft wird am realen Modulpfad (SL.rows() -> stuecklistePositionen -> semblaBomItems).
+ok('#92 Unterlegscheibe: eigene Position, Menge = bom.spannplatten', (()=>{
+  const u=rs.filter(r=>r.key==='unterlegscheibe');
+  return u.length===1 && u[0].menge===W.bom.spannplatten && u[0].unit==='Stk'
+    && u[0].label==='Unterlegscheibe (Wandabschluss)'; })());
+ok('#92 Unterlegscheibe folgt NICHT der Spannmutternzahl (Kopfblechmutter hat keine Scheibe)',
+  W.bom.spannmuttern!==W.bom.spannplatten
+  && byKey('unterlegscheibe').menge!==byKey('spannmutter').menge);
+ok('#92 Unterlegscheibe wird bepreist und steht direkt hinter der Spannplatte', (()=>{
+  const u=byKey('unterlegscheibe'), ks=rs.map(r=>r.key);
+  return u.ep===0.12 && u.bepreisbar===true && u.status==='ok'
+    && ks[ks.indexOf('spannplatte')+1]==='unterlegscheibe'; })());
+// must_not 2: die neue Position ist rein ADDITIV — jede uebrige Menge bleibt wertgleich.
+ok('#92 Mengen der uebrigen Positionen unveraendert (rein additiv)', (()=>{
+  const ohne=rs.filter(r=>r.key!=='unterlegscheibe').map(kennung92).join('|');
+  return ohne===VOR_92 && VOR_92.length>0; })());
 // #92 Die Fussschraube heisst SECHSKANTSCHRAUBE — die Positionskennung `senkkopf` und die
 // Menge aus dem Rechenkern bleiben dabei unveraendert (keine Migration, kein Formatbump).
 ok('Fussschraube: Bezeichnung Sechskantschraube bei unveraenderter Kennung (#92)',
@@ -306,14 +330,15 @@ ok('[Z-4] keine Beplankungs-/Platten-Position', !byKey('beplankung') && !rs.find
 ok('KEINE Dämmung-Position (MVP)', !rs.find(r=>r.label.includes('Dämmung')));
 // Die Gewindestangen-KOPPLUNG ist kein Modul-2-Verbinder und bleibt ausdruecklich enthalten.
 ok('[P-19] Gewindestangen-Kopplung bleibt enthalten', !!byKey('kupplung') && byKey('kupplung').menge>0);
-// [Z-4]: 10 feste Wandpositionen + je Gewindestangen-Standardlänge, je Sonderzuschnitt-
-// Fertigmaß und je Reststück-Fertigmaß eine Position. Nichts aus dem Wandaufbau.
+// [Z-4]: 11 feste Wandpositionen (seit #92 mit der Unterlegscheibe) + je Gewindestangen-
+// Standardlänge, je Sonderzuschnitt-Fertigmaß und je Reststück-Fertigmaß eine Position.
+// Nichts aus dem Wandaufbau.
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
 const nRest=rs.filter(r=>r.key==='rod_rest').length;
 // [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
 const nBoden=rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder').length;
-ok('Positionen = 9 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
-  rs.length===9+nRod+nSonder+nRest+nBoden && rs.length>=12);
+ok('Positionen = 10 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
+  rs.length===10+nRod+nSonder+nRest+nBoden && rs.length>=12);
 ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
   rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
@@ -406,6 +431,26 @@ const keineWarnliste = () => !document.getElementById('tbody').innerHTML.include
   ok('Mengen bleiben unverändert', SL.rows().map(x=>x.key+':'+x.menge).join('|')===mengenVoll);
   ok('#58 Positionsschlüssel bleiben unverändert',
     SL.rows().map(x=>x.key).join('|')===rs.map(x=>x.key).join('|'));
+}
+// (a2) #92/must 6: Ein ALTPROJEKT kennt die Rolle `unterlegscheibe` gar nicht — der Schluessel
+// fehlt im gespeicherten Produktblock. Die Wand muss trotzdem gueltig bleiben: die Position wird
+// mit ihrer Menge gefuehrt, der Preis bleibt offen und die Luecke wird BENANNT (nie geraten,
+// nie stillschweigend uebergangen, nie ein Nullpreis).
+{
+  const rAlt=mitRollen({unterlegscheibe:null});          // Rolle ENTFERNT, wie im Altbestand
+  const u=rAlt.find(x=>x.key==='unterlegscheibe');
+  ok('#92 Altprojekt ohne Unterlegscheibe: Wand bleibt gueltig, Position bleibt vorhanden',
+    !!u && u.menge===W.bom.spannplatten && u.bepreisbar===true);
+  ok('#92 Altprojekt: Luecke wird benannt (keine_auswahl, kein Preis, kein Nullpreis)',
+    u.status==='keine_auswahl' && u.statusText==='kein Produkt gewählt'
+    && u.ep===null && u.gp===null && u.produktId===null);
+  ok('#92 Altprojekt: Luecke steht sichtbar an der Zeile und in der n-von-m-Summe', (()=>{
+    const z=zeileMit('Unterlegscheibe (Wandabschluss)'), sm=SL.summe();
+    return naBeide(z) && /<div class="grund">kein Produkt gewählt<\/div>/.test(z)
+      && sm.vollstaendig===false && sm.bepreist===sm.bepreisbar-1
+      && new RegExp(sm.bepreist+' von '+sm.bepreisbar+' Positionen bepreist').test(sumZeile()); })());
+  ok('#92 Altprojekt: alle uebrigen Mengen unveraendert',
+    rAlt.map(x=>x.key+':'+x.menge).join('|')===mengenVoll);
 }
 // (b) fehlende Referenz (Produkt existiert nicht im Katalog)
 { const r=mitRollen({i3:['gibts-nicht']}).find(x=>x.key==='i3');
