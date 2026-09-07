@@ -523,6 +523,108 @@ document.getElementById('modus').value='auto'; WP.run();
 document.getElementById('hgt').value='2.60'; WP.run();
 
 // ---------------------------------------------------------------------------------------------
+// Issue #96 / [A-24]: Ausgleichspunkt-Editor in Modul 1.
+// Gefahren wird der ECHTE Pfad OHNE MAUS ueber die WP-API: Editor an, Punkt hinzufuegen,
+// verschieben, loeschen, „Zurueck zu Auto" — und nach jedem Schritt wird nicht das Formular,
+// sondern das GESPEICHERTE Wandelement geprueft (`store.aktivesWandelement()`). Genau das ist
+// der Speicher-Lade-Umlauf: run() -> vorgaben() -> Engine -> Core -> persistAktiv -> Speicher.
+// ---------------------------------------------------------------------------------------------
+setzeLaenge(2000); document.getElementById('hgt').value='2.60';
+document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEdit(false); WP.run();
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const ps=()=>store.aktivesWandelement().prestress;
+  const xs=()=>WP.ausgleichspunkte.map(p=>p.x_mm);
+  // Ausgangslage: verteilt nach [A-20]…[A-23], nichts davon gespeichert.
+  const auto=xs();
+  ok('[#96] Auto: die Verteilung liefert Punkte (2,0 m -> ceil(3*2) = 6)',
+    auto.length===6 && auto[0]===0 && auto[auto.length-1]===2000);
+  ok('[#96] Auto wird NICHT gespeichert (kein Feld im Wandelement)',
+    !('ausgleich_override_mm' in ps()) && WP.manualAg===null
+    && WP.ausgleichspunkte.every(p=>p.art!=='manuell'));
+  ok('[#96] Auto: keine Griffe in der Wandansicht (Darstellung bleibt #97)',
+    !/class="agp"/.test(svg()) && !/class="agneu"/.test(svg()));
+  // Werkzeug an: Griffe erscheinen, aus dem Auto-Stand wird ein bearbeitbarer Override.
+  WP.setAgEdit(true);
+  ok('[#96] Werkzeug an + Griffe am Wandfuss gezeichnet',
+    WP.agEdit===true && /class="agp"/.test(svg()) && /class="agneu"/.test(svg())
+    && (svg().match(/class="agp"/g)||[]).length===auto.length);
+  ok('[#96] Einschalten allein schreibt noch nichts', !('ausgleich_override_mm' in ps()));
+  // Exklusivitaet in BEIDE Richtungen — gegen Durchbruch-, Achsen- und Zwischenspannpunkt-Modus.
+  WP.setEdit(true); WP.setAgEdit(true);
+  ok('[#96] Ausgleichs-Editor schaltet den Durchbruch-Modus ab', WP.agEdit===true);
+  WP.setAxisEdit(true);
+  ok('[#96] Achsen-Editor schaltet den Ausgleichs-Editor ab', WP.axisEdit===true && WP.agEdit===false);
+  WP.setAgEdit(true);
+  ok('[#96] und umgekehrt', WP.agEdit===true && WP.axisEdit===false);
+  WP.setZpEdit(true);
+  ok('[#96] Zwischenspannpunkt-Editor schaltet den Ausgleichs-Editor ab',
+    WP.zpEdit===true && WP.agEdit===false);
+  WP.setAgEdit(true);
+  ok('[#96] Ausgleichs-Editor schaltet den Zwischenspannpunkt-Editor ab',
+    WP.agEdit===true && WP.zpEdit===false && WP.axisEdit===false);
+  // Hinzufuegen: aus dem Auto-Stand wird ein Override, der ans Wandelement geht.
+  WP.addAgAt(777); WP.run();
+  const soll=[...auto,777].sort((a,b)=>a-b);
+  ok('[#96] Punkt hinzufuegen (777 mm) landet im gespeicherten Override',
+    JSON.stringify(ps().ausgleich_override_mm)===JSON.stringify(soll));
+  ok('[#96] der Override ist die alleinige Quelle — genau diese Punkte, nichts aufgefuellt',
+    JSON.stringify(xs())===JSON.stringify(soll)
+    && WP.ausgleichspunkte.every(p=>p.art==='manuell'));
+  // Verschieben: 777 -> 900 (ueber die Auswahl, wie der Zug es tut)
+  WP.selAg(777); WP.setManualAg(soll.map(x=>x===777?900:x));
+  const soll2=[...auto,900].sort((a,b)=>a-b);
+  ok('[#96] Punkt verschieben (777 -> 900)',
+    JSON.stringify(ps().ausgleich_override_mm)===JSON.stringify(soll2)
+    && JSON.stringify(xs())===JSON.stringify(soll2));
+  // Loeschen ueber die Auswahl (wie im Bedienweg „Punkt loeschen")
+  WP.selAg(900); WP.delAg(900); WP.run();
+  ok('[#96] Punkt loeschen laesst genau die anderen stehen',
+    JSON.stringify(ps().ausgleich_override_mm)===JSON.stringify(auto));
+  // Ein Wandende darf weg — es wird KEIN Pflichtpunkt nachgeschoben ([A-24] sperrt [A-21]).
+  WP.selAg(0); WP.delAg(0); WP.run();
+  ok('[#96] geloeschtes Wandende wird nicht nachgeschoben',
+    !xs().includes(0) && xs().length===auto.length-1
+    && JSON.stringify(xs())===JSON.stringify(ps().ausgleich_override_mm));
+  // [A-24] Ausdrueckliche LEERE Auswahl ist „keine Punkte" und faellt NICHT auf Auto zurueck.
+  WP.setManualAg([]);
+  ok('[#96] leere Auswahl: keine Punkte, kein Rueckfall auf die Verteilung',
+    xs().length===0 && JSON.stringify(ps().ausgleich_override_mm)==='[]'
+    && !/class="agp"/.test(svg()));
+  // Ungueltige Werte werden benannt und NICHT auf eine erreichbare Lage gerundet.
+  WP.setManualAg([500,2001,-5]);
+  ok('[#96] ungueltige Werte benannt statt gerundet',
+    JSON.stringify(xs())==='[500]'
+    && (WP.RESULT.wandelement.validation.ausgleich_fehler||[]).length===2
+    && /Ausgleichspunkte \[A-24\]/.test(document.getElementById('warns').textContent));
+  // Speicher-Lade-Umlauf: das gespeicherte Element zurueck ins Formular -> dieselbe Liste.
+  WP.setManualAg([250,1250,1900]);
+  const gespeichert=JSON.parse(JSON.stringify(store.aktivesWandelement()));
+  ok('[#96] Umlauf: der Override steht so im gespeicherten Element',
+    JSON.stringify(gespeichert.prestress.ausgleich_override_mm)==='[250,1250,1900]');
+  WP.applyWand(gespeichert); WP.run();
+  ok('[#96] Umlauf: Laden liefert dieselbe Override-Liste zurueck',
+    JSON.stringify(WP.manualAg)==='[250,1250,1900]'
+    && JSON.stringify(xs())==='[250,1250,1900]'
+    && JSON.stringify(store.aktivesWandelement().prestress.ausgleich_override_mm)==='[250,1250,1900]');
+  // Zurueck zu Auto: Override verschwindet vollstaendig, die Verteilung ist wieder da.
+  WP.agAuto();
+  ok('[#96] Zurueck zu Auto: Override entfernt, nichts Verteiltes gespeichert',
+    WP.manualAg===null && !('ausgleich_override_mm' in ps())
+    && JSON.stringify(xs())===JSON.stringify(auto)
+    && WP.ausgleichspunkte.every(p=>p.art!=='manuell'));
+  WP.setAgEdit(false);
+  ok('[#96] Werkzeug aus: die Griffe verschwinden wieder',
+    !/class="agp"/.test(svg()) && !/class="agneu"/.test(svg()));
+  // Blosses LADEN darf keinen Punkt schreiben ([P-1]): ein Element ohne Override bleibt ohne.
+  const vorherAg=JSON.stringify(ps());
+  WP.applyWand(store.aktivesWandelement());
+  ok('[#96] blosses Laden schreibt keinen Ausgleichspunkt ins Element',
+    JSON.stringify(ps())===vorherAg && !('ausgleich_override_mm' in ps()) && WP.manualAg===null);
+}
+setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
+
+// ---------------------------------------------------------------------------------------------
 // Issue #106 (Bedienteil): Achsen treffen dort, wo geklickt wird, und werden verschoben statt
 // verdoppelt. Gefahren wird der ECHTE Pfad: Musterwand ueber buildWall -> run() -> das erzeugte
 // SVG; aus ihm werden die BILDPUNKTE der gezeichneten Achsen entnommen und ueber die

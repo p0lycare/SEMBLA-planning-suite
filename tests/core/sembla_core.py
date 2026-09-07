@@ -28,6 +28,7 @@ __all__ = [
     "lagen_oberkanten_innen", "auto_zwischenpunkt", "norm_zwischenpunkte",
     "zwischenpunkte_segment", "wirksame_zwischenpunkte",
     "AUSGLEICH_DICHTE_JE_M", "AUSGLEICH_ACHSVERSATZ", "verteile_ausgleichspunkte",
+    "norm_ausgleichspunkte",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -480,6 +481,30 @@ def verteile_ausgleichspunkte(length_mm, stoss_x_mm=(), achsen_x_mm=(),
     return out
 
 
+def norm_ausgleichspunkte(arr, length_mm):
+    """Manuell gesetzte Ausgleichspunkte normalisieren und validieren ([A-24]).
+
+    Bit-genaues Gegenstueck zu normAusgleichspunkte() in docs/shared/sembla-core.js.
+
+    Zulaessig ist jede GANZE Millimeterlage innerhalb der Wand einschliesslich beider
+    Wandenden — anders als bei [A-17] sind 0 und length_mm also gueltig, denn die Wandenden
+    sind regulaere Ausgleichspunkte ([A-21]). Ein unzulaessiger Wert wird NICHT gerundet,
+    sondern benannt und nicht angewandt ([P-9]); DOPPELTE Werte sind kein Befund, sondern
+    werden deterministisch zusammengefasst. `None` heisst „kein Override"; eine ausdruecklich
+    leere Liste heisst „keine Ausgleichspunkte" und faellt nicht auf die Verteilung zurueck.
+    """
+    if not isinstance(arr, (list, tuple)):
+        return None, []
+    out, fehler = [], []
+    for raw in arr:
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            fehler.append({"grund": "nicht_ganzzahlig", "wert": raw}); continue
+        if raw < 0 or raw > length_mm:
+            fehler.append({"grund": "ausserhalb_wand", "wert": raw}); continue
+        out.append(raw)
+    return sorted(set(out)), fehler
+
+
 # ---- Tiling-Hilfen ----
 # ---- Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]) ----
 # Bit-genaues Gegenstueck zu zerlegeBodenblech() in docs/shared/sembla-core.js.
@@ -780,6 +805,12 @@ def _norm_prestress(p):
     _zp = p.get("zwischenpunkte_mm")
     if isinstance(_zp, (list, tuple)):
         out["zwischenpunkte_mm"] = list(_zp)
+    # Manuell gesetzte Ausgleichspunkte ([A-24]) sind aus genau demselben Grund ein Override:
+    # der Schluessel entsteht nur, wenn er ausdruecklich gesetzt ist. Fehlt er, gilt die
+    # Verteilung nach [A-20]…[A-23], und im Wandelement entsteht auch kein Feld dafuer.
+    _ag = p.get("ausgleich_override_mm")
+    if isinstance(_ag, (list, tuple)):
+        out["ausgleich_override_mm"] = list(_ag)
     return out
 
 def _norm_steps(steps, length_mm, height_mm):
@@ -1219,9 +1250,16 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # geschrieben wird in keine davon zurueck. Aus den Punkten wird hier NICHTS abgeleitet:
     # keine Menge, keine Stuecklistenposition, kein statischer Nachweis der Auflagerpunkte
     # (ausdruecklich Folgearbeit, siehe [A-18]).
+    # [A-24] Ein ausdruecklich gesetzter Override SPERRT die Verteilung vollstaendig: es gelten
+    # genau die gesetzten Punkte — nicht aufgefuellt ([A-22]) und ohne nachgeschobenen
+    # Pflichtpunkt ([A-21]). Ohne Override laeuft unveraendert [A-20]…[A-23].
+    _AG, _AG_fehler = norm_ausgleichspunkte(_PS.get("ausgleich_override_mm"), length_mm)
+    if _AG is not None:
+        _PS["ausgleich_override_mm"] = _AG
     boden_stoesse = [t["x0_mm"] + t["raster_mm"] for t in boden_teile[:-1]]
-    ausgleichspunkte = verteile_ausgleichspunkte(length_mm, boden_stoesse,
-                                                 [c["x_mm"] for c in columns])
+    ausgleichspunkte = ([{"x_mm": x, "art": "manuell"} for x in _AG] if _AG is not None
+                        else verteile_ausgleichspunkte(length_mm, boden_stoesse,
+                                                       [c["x_mm"] for c in columns]))
 
     bom = {"i2": 0, "i3": 0}
     for c in courses:
@@ -1275,6 +1313,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        # [A-17] Abgewiesene manuelle Zwischenspannpunkte — benannt, nicht
                        # angewandt, nie gerundet. Der Schluessel entsteht NUR im Fehlerfall.
                        **({"zwischenpunkt_fehler": _ZP_fehler} if _ZP_fehler else {}),
+                       # [A-24] Abgewiesene manuelle Ausgleichspunkte — benannt, nie gerundet;
+                       # der Schluessel entsteht auch hier nur im Fehlerfall.
+                       **({"ausgleich_fehler": _AG_fehler} if _AG_fehler else {}),
                        # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
                        "interlock_invalid_segments": interlock_invalid_segments},
         "courses": courses,

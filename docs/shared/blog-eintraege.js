@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-15",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 96,
+    titel: "Ausgleichspunkte lassen sich in Modul 1 setzen, verschieben und l\u00f6schen \u2014 mit Zur\u00fcck zu Auto",
+    testbitte: "In Modul 1 „Ausgleichspunkte bearbeiten“ einschalten, einen Punkt setzen, einen "
+      + "ziehen, einen l\u00f6schen und die Wand neu laden: genau diese Punkte stehen wieder da. "
+      + "„Zur\u00fcck zu Auto“ liefert die gerechnete Verteilung.",
+  },
+  {
     id: "chg-20260907-14",
     datum: "2026-09-07",
     typ: "feature",

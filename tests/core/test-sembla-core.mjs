@@ -11,7 +11,7 @@ import {
   zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
-  AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M,
+  AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M, verteileAusgleichspunkte, normAusgleichspunkte,
 } from "../../docs/shared/sembla-core.js";
 // Der Auslegungsadapter gehoert zum Paritaetsvertrag: `psOf()` ist eine WHITELIST, und ein
 // dort fehlendes Feld faellt in jeder Iteration still weg. Deshalb wird der ECHTE Adapter
@@ -1044,6 +1044,112 @@ t("[A-23] keine Auffuellung liegt naeher als 20 mm an einer Spannachse (Core == 
     if (p.art !== "auffuellung")
       assert(Number.isInteger(p.x_mm) && p.x_mm % GRID === 0,
         "Pflichtpunkt verschoben: " + p.x_mm);
+});
+
+// ---------------------------------------------------------------------------
+// AUSGLEICHSPUNKT-OVERRIDE [A-24] (Issue #96)
+// ---------------------------------------------------------------------------
+// Gefahren wird derselbe `orakelRand()`-Weg wie oben — das ECHTE Python-Orakel als
+// Unterprozess. Die Harness reicht `prestress` als Objekt durch, der Override reist also
+// ueber genau den Weg mit, den auch die Engine und Modul 1 benutzen.
+console.log("\nAUSGLEICHSPUNKT-OVERRIDE [A-24] (Paritaetsvertrag mit dem Python-Orakel):");
+
+t("[A-24] ohne Override ist die Verteilung unveraendert (mehrere Laengen, Core == Orakel)", () => {
+  // Akzeptanztest 1. Zusaetzlich zur Bitgleichheit gegen das Orakel wird hier ausdruecklich
+  // geprueft, dass durch die neue Verzweigung KEIN Feld entsteht, das es vorher nicht gab —
+  // weder im Vorspannblock noch in der Validierung. Genau das haelt die goldenen Fixtures grün.
+  for (const n of [2, 5, 8, 13, 26, 40]) {
+    const arg = { name: "agov" + n, length_mm: n * GRID, height_mm: 2600, openings: [],
+      prestress: { max_span_grid: 3 } };
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+    deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+    // Ohne Override ist die Verteilung wortwoertlich die reine Funktion aus [A-20]…[A-23].
+    const stoesse = js.base_plate.teile.slice(0, -1).map((tl) => tl.x0_mm + tl.raster_mm);
+    deepEqual(js.ausgleichspunkte,
+      verteileAusgleichspunkte(n * GRID, stoesse, js.tension_columns.map((c) => c.x_mm)));
+    assert(!("ausgleich_override_mm" in js.prestress), "Feld ohne Override entstanden");
+    assert(!("ausgleich_fehler" in js.validation), "Fehlerfeld ohne Override entstanden");
+    assert(js.ausgleichspunkte.every((p) => p.art !== "manuell"), "art manuell ohne Override");
+  }
+});
+
+t("[A-24] mit Override gilt genau die Liste — keine Auffuellung, kein Pflichtpunkt (Core == Orakel)", () => {
+  // Akzeptanztest 2. Die Wand ist 3,25 m lang: die Verteilung ergaebe zehn Punkte mit beiden
+  // Wandenden und zwei Blechstossmitten. Der Override setzt DREI Punkte, von denen KEINER ein
+  // Wandende und keiner eine Stossmitte ist — waere irgendetwas nachgeschoben, faellt es auf.
+  const arg = { name: "agovA", length_mm: 3250, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, ausgleich_override_mm: [300, 1700, 2900] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+  deepEqual(js.ausgleichspunkte, [{ x_mm: 300, art: "manuell" }, { x_mm: 1700, art: "manuell" },
+    { x_mm: 2900, art: "manuell" }]);
+  // Die Verteilung ist vollstaendig gesperrt: nichts aufgefuellt, kein Wandende, kein Blechstoss.
+  const auto = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, { max_span_grid: 3 });
+  assert(auto.ausgleichspunkte.length === 10, "Testvoraussetzung Auto-Punktzahl");
+  assert(!js.ausgleichspunkte.some((p) => p.x_mm === 0 || p.x_mm === 3250), "Wandende ergaenzt");
+  assert(!("ausgleich_fehler" in js.validation), "unerwarteter Fehlereintrag");
+  // Zurueckgegeben wird die VALIDIERTE Liste am Wandelement (Must 1) — hier unveraendert.
+  deepEqual(js.prestress.ausgleich_override_mm, [300, 1700, 2900]);
+  // Die Stuecklistenmenge folgt der Punktzahl ([A-18]) — hier also drei statt zehn.
+  assert(js.ausgleichspunkte.length === 3, "Punktzahl mit Override");
+});
+
+t("[A-24] Wandenden sind zulaessig, Doppelte werden zusammengefasst (Core == Orakel)", () => {
+  const arg = { name: "agovB", length_mm: 2000, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, ausgleich_override_mm: [2000, 500, 500, 0] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+  // Sortiert, dedupliziert — und 0/L sind gueltig, anders als bei [A-17].
+  deepEqual(js.ausgleichspunkte.map((p) => p.x_mm), [0, 500, 2000]);
+  assert(!("ausgleich_fehler" in js.validation), "Doppelte sind kein Befund");
+  deepEqual(js.prestress.ausgleich_override_mm, [0, 500, 2000]);
+});
+
+t("[A-24] unzulaessige Werte werden benannt und nie gerundet (Core == Orakel)", () => {
+  const arg = { name: "agovC", length_mm: 2000, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, ausgleich_override_mm: [400, -1, 2001, 1200] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+  deepEqual(js.ausgleichspunkte.map((p) => p.x_mm), [400, 1200]);
+  deepEqual(js.validation.ausgleich_fehler,
+    [{ grund: "ausserhalb_wand", wert: -1 }, { grund: "ausserhalb_wand", wert: 2001 }]);
+  // Nichts wurde auf 0 bzw. 2000 gebogen — die abgewiesenen Werte tauchen NIRGENDS auf.
+  assert(!js.ausgleichspunkte.some((p) => p.x_mm === 0 || p.x_mm === 2000), "gerundet statt gemeldet");
+  // Nicht ganzzahlig ist ebenfalls ein Befund, kein Rundungsfall (nur JS-seitig: das Orakel
+  // bekaeme aus JSON dafuer einen Gleitkommawert und meldet ihn gleichlautend).
+  const j2 = normAusgleichspunkte([7.5, 800], 2000);
+  deepEqual(j2.punkte, [800]);
+  deepEqual(j2.fehler, [{ grund: "nicht_ganzzahlig", wert: 7.5 }]);
+});
+
+t("[A-24] der Override reist durch psOf() (Auto- und Nachweis-Modus)", () => {
+  // Dieselbe Begruendung wie bei #92: `psOf()` ist eine WHITELIST. Fiele der Override in der
+  // Iteration weg, rechnete der Core mit seiner Verteilung weiter und die in Modul 1 gesetzten
+  // Punkte waeren unwirksam — samt der daraus folgenden Stuecklistenmenge nach [A-18].
+  const ov = [200, 900, 1800];
+  const a = autoAuslegung({ ...ENGINE_BASE, prestress: { ausgleich_override_mm: ov },
+    load: { qk_area: 0.5, gammaQ: 1.5 } }).wandelement;
+  deepEqual(a.prestress.ausgleich_override_mm, ov);
+  deepEqual(a.ausgleichspunkte.map((p) => p.x_mm), ov);
+  const b = nachweisPruefen({ ...ENGINE_BASE, prestress: { max_span_grid: 3, force_kN: 60,
+    ausgleich_override_mm: ov }, load: { qk_area: 1.0, gammaQ: 1.5 } }).wandelement;
+  deepEqual(b.ausgleichspunkte.map((p) => p.x_mm), ov);
+  // Ohne Override bleibt die Auslegung bit-genau der Altstand.
+  const c = autoAuslegung({ ...ENGINE_BASE, load: { qk_area: 0.5, gammaQ: 1.5 } }).wandelement;
+  assert(!("ausgleich_override_mm" in c.prestress), "kein Schluessel ohne Override");
+  assert(c.ausgleichspunkte.every((p) => p.art !== "manuell"), "Verteilung unveraendert");
+});
+
+t("[A-24] die ausdruecklich leere Liste faellt nicht auf die Verteilung zurueck (Core == Orakel)", () => {
+  const arg = { name: "agovD", length_mm: 3250, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, ausgleich_override_mm: [] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+  deepEqual(js.ausgleichspunkte, []);
+  deepEqual(js.prestress.ausgleich_override_mm, []);
+  // `null`/fehlend heisst dagegen „kein Override" — die Verteilung greift wieder.
+  deepEqual(normAusgleichspunkte(null, 3250), { punkte: null, fehler: [] });
+  deepEqual(normAusgleichspunkte(undefined, 3250), { punkte: null, fehler: [] });
 });
 
 console.log(`\n${pass} ok, ${fail} fail`);

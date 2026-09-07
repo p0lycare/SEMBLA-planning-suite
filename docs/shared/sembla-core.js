@@ -634,6 +634,34 @@ export function verteileAusgleichspunkte(lengthMm, stossXMm = [], achsenXMm = []
   return out;
 }
 
+/**
+ * Manuell gesetzte Ausgleichspunkte normalisieren und validieren ([A-24]).
+ *
+ * Zulaessig ist jede GANZE Millimeterlage INNERHALB der Wand einschliesslich beider Wandenden —
+ * anders als bei [A-17] sind `0` und `lengthMm` also gueltig, denn die Wandenden sind regulaere
+ * Ausgleichspunkte ([A-21]). Ein unzulaessiger Wert wird NICHT auf eine erreichbare Lage
+ * gerundet: er wird benannt (`fehler`) und nicht angewandt ([P-9]) — gerundet entstuende still
+ * ein anderer Punkt als der gesetzte. DOPPELTE Werte sind dagegen kein Befund, sondern werden
+ * deterministisch zusammengefasst (wie bei `columns_grid`/`zwischenpunkte_mm`).
+ *
+ * `punkte === null` heisst „kein Override": es gilt die Verteilung nach [A-20]…[A-23]. Eine
+ * AUSDRUECKLICH leere Liste ist dagegen die Aussage „diese Wand hat keine Ausgleichspunkte" und
+ * faellt nicht auf die Verteilung zurueck.
+ * @param {number[]|null|undefined} arr @param {number} lengthMm Wandlaenge
+ * @returns {{punkte:number[]|null,fehler:Array<{grund:string,wert:any}>}}
+ */
+export function normAusgleichspunkte(arr, lengthMm) {
+  if (!Array.isArray(arr)) return { punkte: null, fehler: [] };
+  const out = [], fehler = [];
+  for (const raw of arr) {
+    const x = Number(raw);
+    if (!Number.isInteger(x)) { fehler.push({ grund: "nicht_ganzzahlig", wert: raw }); continue; }
+    if (x < 0 || x > lengthMm) { fehler.push({ grund: "ausserhalb_wand", wert: raw }); continue; }
+    out.push(x);
+  }
+  return { punkte: [...new Set(out)].sort((a, b) => a - b), fehler };
+}
+
 /** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
 function segJoints(startGrid, tiling) {
   const js = new Set(); let c = startGrid;
@@ -803,6 +831,11 @@ function normPrestress(p) {
   // nirgends gespeichert wird, entsteht im Wandelement AUCH KEIN Feld dafuer. `buildWall`
   // ersetzt die rohe Liste unten durch die validierte (dedupliziert, sortiert).
   if (Array.isArray(p && p.zwischenpunkte_mm)) out.zwischenpunkte_mm = p.zwischenpunkte_mm.slice();
+  // Manuell gesetzte Ausgleichspunkte ([A-24]) sind aus genau demselben Grund ein OVERRIDE: der
+  // Schluessel entsteht nur, wenn er ausdruecklich gesetzt ist. Fehlt er, gilt die Verteilung
+  // nach [A-20]…[A-23] — und weil die nirgends gespeichert wird, entsteht im Wandelement AUCH
+  // KEIN Feld dafuer. `buildWall` ersetzt die rohe Liste unten durch die validierte.
+  if (Array.isArray(p && p.ausgleich_override_mm)) out.ausgleich_override_mm = p.ausgleich_override_mm.slice();
   // Einbaulagen des Spannsystems ([Z-6]/#92) — beide ABGELEITETE Rechenwerte, die Modul 1 aus
   // den gewaehlten Katalogprodukten bildet (Praezedenz `rod_rest_mm`): der Fussoffset aus der
   // halben Kopplungsmutterhoehe, der Kopfzuschlag aus der Spannplattendicke.
@@ -1220,9 +1253,15 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // leitet daraus selbst nichts ab. Die Stuecklistenmenge — genau ein Ausgleichsblech je Punkt
   // ([A-18]) — entsteht in der gemeinsamen Ausgabeschicht `sembla-bom.js` aus der LAENGE dieser
   // Liste; ein statischer Nachweis der Auflagerpunkte ist weiterhin ausdruecklich keiner.
+  // [A-24] Ein ausdruecklich gesetzter Override SPERRT die Verteilung vollstaendig: es gelten
+  // genau die gesetzten Punkte — nicht aufgefuellt ([A-22]) und ohne nachgeschobenen Pflichtpunkt
+  // ([A-21]). Ohne Override laeuft unveraendert die Verteilung nach [A-20]…[A-23].
+  const AG = normAusgleichspunkte(PS.ausgleich_override_mm, lengthMm);
+  if (AG.punkte) PS.ausgleich_override_mm = AG.punkte;
   const bodenStoesse = bodenTeile.slice(0, -1).map((tl) => tl.x0_mm + tl.raster_mm);
-  const ausgleichspunkte = verteileAusgleichspunkte(lengthMm, bodenStoesse,
-    columns.map((c) => c.x_mm));
+  const ausgleichspunkte = AG.punkte
+    ? AG.punkte.map((x) => ({ x_mm: x, art: "manuell" }))
+    : verteileAusgleichspunkte(lengthMm, bodenStoesse, columns.map((c) => c.x_mm));
 
   const bom = { i2: 0, i3: 0 };
   for (const c of courses) for (const s of c.stones) bom[s.type] += 1;
@@ -1284,6 +1323,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // Der Schluessel entsteht NUR im Fehlerfall: eine Wand ohne Override soll kein Feld
       // bekommen, das es vorher nicht gab (das gilt fuer die Auto-Ableitung ebenso).
       ...(ZP.fehler.length ? { zwischenpunkt_fehler: ZP.fehler } : {}),
+      // [A-24] Abgewiesene manuelle Ausgleichspunkte — benannt, nicht angewandt, nie gerundet.
+      // Der Schluessel entsteht auch hier NUR im Fehlerfall.
+      ...(AG.fehler.length ? { ausgleich_fehler: AG.fehler } : {}),
       // [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
       interlock_invalid_segments: interlockInvalidSegments,
     },

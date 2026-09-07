@@ -103,6 +103,11 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // gewaehlten Katalogprodukten abgeleiteten Einbaulagen bestimmen, wo die erste Stange beginnt
 // und wieviel oben ueber der Steinkante zu bestuecken ist. Fielen sie in der Iteration weg,
 // rechnete die Auslegung mit einem anderen Bedarf als die Anzeige davor.
+// Und aus demselben Grund `ausgleich_override_mm` ([A-24]/#96): der in Modul 1 gesetzte Override
+// der Ausgleichspunkte SPERRT die Verteilung nach [A-20]…[A-23]. Fiele er in der Iteration weg,
+// rechnete der Core mit seiner Verteilung weiter, und die gesetzten Punkte waeren unwirksam —
+// samt der daraus folgenden Stuecklistenmenge. FEHLT das Feld, bleibt es `undefined` und damit
+// kein Array: der Core setzt dann kein Feld, und der Auto-Weg bleibt bit-genau wie zuvor.
 // NICHT mitgereicht wird `start_axis_grid` (#104): [V-5] ist durch [V-3]/[V-11] abgeloest, der
 // Core liest das Feld nicht mehr, und die Iteration gibt ihm folglich auch keines mehr vor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
@@ -112,7 +117,8 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            rod_rest_mm: p.rod_rest_mm, rod_overhang_mm: p.rod_overhang_mm,
            rod_fuss_offset_mm: p.rod_fuss_offset_mm,
            rod_kopf_zuschlag_mm: p.rod_kopf_zuschlag_mm,
-           zwischenpunkte_mm: p.zwischenpunkte_mm }; }
+           zwischenpunkte_mm: p.zwischenpunkte_mm,
+           ausgleich_override_mm: p.ausgleich_override_mm }; }
 function buildN(vorg, sp) {
   return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg), interlocksOf(vorg));
 }
