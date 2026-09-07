@@ -729,9 +729,10 @@ t("kombiniereSegment: Sperren wirken auch auf die Kopplung zum Reststueck ([Z-6]
 });
 
 // ---------------------------------------------------------------------------
-// Einbaulagen des Spannsystems (#92): Fussoffset am Fuss, Spannplattendicke am Kopf.
-// Gerechnet wird beides im Core; die Werte selbst leitet Modul 1 aus dem Katalog ab
-// (Fussoffset = halbe Kopplungsmutterhoehe, Kopfzuschlag = Spannplattendicke).
+// Einbaulagen des Spannsystems (#92): Fussoffset am Fuss [A-19], Spannplattendicke am Kopf
+// [Z-8]. Gerechnet wird beides im Core; die Werte selbst leitet Modul 1 aus dem Katalog ab
+// ([A-19] Fussoffset = halbe Kopplungsmutterhoehe, [Z-8] Kopfzuschlag = Spannplattendicke).
+// Die Tests hier halten GENAU die im Handbuch dokumentierte Wirkung beider Regeln fest.
 //
 // Das Python-Orakel wird als ECHTER Unterprozess gefahren, nicht ueber ein eingefrorenes
 // Fixture: die Faelle hier sind neu, es gaebe also gar kein Fixture dafuer. Fehlt `python3`
@@ -758,7 +759,7 @@ const PS92 = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 1
   top_connection: "spannplatte", rod_fuss_offset_mm: 25, rod_kopf_zuschlag_mm: 12 };
 const WAND92 = { name: "einbaulagen", length_mm: 6 * GRID, height_mm: 2000 };
 
-t("#92 Fussoffset verkuerzt den Bedarf und verschiebt die Stueckzerlegung", () => {
+t("#92 [A-19] Fussoffset verkuerzt den Bedarf und verschiebt die Stueckzerlegung", () => {
   const w = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null, PS92);
   const sg = w.tension_columns[0].segments[0];
   assert(sg.z0_mm === 0, "z0_mm bleibt Steingeometrie: " + sg.z0_mm);
@@ -787,7 +788,7 @@ t("#92 Fussoffset verkuerzt den Bedarf und verschiebt die Stueckzerlegung", () =
     "kein Zusatzfeld am Segment: " + Object.keys(sg).join(","));
 });
 
-t("#92 Oberer Bedarf = Segmenthoehe + Spannplattendicke + Ueberstand (echtes Python-Orakel)", () => {
+t("#92 [Z-8] Oberer Bedarf = Segmenthoehe + Spannplattendicke + Ueberstand (echtes Python-Orakel)", () => {
   // Reiner Kopffall (kein Fussoffset): der Bedarf ist exakt h + Platte + Ueberstand.
   const ps = { ...PS92, rod_fuss_offset_mm: 0 };
   const js = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null, ps);
@@ -799,7 +800,7 @@ t("#92 Oberer Bedarf = Segmenthoehe + Spannplattendicke + Ueberstand (echtes Pyt
   deepEqual(js, py);                       // bit-genau, ganzes Wandelement
 });
 
-t("#92 Fussoffset, oberer Bedarf, Stueckzerlegung und Konflikte sind py/mjs bit-gleich", () => {
+t("#92 [A-19]/[Z-8] Fussoffset, oberer Bedarf, Stueckzerlegung und Konflikte sind py/mjs bit-gleich", () => {
   const faelle = [
     PS92,                                                        // Fuss + Kopf
     { ...PS92, rod_fuss_offset_mm: 27.5 },                       // halbe Mutterhoehe -> 0,5 mm
@@ -813,7 +814,7 @@ t("#92 Fussoffset, oberer Bedarf, Stueckzerlegung und Konflikte sind py/mjs bit-
   }
 });
 
-t("#92 Kopfblech bekommt keinen Plattenzuschlag (kein Ersatzmass, [A-2])", () => {
+t("#92 [Z-8] Kopfblech bekommt keinen Plattenzuschlag (kein Ersatzmass, [A-2])", () => {
   const w = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null,
     { ...PS92, top_connection: "blech", rod_fuss_offset_mm: 0 });
   const sg = w.tension_columns[0].segments[0];
@@ -821,7 +822,7 @@ t("#92 Kopfblech bekommt keinen Plattenzuschlag (kein Ersatzmass, [A-2])", () =>
   assert(sg.bedarf_mm === WAND92.height_mm + 10, "nur Ueberstand: " + sg.bedarf_mm);
 });
 
-t("#92 Der Fussoffset zieht die Zwischenpunkt-Sperren mit ([Z-7] unveraendert)", () => {
+t("#92 [A-19] Der Fussoffset zieht die Zwischenpunkt-Sperren mit ([Z-7] unveraendert)", () => {
   // Zwischenpunkt auf 1000 mm; die Kopplung liegt bei Stangenbeginn + 1000 = 1025 und ist
   // damit frei. Ohne Mitziehen des Offsets waere hier faelschlich gesperrt worden.
   const ps = { ...PS92, rod_rest_mm: 0, rod_kopf_zuschlag_mm: 0, zwischenpunkte_mm: [1000] };
@@ -835,7 +836,48 @@ t("#92 Der Fussoffset zieht die Zwischenpunkt-Sperren mit ([Z-7] unveraendert)",
   assert(gesperrt.tension_columns[0].segments[0].stuecke.length > 0);
 });
 
-t("#92 Ohne Einbaumasse ist das Ergebnis bit-genau der Altstand", () => {
+t("#92 [A-19]/[Z-8] Fussoffset nur am Bodenblech, Kopfzuschlag nur unter der Spannplatte", () => {
+  // Wand mit Fenster: die Spalten unter/ueber der Oeffnung liefern die drei Faelle, die die
+  // beiden Regeln unterscheiden — Bruestung (Fuss am Bodenblech, oben KEIN Oberkantenbezug),
+  // Sturz (Fuss auf einer Spannplatte, oben Wandoberkante) und die volle Spalte daneben.
+  const ps = { ...PS92, zwischenpunkte_mm: [] };
+  const w = buildWall("einbaulagen_oeffnung", 8 * GRID, 2000,
+    [new Opening(3, 6, 2, 6)], null, ps);
+  const inOeffnung = w.tension_columns.filter((c) => 3 <= c.k && c.k < 6);
+  assert(inOeffnung.length > 0, "Testvoraussetzung: Spalten an der Oeffnung");
+  for (const c of inOeffnung) {
+    const bruest = c.segments.find((s) => s.z0_mm === 0);
+    const sturz = c.segments.find((s) => s.z1_mm === 2000 && s.z0_mm > 0);
+    // [A-19] Die Bruestung sitzt auf dem Bodenblech: der Fussoffset gilt, ihr oberes Ende ist
+    // aber ein Zwischenanker — [Z-8] greift dort nicht, es gibt weder Platte noch Ueberstand.
+    if (bruest) {
+      assert(bruest.anker_unten === "bodenblech", bruest.anker_unten);
+      assert(bruest.bedarf_mm === (bruest.z1_mm - bruest.z0_mm) - 25,
+        "Bruestung: nur Fussoffset, kein Kopfzuschlag: " + bruest.bedarf_mm);
+    }
+    // [A-19] Der Sturz sitzt auf einer Spannplatte, NICHT auf dem Bodenblech: kein Fussoffset.
+    // [Z-8] Oben erreicht er die Wandoberkante unter einer Spannplatte: Platte + Ueberstand.
+    if (sturz) {
+      assert(sturz.anker_unten === "spannplatte", sturz.anker_unten);
+      assert(sturz.bedarf_mm === (sturz.z1_mm - sturz.z0_mm) + 12 + 10,
+        "Sturz: kein Fussoffset, aber Kopfzuschlag: " + sturz.bedarf_mm);
+    }
+  }
+  // Gegenprobe [Z-8]: dieselbe Wand mit Kopfblech — der Sturz deckt dann NUR den Ueberstand,
+  // die Bruestung bleibt bit-gleich (sie hat keinen Oberkantenbezug).
+  const wb = buildWall("einbaulagen_oeffnung", 8 * GRID, 2000,
+    [new Opening(3, 6, 2, 6)], null, { ...ps, top_connection: "blech" });
+  for (const c of wb.tension_columns.filter((x) => 3 <= x.k && x.k < 6)) {
+    const sturz = c.segments.find((s) => s.z1_mm === 2000 && s.z0_mm > 0);
+    if (sturz) assert(sturz.bedarf_mm === (sturz.z1_mm - sturz.z0_mm) + 10,
+      "Kopfblech: nur Ueberstand: " + sturz.bedarf_mm);
+  }
+  // Die Paritaet zum Python-Orakel deckt der eigene Paritaetsfall oben ab; `orakel()` hier
+  // faehrt bewusst OHNE Oeffnungen, und ein zweites Orakel-Skript nur fuer diesen Test waere
+  // ein Duplikat. Gemessen wird hier die dokumentierte WIRKUNG, nicht noch einmal die Paritaet.
+});
+
+t("#92 [A-19]/[Z-8] Ohne Einbaumasse ist das Ergebnis bit-genau der Altstand", () => {
   const alt = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
     top_connection: "spannplatte" };
   const a = buildWall("alt", 6 * GRID, 2000, [], null, alt);
@@ -850,7 +892,7 @@ t("#92 Ohne Einbaumasse ist das Ergebnis bit-genau der Altstand", () => {
 // Auslegungs-Iteration weg, rechnete der Core mit einem anderen Bedarf als die Anzeige davor.
 const ENGINE_BASE = { name: "W", length_mm: 2000, height_mm: 2600, openings: [], sides: null };
 
-t("#92 Fussoffset und Kopfzuschlag reisen durch psOf() (Auto-Modus)", () => {
+t("#92 [A-19]/[Z-8] Fussoffset und Kopfzuschlag reisen durch psOf() (Auto-Modus)", () => {
   const ps = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
     top_connection: "spannplatte", rod_fuss_offset_mm: 25, rod_kopf_zuschlag_mm: 12 };
   const r = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ps,
@@ -862,7 +904,7 @@ t("#92 Fussoffset und Kopfzuschlag reisen durch psOf() (Auto-Modus)", () => {
   assert(sg.bedarf_mm === 2000 - 25 + 12 + 10, "Bedarf nach der Iteration: " + sg.bedarf_mm);
 });
 
-t("#92 Nachweis-Modus reicht dieselben Einbaulagen durch", () => {
+t("#92 [A-19]/[Z-8] Nachweis-Modus reicht dieselben Einbaulagen durch", () => {
   const ps = { max_span_grid: 3, force_kN: 60, rod_lengths_mm: [1000, 500], rod_rest_mm: 210,
     rod_overhang_mm: 10, top_connection: "spannplatte", rod_fuss_offset_mm: 25, rod_kopf_zuschlag_mm: 12 };
   const w = nachweisPruefen({ ...ENGINE_BASE, height_mm: 2000, prestress: ps,
@@ -871,7 +913,7 @@ t("#92 Nachweis-Modus reicht dieselben Einbaulagen durch", () => {
   assert(w.tension_columns[0].segments[0].bedarf_mm === 1997, "Bedarf im Nachweis-Modus");
 });
 
-t("#92 ohne Einbaulagen bleibt die Auslegung bit-genau der Altstand", () => {
+t("#92 [A-19]/[Z-8] ohne Einbaulagen bleibt die Auslegung bit-genau der Altstand", () => {
   const ps = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
     top_connection: "spannplatte" };
   const a = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ps,

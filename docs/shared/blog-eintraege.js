@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-07",
+    datum: "2026-09-07",
+    typ: "doku",
+    issue: 92,
+    titel: "Das Regelwerk benennt jetzt den Beginn der ersten Gewindestange und den Bezugspunkt des Überstands",
+    testbitte: "Im Handbuch stehen in Kapitel 16.3 und 16.7 die neuen Regeln [A-19] und [Z-8]: "
+      + "Bauteilfolge am Wandfuß, Überstand ab Oberkante Spannplatte, Katalog als einzige Maßquelle. "
+      + "In der App ändert sich nichts.",
+  },
+  {
     id: "chg-20260907-06",
     datum: "2026-09-07",
     typ: "feature",
