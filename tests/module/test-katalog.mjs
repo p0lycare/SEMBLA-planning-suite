@@ -344,8 +344,13 @@ ok("Blech/Platte: Maske = Blechmaße",
 ok("Stein: Steinbreite/-höhe/-tiefe, alle optional",
   KAT.maskeFelder("stein").join(",") === "breite_mm,hoehe_mm,dicke_mm"
   && maskeVon("stein").every((f) => f.pflicht === false));
-ok("Verbinder und Verbrauchsmaterial ohne fachfremde Maße",
-  KAT.maskeFelder("verbinder").length === 0 && KAT.maskeFelder("verbrauch").length === 0);
+ok("Verbinder ohne fachfremde Maße",
+  KAT.maskeFelder("verbinder").length === 0);
+// #92 Verbrauchsmaterial fuehrt GENAU EIN Mass: die Einbauhoehe des Kleinteils. Aus ihr
+// rechnet Modul 1 den Fussoffset (halbe Kopplungsmutterhoehe); ohne Feld in der Maske gaebe
+// es dafuer keinen Pflegeort.
+ok("Verbrauchsmaterial: Maske = allein die Einbauhöhe",
+  KAT.maskeFelder("verbrauch").join(",") === "hoehe_mm");
 ok("die drei geforderten Masken sind klar unterschiedlich",
   new Set(["gewindestange", "latte", "beplankung"].map((k) => KAT.maskeFelder(k).join(","))).size === 3);
 
@@ -387,6 +392,55 @@ ok("jede Rolle mit Maß-Diskriminator hat mindestens ein Diskriminatorfeld in ih
 ok("Maske veraendert nichts an Kategorien, Rollen oder Formatversion",
   KAT.KATEGORIEN.length === 7 && KAT.KATALOG_VERSION === 2
   && typeof KAT.loesePreis === "function");
+
+// --- Einbauhöhe eines Kleinteils ([P-16], Issue #92) -----------------------
+// Modul 1 rechnet den Fussoffset aus der Kopplungsmutterhoehe und liest sie ausschliesslich
+// aus dem Katalogprodukt der Rolle `kupplung`. Gepflegt wird sie ueber die Maske der
+// Kategorie „Sonstiges Verbrauchsmaterial" — hier am ECHTEN Pfad: Maske, Speicherform
+// (katalogObjekt) und Wiedereinlesen (parseKatalog).
+const V_MASKE = KAT.maskeVonKategorie("verbrauch");
+ok("[#92] Einbauhöhe ist ein Millimetermaß mit ausweisender Beschriftung",
+  V_MASKE.length === 1 && V_MASKE[0].feld === "hoehe_mm"
+  && V_MASKE[0].typ === "mm" && V_MASKE[0].einheit === "mm"
+  && /Einbauhöhe/.test(V_MASKE[0].label));
+ok("[#92] Einbauhöhe ist OPTIONAL (keine Pflicht der Kategorie)",
+  V_MASKE[0].pflicht === false && KAT.kategorie("verbrauch").pflicht.length === 0);
+ok("[#92] der Hinweis benennt Meterware ohne Einbaumaß",
+  /Meterware/.test(V_MASKE[0].hinweis || ""));
+
+const V_MUTTER = { id: "mutter-h", kategorie: "verbrauch", bezeichnung: "Kopplungsmutter",
+                   einheit: "Stk", preis: 0.65, hoehe_mm: 17.5, rollen: ["kupplung"] };
+const V_BAND = { id: "band", kategorie: "verbrauch", bezeichnung: "Dichtband",
+                 einheit: "m", preis: 1.2 };
+ok("[#92] ein Kleinteil MIT Einbauhöhe ist gültig",
+  KAT.validiereProdukt(V_MUTTER, { ids: [] }).length === 0);
+ok("[#92] ein Kleinteil OHNE Einbauhöhe bleibt gültig (Meterware)",
+  KAT.validiereProdukt(V_BAND, { ids: [] }).length === 0);
+// Benannt abgewiesen, nie gerundet und nie stillschweigend verworfen ([P-9]) — geprueft
+// direkt am Validator, nicht ueber ein Eingabefeld.
+ok("[#92] Einbauhöhe 0 wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...V_MUTTER, hoehe_mm: 0 }, { ids: [] })
+    .some((m) => /hoehe_mm/.test(m) && /größer als 0/.test(m)));
+ok("[#92] negative Einbauhöhe wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...V_MUTTER, hoehe_mm: -5 }, { ids: [] })
+    .some((m) => /hoehe_mm/.test(m) && /größer als 0/.test(m)));
+ok("[#92] nicht-numerische Einbauhöhe wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...V_MUTTER, hoehe_mm: "hoch" }, { ids: [] })
+    .some((m) => /hoehe_mm/.test(m) && /keine Zahl/.test(m)));
+
+// Roundtrip ueber die REALEN Austauschfunktionen: speichern/exportieren -> Datei -> einlesen.
+{
+  const roh = { ...KAT.leererKatalog("Kleinteile"), produkte: [V_MUTTER, V_BAND] };
+  const datei = KAT.katalogObjekt(roh);
+  const zurueck = KAT.parseKatalog(JSON.stringify(datei));
+  const m = KAT.produkt(zurueck, "mutter-h"), b = KAT.produkt(zurueck, "band");
+  ok("[#92] die Einbauhöhe übersteht Export und Import unverändert",
+    KAT.produkt(datei, "mutter-h").hoehe_mm === 17.5 && m && m.hoehe_mm === 17.5);
+  ok("[#92] ein Kleinteil ohne Einbauhöhe kommt ohne erfundenes Maß zurück",
+    b && b.hoehe_mm === undefined);
+  ok("[#92] der Roundtrip erfindet keinen Formatsprung",
+    datei.version === 2 && zurueck.version === 2 && zurueck.produkte.length === 2);
+}
 
 // --- Standardauswahl aus dem Katalog ([P-18]) ------------------------------
 // Der Katalog benennt je Produkt ausdruecklich seine Verwendungsstelle (`rollen`). Geprueft

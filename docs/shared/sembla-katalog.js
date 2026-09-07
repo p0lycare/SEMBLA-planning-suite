@@ -155,7 +155,14 @@ const _MASKEN = {
     { feld: "dicke_mm", label: "Blechdicke", typ: "mm" },
   ],
   verbinder: [],            // bewusst ohne Maße: Katalog v1 führt kein Typ-/Maßmerkmal ([U-9])
-  verbrauch: [],            // Kleinteile/Meterware: Preisbasis genügt, keine fachfremden Maße
+  // Kleinteile UND Meterware in einer Kategorie: gepflegt wird hier ausschliesslich das
+  // EINBAUMASS in Wandrichtung — die Hoehe, mit der ein Kleinteil in der Wand steht
+  // (Kopplungsmutter, #92). Fuer Meterware gibt es kein solches Mass; das Feld bleibt
+  // deshalb OPTIONAL (`verbrauch` hat keine Pflichtliste) und wird nie erfunden.
+  verbrauch: [
+    { feld: "hoehe_mm", label: "Einbauhöhe", typ: "mm",
+      hinweis: "Höhe, mit der das Kleinteil in der Wand steht — bei Meterware leer lassen" },
+  ],
 };
 
 /**

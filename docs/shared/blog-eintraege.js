@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-01",
+    datum: "2026-09-07",
+    typ: "fix",
+    issue: 92,
+    titel: "Einbauhöhe eines Kleinteils ist im Bauteilkatalog pflegbar — Modul 1 meldet die fehlende Höhe nicht mehr",
+    testbitte: "In Modul 0 den Bauteilkatalog öffnen, bei der Kopplungsmutter die Einbauhöhe in mm "
+      + "eintragen und speichern: der Wert bleibt jetzt erhalten statt als fachfremd entfernt zu "
+      + "werden. Modul 1 meldet die fehlende Höhe danach nicht mehr.",
+  },
+  {
     id: "chg-20260906-02",
     datum: "2026-09-06",
     typ: "feature",

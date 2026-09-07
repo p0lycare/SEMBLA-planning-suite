@@ -623,7 +623,10 @@ ok('Stein: Maße optional, Steinbreite als Preiszuordnungsmaß benannt',
 kpKategorie('verbinder');
 ok('Verbinder: keine fachfremden Maßfelder', kpFelder().length === 0 && $('kp-leer').hidden === false);
 kpKategorie('verbrauch');
-ok('Verbrauchsmaterial: keine fachfremden Maßfelder', kpFelder().length === 0);
+// #92 Verbrauchsmaterial fuehrt GENAU EIN Mass — die Einbauhoehe des Kleinteils; Breite,
+// Dicke und Laenge bleiben fachfremd und werden weiterhin nicht angeboten.
+ok('Verbrauchsmaterial: allein die Einbauhöhe, keine weiteren Maßfelder',
+  kpFelder().join() === 'hoehe_mm');
 ok('Verbrauchsmaterial: kein Gewinde-/Güte-Feld (bewusst ausserhalb #34)',
   !/kp-f-gewinde/.test(kpMarkup()) && !/kp-f-guete/.test(kpMarkup()));
 kpAbbrechen();
@@ -1209,6 +1212,58 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
   ok('Katalog-Formatversion ist 2 (kein Bruch durch [P-16])',
     KAT.KATALOG_VERSION === 2 && KAT.katalogObjekt(kat()).version === 2
     && KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))).produkte.length === V_KAT_ANZ);
+}
+
+// 7d2b) Einbauhoehe eines Kleinteils am ECHTEN Dialog (Issue #92)
+// Der Dialog bezieht seine Maßfelder ausschliesslich aus `maskeVonKategorie` — deshalb genuegt
+// der Maskeneintrag der Kategorie „Sonstiges Verbrauchsmaterial", und `docs/index.html` bleibt
+// unveraendert. Geprueft wird der reale Nutzerpfad: Kopplungsmutter der Vorlage oeffnen, die
+// Einbauhoehe eintragen, ueber #kp-speichern speichern — und dass der Wert die Persistenz und
+// den Export/Import ueberlebt, statt wie zuvor als fachfremdes Feld entfernt zu werden.
+{
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  ok('[#92] der Dialog rendert fuer Verbrauchsmaterial das Höhenfeld aus der Maske',
+    kpFelder().join() === KAT.maskeFelder('verbrauch').join()
+    && kpFelder().join() === 'hoehe_mm' && $('kp-f-hoehe_mm') != null);
+  ok('[#92] das Feld ist als Einbauhöhe in Millimetern beschriftet',
+    /Einbauhöhe/.test(kpMarkup()) && /\(mm\)/.test(kpMarkup()));
+  ok('[#92] die Einbauhöhe ist nicht als Pflicht ausgezeichnet',
+    !/Pflicht/.test(kpMarkup()) && KAT.maskeVonKategorie('verbrauch')[0].pflicht === false);
+  ok('[#92] die Vorlage bringt kein erfundenes Einbaumaß mit',
+    $('kp-f-hoehe_mm').value === ''
+    && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === undefined);
+  ok('[#92] die Höhe wird nicht mehr als fachfremdes Feld angekuendigt',
+    !/fachfremd/.test($('kp-extra').innerHTML));
+
+  kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',
+            preis: '0.65', einheit: 'Stk', hoehe_mm: '17.5' });
+  kpSpeichern();
+  ok('[#92] gespeichert ohne Fehlermeldung, kein neues Produkt entstanden',
+    !kpOffen() && !kFehler() && kAnzahl() === V_KAT_ANZ);
+  ok('[#92] die Einbauhöhe steht am Produkt und ueberlebt die Persistenz',
+    KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === 17.5
+    && Object.values(JSON.parse(kSlot())).find(k => k.id === kat().id)
+         .produkte.find(p => p.id === 'verbrauch-kopplungsmutter').hoehe_mm === 17.5);
+  ok('[#92] Rollenangabe und Hinweis des Produkts bleiben unberuehrt',
+    KAT.produkt(kat(), 'verbrauch-kopplungsmutter').rollen.join() === 'kupplung'
+    && /Bauteilgleich/.test(KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hinweis || ''));
+  ok('[#92] die Einbauhöhe uebersteht Export und Import der Katalogdatei',
+    KAT.produkt(KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))),
+                'verbrauch-kopplungsmutter').hoehe_mm === 17.5);
+  // Optional bleibt optional: das Meterware-Kleinteil daneben wird nicht mit einem Maß versehen.
+  ok('[#92] ein anderes Verbrauchsmaterial bleibt ohne Einbauhöhe gueltig',
+    kat().produkte.filter(p => p.kategorie === 'verbrauch' && p.hoehe_mm === undefined).length >= 1
+    && kat().produkte.every(p => KAT.validiereProdukt(p, { ids: [] }).length === 0));
+
+  // Unzulaessiger Wert: benannt abgewiesen, NICHT gerundet und nicht still verworfen ([P-9]).
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',
+            preis: '0.65', einheit: 'Stk', hoehe_mm: '0' });
+  kpSpeichern();
+  ok('[#92] Einbauhöhe 0 wird im Dialog benannt abgewiesen, der Katalog bleibt unveraendert',
+    kpOffen() && kpFehler() && /hoehe_mm/.test(kpMsgTxt())
+    && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === 17.5);
+  kpAbbrechen();
 }
 
 // 7d3) Baugruppen/Sets ([P-21]/[P-22], #94) am ECHTEN Katalogdialog
