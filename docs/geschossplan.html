@@ -65,8 +65,9 @@
   .chk{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:0}
   /* Sammel-Editor (#75/#111): sichtbar erst ab zwei ausgewählten Wänden. In der
      Werkzeugleiste steht seit #111 GENAU EINE Schaltfläche — alle Felder liegen im
-     Popup `#gp-sammelblatt`, weil neun Merkmale in keine Leiste passen und je
-     Merkmal ein eigenes Bedienfeld in der Leiste ausdrücklich nicht gewollt ist. */
+     Popup `#gp-sammelblatt`, weil neun Merkmale und die Produktauswahl von Modul 1
+     in keine Leiste passen und je Merkmal ein eigenes Bedienfeld in der Leiste
+     ausdrücklich nicht gewollt ist. */
   #gp-sammel{border-top:1px solid var(--sb-line);margin-top:6px;padding-top:2px}
   #gp-sammel .row{align-items:center}
   #gp-sammel-info{font-size:12.5px}
@@ -79,6 +80,10 @@
   #gp-sammelblatt input[disabled],#gp-sammelblatt select[disabled]{opacity:.55}
   #gp-sammelblatt .sist{flex:1 1 120px;font-size:11.5px;color:var(--sb-muted);text-align:right}
   #gp-sammelblatt .sist b{color:#33415c}
+  /* Gruppenüberschrift der Produktauswahl (#111): die Gliederung folgt dem Feld
+     `gruppe` der Verwendungsrollen — dieselbe Reihenfolge wie in Modul 1. */
+  #gp-sammelblatt .sgruppe{font-size:11px;font-weight:600;color:var(--sb-muted);
+        text-transform:uppercase;letter-spacing:.04em;margin:9px 0 1px}
   .msg{font-size:12px;word-break:break-word}
   .msg.err{color:#c0392b}
   .msg.ok{color:var(--sb-ok)}
@@ -266,14 +271,14 @@
         <!-- Sammel-Editor (#75/#111): mehrere AUSGEWÄHLTE Wände in einem bestätigten
              Schritt auf gemeinsame allgemeine Wandmerkmale setzen. Sichtbar erst ab
              zwei ausgewählten Wänden, und hier steht GENAU EINE Schaltfläche — die
-             neun Felder liegen im Popup `#gp-sammelblatt`. Kanonisch bleiben alle
+             neun Felder und die Produktauswahl liegen im Popup `#gp-sammelblatt`. Kanonisch bleiben alle
              Werte je Wandspeicher-Eintrag; gerechnet wird je Wand über den
              Auslegungspfad von Modul 1 (wie #56). Länge, Lage, Öffnungen,
              Verzahnungen und Bemaßungen bleiben unberührt. -->
         <div id="gp-sammel" hidden>
           <div class="row">
             <span id="gp-sammel-info">–</span>
-            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam auf allgemeine Wandmerkmale setzen — Höhe, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge und Überstand">Gemeinsam bearbeiten…</button>
+            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam setzen — allgemeine Wandmerkmale (Höhe, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge, Überstand) und die Produktauswahl von Modul 1">Gemeinsam bearbeiten…</button>
           </div>
         </div>
       </div>
@@ -492,14 +497,29 @@
           <span class="sist" id="gp-sammel-ueber-ist">–</span>
         </div>
 
+        <!-- #111 Produktauswahl aus Modul 1: die Zeilen entstehen EINMAL beim Binden aus
+             `KAT.rollenVonModul(1)` und sind danach je Rolle über eine stabile Kennung
+             bedienbar (`gp-sammel-rolle-<rolleId>`). Sie werden bewusst NICHT bei jedem
+             `render()` neu geschrieben — das nähme ihre Ereignisbehandler mit. -->
+        <div class="sgruppe" style="margin-top:12px">Produktauswahl aus Modul 1</div>
+        <div id="gp-sammel-rollen"></div>
+        <div class="hint" style="margin-top:2px">Je Verwendungsstelle wird hier <b>genau ein</b>
+          Zielprodukt gesetzt. Mehrere Produkte je Verwendungsstelle — etwa mehrere
+          Bodenblechlängen ([A-10]) oder mehrere Gewindestangenlängen ([Z-2]) — bleiben
+          <b>Modul 1</b>; eine dort getroffene Mehrfachauswahl wird von dieser Sammeländerung
+          auf das hier gewählte Produkt zurückgeführt. Gewählt wird ausschließlich aus dem
+          Bauteilkatalog des aktiven Projekts ([L-12]).</div>
+
         <div class="row">
-          <button class="btn-p" id="gp-sammel-go" title="Die angekreuzten Merkmale nach Bestätigung für ALLE ausgewählten Wände übernehmen — genau ein Rückgängig-Schritt">Übernehmen…</button>
+          <button class="btn-p" id="gp-sammel-go" title="Die angekreuzten Merkmale und Verwendungsstellen nach Bestätigung für ALLE ausgewählten Wände übernehmen — genau ein Rückgängig-Schritt">Übernehmen…</button>
         </div>
         <div class="hint" style="margin-top:2px">Geändert wird <b>nur</b>, was angekreuzt ist; alles
           andere bleibt je Wand unverändert. Verschiedene Ausgangswerte stehen als
           <b>gemischt</b> und werden nie still durch einen Standardwert ersetzt. Länge, Lage,
-          Öffnungen, Verzahnungen und Bemaßungen bleiben unberührt, ebenso die Produktauswahl der
-          Wände. Der ganze Vorgang ist <b>ein</b> Rückgängig-Schritt (Strg+Z).</div>
+          Öffnungen, Durchbrüche, Staffelungen, Verzahnungen, manuelle Spannachsen,
+          Zwischenspannpunkte und Bemaßungen bleiben unberührt. Der ganze Vorgang ist
+          <b>ein</b> Rückgängig-Schritt (Strg+Z) — samt Produktauswahl aller betroffenen
+          Wände.</div>
       </div>
     </div>
 
@@ -535,6 +555,9 @@ const r2 = v => Math.round(Number(v) * 100) / 100;
 // ENG/Opening sind der Auslegungspfad, den auch Modul 1 benutzt — er wird für die
 // Neurechnung nach einer Längenänderung gebraucht (#56, s. „Länge der Wand“).
 let store, MAPPE, CON, PLAN, MB, WA, ENG, Opening;
+// #111: Verwendungsrollen, Gruppen und Katalogzugriff kommen AUSSCHLIESSLICH aus
+// `sembla-katalog.js` — der Editor hat keine eigene Rollen-, Auswahl- oder Preislogik.
+let KAT;
 // Standardwerte des Rechenkerns für die Anzeige des IST-Werts im Sammel-Editor (#111):
 // Sie kommen aus `sembla-core.js` und werden hier NICHT nachgebaut — eine zweite Zahl
 // wäre genau der Drift, den [P-6] ausschließt.
@@ -579,6 +602,8 @@ const GP = {
   // Schritt ([K-10]), wird nirgends gespeichert und schließt sich, sobald weniger
   // als zwei Wände ausgewählt sind.
   sammelOffen: false,         // Popup „Gemeinsam bearbeiten“ geöffnet (#111)
+  sammelOptFuer: undefined,   // Katalogsignatur, für die die Produktlisten gebaut sind (#111)
+  sammelRollenFuer: undefined, // Auswahl, für die die Rollenfelder vorbelegt sind (#111)
   // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
   // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
   kal: { an: false, punkte: [] },
@@ -2385,15 +2410,205 @@ function sammelPruefungen(){
 /** Kennung eines Bedienfelds im Popup. */
 function sammelFeldId(f){ return 'gp-sammel-' + f.id; }
 
+// --- #111: Produktauswahl aus Modul 1 gemeinsam setzen ---------------------
+//
+// Gesetzt wird AUSSCHLIESSLICH `eingaben.planung.produkte.rollen` je Wand, und zwar
+// über den einen Schreibweg `store.setzeProduktrolle(rolleId, ids, elementId)`. Welche
+// Verwendungsstellen es gibt, in welcher Reihenfolge und in welcher Gruppe sie stehen,
+// sagt allein `sembla-katalog.js` (`rollenVonModul(1)`/`rollenGruppen(1)`) — nicht
+// wählbare Rollen ([P-18]: `rod_sonder`, `blech_boden_sonder`) sind dort schon
+// herausgefiltert, und eine Modul-2-Rolle könnte `setzeProduktrolle` gar nicht in
+// `planung` schreiben (`_produktTeil`). Der Editor führt dazu KEINE eigene Rollen-,
+// Auswahl- oder Preislogik.
+//
+// Gesetzt wird GENAU EIN Zielprodukt je Verwendungsstelle. Die Mehrfachauswahl je Rolle
+// (mehrere Bodenblechlängen nach [A-10], mehrere Stangenlängen nach [Z-2]) bleibt
+// Modul 1 — das sagt das Popup ausdrücklich, damit niemand sie hier unbemerkt verliert.
+
+/** Die gemeinsam setzbaren Verwendungsstellen — genau die wählbaren Rollen von Modul 1. */
+function sammelRollen(){ return KAT ? KAT.rollenVonModul(1) : []; }
+
+/** Kennung der Bedienfelder EINER Verwendungsstelle im Popup. */
+function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
+
+// Die fünf Verwendungsstellen, deren Auswahl in die RECHNUNG eingeht: Standardlängen
+// und Reststück der Gewindestange ([Z-1]/[Z-6]), der Vorratssatz der Bodenblechlängen
+// ([A-10]) und die beiden Einbaulagen des Spannsystems (#92). Modul 1 rechnet die Wand
+// nach jeder Änderung an ihnen neu (`bindProdukte` -> `run()`); genau das tut der
+// Sammel-Editor hier auch — über denselben `rechneWandelement()`-Pfad, damit im
+// gespeicherten JSON nicht die alte Zerlegung stehen bleibt (der Fehler aus #15/#62).
+//
+// Ersetzt wird dabei AUSSCHLIESSLICH der abgeleitete `prestress`-Eingang der jeweils
+// ANGEKREUZTEN Rolle — nichts sonst. Die Daten kommen aus den gemeinsamen Bausteinen
+// (`WA.vorspannVorgaben`, `KAT.produkteZuRolle`); das Maßfeld wird je Rolle GELESEN
+// und nicht wiederholt. ⚠ Nachziehpunkt [P-6]: die beiden Einbaulagen-Beziehungen aus
+// #92 (Fußoffset = halbe Kopplungsmutterhöhe, Kopfzuschlag = Spannplattendicke) stehen
+// damit an zwei Stellen — hier und in Modul 1 (`fussOffsetMm`/`kopfZuschlagMm`).
+// Ein gemeinsamer Baustein dafür fehlt noch; die Rollen führen
+// bewusst kein `mass` ([P-14]), weshalb `sembla-katalog.js` sie nicht kennt.
+const ROLLE_RECHNUNG = {
+  rod_std: (eing, kat) => ({ rod_lengths_mm: WA.vorspannVorgaben(eing, kat).rod_lengths_mm.slice() }),
+  rod_rest: (eing, kat) => ({ rod_rest_mm: WA.vorspannVorgaben(eing, kat).rod_rest_mm }),
+  blech_boden: (eing, kat) => {
+    const l = rollenMasse(eing, kat, 'blech_boden');
+    return l.length ? { blech_lengths_mm: l } : {};
+  },
+  kupplung: (eing, kat) => {
+    const h = rollenMass(eing, kat, 'kupplung', 'hoehe_mm');
+    return h != null ? { rod_fuss_offset_mm: h / 2 } : {};
+  },
+  spannplatte: (eing, kat, topConn) => {
+    if (topConn === 'blech') return {};                 // bei Kopfblech gibt es keine Platte
+    const d = rollenMass(eing, kat, 'spannplatte', 'dicke_mm');
+    return d != null ? { rod_kopf_zuschlag_mm: d } : {};
+  },
+};
+
+/**
+ * Ein Maßfeld der gewählten Produkte einer Rolle: GENAU EIN Wert, sonst `null`.
+ * Mehrere verschiedene Maße heißen „bleibt offen“ — es wird keines bevorzugt und
+ * keines gemittelt ([P-9]).
+ */
+function rollenMass(eing, kat, rolleId, feld){
+  if (!kat) return null;
+  const auf = KAT.produkteZuRolle(eing, kat, rolleId);
+  const v = [...new Set(auf.produkte.map(p => +p[feld]).filter(n => Number.isFinite(n) && n > 0))];
+  return v.length === 1 ? v[0] : null;
+}
+
+/**
+ * Der Vorratssatz der maßgebenden Maße einer Rolle (Bodenblech, [A-10]). Maßgebend ist
+ * dasselbe Feld, nach dem `loesePreis`/`rollenStatus` die Position ihrem Produkt
+ * zuordnen: das erste belegte aus `rolle(...).mass.felder` — GELESEN, nicht wiederholt.
+ * Sortiert und gefiltert wird im Core (`normBlechLaengen`), hier wird nichts gerundet.
+ */
+function rollenMasse(eing, kat, rolleId){
+  if (!kat) return [];
+  const r = KAT.rolle(rolleId), felder = (r && r.mass && r.mass.felder) || [];
+  const p = KAT.produkteZuRolle(eing, kat, rolleId).produkte;
+  const v = p.map(x => felder.map(f => +x[f]).find(n => Number.isFinite(n) && n > 0))
+             .filter(n => Number.isFinite(n) && n > 0);
+  return [...new Set(v)];
+}
+
+/** Grund, warum es keinen wirksamen Katalog gibt ([L-12]) — benannt, nie geraten. */
+const KATALOG_GRUND = {
+  nicht_zugeordnet: 'dem aktiven Projekt ist kein Bauteilkatalog zugeordnet — im Projektplaner '
+    + 'zuordnen ([L-12]).',
+  fehlt: 'der dem aktiven Projekt zugeordnete Bauteilkatalog ist nicht gespeichert — im '
+    + 'Projektplaner erneut zuordnen oder in Modul 10 laden ([L-12]).',
+  kein_projekt: 'ohne aktives Projekt gibt es keinen wirksamen Bauteilkatalog ([L-12]).',
+};
+
+/** Die Rollenzeilen EINMAL aufbauen — die Liste der Verwendungsstellen ist statisch. */
+function sammelRollenAufbauen(){
+  const box = $('gp-sammel-rollen');
+  if (!box || !KAT) return;
+  const rollen = sammelRollen();
+  let h = '';
+  for (const g of KAT.rollenGruppen(1)) {
+    h += `<div class="sgruppe">${esc(g)}</div>`;
+    for (const r of rollen.filter(x => x.gruppe === g)) {
+      const k = rollenFeldId(r.id);
+      const wirkt = !!ROLLE_RECHNUNG[r.id];
+      h += `<div class="sfeld"><label class="chk" for="${k}-an" title="${esc(KAT.rollenLabel(r.id))}`
+        + ` — genau ein Zielprodukt für alle ausgewählten Wände`
+        + (wirkt ? '. Diese Verwendungsstelle geht in die Rechnung ein: jede Wand wird damit über '
+            + 'den Auslegungspfad von Modul 1 neu gerechnet.' : '.')
+        + `"><input type="checkbox" id="${k}-an"><span>${esc(KAT.rollenLabel(r.id))}</span></label>`
+        + `<select id="${k}" disabled></select>`
+        + `<span class="sist" id="${k}-ist">–</span></div>`;
+    }
+  }
+  box.innerHTML = h;
+}
+
+/**
+ * Die Optionen der Rollenfelder auffrischen — NUR wenn sich der wirksame Katalog
+ * geändert hat. `render()` läuft bei jedem Zeigerereignis; ein Neuaufbau der
+ * `<option>`-Listen bei jedem Lauf verlöre die laufende Auswahl des Nutzers.
+ */
+function sammelRollenOptionen(kat){
+  const sig = kat ? String(kat.id || '') + '|' + String(kat.geaendert || '') + '|'
+    + (kat.produkte || []).map(p => p.id).join(',') : '';
+  if (GP.sammelOptFuer === sig) return;
+  GP.sammelOptFuer = sig;
+  for (const r of sammelRollen()) {
+    const sel = $(rollenFeldId(r.id));
+    const alt = sel.value;
+    const opts = KAT.rollenOptionen(kat, r.id, []);
+    sel.innerHTML = '<option value="" disabled hidden>– bitte wählen –</option>'
+      + opts.map(o => `<option value="${esc(o.id)}">${esc(o.name)}`
+          + (o.merkmale ? ` · ${esc(o.merkmale)}` : '') + '</option>').join('');
+    // Eine laufende Auswahl bleibt stehen, solange das Produkt es noch gibt.
+    sel.value = opts.some(o => o.id === alt) ? alt : '';
+  }
+}
+
+/**
+ * Die Eingaben einer Wand, wie sie NACH der Übernahme gelten — als reine Kopie, ohne
+ * jeden Schreibvorgang. Ersetzt wird ausschließlich der Modul-1-Produktblock der
+ * angekreuzten Verwendungsstellen; `eingaben.aufbau` (Modul 2) und alle übrigen
+ * Abschnitte bleiben unberührt. Gebraucht wird das für die Rechnung, die die neue
+ * Auswahl schon sehen muss, bevor sie gespeichert ist.
+ */
+function eingabenMitRollen(id, rollenAktiv){
+  const e = JSON.parse(JSON.stringify(store.holeEingaben(id) || {}));
+  const pl = e.planung || (e.planung = {});
+  const pr = pl.produkte || (pl.produkte = KAT.leereProdukte());
+  pr.rollen = { ...(pr.rollen || {}) };
+  for (const { rolle, pid } of rollenAktiv) pr.rollen[rolle.id] = [pid];
+  return e;
+}
+
+/**
+ * Die Momentaufnahme einer Wand für Rückgängig/Wiederholen um die BERÜHRTEN
+ * Verwendungsstellen ergänzen.
+ *
+ * Nötig, weil `store.speichere` die `eingaben` tief ZUSAMMENFÜHRT: ein Schlüssel, den
+ * die Momentaufnahme gar nicht führt, ließe sich damit nie wieder entfernen. Eine Rolle,
+ * die vor der Sammeländerung LEER war (kein Katalogvorschlag nach [P-18]), käme sonst
+ * durch Rückgängig nicht zurück auf „keine Auswahl“, sondern behielte das gesetzte
+ * Produkt. Die leere Liste ist die kanonische Aussage „keine Auswahl“ (`rollenIds`).
+ * Ein vorhandener Wert bleibt bit-genau, wie er war.
+ */
+function rollenSchnappschuss(stand, rollenAktiv){
+  if (!stand || !rollenAktiv.length) return stand;
+  const e = JSON.parse(JSON.stringify(stand.eingaben || {}));
+  const pl = e.planung || (e.planung = {});
+  const pr = pl.produkte || (pl.produkte = KAT.leereProdukte());
+  const rl = pr.rollen || (pr.rollen = {});
+  for (const { rolle } of rollenAktiv) {
+    if (!KAT.rollenIds(pr, rolle.id).length) rl[rolle.id] = [];
+  }
+  return { ...stand, eingaben: e };
+}
+
+/** Lesbarer Ist-Text einer Rollenauswahl (Produktnamen, sonst die rohe Kennung). */
+function rollenWertText(wert, kat){
+  const ids = String(wert || '').split(',').filter(Boolean);
+  if (!ids.length) return 'keine Auswahl';
+  return ids.map(id => {
+    const p = kat ? KAT.produkt(kat, id) : null;
+    return (p && String(p.bezeichnung || '').trim()) || id;
+  }).join(' · ');
+}
+
 /**
  * Ausgangswerte der Auswahl aggregieren — je Merkmal alle VERSCHIEDENEN Werte,
  * damit ein gemischter Zustand ausdrücklich als „gemischt“ erscheint und nie
  * still als ein konkreter Wert. Verwaiste Einträge ([L-4]) werden gezählt und
  * benannt, nie mit geratenen Werten aufgefüllt.
  */
-function sammelStand(ids){
-  const werte = {}, verwaist = [];
+function sammelStand(ids, mitRollen){
+  const werte = {}, verwaist = [], rollen = {};
   for (const f of SAMMEL_FELDER) werte[f.id] = [];
+  // #111 Die Produktauswahl liegt NICHT am Wandelement, sondern in `eingaben`; gelesen
+  // wird sie je Wand über `store.holeProdukte(1, id)` und `KAT.rollenIds` — dieselbe
+  // Quelle, aus der Modul 1 seine Zeilen füllt ([P-13]). Gelesen wird sie nur, wenn das
+  // Popup offen ist: `sammelSync` läuft bei JEDEM Zeigerereignis, und für ein
+  // geschlossenes Popup wäre das je Wand ein zusätzlicher Speicherzugriff ohne Anzeige.
+  if (mitRollen) for (const r of sammelRollen()) rollen[r.id] = [];
   for (const id of ids) {
     const el = store.holeElement(id);
     if (!el || !el.wandelement) { const w = wand(id); verwaist.push(w && w.name || id); continue; }
@@ -2401,17 +2616,27 @@ function sammelStand(ids){
       const v = f.lies(el.wandelement);
       if (!werte[f.id].includes(v)) werte[f.id].push(v);
     }
+    if (mitRollen) {
+      const block = store.holeProdukte(1, id);
+      for (const r of sammelRollen()) {
+        const v = KAT.rollenIds(block, r.id).join(',');
+        if (!rollen[r.id].includes(v)) rollen[r.id].push(v);
+      }
+    }
   }
   for (const f of SAMMEL_FELDER) {
     if (!f.wahl) werte[f.id].sort((a, b) => a - b);
   }
-  return { werte, verwaist };
+  return { werte, verwaist, rollen };
 }
 
 /** Eingabefelder an die Aktivierungshäkchen angleichen (reine Bedienung). */
 function sammelFelder(){
   for (const f of SAMMEL_FELDER) {
     $(sammelFeldId(f)).disabled = !$(sammelFeldId(f) + '-an').checked;
+  }
+  for (const r of sammelRollen()) {
+    $(rollenFeldId(r.id)).disabled = !$(rollenFeldId(r.id) + '-an').checked;
   }
 }
 
@@ -2428,24 +2653,39 @@ function sammelSync(){
   const ids = sammelWaende();
   if (ids.length < 2) {
     box.hidden = true; blatt.hidden = true;
-    GP.sammelFuer = undefined; GP.sammelOffen = false;
+    GP.sammelFuer = undefined; GP.sammelRollenFuer = undefined; GP.sammelOffen = false;
     return;
   }
   box.hidden = false;
   blatt.hidden = !GP.sammelOffen;
-  const st = sammelStand(ids);
+  const offen = !!GP.sammelOffen;
+  const st = sammelStand(ids, offen);
+  const kstatus = offen ? store.katalogStatus() : null;
+  const kat = kstatus ? kstatus.katalog : null;
+  if (offen) sammelRollenOptionen(kat);
   $('gp-sammel-info').innerHTML = `<b>${ids.length}</b> Wände ausgewählt`
     + (st.verwaist.length ? ` · ⚠ ${st.verwaist.length} verwaister Eintrag/Einträge ([L-4])` : '');
   $('gp-sammel-ist').innerHTML = `<b>${ids.length}</b> ausgewählte Wände — geändert wird nur, was `
     + 'angekreuzt ist.'
     + (st.verwaist.length
-      ? ` ⚠ ohne Wandelement: ${st.verwaist.map(esc).join(', ')} — erst aufräumen ([L-4]).` : '');
+      ? ` ⚠ ohne Wandelement: ${st.verwaist.map(esc).join(', ')} — erst aufräumen ([L-4]).` : '')
+    + ((!offen || kat) ? '' : ` ⚠ Produktauswahl nicht möglich: ${esc(KATALOG_GRUND[kstatus.status]
+        || 'kein wirksamer Bauteilkatalog ([L-12]).')}`);
   for (const f of SAMMEL_FELDER) {
     const w = st.werte[f.id];
     $(sammelFeldId(f) + '-ist').innerHTML = 'Ist: ' + (
       w.length === 0 ? '–'
       : w.length === 1 ? `<b>${esc(f.text(w[0]))}</b>`
       : `<b>gemischt</b> (${w.map(v => esc(f.text(v))).join(' · ')})`);
+  }
+  // #111 Ist-Stand je Verwendungsstelle — verschiedene Ausgangswerte stehen als
+  // „gemischt“ und werden ausdrücklich NICHT vorbelegt.
+  if (offen) for (const r of sammelRollen()) {
+    const w = st.rollen[r.id] || [];
+    $(rollenFeldId(r.id) + '-ist').innerHTML = 'Ist: ' + (
+      w.length === 0 ? '–'
+      : w.length === 1 ? `<b>${esc(rollenWertText(w[0], kat))}</b>`
+      : `<b>gemischt</b> (${w.map(v => esc(rollenWertText(v, kat))).join(' · ')})`);
   }
   const schluessel = ids.slice().sort().join('|');
   if (GP.sammelFuer !== schluessel) {
@@ -2456,6 +2696,21 @@ function sammelSync(){
       const feld = $(sammelFeldId(f));
       feld.value = w.length === 1 ? String(w[0]) : '';
       if (!f.wahl) feld.placeholder = w.length === 1 ? '' : 'gemischt';
+    }
+  }
+  // Die Rollenfelder tragen einen EIGENEN Vorbelegungsschlüssel: sie werden erst gefüllt,
+  // wenn das Popup offen ist (vorher ist ihr Ist-Stand gar nicht gelesen), und danach nur
+  // wieder beim Wechsel der Auswahl — eine laufende Eingabe wird nie überschrieben.
+  if (offen && GP.sammelRollenFuer !== schluessel) {
+    GP.sammelRollenFuer = schluessel;
+    for (const r of sammelRollen()) {
+      const w = st.rollen[r.id] || [];
+      $(rollenFeldId(r.id) + '-an').checked = false;
+      // Vorbelegt wird nur ein EINDEUTIGER Ist-Stand aus GENAU EINEM Produkt: eine
+      // gemischte oder mehrfache Auswahl bekommt keinen Wert, sonst stünde hier eine
+      // Entscheidung, die niemand getroffen hat.
+      const eindeutig = (w.length === 1 && w[0] && !w[0].includes(',')) ? w[0] : '';
+      $(rollenFeldId(r.id)).value = eindeutig;
     }
   }
   sammelFelder();
@@ -2480,9 +2735,17 @@ function sammelSync(){
  *  4. SCHREIBEN mit Rollback: scheitert ein Speichervorgang, werden alle schon
  *     geschriebenen Wände aus ihren Momentaufnahmen zurückgesetzt — es bleibt
  *     kein gemischter Bestand aus alten und neuen Werten.
+ * Seit #111 gilt dasselbe für die PRODUKTAUSWAHL von Modul 1: angekreuzte
+ * Verwendungsstellen werden je Wand über `store.setzeProduktrolle` gesetzt, und die
+ * fünf maßwirksamen Rollen ziehen dieselbe Neurechnung nach, die Modul 1 nach [Z-1]
+ * fährt — über denselben `rechneWandelement()`-Pfad, mit den Eingängen aus
+ * `WA.vorspannVorgaben`/`KAT.produkteZuRolle`.
+ *
  * Der ganze Vorgang ist GENAU EIN Undo/Redo-Schritt über alle betroffenen
- * Wandspeicher-Einträge; Mappe, Lagen, Öffnungen, Verzahnungen und Bemaßungen
- * bleiben unberührt, ebenso die Produktauswahl der Wände.
+ * Wandspeicher-Einträge — samt Produktauswahl, weil die Momentaufnahmen `eingaben`
+ * mitführen. Mappe, Lagen, Öffnungen, Durchbrüche, Staffelungen, Verzahnungen,
+ * manuelle Spannachsen, Zwischenspannpunkte und Bemaßungen bleiben unberührt,
+ * ebenso `eingaben.aufbau` (Modul 2) und der Bauteilkatalog selbst.
  */
 function sammelAnwenden(){
   const ids = sammelWaende();
@@ -2502,8 +2765,36 @@ function sammelAnwenden(){
     }
     aktiv.push({ feld: f, wert: erg.wert });
   }
-  if (!aktiv.length) {
-    zeige('Nichts zu übernehmen — erst mindestens ein Merkmal zur Übernahme ankreuzen.', false);
+  // 1c. Die angekreuzten VERWENDUNGSSTELLEN einsammeln (#111) — wieder ohne jeden
+  //     Schreibvorgang. Fehlt der zugeordnete Katalog oder steht ein gewähltes Produkt
+  //     nicht darin, wird die GANZE Sammeländerung mit Grund abgewiesen ([L-12]/[P-9]).
+  const kstatus = store.katalogStatus();
+  const kat = kstatus.katalog;
+  const rollenAktiv = [];
+  for (const r of sammelRollen()) {
+    if (!$(rollenFeldId(r.id) + '-an').checked) continue;
+    if (!kat) {
+      zeige('Sammeländerung nicht möglich: ' + (KATALOG_GRUND[kstatus.status]
+        || 'kein wirksamer Bauteilkatalog ([L-12]).') + ' Es wurde nichts geändert.', false);
+      return false;
+    }
+    const pid = String($(rollenFeldId(r.id)).value || '').trim();
+    if (!pid) {
+      zeige(`Sammeländerung nicht möglich: für „${KAT.rollenLabel(r.id)}“ ist kein Produkt `
+        + 'gewählt — ein gemischter Ausgangszustand wird nie still vereinheitlicht. '
+        + 'Es wurde nichts geändert.', false);
+      return false;
+    }
+    if (!KAT.produkt(kat, pid)) {
+      zeige(`Sammeländerung nicht möglich: das für „${KAT.rollenLabel(r.id)}“ gewählte Produkt `
+        + `„${pid}“ steht nicht im zugeordneten Bauteilkatalog. Es wurde nichts geändert.`, false);
+      return false;
+    }
+    rollenAktiv.push({ rolle: r, pid });
+  }
+  if (!aktiv.length && !rollenAktiv.length) {
+    zeige('Nichts zu übernehmen — erst mindestens ein Merkmal oder eine Verwendungsstelle '
+      + 'zur Übernahme ankreuzen.', false);
     return false;
   }
   // 1b. Prüfphase je Wand — VOR jedem Schreiben; der erste benannte Grund bricht ab.
@@ -2526,12 +2817,23 @@ function sammelAnwenden(){
     }
     eintraege.push({ id, el });
   }
-  // 2. Ausdrückliche Bestätigung: Anzahl und GENAU die zu ändernden Merkmale.
+  // 2. Ausdrückliche Bestätigung: Anzahl und GENAU die zu ändernden Merkmale und
+  //    Verwendungsstellen — jede mit ihrem Zielprodukt.
   const teile = aktiv.map(({ feld, wert }) => `${feld.name} → ${feld.text(wert)}`);
-  if (!confirm(`${ids.length} ausgewählte Wände gemeinsam ändern?\n\n${teile.join('\n')}\n\n`
-    + 'Nicht angekreuzte Merkmale bleiben je Wand unverändert. Länge, Lage, Öffnungen, '
-    + 'Verzahnungen und Bemaßungen bleiben unberührt. Rückgängig geht mit Strg+Z, '
-    + 'solange dieses Geschoss geöffnet bleibt.')) {
+  const rollenTeile = rollenAktiv.map(({ rolle, pid }) =>
+    `${KAT.rollenLabel(rolle.id)} → ${rollenWertText(pid, kat)}`);
+  const massAn = rollenAktiv.some(a => !!ROLLE_RECHNUNG[a.rolle.id]);
+  if (!confirm(`${ids.length} ausgewählte Wände gemeinsam ändern?\n\n`
+    + [...teile, ...rollenTeile].join('\n') + '\n\n'
+    + (rollenTeile.length
+      ? 'Je genannter Verwendungsstelle wird genau dieses Produkt gesetzt; eine dort in '
+        + 'Modul 1 getroffene Mehrfachauswahl wird darauf zurückgeführt.'
+        + (massAn ? ' Die betroffenen Wände werden dafür über den Auslegungspfad von '
+            + 'Modul 1 neu gerechnet ([Z-1]).' : '') + '\n\n'
+      : '')
+    + 'Nicht angekreuzte Merkmale und Verwendungsstellen bleiben je Wand unverändert. '
+    + 'Länge, Lage, Öffnungen, Verzahnungen und Bemaßungen bleiben unberührt. '
+    + 'Rückgängig geht mit Strg+Z, solange dieses Geschoss geöffnet bleibt.')) {
     zeige('Sammeländerung abgebrochen — nichts geändert.', true);
     return false;
   }
@@ -2551,8 +2853,23 @@ function sammelAnwenden(){
   for (const { id, el } of eintraege) {
     let neu;
     try {
-      neu = coreAn
-        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch)
+      // #111 Die maßwirksamen Verwendungsstellen gehen als abgeleiteter
+      // `prestress`-Patch in DIESELBE Vorgabe. Gebildet wird er aus den Eingaben, wie
+      // sie NACH der Übernahme gelten — ohne sie zu schreiben —, damit die Rechnung
+      // dieselbe Auswahl sieht wie der gleich folgende Schreibvorgang.
+      let pp = null;
+      if (massAn) {
+        const eNeu = eingabenMitRollen(id, rollenAktiv);
+        const topConn = (aktiv.find(a => a.feld.id === 'topconn') || {}).wert
+          || (((el.wandelement.prestress || {}).top_connection === 'blech') ? 'blech' : 'spannplatte');
+        pp = {};
+        for (const { rolle } of rollenAktiv) {
+          const fn = ROLLE_RECHNUNG[rolle.id];
+          if (fn) Object.assign(pp, fn(eNeu, kat, topConn));
+        }
+      }
+      neu = (coreAn || massAn)
+        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch, pp)
         : JSON.parse(JSON.stringify(el.wandelement));
     } catch (e) {
       zeige(`Sammeländerung nicht möglich („${el.name || id}“): ` + fehlerText(e)
@@ -2566,12 +2883,15 @@ function sammelAnwenden(){
   }
   // 4. Schreibphase mit Rollback — kein gemischter Bestand.
   const vor = mappenStand();
-  const schnappschuesse = eintraege.map(e => elementStand(e.id));
+  const schnappschuesse = eintraege.map(e => rollenSchnappschuss(elementStand(e.id), rollenAktiv));
   const geschrieben = [];
   try {
     for (const { id, el, neu } of arbeit) {
       store.speichere(el.name, neu, id);
       geschrieben.push(id);
+      // #111 Die Produktauswahl geht über den EINEN Schreibweg — je Wand mit ihrer
+      // eigenen Kennung, nie am aktiven Element.
+      for (const { rolle, pid } of rollenAktiv) store.setzeProduktrolle(rolle.id, [pid], id);
     }
   } catch (e) {
     let heil = true;
@@ -2588,8 +2908,9 @@ function sammelAnwenden(){
     return false;
   }
   buchen(vor, [], schnappschuesse);
-  zeige(`${ids.length} Wände gemeinsam geändert: ${teile.join(' · ')}. `
-    + (coreAn ? 'Jedes Wandelement wurde über den Auslegungspfad von Modul 1 neu gerechnet. ' : '')
+  zeige(`${ids.length} Wände gemeinsam geändert: ${[...teile, ...rollenTeile].join(' · ')}. `
+    + ((coreAn || massAn)
+      ? 'Jedes Wandelement wurde über den Auslegungspfad von Modul 1 neu gerechnet. ' : '')
     + 'Länge, Lage, Öffnungen und Bemaßungen sind unverändert. Rückgängig: Strg+Z.', true);
   render();
   return true;
@@ -3364,8 +3685,12 @@ function hoehenHindernisse(we, hoeheMm){
  * @param {number} laengeGrid
  * @param {number} [hoeheMm] neue Wandhöhe; fehlt sie, gilt die des Elements
  * @param {Record<string, any>} [patch] core-relevante Sammelmerkmale (#111)
+ * @param {Record<string, any>} [prestressPatch] abgeleitete Vorspann-Eingänge aus der
+ *   Produktauswahl (#111) — Standardlängen/Reststück ([Z-1]/[Z-6]), Bodenblech-Vorratssatz
+ *   ([A-10]) und die Einbaulagen (#92). Ersetzt AUSSCHLIESSLICH diese Eingänge derselben
+ *   einen `vorg`-Struktur; alles Übrige bleibt so, wie es aus dem Wandelement kam.
  */
-function rechneWandelement(el, laengeGrid, hoeheMm, patch){
+function rechneWandelement(el, laengeGrid, hoeheMm, patch, prestressPatch){
   const we = el.wandelement;
   const vorg = {
     name: el.name || we.name,
@@ -3391,6 +3716,10 @@ function rechneWandelement(el, laengeGrid, hoeheMm, patch){
       if (f.core && f.setze && patch[f.id] !== undefined) f.setze(vorg, patch[f.id]);
     }
   }
+  // #111: Dieselbe Vorgabe nimmt die aus der PRODUKTAUSWAHL abgeleiteten Eingänge auf —
+  // genau die, die Modul 1 in `vorgaben()` aus derselben Auswahl bildet. Es entsteht
+  // dadurch kein zweiter Rechenweg: gerechnet wird unverändert unten mit `ENG`.
+  if (prestressPatch) Object.assign(vorg.prestress, prestressPatch);
   const erg = (we.prestress && we.prestress.force_kN)
     ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg);
   const neu = erg.wandelement;
@@ -4630,6 +4959,13 @@ function binde(){
   for (const f of SAMMEL_FELDER) {
     $(sammelFeldId(f) + '-an').addEventListener('change', sammelFelder);
   }
+  // #111 Die Rollenzeilen werden GENAU EINMAL aufgebaut und danach nur noch aufgefrischt
+  // (Freigabe, Ist-Text, Produktliste) — ein Neuaufbau bei jedem `render()` nähme diese
+  // Ereignisbehandler mit.
+  sammelRollenAufbauen();
+  for (const r of sammelRollen()) {
+    $(rollenFeldId(r.id) + '-an').addEventListener('change', sammelFelder);
+  }
   $('gp-sammel-knopf').addEventListener('click', () => { GP.sammelOffen = true; render(); });
   $('gp-sammel-zu').addEventListener('click', () => { GP.sammelOffen = false; render(); });
   $('gp-sammel-go').addEventListener('click', sammelAnwenden);
@@ -4852,7 +5188,7 @@ window.__gp = {
 window.__gpInit = function(){
   const S = window.SEMBLA || {};
   store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; WA = S.WA;
-  ENG = S.ENG; Opening = S.Opening;
+  ENG = S.ENG; Opening = S.Opening; KAT = S.KAT;
   BLECH_STD = S.BLECH; UEBERSTAND_STD = S.ROD_OVERHANG;
   sammelPruefungen();
   binde();
@@ -4870,13 +5206,16 @@ window.__gpInit = function(){
   import * as PLAN from './shared/sembla-plan.js';
   import * as MB from './shared/sembla-massbild.js';
   import * as WA from './shared/sembla-wandanlage.js';
+  // #111 Verwendungsrollen, Gruppen, Produktoptionen und Produktnachschlag der
+  // gemeinsamen Produktauswahl — der Editor rechnet davon nichts nach ([P-13]/[P-14]).
+  import * as KAT from './shared/sembla-katalog.js';
   // Der Auslegungspfad von Modul 1 (#56): eine Längenänderung im Editor rechnet das
   // vorhandene Wandelement damit NEU — kein zweiter Rechenkern, keine eigene Wandgeometrie.
   import * as ENG from './shared/sembla-engine.js';
   // BLECH/ROD_OVERHANG sind die Standardwerte des Rechenkerns; der Sammel-Editor
   // zeigt sie als Ist-Wert an, wenn ein Altstand das Feld gar nicht führt (#111).
   import { Opening, BLECH, ROD_OVERHANG } from './shared/sembla-core.js';
-  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening, BLECH, ROD_OVERHANG };
+  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH, ROD_OVERHANG };
   // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
   // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
   // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.

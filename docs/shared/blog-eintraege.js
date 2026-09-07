@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-20",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 111,
+    titel: "Produktauswahl von Modul 1 f\u00fcr mehrere W\u00e4nde gemeinsam setzen \u2014 im "
+      + "selben Popup wie die Wandmerkmale",
+    testbitte: "Im Geschosseditor drei W\u00e4nde ausw\u00e4hlen, \u201eGemeinsam bearbeiten\u2026\u201c "
+      + "\u00f6ffnen: unter den Merkmalen stehen alle Verwendungsstellen von Modul 1. \u201ei3-Stein\u201c "
+      + "ankreuzen, Produkt w\u00e4hlen, \u00fcbernehmen \u2014 Strg+Z nimmt alles in einem Schritt zur\u00fcck.",
+  },
+  {
     id: "chg-20260907-19",
     datum: "2026-09-07",
     typ: "feature",

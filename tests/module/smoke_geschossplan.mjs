@@ -131,6 +131,9 @@ const ENG = await import("../../docs/shared/sembla-engine.js");
 // Der gemeinsame Anlagepfad beider Anlageorte (#15/#62): er belegt die Verwendungsrollen
 // vor und rechnet das Wandelement DARAUS neu, bevor es gespeichert bleibt.
 const WA = await import("../../docs/shared/sembla-wandanlage.js");
+// #111 Verwendungsrollen, Gruppen, Produktoptionen und Produktnachschlag der gemeinsamen
+// Produktauswahl — gebunden wie im Browser, damit der Editor nichts davon nachbaut.
+const KAT = await import("../../docs/shared/sembla-katalog.js");
 // #43: Der Reiter 0,5 der gemeinsamen Kopfleiste ist der direkte Absprung hierher —
 // im Test wird die ECHTE Navbar gemountet, nicht ein Nachbau ihres Markups.
 const { mountNavbar, MODULE } = await import("../../docs/shared/navbar.js");
@@ -138,7 +141,7 @@ PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening, BLECH, ROD_OVERHANG };
+globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH, ROD_OVERHANG };
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
@@ -3427,6 +3430,251 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
         && $('gp-sammel').hidden === true && $('gp-sammelblatt').hidden === true
         && GP.zustand.sammelOffen === false;
     })());
+
+  // (h) #111 Produktauswahl aus Modul 1 gemeinsam setzen -------------------
+  //     Realer Editorpfad: Katalog zuordnen, drei Waende mit UNGLEICHER Rollenauswahl,
+  //     Popup bedienen, gespeicherte `eingaben.planung.produkte.rollen` aller drei
+  //     Elemente ueber `storage.js` pruefen — samt Gegenproben (kein Katalog, Produkt
+  //     nicht im Katalog, Schreibfehler mit Rollback) und Rueckgaengig.
+  {
+    const KATT = KAT;                                  // oben wie im Browser gebunden
+    const katText111 = readFileSync(
+      new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+    const rid = (r) => 'gp-sammel-rolle-' + r;
+    const rollenIds111 = (id, r) => KATT.rollenIds(store.holeProdukte(1, id), r);
+    const aufbau111 = (id) => JSON.stringify(store.holeElement(id).eingaben?.aufbau);
+
+    // Die drei Waende wieder auswaehlen — (g) hatte die Auswahl auf eine reduziert.
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    ok('#111 Pruefaufbau: drei Waende ausgewaehlt, Popup offen',
+      GP.zustand.auswahl.length === 3 && $('gp-sammelblatt').hidden === false);
+
+    // (h1) Muss 1: ALLE waehlbaren Modul-1-Rollen, nach `gruppe` gegliedert, in
+    //      derselben Reihenfolge wie Modul 1 — und nichts sonst.
+    const rollenHtml111 = $('gp-sammel-rollen').innerHTML;
+    const gezeigt111 = [...rollenHtml111.matchAll(/id="gp-sammel-rolle-([a-z0-9_]+)-an"/g)]
+      .map(m => m[1]);
+    const erwartet111 = KATT.rollenVonModul(1).map(r => r.id);
+    ok('#111 (Muss 1) das Popup fuehrt GENAU die waehlbaren Modul-1-Rollen in der '
+      + 'Reihenfolge von Modul 1',
+      erwartet111.length === 16
+      && JSON.stringify(gezeigt111) === JSON.stringify(erwartet111));
+    const gruppen111 = [...rollenHtml111.matchAll(/class="sgruppe">([^<]+)</g)].map(m => m[1]);
+    ok('#111 (Muss 1) gegliedert nach `gruppe` — dieselbe Gruppenreihenfolge wie Modul 1',
+      JSON.stringify(gruppen111) === JSON.stringify(KATT.rollenGruppen(1))
+      && gruppen111.join('|') === 'Steine|Vorspannung|Anschluss|Fugen');
+    ok('#111 (Muss 2) je Rolle GENAU EIN Haekchen, EIN Auswahlfeld und EINE Ist-Anzeige',
+      erwartet111.every(r =>
+        (rollenHtml111.match(new RegExp('id="gp-sammel-rolle-' + r + '-an"', 'g')) || []).length === 1
+        && (rollenHtml111.match(new RegExp('id="gp-sammel-rolle-' + r + '"', 'g')) || []).length === 1
+        && (rollenHtml111.match(new RegExp('id="gp-sammel-rolle-' + r + '-ist"', 'g')) || []).length === 1));
+    ok('#111 (Nicht-Ziel 3) keine Modul-2-Rolle und keine nicht waehlbare Rolle im Popup',
+      ['latte', 'verbinder', 'beplankung', 'rod_sonder', 'blech_boden_sonder']
+        .every(r => !gezeigt111.includes(r)));
+    ok('#111 (Muss 2) ohne Haekchen ist kein Rollenfeld bedienbar',
+      erwartet111.every(r => $(rid(r)).disabled === true));
+    ok('#111 (Nicht-Ziel 2) es bleibt GENAU EINE Schaltflaeche in der Werkzeugleiste',
+      (html.match(/id="gp-sammel-knopf"/g) || []).length === 1
+      && !/id="gp-sammel-rolle-/.test(html));
+
+    // (h2) Muss 5: ohne zugeordneten Katalog wird die GANZE Sammelaenderung mit
+    //      Grund abgewiesen — und nichts geschrieben ([L-12]).
+    ok('#111 (Muss 5) der fehlende Katalog steht benannt im Popup',
+      store.katalogStatus().status === 'nicht_zugeordnet'
+      && /Bauteilkatalog/.test($('gp-sammel-ist').innerHTML)
+      && /L-12/.test($('gp-sammel-ist').innerHTML));
+    {
+      const speicherVor = localStorage.getItem('sembla:elemente');
+      const undoVor = GP.undoStand.undo;
+      $(rid('i3') + '-an').checked = true; $(rid('i3') + '-an').dispatch('change');
+      $(rid('i3')).value = 'stein-i3-375';
+      $('gp-sammel-go').dispatch('click');
+      await warte();
+      ok('#111 (Muss 5) ohne zugeordneten Bauteilkatalog wird benannt abgewiesen',
+        /Bauteilkatalog/.test($('gp-msg').textContent)
+        && /nichts ge/.test($('gp-msg').textContent)
+        && localStorage.getItem('sembla:elemente') === speicherVor
+        && GP.undoStand.undo === undoVor);
+    }
+
+    // (h3) Katalog zuordnen und den Ausgangsstand UNGLEICH machen: Wand A und B
+    //      tragen verschiedene i3-Produkte, Wand C hat die Rolle gar nicht.
+    store.importiereKatalogText(katText111);
+    store.setzeProduktrolle('i3', ['stein-i3-375'], a111);
+    store.setzeProduktrolle('i3', ['stein-i2-250'], b111);
+    await warte();
+    ok('#111 Pruefaufbau: Katalog zugeordnet, i3 ungleich, Wand C ohne die Rolle',
+      store.katalogStatus().status === 'ok'
+      && rollenIds111(a111, 'i3').join() === 'stein-i3-375'
+      && rollenIds111(b111, 'i3').join() === 'stein-i2-250'
+      && !('i3' in (store.holeProdukte(1, c111).rollen || {}))
+      && ids111.every(id => rollenIds111(id, 'rod_std').length === 0));
+    ok('#111 die Gegenprobe (h2) hat das Feld belegt — eine laufende Eingabe wird nie '
+      + 'ueberschrieben',
+      $(rid('i3')).value === 'stein-i3-375');
+    // Auswahl neu setzen: erst EINE Wand (das Popup geht zu und verwirft die
+    // Vorbelegung), dann wieder alle drei — so laeuft die Vorbelegung mit dem
+    // jetzt GEMISCHTEN Ist-Stand wirklich.
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    ok('#111 (Akzeptanz 1) die Rolle steht als „gemischt“ und ohne vorbelegten Wert',
+      /gemischt/.test($(rid('i3') + '-ist').innerHTML)
+      && /37,5/.test($(rid('i3') + '-ist').innerHTML)
+      && /keine Auswahl/.test($(rid('i3') + '-ist').innerHTML)
+      && $(rid('i3')).value === ''
+      && $(rid('i3') + '-an').checked === false);
+    ok('#111 die Produktliste kommt aus dem zugeordneten Katalog (nur passende Kategorie)',
+      /stein-i3-375/.test($(rid('i3')).innerHTML)
+      && /stein-i2-250/.test($(rid('i3')).innerHTML)
+      && !/gewindestange/.test($(rid('i3')).innerHTML));
+
+    // (h4) Akzeptanz 1: ankreuzen, waehlen, uebernehmen. Dazu die MASSWIRKSAME
+    //      Rolle `rod_std` — sie muss dieselbe Neurechnung nachziehen wie Modul 1.
+    const vorWe111 = ids111.map(id => JSON.stringify(we111(id)));
+    const lagenVor111 = JSON.stringify(ids111.map(id =>
+      MAPPE.findeWand(store.holeMappe(), id).wand.lage));
+    const vorI2 = ids111.map(id => JSON.stringify(rollenIds111(id, 'i2')));
+    const vorAufbau = ids111.map(aufbau111);
+    const undoVorRollen = GP.undoStand.undo;
+    ok('#111 Pruefaufbau: die Waende tragen noch keine Kataloglaenge',
+      ids111.every(id => we111(id).prestress.rod_lengths_mm.length === 0
+        && we111(id).rod_mm === null));
+    $(rid('i3') + '-an').checked = true; $(rid('i3') + '-an').dispatch('change');
+    $(rid('i3')).value = 'stein-i3-375';
+    $(rid('rod_std') + '-an').checked = true; $(rid('rod_std') + '-an').dispatch('change');
+    $(rid('rod_std')).value = 'gewindestange-m10-1000';
+    ok('#111 (Muss 2) das Haekchen schaltet genau sein Rollenfeld frei',
+      $(rid('i3')).disabled === false && $(rid('rod_std')).disabled === false
+      && erwartet111.filter(r => r !== 'i3' && r !== 'rod_std')
+           .every(r => $(rid(r)).disabled === true));
+    confirmText111 = null;
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#111 (Muss 4) die Bestaetigung nennt Anzahl UND jede Rolle mit ihrem Zielprodukt',
+      /^3 /.test(confirmText111)
+      && /i3-Stein →/.test(confirmText111) && /37,5/.test(confirmText111)
+      && /Gewindestange →/.test(confirmText111) && /1000/.test(confirmText111)
+      && /neu gerechnet/.test(confirmText111));
+    ok('#111 (Akzeptanz 1) jede der drei Waende traegt genau dieses i3-Produkt',
+      ids111.every(id => JSON.stringify(rollenIds111(id, 'i3')) === '["stein-i3-375"]'));
+    ok('#111 (Muss 6) geschrieben ist auch die zweite Rolle — je Wand mit ihrer Kennung',
+      ids111.every(id => JSON.stringify(rollenIds111(id, 'rod_std'))
+        === '["gewindestange-m10-1000"]'));
+    ok('#111 die masswirksame Rolle zieht die Neurechnung nach ([Z-1], wie Modul 1)',
+      ids111.every(id => {
+        const w = we111(id);
+        return JSON.stringify(w.prestress.rod_lengths_mm) === '[1000]' && w.rod_mm === 1000;
+      }));
+    ok('#111 (Akzeptanz 2) eine nicht angekreuzte Rolle bleibt bit-gleich, ebenso `eingaben.aufbau`',
+      ids111.every((id, i) => JSON.stringify(rollenIds111(id, 'i2')) === vorI2[i]
+        && aufbau111(id) === vorAufbau[i]));
+    ok('#111 (Nicht-Ziel 1) Laenge, Lage, Oeffnungen und Verzahnungen bleiben unberuehrt',
+      ids111.every((id, i) => {
+        const vor = JSON.parse(vorWe111[i]), nach = we111(id);
+        return vor.length_mm === nach.length_mm && vor.height_mm === nach.height_mm
+          && JSON.stringify(vor.openings) === JSON.stringify(nach.openings)
+          && JSON.stringify(vor.steps) === JSON.stringify(nach.steps)
+          && JSON.stringify(vor.interlocks || []) === JSON.stringify(nach.interlocks || []);
+      })
+      && JSON.stringify(ids111.map(id =>
+        MAPPE.findeWand(store.holeMappe(), id).wand.lage)) === lagenVor111);
+    ok('#111 (Muss 7) Merkmale und Produktauswahl sind GENAU EIN Rueckgaengig-Schritt',
+      GP.undoStand.undo === undoVorRollen + 1);
+
+    // (h5) Akzeptanz 4 / Muss 7: EIN Rueckgaengig-Schritt nimmt die Produktauswahl
+    //      ALLER betroffenen Waende zurueck — auch die Rolle, die vorher GAR NICHT
+    //      gesetzt war (`i3` an Wand C, `rod_std` an allen drei).
+    GP.undo();
+    await warte();
+    ok('#111 (Akzeptanz 4) Rueckgaengig stellt die ungleiche Ausgangsauswahl wieder her',
+      rollenIds111(a111, 'i3').join() === 'stein-i3-375'
+      && rollenIds111(b111, 'i3').join() === 'stein-i2-250'
+      && rollenIds111(c111, 'i3').length === 0
+      && ids111.every(id => rollenIds111(id, 'rod_std').length === 0));
+    ok('#111 (Muss 7) und zugleich jedes Wandelement — die Neurechnung ist mit zurueck',
+      ids111.every((id, i) => JSON.stringify(we111(id)) === vorWe111[i])
+      && GP.undoStand.undo === undoVorRollen);
+    GP.redo();
+    await warte();
+    ok('#111 Wiederholen setzt Produktauswahl und Neurechnung wieder ein',
+      ids111.every(id => JSON.stringify(rollenIds111(id, 'i3')) === '["stein-i3-375"]'
+        && JSON.stringify(rollenIds111(id, 'rod_std')) === '["gewindestange-m10-1000"]'
+        && we111(id).rod_mm === 1000));
+
+    // (h6) Muss 5: ein Produkt, das im Katalog fehlt — benannt abgewiesen, nichts
+    //      geschrieben, kein Rueckgaengig-Schritt.
+    {
+      const speicherVor = localStorage.getItem('sembla:elemente');
+      const undoVor = GP.undoStand.undo;
+      $(rid('i3')).value = 'gibtsnicht';
+      $('gp-sammel-go').dispatch('click');
+      await warte();
+      ok('#111 (Akzeptanz 3) ein im Katalog fehlendes Produkt wird BENANNT abgewiesen',
+        /gibtsnicht/.test($('gp-msg').textContent)
+        && /Bauteilkatalog/.test($('gp-msg').textContent)
+        && /nichts ge/.test($('gp-msg').textContent));
+      ok('#111 (Akzeptanz 3) dabei ist keine Wand veraendert und nichts gebucht',
+        localStorage.getItem('sembla:elemente') === speicherVor
+        && GP.undoStand.undo === undoVor);
+      $(rid('i3')).value = '';
+      $('gp-sammel-go').dispatch('click');
+      await warte();
+      ok('#111 (Muss 3) eine angekreuzte Rolle ohne gewaehltes Produkt wird abgewiesen',
+        /i3-Stein/.test($('gp-msg').textContent)
+        && localStorage.getItem('sembla:elemente') === speicherVor
+        && GP.undoStand.undo === undoVor);
+    }
+
+    // (h7) Muss 6: scheitert ein Schreibvorgang mitten im Lauf, werden ALLE schon
+    //      geschriebenen Waende aus ihren Momentaufnahmen zurueckgesetzt.
+    {
+      const vorWe = ids111.map(id => JSON.stringify(we111(id)));
+      const vorRollen = ids111.map(id => JSON.stringify(store.holeProdukte(1, id).rollen));
+      const undoVor = GP.undoStand.undo;
+      $(rid('i3')).value = 'stein-i2-250';
+      $(rid('rod_std')).value = 'gewindestange-m10-850';
+      // Der vierte Schreibvorgang am Wandspeicher ist der ERSTE der zweiten Wand:
+      // je Wand schreibt der Lauf das Wandelement und dann die zwei Rollen.
+      const echtesSetItem = localStorage.setItem.bind(localStorage);
+      let n = 0;
+      localStorage.setItem = (k, v) => {
+        if (k === 'sembla:elemente' && ++n === 4) throw new Error('Speicher voll (Test)');
+        return echtesSetItem(k, v);
+      };
+      $('gp-sammel-go').dispatch('click');
+      localStorage.setItem = echtesSetItem;
+      await warte();
+      ok('#111 (Muss 6) ein Schreibfehler wird benannt und der Rollback gemeldet',
+        /Speicher voll/.test($('gp-msg').textContent)
+        && /zur(ü|ue)ckgesetzt/.test($('gp-msg').textContent));
+      ok('#111 (Muss 6) danach steht jede Wand wieder auf ihrem Stand davor — '
+        + 'Wandelement UND Produktauswahl',
+        ids111.every((id, i) => JSON.stringify(we111(id)) === vorWe[i]
+          && JSON.stringify(store.holeProdukte(1, id).rollen) === vorRollen[i]));
+      ok('#111 (Muss 6) ein gescheiterter Lauf bucht keinen Rueckgaengig-Schritt',
+        GP.undoStand.undo === undoVor);
+    }
+
+    // (h8) Nicht-Ziele: kein Schreiben in `eingaben.aufbau`, in die Projektmappe oder
+    //      in den Katalog; kein neues gespeichertes Feld, kein Versionssprung.
+    ok('#111 (Nicht-Ziel 6) `eingaben.aufbau` ist unangetastet geblieben',
+      ids111.every((id, i) => aufbau111(id) === vorAufbau[i]));
+    ok('#111 (Nicht-Ziel 6) der Bauteilkatalog ist unveraendert und gueltig',
+      KATT.validiereKatalog(store.holeKatalog()).length === 0
+      && KATT.KATALOG_VERSION === store.holeKatalog().version);
+    ok('#111 (Nicht-Ziel 5) kein neues gespeichertes Feld — die Auswahl steht nur in `eingaben`',
+      !/sammelRollen|sammelOptFuer/.test(localStorage.getItem('sembla:elemente') || '')
+      && !/produkte/.test(localStorage.getItem('sembla:projekte') || '')
+      && store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+      && store.PROJEKT_VERSION === 2 && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  }
   globalThis.confirm = confirmEcht111;
 }
 
