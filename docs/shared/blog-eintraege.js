@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260907-18",
+    datum: "2026-09-07",
+    typ: "feature",
+    issue: 111,
+    titel: "Mehrere ausgew\u00e4hlte W\u00e4nde gemeinsam bearbeiten \u2014 ein Popup mit neun "
+      + "allgemeinen Wandmerkmalen",
+    testbitte: "Im Geschosseditor drei W\u00e4nde ausw\u00e4hlen, \u201eGemeinsam bearbeiten\u2026\u201c "
+      + "\u00f6ffnen: Ungleiches steht als \u201egemischt\u201c. Nur Brandschutzklasse ankreuzen, F30 "
+      + "setzen \u2014 alles andere bleibt. Strg+Z nimmt es in einem Schritt zur\u00fcck.",
+  },
+  {
     id: "chg-20260907-17",
     datum: "2026-09-07",
     typ: "feature",

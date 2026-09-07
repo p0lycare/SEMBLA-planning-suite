@@ -63,14 +63,22 @@
   .field input.s{width:78px}
   .field.voll,.field.voll select,.field.voll input{width:100%}
   .chk{display:flex;align-items:center;gap:6px;font-size:12.5px;margin:0}
-  /* Sammel-Editor (#75): sichtbar erst ab zwei ausgewählten Wänden */
+  /* Sammel-Editor (#75/#111): sichtbar erst ab zwei ausgewählten Wänden. In der
+     Werkzeugleiste steht seit #111 GENAU EINE Schaltfläche — alle Felder liegen im
+     Popup `#gp-sammelblatt`, weil neun Merkmale in keine Leiste passen und je
+     Merkmal ein eigenes Bedienfeld in der Leiste ausdrücklich nicht gewollt ist. */
   #gp-sammel{border-top:1px solid var(--sb-line);margin-top:6px;padding-top:2px}
   #gp-sammel .row{align-items:center}
-  #gp-sammel input,#gp-sammel select{border:1px solid var(--sb-line);border-radius:7px;
-        padding:6px 8px;font-size:13px}
-  #gp-sammel input.s{width:78px}
-  #gp-sammel input[disabled],#gp-sammel select[disabled]{opacity:.55}
   #gp-sammel-info{font-size:12.5px}
+  #gp-sammelblatt .sfeld{display:flex;align-items:center;gap:8px;margin:4px 0;
+        padding:4px 0;border-bottom:1px dotted var(--sb-line)}
+  #gp-sammelblatt .sfeld:last-of-type{border-bottom:0}
+  #gp-sammelblatt .sfeld .chk{flex:1 1 190px;min-width:190px}
+  #gp-sammelblatt input,#gp-sammelblatt select{border:1px solid var(--sb-line);
+        border-radius:7px;padding:5px 7px;font-size:13px;width:150px}
+  #gp-sammelblatt input[disabled],#gp-sammelblatt select[disabled]{opacity:.55}
+  #gp-sammelblatt .sist{flex:1 1 120px;font-size:11.5px;color:var(--sb-muted);text-align:right}
+  #gp-sammelblatt .sist b{color:#33415c}
   .msg{font-size:12px;word-break:break-word}
   .msg.err{color:#c0392b}
   .msg.ok{color:var(--sb-ok)}
@@ -255,28 +263,18 @@
           <div id="gp-auswahl-info">Keine Wand aktiv.</div>
         </div>
 
-        <!-- Sammel-Editor (#75): mehrere AUSGEWÄHLTE Wände in einem bestätigten
-             Schritt auf eine gemeinsame Wandhöhe und/oder Windsituation setzen.
-             Sichtbar erst ab zwei ausgewählten Wänden. Kanonisch bleiben Höhe und
-             Wandtyp je Wandspeicher-Eintrag; die Höhe wird je Wand über den
-             Auslegungspfad von Modul 1 neu gerechnet (wie #56). Länge, Lage,
-             Öffnungen und Bemaßungen bleiben unberührt. -->
+        <!-- Sammel-Editor (#75/#111): mehrere AUSGEWÄHLTE Wände in einem bestätigten
+             Schritt auf gemeinsame allgemeine Wandmerkmale setzen. Sichtbar erst ab
+             zwei ausgewählten Wänden, und hier steht GENAU EINE Schaltfläche — die
+             neun Felder liegen im Popup `#gp-sammelblatt`. Kanonisch bleiben alle
+             Werte je Wandspeicher-Eintrag; gerechnet wird je Wand über den
+             Auslegungspfad von Modul 1 (wie #56). Länge, Lage, Öffnungen,
+             Verzahnungen und Bemaßungen bleiben unberührt. -->
         <div id="gp-sammel" hidden>
           <div class="row">
             <span id="gp-sammel-info">–</span>
-            <label class="chk" title="Gemeinsame Wandhöhe übernehmen — jede ausgewählte Wand wird über den Auslegungspfad von Modul 1 neu gerechnet (#56)">
-              <input type="checkbox" id="gp-sammel-hoehe-an"><span>Wandhöhe (mm)</span></label>
-            <input id="gp-sammel-hoehe" class="s" type="number" step="200" min="200" disabled>
-            <label class="chk" title="Gemeinsame Windsituation (Wandtyp) übernehmen — Fachmerkmal der Wand, ohne Einfluss auf Tiling/Stückliste">
-              <input type="checkbox" id="gp-sammel-wandtyp-an"><span>Windsituation</span></label>
-            <select id="gp-sammel-wandtyp" style="width:130px" disabled>
-              <option value="" disabled hidden>– gemischt –</option>
-              <option value="mit_wind">mit Wind (Cpi)</option>
-              <option value="ohne_wind">ohne Wind</option>
-            </select>
-            <button class="btn-p" id="gp-sammel-go" title="Die gewählten Parameter nach Bestätigung für ALLE ausgewählten Wände übernehmen — genau ein Rückgängig-Schritt">Übernehmen…</button>
+            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam auf allgemeine Wandmerkmale setzen — Höhe, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge und Überstand">Gemeinsam bearbeiten…</button>
           </div>
-          <div class="hint" id="gp-sammel-ist" style="margin-top:2px">–</div>
         </div>
       </div>
 
@@ -393,6 +391,116 @@
             im Rückgängig-Stapel. Verschieben ist erst nach der Kalibrierung möglich.</div>
         </div>
       </div>
+
+      <!-- Sammel-Editor als Popup (#111). Es liegt — wie Planblatt und Bauteilliste —
+           NEBEN der Bühne im Markup und nur optisch darüber: `render()` schreibt den
+           SVG-Kindbaum der Bühne bei jedem Zeigerereignis neu, ein Feld darin verlöre
+           Fokus, Auswahl und Behandler. Die IDs stehen fest im Markup und werden nicht
+           erzeugt — nur so ist das Popup über denselben Weg bedienbar wie jedes andere
+           Bedienelement der Seite.
+           Geführt werden GENAU NEUN allgemeine Wandmerkmale. Geometrie- und
+           positionsabhängige Angaben (Länge, Lage, Öffnungen, Durchbrüche, Staffelungen,
+           Verzahnungen, manuelle Spannachsen, Zwischenspannpunkte) sind ausdrücklich
+           NICHT dabei, und eine gemeinsame Produktauswahl ebenfalls nicht.
+           Geschrieben wird ausschließlich über „Übernehmen…“ nach Bestätigung; jedes
+           Merkmal wirkt nur mit gesetztem Häkchen. -->
+      <div class="gp-sheet" id="gp-sammelblatt" hidden>
+        <h4><span>Gemeinsam bearbeiten</span>
+          <button class="btn-s" id="gp-sammel-zu" title="Popup schließen (Escape) — es wird nichts gespeichert">Schließen</button></h4>
+        <div class="hint" id="gp-sammel-ist" style="margin-top:0">–</div>
+
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-hoehe-an" title="Gemeinsame Wandhöhe übernehmen — jede ausgewählte Wand wird über den Auslegungspfad von Modul 1 neu gerechnet (#56)">
+            <input type="checkbox" id="gp-sammel-hoehe-an"><span>Wandhöhe (mm)</span></label>
+          <input id="gp-sammel-hoehe" type="number" step="200" min="200" disabled>
+          <span class="sist" id="gp-sammel-hoehe-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-wandtyp-an" title="Windsituation (Wandtyp) — Fachmerkmal der Wand, ohne Einfluss auf Tiling und Stückliste">
+            <input type="checkbox" id="gp-sammel-wandtyp-an"><span>Windsituation</span></label>
+          <select id="gp-sammel-wandtyp" disabled>
+            <option value="" disabled hidden>– gemischt –</option>
+            <option value="mit_wind">mit Wind (Cpi)</option>
+            <option value="ohne_wind">ohne Wind</option>
+          </select>
+          <span class="sist" id="gp-sammel-wandtyp-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-brand-an" title="Brandschutzklassifikation (#79) — reine Planungskennzeichnung, aus ihr wird nichts abgeleitet">
+            <input type="checkbox" id="gp-sammel-brand-an"><span>Brandschutzklasse</span></label>
+          <select id="gp-sammel-brand" disabled>
+            <option value="" disabled hidden>– gemischt –</option>
+            <option value="F0">F0</option>
+            <option value="F30">F30</option>
+          </select>
+          <span class="sist" id="gp-sammel-brand-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-abdicht-an" title="Stoßfugen-Abdichtung ([A-6]) — die Dichtstreifenlänge der Stückliste ist nachrichtlich und wird nie bepreist">
+            <input type="checkbox" id="gp-sammel-abdicht-an"><span>Stoßfugen-Abdichtung</span></label>
+          <select id="gp-sammel-abdicht" disabled>
+            <option value="" disabled hidden>– gemischt –</option>
+            <option value="nicht_abgedichtet">nicht abgedichtet</option>
+            <option value="abgedichtet">abgedichtet</option>
+          </select>
+          <span class="sist" id="gp-sammel-abdicht-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-vorne-an" title="Funktion der Vorderseite — Eingang der Auslegung, jede Wand wird damit neu gerechnet">
+            <input type="checkbox" id="gp-sammel-vorne-an"><span>Funktion der Vorderseite</span></label>
+          <select id="gp-sammel-vorne" disabled>
+            <option value="" disabled hidden>– gemischt –</option>
+            <option value="fassade">Fassade</option>
+            <option value="innenausbau">Innenausbau</option>
+            <option value="sicht">Sichtfläche / roh</option>
+            <option value="installation">Installationsebene</option>
+          </select>
+          <span class="sist" id="gp-sammel-vorne-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-hinten-an" title="Funktion der Rückseite — Eingang der Auslegung, jede Wand wird damit neu gerechnet">
+            <input type="checkbox" id="gp-sammel-hinten-an"><span>Funktion der Rückseite</span></label>
+          <select id="gp-sammel-hinten" disabled>
+            <option value="" disabled hidden>– gemischt –</option>
+            <option value="fassade">Fassade</option>
+            <option value="innenausbau">Innenausbau</option>
+            <option value="sicht">Sichtfläche / roh</option>
+            <option value="installation">Installationsebene</option>
+          </select>
+          <span class="sist" id="gp-sammel-hinten-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-topconn-an" title="Oberer Anschluss ([A-2]) — Spannplatte ist der Standard, Kopfblech muss ausgesprochen werden">
+            <input type="checkbox" id="gp-sammel-topconn-an"><span>Oberer Anschluss</span></label>
+          <select id="gp-sammel-topconn" disabled>
+            <option value="" disabled hidden>– gemischt –</option>
+            <option value="blech">Kopfblech</option>
+            <option value="spannplatte">Spannplatte (Standard)</option>
+          </select>
+          <span class="sist" id="gp-sammel-topconn-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-blech-an" title="Modullänge des KOPFBLECHS in mm — ganze Zahl, Vielfaches von 10 mm, mindestens 200 mm. Ein unzulässiger Wert wird benannt abgewiesen, nie geklemmt.">
+            <input type="checkbox" id="gp-sammel-blech-an"><span>Kopfblech-Modullänge (mm)</span></label>
+          <input id="gp-sammel-blech" type="number" step="10" min="200" disabled>
+          <span class="sist" id="gp-sammel-blech-ist">–</span>
+        </div>
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-ueber-an" title="Überstand des Reststücks über die Oberkante ([Z-6]) in mm — ganze Zahl ab 0. Ein unzulässiger Wert wird benannt abgewiesen, nie gerundet.">
+            <input type="checkbox" id="gp-sammel-ueber-an"><span>Überstand Reststück (mm)</span></label>
+          <input id="gp-sammel-ueber" type="number" step="1" min="0" disabled>
+          <span class="sist" id="gp-sammel-ueber-ist">–</span>
+        </div>
+
+        <div class="row">
+          <button class="btn-p" id="gp-sammel-go" title="Die angekreuzten Merkmale nach Bestätigung für ALLE ausgewählten Wände übernehmen — genau ein Rückgängig-Schritt">Übernehmen…</button>
+        </div>
+        <div class="hint" style="margin-top:2px">Geändert wird <b>nur</b>, was angekreuzt ist; alles
+          andere bleibt je Wand unverändert. Verschiedene Ausgangswerte stehen als
+          <b>gemischt</b> und werden nie still durch einen Standardwert ersetzt. Länge, Lage,
+          Öffnungen, Verzahnungen und Bemaßungen bleiben unberührt, ebenso die Produktauswahl der
+          Wände. Der ganze Vorgang ist <b>ein</b> Rückgängig-Schritt (Strg+Z).</div>
+      </div>
     </div>
 
     <div class="msg" id="gp-msg"></div>
@@ -427,6 +535,10 @@ const r2 = v => Math.round(Number(v) * 100) / 100;
 // ENG/Opening sind der Auslegungspfad, den auch Modul 1 benutzt — er wird für die
 // Neurechnung nach einer Längenänderung gebraucht (#56, s. „Länge der Wand“).
 let store, MAPPE, CON, PLAN, MB, WA, ENG, Opening;
+// Standardwerte des Rechenkerns für die Anzeige des IST-Werts im Sammel-Editor (#111):
+// Sie kommen aus `sembla-core.js` und werden hier NICHT nachgebaut — eine zweite Zahl
+// wäre genau der Drift, den [P-6] ausschließt.
+let BLECH_STD, UEBERSTAND_STD;
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
@@ -463,6 +575,10 @@ const GP = {
   bild: null, bildUrl: null, bildFuer: undefined,
   hoeheFuer: undefined,       // Geschoss, dessen Höhenvorgabe im Feld steht ([L-5])
   sammelFuer: undefined,      // Auswahl, für die die Sammel-Felder vorbelegt sind (#75)
+  // Das Sammel-Popup (#111) ist reine Bedienung: es steht in keinem Rückgängig-
+  // Schritt ([K-10]), wird nirgends gespeichert und schließt sich, sobald weniger
+  // als zwei Wände ausgewählt sind.
+  sammelOffen: false,         // Popup „Gemeinsam bearbeiten“ geöffnet (#111)
   // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
   // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
   kal: { an: false, punkte: [] },
@@ -2105,64 +2221,242 @@ function sammelWaende(){ return GP.auswahl.filter(id => !!wand(id)); }
 /** Lesbarer Text der Windsituation — dieselben Worte wie in der Bauteilliste. */
 function wandtypText(t){ return t === 'ohne_wind' ? 'ohne Wind' : 'mit Wind'; }
 
+// --- #111: die neun gemeinsam einstellbaren Wandmerkmale --------------------
+//
+// Alle neun leben AUSSCHLIESSLICH am Wandelement — nicht in `eingaben`, nicht in
+// der Projektmappe, nicht im Katalog. Es entsteht also kein neues gespeichertes
+// Feld und kein Versionssprung.
+//
+// Der Unterschied, der zählt, ist `core`:
+//   core: true  — der Wert ist EINGANG des Rechenkerns (Höhe, Seitenfunktionen,
+//                 oberer Anschluss, Kopfblech-Modullänge, Überstand). Er wird VOR
+//                 dem Engine-Aufruf in die Vorgabe gesetzt, und das Wandelement
+//                 wird über denselben einen Auslegungspfad neu gerechnet.
+//   core: false — der Wert hängt NICHT am Core (Windsituation, Brandschutz-
+//                 klassifikation, Abdichtung). Er wird NACH dem Rechnen gesetzt,
+//                 genau wie Modul 1 es tut und wie `rechneWandelement` sie sonst
+//                 nur mitführt.
+// Eine zweite Rechenlogik entsteht dadurch nicht: gerechnet wird weiterhin
+// ausschließlich in `rechneWandelement` über `ENG`.
+const SEITE_TEXT = { fassade: 'Fassade', innenausbau: 'Innenausbau',
+                     sicht: 'Sichtfläche / roh', installation: 'Installationsebene' };
+const SEITE_STANDARD = { vorne: 'fassade', hinten: 'innenausbau' };
+const ABDICHT_TEXT = { nicht_abgedichtet: 'nicht abgedichtet', abgedichtet: 'abgedichtet' };
+const TOPCONN_TEXT = { blech: 'Kopfblech', spannplatte: 'Spannplatte' };
+
+/** Wirksame Funktion einer Wandseite — dieselben Standards wie in Modul 1. */
+function seiteFunktion(we, seite){
+  const s = we.sides && we.sides[seite];
+  const f = s && s.funktion;
+  return SEITE_TEXT[f] ? f : SEITE_STANDARD[seite];
+}
+
 /**
- * Ausgangswerte der Auswahl aggregieren — je Parameter alle VERSCHIEDENEN Werte,
+ * Die Funktion EINER Seite in der Vorgabe setzen — die andere bleibt bit-genau,
+ * wie sie war (auch „gar nicht gesetzt“ bleibt „gar nicht gesetzt“). `normSides`
+ * im Core füllt fehlende Seiten ohnehin mit denselben Standards auf; hier wird
+ * deshalb nichts materialisiert, was nicht angekreuzt war.
+ */
+function setzeSeite(vorg, seite, wert){
+  const alt = vorg.sides || {};
+  const neu = {};
+  for (const k of Object.keys(alt)) neu[k] = alt[k];
+  neu[seite] = { ...(alt[seite] || {}), funktion: wert };
+  vorg.sides = neu;
+}
+
+/** Eine ganze Zahl aus der Eingabe — ohne jedes Runden und ohne jedes Klemmen. */
+function ganzeZahl(roh){
+  const v = Number(String(roh).replace(',', '.'));
+  return Number.isInteger(v) ? v : null;
+}
+
+/** Auswahlfeld-Prüfung: gemischt bleibt gemischt, bis ausdrücklich gewählt wurde. */
+function wahlPruefung(werte, was){
+  return (roh) => werte.includes(roh) ? { wert: roh }
+    : { fehler: `erst ${was} wählen — ein gemischter Ausgangszustand wird nie still vereinheitlicht.` };
+}
+
+const SAMMEL_FELDER = [
+  { id: 'hoehe', name: 'Wandhöhe', core: true, wahl: false,
+    lies: we => we.height_mm,
+    text: v => `${v} mm`,
+    pruefe: (roh) => {
+      const v = Number(String(roh).replace(',', '.'));
+      return (!roh || !Number.isFinite(v) || v <= 0)
+        ? { fehler: 'die gemeinsame Wandhöhe muss eine positive Zahl in mm sein.' }
+        : { wert: v };
+    },
+    // Das Lagenraster und alles, was der neuen Höhe im Weg steht, wird je Wand
+    // geprüft und benannt — nie gekappt (#75).
+    hindernisse: (we, v) => hoehenHindernisse(we, v) },
+
+  { id: 'wandtyp', name: 'Windsituation', core: false, wahl: true,
+    lies: we => store.normWandtyp(we.wandtyp),
+    text: wandtypText,
+    // Die zulässigen Werte kommen aus `storage.js` und werden in `sammelPruefungen()`
+    // eingehängt, sobald `store` gebunden ist — eine zweite Werteliste wäre Drift.
+    pruefe: wahlPruefung([], 'eine Windsituation'),
+    setze: (neu, v) => { neu.wandtyp = v; } },
+
+  // #79: reine Planungskennzeichnung. Sie hängt nicht am Core, aus ihr wird nichts
+  // abgeleitet — deshalb steht sie hinter dem Rechnen und ist keine neue Fachregel.
+  { id: 'brand', name: 'Brandschutzklasse', core: false, wahl: true,
+    lies: we => store.normBrandklasse(we.brandklasse),
+    text: v => v,
+    pruefe: wahlPruefung([], 'eine Brandschutzklasse'),   // Werte s. `sammelPruefungen()`
+    setze: (neu, v) => { neu.brandklasse = v; } },
+
+  { id: 'abdicht', name: 'Stoßfugen-Abdichtung', core: false, wahl: true,
+    lies: we => store.normAbdichtung(we.abdichtung),
+    text: v => ABDICHT_TEXT[v] || v,
+    pruefe: wahlPruefung([], 'eine Abdichtung'),         // Werte s. `sammelPruefungen()`
+    setze: (neu, v) => { neu.abdichtung = v; } },
+
+  { id: 'vorne', name: 'Funktion der Vorderseite', core: true, wahl: true,
+    lies: we => seiteFunktion(we, 'vorne'),
+    text: v => SEITE_TEXT[v] || v,
+    pruefe: wahlPruefung(Object.keys(SEITE_TEXT), 'eine Funktion der Vorderseite'),
+    setze: (vorg, v) => setzeSeite(vorg, 'vorne', v) },
+
+  { id: 'hinten', name: 'Funktion der Rückseite', core: true, wahl: true,
+    lies: we => seiteFunktion(we, 'hinten'),
+    text: v => SEITE_TEXT[v] || v,
+    pruefe: wahlPruefung(Object.keys(SEITE_TEXT), 'eine Funktion der Rückseite'),
+    setze: (vorg, v) => setzeSeite(vorg, 'hinten', v) },
+
+  // [A-2]/#92: Standard ist die SPANNPLATTE — auch als Rückfall, wenn das Feld
+  // fehlt. Genau das rechnet der Core, und genau das wird hier angezeigt.
+  { id: 'topconn', name: 'Oberer Anschluss', core: true, wahl: true,
+    lies: we => ((we.prestress || {}).top_connection === 'blech') ? 'blech' : 'spannplatte',
+    text: v => TOPCONN_TEXT[v] || v,
+    pruefe: wahlPruefung(['blech', 'spannplatte'], 'einen oberen Anschluss'),
+    setze: (vorg, v) => { vorg.prestress.top_connection = v; } },
+
+  { id: 'blech', name: 'Kopfblech-Modullänge', core: true, wahl: false,
+    lies: we => {
+      const v = (we.prestress || {}).blech_mm;
+      return (v != null && +v > 0) ? +v : BLECH_STD;
+    },
+    text: v => `${v} mm`,
+    pruefe: (roh) => {
+      const v = ganzeZahl(roh);
+      return (!roh || v === null || v < 200 || v % 10 !== 0)
+        ? { fehler: 'die Kopfblech-Modullänge muss eine ganze Zahl in mm sein, ein Vielfaches von '
+            + `10 mm und mindestens 200 mm — „${roh || '(leer)'}“ passt nicht. Es wird nichts `
+            + 'geklemmt und nichts gerundet.' }
+        : { wert: v };
+    },
+    setze: (vorg, v) => { vorg.prestress.blech_mm = v; } },
+
+  // [Z-6]: der Überstand ist eingebautes Material, kein Verschnitt.
+  { id: 'ueber', name: 'Überstand Reststück', core: true, wahl: false,
+    lies: we => {
+      const v = (we.prestress || {}).rod_overhang_mm;
+      return (v != null && +v >= 0) ? +v : UEBERSTAND_STD;
+    },
+    text: v => `${v} mm`,
+    pruefe: (roh) => {
+      const v = ganzeZahl(roh);
+      return (!roh || v === null || v < 0)
+        ? { fehler: 'der Überstand des Reststücks muss eine ganze Zahl in mm ab 0 sein — '
+            + `„${roh || '(leer)'}“ passt nicht. Es wird nichts geklemmt und nichts gerundet.` }
+        : { wert: v };
+    },
+    setze: (vorg, v) => { vorg.prestress.rod_overhang_mm = v; } },
+];
+
+/**
+ * Die kanonischen Wertelisten aus `storage.js` in die Prüfungen einhängen.
+ *
+ * Sie stehen erst zur Verfügung, wenn `__gpInit()` `store` gebunden hat — eine
+ * zweite Werteliste hier im Modul wäre genau der Drift, den [P-6] ausschließt.
+ */
+function sammelPruefungen(){
+  const setz = (id, werte, was) => {
+    const f = SAMMEL_FELDER.find(x => x.id === id);
+    f.pruefe = wahlPruefung(werte, was);
+  };
+  setz('wandtyp', store.WANDTYPEN, 'eine Windsituation');
+  setz('brand', store.BRANDKLASSEN, 'eine Brandschutzklasse');
+  setz('abdicht', store.ABDICHTUNGEN, 'eine Abdichtung');
+}
+
+/** Kennung eines Bedienfelds im Popup. */
+function sammelFeldId(f){ return 'gp-sammel-' + f.id; }
+
+/**
+ * Ausgangswerte der Auswahl aggregieren — je Merkmal alle VERSCHIEDENEN Werte,
  * damit ein gemischter Zustand ausdrücklich als „gemischt“ erscheint und nie
  * still als ein konkreter Wert. Verwaiste Einträge ([L-4]) werden gezählt und
  * benannt, nie mit geratenen Werten aufgefüllt.
  */
 function sammelStand(ids){
-  const hoehen = [], typen = [], verwaist = [];
+  const werte = {}, verwaist = [];
+  for (const f of SAMMEL_FELDER) werte[f.id] = [];
   for (const id of ids) {
     const el = store.holeElement(id);
     if (!el || !el.wandelement) { const w = wand(id); verwaist.push(w && w.name || id); continue; }
-    const h = el.wandelement.height_mm;
-    if (!hoehen.includes(h)) hoehen.push(h);
-    const t = store.normWandtyp(el.wandelement.wandtyp);
-    if (!typen.includes(t)) typen.push(t);
+    for (const f of SAMMEL_FELDER) {
+      const v = f.lies(el.wandelement);
+      if (!werte[f.id].includes(v)) werte[f.id].push(v);
+    }
   }
-  hoehen.sort((a, b) => a - b);
-  return { hoehen, typen, verwaist };
+  for (const f of SAMMEL_FELDER) {
+    if (!f.wahl) werte[f.id].sort((a, b) => a - b);
+  }
+  return { werte, verwaist };
 }
 
 /** Eingabefelder an die Aktivierungshäkchen angleichen (reine Bedienung). */
 function sammelFelder(){
-  $('gp-sammel-hoehe').disabled = !$('gp-sammel-hoehe-an').checked;
-  $('gp-sammel-wandtyp').disabled = !$('gp-sammel-wandtyp-an').checked;
+  for (const f of SAMMEL_FELDER) {
+    $(sammelFeldId(f)).disabled = !$(sammelFeldId(f) + '-an').checked;
+  }
 }
 
 /**
- * Sammel-Editor an den Zustand angleichen (aus `kopfSync`). Sichtbar erst ab
- * ZWEI ausgewählten Wänden. Vorbelegt wird nur beim WECHSEL der Auswahl — eine
- * laufende Eingabe wird nie überschrieben; ein gemischter Ausgangswert belegt
- * die Felder ausdrücklich NICHT mit einem konkreten Wert.
+ * Sammel-Editor an den Zustand angleichen (aus `kopfSync`). Die Schaltfläche in
+ * der Werkzeugleiste erscheint ab ZWEI ausgewählten Wänden, das Popup nur, wenn
+ * es geöffnet wurde. Vorbelegt wird nur beim WECHSEL der Auswahl — eine laufende
+ * Eingabe wird nie überschrieben; ein gemischter Ausgangswert belegt das Feld
+ * ausdrücklich NICHT mit einem konkreten Wert.
  */
 function sammelSync(){
   const box = $('gp-sammel');
+  const blatt = $('gp-sammelblatt');
   const ids = sammelWaende();
-  if (ids.length < 2) { box.hidden = true; GP.sammelFuer = undefined; return; }
+  if (ids.length < 2) {
+    box.hidden = true; blatt.hidden = true;
+    GP.sammelFuer = undefined; GP.sammelOffen = false;
+    return;
+  }
   box.hidden = false;
+  blatt.hidden = !GP.sammelOffen;
   const st = sammelStand(ids);
   $('gp-sammel-info').innerHTML = `<b>${ids.length}</b> Wände ausgewählt`
     + (st.verwaist.length ? ` · ⚠ ${st.verwaist.length} verwaister Eintrag/Einträge ([L-4])` : '');
-  $('gp-sammel-ist').innerHTML = 'Ist: Wandhöhe '
-    + (st.hoehen.length === 0 ? '–'
-      : st.hoehen.length === 1 ? `<b>${st.hoehen[0]} mm</b>`
-      : `<b>gemischt</b> (${st.hoehen.join(' · ')} mm)`)
-    + ' · Windsituation '
-    + (st.typen.length === 0 ? '–'
-      : st.typen.length === 1 ? `<b>${esc(wandtypText(st.typen[0]))}</b>`
-      : `<b>gemischt</b> (${st.typen.map(wandtypText).map(esc).join(' · ')})`)
+  $('gp-sammel-ist').innerHTML = `<b>${ids.length}</b> ausgewählte Wände — geändert wird nur, was `
+    + 'angekreuzt ist.'
     + (st.verwaist.length
-      ? ` · ohne Wandelement: ${st.verwaist.map(esc).join(', ')} — erst aufräumen ([L-4])` : '');
+      ? ` ⚠ ohne Wandelement: ${st.verwaist.map(esc).join(', ')} — erst aufräumen ([L-4]).` : '');
+  for (const f of SAMMEL_FELDER) {
+    const w = st.werte[f.id];
+    $(sammelFeldId(f) + '-ist').innerHTML = 'Ist: ' + (
+      w.length === 0 ? '–'
+      : w.length === 1 ? `<b>${esc(f.text(w[0]))}</b>`
+      : `<b>gemischt</b> (${w.map(v => esc(f.text(v))).join(' · ')})`);
+  }
   const schluessel = ids.slice().sort().join('|');
   if (GP.sammelFuer !== schluessel) {
     GP.sammelFuer = schluessel;
-    $('gp-sammel-hoehe-an').checked = false;
-    $('gp-sammel-wandtyp-an').checked = false;
-    $('gp-sammel-hoehe').value = st.hoehen.length === 1 ? String(st.hoehen[0]) : '';
-    $('gp-sammel-hoehe').placeholder = st.hoehen.length === 1 ? '' : 'gemischt';
-    $('gp-sammel-wandtyp').value = st.typen.length === 1 ? st.typen[0] : '';
+    for (const f of SAMMEL_FELDER) {
+      const w = st.werte[f.id];
+      $(sammelFeldId(f) + '-an').checked = false;
+      const feld = $(sammelFeldId(f));
+      feld.value = w.length === 1 ? String(w[0]) : '';
+      if (!f.wahl) feld.placeholder = w.length === 1 ? '' : 'gemischt';
+    }
   }
   sammelFelder();
 }
@@ -2170,20 +2464,25 @@ function sammelSync(){
 /**
  * Die Sammeländerung ausführen — erst prüfen, dann bestätigen, dann rechnen,
  * dann schreiben:
- *  1. PRÜFEN (ohne Schreiben): mindestens zwei Wände, mindestens ein aktivierter
- *     Parameter, gültige Eingaben, kein verwaister Eintrag, keine Höhen-
- *     Hindernisse. Jeder Fehlschlag wird benannt und lässt alles unverändert.
- *  2. BESTÄTIGEN: Anzahl der Wände und GENAU die zu ändernden Parameter; ein
- *     Abbruch ändert weder Wandspeicher noch Undo/Redo-Stapel.
- *  3. RECHNEN: erst ALLE neuen Wandelemente vollständig (Höhe über
- *     `rechneWandelement`, denselben Engine-Pfad wie #56; eine reine
- *     Wandtyp-Änderung braucht keine Neurechnung — der Wandtyp hängt nicht am
- *     Core). Scheitert eines, ist nichts geschrieben.
+ *  1. PRÜFEN (ohne Schreiben): mindestens zwei Wände, mindestens ein angekreuztes
+ *     Merkmal, gültige Eingaben, kein verwaister Eintrag, keine Hindernisse an
+ *     einer einzelnen Wand. Jeder Fehlschlag wird BENANNT und lässt alles
+ *     unverändert — nichts wird geklemmt, gerundet oder still ersetzt ([P-9]).
+ *  2. BESTÄTIGEN: Anzahl der Wände und GENAU die angekreuzten Merkmale mit ihren
+ *     Zielwerten; ein Abbruch ändert weder Wandspeicher noch Undo/Redo-Stapel.
+ *  3. RECHNEN: erst ALLE neuen Wandelemente vollständig. Ist mindestens ein
+ *     core-relevantes Merkmal angekreuzt (Höhe, Seitenfunktionen, oberer
+ *     Anschluss, Kopfblech-Modullänge, Überstand), läuft jede Wand über
+ *     `rechneWandelement` — denselben Engine-Pfad wie #56/#75. Sind nur
+ *     Windsituation, Brandschutzklasse oder Abdichtung angekreuzt, hängen die
+ *     nicht am Core und brauchen keine Neurechnung. Scheitert eines, ist nichts
+ *     geschrieben.
  *  4. SCHREIBEN mit Rollback: scheitert ein Speichervorgang, werden alle schon
  *     geschriebenen Wände aus ihren Momentaufnahmen zurückgesetzt — es bleibt
  *     kein gemischter Bestand aus alten und neuen Werten.
  * Der ganze Vorgang ist GENAU EIN Undo/Redo-Schritt über alle betroffenen
- * Wandspeicher-Einträge; Mappe, Lagen und Bemaßungen bleiben unberührt.
+ * Wandspeicher-Einträge; Mappe, Lagen, Öffnungen, Verzahnungen und Bemaßungen
+ * bleiben unberührt, ebenso die Produktauswahl der Wände.
  */
 function sammelAnwenden(){
   const ids = sammelWaende();
@@ -2191,30 +2490,23 @@ function sammelAnwenden(){
     zeige('Sammeländerung nur bei mindestens zwei ausgewählten Wänden.', false);
     return false;
   }
-  const hoeheAn = !!$('gp-sammel-hoehe-an').checked;
-  const wandtypAn = !!$('gp-sammel-wandtyp-an').checked;
-  if (!hoeheAn && !wandtypAn) {
-    zeige('Nichts zu übernehmen — erst Wandhöhe und/oder Windsituation zur Übernahme ankreuzen.', false);
+  // 1a. Die angekreuzten Merkmale einsammeln und ihre Werte prüfen — ohne jeden
+  //     Speicherzugriff, damit ein Fehlschlag nichts hinterlässt.
+  const aktiv = [];
+  for (const f of SAMMEL_FELDER) {
+    if (!$(sammelFeldId(f) + '-an').checked) continue;
+    const erg = f.pruefe(String($(sammelFeldId(f)).value || '').trim());
+    if (erg.fehler) {
+      zeige(`Sammeländerung nicht möglich: ${erg.fehler} Es wurde nichts geändert.`, false);
+      return false;
+    }
+    aktiv.push({ feld: f, wert: erg.wert });
+  }
+  if (!aktiv.length) {
+    zeige('Nichts zu übernehmen — erst mindestens ein Merkmal zur Übernahme ankreuzen.', false);
     return false;
   }
-  let hoehe = null, wandtyp = null;
-  if (hoeheAn) {
-    const s = String($('gp-sammel-hoehe').value || '').trim();
-    hoehe = Number(s.replace(',', '.'));
-    if (!s || !Number.isFinite(hoehe) || hoehe <= 0) {
-      zeige('Sammeländerung nicht möglich: die gemeinsame Wandhöhe muss eine positive Zahl in mm sein.', false);
-      return false;
-    }
-  }
-  if (wandtypAn) {
-    wandtyp = $('gp-sammel-wandtyp').value;
-    if (!store.WANDTYPEN.includes(wandtyp)) {
-      zeige('Sammeländerung nicht möglich: erst eine Windsituation wählen — ein gemischter '
-        + 'Ausgangszustand wird nie still vereinheitlicht.', false);
-      return false;
-    }
-  }
-  // 1. Prüfphase — VOR jedem Schreiben; der erste benannte Grund bricht ab.
+  // 1b. Prüfphase je Wand — VOR jedem Schreiben; der erste benannte Grund bricht ab.
   const eintraege = [];
   for (const id of ids) {
     const el = store.holeElement(id);
@@ -2223,40 +2515,53 @@ function sammelAnwenden(){
         + '(verwaister Eintrag, [L-4]). Es wurde nichts geändert.', false);
       return false;
     }
-    if (hoeheAn) {
-      const hindernisse = hoehenHindernisse(el.wandelement, hoehe);
+    for (const { feld, wert } of aktiv) {
+      if (!feld.hindernisse) continue;
+      const hindernisse = feld.hindernisse(el.wandelement, wert);
       if (hindernisse.length) {
-        zeige(`Sammeländerung nicht möglich („${esc(el.name || id)}“): `
+        zeige(`Sammeländerung nicht möglich („${el.name || id}“): `
           + hindernisse.join(' ') + ' Es wurde nichts geändert.', false);
         return false;
       }
     }
     eintraege.push({ id, el });
   }
-  // 2. Ausdrückliche Bestätigung: Anzahl und GENAU die zu ändernden Parameter.
-  const teile = [];
-  if (hoeheAn) teile.push(`Wandhöhe → ${hoehe} mm`);
-  if (wandtypAn) teile.push(`Windsituation → ${wandtypText(wandtyp)}`);
+  // 2. Ausdrückliche Bestätigung: Anzahl und GENAU die zu ändernden Merkmale.
+  const teile = aktiv.map(({ feld, wert }) => `${feld.name} → ${feld.text(wert)}`);
   if (!confirm(`${ids.length} ausgewählte Wände gemeinsam ändern?\n\n${teile.join('\n')}\n\n`
-    + 'Länge, Lage, Öffnungen und Bemaßungen bleiben unverändert. Rückgängig geht mit Strg+Z, '
+    + 'Nicht angekreuzte Merkmale bleiben je Wand unverändert. Länge, Lage, Öffnungen, '
+    + 'Verzahnungen und Bemaßungen bleiben unberührt. Rückgängig geht mit Strg+Z, '
     + 'solange dieses Geschoss geöffnet bleibt.')) {
     zeige('Sammeländerung abgebrochen — nichts geändert.', true);
     return false;
   }
   // 3. Rechenphase — vollständig vor dem ersten Schreiben.
+  //    Die Höhe reist wie seit #75 als eigener Eingang der Rechnung; alle übrigen
+  //    core-relevanten Merkmale als Vorgabe-Patch. Beides landet in derselben einen
+  //    `vorg`-Struktur von `rechneWandelement` — kein zweiter Rechenweg.
+  const hoehe = (aktiv.find(a => a.feld.id === 'hoehe') || {}).wert;
+  const patch = {};
+  let coreAn = false;
+  for (const { feld, wert } of aktiv) {
+    if (!feld.core) continue;
+    coreAn = true;
+    if (feld.setze) patch[feld.id] = wert;
+  }
   const arbeit = [];
   for (const { id, el } of eintraege) {
     let neu;
     try {
-      neu = hoeheAn
-        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe)
+      neu = coreAn
+        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch)
         : JSON.parse(JSON.stringify(el.wandelement));
     } catch (e) {
-      zeige(`Sammeländerung nicht möglich („${esc(el.name || id)}“): ` + fehlerText(e)
+      zeige(`Sammeländerung nicht möglich („${el.name || id}“): ` + fehlerText(e)
         + ' Es wurde nichts geändert.', false);
       return false;
     }
-    if (wandtypAn) neu.wandtyp = wandtyp;
+    // Die drei Merkmale ohne Core-Bezug stehen NACH dem Rechnen — genau dort, wo
+    // `rechneWandelement` sie sonst nur mitführt und wo Modul 1 sie setzt.
+    for (const { feld, wert } of aktiv) if (!feld.core && feld.setze) feld.setze(neu, wert);
     arbeit.push({ id, el, neu });
   }
   // 4. Schreibphase mit Rollback — kein gemischter Bestand.
@@ -2284,7 +2589,7 @@ function sammelAnwenden(){
   }
   buchen(vor, [], schnappschuesse);
   zeige(`${ids.length} Wände gemeinsam geändert: ${teile.join(' · ')}. `
-    + (hoeheAn ? 'Jedes Wandelement wurde mit der neuen Höhe über den Auslegungspfad neu gerechnet. ' : '')
+    + (coreAn ? 'Jedes Wandelement wurde über den Auslegungspfad von Modul 1 neu gerechnet. ' : '')
     + 'Länge, Lage, Öffnungen und Bemaßungen sind unverändert. Rückgängig: Strg+Z.', true);
   render();
   return true;
@@ -3050,11 +3355,17 @@ function hoehenHindernisse(we, hoeheMm){
  * Seit #75 nimmt der Sammel-Editor denselben Pfad für eine neue HÖHE: `hoeheMm`
  * ist optional und ersetzt nur den Höheneingang derselben Rechnung — es bleibt
  * genau EIN Engine-Pfad, kein zweiter Rechenkern.
+ * Seit #111 gilt dasselbe für die übrigen core-relevanten Sammelmerkmale: `patch`
+ * ersetzt AUSSCHLIESSLICH Eingänge derselben `vorg`-Struktur (Seitenfunktionen,
+ * oberer Anschluss, Kopfblech-Modullänge, Überstand des Reststücks), bevor die
+ * Engine läuft. Nicht genannte Merkmale bleiben unberührt, und es entsteht keine
+ * zweite Rechenlogik — die Modul-1-Rechnung wird nicht kopiert, sondern benutzt.
  * @param {any} el Speichereintrag (`store.holeElement`)
  * @param {number} laengeGrid
  * @param {number} [hoeheMm] neue Wandhöhe; fehlt sie, gilt die des Elements
+ * @param {Record<string, any>} [patch] core-relevante Sammelmerkmale (#111)
  */
-function rechneWandelement(el, laengeGrid, hoeheMm){
+function rechneWandelement(el, laengeGrid, hoeheMm, patch){
   const we = el.wandelement;
   const vorg = {
     name: el.name || we.name,
@@ -3072,15 +3383,25 @@ function rechneWandelement(el, laengeGrid, hoeheMm){
     // gezeichnete Wand ohne Nachweis), gelten die Vorgaben der Engine.
     material: (we.verification && we.verification.material) || undefined,
   };
+  // #111: die core-relevanten Sammelmerkmale ersetzen hier — und nur hier —
+  // Eingänge der EINEN Vorgabe. Was nicht im Patch steht, bleibt so, wie es aus
+  // dem gespeicherten Wandelement kam.
+  if (patch) {
+    for (const f of SAMMEL_FELDER) {
+      if (f.core && f.setze && patch[f.id] !== undefined) f.setze(vorg, patch[f.id]);
+    }
+  }
   const erg = (we.prestress && we.prestress.force_kN)
     ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg);
   const neu = erg.wandelement;
-  neu.wandtyp = we.wandtyp;         // hängt nicht am Core und wird nur bei der Anlage gewählt
-  neu.abdichtung = we.abdichtung;   // [A-6]/#71: Fachmerkmal der Wand, gewählt in Modul 1
-  // #79: Die Brandschutzklassifikation wird hier NUR MITGEFÜHRT — gewählt wird sie
-  // ausschließlich in Modul 1. Ohne diese Zeile setzte jede Längen- oder Höhenänderung
-  // eine gewählte F30 still auf F0 zurück, weil `buildWall()` das Wandelement neu erzeugt.
-  neu.brandklasse = we.brandklasse;
+  // Die drei Merkmale ohne Core-Bezug werden hier MITGEFÜHRT: ohne diese Zeilen setzte
+  // jede Längen- oder Höhenänderung eine gewählte Windsituation, Abdichtung oder F30
+  // still zurück, weil `buildWall()` das Wandelement neu erzeugt. Wer sie ÄNDERN will,
+  // setzt sie NACH dieser Rechnung — Modul 1 tut genau das, und der Sammel-Editor
+  // seit #111 ebenso.
+  neu.wandtyp = we.wandtyp;         // hängt nicht am Core, gewählt beim Zeichnen bzw. im Sammel-Editor
+  neu.abdichtung = we.abdichtung;   // [A-6]/#71: Fachmerkmal der Wand
+  neu.brandklasse = we.brandklasse; // #79: reine Planungskennzeichnung
   return neu;
 }
 
@@ -4302,10 +4623,15 @@ function binde(){
   $('gp-zoom-minus').addEventListener('click', () => zoomeAuf(1.3));
   $('gp-zoom-alles').addEventListener('click', zeigeAlles);
 
-  // Sammel-Editor (#75): die Häkchen schalten nur ihr Eingabefeld frei;
-  // geschrieben wird ausschließlich über „Übernehmen…“ nach Bestätigung.
-  $('gp-sammel-hoehe-an').addEventListener('change', sammelFelder);
-  $('gp-sammel-wandtyp-an').addEventListener('change', sammelFelder);
+  // Sammel-Editor (#75/#111): die Häkchen schalten nur ihr Eingabefeld frei;
+  // geschrieben wird ausschließlich über „Übernehmen…“ nach Bestätigung. Öffnen
+  // und Schließen des Popups sind reine Bedienung — sie schreiben nichts, buchen
+  // nichts ([K-10]) und wechseln das Werkzeug nicht.
+  for (const f of SAMMEL_FELDER) {
+    $(sammelFeldId(f) + '-an').addEventListener('change', sammelFelder);
+  }
+  $('gp-sammel-knopf').addEventListener('click', () => { GP.sammelOffen = true; render(); });
+  $('gp-sammel-zu').addEventListener('click', () => { GP.sammelOffen = false; render(); });
   $('gp-sammel-go').addEventListener('click', sammelAnwenden);
 
   $('gp-drehen').addEventListener('click', drehe);
@@ -4379,6 +4705,9 @@ function beiTaste(ev){
     if (GP.zeichnen) { GP.zeichnen = null; zeige('Zeichnen verworfen — nichts angelegt.', true); render(); return; }
     if (GP.groesse) { GP.groesse = null; zeige('Größenänderung verworfen — die Länge bleibt.', true); render(); return; }
     if (bemAbbrechen()) { render(); return; }
+    // Das Sammel-Popup (#111) schließt Escape, bevor das Werkzeug zurückfällt —
+    // geschrieben wird dabei nichts, und der Auswahlzustand bleibt unberührt.
+    if (GP.sammelOffen) { GP.sammelOffen = false; render(); return; }
     werkzeug('auswahl');
     return;
   }
@@ -4524,6 +4853,8 @@ window.__gpInit = function(){
   const S = window.SEMBLA || {};
   store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; WA = S.WA;
   ENG = S.ENG; Opening = S.Opening;
+  BLECH_STD = S.BLECH; UEBERSTAND_STD = S.ROD_OVERHANG;
+  sammelPruefungen();
   binde();
   store.abonniere(() => { auffrischen().catch(() => {}); });
   zeigeAlles();
@@ -4542,8 +4873,10 @@ window.__gpInit = function(){
   // Der Auslegungspfad von Modul 1 (#56): eine Längenänderung im Editor rechnet das
   // vorhandene Wandelement damit NEU — kein zweiter Rechenkern, keine eigene Wandgeometrie.
   import * as ENG from './shared/sembla-engine.js';
-  import { Opening } from './shared/sembla-core.js';
-  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening };
+  // BLECH/ROD_OVERHANG sind die Standardwerte des Rechenkerns; der Sammel-Editor
+  // zeigt sie als Ist-Wert an, wenn ein Altstand das Feld gar nicht führt (#111).
+  import { Opening, BLECH, ROD_OVERHANG } from './shared/sembla-core.js';
+  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening, BLECH, ROD_OVERHANG };
   // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
   // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
   // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.

@@ -63,8 +63,9 @@ const START = { 'gp-fang': { checked: false }, 'gp-plan-lock': { checked: true }
                 // Planblatt ist zu, der Kalibrierblock unsichtbar.
                 'gp-raster': { checked: true }, 'gp-masse': { checked: true },
                 'gp-planblatt': { hidden: true }, 'gp-kal-block': { hidden: true },
-                // #75: der Sammel-Editor startet wie im Markup verborgen.
-                'gp-sammel': { hidden: true } };
+                // #75/#111: der Sammel-Editor startet wie im Markup verborgen —
+                // die Schaltflaeche in der Werkzeugleiste ebenso wie das Popup.
+                'gp-sammel': { hidden: true }, 'gp-sammelblatt': { hidden: true } };
 const document = {
   _e: {},
   getElementById(id){
@@ -121,7 +122,9 @@ const PLAN = await import("../../docs/shared/sembla-plan.js");
 // aus dem der Lageplan (Modul 9) seine Masse zeichnet ([N-5]). Der Editor rechnet sie
 // nicht mehr selbst — sonst koennten Bearbeitung und Ausgabe auseinanderlaufen.
 const MB = await import("../../docs/shared/sembla-massbild.js");
-const { buildWall, Opening } = await import("../../docs/shared/sembla-core.js");
+// BLECH/ROD_OVERHANG sind die Standardwerte des Kerns; der Sammel-Editor zeigt sie als
+// Ist-Wert an, wenn ein Altstand das Feld gar nicht fuehrt (#111) — gebunden wird wie im Browser.
+const { buildWall, Opening, BLECH, ROD_OVERHANG } = await import("../../docs/shared/sembla-core.js");
 // Der Auslegungspfad von Modul 1 (#56): eine Laengenaenderung im Editor rechnet das
 // vorhandene Wandelement damit NEU — derselbe Baustein, kein zweiter Rechenkern.
 const ENG = await import("../../docs/shared/sembla-engine.js");
@@ -135,7 +138,7 @@ PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening };
+globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, ENG, Opening, BLECH, ROD_OVERHANG };
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
@@ -3052,11 +3055,20 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#75 drei Waende ueber Umschalt/Strg ausgewaehlt — der Sammel-Editor erscheint',
     GP.zustand.auswahl.length === 3 && ids75.every(id => GP.zustand.auswahl.includes(id))
     && $('gp-sammel').hidden === false);
+  // #111: in der Leiste steht GENAU EINE Schaltflaeche; die Felder liegen im Popup,
+  // das erst auf Klick aufgeht. Vorher ist nichts davon sichtbar.
+  ok('#111 die Werkzeugleiste nennt die Anzahl — das Popup ist noch zu',
+    /<b>3<\/b>/.test($('gp-sammel-info').innerHTML) && $('gp-sammelblatt').hidden === true);
+  $('gp-sammel-knopf').dispatch('click');
+  ok('#111 „Gemeinsam bearbeiten…“ oeffnet das Popup', $('gp-sammelblatt').hidden === false);
   ok('#75 der Sammel-Editor nennt die Anzahl und beide gemischten Ausgangswerte',
-    /<b>3<\/b>/.test($('gp-sammel-info').innerHTML)
-    && /gemischt/.test($('gp-sammel-ist').innerHTML)
-    && /2400/.test($('gp-sammel-ist').innerHTML) && /2600/.test($('gp-sammel-ist').innerHTML)
-    && /mit Wind/.test($('gp-sammel-ist').innerHTML) && /ohne Wind/.test($('gp-sammel-ist').innerHTML));
+    /<b>3<\/b>/.test($('gp-sammel-ist').innerHTML)
+    && /gemischt/.test($('gp-sammel-hoehe-ist').innerHTML)
+    && /2400/.test($('gp-sammel-hoehe-ist').innerHTML)
+    && /2600/.test($('gp-sammel-hoehe-ist').innerHTML)
+    && /gemischt/.test($('gp-sammel-wandtyp-ist').innerHTML)
+    && /mit Wind/.test($('gp-sammel-wandtyp-ist').innerHTML)
+    && /ohne Wind/.test($('gp-sammel-wandtyp-ist').innerHTML));
   ok('#75 gemischte Ausgangswerte werden NIE als konkreter Wert vorbelegt',
     $('gp-sammel-hoehe').value === '' && $('gp-sammel-wandtyp').value === '');
 
@@ -3169,6 +3181,253 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     GP.undoStand.undo === undoVorRb75 && /Testfehler/.test($('gp-msg').textContent)
     && /nicht m/.test($('gp-msg').textContent));
   globalThis.confirm = confirmEcht75;
+}
+
+// --- #111: Alle neun allgemeinen Wandmerkmale gemeinsam setzen -------------
+//
+// Gefahren wird der ECHTE Nutzerpfad: Waende zeichnen, mehrfach auswaehlen, das
+// Popup ueber seine Schaltflaeche oeffnen, gemischte Ausgangswerte lesen, selektiv
+// uebernehmen — und danach die Wandelemente AUS DEM SPEICHER gegen die erwarteten
+// Werte halten. Alles ueber die echten Bedienelemente und Behandler.
+{
+  const mappe111 = store.fuegeProjektHinzu('Projekt 111', { geschoss: 'EG111', hoehe_mm: 2600 });
+  const gs111 = MAPPE.alleGeschosse(mappe111)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs111);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const neueste111 = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const a111 = neueste111().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const b111 = neueste111().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2540, y: 4060 });   const c111 = neueste111().id;
+  await warte();
+  const ids111 = [a111, b111, c111];
+  const we111 = (id) => store.holeElement(id).wandelement;
+
+  // Ausgangsstand wie nach einer Bearbeitung in Modul 1: Wand A traegt F30 und ist
+  // abgedichtet, B und C nicht. Damit sind zwei Merkmale echt GEMISCHT.
+  {
+    const el = store.holeElement(a111);
+    const kopie = JSON.parse(JSON.stringify(el.wandelement));
+    kopie.brandklasse = 'F30';
+    kopie.abdichtung = 'abgedichtet';
+    store.speichere(el.name, kopie, a111);
+  }
+  await warte();
+
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1500, y: 62.5 });
+  GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+  GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+  ok('#111 (Akzeptanz 1) bei drei ausgewaehlten Waenden gibt es GENAU EINE Schaltflaeche',
+    GP.zustand.auswahl.length === 3 && $('gp-sammel').hidden === false
+    && $('gp-sammelblatt').hidden === true);
+  $('gp-sammel-knopf').dispatch('click');
+  ok('#111 (Akzeptanz 1) die Schaltflaeche oeffnet das Popup',
+    $('gp-sammelblatt').hidden === false && GP.zustand.sammelOffen === true);
+
+  // (a) Das Popup fuehrt GENAU die neun Merkmale — je mit Haekchen, Feld und Ist-Anzeige.
+  const MERKMALE111 = ['hoehe', 'wandtyp', 'brand', 'abdicht', 'vorne', 'hinten',
+                       'topconn', 'blech', 'ueber'];
+  const BESCHRIFTUNG111 = ['Wandh', 'Windsituation', 'Brandschutzklasse', 'fugen-Abdichtung',
+                           'Funktion der Vorderseite', 'Funktion der R', 'Oberer Anschluss',
+                           'Kopfblech-Modull', 'berstand Rest'];
+  const blattHtml111 = (html.split('id="gp-sammelblatt"')[1] || '').split('id="gp-msg"')[0];
+  ok('#111 (Akzeptanz 1) das Popup enthaelt alle NEUN Merkmale — je Haekchen, Feld und Ist-Anzeige',
+    MERKMALE111.length === 9
+    && MERKMALE111.every(m =>
+      (blattHtml111.match(new RegExp('id="gp-sammel-' + m + '-an"', 'g')) || []).length === 1
+      && (blattHtml111.match(new RegExp('id="gp-sammel-' + m + '"', 'g')) || []).length === 1
+      && (blattHtml111.match(new RegExp('id="gp-sammel-' + m + '-ist"', 'g')) || []).length === 1));
+  ok('#111 (Akzeptanz 1) jedes Merkmal ist im Popup benannt',
+    BESCHRIFTUNG111.every(t => blattHtml111.includes(t)));
+  ok('#111 ohne Haekchen ist kein Feld bedienbar',
+    MERKMALE111.every(m => $('gp-sammel-' + m).disabled === true));
+
+  // (b) Gemischte Ausgangswerte stehen als „gemischt“ und werden NIE vorbelegt;
+  //     gleiche Ausgangswerte stehen als konkreter Wert.
+  ok('#111 (Akzeptanz 2) verschiedene Brandschutzklassen stehen als „gemischt“',
+    /gemischt/.test($('gp-sammel-brand-ist').innerHTML)
+    && /F0/.test($('gp-sammel-brand-ist').innerHTML)
+    && /F30/.test($('gp-sammel-brand-ist').innerHTML)
+    && $('gp-sammel-brand').value === '');
+  ok('#111 (Akzeptanz 2) auch die Abdichtung ist gemischt und bleibt unvorbelegt',
+    /gemischt/.test($('gp-sammel-abdicht-ist').innerHTML)
+    && $('gp-sammel-abdicht').value === '');
+  ok('#111 gleiche Ausgangswerte werden angezeigt und vorbelegt — ohne „gemischt“',
+    !/gemischt/.test($('gp-sammel-topconn-ist').innerHTML)
+    && /Spannplatte/.test($('gp-sammel-topconn-ist').innerHTML)
+    && $('gp-sammel-topconn').value === 'spannplatte'
+    && !/gemischt/.test($('gp-sammel-blech-ist').innerHTML)
+    && $('gp-sammel-blech').value === '1000'
+    && $('gp-sammel-ueber').value === '10'
+    && /Fassade/.test($('gp-sammel-vorne-ist').innerHTML)
+    && /Innenausbau/.test($('gp-sammel-hinten-ist').innerHTML));
+
+  // (c) Selektive Uebernahme: NUR die Brandschutzklasse wird angekreuzt.
+  const confirmEcht111 = globalThis.confirm;
+  let confirmText111 = null;
+  globalThis.confirm = (t) => { confirmText111 = String(t); return true; };
+  const vorUebernahme111 = ids111.map(id => JSON.stringify(we111(id)));
+  const undoVor111 = GP.undoStand.undo;
+  $('gp-sammel-brand-an').checked = true; $('gp-sammel-brand-an').dispatch('change');
+  ok('#111 das Haekchen schaltet genau sein Feld frei — die uebrigen bleiben gesperrt',
+    $('gp-sammel-brand').disabled === false
+    && MERKMALE111.filter(m => m !== 'brand').every(m => $('gp-sammel-' + m).disabled === true));
+  $('gp-sammel-brand').value = 'F30';
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#111 (Muss 5) die Bestaetigung nennt Anzahl und GENAU das aktivierte Merkmal',
+    /^3 /.test(confirmText111) && /Brandschutzklasse/.test(confirmText111)
+    && /F30/.test(confirmText111)
+    && !/Windsituation/.test(confirmText111) && !/Abdichtung/.test(confirmText111));
+  ok('#111 (Akzeptanz 2) nach der Uebernahme tragen ALLE drei Waende F30',
+    ids111.every(id => we111(id).brandklasse === 'F30'));
+  ok('#111 (Akzeptanz 2) Abdichtung und Seitenfunktionen sind je Wand unveraendert',
+    we111(a111).abdichtung === 'abgedichtet'
+    && we111(b111).abdichtung !== 'abgedichtet' && we111(c111).abdichtung !== 'abgedichtet'
+    && ids111.every(id => {
+      const s = we111(id).sides || {};
+      return (s.vorne || {}).funktion === 'fassade' && (s.hinten || {}).funktion === 'innenausbau';
+    }));
+  ok('#111 (Muss 3) nicht aktivierte Merkmale bleiben bit-genau — GENAU das eine Feld ist anders',
+    ids111.every((id, i) => {
+      const vor = JSON.parse(vorUebernahme111[i]);
+      const nach = JSON.parse(JSON.stringify(we111(id)));
+      vor.brandklasse = nach.brandklasse;
+      return JSON.stringify(vor) === JSON.stringify(nach);
+    }));
+  ok('#111 (Muss 6) die Uebernahme ist GENAU EIN Rueckgaengig-Schritt',
+    GP.undoStand.undo === undoVor111 + 1);
+
+  // (d) Ein Rueckgaengig-Schritt stellt ALLE betroffenen Waende vollstaendig her.
+  GP.undo();
+  await warte();
+  ok('#111 (Akzeptanz 3) ein Rueckgaengig-Schritt stellt alle drei Waende vollstaendig wieder her',
+    ids111.every((id, i) => JSON.stringify(we111(id)) === vorUebernahme111[i])
+    && GP.undoStand.undo === undoVor111);
+  GP.redo();
+  await warte();
+  ok('#111 Redo setzt die Sammelaenderung wieder ein',
+    ids111.every(id => we111(id).brandklasse === 'F30'));
+
+  // (e) Unzulaessige Kopfblech-Modullaenge: BENANNT abgewiesen, nichts gespeichert
+  //     — und ausdruecklich nicht geklemmt oder gerundet.
+  {
+    const vorAbweisung = ids111.map(id => JSON.stringify(we111(id)));
+    const speicherVor = localStorage.getItem('sembla:elemente');
+    const undoVorAbw = GP.undoStand.undo;
+    $('gp-sammel-brand-an').checked = false; $('gp-sammel-brand-an').dispatch('change');
+    $('gp-sammel-blech-an').checked = true; $('gp-sammel-blech-an').dispatch('change');
+    $('gp-sammel-blech').value = '205';                  // kein Vielfaches von 10 mm
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#111 (Akzeptanz 4) eine unzulaessige Kopfblech-Modullaenge wird BENANNT abgewiesen',
+      /Kopfblech-Modull/.test($('gp-msg').textContent)
+      && /205/.test($('gp-msg').textContent)
+      && /nichts ge/.test($('gp-msg').textContent));
+    ok('#111 (Akzeptanz 4) danach ist KEIN Wandelement veraendert und nichts gebucht',
+      ids111.every((id, i) => JSON.stringify(we111(id)) === vorAbweisung[i])
+      && localStorage.getItem('sembla:elemente') === speicherVor
+      && GP.undoStand.undo === undoVorAbw);
+    $('gp-sammel-blech').value = '150';                  // unter der Untergrenze
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#111 (Muss 7) auch eine zu kleine Modullaenge wird abgewiesen statt geklemmt',
+      /200 mm/.test($('gp-msg').textContent)
+      && ids111.every((id, i) => JSON.stringify(we111(id)) === vorAbweisung[i])
+      && GP.undoStand.undo === undoVorAbw);
+    $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+    $('gp-sammel-blech').value = '500';
+    $('gp-sammel-ueber').value = '12,5';                 // keine ganze Zahl
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#111 (Muss 7) auch ein krummer Ueberstand wird abgewiesen statt gerundet',
+      /berstand/.test($('gp-msg').textContent)
+      && ids111.every((id, i) => JSON.stringify(we111(id)) === vorAbweisung[i])
+      && GP.undoStand.undo === undoVorAbw);
+  }
+
+  // (f) Der core-relevante Pfad: oberer Anschluss und Modullaenge gemeinsam setzen.
+  //     Jede Wand laeuft dabei ueber den EINEN Auslegungspfad — nachweisbar am
+  //     neu entstandenen Kopfblech, das es bei „Spannplatte“ gar nicht gibt.
+  {
+    const laengenVor = ids111.map(id => we111(id).length_mm);
+    const hoehenVor = ids111.map(id => we111(id).height_mm);
+    const lagenVor = JSON.stringify(ids111.map(id =>
+      MAPPE.findeWand(store.holeMappe(), id).wand.lage));
+    const eingabenVor = ids111.map(id => JSON.stringify(store.holeElement(id).eingaben));
+    const undoVorCore = GP.undoStand.undo;
+    ok('#111 Pruefaufbau: ohne Kopfblech gibt es kein `top_plate`',
+      ids111.every(id => we111(id).top_plate === null));
+    $('gp-sammel-ueber').value = '15';
+    $('gp-sammel-topconn-an').checked = true; $('gp-sammel-topconn-an').dispatch('change');
+    $('gp-sammel-topconn').value = 'blech';
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#111 (Muss 6) core-relevante Merkmale laufen ueber den Auslegungspfad — das '
+      + 'Kopfblech entsteht mit der gesetzten Modullaenge neu',
+      ids111.every(id => {
+        const w = we111(id);
+        return w.prestress.top_connection === 'blech'
+          && w.prestress.blech_mm === 500 && w.prestress.rod_overhang_mm === 15
+          && w.top_plate && w.top_plate.modul_mm === 500 && w.top_plate.module > 0;
+      }));
+    ok('#111 (must-not) Laenge, Hoehe, Lage und Produktauswahl bleiben unberuehrt',
+      ids111.every((id, i) => we111(id).length_mm === laengenVor[i]
+        && we111(id).height_mm === hoehenVor[i]
+        && JSON.stringify(store.holeElement(id).eingaben) === eingabenVor[i])
+      && JSON.stringify(ids111.map(id =>
+        MAPPE.findeWand(store.holeMappe(), id).wand.lage)) === lagenVor);
+    ok('#111 die nicht angekreuzten Merkmale ueberleben die Neurechnung',
+      ids111.every(id => we111(id).brandklasse === 'F30')
+      && we111(a111).abdichtung === 'abgedichtet'
+      && ids111.every(id => store.normWandtyp(we111(id).wandtyp) === 'mit_wind'));
+    ok('#111 auch der core-relevante Weg ist GENAU EIN Rueckgaengig-Schritt',
+      GP.undoStand.undo === undoVorCore + 1);
+  }
+
+  // (g) Must-not: kein neues gespeichertes Feld, kein Versionssprung, und das
+  //     Schliessen des Popups schreibt nichts.
+  {
+    const speicherVor = localStorage.getItem('sembla:elemente');
+    const mappeVor = localStorage.getItem('sembla:projekte');
+    const undoVorEsc = GP.undoStand.undo;
+    GP.taste('Escape');
+    ok('#111 Escape schliesst das Popup, ohne etwas zu schreiben',
+      $('gp-sammelblatt').hidden === true && GP.zustand.sammelOffen === false
+      && localStorage.getItem('sembla:elemente') === speicherVor
+      && localStorage.getItem('sembla:projekte') === mappeVor
+      && GP.undoStand.undo === undoVorEsc);
+    $('gp-sammel-knopf').dispatch('click');
+    $('gp-sammel-zu').dispatch('click');
+    ok('#111 „Schliessen“ tut dasselbe — reine Bedienung, kein Rueckgaengig-Schritt',
+      $('gp-sammelblatt').hidden === true
+      && localStorage.getItem('sembla:elemente') === speicherVor
+      && GP.undoStand.undo === undoVorEsc);
+  }
+  ok('#111 (must-not) das Popup steht in keinem Speicher — es gibt kein neues Feld',
+    !/sammelOffen/.test(localStorage.getItem('sembla:projekte') || '')
+    && !/sammelOffen/.test(localStorage.getItem('sembla:elemente') || '')
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  // Der Bauteilkatalog ist von #111 gar nicht beruehrt — weder Format noch Speicher.
+  ok('#111 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2);
+  ok('#111 (must-not) bei weniger als zwei ausgewaehlten Waenden geht das Popup zu',
+    (() => {
+      $('gp-sammel-knopf').dispatch('click');
+      const offenVorher = $('gp-sammelblatt').hidden === false;
+      GP.tippe({ x: 1500, y: 62.5 });                    // wieder genau EINE Wand
+      return offenVorher && GP.zustand.auswahl.length === 1
+        && $('gp-sammel').hidden === true && $('gp-sammelblatt').hidden === true
+        && GP.zustand.sammelOffen === false;
+    })());
+  globalThis.confirm = confirmEcht111;
 }
 
 // --- #43: Realer Pfad — der Reiter 0,5 fuehrt zum Geschossplaner des AKTIVEN Geschosses
@@ -3582,15 +3841,36 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       && GP.undoStand.undo === vorU79);
   }
 
-  // (f) Must-not — kein Bedienelement, kein zweiter Schreibweg.
-  ok('#79 (must-not) der Editor hat kein Bedienelement fuer die Klassifikation',
-    !/id="gp-brand/.test(html) && !/id="gp-sammel-brand/.test(html)
+  // (f) Must-not — kein Bedienelement ausserhalb des Sammel-Popups, kein zweiter
+  // Schreibweg.
+  //
+  // DURCH #111 ABGELOEST: bis #111 sicherte dieser Block zu, dass der Editor
+  // ueberhaupt kein Bedienelement fuer die Klassifikation hat und dass es genau
+  // EINE `.brandklasse`-Zuweisung gibt (das Mitfuehren beim Neurechnen). Seit #111
+  // setzt der Sammel-Editor sie ausdruecklich mit — in seinem Popup und nur dort.
+  // Die tragfaehige Aussage ist deshalb: Modul 1 und der Sammel-Editor sind die
+  // EINZIGEN Schreibwege, und ausserhalb des Popups hat der Editor weiterhin kein
+  // Bedienelement dafuer (keine Werkzeugleiste, keine Wandliste, keine Buehne).
+  const kopfHtml79 = (html.split('id="gp-sammel"')[1] || '').split('id="gp-liste"')[0];
+  ok('#79/#111 (must-not) ausserhalb des Sammel-Popups hat der Editor kein '
+    + 'Bedienelement fuer die Klassifikation',
+    !/id="gp-brand/.test(html)
     && !/<select[^>]*brandklasse/.test(html)
-    && !/brand/i.test((html.split('id="gp-sammel"')[1] || '').split('id="gp-liste"')[0]));
-  ok('#79 (must-not) geschrieben wird sie nirgends — es gibt genau EINE Zuweisung, '
-    + 'das Mitfuehren beim Neurechnen (#56/#75)',
-    (html.match(/\.brandklasse\s*=/g) || []).length === 1
+    // In der Werkzeugleiste steht seit #111 GENAU EINE Schaltflaeche und kein
+    // einziges Eingabefeld — weder fuer die Klassifikation noch fuer ein anderes
+    // der neun Merkmale. Ihr Titel darf den Umfang nennen; ein Bedienelement ist er nicht.
+    && !/<select/.test(kopfHtml79) && !/<input/.test(kopfHtml79)
+    && (kopfHtml79.match(/<button/g) || []).length === 1
+    && /id="gp-sammel-knopf"/.test(kopfHtml79));
+  ok('#111 das Bedienelement liegt GENAU EINMAL im Sammel-Popup — als Feld mit Haekchen',
+    (html.match(/id="gp-sammel-brand"/g) || []).length === 1
+    && (html.match(/id="gp-sammel-brand-an"/g) || []).length === 1
+    && /id="gp-sammelblatt"/.test(html));
+  ok('#79/#111 (must-not) geschrieben wird sie an genau ZWEI Stellen — das '
+    + 'Mitfuehren beim Neurechnen (#56/#75) und der Sammel-Editor (#111)',
+    (html.match(/\.brandklasse\s*=/g) || []).length === 2
     && /neu\.brandklasse = we\.brandklasse/.test(html)
+    && /setze: \(neu, v\) => \{ neu\.brandklasse = v; \}/.test(html)
     && /store\.normBrandklasse\(/.test(html));
   ok('#79 (must-not) kein Schema-, Mappen- oder Projektformatsprung',
     store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
