@@ -253,8 +253,15 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     grp && grp[1].includes(ZWISCHENPUNKT.farbe));
   // Die Gruppe liegt VOR Bemassung und Brandschutz: sie verdeckt kein Ausfuehrungsmass,
   // und die Brandschutzgruppe bleibt die letzte des Blattes ([D-4]/#79).
-  ok("[#110] die Gruppe steht nach den Straengen und vor Bemassung/Brandschutz",
-    svg.indexOf('<g class="zsp">') > svg.lastIndexOf(`stroke="${Z.FARBE.stange}"`)
+  //
+  // UMGEKEHRT MIT #112: bis dahin verlangte diese Stelle ausdruecklich, dass das Einlegeblech
+  // NACH den Straengen steht. Genau das war der gemeldete Fehler — das C-Profil legte sich
+  // ueber die durchlaufende Gewindestange. Die Stange ist das Bauteil, an dem die Vorspannung
+  // abgelesen wird, und liegt seither im Vordergrund; das Einlegeblech steht deshalb jetzt
+  // DAVOR. Die uebrige Aussage von #110 bleibt: die Gruppe verdeckt kein Ausfuehrungsmass.
+  ok("[#112] die Einlegeblech-Gruppe steht VOR den Straengen und vor Bemassung/Brandschutz",
+    svg.indexOf('<g class="zsp">') < svg.indexOf('<g class="stg">')
+    && svg.indexOf('<g class="zsp">') > svg.indexOf('<g class="dcs">')
     && svg.indexOf('<g class="zsp">') < svg.indexOf('<g class="brand"'));
   // #106: der Vordergrund der Kopplungsmuttern kommt danach, bleibt aber vor Bemassung und
   // Brandschutzgruppe — er verdeckt kein Ausfuehrungsmass.
@@ -307,6 +314,98 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     (() => {
       const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
       return /deckenanschlussSvg/.test(q) && !/"#c0392b"/.test(q); })());
+}
+
+// --- #112: die Gewindestangen liegen im Vordergrund, jeder Stoss traegt eine Haarlinie ----
+// Gemeldet war: Bleche, Einlegebleche und Symbole legten sich ueber die Stangenlinie, und die
+// Stueckelung war am Blatt nicht ablesbar, wo zwei Stuecke DERSELBEN Art aneinanderstossen.
+// Beides ist reine AUSGABEREIHENFOLGE plus eine zusaetzliche Marke — Stueckgeometrie und
+// Stossposition kommen unveraendert aus `stangenStuecke()`.
+{
+  const grp = /<g class="stg">([\s\S]*?)<\/g>/.exec(svg);
+  ok("[#112] die Stangenlinien stehen in einer eigenen Gruppe", !!grp);
+  // Die Gruppe kommt NACH allem, was die Stange bisher verdecken konnte: Steine, Kontur,
+  // Boden-/Kopfblech, Deckenanschluss-Symbole und Einlegebleche. Davor bleibt nur noch der
+  // Kopplungsvordergrund (#106) und danach Bemassung und Brandschutzgruppe (#79).
+  ok("[#112] sie steht nach Steinen, Blechen, Deckenanschluss und Einlegeblechen", (() => {
+    // Ohne die Brandschutzgruppe gesucht: deren Kennfarbe fuer F0 ist zufaellig dieselbe wie
+    // die des Blechs, und sie steht bauartbedingt ZULETZT (#79) — sie ist kein Bauteil.
+    const bis = svg.slice(0, svg.indexOf('<g class="brand"'));
+    const stg = bis.indexOf('<g class="stg">');
+    return stg > bis.lastIndexOf(`fill="${Z.FARBE.stahl}"`)        // Boden- und Kopfblech
+      && stg > bis.lastIndexOf(`fill="${Z.FARBE.i3}"`)             // Steine
+      && stg > bis.lastIndexOf('<polyline points=')                // Wandkontur
+      && stg > bis.indexOf('<g class="dcs">')                      // Deckenanschluss-Symbole
+      && stg > bis.indexOf('<g class="zsp">'); })());              // Einlegebleche
+  ok("[#112] und vor Kopplungsmuttern, Bemassung und Brandschutzgruppe",
+    svg.indexOf('<g class="stg">') < svg.indexOf('<g class="kop">')
+    && svg.indexOf('<g class="stg">') < svg.indexOf('<g class="brand"'));
+  // Kein Stangenstrich liegt mehr ausserhalb der Gruppe — sonst waere die Aussage nur
+  // teilweise wahr, und genau ein vergessener Strich bliebe verdeckt.
+  ok("[#112] ALLE Stangenstriche liegen in der Gruppe, keiner davor oder danach", (() => {
+    const ohne = svg.replace(/<g class="stg">[\s\S]*?<\/g>/, "");
+    return !new RegExp(`stroke="${Z.FARBE.stange}"`).test(ohne)
+      && !new RegExp(`stroke="${Z.FARBE.stange_sonder}"`).test(ohne)
+      && !new RegExp(`stroke="${Z.FARBE.stange_rest}"`).test(ohne); })());
+  // Die weisse Haarlinie: genau eine je Stoss, gezaehlt gegen die REALEN Stuecke.
+  const HAAR = /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="[-\d.]+" stroke="#fff" stroke-width="([-\d.]+)"\/>/g;
+  const haare = svg => [...svg.matchAll(HAAR)].map(m => ({ x1: +m[1], y: +m[2], x2: +m[3], sw: +m[4] }));
+  let stoesseSoll = 0;
+  for (const col of W.tension_columns)
+    for (const sg of col.segments) stoesseSoll += Math.max(0, stangenStuecke(W, sg).length - 1);
+  ok("[#112] je Stangenstoss genau eine weisse Haarlinie",
+    stoesseSoll > 0 && haare(svg).length === stoesseSoll);
+  ok("[#112] sie liegen alle in der Stangengruppe, also vor der Stange",
+    grp && haare(grp[1]).length === stoesseSoll);
+  // Sie sitzt quer zur Stange auf `z1_mm` des UNTEREN Stuecks — geprueft an der gezeichneten
+  // Geometrie gegen die Stossposition aus `stangenStuecke()`, nicht gegen eine Nachrechnung.
+  ok("[#112] sie steht waagerecht auf der Stossposition z1_mm des unteren Stuecks", (() => {
+    const sc = 1 / zA3.masstab, pad = Z.PAD_MM;   // Zeichnungsrand unveraendert (#112)
+    const hPx = W.height_mm * sc;
+    const soll = [];
+    for (const col of W.tension_columns)
+      for (const sg of col.segments) {
+        const st = stangenStuecke(W, sg);
+        for (let i = 0; i < st.length - 1; i++)
+          soll.push({ x: pad + col.x_mm * sc, y: pad + (hPx - st[i].z1_mm * sc) });
+      }
+    const ist = haare(svg);
+    return soll.length === ist.length && soll.every(q => ist.some(h =>
+      Math.abs((h.x1 + h.x2) / 2 - q.x) < 1e-3 && Math.abs(h.y - q.y) < 1e-3
+      && h.x2 > h.x1)); })());
+  // Breite: ABGELEITET aus dem Durchmesser der Kopplungsmutter und messbar BREITER als sie —
+  // sonst verschwaende die Linie vollstaendig unter dem Bauteil, das ueber ihr liegt.
+  ok("[#112] sie ist breiter als die Kopplungsmutter (aus SPANN_MM.d abgeleitet)", (() => {
+    const b = SPANN_MM.d * 1.5 * SPANN_EINHEIT.blatt;
+    const ist = haare(svg);
+    return ist.length > 0 && ist.every(h => Math.abs((h.x2 - h.x1) - b) < 1e-3)
+      && b > SPANN_MM.d * SPANN_EINHEIT.blatt; })());
+  ok("[#112] sie ist eine Haarlinie — duenner als jede Stangenlinie", (() => {
+    const ist = haare(svg);
+    return ist.length > 0 && ist.every(h => h.sw < 0.22 * 2.6); })());
+  // Ein Strang aus EINEM Stueck hat keinen Stoss — dann darf auch keine Haarlinie entstehen.
+  ok("[#112] ein einstueckiger Strang bekommt keine Haarlinie", (() => {
+    const W1 = buildWall("IW-H1", 1000, 800, [], null, { rod_lengths_mm: [3000] });
+    const s1 = Z.zeichnungSvg(W1, {}).svg;
+    const stuecke = W1.tension_columns.flatMap(c => c.segments)
+      .reduce((a, sg) => a + stangenStuecke(W1, sg).length, 0);
+    const stoesse = W1.tension_columns.flatMap(c => c.segments)
+      .reduce((a, sg) => a + Math.max(0, stangenStuecke(W1, sg).length - 1), 0);
+    return stuecke > 0 && stoesse === 0 && haare(s1).length === 0; })());
+  // Nichts an der Stange selbst hat sich geaendert: Farben und Strichstaerken der Stuecke
+  // bleiben, und der Kopplungsvordergrund traegt unveraendert seine Muttern.
+  ok("[#112] Farben und Strichstaerken der Stangenstuecke sind unveraendert", (() => {
+    const dick = a => a === "rest" ? 3.4 : 2.6;
+    let n = 0;
+    for (const col of W.tension_columns)
+      for (const sg of col.segments)
+        for (const st of stangenStuecke(W, sg)) {
+          const re = new RegExp(`stroke="${STUECK_FARBE[st.art]}" stroke-width="`
+            + `${Math.round(0.22 * dick(st.art) * 1000) / 1000}"`);
+          if (!re.test(svg)) return false;
+          n++;
+        }
+    return n > 0; })());
 }
 
 {

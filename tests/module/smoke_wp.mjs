@@ -43,6 +43,10 @@ const KAT = await import("../../docs/shared/sembla-katalog.js");
 const MONT = await import("../../docs/shared/sembla-montage.js");
 // Stuecklistenpositionen fuer den Realpfad-Nachweis der Bodenblech-Bepreisung ([A-10]/[P-14]).
 const BOM = await import("../../docs/shared/sembla-bom.js");
+// #112: das Blatt von Modul 7 — nur zum QUERVERGLEICH. Modul 1 zieht daraus nichts; geprueft
+// wird, dass beide Ansichten derselben Wand dieselbe Zahl weisser Haarlinien zeigen und
+// dieselbe abgeleitete Breite benutzen (das lokale Doppelmass, [P-6]/[D-4]).
+const ZEICH = await import("../../docs/shared/sembla-zeichnung.js");
 // Aktives Element ist in Modul 0 angelegt worden (inkl. Wandtyp) — Modul 1 legt selbst KEINS an.
 // Der Leerfall wird am Ende separat geprüft.
 const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
@@ -61,7 +65,10 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // eigene Geometrie und keine lokalen Hex-Werte mehr.
   // #106: die Symbolmasse stehen fest in Papier-mm; `SPANN_EINHEIT.ansicht` ist der Faktor
   // auf viewBox-Einheiten. `schraubeSvg` ist die Schraube am Wandfuss ([A-19]/#97).
-  SPANN_FARBE: MONT.SPANN_FARBE, SPANN_EINHEIT: MONT.SPANN_EINHEIT, mutterSvg: MONT.mutterSvg,
+  // #112: `SPANN_MM` kommt hinzu — die weisse Haarlinie am Stangenstoss wird aus dem
+  // Durchmesser der Kopplungsmutter abgeleitet, damit sie breiter ist als das Bauteil ueber ihr.
+  SPANN_FARBE: MONT.SPANN_FARBE, SPANN_EINHEIT: MONT.SPANN_EINHEIT, SPANN_MM: MONT.SPANN_MM,
+  mutterSvg: MONT.mutterSvg,
   kopplungsmutterSvg: MONT.kopplungsmutterSvg, spannplatteSvg: MONT.spannplatteSvg,
   schraubeSvg: MONT.schraubeSvg,
   wirksameZwischenpunkte };
@@ -262,6 +269,95 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
   ok('[#110] die Legende bezieht die Kopplungsfarbe aus der geteilten Quelle',
     zleg().includes(MONT.SPANN_FARBE.mutter));
 }
+// ---- Issue #112: Gewindestangen im Vordergrund + weisse Haarlinie am Stoss -----------
+// Gemeldet war: andere Bauteile legten sich ueber die Stangenlinie, und die Stueckelung war
+// nicht ablesbar, wo zwei Stuecke DERSELBEN Art aneinanderstossen. Beides ist reine
+// AUSGABEREIHENFOLGE plus eine zusaetzliche Marke — Stueckgeometrie und Stossposition kommen
+// unveraendert aus `stangenStuecke()`.
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const w=()=>WP.RESULT.wandelement;
+  const E=MONT.SPANN_EINHEIT.ansicht, MM=MONT.SPANN_MM;
+  const grp=()=>/<g class="stg">([\s\S]*?)<\/g>/.exec(svg());
+  const RE_HAAR=/<line class="haar" x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#fff" stroke-width="([-\d.]+)"\/>/g;
+  const haare=t=>[...t.matchAll(RE_HAAR)].map(m=>({x1:+m[1],y1:+m[2],x2:+m[3],y2:+m[4],sw:+m[5]}));
+  const stoesse=wd=>wd.tension_columns.flatMap(c=>c.segments)
+    .reduce((a,g)=>a+Math.max(0,MONT.stangenStuecke(wd,g).length-1),0);
+
+  ok('[#112] die Stangenlinien stehen in einer eigenen Gruppe', !!grp());
+  ok('[#112] die Gruppe steht NACH allen uebrigen Wandbauteilen', (()=>{
+    const t=svg(), i=t.indexOf('<g class="stg">');
+    return i>0
+      && i>t.lastIndexOf('fill="#5b6673"')                 // Boden- und Kopfblech
+      && i>t.lastIndexOf('<polyline points=')              // Wandumriss
+      && i>t.lastIndexOf('<polyline class="dcs"')          // Deckenanschluss-Symbole
+      && i>t.lastIndexOf('<polyline class="zsp"')          // Einlegebleche
+      && i>t.lastIndexOf('fill="'+MONT.SPANN_FARBE.platte+'"'); })());   // Spannplatten
+  ok('[#112] die Kopplungsmuttern bleiben davor (Haarlinie liegt hinter der Mutter)', (()=>{
+    const t=svg();
+    return t.indexOf('<g class="stg">')<t.indexOf('<rect class="kop"'); })());
+  ok('[#112] ALLE Stangenstriche liegen in der Gruppe, keiner davor oder danach', (()=>{
+    const ohne=svg().replace(/<g class="stg">[\s\S]*?<\/g>/,'');
+    return !['standard','sonder','rest']
+      .some(a=>ohne.includes('stroke="'+MONT.stueckFarbe(a)+'" stroke-width="')); })());
+  ok('[#112] je Stangenstoss genau eine weisse Haarlinie, alle in der Gruppe', (()=>{
+    const n=stoesse(w());
+    return n>0 && haare(svg()).length===n && haare(grp()[1]).length===n; })());
+  ok('[#112] sie steht waagerecht auf der Stossposition z1_mm des unteren Stuecks', (()=>{
+    const wd=w(), sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
+    const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+    const soll=[];
+    for(const col of wd.tension_columns) for(const g of col.segments){
+      const st=MONT.stangenStuecke(wd,g);
+      for(let i=0;i<st.length-1;i++) soll.push({x:X(col.x_mm),y:Y(st[i].z1_mm)});
+    }
+    const ist=haare(svg());
+    return soll.length>0 && soll.length===ist.length && soll.every(q=>ist.some(h=>
+      Math.abs((h.x1+h.x2)/2-q.x)<1e-9 && h.y1===h.y2 && Math.abs(h.y1-q.y)<1e-9
+      && h.x2>h.x1)); })());
+  ok('[#112] sie ist breiter als die Kopplungsmutter (aus SPANN_MM.d abgeleitet)', (()=>{
+    const b=MM.d*1.5*E, ist=haare(svg());
+    return ist.length>0 && ist.every(h=>Math.abs((h.x2-h.x1)-b)<1e-9) && b>MM.d*E; })());
+  ok('[#112] sie ist eine Haarlinie — duenner als jede Stangenlinie',
+    haare(svg()).every(h=>h.sw<2.4));
+  // Das lokale Doppelmass ([P-6]/[D-4]): Modul 1 und Modul 7 fuehren die Ableitung getrennt,
+  // ohne gemeinsames Symbolmass in sembla-montage.js (Praezedenz #79). Genau deshalb wird die
+  // Gleichheit hier GEPRUEFT statt verdrahtet — am gezeichneten Ergebnis beider Ansichten.
+  ok('[#112] beide Ansichten leiten dieselbe Breite ab (kein Drift des Doppelmasses)', (()=>{
+    const wd=w();
+    const bl=ZEICH.zeichnungSvg(wd,{}).svg;
+    const hb=[...bl.matchAll(/<line x1="([-\d.]+)" y1="[-\d.]+" x2="([-\d.]+)" y2="[-\d.]+" stroke="#fff"/g)]
+      .map(m=>+m[2]-+m[1]);
+    const ha=haare(svg()).map(h=>h.x2-h.x1);
+    if(!hb.length||!ha.length) return false;
+    // Je Ansicht ein einheitliches Mass, und nach Umrechnung auf Papier-mm dasselbe.
+    const eins=a=>new Set(a.map(v=>Math.round(v*1e6))).size===1;
+    return eins(hb) && eins(ha)
+      && Math.abs(ha[0]/E - hb[0]/MONT.SPANN_EINHEIT.blatt)<1e-9; })());
+  ok('[#112] beide Ansichten derselben Wand zeigen gleich viele Haarlinien', (()=>{
+    const wd=w();
+    const bl=ZEICH.zeichnungSvg(wd,{}).svg;
+    const nb=(bl.match(/stroke="#fff"/g)||[]).length;
+    return nb>0 && nb===haare(svg()).length && nb===stoesse(wd); })());
+  ok('[#112] Farben und Strichstaerken der Stangenstuecke sind unveraendert', (()=>{
+    const wd=w(), t=svg(); let n=0;
+    for(const col of wd.tension_columns) for(const g of col.segments)
+      for(const p of MONT.stangenStuecke(wd,g)){
+        if(!t.includes('stroke="'+MONT.stueckFarbe(p.art)+'" stroke-width="'
+          +(p.art==='rest'?3:2.4)+'"')) return false;
+        n++;
+      }
+    return n>0; })());
+  ok('[#112] Modul 1 fuehrt fuer die Haarlinienbreite kein eigenes Mass',
+    /SPANN_MM\.d\s*\*\s*1\.5/.test(html) && /SPANN_MM=S\.SPANN_MM/.test(html));
+  // Ein Strang aus EINEM Stueck hat keinen Stoss — dann darf auch keine Haarlinie entstehen.
+  ok('[#112] ein einstueckiger Strang bekommt keine Haarlinie', (()=>{
+    const wd=WP.RESULT.wandelement;
+    const eins=buildWall(wd.name,1000,800,[],wd.sides,{rod_lengths_mm:[3000]},[]);
+    return stoesse(eins)===0
+      && (ZEICH.zeichnungSvg(eins,{}).svg.match(/stroke="#fff"/g)||[]).length===0; })());
+}
+
 // ---- Issue #100: Wandansicht passt ins Fenster und laesst sich zoomen ---------------
 // Gefahren wird der ECHTE Bedienpfad: die im Markup sichtbaren Schalter werden geklickt und
 // die Fenstergroessenaenderung ueber den echten window-Hoerer ausgeloest. Markup und CSS

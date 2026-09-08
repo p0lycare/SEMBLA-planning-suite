@@ -48,7 +48,11 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          bodenblechSvg, bodenblechTeile, bodenblechStoesse,
          // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
          // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
-         SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg,
+         // #112: `SPANN_MM` kommt hinzu, weil die weisse Haarlinie am Stangenstoss aus dem
+         // Durchmesser der Kopplungsmutter ABGELEITET wird — sie muss breiter sein als das
+         // Bauteil, das ueber ihr liegt. Kein neues Symbolmass, nur eine Ableitung.
+         SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg, kopplungsmutterSvg, spannplatteSvg,
+         schraubeSvg,
          // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
          ZWISCHENPUNKT, zwischenpunktSvg,
          DECKENANSCHLUSS, deckenanschlussSvg } from "./sembla-montage.js";
@@ -551,6 +555,19 @@ export function zeichnungSvg(w, opts = {}) {
   // hier gefuehrte Untergrenze der Plattenbreite (`pw = 2.2`) ist entfallen: sie liegt jetzt
   // als `SPANN_MM.platte_b_min` beim Symbol selbst, also fuer beide Ausgaben gleich ([D-4]).
   const SYM = SPANN_EINHEIT.blatt;
+  // Weisse HAARLINIE am Stangenstoss (#112): sie macht die Stueckelung ablesbar, wo zwei
+  // Stuecke DERSELBEN Art aneinanderstossen — die Kopplungsmutter sagt nur, DASS gekoppelt
+  // wird, nicht wo die Grenze liegt. Die Breite ist aus dem Durchmesser der Kopplungsmutter
+  // ABGELEITET und nicht frei gewaehlt: die Mutter liegt als opakes Bauteil ueber dem Stoss,
+  // eine schmalere Linie waere vollstaendig verdeckt. Mit Faktor 1,5 schaut sie beidseits
+  // heraus. Sie ist eine Darstellungsmarke, kein Bauteil — deshalb feste Papier-mm (#106).
+  //
+  // ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe Ableitung steht ein zweites Mal in der Wandansicht
+  // von Modul 1 (`docs/wandplanung.html`). Ein gemeinsames Mass gehoerte neben `SPANN_MM` in
+  // sembla-montage.js; das Paket zu #112 fasst diese Datei bewusst nicht an. Dasselbe Muster
+  // wie beim Brandschutz-Darstellungsschluessel (#79): lokal gefuehrt, Gleichheit beider
+  // Ansichten im Test gesichert. Die kanonische Groesse `SPANN_MM.d` bleibt die eine Quelle.
+  const HAAR_B = SPANN_MM.d * 1.5 * SYM, HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
   // Gruppe NACH den Straengen und Einlegeblechen gesetzt, damit sie kein Stangenstueck, keine
   // Platte und kein Blech ueberdeckt. Bemassung und Brandschutzgruppe bleiben danach.
@@ -573,7 +590,13 @@ export function zeichnungSvg(w, opts = {}) {
     }
   }
 
-  let vorn = "";
+  // Alle STANGENLINIEN kommen in den Vordergrund (#112): gesammelt in `stangen` und als eigene
+  // Gruppe NACH Steinen, Blechen, Deckenanschluss-Symbolen und Einlegeblechen gesetzt. Die
+  // Gewindestange ist das Bauteil, an dem die Vorspannung abgelesen wird — sie darf von nichts
+  // verdeckt werden. Anker (Spannplatte, Schraube, Spannmutter) bleiben, wo sie sind, und
+  // rutschen damit HINTER die Stange; genau das will #112. Die weissen Haarlinien laufen im
+  // selben Akkumulator mit: sie liegen vor der Stange und hinter der Kopplungsmutter.
+  let vorn = "", stangen = "";
   for (const col of (w.tension_columns || [])) {
     const x = X(col.x_mm), lt = _obenBei(w, col.x_mm);
     for (const sg of _segmente(w, col)) {
@@ -588,11 +611,21 @@ export function zeichnungSvg(w, opts = {}) {
         // Das Reststueck ist kurz — es traegt deshalb zusaetzlich zur Farbe eine groessere
         // Strichstaerke, damit es auch im Schwarz-Weiss-Druck als eigenes Bauteil auffaellt.
         const dick = st.art === "rest" ? 3.4 : 2.6;
-        s += `<line x1="${_n(x)}" y1="${_n(Y(st.z0_mm))}" x2="${_n(x)}" y2="${_n(Y(st.z1_mm))}" `
+        stangen += `<line x1="${_n(x)}" y1="${_n(Y(st.z0_mm))}" x2="${_n(x)}" y2="${_n(Y(st.z1_mm))}" `
           + `stroke="${stueckFarbe(st.art)}" stroke-width="${_n(SW * dick)}"/>`;
         // Der Stoss traegt die KOPPLUNGSMUTTER — als langer Zylinder in Seitenansicht (#110),
         // aus derselben Funktion wie die Wandansicht von Modul 1. Kreis und Sechseck entfallen.
-        if (!letzter) vorn += kopplungsmutterSvg(x, Y(st.z1_mm), SYM, { n: _n });
+        // Dazu seit #112 die weisse HAARLINIE quer zur Stange, genau auf `z1_mm` des UNTEREN
+        // Stuecks: die Stueckelungsgrenze. Sie steht unmittelbar nach ihrer Stangenlinie im
+        // selben Akkumulator — also vor der Stange — und die Kopplungsmutter kommt als eigene
+        // Gruppe danach, liegt also weiterhin obenauf. Das letzte Stueck bekommt keine: dort
+        // ist kein Stoss, sondern das Segmentende.
+        if (!letzter) {
+          const yS = Y(st.z1_mm);
+          stangen += `<line x1="${_n(x - HAAR_B / 2)}" y1="${_n(yS)}" x2="${_n(x + HAAR_B / 2)}" `
+            + `y2="${_n(yS)}" stroke="${HAAR_FARBE}" stroke-width="${_n(HAAR_SW)}"/>`;
+          vorn += kopplungsmutterSvg(x, yS, SYM, { n: _n });
+        }
       }
       const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
       const ao = sg.anker_oben || (sg.z1_mm === lt ? topConn : "spannplatte");
@@ -612,9 +645,11 @@ export function zeichnungSvg(w, opts = {}) {
     }
   }
 
-  // Einlegebleche der Zwischenspannpunkte ([A-14]/#110): eigene Gruppe NACH den Straengen und
-  // VOR Bemassung und Brandschutzgruppe — sie verdeckt damit kein Ausfuehrungsmass, und die
-  // Brandschutzgruppe bleibt die letzte des Blattes. Gezeichnet werden die WIRKSAMEN Punkte
+  // Einlegebleche der Zwischenspannpunkte ([A-14]/#110): eigene Gruppe VOR den Stangenlinien
+  // und VOR Bemassung und Brandschutzgruppe — sie verdeckt damit kein Ausfuehrungsmass, und die
+  // Brandschutzgruppe bleibt die letzte des Blattes. Bis #112 stand sie NACH den Straengen und
+  // legte sich damit ueber die durchlaufende Gewindestange; das war genau der gemeldete
+  // Fehler. Die Gruppe selbst ist unveraendert — nur ihre Stelle in der Zeichenkette. Gezeichnet werden die WIRKSAMEN Punkte
   // des Rechenkerns; Symbol, Kennfarbe und die aufsitzende Mutter kommen aus
   // sembla-montage.js — dieselben Formen wie in der Wandansicht von Modul 1, ohne eigene
   // Geometrie, ohne neue Kennfarbe und ohne Bemassung am Bauteil.
@@ -630,6 +665,13 @@ export function zeichnungSvg(w, opts = {}) {
       s += `</g>`;
     }
   }
+
+  // Vordergrund der GEWINDESTANGEN (#112) — eigene Gruppe, NACH Steinen, Blechen,
+  // Deckenanschluss-Symbolen und Einlegeblechen und VOR dem Kopplungsvordergrund: keine
+  // Stangenlinie wird mehr von einem anderen Bauteil ueberdeckt, die Kopplungsmutter liegt
+  // aber weiterhin auf ihrem Stoss. Die weissen Haarlinien sind darin enthalten. Bemassung
+  // und Brandschutzgruppe bleiben danach und damit unverdeckt.
+  if (stangen) s += `<g class="stg">${stangen}</g>`;
 
   // Vordergrund der Kopplungsmuttern (#106) — eigene Gruppe, NACH Straengen und
   // Einlegeblechen und VOR Bemassung und Brandschutzgruppe: sie verdeckt damit kein

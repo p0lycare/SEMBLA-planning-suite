@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-28",
+    datum: "2026-09-08",
+    typ: "fix",
+    issue: 112,
+    titel: "Gewindestangen liegen in Wandansicht und Zeichnung im Vordergrund, jeder Sto\u00df tr\u00e4gt eine wei\u00dfe Haarlinie",
+    testbitte: "In Modul 1 eine Wand mit mehrst\u00fcckigen Spannstr\u00e4ngen \u00f6ffnen und danach ihr "
+      + "Blatt in Modul 7: keine Stangenlinie wird mehr von Blech, Einlegeblech oder "
+      + "Symbol verdeckt, und an jedem Stangensto\u00df steht quer eine wei\u00dfe Haarlinie.",
+  },
+  {
     id: "chg-20260908-27",
     datum: "2026-09-08",
     typ: "feature",

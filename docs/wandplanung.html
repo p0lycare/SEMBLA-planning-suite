@@ -277,7 +277,10 @@ let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // sembla-montage.js; die wirksamen Punkte liefert die eine Ableitung des Rechenkerns.
 let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
 let DECKENANSCHLUSS, deckenanschlussSvg;
-let SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg;
+// #112: `SPANN_MM` kommt hinzu — die weisse Haarlinie am Stangenstoss wird aus dem
+// Durchmesser der Kopplungsmutter ABGELEITET (sie muss breiter sein als das Bauteil,
+// das ueber ihr liegt); ein eigenes Mass hier waere Drift.
+let SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
 // hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
@@ -594,6 +597,19 @@ function draw(w){
   // Symbolmaße gehören zur Darstellung, nicht zum Bauteil, und stehen deshalb fest — genau
   // wie die `font-size`- und `stroke-width`-Werte dieser Ansicht.
   const SYM=SPANN_EINHEIT.ansicht;
+  // Weiße HAARLINIE am Stangenstoß (#112): sie macht die Stückelung ablesbar, wo zwei Stücke
+  // DERSELBEN Art aneinanderstoßen — die Kopplungsmutter sagt nur, DASS gekoppelt wird, nicht
+  // wo die Grenze liegt. Die Breite ist aus dem Durchmesser der Kopplungsmutter ABGELEITET und
+  // nicht frei gewählt: die Mutter liegt als opakes Bauteil über dem Stoß, eine schmalere Linie
+  // wäre vollständig verdeckt. Mit Faktor 1,5 schaut sie beidseits heraus. Darstellungsmarke,
+  // kein Bauteil — deshalb festes Symbolmaß über SPANN_EINHEIT.ansicht (#106).
+  //
+  // ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe Ableitung steht ein zweites Mal in
+  // `docs/shared/sembla-zeichnung.js` (Modul 7). Ein gemeinsames Maß gehörte neben `SPANN_MM`
+  // in sembla-montage.js; das Paket zu #112 fasst diese Datei bewusst nicht an. Dasselbe
+  // Muster wie beim Brandschutz-Darstellungsschlüssel (#79): lokal geführt, Gleichheit beider
+  // Ansichten im Test gesichert. Die kanonische Größe `SPANN_MM.d` bleibt die eine Quelle.
+  const HAAR_B=SPANN_MM.d*1.5*SYM, HAAR_SW=0.8, HAAR_FARBE='#fff';
   // Kennfarben der Spannkomponenten kommen aus SPANN_FARBE (sembla-montage.js, [D-4]/#110) —
   // dieselbe Quelle wie Modul 7, keine lokalen Hex-Werte mehr. STEEL ist das Boden-/Kopfblech
   // und gehoert nicht zu den Spannkomponenten.
@@ -651,16 +667,31 @@ function draw(w){
     for(const col of w.tension_columns){ if(!dcK.has(col.k)) continue;
       s+=deckenanschlussSvg(X(col.x_mm),Y(topH(col.k)),SYM,{klasse:'dcs'}); } }
 
-  let vorn='';
+  // Alle STANGENLINIEN kommen in den Vordergrund (#112): gesammelt in `stangen` und als eigene
+  // Gruppe NACH Steinen, Blechen, Deckenanschluss-Symbolen und Einlegeblechen ausgegeben. Die
+  // Gewindestange ist das Bauteil, an dem die Vorspannung abgelesen wird — sie darf von keinem
+  // anderen Wandbauteil verdeckt werden. Anker (Spannplatte, Schraube, Spannmutter) bleiben,
+  // wo sie sind, und rutschen damit HINTER die Stange; genau das will #112. Die weißen
+  // Haarlinien laufen im selben Akkumulator mit: vor der Stange, hinter der Kopplungsmutter.
+  let vorn='', stangen='';
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
       const st=stangenStuecke(w,g);
       st.forEach((p,i)=>{
-        s+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art)}" stroke-width="${p.art==='rest'?3:2.4}"/>`;
+        stangen+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art)}" stroke-width="${p.art==='rest'?3:2.4}"/>`;
         // Kopplung an jedem inneren Stoß (Stücke − 1): die KOPPLUNGSMUTTER als langer Zylinder
         // in Seitenansicht (#110) — dieselbe Funktion wie in Modul 7, deutlich länger als eine
         // normale Mutter. Die Klasse `kop` bleibt, sie trennt das Bauteil vom Legendenmuster.
-        if(i<st.length-1) vorn+=kopplungsmutterSvg(x,Y(p.z1_mm),SYM,{klasse:'kop'});
+        // Dazu seit #112 die weiße HAARLINIE quer zur Stange, genau auf `z1_mm` des UNTEREN
+        // Stücks: die Stückelungsgrenze. Sie steht unmittelbar nach ihrer Stangenlinie im selben
+        // Akkumulator — also vor der Stange —, und die Kopplungsmuttern kommen danach, liegen
+        // also weiterhin obenauf. Das letzte Stück bekommt keine: dort ist kein Stoß, sondern
+        // das Segmentende.
+        if(i<st.length-1){
+          const yS=Y(p.z1_mm);
+          stangen+=`<line class="haar" x1="${x-HAAR_B/2}" y1="${yS}" x2="${x+HAAR_B/2}" y2="${yS}" stroke="${HAAR_FARBE}" stroke-width="${HAAR_SW}"/>`;
+          vorn+=kopplungsmutterSvg(x,yS,SYM,{klasse:'kop'});
+        }
       });
       const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
       const ao=g.anker_oben||((g.z1_mm===topH(col.k)*1)?topConn:'spannplatte');
@@ -691,6 +722,13 @@ function draw(w){
     const on=(zpEdit && selZp===zp.z_mm);
     s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,e:SYM});
   }
+  // Vordergrund der GEWINDESTANGEN (#112): eigene Gruppe NACH allen übrigen Wandbauteilen —
+  // Steine, Kontur, Boden-/Kopfblech, Deckenanschluss-Symbole und Einlegebleche liegen dahinter,
+  // die Kopplungsmuttern davor. Die weißen Haarlinien der Stöße sind darin enthalten. Danach
+  // folgen nur noch Bedien-Overlays (Griffe, Hilfslinien) und die Kopplungsmuttern — Overlays
+  // sind keine Wandbauteile und dürfen wie bisher obenauf liegen.
+  if(stangen) s+=`<g class="stg">${stangen}</g>`;
+
   // Im Bearbeitungsmodus zusätzlich je Punkthöhe eine Griff-/Hilfslinie über die Wandbreite,
   // damit die Lagen-Oberkante als Ganzes greifbar ist (reine Bedienhilfe, kein Bauteil).
   if(zpEdit){ const hoehen=[...new Set(zpListe.map(zp=>zp.z_mm))].sort((a,b)=>a-b);
@@ -1589,7 +1627,8 @@ window.__wpInit=function(){
   DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten — eine Quelle für Modul 1 und 7.
-  SPANN_FARBE=S.SPANN_FARBE; SPANN_EINHEIT=S.SPANN_EINHEIT; mutterSvg=S.mutterSvg;
+  SPANN_FARBE=S.SPANN_FARBE; SPANN_EINHEIT=S.SPANN_EINHEIT; SPANN_MM=S.SPANN_MM;
+  mutterSvg=S.mutterSvg;
   kopplungsmutterSvg=S.kopplungsmutterSvg; spannplatteSvg=S.spannplatteSvg;
   schraubeSvg=S.schraubeSvg;
   bindEvents();
@@ -1613,14 +1652,14 @@ window.__wpInit=function(){
   import * as KAT from './shared/sembla-katalog.js';
   import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
            ZWISCHENPUNKT, zwischenpunktSvg, DECKENANSCHLUSS, deckenanschlussSvg,
-           SPANN_FARBE, SPANN_EINHEIT, mutterSvg,
+           SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
-                    SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg,
+                    SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg, kopplungsmutterSvg,
                     spannplatteSvg, schraubeSvg };
   mountNavbar(1);
   window.__wpInit();
