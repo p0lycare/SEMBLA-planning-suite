@@ -770,8 +770,10 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('Verbinder: keine fachfremden Maßfelder',
     kpFelderListe().length === 0 && $('kp-leer').hidden === false);
   kpKategorie('verbrauch');
-  ok('Verbrauchsmaterial: allein die Einbauhöhe, keine weiteren Maßfelder',
-    kpFelderListe().join() === 'hoehe_mm'
+  // Seit dem 2026-09-08 fuehrt Verbrauchsmaterial zwei Masse: Einbauhoehe und Bauteillaenge
+  // (Schaftlaenge einer Schraube). Beide sind optional und KEIN Diskriminator ([P-14]).
+  ok('Verbrauchsmaterial: Einbauhöhe und Bauteillänge, keine weiteren Maßfelder',
+    kpFelderListe().join() === 'hoehe_mm,laenge_mm'
     && !/kp-f-gewinde/.test(kpMarkup()) && !/kp-f-guete/.test(kpMarkup()));
   const slotVorKatWechsel = kSlot();
   kpAbbrechen();
@@ -780,16 +782,20 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
 
   // 14c) Einbauhoehe eines Kleinteils am ECHTEN Dialog (Issue #92)
   kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
-  ok('[#92] der Dialog rendert fuer Verbrauchsmaterial das Höhenfeld aus der Maske',
+  ok('[#92] der Dialog rendert fuer Verbrauchsmaterial die Maßfelder aus der Maske',
     kpFelderListe().join() === KAT.maskeFelder('verbrauch').join()
-    && kpFelderListe().join() === 'hoehe_mm' && $('kp-f-hoehe_mm') != null);
+    && kpFelderListe().join() === 'hoehe_mm,laenge_mm'
+    && $('kp-f-hoehe_mm') != null && $('kp-f-laenge_mm') != null);
   ok('[#92] das Feld ist als Einbauhöhe in Millimetern beschriftet',
     /Einbauhöhe/.test(kpMarkup()) && /\(mm\)/.test(kpMarkup()));
   ok('[#92] die Einbauhöhe ist nicht als Pflicht ausgezeichnet',
     !/Pflicht/.test(kpMarkup()) && KAT.maskeVonKategorie('verbrauch')[0].pflicht === false);
-  ok('[#92] die Vorlage bringt kein erfundenes Einbaumaß mit',
-    $('kp-f-hoehe_mm').value === ''
-    && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === undefined);
+  // Die Einbauhoehe der Kopplungsmutter ist seit jeher mit 30 mm festgelegt und steht jetzt
+  // auch im Katalog. Sie ist damit KEIN erfundenes Mass mehr, sondern ein gepflegtes —
+  // Modul 1 leitet daraus den Fussoffset nach [A-19] ab (halbe Hoehe = 15 mm).
+  ok('[#92] die Vorlage fuehrt die festgelegte Einbauhoehe der Kopplungsmutter',
+    $('kp-f-hoehe_mm').value === '30'
+    && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === 30);
   ok('[#92] die Höhe wird nicht mehr als fachfremdes Feld angekuendigt',
     !/fachfremd/.test($('kp-extra').innerHTML));
   kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',

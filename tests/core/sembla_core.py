@@ -20,7 +20,7 @@ from dataclasses import dataclass, asdict
 from typing import Iterable
 
 __all__ = [
-    "GRID", "COURSE", "THICK", "ROD", "BLECH", "BLECH_THICK", "CHAMBER_OFFSET", "MAX_SPAN_GRID", "FORBIDDEN_N",
+    "GRID", "COURSE", "THICK", "ROD", "BLECH", "CHAMBER_OFFSET", "MAX_SPAN_GRID", "FORBIDDEN_N",
     "Opening", "SemblaError", "InvalidDimensionError", "InvalidOpeningError",
     "build_wall", "is_buildable", "save",
     "MIN_FERTIGMASS_MM", "ROD_OVERHANG", "norm_laengen", "quelle_fuer_mass",
@@ -38,13 +38,12 @@ COURSE        = 200    # mm Lagenhoehe
 THICK         = 125    # mm Wandstaerke
 ROD           = 1100   # mm Gewindestange (wird abgelaengt)
 BLECH         = 1000   # mm Standard-Modullaenge des Kopfblechs (Modulzaehlung)
-BLECH_THICK   = 15     # mm Stahlblech-Dicke
 # Bodenblech-Zerlegung ([A-10]/[A-11]/[A-12]): das Bodenblech ist KEINE durchgehende Platte,
 # sondern eine Folge realer Bleche aus dem Vorratssatz der Standardlaengen.
-BLECH_MIN_MM  = 375    # mm kleinste Bodenblech-Standardlaenge (3 Raster)
+BLECH_MIN_MM  = 250    # mm kleinste Bodenblech-Standardlaenge (2 Raster)
 BLECH_MAX_MM  = 1250   # mm groesste Bodenblech-Standardlaenge (10 Raster)
 BLECH_SPIEL   = 2      # mm Bauteilmass = Rastermass - 2 mm ([A-12])
-BLECH_LAENGEN = [1250, 1125, 1000, 875, 750, 625, 500, 375]  # volle Standardreihe ([A-10])
+BLECH_LAENGEN = [1250, 1125, 1000, 875, 750, 625, 500, 375, 250]  # volle Standardreihe ([A-10])
 CHAMBER_OFFSET = 62.5  # mm Kammerzentrum ab Steinanfang -> Lattice x=62.5+125k
 MAX_SPAN_GRID = 3      # Vorspannung max. alle 3 Raster (375 mm)
 FORBIDDEN_N   = frozenset({1, 4})  # nicht baubare / nicht versetzbare Segmentbreiten
@@ -839,16 +838,28 @@ def _norm_prestress(p):
     ue = ROD_OVERHANG
     if _ue is not None and float(_ue) >= 0:
         ue = int(_ue) if float(_ue) == int(float(_ue)) else float(_ue)
+    # Blechdicken ([A-1]): BAUTEILMASSE und damit ausschliesslich Katalogsache. Es gibt dafuer
+    # KEINE Core-Konstante mehr und KEINEN Default. Beide gehen in keine Rechnung ein (die
+    # Oberkante Bodenblech IST die Steinunterkante, [A-19]) und werden allein AUSGEWIESEN;
+    # fehlt oder widerspricht das Katalogmass, bleibt die Dicke None und die Ausgaben benennen
+    # die Luecke, statt eine Zahl zu erfinden ([P-9]).
+    _bd = p.get("blech_dicke_mm")
+    bd = (int(_bd) if float(_bd) == int(float(_bd)) else float(_bd)) \
+        if _bd is not None and float(_bd) > 0 else None
+    _kbd = p.get("kopfblech_dicke_mm")
+    kbd = (int(_kbd) if float(_kbd) == int(float(_kbd)) else float(_kbd)) \
+        if _kbd is not None and float(_kbd) > 0 else None
     out = {"max_span_grid": m, "force_kN": fk if fk is not None else None,
            "rod_mm": rod, "rod_lengths_mm": rod_l, "blech_mm": bl,
            "blech_lengths_mm": blech_l, "top_connection": top,
            "columns_grid": cg, "start_axis_grid": sa,
+           "blech_dicke_mm": bd, "kopfblech_dicke_mm": kbd,
            "rod_rest_mm": rr, "rod_overhang_mm": ue}
     # Einbaulagen des Spannsystems ([Z-6]/#92) — beide ABGELEITETE Rechenwerte aus Modul 1
     # (Praezedenz `rod_rest_mm`): Fussoffset = halbe Kopplungsmutterhoehe, Kopfzuschlag =
     # Spannplattendicke. Kein Produktmass, keine ID, kein Preis reist mit.
     # Beide OPTIONAL: fehlend/ungueltig -> der Schluessel entsteht gar nicht, das Ergebnis ist
-    # bit-genau das bisherige. Ein fehlendes Katalogmass wird NIE durch BLECH_THICK ersetzt.
+    # bit-genau das bisherige. Ein fehlendes Katalogmass wird NIE durch einen Altwert ersetzt.
     _fo = p.get("rod_fuss_offset_mm")
     if _fo is not None and float(_fo) > 0:
         out["rod_fuss_offset_mm"] = int(_fo) if float(_fo) == int(float(_fo)) else float(_fo)
@@ -1302,10 +1313,11 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     boden_module = len(boden_teile)          # Anzahl REALER Bodenblechteile
     kopf_module = math.ceil(top_edge_len / _PS["blech_mm"]) if _top == "blech" else 0
     base_plate = {"rolle": "bodenblech", "laenge_mm": length_mm, "breite_mm": THICK,
-                  "dicke_mm": BLECH_THICK, "modul_mm": _PS["blech_mm"], "module": boden_module,
-                  "teile": boden_teile}
+                  "dicke_mm": _PS["blech_dicke_mm"], "modul_mm": _PS["blech_mm"],
+                  "module": boden_module, "teile": boden_teile}
     top_plate = ({"rolle": "kopfblech", "laenge_mm": top_edge_len, "breite_mm": THICK,
-                  "dicke_mm": BLECH_THICK, "modul_mm": _PS["blech_mm"], "module": kopf_module}
+                  "dicke_mm": _PS["kopfblech_dicke_mm"], "modul_mm": _PS["blech_mm"],
+                  "module": kopf_module}
                  if _top == "blech" else None)
 
     # [A-20]…[A-23] Ausgleichspunkte unter dem Bodenblech. Gelesen werden ausschliesslich
@@ -1346,7 +1358,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                spannplatten=anch_spannplatten, spannmuttern=anch_spannmutter,
                stahlblech_module=boden_module + kopf_module,
                stahlblech_mm=length_mm + (top_edge_len if _top == "blech" else 0),
-               stahlblech_dicke_mm=BLECH_THICK,
+               stahlblech_dicke_mm=_PS["blech_dicke_mm"],
                stossfugen=stossfugen, dichtstreifen_mm=stossfugen * COURSE,
                verschnitt_mm=sum(g["verschnitt_mm"] for c in columns for g in c["segments"]))
 

@@ -444,7 +444,10 @@ class Bodenblech(unittest.TestCase):
         self.assertTrue(w["validation"]["buildable"])
 
     def test_nicht_deckbare_laenge_genau_ein_sonderzuschnitt(self):
-        w = build_wall("bbs", 250, 2600, [])
+        # Seit der Vorratssatz 250 mm fuehrt, deckt ihn eine 250er Wand exakt ab. Der
+        # Sonderpfad wird deshalb ueber einen eingeschraenkten Vorratssatz geprueft: 375 mm
+        # passt arithmetisch nicht in 250 mm, also bleibt genau EIN Sonderzuschnitt.
+        w = build_wall("bbs", 250, 2600, [], prestress={"blech_lengths_mm": [375]})
         self.assertEqual(self.kurz(w), "250/248S")
         self.assertEqual(len([t for t in w["base_plate"]["teile"] if t["art"] == "sonder"]), 1)
         self.assertEqual(w["validation"]["blech_konflikte"], [])
@@ -490,7 +493,7 @@ class Bodenblech(unittest.TestCase):
         ohne = sc.zerlege_bodenblech(2500, sc.BLECH_LAENGEN, [])
         self.assertEqual([t["raster_mm"] for t in ohne["teile"]], [1250, 1250])
         r = sc.zerlege_bodenblech(2500, sc.BLECH_LAENGEN, [10])
-        self.assertEqual([t["raster_mm"] for t in r["teile"]], [1125, 1000, 375])
+        self.assertEqual([t["raster_mm"] for t in r["teile"]], [1125, 1125, 250])
         self.assertTrue(all(t["art"] == "standard" for t in r["teile"]))
         self.assertEqual(r["konflikte"], [])
 

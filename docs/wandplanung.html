@@ -200,7 +200,7 @@
       <label><span>Kopfblech-Modullänge</span><input type="number" id="blechCm" value="100" step="10" min="20"
         title="Modullänge des KOPFBLECHS an der Wandoberkante. Das Bodenblech hängt nicht daran: es wird aus den im Katalog gewählten Standardlängen zusammengesetzt ([A-10]) — Rolle „Bodenblech“ unten."><small>cm</small></label>
       <label><span>Oberer Anschluss</span><select id="topConn"
-        title="Fuß immer Bodenblech (15 mm). Kopf wahlweise Spannplatten auf der Steinkante (Standard) oder Kopfblech-Module."><option value="blech">Kopfblech</option><option value="spannplatte" selected>Spannplatte (Standard)</option></select></label>
+        title="Fuß immer Bodenblech (Dicke aus dem Bauteilkatalog). Kopf wahlweise Spannplatten auf der Steinkante (Standard) oder Kopfblech-Module."><option value="blech">Kopfblech</option><option value="spannplatte" selected>Spannplatte (Standard)</option></select></label>
       <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"
         title="Überstand des Reststücks über die OBERKANTE SPANNPLATTE (Platz für die Spannmutter). Die Plattendicke selbst kommt aus dem Katalog und wird zusätzlich bestückt (#92)."><small>mm</small></label>
       <div class="lockhint" id="rodRestQuelle"></div>
@@ -397,6 +397,11 @@ function vorgaben(){
   // sichtbar im Formular statt still gefüllt zu werden.
   const fo=fussOffsetMm(); if(fo!=null) hw.rod_fuss_offset_mm=fo;
   const kz=kopfZuschlagMm(); if(kz!=null) hw.rod_kopf_zuschlag_mm=kz;
+  // [A-1] Blechdicken: reine BAUTEILMASSE aus dem Katalog. Sie gehen in keine Rechnung ein und
+  // werden nur ausgewiesen; fehlt oder widerspricht ein Maß, bleibt das Feld weg und die Lücke
+  // steht in `einbauMeldungen()` — es gibt dafür weder ein Eingabefeld noch einen Default.
+  const bd=blechDickeMm(); if(bd!=null) hw.blech_dicke_mm=bd;
+  const kbd=kopfblechDickeMm(); if(kbd!=null) hw.kopfblech_dicke_mm=kbd;
   // [A-10] Bodenblech-Vorratssatz: nur bei echter Auswahl mitgeben. Ein AUSDRÜCKLICH leeres Feld
   // hieße im Core „keine Standardlänge gewählt" (Konflikt + Sonderzuschnitt) — hier ist aber der
   // dokumentierte Fallback der vollen Standardreihe gemeint, und den gibt es nur, wenn das Feld
@@ -593,7 +598,11 @@ function draw(w){
   // dieselbe Quelle wie Modul 7, keine lokalen Hex-Werte mehr. STEEL ist das Boden-/Kopfblech
   // und gehoert nicht zu den Spannkomponenten.
   const STEEL='#5b6673';
-  const bth=Math.max(4, 15*sc);   // 15 mm Blechdicke, skaliert (min 4px sichtbar)
+  // Blechdicke aus dem Wandelement (Katalogmaß). Ohne Maß bleibt ein reines ZEICHENMASS
+  // uebrig ([D-9]) — gezeichnet wird das Blech trotzdem, beschriftet aber als offen.
+  const bdMm=(RESULT&&RESULT.wandelement&&RESULT.wandelement.base_plate
+    &&RESULT.wandelement.base_plate.dicke_mm)||null;
+  const bth=Math.max(4, (bdMm||10)*sc);   // skaliert, min 4px sichtbar
   const xL=Math.min(X(0),X(L)), xR=Math.max(X(0),X(L));
   // Bodenblech als durchgehender Balken unter dem Wandfuß. Die früheren Teilstriche im Abstand
   // `blech_mm` sind ERSATZLOS entfallen: das Bodenblech ist keine Modulzählung mehr, sondern eine
@@ -601,7 +610,7 @@ function draw(w){
   // Modullänge und hätte hier eine Teilung gezeigt, die es nicht gibt. Die ECHTEN Stöße aus
   // `base_plate.teile` zu zeichnen ist ausdrücklich NICHT Sache dieser Vorschau (eigenes Paket).
   s+=`<rect x="${xL}" y="${Y(0)}" width="${xR-xL}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.8"/>`;
-  s+=`<text x="${xL+3}" y="${Y(0)+bth-2}" font-size="8" fill="#eef2f6">Bodenblech 15 mm</text>`;
+  s+=`<text x="${xL+3}" y="${Y(0)+bth-2}" font-size="8" fill="#eef2f6">Bodenblech ${bdMm?bdMm+" mm":"– Dicke offen"}</text>`;
   // Kopfblech (nur bei top_connection=='blech') entlang der Oberkante
   if(topConn==='blech'){ for(let k=0;k<N2;k++){ const h=topH(k); if(h<=0) continue; const lx=Math.min(X(k*GRID),X((k+1)*GRID));
       s+=`<rect x="${lx}" y="${Y(h)-bth}" width="${GRID*sc}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.6"/>`; } }
@@ -984,7 +993,7 @@ function rodRestMm(){ const s=prodSpez(); return (s&&s.rod.rest_mm!=null)?s.rod.
 // den tatsächlich gewählten Katalogprodukten dieser Wand — es gibt kein Eingabefeld dafür und
 // keinen Default. Fehlt oder widerspricht ein Maß, bleibt der Wert `null`: der Core rechnet dann
 // bit-genau wie zuvor, und `einbauMeldungen()` benennt die Lücke. Es wird NIE ein Maß erfunden
-// und keines aus `BLECH_THICK`, dem Kopfblech oder einem anderen Produkt geborgt.
+// und keines aus dem Kopfblech oder einem anderen Produkt geborgt.
 //
 // Gelesen wird — wie bei `blechLaengenMm()` — HIER im Modul über `KAT.produkteZuRolle`, nicht
 // über eine neue Funktion in `sembla-katalog.js`: die Rollen `kupplung`/`spannplatte` führen
@@ -1016,6 +1025,16 @@ function kopfZuschlagMm(){
   if($('topConn').value==='blech') return null;
   return einbauMass('spannplatte','dicke_mm').wert;
 }
+// [A-1] Bodenblechdicke: Bauteilmaß der Rolle „Bodenblech". Alle Standardlängen einer Wand sind
+// gleich dick — mehrere gewählte Größen sind der Regelfall ([A-10]) und ergeben genau EINEN
+// Dickenwert. Tragen sie verschiedene, bleibt die Dicke offen; es wird keine bevorzugt.
+function blechDickeMm(){ return einbauMass('blech_boden','dicke_mm').wert; }
+// [A-1] Kopfblechdicke: nur wo ein Kopfblech wirklich eingebaut wird. Bei Spannplatte gibt es
+// keines, und die Bodenblechdicke wird dafür ausdrücklich NICHT geborgt.
+function kopfblechDickeMm(){
+  if($('topConn').value!=='blech') return null;
+  return einbauMass('blech_kopf','dicke_mm').wert;
+}
 // Was fehlt bzw. widerspricht — je Maß EIN konkreter Satz, nie eine Sammelmeldung.
 function einbauMeldungen(){
   const out=[];
@@ -1036,6 +1055,11 @@ function einbauMeldungen(){
   // Nur wo eine Spannplatte wirklich eingebaut wird: bei Kopfblech gibt es keine.
   if($('topConn').value!=='blech')
     pruef('spannplatte','dicke_mm','Spannplatte','Spannplattendicke');
+  // [A-1] Die Blechdicken sind reine Ausweisungsmaße — fehlen sie, bleibt die Rechnung
+  // unverändert und die Stückliste weist die Dicke als offen aus, statt eine Zahl zu zeigen.
+  pruef('blech_boden','dicke_mm','Bodenblech','Bodenblechdicke');
+  if($('topConn').value==='blech')
+    pruef('blech_kopf','dicke_mm','Kopfblech','Kopfblechdicke');
   return out;
 }
 // Bodenblech-Standardlängen ([A-10]): der VORRATSSATZ kommt ausschließlich aus den in der Rolle

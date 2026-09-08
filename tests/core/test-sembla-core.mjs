@@ -384,7 +384,10 @@ t("[A-11] kein stossfreies Ausweichen moeglich -> deterministisch + benannter Ko
   assert(w.validation.buildable, "kein Baubarkeitsausschluss");
 });
 t("[A-10] nicht deckbare Laenge -> genau EIN gekennzeichneter Sonderzuschnitt", () => {
-  const w = buildWall("bbs", 250, 2600, []);
+  // Seit der Vorratssatz 250 mm fuehrt, deckt ihn eine 250er Wand exakt ab. Der Sonderpfad
+  // wird deshalb ueber einen eingeschraenkten Vorratssatz geprueft: 375 mm passt arithmetisch
+  // nicht in 250 mm, also bleibt genau EIN Sonderzuschnitt.
+  const w = buildWall("bbs", 250, 2600, [], null, { blech_lengths_mm: [375] });
   assert(blechKurz(w) === "250/248S", blechKurz(w));
   assert(w.base_plate.teile.filter(tl => tl.art === "sonder").length === 1, "genau einer");
   assert(w.validation.blech_konflikte.length === 0 && w.validation.buildable, "kein Konflikt");
@@ -441,7 +444,7 @@ t("[A-11] Stossregel schlaegt die geringste Teilezahl (2500, Steinstoss auf Rast
   assert(zerlegeBodenblech(2500, BLECH_LAENGEN, []).teile.map(tl => tl.raster_mm).join("+")
     === "1250+1250", "Gegenprobe ohne Stoss");
   const r = zerlegeBodenblech(2500, BLECH_LAENGEN, [10]);
-  assert(r.teile.map(tl => tl.raster_mm).join("+") === "1125+1000+375",
+  assert(r.teile.map(tl => tl.raster_mm).join("+") === "1125+1125+250",
     JSON.stringify(r.teile.map(tl => tl.raster_mm)));
   assert(r.teile.every(tl => tl.art === "standard"), "kein Sonderzuschnitt zum Ausweichen");
   assert(r.konflikte.length === 0, "stossfrei, also nichts zu melden");

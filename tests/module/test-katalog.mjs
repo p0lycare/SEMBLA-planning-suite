@@ -164,7 +164,7 @@ ok("Rollen: Modul 1 besitzt Wand/Vorspannung/Anschluss/Fugen", (() => {
 // damit bestehende Kataloge und Projekte gueltig bleiben; nur die Bezeichnung wechselt.
 ok("Rolle senkkopf heisst Sechskantschraube Fuß bei unveraenderter Kennung (#92)", (() => {
   const r = KAT.ROLLEN.find((x) => x.id === "senkkopf");
-  return !!r && r.label === "Sechskantschraube Fuß" && !/Senkkopf/.test(r.label);
+  return !!r && r.label === "Sechskantschraube M10×25 Fuß" && !/Senkkopf/.test(r.label);
 })());
 // Die Unterlegscheibe am Wandabschluss ist ENTFALLEN (Fachauskunft 2026-09-08, hebt #92 auf):
 // am normalen oberen Wandabschluss gibt es sie am Spannglied nicht, die Spannmutter sitzt
@@ -493,11 +493,13 @@ ok("Stein: Steinbreite/-höhe/-tiefe, alle optional",
   && maskeVon("stein").every((f) => f.pflicht === false));
 ok("Verbinder ohne fachfremde Maße",
   KAT.maskeFelder("verbinder").length === 0);
-// #92 Verbrauchsmaterial fuehrt GENAU EIN Mass: die Einbauhoehe des Kleinteils. Aus ihr
-// rechnet Modul 1 den Fussoffset (halbe Kopplungsmutterhoehe); ohne Feld in der Maske gaebe
-// es dafuer keinen Pflegeort.
-ok("Verbrauchsmaterial: Maske = allein die Einbauhöhe",
-  KAT.maskeFelder("verbrauch").join(",") === "hoehe_mm");
+// #92 Verbrauchsmaterial fuehrt die Einbauhoehe des Kleinteils — aus ihr rechnet Modul 1 den
+// Fussoffset (halbe Kopplungsmutterhoehe); ohne Feld in der Maske gaebe es dafuer keinen
+// Pflegeort. Seit dem 2026-09-08 kommt die BAUTEILLAENGE dazu (Schaftlaenge einer Schraube).
+// Sie ist KEIN Diskriminator — die Verbrauchsrollen haben `mass: null` —, sondern der
+// Pflegeort fuer eine Laenge, die sonst nur im Freitext der Bezeichnung staende.
+ok("Verbrauchsmaterial: Maske = Einbauhöhe und Bauteillänge",
+  KAT.maskeFelder("verbrauch").join(",") === "hoehe_mm,laenge_mm");
 ok("die drei geforderten Masken sind klar unterschiedlich",
   new Set(["gewindestange", "latte", "beplankung"].map((k) => KAT.maskeFelder(k).join(","))).size === 3);
 
@@ -547,9 +549,12 @@ ok("Maske veraendert nichts an Kategorien, Rollen oder Formatversion",
 // (katalogObjekt) und Wiedereinlesen (parseKatalog).
 const V_MASKE = KAT.maskeVonKategorie("verbrauch");
 ok("[#92] Einbauhöhe ist ein Millimetermaß mit ausweisender Beschriftung",
-  V_MASKE.length === 1 && V_MASKE[0].feld === "hoehe_mm"
+  V_MASKE.length === 2 && V_MASKE[0].feld === "hoehe_mm"
   && V_MASKE[0].typ === "mm" && V_MASKE[0].einheit === "mm"
   && /Einbauhöhe/.test(V_MASKE[0].label));
+ok("Bauteillänge ist ein optionales Millimetermaß mit ausweisender Beschriftung",
+  V_MASKE[1].feld === "laenge_mm" && V_MASKE[1].typ === "mm" && V_MASKE[1].einheit === "mm"
+  && /Bauteillänge/.test(V_MASKE[1].label) && V_MASKE[1].pflicht === false);
 ok("[#92] Einbauhöhe ist OPTIONAL (keine Pflicht der Kategorie)",
   V_MASKE[0].pflicht === false && KAT.kategorie("verbrauch").pflicht.length === 0);
 ok("[#92] der Hinweis benennt Meterware ohne Einbaumaß",
@@ -732,16 +737,24 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
       && pr.laenge_mm == null;
   })());
   // Die Mutter erfindet kein Maß: ueber das Gewinde M10 hinaus ist nichts festgelegt.
-  ok("Standardkatalog: die Mutter nennt M10 und erfindet kein Maß ([A-25])", (() => {
+  // Seit dem 2026-09-08 ist die EINBAUHOEHE der Mutter vorgegeben (8 mm) und deshalb gepflegt.
+  // Erfunden wird weiterhin nichts: Breite, Laenge und Dicke bleiben leer, und aus der Hoehe
+  // wird NICHTS abgeleitet — die Rolle `zp_mutter` fuehrt kein `mass` ([A-25]/[P-14]).
+  ok("Standardkatalog: die Mutter nennt M10 und pflegt allein die vorgegebene Einbauhöhe ([A-25])", (() => {
     const pr = KAT.produkt(std, (v.zp_mutter || [])[0]);
-    return /M10/.test(String(pr.bezeichnung))
-      && pr.breite_mm == null && pr.hoehe_mm == null && pr.laenge_mm == null && pr.dicke_mm == null;
+    return /M10/.test(String(pr.bezeichnung)) && pr.hoehe_mm === 8
+      && pr.breite_mm == null && pr.laenge_mm == null && pr.dicke_mm == null
+      && KAT.rolle("zp_mutter").mass === null;
   })());
-  ok("Standardkatalog: beide neuen Eintraege sind ausdruecklich vorlaeufig ([A-25])", (() => {
+  // Die MUTTER traegt seit dem 2026-09-08 ihre verbindliche Bezeichnung (M10,8 DIN 934); sie
+  // ist deshalb nicht mehr im Namen vorlaeufig. Vorlaeufig bleiben ihre nicht gepflegten Maße
+  // und der angenommene Preis — das steht im Hinweis. Das EINLEGEBLECH ist unveraendert in
+  // beidem vorlaeufig.
+  ok("Standardkatalog: beide neuen Eintraege benennen ihren vorlaeufigen Anteil ([A-25])", (() => {
     const pb = KAT.produkt(std, (v.einlegeblech || [])[0]);
     const pm = KAT.produkt(std, (v.zp_mutter || [])[0]);
-    return [pb, pm].every((pr) => /vorläufig/.test(pr.bezeichnung)
-      && /vorläufig — fachlich unbestätigt/.test(pr.hinweis || ""));
+    return /vorläufig/.test(pb.bezeichnung) && !/vorläufig/.test(pm.bezeichnung)
+      && [pb, pm].every((pr) => /vorläufig — fachlich unbestätigt/.test(pr.hinweis || ""));
   })());
   // Der Rollenhinweis muss die Menge als Zahl der Zwischenspannpunkte benennen ([A-25]) und die
   // Abgrenzung zur Spannplatte nach [A-3] aussprechen — sonst liesse sich beides verwechseln.
@@ -805,9 +818,9 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     && std.produkte.filter((p) => /kopplungsmutter/i.test(p.id)).length === 1);
 
   // --- [A-10] Bodenblech-Standardlaengen der Vorlage --------------------------------------
-  // Die Vorlage muss den vollen Vorratssatz 375…1250 mm im 125-mm-Raster mitbringen, sonst kann
+  // Die Vorlage muss den vollen Vorratssatz 250…1250 mm im 125-mm-Raster mitbringen, sonst kann
   // [P-18] die Rolle nicht sinnvoll vorbelegen und die Zerlegung faende nichts zu kombinieren.
-  const RASTER = [1250, 1125, 1000, 875, 750, 625, 500, 375];
+  const RASTER = [1250, 1125, 1000, 875, 750, 625, 500, 375, 250];
   // Maßgebend ist DASSELBE Feld wie in loesePreis/rollenStatus: das erste belegte aus
   // `mass.felder`. Der Test liest die Definition, statt `breite_mm` zu wiederholen.
   const FELDER = KAT.rolle("blech_boden").mass.felder;
@@ -815,26 +828,26 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   const bbIds = v.blech_boden || [];
   const bbProd = bbIds.map((id) => KAT.produkt(std, id));
 
-  ok("[A-10] Standardkatalog fuehrt je Rastermaß 375…1250 mm ein Bodenblech",
+  ok("[A-10] Standardkatalog fuehrt je Rastermaß 250…1250 mm ein Bodenblech",
     bbProd.map(massVon).sort((a, b) => b - a).join() === RASTER.join());
   ok("[A-10] jedes Bodenblech ist ein gueltiges Produkt seiner Kategorie",
-    bbProd.length === 8 && bbProd.every((pr) => pr.kategorie === "blech_platte"
+    bbProd.length === 9 && bbProd.every((pr) => pr.kategorie === "blech_platte"
       && pr.einheit === "Stk" && KAT.validiereProdukt(pr).length === 0));
   // Kein kollidierendes Maß: `hoehe_mm` (Wanddicke) darf nie ein Rastermaß sein, sonst traefe
   // loesePreis ueber `some()` das falsche Feld, und `laenge_mm` wuerde die Gruppierung in
   // rollenStatus verschieben (dort entscheidet das ERSTE belegte Feld).
   ok("[A-10] kein kollidierendes Maßfeld an den Bodenblechen",
     bbProd.every((pr) => pr.laenge_mm == null && pr.hoehe_mm === 125
-      && !RASTER.includes(pr.hoehe_mm) && pr.dicke_mm === 15));
+      && !RASTER.includes(pr.hoehe_mm) && pr.dicke_mm === 10));
   ok("[A-10] Bodenbleche sind als vorlaeufig gekennzeichnet und nennen das Bauteilmaß ([A-12])",
     bbProd.every((pr) => /vorläufig/.test(pr.hinweis || "")
       && new RegExp("\\b" + (massVon(pr) - 2) + " mm").test(pr.hinweis || "")));
 
-  // [P-18]: die leere Rolle wird aus der Vorlage vorbelegt — und zwar mit allen acht.
+  // [P-18]: die leere Rolle wird aus der Vorlage vorbelegt — und zwar mit allen neun.
   ok("[P-18] Vorbelegung fuellt die leere Rolle blech_boden vollstaendig",
-    bbIds.length === 8 && !KAT.rollenOhneVorschlag(std).includes("blech_boden"));
+    bbIds.length === 9 && !KAT.rollenOhneVorschlag(std).includes("blech_boden"));
   const eingStd = { planung: { produkte: { rollen: { blech_boden: bbIds } } } };
-  ok("[A-10] acht verschiedene Standardgroeßen sind kombiniert, nicht mehrdeutig",
+  ok("[A-10] neun verschiedene Standardgroeßen sind kombiniert, nicht mehrdeutig",
     KAT.rollenStatus("blech_boden", eingStd, std, {}).status === "kombiniert");
 
   // [P-14]: je Position grenzt `mass_mm` (Rastermaß) auf GENAU das maßgleiche Produkt ein —

@@ -324,7 +324,7 @@ ok('die Zahl der Spannmuttern ist unberuehrt (eine je Spannplatte plus Kopfblech
 // #92 Die Fussschraube heisst SECHSKANTSCHRAUBE — die Positionskennung `senkkopf` und die
 // Menge aus dem Rechenkern bleiben dabei unveraendert (keine Migration, kein Formatbump).
 ok('Fussschraube: Bezeichnung Sechskantschraube bei unveraenderter Kennung (#92)',
-  byKey('senkkopf').label==='Sechskantschraube (Fuß)' && !/Senkkopf/.test(byKey('senkkopf').label));
+  byKey('senkkopf').label==='Sechskantschraube M10×25 (Fuß)' && !/Senkkopf/.test(byKey('senkkopf').label));
 ok('Fussschrauben = bom (Menge unveraendert)', byKey('senkkopf').menge===W.bom.senkkopfschrauben);
 const dicht=byKey('dicht');
 ok('Dichtstreifen in m = bom/1000', dicht.unit==='m' && Math.abs(dicht.menge - W.bom.dichtstreifen_mm/1000)<0.01);
@@ -465,7 +465,7 @@ ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
     && bl[0].unit==='Stk' && mu[0].unit==='Stk'
     && bl[0].menge===N && mu[0].menge===N
     && bl[0].label==='Einlegeblech (Zwischenspannpunkt)'
-    && mu[0].label==='Mutter Einlegeblech (von oben)')());
+    && mu[0].label==='Mutter Einlegeblech M10,8 DIN 934 (von oben)')());
   ok('#93 die Menge folgt den Punkten — fuer mehrere Laengen und Hoehen', (()=>
     [[1000,2600],[2000,2600],[3250,3000],[4500,2600]].every(([L,H])=>{
       const w=buildWall('L'+L+'H'+H, L, H, []);
@@ -1749,9 +1749,9 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
     && !vorbelegt.offen.includes('einlegeblech') && !vorbelegt.offen.includes('zp_mutter'));
   ok('#109 das gerenderte Blatt fuehrt Einlegeblech und Mutter ueberhaupt', (()=>
     !!zeileMit('Einlegeblech (Zwischenspannpunkt)')
-    && !!zeileMit('Mutter Einlegeblech (von oben)'))());
+    && !!zeileMit('Mutter Einlegeblech M10,8 DIN 934 (von oben)'))());
   ok('#109 beide Zeilen zeigen die Menge der wirksamen Zwischenspannpunkte', (()=>
-    ['Einlegeblech (Zwischenspannpunkt)','Mutter Einlegeblech (von oben)']
+    ['Einlegeblech (Zwischenspannpunkt)','Mutter Einlegeblech M10,8 DIN 934 (von oben)']
       .every(l=>zeileMit(l).includes('>'+N.toLocaleString('de-DE')+' Stk')))());
   ok('#109 beide Zeilen sind bepreist (Einzel- und Gesamtpreis stehen im Blatt)', (()=>{
     const rs2=stuecklistePositionen(WR, echterStore.holeEingaben(wid), echterStore.holeKatalog());
@@ -1760,7 +1760,7 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
       && b.ep===0.35 && m.ep===0.08
       && Math.abs(b.gp - N*0.35)<1e-9 && Math.abs(m.gp - N*0.08)<1e-9
       && zeileMit('Einlegeblech (Zwischenspannpunkt)').includes(fmtDe2(N*0.35))
-      && zeileMit('Mutter Einlegeblech (von oben)').includes(fmtDe2(N*0.08)); })());
+      && zeileMit('Mutter Einlegeblech M10,8 DIN 934 (von oben)').includes(fmtDe2(N*0.08)); })());
   // Gegenprobe [P-14]: eine leergeraeumte Rolle bleibt leer (die Vorbelegung ueberschreibt nie
   // eine getroffene Wahl) und die Zeile steht mit Menge, aber ohne Preis und mit Grund.
   ok('#93 ohne Auswahl im echten Speicher: Menge steht, kein Preis, benannter Grund', (()=>{

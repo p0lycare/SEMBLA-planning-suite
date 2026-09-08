@@ -162,6 +162,12 @@ const _MASKEN = {
   verbrauch: [
     { feld: "hoehe_mm", label: "Einbauhöhe", typ: "mm",
       hinweis: "Höhe, mit der das Kleinteil in der Wand steht — bei Meterware leer lassen" },
+    // Bauteillaenge des Kleinteils (Schaftlaenge einer Schraube, 2026-09-08). Sie ist KEIN
+    // Diskriminator: die Verbrauchsrollen haben `mass: null`, die Preisaufloesung bleibt also
+    // unberuehrt. Gepflegt wird sie, damit die Laenge als DATUM im Katalog steht und nicht nur
+    // im Freitext der Bezeichnung — der Einkauf liest sie aus dem Feld.
+    { feld: "laenge_mm", label: "Bauteillänge", typ: "mm",
+      hinweis: "Länge des Kleinteils (z. B. Schaftlänge einer Schraube) — bei Meterware leer lassen" },
   ],
 };
 
@@ -653,7 +659,7 @@ export const ROLLEN = [
     hinweis: "Kopplungsmuttern sind bauteilgleich: Stangenstoß und Fußanschluss verwenden DASSELBE "
       + "Produkt. Es gibt bewusst keine gesonderte Fuß-Kopplungsmutter mehr, und in der Stückliste "
       + "stehen beide Einbaustellen als eine Position mit einer Menge ([P-18])." },
-  { id: "spannmutter", label: "Spannmutter", kategorie: "verbrauch", modul: 1,
+  { id: "spannmutter", label: "Spannmutter M10,8 ISO 4033", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
   // #93/#109 Zwischenspannpunkt: Zwischen den Ankern eines Vorspannsegments sitzt ein
   // EINLEGEBLECH in einer Vertiefung der Steinlage ([A-14]); es wird mit GENAU EINER Mutter von
@@ -677,7 +683,7 @@ export const ROLLEN = [
       + "Zwischenspannpunkte der Wand — genau ein Blech je Punkt ([A-25]); ohne Punkte bleibt sie "
       + "0. Es wird GENAU EIN Produkt gewählt: mehrere machen die Position mehrdeutig und damit "
       + "preislos ([P-14]), denn ein Maß-Diskriminator ist bewusst nicht hinterlegt." },
-  { id: "zp_mutter", label: "Mutter Einlegeblech", kategorie: "verbrauch", modul: 1,
+  { id: "zp_mutter", label: "Mutter Einlegeblech M10,8 DIN 934", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true,
     hinweis: "Das Einlegeblech wird mit GENAU EINER Mutter von oben gegen die Lage gezogen; "
       + "unten sitzt keine ([A-16]). Es ist eine normale Sechskantmutter und ausdrücklich NICHT "
@@ -685,7 +691,7 @@ export const ROLLEN = [
       + "Produkten. Die Menge ist die Zahl der wirksamen Zwischenspannpunkte — genau eine Mutter "
       + "je Punkt ([A-25]); ohne Punkte bleibt sie 0. Es wird GENAU EIN Produkt gewählt (kein "
       + "Maß-Diskriminator, s. Einlegeblech)." },
-  { id: "senkkopf", label: "Sechskantschraube Fuß", kategorie: "verbrauch", modul: 1,
+  { id: "senkkopf", label: "Sechskantschraube M10×25 Fuß", kategorie: "verbrauch", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
@@ -719,16 +725,16 @@ export const ROLLEN = [
     hinweis: "Der deckenseitige Winkel der Deckenanschluss-Baugruppe (Werkstoff nach Vorgabe: "
       + "DC01/1.0330, ZE25/25). Genau EINER je Anschlusspunkt. Maße vorläufig wie beim Winkel "
       + "Wand. Es wird GENAU EIN Produkt gewählt (kein Maß-Diskriminator)." },
-  { id: "dc_schraube", label: "Deckenanschluss – Sechskantschraube M10", kategorie: "verbrauch",
+  { id: "dc_schraube", label: "Deckenanschluss – Sechskantschraube M8×50", kategorie: "verbrauch",
     modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
-    hinweis: "Verbindet die beiden Winkel der Deckenanschluss-Baugruppe; Vorgabe M10 8.8 "
-      + "DIN 933, galvanisch verzinkt. ZWEI je Anschlusspunkt. Sie ist ausdrücklich NICHT die "
+    hinweis: "Verbindet die beiden Winkel der Deckenanschluss-Baugruppe; Vorgabe M8×50 "
+      + "DIN 933, 8.8, galvanisch verzinkt. ZWEI je Anschlusspunkt. Sie ist ausdrücklich NICHT die "
       + "Sechskantschraube am Fuß (Rolle `senkkopf`) — zwei Einbaustellen, zwei Positionen. Es "
       + "wird GENAU EIN Produkt gewählt (kein Maß-Diskriminator)." },
-  { id: "dc_scheibe", label: "Deckenanschluss – Unterlegscheibe M10", kategorie: "verbrauch",
+  { id: "dc_scheibe", label: "Deckenanschluss – Unterlegscheibe 8,4", kategorie: "verbrauch",
     modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
-    hinweis: "Unterlegscheibe zur Sechskantschraube M10 der Deckenanschluss-Baugruppe; Vorgabe "
-      + "DIN 9021, galvanisch verzinkt. ZWEI je Anschlusspunkt. Sie ist eine ANDERE "
+    hinweis: "Unterlegscheibe zur Sechskantschraube M8×50 der Deckenanschluss-Baugruppe; Vorgabe "
+      + "8,4 DIN 9021, galvanisch verzinkt. ZWEI je Anschlusspunkt. Sie ist eine ANDERE "
       + "Verwendungsstelle als die Scheibe an der Bohrschraube (Rolle `dc_scheibe_bohr`) und "
       + "wird mit ihr nicht zusammengelegt. Am normalen Wandabschluss gibt es keine Scheibe "
       + "(Fachauskunft 2026-09-08). Es wird GENAU EIN Produkt gewählt." },
@@ -759,7 +765,7 @@ export const ROLLEN = [
   { id: "blech_boden", label: "Bodenblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true, kombinierbar: true,
-    hinweis: "Das Bodenblech besteht aus REALEN Blechen: mehrere Standardlängen (375…1250 mm im "
+    hinweis: "Das Bodenblech besteht aus REALEN Blechen: mehrere Standardlängen (250…1250 mm im "
       + "125-mm-Raster) werden kombiniert ([A-10]). Mehrere gewählte Größen sind deshalb der "
       + "Regelfall und keine Mehrdeutigkeit — jede Länge steht als eigene Stücklistenposition "
       + "mit ihrem eigenen maßgebenden Maß." },

@@ -163,7 +163,8 @@ function box(w,d,h,cx,cy,cz,mat){ const g=new THREE.BoxGeometry(w,h,d); const m=
 // Blech, lueckenlos und ohne schwebendes oder ueberragendes Stueck. Abgeleitet wird das
 // aus dem gemeinsamen `oberkantenAbschnitte()` (sembla-montage.js) — Modul 6 rechnet die
 // Kontur NICHT selbst nach, sonst waere es eine zweite Konturdefinition ([P-6]).
-function blechDicke(w){ return (w&&w.bom&&w.bom.stahlblech_dicke_mm)||15; }
+// [A-1]/[D-9] Katalogmass, sonst reines ZEICHENMASS — der Koerper braucht eine Hoehe.
+function blechDicke(w){ return (w&&w.bom&&w.bom.stahlblech_dicke_mm)||10; }
 /** @returns {Array<{x0_mm:number,x1_mm:number}>} Bodenblech (wandlang, immer genau eins). */
 function bodenblechSegmente(w){
   const l=(w&&w.base_plate&&w.base_plate.laenge_mm)||(w&&w.length_mm)||0;

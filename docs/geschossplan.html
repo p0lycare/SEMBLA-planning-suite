@@ -2487,7 +2487,16 @@ const ROLLE_RECHNUNG = {
   rod_rest: (eing, kat) => ({ rod_rest_mm: WA.vorspannVorgaben(eing, kat).rod_rest_mm }),
   blech_boden: (eing, kat) => {
     const l = rollenMasse(eing, kat, 'blech_boden');
-    return l.length ? { blech_lengths_mm: l } : {};
+    const d = rollenMass(eing, kat, 'blech_boden', 'dicke_mm');
+    // [A-1] Die Blechdicke ist ein reines AUSWEISUNGSMASS (keine Rechnung, s. [A-19]) und
+    // reist mit derselben Rolle mit; fehlt sie, entsteht das Feld nicht und die Ausgaben
+    // benennen die Luecke, statt eine Zahl zu erfinden.
+    return { ...(l.length ? { blech_lengths_mm: l } : {}), ...(d != null ? { blech_dicke_mm: d } : {}) };
+  },
+  blech_kopf: (eing, kat, topConn) => {
+    if (topConn !== 'blech') return {};                 // ohne Kopfblech gibt es keine Dicke
+    const d = rollenMass(eing, kat, 'blech_kopf', 'dicke_mm');
+    return d != null ? { kopfblech_dicke_mm: d } : {};
   },
   kupplung: (eing, kat) => {
     const h = rollenMass(eing, kat, 'kupplung', 'hoehe_mm');

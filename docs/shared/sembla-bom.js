@@ -210,7 +210,9 @@ export function semblaBom(w) {
   const spannmuttern = num(bom.spannmuttern, 0);
   const blechModule  = num(bom.stahlblech_module, 0);
   const blechMm      = num(bom.stahlblech_mm, 0);
-  const blechDicke   = num(bom.stahlblech_dicke_mm, 15);
+  // [A-1] KEIN Default: die Blechdicke ist ein Katalogmass. Fehlt sie, bleibt sie null und
+  // die Positionen weisen sie als offen aus — eine geratene Zahl waere eine erfundene Angabe.
+  const blechDicke   = num(bom.stahlblech_dicke_mm, null);
   const stossfugen   = num(bom.stossfugen, 0);
   const dichtMm      = num(bom.dichtstreifen_mm, stossfugen * 200);
 
@@ -337,8 +339,8 @@ function _abgedichtet(w) { return !!w && w.abdichtung === "abgedichtet"; }
 export const DECKENANSCHLUSS_TEILE = [
   { key: "dc_winkel_wand",  je_punkt: 1, label: "Deckenanschluss – Winkel Wand" },
   { key: "dc_winkel_decke", je_punkt: 1, label: "Deckenanschluss – Winkel Decke" },
-  { key: "dc_schraube",     je_punkt: 2, label: "Deckenanschluss – Sechskantschraube M10" },
-  { key: "dc_scheibe",      je_punkt: 2, label: "Deckenanschluss – Unterlegscheibe M10" },
+  { key: "dc_schraube",     je_punkt: 2, label: "Deckenanschluss – Sechskantschraube M8×50" },
+  { key: "dc_scheibe",      je_punkt: 2, label: "Deckenanschluss – Unterlegscheibe 8,4" },
   { key: "dc_anker",        je_punkt: 2, label: "Deckenanschluss – Hohldeckenanker" },
   { key: "dc_bohrschraube", je_punkt: 2, label: "Deckenanschluss – Bohrschraube" },
   { key: "dc_scheibe_bohr", je_punkt: 2, label: "Deckenanschluss – Unterlegscheibe Bohrschraube" },
@@ -365,7 +367,11 @@ export const DECKENANSCHLUSS_TEILE = [
  * @param {any} w Wandelement @param {any} b Mengen aus `semblaBom(w)`
  */
 function _flachePositionen(w, b) {
-  const bd = _semNum(b.stahlblech_dicke_mm);
+  // Dickenzusatz der Bodenblech-Bezeichnung: das Katalogmass, sonst ausdruecklich „Dicke offen".
+  const bdTxt = (b.stahlblech_dicke_mm != null)
+    ? _semNum(b.stahlblech_dicke_mm) + " mm" : "Dicke offen";
+  const _kbd = w && w.top_plate ? w.top_plate.dicke_mm : null;
+  const kbdTxt = (_kbd != null) ? _semNum(_kbd) + " mm" : "Dicke offen";
   const cm = mm => _semNum(mm / 10);
   // Gewindestangenstücke tragen zusätzlich die Einbauteil-Kennzeichnung ([P-19]): `art`
   // (mit Klartext und Symbol), `fertigmass_mm` und die IDs der aggregierten Einzelteile.
@@ -405,8 +411,8 @@ function _flachePositionen(w, b) {
     // kopplungsmuttern_basis) — nur die Bestellzeile ist eine.
     { key: "kupplung",    label: "Kopplungsmutter (Stangenstöße und Fuß)", unit: "Stk",
       menge: b.verbindungsmuttern + b.kopplungsmuttern_basis },
-    { key: "senkkopf",    label: "Sechskantschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
-    { key: "spannmutter", label: "Spannmutter",                       unit: "Stk", menge: b.spannmuttern },
+    { key: "senkkopf",    label: "Sechskantschraube M10×25 (Fuß)",     unit: "Stk", menge: b.senkkopfschrauben },
+    { key: "spannmutter", label: "Spannmutter M10,8 ISO 4033",        unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
     // KEINE Unterlegscheibe am Wandabschluss (Fachauskunft 2026-09-08, hebt #92 auf): am
     // normalen oberen Wandabschluss gibt es sie am Spannglied nicht — die Spannmutter sitzt
@@ -434,7 +440,7 @@ function _flachePositionen(w, b) {
     // bleiben davon unberührt, und die Bauteile werden mit ihnen nicht zusammengelegt.
     { key: "einlegeblech", label: "Einlegeblech (Zwischenspannpunkt)", unit: "Stk",
       menge: b.zwischenpunkte },
-    { key: "zp_mutter", label: "Mutter Einlegeblech (von oben)", unit: "Stk",
+    { key: "zp_mutter", label: "Mutter Einlegeblech M10,8 DIN 934 (von oben)", unit: "Stk",
       menge: b.zwischenpunkte },
     // [P-24]/#95 Deckenanschluss: je Anschlusspunkt genau EINE Baugruppe — hier stehen ihre
     // Einzelteile FLACH ([P-19]), jede Verwendungsstelle als eigene Position, weil der
@@ -483,13 +489,13 @@ function _flachePositionen(w, b) {
       ? b.blech_boden_teile.map(t => t.art === "sonder"
         ? { key: "blech_boden_sonder",
             label: "Bodenblech Sonderzuschnitt " + _semNum(t.bauteil_mm) + " mm (Raster "
-              + _semNum(t.raster_mm) + " mm, " + bd + " mm)",
+              + _semNum(t.raster_mm) + " mm, " + bdTxt + ")",
             unit: "Stk", menge: t.anzahl, mass_mm: t.raster_mm, fertigmass_mm: t.bauteil_mm }
         : { key: "blech_boden",
             label: "Bodenblech " + _semNum(t.raster_mm) + " mm (Bauteilmaß "
-              + _semNum(t.bauteil_mm) + " mm, " + bd + " mm)",
+              + _semNum(t.bauteil_mm) + " mm, " + bdTxt + ")",
             unit: "Stk", menge: t.anzahl, mass_mm: t.raster_mm, fertigmass_mm: t.bauteil_mm })
-      : [{ key: "blech_boden", label: "Bodenblech-Modul (" + bd + " mm)", unit: "Stk",
+      : [{ key: "blech_boden", label: "Bodenblech-Modul (" + bdTxt + ")", unit: "Stk",
            menge: b.stahlblech_module_boden }]),
     // [A-18] Ausgleichsblech: EINE Position, Menge = Zahl der Ausgleichspunkte ([A-20]…[A-23]).
     // Die Stelle ist bewusst gewaehlt und nicht beliebig: das Blech liegt UNTER dem Bodenblech,
@@ -503,7 +509,9 @@ function _flachePositionen(w, b) {
     // Ausdrucksform einer schon gezaehlten Ware ([A-6]) — sie wird regulaer bepreist ([P-14]).
     { key: "ausgleichsblech", label: "Ausgleichsblech (unter dem Bodenblech)", unit: "Stk",
       menge: b.ausgleichspunkte },
-    { key: "blech_kopf",  label: "Kopfblech-Modul (" + bd + " mm)",   unit: "Stk", menge: b.stahlblech_module_kopf },
+    // [A-1] Das Kopfblech traegt SEINE EIGENE Dicke aus `top_plate` — bis hierher stand hier
+    // die BODENblechdicke (`bom.stahlblech_dicke_mm`), also das Mass eines anderen Bauteils.
+    { key: "blech_kopf",  label: "Kopfblech-Modul (" + kbdTxt + ")",   unit: "Stk", menge: b.stahlblech_module_kopf },
     // Nur bei abgedichteter Wand — an unveraenderter Stelle in der Liste ([A-6]/#71).
     ...(_abgedichtet(w) ? [
     { key: "dicht_stk",   label: "Dichtstreifen 20 cm (Schallschutz)", unit: "Stk", menge: b.stossfugen },

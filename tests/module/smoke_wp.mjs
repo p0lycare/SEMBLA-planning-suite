@@ -226,7 +226,7 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     return schaft.length>0 && kopf.length===schaft.length && MM.kopf_d>MM.schaft_d; })());
   ok('[#97] der Schraubenkopf ragt UNTER dem Bodenblech heraus', (()=>{
     const wd=w(), sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
-    const y0=46+hPx, bth=Math.max(4,15*sc);
+    const y0=46+hPx, bth=Math.max(4,10*sc);
     const kopf=mutRects().filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
     // Der Kopf beginnt an der Blechunterkante und endet darunter — er ist frei sichtbar.
     return kopf.length>0 && kopf.every(q=>Math.abs(q.y-(y0+bth))<1e-6 && q.h>0); })());
@@ -513,7 +513,10 @@ ok('unterste Lage volle Breite (2,0 m)', Math.max(0,...untenc.stones.map(s=>s.x1
 setzeLaenge(2000); document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
 const wfr=WP.RESULT.wandelement;
 ok('prestress hat blech_mm + top_connection', wfr.prestress.blech_mm>0 && (wfr.prestress.top_connection==='blech'||wfr.prestress.top_connection==='spannplatte'));
-ok('base_plate im Wandelement (15 mm)', !!wfr.base_plate && wfr.base_plate.dicke_mm===15);
+// [A-1] Die Blechdicke ist ein KATALOGMASS. Ohne gewaehltes Bodenblechprodukt gibt es keines —
+// das Wandelement traegt dann ausdruecklich `null` statt einer geratenen Zahl ([P-9]).
+ok('base_plate im Wandelement, Dicke ohne Katalogauswahl offen',
+  !!wfr.base_plate && wfr.base_plate.dicke_mm===null && wfr.bom.stahlblech_dicke_mm===null);
 ok('bom Stahlblech + Senkkopf vorhanden', wfr.bom.stahlblech_module>0 && wfr.bom.senkkopfschrauben>0);
 const planHtml=document.getElementById('plan').innerHTML;
 ok('Bodenblech gezeichnet', /Bodenblech/.test(planHtml));
@@ -1189,7 +1192,7 @@ ok('[#69] keine statischen Anleitungsbloecke mehr in der linken Spalte', (()=>{
     'Alles Übrige auf dieser',            // Laengenfuehrung
     'Maximalhöhe',                        // Staffelung
     'Achsen an Öffnungs- und Stufenkanten',  // Spannachsenverteilung
-    'Fuß immer Bodenblech (15 mm). Kopf wahlweise',   // Vorspann-Hardware (statischer Absatz)
+    'Fuß immer Bodenblech (10 mm). Kopf wahlweise',   // Vorspann-Hardware (statischer Absatz)
     'Die Wände werden im Innenraum montiert',         // Reststueck-Erklaerung
     'alleinige Quelle',                   // Produktauswahl
     'Vorbelegt aus dem Katalog',          // Produktauswahl
@@ -1538,9 +1541,13 @@ store.setzeKatalog(KATALOG);
     && ohne===2000+10);
   ok('#92 [A-19]/[Z-8] jedes fehlende Pflichtmass wird einzeln und konkret benannt',
     /Rolle „Kopplungsmutter“/.test(meld()) && /Rolle „Spannplatte“/.test(meld()));
-  // Die Bodenblechdicke ist KEIN Pflichtmass dieser Rechnung (z = 0 ist die Blechoberkante) —
-  // sie wird deshalb auch nicht als fehlend gemeldet.
-  ok('#92 [A-19] die Bodenblechdicke wird nicht als Einbaumass verlangt', !/Bodenblech/.test(meld()));
+  // Die Bodenblechdicke geht in DIESE Rechnung nicht ein (z = 0 ist die Blechoberkante), der
+  // Stangenbedarf bleibt von ihr unberuehrt. Seit [A-1] sie aus dem Katalog kommt, wird sie
+  // aber als AUSWEISUNGSMASS gemeldet, wenn sie fehlt — die beiden Aussagen sind getrennt.
+  ok('#92 [A-19] die Bodenblechdicke geht nicht in den Stangenbedarf ein',
+    ohne===2000+10 && WP.fussOffset===null);
+  ok('[A-1] die fehlende Bodenblechdicke wird als eigenes Ausweisungsmass benannt',
+    /Rolle „Bodenblech“/.test(meld()) && /Bodenblechdicke/.test(meld()));
 
   // Vollstaendige Auswahl: Kopplungsmutter 50 mm -> Fussoffset 25 mm; Spannplatte 12 mm.
   setzen('blech_boden','blech-boden',true);

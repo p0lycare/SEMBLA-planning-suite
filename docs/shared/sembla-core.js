@@ -12,14 +12,13 @@ export const COURSE = 200;
 export const THICK = 125;
 export const ROD = 1100;
 export const BLECH = 1000;              // Standard-Modullänge des Kopfblechs (Modulzählung)
-export const BLECH_THICK = 15;          // Stahlblech-Dicke (mm)
 // Bodenblech-Zerlegung ([A-10]/[A-11]/[A-12]): das Bodenblech ist KEINE durchgehende Platte,
 // sondern eine Folge realer Bleche aus dem Vorratssatz der Standardlängen.
-export const BLECH_MIN_MM = 375;        // kleinste Bodenblech-Standardlänge (3 Raster)
+export const BLECH_MIN_MM = 250;        // kleinste Bodenblech-Standardlänge (2 Raster)
 export const BLECH_MAX_MM = 1250;       // groesste Bodenblech-Standardlänge (10 Raster)
 export const BLECH_SPIEL = 2;           // Bauteilmass = Rastermass - 2 mm ([A-12])
-/** Volle Standardreihe 375…1250 mm im 125-mm-Raster (deterministischer Fallback, [A-10]). */
-export const BLECH_LAENGEN = [1250, 1125, 1000, 875, 750, 625, 500, 375];
+/** Volle Standardreihe 250…1250 mm im 125-mm-Raster (deterministischer Fallback, [A-10]). */
+export const BLECH_LAENGEN = [1250, 1125, 1000, 875, 750, 625, 500, 375, 250];
 export const CHAMBER_OFFSET = 62.5;     // Kammerzentrum -> Lattice x = 62.5 + 125k
 export const MAX_SPAN_GRID = 3;         // Vorspannung max. alle 3 Raster (375mm)
 export const FORBIDDEN_N = new Set([1, 4]);
@@ -875,7 +874,7 @@ function normPrestress(p) {
   else { rod = (p && p.rod_mm != null && +p.rod_mm > 0) ? +p.rod_mm : ROD; rodL = [rod]; }
   const blech = (p && p.blech_mm != null && +p.blech_mm > 0) ? +p.blech_mm : BLECH;
   // Bodenblech-Standardlaengen ([A-10]): der VORRATSSATZ ist Core-Parameter. Fehlt das Feld,
-  // gilt der deterministische Fallback mit der vollen Standardreihe 375…1250 mm — es wird
+  // gilt der deterministische Fallback mit der vollen Standardreihe 250…1250 mm — es wird
   // also nie eine Laenge geraten und nie aus `blech_mm` abgeleitet (das bleibt allein die
   // Modullaenge des Kopfblechs). Ist das Feld AUSDRUECKLICH gesetzt und leer, hat der Aufrufer
   // die Auswahl bereits ausgewertet: dann wird keine Standardlaenge erfunden, die Zerlegung
@@ -895,10 +894,21 @@ function normPrestress(p) {
   // gewaehlte Katalogprodukt (genau eins); fehlt es, bleibt die Zerlegung wie bisher und der
   // Konflikt wird je Segment sichtbar gemeldet. `rod_overhang_mm` ist der Ueberstand ueber die
   // Wandoberkante — konfigurierbar, weil er von Kopfblech/Spannplatte + Spannmutter abhaengt.
+  // Blechdicken ([A-1]): BAUTEILMASSE und damit ausschliesslich Katalogsache. Es gibt dafuer
+  // KEINE Core-Konstante mehr (die frueheren 15 bzw. 10 mm in `BLECH_THICK` waren ein
+  // hartkodiertes Produktmass an der falschen Stelle) und KEINEN Default. Beide Werte gehen in
+  // keine Rechnung ein — die Oberkante Bodenblech IST die Steinunterkante ([A-19]) —, sie
+  // werden allein AUSGEWIESEN. Fehlt oder widerspricht das Katalogmass, bleibt die Dicke `null`
+  // und die Ausgaben benennen die Luecke, statt eine Zahl zu erfinden ([P-9]); Mengen,
+  // Geometrie und Nachweis sind davon bit-genau unberuehrt. Dieselbe Bahn wie beim
+  // Kopfzuschlag aus der Spannplattendicke ([Z-8]).
+  const bd = (p && p.blech_dicke_mm != null && +p.blech_dicke_mm > 0) ? +p.blech_dicke_mm : null;
+  const kbd = (p && p.kopfblech_dicke_mm != null && +p.kopfblech_dicke_mm > 0) ? +p.kopfblech_dicke_mm : null;
   const rr = (p && p.rod_rest_mm != null && +p.rod_rest_mm > 0) ? +p.rod_rest_mm : 0;
   const ue = (p && p.rod_overhang_mm != null && +p.rod_overhang_mm >= 0) ? +p.rod_overhang_mm : ROD_OVERHANG;
   const out = { max_span_grid: m, force_kN: fk, rod_mm: rod, rod_lengths_mm: rodL, blech_mm: blech,
            blech_lengths_mm: blechL,
+           blech_dicke_mm: bd, kopfblech_dicke_mm: kbd,
            top_connection: top, columns_grid: cg, start_axis_grid: sa,
            rod_rest_mm: rr, rod_overhang_mm: ue };
   // Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
@@ -924,7 +934,7 @@ function normPrestress(p) {
   //
   // Beide Felder sind OPTIONAL: fehlt eines oder ist es ungueltig, entsteht der Schluessel
   // gar nicht erst — der Bedarf ist dann bit-genau der bisherige. Ein fehlendes Katalogmass
-  // wird NIE durch BLECH_THICK oder irgendeinen anderen Altwert ersetzt; Modul 1 meldet die
+  // wird NIE durch einen Altwert ersetzt; Modul 1 meldet die
   // Luecke sichtbar, statt sie zu fuellen.
   const fo = (p && p.rod_fuss_offset_mm != null && +p.rod_fuss_offset_mm > 0) ? +p.rod_fuss_offset_mm : 0;
   const kz = (p && p.rod_kopf_zuschlag_mm != null && +p.rod_kopf_zuschlag_mm > 0) ? +p.rod_kopf_zuschlag_mm : 0;
@@ -1323,9 +1333,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   const bodenTeile = bodenZerlegung.teile;
   const bodenModule = bodenTeile.length;      // Anzahl REALER Bodenblechteile
   const kopfModule = (TOP === "blech") ? Math.ceil(topEdgeLen / PS.blech_mm) : 0;
-  const basePlate = { rolle: "bodenblech", laenge_mm: lengthMm, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: bodenModule, teile: bodenTeile };
+  const basePlate = { rolle: "bodenblech", laenge_mm: lengthMm, breite_mm: THICK, dicke_mm: PS.blech_dicke_mm, modul_mm: PS.blech_mm, module: bodenModule, teile: bodenTeile };
   const topPlate = (TOP === "blech")
-    ? { rolle: "kopfblech", laenge_mm: topEdgeLen, breite_mm: THICK, dicke_mm: BLECH_THICK, modul_mm: PS.blech_mm, module: kopfModule }
+    ? { rolle: "kopfblech", laenge_mm: topEdgeLen, breite_mm: THICK, dicke_mm: PS.kopfblech_dicke_mm, modul_mm: PS.blech_mm, module: kopfModule }
     : null;
 
   // [A-20]…[A-23] Ausgleichspunkte unter dem Bodenblech. Gelesen werden ausschliesslich
@@ -1369,7 +1379,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   bom.spannmuttern = anchSpannmutter;
   bom.stahlblech_module = bodenModule + kopfModule;
   bom.stahlblech_mm = lengthMm + (TOP === "blech" ? topEdgeLen : 0);
-  bom.stahlblech_dicke_mm = BLECH_THICK;
+  bom.stahlblech_dicke_mm = PS.blech_dicke_mm;
   bom.stossfugen = stossfugen;
   bom.dichtstreifen_mm = stossfugen * COURSE;
   bom.verschnitt_mm = columns.reduce((a, c) => a + c.segments.reduce((b, sg) => b + sg.verschnitt_mm, 0), 0);

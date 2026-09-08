@@ -47,6 +47,8 @@
         1000
       ],
       "blech_mm": 1000,
+      "blech_dicke_mm": 10,
+      "kopfblech_dicke_mm": 10,
       "top_connection": "blech",
       "columns_grid": null,
       "rod_rest_mm": 0,
@@ -56,7 +58,7 @@
       "rolle": "bodenblech",
       "laenge_mm": 3000,
       "breite_mm": 125,
-      "dicke_mm": 15,
+      "dicke_mm": 10,
       "modul_mm": 1000,
       "module": 3
     },
@@ -64,7 +66,7 @@
       "rolle": "kopfblech",
       "laenge_mm": 3000,
       "breite_mm": 125,
-      "dicke_mm": 15,
+      "dicke_mm": 10,
       "modul_mm": 1000,
       "module": 3
     },
@@ -717,7 +719,7 @@
       "spannmuttern": 13,
       "stahlblech_module": 6,
       "stahlblech_mm": 6000,
-      "stahlblech_dicke_mm": 15,
+      "stahlblech_dicke_mm": 10,
       "stossfugen": 77,
       "dichtstreifen_mm": 15400,
       "verschnitt_mm": 6000

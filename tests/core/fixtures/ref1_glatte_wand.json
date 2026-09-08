@@ -35,11 +35,14 @@
       750,
       625,
       500,
-      375
+      375,
+      250
     ],
     "top_connection": "blech",
     "columns_grid": null,
     "start_axis_grid": 0,
+    "blech_dicke_mm": null,
+    "kopfblech_dicke_mm": null,
     "rod_rest_mm": 0,
     "rod_overhang_mm": 10
   },
@@ -47,7 +50,7 @@
     "rolle": "bodenblech",
     "laenge_mm": 1000,
     "breite_mm": 125,
-    "dicke_mm": 15,
+    "dicke_mm": null,
     "modul_mm": 1000,
     "module": 1,
     "teile": [
@@ -63,7 +66,7 @@
     "rolle": "kopfblech",
     "laenge_mm": 1000,
     "breite_mm": 125,
-    "dicke_mm": 15,
+    "dicke_mm": null,
     "modul_mm": 1000,
     "module": 1
   },
@@ -227,7 +230,7 @@
     "spannmuttern": 3,
     "stahlblech_module": 2,
     "stahlblech_mm": 2000,
-    "stahlblech_dicke_mm": 15,
+    "stahlblech_dicke_mm": null,
     "stossfugen": 20,
     "dichtstreifen_mm": 4000,
     "verschnitt_mm": 600

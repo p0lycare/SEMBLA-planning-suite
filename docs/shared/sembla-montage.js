@@ -187,7 +187,7 @@ export function kopplungsmutterSvg(x, y, e, opts = {}) {
  * darunter sitzt der breitere Kopf. Bis #97 stand am Fuss eine normale Mutter, halb im
  * Bodenblech, und die Schraube fehlte ganz.
  *
- * Die Blechdicke ist ein ZEICHENMASS des Aufrufers (beide Module skalieren die 15 mm mit
+ * Die Blechdicke ist ein ZEICHENMASS des Aufrufers (beide Module skalieren die 10 mm mit
  * ihrer eigenen Sichtbarkeitsuntergrenze) — sie wird hier nicht nachgerechnet.
  *
  * @param {number} x Zeichenkoordinate der Spannachse
@@ -667,7 +667,7 @@ function _ereignisTexte(e) {
   if (e.art === "fuss") {
     return {
       titel: "Bodenblech und erste Gewindestangen",
-      text: `<b>Bodenblech</b> (15 mm, in Modulen) auf Höhe ${h} verlegen und ausrichten. An `
+      text: `<b>Bodenblech</b> (10 mm, in Modulen) auf Höhe ${h} verlegen und ausrichten. An `
         + `${straenge} je eine <b>Sechskantschraube von unten</b> und eine <b>Kopplungsmutter oben</b> `
         + `setzen, dann die erste <b>Gewindestange</b> einschrauben. Strangpositionen x = ${xs}.`,
     };
@@ -690,7 +690,7 @@ function _ereignisTexte(e) {
   const kopf = e.straenge.filter(s => s.anker === "kopfblech");
   const platte = e.straenge.filter(s => s.anker !== "kopfblech");
   const teile = [];
-  if (kopf.length) teile.push(`<b>Kopfblech</b> (15 mm, in Modulen) auflegen und die <b>Spannmuttern</b> `
+  if (kopf.length) teile.push(`<b>Kopfblech</b> (10 mm, in Modulen) auflegen und die <b>Spannmuttern</b> `
     + `anziehen (Endvorspannung) — x = ${kopf.map(s => posCm(s.x_mm)).join(", ")}`);
   if (platte.length) teile.push(`je Strang die <b>Spannplatte</b> auf die obere Steinkante legen und die `
     + `<b>Spannmutter</b> anziehen — x = ${platte.map(s => posCm(s.x_mm)).join(", ")}`);

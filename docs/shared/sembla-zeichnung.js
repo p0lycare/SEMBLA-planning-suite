@@ -526,7 +526,10 @@ export function zeichnungSvg(w, opts = {}) {
   // Muster wie bei `topLagen()` und `stangenStuecke()`. Weil das Blatt-SVG hier
   // entsteht, tragen Vorschau, Druck-HTML und die eigenstaendige SVG-Datei dieselbe
   // Zeichenkette ([D-6]). Masstab, Bemassung und Kopfblech bleiben unberuehrt.
-  const bth = Math.max(1.2, (w.bom && w.bom.stahlblech_dicke_mm ? w.bom.stahlblech_dicke_mm : 15) * sc);
+  // [A-1]/[D-9] Die Blechdicke ist ein Katalogmass; fehlt es, bleibt hier ein reines
+  // ZEICHENMASS uebrig — gezeichnet wird das Blech trotzdem, ein Bauteilmass wird daraus
+  // ausdruecklich NICHT zurueckgelesen.
+  const bth = Math.max(1.2, (w.bom && w.bom.stahlblech_dicke_mm ? w.bom.stahlblech_dicke_mm : 10) * sc);
   const topConn = (w.prestress && w.prestress.top_connection) || "blech";
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   if (topConn === "blech") {

@@ -113,6 +113,10 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // rechnete der Core mit seiner Verteilung weiter, und die gesetzten Punkte waeren unwirksam.
 // FEHLT das Feld, bleibt es `undefined` und damit kein Array: der Core setzt dann kein Feld,
 // und der Auto-Weg bleibt bit-genau wie zuvor.
+// Und aus demselben Grund `blech_dicke_mm`/`kopfblech_dicke_mm` ([A-1]): die aus den gewaehlten
+// Katalogprodukten gelesenen Blechdicken. Sie gehen zwar in keine Rechnung ein, stehen aber im
+// Ergebnis-Wandelement — fielen sie in der Iteration weg, traege das Element nach der Auslegung
+// keine Dicke mehr und die Stueckliste wiese sie als offen aus, obwohl der Katalog sie fuehrt.
 // NICHT mitgereicht wird `start_axis_grid` (#104): [V-5] ist durch [V-3]/[V-11] abgeloest, der
 // Core liest das Feld nicht mehr, und die Iteration gibt ihm folglich auch keines mehr vor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
@@ -122,6 +126,7 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            rod_rest_mm: p.rod_rest_mm, rod_overhang_mm: p.rod_overhang_mm,
            rod_fuss_offset_mm: p.rod_fuss_offset_mm,
            rod_kopf_zuschlag_mm: p.rod_kopf_zuschlag_mm,
+           blech_dicke_mm: p.blech_dicke_mm, kopfblech_dicke_mm: p.kopfblech_dicke_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
            ausgleich_override_mm: p.ausgleich_override_mm,
            deckenanschluss_grid: p.deckenanschluss_grid }; }
