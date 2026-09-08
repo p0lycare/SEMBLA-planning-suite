@@ -7,6 +7,7 @@
 //
 // Aufruf:  node tests/module/test-katalog.mjs
 
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import * as KAT from "../../docs/shared/sembla-katalog.js";
 
@@ -1198,6 +1199,207 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   ok("[P-21] neuesSet/vorschlagSetId liefern ein pflegbares Geruest",
     KAT.neuesSet("Wandabschluss").positionen.length === 0
     && KAT.vorschlagSetId("Wandabschluss") === "set-wandabschluss");
+}
+
+
+// --- 14) Beschaffungsangaben der mitgelieferten Vorlage (#113) ------------
+// Die Angaben sind laengst bekannt, standen aber im falschen Behaelter: „ISO 4033",
+// „DIN 934", „DC01 (1.0330)", „ZE25/25", „Würth 021405532" lagen als FREITEXT mitten in
+// `bezeichnung` bzw. `hinweis` und waren damit nicht spaltenweise auswertbar. Belegt wird
+// deshalb ausschliesslich, was aus der BESTEHENDEN Bezeichnung bzw. dem Issue vom
+// 2026-09-08 folgt; eine Angabe, die nicht bekannt ist, bleibt LEER — und zwar durch
+// WEGLASSEN des Feldes, nicht als "" (`validiereProdukt` behandelt beides gleich, aber ein
+// Leerstring waere eine gepflegte Aussage ueber Nichtwissen).
+//
+// Erfunden wird nichts. Drei Werte liegen dabei besonders nah: „DIN 976-1" (Gewindestange),
+// „DIN 6334" (Kopplungsmutter) und „S235JR" existieren im Repo NUR als Fixture-Werte
+// anderer Tests — sie sind keine Fachaussage ueber die Vorlage und werden namentlich
+// gegengeprueft.
+//
+// Gelesen wird ueber den REALEN Vorlagenweg: dieselbe Datei, die der Browser laedt, durch
+// `parseKatalog` und die vollstaendige Katalogvalidierung.
+{
+  const roh = readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json",
+    import.meta.url), "utf8");
+  const std = KAT.parseKatalog(roh);
+  const SECHS = ["norm", "werkstoff", "oberflaeche", "hersteller", "artikelnr", "gewinde"];
+  const p113 = (id) => KAT.produkt(std, id) || {};
+  // Die tatsaechlich gesetzten Beschaffungsfelder eines Produkts (weggelassene fehlen).
+  const besch = (p) => Object.fromEntries(SECHS.filter((f) => p[f] !== undefined)
+    .map((f) => [f, p[f]]));
+
+  ok("#113 der Standardkatalog ist ueber den realen Vorlagenweg fehlerfrei gueltig",
+    KAT.validiereKatalog(std).length === 0);
+
+  // Die zwei namentlich im Paket geforderten Produkte.
+  ok("#113 die Spannmutter traegt Norm ISO 4033 und Gewinde M10 als EIGENE Felder",
+    p113("verbrauch-spannmutter").norm === "ISO 4033"
+    && p113("verbrauch-spannmutter").gewinde === "M10");
+  ok("#113 die Bohrschraube traegt Hersteller Würth und Artikelnummer 021405532",
+    p113("dc-bohrschraube-55x32").hersteller === "Würth"
+    && p113("dc-bohrschraube-55x32").artikelnr === "021405532");
+
+  // Die VOLLSTAENDIGE Zuordnung — zugleich die Leerprobe: ein Produkt, das hier fehlt, darf
+  // KEINES der sechs Felder fuehren. Damit ist „belegt" und „bleibt leer" EINE Aussage und
+  // kann nicht auseinanderlaufen.
+  const SOLL = {
+    // Vorspannung: das Gewinde ist Pflichtfeld der Kategorie und stand schon vorher da.
+    "gewindestange-m10-1000": { gewinde: "M10" },
+    "gewindestange-m10-850": { gewinde: "M10" },
+    "gewindestange-m10-100-rest": { gewinde: "M10" },
+    // Muttern und Schrauben: Gewinde aus der Bezeichnung, Norm nur wo genannt.
+    "verbrauch-kopplungsmutter": { gewinde: "M10" },
+    "verbrauch-senkkopfschraube-fuss": { gewinde: "M10" },
+    "verbrauch-spannmutter": { gewinde: "M10", norm: "ISO 4033" },
+    "verbrauch-mutter-m10-einlege": { gewinde: "M10", norm: "DIN 934" },
+    // Deckenanschluss: die am 2026-09-08 verbindlich genannten Angaben.
+    "dc-winkel-wand": { werkstoff: "DC01 (1.0330)", oberflaeche: "ZE25/25" },
+    "dc-winkel-decke": { werkstoff: "DC01 (1.0330)", oberflaeche: "ZE25/25" },
+    "dc-schraube-m8x50": { gewinde: "M8", norm: "DIN 933", oberflaeche: "galvanisch verzinkt" },
+    "dc-scheibe-84": { norm: "DIN 9021", oberflaeche: "galvanisch verzinkt" },
+    "dc-anker-fhy-m8": { gewinde: "M8", hersteller: "Fischer", artikelnr: "FHY M8" },
+    "dc-bohrschraube-55x32": { hersteller: "Würth", artikelnr: "021405532" },
+    "dc-scheibe-bohr-64": { norm: "DIN 9021", oberflaeche: "galvanisch verzinkt",
+                            hersteller: "Würth", artikelnr: "04166" },
+  };
+  const gl = (a, b) => {
+    const ka = Object.keys(a).sort(), kb = Object.keys(b).sort();
+    return ka.join() === kb.join() && ka.every((x) => a[x] === b[x]);
+  };
+  ok("#113 jedes Produkt fuehrt GENAU seine belegbaren Beschaffungsangaben",
+    std.produkte.every((p) => gl(besch(p), SOLL[p.id] || {})));
+  // Die Leerprobe ausdruecklich benannt: 24 der 38 Produkte wissen nichts und sagen nichts.
+  ok("#113 die Produkte ohne bekannte Angabe bleiben in ALLEN sechs Feldern leer",
+    std.produkte.filter((p) => Object.keys(besch(p)).length === 0).length
+      === std.produkte.length - Object.keys(SOLL).length);
+  ok("#113 eine unbekannte Angabe wird WEGGELASSEN, nie als leere Zeichenkette gepflegt",
+    std.produkte.every((p) => SECHS.every((f) => p[f] !== "")));
+  // Gegenprobe gegen die drei naheliegenden Fixture-Werte anderer Tests.
+  ok("#113 weder DIN 976-1 noch DIN 6334 noch S235JR sind in die Vorlage gewandert",
+    !/DIN 976|DIN 6334|S235JR/.test(roh));
+  ok("#113 Fussschraube und Kopplungsmutter tragen KEINE erfundene Norm",
+    p113("verbrauch-senkkopfschraube-fuss").norm === undefined
+    && p113("verbrauch-kopplungsmutter").norm === undefined);
+  // Die Scheiben haben kein Gewinde: 8,4 und 6,4 sind Bohrungsdurchmesser, „ø 5,5" ein
+  // Nenndurchmesser — kein metrisches Gewinde und deshalb kein Feldwert.
+  ok("#113 Unterlegscheiben und Bohrschraube fuehren kein Gewinde",
+    ["dc-scheibe-84", "dc-scheibe-bohr-64", "dc-bohrschraube-55x32"]
+      .every((id) => p113(id).gewinde === undefined));
+  // „8.8" ist Festigkeitsklasse, nicht Werkstoff — der Beschaffungsblock fuehrt „Güte" als
+  // eigene Spalte. Ein Werkstoff an der Schraube waere der falsche Behaelter.
+  ok("#113 die Festigkeitsklasse 8.8 ist nicht als Werkstoff einsortiert",
+    std.produkte.every((p) => p.werkstoff !== "8.8"));
+
+  // --- Wertgleichheit zum Stand VOR der Aenderung -------------------------
+  // Die Baseline ist der am 2026-09-09 vor dem Edit gelesene Stand derselben Datei. Spalten:
+  // id, kategorie, einheit, preis, breite_mm, hoehe_mm, dicke_mm, laenge_mm, guete, rollen,
+  // bezeichnung. `gewinde` steht bewusst NICHT darin — es ist eines der sechs Felder und
+  // wird allein von SOLL gefuehrt.
+  const BASIS = [
+  ["stein-i3-375", "stein", "Stk", 9.5, 375, 200, 125, null, null, "i3",
+   "Stein i3 (37,5 cm)"],
+  ["stein-i2-250", "stein", "Stk", 7.2, 250, 200, 125, null, null, "i2",
+   "Stein i2 (25 cm)"],
+  ["gewindestange-m10-1000", "gewindestange", "Stk", 3.8, null, null, null, 1000, "8.8", "rod_std",
+   "Gewindestange M10 1000 mm (8.8)"],
+  ["gewindestange-m10-850", "gewindestange", "Stk", 3.3, null, null, null, 920, "8.8", "rod_std",
+   "Gewindestange M10 920 mm (8.8) (vorläufig)"],
+  ["gewindestange-m10-100-rest", "gewindestange", "Stk", 0.9, null, null, null, 100, "8.8", "rod_rest",
+   "Gewindestange M10 100 mm (8.8) – Reststück oberer Abschluss (vorläufig)"],
+  ["latte-40-60-1500", "latte", "Stk", 3.5, 40, null, 60, 1500, null, "latte",
+   "Latte 40×60 mm, 1,5 m (vorläufig)"],
+  ["latte-40-60-3000", "latte", "Stk", 7, 40, null, 60, 3000, null, "latte",
+   "Latte 40×60 mm, 3,0 m (vorläufig)"],
+  ["beplankung-625-1500", "beplankung", "m2", 8.9, 625, 1500, 12.5, null, null, "beplankung",
+   "Beplankungsplatte 625×1500 mm, 12,5 mm (vorläufig)"],
+  ["blech-bodenblech-1250", "blech_platte", "Stk", 22.5, 1250, 125, 10, null, null, "blech_boden",
+   "Bodenblech 1250×125 mm, 10 mm (Bauteil 1248 mm)"],
+  ["blech-bodenblech-1125", "blech_platte", "Stk", 20.25, 1125, 125, 10, null, null, "blech_boden",
+   "Bodenblech 1125×125 mm, 10 mm (Bauteil 1123 mm)"],
+  ["blech-bodenblech-1000", "blech_platte", "Stk", 18, 1000, 125, 10, null, null, "blech_boden",
+   "Bodenblech 1000×125 mm, 10 mm (Bauteil 998 mm)"],
+  ["blech-bodenblech-875", "blech_platte", "Stk", 15.75, 875, 125, 10, null, null, "blech_boden",
+   "Bodenblech 875×125 mm, 10 mm (Bauteil 873 mm)"],
+  ["blech-bodenblech-750", "blech_platte", "Stk", 13.5, 750, 125, 10, null, null, "blech_boden",
+   "Bodenblech 750×125 mm, 10 mm (Bauteil 748 mm)"],
+  ["blech-bodenblech-625", "blech_platte", "Stk", 11.25, 625, 125, 10, null, null, "blech_boden",
+   "Bodenblech 625×125 mm, 10 mm (Bauteil 623 mm)"],
+  ["blech-bodenblech-500", "blech_platte", "Stk", 9, 500, 125, 10, null, null, "blech_boden",
+   "Bodenblech 500×125 mm, 10 mm (Bauteil 498 mm)"],
+  ["blech-bodenblech-375", "blech_platte", "Stk", 6.75, 375, 125, 10, null, null, "blech_boden",
+   "Bodenblech 375×125 mm, 10 mm (Bauteil 373 mm)"],
+  ["blech-bodenblech-250", "blech_platte", "Stk", 4.5, 250, 125, 10, null, null, "blech_boden",
+   "Bodenblech 250×125 mm, 10 mm (Bauteil 248 mm)"],
+  ["blech-ausgleich-100", "blech_platte", "Stk", 0.45, 20, 100, 8, null, null, "ausgleichsblech",
+   "Ausgleichsblech 20×100 mm, 8 mm (vorläufig)"],
+  ["blech-einlegeblech-110", "blech_platte", "Stk", 0.35, 110, 30, 2, null, null, "einlegeblech",
+   "Einlegeblech 110×30 mm, 2 mm (vorläufig)"],
+  ["blech-kopfblech-1000", "blech_platte", "Stk", 18, 1000, 125, 10, null, null, "blech_kopf",
+   "Kopfblech-Modul 1000×125 mm, 10 mm"],
+  ["blech-spannplatte", "blech_platte", "Stk", 2.4, 120, 120, 10, null, null, "spannplatte",
+   "Spannplatte 120×120 mm, 10 mm (vorläufig)"],
+  ["verbinder-fa-1", "verbinder", "Stk", 1.2, null, null, null, null, null, "verbinder",
+   "Verbinder FA-1"],
+  ["verbinder-fa-2", "verbinder", "Stk", 1.8, null, null, null, null, null, "",
+   "Verbinder FA-2 schwer (vorläufig)"],
+  ["verbinder-ia-1", "verbinder", "Stk", 0.9, null, null, null, null, null, "",
+   "Verbinder IA-1 leicht (vorläufig)"],
+  ["verbinder-universal", "verbinder", "Stk", 1.4, null, null, null, null, null, "",
+   "Verbinder Universal (vorläufig)"],
+  ["verbrauch-kopplungsmutter", "verbrauch", "Stk", 0.65, null, 30, null, null, null, "kupplung",
+   "Kopplungsmutter M10, 30 mm"],
+  ["verbrauch-senkkopfschraube-fuss", "verbrauch", "Stk", 0.45, null, null, null, 25, null, "senkkopf",
+   "Sechskantschraube M10×25 (Fuß)"],
+  ["verbrauch-spannmutter", "verbrauch", "Stk", 0.9, null, 10, null, null, null, "spannmutter",
+   "Spannmutter M10,8 ISO 4033"],
+  ["verbrauch-mutter-m10-einlege", "verbrauch", "Stk", 0.08, null, 8, null, null, null, "zp_mutter",
+   "Mutter Einlegeblech M10,8 DIN 934"],
+  ["verbrauch-dichtstreifen-200", "verbrauch", "Stk", 0.3, null, null, null, null, null, "dicht_stk",
+   "Dichtstreifen 20 cm (Schallschutz)"],
+  ["verbrauch-dichtstreifen-rolle", "verbrauch", "m", 1.5, null, null, null, null, null, "dicht",
+   "Dichtstreifen Rollenware (vorläufig)"],
+  ["dc-winkel-wand", "blech_platte", "Stk", 1.8, 60, 60, 2, null, null, "dc_winkel_wand",
+   "Deckenanschluss Winkel Wand, DC01 (1.0330), ZE25/25 (Maße vorläufig)"],
+  ["dc-winkel-decke", "blech_platte", "Stk", 1.8, 60, 60, 2, null, null, "dc_winkel_decke",
+   "Deckenanschluss Winkel Decke, DC01 (1.0330), ZE25/25 (Maße vorläufig)"],
+  ["dc-schraube-m8x50", "verbrauch", "Stk", 0.35, null, null, null, 50, null, "dc_schraube",
+   "Sechskantschraube M8×50 DIN 933, 8.8, galvanisch verzinkt"],
+  ["dc-scheibe-84", "verbrauch", "Stk", 0.06, null, null, null, null, null, "dc_scheibe",
+   "Unterlegscheibe 8,4 DIN 9021, galvanisch verzinkt"],
+  ["dc-anker-fhy-m8", "verbrauch", "Stk", 1.2, null, null, null, null, null, "dc_anker",
+   "Fischer Hohldeckenanker FHY M8"],
+  ["dc-bohrschraube-55x32", "verbrauch", "Stk", 0.28, null, null, null, 32, null, "dc_bohrschraube",
+   "Bohrschraube ø 5,5 SHR-BSPL-SW8-(A3K)-5,5×32 (Würth 021405532)"],
+  ["dc-scheibe-bohr-64", "verbrauch", "Stk", 0.05, null, null, null, null, null, "dc_scheibe_bohr",
+   "Unterlegscheibe 6,4 DIN 9021, galvanisch verzinkt (SHB-DIN9021-140HV-(A2K)-D6,4, Würth 04166)"],  ];
+  const nz = (v) => v === undefined ? null : v;
+  ok("#113 alle uebrigen Produktfelder sind wertgleich zum Stand vor der Aenderung",
+    std.produkte.length === BASIS.length && std.produkte.every((p, i) => {
+      const b = BASIS[i];
+      return JSON.stringify([p.id, p.kategorie, p.einheit, p.preis, nz(p.breite_mm),
+        nz(p.hoehe_mm), nz(p.dicke_mm), nz(p.laenge_mm), nz(p.guete),
+        (p.rollen || []).join(","), p.bezeichnung]) === JSON.stringify(b);
+    }));
+  // Der Beweis, dass die Aenderung REIN ADDITIV war: kein Produkt hat einen Schluessel
+  // bekommen, der nicht zu den sechs Beschaffungsfeldern gehoert — und keinen verloren.
+  const BASIS_KEYS = ["id", "kategorie", "bezeichnung", "einheit", "preis", "breite_mm",
+    "hoehe_mm", "dicke_mm", "laenge_mm", "guete", "rollen", "hinweis"];
+  ok("#113 hinzugekommen sind ausschliesslich Beschaffungsfelder",
+    std.produkte.every((p) => Object.keys(p)
+      .every((f) => BASIS_KEYS.includes(f) || SECHS.includes(f))));
+  ok("#113 Produktzahl und Reihenfolge der Kennungen sind unveraendert",
+    std.produkte.length === 38
+    && std.produkte.map((p) => p.id).join() === BASIS.map((b) => b[0]).join());
+  // Die langen Erklaertexte sind nicht in der Tabelle — sie stehen als ein Digest, damit auch
+  // eine stille Umformulierung auffaellt (Hinweise sind Fachaussagen, kein Beiwerk).
+  ok("#113 die hinweis-Texte aller Produkte sind unveraendert",
+    createHash("sha256").update(std.produkte
+      .map((p) => String(p.id) + " " + String(p.hinweis == null ? "" : p.hinweis)).join("|"))
+      .digest("hex")
+      === "b9692085395dd8bfba7ab2551ec0caf2bdd20f51f07653164be39b53bb84be0a");
+  // Und die Gegenprobe zum Paketziel: KATALOG_VERSION bleibt, wo sie war.
+  ok("#113 die Vorlage bleibt bei Katalogformat Version 2 (kein Sprung)",
+    JSON.parse(roh).version === 2 && std.version === KAT.KATALOG_VERSION);
 }
 
 let fail = 0;

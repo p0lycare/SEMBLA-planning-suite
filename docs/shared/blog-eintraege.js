@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-03",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 113,
+    titel: "Der Standardkatalog führt die bekannten Beschaffungsangaben in eigenen Feldern",
+    testbitte: "In Modul 10 den Standardkatalog laden und die Spannmutter M10 sowie die Bohrschraube öffnen: Norm, Gewinde, Oberfläche, Hersteller und Artikelnummer stehen im Abschnitt Beschaffung als einzelne Felder statt nur im Namen.",
+  },
+  {
     id: "chg-20260909-02",
     datum: "2026-09-09",
     typ: "feature",

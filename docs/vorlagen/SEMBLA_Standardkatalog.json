@@ -291,6 +291,7 @@
       "einheit": "Stk",
       "preis": 0.65,
       "hoehe_mm": 30,
+      "gewinde": "M10",
       "rollen": ["kupplung"],
       "hinweis": "Bauteilgleich für alle Kopplungen: es gibt keine gesonderte Fuß- oder Kopf-Kopplungsmutter ([P-18]). Einbauhöhe 30 mm (langjährig festgelegt) — daraus rechnet Modul 1 den Fußoffset nach [A-19] als HALBE Mutternhöhe, also 15 mm. Der Preis ist ein angenommener Beispielwert."
     },
@@ -301,6 +302,7 @@
       "einheit": "Stk",
       "preis": 0.45,
       "laenge_mm": 25,
+      "gewinde": "M10",
       "rollen": ["senkkopf"],
       "hinweis": "Die Schraubenlänge 25 mm ist die Vorgabe vom 2026-09-08 (vorher 30 mm). Das Gewinde M10 folgt der Kopplungsmutter M10, in die sie von unten durch das Bodenblech eingedreht wird ([A-19]) — es ist nicht geraten. Eine NORM ist für diese Schraube bisher nicht genannt und wird nicht erfunden. Der Preis ist ein angenommener Beispielwert."
     },
@@ -311,6 +313,8 @@
       "einheit": "Stk",
       "preis": 0.9,
       "hoehe_mm": 10,
+      "gewinde": "M10",
+      "norm": "ISO 4033",
       "rollen": ["spannmutter"],
       "hinweis": "Bezeichnung und Einbauhöhe (10 mm) sind Vorgabe vom 2026-09-08. Die Höhe ist ein reines Bauteilmaß: aus ihr wird nichts abgeleitet — der Kopfzuschlag nach [Z-8] ist die SPANNPLATTENDICKE, nicht die Mutternhöhe. Der Preis ist ein angenommener Beispielwert."
     },
@@ -321,6 +325,8 @@
       "einheit": "Stk",
       "preis": 0.08,
       "hoehe_mm": 8,
+      "gewinde": "M10",
+      "norm": "DIN 934",
       "rollen": ["zp_mutter"],
       "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Die BEZEICHNUNG ist seit dem 2026-09-08 verbindlich (M10,8 DIN 934). Sie zieht das Einlegeblech von oben gegen die Steinlage; unten sitzt keine Mutter ([A-16]). Bewusst ein EIGENES Produkt neben der Spannmutter des Ankers \u2014 die beiden Verwendungsstellen bleiben getrennt, damit je Rolle genau ein Kandidat bleibt ([P-14]). Bezeichnung und Einbauh\u00f6he (8 mm) sind seit dem 2026-09-08 verbindlich. Vorl\u00e4ufig bleibt allein der Preis \u2014 ein angenommener Beispielwert."
     },
@@ -350,6 +356,8 @@
       "breite_mm": 60,
       "hoehe_mm": 60,
       "dicke_mm": 2,
+      "werkstoff": "DC01 (1.0330)",
+      "oberflaeche": "ZE25/25",
       "rollen": ["dc_winkel_wand"],
       "hinweis": "vorläufig — fachlich unbestätigt: Werkstoff und Bezeichnung sind am 2026-09-08 verbindlich vorgegeben (DC01/1.0330, ZE25/25); die MASSE liegen noch nicht vor. Die eingetragenen 60 × 60 mm bei 2 mm Blechdicke sind reine Platzhalter, damit die Kategorie Blech/Platte ihre Pflichtmaße hat — daraus werden ausdrücklich keine Nachweis-, Geometrie- oder Zeichnungswerte abgeleitet. Auch der Preis ist ein angenommener Beispielwert. Der Austausch nach der Freigabe ist ein reiner Katalog-Edit."
     },
@@ -362,6 +370,8 @@
       "breite_mm": 60,
       "hoehe_mm": 60,
       "dicke_mm": 2,
+      "werkstoff": "DC01 (1.0330)",
+      "oberflaeche": "ZE25/25",
       "rollen": ["dc_winkel_decke"],
       "hinweis": "vorläufig — fachlich unbestätigt: Werkstoff und Bezeichnung wie beim Winkel Wand verbindlich vorgegeben (DC01/1.0330, ZE25/25); die MASSE liegen noch nicht vor. Die eingetragenen 60 × 60 mm bei 2 mm Blechdicke und der Preis sind Platzhalter und tragen keine Ableitung."
     },
@@ -372,6 +382,9 @@
       "einheit": "Stk",
       "preis": 0.35,
       "laenge_mm": 50,
+      "gewinde": "M8",
+      "norm": "DIN 933",
+      "oberflaeche": "galvanisch verzinkt",
       "rollen": ["dc_schraube"],
       "hinweis": "Bezeichnung nach der korrigierten Vorgabe vom 2026-09-08: M8×50, nicht M10. Der Preis ist ein angenommener Beispielwert."
     },
@@ -381,6 +394,8 @@
       "bezeichnung": "Unterlegscheibe 8,4 DIN 9021, galvanisch verzinkt",
       "einheit": "Stk",
       "preis": 0.06,
+      "norm": "DIN 9021",
+      "oberflaeche": "galvanisch verzinkt",
       "rollen": ["dc_scheibe"],
       "hinweis": "Bezeichnung nach der korrigierten Vorgabe vom 2026-09-08: Nennmaß 8,4 mm (zur Schraube M8). Der Preis ist ein angenommener Beispielwert."
     },
@@ -390,6 +405,9 @@
       "bezeichnung": "Fischer Hohldeckenanker FHY M8",
       "einheit": "Stk",
       "preis": 1.2,
+      "gewinde": "M8",
+      "hersteller": "Fischer",
+      "artikelnr": "FHY M8",
       "rollen": ["dc_anker"],
       "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08. Der Preis ist ein angenommener Beispielwert; ein Verankerungsnachweis wird daraus nicht geführt (#95)."
     },
@@ -400,6 +418,8 @@
       "einheit": "Stk",
       "preis": 0.28,
       "laenge_mm": 32,
+      "hersteller": "Würth",
+      "artikelnr": "021405532",
       "rollen": ["dc_bohrschraube"],
       "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08: Würth 021405532, pias Stahl verzinkt mit langer Bohrspitze. Der Preis ist ein angenommener Beispielwert."
     },
@@ -409,6 +429,10 @@
       "bezeichnung": "Unterlegscheibe 6,4 DIN 9021, galvanisch verzinkt (SHB-DIN9021-140HV-(A2K)-D6,4, Würth 04166)",
       "einheit": "Stk",
       "preis": 0.05,
+      "norm": "DIN 9021",
+      "oberflaeche": "galvanisch verzinkt",
+      "hersteller": "Würth",
+      "artikelnr": "04166",
       "rollen": ["dc_scheibe_bohr"],
       "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08: Würth 04166, DIN 9021, Stahl verzinkt. Der Preis ist ein angenommener Beispielwert."
     }
