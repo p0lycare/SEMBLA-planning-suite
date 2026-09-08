@@ -56,7 +56,7 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten (Mutter, Kopplungsmutter,
   // Spannplatte) — dieselbe Quelle, aus der Modul 7 zeichnet; Modul 1 fuehrt dafuer keine
   // eigene Geometrie und keine lokalen Hex-Werte mehr.
-  // #112: die Symbolmasse stehen fest in Papier-mm; `SPANN_EINHEIT.ansicht` ist der Faktor
+  // #106: die Symbolmasse stehen fest in Papier-mm; `SPANN_EINHEIT.ansicht` ist der Faktor
   // auf viewBox-Einheiten. `schraubeSvg` ist die Schraube am Wandfuss ([A-19]/#97).
   SPANN_FARBE: MONT.SPANN_FARBE, SPANN_EINHEIT: MONT.SPANN_EINHEIT, mutterSvg: MONT.mutterSvg,
   kopplungsmutterSvg: MONT.kopplungsmutterSvg, spannplatteSvg: MONT.spannplatteSvg,
@@ -146,11 +146,11 @@ const legendeStimmt=()=>{
   return alle.length>0 && /Kopplung/.test(L);
 };
 ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legendeStimmt());
-// ---- Issue #110/#112/#97: Spannkomponenten in der Wandansicht ([D-4]/[A-19]) --------
+// ---- Issue #110/#106/#97: Spannkomponenten in der Wandansicht ([D-4]/[A-19]) --------
 // Geprueft wird die GERENDERTE Wandansicht am echten Speicherpfad: die Symbole muessen aus
 // der gemeinsamen Quelle kommen (Formgleichheit mit Modul 7), die Kopplungsmutter messbar
 // laenger sein als die normale Mutter, alle Symbolmasse FEST und damit von der Wandlaenge
-// unabhaengig (#112), die Fussfolge Schraube/Blech/Kopplungsmutter richtig ([A-19]/#97) —
+// unabhaengig (#106), die Fussfolge Schraube/Blech/Kopplungsmutter richtig ([A-19]/#97) —
 // und Modul 1 darf fuer diese Bauteile keine eigene Geometrie und keine Hex-Werte fuehren.
 {
   const svg=()=>document.getElementById('plan').innerHTML;
@@ -166,7 +166,7 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     // Kreise gibt es nur noch als BEDIENGRIFFE (#106) — die tragen `cursor:grab/copy`.
     const s=svg(); const kreise=[...s.matchAll(/<circle[^>]*>/g)].map(m=>m[0]);
     return kreise.every(c=>/cursor:(grab|copy)/.test(c)); })());
-  ok('[#112] Mutter und Kopplungsmutter sind reine Rechtecke ohne Stirnkanten (keine Serifen)',
+  ok('[#106] Mutter und Kopplungsmutter sind reine Rechtecke ohne Stirnkanten (keine Serifen)',
     hoehen(RE_KOP).length>0 && mutRects().length>0
     && svg().includes(MONT.SPANN_FARBE.mutter)
     // Die Serifen aus #110 waren `<line>`-Paare in der Mutterfarbe — es darf keins mehr geben.
@@ -178,13 +178,13 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     (()=>{ const k=hoehen(RE_KOP);
       const hM=+/height="([-\d.]+)"/.exec(MONT.mutterSvg(0,0,E))[1];
       return k.length>0 && hM>0 && k.every(h=>Math.abs(h/hM-2.5)<1e-6); })());
-  ok('[#112] die Symbolhoehen sind die FESTEN Papier-mm, kein Vielfaches der Lagenhoehe',
+  ok('[#106] die Symbolhoehen sind die FESTEN Papier-mm, kein Vielfaches der Lagenhoehe',
     (()=>{ const kop=hoehen(RE_KOP);
       return kop.length>0 && kop.every(h=>Math.abs(h-MM.kupplung_h*E)<1e-6); })());
   // Jede Marke muss BYTEGLEICH die der geteilten Funktion sein — nachgerechnet mit derselben
   // Abbildung, die die Ansicht benutzt (pad 46, sc aus der Wandlaenge, y von unten).
   ok('[#110] jede Kopplungsmarke ist bytegleich die der geteilten Funktion', (()=>{
-    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
+    const wd=w(), sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
     const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
     const s=svg(); let n=0;
     for(const col of wd.tension_columns) for(const g of col.segments){
@@ -198,7 +198,7 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     return n>0; })());
   // ---- Fussfolge Schraube / Bodenblech / Kopplungsmutter ([A-19], #97) ----------------
   ok('[#97] am Fuss steht die KOPPLUNGSMUTTER, nicht die normale Mutter', (()=>{
-    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
+    const wd=w(), sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
     const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
     let n=0;
     for(const col of wd.tension_columns) for(const g of col.segments){
@@ -210,7 +210,7 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     }
     return n>0; })());
   ok('[#97] sie LIEGT AUF dem Bodenblech, statt halb darin zu stecken', (()=>{
-    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
+    const wd=w(), sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
     const y0=46+hPx;   // Y(0) = Oberkante Bodenblech = Steinunterkante
     // Alle Kopplungsmarken am Fuss muessen vollstaendig OBERHALB von Y(0) liegen (kleineres y).
     const fuss=[...svg().matchAll(/<rect class="kop" x="[-\d.]+" y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/g)]
@@ -222,13 +222,13 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     const kopf=r.filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
     return schaft.length>0 && kopf.length===schaft.length && MM.kopf_d>MM.schaft_d; })());
   ok('[#97] der Schraubenkopf ragt UNTER dem Bodenblech heraus', (()=>{
-    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
+    const wd=w(), sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
     const y0=46+hPx, bth=Math.max(4,15*sc);
     const kopf=mutRects().filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
     // Der Kopf beginnt an der Blechunterkante und endet darunter — er ist frei sichtbar.
     return kopf.length>0 && kopf.every(q=>Math.abs(q.y-(y0+bth))<1e-6 && q.h>0); })());
-  // ---- Vordergrund: die Kopplungsmuttern stehen NACH allen anderen Bauteilen (#112) ----
-  ok('[#112] alle Kopplungsmuttern liegen im Vordergrund (zuletzt gezeichnet)', (()=>{
+  // ---- Vordergrund: die Kopplungsmuttern stehen NACH allen anderen Bauteilen (#106) ----
+  ok('[#106] alle Kopplungsmuttern liegen im Vordergrund (zuletzt gezeichnet)', (()=>{
     const s=svg();
     const ersteKop=s.indexOf('<rect class="kop"');
     // Nach der ersten Kopplungsmarke darf kein Stangenstueck, keine Platte, kein Blech und
@@ -254,7 +254,7 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     && !/const STEEL='#5b6673', SPANN=/.test(html)
     && !new RegExp("'"+MONT.SPANN_FARBE.platte+"'|'"+MONT.SPANN_FARBE.mutter+"'").test(html)
     && !/<circle cx="\$\{x\}" cy="\$\{Y\(g\.z0_mm\)\}"/.test(html));
-  ok('[#112] Modul 1 leitet kein Symbolmass mehr aus der Lagenhoehe ab',
+  ok('[#106] Modul 1 leitet kein Symbolmass mehr aus der Lagenhoehe ab',
     !/const lage=COURSE\*sc/.test(html) && /SPANN_EINHEIT\.ansicht/.test(html));
   ok('[#110] die Legende bezieht die Kopplungsfarbe aus der geteilten Quelle',
     zleg().includes(MONT.SPANN_FARBE.mutter));
@@ -279,11 +279,16 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
   ok('[#100] Uebergroesse scrollt lokal und blaeht die Seite nicht horizontal auf', (()=>{
     const css=(html.match(/\.planbox\{[^}]*\}/)||[''])[0];
     return /overflow:auto/.test(css) && /max-width:100%/.test(css); })());
-  ok('[#100] das SVG wird proportional in die verfuegbare Hoehe eingepasst', (()=>{
+  // Seit #106 traegt das SVG den FESTEN Ansichtsmasstab: die Breite kommt inline aus dem
+  // viewBox (`calc(<vbW>px * var(--zoom))`), die Hoehe folgt dem Verhaeltnis. Ein `width:100%`
+  // oder ein `max-height` im CSS wuerde die Zeichnung wieder auf den Rahmen zurueckskalieren
+  // und damit den Stein je Wandgroesse verschieden gross machen — beides darf nicht mehr da sein.
+  ok('[#106] das SVG traegt den festen Masstab, der Rahmen skaliert nicht zurueck', (()=>{
     const css=(html.match(/\.planbox>svg\{[^}]*\}/)||[''])[0];
     return /height:auto/.test(css)
-      && /max-height:calc\(var\(--planh\) \* var\(--zoom\)\)/.test(css)
-      && /width:calc\(100% \* var\(--zoom\)\)/.test(css)
+      && !/max-height/.test(css)
+      && !/width:calc\(100%/.test(css)
+      && /style\.width=`calc\(\$\{vbW\}px \* var\(--zoom\)\)`/.test(html)
       && /<svg id="plan"[^>]*preserveAspectRatio="xMidYMid meet"/.test(html); })());
   ok('[#100] der frühere unbegrenzte globale svg-Selektor ist entfallen',
     !/^\s*svg\{width:100%;height:auto/m.test(html));
@@ -301,8 +306,9 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
   ok('[#100] die Schalter stehen an der Ansicht, nicht in der linken Eingabespalte',
     !/id="zoom/.test(html.match(/<div class="controls panel">[\s\S]*?<div class="stage panel">/)[0]));
 
-  // (c) Standardstellung = eingepasst
-  ok('[#100] Standardstellung ist die eingepasste Ansicht (100 %), Wert sichtbar',
+  // (c) Standardstellung = ECHTER Masstab (100 %). Seit #106 ist das nicht mehr dasselbe wie
+  //     „eingepasst": eingepasst wird gerechnet und darf nur verkleinern.
+  ok('[#100] Standardstellung ist der echte Masstab (100 %), Wert sichtbar',
     WP.zoomPct===WP.ZOOM_FIT && wert.textContent==='100 %'
     && zoomVar()==='1' && box.dataset.zoom==='100');
 
@@ -365,8 +371,11 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
 
   // (i) Der Zoomzustand wird NIRGENDS gespeichert und beruehrt die Zeichengeometrie nicht.
   const zoomQuelle=html.match(/function applyZoom\(\)\{[\s\S]*?function zoomEinpassen[^\n]*\n/)[0];
-  ok('[#100] die Zoomlogik ruehrt weder viewBox noch Speicher an',
-    !/viewBox/.test(zoomQuelle) && !/store\./.test(zoomQuelle)
+  // Die Einpassung MUSS die viewBox-Masse lesen (sonst kann sie nichts einpassen) — sie liest
+  // sie aus LASTDRAW, also aus derselben Quelle, die draw() gesetzt hat. Verboten bleibt das
+  // SETZEN eines viewBox und jede Form von Speichern.
+  ok('[#100] die Zoomlogik SETZT keinen viewBox und speichert nichts',
+    !/setAttribute\('viewBox'/.test(zoomQuelle) && !/store\./.test(zoomQuelle)
     && !/localStorage/.test(zoomQuelle) && !/mergeEingaben/.test(zoomQuelle));
   ok('[#100] kein Zoomzustand in den gespeicherten Eingaben oder im localStorage',
     !/zoom/i.test(JSON.stringify(store.aktiveEingaben()))
@@ -757,23 +766,28 @@ setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
 // SVG; aus ihm werden die BILDPUNKTE der gezeichneten Achsen entnommen und ueber die
 // Zeigerbehandler von `#plan` zurueckgespielt.
 //
-// Der Zoom wird nicht simuliert, sondern aus den ECHTEN CSS-Regeln von #100 abgeleitet:
-//   Breite  = Kastenbreite * Zoom            (`width:calc(100% * var(--zoom))`)
-//   Hoehe   = min(Breite * vbH/vbW,          (`height:auto`, also viewBox-Verhaeltnis)
-//                 planh * Zoom)              (`max-height:calc(var(--planh) * var(--zoom))`)
-// Genau diese Klemme macht das Anzeigefeld BREITER als das viewBox-Verhaeltnis; mit
-// `preserveAspectRatio="xMidYMid meet"` entsteht dadurch zentrierter Leerraum links/rechts.
-// Ein Rueckweg, der Elementbreite = viewBox-Breite annimmt, liegt hier um mehrere Rasterfelder
-// daneben — der Fehler aus #106. Rand (`left`/`top`) ist bewusst nicht 0.
+// Der Zoom wird nicht simuliert, sondern aus den ECHTEN CSS-Regeln abgeleitet. Seit #106
+// (Bauteildarstellung) setzt draw() die Anzeigebreite INLINE aus dem viewBox:
+//   Breite  = vbW * Zoom                     (`width:calc(<vbW>px * var(--zoom))`)
+//   Hoehe   = Breite * vbH/vbW = vbH * Zoom  (`height:auto`, kein `max-height` mehr)
+// Das Anzeigefeld hat damit IMMER das viewBox-Verhaeltnis: „xMidYMid meet" hat nichts mehr zu
+// letterboxen, der Versatz ist null und der Skalenfaktor ist genau der Zoomfaktor. Die
+// Klemme aus #100 (`max-height`), die das Feld breiter machte als den viewBox und den
+// Rueckweg um mehrere Rasterfelder verschob, ist damit KONSTRUKTIV weg — was nicht
+// hineinpasst, scrollt im Rahmen. Der Rueckweg wird hier trotzdem allgemein gerechnet
+// (min() und Versatz bleiben stehen), damit der Test nicht die Vereinfachung voraussetzt,
+// die er pruefen soll. Rand (`left`/`top`) ist bewusst nicht 0.
 {
   const planEl=document.getElementById('plan');
-  const PAD=46, VBW=1000, KASTEN_PX=900, PLANH_PX=520, RAND_L=17, RAND_T=29;
+  const PAD=46, RAND_L=17, RAND_T=29;
   function view(){
     const w=WP.RESULT.wandelement, L=w.length_mm, H=w.height_mm;
-    const sc=(VBW-2*PAD)/L, hPx=H*sc, vbH=Math.round(hPx+2*PAD);
-    const z=WP.zoomPct/100, rw=KASTEN_PX*z, rh=Math.min(rw*vbH/VBW, PLANH_PX*z);
-    const s=Math.min(rw/VBW, rh/vbH);
-    return {L,H,sc,hPx,vbH,rw,rh,s,offX:(rw-VBW*s)/2,offY:(rh-vbH*s)/2,back:/Rückseite/.test(planEl.innerHTML)};
+    // Masstab aus DERSELBEN Quelle wie draw() — nicht nachgerechnet ([P-6]).
+    const sc=WP.ansichtSc(), hPx=H*sc;
+    const vbW=Math.round(L*sc+2*PAD), vbH=Math.round(hPx+2*PAD);
+    const z=WP.zoomPct/100, rw=vbW*z, rh=vbH*z;
+    const s=Math.min(rw/vbW, rh/vbH);
+    return {L,H,sc,hPx,vbW,vbH,rw,rh,s,offX:(rw-vbW*s)/2,offY:(rh-vbH*s)/2,back:/Rückseite/.test(planEl.innerHTML)};
   }
   function stelleRect(){ const v=view(); planEl._rect={left:RAND_L,top:RAND_T,width:v.rw,height:v.rh}; return v; }
   /** viewBox-Punkt -> Client-Punkt (Umkehrung von „xMidYMid meet"). */
@@ -801,13 +815,40 @@ setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
   for(const z of ZOOMS){
     WP.setzeZoom(z); const v=stelleRect();
     const vorher=[...WP.manualCols], punkte=achsPunkte();
-    ok(`[#106] Zoom ${z} %: Anzeigefeld weicht vom viewBox-Verhaeltnis ab (Letterbox)`,
-      Math.abs(v.rw/v.rh - VBW/v.vbH)>0.2 && v.offX>1);
+    // Neu seit der Bauteildarstellung (#106): das Anzeigefeld hat GENAU das
+    // viewBox-Verhaeltnis, der Letterbox-Versatz ist null und der Skalenfaktor ist der
+    // Zoomfaktor. Damit ist der alte Trefferfehler konstruktiv ausgeschlossen und nicht
+    // bloss wegtariert. Die allgemeine Abbildung wird unten mit einem absichtlich
+    // abweichenden Anzeigefeld weiter geprueft.
+    ok(`[#106] Zoom ${z} %: Anzeigefeld traegt genau das viewBox-Verhaeltnis (kein Letterbox)`,
+      Math.abs(v.rw/v.rh - v.vbW/v.vbH)<1e-9 && Math.abs(v.offX)<1e-9
+      && Math.abs(v.offY)<1e-9 && Math.abs(v.s - z/100)<1e-9);
     ok(`[#106] Zoom ${z} %: jede Achse ist mit Griff gezeichnet`, punkte.length===vorher.length && punkte.length>0);
     let sauber=true;
     for(const p of punkte){ feuer('pointerdown',p.sx,p.sy); los();
       if(!gleich(WP.manualCols,vorher)) sauber=false; }
     ok(`[#106] Zoom ${z} %: Anfassen einer vorhandenen Achse verdoppelt sie nicht`, sauber);
+  }
+
+  // (a2) Sicherheitsnetz: auch mit einem ABWEICHENDEN Anzeigefeld (etwa wenn ein Browser die
+  //      Breite klemmt) muss der Rueckweg treffen. Dann greift „xMidYMid meet" mit echtem
+  //      Versatz — genau der Pfad, der vor #106 die Achsen verdoppelt hat.
+  {
+    WP.setzeZoom(100);
+    const v=view(); const rw=v.vbW*0.6, rh=v.vbH*1.4;         // schmaler UND hoeher
+    const s=Math.min(rw/v.vbW, rh/v.vbH), offX=(rw-v.vbW*s)/2, offY=(rh-v.vbH*s)/2;
+    planEl._rect={left:RAND_L,top:RAND_T,width:rw,height:rh};
+    const vorher=[...WP.manualCols], punkte=achsPunkte();
+    let sauber=punkte.length===vorher.length && punkte.length>0;
+    for(const p of punkte){
+      planEl.dispatch('pointerdown',{clientX:RAND_L+offX+p.sx*s, clientY:RAND_T+offY+p.sy*s,
+        pointerId:3, preventDefault(){}});
+      los();
+      if(!gleich(WP.manualCols,vorher)) sauber=false;
+    }
+    ok('[#106] auch mit abweichendem Anzeigefeld trifft der Rueckweg jede Achse', sauber);
+    ok('[#106] der Zusatzfall hat wirklich Letterbox-Versatz (sonst prueft er nichts)',
+      offY>1 && Math.abs(rw/rh - v.vbW/v.vbH)>0.2);
   }
 
   // (b) Ziehen: die ANGEFASSTE Achse wandert, die Achszahl bleibt — bei jedem Zoomgrad.
@@ -1682,9 +1723,9 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 
-// ---- Issue #112: dieselbe Ansicht, dieselbe Bauteilgroesse — bei JEDER Wandlaenge -------
-// Der eigentliche Fehler, den #112 behebt: `sc=(1000-2*pad)/L` haengt allein an der WANDLAENGE,
-// und bis #112 waren alle Symbolmasse Vielfache von `COURSE*sc`. Dasselbe Bauteil war damit in
+// ---- Issue #106: dieselbe Ansicht, dieselbe Bauteilgroesse — bei JEDER Wandlaenge -------
+// Der eigentliche Fehler, den #106 behebt: `sc=(1000-2*pad)/L` haengt allein an der WANDLAENGE,
+// und bis #106 waren alle Symbolmasse Vielfache von `COURSE*sc`. Dasselbe Bauteil war damit in
 // einer kurzen Wand um ein Mehrfaches groesser als in einer langen. Geprueft wird an zwei
 // Wandelementen mit gleichem Aufbau und stark verschiedener Laenge; beide tragen oben Blech,
 // damit Spannmutter UND Fussschraube vorkommen. Die Pruefung steht am Ende der Datei, weil
@@ -1708,23 +1749,57 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
       schaft:[...new Set(alle.filter(r=>Math.abs(r.b-MM.schaft_d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort() };
   };
   const kurz=masse(2000), lang=masse(8000);
-  ok('[#112] beide Vergleichswaende zeichnen ueberhaupt Kopplung, Mutter, Kopf und Schaft',
+  ok('[#106] beide Vergleichswaende zeichnen ueberhaupt Kopplung, Mutter, Kopf und Schaft',
     [kurz,lang].every(m=>m.kop.length>0 && m.mutter.length>0 && m.kopf.length>0
       && m.schaft.length>0));
-  ok('[#112] Kopplungsmuttern sind in kurzer und langer Wand GLEICH gross',
+  ok('[#106] Kopplungsmuttern sind in kurzer und langer Wand GLEICH gross',
     JSON.stringify(kurz.kop)===JSON.stringify(lang.kop));
-  ok('[#112] Spannmuttern sind in kurzer und langer Wand GLEICH gross',
+  ok('[#106] Spannmuttern sind in kurzer und langer Wand GLEICH gross',
     JSON.stringify(kurz.mutter)===JSON.stringify(lang.mutter));
-  ok('[#112] Schraubenkoepfe sind in kurzer und langer Wand GLEICH gross',
+  ok('[#106] Schraubenkoepfe sind in kurzer und langer Wand GLEICH gross',
     JSON.stringify(kurz.kopf)===JSON.stringify(lang.kopf));
-  // AUSNAHME mit Grund: der Schraubenschaft reicht von der Mutternmitte bis an die Unterkante
-  // des Bodenblechs, und das Bodenblech ist ein REALES Bauteil, das masstabsgetreu gezeichnet
-  // wird ([A-10]). Seine Dicke folgt also `sc` — und der Schaft folgt ihr mit. Fest ist die
-  // BREITE des Schafts; nur seine Laenge haengt an der gezeichneten Blechdicke.
-  ok('[#112] der Schaft ist gleich DICK, nur seine Laenge folgt dem masstabsgetreuen Blech',
-    kurz.schaft.every(q=>Math.abs(+q.split('x')[0]-MM.schaft_d*E)<1e-6)
-    && lang.schaft.every(q=>Math.abs(+q.split('x')[0]-MM.schaft_d*E)<1e-6)
-    && kurz.schaft.map(q=>q.split('x')[1]).join()!==lang.schaft.map(q=>q.split('x')[1]).join());
+  // Seit dem festen Ansichtsmasstab gilt das AUCH fuer den Schraubenschaft: er reicht von der
+  // Mutternmitte bis an die Unterkante des Bodenblechs, und weil `sc` fest ist, ist die
+  // gezeichnete Blechdicke ebenfalls fest. Vorher war der Schaft das eine Mass, das sich
+  // zwangslaeufig mit der Wandlaenge aenderte — jetzt gibt es kein solches Mass mehr.
+  ok('[#106] auch der Schraubenschaft ist in kurzer und langer Wand GLEICH gross',
+    JSON.stringify(kurz.schaft)===JSON.stringify(lang.schaft)
+    && kurz.schaft.every(q=>Math.abs(+q.split('x')[0]-MM.schaft_d*E)<1e-6));
+  // --- Und der Massstab, an dem der Planer es beurteilt: der STEIN selbst ------------------
+  // „Relativ zur Steindarstellung immer gleich gross" ist genau dann erfuellt, wenn der Stein
+  // in beiden Waenden dieselbe Zeichengroesse hat — dann ist jedes feste Zeichenmass
+  // zwangslaeufig dasselbe Verhaeltnis zum Stein. Geprueft werden Steinhoehe/-breite,
+  // Schriftgroessen (auch die Beschriftung IM Stein) und Strichstaerken.
+  const bild=mm=>{
+    WP.applyWand(Object.assign(buildWall('Bild '+mm, mm, 2600, [], null,
+      { top_connection:'blech' }), {wandtyp:'ohne_wind'}));
+    const s=svg();
+    const steine=[...new Set([...s.matchAll(/<rect x="[-\d.]+" y="[-\d.]+" width="([-\d.]+)" height="([-\d.]+)" fill="#(?:cfd3d8|bcc2c9)"/g)]
+      .map(m=>m[1]+'x'+m[2]))].sort();
+    const schrift=[...new Set([...s.matchAll(/font-size="([-\d.]+)"/g)].map(m=>m[1]))].sort();
+    const striche=[...new Set([...s.matchAll(/stroke-width="([-\d.]+)"/g)].map(m=>m[1]))].sort();
+    return { steine, schrift, striche };
+  };
+  const bKurz=bild(2000), bLang=bild(8000);
+  ok('[#106] ein Stein ist in kurzer und langer Wand GLEICH gross gezeichnet',
+    bKurz.steine.length>0 && JSON.stringify(bKurz.steine)===JSON.stringify(bLang.steine));
+  ok('[#106] eine Lage ist genau ANSICHT_LAGE_PX Einheiten hoch (Masstab in Steinhoehen)',
+    bKurz.steine.every(q=>Math.abs(+q.split('x')[1]-WP.ANSICHT_LAGE_PX)<1e-6));
+  ok('[#106] alle Schriftgroessen sind in beiden Waenden gleich (auch im Stein)',
+    bKurz.schrift.length>1 && JSON.stringify(bKurz.schrift)===JSON.stringify(bLang.schrift));
+  ok('[#106] alle Strichstaerken sind in beiden Waenden gleich',
+    bKurz.striche.length>1 && JSON.stringify(bKurz.striche)===JSON.stringify(bLang.striche));
+  // Und die Gegenprobe, dass die Wand wirklich verschieden gross ist: der viewBox waechst mit.
+  ok('[#106] der viewBox waechst mit der Wand, statt die Wand hineinzupressen', (()=>{
+    WP.applyWand(Object.assign(buildWall('V1',2000,2600,[],null,null),{wandtyp:'ohne_wind'}));
+    const a=WP.LASTDRAW.vbW;
+    WP.applyWand(Object.assign(buildWall('V2',8000,2600,[],null,null),{wandtyp:'ohne_wind'}));
+    const b=WP.LASTDRAW.vbW;
+    return b>a && Math.abs((b-a)-6000*WP.ansichtSc())<1.5; })());
+  // Einpassen darf nur VERKLEINERN — eine kurze Wand wird nicht aufgeblasen.
+  ok('[#106] Einpassen vergroessert nie ueber den echten Masstab hinaus',
+    WP.einpassFaktor()<=WP.ZOOM_FIT);
+
   // Ausgangsstand zuruecksetzen, damit die folgenden Pruefungen unveraendert laufen.
   WP.applyWand(vorher);
 }

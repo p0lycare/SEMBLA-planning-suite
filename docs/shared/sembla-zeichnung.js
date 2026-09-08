@@ -47,7 +47,7 @@ import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems, semblaBomMenge } fr
 import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          bodenblechSvg, bodenblechTeile, bodenblechStoesse,
          // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
-         // #112: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
+         // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
          SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg,
          // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
          ZWISCHENPUNKT, zwischenpunktSvg } from "./sembla-montage.js";
@@ -539,7 +539,7 @@ export function zeichnungSvg(w, opts = {}) {
 
   // Vorspannstraenge: reale Segmente + reale Stangenstuecke (Kopplungen, Sonderlaengen)
   //
-  // Bezugsmass aller Spannkomponenten-Symbole (#112): FESTE Papier-mm. Vorher stand hier
+  // Bezugsmass aller Spannkomponenten-Symbole (#106): FESTE Papier-mm. Vorher stand hier
   // `C * sc`, also die Lagenhoehe auf dem Blatt — und weil `sc = 1/masstab` ist und der
   // Blattmasstab aus der WANDGROESSE gewaehlt wird, war dasselbe Bauteil auf einem 1:25-Blatt
   // viermal so gross wie auf einem 1:100-Blatt. Symbolmasse gehoeren zur Darstellung und
@@ -547,7 +547,7 @@ export function zeichnungSvg(w, opts = {}) {
   // hier gefuehrte Untergrenze der Plattenbreite (`pw = 2.2`) ist entfallen: sie liegt jetzt
   // als `SPANN_MM.platte_b_min` beim Symbol selbst, also fuer beide Ausgaben gleich ([D-4]).
   const SYM = SPANN_EINHEIT.blatt;
-  // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#112): gesammelt in `vorn` und als eigene
+  // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
   // Gruppe NACH den Straengen und Einlegeblechen gesetzt, damit sie kein Stangenstueck, keine
   // Platte und kein Blech ueberdeckt. Bemassung und Brandschutzgruppe bleiben danach.
   let vorn = "";
@@ -574,7 +574,7 @@ export function zeichnungSvg(w, opts = {}) {
       const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
       const ao = sg.anker_oben || (sg.z1_mm === lt ? topConn : "spannplatte");
       // Mutter als kurzer, Spannplatte als langgezogenes flaches Rechteck — Geometrie und
-      // Kennfarbe geteilt ([D-4]/#110). Alle Symbolmasse sind fest (#112) und in Modul 1
+      // Kennfarbe geteilt ([D-4]/#110). Alle Symbolmasse sind fest (#106) und in Modul 1
       // dieselben; nur die Plattenbreite bleibt masstabstreues Bauteilmass (110 mm,
       // Untergrenze wie bisher). Die Platte LIEGT AUF der Kante — oben wie unten.
       if (au === "bodenblech") {
@@ -601,14 +601,14 @@ export function zeichnungSvg(w, opts = {}) {
       s += `<g class="zsp">`;
       for (const p of zp)
         // Formgleich zur Wandansicht: Balkenbreite, Schenkel und Strichstaerke sind FESTE
-        // Symbolmasse aus `SPANN_MM` (#112) und werden hier nicht mehr aus der Lagenhoehe
+        // Symbolmasse aus `SPANN_MM` (#106) und werden hier nicht mehr aus der Lagenhoehe
         // gerechnet — dasselbe Blech war so je Blattmasstab verschieden gross.
         s += zwischenpunktSvg(X(p.x_mm), Y(p.z_mm), { n: _n, e: SYM });
       s += `</g>`;
     }
   }
 
-  // Vordergrund der Kopplungsmuttern (#112) — eigene Gruppe, NACH Straengen und
+  // Vordergrund der Kopplungsmuttern (#106) — eigene Gruppe, NACH Straengen und
   // Einlegeblechen und VOR Bemassung und Brandschutzgruppe: sie verdeckt damit kein
   // Ausfuehrungsmass, und die Brandschutzgruppe bleibt die letzte des Blattes.
   if (vorn) s += `<g class="kop">${vorn}</g>`;

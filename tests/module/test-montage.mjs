@@ -703,11 +703,11 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     montageDokument(WS, eingaben).includes(bildS));
 }
 
-// --- Spannkomponenten als vereinfachte Seitenansicht ([D-4], #110/#112) ----
+// --- Spannkomponenten als vereinfachte Seitenansicht ([D-4], #110/#106) ----
 //
 // Geprueft wird die GEMEINSAME Symbolquelle, aus der Modul 1 und Modul 7 zeichnen: eine
 // Funktion je Bauteil, FESTE Symbolmasse in Papier-mm und die Kennfarben unveraendert. Das
-// Kernkriterium von #112 ist die Unabhaengigkeit von der Wandgroesse: derselbe Aufruf muss
+// Kernkriterium von #106 ist die Unabhaengigkeit von der Wandgroesse: derselbe Aufruf muss
 // bei jeder Wandlaenge und auf jedem Blattmasstab dieselbe Zeichenkette liefern.
 {
   const E1 = SPANN_EINHEIT.ansicht, E7 = SPANN_EINHEIT.blatt;
@@ -723,9 +723,9 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     Z_FARBE.platte === SPANN_FARBE.platte && Z_FARBE.mutter === SPANN_FARBE.mutter);
 
   const mu = mutterSvg(100, 200, E1), ku = kopplungsmutterSvg(100, 200, E1);
-  // #112: die ueberstehenden Stirnkanten aus #110 sind ERSATZLOS entfallen — sie lasen sich
+  // #106: die ueberstehenden Stirnkanten aus #110 sind ERSATZLOS entfallen — sie lasen sich
   // als Serifen am Bauteil. Das Symbol ist genau EIN Rechteck, ohne Kreis und ohne Vieleck.
-  ok("[#112] Mutter und Kopplungsmutter sind ein reines Rechteck OHNE Stirnkanten (keine Serifen)",
+  ok("[#106] Mutter und Kopplungsmutter sind ein reines Rechteck OHNE Stirnkanten (keine Serifen)",
     /^<rect /.test(mu) && !/<line /.test(mu) && (mu.match(/<rect /g) || []).length === 1
     && !/<circle/.test(mu) && !/<polygon/.test(mu)
     && /^<rect /.test(ku) && !/<line /.test(ku) && !/<circle/.test(ku) && !/<polygon/.test(ku));
@@ -738,24 +738,24 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     Math.abs(breite(ku) - breite(mu)) < 1e-9);
   ok("[#110] der Zylinder ist auf seine Einbauhoehe zentriert",
     Math.abs((num(mu, "y")[0] + hoehe(mu) / 2) - 200) < 1e-9);
-  // #112/[A-19]: `auf` ist der Unterschied zwischen "zentriert auf der Kante" und "liegt auf
+  // #106/[A-19]: `auf` ist der Unterschied zwischen "zentriert auf der Kante" und "liegt auf
   // der Kante". Genau das fehlte am Fuss und an der Spannmutter.
-  ok("[#112] mit `auf` SITZT das Bauteil auf der Kante, statt sie zu halbieren",
+  ok("[#106] mit `auf` SITZT das Bauteil auf der Kante, statt sie zu halbieren",
     (() => { const a = mutterSvg(100, 200, E1, { auf: true });
       return Math.abs((num(a, "y")[0] + hoehe(a)) - 200) < 1e-9 && num(a, "y")[0] < 200; })());
 
-  // --- Das Kernkriterium von #112: KEINE Abhaengigkeit von der Wandgroesse -----------------
-  ok("[#112] das Symbolmass ist fest in Papier-mm (Hoehe = SPANN_MM x Einheit)",
+  // --- Das Kernkriterium von #106: KEINE Abhaengigkeit von der Wandgroesse -----------------
+  ok("[#106] das Symbolmass ist fest in Papier-mm (Hoehe = SPANN_MM x Einheit)",
     Math.abs(hoehe(mutterSvg(0, 0, E7)) - SPANN_MM.mutter_h) < 1e-9
     && Math.abs(hoehe(kopplungsmutterSvg(0, 0, E7)) - SPANN_MM.kupplung_h) < 1e-9
     && Math.abs(breite(mutterSvg(0, 0, E7)) - SPANN_MM.d) < 1e-9);
-  ok("[#112] dieselbe Ansicht zeichnet dasselbe Bauteil bei JEDER Wandlaenge gleich",
+  ok("[#106] dieselbe Ansicht zeichnet dasselbe Bauteil bei JEDER Wandlaenge gleich",
     mutterSvg(0, 0, E1) === mutterSvg(0, 0, SPANN_EINHEIT.ansicht)
     && kopplungsmutterSvg(0, 0, E1) === kopplungsmutterSvg(0, 0, SPANN_EINHEIT.ansicht));
-  ok("[#112] das Symbol kennt weder Lagenhoehe noch Wandmasstab (kein `sc` im Zylinderweg)",
+  ok("[#106] das Symbol kennt weder Lagenhoehe noch Wandmasstab (kein `sc` im Zylinderweg)",
     mutterSvg(0, 0, E7).length > 0 && !/\bsc\b/.test(mutterSvg.toString())
     && !/lage/.test(mutterSvg.toString()) && !/lage/.test(kopplungsmutterSvg.toString()));
-  ok("[#112] Ansicht und Blatt fuehren dasselbe Symbol in ihren eigenen Einheiten",
+  ok("[#106] Ansicht und Blatt fuehren dasselbe Symbol in ihren eigenen Einheiten",
     Math.abs(hoehe(mutterSvg(0, 0, E1)) / E1 - hoehe(mutterSvg(0, 0, E7)) / E7) < 1e-12
     && E7 === 1 && E1 > 1);
 
@@ -777,7 +777,7 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       && Math.abs((ys[0] + hs[0]) - (yb + blech)) < 1e-9);
     ok("[#97] Kopf und Schaft schliessen an der Blechunterkante lueckenlos aneinander",
       Math.abs((ys[0] + hs[0]) - ys[1]) < 1e-9);
-    ok("[#112] auch die Schraube ist masstabsunabhaengig (feste Papier-mm)",
+    ok("[#106] auch die Schraube ist masstabsunabhaengig (feste Papier-mm)",
       Math.abs(num(schraubeSvg(0, 0, E7, 0), "width")[1] - SPANN_MM.kopf_d) < 1e-9);
   }
 
@@ -786,23 +786,39 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   ok("[#110] die Spannplatte ist ein langgezogenes, flaches Rechteck in der Plattenfarbe",
     /^<rect /.test(plU) && plU.includes(SPANN_FARBE.platte)
     && breite(plU) > 4 * hoehe(plU) && !/<circle/.test(plU));
-  ok("[#112] Plattenbreite bleibt masstabstreues Bauteilmass (110 mm), die Dicke ist fest",
+  ok("[#106] Plattenbreite bleibt masstabstreues Bauteilmass (110 mm), die Dicke ist fest",
     Math.abs(breite(plU) - SPANN_MM.platte_b_mm * scM1) < 1e-9
     && Math.abs(hoehe(plU) - SPANN_MM.platte_h * E1) < 1e-9);
-  // #112: der obere Anschluss zeichnete die Platte bis dahin von der Kante nach UNTEN, also
+  // #106: der obere Anschluss zeichnete die Platte bis dahin von der Kante nach UNTEN, also
   // in die Wand hinein. Es gibt nur noch EINEN Auflagersinn: die Platte liegt auf der Kante.
-  ok("[#112] die Platte liegt AUF der Kante — oben wie unten, nie in der Wand",
+  // #97: auf der Platte SITZT die Spannmutter — sie kommt aus derselben Funktion, weil der
+  // Rechenkern je Spannplatten-Anker zwingend genau eine Spannmutter zaehlt. Eine Platte ohne
+  // Mutter ist kein Zustand, den es gibt; getrennte Aufrufe waren die Fehlerquelle.
+  ok("[#97] die Spannplatte traegt die Spannmutter aus derselben Funktion",
+    (plU.match(/<rect /g) || []).length === 2
+    && plU.endsWith(mutterSvg(100, 200 - SPANN_MM.platte_h * E1, E1, { auf: true }))
+    && plU.includes(SPANN_FARBE.platte) && plU.includes(SPANN_FARBE.mutter));
+  ok("[#97] die Mutter sitzt AUF der Plattenoberkante, nicht in der Platte", (() => {
+    const r = [...plU.matchAll(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/g)]
+      .map(m => ({ y: +m[1], h: +m[2] }));
+    return r.length === 2 && Math.abs((r[1].y + r[1].h) - r[0].y) < 1e-9 && r[1].y < r[0].y;
+  })());
+  // KEINE Unterlegscheibe: im normalen Wandabschluss gibt es sie am Spannglied nicht
+  // (Fachauskunft 2026-09-08) — zwei Rechtecke, nicht drei.
+  ok("[#97] es wird KEINE Unterlegscheibe gezeichnet",
+    (plU.match(/<rect /g) || []).length === 2);
+  ok("[#106] die Platte liegt AUF der Kante — oben wie unten, nie in der Wand",
     Math.abs((num(plU, "y")[0] + hoehe(plU)) - 200) < 1e-9
     && spannplatteSvg(100, 200, E1, scM1, { oben: true }) === plU);
-  // #112: die Platte darf NIE schmaler werden als der feste Mutternzylinder — sonst liest
+  // #106: die Platte darf NIE schmaler werden als der feste Mutternzylinder — sonst liest
   // sie sich als das schmalere Bauteil. Bei langen Waenden bzw. kleinem Blattmasstab war
   // genau das der Fall, weil die Breite masstabstreu mitschrumpft und die Mutter nicht.
-  ok("[#112] die Platte ist in JEDEM Masstab breiter als der Mutternzylinder",
+  ok("[#106] die Platte ist in JEDEM Masstab breiter als der Mutternzylinder",
     [scM1, 1 / 20, 1 / 50, 1 / 100, 1 / 200].every(q =>
       breite(spannplatteSvg(0, 0, E1, q)) > breite(mutterSvg(0, 0, E1))));
-  ok("[#112] oberhalb der Untergrenze bleibt die Breite unveraendert masstabstreu",
+  ok("[#106] oberhalb der Untergrenze bleibt die Breite unveraendert masstabstreu",
     Math.abs(breite(spannplatteSvg(0, 0, E7, 1 / 20)) - SPANN_MM.platte_b_mm / 20) < 1e-9);
-  ok("[#112] die Sichtbarkeitsuntergrenze des Aufrufers ueberschreibt die eigene",
+  ok("[#106] die Sichtbarkeitsuntergrenze des Aufrufers ueberschreibt die eigene",
     Math.abs(breite(spannplatteSvg(0, 0, E7, 1 / 500, { min: 2.2 })) - 2.2) < 1e-9);
 
   // --- Einlegeblech: nach unten offenes C-Profil MIT genau einer Mutter obenauf ([A-16]) ---
@@ -819,13 +835,13 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     (() => { const y = num(zpM.slice(zpM.indexOf("<rect")), "y")[0];
       const h = hoehe(zpM.slice(zpM.indexOf("<rect")));
       return y + h <= 200 + 1e-9 && y < 200; })());
-  ok("[#112] die aufsitzende Mutter ist dasselbe Symbol wie jede andere Mutter",
+  ok("[#106] die aufsitzende Mutter ist dasselbe Symbol wie jede andere Mutter",
     zpM.includes(mutterSvg(100, 200, E1, { klasse: "zsp", auf: true,
       farbe: SPANN_FARBE.mutter })));
   ok("[#110] das Profil behaelt seine eigene Kennfarbe (keine Verwechslung mit der Mutter)",
     zpM.includes(ZWISCHENPUNKT.farbe) && ZWISCHENPUNKT.farbe !== SPANN_FARBE.mutter
     && ZWISCHENPUNKT.farbe !== SPANN_FARBE.platte);
-  ok("[#112] auch Balken, Schenkel und Strich des Blechs sind feste Symbolmasse",
+  ok("[#106] auch Balken, Schenkel und Strich des Blechs sind feste Symbolmasse",
     (() => { const a = zwischenpunktSvg(0, 0, { e: E7 }), b = zwischenpunktSvg(0, 0, { e: E7 });
       const q = /points="([^"]+)"/.exec(a)[1].split(" ").map(s => s.split(",").map(Number));
       return a === b && Math.abs((q[2][0] - q[1][0]) - SPANN_MM.blech_b) < 1e-9
@@ -833,10 +849,10 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         && new RegExp('stroke-width="' + SPANN_MM.strich + '"').test(a); })());
 
   // Die Symbolmasse sind ZEICHENMASSE: sie duerfen nirgends als Bauteilmass auftauchen.
-  ok("[#112] Symbolmasse sind Zeichenmasse — Modul 5 bleibt bit-gleich (Nachziehpunkt [P-6])",
+  ok("[#106] Symbolmasse sind Zeichenmasse — Modul 5 bleibt bit-gleich (Nachziehpunkt [P-6])",
     (() => { const q = readFileSync(new URL("../../docs/shared/sembla-montage.js",
       import.meta.url), "utf8");
-      return /NACHZIEHPUNKT \[P-6\] \(#110\/#112\)/.test(q)
+      return /NACHZIEHPUNKT \[P-6\] \(#110\/#106\)/.test(q)
         && /r="2\.8" fill="\$\{FARBE\.mutter\}"/.test(q); })());
 }
 

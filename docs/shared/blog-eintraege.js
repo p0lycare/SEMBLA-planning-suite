@@ -37,10 +37,22 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-23",
+    datum: "2026-09-08",
+    typ: "fix",
+    issue: 106,
+    titel: "Stein, Schrift, Linien und Symbole sind in jeder Wand gleich gro\u00df \u2014 "
+      + "Spannmutter erg\u00e4nzt",
+    testbitte: "Eine 2-m- und eine 8-m-Wand in Modul 1 vergleichen: Steine, Schrift und "
+      + "Linien gleich gro\u00df, die Ansicht wird breiter statt kleiner. Bei hohen W\u00e4nden "
+      + "schrumpft nichts. Einpassen verkleinert nur. Auf jeder Spannplatte sitzt die "
+      + "Spannmutter.",
+  },
+  {
     id: "chg-20260908-22",
     datum: "2026-09-08",
     typ: "fix",
-    issue: 112,
+    issue: 106,
     titel: "Bauteilsymbole sind jetzt in jeder Wand gleich gro\u00df \u2014 und die Fu\u00dffolge "
       + "zeigt Schraube, Blech und Kopplungsmutter",
     testbitte: "Zwei W\u00e4nde verschiedener L\u00e4nge in Modul 1 und Modul 7: Muttern sind "

@@ -45,8 +45,13 @@
   .planbox{--zoom:1;--planh:calc(100vh - 240px);
     max-width:100%;max-height:var(--planh);min-height:120px;overflow:auto;
     margin-top:6px;border:1px solid var(--sb-line);border-radius:8px;background:#fff}
-  .planbox>svg{display:block;background:#fff;width:calc(100% * var(--zoom));height:auto;
-    max-height:calc(var(--planh) * var(--zoom))}
+  /* Seit #106 setzt draw() die BREITE inline aus dem viewBox (`calc(<vbW>px * var(--zoom))`):
+     bei Zoom 100 % ist eine viewBox-Einheit genau ein CSS-Pixel, ein Stein also in jeder Wand
+     gleich gross. Ein `width:100%` hier wuerde genau das wieder zunichte machen — es presste
+     jede Wandlaenge auf die Rahmenbreite zurueck. `max-height` ist ebenfalls entfallen: was
+     nicht hineinpasst, laeuft in den Scrollbereich des Rahmens (`overflow:auto`) statt die
+     Zeichnung heimlich zu verkleinern. */
+  .planbox>svg{display:block;background:#fff;height:auto}
   .zoombar{display:flex;align-items:center;gap:4px}
   .zoombar .zwert{font-size:12px;color:var(--sb-muted);font-variant-numeric:tabular-nums;
     min-width:46px;text-align:center}
@@ -488,6 +493,9 @@ function renderLeer(){
   ['dims','rSp','rStrands','rN','rGrid','rSteine'].forEach(id=>$(id).textContent='—');
   $('itTable').querySelector('tbody').innerHTML='';
   $('plan').setAttribute('viewBox','0 0 1000 120');
+  // Auch der Leerzustand setzt die Anzeigebreite ausdruecklich (#106) — sonst behielte das SVG
+  // die Breite der zuletzt gezeichneten Wand und der Hinweistext stuende versetzt.
+  $('plan').style.width='calc(1000px * var(--zoom))';
   $('plan').innerHTML='<text x="500" y="62" text-anchor="middle" fill="#8a9098" font-size="13">Kein aktives Wandelement — bitte in Modul 0 („Start“) anlegen und aktiv setzen.</text>';
   renderZLegende(null);   // ohne Wand keine irreführende Zuschnittlegende (Issue #63)
   renderZpHinweis();      // … und keine stehengebliebene Aussage zu Zwischenspannpunkten
@@ -500,10 +508,16 @@ function renderIter(its){ const tb=$('itTable').querySelector('tbody'); tb.inner
 
 function draw(w){
   const svg=$('plan'), pad=46, L=w.length_mm, H=w.height_mm;
-  const sc=(1000-2*pad)/L, wPx=L*sc, hPx=H*sc;
-  svg.setAttribute('viewBox',`0 0 1000 ${Math.round(hPx+2*pad)}`);
+  // FESTER Masstab (#106): der viewBox waechst mit der Wand, statt die Wand in einen festen
+  // viewBox zu pressen. Damit ist ein Stein in jeder Wand gleich gross — siehe ansichtSc().
+  const sc=ansichtSc(), wPx=L*sc, hPx=H*sc;
+  const vbW=Math.round(wPx+2*pad), vbH=Math.round(hPx+2*pad);
+  svg.setAttribute('viewBox',`0 0 ${vbW} ${vbH}`);
+  // Anzeigegroesse = viewBox-Groesse x Zoom: eine Einheit ist bei 100 % genau ein CSS-Pixel.
+  // Ohne diese Zeile wuerde der Rahmen die Zeichnung auf seine Breite zurueckskalieren.
+  svg.style.width=`calc(${vbW}px * var(--zoom))`;
   const back=VIEW==='hinten'; const X=p=>pad+(back?(L-p):p)*sc, Y=y=>pad+(hPx-y*sc);
-  LASTDRAW={pad,sc,L,back,N:w.N_grid,hPx};
+  LASTDRAW={pad,sc,L,back,N:w.N_grid,hPx,vbW,vbH};
   // SVG-Defs für Verzahnungs-Schraffurmuster
   let s='<defs><pattern id="verzPattern" patternUnits="userSpaceOnUse" width="8" height="8">'
     +'<path d="M0,8 L8,0" stroke="#8b5cf6" stroke-width="1"/></pattern></defs>';
@@ -532,7 +546,7 @@ function draw(w){
 
   // ---- Anschlüsse: Bodenblech (immer), Kopfblech oder Spannplatten ----
   const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
-  // Bezugsmaß aller Spannkomponenten-Symbole (#112): FESTE viewBox-Einheiten je Papier-mm
+  // Bezugsmaß aller Spannkomponenten-Symbole (#106): FESTE viewBox-Einheiten je Papier-mm
   // aus SPANN_EINHEIT. Vorher stand hier `COURSE*sc`, also die Lagenhöhe in
   // Zeichenkoordinaten — und weil `sc=(1000-2*pad)/L` allein an der WANDLÄNGE hängt, war
   // dasselbe Bauteil bei einer kurzen Wand um ein Mehrfaches größer als bei einer langen.
@@ -568,7 +582,7 @@ function draw(w){
   // Wandoberkante ([Z-6]). Hier wird nichts nachgerechnet: ein Segment ohne bestimmten
   // Zuschnitt (leeres `stuecke` = gemeldeter Konflikt) bleibt LEER, statt eine durchgehende
   // Stange vorzutäuschen; der Konflikt steht als Warnung über der Ansicht.
-  // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#112): sie sammeln sich in `vorn` und
+  // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): sie sammeln sich in `vorn` und
   // werden erst nach Strängen, Ankern und Einlegeblechen angehängt. In SVG entscheidet allein
   // die Zeichenreihenfolge, und eine Kopplung darf von keinem Stangenstück, keiner Platte und
   // keinem Blech überdeckt werden.
@@ -588,7 +602,7 @@ function draw(w){
       // Anker unten/oben: Mutter als kurzer Zylinder, Spannplatte als langgezogenes flaches
       // Rechteck — Geometrie und Kennfarbe kommen aus sembla-montage.js ([D-4]/#110), damit
       // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Alle Symbolmaße
-      // sind dort FEST und deshalb unabhängig von Wandgröße, Blattmaßstab und Zoom (#112).
+      // sind dort FEST und deshalb unabhängig von Wandgröße, Blattmaßstab und Zoom (#106).
       if(au==='bodenblech'){
         // Fußfolge nach [A-19] (#97): von unten die Sechskantschraube — ihr Kopf ragt unter
         // dem Bodenblech heraus —, darauf das Blech, darauf AUFLIEGEND die KOPPLUNGSMUTTER.
@@ -626,7 +640,7 @@ function draw(w){
       s+=`<line x1="${x0}" y1="${zy}" x2="${x1}" y2="${zy}" stroke="${on?'#c9461c':ZWISCHENPUNKT.farbe}" stroke-width="${on?1.6:1}" stroke-dasharray="6 4" stroke-opacity="0.85" style="cursor:grab"/>`;
       s+=`<text x="${x1+4}" y="${zy+3}" font-size="9" fill="${on?'#c9461c':ZWISCHENPUNKT.farbe}">${fmt(z/10,1)}</text>`; } }
 
-  // Vordergrund der BAUTEILE (#112): die gesammelten Kopplungsmuttern. Danach folgen nur
+  // Vordergrund der BAUTEILE (#106): die gesammelten Kopplungsmuttern. Danach folgen nur
   // noch Bedien-Overlays (Griffe, Hilfslinien) — die dürfen weiter obenauf liegen.
   s+=vorn;
 
@@ -1091,7 +1105,12 @@ function bindProdukte(){
 // beruehrt weder viewBox noch draw(): applyZoom() setzt allein die beiden CSS-Variablen des
 // Zeichenrahmens. Eingepasst wird ueber die Fensterhoehe (`--planh` in vh), ein Resize rechnet
 // die Einpassung also von selbst neu, waehrend der gewaehlte Faktor stehen bleibt.
-const ZOOM_MIN=25, ZOOM_MAX=400, ZOOM_SCHRITT=25, ZOOM_FIT=100;
+// Seit #106 ist 100 % der ECHTE Masstab (eine viewBox-Einheit = ein CSS-Pixel) und nicht mehr
+// „eingepasst". Einpassen wird deshalb gerechnet und ist ausdruecklich nach oben auf 100 %
+// begrenzt: es darf eine kurze Wand NICHT vergroessern, sonst waere der Stein wieder je Wand
+// verschieden gross — genau der Fehler, den #106 abstellt. Die Untergrenze sinkt auf 10 %,
+// damit auch eine sehr lange Wand vollstaendig einpassbar bleibt.
+const ZOOM_MIN=10, ZOOM_MAX=400, ZOOM_SCHRITT=25, ZOOM_FIT=100;
 let zoomPct=ZOOM_FIT;
 function applyZoom(){
   const box=$('planBox');
@@ -1108,7 +1127,20 @@ function setzeZoom(p){
   applyZoom();
 }
 function zoomSchritt(richtung){ setzeZoom(zoomPct + richtung*ZOOM_SCHRITT); }
-function zoomEinpassen(){ setzeZoom(ZOOM_FIT); }
+/**
+ * Zoomfaktor, bei dem die ganze Zeichnung in den Rahmen passt — gerechnet aus dem Rahmen und
+ * den viewBox-Massen von draw(), nach oben auf den echten Masstab (100 %) begrenzt.
+ * Ohne gezeichnete Wand (kein LASTDRAW) bleibt es beim echten Masstab.
+ */
+function einpassFaktor(){
+  if(!LASTDRAW) return ZOOM_FIT;
+  const box=$('planBox');
+  const r=(box && box.getBoundingClientRect) ? (box.getBoundingClientRect()||{}) : {};
+  const rw=(r.width>0)?r.width:LASTDRAW.vbW, rh=(r.height>0)?r.height:LASTDRAW.vbH;
+  const f=Math.min(rw/LASTDRAW.vbW, rh/LASTDRAW.vbH)*100;
+  return Math.max(ZOOM_MIN, Math.min(ZOOM_FIT, f));
+}
+function zoomEinpassen(){ setzeZoom(einpassFaktor()); }
 
 // ---- Zeigerposition -> Zeichnung: die TATSAECHLICHE Koordinatenabbildung (Issue #106) ----
 // Der Rueckweg vom Zeiger in Wandmillimeter darf NICHT annehmen, die Elementbreite entspraeche
@@ -1119,16 +1151,16 @@ function zoomEinpassen(){ setzeZoom(ZOOM_FIT); }
 // (oder oben/unten) bleibt Leerraum. Wer diesen Faktor und diesen Versatz weglaesst, trifft je
 // nach Zoom um mehrere Rasterfelder daneben — genau der Fehler aus #106.
 // Der viewBox wird NICHT aus dem DOM gelesen, sondern aus derselben Quelle gebildet, aus der
-// draw() ihn setzt (`LASTDRAW.pad`/`hPx`, Breite fest 1000) — kein zweites Mass, kein
-// zweiter Wahrheitsstand.
-const VB_BREITE=1000;
+// draw() ihn setzt — kein zweites Mass, kein zweiter Wahrheitsstand. Seit #106 sind BEIDE
+// viewBox-Masse variabel (der Masstab ist fest, die Zeichnung waechst mit der Wand), sie
+// stehen deshalb als `vbW`/`vbH` in LASTDRAW statt als feste Breite hier.
 function bildPunkt(e){
   const el=$('plan');
   const r=(el && el.getBoundingClientRect) ? (el.getBoundingClientRect()||{}) : {};
-  const vbH=Math.round(LASTDRAW.hPx+2*LASTDRAW.pad);
-  const rw=(r.width>0)?r.width:VB_BREITE, rh=(r.height>0)?r.height:vbH;
-  const s=Math.min(rw/VB_BREITE, rh/vbH);            // „meet": das kleinere Verhaeltnis gewinnt
-  const offX=(rw-VB_BREITE*s)/2, offY=(rh-vbH*s)/2;  // „xMidYMid": zentriert
+  const vbW=LASTDRAW.vbW, vbH=LASTDRAW.vbH;
+  const rw=(r.width>0)?r.width:vbW, rh=(r.height>0)?r.height:vbH;
+  const s=Math.min(rw/vbW, rh/vbH);            // „meet": das kleinere Verhaeltnis gewinnt
+  const offX=(rw-vbW*s)/2, offY=(rh-vbH*s)/2;  // „xMidYMid": zentriert
   return { sx: ((Number(e.clientX)||0)-(r.left||0)-offX)/s,
            sy: ((Number(e.clientY)||0)-(r.top ||0)-offY)/s };
 }
@@ -1139,6 +1171,28 @@ function bildPunkt(e){
 // (Als Funktionen, weil GRID/COURSE erst in __wpInit() aus window.SEMBLA gesetzt werden.)
 function fangKMm(){ return GRID/2; }      // 62,5 mm
 function fangZMm(){ return COURSE/2; }    // 100 mm
+
+// ---- Ansichtsmasstab der Wandansicht (Issue #106) ---------------------------------------
+// EINE Lage ist IMMER `ANSICHT_LAGE_PX` viewBox-Einheiten hoch — damit steht der Masstab der
+// Ansicht fest, und zwar in der Einheit, die der Planer sieht: der Steinhoehe.
+//
+// Vorher rechnete draw() `sc = (1000-2*pad)/L`: der Masstab hing allein an der WANDLAENGE, die
+// Ansicht presste also jede Wand auf dieselbe Breite. Ein Stein hatte damit gar keine
+// definierte Groesse — er war bei 2 m riesig und bei 9 m winzig. Jedes feste Zeichenmass
+// (Schrift, Strichstaerke, Symbol) stand deshalb in einem anderen Verhaeltnis zum Stein, und
+// jedes mit `sc` mitskalierte Mass wurde auf dem Schirm mal winzig, mal riesig. Beides war
+// dasselbe Problem an zwei Enden, und keine Wahl am Symbol konnte es loesen.
+//
+// Mit festem Masstab fallen die beiden Forderungen zusammen: ein Zeichenmass in festen
+// viewBox-Einheiten IST ein konstantes Verhaeltnis zum Stein. Schrift, Steinbeschriftung,
+// Kontur- und Hilfslinien, Bemassungstexte und die Bauteilsymbole brauchen dafuer keine
+// eigene Rechnung mehr — sie stehen einfach fest ([D-9]).
+//
+// Die Zeichnung ist danach so gross, wie die Wand wirklich ist; Lesbarkeit ist Sache des
+// ZOOMS und nicht des Wandmasses. `zoomEinpassen()` bleibt als ausdruecklicher Schritt.
+const ANSICHT_LAGE_PX=60;
+/** Zeicheneinheiten je Wandmillimeter — fest, unabhaengig von Laenge und Hoehe der Wand. */
+function ansichtSc(){ return ANSICHT_LAGE_PX/COURSE; }
 
 // ---- Spannachsen-Editor (Feature: manuelle Achsen für Sonderkonstruktionen) ----
 /** Zeigerposition -> Wandmillimeter waagerecht, auf die Wand geklemmt. */
@@ -1327,6 +1381,7 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},
+  ansichtSc, einpassFaktor, ANSICHT_LAGE_PX, get LASTDRAW(){return LASTDRAW;},
   ZOOM_MIN, ZOOM_MAX, ZOOM_SCHRITT, ZOOM_FIT };
 
 window.__wpInit=function(){

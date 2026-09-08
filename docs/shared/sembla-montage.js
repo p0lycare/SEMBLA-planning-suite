@@ -59,7 +59,7 @@ export function stueckFarbe(art) {
 }
 
 /**
- * Darstellungsschluessel der Spannkomponenten ([D-4], #110/#112) — Kennfarben und Symbolmasse
+ * Darstellungsschluessel der Spannkomponenten ([D-4], #110/#106) — Kennfarben und Symbolmasse
  * der Schrauben, Muttern, Kopplungsmuttern und Spannplatten.
  *
  * Er liegt hier, weil dieselbe Datei schon den Zuschnittschluessel (`STUECK_FARBE`), den
@@ -72,7 +72,7 @@ export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73" };
 
 /**
  * Symbolmasse der Spannkomponenten in PAPIER-MM — FEST, unabhaengig von Wandgroesse,
- * Blattmasstab und Zoom (#112).
+ * Blattmasstab und Zoom (#106).
  *
  * WARUM NICHT MEHR "Vielfache der Lagenhoehe" (#110): die Lagenhoehe in Zeichenkoordinaten
  * haengt in BEIDEN Ausgaben an der Wandgroesse. Modul 1 rechnet `sc = (1000-2*pad)/L`, der
@@ -108,19 +108,22 @@ export const SPANN_MM = {
 
 /**
  * ZEICHENKOORDINATEN JE PAPIER-MM — die eine Stelle, an der die beiden Einheitensysteme
- * aufeinandertreffen ([D-4], #112).
+ * aufeinandertreffen ([D-4], #106).
  *
  * `blatt`: Modul 7 rechnet unmittelbar in Papier-mm ([D-2]), der Faktor ist 1.
- * `ansicht`: Modul 1 rechnet in viewBox-Einheiten eines 1000 Einheiten breiten Blattes. Der
- * Faktor 5 ist so gewaehlt, dass die Symbole genau so gross bleiben, wie sie #110 bei einer
- * 3-m-Wand gezeichnet hat (dort war `lage = 250 mm * sc` rund 76 Einheiten, die Mutter also
- * 0,12 * 76 ~ 9 Einheiten = 1,8 mm * 5) — nur eben jetzt bei JEDER Wandlaenge gleich.
+ * `ansicht`: Modul 1 rechnet in viewBox-Einheiten seines FESTEN Ansichtsmasstabs (#106): eine
+ * Lage ist dort immer 60 Einheiten hoch. Der Faktor 5 macht daraus die Symbolgroessen
+ * Mutter 9, Kopplungsmutter 22,5 und Zylinderdurchmesser 12 Einheiten — also 15 %, 37,5 %
+ * und 20 % der LAGENHOEHE. Weil der Masstab der Ansicht fest ist, ist ein festes Zeichenmass
+ * dort GLEICHBEDEUTEND mit einem konstanten Verhaeltnis zum Stein; die Symbole brauchen dafuer
+ * keine eigene Rechnung. (Vor #106 hing der Ansichtsmasstab an der Wandlaenge — dann war
+ * genau das nicht gleichbedeutend, und keine Wahl am Symbol konnte beides erfuellen.)
  */
 export const SPANN_EINHEIT = { blatt: 1, ansicht: 5 };
 
 /**
  * Vereinfachte Seitenansicht eines Zylinders (Mutter/Kopplungsmutter) — EIN Zeichenweg fuer
- * Wandansicht und Zeichnung ([D-4], #110/#112).
+ * Wandansicht und Zeichnung ([D-4], #110/#106).
  *
  * Gezeichnet wird ein kantiger, gefuellter Koerper OHNE ueberstehende Stirnkanten. Die
  * ueberstehenden Kantenlinien aus #110 sind ersatzlos entfallen: sie sollten den Zylinder
@@ -148,7 +151,7 @@ function _zylinderSvg(x, y, e, hMm, dMm, opts = {}) {
 }
 
 /**
- * Normale Mutter / Spannmutter als kurzer Zylinder in Seitenansicht ([D-4], #110/#112).
+ * Normale Mutter / Spannmutter als kurzer Zylinder in Seitenansicht ([D-4], #110/#106).
  * @param {number} x @param {number} y Einbauhoehe (Mitte; mit `opts.auf` die Unterkante)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
  * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean}} [opts]
@@ -159,7 +162,7 @@ export function mutterSvg(x, y, e, opts = {}) {
 }
 
 /**
- * Kopplungsmutter als DEUTLICH laengerer Zylinder in Seitenansicht ([D-4], #110/#112) —
+ * Kopplungsmutter als DEUTLICH laengerer Zylinder in Seitenansicht ([D-4], #110/#106) —
  * dieselbe Grundform wie `mutterSvg`, nur die Hoehe unterscheidet sich (Verhaeltnis 2,5).
  * @param {number} x @param {number} y Stosshoehe (Mitte; mit `opts.auf` die Unterkante)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
@@ -207,17 +210,31 @@ export function schraubeSvg(x, y, e, blech, opts = {}) {
 }
 
 /**
- * Spannplatte als langgezogenes, flaches Rechteck ([A-3]/[D-4], #110/#112).
+ * Spannplatte MIT ihrer Spannmutter als Anschlusssymbol ([A-3]/[D-4], #110/#106/#97).
  *
- * Die Platte LIEGT AUF der Auflagerkante — immer, oben wie unten. Bis #112 zeichnete der
+ * Die Platte LIEGT AUF der Auflagerkante — immer, oben wie unten. Bis #106 zeichnete der
  * obere Anschluss sie von der Kante nach UNTEN und damit in die Wand hinein; das war falsch,
  * die obere Spannplatte liegt auf der Wandoberkante auf.
+ *
+ * Auf der Platte SITZT die SPANNMUTTER, und sie wird hier mitgezeichnet statt vom Aufrufer:
+ * der Rechenkern zaehlt je Spannplatten-Anker zwingend genau eine Spannmutter
+ * (`sembla-core.js`, `segSpannmutter++` gemeinsam mit `segSpannplatten++` — oben wie unten),
+ * eine Platte OHNE Mutter ist also kein Zustand, den es gibt. Bis #97 fehlte sie in beiden
+ * Ansichten, weil beide Aufrufer sie einzeln haetten zeichnen muessen; genau diese Trennung
+ * war die Fehlerquelle. Die Stueckliste war davon nie betroffen — sie zaehlt aus dem
+ * Rechenkern und nicht aus der Zeichnung.
+ *
+ * KEINE Unterlegscheibe: im normalen Wandabschluss gibt es sie am Spannglied nicht. Scheiben
+ * treten allein am Deckenanschluss auf und kommen dort im Set des Deckenanschlusses mit
+ * (Fachauskunft 2026-09-08). Die Stuecklistenposition „Unterlegscheibe (Wandabschluss)"
+ * (#92, Menge je Spannplatte) widerspricht dem und ist als MENGENfrage offen — sie wird hier
+ * ausdruecklich nicht nachgezeichnet, statt eine Scheibe zu zeigen, die es nicht gibt.
  *
  * Die BREITE ist ein Bauteilmass (`SPANN_MM.platte_b_mm` = 110 mm) und wird mit `sc`
  * masstabsgetreu umgerechnet — sie liegt als Auflagerflaeche entlang der Wand und kann
  * abgemessen werden. Nur die DICKE ist festes Symbolmass.
  *
- * Die Breite hat aber eine UNTERGRENZE im Symbolmass (`platte_b_min`, #112): bei kleinem
+ * Die Breite hat aber eine UNTERGRENZE im Symbolmass (`platte_b_min`, #106): bei kleinem
  * Blattmasstab wird die masstabstreue Breite kleiner als der feste Mutternzylinder, und die
  * Platte laese sich dann als das schmalere Bauteil lesen, das sie nicht ist. Die Untergrenze
  * greift erst weit unterhalb der Masstaebe, in denen man ein Bauteil abmisst; oberhalb bleibt
@@ -237,8 +254,11 @@ export function spannplatteSvg(x, y, e, sc, opts = {}) {
     SPANN_MM.platte_b_mm * sc);
   const farbe = opts.farbe || SPANN_FARBE.platte;
   const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
+  // Platte zuerst, dann die aufsitzende Spannmutter auf ihrer Oberkante (`y - h`).
   return `<rect${kl} x="${n(x - b / 2)}" y="${n(y - h)}" `
-    + `width="${n(b)}" height="${n(h)}" fill="${farbe}"/>`;
+    + `width="${n(b)}" height="${n(h)}" fill="${farbe}"/>`
+    + mutterSvg(x, y - h, e, { n: opts.n, klasse: opts.klasse, auf: true,
+      farbe: opts.mutter_farbe || SPANN_FARBE.mutter });
 }
 
 /**
@@ -256,10 +276,10 @@ export const ZWISCHENPUNKT = { farbe: "#0a7d6b", label: "Einlegeblech (Zwischens
  * Symbol eines Zwischenspannpunkts: nach unten geoeffnetes eckiges C-Profil auf der
  * Lagen-Oberkante ([A-14]).
  *
- * Balkenbreite, Schenkel und Strichstaerke sind FESTE SYMBOLMASSE aus `SPANN_MM` (#112) und
+ * Balkenbreite, Schenkel und Strichstaerke sind FESTE SYMBOLMASSE aus `SPANN_MM` (#106) und
  * bewusst KEINE Bauteilmasse: fuer das Einlegeblech gibt es noch keine bestaetigten
  * Abmessungen, und ein hier gesetztes mm-Mass laese sich als solche lesen. Aus dem Symbol
- * wird nichts abgeleitet. Bis #112 gaben die Aufrufer die Masse als Vielfache der Lagenhoehe
+ * wird nichts abgeleitet. Bis #106 gaben die Aufrufer die Masse als Vielfache der Lagenhoehe
  * herein — dasselbe Blech war damit je Wandgroesse verschieden gross.
  *
  * Auf dem Querbalken sitzt real GENAU EINE Mutter von oben ([A-16]). Sie wird gezeichnet,
@@ -972,13 +992,13 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
       s += `<line x1="${x}" y1="${Y(st.z_unten_mm)}" x2="${x}" y2="${Y(st.zeichen_oben_mm)}" `
         + `stroke="${FARBE.stange}" stroke-width="2.4"/>`;
     }
-    // NACHZIEHPUNKT [P-6] (#110/#112): die folgenden Anker-, Kopplungs- und Plattenformen sind
+    // NACHZIEHPUNKT [P-6] (#110/#106): die folgenden Anker-, Kopplungs- und Plattenformen sind
     // die ALTEN (Kreis/flacher Balken) und laufen damit gegen die vereinfachte Seitenansicht,
     // die `mutterSvg`/`kopplungsmutterSvg`/`spannplatteSvg`/`schraubeSvg` fuer Modul 1 und
     // Modul 7 fuehren. Das Baugruppenbild von Modul 5 stand ausdruecklich NICHT im Umfang von
-    // #110 und #112 und bleibt deshalb hier bit-gleich; umgestellt wird es in einem eigenen
+    // #110 und #106 und bleibt deshalb hier bit-gleich; umgestellt wird es in einem eigenen
     // Paket. Kennfarben sind schon gemeinsam (`FARBE.mutter`/`FARBE.platte` aus `SPANN_FARBE`).
-    // Es fehlen hier deshalb weiterhin: die feste Symbolgroesse (#112), die Schraube am Fuss
+    // Es fehlen hier deshalb weiterhin: die feste Symbolgroesse (#106), die Schraube am Fuss
     // und die aufsitzende statt zentrierte Mutter ([A-19]/#97).
     // Fussanschluss
     if (st.anker_unten === "bodenblech") s += `<circle cx="${x}" cy="${Y(st.z_unten_mm)}" r="2.8" fill="${FARBE.mutter}"/>`;
