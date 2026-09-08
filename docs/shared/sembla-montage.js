@@ -59,6 +59,20 @@ export function stueckFarbe(art) {
 }
 
 /**
+ * Darstellungsschluessel der BLECHSTOSSMARKE ([D-4], [A-11]/#91) — Kennfarbe und Klartext
+ * der Marke, die zwei Bodenblechteile voneinander trennt.
+ *
+ * Er liegt hier neben `STUECK_FARBE`/`SPANN_FARBE`, weil dieselbe Datei schon die
+ * Blechzerlegung liest (`bodenblechTeile`/`bodenblechStoesse`) und die Marke zeichnet
+ * (`bodenblechSvg`): Blatt und Legende muessen dieselbe Farbe zeigen, und ein Hex-Wert
+ * unmittelbar in der Zeichenzeile waere genau die Drift, die [D-4] ausschliesst.
+ *
+ * WEISS, weil die Marke IM stahlfarbenen Blechstreifen liegt (#91): die frueher benutzte
+ * Konturfarbe las sich dort wie ein eigenes Bauteil unter dem Blech.
+ */
+export const BLECHSTOSS = { farbe: "#fff", label: "Blechstoß" };
+
+/**
  * Darstellungsschluessel der Spannkomponenten ([D-4], #110/#106) — Kennfarben und Symbolmasse
  * der Schrauben, Muttern, Kopplungsmuttern und Spannplatten.
  *
@@ -925,7 +939,11 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
   const y0 = Y(0);
   let s = "";
   for (const t of bodenblechTeile(w)) {
-    const x = X(t.x0_mm), bw = t.raster_mm * sc;
+    // Linke Kante SPIEGELFEST: die Wandansicht von Modul 1 zeigt die Rueckseite mit
+    // fallendem `X` ([D-4]/#91). Bei steigendem `X` ist `Math.min` bitgenau `X(t.x0_mm)`,
+    // die Ausgaben von Modul 5 und Modul 7 bleiben also zeichengleich.
+    const bw = t.raster_mm * sc;
+    const x = Math.min(X(t.x0_mm), X(t.x0_mm + t.raster_mm));
     s += `<rect x="${n(x)}" y="${n(y0)}" width="${n(bw)}" height="${n(bth)}" `
       + `fill="${t.art === "sonder" ? STUECK_FARBE.sonder : FARBE.stahl}" `
       + `stroke="${FARBE.stahl_rand}" stroke-width="${n(rand)}"/>`;
@@ -940,11 +958,14 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
           + `stroke="${FARBE.stahl_rand}" stroke-width="${n(sSchr)}"/>`;
     }
   }
-  // Stossfugen an den KUMULIERTEN Rastermassen — nach unten aus dem Streifen heraus
-  // verlaengert, damit sie auch bei duennem Blech sichtbar sind und keinen Stein verdecken.
+  // Stossfugen an den KUMULIERTEN Rastermassen — WEISS und genau blechhoch (#91).
+  // Sie liegen vollstaendig IM Blechstreifen (Oberkante `y0` bis Unterkante `y0 + bth`):
+  // die frueher nach unten herausgezogene Marke in Konturfarbe las sich wie ein eigenes
+  // Bauteil oder eine Fuge UNTER dem Blech statt wie eine Teilgrenze DARIN. Weiss steht
+  // auf dem stahlfarbenen Streifen und traegt die Marke auch im Schwarz-Weiss-Ausdruck.
   for (const xm of bodenblechStoesse(w))
-    s += `<line x1="${n(X(xm))}" y1="${n(y0)}" x2="${n(X(xm))}" y2="${n(y0 + bth * 1.7)}" `
-      + `stroke="${FARBE.kontur}" stroke-width="${n(sStoss)}"/>`;
+    s += `<line x1="${n(X(xm))}" y1="${n(y0)}" x2="${n(X(xm))}" y2="${n(y0 + bth)}" `
+      + `stroke="${BLECHSTOSS.farbe}" stroke-width="${n(sStoss)}"/>`;
   return s;
 }
 
@@ -1133,10 +1154,15 @@ function _zuschnittLegende(w, ab, x0, y) {
     lx += 26 + STUECK_LABEL[a].length * 5;
   }
   if (stoss) {
-    const t = "Blechstoß";
-    s += `<line x1="${lx + 7}" y1="${y - 8}" x2="${lx + 7}" y2="${y - 0.5}" stroke="${FARBE.kontur}" stroke-width="1.6"/>`
-      + `<text x="${lx + 14}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
-    lx += 22 + t.length * 5;
+    const t = BLECHSTOSS.label;
+    // Das Feld zeigt die Marke SO, WIE SIE IM BLATT STEHT (#91): eine weisse Linie IN
+    // einem stahlfarbenen Blechfeld. Eine weisse Linie auf dem hellen Blattgrund allein
+    // waere unsichtbar, eine schwarze zeigte eine Farbe, die es im Blatt nicht mehr gibt.
+    s += `<rect x="${lx}" y="${y - 7}" width="14" height="6" fill="${FARBE.stahl}" `
+      + `stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
+      + `<line x1="${lx + 7}" y1="${y - 7}" x2="${lx + 7}" y2="${y - 1}" stroke="${BLECHSTOSS.farbe}" stroke-width="1.6"/>`
+      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
+    lx += 26 + t.length * 5;
   }
   if (sonderBlech) {
     const t = `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)`;

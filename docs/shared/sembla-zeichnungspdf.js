@@ -81,6 +81,9 @@ import {
   VERZAHNUNG as VERZAHNUNG_LP,
 } from "./sembla-lageplan.js";
 import { bodenblechStoesse, bodenblechTeile, STUECK_LABEL,
+         // #91: Kennfarbe und Klartext der Blechstossmarke — dieselbe Quelle, aus der das
+         // eingebettete Blatt-SVG die Marke zeichnet; eine zweite Werteliste waere Drift.
+         BLECHSTOSS,
          // #110: Kennfarbe und Klartext des Einlegeblechs — derselbe Schluessel, den das
          // Blatt-SVG benutzt; eine zweite Werteliste hier waere Drift ([D-4]).
          ZWISCHENPUNKT, DECKENANSCHLUSS } from "./sembla-montage.js";
@@ -272,6 +275,18 @@ function _marke(x, basis, fs, z) {
     return { svg: `<polyline points="${_n(x)},${_n(y0)} ${_n(x + b)},${_n(y0)}`
       + ` ${_n(x + b)},${_n(y1)} ${_n(x + w)},${_n(y1)}" fill="none"`
       + ` stroke="${z.marke_farbe}" stroke-width="${_n(lw)}" stroke-linejoin="miter"/>`,
+      breite: w + fs * 0.4 };
+  }
+  // #91: die Blechstossmarke — ein stahlfarbenes Blechfeld (11 x 9 wie `plate`) mit der
+  // WEISSEN Marke darin, also genau das, was das Blatt zeigt und woertlich das
+  // `<i class="plate">`-Kaestchen mit Verlauf der HTML-Legende. Ein einfarbiges Feld in der
+  // Markenfarbe waere auf dem hellen Blattgrund unsichtbar, ein dunkles zeigte eine Farbe,
+  // die es im Blatt nicht mehr gibt.
+  if (z.form === "stoss") {
+    const w = _mmPx(11), h = _mmPx(9), y0 = basis - h * 0.85;
+    return { svg: _rect(x, y0, w, h, { fuellung: z.marke_farbe, rund: _mmPx(2) })
+      + `<line x1="${_n(x + w / 2)}" y1="${_n(y0)}" x2="${_n(x + w / 2)}" y2="${_n(y0 + h)}"`
+      + ` stroke="${z.strich_farbe}" stroke-width="${_n(_mmPx(1.6))}"/>`,
       breite: w + fs * 0.4 };
   }
   if (z.form === "chip") {
@@ -628,7 +643,8 @@ export function legendeWand(w) {
     { form: "plate", marke_farbe: FARBE_Z.platte, text: "Spannplatte" },
     { form: "plate", marke_farbe: FARBE_Z.stahl, text: "Boden-/Kopfblech" },
     ...(bodenblechStoesse(el).length
-      ? [{ form: "dot", marke_farbe: FARBE_Z.kontur, text: "Blechstoß (Bodenblech)" }] : []),
+      ? [{ form: "stoss", marke_farbe: FARBE_Z.stahl, strich_farbe: BLECHSTOSS.farbe,
+        text: `${BLECHSTOSS.label} (Bodenblech)` }] : []),
     ...(bodenblechTeile(el).some((t) => t.art === "sonder")
       ? [{ form: "plate", marke_farbe: FARBE_Z.stange_sonder,
         text: `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)` }] : []),

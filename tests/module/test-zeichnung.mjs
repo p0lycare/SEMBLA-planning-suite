@@ -22,7 +22,7 @@ import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import { einbauteile, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
-         bodenblechTeile, bodenblechStoesse, abschnittSvg, montageAbschnitte,
+         bodenblechTeile, bodenblechStoesse, BLECHSTOSS, abschnittSvg, montageAbschnitte,
          // #110: die gemeinsame Symbolquelle der Spannkomponenten — das Blatt darf dafuer
          // keine eigene Geometrie und keine eigenen Hex-Werte fuehren ([D-4]).
          SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, mutterSvg,
@@ -348,8 +348,13 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
       && !new RegExp(`stroke="${Z.FARBE.stange_sonder}"`).test(ohne)
       && !new RegExp(`stroke="${Z.FARBE.stange_rest}"`).test(ohne); })());
   // Die weisse Haarlinie: genau eine je Stoss, gezaehlt gegen die REALEN Stuecke.
-  const HAAR = /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="[-\d.]+" stroke="#fff" stroke-width="([-\d.]+)"\/>/g;
-  const haare = svg => [...svg.matchAll(HAAR)].map(m => ({ x1: +m[1], y: +m[2], x2: +m[3], sw: +m[4] }));
+  const HAAR = /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#fff" stroke-width="([-\d.]+)"\/>/g;
+  // Seit #91 ist auch die Blechstossmarke weiss. Sie ist SENKRECHT, die Haarlinie am
+  // Stangenstoss WAAGERECHT — unterschieden wird deshalb an der Geometrie, nicht an der
+  // Farbe; eine Klasse am Blatt-SVG waere eine Aenderung an der Zeichnung fuer den Test.
+  const haare = svg => [...svg.matchAll(HAAR)]
+    .filter(m => +m[2] === +m[4])
+    .map(m => ({ x1: +m[1], y: +m[2], x2: +m[3], sw: +m[5] }));
   let stoesseSoll = 0;
   for (const col of W.tension_columns)
     for (const sg of col.segments) stoesseSoll += Math.max(0, stangenStuecke(W, sg).length - 1);
@@ -1030,21 +1035,29 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
 // Druck-HTML und die eigenstaendige SVG-Datei dieselbe Zeichenkette tragen ([D-6]).
 {
   // Blechrechtecke an der y-Position des Wandfusses; #5b6673 = FARBE.stahl,
-  // #e8702a = STUECK_FARBE.sonder, #13202e = FARBE.kontur (Stosslinie).
+  // #e8702a = STUECK_FARBE.sonder, #fff = BLECHSTOSS.farbe (Stossmarke, #91).
   const rects = (svg) => {
-    const alle = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)"[^>]*fill="(#5b6673|#e8702a)"/g)]
-      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], sonder: m[4] === "#e8702a" }));
+    const alle = [...svg.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"[^>]*fill="(#5b6673|#e8702a)"/g)]
+      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4], sonder: m[5] === "#e8702a" }));
     return alle.length ? alle.filter(r => r.y === alle[0].y) : [];
   };
   const stossX = (svg) => {
     const r = rects(svg);
     if (!r.length) return [];
-    return [...svg.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="[-\d.]+" y2="[-\d.]+" stroke="#13202e"/g)]
-      .filter(m => +m[2] === r[0].y).map(m => +m[1]).sort((a, b) => a - b);
+    return stossLinien(svg).map(l => l.x);
   };
-  ok("[D-4] Testfarben sind die kanonischen Werte (Blech, Sonderzuschnitt, Kontur)",
+  // #91: beide Enden der Marke, damit die Blechhoehe pruefbar bleibt.
+  const stossLinien = (svg) => {
+    const r = rects(svg);
+    if (!r.length) return [];
+    return [...svg.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#fff"/g)]
+      .filter(m => +m[2] === r[0].y && +m[1] === +m[3])
+      .map(m => ({ x: +m[1], y0: +m[2], y1: +m[4] }))
+      .sort((a, b) => a.x - b.x);
+  };
+  ok("[D-4] Testfarben sind die kanonischen Werte (Blech, Sonderzuschnitt, Stossmarke)",
     Z.FARBE.stahl === "#5b6673" && STUECK_FARBE.sonder === "#e8702a"
-    && Z.FARBE.kontur === "#13202e");
+    && BLECHSTOSS.farbe === "#fff");
 
   // (a) Mehrteilig mit ungleichen Teilen: genau die kanonischen Stoesse, keine Modulfugen
   const WBM = buildWall("Blech-mehr", 4625, 2600, [], null,
@@ -1066,6 +1079,15 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
     && bodenblechStoesse(WBM).every((xm, i) => Math.abs(stossX(svgM)[i] - (rM[0].x + xm * scM)) < 5e-3));
   ok("[#91] keine fiktiven gleichmaessigen Modulfugen (Stoesse != Vielfache von modul_mm)",
     bodenblechStoesse(WBM).some(xm => xm % WBM.base_plate.modul_mm !== 0));
+  // #91: die Marke ist WEISS und liegt vollstaendig im Blechstreifen — sie ragt nicht
+  // unter das Blech heraus und traegt damit keine Fuge vor, die es nicht gibt.
+  ok("[#91] jede Stossmarke ist weiss und reicht hoechstens von Blechober- bis -unterkante",
+    (() => {
+      const ls = stossLinien(svgM);
+      if (!ls.length || ls.length !== bodenblechStoesse(WBM).length) return false;
+      const oben = rM[0].y, unten = rM[0].y + rM[0].h;
+      return ls.every(l => l.y0 === oben && l.y1 > l.y0 && l.y1 <= unten + 5e-3);
+    })());
 
   // (b) Modul 5 und Modul 7 zeigen DIESELBE Teilfolge: gleiche Anzahl, gleiche
   // Sonderarten und gleiche RELATIVE Stosslagen (die Massstaebe sind verschieden).

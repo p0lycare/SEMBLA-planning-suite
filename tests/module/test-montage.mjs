@@ -28,7 +28,7 @@ import {
   montageEreignisse, montageAbschnitte, abschnittSvg, konturSvg,
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
   STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt, stangenEnden, stangenStuecke,
-  topLagen, oberkantenAbschnitte, bodenblechTeile, bodenblechStoesse,
+  topLagen, oberkantenAbschnitte, bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
   SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg,
   schraubeSvg,
   ZWISCHENPUNKT, zwischenpunktSvg,
@@ -606,23 +606,27 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   // Literale Regexe (keine `new RegExp`-Zeichenketten): die Farbwerte stehen ausgeschrieben,
   // damit die Zusicherung nicht an einer Escaping-Ebene haengt. #5b6673 = FARBE.stahl,
   // #e8702a = STUECK_FARBE.sonder, #13202e = FARBE.kontur (Stosslinie).
-  const RE_BLECH = /<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"[^>]*fill="(#5b6673|#e8702a)"/g;
+  const RE_BLECH = /<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"[^>]*fill="(#5b6673|#e8702a)"/g;
   ok("[D-4] Testfarben sind die kanonischen Werte des Darstellungsschluessels",
     STUECK_FARBE.sonder === "#e8702a" && Z_FARBE.stahl === "#5b6673"
-    && Z_FARBE.kontur === "#13202e");
+    && BLECHSTOSS.farbe === "#fff");
   const rects = (svg) => {
     const alle = [...svg.matchAll(RE_BLECH)]
-      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], sonder: m[4] === "#e8702a" }));
+      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4], sonder: m[5] === "#e8702a" }));
     return alle.length ? alle.filter(r => r.y === alle[0].y) : [];
   };
-  // Stosslinien liegen auf der OBERKANTE des Blechstreifens; die gleichfarbige Musterlinie
-  // der Legende steht tiefer im Blatt und wird deshalb ueber ihre y-Position ausgeschlossen.
-  const stossX = (svg) => {
+  // Stosslinien beginnen auf der OBERKANTE des Blechstreifens; die gleichfarbige weisse
+  // Linie des Legendenfeldes steht tiefer im Blatt und wird ueber ihre y-Position
+  // ausgeschlossen. Erfasst werden beide Enden, damit die Blechhoehe pruefbar bleibt (#91).
+  const stossLinien = (svg) => {
     const r = rects(svg);
     if (!r.length) return [];
-    return [...svg.matchAll(/<line x1="([\d.]+)" y1="([\d.]+)" x2="[\d.]+" y2="[\d.]+" stroke="#13202e"/g)]
-      .filter(m => +m[2] === r[0].y).map(m => +m[1]).sort((a, b) => a - b);
+    return [...svg.matchAll(/<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" stroke="#fff"/g)]
+      .filter(m => +m[2] === r[0].y && +m[1] === +m[3])
+      .map(m => ({ x: +m[1], y0: +m[2], y1: +m[4] }))
+      .sort((a, b) => a.x - b.x);
   };
+  const stossX = (svg) => stossLinien(svg).map(l => l.x);
 
   // (a) Mehrteilig, ungleiche Teile -> genau die kanonischen Stoesse, KEINE Modulfugen
   const WM = buildWall("Blech-mehr", 4625, 2600, [], null, { blech_lengths_mm: [1250, 1125] });
@@ -648,6 +652,20 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     && bodenblechStoesse(WM).every((xm, i) => Math.abs(stossX(bildM)[i] - (rM[0].x + xm * scM)) < 1e-6));
   ok("[#91] keine fiktiven gleichmaessigen Modulfugen (Stoesse != Vielfache von modul_mm)",
     bodenblechStoesse(WM).some(xm => xm % WM.base_plate.modul_mm !== 0));
+  // #91: die Marke ist WEISS und liegt vollstaendig IM Blechstreifen. Geprueft wird beides
+  // am erzeugten Bild: die Farbe ueber den Darstellungsschluessel, die Hoehe gegen die
+  // Blechhoehe des gezeichneten Teilrechtecks — sie darf nicht darunter herausragen.
+  ok("[#91] jede Stossmarke ist weiss und reicht hoechstens von Blechober- bis -unterkante",
+    (() => {
+      const ls = stossLinien(bildM);
+      if (ls.length !== bodenblechStoesse(WM).length || !ls.length) return false;
+      const oben = rM[0].y, unten = rM[0].y + rM[0].h;
+      return ls.every(l => l.y0 === oben && l.y1 > l.y0 && l.y1 <= unten + 1e-9);
+    })());
+  ok("[#91] die alte Konturfarbe kommt als Stossmarke nicht mehr vor",
+    BLECHSTOSS.farbe === "#fff"
+    && ![...bildM.matchAll(/<line x1="([\d.]+)" y1="([\d.]+)" [^>]*stroke="#13202e"/g)]
+      .some(m => +m[2] === rM[0].y));
   ok("Wandueberblick zeigt dieselben kanonischen Stosspositionen wie das Baugruppenbild",
     (() => {
       const k = konturSvg(WM, null, 900, 250), rk = rects(k), sk = stossX(k);

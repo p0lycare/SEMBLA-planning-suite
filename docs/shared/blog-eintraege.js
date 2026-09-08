@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-30",
+    datum: "2026-09-08",
+    typ: "fix",
+    issue: 91,
+    titel: "Bodenblechsto\u00df wei\u00df und blechhoch, die reale Blechaufteilung steht schon in Modul 1",
+    testbitte: "In Modul 1 eine Wand von 4,375 m auslegen: unter dem Wandfu\u00df stehen die "
+      + "einzelnen Bodenblechteile, jede Teilgrenze als wei\u00dfe Marke im Blech. Die L\u00e4nge "
+      + "auf 3,00 m \u00e4ndern \u2014 die Aufteilung wandert mit.",
+  },
+  {
     id: "chg-20260908-29",
     datum: "2026-09-08",
     typ: "feature",

@@ -276,6 +276,9 @@ let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
 // sembla-montage.js; die wirksamen Punkte liefert die eine Ableitung des Rechenkerns.
 let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
+// Bodenblech: EIN Zeichenweg fuer Modul 1, 5 und 7 ([A-10]/[D-4]) — die Teilfolge kommt
+// aus `base_plate.teile` des Rechenkerns, hier wird nichts nachgerechnet.
+let bodenblechSvg;
 let DECKENANSCHLUSS, deckenanschlussSvg;
 // #112: `SPANN_MM` kommt hinzu — die weisse Haarlinie am Stangenstoss wird aus dem
 // Durchmesser der Kopplungsmutter ABGELEITET (sie muss breiter sein als das Bauteil,
@@ -619,13 +622,19 @@ function draw(w){
   const bdMm=(RESULT&&RESULT.wandelement&&RESULT.wandelement.base_plate
     &&RESULT.wandelement.base_plate.dicke_mm)||null;
   const bth=Math.max(4, (bdMm||10)*sc);   // skaliert, min 4px sichtbar
-  const xL=Math.min(X(0),X(L)), xR=Math.max(X(0),X(L));
-  // Bodenblech als durchgehender Balken unter dem Wandfuß. Die früheren Teilstriche im Abstand
-  // `blech_mm` sind ERSATZLOS entfallen: das Bodenblech ist keine Modulzählung mehr, sondern eine
-  // Folge realer Teile aus dem Vorratssatz ([A-10]) — `blech_mm` ist allein die Kopfblech-
-  // Modullänge und hätte hier eine Teilung gezeigt, die es nicht gibt. Die ECHTEN Stöße aus
-  // `base_plate.teile` zu zeichnen ist ausdrücklich NICHT Sache dieser Vorschau (eigenes Paket).
-  s+=`<rect x="${xL}" y="${Y(0)}" width="${xR-xL}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.8"/>`;
+  // Linke Blattkante der Wand — gespiegelt (Rückansicht) liegt sie bei X(L). Gebraucht wird
+  // sie nur noch für die Dickenbeschriftung; das Blech selbst zeichnet bodenblechSvg().
+  const xL=Math.min(X(0),X(L));
+  // Bodenblech als REALE TEILFOLGE mit ihren Stößen (#91, [A-10]/[A-11]/[A-12]) — gezeichnet
+  // über `bodenblechSvg()` aus sembla-montage.js, also DERSELBE Zeichenweg wie Baugruppenbild
+  // (Modul 5) und technische Zeichnung (Modul 7). Damit sieht der Planer die Aufteilung schon
+  // beim Auslegen und sie kann zwischen den Ansichten nicht auseinanderlaufen; eine eigene
+  // Zerlegung hier wäre genau die zweite Wahrheit, die [A-1]/[D-4] ausschließen — gerechnet
+  // wird nichts nach. Ein Alt-Wandelement ohne `base_plate.teile` liefert dort genau EIN Teil
+  // über die volle Länge und damit unverändert den durchgehenden Balken ohne Stoßmarke.
+  // `rand: 0.8` hält die bisherige Strichstärke; `FARBE.stahl`/`stahl_rand` der geteilten
+  // Funktion sind wertgleich mit dem lokalen STEEL bzw. #3a4350.
+  s+=bodenblechSvg(RESULT.wandelement, X, Y, sc, bth, { rand: 0.8 });
   s+=`<text x="${xL+3}" y="${Y(0)+bth-2}" font-size="8" fill="#eef2f6">Bodenblech ${bdMm?bdMm+" mm":"– Dicke offen"}</text>`;
   // Kopfblech (nur bei top_connection=='blech') entlang der Oberkante
   if(topConn==='blech'){ for(let k=0;k<N2;k++){ const h=topH(k); if(h<=0) continue; const lx=Math.min(X(k*GRID),X((k+1)*GRID));
@@ -1624,6 +1633,7 @@ window.__wpInit=function(){
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
+  bodenblechSvg=S.bodenblechSvg;
   DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten — eine Quelle für Modul 1 und 7.
@@ -1652,11 +1662,14 @@ window.__wpInit=function(){
   import * as KAT from './shared/sembla-katalog.js';
   import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
            ZWISCHENPUNKT, zwischenpunktSvg, DECKENANSCHLUSS, deckenanschlussSvg,
+           // #91: der EINE Zeichenweg des Bodenblechs — dieselbe Teilfolge und dieselben
+           // Stossmarken wie Modul 5 und Modul 7 ([A-10]/[D-4]).
+           bodenblechSvg,
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
-                    STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
+                    STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
                     SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg, kopplungsmutterSvg,

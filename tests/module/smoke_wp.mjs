@@ -54,6 +54,9 @@ const idA=store.speichere('Wand A', startWand); store.setzeAktiv(idA);
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
   STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL,
   stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke,
+  // #91: der EINE Zeichenweg des Bodenblechs — Modul 1 zeigt damit dieselbe reale
+  // Teilfolge und dieselben Stossmarken wie Modul 5 und Modul 7 ([A-10]/[D-4]).
+  bodenblechSvg: MONT.bodenblechSvg,
   // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs kommen — wie der
   // Zuschnittschluessel — aus sembla-montage.js; die wirksamen Punkte aus dem Rechenkern.
   ZWISCHENPUNKT: MONT.ZWISCHENPUNKT, zwischenpunktSvg: MONT.zwischenpunktSvg,
@@ -326,8 +329,11 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
   ok('[#112] beide Ansichten leiten dieselbe Breite ab (kein Drift des Doppelmasses)', (()=>{
     const wd=w();
     const bl=ZEICH.zeichnungSvg(wd,{}).svg;
-    const hb=[...bl.matchAll(/<line x1="([-\d.]+)" y1="[-\d.]+" x2="([-\d.]+)" y2="[-\d.]+" stroke="#fff"/g)]
-      .map(m=>+m[2]-+m[1]);
+    // Seit #91 traegt das Blatt auch die weisse BLECHSTOSSMARKE. Sie ist SENKRECHT, die
+    // Haarlinie am Stangenstoss WAAGERECHT — getrennt wird an der Geometrie (y1===y2),
+    // nicht an der Farbe.
+    const hb=[...bl.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#fff"/g)]
+      .filter(m=>+m[2]===+m[4]).map(m=>+m[3]-+m[1]);
     const ha=haare(svg()).map(h=>h.x2-h.x1);
     if(!hb.length||!ha.length) return false;
     // Je Ansicht ein einheitliches Mass, und nach Umrechnung auf Papier-mm dasselbe.
@@ -337,7 +343,8 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
   ok('[#112] beide Ansichten derselben Wand zeigen gleich viele Haarlinien', (()=>{
     const wd=w();
     const bl=ZEICH.zeichnungSvg(wd,{}).svg;
-    const nb=(bl.match(/stroke="#fff"/g)||[]).length;
+    const nb=[...bl.matchAll(/<line x1="[-\d.]+" y1="([-\d.]+)" x2="[-\d.]+" y2="([-\d.]+)" stroke="#fff"/g)]
+      .filter(m=>+m[1]===+m[2]).length;   // nur die waagerechten Haarlinien (#91, s. o.)
     return nb>0 && nb===haare(svg()).length && nb===stoesse(wd); })());
   ok('[#112] Farben und Strichstaerken der Stangenstuecke sind unveraendert', (()=>{
     const wd=w(), t=svg(); let n=0;
@@ -2087,6 +2094,106 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
 
   // Ausgangsstand zuruecksetzen, damit die folgenden Pruefungen unveraendert laufen.
   WP.applyWand(vorher);
+}
+
+// ---- Issue #91: die reale Bodenblechaufteilung steht schon in der Wandansicht --------
+// Gemeldet war: die Aufteilung der Bodenbleche ist erst in Modul 5/7 zu sehen, und ihre
+// Trennmarke ist schwarz und ragt unter das Blech heraus. Gezeichnet wird deshalb ueber
+// `bodenblechSvg()` aus sembla-montage.js — DERSELBE Weg wie in Modul 5 und Modul 7.
+// Modul 1 rechnet nichts nach: die Teilfolge kommt aus dem Rechenkern.
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const vorher=WP.RESULT.wandelement;
+  // Blechrechtecke am Wandfuss (#5b6673 = FARBE.stahl, #e8702a = STUECK_FARBE.sonder).
+  // `t` ist die Ansicht oder eine direkt erzeugte Zeichenkette.
+  const rects=t=>{
+    const alle=[...t.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" fill="(#5b6673|#e8702a)"/g)]
+      .map(m=>({x:+m[1],y:+m[2],w:+m[3],h:+m[4],sonder:m[5]==='#e8702a'}));
+    return alle.length?alle.filter(r=>r.y===alle[0].y):[];   // Kopfblech sitzt hoeher
+  };
+  // Stossmarken: SENKRECHTE weisse Linien auf der Blechoberkante. Die waagerechte weisse
+  // Haarlinie am Stangenstoss (#112) traegt `class="haar"` und faellt hier nicht hinein.
+  const marken=t=>{
+    const r=rects(t); if(!r.length) return [];
+    return [...t.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#fff"/g)]
+      .filter(m=>+m[1]===+m[3] && +m[2]===r[0].y)
+      .map(m=>({x:+m[1],y0:+m[2],y1:+m[4]})).sort((a,b)=>a.x-b.x);
+  };
+  // Der Vorratssatz kommt in Modul 1 aus der PRODUKTAUSWAHL ([A-10]) — gefahren wird also der
+  // echte Bedienpfad: genau ein Bodenblechprodukt (1250) ankreuzen. Eine 3000er Wand ergibt
+  // damit 1250 + 1250 + 500, das letzte Teil zwangslaeufig ein Sonderzuschnitt.
+  setzen('blech_boden','blech-boden-1250',true);
+  WP.applyWand(Object.assign(buildWall('Blech3',3000,2600,[],null,null),{wandtyp:'ohne_wind'}));
+  const W91=WP.RESULT.wandelement;
+  const T91=MONT.bodenblechTeile(W91), S91=MONT.bodenblechStoesse(W91);
+  ok('[A-10] die geplante Wand hat drei Bodenblechteile, das letzte ein Sonderzuschnitt',
+    T91.length===3 && S91.length===2 && T91[2].art==='sonder'
+    && T91.slice(0,2).every(t=>t.art==='standard'));
+  const r91=rects(svg());
+  ok('[#91] Modul 1 zeichnet je Bodenblechteil genau ein Rechteck, in Reihenfolge', (()=>{
+    if(r91.length!==T91.length) return false;
+    const sc=r91[0].w/T91[0].raster_mm;
+    return r91.every((r,i)=>Math.abs(r.x-(r91[0].x+T91[i].x0_mm*sc))<1e-9
+      && Math.abs(r.w-T91[i].raster_mm*sc)<1e-9); })());
+  ok('[#91] und zwei Stossmarken an genau den Positionen aus bodenblechStoesse()', (()=>{
+    const m=marken(svg()); if(m.length!==S91.length) return false;
+    const sc=r91[0].w/T91[0].raster_mm;
+    return S91.every((xm,i)=>Math.abs(m[i].x-(r91[0].x+xm*sc))<1e-9); })());
+  ok('[#91] die Marke ist weiss und reicht hoechstens von Blechober- bis -unterkante', (()=>{
+    const m=marken(svg()); const oben=r91[0].y, unten=r91[0].y+r91[0].h;
+    return m.length>0 && m.every(l=>l.y0===oben && l.y1>l.y0 && l.y1<=unten+1e-9); })());
+  ok('[#91] die alte schwarze Trennmarke kommt in der Wandansicht nicht mehr vor',
+    !new RegExp('<line x1="[-\\d.]+" y1="'+r91[0].y+'" [^>]*stroke="#13202e"').test(svg()));
+  ok('[#91] der Sonderzuschnitt traegt seine nicht farbliche Schraffur (senkrechte Striche)', (()=>{
+    const son=r91.filter(r=>r.sonder), std=r91.filter(r=>!r.sonder);
+    if(son.length!==1||!std.length) return false;
+    const str=r=>[...svg().matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#3a4350"/g)]
+      .filter(m=>+m[1]===+m[3] && +m[2]===r.y && +m[1]>r.x && +m[1]<r.x+r.w).length;
+    return str(son[0])>=2 && std.every(r=>str(r)===0); })());
+  ok('[#91] Modul 1 zeigt dieselben relativen Teilgrenzen wie das Blatt von Modul 7', (()=>{
+    const bl=ZEICH.zeichnungSvg(W91,{}).svg;
+    const rb=[...bl.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="[-\d.]+"[^>]*fill="(#5b6673|#e8702a)"/g)]
+      .map(m=>({x:+m[1],y:+m[2],w:+m[3],sonder:m[4]==='#e8702a'}));
+    const r7=rb.length?rb.filter(r=>r.y===rb[0].y):[];
+    if(r7.length!==r91.length) return false;
+    const rel=a=>{ const ges=a.reduce((s,r)=>s+r.w,0); return a.map(r=>(r.x-a[0].x)/ges); };
+    const a=rel(r91), b=rel(r7);
+    return a.every((v,i)=>Math.abs(v-b[i])<1e-4)
+      && r91.every((r,i)=>r.sonder===r7[i].sonder); })());
+  // Die Rueckansicht spiegelt die x-Achse. Die Teile muessen dann von rechts nach links liegen
+  // und duerfen nicht aus der Wand herauslaufen — sonst zoege `bodenblechSvg()` jedes Teil in
+  // die falsche Richtung.
+  ok('[#91] auch die Rueckansicht zeigt die Teilfolge vollstaendig und in der Wand', (()=>{
+    document.getElementById('viewToggle').dispatch('click');
+    const rb=rects(svg()), mb=marken(svg());
+    document.getElementById('viewToggle').dispatch('click');   // zurueck auf Vorderseite
+    if(rb.length!==T91.length||mb.length!==S91.length) return false;
+    const links=Math.min(...rb.map(r=>r.x)), rechts=Math.max(...rb.map(r=>r.x+r.w));
+    const sc=rb[0].w/T91[0].raster_mm;
+    return Math.abs((rechts-links)-W91.length_mm*sc)<1e-9
+      && T91.every((t,i)=>rb.some(r=>Math.abs(r.w-t.raster_mm*sc)<1e-9))
+      && mb.every(m=>m.x>links-1e-9 && m.x<rechts+1e-9); })());
+  ok('[#91] die Dickenbeschriftung bleibt erhalten', /Bodenblech .*(mm|Dicke offen)/.test(svg()));
+  ok('[#91] Modul 1 fuehrt keine eigene Blechzerlegung mehr',
+    /bodenblechSvg\(RESULT\.wandelement/.test(html) && /bodenblechSvg=S\.bodenblechSvg/.test(html)
+    && !/\.base_plate\.teile/.test(html));
+  // Alt-Wandelement ohne `base_plate.teile`: EIN durchgehender Balken, nichts erfunden.
+  // Modul 1 kann so ein Element nicht HALTEN — `run()` baut die Wand bei jeder Eingabe neu und
+  // der Rechenkern legt die Teile dabei immer an. Geprueft wird der Alt-Fall deshalb an genau
+  // dem Zeichenweg, den die Ansicht benutzt, mit ihrer Abbildung (pad 46, `ansichtSc`, y von
+  // unten) — dieselbe Rekonstruktion wie im #112-Block oben.
+  ok('[#91] Alt-Wandelement ohne base_plate.teile: ein durchgehender Balken ohne Stossmarke',
+    (()=>{
+      const WALT=JSON.parse(JSON.stringify(W91)); delete WALT.base_plate.teile;
+      const sc=WP.ansichtSc(), hPx=WALT.height_mm*sc;
+      const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+      const t=MONT.bodenblechSvg(WALT, X, Y, sc, 4, { rand: 0.8 });
+      const r=rects(t);
+      return r.length===1 && !r[0].sonder && Math.abs(r[0].w-WALT.length_mm*sc)<1e-9
+        && marken(t).length===0; })());
+
+  setzen('blech_boden','blech-boden-1250',false);   // Auswahl wieder zuruecknehmen
+  WP.applyWand(vorher);   // Ausgangsstand fuer die folgenden Pruefungen
 }
 
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.

@@ -46,6 +46,9 @@
 import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
 import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          bodenblechSvg, bodenblechTeile, bodenblechStoesse,
+         // #91: Kennfarbe und Klartext der Blechstossmarke — dieselbe Quelle, aus der das
+         // Blatt-SVG die Marke zeichnet; eine zweite Werteliste hier waere Drift ([D-4]).
+         BLECHSTOSS,
          // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
          // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
          // #112: `SPANN_MM` kommt hinzu, weil die weisse Haarlinie am Stangenstoss aus dem
@@ -1005,8 +1008,12 @@ export function legendeHtml(w) {
     // bekommt deshalb keinen dieser Eintraege ([D-4]). Der Sonderzuschnitt traegt sein
     // NICHT FARBLICHES Merkmal (die Schraffur) ausdruecklich in Worten, damit er im
     // Schwarz-Weiss-Ausdruck aufloesbar bleibt.
+    // #91: Das Legendenfeld zeigt die Marke SO, WIE SIE IM BLATT STEHT — eine weisse Linie
+    // IN einem stahlfarbenen Blechfeld. Ein weisses Feld allein waere auf dem hellen
+    // Blattgrund unsichtbar, ein dunkles zeigte eine Farbe, die es im Blatt nicht gibt.
     + (bodenblechStoesse(w).length
-        ? `<span>${i(FARBE.kontur, "dot")}Blechstoß (Bodenblech)</span>` : "")
+        ? `<span>${i(`linear-gradient(90deg,${FARBE.stahl} 0 40%,${BLECHSTOSS.farbe} 40% 60%,`
+            + `${FARBE.stahl} 60% 100%)`, "plate")}${BLECHSTOSS.label} (Bodenblech)</span>` : "")
     + (bodenblechTeile(w).some(t => t.art === "sonder")
         ? `<span>${i(FARBE.stange_sonder, "plate")}Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : "")
     // Einlegeblech der Zwischenspannpunkte ([A-14]/#110): genannt nur, wenn die Wand
