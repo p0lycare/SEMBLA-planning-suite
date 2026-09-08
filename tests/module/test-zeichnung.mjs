@@ -25,7 +25,8 @@ import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
          bodenblechTeile, bodenblechStoesse, abschnittSvg, montageAbschnitte,
          // #110: die gemeinsame Symbolquelle der Spannkomponenten — das Blatt darf dafuer
          // keine eigene Geometrie und keine eigenen Hex-Werte fuehren ([D-4]).
-         SPANN_FARBE, SPANN_PROP, mutterSvg, ZWISCHENPUNKT } from "../../docs/shared/sembla-montage.js";
+         SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, mutterSvg,
+         ZWISCHENPUNKT } from "../../docs/shared/sembla-montage.js";
 import { wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
@@ -136,39 +137,95 @@ ok("Kopplungen/Verankerungen sind markiert",
 ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
   !/<circle/.test(svg) && !/<polygon/.test(svg));
 
-// #110: dieselben Symbolformen wie in der Wandansicht von Modul 1 — geprueft an der
-// GEMEINSAMEN Quelle: die Hoehen im Blatt sind genau die Vielfachen der Lagenhoehe, die
-// `SPANN_PROP` festlegt, und die Kopplungsmutter ist messbar laenger als die Mutter.
+// #110/#112: dieselben Symbolformen wie in der Wandansicht von Modul 1 — geprueft an der
+// GEMEINSAMEN Quelle. Die Hoehen im Blatt sind seit #112 die FESTEN Papier-mm aus `SPANN_MM`
+// und haengen nicht mehr am Blattmasstab; die Kopplungsmutter bleibt messbar laenger.
 {
-  const C = W.course_mm || 200, lage = C / zA3.masstab;
+  const E = SPANN_EINHEIT.blatt;
   const rnd = v => Math.round(v * 1000) / 1000;
-  const hM = rnd(SPANN_PROP.mutter * lage), hK = rnd(SPANN_PROP.kupplung * lage);
-  const hoehen = mutterHoehen(svg);
-  // Erwartete Kopplungsmuttern: genau ein innerer Stoss je realem Stueckuebergang.
-  let stoesse = 0;
+  const hM = rnd(SPANN_MM.mutter_h * E), hK = rnd(SPANN_MM.kupplung_h * E);
+  const hKopf = rnd(SPANN_MM.kopf_h * E);
+  // Erwartete Stellen aus dem realen Wandelement: je innerem Stoss eine Kopplungsmutter,
+  // je Fussanschluss eine AUFLIEGENDE Kopplungsmutter samt Schraube ([A-19]/#97), je
+  // oberem Mutteranschluss eine kurze Spannmutter.
+  let stoesse = 0, fuesse = 0, koepfe = 0;
   for (const col of W.tension_columns)
-    for (const sg of col.segments) stoesse += Math.max(0, stangenStuecke(W, sg).length - 1);
-  const lang = hoehen.filter(h => Math.abs(h - hK) < 1e-9).length;
-  const kurz = hoehen.filter(h => Math.abs(h - hM) < 1e-9).length;
-  ok("[#110] je Kopplung genau eine Kopplungsmutter im Blatt",
-    stoesse > 0 && lang === stoesse);
+    for (const sg of col.segments) {
+      stoesse += Math.max(0, stangenStuecke(W, sg).length - 1);
+      const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
+      const ao = sg.anker_oben || (sg.z1_mm === W.height_mm ? "blech" : "spannplatte");
+      if (au === "bodenblech") fuesse++;
+      if (ao !== "spannplatte") koepfe++;
+    }
+  ok("[#112] alle Kopplungsmuttern stehen im VORDERGRUND, als eigene Gruppe",
+    /<g class="kop">/.test(svg)
+    && svg.indexOf('<g class="kop">') > svg.indexOf('<g class="zsp">'));
+  const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(svg);
+  const kopH = kop ? [...kop[1].matchAll(RE_MUTTER)].map(m => +m[1]) : [];
+  ok("[#112] die Vordergrundgruppe traegt genau die Kopplungen und die Fussanschluesse",
+    stoesse > 0 && fuesse > 0 && kopH.length === stoesse + fuesse
+    && kopH.every(h => Math.abs(h - hK) < 1e-9));
   ok("[#110] die Kopplungsmutter ist im Blatt messbar laenger als die normale Mutter",
-    hK > hM && Math.abs(hK / hM - 2.5) < 1e-6 && kurz > 0);
-  ok("[#110] alle Mutternhoehen sind Vielfache der Lagenhoehe (nichts Festes im Blatt)",
-    hoehen.length === lang + kurz);
+    hK > hM && Math.abs(hK / hM - 2.5) < 1e-6);
+  // #97: die Schraube am Fuss — Kopf und Schaft, je Fussanschluss einmal.
+  const alleH = mutterHoehen(svg);
+  ok("[#97] je Fussanschluss steht eine Schraube mit Kopf im Blatt",
+    alleH.filter(h => Math.abs(h - hKopf) < 1e-9).length === fuesse);
+  ok("[#110] je oberem Mutteranschluss genau eine kurze Spannmutter",
+    koepfe > 0 && alleH.filter(h => Math.abs(h - hM) < 1e-9).length
+      === koepfe + wirksameZwischenpunkte(W).length);
   ok("[#110] Symbolgeometrie und Kennfarben kommen geteilt aus sembla-montage.js",
     Z.FARBE.mutter === SPANN_FARBE.mutter && Z.FARBE.platte === SPANN_FARBE.platte
-    && svg.includes(mutterSvg(0, 0, lage, { n: v => rnd(v) }).slice(0, 9)));
+    && svg.includes(mutterSvg(0, 0, E, { n: v => rnd(v) }).slice(0, 9)));
+
+  // --- #112: das Blatt zeichnet dasselbe Bauteil in JEDEM Masstab gleich gross -----------
+  // Das ist der eigentliche Fehler, den #112 behebt: `sc = 1/masstab` und der Masstab kommt
+  // aus der Wandgroesse — eine kleine Wand bekam damit ein Mehrfaches der Symbolgroesse.
+  {
+    const klein = Z.zeichnungSvg(buildWall("IW-K1", 2000, 2200, [], null, null), { format: "a3" });
+    const gross = Z.zeichnungSvg(buildWall("IW-K2", 9000, 3000, [], null, null), { format: "a3" });
+    const h = z => [...z.svg.matchAll(RE_MUTTER)].map(m => +m[1]);
+    ok("[#112] verschiedene Wandgroessen fuehren zu verschiedenen Blattmasstaeben",
+      klein.masstab !== gross.masstab);
+    ok("[#112] dasselbe Bauteil ist auf beiden Blaettern GLEICH GROSS (keine Wandabhaengigkeit)",
+      h(klein).length > 0 && h(gross).length > 0
+      && new Set([...h(klein), ...h(gross)].map(v => rnd(v))).size
+         === new Set(h(klein).map(v => rnd(v))).size
+      && Math.max(...h(klein)) === Math.max(...h(gross))
+      && Math.min(...h(klein)) === Math.min(...h(gross)));
+    // Vollstaendig: die vorkommenden Hoehen sind GENAU die vier festen Symbolmasse. Der
+    // Schraubenschaft ist dabei das einzige Mass, das eine Blechdicke mitnimmt (er reicht von
+    // der Mutternmitte bis an die Blechunterkante) — auch die ist ein Zeichenmass des Blattes.
+    const schaft = z => rnd(SPANN_MM.kupplung_h / 2 + Math.max(1.2, 15 / z.masstab));
+    const soll = z => new Set([hKopf, hM, schaft(z), hK].map(v => rnd(v)));
+    ok("[#112] die Symbolhoehen sind genau die festen Papier-mm aus SPANN_MM",
+      [klein, gross].every(z => {
+        const ist = new Set(h(z).map(v => rnd(v)));
+        return ist.size === soll(z).size && [...ist].every(v => soll(z).has(v)); }));
+  }
+
   // Die Spannplatte ist ein langgezogenes flaches Rechteck: an einer Wand mit Spannplatte
-  // oben steht sie im Blatt mit der Bauteilbreite (110 mm) und der relativen Dicke.
-  const svgSp = Z.zeichnungSvg(WSP, {}).svg, mSp = Z.zeichnungSvg(WSP, {}).masstab;
-  const lageSp = (WSP.course_mm || 200) / mSp;
+  // oben steht sie im Blatt mit der Bauteilbreite (110 mm) und der festen Dicke, und sie
+  // LIEGT AUF der Kante — nicht in der Wand (#112).
+  const zSp = Z.zeichnungSvg(WSP, {}), svgSp = zSp.svg, mSp = zSp.masstab;
   const re = new RegExp(`<rect x="[-\\d.]+" y="[-\\d.]+" width="([-\\d.]+)" `
     + `height="([-\\d.]+)" fill="${Z.FARBE.platte}"/>`);
   const mm = re.exec(svgSp);
-  ok("[#110] die Spannplatte ist ein langgezogenes, flaches Rechteck (Bauteilbreite 110 mm)",
-    !!mm && Math.abs(+mm[1] - rnd(SPANN_PROP.platte_b_mm / mSp)) < 1e-3
-    && Math.abs(+mm[2] - rnd(SPANN_PROP.platte_h * lageSp)) < 1e-3 && +mm[1] > 4 * +mm[2]);
+  ok("[#112] die Spannplatte ist ein langgezogenes, flaches Rechteck (Bauteilbreite 110 mm)",
+    !!mm && Math.abs(+mm[1] - rnd(SPANN_MM.platte_b_mm / mSp)) < 1e-3
+    && Math.abs(+mm[2] - rnd(SPANN_MM.platte_h * E)) < 1e-3 && +mm[1] > 4 * +mm[2]);
+  ok("[#112] die obere Spannplatte liegt AUF der Wandoberkante, nicht in der Wand", (() => {
+    // Der Plattenrahmen muss vollstaendig OBERHALB der Oberkante liegen. Die Oberkante ist
+    // die kleinste y-Koordinate der Wandkontur; in SVG ist "oberhalb" das kleinere y.
+    const alle = [...svgSp.matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
+      + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.platte}"/>`, "g"))]
+      .map(m => ({ y: +m[1], h: +m[2] }));
+    const kontur = /<polyline points="([^"]+)"/.exec(svgSp)[1].split(" ")
+      .map(q => +q.split(",")[1]);
+    const oben = Math.min(...kontur);
+    return alle.length > 0 && alle.some(r => Math.abs((r.y + r.h) - oben) < 1e-3)
+      && alle.every(r => r.y + r.h <= oben + 1e-3);
+  })());
 }
 
 // #110: das Einlegeblech des Zwischenspannpunkts steht jetzt AUCH im Blatt — dieselbe
@@ -194,6 +251,10 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
   ok("[#110] die Gruppe steht nach den Straengen und vor Bemassung/Brandschutz",
     svg.indexOf('<g class="zsp">') > svg.lastIndexOf(`stroke="${Z.FARBE.stange}"`)
     && svg.indexOf('<g class="zsp">') < svg.indexOf('<g class="brand"'));
+  // #112: der Vordergrund der Kopplungsmuttern kommt danach, bleibt aber vor Bemassung und
+  // Brandschutzgruppe — er verdeckt kein Ausfuehrungsmass.
+  ok("[#112] der Kopplungs-Vordergrund liegt vor Bemassung und Brandschutzgruppe",
+    svg.indexOf('<g class="kop">') < svg.indexOf('<g class="brand"'));
   ok("[#110] die Legende benennt das Einlegeblech in Worten",
     Z.legendeHtml(W).includes(ZWISCHENPUNKT.label)
     && !Z.legendeHtml(W).includes('class="dot" style="background:' + Z.FARBE.mutter));

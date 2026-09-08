@@ -37,6 +37,18 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-22",
+    datum: "2026-09-08",
+    typ: "fix",
+    issue: 112,
+    titel: "Bauteilsymbole sind jetzt in jeder Wand gleich gro\u00df \u2014 und die Fu\u00dffolge "
+      + "zeigt Schraube, Blech und Kopplungsmutter",
+    testbitte: "Zwei W\u00e4nde verschiedener L\u00e4nge in Modul 1 und Modul 7: Muttern sind "
+      + "gleich gro\u00df, vorher ein Mehrfaches gr\u00f6\u00dfer. Am Fu\u00df Sechskantschraube, "
+      + "Bodenblech, aufliegende Kopplungsmutter statt Mutter halb im Blech; die Spannplatte "
+      + "liegt oben auf.",
+  },
+  {
     id: "chg-20260907-20",
     datum: "2026-09-07",
     typ: "feature",

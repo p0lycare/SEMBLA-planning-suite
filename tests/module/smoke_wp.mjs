@@ -56,8 +56,11 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten (Mutter, Kopplungsmutter,
   // Spannplatte) — dieselbe Quelle, aus der Modul 7 zeichnet; Modul 1 fuehrt dafuer keine
   // eigene Geometrie und keine lokalen Hex-Werte mehr.
-  SPANN_FARBE: MONT.SPANN_FARBE, mutterSvg: MONT.mutterSvg,
+  // #112: die Symbolmasse stehen fest in Papier-mm; `SPANN_EINHEIT.ansicht` ist der Faktor
+  // auf viewBox-Einheiten. `schraubeSvg` ist die Schraube am Wandfuss ([A-19]/#97).
+  SPANN_FARBE: MONT.SPANN_FARBE, SPANN_EINHEIT: MONT.SPANN_EINHEIT, mutterSvg: MONT.mutterSvg,
   kopplungsmutterSvg: MONT.kopplungsmutterSvg, spannplatteSvg: MONT.spannplatteSvg,
+  schraubeSvg: MONT.schraubeSvg,
   wirksameZwischenpunkte };
 
 eval(script);
@@ -100,12 +103,15 @@ ok('Wandansicht zeichnet die einzelnen Stuecke, nicht einen Strich je Strang', (
     .reduce((a,g)=>a+Math.max(0,(g.stuecke||[]).length-1),0);
   const striche=(svg.match(/stroke="#1f6feb" stroke-width="2\.4"/g)||[]).length;
   // Seit #110 ist die Kopplungsmarke die KOPPLUNGSMUTTER (Zylinder in Seitenansicht) statt
-  // eines Querstrichs. Die Aussage bleibt: genau eine Marke je Kopplung. Die Klasse `kop`
-  // trennt sie unveraendert vom Legendenmuster.
+  // eines Querstrichs. Die Klasse `kop` trennt sie unveraendert vom Legendenmuster. Seit #97
+  // traegt AUCH der Fussanschluss eine Kopplungsmutter ([A-19]) — die Aussage bleibt: genau
+  // eine Marke je Kopplung, plus genau eine je Fuss.
+  const fuesse=w.tension_columns.flatMap(c=>c.segments)
+    .filter(g=>(g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte'))==='bodenblech').length;
   const marken=(svg.match(/<rect class="kop"/g)||[]).length;
   return stuecke.length>w.tension_columns.length      // es gibt ueberhaupt mehrere Stuecke
     && striche===stuecke.filter(p=>p.art==='standard').length
-    && marken===kopplungen; })());
+    && fuesse>0 && marken===kopplungen+fuesse; })());
 // Issue #63: Die Legende liegt in einem EIGENEN DOM-Bereich unterhalb der Ansicht — im SVG hat sie
 // den Kopfraum belegt und dort Reststueck-Ueberstand, Kopfblech und Bemassung ueberdeckt.
 const zleg=()=>document.getElementById('zLegende').innerHTML;
@@ -140,50 +146,98 @@ const legendeStimmt=()=>{
   return alle.length>0 && /Kopplung/.test(L);
 };
 ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legendeStimmt());
-// ---- Issue #110: Spannkomponenten als vereinfachte Seitenansicht ([D-4]) ------------
+// ---- Issue #110/#112/#97: Spannkomponenten in der Wandansicht ([D-4]/[A-19]) --------
 // Geprueft wird die GERENDERTE Wandansicht am echten Speicherpfad: die Symbole muessen aus
 // der gemeinsamen Quelle kommen (Formgleichheit mit Modul 7), die Kopplungsmutter messbar
-// laenger sein als die normale Mutter, und Modul 1 darf fuer diese Bauteile keine eigene
-// Geometrie und keine lokalen Hex-Werte mehr fuehren.
+// laenger sein als die normale Mutter, alle Symbolmasse FEST und damit von der Wandlaenge
+// unabhaengig (#112), die Fussfolge Schraube/Blech/Kopplungsmutter richtig ([A-19]/#97) —
+// und Modul 1 darf fuer diese Bauteile keine eigene Geometrie und keine Hex-Werte fuehren.
 {
   const svg=()=>document.getElementById('plan').innerHTML;
   const w=()=>WP.RESULT.wandelement;
-  const lageOf=()=>{ const L=w().length_mm; return (w().course_mm||COURSE)*((1000-2*46)/L); };
+  const E=MONT.SPANN_EINHEIT.ansicht, MM=MONT.SPANN_MM;
   const hoehen=re=>[...svg().matchAll(re)].map(m=>+m[1]);
   const RE_KOP=/<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="[-\d.]+" height="([-\d.]+)"/g;
-  const RE_MUT=new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="[-\\d.]+" height="([-\\d.]+)"'
+  // Ohne Klasse und in Mutterfarbe: die kurzen Spannmuttern UND die beiden Schraubenzylinder.
+  const RE_MUT=new RegExp('<rect x="[-\\d.]+" y="([-\\d.]+)" width="([-\\d.]+)" height="([-\\d.]+)"'
     +' fill="'+MONT.SPANN_FARBE.mutter+'"','g');
+  const mutRects=()=>[...svg().matchAll(RE_MUT)].map(m=>({y:+m[1],b:+m[2],h:+m[3]}));
   ok('[#110] keine Kreisdarstellung der Spannkomponenten mehr in der Wandansicht', (()=>{
     // Kreise gibt es nur noch als BEDIENGRIFFE (#106) — die tragen `cursor:grab/copy`.
     const s=svg(); const kreise=[...s.matchAll(/<circle[^>]*>/g)].map(m=>m[0]);
     return kreise.every(c=>/cursor:(grab|copy)/.test(c)); })());
-  ok('[#110] Kopplungsmutter und Mutter sind Zylinder mit der geteilten Kennfarbe',
-    hoehen(RE_KOP).length>0 && hoehen(RE_MUT).length>0
-    && svg().includes(MONT.SPANN_FARBE.mutter));
-  ok('[#110] die Kopplungsmutter ist in der Ansicht messbar laenger als die normale Mutter',
-    (()=>{ const k=hoehen(RE_KOP), m=hoehen(RE_MUT);
-      return Math.min(...k) > Math.max(...m)
-        && Math.abs(Math.max(...k)/Math.min(...m) - 2.5) < 1e-6; })());
-  ok('[#110] die Symbolhoehen sind genau die Vielfachen der Lagenhoehe (kein festes Pixelmass)',
-    (()=>{ const lage=lageOf();
-      const sollM=MONT.SPANN_PROP.mutter*lage, sollK=MONT.SPANN_PROP.kupplung*lage;
-      return hoehen(RE_MUT).every(h=>Math.abs(h-sollM)<1e-6)
-        && hoehen(RE_KOP).every(h=>Math.abs(h-sollK)<1e-6); })());
+  ok('[#112] Mutter und Kopplungsmutter sind reine Rechtecke ohne Stirnkanten (keine Serifen)',
+    hoehen(RE_KOP).length>0 && mutRects().length>0
+    && svg().includes(MONT.SPANN_FARBE.mutter)
+    // Die Serifen aus #110 waren `<line>`-Paare in der Mutterfarbe — es darf keins mehr geben.
+    && !new RegExp('<line[^>]*stroke="'+MONT.SPANN_FARBE.mutter+'"').test(svg()));
+  // Verhaeltnispruefung gegen die GETEILTE Quelle statt gegen zufaellig mitgezeichnete
+  // Muttern: welche Anschlussarten diese Wand gerade hat, entscheidet das Wandelement, nicht
+  // die Symbolpruefung. Die Aussage von #110 bleibt: messbar laenger, Faktor 2,5.
+  ok('[#110] die gezeichnete Kopplungsmutter ist 2,5x so hoch wie das Muttersymbol',
+    (()=>{ const k=hoehen(RE_KOP);
+      const hM=+/height="([-\d.]+)"/.exec(MONT.mutterSvg(0,0,E))[1];
+      return k.length>0 && hM>0 && k.every(h=>Math.abs(h/hM-2.5)<1e-6); })());
+  ok('[#112] die Symbolhoehen sind die FESTEN Papier-mm, kein Vielfaches der Lagenhoehe',
+    (()=>{ const kop=hoehen(RE_KOP);
+      return kop.length>0 && kop.every(h=>Math.abs(h-MM.kupplung_h*E)<1e-6); })());
   // Jede Marke muss BYTEGLEICH die der geteilten Funktion sein — nachgerechnet mit derselben
   // Abbildung, die die Ansicht benutzt (pad 46, sc aus der Wandlaenge, y von unten).
   ok('[#110] jede Kopplungsmarke ist bytegleich die der geteilten Funktion', (()=>{
-    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc, lage=lageOf();
+    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
     const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
     const s=svg(); let n=0;
     for(const col of wd.tension_columns) for(const g of col.segments){
       const st=MONT.stangenStuecke(wd,g);
       for(let i=0;i<st.length-1;i++){
-        const soll=MONT.kopplungsmutterSvg(X(col.x_mm),Y(st[i].z1_mm),lage,{klasse:'kop'});
+        const soll=MONT.kopplungsmutterSvg(X(col.x_mm),Y(st[i].z1_mm),E,{klasse:'kop'});
         if(!s.includes(soll)) return false;
         n++;
       }
     }
     return n>0; })());
+  // ---- Fussfolge Schraube / Bodenblech / Kopplungsmutter ([A-19], #97) ----------------
+  ok('[#97] am Fuss steht die KOPPLUNGSMUTTER, nicht die normale Mutter', (()=>{
+    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
+    const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+    let n=0;
+    for(const col of wd.tension_columns) for(const g of col.segments){
+      const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
+      if(au!=='bodenblech') continue;
+      const soll=MONT.kopplungsmutterSvg(X(col.x_mm),Y(g.z0_mm),E,{klasse:'kop',auf:true});
+      if(!svg().includes(soll)) return false;
+      n++;
+    }
+    return n>0; })());
+  ok('[#97] sie LIEGT AUF dem Bodenblech, statt halb darin zu stecken', (()=>{
+    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
+    const y0=46+hPx;   // Y(0) = Oberkante Bodenblech = Steinunterkante
+    // Alle Kopplungsmarken am Fuss muessen vollstaendig OBERHALB von Y(0) liegen (kleineres y).
+    const fuss=[...svg().matchAll(/<rect class="kop" x="[-\d.]+" y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/g)]
+      .map(m=>({y:+m[1],h:+m[2]})).filter(r=>Math.abs(r.y+r.h-y0)<1e-6);
+    return fuss.length>0 && fuss.every(r=>r.y<y0); })());
+  ok('[#97] die Schraube ist gezeichnet: zwei Zylinder, Kopf dicker als Schaft', (()=>{
+    const r=mutRects();
+    const schaft=r.filter(q=>Math.abs(q.b-MM.schaft_d*E)<1e-6);
+    const kopf=r.filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
+    return schaft.length>0 && kopf.length===schaft.length && MM.kopf_d>MM.schaft_d; })());
+  ok('[#97] der Schraubenkopf ragt UNTER dem Bodenblech heraus', (()=>{
+    const wd=w(), L=wd.length_mm, sc=(1000-2*46)/L, hPx=wd.height_mm*sc;
+    const y0=46+hPx, bth=Math.max(4,15*sc);
+    const kopf=mutRects().filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
+    // Der Kopf beginnt an der Blechunterkante und endet darunter — er ist frei sichtbar.
+    return kopf.length>0 && kopf.every(q=>Math.abs(q.y-(y0+bth))<1e-6 && q.h>0); })());
+  // ---- Vordergrund: die Kopplungsmuttern stehen NACH allen anderen Bauteilen (#112) ----
+  ok('[#112] alle Kopplungsmuttern liegen im Vordergrund (zuletzt gezeichnet)', (()=>{
+    const s=svg();
+    const ersteKop=s.indexOf('<rect class="kop"');
+    // Nach der ersten Kopplungsmarke darf kein Stangenstueck, keine Platte, kein Blech und
+    // kein Einlegeblech mehr kommen — in SVG entscheidet allein die Reihenfolge.
+    const danach=s.slice(ersteKop);
+    return ersteKop>0
+      && !new RegExp('stroke="'+MONT.stueckFarbe('standard')+'"').test(danach)
+      && !danach.includes('fill="'+MONT.SPANN_FARBE.platte+'"')
+      && !danach.includes('<polyline class="zsp"'); })());
   ok('[#110] das Einlegeblech traegt genau eine Mutter je wirksamem Punkt', (()=>{
     const n=wirksameZwischenpunkte(w()).length;
     const zsp=(svg().match(/<polyline class="zsp"/g)||[]).length;
@@ -196,9 +250,12 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     return p.length===4 && p[1][1]===p[2][1] && p[0][1]>p[1][1] && p[3][1]>p[2][1]; })());
   ok('[#110] Modul 1 fuehrt fuer die Spannkomponenten keine eigene Geometrie/Hex-Werte',
     /mutterSvg/.test(html) && /kopplungsmutterSvg/.test(html) && /spannplatteSvg/.test(html)
+    && /schraubeSvg/.test(html)
     && !/const STEEL='#5b6673', SPANN=/.test(html)
     && !new RegExp("'"+MONT.SPANN_FARBE.platte+"'|'"+MONT.SPANN_FARBE.mutter+"'").test(html)
     && !/<circle cx="\$\{x\}" cy="\$\{Y\(g\.z0_mm\)\}"/.test(html));
+  ok('[#112] Modul 1 leitet kein Symbolmass mehr aus der Lagenhoehe ab',
+    !/const lage=COURSE\*sc/.test(html) && /SPANN_EINHEIT\.ansicht/.test(html));
   ok('[#110] die Legende bezieht die Kopplungsfarbe aus der geteilten Quelle',
     zleg().includes(MONT.SPANN_FARBE.mutter));
 }
@@ -1623,6 +1680,53 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   ok('[#82] Roundtrip: Verzahnung bleibt nach applyWand erhalten',
     WP.interlocks.length===1 && WP.interlocks[0].g0===0 && WP.interlocks[0].breite===3);
   store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
+// ---- Issue #112: dieselbe Ansicht, dieselbe Bauteilgroesse — bei JEDER Wandlaenge -------
+// Der eigentliche Fehler, den #112 behebt: `sc=(1000-2*pad)/L` haengt allein an der WANDLAENGE,
+// und bis #112 waren alle Symbolmasse Vielfache von `COURSE*sc`. Dasselbe Bauteil war damit in
+// einer kurzen Wand um ein Mehrfaches groesser als in einer langen. Geprueft wird an zwei
+// Wandelementen mit gleichem Aufbau und stark verschiedener Laenge; beide tragen oben Blech,
+// damit Spannmutter UND Fussschraube vorkommen. Die Pruefung steht am Ende der Datei, weil
+// sie das angezeigte Wandelement wechselt; danach wird der Ausgangsstand wiederhergestellt.
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const vorher=WP.RESULT.wandelement;
+  const RE_KOP=/<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="([-\d.]+)" height="([-\d.]+)"/g;
+  const RE_MUT=new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="([-\\d.]+)" height="([-\\d.]+)"'
+    +' fill="'+MONT.SPANN_FARBE.mutter+'"','g');
+  const E=MONT.SPANN_EINHEIT.ansicht, MM=MONT.SPANN_MM;
+  const masse=mm=>{
+    WP.applyWand(Object.assign(buildWall('Mass '+mm, mm, 2600, [], null,
+      { top_connection:'blech' }), {wandtyp:'ohne_wind'}));
+    const s=svg();
+    const paare=re=>[...new Set([...s.matchAll(re)].map(m=>m[1]+'x'+m[2]))].sort();
+    const alle=[...s.matchAll(RE_MUT)].map(m=>({b:+m[1],h:+m[2]}));
+    return { kop:paare(RE_KOP),
+      mutter:[...new Set(alle.filter(r=>Math.abs(r.b-MM.d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort(),
+      kopf:[...new Set(alle.filter(r=>Math.abs(r.b-MM.kopf_d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort(),
+      schaft:[...new Set(alle.filter(r=>Math.abs(r.b-MM.schaft_d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort() };
+  };
+  const kurz=masse(2000), lang=masse(8000);
+  ok('[#112] beide Vergleichswaende zeichnen ueberhaupt Kopplung, Mutter, Kopf und Schaft',
+    [kurz,lang].every(m=>m.kop.length>0 && m.mutter.length>0 && m.kopf.length>0
+      && m.schaft.length>0));
+  ok('[#112] Kopplungsmuttern sind in kurzer und langer Wand GLEICH gross',
+    JSON.stringify(kurz.kop)===JSON.stringify(lang.kop));
+  ok('[#112] Spannmuttern sind in kurzer und langer Wand GLEICH gross',
+    JSON.stringify(kurz.mutter)===JSON.stringify(lang.mutter));
+  ok('[#112] Schraubenkoepfe sind in kurzer und langer Wand GLEICH gross',
+    JSON.stringify(kurz.kopf)===JSON.stringify(lang.kopf));
+  // AUSNAHME mit Grund: der Schraubenschaft reicht von der Mutternmitte bis an die Unterkante
+  // des Bodenblechs, und das Bodenblech ist ein REALES Bauteil, das masstabsgetreu gezeichnet
+  // wird ([A-10]). Seine Dicke folgt also `sc` — und der Schaft folgt ihr mit. Fest ist die
+  // BREITE des Schafts; nur seine Laenge haengt an der gezeichneten Blechdicke.
+  ok('[#112] der Schaft ist gleich DICK, nur seine Laenge folgt dem masstabsgetreuen Blech',
+    kurz.schaft.every(q=>Math.abs(+q.split('x')[0]-MM.schaft_d*E)<1e-6)
+    && lang.schaft.every(q=>Math.abs(+q.split('x')[0]-MM.schaft_d*E)<1e-6)
+    && kurz.schaft.map(q=>q.split('x')[1]).join()!==lang.schaft.map(q=>q.split('x')[1]).join());
+  // Ausgangsstand zuruecksetzen, damit die folgenden Pruefungen unveraendert laufen.
+  WP.applyWand(vorher);
 }
 
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.

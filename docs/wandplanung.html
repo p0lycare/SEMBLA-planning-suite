@@ -252,7 +252,7 @@ let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
 // sembla-montage.js; die wirksamen Punkte liefert die eine Ableitung des Rechenkerns.
 let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
-let SPANN_FARBE, mutterSvg, kopplungsmutterSvg, spannplatteSvg;
+let SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
 // hatWand: true nur bei aktivem Wandelement. Modul 1 legt selbst KEINS an — angelegt
@@ -532,10 +532,13 @@ function draw(w){
 
   // ---- Anschlüsse: Bodenblech (immer), Kopfblech oder Spannplatten ----
   const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
-  // Bezugsmaß aller Spannkomponenten-Symbole (#110): die Lagenhöhe in ZEICHENKOORDINATEN.
-  // Sie bewegt sich mit `sc`, also bleibt das Verhältnis Symbol : Stein bei jeder Wandlänge
-  // gleich — und identisch zu Modul 7, das dieselbe Größe in Papier-mm übergibt.
-  const lage=COURSE*sc;
+  // Bezugsmaß aller Spannkomponenten-Symbole (#112): FESTE viewBox-Einheiten je Papier-mm
+  // aus SPANN_EINHEIT. Vorher stand hier `COURSE*sc`, also die Lagenhöhe in
+  // Zeichenkoordinaten — und weil `sc=(1000-2*pad)/L` allein an der WANDLÄNGE hängt, war
+  // dasselbe Bauteil bei einer kurzen Wand um ein Mehrfaches größer als bei einer langen.
+  // Symbolmaße gehören zur Darstellung, nicht zum Bauteil, und stehen deshalb fest — genau
+  // wie die `font-size`- und `stroke-width`-Werte dieser Ansicht.
+  const SYM=SPANN_EINHEIT.ansicht;
   // Kennfarben der Spannkomponenten kommen aus SPANN_FARBE (sembla-montage.js, [D-4]/#110) —
   // dieselbe Quelle wie Modul 7, keine lokalen Hex-Werte mehr. STEEL ist das Boden-/Kopfblech
   // und gehoert nicht zu den Spannkomponenten.
@@ -565,6 +568,11 @@ function draw(w){
   // Wandoberkante ([Z-6]). Hier wird nichts nachgerechnet: ein Segment ohne bestimmten
   // Zuschnitt (leeres `stuecke` = gemeldeter Konflikt) bleibt LEER, statt eine durchgehende
   // Stange vorzutäuschen; der Konflikt steht als Warnung über der Ansicht.
+  // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#112): sie sammeln sich in `vorn` und
+  // werden erst nach Strängen, Ankern und Einlegeblechen angehängt. In SVG entscheidet allein
+  // die Zeichenreihenfolge, und eine Kopplung darf von keinem Stangenstück, keiner Platte und
+  // keinem Blech überdeckt werden.
+  let vorn='';
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
       const st=stangenStuecke(w,g);
@@ -573,18 +581,24 @@ function draw(w){
         // Kopplung an jedem inneren Stoß (Stücke − 1): die KOPPLUNGSMUTTER als langer Zylinder
         // in Seitenansicht (#110) — dieselbe Funktion wie in Modul 7, deutlich länger als eine
         // normale Mutter. Die Klasse `kop` bleibt, sie trennt das Bauteil vom Legendenmuster.
-        if(i<st.length-1) s+=kopplungsmutterSvg(x,Y(p.z1_mm),lage,{klasse:'kop'});
+        if(i<st.length-1) vorn+=kopplungsmutterSvg(x,Y(p.z1_mm),SYM,{klasse:'kop'});
       });
       const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
       const ao=g.anker_oben||((g.z1_mm===topH(col.k)*1)?topConn:'spannplatte');
       // Anker unten/oben: Mutter als kurzer Zylinder, Spannplatte als langgezogenes flaches
       // Rechteck — Geometrie und Kennfarbe kommen aus sembla-montage.js ([D-4]/#110), damit
-      // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Zeichenmaße sind
-      // dort an die LAGENHÖHE gebunden und deshalb unabhängig von Wandlänge und Blattmaßstab.
-      if(au==='bodenblech'){ s+=mutterSvg(x,Y(g.z0_mm),lage); }   // Senkkopf+Kopplungsmutter am Fuß
-      else { s+=spannplatteSvg(x,Y(g.z0_mm),lage,sc,{oben:false}); }  // Spannplatte auf Kante
-      if(ao==='spannplatte'){ s+=spannplatteSvg(x,Y(g.z1_mm),lage,sc,{oben:true}); }
-      else { s+=mutterSvg(x,Y(g.z1_mm),lage); }   // im Kopfblech verankert (Spannmutter)
+      // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Alle Symbolmaße
+      // sind dort FEST und deshalb unabhängig von Wandgröße, Blattmaßstab und Zoom (#112).
+      if(au==='bodenblech'){
+        // Fußfolge nach [A-19] (#97): von unten die Sechskantschraube — ihr Kopf ragt unter
+        // dem Bodenblech heraus —, darauf das Blech, darauf AUFLIEGEND die KOPPLUNGSMUTTER.
+        // Bis #97 stand hier eine normale Mutter, zur Hälfte im Blech, und die Schraube fehlte.
+        s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth);
+        vorn+=kopplungsmutterSvg(x,Y(g.z0_mm),SYM,{klasse:'kop',auf:true});
+      }
+      else { s+=spannplatteSvg(x,Y(g.z0_mm),SYM,sc); }   // Spannplatte liegt auf der Kante auf
+      if(ao==='spannplatte'){ s+=spannplatteSvg(x,Y(g.z1_mm),SYM,sc); }
+      else { s+=mutterSvg(x,Y(g.z1_mm),SYM,{auf:true}); }   // Spannmutter, sitzt auf der Kante
     } }
 
   // ---- Zwischenspannpunkte: Einlegeblech je wirksamem Punkt ([A-14]/#93) ----
@@ -596,7 +610,7 @@ function draw(w){
   for(const zp of zpListe){
     const zx=X(zp.x_mm), zy=Y(zp.z_mm);
     const on=(zpEdit && selZp===zp.z_mm);
-    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,lage});
+    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,e:SYM});
   }
   // Im Bearbeitungsmodus zusätzlich je Punkthöhe eine Griff-/Hilfslinie über die Wandbreite,
   // damit die Lagen-Oberkante als Ganzes greifbar ist (reine Bedienhilfe, kein Bauteil).
@@ -611,6 +625,10 @@ function draw(w){
     for(const z of hoehen){ const on=(selZp===z); const zy=Y(z);
       s+=`<line x1="${x0}" y1="${zy}" x2="${x1}" y2="${zy}" stroke="${on?'#c9461c':ZWISCHENPUNKT.farbe}" stroke-width="${on?1.6:1}" stroke-dasharray="6 4" stroke-opacity="0.85" style="cursor:grab"/>`;
       s+=`<text x="${x1+4}" y="${zy+3}" font-size="9" fill="${on?'#c9461c':ZWISCHENPUNKT.farbe}">${fmt(z/10,1)}</text>`; } }
+
+  // Vordergrund der BAUTEILE (#112): die gesammelten Kopplungsmuttern. Danach folgen nur
+  // noch Bedien-Overlays (Griffe, Hilfslinien) — die dürfen weiter obenauf liegen.
+  s+=vorn;
 
   // ---- Ausgleichspunkt-Editor: Griffe am Wandfuß ([A-24], #96) ----
   // Reine BEDIENHILFE, ausschließlich im Editiermodus vorhanden — dasselbe Muster wie die
@@ -1320,8 +1338,9 @@ window.__wpInit=function(){
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten — eine Quelle für Modul 1 und 7.
-  SPANN_FARBE=S.SPANN_FARBE; mutterSvg=S.mutterSvg;
+  SPANN_FARBE=S.SPANN_FARBE; SPANN_EINHEIT=S.SPANN_EINHEIT; mutterSvg=S.mutterSvg;
   kopplungsmutterSvg=S.kopplungsmutterSvg; spannplatteSvg=S.spannplatteSvg;
+  schraubeSvg=S.schraubeSvg;
   bindEvents();
   bindProdukte();
   applyZoom();     // Standardstellung: eingepasst
@@ -1342,13 +1361,14 @@ window.__wpInit=function(){
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
   import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
-           ZWISCHENPUNKT, zwischenpunktSvg, SPANN_FARBE, mutterSvg,
-           kopplungsmutterSvg, spannplatteSvg } from './shared/sembla-montage.js';
+           ZWISCHENPUNKT, zwischenpunktSvg, SPANN_FARBE, SPANN_EINHEIT, mutterSvg,
+           kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
-                    SPANN_FARBE, mutterSvg, kopplungsmutterSvg, spannplatteSvg };
+                    SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg,
+                    spannplatteSvg, schraubeSvg };
   mountNavbar(1);
   window.__wpInit();
 </script>

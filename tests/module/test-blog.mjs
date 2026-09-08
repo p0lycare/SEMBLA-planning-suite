@@ -39,15 +39,53 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
+// Die FESTEN Bauteilsymbole und die Fussfolge (#112, mit [A-19]/#97) sind der neueste Eintrag —
+// sie werden als einzige direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe rueckt
+// geschlossen um eins nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass
+// dasselbe Bauteil in JEDER Wandgroesse und auf JEDEM Blattmasstab gleich gross gezeichnet wird,
+// dass am Wandfuss Schraube, Bodenblech und aufliegende Kopplungsmutter stehen und dass die obere
+// Spannplatte auf der Wandoberkante liegt. Ausdruecklich NICHT versprochen werden geaenderte
+// Mengen, Stueckliste, Preise, Bemassung oder Nachweise — und NICHT die Montageanleitung
+// (Modul 5), die die Fussfolge weiterhin nicht zeigt (Nachziehpunkt [P-6]).
+const SYMBOLMASSE = EINTRAEGE[0];
+ok("[#112] die festen Bauteilsymbole sind der neueste Eintrag",
+  SYMBOLMASSE?.id === "chg-20260908-22" && SYMBOLMASSE?.issue === 112
+  && SYMBOLMASSE?.typ === "fix" && SYMBOLMASSE?.datum === "2026-09-08");
+ok("[#112] der Eintrag benennt beide Gegenstaende: gleiche Groesse und die Fussfolge",
+  /gleich gro/.test(SYMBOLMASSE?.titel || "")
+  && /Wand/.test(SYMBOLMASSE?.titel || "")
+  && /Schraube/.test(SYMBOLMASSE?.titel || "")
+  && /Kopplungsmutter/.test(SYMBOLMASSE?.titel || "")
+  // Keine Zusage zu Rechnung, Mengen, Preisen oder Nachweis.
+  && !/Menge|Stückliste|Preis|Nachweis|Statik|Bemaßung/i.test(SYMBOLMASSE?.titel || ""));
+ok("[#112] die Testbitte fuehrt den echten Nutzerpfad ueber beide Ansichten",
+  /Modul 1/.test(SYMBOLMASSE?.testbitte || "")
+  && /Modul 7/.test(SYMBOLMASSE?.testbitte || "")
+  && /verschiedener Länge/.test(SYMBOLMASSE?.testbitte || ""));
+ok("[#112] die Testbitte benennt den ALTEN Zustand, an dem man die Korrektur erkennt",
+  /vorher/.test(SYMBOLMASSE?.testbitte || "")
+  && /Mehrfaches größer/.test(SYMBOLMASSE?.testbitte || "")
+  && /halb im Blech/.test(SYMBOLMASSE?.testbitte || ""));
+ok("[#112] die Testbitte benennt die vollstaendige Fussfolge und die obere Spannplatte",
+  /Sechskantschraube/.test(SYMBOLMASSE?.testbitte || "")
+  && /Bodenblech/.test(SYMBOLMASSE?.testbitte || "")
+  && /aufliegende Kopplungsmutter/.test(SYMBOLMASSE?.testbitte || "")
+  && /Spannplatte/.test(SYMBOLMASSE?.testbitte || "")
+  && /liegt oben auf/.test(SYMBOLMASSE?.testbitte || ""));
+ok("[#112] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
+  !/Menge|Stückliste|Preis|Bemaßung|Maßzahl|Nachweis|Statik|Montage|Migration/i
+    .test(SYMBOLMASSE?.testbitte || ""));
+ok("genau ein Eintrag fuer Issue 112", EINTRAEGE.filter(e => e.issue === 112).length === 1);
+
 // Die gemeinsame PRODUKTAUSWAHL im Sammel-Popup (#111, Folgepaket) ist der neueste Eintrag —
-// er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe rueckt geschlossen
+// er wird als einziger direkt ueber `EINTRAEGE[1]` geprueft; die bisherige Reihe rueckt geschlossen
 // um eins nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass die
 // Verwendungsstellen von Modul 1 im BESTEHENDEN Sammel-Popup fuer mehrere ausgewaehlte Waende
 // gemeinsam gesetzt werden und dass der Vorgang ein Rueckgaengig-Schritt bleibt. Ausdruecklich
 // NICHT versprochen werden eine Mehrfachauswahl je Verwendungsstelle (die bleibt Modul 1), eine
 // Sammelbearbeitung von Laenge, Lage, Oeffnungen, Verzahnungen oder Spannachsen, eine
 // Katalogpflege im Editor, geaenderte Preise oder Stuecklistenmengen.
-const SAMMELPRODUKTE = EINTRAEGE[0];
+const SAMMELPRODUKTE = EINTRAEGE[1];
 ok("[#111] die gemeinsame Produktauswahl ist der neueste Eintrag",
   SAMMELPRODUKTE?.id === "chg-20260907-20" && SAMMELPRODUKTE?.issue === 111
   && SAMMELPRODUKTE?.typ === "feature" && SAMMELPRODUKTE?.datum === "2026-09-07");
@@ -74,13 +112,13 @@ ok("[#111] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
     .test(SAMMELPRODUKTE?.testbitte || ""));
 
 // Die vereinfachten Seitenansicht-Symbole der Spannkomponenten (#110) sind der zweitneueste Eintrag —
-// sie werden als einzige direkt ueber `EINTRAEGE[1]` geprueft; die bisherige Reihe rueckt
+// sie werden als einzige direkt ueber `EINTRAEGE[2]` geprueft; die bisherige Reihe rueckt
 // geschlossen um eins nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass
 // Mutter, Kopplungsmutter, Spannplatten und Einlegeblech samt aufsitzender Mutter in Modul 1 UND
 // Modul 7 als dieselben vereinfachten Symbole erscheinen. Ausdruecklich NICHT versprochen werden
 // eine geaenderte Rechnung, geaenderte Mengen oder Stueckliste, neue Kennfarben, Bemassung an den
 // Bauteilen oder eine Umstellung der Montageanleitung (Modul 5, eigenes Paket).
-const SPANNSYMBOLE = EINTRAEGE[1];
+const SPANNSYMBOLE = EINTRAEGE[2];
 ok("[#110] die Symbole der Spannkomponenten folgen darauf",
   SPANNSYMBOLE?.id === "chg-20260907-19" && SPANNSYMBOLE?.issue === 110
   && SPANNSYMBOLE?.typ === "feature" && SPANNSYMBOLE?.datum === "2026-09-07");
@@ -108,14 +146,14 @@ ok("[#110] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 ok("genau ein Eintrag fuer Issue 110", EINTRAEGE.filter(e => e.issue === 110).length === 1);
 
 // Das gemeinsame Bearbeiten aller neun allgemeinen Wandmerkmale (#111) folgt darauf —
-// es wird als einziges direkt ueber `EINTRAEGE[2]` geprueft; die bisherige Reihe rueckt geschlossen
+// es wird als einziges direkt ueber `EINTRAEGE[3]` geprueft; die bisherige Reihe rueckt geschlossen
 // um eins nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der
 // Sammel-Editor des Geschosseditors hinter genau EINER Schaltflaeche in einem Popup liegt und dort
 // neun allgemeine Wandmerkmale gemeinsam setzt, dass gemischte Ausgangswerte als solche stehen,
 // dass nur Angekreuztes wirkt und dass der Vorgang ein Rueckgaengig-Schritt ist. Ausdruecklich
 // NICHT versprochen werden eine gemeinsame PRODUKTAUSWAHL (Folgepaket), eine Sammelbearbeitung von
 // Laenge, Lage, Oeffnungen, Verzahnungen oder Spannachsen und irgendeine geaenderte Rechnung.
-const SAMMELMERKMALE = EINTRAEGE[2];
+const SAMMELMERKMALE = EINTRAEGE[3];
 ok("[#111] das gemeinsame Bearbeiten der Wandmerkmale folgt darauf",
   SAMMELMERKMALE?.id === "chg-20260907-18" && SAMMELMERKMALE?.issue === 111
   && SAMMELMERKMALE?.typ === "feature" && SAMMELMERKMALE?.datum === "2026-09-07");
@@ -147,7 +185,7 @@ ok("genau zwei Eintraege fuer Issue 111, neu vor alt",
     === "chg-20260907-20,chg-20260907-18");
 
 // Die Stuecklistenpositionen fuer Einlegeblech und Mutter (#93/#109) sind der neueste Eintrag —
-// sie werden als einzige direkt ueber `EINTRAEGE[3]` geprueft; die bisherige Reihe rueckt
+// sie werden als einzige direkt ueber `EINTRAEGE[4]` geprueft; die bisherige Reihe rueckt
 // geschlossen um eins nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass
 // je wirksamem Zwischenspannpunkt genau EIN Einlegeblech und genau EINE Mutter als je eigene
 // Position in der Baustellenstueckliste stehen ([A-25]), dass beide Bauteile in Modul 1 ein
@@ -156,7 +194,7 @@ ok("genau zwei Eintraege fuer Issue 111, neu vor alt",
 // Einlegebleche in technischer Zeichnung, Lageplan oder Montageanleitung (#97), bestaetigte
 // Blechmasse (sie sind eine gekennzeichnete Katalogannahme bis zur Freigabe), eine geaenderte
 // Vorspannrechnung, eine geaenderte Punktverteilung und eine geaenderte Ankerzaehlung.
-const EINLEGEMENGE = EINTRAEGE[3];
+const EINLEGEMENGE = EINTRAEGE[4];
 ok("[#93/#109] die Stuecklistenposition des Einlegeblechs ist der neueste Eintrag",
   EINLEGEMENGE?.id === "chg-20260907-17" && EINLEGEMENGE?.issue === 109
   && EINLEGEMENGE?.typ === "feature" && EINLEGEMENGE?.datum === "2026-09-07");
@@ -195,14 +233,14 @@ ok("genau zwei Eintraege fuer Issue 109 (Modul-7-Nachfuehrung und Stuecklistenpo
   EINTRAEGE.filter(e => e.issue === 109).length === 2);
 
 // Danach folgt die Aktualisierung von Modul 7 ohne Neuladen (#109) — sie wird direkt ueber
-// `EINTRAEGE[4]` geprueft; die bisherige Reihe rueckt geschlossen um eins
+// `EINTRAEGE[5]` geprueft; die bisherige Reihe rueckt geschlossen um eins
 // nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 7 eine
 // Aenderung DERSELBEN aktiven Wand aus Modul 1 unmittelbar neu rechnet und zeichnet — samt
 // Uebersicht, Massstab und Tabellen — und dass die gewaehlten Darstellungsoptionen dabei
 // stehen bleiben. Ausdruecklich NICHT versprochen werden die gleiche Nachfuehrung in Modul 4
 // (eigenes Paket zu #109), die fehlenden Einlegebleche in Stueckliste oder Zeichnung
 // (#93/#97) und irgendeine Aenderung am Blattinhalt selbst.
-const ZEICHNUNGSSYNC = EINTRAEGE[4];
+const ZEICHNUNGSSYNC = EINTRAEGE[5];
 ok("[#109] die Aktualisierung von Modul 7 folgt darauf",
   ZEICHNUNGSSYNC?.id === "chg-20260907-16" && ZEICHNUNGSSYNC?.issue === 109
   && ZEICHNUNGSSYNC?.typ === "fix" && ZEICHNUNGSSYNC?.datum === "2026-09-07");
@@ -223,13 +261,13 @@ ok("[#109] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
      .test(ZEICHNUNGSSYNC?.testbitte || ""));
 
 // Davor liegt der EDITIERMODUS der Ausgleichspunkte (#96) — er wird als einziger direkt
-// ueber `EINTRAEGE[5]` geprueft; die bisherige Reihe ist dafuer geschlossen um eins nach
+// ueber `EINTRAEGE[6]` geprueft; die bisherige Reihe ist dafuer geschlossen um eins nach
 // hinten gerueckt. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die Bedienung in Modul 1 —
 // Punkte hinzufuegen, verschieben, loeschen, „Zurueck zu Auto" — samt gespeichertem Override,
 // der die automatische Verteilung sperrt und Speichern/Laden uebersteht ([A-24]). Ausdruecklich
 // NICHT versprochen werden eine Darstellung der Punkte in Wandansicht, Zeichnung oder Montage
 // (Issue #97), kombinierbare Blechdicken oder ein statischer Nachweis der Auflagerpunkte.
-const EDITIERMODUS = EINTRAEGE[5];
+const EDITIERMODUS = EINTRAEGE[6];
 ok("[#96] der Editiermodus der Ausgleichspunkte ist der neueste Eintrag",
   EDITIERMODUS?.id === "chg-20260907-15" && EDITIERMODUS?.issue === 96
   && EDITIERMODUS?.typ === "feature" && EDITIERMODUS?.datum === "2026-09-07");
@@ -250,13 +288,13 @@ ok("[#96] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
      .test(EDITIERMODUS?.testbitte || ""));
 
 // Davor liegt die Stuecklistenposition des Ausgleichsblechs (#96) — sie wird als einzige
-// direkt ueber `EINTRAEGE[6]` geprueft; die bisherige Reihe rueckt geschlossen um eins
+// direkt ueber `EINTRAEGE[7]` geprueft; die bisherige Reihe rueckt geschlossen um eins
 // nach hinten. Aussagewahr heisst hier: geliefert ist GENAU EINE Position „Ausgleichsblech" mit
 // der Menge gleich der Zahl der gerechneten Ausgleichspunkte ([A-18]), bepreist ueber die
 // bestehende Rolle. Ausdruecklich NICHT versprochen werden ein Editiermodus in Modul 1, eine
 // Darstellung der Punkte in Wandansicht, Zeichnung oder Montage (Issue #97), kombinierbare
 // Blechdicken oder ein statischer Nachweis der Auflagerpunkte.
-const AUSGLEICHSMENGE = EINTRAEGE[6];
+const AUSGLEICHSMENGE = EINTRAEGE[7];
 ok("[#96] die Stuecklistenposition des Ausgleichsblechs folgt direkt danach",
   AUSGLEICHSMENGE?.id === "chg-20260907-14" && AUSGLEICHSMENGE?.issue === 96
   && AUSGLEICHSMENGE?.typ === "feature" && AUSGLEICHSMENGE?.datum === "2026-09-07");
@@ -278,13 +316,13 @@ ok("[#96] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 
 // Davor liegt die korrigierte Maßorientierung des vorlaeufigen Ausgleichsblechs
 // (#96, Feststellung von Tibor vom 2026-09-07) — er wird als einziger direkt ueber
-// `EINTRAEGE[7]` geprueft; die bisherige Reihe rueckt geschlossen um eins nach hinten.
+// `EINTRAEGE[8]` geprueft; die bisherige Reihe rueckt geschlossen um eins nach hinten.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die gedrehte Orientierung des
 // Blechs in der mitgelieferten Vorlage samt Rollenhinweis und Handbuchregel — 20 mm in
 // Wandrichtung, 100 mm quer, Dicke unveraendert 8 mm. Ausdruecklich NICHT versprochen werden
 // eine Stuecklistenposition oder Menge, ein geaenderter Preis, eine Darstellung oder eine
 // Migration bereits gespeicherter Kataloge.
-const MASSORIENTIERUNG = EINTRAEGE[7];
+const MASSORIENTIERUNG = EINTRAEGE[8];
 ok("[#96] die korrigierte Ma\u00dforientierung ist der neueste Eintrag",
   MASSORIENTIERUNG?.id === "chg-20260907-13" && MASSORIENTIERUNG?.issue === 96
   && MASSORIENTIERUNG?.typ === "fix" && MASSORIENTIERUNG?.datum === "2026-09-07");
@@ -306,13 +344,13 @@ ok("[#96] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
        .test(MASSORIENTIERUNG?.testbitte || ""));
 
 // Davor liegen die deterministisch berechneten Ausgleichspunkte (#96) — sie werden
-// als einzige direkt ueber `EINTRAEGE[8]` geprueft. Aussagewahr heisst hier: geliefert ist die
+// als einzige direkt ueber `EINTRAEGE[9]` geprueft. Aussagewahr heisst hier: geliefert ist die
 // deterministische VERTEILUNG der Punkte im Rechenkern und im Python-Orakel ([A-20]…[A-23]) — Dichte drei je Meter mit den
 // Wandenden als zaehlende Punkte, ein Pflichtpunkt je Bodenblech-Stossmitte, und dieselbe Wand
 // ergibt immer dieselbe Liste. Ausdruecklich NICHT versprochen werden eine Stuecklistenposition
 // oder Menge, ein Editiermodus in Modul 1, eine Darstellung der Punkte in Wandansicht,
 // Zeichnung oder Montage (Issue #97), geaenderte Blechmasse oder ein Preis.
-const AUSGLEICHSPUNKTE = EINTRAEGE[8];
+const AUSGLEICHSPUNKTE = EINTRAEGE[9];
 ok("[#96] die deterministischen Ausgleichspunkte sind der neueste Eintrag",
   AUSGLEICHSPUNKTE?.id === "chg-20260907-12" && AUSGLEICHSPUNKTE?.issue === 96
   && AUSGLEICHSPUNKTE?.typ === "feature" && AUSGLEICHSPUNKTE?.datum === "2026-09-07");
@@ -341,7 +379,7 @@ ok("[#96] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 // Ausdruecklich NICHT versprochen werden ein neu gestaltetes Varianten-Feedback (Folgepaket
 // zu #108), eine geaenderte Produktwahl in Modul 1/2, geaenderte Preise oder Mengen, ein
 // neues Dateiformat oder ein Katalog im Projekt-Export.
-const KATALOGMODUL = EINTRAEGE[9];
+const KATALOGMODUL = EINTRAEGE[10];
 ok("[#108] das eigene Katalogmodul folgt darauf",
   KATALOGMODUL?.id === "chg-20260907-11" && KATALOGMODUL?.issue === 108
   && KATALOGMODUL?.typ === "feature" && KATALOGMODUL?.datum === "2026-09-07");
@@ -370,7 +408,7 @@ ok("[#108] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 // versprochen werden ein geaenderter Zeichnungsinhalt, ein anderer Masstab, ein anderes
 // Papierformat, markierbarer Text in der PDF oder eine Aenderung an Modul 7, Modul 9 oder am
 // bestehenden Datenexport.
-const PDFRUECKKEHR = EINTRAEGE[10];
+const PDFRUECKKEHR = EINTRAEGE[11];
 ok("[#98/#107] der wieder funktionierende Zeichnungsexport ist der neueste Eintrag",
   PDFRUECKKEHR?.id === "chg-20260907-10" && PDFRUECKKEHR?.issue === 98
   && PDFRUECKKEHR?.typ === "fix" && PDFRUECKKEHR?.datum === "2026-09-07");
@@ -401,7 +439,7 @@ ok("[#98/#107] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 // der offene DARSTELLUNGSTEIL derselben Rueckmeldung (Groesse und Strichstaerke der
 // Zwischenspannbleche, Spannplatte im Stein, Zwischenspannbleche in der technischen Zeichnung)
 // und keine geaenderte Menge, kein Preis und keine geaenderte Rechnung.
-const ACHSTREFFER = EINTRAEGE[11];
+const ACHSTREFFER = EINTRAEGE[12];
 ok("[#106] der Achstreffer in der Wandansicht folgt darauf",
   ACHSTREFFER?.id === "chg-20260907-09" && ACHSTREFFER?.issue === 106
   && ACHSTREFFER?.typ === "fix" && ACHSTREFFER?.datum === "2026-09-07");
@@ -469,7 +507,7 @@ ok("[#94] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 //
 // Fuer Issue 92 gibt es bereits aeltere Eintraege — eine "genau ein Eintrag"-Pruefung waere hier
 // also falsch und steht bewusst nicht da.
-const HANDBUCHREGELN = EINTRAEGE[13];
+const HANDBUCHREGELN = EINTRAEGE[14];
 ok("[#92] die Handbuchregeln zu den Einbaulagen sind der neueste Eintrag",
   HANDBUCHREGELN?.id === "chg-20260907-07" && HANDBUCHREGELN?.issue === 92
   && HANDBUCHREGELN?.typ === "doku" && HANDBUCHREGELN?.datum === "2026-09-07");
@@ -494,7 +532,7 @@ ok("[#92] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
        .test(HANDBUCHREGELN?.testbitte || ""));
 
 // Davor liegt das Ausgleichsblech unter dem Bodenblech (#96) — es wird als
-// einziges direkt ueber `EINTRAEGE[14]` geprueft; die bisherige Reihe rueckt geschlossen um eins
+// einziges direkt ueber `EINTRAEGE[15]` geprueft; die bisherige Reihe rueckt geschlossen um eins
 // nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH das Bauteil als eigene
 // Verwendungsrolle im Bauteilkatalog — waehlbar in Modul 1 (Gruppe Anschluss) und mit dem
 // mitgelieferten Standardkatalog auf das vorlaeufige Blech 100 x 20 x 8 mm vorbelegt.
@@ -502,7 +540,7 @@ ok("[#92] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 // Ausgleichsblech, eine Verteilregel fuer die Ausgleichspunkte, eine geaenderte Menge oder ein
 // geaenderter Preis einer anderen Position, eine Darstellung in Zeichnung oder Montagegrafik
 // oder eine Katalogmigration.
-const AUSGLEICH = EINTRAEGE[14];
+const AUSGLEICH = EINTRAEGE[15];
 ok("[#96] das Ausgleichsblech im Bauteilkatalog ist der neueste Eintrag",
   AUSGLEICH?.id === "chg-20260907-06" && AUSGLEICH?.issue === 96
   && AUSGLEICH?.typ === "feature" && AUSGLEICH?.datum === "2026-09-07");
@@ -527,7 +565,7 @@ ok("[#96] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
        .test(AUSGLEICH?.testbitte || ""));
 
 // Davor liegt die Unterlegscheibe des Wandabschlusses (#92) — sie wird als
-// einzige direkt ueber `EINTRAEGE[15]` geprueft. Aussagewahr heisst hier: geliefert ist
+// einzige direkt ueber `EINTRAEGE[16]` geprueft. Aussagewahr heisst hier: geliefert ist
 // AUSSCHLIESSLICH die neue Verwendungsrolle
 // in Modul 1 (Gruppe Anschluss) und die eigene Stuecklistenposition in Modul 4 mit der Menge der
 // Spannplatten. Ausdruecklich NICHT geliefert werden ein reales Bauteilmass, eine geaenderte
@@ -537,7 +575,7 @@ ok("[#96] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 // Fuer Issue 92 gibt es bereits aeltere Eintraege (`SECHSKANT`, `EINBAUHOEHE`, `EINBAULAGEN`,
 // `SPANNPLATTE`, `KOPFBLECH`) — eine „genau ein Eintrag"-Pruefung waere hier also falsch und
 // steht bewusst nicht da.
-const SCHEIBE = EINTRAEGE[15];
+const SCHEIBE = EINTRAEGE[16];
 ok("[#92] die Unterlegscheibe des Wandabschlusses folgt darauf",
   SCHEIBE?.id === "chg-20260907-05" && SCHEIBE?.issue === 92
   && SCHEIBE?.typ === "feature" && SCHEIBE?.datum === "2026-09-07");
@@ -562,12 +600,12 @@ ok("[#92] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
        .test(SCHEIBE?.testbitte || ""));
 
 // Davor liegt der Rueckbau des Startachsen-Bedienfelds (#104) — er wird als
-// einziger direkt ueber `EINTRAEGE[16]` geprueft; die bisherige Reihe rueckt geschlossen um eins
+// einziger direkt ueber `EINTRAEGE[17]` geprueft; die bisherige Reihe rueckt geschlossen um eins
 // nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH der ersatzlose Rueckbau
 // des Bedienfelds in Modul 1 und der Startachsenzeile im Zeichnungsblatt. Ausdruecklich NICHT
 // geliefert wird eine geaenderte Achsverteilung (die kam mit chg-20260907-03), eine geaenderte
 // Menge, ein geaenderter Preis oder eine Migration gespeicherter Werte.
-const RUECKBAU = EINTRAEGE[16];
+const RUECKBAU = EINTRAEGE[17];
 ok("[#104] der Rueckbau des Bedienfelds ist der neueste Eintrag",
   RUECKBAU?.id === "chg-20260907-04" && RUECKBAU?.issue === 104
   && RUECKBAU?.typ === "fix" && RUECKBAU?.datum === "2026-09-07");
@@ -617,7 +655,7 @@ ok("genau zwei Eintraege fuer Issue 104 (Randregel und Rueckbau)",
   EINTRAEGE.filter(e => e.issue === 104).length === 2);
 
 // Danach folgt die einheitliche Bezeichnung der Fussschraube (#92) — er wird als
-// einziger direkt ueber `EINTRAEGE[18]` geprueft; die bisherige Reihe rueckt geschlossen um
+// einziger direkt ueber `EINTRAEGE[19]` geprueft; die bisherige Reihe rueckt geschlossen um
 // eins nach hinten. Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die einheitliche
 // BEZEICHNUNG in Stueckliste, Montageanleitung, Produktauswahl, Standardkatalog und Handbuch.
 // Ausdruecklich NICHT geliefert werden eine geaenderte Menge, ein geaenderter Preis, eine
@@ -627,7 +665,7 @@ ok("genau zwei Eintraege fuer Issue 104 (Randregel und Rueckbau)",
 // Fuer Issue 92 gibt es bereits aeltere Eintraege (`EINBAUHOEHE`, `EINBAULAGEN`, `SPANNPLATTE`,
 // `KOPFBLECH`) — eine „genau ein Eintrag"-Pruefung waere hier also falsch und steht bewusst
 // nicht da.
-const SECHSKANT = EINTRAEGE[18];
+const SECHSKANT = EINTRAEGE[19];
 ok("[#92] die einheitliche Bezeichnung der Fußschraube ist der neueste Eintrag",
   SECHSKANT?.id === "chg-20260907-02" && SECHSKANT?.issue === 92
   && SECHSKANT?.typ === "fix" && SECHSKANT?.datum === "2026-09-07");
@@ -655,7 +693,7 @@ ok("[#92] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
        .test(SECHSKANT?.testbitte || ""));
 
 // Darauf folgt die pflegbare Einbauhoehe eines Kleinteils (#92); sie zaehlt jetzt ueber
-// `EINTRAEGE[19]`, weil die Randregel der Spannachsen und die einheitliche Bezeichnung der
+// `EINTRAEGE[20]`, weil die Randregel der Spannachsen und die einheitliche Bezeichnung der
 // Fussschraube davor getreten sind.
 // Aussagewahr heisst hier: versprochen wird GENAU das Eingabefeld im
 // Katalogdialog, dass ein dort eingetragener Wert erhalten bleibt (statt wie bisher als
@@ -666,7 +704,7 @@ ok("[#92] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 //
 // Fuer Issue 92 gibt es bereits aeltere Eintraege (`EINBAULAGEN`, `SPANNPLATTE`, `KOPFBLECH`)
 // — eine „genau ein Eintrag"-Pruefung waere hier also falsch und steht bewusst nicht da.
-const EINBAUHOEHE = EINTRAEGE[19];
+const EINBAUHOEHE = EINTRAEGE[20];
 ok("[#92] die pflegbare Einbauhöhe eines Kleinteils folgt darauf",
   EINBAUHOEHE?.id === "chg-20260907-01" && EINBAUHOEHE?.issue === 92
   && EINBAUHOEHE?.typ === "fix" && EINBAUHOEHE?.datum === "2026-09-07");
@@ -700,7 +738,7 @@ ok("[#92] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 // Rollenpositionen mit Menge) und der verlustfreie Export/Import. Ausdruecklich NICHT
 // versprochen werden Stueckliste, Menge, Preis, eine Zuordnung an der Wand oder fertige
 // Vorgaben im Standardkatalog: die bleiben in diesem Stand offen.
-const BAUGRUPPEN = EINTRAEGE[20];
+const BAUGRUPPEN = EINTRAEGE[21];
 ok("[#94] die Baugruppen im Bauteilkatalog folgen darauf",
   BAUGRUPPEN?.id === "chg-20260906-02" && BAUGRUPPEN?.issue === 94
   && BAUGRUPPEN?.typ === "feature" && BAUGRUPPEN?.datum === "2026-09-06");
@@ -740,7 +778,7 @@ ok("genau zwei Eintraege fuer Issue 94, neu vor alt",
 //
 // Fuer Issue 92 gibt es bereits aeltere Eintraege (`SPANNPLATTE`, `KOPFBLECH`) — eine
 // „genau ein Eintrag"-Pruefung waere hier also falsch und steht bewusst nicht da.
-const EINBAULAGEN = EINTRAEGE[21];
+const EINBAULAGEN = EINTRAEGE[22];
 ok("[#92] die realen Einbaulagen des Spannsystems folgen darauf",
   EINBAULAGEN?.id === "chg-20260906-01" && EINBAULAGEN?.issue === 92
   && EINBAULAGEN?.typ === "feature" && EINBAULAGEN?.datum === "2026-09-06");
@@ -771,7 +809,7 @@ ok("[#92] die Testbitte verspricht nichts, was dieser Stand nicht liefert",
 // fehlenden Wandelements vor dem Download; ausdruecklich NICHT versprochen werden ein
 // geaendertes Blatt, ein anderer Masstab, ein anderes Papierformat, ein geaenderter
 // Zeichnungsinhalt oder eine Aenderung am bestehenden Export/Projektarchiv.
-const ZEICHNUNGSPDF = EINTRAEGE[22];
+const ZEICHNUNGSPDF = EINTRAEGE[23];
 ok("[#98] die gesammelten Zeichnungs-PDFs folgen darauf",
   ZEICHNUNGSPDF?.id === "chg-20260905-01" && ZEICHNUNGSPDF?.issue === 98
   && ZEICHNUNGSPDF?.typ === "feature" && ZEICHNUNGSPDF?.datum === "2026-09-05");
@@ -803,7 +841,7 @@ ok("genau zwei Eintraege fuer Issue 98 (Lieferung und Behebung)",
 // Wandelement) — und dass das gedruckte Blatt einseitig bleibt; ausdruecklich NICHT
 // versprochen werden ein anderes Blattformat, ein anderer Masstab, eine andere
 // Blattgeometrie oder ein geaenderter Zeichnungsinhalt.
-const VORSCHAUHOEHE = EINTRAEGE[23];
+const VORSCHAUHOEHE = EINTRAEGE[24];
 ok("[#99] die browserhohe Blattvorschau folgt darauf",
   VORSCHAUHOEHE?.id === "chg-20260904-12" && VORSCHAUHOEHE?.issue === 99
   && VORSCHAUHOEHE?.typ === "fix" && VORSCHAUHOEHE?.datum === "2026-09-04");
@@ -826,7 +864,7 @@ ok("genau ein Eintrag fuer Issue 99 (browserhohe Blattvorschau)",
 // GENAU der geaenderte Datenwert des ausgelieferten Standardkatalogs samt passender
 // Bezeichnung; ausdruecklich NICHT versprochen werden geaenderte Preise, Katalogrollen, eine
 // geaenderte Zuschnitt-/Mengenlogik oder eine Umstellung bereits vorhandener eigener Kataloge.
-const STANDARDLAENGE = EINTRAEGE[24];
+const STANDARDLAENGE = EINTRAEGE[25];
 ok("die korrigierte Standardlaenge (Issue 103) ist der neueste Eintrag",
   STANDARDLAENGE?.id === "chg-20260904-11" && STANDARDLAENGE?.issue === 103
   && STANDARDLAENGE?.typ === "fix" && STANDARDLAENGE?.datum === "2026-09-04");
@@ -849,7 +887,7 @@ ok("genau ein Eintrag fuer Issue 103 (Standardlaenge der Gewindestange)",
 // unveraenderliche Vorlage, die automatisch angelegte Projektkopie beim ersten Bearbeiten und
 // der Erhalt eigener Kataloge; ausdruecklich NICHT versprochen werden geaenderte Mengen,
 // Preise, Katalogrollen oder eine Zusammenfuehrung/Historie lokaler Aenderungen.
-const KOPIERSCHUTZ = EINTRAEGE[25];
+const KOPIERSCHUTZ = EINTRAEGE[26];
 ok("der Standardkatalog-Kopierschutz (Issue 102) folgt darauf",
   KOPIERSCHUTZ?.id === "chg-20260904-10" && KOPIERSCHUTZ?.issue === 102
   && KOPIERSCHUTZ?.typ === "fix" && KOPIERSCHUTZ?.datum === "2026-09-04");
@@ -887,10 +925,10 @@ ok("genau ein Eintrag fuer Issue 102 (Standardkatalog-Kopierschutz)",
 // #81 (Mengenuebersteuerung), #79 (Wahl in Modul 1) und #80. Die aelteren Eintraege
 // zaehlen ueber `AELTER` — so bleibt jede Positionsaussage erhalten, ohne 60 Indizes
 // zu drehen.
-const VORHER = EINTRAEGE.slice(44);
-const NEU = EINTRAEGE.slice(50);
-const AKTUELL = EINTRAEGE.slice(55);
-const AELTER = EINTRAEGE.slice(65);
+const VORHER = EINTRAEGE.slice(45);
+const NEU = EINTRAEGE.slice(51);
+const AKTUELL = EINTRAEGE.slice(56);
+const AELTER = EINTRAEGE.slice(66);
 // Der NEUESTE Eintrag ist die TEILAUSWAHL des Projektimports (#86): aus einer geprueften
 // Projektdatei laesst sich auch nur ein Geschoss oder eine einzelne Wand uebernehmen.
 // Aussagewahr heisst hier: geprueft wird weiter die GANZE Datei, die Exportseite ist
@@ -917,7 +955,7 @@ const AELTER = EINTRAEGE.slice(65);
 // Vorgabe je Strang, die lagengenaue Bearbeitung und die Rueckkehr zu Auto; ausdruecklich
 // NICHT versprochen werden Stueckliste, Menge, Preis, Katalogrolle oder Blechmasse — die
 // bleiben in diesem Stand offen.
-const ZWISCHEN = EINTRAEGE[26];
+const ZWISCHEN = EINTRAEGE[27];
 ok("die Zwischenspannpunkte (Issue 93) folgen darauf",
   ZWISCHEN?.id === "chg-20260904-09" && ZWISCHEN?.issue === 93
   && ZWISCHEN?.typ === "feature" && ZWISCHEN?.datum === "2026-09-04");
@@ -940,7 +978,7 @@ ok("genau ein Eintrag fuer Issue 93 (Zwischenspannpunkte)", neu93.length === 1);
 // hier: versprochen wird die VORAUSWAHL fuer NEUE Waende und der Fortbestand einer
 // gespeicherten Kopfblech-Wahl; nicht versprochen werden geaenderte Mengen, Preise,
 // Katalogrollen oder eine Umstellung des Bestands.
-const SPANNPLATTE = EINTRAEGE[27];
+const SPANNPLATTE = EINTRAEGE[28];
 ok("der Spannplatten-Default (Issue 92) folgt darauf",
   SPANNPLATTE?.id === "chg-20260904-08" && SPANNPLATTE?.issue === 92
   && SPANNPLATTE?.typ === "feature" && SPANNPLATTE?.datum === "2026-09-04");
@@ -957,7 +995,7 @@ ok("die Testbitte benennt neue Wand UND Bestandswand als die beiden Faelle",
   && /Kopfblech/.test(SPANNPLATTE?.testbitte || ""));
 
 // Die feste Reihenfolge der Wandauswahl (#101) rueckt geschlossen um eins nach hinten.
-const WANDAUSWAHL = EINTRAEGE[28];
+const WANDAUSWAHL = EINTRAEGE[29];
 ok("die feste Wandauswahl-Reihenfolge (Issue 101) folgt darauf",
   WANDAUSWAHL?.id === "chg-20260904-07" && WANDAUSWAHL?.issue === 101
   && WANDAUSWAHL?.typ === "fix" && WANDAUSWAHL?.datum === "2026-09-04");
@@ -977,7 +1015,7 @@ ok("die Testbitte benennt Wechsel UND Bearbeitung als die beiden stabilen Faelle
 // ab hier ueber `KOPFBLECH`. Sie ist AUSDRUECKLICH `intern`: das Paket schreibt nur die
 // bestehenden Kopfblech-Faelle der Tests explizit fest und aendert weder Produktverhalten
 // noch Oberflaeche — deshalb verspricht sie auch keine Bedienprobe und keinen neuen Default.
-const KOPFBLECH = EINTRAEGE[29];
+const KOPFBLECH = EINTRAEGE[30];
 ok("die Kopfblech-Festschreibung (Issue 92) folgt darauf",
   KOPFBLECH?.id === "chg-20260904-06" && KOPFBLECH?.issue === 92
   && KOPFBLECH?.typ === "intern" && KOPFBLECH?.datum === "2026-09-04");
@@ -993,7 +1031,7 @@ ok("die reine Vorarbeit verspricht keine Bedienprobe (keine Testbitte)",
 // Darstellung der realen Bodenblechteile in Modul 5 und Modul 7 (#91, Abschlusspaket). Aussagewahr heisst hier: versprochen wird allein die
 // DARSTELLUNG — die Zerlegung selbst kam mit chg-20260904-02 aus dem Rechenkern, und es
 // aendert sich keine Menge, kein Preis, kein Masstab und kein Format.
-const STOSS = EINTRAEGE[30];
+const STOSS = EINTRAEGE[31];
 ok("die Bodenblech-Stossdarstellung (Issue 91) folgt darauf",
   STOSS?.id === "chg-20260904-05" && STOSS?.issue === 91
   && STOSS?.typ === "feature" && STOSS?.datum === "2026-09-04");
@@ -1013,7 +1051,7 @@ ok("die Stossdarstellungs-Testbitte benennt beide Module, den Abgleich und den S
 
 // Die einpassbare Wandansicht (#100) rueckt geschlossen um eins nach hinten und zaehlt
 // ab hier ueber `ZOOM`, damit keine Indizes zu drehen sind.
-const ZOOM = EINTRAEGE[31];
+const ZOOM = EINTRAEGE[32];
 ok("die einpassbare Wandansicht (Issue 100) folgt darauf",
   ZOOM?.id === "chg-20260904-04" && ZOOM?.issue === 100
   && ZOOM?.typ === "feature" && ZOOM?.datum === "2026-09-04");
@@ -1030,7 +1068,7 @@ ok("die Zoom-Testbitte benennt Modul, Bedienelemente und die Startgroesse",
   && /Kleiner/.test(ZOOM?.testbitte || "")
   && /Einpassen/.test(ZOOM?.testbitte || ""));
 
-const VORRATSSATZ = EINTRAEGE[32];
+const VORRATSSATZ = EINTRAEGE[33];
 ok("die Bodenblech-Auswahlanbindung (Issue 91) folgt darauf",
   VORRATSSATZ?.id === "chg-20260904-03" && VORRATSSATZ?.issue === 91
   && VORRATSSATZ?.typ === "feature" && VORRATSSATZ?.datum === "2026-09-04");
@@ -1057,7 +1095,7 @@ ok("alle drei #91-Eintraege stehen in der Liste, neu vor alt",
     === "chg-20260904-05,chg-20260904-03,chg-20260904-02");
 
 // Die Zerlegung im Rechenkern (#91, Kernpaket) folgt darauf.
-const ZERLEGUNG = EINTRAEGE[33];
+const ZERLEGUNG = EINTRAEGE[34];
 ok("die Bodenblech-Zerlegung (Issue 91) folgt als zweiter Eintrag",
   ZERLEGUNG?.id === "chg-20260904-02" && ZERLEGUNG?.issue === 91
   && ZERLEGUNG?.typ === "feature" && ZERLEGUNG?.datum === "2026-09-04");
@@ -1075,7 +1113,7 @@ ok("die Bodenblech-Testbitte benennt Modul, Maße und die Fugenregel",
   && /Steinfuge/.test(ZERLEGUNG?.testbitte || ""));
 
 // Die manuelle Menge der Geschossebene (#81) folgt darauf.
-const GESCHOSSMENGE = EINTRAEGE[34];
+const GESCHOSSMENGE = EINTRAEGE[35];
 ok("die manuelle Menge der Geschossebene (Issue 81) folgt als zweiter Eintrag",
   GESCHOSSMENGE?.id === "chg-20260904-01" && GESCHOSSMENGE?.issue === 81
   && GESCHOSSMENGE?.typ === "feature" && GESCHOSSMENGE?.datum === "2026-09-04");
@@ -1094,7 +1132,7 @@ ok("die Geschossmengen-Testbitte benennt Ebene, Anzeige und Exportfassung",
   && /angepasst/.test(GESCHOSSMENGE?.testbitte || ""));
 
 // Die Teilauswahl des Projektimports (#86) folgt darauf.
-const TEILAUSWAHL = EINTRAEGE[35];
+const TEILAUSWAHL = EINTRAEGE[36];
 ok("die Teilauswahl des Projektimports (Issue 86) folgt als dritter Eintrag",
   TEILAUSWAHL?.id === "chg-20260902-01" && TEILAUSWAHL?.issue === 86
   && TEILAUSWAHL?.typ === "feature" && TEILAUSWAHL?.datum === "2026-09-02");
@@ -1115,7 +1153,7 @@ ok("die Teilauswahl-Testbitte benennt Weg, Wahl, Ziel und Bestätigung",
 // Projektarchiv auch die ZIP des zentralen Exports und uebernimmt das ganze Projekt.
 // Aussagewahr heisst dort: hinzugekommen ist allein ein LESEWEG — die Exportseite ist
 // unveraendert, es entsteht kein Feld und kein Versionssprung.
-const IMPORTDIALOG = EINTRAEGE[36];
+const IMPORTDIALOG = EINTRAEGE[37];
 ok("der eine Projektimport-Dialog (Issue 86) folgt als dritter Eintrag",
   IMPORTDIALOG?.id === "chg-20260818-04" && IMPORTDIALOG?.issue === 86
   && IMPORTDIALOG?.typ === "feature" && IMPORTDIALOG?.datum === "2026-08-18");
@@ -1137,7 +1175,7 @@ ok("die Import-Testbitte benennt den Weg, den Bericht und die Bestätigung",
 // Wandebene (#81) folgt darauf: eine eigene, angehaengte Spalte, in beiden Mengenfassungen
 // gleich. Aussagewahr heisst dort: hinzugekommen ist allein ein AUSGABEWEG — erfasst wird
 // weiter nur in Modul 4, und abgeleitet wird daraus nichts ([P-20]).
-const KOMMENTAR = EINTRAEGE[37];
+const KOMMENTAR = EINTRAEGE[38];
 ok("der Kommentar in der Wandstückliste (Issue 81) folgt direkt auf den neuesten Eintrag",
   KOMMENTAR?.id === "chg-20260818-03" && KOMMENTAR?.issue === 81
   && KOMMENTAR?.typ === "feature" && KOMMENTAR?.datum === "2026-08-18");
@@ -1155,7 +1193,7 @@ ok("die Kommentar-Testbitte benennt beide Module, die Spalte und was unveraender
   && /beiden Mengenfassungen/.test(KOMMENTAR?.testbitte || "")
   && /Mengen und Preise bleiben/.test(KOMMENTAR?.testbitte || ""));
 
-const HERKUNFT = EINTRAEGE[38];
+const HERKUNFT = EINTRAEGE[39];
 // Der bisher neueste Eintrag nimmt die WANDHERKUNFT aus Modul 4 und der Gesamtstueckliste-Datei
 // (#81): auf den Gesamtebenen faellt die Spalte „Wände (Herkunft)“ ersatzlos weg. Aussagewahr
 // heisst hier: geaendert hat sich allein die DARSTELLUNG — Mengen, Einbauteil-IDs, Preise und
@@ -1179,7 +1217,7 @@ ok("die Herkunfts-Testbitte benennt Ebenen, beide Orte und was unveraendert blei
   && /Mengenfassungen/.test(HERKUNFT?.testbitte || "")
   && /Baustellenstückliste der Wand bleibt gleich/.test(HERKUNFT?.testbitte || ""));
 
-const VORSCHAU = EINTRAEGE[39];
+const VORSCHAU = EINTRAEGE[40];
 // Der bisher neueste Eintrag stellt die BLATTVORSCHAU von Modul 9 auf das echte Papierverhaeltnis
 // des gewaehlten Formats um (#89): Vorschau und Ausdruck zeigen dieselbe Aufteilung, beim
 // Verkleinern des Fensters skaliert das ganze Blatt gleichmaessig. Aussagewahr heisst hier:
@@ -1201,7 +1239,7 @@ ok("die Vorschau-Testbitte benennt Ort, Bedienung und die erwartete Wirkung",
   && /Aufteilung/.test(VORSCHAU?.testbitte || "")
   && /Ausdrucks/.test(VORSCHAU?.testbitte || "")
   && /als Ganzes kleiner/.test(VORSCHAU?.testbitte || ""));
-const SEITEN = EINTRAEGE[40];
+const SEITEN = EINTRAEGE[41];
 // Davor nahm der Eintrag die V/R-KENNBUCHSTABEN vom Lageplanblatt (#89): Vorder- und
 // Rueckseite bleiben als farbige Kanten erkennbar und werden in der Legende
 // aufgeschluesselt. Aussagewahr heisst hier: die Unterscheidung bleibt erhalten — es darf
@@ -1225,7 +1263,7 @@ ok("die Seiten-Testbitte benennt Ort, Erwartung und die erhaltene Unterscheidung
   && /keine V\/R-Buchstaben/.test(SEITEN?.testbitte || "")
   && /farbigen Vorder- und Rückkanten/.test(SEITEN?.testbitte || "")
   && /Legende/.test(SEITEN?.testbitte || ""));
-const BLASEN = EINTRAEGE[41];
+const BLASEN = EINTRAEGE[42];
 // Davor machte der Eintrag die NUMMERNBLASEN des Lageplans wandfrei (#89): sie weichen
 // jetzt auch den Wandflaechen aus, nicht mehr nur einander und den Massen. Aussagewahr
 // heisst hier: die Zuordnung bleibt — die Fuehrungslinie zeigt weiter auf dieselbe
@@ -1254,7 +1292,7 @@ ok("die Blasen-Testbitte benennt Ort, Erwartung und die erhaltene Zuordnung",
 ok("genau vier Eintraege fuer Issue 89, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 89).map(e => e.id).join(",")
     === "chg-20260818-01,chg-20260817-08,chg-20260817-07,chg-20260817-05");
-const PLANKOPF = EINTRAEGE[42];
+const PLANKOPF = EINTRAEGE[43];
 // Der neueste Eintrag raeumt das LAGEPLANBLATT auf (#89): der Brandschutz-Kurztext an
 // jeder Wand ist entfallen und wird nur noch ueber die Legende erklaert, die Wandliste
 // fuehrt Nummer, Bezeichnung und Hoehe. Aussagewahr heisst hier: die Unterscheidung
@@ -1290,7 +1328,7 @@ ok("genau zwei Eintraege fuer Issue 68, neu vor alt",
   EINTRAEGE.filter(e => e.issue === 68).map(e => e.id).join(",")
     === "chg-20260817-06,chg-20260812-08");
 // Davor raeumte der Eintrag das LAGEPLANBLATT auf (#89) — er zaehlt jetzt ueber LETZTER.
-const LETZTER = EINTRAEGE[43];
+const LETZTER = EINTRAEGE[44];
 ok("das entschlackte Lageplanblatt (Issue 89) folgt direkt danach",
   LETZTER?.id === "chg-20260817-05" && LETZTER?.issue === 89
   && LETZTER?.typ === "feature" && LETZTER?.datum === "2026-08-17");
