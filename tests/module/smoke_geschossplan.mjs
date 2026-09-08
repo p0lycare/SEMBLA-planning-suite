@@ -3441,6 +3441,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     const katText111 = readFileSync(
       new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
     const rid = (r) => 'gp-sammel-rolle-' + r;
+    // #108 Je Verwendungsstelle stehen HAEKCHEN statt eines Auswahlfelds — bedient wird
+    // sie wie in Modul 1 ueber den delegierten Behandler am Kasten. Genau dieser Weg
+    // laeuft hier, nicht ein Setzen des Zustands von aussen.
+    const hake = (r, pid, an = true) => $('gp-sammel-rollen').dispatch('change',
+      { target: { checked: an, dataset: { prolle: r, pid } } });
+    const wahl111 = (r) => (GP.zustand.sammelWahl[r] || []).join();
     const rollenIds111 = (id, r) => KATT.rollenIds(store.holeProdukte(1, id), r);
     const aufbau111 = (id) => JSON.stringify(store.holeElement(id).eingaben?.aufbau);
 
@@ -3493,7 +3499,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       const speicherVor = localStorage.getItem('sembla:elemente');
       const undoVor = GP.undoStand.undo;
       $(rid('i3') + '-an').checked = true; $(rid('i3') + '-an').dispatch('change');
-      $(rid('i3')).value = 'stein-i3-375';
+      hake('i3', 'stein-i3-375');
       $('gp-sammel-go').dispatch('click');
       await warte();
       ok('#111 (Muss 5) ohne zugeordneten Bauteilkatalog wird benannt abgewiesen',
@@ -3517,7 +3523,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       && ids111.every(id => rollenIds111(id, 'rod_std').length === 0));
     ok('#111 die Gegenprobe (h2) hat das Feld belegt — eine laufende Eingabe wird nie '
       + 'ueberschrieben',
-      $(rid('i3')).value === 'stein-i3-375');
+      wahl111('i3') === 'stein-i3-375');
     // Auswahl neu setzen: erst EINE Wand (das Popup geht zu und verwirft die
     // Vorbelegung), dann wieder alle drei — so laeuft die Vorbelegung mit dem
     // jetzt GEMISCHTEN Ist-Stand wirklich.
@@ -3530,12 +3536,16 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       /gemischt/.test($(rid('i3') + '-ist').innerHTML)
       && /37,5/.test($(rid('i3') + '-ist').innerHTML)
       && /keine Auswahl/.test($(rid('i3') + '-ist').innerHTML)
-      && $(rid('i3')).value === ''
+      && wahl111('i3') === ''
       && $(rid('i3') + '-an').checked === false);
     ok('#111 die Produktliste kommt aus dem zugeordneten Katalog (nur passende Kategorie)',
-      /stein-i3-375/.test($(rid('i3')).innerHTML)
-      && /stein-i2-250/.test($(rid('i3')).innerHTML)
-      && !/gewindestange/.test($(rid('i3')).innerHTML));
+      /data-pid="stein-i3-375"/.test($(rid('i3') + '-menu').innerHTML)
+      && /data-pid="stein-i2-250"/.test($(rid('i3') + '-menu').innerHTML)
+      && !/gewindestange/.test($(rid('i3') + '-menu').innerHTML));
+    ok('#108 die Produkte stehen als HAEKCHEN — dasselbe Steuerelement wie in Modul 1',
+      /type="checkbox"/.test($(rid('i3') + '-menu').innerHTML)
+      && !/<option/.test($(rid('i3') + '-menu').innerHTML)
+      && /class="psum" id="gp-sammel-rolle-i3-summ"/.test($('gp-sammel-rollen').innerHTML));
 
     // (h4) Akzeptanz 1: ankreuzen, waehlen, uebernehmen. Dazu die MASSWIRKSAME
     //      Rolle `rod_std` — sie muss dieselbe Neurechnung nachziehen wie Modul 1.
@@ -3549,9 +3559,9 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       ids111.every(id => we111(id).prestress.rod_lengths_mm.length === 0
         && we111(id).rod_mm === null));
     $(rid('i3') + '-an').checked = true; $(rid('i3') + '-an').dispatch('change');
-    $(rid('i3')).value = 'stein-i3-375';
+    hake('i3', 'stein-i3-375');
     $(rid('rod_std') + '-an').checked = true; $(rid('rod_std') + '-an').dispatch('change');
-    $(rid('rod_std')).value = 'gewindestange-m10-1000';
+    hake('rod_std', 'gewindestange-m10-1000');
     ok('#111 (Muss 2) das Haekchen schaltet genau sein Rollenfeld frei',
       $(rid('i3')).disabled === false && $(rid('rod_std')).disabled === false
       && erwartet111.filter(r => r !== 'i3' && r !== 'rod_std')
@@ -3615,7 +3625,8 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     {
       const speicherVor = localStorage.getItem('sembla:elemente');
       const undoVor = GP.undoStand.undo;
-      $(rid('i3')).value = 'gibtsnicht';
+      hake('i3', 'stein-i3-375', false);
+      hake('i3', 'gibtsnicht');
       $('gp-sammel-go').dispatch('click');
       await warte();
       ok('#111 (Akzeptanz 3) ein im Katalog fehlendes Produkt wird BENANNT abgewiesen',
@@ -3625,7 +3636,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       ok('#111 (Akzeptanz 3) dabei ist keine Wand veraendert und nichts gebucht',
         localStorage.getItem('sembla:elemente') === speicherVor
         && GP.undoStand.undo === undoVor);
-      $(rid('i3')).value = '';
+      hake('i3', 'gibtsnicht', false);
       $('gp-sammel-go').dispatch('click');
       await warte();
       ok('#111 (Muss 3) eine angekreuzte Rolle ohne gewaehltes Produkt wird abgewiesen',
@@ -3640,8 +3651,9 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       const vorWe = ids111.map(id => JSON.stringify(we111(id)));
       const vorRollen = ids111.map(id => JSON.stringify(store.holeProdukte(1, id).rollen));
       const undoVor = GP.undoStand.undo;
-      $(rid('i3')).value = 'stein-i2-250';
-      $(rid('rod_std')).value = 'gewindestange-m10-850';
+      hake('i3', 'stein-i2-250');
+      hake('rod_std', 'gewindestange-m10-1000', false);
+      hake('rod_std', 'gewindestange-m10-850');
       // Der vierte Schreibvorgang am Wandspeicher ist der ERSTE der zweiten Wand:
       // je Wand schreibt der Lauf das Wandelement und dann die zwei Rollen.
       const echtesSetItem = localStorage.setItem.bind(localStorage);
@@ -3662,6 +3674,45 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
           && JSON.stringify(store.holeProdukte(1, id).rollen) === vorRollen[i]));
       ok('#111 (Muss 6) ein gescheiterter Lauf bucht keinen Rueckgaengig-Schritt',
         GP.undoStand.undo === undoVor);
+    }
+
+    // (h9) #108 Mehrere Produkte je Verwendungsstelle — die Mehrfachauswahl aus Modul 1
+    //      steht jetzt auch im Sammel-Editor. Geprueft wird am ECHTEN Pfad: zwei
+    //      Stangenlaengen ankreuzen, uebernehmen, gespeicherte Rollen aller drei Waende
+    //      lesen und die nachgezogene Neurechnung ([Z-1]) gegenpruefen.
+    {
+      const undoVor = GP.undoStand.undo;
+      hake('i3', 'stein-i2-250', false);
+      $(rid('i3') + '-an').checked = false; $(rid('i3') + '-an').dispatch('change');
+      hake('rod_std', 'gewindestange-m10-1000');          // 850er ist noch angehakt
+      ok('#108 zwei Produkte stehen gleichzeitig in der Auswahl EINER Verwendungsstelle',
+        (GP.zustand.sammelWahl.rod_std || []).slice().sort().join()
+          === 'gewindestange-m10-1000,gewindestange-m10-850');
+      confirmText111 = null;
+      $('gp-sammel-go').dispatch('click');
+      await warte();
+      ok('#108 die Bestaetigung nennt BEIDE Produkte der Verwendungsstelle',
+        /1000/.test(confirmText111) && /920/.test(confirmText111));
+      ok('#108 jede der drei Waende traegt danach genau diese zwei Produkte',
+        ids111.every(id => rollenIds111(id, 'rod_std').slice().sort().join()
+          === 'gewindestange-m10-1000,gewindestange-m10-850'));
+      ok('#108 die masswirksame Rolle rechnet mit BEIDEN Standardlaengen neu ([Z-2])',
+        ids111.every(id => JSON.stringify(we111(id).prestress.rod_lengths_mm.slice().sort((a,b)=>a-b))
+          === '[920,1000]'));
+      ok('#108 auch die Mehrfachuebernahme ist GENAU EIN Rueckgaengig-Schritt',
+        GP.undoStand.undo === undoVor + 1);
+      // Und die Vorbelegung gibt einen EINDEUTIGEN mehrfachen Ist-Stand jetzt wieder her
+      // (vorher blieb eine mehrfache Auswahl grundsaetzlich unvorbelegt).
+      GP.tippe({ x: 1500, y: 62.5 });
+      GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+      GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+      $('gp-sammel-knopf').dispatch('click');
+      await warte();
+      ok('#108 ein eindeutiger MEHRFACHER Ist-Stand wird vorbelegt und nicht als gemischt gezeigt',
+        (GP.zustand.sammelWahl.rod_std || []).slice().sort().join()
+          === 'gewindestange-m10-1000,gewindestange-m10-850'
+        && !/gemischt/.test($(rid('rod_std') + '-ist').innerHTML)
+        && $(rid('rod_std') + '-an').checked === false);
     }
 
     // (h8) Nicht-Ziele: kein Schreiben in `eingaben.aufbau`, in die Projektmappe oder

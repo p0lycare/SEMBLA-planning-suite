@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-25",
+    datum: "2026-09-08",
+    typ: "feature",
+    issue: 111,
+    titel: "Sammel-Editor: mehrere Bauteile je Verwendungsstelle mit H\u00e4kchen w\u00e4hlen \u2014 wie in Modul 1",
+    testbitte: "Im Geschosseditor mehrere W\u00e4nde ausw\u00e4hlen, \u201eGemeinsam bearbeiten\u2026\u201c "
+      + "\u00f6ffnen: bei den Gewindestangen l\u00e4sst sich jetzt mehr als ein Produkt ankreuzen. "
+      + "\u00dcbernehmen und in Modul 1 pr\u00fcfen, dass alle gew\u00e4hlten L\u00e4ngen stehen.",
+  },
+  {
     id: "chg-20260908-24",
     datum: "2026-09-08",
     typ: "fix",

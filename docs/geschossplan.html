@@ -84,6 +84,30 @@
      `gruppe` der Verwendungsrollen — dieselbe Reihenfolge wie in Modul 1. */
   #gp-sammelblatt .sgruppe{font-size:11px;font-weight:600;color:var(--sb-muted);
         text-transform:uppercase;letter-spacing:.04em;margin:9px 0 1px}
+  /* Mehrfachauswahl-Dropdown je Verwendungsstelle (#108): DASSELBE Steuerelement wie
+     in Modul 1 ([P-17]) — Häkchen je Produkt, nicht ein einzeln wählbares Feld. Die
+     Regeln sind aus der Wandplanung (Modul 1) übernommen, damit beide Orte gleich
+     aussehen. */
+  #gp-sammelblatt .pdd{flex:1 1 200px;min-width:180px}
+  #gp-sammelblatt .pdd>summary{list-style:none;cursor:pointer;padding:5px 7px;
+        border:1px solid var(--sb-line);border-radius:7px;background:#fff;font-size:12.5px;
+        display:flex;justify-content:space-between;gap:6px;align-items:center}
+  #gp-sammelblatt .pdd>summary::-webkit-details-marker{display:none}
+  #gp-sammelblatt .pdd>summary::after{content:'▾';color:var(--sb-muted);font-size:10px}
+  #gp-sammelblatt .pdd[open]>summary{border-radius:7px 7px 0 0}
+  #gp-sammelblatt .pdd[open]>summary::after{content:'▴'}
+  #gp-sammelblatt .pdd>summary:focus-visible{outline:2px solid var(--sb-accent);outline-offset:1px}
+  /* Ohne Häkchen ist die Verwendungsstelle NICHT bedienbar — sichtbar gedämpft und
+     ohne Zeigerzugriff. Die Übernahme prüft das ohnehin noch einmal im Code. */
+  #gp-sammelblatt .pdd[data-aus="1"]{opacity:.55;pointer-events:none}
+  #gp-sammelblatt .pmenu{border:1px solid var(--sb-line);border-top:none;
+        border-radius:0 0 7px 7px;background:#fff;max-height:210px;overflow:auto;padding:4px 7px}
+  #gp-sammelblatt .pmenu label{display:flex;align-items:flex-start;gap:6px;margin:3px 0;
+        font-size:12px;cursor:pointer}
+  #gp-sammelblatt .pmenu input{width:auto}
+  #gp-sammelblatt .pmenu .pname{font-weight:600}
+  #gp-sammelblatt .pmenu .pmerk{display:block;color:var(--sb-muted);font-size:11px;font-weight:400}
+  #gp-sammelblatt .pnote{font-size:11px;color:var(--sb-muted);padding:4px 7px}
   .msg{font-size:12px;word-break:break-word}
   .msg.err{color:#c0392b}
   .msg.ok{color:var(--sb-ok)}
@@ -278,7 +302,7 @@
         <div id="gp-sammel" hidden>
           <div class="row">
             <span id="gp-sammel-info">–</span>
-            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam setzen — allgemeine Wandmerkmale (Höhe, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge, Überstand) und die Produktauswahl von Modul 1">Gemeinsam bearbeiten…</button>
+            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam setzen — allgemeine Wandmerkmale (Höhe, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge, Überstand) und die Produktauswahl von Modul 1 (mehrere Produkte je Verwendungsstelle)">Gemeinsam bearbeiten…</button>
           </div>
         </div>
       </div>
@@ -503,12 +527,12 @@
              `render()` neu geschrieben — das nähme ihre Ereignisbehandler mit. -->
         <div class="sgruppe" style="margin-top:12px">Produktauswahl aus Modul 1</div>
         <div id="gp-sammel-rollen"></div>
-        <div class="hint" style="margin-top:2px">Je Verwendungsstelle wird hier <b>genau ein</b>
-          Zielprodukt gesetzt. Mehrere Produkte je Verwendungsstelle — etwa mehrere
-          Bodenblechlängen ([A-10]) oder mehrere Gewindestangenlängen ([Z-2]) — bleiben
-          <b>Modul 1</b>; eine dort getroffene Mehrfachauswahl wird von dieser Sammeländerung
-          auf das hier gewählte Produkt zurückgeführt. Gewählt wird ausschließlich aus dem
-          Bauteilkatalog des aktiven Projekts ([L-12]).</div>
+        <div class="hint" style="margin-top:2px">Je Verwendungsstelle sind <b>mehrere Produkte</b>
+          mit Häkchen wählbar — dasselbe Steuerelement wie in <b>Modul 1</b> ([P-17], #108).
+          Damit lassen sich auch mehrere Gewindestangenlängen ([Z-2]) oder Bodenblechlängen
+          ([A-10]) gemeinsam setzen. Übernommen wird je angekreuzter Verwendungsstelle
+          <b>genau die hier angehakte Menge</b>; sie ersetzt die bisherige Auswahl der Wand.
+          Gewählt wird ausschließlich aus dem Bauteilkatalog des aktiven Projekts ([L-12]).</div>
 
         <div class="row">
           <button class="btn-p" id="gp-sammel-go" title="Die angekreuzten Merkmale und Verwendungsstellen nach Bestätigung für ALLE ausgewählten Wände übernehmen — genau ein Rückgängig-Schritt">Übernehmen…</button>
@@ -604,6 +628,10 @@ const GP = {
   sammelOffen: false,         // Popup „Gemeinsam bearbeiten“ geöffnet (#111)
   sammelOptFuer: undefined,   // Katalogsignatur, für die die Produktlisten gebaut sind (#111)
   sammelRollenFuer: undefined, // Auswahl, für die die Rollenfelder vorbelegt sind (#111)
+  // #108 Die angekreuzte Produktmenge je Verwendungsstelle (rolleId -> [pid]). Sie lebt
+  // hier und NICHT im DOM, weil die Häkchen beim Auffrischen der Produktliste neu
+  // geschrieben werden. Gespeichert wird sie nie — geschrieben wird erst „Übernehmen…“.
+  sammelWahl: {},
   // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
   // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
   kal: { an: false, punkte: [] },
@@ -2421,9 +2449,17 @@ function sammelFeldId(f){ return 'gp-sammel-' + f.id; }
 // `planung` schreiben (`_produktTeil`). Der Editor führt dazu KEINE eigene Rollen-,
 // Auswahl- oder Preislogik.
 //
-// Gesetzt wird GENAU EIN Zielprodukt je Verwendungsstelle. Die Mehrfachauswahl je Rolle
-// (mehrere Bodenblechlängen nach [A-10], mehrere Stangenlängen nach [Z-2]) bleibt
-// Modul 1 — das sagt das Popup ausdrücklich, damit niemand sie hier unbemerkt verliert.
+// Gesetzt wird je Verwendungsstelle die MENGE der angekreuzten Produkte (#108) — genau
+// wie in Modul 1 ([P-17]). Die Mehrfachauswahl (mehrere Bodenblechlängen nach [A-10],
+// mehrere Stangenlängen nach [Z-2]) ist damit auch hier möglich; vorher liess dieses
+// Popup nur ein einziges Produkt je Stelle zu und fuehrte eine vorhandene Mehrfachauswahl
+// darauf zurueck. Die angekreuzte Menge ERSETZT die bisherige Auswahl der Wand — sie wird
+// nie mit ihr vereinigt, sonst stuende dort eine Auswahl, die niemand getroffen hat.
+//
+// Der Auswahlzustand des Popups lebt in `GP.sammelWahl` (rolleId -> [pid]) und NICHT im
+// DOM: die Haekchen liegen im `innerHTML` der Rollenzeile, das beim Auffrischen der
+// Produktliste neu geschrieben wird. Bedient wird ueber EINEN delegierten Behandler am
+// Kasten `#gp-sammel-rollen` — derselbe Weg wie `bindProdukte()` in Modul 1.
 
 /** Die gemeinsam setzbaren Verwendungsstellen — genau die wählbaren Rollen von Modul 1. */
 function sammelRollen(){ return KAT ? KAT.rollenVonModul(1) : []; }
@@ -2500,6 +2536,44 @@ const KATALOG_GRUND = {
   kein_projekt: 'ohne aktives Projekt gibt es keinen wirksamen Bauteilkatalog ([L-12]).',
 };
 
+/** Die angekreuzte Produktmenge EINER Verwendungsstelle — die eine Quelle (#108). */
+function rollenWahl(rolleId){
+  const v = GP.sammelWahl[rolleId];
+  return Array.isArray(v) ? v.slice() : [];
+}
+
+/**
+ * Die Zusammenfassung des geschlossenen Dropdowns — GELESEN aus `sembla-katalog.js`
+ * (`auswahlZusammenfassung`), damit hier kein zweiter Text für dieselbe Aussage steht.
+ */
+function rollenSumm(r, kat){
+  const el = $(rollenFeldId(r.id) + '-summ');
+  if (!el) return;
+  el.textContent = kat
+    ? KAT.auswahlZusammenfassung(KAT.rollenOptionen(kat, r.id, rollenWahl(r.id)))
+    : 'keine Auswahl';
+}
+
+/**
+ * Die Produktliste EINER Verwendungsstelle neu schreiben (#108) — Häkchen je Produkt,
+ * wie in Modul 1 ([P-17]). Angeboten werden ausschließlich katalogseitig zur Rolle
+ * passende Produkte; jede Zeile zeigt Namen PLUS unterscheidende Merkmale.
+ */
+function rollenMenu(r, kat){
+  const menu = $(rollenFeldId(r.id) + '-menu');
+  if (!menu) return;
+  const opts = kat ? KAT.rollenOptionen(kat, r.id, rollenWahl(r.id)) : [];
+  menu.innerHTML = opts.length
+    ? opts.map(o => `<label><input type="checkbox" data-prolle="${esc(r.id)}"`
+        + ` data-pid="${esc(o.id)}"${o.gewaehlt ? ' checked' : ''}> <span class="pname">`
+        + `${esc(o.name)}<span class="pmerk">${esc(o.merkmale)}</span></span></label>`).join('')
+    : `<div class="pnote">${kat
+        ? `Kein Produkt der Kategorie „${esc(KAT.kategorieLabel(r.kategorie))}“ im zugeordneten `
+          + 'Bauteilkatalog — in Modul 10 anlegen.'
+        : 'Kein wirksamer Bauteilkatalog ([L-12]).'}</div>`;
+  rollenSumm(r, kat);
+}
+
 /** Die Rollenzeilen EINMAL aufbauen — die Liste der Verwendungsstellen ist statisch. */
 function sammelRollenAufbauen(){
   const box = $('gp-sammel-rollen');
@@ -2512,11 +2586,16 @@ function sammelRollenAufbauen(){
       const k = rollenFeldId(r.id);
       const wirkt = !!ROLLE_RECHNUNG[r.id];
       h += `<div class="sfeld"><label class="chk" for="${k}-an" title="${esc(KAT.rollenLabel(r.id))}`
-        + ` — genau ein Zielprodukt für alle ausgewählten Wände`
+        + ` — die angekreuzten Produkte für alle ausgewählten Wände setzen (Mehrfachauswahl`
+        + ` wie in Modul 1)`
         + (wirkt ? '. Diese Verwendungsstelle geht in die Rechnung ein: jede Wand wird damit über '
             + 'den Auslegungspfad von Modul 1 neu gerechnet.' : '.')
         + `"><input type="checkbox" id="${k}-an"><span>${esc(KAT.rollenLabel(r.id))}</span></label>`
-        + `<select id="${k}" disabled></select>`
+        + `<details class="pdd" id="${k}" data-aus="1">`
+        + `<summary aria-haspopup="listbox" title="${esc(KAT.rollenLabel(r.id))} — Produkte `
+        + `ankreuzen"><span class="psum" id="${k}-summ">keine Auswahl</span></summary>`
+        + `<div class="pmenu" role="group" id="${k}-menu" `
+        + `aria-label="${esc(KAT.rollenLabel(r.id))}"></div></details>`
         + `<span class="sist" id="${k}-ist">–</span></div>`;
     }
   }
@@ -2524,9 +2603,9 @@ function sammelRollenAufbauen(){
 }
 
 /**
- * Die Optionen der Rollenfelder auffrischen — NUR wenn sich der wirksame Katalog
- * geändert hat. `render()` läuft bei jedem Zeigerereignis; ein Neuaufbau der
- * `<option>`-Listen bei jedem Lauf verlöre die laufende Auswahl des Nutzers.
+ * Die Produktlisten der Rollenfelder auffrischen — NUR wenn sich der wirksame Katalog
+ * geändert hat. `render()` läuft bei jedem Zeigerereignis; ein Neuschreiben der
+ * Häkchenlisten bei jedem Lauf schlösse das offene Dropdown des Nutzers.
  */
 function sammelRollenOptionen(kat){
   const sig = kat ? String(kat.id || '') + '|' + String(kat.geaendert || '') + '|'
@@ -2534,14 +2613,11 @@ function sammelRollenOptionen(kat){
   if (GP.sammelOptFuer === sig) return;
   GP.sammelOptFuer = sig;
   for (const r of sammelRollen()) {
-    const sel = $(rollenFeldId(r.id));
-    const alt = sel.value;
-    const opts = KAT.rollenOptionen(kat, r.id, []);
-    sel.innerHTML = '<option value="" disabled hidden>– bitte wählen –</option>'
-      + opts.map(o => `<option value="${esc(o.id)}">${esc(o.name)}`
-          + (o.merkmale ? ` · ${esc(o.merkmale)}` : '') + '</option>').join('');
-    // Eine laufende Auswahl bleibt stehen, solange das Produkt es noch gibt.
-    sel.value = opts.some(o => o.id === alt) ? alt : '';
+    // Eine laufende Auswahl bleibt stehen, solange es die Produkte noch gibt; ein aus
+    // dem Katalog verschwundenes Produkt fällt heraus, statt still weiterzuleben.
+    const da = new Set((kat ? KAT.rollenOptionen(kat, r.id, []) : []).map(o => o.id));
+    GP.sammelWahl[r.id] = rollenWahl(r.id).filter(id => da.has(id));
+    rollenMenu(r, kat);
   }
 }
 
@@ -2557,7 +2633,7 @@ function eingabenMitRollen(id, rollenAktiv){
   const pl = e.planung || (e.planung = {});
   const pr = pl.produkte || (pl.produkte = KAT.leereProdukte());
   pr.rollen = { ...(pr.rollen || {}) };
-  for (const { rolle, pid } of rollenAktiv) pr.rollen[rolle.id] = [pid];
+  for (const { rolle, pids } of rollenAktiv) pr.rollen[rolle.id] = pids.slice();
   return e;
 }
 
@@ -2635,8 +2711,15 @@ function sammelFelder(){
   for (const f of SAMMEL_FELDER) {
     $(sammelFeldId(f)).disabled = !$(sammelFeldId(f) + '-an').checked;
   }
+  // #108 Das Dropdown ist kein `<select>`: gedämpft und ohne Zeigerzugriff wird es über
+  // `data-aus`, geschlossen wird es dazu. `disabled` bleibt gesetzt, damit der Zustand
+  // auch abfragbar ist; der Umschaltbehandler prüft ihn ohnehin noch einmal.
   for (const r of sammelRollen()) {
-    $(rollenFeldId(r.id)).disabled = !$(rollenFeldId(r.id) + '-an').checked;
+    const an = $(rollenFeldId(r.id) + '-an').checked;
+    const dd = $(rollenFeldId(r.id));
+    dd.disabled = !an;
+    if (dd.dataset) dd.dataset.aus = an ? '' : '1';
+    if (!an) dd.open = false;
   }
 }
 
@@ -2706,11 +2789,12 @@ function sammelSync(){
     for (const r of sammelRollen()) {
       const w = st.rollen[r.id] || [];
       $(rollenFeldId(r.id) + '-an').checked = false;
-      // Vorbelegt wird nur ein EINDEUTIGER Ist-Stand aus GENAU EINEM Produkt: eine
-      // gemischte oder mehrfache Auswahl bekommt keinen Wert, sonst stünde hier eine
-      // Entscheidung, die niemand getroffen hat.
-      const eindeutig = (w.length === 1 && w[0] && !w[0].includes(',')) ? w[0] : '';
-      $(rollenFeldId(r.id)).value = eindeutig;
+      // Vorbelegt wird nur ein EINDEUTIGER Ist-Stand: tragen alle ausgewählten Wände
+      // dieselbe Menge, steht sie hier — seit #108 auch eine MEHRFACHE. Ein gemischter
+      // Ausgangszustand bekommt keine Häkchen, sonst stünde hier eine Entscheidung,
+      // die niemand getroffen hat.
+      GP.sammelWahl[r.id] = (w.length === 1 && w[0]) ? w[0].split(',').filter(Boolean) : [];
+      rollenMenu(r, kat);
     }
   }
   sammelFelder();
@@ -2778,19 +2862,20 @@ function sammelAnwenden(){
         || 'kein wirksamer Bauteilkatalog ([L-12]).') + ' Es wurde nichts geändert.', false);
       return false;
     }
-    const pid = String($(rollenFeldId(r.id)).value || '').trim();
-    if (!pid) {
+    const pids = rollenWahl(r.id);
+    if (!pids.length) {
       zeige(`Sammeländerung nicht möglich: für „${KAT.rollenLabel(r.id)}“ ist kein Produkt `
-        + 'gewählt — ein gemischter Ausgangszustand wird nie still vereinheitlicht. '
+        + 'angekreuzt — ein gemischter Ausgangszustand wird nie still vereinheitlicht. '
         + 'Es wurde nichts geändert.', false);
       return false;
     }
-    if (!KAT.produkt(kat, pid)) {
+    const fehlt = pids.find(pid => !KAT.produkt(kat, pid));
+    if (fehlt) {
       zeige(`Sammeländerung nicht möglich: das für „${KAT.rollenLabel(r.id)}“ gewählte Produkt `
-        + `„${pid}“ steht nicht im zugeordneten Bauteilkatalog. Es wurde nichts geändert.`, false);
+        + `„${fehlt}“ steht nicht im zugeordneten Bauteilkatalog. Es wurde nichts geändert.`, false);
       return false;
     }
-    rollenAktiv.push({ rolle: r, pid });
+    rollenAktiv.push({ rolle: r, pids });
   }
   if (!aktiv.length && !rollenAktiv.length) {
     zeige('Nichts zu übernehmen — erst mindestens ein Merkmal oder eine Verwendungsstelle '
@@ -2820,14 +2905,14 @@ function sammelAnwenden(){
   // 2. Ausdrückliche Bestätigung: Anzahl und GENAU die zu ändernden Merkmale und
   //    Verwendungsstellen — jede mit ihrem Zielprodukt.
   const teile = aktiv.map(({ feld, wert }) => `${feld.name} → ${feld.text(wert)}`);
-  const rollenTeile = rollenAktiv.map(({ rolle, pid }) =>
-    `${KAT.rollenLabel(rolle.id)} → ${rollenWertText(pid, kat)}`);
+  const rollenTeile = rollenAktiv.map(({ rolle, pids }) =>
+    `${KAT.rollenLabel(rolle.id)} → ${rollenWertText(pids.join(','), kat)}`);
   const massAn = rollenAktiv.some(a => !!ROLLE_RECHNUNG[a.rolle.id]);
   if (!confirm(`${ids.length} ausgewählte Wände gemeinsam ändern?\n\n`
     + [...teile, ...rollenTeile].join('\n') + '\n\n'
     + (rollenTeile.length
-      ? 'Je genannter Verwendungsstelle wird genau dieses Produkt gesetzt; eine dort in '
-        + 'Modul 1 getroffene Mehrfachauswahl wird darauf zurückgeführt.'
+      ? 'Je genannter Verwendungsstelle wird genau die angekreuzte Produktmenge gesetzt; '
+        + 'sie ersetzt die bisherige Auswahl der Wand.'
         + (massAn ? ' Die betroffenen Wände werden dafür über den Auslegungspfad von '
             + 'Modul 1 neu gerechnet ([Z-1]).' : '') + '\n\n'
       : '')
@@ -2891,7 +2976,7 @@ function sammelAnwenden(){
       geschrieben.push(id);
       // #111 Die Produktauswahl geht über den EINEN Schreibweg — je Wand mit ihrer
       // eigenen Kennung, nie am aktiven Element.
-      for (const { rolle, pid } of rollenAktiv) store.setzeProduktrolle(rolle.id, [pid], id);
+      for (const { rolle, pids } of rollenAktiv) store.setzeProduktrolle(rolle.id, pids, id);
     }
   } catch (e) {
     let heil = true;
@@ -4966,6 +5051,25 @@ function binde(){
   for (const r of sammelRollen()) {
     $(rollenFeldId(r.id) + '-an').addEventListener('change', sammelFelder);
   }
+  // #108 Die Häkchen der Produkte liegen im `innerHTML` der Rollenzeilen und werden beim
+  // Auffrischen neu geschrieben — bedient wird sie deshalb über EINEN delegierten
+  // Behandler am Kasten, genau wie `bindProdukte()` in Modul 1. Geschrieben wird dabei
+  // nichts: die Auswahl steht in `GP.sammelWahl`, bis „Übernehmen…“ bestätigt ist.
+  $('gp-sammel-rollen').addEventListener('change', ev => {
+    const t = ev && ev.target;
+    if (!t || !t.dataset || !t.dataset.prolle) return;
+    const rolleId = String(t.dataset.prolle), pid = String(t.dataset.pid);
+    // Ohne Häkchen an der Verwendungsstelle wirkt das Dropdown nicht — dieselbe Regel,
+    // die `sammelFelder()` sichtbar macht, hier noch einmal im Code.
+    if (!$(rollenFeldId(rolleId) + '-an').checked) return;
+    const wahl = new Set(rollenWahl(rolleId));
+    if (t.checked) wahl.add(pid); else wahl.delete(pid);
+    GP.sammelWahl[rolleId] = [...wahl];
+    const r = sammelRollen().find(x => x.id === rolleId);
+    // Nur die Zusammenfassung wird nachgezogen: ein Neuschreiben der ganzen Liste
+    // nähme dem Nutzer mitten in der Mehrfachauswahl den Fokus.
+    if (r) rollenSumm(r, store.katalogStatus().katalog);
+  });
   $('gp-sammel-knopf').addEventListener('click', () => { GP.sammelOffen = true; render(); });
   $('gp-sammel-zu').addEventListener('click', () => { GP.sammelOffen = false; render(); });
   $('gp-sammel-go').addEventListener('click', sammelAnwenden);
