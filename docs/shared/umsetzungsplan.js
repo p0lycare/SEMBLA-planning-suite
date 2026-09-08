@@ -24,30 +24,9 @@ export const PLAN_VERSION = 1;
 
 /** @type {any} */
 export const PLAN = {
-  "stand": "2026-09-07",
-  "signatur": "aada9f82",
+  "stand": "2026-09-08",
+  "signatur": "6d483b29",
   "entscheidungen": [
-    {
-      "issue": 77,
-      "titel": "Vorspannsystem mit realen Bauteilmaßen und Einbaulagen fachlich klären",
-      "prio": "high",
-      "status": "in progress",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true,
-      "frage": "Welche realen Bauteilmaße und Einbaulagen sind für das Vorspannsystem verbindlich?",
-      "optionen": [
-        {
-          "text": "Die verbindlichen Maße und Einbaulagen anhand eines freigegebenen Referenzaufbaus festlegen.",
-          "wirkung": "Core, Darstellung und Stückliste können anschließend gegen dieselbe fachliche Quelle umgesetzt werden."
-        },
-        {
-          "text": "Die bisherigen Annahmen vorläufig beibehalten.",
-          "wirkung": "Die Planung bleibt nutzbar, bildet aber weiterhin keinen fachlich bestätigten Realaufbau ab."
-        }
-      ],
-      "empfehlung": "Einen freigegebenen Referenzaufbau mit Maßkette bereitstellen und erst danach die Rechen- und Darstellungslogik ändern."
-    },
     {
       "issue": 41,
       "titel": "Fachreview: SEMBLA-Regelwerk korrigieren und offene Regeln bestätigen",
@@ -56,84 +35,43 @@ export const PLAN = {
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true,
-      "frage": "Regel 1 ist [V-2]. Regel 2 ist bisher nur unten [V-3], [V-8] setzt je Öffnungsseite eine Achse; Regeln 4/5 fehlen. Bleibt Regel 2 unten und zählen i3-Kammern links nach rechts, oder gilt oben alternativ mit zusätzlicher Vorrangregel?",
+      "frage": "Was bezeichnet Regel 4 eindeutig als Spannblech, und welche Bauteilgrenze muss jeweils von mindestens zwei Spannelementen gehalten werden?",
       "optionen": [
         {
-          "text": "Regel 2 bleibt als [V-3] auf der untersten Lage; Regeln 3/4 werden ergänzt, Kammern 1–3 zählen links nach rechts.",
-          "wirkung": "Der erste Schritt ist deterministisch: breite Öffnungen erhalten je Seite zwei Nachbarachsen, jedes definierte Spannblech mindestens zwei Achsen und die obere i3-Kammerregel folgt einer festen Zählung."
+          "text": "Spannblech bezeichnet jedes einzelne reale Blechsegment an Boden oder Kopf.",
+          "wirkung": "Die Mindestbelegung wird je geslictem Segment geprüft und kann zusätzliche Spannachsen auslösen."
         },
         {
-          "text": "Regel 2 gilt wahlweise unten oder oben.",
-          "wirkung": "Vor Umsetzung müssen der Vorrang bei widersprechenden i3-Mitten und die genaue Zuordnung der Spannbleche definiert werden; sonst wären Kern und Orakel mehrdeutig."
+          "text": "Spannblech bezeichnet nur ein bestimmtes Anschlussblech oder eine zusammenhängende Blechgruppe.",
+          "wirkung": "Vor der Kernregel muss dieses Bauteil mit Beginn und Ende eindeutig benannt werden."
         }
       ],
-      "empfehlung": "Option 1 als kleiner erster Schritt; vor der Kammerregel ein konkretes i3-Beispiel bestätigen, damit links/rechts nicht still vertauscht werden."
-    },
-    {
-      "issue": 107,
-      "titel": "PDF-Export je Geschoss: nach welcher Zahl werden die Waende sortiert?",
-      "prio": "high",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false,
-      "frage": "Nach welcher Zahl soll die PDF die Waende sortieren, und soll die laufende Nummer des Lageplans dieselbe Reihenfolge tragen?",
-      "optionen": [
-        {
-          "text": "Nur die PDF-Blattfolge nach der Zahl im Wandnamen sortieren.",
-          "wirkung": "Geringer Eingriff, aber dieselbe Wand traegt in Blattfolge und Nummernblase zwei verschiedene Zahlen."
-        },
-        {
-          "text": "Lageplan-Nummer und Blattfolge gemeinsam nach der Zahl im Wandnamen sortieren.",
-          "wirkung": "Blase, Wandtabelle und Seitenfolge stimmen ueberein; die laufende Nummer aus #59 wird neu definiert und aendert auch Modul 9."
-        },
-        {
-          "text": "Ein Knopf im Geschosseditor ordnet die gespeicherte Wandreihenfolge einmalig um.",
-          "wirkung": "Jede Ausgabe folgt automatisch, keine zweite Sortierregel; kostet ein Bedienelement und schreibt in die Projektmappe."
-        }
-      ],
-      "empfehlung": "Eine Reihenfolge fuer alles, damit ein Blatt je Wand genau eine Zahl fuehrt; zwei verschiedene Nummern sind auf der Baustelle die teure Verwechslung."
-    },
-    {
-      "issue": 105,
-      "titel": "Standardkatalog-Vorlage: reale Maße von Kopplungsmutter und Spannplatte eintragen",
-      "prio": "medium",
-      "status": "decision needed",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": true,
-      "frage": "Wie wird mit den beiden noch fehlenden Vorlagenmaßen umgegangen, bis die realen Werte für Kopplungsmutterhöhe und Spannplattendicke vorliegen?",
-      "optionen": [
-        {
-          "text": "Warten: sobald die beiden Maße vorliegen, wird daraus ein reines Stammdatenpaket auf der Vorlage.",
-          "wirkung": "Fußoffset und Kopfzuschlag rechnen weiter, bis dahin aber mit ausdrücklich als vorläufig gekennzeichneten Werten."
-        },
-        {
-          "text": "Die beiden Maße zusätzlich in der Oberfläche als vorläufig kennzeichnen.",
-          "wirkung": "Niemand liest die Stangenlängen als endgültig; es ändert aber keine Zahl und keine Rechnung."
-        },
-        {
-          "text": "Die heutigen Werte als verbindlich übernehmen und den Restpunkt schließen.",
-          "wirkung": "Stangenbeginn und Stangenbedarf beruhten dauerhaft auf geschätzten Maßen; das widerspricht dem Nicht-Ziel, Maße zu schätzen."
-        }
-      ],
-      "empfehlung": "Warten und die zwei Zahlen nachreichen: die Rechenwege stehen bereits, es fehlt ausschließlich die Messung."
+      "empfehlung": "Regel 4 an einem markierten Wandbeispiel festlegen; die Antworten zu i3-Vorrang, Regel 5 und reinen i2-Stapeln sind bereits aufgenommen."
     }
   ],
   "naechstes": {
     "issue": 15,
-    "titel": "Technische Wandzeichnung: übrige Komponenten und Einbauteil-IDs abnehmen",
+    "titel": "Ausgabe: Technische Wandzeichnung mit allen Komponenten",
     "prio": "high",
     "status": "in progress",
     "sicherheit": true,
     "abhaengig_von": [],
     "zyklus": true,
-    "begruendung": "Die technische Wandzeichnung ist als angefangene, priorisierte Projektausgabe weiterhin der vorderste Portfolio-Scope."
+    "begruendung": "Die technische Wandzeichnung ist die laufende sicherheits- und baubarkeitsrelevante Projektausgabe; die neuen Darstellungsreste werden über #97 und #112 nachgezogen."
   },
   "weitere": [
     {
       "issue": 20,
       "titel": "Zyklusrahmen: Aschersleben/AWG-Projekt vollständig begleiten",
+      "prio": "high",
+      "status": "in progress",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": true
+    },
+    {
+      "issue": 77,
+      "titel": "Modul 1/Core: Vorspannsystem mit realen Bauteilmaßen und Einbaulagen fachlich klären",
       "prio": "high",
       "status": "in progress",
       "sicherheit": false,
@@ -150,64 +88,73 @@ export const PLAN = {
       "zyklus": true
     },
     {
-      "issue": 93,
-      "titel": "Einlegeblech und Zwischenspannung als Bauteil mit Editiermodus und Slicing-Sperrzone",
+      "issue": 59,
+      "titel": "Lageplan feedback",
       "prio": "high",
       "status": "in progress",
+      "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
+      "issue": 91,
+      "titel": "Bodenblech-Slicing: Standardlängen und Sonderzuschnitte statt durchgehender Platte",
+      "prio": "high",
+      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
     },
     {
       "issue": 94,
-      "titel": "Baugruppen und Sets im Bauteilkatalog mit Auflösung in die flache Stückliste",
+      "titel": "Baugruppen/Sets im Bauteilkatalog mit Auflösung in die flache Stückliste",
       "prio": "high",
-      "status": "in progress",
+      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": true
     },
     {
-      "issue": 96,
-      "titel": "Bodenausgleich: Ausgleichspunkte und Ausgleichsbleche unter dem Bodenblech",
+      "issue": 107,
+      "titel": "PDF-Export auf Projektebene",
       "prio": "high",
-      "status": "in progress",
+      "status": "ready",
       "sicherheit": false,
+      "abhaengig_von": [],
+      "zyklus": false
+    },
+    {
+      "issue": 97,
+      "titel": "Zeichnung: reale Spannbauteile in Modul 1 und 7 maßstäblich darstellen",
+      "prio": "medium",
+      "status": "ready",
+      "sicherheit": true,
       "abhaengig_von": [],
       "zyklus": true
     },
     {
-      "issue": 59,
-      "titel": "Lageplan-Feedback",
-      "prio": "high",
-      "status": "in progress",
-      "sicherheit": false,
+      "issue": 112,
+      "titel": "Gewindestangen in Modul 1 und 7 im Vordergrund mit sichtbaren Stößen zeichnen",
+      "prio": "medium",
+      "status": "ready",
+      "sicherheit": true,
       "abhaengig_von": [],
-      "zyklus": false
+      "zyklus": true
     },
     {
-      "issue": 106,
-      "titel": "Darstellung der Bauteile vervollstaendigen",
-      "prio": "high",
-      "status": "in progress",
+      "issue": 113,
+      "titel": "Stücklisten-Export um Beschaffungsdaten aus dem Bauteilkatalog ergänzen",
+      "prio": "medium",
+      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
-      "zyklus": false
-    },
-    {
-      "issue": 100,
-      "titel": "Darstellung der Wandansicht ist zu groß",
-      "prio": "high",
-      "status": "ohne",
-      "sicherheit": false,
-      "abhaengig_von": [],
-      "zyklus": false
+      "zyklus": true
     },
     {
       "issue": 108,
-      "titel": "Bauteilkatalog: Varianten-Feedback beim Bearbeiten der Vorlage",
+      "titel": "Bauteilkatalog: Variantenführung und Bearbeitungsfeedback vervollständigen",
       "prio": "ohne",
-      "status": "in progress",
+      "status": "ready",
       "sicherheit": false,
       "abhaengig_von": [],
       "zyklus": false
@@ -225,45 +172,9 @@ export const PLAN = {
       ],
       "zyklus": true,
       "ursache": "Die Validierung setzt den laufenden Zyklusrahmen und freigegebene reale Wandfälle voraus.",
-      "naechster_schritt": "Freigabe stabiler, datensparsamer Referenzwände einholen und den Zyklusrahmen so weit führen, dass die Regelfälle prüfbar sind.",
+      "naechster_schritt": "Freigegebene Referenzwände bereitstellen und den Zyklusrahmen so weit führen, dass die 20 Regelfälle reproduzierbar geprüft werden können.",
       "blockiert_durch": [
         20
-      ]
-    },
-    {
-      "issue": 95,
-      "titel": "Deckenanschluss: Verteilung auf Spannachsen, Editiermodus und Winkelbaugruppe",
-      "prio": "high",
-      "status": "blocked",
-      "sicherheit": false,
-      "abhaengig_von": [
-        94
-      ],
-      "zyklus": true,
-      "ursache": "Der Deckenanschluss wird als Baugruppe kalkuliert; deren Auflösung in die flache Stückliste entsteht erst in #94.",
-      "naechster_schritt": "Auflösung der Baugruppen im kanonischen Stücklistenpfad abschließen, danach die Winkelbaugruppe und die Verteilung auf die Anschlussachsen bauen.",
-      "blockiert_durch": [
-        94
-      ]
-    },
-    {
-      "issue": 97,
-      "titel": "Zeichnung: schematische Symbole für Spannplatte, Einlegeblech und Deckenanschluss vervollständigen",
-      "prio": "medium",
-      "status": "blocked",
-      "sicherheit": false,
-      "abhaengig_von": [
-        93,
-        95,
-        96
-      ],
-      "zyklus": true,
-      "ursache": "Ein Symbol lässt sich erst festlegen, wenn das dargestellte Bauteil samt Einbaulage steht; Einlegeblech, Deckenanschluss und Bodenausgleich sind noch in Arbeit.",
-      "naechster_schritt": "Einlegeblech, Deckenanschluss und Ausgleichspunkte fertigstellen und danach den gemeinsamen Darstellungsschlüssel in einem Zug ergänzen.",
-      "blockiert_durch": [
-        93,
-        95,
-        96
       ]
     }
   ]
