@@ -160,6 +160,12 @@ const _MASKEN = {
   // (Kopplungsmutter, #92). Fuer Meterware gibt es kein solches Mass; das Feld bleibt
   // deshalb OPTIONAL (`verbrauch` hat keine Pflichtliste) und wird nie erfunden.
   verbrauch: [
+    // Gewinde des Kleinteils (#113). Es stand bisher NUR in der Maske der Kategorie
+    // `gewindestange` und wurde an Schrauben und Muttern beim Speichern entfernt — obwohl
+    // genau dort die Bestellangabe haengt (M10 der Kopplungsmutter). Hier ist es OPTIONAL:
+    // `verbrauch` hat keine Pflichtliste, Meterware traegt kein Gewinde.
+    { feld: "gewinde", label: "Gewinde", typ: "text", platzhalter: "M10",
+      hinweis: "Gewinde des Kleinteils — bei Meterware leer lassen" },
     { feld: "hoehe_mm", label: "Einbauhöhe", typ: "mm",
       hinweis: "Höhe, mit der das Kleinteil in der Wand steht — bei Meterware leer lassen" },
     // Bauteillaenge des Kleinteils (Schaftlaenge einer Schraube, 2026-09-08). Sie ist KEIN
@@ -171,33 +177,85 @@ const _MASKEN = {
   ],
 };
 
+// --- Beschaffungsangaben je Produkt (#113) ---------------------------------
+// Norm, Werkstoff, Oberflaeche, Hersteller und Artikelnummer sind KEINE fachlichen
+// Merkmale einer Kategorie, sondern EINKAUFSANGABEN: sie sagen, welches reale Produkt
+// zu bestellen ist. Sie gelten deshalb fuer JEDE Kategorie gleich und stehen hier
+// EINMAL, statt siebenmal in `_MASKEN` wiederholt zu werden.
+//
+// Alle fuenf sind FREITEXT und OPTIONAL — ein Produkt ohne Beschaffungsangaben bleibt
+// gueltig ([P-16]). Abgeleitet wird aus ihnen NICHTS: sie sind weder Mass (`MASSFELDER`)
+// noch Preis-Diskriminator (`ROLLEN[].mass`), die Preisaufloesung nach [P-14] sieht sie
+// nie, und in Mengen, Stuecklistenpositionen und Bezeichnungsaufbau gehen sie nicht ein.
+
+/** @type {ReadonlyArray<{feld:string,label:string,typ:"text",platzhalter?:string,hinweis?:string}>} */
+export const BESCHAFFUNGSFELDER = [
+  { feld: "norm", label: "Norm", typ: "text", platzhalter: "ISO 4033" },
+  { feld: "werkstoff", label: "Werkstoff", typ: "text", platzhalter: "DC01 (1.0330)" },
+  { feld: "oberflaeche", label: "Oberfläche", typ: "text", platzhalter: "ZE25/25" },
+  { feld: "hersteller", label: "Hersteller", typ: "text", platzhalter: "Würth" },
+  { feld: "artikelnr", label: "Artikelnummer", typ: "text", platzhalter: "021405532" },
+];
+
+/** Feldschluessel der Beschaffungsangaben (Reihenfolge der Maske). */
+const _BESCH_KEYS = BESCHAFFUNGSFELDER.map((f) => f.feld);
+
+/**
+ * Die sechs Beschaffungsangaben eines Produkts (#113) — die fuenf allgemeinen plus das
+ * kategoriespezifische `gewinde`. Nur fuer die Textpruefung in `validiereProdukt`; die
+ * MASKE bleibt getrennt, weil `gewinde` nicht in jeder Kategorie pflegbar ist.
+ */
+const _TEXTFELDER = [..._BESCH_KEYS, "gewinde"];
+
 /**
  * Fachliche Eingabemaske einer Kategorie ([P-16]) — geordnete Feldliste mit
  * Beschriftung, Einheit und Pflichtkennzeichen. Die Pflicht kommt aus
  * KATEGORIEN[].pflicht, damit Maske und `validiereProdukt` dieselbe Quelle nutzen.
  * Unbekannte Kategorie -> leere Maske (nur die Grundfelder sind dann pflegbar).
+ *
+ * Jeder Eintrag traegt seine `gruppe`: "fach" = kategoriespezifisches Merkmal aus
+ * `_MASKEN`, "beschaffung" = die fuer alle Kategorien gleichen Einkaufsangaben (#113).
+ * Das ist EINE Quelle mit zwei Bloecken in der Anzeige — keine zweite Feldliste.
  * @param {string} katId
  * @returns {Array<{feld:string,label:string,typ:"text"|"mm",einheit:string|null,
- *                  pflicht:boolean,platzhalter:string|null,hinweis:string|null}>}
+ *                  pflicht:boolean,platzhalter:string|null,hinweis:string|null,
+ *                  gruppe:"fach"|"beschaffung"}>}
  */
 export function maskeVonKategorie(katId) {
   const k = kategorie(katId);
   if (!k) return [];
   const pflicht = k.pflicht || [];
-  return (_MASKEN[k.id] || []).map((f) => ({
+  const bau = (f, gruppe) => ({
     feld: f.feld,
     label: f.label,
     typ: f.typ,
     einheit: f.typ === "mm" ? "mm" : null,
+    // Die Pflicht kommt weiterhin ALLEIN aus KATEGORIEN[].pflicht — dort steht keine
+    // Beschaffungsangabe, sie sind damit konstruktiv optional (kein zweites Pflichtwort).
     pflicht: pflicht.includes(f.feld),
     platzhalter: f.platzhalter || null,
     hinweis: f.hinweis || null,
-  }));
+    gruppe,
+  });
+  return [
+    ...(_MASKEN[k.id] || []).map((f) => bau(f, "fach")),
+    ...BESCHAFFUNGSFELDER.map((f) => bau(f, "beschaffung")),
+  ];
 }
 
 /** Feldschlüssel der Maske einer Kategorie (Reihenfolge der Maske). @param {string} katId */
 export function maskeFelder(katId) {
   return maskeVonKategorie(katId).map((f) => f.feld);
+}
+
+/**
+ * Feldschluessel NUR der kategoriespezifischen Merkmale (ohne Beschaffungsangaben).
+ * Damit bleibt pruefbar, dass keine fachfremden Masse in eine Kategorie wandern — und
+ * die Oberflaeche kann sagen, dass eine Kategorie keine eigenen Merkmale hat.
+ * @param {string} katId
+ */
+export function fachFelder(katId) {
+  return maskeVonKategorie(katId).filter((f) => f.gruppe === "fach").map((f) => f.feld);
 }
 
 /** @param {string} id @returns {{id:string,label:string,einheiten:string[],pflicht:string[]}|null} */
@@ -481,6 +539,20 @@ export function validiereProdukt(p, opts = {}) {
     if (v === null) continue;                       // leer = Feld nicht gesetzt
     if (Number.isNaN(v)) e.push(`${f} ist keine Zahl.`);
     else if (v <= 0) e.push(`${f} muss größer als 0 sein.`);
+  }
+
+  // Beschaffungsangaben (#113): optionale FREITEXTE — Norm, Werkstoff, Oberflaeche,
+  // Hersteller, Artikelnummer und das Gewinde. Sie sind nie fachfremd (jede Kategorie
+  // fuehrt sie) und nie Pflicht; geprueft wird ausschliesslich, dass wirklich ein
+  // skalarer Text dasteht. Eine Liste oder ein Objekt waere eine stille Fehlform, die
+  // sonst unbemerkt durch Export und Import reiste — sie wird BENANNT abgewiesen und
+  // niemals zurechtgebogen. Leer/fehlend bleibt leer.
+  for (const f of _TEXTFELDER) {
+    if (p[f] === undefined || p[f] === null || p[f] === "") continue;
+    const t = typeof p[f];
+    if (t !== "string" && t !== "number") {
+      e.push(`Feld „${f}“ muss ein Text sein (gefunden: ${Array.isArray(p[f]) ? "Liste" : t}).`);
+    }
   }
 
   // Standardrollen ([P-18]): optionales Feld. Es wird streng geprueft, damit eine

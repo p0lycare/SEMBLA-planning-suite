@@ -478,43 +478,50 @@ ok("anzahlAuswahl zaehlt Mehrfachauswahl je Kategorie",
 // Die Maske ist die einzige Quelle der kategoriespezifischen Felder in Modul 0. Getestet
 // wird DOM-frei: Zusammensetzung, Beschriftung, Einheit und — vor allem — dass die Pflicht
 // nicht zweitdefiniert ist und die Diskriminatoren der Preisauflösung pflegbar bleiben.
+//
+// Seit #113 fuehrt JEDE Kategorie zusaetzlich die Beschaffungsangaben (gruppe
+// "beschaffung"). Die kategoriegerechte Zusicherung gilt deshalb der FACHLICHEN
+// Teilmenge — sonst pruefte man nur noch, dass ueberall dasselbe dransteht.
 const maskeVon = (k) => KAT.maskeVonKategorie(k);
+const fachVon = (k) => KAT.maskeVonKategorie(k).filter((f) => f.gruppe === "fach");
 
 ok("Gewindestange: Maske = Gewinde/Güte/Stangenlänge",
-  KAT.maskeFelder("gewindestange").join(",") === "gewinde,guete,laenge_mm");
+  KAT.fachFelder("gewindestange").join(",") === "gewinde,guete,laenge_mm");
 ok("Latte: Maske = Querschnitt + Standardlänge (keine Höhe)",
-  KAT.maskeFelder("latte").join(",") === "breite_mm,dicke_mm,laenge_mm");
+  KAT.fachFelder("latte").join(",") === "breite_mm,dicke_mm,laenge_mm");
 ok("Beplankung: Maske = Plattenmaße (kein Gewinde, keine Länge)",
-  KAT.maskeFelder("beplankung").join(",") === "breite_mm,hoehe_mm,dicke_mm");
+  KAT.fachFelder("beplankung").join(",") === "breite_mm,hoehe_mm,dicke_mm");
 ok("Blech/Platte: Maske = Blechmaße",
-  KAT.maskeFelder("blech_platte").join(",") === "breite_mm,hoehe_mm,dicke_mm");
+  KAT.fachFelder("blech_platte").join(",") === "breite_mm,hoehe_mm,dicke_mm");
 ok("Stein: Steinbreite/-höhe/-tiefe, alle optional",
-  KAT.maskeFelder("stein").join(",") === "breite_mm,hoehe_mm,dicke_mm"
+  KAT.fachFelder("stein").join(",") === "breite_mm,hoehe_mm,dicke_mm"
   && maskeVon("stein").every((f) => f.pflicht === false));
 ok("Verbinder ohne fachfremde Maße",
-  KAT.maskeFelder("verbinder").length === 0);
+  KAT.fachFelder("verbinder").length === 0);
 // #92 Verbrauchsmaterial fuehrt die Einbauhoehe des Kleinteils — aus ihr rechnet Modul 1 den
 // Fussoffset (halbe Kopplungsmutterhoehe); ohne Feld in der Maske gaebe es dafuer keinen
 // Pflegeort. Seit dem 2026-09-08 kommt die BAUTEILLAENGE dazu (Schaftlaenge einer Schraube).
 // Sie ist KEIN Diskriminator — die Verbrauchsrollen haben `mass: null` —, sondern der
 // Pflegeort fuer eine Laenge, die sonst nur im Freitext der Bezeichnung staende.
-ok("Verbrauchsmaterial: Maske = Einbauhöhe und Bauteillänge",
-  KAT.maskeFelder("verbrauch").join(",") === "hoehe_mm,laenge_mm");
+// Seit #113 kommt das Gewinde des Kleinteils dazu — bisher stand es nur unter
+// `gewindestange` und wurde an Schrauben und Muttern beim Speichern entfernt.
+ok("Verbrauchsmaterial: Maske = Gewinde, Einbauhöhe und Bauteillänge",
+  KAT.fachFelder("verbrauch").join(",") === "gewinde,hoehe_mm,laenge_mm");
 ok("die drei geforderten Masken sind klar unterschiedlich",
-  new Set(["gewindestange", "latte", "beplankung"].map((k) => KAT.maskeFelder(k).join(","))).size === 3);
+  new Set(["gewindestange", "latte", "beplankung"].map((k) => KAT.fachFelder(k).join(","))).size === 3);
 
 ok("Beschriftungen sind fachlich, nicht generisch",
-  maskeVon("latte").map((f) => f.label).join(" | ")
+  fachVon("latte").map((f) => f.label).join(" | ")
     === "Querschnitt Breite | Querschnitt Dicke | Standardlänge"
-  && maskeVon("beplankung").map((f) => f.label).join(" | ")
+  && fachVon("beplankung").map((f) => f.label).join(" | ")
     === "Plattenbreite | Plattenhöhe | Plattendicke"
-  && maskeVon("gewindestange")[0].label === "Gewinde"
-  && maskeVon("stein")[0].label === "Steinbreite");
+  && fachVon("gewindestange")[0].label === "Gewinde"
+  && fachVon("stein")[0].label === "Steinbreite");
 ok("Steinbreite ist als Preiszuordnungsmaß gekennzeichnet ([P-14])",
   /Preiszuordnung/.test(maskeVon("stein")[0].hinweis || ""));
 ok("Maßfelder tragen die Einheit mm, Kennungen keine Einheit",
-  maskeVon("latte").every((f) => f.typ === "mm" && f.einheit === "mm")
-  && maskeVon("gewindestange")[0].typ === "text" && maskeVon("gewindestange")[0].einheit === null);
+  fachVon("latte").every((f) => f.typ === "mm" && f.einheit === "mm")
+  && fachVon("gewindestange")[0].typ === "text" && fachVon("gewindestange")[0].einheit === null);
 ok("Gewinde hat einen fachlichen Platzhalter (M10)",
   maskeVon("gewindestange")[0].platzhalter === "M10");
 
@@ -528,7 +535,8 @@ ok("jedes Pflichtfeld ist in der Maske seiner Kategorie ueberhaupt pflegbar",
   KAT.KATEGORIEN.every((k) => (k.pflicht || []).every((f) => KAT.maskeFelder(k.id).includes(f))));
 ok("jedes Maskenfeld ist ein kanonischer Produktschluessel (keine neuen Felder)",
   KAT.KATEGORIEN.every((k) => KAT.maskeFelder(k.id)
-    .every((f) => [...KAT.MASSFELDER, "gewinde", "guete"].includes(f))));
+    .every((f) => [...KAT.MASSFELDER, "gewinde", "guete",
+                   ...KAT.BESCHAFFUNGSFELDER.map((b) => b.feld)].includes(f))));
 ok("Maskenreihenfolge ist ohne Doppelte",
   KAT.KATEGORIEN.every((k) => new Set(KAT.maskeFelder(k.id)).size === KAT.maskeFelder(k.id).length));
 ok("unbekannte Kategorie -> leere Maske (kein Rateschluss)",
@@ -547,18 +555,20 @@ ok("Maske veraendert nichts an Kategorien, Rollen oder Formatversion",
 // aus dem Katalogprodukt der Rolle `kupplung`. Gepflegt wird sie ueber die Maske der
 // Kategorie „Sonstiges Verbrauchsmaterial" — hier am ECHTEN Pfad: Maske, Speicherform
 // (katalogObjekt) und Wiedereinlesen (parseKatalog).
-const V_MASKE = KAT.maskeVonKategorie("verbrauch");
+// Die FACHLICHE Teilmenge: seit #113 steht das Gewinde des Kleinteils davor, die beiden
+// Masse ruecken damit auf Position 1 und 2 — ihre Bedeutung aendert sich nicht.
+const V_MASKE = fachVon("verbrauch");
 ok("[#92] Einbauhöhe ist ein Millimetermaß mit ausweisender Beschriftung",
-  V_MASKE.length === 2 && V_MASKE[0].feld === "hoehe_mm"
-  && V_MASKE[0].typ === "mm" && V_MASKE[0].einheit === "mm"
-  && /Einbauhöhe/.test(V_MASKE[0].label));
+  V_MASKE.length === 3 && V_MASKE[1].feld === "hoehe_mm"
+  && V_MASKE[1].typ === "mm" && V_MASKE[1].einheit === "mm"
+  && /Einbauhöhe/.test(V_MASKE[1].label));
 ok("Bauteillänge ist ein optionales Millimetermaß mit ausweisender Beschriftung",
-  V_MASKE[1].feld === "laenge_mm" && V_MASKE[1].typ === "mm" && V_MASKE[1].einheit === "mm"
-  && /Bauteillänge/.test(V_MASKE[1].label) && V_MASKE[1].pflicht === false);
+  V_MASKE[2].feld === "laenge_mm" && V_MASKE[2].typ === "mm" && V_MASKE[2].einheit === "mm"
+  && /Bauteillänge/.test(V_MASKE[2].label) && V_MASKE[2].pflicht === false);
 ok("[#92] Einbauhöhe ist OPTIONAL (keine Pflicht der Kategorie)",
-  V_MASKE[0].pflicht === false && KAT.kategorie("verbrauch").pflicht.length === 0);
+  V_MASKE[1].pflicht === false && KAT.kategorie("verbrauch").pflicht.length === 0);
 ok("[#92] der Hinweis benennt Meterware ohne Einbaumaß",
-  /Meterware/.test(V_MASKE[0].hinweis || ""));
+  /Meterware/.test(V_MASKE[1].hinweis || ""));
 
 const V_MUTTER = { id: "mutter-h", kategorie: "verbrauch", bezeichnung: "Kopplungsmutter",
                    einheit: "Stk", preis: 0.65, hoehe_mm: 17.5, rollen: ["kupplung"] };
@@ -592,6 +602,122 @@ ok("[#92] nicht-numerische Einbauhöhe wird benannt abgewiesen",
     b && b.hoehe_mm === undefined);
   ok("[#92] der Roundtrip erfindet keinen Formatsprung",
     datei.version === 2 && zurueck.version === 2 && zurueck.produkte.length === 2);
+}
+
+// --- Beschaffungsangaben je Produkt (#113) --------------------------------
+// Norm, Werkstoff, Oberflaeche, Hersteller und Artikelnummer plus das Gewinde: sechs
+// OPTIONALE Angaben, die in JEDER Kategorie pflegbar sind, Export und Import verlustfrei
+// ueberstehen und aus denen NICHTS abgeleitet wird.
+const B_KEYS = KAT.BESCHAFFUNGSFELDER.map((f) => f.feld);
+
+ok("[#113] die fuenf Beschaffungsfelder stehen an EINER Stelle",
+  B_KEYS.join(",") === "norm,werkstoff,oberflaeche,hersteller,artikelnr"
+  && KAT.BESCHAFFUNGSFELDER.every((f) => f.typ === "text"));
+ok("[#113] sie sind in JEDER Kategorie pflegbar — auch in einer ohne eigene Merkmale",
+  KAT.KATEGORIEN.every((k) => B_KEYS.every((b) => KAT.maskeFelder(k.id).includes(b)))
+  && KAT.fachFelder("verbinder").length === 0
+  && KAT.maskeFelder("verbinder").join(",") === B_KEYS.join(","));
+ok("[#113] sie tragen die Gruppe „beschaffung“, die fachlichen Felder nicht",
+  KAT.KATEGORIEN.every((k) => KAT.maskeVonKategorie(k.id)
+    .every((f) => f.gruppe === (B_KEYS.includes(f.feld) ? "beschaffung" : "fach"))));
+ok("[#113] sie sind nirgends Pflicht und tragen keine Einheit",
+  KAT.KATEGORIEN.every((k) => KAT.maskeVonKategorie(k.id)
+    .filter((f) => f.gruppe === "beschaffung")
+    .every((f) => f.pflicht === false && f.einheit === null)));
+ok("[#113] sie stehen NACH den fachlichen Merkmalen (Maße zuerst)",
+  KAT.KATEGORIEN.every((k) => {
+    const g = KAT.maskeVonKategorie(k.id).map((f) => f.gruppe);
+    return g.indexOf("beschaffung") === -1 || g.lastIndexOf("fach") < g.indexOf("beschaffung");
+  }));
+ok("[#113] eine unbekannte Kategorie bekommt auch keine Beschaffungsfelder",
+  KAT.maskeVonKategorie("daemmung").length === 0);
+ok("[#113] keine Beschaffungsangabe ist ein Maß oder ein Preis-Diskriminator",
+  B_KEYS.every((b) => !KAT.MASSFELDER.includes(b))
+  && KAT.ROLLEN.filter((r) => r.mass).every((r) => r.mass.felder.every((x) => !B_KEYS.includes(x))));
+
+// Das REALE Produkt des Nutzerflusses: eine Kopplungsmutter mit allen sechs Angaben.
+const B_MUTTER = { id: "verbrauch-kopplungsmutter", kategorie: "verbrauch",
+  bezeichnung: "Kopplungsmutter M10", einheit: "Stk", preis: 0.65, hoehe_mm: 30,
+  norm: "ISO 4033", werkstoff: "DC01 (1.0330)", oberflaeche: "ZE25/25",
+  gewinde: "M10", hersteller: "Würth", artikelnr: "021405532" };
+const B_ALLE = [...B_KEYS, "gewinde"];
+
+ok("[#113] ein Verbrauchsprodukt mit allen sechs Angaben ist gueltig",
+  KAT.validiereProdukt(B_MUTTER, { ids: [] }).length === 0);
+ok("[#113] ein Produkt OHNE Beschaffungsangaben bleibt gueltig (kein Pflichtfeld)",
+  KAT.validiereProdukt({ id: "band", kategorie: "verbrauch", bezeichnung: "Dichtband",
+    einheit: "m", preis: 1.2 }, { ids: [] }).length === 0);
+ok("[#113] die Angaben sind in JEDER Kategorie gueltig, nicht nur bei Kleinteilen",
+  ["stein", "gewindestange", "latte", "beplankung", "blech_platte", "verbinder"].every((k) => {
+    const p = { ...KAT.neuesProdukt(k), id: "p-" + k, bezeichnung: "P", preis: 1,
+      norm: "EN 10025", werkstoff: "S235JR", oberflaeche: "feuerverzinkt",
+      hersteller: "Würth", artikelnr: "4711" };
+    for (const f of KAT.fachFelder(k)) if (f.endsWith("_mm")) p[f] = 100;
+    return KAT.validiereProdukt(p, { ids: [] }).length === 0;
+  }));
+
+// Benannt abgewiesen, nie still korrigiert ([P-9]).
+ok("[#113] eine Liste statt Text wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...B_MUTTER, artikelnr: ["021405532"] }, { ids: [] })
+    .some((m) => /artikelnr/.test(m) && /Text/.test(m) && /Liste/.test(m)));
+ok("[#113] ein Objekt statt Text wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...B_MUTTER, hersteller: { name: "Würth" } }, { ids: [] })
+    .some((m) => /hersteller/.test(m) && /Text/.test(m)));
+ok("[#113] ein nicht-textliches Gewinde wird ebenfalls benannt abgewiesen",
+  KAT.validiereProdukt({ ...B_MUTTER, gewinde: ["M10"] }, { ids: [] })
+    .some((m) => /gewinde/.test(m) && /Text/.test(m)));
+ok("[#113] eine numerische Artikelnummer aus einer Datei bleibt zulaessig",
+  KAT.validiereProdukt({ ...B_MUTTER, artikelnr: 21405532 }, { ids: [] }).length === 0);
+ok("[#113] leer bleibt leer — ein fehlendes Feld ist kein Fehler und wird nicht erfunden",
+  KAT.validiereProdukt({ ...B_MUTTER, norm: "", werkstoff: undefined }, { ids: [] }).length === 0);
+
+// Akzeptanz: DERSELBE Katalog ueber den REALEN Pfad — anlegen, pruefen, exportieren,
+// wieder einlesen, FELDWEISE gegen den Ausgangsstand halten.
+{
+  const roh = { ...KAT.leererKatalog("Beschaffung"), produkte: [B_MUTTER] };
+  ok("[#113] der Katalog mit Beschaffungsangaben ist als Ganzes gueltig",
+    KAT.validiereKatalog(roh).length === 0);
+  const datei = KAT.katalogObjekt(roh);
+  const zurueck = KAT.parseKatalog(JSON.stringify(datei));
+  const d = KAT.produkt(datei, B_MUTTER.id), z = KAT.produkt(zurueck, B_MUTTER.id);
+  ok("[#113] alle sechs Angaben stehen unveraendert in der Exportdatei",
+    !!d && B_ALLE.every((k) => d[k] === B_MUTTER[k]));
+  ok("[#113] alle sechs Angaben kommen aus dem Import feldweise unveraendert zurueck",
+    !!z && B_ALLE.every((k) => z[k] === B_MUTTER[k]));
+  ok("[#113] auch die uebrigen Produktfelder sind wertgleich (kein Verlust nebenbei)",
+    !!z && Object.keys(B_MUTTER).every((k) => z[k] === B_MUTTER[k])
+    && Object.keys(z).length === Object.keys(B_MUTTER).length);
+  ok("[#113] der Roundtrip erfindet keinen Formatsprung",
+    datei.version === KAT.KATALOG_VERSION && zurueck.version === 2 && KAT.KATALOG_VERSION === 2);
+}
+
+// Akzeptanz: die Preisaufloesung ([P-14]) liefert VOR und NACH dem Setzen dasselbe.
+{
+  const ohne = { ...R_KAT, produkte: R_KAT.produkte.map((p) => ({ ...p })) };
+  const mit = { ...R_KAT, produkte: R_KAT.produkte.map((p) => ({ ...p,
+    norm: "ISO 4033", werkstoff: "DC01 (1.0330)", oberflaeche: "ZE25/25",
+    hersteller: "Würth", artikelnr: "021405532" })) };
+  // Verglichen wird die ENTSCHEIDUNG, nicht das mitgelieferte Produktobjekt: dass an
+  // diesem jetzt Beschaffungsangaben haengen, IST der Testfall und kein Unterschied im
+  // Ergebnis. Massgeblich sind Status, Einzelpreis und die Kandidatenmenge.
+  const preis = (kat, key, ids, unit, menge) => {
+    const r = KAT.loesePreis({ key, unit, menge }, { [key]: ids }, kat, KTX);
+    return JSON.stringify({ status: r.status, text: r.text, ep: r.ep,
+      produkt: r.produkt ? r.produkt.id : null, fehlend: r.fehlend,
+      kandidaten: (r.kandidaten || []).map((p) => p.id) });
+  };
+  ok("[#113] eindeutiger Preis: identisches Ergebnis vor und nach dem Setzen",
+    preis(ohne, "rod_std", ["rod-1100"], "Stk", 5) === preis(mit, "rod_std", ["rod-1100"], "Stk", 5)
+    && preis(ohne, "kupplung", ["mutter"], "Stk", 2) === preis(mit, "kupplung", ["mutter"], "Stk", 2)
+    && preis(ohne, "i3", ["i3"], "Stk", 9) === preis(mit, "i3", ["i3"], "Stk", 9));
+  ok("[#113] auch Mehrdeutigkeit bleibt mehrdeutig — keine Angabe wird zum Diskriminator",
+    preis(ohne, "rod_std", ["rod-1100", "rod-1100b"], "Stk", 5)
+      === preis(mit, "rod_std", ["rod-1100", "rod-1100b"], "Stk", 5));
+  ok("[#113] Bezeichnungsaufbau und Maßtext bleiben unberuehrt",
+    KAT.vorschlagBezeichnung(B_MUTTER) === KAT.vorschlagBezeichnung(
+      { id: B_MUTTER.id, kategorie: "verbrauch", bezeichnung: "", einheit: "Stk", preis: 0.65, hoehe_mm: 30 })
+    && KAT.massText(B_MUTTER) === KAT.massText(
+      { kategorie: "verbrauch", hoehe_mm: 30, gewinde: "M10" }));
 }
 
 // --- Standardauswahl aus dem Katalog ([P-18]) ------------------------------

@@ -189,8 +189,10 @@
 </div>
 
 <!-- Produktpflege ([P-16]): klar von der Produktübersicht getrennter Dialog fuer Anlegen,
-     Bearbeiten und Duplizieren. Die Felder unter #kp-felder werden je Kategorie aus der
-     zentralen Maske (sembla-katalog.js) gerendert. Geschrieben wird AUSSCHLIESSLICH ueber
+     Bearbeiten und Duplizieren. Die Felder werden aus der zentralen Maske
+     (sembla-katalog.js) gerendert, getrennt in ZWEI Bloecke: #kp-felder fuehrt die
+     kategoriespezifischen Merkmale, #kp-besch die in jeder Kategorie gleichen
+     Beschaffungsangaben (#113). Beide kommen aus DERSELBEN Maske (Feld `gruppe`). Geschrieben wird AUSSCHLIESSLICH ueber
      „Speichern“ — Abbrechen/Escape/Overlay-Klick lassen die Katalogdaten unveraendert. -->
 <div class="overlay" id="kp-overlay" hidden>
   <div class="modal">
@@ -212,6 +214,14 @@
     <div class="row" id="kp-felder" style="margin-top:10px"></div>
     <div class="hint" id="kp-leer" hidden>Diese Kategorie hat keine weiteren fachlichen Merkmale —
       Bezeichnung, Preisbasis und Preis genügen.</div>
+    <!-- Beschaffungsangaben (#113): eigener Abschnitt, in JEDER Kategorie gleich. Die
+         Felder kommen aus derselben Maske wie die fachlichen (gruppe "beschaffung") —
+         zwei Bloecke in der Anzeige, EINE Quelle in sembla-katalog.js. -->
+    <div id="kp-besch-block" style="margin-top:14px">
+      <div class="hint" style="margin:0 0 6px"><b>Beschaffung</b> — alle Angaben optional.
+        Sie beschreiben das zu bestellende Produkt und ändern weder Menge noch Preis.</div>
+      <div class="row" id="kp-besch"></div>
+    </div>
     <div class="zus" id="kp-extra" hidden></div>
     <div class="msg" id="kp-msg"></div>
     <div class="modal-actions">
@@ -360,26 +370,39 @@ function kpEinheiten(){
   sel.value = k.einheiten.includes(vorher) ? vorher : k.einheiten[0];
 }
 
-/** Kategoriespezifische Felder aus der zentralen Maske rendern und aus `p` fuellen. */
+/** Ein Maskenfeld als Formularzeile — Beschriftung, Pflichtkennzeichen, Hinweis. */
+function kpFeldHtml(f, p){
+  const wert = p && p[f.feld] != null ? String(p[f.feld]) : '';
+  const bez = esc(f.label) + (f.einheit ? ' (' + f.einheit + ')' : '')
+    + (f.pflicht ? ' <span class="muted">· Pflicht</span>' : '');
+  const feld = f.typ === 'mm'
+    ? `<input id="${kpFeldId(f.feld)}" class="s" type="number" step="0.1" min="0" value="${esc(wert)}">`
+    : `<input id="${kpFeldId(f.feld)}" class="s" type="text" value="${esc(wert)}"`
+      + (f.platzhalter ? ` placeholder="${esc(f.platzhalter)}"` : '') + '>';
+  return `<div class="field"><label for="${kpFeldId(f.feld)}">${bez}</label>${feld}`
+    + (f.hinweis ? `<span class="muted" style="font-size:11px">${esc(f.hinweis)}</span>` : '')
+    + '</div>';
+}
+
+/**
+ * Felder aus der zentralen Maske rendern und aus `p` fuellen. Gerendert wird in ZWEI
+ * Bloecke — kategoriespezifische Merkmale und Beschaffungsangaben (#113) —, gespeist
+ * aus DERSELBEN Maske ueber ihr Feld `gruppe`. Der Hinweis „keine weiteren fachlichen
+ * Merkmale" haengt deshalb an der FACHLICHEN Teilmenge: die Beschaffungsangaben gibt es
+ * in jeder Kategorie und sie sagen nichts darueber, ob eine Kategorie eigene Merkmale hat.
+ */
 function kpFelder(p){
   const maske = KAT.maskeVonKategorie($('kp-kat').value);
-  $('kp-felder').innerHTML = maske.map(f => {
-    const wert = p && p[f.feld] != null ? String(p[f.feld]) : '';
-    const bez = esc(f.label) + (f.einheit ? ' (' + f.einheit + ')' : '')
-      + (f.pflicht ? ' <span class="muted">· Pflicht</span>' : '');
-    const feld = f.typ === 'mm'
-      ? `<input id="${kpFeldId(f.feld)}" class="s" type="number" step="0.1" min="0" value="${esc(wert)}">`
-      : `<input id="${kpFeldId(f.feld)}" class="s" type="text" value="${esc(wert)}"`
-        + (f.platzhalter ? ` placeholder="${esc(f.platzhalter)}"` : '') + '>';
-    return `<div class="field"><label for="${kpFeldId(f.feld)}">${bez}</label>${feld}`
-      + (f.hinweis ? `<span class="muted" style="font-size:11px">${esc(f.hinweis)}</span>` : '')
-      + '</div>';
-  }).join('');
+  const fach = maske.filter(f => f.gruppe !== 'beschaffung');
+  const besch = maske.filter(f => f.gruppe === 'beschaffung');
+  $('kp-felder').innerHTML = fach.map(f => kpFeldHtml(f, p)).join('');
+  $('kp-besch').innerHTML = besch.map(f => kpFeldHtml(f, p)).join('');
+  $('kp-besch-block').hidden = besch.length === 0;
   for (const f of maske) {
     const el = $(kpFeldId(f.feld));
     if (el) el.value = p && p[f.feld] != null ? String(p[f.feld]) : '';
   }
-  $('kp-leer').hidden = maske.length > 0;
+  $('kp-leer').hidden = fach.length > 0;
   kpExtras(p);
 }
 

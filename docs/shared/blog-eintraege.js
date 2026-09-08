@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-29",
+    datum: "2026-09-08",
+    typ: "feature",
+    issue: 113,
+    titel: "Katalogprodukte f\u00fchren Norm, Werkstoff, Oberfl\u00e4che, Hersteller und Artikelnummer",
+    testbitte: "In Modul 10 ein Produkt bearbeiten: unter den Ma\u00dfen steht der Abschnitt "
+      + "\u201eBeschaffung\u201c, bei Verbrauchsmaterial zus\u00e4tzlich \u201eGewinde\u201c. Ausf\u00fcllen, "
+      + "speichern, Katalog exportieren und importieren \u2014 alle Angaben stehen "
+      + "unver\u00e4ndert am Produkt.",
+  },
+  {
     id: "chg-20260908-28",
     datum: "2026-09-08",
     typ: "fix",

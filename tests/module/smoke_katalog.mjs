@@ -131,6 +131,11 @@ const kpOffen = () => $('kp-overlay').hidden === false;
 const kpFehler = () => $('kp-msg').className === 'msg err';
 const kpMarkup = () => $('kp-felder').innerHTML;
 const kpFelderListe = () => [...kpMarkup().matchAll(/id="kp-f-([a-z_]+)"/g)].map(m => m[1]);
+// Seit #113 rendert der Dialog die Beschaffungsangaben in einen EIGENEN Block; die
+// kategoriegerechte Maske steht unveraendert in #kp-felder.
+const kpBeschMarkup = () => $('kp-besch').innerHTML;
+const kpBeschListe = () => [...kpBeschMarkup().matchAll(/id="kp-f-([a-z_]+)"/g)].map(m => m[1]);
+const kpAlleFelder = () => [...kpFelderListe(), ...kpBeschListe()];
 const kpSpeichern = () => $('kp-speichern').dispatch('click');
 const kpAbbrechen = () => $('kp-cancel').dispatch('click');
 function kZeile(act, pid){ $('k-tbody').dispatch('click', { target: { dataset:{ act, pid } } }); }
@@ -139,7 +144,7 @@ function kpKategorie(id){ $('kp-kat').value = id; $('kp-kat').dispatch('change')
 function kpSetze({ bez = '', id = '', preis = '', einheit = null, ...felder }){
   $('kp-bez').value = String(bez); $('kp-id').value = String(id); $('kp-preis').value = String(preis);
   if (einheit) $('kp-einheit').value = einheit;
-  for (const f of kpFelderListe()) $('kp-f-' + f).value = String(felder[f] != null ? felder[f] : '');
+  for (const f of kpAlleFelder()) $('kp-f-' + f).value = String(felder[f] != null ? felder[f] : '');
 }
 /** Zeilenaktion der Set-Tabelle (Ereignisdelegation wie im Browser). */
 const sZeile = (act, set, pos) =>
@@ -772,9 +777,10 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   kpKategorie('verbrauch');
   // Seit dem 2026-09-08 fuehrt Verbrauchsmaterial zwei Masse: Einbauhoehe und Bauteillaenge
   // (Schaftlaenge einer Schraube). Beide sind optional und KEIN Diskriminator ([P-14]).
-  ok('Verbrauchsmaterial: Einbauhöhe und Bauteillänge, keine weiteren Maßfelder',
-    kpFelderListe().join() === 'hoehe_mm,laenge_mm'
-    && !/kp-f-gewinde/.test(kpMarkup()) && !/kp-f-guete/.test(kpMarkup()));
+  // Seit #113 kommt das GEWINDE des Kleinteils dazu — die Guete bleibt draussen.
+  ok('Verbrauchsmaterial: Gewinde, Einbauhöhe und Bauteillänge, keine weiteren Maßfelder',
+    kpFelderListe().join() === 'gewinde,hoehe_mm,laenge_mm'
+    && !/kp-f-guete/.test(kpMarkup()));
   const slotVorKatWechsel = kSlot();
   kpAbbrechen();
   ok('Abbruch nach Kategoriewechseln legt nichts an',
@@ -783,13 +789,14 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   // 14c) Einbauhoehe eines Kleinteils am ECHTEN Dialog (Issue #92)
   kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
   ok('[#92] der Dialog rendert fuer Verbrauchsmaterial die Maßfelder aus der Maske',
-    kpFelderListe().join() === KAT.maskeFelder('verbrauch').join()
-    && kpFelderListe().join() === 'hoehe_mm,laenge_mm'
+    kpFelderListe().join() === KAT.fachFelder('verbrauch').join()
+    && kpFelderListe().join() === 'gewinde,hoehe_mm,laenge_mm'
     && $('kp-f-hoehe_mm') != null && $('kp-f-laenge_mm') != null);
   ok('[#92] das Feld ist als Einbauhöhe in Millimetern beschriftet',
     /Einbauhöhe/.test(kpMarkup()) && /\(mm\)/.test(kpMarkup()));
   ok('[#92] die Einbauhöhe ist nicht als Pflicht ausgezeichnet',
-    !/Pflicht/.test(kpMarkup()) && KAT.maskeVonKategorie('verbrauch')[0].pflicht === false);
+    !/Pflicht/.test(kpMarkup()) && KAT.fachFelder('verbrauch').every((f2) =>
+      KAT.maskeVonKategorie('verbrauch').find((x) => x.feld === f2).pflicht === false));
   // Die Einbauhoehe der Kopplungsmutter ist seit jeher mit 30 mm festgelegt und steht jetzt
   // auch im Katalog. Sie ist damit KEIN erfundenes Mass mehr, sondern ein gepflegtes —
   // Modul 1 leitet daraus den Fussoffset nach [A-19] ab (halbe Hoehe = 15 mm).
@@ -825,6 +832,95 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
     kpOffen() && kpFehler() && /hoehe_mm/.test($('kp-msg').textContent)
     && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').hoehe_mm === 17.5);
   kpAbbrechen();
+
+  // 14c-2) Beschaffungsangaben je Produkt am ECHTEN Dialog (#113)
+  // Der Nutzerfluss: Kopplungsmutter oeffnen, Norm/Werkstoff/Oberflaeche/Gewinde/
+  // Hersteller/Artikelnummer eintragen, speichern, exportieren, wieder einlesen — und
+  // alle sechs Angaben unveraendert wiederfinden.
+  const B_KEYS = KAT.BESCHAFFUNGSFELDER.map(f => f.feld);
+  const B_WERTE = { norm: 'ISO 4033', werkstoff: 'DC01 (1.0330)', oberflaeche: 'ZE25/25',
+                    gewinde: 'M10', hersteller: 'Würth', artikelnr: '021405532' };
+  const B_ALLE = Object.keys(B_WERTE);
+
+  $('k-produkt-neu').dispatch('click');
+  ok('[#113] der Beschaffungsblock ist ein EIGENER Abschnitt neben der Fachmaske',
+    $('kp-besch-block').hidden === false && kpBeschListe().join() === B_KEYS.join()
+    && kpFelderListe().every(f2 => !B_KEYS.includes(f2)));
+  ok('[#113] die Felder sind beschriftet und tragen fachliche Platzhalter',
+    /Artikelnummer/.test(kpBeschMarkup()) && /Werkstoff/.test(kpBeschMarkup())
+    && /Oberfläche/.test(kpBeschMarkup()) && /placeholder="ISO 4033"/.test(kpBeschMarkup()));
+  ok('[#113] keine Beschaffungsangabe ist als Pflicht ausgezeichnet',
+    !/Pflicht/.test(kpBeschMarkup()));
+  // Akzeptanz: in JEDER Kategorie angeboten — auch in einer ohne eigene Merkmale.
+  ok('[#113] der Dialog bietet die Beschaffungsfelder in jeder Kategorie an',
+    KAT.KATEGORIEN.every(k2 => {
+      kpKategorie(k2.id);
+      return kpBeschListe().join() === B_KEYS.join() && $('kp-besch-block').hidden === false;
+    }));
+  kpKategorie('verbinder');
+  ok('[#113] „keine weiteren fachlichen Merkmale" haengt an der FACHLICHEN Teilmenge',
+    kpFelderListe().length === 0 && $('kp-leer').hidden === false
+    && kpBeschListe().length === 5);
+  kpAbbrechen();
+
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  ok('[#113] das Gewinde des Kleinteils wird nicht mehr als fachfremd angekuendigt',
+    !/fachfremd/.test($('kp-extra').innerHTML) && $('kp-f-gewinde') != null);
+  const vorherAnz = kAnzahl();
+  kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',
+            preis: '0.65', einheit: 'Stk', hoehe_mm: '17.5', ...B_WERTE });
+  kpSpeichern();
+  ok('[#113] gespeichert ohne Fehlermeldung, kein neues Produkt entstanden',
+    !kpOffen() && !kFehler() && kAnzahl() === vorherAnz);
+  const bProd = () => KAT.produkt(kat(), 'verbrauch-kopplungsmutter');
+  ok('[#113] alle sechs Angaben stehen am Produkt',
+    B_ALLE.every(k2 => bProd()[k2] === B_WERTE[k2]));
+  ok('[#113] sie ueberleben die Persistenz im Browserspeicher',
+    B_ALLE.every(k2 => Object.values(kataloge()).find(k3 => k3.id === kat().id)
+      .produkte.find(p => p.id === 'verbrauch-kopplungsmutter')[k2] === B_WERTE[k2]));
+  ok('[#113] das fachliche Maß und die Rollenangabe bleiben unberuehrt',
+    bProd().hoehe_mm === 17.5 && bProd().rollen.join() === 'kupplung'
+    && bProd().einheit === 'Stk' && bProd().preis === 0.65);
+  // Akzeptanz: derselbe Katalog ueber Export und Import — feldweise gegen den Stand davor.
+  {
+    const vor = { ...bProd() };
+    const zurueck = KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat())));
+    const nach = KAT.produkt(zurueck, 'verbrauch-kopplungsmutter');
+    ok('[#113] Export und Import geben alle sechs Angaben feldweise unveraendert zurueck',
+      !!nach && B_ALLE.every(k2 => nach[k2] === vor[k2]));
+    ok('[#113] auch jedes uebrige Feld des Produkts kommt wertgleich zurueck',
+      Object.keys(vor).every(k2 => JSON.stringify(nach[k2]) === JSON.stringify(vor[k2]))
+      && Object.keys(nach).length === Object.keys(vor).length);
+    ok('[#113] der Roundtrip erfindet keinen Formatsprung',
+      zurueck.version === 2 && KAT.KATALOG_VERSION === 2 && kAnzahl() === vorherAnz);
+  }
+  // Akzeptanz: beim Wiederoeffnen stehen die gepflegten Werte in den Feldern.
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  ok('[#113] der Dialog traegt bestehende Beschaffungswerte beim Öffnen ein',
+    B_ALLE.every(k2 => $('kp-f-' + k2).value === B_WERTE[k2]));
+  ok('[#113] ein Kategoriewechsel im Dialog nimmt die Angaben mit (kein stiller Verlust)',
+    (() => { kpKategorie('blech_platte');
+      return B_KEYS.every(k2 => $('kp-f-' + k2).value === B_WERTE[k2]); })());
+  kpAbbrechen();
+  ok('[#113] der Abbruch hat nichts geschrieben',
+    B_ALLE.every(k2 => bProd()[k2] === B_WERTE[k2]) && kAnzahl() === vorherAnz);
+  // Leeren entfernt die Angabe wieder — leer bleibt leer, nichts wird erfunden.
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',
+            preis: '0.65', einheit: 'Stk', hoehe_mm: '17.5', ...B_WERTE, artikelnr: '' });
+  kpSpeichern();
+  ok('[#113] eine geleerte Angabe verschwindet, die uebrigen bleiben stehen',
+    !kpOffen() && !kFehler() && bProd().artikelnr === undefined
+    && bProd().norm === 'ISO 4033' && bProd().gewinde === 'M10');
+  ok('[#113] das Produkt ohne Artikelnummer bleibt gueltig (kein Pflichtfeld)',
+    KAT.validiereProdukt(bProd(), { ids: [] }).length === 0);
+  // Wiederherstellen, damit die folgenden Pruefungen denselben Stand sehen.
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  kpSetze({ bez: 'Kopplungsmutter M10 (Stangenstoß und Fuß)', id: 'verbrauch-kopplungsmutter',
+            preis: '0.65', einheit: 'Stk', hoehe_mm: '17.5', ...B_WERTE });
+  kpSpeichern();
+  ok('[#113] der Ausgangsstand ist wiederhergestellt',
+    !kpOffen() && B_ALLE.every(k2 => bProd()[k2] === B_WERTE[k2]));
 
   // 14d) Baugruppen/Sets ([P-21]/[P-22], #94) am ECHTEN Set-Editor
   // Die Vorlage bringt seit [P-23] die Baugruppe „Wandabschluss" mit; der Dialogtest legt
