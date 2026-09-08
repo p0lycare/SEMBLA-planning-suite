@@ -883,16 +883,24 @@ const katRoh = JSON.parse(vorlageDatei(V_KAT));
 // Richtige: dass Parser, Laden, Speichern und Roundtrip KEIN Produkt verlieren oder erfinden.
 const V_KAT_ANZ = katRoh.produkte.length;
 const wandRoh = JSON.parse(vorlageDatei(V_WAND));
-// #94: Die Vorlagendatei traegt seit der Set-Aufloesung Katalogformat v2 und genau die eine
-// Baugruppe „Wandabschluss" ([P-23]) — Rollenpositionen, kein bestimmtes Produkt, je Menge 1.
-ok('Katalogvorlage traegt Katalogformat v2 und genau die Baugruppe „Wandabschluss"',
+// #94: Die Vorlagendatei traegt seit der Set-Aufloesung Katalogformat v2 und die ZWEI Baugruppen
+// der oberen Ausfuehrung ([P-23], [P-24]) — „Wandabschluss" und, sich mit ihm ausschliessend,
+// „Deckenanschluss". Beide fuehren Rollenpositionen, kein bestimmtes Produkt.
+ok('Katalogvorlage traegt Katalogformat v2 und die zwei Baugruppen der oberen Ausfuehrung',
   katRoh.format === 'SEMBLA-Bauteilkatalog' && katRoh.version === 2 && KAT.KATALOG_VERSION === 2
   && KAT.parseKatalog(vorlageDatei(V_KAT)).version === 2
   && JSON.stringify(KAT.parseKatalog(vorlageDatei(V_KAT)).produkte) === JSON.stringify(katRoh.produkte)
-  && katRoh.sets.length === 1 && katRoh.sets[0].id === 'set-wandabschluss'
+  && katRoh.sets.length === 2
+  && katRoh.sets.map(s => s.id).join() === 'set-wandabschluss,set-deckenanschluss'
   && JSON.stringify(katRoh.sets[0].positionen) === JSON.stringify(
     [{ rolle: 'spannplatte', menge: 1 },
-     { rolle: 'spannmutter', menge: 1 }]));
+     { rolle: 'spannmutter', menge: 1 }])
+  // [P-24]: dieselbe Spannplatte und Spannmutter (Mehrfachverwendung, [P-21]) plus die am
+  // 2026-09-08 verbindlich genannten Winkelbaugruppenteile — nichts davon geraten.
+  && JSON.stringify(katRoh.sets[1].positionen.map(p => [p.rolle, p.menge])) === JSON.stringify(
+    [['spannplatte', 1], ['spannmutter', 1], ['dc_winkel_wand', 1], ['dc_winkel_decke', 1],
+     ['dc_schraube', 2], ['dc_scheibe', 2], ['dc_anker', 2], ['dc_bohrschraube', 2],
+     ['dc_scheibe_bohr', 2]]));
 // Die v1-Migration bleibt geprueft ([P-22]) — am selben echten Ladeweg, mit einer aus der
 // Vorlage ABGELEITETEN v1-Fassung: Produkte unveraendert, leere Baugruppenliste.
 ok('eine v1-Fassung derselben Vorlage wird beim Laden verlustfrei auf v2 migriert', (() => {

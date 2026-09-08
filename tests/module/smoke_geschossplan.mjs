@@ -3469,7 +3469,9 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       + 'Reihenfolge von Modul 1',
       // 15 statt 16 seit der Fachauskunft 2026-09-08: die Rolle `unterlegscheibe` ist
       // entfallen (hebt #92 auf) — am Wandabschluss gibt es am Spannglied keine Scheibe.
-      erwartet111.length === 15
+      // 22 seit der verbindlichen Bauteilliste des Deckenanschlusses ([P-24], #95): dessen
+      // sieben eigene Verwendungsstellen sind in Modul 1 waehlbar und stehen deshalb auch hier.
+      erwartet111.length === 22
       && JSON.stringify(gezeigt111) === JSON.stringify(erwartet111));
     const gruppen111 = [...rollenHtml111.matchAll(/class="sgruppe">([^<]+)</g)].map(m => m[1]);
     ok('#111 (Muss 1) gegliedert nach `gruppe` — dieselbe Gruppenreihenfolge wie Modul 1',

@@ -1,6 +1,6 @@
 # Deckenanschluss: Katalog-Set, Verteilung mit Editiermodus, Darstellung und Stückliste
 
-**Status:** abgestimmter Umsetzungsplan (Tibor, 2026-09-08) — **noch nichts umgesetzt**
+**Status:** abgestimmter Umsetzungsplan (Tibor, 2026-09-08) — **Paket 1 umgesetzt** (2026-09-08); Paket 2 und 3 offen
 **Issues:** #95 (Verteilung, Editiermodus, Baugruppe) · #94 (Sets im Bauteilkatalog) · #97 (Zeichnungssymbole)
 **Ziel:** Der Deckenanschluss wird ein vollständig geplantes Bauteil: als Baugruppe im Bauteilkatalog,
 regelbasiert auf Spannachsen verteilt und manuell bearbeitbar, in Modul 1 und Modul 7 sichtbar und in
@@ -40,7 +40,7 @@ Die Umsetzung erfolgt in **drei getrennten Paketen — je eine eigene Session mi
 
 ---
 
-## Paket 1 – Bauteilkatalog: Rollen und Default-Set „Deckenanschluss"  ⬜ offen
+## Paket 1 – Bauteilkatalog: Rollen und Default-Set „Deckenanschluss"  ✅ umgesetzt (2026-09-08)
 
 **Nutzerergebnis:** Der Standardkatalog enthält die Baugruppe „Deckenanschluss" mit allen
 Einzelteilen; im Katalog-Modul 10 ist sie sichtbar und pflegbar.
@@ -63,12 +63,42 @@ Einzelteilen; im Katalog-Modul 10 ist sie sichtbar und pflegbar.
 
 Verteilung, Editiermodus, Symbol, Stücklistenmengen.
 
-### Offener Input von Tibor (blockiert den Start)
+### Verbindliche Bauteilliste (Tibor, 2026-09-08) — je einem Anschlusspunkt
 
-Bauteilliste je **einem** Deckenanschlusspunkt, pro Zeile: Bezeichnung · Menge je Punkt · Maße
-(auch „vorläufig") · in Modul 1 wählbar oder reiner Baustellenbedarf ([P-18]).
-Aus #95 als Vermutung genannt, **noch unbestätigt**: Winkel Decke, Winkel Wand, Sechskantschraube
-M10, Unterlegscheibe, Mutter M10, Hohldeckenanker FHY M8, Bohrschraube.
+| Menge | Verwendungsstelle (Rolle) | Vorgabe |
+|---|---|---|
+| 1 | `spannplatte` | wie am Wandabschluss (Mehrfachverwendung, [P-21]) |
+| 1 | `spannmutter` | wie am Wandabschluss |
+| 1 | `dc_winkel_wand` | Deckenanschluss Winkel Wand, DC01 (1.0330), ZE25/25 |
+| 1 | `dc_winkel_decke` | Deckenanschluss Winkel Decke, DC01 (1.0330), ZE25/25 |
+| 2 | `dc_schraube` | Sechskantschraube M10 8.8 DIN 933, galvanisch verzinkt |
+| 2 | `dc_scheibe` | Unterlegscheibe DIN 9021, galvanisch verzinkt |
+| 2 | `dc_anker` | Fischer Hohldeckenanker FHY M8 |
+| 2 | `dc_bohrschraube` | SHR-BSPL-SW8-(A3K)-5,5×32 (Würth 021405532) |
+| 2 | `dc_scheibe_bohr` | DIN 9021 6,4 mm, SHB-DIN9021-140HV-(A2K)-D6,4 (Würth 04166) |
+
+Eine gesonderte Mutter M10 gibt es **nicht** — die aus #95 vermutete Liste war weiter; maßgebend
+ist allein diese Vorgabe.
+
+### Umgesetzt
+
+Sieben neue Verwendungsrollen in `docs/shared/sembla-katalog.js` (Modul 1, Gruppe „Anschluss",
+je Stk, bepreist, ohne Maß-Diskriminator), sieben Vorlagenprodukte und die Baugruppe
+`set-deckenanschluss` in `docs/vorlagen/SEMBLA_Standardkatalog.json`, Handbuchregel **[P-24]**,
+Tests in `tests/module/test-katalog.mjs` sowie angepasste Erwartungen in `test-shared.mjs`,
+`tests/module/smoke_start.mjs`, `smoke_katalog.mjs` und `smoke_geschossplan.mjs`.
+
+### Offene Punkte aus Paket 1
+
+- **Maße der beiden Winkel liegen nicht vor.** Die Kategorie „Blech/Platte" verlangt drei
+  Pflichtmaße; die Vorlagenprodukte tragen 60 × 60 mm bei 2 mm als **ausdrücklich vorläufigen
+  Platzhalter** (in Bezeichnung und Hinweis benannt, ohne jede Ableitung) — analog Spannplatte
+  und Einlegeblech. Auch die Preise sind angenommene Beispielwerte. Korrektur ist ein reiner
+  Katalog-Edit in Modul 10.
+- **Die Baugruppe bleibt bewusst unaufgelöst,** solange der Rechenkern keine Anschlusspunkte
+  führt: `semblaBomSets()` meldet sie benannt („keine bekannte Instanzquelle") und erfindet keine
+  Menge; alle bestehenden Stücklistenmengen sind Position für Position unverändert (Drift-Test).
+  Aufgelöst wird sie in Paket 3.
 
 ---
 

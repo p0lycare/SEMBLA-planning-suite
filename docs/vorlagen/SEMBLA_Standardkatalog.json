@@ -322,6 +322,75 @@
       "preis": 1.5,
       "rollen": ["dicht"],
       "hinweis": "vorläufig — fachlich unbestätigt: Meterpreis der Rollenware ist ein angenommener Beispielwert (das Produkt führt bisher nur den Stückpreis je 20-cm-Streifen)."
+    },
+    {
+      "id": "dc-winkel-wand",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Deckenanschluss Winkel Wand, DC01 (1.0330), ZE25/25 (Maße vorläufig)",
+      "einheit": "Stk",
+      "preis": 1.8,
+      "breite_mm": 60,
+      "hoehe_mm": 60,
+      "dicke_mm": 2,
+      "rollen": ["dc_winkel_wand"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Werkstoff und Bezeichnung sind am 2026-09-08 verbindlich vorgegeben (DC01/1.0330, ZE25/25); die MASSE liegen noch nicht vor. Die eingetragenen 60 × 60 mm bei 2 mm Blechdicke sind reine Platzhalter, damit die Kategorie Blech/Platte ihre Pflichtmaße hat — daraus werden ausdrücklich keine Nachweis-, Geometrie- oder Zeichnungswerte abgeleitet. Auch der Preis ist ein angenommener Beispielwert. Der Austausch nach der Freigabe ist ein reiner Katalog-Edit."
+    },
+    {
+      "id": "dc-winkel-decke",
+      "kategorie": "blech_platte",
+      "bezeichnung": "Deckenanschluss Winkel Decke, DC01 (1.0330), ZE25/25 (Maße vorläufig)",
+      "einheit": "Stk",
+      "preis": 1.8,
+      "breite_mm": 60,
+      "hoehe_mm": 60,
+      "dicke_mm": 2,
+      "rollen": ["dc_winkel_decke"],
+      "hinweis": "vorläufig — fachlich unbestätigt: Werkstoff und Bezeichnung wie beim Winkel Wand verbindlich vorgegeben (DC01/1.0330, ZE25/25); die MASSE liegen noch nicht vor. Die eingetragenen 60 × 60 mm bei 2 mm Blechdicke und der Preis sind Platzhalter und tragen keine Ableitung."
+    },
+    {
+      "id": "dc-schraube-m10",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Sechskantschraube M10 8.8 DIN 933, galvanisch verzinkt",
+      "einheit": "Stk",
+      "preis": 0.35,
+      "rollen": ["dc_schraube"],
+      "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08. Die Schraubenlänge ist dort nicht genannt und wird nicht erfunden; eine Einbauhöhe ist deshalb nicht gepflegt. Der Preis ist ein angenommener Beispielwert."
+    },
+    {
+      "id": "dc-scheibe-m10",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Unterlegscheibe DIN 9021, galvanisch verzinkt",
+      "einheit": "Stk",
+      "preis": 0.06,
+      "rollen": ["dc_scheibe"],
+      "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08; das Nennmaß ist dort nicht genannt und wird nicht erfunden. Der Preis ist ein angenommener Beispielwert."
+    },
+    {
+      "id": "dc-anker-fhy-m8",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Fischer Hohldeckenanker FHY M8",
+      "einheit": "Stk",
+      "preis": 1.2,
+      "rollen": ["dc_anker"],
+      "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08. Der Preis ist ein angenommener Beispielwert; ein Verankerungsnachweis wird daraus nicht geführt (#95)."
+    },
+    {
+      "id": "dc-bohrschraube-55x32",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Bohrschraube SHR-BSPL-SW8-(A3K)-5,5×32 (Würth 021405532)",
+      "einheit": "Stk",
+      "preis": 0.28,
+      "rollen": ["dc_bohrschraube"],
+      "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08: Würth 021405532, pias Stahl verzinkt mit langer Bohrspitze. Der Preis ist ein angenommener Beispielwert."
+    },
+    {
+      "id": "dc-scheibe-bohr-64",
+      "kategorie": "verbrauch",
+      "bezeichnung": "Unterlegscheibe DIN 9021 6,4 mm (SHB-DIN9021-140HV-(A2K)-D6,4, Würth 04166)",
+      "einheit": "Stk",
+      "preis": 0.05,
+      "rollen": ["dc_scheibe_bohr"],
+      "hinweis": "Bezeichnung nach der verbindlichen Vorgabe vom 2026-09-08: Würth 04166, DIN 9021, Stahl verzinkt. Der Preis ist ein angenommener Beispielwert."
     }
   ],
   "sets": [
@@ -332,6 +401,49 @@
       "positionen": [
         { "rolle": "spannplatte", "menge": 1 },
         { "rolle": "spannmutter", "menge": 1 }
+      ]
+    },
+    {
+      "id": "set-deckenanschluss",
+      "name": "Deckenanschluss",
+      "hinweis": "Baugruppe an einer oberen Spannachse ANSTELLE des Wandabschlusses ([P-24]): an derselben Achse wird entweder „Wandabschluss“ oder „Deckenanschluss“ eingesetzt, niemals beides — der Deckenanschluss ist kein Zusatz. Er führt dieselbe Spannplatte und dieselbe Spannmutter (Mehrfachverwendung nach [P-21]) und darüber hinaus die am 2026-09-08 VERBINDLICH genannten Teile: je einen Winkel Wand und Winkel Decke sowie je zwei Sechskantschrauben M10, Unterlegscheiben M10, Hohldeckenanker, Bohrschrauben und Unterlegscheiben zur Bohrschraube. Die Positionen benennen Verwendungsrollen und kein bestimmtes Produkt — welches Produkt eine Rolle ausführt, wählt die Wand ([P-13]). Aufgelöst wird die Baugruppe allein im Stücklisten-Baustein ([P-23]); die Zahl der Anschlusspunkte kommt aus dem Rechenkern (#95) und nicht von hier — solange der Rechenkern sie nicht führt, bleibt die Baugruppe unaufgelöst und wird benannt gemeldet, statt eine Menge zu erfinden.",
+      "positionen": [
+        {
+          "rolle": "spannplatte",
+          "menge": 1
+        },
+        {
+          "rolle": "spannmutter",
+          "menge": 1
+        },
+        {
+          "rolle": "dc_winkel_wand",
+          "menge": 1
+        },
+        {
+          "rolle": "dc_winkel_decke",
+          "menge": 1
+        },
+        {
+          "rolle": "dc_schraube",
+          "menge": 2
+        },
+        {
+          "rolle": "dc_scheibe",
+          "menge": 2
+        },
+        {
+          "rolle": "dc_anker",
+          "menge": 2
+        },
+        {
+          "rolle": "dc_bohrschraube",
+          "menge": 2
+        },
+        {
+          "rolle": "dc_scheibe_bohr",
+          "menge": 2
+        }
       ]
     }
   ]

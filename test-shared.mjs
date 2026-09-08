@@ -319,13 +319,28 @@ for(const [name,l,h,ops] of cases){
   const spur = its => JSON.stringify(its.map(it => [it.key, it.mass_mm ?? null,
     it.fertigmass_mm ?? null, it.menge]));
 
-  t("P-23 · Vorlage traegt Katalogformat v2 und genau eine Baugruppe „Wandabschluss“",
-    KAT.version === 2 && KAT.sets.length === 1 && KAT.sets[0].id === "set-wandabschluss"
-    && KAT.sets[0].name === "Wandabschluss");
+  t("P-23 · Vorlage traegt Katalogformat v2 und die zwei Baugruppen der oberen Ausfuehrung",
+    KAT.version === 2 && KAT.sets.length === 2
+    && KAT.sets.map(x => x.id).join() === "set-wandabschluss,set-deckenanschluss"
+    && KAT.sets[0].name === "Wandabschluss" && KAT.sets[1].name === "Deckenanschluss");
   t("P-23 · die Baugruppe fuehrt je eine Rollenposition mit Menge 1",
     JSON.stringify(KAT.sets[0].positionen)
       === JSON.stringify([{ rolle: "spannplatte", menge: 1 },
                           { rolle: "spannmutter", menge: 1 }]));
+  // [P-24]/#95: Die Bauteilliste des Deckenanschlusses ist eine FACHVORGABE (2026-09-08) und steht
+  // hier Position fuer Position — Reihenfolge, Verwendungsstelle und Menge je Anschlusspunkt.
+  // Spannplatte und Spannmutter stehen in BEIDEN Baugruppen (Mehrfachverwendung, [P-21]).
+  t("P-24 · Baugruppe „Deckenanschluss“ fuehrt genau die verbindlich genannten Teile",
+    JSON.stringify(KAT.sets[1].positionen)
+      === JSON.stringify([{ rolle: "spannplatte", menge: 1 },
+                          { rolle: "spannmutter", menge: 1 },
+                          { rolle: "dc_winkel_wand", menge: 1 },
+                          { rolle: "dc_winkel_decke", menge: 1 },
+                          { rolle: "dc_schraube", menge: 2 },
+                          { rolle: "dc_scheibe", menge: 2 },
+                          { rolle: "dc_anker", menge: 2 },
+                          { rolle: "dc_bohrschraube", menge: 2 },
+                          { rolle: "dc_scheibe_bohr", menge: 2 }]));
 
   const ohneSets = { ...KAT, sets: [] };
   // Auch eine Wand mit KOPFBLECH ist dabei: dort gibt es keine Spannplatte und damit keine
@@ -353,10 +368,21 @@ for(const [name,l,h,ops] of cases){
         && je("spannmutter")[0].menge === w.bom.spannmuttern
         && je("unterlegscheibe").length === 0; })());
     // Instanzzahl ausschliesslich aus dem unveraenderten Rechenkern.
+    // [P-24]/#95: Der Deckenanschluss hat in DIESEM Stand noch keine Einbaustelle im Rechenkern
+    // (die Verteilung der Anschlusspunkte folgt als eigenes Paket). Er bleibt deshalb
+    // ausdruecklich UNAUFGELOEST und wird BENANNT gemeldet — genau eine Instanz (Wandabschluss),
+    // genau eine Meldung, und keine einzige ausgewiesene Menge bewegt sich dadurch.
     t("P-23 · " + nm + " · Instanzzahl = bom.spannplatten", (() => {
       const st = semblaBomSets(w, KAT), i = st.instanzen[0];
       return st.instanzen.length === 1 && i.feld === "spannplatten"
-        && i.anzahl === w.bom.spannplatten && st.meldungen.length === 0; })());
+        && i.anzahl === w.bom.spannplatten; })());
+    t("P-24 · " + nm + " · Deckenanschluss ohne Einbaustelle: benannt gemeldet, nichts geraten",
+      (() => {
+        const st = semblaBomSets(w, KAT);
+        return st.meldungen.length === 1 && /Deckenanschluss/.test(st.meldungen[0])
+          && /Instanzquelle/.test(st.meldungen[0])
+          && !st.instanzen.some(i => i.set === "set-deckenanschluss")
+          && !st.positionen.some(x => x.set === "set-deckenanschluss"); })());
     // Ein Katalog OHNE Baugruppen ergibt bitgenau den Stand ohne Baugruppen.
     t("P-23 · " + nm + " · Katalog ohne Baugruppen = Stand ohne Baugruppen (bitgenau)",
       JSON.stringify(semblaBomItems(w, ohneSets)) === JSON.stringify(flach));
@@ -378,7 +404,9 @@ for(const [name,l,h,ops] of cases){
     const mu = semblaBomItems(w, KAT).find(it => it.key === "spannmutter");
     t("P-23 · Kopfblech: keine Baugruppen-Instanz, Spannmutter bleibt flacher Rest",
       w.bom.spannplatten === 0 && st.instanzen[0].anzahl === 0 && st.positionen.length === 0
-      && mu.menge === w.bom.spannmuttern && mu.menge > 0 && st.meldungen.length === 0);
+      && mu.menge === w.bom.spannmuttern && mu.menge > 0
+      // einzige Meldung ist die des noch nicht gerechneten Deckenanschlusses ([P-24])
+      && st.meldungen.length === 1 && /Deckenanschluss/.test(st.meldungen[0]));
   }
 
   // Unbekannte Verwendungsrolle: BENANNT gemeldet, und keine Position bekommt eine geratene

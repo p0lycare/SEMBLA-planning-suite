@@ -689,11 +689,73 @@ export const ROLLEN = [
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
+  // #95/#94 DECKENANSCHLUSS: Die Wand wird an mehreren Stellen ueber eine Winkelbaugruppe mit
+  // der Decke verbunden. An einer oberen Spannachse gibt es GENAU EINE von zwei Ausfuehrungen —
+  // entweder den normalen Wandabschluss (Spannplatte + Spannmutter) ODER den Deckenanschluss;
+  // beide Sets sind exklusiv ([P-24]). Der Deckenanschluss fuehrt DIESELBE Spannplatte und
+  // DIESELBE Spannmutter (Rollen `spannplatte`/`spannmutter`, Mehrfachverwendung nach [P-21])
+  // und darueber hinaus die folgenden Teile, deren Liste Tibor am 2026-09-08 VERBINDLICH
+  // genannt hat — es ist nichts geraten und nichts ergaenzt:
+  //   1x Winkel Wand, 1x Winkel Decke, 2x Sechskantschraube M10, 2x Unterlegscheibe (M10),
+  //   2x Hohldeckenanker, 2x Bohrschraube, 2x Unterlegscheibe (Bohrschraube).
+  // JEDE dieser Verwendungsstellen ist eine EIGENE Rolle, weil der Rollenschluessel zugleich
+  // der Stuecklistenschluessel ist: zwei verschiedene Scheiben an zwei verschiedenen Stellen
+  // (M10 am Winkelstoss, 6,4 mm an der Bohrschraube) sind zwei Positionen und werden nicht zu
+  // einer zusammengelegt. Ein Mass-Diskriminator gibt es bei keiner dieser Rollen: es existiert
+  // kein massgebender WANDwert, an dem sich Winkel, Schraube, Scheibe oder Anker messen liesse —
+  // ein Kontextfeld waere ein erfundener Bezug. Eindeutig wird die Auswahl allein ueber genau
+  // ein gewaehltes Produkt ([P-14]). Die EINBAUMENGE ist die Zahl der Deckenanschlusspunkte der
+  // Wand und kommt allein aus dem Rechenkern (#95, folgt in einem eigenen Paket); der Katalog
+  // sagt hier nur, WORAUS die Baugruppe besteht.
+  { id: "dc_winkel_wand", label: "Deckenanschluss – Winkel Wand", kategorie: "blech_platte",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Der wandseitige Winkel der Deckenanschluss-Baugruppe (Werkstoff nach Vorgabe: "
+      + "DC01/1.0330, ZE25/25). Genau EINER je Anschlusspunkt. Die Maße sind noch nicht "
+      + "festgelegt; das Vorlagenprodukt trägt ausdrücklich vorläufige Werte und ist vor der "
+      + "Verwendung im Katalog zu korrigieren. Es wird GENAU EIN Produkt gewählt (kein "
+      + "Maß-Diskriminator)." },
+  { id: "dc_winkel_decke", label: "Deckenanschluss – Winkel Decke", kategorie: "blech_platte",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Der deckenseitige Winkel der Deckenanschluss-Baugruppe (Werkstoff nach Vorgabe: "
+      + "DC01/1.0330, ZE25/25). Genau EINER je Anschlusspunkt. Maße vorläufig wie beim Winkel "
+      + "Wand. Es wird GENAU EIN Produkt gewählt (kein Maß-Diskriminator)." },
+  { id: "dc_schraube", label: "Deckenanschluss – Sechskantschraube M10", kategorie: "verbrauch",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Verbindet die beiden Winkel der Deckenanschluss-Baugruppe; Vorgabe M10 8.8 "
+      + "DIN 933, galvanisch verzinkt. ZWEI je Anschlusspunkt. Sie ist ausdrücklich NICHT die "
+      + "Sechskantschraube am Fuß (Rolle `senkkopf`) — zwei Einbaustellen, zwei Positionen. Es "
+      + "wird GENAU EIN Produkt gewählt (kein Maß-Diskriminator)." },
+  { id: "dc_scheibe", label: "Deckenanschluss – Unterlegscheibe M10", kategorie: "verbrauch",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Unterlegscheibe zur Sechskantschraube M10 der Deckenanschluss-Baugruppe; Vorgabe "
+      + "DIN 9021, galvanisch verzinkt. ZWEI je Anschlusspunkt. Sie ist eine ANDERE "
+      + "Verwendungsstelle als die Scheibe an der Bohrschraube (Rolle `dc_scheibe_bohr`) und "
+      + "wird mit ihr nicht zusammengelegt. Am normalen Wandabschluss gibt es keine Scheibe "
+      + "(Fachauskunft 2026-09-08). Es wird GENAU EIN Produkt gewählt." },
+  { id: "dc_anker", label: "Deckenanschluss – Hohldeckenanker", kategorie: "verbrauch",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Verankert den deckenseitigen Winkel in der Hohldecke; Vorgabe Fischer "
+      + "Hohldeckenanker FHY M8. ZWEI je Anschlusspunkt. Ein Verankerungs- oder Winkelnachweis "
+      + "wird daraus ausdrücklich NICHT geführt (#95). Es wird GENAU EIN Produkt gewählt." },
+  { id: "dc_bohrschraube", label: "Deckenanschluss – Bohrschraube", kategorie: "verbrauch",
+    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
+    hinweis: "Befestigt den wandseitigen Winkel; Vorgabe SHR-BSPL-SW8-(A3K)-5,5×32 (Würth "
+      + "021405532, Stahl verzinkt, lange Bohrspitze). ZWEI je Anschlusspunkt. Es wird GENAU "
+      + "EIN Produkt gewählt." },
+  { id: "dc_scheibe_bohr", label: "Deckenanschluss – Unterlegscheibe Bohrschraube",
+    kategorie: "verbrauch", modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null,
+    bepreist: true,
+    hinweis: "Unterlegscheibe zur Bohrschraube; Vorgabe DIN 9021, 6,4 mm "
+      + "(SHB-DIN9021-140HV-(A2K)-D6,4, Würth 04166, Stahl verzinkt). ZWEI je Anschlusspunkt. "
+      + "Getrennt von der Scheibe M10 am Winkelstoß (Rolle `dc_scheibe`). Es wird GENAU EIN "
+      + "Produkt gewählt." },
   // KEINE Rolle „unterlegscheibe": am normalen Wandabschluss gibt es am Spannglied keine
   // Scheibe (Fachauskunft 2026-09-08, hebt #92 auf). Die Rolle war mit einem ausdruecklich
   // als „vorlaeufig, fachlich unbestaetigt" gekennzeichneten Produkt vorbelegt und haette in
   // Modul 1 eine Auswahl fuer ein Bauteil angeboten, das dort nicht verbaut wird. Scheiben am
-  // DECKENANSCHLUSS kommen mit dessen Baugruppe ([P-21]) und brauchen hier keine eigene Rolle.
+  // DECKENANSCHLUSS kommen mit dessen Baugruppe ([P-21]) und tragen ihre eigenen Rollen
+  // (`dc_scheibe`, `dc_scheibe_bohr`) — eine gemeinsame Rolle „unterlegscheibe" fuer beide
+  // Ausfuehrungen gibt es bewusst nicht.
   { id: "blech_boden", label: "Bodenblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true, kombinierbar: true,

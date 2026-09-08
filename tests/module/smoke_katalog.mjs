@@ -823,25 +823,27 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   // 14d) Baugruppen/Sets ([P-21]/[P-22], #94) am ECHTEN Set-Editor
   // Die Vorlage bringt seit [P-23] die Baugruppe „Wandabschluss" mit; der Dialogtest legt
   // daneben eine EIGENE an und laesst die Vorlagenbaugruppe unberuehrt.
-  ok('#94 der Katalog fuehrt genau die Baugruppe der Vorlage ([P-23])',
-    sets().length === 1 && sFind('set-wandabschluss')?.name === 'Wandabschluss');
+  ok('#94 der Katalog fuehrt genau die Baugruppen der Vorlage ([P-23], [P-24])',
+    sets().length === 2 && sFind('set-wandabschluss')?.name === 'Wandabschluss'
+    && sFind('set-deckenanschluss')?.name === 'Deckenanschluss');
 
   $('ks-name').value = 'Probe';
   $('ks-neu').dispatch('click');
   ok('#94 Set angelegt und gemeldet',
-    sets().length === 2 && sFind('set-probe')?.name === 'Probe'
+    sets().length === 3 && sFind('set-probe')?.name === 'Probe'
     && /Baugruppe angelegt/.test(kMsgTxt()) && !kFehler());
   ok('#94 die neue Baugruppe steht in der Tabelle',
     /data-set="set-probe"/.test($('ks-tbody').innerHTML)
     && /Probe/.test($('ks-tbody').innerHTML) && $('ks-leer').hidden === true);
   // Zwei Positionen seit der Fachauskunft 2026-09-08 (Spannplatte, Spannmutter) — die
   // Unterlegscheibe aus #92 ist entfallen.
-  ok('#94 die Baugruppe der Vorlage bleibt dabei unberuehrt',
-    sFind('set-wandabschluss').positionen.length === 2);
+  ok('#94 die Baugruppen der Vorlage bleiben dabei unberuehrt',
+    sFind('set-wandabschluss').positionen.length === 2
+    && sFind('set-deckenanschluss').positionen.length === 9);
   $('ks-name').value = '';
   $('ks-neu').dispatch('click');
   ok('#94 ein Set ohne Namen wird benannt abgewiesen',
-    sets().length === 2 && kFehler() && /Namen/.test(kMsgTxt()));
+    sets().length === 3 && kFehler() && /Namen/.test(kMsgTxt()));
 
   sPos('produkt', 'gewindestange-m10-1000', 2);
   ok('#94 Produktposition hinzugefuegt',
@@ -889,7 +891,7 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   kZeile('bearbeiten', 'latte-40-60-1500');
   kpSpeichern();
   ok('#94 Set ueberlebt eine Produktbearbeitung (katalogObjekt fuehrt sets)',
-    sets().length === 2 && sFind('set-probe').positionen.length === 2
+    sets().length === 3 && sFind('set-probe').positionen.length === 2
     && kAnzahl() === V_KAT_ANZ);
 
   // Export ueber den echten Knopf -> Import ueber das echte Dateifeld
@@ -897,8 +899,8 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   const dateiText = letzterDownload;              // genau die Bytes des echten Downloads
   const dateiObj = JSON.parse(dateiText);
   ok('#94 die Exportdatei traegt Katalogformat v2 und die Baugruppen',
-    dateiObj.version === 2 && dateiObj.sets.length === 2
-    && dateiObj.sets[1].positionen.length === 2 && /Katalog exportiert/.test(kMsgTxt()));
+    dateiObj.version === 2 && dateiObj.sets.length === 3
+    && dateiObj.sets[2].positionen.length === 2 && /Katalog exportiert/.test(kMsgTxt()));
   const vorImport94 = JSON.stringify(sets());
   await $('k-import').dispatch('change', { target: { files: [kFile(dateiText, 'sets.json')], value: 'x' } });
   ok('#94 Import: dieselben Set-Definitionen, verlustfrei',
@@ -913,7 +915,8 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   sZeile('set-loeschen', 'set-probe');
   confirmAntwort = false;
   ok('#94 Set geloescht, Produkte unberuehrt',
-    sets().length === 1 && sFind('set-wandabschluss') && kAnzahl() === V_KAT_ANZ
+    sets().length === 2 && sFind('set-wandabschluss') && sFind('set-deckenanschluss')
+    && kAnzahl() === V_KAT_ANZ
     && /gelöscht/.test(kMsgTxt()) && $('ks-leer').hidden === true);
 
   // 14e) Der Standardkatalog macht die Suite startklar ([P-18]) — nachweisbar hier,

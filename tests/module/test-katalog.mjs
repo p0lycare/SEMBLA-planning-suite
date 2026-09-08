@@ -896,6 +896,74 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
 }
 
 
+// --- Deckenanschluss: Verwendungsstellen und Default-Set ([P-24], #95/#94) -
+// Die Bauteilliste ist eine FACHVORGABE vom 2026-09-08 und steht genau einmal: hier als
+// Verwendungsrollen, in der Vorlage als Baugruppe. Geprueft wird, dass jede Verwendungsstelle
+// ihre EIGENE Rolle behaelt (der Rollenschluessel ist der Stuecklistenschluessel), dass keine
+// davon einen erfundenen Mass-Diskriminator traegt und dass die Vorlage jede genau EINMAL
+// vorbelegt. Aufgeloest wird hier NICHTS — die Zahl der Anschlusspunkte kommt aus dem
+// Rechenkern und ist Gegenstand eines eigenen Pakets.
+{
+  const DC = ["dc_winkel_wand", "dc_winkel_decke", "dc_schraube", "dc_scheibe", "dc_anker",
+              "dc_bohrschraube", "dc_scheibe_bohr"];
+  ok("[P-24] alle sieben Verwendungsstellen des Deckenanschlusses sind eigene Rollen",
+    DC.every((id) => KAT.rolle(id) != null) && new Set(DC).size === 7);
+  ok("[P-24] jede von ihnen gehoert Modul 1, Gruppe Anschluss, Stk, bepreist, ohne Maß",
+    DC.every((id) => {
+      const r = KAT.rolle(id);
+      return r.modul === 1 && r.gruppe === "Anschluss" && r.einheit === "Stk"
+        && r.bepreist === true && r.mass === null
+        && KAT.rollenVonModul(1).some((x) => x.id === id);
+    }));
+  // Die Winkel sind Blechteile, die Kleinteile Verbrauchsmaterial — eine fachfremde
+  // Kategorie an einer dieser Rollen ist ein Katalogfehler und keine Heuristik.
+  ok("[P-24] Winkel sind Blech/Platte, Schrauben, Scheiben und Anker Verbrauchsmaterial",
+    KAT.rolle("dc_winkel_wand").kategorie === "blech_platte"
+    && KAT.rolle("dc_winkel_decke").kategorie === "blech_platte"
+    && ["dc_schraube", "dc_scheibe", "dc_anker", "dc_bohrschraube", "dc_scheibe_bohr"]
+      .every((id) => KAT.rolle(id).kategorie === "verbrauch"));
+  // Zwei Scheiben an zwei Stellen bleiben zwei Positionen; die Schraube des Winkelstosses ist
+  // nicht die des Fusses. Zusammengelegt wird nichts, auch nicht bei gleichem Handelsnamen.
+  ok("[P-24] die zwei Unterlegscheiben und die zwei Sechskantschrauben bleiben getrennt",
+    KAT.rolle("dc_scheibe").id !== KAT.rolle("dc_scheibe_bohr").id
+    && KAT.rolle("dc_schraube").id !== KAT.rolle("senkkopf").id
+    && KAT.rolle("unterlegscheibe") == null);
+  const rohDC = readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json",
+    import.meta.url), "utf8");
+  const stdDC = KAT.parseKatalog(rohDC);
+  ok("[P-24] die Vorlage belegt jede Verwendungsstelle mit genau EINEM Produkt vor ([P-18])",
+    (() => {
+      const v = KAT.produktrollenVorschlag(stdDC);
+      return DC.every((id) => Array.isArray(v[id]) && v[id].length === 1);
+    })());
+  ok("[P-24] die Vorlage fuehrt die Baugruppe „Deckenanschluss“ mit den vorgegebenen Mengen",
+    (() => {
+      const set = KAT.set(stdDC, "set-deckenanschluss");
+      return !!set && set.name === "Deckenanschluss"
+        && JSON.stringify(set.positionen.map((x) => [x.rolle, x.menge])) === JSON.stringify(
+          [["spannplatte", 1], ["spannmutter", 1], ["dc_winkel_wand", 1], ["dc_winkel_decke", 1],
+           ["dc_schraube", 2], ["dc_scheibe", 2], ["dc_anker", 2], ["dc_bohrschraube", 2],
+           ["dc_scheibe_bohr", 2]]);
+    })());
+  // Spannplatte und Spannmutter stehen in BEIDEN Baugruppen — die zulaessige
+  // Mehrfachverwendung nach [P-21]. Der Katalog bleibt dabei gueltig.
+  ok("[P-24] Spannplatte und Spannmutter stehen in beiden Baugruppen, der Katalog ist gueltig",
+    (() => {
+      const inSet = (id) => KAT.set(stdDC, id).positionen.map((x) => x.rolle);
+      return ["spannplatte", "spannmutter"].every((r) =>
+        inSet("set-wandabschluss").includes(r) && inSet("set-deckenanschluss").includes(r))
+        && KAT.validiereKatalog(stdDC).length === 0;
+    })());
+  // Die Winkelmasse liegen NICHT vor: das Vorlagenprodukt weist sie ausdruecklich als
+  // vorlaeufig aus, damit daraus keine Geometrie und kein Nachweis abgeleitet wird.
+  ok("[P-24] die Winkelprodukte weisen ihre Maße ausdruecklich als vorlaeufig aus",
+    ["dc-winkel-wand", "dc-winkel-decke"].every((id) => {
+      const pr = KAT.produkt(stdDC, id);
+      return !!pr && /vorläufig/i.test(pr.bezeichnung) && /vorläufig/i.test(pr.hinweis || "")
+        && /Platzhalter/.test(pr.hinweis || "");
+    }));
+}
+
 // --- Baugruppen / Sets ([P-21]) und Katalogformat v2 ([P-22], #94) --------
 // Das Set ist DEFINITIONSEBENE des Katalogs: geprueft werden Form, Referenzen,
 // Mengen, Eindeutigkeit, das Verschachtelungsverbot, die verlustfreie Migration
