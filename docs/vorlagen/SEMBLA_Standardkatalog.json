@@ -307,15 +307,6 @@
       "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Sie zieht das Einlegeblech von oben gegen die Steinlage; unten sitzt keine Mutter ([A-16]). Bewusst ein EIGENES Produkt neben der Spannmutter des Ankers \u2014 die beiden Verwendungsstellen bleiben getrennt, damit je Rolle genau ein Kandidat bleibt ([P-14]). Der Preis ist ein angenommener Beispielwert; ein Bauteilma\u00df ist \u00fcber das Gewinde M10 hinaus nicht hinterlegt und wird nicht angenommen."
     },
     {
-      "id": "verbrauch-unterlegscheibe",
-      "kategorie": "verbrauch",
-      "bezeichnung": "Unterlegscheibe Wandabschluss (vorl\u00e4ufig)",
-      "einheit": "Stk",
-      "preis": 0.12,
-      "rollen": ["unterlegscheibe"],
-      "hinweis": "vorl\u00e4ufig \u2014 fachlich unbest\u00e4tigt: Sie liegt zwischen Spannplatte und Spannmutter (#92). Ein Bauteilma\u00df (Durchmesser, Dicke) ist bewusst NICHT hinterlegt \u2014 es ist noch nicht festgelegt und wird hier nicht angenommen. Der Preis ist ein frei angenommener Beispielwert."
-    },
-    {
       "id": "verbrauch-dichtstreifen-200",
       "kategorie": "verbrauch",
       "bezeichnung": "Dichtstreifen 20 cm (Schallschutz)",
@@ -337,10 +328,9 @@
     {
       "id": "set-wandabschluss",
       "name": "Wandabschluss",
-      "hinweis": "Baugruppe an jeder Spannachse oben ([P-21]): Spannplatte, darauf die Unterlegscheibe, darauf die Spannmutter. Die Positionen benennen Verwendungsrollen und kein bestimmtes Produkt — welches Produkt eine Rolle ausfuehrt, waehlt die Wand ([P-13]). Aufgeloest wird die Baugruppe allein im Stuecklisten-Baustein ([P-23]); die Zahl der Einbaustellen kommt aus dem Rechenkern und nicht von hier.",
+      "hinweis": "Baugruppe an jeder Spannachse oben ([P-21]): Spannplatte, darauf die Spannmutter. KEINE Unterlegscheibe \u2014 am normalen Wandabschluss gibt es sie am Spannglied nicht (Fachauskunft 2026-09-08, hebt #92 auf); Scheiben treten allein am Deckenanschluss auf und kommen mit dessen Baugruppe. Die Positionen benennen Verwendungsrollen und kein bestimmtes Produkt — welches Produkt eine Rolle ausfuehrt, waehlt die Wand ([P-13]). Aufgeloest wird die Baugruppe allein im Stuecklisten-Baustein ([P-23]); die Zahl der Einbaustellen kommt aus dem Rechenkern und nicht von hier.",
       "positionen": [
         { "rolle": "spannplatte", "menge": 1 },
-        { "rolle": "unterlegscheibe", "menge": 1 },
         { "rolle": "spannmutter", "menge": 1 }
       ]
     }

@@ -834,8 +834,10 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('#94 die neue Baugruppe steht in der Tabelle',
     /data-set="set-probe"/.test($('ks-tbody').innerHTML)
     && /Probe/.test($('ks-tbody').innerHTML) && $('ks-leer').hidden === true);
+  // Zwei Positionen seit der Fachauskunft 2026-09-08 (Spannplatte, Spannmutter) — die
+  // Unterlegscheibe aus #92 ist entfallen.
   ok('#94 die Baugruppe der Vorlage bleibt dabei unberuehrt',
-    sFind('set-wandabschluss').positionen.length === 3);
+    sFind('set-wandabschluss').positionen.length === 2);
   $('ks-name').value = '';
   $('ks-neu').dispatch('click');
   ok('#94 ein Set ohne Namen wird benannt abgewiesen',

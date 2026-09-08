@@ -166,29 +166,18 @@ ok("Rolle senkkopf heisst Sechskantschraube Fuß bei unveraenderter Kennung (#92
   const r = KAT.ROLLEN.find((x) => x.id === "senkkopf");
   return !!r && r.label === "Sechskantschraube Fuß" && !/Senkkopf/.test(r.label);
 })());
-// #92 Die Unterlegscheibe des Wandabschlusses ist eine eigene Verwendungsrolle: sie liegt beim
-// Festspannen zwischen Spannplatte und Spannmutter und wird deshalb in Modul 1 in der Gruppe des
-// Anschlusses gewaehlt und bepreist. Ein Bauteilmass gibt es bewusst NICHT (kein Diskriminator).
-ok("Rolle unterlegscheibe: Modul 1, Gruppe Anschluss, bepreist, ohne Maß (#92)", (() => {
-  const r = KAT.rolle("unterlegscheibe");
-  return !!r && r.modul === 1 && r.gruppe === "Anschluss" && r.kategorie === "verbrauch"
-    && r.einheit === "Stk" && r.bepreist === true && r.mass === null
-    && KAT.rollenVonModul(1).some((x) => x.id === "unterlegscheibe")
-    && !KAT.rollenVonModul(2).some((x) => x.id === "unterlegscheibe");
-})());
-ok("Rolle unterlegscheibe ist regulaer waehlbar und wird bepreist (#92)", (() => {
-  const eing = eingabenMit({ unterlegscheibe: ["scheibe-1"] });
-  const kat = { produkte: [{ id: "scheibe-1", kategorie: "verbrauch", bezeichnung: "Scheibe",
-                             einheit: "Stk", preis: 0.12 }] };
-  const st = KAT.rollenStatus("unterlegscheibe", eing, kat, KTX);
-  return st.status === "ok" && st.produkt.id === "scheibe-1";
-})());
-// [P-9]/must 6: Ohne Auswahl bleibt die Wand gueltig — die Luecke wird nur BENANNT.
-ok("Rolle unterlegscheibe ohne Auswahl: benannte Luecke statt Fehler (#92)", (() => {
-  const st = KAT.rollenStatus("unterlegscheibe", eingabenMit({}), R_KAT, KTX);
-  return st.status === "keine_auswahl" && st.text === KAT.STATUS_TEXT.keine_auswahl
-    && st.produkt === null && st.ids.length === 0;
-})());
+// Die Unterlegscheibe am Wandabschluss ist ENTFALLEN (Fachauskunft 2026-09-08, hebt #92 auf):
+// am normalen oberen Wandabschluss gibt es sie am Spannglied nicht, die Spannmutter sitzt
+// unmittelbar auf der Spannplatte. Es darf deshalb auch keine WAEHLBARE ROLLE dafuer mehr
+// geben — sonst boete Modul 1 eine Produktauswahl fuer ein Bauteil an, das dort nicht verbaut
+// wird. Scheiben am Deckenanschluss kommen mit dessen Baugruppe ([P-21]).
+ok("Rolle unterlegscheibe ist entfallen (Fachauskunft 2026-09-08, hebt #92 auf)",
+  KAT.rolle("unterlegscheibe") == null
+  && !KAT.ROLLEN.some((r) => r.id === "unterlegscheibe")
+  && !KAT.rollenVonModul(1).some((x) => x.id === "unterlegscheibe"));
+// Die Anschlussgruppe fuehrt weiter Platte und Mutter — nur die Scheibe fehlt.
+ok("die Anschlussgruppe fuehrt Spannplatte und Spannmutter unveraendert weiter",
+  !!KAT.rolle("spannplatte") && !!KAT.rolle("spannmutter"));
 // #96 Das Ausgleichsblech unter dem Bodenblech ist ein eigenes Bauteil (Bodenanschluss wird mit
 // Laser nivelliert). Es hat eine eigene Verwendungsrolle der Kategorie Blech/Platte, ist in
 // Modul 1 in der Gruppe des Anschlusses waehlbar und wird bepreist. Einen Maß-Diskriminator gibt
@@ -656,20 +645,13 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   const v = KAT.produktrollenVorschlag(std);
   ok("Standardkatalog ist gueltig und belegt JEDE waehlbare Rolle vor ([P-18])",
     KAT.rollenOhneVorschlag(std).length === 0);
-  // #92 Die Vorlage bringt ein Produkt fuer die Unterlegscheibe mit — ausdruecklich vorlaeufig
-  // und OHNE Bauteilmass (Durchmesser/Dicke sind nicht festgelegt und werden nicht erfunden).
-  ok("Standardkatalog belegt die Rolle unterlegscheibe vor (#92)", (() => {
-    const ids = v.unterlegscheibe || [];
-    if (ids.length !== 1) return false;
-    const pr = KAT.produkt(std, ids[0]);
-    return pr.id === "verbrauch-unterlegscheibe" && pr.kategorie === "verbrauch"
-      && pr.einheit === "Stk" && !KAT.rollenOhneVorschlag(std).includes("unterlegscheibe");
-  })());
-  ok("Standardkatalog: Unterlegscheibe ist als vorlaeufig gekennzeichnet und erfindet kein Maß (#92)", (() => {
-    const pr = KAT.produkt(std, "verbrauch-unterlegscheibe");
-    return /vorläufig/.test(pr.bezeichnung) && /vorläufig — fachlich unbestätigt/.test(pr.hinweis || "")
-      && pr.breite_mm == null && pr.hoehe_mm == null && pr.laenge_mm == null && pr.dicke_mm == null;
-  })());
+  // Die Vorlage bringt KEIN Unterlegscheiben-Produkt mehr mit (Fachauskunft 2026-09-08).
+  // Das Produkt war ausdruecklich als „vorläufig — fachlich unbestätigt" gekennzeichnet und
+  // trug einen frei angenommenen Preis; die Auskunft loest diesen offenen Punkt auf.
+  ok("Standardkatalog fuehrt kein Unterlegscheiben-Produkt mehr (hebt #92 auf)",
+    KAT.produkt(std, "verbrauch-unterlegscheibe") == null
+    && !(std.produkte || []).some((pr) => (pr.rollen || []).includes("unterlegscheibe"))
+    && v.unterlegscheibe == null);
   // #96 Die Vorlage bringt GENAU EIN vorlaeufiges Ausgleichsblech mit: 20 mm in Wandrichtung
   // (breite_mm — die Kategoriemaske kennt kein laenge_mm), 100 mm quer zur Wand (hoehe_mm),
   // 8 mm dick. Die Orientierung ist die Feststellung von Tibor vom 2026-09-07; zuvor stand sie

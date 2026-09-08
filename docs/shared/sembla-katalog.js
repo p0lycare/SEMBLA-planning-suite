@@ -689,12 +689,11 @@ export const ROLLEN = [
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
   { id: "spannplatte", label: "Spannplatte", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true },
-  { id: "unterlegscheibe", label: "Unterlegscheibe Wandabschluss", kategorie: "verbrauch",
-    modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
-    hinweis: "Sie liegt beim Festspannen ZWISCHEN Spannplatte und Spannmutter (#92). Gezählt "
-      + "wird deshalb je Spannplatte — nicht je Spannmutter: eine Mutter, die unmittelbar auf "
-      + "dem Kopfblech sitzt, hat diese Einbaustelle nicht. Ein Bauteilmaß ist bewusst nicht "
-      + "hinterlegt (kein Maß-Diskriminator); es wird keines erfunden." },
+  // KEINE Rolle „unterlegscheibe": am normalen Wandabschluss gibt es am Spannglied keine
+  // Scheibe (Fachauskunft 2026-09-08, hebt #92 auf). Die Rolle war mit einem ausdruecklich
+  // als „vorlaeufig, fachlich unbestaetigt" gekennzeichneten Produkt vorbelegt und haette in
+  // Modul 1 eine Auswahl fuer ein Bauteil angeboten, das dort nicht verbaut wird. Scheiben am
+  // DECKENANSCHLUSS kommen mit dessen Baugruppe ([P-21]) und brauchen hier keine eigene Rolle.
   { id: "blech_boden", label: "Bodenblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true, kombinierbar: true,

@@ -362,14 +362,14 @@ function _flachePositionen(w, b) {
     { key: "senkkopf",    label: "Sechskantschraube (Fuß)",            unit: "Stk", menge: b.senkkopfschrauben },
     { key: "spannmutter", label: "Spannmutter",                       unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
-    // #92 Unterlegscheibe: Sie liegt beim Festspannen ZWISCHEN Spannplatte und Spannmutter, es
-    // gibt also genau EINE je Spannplatte. Maßgebend ist deshalb `spannplatten` und NICHT
-    // `spannmuttern` — Letztere zählt zusätzlich die Muttern, die unmittelbar auf dem
-    // Kopfblech sitzen; dort gibt es keine Platte und damit auch keine Scheibe. Eine Altwand
-    // mit ausdrücklichem `top_connection: "blech"` trägt hier folglich die Menge 0; das ist
-    // der ehrliche Stand und kein Fehler (neue Wände haben den Default "spannplatte"). Der
-    // Rechenkern bleibt unberührt — die Zahl wird nur durchgereicht, nicht nachgerechnet.
-    { key: "unterlegscheibe", label: "Unterlegscheibe (Wandabschluss)", unit: "Stk", menge: b.spannplatten },
+    // KEINE Unterlegscheibe am Wandabschluss (Fachauskunft 2026-09-08, hebt #92 auf): am
+    // normalen oberen Wandabschluss gibt es sie am Spannglied nicht — die Spannmutter sitzt
+    // unmittelbar auf der Spannplatte. Scheiben treten allein am DECKENANSCHLUSS auf (dort
+    // zwei) und kommen mit dessen Baugruppe, nicht als eigene Position am Wandabschluss.
+    // #92 hatte sie als „vorläufig, fachlich unbestätigt" eingeführt und je Spannplatte
+    // gezählt; das war eine bepreiste Position für ein Bauteil, das an dieser Einbaustelle
+    // nicht verbaut wird. Die Position ist deshalb ersatzlos entfallen und NICHT auf Menge 0
+    // gesetzt: eine Zeile mit 0 behauptet weiter eine Einbaustelle ([P-14]).
     // [A-25] Einlegeblech und Mutter am Zwischenspannpunkt: je wirksamem Punkt genau EIN Blech
     // und genau EINE Mutter ([A-14]/[A-16]) — zwei GETRENNTE Positionen, weil es zwei
     // verschiedene Bauteile aus zwei verschiedenen Kategorien sind (Blech/Platte bzw.

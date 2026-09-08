@@ -683,6 +683,9 @@ function draw(w){
       s+=`<text x="${x}" y="${Y(H)-14}" font-size="9" fill="${on?'#c9461c':'#1f6feb'}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
   s+=dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H);
   svg.innerHTML=s;
+  // Ganz zuletzt: ohne eigene Zoomwahl die Ansicht einpassen, damit die Wand VOLLSTAENDIG zu
+  // sehen ist (#106). Erst hier stehen viewBox-Masse und Anzeigebreite fest.
+  zoomNachzeichnen();
 }
 
 // Zuschnittlegende (Issue #63): eigener DOM-Bereich unmittelbar unter der Wandansicht, damit sie
@@ -1112,6 +1115,11 @@ function bindProdukte(){
 // damit auch eine sehr lange Wand vollstaendig einpassbar bleibt.
 const ZOOM_MIN=10, ZOOM_MAX=400, ZOOM_SCHRITT=25, ZOOM_FIT=100;
 let zoomPct=ZOOM_FIT;
+// Solange der Planer den Zoom nicht SELBST gewaehlt hat, passt die Ansicht sich nach jedem
+// Zeichnen ein: eine Wand ist beim Oeffnen VOLLSTAENDIG zu sehen, waagerecht und senkrecht,
+// ohne Scrollen. Sobald er vergroessert oder verkleinert, gilt SEINE Wahl und wird von einer
+// Neuberechnung nicht mehr ueberschrieben; „Einpassen" gibt die Fuehrung zurueck.
+let zoomManuell=false;
 function applyZoom(){
   const box=$('planBox');
   box.style.setProperty('--zoom', String(zoomPct/100));
@@ -1126,7 +1134,7 @@ function setzeZoom(p){
   zoomPct=Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(p)));
   applyZoom();
 }
-function zoomSchritt(richtung){ setzeZoom(zoomPct + richtung*ZOOM_SCHRITT); }
+function zoomSchritt(richtung){ zoomManuell=true; setzeZoom(zoomPct + richtung*ZOOM_SCHRITT); }
 /**
  * Zoomfaktor, bei dem die ganze Zeichnung in den Rahmen passt — gerechnet aus dem Rahmen und
  * den viewBox-Massen von draw(), nach oben auf den echten Masstab (100 %) begrenzt.
@@ -1140,7 +1148,13 @@ function einpassFaktor(){
   const f=Math.min(rw/LASTDRAW.vbW, rh/LASTDRAW.vbH)*100;
   return Math.max(ZOOM_MIN, Math.min(ZOOM_FIT, f));
 }
-function zoomEinpassen(){ setzeZoom(einpassFaktor()); }
+function zoomEinpassen(){ zoomManuell=false; setzeZoom(einpassFaktor()); }
+/**
+ * Einpassung nach dem Zeichnen — aber nur, wenn der Planer den Zoom nicht selbst gewaehlt hat.
+ * Steht am ENDE von draw(), weil sie viewBox-Masse und Rahmen braucht. Sie zeichnet NICHT neu
+ * (applyZoom setzt allein die CSS-Variablen), es gibt also keine Rueckkopplung.
+ */
+function zoomNachzeichnen(){ if(!zoomManuell) setzeZoom(einpassFaktor()); }
 
 // ---- Zeigerposition -> Zeichnung: die TATSAECHLICHE Koordinatenabbildung (Issue #106) ----
 // Der Rueckweg vom Zeiger in Wandmillimeter darf NICHT annehmen, die Elementbreite entspraeche
@@ -1362,8 +1376,9 @@ function bindEvents(){
   $('zoomIn').addEventListener('click',()=>zoomSchritt(+1));
   $('zoomOut').addEventListener('click',()=>zoomSchritt(-1));
   $('zoomFit').addEventListener('click',zoomEinpassen);
-  // Nur die Einpassung neu anwenden — der gewaehlte Faktor bleibt unangetastet.
-  window.addEventListener('resize',applyZoom);
+  // Ohne eigene Zoomwahl wird nach einem Resize neu EINGEPASST (die verfuegbare Flaeche hat
+  // sich geaendert); mit eigener Wahl bleibt der Faktor unangetastet und wird nur angewendet.
+  window.addEventListener('resize',()=>{ if(zoomManuell) applyZoom(); else zoomNachzeichnen(); });
 }
 
 window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand, toggleVoid, get voids(){return voids;}, get steps(){return stepsArr;}, setEdit:(v)=>{editMode=v;},

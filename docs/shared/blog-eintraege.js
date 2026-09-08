@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-24",
+    datum: "2026-09-08",
+    typ: "fix",
+    issue: 92,
+    titel: "Die Unterlegscheibe am Wandabschluss ist entfallen \u2014 sie wird dort nicht verbaut",
+    testbitte: "St\u00fcckliste in Modul 4: keine Unterlegscheibe mehr, auch nicht mit Menge 0. "
+      + "In Modul 1 ist die Auswahl weg, im Bauteilkatalog das Produkt und die Position in der "
+      + "Baugruppe. Die Zahl der Spannmuttern bleibt gleich.",
+  },
+  {
     id: "chg-20260908-23",
     datum: "2026-09-08",
     typ: "fix",

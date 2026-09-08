@@ -33,11 +33,12 @@ for(const [name,l,h,ops] of cases){
   // Sonderzuschnitt-Fertigmaß eine eigene Position ([Z-2]/[Z-4]). Kopplungsmuttern sind
   // bauteilgleich und stehen als EINE Position ([P-18]).
   // 13 feste Positionen (Bodenblech steht nicht mehr darunter; die Unterlegscheibe aus #92 ist
-  // die zehnte, das Ausgleichsblech aus #96 die elfte, Einlegeblech und Mutter aus [A-25]/#93
-  // die zwoelfte und dreizehnte) + je Gewindestangengruppe eine + je Bodenblech-Teilgruppe eine
+  // das Ausgleichsblech aus #96 die zehnte, Einlegeblech und Mutter aus [A-25]/#93 die elfte
+  // und zwoelfte; die Unterlegscheibe aus #92 ist mit der Fachauskunft 2026-09-08 wieder
+  // ENTFALLEN) + je Gewindestangengruppe eine + je Bodenblech-Teilgruppe eine
   // ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß).
-  t(name+" · Positionen = 13 + Stangen- und Bodenblechgruppen",
-    semblaBomItems(w).length === 13 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
+  t(name+" · Positionen = 12 + Stangen- und Bodenblechgruppen",
+    semblaBomItems(w).length === 12 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
       + b.blech_boden_teile.length);
   // [A-25]/#93 Einlegeblech und Mutter: je GENAU EINE Position, Menge = Zahl der wirksamen
   // Zwischenspannpunkte. Verglichen wird gegen `wirksameZwischenpunkte(w).length` — NICHT gegen
@@ -56,9 +57,9 @@ for(const [name,l,h,ops] of cases){
     b.zwischenpunkte===wirksameZwischenpunkte(w).length);
   // Benannte Stelle: hinter der Ankergruppe, VOR der Bodenblechgruppe — damit bleibt die nach
   // [A-18] geprüfte Nachbarschaft Bodenblech -> Ausgleichsblech -> Kopfblech unberührt.
-  t(name+" · Einlegeblech und Mutter stehen hinter der Unterlegscheibe, vor dem Bodenblech", (()=>{
+  t(name+" · Einlegeblech und Mutter stehen hinter der Spannplatte, vor dem Bodenblech", (()=>{
     const ks=semblaBomItems(w).map(it=>it.key), i=ks.indexOf('einlegeblech');
-    return i>0 && ks[i-1]==='unterlegscheibe' && ks[i+1]==='zp_mutter'
+    return i>0 && ks[i-1]==='spannplatte' && ks[i+1]==='zp_mutter'
       && (ks[i+2]==='blech_boden' || ks[i+2]==='blech_boden_sonder'); })());
   // Ein Zwischenspannpunkt ist KEIN Anker ([A-16]): die Ankerzaehlung bleibt unberührt.
   t(name+" · Zwischenspannpunkte erhoehen keine Ankermenge ([A-16])",
@@ -77,15 +78,19 @@ for(const [name,l,h,ops] of cases){
     const ks=semblaBomItems(w).map(it=>it.key), i=ks.indexOf('ausgleichsblech');
     return i>0 && ks[i+1]==='blech_kopf'
       && (ks[i-1]==='blech_boden' || ks[i-1]==='blech_boden_sonder'); })());
-  // #92 Unterlegscheibe: eine eigene Position, Menge = Spannplatten (die Einbaustelle zwischen
-  // Platte und Mutter). NICHT die Spannmutternzahl — die zaehlt auch Muttern auf dem Kopfblech.
-  t(name+" · Unterlegscheibe = Spannplatten (#92)", (()=>{
-    const u=semblaBomItems(w).filter(it=>it.key==='unterlegscheibe');
-    return u.length===1 && u[0].unit==='Stk' && u[0].menge===w.bom.spannplatten
-      && !u[0].nachrichtlich && !u[0].mass_mm; })());
-  t(name+" · Unterlegscheibe steht direkt hinter der Spannplatte", (()=>{
-    const ks=semblaBomItems(w).map(it=>it.key);
-    return ks[ks.indexOf('spannplatte')+1]==='unterlegscheibe'; })());
+  // KEINE Unterlegscheibe (Fachauskunft 2026-09-08, hebt #92 auf): am normalen Wandabschluss
+  // gibt es sie am Spannglied nicht, die Spannmutter sitzt unmittelbar auf der Spannplatte.
+  // Ersatzlos entfallen — NICHT mit Menge 0 gefuehrt ([P-14]).
+  t(name+" · keine Unterlegscheiben-Position (hebt #92 auf)", (()=>{
+    const its=semblaBomItems(w);
+    return !its.some(it=>it.key==='unterlegscheibe')
+      && !its.some(it=>/Unterlegscheibe/i.test(it.label||'')); })());
+  // Die Spannmutternzahl ist davon UNBERUEHRT: eine je Spannplatte plus die Muttern, die
+  // unmittelbar auf dem Kopfblech sitzen.
+  t(name+" · Spannmutternzahl unberuehrt", (()=>{
+    const s=semblaBomItems(w).filter(it=>it.key==='spannmutter');
+    return s.length===1 && s[0].menge===w.bom.spannmuttern
+      && s[0].menge>=w.bom.spannplatten; })());
   // [P-18] Kopplungsmutter: eine Position, Menge = Stangenstöße + Fußkopplungen.
   t(name+" · Kopplungsmutter als EINE Position mit Gesamtmenge", (()=>{
     const its=semblaBomItems(w), k=its.filter(it=>it.key==='kupplung');
@@ -320,7 +325,6 @@ for(const [name,l,h,ops] of cases){
   t("P-23 · die Baugruppe fuehrt je eine Rollenposition mit Menge 1",
     JSON.stringify(KAT.sets[0].positionen)
       === JSON.stringify([{ rolle: "spannplatte", menge: 1 },
-                          { rolle: "unterlegscheibe", menge: 1 },
                           { rolle: "spannmutter", menge: 1 }]));
 
   const ohneSets = { ...KAT, sets: [] };
@@ -339,13 +343,15 @@ for(const [name,l,h,ops] of cases){
       spur(flach) === spur(auf));
     t("P-23 · " + nm + " · keine neue und keine verlorene Position",
       flach.length === auf.length && flach.map(x => x.key).join() === auf.map(x => x.key).join());
-    // Der Kern der Regel: die drei Einzelteile stehen je EINMAL, mit exakt der Kernmenge.
-    t("P-23 · " + nm + " · Spannplatte, Unterlegscheibe und Spannmutter je genau einmal", (() => {
+    // Der Kern der Regel: die Einzelteile stehen je EINMAL, mit exakt der Kernmenge. Seit der
+    // Fachauskunft 2026-09-08 sind es ZWEI (Platte und Mutter) — die Unterlegscheibe aus #92
+    // gibt es am Wandabschluss nicht und sie darf auch aus der Baugruppe nicht auftauchen.
+    t("P-23 · " + nm + " · Spannplatte und Spannmutter je genau einmal, keine Scheibe", (() => {
       const je = k => auf.filter(it => it.key === k);
-      return ["spannplatte", "unterlegscheibe", "spannmutter"].every(k => je(k).length === 1)
+      return ["spannplatte", "spannmutter"].every(k => je(k).length === 1)
         && je("spannplatte")[0].menge === w.bom.spannplatten
-        && je("unterlegscheibe")[0].menge === w.bom.spannplatten
-        && je("spannmutter")[0].menge === w.bom.spannmuttern; })());
+        && je("spannmutter")[0].menge === w.bom.spannmuttern
+        && je("unterlegscheibe").length === 0; })());
     // Instanzzahl ausschliesslich aus dem unveraenderten Rechenkern.
     t("P-23 · " + nm + " · Instanzzahl = bom.spannplatten", (() => {
       const st = semblaBomSets(w, KAT), i = st.instanzen[0];

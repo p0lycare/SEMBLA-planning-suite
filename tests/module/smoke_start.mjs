@@ -891,7 +891,7 @@ ok('Katalogvorlage traegt Katalogformat v2 und genau die Baugruppe „Wandabschl
   && JSON.stringify(KAT.parseKatalog(vorlageDatei(V_KAT)).produkte) === JSON.stringify(katRoh.produkte)
   && katRoh.sets.length === 1 && katRoh.sets[0].id === 'set-wandabschluss'
   && JSON.stringify(katRoh.sets[0].positionen) === JSON.stringify(
-    [{ rolle: 'spannplatte', menge: 1 }, { rolle: 'unterlegscheibe', menge: 1 },
+    [{ rolle: 'spannplatte', menge: 1 },
      { rolle: 'spannmutter', menge: 1 }]));
 // Die v1-Migration bleibt geprueft ([P-22]) — am selben echten Ladeweg, mit einer aus der
 // Vorlage ABGELEITETEN v1-Fassung: Produkte unveraendert, leere Baugruppenliste.
@@ -917,7 +917,9 @@ ok('jedes vorlaeufige Produkt ist einzeln gekennzeichnet',
   // fehlende Kennzeichnung — ihr `hinweis` beginnt regulaer mit „vorläufig — fachlich
   // unbestätigt" (geprueft in test-katalog.mjs). Angeglichen wird die Bezeichnung nicht
   // nebenbei: das waere eine Katalogaenderung ausserhalb dieses Pakets.
-  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 13
+  // Fachauskunft 2026-09-08: die vorlaeufige Unterlegscheibe des Wandabschlusses ist entfallen
+  // (hebt #92 auf) -> zwoelf.
+  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 12
   && katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung))
        .every(p => (p.hinweis || '').startsWith('vorläufig — fachlich unbestätigt')));
 ok('Wandvorlage traegt Projektformat v2 (kein Formatbump)',

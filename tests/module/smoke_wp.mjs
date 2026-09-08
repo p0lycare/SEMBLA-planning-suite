@@ -1800,6 +1800,44 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   ok('[#106] Einpassen vergroessert nie ueber den echten Masstab hinaus',
     WP.einpassFaktor()<=WP.ZOOM_FIT);
 
+  // --- Standardstellung zeigt die GANZE Wand (#106) ---------------------------------------
+  // Mit festem Masstab ist eine 3-m-Wand hoeher als der Zeichenrahmen. Beim Oeffnen muss sie
+  // trotzdem vollstaendig zu sehen sein — waagerecht UND senkrecht, ohne Scrollen. Geprueft
+  // wird mit einem realistischen Rahmen (der Standard-Mock ist 1000 breit und hoehenlos, dort
+  // waere die Einpassung immer 100 % und die Pruefung wertlos).
+  {
+    const boxEl=document.getElementById('planBox');
+    const KASTEN_W=900, KASTEN_H=520;
+    boxEl._rect={left:0,top:0,width:KASTEN_W,height:KASTEN_H};
+    // Ausgangslage wie beim Oeffnen: keine eigene Zoomwahl. Frueher im Lauf ist der Zoom von
+    // Hand gestellt worden (#100-Abschnitt), und diese Wahl gilt absichtlich weiter —
+    // „Einpassen" ist der Weg, die Fuehrung an die Ansicht zurueckzugeben.
+    WP.zoomEinpassen();
+    WP.applyWand(Object.assign(buildWall('Fit',3000,3000,[],null,null),{wandtyp:'ohne_wind'}));
+    const d=WP.LASTDRAW, z=WP.zoomPct/100;
+    ok('[#106] eine 3-m-Wand ist ohne Zutun VOLLSTAENDIG zu sehen',
+      d.vbH*z<=KASTEN_H+0.5 && d.vbW*z<=KASTEN_W+0.5);
+    ok('[#106] dafuer wird wirklich eingepasst (der Rahmen ist kleiner als die Zeichnung)',
+      d.vbH>KASTEN_H && WP.zoomPct<100 && WP.zoomPct>=WP.ZOOM_MIN);
+    ok('[#106] die Einpassung nutzt den Rahmen aus, statt zu klein zu bleiben',
+      Math.abs(Math.min(KASTEN_W/d.vbW, KASTEN_H/d.vbH)*100 - WP.zoomPct)<1.5);
+    // Eine EIGENE Zoomwahl darf eine Neuberechnung nicht ueberschreiben.
+    document.getElementById('zoomIn').dispatch('click');
+    const eigen=WP.zoomPct;
+    WP.run();
+    ok('[#106] ein selbst gewaehlter Zoom ueberlebt die Neuberechnung',
+      WP.zoomPct===eigen && eigen>0);
+    WP.applyWand(Object.assign(buildWall('Fit2',4000,3000,[],null,null),{wandtyp:'ohne_wind'}));
+    ok('[#106] und auch den Wechsel des Wandelements', WP.zoomPct===eigen);
+    // „Einpassen" gibt die Fuehrung zurueck: danach passt sich die Ansicht wieder selbst an.
+    WP.zoomEinpassen();
+    const nachFit=WP.zoomPct;
+    WP.applyWand(Object.assign(buildWall('Fit3',9000,3000,[],null,null),{wandtyp:'ohne_wind'}));
+    ok('[#106] Einpassen gibt die Fuehrung zurueck (danach passt sich die Ansicht wieder an)',
+      WP.zoomPct!==nachFit && WP.LASTDRAW.vbW*WP.zoomPct/100<=KASTEN_W+0.5);
+    boxEl._rect=null; WP.zoomEinpassen();
+  }
+
   // Ausgangsstand zuruecksetzen, damit die folgenden Pruefungen unveraendert laufen.
   WP.applyWand(vorher);
 }

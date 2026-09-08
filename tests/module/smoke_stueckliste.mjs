@@ -92,7 +92,11 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
 // [P-18] rod_sonder wird nicht mehr gewaehlt (Beschaffung), Kopplungsmuttern sind bauteilgleich.
 const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'],
   kupplung:['kuppl-stoss'], senkkopf:['senkkopf'], spannmutter:['spannmutter'],
-  spannplatte:['spannplatte'], unterlegscheibe:['scheibe'],
+  spannplatte:['spannplatte'],
+  // `unterlegscheibe` steht hier ABSICHTLICH weiter: die Rolle ist entfallen (Fachauskunft
+  // 2026-09-08), ein gespeichertes Altprojekt kann den Schluessel aber noch tragen. Er muss
+  // stillschweigend ignoriert werden und darf keine Position und keine Luecke erzeugen.
+  unterlegscheibe:['scheibe'],
   blech_boden:['blech-boden-1250','blech-boden-750'],
   blech_kopf:['blech-kopf'], ausgleichsblech:['blech-ausgleich'], dicht_stk:['dicht-stk'],
   einlegeblech:['blech-einlege'], zp_mutter:['mutter-einlege'] };
@@ -254,10 +258,10 @@ ok('#70 Modul 4 liest den Namen aus dem aktiven Wandeintrag',
 }
 
 const rs=SL.rows();
-// #92/must_not 2: Referenzstand aller Positionen AUSSER der neuen Unterlegscheibe. Er wird
-// unabhaengig von `rs` aus der Kernbaugruppe gebildet, damit der Vergleich nicht tautologisch ist.
+// Referenzstand aller Positionen. Er wird unabhaengig von `rs` aus der Kernbaugruppe gebildet,
+// damit der Vergleich nicht tautologisch ist.
 const kennung92=it=>it.key+'@'+(it.fertigmass_mm==null?'-':it.fertigmass_mm)+'='+it.menge;
-const VOR_92=SEMBLA_BOM_ITEMS(W).filter(it=>it.key!=='unterlegscheibe').map(kennung92).join('|');
+const VOR_92=SEMBLA_BOM_ITEMS(W).map(kennung92).join('|');
 const find=l=>rs.find(r=>r.label.includes(l));
 const byKey=k=>rs.find(r=>r.key===k);
 ok('i3-Menge = bom.i3', find('i3').menge===W.bom.i3);
@@ -279,23 +283,29 @@ ok('[P-18] Kopplungsmuttern sind EINE Position mit der Gesamtmenge',
   && byKey('kupplung').menge===W.bom.verbindungsmuttern+W.bom.kopplungsmuttern_basis
   && byKey('kupplung').ep===0.65);
 ok('Spannplatten = bom', byKey('spannplatte').menge===W.bom.spannplatten);
-// #92 Die Unterlegscheibe liegt zwischen Spannplatte und Spannmutter — also EINE je Spannplatte.
-// Geprueft wird am realen Modulpfad (SL.rows() -> stuecklistePositionen -> semblaBomItems).
-ok('#92 Unterlegscheibe: eigene Position, Menge = bom.spannplatten', (()=>{
-  const u=rs.filter(r=>r.key==='unterlegscheibe');
-  return u.length===1 && u[0].menge===W.bom.spannplatten && u[0].unit==='Stk'
-    && u[0].label==='Unterlegscheibe (Wandabschluss)'; })());
-ok('#92 Unterlegscheibe folgt NICHT der Spannmutternzahl (Kopfblechmutter hat keine Scheibe)',
-  W.bom.spannmuttern!==W.bom.spannplatten
-  && byKey('unterlegscheibe').menge!==byKey('spannmutter').menge);
-ok('#92 Unterlegscheibe wird bepreist und steht direkt hinter der Spannplatte', (()=>{
-  const u=byKey('unterlegscheibe'), ks=rs.map(r=>r.key);
-  return u.ep===0.12 && u.bepreisbar===true && u.status==='ok'
-    && ks[ks.indexOf('spannplatte')+1]==='unterlegscheibe'; })());
-// must_not 2: die neue Position ist rein ADDITIV — jede uebrige Menge bleibt wertgleich.
-ok('#92 Mengen der uebrigen Positionen unveraendert (rein additiv)', (()=>{
-  const ohne=rs.filter(r=>r.key!=='unterlegscheibe').map(kennung92).join('|');
+// Die Unterlegscheibe am Wandabschluss ist ENTFALLEN (Fachauskunft 2026-09-08, hebt #92 auf):
+// am normalen oberen Wandabschluss gibt es sie am Spannglied nicht, die Spannmutter sitzt
+// unmittelbar auf der Spannplatte. Geprueft wird am realen Modulpfad
+// (SL.rows() -> stuecklistePositionen -> semblaBomItems).
+ok('keine Unterlegscheiben-Position mehr in der Stueckliste (hebt #92 auf)',
+  rs.filter(r=>r.key==='unterlegscheibe').length===0
+  && !rs.some(r=>/Unterlegscheibe/i.test(r.label||'')));
+// ERSATZLOS entfallen, NICHT auf Menge 0 gesetzt: eine Zeile mit 0 behauptet weiter eine
+// Einbaustelle und waere nach [P-14] eine bepreisbare Position ohne Bauteil.
+ok('die Position ist ersatzlos entfallen und steht nicht mit Menge 0 in der Liste',
+  !rs.some(r=>r.key==='unterlegscheibe' && r.menge===0));
+// Die Nachbarschaft schliesst sich: hinter der Spannplatte folgt unmittelbar das Einlegeblech.
+ok('hinter der Spannplatte folgt unmittelbar die naechste Position', (()=>{
+  const ks=rs.map(r=>r.key);
+  return ks.indexOf('spannplatte')>=0 && ks[ks.indexOf('spannplatte')+1]!=='unterlegscheibe'; })());
+// Alle uebrigen Mengen bleiben wertgleich — die Entfernung ist rein SUBTRAKTIV und beruehrt
+// weder Rechenkern noch eine andere Position (die Spannmutternzahl bleibt unveraendert).
+ok('Mengen der uebrigen Positionen unveraendert (rein subtraktiv)', (()=>{
+  const ohne=rs.map(kennung92).join('|');
   return ohne===VOR_92 && VOR_92.length>0; })());
+ok('die Zahl der Spannmuttern ist unberuehrt (eine je Spannplatte plus Kopfblechmuttern)',
+  byKey('spannmutter').menge===W.bom.spannmuttern
+  && W.bom.spannmuttern!==W.bom.spannplatten);
 // #92 Die Fussschraube heisst SECHSKANTSCHRAUBE — die Positionskennung `senkkopf` und die
 // Menge aus dem Rechenkern bleiben dabei unveraendert (keine Migration, kein Formatbump).
 ok('Fussschraube: Bezeichnung Sechskantschraube bei unveraenderter Kennung (#92)',
@@ -343,16 +353,16 @@ ok('[Z-4] keine Beplankungs-/Platten-Position', !byKey('beplankung') && !rs.find
 ok('KEINE Dämmung-Position (MVP)', !rs.find(r=>r.label.includes('Dämmung')));
 // Die Gewindestangen-KOPPLUNG ist kein Modul-2-Verbinder und bleibt ausdruecklich enthalten.
 ok('[P-19] Gewindestangen-Kopplung bleibt enthalten', !!byKey('kupplung') && byKey('kupplung').menge>0);
-// [Z-4]: 14 feste Wandpositionen (seit #92 mit der Unterlegscheibe, seit #96 mit dem
-// Ausgleichsblech, seit [A-25]/#93 mit Einlegeblech und Mutter) + je Gewindestangen-
-// Standardlänge, je Sonderzuschnitt-Fertigmaß und je Reststück-Fertigmaß eine Position.
-// Nichts aus dem Wandaufbau.
+// [Z-4]: 12 feste Wandpositionen (seit #96 mit dem Ausgleichsblech, seit [A-25]/#93 mit
+// Einlegeblech und Mutter; die Unterlegscheibe aus #92 ist mit der Fachauskunft 2026-09-08
+// wieder ENTFALLEN) + je Gewindestangen-Standardlänge, je Sonderzuschnitt-Fertigmaß und je
+// Reststück-Fertigmaß eine Position. Nichts aus dem Wandaufbau.
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
 const nRest=rs.filter(r=>r.key==='rod_rest').length;
 // [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
 const nBoden=rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder').length;
-ok('Positionen = 13 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
-  rs.length===13+nRod+nSonder+nRest+nBoden && rs.length>=15);
+ok('Positionen = 12 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
+  rs.length===12+nRod+nSonder+nRest+nBoden && rs.length>=14);
 ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
   rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
@@ -499,7 +509,7 @@ ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
   // Die Positionen sind rein ADDITIV — Stelle benannt, alle uebrigen Werte gleich.
   ok('#93 Stelle: hinter der Ankergruppe, vor der Bodenblechgruppe', (()=>{
     const ks=pz.map(r=>r.key), i=ks.indexOf('einlegeblech');
-    return i>0 && ks[i-1]==='unterlegscheibe' && ks[i+1]==='zp_mutter'
+    return i>0 && ks[i-1]==='spannplatte' && ks[i+1]==='zp_mutter'
       && (ks[i+2]==='blech_boden' || ks[i+2]==='blech_boden_sonder'); })());
   ok('#93 Nachbarschaft Bodenblech -> Ausgleichsblech -> Kopfblech bleibt unberührt ([A-18])', (()=>{
     const ks=pz.map(r=>r.key), i=ks.indexOf('ausgleichsblech');
@@ -615,25 +625,21 @@ const keineWarnliste = () => !document.getElementById('tbody').innerHTML.include
   ok('#58 Positionsschlüssel bleiben unverändert',
     SL.rows().map(x=>x.key).join('|')===rs.map(x=>x.key).join('|'));
 }
-// (a2) #92/must 6: Ein ALTPROJEKT kennt die Rolle `unterlegscheibe` gar nicht — der Schluessel
-// fehlt im gespeicherten Produktblock. Die Wand muss trotzdem gueltig bleiben: die Position wird
-// mit ihrer Menge gefuehrt, der Preis bleibt offen und die Luecke wird BENANNT (nie geraten,
-// nie stillschweigend uebergangen, nie ein Nullpreis).
+// (a2) Ein ALTPROJEKT kann die entfallene Rolle `unterlegscheibe` noch gespeichert haben
+// (Fachauskunft 2026-09-08, hebt #92 auf). Es muss GUELTIG bleiben, und die Auswahl muss
+// stillschweigend wirkungslos sein: keine Position, keine benannte Luecke, keine Zeile mit
+// Menge 0 und keine Aenderung der Summe. Eine nicht mehr gefuehrte Rolle ist kein Mangel.
 {
-  const rAlt=mitRollen({unterlegscheibe:null});          // Rolle ENTFERNT, wie im Altbestand
-  const u=rAlt.find(x=>x.key==='unterlegscheibe');
-  ok('#92 Altprojekt ohne Unterlegscheibe: Wand bleibt gueltig, Position bleibt vorhanden',
-    !!u && u.menge===W.bom.spannplatten && u.bepreisbar===true);
-  ok('#92 Altprojekt: Luecke wird benannt (keine_auswahl, kein Preis, kein Nullpreis)',
-    u.status==='keine_auswahl' && u.statusText==='kein Produkt gewählt'
-    && u.ep===null && u.gp===null && u.produktId===null);
-  ok('#92 Altprojekt: Luecke steht sichtbar an der Zeile und in der n-von-m-Summe', (()=>{
-    const z=zeileMit('Unterlegscheibe (Wandabschluss)'), sm=SL.summe();
-    return naBeide(z) && /<div class="grund">kein Produkt gewählt<\/div>/.test(z)
-      && sm.vollstaendig===false && sm.bepreist===sm.bepreisbar-1
-      && new RegExp(sm.bepreist+' von '+sm.bepreisbar+' Positionen bepreist').test(sumZeile()); })());
-  ok('#92 Altprojekt: alle uebrigen Mengen unveraendert',
-    rAlt.map(x=>x.key+':'+x.menge).join('|')===mengenVoll);
+  const rAlt=mitRollen({unterlegscheibe:['scheibe']});   // Auswahl wie im Altbestand
+  ok('Altprojekt mit gewaehlter Unterlegscheibe: Wand bleibt gueltig, keine Position',
+    Array.isArray(rAlt) && rAlt.length>0
+    && !rAlt.some(x=>x.key==='unterlegscheibe')
+    && !rAlt.some(x=>/Unterlegscheibe/i.test(x.label||'')));
+  ok('Altprojekt: die entfallene Rolle erzeugt KEINE benannte Luecke',
+    !zeileMit('Unterlegscheibe (Wandabschluss)'));
+  ok('Altprojekt: die Vollstaendigkeitssumme kennt die entfallene Rolle nicht', (()=>{
+    const sm=SL.summe();
+    return sm.bepreisbar===rAlt.filter(x=>x.bepreisbar).length; })());
 }
 // (b) fehlende Referenz (Produkt existiert nicht im Katalog)
 { const r=mitRollen({i3:['gibts-nicht']}).find(x=>x.key==='i3');

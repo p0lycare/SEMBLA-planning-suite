@@ -3461,7 +3461,9 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     const erwartet111 = KATT.rollenVonModul(1).map(r => r.id);
     ok('#111 (Muss 1) das Popup fuehrt GENAU die waehlbaren Modul-1-Rollen in der '
       + 'Reihenfolge von Modul 1',
-      erwartet111.length === 16
+      // 15 statt 16 seit der Fachauskunft 2026-09-08: die Rolle `unterlegscheibe` ist
+      // entfallen (hebt #92 auf) — am Wandabschluss gibt es am Spannglied keine Scheibe.
+      erwartet111.length === 15
       && JSON.stringify(gezeigt111) === JSON.stringify(erwartet111));
     const gruppen111 = [...rollenHtml111.matchAll(/class="sgruppe">([^<]+)</g)].map(m => m[1]);
     ok('#111 (Muss 1) gegliedert nach `gruppe` — dieselbe Gruppenreihenfolge wie Modul 1',
