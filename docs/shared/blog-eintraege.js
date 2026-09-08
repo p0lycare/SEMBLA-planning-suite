@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-01",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 108,
+    titel: "Aus dem Standardkatalog wird nur nach ausdr\u00fccklicher R\u00fcckfrage eine eigene Katalogvariante",
+    testbitte: "In Modul 10 den Standardkatalog laden, einen Preis \u00e4ndern und speichern: die R\u00fcckfrage abbrechen (nichts entsteht), dann best\u00e4tigen und den hervorgehobenen Hinweis lesen.",
+  },
+  {
     id: "chg-20260908-30",
     datum: "2026-09-08",
     typ: "fix",

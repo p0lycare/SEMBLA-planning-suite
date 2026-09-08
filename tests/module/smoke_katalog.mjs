@@ -54,7 +54,18 @@ const document = {
 globalThis.document = document;
 let confirmAntwort = false;                       // vom Test gesteuert (Loeschen)
 const confirmTexte = [];
-globalThis.confirm = (t) => { confirmTexte.push(String(t == null ? '' : t)); return confirmAntwort; };
+// #108: die VARIANTENRUECKFRAGE an der Vorlage laeuft durch dasselbe `confirm`, wird
+// aber getrennt gesteuert und mitgeschrieben — sie ist am Wortlaut zweifelsfrei
+// erkennbar und darf die Loesch-Sicherheitsabfragen nicht mitschalten.
+let variantAntwort = true;
+const variantenTexte = [];
+const istVariantenFrage = (t) => /unveränderliche Vorlage/.test(t) && /eigenen Variante/.test(t);
+globalThis.confirm = (t) => {
+  const text = String(t == null ? '' : t);
+  confirmTexte.push(text);
+  if (istVariantenFrage(text)) { variantenTexte.push(text); return variantAntwort; }
+  return confirmAntwort;
+};
 
 // Datei-Downloads abfangen (Katalog-Export laeuft ueber Blob/URL wie im Browser).
 let letzterDownload = null;
@@ -164,6 +175,15 @@ const V_KAT = "SEMBLA_Standardkatalog.json", V_WAND = "SEMBLA_Musterwand.json";
 const V_KAT_ANZ = KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length;
 /** Den gewaehlten Katalog ueber die ECHTE Auswahlzeile umstellen. */
 function waehle(id){ $('k-wahl').value = String(id); $('k-wahl').dispatch('change'); }
+// Der hervorgehobene Variantenhinweis (#108) — eigener Kasten, nicht die Meldezeile.
+const varTxt = () => $('k-variante').innerHTML;
+const varSichtbar = () => $('k-variante').hidden === false;
+/** Katalognamen setzen wie im Browser: tippen und das Feld verlassen. */
+function kNameSetze(name){
+  $('k-name').value = String(name);
+  $('k-name').dispatch('input');
+  $('k-name').dispatch('change');
+}
 
 // =====================================================================
 //  1) Ausgangslage: ein aktives Projekt MIT zugeordnetem Katalog
@@ -470,11 +490,12 @@ ok('[#102] die erste Bearbeitung der Vorlage legt eine eigene Kopie mit NEUER Ke
   && KAT.produkt(kopie, einProdukt.id).preis === 99.99);
 ok('[#102] die Vorlagenressource selbst bleibt BYTE-GLEICH',
   JSON.stringify(store.katalogNachId(vorlage.id)) === vorlageBytes);
-ok('[#102] die entstandene Kopie wird benannt (vorhandener Wortlaut)',
-  /unveränderliche Vorlage/.test(kMsgTxt()) && /automatisch angelegten Kopie/.test(kMsgTxt()));
+ok('[#102]/[#108] die entstandene Variante wird im hervorgehobenen Hinweis benannt',
+  varSichtbar() && /Eigene Katalogvariante angelegt/.test(varTxt())
+  && varTxt().includes(kopie.name) && /neuen Variante/.test(kMsgTxt()));
 ok('[#108] die Kopie wird NICHT zugeordnet, weil die Vorlage nicht zugeordnet war',
   store.holeMappe().katalog === katA.id
-  && /Zuordnung des aktiven Projekts bleibt unverändert/.test(kMsgTxt()));
+  && /Katalogzuordnung des aktiven Projekts bleibt <b>unverändert<\/b>/.test(varTxt()));
 
 // Gegenprobe: ist die Vorlage der ZUGEORDNETE Katalog, zieht die Kopie die Zuordnung mit
 store.setzeProjektKatalog(vorlage.id);
@@ -488,7 +509,7 @@ $('kp-speichern').dispatch('click');
 const kopie2 = gewaehlt();
 ok('[#102]/[#108] Kopie der zugeordneten Vorlage wird dem aktiven Projekt zugeordnet',
   !!kopie2 && kopie2.id !== vorlage.id && store.holeMappe().katalog === kopie2.id
-  && /dem aktiven Projekt zugeordnet/.test(kMsgTxt()));
+  && /dem aktiven Projekt <b>zugeordnet<\/b>/.test(varTxt()));
 ok('[#102] die Vorlage bleibt auch dabei byte-gleich',
   JSON.stringify(store.katalogNachId(vorlage.id)) === vorlageBytes);
 
@@ -530,7 +551,10 @@ ok('Modul 10 hat keinen Zuordnungs-Schreibweg ([L-12] bleibt Modul 0)',
   !/setzeProjektKatalog/.test(src) && !/setzeKatalogRef/.test(src));
 ok('geschrieben wird ausschliesslich ueber den EINEN Weg `store.setzeKatalog`',
   (src.match(/store\.setzeKatalog\(/g) || []).length === 2       // kSchreibe + „Neuer Katalog“
-  && /zuordnen: kZuordnen\(kat\)/.test(src));
+  && /const warZug = kZuordnen\(kat\)/.test(src)
+  && /store\.setzeKatalog\(entwurf, \{ zuordnen: warZug \}\)/.test(src));
+ok('[#108] die Variantenrueckfrage liegt VOR dem einzigen Schreibaufruf',
+  src.indexOf('if (!confirm(variantenFrage(') < src.indexOf('store.setzeKatalog(entwurf'));
 ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   !/mergeEingaben/.test(src) && !/speichereAktiv/.test(src));
 
@@ -563,8 +587,9 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('#102 der Blattzustand weist sie sichtbar als unveraenderliche Vorlage aus',
     /Unveränderliche Repo-Vorlage/.test($('k-status').innerHTML)
     && !/Bearbeitbarer Katalog/.test($('k-status').innerHTML));
-  ok('#102 die Erfolgsmeldung kuendigt die automatische Kopie an',
-    /unveränderliche Vorlage/.test(kMsgTxt()) && /eigene\s+Kopie/.test(kMsgTxt()));
+  ok('#108 die Erfolgsmeldung kuendigt Rueckfrage und eigene Variante an',
+    /unveränderliche Vorlage/.test(kMsgTxt()) && /fragt nach/.test(kMsgTxt())
+    && /eigene\s+Variante/.test(kMsgTxt()));
   ok('#108 das Laden hat KEINE Zuordnung gesetzt',
     store.projektMappe(p102A.projekt.id).katalog === null
     && store.projektMappe(p102B.projekt.id).katalog === null);
@@ -592,8 +617,8 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('#102 die Produktaenderung landet auf einer Kopie mit neuer Kennung',
     kopie102.id !== vId && KAT.produkt(kopie102, 'stein-i3-375').preis === 11.11
     && Object.keys(kataloge()).length === anzahlVor102 + 1);
-  ok('#102 die Erfolgsmeldung nennt die automatisch angelegte Kopie',
-    !kFehler() && /automatisch angelegten Kopie/.test(kMsgTxt()) && /Vorlage/.test(kMsgTxt()));
+  ok('#108 der hervorgehobene Hinweis nennt die angelegte Variante',
+    !kFehler() && varSichtbar() && varTxt().includes(kopie102.name) && /Vorlage:/.test(varTxt()));
   ok('#102 die Kopie ist selbst keine Vorlage mehr',
     !KAT.istVorlagenKatalog(kataloge()[kopie102.id])
     && /Bearbeitbarer Katalog/.test($('k-status').innerHTML));
@@ -613,7 +638,9 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('#102 die zweite Aenderung kopiert NICHT erneut',
     kat().id === kopie102.id && KAT.produkt(kat(), 'stein-i2-250').preis === 8.88
     && Object.keys(kataloge()).length === anzahlVor102 + 1
-    && !/automatisch angelegten Kopie/.test(kMsgTxt()));
+    && !/neuen Variante/.test(kMsgTxt()));
+  ok('#108 die Folgeaenderung an der Variante zeigt KEINEN Variantenhinweis mehr',
+    !varSichtbar());
 
   // (e) Auch der KATALOGNAME ist ein geschuetzter Schreibweg
   store.setzeAktivesProjekt(p102B.projekt.id);
@@ -622,19 +649,30 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
     kat().id === vId && KAT.produkt(kat(), 'stein-i3-375').preis === 9.5
     && store.holeKatalog().id === vId);
   const anzahlVorName = Object.keys(kataloge()).length;
+  const fragenVorName = variantenTexte.length;
+  // #108 (d): an der VORLAGE schreibt das Namensfeld nicht je Tastendruck — sonst käme
+  // die Rückfrage je Zeichen. Getippt wird, gefragt wird beim Verlassen des Feldes.
   $('k-name').value = 'Umbenannt in B';
   $('k-name').dispatch('input');
+  ok('#108 Tippen an der Vorlage fragt noch nicht und schreibt noch nichts',
+    variantenTexte.length === fragenVorName
+    && Object.keys(kataloge()).length === anzahlVorName
+    && kataloge()[vId].name === dateiKat.name);
+  $('k-name').dispatch('change');
   const kopieB = kat();
   ok('#102 auch die Namensaenderung erzeugt zuerst eine Kopie',
     kopieB.id !== vId && kopieB.name === 'Umbenannt in B'
     && Object.keys(kataloge()).length === anzahlVorName + 1
     && kataloge()[vId].name === dateiKat.name);
-  ok('#102 die Namensaenderung meldet die Kopie sichtbar',
-    !kFehler() && /automatisch angelegten Kopie/.test(kMsgTxt()));
+  ok('#108 beim Umbenennen IST der getippte Name der Variantenname',
+    variantenTexte.length === fragenVorName + 1
+    && variantenTexte[variantenTexte.length - 1].includes('„Umbenannt in B“')
+    && varSichtbar() && varTxt().includes('Umbenannt in B'));
   ok('#102/#108 nur Projekt B zieht um — Projekt A bleibt auf seiner eigenen Kopie',
     store.projektMappe(p102B.projekt.id).katalog === kopieB.id
     && store.projektMappe(p102A.projekt.id).katalog === kopie102.id);
-  // Weitertippen darf KEINE zweite Kopie erzeugen
+  // Weitertippen darf KEINE zweite Kopie erzeugen — der Katalog ist jetzt eine
+  // gewoehnliche Variante, also schreibt das Feld wieder je Tastendruck (#108 (d)).
   $('k-name').value = 'Umbenannt in B2';
   $('k-name').dispatch('input');
   ok('#102 Weitertippen schreibt dieselbe Kopie fort, statt erneut zu kopieren',
@@ -652,7 +690,7 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
     kat().id !== vId && !KAT.produkt(kat(), 'stein-i2-250')
     && !!KAT.produkt(kataloge()[vId], 'stein-i2-250')
     && Object.keys(kataloge()).length === anzahlVorLoesch + 1
-    && /automatisch angelegten Kopie/.test(kMsgTxt()));
+    && varSichtbar() && /Eigene Katalogvariante angelegt/.test(varTxt()));
   const loeschKopie = kat().id;
   confirmAntwort = false;
 
@@ -1042,6 +1080,111 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   // 14g) Modul 10 ruehrt kein Wandelement und keine Produktreferenz einer Wand an ([P-13])
   ok('[P-13] die Pflege hat keine Wandauswahl angefasst — es gibt keine aktive Wand',
     store.aktivId() === null && localStorage.getItem('sembla:elemente') === null);
+}
+
+// =====================================================================
+// 15) Variantenwechsel nur nach ausdruecklicher Rueckfrage (#108)
+// =====================================================================
+// Der REALE Vorlagenweg: Standardkatalog laden, ein Produkt aendern, den
+// Schreibvorgang einmal ABBRECHEN und einmal BESTAETIGEN. Danach werden Katalogliste,
+// bearbeiteter Katalog, Vorlageninhalt und die Zuordnungszeiger gegen den
+// Ausgangsstand geprueft. Geschrieben wird nichts an `storage.js` vorbei.
+{
+  await $('k-vorlage').dispatch('click');
+  const vId = store.vorlagenKatalogId();
+  const vorlagenName = kat().name;
+  const einProdukt = kat().produkte[0].id;
+  ok('#108 Ausgangslage: die unveraenderliche Vorlage ist der bearbeitete Katalog',
+    kat().id === vId && KAT.istVorlagenKatalog(kat()) && !varSichtbar());
+  ok('#108 die Vorlage ist NICHT der zugeordnete Katalog dieses Projekts',
+    store.holeMappe().katalog !== vId);
+
+  // --- (a) Abgebrochene Rueckfrage: es entsteht KEINE Variante ---------
+  const vorAbbruch = slots();
+  const vorlageStand = JSON.stringify(kataloge()[vId]);
+  const anzahlVor = Object.keys(kataloge()).length;
+  const listeVor = Object.keys(kataloge()).sort().join('|');
+  const fragenVor = variantenTexte.length;
+  variantAntwort = false;
+  kZeile('bearbeiten', einProdukt);
+  $('kp-preis').value = '77.77';
+  kpSpeichern();
+  const frage = variantenTexte[variantenTexte.length - 1] || '';
+  ok('#108 die Rueckfrage kam VOR dem Schreiben und nennt Vorlage und Variantennamen',
+    variantenTexte.length === fragenVor + 1
+    && frage.includes(`„${vorlagenName}“`)
+    && frage.includes(`„${vorlagenName} (eigene Variante)`)
+    && /Abbrechen speichert nichts/.test(frage));
+  ok('#108 Abbrechen legt KEINE Variante an — dieselbe Katalogliste wie vorher',
+    Object.keys(kataloge()).length === anzahlVor
+    && Object.keys(kataloge()).sort().join('|') === listeVor);
+  ok('#108 Abbrechen laesst alle drei Slots BYTE-GLEICH (Vorlage, Kataloge, Zuordnung)',
+    JSON.stringify(slots()) === JSON.stringify(vorAbbruch)
+    && JSON.stringify(kataloge()[vId]) === vorlageStand);
+  ok('#108 Abbrechen wird benannt, der Dialog bleibt mit der Eingabe offen',
+    kpOffen() && kpFehler() && /keine Variante angelegt/.test(kpMsgTxt()));
+  ok('#108 nach dem Abbruch gibt es keinen Variantenhinweis', !varSichtbar());
+  ok('#108 der bearbeitete Katalog ist weiterhin die Vorlage',
+    $('k-wahl').value === vId && kat().id === vId);
+
+  // --- (b) Bestaetigte Rueckfrage: genau EINE Variante -----------------
+  variantAntwort = true;
+  kpSpeichern();                                   // dieselbe Eingabe, jetzt bestaetigt
+  const variante = kat();
+  const angekuendigt = (variantenTexte[variantenTexte.length - 1].match(/„([^„“]+)“ speichern\?/) || [])[1];
+  ok('#108 die Bestaetigung erzeugt GENAU EINE Variante',
+    Object.keys(kataloge()).length === anzahlVor + 1
+    && variante.id !== vId && !KAT.istVorlagenKatalog(variante)
+    && KAT.produkt(variante, einProdukt).preis === 77.77);
+  ok('#108 sie traegt genau den in der Rueckfrage angekuendigten Namen',
+    !!angekuendigt && variante.name === angekuendigt
+    && variante.name.startsWith(vorlagenName + ' (eigene Variante)'));
+  ok('#108 die Variante ist der bearbeitete Katalog und in der Auswahlliste gewaehlt',
+    $('k-wahl').value === variante.id
+    && new RegExp(`<option value="${variante.id}" selected>`).test($('k-wahl').innerHTML));
+  ok('#108 die Vorlage steht WERTGLEICH und weiter als unveraenderliche Vorlage in der Liste',
+    JSON.stringify(kataloge()[vId]) === vorlageStand
+    && KAT.produkt(kataloge()[vId], einProdukt).preis !== 77.77
+    && new RegExp(`<option value="${vId}"[^>]*>[^<]*unveränderliche Vorlage`).test($('k-wahl').innerHTML));
+  ok('#108 [L-12] die Zuordnungszeiger sind unberuehrt (die Vorlage war nicht zugeordnet)',
+    slots().projekte === vorAbbruch.projekte && slots().aktivKat === vorAbbruch.aktivKat);
+
+  // --- (c) Der hervorgehobene Hinweis ---------------------------------
+  ok('#108 der Hinweis ist ein EIGENER, hervorgehobener Kasten (nicht die Meldezeile)',
+    varSichtbar() && $('k-variante').id === 'k-variante'
+    && /class="variante"/.test(html) && /\.variante\{/.test(html));
+  ok('#108 der Hinweis nennt Vorlagenname, Variantenname und Zuordnungszustand',
+    varTxt().includes(vorlagenName) && varTxt().includes(variante.name)
+    && /Katalogzuordnung des aktiven Projekts bleibt <b>unverändert<\/b>/.test(varTxt()));
+
+  // --- (d) Gewoehnlicher Katalog: weder Rueckfrage noch Hinweis --------
+  const fragenVorNormal = variantenTexte.length;
+  kZeile('bearbeiten', einProdukt);
+  $('kp-preis').value = '12.34';
+  kpSpeichern();
+  ok('#108 eine Aenderung an einem gewoehnlichen Katalog laeuft ohne Rueckfrage durch',
+    variantenTexte.length === fragenVorNormal
+    && KAT.produkt(kat(), einProdukt).preis === 12.34 && kat().id === variante.id
+    && Object.keys(kataloge()).length === anzahlVor + 1 && !kFehler());
+  ok('#108 dabei erscheint kein Variantenhinweis', !varSichtbar());
+
+  // Der Katalogwechsel blendet den Hinweis in jedem Fall wieder aus
+  waehle(vId);
+  kZeile('bearbeiten', einProdukt);
+  $('kp-preis').value = '55.55';
+  kpSpeichern();
+  ok('#108 auch die zweite Variante entsteht nur nach Rueckfrage und wird benannt',
+    variantenTexte.length === fragenVorNormal + 1 && varSichtbar()
+    && Object.keys(kataloge()).length === anzahlVor + 2);
+  waehle(variante.id);
+  ok('#108 ein Katalogwechsel blendet den Variantenhinweis aus',
+    !varSichtbar() && $('k-variante').innerHTML === '');
+  ok('#108 kein Formatsprung durch den Variantenwechsel',
+    KAT.KATALOG_VERSION === 2 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6
+    && MAPPE.MAPPE_VERSION === 2);
+  ok('#108 der bearbeitete Katalog bleibt fluechtig (kein gespeichertes Feld, kein Zeiger)',
+    !/k-?variante/i.test(String(localStorage.getItem(SLOT_KAT)))
+    && !localStorage.getItem('sembla:aktiv:katalog:bearbeitet'));
 }
 
 // --- Ergebnis -------------------------------------------------------------
