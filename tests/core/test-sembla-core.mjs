@@ -12,6 +12,7 @@ import {
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
   AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M, verteileAusgleichspunkte, normAusgleichspunkte,
+  DECKENANSCHLUSS_JE_M, verteileDeckenanschluss, normDeckenanschluss,
 } from "../../docs/shared/sembla-core.js";
 // Der Auslegungsadapter gehoert zum Paritaetsvertrag: `psOf()` ist eine WHITELIST, und ein
 // dort fehlendes Feld faellt in jeder Iteration still weg. Deshalb wird der ECHTE Adapter
@@ -1150,6 +1151,149 @@ t("[A-24] die ausdruecklich leere Liste faellt nicht auf die Verteilung zurueck 
   // `null`/fehlend heisst dagegen „kein Override" — die Verteilung greift wieder.
   deepEqual(normAusgleichspunkte(null, 3250), { punkte: null, fehler: [] });
   deepEqual(normAusgleichspunkte(undefined, 3250), { punkte: null, fehler: [] });
+});
+
+// ---------------------------------------------------------------------------
+// DECKENANSCHLUSSPUNKTE [A-26] und ihr Override [A-27] (Issue #95, Paket 2)
+// ---------------------------------------------------------------------------
+// Gefahren wird derselbe `orakelRand()`-Weg wie bei den Ausgleichspunkten — das ECHTE
+// Python-Orakel als Unterprozess. Die Verteilung ist ausdruecklich KEINE Statik: ein Punkt je
+// angefangenem Meter, Kandidat ist jede Spannachse (Festlegung vom 2026-09-08).
+console.log("\nDECKENANSCHLUSSPUNKTE [A-26] (Paritaetsvertrag mit dem Python-Orakel):");
+
+t("[A-26] ein Punkt je angefangenem Meter, erste und letzte Achse gesetzt (Core == Orakel)", () => {
+  for (const n of [2, 5, 8, 13, 26, 33, 40]) {
+    const arg = { name: "dc" + n, length_mm: n * GRID, height_mm: 2600, openings: [],
+      prestress: { max_span_grid: 3 } };
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+    deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
+    const achsen = js.tension_columns.map((c) => c.k);
+    const ziel = Math.max(1, Math.ceil(DECKENANSCHLUSS_JE_M * arg.length_mm / 1000));
+    const soll = Math.min(ziel, achsen.length);
+    assert(js.deckenanschlusspunkte.length === soll,
+      `L=${n * GRID}: ${js.deckenanschlusspunkte.length} statt ${soll}`);
+    // Jeder Punkt liegt auf einer WIRKLICH vorhandenen Spannachse — nie zwischen zweien.
+    for (const p of js.deckenanschlusspunkte) {
+      assert(achsen.includes(p.k), `L=${n * GRID}: k=${p.k} ist keine Spannachse`);
+      const col = js.tension_columns.find((c) => c.k === p.k);
+      assert(p.x_mm === col.x_mm, "x_mm weicht von der Achse ab");
+      assert(p.art === "auto", "art");
+    }
+    // Aufsteigend und ohne Doppelte.
+    for (let i = 1; i < js.deckenanschlusspunkte.length; i++)
+      assert(js.deckenanschlusspunkte[i].k > js.deckenanschlusspunkte[i - 1].k, "nicht aufsteigend");
+    // Ab zwei Punkten sind Rand- und Endachse gesetzt ([A-26]).
+    if (soll >= 2) {
+      assert(js.deckenanschlusspunkte[0].k === achsen[0], "erste Achse fehlt");
+      assert(js.deckenanschlusspunkte[soll - 1].k === achsen[achsen.length - 1], "letzte Achse fehlt");
+    }
+    // Zweimal rechnen ergibt dieselbe Liste (reine Funktion, kein Zustand).
+    deepEqual(js.deckenanschlusspunkte,
+      buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress).deckenanschlusspunkte);
+  }
+});
+
+t("[A-26] die kurze Wand traegt genau einen Punkt (Core == Orakel)", () => {
+  // Mindestens einer, auch unter einem Meter — und zwar die ERSTE Achse, statt eine Mitte zu
+  // erfinden. Zwei Raster ist die kuerzeste baubare Wand.
+  const arg = { name: "dckurz", length_mm: 2 * GRID, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3 } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
+  assert(js.deckenanschlusspunkte.length === 1, "Punktzahl: " + js.deckenanschlusspunkte.length);
+  assert(js.deckenanschlusspunkte[0].k === js.tension_columns[0].k, "nicht die erste Achse");
+  // Reine Funktion, direkt geprueft: mehr Zielpunkte als Achsen ergibt ALLE Achsen und
+  // erfindet keine weitere Stelle.
+  deepEqual(verteileDeckenanschluss(9000, [1, 4, 7]), [1, 4, 7]);
+  deepEqual(verteileDeckenanschluss(3000, []), []);
+});
+
+console.log("\nDECKENANSCHLUSS-OVERRIDE [A-27] (Paritaetsvertrag mit dem Python-Orakel):");
+
+t("[A-27] ohne Override entsteht kein Feld — die Verteilung bleibt bit-genau (Core == Orakel)", () => {
+  for (const n of [5, 13, 26]) {
+    const arg = { name: "dcov" + n, length_mm: n * GRID, height_mm: 2600, openings: [],
+      prestress: { max_span_grid: 3 } };
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+    deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
+    assert(!("deckenanschluss_grid" in js.prestress), "Schluessel ohne Override entstanden");
+    assert(!("deckenanschluss_fehler" in js.validation), "Fehlerschluessel ohne Override");
+    assert(js.deckenanschlusspunkte.every((p) => p.art === "auto"), "art");
+  }
+});
+
+t("[A-27] mit Override gilt genau die Liste — nichts wird aufgefuellt (Core == Orakel)", () => {
+  const arg = { name: "dcovA", length_mm: 3250, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, deckenanschluss_grid: [3, 12] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
+  deepEqual(js.deckenanschlusspunkte.map((p) => p.k), [3, 12]);
+  assert(js.deckenanschlusspunkte.every((p) => p.art === "manuell"), "art");
+  // Die Verteilung ist vollstaendig gesperrt: die Auto-Wand traegt hier vier Punkte.
+  const auto = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, { max_span_grid: 3 });
+  assert(auto.deckenanschlusspunkte.length === 4, "Testvoraussetzung Auto-Punktzahl");
+  assert(!("deckenanschluss_fehler" in js.validation), "unerwarteter Fehlereintrag");
+  // Zurueckgegeben wird die VALIDIERTE Liste am Wandelement.
+  deepEqual(js.prestress.deckenanschluss_grid, [3, 12]);
+});
+
+t("[A-27] Doppelte werden zusammengefasst, Nicht-Achsen benannt (Core == Orakel)", () => {
+  const arg = { name: "dcovB", length_mm: 3250, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, deckenanschluss_grid: [12, 3, 3, 2, 99] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
+  deepEqual(js.deckenanschlusspunkte.map((p) => p.k), [3, 12]);
+  // 2 ist eine Rasterspalte OHNE Spannachse, 99 liegt ausserhalb der Wand — beide werden
+  // benannt und NICHT auf die Nachbarachse geschoben.
+  deepEqual(js.validation.deckenanschluss_fehler,
+    [{ grund: "keine_spannachse", wert: 2 }, { grund: "ausserhalb_wand", wert: 99 }]);
+  assert(!js.deckenanschlusspunkte.some((p) => p.k === 2 || p.k === 1 || p.k === 99),
+    "abgewiesener Wert doch angewandt");
+  deepEqual(js.prestress.deckenanschluss_grid, [3, 12]);
+  // Nicht ganzzahlig ist ebenfalls ein Befund, kein Rundungsfall (nur JS-seitig).
+  deepEqual(normDeckenanschluss([1.5, 3], [1, 3], 26),
+    { punkte: [3], fehler: [{ grund: "nicht_ganzzahlig", wert: 1.5 }] });
+});
+
+t("[A-27] die ausdruecklich leere Liste faellt nicht auf die Verteilung zurueck (Core == Orakel)", () => {
+  const arg = { name: "dcovC", length_mm: 3250, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, deckenanschluss_grid: [] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
+  deepEqual(js.deckenanschlusspunkte, []);
+  deepEqual(js.prestress.deckenanschluss_grid, []);
+  // `null`/fehlend heisst dagegen „kein Override" — die Verteilung greift wieder.
+  deepEqual(normDeckenanschluss(null, [1, 3], 26), { punkte: null, fehler: [] });
+  deepEqual(normDeckenanschluss(undefined, [1, 3], 26), { punkte: null, fehler: [] });
+});
+
+t("[A-27] der Override reist durch psOf() (Auto- und Nachweis-Modus)", () => {
+  // `psOf()` ist eine WHITELIST: fiele der Override in der Iteration weg, rechnete der Core
+  // mit seiner Verteilung weiter und die in Modul 1 gesetzten Punkte waeren unwirksam.
+  const auto = autoAuslegung({ ...ENGINE_BASE, load: { qk_area: 0.5, gammaQ: 1.5 } }).wandelement;
+  const ov = [auto.tension_columns[1].k];
+  const a = autoAuslegung({ ...ENGINE_BASE, prestress: { deckenanschluss_grid: ov },
+    load: { qk_area: 0.5, gammaQ: 1.5 } }).wandelement;
+  deepEqual(a.prestress.deckenanschluss_grid, ov);
+  deepEqual(a.deckenanschlusspunkte.map((p) => p.k), ov);
+  const b = nachweisPruefen({ ...ENGINE_BASE, prestress: { max_span_grid: 3, force_kN: 60,
+    deckenanschluss_grid: ov }, load: { qk_area: 1.0, gammaQ: 1.5 } }).wandelement;
+  deepEqual(b.deckenanschlusspunkte.map((p) => p.k), ov);
+  // Ohne Override bleibt die Auslegung bit-genau der Altstand.
+  assert(!("deckenanschluss_grid" in auto.prestress), "kein Schluessel ohne Override");
+  assert(auto.deckenanschlusspunkte.every((p) => p.art !== "manuell"), "Verteilung unveraendert");
+});
+
+t("[A-26]/[A-27] Modul 3 bleibt unberuehrt: keine Vorspann- oder Mengenwirkung", () => {
+  // Die Punkte sind eine Planungs- und Montageangabe, kein Nachweis. Weder Spannachsen noch
+  // Stueckliste noch Validierung duerfen sich durch einen Override bewegen ([A-26]).
+  const basis = buildWall("dcw", 3250, 2600, [], null, { max_span_grid: 3 });
+  const mit = buildWall("dcw", 3250, 2600, [], null,
+    { max_span_grid: 3, deckenanschluss_grid: [basis.tension_columns[0].k] });
+  deepEqual(mit.bom, basis.bom);
+  deepEqual(mit.tension_columns, basis.tension_columns);
+  deepEqual(mit.ausgleichspunkte, basis.ausgleichspunkte);
+  deepEqual(mit.validation, basis.validation);
 });
 
 console.log(`\n${pass} ok, ${fail} fail`);

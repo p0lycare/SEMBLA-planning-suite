@@ -1,6 +1,6 @@
 # Deckenanschluss: Katalog-Set, Verteilung mit Editiermodus, Darstellung und Stückliste
 
-**Status:** abgestimmter Umsetzungsplan (Tibor, 2026-09-08) — **Paket 1 umgesetzt** (2026-09-08); Paket 2 und 3 offen
+**Status:** abgestimmter Umsetzungsplan (Tibor, 2026-09-08) — **Paket 1 und 2 umgesetzt** (2026-09-08); Paket 3 offen
 **Issues:** #95 (Verteilung, Editiermodus, Baugruppe) · #94 (Sets im Bauteilkatalog) · #97 (Zeichnungssymbole)
 **Ziel:** Der Deckenanschluss wird ein vollständig geplantes Bauteil: als Baugruppe im Bauteilkatalog,
 regelbasiert auf Spannachsen verteilt und manuell bearbeitbar, in Modul 1 und Modul 7 sichtbar und in
@@ -31,6 +31,9 @@ Die Umsetzung erfolgt in **drei getrennten Paketen — je eine eigene Session mi
 - Anschlusspunkte liegen **immer auf einer Spannachse**; nicht jede Spannachse ist Anschlusspunkt.
 - Auto-Verteilung bewusst simpel, **keine Statik**: ein Deckenanschluss pro Meter Wandlänge,
   End-/Randachsen zählen mit. Derzeit gibt es keine Wände ohne Deckenanschluss.
+- Präzisierung 2026-09-08 (Paket 2): **Kandidat ist jede Spannachse** — auch eine, die unter
+  einer Staffelstufe endet; maßgebend für die Punktzahl ist die **volle Wandlänge**, und eine
+  **Staffelstufe bekommt keine eigene Anschlussebene**.
 - Darstellung: **rotes Z-förmiges Baugruppensymbol**, immer oberer Schenkel nach links, unterer nach
   rechts; die Gewindestange bleibt im Vordergrund (#112); Legendentext „Deckenanschluss".
 - Ausgabe nur in **Modul 1 und Modul 7**. Modul 5 ist ausdrücklich kein Ziel; Modul 3 (statische
@@ -102,7 +105,7 @@ Tests in `tests/module/test-katalog.mjs` sowie angepasste Erwartungen in `test-s
 
 ---
 
-## Paket 2 – Core und Editiermodus in Modul 1  ⬜ offen
+## Paket 2 – Core und Editiermodus in Modul 1  ✅ umgesetzt (2026-09-08)
 
 **Nutzerergebnis:** Jede Wand erhält automatisch Deckenanschlusspunkte auf Spannachsen; Planer*innen
 können sie in Modul 1 hinzufügen, verschieben, löschen und auf Auto zurücksetzen.
@@ -126,6 +129,40 @@ können sie in Modul 1 hinzufügen, verschieben, löschen und auf Auto zurückse
 ### Nicht in diesem Paket
 
 Symbol und Stücklistenmengen.
+
+### Umgesetzt
+
+Regeln **[A-26]** (Verteilung) und **[A-27]** (Override) im Handbuch; im Rechenkern
+`docs/shared/sembla-core.js` die reinen Funktionen `verteileDeckenanschluss()` und
+`normDeckenanschluss()` samt der frisch gerechneten Liste `deckenanschlusspunkte`
+(`{k, x_mm, art}`) und der Meldung `validation.deckenanschluss_fehler`; der Override lebt in
+`prestress.deckenanschluss_grid` als Achsenraster-Indizes und reist über `psOf()`
+(`sembla-engine.js`) durch jede Auslegungs-Iteration. Bit-gleiches Gegenstück im Python-Orakel
+`tests/core/sembla_core.py`. In `docs/wandplanung.html` der vierte Editiermodus `dcEdit`
+(eigener Kasten, Werkzeug-, Lösch- und Auto-Knopf, Griffe an der Wandoberkante, Fang **immer**
+auf eine vorhandene Spannachse, Zustandshinweis, Warnzeile) — exklusiv zu `axisEdit`, `zpEdit`,
+`agEdit` und dem Durchbruch-Modus, in beide Richtungen geprüft. Test-API `setDcEdit`,
+`setManualDc`, `addDcAt`, `delDc`, `dcAuto`, `selDc`, `manualDc`, `dcEdit`,
+`deckenanschlusspunkte`. Tests: Paritätsvertrag gegen das Orakel in
+`tests/core/test-sembla-core.mjs` (8 Fälle), Editiermodus-Smoke über den echten Speicher-Lade-
+Umlauf in `tests/module/smoke_wp.mjs` (25 Fälle); goldene Fixtures und
+`docs/vorlagen/SEMBLA_Musterwand.json` rein **additiv** um das neue Feld erweitert.
+
+### Fachentscheidungen dieses Pakets (Tibor, 2026-09-08)
+
+- **Kandidatenmenge:** jede Spannachse aus `tension_columns` — Plantext wörtlich, keine
+  Einschränkung auf Achsen an der Wandoberkante.
+- **Staffelung:** nur die volle Wandhöhe zählt; Stufen-Oberkanten sind keine Deckenanschluss-Ebene.
+
+### Offene Punkte aus Paket 2
+
+- **Anschlusspunkt unter einer Staffelstufe.** Aus den beiden Entscheidungen zusammen folgt, dass
+  eine Achse, die unter einer Stufe endet, einen Anschlusspunkt tragen kann, obwohl sie die Decke
+  nicht erreicht. Das ist so gewollt und nicht kaschiert; **Paket 3** muss dafür festlegen, wie
+  die Reduktion der Spannplatten-Menge und die Darstellung an einer solchen Achse aussehen.
+- **Keine Mengenwirkung.** Die Baugruppe `set-deckenanschluss` bleibt weiterhin unaufgelöst
+  (`semblaBomSets()` meldet sie benannt); alle Stücklistenmengen sind Position für Position
+  unverändert. Aufgelöst wird sie in Paket 3.
 
 ---
 

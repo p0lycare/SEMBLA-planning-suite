@@ -29,6 +29,7 @@ __all__ = [
     "zwischenpunkte_segment", "wirksame_zwischenpunkte",
     "AUSGLEICH_DICHTE_JE_M", "AUSGLEICH_ACHSVERSATZ", "verteile_ausgleichspunkte",
     "norm_ausgleichspunkte",
+    "DECKENANSCHLUSS_JE_M", "verteile_deckenanschluss", "norm_deckenanschluss",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -54,6 +55,7 @@ ROD_OVERHANG  = 10     # mm Ueberstand des Reststuecks ueber die Wandoberkante (
 # GENAU HIER — der Achsversatz ist ausdruecklich variabel gehalten ([A-23]).
 AUSGLEICH_DICHTE_JE_M = 3   # Zielpunktzahl je Meter Wandlaenge ([A-20])
 AUSGLEICH_ACHSVERSATZ = 20  # mm Abstand einer Auffuellung zur Spannachse ([A-23])
+DECKENANSCHLUSS_JE_M = 1    # Zielzahl der Deckenanschlusspunkte je Meter Wandlaenge ([A-26])
 
 
 # ---- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----
@@ -505,6 +507,61 @@ def norm_ausgleichspunkte(arr, length_mm):
     return sorted(set(out)), fehler
 
 
+# ---- Deckenanschlusspunkte ([A-26]/[A-27]) ----
+# Bit-genaues Gegenstueck zu verteileDeckenanschluss()/normDeckenanschluss() in
+# docs/shared/sembla-core.js.
+#
+# Der Deckenanschluss ist die ZWEITE moegliche Ausfuehrung der oberen Spannachse ([P-24]): an
+# einer Achse steht entweder der Wandabschluss ODER der Deckenanschluss, nie beides. [A-26] Die
+# Verteilung ist bewusst SIMPEL und ausdruecklich KEINE Statik: ein Anschlusspunkt je
+# angefangenem Meter Wandlaenge, mindestens einer; Kandidat ist JEDE Spannachse.
+
+
+def verteile_deckenanschluss(length_mm, achsen_k=()):
+    """Deckenanschlusspunkte deterministisch auf die Spannachsen verteilen ([A-26])."""
+    A = sorted(achsen_k or ())
+    if not A:
+        return []
+    ziel = max(1, math.ceil(DECKENANSCHLUSS_JE_M * length_mm / 1000))
+    if ziel >= len(A):
+        return list(A)
+    # Genau ein Punkt: die ERSTE Achse. Die Bevorzugung von Anfang und Ende laesst sich mit
+    # einem einzigen Punkt nicht erfuellen; gewaehlt wird deshalb ausgesprochen der Anfang,
+    # statt eine Mitte zu erfinden.
+    if ziel == 1:
+        return [A[0]]
+    # Erste und letzte Achse gesetzt, die uebrigen gleichmaessig ueber die ACHSENLISTE verteilt
+    # (nicht ueber die Millimeter — ein Punkt liegt immer auf einer Achse). Gerundet wird mit
+    # Pythons `round` (half-to-even == pyRound), damit JS und Python bit-gleich waehlen.
+    out = [A[round(j * (len(A) - 1) / (ziel - 1))] for j in range(ziel)]
+    return sorted(set(out))
+
+
+def norm_deckenanschluss(arr, achsen_k=(), n_grid=0):
+    """Manuell gesetzte Deckenanschlusspunkte normalisieren und validieren ([A-27]).
+
+    Zulaessig ist ausschliesslich der Rasterindex einer WIRKLICH VORHANDENEN Spannachse dieser
+    Wand — ein Anschlusspunkt liegt immer auf einer Spannachse. Ein unzulaessiger Wert wird
+    NICHT auf die naechste Achse geschoben, sondern benannt und nicht angewandt ([P-9]);
+    DOPPELTE Werte sind kein Befund, sondern werden deterministisch zusammengefasst. `None`
+    heisst „kein Override"; eine ausdruecklich leere Liste heisst „kein Deckenanschluss" und
+    faellt nicht auf die Verteilung zurueck.
+    """
+    if not isinstance(arr, (list, tuple)):
+        return None, []
+    achsen = set(achsen_k or ())
+    out, fehler = [], []
+    for raw in arr:
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            fehler.append({"grund": "nicht_ganzzahlig", "wert": raw}); continue
+        if raw < 0 or raw >= n_grid:
+            fehler.append({"grund": "ausserhalb_wand", "wert": raw}); continue
+        if raw not in achsen:
+            fehler.append({"grund": "keine_spannachse", "wert": raw}); continue
+        out.append(raw)
+    return sorted(set(out)), fehler
+
+
 # ---- Tiling-Hilfen ----
 # ---- Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]) ----
 # Bit-genaues Gegenstueck zu zerlegeBodenblech() in docs/shared/sembla-core.js.
@@ -811,6 +868,12 @@ def _norm_prestress(p):
     _ag = p.get("ausgleich_override_mm")
     if isinstance(_ag, (list, tuple)):
         out["ausgleich_override_mm"] = list(_ag)
+    # Manuell gesetzte Deckenanschlusspunkte ([A-27]) sind aus genau demselben Grund ein
+    # Override: der Schluessel entsteht nur, wenn er ausdruecklich gesetzt ist. build_wall
+    # ersetzt die rohe Liste durch die validierte, sobald die Spannachsen feststehen.
+    _dc = p.get("deckenanschluss_grid")
+    if isinstance(_dc, (list, tuple)):
+        out["deckenanschluss_grid"] = list(_dc)
     return out
 
 def _norm_steps(steps, length_mm, height_mm):
@@ -1261,6 +1324,18 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                         else verteile_ausgleichspunkte(length_mm, boden_stoesse,
                                                        [c["x_mm"] for c in columns]))
 
+    # [A-26]/[A-27] Deckenanschlusspunkte auf den Spannachsen. Gelesen werden ausschliesslich
+    # FERTIGE Werte — Wandlaenge und die eben gebildeten Spannachsen. Der Kern rechnet allein die
+    # LAGE der Punkte; die Stuecklistenmenge ([P-24]) entsteht spaeter in der Ausgabeschicht.
+    # [A-27] Ein ausdruecklich gesetzter Override SPERRT die Verteilung vollstaendig.
+    _achsen_k = [c["k"] for c in columns]
+    _DC, _DC_fehler = norm_deckenanschluss(_PS.get("deckenanschluss_grid"), _achsen_k, N)
+    if _DC is not None:
+        _PS["deckenanschluss_grid"] = _DC
+    _dc_k = _DC if _DC is not None else verteile_deckenanschluss(length_mm, _achsen_k)
+    deckenanschlusspunkte = [{"k": k, "x_mm": CHAMBER_OFFSET + GRID * k,
+                              "art": "manuell" if _DC is not None else "auto"} for k in _dc_k]
+
     bom = {"i2": 0, "i3": 0}
     for c in courses:
         for s in c["stones"]:
@@ -1298,6 +1373,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         "base_plate": base_plate, "top_plate": top_plate,
         # [A-20]…[A-23] Frisch gerechnet bei JEDER Rechnung, nie eine gespeicherte Quelle.
         "ausgleichspunkte": ausgleichspunkte,
+        # [A-26] Ebenfalls frisch gerechnet bei JEDER Rechnung, nie eine gespeicherte Quelle.
+        "deckenanschlusspunkte": deckenanschlusspunkte,
         "tension_columns": columns, "bom": bom,
         "validation": {"buildable": buildable, "versatz_ok": versatz_ok,
                        "versatz_violations": viol, "tension_span_ok": span_ok,
@@ -1316,6 +1393,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        # [A-24] Abgewiesene manuelle Ausgleichspunkte — benannt, nie gerundet;
                        # der Schluessel entsteht auch hier nur im Fehlerfall.
                        **({"ausgleich_fehler": _AG_fehler} if _AG_fehler else {}),
+                       # [A-27] Abgewiesene manuelle Deckenanschlusspunkte — benannt, nie auf
+                       # eine Nachbarachse geschoben; der Schluessel entsteht nur im Fehlerfall.
+                       **({"deckenanschluss_fehler": _DC_fehler} if _DC_fehler else {}),
                        # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
                        "interlock_invalid_segments": interlock_invalid_segments},
         "courses": courses,

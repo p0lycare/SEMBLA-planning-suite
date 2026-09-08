@@ -30,6 +30,7 @@ export const ROD_OVERHANG = 10;         // Ueberstand des Reststuecks ueber die 
 // GENAU HIER — der Achsversatz ist ausdruecklich variabel gehalten ([A-23]).
 export const AUSGLEICH_DICHTE_JE_M = 3;   // Zielpunktzahl je Meter Wandlaenge ([A-20])
 export const AUSGLEICH_ACHSVERSATZ = 20;  // Abstand einer Auffuellung zur Spannachse ([A-23])
+export const DECKENANSCHLUSS_JE_M = 1;    // Zielzahl der Deckenanschlusspunkte je Meter ([A-26])
 
 export class SemblaError extends Error {}
 export class InvalidDimensionError extends SemblaError {}
@@ -662,6 +663,80 @@ export function normAusgleichspunkte(arr, lengthMm) {
   return { punkte: [...new Set(out)].sort((a, b) => a - b), fehler };
 }
 
+// ---------- Deckenanschlusspunkte ([A-26]/[A-27], #95) ----------
+// Der Deckenanschluss ist die ZWEITE moegliche Ausfuehrung der oberen Spannachse ([P-24]): an
+// einer Achse steht entweder der Wandabschluss ODER der Deckenanschluss, nie beides. WO er
+// sitzt, ist hier gerechnet — deterministisch aus Wandlaenge und Spannachsen, ohne Zufall und
+// ohne Startwert.
+//
+// [A-26] Die Verteilung ist bewusst SIMPEL und ausdruecklich KEINE Statik: ein Anschlusspunkt
+// je angefangenem Meter Wandlaenge, mindestens einer. Kandidat ist JEDE Spannachse (Festlegung
+// vom 2026-09-08); es wird keine Achse erfunden und keine Zwischenlage gewaehlt.
+//
+// Gerechnet wird bei JEDER Rechnung frisch. Das Ergebnis der Verteilung wird NICHT gespeichert
+// und NICHT als manueller Wert ausgegeben: gespeichert ist ausschliesslich ein ausdruecklich
+// gesetzter Override in `prestress.deckenanschluss_grid` ([A-27]).
+
+/**
+ * Deckenanschlusspunkte deterministisch auf die Spannachsen verteilen ([A-26]).
+ * Reine Funktion — gleiche Eingabe, gleiche Ausgabe, kein Zustand.
+ *
+ * Zielzahl ist `ceil(DECKENANSCHLUSS_JE_M * Laenge / 1 m)`, mindestens 1 — auch eine Wand unter
+ * einem Meter traegt also einen Punkt. Gibt es hoechstens so viele Spannachsen wie Zielpunkte,
+ * werden ALLE Achsen genommen (aufgefuellt wird nichts, es gibt keine weitere Stelle). Sonst
+ * werden ERSTE und LETZTE Achse gesetzt und die uebrigen Punkte gleichmaessig ueber die
+ * Achsenliste verteilt — gezaehlt wird in ACHSEN, nicht in Millimetern, denn ein Punkt liegt
+ * immer auf einer Achse. Gerundet wird mit `pyRound` (Pythons half-to-even), damit JS und
+ * Python bit-gleich waehlen.
+ * @param {number} lengthMm Wandlaenge
+ * @param {number[]} [achsenK] Rasterindizes der Spannachsen (aufsteigend)
+ * @returns {number[]} gewaehlte Rasterindizes, aufsteigend
+ */
+export function verteileDeckenanschluss(lengthMm, achsenK = []) {
+  const A = [...achsenK].sort((a, b) => a - b);
+  if (!A.length) return [];
+  const ziel = Math.max(1, Math.ceil(DECKENANSCHLUSS_JE_M * lengthMm / 1000));
+  if (ziel >= A.length) return A.slice();
+  // Genau ein Punkt: die ERSTE Achse. Die Bevorzugung von Anfang und Ende laesst sich mit einem
+  // einzigen Punkt nicht erfuellen; gewaehlt wird deshalb ausgesprochen der Anfang, statt eine
+  // Mitte zu erfinden.
+  if (ziel === 1) return [A[0]];
+  const out = [];
+  for (let j = 0; j < ziel; j++) out.push(A[pyRound(j * (A.length - 1) / (ziel - 1))]);
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+
+/**
+ * Manuell gesetzte Deckenanschlusspunkte normalisieren und validieren ([A-27]).
+ *
+ * Zulaessig ist ausschliesslich der Rasterindex einer WIRKLICH VORHANDENEN Spannachse dieser
+ * Wand — ein Anschlusspunkt liegt immer auf einer Spannachse. Ein unzulaessiger Wert wird NICHT
+ * auf die naechste Achse geschoben: er wird benannt (`fehler`) und nicht angewandt ([P-9]) —
+ * verschoben entstuende still ein anderer Punkt als der gesetzte. DOPPELTE Werte sind dagegen
+ * kein Befund, sondern werden deterministisch zusammengefasst (wie bei `columns_grid`).
+ *
+ * `punkte === null` heisst „kein Override" (Verteilung nach [A-26]). Eine AUSDRUECKLICH leere
+ * Liste ist dagegen die Aussage „diese Wand hat keinen Deckenanschluss" und faellt nicht auf die
+ * Verteilung zurueck.
+ * @param {number[]|null|undefined} arr
+ * @param {number[]} achsenK Rasterindizes der vorhandenen Spannachsen
+ * @param {number} nGrid Rasterbreite der Wand
+ * @returns {{punkte:number[]|null,fehler:Array<{grund:string,wert:any}>}}
+ */
+export function normDeckenanschluss(arr, achsenK = [], nGrid = 0) {
+  if (!Array.isArray(arr)) return { punkte: null, fehler: [] };
+  const achsen = new Set(achsenK);
+  const out = [], fehler = [];
+  for (const raw of arr) {
+    const k = Number(raw);
+    if (!Number.isInteger(k)) { fehler.push({ grund: "nicht_ganzzahlig", wert: raw }); continue; }
+    if (k < 0 || k >= nGrid) { fehler.push({ grund: "ausserhalb_wand", wert: raw }); continue; }
+    if (!achsen.has(k)) { fehler.push({ grund: "keine_spannachse", wert: raw }); continue; }
+    out.push(k);
+  }
+  return { punkte: [...new Set(out)].sort((a, b) => a - b), fehler };
+}
+
 /** @returns {Set<number>} absolute Rasterpositionen der inneren Fugen (ohne Segmentenden). */
 function segJoints(startGrid, tiling) {
   const js = new Set(); let c = startGrid;
@@ -836,6 +911,12 @@ function normPrestress(p) {
   // nach [A-20]…[A-23] — und weil die nirgends gespeichert wird, entsteht im Wandelement AUCH
   // KEIN Feld dafuer. `buildWall` ersetzt die rohe Liste unten durch die validierte.
   if (Array.isArray(p && p.ausgleich_override_mm)) out.ausgleich_override_mm = p.ausgleich_override_mm.slice();
+  // Manuell gesetzte Deckenanschlusspunkte ([A-27]) sind aus genau demselben Grund ein OVERRIDE:
+  // der Schluessel entsteht nur, wenn er ausdruecklich gesetzt ist. Fehlt er, gilt die Verteilung
+  // nach [A-26] — und weil die nirgends gespeichert wird, entsteht im Wandelement AUCH KEIN Feld
+  // dafuer. `buildWall` ersetzt die rohe Liste unten durch die validierte, sobald die Spannachsen
+  // feststehen (vorher ist gar nicht entscheidbar, ob ein Index eine Achse ist).
+  if (Array.isArray(p && p.deckenanschluss_grid)) out.deckenanschluss_grid = p.deckenanschluss_grid.slice();
   // Einbaulagen des Spannsystems ([Z-6]/#92) — beide ABGELEITETE Rechenwerte, die Modul 1 aus
   // den gewaehlten Katalogprodukten bildet (Praezedenz `rod_rest_mm`): der Fussoffset aus der
   // halben Kopplungsmutterhoehe, der Kopfzuschlag aus der Spannplattendicke.
@@ -1263,6 +1344,21 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     ? AG.punkte.map((x) => ({ x_mm: x, art: "manuell" }))
     : verteileAusgleichspunkte(lengthMm, bodenStoesse, columns.map((c) => c.x_mm));
 
+  // [A-26]/[A-27] Deckenanschlusspunkte auf den Spannachsen. Gelesen werden ausschliesslich
+  // FERTIGE Werte — Wandlaenge und die eben gebildeten Spannachsen; geschrieben wird in keine
+  // davon zurueck. Der Kern rechnet allein die LAGE der Punkte; die Stuecklistenmenge (eine
+  // Baugruppe „Deckenanschluss" je Punkt, [P-24]) entsteht spaeter in der gemeinsamen
+  // Ausgabeschicht aus der LAENGE dieser Liste. Ein Verankerungsnachweis ist das ausdruecklich
+  // nicht — die statische Kraftuebergabe in Modul 3 bleibt unberuehrt.
+  // [A-27] Ein ausdruecklich gesetzter Override SPERRT die Verteilung vollstaendig: es gelten
+  // genau die gesetzten Achsen, es wird nichts aufgefuellt. Ohne Override laeuft [A-26].
+  const achsenK = columns.map((c) => c.k);
+  const DC = normDeckenanschluss(PS.deckenanschluss_grid, achsenK, N);
+  if (DC.punkte) PS.deckenanschluss_grid = DC.punkte;
+  const dcK = DC.punkte ? DC.punkte : verteileDeckenanschluss(lengthMm, achsenK);
+  const deckenanschlusspunkte = dcK.map((k) => ({
+    k, x_mm: CHAMBER_OFFSET + GRID * k, art: DC.punkte ? "manuell" : "auto" }));
+
   const bom = { i2: 0, i3: 0 };
   for (const c of courses) for (const s of c.stones) bom[s.type] += 1;
   bom.gewindestangen = columns.reduce((a, c) => a + c.gewindestangen, 0);
@@ -1307,6 +1403,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     base_plate: basePlate, top_plate: topPlate,
     // [A-20]…[A-23] Frisch gerechnet bei JEDER Rechnung, nie eine gespeicherte Quelle.
     ausgleichspunkte,
+    // [A-26] Ebenfalls frisch gerechnet bei JEDER Rechnung, nie eine gespeicherte Quelle.
+    deckenanschlusspunkte,
     tension_columns: columns, bom,
     validation: {
       buildable, versatz_ok: versatzOk, versatz_violations: viol,
@@ -1326,6 +1424,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // [A-24] Abgewiesene manuelle Ausgleichspunkte — benannt, nicht angewandt, nie gerundet.
       // Der Schluessel entsteht auch hier NUR im Fehlerfall.
       ...(AG.fehler.length ? { ausgleich_fehler: AG.fehler } : {}),
+      // [A-27] Abgewiesene manuelle Deckenanschlusspunkte — benannt, nicht angewandt, nie auf
+      // eine Nachbarachse geschoben. Der Schluessel entsteht auch hier NUR im Fehlerfall.
+      ...(DC.fehler.length ? { deckenanschluss_fehler: DC.fehler } : {}),
       // [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
       interlock_invalid_segments: interlockInvalidSegments,
     },

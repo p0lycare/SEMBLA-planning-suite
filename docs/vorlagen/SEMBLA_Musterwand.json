@@ -106,6 +106,23 @@
         "art": "wandende"
       }
     ],
+    "deckenanschlusspunkte": [
+      {
+        "k": 1,
+        "x_mm": 187.5,
+        "art": "auto"
+      },
+      {
+        "k": 12,
+        "x_mm": 1562.5,
+        "art": "auto"
+      },
+      {
+        "k": 22,
+        "x_mm": 2812.5,
+        "art": "auto"
+      }
+    ],
     "tension_columns": [
       {
         "k": 1,

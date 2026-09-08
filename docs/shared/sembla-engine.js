@@ -108,6 +108,11 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // rechnete der Core mit seiner Verteilung weiter, und die gesetzten Punkte waeren unwirksam —
 // samt der daraus folgenden Stuecklistenmenge. FEHLT das Feld, bleibt es `undefined` und damit
 // kein Array: der Core setzt dann kein Feld, und der Auto-Weg bleibt bit-genau wie zuvor.
+// Und aus demselben Grund `deckenanschluss_grid` ([A-27]/#95): der in Modul 1 gesetzte Override
+// der Deckenanschlusspunkte SPERRT die Verteilung nach [A-26]. Fiele er in der Iteration weg,
+// rechnete der Core mit seiner Verteilung weiter, und die gesetzten Punkte waeren unwirksam.
+// FEHLT das Feld, bleibt es `undefined` und damit kein Array: der Core setzt dann kein Feld,
+// und der Auto-Weg bleibt bit-genau wie zuvor.
 // NICHT mitgereicht wird `start_axis_grid` (#104): [V-5] ist durch [V-3]/[V-11] abgeloest, der
 // Core liest das Feld nicht mehr, und die Iteration gibt ihm folglich auch keines mehr vor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
@@ -118,7 +123,8 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            rod_fuss_offset_mm: p.rod_fuss_offset_mm,
            rod_kopf_zuschlag_mm: p.rod_kopf_zuschlag_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
-           ausgleich_override_mm: p.ausgleich_override_mm }; }
+           ausgleich_override_mm: p.ausgleich_override_mm,
+           deckenanschluss_grid: p.deckenanschluss_grid }; }
 function buildN(vorg, sp) {
   return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg), interlocksOf(vorg));
 }

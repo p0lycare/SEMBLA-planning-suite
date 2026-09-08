@@ -138,6 +138,18 @@
         title="Punkte am Wandfuß setzen, verschieben (ziehen) und löschen (Doppelklick). Manuelle Punkte sperren die automatische Verteilung, bis „Zurück zu Auto“.">Ausgleichspunkte bearbeiten</button><button class="mini" id="agDel">Punkt löschen</button><button class="mini" id="agAuto">Zurück zu Auto</button></div>
       <div id="agHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
     </div>
+    <div class="grp"><h3>Deckenanschluss (obere Spannachse)</h3>
+      <!-- [A-26]/[A-27]/#95: Anschlusspunkte liegen IMMER auf einer Spannachse; nicht jede
+           Spannachse ist ein Anschlusspunkt. Ohne eigene Auswahl verteilt der Rechenkern sie
+           deterministisch — ein Punkt je angefangenem Meter Wandlänge, erste und letzte Achse
+           bevorzugt ([A-26]); dieses Ergebnis wird NICHT gespeichert. Erst eine hier getroffene
+           Wahl ist ein gespeicherter Override — sie SPERRT die Verteilung vollständig, bis
+           „Zurück zu Auto“ sie zurücknimmt ([A-27]). Ausdrücklich KEINE Statik: die Kraftübergabe
+           an den Stahlbau in Modul 3 bleibt unberührt. -->
+      <div class="btnrow"><button class="mini" id="dcTool"
+        title="Punkte auf Spannachsen setzen, verschieben (ziehen, fängt auf die nächste Achse) und löschen (Doppelklick). Manuelle Punkte sperren die automatische Verteilung, bis „Zurück zu Auto“.">Deckenanschluss bearbeiten</button><button class="mini" id="dcDel">Punkt löschen</button><button class="mini" id="dcAuto">Zurück zu Auto</button></div>
+      <div id="dcHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
+    </div>
     <div class="grp"><h3>Staffelung (getreppter Aufbau)</h3>
       <div id="stepsList"></div>
       <div class="btnrow"><button class="mini" id="addStep"
@@ -318,6 +330,11 @@ let zpEdit=false, manualZp=null, selZp=null;
 // gespeichert wird nichts). Eine Liste — auch eine LEERE — ist der ausdrückliche Override
 // „genau diese Punkte“ und wird als solcher gespeichert; er sperrt die Verteilung vollständig.
 let agEdit=false, manualAg=null, selAg=null;
+// Deckenanschlusspunkte ([A-26]/[A-27], #95): `manualDc === null` heißt AUTO (der Rechenkern
+// verteilt, gespeichert wird nichts). Eine Liste — auch eine LEERE — ist der ausdrückliche
+// Override „genau diese Achsen“ und wird als solcher gespeichert; er sperrt die Verteilung
+// vollständig. Gespeichert werden ACHSENRASTER-Indizes (Muster `columns_grid`), keine mm.
+let dcEdit=false, manualDc=null, selDc=null;
 
 function snap(v,s){ return Math.round(v/s)*s; }
 function readSides(){ return { vorne:{funktion:$('sideVorne').value}, hinten:{funktion:$('sideHinten').value} }; }
@@ -397,6 +414,10 @@ function vorgaben(){
   // Auswahl wird das Feld gar nicht gesetzt, damit im Wandelement kein verteilter Punkt landet.
   // Eine leere Liste ist eine echte Aussage („keine Ausgleichspunkte“) und wird mitgegeben.
   if(manualAg) v.prestress.ausgleich_override_mm=manualAg.slice();
+  // [A-27] Ebenso der Deckenanschluss: nur ein ausdrücklicher Override reist mit — ohne eigene
+  // Auswahl wird das Feld gar nicht gesetzt, damit im Wandelement kein verteilter Punkt landet.
+  // Eine leere Liste ist eine echte Aussage („kein Deckenanschluss“) und wird mitgegeben.
+  if(manualDc) v.prestress.deckenanschluss_grid=manualDc.slice();
   return v;
 }
 
@@ -472,12 +493,18 @@ function run(){
   const agf=vv.ausgleich_fehler||[];
   if(agf.length) warns.push('⚠ Ausgleichspunkte [A-24]: '+agf.length+' Wert(e) abgewiesen ('
     +AG_GRUND[agf[0].grund]+', z. B. '+agf[0].wert+' mm) — nicht angewandt, nichts gerundet.');
+  // [A-27] Abgewiesene manuelle Deckenanschlusspunkte: ebenso benannt, nie auf die Nachbarachse
+  // geschoben.
+  const dcf=vv.deckenanschluss_fehler||[];
+  if(dcf.length) warns.push('⚠ Deckenanschluss [A-27]: '+dcf.length+' Wert(e) abgewiesen ('
+    +DC_GRUND[dcf[0].grund]+', z. B. Rasterachse '+dcf[0].wert+') — nicht angewandt, nichts verschoben.');
   $('warns').textContent=warns.join('   ');
   // Verzahnungs-Validierung anzeigen ([G-10]/[G-11]/[G-12])
   renderInterlockWarns(vv);
   draw(w);
   renderZpHinweis();
   renderAgHinweis();
+  renderDcHinweis();
   persistAktiv(w);
   // Maßgebende Werte der Preis-Zuordnung (Stangenlänge, Blech-Modullänge) können sich mit
   // jeder Auslegung ändern -> Auswahlstatus frisch anzeigen, nie zwischenspeichern.
@@ -500,6 +527,7 @@ function renderLeer(){
   renderZLegende(null);   // ohne Wand keine irreführende Zuschnittlegende (Issue #63)
   renderZpHinweis();      // … und keine stehengebliebene Aussage zu Zwischenspannpunkten
   renderAgHinweis();      // … dasselbe für die Ausgleichspunkte
+  renderDcHinweis();      // … und für den Deckenanschluss
   if(KAT) renderProdukte();
 }
 function renderIter(its){ const tb=$('itTable').querySelector('tbody'); tb.innerHTML='';
@@ -657,6 +685,22 @@ function draw(w){
       s+=`<circle cx="${ax}" cy="${y0+9}" r="${on?5:4}" fill="${on?'#c9461c':'#8a5cf6'}" stroke="#fff" stroke-width="1.2" style="cursor:grab"/>`;
       s+=`<text x="${ax}" y="${y0+22}" font-size="9" fill="${on?'#c9461c':'#8a5cf6'}" text-anchor="middle">${fmt(xm/10,1)}</text>`; } }
 
+  // ---- Deckenanschluss-Editor: Griffe an der Wandoberkante ([A-27], #95) ----
+  // Reine BEDIENHILFE, ausschließlich im Editiermodus vorhanden — dasselbe Muster wie die
+  // Spannachsen- und Ausgleichspunktgriffe. Die DAUERHAFTE Darstellung des Deckenanschlusses
+  // (rotes Z-Symbol) ist ausdrücklich nicht hier, sondern Gegenstand von #97.
+  // Erkennbar getrennt wie beim Spannachsen-Editor (#106): eine Achse OHNE Anschlusspunkt
+  // zeigt eine blasse Strichmarke samt `cursor:copy`, eine belegte trägt den Griff.
+  if(dcEdit){ const punkte=new Set((w.deckenanschlusspunkte||[]).map(p=>p.k));
+    const yT=Y(H);
+    for(const col of w.tension_columns){ const ax=X(col.x_mm), on=(selDc===col.k);
+      if(!punkte.has(col.k)){
+        s+=`<line class="dcneu" x1="${ax}" y1="${yT-14}" x2="${ax}" y2="${yT-4}" stroke="#c0392b" stroke-width="1" stroke-dasharray="2 3" stroke-opacity="0.35" style="cursor:copy"/>`;
+        continue; }
+      s+=`<line class="dcp" x1="${ax}" y1="${yT-16}" x2="${ax}" y2="${yT}" stroke="${on?'#c9461c':'#c0392b'}" stroke-width="${on?3:2}" stroke-opacity="0.9" style="cursor:grab"/>`;
+      s+=`<circle cx="${ax}" cy="${yT-16}" r="${on?5:4}" fill="${on?'#c9461c':'#c0392b'}" stroke="#fff" stroke-width="1.2" style="cursor:grab"/>`;
+      s+=`<text x="${ax}" y="${yT-22}" font-size="9" fill="${on?'#c9461c':'#c0392b'}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
+
   // ---- Reihennummern der Steinreihen (links) ----
   for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
     s+=`<text x="${pad-10}" y="${yc+3}" font-size="9" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
@@ -769,6 +813,14 @@ const AG_GRUND={
   nicht_ganzzahlig:'nicht ganzzahlig',
   ausserhalb_wand:'außerhalb der Wandlänge'
 };
+// [A-27] Abgewiesene manuelle Deckenanschlusspunkte. `keine_spannachse` ist der eigentliche
+// Fachgrund: ein Anschlusspunkt liegt immer auf einer Spannachse, und ein Wert daneben wird
+// benannt statt auf die Nachbarachse geschoben.
+const DC_GRUND={
+  nicht_ganzzahlig:'nicht ganzzahlig',
+  ausserhalb_wand:'außerhalb der Wand',
+  keine_spannachse:'keine Spannachse an dieser Rasterstelle'
+};
 const INTERLOCK_GRUND={
   nicht_ganzzahlig:'Position/Breite nicht ganzzahlig',
   leeres_intervall:'leeres Intervall (Breite ≤ 0)',
@@ -867,6 +919,10 @@ function applyWand(w){
   // die automatische Verteilung. Bloßes Laden normalisiert nichts zurück und schreibt nichts.
   manualAg=(w.prestress&&Array.isArray(w.prestress.ausgleich_override_mm))?w.prestress.ausgleich_override_mm.slice():null;
   selAg=null;
+  // [A-27] Gespeicherter Override wird übernommen (auch die leere Liste); fehlt das Feld, gilt
+  // die automatische Verteilung. Bloßes Laden normalisiert nichts zurück und schreibt nichts.
+  manualDc=(w.prestress&&Array.isArray(w.prestress.deckenanschluss_grid))?w.prestress.deckenanschluss_grid.slice():null;
+  selDc=null;
   if(w.name) aktName=w.name;
   renderSteps(); renderOps(); renderInterlocks(); run();
 }
@@ -1227,7 +1283,7 @@ function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelemen
 function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
 function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
 function setManualCols(arr){ manualCols=(arr&&arr.length)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAxis=null; run(); }
-function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; syncZpTool(); syncAgTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
+function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
   $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; if(RESULT) draw(RESULT.wandelement); }
 
 // ---- Zwischenspannpunkte ([A-14]…[A-17], #93) ----------------------------------------------
@@ -1257,9 +1313,9 @@ function addZpAt(z){ ensureManualZp(); if(!manualZp.includes(z)){ manualZp.push(
 function delZp(z){ ensureManualZp(); const i=manualZp.indexOf(z); if(i>=0) manualZp.splice(i,1); if(selZp===z) selZp=null; }
 function setManualZp(arr){ manualZp=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selZp=null; run(); }
 function syncZpTool(){ $('zpTool').style.background=zpEdit?'#1f6feb':''; $('zpTool').style.color=zpEdit?'#fff':''; }
-function setZpEdit(v){ zpEdit=!!v; if(zpEdit){ editMode=false; axisEdit=false; agEdit=false;
+function setZpEdit(v){ zpEdit=!!v; if(zpEdit){ editMode=false; axisEdit=false; agEdit=false; dcEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color='';
-    syncAgTool();
+    syncAgTool(); syncDcTool();
     $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualZp(); }
   syncZpTool(); if(RESULT) draw(RESULT.wandelement); renderZpHinweis(); }
 /** Zustand benennen: abgeleitet oder ausdrücklich gewählt — nie beides behaupten. */
@@ -1299,9 +1355,9 @@ function addAgAt(x){ ensureManualAg(); if(!manualAg.includes(x)){ manualAg.push(
 function delAg(x){ ensureManualAg(); const i=manualAg.indexOf(x); if(i>=0) manualAg.splice(i,1); if(selAg===x) selAg=null; }
 function setManualAg(arr){ manualAg=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAg=null; run(); }
 function syncAgTool(){ $('agTool').style.background=agEdit?'#1f6feb':''; $('agTool').style.color=agEdit?'#fff':''; }
-function setAgEdit(v){ agEdit=!!v; if(agEdit){ editMode=false; axisEdit=false; zpEdit=false;
+function setAgEdit(v){ agEdit=!!v; if(agEdit){ editMode=false; axisEdit=false; zpEdit=false; dcEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color='';
-    syncZpTool();
+    syncZpTool(); syncDcTool();
     $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualAg(); }
   syncAgTool(); if(RESULT) draw(RESULT.wandelement); renderAgHinweis(); }
 /** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
@@ -1316,14 +1372,61 @@ function renderAgHinweis(){
       +'Spannachsen — nicht gespeichert.';
 }
 
+// ---- Deckenanschlusspunkte ([A-26]/[A-27], #95) --------------------------------------------
+// Bedienung nach demselben Muster wie die drei bestehenden Editiermodi: Punkt setzen, auswählen,
+// ziehen, löschen, „Zurück zu Auto". Geschrieben wird ausschließlich der Override in
+// `prestress.deckenanschluss_grid` (über vorgaben() -> Rechenkern -> persistAktiv); die
+// automatische Verteilung landet nie im Element.
+//
+// Anders als bei den Ausgleichspunkten gibt es hier KEINE freie Millimeterlage: ein
+// Anschlusspunkt liegt IMMER auf einer Spannachse ([A-26]). Gesetzt und gezogen wird deshalb
+// auf die nächste vorhandene Achse, und außerhalb jeder Achse entsteht kein Punkt — es wird
+// keine Achse erfunden.
+/** Nächste vorhandene Spannachse zur Zeigerposition — sonst null (Wand ohne Achsen). */
+function dcAchseAmZeiger(e){ if(!RESULT) return null;
+  const xmm=pxToXmm(e); let best=null, bd=Infinity;
+  for(const col of RESULT.wandelement.tension_columns){ const d=Math.abs(xmm-col.x_mm);
+    if(d<bd){ bd=d; best=col.k; } }
+  return best; }
+/** Vorhandener Anschlusspunkt innerhalb der Fangweite (Wandmillimeter) — sonst null. */
+function dcImFang(e){ ensureManualDc(); if(!RESULT) return null;
+  const xmm=pxToXmm(e); let best=null, bd=Infinity;
+  for(const k of manualDc){ const d=Math.abs(xmm-(62.5+GRID*k)); if(d<bd){ bd=d; best=k; } }
+  return (best!=null && bd<=fangKMm()+1e-9) ? best : null; }
+/** Aus dem Auto-Stand einen bearbeitbaren Override machen (die gerechneten Achsen, nichts Neues). */
+function ensureManualDc(){ if(!manualDc) manualDc = RESULT
+  ? [...new Set((RESULT.wandelement.deckenanschlusspunkte||[]).map(p=>p.k))].sort((a,b)=>a-b)
+  : []; }
+function addDcAt(k){ ensureManualDc(); if(k!=null && !manualDc.includes(k)){ manualDc.push(k); manualDc.sort((a,b)=>a-b); } }
+function delDc(k){ ensureManualDc(); const i=manualDc.indexOf(k); if(i>=0) manualDc.splice(i,1); if(selDc===k) selDc=null; }
+function setManualDc(arr){ manualDc=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selDc=null; run(); }
+function syncDcTool(){ $('dcTool').style.background=dcEdit?'#1f6feb':''; $('dcTool').style.color=dcEdit?'#fff':''; }
+function setDcEdit(v){ dcEdit=!!v; if(dcEdit){ editMode=false; axisEdit=false; zpEdit=false; agEdit=false;
+    $('axisTool').style.background=''; $('axisTool').style.color='';
+    syncZpTool(); syncAgTool();
+    $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualDc(); }
+  syncDcTool(); if(RESULT) draw(RESULT.wandelement); renderDcHinweis(); }
+/** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
+function renderDcHinweis(){
+  const el=$('dcHinweis'); if(!el) return;
+  if(!RESULT){ el.textContent=''; return; }
+  const n=(RESULT.wandelement.deckenanschlusspunkte||[]).length;
+  const anz=RESULT.wandelement.tension_columns.length;
+  el.textContent = manualDc
+    ? 'Eigene Auswahl: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — gespeichert am '
+      +'Wandelement; die automatische Verteilung ([A-26]) ist gesperrt, es wird nichts aufgefüllt.'
+    : 'Automatisch verteilt ([A-26]): '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — ein Punkt '
+      +'je angefangenem Meter Wandlänge, nicht gespeichert.';
+}
+
 // ---------- Ereignis-Bindung + Start ----------
-let axisDragging=false, zpDragging=false, agDragging=false;
+let axisDragging=false, zpDragging=false, agDragging=false, dcDragging=false;
 function bindEvents(){
   // `len` steht bewusst NICHT in dieser Liste (Issue #56): das Feld ist nur Anzeige, und
   // es gibt hier keinen — auch keinen indirekten — Schreibweg fuer die Wandlaenge mehr.
   ['hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
   ['sideVorne','sideHinten','modus','topConn','abdichtung','brandklasse'].forEach(id=>$(id).addEventListener('change',run));
-  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; if(editMode){ agEdit=false; syncAgTool(); } $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
+  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; if(editMode){ agEdit=false; dcEdit=false; syncAgTool(); syncDcTool(); } $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });
   $('axisTool').addEventListener('click',()=>setAxisEdit(!axisEdit));
@@ -1365,6 +1468,20 @@ function bindEvents(){
     if(x!==selAg && !manualAg.includes(x)){ const i=manualAg.indexOf(selAg); if(i>=0){ manualAg[i]=x; manualAg.sort((a,b)=>a-b); selAg=x; run(); } } });
   window.addEventListener('pointerup',()=>{ agDragging=false; });
   $('plan').addEventListener('dblclick',e=>{ if(!agEdit) return; const treffer=agImFang(e); if(treffer!=null){ delAg(treffer); run(); } });
+  // Deckenanschluss: setzen/auswählen (pointerdown), ziehen (pointermove), löschen (dblclick).
+  // Gleiche Entscheidung wie bei den Spannachsen (fangKMm()) — nur wird hier IMMER auf eine
+  // vorhandene Spannachse gefangen, denn eine andere Lage gibt es für den Punkt nicht ([A-26]).
+  $('dcTool').addEventListener('click',()=>setDcEdit(!dcEdit));
+  $('dcDel').addEventListener('click',()=>{ if(selDc!=null){ delDc(selDc); run(); } });
+  $('dcAuto').addEventListener('click',()=>{ manualDc=null; selDc=null; run(); });
+  $('plan').addEventListener('pointerdown',e=>{ if(!dcEdit) return; ensureManualDc();
+    const treffer=dcImFang(e);
+    if(treffer!=null){ selDc=treffer; dcDragging=true; }
+    else { const k=dcAchseAmZeiger(e); if(k!=null){ addDcAt(k); selDc=k; run(); } } if(RESULT) draw(RESULT.wandelement); });
+  $('plan').addEventListener('pointermove',e=>{ if(!dcEdit||!dcDragging||selDc==null) return; const k=dcAchseAmZeiger(e);
+    if(k!=null && k!==selDc && !manualDc.includes(k)){ const i=manualDc.indexOf(selDc); if(i>=0){ manualDc[i]=k; manualDc.sort((a,b)=>a-b); selDc=k; run(); } } });
+  window.addEventListener('pointerup',()=>{ dcDragging=false; });
+  $('plan').addEventListener('dblclick',e=>{ if(!dcEdit) return; const treffer=dcImFang(e); if(treffer!=null){ delDc(treffer); run(); } });
   $('showDim').addEventListener('change',e=>{ showDim=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('addTuer').addEventListener('click',()=>addOpening('tuer'));
@@ -1389,6 +1506,9 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   setAgEdit, setManualAg, addAgAt, delAg, agAuto:()=>{ manualAg=null; selAg=null; run(); },
   selAg:(x)=>{ selAg=x; }, get manualAg(){return manualAg;}, get agEdit(){return agEdit;},
   get ausgleichspunkte(){ return RESULT?(RESULT.wandelement.ausgleichspunkte||[]):[]; },
+  setDcEdit, setManualDc, addDcAt, delDc, dcAuto:()=>{ manualDc=null; selDc=null; run(); },
+  selDc:(k)=>{ selDc=k; }, get manualDc(){return manualDc;}, get dcEdit(){return dcEdit;},
+  get deckenanschlusspunkte(){ return RESULT?(RESULT.wandelement.deckenanschlusspunkte||[]):[]; },
   renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
   vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();},
   get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,

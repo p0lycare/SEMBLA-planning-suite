@@ -758,6 +758,125 @@ document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEd
   ok('[#96] blosses Laden schreibt keinen Ausgleichspunkt ins Element',
     JSON.stringify(ps())===vorherAg && !('ausgleich_override_mm' in ps()) && WP.manualAg===null);
 }
+// ---------------------------------------------------------------------------------------------
+// Issue #95 / [A-26]/[A-27]: Deckenanschluss-Editor in Modul 1.
+// Gefahren wird derselbe ECHTE Pfad OHNE MAUS wie bei #96: Editor an, Punkt hinzufuegen,
+// verschieben, loeschen, „Zurueck zu Auto" — und nach jedem Schritt wird das GESPEICHERTE
+// Wandelement geprueft (`store.aktivesWandelement()`), nicht das Formular. Gespeichert werden
+// ACHSENRASTER-Indizes, nicht Millimeter.
+// ---------------------------------------------------------------------------------------------
+setzeLaenge(3250); document.getElementById('hgt').value='2.60';
+document.getElementById('modus').value='auto';
+WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const ps=()=>store.aktivesWandelement().prestress;
+  const ks=()=>WP.deckenanschlusspunkte.map(p=>p.k);
+  const achsen=()=>WP.RESULT.wandelement.tension_columns.map(c=>c.k);
+  const auto=ks();
+  // Ausgangslage: verteilt nach [A-26], nichts davon gespeichert.
+  ok('[#95] Auto: ein Punkt je angefangenem Meter (3,25 m -> 4)',
+    auto.length===4 && auto[0]===achsen()[0] && auto[3]===achsen()[achsen().length-1]);
+  ok('[#95] jeder Punkt liegt auf einer wirklichen Spannachse',
+    auto.every(k=>achsen().includes(k)));
+  ok('[#95] Auto wird NICHT gespeichert (kein Feld im Wandelement)',
+    !('deckenanschluss_grid' in ps()) && WP.manualDc===null
+    && WP.deckenanschlusspunkte.every(p=>p.art!=='manuell'));
+  ok('[#95] Auto: keine Griffe in der Wandansicht (Darstellung bleibt #97)',
+    !/class="dcp"/.test(svg()) && !/class="dcneu"/.test(svg()));
+  // Werkzeug an: Griffe je Punkt, blasse Marke je freier Achse.
+  WP.setDcEdit(true);
+  ok('[#95] Werkzeug an + Griffe an der Wandoberkante gezeichnet',
+    WP.dcEdit===true && /class="dcp"/.test(svg())
+    && (svg().match(/class="dcp"/g)||[]).length===auto.length
+    && (svg().match(/class="dcneu"/g)||[]).length===achsen().length-auto.length);
+  ok('[#95] Einschalten allein schreibt noch nichts', !('deckenanschluss_grid' in ps()));
+  // Exklusivitaet in BEIDE Richtungen — gegen alle drei bestehenden Modi und den Durchbruch.
+  WP.setEdit(true); WP.setDcEdit(true);
+  ok('[#95] Deckenanschluss-Editor schaltet den Durchbruch-Modus ab', WP.dcEdit===true);
+  WP.setAxisEdit(true);
+  ok('[#95] Achsen-Editor schaltet den Deckenanschluss-Editor ab',
+    WP.axisEdit===true && WP.dcEdit===false);
+  WP.setDcEdit(true);
+  ok('[#95] und umgekehrt', WP.dcEdit===true && WP.axisEdit===false);
+  WP.setZpEdit(true);
+  ok('[#95] Zwischenspannpunkt-Editor schaltet ihn ab', WP.zpEdit===true && WP.dcEdit===false);
+  WP.setAgEdit(true);
+  ok('[#95] Ausgleichs-Editor ebenso', WP.agEdit===true && WP.dcEdit===false);
+  WP.setDcEdit(true);
+  ok('[#95] Deckenanschluss-Editor schaltet alle drei ab',
+    WP.dcEdit===true && WP.zpEdit===false && WP.agEdit===false && WP.axisEdit===false);
+  // Hinzufuegen: aus dem Auto-Stand wird ein Override, der ans Wandelement geht.
+  const frei=achsen().find(k=>!auto.includes(k));
+  WP.addDcAt(frei); WP.run();
+  const soll=[...auto,frei].sort((a,b)=>a-b);
+  ok('[#95] Punkt hinzufuegen landet im gespeicherten Override',
+    JSON.stringify(ps().deckenanschluss_grid)===JSON.stringify(soll));
+  ok('[#95] der Override ist die alleinige Quelle — genau diese Achsen, nichts aufgefuellt',
+    JSON.stringify(ks())===JSON.stringify(soll)
+    && WP.deckenanschlusspunkte.every(p=>p.art==='manuell'));
+  // Verschieben ueber die Auswahl (wie der Zug es tut) — Ziel ist wieder eine Spannachse.
+  const frei2=achsen().find(k=>!soll.includes(k));
+  WP.selDc(frei); WP.setManualDc(soll.map(k=>k===frei?frei2:k));
+  const soll2=[...auto,frei2].sort((a,b)=>a-b);
+  ok('[#95] Punkt verschieben (Fang auf die naechste Spannachse)',
+    JSON.stringify(ps().deckenanschluss_grid)===JSON.stringify(soll2)
+    && JSON.stringify(ks())===JSON.stringify(soll2));
+  // Loeschen ueber die Auswahl (Bedienweg „Punkt loeschen")
+  WP.selDc(frei2); WP.delDc(frei2); WP.run();
+  ok('[#95] Punkt loeschen laesst genau die anderen stehen',
+    JSON.stringify(ps().deckenanschluss_grid)===JSON.stringify(auto));
+  // Eine Randachse darf weg — es wird nichts nachgeschoben ([A-27] sperrt [A-26]).
+  WP.selDc(auto[0]); WP.delDc(auto[0]); WP.run();
+  ok('[#95] geloeschte Randachse wird nicht nachgeschoben',
+    !ks().includes(auto[0]) && ks().length===auto.length-1
+    && JSON.stringify(ks())===JSON.stringify(ps().deckenanschluss_grid));
+  // [A-27] Ausdrueckliche LEERE Auswahl ist „kein Deckenanschluss" und faellt NICHT auf Auto zurueck.
+  WP.setManualDc([]);
+  ok('[#95] leere Auswahl: keine Punkte, kein Rueckfall auf die Verteilung',
+    ks().length===0 && JSON.stringify(ps().deckenanschluss_grid)==='[]'
+    && !/class="dcp"/.test(svg()));
+  // Werte ohne Spannachse werden benannt und NICHT auf die Nachbarachse geschoben.
+  const keineAchse=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!achsen().includes(k));
+  WP.setManualDc([auto[1],keineAchse,999]);
+  ok('[#95] Werte ohne Spannachse benannt statt verschoben',
+    JSON.stringify(ks())===JSON.stringify([auto[1]])
+    && (WP.RESULT.wandelement.validation.deckenanschluss_fehler||[]).length===2
+    && /Deckenanschluss \[A-27\]/.test(document.getElementById('warns').textContent));
+  // Speicher-Lade-Umlauf: das gespeicherte Element zurueck ins Formular -> dieselbe Liste.
+  WP.setManualDc([auto[0],auto[2]]);
+  const gespeichertDc=JSON.parse(JSON.stringify(store.aktivesWandelement()));
+  ok('[#95] Umlauf: der Override steht so im gespeicherten Element',
+    JSON.stringify(gespeichertDc.prestress.deckenanschluss_grid)===JSON.stringify([auto[0],auto[2]]));
+  WP.applyWand(gespeichertDc); WP.run();
+  ok('[#95] Umlauf: Laden liefert dieselbe Override-Liste zurueck',
+    JSON.stringify(WP.manualDc)===JSON.stringify([auto[0],auto[2]])
+    && JSON.stringify(ks())===JSON.stringify([auto[0],auto[2]])
+    && JSON.stringify(ps().deckenanschluss_grid)===JSON.stringify([auto[0],auto[2]]));
+  // Zurueck zu Auto: Override verschwindet vollstaendig, die Verteilung ist wieder da.
+  WP.dcAuto();
+  ok('[#95] Zurueck zu Auto: Override entfernt, nichts Verteiltes gespeichert',
+    WP.manualDc===null && !('deckenanschluss_grid' in ps())
+    && JSON.stringify(ks())===JSON.stringify(auto)
+    && WP.deckenanschlusspunkte.every(p=>p.art!=='manuell'));
+  WP.setDcEdit(false);
+  ok('[#95] Werkzeug aus: die Griffe verschwinden wieder',
+    !/class="dcp"/.test(svg()) && !/class="dcneu"/.test(svg()));
+  // Blosses LADEN darf keinen Punkt schreiben ([P-1]): ein Element ohne Override bleibt ohne.
+  const vorherDc=JSON.stringify(ps());
+  WP.applyWand(store.aktivesWandelement());
+  ok('[#95] blosses Laden schreibt keinen Deckenanschluss ins Element',
+    JSON.stringify(ps())===vorherDc && !('deckenanschluss_grid' in ps()) && WP.manualDc===null);
+  // Modul 3 bleibt unberuehrt: der Override bewegt weder Spannachsen noch Stueckliste.
+  const vorherBom=JSON.stringify(WP.RESULT.wandelement.bom);
+  const vorherAchsen=JSON.stringify(achsen());
+  WP.setManualDc([auto[0]]);
+  ok('[#95] der Override aendert weder Spannachsen noch Stueckliste (keine Statik)',
+    JSON.stringify(WP.RESULT.wandelement.bom)===vorherBom
+    && JSON.stringify(achsen())===vorherAchsen);
+  WP.dcAuto();
+}
+
 setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
 
 // ---------------------------------------------------------------------------------------------
