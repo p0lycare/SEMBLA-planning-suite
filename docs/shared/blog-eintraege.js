@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-27",
+    datum: "2026-09-08",
+    typ: "feature",
+    issue: 95,
+    titel: "Der Deckenanschluss ist in Wandansicht und Zeichnung zu sehen \u2014 und steht mit allen Teilen in der St\u00fcckliste",
+    testbitte: "In Modul 1 eine Wand \u00f6ffnen: an jedem Anschlusspunkt steht ein rotes Z; "
+      + "dieselbe Marke zeigt das Blatt in Modul 7, beide mit Legendeneintrag. In Modul 4 "
+      + "stehen die sieben Teile des Deckenanschlusses mit ihrer Menge.",
+  },
+  {
     id: "chg-20260908-26",
     datum: "2026-09-08",
     typ: "feature",

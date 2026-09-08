@@ -233,6 +233,28 @@ export function semblaBom(w) {
   // Zahl ([P-9]); den Leerfall entscheidet der Kern selbst, nicht diese Datei.
   const zwischenpunkte = wirksameZwischenpunkte(w).length;
 
+  // [P-24]/[A-26] Deckenanschluss: je Anschlusspunkt genau EINE Baugruppe „Deckenanschluss".
+  // Quelle ist ausschliesslich die vom Rechenkern gerechnete Punktliste
+  // (`wandelement.deckenanschlusspunkte`) — die Menge ist deren LAENGE und wird hier nie
+  // nachgerechnet. Eine Ersatzrechnung aus der Wandlaenge (ein Punkt je Meter, [A-26]) waere
+  // eine zweite Mengenquelle neben dem Kern und damit genau der Drift, den [P-6] ausschliesst;
+  // sie steht deshalb ausdruecklich nicht hier. Fehlt das Feld (Altbestand, gespeichertes
+  // Wandelement vor #95), ist die Menge 0 — es wird keine Punktzahl erfunden ([P-9]).
+  const deckenanschlusspunkte = Array.isArray(w.deckenanschlusspunkte)
+    ? w.deckenanschlusspunkte.length : 0;
+  // [P-24] Die beiden oberen Ausfuehrungen SCHLIESSEN EINANDER AUS: an einer Achse steht
+  // entweder der Wandabschluss ODER der Deckenanschluss. Der Rechenkern zaehlt an beiden
+  // dieselbe Spannplatte (`spannplatten`) — die Zahl der WANDABSCHLUESSE ist deshalb die der
+  // Spannplatten ABZUEGLICH der Anschlusspunkte. Ohne diesen Abzug traege eine Achse mit
+  // Deckenanschluss beide Baugruppen und waere doppelt gezaehlt.
+  //
+  // Nach unten begrenzt auf 0, und die Spannplattenmenge selbst bleibt UNANGETASTET: fuehrt
+  // eine Wand mehr Anschlusspunkte als Spannplatten — eine Wand mit KOPFBLECH etwa hat oben
+  // gar keine Platte, traegt nach [A-26] aber trotzdem Anschlusspunkte —, wird hier keine
+  // Platte erfunden und keine weggerechnet. Die Baugruppe fordert dann mehr, als der
+  // Rechenkern fuehrt, und genau das meldet die Aufloesung benannt ([P-9]).
+  const wandabschluesse = Math.max(0, spannplatten - deckenanschlusspunkte);
+
   // Boden- und Kopfblech sind PHYSISCH GETRENNTE Bauteile ([A-1]) und werden hier — in der
   // gemeinsamen Ausgabeschicht — aus den REAL vorhandenen Platten des Wandelements getrennt.
   // Der Rechenkern bleibt unveraendert; er fuehrt `base_plate`/`top_plate` (je mit `module`)
@@ -280,6 +302,7 @@ export function semblaBom(w) {
            stahlblech_module_kopf: blechKopf, blech_boden_teile: blechBodenTeile,
            stahlblech_mm: blechMm, stahlblech_dicke_mm: blechDicke,
            ausgleichspunkte, zwischenpunkte,
+           deckenanschlusspunkte, wandabschluesse,
            stossfugen, dichtstreifen_mm: dichtMm };
 }
 
@@ -297,6 +320,29 @@ export function semblaBom(w) {
  * @param {any} w Wandelement
  */
 function _abgedichtet(w) { return !!w && w.abdichtung === "abgedichtet"; }
+
+/**
+ * Einzelteile EINES Deckenanschlusspunkts ([P-24], Fachvorgabe vom 2026-09-08) — Reihenfolge,
+ * Klartext und Stueckzahl je Punkt.
+ *
+ * Die Liste ist eine FACHVORGABE und wird nie abgeleitet: kein Teil wird aus Erfahrung,
+ * Bauteilaehnlichkeit oder Vollstaendigkeitsgefuehl ergaenzt ([P-9]). Die Reihenfolge ist die der
+ * Vorgabe (Winkel, Verbindung der Winkel, Verankerung in der Decke, Befestigung an der Wand).
+ *
+ * `key` ist zugleich die Verwendungsrolle des Bauteilkatalogs ([P-13]); die Klartexte sind die
+ * der Rollen, damit Stueckliste und Katalog nicht zwei Namen fuer dasselbe Bauteil fuehren.
+ *
+ * Spannplatte und Spannmutter stehen hier NICHT — s. die Begruendung an der Einbaustelle unten.
+ */
+export const DECKENANSCHLUSS_TEILE = [
+  { key: "dc_winkel_wand",  je_punkt: 1, label: "Deckenanschluss – Winkel Wand" },
+  { key: "dc_winkel_decke", je_punkt: 1, label: "Deckenanschluss – Winkel Decke" },
+  { key: "dc_schraube",     je_punkt: 2, label: "Deckenanschluss – Sechskantschraube M10" },
+  { key: "dc_scheibe",      je_punkt: 2, label: "Deckenanschluss – Unterlegscheibe M10" },
+  { key: "dc_anker",        je_punkt: 2, label: "Deckenanschluss – Hohldeckenanker" },
+  { key: "dc_bohrschraube", je_punkt: 2, label: "Deckenanschluss – Bohrschraube" },
+  { key: "dc_scheibe_bohr", je_punkt: 2, label: "Deckenanschluss – Unterlegscheibe Bohrschraube" },
+];
 
 /**
  * FLACHE Positions-Liste der Stückliste — die Bauteile, wie der Rechenkern sie führt.
@@ -390,6 +436,43 @@ function _flachePositionen(w, b) {
       menge: b.zwischenpunkte },
     { key: "zp_mutter", label: "Mutter Einlegeblech (von oben)", unit: "Stk",
       menge: b.zwischenpunkte },
+    // [P-24]/#95 Deckenanschluss: je Anschlusspunkt genau EINE Baugruppe — hier stehen ihre
+    // Einzelteile FLACH ([P-19]), jede Verwendungsstelle als eigene Position, weil der
+    // Rollenschluessel zugleich der Stuecklistenschluessel ist ([P-13]): die beiden Scheiben
+    // sitzen an zwei verschiedenen Stellen und bleiben zwei Positionen, und die Sechskantschraube
+    // des Winkelstosses ist nicht die am Fuss (`senkkopf`). Zusammengelegt wird nichts.
+    //
+    // Die Stueckzahl je Punkt ist die FACHVORGABE vom 2026-09-08 ([P-24]) und wird nirgends
+    // abgeleitet: je ein Winkel Wand und Winkel Decke, je zwei Schrauben, Scheiben, Anker,
+    // Bohrschrauben und Scheiben zur Bohrschraube. Sie steht hier aus demselben Grund wie „ein
+    // Einlegeblech je Zwischenspannpunkt" ([A-25]): die ZAHL DER EINBAUSTELLEN kommt aus dem
+    // Rechenkern, die Zusammensetzung einer Einbaustelle ist eine Fachvorgabe. Die Baugruppe des
+    // Katalogs nennt dieselben Mengen; weicht sie ab, bleibt die ausgewiesene Menge die hier
+    // gerechnete und die Abweichung wird von der Aufloesung BENANNT ([P-9]).
+    //
+    // SPANNPLATTE UND SPANNMUTTER stehen ausdruecklich NICHT hier: der Deckenanschluss fuehrt
+    // dieselbe Platte und dieselbe Mutter wie der Wandabschluss, und der Rechenkern zaehlt sie
+    // an dieser Achse bereits ([A-3]). Sie hier erneut zu zaehlen waere genau die
+    // Doppelzaehlung, die [P-24] ausschliesst.
+    //
+    // OHNE Anschlusspunkt gibt es die Positionen GAR NICHT — keine Zeile mit Menge 0: eine
+    // solche Zeile behauptet weiter eine Einbaustelle und waere nach [P-14] eine bepreisbare
+    // Position ohne Bauteil (derselbe Grund, aus dem die Unterlegscheibe am Wandabschluss
+    // ersatzlos entfallen ist). Dasselbe gilt fuer ein Altbundle ohne die Punktliste ([P-9]).
+    //
+    // Die Stelle ist bewusst gewaehlt: unmittelbar hinter der Zwischenpunktgruppe und VOR der
+    // Bodenblechgruppe. Damit bleiben die geprueften Nachbarschaften Spannplatte -> Einlegeblech
+    // -> Mutter Einlegeblech, Bodenblech -> Ausgleichsblech -> Kopfblech ([A-18]) und die Lage
+    // der Dichtstreifen am Listenende ([A-6]) unberuehrt; jede bestehende Position behaelt ihre
+    // relative Ordnung.
+    //
+    // Kein `mass_mm`/`fertigmass_mm`: keine dieser Rollen hat einen Maß-Diskriminator, weil es
+    // keinen maßgebenden WANDwert gibt, an dem sich Winkel, Schraube, Scheibe oder Anker messen
+    // liessen — ein Maß hier waere ein erfundener Bezug. Auch NICHT `nachrichtlich`: das sind
+    // echte Einbaupositionen und werden regulaer bepreist ([P-14]).
+    ...(b.deckenanschlusspunkte > 0 ? DECKENANSCHLUSS_TEILE.map(t => ({
+      key: t.key, label: t.label, unit: "Stk", menge: t.je_punkt * b.deckenanschlusspunkte
+    })) : []),
     // [A-10]/[A-12] Bodenblech: je verwendeter Standardlänge und je Sonder-Fertigmaß eine
     // eigene Position — keine Modulzählung mehr. `mass_mm` ist das RASTERMASS (der
     // Preis-Diskriminator gegen das Katalogprodukt nach [P-14]), `fertigmass_mm` das reale
@@ -450,15 +533,29 @@ function _flachePositionen(w, b) {
  * eine gerechnete Zahl konfigurierbar zu machen ([P-6]). Der Katalog definiert allein,
  * WORAUS eine Baugruppe besteht ([P-21]).
  *
- * `set-wandabschluss` -> `spannplatten`: der Rechenkern zaehlt je Anker mit Spannplatte eine
+ * `set-wandabschluss` -> `wandabschluesse`: der Rechenkern zaehlt je Anker mit Spannplatte eine
  * Platte (Segmentfuss ueber einer Oeffnung und Segmentkopf, sofern nicht Kopfblech). Genau dort
- * sitzt der Wandabschluss. Die Muttern, die unmittelbar auf dem KOPFBLECH sitzen, stehen in
- * `spannmuttern` und gehoeren KEINER Baugruppe an — sie bleiben flacher Rest (s. u.).
+ * sitzt der obere Abschluss — ABZUEGLICH der Achsen, die ihn als DECKENANSCHLUSS ausfuehren
+ * ([P-24]: genau eine von zwei Ausfuehrungen, nie beide). Der Abzug liegt in `semblaBom()` und
+ * nicht hier, weil er eine Aussage ueber die WAND ist und keine ueber die Baugruppe. Die
+ * Muttern, die unmittelbar auf dem KOPFBLECH sitzen, stehen in `spannmuttern` und gehoeren
+ * KEINER Baugruppe an — sie bleiben flacher Rest (s. u.).
+ *
+ * `set-deckenanschluss` -> `deckenanschlusspunkte`: die LAENGE der vom Rechenkern gerechneten
+ * Punktliste ([A-26]/[A-27]) — je Anschlusspunkt genau eine Baugruppe. Bis zu diesem Paket gab
+ * es dafuer keine Einbaustelle im Kern; die Baugruppe blieb deshalb ausdruecklich unaufgeloest
+ * und wurde benannt gemeldet.
+ *
+ * Beide Quellen zusammen ergeben exakt `spannplatten` — keine Achse traegt zwei Baugruppen, und
+ * die ausgewiesene Zahl der Spannplatten bewegt sich durch die Aufloesung nicht.
  *
  * Eine Baugruppe ohne Eintrag hier hat keine bekannte Instanzquelle: sie wird BENANNT GEMELDET
  * und bleibt unaufgeloest — eine Anzahl wird nicht geraten ([P-9]).
  */
-export const SET_INSTANZQUELLE = { "set-wandabschluss": "spannplatten" };
+export const SET_INSTANZQUELLE = {
+  "set-wandabschluss": "wandabschluesse",
+  "set-deckenanschluss": "deckenanschlusspunkte",
+};
 
 /** Ganze Zahl ab 1 (Set-Positionsmenge nach [P-21])? */
 function _ganzAb1(v) { const n = Number(v); return Number.isInteger(n) && n >= 1; }

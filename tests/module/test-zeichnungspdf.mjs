@@ -237,11 +237,35 @@ ok("die bedingten Legendeneintraege haengen an denselben Abfragen ([D-4])",
       const i = liste.findIndex((x) => x.text === MONT.ZWISCHENPUNKT.label);
       const e = liste[i];
       const texte = nurText(Z.legendeHtml(w1));
-      // Position im HTML: unmittelbar vor dem i3-Eintrag, genau wie in der Datenliste.
+      // Position im HTML: unmittelbar vor dem Deckenanschluss ([P-24]/#95), genau wie in der
+      // Datenliste — bis dahin stand dort der i3-Eintrag.
       return !!e && e.marke_farbe === MONT.ZWISCHENPUNKT.farbe
         && Z.legendeHtml(w1).includes(MONT.ZWISCHENPUNKT.farbe)
+        && liste[i + 1]?.text === MONT.DECKENANSCHLUSS.label
+        && kompakt(texte).includes(
+          kompakt(MONT.ZWISCHENPUNKT.label + MONT.DECKENANSCHLUSS.label)); })());
+}
+// [P-24]/[D-10]/#95: derselbe Nachweis fuer den Deckenanschluss — der Eintrag haengt an der vom
+// Rechenkern gerechneten Punktliste, in beiden Legenden an derselben Abfrage. Eine Wand ohne
+// Anschlusspunkt bekommt ihn in KEINER der beiden.
+{
+  const w1 = ELEMENTE[1].wandelement;
+  const hatPdf = (el) => PDF.legendeWand(el).some((e) => e.text === MONT.DECKENANSCHLUSS.label);
+  const hatHtml = (el) => Z.legendeHtml(el).includes(MONT.DECKENANSCHLUSS.label);
+  ok("[#95] der Deckenanschluss-Eintrag haengt an derselben Abfrage wie im HTML",
+    (w1.deckenanschlusspunkte || []).length > 0 && hatPdf(w1) && hatHtml(w1)
+    && !hatPdf({}) && !hatHtml({}));
+  ok("[#95] er ist wortgleich, farbgleich und steht an derselben Stelle der Reihe",
+    (() => {
+      const liste = PDF.legendeWand(w1);
+      const i = liste.findIndex((x) => x.text === MONT.DECKENANSCHLUSS.label);
+      const e = liste[i];
+      const texte = nurText(Z.legendeHtml(w1));
+      return !!e && e.form === "zform" && e.marke_farbe === MONT.DECKENANSCHLUSS.farbe
+        && Z.legendeHtml(w1).includes(MONT.DECKENANSCHLUSS.farbe)
         && liste[i + 1]?.text === "i3 (37,5 cm)"
-        && kompakt(texte).includes(kompakt(MONT.ZWISCHENPUNKT.label + "i3 (37,5 cm)")); })());
+        && kompakt(texte).includes(
+          kompakt(MONT.DECKENANSCHLUSS.label + "i3 (37,5 cm)")); })());
   // Die Mutter ist kein Punkt mehr: der Spiegel fuehrt dieselbe Markenform wie das HTML.
   ok("[#110] die Kopplungs-/Verankerungsmarke ist der stehende Zylinder, kein Kreis",
     PDF.legendeWand(w1).find((e) => /Kopplung/.test(e.text))?.form === "zyl"

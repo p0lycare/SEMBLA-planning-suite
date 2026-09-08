@@ -26,7 +26,7 @@ import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
          // #110: die gemeinsame Symbolquelle der Spannkomponenten — das Blatt darf dafuer
          // keine eigene Geometrie und keine eigenen Hex-Werte fuehren ([D-4]).
          SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, mutterSvg,
-         ZWISCHENPUNKT } from "../../docs/shared/sembla-montage.js";
+         ZWISCHENPUNKT, DECKENANSCHLUSS } from "../../docs/shared/sembla-montage.js";
 import { wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
@@ -263,6 +263,53 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
   ok("[#110] die Legende benennt das Einlegeblech in Worten",
     Z.legendeHtml(W).includes(ZWISCHENPUNKT.label)
     && !Z.legendeHtml(W).includes('class="dot" style="background:' + Z.FARBE.mutter));
+}
+
+// [P-24]/[D-10]/#95/#97: der Deckenanschluss steht als rotes Z im Blatt — dieselbe Symbolform
+// wie in Modul 1, aus derselben Quelle, je Anschlusspunkt des Rechenkerns genau einmal.
+{
+  const dc = W.deckenanschlusspunkte || [];
+  const grp = /<g class="dcs">([\s\S]*?)<\/g>/.exec(svg);
+  ok("[#95] Deckenanschlusspunkte werden als eigene Gruppe gezeichnet",
+    dc.length > 0 && !!grp);
+  ok("[#95] je Anschlusspunkt genau ein Symbol, und keine Achse wird erfunden",
+    grp && (grp[1].match(/<polyline /g) || []).length === dc.length
+    && dc.every(p => (W.tension_columns || []).some(c => c.k === p.k)));
+  ok("[#95] das Z ist offen, oberer Schenkel links, unterer rechts", (() => {
+    if (!grp) return false;
+    const pts = /points="([^"]+)"/.exec(grp[1])[1].split(" ").map(t => t.split(",").map(Number));
+    // SVG-y waechst nach unten: der obere Schenkel liegt LINKS und HOEHER, der untere RECHTS.
+    return /fill="none"/.test(grp[1]) && pts.length === 4
+      && pts[0][1] === pts[1][1] && pts[2][1] === pts[3][1] && pts[0][1] < pts[2][1]
+      && pts[0][0] < pts[1][0] && pts[1][0] === pts[2][0] && pts[2][0] < pts[3][0]; })());
+  ok("[#95] es traegt die Kennfarbe des Deckenanschlusses, keine neue Farbe",
+    grp && grp[1].includes(DECKENANSCHLUSS.farbe));
+  // [D-9]: die Zeichenmasse sind die FESTEN Symbolmasse in Papier-mm — nicht aus der Wandgroesse
+  // oder dem Blattmasstab gerechnet. Geprueft an der gezeichneten Geometrie selbst.
+  ok("[D-9] Schenkellaenge, Hoehe und Strichstaerke sind die festen Symbolmasse", (() => {
+    if (!grp) return false;
+    const e = SPANN_EINHEIT.blatt;
+    const pts = /points="([^"]+)"/.exec(grp[1])[1].split(" ").map(t => t.split(",").map(Number));
+    const sw = +/stroke-width="([-\d.]+)"/.exec(grp[1])[1];
+    return Math.abs((pts[1][0] - pts[0][0]) - SPANN_MM.dc_schenkel * e) < 1e-6
+      && Math.abs((pts[3][0] - pts[2][0]) - SPANN_MM.dc_schenkel * e) < 1e-6
+      && Math.abs((pts[2][1] - pts[1][1]) - SPANN_MM.dc_h * e) < 1e-6
+      && Math.abs(sw - SPANN_MM.strich * e) < 1e-6; })());
+  // Die Gruppe steht VOR den Straengen: Gewindestange, Spannplatte und Kopplungsmutter liegen
+  // damit im Vordergrund (#112) und werden vom Symbol nicht verdeckt.
+  ok("[#112] die Gruppe steht vor den Straengen — die Gewindestange bleibt im Vordergrund",
+    svg.indexOf('<g class="dcs">') < svg.indexOf(`stroke="${Z.FARBE.stange}"`)
+    && svg.indexOf('<g class="dcs">') < svg.indexOf('<g class="kop">'));
+  ok("[#95] die Legende benennt den Deckenanschluss in Worten",
+    Z.legendeHtml(W).includes(DECKENANSCHLUSS.label)
+    && !Z.legendeHtml({}).includes(DECKENANSCHLUSS.label));
+  ok("[#95] Modul 7 fuehrt fuer das Symbol keine eigene Geometrie und keinen eigenen Hex-Wert",
+    (() => {
+      const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
+      return /deckenanschlussSvg/.test(q) && !/"#c0392b"/.test(q); })());
+}
+
+{
   ok("[#110] Modul 7 fuehrt keine eigene Symbolgeometrie und keine eigenen Hex-Werte", (() => {
     const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
     return /import \{[\s\S]*?mutterSvg[\s\S]*?\} from "\.\/sembla-montage\.js"/.test(q)

@@ -53,6 +53,9 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs kommen — wie der
   // Zuschnittschluessel — aus sembla-montage.js; die wirksamen Punkte aus dem Rechenkern.
   ZWISCHENPUNKT: MONT.ZWISCHENPUNKT, zwischenpunktSvg: MONT.zwischenpunktSvg,
+  // [P-24]/[D-10]/#95: ebenso Symbol, Kennfarbe und Klartext des Deckenanschlusses; die
+  // Anschlusspunkte selbst kommen aus dem Rechenkern.
+  DECKENANSCHLUSS: MONT.DECKENANSCHLUSS, deckenanschlussSvg: MONT.deckenanschlussSvg,
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten (Mutter, Kopplungsmutter,
   // Spannplatte) — dieselbe Quelle, aus der Modul 7 zeichnet; Modul 1 fuehrt dafuer keine
   // eigene Geometrie und keine lokalen Hex-Werte mehr.
@@ -782,8 +785,30 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
   ok('[#95] Auto wird NICHT gespeichert (kein Feld im Wandelement)',
     !('deckenanschluss_grid' in ps()) && WP.manualDc===null
     && WP.deckenanschlusspunkte.every(p=>p.art!=='manuell'));
-  ok('[#95] Auto: keine Griffe in der Wandansicht (Darstellung bleibt #97)',
+  ok('[#95] Auto: keine Griffe in der Wandansicht (Griffe nur im Editiermodus)',
     !/class="dcp"/.test(svg()) && !/class="dcneu"/.test(svg()));
+  // [P-24]/[D-10]/#97: Die DAUERHAFTE Darstellung ist das rote Z — sie haengt NICHT am
+  // Editiermodus und steht auch ohne ihn im Bild, je Anschlusspunkt genau einmal.
+  ok('[#95] Wandansicht zeichnet je Anschlusspunkt das gemeinsame Z-Symbol',
+    (svg().match(/<polyline class="dcs"/g)||[]).length===auto.length);
+  ok('[#95] das Z ist offen, oberer Schenkel links, unterer rechts', (()=>{
+    const m=svg().match(/<polyline class="dcs" points="([^"]+)"[^>]*fill="none"/);
+    if(!m) return false;
+    const p=m[1].split(' ').map(t=>t.split(',').map(Number));
+    // SVG-y waechst nach unten: der obere Schenkel liegt LINKS und hoeher, der untere RECHTS.
+    return p.length===4 && p[0][1]===p[1][1] && p[2][1]===p[3][1] && p[0][1]<p[2][1]
+      && p[0][0]<p[1][0] && p[1][0]===p[2][0] && p[2][0]<p[3][0]; })());
+  ok('[#95] Kennfarbe und Klartext kommen aus sembla-montage.js',
+    svg().includes(MONT.DECKENANSCHLUSS.farbe)
+    && zleg().includes(MONT.DECKENANSCHLUSS.label)
+    // Kein lokaler Hex-Wert in Modul 1 — auch nicht an den Griffen des Editiermodus ([D-4]).
+    && !/#c0392b/.test(html));
+  ok('[#95] Symbolgeometrie ist die geteilte Funktion (identische Zeichenkette)',
+    svg().includes(MONT.deckenanschlussSvg(0,0,1,{klasse:'dcs'}).slice(0,26)));
+  // #112: Gewindestange, Spannplatte und Kopplungsmutter liegen VOR dem Symbol.
+  ok('[#112] das Symbol steht vor den Straengen — die Gewindestange bleibt im Vordergrund',
+    svg().indexOf('<polyline class="dcs"')
+      < svg().indexOf(`stroke="${MONT.stueckFarbe('standard')}"`));
   // Werkzeug an: Griffe je Punkt, blasse Marke je freier Achse.
   WP.setDcEdit(true);
   ok('[#95] Werkzeug an + Griffe an der Wandoberkante gezeichnet',

@@ -50,7 +50,8 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
          SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg,
          // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
-         ZWISCHENPUNKT, zwischenpunktSvg } from "./sembla-montage.js";
+         ZWISCHENPUNKT, zwischenpunktSvg,
+         DECKENANSCHLUSS, deckenanschlussSvg } from "./sembla-montage.js";
 // #110: die wirksamen Zwischenspannpunkte kommen aus der EINEN Ableitung des Rechenkerns —
 // hier wird nichts nachgerechnet und keine Punkthoehe erfunden.
 import { wirksameZwischenpunkte } from "./sembla-core.js";
@@ -550,6 +551,25 @@ export function zeichnungSvg(w, opts = {}) {
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
   // Gruppe NACH den Straengen und Einlegeblechen gesetzt, damit sie kein Stangenstueck, keine
   // Platte und kein Blech ueberdeckt. Bemassung und Brandschutzgruppe bleiben danach.
+  // Deckenanschluss ([P-24]/[D-4], #95/#97): rotes Z je Anschlusspunkt, eigene Gruppe VOR den
+  // Straengen — Gewindestange, Spannplatte und Kopplungsmutter liegen damit im Vordergrund
+  // (#112). Gezeichnet werden die Punkte des Rechenkerns ([A-26]/[A-27]); gelaufen wird ueber
+  // die realen Spannachsen, der Punkt liefert nur die Zugehoerigkeit — es wird keine Achse
+  // erfunden. Symbol und Kennfarbe kommen aus sembla-montage.js, also dieselbe Form wie in der
+  // Wandansicht von Modul 1, ohne eigene Geometrie und ohne Bemassung am Bauteil.
+  // Bezugskante ist die LOKALE Oberkante der Achse (`_obenBei`) — dort liegt auch ihre
+  // Spannplatte; eine Achse unter einer Staffelstufe traegt ihr Symbol an der Stufenoberkante.
+  {
+    const dcK = new Set((w.deckenanschlusspunkte || []).map(p => p.k));
+    const dc = (w.tension_columns || []).filter(c => dcK.has(c.k));
+    if (dc.length) {
+      s += `<g class="dcs">`;
+      for (const col of dc)
+        s += deckenanschlussSvg(X(col.x_mm), Y(_obenBei(w, col.x_mm)), SYM, { n: _n });
+      s += `</g>`;
+    }
+  }
+
   let vorn = "";
   for (const col of (w.tension_columns || [])) {
     const x = X(col.x_mm), lt = _obenBei(w, col.x_mm);
@@ -948,6 +968,12 @@ export function legendeHtml(w) {
     // wirklich einen wirksamen Punkt fuehrt, und mit dem Klartext aus sembla-montage.js.
     + ((w && wirksameZwischenpunkte(w).length)
         ? `<span>${ip(ZWISCHENPUNKT.farbe)}${ZWISCHENPUNKT.label}</span>` : "")
+    // Deckenanschluss ([P-24]/#95): genannt nur, wenn die Wand wirklich einen Anschlusspunkt
+    // fuehrt. Das Legendenfeld traegt — wie das Einlegeblech — die KONTUR statt einer Fuellung,
+    // hier als Z mit oberem Schenkel links und unterem rechts, also dieselbe Form wie im Blatt.
+    + ((w && (w.deckenanschlusspunkte || []).length)
+        ? `<span><i class="dcs" style="border-color:${DECKENANSCHLUSS.farbe}"></i>`
+          + `${DECKENANSCHLUSS.label}</span>` : "")
     + `<span>${i(FARBE.i3, "plate")}i3 (37,5 cm)</span>`
     + `<span>${i(FARBE.i2, "plate")}i2 (25 cm)</span>`
     // Brandschutzklassifikation (#79): BEIDE Klassen stehen hier, jede mit ihrer
@@ -1071,6 +1097,14 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
   .zlegende i.zyl{height:11px;width:6px;border-radius:1px}
   .zlegende i.zsp{background:none;height:6px;width:12px;border-radius:0;
                   border-top:2px solid;border-left:2px solid;border-right:2px solid}
+  /* Deckenanschluss ([P-24]): Z — oberer Schenkel links, unterer rechts. Zwei Pseudoelemente,
+     weil der Zug aus drei Strecken besteht; die Farbe setzt der Aufrufer als border-color. */
+  .zlegende i.dcs{background:none;height:8px;width:13px;border-radius:0;position:relative;
+                  border-color:inherit}
+  .zlegende i.dcs::before{content:"";position:absolute;left:0;top:0;width:6px;height:0;
+                  border-top:2px solid;border-color:inherit}
+  .zlegende i.dcs::after{content:"";position:absolute;left:5px;top:0;width:8px;height:8px;
+                  border-left:2px solid;border-bottom:2px solid;border-color:inherit}
   .ztitleblock{grid-column:1 / span 2;grid-row:2;display:grid;
                grid-template-columns:2.2fr 1.2fr 1.1fr;border:1.5px solid #13202e;
                border-radius:3px;overflow:hidden;font-size:11px}

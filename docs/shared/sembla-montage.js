@@ -103,6 +103,8 @@ export const SPANN_MM = {
   platte_b_min: 3.2,   // Sichtbarkeitsuntergrenze der Plattenbreite (Symbolmass)
   blech_b: 4.4,        // Balkenbreite des Einlegeblechs ([A-14])
   blech_schenkel: 1.6, // Schenkellaenge des Einlegeblechs
+  dc_schenkel: 3.6,    // Schenkellaenge je Winkel des Deckenanschlusses ([P-24])
+  dc_h: 4.0,           // Hoehe des Z ueber der Wandoberkante (Winkelstoss bis Decke)
   strich: 0.40,        // Strichstaerke offener Profile
 };
 
@@ -313,6 +315,59 @@ export function zwischenpunktSvg(x, y, opts = {}) {
     s += mutterSvg(x, y, e, { n: opts.n, klasse: opts.klasse, auf: true,
       farbe: opts.mutter_farbe || SPANN_FARBE.mutter });
   return s;
+}
+
+/**
+ * Darstellungsschluessel des Deckenanschlusses ([P-24]/[D-4], #95/#97) — Kennfarbe und Klartext.
+ *
+ * Er liegt hier aus demselben Grund wie der Zwischenpunkt: dieselbe Baugruppe muss in der
+ * Wandansicht (Modul 1) und im Zeichnungsblatt (Modul 7) gleich aussehen, ein modul-eigener
+ * Schluessel waere die Drift, die [D-4] ausschliesst.
+ *
+ * Die Farbe ist ROT (Fachvorgabe 2026-09-08) und bewusst KEINE der Zuschnittfarben
+ * (`STUECK_FARBE`), keine der Anschlussfarben (`SPANN_FARBE`) und nicht die des Einlegeblechs
+ * (`ZWISCHENPUNKT`): der Deckenanschluss ist eine eigene Baugruppe und darf mit Stangenstueck,
+ * Spannplatte, Mutter und Einlegeblech nicht verwechselbar sein.
+ */
+export const DECKENANSCHLUSS = { farbe: "#c0392b", label: "Deckenanschluss" };
+
+/**
+ * Symbol des Deckenanschlusses ([P-24]/[D-4], #95/#97): ein rotes Z ueber der Wandoberkante —
+ * oberer Schenkel nach LINKS, unterer nach RECHTS (Fachvorgabe 2026-09-08).
+ *
+ * Gezeichnet wird die BAUGRUPPE als eine Marke, nicht ihre neun Einzelteile: die beiden Winkel
+ * bilden die zwei Schenkel, der senkrechte Zug dazwischen den Winkelstoss an der Spannachse.
+ * Schrauben, Scheiben, Anker und Bohrschrauben werden ausdruecklich NICHT gezeichnet — sie
+ * stehen in der Stueckliste ([P-24]), und ein Symbol ist eine Darstellungsmarke und kein
+ * Montagebild.
+ *
+ * Schenkellaenge, Hoehe und Strichstaerke sind FESTE SYMBOLMASSE aus `SPANN_MM` ([D-9]) und
+ * bewusst KEINE Bauteilmasse: die Masse der beiden Winkel liegen nicht vor und stehen im
+ * Katalog als ausdruecklich vorlaeufige Platzhalter — ein hier gesetztes mm-Mass liesse sich
+ * als Bauteilmass zurueckzulesen. Aus dem Symbol wird nichts abgeleitet.
+ *
+ * Das Symbol ist ein OFFENER Polylinienzug ohne Fuellung und traegt damit auch im
+ * Schwarz-Weiss-Ausdruck seine eigene Form — wie das Einlegeblech und anders als die
+ * gefuellten Zylinder.
+ *
+ * @param {number} x Zeichenkoordinate der Spannachse (= Lage des Anschlusspunkts)
+ * @param {number} y Zeichenkoordinate der Wandoberkante (Unterkante des unteren Schenkels)
+ * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,strich?:number}} [opts]
+ * @returns {string} SVG-Fragment (offener Polylinienzug)
+ */
+export function deckenanschlussSvg(x, y, e, opts = {}) {
+  const n = opts.n || (v => v);
+  const b = SPANN_MM.dc_schenkel * e, h = SPANN_MM.dc_h * e;
+  const sw = opts.strich != null ? opts.strich : SPANN_MM.strich * e;
+  const farbe = opts.farbe || DECKENANSCHLUSS.farbe;
+  const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
+  // Oberer Schenkel (Winkel Decke) nach LINKS, senkrechter Stoss auf der Spannachse, unterer
+  // Schenkel (Winkel Wand) nach RECHTS — die Reihenfolge ist die Fachvorgabe und nicht frei.
+  const pts = `${n(x - b)},${n(y - h)} ${n(x)},${n(y - h)} ${n(x)},${n(y)} `
+    + `${n(x + b)},${n(y)}`;
+  return `<polyline${kl} points="${pts}" fill="none" stroke="${farbe}" `
+    + `stroke-width="${n(sw)}" stroke-linejoin="miter"/>`;
 }
 
 /**

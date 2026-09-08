@@ -85,6 +85,16 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M4'
   // allein durch GENAU EIN gewaehltes Produkt ([P-14]).
   { id:'blech-einlege', kategorie:'blech_platte', bezeichnung:'Einlegeblech 110x30', einheit:'Stk', preis:0.35, breite_mm:110, hoehe_mm:30, dicke_mm:2 },
   { id:'mutter-einlege', kategorie:'verbrauch', bezeichnung:'Sechskantmutter M10 (Einlegeblech)', einheit:'Stk', preis:0.08 },
+  // [P-24]/#95 Deckenanschluss: sieben eigene Verwendungsstellen, je ein Produkt. Die beiden
+  // Scheiben und die Sechskantschraube sind ausdruecklich ANDERE Bauteile als die am Fuss bzw.
+  // die (entfallene) Scheibe am Wandabschluss — sie werden nicht zusammengelegt.
+  { id:'dc-winkel-wand', kategorie:'blech_platte', bezeichnung:'Winkel Wand (vorläufig)', einheit:'Stk', preis:3.1, breite_mm:60, hoehe_mm:60, dicke_mm:2 },
+  { id:'dc-winkel-decke', kategorie:'blech_platte', bezeichnung:'Winkel Decke (vorläufig)', einheit:'Stk', preis:3.2, breite_mm:60, hoehe_mm:60, dicke_mm:2 },
+  { id:'dc-schraube', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M10 DIN 933', einheit:'Stk', preis:0.22 },
+  { id:'dc-scheibe', kategorie:'verbrauch', bezeichnung:'Scheibe DIN 9021 M10', einheit:'Stk', preis:0.05 },
+  { id:'dc-anker', kategorie:'verbrauch', bezeichnung:'Hohldeckenanker FHY M8', einheit:'Stk', preis:1.15 },
+  { id:'dc-bohrschraube', kategorie:'verbrauch', bezeichnung:'Bohrschraube 5,5x32', einheit:'Stk', preis:0.18 },
+  { id:'dc-scheibe-bohr', kategorie:'verbrauch', bezeichnung:'Scheibe DIN 9021 6,4', einheit:'Stk', preis:0.04 },
   { id:'verb-fa1', kategorie:'verbinder', bezeichnung:'Verbinder FA-1', einheit:'Stk', preis:1.2 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1,5 m', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
 ]};
@@ -99,7 +109,10 @@ const ROLLEN_VOLL={ i3:['stein-i3'], i2:['stein-i2'], rod_std:['rod-1100'],
   unterlegscheibe:['scheibe'],
   blech_boden:['blech-boden-1250','blech-boden-750'],
   blech_kopf:['blech-kopf'], ausgleichsblech:['blech-ausgleich'], dicht_stk:['dicht-stk'],
-  einlegeblech:['blech-einlege'], zp_mutter:['mutter-einlege'] };
+  einlegeblech:['blech-einlege'], zp_mutter:['mutter-einlege'],
+  dc_winkel_wand:['dc-winkel-wand'], dc_winkel_decke:['dc-winkel-decke'],
+  dc_schraube:['dc-schraube'], dc_scheibe:['dc-scheibe'], dc_anker:['dc-anker'],
+  dc_bohrschraube:['dc-bohrschraube'], dc_scheibe_bohr:['dc-scheibe-bohr'] };
 function egVoll(){
   const e=standardEingaben();
   e.planung.produkte={ quelle:{name:KATALOG.name,version:1}, rollen:JSON.parse(JSON.stringify(ROLLEN_VOLL)) };
@@ -289,7 +302,9 @@ ok('Spannplatten = bom', byKey('spannplatte').menge===W.bom.spannplatten);
 // (SL.rows() -> stuecklistePositionen -> semblaBomItems).
 ok('keine Unterlegscheiben-Position mehr in der Stueckliste (hebt #92 auf)',
   rs.filter(r=>r.key==='unterlegscheibe').length===0
-  && !rs.some(r=>/Unterlegscheibe/i.test(r.label||'')));
+  // Die beiden Scheiben des DECKENANSCHLUSSES sind davon ausgenommen ([P-24]): andere
+  // Einbaustelle, eigene Rollen — sie sagen ueber den Wandabschluss nichts.
+  && !rs.filter(r=>!r.key.startsWith('dc_')).some(r=>/Unterlegscheibe/i.test(r.label||'')));
 // ERSATZLOS entfallen, NICHT auf Menge 0 gesetzt: eine Zeile mit 0 behauptet weiter eine
 // Einbaustelle und waere nach [P-14] eine bepreisbare Position ohne Bauteil.
 ok('die Position ist ersatzlos entfallen und steht nicht mit Menge 0 in der Liste',
@@ -361,8 +376,11 @@ const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key===
 const nRest=rs.filter(r=>r.key==='rod_rest').length;
 // [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
 const nBoden=rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder').length;
-ok('Positionen = 12 Wand + Stangen- und Bodenblechgruppen (ohne Aufbau)',
-  rs.length===12+nRod+nSonder+nRest+nBoden && rs.length>=14);
+// [P-24]/#95: dazu die SIEBEN Verwendungsstellen des Deckenanschlusses — die Testwand fuehrt
+// Anschlusspunkte, also stehen sie in der Liste.
+ok('Positionen = 12 Wand + 7 Deckenanschluss + Stangen- und Bodenblechgruppen (ohne Aufbau)',
+  rs.length===12+7+nRod+nSonder+nRest+nBoden && rs.length>=14
+  && W.deckenanschlusspunkte.length>0);
 ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
   rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));
 ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
@@ -509,8 +527,10 @@ ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
   // Die Positionen sind rein ADDITIV — Stelle benannt, alle uebrigen Werte gleich.
   ok('#93 Stelle: hinter der Ankergruppe, vor der Bodenblechgruppe', (()=>{
     const ks=pz.map(r=>r.key), i=ks.indexOf('einlegeblech');
+    // Zwischen der Mutter und dem Bodenblech steht seit #95 die Deckenanschlussgruppe ([P-24]).
+    const blech=ks[i+2+7];
     return i>0 && ks[i-1]==='spannplatte' && ks[i+1]==='zp_mutter'
-      && (ks[i+2]==='blech_boden' || ks[i+2]==='blech_boden_sonder'); })());
+      && (blech==='blech_boden' || blech==='blech_boden_sonder'); })());
   ok('#93 Nachbarschaft Bodenblech -> Ausgleichsblech -> Kopfblech bleibt unberührt ([A-18])', (()=>{
     const ks=pz.map(r=>r.key), i=ks.indexOf('ausgleichsblech');
     return i>0 && ks[i+1]==='blech_kopf'
@@ -634,7 +654,8 @@ const keineWarnliste = () => !document.getElementById('tbody').innerHTML.include
   ok('Altprojekt mit gewaehlter Unterlegscheibe: Wand bleibt gueltig, keine Position',
     Array.isArray(rAlt) && rAlt.length>0
     && !rAlt.some(x=>x.key==='unterlegscheibe')
-    && !rAlt.some(x=>/Unterlegscheibe/i.test(x.label||'')));
+    // Die Scheiben des Deckenanschlusses sind ausgenommen ([P-24]) — andere Einbaustelle.
+    && !rAlt.filter(x=>!x.key.startsWith('dc_')).some(x=>/Unterlegscheibe/i.test(x.label||'')));
   ok('Altprojekt: die entfallene Rolle erzeugt KEINE benannte Luecke',
     !zeileMit('Unterlegscheibe (Wandabschluss)'));
   ok('Altprojekt: die Vollstaendigkeitssumme kennt die entfallene Rolle nicht', (()=>{

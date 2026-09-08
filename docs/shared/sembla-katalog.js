@@ -705,8 +705,8 @@ export const ROLLEN = [
   // kein massgebender WANDwert, an dem sich Winkel, Schraube, Scheibe oder Anker messen liesse —
   // ein Kontextfeld waere ein erfundener Bezug. Eindeutig wird die Auswahl allein ueber genau
   // ein gewaehltes Produkt ([P-14]). Die EINBAUMENGE ist die Zahl der Deckenanschlusspunkte der
-  // Wand und kommt allein aus dem Rechenkern (#95, folgt in einem eigenen Paket); der Katalog
-  // sagt hier nur, WORAUS die Baugruppe besteht.
+  // Wand und kommt allein aus dem Rechenkern ([A-26], #95); der Katalog sagt hier nur, WORAUS
+  // die Baugruppe besteht.
   { id: "dc_winkel_wand", label: "Deckenanschluss – Winkel Wand", kategorie: "blech_platte",
     modul: 1, gruppe: "Anschluss", einheit: "Stk", mass: null, bepreist: true,
     hinweis: "Der wandseitige Winkel der Deckenanschluss-Baugruppe (Werkstoff nach Vorgabe: "

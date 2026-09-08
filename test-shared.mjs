@@ -1,10 +1,13 @@
 // Drift-Schutz: die gemeinsame semblaBom() muss mit der Core-BOM übereinstimmen.
 import { readFileSync } from "node:fs";
 import { buildWall, Opening, wirksameZwischenpunkte } from "./docs/shared/sembla-core.js";
-import { einbauteile, semblaBom, semblaBomItems, semblaBomSets } from "./docs/shared/sembla-bom.js";
+import { einbauteile, semblaBom, semblaBomItems, semblaBomSets,
+         DECKENANSCHLUSS_TEILE } from "./docs/shared/sembla-bom.js";
 import { parseKatalog } from "./docs/shared/sembla-katalog.js";
 import { stuecklistePositionen } from "./docs/shared/sembla-export.js";
 
+// Reihenfolge der Deckenanschlussteile in der flachen Liste ([P-24], Fachvorgabe 2026-09-08).
+const DC_KEYS = DECKENANSCHLUSS_TEILE.map(t=>t.key);
 let pass=0, fail=0; const t=(n,c)=>{ if(c)pass++; else { fail++; console.log("FAIL  "+n); } };
 const cases=[
   ["ref1_glatt", 1000,2000,[]],
@@ -36,9 +39,11 @@ for(const [name,l,h,ops] of cases){
   // das Ausgleichsblech aus #96 die zehnte, Einlegeblech und Mutter aus [A-25]/#93 die elfte
   // und zwoelfte; die Unterlegscheibe aus #92 ist mit der Fachauskunft 2026-09-08 wieder
   // ENTFALLEN) + je Gewindestangengruppe eine + je Bodenblech-Teilgruppe eine
-  // ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß).
-  t(name+" · Positionen = 12 + Stangen- und Bodenblechgruppen",
-    semblaBomItems(w).length === 12 + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
+  // ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß) + die SIEBEN Verwendungsstellen des
+  // Deckenanschlusses ([P-24]/#95), die es nur bei wirklich vorhandenem Anschlusspunkt gibt.
+  t(name+" · Positionen = 12 + Deckenanschluss + Stangen- und Bodenblechgruppen",
+    semblaBomItems(w).length === 12 + (b.deckenanschlusspunkte > 0 ? 7 : 0)
+      + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
       + b.blech_boden_teile.length);
   // [A-25]/#93 Einlegeblech und Mutter: je GENAU EINE Position, Menge = Zahl der wirksamen
   // Zwischenspannpunkte. Verglichen wird gegen `wirksameZwischenpunkte(w).length` — NICHT gegen
@@ -59,8 +64,32 @@ for(const [name,l,h,ops] of cases){
   // [A-18] geprüfte Nachbarschaft Bodenblech -> Ausgleichsblech -> Kopfblech unberührt.
   t(name+" · Einlegeblech und Mutter stehen hinter der Spannplatte, vor dem Bodenblech", (()=>{
     const ks=semblaBomItems(w).map(it=>it.key), i=ks.indexOf('einlegeblech');
+    // Hinter der Mutter folgt die Deckenanschlussgruppe ([P-24]) und erst danach das Bodenblech;
+    // ohne Anschlusspunkt entfaellt sie ersatzlos und das Bodenblech schliesst unmittelbar an.
+    const nach=ks.slice(i+2, i+2+(b.deckenanschlusspunkte>0?7:0)+1);
+    const blech=nach.pop();
     return i>0 && ks[i-1]==='spannplatte' && ks[i+1]==='zp_mutter'
-      && (ks[i+2]==='blech_boden' || ks[i+2]==='blech_boden_sonder'); })());
+      && nach.join()===DC_KEYS.slice(0, b.deckenanschlusspunkte>0?7:0).join()
+      && (blech==='blech_boden' || blech==='blech_boden_sonder'); })());
+  // [P-24]/#95 Deckenanschluss: je Verwendungsstelle EINE Position, Menge = Stueckzahl je Punkt
+  // mal Zahl der Anschlusspunkte des Rechenkerns. Verglichen wird gegen
+  // `w.deckenanschlusspunkte.length` — nicht gegen eine Ersatzrechnung aus der Wandlaenge.
+  t(name+" · Deckenanschlussteile = Fachvorgabe mal Zahl der Anschlusspunkte ([P-24])", (()=>{
+    const n=w.deckenanschlusspunkte.length, its=semblaBomItems(w);
+    return n>0 && DECKENANSCHLUSS_TEILE.every(tl=>{
+      const ps=its.filter(it=>it.key===tl.key);
+      return ps.length===1 && ps[0].unit==='Stk' && ps[0].menge===tl.je_punkt*n
+        && ps[0].label===tl.label && !ps[0].nachrichtlich
+        && ps[0].mass_mm===undefined && ps[0].fertigmass_mm===undefined; }); })());
+  t(name+" · semblaBom fuehrt die Zahl der Anschlusspunkte selbst",
+    b.deckenanschlusspunkte===w.deckenanschlusspunkte.length);
+  // [P-24] Die Ankerzaehlung bleibt unberuehrt: der Deckenanschluss zaehlt Platte und Mutter
+  // NICHT erneut — er tritt an die Stelle des Wandabschlusses, statt zu ihm hinzuzukommen.
+  t(name+" · Deckenanschluss erhoeht keine Ankermenge ([P-24])", (()=>{
+    const its=semblaBomItems(w);
+    return its.find(it=>it.key==='spannplatte').menge===w.bom.spannplatten
+      && its.find(it=>it.key==='spannmutter').menge===w.bom.spannmuttern
+      && b.wandabschluesse===Math.max(0, w.bom.spannplatten-w.deckenanschlusspunkte.length); })());
   // Ein Zwischenspannpunkt ist KEIN Anker ([A-16]): die Ankerzaehlung bleibt unberührt.
   t(name+" · Zwischenspannpunkte erhoehen keine Ankermenge ([A-16])",
     b.spannplatten===w.bom.spannplatten && b.spannmuttern===w.bom.spannmuttern);
@@ -83,8 +112,11 @@ for(const [name,l,h,ops] of cases){
   // Ersatzlos entfallen — NICHT mit Menge 0 gefuehrt ([P-14]).
   t(name+" · keine Unterlegscheiben-Position (hebt #92 auf)", (()=>{
     const its=semblaBomItems(w);
+    // Die beiden Scheiben des DECKENANSCHLUSSES sind ausdruecklich davon ausgenommen ([P-24]):
+    // sie sitzen an einer anderen Einbaustelle und tragen eigene Rollen.
+    const ohneDc=its.filter(it=>!it.key.startsWith('dc_'));
     return !its.some(it=>it.key==='unterlegscheibe')
-      && !its.some(it=>/Unterlegscheibe/i.test(it.label||'')); })());
+      && !ohneDc.some(it=>/Unterlegscheibe/i.test(it.label||'')); })());
   // Die Spannmutternzahl ist davon UNBERUEHRT: eine je Spannplatte plus die Muttern, die
   // unmittelbar auf dem Kopfblech sitzen.
   t(name+" · Spannmutternzahl unberuehrt", (()=>{
@@ -368,21 +400,33 @@ for(const [name,l,h,ops] of cases){
         && je("spannmutter")[0].menge === w.bom.spannmuttern
         && je("unterlegscheibe").length === 0; })());
     // Instanzzahl ausschliesslich aus dem unveraenderten Rechenkern.
-    // [P-24]/#95: Der Deckenanschluss hat in DIESEM Stand noch keine Einbaustelle im Rechenkern
-    // (die Verteilung der Anschlusspunkte folgt als eigenes Paket). Er bleibt deshalb
-    // ausdruecklich UNAUFGELOEST und wird BENANNT gemeldet — genau eine Instanz (Wandabschluss),
-    // genau eine Meldung, und keine einzige ausgewiesene Menge bewegt sich dadurch.
-    t("P-23 · " + nm + " · Instanzzahl = bom.spannplatten", (() => {
-      const st = semblaBomSets(w, KAT), i = st.instanzen[0];
-      return st.instanzen.length === 1 && i.feld === "spannplatten"
-        && i.anzahl === w.bom.spannplatten; })());
-    t("P-24 · " + nm + " · Deckenanschluss ohne Einbaustelle: benannt gemeldet, nichts geraten",
+    // [P-24]/#95: Die beiden oberen Ausfuehrungen schliessen einander aus — die Zahl der
+    // Wandabschluesse ist die der Spannplatten ABZUEGLICH der Anschlusspunkte, die des
+    // Deckenanschlusses die Zahl der Anschlusspunkte. Zusammen ergeben sie genau die
+    // Spannplatten des Rechenkerns: keine Achse traegt zwei Baugruppen.
+    t("P-24 · " + nm + " · Instanzzahlen: Wandabschluss + Deckenanschluss = bom.spannplatten",
       (() => {
-        const st = semblaBomSets(w, KAT);
-        return st.meldungen.length === 1 && /Deckenanschluss/.test(st.meldungen[0])
-          && /Instanzquelle/.test(st.meldungen[0])
-          && !st.instanzen.some(i => i.set === "set-deckenanschluss")
-          && !st.positionen.some(x => x.set === "set-deckenanschluss"); })());
+        const st = semblaBomSets(w, KAT), dc = w.deckenanschlusspunkte.length;
+        const wa = st.instanzen.find(i => i.set === "set-wandabschluss");
+        const dz = st.instanzen.find(i => i.set === "set-deckenanschluss");
+        return st.instanzen.length === 2
+          && wa.feld === "wandabschluesse" && dz.feld === "deckenanschlusspunkte"
+          && dz.anzahl === dc && wa.anzahl === Math.max(0, w.bom.spannplatten - dc)
+          // Kopfblech: mehr Anschlusspunkte als Platten — dann bleibt es beim Rest, und die
+          // Ueberforderung wird eigens gemeldet (s. die Gegenprobe unten).
+          && (w.bom.spannplatten >= dc
+            ? wa.anzahl + dz.anzahl === w.bom.spannplatten : wa.anzahl === 0); })());
+    // Die Einzelteile der Winkelbaugruppe loesen sich auf die flachen Positionen auf, ohne dass
+    // sich eine ausgewiesene Menge bewegt — die Aufloesung ist eine Re-Ausdrueckung, keine
+    // zweite Mengenquelle ([P-23]).
+    t("P-24 · " + nm + " · Deckenanschluss ist aufgeloest, ohne eine Menge zu bewegen", (() => {
+      const st = semblaBomSets(w, KAT), dc = w.deckenanschlusspunkte.length;
+      const pos = st.positionen.filter(x => x.set === "set-deckenanschluss");
+      return dc > 0 && pos.length === 9
+        && DECKENANSCHLUSS_TEILE.every(tl => {
+          const p2 = pos.find(x => x.key === tl.key);
+          return p2 && p2.je_instanz === tl.je_punkt && p2.stueck === tl.je_punkt * dc; })
+        && spur(semblaBomItems(w, KAT)) === spur(semblaBomItems(w)); })());
     // Ein Katalog OHNE Baugruppen ergibt bitgenau den Stand ohne Baugruppen.
     t("P-23 · " + nm + " · Katalog ohne Baugruppen = Stand ohne Baugruppen (bitgenau)",
       JSON.stringify(semblaBomItems(w, ohneSets)) === JSON.stringify(flach));
@@ -402,11 +446,20 @@ for(const [name,l,h,ops] of cases){
   {
     const w = faelle[3][1], st = semblaBomSets(w, KAT);
     const mu = semblaBomItems(w, KAT).find(it => it.key === "spannmutter");
-    t("P-23 · Kopfblech: keine Baugruppen-Instanz, Spannmutter bleibt flacher Rest",
-      w.bom.spannplatten === 0 && st.instanzen[0].anzahl === 0 && st.positionen.length === 0
-      && mu.menge === w.bom.spannmuttern && mu.menge > 0
-      // einzige Meldung ist die des noch nicht gerechneten Deckenanschlusses ([P-24])
-      && st.meldungen.length === 1 && /Deckenanschluss/.test(st.meldungen[0]));
+    // [P-24]: Eine Wand mit Kopfblech hat oben KEINE Spannplatte, traegt nach [A-26] aber
+    // trotzdem Anschlusspunkte. Der Deckenanschluss fordert dann mehr Platten, als der
+    // Rechenkern fuehrt — die ausgewiesene Menge bleibt die gerechnete (0), die Abweichung wird
+    // BENANNT, und es wird weder eine Platte erfunden noch eine weggerechnet.
+    t("P-23 · Kopfblech: kein Wandabschluss, Spannmutter bleibt flacher Rest",
+      w.bom.spannplatten === 0
+      && st.instanzen.find(i => i.set === "set-wandabschluss").anzahl === 0
+      && st.instanzen.find(i => i.set === "set-deckenanschluss").anzahl
+         === w.deckenanschlusspunkte.length
+      && mu.menge === w.bom.spannmuttern && mu.menge > 0);
+    t("P-24 · Kopfblech: Ueberforderung der Spannplatte wird benannt, nichts erfunden", (() => {
+      const pl = semblaBomItems(w, KAT).find(it => it.key === "spannplatte");
+      return pl.menge === 0 && st.meldungen.length === 1
+        && /spannplatte/.test(st.meldungen[0]) && /gerechnete/.test(st.meldungen[0]); })());
   }
 
   // Unbekannte Verwendungsrolle: BENANNT gemeldet, und keine Position bekommt eine geratene
@@ -432,7 +485,7 @@ for(const [name,l,h,ops] of cases){
       && JSON.stringify(semblaBomItems(w, fremd)) === JSON.stringify(semblaBomItems(w)));
     // Fordert eine Baugruppe mehr, als der Rechenkern fuehrt: die gerechnete Menge gilt.
     const zuviel = { ...KAT, sets: [{ id: "set-wandabschluss", name: "Wandabschluss",
-      positionen: [{ rolle: "spannplatte", menge: 3 }] }] };
+      positionen: [{ rolle: "spannplatte", menge: 30 }] }] };
     t("P-23 · Ueberforderung: ausgewiesen bleibt die gerechnete Menge, Abweichung benannt", (() => {
       const st2 = semblaBomSets(w, zuviel);
       const pl = semblaBomItems(w, zuviel).find(it => it.key === "spannplatte");

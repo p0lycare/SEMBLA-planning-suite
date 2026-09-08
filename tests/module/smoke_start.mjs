@@ -1113,8 +1113,15 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
   // ohne Bedarf waere `nicht_erforderlich` und fiele aus `offen` heraus. Die Zahl 13 ist bewusst
   // NICHT festgeschrieben (sie folgt der gerechneten Punktliste des Kerns, [P-6]); geprueft wird
   // die Aussage „Bedarf vorhanden, Produkt nicht gewaehlt".
-  const OFFEN_ERWARTET = ['einlegeblech', 'zp_mutter', 'ausgleichsblech'];
-  ok('Vorlage + Standardkatalog: alles loest auf ausser den drei nicht gewaehlten Bauteilen (#96/#93)',
+  //
+  // [P-24]/#95 Mit dem Deckenanschluss kommen SIEBEN weitere solche Positionen hinzu — dieselbe
+  // Aussagerichtung: die Musterwand hat Anschlusspunkte (der Kern rechnet sie nach [A-26]), die
+  // Vorlage nennt die sieben Rollen aber nicht. Auch sie stehen als offene Zeilen mit benanntem
+  // Grund und nicht als geratenes Produkt. Reihenfolge ist die der flachen Liste.
+  const OFFEN_ERWARTET = ['einlegeblech', 'zp_mutter',
+    'dc_winkel_wand', 'dc_winkel_decke', 'dc_schraube', 'dc_scheibe', 'dc_anker',
+    'dc_bohrschraube', 'dc_scheibe_bohr', 'ausgleichsblech'];
+  ok('Vorlage + Standardkatalog: alles loest auf ausser den zehn nicht gewaehlten Bauteilen (#96/#93/#95)',
     offen.length === OFFEN_ERWARTET.length
     && offen.map(r => r.key).join() === OFFEN_ERWARTET.join()
     && offen.every(r => r.status === 'keine_auswahl' && r.ep === null && r.gp === null

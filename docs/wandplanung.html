@@ -70,6 +70,13 @@
   /* Einlegeblech ([A-14]): nach unten offenes eckiges C — dieselbe Form wie im Bild. */
   .zlegende i.zsp{width:14px;height:6px;border-top:2px solid currentColor;
                   border-left:2px solid currentColor;border-right:2px solid currentColor}
+  /* Deckenanschluss ([P-24]): Z mit oberem Schenkel links und unterem rechts — dieselbe Form
+     wie im Bild. Zwei Pseudoelemente, weil der Zug aus drei Strecken besteht. */
+  .zlegende i.dcs{position:relative;width:14px;height:8px;border-top:0}
+  .zlegende i.dcs::before{content:"";position:absolute;left:0;top:0;width:7px;height:0;
+                  border-top:2px solid currentColor}
+  .zlegende i.dcs::after{content:"";position:absolute;left:5px;top:0;width:9px;height:8px;
+                  border-left:2px solid currentColor;border-bottom:2px solid currentColor}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -269,6 +276,7 @@ let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
 // sembla-montage.js; die wirksamen Punkte liefert die eine Ableitung des Rechenkerns.
 let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
+let DECKENANSCHLUSS, deckenanschlussSvg;
 let SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
@@ -614,6 +622,26 @@ function draw(w){
   // werden erst nach Strängen, Ankern und Einlegeblechen angehängt. In SVG entscheidet allein
   // die Zeichenreihenfolge, und eine Kopplung darf von keinem Stangenstück, keiner Platte und
   // keinem Blech überdeckt werden.
+  // ---- Deckenanschluss: rotes Z-Symbol je Anschlusspunkt ([P-24]/[D-4], #95/#97) ----
+  // Gezeichnet werden die Punkte aus der EINEN Ableitung des Rechenkerns
+  // (`w.deckenanschlusspunkte`, [A-26]/[A-27]) — hier wird nichts nachgerechnet und keine Achse
+  // erfunden; gelaufen wird über die realen Spannachsen, der Punkt liefert nur die Zugehörigkeit.
+  // Geometrie, Kennfarbe und Klartext kommen aus sembla-montage.js ([D-4]), also dieselbe Quelle
+  // wie das Einlegeblech; ein lokaler Hex-Wert oder eine eigene Symbolgeometrie wäre Drift.
+  //
+  // Das Symbol steht VOR den Strängen in der Zeichenkette: Gewindestange, Spannplatte und
+  // Kopplungsmutter liegen damit im Vordergrund (#112) und werden vom Symbol nicht verdeckt.
+  //
+  // Bezugskante ist die LOKALE Oberkante der Achse (`topH(col.k)`) — genau dort, wo auch die
+  // Spannplatte dieser Achse liegt. Bei einer Achse UNTER einer Staffelstufe ist das die
+  // Stufenoberkante und nicht die volle Wandhöhe: der wandseitige Winkel sitzt am Kopf SEINER
+  // Achse. Die Staffelung bekommt nach [A-26] keine eigene Anschlussebene — das ist eine Aussage
+  // über die VERTEILUNG, nicht über die Zeichnung, und ein Symbol an der vollen Wandhöhe schwebte
+  // über einer Achse, die dort gar nicht endet.
+  { const dcK=new Set((w.deckenanschlusspunkte||[]).map(p=>p.k));
+    for(const col of w.tension_columns){ if(!dcK.has(col.k)) continue;
+      s+=deckenanschlussSvg(X(col.x_mm),Y(topH(col.k)),SYM,{klasse:'dcs'}); } }
+
   let vorn='';
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
@@ -691,15 +719,18 @@ function draw(w){
   // (rotes Z-Symbol) ist ausdrücklich nicht hier, sondern Gegenstand von #97.
   // Erkennbar getrennt wie beim Spannachsen-Editor (#106): eine Achse OHNE Anschlusspunkt
   // zeigt eine blasse Strichmarke samt `cursor:copy`, eine belegte trägt den Griff.
+  // Die Kennfarbe der Griffe ist die des BAUTEILS aus sembla-montage.js ([D-4]) — seit #97
+  // zeichnet die Ansicht das Symbol dauerhaft, und ein zweiter Hex-Wert hier wäre Drift.
   if(dcEdit){ const punkte=new Set((w.deckenanschlusspunkte||[]).map(p=>p.k));
+    const dcf=DECKENANSCHLUSS.farbe;
     const yT=Y(H);
     for(const col of w.tension_columns){ const ax=X(col.x_mm), on=(selDc===col.k);
       if(!punkte.has(col.k)){
-        s+=`<line class="dcneu" x1="${ax}" y1="${yT-14}" x2="${ax}" y2="${yT-4}" stroke="#c0392b" stroke-width="1" stroke-dasharray="2 3" stroke-opacity="0.35" style="cursor:copy"/>`;
+        s+=`<line class="dcneu" x1="${ax}" y1="${yT-14}" x2="${ax}" y2="${yT-4}" stroke="${dcf}" stroke-width="1" stroke-dasharray="2 3" stroke-opacity="0.35" style="cursor:copy"/>`;
         continue; }
-      s+=`<line class="dcp" x1="${ax}" y1="${yT-16}" x2="${ax}" y2="${yT}" stroke="${on?'#c9461c':'#c0392b'}" stroke-width="${on?3:2}" stroke-opacity="0.9" style="cursor:grab"/>`;
-      s+=`<circle cx="${ax}" cy="${yT-16}" r="${on?5:4}" fill="${on?'#c9461c':'#c0392b'}" stroke="#fff" stroke-width="1.2" style="cursor:grab"/>`;
-      s+=`<text x="${ax}" y="${yT-22}" font-size="9" fill="${on?'#c9461c':'#c0392b'}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
+      s+=`<line class="dcp" x1="${ax}" y1="${yT-16}" x2="${ax}" y2="${yT}" stroke="${on?'#c9461c':dcf}" stroke-width="${on?3:2}" stroke-opacity="0.9" style="cursor:grab"/>`;
+      s+=`<circle cx="${ax}" cy="${yT-16}" r="${on?5:4}" fill="${on?'#c9461c':dcf}" stroke="#fff" stroke-width="1.2" style="cursor:grab"/>`;
+      s+=`<text x="${ax}" y="${yT-22}" font-size="9" fill="${on?'#c9461c':dcf}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
 
   // ---- Reihennummern der Steinreihen (links) ----
   for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
@@ -742,8 +773,13 @@ function renderZLegende(w){
   // wirklich einen wirksamen Punkt gibt, und mit dem Klartext aus sembla-montage.js.
   const zpEintrag = (w && wirksameZwischenpunkte(w).length)
     ? `<span><i class="zsp" style="color:${ZWISCHENPUNKT.farbe}"></i>${ZWISCHENPUNKT.label}</span>` : '';
+  // [P-24] Ebenso der Deckenanschluss — genannt nur, wenn die Wand wirklich einen Anschlusspunkt
+  // führt, mit dem Klartext aus sembla-montage.js. Das Legendenfeld trägt die KONTUR statt einer
+  // Füllung, weil das Symbol ein offener Zug ist und beide dieselbe Form zeigen müssen ([D-4]).
+  const dcEintrag = (w && (w.deckenanschlusspunkte||[]).length)
+    ? `<span><i class="dcs" style="color:${DECKENANSCHLUSS.farbe}"></i>${DECKENANSCHLUSS.label}</span>` : '';
   const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
-  if(!alle.length){ box.innerHTML=zpEintrag; return; }   // kein bestimmter Zuschnitt -> keine Zuschnittlegende
+  if(!alle.length){ box.innerHTML=zpEintrag+dcEintrag; return; }   // kein bestimmter Zuschnitt -> keine Zuschnittlegende
   // Auch die Standardlänge wird nur genannt, wenn sie wirklich vorkommt: ein Stand aus reinem
   // Sonderzuschnitt plus Reststück ([Z-2]/[Z-6]) hat keine Standardlänge, und die Legende darf
   // keine behaupten. Reihenfolge bleibt standard · sonder · rest.
@@ -752,7 +788,7 @@ function renderZLegende(w){
   box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
     + teile.map(a=>`<span><i style="color:${stueckFarbe(a)}"></i>${STUECK_LABEL[a]}</span>`).join('')
     + `<span><i class="kop" style="color:${SPANN_FARBE.mutter}"></i>Kopplung</span>`
-    + zpEintrag;
+    + zpEintrag + dcEintrag;
 }
 
 // ---------- Öffnungs-UI ----------
@@ -1526,6 +1562,7 @@ window.__wpInit=function(){
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
+  DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten — eine Quelle für Modul 1 und 7.
   SPANN_FARBE=S.SPANN_FARBE; SPANN_EINHEIT=S.SPANN_EINHEIT; mutterSvg=S.mutterSvg;
@@ -1551,12 +1588,14 @@ window.__wpInit=function(){
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
   import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
-           ZWISCHENPUNKT, zwischenpunktSvg, SPANN_FARBE, SPANN_EINHEIT, mutterSvg,
+           ZWISCHENPUNKT, zwischenpunktSvg, DECKENANSCHLUSS, deckenanschlussSvg,
+           SPANN_FARBE, SPANN_EINHEIT, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
+                    DECKENANSCHLUSS, deckenanschlussSvg,
                     SPANN_FARBE, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg,
                     spannplatteSvg, schraubeSvg };
   mountNavbar(1);

@@ -83,7 +83,7 @@ import {
 import { bodenblechStoesse, bodenblechTeile, STUECK_LABEL,
          // #110: Kennfarbe und Klartext des Einlegeblechs — derselbe Schluessel, den das
          // Blatt-SVG benutzt; eine zweite Werteliste hier waere Drift ([D-4]).
-         ZWISCHENPUNKT } from "./sembla-montage.js";
+         ZWISCHENPUNKT, DECKENANSCHLUSS } from "./sembla-montage.js";
 // #110: die wirksamen Zwischenspannpunkte kommen aus der EINEN Ableitung des Rechenkerns —
 // dieselbe Abfrage wie in `legendeHtml()`, damit der bedingte Eintrag gekoppelt bleibt.
 import { wirksameZwischenpunkte } from "./sembla-core.js";
@@ -260,6 +260,17 @@ function _marke(x, basis, fs, z) {
     const y0 = basis - h * 1.1, y1 = y0 + h;
     return { svg: `<polyline points="${_n(x)},${_n(y1)} ${_n(x)},${_n(y0)}`
       + ` ${_n(x + w)},${_n(y0)} ${_n(x + w)},${_n(y1)}" fill="none"`
+      + ` stroke="${z.marke_farbe}" stroke-width="${_n(lw)}" stroke-linejoin="miter"/>`,
+      breite: w + fs * 0.4 };
+  }
+  // [P-24]/[D-10]: das Z des Deckenanschlusses (13 x 8 ohne Fuellung, oberer Schenkel links,
+  // unterer rechts) — woertlich das `<i class="dcs">`-Kaestchen der HTML-Legende. Ein gefuellter
+  // Balken zeigte nicht die Form, die das Blatt zeichnet, und waere damit ein zweiter Schluessel.
+  if (z.form === "zform") {
+    const w = _mmPx(13), h = _mmPx(8), lw = _mmPx(2), b = w / 2;
+    const y0 = basis - h * 1.1, y1 = y0 + h;
+    return { svg: `<polyline points="${_n(x)},${_n(y0)} ${_n(x + b)},${_n(y0)}`
+      + ` ${_n(x + b)},${_n(y1)} ${_n(x + w)},${_n(y1)}" fill="none"`
       + ` stroke="${z.marke_farbe}" stroke-width="${_n(lw)}" stroke-linejoin="miter"/>`,
       breite: w + fs * 0.4 };
   }
@@ -626,6 +637,11 @@ export function legendeWand(w) {
     // Wortlaut und derselben Kennfarbe. Eine Wand ohne wirksamen Punkt bekommt ihn nicht.
     ...(wirksameZwischenpunkte(el).length
       ? [{ form: "profil", marke_farbe: ZWISCHENPUNKT.farbe, text: ZWISCHENPUNKT.label }] : []),
+    // [P-24]/[D-10]: der Deckenanschluss — an GENAU DERSELBEN Abfrage wie im HTML (die vom
+    // Rechenkern gerechnete Punktliste), an derselben Stelle der Reihe, mit demselben Wortlaut
+    // und derselben Kennfarbe. Eine Wand ohne Anschlusspunkt bekommt ihn in keiner der beiden.
+    ...((el.deckenanschlusspunkte || []).length
+      ? [{ form: "zform", marke_farbe: DECKENANSCHLUSS.farbe, text: DECKENANSCHLUSS.label }] : []),
     { form: "plate", marke_farbe: FARBE_Z.i3, text: "i3 (37,5 cm)" },
     { form: "plate", marke_farbe: FARBE_Z.i2, text: "i2 (25 cm)" },
     { form: "kuerzel", kuerzel: BRAND_Z.F0.kuerzel, marke_farbe: BRAND_Z.F0.farbe,

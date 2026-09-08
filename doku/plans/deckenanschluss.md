@@ -1,6 +1,6 @@
 # Deckenanschluss: Katalog-Set, Verteilung mit Editiermodus, Darstellung und Stückliste
 
-**Status:** abgestimmter Umsetzungsplan (Tibor, 2026-09-08) — **Paket 1 und 2 umgesetzt** (2026-09-08); Paket 3 offen
+**Status:** abgestimmter Umsetzungsplan (Tibor, 2026-09-08) — **alle drei Pakete umgesetzt** (2026-09-08)
 **Issues:** #95 (Verteilung, Editiermodus, Baugruppe) · #94 (Sets im Bauteilkatalog) · #97 (Zeichnungssymbole)
 **Ziel:** Der Deckenanschluss wird ein vollständig geplantes Bauteil: als Baugruppe im Bauteilkatalog,
 regelbasiert auf Spannachsen verteilt und manuell bearbeitbar, in Modul 1 und Modul 7 sichtbar und in
@@ -166,7 +166,7 @@ Umlauf in `tests/module/smoke_wp.mjs` (25 Fälle); goldene Fixtures und
 
 ---
 
-## Paket 3 – Darstellung in Modul 1 und 7 und Stückliste  ⬜ offen
+## Paket 3 – Darstellung in Modul 1 und 7 und Stückliste  ✅ umgesetzt (2026-09-08)
 
 **Nutzerergebnis:** Der Deckenanschluss ist in Wandansicht und technischer Zeichnung als rotes
 Z-Symbol zu sehen und steht mit allen Einzelteilen in der Stückliste.
@@ -185,6 +185,56 @@ Z-Symbol zu sehen und steht mit allen Einzelteilen in der Stückliste.
    `semblaBomItems()` ([P-23]), Ausgabe bleibt flach ([P-19]).
 4. Drift-Test: Modul 4, zentraler Export, Gesamtstückliste und Zeichnungsblatt liefern identische
    Mengen; Regressionstests der Ausgaben anpassen.
+
+### Umgesetzt
+
+**Symbol** genau einmal in `docs/shared/sembla-montage.js`: `DECKENANSCHLUSS` (Kennfarbe `#c0392b`,
+Klartext „Deckenanschluss") und `deckenanschlussSvg()` — ein offener Polylinienzug, oberer Schenkel
+links (Winkel Decke), senkrechter Stoß auf der Spannachse, unterer Schenkel rechts (Winkel Wand).
+Schenkellänge, Höhe und Strichstärke sind feste Symbolmaße in `SPANN_MM` (`dc_schenkel`, `dc_h`)
+nach [D-9]; die neun Einzelteile werden ausdrücklich **nicht** gezeichnet.
+
+**Leser**: `docs/wandplanung.html` (Modul 1) und `docs/shared/sembla-zeichnung.js` (Modul 7 und
+zentraler Export) zeichnen es als eigene Gruppe **vor** den Strängen — Gewindestange, Spannplatte
+und Kopplungsmutter bleiben damit im Vordergrund (#112). Bezugskante ist die **lokale** Oberkante
+der Achse; beide Legenden führen den Eintrag nur bei wirklich vorhandenem Anschlusspunkt, mit
+derselben Form (Z als Kontur) und demselben Klartext. Der Datenspiegel der PDF-Legende
+(`sembla-zeichnungspdf.js`, `legendeWand`) trägt ihn an derselben Stelle mit der neuen Markenform
+`zform`.
+
+**Stückliste**: `SET_INSTANZQUELLE` bindet `set-deckenanschluss` an die neue Core-Menge
+`deckenanschlusspunkte` (Länge der Punktliste) und `set-wandabschluss` an `wandabschluesse`
+(= Spannplatten − Anschlusspunkte, mindestens 0). Beide Instanzzahlen zusammen ergeben genau die
+Spannplatten des Rechenkerns; die ausgewiesene Menge von Spannplatte und Spannmutter bewegt sich
+nicht. Die sieben übrigen Verwendungsstellen stehen flach in `_flachePositionen()` mit der
+Stückzahl je Punkt aus `DECKENANSCHLUSS_TEILE` (Fachvorgabe [P-24]) — hinter der
+Zwischenpunktgruppe und vor der Bodenblechgruppe, ohne Anschlusspunkt ersatzlos entfallend statt
+mit Menge 0.
+
+**Handbuch**: neue Regel **[D-10]** (Symbol des Deckenanschlusses); **[A-26]** und **[P-24]** sind
+um die jetzt eingelöste Mengenaussage und die Verrechnung der beiden Instanzzahlen fortgeschrieben.
+
+**Tests**: `test-shared.mjs` (Positionszahl, Reihenfolge, Mengen je Punkt, beide Instanzzahlen,
+Kopfblech-Gegenprobe), `tests/module/test-zeichnungspdf.mjs` (Legendengleichheit HTML ↔ PDF),
+`tests/module/smoke_wp.mjs` und `tests/module/smoke_start.mjs` angepasst. `npm run test:all` läuft
+vollständig grün; `npm run handbuch` neu erzeugt.
+
+### Offene Punkte aus Paket 3
+
+- **Wand mit Kopfblech.** Sie trägt nach [A-26] Anschlusspunkte, hat oben aber gar keine
+  Spannplatte. Die Baugruppe fordert dann mehr Platten, als der Rechenkern führt; die ausgewiesene
+  Menge bleibt die gerechnete (0) und die Abweichung wird **benannt gemeldet** — es wird weder
+  eine Platte erfunden noch eine weggerechnet. Ob eine solche Wand überhaupt einen Deckenanschluss
+  bekommen soll, ist eine **fachliche** Frage und ist hier bewusst nicht durch eine Rechenregel
+  entschieden.
+- **Anschlusspunkt unter einer Staffelstufe** (aus Paket 2): Das Symbol sitzt an der Oberkante
+  **seiner** Achse, also an der Stufenoberkante — dort, wo auch die Spannplatte dieser Achse liegt.
+  Die Mengenwirkung ist keine andere als an jeder anderen Achse. Eine **Decke** wird bewusst nicht
+  gezeichnet.
+- **Modul 5** (Baugruppenbild) zeigt den Deckenanschluss weiterhin nicht — derselbe benannte
+  Nachziehpunkt wie bei Fußfolge und Symbolmaßen.
+- Die **Maße der beiden Winkel** stehen weiterhin als ausdrücklich vorläufige Platzhalter im
+  Katalog (offener Punkt aus Paket 1, unverändert).
 
 ### Ergebnis
 
