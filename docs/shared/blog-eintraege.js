@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-02",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 113,
+    titel: "Die St\u00fccklistendateien f\u00fchren Norm, Werkstoff, Oberfl\u00e4che, Hersteller und Artikelnummer mit",
+    testbitte: "In Modul 0 die Baustellenst\u00fcckliste einer Wand und die Gesamtst\u00fcckliste eines Geschosses exportieren: hinter den bisherigen Spalten steht der Beschaffungsblock, bei nicht eindeutig zugeordneten Positionen leer.",
+  },
+  {
     id: "chg-20260909-01",
     datum: "2026-09-09",
     typ: "feature",

@@ -1376,6 +1376,8 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const csvAng=stuecklisteCsv(WU, eingabenMit, {...opt, fassung:'angepasst'}, KAT_ECHT);
     /** Zeile einer Position aus der CSV (Spalte 0 = Bezeichnung). */
     const csvZeile=(csv,label)=>csv.split('\n').map(z=>z.split(';')).find(z=>z[0]===label)||[];
+    /** Spaltenkopf der Tabelle — Grundlage jeder Adressierung ueber Namen statt Indizes. */
+    const spaltenkopfCsv=csv=>(csv.split('\n').find(z=>z.startsWith('Einbauteil;'))||'').split(';');
     const labelI3=SL.rows().find(r=>r.key==='i3').label;
 
     ok('#81 dieselbe Wand: berechnete Fassung trägt die abgeleitete Menge',
@@ -1394,10 +1396,13 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       /1 gespeicherte Übersteuerung\(en\) NICHT angewandt/.test(csvBer));
     ok('#81 Gesamtpreis folgt der wirksamen Menge bei unverändertem Einzelpreis', (()=>{
       const b=csvZeile(csvBer,labelI3), a=csvZeile(csvAng,labelI3);
-      // EP steht in beiden Fassungen an derselben Stelle relativ zum Zeilenende — seit #81
-      // liegt hinter „Zuordnung“ noch die angehängte Kommentarspalte.
-      return b[b.length-6]==='9.5' && a[a.length-6]==='9.5'
-        && b[b.length-5]===String(berechnetI3*9.5) && a[a.length-5]===String(3*9.5); })());
+      // Adressiert wird ueber SPALTENNAMEN, nie ueber den Abstand zum Zeilenende: hinter
+      // „Zuordnung“ liegen die angehängte Kommentarspalte (#81) und der Beschaffungsblock
+      // (#113), und ein weiterer angehängter Block darf diesen Test nicht kippen.
+      const iEP=csv=>spaltenkopfCsv(csv).findIndex(n=>/^EP \(/.test(n));
+      const iGP=csv=>spaltenkopfCsv(csv).findIndex(n=>/^GP \(/.test(n));
+      return b[iEP(csvBer)]==='9.5' && a[iEP(csvAng)]==='9.5'
+        && b[iGP(csvBer)]===String(berechnetI3*9.5) && a[iGP(csvAng)]===String(3*9.5); })());
     ok('#81 ohne Fassungsangabe gilt die berechnete Fassung (Default)',
       stuecklisteCsv(WU, eingabenMit, opt, KAT_ECHT)===csvBer
       && stuecklisteCsv(WU, eingabenMit, {...opt, fassung:'quatsch'}, KAT_ECHT)===csvBer);
@@ -1576,30 +1581,37 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
       const zellen=(csv,label)=>csv.split('\n').map(z=>z.split(';')).find(z=>z[0]===label)||[];
       /** Kopfzeile der Tabelle (die Zeile, die mit „Einbauteil“ beginnt). */
       const spaltenkopf=csv=>(csv.split('\n').find(z=>z.startsWith('Einbauteil;'))||'').split(';');
+      /**
+       * Wert EINER benannten Spalte. Adressiert wird ueber den SPALTENNAMEN, seit #113
+       * ausdruecklich nicht mehr ueber den Abstand zum Zeilenende: hinter „Kommentar“ steht
+       * jetzt der angehängte Beschaffungsblock, und jeder weitere Anhang liesse einen
+       * Endindex-Test still auf die falsche Spalte zeigen.
+       */
+      const spalte=(csv,label,name)=>zellen(csv,label)[spaltenkopf(csv).indexOf(name)];
       const labelI3=SL.rows().find(r=>r.key==='i3').label;
       const labelRod=SL.rows().find(r=>r.key==='rod_std').label;
 
       // Erst der Vergleichsstand OHNE Kommentare — er trägt die Spalte trotzdem.
       const csvLeer=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
-      ok('#81 die Kommentarspalte steht immer als letzte Spalte der Wandstückliste',
-        spaltenkopf(csvLeer).at(-1)==='Kommentar'
+      ok('#81 die Kommentarspalte steht in jeder Wandstückliste, hinter „Zuordnung“',
+        spaltenkopf(csvLeer).indexOf('Kommentar')===spaltenkopf(csvLeer).indexOf('Zuordnung')+1
         && /\nKommentare;0 von \d+ Position\(en\) kommentiert/.test(csvLeer));
       ok('#81 eine Position ohne Kommentar hat eine leere Zelle ohne Platzhalter',
-        zellen(csvLeer,labelI3).at(-1)===''
-        && zellen(csvLeer,labelRod).at(-1)==='');
+        spalte(csvLeer,labelI3,'Kommentar')===''
+        && spalte(csvLeer,labelRod,'Kommentar')==='');
 
       echterStore.setzeKommentar(kennungI3, 'zwei Steine gebrochen', wid);
       const eng=echterStore.holeEingaben(wid);
       const csvBer2=stuecklisteCsv(WU, eng, opt, KAT_ECHT);
       const csvAng2=stuecklisteCsv(WU, eng, {...opt, fassung:'angepasst'}, KAT_ECHT);
       ok('#81 der Kommentar steht in der Datei an genau seiner Position',
-        zellen(csvBer2,labelI3).at(-1)==='zwei Steine gebrochen'
-        && zellen(csvBer2,labelRod).at(-1)===''
+        spalte(csvBer2,labelI3,'Kommentar')==='zwei Steine gebrochen'
+        && spalte(csvBer2,labelRod,'Kommentar')===''
         && /\nKommentare;1 von \d+ Position\(en\) kommentiert/.test(csvBer2));
       ok('#81 beide Mengenfassungen tragen denselben Kommentar an derselben Position',
-        zellen(csvAng2,labelI3).at(-1)==='zwei Steine gebrochen'
-        && zellen(csvAng2,labelRod).at(-1)===''
-        && spaltenkopf(csvAng2).at(-1)==='Kommentar');
+        spalte(csvAng2,labelI3,'Kommentar')==='zwei Steine gebrochen'
+        && spalte(csvAng2,labelRod,'Kommentar')===''
+        && spaltenkopf(csvAng2).includes('Kommentar'));
 
       // [P-20]: keine Ableitung — SPALTENWEISE gegen den Stand ohne Kommentar geprüft.
       // Ein Roh-Byte-Vergleich der ganzen Datei ginge nicht: die Spalte ist immer da.
@@ -1609,13 +1621,19 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
         return zeilenOhne.every((zo,i)=>{
           const zm=zeilenMit[i];
           if(/^Kommentare;/.test(zo)) return /^Kommentare;/.test(zm);
-          // Datenzeilen: alles bis auf die letzte (Kommentar-)Zelle muss gleich sein.
+          // Datenzeilen: alles AUSSER der Kommentarzelle muss gleich sein — die Spalte wird
+          // namentlich ausgeschnitten, damit der angehängte Beschaffungsblock (#113)
+          // mitgeprüft und nicht versehentlich mit ausgeblendet wird.
+          const iK=spaltenkopf(csvLeer).indexOf('Kommentar');
           const a=zo.split(';'), b=zm.split(';');
-          return a.length===b.length && a.slice(0,-1).join(';')===b.slice(0,-1).join(';');
+          if(a.length!==b.length) return false;
+          const ohneK=x=>x.filter((_,j)=>j!==iK).join(';');
+          return ohneK(a)===ohneK(b);
         }); })());
       ok('#81 der Kommentar ändert Menge, Einzelpreis und Gesamtsumme nicht',
-        zellen(csvBer2,labelI3)[5]===zellen(csvLeer,labelI3)[5]
-        && zellen(csvBer2,labelI3).at(-6)===zellen(csvLeer,labelI3).at(-6)
+        spalte(csvBer2,labelI3,'Menge')===spalte(csvLeer,labelI3,'Menge')
+        && spalte(csvBer2,labelI3,spaltenkopf(csvLeer).find(n=>/^EP \(/.test(n)))
+           ===spalte(csvLeer,labelI3,spaltenkopf(csvLeer).find(n=>/^EP \(/.test(n)))
         && csvBer2.split('\n').find(z=>z.startsWith('Summe netto;'))
            ===csvLeer.split('\n').find(z=>z.startsWith('Summe netto;')));
 
@@ -1630,9 +1648,23 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
         echterStore.setzeKommentar(kennungI3, 'Bruch; "Rest" bleibt', wid);
         const csvQ=stuecklisteCsv(WU, echterStore.holeEingaben(wid), opt, KAT_ECHT);
         const zeile=csvQ.split('\n').find(z=>z.startsWith(labelI3+';'))||'';
-        ok('#81 ein Kommentar mit Semikolon/Anführungszeichen wird korrekt maskiert',
-          zeile.endsWith(';"Bruch; ""Rest"" bleibt"')
-          && csvQ.split('\n').length===csvBer2.split('\n').length);
+        ok('#81 ein Kommentar mit Semikolon/Anführungszeichen wird korrekt maskiert', (()=>{
+          // Zerlegt wird QUOTING-BEWUSST: das naive `split(';')` zerrisse genau die Zelle,
+          // um die es hier geht. Geprüft wird, dass der Text ungekürzt in seiner Spalte
+          // ankommt und die Zeile die reguläre Spaltenzahl behält — hinter dem Kommentar
+          // steht seit #113 der Beschaffungsblock, ein Endindex trüge hier nicht mehr.
+          const zellenQ=(z)=>{const out=[];let c='',q=false;
+            for(let i=0;i<z.length;i++){const ch=z[i];
+              if(q){ if(ch==='"'){ if(z[i+1]==='"'){c+='"';i++;} else q=false; } else c+=ch; }
+              else if(ch==='"') q=true;
+              else if(ch===';'){out.push(c);c='';}
+              else c+=ch;}
+            out.push(c); return out;};
+          const k=spaltenkopf(csvQ), zq=zellenQ(zeile);
+          return zeile.includes('"Bruch; ""Rest"" bleibt"')
+            && zq.length===k.length
+            && zq[k.indexOf('Kommentar')]==='Bruch; "Rest" bleibt'
+            && csvQ.split('\n').length===csvBer2.split('\n').length; })());
         echterStore.setzeKommentar(kennungI3, 'zwei Steine gebrochen', wid);
       }
 

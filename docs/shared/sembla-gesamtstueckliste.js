@@ -358,6 +358,12 @@ export function gesamtDaten(umf, leser = {}, opts = {}) {
           fertigmass_mm: p.fertigmass_mm,
           ep: p.ep, gp: null, status: p.status, statusText: p.statusText,
           bepreisbar: p.bepreisbar, produktId: p.produktId, preisbasis: p.preisbasis,
+          // Das nach [P-14] aufgeloeste PRODUKT reist mit (#113), damit die Datei die
+          // Beschaffungsangaben zeigen kann, ohne sie nachzuschlagen. Eindeutig ist das,
+          // weil `_faltSchluessel` `produktId`, `status` und `ep` traegt: alle Positionen
+          // einer gefalteten Zeile haben genau dieses eine Produkt. Abgeleitet wird daraus
+          // nichts — Mengen, Preise und die Aufloesung selbst bleiben unberuehrt.
+          produkt: p.produkt || null,
           herkunft: [], ids: [], wandIds: [],
         };
         map.set(k, ziel);

@@ -15,7 +15,7 @@
  */
 
 import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems } from "./sembla-bom.js";
-import { EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation } from "./sembla-katalog.js";
+import { BESCHAFFUNGSFELDER, EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation } from "./sembla-katalog.js";
 import { berechneAufbau } from "./sembla-aufbau.js";
 import { montageDokument } from "./sembla-montage.js";
 import { optionenAusEingaben, zeichnungDokument, zeichnungSvgDatei } from "./sembla-zeichnung.js";
@@ -243,6 +243,103 @@ export function wirksameKommentare(positionen, kommentareRoh) {
   return { text, anzahl, unzulaessig, fremd, gespeichert: Object.keys(map).length };
 }
 
+// ---------- Beschaffungsblock je Stuecklistenposition (#113) ----------
+//
+// Wer bestellt, braucht mehr als die Produkt-Kennung. Hinter den bisherigen Spalten steht
+// deshalb ein BESCHAFFUNGSBLOCK mit den Einkaufsangaben des Katalogprodukts. Quelle ist
+// AUSSCHLIESSLICH das je Position nach [P-14] aufgeloeste Produkt (`position.produkt`) —
+// nie die Bezeichnung, nie ein Freitext, nie ein Ersatzprodukt. Abgeleitet wird daraus
+// NICHTS: Mengen, Fertigmaß, Einzel- und Gesamtpreis, Summen und die Preisaufloesung selbst
+// bleiben unberuehrt, und die neuen Textfelder grenzen keine Auswahl ein.
+//
+// ANGEHAENGT wird der Block aus derselben Begruendung wie die Kommentarspalte ([P-20], #81):
+// so bleiben die Spaltenindizes aller bisherigen Spalten UND der Summenzeilen unveraendert
+// und die Dateien maschinell vergleichbar. Es gibt ihn IMMER — ein Spaltensatz, der davon
+// abhinge, ob jemand Beschaffungsangaben gepflegt hat, waere nicht vergleichbar.
+//
+// Wanddatei und Gesamtdatei benutzen DIESELBEN zwei Bausteine; eine zweite Spaltenliste
+// waere genau der Drift, den [P-6] ausschliesst.
+
+/** Beschriftung eines Beschaffungsfelds aus der EINEN Katalogquelle (kein zweiter Wortlaut). */
+function _beschLabel(feld, ersatz) {
+  const f = BESCHAFFUNGSFELDER.find((x) => x.feld === feld);
+  return (f && f.label) || ersatz;
+}
+
+/**
+ * Der Beschaffungsblock als geordnete Spaltenfolge (#113).
+ *
+ * Die Reihenfolge steht hier AUSDRUECKLICH und wird nicht aus `BESCHAFFUNGSFELDER`
+ * abgeleitet: Güte und Gewinde sind kategoriespezifische Merkmale und die Abmessung ist aus
+ * den Maßfeldern gebildet — beide stehen zwischen den fuenf allgemeinen Angaben. Die
+ * BESCHRIFTUNGEN kommen trotzdem von dort, damit es sie nur einmal im Wortlaut gibt.
+ */
+export const BESCHAFFUNG_SPALTEN = [
+  "Produktbezeichnung",
+  _beschLabel("norm", "Norm") + " / Typ",
+  _beschLabel("werkstoff", "Werkstoff"),
+  "Güte",
+  _beschLabel("oberflaeche", "Oberfläche"),
+  "Gewinde",
+  "Abmessung (mm)",
+  _beschLabel("hersteller", "Hersteller"),
+  _beschLabel("artikelnr", "Artikelnummer"),
+];
+
+/** Eine Beschaffungszelle: getrimmter Text, sonst LEER — nie ein Platzhalter. */
+function _beschText(v) {
+  return v == null ? "" : String(v).trim();
+}
+
+/**
+ * Abmessung eines Produkts aus seinen REALEN Maßfeldern (#113).
+ *
+ * Bewusst NICHT `katalog.massText()`: das fuehrt zusaetzlich das Gewinde mit (hier eine
+ * eigene Spalte) und liefert fuer ein Produkt ohne Maße ein „–“. Hier bleibt die Zelle
+ * LEER — ohne Platzhalter und ohne geratenen Wert.
+ *
+ * Reihenfolge wie in `MASSFELDER`: Breite × Höhe × Dicke als Querschnitt, danach die Länge.
+ * Ein fehlendes Feld entfaellt ersatzlos; fehlen alle, ist die Zelle leer. Die Einheit steht
+ * in der Spaltenueberschrift und wird nicht je Zelle wiederholt.
+ * @param {any} p
+ */
+function _abmessung(p) {
+  if (!p) return "";
+  const z = (v) => (v == null || v === "" || !Number.isFinite(+v) ? null : +v);
+  const quer = [z(p.breite_mm), z(p.hoehe_mm), z(p.dicke_mm)].filter((v) => v != null);
+  const l = z(p.laenge_mm);
+  const t = [];
+  if (quer.length) t.push(quer.join(" × "));
+  if (l != null) t.push("L " + l);
+  return t.join(" · ");
+}
+
+/**
+ * Die Zellen des Beschaffungsblocks EINER Position (#113) — immer genau
+ * `BESCHAFFUNG_SPALTEN.length` Stueck, damit die Zeilenbreite konstant bleibt.
+ *
+ * Ohne eindeutig aufgeloestes Produkt (`produkt == null`: kein Katalog, keine Auswahl,
+ * fehlend, kategorie-/einheiten-/maßfremd, mehrdeutig, nachrichtlich, nicht bepreist,
+ * Menge 0) sind ALLE Zellen leer; der Grund steht unveraendert in der Spalte „Zuordnung“
+ * ([P-9]/[P-14]). Es wird kein Ersatzprodukt herangezogen.
+ * @param {any} produkt das nach [P-14] aufgeloeste Katalogprodukt oder null
+ * @returns {Array<string>}
+ */
+export function beschaffungZellen(produkt) {
+  if (!produkt) return new Array(BESCHAFFUNG_SPALTEN.length).fill("");
+  return [
+    _beschText(produkt.bezeichnung),
+    _beschText(produkt.norm),
+    _beschText(produkt.werkstoff),
+    _beschText(produkt.guete),
+    _beschText(produkt.oberflaeche),
+    _beschText(produkt.gewinde),
+    _abmessung(produkt),
+    _beschText(produkt.hersteller),
+    _beschText(produkt.artikelnr),
+  ];
+}
+
 /**
  * Baustellenstückliste als AoA (Array-of-Arrays) — Basis fuer CSV/Excel. Enthaelt je
  * Einbauteil-Position Art, Fertigmaß, Wandreferenz und die Einbauteil-IDs ([P-19]) sowie
@@ -330,13 +427,19 @@ export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
     // ANGEHAENGT (s. o.): so bleiben die Indizes aller uebrigen Spalten und der Summenzeilen
     // unveraendert. Die Spalte gibt es IMMER — ein Spaltensatz, der davon abhaengt, ob jemand
     // kommentiert hat, waere maschinell nicht vergleichbar.
-    "Kommentar"];
+    "Kommentar",
+    // Dahinter der Beschaffungsblock (#113) — aus demselben Grund angehaengt und aus
+    // demselben Baustein wie in der Gesamtdatei.
+    ...BESCHAFFUNG_SPALTEN];
   if (angepasst) spalten.splice(6, 0, "Menge berechnet", "Mengenherkunft");
   const zeilen = rs.map(r => {
     const z = [r.label, _artText(r), r.fertigmass_mm == null ? "" : r.fertigmass_mm,
       r.wand || "", r.unit, r.menge, r.ids.join(" "),
       n2(r.ep), n2(r.gp), r.produktId || "", r.preisbasis || "", r.statusText,
-      kom.text[mengenKennung(r)] || ""];
+      kom.text[mengenKennung(r)] || "",
+      // Der Block haengt am aufgeloesten PRODUKT, nicht an der Menge: er ist damit in beiden
+      // Mengenfassungen wortgleich ([P-20]) — die Fassungs-`splice`s liegen alle davor.
+      ...beschaffungZellen(r.produkt)];
     if (angepasst) z.splice(6, 0, r.__berechnet, r.__ueber == null ? "berechnet" : "manuell");
     return z;
   });
@@ -519,7 +622,10 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   }
 
   const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge",
-    "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung"];
+    "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung",
+    // Derselbe Beschaffungsblock wie in der Wanddatei (#113): dieselben Ueberschriften in
+    // derselben Reihenfolge, weil beide aus DEMSELBEN Baustein kommen.
+    ...BESCHAFFUNG_SPALTEN];
   // Beide Werte gleichzeitig ([P-20]): die wirksame Menge in „Menge“, die berechnete
   // daneben — Wortlaut wie in der Wanddatei, damit beide Blaetter gleich zu lesen sind.
   // Eingefuegt wird unmittelbar hinter „Menge“ (Index 4), unabhaengig davon, welche
@@ -533,7 +639,10 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   const zeilen = daten.positionen.map(r => {
     const z = [r.label, r.art ? r.art_symbol + " " + r.art_label : "",
       r.fertigmass_mm == null ? "" : r.fertigmass_mm, r.unit, r.menge,
-      r.ids.join(" "), r.produktId || "", r.statusText];
+      r.ids.join(" "), r.produktId || "", r.statusText,
+      // Das aufgeloeste Produkt reist seit #113 durch das Falten mit; alle Positionen einer
+      // gefalteten Zeile teilen es zwingend (`_faltSchluessel` enthaelt `produktId`).
+      ...beschaffungZellen(r.produkt)];
     // Die Herkunft nennt die EBENE, auf der uebersteuert wurde — sonst saehe eine
     // Geschossuebersteuerung wie eine der Waende aus ([P-20]).
     if (angepasst) {
@@ -555,7 +664,9 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
     const summenzeile = new Array(spalten.length).fill("");
     summenzeile[0] = "Summe netto (" + cur + ")";
     summenzeile[spalten.indexOf("GP (" + cur + ")")] = betrag;
-    summenzeile[spalten.length - 1] = s.vollstaendig ? "alle Positionen bepreist"
+    // Der Vollstaendigkeitsvermerk steht unter „Zuordnung“ und wird NAMENTLICH adressiert:
+    // an der letzten Spalte haengend wanderte er mit jedem angehaengten Block mit (#113).
+    summenzeile[spalten.indexOf("Zuordnung")] = s.vollstaendig ? "alle Positionen bepreist"
       : `unvollständig – ${s.bepreist} von ${s.bepreisbar} Positionen bepreist`;
     aoa.push([]);
     aoa.push(summenzeile);

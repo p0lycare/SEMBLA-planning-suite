@@ -10,6 +10,7 @@ import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { mengenKennung, standardEingaben } from "../../docs/shared/storage.js";
 import {
   stuecklistePositionen, gesamtstuecklisteAoa, gesamtstuecklisteCsv, gesamtstuecklisteDateien, baueDateien,
+  stuecklisteAoa, BESCHAFFUNG_SPALTEN,
 } from "../../docs/shared/sembla-export.js";
 import {
   EBENEN, ebeneTitel, umfang, gesamtDaten, standText, herkunftText, dateiRumpf,
@@ -277,7 +278,9 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
     && kopfMit.indexOf("EP (EUR)") === kopfMit.indexOf("GP (EUR)") - 1);
   ok("#81 die Spaltenfolge der Gesamtdatei ist genau der neue Satz",
     JSON.stringify(kopfMit) === JSON.stringify(["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit",
-      "Menge", "Einbauteil-IDs (Wand-ID:ID)", "EP (EUR)", "GP (EUR)", "Produkt (Katalog)", "Zuordnung"]));
+      "Menge", "Einbauteil-IDs (Wand-ID:ID)", "EP (EUR)", "GP (EUR)", "Produkt (Katalog)", "Zuordnung",
+      // #113: der Beschaffungsblock haengt HINTEN an — die Folge davor ist unveraendert.
+      ...BESCHAFFUNG_SPALTEN]));
   ok("Preisschalter entfernt genau EP und GP",
     kopfMit.includes("EP (EUR)") && kopfMit.includes("GP (EUR)")
     && !kopfOhne.includes("EP (EUR)") && !kopfOhne.includes("GP (EUR)")
@@ -871,6 +874,159 @@ const P = (ueber = {}) => ({
       && zeilen[0].menge === 5);
     ok("#81 wirksameEbenenMengen: ohne gespeicherte Menge bleibt alles wie berechnet",
       wirksameEbenenMengen(zeilen, null, { anwenden: true }).positionen[0].menge === 5);
+  }
+}
+
+// ---- 12. Beschaffungsblock in beiden Stuecklistendateien (#113) -------------------------
+//
+// Realer Pfad: eine gerechnete Musterwand laeuft mit einem Katalog, dessen Produkte TEILS
+// vollstaendig und TEILS gar nicht mit Beschaffungsangaben gepflegt sind, durch
+// `stuecklisteAoa` UND `gesamtstuecklisteAoa`. Geprueft werden Spaltenkoepfe, die Zellen der
+// aufgeloesten und der nicht aufgeloesten Zeilen und die Wertgleichheit ALLER bisherigen
+// Spalten gegen den Stand ohne gepflegte Beschaffungsangaben — verglichen ueber
+// SPALTENNAMEN, nie ueber Endindizes (sonst haengt der Test an der Breite des Blocks).
+{
+  /** Kopfzeile der Tabelle (die Zeile, die mit „Einbauteil“ beginnt). */
+  const kopfvon = (aoa) => aoa.find((z) => z[0] === "Einbauteil") || [];
+  /** Datenzeilen unterhalb des Kopfs (ohne Summen-/Leerzeilen). */
+  const datenvon = (aoa) => {
+    const k = kopfvon(aoa);
+    return aoa.slice(aoa.indexOf(k) + 1)
+      .filter((z) => z.length > 1 && !String(z[0]).startsWith("Summe netto") && !String(z[0]).startsWith("€/m²"));
+  };
+  /** Wert EINER benannten Spalte in der Zeile eines Einbauteils. */
+  const zelle = (aoa, label, spalte) => {
+    const k = kopfvon(aoa), z = datenvon(aoa).find((r) => r[0] === label);
+    return z ? z[k.indexOf(spalte)] : undefined;
+  };
+  /** Der ganze Beschaffungsblock einer Zeile, in der Reihenfolge der Spalten. */
+  const block = (aoa, label) => BESCHAFFUNG_SPALTEN.map((sp) => zelle(aoa, label, sp));
+
+  // Zwei Kataloge, gleiche Produkte und gleiche PREISE: nur die Beschaffungsangaben
+  // unterscheiden sie. `KAT_OHNE` ist der bestehende Testkatalog (keinerlei Pflege),
+  // `KAT_MIT` pflegt GENAU ZWEI Produkte vollstaendig und laesst alle uebrigen unberuehrt.
+  const KAT_OHNE = JSON.parse(JSON.stringify(KATALOG));
+  const KAT_MIT = JSON.parse(JSON.stringify(KATALOG));
+  const gepflegt = {
+    "stein-i3": { norm: "DIN 18152", werkstoff: "Leichtbeton", guete: "LAC 2", oberflaeche: "unbehandelt",
+                  hersteller: "Polycare", artikelnr: "PC-I3-375" },
+    "rod-1000": { norm: "DIN 976-1", werkstoff: "Stahl (1.0718)", guete: "8.8", oberflaeche: "verzinkt",
+                  hersteller: "Würth", artikelnr: "021405532" },
+  };
+  for (const pr of KAT_MIT.produkte) if (gepflegt[pr.id]) Object.assign(pr, gepflegt[pr.id]);
+  // Gegenprobe zur Anlage: ein Produkt OHNE jedes Maßfeld muss eine leere Abmessung geben.
+  const ohneMass = KAT_MIT.produkte.find((pr) => pr.id === "kuppl");
+  ohneMass.norm = "DIN 6334";
+  ohneMass.hersteller = "Würth";
+
+  const W = ELEMENTE["w-a"].wandelement;
+  const EING = eingabenFuer();
+  const OPTD = { datum: "01.01.2026" };
+  const wandOhne = stuecklisteAoa(W, EING, OPTD, KAT_OHNE);
+  const wandMit = stuecklisteAoa(W, EING, OPTD, KAT_MIT);
+  const kopfW = kopfvon(wandMit);
+
+  // (a) Der Block haengt HINTEN an — davor steht die bisherige Folge unveraendert.
+  ok("#113 die Wandstückliste hängt den Beschaffungsblock hinter die bisherigen Spalten",
+    JSON.stringify(kopfW.slice(-BESCHAFFUNG_SPALTEN.length)) === JSON.stringify([...BESCHAFFUNG_SPALTEN])
+    && kopfW[kopfW.length - BESCHAFFUNG_SPALTEN.length - 1] === "Kommentar"
+    && JSON.stringify(kopfW.slice(0, -BESCHAFFUNG_SPALTEN.length))
+       === JSON.stringify(kopfvon(wandOhne).slice(0, -BESCHAFFUNG_SPALTEN.length)));
+  ok("#113 die Blockspalten stehen in der Reihenfolge des Issues",
+    JSON.stringify([...BESCHAFFUNG_SPALTEN]) === JSON.stringify(["Produktbezeichnung", "Norm / Typ",
+      "Werkstoff", "Güte", "Oberfläche", "Gewinde", "Abmessung (mm)", "Hersteller", "Artikelnummer"]));
+
+  // (b) Ein vollstaendig gepflegtes Produkt steht WORTGLEICH zum Katalog in der Zeile.
+  const labelI3 = datenvon(wandMit).map((z) => z[0]).find((l) => /i3/i.test(String(l)));
+  const labelRod = datenvon(wandMit).map((z) => z[0]).find((l) => /^Gewindestange 100 cm/.test(String(l)));
+  ok("#113 Testvoraussetzung: die Zeilen der gepflegten Produkte sind auffindbar",
+    !!labelI3 && !!labelRod);
+  ok("#113 ein vollständig gepflegtes Produkt steht wortgleich zum Katalog in der Zeile",
+    JSON.stringify(block(wandMit, labelI3)) === JSON.stringify(["Stein i3", "DIN 18152",
+      "Leichtbeton", "LAC 2", "unbehandelt", "", "375 × 200 × 125", "Polycare", "PC-I3-375"]));
+  ok("#113 auch bei der Gewindestange, samt Gewinde und Länge",
+    JSON.stringify(block(wandMit, labelRod)) === JSON.stringify(["Stange 1000", "DIN 976-1",
+      "Stahl (1.0718)", "8.8", "verzinkt", "M10", "L 1000", "Würth", "021405532"]));
+
+  // (c) Nicht gepflegtes Feld -> LEERE Zelle, kein Platzhalter, kein geratener Wert.
+  // Ohne Pflege bleiben genau die TEXTfelder leer; Bezeichnung und Abmessung kommen aus den
+  // ohnehin vorhandenen Produktfeldern und sind keine „gepflegte Beschaffungsangabe“.
+  ok("#113 ein nicht gepflegtes Beschaffungsfeld bleibt leer, ohne Platzhalter",
+    JSON.stringify(block(wandOhne, labelI3))
+      === JSON.stringify(["Stein i3", "", "", "", "", "", "375 × 200 × 125", "", ""]));
+  const labelKuppl = datenvon(wandMit).map((z) => z[0]).find((l) => /kopplung/i.test(String(l)));
+  ok("#113 ein Produkt ohne Maßfelder hat eine leere Abmessung",
+    !!labelKuppl && zelle(wandMit, labelKuppl, "Abmessung (mm)") === ""
+    && zelle(wandMit, labelKuppl, "Norm / Typ") === "DIN 6334");
+
+  // (d) Ohne eindeutig aufgeloestes Produkt: LEERE Zellen, unveraenderter Zuordnungsgrund.
+  {
+    const ohneAuswahl = JSON.parse(JSON.stringify(EING));
+    ohneAuswahl.planung.produkte.rollen.i3 = [];
+    const aoa = stuecklisteAoa(W, ohneAuswahl, OPTD, KAT_MIT);
+    ok("#113 eine Position ohne eindeutig aufgelöstes Produkt trägt leere Beschaffungszellen",
+      block(aoa, labelI3).every((v) => v === "")
+      && zelle(aoa, labelI3, "Zuordnung") === zelle(stuecklisteAoa(W, ohneAuswahl, OPTD, KAT_OHNE), labelI3, "Zuordnung")
+      && zelle(aoa, labelI3, "Zuordnung") === "kein Produkt gewählt"
+      && zelle(aoa, labelI3, "Produkt (Katalog)") === "");
+    // Gegenprobe an einer real unaufgeloesten Zeile des ungestoerten Stands (Sonderzuschnitt,
+    // nachrichtliche Menge): auch dort bleibt der Block leer und der Grund erhalten.
+    const roh = stuecklistePositionen(W, EING, KAT_MIT).filter((x) => x.produkt == null);
+    ok("#113 auch die reale unaufgelöste Zeile bleibt leer und behält ihren Grund",
+      roh.length > 0 && roh.every((x) => block(wandMit, x.label).every((v) => v === "")
+        && zelle(wandMit, x.label, "Zuordnung") === x.statusText));
+  }
+
+  // (e) Beide Mengenfassungen nach [P-20] tragen denselben Blockinhalt.
+  {
+    const ang = stuecklisteAoa(W, EING, { ...OPTD, fassung: "angepasst" }, KAT_MIT);
+    ok("#113 der Block steht in beiden Mengenfassungen mit demselben Inhalt",
+      JSON.stringify(kopfvon(ang).slice(-BESCHAFFUNG_SPALTEN.length)) === JSON.stringify([...BESCHAFFUNG_SPALTEN])
+      && JSON.stringify(block(ang, labelI3)) === JSON.stringify(block(wandMit, labelI3))
+      && JSON.stringify(block(ang, labelRod)) === JSON.stringify(block(wandMit, labelRod)));
+  }
+
+  // (f) KEINE Ableitung: alle bisherigen Spalten und die Summenzeilen sind wertgleich.
+  const bisher = (aoa) => {
+    const k = kopfvon(aoa);
+    const namen = k.slice(0, -BESCHAFFUNG_SPALTEN.length);
+    return JSON.stringify([
+      namen,
+      datenvon(aoa).map((z) => namen.map((n) => z[k.indexOf(n)])),
+      aoa.filter((z) => /^(Summe netto|€\/m²)/.test(String(z[0]))),
+    ]);
+  };
+  ok("#113 Wanddatei: Mengen, Fertigmaß, EP, GP und die Summenzeilen bleiben wertgleich",
+    bisher(wandMit) === bisher(wandOhne));
+
+  // (g) Gesamtstückliste: derselbe Block, dieselbe Reihenfolge, dieselben Werte.
+  {
+    const les = (kat) => ({ holeElement: (id) => ELEMENTE[id] || null,
+                            holeEingaben: () => eingabenFuer(), katalog: kat });
+    const gOhne = gesamtstuecklisteAoa(gesamtDaten(umfang(M, "geschoss", Z), les(KAT_OHNE)), OPTD);
+    const gMit = gesamtstuecklisteAoa(gesamtDaten(umfang(M, "geschoss", Z), les(KAT_MIT)), OPTD);
+    const kopfG = kopfvon(gMit);
+    ok("#113 die Gesamtstückliste führt dieselben Blockspalten in derselben Reihenfolge",
+      JSON.stringify(kopfG.slice(-BESCHAFFUNG_SPALTEN.length))
+        === JSON.stringify(kopfW.slice(-BESCHAFFUNG_SPALTEN.length))
+      && kopfG[kopfG.length - BESCHAFFUNG_SPALTEN.length - 1] === "Zuordnung");
+    ok("#113 die Gesamtstückliste trägt dieselben Beschaffungswerte wie die Wanddatei",
+      JSON.stringify(block(gMit, labelI3)) === JSON.stringify(block(wandMit, labelI3))
+      && JSON.stringify(block(gMit, labelRod)) === JSON.stringify(block(wandMit, labelRod)));
+    ok("#113 Gesamtdatei: eine unaufgelöste Zeile bleibt leer und behält ihren Grund",
+      datenvon(gMit).filter((z) => z[kopfG.indexOf("Produkt (Katalog)")] === "").length > 0
+      && datenvon(gMit).every((z) => z[kopfG.indexOf("Produkt (Katalog)")] !== ""
+        || BESCHAFFUNG_SPALTEN.every((sp) => z[kopfG.indexOf(sp)] === "")));
+    ok("#113 Gesamtdatei: alle bisherigen Spalten und die Summenzeile bleiben wertgleich",
+      bisher(gMit) === bisher(gOhne));
+    // Der Vollstaendigkeitsvermerk haengt NICHT mehr an der letzten Spalte, sondern unter
+    // „Zuordnung“ — sonst waere er mit dem angehaengten Block mitgewandert.
+    const sz = gMit.find((z) => String(z[0]).startsWith("Summe netto"));
+    ok("#113 der Vollständigkeitsvermerk steht unter „Zuordnung“, nicht in der letzten Spalte",
+      /Positionen bepreist/.test(String(sz[kopfG.indexOf("Zuordnung")]))
+      && sz[kopfG.length - 1] === undefined || sz[kopfG.length - 1] === "");
+    ok("#113 der Summenbetrag steht weiterhin unter seiner GP-Spalte",
+      typeof sz[kopfG.indexOf("GP (EUR)")] === "number");
   }
 }
 
