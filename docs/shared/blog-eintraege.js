@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260908-26",
+    datum: "2026-09-08",
+    typ: "feature",
+    issue: 95,
+    titel: "Der Deckenanschluss steht als Baugruppe im Bauteilkatalog \u2014 mit allen Einzelteilen",
+    testbitte: "In Modul 10 den Standardkatalog laden: unter „Baugruppen“ steht "
+      + "„Deckenanschluss“ mit neun Teilen, in Modul 1 sind sie unter „Anschluss“ "
+      + "wählbar. Die Stückliste bleibt unverändert — Mengen kommen mit der "
+      + "Verteilung auf die Spannachsen.",  },
+  {
     id: "chg-20260908-25",
     datum: "2026-09-08",
     typ: "feature",
