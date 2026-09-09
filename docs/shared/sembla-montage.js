@@ -99,15 +99,18 @@ export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73" };
  * Fest in Papier-mm ist deshalb der Massstab dieser Symbole. Das ist KEINE neue Konvention,
  * sondern genau die, mit der beide Module ihre Strichstaerken und Schriftgroessen schon immer
  * fuehren (`SW = 0.22` in Modul 7, `font-size` in viewBox-Einheiten in Modul 1): ein Symbol
- * ist eine Darstellungsmarke und kein gemessenes Bauteil. Bewusst KEINE Bauteilmasse: fuer
- * Mutter und Kopplungsmutter kommt die Einbauhoehe aus dem Katalog ([A-19]/[Z-8]) und darf
- * nicht aus einem Symbol zurueckgelesen werden. Einzige Ausnahme bleibt die BREITE der
- * Spannplatte: sie ist ein reales Bauteilmass (110 mm) und bleibt masstabstreu, weil sie als
- * Auflagerflaeche entlang der Wand liegt und abgemessen werden kann.
+ * ist eine Darstellungsmarke und kein gemessenes Bauteil. Bewusst KEINE Bauteilmasse: fuer die
+ * normale Mutter kommt die Einbauhoehe aus dem Katalog ([A-19]/[Z-8]) und darf nicht aus einem
+ * Symbol zurueckgelesen werden.
+ *
+ * Masstabstreu sind allein die Masse, die der Aufrufer als REALES Bauteilmass hereingibt: die
+ * BREITE der Spannplatte (110 mm, `platte_b_mm`), seit #97 ihre DICKE und — ebenfalls seit
+ * #97 — die HOEHE der Kopplungsmutter. Fuer die beiden Letzteren bleiben `platte_h` und
+ * `kupplung_h` der Rueckfall, wenn das Mass fehlt; erfunden wird nie eines.
  */
 export const SPANN_MM = {
   mutter_h: 1.8,       // Hoehe der normalen Mutter / Spannmutter
-  kupplung_h: 4.5,     // Hoehe der Kopplungsmutter (Faktor 2,5 zur Mutter)
+  kupplung_h: 4.5,     // Symbolhoehe der Kopplungsmutter, wenn das reale Mass fehlt (#97)
   d: 2.4,              // Durchmesser von Mutter und Kopplungsmutter (quer zur Stange)
   kopf_h: 1.6,         // Hoehe des Schraubenkopfs
   kopf_d: 3.4,         // Durchmesser des Schraubenkopfs (groesser als der Schaft)
@@ -157,8 +160,24 @@ export const SPANN_EINHEIT = { blatt: 1, ansicht: 5 };
  * @returns {string} SVG-Fragment
  */
 function _zylinderSvg(x, y, e, hMm, dMm, opts = {}) {
+  return _zylinderSvgZ(x, y, hMm * e, dMm * e, opts);
+}
+
+/**
+ * Derselbe Koerper, aber mit Hoehe und Durchmesser bereits in ZEICHENKOORDINATEN — die eine
+ * Stelle, an der das Rechteck entsteht.
+ *
+ * Gebraucht wird die Variante, seit die Kopplungsmutter ihre Hoehe wahlweise aus dem realen
+ * Bauteilmass bezieht (#97): dort ist die Hoehe `hoehe_mm * sc` und laesst sich nicht mehr als
+ * Papier-mm ausdruecken, ohne durch `e` zu teilen. Fuer den Symbolzweig aendert sich nichts —
+ * `hMm * e` steht unveraendert an derselben Stelle wie zuvor.
+ *
+ * @param {number} x @param {number} y @param {number} h Hoehe @param {number} b Durchmesser
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean}} [opts]
+ * @returns {string} SVG-Fragment
+ */
+function _zylinderSvgZ(x, y, h, b, opts = {}) {
   const n = opts.n || (v => v);
-  const h = hMm * e, b = dMm * e;
   const farbe = opts.farbe || SPANN_FARBE.mutter;
   const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
   const yo = opts.auf ? y - h : y - h / 2;
@@ -178,15 +197,57 @@ export function mutterSvg(x, y, e, opts = {}) {
 }
 
 /**
- * Kopplungsmutter als DEUTLICH laengerer Zylinder in Seitenansicht ([D-4], #110/#106) —
- * dieselbe Grundform wie `mutterSvg`, nur die Hoehe unterscheidet sich (Verhaeltnis 2,5).
+ * Kopplungsmutter als DEUTLICH laengerer Zylinder in Seitenansicht ([D-4], #110/#106/#97) —
+ * dieselbe Grundform wie `mutterSvg`, nur die Hoehe unterscheidet sich.
+ *
+ * Seit #97 ist die HOEHE masstabsgetreu, sobald der Aufrufer das reale Bauteilmass als
+ * `opts.hoehe_mm` samt `opts.sc` hereingibt: sie ist dann `hoehe_mm * sc` und laesst sich im
+ * Blatt abmessen. Das Mass ist KEIN neues Feld — es ist die doppelte Einbaulage, die seit #92
+ * als `prestress.rod_fuss_offset_mm` (halbe Kopplungsmutterhoehe, [A-19]) im Wandelement steht;
+ * hier wird sie nur gezeichnet und nichts daraus abgeleitet. OHNE das Mass bleibt es beim
+ * bisherigen festen Symbolmass `SPANN_MM.kupplung_h` — es wird keine Hoehe erfunden und keine
+ * nachgerechnet, und das Ergebnis ist dann wertgleich zum Stand vor #97. Bis dahin war die
+ * Hoehe IMMER symbolisch: dieselbe Marke fuer eine 30-mm- wie fuer eine 45-mm-Mutter.
+ *
+ * Der Weg ist bewusst derselbe wie bei der Spannplattendicke (s. `spannplatteSvg`): gleicher
+ * Optionsschalter, gleicher Rueckfall, und ausdruecklich KEINE Untergrenze auf dem
+ * masstabsgetreuen Zweig — eine kurze Mutter in kleinem Masstab IST kurz, und eine Untergrenze
+ * waere ein zweites, verstecktes Mass, das dem abgemessenen Wert widerspraeche. Nur ein nicht
+ * zeichenbares Ergebnis faellt auf das Symbolmass zurueck; die Mutter entfaellt nie.
+ *
+ * Der DURCHMESSER bleibt unveraendert das feste Symbolmass `SPANN_MM.d` — er ist quer zur
+ * Stange und wird nicht abgemessen; aus ihm leitet #112 zudem die Breite der Stoss-Haarlinie ab.
+ *
  * @param {number} x @param {number} y Stosshoehe (Mitte; mit `opts.auf` die Unterkante)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean}} [opts]
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean,
+ *          hoehe_mm?:number,sc?:number}} [opts]
+ *        `hoehe_mm`/`sc`: reale Einbauhoehe in mm und Zeichenkoordinaten je mm (#97).
  * @returns {string} SVG-Fragment
  */
 export function kopplungsmutterSvg(x, y, e, opts = {}) {
-  return _zylinderSvg(x, y, e, SPANN_MM.kupplung_h, SPANN_MM.d, opts);
+  return _zylinderSvgZ(x, y, kupplungHoehe(e, opts), SPANN_MM.d * e, opts);
+}
+
+/**
+ * Zeichenhoehe der Kopplungsmutter — die EINE Stelle, an der ueber reales Mass und Symbolmass
+ * entschieden wird ([D-4], #97).
+ *
+ * Sie liegt hier und nicht bei den Aufrufern, weil zwei Zeichnungen davon abhaengen: die Mutter
+ * selbst und der Schaftbeginn der Sechskantschraube, der nach [A-19] ihre halbe Hoehe ist. Zwei
+ * getrennte Rechnungen waeren die Drift, die [D-4] ausschliesst.
+ *
+ * Geprueft wird das ZEICHENERGEBNIS und nicht nur die Eingabe: nur ein Wert > 0 darf die Mutter
+ * tragen, damit sie nie zu einer Hoehe von 0 zusammenfaellt.
+ *
+ * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
+ * @param {{hoehe_mm?:number,sc?:number}} [opts]
+ * @returns {number} Hoehe in Zeichenkoordinaten
+ */
+export function kupplungHoehe(e, opts = {}) {
+  const hMm = +opts.hoehe_mm, sc = +opts.sc;
+  const hMass = (isFinite(hMm) && hMm > 0 && isFinite(sc) && sc > 0) ? hMm * sc : 0;
+  return hMass > 0 ? hMass : SPANN_MM.kupplung_h * e;
 }
 
 /**
@@ -208,7 +269,8 @@ export function kopplungsmutterSvg(x, y, e, opts = {}) {
  * @param {number} y Zeichenkoordinate der OBERKANTE Bodenblech (= Steinunterkante, z = 0)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
  * @param {number} blech Blechdicke in Zeichenkoordinaten
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string}} [opts]
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,hoehe_mm?:number,sc?:number}} [opts]
+ *        `hoehe_mm`/`sc`: reale Kopplungsmutterhoehe (#97) — sie bestimmt den Schaftbeginn.
  * @returns {string} SVG-Fragment (Schaft, dann Kopf)
  */
 export function schraubeSvg(x, y, e, blech, opts = {}) {
@@ -218,7 +280,12 @@ export function schraubeSvg(x, y, e, blech, opts = {}) {
   const kh = SPANN_MM.kopf_h * e, kd = SPANN_MM.kopf_d * e, sd = SPANN_MM.schaft_d * e;
   // Schaft: von der Mitte der aufsitzenden Kopplungsmutter ([A-19]: je zur Haelfte) durch das
   // Bodenblech bis an dessen Unterkante. Kopf: unmittelbar darunter, ragt frei heraus.
-  const y0 = y - SPANN_MM.kupplung_h * e / 2, y1 = y + blech;
+  //
+  // #97: Der Schaftbeginn ist ein aus der Mutternhoehe ABGELEITETER Wert und kein eigenes
+  // Bauteilmass der Schraube — er folgt deshalb derselben Entscheidung wie die Mutter und wird
+  // ueber `kupplungHoehe()` aus derselben Quelle geholt. Ohne reales Mass bleibt er bit-gleich.
+  // Die eigenen Symbolmasse der Schraube (`kopf_h`, `kopf_d`, `schaft_d`) sind unberuehrt.
+  const y0 = y - kupplungHoehe(e, opts) / 2, y1 = y + blech;
   return `<rect${kl} x="${n(x - sd / 2)}" y="${n(y0)}" width="${n(sd)}" `
     + `height="${n(y1 - y0)}" fill="${farbe}"/>`
     + `<rect${kl} x="${n(x - kd / 2)}" y="${n(y1)}" width="${n(kd)}" height="${n(kh)}" `

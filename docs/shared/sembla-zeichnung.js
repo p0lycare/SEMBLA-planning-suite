@@ -544,6 +544,13 @@ export function zeichnungSvg(w, opts = {}) {
   // Bauteil in beiden Ausgaben gleich dick ist. Fehlt es (Kopfblech oder kein eindeutiges
   // Katalogmass), bleibt es beim festen Symbolmass; nachgerechnet und ersetzt wird nichts.
   const plD = (w.prestress && w.prestress.rod_kopf_zuschlag_mm) || 0;
+  // [D-4]/#97 Kopplungsmutterhoehe: die reale Einbauhoehe ist das DOPPELTE des seit #92 im
+  // Wandelement stehenden Fussoffsets (`rod_fuss_offset_mm` = halbe Mutternhoehe, [A-19]).
+  // Auch das wird hier NUR GELESEN und unveraendert an `kopplungsmutterSvg()`/`schraubeSvg()`
+  // durchgereicht — dieselbe Zahl, die Modul 1 durchreicht, damit dasselbe Bauteil in beiden
+  // Ausgaben gleich hoch ist. Fehlt es (kein eindeutiges Katalogmass), bleibt es beim festen
+  // Symbolmass; nachgerechnet und ersetzt wird nichts.
+  const kuH = 2 * ((w.prestress && w.prestress.rod_fuss_offset_mm) || 0);
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
@@ -633,7 +640,7 @@ export function zeichnungSvg(w, opts = {}) {
           const yS = Y(st.z1_mm);
           stangen += `<line x1="${_n(x - HAAR_B / 2)}" y1="${_n(yS)}" x2="${_n(x + HAAR_B / 2)}" `
             + `y2="${_n(yS)}" stroke="${HAAR_FARBE}" stroke-width="${_n(HAAR_SW)}"/>`;
-          vorn += kopplungsmutterSvg(x, yS, SYM, { n: _n });
+          vorn += kopplungsmutterSvg(x, yS, SYM, { n: _n, hoehe_mm: kuH, sc });
         }
       }
       const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
@@ -641,14 +648,16 @@ export function zeichnungSvg(w, opts = {}) {
       // Mutter als kurzer, Spannplatte als langgezogenes flaches Rechteck — Geometrie und
       // Kennfarbe geteilt ([D-4]/#110). Die Symbolmasse sind fest (#106) und in Modul 1
       // dieselben; masstabstreue Bauteilmasse sind die Plattenbreite (110 mm, Untergrenze wie
-      // bisher) und seit #97 die Plattendicke (`plD`, oben wie unten dasselbe Bauteil). Die
+      // bisher), seit #97 die Plattendicke (`plD`, oben wie unten dasselbe Bauteil) und
+      // ebenfalls seit #97 die Hoehe der Kopplungsmutter (`kuH`). Die
       // Platte LIEGT AUF der Kante — oben wie unten.
       if (au === "bodenblech") {
         // Fussfolge nach [A-19] (#97): von unten die Sechskantschraube (ihr Kopf ragt unter
         // dem Bodenblech heraus), darauf das Blech, darauf AUFLIEGEND die Kopplungsmutter.
         // Bis #97 stand hier eine normale Mutter, zur Haelfte im Blech, ohne Schraube.
-        s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n });
-        vorn += kopplungsmutterSvg(x, Y(sg.z0_mm), SYM, { n: _n, auf: true });
+        s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n, hoehe_mm: kuH, sc });
+        vorn += kopplungsmutterSvg(x, Y(sg.z0_mm), SYM,
+          { n: _n, auf: true, hoehe_mm: kuH, sc });
       } else s += spannplatteSvg(x, Y(sg.z0_mm), SYM, sc, { n: _n, dicke_mm: plD });
       if (ao === "spannplatte")
         s += spannplatteSvg(x, Y(sg.z1_mm), SYM, sc, { n: _n, dicke_mm: plD });

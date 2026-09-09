@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-08",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 97,
+    titel: "Die Kopplungsmutter wird mit ihrer realen Einbauh\u00f6he gezeichnet",
+    testbitte: "In Modul 1 eine Kopplungsmutter aus dem Katalog w\u00e4hlen, dann Wandansicht und Blatt in Modul 7 ansehen: am Wandfu\u00df und an jedem Stangensto\u00df ist sie masst\u00e4blich hoch, 30 mm niedriger als 50 mm. Ohne Ma\u00df bleibt das bisherige Symbol.",
+  },
+  {
     id: "chg-20260909-07",
     datum: "2026-09-09",
     typ: "feature",

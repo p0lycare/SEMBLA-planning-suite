@@ -599,6 +599,13 @@ function draw(w){
   // dasselbe Bauteil in beiden Ansichten gleich dick ist. Fehlt es, bleibt es beim festen
   // Symbolmaß; es wird keine Dicke erfunden und keine nachgerechnet.
   const plD=(w.prestress&&w.prestress.rod_kopf_zuschlag_mm)||0;
+  // [D-4]/#97 Kopplungsmutterhöhe: die reale Einbauhöhe ist das DOPPELTE des seit #92 im
+  // Wandelement stehenden Fußoffsets (`rod_fuss_offset_mm` = halbe Mutternhöhe, [A-19], aus
+  // `fussOffsetMm()`). Gelesen wird ausdrücklich das WANDELEMENT und nicht noch einmal der
+  // Katalog über `einbauMass('kupplung','hoehe_mm')`: das wäre ein zweiter Datenweg, den
+  // Modul 7 gar nicht hat, und genau die Drift, die [D-4] ausschließt. Fehlt das Maß, bleibt
+  // es beim festen Symbolmaß; es wird keine Höhe erfunden und keine nachgerechnet.
+  const kuH=2*((w.prestress&&w.prestress.rod_fuss_offset_mm)||0);
   // Bezugsmaß aller Spannkomponenten-Symbole (#106): FESTE viewBox-Einheiten je Papier-mm
   // aus SPANN_EINHEIT. Vorher stand hier `COURSE*sc`, also die Lagenhöhe in
   // Zeichenkoordinaten — und weil `sc=(1000-2*pad)/L` allein an der WANDLÄNGE hängt, war
@@ -705,7 +712,7 @@ function draw(w){
         if(i<st.length-1){
           const yS=Y(p.z1_mm);
           stangen+=`<line class="haar" x1="${x-HAAR_B/2}" y1="${yS}" x2="${x+HAAR_B/2}" y2="${yS}" stroke="${HAAR_FARBE}" stroke-width="${HAAR_SW}"/>`;
-          vorn+=kopplungsmutterSvg(x,yS,SYM,{klasse:'kop'});
+          vorn+=kopplungsmutterSvg(x,yS,SYM,{klasse:'kop',hoehe_mm:kuH,sc});
         }
       });
       const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
@@ -714,13 +721,14 @@ function draw(w){
       // Rechteck — Geometrie und Kennfarbe kommen aus sembla-montage.js ([D-4]/#110), damit
       // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Die Symbolmaße
       // sind dort FEST und deshalb unabhängig von Wandgröße, Blattmaßstab und Zoom (#106);
-      // maßstabstreue Bauteilmaße sind die Plattenbreite und seit #97 die Plattendicke.
+      // maßstabstreue Bauteilmaße sind die Plattenbreite, seit #97 die Plattendicke und
+      // ebenfalls seit #97 die Höhe der Kopplungsmutter (`kuH`) — der Durchmesser bleibt fest.
       if(au==='bodenblech'){
         // Fußfolge nach [A-19] (#97): von unten die Sechskantschraube — ihr Kopf ragt unter
         // dem Bodenblech heraus —, darauf das Blech, darauf AUFLIEGEND die KOPPLUNGSMUTTER.
         // Bis #97 stand hier eine normale Mutter, zur Hälfte im Blech, und die Schraube fehlte.
-        s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth);
-        vorn+=kopplungsmutterSvg(x,Y(g.z0_mm),SYM,{klasse:'kop',auf:true});
+        s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth,{hoehe_mm:kuH,sc});
+        vorn+=kopplungsmutterSvg(x,Y(g.z0_mm),SYM,{klasse:'kop',auf:true,hoehe_mm:kuH,sc});
       }
       // Spannplatte liegt auf der Kante auf — mit ihrer realen Dicke (#97), oben wie unten.
       else { s+=spannplatteSvg(x,Y(g.z0_mm),SYM,sc,{dicke_mm:plD}); }

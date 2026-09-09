@@ -29,6 +29,7 @@ import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
          // #97: nur fuer den Vergleich Modul 1 <-> Modul 7 — die Wandansicht ruft genau diese
          // Funktion mit ihrer eigenen Einheit auf, das Blatt mit seiner.
          spannplatteSvg as Z_spannplatteSvg,
+         kopplungsmutterSvg as Z_kopplungsmutterSvg,
          ZWISCHENPUNKT, DECKENANSCHLUSS } from "../../docs/shared/sembla-montage.js";
 import { wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
@@ -57,6 +58,11 @@ const WSP = buildWall("IW-05", 3000, 2600, [], null, { top_connection: "spannpla
 // Der Kopfzuschlag IST die Plattendicke; ueber ihn kommt sie in die Zeichnung ([D-4]).
 const WSP8 = buildWall("IW-06", 3000, 2600, [], null,
   { top_connection: "spannplatte", rod_kopf_zuschlag_mm: 8 });
+// WKU30/WKU45: dieselbe Wand mit der REALEN Kopplungsmutterhoehe (#92/#97). Im Wandelement
+// steht die HALBE Hoehe als Fussoffset ([A-19]) — gezeichnet wird das Doppelte. Es gibt dafuer
+// kein eigenes Feld, und es wird auch keines angelegt.
+const WKU30 = buildWall("IW-07", 3000, 2600, [], null, { rod_fuss_offset_mm: 15 });
+const WKU45 = buildWall("IW-08", 3000, 2600, [], null, { rod_fuss_offset_mm: 22.5 });
 
 const eingaben = standardEingaben();
 eingaben.projekt.name = "Rettungswache";
@@ -286,6 +292,83 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     const hM7 = plattenVon(svgSp8)[0].h * mSp8;
     return Math.abs(hM1 - 8) < 1e-9 && Math.abs(hM7 - 8) < 1e-2;
   })());
+}
+
+// --- #97: die Kopplungsmutter wird mit ihrer REALEN Einbauhoehe gezeichnet -----------------
+// Gebaut wird ueber den echten Core-Pfad; die Hoehe ist das DOPPELTE des Fussoffsets aus #92
+// ([A-19]) und wird hier nur gezeichnet. Geprueft wird am REALEN Blatt-SVG.
+{
+  const E = SPANN_EINHEIT.blatt;
+  const rnd = v => Math.round(v * 1000) / 1000;
+  const zK30 = Z.zeichnungSvg(WKU30, {}), zK45 = Z.zeichnungSvg(WKU45, {});
+  // Dieselbe Wand OHNE das Mass — identische Geometrie, identischer Masstab, identische
+  // Stueckelung; der EINZIGE Unterschied ist die Zeichenvorgabe der Mutter. Genau daran laesst
+  // sich zeigen, dass die Aenderung eine reine Zeichenaenderung ist.
+  const WKUo = { ...WKU30, prestress: { ...WKU30.prestress } };
+  delete WKUo.prestress.rod_fuss_offset_mm;
+  const zKo = Z.zeichnungSvg(WKUo, {});
+  const kopGruppe = t => { const m = /<g class="kop">([\s\S]*?)<\/g>/.exec(t);
+    return m ? [...m[1].matchAll(RE_MUTTER)].map(q => +q[1]) : []; };
+
+  ok("[#97] das Wandelement fuehrt die halbe Mutternhoehe als Fussoffset (kein neues Feld)",
+    WKU30.prestress.rod_fuss_offset_mm === 15 && WKU45.prestress.rod_fuss_offset_mm === 22.5
+    && WSP.prestress.rod_fuss_offset_mm === undefined
+    && !("rod_kupplung_hoehe_mm" in WKU30.prestress));
+  ok("[#97] im Blatt ist die Mutternhoehe 30 mm mal Blattmasstab", (() => {
+    const h = kopGruppe(zK30.svg);
+    return h.length > 0 && h.every(v => Math.abs(v - rnd(30 / zK30.masstab)) < 1e-3); })());
+  ok("[#97] zwei Katalogprodukte ergeben im Blatt sichtbar verschieden hohe Muttern", (() => {
+    const a = kopGruppe(zK30.svg), b = kopGruppe(zK45.svg);
+    return a.length > 0 && a.length === b.length && zK30.masstab === zK45.masstab
+      && b.every(v => Math.abs(v - rnd(45 / zK45.masstab)) < 1e-3) && b[0] > a[0]; })());
+  ok("[#97] ohne Hoehenmass bleibt das Blatt beim festen Symbolmass", (() => {
+    const h = kopGruppe(zKo.svg);
+    return h.length > 0 && h.every(v => Math.abs(v - rnd(SPANN_MM.kupplung_h * E)) < 1e-3)
+      && h[0] !== kopGruppe(zK30.svg)[0]; })());
+  ok("[#97] die Fussmutter LIEGT weiterhin auf dem Bodenblech, der Stoss bleibt zentriert",
+    (() => {
+      const fuss = WKU30.tension_columns.flatMap(c => c.segments)
+        .filter(g => (g.anker_unten || (g.z0_mm === 0 ? "bodenblech" : "spannplatte"))
+          === "bodenblech").length;
+      // Die Fussmuttern sitzen genau auf der Steinunterkante (z = 0): Unterkante = Y(0), das
+      // ist die groesste y-Koordinate der Wandkontur.
+      const kontur = /<polyline points="([^"]+)"/.exec(zK30.svg)[1].split(" ")
+        .map(q => +q.split(",")[1]);
+      const unten = Math.max(...kontur);
+      const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(zK30.svg);
+      const rects = [...kop[1].matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
+        + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.mutter}"/>`, "g"))]
+        .map(m => ({ y: +m[1], h: +m[2] }));
+      const auf = rects.filter(r => Math.abs((r.y + r.h) - unten) < 1e-3);
+      return fuss > 0 && auf.length === fuss && auf.every(r => r.y < unten); })());
+  ok("[#97] der Durchmesser bleibt das feste Symbolmass", (() => {
+    const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(zK30.svg)[1];
+    const b = [...kop.matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
+    return b.length > 0 && b.every(v => Math.abs(v - rnd(SPANN_MM.d * E)) < 1e-3); })());
+  // Der eigentliche Nachweis, dass NUR gezeichnet wurde: alles ausser den mutterfarbenen
+  // Rechtecken (Kopplungsmuttern, Schraube, Spannmuttern) ist zwischen "mit Mass" und "ohne
+  // Mass" BYTEGLEICH — Steine, Bleche, Stangenstuecke, Bemassung und Masstab inbegriffen.
+  ok("[#97] Stangenzuschnitt, Bleche, Bemassung und Masstab bleiben wertgleich", (() => {
+    const strip = t => t.replace(new RegExp(`<rect[^>]*fill="${Z.FARBE.mutter}"/>`, "g"), "")
+      .replace(/<g class="kop">[\s\S]*?<\/g>/, "");
+    return zK30.masstab === zKo.masstab && strip(zK30.svg) === strip(zKo.svg)
+      && strip(zK30.svg).length > 0; })());
+  ok("[#97] auch die Stueckliste des Blattes bleibt wertgleich",
+    JSON.stringify(semblaBomItems(WKU30)) === JSON.stringify(semblaBomItems(WKUo))
+    && JSON.stringify(WKU30.tension_columns.flatMap(c => c.segments)
+        .map(g => stangenStuecke(WKU30, g)))
+      === JSON.stringify(WKUo.tension_columns.flatMap(c => c.segments)
+        .map(g => stangenStuecke(WKUo, g))));
+  // [D-4]/#97 Muss: Modul 1 und Modul 7 messen dieselbe Mutternhoehe. Das Blatt rechnet in
+  // Papier-mm (`1/masstab`), die Wandansicht in ihren viewBox-Einheiten — verglichen wird das
+  // ZURUECKGERECHNETE Bauteilmass in mm, und das muss beidseits 30 mm sein.
+  ok("[#97] Modul 1 und Modul 7 zeigen dieselbe masstaebliche Mutternhoehe", (() => {
+    const scM1 = 60 / 200;   // Modul 1: fester Ansichtsmasstab, viewBox-Einheiten je mm
+    const m1 = Z_kopplungsmutterSvg(0, 0, SPANN_EINHEIT.ansicht,
+      { hoehe_mm: 2 * WKU30.prestress.rod_fuss_offset_mm, sc: scM1 });
+    const hM1 = +/height="([-\d.]+)"/.exec(m1)[1] / scM1;
+    const hM7 = kopGruppe(zK30.svg)[0] * zK30.masstab;
+    return Math.abs(hM1 - 30) < 1e-9 && Math.abs(hM7 - 30) < 1e-2; })());
 }
 
 // #110: das Einlegeblech des Zwischenspannpunkts steht jetzt AUCH im Blatt — dieselbe

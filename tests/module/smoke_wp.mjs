@@ -1722,6 +1722,128 @@ store.setzeKatalog(KATALOG);
   WP.run();
 }
 
+// ---- Issue #97: die Kopplungsmutter wird mit ihrer REALEN Einbauhoehe gezeichnet ---------
+// Gefahren wird der ECHTE Planerweg: Kopplungsmutter im zugeordneten Katalog waehlen ->
+// `vorgaben()` leitet den Fussoffset ab ([A-19]: halbe Mutternhoehe) -> derselbe Core baut das
+// Wandelement -> die Wandansicht zeichnet daraus. Die gezeichnete Hoehe ist das DOPPELTE des
+// Fussoffsets; gelesen wird sie ausschliesslich aus dem Wandelement und NICHT ein zweites Mal
+// aus dem Katalog ([D-4]). Ohne gewaehltes Produkt bleibt es beim festen Symbolmass.
+{
+  const svgp=()=>document.getElementById('plan').innerHTML;
+  const E=MONT.SPANN_EINHEIT.ansicht, MM=MONT.SPANN_MM;
+  const RE_KOP=/<rect class="kop" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g;
+  const kops=()=>[...svgp().matchAll(RE_KOP)].map(m=>({x:+m[1],y:+m[2],b:+m[3],h:+m[4]}));
+  const ROLLEN97=['rod_std','rod_rest','blech_boden','kupplung','spannplatte'];
+  const leere=(rolle)=>((store.holeProdukte(1).rollen||{})[rolle]||[]).slice()
+    .forEach(id=>setzen(rolle,id,false));
+  // Auswahlstand und aktive Wand gehoeren den frueheren Bloecken — beides wird gesichert und
+  // am Ende wiederhergestellt, damit dieser Abschnitt keine Nebenwirkung hinterlaesst.
+  const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
+  const vorherW=WP.RESULT.wandelement;
+  for(const r of ROLLEN97) leere(r);
+  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  document.getElementById('topConn').value='blech';
+  document.getElementById('rodUeber').value='10';
+  setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
+  WP.run();
+  const sc=WP.ansichtSc(), kopOhne=kops();
+
+  ok('[#97] ohne gewaehlte Kopplungsmutter bleibt es beim festen Symbolmass',
+    WP.fussOffset===null
+    && !('rod_fuss_offset_mm' in WP.RESULT.wandelement.prestress)
+    && kopOhne.length>0 && kopOhne.every(r=>Math.abs(r.h-MM.kupplung_h*E)<1e-9));
+
+  // 30-mm-Produkt -> Fussoffset 15 -> gezeichnete Hoehe 30 mm mal Zeichenmasstab.
+  setzen('kupplung','kuppl-30',true); WP.run();
+  const w30=WP.RESULT.wandelement, svg30=svgp(), kop30=kops();
+  ok('[#97] das Wandelement fuehrt die halbe Mutternhoehe als Fussoffset (kein neues Feld)',
+    WP.fussOffset===15 && w30.prestress.rod_fuss_offset_mm===15
+    && !('rod_kupplung_hoehe_mm' in w30.prestress));
+  ok('[#97] in der Wandansicht ist die Mutternhoehe 30 mm mal Zeichenmasstab',
+    kop30.length>0 && kop30.every(r=>Math.abs(r.h-30*sc)<1e-9)
+    && kop30.length===kopOhne.length);
+  ok('[#97] der Durchmesser bleibt das feste Symbolmass',
+    kop30.every(r=>Math.abs(r.b-MM.d*E)<1e-9)
+    && kopOhne.every(r=>Math.abs(r.b-MM.d*E)<1e-9));
+  ok('[#97] jede Marke ist bytegleich die der geteilten Funktion (kein eigener Zeichenweg)',
+    (()=>{ const hPx=w30.height_mm*sc, X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+      const o={hoehe_mm:30,sc}; let n=0;
+      for(const col of w30.tension_columns) for(const g of col.segments){
+        const st=MONT.stangenStuecke(w30,g);
+        for(let i=0;i<st.length-1;i++){
+          if(!svg30.includes(MONT.kopplungsmutterSvg(X(col.x_mm),Y(st[i].z1_mm),E,
+            {klasse:'kop',...o}))) return false;
+          n++;
+        }
+        const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
+        if(au!=='bodenblech') continue;
+        if(!svg30.includes(MONT.kopplungsmutterSvg(X(col.x_mm),Y(g.z0_mm),E,
+          {klasse:'kop',auf:true,...o}))) return false;
+        n++;
+      }
+      return n>0; })());
+  ok('[#97] die Fussmutter LIEGT auf dem Bodenblech, der Stoss bleibt zentriert', (()=>{
+    const hPx=w30.height_mm*sc, y0=46+hPx;
+    const fuss=kop30.filter(r=>Math.abs(r.y+r.h-y0)<1e-9);
+    const stoss=kop30.filter(r=>Math.abs(r.y+r.h-y0)>=1e-9);
+    const zS=[]; for(const col of w30.tension_columns) for(const g of col.segments){
+      const st=MONT.stangenStuecke(w30,g);
+      for(let i=0;i<st.length-1;i++) zS.push(46+(hPx-st[i].z1_mm*sc)); }
+    return fuss.length>0 && fuss.every(r=>r.y<y0)
+      && stoss.length===zS.length
+      && stoss.every(r=>zS.some(z=>Math.abs(r.y+r.h/2-z)<1e-9)); })());
+  // Der Schaftbeginn ist ein ABGELEITETER Wert ([A-19]) und folgt der realen Hoehe mit — sonst
+  // ragte die Schraube ueber die Mutter hinaus. Ihre eigenen Symbolmasse bleiben unberuehrt.
+  ok('[#97] der Schraubenschaft steckt zur HAELFTE in der realen Kopplungsmutter', (()=>{
+    const hPx=w30.height_mm*sc, y0=46+hPx;
+    const RE=new RegExp('<rect x="[-\\d.]+" y="([-\\d.]+)" width="([-\\d.]+)" height="[-\\d.]+"'
+      +' fill="'+MONT.SPANN_FARBE.mutter+'"','g');
+    const alle=[...svg30.matchAll(RE)].map(m=>({y:+m[1],b:+m[2]}));
+    const schaft=alle.filter(q=>Math.abs(q.b-MM.schaft_d*E)<1e-9);
+    const kopf=alle.filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-9);
+    return schaft.length>0 && kopf.length===schaft.length
+      && schaft.every(q=>Math.abs(q.y-(y0-30*sc/2))<1e-9); })());
+  // Die uebrigen Bauteile folgen unveraendert dem gerechneten Wandelement: je Stueck ein
+  // Strich an seiner Stelle, je Stoss eine Haarlinie, und die Stueckliste bleibt die des Cores.
+  ok('[#97] Stangenzuschnitt und Stueckliste bleiben die des Wandelements', (()=>{
+    const hPx=w30.height_mm*sc, X=v=>46+v*sc, Y=v=>46+(hPx-v*sc); let n=0;
+    for(const col of w30.tension_columns) for(const g of col.segments)
+      for(const st of MONT.stangenStuecke(w30,g)){
+        const l='<line x1="'+X(col.x_mm)+'" y1="'+Y(st.z0_mm)+'" x2="'+X(col.x_mm)
+          +'" y2="'+Y(st.z1_mm)+'" stroke="'+MONT.stueckFarbe(st.art)+'"';
+        if(!svg30.includes(l)) return false;
+        n++;
+      }
+    return n>0 && JSON.stringify(BOM.semblaBomItems(w30))
+      === JSON.stringify(BOM.semblaBomItems(store.aktivesWandelement())); })());
+
+  // 50-mm-Produkt: dieselbe Wand, sichtbar hoehere Mutter.
+  setzen('kupplung','kuppl-30',false); setzen('kupplung','kuppl-50',true); WP.run();
+  ok('[#97] zwei Katalogprodukte ergeben sichtbar verschieden hohe Muttern', (()=>{
+    const k50=kops();
+    return WP.fussOffset===25 && k50.length===kop30.length && k50.length>0
+      && k50.every(r=>Math.abs(r.h-50*sc)<1e-9) && k50[0].h>kop30[0].h
+      && WP.ansichtSc()===sc; })());
+
+  // [D-4] Muss: Modul 1 und Modul 7 messen dieselbe Hoehe. Die Einheiten der beiden Ansichten
+  // sind verschieden — verglichen wird deshalb das ZURUECKGERECHNETE Bauteilmass in mm.
+  ok('[#97] Modul 1 und Modul 7 zeigen dieselbe masstaebliche Mutternhoehe', (()=>{
+    const bl=ZEICH.zeichnungSvg(w30,{});
+    const g=/<g class="kop">([\s\S]*?)<\/g>/.exec(bl.svg);
+    const h7=g?[...g[1].matchAll(/height="([-\d.]+)"/g)].map(m=>+m[1]):[];
+    return kop30.length>0 && h7.length>0
+      && Math.abs(kop30[0].h/sc-30)<1e-9 && Math.abs(h7[0]*bl.masstab-30)<1e-2; })());
+  ok('[#97] Modul 1 liest die Hoehe aus dem Wandelement, nicht ein zweites Mal aus dem Katalog',
+    /kuH=2\*\(\(w\.prestress&&w\.prestress\.rod_fuss_offset_mm\)\|\|0\)/
+      .test(html.replace(/\s+/g,''))
+    && /hoehe_mm:kuH,sc/.test(html.replace(/\s+/g,'')));
+
+  // Ausgangszustand wiederherstellen.
+  for(const r of ROLLEN97){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
+  document.getElementById('topConn').value='spannplatte';
+  WP.applyWand(vorherW);
+}
+
 // ---- [P-18] Vorbelegung aus der Katalog-Standardauswahl ---------------------
 // Produkte ohne `rollen` haben oben nie etwas vorbelegt (das erste „Ausgangslage: keine
 // Produktauswahl" belegt das). Traegt der Katalog die Angabe, uebernimmt Modul 1 sie beim

@@ -763,14 +763,17 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       return Math.abs((num(a, "y")[0] + hoehe(a)) - 200) < 1e-9 && num(a, "y")[0] < 200; })());
 
   // --- Das Kernkriterium von #106: KEINE Abhaengigkeit von der Wandgroesse -----------------
-  ok("[#106] das Symbolmass ist fest in Papier-mm (Hoehe = SPANN_MM x Einheit)",
+  // Gilt fuer den MASSLOSEN Zweig: seit #97 zeichnet die Kopplungsmutter ihre Hoehe
+  // masstabsgetreu, sobald der Aufrufer `hoehe_mm`/`sc` hereingibt (eigener Block unten). Ohne
+  // dieses Mass — und fuer die normale Mutter immer — bleibt das Symbolmass die eine Groesse.
+  ok("[#106] OHNE reales Mass ist die Hoehe fest in Papier-mm (Hoehe = SPANN_MM x Einheit)",
     Math.abs(hoehe(mutterSvg(0, 0, E7)) - SPANN_MM.mutter_h) < 1e-9
     && Math.abs(hoehe(kopplungsmutterSvg(0, 0, E7)) - SPANN_MM.kupplung_h) < 1e-9
     && Math.abs(breite(mutterSvg(0, 0, E7)) - SPANN_MM.d) < 1e-9);
-  ok("[#106] dieselbe Ansicht zeichnet dasselbe Bauteil bei JEDER Wandlaenge gleich",
+  ok("[#106] OHNE reales Mass zeichnet dieselbe Ansicht dasselbe Bauteil bei JEDER Wandlaenge gleich",
     mutterSvg(0, 0, E1) === mutterSvg(0, 0, SPANN_EINHEIT.ansicht)
     && kopplungsmutterSvg(0, 0, E1) === kopplungsmutterSvg(0, 0, SPANN_EINHEIT.ansicht));
-  ok("[#106] das Symbol kennt weder Lagenhoehe noch Wandmasstab (kein `sc` im Zylinderweg)",
+  ok("[#106] die normale Mutter kennt weder Lagenhoehe noch Wandmasstab (kein `sc` im Zylinderweg)",
     mutterSvg(0, 0, E7).length > 0 && !/\bsc\b/.test(mutterSvg.toString())
     && !/lage/.test(mutterSvg.toString()) && !/lage/.test(kopplungsmutterSvg.toString()));
   ok("[#106] Ansicht und Blatt fuehren dasselbe Symbol in ihren eigenen Einheiten",
@@ -797,6 +800,61 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       Math.abs((ys[0] + hs[0]) - ys[1]) < 1e-9);
     ok("[#106] auch die Schraube ist masstabsunabhaengig (feste Papier-mm)",
       Math.abs(num(schraubeSvg(0, 0, E7, 0), "width")[1] - SPANN_MM.kopf_d) < 1e-9);
+  }
+
+  // --- Masstabsgetreue Hoehe der Kopplungsmutter (#97) --------------------------------------
+  // Dieselbe Zusicherungsreihe wie bei der Plattendicke: reales Mass, Unterscheidbarkeit zweier
+  // Katalogprodukte, keine Untergrenze, Lagerichtigkeit, unveraenderter Durchmesser und
+  // Bit-Gleichheit ohne Mass. Die Hoehe ist das DOPPELTE des Fussoffsets aus #92 ([A-19]) —
+  // gerechnet wird das beim Aufrufer, hereingegeben wird hier das fertige Bauteilmass.
+  {
+    const scM1 = 60 / 200;          // Modul 1: viewBox-Einheiten je mm (fester Ansichtsmasstab)
+    const kuU = kopplungsmutterSvg(100, 200, E1);          // ohne Mass = Symbolmass
+    ok("[#97] die Mutternhoehe ist masstabsgetreu `hoehe_mm * sc`",
+      Math.abs(hoehe(kopplungsmutterSvg(100, 200, E1, { hoehe_mm: 30, sc: scM1 })) - 30 * scM1)
+        < 1e-9);
+    ok("[#97] zwei Katalogprodukte ergeben sichtbar verschieden hohe Muttern",
+      (() => {
+        const h30 = hoehe(kopplungsmutterSvg(0, 0, E1, { hoehe_mm: 30, sc: scM1 }));
+        const h45 = hoehe(kopplungsmutterSvg(0, 0, E1, { hoehe_mm: 45, sc: scM1 }));
+        return Math.abs(h45 - 45 * scM1) < 1e-9 && h45 > h30
+          && Math.abs(h45 / h30 - 1.5) < 1e-9; })());
+    ok("[#97] der Durchmesser bleibt das feste Symbolmass (nur die Hoehe wird real)",
+      Math.abs(breite(kopplungsmutterSvg(0, 0, E1, { hoehe_mm: 30, sc: scM1 }))
+        - SPANN_MM.d * E1) < 1e-9
+      && Math.abs(breite(kuU) - SPANN_MM.d * E1) < 1e-9);
+    ok("[#97] sie bleibt auf ihre Stosshoehe zentriert — auch mit realem Mass",
+      (() => { const k = kopplungsmutterSvg(100, 200, E1, { hoehe_mm: 30, sc: scM1 });
+        return Math.abs((num(k, "y")[0] + hoehe(k) / 2) - 200) < 1e-9; })());
+    ok("[#97] mit `auf` LIEGT sie weiterhin auf der Kante — auch mit realem Mass",
+      (() => { const k = kopplungsmutterSvg(100, 200, E1, { hoehe_mm: 30, sc: scM1, auf: true });
+        return Math.abs((num(k, "y")[0] + hoehe(k)) - 200) < 1e-9 && num(k, "y")[0] < 200; })());
+    ok("[#97] eine kurze Mutter in kleinem Masstab bekommt KEINE Untergrenze",
+      (() => { const h = hoehe(kopplungsmutterSvg(0, 0, E7, { hoehe_mm: 30, sc: 1 / 100 }));
+        return Math.abs(h - 30 / 100) < 1e-9 && h > 0 && h < SPANN_MM.kupplung_h * E7; })());
+    ok("[#97] ohne Hoehenmass bleibt es beim festen Symbolmass (wertgleich zum Altstand)",
+      kopplungsmutterSvg(100, 200, E1, { hoehe_mm: 0, sc: scM1 }) === kuU
+      && kopplungsmutterSvg(100, 200, E1, { hoehe_mm: null, sc: scM1 }) === kuU
+      && kopplungsmutterSvg(100, 200, E1, { hoehe_mm: undefined, sc: scM1 }) === kuU
+      && kopplungsmutterSvg(100, 200, E1, { hoehe_mm: 30 }) === kuU          // ohne `sc`
+      && kopplungsmutterSvg(100, 200, E1, { hoehe_mm: 30, sc: 0 }) === kuU
+      && Math.abs(hoehe(kuU) - SPANN_MM.kupplung_h * E1) < 1e-9);
+    // Der Schaftbeginn ist ein ABGELEITETER Wert ([A-19]) und kein eigenes Bauteilmass der
+    // Schraube — er folgt derselben Entscheidung. Die eigenen Symbolmasse bleiben unberuehrt.
+    ok("[#97] der Schaft steckt auch mit realem Mass zur HAELFTE in der Kopplungsmutter",
+      (() => { const yb = 300, blech = 6, opt = { hoehe_mm: 30, sc: scM1 };
+        const sr = schraubeSvg(100, yb, E1, blech, opt);
+        const kop = kopplungsmutterSvg(100, yb, E1, { ...opt, auf: true });
+        const yS = num(sr, "y")[0], hK = hoehe(kop);
+        return Math.abs(yS - (yb - hK / 2)) < 1e-9 && yS > num(kop, "y")[0]; })());
+    ok("[#97] ohne Mass bleibt die Schraube bit-gleich, und ihre Symbolmasse aendern sich nie",
+      schraubeSvg(100, 300, E1, 6, { hoehe_mm: 0, sc: scM1 }) === schraubeSvg(100, 300, E1, 6)
+      && num(schraubeSvg(0, 0, E1, 0, { hoehe_mm: 30, sc: scM1 }), "width")
+        .join() === num(schraubeSvg(0, 0, E1, 0), "width").join()
+      && Math.abs(num(schraubeSvg(0, 0, E1, 0, { hoehe_mm: 30, sc: scM1 }), "height")[1]
+        - SPANN_MM.kopf_h * E1) < 1e-9);
+    ok("[#97] die normale Mutter kennt das Mass NICHT (nur die Kopplungsmutter ist real)",
+      mutterSvg(100, 200, E1, { hoehe_mm: 30, sc: scM1 }) === mutterSvg(100, 200, E1));
   }
 
   // --- Spannplatte: liegt AUF der Kante, Breite bleibt Bauteilmass -------------------------
