@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-17",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 97,
+    titel: "Eine Sammeländerung im Geschosseditor zieht die Schlüsselweite der Kopplungsmutter mit",
+    testbitte: "Im Geschosseditor mehrere Wände auswählen, unter „Gemeinsam bearbeiten…“ eine "
+      + "Kopplungsmutter mit anderer Schlüsselweite setzen: Modul 1 und Modul 7 zeigen die "
+      + "Muttern sofort in der neuen Breite, ohne die Wände einzeln neu auszulegen.",
+  },
+  {
     id: "chg-20260909-16",
     datum: "2026-09-09",
     typ: "feature",

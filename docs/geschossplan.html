@@ -2491,6 +2491,11 @@ function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 // damit an zwei Stellen — hier und in Modul 1 (`fussOffsetMm`/`kopfZuschlagMm`).
 // Ein gemeinsamer Baustein dafür fehlt noch; die Rollen führen
 // bewusst kein `mass` ([P-14]), weshalb `sembla-katalog.js` sie nicht kennt.
+//
+// #97 Die Schlüsselweite der Kopplungsmutter (`kupplung_sw_mm`) wächst diesen
+// Nachziehpunkt NICHT: sie ist ein reiner Feldabgriff über `rollenMass` — keine
+// Beziehung, keine Rechnung, kein zweiter Ableitungsweg — und steht deshalb hier wie in
+// Modul 1 als dieselbe eine Leseoperation auf demselben Katalogfeld.
 const ROLLE_RECHNUNG = {
   rod_std: (eing, kat) => {
     // #117 Eine LEERE Auswahl setzt das Feld NICHT. Seit die Ableitung bei jeder
@@ -2522,7 +2527,18 @@ const ROLLE_RECHNUNG = {
   },
   kupplung: (eing, kat) => {
     const h = rollenMass(eing, kat, 'kupplung', 'hoehe_mm');
-    return h != null ? { rod_fuss_offset_mm: h / 2 } : {};
+    // #97 Die Schlüsselweite reist mit DERSELBEN Rolle mit — dasselbe Muster wie die
+    // Blechdicke oben: ein reines AUSWEISUNGSMASS ohne jeden Rechenbeitrag, das die
+    // Ausgaben brauchen, um die Mutter maßstäblich zu zeichnen, ohne den Katalog zu
+    // lesen ([D-1]). Gelesen wird derselbe Ein-Wert-Baustein `rollenMass` wie für die
+    // Höhe, also satzgleich zu `kupplungSwMm()`/`einbauMass()` in Modul 1.
+    //
+    // Fehlt das Maß oder widersprechen sich die gewählten Produkte, entsteht das Feld
+    // NICHT — dann bleibt der im Wandelement gespeicherte Wert stehen (`psOf` reicht
+    // ihn durch), statt von einer erfundenen Breite überschrieben zu werden ([P-9]).
+    const sw = rollenMass(eing, kat, 'kupplung', 'sw_mm');
+    return { ...(h != null ? { rod_fuss_offset_mm: h / 2 } : {}),
+             ...(sw != null ? { kupplung_sw_mm: sw } : {}) };
   },
   spannplatte: (eing, kat, topConn) => {
     if (topConn === 'blech') return {};                 // bei Kopfblech gibt es keine Platte

@@ -2003,9 +2003,13 @@ store.setzeKatalog(KATALOG);
     WP.kupplungSw===null && gespeichert()===undefined && fp()===fp17);
 
   // Akzeptanz 3b: ein am WANDELEMENT gespeicherter Wert uebersteht den Weg, der ihn nicht neu
-  // ableitet. Genau das tut der Geschosseditor (`rechneWandelement` kopiert `we.prestress` und
-  // rechnet ueber dieselbe Engine): das Feld muss durch `psOf()` reisen, statt still zu
-  // verschwinden. Modul 1 bekommt dafuer KEINEN eigenen Erhaltungsmechanismus.
+  // ableitet — das Feld muss durch `psOf()` reisen, statt still zu verschwinden. Modul 1
+  // bekommt dafuer KEINEN eigenen Erhaltungsmechanismus.
+  //
+  // Der Geschosseditor leitet die Schluesselweite seit #97 selbst ab (`ROLLE_RECHNUNG.kupplung`);
+  // gebraucht wird die Erhaltung aber weiterhin, und zwar genau dort, wo sich aus der Auswahl
+  // KEIN eindeutiges Mass ergibt: dann laesst der Editor das Feld weg, und der gespeicherte Wert
+  // muss den Rechenweg unveraendert ueberstehen.
   setzen('kupplung','kuppl-sw-24',false); WP.run();          // wieder eindeutig 17 mm
   ok('[#97] Ausgangsstand fuer die Erhaltungsprobe ist gesetzt', gespeichert()===17);
   ok('[#97] ein gespeicherter Wert uebersteht den nicht neu ableitenden Rechenweg', (()=>{

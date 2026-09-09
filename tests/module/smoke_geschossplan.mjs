@@ -5209,6 +5209,229 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   globalThis.confirm = confirmEcht117;
 }
 
+// ==========================================================================
+//  Issue #97 — die SCHLUESSELWEITE der Kopplungsmutter im Sammel-Editor
+// ==========================================================================
+// Modul 1 leitet `prestress.kupplung_sw_mm` seit #97 aus dem Katalogfeld `sw_mm` der
+// gewaehlten Kopplungsmutter ab; die Ausgaben zeichnen die Mutter damit masstaeblich,
+// ohne den Katalog zu lesen ([D-1]). Der Sammel-Editor ist die ZWEITE Schreibbahn ans
+// Wandelement — er fuehrte einen gespeicherten Wert bisher nur mit. Nach einem dortigen
+// Wechsel auf eine Mutter mit anderer Schluesselweite blieb die alte Breite bis zum
+// naechsten „Auslegen" in Modul 1 stehen.
+//
+// Gefahren wird der ECHTE Editorpfad wie bei #117: Projekt und Katalog aufsetzen, Waende
+// zeichnen, im Popup auswaehlen, uebernehmen — und das GESPEICHERTE Wandelement pruefen.
+// Der zweite Teil ist die Nullwirkung: die Schluesselweite geht in KEINE Rechnung ein.
+// Alle Muttern dieses Blocks sind deshalb 30 mm hoch (Fussoffset also durchgaengig 15 mm);
+// was sich unterscheidet, ist NUR dieses eine Feld.
+{
+  const katText97 = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const mappe97 = store.fuegeProjektHinzu('Projekt 97', { geschoss: 'EG97', hoehe_mm: 2600 });
+  const gs97 = MAPPE.alleGeschosse(mappe97)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs97);
+  store.importiereKatalogText(katText97);
+  await warte();
+  GP.zeigeAlles();
+
+  const we97 = (id) => store.holeElement(id).wandelement;
+  const ps97 = (id) => we97(id).prestress || {};
+  const sw97 = (id) => ps97(id).kupplung_sw_mm;
+  /** Genau die Zahlen, die sich NICHT aendern duerfen: Achsen, Segmente, Stuecke, Mengen. */
+  const fp97 = (id) => { const w = we97(id); return JSON.stringify({
+    achsen: (w.tension_columns || []).map(c => c.x_mm),
+    seg: (w.tension_columns || []).map(c => (c.segments || []).map(sg => [sg.z0_mm, sg.z1_mm,
+      sg.bedarf_mm, sg.ueberstand_mm, (sg.stuecke || []).map(s => s.art + ':' + s.len_mm).join()])),
+    bom: w.bom, base: w.base_plate, top: w.top_plate }); };
+  /** Der Ein-Wert-Baustein von MODUL 1 (`einbauMass`), satzweise nachgebaut. */
+  const mass97 = (id, feld) => {
+    const kat = store.holeKatalog(); if (!kat) return null;
+    const v = [...new Set(KAT.produkteZuRolle(store.holeElement(id).eingaben || {}, kat, 'kupplung')
+      .produkte.map(p => +p[feld]).filter(n => Number.isFinite(n) && n > 0))];
+    return v.length === 1 ? v[0] : null;
+  };
+
+  const neueste97 = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const a97 = neueste97().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const b97 = neueste97().id;
+  await warte();
+  const ids97 = [a97, b97];
+
+  const KUP17 = KAT.rollenIds(store.holeProdukte(1, a97), 'kupplung');
+  ok('#97 Pruefaufbau: [P-18] hat GENAU EINE Kopplungsmutter mit gepflegter '
+    + 'Schluesselweite (17 mm) vorbelegt — im Wandelement steht sie noch nicht',
+    KUP17.length === 1 && KAT.produkt(store.holeKatalog(), KUP17[0]).sw_mm === 17
+    && KAT.produkt(store.holeKatalog(), KUP17[0]).hoehe_mm === 30
+    && ids97.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'kupplung').join() === KUP17[0]
+      && !('kupplung_sw_mm' in ps97(id))));
+
+  const confirmEcht97 = globalThis.confirm;
+  globalThis.confirm = () => true;
+  const rid97 = (r) => 'gp-sammel-rolle-' + r;
+  const hake97 = (r, pid, an = true) => $('gp-sammel-rollen').dispatch('change',
+    { target: { checked: an, dataset: { prolle: r, pid } } });
+  const waehle97 = () => {
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+  };
+  /** Genau die Kopplungsmuttern ankreuzen, die uebergeben werden. */
+  const setzeKupplung97 = async (pids) => {
+    waehle97();
+    await warte();
+    $(rid97('kupplung') + '-an').checked = true;
+    $(rid97('kupplung') + '-an').dispatch('change');
+    for (const o of KAT.rollenOptionen(store.holeKatalog(), 'kupplung', [])) hake97('kupplung', o.id, false);
+    for (const p of pids) hake97('kupplung', p);
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+  };
+
+  // (a) Akzeptanz 2: NUR der Ueberstand ist angekreuzt — die Schluesselweite der
+  //     GESPEICHERTEN Auswahl wird trotzdem nachgezogen (#117-Bahn: jede Neurechnung
+  //     bildet alle Stellen neu).
+  waehle97();
+  await warte();
+  ok('#97 Pruefaufbau: zwei Waende ausgewaehlt, Popup offen',
+    GP.zustand.auswahl.length === 2 && $('gp-sammelblatt').hidden === false);
+  $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+  $('gp-sammel-ueber').value = '25';
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#97 (Akzeptanz 2) nur der Ueberstand angekreuzt: die Schluesselweite der '
+    + 'gespeicherten Kopplungsmutter wird mitgezogen',
+    ids97.every(id => sw97(id) === 17 && ps97(id).rod_overhang_mm === 25));
+  ok('#97 (Muss 5) die Ableitung erreicht dieselbe Zahl wie Modul 1 fuer dieselbe Auswahl',
+    ids97.every(id => sw97(id) === mass97(id, 'sw_mm') && mass97(id, 'sw_mm') === 17));
+  ok('#97 Pruefaufbau: der Fussoffset ist gesetzt und bleibt ab hier konstant',
+    ids97.every(id => ps97(id).rod_fuss_offset_mm === 15));
+  // Ab hier ist der Rechenstand eingeschwungen — er ist der Vergleichsmassstab.
+  const fpVor97 = ids97.map(fp97);
+
+  // Zwei weitere Muttern DERSELBEN Hoehe: eine mit abweichender Schluesselweite, eine
+  // ohne gepflegtes Mass. Weil `hoehe_mm` gleich bleibt, veraendert sich zwischen allen
+  // folgenden Faellen ausschliesslich `sw_mm`.
+  {
+    const kat = store.holeKatalog();
+    const basis = KAT.produkt(kat, KUP17[0]);
+    const sw19 = { ...basis, id: 'kuppl-sw-19', bezeichnung: 'Kopplungsmutter Pruefmass SW19',
+      sw_mm: 19 };
+    const ohne = { ...basis, id: 'kuppl-ohne-sw', bezeichnung: 'Kopplungsmutter ohne Schluesselweite' };
+    delete ohne.sw_mm;
+    store.setzeKatalog({ ...kat, produkte: [...(kat.produkte || []), sw19, ohne] });
+    await warte();
+    ok('#97 Pruefaufbau: drei Kopplungsmuttern gleicher Hoehe (SW 17 / SW 19 / ohne Mass), '
+      + 'der Katalog bleibt gueltig',
+      KAT.validiereKatalog(store.holeKatalog()).length === 0
+      && (store.holeKatalog().produkte || [])
+        .filter(p => (p.rollen || []).includes('kupplung')).length === 3
+      && KAT.produkt(store.holeKatalog(), 'kuppl-sw-19').hoehe_mm === 30
+      && KAT.produkt(store.holeKatalog(), 'kuppl-sw-19').sw_mm === 19
+      && KAT.produkt(store.holeKatalog(), 'kuppl-ohne-sw').hoehe_mm === 30
+      && KAT.produkt(store.holeKatalog(), 'kuppl-ohne-sw').sw_mm === undefined);
+  }
+
+  // (b) Akzeptanz 1: eine Sammelaenderung, die eine Mutter mit gepflegter Schluesselweite
+  //     setzt, schreibt an JEDER betroffenen Wand genau dieses Katalogmass.
+  await setzeKupplung97(['kuppl-sw-19']);
+  ok('#97 (Akzeptanz 1 / Muss 1) die Sammelaenderung schreibt an jeder Wand genau das '
+    + 'Katalogmass der gesetzten Kopplungsmutter',
+    ids97.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'kupplung').join() === 'kuppl-sw-19'
+      && sw97(id) === 19 && sw97(id) === mass97(id, 'sw_mm')));
+  ok('#97 (Akzeptanz 4 / must-not 1) Zuschnitt, Segmente, Spannachsen und Mengen sind '
+    + 'wertgleich — die Schluesselweite geht in keine Rechnung ein',
+    ids97.every((id, i) => fp97(id) === fpVor97[i] && ps97(id).rod_fuss_offset_mm === 15));
+
+  // (c) Mehrdeutig: zwei verschiedene Schluesselweiten gewaehlt — keine wird bevorzugt,
+  //     und der gespeicherte Wert bleibt unveraendert stehen ([P-9]).
+  await setzeKupplung97([KUP17[0], 'kuppl-sw-19']);
+  ok('#97 (Akzeptanz 3 / Muss 3) mehrdeutiges Katalogmass: kein Feld wird erfunden, der '
+    + 'gespeicherte Wert bleibt stehen',
+    ids97.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'kupplung').length === 2
+      && mass97(id, 'sw_mm') === null && sw97(id) === 19));
+  ok('#97 (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    ids97.every((id, i) => fp97(id) === fpVor97[i] && ps97(id).rod_fuss_offset_mm === 15));
+
+  // (d) Ohne gepflegtes Mass: dieselbe Aussage — kein Ersatzmass, kein Loeschen.
+  await setzeKupplung97(['kuppl-ohne-sw']);
+  ok('#97 (Akzeptanz 3 / Muss 3) gewaehlte Mutter ohne gepflegte Schluesselweite: kein '
+    + 'Ersatzmass, der gespeicherte Wert bleibt stehen',
+    ids97.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'kupplung').join() === 'kuppl-ohne-sw'
+      && mass97(id, 'sw_mm') === null && sw97(id) === 19));
+  ok('#97 (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    ids97.every((id, i) => fp97(id) === fpVor97[i] && ps97(id).rod_fuss_offset_mm === 15));
+
+  // (e) Akzeptanz 3 / Muss 4: OHNE zugeordneten Katalog wird gar nichts abgeleitet — ein
+  //     am Wandelement gespeicherter Wert uebersteht den Rechenweg unveraendert.
+  {
+    const mappeOhne97 = store.fuegeProjektHinzu('Projekt 97 ohne Katalog',
+      { geschoss: 'EG97b', hoehe_mm: 2600 });
+    const gsOhne97 = MAPPE.alleGeschosse(mappeOhne97)[0].geschoss.id;
+    store.setzeAktivesGeschoss(gsOhne97);
+    await warte();
+    ok('#97 Pruefaufbau: dem neuen Projekt ist kein Bauteilkatalog zugeordnet ([L-12])',
+      store.katalogStatus().status !== 'ok' && !store.holeKatalog());
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const c97 = neueste97().id;
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const d97 = neueste97().id;
+    await warte();
+    const paar97 = [c97, d97];
+    // Der Ausgangsstand entsteht ueber den echten Auslegungspfad — nicht durch ein von
+    // Hand verbogenes JSON: so passt die Zerlegung wirklich zu diesen Eingaengen.
+    for (const id of paar97) {
+      const el = store.holeElement(id), w = el.wandelement;
+      const vorg = { name: el.name, length_mm: w.length_mm, height_mm: w.height_mm,
+        openings: (w.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+        sides: w.sides, steps: (w.steps || []).map(s => ({ ...s })),
+        interlocks: (w.interlocks || []).map(i => ({ ...i })),
+        prestress: { ...(w.prestress || {}), kupplung_sw_mm: 21, rod_fuss_offset_mm: 15 },
+        load: { qk_area: 1.00, gammaQ: 1.50 },
+        material: w.verification && w.verification.material };
+      const neu = ENG.autoAuslegung(vorg).wandelement;
+      neu.wandtyp = w.wandtyp; neu.abdichtung = w.abdichtung; neu.brandklasse = w.brandklasse;
+      store.speichere(el.name, neu, id);
+    }
+    await warte();
+    ok('#97 Pruefaufbau: beide Waende tragen eine gespeicherte Schluesselweite (21 mm)',
+      paar97.every(id => sw97(id) === 21));
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+    $('gp-sammel-ueber').value = '30';
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#97 (Akzeptanz 3 / Muss 4) ohne zugeordneten Katalog wird nichts abgeleitet — die '
+      + 'gespeicherte Schluesselweite bleibt unveraendert stehen',
+      paar97.every(id => sw97(id) === 21 && ps97(id).rod_overhang_mm === 30));
+  }
+
+  // (f) Must-not: GENAU EIN Ableitungsweg, kein neues gespeichertes Feld, kein Sprung
+  //     einer Formatversion.
+  ok('#97 (must-not 6) genau EIN Ableitungsweg — `sw_mm` wird im Editor an genau einer '
+    + 'Stelle und ausschliesslich ueber `rollenMass` gelesen',
+    (html.match(/'sw_mm'/g) || []).length === 1
+    && /rollenMass\(eing, kat, 'kupplung', 'sw_mm'\)/.test(html)
+    // … und genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
+    // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
+    && (html.match(/kupplung_sw_mm:/g) || []).length === 1
+    && /sw != null \? \{ kupplung_sw_mm: sw \} : \{\}/.test(html));
+  ok('#97 (must-not 2) kein neues gespeichertes Feld, kein Schema-, Mappen-, Katalog- '
+    + 'oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    && store.PROJEKT_VERSION === 2
+    && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  globalThis.confirm = confirmEcht97;
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

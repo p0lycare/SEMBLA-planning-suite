@@ -416,10 +416,12 @@ function vorgaben(){
   // Auslegungsschleife baut `prestress` je Iteration neu; ein dort fehlendes Feld ginge nach der
   // ersten Iteration verloren, obwohl es hier gesetzt wurde.
   //
-  // ⚠ Nachziehpunkt [P-6]: der Sammel-Editor des Geschosseditors leitet die Schlüsselweite noch
-  // NICHT ab. Er führt einen gespeicherten Wert unverändert mit (`rechneWandelement` kopiert
-  // `we.prestress`), aktualisiert ihn aber nicht — nach einem dortigen Wechsel auf eine Mutter
-  // mit anderer Schlüsselweite steht der alte Wert bis zum nächsten „Auslegen" hier.
+  // Der Sammel-Editor des Geschosseditors leitet die Schlüsselweite seit #97 SELBST ab — über
+  // denselben Ein-Wert-Baustein auf demselben Katalogfeld (`ROLLE_RECHNUNG.kupplung` ->
+  // `rollenMass(…, 'kupplung', 'sw_mm')`, gebildet bei jeder Neurechnung in
+  // `vorspannEingaenge`). Eine Sammeländerung hinterlässt damit keine veraltete Breite mehr;
+  // ein gespeicherter Wert bleibt nur dort stehen, wo sich aus der Auswahl kein eindeutiges
+  // Maß ergibt — dann wird keines erfunden, hier wie dort.
   const sw=kupplungSwMm(); if(sw!=null) hw.kupplung_sw_mm=sw;
   // [A-1] Blechdicken: reine BAUTEILMASSE aus dem Katalog. Sie gehen in keine Rechnung ein und
   // werden nur ausgewiesen; fehlt oder widerspricht ein Maß, bleibt das Feld weg und die Lücke
