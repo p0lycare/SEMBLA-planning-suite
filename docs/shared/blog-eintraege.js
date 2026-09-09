@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-11",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 112,
+    titel: "Gewindestangen und die wei\u00dfe Sto\u00dfmarke liegen jetzt auch vor der "
+      + "Kopplungsmutter",
+    testbitte: "In Modul 1 eine Wand mit mehrst\u00fcckigen Spannstr\u00e4ngen \u00f6ffnen und "
+      + "danach ihr Blatt in Modul 7: die Stange l\u00e4uft durch die Kopplungsmutter hindurch, "
+      + "und die wei\u00dfe Haarlinie am Sto\u00df ist frei sichtbar.",
+  },
+  {
     id: "chg-20260909-10",
     datum: "2026-09-09",
     typ: "fix",

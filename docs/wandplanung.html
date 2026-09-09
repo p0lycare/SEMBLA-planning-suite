@@ -616,9 +616,11 @@ function draw(w){
   // Weiße HAARLINIE am Stangenstoß (#112): sie macht die Stückelung ablesbar, wo zwei Stücke
   // DERSELBEN Art aneinanderstoßen — die Kopplungsmutter sagt nur, DASS gekoppelt wird, nicht
   // wo die Grenze liegt. Die Breite ist aus dem Durchmesser der Kopplungsmutter ABGELEITET und
-  // nicht frei gewählt: die Mutter liegt als opakes Bauteil über dem Stoß, eine schmalere Linie
-  // wäre vollständig verdeckt. Mit Faktor 1,5 schaut sie beidseits heraus. Darstellungsmarke,
-  // kein Bauteil — deshalb festes Symbolmaß über SPANN_EINHEIT.ansicht (#106).
+  // nicht frei gewählt: sie markiert die Grenze GENAU dort, wo die Mutter sitzt, und muss
+  // deshalb an deren Breite gemessen werden. Mit Faktor 1,5 schaut sie beidseits über die Mutter
+  // hinaus. Seit der Rückmeldung vom 2026-09-09 liegt sie zusammen mit der Stange VOR der Mutter
+  // (s. u.); der WERT ist davon unberührt. Darstellungsmarke, kein Bauteil — deshalb festes
+  // Symbolmaß über SPANN_EINHEIT.ansicht (#106).
   //
   // ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe Ableitung steht ein zweites Mal in
   // `docs/shared/sembla-zeichnung.js` (Modul 7). Ein gemeinsames Maß gehörte neben `SPANN_MM`
@@ -666,9 +668,9 @@ function draw(w){
   // Zuschnitt (leeres `stuecke` = gemeldeter Konflikt) bleibt LEER, statt eine durchgehende
   // Stange vorzutäuschen; der Konflikt steht als Warnung über der Ansicht.
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): sie sammeln sich in `vorn` und
-  // werden erst nach Strängen, Ankern und Einlegeblechen angehängt. In SVG entscheidet allein
-  // die Zeichenreihenfolge, und eine Kopplung darf von keinem Stangenstück, keiner Platte und
-  // keinem Blech überdeckt werden.
+  // werden erst nach Ankern, Platten, Blechen und Einlegeblechen angehängt. In SVG entscheidet
+  // allein die Zeichenreihenfolge, und eine Kopplung darf von keinem dieser Bauteile überdeckt
+  // werden. Vor ihr liegt seit #112 nur noch die Stangengruppe (s. u.).
   // ---- Deckenanschluss: rotes Z-Symbol je Anschlusspunkt ([P-24]/[D-4], #95/#97) ----
   // Gezeichnet werden die Punkte aus der EINEN Ableitung des Rechenkerns
   // (`w.deckenanschlusspunkte`, [A-26]/[A-27]) — hier wird nichts nachgerechnet und keine Achse
@@ -690,11 +692,12 @@ function draw(w){
       s+=deckenanschlussSvg(X(col.x_mm),Y(topH(col.k)),SYM,{klasse:'dcs'}); } }
 
   // Alle STANGENLINIEN kommen in den Vordergrund (#112): gesammelt in `stangen` und als eigene
-  // Gruppe NACH Steinen, Blechen, Deckenanschluss-Symbolen und Einlegeblechen ausgegeben. Die
-  // Gewindestange ist das Bauteil, an dem die Vorspannung abgelesen wird — sie darf von keinem
-  // anderen Wandbauteil verdeckt werden. Anker (Spannplatte, Schraube, Spannmutter) bleiben,
-  // wo sie sind, und rutschen damit HINTER die Stange; genau das will #112. Die weißen
-  // Haarlinien laufen im selben Akkumulator mit: vor der Stange, hinter der Kopplungsmutter.
+  // Gruppe ZULETZT ausgegeben — nach Steinen, Blechen, Deckenanschluss-Symbolen, Einlegeblechen
+  // UND nach den Kopplungsmuttern. Die Gewindestange ist das Bauteil, an dem die Vorspannung
+  // abgelesen wird — sie darf von keinem Wandbauteil verdeckt werden, auch nicht von der Mutter
+  // an ihrem eigenen Stoß. Anker (Spannplatte, Schraube, Spannmutter) bleiben, wo sie sind, und
+  // rutschen damit HINTER die Stange. Die weißen Haarlinien laufen im selben Akkumulator mit
+  // und liegen damit ebenfalls vor der Mutter — genau das verlangt die Rückmeldung.
   let vorn='', stangen='';
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
@@ -706,9 +709,10 @@ function draw(w){
         // normale Mutter. Die Klasse `kop` bleibt, sie trennt das Bauteil vom Legendenmuster.
         // Dazu seit #112 die weiße HAARLINIE quer zur Stange, genau auf `z1_mm` des UNTEREN
         // Stücks: die Stückelungsgrenze. Sie steht unmittelbar nach ihrer Stangenlinie im selben
-        // Akkumulator — also vor der Stange —, und die Kopplungsmuttern kommen danach, liegen
-        // also weiterhin obenauf. Das letzte Stück bekommt keine: dort ist kein Stoß, sondern
-        // das Segmentende.
+        // Akkumulator — also vor der Stange —, und dieser Akkumulator wird als letzte
+        // Bauteilgruppe ausgegeben: Haarlinie und Stange liegen damit auch vor der
+        // Kopplungsmutter. Das letzte Stück bekommt keine: dort ist kein Stoß, sondern das
+        // Segmentende.
         if(i<st.length-1){
           const yS=Y(p.z1_mm);
           stangen+=`<line class="haar" x1="${x-HAAR_B/2}" y1="${yS}" x2="${x+HAAR_B/2}" y2="${yS}" stroke="${HAAR_FARBE}" stroke-width="${HAAR_SW}"/>`;
@@ -747,11 +751,22 @@ function draw(w){
     const on=(zpEdit && selZp===zp.z_mm);
     s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,e:SYM});
   }
-  // Vordergrund der GEWINDESTANGEN (#112): eigene Gruppe NACH allen übrigen Wandbauteilen —
-  // Steine, Kontur, Boden-/Kopfblech, Deckenanschluss-Symbole und Einlegebleche liegen dahinter,
-  // die Kopplungsmuttern davor. Die weißen Haarlinien der Stöße sind darin enthalten. Danach
-  // folgen nur noch Bedien-Overlays (Griffe, Hilfslinien) und die Kopplungsmuttern — Overlays
-  // sind keine Wandbauteile und dürfen wie bisher obenauf liegen.
+  // Vordergrund der BAUTEILE (#106): die gesammelten Kopplungsmuttern — nach Strängen, Ankern,
+  // Blechen und Einlegeblechen, damit keines davon sie überdeckt. Seit #112 (Rückmeldung
+  // 2026-09-09) stehen sie VOR der Stangengruppe und nicht mehr dahinter: die Mutter ist ein
+  // OPAKES Bauteil über genau dem Stoß, den die weiße Haarlinie markiert — lag sie obenauf,
+  // verschluckte sie Stangenende und Haarlinie und damit die beiden Angaben, wegen derer
+  // hingesehen wird. Erkennbar bleibt sie trotzdem: mit `SPANN_MM.d` ist sie rund viermal so
+  // breit wie die Stangenlinie und schaut beidseits hervor.
+  s+=vorn;
+
+  // Vordergrund der GEWINDESTANGEN (#112): eigene Gruppe ZULETZT von allen Wandbauteilen —
+  // Steine, Kontur, Boden-/Kopfblech, Deckenanschluss-Symbole, Einlegebleche UND die
+  // Kopplungsmuttern liegen dahinter. Die Gewindestange darf von keinem Bauteil verdeckt
+  // werden, auch nicht von der Mutter an ihrem eigenen Stoß; die weißen Haarlinien der Stöße
+  // sind in der Gruppe enthalten und liegen damit ebenfalls frei. Danach folgen nur noch
+  // Bedien-Overlays (Griffe, Hilfslinien) — die sind keine Wandbauteile und dürfen wie bisher
+  // obenauf liegen.
   if(stangen) s+=`<g class="stg">${stangen}</g>`;
 
   // Im Bearbeitungsmodus zusätzlich je Punkthöhe eine Griff-/Hilfslinie über die Wandbreite,
@@ -767,10 +782,6 @@ function draw(w){
     for(const z of hoehen){ const on=(selZp===z); const zy=Y(z);
       s+=`<line x1="${x0}" y1="${zy}" x2="${x1}" y2="${zy}" stroke="${on?'#c9461c':ZWISCHENPUNKT.farbe}" stroke-width="${on?1.6:1}" stroke-dasharray="6 4" stroke-opacity="0.85" style="cursor:grab"/>`;
       s+=`<text x="${x1+4}" y="${zy+3}" font-size="9" fill="${on?'#c9461c':ZWISCHENPUNKT.farbe}">${fmt(z/10,1)}</text>`; } }
-
-  // Vordergrund der BAUTEILE (#106): die gesammelten Kopplungsmuttern. Danach folgen nur
-  // noch Bedien-Overlays (Griffe, Hilfslinien) — die dürfen weiter obenauf liegen.
-  s+=vorn;
 
   // ---- Ausgleichspunkt-Editor: Griffe am Wandfuß ([A-24], #96) ----
   // Reine BEDIENHILFE, ausschließlich im Editiermodus vorhanden — dasselbe Muster wie die

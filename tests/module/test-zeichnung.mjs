@@ -463,8 +463,10 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
   const grp = /<g class="stg">([\s\S]*?)<\/g>/.exec(svg);
   ok("[#112] die Stangenlinien stehen in einer eigenen Gruppe", !!grp);
   // Die Gruppe kommt NACH allem, was die Stange bisher verdecken konnte: Steine, Kontur,
-  // Boden-/Kopfblech, Deckenanschluss-Symbole und Einlegebleche. Davor bleibt nur noch der
-  // Kopplungsvordergrund (#106) und danach Bemassung und Brandschutzgruppe (#79).
+  // Boden-/Kopfblech, Deckenanschluss-Symbole und Einlegebleche. Seit der Rueckmeldung vom
+  // 2026-09-09 gehoert dazu auch der Kopplungsvordergrund (#106) — er stand bis dahin
+  // ausdruecklich DAHINTER, s. die naechste Zusicherung. Danach folgen nur noch Bemassung
+  // und Brandschutzgruppe (#79).
   ok("[#112] sie steht nach Steinen, Blechen, Deckenanschluss und Einlegeblechen", (() => {
     // Ohne die Brandschutzgruppe gesucht: deren Kennfarbe fuer F0 ist zufaellig dieselbe wie
     // die des Blechs, und sie steht bauartbedingt ZULETZT (#79) — sie ist kein Bauteil.
@@ -475,9 +477,23 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
       && stg > bis.lastIndexOf('<polyline points=')                // Wandkontur
       && stg > bis.indexOf('<g class="dcs">')                      // Deckenanschluss-Symbole
       && stg > bis.indexOf('<g class="zsp">'); })());              // Einlegebleche
-  ok("[#112] und vor Kopplungsmuttern, Bemassung und Brandschutzgruppe",
-    svg.indexOf('<g class="stg">') < svg.indexOf('<g class="kop">')
+  // UMGEDREHT MIT DER RUECKMELDUNG VOM 2026-09-09: bis dahin verlangte diese Stelle
+  // ausdruecklich, dass die Stangengruppe VOR den Kopplungsmuttern steht — die Mutter lag
+  // damit obenauf. Sie ist aber ein OPAKES Bauteil ueber genau dem Stoss, den die weisse
+  // Haarlinie markiert, und verschluckte damit Stangenende und Haarlinie: also genau die
+  // beiden Angaben, wegen derer hingesehen wird. Jetzt gilt die umgekehrte Forderung. Die
+  // Aussage gegen Bemassung und Brandschutzgruppe bleibt unveraendert.
+  ok("[#112] die Kopplungsmuttern stehen DAVOR — Stange und Haarlinie liegen obenauf",
+    svg.indexOf('<g class="kop">') < svg.indexOf('<g class="stg">')
     && svg.indexOf('<g class="stg">') < svg.indexOf('<g class="brand"'));
+  // Die Mutter bleibt trotzdem als Bauteil erkennbar: sie ist deutlich breiter als die
+  // Stangenlinie und schaut beidseits hervor — die Stange laeuft durch sie hindurch, sie
+  // verschwindet nicht unter ihr.
+  ok("[#112] die Kopplungsmutter ist breiter als die Stange, die davor liegt", (() => {
+    const g = /<g class="kop">([\s\S]*?)<\/g>/.exec(svg);
+    const br = [...g[1].matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
+    const sw = [...grp[1].matchAll(/stroke-width="([-\d.]+)"/g)].map(m => +m[1]);
+    return br.length > 0 && sw.length > 0 && Math.min(...br) > Math.max(...sw); })());
   // Kein Stangenstrich liegt mehr ausserhalb der Gruppe — sonst waere die Aussage nur
   // teilweise wahr, und genau ein vergessener Strich bliebe verdeckt.
   ok("[#112] ALLE Stangenstriche liegen in der Gruppe, keiner davor oder danach", (() => {
@@ -549,6 +565,61 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
           n++;
         }
     return n > 0; })());
+
+  // MUSS-NICHT der Rueckmeldung vom 2026-09-09: ausser der Reihenfolge aendert sich NICHTS.
+  // Belegt wird das nicht an einem eingefrorenen Abzug (der verschoebe sich mit jeder anderen
+  // Blattaenderung mit), sondern gegen die KANONISCHE Quelle: Anzahl und Koordinaten jedes
+  // Stangenstrichs, jeder Haarlinie und jeder Kopplungsmutter werden aus `stangenStuecke()`
+  // und den realen Segmenten nachgebaut und muessen exakt getroffen sein. Eine verschobene,
+  // verlorene oder doppelt gezeichnete Marke faellt damit auf, eine reine Umsortierung nicht.
+  const SOLL = (() => {
+    const sc = 1 / zA3.masstab, pad = Z.PAD_MM, hPx = W.height_mm * sc;
+    const X = x => pad + x * sc, Y = z => pad + (hPx - z * sc);
+    const stangen = [], haare = [], kop = [];
+    for (const col of W.tension_columns)
+      for (const sg of col.segments) {
+        const st = stangenStuecke(W, sg);
+        for (let i = 0; i < st.length; i++) {
+          stangen.push({ x: X(col.x_mm), y0: Y(st[i].z0_mm), y1: Y(st[i].z1_mm) });
+          if (i < st.length - 1) {
+            haare.push({ x: X(col.x_mm), y: Y(st[i].z1_mm) });
+            kop.push({ x: X(col.x_mm), y: Y(st[i].z1_mm) });   // Mutter am Stoss
+          }
+        }
+        // Fussmutter: nur wo der untere Anker das Bodenblech ist ([A-19]).
+        const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
+        if (au === "bodenblech") kop.push({ x: X(col.x_mm), y: Y(sg.z0_mm) });
+      }
+    return { stangen, haare, kop };
+  })();
+  const nah = (a, b) => Math.abs(a - b) < 1e-3;
+
+  ok("[#112] Anzahl und Koordinaten der Stangenstriche sind unveraendert", (() => {
+    const ist = [...grp[1].matchAll(
+      /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="(?!#fff)/g)]
+      .map(m => ({ x: +m[1], y0: +m[2], y1: +m[4] }));
+    return ist.length === SOLL.stangen.length && SOLL.stangen.length > 0
+      && SOLL.stangen.every(q => ist.some(i =>
+        nah(i.x, q.x) && nah(i.y0, q.y0) && nah(i.y1, q.y1))); })());
+
+  ok("[#112] Anzahl und Koordinaten der Haarlinien sind unveraendert", (() => {
+    const ist = haare(svg);
+    return ist.length === SOLL.haare.length && SOLL.haare.length > 0
+      && SOLL.haare.every(q => ist.some(h =>
+        nah((h.x1 + h.x2) / 2, q.x) && nah(h.y, q.y))); })());
+
+  // Die Kopplungsmuttern sind gefuellte Rechtecke; der Bezugspunkt ist ihre MITTE, das
+  // Rechteck steht also eine halbe Hoehe hoeher. Die Fussmutter sitzt AUF dem Blech, ihre
+  // Unterkante liegt damit auf der Ankerhoehe — beide Faelle werden zugelassen, weil hier
+  // die MENGE geprueft wird und nicht die Einbaulage (die haengt an #97 und ist unberuehrt).
+  ok("[#112] Anzahl und Koordinaten der Kopplungsmuttern sind unveraendert", (() => {
+    const g = /<g class="kop">([\s\S]*?)<\/g>/.exec(svg);
+    const ist = [...g[1].matchAll(
+      /x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+      .map(m => ({ x: +m[1] + +m[3] / 2, y: +m[2], h: +m[4] }));
+    return ist.length === SOLL.kop.length && SOLL.kop.length > 0
+      && SOLL.kop.every(q => ist.some(i => nah(i.x, q.x)
+        && (nah(i.y + i.h / 2, q.y) || nah(i.y + i.h, q.y)))); })());
 }
 
 {

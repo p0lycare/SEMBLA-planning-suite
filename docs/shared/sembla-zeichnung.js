@@ -574,9 +574,12 @@ export function zeichnungSvg(w, opts = {}) {
   // Weisse HAARLINIE am Stangenstoss (#112): sie macht die Stueckelung ablesbar, wo zwei
   // Stuecke DERSELBEN Art aneinanderstossen — die Kopplungsmutter sagt nur, DASS gekoppelt
   // wird, nicht wo die Grenze liegt. Die Breite ist aus dem Durchmesser der Kopplungsmutter
-  // ABGELEITET und nicht frei gewaehlt: die Mutter liegt als opakes Bauteil ueber dem Stoss,
-  // eine schmalere Linie waere vollstaendig verdeckt. Mit Faktor 1,5 schaut sie beidseits
-  // heraus. Sie ist eine Darstellungsmarke, kein Bauteil — deshalb feste Papier-mm (#106).
+  // ABGELEITET und nicht frei gewaehlt: sie markiert die Grenze GENAU dort, wo die Mutter
+  // sitzt, und muss deshalb an deren Breite gemessen werden. Mit Faktor 1,5 schaut sie
+  // beidseits ueber die Mutter hinaus und ist als Stossmarke auch dann eindeutig der Stange
+  // zugeordnet, wenn zwei Stuecke derselben Art aneinanderstossen. Seit der Rueckmeldung vom
+  // 2026-09-09 liegt sie zusammen mit der Stange VOR der Mutter (s. u.); der WERT ist davon
+  // unberuehrt. Sie ist eine Darstellungsmarke, kein Bauteil — deshalb feste Papier-mm (#106).
   //
   // ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe Ableitung steht ein zweites Mal in der Wandansicht
   // von Modul 1 (`docs/wandplanung.html`). Ein gemeinsames Mass gehoerte neben `SPANN_MM` in
@@ -585,8 +588,9 @@ export function zeichnungSvg(w, opts = {}) {
   // Ansichten im Test gesichert. Die kanonische Groesse `SPANN_MM.d` bleibt die eine Quelle.
   const HAAR_B = SPANN_MM.d * 1.5 * SYM, HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
-  // Gruppe NACH den Straengen und Einlegeblechen gesetzt, damit sie kein Stangenstueck, keine
-  // Platte und kein Blech ueberdeckt. Bemassung und Brandschutzgruppe bleiben danach.
+  // Gruppe NACH Einlegeblechen, Platten und Blechen gesetzt, damit keines davon sie ueberdeckt.
+  // Vor ihr liegt seit #112 nur noch die Stangengruppe (s. u.); Bemassung und Brandschutzgruppe
+  // bleiben danach.
   // Deckenanschluss ([P-24]/[D-4], #95/#97): rotes Z je Anschlusspunkt, eigene Gruppe VOR den
   // Straengen — Gewindestange, Spannplatte und Kopplungsmutter liegen damit im Vordergrund
   // (#112). Gezeichnet werden die Punkte des Rechenkerns ([A-26]/[A-27]); gelaufen wird ueber
@@ -607,11 +611,12 @@ export function zeichnungSvg(w, opts = {}) {
   }
 
   // Alle STANGENLINIEN kommen in den Vordergrund (#112): gesammelt in `stangen` und als eigene
-  // Gruppe NACH Steinen, Blechen, Deckenanschluss-Symbolen und Einlegeblechen gesetzt. Die
-  // Gewindestange ist das Bauteil, an dem die Vorspannung abgelesen wird — sie darf von nichts
-  // verdeckt werden. Anker (Spannplatte, Schraube, Spannmutter) bleiben, wo sie sind, und
-  // rutschen damit HINTER die Stange; genau das will #112. Die weissen Haarlinien laufen im
-  // selben Akkumulator mit: sie liegen vor der Stange und hinter der Kopplungsmutter.
+  // Gruppe ZULETZT gesetzt — nach Steinen, Blechen, Deckenanschluss-Symbolen, Einlegeblechen
+  // UND nach den Kopplungsmuttern. Die Gewindestange ist das Bauteil, an dem die Vorspannung
+  // abgelesen wird — sie darf von KEINEM Bauteil verdeckt werden, auch nicht von der Mutter
+  // an ihrem eigenen Stoss. Anker (Spannplatte, Schraube, Spannmutter) bleiben, wo sie sind,
+  // und rutschen damit HINTER die Stange. Die weissen Haarlinien laufen im selben Akkumulator
+  // mit und liegen damit ebenfalls vor der Mutter — genau das verlangt die Rueckmeldung.
   let vorn = "", stangen = "";
   for (const col of (w.tension_columns || [])) {
     const x = X(col.x_mm), lt = _obenBei(w, col.x_mm);
@@ -633,9 +638,10 @@ export function zeichnungSvg(w, opts = {}) {
         // aus derselben Funktion wie die Wandansicht von Modul 1. Kreis und Sechseck entfallen.
         // Dazu seit #112 die weisse HAARLINIE quer zur Stange, genau auf `z1_mm` des UNTEREN
         // Stuecks: die Stueckelungsgrenze. Sie steht unmittelbar nach ihrer Stangenlinie im
-        // selben Akkumulator — also vor der Stange — und die Kopplungsmutter kommt als eigene
-        // Gruppe danach, liegt also weiterhin obenauf. Das letzte Stueck bekommt keine: dort
-        // ist kein Stoss, sondern das Segmentende.
+        // selben Akkumulator — also vor der Stange — und dieser Akkumulator wird als letzte
+        // Bauteilgruppe ausgegeben: Haarlinie und Stange liegen damit auch vor der
+        // Kopplungsmutter. Das letzte Stueck bekommt keine: dort ist kein Stoss, sondern das
+        // Segmentende.
         if (!letzter) {
           const yS = Y(st.z1_mm);
           stangen += `<line x1="${_n(x - HAAR_B / 2)}" y1="${_n(yS)}" x2="${_n(x + HAAR_B / 2)}" `
@@ -686,17 +692,25 @@ export function zeichnungSvg(w, opts = {}) {
     }
   }
 
-  // Vordergrund der GEWINDESTANGEN (#112) — eigene Gruppe, NACH Steinen, Blechen,
-  // Deckenanschluss-Symbolen und Einlegeblechen und VOR dem Kopplungsvordergrund: keine
-  // Stangenlinie wird mehr von einem anderen Bauteil ueberdeckt, die Kopplungsmutter liegt
-  // aber weiterhin auf ihrem Stoss. Die weissen Haarlinien sind darin enthalten. Bemassung
-  // und Brandschutzgruppe bleiben danach und damit unverdeckt.
-  if (stangen) s += `<g class="stg">${stangen}</g>`;
-
   // Vordergrund der Kopplungsmuttern (#106) — eigene Gruppe, NACH Straengen und
   // Einlegeblechen und VOR Bemassung und Brandschutzgruppe: sie verdeckt damit kein
   // Ausfuehrungsmass, und die Brandschutzgruppe bleibt die letzte des Blattes.
+  //
+  // Sie steht seit #112 (Rueckmeldung 2026-09-09) VOR der Stangengruppe und nicht mehr
+  // dahinter: die Mutter ist ein OPAKES Bauteil ueber genau dem Stoss, den die weisse
+  // Haarlinie markiert — lag sie obenauf, verschluckte sie Stangenende und Haarlinie und
+  // damit die beiden Angaben, wegen derer ueberhaupt hingesehen wird (Stosspunkt und
+  // Stueckelung). Erkennbar bleibt sie trotzdem, weil sie mit `SPANN_MM.d` rund viermal so
+  // breit ist wie die Stangenlinie und beidseits hervorschaut; verdeckt wird von ihr also
+  // nur, was ohnehin hinter ihr liegt.
   if (vorn) s += `<g class="kop">${vorn}</g>`;
+
+  // Vordergrund der GEWINDESTANGEN (#112) — eigene Gruppe, ZULETZT von allen Bauteilen:
+  // nach Steinen, Blechen, Deckenanschluss-Symbolen, Einlegeblechen UND nach dem
+  // Kopplungsvordergrund. Keine Stangenlinie wird mehr von irgendeinem Bauteil ueberdeckt,
+  // die weissen Haarlinien der Stoesse sind darin enthalten und damit ebenfalls frei
+  // sichtbar. Bemassung und Brandschutzgruppe bleiben danach und damit unverdeckt.
+  if (stangen) s += `<g class="stg">${stangen}</g>`;
 
   // Bemassung + Steinreihen-Nummerierung
   if (o.masse) {

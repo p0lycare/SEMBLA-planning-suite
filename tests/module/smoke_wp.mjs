@@ -240,15 +240,19 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     const kopf=mutRects().filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
     // Der Kopf beginnt an der Blechunterkante und endet darunter — er ist frei sichtbar.
     return kopf.length>0 && kopf.every(q=>Math.abs(q.y-(y0+bth))<1e-6 && q.h>0); })());
-  // ---- Vordergrund: die Kopplungsmuttern stehen NACH allen anderen Bauteilen (#106) ----
-  ok('[#106] alle Kopplungsmuttern liegen im Vordergrund (zuletzt gezeichnet)', (()=>{
+  // ---- Vordergrund: die Kopplungsmuttern stehen NACH den uebrigen Bauteilen (#106) ----
+  // NACHGESCHAERFT MIT DER RUECKMELDUNG VOM 2026-09-09 (#112): die Stangenstuecke sind aus
+  // dieser Aufzaehlung HERAUSGENOMMEN und stehen jetzt ausdruecklich danach — die Mutter ist
+  // ein opakes Bauteil ueber genau dem Stoss und verschluckte Stangenende und Haarlinie. Der
+  // Vordergrund gegenueber Platten, Blechen und Einlegeblechen aus #106 bleibt unveraendert;
+  // dass die Stange DANACH kommt, sichert der #112-Block weiter unten.
+  ok('[#106] alle Kopplungsmuttern liegen vor Platten, Blechen und Einlegeblechen', (()=>{
     const s=svg();
     const ersteKop=s.indexOf('<rect class="kop"');
-    // Nach der ersten Kopplungsmarke darf kein Stangenstueck, keine Platte, kein Blech und
-    // kein Einlegeblech mehr kommen — in SVG entscheidet allein die Reihenfolge.
+    // Nach der ersten Kopplungsmarke darf keine Platte, kein Blech und kein Einlegeblech
+    // mehr kommen — in SVG entscheidet allein die Reihenfolge.
     const danach=s.slice(ersteKop);
     return ersteKop>0
-      && !new RegExp('stroke="'+MONT.stueckFarbe('standard')+'"').test(danach)
       && !danach.includes('fill="'+MONT.SPANN_FARBE.platte+'"')
       && !danach.includes('<polyline class="zsp"'); })());
   ok('[#110] das Einlegeblech traegt genau eine Mutter je wirksamem Punkt', (()=>{
@@ -295,10 +299,24 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
       && i>t.lastIndexOf('<polyline points=')              // Wandumriss
       && i>t.lastIndexOf('<polyline class="dcs"')          // Deckenanschluss-Symbole
       && i>t.lastIndexOf('<polyline class="zsp"')          // Einlegebleche
-      && i>t.lastIndexOf('fill="'+MONT.SPANN_FARBE.platte+'"'); })());   // Spannplatten
-  ok('[#112] die Kopplungsmuttern bleiben davor (Haarlinie liegt hinter der Mutter)', (()=>{
+      && i>t.lastIndexOf('fill="'+MONT.SPANN_FARBE.platte+'"')           // Spannplatten
+      && i>t.lastIndexOf('<rect class="kop"'); })());                    // Kopplungsmuttern
+  // UMGEDREHT MIT DER RUECKMELDUNG VOM 2026-09-09: bis dahin verlangte diese Stelle
+  // ausdruecklich, dass die Kopplungsmuttern NACH der Stangengruppe stehen — die Mutter lag
+  // damit obenauf. Sie ist aber ein OPAKES Bauteil ueber genau dem Stoss, den die weisse
+  // Haarlinie markiert, und verschluckte damit Stangenende und Haarlinie: also genau die
+  // beiden Angaben, wegen derer hingesehen wird. Jetzt gilt die umgekehrte Forderung.
+  ok('[#112] die Kopplungsmuttern stehen DAVOR — Stange und Haarlinie liegen obenauf', (()=>{
     const t=svg();
-    return t.indexOf('<g class="stg">')<t.indexOf('<rect class="kop"'); })());
+    return t.indexOf('<rect class="kop"')<t.indexOf('<g class="stg">'); })());
+  // Die Mutter bleibt trotzdem als Bauteil erkennbar: sie ist deutlich breiter als die
+  // Stangenlinie und schaut beidseits hervor — die Stange laeuft durch sie hindurch, sie
+  // verschwindet nicht unter ihr.
+  ok('[#112] die Kopplungsmutter ist breiter als die Stange, die davor liegt', (()=>{
+    const br=[...svg().matchAll(/<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="([-\d.]+)"/g)]
+      .map(m=>+m[1]);
+    const sw=[...grp()[1].matchAll(/stroke-width="([-\d.]+)"/g)].map(m=>+m[1]);
+    return br.length>0 && sw.length>0 && Math.min(...br)>Math.max(...sw); })());
   ok('[#112] ALLE Stangenstriche liegen in der Gruppe, keiner davor oder danach', (()=>{
     const ohne=svg().replace(/<g class="stg">[\s\S]*?<\/g>/,'');
     return !['standard','sonder','rest']
@@ -363,6 +381,53 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     const eins=buildWall(wd.name,1000,800,[],wd.sides,{rod_lengths_mm:[3000]},[]);
     return stoesse(eins)===0
       && (ZEICH.zeichnungSvg(eins,{}).svg.match(/stroke="#fff"/g)||[]).length===0; })());
+
+  // MUSS-NICHT der Rueckmeldung vom 2026-09-09: ausser der Reihenfolge aendert sich NICHTS.
+  // Die Wandansicht rechnet ihren Massstab aus der Fenstergroesse, ein Nachbau der Abbildung
+  // waere hier also ein zweiter Zeichenweg. Geprueft wird deshalb transformationsfrei: die
+  // ANZAHL gegen die kanonische Quelle (`stangenStuecke()` + die realen Anker) und die
+  // KOORDINATEN gegen die gezeichneten Stangen selbst — jede Marke muss auf einer Spannachse
+  // und auf einem echten Stangenende sitzen. Eine verschobene, verlorene oder doppelte Marke
+  // faellt damit auf, eine reine Umsortierung nicht.
+  const RE_STG=/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="(?!#fff)/g;
+  const striche=()=>[...grp()[1].matchAll(RE_STG)]
+    .map(m=>({x:+m[1],y0:+m[2],x2:+m[3],y1:+m[4]}));
+  const nah=(a,b)=>Math.abs(a-b)<1e-6;
+
+  ok('[#112] Anzahl und Lage der Stangenstriche sind unveraendert', (()=>{
+    const wd=w();
+    const soll=wd.tension_columns.flatMap(c=>c.segments)
+      .reduce((a,g)=>a+MONT.stangenStuecke(wd,g).length,0);
+    const ist=striche();
+    // Jeder Strich senkrecht (x1===x2) — die Stange laeuft in der Achse, nicht schraeg.
+    return soll>0 && ist.length===soll && ist.every(l=>nah(l.x,l.x2)); })());
+
+  ok('[#112] Anzahl und Lage der Haarlinien sind unveraendert', (()=>{
+    const wd=w(), ist=haare(svg()), st=striche();
+    // Je Stoss genau eine, waagerecht, mittig auf einer Spannachse und auf einem echten
+    // Stangenende — also genau dort, wo sie vor der Umstellung sass.
+    return ist.length===stoesse(wd) && ist.length>0 && ist.every(h=>
+      nah(h.y1,h.y2)
+      && st.some(l=>nah(l.x,(h.x1+h.x2)/2))
+      && st.some(l=>nah(l.y0,h.y1)||nah(l.y1,h.y1))); })());
+
+  ok('[#112] Anzahl und Lage der Kopplungsmuttern sind unveraendert', (()=>{
+    const wd=w(), st=striche();
+    // Soll = ein Stoss je innerer Kopplung + eine Fussmutter je Segment auf dem Bodenblech
+    // ([A-19]); genau diese beiden Herkuenfte fuellen `vorn`.
+    let soll=0;
+    for(const col of wd.tension_columns) for(const g of col.segments){
+      soll+=Math.max(0,MONT.stangenStuecke(wd,g).length-1);
+      if((g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte'))==='bodenblech') soll++;
+    }
+    const ist=[...svg().matchAll(
+      /<rect class="kop" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+      .map(m=>({x:+m[1]+ +m[3]/2,y:+m[2],h:+m[4]}));
+    // Mitte auf einer Spannachse; senkrecht entweder mittig auf dem Stoss oder mit der
+    // Unterkante auf dem Anker (Fussmutter sitzt AUF dem Blech, #97) — beides unveraendert.
+    return soll>0 && ist.length===soll && ist.every(r=>
+      st.some(l=>nah(l.x,r.x))
+      && st.some(l=>[l.y0,l.y1].some(y=>nah(r.y+r.h/2,y)||nah(r.y+r.h,y)))); })());
 }
 
 // ---- Issue #100: Wandansicht passt ins Fenster und laesst sich zoomen ---------------
