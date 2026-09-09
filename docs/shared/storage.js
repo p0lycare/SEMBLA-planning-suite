@@ -60,7 +60,7 @@
  */
 
 import { istVorlagenKatalog, katalogObjekt, leereProdukte, parseKatalog, produktrollenVorschlag,
-         rolle, rollenIds, rollenVonModul, validiereKatalog,
+         produkt as katalogProdukt, rolle, rollenIds, rollenVonModul, validiereKatalog,
          VORLAGE_FELD, VORLAGE_KATALOG_PFAD, vorlageKatalogId } from "./sembla-katalog.js";
 import { alleGeschosse, alleWaende, bemassungenOhneWand, benenneUm as benenneInMappeUm,
          entferneGebaeude as entferneGebaeudeAusMappe,
@@ -1654,6 +1654,66 @@ function _produktTeil(modul) {
 export function holeProdukte(modul, id) {
   const teil = holeEingaben(id)[_produktTeil(modul)] || {};
   return teil.produkte || leereProdukte();
+}
+
+/**
+ * Unaufloesbare Produktreferenzen eines Projekts finden — REIN LESEND, schreibt nichts.
+ *
+ * Die EINE Pruefung fuer beide Ausloeser des Reparaturdialogs:
+ *   - ohne `katalogId`: gegen den dem Projekt ZUGEORDNETEN Katalog. Das ist der Fall
+ *     „im laufenden Betrieb aufgefallen“ — etwa nachdem im eigenen Katalog ein noch
+ *     verwendetes Produkt geloescht wurde.
+ *   - mit `katalogId`: Vorpruefung gegen eine Fassung, auf die noch NICHT umgeschaltet
+ *     wurde. Das ist der Fall „Zuordnung wechseln“ ([L-12]).
+ * Zwei Aufrufarten, aber nur EIN Pruefweg — und keine zweite Aufloesungslogik:
+ * aufgeloest wird ausschliesslich mit `produkt()` aus sembla-katalog.js.
+ *
+ * Eine Rolle taucht nur auf, wenn sie tatsaechlich eine unaufloesbare Kennung fuehrt;
+ * ein fehlender Katalog ist KEIN Befund je Wand, sondern `status: "kein_katalog"` —
+ * dort ist nichts zu ersetzen, weil es keine Kandidaten gibt ([L-12]).
+ *
+ * @param {string} projektId
+ * @param {string} [katalogId] Default: der zugeordnete Katalog des Projekts
+ * @returns {{status:"ok"|"kein_katalog"|"kein_projekt", katalogId:string|null,
+ *            katalogName:string|null, wandZahl:number, betroffenZahl:number,
+ *            kennungen:string[],
+ *            betroffen:Array<{elementId:string,wandName:string,geschoss:string,
+ *                             modul:number,rolle:string,fehlendeIds:string[]}>}}
+ */
+export function referenzPruefung(projektId, katalogId) {
+  const leer = { wandZahl: 0, betroffenZahl: 0, kennungen: [], betroffen: [] };
+  const struktur = strukturWaende("projekt", String(projektId == null ? "" : projektId));
+  if (!struktur) return { status: "kein_projekt", katalogId: null, katalogName: null, ...leer };
+
+  const kid = (katalogId != null && katalogId !== "")
+    ? String(katalogId)
+    : (struktur.mappe && struktur.mappe.katalog ? String(struktur.mappe.katalog) : "");
+  const kat = kid ? katalogNachId(kid) : null;
+  const wandZahl = struktur.vorhanden.length;
+  if (!kat) {
+    return { status: "kein_katalog", katalogId: kid || null, katalogName: null, ...leer, wandZahl };
+  }
+
+  const betroffen = [];
+  const kennungen = new Set();
+  const wandNamen = new Set();
+  for (const w of struktur.vorhanden) {
+    for (const modul of [1, 2]) {
+      const block = holeProdukte(modul, w.id);
+      for (const r of rollenVonModul(modul)) {
+        const fehlende = rollenIds(block, r.id).filter((pid) => !katalogProdukt(kat, pid));
+        if (!fehlende.length) continue;
+        betroffen.push({ elementId: String(w.id), wandName: String(w.name || w.id),
+                         geschoss: String(w.geschoss || ""), modul, rolle: r.id,
+                         fehlendeIds: fehlende });
+        fehlende.forEach((pid) => kennungen.add(pid));
+        wandNamen.add(String(w.id));
+      }
+    }
+  }
+  return { status: "ok", katalogId: String(kat.id), katalogName: String(kat.name || kat.id),
+           wandZahl, betroffenZahl: wandNamen.size,
+           kennungen: [...kennungen].sort(), betroffen };
 }
 
 /**

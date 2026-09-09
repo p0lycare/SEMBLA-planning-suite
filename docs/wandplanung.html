@@ -100,6 +100,7 @@
   .pmenu .pmerk{display:block;color:var(--sb-muted);font-size:11px;font-weight:400}
   .prol .pnote{font-size:11px;color:var(--sb-muted);margin-top:2px;line-height:1.45}
   .prol .pwarn{font-size:11px;color:var(--sb-warn);margin-top:2px;line-height:1.45}
+  .prol .pwarn .plink{font:inherit;color:var(--sb-accent);background:none;border:0;padding:0;margin-left:4px;text-decoration:underline;cursor:pointer}
   .pill.warn{background:#fdf3e6;color:#8a5300} .pill.mute{background:#eef2f7;color:#5b6673}
   .pill.komb{background:#e8effb;color:#1a4d99}
   .lockhint{font-size:11px;color:var(--sb-muted);margin:-2px 0 4px;line-height:1.45}
@@ -271,6 +272,8 @@ const pct=u=>fmt(u*100,0)+' %';
 const M=1000;
 // aus window.SEMBLA (in __wpInit gebunden):
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store, KAT;
+// #115 Reparaturdialog (shared/sembla-reparatur.js) — wie alles hier ueber window.SEMBLA.
+let oeffneReparatur;
 // Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
 let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
@@ -1267,13 +1270,24 @@ function rolleZeile(r, st, kat){
   // Nur echte Fehl-/Konfliktzustände werden benannt — kurz und ohne Erklärsätze (Issue #69).
   // Rollen- und Produkt-Hinweisprosa (r.hinweis, produkt.hinweis) wird nicht mehr ausgegeben;
   // der Pill-Status oben in der Zeile benennt den Zustand (auch „kombiniert“) bereits.
-  for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — nicht bepreist.</div>`;
+  // #115 Die Meldung benennt die Luecke wie bisher und bietet sie zugleich zum Aufloesen an.
+  // Der Knopf oeffnet den GEMEINSAMEN Reparaturdialog; geschrieben wird dort ueber
+  // `setzeProduktrolle` — derselbe Weg wie beim Ankreuzen, kein zweiter Schreibweg.
+  for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — nicht bepreist. <button type="button" class="plink" data-prep="1">Ersatz festlegen</button></div>`;
   if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig – gleiches maßgebendes Maß: ${st.kandidaten.map(p=>escP(p.id)).join(', ')}.</div>`;
   if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand.</div>`;
   if(st.vorgemerkt.length) h+=`<div class="pwarn">Nicht bepreist (maßfremd), für den Zuschnitt vorgemerkt: ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
   return h+'</div>';
 }
 function bindProdukte(){
+  // #115 Ein Bedienort mehr fuer den EINEN Schreibweg: der Dialog setzt die Rollen der
+  // aktiven Wand, danach rechnet `run()` die Wand neu ([Z-1]) und rendert die Zeilen frisch.
+  $('prodRollen').addEventListener('click',ev=>{
+    const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prep) return;
+    if(!oeffneReparatur) return;
+    oeffneReparatur({ modul:1, aufMeldung:(txt,ok)=>{ $('prodInfo').innerHTML=escP(txt);
+      if(!ok) $('prodInfo').style.color='var(--sb-warn)'; }, aufFertig:()=>run() });
+  });
   $('prodRollen').addEventListener('change',ev=>{
     const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prolle) return;
     if(!(store&&store.aktivId&&store.aktivId())){ renderProdukte(); return; }
@@ -1657,6 +1671,7 @@ window.__wpInit=function(){
   const S=window.SEMBLA||{};
   GRID=S.GRID; COURSE=S.COURSE; Opening=S.Opening; buildWall=S.buildWall;
   autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store; KAT=S.KAT;
+  oeffneReparatur=S.oeffneReparatur;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
@@ -1694,8 +1709,10 @@ window.__wpInit=function(){
            bodenblechSvg,
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
+  import { oeffneReparatur } from './shared/sembla-reparatur.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+                    oeffneReparatur,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,

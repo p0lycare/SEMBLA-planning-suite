@@ -1303,6 +1303,37 @@
     for (const [key, feld] of Object.entries(PP_FELDER)) patch[key] = $(feld).value;
     const wahl = $('pp-katalog').value;
     const mitVorlage = !ppId && wahl === PP_VORLAGE;
+    // #115 VORPRUEFUNG des Zuordnungswechsels ([L-12]): wechselt ein BESTEHENDES Projekt
+    // auf einen anderen Katalog, kann eine dort gewaehlte Produkt-Kennung in der neuen
+    // Fassung fehlen — die betroffenen Positionen bleiben dann unbepreist. Gerechnet wird
+    // hier NICHTS und geschrieben schon gar nichts: `referenzPruefung` ist rein lesend und
+    // der Wechsel findet nur mit ausdruecklicher Bestaetigung statt.
+    //
+    // Aufgeloest wird die Luecke bewusst NICHT hier, sondern je Wand in Modul 1/2: nur dort
+    // laeuft der Auslegungspfad, der eine massgebende Standardlaenge nachrechnet ([Z-1]).
+    // Eine Sammelreparatur ohne ihn liesse die alte Zerlegung im Wandelement stehen.
+    if (ppId && wahl) {
+      const vorher = (store.projektMappe(ppId) || {}).katalog || '';
+      if (String(wahl) !== String(vorher)) {
+        const pr = store.referenzPruefung(ppId, wahl);
+        if (pr.status === 'ok' && pr.betroffen.length) {
+          const liste = pr.betroffen.slice(0, 12).map(b =>
+            `• ${b.wandName} — ${KAT.rollenLabel(b.rolle)}: ${b.fehlendeIds.join(', ')}`).join('\n');
+          const mehr = pr.betroffen.length > 12 ? `\n… und ${pr.betroffen.length - 12} weitere` : '';
+          if (!confirm(`Zuordnung auf „${pr.katalogName}“ wechseln?\n\n`
+            + `${pr.betroffenZahl} von ${pr.wandZahl} Wänden verwenden `
+            + `${pr.kennungen.length} Produkt-Kennung(en), die dieser Katalog nicht enthält:\n\n`
+            + liste + mehr + '\n\n'
+            + 'Diese Positionen bleiben unbepreist, bis in Modul 1 bzw. Modul 2 an der '
+            + 'betroffenen Wand ein Ersatz festgelegt ist („Ersatz festlegen“ an der '
+            + 'Meldung). Die gespeicherte Auswahl der Wände wird durch den Wechsel selbst '
+            + 'nicht angetastet.')) {
+            ppZeige('Zuordnung nicht gewechselt — es wurde nichts gespeichert.', false);
+            return;
+          }
+        }
+      }
+    }
     try {
       let m = ppId ? store.projektMappe(ppId) : MAPPE.leereMappe(name);
       if (!m) throw new Error('Projekt ist nicht mehr vorhanden.');

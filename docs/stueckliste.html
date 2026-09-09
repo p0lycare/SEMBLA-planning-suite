@@ -647,7 +647,12 @@ function render(){
             ? 'gewählte Produkt-Kennungen dieser Verwendungsstelle sind im Katalog nicht auffindbar'
             : 'gewählte Produkt-Kennung dieser Verwendungsstelle ist im Katalog nicht auffindbar'}: `
         + fehl.map(id=>'„'+esc(id)+'“').join(', ')
-        + ' – nicht das oben genannte Einbauteil</div>' : '';
+        + ' – nicht das oben genannte Einbauteil'
+        // #115 Modul 4 bleibt reiner LESER ([P-14]): hier steht der Weg zur Reparatur,
+        // nicht die Reparatur selbst. Aufgeloest wird sie dort, wo die Wand auch neu
+        // gerechnet werden kann ([Z-1]) — in Modul 1 bzw. Modul 2.
+        + ' · <a href="wandplanung.html">Ersatz in Modul 1 festlegen</a>'
+        + '</div>' : '';
     const preis = v => v==null ? '<td class="na">n.a.</td>' : `<td>${fmt(v,2)}</td>`;
     // [P-20]: Der Kommentar steht in DIESER Zelle — keine neue Spalte (#62).
     html+=`<tr><td>${esc(r.label)}${grund}${fehlRefs}${kommentarTeil(r,kstand)}</td>${art}`

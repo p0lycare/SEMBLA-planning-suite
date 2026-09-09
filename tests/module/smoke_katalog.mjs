@@ -171,7 +171,10 @@ function sPos(art, ref, menge){
 // Die ECHTE Repo-Vorlage aus dem Checkout (kein Fixture, nichts Vertrauliches).
 const vorlagenBasis = new URL("../../docs/vorlagen/", import.meta.url);
 const vorlageDatei = (name) => readFileSync(new URL(name, vorlagenBasis), "utf8");
-const V_KAT = "SEMBLA_Standardkatalog.json", V_WAND = "SEMBLA_Musterwand.json";
+// #118 Die Vorlagendatei traegt ihre FASSUNG im Namen und wird deshalb aus der Konstante
+// abgeleitet statt hier wiederholt — sonst driftet der Test bei jeder neuen Fassung.
+const V_KAT = KAT.VORLAGE_KATALOG_PFAD.replace(/^\.\/vorlagen\//, "");
+const V_WAND = "SEMBLA_Musterwand.json";
 const V_KAT_ANZ = KAT.parseKatalog(vorlageDatei(V_KAT)).produkte.length;
 /** Den gewaehlten Katalog ueber die ECHTE Auswahlzeile umstellen. */
 function waehle(id){ $('k-wahl').value = String(id); $('k-wahl').dispatch('change'); }
@@ -219,12 +222,17 @@ ok('Modul 10 startet auf dem zugeordneten Katalog',
   $('k-wahl').value === katA.id && $('k-name').value === 'Katalog A (zugeordnet)');
 ok('die Auswahl bietet ALLE gespeicherten Kataloge an ([#108] frei waehlbar)',
   $('k-wahl').innerHTML.includes(katA.id) && $('k-wahl').innerHTML.includes(katB.id));
-ok('die Auswahl weist den zugeordneten Katalog aus',
-  /Katalog A \(zugeordnet\)[^<]*dem aktiven Projekt zugeordnet/.test($('k-wahl').innerHTML));
-ok('der Blattzustand nennt den bearbeiteten Katalog und die Zuordnung sichtbar',
-  /Bearbeitet: <b>Katalog A \(zugeordnet\)<\/b>/.test($('k-status').innerHTML)
-  && /Dem aktiven Projekt zugeordnet/.test($('k-status').innerHTML)
-  && /Zuordnung des aktiven Projekts: <b>Katalog A \(zugeordnet\)<\/b>/.test($('k-status').innerHTML));
+ok('#118 die Auswahl ist nach Vorlagen und eigenen Katalogen gruppiert',
+  /<optgroup label="Eigene Kataloge">/.test($('k-wahl').innerHTML)
+  && /Katalog A \(zugeordnet\) · 1 Produkt/.test($('k-wahl').innerHTML)
+  // Die Marken stehen EINMAL im Kopfbereich, nicht zusaetzlich in jeder Zeile (#118).
+  && !/dem aktiven Projekt zugeordnet/.test($('k-wahl').innerHTML));
+ok('#118 der Kopfbereich nennt den bearbeiteten Katalog und die Zuordnung EINMAL',
+  /class="knam">Katalog A \(zugeordnet\)/.test($('k-kopf').innerHTML)
+  && /marke m-zug">dem Projekt/.test($('k-kopf').innerHTML)
+  && /marke m-eig">eigener Katalog/.test($('k-kopf').innerHTML)
+  // Die Zahlen stehen in DERSELBEN Einheit, nicht in einem zweiten Block (#118).
+  && /1 Produkt\(e\) · 0 Baugruppe\(n\) · Katalogformat v2/.test($('k-kopf').innerHTML));
 ok('die Produkttabelle zeigt das Produkt des bearbeiteten Katalogs',
   /Stange A/.test($('k-tbody').innerHTML) && !/Latte B/.test($('k-tbody').innerHTML));
 
@@ -240,8 +248,9 @@ ok('ein nicht zugeordneter Katalog laesst sich auswaehlen',
 ok('der Wechsel wird benannt und die Nicht-Zuordnung ausdruecklich gesagt',
   /Katalog B/.test(kMsgTxt()) && /nicht zugeordnet/.test(kMsgTxt()) && !kFehler());
 ok('der Blattzustand sagt „nicht zugeordnet“ und verweist auf Modul 0',
-  /Diesem Projekt nicht zugeordnet/.test($('k-status').innerHTML)
-  && /index\.html/.test($('k-status').innerHTML));
+  !/marke m-zug/.test($('k-kopf').innerHTML)
+  && /Dem aktiven Projekt ist „Katalog A \(zugeordnet\)“ zugeordnet\./.test($('k-kopf').innerHTML)
+  && /index\.html/.test($('k-kopf').innerHTML));
 ok('die Tabelle zeigt jetzt den Bestand von Katalog B',
   /Latte B/.test($('k-tbody').innerHTML) && !/Stange A/.test($('k-tbody').innerHTML));
 ok('die Auswahl selbst schreibt NICHTS (reine Anzeige)',
@@ -476,7 +485,10 @@ ok('[#108] die Vorlage wird NICHT zugeordnet',
   && vorVorlage.projekte === localStorage.getItem(SLOT_PRJ)
   && vorVorlage.aktivKat === localStorage.getItem(SLOT_AKT));
 ok('der Blattzustand weist die Vorlage als unveraenderlich aus',
-  /Unveränderliche Repo-Vorlage/.test($('k-status').innerHTML));
+  /marke m-vorl">Vorlage · nur lesen/.test($('k-kopf').innerHTML)
+  && !$('k-nurlesen').hidden
+  && /nur lesen\./.test($('k-nurlesen').innerHTML)
+  && /Eigene Kopie anlegen und bearbeiten/.test($('k-nurlesen').innerHTML));
 
 // Erste Bearbeitung der Vorlage: Kopie mit neuer Kennung, Vorlage byte-gleich (#102)
 const vorlageBytes = JSON.stringify(store.katalogNachId(vorlage.id));
@@ -502,7 +514,7 @@ store.setzeProjektKatalog(vorlage.id);
 $('k-wahl').value = vorlage.id; $('k-wahl').dispatch('change');
 ok('Gegenprobe-Ausgangslage: die Vorlage ist der zugeordnete Katalog',
   $('k-wahl').value === vorlage.id && store.holeMappe().katalog === vorlage.id
-  && /Dem aktiven Projekt zugeordnet/.test($('k-status').innerHTML));
+  && /marke m-zug">dem Projekt/.test($('k-kopf').innerHTML));
 zeilenAkt('bearbeiten', einProdukt.id);
 $('kp-preis').value = '1.11';
 $('kp-speichern').dispatch('click');
@@ -585,8 +597,9 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('#102 die Vorlage wird aus der ECHTEN Repo-Datei gelesen',
     fetchPfade[fetchPfade.length - 1] === KAT.VORLAGE_KATALOG_PFAD);
   ok('#102 der Blattzustand weist sie sichtbar als unveraenderliche Vorlage aus',
-    /Unveränderliche Repo-Vorlage/.test($('k-status').innerHTML)
-    && !/Bearbeitbarer Katalog/.test($('k-status').innerHTML));
+    /marke m-vorl">Vorlage · nur lesen/.test($('k-kopf').innerHTML)
+    && !/marke m-eig/.test($('k-kopf').innerHTML)
+    && !$('k-nurlesen').hidden);
   ok('#108 die Erfolgsmeldung kuendigt Rueckfrage und eigene Variante an',
     /unveränderliche Vorlage/.test(kMsgTxt()) && /fragt nach/.test(kMsgTxt())
     && /eigene\s+Variante/.test(kMsgTxt()));
@@ -621,7 +634,8 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
     !kFehler() && varSichtbar() && varTxt().includes(kopie102.name) && /Vorlage:/.test(varTxt()));
   ok('#102 die Kopie ist selbst keine Vorlage mehr',
     !KAT.istVorlagenKatalog(kataloge()[kopie102.id])
-    && /Bearbeitbarer Katalog/.test($('k-status').innerHTML));
+    && /marke m-eig">eigener Katalog/.test($('k-kopf').innerHTML)
+    && $('k-nurlesen').hidden);
   ok('#102 die Vorlage bleibt byte-unveraendert',
     JSON.stringify(kataloge()[vId]) === vorlageStand
     && KAT.produkt(kataloge()[vId], 'stein-i3-375').preis === 9.5);
@@ -1145,7 +1159,8 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('#108 die Vorlage steht WERTGLEICH und weiter als unveraenderliche Vorlage in der Liste',
     JSON.stringify(kataloge()[vId]) === vorlageStand
     && KAT.produkt(kataloge()[vId], einProdukt).preis !== 77.77
-    && new RegExp(`<option value="${vId}"[^>]*>[^<]*unveränderliche Vorlage`).test($('k-wahl').innerHTML));
+    && new RegExp(`<option value="${vId}"[^>]*>`).test($('k-wahl').innerHTML)
+    && /<optgroup label="Standardkataloge \(Vorlagen, nur lesen\)">/.test($('k-wahl').innerHTML));
   ok('#108 [L-12] die Zuordnungszeiger sind unberuehrt (die Vorlage war nicht zugeordnet)',
     slots().projekte === vorAbbruch.projekte && slots().aktivKat === vorAbbruch.aktivKat);
 

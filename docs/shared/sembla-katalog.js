@@ -55,8 +55,64 @@ export const KATALOG_FORMAT = "SEMBLA-Bauteilkatalog";
 // produkte/sets an) und reist nicht in Exporte (katalogObjekt streicht sie) —
 // sie beruehrt das oeffentliche Dateiformat also nicht.
 
-/** Pfad der mitgelieferten Standardkatalog-Vorlage (relativ zu `docs/`). */
-export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog.json";
+/**
+ * Pfad der AKTUELL empfohlenen Standardkatalog-Vorlage (relativ zu `docs/`).
+ *
+ * Seit der Versionierung tragen die Vorlagen die Fassung IM PFAD — nicht im Namen.
+ * Das ist kein Schoenheitsdetail: `vorlageKatalogId()` leitet die kanonische
+ * Identitaet allein aus dem Pfad ab, also bekommt jede Fassung von selbst eine
+ * eigene, unveraenderliche Kennung und tritt neben die anderen statt sie zu
+ * ersetzen. Der Katalogname bleibt ein freies Anzeigefeld ([#102]).
+ *
+ * Diese Konstante bleibt der EINE Vorgabewert (Autoload beim Anlegen einer Wand,
+ * [P-18]); WELCHE Fassungen es gibt, steht im Manifest (VORLAGEN_MANIFEST_PFAD).
+ */
+export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog-v1.json";
+
+/** Pfad des Vorlagenverzeichnisses (relativ zu `docs/`). */
+export const VORLAGEN_MANIFEST_PFAD = "./vorlagen/kataloge.json";
+
+/** Kennung des Manifestformats. */
+export const VORLAGEN_MANIFEST_FORMAT = "SEMBLA-Katalogvorlagen";
+
+/**
+ * Das Vorlagenverzeichnis lesen — rein, DOM-frei, ohne Netzzugriff (der Aufrufer
+ * bringt den Text mit, wie bei `parseKatalog`). Fehler werden benannt statt
+ * geschluckt; geraten wird nichts.
+ *
+ * Zurueck kommen die Fassungen samt kanonischer Kennung, damit die Oberflaeche
+ * eine gespeicherte Ressource ohne zweite Ableitungsstelle wiedererkennt.
+ * @param {string} text
+ * @returns {{aktuell:string, fassungen:Array<{pfad:string,version:string,datum:string,notiz:string,id:string}>}}
+ */
+export function parseVorlagenManifest(text) {
+  let obj;
+  try { obj = JSON.parse(String(text)); }
+  catch { throw new Error("Vorlagenverzeichnis ist keine gültige JSON-Datei."); }
+  if (!obj || typeof obj !== "object") throw new Error("Vorlagenverzeichnis ist leer.");
+  if (String(obj.format) !== VORLAGEN_MANIFEST_FORMAT) {
+    throw new Error(`Fremdes Format „${String(obj.format)}“ — erwartet wird „${VORLAGEN_MANIFEST_FORMAT}“.`);
+  }
+  if (!Array.isArray(obj.fassungen) || !obj.fassungen.length) {
+    throw new Error("Feld „fassungen“ fehlt oder ist leer.");
+  }
+  const fassungen = obj.fassungen.map((f, i) => {
+    const pfad = String((f && f.pfad) || "").trim();
+    if (!pfad) throw new Error(`Fassung ${i + 1} hat keinen Pfad — ohne Pfad gibt es keine Identität.`);
+    return {
+      pfad,
+      version: String((f && f.version) || "").trim() || "ohne Fassungsangabe",
+      datum: String((f && f.datum) || "").trim(),
+      notiz: String((f && f.notiz) || "").trim(),
+      id: vorlageKatalogId(pfad),
+    };
+  });
+  const aktuell = String(obj.aktuell || "").trim() || fassungen[0].pfad;
+  if (!fassungen.some((f) => f.pfad === aktuell)) {
+    throw new Error(`Die als „aktuell“ benannte Fassung „${aktuell}“ steht nicht in der Liste.`);
+  }
+  return { aktuell, fassungen };
+}
 
 /** Feldname des Vorlagenmarkers an der gespeicherten Browserressource. */
 export const VORLAGE_FELD = "vorlage";

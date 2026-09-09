@@ -1,0 +1,14 @@
+{
+  "format": "SEMBLA-Katalogvorlagen",
+  "version": 1,
+  "hinweis": "Herausgegebene Fassungen des mitgelieferten Standardkatalogs. Eine geaenderte Fassung ERSETZT keine bestehende, sondern tritt als eigene Datei daneben — die Vorlagenidentitaet der Browserressource leitet sich allein aus dem PFAD ab (vorlageKatalogId, #102). Alte Fassungen bleiben deshalb dauerhaft im Repo: ein Projekt, das ihnen zugeordnet ist, muss seinen Katalog auch in einem frischen Browser laden koennen. Neueste Fassung zuerst.",
+  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v1.json",
+  "fassungen": [
+    {
+      "pfad": "./vorlagen/SEMBLA_Standardkatalog-v1.json",
+      "version": "v1",
+      "datum": "2026-09-09",
+      "notiz": "Erste herausgegebene Fassung — inhaltsgleich mit dem bisherigen unversionierten Standardkatalog."
+    }
+  ]
+}

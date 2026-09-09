@@ -672,6 +672,46 @@ Produktauswahl hat ([P-13]), bleiben dort nur die zwei Meldungen, die zum **Zuor
 der Zuordnungsstatus nach [L-12] und der unwirksame Altbestand der aktiven Wand nach [P-15] — beide
 kompakt im Warnkasten der Projektliste, ohne Popup.
 
+**Versionierte Standardkataloge (#118).** Der mitgelieferte Standardkatalog wird
+**versioniert herausgegeben**: eine geänderte Fassung **ersetzt** die bestehende **nicht**,
+sondern tritt als eigene Datei daneben (`docs/vorlagen/SEMBLA_Standardkatalog-v1.json`, …).
+Das trägt sich vollständig auf #102: weil `vorlageKatalogId()` die kanonische Identität
+**allein aus dem Pfad** ableitet, bekommt jede Fassung von selbst eine eigene,
+unveränderliche Kennung — **kein** zweites Identitätskonzept, **kein** Feld in der Datei und
+`sembla-katalog.js` bleibt in dieser Hinsicht unberührt. Der Katalog**name** trägt die
+Fassung nur zur Lesbarkeit und ist weiter ein freies Anzeigefeld. **Alte Fassungen bleiben
+dauerhaft im Repo** — ein Projekt, das ihnen zugeordnet ist, muss seinen Katalog auch in
+einem frischen Browser laden können. *Welche* Fassungen es gibt, steht im Manifest
+`docs/vorlagen/kataloge.json` (`parseVorlagenManifest`, rein/DOM-frei) und nicht in einer
+Konstante: eine neue Fassung ist eine Datei plus ein Eintrag, ohne Codeänderung.
+`VORLAGE_KATALOG_PFAD` bleibt der **eine** Vorgabewert (Autoload beim Anlegen einer Wand,
+[P-18]); Modul 10 lässt bei mehreren Fassungen wählen und rät nie.
+
+**Reparatur unauflösbarer Produktreferenzen (#118, löst #115/#116).** Die Wand hält nur
+Produkt-Kennungen ([P-13]); verschwindet ein Produkt aus dem Katalog — korrigiertes Maß,
+gelöscht, andere Fassung —, zeigt sie weiter auf eine Kennung, die es nicht mehr gibt.
+Gerundet oder still bereinigt wird das **nie**; seit #118 ist es aber **auflösbar**.
+`store.referenzPruefung(projektId, katalogId?)` ist die **eine** rein lesende Prüfung für
+**beide** Auslöser: ohne Kennung gegen den **zugeordneten** Katalog (Fall „im laufenden
+Betrieb aufgefallen"), mit Kennung als **Vorprüfung** gegen eine Fassung, auf die noch nicht
+umgeschaltet wurde (Fall „Zuordnung wechseln", [L-12]). Aufgelöst wird ausschließlich mit
+`produkt()` — es entsteht **keine** zweite Auflösungslogik. Der Dialog selbst liegt in
+`docs/shared/sembla-reparatur.js` (gemeinsame Oberfläche nach dem Muster von `navbar.js`,
+reiner Befund als `wandBefund()` daneben); die Kandidaten kommen aus `rollenOptionen`, also
+aus derselben Quelle wie das Dropdown der Rollenzeile, und geschrieben wird ausschließlich
+über `setzeProduktrolle(rolle, ids, elementId)` — **kein** zweiter Schreibweg, **kein**
+neues gespeichertes Feld, **kein** Formatsprung. Bedienorte: **Modul 1** und **Modul 2** an
+der vorhandenen `st.fehlend`-Meldung (dort rechnet `run()` die Wand nach [Z-1] neu),
+**Modul 0** als Vorprüfung beim Wechsel der Zuordnung, **Modul 4** ausschließlich als
+**Verweis** — es bleibt reiner Leser ([P-14]).
+**Zuständigkeitsgrenze:** der Dialog arbeitet auf **genau einer** Wand. Maßgebende
+Standardlängen gehen in die Zerlegung des Wandelements ein, und den Auslegungspfad dafür
+haben nur Modul 1/2 für die aktive Wand bzw. der Layout-Editor für fremde Wände
+(`rechneWandelement`). Eine **projektweite** Sammelreparatur ließe die alte Zerlegung im
+gespeicherten Wandelement stehen — sie gibt es deshalb **nicht**, sondern nur die
+benannte Vorprüfung in Modul 0. Ihr fachlicher Ort wäre der **Geschosseditor**, wo der
+Sammel-Editor (#111/#117) diesen Pfad bereits führt.
+
 **Ein Katalog je Projekt ([L-12]):** die
 Zuordnung ist eine Kennung am Projekt (`mappe.katalog`), der wirksame Katalog folgt dem **aktiven
 Projekt** (`holeKatalog`/`katalogStatus`). Ohne Zuordnung gibt es **keinen** Katalog und eine

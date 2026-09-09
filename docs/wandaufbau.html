@@ -50,6 +50,7 @@
   .pmenu .pmerk{display:block;color:var(--sb-muted);font-size:11px;font-weight:400}
   .pnote{font-size:11px;color:var(--sb-muted);margin-top:2px;line-height:1.45}
   .pwarn{font-size:11px;color:var(--sb-warn);margin-top:2px;line-height:1.45}
+  .pwarn .plink{font:inherit;color:var(--sb-accent);background:none;border:0;padding:0;margin-left:4px;text-decoration:underline;cursor:pointer}
   .pill{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
   .pill.ok{background:#e6f5ec;color:#1f7a3d} .pill.no{background:#fdece4;color:var(--sb-warn)}
   .pill.warn{background:#fdf3e6;color:#8a5300} .pill.mute{background:#eef2f7;color:#5b6673}
@@ -155,6 +156,8 @@ const DRAFT_HINT='Entwurf: Ecken ziehen, verschieben oder neu aufziehen · mit �
 function hintText(){ return (ENTWURF||PREVIEW) ? DRAFT_HINT : PICK_HINT; }
 // aus window.SEMBLA (in __waInit gebunden):
 let buildWall, Opening, store, berechneAufbau, VERBINDER_KATALOG, KAT;
+// #115 Reparaturdialog (shared/sembla-reparatur.js) — wie alles hier ueber window.SEMBLA.
+let oeffneReparatur;
 let currentId=null;
 
 const FUNKTION_LABEL={fassade:'Fassadenaufbau',innenausbau:'Innenausbau',alle:'Universal',sicht:'Sichtfläche',installation:'Installationsebene'};
@@ -291,7 +294,8 @@ function renderProdukte(){
     if(r.id==='verbinder') h+=`<div class="pwarn">Verbindertyp <b>${escP(typ||'–')}</b> folgt unveränderlich aus Modul 1 `
       +'(Seiten-Funktion) und ist hier nicht wählbar. Katalogformat v1 führt kein Typfeld — die Übereinstimmung '
       +'Produkt ↔ Typ ist <b>nicht maschinell prüfbar</b> und manuell zu prüfen.</div>';
-    for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — bleibt erhalten, wird aber nicht bepreist.</div>`;
+    // #115 Wie in Modul 1: die Luecke wird benannt UND zum Aufloesen angeboten.
+    for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — bleibt erhalten, wird aber nicht bepreist. <button type="button" class="plink" data-prep="1">Ersatz festlegen</button></div>`;
     if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig – gleiches maßgebendes Maß: ${st.kandidaten.map(p=>escP(p.id)).join(', ')} — Modul 4 weist hierfür keinen Preis aus.</div>`;
     if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß — Modul 4 weist keinen Preis aus.</div>`;
     if(st.status==='kombiniert') h+=`<div class="pnote">Standardlängen ${(st.laengen_mm||[]).map(x=>fmt(x/10,0)+' cm').join(' · ')} werden nach [Z-2]/[Z-4] kombiniert; jedes Ausgangsprodukt wird in Modul 4 als eigene Position bepreist.</div>`;
@@ -304,6 +308,13 @@ function renderProdukte(){
   syncLegacyFelder();
 }
 function bindProdukte(){
+  // #115 Zweiter Bedienort des EINEN Schreibwegs; danach rechnet `run()` den Aufbau neu ([Z-1]).
+  $('prodRollen').addEventListener('click',ev=>{
+    const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prep) return;
+    if(!oeffneReparatur) return;
+    oeffneReparatur({ modul:2, aufMeldung:(txt)=>{ $('prodInfo').textContent=txt; },
+                      aufFertig:()=>run() });
+  });
   $('prodRollen').addEventListener('change',ev=>{
     const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prolle) return;
     if(!(store&&store.aktivId&&store.aktivId())){ renderProdukte(); return; }
@@ -643,6 +654,7 @@ window.__waInit=function(){
   const S=window.SEMBLA||{};
   buildWall=S.buildWall; Opening=S.Opening; store=S.store;
   berechneAufbau=S.berechneAufbau; VERBINDER_KATALOG=S.VERBINDER_KATALOG; KAT=S.KAT;
+  oeffneReparatur=S.oeffneReparatur;
   bindEvents();
   bindProdukte();
   setupStoreSync();
@@ -656,8 +668,10 @@ window.__waInit=function(){
   import { berechneAufbau, VERBINDER_KATALOG } from './shared/sembla-aufbau.js';
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
+  import { oeffneReparatur } from './shared/sembla-reparatur.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, GRID, COURSE, store, berechneAufbau, VERBINDER_KATALOG, KAT };
+  window.SEMBLA = { buildWall, Opening, GRID, COURSE, store, berechneAufbau, VERBINDER_KATALOG, KAT,
+                    oeffneReparatur };
   mountNavbar(2);
   window.__waInit();
 </script>

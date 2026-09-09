@@ -1075,13 +1075,19 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
 // folgt — nie am Katalognamen (freies Anzeigefeld) und nie am Inhalt.
 {
   const PFAD = KAT.VORLAGE_KATALOG_PFAD;
-  ok("#102 der Vorlagenpfad zeigt auf die mitgelieferte Repo-Datei",
-    PFAD === "./vorlagen/SEMBLA_Standardkatalog.json");
+  // #118 Seit der Versionierung traegt die Vorlage ihre FASSUNG IM PFAD. Genau das ist
+  // der Zweck: weil die Kennung allein aus dem Pfad folgt, bekommt jede herausgegebene
+  // Fassung von selbst eine eigene, unveraenderliche Identitaet und tritt neben die
+  // anderen statt sie zu ersetzen.
+  ok("#118 der Vorlagenpfad zeigt auf eine VERSIONIERTE Repo-Datei",
+    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v1.json");
   const id = KAT.vorlageKatalogId(PFAD);
   ok("#102 die Kennung ist deterministisch und pfadabgeleitet",
-    id === "kat-vorlage-vorlagen-sembla-standardkatalog"
+    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v1"
     && KAT.vorlageKatalogId(PFAD) === id
-    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog.json") === id);
+    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v1.json") === id);
+  ok("#118 jede Fassung ergibt eine EIGENE Kennung — keine ersetzt eine andere",
+    KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v2.json") !== id);
   ok("#102 ein anderer Pfad ergibt eine andere Kennung",
     KAT.vorlageKatalogId("./vorlagen/Anderer.json") !== id);
   let warfLeer = false;
