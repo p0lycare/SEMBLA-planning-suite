@@ -76,6 +76,19 @@
             border-radius:8px;padding:8px 10px;color:#3a4653}
   .mhinweis b{color:var(--sb-ink)}
   .mhinweis ul{margin:4px 0 0;padding-left:18px} .mhinweis li{margin:2px 0}
+  /* Baugruppen ([P-23], #94): REINE ANZEIGE der einen vorhandenen Leseansicht
+     `semblaBomSets()`. Der Kasten ist bewusst neutral gehalten — er meldet keinen Mangel
+     (das tut `.luecken`) und bedient nichts (das tut `.mhinweis`), er erklaert die Zeilen
+     darueber. Kein Eingabefeld, deshalb auch keine eigene Druckregel: der Block wird
+     mitgedruckt, weil er die gedruckten Mengen erklaert. */
+  .sets{margin-top:10px;font-size:12px;border:1px solid #cfd8e3;background:#f7f9fb;
+        border-radius:8px;padding:8px 10px;color:#3a4653}
+  .sets b{color:var(--sb-ink)}
+  .sets ul{margin:4px 0 0;padding-left:18px} .sets li{margin:2px 0}
+  .sets ul ul{margin:1px 0 3px}
+  .sets code{font-size:11px;background:#eef2f6;border-radius:4px;padding:0 4px}
+  .sets .ohne{margin-top:6px;color:var(--sb-muted)}
+  .sets .meld{margin-top:6px}
   .kennz{font-size:11.5px;color:var(--sb-muted);margin-top:10px;line-height:1.6}
   .kennz b{color:var(--sb-ink)}
   .kennz .sym{font-weight:700;margin-right:3px}
@@ -146,6 +159,11 @@
          Einträge, die zu keiner gerechneten Position mehr passen oder unzulässig sind.
          Bewusst ein eigener Block — die Lückenliste darüber meint fehlende WÄNDE. -->
     <div class="mhinweis" id="mhinweis" hidden></div>
+    <!-- Baugruppen ([P-23], #94): welche Baugruppen des Bauteilkatalogs mit welcher
+         Instanzzahl gegriffen haben und was NICHT aufloesbar war. Reine Anzeige der einen
+         vorhandenen Leseansicht `semblaBomSets()` — kein Bedienelement, kein Schreibweg,
+         keine Zeile in der flachen Stueckliste ([P-19]). -->
+    <div class="sets" id="sets" hidden></div>
     <div class="kennz" id="kennz"></div>
   </div>
 </div>
@@ -254,7 +272,23 @@
    Aufloesbarkeit bleibt vollständig in der Ableitung (`positionen[].herkunft`), sie wird hier nur
    nicht mehr gezeigt; der Spaltensatz ist damit auf ALLEN Ebenen derselbe.
    Ein fehlender Preis ist einheitlich „n.a.“ — die Preiszelle trägt NIE einen Status und NIE
-   eine 0. Der nach [P-14] sichtbare GRUND steht knapp und sekundär unter dem Einbauteilnamen. */
+   eine 0. Der nach [P-14] sichtbare GRUND steht knapp und sekundär unter dem Einbauteilnamen.
+
+   BAUGRUPPEN ([P-23], #94): Kennt der wirksame Bauteilkatalog Baugruppen ([P-21]), löst
+   `sembla-bom.js` sie in Einzelteile auf — an GENAU EINER Stelle. Gerechnet wurde das schon
+   immer, gezeigt wurde es nirgends. Der Abschnitt „Baugruppen“ unter der Tabelle zeigt genau
+   das Ergebnis der EINEN dafür vorhandenen Leseansicht `semblaBomSets(w, katalog)`: je
+   gegriffener Baugruppe Name und Instanzzahl, darunter ihre aufgelösten Verwendungsstellen mit
+   Menge je Instanz und Gesamtstückzahl, und jede Meldung der Auflösung WORTGLEICH und einzeln.
+   Hier wird NICHTS nachgerechnet: keine zweite Auflösung, keine Instanzzahl aus der Oberfläche,
+   keine Mengen-, Preis- oder Summenwirkung und kein Bedienelement — die flache Stückliste
+   ([P-19]) bleibt unberührt und bekommt weder eine Baugruppenzeile noch eine Vater-Kind-Ebene.
+   Der Klartext neben dem Verwendungsstellen-Schlüssel ist reine BESCHRIFTUNG aus den ohnehin
+   gerechneten Zeilen; zugeordnet wird ausschliesslich über den Schlüssel der Leseansicht.
+   Eine bekannte Baugruppe mit 0 Instanzen wird als solche benannt (es wird keine Menge geraten),
+   zieht den Abschnitt aber NIE allein auf: ohne gegriffene Baugruppe und ohne Meldung — also
+   auch ohne Katalog und ohne Baugruppen darin — entfällt er vollständig statt leer dazustehen.
+   Auf den Gesamtebenen (#44) gibt es ihn nicht: dort steht eine Zeile für mehrere Wände. */
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -268,7 +302,7 @@ let MFEHLER=null;
 let KFEHLER=null;
 // aus window.SEMBLA (in __slInit gebunden):
 let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten,
-    standText, wirksameMengen;
+    standText, wirksameMengen, semblaBomSets;
 
 function eg(){ return EINGABEN || (EINGABEN={kosten:{waehrung:'EUR'},projekt:{},aufbau:{},planung:{}}); }
 function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben(teil,patch); }
@@ -554,6 +588,7 @@ function renderLeer(){
   renderKopf({bezug:{},quellen:[],waende:[],titel:'Baustellenstückliste Wand'});
   $('kennz').innerHTML=''; $('luecken').hidden=true; $('luecken').innerHTML='';
   $('mhinweis').hidden=true; $('mhinweis').innerHTML='';
+  $('sets').hidden=true; $('sets').innerHTML='';
   $('tbody').innerHTML=`<tr><td colspan="${spalten().length}" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>`;
 }
 
@@ -621,6 +656,9 @@ function render(){
   $('tbody').innerHTML=html;
   renderLuecken(d);
   renderMengenHinweis(mstand, kstand, d);
+  // [P-23]/#94: NACH der Tabelle und den Hinweisen — der Abschnitt erklärt die Zeilen
+  // darueber und liest sie nur (Beschriftung); er verändert `rs` nicht.
+  renderSets(rs);
   renderKennzeichnung(rs);
 }
 
@@ -731,6 +769,61 @@ function renderLuecken(d){
 // Legende zu etwas Unsichtbarem ist Fülltext. Erklärt wird es dort, wo die IDs stehen —
 // in der Einbauteilliste (CSV) und auf dem Zeichnungsblatt. Gezählt wird weiter über
 // `r.ids.length`, also die reale Stückzahl je Art.
+/* ---- Baugruppen ([P-23], #94) -------------------------------------------------------------
+   REINE ANZEIGE. Gelesen wird genau EINMAL `semblaBomSets(WALL, KATALOG)` — die eine
+   vorhandene Leseansicht des Mengenbausteins; die Oberfläche kennt weder Instanzquellen noch
+   Set-Positionsmengen noch Meldungstexte und bildet nichts davon nach ([P-6]).
+   `rs` kommt ausschliesslich als BESCHRIFTUNGSQUELLE herein: der Klartext einer Zeile wird
+   neben ihren Schlüssel gestellt, damit die Verwendungsstelle lesbar ist. Zugeordnet wird
+   dabei nichts — die Zuordnung Rolle -> Position hat die Auflösung bereits getroffen. */
+function renderSets(rs){
+  const el=$('sets');
+  const leeren=()=>{ el.hidden=true; el.innerHTML=''; };
+  // Gesamtebenen haben keine einzelne Wand: eine aggregierte Zeile stünde für mehrere
+  // Baugruppenauflösungen, und eine davon zu zeigen wäre eine falsche Aussage.
+  if(EBENE!=='wand' || !WALL || !semblaBomSets){ leeren(); return; }
+  let st;
+  // Ohne die Leseansicht wird KEINE Ersatzrechnung aufgemacht ([P-6]) — dann entfällt der
+  // Abschnitt, statt eine zweite Auflösung zu erfinden.
+  try{ st=semblaBomSets(WALL, KATALOG)||{}; }catch(e){ leeren(); return; }
+  const inst=Array.isArray(st.instanzen)?st.instanzen:[];
+  const pos=Array.isArray(st.positionen)?st.positionen:[];
+  const meld=Array.isArray(st.meldungen)?st.meldungen:[];
+  const gegriffen=inst.filter(i=>i&&i.anzahl>0);
+  // Ohne Katalog, ohne Baugruppen darin und ohne Meldung gibt es nichts zu sagen — ein leerer
+  // Kasten wäre Fülle. Eine Baugruppe mit 0 Instanzen zählt hier bewusst NICHT: sie darf den
+  // Abschnitt nie allein aufziehen.
+  if(!gegriffen.length && !meld.length){ leeren(); return; }
+  const label={};
+  rs.forEach(r=>{ if(r && r.key!=null && label[r.key]===undefined) label[r.key]=r.label; });
+  const stelle=p=>`<code>${esc(p.key)}</code>`
+    + (label[p.key] ? ' '+esc(label[p.key]) : '')
+    + ` — ${esc(p.je_instanz)} je Baugruppe, ${esc(p.stueck)}× gesamt`;
+  let h='<b>Baugruppen.</b> Die Stückliste bleibt flach ([P-19]); hier steht nur, welche '
+      + 'Baugruppen des Bauteilkatalogs mit welcher Instanzzahl gegriffen haben. Mengen, '
+      + 'Einzelpreise und Summen ändern sich dadurch nicht.';
+  if(gegriffen.length){
+    h+='<ul>'+gegriffen.map(i=>{
+      const ps=pos.filter(p=>p&&p.set===i.set);
+      return `<li><b>${esc(i.name)}</b> · ${esc(i.anzahl)}× eingebaut`
+        + (ps.length
+            ? '<ul>'+ps.map(p=>`<li>${stelle(p)}</li>`).join('')+'</ul>'
+            : '<ul><li>keine aufgelöste Verwendungsstelle an dieser Wand</li></ul>')
+        + '</li>'; }).join('')+'</ul>';
+  }
+  // Bekannt, aber an dieser Wand nicht eingebaut: benannt statt verschwiegen — und ohne
+  // geratene Menge ([P-9]).
+  const ohne=inst.filter(i=>i && !(i.anzahl>0));
+  if(ohne.length) h+='<div class="ohne">An dieser Wand nicht vorhanden: '
+    + ohne.map(i=>esc(i.name)+' (0×)').join(', ')
+    + '. Es wird keine Menge geraten.</div>';
+  // Meldungen stehen WORTGLEICH und einzeln — sie sind im Mengenbaustein bereits formuliert
+  // und werden hier weder zusammengefasst noch umgeschrieben.
+  if(meld.length) h+='<div class="meld"><b>Nicht auflösbar:</b><ul>'
+    + meld.map(m=>`<li>${esc(m)}</li>`).join('')+'</ul></div>';
+  el.hidden=false; el.innerHTML=h;
+}
+
 function renderKennzeichnung(rs){
   const arten=[['standard','■','Standardteil'],['sonder','◆','Sonderzuschnitt'],['rest','▲','Reststück oben']];
   $('kennz').innerHTML='<b>Kennzeichnung.</b> '
@@ -826,7 +919,7 @@ window.__slInit=function(){
   stuecklistePositionen=S.stuecklistePositionen; stuecklisteSumme=S.stuecklisteSumme;
   wandflaeche=S.wandflaeche; store=S.store; einbauteile=S.einbauteile;
   umfang=S.umfang; gesamtDaten=S.gesamtDaten; standText=S.standText;
-  wirksameMengen=S.wirksameMengen;
+  wirksameMengen=S.wirksameMengen; semblaBomSets=S.semblaBomSets;
   bindEvents();
   setupStoreSync();
   loadModel();
@@ -835,12 +928,12 @@ window.__slInit=function(){
 
 <script type="module">
   import { stuecklistePositionen, stuecklisteSumme, wandflaeche, wirksameMengen } from './shared/sembla-export.js';
-  import { einbauteile } from './shared/sembla-bom.js';
+  import { einbauteile, semblaBomSets } from './shared/sembla-bom.js';
   import { umfang, gesamtDaten, standText } from './shared/sembla-gesamtstueckliste.js';
   import * as store from './shared/storage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store,
-                    umfang, gesamtDaten, standText, wirksameMengen };
+                    umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets };
   mountNavbar(4);
   window.__slInit();
 </script>

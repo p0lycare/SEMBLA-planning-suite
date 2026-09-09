@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-07",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 94,
+    titel: "Die St\u00fcckliste zeigt, welche Baugruppen mit welcher Anzahl gegriffen haben",
+    testbitte: "In Modul 4 eine Wand mit zugeordnetem Standardkatalog ansehen: unter der Tabelle steht \u201eBaugruppen\u201c mit Name, Anzahl und den aufgel\u00f6sten Verwendungsstellen, nicht Aufl\u00f6sbares benannt. Mengen und Preise bleiben gleich.",
+  },
+  {
     id: "chg-20260909-06",
     datum: "2026-09-09",
     typ: "feature",

@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { buildWall, Opening, wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import { baueDateien, einbauteileCsv, stuecklistePositionen, stuecklisteSumme, stuecklisteCsv, wandflaeche, wirksameMengen, zuschnittCsv } from "../../docs/shared/sembla-export.js";
-import { einbauteile, semblaBomItems as SEMBLA_BOM_ITEMS } from "../../docs/shared/sembla-bom.js";
+import { einbauteile, semblaBomItems as SEMBLA_BOM_ITEMS, semblaBomSets } from "../../docs/shared/sembla-bom.js";
 import { umfang, gesamtDaten, standText } from "../../docs/shared/sembla-gesamtstueckliste.js";
 import { leereMappe, fuegeGeschossHinzu, setzeWand } from "../../docs/shared/sembla-projektmappe.js";
 import { blattHtml } from "../../docs/shared/sembla-zeichnung.js";
@@ -146,8 +146,10 @@ const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we, aktiveEingaben
 // [P-20]/#81: `wirksameMengen` ist die EINE Verrechnung von berechneter und manueller Menge.
 // Sie kommt hier wie im Browser aus sembla-export.js — dieselbe Funktion, die auch die
 // Stuecklistendatei des zentralen Exports fuellt; das Modul rechnet sie nicht nach.
+// [P-23]/#94: `semblaBomSets` ist die EINE Leseansicht der Baugruppen-Aufloesung. Sie kommt hier
+// wie im Browser aus sembla-bom.js; das Modul zeigt ihr Ergebnis an und rechnet es nicht nach.
 globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock,
-  umfang, gesamtDaten, standText, wirksameMengen };
+  umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets };
 
 eval(script);
 globalThis.window.__slInit();
@@ -1816,6 +1818,111 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
   // Das Wandelement bleibt unangetastet: Modul 4 liest nur ([P-1]).
   ok('#109 Modul 4 hat das Wandelement nicht angefasst',
     JSON.stringify(echterStore.holeElement(wid).wandelement)===JSON.stringify(WR));
+
+  // ---- [P-23]/#94 Baugruppen-Abschnitt am REALEN Pfad -------------------------------------
+  // Geprueft wird am GERENDERTEN Markup gegen genau das Ergebnis der einen Leseansicht
+  // `semblaBomSets` — Instanzen, Positionen, Meldungen. Nachgerechnet wird hier nichts.
+  {
+    echterStore.setzeProduktrolle('einlegeblech', ['blech-einlegeblech-110'], wid);
+    globalThis.window.__slInit();
+    const setsHtml = () => document.getElementById('sets').innerHTML;
+    const setsAn   = () => !document.getElementById('sets').hidden;
+    const st = semblaBomSets(WR, echterStore.holeKatalog());
+    const wa = st.instanzen.find(i=>i.set==='set-wandabschluss');
+    const dz = st.instanzen.find(i=>i.set==='set-deckenanschluss');
+    const waPos = st.positionen.filter(p=>p.set==='set-wandabschluss');
+
+    ok('#94 der Standardkatalog fuehrt beide Baugruppen; der Wandabschluss greift', (()=>
+      !!wa && !!dz && wa.anzahl>0 && waPos.length>0)());
+    // must 1 + must 2: Name, Instanzzahl und je Verwendungsstelle Menge je Instanz und Gesamt.
+    ok('#94 der Abschnitt zeigt die Baugruppe „Wandabschluss" mit ihrer Instanzzahl', (()=>
+      setsAn() && setsHtml().includes('<b>Wandabschluss</b> \u00b7 '+wa.anzahl+'\u00d7 eingebaut'))());
+    ok('#94 je Verwendungsstelle stehen Menge je Instanz und Gesamtstueckzahl aus der Leseansicht',
+      waPos.length>0 && waPos.every(p=>
+        setsHtml().includes('<code>'+p.key+'</code>')
+        && setsHtml().includes(p.je_instanz+' je Baugruppe, '+p.stueck+'\u00d7 gesamt')));
+    // Der Klartext ist BESCHRIFTUNG aus den ohnehin gerechneten Zeilen — keine zweite Zuordnung.
+    ok('#94 der Schluessel traegt den Klartext der gerechneten Zeile als Beschriftung', (()=>{
+      const rs2=stuecklistePositionen(WR, echterStore.holeEingaben(wid), echterStore.holeKatalog());
+      return waPos.every(p=>{
+        const z=rs2.find(r=>r.key===p.key);
+        return !z || setsHtml().includes('<code>'+p.key+'</code> '+z.label); }); })());
+    // An dieser Wand greift nach [A-26]/[P-24] AUCH der Deckenanschluss (ein Anschlusspunkt je
+    // angefangenem Meter). Er steht deshalb hier als gegriffene Baugruppe — mit genau der
+    // Instanzzahl und genau den Verwendungsstellen der Leseansicht, nicht mit geratenen.
+    // Der Fall „bekannt, aber 0 Instanzen" steht unten an der Kopfblechwand.
+    const dzPos = st.positionen.filter(p=>p.set==='set-deckenanschluss');
+    ok('#94 der Deckenanschluss steht mit seiner Instanzzahl und seinen Verwendungsstellen', (()=>
+      dz.anzahl>0 && dzPos.length>0
+      && setsHtml().includes('<b>'+dz.name+'</b> \u00b7 '+dz.anzahl+'\u00d7 eingebaut')
+      && dzPos.every(p=>setsHtml().includes(
+           p.je_instanz+' je Baugruppe, '+p.stueck+'\u00d7 gesamt')))());
+    ok('#94 greifen alle bekannten Baugruppen, gibt es keinen 0-Instanzen-Hinweis',
+      st.instanzen.every(i=>i.anzahl>0) && !setsHtml().includes('An dieser Wand nicht vorhanden'));
+    // must 3 (Gegenprobe hier): diese Wand meldet nichts, also steht auch kein Meldungsblock.
+    ok('#94 ohne Meldung steht kein Meldungsblock',
+      st.meldungen.length===0 && !setsHtml().includes('Nicht aufl\u00f6sbar'));
+    // must 5 / must_not 3: der Abschnitt liegt AUSSERHALB der Tabelle.
+    ok('#94 der Abschnitt bedient nichts und steht nicht in der Stuecklistentabelle', (()=>{
+      const tb=document.getElementById('tbody').innerHTML;
+      return !setsHtml().includes('<input') && !setsHtml().includes('data-menge')
+        && !setsHtml().includes('data-kommentar') && !tb.includes('Wandabschluss'); })());
+
+    // acceptance_test 3 + 4: ein Katalog OHNE Baugruppen laesst die Positionszeilen BITGENAU
+    // stehen und zieht keinen leeren Kasten auf. Das ist zugleich der Nachweis, dass der
+    // Abschnitt an den Mengen, Preisen und Summen nichts bewegt.
+    const tbodyMit = document.getElementById('tbody').innerHTML;
+    const OHNE_SETS = { ...JSON.parse(JSON.stringify(echterStore.holeKatalog())), sets: [] };
+    echterStore.setzeKatalog(OHNE_SETS);
+    globalThis.window.__slInit();
+    const tbodyOhne = document.getElementById('tbody').innerHTML;
+    ok('#94 ohne Baugruppen im Katalog entfaellt der Abschnitt (kein leerer Kasten)',
+      !setsAn() && setsHtml()==='');
+    ok('#94 Mengen, Einzelpreise und Summen sind bitgenau die des Standes ohne Baugruppen',
+      tbodyMit===tbodyOhne);
+    echterStore.setzeKatalog(STD);
+    globalThis.window.__slInit();
+    ok('#94 mit dem Standardkatalog steht der Abschnitt wieder und die Zeilen bleiben gleich',
+      setsAn() && document.getElementById('tbody').innerHTML===tbodyMit);
+
+    // Ersetzter acceptance_test 2, Teil 2: Meldungsnachweis an einem Fall, der heute wirklich
+    // meldet — eine Wand mit KOPFBLECH traegt keine Spannplatte, nach [A-26] aber
+    // Anschlusspunkte; der Deckenanschluss fordert dann mehr, als der Rechenkern fuehrt.
+    const WB = buildWall('Kopfblechwand', 2000, 2600, [], null, { top_connection: 'blech' });
+    const bid = echterStore.speichere('Kopfblechwand', WB);
+    echterStore.setzeAktiv(bid);
+    globalThis.window.__slInit();
+    const stB = semblaBomSets(WB, echterStore.holeKatalog());
+    ok('#94 die Kopfblechwand erzeugt genau eine Meldung der Aufloesung',
+      WB.bom.spannplatten===0 && stB.meldungen.length===1);
+    ok('#94 die Meldung steht WORTGLEICH und einzeln im Abschnitt', (()=>
+      setsAn() && stB.meldungen.every(m=>setsHtml().includes('<li>'+m+'</li>'))
+      && setsHtml().includes('Nicht aufl\u00f6sbar'))());
+    ok('#94 auch hier wird nichts geraten: die Spannplatte bleibt bei der gerechneten Menge', (()=>{
+      const rsB=stuecklistePositionen(WB, echterStore.holeEingaben(bid), echterStore.holeKatalog());
+      const pl=rsB.find(r=>r.key==='spannplatte');
+      return !pl || pl.menge===WB.bom.spannplatten; })());
+    ok('#94 Modul 4 hat auch die Kopfblechwand nicht angefasst',
+      JSON.stringify(echterStore.holeElement(bid).wandelement)===JSON.stringify(WB));
+    // Der 0-Instanzen-Fall: die Kopfblechwand traegt keine Spannplatte, der Wandabschluss ist
+    // dort also bekannt, aber nicht eingebaut. Er wird BENANNT und bekommt keine geratene
+    // Verwendungsstelle — und er zieht den Abschnitt nicht allein auf (hier steht ohnehin der
+    // gegriffene Deckenanschluss daneben).
+    ok('#94 eine Baugruppe mit 0 Instanzen wird benannt, ohne Verwendungsstelle', (()=>{
+      const waB=stB.instanzen.find(i=>i.set==='set-wandabschluss');
+      return waB.anzahl===0
+        && stB.positionen.filter(p=>p.set==='set-wandabschluss').length===0
+        && setsHtml().includes('An dieser Wand nicht vorhanden: '+waB.name+' (0\u00d7)')
+        && setsHtml().includes('Es wird keine Menge geraten')
+        && !setsHtml().includes('<b>'+waB.name+'</b>'); })());
+
+    // must_not 4: auf den Gesamtebenen gibt es den Abschnitt nicht.
+    ok('#94 auf der Projektebene entfaellt der Abschnitt', (()=>{
+      globalThis.window.__sl.setzeEbene('projekt');
+      const aus = !setsAn() && setsHtml()==='';
+      globalThis.window.__sl.setzeEbene('wand');
+      return aus; })());
+  }
 }
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
