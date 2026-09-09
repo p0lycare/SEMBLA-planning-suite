@@ -1441,6 +1441,13 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'kuppl-50', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M10', einheit:'Stk', preis:0.65, hoehe_mm:50 },
   { id:'kuppl-30', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M10 kurz', einheit:'Stk', preis:0.55, hoehe_mm:30 },
   { id:'kuppl-ohne', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter ohne Maßangabe', einheit:'Stk', preis:0.6 },
+  // #97 Zwei Kopplungsmuttern mit gepflegter SCHLUESSELWEITE (`sw_mm`). Beide tragen dieselbe
+  // Einbauhoehe wie `kuppl-50` — so unterscheiden sie sich AUSSCHLIESSLICH in der
+  // Schluesselweite, und die Gegenprobe auf wertgleiche Segmente, Zerlegung und Mengen misst
+  // wirklich nur dieses Feld. Die bestehenden Produkte bleiben unangetastet: `kuppl-50` ist
+  // damit weiterhin der Fall "gewaehlt, aber Schluesselweite nicht gepflegt".
+  { id:'kuppl-sw-17', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M10 SW17', einheit:'Stk', preis:0.65, hoehe_mm:50, sw_mm:17 },
+  { id:'kuppl-sw-24', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M12 SW24', einheit:'Stk', preis:0.85, hoehe_mm:50, sw_mm:24 },
   { id:'platte-12', kategorie:'blech_platte', bezeichnung:'Spannplatte 12', einheit:'Stk', preis:6.4, breite_mm:125, hoehe_mm:125, dicke_mm:12 },
   { id:'rod-rest-210', kategorie:'gewindestange', bezeichnung:'Reststück 210', einheit:'Stk', preis:1.2, gewinde:'M10', laenge_mm:210 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1500', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
@@ -1905,6 +1912,103 @@ store.setzeKatalog(KATALOG);
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN97){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
+  document.getElementById('topConn').value='spannplatte';
+  WP.applyWand(vorherW);
+}
+
+// ---- Issue #97: die SCHLUESSELWEITE der Kopplungsmutter erreicht das Wandelement ---------
+// Gefahren wird der ECHTE Planerweg wie bei den #92-Pruefungen: Kopplungsmutter im zugeordneten
+// Katalog waehlen -> `vorgaben()` leitet `kupplung_sw_mm` aus `sw_mm` ab -> dieselbe Engine
+// rechnet -> das GESPEICHERTE Wandelement traegt das Mass. GEZEICHNET wird in diesem Paket noch
+// nichts; die Schluesselweite reist allein, damit die Ausgaben sie spaeter ohne Katalogzugriff
+// zeichnen koennen ([D-1]).
+//
+// Der zweite Teil ist die Nullwirkung: die Schluesselweite geht in KEINE Rechnung ein. Alle
+// Faelle hier waehlen deshalb Muttern derselben Einbauhoehe (50 mm) — Fussoffset, Segmente,
+// Stueckzerlegung, Spannachsen und Mengen muessen ueber alle Faelle hinweg wertgleich sein.
+{
+  const meld=()=>document.getElementById('einbauQuelle').innerHTML;
+  const ROLLEN=['rod_std','rod_rest','blech_boden','kupplung','spannplatte'];
+  const leere=(rolle)=>((store.holeProdukte(1).rollen||{})[rolle]||[]).slice()
+    .forEach(id=>setzen(rolle,id,false));
+  const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
+  const vorherW=WP.RESULT.wandelement;
+  for(const r of ROLLEN) leere(r);
+  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  document.getElementById('topConn').value='blech';
+  document.getElementById('rodUeber').value='10';
+  setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
+  // Der RECHNERISCHE Fingerabdruck der Wand: Segmentgrenzen, Bedarf, Stueckzerlegung,
+  // Spannachsen und die kanonischen Stuecklistenmengen — alles, was sich NICHT aendern darf.
+  const fp=()=>{ const w=WP.RESULT.wandelement; return JSON.stringify({
+    achsen: w.tension_columns.map(c=>c.x_mm),
+    seg: w.tension_columns.map(c=>c.segments.map(g=>[g.z0_mm,g.z1_mm,g.bedarf_mm,
+      g.stuecke.map(s=>s.len_mm+':'+s.art).join(',')])),
+    bom: BOM.semblaBomItems(w) }); };
+  const gespeichert=()=>store.aktivesWandelement().prestress.kupplung_sw_mm;
+
+  WP.run();
+  ok('[#97] ohne gewaehlte Kopplungsmutter entsteht keine Schluesselweite (nichts geraten)',
+    WP.kupplungSw===null
+    && WP.vorgaben().prestress.kupplung_sw_mm===undefined
+    && !('kupplung_sw_mm' in WP.RESULT.wandelement.prestress)
+    && gespeichert()===undefined);
+
+  // Akzeptanz 1: gepflegtes Katalogmass -> genau dieses Mass im gespeicherten Wandelement.
+  setzen('kupplung','kuppl-sw-17',true); WP.run();
+  const fp17=fp();
+  ok('[#97] Modul 1 leitet die Schluesselweite aus dem gewaehlten Produkt ab',
+    WP.kupplungSw===17 && WP.vorgaben().prestress.kupplung_sw_mm===17
+    && WP.RESULT.wandelement.prestress.kupplung_sw_mm===17);
+  ok('[#97] der GESPEICHERTE Stand traegt dasselbe Mass (kein Zwischenstand)', gespeichert()===17);
+  // Die Schluesselweite ist ein reines Ausweisungsmass und KEIN Pflichtmass: sie taucht in
+  // `einbauMeldungen()` nicht auf. Gemeldet werden dort weiterhin nur die Masse, die #92/[A-1]
+  // dort eingefuehrt haben — dieser Block waehlt bewusst kein Blech, also stehen deren
+  // Meldungen da; eine Zeile zur Schluesselweite darf aber in keinem Fall dabei sein.
+  ok('[#97] die Schluesselweite erzeugt keine eigene Pflichtmeldung',
+    !/Schlüsselweite/.test(meld()));
+  ok('[#97] kein Produktdatum im Wandelement (Ownership)', (()=>{
+    const j=JSON.stringify(store.aktivesWandelement());
+    return !j.includes('kuppl-sw-17') && !j.includes('SW17') && !j.includes('preis'); })());
+
+  // Akzeptanz 2: zwei Produkte mit verschiedener Schluesselweite -> verschiedene Werte …
+  setzen('kupplung','kuppl-sw-17',false); setzen('kupplung','kuppl-sw-24',true); WP.run();
+  ok('[#97] ein zweites Produkt ergibt eine andere Schluesselweite',
+    WP.kupplungSw===24 && gespeichert()===24 && gespeichert()!==17);
+  // … und Akzeptanz 4: die Rechnung ist dabei wertgleich. Beide Muttern sind 50 mm hoch, der
+  // Fussoffset ist also in beiden Faellen 25 mm — was sich unterscheidet, ist NUR dieses Feld.
+  ok('[#97] Segmente, Stueckzerlegung, Spannachsen und Mengen bleiben wertgleich',
+    fp()===fp17 && WP.fussOffset===25);
+
+  // Akzeptanz 3a: gewaehltes Produkt OHNE gepflegtes Mass -> kein Feld, nichts erfunden.
+  setzen('kupplung','kuppl-sw-24',false); setzen('kupplung','kuppl-50',true); WP.run();
+  ok('[#97] gewaehlte Mutter ohne gepflegte Schluesselweite: kein Feld, kein Ersatzmass',
+    WP.kupplungSw===null
+    && WP.vorgaben().prestress.kupplung_sw_mm===undefined
+    && !('kupplung_sw_mm' in WP.RESULT.wandelement.prestress)
+    && gespeichert()===undefined && fp()===fp17);
+
+  // Mehrdeutig: zwei verschiedene Schluesselweiten gewaehlt -> keine wird bevorzugt.
+  setzen('kupplung','kuppl-50',false);
+  setzen('kupplung','kuppl-sw-17',true); setzen('kupplung','kuppl-sw-24',true); WP.run();
+  ok('[#97] mehrere Schluesselweiten: keine wird bevorzugt, kein Feld entsteht',
+    WP.kupplungSw===null && gespeichert()===undefined && fp()===fp17);
+
+  // Akzeptanz 3b: ein am WANDELEMENT gespeicherter Wert uebersteht den Weg, der ihn nicht neu
+  // ableitet. Genau das tut der Geschosseditor (`rechneWandelement` kopiert `we.prestress` und
+  // rechnet ueber dieselbe Engine): das Feld muss durch `psOf()` reisen, statt still zu
+  // verschwinden. Modul 1 bekommt dafuer KEINEN eigenen Erhaltungsmechanismus.
+  setzen('kupplung','kuppl-sw-24',false); WP.run();          // wieder eindeutig 17 mm
+  ok('[#97] Ausgangsstand fuer die Erhaltungsprobe ist gesetzt', gespeichert()===17);
+  ok('[#97] ein gespeicherter Wert uebersteht den nicht neu ableitenden Rechenweg', (()=>{
+    const w=store.aktivesWandelement();
+    const neu=autoAuslegung({ name:w.name, length_mm:w.length_mm, height_mm:w.height_mm,
+      openings:[], sides:w.sides||null, prestress:{ ...w.prestress },
+      load:{ qk_area:1.0, gammaQ:1.5 } }).wandelement;
+    return neu.prestress.kupplung_sw_mm===17; })());
+
+  // Ausgangszustand wiederherstellen.
+  for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
   document.getElementById('topConn').value='spannplatte';
   WP.applyWand(vorherW);
 }

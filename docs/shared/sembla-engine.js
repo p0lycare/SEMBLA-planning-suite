@@ -117,6 +117,14 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // Katalogprodukten gelesenen Blechdicken. Sie gehen zwar in keine Rechnung ein, stehen aber im
 // Ergebnis-Wandelement — fielen sie in der Iteration weg, traege das Element nach der Auslegung
 // keine Dicke mehr und die Stueckliste wiese sie als offen aus, obwohl der Katalog sie fuehrt.
+// Und aus demselben Grund `kupplung_sw_mm` (#97): die Schluesselweite des gewaehlten
+// Kopplungsmutter-Produkts. Sie geht — wie die Blechdicken — in KEINE Rechnung ein und wird
+// allein AUSGEWIESEN, damit die Ausgaben die Mutter spaeter masstaeblich zeichnen koennen, ohne
+// den Katalog zu lesen ([D-1]). Genau deshalb ist diese Feldliste die Stolperstelle: sie baut
+// `prestress` je Iteration NEU. Fiele das Feld hier weg, traege das Element nach der Auslegung
+// keine Schluesselweite mehr, obwohl Modul 1 sie aus dem Katalog abgeleitet hat — und der
+// Sammel-Editor des Geschosseditors, der ein gespeichertes `prestress` nur kopiert und ueber
+// diesen Pfad neu rechnet, LOESCHTE sie bei jeder Sammelaenderung.
 // NICHT mitgereicht wird `start_axis_grid` (#104): [V-5] ist durch [V-3]/[V-11] abgeloest, der
 // Core liest das Feld nicht mehr, und die Iteration gibt ihm folglich auch keines mehr vor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
@@ -127,6 +135,7 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            rod_fuss_offset_mm: p.rod_fuss_offset_mm,
            rod_kopf_zuschlag_mm: p.rod_kopf_zuschlag_mm,
            blech_dicke_mm: p.blech_dicke_mm, kopfblech_dicke_mm: p.kopfblech_dicke_mm,
+           kupplung_sw_mm: p.kupplung_sw_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
            ausgleich_override_mm: p.ausgleich_override_mm,
            deckenanschluss_grid: p.deckenanschluss_grid }; }

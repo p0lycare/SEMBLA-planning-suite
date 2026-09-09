@@ -930,6 +930,64 @@ t("#92 [A-19]/[Z-8] ohne Einbaulagen bleibt die Auslegung bit-genau der Altstand
 });
 
 // ---------------------------------------------------------------------------
+// SCHLUESSELWEITE DER KOPPLUNGSMUTTER (#97) — reine DURCHREICHE
+// ---------------------------------------------------------------------------
+// Modul 1 leitet `kupplung_sw_mm` aus dem gewaehlten Katalogprodukt ab; der Kern reicht es
+// unveraendert durch, damit die Ausgaben die Mutter spaeter masstaeblich zeichnen koennen, ohne
+// den Katalog zu lesen ([D-1]). GERECHNET wird damit nichts — genau das halten die Tests fest:
+// das Wandelement ist mit und ohne das Feld bis auf diesen einen Schluessel bit-gleich.
+// Gefahren wird derselbe `orakel()`-Weg wie bei #92: das ECHTE Python-Orakel als Unterprozess,
+// damit die Behauptung "beide Kerne bit-gleich" fuer dieses Feld auch belegt ist.
+const PS97 = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+  top_connection: "spannplatte", kupplung_sw_mm: 17 };
+const WAND97 = { name: "schluesselweite", length_mm: 6 * GRID, height_mm: 2000 };
+const bau97 = (ps) => buildWall(WAND97.name, WAND97.length_mm, WAND97.height_mm, [], null, ps);
+
+t("#97 Die Schluesselweite reist durch den Kern und ist py/mjs bit-gleich (echtes Python-Orakel)", () => {
+  const js = bau97(PS97);
+  assert(js.prestress.kupplung_sw_mm === 17,
+    "Schluesselweite im Wandelement: " + js.prestress.kupplung_sw_mm);
+  deepEqual(js, orakel({ ...WAND97, prestress: PS97 }));   // bit-genau, ganzes Wandelement
+  // Ein zweites Produkt mit anderer Schluesselweite ergibt einen anderen Wert — und aendert
+  // sonst NICHTS: die Zerlegung ist bis auf diesen Schluessel dieselbe.
+  const js24 = bau97({ ...PS97, kupplung_sw_mm: 24 });
+  assert(js24.prestress.kupplung_sw_mm === 24, "zweites Mass: " + js24.prestress.kupplung_sw_mm);
+  deepEqual({ ...js24, prestress: { ...js24.prestress, kupplung_sw_mm: 17 } }, js);
+});
+
+t("#97 Ohne Schluesselweite ist das Ergebnis bit-genau der Altstand", () => {
+  const { kupplung_sw_mm, ...ohne } = PS97;                // eslint-disable-line no-unused-vars
+  const a = bau97(ohne);
+  // Weder `0` noch `null` erfinden ein Feld — und beide sind bit-genau der Fall ohne Angabe.
+  deepEqual(bau97({ ...ohne, kupplung_sw_mm: 0 }), a);
+  deepEqual(bau97({ ...ohne, kupplung_sw_mm: null }), a);
+  assert(!("kupplung_sw_mm" in a.prestress),
+    "kein Schluessel ohne Angabe: " + Object.keys(a.prestress).join(","));
+  // Und die Nullwirkung gegen den gesetzten Fall: nur dieser eine Schluessel kommt hinzu.
+  const mit = bau97(PS97);
+  delete mit.prestress.kupplung_sw_mm;
+  deepEqual(mit, a);
+});
+
+t("#97 Die Schluesselweite reist durch psOf() (Auslegung und Nachweis)", () => {
+  // `psOf()` in `sembla-engine.js` ist eine FELDLISTE und baut `prestress` je Iteration neu —
+  // ohne Eintrag dort waere das Feld nach der ersten Iteration weg.
+  const last = { qk_area: 0.5, gammaQ: 1.5 };
+  const auto = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: PS97, load: last });
+  assert(auto.wandelement.prestress.kupplung_sw_mm === 17,
+    "nach der Auslegung: " + auto.wandelement.prestress.kupplung_sw_mm);
+  const nw = nachweisPruefen({ ...ENGINE_BASE, height_mm: 2000, load: { qk_area: 1.0, gammaQ: 1.5 },
+    prestress: { ...PS97, max_span_grid: 3, force_kN: 60 } }).wandelement;
+  assert(nw.prestress.kupplung_sw_mm === 17, "im Nachweis-Modus: " + nw.prestress.kupplung_sw_mm);
+  // Und auch hier: die Auslegung selbst bleibt bit-genau der Altstand.
+  const { kupplung_sw_mm, ...ohne } = PS97;                // eslint-disable-line no-unused-vars
+  const b = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ohne, load: last });
+  delete auto.wandelement.prestress.kupplung_sw_mm;
+  deepEqual(auto.wandelement, b.wandelement);
+  assert(!("kupplung_sw_mm" in b.wandelement.prestress), "kein Schluessel ohne Angabe");
+});
+
+// ---------------------------------------------------------------------------
 // RANDVERBAENDE [V-3]/[V-11] (Paritaetsvertrag mit dem Python-Orakel, Issue #104)
 // ---------------------------------------------------------------------------
 // Akzeptanztest 1+3 des Pakets: die vier i2-/i3-Randkombinationen werden als REALE Waende

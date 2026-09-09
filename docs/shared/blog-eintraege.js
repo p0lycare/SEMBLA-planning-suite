@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-15",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 97,
+    titel: "Die Schlüsselweite der Kopplungsmutter steht nach dem Auslegen an der Wand",
+    testbitte: "In Modul 1 eine Kopplungsmutter mit gepflegter Schlüsselweite wählen und "
+      + "„Auslegen“ drücken: die Wand führt danach dieses Maß, Zuschnitt und Mengen "
+      + "bleiben unverändert. Gezeichnet wird sie noch mit ihrer bisherigen Breite.",
+  },
+  {
     id: "chg-20260909-14",
     datum: "2026-09-09",
     typ: "feature",

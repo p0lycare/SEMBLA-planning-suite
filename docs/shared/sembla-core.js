@@ -940,6 +940,17 @@ function normPrestress(p) {
   const kz = (p && p.rod_kopf_zuschlag_mm != null && +p.rod_kopf_zuschlag_mm > 0) ? +p.rod_kopf_zuschlag_mm : 0;
   if (fo > 0) out.rod_fuss_offset_mm = fo;
   if (kz > 0) out.rod_kopf_zuschlag_mm = kz;
+  // Schluesselweite der Kopplungsmutter (#97) — das Werkzeugmass ueber die Schluesselflaechen und
+  // damit die reale BREITE des Bauteils, von Modul 1 aus dem gewaehlten Katalogprodukt abgeleitet.
+  // Sie geht in KEINE Rechnung ein: sie wird hier nur DURCHGEREICHT, damit die Ausgaben die
+  // Mutter masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]) — dieselbe reine
+  // Ausweisungsbahn wie `blech_dicke_mm`/`kopfblech_dicke_mm` ([A-1]). Kein Produktmass darueber
+  // hinaus, keine Produkt-ID und kein Preis wandert dadurch ins Wandelement.
+  //
+  // OPTIONAL: fehlt das Mass oder ist es ungueltig, entsteht der Schluessel gar nicht erst und
+  // das Ergebnis ist bit-genau das bisherige. Eine Breite wird NIE erfunden ([P-9]).
+  const sw = (p && p.kupplung_sw_mm != null && +p.kupplung_sw_mm > 0) ? +p.kupplung_sw_mm : 0;
+  if (sw > 0) out.kupplung_sw_mm = sw;
   return out;
 }
 

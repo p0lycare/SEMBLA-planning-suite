@@ -866,6 +866,16 @@ def _norm_prestress(p):
     _kz = p.get("rod_kopf_zuschlag_mm")
     if _kz is not None and float(_kz) > 0:
         out["rod_kopf_zuschlag_mm"] = int(_kz) if float(_kz) == int(float(_kz)) else float(_kz)
+    # Schluesselweite der Kopplungsmutter (#97) — das Werkzeugmass ueber die Schluesselflaechen
+    # und damit die reale BREITE des Bauteils, von Modul 1 aus dem gewaehlten Katalogprodukt
+    # abgeleitet. Sie geht in KEINE Rechnung ein und wird nur DURCHGEREICHT, damit die Ausgaben
+    # die Mutter masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]) — dieselbe
+    # reine Ausweisungsbahn wie die Blechdicken ([A-1]).
+    # OPTIONAL: fehlend/ungueltig -> der Schluessel entsteht gar nicht, das Ergebnis ist
+    # bit-genau das bisherige. Eine Breite wird NIE erfunden ([P-9]).
+    _sw = p.get("kupplung_sw_mm")
+    if _sw is not None and float(_sw) > 0:
+        out["kupplung_sw_mm"] = int(_sw) if float(_sw) == int(float(_sw)) else float(_sw)
     # Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
     # er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
     # nirgends gespeichert wird, entsteht im Wandelement auch kein Feld dafuer. `build_wall`

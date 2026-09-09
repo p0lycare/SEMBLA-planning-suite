@@ -406,6 +406,20 @@ function vorgaben(){
   // sichtbar im Formular statt still gefüllt zu werden.
   const fo=fussOffsetMm(); if(fo!=null) hw.rod_fuss_offset_mm=fo;
   const kz=kopfZuschlagMm(); if(kz!=null) hw.rod_kopf_zuschlag_mm=kz;
+  // #97 Schlüsselweite der Kopplungsmutter: dieselbe Bedingung — nur bei eindeutigem Katalogmaß,
+  // sonst bleibt das Feld ganz weg. Es geht in KEINE Rechnung ein (reines Ausweisungsmaß wie die
+  // Blechdicken) und reist allein deshalb mit, damit die Ausgaben die Mutter später maßstäblich
+  // zeichnen können, ohne den Katalog zu lesen ([D-1]).
+  //
+  // ⚠ Der Weg dorthin führt über `psOf()` in `sembla-engine.js` — eine FELDLISTE. Die
+  // Auslegungsschleife baut `prestress` je Iteration neu; ein dort fehlendes Feld ginge nach der
+  // ersten Iteration verloren, obwohl es hier gesetzt wurde.
+  //
+  // ⚠ Nachziehpunkt [P-6]: der Sammel-Editor des Geschosseditors leitet die Schlüsselweite noch
+  // NICHT ab. Er führt einen gespeicherten Wert unverändert mit (`rechneWandelement` kopiert
+  // `we.prestress`), aktualisiert ihn aber nicht — nach einem dortigen Wechsel auf eine Mutter
+  // mit anderer Schlüsselweite steht der alte Wert bis zum nächsten „Auslegen" hier.
+  const sw=kupplungSwMm(); if(sw!=null) hw.kupplung_sw_mm=sw;
   // [A-1] Blechdicken: reine BAUTEILMASSE aus dem Katalog. Sie gehen in keine Rechnung ein und
   // werden nur ausgewiesen; fehlt oder widerspricht ein Maß, bleibt das Feld weg und die Lücke
   // steht in `einbauMeldungen()` — es gibt dafür weder ein Eingabefeld noch einen Default.
@@ -1102,6 +1116,19 @@ function kopfZuschlagMm(){
   if($('topConn').value==='blech') return null;
   return einbauMass('spannplatte','dicke_mm').wert;
 }
+// #97 Schlüsselweite der Kopplungsmutter — das Werkzeugmaß über die Schlüsselflächen und damit
+// die reale BREITE des Bauteils. Sie kommt aus demselben Katalogfeld wie jedes andere
+// Einbaumaß (`sw_mm` der Rolle „Kopplungsmutter"), wird also über dasselbe `einbauMass()`
+// gelesen wie Fußoffset und Kopfzuschlag — es entsteht kein zweiter Ableitungsweg.
+//
+// Anders als jene beiden ist sie KEIN Rechenwert: sie geht in keine Höhe, keinen Bedarf und
+// keine Menge ein und wird allein AUSGEWIESEN — dieselbe Bahn wie die Blechdicken ([A-1]).
+// Gebraucht wird sie, damit die Ausgaben die Mutter später maßstäblich zeichnen können, ohne
+// den Katalog anzufassen ([D-1]); GEZEICHNET wird in diesem Paket noch nichts.
+//
+// Fehlt das Maß oder widersprechen sich die gewählten Produkte, bleibt der Wert `null` und das
+// Feld entsteht gar nicht — es wird NIE eine Breite erfunden ([P-9]).
+function kupplungSwMm(){ return einbauMass('kupplung','sw_mm').wert; }
 // [A-1] Bodenblechdicke: Bauteilmaß der Rolle „Bodenblech". Alle Standardlängen einer Wand sind
 // gleich dick — mehrere gewählte Größen sind der Regelfall ([A-10]) und ergeben genau EINEN
 // Dickenwert. Tragen sie verschiedene, bleibt die Dicke offen; es wird keine bevorzugt.
@@ -1661,6 +1688,7 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();},
   get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,
   get fussOffset(){return fussOffsetMm();}, get kopfZuschlag(){return kopfZuschlagMm();},
+  get kupplungSw(){return kupplungSwMm();},
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},
