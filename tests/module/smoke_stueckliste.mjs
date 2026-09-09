@@ -673,6 +673,63 @@ const keineWarnliste = () => !document.getElementById('tbody').innerHTML.include
     && keineWarnliste());
   ok('fehlende Referenz -> Referenz wird nicht still bereinigt', _eg.planung.produkte.rollen.i3.join()==='gibts-nicht');
 }
+// (b2) #116: Der Status `fehlt` ist ein Befund der VERWENDUNGSSTELLE. Traegt eine Rolle neben
+// einem vorhandenen Produkt noch eine entfernte Kennung, bleibt JEDE Position dieser Rolle
+// unbepreist — auch die, deren eigenes Einbauteil im Katalog steht. Genau dieser Fall (echter
+// Pfad: Wandelement + Eingaben -> stuecklistePositionen -> Modul-4-Zeilenausgabe) muss die
+// unaufloesbare Kennung woertlich nennen, ohne eine einzige Zahl zu bewegen.
+{
+  // Gegenprobe ZUERST: dieselbe Wand mit ausschliesslich aufloesbarer Auswahl. Ihre Zeilen-
+  // und Summenwerte sind der Bezugsstand, gegen den die Stoerung geprueft wird.
+  const rsOk=mitRollen({rod_std:['rod-1100']});
+  const sOk=SL.summe(), sumOk=sumZeile();
+  const wertOk=rsOk.map(x=>[x.key,x.menge,x.ep,x.gp,x.statusText].join(':')).join('|');
+  const tbOk=document.getElementById('tbody').innerHTML;
+  ok('#116 Gegenprobe: ohne unauflösbare Referenz keine Nennung an irgendeiner Zeile',
+    !/Verwendungsstelle/.test(tbOk) && !/nicht das oben genannte Einbauteil/.test(tbOk));
+  ok('#116 Gegenprobe: Grundtexte bleiben genau die Statustexte der Auflösung',
+    rsOk.filter(x=>x.gp==null && x.status!=='nicht_erforderlich')
+        .every(x=>zeileMit(x.label).includes('<div class="grund">'+esc0(x.statusText)+'</div>')));
+
+  // Stoerung: eine vorhandene UND eine im Katalog fehlende Kennung an derselben Rolle.
+  const rsFehl=mitRollen({rod_std:['rod-1100','gibts-nicht']});
+  const betroffen=rsFehl.filter(x=>x.key==='rod_std');
+  ok('#116 Aufbau: vorhandene + fehlende Kennung -> Status fehlt an den Stangenzeilen',
+    betroffen.length>0 && betroffen.every(x=>x.status==='fehlt'
+      && x.fehlend.join()==='gibts-nicht' && x.ep===null && x.gp===null));
+  ok('#116 die betroffene Zeile nennt die unauflösbare Kennung wörtlich',
+    betroffen.every(x=>{ const z=zeileMit(x.label);
+      return z.includes('„gibts-nicht“')
+        && /<div class="grund">Produkt fehlt im Katalog<\/div>/.test(z); }));
+  ok('#116 die Nennung weist sie der Verwendungsstelle zu, nicht dem Einbauteil der Zeile',
+    betroffen.every(x=>{ const z=zeileMit(x.label);
+      return /gewählte Produkt-Kennung dieser Verwendungsstelle ist im Katalog nicht auffindbar/.test(z)
+        && z.includes('nicht das oben genannte Einbauteil'); }));
+  ok('#116 die Nennung steht nur an den Zeilen dieser Verwendungsstelle', (()=>{
+    const tb=document.getElementById('tbody').innerHTML;
+    return (tb.match(/gibts-nicht/g)||[]).length===betroffen.length; })());
+  ok('#116 die Nennung ist kein Bedienelement und keine neue Spalte', (()=>{
+    const z=zeileMit(betroffen[0].label);
+    // Der Nennungs-Block selbst: reiner Text, kein Feld und kein Knopf. Und die Zeile hat
+    // genau so viele Zellen wie jede andere — die Nennung steht in der Bezeichnungszelle.
+    const block=(z.match(/<div class="grund">gewählte Produkt-Kennung[\s\S]*?<\/div>/)||[''])[0];
+    return block && !/<input|<button|<select/.test(block)
+      && (z.match(/<td/g)||[]).length===(zeileMit('Stein i3').match(/<td/g)||[]).length; })());
+
+  // Zahlenwerte: die Anzeige rechnet nichts. Mengen wie bei vollstaendiger Zuordnung, und
+  // Summe/Bepreist-Zaehler/Vermerk der Gegenprobe unveraendert gegenueber ihrem Bezugsstand.
+  ok('#116 Mengen bleiben unverändert',
+    rsFehl.map(x=>x.key+':'+x.menge).join('|')===mengenVoll);
+  ok('#116 kein Preis, kein Ersatzprodukt, keine Teilbepreisung aus dem Rest',
+    betroffen.every(x=>x.produkt===null) && stuecklisteSumme(rsFehl).bepreist===sOk.bepreist-betroffen.length);
+  const rsOk2=mitRollen({rod_std:['rod-1100']});
+  ok('#116 Gegenprobe wertgleich: Mengen, Einzel- und Gesamtpreise, Grundtexte',
+    rsOk2.map(x=>[x.key,x.menge,x.ep,x.gp,x.statusText].join(':')).join('|')===wertOk);
+  ok('#116 Gegenprobe wertgleich: Summe, Bepreist-Zähler und Vollständigkeitsvermerk', (()=>{
+    const s2=SL.summe();
+    return s2.summe===sOk.summe && s2.bepreist===sOk.bepreist && s2.bepreisbar===sOk.bepreisbar
+      && s2.vollstaendig===sOk.vollstaendig && sumZeile()===sumOk; })());
+}
 // (c) Mehrdeutigkeit (zwei Produkte mit demselben maßgebenden Maß)
 { const r=mitRollen({rod_std:['rod-1100','rod-1100b']}).find(x=>x.key==='rod_std');
   ok('mehrdeutig -> kein Preis, kein erstes Produkt', r.status==='mehrdeutig' && r.ep===null && r.produkt===null);

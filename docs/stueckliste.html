@@ -612,6 +612,15 @@ function render(){
   // Ohne Katalog hätte JEDE Zeile denselben Grund — das wäre wieder Fülltext. Er steht dann
   // einmal an der Summe (s. u.), die Preiszellen bleiben trotzdem „n.a.“.
   const keinKatalog=!KATALOG;
+  // #116: Welche gewählte Produkt-Kennung unauflösbar ist, sagt `fehlend` — eine Aussage über
+  // die VERWENDUNGSSTELLE (`key`) und nicht über die einzelne Zeile. Die Faltung der
+  // Ebenenansicht führt das Feld nicht mit (gesamtDaten), deshalb wird es auf der Wandebene
+  // aus den kanonischen Wandpositionen nachgeschlagen: dieselbe Funktion `rows()`, die das
+  // Modul immer schon ruft — kein zweites Rechenmodell und keine eigene Auflösung. Auf den
+  // Gesamtebenen steht eine Zeile für mehrere Wände; dort gibt es die Nennung nicht.
+  const fehlMap = new Map(EBENE==='wand'
+    ? rows().filter(p=>Array.isArray(p.fehlend) && p.fehlend.length).map(p=>[p.key, p.fehlend])
+    : []);
   let html='';
   rs.forEach(r=>{
     // [P-19] Art als Symbol + Klartext (Farbe nur zusätzlich) und Fertigmaß der aggregierten
@@ -625,9 +634,23 @@ function render(){
     // [P-14] Grund knapp und sekundär unter dem Namen — nie in der Preiszelle.
     const grund = (r.gp==null && r.status!=='nicht_erforderlich' && !keinKatalog)
       ? `<div class="grund">${esc(r.statusText)}</div>` : '';
+    // [P-14]/#116: Der Status `fehlt` ist ein Befund der VERWENDUNGSSTELLE, nicht der Zeile.
+    // `loesePreis` löst ALLE gewählten Kennungen einer Rolle auf; eine einzige unauflösbare
+    // lässt jede Position dieser Rolle unbepreist — auch die, deren eigenes Einbauteil im
+    // Katalog steht ([Z-2]/[A-10]: eine Rolle trägt mehrere Standardgrößen). Genau das las
+    // sich bisher wie „dieses Produkt fehlt“. Angezeigt werden die Kennungen NUR: kein Preis,
+    // kein Ersatzprodukt, keine Teilbepreisung aus dem Rest, kein Schreibweg, keine neue
+    // Spalte. Bewusst ein EIGENES Geschwister-Element — der Grundtext bleibt wortgleich.
+    const fehl = fehlMap.get(r.key) || [];
+    const fehlRefs = (r.status==='fehlt' && fehl.length && !keinKatalog)
+      ? `<div class="grund">${fehl.length>1
+            ? 'gewählte Produkt-Kennungen dieser Verwendungsstelle sind im Katalog nicht auffindbar'
+            : 'gewählte Produkt-Kennung dieser Verwendungsstelle ist im Katalog nicht auffindbar'}: `
+        + fehl.map(id=>'„'+esc(id)+'“').join(', ')
+        + ' – nicht das oben genannte Einbauteil</div>' : '';
     const preis = v => v==null ? '<td class="na">n.a.</td>' : `<td>${fmt(v,2)}</td>`;
     // [P-20]: Der Kommentar steht in DIESER Zelle — keine neue Spalte (#62).
-    html+=`<tr><td>${esc(r.label)}${grund}${kommentarTeil(r,kstand)}</td>${art}`
+    html+=`<tr><td>${esc(r.label)}${grund}${fehlRefs}${kommentarTeil(r,kstand)}</td>${art}`
         +`<td>${mass}</td>`
         +mengeZelle(r,nk)
         +(PREISE?preis(r.ep)+preis(r.gp):'')+`</tr>`;

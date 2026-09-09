@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-12",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 116,
+    titel: "Stückliste nennt jetzt, welche gewählte Produkt-Kennung im Katalog fehlt",
+    testbitte: "Modul 4 für eine Wand öffnen, deren Verwendungsstelle neben einem "
+      + "vorhandenen Produkt noch eine im Katalog nicht mehr auffindbare Kennung führt: "
+      + "unter „Produkt fehlt im Katalog“ steht jetzt genau diese Kennung.",
+  },
+  {
     id: "chg-20260909-11",
     datum: "2026-09-09",
     typ: "fix",
