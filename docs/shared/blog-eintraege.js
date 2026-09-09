@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-05",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 97,
+    titel: "Die Spannplatte wird mit ihrer realen Katalogdicke gezeichnet",
+    testbitte: "In Modul 1 eine Spannplatte als oberen Anschluss w\u00e4hlen und die Wandansicht sowie das Blatt in Modul 7 ansehen: die Platte liegt mit ihrer echten Dicke auf der Kante und ist ma\u00dfst\u00e4blich abmessbar, die Spannmutter sitzt unmittelbar darauf.",
+  },
+  {
     id: "chg-20260909-04",
     datum: "2026-09-09",
     typ: "feature",

@@ -248,7 +248,23 @@ export function schraubeSvg(x, y, e, blech, opts = {}) {
  *
  * Die BREITE ist ein Bauteilmass (`SPANN_MM.platte_b_mm` = 110 mm) und wird mit `sc`
  * masstabsgetreu umgerechnet — sie liegt als Auflagerflaeche entlang der Wand und kann
- * abgemessen werden. Nur die DICKE ist festes Symbolmass.
+ * abgemessen werden.
+ *
+ * Seit #97 gilt dasselbe fuer die DICKE, sobald der Aufrufer sie als `opts.dicke_mm`
+ * hereingibt: sie ist dann `dicke_mm * sc` und laesst sich im Blatt abmessen. Das Mass ist
+ * KEIN neues Feld — es ist die Spannplattendicke, die seit #92 als
+ * `prestress.rod_kopf_zuschlag_mm` im Wandelement steht; hier wird sie nur gezeichnet und
+ * nichts daraus abgeleitet. OHNE das Mass bleibt es beim bisherigen festen Symbolmass
+ * `SPANN_MM.platte_h` — es wird keine Dicke erfunden, und das Ergebnis ist dann wertgleich
+ * zum Stand vor #97. Bis dahin war die Dicke IMMER symbolisch: dieselbe flache Marke fuer
+ * eine 6-mm- wie fuer eine 15-mm-Platte, und wer nachmass, mass ein Symbol.
+ *
+ * Auf dem masstabsgetreuen Zweig gibt es ausdruecklich KEINE Untergrenze (Entscheid zu #97):
+ * eine duenne Platte in kleinem Masstab IST duenn, und eine Untergrenze waere ein zweites,
+ * verstecktes Mass, das dem abgemessenen Wert widerspraeche. Nur ein nicht zeichenbares
+ * Ergebnis (`dicke_mm * sc` nicht > 0) faellt auf das Symbolmass zurueck — die Platte
+ * entfaellt nie. Die BREITEN-Untergrenze unten bleibt davon unberuehrt; sie ist eine andere
+ * Achse und loest ein anderes Problem (Verwechslung mit dem schmaleren Bauteil).
  *
  * Die Breite hat aber eine UNTERGRENZE im Symbolmass (`platte_b_min`, #106): bei kleinem
  * Blattmasstab wird die masstabstreue Breite kleiner als der feste Mutternzylinder, und die
@@ -260,12 +276,18 @@ export function schraubeSvg(x, y, e, blech, opts = {}) {
  * @param {number} y Zeichenkoordinate der Auflagerkante
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
  * @param {number} sc Zeichenkoordinaten je mm
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,min?:number}} [opts]
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,min?:number,dicke_mm?:number}} [opts]
+ *        `dicke_mm`: reale Plattendicke in mm (#97) — masstabsgetreu statt Symbolmass.
  * @returns {string} SVG-Fragment
  */
 export function spannplatteSvg(x, y, e, sc, opts = {}) {
   const n = opts.n || (v => v);
-  const h = SPANN_MM.platte_h * e;
+  // DICKE: das reale Bauteilmass, wenn der Aufrufer es kennt — sonst unveraendert das feste
+  // Symbolmass. Gepruefte wird das ZEICHENERGEBNIS und nicht nur die Eingabe: nur ein Wert
+  // > 0 darf die Platte tragen, damit sie nie zu einer Hoehe von 0 zusammenfaellt.
+  const dMm = +opts.dicke_mm;
+  const hMass = (isFinite(dMm) && dMm > 0 && sc > 0) ? dMm * sc : 0;
+  const h = hMass > 0 ? hMass : SPANN_MM.platte_h * e;
   const b = Math.max(opts.min != null ? opts.min : SPANN_MM.platte_b_min * e,
     SPANN_MM.platte_b_mm * sc);
   const farbe = opts.farbe || SPANN_FARBE.platte;

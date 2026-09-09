@@ -839,6 +839,46 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   ok("[#106] die Sichtbarkeitsuntergrenze des Aufrufers ueberschreibt die eigene",
     Math.abs(breite(spannplatteSvg(0, 0, E7, 1 / 500, { min: 2.2 })) - 2.2) < 1e-9);
 
+  // --- Spannplattendicke: reales Katalogmass statt Symbolmass (#97) ------------------------
+  // Bis #97 war die Dicke IMMER `platte_h` — dieselbe flache Marke fuer eine 6-mm- wie fuer
+  // eine 15-mm-Platte. Gezeichnet wird jetzt `dicke_mm * sc`, also dasselbe Verfahren, mit dem
+  // die Breite schon immer ein Bauteilmass ist. Die Mutter haengt an derselben Zahl und
+  // wandert zwingend mit; die uebrigen Merkmale duerfen sich nicht bewegen.
+  {
+    const pl8 = spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 8 });
+    ok("[#97] die Plattendicke ist masstabsgetreu `dicke_mm * sc`",
+      Math.abs(hoehe(pl8) - 8 * scM1) < 1e-9);
+    ok("[#97] eine andere Katalogdicke ergibt eine andere Plattenhoehe (kein Symbolmass mehr)",
+      Math.abs(hoehe(spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 15 })) - 15 * scM1) < 1e-9
+      && hoehe(spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 15 })) > hoehe(pl8));
+    ok("[#97] die Platte liegt weiterhin AUF der Kante — auch mit realer Dicke",
+      Math.abs((num(pl8, "y")[0] + hoehe(pl8)) - 200) < 1e-9);
+    ok("[#97] die Spannmutter sitzt unmittelbar auf der Plattenoberkante und wandert mit",
+      pl8.endsWith(mutterSvg(100, 200 - 8 * scM1, E1, { auf: true })) && (() => {
+        const r = [...pl8.matchAll(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/g)]
+          .map(m => ({ y: +m[1], h: +m[2] }));
+        return r.length === 2 && Math.abs((r[1].y + r[1].h) - r[0].y) < 1e-9;
+      })());
+    ok("[#97] Breite, Farben und Mutterngeometrie bleiben unberuehrt",
+      Math.abs(breite(pl8) - SPANN_MM.platte_b_mm * scM1) < 1e-9
+      && pl8.includes(SPANN_FARBE.platte) && pl8.includes(SPANN_FARBE.mutter)
+      && (pl8.match(/<rect /g) || []).length === 2
+      && Math.abs(breite(pl8.slice(pl8.indexOf("/>") + 2)) - SPANN_MM.d * E1) < 1e-9);
+    // Entscheid zu #97: auf dem masstabsgetreuen Zweig gibt es KEINE Untergrenze — eine duenne
+    // Platte in kleinem Masstab ist duenn. Gezeichnet werden muss sie trotzdem.
+    ok("[#97] eine sehr duenne Platte bekommt KEINE Untergrenze, bleibt aber zeichenbar", (() => {
+      const h = hoehe(spannplatteSvg(0, 0, E7, 1 / 20, { dicke_mm: 8 }));
+      return Math.abs(h - 8 / 20) < 1e-9 && h > 0 && h < SPANN_MM.platte_h * E7;
+    })());
+    // Ohne Mass wird NICHTS erfunden: das Ergebnis ist byte-gleich zum Stand vor #97.
+    ok("[#97] ohne Dickenmass bleibt es beim festen Symbolmass (wertgleich zum Altstand)",
+      spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 0 }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { dicke_mm: null }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { dicke_mm: undefined }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { dicke_mm: "" }) === plU
+      && Math.abs(hoehe(plU) - SPANN_MM.platte_h * E1) < 1e-9);
+  }
+
   // --- Einlegeblech: nach unten offenes C-Profil MIT genau einer Mutter obenauf ([A-16]) ---
   const zp0 = zwischenpunktSvg(100, 200, { klasse: "zsp" });
   const zpM = zwischenpunktSvg(100, 200, { klasse: "zsp", e: E1 });

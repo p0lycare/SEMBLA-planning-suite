@@ -593,6 +593,12 @@ function draw(w){
 
   // ---- Anschlüsse: Bodenblech (immer), Kopfblech oder Spannplatten ----
   const topConn=(w.prestress&&w.prestress.top_connection)||'blech';
+  // [D-4]/#97 Plattendicke: das reale Katalogmaß der Spannplatte steht seit #92 als
+  // `rod_kopf_zuschlag_mm` im Wandelement (aus `kopfZuschlagMm()`). Es wird hier NUR GELESEN
+  // und unverändert an `spannplatteSvg()` durchgereicht — dieselbe Zahl wie in Modul 7, damit
+  // dasselbe Bauteil in beiden Ansichten gleich dick ist. Fehlt es, bleibt es beim festen
+  // Symbolmaß; es wird keine Dicke erfunden und keine nachgerechnet.
+  const plD=(w.prestress&&w.prestress.rod_kopf_zuschlag_mm)||0;
   // Bezugsmaß aller Spannkomponenten-Symbole (#106): FESTE viewBox-Einheiten je Papier-mm
   // aus SPANN_EINHEIT. Vorher stand hier `COURSE*sc`, also die Lagenhöhe in
   // Zeichenkoordinaten — und weil `sc=(1000-2*pad)/L` allein an der WANDLÄNGE hängt, war
@@ -706,8 +712,9 @@ function draw(w){
       const ao=g.anker_oben||((g.z1_mm===topH(col.k)*1)?topConn:'spannplatte');
       // Anker unten/oben: Mutter als kurzer Zylinder, Spannplatte als langgezogenes flaches
       // Rechteck — Geometrie und Kennfarbe kommen aus sembla-montage.js ([D-4]/#110), damit
-      // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Alle Symbolmaße
-      // sind dort FEST und deshalb unabhängig von Wandgröße, Blattmaßstab und Zoom (#106).
+      // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Die Symbolmaße
+      // sind dort FEST und deshalb unabhängig von Wandgröße, Blattmaßstab und Zoom (#106);
+      // maßstabstreue Bauteilmaße sind die Plattenbreite und seit #97 die Plattendicke.
       if(au==='bodenblech'){
         // Fußfolge nach [A-19] (#97): von unten die Sechskantschraube — ihr Kopf ragt unter
         // dem Bodenblech heraus —, darauf das Blech, darauf AUFLIEGEND die KOPPLUNGSMUTTER.
@@ -715,8 +722,9 @@ function draw(w){
         s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth);
         vorn+=kopplungsmutterSvg(x,Y(g.z0_mm),SYM,{klasse:'kop',auf:true});
       }
-      else { s+=spannplatteSvg(x,Y(g.z0_mm),SYM,sc); }   // Spannplatte liegt auf der Kante auf
-      if(ao==='spannplatte'){ s+=spannplatteSvg(x,Y(g.z1_mm),SYM,sc); }
+      // Spannplatte liegt auf der Kante auf — mit ihrer realen Dicke (#97), oben wie unten.
+      else { s+=spannplatteSvg(x,Y(g.z0_mm),SYM,sc,{dicke_mm:plD}); }
+      if(ao==='spannplatte'){ s+=spannplatteSvg(x,Y(g.z1_mm),SYM,sc,{dicke_mm:plD}); }
       else { s+=mutterSvg(x,Y(g.z1_mm),SYM,{auf:true}); }   // Spannmutter, sitzt auf der Kante
     } }
 

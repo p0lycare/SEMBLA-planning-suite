@@ -26,6 +26,9 @@ import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
          // #110: die gemeinsame Symbolquelle der Spannkomponenten — das Blatt darf dafuer
          // keine eigene Geometrie und keine eigenen Hex-Werte fuehren ([D-4]).
          SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, mutterSvg,
+         // #97: nur fuer den Vergleich Modul 1 <-> Modul 7 — die Wandansicht ruft genau diese
+         // Funktion mit ihrer eigenen Einheit auf, das Blatt mit seiner.
+         spannplatteSvg as Z_spannplatteSvg,
          ZWISCHENPUNKT, DECKENANSCHLUSS } from "../../docs/shared/sembla-montage.js";
 import { wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
@@ -50,6 +53,10 @@ const WF = buildWall("IW-02", 4000, 2600, [new Opening(8, 14, 4, 10, "fenster")]
 const WL = buildWall("IW-03", 12000, 4000, []);
 // WSP: oberer Anschluss SPANNPLATTE ([A-2]) -> das Blatt zeigt die Platte am Strangende (#110)
 const WSP = buildWall("IW-05", 3000, 2600, [], null, { top_connection: "spannplatte" });
+// WSP8: dieselbe Wand, aber MIT dem realen Katalogmass der Spannplattendicke (#92/#97).
+// Der Kopfzuschlag IST die Plattendicke; ueber ihn kommt sie in die Zeichnung ([D-4]).
+const WSP8 = buildWall("IW-06", 3000, 2600, [], null,
+  { top_connection: "spannplatte", rod_kopf_zuschlag_mm: 8 });
 
 const eingaben = standardEingaben();
 eingaben.projekt.name = "Rettungswache";
@@ -230,6 +237,54 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     const oben = Math.min(...kontur);
     return alle.length > 0 && alle.some(r => Math.abs((r.y + r.h) - oben) < 1e-3)
       && alle.every(r => r.y + r.h <= oben + 1e-3);
+  })());
+
+  // --- #97: die Platte wird mit ihrer REALEN Katalogdicke gezeichnet ----------------------
+  // Gebaut wird ueber den echten Core-Pfad; die Dicke kommt allein aus dem Wandelement
+  // (`prestress.rod_kopf_zuschlag_mm`, #92) und wird hier nur gezeichnet. Geprueft wird am
+  // REALEN Blatt-SVG, nicht am Zeichenbaustein.
+  const zSp8 = Z.zeichnungSvg(WSP8, {}), svgSp8 = zSp8.svg, mSp8 = zSp8.masstab;
+  const plattenVon = t => [...t.matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
+    + `width="([-\\d.]+)" height="([-\\d.]+)" fill="${Z.FARBE.platte}"/>`, "g"))]
+    .map(m => ({ y: +m[1], b: +m[2], h: +m[3] }));
+  ok("[#97] das Wandelement fuehrt die Plattendicke als Katalogmass",
+    WSP8.prestress.rod_kopf_zuschlag_mm === 8
+    && WSP.prestress.rod_kopf_zuschlag_mm === undefined);
+  ok("[#97] im Blatt ist die Plattenhoehe 8 mm mal Blattmasstab", (() => {
+    const p8 = plattenVon(svgSp8);
+    return p8.length > 0 && p8.every(r => Math.abs(r.h - rnd(8 / mSp8)) < 1e-3);
+  })());
+  ok("[#97] die Spannmutter sitzt im Blatt unmittelbar auf der Plattenoberkante", (() => {
+    const p8 = plattenVon(svgSp8);
+    const mu = [...svgSp8.matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
+      + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.mutter}"/>`, "g"))]
+      .map(m => ({ y: +m[1], h: +m[2] }));
+    return p8.length > 0 && p8.every(r =>
+      mu.some(m => Math.abs((m.y + m.h) - r.y) < 1e-3 && Math.abs(m.h - rnd(hM)) < 1e-3));
+  })());
+  ok("[#97] die Platte liegt auch mit realer Dicke AUF der Wandoberkante", (() => {
+    const kontur = /<polyline points="([^"]+)"/.exec(svgSp8)[1].split(" ")
+      .map(q => +q.split(",")[1]);
+    const oben = Math.min(...kontur);
+    return plattenVon(svgSp8).every(r => r.y + r.h <= oben + 1e-3);
+  })());
+  ok("[#97] Breite, Farben und Plattenzahl bleiben gegenueber dem Symbolstand unveraendert",
+    plattenVon(svgSp8).length === plattenVon(svgSp).length
+    && plattenVon(svgSp8).every(r => Math.abs(r.b - rnd(SPANN_MM.platte_b_mm / mSp8)) < 1e-3));
+  // Ohne bekanntes Mass wird NICHTS erfunden — das Blatt von WSP bleibt der Altstand.
+  ok("[#97] ohne Katalogmass bleibt das Blatt beim festen Symbolmass",
+    plattenVon(svgSp).every(r => Math.abs(r.h - rnd(SPANN_MM.platte_h * E)) < 1e-3)
+    && mSp === mSp8 && plattenVon(svgSp8)[0].h !== plattenVon(svgSp)[0].h);
+  // [D-4]/#97 Muss: Modul 1 und Modul 7 messen dieselbe Plattendicke. Das Blatt rechnet in
+  // Papier-mm (`1/masstab`), die Wandansicht in ihren viewBox-Einheiten — verglichen wird
+  // deshalb das ZURUECKGERECHNETE Bauteilmass in mm, und das muss beidseits 8 mm sein.
+  ok("[#97] Modul 1 und Modul 7 zeigen dieselbe masstaebliche Dicke", (() => {
+    const scM1 = (1000 - 2 * 46) / WSP8.length_mm;
+    const m1 = Z_spannplatteSvg(0, 0, SPANN_EINHEIT.ansicht, scM1,
+      { dicke_mm: WSP8.prestress.rod_kopf_zuschlag_mm });
+    const hM1 = +/height="([-\d.]+)"/.exec(m1)[1] / scM1;
+    const hM7 = plattenVon(svgSp8)[0].h * mSp8;
+    return Math.abs(hM1 - 8) < 1e-9 && Math.abs(hM7 - 8) < 1e-2;
   })());
 }
 
