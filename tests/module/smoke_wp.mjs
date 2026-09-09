@@ -70,7 +70,10 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // auf viewBox-Einheiten. `schraubeSvg` ist die Schraube am Wandfuss ([A-19]/#97).
   // #112: `SPANN_MM` kommt hinzu — die weisse Haarlinie am Stangenstoss wird aus dem
   // Durchmesser der Kopplungsmutter abgeleitet, damit sie breiter ist als das Bauteil ueber ihr.
+  // #97: `kupplungDurchmesser` kommt hinzu — der WIRKSAME Durchmesser der Kopplungsmutter
+  // (Schluesselweite mal Masstab, sonst Symbolmass). Aus ihm leitet Modul 1 die Haarlinie ab.
   SPANN_FARBE: MONT.SPANN_FARBE, SPANN_EINHEIT: MONT.SPANN_EINHEIT, SPANN_MM: MONT.SPANN_MM,
+  kupplungDurchmesser: MONT.kupplungDurchmesser,
   mutterSvg: MONT.mutterSvg,
   kopplungsmutterSvg: MONT.kopplungsmutterSvg, spannplatteSvg: MONT.spannplatteSvg,
   schraubeSvg: MONT.schraubeSvg,
@@ -373,8 +376,13 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
         n++;
       }
     return n>0; })());
-  ok('[#112] Modul 1 fuehrt fuer die Haarlinienbreite kein eigenes Mass',
-    /SPANN_MM\.d\s*\*\s*1\.5/.test(html) && /SPANN_MM=S\.SPANN_MM/.test(html));
+  // Seit #97 kommt der WERT aus `kupplungDurchmesser()` (sembla-montage.js) — dieselbe
+  // Entscheidung, die die Mutter selbst zeichnet. Lokal bleibt nur der Faktor 1,5; ein eigenes
+  // Symbolmass fuer die Breite gibt es in Modul 1 weiterhin nicht ([D-4]).
+  ok('[#112]/[#97] Modul 1 fuehrt fuer die Haarlinienbreite kein eigenes Mass',
+    /kupplungDurchmesser\(SYM,\{sw_mm:kuSw,sc\}\)\*1\.5/.test(html)
+    && /kupplungDurchmesser=S\.kupplungDurchmesser/.test(html)
+    && !/SPANN_MM\.d\s*\*\s*1\.5/.test(html));
   // Ein Strang aus EINEM Stueck hat keinen Stoss — dann darf auch keine Haarlinie entstehen.
   ok('[#112] ein einstueckiger Strang bekommt keine Haarlinie', (()=>{
     const wd=WP.RESULT.wandelement;
@@ -2006,6 +2014,84 @@ store.setzeKatalog(KATALOG);
       openings:[], sides:w.sides||null, prestress:{ ...w.prestress },
       load:{ qk_area:1.0, gammaQ:1.5 } }).wandelement;
     return neu.prestress.kupplung_sw_mm===17; })());
+
+  // ---- GEZEICHNET wird sie seit dem Folgepaket zu #97 ------------------------------------
+  // Geprueft wird an der WANDANSICHT, die der echte Modul-1-Pfad oben erzeugt hat (SW 17 ist
+  // gerade gesetzt und gespeichert). Verglichen wird gegen den Baustein aus sembla-montage.js
+  // mit DERSELBEN Schluesselweite — Modul 1 darf nichts Eigenes rechnen ([D-4]).
+  {
+    const E=MONT.SPANN_EINHEIT.ansicht;
+    const svg=()=>document.getElementById('plan').innerHTML;
+    const kopB=t=>[...t.matchAll(/<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="([-\d.]+)"/g)]
+      .map(m=>+m[1]);
+    const kopH=t=>[...t.matchAll(
+      /<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="[-\d.]+" height="([-\d.]+)"/g)]
+      .map(m=>+m[1]);
+    const RE_HAAR=/<line class="haar" x1="([-\d.]+)" y1="[-\d.]+" x2="([-\d.]+)"/g;
+    const haarB=t=>[...t.matchAll(RE_HAAR)].map(m=>+m[2]-+m[1]);
+    // Jede Kopplungsmarke muss BYTEGLEICH die der geteilten Funktion sein — nachgerechnet mit
+    // derselben Abbildung, die die Ansicht benutzt (pad 46, sc aus ansichtSc(), y von unten).
+    const marken=(sw)=>{
+      const wd=WP.RESULT.wandelement, sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
+      const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+      const kuH=2*((wd.prestress&&wd.prestress.rod_fuss_offset_mm)||0);
+      const t=svg(); let n=0;
+      for(const col of wd.tension_columns) for(const g of col.segments){
+        const st=MONT.stangenStuecke(wd,g);
+        for(let i=0;i<st.length-1;i++){
+          if(!t.includes(MONT.kopplungsmutterSvg(X(col.x_mm),Y(st[i].z1_mm),E,
+            {klasse:'kop',hoehe_mm:kuH,sw_mm:sw,sc}))) return 0;
+          n++;
+        }
+        const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
+        if(au==='bodenblech'){
+          if(!t.includes(MONT.kopplungsmutterSvg(X(col.x_mm),Y(g.z0_mm),E,
+            {klasse:'kop',auf:true,hoehe_mm:kuH,sw_mm:sw,sc}))) return 0;
+          n++;
+        }
+      }
+      return n; };
+
+    const sc17=WP.ansichtSc(), b17=kopB(svg()), h17=kopH(svg());
+    ok('[#97] die Wandansicht zeichnet die Mutter mit ihrer realen Schluesselweite',
+      b17.length>0 && b17.every(v=>Math.abs(v-17*sc17)<1e-9));
+    ok('[#97] jede Kopplungsmarke ist bytegleich die des geteilten Bausteins', marken(17)>0);
+    ok('[#97] die Haarlinie am Stangenstoss ist breiter als die Mutter', (()=>{
+      const hb=haarB(svg());
+      return hb.length>0 && hb.every(v=>Math.abs(v-17*sc17*1.5)<1e-9)
+        && hb.every(v=>v>Math.max(...b17)); })());
+
+    // Zweite Schluesselweite: sichtbar breiter, gleiche Hoehe.
+    setzen('kupplung','kuppl-sw-17',false); setzen('kupplung','kuppl-sw-24',true); WP.run();
+    const b24=kopB(svg()), h24=kopH(svg());
+    ok('[#97] zwei Schluesselweiten ergeben zwei verschieden breite Muttern',
+      b24.length===b17.length && b24.every(v=>Math.abs(v-24*WP.ansichtSc())<1e-9)
+      && b24[0]>b17[0]);
+    ok('[#97] die gezeichnete Hoehe aendert sich dabei nicht',
+      h24.length===h17.length && h24.every((v,i)=>Math.abs(v-h17[i])<1e-9));
+    ok('[#97] auch mit 24 mm ist jede Marke bytegleich die des Bausteins', marken(24)>0);
+
+    // GEGENPROBE ohne Mass: dieselbe Wand, Mutter ohne gepflegte Schluesselweite — die
+    // Zeichenkette faellt zeichenweise auf den Stand vor diesem Paket zurueck.
+    const mit=svg();
+    setzen('kupplung','kuppl-sw-24',false); setzen('kupplung','kuppl-50',true); WP.run();
+    const ohne=svg();
+    ok('[#97] ohne Schluesselweite bleibt die Ansicht beim festen Symbolmass', (()=>{
+      const b=kopB(ohne);
+      return b.length>0 && b.every(v=>Math.abs(v-MONT.SPANN_MM.d*E)<1e-9)
+        && ohne!==mit && marken(undefined)>0; })());
+    ok('[#97] und auch die Haarlinie faellt auf das Symbolmass zurueck', (()=>{
+      const hb=haarB(ohne);
+      return hb.length>0 && hb.every(v=>Math.abs(v-MONT.SPANN_MM.d*1.5*E)<1e-9)
+        && hb.every(v=>v>MONT.SPANN_MM.d*E); })());
+    // Nur GEZEICHNET: alles ausser den Kopplungsmarken und den Haarlinien ist bytegleich.
+    ok('[#97] Steine, Stangen, Bleche und Bemassung bleiben dabei bytegleich', (()=>{
+      const strip=t=>t.replace(/<rect class="kop"[^>]*\/>/g,'')
+        .replace(/<line class="haar"[^>]*\/>/g,'');
+      return strip(mit)===strip(ohne) && strip(mit).length>0; })());
+    // Ausgangslage dieses Blocks wiederherstellen (SW 17 eindeutig gewaehlt).
+    setzen('kupplung','kuppl-50',false); setzen('kupplung','kuppl-sw-17',true); WP.run();
+  }
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }

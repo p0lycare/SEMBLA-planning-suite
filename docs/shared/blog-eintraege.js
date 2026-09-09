@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-16",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 97,
+    titel: "Die Kopplungsmutter wird jetzt in ihrer realen Breite gezeichnet",
+    testbitte: "In Modul 1 eine Wand mit gepflegter Schlüsselweite auslegen: Wandansicht "
+      + "und Blatt von Modul 7 zeigen die Kopplungsmutter danach maßstabsgetreu statt zu "
+      + "breit. Ohne gepflegtes Maß bleibt alles wie bisher.",
+  },
+  {
     id: "chg-20260909-15",
     datum: "2026-09-09",
     typ: "feature",

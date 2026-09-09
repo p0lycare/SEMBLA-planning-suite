@@ -54,7 +54,8 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          // #112: `SPANN_MM` kommt hinzu, weil die weisse Haarlinie am Stangenstoss aus dem
          // Durchmesser der Kopplungsmutter ABGELEITET wird — sie muss breiter sein als das
          // Bauteil, das ueber ihr liegt. Kein neues Symbolmass, nur eine Ableitung.
-         SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg, kopplungsmutterSvg, spannplatteSvg,
+         SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser,
+         mutterSvg, kopplungsmutterSvg, spannplatteSvg,
          schraubeSvg,
          // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
          ZWISCHENPUNKT, zwischenpunktSvg,
@@ -551,6 +552,13 @@ export function zeichnungSvg(w, opts = {}) {
   // Ausgaben gleich hoch ist. Fehlt es (kein eindeutiges Katalogmass), bleibt es beim festen
   // Symbolmass; nachgerechnet und ersetzt wird nichts.
   const kuH = 2 * ((w.prestress && w.prestress.rod_fuss_offset_mm) || 0);
+  // [D-4]/#97 Schluesselweite der Kopplungsmutter: ihr realer Durchmesser steht als
+  // `kupplung_sw_mm` im Wandelement (Modul 1 leitet ihn beim Auslegen aus dem gewaehlten
+  // Katalogprodukt ab). Auch das wird hier NUR GELESEN und unveraendert an
+  // `kopplungsmutterSvg()` durchgereicht — dieselbe Zahl, die Modul 1 durchreicht, damit
+  // dasselbe Bauteil in beiden Ausgaben gleich breit ist. Der Katalog wird hier nicht
+  // angefasst ([D-1]). Fehlt das Mass, bleibt es beim festen Symbolmass `SPANN_MM.d`.
+  const kuSw = (w.prestress && w.prestress.kupplung_sw_mm) || 0;
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
@@ -578,15 +586,20 @@ export function zeichnungSvg(w, opts = {}) {
   // sitzt, und muss deshalb an deren Breite gemessen werden. Mit Faktor 1,5 schaut sie
   // beidseits ueber die Mutter hinaus und ist als Stossmarke auch dann eindeutig der Stange
   // zugeordnet, wenn zwei Stuecke derselben Art aneinanderstossen. Seit der Rueckmeldung vom
-  // 2026-09-09 liegt sie zusammen mit der Stange VOR der Mutter (s. u.); der WERT ist davon
-  // unberuehrt. Sie ist eine Darstellungsmarke, kein Bauteil — deshalb feste Papier-mm (#106).
+  // 2026-09-09 liegt sie zusammen mit der Stange VOR der Mutter (s. u.).
   //
-  // ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe Ableitung steht ein zweites Mal in der Wandansicht
-  // von Modul 1 (`docs/wandplanung.html`). Ein gemeinsames Mass gehoerte neben `SPANN_MM` in
-  // sembla-montage.js; das Paket zu #112 fasst diese Datei bewusst nicht an. Dasselbe Muster
-  // wie beim Brandschutz-Darstellungsschluessel (#79): lokal gefuehrt, Gleichheit beider
-  // Ansichten im Test gesichert. Die kanonische Groesse `SPANN_MM.d` bleibt die eine Quelle.
-  const HAAR_B = SPANN_MM.d * 1.5 * SYM, HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
+  // Seit #97 kommt der Durchmesser aus `kupplungDurchmesser()` und damit aus dem WIRKSAMEN
+  // Mass der Mutter — masstabstreu, sobald die Schluesselweite gefuehrt ist, sonst unveraendert
+  // `SPANN_MM.d * SYM`. Nur so bleibt sie in jedem Fall breiter als die Mutter, die sie
+  // markiert; aus dem Symbolmass abgeleitet waere sie bei einer schmalen Mutter viel zu breit.
+  //
+  // ⚠ Nachziehpunkt [P-6]/[D-4]: der FAKTOR 1,5 steht weiterhin ein zweites Mal in der
+  // Wandansicht von Modul 1 (`docs/wandplanung.html`); nur der WERT kommt seit #97 aus der
+  // einen Quelle in sembla-montage.js. Dasselbe Muster wie beim
+  // Brandschutz-Darstellungsschluessel (#79): lokal gefuehrt, Gleichheit beider Ansichten im
+  // Test gesichert.
+  const HAAR_B = kupplungDurchmesser(SYM, { sw_mm: kuSw, sc }) * 1.5,
+    HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
   // Gruppe NACH Einlegeblechen, Platten und Blechen gesetzt, damit keines davon sie ueberdeckt.
   // Vor ihr liegt seit #112 nur noch die Stangengruppe (s. u.); Bemassung und Brandschutzgruppe
@@ -646,7 +659,7 @@ export function zeichnungSvg(w, opts = {}) {
           const yS = Y(st.z1_mm);
           stangen += `<line x1="${_n(x - HAAR_B / 2)}" y1="${_n(yS)}" x2="${_n(x + HAAR_B / 2)}" `
             + `y2="${_n(yS)}" stroke="${HAAR_FARBE}" stroke-width="${_n(HAAR_SW)}"/>`;
-          vorn += kopplungsmutterSvg(x, yS, SYM, { n: _n, hoehe_mm: kuH, sc });
+          vorn += kopplungsmutterSvg(x, yS, SYM, { n: _n, hoehe_mm: kuH, sw_mm: kuSw, sc });
         }
       }
       const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
@@ -655,7 +668,7 @@ export function zeichnungSvg(w, opts = {}) {
       // Kennfarbe geteilt ([D-4]/#110). Die Symbolmasse sind fest (#106) und in Modul 1
       // dieselben; masstabstreue Bauteilmasse sind die Plattenbreite (110 mm, Untergrenze wie
       // bisher), seit #97 die Plattendicke (`plD`, oben wie unten dasselbe Bauteil) und
-      // ebenfalls seit #97 die Hoehe der Kopplungsmutter (`kuH`). Die
+      // ebenfalls seit #97 Hoehe (`kuH`) und Schluesselweite (`kuSw`) der Kopplungsmutter. Die
       // Platte LIEGT AUF der Kante — oben wie unten.
       if (au === "bodenblech") {
         // Fussfolge nach [A-19] (#97): von unten die Sechskantschraube (ihr Kopf ragt unter
@@ -663,7 +676,7 @@ export function zeichnungSvg(w, opts = {}) {
         // Bis #97 stand hier eine normale Mutter, zur Haelfte im Blech, ohne Schraube.
         s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n, hoehe_mm: kuH, sc });
         vorn += kopplungsmutterSvg(x, Y(sg.z0_mm), SYM,
-          { n: _n, auf: true, hoehe_mm: kuH, sc });
+          { n: _n, auf: true, hoehe_mm: kuH, sw_mm: kuSw, sc });
       } else s += spannplatteSvg(x, Y(sg.z0_mm), SYM, sc, { n: _n, dicke_mm: plD });
       if (ao === "spannplatte")
         s += spannplatteSvg(x, Y(sg.z1_mm), SYM, sc, { n: _n, dicke_mm: plD });
@@ -700,9 +713,10 @@ export function zeichnungSvg(w, opts = {}) {
   // dahinter: die Mutter ist ein OPAKES Bauteil ueber genau dem Stoss, den die weisse
   // Haarlinie markiert — lag sie obenauf, verschluckte sie Stangenende und Haarlinie und
   // damit die beiden Angaben, wegen derer ueberhaupt hingesehen wird (Stosspunkt und
-  // Stueckelung). Erkennbar bleibt sie trotzdem, weil sie mit `SPANN_MM.d` rund viermal so
-  // breit ist wie die Stangenlinie und beidseits hervorschaut; verdeckt wird von ihr also
-  // nur, was ohnehin hinter ihr liegt.
+  // Stueckelung). Verdeckt wird von ihr also nur, was ohnehin hinter ihr liegt. Auf ihre
+  // Breite laesst sich das seit #97 NICHT mehr stuetzen: mit gefuehrter Schluesselweite ist
+  // sie masstabstreu und bei kleinem Blattmasstab schmaler als die Stangenlinie (SW 17 bei
+  // 1:100 = 0,17 Papier-mm). Das ist gewollt — abgemessen wird das Bauteil, nicht das Symbol.
   if (vorn) s += `<g class="kop">${vorn}</g>`;
 
   // Vordergrund der GEWINDESTANGEN (#112) — eigene Gruppe, ZULETZT von allen Bauteilen:

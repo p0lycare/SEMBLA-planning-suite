@@ -104,14 +104,14 @@ export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73" };
  * Symbol zurueckgelesen werden.
  *
  * Masstabstreu sind allein die Masse, die der Aufrufer als REALES Bauteilmass hereingibt: die
- * BREITE der Spannplatte (110 mm, `platte_b_mm`), seit #97 ihre DICKE und — ebenfalls seit
- * #97 — die HOEHE der Kopplungsmutter. Fuer die beiden Letzteren bleiben `platte_h` und
- * `kupplung_h` der Rueckfall, wenn das Mass fehlt; erfunden wird nie eines.
+ * BREITE der Spannplatte (110 mm, `platte_b_mm`), seit #97 ihre DICKE sowie HOEHE und
+ * DURCHMESSER (Schluesselweite) der Kopplungsmutter. Fuer die drei Letzteren bleiben
+ * `platte_h`, `kupplung_h` und `d` der Rueckfall, wenn das Mass fehlt; erfunden wird nie eines.
  */
 export const SPANN_MM = {
   mutter_h: 1.8,       // Hoehe der normalen Mutter / Spannmutter
   kupplung_h: 4.5,     // Symbolhoehe der Kopplungsmutter, wenn das reale Mass fehlt (#97)
-  d: 2.4,              // Durchmesser von Mutter und Kopplungsmutter (quer zur Stange)
+  d: 2.4,              // Durchmesser der Mutter; Rueckfall der Kopplungsmutter ohne SW (#97)
   kopf_h: 1.6,         // Hoehe des Schraubenkopfs
   kopf_d: 3.4,         // Durchmesser des Schraubenkopfs (groesser als der Schaft)
   schaft_d: 1.4,       // Durchmesser des Schraubenschafts
@@ -215,18 +215,55 @@ export function mutterSvg(x, y, e, opts = {}) {
  * waere ein zweites, verstecktes Mass, das dem abgemessenen Wert widerspraeche. Nur ein nicht
  * zeichenbares Ergebnis faellt auf das Symbolmass zurueck; die Mutter entfaellt nie.
  *
- * Der DURCHMESSER bleibt unveraendert das feste Symbolmass `SPANN_MM.d` — er ist quer zur
- * Stange und wird nicht abgemessen; aus ihm leitet #112 zudem die Breite der Stoss-Haarlinie ab.
+ * Seit dem Folgepaket zu #97 gilt dasselbe fuer den DURCHMESSER, sobald der Aufrufer die reale
+ * SCHLUESSELWEITE als `opts.sw_mm` hereingibt (s. `kupplungDurchmesser`) — gleicher
+ * Optionsschalter, gleiches `sc`, gleicher Rueckfall auf `SPANN_MM.d`. Bis dahin war die Breite
+ * IMMER symbolisch: dieselbe Marke fuer eine SW-17- wie fuer eine SW-24-Mutter, und weil das
+ * Symbolmass grosszuegig gewaehlt ist, war sie deutlich zu breit.
  *
  * @param {number} x @param {number} y Stosshoehe (Mitte; mit `opts.auf` die Unterkante)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
  * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean,
- *          hoehe_mm?:number,sc?:number}} [opts]
+ *          hoehe_mm?:number,sw_mm?:number,sc?:number}} [opts]
  *        `hoehe_mm`/`sc`: reale Einbauhoehe in mm und Zeichenkoordinaten je mm (#97).
+ *        `sw_mm`: reale Schluesselweite in mm (#97) — masstabsgetreu statt Symbolmass.
  * @returns {string} SVG-Fragment
  */
 export function kopplungsmutterSvg(x, y, e, opts = {}) {
-  return _zylinderSvgZ(x, y, kupplungHoehe(e, opts), SPANN_MM.d * e, opts);
+  return _zylinderSvgZ(x, y, kupplungHoehe(e, opts), kupplungDurchmesser(e, opts), opts);
+}
+
+/**
+ * Zeichenbreite der Kopplungsmutter — die EINE Stelle, an der ueber reale Schluesselweite und
+ * Symbolmass entschieden wird ([D-4], #97).
+ *
+ * Sie liegt hier und nicht bei den Aufrufern, weil zwei Zeichnungen davon abhaengen: die Mutter
+ * selbst und die weisse Stoss-Haarlinie nach #112, die ihre Breite mit einem festen Faktor aus
+ * genau diesem Durchmesser ableitet. Zwei getrennte Rechnungen waeren die Drift, die [D-4]
+ * ausschliesst.
+ *
+ * Die Schluesselweite ist KEIN neues Feld — sie steht als `prestress.kupplung_sw_mm` am
+ * Wandelement, abgeleitet beim Auslegen aus dem gewaehlten Katalogprodukt; hier wird sie nur
+ * gezeichnet und nichts daraus abgeleitet. OHNE das Mass bleibt es beim festen Symbolmass
+ * `SPANN_MM.d`, und das Ergebnis ist dann bit-gleich zum Stand davor.
+ *
+ * Ausdruecklich KEINE Untergrenze auf dem masstabsgetreuen Zweig (Entscheid zu #97, wie bei
+ * Plattendicke und Mutternhoehe): eine schmale Mutter in kleinem Masstab IST schmal. Bei
+ * SW 17 und 1:100 sind das 0,17 Papier-mm — schmaler als die Gewindestangenlinie. Das ist
+ * gewollt; eine Untergrenze waere ein zweites, verstecktes Mass, das dem abgemessenen Wert
+ * widerspraeche. Nur ein nicht zeichenbares Ergebnis faellt zurueck; die Mutter entfaellt nie.
+ *
+ * Geprueft wird das ZEICHENERGEBNIS und nicht nur die Eingabe: nur ein Wert > 0 darf die Mutter
+ * tragen, damit sie nie zu einer Breite von 0 zusammenfaellt.
+ *
+ * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
+ * @param {{sw_mm?:number,sc?:number}} [opts]
+ * @returns {number} Durchmesser in Zeichenkoordinaten
+ */
+export function kupplungDurchmesser(e, opts = {}) {
+  const swMm = +opts.sw_mm, sc = +opts.sc;
+  const bMass = (isFinite(swMm) && swMm > 0 && isFinite(sc) && sc > 0) ? swMm * sc : 0;
+  return bMass > 0 ? bMass : SPANN_MM.d * e;
 }
 
 /**

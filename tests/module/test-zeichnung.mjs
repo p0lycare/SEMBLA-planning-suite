@@ -25,7 +25,7 @@ import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
          bodenblechTeile, bodenblechStoesse, BLECHSTOSS, abschnittSvg, montageAbschnitte,
          // #110: die gemeinsame Symbolquelle der Spannkomponenten — das Blatt darf dafuer
          // keine eigene Geometrie und keine eigenen Hex-Werte fuehren ([D-4]).
-         SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, mutterSvg,
+         SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, kupplungDurchmesser, mutterSvg,
          // #97: nur fuer den Vergleich Modul 1 <-> Modul 7 — die Wandansicht ruft genau diese
          // Funktion mit ihrer eigenen Einheit auf, das Blatt mit seiner.
          spannplatteSvg as Z_spannplatteSvg,
@@ -63,6 +63,13 @@ const WSP8 = buildWall("IW-06", 3000, 2600, [], null,
 // kein eigenes Feld, und es wird auch keines angelegt.
 const WKU30 = buildWall("IW-07", 3000, 2600, [], null, { rod_fuss_offset_mm: 15 });
 const WKU45 = buildWall("IW-08", 3000, 2600, [], null, { rod_fuss_offset_mm: 22.5 });
+// WSW17/WSW24: dieselbe Wand mit gefuehrter SCHLUESSELWEITE (#97). Sie steht als
+// `prestress.kupplung_sw_mm` im Wandelement — abgeleitet beim Auslegen aus dem gewaehlten
+// Katalogprodukt. Das Blatt liest sie nur; der Katalog wird hier nie angefasst ([D-1]).
+const WSW17 = buildWall("IW-09", 3000, 2600, [], null,
+  { rod_fuss_offset_mm: 15, kupplung_sw_mm: 17 });
+const WSW24 = buildWall("IW-10", 3000, 2600, [], null,
+  { rod_fuss_offset_mm: 15, kupplung_sw_mm: 24 });
 
 const eingaben = standardEingaben();
 eingaben.projekt.name = "Rettungswache";
@@ -341,7 +348,9 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
         .map(m => ({ y: +m[1], h: +m[2] }));
       const auf = rects.filter(r => Math.abs((r.y + r.h) - unten) < 1e-3);
       return fuss > 0 && auf.length === fuss && auf.every(r => r.y < unten); })());
-  ok("[#97] der Durchmesser bleibt das feste Symbolmass", (() => {
+  // RUECKFALL-Gegenprobe: WKU30 fuehrt KEINE Schluesselweite, der Durchmesser bleibt deshalb
+  // das Symbolmass. Die masstabsgetreue Breite steht im eigenen Block darunter.
+  ok("[#97] ohne Schluesselweite bleibt der Durchmesser das feste Symbolmass", (() => {
     const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(zK30.svg)[1];
     const b = [...kop.matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
     return b.length > 0 && b.every(v => Math.abs(v - rnd(SPANN_MM.d * E)) < 1e-3); })());
@@ -369,6 +378,85 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     const hM1 = +/height="([-\d.]+)"/.exec(m1)[1] / scM1;
     const hM7 = kopGruppe(zK30.svg)[0] * zK30.masstab;
     return Math.abs(hM1 - 30) < 1e-9 && Math.abs(hM7 - 30) < 1e-2; })());
+}
+
+// --- #97: die Kopplungsmutter wird mit ihrer REALEN Schluesselweite gezeichnet -------------
+// Gebaut wird ueber den echten Core-Pfad; die Breite ist `kupplung_sw_mm` aus dem Wandelement
+// und wird hier nur gezeichnet. Geprueft wird am REALEN Blatt-SVG — Vorschau, Druck-HTML und
+// SVG-Datei tragen dieselbe Zeichenkette, weil sie alle aus `zeichnungSvg()` stammen ([D-6]).
+{
+  const E = SPANN_EINHEIT.blatt;
+  const rnd = v => Math.round(v * 1000) / 1000;
+  const z17 = Z.zeichnungSvg(WSW17, {}), z24 = Z.zeichnungSvg(WSW24, {});
+  // Dieselbe Wand OHNE das Mass — identische Geometrie, identischer Masstab, identische
+  // Stueckelung; der EINZIGE Unterschied ist die Zeichenvorgabe der Mutterbreite.
+  const WSWo = { ...WSW17, prestress: { ...WSW17.prestress } };
+  delete WSWo.prestress.kupplung_sw_mm;
+  const zo = Z.zeichnungSvg(WSWo, {});
+  const kopBreiten = t => { const m = /<g class="kop">([\s\S]*?)<\/g>/.exec(t);
+    return m ? [...m[1].matchAll(/width="([-\d.]+)"/g)].map(q => +q[1]) : []; };
+  const kopHoehen = t => { const m = /<g class="kop">([\s\S]*?)<\/g>/.exec(t);
+    return m ? [...m[1].matchAll(RE_MUTTER)].map(q => +q[1]) : []; };
+  // Waagerechte weisse Linien = die Haarlinien am Stangenstoss (#112); die senkrechte
+  // Blechstossmarke aus #91 wird an der Geometrie ausgeschlossen, nicht an der Farbe.
+  const haarB = t => [...t.matchAll(
+    /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#fff"/g)]
+    .filter(m => +m[2] === +m[4]).map(m => +m[3] - +m[1]);
+
+  ok("[#97] das Wandelement fuehrt die Schluesselweite (kein neues Feld, nur gelesen)",
+    WSW17.prestress.kupplung_sw_mm === 17 && WSW24.prestress.kupplung_sw_mm === 24
+    && WKU30.prestress.kupplung_sw_mm === undefined);
+  ok("[#97] im Blatt ist die Mutternbreite 17 mm mal Blattmasstab", (() => {
+    const b = kopBreiten(z17.svg);
+    return b.length > 0 && b.every(v => Math.abs(v - rnd(17 / z17.masstab)) < 1e-3); })());
+  ok("[#97] zwei Schluesselweiten ergeben im Blatt verschieden breite Muttern", (() => {
+    const a = kopBreiten(z17.svg), b = kopBreiten(z24.svg);
+    return a.length > 0 && a.length === b.length && z17.masstab === z24.masstab
+      && b.every(v => Math.abs(v - rnd(24 / z24.masstab)) < 1e-3) && b[0] > a[0]; })());
+  ok("[#97] die gezeichnete HOEHE aendert sich dabei nicht", (() => {
+    const a = kopHoehen(z17.svg), b = kopHoehen(z24.svg);
+    return a.length > 0 && a.length === b.length
+      && a.every((v, i) => Math.abs(v - b[i]) < 1e-9); })());
+  // Bit-Gleichheit ueber den ECHTEN Core-Pfad: dieselbe Wand, nie mit Schluesselweite gebaut,
+  // ergibt zeichenweise dasselbe Blatt wie die Wand, der das Feld entnommen wurde.
+  ok("[#97] ohne Schluesselweite ist das Blatt BIT-GLEICH zum Stand davor", (() => {
+    const WNie = buildWall("IW-09", 3000, 2600, [], null, { rod_fuss_offset_mm: 15 });
+    const zNie = Z.zeichnungSvg(WNie, {});
+    return zo.svg === zNie.svg && zo.svg !== z17.svg && zo.masstab === z17.masstab
+      && kopBreiten(zo.svg).length > 0
+      && kopBreiten(zo.svg).every(v => Math.abs(v - rnd(SPANN_MM.d * E)) < 1e-3); })());
+  // Der eigentliche Nachweis, dass NUR gezeichnet wurde: alles ausser den mutterfarbenen
+  // Rechtecken und den Haarlinien ist zwischen "mit Mass" und "ohne Mass" BYTEGLEICH.
+  ok("[#97] Stangenzuschnitt, Bleche, Bemassung und Masstab bleiben wertgleich", (() => {
+    const strip = t => t.replace(new RegExp(`<rect[^>]*fill="${Z.FARBE.mutter}"/>`, "g"), "")
+      .replace(/<g class="kop">[\s\S]*?<\/g>/, "")
+      .replace(/<line [^>]*stroke="#fff"[^>]*\/>/g, "");
+    return z17.masstab === zo.masstab && strip(z17.svg) === strip(zo.svg)
+      && strip(z17.svg).length > 0; })());
+  // [#112] Die Haarlinie folgt dem WIRKSAMEN Durchmesser und bleibt in allen drei Faellen
+  // breiter als die Mutter, die sie markiert — auch bei einer schmalen Mutter.
+  ok("[#112] die Haarlinie ist auch mit Schluesselweite breiter als die Mutter", (() => {
+    const paare = [[z17, 17], [z24, 24], [zo, null]];
+    return paare.every(([z, sw]) => {
+      const hb = haarB(z.svg), kb = kopBreiten(z.svg);
+      const soll = sw == null ? SPANN_MM.d * E : sw / z.masstab;
+      return hb.length > 0 && kb.length > 0
+        && hb.every(v => Math.abs(v - rnd(soll * 1.5)) < 1e-3)
+        && hb.every(v => v > Math.max(...kb) - 1e-9); }); })());
+  // [D-4]/#97 Muss: Modul 1 und Modul 7 messen dieselbe Schluesselweite. Verglichen wird das
+  // ZURUECKGERECHNETE Bauteilmass in mm, und das muss beidseits 17 mm sein.
+  ok("[#97] Modul 1 und Modul 7 zeigen dieselbe masstaebliche Mutternbreite", (() => {
+    const scM1 = 60 / 200;   // Modul 1: fester Ansichtsmasstab, viewBox-Einheiten je mm
+    const m1 = Z_kopplungsmutterSvg(0, 0, SPANN_EINHEIT.ansicht,
+      { sw_mm: WSW17.prestress.kupplung_sw_mm, sc: scM1 });
+    const bM1 = +/width="([-\d.]+)"/.exec(m1)[1] / scM1;
+    const bM7 = kopBreiten(z17.svg)[0] * z17.masstab;
+    return Math.abs(bM1 - 17) < 1e-9 && Math.abs(bM7 - 17) < 1e-2; })());
+  // Das Blatt darf die Breite nicht selbst nachrechnen — sie kommt aus der EINEN Funktion.
+  ok("[#97] das Blatt zeichnet genau `kupplungDurchmesser()`", (() => {
+    const b = kopBreiten(z17.svg)[0];
+    return Math.abs(b - rnd(kupplungDurchmesser(E, { sw_mm: 17, sc: 1 / z17.masstab })))
+      < 1e-3; })());
 }
 
 // #110: das Einlegeblech des Zwischenspannpunkts steht jetzt AUCH im Blatt — dieselbe
@@ -534,7 +622,10 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
       && h.x2 > h.x1)); })());
   // Breite: ABGELEITET aus dem Durchmesser der Kopplungsmutter und messbar BREITER als sie —
   // sonst verschwaende die Linie vollstaendig unter dem Bauteil, das ueber ihr liegt.
-  ok("[#112] sie ist breiter als die Kopplungsmutter (aus SPANN_MM.d abgeleitet)", (() => {
+  // RUECKFALL-Gegenprobe: `W` fuehrt keine Schluesselweite — dann ist der wirksame Durchmesser
+  // das Symbolmass, und die Haarlinie bleibt bit-gleich zum Stand vor #97. Die Gegenprobe MIT
+  // Schluesselweite steht im Blattbreiten-Block weiter unten.
+  ok("[#112] ohne Schluesselweite ist sie breiter als die Mutter (aus SPANN_MM.d)", (() => {
     const b = SPANN_MM.d * 1.5 * SPANN_EINHEIT.blatt;
     const ist = haare(svg);
     return ist.length > 0 && ist.every(h => Math.abs((h.x2 - h.x1) - b) < 1e-3)

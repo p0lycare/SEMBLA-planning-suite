@@ -29,7 +29,8 @@ import {
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
   STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt, stangenEnden, stangenStuecke,
   topLagen, oberkantenAbschnitte, bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
-  SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, mutterSvg, kopplungsmutterSvg, spannplatteSvg,
+  SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, kupplungDurchmesser,
+  mutterSvg, kopplungsmutterSvg, spannplatteSvg,
   schraubeSvg,
   ZWISCHENPUNKT, zwischenpunktSvg,
 } from "../../docs/shared/sembla-montage.js";
@@ -819,7 +820,9 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         const h45 = hoehe(kopplungsmutterSvg(0, 0, E1, { hoehe_mm: 45, sc: scM1 }));
         return Math.abs(h45 - 45 * scM1) < 1e-9 && h45 > h30
           && Math.abs(h45 / h30 - 1.5) < 1e-9; })());
-    ok("[#97] der Durchmesser bleibt das feste Symbolmass (nur die Hoehe wird real)",
+    // RUECKFALL-Gegenprobe: OHNE Schluesselweite bleibt der Durchmesser das Symbolmass, auch
+    // wenn die Hoehe real ist. Die masstabsgetreue Breite steht im eigenen Block weiter unten.
+    ok("[#97] ohne Schluesselweite bleibt der Durchmesser das feste Symbolmass",
       Math.abs(breite(kopplungsmutterSvg(0, 0, E1, { hoehe_mm: 30, sc: scM1 }))
         - SPANN_MM.d * E1) < 1e-9
       && Math.abs(breite(kuU) - SPANN_MM.d * E1) < 1e-9);
@@ -855,6 +858,60 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         - SPANN_MM.kopf_h * E1) < 1e-9);
     ok("[#97] die normale Mutter kennt das Mass NICHT (nur die Kopplungsmutter ist real)",
       mutterSvg(100, 200, E1, { hoehe_mm: 30, sc: scM1 }) === mutterSvg(100, 200, E1));
+  }
+
+  // --- Masstabsgetreue BREITE der Kopplungsmutter (#97) -------------------------------------
+  // Dieselbe Zusicherungsreihe wie bei Hoehe und Plattendicke: reales Mass (die Schluesselweite
+  // aus `prestress.kupplung_sw_mm`), Unterscheidbarkeit zweier Produkte, KEINE Untergrenze,
+  // unveraenderte Hoehe, unveraenderte normale Mutter und Bit-Gleichheit ohne Mass. Der Wert
+  // kommt beim Aufrufer aus dem Wandelement; hier wird das fertige Bauteilmass hereingegeben.
+  {
+    const scM1 = 60 / 200;          // Modul 1: viewBox-Einheiten je mm
+    const kuU = kopplungsmutterSvg(100, 200, E1);          // ohne Mass = Symbolmass
+    ok("[#97] die Mutternbreite ist masstabsgetreu `sw_mm * sc`",
+      Math.abs(breite(kopplungsmutterSvg(100, 200, E1, { sw_mm: 17, sc: scM1 })) - 17 * scM1)
+        < 1e-9);
+    ok("[#97] zwei Schluesselweiten ergeben zwei verschieden breite Muttern",
+      (() => {
+        const b17 = breite(kopplungsmutterSvg(0, 0, E1, { sw_mm: 17, sc: scM1 }));
+        const b24 = breite(kopplungsmutterSvg(0, 0, E1, { sw_mm: 24, sc: scM1 }));
+        return Math.abs(b24 - 24 * scM1) < 1e-9 && b24 > b17
+          && Math.abs(b24 / b17 - 24 / 17) < 1e-9; })());
+    ok("[#97] die gezeichnete HOEHE aendert sich dabei nicht",
+      (() => {
+        const h17 = hoehe(kopplungsmutterSvg(0, 0, E1, { sw_mm: 17, sc: scM1 }));
+        const h24 = hoehe(kopplungsmutterSvg(0, 0, E1, { sw_mm: 24, sc: scM1 }));
+        return h17 === h24 && Math.abs(h17 - SPANN_MM.kupplung_h * E1) < 1e-9; })());
+    ok("[#97] Hoehe und Breite sind unabhaengig — beide Masse wirken gemeinsam",
+      (() => { const k = kopplungsmutterSvg(0, 0, E1, { hoehe_mm: 30, sw_mm: 17, sc: scM1 });
+        return Math.abs(hoehe(k) - 30 * scM1) < 1e-9
+          && Math.abs(breite(k) - 17 * scM1) < 1e-9; })());
+    ok("[#97] sie bleibt auf ihre Spannachse zentriert — auch mit realer Breite",
+      (() => { const k = kopplungsmutterSvg(100, 200, E1, { sw_mm: 17, sc: scM1 });
+        return Math.abs((num(k, "x")[0] + breite(k) / 2) - 100) < 1e-9; })());
+    ok("[#97] eine schmale Mutter in kleinem Masstab bekommt KEINE Untergrenze",
+      (() => { const b = breite(kopplungsmutterSvg(0, 0, E7, { sw_mm: 17, sc: 1 / 100 }));
+        return Math.abs(b - 17 / 100) < 1e-9 && b > 0 && b < SPANN_MM.d * E7; })());
+    ok("[#97] ohne Schluesselweite bleibt es beim Symbolmass (wertgleich zum Altstand)",
+      kopplungsmutterSvg(100, 200, E1, { sw_mm: 0, sc: scM1 }) === kuU
+      && kopplungsmutterSvg(100, 200, E1, { sw_mm: null, sc: scM1 }) === kuU
+      && kopplungsmutterSvg(100, 200, E1, { sw_mm: undefined, sc: scM1 }) === kuU
+      && kopplungsmutterSvg(100, 200, E1, { sw_mm: 17 }) === kuU             // ohne `sc`
+      && kopplungsmutterSvg(100, 200, E1, { sw_mm: 17, sc: 0 }) === kuU
+      && Math.abs(breite(kuU) - SPANN_MM.d * E1) < 1e-9);
+    ok("[#97] die normale Mutter kennt die Schluesselweite NICHT",
+      mutterSvg(100, 200, E1, { sw_mm: 17, sc: scM1 }) === mutterSvg(100, 200, E1)
+      && Math.abs(breite(mutterSvg(0, 0, E1)) - SPANN_MM.d * E1) < 1e-9);
+    ok("[#97] auch die Schraube behaelt ihre Symbolmasse (Kopf und Schaft unveraendert)",
+      schraubeSvg(100, 300, E1, 6, { sw_mm: 17, sc: scM1 }) === schraubeSvg(100, 300, E1, 6));
+    // `kupplungDurchmesser()` ist die EINE Entscheidung — die Haarlinie nach #112 leitet ihre
+    // Breite in beiden Ausgaben daraus ab und darf sie nicht selbst nachrechnen ([D-4]).
+    ok("[#97] `kupplungDurchmesser()` ist genau die Breite der gezeichneten Mutter",
+      (() => {
+        const f = (o) => Math.abs(breite(kopplungsmutterSvg(0, 0, E1, o))
+          - kupplungDurchmesser(E1, o)) < 1e-9;
+        return f({ sw_mm: 17, sc: scM1 }) && f({ sw_mm: 24, sc: scM1 }) && f({})
+          && Math.abs(kupplungDurchmesser(E7, {}) - SPANN_MM.d * E7) < 1e-9; })());
   }
 
   // --- Spannplatte: liegt AUF der Kante, Breite bleibt Bauteilmass -------------------------
