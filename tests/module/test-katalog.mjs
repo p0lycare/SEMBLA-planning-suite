@@ -506,8 +506,9 @@ ok("Verbinder ohne fachfremde Maße",
 // Pflegeort fuer eine Laenge, die sonst nur im Freitext der Bezeichnung staende.
 // Seit #113 kommt das Gewinde des Kleinteils dazu — bisher stand es nur unter
 // `gewindestange` und wurde an Schrauben und Muttern beim Speichern entfernt.
-ok("Verbrauchsmaterial: Maske = Gewinde, Einbauhöhe und Bauteillänge",
-  KAT.fachFelder("verbrauch").join(",") === "gewinde,hoehe_mm,laenge_mm");
+// Seit #97 kommt die SCHLUESSELWEITE dazu (Werkzeugmass ueber die Schluesselflaechen).
+ok("Verbrauchsmaterial: Maske = Gewinde, Einbauhöhe, Bauteillänge und Schlüsselweite",
+  KAT.fachFelder("verbrauch").join(",") === "gewinde,hoehe_mm,laenge_mm,sw_mm");
 ok("die drei geforderten Masken sind klar unterschiedlich",
   new Set(["gewindestange", "latte", "beplankung"].map((k) => KAT.fachFelder(k).join(","))).size === 3);
 
@@ -560,7 +561,7 @@ ok("Maske veraendert nichts an Kategorien, Rollen oder Formatversion",
 // Masse ruecken damit auf Position 1 und 2 — ihre Bedeutung aendert sich nicht.
 const V_MASKE = fachVon("verbrauch");
 ok("[#92] Einbauhöhe ist ein Millimetermaß mit ausweisender Beschriftung",
-  V_MASKE.length === 3 && V_MASKE[1].feld === "hoehe_mm"
+  V_MASKE.length === 4 && V_MASKE[1].feld === "hoehe_mm"
   && V_MASKE[1].typ === "mm" && V_MASKE[1].einheit === "mm"
   && /Einbauhöhe/.test(V_MASKE[1].label));
 ok("Bauteillänge ist ein optionales Millimetermaß mit ausweisender Beschriftung",
@@ -604,6 +605,83 @@ ok("[#92] nicht-numerische Einbauhöhe wird benannt abgewiesen",
   ok("[#92] der Roundtrip erfindet keinen Formatsprung",
     datei.version === 2 && zurueck.version === 2 && zurueck.produkte.length === 2);
 }
+
+// --- Schluesselweite als Katalogmass des Kleinteils (#97) -----------------
+// Gemeldet war: die Kopplungsmutter hat die richtige Einbauhoehe, die GEZEICHNETE
+// Schluesselweite ist aber viel zu breit. Frueheste Ursache ist das fehlende DATUM — im
+// Katalog gab es kein Feld dafuer, also war jede Breite geraten. Dieses Paket liefert
+// ausschliesslich das gepflegte Mass: Maske, Validierung, Roundtrip und Vorlage. Eine
+// Ableitung am Wandelement und die massstaebliche Mutternbreite in Modul 1/7 sind
+// ausdruecklich NICHT dabei — hier liest niemand `sw_mm`.
+const SW_MASKE = fachVon("verbrauch")[3];
+ok("[#97] die Schlüsselweite ist ein Millimetermaß mit ausweisender Beschriftung",
+  SW_MASKE.feld === "sw_mm" && SW_MASKE.typ === "mm" && SW_MASKE.einheit === "mm"
+  && /Schlüsselweite/.test(SW_MASKE.label));
+ok("[#97] sie ist OPTIONAL — die Pflichtliste der Kategorie bleibt leer",
+  SW_MASKE.pflicht === false && KAT.kategorie("verbrauch").pflicht.length === 0);
+ok("[#97] der Hinweis benennt Meterware ohne Schlüsselweite",
+  /Meterware/.test(SW_MASKE.hinweis || ""));
+ok("[#97] sie steht bei den fachlichen Merkmalen, nicht bei der Beschaffung",
+  SW_MASKE.gruppe === "fach"
+  && !KAT.BESCHAFFUNGSFELDER.some((f) => f.feld === "sw_mm"));
+// Sie ist ein MASS (eine Pruefstelle in `validiereProdukt`), aber KEIN Diskriminator:
+// die Preisaufloesung nach [P-14] entscheidet allein ueber ROLLEN[].mass.
+ok("[#97] sw_mm ist ein Maßfeld, aber nirgends Preis-Diskriminator",
+  KAT.MASSFELDER.includes("sw_mm")
+  && KAT.ROLLEN.filter((r) => r.mass).every((r) => !r.mass.felder.includes("sw_mm"))
+  && KAT.ROLLEN.filter((r) => r.kategorie === "verbrauch").every((r) => r.mass === null));
+// Sie gehoert KEINER anderen Kategorie — sonst entfernte der Dialog sie beim Speichern.
+ok("[#97] nur „Sonstiges Verbrauchsmaterial“ fuehrt die Schlüsselweite",
+  KAT.KATEGORIEN.filter((k) => KAT.maskeFelder(k.id).includes("sw_mm"))
+    .map((k) => k.id).join(",") === "verbrauch");
+
+const SW_MUTTER = { id: "mutter-sw", kategorie: "verbrauch", bezeichnung: "Kopplungsmutter M10",
+                    einheit: "Stk", preis: 0.65, hoehe_mm: 30, gewinde: "M10", sw_mm: 17,
+                    rollen: ["kupplung"] };
+const SW_BAND = { id: "band-sw", kategorie: "verbrauch", bezeichnung: "Dichtband",
+                  einheit: "m", preis: 1.2 };
+ok("[#97] ein Kleinteil MIT Schlüsselweite ist gültig",
+  KAT.validiereProdukt(SW_MUTTER, { ids: [] }).length === 0);
+ok("[#97] ein Kleinteil OHNE Schlüsselweite und Meterware bleiben gültig",
+  KAT.validiereProdukt({ ...SW_MUTTER, sw_mm: undefined }, { ids: [] }).length === 0
+  && KAT.validiereProdukt(SW_BAND, { ids: [] }).length === 0);
+// Benannt abgewiesen, nie gerundet und nie still verworfen ([P-9]).
+ok("[#97] Schlüsselweite 0 wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...SW_MUTTER, sw_mm: 0 }, { ids: [] })
+    .some((m) => /sw_mm/.test(m) && /größer als 0/.test(m)));
+ok("[#97] eine negative Schlüsselweite wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...SW_MUTTER, sw_mm: -17 }, { ids: [] })
+    .some((m) => /sw_mm/.test(m) && /größer als 0/.test(m)));
+ok("[#97] eine nicht-numerische Schlüsselweite wird benannt abgewiesen",
+  KAT.validiereProdukt({ ...SW_MUTTER, sw_mm: "breit" }, { ids: [] })
+    .some((m) => /sw_mm/.test(m) && /keine Zahl/.test(m)));
+
+// Roundtrip ueber die REALEN Austauschfunktionen: speichern/exportieren -> Datei -> einlesen.
+{
+  const roh = { ...KAT.leererKatalog("Kleinteile"), produkte: [SW_MUTTER, SW_BAND] };
+  const datei = KAT.katalogObjekt(roh);
+  const zurueck = KAT.parseKatalog(JSON.stringify(datei));
+  ok("[#97] die Schlüsselweite übersteht Speichern, Export und Import wertgleich",
+    KAT.produkt(datei, "mutter-sw").sw_mm === 17
+    && KAT.produkt(zurueck, "mutter-sw").sw_mm === 17);
+  ok("[#97] ein Kleinteil ohne Schlüsselweite kommt ohne erfundenes Maß zurück",
+    KAT.produkt(zurueck, "band-sw").sw_mm === undefined);
+  ok("[#97] die übrigen Felder kommen feldweise unverändert zurück",
+    Object.keys(SW_MUTTER).every((k) =>
+      JSON.stringify(KAT.produkt(zurueck, "mutter-sw")[k]) === JSON.stringify(SW_MUTTER[k])));
+  ok("[#97] der Roundtrip erfindet keinen Formatsprung",
+    datei.version === 2 && zurueck.version === 2 && KAT.KATALOG_VERSION === 2);
+}
+// Gegenprobe zum Kennungsvorschlag: er beschreibt die GEOMETRIE des Bauteils. Ein gesetztes
+// `sw_mm` darf ihn deshalb nicht verlaengern — sonst hiesse dieselbe Mutter ploetzlich anders.
+ok("[#97] vorschlagId bleibt durch ein gesetztes sw_mm bit-gleich",
+  KAT.vorschlagId(SW_MUTTER) === KAT.vorschlagId({ ...SW_MUTTER, sw_mm: undefined })
+  && KAT.vorschlagId({ kategorie: "latte", breite_mm: 40, dicke_mm: 60, laenge_mm: 3000, sw_mm: 17 })
+     === "latte-40-60-3000"
+  && KAT.vorschlagId({ kategorie: "verbrauch", gewinde: "M10", hoehe_mm: 30, sw_mm: 17 })
+     === "verbrauch-m10-30");
+ok("[#97] auch der Maßtext der Produkttabelle bleibt unberührt",
+  KAT.massText(SW_MUTTER) === KAT.massText({ ...SW_MUTTER, sw_mm: undefined }));
 
 // --- Beschaffungsangaben je Produkt (#113) --------------------------------
 // Norm, Werkstoff, Oberflaeche, Hersteller und Artikelnummer plus das Gewinde: sechs
@@ -1382,21 +1460,41 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     }));
   // Der Beweis, dass die Aenderung REIN ADDITIV war: kein Produkt hat einen Schluessel
   // bekommen, der nicht zu den sechs Beschaffungsfeldern gehoert — und keinen verloren.
+  // `sw_mm` steht in dieser Liste, weil es seit #97 ein regulaeres Produktfeld ist (dort
+  // eigens geprueft) — der Additivitaetsbeweis von #113 bleibt damit eine Aussage ueber die
+  // Beschaffungsfelder und wird von der Schluesselweite nicht aufgeweicht.
   const BASIS_KEYS = ["id", "kategorie", "bezeichnung", "einheit", "preis", "breite_mm",
-    "hoehe_mm", "dicke_mm", "laenge_mm", "guete", "rollen", "hinweis"];
+    "hoehe_mm", "dicke_mm", "laenge_mm", "sw_mm", "guete", "rollen", "hinweis"];
   ok("#113 hinzugekommen sind ausschliesslich Beschaffungsfelder",
     std.produkte.every((p) => Object.keys(p)
       .every((f) => BASIS_KEYS.includes(f) || SECHS.includes(f))));
+  // --- Die Schluesselweite der mitgelieferten Vorlage (#97) ---------------
+  // Genau EIN Produkt fuehrt sie: die Kopplungsmutter M10 mit 17 mm. Die Leerprobe ist
+  // ausdruecklich Teil der Aussage — an Spannmutter, Einlegeblech-Mutter, Sechskantschrauben,
+  // Scheiben, Anker, Bohrschraube und Dichtstreifen wird KEIN Wert aus einer Bezeichnung
+  // geraten (auch nicht aus dem "SW8" im Bestellschluessel der Bohrschraube).
+  ok("#97 die Kopplungsmutter fuehrt genau 17 mm Schlüsselweite",
+    p113("verbrauch-kopplungsmutter").sw_mm === 17);
+  ok("#97 kein weiteres Vorlagenprodukt fuehrt eine Schlüsselweite",
+    std.produkte.filter((p) => p.sw_mm !== undefined).map((p) => p.id).join()
+      === "verbrauch-kopplungsmutter");
+  ok("#97 der Hinweis nennt das gepflegte Gewinde M10 als Herkunft — ohne Norm",
+    /M10/.test(p113("verbrauch-kopplungsmutter").hinweis || "")
+    && /Schlüsselweite/.test(p113("verbrauch-kopplungsmutter").hinweis || "")
+    && p113("verbrauch-kopplungsmutter").norm === undefined);
   ok("#113 Produktzahl und Reihenfolge der Kennungen sind unveraendert",
     std.produkte.length === 38
     && std.produkte.map((p) => p.id).join() === BASIS.map((b) => b[0]).join());
   // Die langen Erklaertexte sind nicht in der Tabelle — sie stehen als ein Digest, damit auch
   // eine stille Umformulierung auffaellt (Hinweise sind Fachaussagen, kein Beiwerk).
+  // Der Digest ist am 2026-09-09 einmal fortgeschrieben: #97 haengt an den Hinweis der
+  // Kopplungsmutter den Satz, dass die Schlüsselweite 17 mm aus dem gepflegten Gewinde M10
+  // folgt und keine Norm erfunden wird. Kein anderer Hinweistext wurde beruehrt.
   ok("#113 die hinweis-Texte aller Produkte sind unveraendert",
     createHash("sha256").update(std.produkte
       .map((p) => String(p.id) + " " + String(p.hinweis == null ? "" : p.hinweis)).join("|"))
       .digest("hex")
-      === "b9692085395dd8bfba7ab2551ec0caf2bdd20f51f07653164be39b53bb84be0a");
+      === "079b34474f461ab6440063e0b9a7c299a3865130a85b06b6ca839c487525a082");
   // Und die Gegenprobe zum Paketziel: KATALOG_VERSION bleibt, wo sie war.
   ok("#113 die Vorlage bleibt bei Katalogformat Version 2 (kein Sprung)",
     JSON.parse(roh).version === 2 && std.version === KAT.KATALOG_VERSION);

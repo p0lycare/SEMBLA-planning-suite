@@ -291,9 +291,10 @@
       "einheit": "Stk",
       "preis": 0.65,
       "hoehe_mm": 30,
+      "sw_mm": 17,
       "gewinde": "M10",
       "rollen": ["kupplung"],
-      "hinweis": "Bauteilgleich für alle Kopplungen: es gibt keine gesonderte Fuß- oder Kopf-Kopplungsmutter ([P-18]). Einbauhöhe 30 mm (langjährig festgelegt) — daraus rechnet Modul 1 den Fußoffset nach [A-19] als HALBE Mutternhöhe, also 15 mm. Der Preis ist ein angenommener Beispielwert."
+      "hinweis": "Bauteilgleich für alle Kopplungen: es gibt keine gesonderte Fuß- oder Kopf-Kopplungsmutter ([P-18]). Einbauhöhe 30 mm (langjährig festgelegt) — daraus rechnet Modul 1 den Fußoffset nach [A-19] als HALBE Mutternhöhe, also 15 mm. Die Schlüsselweite 17 mm folgt aus dem gepflegten Gewinde M10 und ist nicht geraten; eine NORM ist für diese Mutter bisher nicht genannt und wird nicht erfunden. Der Preis ist ein angenommener Beispielwert."
     },
     {
       "id": "verbrauch-senkkopfschraube-fuss",

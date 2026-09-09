@@ -109,7 +109,17 @@ export const KATEGORIEN = [
 ];
 
 /** Alle Maßfelder (mm), immer optional erlaubt, je Kategorie teils pflichtig. */
-export const MASSFELDER = ["breite_mm", "hoehe_mm", "dicke_mm", "laenge_mm"];
+export const MASSFELDER = ["breite_mm", "hoehe_mm", "dicke_mm", "laenge_mm", "sw_mm"];
+
+/**
+ * Die GEOMETRISCHE Teilmenge der Maßfelder — die vier Kantenmaße eines Bauteils.
+ * Nur sie gehen in `vorschlagId` ein: der Kennungsvorschlag beschreibt die Geometrie
+ * („latte-40-60-3000"), nicht jedes Kleinteilmaß. Die Schlüsselweite ist ein
+ * Werkzeugmaß am Kleinteil (#97) und haette den Vorschlag nur verlaengert, ohne ihn
+ * unterscheidungskraeftiger zu machen. Geprueft wird weiter ueber MASSFELDER — hier
+ * steht keine zweite Pruefliste, sondern eine benannte Teilmenge fuer EINEN Zweck.
+ */
+const _ID_MASSE = ["breite_mm", "hoehe_mm", "dicke_mm", "laenge_mm"];
 
 // --- Kategoriegerechte Produktmaske ([P-16]) -------------------------------
 // Welche Felder eine Kategorie fachlich hat, welche Beschriftung sie tragen und in
@@ -174,6 +184,15 @@ const _MASKEN = {
     // im Freitext der Bezeichnung — der Einkauf liest sie aus dem Feld.
     { feld: "laenge_mm", label: "Bauteillänge", typ: "mm",
       hinweis: "Länge des Kleinteils (z. B. Schaftlänge einer Schraube) — bei Meterware leer lassen" },
+    // Schluesselweite des Kleinteils (#97). Sie ist das WERKZEUGMASS ueber die Schluessel-
+    // flaechen einer Mutter oder eines Schraubenkopfes und folgt dem gepflegten Gewinde
+    // (M10 -> SW 17); erfunden wird sie nie. Wie die beiden Masse darueber ist sie OPTIONAL
+    // (`verbrauch` hat keine Pflichtliste) und KEIN Diskriminator: die Verbrauchsrollen haben
+    // `mass: null`, die Preisaufloesung nach [P-14] bleibt unberuehrt. Abgeleitet wird in
+    // diesem Paket nichts — gepflegt wird sie, damit die Breite als DATUM im Katalog steht
+    // und nicht im Freitext der Bezeichnung.
+    { feld: "sw_mm", label: "Schlüsselweite", typ: "mm",
+      hinweis: "Schlüsselweite des Kleinteils (SW über die Schlüsselflächen) — bei Meterware leer lassen" },
   ],
 };
 
@@ -303,7 +322,7 @@ const _slug = (s) => String(s == null ? "" : s).trim().toLowerCase()
 export function vorschlagId(p) {
   const teile = [String(p && p.kategorie || "produkt")];
   if (p && p.gewinde) teile.push(p.gewinde);
-  for (const f of MASSFELDER) {
+  for (const f of _ID_MASSE) {
     const v = p && p[f];
     if (v != null && v !== "" && Number.isFinite(Number(v))) teile.push(String(Number(v)));
   }

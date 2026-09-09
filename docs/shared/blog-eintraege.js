@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-14",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 97,
+    titel: "Schlüsselweite eines Kleinteils ist jetzt ein gepflegtes Katalogmaß",
+    testbitte: "In Modul 10 die Kopplungsmutter öffnen: neben Gewinde, Einbauhöhe und "
+      + "Bauteillänge steht das neue Feld „Schlüsselweite (mm)“, im Standardkatalog "
+      + "bereits mit 17 mm gefüllt.",
+  },
+  {
     id: "chg-20260909-13",
     datum: "2026-09-09",
     typ: "fix",

@@ -816,8 +816,8 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   // Seit dem 2026-09-08 fuehrt Verbrauchsmaterial zwei Masse: Einbauhoehe und Bauteillaenge
   // (Schaftlaenge einer Schraube). Beide sind optional und KEIN Diskriminator ([P-14]).
   // Seit #113 kommt das GEWINDE des Kleinteils dazu — die Guete bleibt draussen.
-  ok('Verbrauchsmaterial: Gewinde, Einbauhöhe und Bauteillänge, keine weiteren Maßfelder',
-    kpFelderListe().join() === 'gewinde,hoehe_mm,laenge_mm'
+  ok('Verbrauchsmaterial: Gewinde, Einbauhöhe, Bauteillänge und Schlüsselweite (#97)',
+    kpFelderListe().join() === 'gewinde,hoehe_mm,laenge_mm,sw_mm'
     && !/kp-f-guete/.test(kpMarkup()));
   const slotVorKatWechsel = kSlot();
   kpAbbrechen();
@@ -828,7 +828,7 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
   ok('[#92] der Dialog rendert fuer Verbrauchsmaterial die Maßfelder aus der Maske',
     kpFelderListe().join() === KAT.fachFelder('verbrauch').join()
-    && kpFelderListe().join() === 'gewinde,hoehe_mm,laenge_mm'
+    && kpFelderListe().join() === 'gewinde,hoehe_mm,laenge_mm,sw_mm'
     && $('kp-f-hoehe_mm') != null && $('kp-f-laenge_mm') != null);
   ok('[#92] das Feld ist als Einbauhöhe in Millimetern beschriftet',
     /Einbauhöhe/.test(kpMarkup()) && /\(mm\)/.test(kpMarkup()));
@@ -1185,6 +1185,96 @@ ok('kein Wandelement und keine `eingaben` werden hier geschrieben',
   ok('#108 der bearbeitete Katalog bleibt fluechtig (kein gespeichertes Feld, kein Zeiger)',
     !/k-?variante/i.test(String(localStorage.getItem(SLOT_KAT)))
     && !localStorage.getItem('sembla:aktiv:katalog:bearbeitet'));
+}
+
+// =====================================================================
+// 16) Die Schluesselweite des Kleinteils am ECHTEN Dialog (#97)
+// =====================================================================
+// Der reale Nutzerfluss: Kopplungsmutter in Modul 10 oeffnen, das Feld neben Gewinde,
+// Einbauhoehe und Bauteillaenge finden, einen Wert eintragen, speichern und beim erneuten
+// Oeffnen wiederfinden. Der Dialog bekommt dafuer KEIN eigenes Feld — er rendert die
+// Maske der Kategorie ([P-16]).
+{
+  const swProd = () => KAT.produkt(kat(), 'verbrauch-kopplungsmutter');
+  const swGespeichert = () => Object.values(kataloge()).find(k => k.id === kat().id)
+    .produkte.find(p => p.id === 'verbrauch-kopplungsmutter').sw_mm;
+  const swBasis = { bez: 'Kopplungsmutter M10, 30 mm', id: 'verbrauch-kopplungsmutter',
+                    preis: '0.65', einheit: 'Stk', gewinde: 'M10', hoehe_mm: '30' };
+
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  ok('[#97] der Dialog rendert das Feld aus der Maske — nicht aus eigenem Markup',
+    kpFelderListe().join() === KAT.fachFelder('verbrauch').join()
+    && kpFelderListe().join() === 'gewinde,hoehe_mm,laenge_mm,sw_mm'
+    && $('kp-f-sw_mm') != null);
+  ok('[#97] es ist als Schlüsselweite in Millimetern beschriftet und nicht Pflicht',
+    /Schlüsselweite \(mm\)/.test(kpMarkup()) && !/Pflicht/.test(kpMarkup()));
+  ok('[#97] der gepflegte Vorlagenwert steht beim Öffnen im Feld',
+    $('kp-f-sw_mm').value === '17' && swProd().sw_mm === 17);
+  ok('[#97] die Schlüsselweite wird nicht als fachfremdes Feld angekuendigt',
+    !/fachfremd/.test($('kp-extra').innerHTML));
+  const anzVor97 = kAnzahl();
+
+  // (a) Wert aendern -> speichern -> erneut oeffnen: er steht wieder da.
+  kpSetze({ ...swBasis, sw_mm: '19' });
+  kpSpeichern();
+  ok('[#97] gespeichert ohne Fehlermeldung, kein neues Produkt entstanden',
+    !kpOffen() && !kFehler() && kAnzahl() === anzVor97);
+  ok('[#97] der Wert steht am Produkt und ueberlebt die Persistenz',
+    swProd().sw_mm === 19 && swGespeichert() === 19);
+  ok('[#97] Rollenangabe, Einbauhoehe und Hinweis bleiben unberuehrt',
+    swProd().rollen.join() === 'kupplung' && swProd().hoehe_mm === 30
+    && /Bauteilgleich/.test(swProd().hinweis || ''));
+  ok('[#97] die Schlüsselweite uebersteht Export und Import der Katalogdatei',
+    KAT.produkt(KAT.parseKatalog(JSON.stringify(KAT.katalogObjekt(kat()))),
+                'verbrauch-kopplungsmutter').sw_mm === 19);
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  ok('[#97] beim erneuten Öffnen steht der gespeicherte Wert im Feld',
+    $('kp-f-sw_mm').value === '19');
+
+  // (b) Leeres Feld bleibt leer und erzeugt KEIN Feld am Produkt.
+  kpSetze({ ...swBasis });                          // sw_mm nicht genannt -> geleert
+  kpSpeichern();
+  ok('[#97] ein geleertes Feld entfernt die Angabe, das Produkt bleibt gueltig',
+    !kpOffen() && !kFehler() && swProd().sw_mm === undefined
+    && KAT.validiereProdukt(swProd(), { ids: [] }).length === 0);
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  ok('[#97] ohne gepflegten Wert bleibt das Feld leer — kein erfundenes Maß',
+    $('kp-f-sw_mm').value === '' && swGespeichert() === undefined);
+
+  // (c) Unzulaessige Angabe: benannt abgewiesen, Katalog byte-gleich ([P-9]).
+  kpSetze({ ...swBasis, sw_mm: '17' });
+  kpSpeichern();
+  const slotVor97 = kSlot();
+  kZeile('bearbeiten', 'verbrauch-kopplungsmutter');
+  kpSetze({ ...swBasis, sw_mm: '0' });
+  kpSpeichern();
+  ok('[#97] Schlüsselweite 0 wird im Dialog benannt abgewiesen, der Katalog bleibt unveraendert',
+    kpOffen() && kpFehler() && /sw_mm/.test($('kp-msg').textContent)
+    && swProd().sw_mm === 17 && kSlot() === slotVor97);
+  kpSetze({ ...swBasis, sw_mm: 'breit' });
+  kpSpeichern();
+  ok('[#97] eine nicht-numerische Angabe wird ebenso abgewiesen',
+    kpOffen() && kpFehler() && /sw_mm/.test($('kp-msg').textContent)
+    && kSlot() === slotVor97);
+  kpAbbrechen();
+
+  // (d) Das Feld gehoert GENAU dieser Kategorie — sonst entfernte es der Speicherweg.
+  $('k-produkt-neu').dispatch('click');
+  kpKategorie('gewindestange');
+  const swFremd = !/kp-f-sw_mm/.test(kpMarkup());
+  kpKategorie('blech_platte');
+  const swFremd2 = !/kp-f-sw_mm/.test(kpMarkup());
+  kpKategorie('verbrauch');
+  ok('[#97] nur Verbrauchsmaterial bietet das Feld an',
+    swFremd && swFremd2 && /kp-f-sw_mm/.test(kpMarkup()));
+  ok('[#97] ein neues Kleinteil startet mit leerem Feld',
+    $('kp-f-sw_mm').value === '');
+  kpAbbrechen();
+  ok('[#97] der Abbruch hat nichts angelegt und nichts geschrieben',
+    !kpOffen() && kAnzahl() === anzVor97 && kSlot() === slotVor97);
+  ok('[#97] keine Formatachse bewegt sich',
+    KAT.KATALOG_VERSION === 2 && store.PROJEKT_VERSION === 2 && store.SCHEMA_VERSION === 6
+    && MAPPE.MAPPE_VERSION === 2);
 }
 
 // --- Ergebnis -------------------------------------------------------------
