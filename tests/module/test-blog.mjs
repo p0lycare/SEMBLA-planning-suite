@@ -39,16 +39,40 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die LAGE DES DECKENANSCHLUSS-SYMBOLS (#97) ist der neueste Eintrag — er wird als einziger
-// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
-// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass das rote Z in Modul 1 und
-// Modul 7 links neben der Gewindestange und ueber der Spannplatte steht und damit wieder
-// vollstaendig sichtbar ist, waehrend die Stange im Vordergrund bleibt. NICHT versprochen
-// werden ein Bedienelement, eine geaenderte Rechnung, eine andere Zahl oder Lage der
-// Anschlusspunkte, ein Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
-const DECKEN_LAGE97 = EINTRAEGE[0];
-ok("[#97] die Lage des Deckenanschluss-Symbols ist der neueste Eintrag",
+// Die GEZEICHNETE SPANNMUTTER (#97) ist der neueste Eintrag — er wird als einziger direkt
+// ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres Eintrags
+// gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass die Spannmutter in Modul 1 und
+// Modul 7 mit ihrer realen Einbauhoehe und Schluesselweite gezeichnet wird und sich abmessen
+// laesst, und dass es ohne gepflegtes Mass beim bisherigen Symbol bleibt. NICHT versprochen
+// werden ein neues Feld, ein neues Katalogmass, ein Bedienelement, eine geaenderte Rechnung,
+// ein Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
+const SPANN_ZEICHNEN97 = EINTRAEGE[0];
+ok("[#97] die gezeichnete Spannmutter ist der neueste Eintrag",
+  SPANN_ZEICHNEN97?.id === "chg-20260909-20" && SPANN_ZEICHNEN97?.issue === 97
+  && SPANN_ZEICHNEN97?.typ === "fix" && SPANN_ZEICHNEN97?.datum === "2026-09-09");
+ok("[#97] der Titel benennt Spannmutter, beide Masse und das Zeichnen",
+  /Spannmutter/.test(SPANN_ZEICHNEN97?.titel || "")
+  && /H\u00f6he/.test(SPANN_ZEICHNEN97?.titel || "")
+  && /Schl\u00fcsselweite/.test(SPANN_ZEICHNEN97?.titel || "")
+  && /gezeichnet/.test(SPANN_ZEICHNEN97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Version/i.test(SPANN_ZEICHNEN97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 1 UND Modul 7",
+  /Modul 1\b/.test(SPANN_ZEICHNEN97?.testbitte || "")
+  && /Modul 7\b/.test(SPANN_ZEICHNEN97?.testbitte || "")
+  && /Spannmutter/.test(SPANN_ZEICHNEN97?.testbitte || "")
+  && /abmessen/.test(SPANN_ZEICHNEN97?.testbitte || ""));
+ok("[#97] die Testbitte benennt den Rueckfall auf das Symbol",
+  /Symbol/.test(SPANN_ZEICHNEN97?.testbitte || "")
+  && /Ma\u00df/.test(SPANN_ZEICHNEN97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine geaenderte Rechnung und kein neues Feld",
+  !/Norm|Preis|Menge|Nachweis|Version|Rechnung|Feld|Format/i
+    .test(SPANN_ZEICHNEN97?.testbitte || ""));
+
+// Davor liegt die LAGE DES DECKENANSCHLUSS-SYMBOLS (#97) — ueber ihre Kennung gesucht, weil
+// sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben inhaltlich unveraendert.
+const DECKEN_LAGE97 = EINTRAEGE.find(e => e.id === "chg-20260909-19");
+ok("[#97] die Lage des Deckenanschluss-Symbols steht unveraendert in der Liste",
   DECKEN_LAGE97?.id === "chg-20260909-19" && DECKEN_LAGE97?.issue === 97
   && DECKEN_LAGE97?.typ === "fix" && DECKEN_LAGE97?.datum === "2026-09-09");
 ok("[#97] der Titel benennt das rote Z, den Deckenanschluss und die Sichtbarkeit",
@@ -509,11 +533,13 @@ ok("genau ein Eintrag fuer die reale Katalogdicke der Spannplatte",
 // Mass im Katalog, das zweite fuehrt es an die Wand, das dritte zeichnet es, das vierte
 // schliesst die zweite Schreibbahn im Geschosseditor. Der Eintrag darueber betrifft ein
 // ANDERES Bauteil — die Spannmutter — und ist deshalb ein eigenes Paket, kein zweiter
-// Eintrag zur Kopplungsmutter. Das letzte Paket zeichnet gar kein Bauteil neu, sondern
-// korrigiert die LAGE einer schon vorhandenen Marke — auch das ist ein eigenes Paket.
+// Eintrag zur Kopplungsmutter. Das vorletzte Paket zeichnet gar kein Bauteil neu, sondern
+// korrigiert die LAGE einer schon vorhandenen Marke — auch das ist ein eigenes Paket. Das
+// letzte ZEICHNET die Spannmutter mit den Massen, die das Paket davor nur an die Wand gefuehrt
+// hat: zwei Schritte, zwei Eintraege.
 ok("je Paket genau ein Eintrag fuer Issue 97", (() => {
   const n97 = EINTRAEGE.filter(e => e.issue === 97 && e.datum === "2026-09-09");
-  return n97.length === 8
+  return n97.length === 9
     && n97.filter(e => e.id === "chg-20260909-05").length === 1
     && n97.filter(e => e.id === "chg-20260909-08").length === 1
     && n97.filter(e => e.id === "chg-20260909-14").length === 1
@@ -521,7 +547,8 @@ ok("je Paket genau ein Eintrag fuer Issue 97", (() => {
     && n97.filter(e => e.id === "chg-20260909-16").length === 1
     && n97.filter(e => e.id === "chg-20260909-17").length === 1
     && n97.filter(e => e.id === "chg-20260909-18").length === 1
-    && n97.filter(e => e.id === "chg-20260909-19").length === 1; })());
+    && n97.filter(e => e.id === "chg-20260909-19").length === 1
+    && n97.filter(e => e.id === "chg-20260909-20").length === 1; })());
 
 // Die NAMENSFOLGE DER WANDBLAETTER in der Zeichnungs-PDF (#107) ist der zweitneueste Eintrag —
 // er wird als einziger direkt ueber seine Kennung geprueft; die bisherige Reihe rueckt

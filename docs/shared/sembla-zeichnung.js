@@ -559,6 +559,15 @@ export function zeichnungSvg(w, opts = {}) {
   // dasselbe Bauteil in beiden Ausgaben gleich breit ist. Der Katalog wird hier nicht
   // angefasst ([D-1]). Fehlt das Mass, bleibt es beim festen Symbolmass `SPANN_MM.d`.
   const kuSw = (w.prestress && w.prestress.kupplung_sw_mm) || 0;
+  // [D-4]/#97 Einbauhoehe und Schluesselweite der SPANNMUTTER: beide stehen als
+  // `spannmutter_h_mm`/`spannmutter_sw_mm` im Wandelement (Modul 1 leitet sie beim Auslegen aus
+  // dem gewaehlten Katalogprodukt ab). Auch sie werden hier NUR GELESEN und unveraendert an
+  // `mutterSvg()`/`spannplatteSvg()` durchgereicht — dieselben Zahlen, die Modul 1 durchreicht,
+  // damit dasselbe Bauteil in beiden Ausgaben gleich gross ist. Der Katalog wird hier nicht
+  // angefasst ([D-1]). Fehlt ein Mass, bleibt es fuer DIESE Achse beim festen Symbolmass
+  // (`SPANN_MM.mutter_h` bzw. `SPANN_MM.d`); erfunden wird nie eines.
+  const smH = (w.prestress && w.prestress.spannmutter_h_mm) || 0;
+  const smSw = (w.prestress && w.prestress.spannmutter_sw_mm) || 0;
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
@@ -649,9 +658,10 @@ export function zeichnungSvg(w, opts = {}) {
       // Mutter als kurzer, Spannplatte als langgezogenes flaches Rechteck — Geometrie und
       // Kennfarbe geteilt ([D-4]/#110). Die Symbolmasse sind fest (#106) und in Modul 1
       // dieselben; masstabstreue Bauteilmasse sind die Plattenbreite (110 mm, Untergrenze wie
-      // bisher), seit #97 die Plattendicke (`plD`, oben wie unten dasselbe Bauteil) und
-      // ebenfalls seit #97 Hoehe (`kuH`) und Schluesselweite (`kuSw`) der Kopplungsmutter. Die
-      // Platte LIEGT AUF der Kante — oben wie unten.
+      // bisher), seit #97 die Plattendicke (`plD`, oben wie unten dasselbe Bauteil), Hoehe
+      // (`kuH`) und Schluesselweite (`kuSw`) der Kopplungsmutter sowie Hoehe (`smH`) und
+      // Schluesselweite (`smSw`) der SPANNMUTTER — gleich, ob sie auf der Platte sitzt oder
+      // unter einem Kopfblech allein steht. Die Platte LIEGT AUF der Kante — oben wie unten.
       if (au === "bodenblech") {
         // Fussfolge nach [A-19] (#97): von unten die Sechskantschraube (ihr Kopf ragt unter
         // dem Bodenblech heraus), darauf das Blech, darauf AUFLIEGEND die Kopplungsmutter.
@@ -659,10 +669,13 @@ export function zeichnungSvg(w, opts = {}) {
         s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n, hoehe_mm: kuH, sc });
         vorn += kopplungsmutterSvg(x, Y(sg.z0_mm), SYM,
           { n: _n, auf: true, hoehe_mm: kuH, sw_mm: kuSw, sc });
-      } else s += spannplatteSvg(x, Y(sg.z0_mm), SYM, sc, { n: _n, dicke_mm: plD });
+      } else s += spannplatteSvg(x, Y(sg.z0_mm), SYM, sc,
+        { n: _n, dicke_mm: plD, mutter_h_mm: smH, mutter_sw_mm: smSw });
       if (ao === "spannplatte")
-        s += spannplatteSvg(x, Y(sg.z1_mm), SYM, sc, { n: _n, dicke_mm: plD });
-      else s += mutterSvg(x, Y(sg.z1_mm), SYM, { n: _n, auf: true });
+        s += spannplatteSvg(x, Y(sg.z1_mm), SYM, sc,
+          { n: _n, dicke_mm: plD, mutter_h_mm: smH, mutter_sw_mm: smSw });
+      else s += mutterSvg(x, Y(sg.z1_mm), SYM,
+        { n: _n, auf: true, hoehe_mm: smH, sw_mm: smSw, sc });
     }
   }
 

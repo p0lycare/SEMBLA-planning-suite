@@ -142,8 +142,9 @@ export const SPANN_MM = {
 export const SPANN_EINHEIT = { blatt: 1, ansicht: 5 };
 
 /**
- * Vereinfachte Seitenansicht eines Zylinders (Mutter/Kopplungsmutter) — EIN Zeichenweg fuer
- * Wandansicht und Zeichnung ([D-4], #110/#106).
+ * Vereinfachte Seitenansicht eines Zylinders (Mutter/Kopplungsmutter) mit Hoehe und
+ * Durchmesser in ZEICHENKOORDINATEN — die eine Stelle, an der das Rechteck entsteht, und EIN
+ * Zeichenweg fuer Wandansicht und Zeichnung ([D-4], #110/#106/#97).
  *
  * Gezeichnet wird ein kantiger, gefuellter Koerper OHNE ueberstehende Stirnkanten. Die
  * ueberstehenden Kantenlinien aus #110 sind ersatzlos entfallen: sie sollten den Zylinder
@@ -151,30 +152,16 @@ export const SPANN_EINHEIT = { blatt: 1, ansicht: 5 };
  * breiter als sie ist. Kreis und Sechseck entfallen weiterhin ausdruecklich — ein Kreis liest
  * sich nicht als Mutter, und zwei Kreise unterscheiden Mutter und Kopplungsmutter nicht.
  *
+ * Die Masse kommen in Zeichenkoordinaten herein, seit die Muttern ihre Hoehe und Breite
+ * wahlweise aus dem realen Bauteilmass beziehen (#97): dort ist die Hoehe `hoehe_mm * sc` und
+ * laesst sich nicht mehr als Papier-mm ausdruecken, ohne durch `e` zu teilen. Der Symbolzweig
+ * gibt unveraendert `symMm * e` herein (s. `_zylinderMass`).
+ *
  * @param {number} x Zeichenkoordinate der Spannachse
  * @param {number} y Zeichenkoordinate der Einbauhoehe (Mitte; mit `opts.auf` die UNTERKANTE)
- * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
- * @param {number} hMm Hoehe des Koerpers in Papier-mm
- * @param {number} dMm Durchmesser des Koerpers in Papier-mm
+ * @param {number} h Hoehe @param {number} b Durchmesser
  * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean}} [opts]
  *        `auf`: das Bauteil SITZT AUF `y` (Unterkante), statt darauf zentriert zu sein.
- * @returns {string} SVG-Fragment
- */
-function _zylinderSvg(x, y, e, hMm, dMm, opts = {}) {
-  return _zylinderSvgZ(x, y, hMm * e, dMm * e, opts);
-}
-
-/**
- * Derselbe Koerper, aber mit Hoehe und Durchmesser bereits in ZEICHENKOORDINATEN — die eine
- * Stelle, an der das Rechteck entsteht.
- *
- * Gebraucht wird die Variante, seit die Kopplungsmutter ihre Hoehe wahlweise aus dem realen
- * Bauteilmass bezieht (#97): dort ist die Hoehe `hoehe_mm * sc` und laesst sich nicht mehr als
- * Papier-mm ausdruecken, ohne durch `e` zu teilen. Fuer den Symbolzweig aendert sich nichts —
- * `hMm * e` steht unveraendert an derselben Stelle wie zuvor.
- *
- * @param {number} x @param {number} y @param {number} h Hoehe @param {number} b Durchmesser
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean}} [opts]
  * @returns {string} SVG-Fragment
  */
 function _zylinderSvgZ(x, y, h, b, opts = {}) {
@@ -187,14 +174,66 @@ function _zylinderSvgZ(x, y, h, b, opts = {}) {
 }
 
 /**
- * Normale Mutter / Spannmutter als kurzer Zylinder in Seitenansicht ([D-4], #110/#106).
+ * Zeichenmass EINER Achse eines Zylinders: reales Bauteilmass, wenn es zeichenbar ist — sonst
+ * das benannte Symbolmass ([D-4], #97).
+ *
+ * Die Entscheidung ist wortgleich mit der der Kopplungsmutter (`kupplungHoehe`/
+ * `kupplungDurchmesser`) und der Spannplatte (`_plattenDicke`): geprueft wird das
+ * ZEICHENERGEBNIS und nicht nur die Eingabe, damit ein Bauteil nie auf 0 zusammenfaellt.
+ * Ausdruecklich KEINE Untergrenze auf dem masstabsgetreuen Zweig — ein kleines Bauteil in
+ * kleinem Masstab IST klein, und eine Untergrenze waere ein zweites, verstecktes Mass, das
+ * dem abgemessenen Wert widerspraeche.
+ *
+ * Die drei aelteren Funktionen fuehren dieselbe Entscheidung weiterhin selbst: sie sind
+ * exportierte Bausteine mit eigenen Aufrufern (Haarlinie, Schraubenschaft, Deckenanschluss),
+ * und ihre Bit-Gleichheit soll nicht an einem Umbau haengen.
+ *
+ * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
+ * @param {any} mm reales Bauteilmass in mm oder fehlend
+ * @param {any} sc Zeichenkoordinaten je mm
+ * @param {number} symMm Symbolmass in Papier-mm (`SPANN_MM`)
+ * @returns {number} Mass in Zeichenkoordinaten
+ */
+function _zylinderMass(e, mm, sc, symMm) {
+  const vMm = +mm, vSc = +sc;
+  const real = (isFinite(vMm) && vMm > 0 && isFinite(vSc) && vSc > 0) ? vMm * vSc : 0;
+  return real > 0 ? real : symMm * e;
+}
+
+/**
+ * Normale Mutter / Spannmutter als kurzer Zylinder in Seitenansicht ([D-4], #110/#106/#97).
+ *
+ * Seit #97 sind HOEHE und DURCHMESSER masstabsgetreu, sobald der Aufrufer die realen
+ * Bauteilmasse als `opts.hoehe_mm` (Einbauhoehe) und `opts.sw_mm` (Schluesselweite) samt
+ * `opts.sc` hereingibt: die Mutter ist dann `hoehe_mm * sc` hoch und `sw_mm * sc` breit und
+ * laesst sich im Blatt abmessen. Die Masse sind KEINE neuen Felder — sie stehen als
+ * `prestress.spannmutter_h_mm`/`spannmutter_sw_mm` am Wandelement, abgeleitet beim Auslegen
+ * aus dem gewaehlten Katalogprodukt; hier werden sie nur gezeichnet und nichts daraus
+ * abgeleitet. Bis dahin war beides IMMER symbolisch: dieselbe Marke fuer eine M12- wie fuer
+ * eine M20-Mutter.
+ *
+ * Der Weg ist bewusst derselbe wie bei Plattendicke und Kopplungsmutter: gleiche
+ * Optionsnamen, gleiches `sc`, Rueckfall auf `SPANN_MM.mutter_h` bzw. `SPANN_MM.d` je Achse
+ * getrennt, und ausdruecklich KEINE Untergrenze auf dem masstabsgetreuen Zweig (s.
+ * `_zylinderMass`). OHNE die Masse ist das Ergebnis bit-gleich zum Stand davor — es wird
+ * weder eine Hoehe noch eine Breite erfunden, und die Mutter entfaellt nie.
+ *
+ * Die Mutter des Einlegeblechs (`zwischenpunktSvg`) und die des Deckenanschlusses geben
+ * bewusst KEINE Masse herein: fuer diese Bauteile liegen keine bestaetigten Abmessungen vor,
+ * sie bleiben also symbolisch.
+ *
  * @param {number} x @param {number} y Einbauhoehe (Mitte; mit `opts.auf` die Unterkante)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean}} [opts]
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,auf?:boolean,
+ *          hoehe_mm?:number,sw_mm?:number,sc?:number}} [opts]
+ *        `hoehe_mm`/`sc`: reale Einbauhoehe in mm und Zeichenkoordinaten je mm (#97).
+ *        `sw_mm`: reale Schluesselweite in mm (#97) — masstabsgetreu statt Symbolmass.
  * @returns {string} SVG-Fragment
  */
 export function mutterSvg(x, y, e, opts = {}) {
-  return _zylinderSvg(x, y, e, SPANN_MM.mutter_h, SPANN_MM.d, opts);
+  return _zylinderSvgZ(x, y,
+    _zylinderMass(e, opts.hoehe_mm, opts.sc, SPANN_MM.mutter_h),
+    _zylinderMass(e, opts.sw_mm, opts.sc, SPANN_MM.d), opts);
 }
 
 /**
@@ -405,8 +444,19 @@ function _plattenDicke(e, sc, dickeMm) {
  * @param {number} y Zeichenkoordinate der Auflagerkante
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
  * @param {number} sc Zeichenkoordinaten je mm
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,min?:number,dicke_mm?:number}} [opts]
+ * Seit dem Folgepaket zu #97 gilt dasselbe fuer die aufsitzende SPANNMUTTER: `mutter_h_mm`
+ * und `mutter_sw_mm` werden unveraendert an `mutterSvg()` durchgereicht (dort als
+ * `hoehe_mm`/`sw_mm`) und mit demselben `sc` gerechnet wie die Platte. Die Optionsnamen sind
+ * hier eigene, weil `dicke_mm` schon der Platte gehoert — es ist trotzdem dieselbe eine
+ * Entscheidung (`_zylinderMass`), kein zweiter Darstellungsschluessel. Der AUFSITZPUNKT
+ * bleibt davon unberuehrt: er ist die Plattenoberkante `y - h` und haengt allein an der
+ * Plattendicke; die Mutter waechst nach OBEN.
+ *
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,min?:number,dicke_mm?:number,
+ *          mutter_farbe?:string,mutter_h_mm?:number,mutter_sw_mm?:number}} [opts]
  *        `dicke_mm`: reale Plattendicke in mm (#97) — masstabsgetreu statt Symbolmass.
+ *        `mutter_h_mm`/`mutter_sw_mm`: reale Einbauhoehe und Schluesselweite der Spannmutter
+ *        in mm (#97) — masstabsgetreu statt Symbolmass, je Achse mit eigenem Rueckfall.
  * @returns {string} SVG-Fragment
  */
 export function spannplatteSvg(x, y, e, sc, opts = {}) {
@@ -421,7 +471,8 @@ export function spannplatteSvg(x, y, e, sc, opts = {}) {
   return `<rect${kl} x="${n(x - b / 2)}" y="${n(y - h)}" `
     + `width="${n(b)}" height="${n(h)}" fill="${farbe}"/>`
     + mutterSvg(x, y - h, e, { n: opts.n, klasse: opts.klasse, auf: true,
-      farbe: opts.mutter_farbe || SPANN_FARBE.mutter });
+      farbe: opts.mutter_farbe || SPANN_FARBE.mutter,
+      hoehe_mm: opts.mutter_h_mm, sw_mm: opts.mutter_sw_mm, sc });
 }
 
 /**
@@ -518,13 +569,21 @@ export const DECKENANSCHLUSS = { farbe: "#c0392b", label: "Deckenanschluss" };
  * Beides ist reine Darstellung und wird deshalb hier geloest, nicht durch eine andere Achse:
  *
  *  - der senkrechte Zug steht um das feste Symbolmass `dc_versatz` LINKS NEBEN der Achse.
- *    Der Versatz ist groesser als die halbe Mutternbreite (`d`/2), der Zug laeuft also auch an
- *    der Spannmutter vorbei. Verschoben wird in ZEICHENKOORDINATEN und nicht auf eine physische
- *    Wandseite: Modul 1 spiegelt in der Rueckansicht, und eine Seitenwahl spraenge dort.
+ *    Der Versatz ist groesser als die halbe Mutternbreite des Symbolmasses (`d`/2), der Zug
+ *    laeuft also am Symbolzweig sicher an der Spannmutter vorbei. Verschoben wird in
+ *    ZEICHENKOORDINATEN und nicht auf eine physische Wandseite: Modul 1 spiegelt in der
+ *    Rueckansicht, und eine Seitenwahl spraenge dort.
  *  - der untere Schenkel liegt unmittelbar OBERHALB der Plattenoberkante — die Strichstaerke
- *    vollstaendig ausserhalb des Plattenrechtecks, nicht auf dessen Kante zentriert. Er liegt
- *    damit im Hoehenband der aufsitzenden Spannmutter (`mutter_h` > `strich`) und ragt nicht
- *    ueber deren Oberkante hinaus.
+ *    vollstaendig ausserhalb des Plattenrechtecks, nicht auf dessen Kante zentriert.
+ *
+ * Der BEZUG des Schenkels ist damit ausschliesslich die PLATTE, nie die Mutter: gerechnet wird
+ * aus `_plattenDicke`, und daran aendert sich nichts, seit die Spannmutter ihre realen Masse
+ * zeichnet (Folgepaket zu #97). Die frueher hier gegebene Zusatzbegruendung, der Schenkel liege
+ * im Hoehenband der aufsitzenden Mutter (`mutter_h` > `strich`), galt fuer die Symbolmutter und
+ * gilt fuer eine masstabsgetreue nicht mehr allgemein — eine flache Mutter in kleinem Masstab
+ * kann niedriger sein als die Strichstaerke. Das ist hingenommen und wird NICHT durch eine
+ * Untergrenze an der Mutter behoben: die gaebe es an keinem anderen masstabsgetreuen Mass, und
+ * sie widerspraeche dem abgemessenen Wert. Lage und Geometrie des Z sind unveraendert.
  *  - weil `dc_schenkel` > `dc_versatz` ist, KREUZT der untere Schenkel die Spannachse nach
  *    rechts. Die feste Orientierung (oben links, unten rechts) bleibt unveraendert.
  *

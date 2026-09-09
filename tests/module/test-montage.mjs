@@ -775,8 +775,14 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   ok("[#106] OHNE reales Mass zeichnet dieselbe Ansicht dasselbe Bauteil bei JEDER Wandlaenge gleich",
     mutterSvg(0, 0, E1) === mutterSvg(0, 0, SPANN_EINHEIT.ansicht)
     && kopplungsmutterSvg(0, 0, E1) === kopplungsmutterSvg(0, 0, SPANN_EINHEIT.ansicht));
-  ok("[#106] die normale Mutter kennt weder Lagenhoehe noch Wandmasstab (kein `sc` im Zylinderweg)",
-    mutterSvg(0, 0, E7).length > 0 && !/\bsc\b/.test(mutterSvg.toString())
+  // #97: `sc` ist seit dem Spannmutter-Paket ein regulaerer Optionsweg der normalen Mutter —
+  // die Quelltextprobe darauf ist damit hinfaellig und durch die VERHALTENSprobe ersetzt:
+  // OHNE reales Bauteilmass bleibt `sc` wirkungslos, die Mutter haengt also weder an
+  // Lagenhoehe noch an Wandmasstab. Die Lagenprobe bleibt unveraendert.
+  ok("[#106] ohne reales Mass ist die Mutter unabhaengig von jedem Wandmasstab",
+    mutterSvg(0, 0, E7).length > 0
+    && [1 / 20, 1 / 50, 1 / 100, 60 / 200].every(q => mutterSvg(0, 0, E7, { sc: q })
+      === mutterSvg(0, 0, E7))
     && !/lage/.test(mutterSvg.toString()) && !/lage/.test(kopplungsmutterSvg.toString()));
   ok("[#106] Ansicht und Blatt fuehren dasselbe Symbol in ihren eigenen Einheiten",
     Math.abs(hoehe(mutterSvg(0, 0, E1)) / E1 - hoehe(mutterSvg(0, 0, E7)) / E7) < 1e-12
@@ -857,8 +863,16 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         .join() === num(schraubeSvg(0, 0, E1, 0), "width").join()
       && Math.abs(num(schraubeSvg(0, 0, E1, 0, { hoehe_mm: 30, sc: scM1 }), "height")[1]
         - SPANN_MM.kopf_h * E1) < 1e-9);
-    ok("[#97] die normale Mutter kennt das Mass NICHT (nur die Kopplungsmutter ist real)",
-      mutterSvg(100, 200, E1, { hoehe_mm: 30, sc: scM1 }) === mutterSvg(100, 200, E1));
+    // #97 (Spannmutter-Paket): die normale Mutter kennt das Mass jetzt EBENFALLS — dieselben
+    // Optionsnamen, dasselbe `sc`, derselbe Rueckfall. Bis dahin war sie immer symbolisch.
+    ok("[#97] auch die normale Mutter zeichnet ihre reale Einbauhoehe `hoehe_mm * sc`",
+      Math.abs(hoehe(mutterSvg(100, 200, E1, { hoehe_mm: 24, sc: scM1 })) - 24 * scM1) < 1e-9
+      && Math.abs(hoehe(mutterSvg(0, 0, E7, { hoehe_mm: 10, sc: 1 / 50 })) - 10 / 50) < 1e-9);
+    ok("[#97] ohne Hoehenmass bleibt die normale Mutter bit-gleich beim Symbolmass",
+      mutterSvg(100, 200, E1, { hoehe_mm: 0, sc: scM1 }) === mutterSvg(100, 200, E1)
+      && mutterSvg(100, 200, E1, { hoehe_mm: null, sc: scM1 }) === mutterSvg(100, 200, E1)
+      && mutterSvg(100, 200, E1, { hoehe_mm: 24 }) === mutterSvg(100, 200, E1)   // ohne `sc`
+      && mutterSvg(100, 200, E1, { hoehe_mm: 24, sc: 0 }) === mutterSvg(100, 200, E1));
   }
 
   // --- Masstabsgetreue BREITE der Kopplungsmutter (#97) -------------------------------------
@@ -900,9 +914,15 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       && kopplungsmutterSvg(100, 200, E1, { sw_mm: 17 }) === kuU             // ohne `sc`
       && kopplungsmutterSvg(100, 200, E1, { sw_mm: 17, sc: 0 }) === kuU
       && Math.abs(breite(kuU) - SPANN_MM.d * E1) < 1e-9);
-    ok("[#97] die normale Mutter kennt die Schluesselweite NICHT",
-      mutterSvg(100, 200, E1, { sw_mm: 17, sc: scM1 }) === mutterSvg(100, 200, E1)
+    // #97 (Spannmutter-Paket): auch die Schluesselweite gilt jetzt fuer die normale Mutter.
+    ok("[#97] auch die normale Mutter zeichnet ihre reale Schluesselweite `sw_mm * sc`",
+      Math.abs(breite(mutterSvg(100, 200, E1, { sw_mm: 17, sc: scM1 })) - 17 * scM1) < 1e-9
       && Math.abs(breite(mutterSvg(0, 0, E1)) - SPANN_MM.d * E1) < 1e-9);
+    ok("[#97] ohne Schluesselweite bleibt die normale Mutter bit-gleich beim Symbolmass",
+      mutterSvg(100, 200, E1, { sw_mm: 0, sc: scM1 }) === mutterSvg(100, 200, E1)
+      && mutterSvg(100, 200, E1, { sw_mm: null, sc: scM1 }) === mutterSvg(100, 200, E1)
+      && mutterSvg(100, 200, E1, { sw_mm: 17 }) === mutterSvg(100, 200, E1)      // ohne `sc`
+      && mutterSvg(100, 200, E1, { sw_mm: 17, sc: 0 }) === mutterSvg(100, 200, E1));
     ok("[#97] auch die Schraube behaelt ihre Symbolmasse (Kopf und Schaft unveraendert)",
       schraubeSvg(100, 300, E1, 6, { sw_mm: 17, sc: scM1 }) === schraubeSvg(100, 300, E1, 6));
     // `kupplungDurchmesser()` ist die EINE Entscheidung — die Haarlinie nach #112 leitet ihre
@@ -993,6 +1013,67 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       && spannplatteSvg(100, 200, E1, scM1, { dicke_mm: undefined }) === plU
       && spannplatteSvg(100, 200, E1, scM1, { dicke_mm: "" }) === plU
       && Math.abs(hoehe(plU) - SPANN_MM.platte_h * E1) < 1e-9);
+  }
+
+  // --- Spannmuttermasse: reales Katalogmass statt Symbolmass (#97) -------------------------
+  // Bis hierher war die Spannmutter IMMER symbolisch — dieselbe Marke fuer eine M12- wie fuer
+  // eine M20-Mutter. Gezeichnet wird jetzt `spannmutter_h_mm * sc` bzw. `spannmutter_sw_mm * sc`,
+  // also dasselbe Verfahren wie bei Plattendicke und Kopplungsmutter. Geprueft wird die
+  // Zeichenfunktion; der Wert kommt beim Aufrufer aus dem Wandelement.
+  {
+    const sm = { mutter_h_mm: 24, mutter_sw_mm: 30 };
+    // M1/M2 an der Funktion selbst stehen oben im Mutternblock. Hier zaehlt die Mutter, die
+    // `spannplatteSvg()` MITZEICHNET: dieselben zwei Masse, derselbe `sc` wie die Platte.
+    const pl = spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 8, ...sm });
+    const teil = (svg) => [...svg.matchAll(
+      /y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+      .map(m => ({ y: +m[1], b: +m[2], h: +m[3] }));
+    ok("[#97] die Mutter der Spannplatte ist `mutter_h_mm * sc` hoch und `mutter_sw_mm * sc` breit",
+      (() => { const r = teil(pl);
+        return r.length === 2 && Math.abs(r[1].h - 24 * scM1) < 1e-9
+          && Math.abs(r[1].b - 30 * scM1) < 1e-9; })());
+    ok("[#97] sie SITZT weiterhin unmittelbar auf der Plattenoberkante auf", (() => {
+      const r = teil(pl);
+      return Math.abs((r[1].y + r[1].h) - r[0].y) < 1e-9 && r[1].y < r[0].y
+        && Math.abs(r[0].y - (200 - 8 * scM1)) < 1e-9; })());
+    ok("[#97] sie bleibt auf ihre Spannachse zentriert — auch mit realer Breite",
+      (() => { const r = teil(pl);
+        return Math.abs((num(pl, "x")[1] + r[1].b / 2) - 100) < 1e-9; })());
+    ok("[#97] die Platte selbst bleibt unveraendert (Dicke, Breite, Farben)",
+      (() => { const o = teil(spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 8 }))[0],
+        r = teil(pl)[0];
+        return o.y === r.y && o.b === r.b && o.h === r.h
+          && pl.includes(SPANN_FARBE.platte) && pl.includes(SPANN_FARBE.mutter); })());
+    ok("[#97] zwei Produkte ergeben zwei verschieden grosse Muttern, Achsen unabhaengig",
+      (() => {
+        const a = teil(spannplatteSvg(0, 0, E1, scM1, { mutter_h_mm: 10, mutter_sw_mm: 17 }))[1];
+        const b = teil(spannplatteSvg(0, 0, E1, scM1, { mutter_h_mm: 24, mutter_sw_mm: 30 }))[1];
+        const nurH = teil(spannplatteSvg(0, 0, E1, scM1, { mutter_h_mm: 24 }))[1];
+        const nurB = teil(spannplatteSvg(0, 0, E1, scM1, { mutter_sw_mm: 30 }))[1];
+        return b.h > a.h && b.b > a.b
+          && Math.abs(nurH.h - 24 * scM1) < 1e-9
+          && Math.abs(nurH.b - SPANN_MM.d * E1) < 1e-9        // Rueckfall NUR dieser Achse
+          && Math.abs(nurB.b - 30 * scM1) < 1e-9
+          && Math.abs(nurB.h - SPANN_MM.mutter_h * E1) < 1e-9; })());
+    // M6: kein zweites, verstecktes Mass — eine kleine Mutter in kleinem Masstab IST klein.
+    ok("[#97] eine kleine Spannmutter bekommt KEINE Untergrenze, bleibt aber zeichenbar",
+      (() => {
+        const m = mutterSvg(0, 0, E7, { hoehe_mm: 10, sw_mm: 17, sc: 1 / 100 });
+        return Math.abs(hoehe(m) - 10 / 100) < 1e-9 && Math.abs(breite(m) - 17 / 100) < 1e-9
+          && hoehe(m) > 0 && hoehe(m) < SPANN_MM.mutter_h * E7
+          && breite(m) > 0 && breite(m) < SPANN_MM.d * E7; })());
+    // M5: ohne Mass wird NICHTS erfunden — byte-gleich zum Stand vor diesem Paket.
+    const plO = spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 8 });
+    ok("[#97] ohne Spannmuttermasse bleibt die Platte samt Mutter bit-gleich",
+      spannplatteSvg(100, 200, E1, scM1, { dicke_mm: 8, mutter_h_mm: 0, mutter_sw_mm: 0 }) === plO
+      && spannplatteSvg(100, 200, E1, scM1,
+        { dicke_mm: 8, mutter_h_mm: null, mutter_sw_mm: null }) === plO
+      && spannplatteSvg(100, 200, E1, scM1,
+        { dicke_mm: 8, mutter_h_mm: undefined, mutter_sw_mm: undefined }) === plO);
+    // Das Einlegeblech gibt bewusst KEINE Masse herein ([A-16]/N5) — es bleibt symbolisch.
+    ok("[#97] die Mutter des Einlegeblechs bleibt unveraendert symbolisch",
+      zwischenpunktSvg(100, 200, { e: E1 })
+        .endsWith(mutterSvg(100, 200, E1, { auf: true })));
   }
 
   // --- Einlegeblech: nach unten offenes C-Profil MIT genau einer Mutter obenauf ([A-16]) ---

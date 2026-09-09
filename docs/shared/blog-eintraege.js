@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-20",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 97,
+    titel: "Die Spannmutter wird mit ihrer realen Höhe und Schlüsselweite gezeichnet",
+    testbitte: "In Modul 1 auf eine deutlich größere Spannmutter umstellen: die Mutter wird in "
+      + "der Wandansicht und im Blatt von Modul 7 höher und breiter und lässt sich abmessen. "
+      + "Ohne gepflegtes Maß bleibt es beim Symbol.",
+  },
+  {
     id: "chg-20260909-19",
     datum: "2026-09-09",
     typ: "fix",

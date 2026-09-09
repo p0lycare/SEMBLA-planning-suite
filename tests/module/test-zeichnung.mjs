@@ -70,6 +70,18 @@ const WSW17 = buildWall("IW-09", 3000, 2600, [], null,
   { rod_fuss_offset_mm: 15, kupplung_sw_mm: 17 });
 const WSW24 = buildWall("IW-10", 3000, 2600, [], null,
   { rod_fuss_offset_mm: 15, kupplung_sw_mm: 24 });
+// WSM/WSMG: oberer Anschluss SPANNPLATTE mit gefuehrten SPANNMUTTERmassen (#97). Beide stehen
+// als `prestress.spannmutter_h_mm`/`spannmutter_sw_mm` im Wandelement — abgeleitet beim
+// Auslegen aus dem gewaehlten Katalogprodukt. Das Blatt liest sie nur ([D-1]). WSMG ist
+// dieselbe Wand mit einem deutlich groesseren Produkt.
+const WSM = buildWall("IW-11", 3000, 2600, [], null,
+  { top_connection: "spannplatte", rod_kopf_zuschlag_mm: 8,
+    spannmutter_h_mm: 10, spannmutter_sw_mm: 17 });
+// Bewusst DERSELBE Wandname wie WSM: die Bit-Gleichheitsprobe unten vergleicht die Blaetter
+// zeichenweise, und der Name steht im Schriftfeld — es soll sich nur das Produkt unterscheiden.
+const WSMG = buildWall("IW-11", 3000, 2600, [], null,
+  { top_connection: "spannplatte", rod_kopf_zuschlag_mm: 8,
+    spannmutter_h_mm: 24, spannmutter_sw_mm: 30 });
 
 const eingaben = standardEingaben();
 eingaben.projekt.name = "Rettungswache";
@@ -457,6 +469,101 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     const b = kopBreiten(z17.svg)[0];
     return Math.abs(b - rnd(kupplungDurchmesser(E, { sw_mm: 17, sc: 1 / z17.masstab })))
       < 1e-3; })());
+}
+
+// --- #97: die SPANNMUTTER wird mit ihrer REALEN Hoehe und Schluesselweite gezeichnet -------
+// Gebaut wird ueber den echten Core-Pfad; beide Masse kommen allein aus dem Wandelement
+// (`prestress.spannmutter_h_mm`/`spannmutter_sw_mm`) und werden hier nur gezeichnet. Geprueft
+// wird am REALEN Blatt-SVG — Vorschau, Druck-HTML und die eigenstaendige SVG-Datei tragen
+// dieselbe Zeichenkette, weil sie alle aus `zeichnungSvg()` stammen ([D-6]).
+{
+  const E = SPANN_EINHEIT.blatt;
+  const rnd = v => Math.round(v * 1000) / 1000;
+  const zSm = Z.zeichnungSvg(WSM, {}), zSmG = Z.zeichnungSvg(WSMG, {});
+  // Dieselbe Wand OHNE die beiden Masse, ueber den echten Core-Pfad nie damit gebaut.
+  const WSMo = buildWall("IW-11", 3000, 2600, [], null,
+    { top_connection: "spannplatte", rod_kopf_zuschlag_mm: 8 });
+  const zSmo = Z.zeichnungSvg(WSMo, {});
+  const platten = t => [...t.matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
+    + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.platte}"/>`, "g"))]
+    .map(m => ({ y: +m[1], h: +m[2] }));
+  // Spannmuttern: mutterfarbene Rechtecke, die mit ihrer UNTERKANTE auf einer
+  // Plattenoberkante sitzen — genau die Definition aus [A-3]/#97. Die Auswahl darf nicht
+  // einfach "alle mutterfarbenen Rechtecke" sein: die Kopplungsgruppe ist zwar ausgenommen,
+  // die Sechskantschraube am Fuss traegt aber dieselbe Kennfarbe ([A-19]).
+  const spannMu = t => { const pl = platten(t);
+    return [...t.replace(/<g class="kop">[\s\S]*?<\/g>/, "")
+      .matchAll(new RegExp(`<rect x="([-\\d.]+)" y="([-\\d.]+)" width="([-\\d.]+)" `
+        + `height="([-\\d.]+)" fill="${Z.FARBE.mutter}"/>`, "g"))]
+      .map(m => ({ x: +m[1], y: +m[2], b: +m[3], h: +m[4] }))
+      .filter(r => pl.some(q => Math.abs((r.y + r.h) - q.y) < 1e-3)); };
+
+  ok("[#97] das Wandelement fuehrt beide Spannmuttermasse (kein neues Feld, nur gelesen)",
+    WSM.prestress.spannmutter_h_mm === 10 && WSM.prestress.spannmutter_sw_mm === 17
+    && WSMG.prestress.spannmutter_h_mm === 24 && WSMG.prestress.spannmutter_sw_mm === 30
+    && WSMo.prestress.spannmutter_h_mm === undefined
+    && WSMo.prestress.spannmutter_sw_mm === undefined);
+  ok("[#97] im Blatt kommen GENAU diese Masse an (Mass mal Blattmasstab)", (() => {
+    const m = spannMu(zSm.svg);
+    return m.length > 0 && m.every(r => Math.abs(r.h - rnd(10 / zSm.masstab)) < 1e-3
+      && Math.abs(r.b - rnd(17 / zSm.masstab)) < 1e-3); })());
+  ok("[#97] ein deutlich groesseres Produkt zeichnet eine hoehere UND breitere Mutter", (() => {
+    const a = spannMu(zSm.svg), b = spannMu(zSmG.svg);
+    return a.length > 0 && a.length === b.length && zSm.masstab === zSmG.masstab
+      && b.every(r => Math.abs(r.h - rnd(24 / zSmG.masstab)) < 1e-3
+        && Math.abs(r.b - rnd(30 / zSmG.masstab)) < 1e-3)
+      && b[0].h > a[0].h && b[0].b > a[0].b; })());
+  ok("[#97] sie sitzt auch mit realem Mass unmittelbar auf der Plattenoberkante", (() => {
+    // Jede Platte traegt genau eine Spannmutter, und keine davon ragt in die Platte hinein
+    // (`y < Plattenoberkante`). Ohne die Aufsitzlage waere die Auswahl oben leer — geprueft
+    // wird deshalb zusaetzlich, dass ueberhaupt so viele gefunden werden wie Platten da sind.
+    const pl = platten(zSmG.svg), mu = spannMu(zSmG.svg);
+    return pl.length > 0 && mu.length === pl.length
+      && pl.every(r => mu.some(m => Math.abs((m.y + m.h) - r.y) < 1e-3 && m.y < r.y)); })());
+  ok("[#97] ohne die Masse ist das Blatt BIT-GLEICH zum Symbolstand", (() => {
+    const m = spannMu(zSmo.svg);
+    return zSmo.svg !== zSm.svg && zSmo.masstab === zSm.masstab && m.length > 0
+      && m.every(r => Math.abs(r.h - rnd(SPANN_MM.mutter_h * E)) < 1e-3
+        && Math.abs(r.b - rnd(SPANN_MM.d * E)) < 1e-3); })());
+  // Der eigentliche Nachweis, dass NUR gezeichnet wurde: alles ausser den mutterfarbenen
+  // Rechtecken ist zwischen "mit Mass" und "ohne Mass" BYTEGLEICH — Stangenzuschnitt, Platten,
+  // Bleche, Bemassung, Tabellen, Schriftfeld und Masstab.
+  ok("[#97] Zuschnitt, Platten, Mengen, Bemassung und Masstab bleiben wertgleich", (() => {
+    const strip = t => t.replace(new RegExp(`<rect[^>]*fill="${Z.FARBE.mutter}"/>`, "g"), "");
+    return zSm.masstab === zSmo.masstab && strip(zSm.svg) === strip(zSmo.svg)
+      && strip(zSmG.svg) === strip(zSmo.svg) && strip(zSm.svg).length > 0; })());
+  // [D-4]/#97 Muss: Modul 1 und Modul 7 zeigen fuer DIESELBE Wand dieselbe Groesse. Verglichen
+  // wird das ZURUECKGERECHNETE Bauteilmass in mm — beidseits 24 mm hoch und 30 mm breit.
+  ok("[#97] Modul 1 und Modul 7 zeigen dieselbe masstaebliche Spannmuttergroesse", (() => {
+    const scM1 = 60 / 200;   // Modul 1: fester Ansichtsmasstab, viewBox-Einheiten je mm
+    const m1 = Z_spannplatteSvg(0, 0, SPANN_EINHEIT.ansicht, scM1,
+      { dicke_mm: WSMG.prestress.rod_kopf_zuschlag_mm,
+        mutter_h_mm: WSMG.prestress.spannmutter_h_mm,
+        mutter_sw_mm: WSMG.prestress.spannmutter_sw_mm });
+    const r = [...m1.matchAll(/width="([-\d.]+)" height="([-\d.]+)"/g)].map(q =>
+      ({ b: +q[1], h: +q[2] }));
+    const m7 = spannMu(zSmG.svg)[0];
+    return r.length === 2 && Math.abs(r[1].h / scM1 - 24) < 1e-9
+      && Math.abs(r[1].b / scM1 - 30) < 1e-9
+      && Math.abs(m7.h * zSmG.masstab - 24) < 1e-2
+      && Math.abs(m7.b * zSmG.masstab - 30) < 1e-2; })());
+  // [D-6]: eine Zeichenableitung — dieselbe Zeichenkette in Vorschau, Druck und SVG-Datei.
+  // Der Exportweg rechnet mit `optionenAusEingaben`; seine Marke wird deshalb aus genau diesen
+  // Optionen gebildet, wie beim Deckenanschluss-Nachweis weiter unten.
+  const marke = (z) => { const mu = spannMu(z.svg);
+    return mu.length ? `<rect x="${mu[0].x}" y="${mu[0].y}" width="${mu[0].b}" `
+      + `height="${mu[0].h}" fill="${Z.FARBE.mutter}"/>` : null; };
+  ok("[#97]/[D-6] Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Spannmutter", (() => {
+    const a3 = marke(Z.zeichnungSvg(WSMG, Z.normOptionen({ format: "a3" })));
+    const ex = marke(Z.zeichnungSvg(WSMG, Z.optionenAusEingaben(eingaben)));
+    return !!a3 && !!ex
+      && Z.zeichnungDokument(WSMG, eingaben, { format: "a3" }).includes(a3)
+      && Z.zeichnungSvgDatei(WSMG, eingaben, { format: "a3" }).includes(a3)
+      && zeichnungHtml(WSMG, eingaben).includes(ex)
+      && zeichnungSvgText(WSMG, eingaben).includes(ex); })());
+  // Der Katalog wird in Modul 7 nie angefasst ([D-1]/N2): das Blatt kennt nur das Wandelement.
+  ok("[#97] Modul 7 importiert dafuer nichts aus dem Katalog",
+    !/sembla-katalog/.test(readFileSync("docs/shared/sembla-zeichnung.js", "utf8")));
 }
 
 // #110: das Einlegeblech des Zwischenspannpunkts steht jetzt AUCH im Blatt — dieselbe

@@ -2315,13 +2315,70 @@ store.setzeKatalog(KATALOG);
       load:{ qk_area:1.0, gammaQ:1.5 } }).wandelement;
     return neu.prestress.spannmutter_h_mm===10 && neu.prestress.spannmutter_sw_mm===17; })());
 
-  // GEZEICHNET wird in diesem Paket nichts: die Wandansicht ist mit und ohne die beiden Masse
-  // zeichenweise dieselbe. Das ist der Unterschied zur Kopplungsmutter, die ihr Mass im
-  // Folgepaket zu #97 bereits benutzt.
-  const svgMit=document.getElementById('plan').innerHTML;
-  setzen('spannmutter','spm-h10-sw17',false); WP.run();
-  ok('[#97] die Wandansicht bleibt unveraendert — gezeichnet wird erst im Folgepaket',
-    document.getElementById('plan').innerHTML===svgMit && svgMit.length>0 && fp()===fp0);
+  // GEZEICHNET wird seit dem Folgepaket zu #97: die Wandansicht zeigt die Spannmutter mit
+  // ihrer realen Einbauhoehe und Schluesselweite. Gefahren wird der ECHTE Ansichtspfad
+  // (`WP.run()` -> `#plan`), gemessen wird am erzeugten SVG, und der Massstab ist der feste
+  // Ansichtsmassstab `WP.ansichtSc()` (#106). `topConn` steht in diesem Block auf 'blech' —
+  // gezeichnet wird also der Kopfblech-Zweig, der `mutterSvg()` unmittelbar aufruft.
+  {
+    const scA=WP.ansichtSc();
+    // Die Spannmutter ist das einzige mutterfarbene Rechteck ausserhalb der Kopplungsgruppe,
+    // das AUF der Wandoberkante sitzt. Die Sechskantschraube am Fuss traegt dieselbe Kennfarbe
+    // ([A-19]) und wird ueber ihre festen Symbolbreiten ausgeschlossen.
+    const muttern=()=>{ const t=document.getElementById('plan').innerHTML
+        .replace(/<rect class="kop"[^>]*\/>/g,'');
+      return [...t.matchAll(new RegExp('<rect x="([-\\d.]+)" y="([-\\d.]+)" width="([-\\d.]+)"'
+        +' height="([-\\d.]+)" fill="'+MONT.SPANN_FARBE.mutter+'"\/>','g'))]
+        .map(m=>({x:+m[1],y:+m[2],b:+m[3],h:+m[4]}))
+        .filter(r=>Math.abs(r.b-MONT.SPANN_MM.schaft_d*MONT.SPANN_EINHEIT.ansicht)>1e-9
+          && Math.abs(r.b-MONT.SPANN_MM.kopf_d*MONT.SPANN_EINHEIT.ansicht)>1e-9); };
+
+    setzen('spannmutter','spm-h10-sw17',true); WP.run();
+    const m17=muttern();
+    ok('[#97] die Wandansicht zeichnet Hoehe und Schluesselweite masstabsgetreu',
+      m17.length>0 && m17.every(r=>Math.abs(r.h-10*scA)<1e-9 && Math.abs(r.b-17*scA)<1e-9));
+
+    // Akzeptanz aus dem Nutzerfluss: ein anderes Produkt zeigt sich sofort in der Ansicht.
+    setzen('spannmutter','spm-h10-sw17',false);
+    setzen('spannmutter','spm-h10-sw13',true); WP.run();
+    const m13=muttern();
+    ok('[#97] ein anderes Produkt zeigt eine sichtbar andere Mutter', (()=>
+      m13.length===m17.length && m13.every(r=>Math.abs(r.b-13*scA)<1e-9)
+      && m13[0].b<m17[0].b && Math.abs(m13[0].h-m17[0].h)<1e-9)());
+
+    // Je Achse ein eigener Rueckfall: `spm-h12` fuehrt eine Hoehe, aber KEINE Schluesselweite.
+    setzen('spannmutter','spm-h10-sw13',false);
+    setzen('spannmutter','spm-h12',true); WP.run();
+    const m12=muttern();
+    ok('[#97] eine fehlende Achse faellt allein auf ihr Symbolmass zurueck',
+      m12.length===m17.length && m12.every(r=>Math.abs(r.h-12*scA)<1e-9
+        && Math.abs(r.b-MONT.SPANN_MM.d*MONT.SPANN_EINHEIT.ansicht)<1e-9));
+
+    // Ohne Auswahl bleibt die Ansicht bit-gleich zum Symbolstand — und die Rechnung ruehrt
+    // sich ueber ALLE Faelle nicht.
+    setzen('spannmutter','spm-h12',false); WP.run();
+    const svgOhne=document.getElementById('plan').innerHTML;
+    ok('[#97] ohne Auswahl bleibt die Ansicht beim Symbolmass (bit-gleich)',
+      muttern().length===m17.length
+      && muttern().every(r=>Math.abs(r.h-MONT.SPANN_MM.mutter_h*MONT.SPANN_EINHEIT.ansicht)<1e-9
+        && Math.abs(r.b-MONT.SPANN_MM.d*MONT.SPANN_EINHEIT.ansicht)<1e-9)
+      && svgOhne.length>0 && fp()===fp0);
+
+    // [D-4]/#97 Muss: Modul 1 und Modul 7 zeigen fuer DIESELBE Wand dieselbe Groesse —
+    // verglichen wird das zurueckgerechnete Bauteilmass in mm.
+    setzen('spannmutter','spm-h10-sw17',true); WP.run();
+    ok('[#97] Modul 1 und Modul 7 zeigen dieselbe Spannmuttergroesse', (()=>{
+      const w=store.aktivesWandelement();
+      const r=muttern()[0];
+      const m7=MONT.mutterSvg(0,0,MONT.SPANN_EINHEIT.blatt,{ auf:true,
+        hoehe_mm:w.prestress.spannmutter_h_mm, sw_mm:w.prestress.spannmutter_sw_mm,
+        sc:1/50 });
+      const b7=+/width="([-\d.]+)"/.exec(m7)[1], h7=+/height="([-\d.]+)"/.exec(m7)[1];
+      return Math.abs(r.h/scA-10)<1e-9 && Math.abs(r.b/scA-17)<1e-9
+        && Math.abs(h7*50-10)<1e-9 && Math.abs(b7*50-17)<1e-9; })());
+    setzen('spannmutter','spm-h10-sw17',false); WP.run();
+    ok('[#97] die Rechnung bleibt ueber alle Faelle unberuehrt', fp()===fp0);
+  }
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
