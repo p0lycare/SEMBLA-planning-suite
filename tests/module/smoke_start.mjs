@@ -1607,7 +1607,9 @@ globalThis.fetch = echtesFetch;
   $('tr-projekt-neu').dispatch('click');
   ok('#68 der Anlage-Dialog belegt den SEMBLA-Standardkatalog vor',
     $('pp-katalog').value === '__vorlage__'
-    && /SEMBLA Standardkatalog \(Repo-Vorlage\)/.test($('pp-katalog').innerHTML));
+    // #118 Seit der Versionierung heisst die Vorbelegung nach ihrer FASSUNG, nicht nach
+    // ihrer Herkunft — „Repo-Vorlage“ unterschied nichts mehr, sobald es mehrere gibt.
+    && /SEMBLA Standardkatalog \(aktuelle Fassung\)/.test($('pp-katalog').innerHTML));
   ok('#68 das Oeffnen selbst schreibt nichts', prjSlot() === prjVor && katSlot() === katVor);
 
   // (b) Abbrechen: Projekt- UND Katalogspeicher bleiben byte-unveraendert
@@ -2762,7 +2764,11 @@ ok('Initialisierung legt kein Wandelement an', frischElemente === null);
 ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   // #108: Der Katalogvorlagen-Knopf ist mit der Pflege nach Modul 10 gezogen; in Modul 0
   // bleiben die Wandvorlage und die Standardkatalog-Vorbelegung der Projektanlage (#68).
-  (src.match(/vorlageText\(/g) || []).length === 3           // 1 Definition + 2 Aufrufe
+  // #118 Dazu kommen zwei Aufrufe fuer die herausgegebenen Fassungen: das Verzeichnis beim
+  // OEFFNEN des Projekt-Dialogs und die gewaehlte Fassung beim SPEICHERN. Beide haengen an
+  // einer Bedienung, nicht am Seitenstart — dass beim Initialisieren nichts geholt wird,
+  // prueft der fetch-Zaehler oben unabhaengig davon.
+  (src.match(/vorlageText\(/g) || []).length === 5           // 1 Definition + 4 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
 
 

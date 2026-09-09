@@ -1232,16 +1232,49 @@
   const PP_VORLAGE = '__vorlage__';
   function ppZeige(text, ok){ $('pp-msg').textContent = text; $('pp-msg').className = 'msg ' + (ok ? 'ok' : 'err'); }
 
+  // #118 Vorsatz eines Auswahlwerts, der auf eine HERAUSGEGEBENE, in diesem Browser noch
+  // NICHT geladene Fassung zeigt. Sie wird beim Speichern zuerst geladen und dann
+  // zugeordnet — sonst waere in Modul 0 nur zuordenbar, was man vorher in Modul 10
+  // eigens geladen hat, und die Fassungsliste waere in den beiden Modulen verschieden.
+  const PP_FASSUNG = '__fassung__:';
+  let PP_MANIFEST = null;        // flüchtiger Lesecache; nie gespeichert
+
+  /**
+   * Das Vorlagenverzeichnis nachladen und die Auswahl EINMAL neu zeichnen (#118).
+   * Fehlt es, bleibt die Auswahl genau die bisherige — gemeldet wird das nicht, weil
+   * ohne Verzeichnis nichts fehlt, was hier zuordenbar waere.
+   */
+  async function ppFassungenNachladen(gewaehlt, mitVorlage){
+    if (PP_MANIFEST) return;
+    try { PP_MANIFEST = KAT.parseVorlagenManifest(await vorlageText(KAT.VORLAGEN_MANIFEST_PFAD)); }
+    catch { return; }
+    if (!ppOverlay.hidden) ppKatalogListe(gewaehlt, mitVorlage);
+  }
+
   function ppKatalogListe(gewaehlt, mitVorlage){
     const alle = store.listeKataloge();
+    // #118 Dieselbe Gliederung wie in Modul 10 — die Marken „Vorlage“/„zugeordnet“ stehen
+    // dort im Kopfbereich, hier traegt die Zeile nur Name und Anzahl.
+    const opt = (k) => `<option value="${esc(k.id)}"${k.id === gewaehlt ? ' selected' : ''}>`
+      + `${esc(k.name)} (${(k.produkte || []).length} Produkte)</option>`;
+    // #102: Die Vorlagenressource wird an ihrer kanonischen Kennung erkannt — nie am Namen.
+    const vorlagen = alle.filter(k => KAT.istVorlagenKatalog(k));
+    const eigene = alle.filter(k => !KAT.istVorlagenKatalog(k));
+    // Herausgegebene Fassungen, die hier noch gar nicht liegen: sonst waere eine neue
+    // Fassung in Modul 0 unsichtbar, obwohl Modul 10 sie anbietet.
+    const offen = ((PP_MANIFEST && PP_MANIFEST.fassungen) || [])
+      .filter(f => !alle.some(k => String(k.id) === f.id));
     $('pp-katalog').innerHTML =
-      (mitVorlage ? `<option value="${PP_VORLAGE}">SEMBLA Standardkatalog (Repo-Vorlage)</option>` : '')
+      (mitVorlage ? `<option value="${PP_VORLAGE}">SEMBLA Standardkatalog (aktuelle Fassung)</option>` : '')
       + '<option value="">– kein Katalog zugeordnet –</option>'
-      // #102: Die Vorlagenressource wird an ihrer kanonischen Kennung erkannt — nie am
-      // Namen — und in der Auswahl als unveraenderlich ausgewiesen.
-      + alle.map(k => `<option value="${esc(k.id)}"${k.id === gewaehlt ? ' selected' : ''}>`
-        + `${esc(k.name)} (${(k.produkte || []).length} Produkte)`
-        + (KAT.istVorlagenKatalog(k) ? ' — unveränderliche Vorlage' : '') + '</option>').join('');
+      + (vorlagen.length ? '<optgroup label="Standardkataloge (Vorlagen, nur lesen)">'
+          + vorlagen.map(opt).join('') + '</optgroup>' : '')
+      + (eigene.length ? '<optgroup label="Eigene Kataloge">'
+          + eigene.map(opt).join('') + '</optgroup>' : '')
+      + (offen.length ? '<optgroup label="Weitere Fassungen (werden beim Speichern geladen)">'
+          + offen.map(f => `<option value="${esc(PP_FASSUNG + f.pfad)}">`
+            + `SEMBLA Standardkatalog ${esc(f.version)}`
+            + (f.datum ? ` vom ${esc(f.datum)}` : '') + '</option>').join('') + '</optgroup>' : '');
     $('pp-katalog').value = mitVorlage ? PP_VORLAGE : (gewaehlt || '');
     $('pp-katalog-hinweis').innerHTML = mitVorlage
       ? 'Vorbelegt ist der mitgelieferte <b>SEMBLA-Standardkatalog</b> (#68) — geladen und diesem '
@@ -1270,6 +1303,9 @@
     ppKatalogListe(m ? (m.katalog || '') : '', !m);
     ppZeige('', true);
     ppOverlay.hidden = false;
+    // #118 Die herausgegebenen Fassungen kommen aus einer Datei; die Auswahl steht sofort
+    // und wird ergaenzt, sobald das Verzeichnis gelesen ist.
+    ppFassungenNachladen(m ? (m.katalog || '') : '', !m);
   }
   function ppSchliesse(){ ppOverlay.hidden = true; ppId = null; }
 
@@ -1301,8 +1337,23 @@
     if (!name) { ppZeige('Bitte einen Projektnamen eingeben.', false); return; }
     const patch = {};
     for (const [key, feld] of Object.entries(PP_FELDER)) patch[key] = $(feld).value;
-    const wahl = $('pp-katalog').value;
+    let wahl = $('pp-katalog').value;
     const mitVorlage = !ppId && wahl === PP_VORLAGE;
+    // #118 Eine noch nicht geladene Fassung wird ZUERST geladen — danach ist sie eine
+    // gewoehnliche gespeicherte Ressource und der Rest des Weges ist unveraendert
+    // (Vorpruefung, Zuordnung). Zugeordnet wird beim Laden ausdruecklich NICHTS (#108);
+    // die Zuordnung entsteht erst unten ueber `setzeKatalogRef`. Schlaegt das Laden fehl,
+    // wird gemeldet und NICHTS gespeichert — geraten wird kein Katalog ([L-12]).
+    if (String(wahl).startsWith(PP_FASSUNG)) {
+      const pfad = String(wahl).slice(PP_FASSUNG.length);
+      try {
+        const k = store.ladeVorlagenKatalog(await vorlageText(pfad), pfad, { zuordnen: false });
+        wahl = String(k.id);
+      } catch (e) {
+        ppZeige('Fassung nicht geladen (' + fehlerText(e) + ') — es wurde nichts gespeichert.', false);
+        return;
+      }
+    }
     // #115 VORPRUEFUNG des Zuordnungswechsels ([L-12]): wechselt ein BESTEHENDES Projekt
     // auf einen anderen Katalog, kann eine dort gewaehlte Produkt-Kennung in der neuen
     // Fassung fehlen — die betroffenen Positionen bleiben dann unbepreist. Gerechnet wird
