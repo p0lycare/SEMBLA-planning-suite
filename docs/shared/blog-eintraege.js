@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-13",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 117,
+    titel: "Sammeländerung im Geschosseditor rechnet jede Wand jetzt vollständig neu",
+    testbitte: "Im Geschosseditor mehrere Wände auswählen, in „Gemeinsam bearbeiten…“ "
+      + "nur den Überstand des Reststücks ändern und danach Modul 4 öffnen: "
+      + "Zuschnitt und Stückliste passen sofort zum neuen Überstand, ohne „Auslegen“ "
+      + "in Modul 1.",
+  },
+  {
     id: "chg-20260909-12",
     datum: "2026-09-09",
     typ: "fix",

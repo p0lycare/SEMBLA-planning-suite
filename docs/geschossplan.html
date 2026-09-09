@@ -2474,8 +2474,17 @@ function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 // Sammel-Editor hier auch — über denselben `rechneWandelement()`-Pfad, damit im
 // gespeicherten JSON nicht die alte Zerlegung stehen bleibt (der Fehler aus #15/#62).
 //
-// Ersetzt wird dabei AUSSCHLIESSLICH der abgeleitete `prestress`-Eingang der jeweils
-// ANGEKREUZTEN Rolle — nichts sonst. Die Daten kommen aus den gemeinsamen Bausteinen
+// #117 Gebildet werden sie für JEDE neu gerechnete Wand und für ALLE fünf Stellen aus
+// der dann geltenden Produktauswahl (`vorspannEingaenge`) — NICHT mehr nur für die im
+// Popup angekreuzten. Vorher rechnete der Editor mit den im Wandelement GESPEICHERTEN
+// Eingängen weiter und ersetzte nur die angekreuzte Stelle; ein veralteter oder gar
+// fehlender Satz blieb damit stehen, und eine reine Überstandsänderung ergab eine
+// Zerlegung aus alten Eingängen (unsinnig kurze Sonderzuschnitte), die erst „Auslegen"
+// in Modul 1 heilte. `vorgaben()` in Modul 1 baut `prestress` bei jeder Auslegung
+// vollständig aus derselben Auswahl auf und übernimmt vom Wandelement nichts — genau
+// das ist jetzt auch hier der Fall.
+//
+// Die Daten kommen unverändert aus den gemeinsamen Bausteinen
 // (`WA.vorspannVorgaben`, `KAT.produkteZuRolle`); das Maßfeld wird je Rolle GELESEN
 // und nicht wiederholt. ⚠ Nachziehpunkt [P-6]: die beiden Einbaulagen-Beziehungen aus
 // #92 (Fußoffset = halbe Kopplungsmutterhöhe, Kopfzuschlag = Spannplattendicke) stehen
@@ -2483,7 +2492,20 @@ function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 // Ein gemeinsamer Baustein dafür fehlt noch; die Rollen führen
 // bewusst kein `mass` ([P-14]), weshalb `sembla-katalog.js` sie nicht kennt.
 const ROLLE_RECHNUNG = {
-  rod_std: (eing, kat) => ({ rod_lengths_mm: WA.vorspannVorgaben(eing, kat).rod_lengths_mm.slice() }),
+  rod_std: (eing, kat) => {
+    // #117 Eine LEERE Auswahl setzt das Feld NICHT. Seit die Ableitung bei jeder
+    // Neurechnung für alle Stellen läuft, würde ein leeres Feld einen gespeicherten
+    // Satz LÖSCHEN statt ihn stehen zu lassen ([P-9]) — Modul 1 lässt es aus demselben
+    // Grund weg (`vorgaben()`: `rodL.length ? … : {}`), und der Core nutzt dann seinen
+    // dokumentierten Altstand-Fallback.
+    const l = WA.vorspannVorgaben(eing, kat).rod_lengths_mm;
+    return l.length ? { rod_lengths_mm: l.slice() } : {};
+  },
+  // [Z-6] Das Reststück folgt Modul 1 SATZWEISE: liegt kein eindeutiges Reststückprodukt
+  // vor, ist `0` die kanonische Aussage „kein Reststück gewählt" (`vorspannVorgaben`) und
+  // keine erfundene Länge — der offene obere Abschluss steht sichtbar in
+  // `validation.zuschnitt_konflikte`. Ohne Katalog wird gar nichts abgeleitet, dann
+  // bleibt der gespeicherte Eingang der Wand unangetastet (`vorspannEingaenge`).
   rod_rest: (eing, kat) => ({ rod_rest_mm: WA.vorspannVorgaben(eing, kat).rod_rest_mm }),
   blech_boden: (eing, kat) => {
     const l = rollenMasse(eing, kat, 'blech_boden');
@@ -2508,6 +2530,31 @@ const ROLLE_RECHNUNG = {
     return d != null ? { rod_kopf_zuschlag_mm: d } : {};
   },
 };
+
+/**
+ * Die abgeleiteten Vorspann-Eingänge EINER Wand — vollständig aus ihrer Produktauswahl
+ * (#117).
+ *
+ * Gebildet wird der Satz für ALLE Stellen aus `ROLLE_RECHNUNG`, nicht nur für die im
+ * Popup angekreuzten: genau das tut `vorgaben()` in Modul 1 bei jeder Auslegung. Ein
+ * Maß, das sich aus der Auswahl nicht eindeutig ergibt, lässt sein Feld WEG — dann
+ * bleibt der Eingang stehen, den das gespeicherte Wandelement mitbringt, und es wird
+ * keines erfunden ([P-9]).
+ *
+ * Ohne wirksamen Bauteilkatalog ([L-12]) wird GAR NICHTS abgeleitet (`null`): eine
+ * Ableitung aus einem fehlenden Katalog wäre keine Aussage, sondern eine Löschung.
+ *
+ * @param {any} eing `eingaben` der Wand, wie sie NACH der Übernahme gelten
+ * @param {any} kat zugeordneter Bauteilkatalog oder null
+ * @param {string} topConn oberer Anschluss dieser Wand ('blech'|'spannplatte')
+ * @returns {Record<string, any>|null}
+ */
+function vorspannEingaenge(eing, kat, topConn){
+  if (!kat) return null;
+  const pp = {};
+  for (const fn of Object.values(ROLLE_RECHNUNG)) Object.assign(pp, fn(eing, kat, topConn));
+  return pp;
+}
 
 /**
  * Ein Maßfeld der gewählten Produkte einer Rolle: GENAU EIN Wert, sonst `null`.
@@ -2849,11 +2896,14 @@ function sammelSync(){
  *     Zielwerten; ein Abbruch ändert weder Wandspeicher noch Undo/Redo-Stapel.
  *  3. RECHNEN: erst ALLE neuen Wandelemente vollständig. Ist mindestens ein
  *     core-relevantes Merkmal angekreuzt (Höhe, Seitenfunktionen, oberer
- *     Anschluss, Kopfblech-Modullänge, Überstand), läuft jede Wand über
- *     `rechneWandelement` — denselben Engine-Pfad wie #56/#75. Sind nur
- *     Windsituation, Brandschutzklasse oder Abdichtung angekreuzt, hängen die
- *     nicht am Core und brauchen keine Neurechnung. Scheitert eines, ist nichts
- *     geschrieben.
+ *     Anschluss, Kopfblech-Modullänge, Überstand) oder eine Verwendungsstelle,
+ *     läuft jede Wand über `rechneWandelement` — denselben Engine-Pfad wie
+ *     #56/#75 — und bekommt dabei ihre abgeleiteten Vorspann-Eingänge
+ *     VOLLSTÄNDIG aus der dann geltenden Produktauswahl (#117,
+ *     `vorspannEingaenge`), so wie Modul 1 sie bei jeder Auslegung bildet. Sind
+ *     nur Windsituation, Brandschutzklasse oder Abdichtung angekreuzt, hängen
+ *     die nicht am Core und brauchen keine Neurechnung. Scheitert eines, ist
+ *     nichts geschrieben.
  *  4. SCHREIBEN mit Rollback: scheitert ein Speichervorgang, werden alle schon
  *     geschriebenen Wände aus ihren Momentaufnahmen zurückgesetzt — es bleibt
  *     kein gemischter Bestand aus alten und neuen Werten.
@@ -2861,7 +2911,10 @@ function sammelSync(){
  * Verwendungsstellen werden je Wand über `store.setzeProduktrolle` gesetzt, und die
  * fünf maßwirksamen Rollen ziehen dieselbe Neurechnung nach, die Modul 1 nach [Z-1]
  * fährt — über denselben `rechneWandelement()`-Pfad, mit den Eingängen aus
- * `WA.vorspannVorgaben`/`KAT.produkteZuRolle`.
+ * `WA.vorspannVorgaben`/`KAT.produkteZuRolle`. Seit #117 werden diese Eingänge bei
+ * jeder Neurechnung für ALLE maßwirksamen Stellen aus der geltenden Auswahl der
+ * jeweiligen Wand gebildet — nicht nur für die angekreuzten —, damit im gespeicherten
+ * Wandelement dieselbe Zerlegung steht, die Modul 1 mit „Auslegen" liefert.
  *
  * Der ganze Vorgang ist GENAU EIN Undo/Redo-Schritt über alle betroffenen
  * Wandspeicher-Einträge — samt Produktauswahl, weil die Momentaufnahmen `eingaben`
@@ -2973,25 +3026,28 @@ function sammelAnwenden(){
     if (feld.setze) patch[feld.id] = wert;
   }
   const arbeit = [];
+  const rechnen = coreAn || rollenAktiv.length > 0;
   for (const { id, el } of eintraege) {
     let neu;
     try {
-      // #111 Die maßwirksamen Verwendungsstellen gehen als abgeleiteter
+      // #111/#117 Die maßwirksamen Verwendungsstellen gehen als abgeleiteter
       // `prestress`-Patch in DIESELBE Vorgabe. Gebildet wird er aus den Eingaben, wie
       // sie NACH der Übernahme gelten — ohne sie zu schreiben —, damit die Rechnung
       // dieselbe Auswahl sieht wie der gleich folgende Schreibvorgang.
-      let pp = null;
-      if (massAn) {
-        const eNeu = eingabenMitRollen(id, rollenAktiv);
-        const topConn = (aktiv.find(a => a.feld.id === 'topconn') || {}).wert
-          || (((el.wandelement.prestress || {}).top_connection === 'blech') ? 'blech' : 'spannplatte');
-        pp = {};
-        for (const { rolle } of rollenAktiv) {
-          const fn = ROLLE_RECHNUNG[rolle.id];
-          if (fn) Object.assign(pp, fn(eNeu, kat, topConn));
-        }
-      }
-      neu = (coreAn || massAn)
+      //
+      // #117 Gebildet wird er für ALLE fünf Stellen und für JEDE neu gerechnete Wand
+      // (nicht mehr nur bei angekreuzter maßwirksamer Rolle): sonst rechnete eine reine
+      // Merkmalsänderung — etwa nur der Überstand — mit den im Wandelement
+      // gespeicherten, womöglich veralteten Eingängen weiter. Die angekreuzte
+      // Produktmenge liegt dabei über der gespeicherten Auswahl (`eingabenMitRollen`),
+      // für die übrigen Stellen gilt die gespeicherte.
+      const pp = rechnen
+        ? vorspannEingaenge(eingabenMitRollen(id, rollenAktiv), kat,
+            (aktiv.find(a => a.feld.id === 'topconn') || {}).wert
+            || (((el.wandelement.prestress || {}).top_connection === 'blech')
+                ? 'blech' : 'spannplatte'))
+        : null;
+      neu = rechnen
         ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch, pp)
         : JSON.parse(JSON.stringify(el.wandelement));
     } catch (e) {
@@ -3032,7 +3088,7 @@ function sammelAnwenden(){
   }
   buchen(vor, [], schnappschuesse);
   zeige(`${ids.length} Wände gemeinsam geändert: ${[...teile, ...rollenTeile].join(' · ')}. `
-    + ((coreAn || massAn)
+    + (rechnen
       ? 'Jedes Wandelement wurde über den Auslegungspfad von Modul 1 neu gerechnet. ' : '')
     + 'Länge, Lage, Öffnungen und Bemaßungen sind unverändert. Rückgängig: Strg+Z.', true);
   render();

@@ -4849,6 +4849,366 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
 }
 
+// ==========================================================================
+//  Issue #117 — die Sammelaenderung rechnet jede Wand VOLLSTAENDIG neu
+// ==========================================================================
+// Der Fehler: der Sammel-Editor rechnete mit den im Wandelement GESPEICHERTEN
+// Vorspann-Eingaengen weiter und bildete sie nur fuer die im Popup angekreuzten
+// Verwendungsstellen neu. Eine reine Ueberstandsaenderung ergab damit eine
+// Zerlegung aus veralteten Eingaengen (unsinnig kurze Sonderzuschnitte); erst
+// „Auslegen" in Modul 1 heilte den Stand, weil `vorgaben()` dort `prestress` bei
+// JEDER Auslegung vollstaendig aus der Produktauswahl aufbaut.
+//
+// Gefahren wird der ECHTE Pfad: Projekt und Katalog aufsetzen, Waende zeichnen,
+// ihre Wandelemente auf einen veralteten bzw. luecken haften Eingangssatz bringen,
+// im Popup NUR den Ueberstand ankreuzen, uebernehmen — und den gespeicherten Stand
+// gegen die Modul-1-Auslegung mit denselben Eingaben und derselben Produktauswahl
+// halten (Segmente, Stuecke, Bedarf).
+{
+  const katText117 = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const mappe117 = store.fuegeProjektHinzu('Projekt 117', { geschoss: 'EG117', hoehe_mm: 2600 });
+  const gs117 = MAPPE.alleGeschosse(mappe117)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs117);
+  store.importiereKatalogText(katText117);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const we117 = (id) => store.holeElement(id).wandelement;
+  const stuecke117 = (w) => (w.tension_columns || [])
+    .flatMap(c => (c.segments || []).flatMap(sg => sg.stuecke || []));
+  /** Genau die Zahlen, um die es geht: Segmentgrenzen, Stuecke und Bedarf. */
+  const zerlegung117 = (w) => JSON.stringify((w.tension_columns || []).map(c =>
+    (c.segments || []).map(sg => ({ z0: sg.z0_mm, z1: sg.z1_mm, bedarf: sg.bedarf_mm,
+      ueber: sg.ueberstand_mm, st: (sg.stuecke || []).map(s => [s.art, s.len_mm]) }))));
+
+  const neueste117 = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const a117 = neueste117().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const b117 = neueste117().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2540, y: 4060 });   const c117 = neueste117().id;
+  await warte();
+  const ids117 = [a117, b117, c117];
+  ok('#117 Pruefaufbau: drei Waende mit katalogbasierter Produktauswahl ([P-18])',
+    ids117.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'rod_std').length === 2)
+    && !!store.holeKatalog() && store.katalogStatus().status === 'ok');
+
+  // Die Wand einmal ueber den Auslegungspfad mit VERAENDERTEN Eingaengen neu rechnen
+  // und speichern — so entsteht ein Altbestand, dessen Zerlegung wirklich zu seinen
+  // (falschen) Eingaengen passt, statt eines von Hand verbogenen JSON.
+  const alteWand117 = (id, mut) => {
+    const el = store.holeElement(id);
+    const w = el.wandelement;
+    const ps = { ...(w.prestress || {}) };
+    mut(ps);
+    const vorg = { name: el.name, length_mm: w.length_mm, height_mm: w.height_mm,
+      openings: (w.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+      sides: w.sides, steps: (w.steps || []).map(s => ({ ...s })),
+      interlocks: (w.interlocks || []).map(i => ({ ...i })),
+      prestress: ps, load: { qk_area: 1.00, gammaQ: 1.50 },
+      material: w.verification && w.verification.material };
+    const neu = (ps.force_kN ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg)).wandelement;
+    neu.wandtyp = w.wandtyp; neu.abdichtung = w.abdichtung; neu.brandklasse = w.brandklasse;
+    store.speichere(el.name, neu, id);
+  };
+  // A/B: der Altstand-Fallback des Cores steht als Standardlaenge im Element, das
+  // Reststueck fehlt, ebenso Bodenblech-Vorratssatz und die Einbaulagen (#92).
+  // C: die Felder fehlen ganz — ein Element von VOR #15/#62.
+  const veralten117 = (ps) => {
+    ps.rod_lengths_mm = [1100]; ps.rod_rest_mm = 0;
+    delete ps.blech_lengths_mm; delete ps.rod_fuss_offset_mm; delete ps.rod_kopf_zuschlag_mm;
+  };
+  const entleeren117 = (ps) => {
+    delete ps.rod_lengths_mm; delete ps.rod_mm; delete ps.rod_rest_mm;
+    delete ps.blech_lengths_mm; delete ps.rod_fuss_offset_mm; delete ps.rod_kopf_zuschlag_mm;
+  };
+  alteWand117(a117, veralten117);
+  alteWand117(b117, veralten117);
+  alteWand117(c117, entleeren117);
+  await warte();
+  const vorElemente117 = ids117.map(id => JSON.parse(JSON.stringify(store.holeElement(id))));
+  ok('#117 Pruefaufbau: die gespeicherten Eingaenge sind veraltet bzw. fehlen — '
+    + 'die Produktauswahl ist vollstaendig',
+    JSON.stringify(we117(a117).prestress.rod_lengths_mm) === '[1100]'
+    && JSON.stringify(we117(b117).prestress.rod_lengths_mm) === '[1100]'
+    && we117(c117).prestress.rod_lengths_mm.length === 1
+    && we117(c117).prestress.rod_lengths_mm[0] === 1100      // Altstand-Fallback des Cores
+    && ids117.every(id => (we117(id).prestress.rod_rest_mm || 0) === 0
+      && (we117(id).prestress.rod_fuss_offset_mm || 0) === 0)
+    && ids117.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'rod_rest').length === 1
+      && KAT.rollenIds(store.holeProdukte(1, id), 'blech_boden').length > 1));
+
+  // Die Ableitung von MODUL 1 (`vorgaben()` in wandplanung.html) — satzweise
+  // nachgebaut, damit hier wirklich gegen die Modul-1-Auslegung geprueft wird und
+  // nicht gegen den Editor selbst.
+  const mass117 = (eing, kat, rolle, feld) => {
+    const v = [...new Set(KAT.produkteZuRolle(eing, kat, rolle).produkte
+      .map(p => +p[feld]).filter(n => Number.isFinite(n) && n > 0))];
+    return v.length === 1 ? v[0] : null;
+  };
+  const hwModul1 = (id, kat, ueberMm, topConn) => {
+    const eing = store.holeElement(id).eingaben || {};
+    const spez = KAT.produktSpezifikation(eing, kat);
+    const hw = {};
+    if (spez.rod.laengen_mm.length) hw.rod_lengths_mm = spez.rod.laengen_mm.slice();
+    hw.rod_rest_mm = (spez.rod.rest_mm != null) ? spez.rod.rest_mm : 0;
+    hw.rod_overhang_mm = ueberMm;
+    const fo = mass117(eing, kat, 'kupplung', 'hoehe_mm');
+    if (fo != null) hw.rod_fuss_offset_mm = fo / 2;
+    if (topConn !== 'blech') {
+      const kz = mass117(eing, kat, 'spannplatte', 'dicke_mm');
+      if (kz != null) hw.rod_kopf_zuschlag_mm = kz;
+    }
+    const bd = mass117(eing, kat, 'blech_boden', 'dicke_mm');
+    if (bd != null) hw.blech_dicke_mm = bd;
+    if (topConn === 'blech') {
+      const kbd = mass117(eing, kat, 'blech_kopf', 'dicke_mm');
+      if (kbd != null) hw.kopfblech_dicke_mm = kbd;
+    }
+    const felder = (KAT.rolle('blech_boden').mass || {}).felder || [];
+    const bl = [...new Set(KAT.produkteZuRolle(eing, kat, 'blech_boden').produkte
+      .map(x => felder.map(f => +x[f]).find(n => Number.isFinite(n) && n > 0))
+      .filter(n => Number.isFinite(n) && n > 0))];
+    if (bl.length) hw.blech_lengths_mm = bl;
+    return hw;
+  };
+  /** Die Modul-1-Auslegung aus dem Stand VOR der Sammelaenderung. */
+  const sollWe117 = (elVor, hw) => {
+    const w = elVor.wandelement;
+    const vorg = { name: elVor.name, length_mm: w.length_mm, height_mm: w.height_mm,
+      openings: (w.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+      sides: w.sides, steps: (w.steps || []).map(s => ({ ...s })),
+      interlocks: (w.interlocks || []).map(i => ({ ...i })),
+      prestress: { ...(w.prestress || {}), ...hw },
+      load: { qk_area: 1.00, gammaQ: 1.50 },
+      material: w.verification && w.verification.material };
+    return (vorg.prestress.force_kN
+      ? ENG.nachweisPruefen(vorg) : ENG.autoAuslegung(vorg)).wandelement;
+  };
+
+  const confirmEcht117 = globalThis.confirm;
+  let confirmText117 = null;
+  globalThis.confirm = (t) => { confirmText117 = String(t); return true; };
+
+  const waehle117 = () => {
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+  };
+
+  // (a) Nicht-Ziel: ohne jedes Haekchen schreibt der Lauf weiterhin nichts.
+  waehle117();
+  await warte();
+  ok('#117 Pruefaufbau: drei Waende ausgewaehlt, Popup offen',
+    GP.zustand.auswahl.length === 3 && $('gp-sammelblatt').hidden === false);
+  {
+    const speicherVor = localStorage.getItem('sembla:elemente');
+    const undoVor = GP.undoStand.undo;
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#117 (Muss 5) ohne angekreuztes Merkmal und ohne Verwendungsstelle wird '
+      + 'weiterhin nichts geschrieben',
+      /Nichts zu (ü|ue)bernehmen/.test($('gp-msg').textContent)
+      && localStorage.getItem('sembla:elemente') === speicherVor
+      && GP.undoStand.undo === undoVor);
+  }
+
+  // (b) Akzeptanz 1 / Muss 1+3: NUR der Ueberstand wird angekreuzt.
+  const undoVor117 = GP.undoStand.undo;
+  $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+  $('gp-sammel-ueber').value = '25';
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#117 die Bestaetigung nennt GENAU den Ueberstand — keine Verwendungsstelle',
+    /(Ü|Ue|berstand)/.test(confirmText117 || '') && /25 mm/.test(confirmText117 || '')
+    && !/Gewindestange →/.test(confirmText117 || ''));
+  ok('#117 (Akzeptanz 1) danach traegt jede Wand die Kataloglaengen und das '
+    + 'Reststueck — der Altstand-Fallback ist weg',
+    ids117.every(id => JSON.stringify(we117(id).prestress.rod_lengths_mm) === '[1000,920]'
+      && we117(id).prestress.rod_rest_mm === 100
+      && we117(id).prestress.rod_overhang_mm === 25)
+    && ids117.every(id => !zerlegung117(we117(id)).includes('1100')));
+  ok('#117 (Muss 1) auch die nicht angekreuzten masswirksamen Stellen sind frisch '
+    + 'aus der Produktauswahl abgeleitet',
+    ids117.every((id, i) => {
+      const p = we117(id).prestress;
+      // Verglichen wird gegen den Stand, den die MODUL-1-Auslegung mit derselben
+      // Auswahl erzeugt — der Core normalisiert die Vorratssaetze (`normLaengen`),
+      // der rohe `hw`-Satz waere also nicht der richtige Vergleichswert.
+      const soll = sollWe117(vorElemente117[i],
+        hwModul1(id, store.holeKatalog(), 25, 'spannplatte')).prestress;
+      const vor = vorElemente117[i].wandelement.prestress;
+      return JSON.stringify(p.blech_lengths_mm) === JSON.stringify(soll.blech_lengths_mm)
+        && p.rod_fuss_offset_mm === soll.rod_fuss_offset_mm
+        && p.rod_kopf_zuschlag_mm === soll.rod_kopf_zuschlag_mm
+        && p.blech_dicke_mm === soll.blech_dicke_mm
+        // … und das war vorher nachweislich NICHT der Stand: der Fussoffset (#92)
+        // hat keinen Core-Fallback und stand im Altbestand auf 0.
+        && p.rod_fuss_offset_mm > 0 && (vor.rod_fuss_offset_mm || 0) === 0;
+    }));
+  ok('#117 (Akzeptanz 1 / Muss 3) das gespeicherte Wandelement ist wertgleich zur '
+    + 'MODUL-1-Auslegung mit denselben Eingaben und derselben Produktauswahl',
+    ids117.every((id, i) => {
+      const soll = sollWe117(vorElemente117[i],
+        hwModul1(id, store.holeKatalog(), 25, 'spannplatte'));
+      const ist = we117(id);
+      return zerlegung117(ist) === zerlegung117(soll)
+        && JSON.stringify(ist.bom) === JSON.stringify(soll.bom)
+        && JSON.stringify(ist.base_plate) === JSON.stringify(soll.base_plate)
+        && JSON.stringify(ist.top_plate) === JSON.stringify(soll.top_plate);
+    }));
+  // Gegenprobe mit Zaehnen: haette der Editor wie vorher mit den GESPEICHERTEN
+  // Eingaengen weitergerechnet, waere die Zerlegung eine andere.
+  ok('#117 die Pruefung hat Zaehne — mit den alten Eingaengen kaeme eine ANDERE '
+    + 'Zerlegung heraus',
+    ids117.every((id, i) => zerlegung117(we117(id))
+      !== zerlegung117(sollWe117(vorElemente117[i], { rod_overhang_mm: 25 }))));
+  ok('#117 (Muss 6) die Sammelaenderung bleibt GENAU EIN Rueckgaengig-Schritt',
+    GP.undoStand.undo === undoVor117 + 1);
+  ok('#117 (must-not 4) die Produktauswahl selbst ist unberuehrt geblieben',
+    ids117.every((id, i) => JSON.stringify(store.holeElement(id).eingaben)
+      === JSON.stringify(vorElemente117[i].eingaben)));
+  {
+    const laengenVor = vorElemente117.map(e => e.wandelement.length_mm);
+    ok('#117 (must-not 3) Laenge, Hoehe und Lage bleiben unangetastet',
+      ids117.every((id, i) => we117(id).length_mm === laengenVor[i]
+        && we117(id).height_mm === vorElemente117[i].wandelement.height_mm)
+      && ids117.every(id => !!MAPPE.findeWand(store.holeMappe(), id).wand.lage));
+  }
+  GP.undo();
+  await warte();
+  ok('#117 Rueckgaengig stellt alle drei Wandelemente wieder her',
+    ids117.every((id, i) => JSON.stringify(we117(id))
+      === JSON.stringify(vorElemente117[i].wandelement)));
+  GP.redo();
+  await warte();
+  ok('#117 Wiederholen setzt die vollstaendige Neurechnung wieder ein',
+    ids117.every(id => we117(id).prestress.rod_rest_mm === 100
+      && we117(id).prestress.rod_overhang_mm === 25));
+
+  // (c) Akzeptanz 2: die angekreuzte Verwendungsstelle „Gewindestange" gilt, die
+  //     uebrigen masswirksamen Stellen kommen je Wand aus IHRER Auswahl.
+  {
+    const rid117 = (r) => 'gp-sammel-rolle-' + r;
+    const hake117 = (r, pid, an = true) => $('gp-sammel-rollen').dispatch('change',
+      { target: { checked: an, dataset: { prolle: r, pid } } });
+    // Wand C bekommt einen eigenen Bodenblech-Vorratssatz — so ist nachweisbar, dass
+    // die nicht angekreuzte Stelle je Wand aus DEREN Auswahl kommt.
+    const bleche117 = KAT.rollenOptionen(store.holeKatalog(), 'blech_boden', []).map(o => o.id);
+    store.setzeProduktrolle('blech_boden', [bleche117[0]], a117);
+    store.setzeProduktrolle('blech_boden', [bleche117[0]], b117);
+    store.setzeProduktrolle('blech_boden', [bleche117[bleche117.length - 1]], c117);
+    await warte();
+    waehle117();
+    await warte();
+    $(rid117('rod_std') + '-an').checked = true;
+    $(rid117('rod_std') + '-an').dispatch('change');
+    const stangen117 = KAT.rollenOptionen(store.holeKatalog(), 'rod_std', []);
+    const einzeln117 = stangen117.find(o => /1000/.test(o.name + o.merkmale)) || stangen117[0];
+    for (const o of stangen117) hake117('rod_std', o.id, false);
+    hake117('rod_std', einzeln117.id);
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#117 (Akzeptanz 2 / Muss 2) die angekreuzte Verwendungsstelle setzt genau '
+      + 'ihre Standardlaenge',
+      ids117.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'rod_std').join()
+        === einzeln117.id)
+      && ids117.every(id => we117(id).prestress.rod_lengths_mm.length === 1));
+    ok('#117 (Akzeptanz 2 / Muss 1) die uebrigen masswirksamen Stellen kommen je Wand '
+      + 'aus IHRER gespeicherten Auswahl',
+      ids117.every(id => {
+        const p = we117(id).prestress;
+        const soll = sollWe117({ name: store.holeElement(id).name, wandelement: we117(id) },
+          hwModul1(id, store.holeKatalog(), 25, 'spannplatte')).prestress;
+        return JSON.stringify(p.blech_lengths_mm) === JSON.stringify(soll.blech_lengths_mm);
+      })
+      && JSON.stringify(we117(c117).prestress.blech_lengths_mm)
+        !== JSON.stringify(we117(a117).prestress.blech_lengths_mm));
+    ok('#117 (Muss 3) auch hier ist der gespeicherte Stand die Modul-1-Auslegung',
+      ids117.every(id => {
+        const elVor = { name: store.holeElement(id).name, wandelement: we117(id) };
+        const soll = sollWe117(elVor, hwModul1(id, store.holeKatalog(), 25, 'spannplatte'));
+        return zerlegung117(we117(id)) === zerlegung117(soll)
+          && JSON.stringify(we117(id).bom) === JSON.stringify(soll.bom);
+      }));
+  }
+
+  // (d) Akzeptanz 3 / Muss 4: ohne zugeordneten Katalog wird NICHTS abgeleitet —
+  //     die gespeicherten Eingaenge der Wand bleiben, wie sie waren.
+  {
+    const mappeOhne = store.fuegeProjektHinzu('Projekt 117 ohne Katalog',
+      { geschoss: 'EG117b', hoehe_mm: 2600 });
+    const gsOhne = MAPPE.alleGeschosse(mappeOhne)[0].geschoss.id;
+    store.setzeAktivesGeschoss(gsOhne);
+    await warte();
+    ok('#117 Pruefaufbau: dem neuen Projekt ist kein Bauteilkatalog zugeordnet ([L-12])',
+      store.katalogStatus().status !== 'ok' && !store.holeKatalog());
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const d117 = neueste117().id;
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const e117 = neueste117().id;
+    await warte();
+    const paar117 = [d117, e117];
+    for (const id of paar117) alteWand117(id, (ps) => { ps.rod_lengths_mm = [1100]; });
+    await warte();
+    const vorOhne = paar117.map(id => JSON.parse(JSON.stringify(we117(id))));
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+    $('gp-sammel-ueber').value = '30';
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#117 (Akzeptanz 3 / Muss 4) ohne Katalog bleiben die gespeicherten '
+      + 'Vorspann-Eingaenge unveraendert — es wird kein Mass erfunden',
+      paar117.every((id, i) => {
+        const p = we117(id).prestress, v = vorOhne[i].prestress;
+        return JSON.stringify(p.rod_lengths_mm) === JSON.stringify(v.rod_lengths_mm)
+          && (p.rod_rest_mm || 0) === (v.rod_rest_mm || 0)
+          && JSON.stringify(p.blech_lengths_mm || []) === JSON.stringify(v.blech_lengths_mm || [])
+          && p.rod_overhang_mm === 30;
+      }));
+    ok('#117 (Akzeptanz 3) das Ergebnis ist wertgleich zur Rechnung mit genau diesen '
+      + 'Eingaengen — nur der Ueberstand ist neu',
+      paar117.every((id, i) => {
+        const soll = sollWe117({ name: store.holeElement(id).name,
+          wandelement: vorOhne[i] }, { rod_overhang_mm: 30 });
+        return zerlegung117(we117(id)) === zerlegung117(soll)
+          && JSON.stringify(we117(id).bom) === JSON.stringify(soll.bom);
+      }));
+  }
+
+  // (e) Must-not: kein neues gespeichertes Feld, kein Versionssprung, Core und
+  //     Engine sind unberuehrt (nur der Aufrufzeitpunkt der Ableitung hat sich
+  //     geaendert) — und es gibt weiterhin GENAU EINEN Rechenweg.
+  ok('#117 (must-not 2) gerechnet wird ausschliesslich ueber rechneWandelement/ENG '
+    + 'mit den Eingaengen aus WA.vorspannVorgaben/KAT.produkteZuRolle',
+    (html.match(/ENG\.autoAuslegung/g) || []).length === 1
+    && (html.match(/ENG\.nachweisPruefen/g) || []).length === 1
+    && (html.match(/function vorspannEingaenge/g) || []).length === 1
+    && /Object\.values\(ROLLE_RECHNUNG\)/.test(html)
+    // Genau EINE Stelle bildet die Vorgabe und ruft die Engine — die Ableitung
+    // liegt im Aufrufer, nicht in einer zweiten Rechnung.
+    && (html.match(/function rechneWandelement/g) || []).length === 1
+    && (html.match(/vorspannEingaenge\(/g) || []).length === 2);
+  ok('#117 (must-not 5) kein neues gespeichertes Feld, kein Schema-, Mappen-, '
+    + 'Katalog- oder Projektformatsprung',
+    !/vorspannEingaenge/.test(localStorage.getItem('sembla:elemente') || '')
+    && !/vorspannEingaenge/.test(localStorage.getItem('sembla:projekte') || '')
+    && store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    && store.PROJEKT_VERSION === 2 && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  globalThis.confirm = confirmEcht117;
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);
