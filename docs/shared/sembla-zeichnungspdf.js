@@ -911,7 +911,8 @@ export function zipName(mappe) {
 
 /**
  * Die Seiten EINES Geschosses: Lageplan zuerst, danach je zugeordneter Wand
- * genau ein Wandblatt — beides in der Reihenfolge der Projektmappe.
+ * genau ein Wandblatt — die Wandblaetter in alphabetischer NAMENSFOLGE (#107),
+ * die Folge der Geschossdateien bleibt die Reihenfolge der Projektmappe.
  *
  * Gerechnet wird nichts: `lageplanDaten()` leitet nach [N-3] bei jedem Aufruf
  * frisch aus Mappe und kanonischem Loeserergebnis ab. Fehlt das Wandelement, ist
@@ -957,7 +958,21 @@ export function blaetterFuerGeschoss(p) {
   for (const e of (Array.isArray(p.elemente) ? p.elemente : [])) {
     if (e && e.id != null) nachId.set(String(e.id), e);
   }
-  for (const w of gs.waende) {
+  // #107: sortiert wird ausschliesslich die AUSGABEFOLGE dieser Schleife — schlicht
+  // alphabetisch nach dem vollstaendigen Wandnamen als Zeichenkette. Ausdruecklich
+  // KEINE Zahl aus dem Namen und keine natuerliche Sortierung („Wand 10" steht damit
+  // vor „Wand 2"), und kein Bedienelement: das ist der Entscheid zu #107 und keine
+  // Voreinstellung. Gearbeitet wird auf einer FLACHEN KOPIE — `gs.waende` bleibt
+  // unberuehrt, und `lageplanDaten()` (oben) hat die unsortierte Mappe bekommen, damit
+  // Nummernblasen und Wandtabelle des Lageplans wertgleich bleiben (Modul 9 unberuehrt).
+  // Bei Namensgleichheit sticht der urspruengliche Mappenindex: die Stabilitaet ist
+  // damit nachweisbar und haengt nicht an der Sortiergarantie der Laufzeit.
+  const wandFolge = gs.waende
+    .map((w, i) => ({ w, i }))
+    .sort((a, b) => String(a.w.name ?? "").localeCompare(
+      String(b.w.name ?? ""), "de", { sensitivity: "base" }) || a.i - b.i)
+    .map((e) => e.w);
+  for (const w of wandFolge) {
     const el = nachId.get(String(w.id));
     if (!el || !el.wandelement) {
       luecken.push(`${ort} · „${w.name || w.id}“: kein Wandelement im Wandspeicher — `

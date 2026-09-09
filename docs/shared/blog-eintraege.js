@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-04",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 107,
+    titel: "Die Wandblätter der Zeichnungs-PDF stehen alphabetisch nach dem Wandnamen",
+    testbitte: "In Modul 0 auf Projektebene mit „Zeichnungen als PDF\" exportieren und eine Geschoss-PDF durchblättern: hinter dem Lageplan stehen die Wandblätter in alphabetischer Namensfolge statt in Zeichenreihenfolge.",
+  },
+  {
     id: "chg-20260909-03",
     datum: "2026-09-09",
     typ: "feature",
