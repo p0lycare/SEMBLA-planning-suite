@@ -2552,6 +2552,16 @@ function rollenWahl(rolleId){
 }
 
 /**
+ * Die Kennungen der Produkte, die der zugeordnete Katalog zu EINER Verwendungsstelle
+ * anbietet ([L-12]). Gelesen wird ausschließlich `KAT.rollenOptionen` — dieselbe Liste,
+ * aus der die Häkchen entstehen; ein zweiter Auswahlbegriff entstünde sonst hier.
+ * Ohne wirksamen Katalog ist die Menge leer.
+ */
+function katalogProduktIds(kat, rolleId){
+  return new Set((kat ? KAT.rollenOptionen(kat, rolleId, []) : []).map(o => o.id));
+}
+
+/**
  * Die Zusammenfassung des geschlossenen Dropdowns — GELESEN aus `sembla-katalog.js`
  * (`auswahlZusammenfassung`), damit hier kein zweiter Text für dieselbe Aussage steht.
  */
@@ -2624,7 +2634,7 @@ function sammelRollenOptionen(kat){
   for (const r of sammelRollen()) {
     // Eine laufende Auswahl bleibt stehen, solange es die Produkte noch gibt; ein aus
     // dem Katalog verschwundenes Produkt fällt heraus, statt still weiterzuleben.
-    const da = new Set((kat ? KAT.rollenOptionen(kat, r.id, []) : []).map(o => o.id));
+    const da = katalogProduktIds(kat, r.id);
     GP.sammelWahl[r.id] = rollenWahl(r.id).filter(id => da.has(id));
     rollenMenu(r, kat);
   }
@@ -2669,13 +2679,22 @@ function rollenSchnappschuss(stand, rollenAktiv){
   return { ...stand, eingaben: e };
 }
 
-/** Lesbarer Ist-Text einer Rollenauswahl (Produktnamen, sonst die rohe Kennung). */
+/**
+ * Lesbarer Ist-Text einer Rollenauswahl (Produktnamen, sonst die rohe Kennung).
+ *
+ * #114 Eine Kennung, die der zugeordnete Katalog nicht (mehr) führt, wird ausdrücklich
+ * als solche BENANNT statt stumm als rohe Kennung gezeigt — sie ist der Grund, warum
+ * die Verwendungsstelle ohne Häkchen dasteht. Ersetzt oder entfernt wird sie nie
+ * ([P-9]/[L-4]); der Bestätigungstext der Übernahme ist davon nicht betroffen, weil
+ * dort jede Kennung schon gegen den Katalog geprüft ist.
+ */
 function rollenWertText(wert, kat){
   const ids = String(wert || '').split(',').filter(Boolean);
   if (!ids.length) return 'keine Auswahl';
   return ids.map(id => {
     const p = kat ? KAT.produkt(kat, id) : null;
-    return (p && String(p.bezeichnung || '').trim()) || id;
+    if (p) return String(p.bezeichnung || '').trim() || id;
+    return kat ? `${id} (nicht im zugeordneten Bauteilkatalog)` : id;
   }).join(' · ');
 }
 
@@ -2802,7 +2821,17 @@ function sammelSync(){
       // dieselbe Menge, steht sie hier — seit #108 auch eine MEHRFACHE. Ein gemischter
       // Ausgangszustand bekommt keine Häkchen, sonst stünde hier eine Entscheidung,
       // die niemand getroffen hat.
-      GP.sammelWahl[r.id] = (w.length === 1 && w[0]) ? w[0].split(',').filter(Boolean) : [];
+      //
+      // #114 Übernommen wird dabei ausschließlich, was im zugeordneten Katalog steht:
+      // eine dort fehlende Alt-ID (aus dem Katalog entferntes Produkt, #115) hat gar
+      // keine Häkchenzeile — sie stünde sonst UNSICHTBAR als „gewählt“ im Zustand und
+      // brächte die Übernahme mit einer ID zu Fall, die niemand angekreuzt hat.
+      // Ersetzt wird sie nicht ([P-9]); die Ist-Zeile benennt sie (`rollenWertText`).
+      // Gefiltert wird NUR hier, in der Vorbelegung — eine laufende Nutzereingabe
+      // bleibt unberührt.
+      const da = katalogProduktIds(kat, r.id);
+      GP.sammelWahl[r.id] = (w.length === 1 && w[0])
+        ? w[0].split(',').filter(id => id && da.has(id)) : [];
       rollenMenu(r, kat);
     }
   }

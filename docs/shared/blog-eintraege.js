@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-10",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 114,
+    titel: "Sammeländerung setzt Bodenbleche jetzt auch bei Wänden mit einem alten, "
+      + "nicht mehr im Katalog stehenden Produkt",
+    testbitte: "Mehrere Wände auswählen, „Gemeinsam bearbeiten…“ öffnen, „Bodenblech“ "
+      + "ankreuzen, Katalogprodukt wählen und übernehmen — die alte Kennung wird nur "
+      + "noch als nicht im Katalog vorhanden benannt.",
+  },
+  {
     id: "chg-20260909-09",
     datum: "2026-09-09",
     typ: "intern",

@@ -3717,6 +3717,95 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
         && $(rid('rod_std') + '-an').checked === false);
     }
 
+    // (h10) #114 Katalogfremder Altbestand blockiert die Sammelaenderung nicht mehr.
+    //       Realer Pfad: drei Waende tragen dieselbe Bodenblech-ID, die es im
+    //       zugeordneten Katalog nicht (mehr) gibt (#115 — das 675er Blech wurde als
+    //       falsches Mass entfernt). Frueher uebernahm die Vorbelegung diese ID
+    //       UNSICHTBAR als Auswahl (sie hat keine Haekchenzeile), und „Uebernehmen…“
+    //       scheiterte an einer Kennung, die niemand angekreuzt hatte.
+    {
+      const ALT114 = 'blech-bodenblech-675';   // im Standardkatalog nicht vorhanden
+      const NEU114 = 'blech-bodenblech-750';   // das gewuenschte Katalogprodukt
+      // Die laufende Auswahl der Vorgaenger-Etappe zuruecknehmen — hier soll allein
+      // die Bodenblech-Zeile wirken.
+      hake('rod_std', 'gewindestange-m10-1000', false);
+      hake('rod_std', 'gewindestange-m10-850', false);
+      $(rid('rod_std') + '-an').checked = false; $(rid('rod_std') + '-an').dispatch('change');
+      for (const id of ids111) store.setzeProduktrolle('blech_boden', [ALT114], id);
+      await warte();
+      ok('#114 Pruefaufbau: alle ausgewaehlten Waende tragen dieselbe katalogfremde '
+        + 'Bodenblech-ID',
+        ids111.every(id => rollenIds111(id, 'blech_boden').join() === ALT114)
+        && !KATT.produkt(store.holeKatalog(), ALT114)
+        && !!KATT.produkt(store.holeKatalog(), NEU114));
+      // Auswahl neu setzen, damit die Vorbelegung wirklich laeuft (eigener Schluessel).
+      GP.tippe({ x: 1500, y: 62.5 });
+      GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+      GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+      $('gp-sammel-knopf').dispatch('click');
+      await warte();
+      const ist114 = $(rid('blech_boden') + '-ist').innerHTML;
+      ok('#114 (Akzeptanz 1 / Muss 1) die katalogfremde Alt-ID wird NICHT vorbelegt',
+        (GP.zustand.sammelWahl.blech_boden || []).length === 0
+        && $(rid('blech_boden') + '-an').checked === false
+        && !/data-pid="blech-bodenblech-675"/.test($(rid('blech_boden') + '-menu').innerHTML));
+      ok('#114 (Akzeptanz 1 / Muss 2) die Ist-Zeile NENNT die fehlende ID als nicht im '
+        + 'Katalog vorhanden',
+        /blech-bodenblech-675/.test(ist114)
+        && /nicht im zugeordneten Bauteilkatalog/.test(ist114));
+      ok('#114 (Nicht-Ziel 1) die Alt-ID wird nicht still ersetzt — sie steht weiter an '
+        + 'jeder Wand',
+        ids111.every(id => rollenIds111(id, 'blech_boden').join() === ALT114));
+      {
+        // Nicht-Ziel 2: ohne Haekchen wird nichts geschrieben.
+        const speicherVor = localStorage.getItem('sembla:elemente');
+        const undoVor = GP.undoStand.undo;
+        $('gp-sammel-go').dispatch('click');
+        await warte();
+        ok('#114 (Nicht-Ziel 2) ohne angekreuzte Verwendungsstelle bleibt die Auswahl '
+          + 'jeder Wand unveraendert',
+          localStorage.getItem('sembla:elemente') === speicherVor
+          && GP.undoStand.undo === undoVor
+          && ids111.every(id => rollenIds111(id, 'blech_boden').join() === ALT114));
+      }
+      // (Akzeptanz 2 / Muss 3) ankreuzen, Katalogprodukt waehlen, uebernehmen.
+      const undoVor114 = GP.undoStand.undo;
+      $(rid('blech_boden') + '-an').checked = true;
+      $(rid('blech_boden') + '-an').dispatch('change');
+      hake('blech_boden', NEU114);
+      confirmText111 = null;
+      $('gp-sammel-go').dispatch('click');
+      await warte();
+      ok('#114 (Akzeptanz 2 / Muss 3) die Sammelaenderung laeuft durch — jede Wand traegt '
+        + 'genau das gewaehlte Bodenblech',
+        ids111.every(id => JSON.stringify(rollenIds111(id, 'blech_boden'))
+          === JSON.stringify([NEU114]))
+        && /Bodenblech →/.test(confirmText111 || '')
+        && !/675/.test(confirmText111 || '')
+        && GP.undoStand.undo === undoVor114 + 1);
+      // (Akzeptanz 3 / Muss 4) Die Abweisung bleibt fuer eine WIRKLICH angekreuzte ID,
+      // die zum Zeitpunkt der Uebernahme nicht mehr im Katalog steht.
+      {
+        const katVor114 = store.holeKatalog();
+        store.setzeKatalog({ ...katVor114,
+          produkte: (katVor114.produkte || []).filter(pr => pr.id !== NEU114) });
+        const speicherVor = localStorage.getItem('sembla:elemente');
+        const undoVor = GP.undoStand.undo;
+        $('gp-sammel-go').dispatch('click');
+        await warte();
+        ok('#114 (Akzeptanz 3 / Muss 4) eine angekreuzte, aus dem Katalog entfernte ID '
+          + 'wird weiterhin BENANNT abgewiesen',
+          /blech-bodenblech-750/.test($('gp-msg').textContent)
+          && /Bauteilkatalog/.test($('gp-msg').textContent)
+          && /nichts ge/.test($('gp-msg').textContent));
+        ok('#114 (Akzeptanz 3) dabei ist keine Wand veraendert und nichts gebucht',
+          localStorage.getItem('sembla:elemente') === speicherVor
+          && GP.undoStand.undo === undoVor);
+        store.importiereKatalogText(katText111);      // Ausgangsstand wiederherstellen
+        await warte();
+      }
+    }
+
     // (h8) Nicht-Ziele: kein Schreiben in `eingaben.aufbau`, in die Projektmappe oder
     //      in den Katalog; kein neues gespeichertes Feld, kein Versionssprung.
     ok('#111 (Nicht-Ziel 6) `eingaben.aufbau` ist unangetastet geblieben',
