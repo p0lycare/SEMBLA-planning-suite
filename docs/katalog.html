@@ -29,6 +29,25 @@
   td.actions button{padding:5px 9px;margin-left:5px}
   .muted{color:var(--sb-muted)}
   /* Kopfbereich (#118): eine Zeile Name + Marken, darunter die Zahlen. */
+  /* Katalogliste (#119): je Zeile Name, Umfang und die Aktionen dieser Zeile. */
+  h3.lgrp{font-size:12.5px;margin:16px 0 6px;font-weight:650;color:#42505e}
+  h3.lgrp .lsub{font-weight:400;color:var(--sb-muted)}
+  .liste{border:1px solid var(--sb-line);border-radius:9px;overflow:hidden}
+  .lz{display:flex;align-items:center;gap:10px;padding:9px 11px;flex-wrap:wrap}
+  .lz + .lz{border-top:1px solid var(--sb-line)}
+  .lz.akt{background:#eef4fd}
+  .lz .lnam{font-weight:600;font-size:13.5px}
+  .lz .lmeta{color:var(--sb-muted);font-size:12px}
+  .lz .lakt{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+  .lz .marke{font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;
+    border:1px solid #c9d4e0;background:#eef2f7;color:#3c4a5a}
+  .liste .lleer{padding:11px;color:var(--sb-muted);font-size:12.5px}
+  /* Erzeugungswege (#119): drei Wege, jeder mit einem Satz Erklaerung. */
+  .weg{display:block;width:100%;text-align:left;border:1px solid var(--sb-line);
+    border-radius:9px;padding:11px 13px;margin:0 0 8px;background:#fff;cursor:pointer;font:inherit}
+  .weg:hover{background:#f6f9fd;border-color:var(--sb-accent)}
+  .weg b{display:block;font-size:13.5px;margin-bottom:2px}
+  .weg span{color:var(--sb-muted);font-size:12.5px;line-height:1.45}
   .kopf{margin-top:12px}
   .kopf .knam{font-size:15px;font-weight:650}
   .kopf .kzahl{font-size:12.5px;color:var(--sb-muted);margin-top:2px}
@@ -85,54 +104,47 @@
 
 <header class="hero">
   <h1>Bauteilkatalog</h1>
-  <p>Modul&nbsp;10 ist der <b>Pflegeort des Produktstamms</b>: Produkte, Preise und Baugruppen sowie
-     der getrennte Katalogimport und -export. Bearbeitbar ist <b>jeder gespeicherte Katalog</b> —
-     unabhängig davon, welcher dem aktiven Projekt zugeordnet ist. Die <b>Zuordnung</b> Katalog ↔ Projekt
-     (genau einer je Projekt, [L-12]) bleibt in <a href="index.html">Modul&nbsp;0</a>.</p>
+  <p>Hier werden <b>Kataloge</b> und ihr Inhalt gepflegt: Produkte, Preise und Baugruppen.
+     <b>Welches Projekt welchen Katalog benutzt, steht hier nicht</b> — das wird in
+     <a href="index.html">Modul&nbsp;0</a> eingestellt.</p>
 </header>
 
 <div class="wrap">
 
-  <h2>Katalog wählen</h2>
+  <h2>Kataloge</h2>
   <div class="panel">
     <div class="row">
-      <div class="field" style="flex:1">
-        <label for="k-wahl">Bearbeiteter Katalog</label>
-        <select id="k-wahl" style="width:100%"></select>
-      </div>
-      <div class="field">
-        <label for="k-name">Katalogname</label>
-        <input id="k-name" type="text" placeholder="z. B. Katalog Musterlieferant" style="width:230px">
-      </div>
+      <button class="btn-p" id="k-neu">Neuen Katalog erzeugen…</button>
     </div>
-    <div class="row" style="margin-top:10px">
-      <button class="btn-s" id="k-neu">Neuer Katalog</button>
-      <label class="btn-s" for="k-import">Katalog importieren…</label>
-      <input id="k-import" type="file" accept=".json,application/json" hidden>
-      <button class="btn-s" id="k-vorlage">Standardkatalog laden</button>
-      <button class="btn-s" id="k-export">Katalog exportieren (JSON)</button>
-      <button class="btn-d" id="k-entfernen">Katalog löschen</button>
-    </div>
-    <!-- Ein Kopfbereich statt vier Textbloecke: Name, Marken, Zahlen. Die frueheren
-         Statusabsaetze und `#k-info` sagten dieselben drei Dinge (welcher Katalog, ist er
-         zugeordnet, ist er Vorlage) in unterschiedlichem Wortlaut mehrfach. -->
-    <div class="kopf" id="k-kopf"></div>
-    <div class="nurlesen" id="k-nurlesen" hidden></div>
-    <div class="variante" id="k-variante" hidden></div>
+
+    <h3 class="lgrp">Vorlagen im Repo <span class="lsub">— mitgeliefert, nur lesen</span></h3>
+    <div id="k-repo" class="liste"></div>
+
+    <h3 class="lgrp">Lokale Kataloge <span class="lsub">— in diesem Browser, bearbeitbar</span></h3>
+    <div id="k-lokal" class="liste"></div>
+
     <div class="msg" id="k-msg"></div>
     <div class="warn" id="k-warn" hidden></div>
-    <div class="hint">Der Katalog ist eine <b>eigene Ressource</b> mit eigener Datei
+    <div class="hint">Ein Katalog ist eine <b>eigene Ressource</b> mit eigener Datei
       (<b>SEMBLA-Bauteilkatalog</b>, Format-Version&nbsp;2) — getrennt vom Projekt-Export und vom
-      Projekt-ZIP. Eine Datei der <b>Version&nbsp;1</b> wird beim Import verlustfrei übernommen: alle
-      Produkte unverändert, dazu eine leere Baugruppenliste ([P-22]).<br>
-      <b>Bearbeiten ist nicht zuordnen (#108):</b> Anlegen, Importieren, Laden der Vorlage und jede
-      Produkt- oder Baugruppenänderung schreiben <b>nur den Katalog selbst</b>. Welcher Katalog dem
-      Projekt zugeordnet ist, entscheidet allein <b>Modul&nbsp;0</b> ([L-12]) — hier wird keine
-      Zuordnung nebenbei geändert.</div>
+      Projekt-ZIP. Eine Datei der <b>Version&nbsp;1</b> wird beim Import verlustfrei übernommen
+      ([P-22]).<br>
+      <b>Vorlagen im Repo werden nicht bearbeitet.</b> Sie sind versioniert herausgegeben, damit
+      „Standardkatalog v1“ überall denselben Inhalt bedeutet. Zum Ändern erzeugt man daraus einen
+      eigenen Katalog — die Vorlage bleibt daneben stehen.<br>
+      Im Projekt stehen nur <b>Produkt-IDs</b> je Verwendungsstelle, keine Preise und keine Maße
+      ([P-13]); <b>welche</b> Produkte eine Wand verwendet, wird in <b>Modul&nbsp;1</b> und
+      <b>Modul&nbsp;2</b> gewählt. <b>Diese Preise rechnen mit:</b> Modul&nbsp;4 löst jeden
+      Einzelpreis read-only auf; ist eine Position nicht eindeutig, bleibt sie <b>ohne Preis</b> mit
+      benanntem Grund — kein Nullpreis, kein Ersatzprodukt ([P-14]).<br>
+      Der mitgelieferte Standardkatalog enthält <b>vorläufige, fachlich unbestätigte
+      Beispielwerte</b>; sie sind je betroffenem Produkt gekennzeichnet und vor der Verwendung zu
+      prüfen.</div>
   </div>
 
-  <h2>Produkte</h2>
+  <h2 id="k-titel">Produkte</h2>
   <div class="panel">
+    <div class="nurlesen" id="k-nurlesen" hidden></div>
     <div class="row" style="margin-bottom:6px">
       <button class="btn-p" id="k-produkt-neu">Produkt anlegen…</button>
       <div class="field"><label for="k-filter">Filter</label><select id="k-filter" style="width:250px"></select></div>
@@ -225,6 +237,34 @@
      kategoriespezifischen Merkmale, #kp-besch die in jeder Kategorie gleichen
      Beschaffungsangaben (#113). Beide kommen aus DERSELBEN Maske (Feld `gruppe`). Geschrieben wird AUSSCHLIESSLICH ueber
      „Speichern“ — Abbrechen/Escape/Overlay-Klick lassen die Katalogdaten unveraendert. -->
+<!-- #119 Drei Erzeugungswege an EINER Stelle. Vorher lagen sie als drei gleich
+     aussehende Knoepfe in einer Reihe mit Export und Loeschen, ohne zu sagen, wofuer
+     welcher gut ist. -->
+<input id="k-import" type="file" accept=".json,application/json" hidden>
+
+<div class="overlay" id="kn-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="kn-titel">
+    <h3 id="kn-titel">Neuen Katalog erzeugen</h3>
+    <p class="sub">Der neue Katalog tritt <b>neben</b> die vorhandenen — keiner wird ersetzt.
+      Zugeordnet wird er hier nicht; das geschieht in <a href="index.html">Modul&nbsp;0</a>.</p>
+    <button type="button" class="weg" id="kn-import">
+      <b>Katalog importieren…</b>
+      <span>Eine vorhandene <code>SEMBLA-Bauteilkatalog</code>-Datei einlesen und als lokalen
+        Katalog hinzufügen.</span></button>
+    <button type="button" class="weg" id="kn-vorlage">
+      <b>Aus einer Repo-Vorlage erstellen…</b>
+      <span>Eine herausgegebene Fassung des Standardkatalogs als eigenen, bearbeitbaren Katalog
+        übernehmen. Die Vorlage selbst bleibt unverändert.</span></button>
+    <button type="button" class="weg" id="kn-leer">
+      <b>Leeren Katalog erstellen…</b>
+      <span>Von null anfangen — alle Produkte werden selbst angelegt.</span></button>
+    <div class="msg" id="kn-msg"></div>
+    <div class="modal-actions">
+      <button class="btn-s" id="kn-cancel">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="kp-overlay" hidden>
   <div class="modal">
     <h3 id="kp-titel">Produkt anlegen</h3>
@@ -307,148 +347,119 @@ function kZahl(v){
 /** Der gewaehlte Katalog (null = keiner gewaehlt/vorhanden) — reine Leseansicht. */
 function kKat(){ return KID ? store.katalogNachId(KID) : null; }
 
-/** Kennung des dem aktiven Projekt zugeordneten Katalogs ([L-12]) oder ''. */
-function kZugeordneteId(){ return String(store.katalogStatus().id || ''); }
+// --- Was Modul 10 NICHT weiss (#119) --------------------------------------
+// Diese Seite kennt die Zuordnung Katalog <-> Projekt NICHT — weder liest sie sie noch
+// zeigt sie sie an noch schreibt sie sie. Sie wird ausschliesslich in Modul 0 gesetzt
+// ([L-12]). Vorher stand der Zuordnungsstatus hier an vier Stellen und war die Haelfte
+// der Verwirrung: die Seite beantwortete eine Frage, die sie nicht zu beantworten hat.
+// Folge davon: JEDER Schreibvorgang laeuft mit `zuordnen: false`. Das ist keine
+// Einschraenkung — die Kennung eines bearbeiteten Katalogs aendert sich dabei nicht,
+// eine bestehende Zuordnung bleibt also von selbst, wie sie ist.
 
 /**
- * Darf dieser Schreibvorgang die Zuordnung beruehren? Nur, wenn genau der
- * zugeordnete Katalog bearbeitet wird. Das ist zugleich die Regel fuer die
- * Vorlagenkopie (#102/#108): sie zieht die Zuordnung mit, wenn die Vorlage der
- * zugeordnete Katalog war — sonst entsteht sie ohne jede Zuordnungsaenderung.
- * @param {object|null} kat der zu schreibende Katalog
- */
-function kZuordnen(kat){
-  const id = String((kat && kat.id) || '');
-  return !!id && id === kZugeordneteId();
-}
-
-// --- Variantenwechsel an der Vorlage (#108) -----------------------------
-// Der Standardkatalog ist eine unveraenderliche Vorlage; `store.setzeKatalog` legt
-// deshalb VOR jeder Aenderung eine eigenstaendige Kopie mit neuer Kennung an (#102).
-// Dieser Kopierschutz bleibt unveraendert — er entscheidet nicht, OB kopiert wird,
-// sondern verhindert nur das Ueberschreiben der Vorlage. Die ENTSCHEIDUNG trifft ab
-// jetzt der Nutzer: Modul 10 fragt VOR dem Schreiben und benennt DANACH, was entstand.
-// Beides ist reine Bedienung — kein gespeichertes Feld, kein Zeiger, kein Format.
-
-/** Namenszusatz der aus der Vorlage entstehenden Variante. */
-const VARIANTE_SUFFIX = ' (eigene Variante)';
-
-/**
- * Name der entstehenden Variante — gebildet HIER, vor dem Schreiben, weil die Kopie
- * sonst den Vorlagennamen erbte und in der Auswahlliste nicht unterscheidbar waere.
- * Beim Umbenennen IST der getippte Name der Variantenname; sonst der Vorlagenname mit
- * Zusatz, bei Namensgleichheit durchgezaehlt. Gesetzt wird ausschliesslich `name` —
- * die Kennungsvergabe bleibt Sache von `store.setzeKatalog`.
- * @param {object} vorlage @param {object} kat @returns {string}
- */
-function variantenName(vorlage, kat){
-  const getippt = String((kat && kat.name) || '').trim();
-  const vName = String((vorlage && vorlage.name) || '').trim();
-  if (getippt && getippt !== vName) return getippt;
-  const basis = (vName || 'Katalog') + VARIANTE_SUFFIX;
-  const belegt = new Set(store.listeKataloge().map(k => String(k.name)));
-  if (!belegt.has(basis)) return basis;
-  let n = 2;
-  while (belegt.has(basis + ' ' + n)) n++;
-  return basis + ' ' + n;
-}
-
-/** Wortlaut der Rueckfrage — nennt Vorlage, Variantenname und die Zuordnungsfolge. */
-function variantenFrage(vorlage, name, warZugeordnet){
-  return `„${vorlage.name}“ ist die unveränderliche Vorlage und wird nicht geändert.\n\n`
-    + `Die Änderung in einer eigenen Variante „${name}“ speichern?\n\n`
-    + (warZugeordnet
-        ? 'Das aktive Projekt wird dabei auf die Variante umgestellt.'
-        : 'Die Katalogzuordnung des aktiven Projekts bleibt unverändert ([L-12]).')
-    + '\nAbbrechen speichert nichts und legt keine Variante an.';
-}
-
-/** Den hervorgehobenen Variantenhinweis anzeigen (Vorlage, Variante, Zuordnung). */
-function varianteZeige(vorlage, erg, warZugeordnet){
-  const box = $('k-variante');
-  box.innerHTML = '<div><b>Eigene Katalogvariante angelegt.</b></div>'
-    + `<div>Vorlage: <b>${esc(vorlage.name)}</b> — unverändert; sie steht weiterhin als `
-      + 'unveränderliche Vorlage in der Auswahl.</div>'
-    + `<div>Bearbeitet wird jetzt die Variante: <b>${esc(erg.name)}</b> `
-      + `<span class="muted">(${esc(erg.id)})</span></div>`
-    + '<div>' + (warZugeordnet
-        ? 'Sie ist dem aktiven Projekt <b>zugeordnet</b> — ihre Preise rechnen in Modul 4 mit ([P-14]).'
-        : 'Die Katalogzuordnung des aktiven Projekts bleibt <b>unverändert</b> ([L-12]) — '
-          + 'zugeordnet wird in <a href="index.html">Modul 0</a>.')
-    + '</div>';
-  box.hidden = false;
-}
-
-/** Den Variantenhinweis ausblenden — bei jedem Wechsel des Bearbeitungsgegenstands. */
-function varianteAus(){ const b = $('k-variante'); b.hidden = true; b.innerHTML = ''; }
-
-/**
- * Der EINE Schreibweg dieser Seite. Alles laeuft hier durch — Katalogname,
- * Produkte, Baugruppen —, damit Validierung, Normalisierung, Kopierschutz und die
- * Variantenrueckfrage genau eine Stelle haben. Der gewaehlte Katalog folgt dem
- * Ergebnis: eine entstandene Variante ist danach der bearbeitete Katalog.
+ * Der EINE Schreibweg dieser Seite. Katalogname, Produkte und Baugruppen laufen hier
+ * durch, damit Validierung, Normalisierung und der Vorlagenschutz genau eine Stelle
+ * haben.
+ *
+ * Eine REPO-VORLAGE wird hier nie geschrieben (#119): sie ist in der Oberflaeche nicht
+ * bearbeitbar, und der Weg zum Aendern ist das ausdrueckliche Erzeugen eines eigenen
+ * Katalogs daraus. Die frueher noetige Variantenrueckfrage mitten in der Eingabe ist
+ * damit entfallen. Der Kopierschutz in `store.setzeKatalog` bleibt unberuehrt — er ist
+ * ab jetzt reines Sicherheitsnetz und nicht mehr Regelweg.
  * @param {object} kat
- * @returns {object|null} Ergebnis von setzeKatalog; null = Rueckfrage abgebrochen
+ * @returns {object|null} der gespeicherte Katalog; null = abgewiesen (Vorlage)
  */
 function kSchreibe(kat){
   const bestand = store.katalogNachId(String((kat && kat.id) || ''));
-  const warZug = kZuordnen(kat);
-  let entwurf = kat;
   if (KAT.istVorlagenKatalog(bestand)) {
-    // VOR dem Schreiben fragen: ohne Bestaetigung wird `setzeKatalog` gar nicht erst
-    // gerufen — es entsteht keine Variante, kein Slot und kein Zeiger aendert sich.
-    const name = variantenName(bestand, kat);
-    if (!confirm(variantenFrage(bestand, name, warZug))) return null;
-    entwurf = { ...kat, name };
+    kZeige('Repo-Vorlagen werden nicht bearbeitet. Oben „Neuen Katalog erzeugen…“ → '
+      + '„Aus einer Repo-Vorlage erstellen…“ — dann ist der eigene Katalog bearbeitbar.', false);
+    return null;
   }
-  const erg = store.setzeKatalog(entwurf, { zuordnen: warZug });
+  const erg = store.setzeKatalog(kat, { zuordnen: false });
   KID = String(erg.id);
-  // Der Hinweis gehoert zur zuletzt ausgefuehrten Bedienung: entstand keine Variante
-  // (gewoehnlicher Katalog oder Folgeaenderung an einer Variante), verschwindet er.
-  if (erg.kopie_von) varianteZeige(bestand, erg, warZug); else varianteAus();
   return erg;
 }
 
-/**
- * Kurzer Meldungszusatz, wenn eine Variante entstanden ist. Die Einzelheiten stehen
- * im hervorgehobenen Hinweis (`#k-variante`) — sie hier zu wiederholen, waere ein
- * zweiter, konkurrierender Wortlaut.
- */
-function kopieText(erg){
-  if (!erg || !erg.kopie_von) return '';
-  return ` Gespeichert wurde in der neuen Variante „${erg.name}“ — Einzelheiten im Hinweis oben.`;
+// --- Die beiden Katalogliste (#119) ---------------------------------------
+// Der Nutzer muss ZUERST sehen, was es gibt: die mitgelieferten Fassungen im Repo und
+// die eigenen Kataloge in diesem Browser. Vorher stand dafuer ein Auswahlfeld, aus dem
+// man weder die Herkunft noch die Anzahl ablesen konnte.
+//
+// Eine geladene Repo-Vorlage ist inhaltlich die Repo-Datei und erscheint deshalb in der
+// REPO-Liste als „geladen“ — nicht als zweiter, eigener Eintrag daneben. Genau diese
+// Doppelung war vorher unverstaendlich. Die Liste „Lokale Kataloge“ enthaelt damit
+// ausschliesslich Bearbeitbares.
+
+/** Alle gespeicherten Kataloge, die KEINE Repo-Vorlage sind — also die bearbeitbaren. */
+function kLokale(){ return store.listeKataloge().filter(k => !KAT.istVorlagenKatalog(k)); }
+
+function kZeileHtml(k, aktionen, marken){
+  return '<div class="lz' + (String(k.id) === String(KID) ? ' akt' : '') + '">'
+    + '<div><div class="lnam">' + esc(k.name)
+    + (marken || []).map(m => ' <span class="marke">' + esc(m) + '</span>').join('')
+    + '</div><div class="lmeta">' + k.anzahl + ' Produkt(e)'
+    + (k.zusatz ? ' · ' + esc(k.zusatz) : '') + '</div></div>'
+    + '<div class="lakt">' + aktionen + '</div></div>';
 }
 
-/** Meldung, wenn die Variantenrueckfrage abgebrochen wurde (es wurde nichts geschrieben). */
-const VARIANTE_ABBRUCH = 'Nicht gespeichert — es wurde keine Variante angelegt; '
-  + 'die Vorlage bleibt unverändert.';
+const kBtn = (akt, id, text, art) =>
+  `<button class="btn-${art || 's'}" data-kakt="${akt}" data-kid="${esc(id)}">${esc(text)}</button>`;
 
-/**
- * Standardauswahl des Katalogs auf das aktive Wandelement uebernehmen ([P-18]).
- * NUR aus dem ZUGEORDNETEN Katalog: `vorbelegeProduktrollen` schreibt an der aktiven
- * Wand, und deren Preise/Produkte kommen nach [P-13]/[P-14] aus dem Katalog ihres
- * Projekts. Aus einem fremden Katalog vorzubelegen waere eine stille Falschauswahl.
- * @param {object|null} kat der eben geschriebene Katalog
- */
-function vorbelegText(kat){
-  const id = String((kat && kat.id) || '');
-  if (!id || id !== kZugeordneteId()) {
-    return ' Dieser Katalog ist dem aktiven Projekt nicht zugeordnet — es wurde keine '
-      + 'Verwendungsstelle vorbelegt ([P-13]/[P-18]); zugeordnet wird in Modul 0 ([L-12]).';
+/** Beide Listen zeichnen. Rein lesend — kein Schreibvorgang, kein Netzzugriff. */
+function kListen(){
+  // (a) Repo: die herausgegebenen Fassungen aus dem Verzeichnis. Ist es (noch) nicht
+  //     gelesen, wird das gesagt statt eine leere Liste vorzuspiegeln.
+  const repo = $('k-repo');
+  if (!VORL_FASSUNGEN) {
+    repo.innerHTML = '<div class="lleer">Vorlagenverzeichnis wird gelesen…</div>';
+  } else if (!VORL_FASSUNGEN.fassungen.length) {
+    repo.innerHTML = '<div class="lleer">Keine Fassung im Verzeichnis.</div>';
+  } else {
+    repo.innerHTML = VORL_FASSUNGEN.fassungen.map((f) => {
+      const geladen = store.katalogNachId(f.id);
+      const marken = ['nur lesen'];
+      if (f.pfad === VORL_FASSUNGEN.aktuell) marken.push('aktuelle Fassung');
+      return kZeileHtml(
+        { id: f.id, name: 'SEMBLA Standardkatalog ' + f.version,
+          anzahl: geladen ? geladen.produkte.length : '—',
+          zusatz: (f.datum ? 'vom ' + f.datum : '') + (f.notiz ? ' · ' + f.notiz : '') },
+        (geladen ? kBtn('ansehen', f.id, 'Inhalt ansehen') : '')
+        + kBtn('aus-vorlage', f.pfad, 'Als eigenen Katalog übernehmen', 'p')
+        + (geladen ? kBtn('vorlage-entfernen', f.id, 'Aus Browser entfernen', 'd')
+                   : kBtn('laden', f.pfad, 'Laden und ansehen')),
+        marken);
+    }).join('');
   }
-  if (!store.aktivId()) return '';
-  const vb = store.vorbelegeProduktrollen();
-  const n = Object.keys(vb.gesetzt).length;
-  if (!n) return ' Alle Verwendungsstellen sind bereits gewählt — nichts vorbelegt.';
-  return ` ${n} noch leere Verwendungsstelle(n) mit der Standardauswahl des Katalogs vorbelegt`
-    + (vb.offen.length ? ` (ohne Standardprodukt: ${vb.offen.join(', ')})` : '')
-    + ' — in Modul 1/2 jederzeit umwählbar.';
+
+  // (b) Lokal: alles Bearbeitbare.
+  const lokal = kLokale();
+  $('k-lokal').innerHTML = lokal.length
+    ? lokal.map((k) => kZeileHtml(
+        { id: k.id, name: k.name, anzahl: k.produkte.length,
+          zusatz: KAT.normSets(k.sets).length + ' Baugruppe(n)' },
+        kBtn('bearbeiten-kat', k.id, String(k.id) === String(KID) ? 'wird bearbeitet' : 'Bearbeiten',
+             String(k.id) === String(KID) ? 's' : 'p')
+        + kBtn('umbenennen', k.id, 'Umbenennen')
+        + kBtn('exportieren', k.id, 'Exportieren')
+        + kBtn('loeschen', k.id, 'Löschen', 'd'))).join('')
+    : '<div class="lleer">Noch kein lokaler Katalog — oben „Neuen Katalog erzeugen…“.</div>';
 }
 
-// --- Repo-Vorlage (bewusste Wahl, KEIN Autoload) ------------------------
-// Der Katalogpfad kommt aus sembla-katalog.js — er definiert zugleich die kanonische
-// Vorlagenidentitaet der geladenen Browserressource (#102). Zwei Pfadangaben waeren
-// zwei Identitaeten.
+/**
+ * Nur-Lesen-Leiste ueber der Produktpflege (#119). Sie erscheint, solange eine
+ * Repo-Vorlage nur ANGESEHEN wird: dann ist der Inhalt sichtbar, aber nichts bedienbar.
+ * @param {object|null} vorlage
+ */
+function kNurLesen(vorlage){
+  const box = $('k-nurlesen');
+  box.hidden = !vorlage;
+  if (!vorlage) { box.innerHTML = ''; return; }
+  box.innerHTML = '<b>' + esc(vorlage.name) + ' — Repo-Vorlage, nur lesen.</b> '
+    + 'Diese Fassung wird nicht verändert, damit ihr Name überall denselben Inhalt bedeutet. '
+    + 'Zum Ändern oben „Als eigenen Katalog übernehmen“ — die Vorlage bleibt daneben stehen.';
+}
+
 function vorlagePfad(){ return KAT.VORLAGE_KATALOG_PFAD; }
 
 // --- Herausgegebene Fassungen (Manifest) ---------------------------------
@@ -654,140 +665,17 @@ function katWarnungen(kat){
   box.innerHTML = teile.map(t => '<div style="margin:2px 0">' + t + '</div>').join('');
 }
 
-// --- Auswahl und Zustand ------------------------------------------------
-/** Auswahlliste aller gespeicherten Kataloge — projektunabhaengig (#108). */
-function kWahlListe(){
-  const alle = store.listeKataloge();
-  // #118 Gruppiert statt flach: mit mehreren herausgegebenen Fassungen wird eine flache
-  // Liste unlesbar. Die Zeile traegt nur noch Name und Anzahl — dass ein Katalog Vorlage
-  // oder zugeordnet ist, sagen die Marken im Kopfbereich, und zwar genau einmal.
-  const opt = (k) => `<option value="${esc(k.id)}"`
-    + (String(k.id) === String(KID) ? ' selected' : '') + '>'
-    + esc(k.name) + ` · ${k.produkte.length} Produkt(e)` + '</option>';
-  const vorlagen = alle.filter(k => KAT.istVorlagenKatalog(k));
-  const eigene = alle.filter(k => !KAT.istVorlagenKatalog(k));
-  $('k-wahl').innerHTML =
-    (KID && kKat() ? '' : '<option value="">– kein Katalog gewählt –</option>')
-    + (vorlagen.length ? '<optgroup label="Standardkataloge (Vorlagen, nur lesen)">'
-        + vorlagen.map(opt).join('') + '</optgroup>' : '')
-    + (eigene.length ? '<optgroup label="Eigene Kataloge">'
-        + eigene.map(opt).join('') + '</optgroup>' : '');
-  $('k-wahl').value = KID && kKat() ? String(KID) : '';
-}
-
-/**
- * Der sichtbare Blattzustand — WELCHER Katalog bearbeitet wird, OB er dem aktiven
- * Projekt zugeordnet ist und OB er eine unveraenderliche Vorlage ist (#108 must 2).
- *
- * #118: Diese drei Fakten standen bisher drei- bis viermal auf der Seite, jedes Mal
- * anders formuliert — in der Auswahlzeile, in vier Statusabsaetzen, in `#k-info` und
- * zusaetzlich in den Meldungen. Jetzt stehen sie EINMAL: als Name plus Marken. Die
- * Regel-IDs sind Entwicklersprache und gehoeren nicht in den Bedienweg; sie stehen
- * aufklappbar unter „Warum?“. Der Zustand selbst ist unveraendert — es wird nichts
- * anderes gemeldet, nur nicht mehr mehrfach.
- */
-function kStatus(){
-  const kat = kKat();
-  const zug = kZugeordneteId();
-  const st = store.katalogStatus();
-  const m = store.holeMappe();
-  const kopf = $('k-kopf');
-
-  if (!kat) {
-    kopf.innerHTML = '<div class="knam">Kein Katalog gewählt</div>'
-      + '<div class="kzahl">' + store.listeKataloge().length
-      + ' gespeicherte(r) Katalog(e) in diesem Browser — oben einen anlegen, importieren '
-      + 'oder den Standardkatalog laden.</div>';
-    kNurLesen(null);
-    return;
-  }
-
-  const istVorl = KAT.istVorlagenKatalog(kat);
-  const istZug = String(kat.id) === zug;
-  const marken = (istVorl
-      ? '<span class="marke m-vorl">Vorlage · nur lesen</span>'
-      : '<span class="marke m-eig">eigener Katalog</span>')
-    + (istZug
-      ? '<span class="marke m-zug">dem Projekt' + (m ? ' „' + esc(m.projekt.name) + '“' : '')
-        + ' zugeordnet</span>'
-      : '');
-
-  // Die Zuordnungslage des AKTIVEN Projekts gehoert weiter dazu — aber als eine Zeile,
-  // nicht als eigener Absatz. Sie ist nur dann eine Aussage, wenn sie NICHT schon aus
-  // der Marke oben folgt.
-  const zugText = st.status === 'ok' && st.katalog
-    ? (istZug ? '' : 'Dem aktiven Projekt ist „' + esc(st.katalog.name) + '“ zugeordnet.')
-    : st.status === 'nicht_zugeordnet' ? 'Dem aktiven Projekt ist kein Katalog zugeordnet.'
-    : st.status === 'fehlt' ? 'Der zugeordnete Katalog fehlt in diesem Browser (Kennung '
-        + esc(st.id || '') + ').'
-    : st.status === 'mehrdeutig' ? 'Mehrere Kataloge, kein aktives Projekt — es wird keiner geraten.'
-    : 'Kein aktives Projekt.';
-
-  kopf.innerHTML = '<div class="knam">' + esc(kat.name) + marken + '</div>'
-    + '<div class="kzahl">' + kat.produkte.length + ' Produkt(e) · '
-    + KAT.normSets(kat.sets).length + ' Baugruppe(n) · Katalogformat v' + KAT.KATALOG_VERSION
-    + ' · <span class="muted">' + esc(kat.id) + '</span></div>'
-    + (zugText ? '<div class="kzahl">' + zugText + '</div>' : '')
-    + '<details class="warum"><summary>Warum?</summary><div>'
-    + 'Je Projekt gilt <b>genau ein</b> Katalog; seine Preise rechnen in Modul 4 mit '
-    + '([L-12], [P-14]). Zugeordnet wird in <a href="index.html">Modul 0</a> — '
-    + '<b>Bearbeiten ist nicht Zuordnen</b>: Änderungen hier berühren die Zuordnung nicht '
-    + '(#108). Eine mitgelieferte Vorlage ist unveränderlich, damit ihr Name überall '
-    + 'dasselbe bedeutet (#102).'
-    + '</div></details>';
-
-  kNurLesen(istVorl ? kat : null);
-}
-
-/**
- * Nur-Lesen-Leiste und Sperrung der Bedienelemente (#118).
- *
- * Der Vorlagenschutz aus #102 greift fachlich richtig, war aber erst BEIM SCHREIBEN zu
- * merken: man tippte in ein Feld, das wie ein Eingabefeld aussah, und bekam mitten in
- * der Eingabe eine Rueckfrage. Jetzt ist die Eigenschaft sichtbar, bevor man sie
- * ausloest — gesperrte Felder plus EIN ausdruecklicher Weg in die Bearbeitung.
- *
- * Die Rueckfrage in `kSchreibe` bleibt als NETZ fuer Wege, die den Knopf umgehen
- * (Tastatur, Autofill, fremde Bedienpfade); Regelweg ist sie nicht mehr.
- * @param {object|null} vorlage die gewaehlte Vorlage, sonst null
- */
-function kNurLesen(vorlage){
-  const box = $('k-nurlesen');
-  const sperre = !!vorlage;
-  box.hidden = !sperre;
-  if (!sperre) { box.innerHTML = ''; return; }
-  box.innerHTML = '<b>' + esc(vorlage.name) + ' — nur lesen.</b> '
-    + 'Diese Fassung wird nicht verändert, damit ihr Name überall denselben Inhalt '
-    + 'bedeutet. Zum Bearbeiten entsteht eine eigene Kopie; die Vorlage bleibt daneben '
-    + 'stehen und bleibt weiter zuordenbar.'
-    + '<br><button class="btn-s" id="k-kopie">Eigene Kopie anlegen und bearbeiten</button>';
-  $('k-kopie').addEventListener('click', kEigeneKopie);
-}
-
-/**
- * Der EINE ausdrueckliche Weg von der Vorlage in die Bearbeitung (#118).
- *
- * Geschrieben wird ueber `kSchreibe` — also ueber `setzeKatalog` mit unveraendertem
- * Kopierschutz; die Kopie entsteht dort und nicht hier. Inhaltlich aendert dieser Schritt
- * NICHTS am Katalog: uebergeben wird der gespeicherte Stand unveraendert. Er macht allein
- * aus der Vorlage eine bearbeitbare Variante — genau das, was bisher als Nebenwirkung der
- * ersten Tastatureingabe passierte.
- */
-function kEigeneKopie(){
-  const kat = kKat();
-  if (!kat || !KAT.istVorlagenKatalog(kat)) return;
-  const erg = kSchreibe({ ...kat });
-  if (!erg) { kZeige(VARIANTE_ABBRUCH, false); return; }
-  katLaden();
-  kZeige('Eigene Kopie angelegt und hier zur Bearbeitung gewählt: „' + erg.name
-    + '“. Die Vorlage bleibt unverändert daneben stehen.' + kopieText(erg), true);
-}
-
 function katRender(){
   const kat = kKat();
   const liste = kat ? kat.produkte : [];
-  kWahlListe();
-  kStatus();
+  const istVorl = KAT.istVorlagenKatalog(kat);
+  kListen();
+  // #119 Der Kopf der Pflege sagt, WESSEN Inhalt darunter steht. Vorher stand der Name
+  // an drei anderen Stellen, aber nicht ueber der Tabelle, die man gerade bearbeitet.
+  $('k-titel').textContent = kat
+    ? 'Produkte in „' + kat.name + '“'
+    : 'Produkte — kein Katalog gewählt';
+  kNurLesen(istVorl ? kat : null);
   const sicht = liste.filter(p => kFilter === 'alle' || p.kategorie === kFilter);
   $('k-leer').hidden = sicht.length > 0;
   $('k-tbody').innerHTML = sicht.map(p => `<tr data-pid="${esc(p.id)}">
@@ -803,9 +691,11 @@ function katRender(){
       </td></tr>`).join('');
   ksRender();
   katWarnungen(kat);
-  // #118 ZULETZT: die Zeilen- und Baugruppenknoepfe entstehen erst in diesem Durchlauf,
-  // deshalb kann die Sperre nicht schon in `kStatus()` greifen.
-  kSperreBedienung(KAT.istVorlagenKatalog(kat));
+  // ZULETZT: die Zeilen- und Baugruppenknoepfe entstehen erst in diesem Durchlauf,
+  // deshalb kann die Sperre nicht schon vorher greifen.
+  // Gesperrt wird bei einer Repo-Vorlage UND wenn gar kein Katalog gewaehlt ist —
+  // dann gibt es nichts, wohin ein Produkt gehoeren wuerde.
+  kSperreBedienung(!kat || KAT.istVorlagenKatalog(kat));
 }
 
 /**
@@ -819,7 +709,7 @@ function kSperreBedienung(sperre){
   // Gesperrt wird, was den INHALT der Vorlage aendern wuerde. „Katalog löschen“ gehoert
   // ausdruecklich NICHT dazu: die Ressource aus diesem Browser zu entfernen ist keine
   // Aenderung ihres Inhalts und jederzeit ueber „Standardkatalog laden“ ruecknehmbar.
-  for (const id of ['k-name', 'k-produkt-neu', 'ks-neu', 'ks-name', 'ks-pos-add'])
+  for (const id of ['k-produkt-neu', 'ks-neu', 'ks-name', 'ks-pos-add'])
     { const e = $(id); if (e) e.disabled = an; }
   // Wie in Modul 1/2: der Aufruf wird nur gemacht, wenn die Umgebung ihn kennt.
   const knoepfe = document.querySelectorAll
@@ -828,11 +718,7 @@ function kSperreBedienung(sperre){
 }
 
 /** Katalog neu in die Oberfläche laden (Name + Tabelle) — nach Anlegen/Import/Wechsel. */
-function katLaden(){
-  const k = kKat();
-  $('k-name').value = k ? k.name : '';
-  katRender();
-}
+function katLaden(){ katRender(); }
 
 // --- Baugruppen / Sets ([P-21], Katalogformat v2) -----------------------
 // Geschrieben wird ausschliesslich ueber `kSchreibe` — denselben Weg wie jede
@@ -880,15 +766,15 @@ const ksListe = () => KAT.normSets((kKat() || {}).sets);
  */
 function ksSpeichere(sets, meldung){
   const kat = kKat();
-  if (!kat) { kZeige('Kein Katalog gewählt — erst einen anlegen, importieren oder den Standardkatalog laden.', false); return false; }
+  if (!kat) { kZeige('Kein Katalog gewählt — oben einen erzeugen oder „Bearbeiten“ drücken.', false); return false; }
   let erg;
   try { erg = kSchreibe({ ...kat, sets }); }
   catch (e) { kZeige('Nicht gespeichert: ' + fehlerText(e), false); return false; }
-  // Abgebrochene Variantenrueckfrage (#108): nichts geschrieben, Anzeige frisch aus
-  // dem Speicher — der Entwurf oben darf nicht als gespeichert erscheinen.
-  if (!erg) { katLaden(); kZeige(VARIANTE_ABBRUCH, false); return false; }
+  // Abgewiesen (Repo-Vorlage): `kSchreibe` hat den Grund schon genannt; die Anzeige wird
+  // frisch aus dem Speicher gezeichnet, damit der Entwurf nicht als gespeichert erscheint.
+  if (!erg) { katLaden(); return false; }
   katLaden();
-  kZeige(meldung + kopieText(erg), true);
+  kZeige(meldung, true);
   return true;
 }
 
@@ -934,44 +820,183 @@ function ksRender(){
 }
 
 // --- Bedienelemente verdrahten ------------------------------------------
+/**
+ * Aus einer Repo-Vorlage einen EIGENEN, bearbeitbaren Katalog erzeugen (#119).
+ *
+ * Die Fassung wird frisch aus dem Repo gelesen und als neuer lokaler Katalog mit eigener
+ * Kennung gespeichert. Die Vorlage selbst wird dabei NICHT angelegt und nicht angetastet:
+ * gelesen wird die Datei, geschrieben ein gewoehnlicher Katalog — der Vorlagen-Slot bleibt,
+ * wie er ist (vorhanden oder nicht). Zugeordnet wird nichts.
+ * @param {string} pfad
+ */
+async function kAusVorlage(pfad){
+  let datei;
+  try { datei = KAT.parseKatalog(await vorlageText(pfad)); }
+  catch (e) { kZeige('Vorlage nicht gelesen: ' + fehlerText(e), false); return; }
+  const vorhanden = new Set(store.listeKataloge().map(k => k.name));
+  let name = datei.name + ' (eigener Katalog)';
+  for (let n = 2; vorhanden.has(name); n++) name = datei.name + ` (eigener Katalog ${n})`;
+  let erg;
+  try { erg = store.setzeKatalog({ ...datei, name }, { zuordnen: false }); }
+  catch (e) { kZeige('Nicht angelegt: ' + fehlerText(e), false); return; }
+  KID = String(erg.id);
+  ksAktiv = null; ksPosLeeren(); kpSchliesse(); katLaden();
+  kZeige(`Eigener Katalog „${name}“ aus der Vorlage angelegt (${erg.produkte.length} `
+    + 'Produkt(e)) und zur Bearbeitung gewählt. Die Repo-Vorlage bleibt unverändert.', true);
+}
+
 function katVerdrahte(){
   $('k-filter').innerHTML = '<option value="alle">alle Kategorien</option>'
     + KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
   $('kp-kat').innerHTML = KAT.KATEGORIEN.map(k => `<option value="${k.id}">${esc(k.label)}</option>`).join('');
   kMaskenFelder = new Set(KAT.KATEGORIEN.flatMap(k => KAT.maskeFelder(k.id)));
 
-  // --- Katalogwahl (fluechtig, schreibt NICHTS) --------------------------
-  $('k-wahl').addEventListener('change', () => {
-    const wahl = String($('k-wahl').value || '');
-    KID = wahl || null;
-    ksAktiv = null; ksPosLeeren(); kpSchliesse(); varianteAus();
-    katLaden();
-    const k = kKat();
-    kZeige(k
-      ? `Bearbeitet wird jetzt „${k.name}“`
-        + (String(k.id) === kZugeordneteId()
-            ? ' — der dem aktiven Projekt zugeordnete Katalog.'
-            : ' — er ist dem aktiven Projekt nicht zugeordnet; die Zuordnung bleibt unberührt ([L-12]).')
-      : 'Kein Katalog gewählt.', true);
-  });
-
+  // --- Filter (reine Anzeige) -------------------------------------------
   $('k-filter').addEventListener('change', (ev) => {
     kFilter = (ev.target && ev.target.value) || $('k-filter').value || 'alle';
     katRender();
   });
 
-  // --- Katalog anlegen / importieren / Vorlage / Export / loeschen ------
-  $('k-neu').addEventListener('click', () => {
-    const name = $('k-name').value.trim() || 'Neuer Katalog';
-    // Ein neuer Katalog tritt NEBEN die bisherigen und wird NICHT zugeordnet (#108):
-    // zugeordnet wird ausschliesslich in Modul 0 ([L-12]).
+  // --- Aktionen der beiden Listen (#119) --------------------------------
+  // EIN delegierter Hoerer je Liste; die Zeile bringt ihre Aktion und ihre Kennung mit.
+  // Der bearbeitete Katalog ist weiter fluechtig (kein gespeichertes Feld, kein Zeiger).
+  function kFrisch(meldung, ok){
+    ksAktiv = null; ksPosLeeren(); kpSchliesse(); katLaden();
+    if (meldung != null) kZeige(meldung, ok !== false);
+  }
+
+  async function kListenAktion(akt, wert){
+    if (akt === 'bearbeiten-kat' || akt === 'ansehen') {
+      KID = String(wert);
+      const k = kKat();
+      kFrisch(k
+        ? (akt === 'ansehen'
+            ? `„${k.name}“ wird angezeigt — Repo-Vorlage, nur lesen.`
+            : `„${k.name}“ wird jetzt bearbeitet.`)
+        : 'Dieser Katalog ist nicht mehr vorhanden.', !!k);
+      return;
+    }
+
+    if (akt === 'laden') {
+      // #102 Die Fassung wird frisch aus dem Repo gelesen und ersetzt ausschliesslich
+      // ihren eigenen kanonischen Slot; andere Kataloge bleiben unangetastet.
+      try {
+        const k = store.ladeVorlagenKatalog(await vorlageText(String(wert)), String(wert),
+                                            { zuordnen: false });
+        KID = String(k.id);
+        kFrisch(`„${k.name}“ aus dem Repo geladen (${k.produkte.length} Produkt(e)) — `
+          + 'nur lesen. Zum Ändern „Als eigenen Katalog übernehmen“.');
+      } catch (e) { kZeige('Fassung nicht geladen: ' + fehlerText(e), false); }
+      return;
+    }
+
+    if (akt === 'aus-vorlage') {
+      await kAusVorlage(String(wert));
+      return;
+    }
+
+    if (akt === 'vorlage-entfernen') {
+      const k = store.katalogNachId(String(wert));
+      if (!k) return;
+      if (!confirm(`„${k.name}“ aus diesem Browser entfernen?\n\n`
+        + 'Die Repo-Vorlage selbst bleibt bestehen und ist jederzeit wieder ladbar. '
+        + 'Verwendet ein Projekt sie noch, bleibt sie erhalten.')) return;
+      try { store.loescheKatalog(k.id); }
+      catch (e) { kZeige('Nicht entfernt: ' + fehlerText(e), false); return; }
+      if (String(KID) === String(k.id)) KID = null;
+      kFrisch('Aus dem Browser entfernt — die Repo-Vorlage bleibt bestehen.');
+      return;
+    }
+
+    if (akt === 'umbenennen') {
+      const k = store.katalogNachId(String(wert));
+      if (!k) return;
+      const name = prompt('Neuer Name für diesen Katalog:', k.name);
+      if (name == null) { kZeige('Nicht umbenannt.', true); return; }
+      const sauber = String(name).trim();
+      if (!sauber) { kZeige('Leerer Name — nicht umbenannt.', false); return; }
+      if (sauber === k.name) { kZeige('Name unverändert.', true); return; }
+      const vorher = KID; KID = String(k.id);
+      let erg;
+      try { erg = kSchreibe({ ...k, name: sauber }); }
+      catch (e) { KID = vorher; kZeige('Nicht umbenannt: ' + fehlerText(e), false); return; }
+      if (!erg) { KID = vorher; return; }          // Grund hat kSchreibe genannt
+      KID = vorher || String(erg.id);
+      kFrisch(`Umbenannt in „${sauber}“.`);
+      return;
+    }
+
+    if (akt === 'exportieren') {
+      try {
+        const k = store.exportiereKatalog(String(wert));
+        kZeige(`„${k.name}“ exportiert: ${k.produkte.length} Produkt(e) als eigene JSON-Datei.`, true);
+      } catch (e) { kZeige('Export fehlgeschlagen: ' + fehlerText(e), false); }
+      return;
+    }
+
+    if (akt === 'loeschen') {
+      const k = store.katalogNachId(String(wert));
+      if (!k) return;
+      // Die Zuordnung wird hier NICHT genannt (#119) — welches Projekt welchen Katalog
+      // benutzt, ist Sache von Modul 0. Was die Wände betrifft, wird genannt.
+      if (!confirm(`Katalog „${k.name}“ löschen?\n\n`
+        + 'Vorher exportieren, wenn er noch gebraucht wird — rückgängig geht das nicht. '
+        + 'Verwendet ihn ein Projekt noch, bleibt er erhalten.\n\n'
+        + 'Produktreferenzen in Wänden bleiben stehen und werden danach in Modul 1/2/4 als '
+        + 'nicht auflösbar gemeldet; dort lässt sich ein Ersatz festlegen.')) return;
+      try { store.loescheKatalog(k.id); }
+      catch (e) { kZeige('Nicht gelöscht: ' + fehlerText(e), false); return; }
+      if (String(KID) === String(k.id)) KID = null;
+      kFrisch('Katalog gelöscht.');
+      return;
+    }
+  }
+
+  for (const liste of ['k-repo', 'k-lokal']) {
+    $(liste).addEventListener('click', (ev) => {
+      const t = ev && ev.target;
+      if (!t || !t.dataset || !t.dataset.kakt) return;
+      // Die Zusage wird ZURUECKGEGEBEN: die ladenden Aktionen sind asynchron, und ohne
+      // sie kann ein Aufrufer (auch der Test) das Ende nicht abwarten.
+      return kListenAktion(String(t.dataset.kakt), String(t.dataset.kid || ''));
+    });
+  }
+
+  // --- Neuen Katalog erzeugen: drei Wege (#119) -------------------------
+  const knOverlay = $('kn-overlay');
+  function knZeige(text, ok){ const m = $('kn-msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+  function knOeffne(){ knZeige('', true); knOverlay.hidden = false; }
+  function knSchliesse(){ knOverlay.hidden = true; }
+
+  $('k-neu').addEventListener('click', knOeffne);
+  $('kn-cancel').addEventListener('click', () => { knSchliesse(); kZeige('Abgebrochen — es wurde nichts angelegt.', true); });
+  knOverlay.addEventListener('click', (ev) => {
+    if (ev.target === knOverlay) { knSchliesse(); kZeige('Abgebrochen — es wurde nichts angelegt.', true); }
+  });
+
+  // Weg 1: importieren -> loest das versteckte Dateifeld aus
+  $('kn-import').addEventListener('click', () => { knSchliesse(); $('k-import').click(); });
+
+  // Weg 2: aus einer Repo-Vorlage
+  $('kn-vorlage').addEventListener('click', async () => {
+    const pfad = await waehleFassung();
+    if (!pfad) { knZeige('Keine Fassung gewählt — es wurde nichts angelegt.', false); return; }
+    knSchliesse();
+    await kAusVorlage(pfad);
+  });
+
+  // Weg 3: leer
+  $('kn-leer').addEventListener('click', () => {
+    const name = prompt('Name des neuen, leeren Katalogs:', 'Neuer Katalog');
+    if (name == null) { knZeige('Abgebrochen — es wurde nichts angelegt.', false); return; }
+    const sauber = String(name).trim() || 'Neuer Katalog';
     let erg;
-    try { erg = store.setzeKatalog(KAT.leererKatalog(name), { zuordnen: false }); }
-    catch (e) { kZeige('Fehler: ' + fehlerText(e), false); return; }
+    try { erg = store.setzeKatalog(KAT.leererKatalog(sauber), { zuordnen: false }); }
+    catch (e) { knZeige('Nicht angelegt: ' + fehlerText(e), false); return; }
+    knSchliesse();
     KID = String(erg.id);
-    ksAktiv = null; ksPosLeeren(); kpSchliesse(); varianteAus(); katLaden();
-    kZeige('Neuer Katalog angelegt und hier zur Bearbeitung gewählt: ' + name
-      + '. Die bisherigen Kataloge bleiben erhalten; zugeordnet wird in Modul 0 ([L-12]).', true);
+    kFrisch(`Leerer Katalog „${sauber}“ angelegt und zur Bearbeitung gewählt. `
+      + 'Unten „Produkt anlegen…“.');
   });
 
   $('k-import').addEventListener('change', async (ev) => {
@@ -980,90 +1005,13 @@ function katVerdrahte(){
     try {
       const k = await store.importiereKatalogDatei(file, { zuordnen: false });
       KID = String(k.id);
-      ksAktiv = null; ksPosLeeren(); kpSchliesse(); varianteAus(); katLaden();
-      kZeige(`Katalog importiert und hier zur Bearbeitung gewählt: ${k.name} `
-        + `(${k.produkte.length} Produkt(e)).` + vorbelegText(k), true);
+      kFrisch(`Katalog importiert und zur Bearbeitung gewählt: „${k.name}“ `
+        + `(${k.produkte.length} Produkt(e)).`);
     } catch (e) {
       kZeige('Katalog-Import fehlgeschlagen: ' + fehlerText(e), false);
     }
     ev.target.value = '';
   });
-
-  $('k-vorlage').addEventListener('click', async () => {
-    try {
-      // #102: Bei JEDER Bedienung wird die aktuelle Repo-Vorlage frisch gelesen und
-      // ausschliesslich der kanonische Vorlagen-Slot durch diesen Inhalt ersetzt. Eigene
-      // Kataloge und frueher entstandene Kopien behalten ihre Kennungen und bleiben
-      // unangetastet — es wird nichts zusammengefuehrt und nichts rekonstruiert.
-      // #108: zugeordnet wird dabei NICHTS.
-      const pfad = await waehleFassung();
-      if (!pfad) { kZeige('Es wurde keine Fassung geladen.', true); return; }
-      const k = store.ladeVorlagenKatalog(await vorlageText(pfad), pfad, { zuordnen: false });
-      KID = String(k.id);
-      ksAktiv = null; ksPosLeeren(); kpSchliesse(); varianteAus(); katLaden();
-      kZeige(`Standardkatalog geladen und hier zur Bearbeitung gewählt: ${k.name} `
-        + `(${k.produkte.length} Produkt(e)). `
-        + 'Er ist die unveränderliche Vorlage — die erste Bearbeitung fragt nach und legt dann '
-        + 'eine eigene Variante an. '
-        + 'Vorläufige, fachlich unbestätigte Beispielwerte sind je Produkt gekennzeichnet.'
-        + vorbelegText(k), true);
-    } catch (e) {
-      kZeige('Standardkatalog nicht geladen: ' + fehlerText(e), false);
-    }
-  });
-
-  $('k-export').addEventListener('click', () => {
-    if (!kKat()) { kZeige('Kein Katalog gewählt — es wurde nichts exportiert.', false); return; }
-    try {
-      const k = store.exportiereKatalog(KID);
-      kZeige(`Katalog exportiert: ${k.produkte.length} Produkt(e) als eigene JSON-Datei.`, true);
-    } catch (e) {
-      kZeige('Katalog-Export fehlgeschlagen: ' + fehlerText(e), false);
-    }
-  });
-
-  $('k-entfernen').addEventListener('click', () => {
-    const kat = kKat();
-    if (!kat) { kZeige('Kein Katalog gewählt.', false); return; }
-    const zug = String(kat.id) === kZugeordneteId();
-    if (!confirm(`Katalog „${kat.name}“ aus diesem Browser löschen? `
-      + 'Verwendet ihn kein Projekt mehr, wird er entfernt — vorher exportieren! '
-      + (zug ? 'Das aktive Projekt verliert dabei seine Katalogzuordnung. ' : '')
-      + 'Produktreferenzen in den Wänden bleiben als Referenz stehen und werden danach als Warnung angezeigt.')) return;
-    try { store.loescheKatalog(kat.id); }
-    catch (e) { kZeige('Nicht gelöscht: ' + fehlerText(e), false); return; }
-    KID = null;
-    const rest = store.listeKataloge();
-    if (rest.length) KID = String(rest[0].id);
-    ksAktiv = null; ksPosLeeren(); kpSchliesse(); varianteAus(); katLaden();
-    kZeige('Katalog gelöscht. Produktreferenzen bleiben stehen.'
-      + (zug ? ' Die Zuordnung des aktiven Projekts ist damit aufgehoben ([L-12]).' : ''), true);
-  });
-
-  // #102: Auch der Katalogname ist ein Schreibweg und laeuft deshalb durch denselben
-  // Kopierschutz. Der Zusatz wird genau EINMAL gemeldet — naemlich bei dem Schreibvorgang,
-  // der die Variante erzeugt hat; danach zeigt `KID` bereits auf sie, ein zweites Kopieren
-  // kann nicht auftreten. Das Eingabefeld selbst wird nicht neu geschrieben, damit die
-  // Eingabe nicht springt.
-  function kNameSchreibe(){
-    const k = kKat(); if (!k) return;
-    const name = $('k-name').value.trim();
-    if (!name || name === k.name) return;               // leerer/gleicher Name: nichts zu tun
-    let erg;
-    try { erg = kSchreibe({ ...k, name }); }
-    catch { return; }                                   // Meldung erst beim Speichern eines Produkts
-    if (!erg) { kZeige(VARIANTE_ABBRUCH, false); return; }
-    if (erg.kopie_von) { katRender(); kZeige('Katalogname geändert.' + kopieText(erg), true); }
-  }
-
-  // (#108) An der VORLAGE wird nicht je Tastendruck geschrieben — sonst käme die
-  // Variantenrückfrage je Zeichen. Dort entscheidet das Verlassen des Feldes (change);
-  // für jeden gewöhnlichen Katalog bleibt das bisherige Verhalten unverändert.
-  $('k-name').addEventListener('input', () => {
-    if (KAT.istVorlagenKatalog(kKat())) return;
-    kNameSchreibe();
-  });
-  $('k-name').addEventListener('change', kNameSchreibe);
 
   // --- Produktpflege ----------------------------------------------------
   $('kp-kat').addEventListener('change', () => {
@@ -1082,9 +1030,11 @@ function katVerdrahte(){
   $('kp-overlay').addEventListener('click', (ev) => { if (ev.target === $('kp-overlay')) kpAbbruch(); });
 
   $('kp-speichern').addEventListener('click', () => {
-    // Ohne gewaehlten Katalog ist die erste Produktanlage zugleich die Katalogsanlage —
-    // wie bisher, nur ohne Zuordnung (#108).
-    const kat = kKat() || KAT.leererKatalog($('k-name').value.trim() || 'Neuer Katalog');
+    // #119 Ein Produkt gehoert in einen KONKRETEN Katalog. Ohne gewaehlten Katalog wurde
+    // vorher stillschweigend einer angelegt — das war eine der unverstaendlichen Stellen.
+    const kat = kKat();
+    if (!kat) { kpZeige('Kein Katalog gewählt — erst oben einen erzeugen oder „Bearbeiten“ '
+      + 'drücken. Es wurde nichts gespeichert.', false); return; }
     const p = kpProdukt();
     const andere = kat.produkte.filter(x => String(x.id) !== String(kEditId)).map(x => String(x.id));
     const fehler = KAT.validiereProdukt(p, { ids: andere });
@@ -1102,20 +1052,19 @@ function katVerdrahte(){
     } else {
       kat.produkte.push(p);
     }
-    kat.name = $('k-name').value.trim() || kat.name;
     let erg;
     try { erg = kSchreibe(kat); }
     catch (e) { kpZeige('Katalog nicht gespeichert: ' + fehlerText(e), false); return; }
-    // Abgebrochene Variantenrückfrage (#108): der Dialog bleibt mit der Eingabe offen,
-    // gespeichert wurde nichts — `kat` war eine losgelöste Lesekopie.
-    if (!erg) { kpZeige(VARIANTE_ABBRUCH, false); return; }
+    // Abgewiesen (Repo-Vorlage): der Dialog bleibt mit der Eingabe offen, gespeichert
+    // wurde nichts — `kat` war eine losgelöste Lesekopie.
+    if (!erg) { kpZeige('Repo-Vorlagen werden nicht bearbeitet — es wurde nichts gespeichert.', false); return; }
     const war = kEditId != null, umbenannt = war && String(kEditId) !== String(p.id);
     const alteId = kEditId, modus = kpModus;
     kpSchliesse(); katLaden();
     kZeige((war ? 'Produkt geändert: ' : modus === 'duplizieren' ? 'Kopie angelegt: ' : 'Produkt angelegt: ')
       + p.bezeichnung + ' (' + p.id + ')'
-      + (umbenannt ? ` — ID von „${alteId}“ geändert; Projekte mit der alten Referenz warnen jetzt.` : '')
-      + kopieText(erg), true);
+      + (umbenannt ? ` — ID von „${alteId}“ geändert; Wände mit der alten Referenz melden sie `
+        + 'jetzt als nicht auflösbar und lassen dort einen Ersatz festlegen.' : ''), true);
   });
 
   // Zeilenaktionen (Ereignisdelegation: Bearbeiten/Duplizieren/Löschen)
@@ -1141,13 +1090,13 @@ function katVerdrahte(){
       let erg;
       try { erg = kSchreibe(kat); }
       catch (e) { kZeige('Fehler: ' + fehlerText(e), false); return; }
-      // Abgebrochene Variantenrückfrage (#108): frisch aus dem Speicher zeichnen, damit
-      // das nur in der Lesekopie entfernte Produkt wieder in der Tabelle steht.
-      if (!erg) { katLaden(); kZeige(VARIANTE_ABBRUCH, false); return; }
+      // Abgewiesen (Repo-Vorlage): frisch aus dem Speicher zeichnen, damit das nur in der
+      // Lesekopie entfernte Produkt wieder in der Tabelle steht.
+      if (!erg) { katLaden(); return; }
       if (String(kEditId) === String(p.id)) kpSchliesse();
       katLaden();
-      kZeige('Gelöscht: ' + p.bezeichnung + '. Projektauswahl wurde nicht bereinigt.'
-        + kopieText(erg), true);
+      kZeige('Gelöscht: ' + p.bezeichnung + '. Wände, die es verwenden, melden es jetzt als '
+        + 'nicht auflösbar und lassen dort einen Ersatz festlegen.', true);
     }
   });
 
@@ -1246,14 +1195,19 @@ function katVerdrahte(){
 window.__katInit = function(){
   const S = window.SEMBLA || {};
   store = S.store; KAT = S.KAT;
-  // Vorbelegt ist der Katalog des aktiven Projekts — er ist der wahrscheinlichste
-  // Bearbeitungsgegenstand. Gibt es keinen, wird der erste gespeicherte genommen und
-  // NICHTS geraten: geschrieben wird dadurch nichts, die Wahl ist reine Anzeige.
-  const zug = String(store.katalogStatus().id || '');
-  const alle = store.listeKataloge();
-  KID = (zug && store.katalogNachId(zug)) ? zug : (alle.length ? String(alle[0].id) : null);
+  // #119 Vorbelegt ist der erste LOKALE Katalog — der wahrscheinlichste
+  // Bearbeitungsgegenstand. Die Zuordnung des aktiven Projekts wird dafuer AUSDRUECKLICH
+  // nicht gelesen: welcher Katalog zu welchem Projekt gehoert, ist Sache von Modul 0.
+  // Geschrieben wird dadurch nichts; die Wahl ist fluechtig.
+  const lokal = kLokale();
+  KID = lokal.length ? String(lokal[0].id) : null;
   katVerdrahte();
   katLaden();
+  // Das Verzeichnis der Repo-Fassungen kommt aus einer Datei. Die Seite steht sofort und
+  // die Repo-Liste sagt bis dahin, dass sie gelesen wird — statt Leere vorzuspiegeln.
+  vorlagenFassungen().then(() => katLaden())
+    .catch((e) => { $('k-repo').innerHTML = '<div class="lleer">Vorlagenverzeichnis nicht '
+      + 'gelesen (' + esc(fehlerText(e)) + ') — lokale Kataloge sind davon unberührt.</div>'; });
 };
 </script>
 <script type="module">

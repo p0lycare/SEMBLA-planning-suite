@@ -663,14 +663,35 @@ Formatversion (`KATALOG_VERSION`), Logik in
 seit #108 der alleinige Pflegeort** für Produkte **und Preise** (anlegen/bearbeiten/duplizieren/
 löschen), für die **Baugruppen** ([P-21]) und für den **separaten** Katalogimport/-export — der
 bewusst **nicht** über den Projekt-Import/das Projekt-ZIP läuft (verwechselte Formate werden
-benannt). Dort ist **jeder gespeicherte Katalog bearbeitbar**, auch einer, der dem aktiven Projekt
-nicht zugeordnet ist; welcher bearbeitet wird und ob er zugeordnet ist, steht sichtbar auf der Seite.
+benannt). Das frühere Pflege-Popup in Modul 0 (`#kat-overlay`) ist **ersatzlos entfallen**.
+
+**Zuschnitt der Seite (#119).** Modul 10 beantwortet **zwei** Fragen und sonst keine: *welche
+Kataloge gibt es* und *was steht drin*. Die Seite führt dafür **zwei Listen** — die
+herausgegebenen **Repo-Fassungen** (aus dem Manifest, **nur lesen**) und die **lokalen** Kataloge
+dieses Browsers (**bearbeitbar**). Eine geladene Repo-Fassung erscheint in der **Repo**-Liste als
+geladen, **nicht** als zweiter Eintrag daneben; die lokale Liste enthält damit ausschließlich
+Bearbeitbares. Erzeugt wird über **einen** Knopf mit **drei** Wegen (importieren / aus einer
+Repo-Vorlage / leer); je lokalem Katalog gibt es **bearbeiten, umbenennen, exportieren, löschen**.
 Die Wahl des bearbeiteten Katalogs ist **flüchtig** (kein gespeichertes Feld, kein Zeiger).
-Das frühere Pflege-Popup in Modul 0 (`#kat-overlay`) ist **ersatzlos entfallen**; Modul 0 behält
-**allein die Zuordnung** und verlinkt dorthin. Weil Modul 0 auch keine wand-/projektbezogene
-Produktauswahl hat ([P-13]), bleiben dort nur die zwei Meldungen, die zum **Zuordnungsort** gehören:
-der Zuordnungsstatus nach [L-12] und der unwirksame Altbestand der aktiven Wand nach [P-15] — beide
-kompakt im Warnkasten der Projektliste, ohne Popup.
+
+**Modul 10 kennt die Zuordnung nicht (#119).** Welches Projekt welchen Katalog benutzt, wird hier
+**weder gelesen noch angezeigt noch geschrieben** — das ist allein Sache von Modul 0 ([L-12]).
+Vorher stand der Zuordnungsstatus hier an vier Stellen und war die Hälfte der Verwirrung: die Seite
+beantwortete eine Frage, die sie nicht zu beantworten hat. Folge davon: **jeder** schreibende
+Store-Aufruf läuft mit `zuordnen: false`. Das schränkt nichts ein — die Kennung eines bearbeiteten
+Katalogs ändert sich dabei nicht, eine bestehende Zuordnung bleibt also von selbst bestehen.
+Weil Modul 0 auch keine wand-/projektbezogene Produktauswahl hat ([P-13]), bleiben **dort** die zwei
+Meldungen, die zum **Zuordnungsort** gehören: der Zuordnungsstatus nach [L-12] und der unwirksame
+Altbestand der aktiven Wand nach [P-15] — kompakt im Warnkasten der Projektliste, ohne Popup.
+
+**Repo-Vorlagen sind nicht bearbeitbar (#119, ersetzt den Variantenweg aus #108).** Bei gewählter
+Vorlage sind die inhaltsändernden Bedienelemente **gesperrt** und eine Leiste sagt, warum — der
+Schutz ist damit **sichtbar, bevor** man ihn auslöst. Der Weg zum Ändern ist das ausdrückliche
+**„Als eigenen Katalog übernehmen"**: die Fassung wird frisch gelesen und als gewöhnlicher lokaler
+Katalog mit eigener Kennung gespeichert, die Vorlage bleibt unverändert daneben. Damit ist die
+frühere **Variantenrückfrage mitten in der Eingabe** entfallen (samt `variantenName`/
+`variantenFrage`/`#k-variante`). Der Kopierschutz in `store.setzeKatalog` bleibt unberührt — er ist
+ab jetzt reines **Sicherheitsnetz** und wird dort geprüft, wo er lebt (`smoke_storage.mjs`).
 
 **Versionierte Standardkataloge (#118).** Der mitgelieferte Standardkatalog wird
 **versioniert herausgegeben**: eine geänderte Fassung **ersetzt** die bestehende **nicht**,
