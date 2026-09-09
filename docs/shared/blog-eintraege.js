@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-21",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 97,
+    titel: "Neue Standardkatalogfassung v2 mit den Schlüsselweiten der M10-Spannstabteile",
+    testbitte: "In Modul 10 den Standardkatalog v2 ansehen: Spannmutter, Mutter des "
+      + "Einlegeblechs und Sechskantschraube Fuß führen jetzt 17 mm Schlüsselweite. Die "
+      + "Fassung v1 bleibt unverändert daneben ladbar; bestehende Projekte werden nicht "
+      + "umgestellt.",
+  },
+  {
     id: "chg-20260909-20",
     datum: "2026-09-09",
     typ: "fix",

@@ -67,7 +67,7 @@ export const KATALOG_FORMAT = "SEMBLA-Bauteilkatalog";
  * Diese Konstante bleibt der EINE Vorgabewert (Autoload beim Anlegen einer Wand,
  * [P-18]); WELCHE Fassungen es gibt, steht im Manifest (VORLAGEN_MANIFEST_PFAD).
  */
-export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog-v1.json";
+export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog-v2.json";
 
 /** Pfad des Vorlagenverzeichnisses (relativ zu `docs/`). */
 export const VORLAGEN_MANIFEST_PFAD = "./vorlagen/kataloge.json";

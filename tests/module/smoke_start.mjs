@@ -838,7 +838,13 @@ ok('nach Fehler ist die Dateiauswahl wieder frei', $('f-import').value === '');
 // kanonischen Speicherweg, und der Bedienweg steht in smoke_katalog.mjs.
 const vorlagenBasis = new URL("../../docs/vorlagen/", import.meta.url);
 const vorlageDatei = (name) => readFileSync(new URL(name, vorlagenBasis), "utf8");
-const V_WAND = "SEMBLA_Musterwand.json", V_KAT = "SEMBLA_Standardkatalog.json";
+const V_WAND = "SEMBLA_Musterwand.json";
+// #97/#118 Die KATALOGvorlage wird ueber ihren kanonischen Pfad geholt, nicht ueber einen
+// hier gepflegten Dateinamen: seit der Versionierung heisst die aktuelle Fassung anders als
+// die alte unversionierte Datei, und `VORLAGE_KATALOG_PFAD` bestimmt zugleich die
+// Vorlagenkennung (#102). Ein zweiter Dateiname hier haette den Inhalt der EINEN Fassung
+// unter der Kennung einer ANDEREN geladen — genau der Drift, der [P-18] unpruefbar macht.
+const V_KAT = KAT.VORLAGE_KATALOG_PFAD.replace(/^\.\/vorlagen\//, "");
 
 /**
  * Standardkatalog aus der ECHTEN Repo-Vorlage laden und dem aktiven Projekt zuordnen.
@@ -1041,6 +1047,48 @@ ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
 ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
   !JSON.stringify(store.aktivesWandelement()).includes('stein-i3-375')
   && KAT.anzahlAuswahl(store.katalogAuswahl()) === 0);
+
+// 7d2) #97 Die vorbelegte Fassung fuehrt die Schluesselweite der M10-Spannstabteile
+// Geuebt wird der ECHTE Autoload-Pfad: geladen ist genau die Datei aus VORLAGE_KATALOG_PFAD,
+// und an den drei Kleinteilen steht 17 mm — abgeleitet aus dem gepflegten Gewinde M10, wie
+// schon an der Kopplungsmutter. Dazu die Gegenprobe, dass die Fassung v1 unveraendert
+// daneben ladbar bleibt: eigene Kennung, eigener Inhalt, keine Umstellung des Bestands.
+{
+  const SW97 = ['verbrauch-spannmutter', 'verbrauch-mutter-m10-einlege',
+                'verbrauch-senkkopfschraube-fuss'];
+  ok('#97 die vorbelegte Fassung ist die aus VORLAGE_KATALOG_PFAD',
+    kat().id === KAT.vorlageKatalogId(KAT.VORLAGE_KATALOG_PFAD)
+    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v2/.test(kat().name));
+  ok('#97 Spannmutter, Mutter Einlegeblech und Sechskantschraube Fuß fuehren SW 17 mm',
+    SW97.every(id => KAT.produkt(kat(), id).sw_mm === 17));
+  ok('#97 die Herleitung aus dem Gewinde M10 steht am Produkt, nicht im Testtext',
+    SW97.every(id => {
+      const pr = KAT.produkt(kat(), id);
+      return String(pr.gewinde) === 'M10'
+        && /Schlüsselweite 17 mm folgt aus dem gepflegten Gewinde M10/.test(String(pr.hinweis));
+    })
+    && KAT.produkt(kat(), 'verbrauch-kopplungsmutter').sw_mm === 17);
+
+  // Gegenprobe: die aeltere Fassung ueber IHREN Pfad — eigene Kennung, unveraenderter Inhalt.
+  const P_V1 = './vorlagen/SEMBLA_Standardkatalog-v1.json';
+  const rohV1 = vorlageDatei('SEMBLA_Standardkatalog-v1.json');
+  const v2Id = kat().id;
+  const v1 = store.ladeVorlagenKatalog(rohV1, P_V1);
+  ok('#97 die Fassung v1 laedt unveraendert und mit EIGENER Kennung',
+    v1.id === KAT.vorlageKatalogId(P_V1) && v1.id !== v2Id
+    && KAT.istVorlagenKatalog(v1) && /Standardkatalog v1/.test(v1.name)
+    && v1.produkte.length === V_KAT_ANZ
+    && JSON.stringify(KAT.katalogObjekt(v1).produkte)
+       === JSON.stringify(KAT.parseKatalog(rohV1).produkte));
+  ok('#97 in v1 ist keine der drei Schluesselweiten gesetzt — nichts wurde umgestellt',
+    SW97.every(id => KAT.produkt(v1, id).sw_mm == null)
+    && store.katalogNachId(v2Id).produkte.length === V_KAT_ANZ
+    && SW97.every(id => KAT.produkt(store.katalogNachId(v2Id), id).sw_mm === 17));
+
+  // Ausgangslage fuer die folgenden Abschnitte wiederherstellen: die AKTUELLE Fassung gilt.
+  ladeStandardkatalog();
+  ok('#97 danach ist wieder die aktuelle Fassung zugeordnet', kat().id === v2Id);
+}
 
 // 7e) Musterwand laden: bestehender Bestaetigungsdialog, kein stilles Schreiben
 const wAnzahlVor = anzahl(), wAktivVor = store.aktivId(), wStandVor = stand();

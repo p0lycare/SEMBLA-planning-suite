@@ -2,8 +2,14 @@
   "format": "SEMBLA-Katalogvorlagen",
   "version": 1,
   "hinweis": "Herausgegebene Fassungen des mitgelieferten Standardkatalogs. Eine geaenderte Fassung ERSETZT keine bestehende, sondern tritt als eigene Datei daneben — die Vorlagenidentitaet der Browserressource leitet sich allein aus dem PFAD ab (vorlageKatalogId, #102). Alte Fassungen bleiben deshalb dauerhaft im Repo: ein Projekt, das ihnen zugeordnet ist, muss seinen Katalog auch in einem frischen Browser laden koennen. Neueste Fassung zuerst.",
-  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v1.json",
+  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v2.json",
   "fassungen": [
+    {
+      "pfad": "./vorlagen/SEMBLA_Standardkatalog-v2.json",
+      "version": "v2",
+      "datum": "2026-09-09",
+      "notiz": "Wie v1, zusaetzlich die Schluesselweite 17 mm an Spannmutter, Mutter des Einlegeblechs und Sechskantschraube Fuss — sie folgt jeweils aus dem gepflegten Gewinde M10 (#97). Sonst inhaltsgleich mit v1: kein Preis, keine Produktzeile und kein weiteres Mass geaendert."
+    },
     {
       "pfad": "./vorlagen/SEMBLA_Standardkatalog-v1.json",
       "version": "v1",

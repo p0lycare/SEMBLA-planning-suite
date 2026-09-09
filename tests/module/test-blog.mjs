@@ -39,16 +39,47 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die GEZEICHNETE SPANNMUTTER (#97) ist der neueste Eintrag — er wird als einziger direkt
+// Die STANDARDKATALOGFASSUNG v2 (#97) ist der neueste Eintrag — er wird als einziger direkt
 // ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres Eintrags
 // gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der mitgelieferte
+// Standardkatalog als neue Fassung v2 erscheint, in der drei M10-Teile ihre Schluesselweite
+// fuehren, dass die Fassung v1 unveraendert daneben ladbar bleibt und dass bestehende
+// Projekte nicht umgestellt werden. NICHT versprochen werden eine Norm, ein neues Feld,
+// eine geaenderte Menge, ein Preis, ein Nachweis oder ein Formatsprung.
+const KATALOG_V2_97 = EINTRAEGE[0];
+ok("[#97] die Standardkatalogfassung v2 ist der neueste Eintrag",
+  KATALOG_V2_97?.id === "chg-20260909-21" && KATALOG_V2_97?.issue === 97
+  && KATALOG_V2_97?.typ === "feature" && KATALOG_V2_97?.datum === "2026-09-09");
+ok("[#97] der Titel benennt die Fassung, die Schluesselweiten und die M10-Teile",
+  /v2/.test(KATALOG_V2_97?.titel || "")
+  && /Standardkatalog/.test(KATALOG_V2_97?.titel || "")
+  && /Schl\u00fcsselweite/.test(KATALOG_V2_97?.titel || "")
+  && /M10/.test(KATALOG_V2_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Format/i.test(KATALOG_V2_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 10 und nennt die drei Teile",
+  /Modul 10\b/.test(KATALOG_V2_97?.testbitte || "")
+  && /Spannmutter/.test(KATALOG_V2_97?.testbitte || "")
+  && /Einlegeblech/.test(KATALOG_V2_97?.testbitte || "")
+  && /Sechskantschraube/.test(KATALOG_V2_97?.testbitte || "")
+  && /17 mm/.test(KATALOG_V2_97?.testbitte || ""));
+ok("[#97] die Testbitte sagt, dass v1 bleibt und nichts umgestellt wird",
+  /v1/.test(KATALOG_V2_97?.testbitte || "")
+  && /ladbar/.test(KATALOG_V2_97?.testbitte || "")
+  && /nicht\s+umgestellt/.test(KATALOG_V2_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm und keine geaenderte Rechnung",
+  !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration/i
+    .test(KATALOG_V2_97?.testbitte || ""));
+
+// Davor liegt die GEZEICHNETE SPANNMUTTER (#97) — ueber ihre Kennung gesucht, weil sie nicht
+// mehr der neueste Eintrag ist. Ihre Aussagen bleiben inhaltlich unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass die Spannmutter in Modul 1 und
 // Modul 7 mit ihrer realen Einbauhoehe und Schluesselweite gezeichnet wird und sich abmessen
 // laesst, und dass es ohne gepflegtes Mass beim bisherigen Symbol bleibt. NICHT versprochen
 // werden ein neues Feld, ein neues Katalogmass, ein Bedienelement, eine geaenderte Rechnung,
 // ein Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
-const SPANN_ZEICHNEN97 = EINTRAEGE[0];
-ok("[#97] die gezeichnete Spannmutter ist der neueste Eintrag",
+const SPANN_ZEICHNEN97 = EINTRAEGE.find(e => e.id === "chg-20260909-20");
+ok("[#97] die gezeichnete Spannmutter steht unveraendert in der Liste",
   SPANN_ZEICHNEN97?.id === "chg-20260909-20" && SPANN_ZEICHNEN97?.issue === 97
   && SPANN_ZEICHNEN97?.typ === "fix" && SPANN_ZEICHNEN97?.datum === "2026-09-09");
 ok("[#97] der Titel benennt Spannmutter, beide Masse und das Zeichnen",
@@ -527,7 +558,8 @@ ok("genau ein Eintrag fuer die reale Katalogdicke der Spannplatte",
 // (chg-20260909-14), ihre Ableitung ans Wandelement (chg-20260909-15), die masstabsgetreue
 // Mutternbreite (chg-20260909-16) und das Nachziehen der Schluesselweite im Sammel-Editor
 // (chg-20260909-17), die beiden Masse der Spannmutter am Wandelement (chg-20260909-18) und die
-// LAGE des Deckenanschluss-Symbols (chg-20260909-19).
+// LAGE des Deckenanschluss-Symbols (chg-20260909-19), die gezeichnete Spannmutter
+// (chg-20260909-20) und die herausgegebene Katalogfassung v2 (chg-20260909-21).
 // Je Paket GENAU EIN Eintrag — und keiner mehr, damit dieselbe Aenderung nicht zweimal in der
 // Liste steht. Die vier Kopplungsmutter-Pakete sind ausdruecklich VIER: das erste pflegt das
 // Mass im Katalog, das zweite fuehrt es an die Wand, das dritte zeichnet es, das vierte
@@ -536,10 +568,12 @@ ok("genau ein Eintrag fuer die reale Katalogdicke der Spannplatte",
 // Eintrag zur Kopplungsmutter. Das vorletzte Paket zeichnet gar kein Bauteil neu, sondern
 // korrigiert die LAGE einer schon vorhandenen Marke — auch das ist ein eigenes Paket. Das
 // letzte ZEICHNET die Spannmutter mit den Massen, die das Paket davor nur an die Wand gefuehrt
-// hat: zwei Schritte, zwei Eintraege.
+// hat: zwei Schritte, zwei Eintraege. Das letzte gibt schliesslich den KATALOG in einer neuen
+// Fassung heraus — eine eigene Ressource ([L-12]) und damit ein eigenes Paket, kein zweiter
+// Eintrag zum Zeichnen.
 ok("je Paket genau ein Eintrag fuer Issue 97", (() => {
   const n97 = EINTRAEGE.filter(e => e.issue === 97 && e.datum === "2026-09-09");
-  return n97.length === 9
+  return n97.length === 10
     && n97.filter(e => e.id === "chg-20260909-05").length === 1
     && n97.filter(e => e.id === "chg-20260909-08").length === 1
     && n97.filter(e => e.id === "chg-20260909-14").length === 1
@@ -548,7 +582,8 @@ ok("je Paket genau ein Eintrag fuer Issue 97", (() => {
     && n97.filter(e => e.id === "chg-20260909-17").length === 1
     && n97.filter(e => e.id === "chg-20260909-18").length === 1
     && n97.filter(e => e.id === "chg-20260909-19").length === 1
-    && n97.filter(e => e.id === "chg-20260909-20").length === 1; })());
+    && n97.filter(e => e.id === "chg-20260909-20").length === 1
+    && n97.filter(e => e.id === "chg-20260909-21").length === 1; })());
 
 // Die NAMENSFOLGE DER WANDBLAETTER in der Zeichnungs-PDF (#107) ist der zweitneueste Eintrag —
 // er wird als einziger direkt ueber seine Kennung geprueft; die bisherige Reihe rueckt

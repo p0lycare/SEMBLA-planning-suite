@@ -1080,14 +1080,14 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Fassung von selbst eine eigene, unveraenderliche Identitaet und tritt neben die
   // anderen statt sie zu ersetzen.
   ok("#118 der Vorlagenpfad zeigt auf eine VERSIONIERTE Repo-Datei",
-    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v1.json");
+    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v2.json");
   const id = KAT.vorlageKatalogId(PFAD);
   ok("#102 die Kennung ist deterministisch und pfadabgeleitet",
-    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v1"
+    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v2"
     && KAT.vorlageKatalogId(PFAD) === id
-    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v1.json") === id);
+    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v2.json") === id);
   ok("#118 jede Fassung ergibt eine EIGENE Kennung — keine ersetzt eine andere",
-    KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v2.json") !== id);
+    KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v1.json") !== id);
   ok("#102 ein anderer Pfad ergibt eine andere Kennung",
     KAT.vorlageKatalogId("./vorlagen/Anderer.json") !== id);
   let warfLeer = false;
@@ -1117,6 +1117,98 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   ok("#102 katalogObjekt streicht Kennung und Marker — kein Formatbump",
     !("id" in KAT.katalogObjekt(echt)) && !(KAT.VORLAGE_FELD in KAT.katalogObjekt(echt))
     && KAT.katalogObjekt(echt).version === KAT.KATALOG_VERSION && KAT.KATALOG_VERSION === 2);
+}
+
+
+// --- 12a) Herausgegebene Fassung v2: die drei Schluesselweiten (#97) ------
+// #118 gibt den Standardkatalog VERSIONIERT heraus: eine geaenderte Fassung ersetzt keine
+// bestehende, sondern tritt als eigene Datei daneben. v2 pflegt die Schluesselweite 17 mm
+// an Spannmutter, Mutter des Einlegeblechs und Sechskantschraube Fuss — sie folgt jeweils
+// aus dem gepflegten Gewinde M10 (wie schon bei der Kopplungsmutter) und ist nicht geraten.
+// Geprueft wird gegen die ECHTEN Repo-Dateien und den echten Parser, nicht gegen ein Fixture.
+{
+  const lies = (n) => readFileSync(new URL("../../docs/vorlagen/" + n, import.meta.url), "utf8");
+  const rohV1 = lies("SEMBLA_Standardkatalog-v1.json");
+  const rohV2 = lies("SEMBLA_Standardkatalog-v2.json");
+  const v1 = KAT.parseKatalog(rohV1), v2 = KAT.parseKatalog(rohV2);
+  const SW_ROLLEN = ["verbrauch-spannmutter", "verbrauch-mutter-m10-einlege",
+                     "verbrauch-senkkopfschraube-fuss"];
+
+  ok("#97 die Fassung v2 ist gegen den echten Parser gueltig und traegt Katalogformat 2",
+    v2.produkte.length > 0 && v2.version === 2 && KAT.KATALOG_VERSION === 2
+    && v2.produkte.every((p) => KAT.validiereProdukt(p).length === 0));
+  ok("#97 die drei M10-Spannstabteile fuehren die Schluesselweite 17 mm",
+    SW_ROLLEN.every((id) => KAT.produkt(v2, id).sw_mm === 17));
+  ok("#97 alle vier M10-Teile sind untereinander stimmig (mit der Kopplungsmutter)",
+    [...SW_ROLLEN, "verbrauch-kopplungsmutter"].every((id) => {
+      const pr = KAT.produkt(v2, id);
+      return pr.sw_mm === 17 && String(pr.gewinde) === "M10";
+    }));
+  ok("#97 jede gepflegte Schluesselweite ist im Hinweis als Folge des Gewindes benannt",
+    SW_ROLLEN.every((id) => {
+      const h = String(KAT.produkt(v2, id).hinweis || "");
+      return /Die Schlüsselweite 17 mm folgt aus dem gepflegten Gewinde M10/.test(h)
+        && /ist nicht geraten/.test(h);
+    }));
+  ok("#97 erfunden wird nichts: keine Kopfhoehe der Schraube, keine neue Norm",
+    (() => {
+      const sr = KAT.produkt(v2, "verbrauch-senkkopfschraube-fuss");
+      return sr.hoehe_mm == null && sr.breite_mm == null && sr.dicke_mm == null
+        && sr.norm == null && /nicht genannt und wird nicht erfunden/.test(String(sr.hinweis));
+    })());
+
+  // Der Kern des Pakets: v2 ist eine FASSUNG von v1, keine neue Datenlage. Unterschieden
+  // werden darf genau der Fassungsname und, an den drei Produkten, die neue Schluesselweite
+  // samt ihrer Begruendung im Hinweis — kein Preis, keine Produktzeile, keine Baugruppe.
+  ok("#97 v2 unterscheidet sich von v1 NUR im Fassungsnamen und in den drei Produkten",
+    (() => {
+      const o1 = JSON.parse(rohV1), o2 = JSON.parse(rohV2);
+      const felder = [...new Set([...Object.keys(o1), ...Object.keys(o2)])]
+        .filter((k) => JSON.stringify(o1[k]) !== JSON.stringify(o2[k]));
+      if (felder.join() !== "name,produkte") return false;
+      if (!/ v1 /.test(o1.name) || !/ v2 /.test(o2.name)) return false;
+      if (o1.name.replace(" v1 ", " v2 ") !== o2.name) return false;
+      if (o1.produkte.length !== o2.produkte.length) return false;
+      return o1.produkte.every((p, i) => {
+        const q = o2.produkte[i];
+        if (p.id !== q.id) return false;
+        const diff = [...new Set([...Object.keys(p), ...Object.keys(q)])]
+          .filter((k) => JSON.stringify(p[k]) !== JSON.stringify(q[k])).sort();
+        return SW_ROLLEN.includes(p.id)
+          ? diff.join() === "hinweis,sw_mm" && p.sw_mm === undefined && q.sw_mm === 17
+            // Der Hinweis wird ANGEHAENGT, nicht umformuliert: der v1-Text steht wortgleich
+            // am Anfang, dahinter genau der Satz zur Herleitung aus dem Gewinde.
+            && String(q.hinweis) === String(p.hinweis) + " "
+              + "Die Schlüsselweite 17 mm folgt aus dem gepflegten Gewinde M10 und ist "
+              + "nicht geraten; erfunden wird daraus nichts weiter."
+          : diff.length === 0;
+      });
+    })());
+  ok("#97 Preise, Produktreihenfolge und Baugruppen sind in v2 wertgleich zu v1",
+    v2.produkte.map((p) => p.id + ":" + p.preis + ":" + p.einheit).join("|")
+      === v1.produkte.map((p) => p.id + ":" + p.preis + ":" + p.einheit).join("|")
+    && JSON.stringify(v2.sets) === JSON.stringify(v1.sets));
+  ok("#97 v2 macht die Suite unverändert startklar ([P-18])",
+    KAT.rollenOhneVorschlag(v2).length === KAT.rollenOhneVorschlag(v1).length
+    && KAT.rollenOhneVorschlag(v2).length === 0);
+
+  // Das Verzeichnis (#118) ist der EINE Ort, an dem eine Fassung bekanntgegeben wird.
+  const man = KAT.parseVorlagenManifest(lies("kataloge.json"));
+  ok("#97 das Verzeichnis fuehrt BEIDE Fassungen und weist aktuell auf v2",
+    man.fassungen.length === 2
+    && man.fassungen.map((f) => f.version).join() === "v2,v1"
+    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v2.json"
+    && man.aktuell === KAT.VORLAGE_KATALOG_PFAD);
+  ok("#97 der v1-Eintrag steht unveraendert daneben und bleibt eigenstaendig ladbar",
+    (() => {
+      const f1 = man.fassungen.find((f) => f.version === "v1");
+      return !!f1 && f1.pfad === "./vorlagen/SEMBLA_Standardkatalog-v1.json"
+        && f1.id === "kat-vorlage-vorlagen-sembla-standardkatalog-v1"
+        && f1.id !== man.fassungen.find((f) => f.version === "v2").id
+        && KAT.parseKatalog(rohV1).produkte.length === v2.produkte.length;
+    })());
+  ok("#97 in v1 ist keine der drei Schluesselweiten gesetzt (die Fassung bleibt, wie sie war)",
+    SW_ROLLEN.every((id) => KAT.produkt(v1, id).sw_mm == null));
 }
 
 
