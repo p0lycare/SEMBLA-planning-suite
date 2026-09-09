@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-22",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 97,
+    titel: "Sammel-Editor zieht Einbauhöhe und Schlüsselweite der Spannmutter mit nach",
+    testbitte: "Im Geschosseditor mehrere Wände auswählen, unter „Gemeinsam bearbeiten…\" "
+      + "eine andere Spannmutter setzen: sie erscheint in Modul 1 und Modul 7 sofort in "
+      + "der neuen Größe. Fehlt ein Katalogmaß, bleibt der bisherige Wert stehen.",
+  },
+  {
     id: "chg-20260909-21",
     datum: "2026-09-09",
     typ: "feature",

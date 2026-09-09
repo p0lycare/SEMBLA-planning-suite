@@ -39,16 +39,49 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die STANDARDKATALOGFASSUNG v2 (#97) ist der neueste Eintrag — er wird als einziger direkt
-// ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres Eintrags
-// gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Die SPANNMUTTERMASSE IM SAMMEL-EDITOR (#97) sind der neueste Eintrag — er wird als
+// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
+// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der Sammel-Editor des
+// Geschosseditors Einbauhoehe und Schluesselweite der Spannmutter aus der Produktauswahl
+// der jeweiligen Wand nachzieht, sodass beide Masse in Modul 1 und Modul 7 unmittelbar
+// wirken, und dass ein fehlendes Katalogmass den gespeicherten Wert stehen laesst. NICHT
+// versprochen werden ein neues Feld, ein neues Katalogmass, ein Bedienelement, eine
+// geaenderte Rechnung, ein Preis, eine Menge, eine Norm, ein Nachweis oder ein
+// Versionssprung.
+const SAMMEL_SPM_97 = EINTRAEGE[0];
+ok("[#97] die Spannmuttermasse im Sammel-Editor sind der neueste Eintrag",
+  SAMMEL_SPM_97?.id === "chg-20260909-22" && SAMMEL_SPM_97?.issue === 97
+  && SAMMEL_SPM_97?.typ === "fix" && SAMMEL_SPM_97?.datum === "2026-09-09");
+ok("[#97] der Titel benennt den Sammel-Editor, beide Masse und die Spannmutter",
+  /Sammel-Editor/.test(SAMMEL_SPM_97?.titel || "")
+  && /Einbauh\u00f6he/.test(SAMMEL_SPM_97?.titel || "")
+  && /Schl\u00fcsselweite/.test(SAMMEL_SPM_97?.titel || "")
+  && /Spannmutter/.test(SAMMEL_SPM_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format/i.test(SAMMEL_SPM_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch den Geschosseditor",
+  /Geschosseditor/.test(SAMMEL_SPM_97?.testbitte || "")
+  && /Gemeinsam bearbeiten/.test(SAMMEL_SPM_97?.testbitte || "")
+  && /mehrere W\u00e4nde/.test(SAMMEL_SPM_97?.testbitte || "")
+  && /Modul 1\b/.test(SAMMEL_SPM_97?.testbitte || "")
+  && /Modul 7\b/.test(SAMMEL_SPM_97?.testbitte || ""));
+ok("[#97] die Testbitte sagt, dass ein fehlendes Mass den bisherigen Wert stehen laesst",
+  /Fehlt ein Katalogma\u00df/.test(SAMMEL_SPM_97?.testbitte || "")
+  && /bisherige\w* Wert/.test(SAMMEL_SPM_97?.testbitte || "")
+  && /stehen/.test(SAMMEL_SPM_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm und keine geaenderte Rechnung",
+  !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration/i
+    .test(SAMMEL_SPM_97?.testbitte || ""));
+
+// Davor liegt die STANDARDKATALOGFASSUNG v2 (#97) — ueber ihre Kennung gesucht, weil sie
+// nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben inhaltlich unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der mitgelieferte
 // Standardkatalog als neue Fassung v2 erscheint, in der drei M10-Teile ihre Schluesselweite
 // fuehren, dass die Fassung v1 unveraendert daneben ladbar bleibt und dass bestehende
 // Projekte nicht umgestellt werden. NICHT versprochen werden eine Norm, ein neues Feld,
 // eine geaenderte Menge, ein Preis, ein Nachweis oder ein Formatsprung.
-const KATALOG_V2_97 = EINTRAEGE[0];
-ok("[#97] die Standardkatalogfassung v2 ist der neueste Eintrag",
+const KATALOG_V2_97 = EINTRAEGE.find(e => e.id === "chg-20260909-21");
+ok("[#97] die Standardkatalogfassung v2 steht unveraendert in der Reihe",
   KATALOG_V2_97?.id === "chg-20260909-21" && KATALOG_V2_97?.issue === 97
   && KATALOG_V2_97?.typ === "feature" && KATALOG_V2_97?.datum === "2026-09-09");
 ok("[#97] der Titel benennt die Fassung, die Schluesselweiten und die M10-Teile",
@@ -570,10 +603,12 @@ ok("genau ein Eintrag fuer die reale Katalogdicke der Spannplatte",
 // letzte ZEICHNET die Spannmutter mit den Massen, die das Paket davor nur an die Wand gefuehrt
 // hat: zwei Schritte, zwei Eintraege. Das letzte gibt schliesslich den KATALOG in einer neuen
 // Fassung heraus — eine eigene Ressource ([L-12]) und damit ein eigenes Paket, kein zweiter
-// Eintrag zum Zeichnen.
+// Eintrag zum Zeichnen. Das letzte schliesst die ZWEITE SCHREIBBAHN der Spannmutter im
+// Sammel-Editor — dieselbe Trennung wie beim vierten Eintrag zur Kopplungsmutter: Mass an
+// die Wand fuehren und die Sammelbahn nachziehen sind zwei Schritte, zwei Eintraege.
 ok("je Paket genau ein Eintrag fuer Issue 97", (() => {
   const n97 = EINTRAEGE.filter(e => e.issue === 97 && e.datum === "2026-09-09");
-  return n97.length === 10
+  return n97.length === 11
     && n97.filter(e => e.id === "chg-20260909-05").length === 1
     && n97.filter(e => e.id === "chg-20260909-08").length === 1
     && n97.filter(e => e.id === "chg-20260909-14").length === 1
@@ -583,7 +618,8 @@ ok("je Paket genau ein Eintrag fuer Issue 97", (() => {
     && n97.filter(e => e.id === "chg-20260909-18").length === 1
     && n97.filter(e => e.id === "chg-20260909-19").length === 1
     && n97.filter(e => e.id === "chg-20260909-20").length === 1
-    && n97.filter(e => e.id === "chg-20260909-21").length === 1; })());
+    && n97.filter(e => e.id === "chg-20260909-21").length === 1
+    && n97.filter(e => e.id === "chg-20260909-22").length === 1; })());
 
 // Die NAMENSFOLGE DER WANDBLAETTER in der Zeichnungs-PDF (#107) ist der zweitneueste Eintrag —
 // er wird als einziger direkt ueber seine Kennung geprueft; die bisherige Reihe rueckt

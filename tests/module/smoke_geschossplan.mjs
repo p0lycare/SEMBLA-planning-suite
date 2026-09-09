@@ -5415,10 +5415,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
 
   // (f) Must-not: GENAU EIN Ableitungsweg, kein neues gespeichertes Feld, kein Sprung
   //     einer Formatversion.
-  ok('#97 (must-not 6) genau EIN Ableitungsweg — `sw_mm` wird im Editor an genau einer '
-    + 'Stelle und ausschliesslich ueber `rollenMass` gelesen',
-    (html.match(/'sw_mm'/g) || []).length === 1
-    && /rollenMass\(eing, kat, 'kupplung', 'sw_mm'\)/.test(html)
+  // Gezaehlt wird ROLLENBEZOGEN und nicht der blosse Feldname: seit #97 liest auch die
+  // Spannmutter `sw_mm` aus ihrem eigenen Produkt, was ein zweiter Ableitungsweg fuer
+  // DIESES Bauteil waere — fuer die Kopplungsmutter ist es keiner.
+  ok('#97 (must-not 6) genau EIN Ableitungsweg — die Schluesselweite der Kopplungsmutter '
+    + 'wird im Editor an genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
+    (html.match(/rollenMass\(eing, kat, 'kupplung', 'sw_mm'\)/g) || []).length === 1
     // … und genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
     // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
     && (html.match(/kupplung_sw_mm:/g) || []).length === 1
@@ -5430,6 +5432,288 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
     && MAPPE.validiereMappe(store.holeMappe()).length === 0);
   globalThis.confirm = confirmEcht97;
+}
+
+// ==========================================================================
+//  Issue #97 — EINBAUHOEHE und SCHLUESSELWEITE der SPANNMUTTER im Sammel-Editor
+// ==========================================================================
+// Modul 1 leitet `prestress.spannmutter_h_mm`/`spannmutter_sw_mm` aus den Katalogfeldern
+// `hoehe_mm`/`sw_mm` der gewaehlten Spannmutter ab (`spannmutterHoeheMm`/`spannmutterSwMm`
+// ueber `einbauMass`); `sembla-montage.js` zeichnet die Mutter damit masstaeblich, ohne den
+// Katalog zu lesen ([D-1]). Der Sammel-Editor ist die ZWEITE Schreibbahn ans Wandelement —
+// er kannte die Rolle in `ROLLE_RECHNUNG` nicht und fuehrte einen gespeicherten Wert nur
+// mit. Nach einem dortigen Wechsel auf eine Mutter anderer Groesse blieb die alte Groesse
+// bis zum naechsten „Auslegen" in Modul 1 stehen.
+//
+// Gefahren wird der ECHTE Editorpfad wie beim Kopplungsmutter-Fall darueber: Projekt und
+// Katalog aufsetzen, Waende zeichnen, im Popup auswaehlen, uebernehmen — und das
+// GESPEICHERTE Wandelement pruefen. Der zweite Teil ist die Nullwirkung: keines der beiden
+// Masse geht in eine Rechnung ein.
+//
+// Beide Masse stehen FUER SICH. Die Pruefprodukte sind deshalb so gewaehlt, dass jede
+// Mehrdeutigkeit GENAU EIN Feld trifft und das andere eindeutig bleibt — nur so ist
+// sichtbar, dass das eindeutige Feld geschrieben wird, waehrend das offene stehen bleibt:
+//   A h=12 sw=17 · B h=12 sw=19 (A+B: Hoehe eindeutig, SW offen)
+//   C h=16 sw=19             (B+C: SW eindeutig, Hoehe offen)
+//   D h=20 ohne sw           (Hoehe eindeutig, SW fehlt ganz)
+{
+  const katTextSpm = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const mappeSpm = store.fuegeProjektHinzu('Projekt 97 Spannmutter',
+    { geschoss: 'EG97spm', hoehe_mm: 2600 });
+  const gsSpm = MAPPE.alleGeschosse(mappeSpm)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gsSpm);
+  store.importiereKatalogText(katTextSpm);
+  await warte();
+  GP.zeigeAlles();
+
+  const weSpm = (id) => store.holeElement(id).wandelement;
+  const psSpm = (id) => weSpm(id).prestress || {};
+  const hSpm = (id) => psSpm(id).spannmutter_h_mm;
+  const swSpm = (id) => psSpm(id).spannmutter_sw_mm;
+  /** Genau die Zahlen, die sich NICHT aendern duerfen: Achsen, Segmente, Stuecke, Mengen. */
+  const fpSpm = (id) => { const w = weSpm(id); return JSON.stringify({
+    achsen: (w.tension_columns || []).map(c => c.x_mm),
+    seg: (w.tension_columns || []).map(c => (c.segments || []).map(sg => [sg.z0_mm, sg.z1_mm,
+      sg.bedarf_mm, sg.ueberstand_mm, (sg.stuecke || []).map(x => x.art + ':' + x.len_mm).join()])),
+    bom: w.bom, base: w.base_plate, top: w.top_plate }); };
+  /** Der Ein-Wert-Baustein von MODUL 1 (`einbauMass`), satzweise nachgebaut. */
+  const massSpm = (id, feld) => {
+    const kat = store.holeKatalog(); if (!kat) return null;
+    const v = [...new Set(KAT.produkteZuRolle(store.holeElement(id).eingaben || {}, kat, 'spannmutter')
+      .produkte.map(x => +x[feld]).filter(n => Number.isFinite(n) && n > 0))];
+    return v.length === 1 ? v[0] : null;
+  };
+
+  const neuesteSpm = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const aSpm = neuesteSpm().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const bSpm = neuesteSpm().id;
+  await warte();
+  const idsSpm = [aSpm, bSpm];
+
+  const SPM0 = KAT.rollenIds(store.holeProdukte(1, aSpm), 'spannmutter');
+  ok('#97/spm Pruefaufbau: [P-18] hat GENAU EINE Spannmutter vorbelegt — mit gepflegter '
+    + 'Hoehe (10 mm) und OHNE Schluesselweite; im Wandelement steht noch keines der Masse',
+    SPM0.length === 1 && KAT.produkt(store.holeKatalog(), SPM0[0]).hoehe_mm === 10
+    && KAT.produkt(store.holeKatalog(), SPM0[0]).sw_mm === undefined
+    && idsSpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannmutter').join() === SPM0[0]
+      && !('spannmutter_h_mm' in psSpm(id)) && !('spannmutter_sw_mm' in psSpm(id))));
+
+  const confirmEchtSpm = globalThis.confirm;
+  globalThis.confirm = () => true;
+  const ridSpm = (r) => 'gp-sammel-rolle-' + r;
+  const hakeSpm = (r, pid, an = true) => $('gp-sammel-rollen').dispatch('change',
+    { target: { checked: an, dataset: { prolle: r, pid } } });
+  const waehleSpm = () => {
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+  };
+  /** Genau die Spannmuttern ankreuzen, die uebergeben werden. */
+  const setzeSpm = async (pids) => {
+    waehleSpm();
+    await warte();
+    $(ridSpm('spannmutter') + '-an').checked = true;
+    $(ridSpm('spannmutter') + '-an').dispatch('change');
+    for (const o of KAT.rollenOptionen(store.holeKatalog(), 'spannmutter', []))
+      hakeSpm('spannmutter', o.id, false);
+    for (const q of pids) hakeSpm('spannmutter', q);
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+  };
+
+  // (a) Akzeptanz 2 / Muss 2: NUR der Ueberstand ist angekreuzt — die Masse der
+  //     GESPEICHERTEN Auswahl werden trotzdem nachgezogen (#117-Bahn: jede Neurechnung
+  //     bildet alle Stellen neu). Und weil das Vorlagenprodukt keine Schluesselweite
+  //     fuehrt, ist das gleich der Beleg fuer Muss 3: es entsteht GENAU EIN Feld.
+  waehleSpm();
+  await warte();
+  ok('#97/spm Pruefaufbau: zwei Waende ausgewaehlt, Popup offen',
+    GP.zustand.auswahl.length === 2 && $('gp-sammelblatt').hidden === false);
+  $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+  $('gp-sammel-ueber').value = '25';
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#97/spm (Akzeptanz 2 / Muss 2) nur der Ueberstand angekreuzt: die Einbauhoehe der '
+    + 'gespeicherten Spannmutter wird mitgezogen',
+    idsSpm.every(id => hSpm(id) === 10 && psSpm(id).rod_overhang_mm === 25));
+  ok('#97/spm (Muss 3) beide Masse stehen fuer sich: das Produkt fuehrt keine '
+    + 'Schluesselweite, also entsteht GENAU EIN Feld — kein Ersatzmass',
+    idsSpm.every(id => !('spannmutter_sw_mm' in psSpm(id))));
+  ok('#97/spm (Muss 6) die Ableitung erreicht dieselbe Zahl wie Modul 1 fuer dieselbe '
+    + 'Auswahl',
+    idsSpm.every(id => hSpm(id) === massSpm(id, 'hoehe_mm') && massSpm(id, 'hoehe_mm') === 10
+      && massSpm(id, 'sw_mm') === null));
+  // Ab hier ist der Rechenstand eingeschwungen — er ist der Vergleichsmassstab.
+  const fpVorSpm = idsSpm.map(fpSpm);
+
+  // Die vier Pruefprodukte (s. Kopf des Blocks). Nur im TEST — die Vorlage unter
+  // docs/vorlagen/ bleibt unberuehrt.
+  {
+    const kat = store.holeKatalog();
+    const basis = KAT.produkt(kat, SPM0[0]);
+    const mach = (id, hoehe, sw) => {
+      const q = { ...basis, id, bezeichnung: 'Spannmutter Pruefmass ' + id, hoehe_mm: hoehe };
+      if (sw != null) q.sw_mm = sw; else delete q.sw_mm;
+      return q;
+    };
+    store.setzeKatalog({ ...kat, produkte: [...(kat.produkte || []),
+      mach('spm-a', 12, 17), mach('spm-b', 12, 19), mach('spm-c', 16, 19),
+      mach('spm-d', 20, null)] });
+    await warte();
+    const q = (id) => KAT.produkt(store.holeKatalog(), id);
+    ok('#97/spm Pruefaufbau: fuenf Spannmuttern im Katalog, der Katalog bleibt gueltig',
+      KAT.validiereKatalog(store.holeKatalog()).length === 0
+      && (store.holeKatalog().produkte || [])
+        .filter(x => (x.rollen || []).includes('spannmutter')).length === 5
+      && q('spm-a').hoehe_mm === 12 && q('spm-a').sw_mm === 17
+      && q('spm-b').hoehe_mm === 12 && q('spm-b').sw_mm === 19
+      && q('spm-c').hoehe_mm === 16 && q('spm-c').sw_mm === 19
+      && q('spm-d').hoehe_mm === 20 && q('spm-d').sw_mm === undefined);
+  }
+
+  // (b) Akzeptanz 1 / Muss 1: eine Sammelaenderung, die eine Mutter mit gepflegter Hoehe
+  //     UND gepflegter Schluesselweite setzt, schreibt an JEDER betroffenen Wand genau
+  //     diese beiden Katalogmasse.
+  await setzeSpm(['spm-a']);
+  ok('#97/spm (Akzeptanz 1 / Muss 1) die Sammelaenderung schreibt an jeder Wand genau die '
+    + 'beiden Katalogmasse der gesetzten Spannmutter',
+    idsSpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannmutter').join() === 'spm-a'
+      && hSpm(id) === 12 && swSpm(id) === 17
+      && hSpm(id) === massSpm(id, 'hoehe_mm') && swSpm(id) === massSpm(id, 'sw_mm')));
+  ok('#97/spm (Akzeptanz 4 / must-not 1) Zuschnitt, Segmente, Spannachsen und Mengen sind '
+    + 'wertgleich — beide Masse gehen in keine Rechnung ein',
+    idsSpm.every((id, i) => fpSpm(id) === fpVorSpm[i]));
+
+  // (c) Mehrdeutig NUR in der Hoehe (B+C teilen sw=19): die Schluesselweite wird
+  //     geschrieben, die offene Hoehe bleibt unveraendert stehen ([P-9]).
+  await setzeSpm(['spm-b', 'spm-c']);
+  ok('#97/spm (Akzeptanz 3 / Muss 3+4) mehrdeutige Hoehe bei eindeutiger Schluesselweite: '
+    + 'die SW entsteht, die Hoehe bleibt auf dem gespeicherten Wert stehen',
+    idsSpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannmutter').length === 2
+      && massSpm(id, 'hoehe_mm') === null && massSpm(id, 'sw_mm') === 19
+      && hSpm(id) === 12 && swSpm(id) === 19));
+  ok('#97/spm (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    idsSpm.every((id, i) => fpSpm(id) === fpVorSpm[i]));
+
+  // (d) Mehrdeutig NUR in der Schluesselweite (A+B teilen h=12) — die Gegenrichtung.
+  //     Zuvor auf C allein, damit die Hoehe sichtbar von 16 auf 12 WANDERT.
+  await setzeSpm(['spm-c']);
+  ok('#97/spm Pruefaufbau: C allein gesetzt — Hoehe 16, Schluesselweite 19',
+    idsSpm.every(id => hSpm(id) === 16 && swSpm(id) === 19));
+  await setzeSpm(['spm-a', 'spm-b']);
+  ok('#97/spm (Akzeptanz 3 / Muss 3+4) mehrdeutige Schluesselweite bei eindeutiger Hoehe: '
+    + 'die Hoehe entsteht (16 -> 12), die SW bleibt auf dem gespeicherten Wert stehen',
+    idsSpm.every(id => massSpm(id, 'hoehe_mm') === 12 && massSpm(id, 'sw_mm') === null
+      && hSpm(id) === 12 && swSpm(id) === 19));
+  ok('#97/spm (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    idsSpm.every((id, i) => fpSpm(id) === fpVorSpm[i]));
+
+  // (e) Ohne gepflegtes Mass: dieselbe Aussage — kein Ersatzmass, kein Loeschen.
+  await setzeSpm(['spm-d']);
+  ok('#97/spm (Akzeptanz 3 / Muss 3+4) gewaehlte Mutter ohne gepflegte Schluesselweite: '
+    + 'die Hoehe entsteht (20), die SW bleibt auf dem gespeicherten Wert stehen',
+    idsSpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannmutter').join() === 'spm-d'
+      && massSpm(id, 'hoehe_mm') === 20 && massSpm(id, 'sw_mm') === null
+      && hSpm(id) === 20 && swSpm(id) === 19));
+  ok('#97/spm (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    idsSpm.every((id, i) => fpSpm(id) === fpVorSpm[i]));
+
+  // (f) Muss 7: das Ankreuzen der Rolle loest dieselbe Neurechnung aus wie die uebrigen
+  //     Rollen mit Rollenrechnung — sichtbar daran, dass das Popup sie als rechenwirksam
+  //     ausweist (`wirkt` liest genau `ROLLE_RECHNUNG`).
+  waehleSpm();
+  await warte();
+  /** Der Hinweistext EINER Rollenzeile im Popup — `wirkt` liest genau `ROLLE_RECHNUNG`. */
+  const titelSpm = (r) => ((($('gp-sammel-rollen').innerHTML || '')
+    .match(new RegExp('for="' + ridSpm(r) + '-an" title="([^"]*)"')) || [])[1] || '');
+  ok('#97/spm (Muss 7) das Popup weist die Spannmutter als rechenwirksame '
+    + 'Verwendungsstelle aus — dieselbe Bahn wie die uebrigen Rollen mit Rollenrechnung, '
+    + 'und anders als eine Rolle ohne Rollenrechnung (Einlegeblech) daneben',
+    /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelSpm('spannmutter'))
+    && /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelSpm('kupplung'))
+    && !/den Auslegungspfad von Modul 1 neu gerechnet/.test(titelSpm('einlegeblech'))
+    && titelSpm('einlegeblech') !== '');
+  $('gp-sammel-zu').dispatch('click');
+  await warte();
+
+  // (g) Akzeptanz 3 / Muss 5: OHNE zugeordneten Katalog wird gar nichts abgeleitet — beide
+  //     am Wandelement gespeicherten Masse ueberstehen den Rechenweg unveraendert.
+  {
+    const mappeOhneSpm = store.fuegeProjektHinzu('Projekt 97 Spannmutter ohne Katalog',
+      { geschoss: 'EG97spmb', hoehe_mm: 2600 });
+    const gsOhneSpm = MAPPE.alleGeschosse(mappeOhneSpm)[0].geschoss.id;
+    store.setzeAktivesGeschoss(gsOhneSpm);
+    await warte();
+    ok('#97/spm Pruefaufbau: dem neuen Projekt ist kein Bauteilkatalog zugeordnet ([L-12])',
+      store.katalogStatus().status !== 'ok' && !store.holeKatalog());
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const cSpm = neuesteSpm().id;
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const dSpm = neuesteSpm().id;
+    await warte();
+    const paarSpm = [cSpm, dSpm];
+    // Der Ausgangsstand entsteht ueber den echten Auslegungspfad — nicht durch ein von
+    // Hand verbogenes JSON: so passt die Zerlegung wirklich zu diesen Eingaengen.
+    for (const id of paarSpm) {
+      const el = store.holeElement(id), w = el.wandelement;
+      const vorg = { name: el.name, length_mm: w.length_mm, height_mm: w.height_mm,
+        openings: (w.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+        sides: w.sides, steps: (w.steps || []).map(x => ({ ...x })),
+        interlocks: (w.interlocks || []).map(i => ({ ...i })),
+        prestress: { ...(w.prestress || {}), spannmutter_h_mm: 22, spannmutter_sw_mm: 24 },
+        load: { qk_area: 1.00, gammaQ: 1.50 },
+        material: w.verification && w.verification.material };
+      const neu = ENG.autoAuslegung(vorg).wandelement;
+      neu.wandtyp = w.wandtyp; neu.abdichtung = w.abdichtung; neu.brandklasse = w.brandklasse;
+      store.speichere(el.name, neu, id);
+    }
+    await warte();
+    ok('#97/spm Pruefaufbau: beide Waende tragen gespeicherte Masse (22 mm / 24 mm)',
+      paarSpm.every(id => hSpm(id) === 22 && swSpm(id) === 24));
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+    $('gp-sammel-ueber').value = '30';
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#97/spm (Akzeptanz 3 / Muss 5) ohne zugeordneten Katalog wird nichts abgeleitet — '
+      + 'beide gespeicherten Masse bleiben unveraendert stehen',
+      paarSpm.every(id => hSpm(id) === 22 && swSpm(id) === 24
+        && psSpm(id).rod_overhang_mm === 30));
+  }
+
+  // (h) Must-not 6: GENAU EIN Ableitungsweg, und keine erfundene topConn-Bedingung —
+  //     Modul 1 hat keine, und eine hier ergaebe fuer dieselbe Auswahl eine andere Zahl.
+  ok('#97/spm (must-not 6) genau EIN Ableitungsweg — beide Masse werden im Editor an je '
+    + 'genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
+    /rollenMass\(eing, kat, 'spannmutter', 'hoehe_mm'\)/.test(html)
+    && /rollenMass\(eing, kat, 'spannmutter', 'sw_mm'\)/.test(html)
+    && (html.match(/'spannmutter',/g) || []).length === 2
+    // … und je genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
+    // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
+    && (html.match(/spannmutter_h_mm:/g) || []).length === 1
+    && (html.match(/spannmutter_sw_mm:/g) || []).length === 1
+    && /h != null \? \{ spannmutter_h_mm: h \} : \{\}/.test(html)
+    && /sw != null \? \{ spannmutter_sw_mm: sw \} : \{\}/.test(html));
+  ok('#97/spm (Muss 6) der Rollen-Baustein nimmt KEINEN oberen Anschluss entgegen — '
+    + 'anders als Spannplatte und Kopfblech, und satzgleich zu Modul 1',
+    /\n  spannmutter: \(eing, kat\) => \{/.test(html)
+    && /spannplatte: \(eing, kat, topConn\) => \{/.test(html));
+  ok('#97/spm (must-not 2) kein neues gespeichertes Feld, kein Schema-, Mappen-, Katalog- '
+    + 'oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    && store.PROJEKT_VERSION === 2
+    && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  globalThis.confirm = confirmEchtSpm;
 }
 
 let fail = 0;

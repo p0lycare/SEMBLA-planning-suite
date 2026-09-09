@@ -2467,16 +2467,21 @@ function sammelRollen(){ return KAT ? KAT.rollenVonModul(1) : []; }
 /** Kennung der Bedienfelder EINER Verwendungsstelle im Popup. */
 function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 
-// Die fünf Verwendungsstellen, deren Auswahl in die RECHNUNG eingeht: Standardlängen
-// und Reststück der Gewindestange ([Z-1]/[Z-6]), der Vorratssatz der Bodenblechlängen
-// ([A-10]) und die beiden Einbaulagen des Spannsystems (#92). Modul 1 rechnet die Wand
+// Die Verwendungsstellen, deren Auswahl den Vorspann-Eingangssatz einer Wand bildet.
+// RECHENWIRKSAM sind: Standardlängen und Reststück der Gewindestange ([Z-1]/[Z-6]), der
+// Vorratssatz der Bodenblechlängen ([A-10]) und die beiden Einbaulagen des Spannsystems
+// (#92). Reine AUSWEISUNGSMASSE ohne Rechenbeitrag sind daneben die Blechdicken ([A-1])
+// sowie die Schlüsselweite der Kopplungsmutter und Einbauhöhe samt Schlüsselweite der
+// Spannmutter (#97) — sie stehen in derselben Tabelle, weil sie dieselbe Bahn nehmen:
+// aus der Produktauswahl der Wand ins Wandelement, damit die Ausgaben sie zeichnen
+// können, ohne den Katalog zu lesen ([D-1]). Modul 1 rechnet die Wand
 // nach jeder Änderung an ihnen neu (`bindProdukte` -> `run()`); genau das tut der
 // Sammel-Editor hier auch — über denselben `rechneWandelement()`-Pfad, damit im
 // gespeicherten JSON nicht die alte Zerlegung stehen bleibt (der Fehler aus #15/#62).
 //
-// #117 Gebildet werden sie für JEDE neu gerechnete Wand und für ALLE fünf Stellen aus
-// der dann geltenden Produktauswahl (`vorspannEingaenge`) — NICHT mehr nur für die im
-// Popup angekreuzten. Vorher rechnete der Editor mit den im Wandelement GESPEICHERTEN
+// #117 Gebildet werden sie für JEDE neu gerechnete Wand und für ALLE Stellen dieser
+// Tabelle aus der dann geltenden Produktauswahl (`vorspannEingaenge`) — NICHT mehr nur
+// für die im Popup angekreuzten. Vorher rechnete der Editor mit den im Wandelement GESPEICHERTEN
 // Eingängen weiter und ersetzte nur die angekreuzte Stelle; ein veralteter oder gar
 // fehlender Satz blieb damit stehen, und eine reine Überstandsänderung ergab eine
 // Zerlegung aus alten Eingängen (unsinnig kurze Sonderzuschnitte), die erst „Auslegen"
@@ -2495,7 +2500,10 @@ function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 // #97 Die Schlüsselweite der Kopplungsmutter (`kupplung_sw_mm`) wächst diesen
 // Nachziehpunkt NICHT: sie ist ein reiner Feldabgriff über `rollenMass` — keine
 // Beziehung, keine Rechnung, kein zweiter Ableitungsweg — und steht deshalb hier wie in
-// Modul 1 als dieselbe eine Leseoperation auf demselben Katalogfeld.
+// Modul 1 als dieselbe eine Leseoperation auf demselben Katalogfeld. Für Einbauhöhe und
+// Schlüsselweite der SPANNMUTTER (`spannmutter_h_mm`/`spannmutter_sw_mm`) gilt Wort für
+// Wort dasselbe: auch sie sind zwei Feldabgriffe und keine Beziehung, weshalb auch sie
+// den [P-6]-Nachziehpunkt nicht vergrößern.
 const ROLLE_RECHNUNG = {
   rod_std: (eing, kat) => {
     // #117 Eine LEERE Auswahl setzt das Feld NICHT. Seit die Ableitung bei jeder
@@ -2544,6 +2552,30 @@ const ROLLE_RECHNUNG = {
     if (topConn === 'blech') return {};                 // bei Kopfblech gibt es keine Platte
     const d = rollenMass(eing, kat, 'spannplatte', 'dicke_mm');
     return d != null ? { rod_kopf_zuschlag_mm: d } : {};
+  },
+  // #97 Einbauhöhe und Schlüsselweite der SPANNMUTTER — das Bauteil, das oben auf der
+  // Spannplatte sitzt. Beide sind reine AUSWEISUNGSMASSE: sie gehen in keine Höhe,
+  // keinen Bedarf und keine Menge ein (dieselbe Bahn wie die Blechdicken [A-1] und die
+  // Schlüsselweite der Kopplungsmutter) und reisen allein deshalb mit, damit die
+  // Ausgaben die Mutter maßstäblich zeichnen können, ohne den Katalog zu lesen ([D-1]).
+  //
+  // Gelesen wird derselbe Ein-Wert-Baustein `rollenMass` wie für jedes andere Einbaumaß,
+  // also satzgleich zu `spannmutterHoeheMm()`/`spannmutterSwMm()`/`einbauMass()` in
+  // Modul 1 — es entsteht kein zweiter Ableitungsweg. Bewusst OHNE `topConn`-Bedingung:
+  // anders als Spannplatte und Kopfblech prüft Modul 1 hier den oberen Anschluss nicht,
+  // und eine hier erfundene Bedingung ergäbe für dieselbe Auswahl eine andere Zahl.
+  //
+  // Beide Maße stehen FÜR SICH: ein Produkt mit gepflegter Höhe, aber ohne
+  // Schlüsselweite liefert genau ein Feld. Fehlt ein Maß oder widersprechen sich die
+  // gewählten Produkte, entsteht das jeweilige Feld NICHT — dann bleibt der im
+  // Wandelement gespeicherte Wert stehen (`psOf` reicht ihn durch), statt von einer
+  // erfundenen Höhe oder Breite überschrieben zu werden ([P-9]). Abgeleitet wird nichts
+  // aus Gewinde oder Norm des Produkts.
+  spannmutter: (eing, kat) => {
+    const h = rollenMass(eing, kat, 'spannmutter', 'hoehe_mm');
+    const sw = rollenMass(eing, kat, 'spannmutter', 'sw_mm');
+    return { ...(h != null ? { spannmutter_h_mm: h } : {}),
+             ...(sw != null ? { spannmutter_sw_mm: sw } : {}) };
   },
 };
 
