@@ -2450,9 +2450,17 @@ globalThis.fetch = echtesFetch;
   $('exp-overlay')._sel = [{ value: 'gesamt' }];
   $('exp-go').dispatch('click');
   const gFiles = zipCalls.length ? zipCalls[0].files : [];
-  ok('#67 Gesamt-Haekchen erzeugt genau eine CSV', gFiles.length === 1 && /\.csv$/.test(gFiles[0].name));
+  // Seit #113 sind es ZWEI CSVs: die Gesamtstueckliste je Einbaustelle und daneben die
+  // Einkaufsliste je Katalogprodukt. Die erste bleibt an ihrer Stelle und unveraendert.
+  ok('#67 Gesamt-Haekchen erzeugt genau zwei CSVs', gFiles.length === 2
+    && gFiles.every(f => /\.csv$/.test(f.name)));
   ok('#67 Dateiname nennt Ebene und Bezug',
     gFiles[0].name === 'Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '.csv');
+  ok('#113 die zweite Datei ist die Einkaufsliste je Katalogprodukt',
+    gFiles[1].name === 'Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '_Einkaufsliste.csv'
+    && /^SEMBLA – Einkaufsliste \(Beschaffung\)/.test(gFiles[1].data)
+    && /\nProdukt-ID \(Katalog\);Einheit;Menge;Einbaustellen;/.test(gFiles[1].data)
+    && /\nKlärung vor der Bestellung nötig/.test(gFiles[1].data));
   ok('#67 ZIP-Name folgt Ebene und Geschoss',
     zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Geschoss_' + ARCHIV.sicherStamm(gsName) + '.zip');
   const gCsv = gFiles.length ? gFiles[0].data : '';
@@ -2619,12 +2627,16 @@ globalThis.fetch = echtesFetch;
   $('exp-go').dispatch('click');
   const alle = zipCalls.length ? zipCalls[0].files : [];
   const an = alle.map(f => f.name);
-  ok('#67 Vollpaket: 1 Mappe + 2 Geschosse + 3 Waende + 1 Gesamtstueckliste + 1 Katalog',
-    alle.length === 8
+  ok('#67 Vollpaket: 1 Mappe + 2 Geschosse + 3 Waende + Gesamtstueckliste und Einkaufsliste + 1 Katalog',
+    alle.length === 9
     && an.filter(n => n.startsWith('SEMBLA_Projektmappe_')).length === 1
     && an.filter(n => n.startsWith('geschosse/')).length === 2
     && an.filter(n => n.startsWith('waende/')).length === 3
-    && an.filter(n => n.startsWith('Gesamtstueckliste_')).length === 1
+    && an.filter(n => n.startsWith('Gesamtstueckliste_')).length === 2
+    // Genau eine davon ist die Einkaufsliste (#113) — die Gesamtstueckliste bleibt einmalig.
+    && an.filter(n => n.endsWith('_Einkaufsliste.csv')).length === 1
+    && an.includes('Gesamtstueckliste_Projekt_Exportprojekt_44.csv')
+    && an.includes('Gesamtstueckliste_Projekt_Exportprojekt_44_Einkaufsliste.csv')
     && an.filter(n => n.startsWith('SEMBLA_Bauteilkatalog_')).length === 1);
   ok('#67 die Mappendatei ist die unveraenderte Projektmappe v2 — und heisst NICHT projekt.json',
     (() => {
@@ -2658,7 +2670,7 @@ globalThis.fetch = echtesFetch;
         && alle.filter(x => x.name.startsWith('SEMBLA_Projektmappe_') || x.name.startsWith('geschosse/'))
           .every(x => !x.data.includes('"produkte"'));
     })());
-  ok('#67 vollstaendiger Export meldet Erfolg ohne Luecken', !trFehler() && /8 Datei/.test(trMsgTxt()));
+  ok('#67 vollstaendiger Export meldet Erfolg ohne Luecken', !trFehler() && /9 Datei/.test(trMsgTxt()));
 
   // (f) Export eines NICHT aktiven Projekts — der Umfang folgt dem Klick, kein Zeiger wandert
   const prjZweit = await projektAnlegen('Zweitprojekt #67');

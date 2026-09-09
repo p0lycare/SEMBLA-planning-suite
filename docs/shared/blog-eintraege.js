@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-06",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 113,
+    titel: "Die Gesamtstückliste bringt eine Einkaufsliste je Katalogprodukt mit",
+    testbitte: "In Modul 0 ein Geschoss exportieren und die zweite CSV „Einkaufsliste\" öffnen: je Zeile ein Artikel mit summierter Menge, Einbaustellen und Beschaffungsangaben; nicht Bestellbares steht im Block „Klärung vor der Bestellung nötig\".",
+  },
+  {
     id: "chg-20260909-05",
     datum: "2026-09-09",
     typ: "feature",

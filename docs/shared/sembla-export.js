@@ -686,14 +686,183 @@ export function gesamtstuecklisteCsv(daten, opts = {}) {
   return aoaToCsv(gesamtstuecklisteAoa(daten, opts));
 }
 
+// ---------- Einkaufsliste je Katalogprodukt (#113) ----------
+//
+// Wer bestellt, denkt nicht in Einbaustellen, sondern in ARTIKELN: dasselbe Katalogprodukt
+// steht in der Gesamtstückliste ueber mehrere Waende und mehrere Einbaustellen verteilt in
+// mehreren Zeilen und muesste von Hand zusammengezaehlt werden. Die Einkaufsliste faltet
+// genau diese Zeilen ein zweites Mal — je KATALOGPRODUKT statt je Einbaustelle — und stellt
+// den Beschaffungsblock daneben.
+//
+// GERECHNET WIRD HIER NICHTS. Quelle sind ausschliesslich die bereits gefalteten Zeilen aus
+// `gesamtDaten()` (`daten.positionen`): das nach [P-14] aufgeloeste `produkt`, die Einheit,
+// die wirksame Menge, die Bezeichnung der Einbaustelle und der Zuordnungsgrund. Es gibt keine
+// zweite Preis-, Mengen- oder Produktaufloesung — und die bestehende Gesamtdatei wird nicht
+// angefasst.
+//
+// KEIN PREISTEIL. Die Liste fuehrt keine EP/GP-Spalten und keinen Gesamtbetrag; `opts.preise`
+// wirkt auf sie deshalb NICHT (der Schalter blendet in der Gesamtdatei Preise aus, hier gibt
+// es keine). Eine Einkaufsliste ist eine Bestellunterlage, keine Kostenaufstellung.
+//
+// ZWEITER KOPFBAUER, mit Absicht. Der Blattbezug entsteht hier ein zweites Mal aus DENSELBEN
+// `daten`-Feldern, statt ihn mit `gesamtstuecklisteAoa` zu teilen: jene Datei muss byte-gleich
+// bleiben, und ein gemeinsamer Baustein haette sie angefasst. Dass beide Koepfe wortgleich
+// sind, ist deshalb im Regressionstest festgehalten und nicht im Code verdrahtet.
+
+/** Ueberschrift des Artikelteils — Produkt, Einheit, Menge, Herkunft, dann der Beschaffungsblock. */
+export const EINKAUF_SPALTEN = [
+  "Produkt-ID (Katalog)",
+  "Einheit",
+  "Menge",
+  "Einbaustellen",
+  // Derselbe eine Baustein wie in beiden Stuecklistendateien (#113) — eine zweite
+  // Spaltenliste waere genau der Drift, den [P-6] ausschliesst.
+  ...BESCHAFFUNG_SPALTEN,
+];
+
+/** Titel des Blocks der nicht bestellbaren Positionen — Wortlaut aus dem Issue (#113). */
+export const KLAERUNG_TITEL = "Klärung vor der Bestellung nötig";
+
+/** Ueberschrift des Klaerungsblocks: die Position bleibt vollstaendig erkennbar. */
+export const KLAERUNG_SPALTEN = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge", "Zuordnung"];
+
+/**
+ * Summierte Menge einer Artikelzeile — dieselbe Glaettung wie beim Falten der Gesamtstückliste.
+ *
+ * Bewusste WIEDERHOLUNG von `_summeMenge` aus `sembla-gesamtstueckliste.js`: jene Datei
+ * importiert von hier (`stuecklistePositionen`/`wirksameMengen`/`normFassung`), der umgekehrte
+ * Import waere ein Zirkel. Die Regel ist eine Zeile und steht darum lieber zweimal, als dass
+ * die Modulgrenze faellt.
+ */
+function _einkaufMenge(werte) {
+  const s = werte.reduce((a, v) => a + v, 0);
+  return Number.isInteger(s) ? s : Math.round(s * 1e6) / 1e6;
+}
+
+/**
+ * EINKAUFSLISTE (Beschaffung) einer Projektstufe als AoA — je Zeile genau ein Katalogprodukt.
+ *
+ * Gefaltet wird ueber Produkt-Kennung UND Einheit: [P-14] rechnet Einheiten nicht um
+ * (`Stk↔Stk`, `m↔m`), also bleiben verschiedene Einheiten desselben Produkts zwingend zwei
+ * Zeilen. Die Reihenfolge ist das ERSTE AUFTRETEN in `daten.positionen` — dieselbe
+ * Bestimmtheit, mit der `gesamtDaten()` faltet; es entsteht keine zweite Sortierachse und
+ * keine Abhaengigkeit von der Umgebung (kein `localeCompare`).
+ *
+ * Positionen OHNE eindeutig aufgeloestes Produkt verschwinden nie: sie stehen einzeln — nicht
+ * aggregiert, damit jeder Grund bei seiner Position bleibt — im benannten Block
+ * „Klärung vor der Bestellung nötig“ mit ihrem unveraenderten `statusText` ([P-9]).
+ *
+ * @param {object} daten Ergebnis von `gesamtDaten()`
+ * @param {{datum?:string}} [opts] `preise` wirkt hier ausdruecklich NICHT (s. o.)
+ */
+export function einkaufslisteAoa(daten, opts = {}) {
+  const b = daten.bezug || {};
+  const positionen = daten.positionen || [];
+  const mengen = daten.mengen
+    || { fassung: "berechnet", anzahl: 0, gespeichert: 0, fremd: [], ungueltig: [] };
+  const eb = (mengen.ebene && mengen.ebene.gespeichert) ? mengen.ebene : null;
+  const fassung = normFassung(daten.fassung || mengen.fassung);
+  const angepasst = fassung === "angepasst";
+
+  const kopf = [
+    ["SEMBLA – Einkaufsliste (Beschaffung)"],
+    // Die Liste steht nie allein: sie ist die Artikelsicht GENAU dieser Gesamtstückliste.
+    ["Grundlage", daten.titel],
+    ["Ebene", daten.ebene_label],
+    ["Projekt", b.projekt || ""],
+  ];
+  if (b.gebaeude) kopf.push(["Gebäude", b.gebaeude]);
+  if (b.geschoss) kopf.push(["Geschoss", b.geschoss]);
+  if (b.wand) kopf.push(["Wand", b.wand]);
+  kopf.push(["Datum", opts.datum || _heute()]);
+  kopf.push(["Katalog", daten.katalog ? (daten.katalog.name || "Bauteilkatalog") : "kein Bauteilkatalog geladen"]);
+  kopf.push(["Wände", daten.quellen.length + " von " + daten.waende.length]);
+  kopf.push(["Vollständigkeit", _standTextDatei(daten)]);
+  // WORTGLEICH zur Gesamtstückliste ([P-20]): eine Bestellunterlage, der man ihre
+  // Mengenfassung nicht ansieht, waere unbrauchbar — und zwei Dateien desselben Laufs, die
+  // sie verschieden benennen, waeren schlimmer als gar keine Angabe.
+  const zeilenManuell = positionen.filter(r => r.manuell).length;
+  kopf.push(["Mengen", MENGEN_FASSUNG[fassung] + (angepasst
+    ? " · " + zeilenManuell + " von " + positionen.length + " Zeile(n) betroffen, "
+      + mengen.anzahl + " manuelle Menge(n) aus den Wänden"
+    : (mengen.gespeichert
+      ? " · " + mengen.gespeichert + " gespeicherte Übersteuerung(en) NICHT angewandt" : ""))]);
+  if (eb) {
+    const zeilenEbene = positionen.filter(r => r.manuell_ebene).length;
+    kopf.push(["Mengen Geschoss", eb.fassung === "angepasst"
+      ? zeilenEbene + " von " + positionen.length + " Zeile(n) mit manueller Menge "
+        + "des Geschosses (" + eb.gespeichert + " gespeichert)"
+      : eb.gespeichert + " gespeicherte Übersteuerung(en) des Geschosses NICHT angewandt"]);
+  }
+  // Eine unvollstaendige Bestellunterlage sagt, WELCHE Wand fehlt und warum — sonst bestellt
+  // jemand eine Menge, der eine Wand fehlt.
+  for (const l of daten.luecken) kopf.push(["Lücke", l.pfad || "", l.grund]);
+
+  /** @type {Map<string, {produktId:string|null, unit:string, produkt:any, mengen:number[], stellen:string[]}>} */
+  const artikel = new Map();
+  const klaerung = [];
+  for (const p of positionen) {
+    // Ohne eindeutig aufgeloestes Produkt gibt es nichts zu bestellen — und nichts zu raten:
+    // die Position wandert unveraendert in den Klaerungsblock ([P-9]/[P-14]).
+    if (!p.produkt) { klaerung.push(p); continue; }
+    const k = (p.produktId == null ? "" : String(p.produktId)) + " " + String(p.unit);
+    let a = artikel.get(k);
+    if (!a) {
+      a = { produktId: p.produktId, unit: p.unit, produkt: p.produkt, mengen: [], stellen: [] };
+      artikel.set(k, a);
+    }
+    a.mengen.push(p.menge);
+    // Dieselbe Einbaustelle kann ueber verschiedene Fertigmaße mehrfach auftreten; genannt
+    // wird sie einmal, in der Reihenfolge ihres ersten Auftretens.
+    if (!a.stellen.includes(p.label)) a.stellen.push(p.label);
+  }
+
+  const zeilen = [...artikel.values()].map((a) => [
+    a.produktId || "", a.unit, _einkaufMenge(a.mengen), a.stellen.join(" · "),
+    ...beschaffungZellen(a.produkt),
+  ]);
+
+  const klaerBlock = [[], [KLAERUNG_TITEL], ["",
+    "Diese Positionen sind nicht bestellbar, weil ihnen kein eindeutiges Katalogprodukt "
+    + "zugeordnet ist ([P-14]). Darunter fallen auch nachrichtliche Mengen ([A-6]) und "
+    + "Positionen mit Menge 0. Sie werden nie weggelassen und nie geraten — der Grund steht "
+    + "unverändert in der Spalte „Zuordnung“."]];
+  if (!klaerung.length) {
+    klaerBlock.push(["", "keine – jede Position ist einem Katalogprodukt zugeordnet"]);
+  } else {
+    klaerBlock.push(KLAERUNG_SPALTEN.slice());
+    for (const p of klaerung) {
+      klaerBlock.push([p.label, _artText(p), p.fertigmass_mm == null ? "" : p.fertigmass_mm,
+        p.unit, p.menge, p.statusText]);
+    }
+  }
+
+  return [...kopf, [], EINKAUF_SPALTEN.slice(), ...zeilen, ...klaerBlock];
+}
+
+/** Einkaufsliste einer Projektstufe direkt als CSV-Text. */
+export function einkaufslisteCsv(daten, opts = {}) {
+  return aoaToCsv(einkaufslisteAoa(daten, opts));
+}
+
 /**
  * Datei-Buendel der gewaehlten Projektstufe fuer den zentralen ZIP-Export.
+ *
+ * ZWEI Dateien (#113): die Gesamtstückliste je Einbaustelle und daneben die Einkaufsliste je
+ * Katalogprodukt. Beide entstehen aus DEMSELBEN `daten`-Objekt — es wird nichts nachgerechnet.
  * @param {object} daten @param {{preise?:boolean, datum?:string, rumpf?:string}} [opts]
  * @returns {Array<{name:string,data:string}>}
  */
 export function gesamtstuecklisteDateien(daten, opts = {}) {
   const rumpf = sicherName(opts.rumpf || daten.titel);
-  return [{ name: rumpf + ".csv", data: gesamtstuecklisteCsv(daten, opts) }];
+  return [
+    // Index 0 bleibt BYTE-GLEICH der bisherige Stand — die Einkaufsliste tritt daneben,
+    // nie an seine Stelle.
+    { name: rumpf + ".csv", data: gesamtstuecklisteCsv(daten, opts) },
+    // Dieselben Daten, je Katalogprodukt statt je Einbaustelle (#113). Derselbe Rumpf haelt
+    // die beiden Dateien im ZIP beieinander und schliesst eine Namenskollision aus.
+    { name: rumpf + "_Einkaufsliste.csv", data: einkaufslisteCsv(daten, opts) },
+  ];
 }
 
 // ---------- Zuschnittliste (Latten) ----------

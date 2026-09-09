@@ -11,6 +11,7 @@ import { mengenKennung, standardEingaben } from "../../docs/shared/storage.js";
 import {
   stuecklistePositionen, gesamtstuecklisteAoa, gesamtstuecklisteCsv, gesamtstuecklisteDateien, baueDateien,
   stuecklisteAoa, BESCHAFFUNG_SPALTEN,
+  einkaufslisteAoa, einkaufslisteCsv, EINKAUF_SPALTEN, KLAERUNG_TITEL,
 } from "../../docs/shared/sembla-export.js";
 import {
   EBENEN, ebeneTitel, umfang, gesamtDaten, standText, herkunftText, dateiRumpf,
@@ -365,10 +366,11 @@ const P = (ueber = {}) => ({
 
 // ---- 9. ZIP-Inhalt entspricht exakt der Auswahl -------------------------------------------
 {
-  // Projektebene, alles gewaehlt: 1 Mappe + 3 Geschosse + 4 Waende + 1 CSV + 1 Katalog.
+  // Projektebene, alles gewaehlt: 1 Mappe + 3 Geschosse + 4 Waende + 2 CSV + 1 Katalog.
+  // Die zweite CSV ist die Einkaufsliste (#113) — sie tritt neben die Gesamtstueckliste.
   const erg = hierarchieExport(["mappe", "gesamt", "geschosse", "waende", "katalog"], P());
   const namen = erg.dateien.map((d) => d.name);
-  ok("#67 Projekt-Vollpaket: 10 Dateien, keine Luecke", erg.dateien.length === 10 && erg.luecken.length === 0);
+  ok("#67 Projekt-Vollpaket: 11 Dateien, keine Luecke", erg.dateien.length === 11 && erg.luecken.length === 0);
   ok("#67 ZIP-Name nennt Ebene und Projekt", erg.zipName === "SEMBLA_Export_Projekt_" + sicherStamm("Projekt #44"));
   ok("#67 Mappendatei: unveraenderte SEMBLA-Projektmappe v2, heisst NICHT projekt.json", (() => {
     const f = erg.dateien.find((x) => x.name.startsWith("SEMBLA_Projektmappe_"));
@@ -405,11 +407,12 @@ const P = (ueber = {}) => ({
         .every((x) => !x.data.includes('"produkte"'));
   })());
 
-  // Teilauswahl: genau eine Datei je gewaehlter Einzeloption.
+  // Teilauswahl: genau eine Datei je gewaehlter Einzeloption — mit EINER benannten Ausnahme:
+  // `gesamt` liefert seit #113 ZWEI Dateien (Gesamtstueckliste + Einkaufsliste).
   ok("#67 die Auswahl bestimmt den Inhalt exakt",
     hierarchieExport(["mappe"], P()).dateien.length === 1
     && hierarchieExport(["katalog"], P()).dateien.length === 1
-    && hierarchieExport(["gesamt"], P()).dateien.length === 1
+    && hierarchieExport(["gesamt"], P()).dateien.length === 2
     && hierarchieExport(["geschosse"], P()).dateien.length === 3
     && hierarchieExport(["waende"], P()).dateien.length === 4);
 
@@ -421,13 +424,14 @@ const P = (ueber = {}) => ({
     && !eb.dateien.some((x) => x.name.includes("w-d"))
     && eb.zipName === "SEMBLA_Export_Gebaeude_" + sicherStamm("Haus Nord"));
 
-  // Geschossebene: Teilmappe + Waende + CSV — und KEINE vollstaendige Projektmappe.
+  // Geschossebene: Teilmappe + Waende + beide CSVs — und KEINE vollstaendige Projektmappe.
   const eg = hierarchieExport(["geschoss", "gesamt", "waende"], P({ ebene: "geschoss" }));
-  ok("#67 Geschossebene: Geschossdaten, Gesamtstueckliste, beide Waende — keine Projektmappe",
-    eg.dateien.length === 4
+  ok("#67 Geschossebene: Geschossdaten, Gesamtstueckliste, Einkaufsliste, beide Waende — keine Projektmappe",
+    eg.dateien.length === 5
     && eg.dateien.filter((x) => x.name.startsWith("geschosse/")).length === 1
     && eg.dateien.filter((x) => x.name.startsWith("waende/")).length === 2
     && eg.dateien.some((x) => x.name === "Gesamtstueckliste_Geschoss_EG.csv")
+    && eg.dateien.some((x) => x.name === "Gesamtstueckliste_Geschoss_EG_Einkaufsliste.csv")
     && !eg.dateien.some((x) => x.name.startsWith("SEMBLA_Projektmappe_"))
     && eg.zipName === "SEMBLA_Export_Geschoss_EG");
 
@@ -1027,6 +1031,152 @@ const P = (ueber = {}) => ({
       && sz[kopfG.length - 1] === undefined || sz[kopfG.length - 1] === "");
     ok("#113 der Summenbetrag steht weiterhin unter seiner GP-Spalte",
       typeof sz[kopfG.indexOf("GP (EUR)")] === "number");
+  }
+}
+
+// ---- 13. Einkaufsliste je Katalogprodukt als zweite Datei (#113) -------------------------
+//
+// Realer Pfad: Core → Katalog → `gesamtDaten` → `gesamtstuecklisteDateien`. Geprueft werden
+// die Byte-Gleichheit der ersten Datei, die Aggregation je Produkt und Einheit, die
+// Einbaustellen-Spalte, der Beschaffungsblock, der Klaerungsblock und die Wortgleichheit des
+// Kopfes. Die Einheitentrennung kann ueber `loesePreis` gar nicht real entstehen ([P-14]
+// rechnet Einheiten nicht um) und wird darum ausdruecklich als Eigenschaft der Funktion an
+// einem synthetischen Datenobjekt geprueft.
+{
+  const OPTD = { datum: "01.01.2026" };
+  // Derselbe Testkatalog, zwei Produkte vollstaendig gepflegt — mehr wird nicht angefasst.
+  const KAT = JSON.parse(JSON.stringify(KATALOG));
+  for (const pr of KAT.produkte) {
+    if (pr.id === "stein-i3") {
+      Object.assign(pr, { norm: "DIN 18152", werkstoff: "Leichtbeton", guete: "LAC 2",
+        oberflaeche: "unbehandelt", hersteller: "Polycare", artikelnr: "PC-I3-375" });
+    }
+    if (pr.id === "kuppl") {
+      Object.assign(pr, { norm: "DIN 6334", werkstoff: "Stahl", guete: "8",
+        oberflaeche: "verzinkt", gewinde: "M10", hersteller: "Würth", artikelnr: "024010" });
+    }
+  }
+  // ZWEI Verwendungsrollen auf DASSELBE Produkt: so tragen zwei verschiedene Einbaustellen
+  // dieselbe Artikelnummer — genau der Fall, den die Einkaufsliste zusammenfassen soll.
+  const eingabenDoppelt = () => {
+    const e = eingabenFuer();
+    e.planung.produkte.rollen.senkkopf = ["kuppl"];
+    return e;
+  };
+  const les = { holeElement: (id) => ELEMENTE[id] || null,
+                holeEingaben: () => eingabenDoppelt(), katalog: KAT };
+  const d = gesamtDaten(umfang(M, "geschoss", Z), les);
+  const dateien = gesamtstuecklisteDateien(d, { preise: true, rumpf: dateiRumpf(d), ...OPTD });
+
+  /** Artikelzeilen: zwischen der Spaltenueberschrift und der Leerzeile vor dem Klaerungsblock. */
+  const aoa = einkaufslisteAoa(d, OPTD);
+  const iKopf = aoa.findIndex((z) => z[0] === "Produkt-ID (Katalog)");
+  const iKlaer = aoa.findIndex((z) => z[0] === KLAERUNG_TITEL);
+  const artikel = aoa.slice(iKopf + 1, iKlaer - 1);
+  const klaerZeilen = aoa.slice(aoa.findIndex((z, i) => i > iKlaer && z[0] === "Einbauteil") + 1);
+  const zelle = (id, spalte) => {
+    const z = artikel.find((r) => r[0] === id);
+    return z ? z[EINKAUF_SPALTEN.indexOf(spalte)] : undefined;
+  };
+
+  // (a) Akzeptanztest 1: zwei Dateien, die erste byte-gleich zum bisherigen Stand.
+  ok("#113 der Export einer Stufe liefert zwei Dateien",
+    dateien.length === 2
+    && dateien[0].name === "Gesamtstueckliste_Geschoss_EG.csv"
+    && dateien[1].name === "Gesamtstueckliste_Geschoss_EG_Einkaufsliste.csv");
+  ok("#113 die erste Datei ist byte-gleich der unveraenderten Gesamtstueckliste",
+    dateien[0].data === gesamtstuecklisteCsv(d, { preise: true, ...OPTD }));
+  ok("#113 die zweite Datei ist bitgleich der einen Ableitung (kein zweiter Pfad)",
+    dateien[1].data === einkaufslisteCsv(d, OPTD));
+
+  // (b) Akzeptanztest 2: gleiches Produkt, gleiche Einheit -> EINE Zeile, beide Einbaustellen.
+  const posKuppl = d.positionen.filter((p) => p.produktId === "kuppl");
+  ok("#113 Testvoraussetzung: zwei Einbaustellen tragen dasselbe Katalogprodukt",
+    posKuppl.length === 2 && new Set(posKuppl.map((p) => p.unit)).size === 1
+    && posKuppl[0].label !== posKuppl[1].label);
+  ok("#113 sie stehen als EINE Zeile mit der Summe beider Mengen",
+    artikel.filter((z) => z[0] === "kuppl").length === 1
+    && zelle("kuppl", "Menge") === posKuppl.reduce((a, p) => a + p.menge, 0)
+    && zelle("kuppl", "Einheit") === "Stk");
+  ok("#113 die Zeile nennt beide Einbaustellen",
+    posKuppl.every((p) => String(zelle("kuppl", "Einbaustellen")).includes(p.label)));
+  ok("#113 je Produkt und Einheit genau eine Zeile, in der Reihenfolge des ersten Auftretens",
+    artikel.length === new Set(d.positionen.filter((p) => p.produkt)
+      .map((p) => p.produktId + "|" + p.unit)).size
+    && artikel.map((z) => z[0]).join() === [...new Set(d.positionen
+      .filter((p) => p.produkt).map((p) => p.produktId))].join());
+
+  // (c) Akzeptanztest 3: ohne eindeutiges Produkt -> nicht im Artikelteil, aber im Block.
+  const ohne = d.positionen.filter((p) => !p.produkt);
+  ok("#113 Testvoraussetzung: es gibt Positionen ohne eindeutig aufgeloestes Produkt",
+    ohne.length > 0);
+  ok("#113 keine unaufgeloeste Position steht im Artikelteil",
+    artikel.every((z) => z[0] !== "" && d.positionen.some((p) => p.produktId === z[0] && p.produkt)));
+  ok("#113 jede unaufgeloeste Position steht im Klaerungsblock — vollzaehlig, in Reihenfolge, "
+    + "mit unveraendertem Grund",
+    klaerZeilen.length === ohne.length
+    && ohne.every((p, i) => klaerZeilen[i][0] === p.label
+      && klaerZeilen[i][3] === p.unit && klaerZeilen[i][4] === p.menge
+      && klaerZeilen[i][5] === p.statusText));
+  ok("#113 der Block ist im Wortlaut des Issues benannt und nennt seine Faelle",
+    /\nKlärung vor der Bestellung nötig/.test(dateien[1].data)
+    && /nachrichtliche Mengen \(\[A-6\]\)/.test(dateien[1].data));
+
+  // (d) Akzeptanztest 4: eine gepflegte Zeile steht wortgleich zum Katalogprodukt.
+  ok("#113 eine vollstaendig gepflegte Zeile traegt Norm, Werkstoff, Oberflaeche und Abmessung",
+    JSON.stringify(BESCHAFFUNG_SPALTEN.map((sp) => zelle("stein-i3", sp)))
+      === JSON.stringify(["Stein i3", "DIN 18152", "Leichtbeton", "LAC 2", "unbehandelt", "",
+        "375 × 200 × 125", "Polycare", "PC-I3-375"]));
+  ok("#113 und eine zweite samt Gewinde, mit leerer Abmessung ohne Massfelder",
+    JSON.stringify(BESCHAFFUNG_SPALTEN.map((sp) => zelle("kuppl", sp)))
+      === JSON.stringify(["Kopplungsmutter", "DIN 6334", "Stahl", "8", "verzinkt", "M10", "",
+        "Würth", "024010"]));
+  ok("#113 der Beschaffungsblock steht hinten, hinter den vier Artikelspalten",
+    JSON.stringify(EINKAUF_SPALTEN.slice(0, 4))
+      === JSON.stringify(["Produkt-ID (Katalog)", "Einheit", "Menge", "Einbaustellen"])
+    && JSON.stringify(EINKAUF_SPALTEN.slice(4)) === JSON.stringify([...BESCHAFFUNG_SPALTEN]));
+
+  // (e) Kopf: derselbe Blattbezug, dieselbe Mengenfassung — wortgleich, nicht verdrahtet.
+  const kopfMap = (a) => {
+    const o = {};
+    for (const z of a) { if (!z.length) break; if (z.length >= 2) o[z[0]] = z.slice(1).join("|"); }
+    return o;
+  };
+  const GETEILT = ["Ebene", "Projekt", "Gebäude", "Geschoss", "Datum", "Katalog", "Wände",
+    "Vollständigkeit", "Mengen"];
+  {
+    const gK = kopfMap(gesamtstuecklisteAoa(d, OPTD)), eK = kopfMap(aoa);
+    ok("#113 der Kopf nennt denselben Blattbezug und dieselbe Mengenfassung",
+      GETEILT.every((k) => gK[k] !== undefined && eK[k] === gK[k])
+      && eK["Grundlage"] === d.titel);
+    const dAng = gesamtDaten(umfang(M, "geschoss", Z), les, { fassung: "angepasst" });
+    const gA = kopfMap(gesamtstuecklisteAoa(dAng, OPTD)), eA = kopfMap(einkaufslisteAoa(dAng, OPTD));
+    ok("#113 auch in der angepassten Fassung ist die Mengenzeile wortgleich",
+      eA["Mengen"] === gA["Mengen"] && /^angepasst/.test(eA["Mengen"]));
+  }
+
+  // (f) Der Preisschalter blendet in der Gesamtdatei Preise aus; hier gibt es keine.
+  ok("#113 der Preisschalter laesst die Einkaufsliste unveraendert (sie fuehrt keine Preise)",
+    einkaufslisteCsv(d, { ...OPTD, preise: false }) === einkaufslisteCsv(d, { ...OPTD, preise: true })
+    && !/EP \(EUR\)|GP \(EUR\)|Summe netto/.test(dateien[1].data));
+
+  // (g) Einheitentrennung und leerer Klaerungsblock — als Eigenschaft der Funktion.
+  {
+    const pos = (unit, menge, label) => ({ key: "x", label, unit, menge, art: null,
+      art_label: null, art_symbol: null, fertigmass_mm: null, statusText: "zugeordnet",
+      produktId: "gleich", produkt: { id: "gleich", bezeichnung: "Gleiches Produkt", einheit: "Stk" } });
+    const synth = { titel: "Gesamtstückliste Geschoss", ebene_label: "Geschoss",
+      bezug: { projekt: "P" }, quellen: [], waende: [], luecken: [], vollstaendig: true,
+      katalog: null, fassung: "berechnet",
+      positionen: [pos("Stk", 2, "A"), pos("m", 3, "B"), pos("Stk", 5, "C")] };
+    const a = einkaufslisteAoa(synth, OPTD);
+    const zs = a.slice(a.findIndex((z) => z[0] === "Produkt-ID (Katalog)") + 1,
+      a.findIndex((z) => z[0] === KLAERUNG_TITEL) - 1);
+    ok("#113 verschiedene Einheiten desselben Produkts bleiben getrennte Zeilen",
+      zs.length === 2 && zs[0][1] === "Stk" && zs[0][2] === 7 && zs[0][3] === "A · C"
+      && zs[1][1] === "m" && zs[1][2] === 3 && zs[1][3] === "B");
+    ok("#113 ohne unaufgeloeste Position sagt der Klaerungsblock ausdruecklich „keine“",
+      /keine – jede Position ist einem Katalogprodukt zugeordnet/.test(einkaufslisteCsv(synth, OPTD)));
   }
 }
 
