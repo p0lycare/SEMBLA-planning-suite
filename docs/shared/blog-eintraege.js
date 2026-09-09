@@ -37,6 +37,14 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-09",
+    datum: "2026-09-09",
+    typ: "intern",
+    issue: 94,
+    titel: "Nachgewiesen: Baugruppen ergeben auf jeder St\u00fccklistenebene dieselben Mengen",
+    testbitte: "Dieselbe Wand in Modul 4 als Wand, Geschoss, Geb\u00e4ude und Projekt ansehen: Spannplatte, Spannmutter und die Deckenanschlussteile stehen \u00fcberall mit denselben Mengen. Eine manuelle Menge wirkt weiter nur auf der Wandebene.",
+  },
+  {
     id: "chg-20260909-08",
     datum: "2026-09-09",
     typ: "feature",

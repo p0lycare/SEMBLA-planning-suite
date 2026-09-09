@@ -1925,5 +1925,196 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
   }
 }
 
+// ---- [P-23]/[P-20]/#94 Baugruppen ueber ALLE Ebenen am REALEN Speicherpfad ---------------
+// Gefahren wird der vollstaendige Weg: echte Speicherschicht auf einem eigenen In-Memory-
+// localStorage -> Projekt/Geschoss/zwei ueber den Core gebaute Waende -> Standardkatalog des
+// Repos zugeordnet -> Modul 4 mit seinem EIGENEN Leser (`SL.daten()`, also `umfang`/
+// `gesamtDaten` samt `leser()`), je Ebene gegen `stuecklistePositionen` der Einzelwaende.
+// Nachgerechnet wird nichts: die Erwartung entsteht ausschliesslich aus dem kanonischen
+// Wandpfad, und die wirksame Menge kommt aus der einen Verrechnung `wirksameMengen`.
+{
+  class MemStorage3 {
+    constructor(){ this.m=new Map(); }
+    getItem(k){ return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k,v){ this.m.set(String(k), String(v)); }
+    removeItem(k){ this.m.delete(k); }
+    clear(){ this.m.clear(); }
+  }
+  globalThis.localStorage = new MemStorage3();
+
+  const STD = JSON.parse(readFileSync(STD_KATALOG_PFAD, "utf8"));
+  // Projekt -> Gebaeude -> Geschoss ueber die echten Operationen; nichts von Hand gebaut.
+  const mappe0 = echterStore.fuegeProjektHinzu('Drift-Projekt', { geschoss: 'EG' });
+  const GEB = mappe0.gebaeude[0].id, GS = mappe0.gebaeude[0].geschosse[0].id;
+  const katStd = echterStore.setzeKatalog(STD);
+  echterStore.setzeProjektKatalog(katStd.id);
+
+  const W1 = buildWall('Driftwand A', 3000, 2600, [new Opening(5,11,0,10,'tuer')]);
+  const W2 = buildWall('Driftwand B', 2000, 2400, []);
+  const id1 = echterStore.speichere('Driftwand A', W1);
+  const id2 = echterStore.speichere('Driftwand B', W2);
+  echterStore.aendereMappe(m => setzeWand(setzeWand(m, GS, { id:id1, name:'Driftwand A' }),
+    GS, { id:id2, name:'Driftwand B' }));
+  echterStore.setzeAktivesGeschoss(GS);
+  echterStore.setzeAktiv(id1);
+  echterStore.vorbelegeProduktrollen(null, id1);
+  echterStore.vorbelegeProduktrollen(null, id2);
+
+  globalThis.window.SEMBLA.store = echterStore;
+  globalThis.window.__slInit();
+  const SL4 = globalThis.window.__sl;
+  const tb = () => document.getElementById('tbody').innerHTML;
+
+  /** Mengen einer Positionsliste auf den fachlichen Zeilenschluessel reduziert. */
+  const mengenVon = (positionen) => {
+    const summe = new Map();
+    for(const p of positionen){
+      const k=[p.key,p.unit,p.art||'',p.fertigmass_mm==null?'':p.fertigmass_mm].join('|');
+      summe.set(k,(summe.get(k)||0)+p.menge);
+    }
+    return summe;
+  };
+  const gleichM = (a,b) => a.size===b.size && [...a].every(([k,v])=>Math.abs((b.get(k)??NaN)-v)<1e-9);
+  /** Erwartung: die Summe der EINZELNEN kanonischen Wandstuecklisten aus dem echten Speicher. */
+  const erwartetVon = (ids) => mengenVon(ids.flatMap(id =>
+    stuecklistePositionen(echterStore.holeElement(id).wandelement,
+      echterStore.holeEingaben(id), echterStore.holeKatalog())));
+  const jeWand = (id, key) => stuecklistePositionen(echterStore.holeElement(id).wandelement,
+    echterStore.holeEingaben(id), echterStore.holeKatalog())
+    .filter(p=>p.key===key).reduce((a,p)=>a+p.menge,0);
+  const aufEbene = (ebene) => { SL4.setzeEbene(ebene); return SL4.daten(); };
+
+  // Vorbedingung: ohne zugeordneten Katalog mit Baugruppen wuerde der Nachweis leer laufen.
+  ok('#94 realer Pfad: Projekt, Geschoss, zwei Waende und der zugeordnete Standardkatalog stehen',
+    echterStore.holeKatalog() && echterStore.holeKatalog().sets.length===2
+    && echterStore.holeMappe().katalog===katStd.id
+    && echterStore.aktivesGeschoss().geschoss.waende.map(w=>w.id).join()===id1+','+id2
+    && echterStore.aktivId()===id1);
+  ok('#94 realer Pfad: beide Waende tragen Wandabschluss- UND Deckenanschluss-Einbaustellen',
+    [W1,W2].every(w => w.deckenanschlusspunkte.length>0
+      && w.bom.spannplatten>w.deckenanschlusspunkte.length));
+
+  // must 1: jede Ebene ist mengengleich zur Summe der Wandebenen — ueber den Leser von Modul 4.
+  const EBENEN4 = [['wand',[id1]], ['geschoss',[id1,id2]], ['gebaeude',[id1,id2]], ['projekt',[id1,id2]]];
+  for(const [ebene, ids] of EBENEN4){
+    const d = aufEbene(ebene);
+    ok('#94 realer Pfad: Ebene '+ebene+' ist mengengleich zur Summe ihrer Wandebenen',
+      d.vollstaendig && d.quellen.length===ids.length
+      && gleichM(mengenVon(d.positionen), erwartetVon(ids)));
+  }
+
+  // acceptance_test 2: zwei Waende ergeben je Position exakt die Summe der beiden Wandmengen —
+  // positionsscharf fuer die Bauteile der Baugruppen ([P-23]/[P-24]).
+  {
+    const d = aufEbene('geschoss');
+    const SET_KEYS = ['spannplatte','spannmutter'];
+    ok('#94 realer Pfad: Spannplatte und Spannmutter = Wand A + Wand B', SET_KEYS.every(key=>{
+      const z=d.positionen.filter(p=>p.key===key);
+      return z.length===1 && z[0].menge===jeWand(id1,key)+jeWand(id2,key)
+        && z[0].herkunft.length===2; }));
+    const JE_PUNKT = { dc_winkel_wand:1, dc_winkel_decke:1, dc_schraube:2, dc_scheibe:2,
+      dc_anker:2, dc_bohrschraube:2, dc_scheibe_bohr:2 };
+    const punkte = W1.deckenanschlusspunkte.length + W2.deckenanschlusspunkte.length;
+    ok('#94 realer Pfad: [P-24] je Anschlusspunkt zaehlt die Baugruppe genau einmal',
+      punkte>0 && Object.entries(JE_PUNKT).every(([key,je])=>{
+        const z=d.positionen.filter(p=>p.key===key);
+        return z.length===1 && z[0].menge===je*punkte && z[0].herkunft.length===2; }));
+    // Die Liste bleibt FLACH: genau eine Zeile je Position plus die Summenzeile — keine
+    // Baugruppenzeile, keine Vater-Kind-Position. Der Klartext „Deckenanschluss – …“ steht
+    // dabei ausdruecklich weiter in den Positionsbezeichnungen: er benennt die EINBAUSTELLE
+    // des flachen Bauteils und ist keine Baugruppenzeile.
+    ok('#94 realer Pfad: die Liste bleibt flach — keine Baugruppenzeile ([P-19])',
+      !d.positionen.some(p=>/^set-/.test(String(p.key)))
+      && d.positionen.every(p=>!('kinder' in p) && !('set' in p))
+      && tb().split('<tr').slice(1).length === d.positionen.length + 1
+      && !document.getElementById('sets').innerHTML);
+  }
+
+  // acceptance_test 4: ohne zugeordneten Katalog sind alle Mengen Position fuer Position
+  // identisch zum Stand mit Baugruppen — es gibt keinen zweiten Rechenweg.
+  {
+    const spur = d => JSON.stringify(d.positionen.map(p =>
+      [p.key,p.unit,p.art||'',p.fertigmass_mm??null,p.menge]));
+    const mit = {}; for(const [ebene] of EBENEN4) mit[ebene]=spur(aufEbene(ebene));
+    echterStore.setzeProjektKatalog(null);
+    globalThis.window.__slInit();
+    const ohne = {}; for(const [ebene] of EBENEN4) ohne[ebene]=spur(aufEbene(ebene));
+    ok('#94 realer Pfad: ohne zugeordneten Katalog dieselben Mengen auf jeder Ebene',
+      !echterStore.holeKatalog() && EBENEN4.every(([ebene])=>mit[ebene]===ohne[ebene]));
+    echterStore.setzeProjektKatalog(katStd.id);
+    globalThis.window.__slInit();
+    ok('#94 realer Pfad: die Zuordnung ist wiederhergestellt',
+      !!echterStore.holeKatalog() && echterStore.holeKatalog().sets.length===2);
+  }
+
+  // must 3 + must 4: die wandbezogene Mengenuebersteuerung ([P-20]) auf einer AUFGELOESTEN
+  // Position. Gesetzt wird ueber den einen Schreibweg der echten Speicherschicht.
+  {
+    const platte = stuecklistePositionen(W1, echterStore.holeEingaben(id1),
+      echterStore.holeKatalog()).find(p=>p.key==='spannplatte');
+    const KENN = mengenKennung(platte);
+    const UEBER = platte.menge + 5;
+    echterStore.setzeMengenUebersteuerung(KENN, UEBER, id1);
+    globalThis.window.__slInit();
+
+    // Wandebene: das gerenderte Blatt zeigt die wirksame Menge UND die berechnete daneben.
+    SL4.setzeEbene('wand');
+    const zeileP = () => (tb().split('<tr').slice(1)
+      .find(z=>z.includes('data-menge="'+KENN+'"')) || '');
+    ok('#94/[P-20] realer Pfad: die Uebersteuerung greift auf der aufgeloesten Position', (()=>{
+      const z=zeileP();
+      return echterStore.holeMengen(id1)[KENN]===UEBER
+        && z.includes('class="menge ueber"')
+        && z.includes('<span class="wirk">'+UEBER.toLocaleString('de-DE')+' Stk</span>')
+        && z.includes('berechnet '+platte.menge.toLocaleString('de-DE')+' Stk'); })());
+    // Die eine Verrechnung — dieselbe Funktion, aus der auch die Exportdatei entsteht.
+    ok('#94/[P-20] realer Pfad: `wirksameMengen` fuehrt beide Mengen und aendert den Preis nicht', (()=>{
+      const wm=wirksameMengen(stuecklistePositionen(W1, echterStore.holeEingaben(id1),
+        echterStore.holeKatalog()), echterStore.holeMengen(id1), { anwenden:true });
+      const p=wm.positionen.find(x=>x.key==='spannplatte');
+      return wm.anzahl===1 && p.__ueber===UEBER && p.__berechnet===platte.menge
+        && p.menge===UEBER && p.ep===platte.ep
+        && (p.ep==null ? p.gp==null : Math.abs(p.gp-UEBER*p.ep)<1e-9); })());
+
+    // must 4: auf den Gesamtebenen wirkt sie nicht — gezaehlt und benannt wird sie trotzdem.
+    for(const [ebene, ids] of EBENEN4.slice(1)){
+      const d = aufEbene(ebene);
+      ok('#94/[P-20] realer Pfad: Ebene '+ebene+' bleibt bei den berechneten Mengen', (()=>{
+        const wm=wirksameMengen(d.positionen, echterStore.holeMengen(id1), { anwenden:false });
+        return gleichM(mengenVon(d.positionen), erwartetVon(ids))
+          && d.mengen.anzahl===0 && d.mengen.gespeichert===1
+          && wm.anzahl===0 && wm.gespeichert===1
+          && d.positionen.every(p=>p.menge===p.menge_berechnet && p.manuell===false); })());
+      ok('#94/[P-20] realer Pfad: Ebene '+ebene+' sagt ausdruecklich, dass sie hier nicht wirkt',
+        /wirken (hier nicht|in der Anzeige nur)/.test(document.getElementById('mhinweis').innerHTML));
+    }
+    // Die angepasste Fassung ist derselbe Weg — sie wirkt und laesst die berechnete stehen.
+    for(const [ebene, ids] of EBENEN4.slice(1)){
+      SL4.setzeEbene(ebene);
+      const dA = gesamtDaten(umfang(echterStore.holeMappe(), ebene,
+        { wandId:id1, geschossId:GS, gebaeudeId:GEB }),
+        { holeElement:(x)=>echterStore.holeElement(x), holeEingaben:(x)=>echterStore.holeEingaben(x),
+          katalog:echterStore.holeKatalog() }, { fassung:'angepasst' });
+      const zA = dA.positionen.find(p=>p.key==='spannplatte');
+      const erw = erwartetVon(ids).get(['spannplatte', zA.unit, zA.art||'',
+        zA.fertigmass_mm==null?'':zA.fertigmass_mm].join('|'));
+      ok('#94/[P-20] realer Pfad: angepasste Fassung der Ebene '+ebene+' fuehrt beide Mengen',
+        dA.mengen.anzahl===1 && zA.menge===erw+(UEBER-platte.menge) && zA.menge_berechnet===erw);
+    }
+
+    // Zuruecknehmen: danach steht wieder die berechnete Menge, und nichts bleibt zurueck.
+    echterStore.setzeMengenUebersteuerung(KENN, null, id1);
+    globalThis.window.__slInit();
+    SL4.setzeEbene('wand');
+    ok('#94/[P-20] realer Pfad: das Zuruecknehmen laesst die berechnete Menge stehen',
+      !(KENN in echterStore.holeMengen(id1))
+      && !zeileP().includes('class="menge ueber"')
+      && aufEbene('wand').positionen.find(p=>p.key==='spannplatte').menge===platte.menge);
+    ok('#94 realer Pfad: Modul 4 hat kein Wandelement angefasst ([P-1])',
+      JSON.stringify(echterStore.holeElement(id1).wandelement)===JSON.stringify(W1)
+      && JSON.stringify(echterStore.holeElement(id2).wandelement)===JSON.stringify(W2));
+  }
+}
+
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }
 console.log(`\n${checks.length-fail}/${checks.length} ok`); process.exit(fail?1:0);

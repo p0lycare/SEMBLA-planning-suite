@@ -6,6 +6,7 @@
 // Die Messlatte ist ueberall dieselbe: JEDE Ebene muss exakt der Summe der einzelnen
 // `stuecklistePositionen`-Aufrufe ihrer Waende entsprechen. Wo das nicht gilt, waere ein
 // zweites Mengenmodell entstanden — genau das soll der Test unmoeglich machen.
+import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { mengenKennung, standardEingaben } from "../../docs/shared/storage.js";
 import {
@@ -21,7 +22,7 @@ import {
   leereMappe, fuegeGebaeudeHinzu, fuegeGeschossHinzu, setzeWand, setzeKatalogRef,
   geschossMengen, setzeGeschossMenge, mappeObjekt, validiereMappe,
 } from "../../docs/shared/sembla-projektmappe.js";
-import { katalogObjekt } from "../../docs/shared/sembla-katalog.js";
+import { katalogObjekt, parseKatalog } from "../../docs/shared/sembla-katalog.js";
 import {
   EXPORT_OPTIONEN, exportOptionen, geschossTeilmappe, geschossPfad, gesamtMengenLuecken,
   hierarchieExport, wandPfad, sicherStamm,
@@ -1177,6 +1178,187 @@ const P = (ueber = {}) => ({
       && zs[1][1] === "m" && zs[1][2] === 3 && zs[1][3] === "B");
     ok("#113 ohne unaufgeloeste Position sagt der Klaerungsblock ausdruecklich „keine“",
       /keine – jede Position ist einem Katalogprodukt zugeordnet/.test(einkaufslisteCsv(synth, OPTD)));
+  }
+}
+
+
+// ---- 14. [P-23]/#94 Baugruppen ueber ALLE Ebenen: eine Aufloesung, keine Drift ------------
+//
+// Der Nachweis der Baugruppen-Aufloesung stand bisher nur auf der WANDEBENE (test-shared.mjs).
+// Hier laeuft er ueber denselben realen Leserpfad auf Geschoss-, Gebaeude- und Projektebene:
+// `gesamtDaten` -> `stuecklistePositionen` -> `semblaBomItems(w, katalog)`. Gerechnet wird
+// nichts nach — die Erwartung entsteht ausschliesslich aus dem kanonischen Wandpfad.
+//
+// Katalogquelle ist ausdruecklich die REPO-VORLAGE (v2, mit beiden Baugruppen) und nicht der
+// synthetische Testkatalog dieser Datei: der fuehrt keine `sets` und koennte die Regel gar
+// nicht ausloesen.
+{
+  const KAT_STD = parseKatalog(readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8"));
+  const OHNE_SETS = { ...KAT_STD, sets: [] };
+
+  const leserMit = (kat) => ({
+    holeElement: (id) => ELEMENTE[id] || null,
+    holeEingaben: (id) => eingabenFuer(WAEHRUNG[id] || "EUR"),
+    katalog: kat,
+  });
+  /** Mengen einer Positionsliste auf den fachlichen Zeilenschluessel reduziert. */
+  const mengenVon = (positionen) => {
+    const summe = new Map();
+    for (const p of positionen) {
+      const k = [p.key, p.unit, p.art || "", p.fertigmass_mm == null ? "" : p.fertigmass_mm].join("|");
+      summe.set(k, (summe.get(k) || 0) + p.menge);
+    }
+    return summe;
+  };
+  /** Erwartung: die Summe der EINZELNEN kanonischen Wandstuecklisten — nichts anderes. */
+  const erwartetMit = (ids, kat) => mengenVon(ids.flatMap((id) =>
+    stuecklistePositionen(ELEMENTE[id].wandelement, eingabenFuer(), kat)));
+
+  const FAELLE = [["geschoss", ["w-a", "w-b"]], ["gebaeude", ["w-a", "w-b", "w-c"]],
+    ["projekt", ["w-a", "w-b", "w-c", "w-d"]]];
+
+  // (0) Der Nachweis darf nicht leer laufen: die Vorlage muss beide Baugruppen fuehren, und
+  //     die Testwaende muessen beide Einbaustellen ueberhaupt haben.
+  ok("#94 die Repo-Vorlage fuehrt beide Baugruppen ([P-21]/[P-23])",
+    KAT_STD.version === 2 && Array.isArray(KAT_STD.sets)
+    && KAT_STD.sets.map((s) => s.id).join() === "set-wandabschluss,set-deckenanschluss");
+  // Die Zahl der Wandabschluesse entsteht erst in der Ausgabeschicht ([P-24]: Spannplatten
+  // abzueglich der Anschlusspunkte); gepruft wird deshalb der Kernwert, aus dem sie folgt.
+  ok("#94 jede Testwand traegt Wandabschluesse UND Deckenanschlusspunkte", (() => {
+    const ids = ["w-a", "w-b", "w-c", "w-d"];
+    return ids.every((id) => {
+      const w = ELEMENTE[id].wandelement;
+      return w.deckenanschlusspunkte.length > 0
+        && w.bom.spannplatten > w.deckenanschlusspunkte.length;
+    });
+  })());
+
+  // (1) must 1: jede Gesamtebene ist mengengleich zur Summe der Wandebenen — mit Baugruppen.
+  for (const [ebene, ids] of FAELLE) {
+    const d = gesamtDaten(umfang(M, ebene, Z), leserMit(KAT_STD));
+    ok(`#94 Ebene ${ebene}: aufgeloeste Mengen = Summe der Wandebenen`,
+      gleich(mengenVon(d.positionen), erwartetMit(ids, KAT_STD)));
+    ok(`#94 Ebene ${ebene}: alle ${ids.length} Waende enthalten, keine Luecke`,
+      d.quellen.length === ids.length && d.luecken.length === 0 && d.vollstaendig);
+  }
+
+  // (2) Positionsscharf fuer die Bauteile der Baugruppen. Am Wandabschluss sind das nach der
+  //     Fachauskunft vom 2026-09-08 genau Spannplatte und Spannmutter — eine Unterlegscheibe
+  //     gibt es dort nicht; Scheiben treten allein am Deckenanschluss auf (s. (3)).
+  {
+    const SET_KEYS = ["spannplatte", "spannmutter"];
+    const d = gesamtDaten(umfang(M, "geschoss", Z), leserMit(KAT_STD));
+    const jeWand = (id, key) => stuecklistePositionen(ELEMENTE[id].wandelement, eingabenFuer(), KAT_STD)
+      .filter((p) => p.key === key).reduce((a, p) => a + p.menge, 0);
+    ok("#94 Spannplatte und Spannmutter: Geschossebene = Wand A + Wand B", SET_KEYS.every((key) => {
+      const zeile = d.positionen.filter((p) => p.key === key);
+      return zeile.length === 1
+        && zeile[0].menge === jeWand("w-a", key) + jeWand("w-b", key)
+        && zeile[0].herkunft.length === 2;
+    }));
+    // Gegenprobe zur Aussage selbst: die Menge ist die des Rechenkerns, nicht eine der Baugruppe.
+    ok("#94 die aufgeloeste Menge bleibt die des Rechenkerns (keine Doppelzaehlung)",
+      d.positionen.find((p) => p.key === "spannplatte").menge
+        === ELEMENTE["w-a"].wandelement.bom.spannplatten + ELEMENTE["w-b"].wandelement.bom.spannplatten
+      && d.positionen.find((p) => p.key === "spannmutter").menge
+        === ELEMENTE["w-a"].wandelement.bom.spannmuttern + ELEMENTE["w-b"].wandelement.bom.spannmuttern);
+    ok("#94 keine Baugruppenzeile und keine Vater-Kind-Position ([P-19])",
+      !d.positionen.some((p) => /^set-/.test(String(p.key)))
+      && d.positionen.every((p) => !("kinder" in p) && !("set" in p)));
+  }
+
+  // (3) must 2: derselbe Nachweis fuer den Deckenanschluss — je Punkt zaehlt die Baugruppe
+  //     genau einmal ([P-24]). Die Mengen kommen aus der LAENGE der Punktliste des
+  //     Rechenkerns, nicht aus einer Ersatzrechnung ueber die Wandlaenge.
+  {
+    const JE_PUNKT = { dc_winkel_wand: 1, dc_winkel_decke: 1, dc_schraube: 2, dc_scheibe: 2,
+      dc_anker: 2, dc_bohrschraube: 2, dc_scheibe_bohr: 2 };
+    for (const [ebene, ids] of FAELLE) {
+      const d = gesamtDaten(umfang(M, ebene, Z), leserMit(KAT_STD));
+      const punkte = ids.reduce((a, id) => a + ELEMENTE[id].wandelement.deckenanschlusspunkte.length, 0);
+      ok(`#94 [P-24] Ebene ${ebene}: je Anschlusspunkt genau eine Baugruppe`,
+        punkte > 0 && Object.entries(JE_PUNKT).every(([key, je]) => {
+          const zeile = d.positionen.filter((p) => p.key === key);
+          return zeile.length === 1 && zeile[0].menge === je * punkte
+            && zeile[0].herkunft.length === ids.length;
+        }));
+    }
+  }
+
+  // (4) acceptance_test 4: ohne Baugruppen im Katalog und ohne Katalog ueberhaupt ist die
+  //     Ebene Position fuer Position identisch — es gibt keinen zweiten Rechenweg.
+  for (const [ebene, ids] of FAELLE) {
+    const spur = (d) => JSON.stringify(d.positionen.map((p) =>
+      [p.key, p.unit, p.art || "", p.fertigmass_mm ?? null, p.menge]));
+    const mit = gesamtDaten(umfang(M, ebene, Z), leserMit(KAT_STD));
+    const ohne = gesamtDaten(umfang(M, ebene, Z), leserMit(OHNE_SETS));
+    const gar = gesamtDaten(umfang(M, ebene, Z), leserMit(null));
+    ok(`#94 Ebene ${ebene}: Katalog ohne Baugruppen = Stand mit Baugruppen (Position fuer Position)`,
+      spur(mit) === spur(ohne));
+    ok(`#94 Ebene ${ebene}: ohne Katalog dieselben Mengen, nur ohne Preiszuordnung`,
+      spur(gar) === spur(mit) && gleich(mengenVon(gar.positionen), erwartetMit(ids, null)));
+  }
+
+  // (5) must 3 + must 4: die wandbezogene Mengenuebersteuerung ([P-20], #81) auf einer
+  //     AUFGELOESTEN Position. Sie wirkt auf der Wandebene, laesst die berechnete Menge
+  //     daneben stehen und aendert die Gesamtebenen nicht.
+  {
+    const wandPos = stuecklistePositionen(ELEMENTE["w-a"].wandelement, eingabenFuer(), KAT_STD);
+    const platte = wandPos.find((p) => p.key === "spannplatte");
+    const KENN = mengenKennung(platte);
+    const UEBER = platte.menge + 5;
+    const FREMD = "spannplatte@999999";
+    const eingabenUeber = (id) => {
+      const e = eingabenFuer(WAEHRUNG[id] || "EUR");
+      if (id === "w-a") e.kosten.mengen = { [KENN]: UEBER, [FREMD]: 12 };
+      return e;
+    };
+    const leserUeber = { holeElement: (id) => ELEMENTE[id] || null,
+      holeEingaben: eingabenUeber, katalog: KAT_STD };
+
+    ok("#94/[P-20] die Kennung der aufgeloesten Position ist die kanonische Form",
+      KENN === "spannplatte@" + (platte.fertigmass_mm == null ? "-" : platte.fertigmass_mm)
+      && UEBER !== platte.menge);
+
+    // Wandebene, angepasste Fassung: wirksame Menge folgt der manuellen, die berechnete steht
+    // unveraendert daneben, und der Einzelpreis bleibt der aufgeloeste ([P-14]).
+    const dW = gesamtDaten(umfang(M, "wand", Z), leserUeber, { fassung: "angepasst" });
+    const zW = dW.positionen.find((p) => p.key === "spannplatte");
+    ok("#94/[P-20] Uebersteuerung greift auf der aufgeloesten Position der Wandebene",
+      zW.menge === UEBER && zW.manuell === true
+      && zW.menge_berechnet === platte.menge
+      && zW.herkunft[0].menge === UEBER && zW.herkunft[0].menge_berechnet === platte.menge
+      && zW.ep === platte.ep
+      && (zW.ep == null ? zW.gp == null : Math.abs(zW.gp - UEBER * zW.ep) < 1e-9)
+      && dW.mengen.anzahl === 1 && dW.mengen.gespeichert === 2);
+    ok("#94/[P-20] die uebrigen Positionen der Wandebene bleiben unberuehrt",
+      dW.positionen.filter((p) => p.key !== "spannplatte")
+        .every((p) => p.menge === p.menge_berechnet && p.manuell === false));
+    ok("#94/[P-20] der nicht zuordenbare Eintrag wird MIT WANDBEZUG benannt, nie angewandt",
+      dW.mengen.fremd.length === 1 && dW.mengen.fremd[0].kennung === FREMD
+      && dW.mengen.fremd[0].wandId === "w-a" && !!dW.mengen.fremd[0].pfad
+      && dW.mengen.ungueltig.length === 0);
+
+    // Gesamtebenen: die wandbezogene Uebersteuerung wirkt dort NICHT — gezaehlt wird sie
+    // trotzdem, damit das Blatt sagen kann, dass sie hier nicht greift.
+    for (const [ebene, ids] of FAELLE) {
+      const d = gesamtDaten(umfang(M, ebene, Z), leserUeber);
+      ok(`#94/[P-20] Ebene ${ebene}: Uebersteuerung nicht angewandt, aber gezaehlt`,
+        gleich(mengenVon(d.positionen), erwartetMit(ids, KAT_STD))
+        && d.fassung === "berechnet" && d.mengen.anzahl === 0 && d.mengen.gespeichert === 2
+        && d.positionen.every((p) => p.menge === p.menge_berechnet && p.manuell === false));
+      // In der angepassten Fassung wirkt sie und wird je Wand benannt — dieselbe Verrechnung.
+      const dA = gesamtDaten(umfang(M, ebene, Z), leserUeber, { fassung: "angepasst" });
+      const zA = dA.positionen.find((p) => p.key === "spannplatte");
+      ok(`#94/[P-20] Ebene ${ebene}: angepasste Fassung fuehrt beide Mengen nebeneinander`,
+        zA.menge === erwartetMit(ids, KAT_STD).get(["spannplatte", zA.unit, zA.art || "",
+          zA.fertigmass_mm == null ? "" : zA.fertigmass_mm].join("|")) + (UEBER - platte.menge)
+        && zA.menge_berechnet === erwartetMit(ids, KAT_STD).get(["spannplatte", zA.unit,
+          zA.art || "", zA.fertigmass_mm == null ? "" : zA.fertigmass_mm].join("|"))
+        && dA.mengen.anzahl === 1
+        && dA.mengen.fremd.length === 1 && dA.mengen.fremd[0].wandId === "w-a");
+    }
   }
 }
 
