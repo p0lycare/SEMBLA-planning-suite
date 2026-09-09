@@ -1457,6 +1457,14 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'kuppl-sw-17', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M10 SW17', einheit:'Stk', preis:0.65, hoehe_mm:50, sw_mm:17 },
   { id:'kuppl-sw-24', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M12 SW24', einheit:'Stk', preis:0.85, hoehe_mm:50, sw_mm:24 },
   { id:'platte-12', kategorie:'blech_platte', bezeichnung:'Spannplatte 12', einheit:'Stk', preis:6.4, breite_mm:125, hoehe_mm:125, dicke_mm:12 },
+  // #97 Spannmuttern mit gepflegten Massen (`hoehe_mm`/`sw_mm`) — vier Faelle, die sich
+  // ausschliesslich in diesen beiden Feldern unterscheiden: vollstaendig gepflegt, gleiche
+  // Hoehe mit ANDERER Schluesselweite (macht allein die Schluesselweite mehrdeutig), nur die
+  // Hoehe gepflegt und gar kein Mass. Ausgewaehlt werden sie nur im #97-Spannmutterblock.
+  { id:'spm-h10-sw17', kategorie:'verbrauch', bezeichnung:'Spannmutter M10 SW17', einheit:'Stk', preis:0.9, hoehe_mm:10, sw_mm:17 },
+  { id:'spm-h10-sw13', kategorie:'verbrauch', bezeichnung:'Spannmutter M8 SW13', einheit:'Stk', preis:0.8, hoehe_mm:10, sw_mm:13 },
+  { id:'spm-h12', kategorie:'verbrauch', bezeichnung:'Spannmutter M10 ohne SW', einheit:'Stk', preis:0.9, hoehe_mm:12 },
+  { id:'spm-ohne', kategorie:'verbrauch', bezeichnung:'Spannmutter ohne Maßangabe', einheit:'Stk', preis:0.9 },
   { id:'rod-rest-210', kategorie:'gewindestange', bezeichnung:'Reststück 210', einheit:'Stk', preis:1.2, gewinde:'M10', laenge_mm:210 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1500', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
 ]};
@@ -1703,7 +1711,7 @@ store.setzeKatalog(KATALOG);
   const meld=()=>document.getElementById('einbauQuelle').innerHTML;
   const leere=(rolle)=>((store.holeProdukte(1).rollen||{})[rolle]||[]).slice()
     .forEach(id=>setzen(rolle,id,false));
-  const ROLLEN92=['rod_std','rod_rest','blech_boden','kupplung','spannplatte'];
+  const ROLLEN92=['rod_std','rod_rest','blech_boden','kupplung','spannplatte','spannmutter'];
   // Der vorangehende Auswahlstand gehoert den frueheren Bloecken: er wird gesichert und am
   // Ende genau so wiederhergestellt, damit dieser Abschnitt keine Nebenwirkung hinterlaesst.
   const vorher=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
@@ -1733,15 +1741,24 @@ store.setzeKatalog(KATALOG);
     /Rolle „Bodenblech“/.test(meld()) && /Bodenblechdicke/.test(meld()));
 
   // Vollstaendige Auswahl: Kopplungsmutter 50 mm -> Fussoffset 25 mm; Spannplatte 12 mm.
+  // Seit #97 gehoert die SPANNMUTTER mit ihren beiden Massen dazu: "vollstaendig" heisst,
+  // dass kein Einbaumass mehr offen ist. Sie geht in KEINE Rechnung ein — die Bedarfs- und
+  // Zerlegungspruefungen unten bleiben dadurch unveraendert.
   setzen('blech_boden','blech-boden',true);
   setzen('kupplung','kuppl-50',true);
   setzen('spannplatte','platte-12',true);
+  setzen('spannmutter','spm-h10-sw17',true);
   WP.run();
   ok('#92 [A-19] Modul 1 leitet den Fussoffset aus der halben Kopplungsmutterhoehe ab',
     WP.fussOffset===25 && WP.vorgaben().prestress.rod_fuss_offset_mm===25);
   ok('#92 [Z-8] Modul 1 leitet den Kopfzuschlag aus der Spannplattendicke ab',
     WP.kopfZuschlag===12 && WP.vorgaben().prestress.rod_kopf_zuschlag_mm===12);
   ok('#92 [A-19]/[Z-8] im fehlerfreien Zustand steht keine Meldung', meld()==='');
+  // Gegenprobe zur Nullwirkung von #97: die beiden Spannmuttermasse stehen jetzt am
+  // Wandelement, ohne den Bedarf oder die Zerlegung zu beruehren (die naechsten Pruefungen).
+  ok('#97 die Spannmuttermasse stehen dabei am Wandelement, ohne zu rechnen',
+    WP.RESULT.wandelement.prestress.spannmutter_h_mm===10
+    && WP.RESULT.wandelement.prestress.spannmutter_sw_mm===17);
   ok('#92 [A-19]/[Z-8] der Bedarf ist Segmenthoehe - Fussoffset + Plattendicke + Ueberstand',
     seg0().bedarf_mm===2000-25+12+10 && seg0().bedarf_mm!==ohne);
   ok('#92 [A-19]/[Z-8] die Stangenstuecke sind gegenueber dem Altstand wirklich verschoben',
@@ -1973,8 +1990,14 @@ store.setzeKatalog(KATALOG);
   // `einbauMeldungen()` nicht auf. Gemeldet werden dort weiterhin nur die Masse, die #92/[A-1]
   // dort eingefuehrt haben — dieser Block waehlt bewusst kein Blech, also stehen deren
   // Meldungen da; eine Zeile zur Schluesselweite darf aber in keinem Fall dabei sein.
-  ok('[#97] die Schluesselweite erzeugt keine eigene Pflichtmeldung',
-    !/Schlüsselweite/.test(meld()));
+  // Der Entscheid aus 4ba650a bleibt: die Schluesselweite der KOPPLUNGSMUTTER ist ein reines
+  // Ausweisungsmass am ohnehin ueber die Hoehe gemeldeten Bauteil und erzeugt KEINE eigene
+  // Pflichtmeldung. Geprueft wird das jetzt satzgenau statt ueber das blosse Wort: die
+  // SPANNMUTTER meldet ihre fehlende Schluesselweite seit demselben Issue sehr wohl (eigener
+  // Block weiter unten), sie ist dort das Mass, ueber das das Bauteil ueberhaupt gemeldet wird.
+  ok('[#97] die Schluesselweite der Kopplungsmutter erzeugt keine eigene Pflichtmeldung',
+    WP.einbauMeldungen.every(m=>!(/Schlüsselweite/.test(m)&&/Kopplungsmutter/.test(m)))
+    && !/Schlüsselweite der Kopplungsmutter/.test(meld()));
   ok('[#97] kein Produktdatum im Wandelement (Ownership)', (()=>{
     const j=JSON.stringify(store.aktivesWandelement());
     return !j.includes('kuppl-sw-17') && !j.includes('SW17') && !j.includes('preis'); })());
@@ -2096,6 +2119,150 @@ store.setzeKatalog(KATALOG);
     // Ausgangslage dieses Blocks wiederherstellen (SW 17 eindeutig gewaehlt).
     setzen('kupplung','kuppl-50',false); setzen('kupplung','kuppl-sw-17',true); WP.run();
   }
+
+  // Ausgangszustand wiederherstellen.
+  for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
+  document.getElementById('topConn').value='spannplatte';
+  WP.applyWand(vorherW);
+}
+
+// ---- Issue #97: die MASSE DER SPANNMUTTER erreichen das Wandelement ---------------------
+// Gefahren wird der ECHTE Planerweg wie bei #92 und der Kopplungsmutter: Spannmutter im
+// zugeordneten Katalog waehlen -> `vorgaben()` leitet `spannmutter_h_mm`/`spannmutter_sw_mm`
+// aus `hoehe_mm`/`sw_mm` ab -> dieselbe Engine rechnet -> das GESPEICHERTE Wandelement traegt
+// beide Masse. GEZEICHNET wird in diesem Paket nichts; die Masse reisen allein, damit die
+// Ausgaben die Mutter spaeter ohne Katalogzugriff masstaeblich zeichnen koennen ([D-1]).
+//
+// Der zweite Teil ist die Nullwirkung: keines der beiden Masse geht in eine Rechnung ein.
+// Alle Faelle hier fahren dieselbe Wand — Segmente, Zuschnitt, Bedarf, Spannachsen und die
+// kanonischen Stuecklistenmengen muessen ueber ALLE Faelle hinweg wertgleich sein.
+{
+  const meld=()=>document.getElementById('einbauQuelle').innerHTML;
+  const ROLLEN=['rod_std','rod_rest','blech_boden','kupplung','spannplatte','spannmutter'];
+  const leere=(rolle)=>((store.holeProdukte(1).rollen||{})[rolle]||[]).slice()
+    .forEach(id=>setzen(rolle,id,false));
+  const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
+  const vorherW=WP.RESULT.wandelement;
+  for(const r of ROLLEN) leere(r);
+  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  document.getElementById('topConn').value='blech';
+  document.getElementById('rodUeber').value='10';
+  setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
+  // Der RECHNERISCHE Fingerabdruck der Wand — alles, was sich NICHT aendern darf.
+  const fp=()=>{ const w=WP.RESULT.wandelement; return JSON.stringify({
+    achsen: w.tension_columns.map(c=>c.x_mm),
+    seg: w.tension_columns.map(c=>c.segments.map(g=>[g.z0_mm,g.z1_mm,g.bedarf_mm,
+      g.stuecke.map(x=>x.len_mm+':'+x.art).join(',')])),
+    bom: BOM.semblaBomItems(w) }); };
+  const psGespeichert=()=>store.aktivesWandelement().prestress;
+  const felder=()=>{ const ps=WP.RESULT.wandelement.prestress;
+    return [('spannmutter_h_mm' in ps), ('spannmutter_sw_mm' in ps)]; };
+
+  WP.run();
+  const fp0=fp();
+  ok('[#97] ohne gewaehlte Spannmutter entstehen keine Masse (nichts geraten)',
+    WP.spannmutterHoehe===null && WP.spannmutterSw===null
+    && WP.vorgaben().prestress.spannmutter_h_mm===undefined
+    && WP.vorgaben().prestress.spannmutter_sw_mm===undefined
+    && felder().join()==='false,false'
+    && psGespeichert().spannmutter_h_mm===undefined
+    && psGespeichert().spannmutter_sw_mm===undefined);
+  ok('[#97] die fehlende Auswahl steht als Luecke im vorhandenen Stil',
+    /Kein Produkt der Rolle „Spannmutter“ gewählt/.test(meld())
+    && /Spannmutterhöhe bleibt offen/.test(meld())
+    && /Schlüsselweite der Spannmutter bleibt offen/.test(meld()));
+
+  // Akzeptanz 1: beide Masse gepflegt -> genau diese Katalogwerte im GESPEICHERTEN Wandelement.
+  setzen('spannmutter','spm-h10-sw17',true); WP.run();
+  ok('[#97] Modul 1 leitet beide Masse aus dem gewaehlten Produkt ab',
+    WP.spannmutterHoehe===10 && WP.spannmutterSw===17
+    && WP.vorgaben().prestress.spannmutter_h_mm===10
+    && WP.vorgaben().prestress.spannmutter_sw_mm===17
+    && WP.RESULT.wandelement.prestress.spannmutter_h_mm===10
+    && WP.RESULT.wandelement.prestress.spannmutter_sw_mm===17);
+  ok('[#97] der GESPEICHERTE Stand traegt dieselben Masse (kein Zwischenstand)',
+    psGespeichert().spannmutter_h_mm===10 && psGespeichert().spannmutter_sw_mm===17);
+  ok('[#97] mit gepflegten Massen bleibt die Spannmutter-Luecke aus',
+    !/Spannmutterhöhe/.test(meld()) && !/Schlüsselweite der Spannmutter/.test(meld()));
+  ok('[#97] kein Produktdatum im Wandelement (Ownership)', (()=>{
+    const j=JSON.stringify(store.aktivesWandelement());
+    return !j.includes('spm-h10-sw17') && !j.includes('SW17') && !j.includes('preis'); })());
+  // Akzeptanz 3: die Rechnung ist dabei wertgleich zum Stand ganz ohne die Felder.
+  ok('[#97] Zuschnitt, Segmente, Bedarf und Mengen bleiben wertgleich', fp()===fp0);
+
+  // Akzeptanz 2a: gewaehltes Produkt ganz OHNE Masse -> kein Feld, nichts erfunden.
+  setzen('spannmutter','spm-h10-sw17',false); setzen('spannmutter','spm-ohne',true); WP.run();
+  ok('[#97] gewaehlte Mutter ohne gepflegte Masse: kein Feld, kein Ersatzmass',
+    WP.spannmutterHoehe===null && WP.spannmutterSw===null
+    && felder().join()==='false,false'
+    && psGespeichert().spannmutter_h_mm===undefined
+    && psGespeichert().spannmutter_sw_mm===undefined && fp()===fp0);
+  ok('[#97] die fehlenden Masse werden benannt, nicht ersetzt',
+    /Spannmutterhöhe fehlt/.test(meld())
+    && /Schlüsselweite der Spannmutter fehlt/.test(meld()));
+
+  // Die beiden Masse sind UNABHAENGIG: nur die Hoehe gepflegt -> genau ein Feld.
+  setzen('spannmutter','spm-ohne',false); setzen('spannmutter','spm-h12',true); WP.run();
+  ok('[#97] nur die Hoehe gepflegt: genau dieses eine Feld entsteht',
+    WP.spannmutterHoehe===12 && WP.spannmutterSw===null
+    && felder().join()==='true,false'
+    && psGespeichert().spannmutter_h_mm===12
+    && psGespeichert().spannmutter_sw_mm===undefined && fp()===fp0);
+  ok('[#97] gemeldet wird dann genau die fehlende Schluesselweite',
+    !/Spannmutterhöhe/.test(meld()) && /Schlüsselweite der Spannmutter fehlt/.test(meld()));
+
+  // Akzeptanz 2b: widersprechende Masse -> keines wird bevorzugt. Beide Produkte sind 10 mm
+  // hoch, mehrdeutig ist also AUSSCHLIESSLICH die Schluesselweite — die Hoehe bleibt stehen.
+  setzen('spannmutter','spm-h12',false);
+  setzen('spannmutter','spm-h10-sw17',true); setzen('spannmutter','spm-h10-sw13',true); WP.run();
+  ok('[#97] mehrere Schluesselweiten: keine wird bevorzugt, die eindeutige Hoehe bleibt',
+    WP.spannmutterHoehe===10 && WP.spannmutterSw===null
+    && felder().join()==='true,false'
+    && psGespeichert().spannmutter_h_mm===10
+    && psGespeichert().spannmutter_sw_mm===undefined && fp()===fp0);
+  ok('[#97] die mehrdeutige Schluesselweite steht mit beiden Werten in der Luecke',
+    /Schlüsselweite der Spannmutter mehrdeutig/.test(meld())
+    && /17 mm, 13 mm/.test(meld()));
+  // Gegenprobe: auch die HOEHE wird mehrdeutig, sobald sich die Produkte darin unterscheiden.
+  setzen('spannmutter','spm-h10-sw13',false); setzen('spannmutter','spm-h12',true); WP.run();
+  ok('[#97] mehrere Einbauhoehen: auch die Hoehe bleibt dann offen',
+    WP.spannmutterHoehe===null && felder()[0]===false
+    && /Spannmutterhöhe mehrdeutig/.test(meld())
+    && psGespeichert().spannmutter_h_mm===undefined && fp()===fp0);
+
+  // Akzeptanz 2c: OHNE wirksamen Katalog wird gar nichts abgeleitet — und auch nichts gemeldet
+  // (eine Luecke im Katalog laesst sich ohne Katalog nicht behaupten, `grund: 'kein_katalog'`).
+  setzen('spannmutter','spm-h12',false); setzen('spannmutter','spm-h10-sw17',true); WP.run();
+  ok('[#97] Ausgangsstand fuer die Katalogprobe ist gesetzt', psGespeichert().spannmutter_sw_mm===17);
+  store.loescheKatalog(); WP.run();
+  ok('[#97] ohne wirksamen Katalog entsteht kein Feld und keine Luecke',
+    WP.spannmutterHoehe===null && WP.spannmutterSw===null
+    && felder().join()==='false,false'
+    && psGespeichert().spannmutter_h_mm===undefined
+    && psGespeichert().spannmutter_sw_mm===undefined
+    && !/Spannmutter/.test(meld()));
+  store.setzeKatalog(KATALOG); WP.run();
+  ok('[#97] mit dem Katalog sind beide Masse unveraendert wieder da',
+    psGespeichert().spannmutter_h_mm===10 && psGespeichert().spannmutter_sw_mm===17);
+
+  // Ein am WANDELEMENT gespeicherter Wert muss den Rechenweg ueberstehen, der ihn nicht neu
+  // ableitet — beide Felder reisen durch `psOf()`, Modul 1 bekommt dafuer KEINEN eigenen
+  // Erhaltungsmechanismus. Gebraucht wird das ueberall dort, wo eine Neurechnung ohne
+  // Produktauswahl laeuft (z. B. der Geschosseditor).
+  ok('[#97] ein gespeicherter Stand uebersteht den nicht neu ableitenden Rechenweg', (()=>{
+    const w=store.aktivesWandelement();
+    const neu=autoAuslegung({ name:w.name, length_mm:w.length_mm, height_mm:w.height_mm,
+      openings:[], sides:w.sides||null, prestress:{ ...w.prestress },
+      load:{ qk_area:1.0, gammaQ:1.5 } }).wandelement;
+    return neu.prestress.spannmutter_h_mm===10 && neu.prestress.spannmutter_sw_mm===17; })());
+
+  // GEZEICHNET wird in diesem Paket nichts: die Wandansicht ist mit und ohne die beiden Masse
+  // zeichenweise dieselbe. Das ist der Unterschied zur Kopplungsmutter, die ihr Mass im
+  // Folgepaket zu #97 bereits benutzt.
+  const svgMit=document.getElementById('plan').innerHTML;
+  setzen('spannmutter','spm-h10-sw17',false); WP.run();
+  ok('[#97] die Wandansicht bleibt unveraendert — gezeichnet wird erst im Folgepaket',
+    document.getElementById('plan').innerHTML===svgMit && svgMit.length>0 && fp()===fp0);
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }

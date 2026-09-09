@@ -951,6 +951,20 @@ function normPrestress(p) {
   // das Ergebnis ist bit-genau das bisherige. Eine Breite wird NIE erfunden ([P-9]).
   const sw = (p && p.kupplung_sw_mm != null && +p.kupplung_sw_mm > 0) ? +p.kupplung_sw_mm : 0;
   if (sw > 0) out.kupplung_sw_mm = sw;
+  // Einbauhoehe und Schluesselweite der SPANNMUTTER (#97) — die realen Masse des Bauteils, das
+  // oben auf der Spannplatte sitzt, von Modul 1 aus dem gewaehlten Katalogprodukt abgeleitet.
+  // Auch sie gehen in KEINE Rechnung ein und werden hier nur DURCHGEREICHT, damit die Ausgaben
+  // die Mutter masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]) — dieselbe
+  // reine Ausweisungsbahn wie `kupplung_sw_mm` und die Blechdicken ([A-1]). Kein Produktmass
+  // darueber hinaus, keine Produkt-ID und kein Preis wandert dadurch ins Wandelement.
+  //
+  // Beide OPTIONAL und voneinander UNABHAENGIG: fehlt eines oder ist es ungueltig, entsteht
+  // genau dieser Schluessel gar nicht erst und das Ergebnis ist bit-genau das bisherige. Ein
+  // Mass wird NIE erfunden ([P-9]).
+  const smH = (p && p.spannmutter_h_mm != null && +p.spannmutter_h_mm > 0) ? +p.spannmutter_h_mm : 0;
+  if (smH > 0) out.spannmutter_h_mm = smH;
+  const smSw = (p && p.spannmutter_sw_mm != null && +p.spannmutter_sw_mm > 0) ? +p.spannmutter_sw_mm : 0;
+  if (smSw > 0) out.spannmutter_sw_mm = smSw;
   return out;
 }
 

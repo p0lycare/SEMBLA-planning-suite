@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-18",
+    datum: "2026-09-09",
+    typ: "feature",
+    issue: 97,
+    titel: "Einbauhöhe und Schlüsselweite der Spannmutter stehen jetzt am Wandelement",
+    testbitte: "In Modul 1 eine Spannmutter mit gepflegter Einbauhöhe und Schlüsselweite "
+      + "wählen und auslegen: die Auslegung bleibt gleich, beide Maße reisen mit. Fehlt ein "
+      + "Maß, wird die Lücke benannt; gezeichnet wird sie im nächsten Schritt.",
+  },
+  {
     id: "chg-20260909-17",
     datum: "2026-09-09",
     typ: "fix",

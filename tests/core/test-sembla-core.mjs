@@ -988,6 +988,78 @@ t("#97 Die Schluesselweite reist durch psOf() (Auslegung und Nachweis)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// EINBAUHOEHE UND SCHLUESSELWEITE DER SPANNMUTTER (#97) — reine DURCHREICHE
+// ---------------------------------------------------------------------------
+// Modul 1 leitet `spannmutter_h_mm`/`spannmutter_sw_mm` aus dem gewaehlten Katalogprodukt ab;
+// der Kern reicht beide unveraendert durch, damit die Ausgaben die Mutter spaeter masstaeblich
+// zeichnen koennen, ohne den Katalog zu lesen ([D-1]). GERECHNET wird damit nichts — genau das
+// halten die Tests fest: das Wandelement ist mit und ohne die Felder bis auf diese Schluessel
+// bit-gleich. Gefahren wird derselbe `orakel()`-Weg wie bei #92 und der Kopplungsmutter: das
+// ECHTE Python-Orakel als Unterprozess, damit "beide Kerne bit-gleich" belegt ist.
+const PS97SM = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+  top_connection: "spannplatte", spannmutter_h_mm: 10, spannmutter_sw_mm: 17 };
+const WAND97SM = { name: "spannmutter", length_mm: 6 * GRID, height_mm: 2000 };
+const bau97sm = (ps) => buildWall(WAND97SM.name, WAND97SM.length_mm, WAND97SM.height_mm, [], null, ps);
+
+t("#97 Beide Spannmuttermasse reisen durch den Kern und sind py/mjs bit-gleich (echtes Orakel)", () => {
+  const js = bau97sm(PS97SM);
+  assert(js.prestress.spannmutter_h_mm === 10, "Einbauhoehe: " + js.prestress.spannmutter_h_mm);
+  assert(js.prestress.spannmutter_sw_mm === 17, "Schluesselweite: " + js.prestress.spannmutter_sw_mm);
+  deepEqual(js, orakel({ ...WAND97SM, prestress: PS97SM }));   // bit-genau, ganzes Wandelement
+  // Ein zweites Produkt mit anderen Massen ergibt andere Werte — und aendert sonst NICHTS.
+  const js2 = bau97sm({ ...PS97SM, spannmutter_h_mm: 8, spannmutter_sw_mm: 13 });
+  assert(js2.prestress.spannmutter_h_mm === 8 && js2.prestress.spannmutter_sw_mm === 13,
+    "zweites Produkt: " + js2.prestress.spannmutter_h_mm + "/" + js2.prestress.spannmutter_sw_mm);
+  deepEqual({ ...js2, prestress: { ...js2.prestress, spannmutter_h_mm: 10, spannmutter_sw_mm: 17 } }, js);
+  deepEqual(js2, orakel({ ...WAND97SM, prestress: { ...PS97SM, spannmutter_h_mm: 8, spannmutter_sw_mm: 13 } }));
+});
+
+t("#97 Ohne Spannmuttermass ist das Ergebnis bit-genau der Altstand", () => {
+  const { spannmutter_h_mm, spannmutter_sw_mm, ...ohne } = PS97SM;   // eslint-disable-line no-unused-vars
+  const a = bau97sm(ohne);
+  // Weder `0` noch `null` erfinden ein Feld — und beide sind bit-genau der Fall ohne Angabe.
+  deepEqual(bau97sm({ ...ohne, spannmutter_h_mm: 0, spannmutter_sw_mm: 0 }), a);
+  deepEqual(bau97sm({ ...ohne, spannmutter_h_mm: null, spannmutter_sw_mm: null }), a);
+  assert(!("spannmutter_h_mm" in a.prestress) && !("spannmutter_sw_mm" in a.prestress),
+    "kein Schluessel ohne Angabe: " + Object.keys(a.prestress).join(","));
+  // Auch der Kern ohne Angabe ist py/mjs bit-gleich — das Ausbleiben des Schluessels ebenso.
+  deepEqual(a, orakel({ ...WAND97SM, prestress: ohne }));
+  // Die beiden Masse sind UNABHAENGIG: eine gepflegte Hoehe ohne Schluesselweite ergibt genau
+  // ein Feld, und die Rechnung bleibt dieselbe.
+  const nurH = bau97sm({ ...ohne, spannmutter_h_mm: 10 });
+  assert(nurH.prestress.spannmutter_h_mm === 10 && !("spannmutter_sw_mm" in nurH.prestress),
+    "nur die Hoehe: " + Object.keys(nurH.prestress).join(","));
+  deepEqual(nurH, orakel({ ...WAND97SM, prestress: { ...ohne, spannmutter_h_mm: 10 } }));
+  // Und die Nullwirkung gegen den gesetzten Fall: nur diese Schluessel kommen hinzu.
+  const mit = bau97sm(PS97SM);
+  delete mit.prestress.spannmutter_h_mm; delete mit.prestress.spannmutter_sw_mm;
+  deepEqual(mit, a);
+});
+
+t("#97 Beide Spannmuttermasse reisen durch psOf() (Auslegung und Nachweis)", () => {
+  // `psOf()` in `sembla-engine.js` ist eine FELDLISTE und baut `prestress` je Iteration neu —
+  // ohne Eintrag dort waeren die Felder nach der ersten Iteration weg.
+  const last = { qk_area: 0.5, gammaQ: 1.5 };
+  const auto = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: PS97SM, load: last });
+  assert(auto.wandelement.prestress.spannmutter_h_mm === 10
+    && auto.wandelement.prestress.spannmutter_sw_mm === 17,
+    "nach der Auslegung: " + JSON.stringify(auto.wandelement.prestress.spannmutter_h_mm) + "/"
+      + JSON.stringify(auto.wandelement.prestress.spannmutter_sw_mm));
+  const nw = nachweisPruefen({ ...ENGINE_BASE, height_mm: 2000, load: { qk_area: 1.0, gammaQ: 1.5 },
+    prestress: { ...PS97SM, max_span_grid: 3, force_kN: 60 } }).wandelement;
+  assert(nw.prestress.spannmutter_h_mm === 10 && nw.prestress.spannmutter_sw_mm === 17,
+    "im Nachweis-Modus: " + nw.prestress.spannmutter_h_mm + "/" + nw.prestress.spannmutter_sw_mm);
+  // Und auch hier: die Auslegung selbst bleibt bit-genau der Altstand.
+  const { spannmutter_h_mm, spannmutter_sw_mm, ...ohne } = PS97SM;   // eslint-disable-line no-unused-vars
+  const b = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ohne, load: last });
+  delete auto.wandelement.prestress.spannmutter_h_mm;
+  delete auto.wandelement.prestress.spannmutter_sw_mm;
+  deepEqual(auto.wandelement, b.wandelement);
+  assert(!("spannmutter_h_mm" in b.wandelement.prestress)
+    && !("spannmutter_sw_mm" in b.wandelement.prestress), "kein Schluessel ohne Angabe");
+});
+
+// ---------------------------------------------------------------------------
 // RANDVERBAENDE [V-3]/[V-11] (Paritaetsvertrag mit dem Python-Orakel, Issue #104)
 // ---------------------------------------------------------------------------
 // Akzeptanztest 1+3 des Pakets: die vier i2-/i3-Randkombinationen werden als REALE Waende

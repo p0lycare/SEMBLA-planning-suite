@@ -876,6 +876,18 @@ def _norm_prestress(p):
     _sw = p.get("kupplung_sw_mm")
     if _sw is not None and float(_sw) > 0:
         out["kupplung_sw_mm"] = int(_sw) if float(_sw) == int(float(_sw)) else float(_sw)
+    # Einbauhoehe und Schluesselweite der SPANNMUTTER (#97) — die realen Masse des Bauteils, das
+    # oben auf der Spannplatte sitzt, von Modul 1 aus dem gewaehlten Katalogprodukt abgeleitet.
+    # Auch sie gehen in KEINE Rechnung ein und werden nur DURCHGEREICHT, damit die Ausgaben die
+    # Mutter masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]).
+    # Beide OPTIONAL und voneinander UNABHAENGIG: fehlend/ungueltig -> der Schluessel entsteht
+    # gar nicht, das Ergebnis ist bit-genau das bisherige. Ein Mass wird NIE erfunden ([P-9]).
+    _smh = p.get("spannmutter_h_mm")
+    if _smh is not None and float(_smh) > 0:
+        out["spannmutter_h_mm"] = int(_smh) if float(_smh) == int(float(_smh)) else float(_smh)
+    _smsw = p.get("spannmutter_sw_mm")
+    if _smsw is not None and float(_smsw) > 0:
+        out["spannmutter_sw_mm"] = int(_smsw) if float(_smsw) == int(float(_smsw)) else float(_smsw)
     # Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
     # er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
     # nirgends gespeichert wird, entsteht im Wandelement auch kein Feld dafuer. `build_wall`

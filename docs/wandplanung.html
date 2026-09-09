@@ -423,6 +423,15 @@ function vorgaben(){
   // ein gespeicherter Wert bleibt nur dort stehen, wo sich aus der Auswahl kein eindeutiges
   // Maß ergibt — dann wird keines erfunden, hier wie dort.
   const sw=kupplungSwMm(); if(sw!=null) hw.kupplung_sw_mm=sw;
+  // #97 Einbauhöhe und Schlüsselweite der Spannmutter: dieselbe Bedingung und dieselbe reine
+  // Ausweisungsbahn — nur bei eindeutigem Katalogmaß, sonst bleibt das jeweilige Feld ganz weg.
+  // Beide sind voneinander unabhängig; sie gehen in KEINE Rechnung ein und reisen allein
+  // deshalb mit, damit die Ausgaben die Mutter später maßstäblich zeichnen können ([D-1]).
+  //
+  // ⚠ Auch ihr Weg führt über die FELDLISTE `psOf()` in `sembla-engine.js` — ohne Eintrag dort
+  // wären sie nach der ersten Iteration der Auslegung wieder weg.
+  const smH=spannmutterHoeheMm(); if(smH!=null) hw.spannmutter_h_mm=smH;
+  const smSw=spannmutterSwMm(); if(smSw!=null) hw.spannmutter_sw_mm=smSw;
   // [A-1] Blechdicken: reine BAUTEILMASSE aus dem Katalog. Sie gehen in keine Rechnung ein und
   // werden nur ausgewiesen; fehlt oder widerspricht ein Maß, bleibt das Feld weg und die Lücke
   // steht in `einbauMeldungen()` — es gibt dafür weder ein Eingabefeld noch einen Default.
@@ -1143,6 +1152,23 @@ function kopfZuschlagMm(){
 // Fehlt das Maß oder widersprechen sich die gewählten Produkte, bleibt der Wert `null` und das
 // Feld entsteht gar nicht — es wird NIE eine Breite erfunden ([P-9]).
 function kupplungSwMm(){ return einbauMass('kupplung','sw_mm').wert; }
+// #97 Einbauhöhe und Schlüsselweite der SPANNMUTTER — das Bauteil, das oben auf der
+// Spannplatte sitzt. Beide kommen aus denselben Katalogfeldern wie jedes andere Einbaumaß
+// (`hoehe_mm`/`sw_mm` der Rolle „Spannmutter") und werden über dasselbe `einbauMass()`
+// gelesen wie Fußoffset, Kopfzuschlag und die Schlüsselweite der Kopplungsmutter — es
+// entsteht kein zweiter Ableitungsweg.
+//
+// Wie jene Schlüsselweite sind es KEINE Rechenwerte: sie gehen in keine Höhe, keinen Bedarf
+// und keine Menge ein und werden allein AUSGEWIESEN — dieselbe Bahn wie die Blechdicken
+// ([A-1]). Gebraucht werden sie, damit die Ausgaben die Mutter später maßstäblich zeichnen
+// können, ohne den Katalog anzufassen ([D-1]); GEZEICHNET wird in diesem Paket noch nichts.
+//
+// Beide Maße stehen für sich: ein Produkt mit gepflegter Höhe, aber ohne Schlüsselweite
+// liefert genau ein Feld. Fehlt ein Maß oder widersprechen sich die gewählten Produkte,
+// bleibt der Wert `null` und das Feld entsteht gar nicht — es wird NIE eines erfunden
+// ([P-9]), insbesondere nicht aus Gewinde oder Norm des Produkts.
+function spannmutterHoeheMm(){ return einbauMass('spannmutter','hoehe_mm').wert; }
+function spannmutterSwMm(){ return einbauMass('spannmutter','sw_mm').wert; }
 // [A-1] Bodenblechdicke: Bauteilmaß der Rolle „Bodenblech". Alle Standardlängen einer Wand sind
 // gleich dick — mehrere gewählte Größen sind der Regelfall ([A-10]) und ergeben genau EINEN
 // Dickenwert. Tragen sie verschiedene, bleibt die Dicke offen; es wird keine bevorzugt.
@@ -1178,6 +1204,13 @@ function einbauMeldungen(){
   pruef('blech_boden','dicke_mm','Bodenblech','Bodenblechdicke');
   if($('topConn').value==='blech')
     pruef('blech_kopf','dicke_mm','Kopfblech','Kopfblechdicke');
+  // #97 Die beiden Maße der Spannmutter sind ebenfalls reine Ausweisungsmaße — fehlen sie,
+  // bleibt die Rechnung unverändert, und die Ausgaben können die Mutter später nicht in ihrer
+  // realen Größe zeichnen. Genau das steht hier, im Stil der übrigen Einbaumaße; ersetzt wird
+  // nichts. (Die Schlüsselweite der KOPPLUNGSMUTTER meldet bewusst nichts — dort ist sie ein
+  // reines Zeichenmaß am ohnehin über die Höhe gemeldeten Bauteil.)
+  pruef('spannmutter','hoehe_mm','Spannmutter','Spannmutterhöhe');
+  pruef('spannmutter','sw_mm','Spannmutter','Schlüsselweite der Spannmutter');
   return out;
 }
 // Bodenblech-Standardlängen ([A-10]): der VORRATSSATZ kommt ausschließlich aus den in der Rolle
@@ -1703,6 +1736,7 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,
   get fussOffset(){return fussOffsetMm();}, get kopfZuschlag(){return kopfZuschlagMm();},
   get kupplungSw(){return kupplungSwMm();},
+  get spannmutterHoehe(){return spannmutterHoeheMm();}, get spannmutterSw(){return spannmutterSwMm();},
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},
