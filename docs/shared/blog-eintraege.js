@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260909-19",
+    datum: "2026-09-09",
+    typ: "fix",
+    issue: 97,
+    titel: "Das rote Z des Deckenanschlusses ist wieder vollständig sichtbar",
+    testbitte: "In Modul 1 und Modul 7 eine Wand mit Deckenanschluss ansehen: das rote Z steht "
+      + "jetzt links neben der Gewindestange, sein unterer Schenkel liegt über der Spannplatte "
+      + "und kreuzt die Stange nach rechts. Die Stange bleibt im Vordergrund.",
+  },
+  {
     id: "chg-20260909-18",
     datum: "2026-09-09",
     typ: "feature",

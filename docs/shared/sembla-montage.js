@@ -122,6 +122,7 @@ export const SPANN_MM = {
   blech_schenkel: 1.6, // Schenkellaenge des Einlegeblechs
   dc_schenkel: 3.6,    // Schenkellaenge je Winkel des Deckenanschlusses ([P-24])
   dc_h: 4.0,           // Hoehe des Z ueber der Wandoberkante (Winkelstoss bis Decke)
+  dc_versatz: 1.6,     // Versatz des senkrechten Z-Zuges nach LINKS neben die Spannachse (#97)
   strich: 0.40,        // Strichstaerke offener Profile
 };
 
@@ -330,6 +331,30 @@ export function schraubeSvg(x, y, e, blech, opts = {}) {
 }
 
 /**
+ * HOEHE der Spannplatte in Zeichenkoordinaten — die EINE Fassung dieser Regel ([D-4], #97).
+ *
+ * Sie liegt als eigener Baustein hier, seit ein zweiter Leser sie braucht: das Z des
+ * Deckenanschlusses legt seinen unteren Schenkel auf die PLATTENOBERKANTE (#97) und muss
+ * dieselbe Hoehe rechnen wie die Platte selbst. Zwei Fassungen derselben Regel waeren die
+ * Drift, die [D-4]/[P-6] ausschliessen — der Schenkel schwebte oder saesse in der Platte,
+ * sobald sich eine der beiden aendert.
+ *
+ * DICKE: das reale Bauteilmass, wenn der Aufrufer es kennt — sonst unveraendert das feste
+ * Symbolmass. Geprueft wird das ZEICHENERGEBNIS und nicht nur die Eingabe: nur ein Wert
+ * > 0 darf die Platte tragen, damit sie nie zu einer Hoehe von 0 zusammenfaellt.
+ *
+ * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
+ * @param {number} sc Zeichenkoordinaten je mm
+ * @param {any} dickeMm reale Plattendicke in mm (`prestress.rod_kopf_zuschlag_mm`) oder fehlend
+ * @returns {number} Hoehe in Zeichenkoordinaten
+ */
+function _plattenDicke(e, sc, dickeMm) {
+  const dMm = +dickeMm;
+  const hMass = (isFinite(dMm) && dMm > 0 && sc > 0) ? dMm * sc : 0;
+  return hMass > 0 ? hMass : SPANN_MM.platte_h * e;
+}
+
+/**
  * Spannplatte MIT ihrer Spannmutter als Anschlusssymbol ([A-3]/[D-4], #110/#106/#97).
  *
  * Die Platte LIEGT AUF der Auflagerkante — immer, oben wie unten. Bis #106 zeichnete der
@@ -386,12 +411,8 @@ export function schraubeSvg(x, y, e, blech, opts = {}) {
  */
 export function spannplatteSvg(x, y, e, sc, opts = {}) {
   const n = opts.n || (v => v);
-  // DICKE: das reale Bauteilmass, wenn der Aufrufer es kennt — sonst unveraendert das feste
-  // Symbolmass. Gepruefte wird das ZEICHENERGEBNIS und nicht nur die Eingabe: nur ein Wert
-  // > 0 darf die Platte tragen, damit sie nie zu einer Hoehe von 0 zusammenfaellt.
-  const dMm = +opts.dicke_mm;
-  const hMass = (isFinite(dMm) && dMm > 0 && sc > 0) ? dMm * sc : 0;
-  const h = hMass > 0 ? hMass : SPANN_MM.platte_h * e;
+  // DICKE aus dem einen Baustein (s. `_plattenDicke`) — wertgleich zum Stand davor.
+  const h = _plattenDicke(e, sc, opts.dicke_mm);
   const b = Math.max(opts.min != null ? opts.min : SPANN_MM.platte_b_min * e,
     SPANN_MM.platte_b_mm * sc);
   const farbe = opts.farbe || SPANN_FARBE.platte;
@@ -481,8 +502,8 @@ export const DECKENANSCHLUSS = { farbe: "#c0392b", label: "Deckenanschluss" };
  * stehen in der Stueckliste ([P-24]), und ein Symbol ist eine Darstellungsmarke und kein
  * Montagebild.
  *
- * Schenkellaenge, Hoehe und Strichstaerke sind FESTE SYMBOLMASSE aus `SPANN_MM` ([D-9]) und
- * bewusst KEINE Bauteilmasse: die Masse der beiden Winkel liegen nicht vor und stehen im
+ * Schenkellaenge, Hoehe, Versatz und Strichstaerke sind FESTE SYMBOLMASSE aus `SPANN_MM`
+ * ([D-9]) und bewusst KEINE Bauteilmasse: die Masse der beiden Winkel liegen nicht vor und stehen im
  * Katalog als ausdruecklich vorlaeufige Platzhalter — ein hier gesetztes mm-Mass liesse sich
  * als Bauteilmass zurueckzulesen. Aus dem Symbol wird nichts abgeleitet.
  *
@@ -490,10 +511,36 @@ export const DECKENANSCHLUSS = { farbe: "#c0392b", label: "Deckenanschluss" };
  * Schwarz-Weiss-Ausdruck seine eigene Form — wie das Einlegeblech und anders als die
  * gefuellten Zylinder.
  *
+ * LAGE (#97): Bis dahin lag der senkrechte Zug GENAU auf der Spannachse und der untere
+ * Schenkel GENAU auf der Wandoberkante — also auf den beiden Linien, die schon belegt sind:
+ * die Gewindestange liegt seit #112 als letzte Bauteilgruppe im Vordergrund und verdeckte den
+ * senkrechten Zug, die Spannplatte sitzt auf der Oberkante und verschluckte den Schenkel.
+ * Beides ist reine Darstellung und wird deshalb hier geloest, nicht durch eine andere Achse:
+ *
+ *  - der senkrechte Zug steht um das feste Symbolmass `dc_versatz` LINKS NEBEN der Achse.
+ *    Der Versatz ist groesser als die halbe Mutternbreite (`d`/2), der Zug laeuft also auch an
+ *    der Spannmutter vorbei. Verschoben wird in ZEICHENKOORDINATEN und nicht auf eine physische
+ *    Wandseite: Modul 1 spiegelt in der Rueckansicht, und eine Seitenwahl spraenge dort.
+ *  - der untere Schenkel liegt unmittelbar OBERHALB der Plattenoberkante — die Strichstaerke
+ *    vollstaendig ausserhalb des Plattenrechtecks, nicht auf dessen Kante zentriert. Er liegt
+ *    damit im Hoehenband der aufsitzenden Spannmutter (`mutter_h` > `strich`) und ragt nicht
+ *    ueber deren Oberkante hinaus.
+ *  - weil `dc_schenkel` > `dc_versatz` ist, KREUZT der untere Schenkel die Spannachse nach
+ *    rechts. Die feste Orientierung (oben links, unten rechts) bleibt unveraendert.
+ *
+ * Der Bezug fuer die Plattenoberkante ist die schon vorhandene Plattendicke
+ * (`prestress.rod_kopf_zuschlag_mm`), gerechnet mit DEMSELBEN Baustein wie die Platte selbst
+ * (`_plattenDicke`) — es entsteht keine zweite Fassung dieser Regel ([D-4]). OHNE das Mass —
+ * und ebenso an einer Achse, die oben ein KOPFBLECH statt einer Spannplatte traegt und damit
+ * gar keine Platte hat — bleibt es beim benannten festen Symbolmass `SPANN_MM.platte_h * e`.
+ * Es wird kein Mass erfunden und kein Sonderfall gebaut.
+ *
  * @param {number} x Zeichenkoordinate der Spannachse (= Lage des Anschlusspunkts)
- * @param {number} y Zeichenkoordinate der Wandoberkante (Unterkante des unteren Schenkels)
+ * @param {number} y Zeichenkoordinate der Wandoberkante (Auflagerkante der Spannplatte)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,strich?:number}} [opts]
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,strich?:number,
+ *          dicke_mm?:number,sc?:number}} [opts]
+ *        `dicke_mm`/`sc`: reale Plattendicke in mm und Zeichenkoordinaten je mm (#97).
  * @returns {string} SVG-Fragment (offener Polylinienzug)
  */
 export function deckenanschlussSvg(x, y, e, opts = {}) {
@@ -502,10 +549,15 @@ export function deckenanschlussSvg(x, y, e, opts = {}) {
   const sw = opts.strich != null ? opts.strich : SPANN_MM.strich * e;
   const farbe = opts.farbe || DECKENANSCHLUSS.farbe;
   const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
-  // Oberer Schenkel (Winkel Decke) nach LINKS, senkrechter Stoss auf der Spannachse, unterer
-  // Schenkel (Winkel Wand) nach RECHTS — die Reihenfolge ist die Fachvorgabe und nicht frei.
-  const pts = `${n(x - b)},${n(y - h)} ${n(x)},${n(y - h)} ${n(x)},${n(y)} `
-    + `${n(x + b)},${n(y)}`;
+  // Senkrechter Zug LINKS neben der Spannachse (#97) und unterer Schenkel unmittelbar oberhalb
+  // der Plattenoberkante — die halbe Strichstaerke haelt ihn vollstaendig aus der Platte heraus.
+  const xv = x - SPANN_MM.dc_versatz * e;
+  const yu = y - _plattenDicke(e, opts.sc, opts.dicke_mm) - sw / 2;
+  // Oberer Schenkel (Winkel Decke) nach LINKS, senkrechter Stoss dazwischen, unterer Schenkel
+  // (Winkel Wand) nach RECHTS ueber die Spannachse — die Reihenfolge ist die Fachvorgabe und
+  // nicht frei.
+  const pts = `${n(xv - b)},${n(yu - h)} ${n(xv)},${n(yu - h)} ${n(xv)},${n(yu)} `
+    + `${n(xv + b)},${n(yu)}`;
   return `<polyline${kl} points="${pts}" fill="none" stroke="${farbe}" `
     + `stroke-width="${n(sw)}" stroke-linejoin="miter"/>`;
 }

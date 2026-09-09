@@ -984,10 +984,69 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
     && !/#c0392b/.test(html));
   ok('[#95] Symbolgeometrie ist die geteilte Funktion (identische Zeichenkette)',
     svg().includes(MONT.deckenanschlussSvg(0,0,1,{klasse:'dcs'}).slice(0,26)));
-  // #112: Gewindestange, Spannplatte und Kopplungsmutter liegen VOR dem Symbol.
+  // #112: die Gewindestange liegt VOR dem Symbol.
   ok('[#112] das Symbol steht vor den Straengen — die Gewindestange bleibt im Vordergrund',
     svg().indexOf('<polyline class="dcs"')
       < svg().indexOf(`stroke="${MONT.stueckFarbe('standard')}"`));
+  // --- #97: die LAGE des Z am ECHTEN Modul-1-Ansichtspfad ------------------------------------
+  // Gemeldet war: der senkrechte Zug lag auf der Gewindestangenachse (und damit unter ihr), der
+  // untere Schenkel auf der Wandoberkante (und damit unter der Spannplatte). Geprueft wird an
+  // der gezeichneten Ansicht gegen die dort wirklich gezeichneten Bauteile — die Achse kommt aus
+  // den STANGENLINIEN, die Bezugskante aus der Spannplatte bzw., wo oben ein Kopfblech sitzt,
+  // aus der auf der Wandoberkante sitzenden Spannmutter. Nachgerechnet wird nichts.
+  {
+    const E97=MONT.SPANN_EINHEIT.ansicht, M=MONT.SPANN_MM, EPS=1e-6;
+    const zeichen=()=>{
+      const t=svg();
+      const zs=[...t.matchAll(/<polyline class="dcs" points="([^"]+)"[^>]*stroke-width="([-\d.]+)"/g)]
+        .map(m=>({p:m[1].split(' ').map(q=>q.split(',').map(Number)), sw:+m[2]}));
+      const ax=[...(/<g class="stg">([\s\S]*?)<\/g>/.exec(t)||['',''])[1]
+        .matchAll(/<line x1="([-\d.]+)" y1="[-\d.]+" x2="([-\d.]+)"/g)]
+        .filter(m=>m[1]===m[2]).map(m=>+m[1]);
+      const rects=f=>[...t.matchAll(new RegExp('<rect x="([-\\d.]+)" y="([-\\d.]+)" '
+        +'width="([-\\d.]+)" height="([-\\d.]+)" fill="'+f+'"/>','g'))]
+        .map(m=>({x:+m[1],y:+m[2],b:+m[3],h:+m[4]}));
+      return {zs, ax, platten:rects(MONT.SPANN_FARBE.platte),
+        muttern:rects(MONT.SPANN_FARBE.mutter).filter(r=>Math.abs(r.h-M.mutter_h*E97)<1e-6)};
+    };
+    const achseVon=z=>z.p[1][0]+M.dc_versatz*E97;
+    // Bezugskante je Achse: die Oberkante der dort gezeichneten Spannplatte — und wo oben ein
+    // KOPFBLECH sitzt und es gar keine Platte gibt, die benannte feste Symbollage ueber der
+    // Wandoberkante. Kein Sonderfall, kein erfundenes Mass.
+    const bezug=(g,ax)=>{
+      const p=g.platten.filter(r=>Math.abs((r.x+r.b/2)-ax)<1e-6).sort((a,b)=>a.y-b.y)[0];
+      if(p) return p.y;
+      const m=g.muttern.filter(r=>Math.abs((r.x+r.b/2)-ax)<1e-6).sort((a,b)=>a.y-b.y)[0];
+      return m ? (m.y+m.h)-M.platte_h*E97 : null;
+    };
+    const g=zeichen();
+    ok('[#97] der senkrechte Zug steht LINKS neben der Gewindestangenachse',
+      g.zs.length===auto.length && g.zs.every(z=>z.p[1][0]===z.p[2][0]
+        && g.ax.some(x=>Math.abs(x-achseVon(z))<1e-6 && z.p[1][0]<x)));
+    ok('[#97] der untere Schenkel kreuzt die Achse nach rechts',
+      g.zs.every(z=>z.p[2][0]<achseVon(z) && z.p[3][0]>achseVon(z)));
+    ok('[#97] der untere Schenkel liegt vollstaendig oberhalb der Plattenoberkante',
+      g.zs.every(z=>{ const b=bezug(g,achseVon(z));
+        return b!==null && (z.p[2][1]+z.sw/2)<=b+EPS; }));
+    ok('[#97] und er bleibt unterhalb der Spannmutteroberkante',
+      g.zs.every(z=>{ const b=bezug(g,achseVon(z));
+        return b!==null && (z.p[2][1]-z.sw/2)>=b-M.mutter_h*E97-EPS; }));
+    ok('[#97] die feste Orientierung bleibt: oben links, unten rechts',
+      g.zs.every(z=>z.p[0][0]<z.p[1][0] && z.p[2][0]<z.p[3][0] && z.p[0][1]<z.p[2][1]));
+    // Verglichen wird gegen die ANKER — also die Rechtecke OHNE Klasse (Spannplatte und die auf
+    // ihr sitzende Spannmutter). Die Kopplungsmuttern (`class="kop"`) stehen nach #112
+    // ausdruecklich spaeter und sind hier nicht gemeint.
+    ok('[#97] Reihenfolge in der Ansicht: Anker -> Symbol -> Gewindestange', (()=>{
+      const t=svg(), i=t.indexOf('<polyline class="dcs"');
+      const re=new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="[-\\d.]+" height="[-\\d.]+"'
+        +' fill="(?:'+MONT.SPANN_FARBE.platte+'|'+MONT.SPANN_FARBE.mutter+')"/>','g');
+      const anker=[...t.matchAll(re)].map(m=>m.index);
+      return anker.length>0 && Math.max(...anker)<i && i<t.indexOf('<g class="stg">'); })());
+    // [D-4]: dieselbe Regel wie im Blatt — die Ansicht ruft dieselbe Funktion mit ihrer eigenen
+    // Einheit auf und legt das Symbol um denselben Versatz neben die Achse.
+    ok('[#97] Modul 1 legt das Symbol nach derselben Regel wie Modul 7',
+      g.zs.every(z=>Math.abs((achseVon(z)-z.p[1][0])/E97-M.dc_versatz)<1e-9));
+  }
   // Werkzeug an: Griffe je Punkt, blasse Marke je freier Achse.
   WP.setDcEdit(true);
   ok('[#95] Werkzeug an + Griffe an der Wandoberkante gezeichnet',

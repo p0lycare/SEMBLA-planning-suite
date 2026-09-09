@@ -540,6 +540,82 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     (() => {
       const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
       return /deckenanschlussSvg/.test(q) && !/"#c0392b"/.test(q); })());
+
+  // --- #97: die LAGE des Z am realen Blatt ------------------------------------------------
+  // Gemeldet war: der senkrechte Zug lag auf der Gewindestangenachse und wurde von ihr
+  // verdeckt, der untere Schenkel lag auf der Wandoberkante und damit unter der Spannplatte.
+  // Geprueft wird am erzeugten Blatt-SVG gegen die dort wirklich gezeichneten Bauteile — die
+  // Achse kommt aus den STANGENLINIEN, die Plattenoberkante aus der PLATTE bzw. aus der auf der
+  // Wandoberkante sitzenden Spannmutter. Nichts davon wird nachgerechnet.
+  const E97 = SPANN_EINHEIT.blatt, rnd97 = v => Math.round(v * 1000) / 1000;
+  const dcPunkte = t => [...(/<g class="dcs">([\s\S]*?)<\/g>/.exec(t) || ["", ""])[1]
+    .matchAll(/<polyline points="([^"]+)"[^>]*stroke-width="([-\d.]+)"/g)]
+    .map(m => ({ p: m[1].split(" ").map(q => q.split(",").map(Number)), sw: +m[2] }));
+  // Senkrechte Stangenlinien (x1 === x2) — die Achsen, an denen gezeichnet wurde.
+  const stangenX = t => [...(/<g class="stg">([\s\S]*?)<\/g>/.exec(t) || ["", ""])[1]
+    .matchAll(/<line x1="([-\d.]+)" y1="[-\d.]+" x2="([-\d.]+)"/g)]
+    .filter(m => m[1] === m[2]).map(m => +m[1]);
+  const rects97 = (t, fill) => [...t.matchAll(new RegExp(`<rect x="([-\\d.]+)" y="([-\\d.]+)" `
+    + `width="([-\\d.]+)" height="([-\\d.]+)" fill="${fill}"/>`, "g"))]
+    .map(m => ({ x: +m[1], y: +m[2], b: +m[3], h: +m[4] }));
+  const achseVon = z => z.p[1][0] + SPANN_MM.dc_versatz * E97;
+
+  ok("[#97] der senkrechte Zug steht LINKS neben der Gewindestangenachse", (() => {
+    const zz = dcPunkte(svg), ax = stangenX(svg);
+    return zz.length > 0 && zz.every(z => z.p[1][0] === z.p[2][0]
+      && ax.some(x => Math.abs(x - achseVon(z)) < 2e-3 && z.p[1][0] < x)); })());
+  ok("[#97] der untere Schenkel kreuzt die Achse nach rechts", (() => {
+    const zz = dcPunkte(svg);
+    return zz.length > 0 && zz.every(z => z.p[2][0] < achseVon(z)
+      && z.p[3][0] > achseVon(z)); })());
+  // W traegt oben ein KOPFBLECH und damit GAR KEINE Spannplatte: dort gilt derselbe benannte
+  // feste Symbolrueckfall wie bei fehlender Dicke — kein Sonderfall, kein erfundenes Mass.
+  // Bezugskante ist die Spannmutter, die auf der lokalen Wandoberkante sitzt.
+  ok("[#97] mit Kopfblech steht das Symbol an der benannten festen Symbollage", (() => {
+    const zz = dcPunkte(svg);
+    const mu = rects97(svg, Z.FARBE.mutter)
+      .filter(r => Math.abs(r.h - rnd97(SPANN_MM.mutter_h * E97)) < 2e-3);
+    return W.prestress.top_connection === "blech" && zz.length > 0 && zz.every(z => {
+      const ax = achseVon(z);
+      const treffer = mu.filter(r => Math.abs((r.x + r.b / 2) - ax) < 2e-3)
+        .sort((a, b) => a.y - b.y)[0];
+      const oben = treffer.y + treffer.h;   // Unterkante der Mutter = lokale Wandoberkante
+      return Math.abs((z.p[2][1] + z.sw / 2) - (oben - SPANN_MM.platte_h * E97)) < 3e-3; }); })());
+  // Mit realer Spannplatte ist der Bezug die PLATTENOBERKANTE: der Schenkel liegt vollstaendig
+  // darueber und bleibt im Hoehenband der aufsitzenden Spannmutter.
+  const svg97 = Z.zeichnungSvg(WSP8, {}).svg;
+  ok("[#97] mit Spannplatte liegt der Schenkel vollstaendig ueber deren Oberkante", (() => {
+    const zz = dcPunkte(svg97), pl = rects97(svg97, Z.FARBE.platte);
+    return zz.length > 0 && pl.length > 0 && zz.every(z => {
+      const ax = achseVon(z);
+      const p = pl.filter(r => Math.abs((r.x + r.b / 2) - ax) < 2e-3)
+        .sort((a, b) => a.y - b.y)[0];
+      return !!p && (z.p[2][1] + z.sw / 2) <= p.y + 2e-3; }); })());
+  ok("[#97] und er bleibt unterhalb der Spannmutteroberkante", (() => {
+    const zz = dcPunkte(svg97), pl = rects97(svg97, Z.FARBE.platte);
+    return zz.length > 0 && zz.every(z => {
+      const ax = achseVon(z);
+      const p = pl.filter(r => Math.abs((r.x + r.b / 2) - ax) < 2e-3)
+        .sort((a, b) => a.y - b.y)[0];
+      return !!p && (z.p[2][1] - z.sw / 2)
+        >= p.y - SPANN_MM.mutter_h * E97 - 2e-3; }); })());
+  // REIHENFOLGE (#97): Platte und Spannmutter zuerst, dann das Symbol, dann die Stange.
+  ok("[#97] Reihenfolge im Blatt: Platte/Mutter -> Symbol -> Gewindestange",
+    svg97.lastIndexOf(`fill="${Z.FARBE.platte}"`) < svg97.indexOf('<g class="dcs">')
+    && svg97.indexOf('<g class="dcs">') < svg97.indexOf('<g class="stg">')
+    && svg97.indexOf('<g class="dcs">') < svg97.indexOf('<g class="kop">'));
+  // [D-6]: eine Zeichenableitung — Vorschau, Druck-HTML und die eigenstaendige SVG-Datei
+  // (auch die des zentralen Exports) tragen dieselbe Zeichenkette.
+  ok("[#97]/[D-6] Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Symbolgruppe", (() => {
+    const g = /<g class="dcs">[\s\S]*?<\/g>/.exec(svg)[0];
+    return Z.zeichnungDokument(W, eingaben, { format: "a3" }).includes(g)
+      && Z.zeichnungSvgDatei(W, eingaben, { format: "a3" }).includes(g)
+      && zeichnungHtml(W, eingaben).includes(
+        /<g class="dcs">[\s\S]*?<\/g>/.exec(Z.zeichnungSvg(W,
+          Z.optionenAusEingaben(eingaben)).svg)[0])
+      && zeichnungSvgText(W, eingaben).includes(
+        /<g class="dcs">[\s\S]*?<\/g>/.exec(Z.zeichnungSvg(W,
+          Z.optionenAusEingaben(eingaben)).svg)[0]); })());
 }
 
 // --- #112: die Gewindestangen liegen im Vordergrund, jeder Stoss traegt eine Haarlinie ----

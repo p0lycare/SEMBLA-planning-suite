@@ -706,29 +706,10 @@ function draw(w){
   // Zuschnitt (leeres `stuecke` = gemeldeter Konflikt) bleibt LEER, statt eine durchgehende
   // Stange vorzutäuschen; der Konflikt steht als Warnung über der Ansicht.
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): sie sammeln sich in `vorn` und
-  // werden erst nach Ankern, Platten, Blechen und Einlegeblechen angehängt. In SVG entscheidet
+  // werden erst nach Ankern, Platten, Blechen, Deckenanschluss-Symbolen und Einlegeblechen
+  // angehängt. In SVG entscheidet
   // allein die Zeichenreihenfolge, und eine Kopplung darf von keinem dieser Bauteile überdeckt
   // werden. Vor ihr liegt seit #112 nur noch die Stangengruppe (s. u.).
-  // ---- Deckenanschluss: rotes Z-Symbol je Anschlusspunkt ([P-24]/[D-4], #95/#97) ----
-  // Gezeichnet werden die Punkte aus der EINEN Ableitung des Rechenkerns
-  // (`w.deckenanschlusspunkte`, [A-26]/[A-27]) — hier wird nichts nachgerechnet und keine Achse
-  // erfunden; gelaufen wird über die realen Spannachsen, der Punkt liefert nur die Zugehörigkeit.
-  // Geometrie, Kennfarbe und Klartext kommen aus sembla-montage.js ([D-4]), also dieselbe Quelle
-  // wie das Einlegeblech; ein lokaler Hex-Wert oder eine eigene Symbolgeometrie wäre Drift.
-  //
-  // Das Symbol steht VOR den Strängen in der Zeichenkette: Gewindestange, Spannplatte und
-  // Kopplungsmutter liegen damit im Vordergrund (#112) und werden vom Symbol nicht verdeckt.
-  //
-  // Bezugskante ist die LOKALE Oberkante der Achse (`topH(col.k)`) — genau dort, wo auch die
-  // Spannplatte dieser Achse liegt. Bei einer Achse UNTER einer Staffelstufe ist das die
-  // Stufenoberkante und nicht die volle Wandhöhe: der wandseitige Winkel sitzt am Kopf SEINER
-  // Achse. Die Staffelung bekommt nach [A-26] keine eigene Anschlussebene — das ist eine Aussage
-  // über die VERTEILUNG, nicht über die Zeichnung, und ein Symbol an der vollen Wandhöhe schwebte
-  // über einer Achse, die dort gar nicht endet.
-  { const dcK=new Set((w.deckenanschlusspunkte||[]).map(p=>p.k));
-    for(const col of w.tension_columns){ if(!dcK.has(col.k)) continue;
-      s+=deckenanschlussSvg(X(col.x_mm),Y(topH(col.k)),SYM,{klasse:'dcs'}); } }
-
   // Alle STANGENLINIEN kommen in den Vordergrund (#112): gesammelt in `stangen` und als eigene
   // Gruppe ZULETZT ausgegeben — nach Steinen, Blechen, Deckenanschluss-Symbolen, Einlegeblechen
   // UND nach den Kopplungsmuttern. Die Gewindestange ist das Bauteil, an dem die Vorspannung
@@ -778,6 +759,35 @@ function draw(w){
       if(ao==='spannplatte'){ s+=spannplatteSvg(x,Y(g.z1_mm),SYM,sc,{dicke_mm:plD}); }
       else { s+=mutterSvg(x,Y(g.z1_mm),SYM,{auf:true}); }   // Spannmutter, sitzt auf der Kante
     } }
+
+  // ---- Deckenanschluss: rotes Z-Symbol je Anschlusspunkt ([P-24]/[D-4], #95/#97) ----
+  // Gezeichnet werden die Punkte aus der EINEN Ableitung des Rechenkerns
+  // (`w.deckenanschlusspunkte`, [A-26]/[A-27]) — hier wird nichts nachgerechnet und keine Achse
+  // erfunden; gelaufen wird über die realen Spannachsen, der Punkt liefert nur die Zugehörigkeit.
+  // Geometrie, Kennfarbe und Klartext kommen aus sembla-montage.js ([D-4]), also dieselbe Quelle
+  // wie das Einlegeblech; ein lokaler Hex-Wert oder eine eigene Symbolgeometrie wäre Drift.
+  //
+  // REIHENFOLGE (#97): Das Symbol steht NACH den Ankern (Spannplatte, Spannmutter, Schraube) und
+  // VOR Einlegeblechen, Kopplungsmuttern und Strängen. Bis dahin stand es davor und lag damit
+  // unter der Spannmutter, die den 3,6-mm-Schenkel über zwei Drittel seiner Länge verschluckte.
+  // Die GEWINDESTANGE bleibt unverändert im Vordergrund (#112) — sie wird als letzte Gruppe
+  // ausgegeben und kreuzt das Symbol; die Anker selbst sind unverändert gezeichnet.
+  //
+  // Bezugskante ist die LOKALE Oberkante der Achse (`topH(col.k)`) — genau dort, wo auch die
+  // Spannplatte dieser Achse liegt. Bei einer Achse UNTER einer Staffelstufe ist das die
+  // Stufenoberkante und nicht die volle Wandhöhe: der wandseitige Winkel sitzt am Kopf SEINER
+  // Achse. Die Staffelung bekommt nach [A-26] keine eigene Anschlussebene — das ist eine Aussage
+  // über die VERTEILUNG, nicht über die Zeichnung, und ein Symbol an der vollen Wandhöhe schwebte
+  // über einer Achse, die dort gar nicht endet.
+  //
+  // `plD`/`sc` sind dieselben Zahlen, die auch die Spannplatte bekommt (#97): der untere Schenkel
+  // liegt unmittelbar über deren Oberkante. Ohne Plattenmaß — und ebenso an einer Achse mit
+  // Kopfblech, die gar keine Platte hat — bleibt es beim festen Symbolmaß der geteilten Funktion;
+  // hier wird nichts nachgerechnet und kein Sonderfall gebaut.
+  { const dcK=new Set((w.deckenanschlusspunkte||[]).map(p=>p.k));
+    for(const col of w.tension_columns){ if(!dcK.has(col.k)) continue;
+      s+=deckenanschlussSvg(X(col.x_mm),Y(topH(col.k)),SYM,
+        {klasse:'dcs',dicke_mm:plD,sc}); } }
 
   // ---- Zwischenspannpunkte: Einlegeblech je wirksamem Punkt ([A-14]/#93) ----
   // Gezeichnet werden die WIRKSAMEN Punkte aus der einen Ableitung des Rechenkerns

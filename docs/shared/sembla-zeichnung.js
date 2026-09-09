@@ -601,28 +601,10 @@ export function zeichnungSvg(w, opts = {}) {
   const HAAR_B = kupplungDurchmesser(SYM, { sw_mm: kuSw, sc }) * 1.5,
     HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
-  // Gruppe NACH Einlegeblechen, Platten und Blechen gesetzt, damit keines davon sie ueberdeckt.
+  // Gruppe NACH Einlegeblechen, Deckenanschluss-Symbolen, Platten und Blechen gesetzt, damit
+  // keines davon sie ueberdeckt.
   // Vor ihr liegt seit #112 nur noch die Stangengruppe (s. u.); Bemassung und Brandschutzgruppe
   // bleiben danach.
-  // Deckenanschluss ([P-24]/[D-4], #95/#97): rotes Z je Anschlusspunkt, eigene Gruppe VOR den
-  // Straengen — Gewindestange, Spannplatte und Kopplungsmutter liegen damit im Vordergrund
-  // (#112). Gezeichnet werden die Punkte des Rechenkerns ([A-26]/[A-27]); gelaufen wird ueber
-  // die realen Spannachsen, der Punkt liefert nur die Zugehoerigkeit — es wird keine Achse
-  // erfunden. Symbol und Kennfarbe kommen aus sembla-montage.js, also dieselbe Form wie in der
-  // Wandansicht von Modul 1, ohne eigene Geometrie und ohne Bemassung am Bauteil.
-  // Bezugskante ist die LOKALE Oberkante der Achse (`_obenBei`) — dort liegt auch ihre
-  // Spannplatte; eine Achse unter einer Staffelstufe traegt ihr Symbol an der Stufenoberkante.
-  {
-    const dcK = new Set((w.deckenanschlusspunkte || []).map(p => p.k));
-    const dc = (w.tension_columns || []).filter(c => dcK.has(c.k));
-    if (dc.length) {
-      s += `<g class="dcs">`;
-      for (const col of dc)
-        s += deckenanschlussSvg(X(col.x_mm), Y(_obenBei(w, col.x_mm)), SYM, { n: _n });
-      s += `</g>`;
-    }
-  }
-
   // Alle STANGENLINIEN kommen in den Vordergrund (#112): gesammelt in `stangen` und als eigene
   // Gruppe ZULETZT gesetzt — nach Steinen, Blechen, Deckenanschluss-Symbolen, Einlegeblechen
   // UND nach den Kopplungsmuttern. Die Gewindestange ist das Bauteil, an dem die Vorspannung
@@ -681,6 +663,34 @@ export function zeichnungSvg(w, opts = {}) {
       if (ao === "spannplatte")
         s += spannplatteSvg(x, Y(sg.z1_mm), SYM, sc, { n: _n, dicke_mm: plD });
       else s += mutterSvg(x, Y(sg.z1_mm), SYM, { n: _n, auf: true });
+    }
+  }
+
+  // Deckenanschluss ([P-24]/[D-4], #95/#97): rotes Z je Anschlusspunkt, eigene Gruppe NACH den
+  // Ankern (Spannplatte, Spannmutter, Schraube) und VOR Einlegeblechen, Kopplungsmuttern und
+  // Straengen. Bis #97 stand sie VOR den Ankern und lag damit unter der Spannmutter, die den
+  // 3,6-mm-Schenkel ueber zwei Drittel seiner Laenge verschluckte. Die GEWINDESTANGE bleibt
+  // unveraendert im Vordergrund (#112) — sie ist die letzte Bauteilgruppe und kreuzt das Symbol;
+  // die Anker selbst sind unveraendert gezeichnet.
+  // Gezeichnet werden die Punkte des Rechenkerns ([A-26]/[A-27]); gelaufen wird ueber die realen
+  // Spannachsen, der Punkt liefert nur die Zugehoerigkeit — es wird keine Achse erfunden. Symbol
+  // und Kennfarbe kommen aus sembla-montage.js, also dieselbe Form wie in der Wandansicht von
+  // Modul 1, ohne eigene Geometrie und ohne Bemassung am Bauteil.
+  // Bezugskante ist die LOKALE Oberkante der Achse (`_obenBei`) — dort liegt auch ihre
+  // Spannplatte; eine Achse unter einer Staffelstufe traegt ihr Symbol an der Stufenoberkante.
+  // `plD`/`sc` sind dieselben Zahlen, die auch die Spannplatte bekommt (#97): der untere Schenkel
+  // liegt unmittelbar ueber deren Oberkante. Ohne Plattenmass — und ebenso an einer Achse mit
+  // Kopfblech, die gar keine Platte hat — bleibt es beim festen Symbolmass der geteilten
+  // Funktion; hier wird nichts nachgerechnet und kein Sonderfall gebaut.
+  {
+    const dcK = new Set((w.deckenanschlusspunkte || []).map(p => p.k));
+    const dc = (w.tension_columns || []).filter(c => dcK.has(c.k));
+    if (dc.length) {
+      s += `<g class="dcs">`;
+      for (const col of dc)
+        s += deckenanschlussSvg(X(col.x_mm), Y(_obenBei(w, col.x_mm)), SYM,
+          { n: _n, dicke_mm: plD, sc });
+      s += `</g>`;
     }
   }
 

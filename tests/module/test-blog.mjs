@@ -39,16 +39,46 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die MASSE DER SPANNMUTTER am Wandelement (#97) sind der neueste Eintrag — er wird als
-// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird seit dieser Runde
-// ueber die KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 1 die gepflegte
-// Einbauhoehe und Schluesselweite der Spannmutter beim Auslegen an das Wandelement fuehrt und
-// die Rechnung dabei unveraendert bleibt — ohne gepflegtes Mass entsteht nichts. NICHT
-// versprochen werden eine Zeichnung der Mutter, ein Bedienelement, eine geaenderte Rechnung,
-// ein Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
-const SPANNMUTTER97 = EINTRAEGE[0];
-ok("[#97] die Masse der Spannmutter am Wandelement sind der neueste Eintrag",
+// Die LAGE DES DECKENANSCHLUSS-SYMBOLS (#97) ist der neueste Eintrag — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass das rote Z in Modul 1 und
+// Modul 7 links neben der Gewindestange und ueber der Spannplatte steht und damit wieder
+// vollstaendig sichtbar ist, waehrend die Stange im Vordergrund bleibt. NICHT versprochen
+// werden ein Bedienelement, eine geaenderte Rechnung, eine andere Zahl oder Lage der
+// Anschlusspunkte, ein Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
+const DECKEN_LAGE97 = EINTRAEGE[0];
+ok("[#97] die Lage des Deckenanschluss-Symbols ist der neueste Eintrag",
+  DECKEN_LAGE97?.id === "chg-20260909-19" && DECKEN_LAGE97?.issue === 97
+  && DECKEN_LAGE97?.typ === "fix" && DECKEN_LAGE97?.datum === "2026-09-09");
+ok("[#97] der Titel benennt das rote Z, den Deckenanschluss und die Sichtbarkeit",
+  /rote Z/.test(DECKEN_LAGE97?.titel || "")
+  && /Deckenanschluss/.test(DECKEN_LAGE97?.titel || "")
+  && /sichtbar/.test(DECKEN_LAGE97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Version/i.test(DECKEN_LAGE97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 1 UND Modul 7",
+  /Modul 1\b/.test(DECKEN_LAGE97?.testbitte || "")
+  && /Modul 7\b/.test(DECKEN_LAGE97?.testbitte || "")
+  && /Deckenanschluss/.test(DECKEN_LAGE97?.testbitte || "")
+  && /rote Z/.test(DECKEN_LAGE97?.testbitte || ""));
+ok("[#97] die Testbitte benennt die neue Lage und die Stange im Vordergrund",
+  /links neben/.test(DECKEN_LAGE97?.testbitte || "")
+  && /Gewindestange/.test(DECKEN_LAGE97?.testbitte || "")
+  && /Spannplatte/.test(DECKEN_LAGE97?.testbitte || "")
+  && /Vordergrund/.test(DECKEN_LAGE97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine geaenderte Rechnung und keine Bedienung",
+  !/Norm|Preis|Menge|Nachweis|Version|Rechnung|einstellen|w\u00e4hlen/i
+    .test(DECKEN_LAGE97?.testbitte || ""));
+
+// Davor liegen die MASSE DER SPANNMUTTER am Wandelement (#97) — sie werden ueber ihre ID
+// gesucht, weil sie nicht mehr der neueste Eintrag sind. Ihre Aussagen bleiben inhaltlich
+// unveraendert gueltig. Aussagewahr heisst dort: geliefert ist AUSSCHLIESSLICH, dass Modul 1
+// die gepflegte Einbauhoehe und Schluesselweite der Spannmutter beim Auslegen an das
+// Wandelement fuehrt und die Rechnung dabei unveraendert bleibt — ohne gepflegtes Mass
+// entsteht nichts. NICHT versprochen werden eine Zeichnung der Mutter, ein Bedienelement, eine
+// geaenderte Rechnung, ein Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
+const SPANNMUTTER97 = EINTRAEGE.find(e => e.id === "chg-20260909-18");
+ok("[#97] die Masse der Spannmutter am Wandelement stehen unveraendert in der Liste",
   SPANNMUTTER97?.id === "chg-20260909-18" && SPANNMUTTER97?.issue === 97
   && SPANNMUTTER97?.typ === "feature" && SPANNMUTTER97?.datum === "2026-09-09");
 ok("[#97] der Titel benennt Spannmutter, beide Masse und das Wandelement",
@@ -472,23 +502,26 @@ ok("genau ein Eintrag fuer die reale Katalogdicke der Spannplatte",
 // Einbauhoehe der Kopplungsmutter (chg-20260909-08), die Schluesselweite als Katalogmass
 // (chg-20260909-14), ihre Ableitung ans Wandelement (chg-20260909-15), die masstabsgetreue
 // Mutternbreite (chg-20260909-16) und das Nachziehen der Schluesselweite im Sammel-Editor
-// (chg-20260909-17) und die beiden Masse der Spannmutter am Wandelement (chg-20260909-18).
+// (chg-20260909-17), die beiden Masse der Spannmutter am Wandelement (chg-20260909-18) und die
+// LAGE des Deckenanschluss-Symbols (chg-20260909-19).
 // Je Paket GENAU EIN Eintrag — und keiner mehr, damit dieselbe Aenderung nicht zweimal in der
 // Liste steht. Die vier Kopplungsmutter-Pakete sind ausdruecklich VIER: das erste pflegt das
 // Mass im Katalog, das zweite fuehrt es an die Wand, das dritte zeichnet es, das vierte
 // schliesst die zweite Schreibbahn im Geschosseditor. Der Eintrag darueber betrifft ein
 // ANDERES Bauteil — die Spannmutter — und ist deshalb ein eigenes Paket, kein zweiter
-// Eintrag zur Kopplungsmutter.
+// Eintrag zur Kopplungsmutter. Das letzte Paket zeichnet gar kein Bauteil neu, sondern
+// korrigiert die LAGE einer schon vorhandenen Marke — auch das ist ein eigenes Paket.
 ok("je Paket genau ein Eintrag fuer Issue 97", (() => {
   const n97 = EINTRAEGE.filter(e => e.issue === 97 && e.datum === "2026-09-09");
-  return n97.length === 7
+  return n97.length === 8
     && n97.filter(e => e.id === "chg-20260909-05").length === 1
     && n97.filter(e => e.id === "chg-20260909-08").length === 1
     && n97.filter(e => e.id === "chg-20260909-14").length === 1
     && n97.filter(e => e.id === "chg-20260909-15").length === 1
     && n97.filter(e => e.id === "chg-20260909-16").length === 1
     && n97.filter(e => e.id === "chg-20260909-17").length === 1
-    && n97.filter(e => e.id === "chg-20260909-18").length === 1; })());
+    && n97.filter(e => e.id === "chg-20260909-18").length === 1
+    && n97.filter(e => e.id === "chg-20260909-19").length === 1; })());
 
 // Die NAMENSFOLGE DER WANDBLAETTER in der Zeichnungs-PDF (#107) ist der zweitneueste Eintrag —
 // er wird als einziger direkt ueber seine Kennung geprueft; die bisherige Reihe rueckt

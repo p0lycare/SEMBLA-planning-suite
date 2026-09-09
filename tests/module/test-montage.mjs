@@ -33,6 +33,7 @@ import {
   mutterSvg, kopplungsmutterSvg, spannplatteSvg,
   schraubeSvg,
   ZWISCHENPUNKT, zwischenpunktSvg,
+  DECKENANSCHLUSS, deckenanschlussSvg,
 } from "../../docs/shared/sembla-montage.js";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
 import { FARBE as Z_FARBE } from "../../docs/shared/sembla-zeichnung.js";
@@ -1020,6 +1021,73 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       return a === b && Math.abs((q[2][0] - q[1][0]) - SPANN_MM.blech_b) < 1e-9
         && Math.abs(q[0][1] - SPANN_MM.blech_schenkel) < 1e-9
         && new RegExp('stroke-width="' + SPANN_MM.strich + '"').test(a); })());
+
+  // --- Deckenanschluss: Lage des roten Z ([P-24]/[D-4], #97) ------------------------------
+  // Gemeldet war (#97): der senkrechte Zug lag GENAU auf der Spannachse und wurde von der
+  // Gewindestange verdeckt, der untere Schenkel lag GENAU auf der Wandoberkante, also unter der
+  // Spannplatte. Beides ist reine Darstellung und wird hier — in der EINEN Symbolquelle —
+  // geprueft: an der Punktfolge selbst, gegen Achslage und Plattenoberkante.
+  {
+    const X0 = 100, Y0 = 200, DICKE = 8;
+    const pkt = t => /points="([^"]+)"/.exec(t)[1].split(" ").map(q => q.split(",").map(Number));
+    const strich = t => +/stroke-width="([-\d.]+)"/.exec(t)[1];
+    const dcM1 = deckenanschlussSvg(X0, Y0, E1, { dicke_mm: DICKE, sc: scM1 });
+    const pM1 = pkt(dcM1), swM1 = strich(dcM1);
+    // Plattenoberkante aus der PLATTE selbst — nicht nachgerechnet: beide Funktionen muessen
+    // dieselbe Zahl liefern, sonst schwebte der Schenkel oder saesse in der Platte ([D-4]).
+    const platte = spannplatteSvg(X0, Y0, E1, scM1, { dicke_mm: DICKE });
+    const plOben = +/y="([-\d.]+)"/.exec(platte)[1];
+
+    ok("[#97] der senkrechte Zug steht LINKS neben der Spannachse (nicht mehr auf ihr)",
+      pM1[1][0] === pM1[2][0]
+      && Math.abs(pM1[1][0] - (X0 - SPANN_MM.dc_versatz * E1)) < 1e-9
+      && pM1[1][0] < X0);
+    ok("[#97] der Versatz ist groesser als die halbe Spannmutter — er laeuft auch an ihr vorbei",
+      SPANN_MM.dc_versatz > SPANN_MM.d / 2);
+    ok("[#97] der untere Schenkel KREUZT die Spannachse nach rechts",
+      pM1[2][0] < X0 && pM1[3][0] > X0);
+    ok("[#97] der untere Schenkel liegt vollstaendig OBERHALB der Plattenoberkante",
+      pM1[2][1] + swM1 / 2 <= plOben + 1e-9);
+    ok("[#97] er bleibt UNTERHALB der Spannmutteroberkante (im Band der aufsitzenden Mutter)",
+      pM1[2][1] - swM1 / 2 >= plOben - SPANN_MM.mutter_h * E1 - 1e-9);
+    ok("[#97] die feste Orientierung bleibt: oben LINKS, unten RECHTS, offen und ohne Fuellung",
+      pM1.length === 4 && pM1[0][1] === pM1[1][1] && pM1[2][1] === pM1[3][1]
+      && pM1[0][1] < pM1[2][1] && pM1[0][0] < pM1[1][0] && pM1[2][0] < pM1[3][0]
+      && /fill="none"/.test(dcM1) && dcM1.includes(DECKENANSCHLUSS.farbe));
+    ok("[#97] Schenkellaenge, Hoehe und Strichstaerke bleiben die festen Symbolmasse ([D-9])",
+      Math.abs((pM1[1][0] - pM1[0][0]) - SPANN_MM.dc_schenkel * E1) < 1e-9
+      && Math.abs((pM1[3][0] - pM1[2][0]) - SPANN_MM.dc_schenkel * E1) < 1e-9
+      && Math.abs((pM1[2][1] - pM1[1][1]) - SPANN_MM.dc_h * E1) < 1e-9
+      && Math.abs(swM1 - SPANN_MM.strich * E1) < 1e-9);
+    // Der Bezug ist das REALE Mass: eine andere Katalogdicke verschiebt den Schenkel mit.
+    ok("[#97] eine andere Plattendicke verschiebt den Schenkel mit (kein Symbolmass mehr)",
+      (() => {
+        const p15 = pkt(deckenanschlussSvg(X0, Y0, E1, { dicke_mm: 15, sc: scM1 }));
+        const o15 = +/y="([-\d.]+)"/.exec(
+          spannplatteSvg(X0, Y0, E1, scM1, { dicke_mm: 15 }))[1];
+        return p15[2][1] < pM1[2][1]
+          && Math.abs((p15[2][1] + swM1 / 2) - o15) < 1e-9; })());
+    // OHNE Mass — und ebenso an einer Achse mit KOPFBLECH, die gar keine Platte hat — bleibt es
+    // beim benannten festen Symbolmass `platte_h`. Es wird nichts erfunden und nichts gerundet.
+    ok("[#97] ohne Plattendicke gilt die benannte feste Symbollage (kein erfundenes Mass)",
+      (() => {
+        const ohne = deckenanschlussSvg(X0, Y0, E1, {});
+        const q = pkt(ohne);
+        return Math.abs((q[2][1] + strich(ohne) / 2)
+            - (Y0 - SPANN_MM.platte_h * E1)) < 1e-9
+          && ohne === deckenanschlussSvg(X0, Y0, E1, { dicke_mm: 0, sc: scM1 })
+          && ohne === deckenanschlussSvg(X0, Y0, E1, { dicke_mm: null, sc: scM1 })
+          && ohne === deckenanschlussSvg(X0, Y0, E1, { dicke_mm: DICKE })
+          && ohne === deckenanschlussSvg(X0, Y0, E1, { dicke_mm: DICKE, sc: 0 }); })());
+    // Ansicht (Modul 1) und Blatt (Modul 7) fuehren dasselbe Symbol in ihren eigenen Einheiten:
+    // dieselbe Regel, dieselben Verhaeltnisse — verglichen wird das zurueckgerechnete Papier-mm.
+    ok("[#97] Modul 1 und Modul 7 legen das Symbol nach derselben Regel",
+      (() => {
+        const p7 = pkt(deckenanschlussSvg(X0, Y0, E7, { dicke_mm: DICKE, sc: scM1 * E7 / E1 }));
+        const relM1 = (X0 - pM1[1][0]) / E1, rel7 = (X0 - p7[1][0]) / E7;
+        return Math.abs(relM1 - rel7) < 1e-9
+          && Math.abs(relM1 - SPANN_MM.dc_versatz) < 1e-9; })());
+  }
 
   // Die Symbolmasse sind ZEICHENMASSE: sie duerfen nirgends als Bauteilmass auftauchen.
   ok("[#106] Symbolmasse sind Zeichenmasse — Modul 5 bleibt bit-gleich (Nachziehpunkt [P-6])",
