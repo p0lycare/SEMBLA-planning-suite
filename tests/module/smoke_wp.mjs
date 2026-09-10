@@ -2533,6 +2533,39 @@ store.setzeKatalog(KATALOG);
     return WP.spannplatteBreite===null && psGespeichert().spannplatte_b_mm===undefined
       && WP.kopfZuschlag===12 && psGespeichert().rod_kopf_zuschlag_mm===12 && fp()===fpSp; })());
 
+  // --- Folgepaket zu #97: die Wandansicht ZEICHNET die reale Breite ----------------------
+  // Bis hierher reiste die Breite nur mit, das Bild zeigte weiterhin die festen 110 mm.
+  // Geprueft wird am ECHTEN Ansichtspfad: dieselbe Wand einmal MIT und einmal OHNE das Feld,
+  // gemessen an den wirklich gezeichneten Plattenrechtecken. Modul 1 liest dafuer allein das
+  // WANDELEMENT — in der Zeichnung wird der Katalog nicht angefasst ([D-1]/[D-4]).
+  {
+    const svg=()=>document.getElementById('plan').innerHTML;
+    const platten=()=>[...svg().matchAll(new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" '
+      +'width="([-\\d.]+)" height="([-\\d.]+)" fill="'+MONT.SPANN_FARBE.platte+'"/>','g'))]
+      .map(m=>({b:+m[1],h:+m[2]}));
+    const E97=MONT.SPANN_EINHEIT.ansicht;
+    setzen('spannplatte','platte-12',false); WP.run();
+    const mit=platten();
+    setzen('spannplatte','platte-b120',false); WP.run();
+    const ohne=platten();
+    // Gleich viele Platten an gleicher Stelle — die Breite entscheidet ueber kein Bauteil.
+    // Die HOEHE wird hier bewusst NICHT verglichen: das Abwaehlen des Produkts nimmt der Wand
+    // auch die Dicke (`rod_kopf_zuschlag_mm`), und das ist die andere, oben schon gepruefte
+    // Achse. Der Breitenvergleich unten haengt nicht an ihr.
+    ok('[#97] die Ansicht zeigt in beiden Faellen gleich viele Spannplatten',
+      mit.length>0 && mit.length===ohne.length);
+    // Die Probe muss OBERHALB der Sichtbarkeitsuntergrenze laufen — sonst verglichen beide
+    // Faelle denselben geklemmten Wert und waeren auch ohne Durchreichung gruen.
+    ok('[#97] die Probe laeuft im ungeklemmten Bereich (`platte_b_min` greift hier nicht)',
+      ohne.every(r=>r.b>MONT.SPANN_MM.platte_b_min*E97));
+    ok('[#97] ohne gefuehrte Breite zeichnet die Ansicht das feste Bauteilmass (110 mm)',
+      (()=>{ const sc=ohne[0].b/MONT.SPANN_MM.platte_b_mm;
+        return ohne.every(r=>Math.abs(r.b-MONT.SPANN_MM.platte_b_mm*sc)<1e-9); })());
+    ok('[#97] mit gefuehrter Breite zeichnet die Ansicht die realen 120 mm', (()=>{
+      const sc=ohne[0].b/MONT.SPANN_MM.platte_b_mm;
+      return mit.every(r=>Math.abs(r.b-120*sc)<1e-9) && mit[0].b>ohne[0].b; })());
+  }
+
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
   document.getElementById('topConn').value='spannplatte';

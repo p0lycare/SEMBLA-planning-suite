@@ -568,6 +568,15 @@ export function zeichnungSvg(w, opts = {}) {
   // (`SPANN_MM.mutter_h` bzw. `SPANN_MM.d`); erfunden wird nie eines.
   const smH = (w.prestress && w.prestress.spannmutter_h_mm) || 0;
   const smSw = (w.prestress && w.prestress.spannmutter_sw_mm) || 0;
+  // [D-4]/#97 BREITE der Spannplatte: ihr reales Bauteilmass steht als `spannplatte_b_mm` im
+  // Wandelement (Modul 1 leitet es beim Auslegen aus dem gewaehlten Katalogprodukt ab). Auch das
+  // wird hier NUR GELESEN und unveraendert an `spannplatteSvg()` durchgereicht — dieselbe Zahl,
+  // die Modul 1 durchreicht, damit dasselbe Bauteil in beiden Ausgaben gleich breit ist. Der
+  // Katalog wird hier nicht angefasst ([D-1]). Fehlt das Mass, bleibt es beim festen Bauteilmass
+  // `SPANN_MM.platte_b_mm` (110 mm); erfunden wird nie eines. Die Sichtbarkeitsuntergrenze
+  // `platte_b_min` bleibt unveraendert in Kraft — bei kleinem Blattmasstab zeigt das Blatt
+  // deshalb weiterhin die geklemmte Breite, real wie fest.
+  const spB = (w.prestress && w.prestress.spannplatte_b_mm) || 0;
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
@@ -657,7 +666,7 @@ export function zeichnungSvg(w, opts = {}) {
       const ao = sg.anker_oben || (sg.z1_mm === lt ? topConn : "spannplatte");
       // Mutter als kurzer, Spannplatte als langgezogenes flaches Rechteck — Geometrie und
       // Kennfarbe geteilt ([D-4]/#110). Die Symbolmasse sind fest (#106) und in Modul 1
-      // dieselben; masstabstreue Bauteilmasse sind die Plattenbreite (110 mm, Untergrenze wie
+      // dieselben; masstabstreue Bauteilmasse sind die Plattenbreite (`spB`, Untergrenze wie
       // bisher), seit #97 die Plattendicke (`plD`, oben wie unten dasselbe Bauteil), Hoehe
       // (`kuH`) und Schluesselweite (`kuSw`) der Kopplungsmutter sowie Hoehe (`smH`) und
       // Schluesselweite (`smSw`) der SPANNMUTTER — gleich, ob sie auf der Platte sitzt oder
@@ -670,10 +679,10 @@ export function zeichnungSvg(w, opts = {}) {
         vorn += kopplungsmutterSvg(x, Y(sg.z0_mm), SYM,
           { n: _n, auf: true, hoehe_mm: kuH, sw_mm: kuSw, sc });
       } else s += spannplatteSvg(x, Y(sg.z0_mm), SYM, sc,
-        { n: _n, dicke_mm: plD, mutter_h_mm: smH, mutter_sw_mm: smSw });
+        { n: _n, dicke_mm: plD, breite_mm: spB, mutter_h_mm: smH, mutter_sw_mm: smSw });
       if (ao === "spannplatte")
         s += spannplatteSvg(x, Y(sg.z1_mm), SYM, sc,
-          { n: _n, dicke_mm: plD, mutter_h_mm: smH, mutter_sw_mm: smSw });
+          { n: _n, dicke_mm: plD, breite_mm: spB, mutter_h_mm: smH, mutter_sw_mm: smSw });
       else s += mutterSvg(x, Y(sg.z1_mm), SYM,
         { n: _n, auf: true, hoehe_mm: smH, sw_mm: smSw, sc });
     }

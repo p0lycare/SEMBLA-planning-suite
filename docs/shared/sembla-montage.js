@@ -103,10 +103,10 @@ export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73" };
  * normale Mutter kommt die Einbauhoehe aus dem Katalog ([A-19]/[Z-8]) und darf nicht aus einem
  * Symbol zurueckgelesen werden.
  *
- * Masstabstreu sind allein die Masse, die der Aufrufer als REALES Bauteilmass hereingibt: die
- * BREITE der Spannplatte (110 mm, `platte_b_mm`), seit #97 ihre DICKE sowie HOEHE und
- * DURCHMESSER (Schluesselweite) der Kopplungsmutter. Fuer die drei Letzteren bleiben
- * `platte_h`, `kupplung_h` und `d` der Rueckfall, wenn das Mass fehlt; erfunden wird nie eines.
+ * Masstabstreu sind allein die Masse, die der Aufrufer als REALES Bauteilmass hereingibt: seit
+ * #97 BREITE und DICKE der Spannplatte sowie HOEHE und DURCHMESSER (Schluesselweite) der
+ * Kopplungsmutter. Fuer alle vier bleiben `platte_b_mm`, `platte_h`, `kupplung_h` und `d` der
+ * Rueckfall, wenn das Mass fehlt; erfunden wird nie eines.
  */
 export const SPANN_MM = {
   mutter_h: 1.8,       // Hoehe der normalen Mutter / Spannmutter
@@ -116,7 +116,7 @@ export const SPANN_MM = {
   kopf_d: 3.4,         // Durchmesser des Schraubenkopfs (groesser als der Schaft)
   schaft_d: 1.4,       // Durchmesser des Schraubenschafts
   platte_h: 1.2,       // Dicke der Spannplatte
-  platte_b_mm: 110,    // Breite der Spannplatte in mm (BAUTEILMASS, masstabstreu)
+  platte_b_mm: 110,    // Breite der Spannplatte in mm, wenn das reale Mass fehlt (#97)
   platte_b_min: 3.2,   // Sichtbarkeitsuntergrenze der Plattenbreite (Symbolmass)
   blech_b: 4.4,        // Balkenbreite des Einlegeblechs ([A-14])
   blech_schenkel: 1.6, // Schenkellaenge des Einlegeblechs
@@ -394,6 +394,34 @@ function _plattenDicke(e, sc, dickeMm) {
 }
 
 /**
+ * BREITE der Spannplatte in Zeichenkoordinaten OHNE Untergrenze — die EINE Stelle, an der das
+ * reale Bauteilmass gegen das feste `SPANN_MM.platte_b_mm` entschieden wird ([D-4], #97).
+ *
+ * Bis hierher war die Breite zwar masstabstreu, ihr Ausgangswert aber eine Konstante: dieselben
+ * 110 mm fuer eine 110-mm- wie fuer eine 120-mm-Platte, und wer im Blatt nachmass, mass ein
+ * Bauteil, das er nicht gewaehlt hatte. Gezeichnet wird jetzt `breite_mm * sc` — dasselbe
+ * Verfahren, mit dem die Dicke seit #97 ein Bauteilmass ist (s. `_plattenDicke`).
+ *
+ * Geprueft wird wie dort das ZEICHENERGEBNIS und nicht nur die Eingabe: nur ein Wert > 0 darf
+ * die Platte tragen, damit sie nie auf eine Breite von 0 zusammenfaellt. Fehlt das Mass, bleibt
+ * es beim benannten festen Bauteilmass — erfunden wird nie eine Breite.
+ *
+ * Die Sichtbarkeitsuntergrenze (`platte_b_min`/`opts.min`) gehoert bewusst NICHT hierher: sie
+ * liegt in `spannplatteSvg()` um dieses Ergebnis herum und gilt fuer beide Zweige gleich (s.
+ * dort). Das ist der Unterschied zu Dicke und Mutternmassen, die auf dem masstabsgetreuen Zweig
+ * ausdruecklich KEINE Untergrenze haben.
+ *
+ * @param {number} sc Zeichenkoordinaten je mm
+ * @param {any} breiteMm reale Plattenbreite in mm (`prestress.spannplatte_b_mm`) oder fehlend
+ * @returns {number} Breite in Zeichenkoordinaten, vor der Untergrenze
+ */
+function _plattenBreite(sc, breiteMm) {
+  const bMm = +breiteMm;
+  const bMass = (isFinite(bMm) && bMm > 0 && sc > 0) ? bMm * sc : 0;
+  return bMass > 0 ? bMass : SPANN_MM.platte_b_mm * sc;
+}
+
+/**
  * Spannplatte MIT ihrer Spannmutter als Anschlusssymbol ([A-3]/[D-4], #110/#106/#97).
  *
  * Die Platte LIEGT AUF der Auflagerkante — immer, oben wie unten. Bis #106 zeichnete der
@@ -414,9 +442,15 @@ function _plattenDicke(e, sc, dickeMm) {
  * (#92, Menge je Spannplatte) widerspricht dem und ist als MENGENfrage offen — sie wird hier
  * ausdruecklich nicht nachgezeichnet, statt eine Scheibe zu zeigen, die es nicht gibt.
  *
- * Die BREITE ist ein Bauteilmass (`SPANN_MM.platte_b_mm` = 110 mm) und wird mit `sc`
- * masstabsgetreu umgerechnet — sie liegt als Auflagerflaeche entlang der Wand und kann
- * abgemessen werden.
+ * Die BREITE ist ein Bauteilmass und wird mit `sc` masstabsgetreu umgerechnet — sie liegt als
+ * Auflagerflaeche entlang der Wand und kann abgemessen werden. Seit dem Folgepaket zu #97 ist
+ * es das REALE Mass, sobald der Aufrufer es als `opts.breite_mm` hereingibt: die Platte ist
+ * dann `breite_mm * sc` breit. Das Mass ist KEIN neues Feld — es steht als
+ * `prestress.spannplatte_b_mm` am Wandelement, abgeleitet beim Auslegen aus dem gewaehlten
+ * Katalogprodukt; hier wird es nur gezeichnet und nichts daraus abgeleitet. OHNE das Mass
+ * bleibt es beim festen Bauteilmass `SPANN_MM.platte_b_mm` (110 mm) und das Ergebnis ist
+ * wertgleich zum Stand davor — es wird keine Breite erfunden und keine nachgerechnet. Bis
+ * dahin waren es IMMER 110 mm, auch wenn der Katalog 120 mm fuehrte.
  *
  * Seit #97 gilt dasselbe fuer die DICKE, sobald der Aufrufer sie als `opts.dicke_mm`
  * hereingibt: sie ist dann `dicke_mm * sc` und laesst sich im Blatt abmessen. Das Mass ist
@@ -434,7 +468,8 @@ function _plattenDicke(e, sc, dickeMm) {
  * entfaellt nie. Die BREITEN-Untergrenze unten bleibt davon unberuehrt; sie ist eine andere
  * Achse und loest ein anderes Problem (Verwechslung mit dem schmaleren Bauteil).
  *
- * Die Breite hat aber eine UNTERGRENZE im Symbolmass (`platte_b_min`, #106): bei kleinem
+ * Die Breite hat aber — anders als die Dicke — eine UNTERGRENZE im Symbolmass
+ * (`platte_b_min`, #106): bei kleinem
  * Blattmasstab wird die masstabstreue Breite kleiner als der feste Mutternzylinder, und die
  * Platte laese sich dann als das schmalere Bauteil lesen, das sie nicht ist. Die Untergrenze
  * greift erst weit unterhalb der Masstaebe, in denen man ein Bauteil abmisst; oberhalb bleibt
@@ -453,8 +488,11 @@ function _plattenDicke(e, sc, dickeMm) {
  * Plattendicke; die Mutter waechst nach OBEN.
  *
  * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,min?:number,dicke_mm?:number,
- *          mutter_farbe?:string,mutter_h_mm?:number,mutter_sw_mm?:number}} [opts]
+ *          breite_mm?:number,mutter_farbe?:string,mutter_h_mm?:number,
+ *          mutter_sw_mm?:number}} [opts]
  *        `dicke_mm`: reale Plattendicke in mm (#97) — masstabsgetreu statt Symbolmass.
+ *        `breite_mm`: reale Plattenbreite in mm (#97) — masstabsgetreu statt festem
+ *        Bauteilmass; die Untergrenze bleibt davon unberuehrt.
  *        `mutter_h_mm`/`mutter_sw_mm`: reale Einbauhoehe und Schluesselweite der Spannmutter
  *        in mm (#97) — masstabsgetreu statt Symbolmass, je Achse mit eigenem Rueckfall.
  * @returns {string} SVG-Fragment
@@ -463,8 +501,11 @@ export function spannplatteSvg(x, y, e, sc, opts = {}) {
   const n = opts.n || (v => v);
   // DICKE aus dem einen Baustein (s. `_plattenDicke`) — wertgleich zum Stand davor.
   const h = _plattenDicke(e, sc, opts.dicke_mm);
+  // BREITE aus dem einen Baustein (s. `_plattenBreite`) — ohne Mass wertgleich zum Stand
+  // davor. Die Sichtbarkeitsuntergrenze liegt bewusst HIER aussen herum und gilt damit fuer
+  // reales wie festes Mass gleich.
   const b = Math.max(opts.min != null ? opts.min : SPANN_MM.platte_b_min * e,
-    SPANN_MM.platte_b_mm * sc);
+    _plattenBreite(sc, opts.breite_mm));
   const farbe = opts.farbe || SPANN_FARBE.platte;
   const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
   // Platte zuerst, dann die aufsitzende Spannmutter auf ihrer Oberkante (`y - h`).

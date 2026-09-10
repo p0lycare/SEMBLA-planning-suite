@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-02",
+    datum: "2026-09-10",
+    typ: "feature",
+    issue: 97,
+    titel: "Spannplatte wird in ihrer realen Katalogbreite gezeichnet",
+    testbitte: "In Modul 1 eine Spannplatte mit abweichender Breite wählen und auslegen: "
+      + "Wandansicht und Blatt von Modul 7 zeigen die Platte in dieser Breite. Ohne "
+      + "gepflegtes Maß bleibt das Bild unverändert.",
+  },
+  {
     id: "chg-20260910-01",
     datum: "2026-09-10",
     typ: "feature",

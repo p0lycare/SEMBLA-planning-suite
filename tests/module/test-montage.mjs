@@ -1015,6 +1015,52 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       && Math.abs(hoehe(plU) - SPANN_MM.platte_h * E1) < 1e-9);
   }
 
+  // --- Spannplattenbreite: reales Katalogmass statt festem Bauteilmass (#97) --------------
+  // Bis hierher war die Breite zwar masstabstreu, ihr Ausgangswert aber die Konstante 110 mm —
+  // dieselbe Platte fuer ein 110-mm- wie fuer ein 120-mm-Produkt. Gezeichnet wird jetzt
+  // `breite_mm * sc`, also dasselbe Verfahren wie bei der Dicke. Die Untergrenze bleibt.
+  {
+    const pl120 = spannplatteSvg(100, 200, E1, scM1, { breite_mm: 120 });
+    ok("[#97] die Plattenbreite ist masstabsgetreu `breite_mm * sc`",
+      Math.abs(breite(pl120) - 120 * scM1) < 1e-9);
+    ok("[#97] eine andere Katalogbreite ergibt eine andere Plattenbreite (kein festes Mass mehr)",
+      Math.abs(breite(spannplatteSvg(100, 200, E1, scM1, { breite_mm: 90 })) - 90 * scM1) < 1e-9
+      && breite(pl120) > breite(spannplatteSvg(100, 200, E1, scM1, { breite_mm: 90 })));
+    ok("[#97] die Platte bleibt um ihre Mitte zentriert und liegt AUF der Kante",
+      Math.abs(num(pl120, "x")[0] + breite(pl120) / 2 - 100) < 1e-9
+      && Math.abs((num(pl120, "y")[0] + hoehe(pl120)) - 200) < 1e-9);
+    ok("[#97] Dicke, Farben und Mutterngeometrie bleiben von der Breite unberuehrt",
+      Math.abs(hoehe(pl120) - SPANN_MM.platte_h * E1) < 1e-9
+      && pl120.includes(SPANN_FARBE.platte) && pl120.includes(SPANN_FARBE.mutter)
+      && (pl120.match(/<rect /g) || []).length === 2
+      && pl120.endsWith(mutterSvg(100, 200 - SPANN_MM.platte_h * E1, E1, { auf: true })));
+    // Ohne Mass wird NICHTS erfunden: das Ergebnis ist byte-gleich zum Stand davor.
+    ok("[#97] ohne Breitenmass bleibt es beim festen Bauteilmass (wertgleich zum Altstand)",
+      spannplatteSvg(100, 200, E1, scM1, { breite_mm: 0 }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { breite_mm: null }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { breite_mm: undefined }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { breite_mm: "" }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { breite_mm: "krumm" }) === plU
+      && spannplatteSvg(100, 200, E1, scM1, { breite_mm: -120 }) === plU
+      && Math.abs(breite(plU) - SPANN_MM.platte_b_mm * scM1) < 1e-9);
+    // Muss 4: die Sichtbarkeitsuntergrenze gilt fuer das REALE Mass genauso wie fuer das feste.
+    // Das ist der Unterschied zur Dicke, die auf dem masstabsgetreuen Zweig keine Grenze hat.
+    ok("[#97] bei kleinem Masstab greift `platte_b_min` auch mit realer Breite", (() => {
+      const b = breite(spannplatteSvg(0, 0, E7, 1 / 500, { breite_mm: 120 }));
+      return Math.abs(b - SPANN_MM.platte_b_min * E7) < 1e-9 && b > 120 / 500;
+    })());
+    ok("[#97] die Untergrenze des Aufrufers ueberschreibt sie auch mit realer Breite",
+      Math.abs(breite(spannplatteSvg(0, 0, E7, 1 / 500, { breite_mm: 120, min: 2.2 })) - 2.2)
+        < 1e-9);
+    ok("[#97] oberhalb der Untergrenze bleibt die reale Breite unveraendert masstabstreu",
+      Math.abs(breite(spannplatteSvg(0, 0, E7, 1 / 20, { breite_mm: 120 })) - 120 / 20) < 1e-9);
+    // Beide Bauteilmasse sind unabhaengige Achsen und duerfen sich nicht gegenseitig ziehen.
+    ok("[#97] Breite und Dicke wirken getrennt", (() => {
+      const q = spannplatteSvg(100, 200, E1, scM1, { breite_mm: 120, dicke_mm: 8 });
+      return Math.abs(breite(q) - 120 * scM1) < 1e-9 && Math.abs(hoehe(q) - 8 * scM1) < 1e-9;
+    })());
+  }
+
   // --- Spannmuttermasse: reales Katalogmass statt Symbolmass (#97) -------------------------
   // Bis hierher war die Spannmutter IMMER symbolisch — dieselbe Marke fuer eine M12- wie fuer
   // eine M20-Mutter. Gezeichnet wird jetzt `spannmutter_h_mm * sc` bzw. `spannmutter_sw_mm * sc`,

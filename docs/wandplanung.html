@@ -659,6 +659,15 @@ function draw(w){
   // Maß, bleibt es für DIESE Achse beim festen Symbolmaß; es wird nie eines erfunden.
   const smH=(w.prestress&&w.prestress.spannmutter_h_mm)||0;
   const smSw=(w.prestress&&w.prestress.spannmutter_sw_mm)||0;
+  // [D-4]/#97 BREITE der Spannplatte: ihr reales Bauteilmaß steht als `spannplatte_b_mm` im
+  // Wandelement — abgeleitet beim Auslegen aus dem gewählten Katalogprodukt
+  // (`spannplatteBreiteMm()`). Gelesen wird auch hier ausdrücklich das WANDELEMENT und nicht
+  // noch einmal der Katalog über `einbauMass('spannplatte','breite_mm')`: das wäre ein zweiter
+  // Datenweg, den Modul 7 gar nicht hat, und genau die Drift, die [D-4] ausschließt. Fehlt das
+  // Maß, bleibt es beim festen Bauteilmaß `SPANN_MM.platte_b_mm` (110 mm); es wird nie eine
+  // Breite erfunden. Die Sichtbarkeitsuntergrenze `platte_b_min` bleibt in Kraft — bei einer
+  // sehr langen Wand zeigt die Ansicht deshalb weiterhin die geklemmte Breite.
+  const spB=(w.prestress&&w.prestress.spannplatte_b_mm)||0;
   // Bezugsmaß aller Spannkomponenten-Symbole (#106): FESTE viewBox-Einheiten je Papier-mm
   // aus SPANN_EINHEIT. Vorher stand hier `COURSE*sc`, also die Lagenhöhe in
   // Zeichenkoordinaten — und weil `sc=(1000-2*pad)/L` allein an der WANDLÄNGE hängt, war
@@ -761,7 +770,7 @@ function draw(w){
       // Rechteck — Geometrie und Kennfarbe kommen aus sembla-montage.js ([D-4]/#110), damit
       // die Zeichnung von Modul 7 für dieselbe Wand dieselben Formen zeigt. Die Symbolmaße
       // sind dort FEST und deshalb unabhängig von Wandgröße, Blattmaßstab und Zoom (#106);
-      // maßstabstreue Bauteilmaße sind die Plattenbreite, seit #97 die Plattendicke, Höhe
+      // maßstabstreue Bauteilmaße sind die Plattenbreite (`spB`), seit #97 die Plattendicke, Höhe
       // (`kuH`) und Schlüsselweite (`kuSw`) der Kopplungsmutter sowie Höhe (`smH`) und
       // Schlüsselweite (`smSw`) der Spannmutter.
       if(au==='bodenblech'){
@@ -776,9 +785,9 @@ function draw(w){
       // Die aufsitzende Spannmutter bekommt ihre realen Maße (#97) über `mutter_h_mm`/
       // `mutter_sw_mm`; ihr Aufsitzpunkt bleibt die Plattenoberkante, sie wächst nach oben.
       else { s+=spannplatteSvg(x,Y(g.z0_mm),SYM,sc,
-        {dicke_mm:plD,mutter_h_mm:smH,mutter_sw_mm:smSw}); }
+        {dicke_mm:plD,breite_mm:spB,mutter_h_mm:smH,mutter_sw_mm:smSw}); }
       if(ao==='spannplatte'){ s+=spannplatteSvg(x,Y(g.z1_mm),SYM,sc,
-        {dicke_mm:plD,mutter_h_mm:smH,mutter_sw_mm:smSw}); }
+        {dicke_mm:plD,breite_mm:spB,mutter_h_mm:smH,mutter_sw_mm:smSw}); }
       // Spannmutter unter einem Kopfblech: dieselben zwei Maße, hier unmittelbar an `mutterSvg`.
       else { s+=mutterSvg(x,Y(g.z1_mm),SYM,{auf:true,hoehe_mm:smH,sw_mm:smSw,sc}); }
     } }
@@ -1208,9 +1217,10 @@ function spannmutterSwMm(){ return einbauMass('spannmutter','sw_mm').wert; }
 //
 // Sie ist KEIN Rechenwert: sie geht in keine Höhe, keinen Bedarf und keine Menge ein und wird
 // allein AUSGEWIESEN — dieselbe Bahn wie die Schlüsselweiten und die Blechdicken ([A-1]).
-// Gebraucht wird sie, damit die Ausgaben die Platte später maßstäblich zeichnen können, ohne
-// den Katalog anzufassen ([D-1]); GEZEICHNET wird in diesem Paket noch nichts — dort steht
-// weiterhin das feste Bauteilmaß `SPANN_MM.platte_b_mm` (110 mm).
+// Gebraucht wird sie, damit die Ausgaben die Platte maßstäblich zeichnen können, ohne den
+// Katalog anzufassen ([D-1]). GEZEICHNET wird sie seit dem Folgepaket zu #97 — Wandansicht und
+// Blatt von Modul 7 lesen dafür beide dieses Feld am Wandelement und reichen es als
+// `breite_mm` an `spannplatteSvg()` durch; ohne Maß bleibt es beim festen `platte_b_mm`.
 //
 // ⚠ Bewusst OHNE `topConn`-Bedingung — anders als `kopfZuschlagMm()` und `kopfblechDickeMm()`:
 // die DICKE ist ein Rechenwert am OBEREN Anker (der Core wendet `rod_kopf_zuschlag_mm` nur bei

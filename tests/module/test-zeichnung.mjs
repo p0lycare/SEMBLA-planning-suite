@@ -58,6 +58,12 @@ const WSP = buildWall("IW-05", 3000, 2600, [], null, { top_connection: "spannpla
 // Der Kopfzuschlag IST die Plattendicke; ueber ihn kommt sie in die Zeichnung ([D-4]).
 const WSP8 = buildWall("IW-06", 3000, 2600, [], null,
   { top_connection: "spannplatte", rod_kopf_zuschlag_mm: 8 });
+// WSPB: buchstaeblich DIESELBE Wand wie WSP — gleicher Name, gleiche Geometrie —, nur mit der
+// realen Plattenbreite aus dem Katalog (#97). Genau daran laesst sich zeigen, dass die
+// Aenderung eine reine Zeichenaenderung ist: alles ausser den Plattenrechtecken muss byte-gleich
+// bleiben. Modul 1 leitet das Feld beim Auslegen ab; das Blatt liest es nur ([D-1]).
+const WSPB = buildWall("IW-05", 3000, 2600, [], null,
+  { top_connection: "spannplatte", spannplatte_b_mm: 120 });
 // WKU30/WKU45: dieselbe Wand mit der REALEN Kopplungsmutterhoehe (#92/#97). Im Wandelement
 // steht die HALBE Hoehe als Fussoffset ([A-19]) — gezeichnet wird das Doppelte. Es gibt dafuer
 // kein eigenes Feld, und es wird auch keines angelegt.
@@ -310,6 +316,54 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
     const hM1 = +/height="([-\d.]+)"/.exec(m1)[1] / scM1;
     const hM7 = plattenVon(svgSp8)[0].h * mSp8;
     return Math.abs(hM1 - 8) < 1e-9 && Math.abs(hM7 - 8) < 1e-2;
+  })());
+
+  // --- #97: die Platte wird mit ihrer REALEN Katalogbreite gezeichnet ---------------------
+  // Wieder ueber den echten Core-Pfad; die Breite kommt allein aus dem Wandelement
+  // (`prestress.spannplatte_b_mm`) und wird hier nur gezeichnet. Geprueft wird am REALEN
+  // Blatt-SVG, nicht am Zeichenbaustein.
+  const zSpB = Z.zeichnungSvg(WSPB, {}), svgSpB = zSpB.svg, mSpB = zSpB.masstab;
+  ok("[#97] das Wandelement fuehrt die Plattenbreite als Katalogmass",
+    WSPB.prestress.spannplatte_b_mm === 120
+    && WSP.prestress.spannplatte_b_mm === undefined);
+  // Beide Blaetter liegen OBERHALB der Sichtbarkeitsuntergrenze — nur dort ist die gezeichnete
+  // Breite ueberhaupt das Bauteilmass. Ohne diese Vorpruefung verglichen die Zeilen darunter
+  // zwei geklemmte Werte und waeren auch dann gruen, wenn nichts durchgereicht wuerde.
+  ok("[#97] die Probe laeuft im ungeklemmten Masstab (Untergrenze greift hier nicht)",
+    mSp === mSpB && 110 / mSp > SPANN_MM.platte_b_min * E
+    && 120 / mSpB > SPANN_MM.platte_b_min * E);
+  ok("[#97] im Blatt ist die Plattenbreite 120 mm mal Blattmasstab", (() => {
+    const pB = plattenVon(svgSpB);
+    return pB.length > 0 && pB.every(r => Math.abs(r.b - rnd(120 / mSpB)) < 1e-3);
+  })());
+  // Ohne bekanntes Mass wird NICHTS erfunden — das Blatt von WSP bleibt der Altstand.
+  ok("[#97] ohne Katalogmass bleibt die Breite beim festen Bauteilmass (110 mm)",
+    plattenVon(svgSp).every(r => Math.abs(r.b - rnd(SPANN_MM.platte_b_mm / mSp)) < 1e-3)
+    && plattenVon(svgSpB)[0].b !== plattenVon(svgSp)[0].b);
+  ok("[#97] Dicke, Lage und Plattenzahl bleiben gegenueber dem Altstand unveraendert",
+    plattenVon(svgSpB).length === plattenVon(svgSp).length
+    && plattenVon(svgSpB).every((r, i) =>
+      Math.abs(r.h - plattenVon(svgSp)[i].h) < 1e-9
+      && Math.abs(r.y - plattenVon(svgSp)[i].y) < 1e-9));
+  // Wertgleichheit des ganzen Blattes: alles ausser den Plattenrechtecken ist byte-gleich —
+  // Masstab, Bemassung, Tabellen, Schriftfeld, Muttern, Bleche, Straenge.
+  ok("[#97] ausser der Platte selbst aendert sich am Blatt nichts", (() => {
+    const ohnePlatte = t => t.replace(new RegExp(`<rect x="[-\\d.]+" y="[-\\d.]+" `
+      + `width="[-\\d.]+" height="[-\\d.]+" fill="${Z.FARBE.platte}"/>`, "g"), "");
+    return ohnePlatte(svgSpB) === ohnePlatte(svgSp);
+  })());
+  // [D-4]/#97 Muss: Modul 1 und Modul 7 messen dieselbe Plattenbreite. Verglichen wird — wie
+  // bei der Dicke — das ZURUECKGERECHNETE Bauteilmass in mm, und das muss beidseits 120 sein.
+  // Die Wandansicht rechnet in ihren viewBox-Einheiten, das Blatt in Papier-mm.
+  ok("[#97] Modul 1 und Modul 7 zeigen dieselbe masstaebliche Breite", (() => {
+    const scM1 = (1000 - 2 * 46) / WSPB.length_mm;
+    const m1 = Z_spannplatteSvg(0, 0, SPANN_EINHEIT.ansicht, scM1,
+      { breite_mm: WSPB.prestress.spannplatte_b_mm });
+    const bM1 = +/width="([-\d.]+)"/.exec(m1)[1] / scM1;
+    const bM7 = plattenVon(svgSpB)[0].b * mSpB;
+    // Gegenprobe, dass auch die Wandansicht hier ungeklemmt rechnet.
+    return 120 * scM1 > SPANN_MM.platte_b_min * SPANN_EINHEIT.ansicht
+      && Math.abs(bM1 - 120) < 1e-9 && Math.abs(bM7 - 120) < 1e-2;
   })());
 }
 

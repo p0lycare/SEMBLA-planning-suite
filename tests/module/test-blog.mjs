@@ -39,18 +39,42 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die BREITE DER SPANNPLATTE AM WANDELEMENT (#97) ist der neueste Eintrag — er wird als
-// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
-// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 1 beim Auslegen die
-// reale Katalogbreite der gewaehlten Spannplatte ableitet und das gespeicherte Wandelement
-// sie fuehrt, und dass Zuschnitt und Mengen dabei wertgleich bleiben. Ausdruecklich MIT
-// gesagt wird, dass die Platte noch NICHT in dieser Breite gezeichnet wird — das ist das
-// Folgepaket. NICHT versprochen werden eine geaenderte Rechnung, ein Preis, eine Menge,
-// eine Norm, ein Nachweis, ein Bedienelement oder ein Versionssprung.
-const PLATTE_B_97 = EINTRAEGE[0];
-ok("[#97] die Plattenbreite am Wandelement ist der neueste Eintrag",
-  PLATTE_B_97?.id === "chg-20260910-01" && PLATTE_B_97?.issue === 97
+// Die GEZEICHNETE PLATTENBREITE (#97) ist der neueste Eintrag — er wird als einziger direkt
+// ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres Eintrags
+// gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Wandansicht und Blatt die am
+// Wandelement ausgewiesene reale Breite zeichnen und dass ein Wandelement ohne dieses Mass
+// unveraendert bleibt. NICHT versprochen werden eine geaenderte Rechnung, ein Preis, eine
+// Menge, eine Norm, ein Nachweis, ein Bedienelement oder ein Versionssprung — und
+// insbesondere KEINE Zusage fuer Masstaebe, in denen die Sichtbarkeitsuntergrenze greift.
+const PLATTE_BZ_97 = EINTRAEGE[0];
+ok("[#97] die gezeichnete Plattenbreite ist der neueste Eintrag",
+  PLATTE_BZ_97?.id === "chg-20260910-02" && PLATTE_BZ_97?.issue === 97
+  && PLATTE_BZ_97?.typ === "feature" && PLATTE_BZ_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt die Spannplatte, ihre Breite und das Zeichnen",
+  /Spannplatte/.test(PLATTE_BZ_97?.titel || "")
+  && /[Bb]reite/.test(PLATTE_BZ_97?.titel || "")
+  && /gezeichnet|zeichnet/.test(PLATTE_BZ_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format/i.test(PLATTE_BZ_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 1 und Modul 7",
+  /Modul 1\b/.test(PLATTE_BZ_97?.testbitte || "")
+  && /Modul 7\b/.test(PLATTE_BZ_97?.testbitte || "")
+  && /Spannplatte/.test(PLATTE_BZ_97?.testbitte || "")
+  && /auslegen|Auslegen/.test(PLATTE_BZ_97?.testbitte || ""));
+ok("[#97] die Testbitte nennt den Rueckfall ohne gepflegtes Mass",
+  /[Oo]hne/.test(PLATTE_BZ_97?.testbitte || "")
+  && /unverändert/.test(PLATTE_BZ_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm und keine geaenderte Rechnung",
+  !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration/i
+    .test(PLATTE_BZ_97?.testbitte || ""));
+
+// Davor liegt die BREITE DER SPANNPLATTE AM WANDELEMENT (#97) — ueber ihre Kennung gesucht,
+// weil sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben inhaltlich unveraendert:
+// Modul 1 leitet beim Auslegen die reale Katalogbreite ab, das gespeicherte Wandelement
+// fuehrt sie, Zuschnitt und Mengen bleiben wertgleich.
+const PLATTE_B_97 = EINTRAEGE.find(e => e.id === "chg-20260910-01");
+ok("[#97] die Plattenbreite am Wandelement steht unveraendert in der Liste",
+  PLATTE_B_97?.issue === 97
   && PLATTE_B_97?.typ === "feature" && PLATTE_B_97?.datum === "2026-09-10");
 ok("[#97] der Titel benennt Wandelement, Katalogbreite und die Spannplatte",
   /Wandelement/.test(PLATTE_B_97?.titel || "")
