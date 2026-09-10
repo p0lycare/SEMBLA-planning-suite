@@ -126,6 +126,27 @@ export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73" };
  * #97 BREITE und DICKE der Spannplatte sowie HOEHE und DURCHMESSER (Schluesselweite) der
  * Kopplungsmutter. Fuer alle vier bleiben `platte_b_mm`, `platte_h`, `kupplung_h` und `d` der
  * Rueckfall, wenn das Mass fehlt; erfunden wird nie eines.
+ *
+ * DURCHMESSER DER GEWINDESTANGE (#121): `rod_d_mm` ist — wie `platte_b_mm` — KEIN Symbolmass in
+ * Papier-mm, sondern das REALE Bauteilmass in Millimetern (10 mm). Gezeichnet wird die Stange
+ * damit in BEIDEN Ansichten als `rod_d_mm * sc`, also masstabsgetreu: bis #121 trug sie eine
+ * feste Strichstaerke (Blatt `SW * 2.6`, Wandansicht `2.4`), die im Blatt fast so breit war wie
+ * die seit #97 masstabsgetreue Kopplungsmutter am selben Stoss — die Stange verdeckte damit
+ * genau das Bauteil, das an ihr abgelesen werden muss.
+ *
+ * `rod_d_min` ist die zugehoerige Sichtbarkeitsuntergrenze in Papier-mm, wortgleich zum Muster
+ * `platte_b_mm`/`platte_b_min`: sie wird vom Aufrufer AUSSEN um das masstabsgetreue Mass gelegt
+ * (`Math.max(rod_d_min * e, rod_d_mm * sc)`) und gilt damit fuer beide Zweige gleich. Der Wert
+ * ist die duennste Linie, die das Blatt ohnehin fuehrt (die weisse Haarlinie am Stangenstoss,
+ * `SW * 0.6`); darunter verschwaende die Stange. Er greift erst unterhalb von etwa 1:77 und
+ * liegt in jedem Fall unter jedem Mutterndurchmesser — die Mutter bleibt also immer breiter als
+ * die Stange, die durch sie laeuft.
+ *
+ * Verrechnet wird beides in den beiden Ansichten selbst (`sembla-zeichnung.js`,
+ * `docs/wandplanung.html`); hier stehen NUR die Werte. Das ist dasselbe Muster wie beim Faktor
+ * 1,5 der Haarlinie (#112): ⚠ Nachziehpunkt [P-6]/[D-4] — die `Math.max`-Zeile steht zweimal,
+ * die Gleichheit beider Ansichten sichert der Test. Die Baugruppenbilder von Modul 5 und die
+ * Kontur (`abschnittSvg`/`konturSvg`) sind davon ausdruecklich UNBERUEHRT.
  */
 export const SPANN_MM = {
   mutter_h: 1.8,       // Hoehe der normalen Mutter / Spannmutter
@@ -137,6 +158,8 @@ export const SPANN_MM = {
   platte_h: 1.2,       // Dicke der Spannplatte
   platte_b_mm: 110,    // Breite der Spannplatte in mm, wenn das reale Mass fehlt (#97)
   platte_b_min: 3.2,   // Sichtbarkeitsuntergrenze der Plattenbreite (Symbolmass)
+  rod_d_mm: 10,        // Durchmesser der Gewindestange in mm — REALES Bauteilmass (#121)
+  rod_d_min: 0.13,     // Sichtbarkeitsuntergrenze der Stangenbreite (Symbolmass, #121)
   blech_b: 4.4,        // Balkenbreite des Einlegeblechs ([A-14])
   blech_schenkel: 1.6, // Schenkellaenge des Einlegeblechs
   dc_schenkel: 3.6,    // Schenkellaenge je Winkel des Deckenanschlusses ([P-24])

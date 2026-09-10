@@ -124,7 +124,12 @@ ok('Wandansicht zeichnet die einzelnen Stuecke, nicht einen Strich je Strang', (
   const stuecke=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
   const kopplungen=w.tension_columns.flatMap(c=>c.segments)
     .reduce((a,g)=>a+Math.max(0,(g.stuecke||[]).length-1),0);
-  const striche=(svg.match(/stroke="#1f6feb" stroke-width="2\.4"/g)||[]).length;
+  // Seit #121 ist die Strichstaerke der Stange der reale Durchmesser mal dem Ansichtsmasstab
+  // (`SPANN_MM.rod_d_mm * ansichtSc()`, Untergrenze `rod_d_min`) statt der festen 2,4 — gezaehlt
+  // wird deshalb gegen diesen einen Wert und nicht gegen eine im Test eingefrorene Zahl.
+  const swSoll=Math.max(MONT.SPANN_MM.rod_d_min*MONT.SPANN_EINHEIT.ansicht,
+    MONT.SPANN_MM.rod_d_mm*WP.ansichtSc());
+  const striche=(svg.match(new RegExp('stroke="#1f6feb" stroke-width="'+swSoll+'"','g'))||[]).length;
   // Seit #110 ist die Kopplungsmarke die KOPPLUNGSMUTTER (Zylinder in Seitenansicht) statt
   // eines Querstrichs. Die Klasse `kop` trennt sie unveraendert vom Legendenmuster. Seit #97
   // traegt AUCH der Fussanschluss eine Kopplungsmutter ([A-19]) — die Aussage bleibt: genau
@@ -306,7 +311,8 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     const t=svg(), i=t.indexOf('<g class="stg">');
     return i>0
       && i>t.lastIndexOf('fill="#5b6673"')                 // Boden- und Kopfblech
-      && i>t.lastIndexOf('<polyline points=')              // Wandumriss
+      // Der Wandumriss ist mit #123 entfallen und kann hier deshalb kein Anker mehr sein;
+      // dass er fehlt, prueft der eigene #123-Block unten.
       && i>t.lastIndexOf('<polyline class="dcs"')          // Deckenanschluss-Symbole
       && i>t.lastIndexOf('<polyline class="zsp"')          // Einlegebleche
       && i>t.lastIndexOf('fill="'+MONT.SPANN_FARBE.platte+'"')           // Spannplatten
@@ -374,12 +380,16 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     const nb=[...bl.matchAll(/<line x1="[-\d.]+" y1="([-\d.]+)" x2="[-\d.]+" y2="([-\d.]+)" stroke="#fff"/g)]
       .filter(m=>+m[1]===+m[2]).length;   // nur die waagerechten Haarlinien (#91, s. o.)
     return nb>0 && nb===haare(svg()).length && nb===stoesse(wd); })());
-  ok('[#112] Farben und Strichstaerken der Stangenstuecke sind unveraendert', (()=>{
+  // Die FARBEN der Stuecke sind unveraendert (#112) — die STRICHSTAERKE ist es seit #121
+  // ausdruecklich nicht mehr: sie ist der reale Durchmesser mal dem Ansichtsmasstab, fuer jede
+  // Stueckart dieselbe (s. den eigenen #121-Block unten).
+  ok('[#121] jedes Stueck traegt seine Kennfarbe mit der masstabsgetreuen Staerke', (()=>{
     const wd=w(), t=svg(); let n=0;
+    const soll=Math.max(MM.rod_d_min*E, MM.rod_d_mm*WP.ansichtSc());
     for(const col of wd.tension_columns) for(const g of col.segments)
       for(const p of MONT.stangenStuecke(wd,g)){
-        if(!t.includes('stroke="'+MONT.stueckFarbe(p.art)+'" stroke-width="'
-          +(p.art==='rest'?3:2.4)+'"')) return false;
+        if(!t.includes('stroke="'+MONT.stueckFarbe(p.art)+'" stroke-width="'+soll+'"'))
+          return false;
         n++;
       }
     return n>0; })());
@@ -443,6 +453,73 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     return soll>0 && ist.length===soll && ist.every(r=>
       st.some(l=>nah(l.x,r.x))
       && st.some(l=>[l.y0,l.y1].some(y=>nah(r.y+r.h/2,y)||nah(r.y+r.h,y)))); })());
+}
+
+// ---- #121/#123: masstabsgetreue Stangenbreite, keine Wandumrisslinie --------------------
+// Gemeldet war: die Gewindestange wird nicht in ihrer realen Breite dargestellt und verdeckt
+// dadurch die Muttern (#121), und die dicke schwarze aeussere Umrisslinie stoert die
+// Lesbarkeit der Bauteillinien (#123). Geprueft wird am REALEN Seiten-SVG gegen die
+// kanonische Quelle `SPANN_MM` und den Ansichtsmasstab; nachgerechnet wird nichts.
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const w=()=>WP.RESULT.wandelement;
+  const E=MONT.SPANN_EINHEIT.ansicht, MM=MONT.SPANN_MM;
+  const soll=()=>Math.max(MM.rod_d_min*E, MM.rod_d_mm*WP.ansichtSc());
+  // Stangenlinien = alles in der Gruppe `stg` AUSSER der weissen Haarlinie (#112).
+  const stgSw=()=>[...(/<g class="stg">([\s\S]*?)<\/g>/.exec(svg())||['',''])[1]
+    .matchAll(/stroke="(#[0-9a-f]{3,6})" stroke-width="([-\d.]+)"/g)]
+    .filter(m=>m[1]!=='#fff').map(m=>+m[2]);
+
+  ok('[#121] der Durchmesser kommt als benannte Konstante aus sembla-montage.js',
+    MM.rod_d_mm===10 && MM.rod_d_min>0
+    && /SPANN_MM\.rod_d_mm\*sc/.test(html) && !/stroke-width="\$\{p\.art==='rest'\?3:2\.4\}"/.test(html));
+  ok('[#121] jede Stangenlinie ist Durchmesser mal Ansichtsmasstab (bzw. die Untergrenze)',
+    (()=>{ const sw=stgSw(); return sw.length>0 && sw.every(v=>Math.abs(v-soll())<1e-9); })());
+  ok('[#121] Reststueck und Standardstueck tragen DIESELBE Strichstaerke', (()=>{
+    const arten=new Set(w().tension_columns.flatMap(c=>c.segments)
+      .flatMap(g=>MONT.stangenStuecke(w(),g)).map(q=>q.art));
+    return arten.size>1 && new Set(stgSw()).size===1; })());
+  ok('[#121] unterschieden werden die Arten weiter ueber Farbe und Haarlinie', (()=>{
+    const g=/<g class="stg">([\s\S]*?)<\/g>/.exec(svg())[1];
+    const arten=[...new Set(w().tension_columns.flatMap(c=>c.segments)
+      .flatMap(q=>MONT.stangenStuecke(w(),q)).map(q=>q.art))];
+    return arten.every(a=>g.includes(MONT.stueckFarbe(a))) && /class="haar"/.test(g); })());
+  ok('[#121] die Stange ist schmaler als die Kopplungsmutter an demselben Stoss', (()=>{
+    const br=[...svg().matchAll(/<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="([-\d.]+)"/g)]
+      .map(m=>+m[1]);
+    return br.length>0 && Math.min(...br)>Math.max(...stgSw()); })());
+  // [D-4]: beide Ansichten rechnen dieselbe Regel — Modul 1 mit seiner Einheit und seinem
+  // Masstab, das Blatt mit dem Blattmasstab. Verglichen wird das ZURUECKGERECHNETE Bauteilmass
+  // in mm, und das muss beidseits der reale Durchmesser sein.
+  ok('[#121]/[D-4] Modul 1 und Modul 7 zeichnen denselben Stangendurchmesser', (()=>{
+    const wd=w(), z=ZEICH.zeichnungSvg(wd,{}), scB=1/z.masstab;
+    const bl=[...(/<g class="stg">([\s\S]*?)<\/g>/.exec(z.svg)||['',''])[1]
+      .matchAll(/stroke="(#[0-9a-f]{3,6})" stroke-width="([-\d.]+)"/g)]
+      .filter(m=>m[1]!=='#fff').map(m=>+m[2]);
+    const m1=stgSw();
+    return bl.length>0 && m1.length>0
+      && Math.abs(m1[0]/WP.ansichtSc() - MM.rod_d_mm)<1e-9
+      && Math.abs(bl[0]/scB - MM.rod_d_mm)<1e-9; })());
+
+  ok('[#123] die Wandansicht fuehrt keine aeussere Umrisslinie mehr', (()=>{
+    // Geprueft an der gestuften Kontur selbst und an ihrer Farbe — nicht an `<polyline`:
+    // Einlegebleche und Deckenanschluss zeichnen ebenfalls Polylinien (mit eigener Klasse).
+    const t=svg();
+    // Zusaetzlich im Seitencode: der Konturzug wurde aus `pts` erzeugt — diese Anweisung darf
+    // es nicht mehr geben. (Die Konturfarbe selbst steht im Code nur noch im Kommentar, der
+    // erklaert, was entfallen ist; darauf wird deshalb nicht geprueft.)
+    return !/<polyline points=/.test(t) && !/stroke="#13202e"/.test(t)
+      && !/polyline points="\$\{pts/.test(html); })());
+  ok('[#123] es tritt keine Ersatzlinie an ihre Stelle', (()=>{
+    // Vorher war die Kontur mit 2 die staerkste Linie der Ansicht; kein Zug darf sie ersetzen.
+    const zuege=[...svg().matchAll(/<(?:polyline|line)[^>]*stroke-width="([-\d.]+)"/g)]
+      .map(m=>+m[1]);
+    return zuege.length>0 && Math.max(...zuege)<=soll()+1e-9; })());
+  ok('[#123] Steinrechtecke, Oeffnungen und Bleche sind unveraendert vorhanden', (()=>{
+    const t=svg();
+    return /stroke="#aeb3ba" stroke-width="1"/.test(t)       // Steinraender
+      && (t.match(/<rect/g)||[]).length>5
+      && t.includes('fill="#5b6673"'); })());
 }
 
 // ---- Issue #100: Wandansicht passt ins Fenster und laesst sich zoomen ---------------

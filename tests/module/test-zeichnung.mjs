@@ -149,7 +149,27 @@ ok("Steintypen beschriftet (Option an)", />i3</.test(svg));
 ok("Steintyp-Beschriftung abschaltbar", !/>i3</.test(Z.zeichnungSvg(W, { steintypen: false }).svg));
 ok("Oeffnung ist mit ihrer Art beschriftet", />Tür</.test(svg) && svg.includes(Z.FARBE.oeffnung));
 ok("Fensteroeffnung wird als Fenster beschriftet", />Fenster</.test(Z.zeichnungSvg(WF, {}).svg));
-ok("gestufte Wandkontur als Polylinie", /<polyline/.test(svg));
+// #123: die dicke schwarze AEUSSERE UMRISSLINIE der Wand ist ERSATZLOS entfallen. Hier stand
+// bis dahin `ok("gestufte Wandkontur als Polylinie", /<polyline/…)`. Geprueft wird jetzt das
+// Fehlen — und zwar an der GESTUFTEN Kontur selbst, nicht an `<polyline`: Einlegebleche und
+// Deckenanschluss zeichnen ebenfalls klassenlose Polylinien innerhalb ihrer Gruppe, ein
+// blosses `/<polyline/` waere nach dem Wegfall also weiterhin wahr und sagte nichts.
+ok("[#123] das Blatt fuehrt keine aeussere Wandkonturlinie mehr", (() => {
+  // Der Konturzug lief ueber die ganze Wandbreite und trug die Konturfarbe als STRICH.
+  // Beides darf im Blatt nicht mehr vorkommen; `FARBE.kontur` bleibt Schriftfeldtext (fill).
+  const ohneGruppen = svg.replace(/<g class="(zsp|dcs|agp)">[\s\S]*?<\/g>/g, "");
+  return !new RegExp(`stroke="${Z.FARBE.kontur}"`).test(svg)
+    && !/<polyline points=/.test(ohneGruppen); })());
+ok("[#123] es tritt keine Ersatzlinie an ihre Stelle (kein zweiter starker Zug)", (() => {
+  // Vorher war die Kontur mit `SW * 2.4` = 0.528 die staerkste Linie des Blattes. Danach ist
+  // die staerkste Linie die Gewindestange; kein Zug darf die alte Konturstaerke tragen.
+  const sw = [...svg.matchAll(/stroke-width="([-\d.]+)"/g)].map(m => +m[1]);
+  return sw.length > 0 && sw.every(v => Math.abs(v - 0.22 * 2.4) > 1e-9); })());
+ok("[#123] Steinrechtecke, Oeffnungen und Bleche sind unveraendert vorhanden",
+  svg.includes(Z.FARBE.i3) && svg.includes(Z.FARBE.i2)
+  && new RegExp(`stroke="${Z.FARBE.stein_rand}"`).test(svg)
+  && new RegExp(`stroke="${Z.FARBE.oeffnung}"`).test(svg)
+  && (svg.match(new RegExp(Z.FARBE.stahl, "g")) || []).length >= 2);
 ok("Bodenblech und Kopfblech gezeichnet", (svg.match(new RegExp(Z.FARBE.stahl, "g")) || []).length >= 2);
 ok("Steinreihen sind nummeriert (1 … lagen)",
   svg.includes(">" + W.lagen + "</text>") && svg.includes(">1</text>"));
@@ -272,9 +292,11 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
     const alle = [...svgSp.matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
       + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.platte}"/>`, "g"))]
       .map(m => ({ y: +m[1], h: +m[2] }));
-    const kontur = /<polyline points="([^"]+)"/.exec(svgSp)[1].split(" ")
-      .map(q => +q.split(",")[1]);
-    const oben = Math.min(...kontur);
+    // Die Wandoberkante kommt seit #123 aus der EXPLIZITEN Quelle statt aus der (entfallenen)
+    // Konturpolylinie: WSP ist ungestaffelt, ihre Oberkante ist damit der Zeichnungsrand
+    // `PAD_MM` (`Y(H) = pad + (hPx - H*sc) = pad`). Ueber `<polyline points=` gemessen traefe
+    // die Suche jetzt ein Einlegeblech- oder Deckenanschlusspolygon — falsch gruen.
+    const oben = Z.PAD_MM;
     return alle.length > 0 && alle.some(r => Math.abs((r.y + r.h) - oben) < 1e-3)
       && alle.every(r => r.y + r.h <= oben + 1e-3);
   })());
@@ -303,9 +325,7 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
       mu.some(m => Math.abs((m.y + m.h) - r.y) < 1e-3 && Math.abs(m.h - rnd(hM)) < 1e-3));
   })());
   ok("[#97] die Platte liegt auch mit realer Dicke AUF der Wandoberkante", (() => {
-    const kontur = /<polyline points="([^"]+)"/.exec(svgSp8)[1].split(" ")
-      .map(q => +q.split(",")[1]);
-    const oben = Math.min(...kontur);
+    const oben = Z.PAD_MM;   // s. o.: explizite Quelle statt entfallener Kontur (#123)
     return plattenVon(svgSp8).every(r => r.y + r.h <= oben + 1e-3);
   })());
   ok("[#97] Breite, Farben und Plattenzahl bleiben gegenueber dem Symbolstand unveraendert",
@@ -412,11 +432,10 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
       const fuss = WKU30.tension_columns.flatMap(c => c.segments)
         .filter(g => (g.anker_unten || (g.z0_mm === 0 ? "bodenblech" : "spannplatte"))
           === "bodenblech").length;
-      // Die Fussmuttern sitzen genau auf der Steinunterkante (z = 0): Unterkante = Y(0), das
-      // ist die groesste y-Koordinate der Wandkontur.
-      const kontur = /<polyline points="([^"]+)"/.exec(zK30.svg)[1].split(" ")
-        .map(q => +q.split(",")[1]);
-      const unten = Math.max(...kontur);
+      // Die Fussmuttern sitzen genau auf der Steinunterkante (z = 0): Unterkante = Y(0). Sie
+      // kommt seit #123 aus der EXPLIZITEN Quelle statt aus der entfallenen Konturpolylinie —
+      // `Y(0) = PAD_MM + Wandhoehe * Blattmasstab`, unabhaengig von jeder Staffelung.
+      const unten = Z.PAD_MM + WKU30.height_mm / zK30.masstab;
       const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(zK30.svg);
       const rects = [...kop[1].matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
         + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.mutter}"/>`, "g"))]
@@ -808,7 +827,8 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
     const stg = bis.indexOf('<g class="stg">');
     return stg > bis.lastIndexOf(`fill="${Z.FARBE.stahl}"`)        // Boden- und Kopfblech
       && stg > bis.lastIndexOf(`fill="${Z.FARBE.i3}"`)             // Steine
-      && stg > bis.lastIndexOf('<polyline points=')                // Wandkontur
+      // Die Wandkontur ist mit #123 entfallen und kann hier deshalb kein Anker mehr sein;
+      // dass sie fehlt, prueft der eigene #123-Block oben.
       && stg > bis.indexOf('<g class="dcs">')                      // Deckenanschluss-Symbole
       && stg > bis.indexOf('<g class="zsp">'); })());              // Einlegebleche
   // UMGEDREHT MIT DER RUECKMELDUNG VOM 2026-09-09: bis dahin verlangte diese Stelle
@@ -888,16 +908,18 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
     const stoesse = W1.tension_columns.flatMap(c => c.segments)
       .reduce((a, sg) => a + Math.max(0, stangenStuecke(W1, sg).length - 1), 0);
     return stuecke > 0 && stoesse === 0 && haare(s1).length === 0; })());
-  // Nichts an der Stange selbst hat sich geaendert: Farben und Strichstaerken der Stuecke
-  // bleiben, und der Kopplungsvordergrund traegt unveraendert seine Muttern.
-  ok("[#112] Farben und Strichstaerken der Stangenstuecke sind unveraendert", (() => {
-    const dick = a => a === "rest" ? 3.4 : 2.6;
+  // Die FARBEN der Stuecke sind unveraendert (#112) — die STRICHSTAERKE ist es seit #121
+  // ausdruecklich nicht mehr: sie ist der reale Durchmesser mal dem Blattmasstab, fuer jede
+  // Stueckart dieselbe (s. den eigenen #121-Block unten). Geprueft wird hier deshalb Farbe je
+  // Stueckart gegen die kanonische Quelle, verbunden mit genau dieser einen Staerke.
+  ok("[#121] jedes Stueck traegt seine Kennfarbe mit der masstabsgetreuen Staerke", (() => {
+    const soll = Math.round(Math.max(SPANN_MM.rod_d_min * SPANN_EINHEIT.blatt,
+      SPANN_MM.rod_d_mm / zA3.masstab) * 1000) / 1000;
     let n = 0;
     for (const col of W.tension_columns)
       for (const sg of col.segments)
         for (const st of stangenStuecke(W, sg)) {
-          const re = new RegExp(`stroke="${STUECK_FARBE[st.art]}" stroke-width="`
-            + `${Math.round(0.22 * dick(st.art) * 1000) / 1000}"`);
+          const re = new RegExp(`stroke="${STUECK_FARBE[st.art]}" stroke-width="${soll}"`);
           if (!re.test(svg)) return false;
           n++;
         }
@@ -1777,6 +1799,78 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
       const a = Z.zeichnungSvg(W97, {}), b = Z.zeichnungSvg(ohne, {});
       return a.masstab === b.masstab && a.svg.length > b.svg.length
         && a.svg.replace(/<g class="agp">.*?<\/g>/s, "") === b.svg; })());
+}
+
+// ---- #121: die Gewindestange ist so breit, wie sie real ist -----------------------------
+// Gemeldet war: die Stange verdeckt die Muttern. Sie trug eine FESTE Papier-mm-Staerke
+// (`SW * 2.6`, Reststueck `SW * 3.4`), waehrend Kopplungsmutter und Spannplatte seit #97
+// masstabsgetreu sind — bei 1:50 waren das 0,57 mm Stange gegen 0,60 mm Mutter, und seit #112
+// liegt die Stange VOR der Mutter. Geprueft wird am REALEN Blatt-SVG gegen die kanonische
+// Quelle `SPANN_MM` und den Blattmasstab; nachgerechnet wird nichts.
+{
+  const E121 = SPANN_EINHEIT.blatt, rnd121 = v => Math.round(v * 1000) / 1000;
+  const sollSw = z => rnd121(Math.max(SPANN_MM.rod_d_min * E121, SPANN_MM.rod_d_mm / z.masstab));
+  // Stangenlinien = alles in der Gruppe `stg` AUSSER der weissen Haarlinie (#112).
+  const stgSw = t => [...(/<g class="stg">([\s\S]*?)<\/g>/.exec(t) || ["", ""])[1]
+    .matchAll(/stroke="(#[0-9a-f]{3,6})" stroke-width="([-\d.]+)"/g)]
+    .filter(m => m[1] !== "#fff").map(m => +m[2]);
+
+  ok("[#121] der Durchmesser steht als benannte Konstante mit dem realen Wert 10 mm",
+    SPANN_MM.rod_d_mm === 10 && SPANN_MM.rod_d_min > 0);
+  ok("[#121] jede Stangenlinie ist Durchmesser mal Blattmasstab (bzw. die Untergrenze)",
+    (() => {
+      const sw = stgSw(svg);
+      return sw.length > 0 && sw.every(v => Math.abs(v - sollSw(zA3)) < 1e-9); })());
+  ok("[#121] Reststueck und Standardstueck tragen DIESELBE Strichstaerke", (() => {
+    // WR6 ist der Reststueck-Fall ([Z-6]); gefordert ist genau EIN Staerkewert im Blatt.
+    const sw = new Set(stgSw(svgR6).map(rnd121));
+    const arten = new Set(WR6.tension_columns.flatMap(c => c.segments)
+      .flatMap(sg => stangenStuecke(WR6, sg)).map(q => q.art));
+    return arten.has("rest") && arten.size > 1 && sw.size === 1; })());
+  ok("[#121] unterschieden werden die Arten weiter ueber Farbe und Haarlinie", (() => {
+    const g = /<g class="stg">([\s\S]*?)<\/g>/.exec(svgR6)[1];
+    return g.includes(STUECK_FARBE.rest) && g.includes(STUECK_FARBE.standard)
+      && /stroke="#fff"/.test(g); })());
+  ok("[#121] die Stange ist in jedem Fall schmaler als die Kopplungsmutter am Stoss", (() => {
+    const g = /<g class="kop">([\s\S]*?)<\/g>/.exec(svg);
+    const br = [...g[1].matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
+    return br.length > 0 && Math.min(...br) > Math.max(...stgSw(svg)); })());
+  ok("[#121] auch mit masstabsgetreuer Mutter bleibt die Stange schmaler", (() => {
+    // WSW17 fuehrt die reale Schluesselweite ([A-19]/#97) — dann ist die Mutter nicht mehr
+    // das feste Symbolmass, und die Aussage muss trotzdem tragen.
+    const z = Z.zeichnungSvg(WSW17, {});
+    const g = /<g class="kop">([\s\S]*?)<\/g>/.exec(z.svg);
+    const br = [...g[1].matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
+    return br.length > 0 && Math.min(...br) > sollSw(z); })());
+  ok("[#121] die Untergrenze greift im groben Masstab und macht die Stange nicht duenner",
+    (() => {
+      const z = Z.zeichnungSvg(WL, {});      // lange Wand -> groberer Blattmasstab
+      const sw = stgSw(z.svg);
+      return sw.length > 0 && sw.every(v => v >= rnd121(SPANN_MM.rod_d_min * E121) - 1e-9)
+        && sw.every(v => Math.abs(v - sollSw(z)) < 1e-9); })());
+  ok("[#121] keine Stangenart wird zur Hervorhebung breiter gezeichnet als real", (() => {
+    const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
+    return !/art === "rest" \? 3\.4/.test(q) && /SPANN_MM\.rod_d_mm \* sc/.test(q); })());
+  // [D-6] EIN Zeichenpfad: Vorschau, Druck-HTML und die eigenstaendige SVG-Datei tragen
+  // dieselbe Stangengruppe — geprueft an der Zeichenkette, nicht an einer zweiten Rechnung.
+  ok("[#121]/[D-6] Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Stangengruppe", (() => {
+    const grp = t => (/<g class="stg">[\s\S]*?<\/g>/.exec(t) || [""])[0];
+    const eig = Z.zeichnungSvgDatei(W, standardEingaben(), { format: "a3" });
+    const dok = Z.zeichnungDokument(W, standardEingaben(), { format: "a3" });
+    const g = grp(svg);
+    return g.length > 0 && grp(eig) === g && grp(dok) === g; })());
+  // MUSS-NICHT: an den Rechenergebnissen aendert sich nichts. Belegt gegen die kanonischen
+  // Quellen — Stueckliste, Zuschnittstuecke und Spannachsen der Wand sind vor und nach dem
+  // Zeichnen wertgleich, und das Zeichnen fasst das Wandelement nicht an.
+  ok("[#121] Stueckliste, Zuschnittstuecke und Spannachsen bleiben wertgleich", (() => {
+    const vor = JSON.stringify([W, semblaBomItems(W), einbauteile(W),
+      W.tension_columns.map(c => c.x_mm),
+      W.tension_columns.flatMap(c => c.segments).map(sg => stangenStuecke(W, sg))]);
+    Z.zeichnungSvg(W, { format: "a3" }); Z.blattHtml(W, standardEingaben(), { format: "a3" });
+    const nach = JSON.stringify([W, semblaBomItems(W), einbauteile(W),
+      W.tension_columns.map(c => c.x_mm),
+      W.tension_columns.flatMap(c => c.segments).map(sg => stangenStuecke(W, sg))]);
+    return vor === nach; })());
 }
 
 let fail = 0;

@@ -39,15 +39,40 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die LESENDE NEURECHNUNG DES GEZEICHNETEN STANDS IN MODUL 7 (#120) ist der neueste Eintrag —
-// er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die
-// KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Die MASTABSGETREUE STANGENBREITE UND DER WEGFALL DER WANDUMRISSLINIE (#121/#123) sind der
+// neueste Eintrag — er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige
+// Reihe wird ueber die KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach
+// hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die DARSTELLUNG — die Stange ist so
+// breit, wie ihr realer Durchmesser im Masstab ergibt, und die dicke aeussere Umrisslinie ist
+// ersatzlos weg. NICHT versprochen werden eine geaenderte Rechnung, andere Mengen oder Preise,
+// ein Bedienelement fuer Strichstaerke oder Umriss, ein neues Feld oder ein Versionssprung.
+const STANGE_121 = EINTRAEGE[0];
+ok("[#121] die masstabsgetreue Stangenbreite ist der neueste Eintrag",
+  STANGE_121?.id === "chg-20260910-10" && STANGE_121?.issue === 121
+  && STANGE_121?.typ === "fix" && STANGE_121?.datum === "2026-09-10");
+ok("[#121] der Titel benennt die reale Breite und die entfallene Umrisslinie",
+  /Gewindestangen/.test(STANGE_121?.titel || "")
+  && /Wirklichkeit/.test(STANGE_121?.titel || "")
+  && /Umrisslinie/.test(STANGE_121?.titel || "")
+  && !/Menge|Preis|Nachweis|Norm|Format|Migration|speicher/i.test(STANGE_121?.titel || ""));
+ok("[#121] die Testbitte fuehrt den echten Nutzerpfad durch beide Ansichten",
+  /Modul 1/.test(STANGE_121?.testbitte || "")
+  && /Modul 7/.test(STANGE_121?.testbitte || "")
+  && /Stangensto/.test(STANGE_121?.testbitte || "")
+  && /Kopplungsmutter/.test(STANGE_121?.testbitte || ""));
+ok("[#121] die Testbitte verspricht keine geaenderte Rechnung und kein Bedienelement",
+  !/Menge|Preis|Nachweis|Rechnung|Format|Migration|gespeichert wird|einstellen|Option/i
+    .test(STANGE_121?.testbitte || ""));
+
+// Davor liegt die LESENDE NEURECHNUNG DES GEZEICHNETEN STANDS IN MODUL 7 (#120) — ueber ihre
+// Kennung gesucht, weil sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 7 den gezeichneten Stand
 // beim Laden READ-ONLY neu rechnet. NICHT versprochen werden ein Schreibweg oder ein
 // Bedienelement in Modul 7, eine geaenderte Rechnung, ein neues Feld oder ein Versionssprung —
 // und ausdruecklich AUCH NICHT, dass die Bodenblechlaengen und die reinen Ausweisungsmasse neu
 // aus dem Katalog gebildet wuerden: die reisen aus dem gespeicherten Wandelement mit.
-const M7_STAND_120 = EINTRAEGE[0];
+const M7_STAND_120 = EINTRAEGE.find(e => e.id === "chg-20260910-09");
 ok("[#120] die lesende Neurechnung von Modul 7 ist der neueste Eintrag",
   M7_STAND_120?.id === "chg-20260910-09" && M7_STAND_120?.issue === 120
   && M7_STAND_120?.typ === "fix" && M7_STAND_120?.datum === "2026-09-10");

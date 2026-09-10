@@ -515,17 +515,15 @@ export function zeichnungSvg(w, opts = {}) {
   // nichts vom Ausfuehrungsnoetigen, und die Brandschutzgruppe bleibt die letzte des SVG.
   s += _verzahnungSvg(w, X, Y, sc, tl, G, C, LF);
 
-  // Gestufte Wandkontur (aus topLagen -> dieselbe Konturableitung wie die Montage)
-  {
-    const pts = [[0, 0], [0, tl[0] * C]];
-    for (let k = 0; k < N; k++) {
-      pts.push([(k + 1) * G, tl[k] * C]);
-      if (k < N - 1 && tl[k + 1] !== tl[k]) pts.push([(k + 1) * G, tl[k + 1] * C]);
-    }
-    pts.push([L, 0], [0, 0]);
-    s += `<polyline points="${pts.map(p => _n(X(p[0])) + "," + _n(Y(p[1]))).join(" ")}" fill="none" `
-      + `stroke="${FARBE.kontur}" stroke-width="${_n(SW * 2.4)}"/>`;
-  }
+  // Die dicke schwarze AEUSSERE UMRISSLINIE der Wand ist mit #123 ERSATZLOS entfallen — hier
+  // stand die gestufte Konturpolylinie (`stroke-width = SW * 2.4`). Sie war die staerkste Linie
+  // des Blattes und lief ueber die Bauteillinien am Wandrand hinweg; die Steinrechtecke tragen
+  // ihre eigenen Raender und zeichnen den Umriss damit ohnehin. Es tritt KEINE Ersatzlinie an
+  // ihre Stelle — auch keine duennere und keine andere Farbe.
+  //
+  // `tl`/`N` bleiben: sie tragen weiterhin Kopfblech, Verzahnungskennzeichnung, Anker und
+  // Bemassung. Die Konturableitung selbst (`topLagen`) ist unberuehrt, ebenso `FARBE.kontur`
+  // (Schriftfeldtext) und die Konturen der Baugruppenbilder von Modul 5.
 
   // Anschluesse: Bodenblech als REALE TEILFOLGE mit Stoessen ([A-10]/[A-11]/[A-12]),
   // Kopfblech unveraendert je Rasterspalte (wenn oben Blech).
@@ -650,6 +648,23 @@ export function zeichnungSvg(w, opts = {}) {
   // Test gesichert.
   const HAAR_B = kupplungDurchmesser(SYM, { sw_mm: kuSw, sc }) * 1.5,
     HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
+  // STRICHSTAERKE DER GEWINDESTANGE (#121): der reale Durchmesser mal dem Blattmasstab, also
+  // `SPANN_MM.rod_d_mm * sc` — dieselbe Rechnung, mit der Kopplungsmutter und Spannplatte seit
+  // #97 masstabsgetreu sind. Vorher stand hier eine FESTE Papier-mm-Staerke (`SW * 2.6`, fuer das
+  // Reststueck `SW * 3.4`): bei 1:50 waren das 0,57 mm gegen 0,60 mm Mutternbreite — die Stange
+  // verdeckte die Mutter an ihrem eigenen Stoss, seit #112 zusaetzlich, weil sie VOR ihr liegt.
+  //
+  // Die Sichtbarkeitsuntergrenze liegt — wie bei der Plattenbreite ([D-4]/#97) — AUSSEN um das
+  // masstabsgetreue Mass und gilt damit fuer jeden Masstab gleich; sie bleibt in jedem Fall
+  // unter dem Mutterndurchmesser. ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe `Math.max`-Zeile steht
+  // ein zweites Mal in der Wandansicht von Modul 1 (`docs/wandplanung.html`) — nur die WERTE
+  // kommen aus der einen Quelle in `sembla-montage.js`. Dasselbe Muster wie beim Faktor 1,5 der
+  // Haarlinie; die Gleichheit beider Ansichten sichert der Test.
+  //
+  // Das RESTSTUECK traegt dadurch KEINE groessere Staerke mehr als das Standardstueck (eine
+  // Stange ist ueberall gleich dick): unterschieden werden die Arten weiter ueber `stueckFarbe()`
+  // und die weisse Stueckelungs-Haarlinie (#112) — beide unveraendert.
+  const STANGE_SW = Math.max(SPANN_MM.rod_d_min * SYM, SPANN_MM.rod_d_mm * sc);
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
   // Gruppe NACH Einlegeblechen, Deckenanschluss-Symbolen, Platten und Blechen gesetzt, damit
   // keines davon sie ueberdeckt.
@@ -674,11 +689,8 @@ export function zeichnungSvg(w, opts = {}) {
       const stuecke = stangenStuecke(w, sg);
       for (let i = 0; i < stuecke.length; i++) {
         const st = stuecke[i], letzter = i === stuecke.length - 1;
-        // Das Reststueck ist kurz — es traegt deshalb zusaetzlich zur Farbe eine groessere
-        // Strichstaerke, damit es auch im Schwarz-Weiss-Druck als eigenes Bauteil auffaellt.
-        const dick = st.art === "rest" ? 3.4 : 2.6;
         stangen += `<line x1="${_n(x)}" y1="${_n(Y(st.z0_mm))}" x2="${_n(x)}" y2="${_n(Y(st.z1_mm))}" `
-          + `stroke="${stueckFarbe(st.art)}" stroke-width="${_n(SW * dick)}"/>`;
+          + `stroke="${stueckFarbe(st.art)}" stroke-width="${_n(STANGE_SW)}"/>`;
         // Der Stoss traegt die KOPPLUNGSMUTTER — als langer Zylinder in Seitenansicht (#110),
         // aus derselben Funktion wie die Wandansicht von Modul 1. Kreis und Sechseck entfallen.
         // Dazu seit #112 die weisse HAARLINIE quer zur Stange, genau auf `z1_mm` des UNTEREN

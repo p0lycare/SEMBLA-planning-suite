@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-10",
+    datum: "2026-09-10",
+    typ: "fix",
+    issue: 121,
+    titel: "Gewindestangen so breit wie in Wirklichkeit — und die Wand ohne dicke Umrisslinie",
+    testbitte: "Eine Wand mit Stangenstoß in Modul 1 ansehen und als Blatt in Modul 7 öffnen: "
+      + "die Kopplungsmutter schaut jetzt beidseits neben der Stange hervor, und der schwarze "
+      + "Rahmen um die Wand ist weg.",
+  },
+  {
     id: "chg-20260910-09",
     datum: "2026-09-10",
     typ: "fix",

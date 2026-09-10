@@ -657,11 +657,13 @@ function draw(w){
   // gestufte Oberkante (je Rasterspalte lokale Höhe)
   const N2=w.length_mm/GRID;
   const topH=k=>{ const xc=(k+0.5)*GRID; for(const st of (w.steps||[])){ if(xc>=st.x0_mm && xc<st.x1_mm) return st.height_mm; } return H; };
-  // Wandumriss
-  { const pts=[[0,0],[0,topH(0)]];
-    for(let k=0;k<N2;k++){ pts.push([(k+1)*GRID, topH(k)]); if(k<N2-1 && topH(k+1)!==topH(k)) pts.push([(k+1)*GRID, topH(k+1)]); }
-    pts.push([w.length_mm,0]); pts.push([0,0]);
-    s+=`<polyline points="${pts.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="none" stroke="#13202e" stroke-width="2"/>`; }
+  // Die dicke schwarze ÄUSSERE UMRISSLINIE der Wand ist mit #123 ERSATZLOS entfallen — hier
+  // stand die gestufte Konturpolylinie (`stroke="#13202e" stroke-width="2"`). Sie war die
+  // stärkste Linie der Ansicht und lief über die Bauteillinien am Wandrand hinweg; die
+  // Steinrechtecke tragen ihre eigenen Ränder und zeichnen den Umriss damit ohnehin. Es tritt
+  // KEINE Ersatzlinie an ihre Stelle — auch keine dünnere und keine andere Farbe. Dasselbe gilt
+  // im Blatt von Modul 7 ([D-4]).
+  // `topH()` bleibt: es trägt weiterhin Kopfblech, Anker, Segmentenden und Bemaßung.
   // Verzahnungsbereiche kennzeichnen ([G-10]/[G-11]/[G-12]): gestrichelte Umrandung + Diagonalschraffur
   const VZN='#8b5cf6';   // Violett, damit Verzahnung nicht mit Öffnungen (orange) verwechselt wird
   for(const il of (w.interlocks||[])){
@@ -744,6 +746,22 @@ function draw(w){
   // Quelle in sembla-montage.js. Dasselbe Muster wie beim Brandschutz-Darstellungsschlüssel
   // (#79): lokal geführt, Gleichheit beider Ansichten im Test gesichert.
   const HAAR_B=kupplungDurchmesser(SYM,{sw_mm:kuSw,sc})*1.5, HAAR_SW=0.8, HAAR_FARBE='#fff';
+  // STRICHSTÄRKE DER GEWINDESTANGE (#121): der reale Durchmesser mal dem Maßstab dieser Ansicht,
+  // also `SPANN_MM.rod_d_mm * sc` — dieselbe Rechnung, mit der Kopplungsmutter und Spannplatte
+  // seit #97 maßstabsgetreu sind. Vorher stand hier eine FESTE Strichstärke (2,4 Einheiten, für
+  // das Reststück 3): eine Stange war damit unabhängig von ihrem Durchmesser immer gleich breit
+  // und verdeckte im Blatt von Modul 7 die Mutter an ihrem eigenen Stoß.
+  //
+  // Die Sichtbarkeitsuntergrenze liegt — wie bei der Plattenbreite ([D-4]/#97) — AUSSEN um das
+  // maßstabsgetreue Maß. ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe `Math.max`-Zeile steht ein
+  // zweites Mal in `sembla-zeichnung.js` (Modul 7) — nur die WERTE kommen aus der einen Quelle
+  // in `sembla-montage.js`. Dasselbe Muster wie beim Faktor 1,5 der Haarlinie; die Gleichheit
+  // beider Ansichten sichert der Test.
+  //
+  // Das RESTSTÜCK trägt dadurch KEINE größere Stärke mehr als das Standardstück (eine Stange ist
+  // überall gleich dick): unterschieden werden die Arten weiter über `stueckFarbe()` und die
+  // weiße Stückelungs-Haarlinie (#112) — beide unverändert.
+  const STANGE_SW=Math.max(SPANN_MM.rod_d_min*SYM, SPANN_MM.rod_d_mm*sc);
   // Kennfarben der Spannkomponenten kommen aus SPANN_FARBE (sembla-montage.js, [D-4]/#110) —
   // dieselbe Quelle wie Modul 7, keine lokalen Hex-Werte mehr. STEEL ist das Boden-/Kopfblech
   // und gehoert nicht zu den Spannkomponenten; es steht seit #97 auf Dateiebene, weil auch das
@@ -810,7 +828,7 @@ function draw(w){
     for(const g of col.segments){
       const st=stangenStuecke(w,g);
       st.forEach((p,i)=>{
-        stangen+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art)}" stroke-width="${p.art==='rest'?3:2.4}"/>`;
+        stangen+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art)}" stroke-width="${STANGE_SW}"/>`;
         // Kopplung an jedem inneren Stoß (Stücke − 1): die KOPPLUNGSMUTTER als langer Zylinder
         // in Seitenansicht (#110) — dieselbe Funktion wie in Modul 7, deutlich länger als eine
         // normale Mutter. Die Klasse `kop` bleibt, sie trennt das Bauteil vom Legendenmuster.
