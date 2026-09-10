@@ -6031,6 +6031,382 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   globalThis.confirm = confirmEchtSpb;
 }
 
+// ==========================================================================
+//  Issue #97 — MUTTER EINLEGEBLECH und SECHSKANTSCHRAUBE FUSS im Sammel-Editor
+// ==========================================================================
+// Modul 1 leitet `prestress.zp_mutter_h_mm`/`zp_mutter_sw_mm` ([A-16]) und
+// `prestress.senkkopf_sw_mm` ([A-19]) aus den Katalogfeldern `hoehe_mm`/`sw_mm` der
+// gewaehlten Produkte ab (`zpMutterHoeheMm`/`zpMutterSwMm`/`senkkopfSwMm` ueber
+// `einbauMass`); die Ausgaben zeichnen beide Teile damit masstaeblich, ohne den Katalog zu
+// lesen ([D-1]). Der Sammel-Editor ist die ZWEITE Schreibbahn ans Wandelement — er kannte
+// die beiden Rollen in `ROLLE_RECHNUNG` als einzige Vorspann-Stellen noch nicht und fuehrte
+// gespeicherte Werte nur mit. Nach einem dortigen Produktwechsel blieb das alte Mass bis
+// zum naechsten „Auslegen" in Modul 1 stehen.
+//
+// Gefahren wird der ECHTE Editorpfad wie bei Kopplungsmutter, Spannmutter und
+// Spannplattenbreite: Projekt und Katalog aufsetzen, Waende zeichnen, im Popup auswaehlen,
+// uebernehmen — und das GESPEICHERTE Wandelement pruefen.
+//
+// Die drei Masse stehen FUER SICH. Die Pruefprodukte sind deshalb so gewaehlt, dass jede
+// Mehrdeutigkeit GENAU EIN Feld trifft und das andere eindeutig bleibt:
+//   zpm-a h=8  sw=17 · zpm-b h=8  sw=19  (a+b: Hoehe eindeutig, SW offen)
+//   zpm-c h=12 sw=19                      (b+c: SW eindeutig, Hoehe offen)
+//   sk-a sw=17 · sk-b sw=19               (a+b: SW offen)
+{
+  const katTextZpm = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const mappeZpm = store.fuegeProjektHinzu('Projekt 97 Einlegemutter und Schraube',
+    { geschoss: 'EG97zpm', hoehe_mm: 2600 });
+  const gsZpm = MAPPE.alleGeschosse(mappeZpm)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gsZpm);
+  store.importiereKatalogText(katTextZpm);
+  await warte();
+  GP.zeigeAlles();
+
+  const weZpm = (id) => store.holeElement(id).wandelement;
+  const psZpm = (id) => weZpm(id).prestress || {};
+  const hZpm = (id) => psZpm(id).zp_mutter_h_mm;
+  const swZpm = (id) => psZpm(id).zp_mutter_sw_mm;
+  const swSk = (id) => psZpm(id).senkkopf_sw_mm;
+  /** Genau die Zahlen, die sich NICHT aendern duerfen: Achsen, Segmente, Stuecke, Mengen. */
+  const fpZpm = (id) => { const w = weZpm(id); return JSON.stringify({
+    achsen: (w.tension_columns || []).map(c => c.x_mm),
+    seg: (w.tension_columns || []).map(c => (c.segments || []).map(sg => [sg.z0_mm, sg.z1_mm,
+      sg.bedarf_mm, sg.ueberstand_mm, (sg.stuecke || []).map(x => x.art + ':' + x.len_mm).join()])),
+    bom: w.bom, base: w.base_plate, top: w.top_plate }); };
+  /** Der Ein-Wert-Baustein von MODUL 1 (`einbauMass`), satzweise nachgebaut. */
+  const massZpm = (id, rolle, feld) => {
+    const kat = store.holeKatalog(); if (!kat) return null;
+    const v = [...new Set(KAT.produkteZuRolle(store.holeElement(id).eingaben || {}, kat, rolle)
+      .produkte.map(x => +x[feld]).filter(n => Number.isFinite(n) && n > 0))];
+    return v.length === 1 ? v[0] : null;
+  };
+
+  const neuesteZpm = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const aZpm = neuesteZpm().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const bZpm = neuesteZpm().id;
+  await warte();
+  const idsZpm = [aZpm, bZpm];
+
+  const ZPM0 = KAT.rollenIds(store.holeProdukte(1, aZpm), 'zp_mutter');
+  const SK0 = KAT.rollenIds(store.holeProdukte(1, aZpm), 'senkkopf');
+  ok('#97/zpm Pruefaufbau: [P-18] hat je GENAU EIN Produkt vorbelegt — die Mutter mit '
+    + 'gepflegter Hoehe (8 mm) und ohne Schluesselweite, die Schraube ohne beides; im '
+    + 'Wandelement steht noch keines der drei Masse',
+    ZPM0.length === 1 && SK0.length === 1
+    && KAT.produkt(store.holeKatalog(), ZPM0[0]).hoehe_mm === 8
+    && KAT.produkt(store.holeKatalog(), ZPM0[0]).sw_mm === undefined
+    && KAT.produkt(store.holeKatalog(), SK0[0]).sw_mm === undefined
+    && idsZpm.every(id => !('zp_mutter_h_mm' in psZpm(id))
+      && !('zp_mutter_sw_mm' in psZpm(id)) && !('senkkopf_sw_mm' in psZpm(id))));
+
+  const confirmEchtZpm = globalThis.confirm;
+  globalThis.confirm = () => true;
+  const ridZpm = (r) => 'gp-sammel-rolle-' + r;
+  const hakeZpm = (r, pid, an = true) => $('gp-sammel-rollen').dispatch('change',
+    { target: { checked: an, dataset: { prolle: r, pid } } });
+  const waehleZpm = () => {
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+  };
+  /** Genau die uebergebenen Produkte einer Rolle ankreuzen und uebernehmen. */
+  const setzeZpm = async (rolle, pids) => {
+    waehleZpm();
+    await warte();
+    $(ridZpm(rolle) + '-an').checked = true;
+    $(ridZpm(rolle) + '-an').dispatch('change');
+    for (const o of KAT.rollenOptionen(store.holeKatalog(), rolle, []))
+      hakeZpm(rolle, o.id, false);
+    for (const q of pids) hakeZpm(rolle, q);
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+  };
+
+  // (a) Muss 5 / #117-Bahn: NUR der Ueberstand ist angekreuzt — die Masse der
+  //     GESPEICHERTEN Auswahl werden trotzdem nachgezogen. Und weil die Vorlagenprodukte
+  //     keine Schluesselweite fuehren, ist das gleich der Beleg fuer Muss 4: es entsteht
+  //     GENAU EIN Feld, kein Ersatzmass.
+  waehleZpm();
+  await warte();
+  ok('#97/zpm Pruefaufbau: zwei Waende ausgewaehlt, Popup offen',
+    GP.zustand.auswahl.length === 2 && $('gp-sammelblatt').hidden === false);
+  $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+  $('gp-sammel-ueber').value = '25';
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#97/zpm (Muss 5) nur der Ueberstand angekreuzt: die Einbauhoehe der gespeicherten '
+    + 'Mutter wird mitgezogen',
+    idsZpm.every(id => hZpm(id) === 8 && psZpm(id).rod_overhang_mm === 25));
+  ok('#97/zpm (Muss 4) jedes Mass steht fuer sich: die Vorlagenprodukte fuehren keine '
+    + 'Schluesselweite, also entsteht weder die der Mutter noch die der Schraube',
+    idsZpm.every(id => !('zp_mutter_sw_mm' in psZpm(id))
+      && !('senkkopf_sw_mm' in psZpm(id))));
+  ok('#97/zpm die Ableitung erreicht dieselbe Zahl wie Modul 1 fuer dieselbe Auswahl',
+    idsZpm.every(id => hZpm(id) === massZpm(id, 'zp_mutter', 'hoehe_mm')
+      && massZpm(id, 'zp_mutter', 'hoehe_mm') === 8
+      && massZpm(id, 'zp_mutter', 'sw_mm') === null
+      && massZpm(id, 'senkkopf', 'sw_mm') === null));
+  // Ab hier ist der Rechenstand eingeschwungen — er ist der Vergleichsmassstab.
+  const fpVorZpm = idsZpm.map(fpZpm);
+
+  // Die fuenf Pruefprodukte (s. Kopf des Blocks). Nur im TEST — die Vorlage unter
+  // docs/vorlagen/ bleibt unberuehrt.
+  {
+    const kat = store.holeKatalog();
+    const basisM = KAT.produkt(kat, ZPM0[0]), basisS = KAT.produkt(kat, SK0[0]);
+    const machM = (id, hoehe, sw) => ({ ...basisM, id,
+      bezeichnung: 'Mutter Einlegeblech Pruefmass ' + id, hoehe_mm: hoehe, sw_mm: sw });
+    const machS = (id, sw) => ({ ...basisS, id,
+      bezeichnung: 'Sechskantschraube Fuss Pruefmass ' + id, sw_mm: sw });
+    store.setzeKatalog({ ...kat, produkte: [...(kat.produkte || []),
+      machM('zpm-a', 8, 17), machM('zpm-b', 8, 19), machM('zpm-c', 12, 19),
+      machS('sk-a', 17), machS('sk-b', 19)] });
+    await warte();
+    const q = (id) => KAT.produkt(store.holeKatalog(), id);
+    ok('#97/zpm Pruefaufbau: vier Muttern und zwei Schrauben im Katalog, der Katalog '
+      + 'bleibt gueltig',
+      KAT.validiereKatalog(store.holeKatalog()).length === 0
+      && (store.holeKatalog().produkte || [])
+        .filter(x => (x.rollen || []).includes('zp_mutter')).length === 4
+      && (store.holeKatalog().produkte || [])
+        .filter(x => (x.rollen || []).includes('senkkopf')).length === 3
+      && q('zpm-a').hoehe_mm === 8 && q('zpm-a').sw_mm === 17
+      && q('zpm-b').hoehe_mm === 8 && q('zpm-b').sw_mm === 19
+      && q('zpm-c').hoehe_mm === 12 && q('zpm-c').sw_mm === 19
+      && q('sk-a').sw_mm === 17 && q('sk-b').sw_mm === 19);
+  }
+
+  // (b) Akzeptanz 1 / Muss 1: eine Sammelaenderung auf eine Mutter mit `hoehe_mm = 8` und
+  //     `sw_mm = 17` setzt an JEDER betroffenen Wand genau diese beiden Katalogmasse.
+  const vorElementeZpm = idsZpm.map(id => JSON.parse(JSON.stringify(store.holeElement(id))));
+  const undoVorZpm = GP.undoStand.undo;
+  await setzeZpm('zp_mutter', ['zpm-a']);
+  ok('#97/zpm (Akzeptanz 1 / Muss 1) die Sammelaenderung schreibt an jeder Wand genau die '
+    + 'beiden Katalogmasse der gesetzten Mutter',
+    idsZpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'zp_mutter').join() === 'zpm-a'
+      && hZpm(id) === 8 && swZpm(id) === 17
+      && hZpm(id) === massZpm(id, 'zp_mutter', 'hoehe_mm')
+      && swZpm(id) === massZpm(id, 'zp_mutter', 'sw_mm')));
+  ok('#97/zpm (Akzeptanz 4 / must-not 4) Zuschnitt, Segmente, Spannachsen und Mengen sind '
+    + 'wertgleich — keines der Masse geht in eine Rechnung ein',
+    idsZpm.every((id, i) => fpZpm(id) === fpVorZpm[i]));
+  ok('#97/zpm (Muss 7) die Sammelaenderung bleibt GENAU EIN Rueckgaengig-Schritt',
+    GP.undoStand.undo === undoVorZpm + 1);
+  GP.undo();
+  await warte();
+  ok('#97/zpm (Akzeptanz 4 / Muss 7) Rueckgaengig stellt beide Wandelemente samt '
+    + 'Produktauswahl vollstaendig wieder her',
+    idsZpm.every((id, i) => JSON.stringify(store.holeElement(id).wandelement)
+        === JSON.stringify(vorElementeZpm[i].wandelement)
+      && JSON.stringify(store.holeElement(id).eingaben)
+        === JSON.stringify(vorElementeZpm[i].eingaben))
+    && idsZpm.every(id => !('zp_mutter_sw_mm' in psZpm(id)) && hZpm(id) === 8));
+  GP.redo();
+  await warte();
+  ok('#97/zpm Wiederholen setzt beide Masse wieder auf den neuen Stand',
+    idsZpm.every(id => hZpm(id) === 8 && swZpm(id) === 17));
+
+  // (c) Akzeptanz 2 / Muss 2: dieselbe Bahn fuer die Schraube — nur die Schluesselweite.
+  await setzeZpm('senkkopf', ['sk-a']);
+  ok('#97/zpm (Akzeptanz 2 / Muss 2) die Sammelaenderung schreibt an jeder Wand die '
+    + 'Schluesselweite der gesetzten Sechskantschraube Fuss',
+    idsZpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'senkkopf').join() === 'sk-a'
+      && swSk(id) === 17 && swSk(id) === massZpm(id, 'senkkopf', 'sw_mm')));
+  ok('#97/zpm (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    idsZpm.every((id, i) => fpZpm(id) === fpVorZpm[i]));
+
+  // (d) Akzeptanz 3 / Muss 4+5: mehrdeutig NUR in der Schluesselweite (a+b teilen h=8) —
+  //     die Hoehe wird geschrieben, die offene SW bleibt unveraendert stehen ([P-9]).
+  await setzeZpm('zp_mutter', ['zpm-c']);
+  ok('#97/zpm Pruefaufbau: c allein gesetzt — Hoehe 12, Schluesselweite 19',
+    idsZpm.every(id => hZpm(id) === 12 && swZpm(id) === 19));
+  await setzeZpm('zp_mutter', ['zpm-a', 'zpm-b']);
+  ok('#97/zpm (Akzeptanz 3 / Muss 4+5) mehrdeutige Schluesselweite bei eindeutiger Hoehe: '
+    + 'die Hoehe entsteht (12 -> 8), die SW bleibt auf dem gespeicherten Wert stehen',
+    idsZpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'zp_mutter').length === 2
+      && massZpm(id, 'zp_mutter', 'hoehe_mm') === 8
+      && massZpm(id, 'zp_mutter', 'sw_mm') === null
+      && hZpm(id) === 8 && swZpm(id) === 19));
+
+  // (e) … und die Gegenrichtung: mehrdeutig NUR in der Hoehe (b+c teilen sw=19).
+  await setzeZpm('zp_mutter', ['zpm-b', 'zpm-c']);
+  ok('#97/zpm (Akzeptanz 3 / Muss 4+5) mehrdeutige Hoehe bei eindeutiger '
+    + 'Schluesselweite: die SW entsteht, die Hoehe bleibt auf dem gespeicherten Wert stehen',
+    idsZpm.every(id => massZpm(id, 'zp_mutter', 'hoehe_mm') === null
+      && massZpm(id, 'zp_mutter', 'sw_mm') === 19
+      && hZpm(id) === 8 && swZpm(id) === 19));
+  ok('#97/zpm (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    idsZpm.every((id, i) => fpZpm(id) === fpVorZpm[i]));
+
+  // (f) Dieselbe Aussage fuer die Schraube: zwei Schrauben verschiedener Schluesselweite
+  //     lassen das Feld unveraendert stehen — es wird keine gemittelt oder bevorzugt.
+  await setzeZpm('senkkopf', ['sk-a', 'sk-b']);
+  ok('#97/zpm (Akzeptanz 3 / Muss 5) mehrdeutige Schluesselweite der Schraube: das Feld '
+    + 'bleibt auf dem gespeicherten Wert (17) stehen',
+    idsZpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'senkkopf').length === 2
+      && massZpm(id, 'senkkopf', 'sw_mm') === null && swSk(id) === 17));
+  ok('#97/zpm (Akzeptanz 4) auch dabei bleibt die Rechnung wertgleich',
+    idsZpm.every((id, i) => fpZpm(id) === fpVorZpm[i]));
+
+  // (g) Muss 3: beide Stellen sind reine Ausweisungsmasse OHNE topConn-Bedingung — mit
+  //     Kopfblech als oberem Anschluss entstehen sie genauso.
+  {
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 4000 }, { x: 3040, y: 4060 });   const cZpm = neuesteZpm().id;
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 6000 }, { x: 2040, y: 6060 });   const dZpm = neuesteZpm().id;
+    await warte();
+    const paarZpm = [cZpm, dZpm];
+    ok('#97/zpm Pruefaufbau: zwei frische Waende ohne jedes der drei Masse',
+      paarZpm.every(id => !('zp_mutter_h_mm' in psZpm(id))
+        && !('zp_mutter_sw_mm' in psZpm(id)) && !('senkkopf_sw_mm' in psZpm(id))));
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 4062.5 });
+    GP.tippe({ x: 1000, y: 6062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    $('gp-sammel-topconn-an').checked = true; $('gp-sammel-topconn-an').dispatch('change');
+    $('gp-sammel-topconn').value = 'blech';
+    for (const [r, p] of [['zp_mutter', 'zpm-a'], ['senkkopf', 'sk-b']]) {
+      $(ridZpm(r) + '-an').checked = true;
+      $(ridZpm(r) + '-an').dispatch('change');
+      for (const o of KAT.rollenOptionen(store.holeKatalog(), r, [])) hakeZpm(r, o.id, false);
+      hakeZpm(r, p);
+    }
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#97/zpm (Muss 3) mit Kopfblech als oberem Anschluss entstehen alle drei Masse '
+      + 'genauso — es gibt keine topConn-Bedingung',
+      paarZpm.every(id => psZpm(id).top_connection === 'blech'
+        && hZpm(id) === 8 && swZpm(id) === 17 && swSk(id) === 19));
+  }
+
+  // (h) Muss 7 / Bedienhinweis: das Ankreuzen beider Rollen loest dieselbe Neurechnung aus
+  //     wie die uebrigen Rollen mit Rollenrechnung — sichtbar daran, dass das Popup sie als
+  //     rechenwirksam ausweist (`wirkt` liest genau `ROLLE_RECHNUNG`).
+  waehleZpm();
+  await warte();
+  /** Der Hinweistext EINER Rollenzeile im Popup — `wirkt` liest genau `ROLLE_RECHNUNG`. */
+  const titelZpm = (r) => ((($('gp-sammel-rollen').innerHTML || '')
+    .match(new RegExp('for="' + ridZpm(r) + '-an" title="([^"]*)"')) || [])[1] || '');
+  ok('#97/zpm (Muss 7) das Popup weist beide Stellen als rechenwirksame '
+    + 'Verwendungsstellen aus — anders als eine Rolle ohne Rollenrechnung (Einlegeblech)',
+    /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('zp_mutter'))
+    && /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('senkkopf'))
+    && !/den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('einlegeblech'))
+    && titelZpm('einlegeblech') !== '');
+  $('gp-sammel-zu').dispatch('click');
+  await warte();
+
+  // (i) Muss 6: OHNE zugeordneten Katalog wird gar nichts abgeleitet. Zwei Faelle — nur
+  //     ein Merkmal angekreuzt laeuft durch und laesst die gespeicherten Masse stehen;
+  //     eine angekreuzte Verwendungsstelle wird benannt abgewiesen ([L-12]/[P-9]).
+  {
+    const mappeOhneZpm = store.fuegeProjektHinzu('Projekt 97 Einlegemutter ohne Katalog',
+      { geschoss: 'EG97zpmb', hoehe_mm: 2600 });
+    const gsOhneZpm = MAPPE.alleGeschosse(mappeOhneZpm)[0].geschoss.id;
+    store.setzeAktivesGeschoss(gsOhneZpm);
+    await warte();
+    ok('#97/zpm Pruefaufbau: dem neuen Projekt ist kein Bauteilkatalog zugeordnet ([L-12])',
+      store.katalogStatus().status !== 'ok' && !store.holeKatalog());
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const eZpm = neuesteZpm().id;
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const fZpm = neuesteZpm().id;
+    await warte();
+    const paarOhneZpm = [eZpm, fZpm];
+    // Der Ausgangsstand entsteht ueber den echten Auslegungspfad — nicht durch ein von
+    // Hand verbogenes JSON: so passt die Zerlegung wirklich zu diesen Eingaengen.
+    for (const id of paarOhneZpm) {
+      const el = store.holeElement(id), w = el.wandelement;
+      const vorg = { name: el.name, length_mm: w.length_mm, height_mm: w.height_mm,
+        openings: (w.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+        sides: w.sides, steps: (w.steps || []).map(x => ({ ...x })),
+        interlocks: (w.interlocks || []).map(i => ({ ...i })),
+        prestress: { ...(w.prestress || {}), zp_mutter_h_mm: 22, zp_mutter_sw_mm: 24,
+          senkkopf_sw_mm: 26 },
+        load: { qk_area: 1.00, gammaQ: 1.50 },
+        material: w.verification && w.verification.material };
+      const neu = ENG.autoAuslegung(vorg).wandelement;
+      neu.wandtyp = w.wandtyp; neu.abdichtung = w.abdichtung; neu.brandklasse = w.brandklasse;
+      store.speichere(el.name, neu, id);
+    }
+    await warte();
+    ok('#97/zpm Pruefaufbau: beide Waende tragen gespeicherte Masse (22 / 24 / 26 mm)',
+      paarOhneZpm.every(id => hZpm(id) === 22 && swZpm(id) === 24 && swSk(id) === 26));
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+    $('gp-sammel-ueber').value = '30';
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#97/zpm (Muss 6) ohne Katalog und nur mit angekreuztem Merkmal laeuft die '
+      + 'Uebernahme durch und leitet NICHTS ab — alle drei gespeicherten Masse bleiben '
+      + 'unveraendert stehen',
+      paarOhneZpm.every(id => hZpm(id) === 22 && swZpm(id) === 24 && swSk(id) === 26
+        && psZpm(id).rod_overhang_mm === 30));
+    {
+      const speicherVorZpm = localStorage.getItem('sembla:elemente');
+      const undoVorOhneZpm = GP.undoStand.undo;
+      GP.werkzeug('auswahl');
+      GP.tippe({ x: 1500, y: 62.5 });
+      GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+      $('gp-sammel-knopf').dispatch('click');
+      await warte();
+      $(ridZpm('zp_mutter') + '-an').checked = true;
+      $(ridZpm('zp_mutter') + '-an').dispatch('change');
+      $('gp-sammel-go').dispatch('click');
+      await warte();
+      ok('#97/zpm (Muss 6) ohne Katalog wird eine angekreuzte Verwendungsstelle BENANNT '
+        + 'abgewiesen — nichts geschrieben',
+        /Bauteilkatalog/.test($('gp-msg').textContent)
+        && /nichts ge/.test($('gp-msg').textContent)
+        && localStorage.getItem('sembla:elemente') === speicherVorZpm
+        && GP.undoStand.undo === undoVorOhneZpm);
+      $('gp-sammel-zu').dispatch('click');
+      await warte();
+    }
+  }
+
+  // (j) must-not 2/3: GENAU EIN Ableitungsweg, und keine erfundene topConn-Bedingung —
+  //     Modul 1 hat keine, und eine hier ergaebe fuer dieselbe Auswahl eine andere Zahl.
+  ok('#97/zpm (must-not 2) genau EIN Ableitungsweg — alle drei Masse werden im Editor an '
+    + 'je genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
+    /rollenMass\(eing, kat, 'zp_mutter', 'hoehe_mm'\)/.test(html)
+    && /rollenMass\(eing, kat, 'zp_mutter', 'sw_mm'\)/.test(html)
+    && (html.match(/'zp_mutter',/g) || []).length === 2
+    && /rollenMass\(eing, kat, 'senkkopf', 'sw_mm'\)/.test(html)
+    && (html.match(/'senkkopf',/g) || []).length === 1
+    // … und je genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
+    // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
+    && (html.match(/zp_mutter_h_mm:/g) || []).length === 1
+    && (html.match(/zp_mutter_sw_mm:/g) || []).length === 1
+    && (html.match(/senkkopf_sw_mm:/g) || []).length === 1
+    && /h != null \? \{ zp_mutter_h_mm: h \} : \{\}/.test(html)
+    && /sw != null \? \{ zp_mutter_sw_mm: sw \} : \{\}/.test(html)
+    && /sw != null \? \{ senkkopf_sw_mm: sw \} : \{\}/.test(html));
+  ok('#97/zpm (Muss 3) beide Rollen-Bausteine nehmen KEINEN oberen Anschluss entgegen — '
+    + 'anders als Spannplatte und Kopfblech, und satzgleich zu Modul 1',
+    /\n  zp_mutter: \(eing, kat\) => \{/.test(html)
+    && /\n  senkkopf: \(eing, kat\) => \{/.test(html)
+    && /spannplatte: \(eing, kat, topConn\) => \{/.test(html));
+  ok('#97/zpm (must-not 6) kein neues gespeichertes Feld, kein Schema-, Mappen-, '
+    + 'Katalog- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    && store.PROJEKT_VERSION === 2
+    && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  globalThis.confirm = confirmEchtZpm;
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

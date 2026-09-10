@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-06",
+    datum: "2026-09-10",
+    typ: "fix",
+    issue: 97,
+    titel: "Sammeländerung zieht die Maße von Mutter Einlegeblech und Sechskantschraube nach",
+    testbitte: "Im Geschosseditor mehrere Wände auswählen, im Popup „Gemeinsam bearbeiten…“ "
+      + "eine andere Mutter Einlegeblech oder Sechskantschraube Fuß setzen: beide stehen in "
+      + "Modul 1 und Modul 7 in den neuen Maßen; uneindeutig gewählt bleibt unverändert.",
+  },
+  {
     id: "chg-20260910-05",
     datum: "2026-09-10",
     typ: "feature",

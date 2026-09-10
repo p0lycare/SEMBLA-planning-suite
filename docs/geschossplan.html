@@ -2505,7 +2505,9 @@ function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 // Schlüsselweite der SPANNMUTTER (`spannmutter_h_mm`/`spannmutter_sw_mm`) und für die
 // BREITE der Spannplatte (`spannplatte_b_mm`) gilt Wort für Wort dasselbe: auch sie sind
 // reine Feldabgriffe und keine Beziehung, weshalb auch sie den [P-6]-Nachziehpunkt nicht
-// vergrößern.
+// vergrößern. Für Einbauhöhe und Schlüsselweite der MUTTER DES EINLEGEBLECHS
+// (`zp_mutter_h_mm`/`zp_mutter_sw_mm`, [A-16]) und die Schlüsselweite der SECHSKANTSCHRAUBE
+// FUSS (`senkkopf_sw_mm`, [A-19]) gilt Wort für Wort dasselbe.
 const ROLLE_RECHNUNG = {
   rod_std: (eing, kat) => {
     // #117 Eine LEERE Auswahl setzt das Feld NICHT. Seit die Ableitung bei jeder
@@ -2600,6 +2602,39 @@ const ROLLE_RECHNUNG = {
     const sw = rollenMass(eing, kat, 'spannmutter', 'sw_mm');
     return { ...(h != null ? { spannmutter_h_mm: h } : {}),
              ...(sw != null ? { spannmutter_sw_mm: sw } : {}) };
+  },
+  // #97 Einbauhöhe und Schlüsselweite der MUTTER DES EINLEGEBLECHS ([A-16]) — das Bauteil,
+  // das den Zwischenspannpunkt von oben gegen die Lage zieht. Beide sind reine
+  // AUSWEISUNGSMASSE: sie gehen in keine Höhe, keinen Bedarf und keine Menge ein (dieselbe
+  // Bahn wie die Blechdicken [A-1]) und reisen allein deshalb mit, damit die Ausgaben die
+  // Mutter maßstäblich zeichnen können, ohne den Katalog zu lesen ([D-1]).
+  //
+  // Gelesen wird derselbe Ein-Wert-Baustein `rollenMass` wie für jedes andere Einbaumaß,
+  // also satzgleich zu `zpMutterHoeheMm()`/`zpMutterSwMm()`/`einbauMass()` in Modul 1 — es
+  // entsteht kein zweiter Ableitungsweg. Bewusst OHNE `topConn`-Bedingung, mit derselben
+  // Begründung wie bei der Mutter des Ankers oben: die Mutter sitzt unabhängig vom oberen
+  // Anschluss in der Wand, und eine hier erfundene Bedingung ergäbe für dieselbe Auswahl
+  // eine andere Zahl als Modul 1.
+  //
+  // Beide Maße stehen FÜR SICH: ein Produkt mit gepflegter Höhe, aber ohne Schlüsselweite
+  // liefert genau ein Feld. Fehlt ein Maß oder widersprechen sich die gewählten Produkte,
+  // entsteht das jeweilige Feld NICHT — dann bleibt der im Wandelement gespeicherte Wert
+  // stehen (`psOf` reicht ihn durch), statt von einer erfundenen Höhe oder Breite
+  // überschrieben zu werden ([P-9]). Abgeleitet wird nichts aus Gewinde oder Norm.
+  zp_mutter: (eing, kat) => {
+    const h = rollenMass(eing, kat, 'zp_mutter', 'hoehe_mm');
+    const sw = rollenMass(eing, kat, 'zp_mutter', 'sw_mm');
+    return { ...(h != null ? { zp_mutter_h_mm: h } : {}),
+             ...(sw != null ? { zp_mutter_sw_mm: sw } : {}) };
+  },
+  // #97 Schlüsselweite der SECHSKANTSCHRAUBE FUSS ([A-19]) — dasselbe Muster und derselbe
+  // Baustein, satzgleich zu `senkkopfSwMm()`/`einbauMass()` in Modul 1: ein reines
+  // AUSWEISUNGSMASS ohne Rechenbeitrag, ohne `topConn`-Bedingung (die Schraube sitzt am Fuß),
+  // und ohne Feld, wenn die Auswahl keinen eindeutigen Wert hergibt ([P-9]). Eine KOPFHÖHE
+  // gibt es hier nicht: dafür ist keine Norm genannt, und geraten wird sie nicht.
+  senkkopf: (eing, kat) => {
+    const sw = rollenMass(eing, kat, 'senkkopf', 'sw_mm');
+    return sw != null ? { senkkopf_sw_mm: sw } : {};
   },
 };
 

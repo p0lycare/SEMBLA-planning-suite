@@ -39,16 +39,49 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Das ZEICHNEN VON EINLEGEMUTTER UND SECHSKANTSCHRAUBE (#97) ist der neueste Eintrag — er
-// wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die
-// KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 1 und Modul 7 beide
+// Das NACHZIEHEN BEIDER MASSE IM SAMMEL-EDITOR (#97) ist der neueste Eintrag — er wird als
+// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
+// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der Sammel-Editor des
+// Geschosseditors die Masse von Mutter Einlegeblech und Sechskantschraube Fuss aus der
+// Produktauswahl der jeweiligen Wand nachzieht, sodass Modul 1 und Modul 7 sie unmittelbar
+// zeigen, und dass eine uneindeutige Auswahl den gespeicherten Wert stehen laesst. NICHT
+// versprochen werden ein neues Feld, ein neues Katalogmass, eine Kopfhoehe der Schraube,
+// eine Norm, eine geaenderte Rechnung, ein Preis, eine Menge, ein Nachweis oder ein
+// Versionssprung.
+const SAMMEL_ZPSK_97 = EINTRAEGE[0];
+ok("[#97] das Nachziehen beider Masse im Sammel-Editor ist der neueste Eintrag",
+  SAMMEL_ZPSK_97?.id === "chg-20260910-06" && SAMMEL_ZPSK_97?.issue === 97
+  && SAMMEL_ZPSK_97?.typ === "fix" && SAMMEL_ZPSK_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt die Sammelaenderung, beide Bauteile und ihre Masse",
+  /Sammel/.test(SAMMEL_ZPSK_97?.titel || "")
+  && /Einlegeblech/.test(SAMMEL_ZPSK_97?.titel || "")
+  && /Sechskantschraube/.test(SAMMEL_ZPSK_97?.titel || "")
+  && /Ma\u00dfe/.test(SAMMEL_ZPSK_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Kopfh/i.test(SAMMEL_ZPSK_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad vom Geschosseditor in 1 und 7",
+  /Geschosseditor/.test(SAMMEL_ZPSK_97?.testbitte || "")
+  && /Gemeinsam bearbeiten/.test(SAMMEL_ZPSK_97?.testbitte || "")
+  && /Modul 1\b/.test(SAMMEL_ZPSK_97?.testbitte || "")
+  && /Modul 7\b/.test(SAMMEL_ZPSK_97?.testbitte || "")
+  && /Einlegeblech/.test(SAMMEL_ZPSK_97?.testbitte || "")
+  && /Sechskantschraube/.test(SAMMEL_ZPSK_97?.testbitte || ""));
+ok("[#97] die Testbitte nennt den Rueckfall bei uneindeutiger Auswahl",
+  /uneindeutig/.test(SAMMEL_ZPSK_97?.testbitte || "")
+  && /unver\u00e4ndert/.test(SAMMEL_ZPSK_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm, keine Kopfhoehe und keine Rechnung",
+  !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration|Kopfh/i
+    .test(SAMMEL_ZPSK_97?.testbitte || ""));
+
+// Davor liegt das ZEICHNEN VON EINLEGEMUTTER UND SECHSKANTSCHRAUBE (#97) — ueber ihre
+// Kennung gesucht, weil es nicht mehr der neueste Eintrag ist. Seine Aussagen bleiben
+// inhaltlich unveraendert: geliefert war AUSSCHLIESSLICH, dass Modul 1 und Modul 7 beide
 // Teile mit ihren am Wandelement ausgewiesenen Massen zeichnen und dass dieselbe Wand in
-// beiden Ausgaben dieselben Bauteilmasse zeigt. NICHT versprochen werden eine Kopfhoehe der
+// beiden Ausgaben dieselben Bauteilmasse zeigt. NICHT versprochen wurden eine Kopfhoehe der
 // Schraube, eine Norm, ein neues Feld, ein Bedienelement, eine geaenderte Rechnung, ein
 // Preis, eine Menge, ein Nachweis oder ein Versionssprung.
-const ZEICHNEN_97 = EINTRAEGE[0];
-ok("[#97] das Zeichnen beider Bauteile ist der neueste Eintrag",
+const ZEICHNEN_97 = EINTRAEGE.find(e => e.id === "chg-20260910-05");
+ok("[#97] das Zeichnen beider Bauteile steht unveraendert in der Reihe",
   ZEICHNEN_97?.id === "chg-20260910-05" && ZEICHNEN_97?.issue === 97
   && ZEICHNEN_97?.typ === "feature" && ZEICHNEN_97?.datum === "2026-09-10");
 ok("[#97] der Titel benennt beide Bauteile und das masstaebliche Zeichnen",
