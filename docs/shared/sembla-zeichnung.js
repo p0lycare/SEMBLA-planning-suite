@@ -59,7 +59,10 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          schraubeSvg,
          // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
          ZWISCHENPUNKT, zwischenpunktSvg,
-         DECKENANSCHLUSS, deckenanschlussSvg } from "./sembla-montage.js";
+         DECKENANSCHLUSS, deckenanschlussSvg,
+         // [A-20]…[A-24]/#97: Marke, Kennfarbe und Klartext des Ausgleichspunkts — dieselbe
+         // Quelle und dieselbe Zeichenfunktion wie die Wandansicht von Modul 1 ([D-4]).
+         AUSGLEICHSPUNKT, ausgleichspunktSvg } from "./sembla-montage.js";
 // #110: die wirksamen Zwischenspannpunkte kommen aus der EINEN Ableitung des Rechenkerns —
 // hier wird nichts nachgerechnet und keine Punkthoehe erfunden.
 import { wirksameZwischenpunkte } from "./sembla-core.js";
@@ -589,6 +592,24 @@ export function zeichnungSvg(w, opts = {}) {
   const zpSw = (w.prestress && w.prestress.zp_mutter_sw_mm) || 0;
   const skSw = (w.prestress && w.prestress.senkkopf_sw_mm) || 0;
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
+  // Ausgleichspunkte als Marken UNTER dem Bodenblech ([A-20]…[A-24], #96/#97) — eigene Gruppe
+  // unmittelbar nach dem Blech, an dessen Unterkante sie haengen, und VOR Deckenanschluss-,
+  // Einlegeblech-, Kopplungs- und Stangengruppe: sie liegen ausserhalb der Wandflaeche und
+  // verdecken damit kein Ausfuehrungsmass. Gezeichnet wird ueber `ausgleichspunktSvg()` aus
+  // `sembla-montage.js` — dieselbe Funktion, denselben Darstellungsschluessel und damit dieselbe
+  // Form und Kennfarbe wie die Wandansicht von Modul 1 ([D-4]); eine eigene Marke hier waere
+  // Drift. Massgebend ist allein `w.ausgleichspunkte` des Rechenkerns: hier wird keine Position
+  // gerechnet, verschoben oder erfunden. Eine Wand ohne Punkte und ein Alt-Wandelement ohne das
+  // Feld liefern die leere Zeichenkette — dann entsteht auch keine Gruppe, das Blatt bleibt
+  // zeichengleich zum Stand davor. Weil das Blatt-SVG hier entsteht, tragen Vorschau, Druck-HTML
+  // und die eigenstaendige SVG-Datei dieselbe Zeichenkette ([D-6]).
+  {
+    // `SPANN_EINHEIT.blatt` ist derselbe Faktor, den die Vorspannsymbole weiter unten als `SYM`
+    // fuehren (#106); er steht hier ausgeschrieben, weil diese Gruppe VOR jener Deklaration
+    // entsteht — dieselbe eine Quelle, keine zweite Zahl.
+    const ag = ausgleichspunktSvg(w, X, Y, sc, bth, { n: _n, e: SPANN_EINHEIT.blatt });
+    if (ag) s += `<g class="agp">${ag}</g>`;
+  }
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
       const h = tl[k] * C;
@@ -1121,6 +1142,13 @@ export function legendeHtml(w) {
     + ((w && (w.deckenanschlusspunkte || []).length)
         ? `<span><i class="dcs" style="border-color:${DECKENANSCHLUSS.farbe}"></i>`
           + `${DECKENANSCHLUSS.label}</span>` : "")
+    // Ausgleichspunkte ([A-20]…[A-24]/#97): genannt GENAU DANN, wenn im Blatt auch Marken
+    // gezeichnet wurden — dieselbe Abfrage wie dort, kein leeres Legendenfeld. Das Feld traegt
+    // die Dreiecksform der Marke (also ihr NICHT FARBLICHES Merkmal) und nennt die Lage in
+    // Worten, damit sie im Schwarz-Weiss-Ausdruck aufloesbar bleibt.
+    + ((w && (w.ausgleichspunkte || []).length)
+        ? `<span><i class="agp" style="border-bottom-color:${AUSGLEICHSPUNKT.farbe}"></i>`
+          + `${AUSGLEICHSPUNKT.label} — unter dem Bodenblech</span>` : "")
     + `<span>${i(FARBE.i3, "plate")}i3 (37,5 cm)</span>`
     + `<span>${i(FARBE.i2, "plate")}i2 (25 cm)</span>`
     // Brandschutzklassifikation (#79): BEIDE Klassen stehen hier, jede mit ihrer
@@ -1252,6 +1280,12 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
                   border-top:2px solid;border-color:inherit}
   .zlegende i.dcs::after{content:"";position:absolute;left:5px;top:0;width:8px;height:8px;
                   border-left:2px solid;border-bottom:2px solid;border-color:inherit}
+  /* Ausgleichspunkt (#97): gefuelltes Dreieck mit der Spitze nach OBEN — dieselbe Form wie die
+     Marke im Blatt. Gebaut aus Raendern, weil ein Dreieck kein Rechteck ist; die Farbe setzt der
+     Aufrufer als border-bottom-color. */
+  .zlegende i.agp{background:none;height:0;width:0;border-radius:0;
+                  border-left:5px solid transparent;border-right:5px solid transparent;
+                  border-bottom:8px solid}
   .ztitleblock{grid-column:1 / span 2;grid-row:2;display:grid;
                grid-template-columns:2.2fr 1.2fr 1.1fr;border:1.5px solid #13202e;
                border-radius:3px;overflow:hidden;font-size:11px}

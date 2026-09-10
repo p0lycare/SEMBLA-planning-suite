@@ -77,6 +77,11 @@
                   border-top:2px solid currentColor}
   .zlegende i.dcs::after{content:"";position:absolute;left:5px;top:0;width:9px;height:8px;
                   border-left:2px solid currentColor;border-bottom:2px solid currentColor}
+  /* Ausgleichspunkt (#97): gefülltes Dreieck mit der Spitze nach OBEN — dieselbe Form wie die
+     Marke unter dem Bodenblech. Aus Rändern gebaut, weil ein Dreieck kein Rechteck ist. */
+  .zlegende i.agp{width:0;height:0;border-top:0;
+                  border-left:5px solid transparent;border-right:5px solid transparent;
+                  border-bottom:8px solid currentColor}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -283,6 +288,10 @@ let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
 // aus `base_plate.teile` des Rechenkerns, hier wird nichts nachgerechnet.
 let bodenblechSvg;
 let DECKENANSCHLUSS, deckenanschlussSvg;
+// Ausgleichspunkte ([A-20]…[A-24], #96/#97): Darstellungsschlüssel und die EINE Zeichenfunktion
+// der Marke unter dem Bodenblech — dieselbe Quelle und dieselbe Form wie im Blatt von Modul 7
+// ([D-4]). Die Punkte selbst kommen aus dem Rechenkern; hier wird nichts nachgerechnet.
+let AUSGLEICHSPUNKT, ausgleichspunktSvg;
 // #112: `SPANN_MM` kommt hinzu — die weisse Haarlinie am Stangenstoss wird aus dem
 // Durchmesser der Kopplungsmutter ABGELEITET (sie muss breiter sein als das Bauteil,
 // das ueber ihr liegt); ein eigenes Mass hier waere Drift.
@@ -740,6 +749,16 @@ function draw(w){
   // Funktion sind wertgleich mit dem lokalen STEEL bzw. #3a4350.
   s+=bodenblechSvg(RESULT.wandelement, X, Y, sc, bth, { rand: 0.8 });
   s+=`<text x="${xL+3}" y="${Y(0)+bth-2}" font-size="8" fill="#eef2f6">Bodenblech ${bdMm?bdMm+" mm":"– Dicke offen"}</text>`;
+  // Ausgleichspunkte als Marken UNTER dem Bodenblech ([A-20]…[A-24], #96/#97) — DAUERHAFT und
+  // unabhängig davon, ob der Ausgleichspunkt-Editor geöffnet ist. Gezeichnet wird über
+  // `ausgleichspunktSvg()` aus sembla-montage.js, also DERSELBE Zeichenweg und derselbe
+  // Darstellungsschlüssel wie im Blatt von Modul 7 ([D-4]); eine eigene Marke oder ein lokaler
+  // Hex-Wert wäre Drift. Maßgebend ist allein `w.ausgleichspunkte` des Rechenkerns — hier wird
+  // keine Position gerechnet, verschoben oder erfunden. Eine Wand ohne Punkte und ein
+  // Alt-Wandelement ohne das Feld liefern die leere Zeichenkette, die Ansicht bleibt dann
+  // zeichengleich zum Stand davor. Die Griffe des Editors (s. u.) sind davon getrennt: sie sind
+  // Bedienhilfe, das hier ist das Bauteil.
+  s+=ausgleichspunktSvg(RESULT.wandelement, X, Y, sc, bth, { e: SPANN_EINHEIT.ansicht });
   // Kopfblech (nur bei top_connection=='blech') entlang der Oberkante
   if(topConn==='blech'){ for(let k=0;k<N2;k++){ const h=topH(k); if(h<=0) continue; const lx=Math.min(X(k*GRID),X((k+1)*GRID));
       s+=`<rect x="${lx}" y="${Y(h)-bth}" width="${GRID*sc}" height="${bth}" fill="${STEEL}" stroke="#3a4350" stroke-width="0.6"/>`; } }
@@ -901,14 +920,16 @@ function draw(w){
   // Reine BEDIENHILFE, ausschließlich im Editiermodus vorhanden — dasselbe Muster wie die
   // Spannachsengriffe. Die DAUERHAFTE Darstellung der Ausgleichspunkte in Wandansicht und
   // Zeichnung ist ausdrücklich nicht hier, sondern Gegenstand von #97.
+  // Die Kennfarbe der Griffe ist die des BAUTEILS aus sembla-montage.js ([D-4]) — seit #97
+  // zeichnet die Ansicht die Marke dauerhaft, und ein zweiter Hex-Wert hier wäre Drift.
   if(agEdit){ const punkte=(w.ausgleichspunkte||[]).map(p=>p.x_mm);
-    const y0=Y(0);
+    const y0=Y(0), agf=AUSGLEICHSPUNKT.farbe;
     // Freie Strecke am Fuß: ein Klick außerhalb der Fangweite legt dort einen neuen Punkt an.
-    s+=`<line class="agneu" x1="${Math.min(X(0),X(L))}" y1="${y0+9}" x2="${Math.max(X(0),X(L))}" y2="${y0+9}" stroke="#8a5cf6" stroke-width="1" stroke-dasharray="2 7" stroke-opacity="0.35" style="cursor:copy"/>`;
+    s+=`<line class="agneu" x1="${Math.min(X(0),X(L))}" y1="${y0+9}" x2="${Math.max(X(0),X(L))}" y2="${y0+9}" stroke="${agf}" stroke-width="1" stroke-dasharray="2 7" stroke-opacity="0.35" style="cursor:copy"/>`;
     for(const xm of punkte){ const on=(selAg===xm); const ax=X(xm);
-      s+=`<line class="agp" x1="${ax}" y1="${y0-6}" x2="${ax}" y2="${y0+9}" stroke="${on?'#c9461c':'#8a5cf6'}" stroke-width="${on?3:2}" stroke-opacity="0.9" style="cursor:grab"/>`;
-      s+=`<circle cx="${ax}" cy="${y0+9}" r="${on?5:4}" fill="${on?'#c9461c':'#8a5cf6'}" stroke="#fff" stroke-width="1.2" style="cursor:grab"/>`;
-      s+=`<text x="${ax}" y="${y0+22}" font-size="9" fill="${on?'#c9461c':'#8a5cf6'}" text-anchor="middle">${fmt(xm/10,1)}</text>`; } }
+      s+=`<line class="agp" x1="${ax}" y1="${y0-6}" x2="${ax}" y2="${y0+9}" stroke="${on?'#c9461c':agf}" stroke-width="${on?3:2}" stroke-opacity="0.9" style="cursor:grab"/>`;
+      s+=`<circle cx="${ax}" cy="${y0+9}" r="${on?5:4}" fill="${on?'#c9461c':agf}" stroke="#fff" stroke-width="1.2" style="cursor:grab"/>`;
+      s+=`<text x="${ax}" y="${y0+22}" font-size="9" fill="${on?'#c9461c':agf}" text-anchor="middle">${fmt(xm/10,1)}</text>`; } }
 
   // ---- Deckenanschluss-Editor: Griffe an der Wandoberkante ([A-27], #95) ----
   // Reine BEDIENHILFE, ausschließlich im Editiermodus vorhanden — dasselbe Muster wie die
@@ -975,8 +996,13 @@ function renderZLegende(w){
   // Füllung, weil das Symbol ein offener Zug ist und beide dieselbe Form zeigen müssen ([D-4]).
   const dcEintrag = (w && (w.deckenanschlusspunkte||[]).length)
     ? `<span><i class="dcs" style="color:${DECKENANSCHLUSS.farbe}"></i>${DECKENANSCHLUSS.label}</span>` : '';
+  // [A-20]…[A-24] Ebenso der Ausgleichspunkt — genannt GENAU DANN, wenn die Wand wirklich einen
+  // Punkt führt, mit dem Klartext aus sembla-montage.js. Das Legendenfeld trägt die Dreiecksform
+  // der Marke (ihr nicht farbliches Merkmal) und nennt die Lage in Worten ([D-4]/#15).
+  const agEintrag = (w && (w.ausgleichspunkte||[]).length)
+    ? `<span><i class="agp" style="color:${AUSGLEICHSPUNKT.farbe}"></i>${AUSGLEICHSPUNKT.label} — unter dem Bodenblech</span>` : '';
   const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
-  if(!alle.length){ box.innerHTML=zpEintrag+dcEintrag; return; }   // kein bestimmter Zuschnitt -> keine Zuschnittlegende
+  if(!alle.length){ box.innerHTML=zpEintrag+dcEintrag+agEintrag; return; }   // kein bestimmter Zuschnitt -> keine Zuschnittlegende
   // Auch die Standardlänge wird nur genannt, wenn sie wirklich vorkommt: ein Stand aus reinem
   // Sonderzuschnitt plus Reststück ([Z-2]/[Z-6]) hat keine Standardlänge, und die Legende darf
   // keine behaupten. Reihenfolge bleibt standard · sonder · rest.
@@ -985,7 +1011,7 @@ function renderZLegende(w){
   box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
     + teile.map(a=>`<span><i style="color:${stueckFarbe(a)}"></i>${STUECK_LABEL[a]}</span>`).join('')
     + `<span><i class="kop" style="color:${SPANN_FARBE.mutter}"></i>Kopplung</span>`
-    + zpEintrag + dcEintrag;
+    + zpEintrag + dcEintrag + agEintrag;
 }
 
 // ---------- Öffnungs-UI ----------
@@ -1876,6 +1902,7 @@ window.__wpInit=function(){
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
   bodenblechSvg=S.bodenblechSvg;
   DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
+  AUSGLEICHSPUNKT=S.AUSGLEICHSPUNKT; ausgleichspunktSvg=S.ausgleichspunktSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten — eine Quelle für Modul 1 und 7.
   SPANN_FARBE=S.SPANN_FARBE; SPANN_EINHEIT=S.SPANN_EINHEIT; SPANN_MM=S.SPANN_MM;
@@ -1904,6 +1931,9 @@ window.__wpInit=function(){
   import * as KAT from './shared/sembla-katalog.js';
   import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
            ZWISCHENPUNKT, zwischenpunktSvg, DECKENANSCHLUSS, deckenanschlussSvg,
+           // [A-20]…[A-24]/#97: Marke, Kennfarbe und Klartext des Ausgleichspunkts — dieselbe
+           // Funktion, die das Blatt von Modul 7 benutzt ([D-4]).
+           AUSGLEICHSPUNKT, ausgleichspunktSvg,
            // #91: der EINE Zeichenweg des Bodenblechs — dieselbe Teilfolge und dieselben
            // Stossmarken wie Modul 5 und Modul 7 ([A-10]/[D-4]).
            bodenblechSvg,
@@ -1916,6 +1946,7 @@ window.__wpInit=function(){
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
+                    AUSGLEICHSPUNKT, ausgleichspunktSvg,
                     SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser,
                     mutterSvg, kopplungsmutterSvg,
                     spannplatteSvg, schraubeSvg };

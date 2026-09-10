@@ -39,9 +39,37 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Das NACHZIEHEN BEIDER MASSE IM SAMMEL-EDITOR (#97) ist der neueste Eintrag — er wird als
+// Die DAUERHAFTE DARSTELLUNG DER AUSGLEICHSPUNKTE (#97) ist der neueste Eintrag — er wird als
 // einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
 // ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die DARSTELLUNG — Modul 1 zeigt die
+// vom Rechenkern gerechneten Ausgleichspunkte auch mit geschlossenem Editor als Marke unter dem
+// Bodenblech, und das Blatt von Modul 7 zeigt dieselbe Marke samt Legendeneintrag. NICHT
+// versprochen werden eine neue oder geaenderte Punktverteilung, ein Nachweis der Auflagerpunkte,
+// eine Menge, ein Preis, eine Rechnung, ein Bauteilmass, eine Darstellung in Modul 5, ein neues
+// Feld oder ein Versionssprung.
+const AG_ZEICHNEN_97 = EINTRAEGE[0];
+ok("[#97] die dauerhafte Darstellung der Ausgleichspunkte ist der neueste Eintrag",
+  AG_ZEICHNEN_97?.id === "chg-20260910-07" && AG_ZEICHNEN_97?.issue === 97
+  && AG_ZEICHNEN_97?.typ === "feature" && AG_ZEICHNEN_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt Marke, Dauerhaftigkeit und die Lage unter dem Bodenblech",
+  /Ausgleichspunkte/.test(AG_ZEICHNEN_97?.titel || "")
+  && /dauerhaft/i.test(AG_ZEICHNEN_97?.titel || "")
+  && /Bodenblech/.test(AG_ZEICHNEN_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Modul 5|Verteilung/i
+    .test(AG_ZEICHNEN_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 1 und Modul 7",
+  /Modul 1\b/.test(AG_ZEICHNEN_97?.testbitte || "")
+  && /Modul 7\b/.test(AG_ZEICHNEN_97?.testbitte || "")
+  && /Editor/.test(AG_ZEICHNEN_97?.testbitte || "")
+  && /Bodenblech/.test(AG_ZEICHNEN_97?.testbitte || "")
+  && /Legende/.test(AG_ZEICHNEN_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Verteilung, keine Menge und keine Rechnung",
+  !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration|Modul 5|Verteilung/i
+    .test(AG_ZEICHNEN_97?.testbitte || ""));
+
+// Davor liegt das NACHZIEHEN BEIDER MASSE IM SAMMEL-EDITOR (#97) — ueber seine Kennung
+// gesucht, weil es nicht mehr der neueste Eintrag ist. Seine Aussagen bleiben unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der Sammel-Editor des
 // Geschosseditors die Masse von Mutter Einlegeblech und Sechskantschraube Fuss aus der
 // Produktauswahl der jeweiligen Wand nachzieht, sodass Modul 1 und Modul 7 sie unmittelbar
@@ -49,7 +77,7 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // versprochen werden ein neues Feld, ein neues Katalogmass, eine Kopfhoehe der Schraube,
 // eine Norm, eine geaenderte Rechnung, ein Preis, eine Menge, ein Nachweis oder ein
 // Versionssprung.
-const SAMMEL_ZPSK_97 = EINTRAEGE[0];
+const SAMMEL_ZPSK_97 = EINTRAEGE.find(e => e.id === "chg-20260910-06");
 ok("[#97] das Nachziehen beider Masse im Sammel-Editor ist der neueste Eintrag",
   SAMMEL_ZPSK_97?.id === "chg-20260910-06" && SAMMEL_ZPSK_97?.issue === 97
   && SAMMEL_ZPSK_97?.typ === "fix" && SAMMEL_ZPSK_97?.datum === "2026-09-10");

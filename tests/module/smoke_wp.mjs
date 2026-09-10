@@ -63,6 +63,9 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // [P-24]/[D-10]/#95: ebenso Symbol, Kennfarbe und Klartext des Deckenanschlusses; die
   // Anschlusspunkte selbst kommen aus dem Rechenkern.
   DECKENANSCHLUSS: MONT.DECKENANSCHLUSS, deckenanschlussSvg: MONT.deckenanschlussSvg,
+  // [A-20]…[A-24]/#97: ebenso Marke, Kennfarbe und Klartext des Ausgleichspunkts; die Punkte
+  // selbst kommen aus dem Rechenkern, Modul 1 zeichnet sie DAUERHAFT ueber diese eine Funktion.
+  AUSGLEICHSPUNKT: MONT.AUSGLEICHSPUNKT, ausgleichspunktSvg: MONT.ausgleichspunktSvg,
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten (Mutter, Kopplungsmutter,
   // Spannplatte) — dieselbe Quelle, aus der Modul 7 zeichnet; Modul 1 fuehrt dafuer keine
   // eigene Geometrie und keine lokalen Hex-Werte mehr.
@@ -860,7 +863,9 @@ document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEd
   ok('[#96] Auto wird NICHT gespeichert (kein Feld im Wandelement)',
     !('ausgleich_override_mm' in ps()) && WP.manualAg===null
     && WP.ausgleichspunkte.every(p=>p.art!=='manuell'));
-  ok('[#96] Auto: keine Griffe in der Wandansicht (Darstellung bleibt #97)',
+  // Die GRIFFE sind Bedienhilfe und nur im Editiermodus da; die MARKE selbst zeichnet Modul 1
+  // seit #97 dauerhaft (eigener Block unten) und ohne Klasse — sie faellt hier nicht hinein.
+  ok('[#96] Auto: keine Griffe in der Wandansicht (nur die dauerhafte Marke nach #97)',
     !/class="agp"/.test(svg()) && !/class="agneu"/.test(svg()));
   // Werkzeug an: Griffe erscheinen, aus dem Auto-Stand wird ein bearbeitbarer Override.
   WP.setAgEdit(true);
@@ -939,6 +944,94 @@ document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEd
   WP.applyWand(store.aktivesWandelement());
   ok('[#96] blosses Laden schreibt keinen Ausgleichspunkt ins Element',
     JSON.stringify(ps())===vorherAg && !('ausgleich_override_mm' in ps()) && WP.manualAg===null);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Issue #97: die Ausgleichspunkte stehen DAUERHAFT als Marke unter dem Bodenblech.
+// Gefahren wird der echte Modul-1-Pfad OHNE geoeffneten Editor. Gezeichnet wird ueber
+// `ausgleichspunktSvg()` aus sembla-montage.js — DERSELBE Weg und derselbe
+// Darstellungsschluessel wie im Blatt von Modul 7 ([D-4]); Modul 1 fuehrt dafuer keine eigene
+// Marke und keinen eigenen Hex-Wert.
+// ---------------------------------------------------------------------------------------------
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const AGF=MONT.AUSGLEICHSPUNKT.farbe;
+  // Spitzen der Marken (gefuellte Dreiecke in der Kennfarbe), aufsteigend.
+  const spitzen=()=>[...svg().matchAll(new RegExp(
+    '<polygon points="([-\\d.]+),([-\\d.]+) [-\\d.]+,([-\\d.]+) [-\\d.]+,[-\\d.]+" fill="'
+    +AGF+'"/>','g'))].map(m=>({x:+m[1],y:+m[2],u:+m[3]})).sort((a,b)=>a.x-b.x);
+  // Unterkante des Bodenblechs in der Ansicht (Blechrechtecke der untersten Reihe).
+  const blechUk=()=>{ const r=[...svg().matchAll(
+      /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" fill="(#5b6673|#e8702a)"/g)]
+      .map(m=>({x:+m[1],y:+m[2],w:+m[3],h:+m[4]}));
+    if(!r.length) return null;
+    const unten=r.filter(t=>t.y===r[0].y);
+    return { uk:unten[0].y+unten[0].h, x0:Math.min(...unten.map(t=>t.x)) }; };
+
+  setzeLaenge(3000); document.getElementById('hgt').value='2.60';
+  WP.setAgEdit(false); WP.setZpEdit(false); WP.setAxisEdit(false); WP.setEdit(false); WP.run();
+  const AGP=WP.ausgleichspunkte.map(p=>p.x_mm);
+  const sc97=WP.ansichtSc();
+  ok('[#97] ohne geoeffneten Editor steht je Ausgleichspunkt eine Marke in der Wandansicht',
+    WP.agEdit===false && AGP.length>2 && spitzen().length===AGP.length
+    && !/class="agp"/.test(svg()) && !/class="agneu"/.test(svg()));
+  ok('[#97] die Marken sitzen an genau den x-Positionen aus w.ausgleichspunkte',
+    (()=>{ const b=blechUk(); if(!b) return false;
+      const sp=spitzen();
+      return AGP.every((xm,i)=>Math.abs(sp[i].x-(b.x0+xm*sc97))<1e-9); })());
+  ok('[#97] jede Marke haengt UNTER der Blechunterkante (Spitze auf der Kante)',
+    (()=>{ const b=blechUk(); if(!b) return false;
+      return spitzen().every(p=>Math.abs(p.y-b.uk)<1e-9 && p.u>b.uk); })());
+  // Rueckansicht: die x-Achse spiegelt, die Marke ist symmetrisch und bleibt in der Wand.
+  ok('[#97] auch die Rueckansicht zeigt alle Marken innerhalb der Wand', (()=>{
+    document.getElementById('viewToggle').dispatch('click');
+    const sp=spitzen(), b=blechUk();
+    document.getElementById('viewToggle').dispatch('click');
+    if(!b||sp.length!==AGP.length) return false;
+    return sp.every(p=>p.x>=b.x0-1e-9 && p.x<=b.x0+3000*sc97+1e-9); })());
+  // Editor an: die Marke bleibt: sie ist das BAUTEIL, die Griffe sind Bedienhilfe daneben.
+  WP.setAgEdit(true);
+  ok('[#97] mit geoeffnetem Editor bleiben die Marken stehen, zusaetzlich zu den Griffen',
+    spitzen().length===AGP.length && /class="agp"/.test(svg()));
+  // Die Griffe nehmen ihre Kennfarbe aus dem Darstellungsschluessel ([D-4]) — das frueher
+  // lokale Violett `#8a5cf6` lag dem Reststueck-Violett `#7a3fd6` zu nahe.
+  ok('[#97] die Editorgriffe tragen die Kennfarbe des Schluessels, kein zweiter Hex-Wert',
+    new RegExp('class="agp"[^>]*stroke="'+AGF+'"').test(svg())
+    && new RegExp('class="agneu"[^>]*stroke="'+AGF+'"').test(svg())
+    && !/#8a5cf6/.test(svg()) && !/#8a5cf6/.test(html));
+  WP.setAgEdit(false); WP.run();
+  ok('[#97] Modul 1 fuehrt keine eigene Marke: gezeichnet wird die geteilte Funktion',
+    /ausgleichspunktSvg\(RESULT\.wandelement/.test(html)
+    && /ausgleichspunktSvg=S\.ausgleichspunktSvg/.test(html)
+    && !new RegExp(AGF,'i').test(html));
+  // Legende: der Eintrag steht genau dann da, wenn die Wand Punkte fuehrt.
+  ok('[#97] die Zuschnittlegende nennt den Ausgleichspunkt mit Klartext und Form',
+    (()=>{ const t=document.getElementById('zLegende').innerHTML;
+      return t.includes(MONT.AUSGLEICHSPUNKT.label) && t.includes('class="agp"')
+        && t.includes(AGF); })());
+  // Ohne Punkte ([A-24] leere Auswahl): keine Marke, kein Legendeneintrag.
+  WP.setManualAg([]);
+  ok('[#97] ohne Ausgleichspunkte: keine Marke und kein Legendeneintrag',
+    WP.ausgleichspunkte.length===0 && spitzen().length===0
+    && !svg().includes(AGF)
+    && !document.getElementById('zLegende').innerHTML.includes(MONT.AUSGLEICHSPUNKT.label));
+  // Gegenprobe: die Darstellung hat KEINE Rechenwirkung. Segmente, Stangenstuecke und alle
+  // Stuecklistenmengen ausser der Punktzahl selbst sind wertgleich, ob mit oder ohne Punkte
+  // und ob der Editor offen ist oder nicht.
+  const kern=w=>JSON.stringify({ cols:w.tension_columns, bom:w.bom,
+    mengen:BOM.semblaBom(w).ausgleichspunkte!=null
+      ? Object.fromEntries(Object.entries(BOM.semblaBom(w))
+          .filter(([k])=>k!=='ausgleichspunkte')) : null });
+  const ohneP=kern(store.aktivesWandelement());
+  WP.agAuto(); WP.run();
+  const mitP=kern(store.aktivesWandelement());
+  WP.setAgEdit(true); WP.run();
+  const mitEditor=kern(store.aktivesWandelement());
+  WP.setAgEdit(false); WP.run();
+  ok('[#97] keine Rechenwirkung: Segmente und Mengen sind wertgleich (Gegenprobe)',
+    mitP===ohneP && mitEditor===mitP
+    && BOM.semblaBom(store.aktivesWandelement()).ausgleichspunkte
+       ===store.aktivesWandelement().ausgleichspunkte.length);
 }
 // ---------------------------------------------------------------------------------------------
 // Issue #95 / [A-26]/[A-27]: Deckenanschluss-Editor in Modul 1.

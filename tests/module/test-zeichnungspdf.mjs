@@ -333,6 +333,10 @@ ok("die bedingten Legendeneintraege haengen an denselben Abfragen ([D-4])",
         && kompakt(texte).includes(
           kompakt(MONT.ZWISCHENPUNKT.label + MONT.DECKENANSCHLUSS.label)); })());
 }
+// [A-20]…[A-24]/#97: der Wortlaut des Ausgleichspunkt-Eintrags — er steht in BEIDEN Legenden
+// unmittelbar NACH dem Deckenanschluss und vor „i3".
+const AG_TEXT = `${MONT.AUSGLEICHSPUNKT.label} — unter dem Bodenblech`;
+
 // [P-24]/[D-10]/#95: derselbe Nachweis fuer den Deckenanschluss — der Eintrag haengt an der vom
 // Rechenkern gerechneten Punktliste, in beiden Legenden an derselben Abfrage. Eine Wand ohne
 // Anschlusspunkt bekommt ihn in KEINER der beiden.
@@ -351,9 +355,9 @@ ok("die bedingten Legendeneintraege haengen an denselben Abfragen ([D-4])",
       const texte = nurText(Z.legendeHtml(w1));
       return !!e && e.form === "zform" && e.marke_farbe === MONT.DECKENANSCHLUSS.farbe
         && Z.legendeHtml(w1).includes(MONT.DECKENANSCHLUSS.farbe)
-        && liste[i + 1]?.text === "i3 (37,5 cm)"
+        && liste[i + 1]?.text === AG_TEXT
         && kompakt(texte).includes(
-          kompakt(MONT.DECKENANSCHLUSS.label + "i3 (37,5 cm)")); })());
+          kompakt(MONT.DECKENANSCHLUSS.label + AG_TEXT)); })());
   // Die Mutter ist kein Punkt mehr: der Spiegel fuehrt dieselbe Markenform wie das HTML.
   ok("[#110] die Kopplungs-/Verankerungsmarke ist der stehende Zylinder, kein Kreis",
     PDF.legendeWand(w1).find((e) => /Kopplung/.test(e.text))?.form === "zyl"

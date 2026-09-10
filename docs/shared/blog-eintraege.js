@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-07",
+    datum: "2026-09-10",
+    typ: "feature",
+    issue: 97,
+    titel: "Ausgleichspunkte stehen dauerhaft als Marke unter dem Bodenblech",
+    testbitte: "In Modul 1 eine Wand auslegen, den Ausgleichspunkt-Editor schließen: die "
+      + "Punkte bleiben als Dreiecke unter dem Bodenblech sichtbar; dasselbe Bild samt "
+      + "Legendeneintrag zeigt das Blatt in Modul 7.",
+  },
+  {
     id: "chg-20260910-06",
     datum: "2026-09-10",
     typ: "fix",

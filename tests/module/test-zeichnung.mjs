@@ -30,7 +30,10 @@ import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
          // Funktion mit ihrer eigenen Einheit auf, das Blatt mit seiner.
          spannplatteSvg as Z_spannplatteSvg,
          kopplungsmutterSvg as Z_kopplungsmutterSvg,
-         ZWISCHENPUNKT, DECKENANSCHLUSS } from "../../docs/shared/sembla-montage.js";
+         ZWISCHENPUNKT, DECKENANSCHLUSS,
+         // [A-20]…[A-24]/#97: der Darstellungsschluessel des Ausgleichspunkts und die EINE
+         // Zeichenfunktion — das Blatt darf dafuer keine eigene Marke fuehren ([D-4]).
+         AUSGLEICHSPUNKT, ausgleichspunktSvg } from "../../docs/shared/sembla-montage.js";
 import { wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
 import * as Z from "../../docs/shared/sembla-zeichnung.js";
 import { baueDateien, zeichnungHtml, zeichnungSvgText } from "../../docs/shared/sembla-export.js";
@@ -172,8 +175,14 @@ const RE_MUTTER = new RegExp(`<rect x="[-\\d.]+" y="[-\\d.]+" width="[-\\d.]+" `
 const mutterHoehen = svg => [...svg.matchAll(RE_MUTTER)].map(m => +m[1]);
 ok("Kopplungen/Verankerungen sind markiert",
   svg.includes(Z.FARBE.mutter) && mutterHoehen(svg).length > 0);
-ok("[#110] keine Kreis- oder Sechseckdarstellung mehr im Blatt",
-  !/<circle/.test(svg) && !/<polygon/.test(svg));
+// #97: `<polygon>` ist seither nicht mehr pauschal verboten — die Ausgleichspunktmarke IST ein
+// gefuelltes Dreieck ([A-20]…[A-24]). Die Aussage von #110 gilt unveraendert und wird jetzt an
+// der FARBE gefuehrt statt am Elementnamen: keine Spannkomponente (Mutter, Kopplungsmutter,
+// Spannplatte) wird als Kreis oder Vieleck gezeichnet.
+ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
+  !/<circle/.test(svg)
+  && [...svg.matchAll(/<polygon[^>]*fill="([^"]+)"/g)].every(m =>
+    m[1] !== Z.FARBE.mutter && m[1] !== Z.FARBE.platte));
 
 // #110/#106: dieselben Symbolformen wie in der Wandansicht von Modul 1 — geprueft an der
 // GEMEINSAMEN Quelle. Die Hoehen im Blatt sind seit #106 die FESTEN Papier-mm aus `SPANN_MM`
@@ -1692,6 +1701,82 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
       return a.length > 1 && a.length === b.length
         && a.every((r, i) => Math.abs(r.w - b[i].w) < 1e-9 && Math.abs(r.y - b[i].y) < 1e-9);
     })());
+}
+
+// ---- Issue #97: Ausgleichspunkte im Blatt und in der Legende ---------------------------------
+//
+// Derselbe Weg wie in der Wandansicht von Modul 1, hier ueber `blattHtml`, das druckbare
+// Dokument und die eigenstaendige SVG-Datei: EINE Zeichenableitung ([D-6]). Der
+// Legendeneintrag steht GENAU DANN im Blatt, wenn dort auch Marken gezeichnet wurden.
+{
+  const W97 = buildWall("IW-AG", 3000, 2600, [], null, { top_connection: "blech" });
+  const svg97 = Z.zeichnungSvg(W97, {}).svg;
+  const grp97 = svg97.match(/<g class="agp">.*?<\/g>/s);
+  const marken97 = t => (String(t).match(new RegExp(
+    `<polygon points="[^"]+" fill="${AUSGLEICHSPUNKT.farbe}"/>`, "g")) || []).length;
+  ok("[#97] das Blatt zeichnet eine Marke je Ausgleichspunkt in einer eigenen Gruppe",
+    W97.ausgleichspunkte.length > 2 && !!grp97
+    && marken97(svg97) === W97.ausgleichspunkte.length);
+  // Gezeichnet wird ueber die GEMEINSAME Funktion — nicht mit einer blatt-eigenen Marke ([D-4]).
+  ok("[#97] die Marken kommen aus ausgleichspunktSvg() von sembla-montage.js",
+    (() => {
+      const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url),
+        "utf8");
+      return /ausgleichspunktSvg\(w, X, Y, sc, bth,/.test(q)
+        && /AUSGLEICHSPUNKT, ausgleichspunktSvg \} from "\.\/sembla-montage\.js"/.test(q)
+        && !new RegExp(AUSGLEICHSPUNKT.farbe, "i").test(q); })());
+  // Die Marke haengt unter der Blechunterkante — geprueft am Blatt selbst: ihre Spitze liegt
+  // unterhalb JEDER Steinreihe und unterhalb der Blechoberkante.
+  ok("[#97] die Marken liegen unter dem Bodenblech, nicht in der Wandflaeche",
+    (() => {
+      const bl = [...svg97.matchAll(new RegExp(
+        `<rect x="[-\\d.]+" y="([-\\d.]+)" width="[-\\d.]+" height="([-\\d.]+)" `
+        + `fill="${Z.FARBE.stahl}"`, "g"))].map(m => ({ y: +m[1], h: +m[2] }));
+      if (!bl.length) return false;
+      const uk = Math.max(...bl.map(r => r.y + r.h));
+      const spitzen = [...svg97.matchAll(new RegExp(
+        `<polygon points="[-\\d.]+,([-\\d.]+) `, "g"))].map(m => +m[1]);
+      return spitzen.length === W97.ausgleichspunkte.length
+        && spitzen.every(y => y >= uk - 1e-6); })());
+  // [D-6] Vorschau, Druck-HTML und eigenstaendige SVG-Datei tragen DIESELBE Zeichenkette.
+  ok("[#97] Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Markengruppe ([D-6])",
+    !!grp97
+    && Z.blattHtml(W97, eingaben, { format: "a3" }).html.includes(grp97[0])
+    && Z.zeichnungDokument(W97, eingaben, { format: "a3" }).includes(grp97[0])
+    && Z.zeichnungSvgDatei(W97, eingaben, { format: "a3" }).includes(grp97[0]));
+  // Legende: der Eintrag nennt das Bauteil in Worten und traegt die Dreiecksform (das nicht
+  // farbliche Merkmal). Er steht genau dann da, wenn Marken vorkommen.
+  const legAg = Z.legendeHtml(W97);
+  ok("[#97] die Legende nennt den Ausgleichspunkt mit Klartext, Form und Kennfarbe",
+    legAg.includes(AUSGLEICHSPUNKT.label) && legAg.includes('class="agp"')
+    && legAg.includes(AUSGLEICHSPUNKT.farbe) && /unter dem Bodenblech/.test(legAg)
+    && /\.zlegende i\.agp\{/.test(Z.ZEICHNUNG_CSS)
+    && Z.blattHtml(W97, eingaben, { format: "a3" }).html.includes(AUSGLEICHSPUNKT.label));
+  // Ohne Punkte: keine Marke, kein Legendeneintrag, keine leere Gruppe — und die Ausgabe ist
+  // zeichengleich zu derselben Wand ohne das Feld (Altbestand).
+  {
+    const W0 = buildWall("IW-AG0", 3000, 2600, [], null,
+      { top_connection: "blech", ausgleich_override_mm: [] });
+    const svg0 = Z.zeichnungSvg(W0, {}).svg;
+    const alt = JSON.parse(JSON.stringify(W0)); delete alt.ausgleichspunkte;
+    ok("[#97] ohne Ausgleichspunkte: keine Marke, keine Gruppe, kein Legendeneintrag",
+      W0.ausgleichspunkte.length === 0 && marken97(svg0) === 0
+      && !svg0.includes('class="agp"') && !svg0.includes(AUSGLEICHSPUNKT.farbe)
+      && !Z.legendeHtml(W0).includes(AUSGLEICHSPUNKT.label)
+      && !Z.legendeHtml({}).includes(AUSGLEICHSPUNKT.label));
+    ok("[#97] Altbestand ohne das Feld ist zeichengleich zur Wand ohne Punkte",
+      Z.zeichnungSvg(alt, {}).svg === svg0
+      && Z.legendeHtml(alt) === Z.legendeHtml(W0)
+      && ausgleichspunktSvg(alt, v => v, v => v, 1, 1, {}) === "");
+  }
+  // Nicht-Ziel: Blattmasstab, Bemassung und Schriftfeld bleiben unberuehrt — die Marke liegt im
+  // ohnehin vorhandenen Zeichnungsrand unter der Wand.
+  ok("[#97] Nicht-Ziel: Masstab und Blattmass bleiben unveraendert",
+    (() => {
+      const ohne = JSON.parse(JSON.stringify(W97)); ohne.ausgleichspunkte = [];
+      const a = Z.zeichnungSvg(W97, {}), b = Z.zeichnungSvg(ohne, {});
+      return a.masstab === b.masstab && a.svg.length > b.svg.length
+        && a.svg.replace(/<g class="agp">.*?<\/g>/s, "") === b.svg; })());
 }
 
 let fail = 0;

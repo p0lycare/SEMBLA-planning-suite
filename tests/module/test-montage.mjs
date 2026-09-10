@@ -22,6 +22,7 @@
 // oder gitignorierten Geometrien.
 
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import {
@@ -34,6 +35,7 @@ import {
   schraubeSvg,
   ZWISCHENPUNKT, zwischenpunktSvg,
   DECKENANSCHLUSS, deckenanschlussSvg,
+  AUSGLEICHSPUNKT, ausgleichspunktSvg,
 } from "../../docs/shared/sembla-montage.js";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
 import { FARBE as Z_FARBE } from "../../docs/shared/sembla-zeichnung.js";
@@ -1344,6 +1346,105 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       import.meta.url), "utf8");
       return /NACHZIEHPUNKT \[P-6\] \(#110\/#106\)/.test(q)
         && /r="2\.8" fill="\$\{FARBE\.mutter\}"/.test(q); })());
+}
+
+// ---- Issue #97: Ausgleichspunkte als dauerhafte Marke unter dem Bodenblech ---------------
+//
+// Geprueft wird die EINE exportierte Zeichenfunktion am ECHTEN Wandelement aus `buildWall`
+// ([A-20]…[A-24]): Zahl und Lage der Marken, die leere Liste, die Herkunft der Kennfarbe und —
+// als Gegenprobe zum ausdruecklichen Nicht-Ziel des Pakets — die ZEICHENGLEICHHEIT von
+// `konturSvg()` und den Baugruppenbildern gegen einen eingefrorenen Vergleich.
+{
+  // Zeichenabbildung, wie ein Aufrufer sie stellt: mm -> Zeichenkoordinaten, y von unten.
+  const scAG = 0.1, bthAG = 1.5, eAG = SPANN_EINHEIT.blatt;
+  const XAG = v => 10 + v * scAG, YAG = v => 300 - v * scAG;
+  const UK = YAG(0) + bthAG;   // Unterkante des Bodenblechs — die Bezugskante der Marke
+  /** Dreiecke einer Zeichenkette als {spitze_x, spitze_y, unten_y, breite, farbe}. */
+  const dreiecke = t => [...String(t).matchAll(
+    /<polygon(?: class="([^"]*)")? points="([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+) ([-\d.]+),([-\d.]+)" fill="([^"]+)"\/>/g)]
+    .map(m => ({ klasse: m[1], x: +m[2], y: +m[3], lx: +m[4], ly: +m[5], rx: +m[6], ry: +m[7],
+      farbe: m[8] }));
+
+  const WAG = buildWall("AG-Wand", 3000, 2600, [], null, PS_BLECH);
+  const svgAG = ausgleichspunktSvg(WAG, XAG, YAG, scAG, bthAG, { e: eAG });
+  const dAG = dreiecke(svgAG);
+  ok("[#97] die Marken kommen aus w.ausgleichspunkte — eine je Punkt, in Reihenfolge",
+    WAG.ausgleichspunkte.length > 2 && dAG.length === WAG.ausgleichspunkte.length
+    && dAG.every((d, i) => Math.abs(d.x - XAG(WAG.ausgleichspunkte[i].x_mm)) < 1e-9));
+  ok("[#97] jede Marke haengt UNTER der Blechunterkante: Spitze auf der Kante, Koerper darunter",
+    dAG.length > 0 && dAG.every(d => Math.abs(d.y - UK) < 1e-9
+      && d.ly > UK && Math.abs(d.ly - d.ry) < 1e-9));
+  ok("[#97] sie ist symmetrisch um die Punktlage und damit spiegelfest",
+    dAG.every(d => Math.abs((d.x - d.lx) - (d.rx - d.x)) < 1e-9 && d.rx > d.lx));
+  // Genau der Fall des Pakets: eine Wand mit DREI Punkten ([A-24] Override) — die Marken stehen
+  // an genau diesen x-Positionen, nichts wird aufgefuellt.
+  {
+    const W3 = buildWall("AG-3", 3250, 2600, [], null,
+      { top_connection: "blech", ausgleich_override_mm: [300, 1700, 2900] });
+    const d3 = dreiecke(ausgleichspunktSvg(W3, XAG, YAG, scAG, bthAG, { e: eAG }));
+    ok("[#97] drei Ausgleichspunkte ergeben drei Marken an genau diesen x-Positionen",
+      W3.ausgleichspunkte.length === 3 && d3.length === 3
+      && [300, 1700, 2900].every((xm, i) => Math.abs(d3[i].x - XAG(xm)) < 1e-9));
+  }
+  // Leere Liste und Alt-Wandelement ohne das Feld: LEERE Zeichenkette, kein erfundener Punkt.
+  ok("[#97] leere Liste, fehlendes Feld und fehlendes Wandelement ergeben die leere Zeichenkette",
+    (() => {
+      const leer = JSON.parse(JSON.stringify(WAG)); leer.ausgleichspunkte = [];
+      const alt = JSON.parse(JSON.stringify(WAG)); delete alt.ausgleichspunkte;
+      const f = w => ausgleichspunktSvg(w, XAG, YAG, scAG, bthAG, { e: eAG });
+      return f(leer) === "" && f(alt) === "" && f(null) === "" && f({}) === ""; })());
+  // Die Kennfarbe kommt aus dem Darstellungsschluessel — nicht aus einem Hex-Wert in der
+  // Zeichenzeile ([D-4]).
+  ok("[#97] die Kennfarbe kommt aus AUSGLEICHSPUNKT.farbe",
+    dAG.every(d => d.farbe === AUSGLEICHSPUNKT.farbe)
+    && /#[0-9a-f]{3,6}/i.test(AUSGLEICHSPUNKT.farbe)
+    && !!AUSGLEICHSPUNKT.label
+    && dreiecke(ausgleichspunktSvg(WAG, XAG, YAG, scAG, bthAG, { e: eAG, farbe: "#123456" }))
+      .every(d => d.farbe === "#123456"));
+  // [D-4] Kollisionsfreiheit: die Marke darf mit Zuschnitt, Spannkomponenten, Einlegeblech,
+  // Deckenanschluss und dem Blech selbst nicht verwechselbar sein — insbesondere nicht mit dem
+  // Reststueck-Violett, dem die frueheren Editorgriffe (#8a5cf6) zu nahe lagen.
+  ok("[#97] die Kennfarbe kollidiert mit keinem anderen Darstellungsschluessel ([D-4])",
+    (() => {
+      const fremd = [...Object.values(STUECK_FARBE), ...Object.values(SPANN_FARBE),
+        BLECHSTOSS.farbe, ZWISCHENPUNKT.farbe, DECKENANSCHLUSS.farbe,
+        Z_FARBE.stahl, Z_FARBE.stahl_rand, Z_FARBE.i2, Z_FARBE.i3, Z_FARBE.stein_rand,
+        Z_FARBE.kontur, Z_FARBE.oeffnung, Z_FARBE.text, Z_FARBE.raster];
+      const f = AUSGLEICHSPUNKT.farbe.toLowerCase();
+      return !fremd.map(c => String(c).toLowerCase()).includes(f)
+        && f !== "#7a3fd6" && f !== "#8a5cf6"; })());
+  // Symbolmass: die Marke skaliert mit `e` (Papier-mm), NICHT mit dem Wandmasstab — dieselbe
+  // Regel wie bei Einlegeblech und Deckenanschluss ([D-9]/#106).
+  ok("[#97] Basisbreite und Hoehe sind Symbolmasse aus SPANN_MM und skalieren mit `e`",
+    (() => {
+      const d1 = dreiecke(ausgleichspunktSvg(WAG, XAG, YAG, scAG, bthAG, { e: 1 }))[0];
+      const d5 = dreiecke(ausgleichspunktSvg(WAG, XAG, YAG, scAG, bthAG, { e: 5 }))[0];
+      return Math.abs((d1.rx - d1.lx) - SPANN_MM.ag_b) < 1e-9
+        && Math.abs((d1.ly - d1.y) - SPANN_MM.ag_h) < 1e-9
+        && Math.abs((d5.rx - d5.lx) - 5 * SPANN_MM.ag_b) < 1e-9
+        && Math.abs((d5.ly - d5.y) - 5 * SPANN_MM.ag_h) < 1e-9; })());
+  // Nicht-Ziel des Pakets: Modul 5 zeigt die Marke NICHT und bleibt zeichengleich. Geprueft
+  // an der Farbe, an der Form UND an einem eingefrorenen Vergleich der ganzen Zeichenkette.
+  {
+    const absAG = montageAbschnitte(WR);
+    const bilder = absAG.map(a => abschnittSvg(WR, a, 900, 430)).join("");
+    const kontur = konturSvg(WR, null, 900, 250);
+    const kurz = t => createHash("sha256").update(t).digest("hex").slice(0, 16);
+    ok("[#97] Nicht-Ziel: Modul 5 zeichnet keine Ausgleichspunktmarke",
+      WR.ausgleichspunkte.length > 0
+      && !kontur.includes(AUSGLEICHSPUNKT.farbe) && !bilder.includes(AUSGLEICHSPUNKT.farbe)
+      && dreiecke(kontur).length === 0 && dreiecke(bilder).length === 0);
+    ok("[#97] Nicht-Ziel: konturSvg und die Baugruppenbilder bleiben zeichengleich (eingefroren)",
+      kurz(kontur) === "bd04f6aa967bfdb1" && kurz(bilder) === "412df6416ad80f09");
+  }
+  // Die Marke ist DARSTELLUNG: aus ihr wird nichts abgeleitet, und die Punktliste bleibt die
+  // eine Quelle der Menge ([A-18]).
+  ok("[#97] keine Rechenwirkung: Stueckliste und Punktzahl bleiben unberuehrt",
+    (() => {
+      const vor = JSON.stringify(semblaBom(WAG));
+      ausgleichspunktSvg(WAG, XAG, YAG, scAG, bthAG, { e: eAG });
+      return JSON.stringify(semblaBom(WAG)) === vor
+        && semblaBom(WAG).ausgleichspunkte === WAG.ausgleichspunkte.length; })());
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

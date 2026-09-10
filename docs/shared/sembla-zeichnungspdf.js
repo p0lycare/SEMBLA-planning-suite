@@ -86,7 +86,7 @@ import { bodenblechStoesse, bodenblechTeile, STUECK_LABEL,
          BLECHSTOSS,
          // #110: Kennfarbe und Klartext des Einlegeblechs — derselbe Schluessel, den das
          // Blatt-SVG benutzt; eine zweite Werteliste hier waere Drift ([D-4]).
-         ZWISCHENPUNKT, DECKENANSCHLUSS } from "./sembla-montage.js";
+         ZWISCHENPUNKT, DECKENANSCHLUSS, AUSGLEICHSPUNKT } from "./sembla-montage.js";
 // #110: die wirksamen Zwischenspannpunkte kommen aus der EINEN Ableitung des Rechenkerns —
 // dieselbe Abfrage wie in `legendeHtml()`, damit der bedingte Eintrag gekoppelt bleibt.
 import { wirksameZwischenpunkte } from "./sembla-core.js";
@@ -276,6 +276,16 @@ function _marke(x, basis, fs, z) {
       + ` ${_n(x + b)},${_n(y1)} ${_n(x + w)},${_n(y1)}" fill="none"`
       + ` stroke="${z.marke_farbe}" stroke-width="${_n(lw)}" stroke-linejoin="miter"/>`,
       breite: w + fs * 0.4 };
+  }
+  // [A-20]…[A-24]/#97: die Ausgleichspunktmarke — ein gefuelltes Dreieck mit der Spitze nach
+  // OBEN (10 x 8), woertlich das `<i class="agp">`-Kaestchen der HTML-Legende und dieselbe Form,
+  // die das Blatt unter dem Bodenblech zeichnet. Ein gefuellter Balken (`bar`) zeigte die Form
+  // nicht und waere damit ein zweiter Darstellungsschluessel ([D-4]).
+  if (z.form === "dreieck") {
+    const w = _mmPx(10), h = _mmPx(8);
+    const y0 = basis - h * 1.1, y1 = y0 + h;
+    return { svg: `<polygon points="${_n(x + w / 2)},${_n(y0)} ${_n(x)},${_n(y1)}`
+      + ` ${_n(x + w)},${_n(y1)}" fill="${z.marke_farbe}"/>`, breite: w + fs * 0.4 };
   }
   // #91: die Blechstossmarke — ein stahlfarbenes Blechfeld (11 x 9 wie `plate`) mit der
   // WEISSEN Marke darin, also genau das, was das Blatt zeigt und woertlich das
@@ -658,6 +668,12 @@ export function legendeWand(w) {
     // und derselben Kennfarbe. Eine Wand ohne Anschlusspunkt bekommt ihn in keiner der beiden.
     ...((el.deckenanschlusspunkte || []).length
       ? [{ form: "zform", marke_farbe: DECKENANSCHLUSS.farbe, text: DECKENANSCHLUSS.label }] : []),
+    // [A-20]…[A-24]/#97: der Ausgleichspunkt — an GENAU DERSELBEN Abfrage wie im HTML (die vom
+    // Rechenkern gerechnete Punktliste), an derselben Stelle der Reihe, mit demselben Wortlaut
+    // und derselben Kennfarbe. Eine Wand ohne Punkt bekommt ihn in KEINER der beiden.
+    ...((el.ausgleichspunkte || []).length
+      ? [{ form: "dreieck", marke_farbe: AUSGLEICHSPUNKT.farbe,
+        text: `${AUSGLEICHSPUNKT.label} — unter dem Bodenblech` }] : []),
     { form: "plate", marke_farbe: FARBE_Z.i3, text: "i3 (37,5 cm)" },
     { form: "plate", marke_farbe: FARBE_Z.i2, text: "i2 (25 cm)" },
     { form: "kuerzel", kuerzel: BRAND_Z.F0.kuerzel, marke_farbe: BRAND_Z.F0.farbe,

@@ -73,6 +73,25 @@ export function stueckFarbe(art) {
 export const BLECHSTOSS = { farbe: "#fff", label: "Blechstoß" };
 
 /**
+ * Darstellungsschluessel des AUSGLEICHSPUNKTS ([D-4], [A-20]…[A-24]/#96/#97) — Kennfarbe und
+ * Klartext der Marke, die ein Ausgleichsblech UNTER dem Bodenblech ausweist.
+ *
+ * Er liegt hier neben `BLECHSTOSS`/`ZWISCHENPUNKT`/`DECKENANSCHLUSS`, weil dieselbe Datei schon
+ * die Fusszone zeichnet (`bodenblechSvg`) und dieselbe Marke in der Wandansicht (Modul 1) und im
+ * Zeichnungsblatt (Modul 7) gleich aussehen muss; ein modul-eigener Schluessel oder ein Hex-Wert
+ * unmittelbar in der Zeichenzeile waere genau die Drift, die [D-4] ausschliesst.
+ *
+ * Die Farbe ist bewusst KEINE der Zuschnittfarben (`STUECK_FARBE` — insbesondere nicht das
+ * Reststueck-Violett `#7a3fd6`), keine der Anschlussfarben (`SPANN_FARBE`), nicht die des
+ * Einlegeblechs (`ZWISCHENPUNKT`), nicht die des Deckenanschlusses (`DECKENANSCHLUSS`) und nicht
+ * die des Blechs selbst (`FARBE.stahl`/`stahl_rand`): das Ausgleichsblech ist ein eigenes Bauteil
+ * und darf mit keinem davon verwechselbar sein. Bis #97 war das Violett `#8a5cf6` nur die Farbe
+ * der EDITORGRIFFE in Modul 1 und lag dem Reststueck damit zu nahe; die Griffe nehmen ihre Farbe
+ * seither aus diesem Schluessel.
+ */
+export const AUSGLEICHSPUNKT = { farbe: "#b5179e", label: "Ausgleichsblech (Ausgleichspunkt)" };
+
+/**
  * Darstellungsschluessel der Spannkomponenten ([D-4], #110/#106) — Kennfarben und Symbolmasse
  * der Schrauben, Muttern, Kopplungsmuttern und Spannplatten.
  *
@@ -123,6 +142,8 @@ export const SPANN_MM = {
   dc_schenkel: 3.6,    // Schenkellaenge je Winkel des Deckenanschlusses ([P-24])
   dc_h: 4.0,           // Hoehe des Z ueber der Wandoberkante (Winkelstoss bis Decke)
   dc_versatz: 1.6,     // Versatz des senkrechten Z-Zuges nach LINKS neben die Spannachse (#97)
+  ag_b: 3.2,           // Basisbreite der Ausgleichspunktmarke ([A-20]/#97)
+  ag_h: 2.0,           // Hoehe der Ausgleichspunktmarke unter der Blechunterkante (#97)
   strich: 0.40,        // Strichstaerke offener Profile
 };
 
@@ -1302,6 +1323,71 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
   for (const xm of bodenblechStoesse(w))
     s += `<line x1="${n(X(xm))}" y1="${n(y0)}" x2="${n(X(xm))}" y2="${n(y0 + bth)}" `
       + `stroke="${BLECHSTOSS.farbe}" stroke-width="${n(sStoss)}"/>`;
+  return s;
+}
+
+/**
+ * AUSGLEICHSPUNKTE als Marken unter dem Bodenblech zeichnen ([A-20]…[A-24], #96/#97) —
+ * EIN Zeichenweg fuer alle Ausgaben, die sie dauerhaft zeigen ([D-4]).
+ *
+ * Genutzt von der Wandansicht (Modul 1) UND von der technischen Zeichnung (Modul 7, per Import).
+ * Modul 5 ruft sie ausdruecklich NICHT: Baugruppenbilder und Wandueberblick bleiben zeichengleich
+ * (#97). Die Funktion liegt trotzdem hier, weil dieselbe Datei schon das Bodenblech zeichnet und
+ * die Marke an dessen Unterkante haengt.
+ *
+ * MASSGEBEND ist allein `w.ausgleichspunkte` aus dem Rechenkern ([A-20]…[A-24]) — die Liste wird
+ * GELESEN, nicht sortiert, nicht gefiltert und nicht nachgerechnet; `art` (`wandende`/
+ * `blechstoss`/`auffuellung`/`manuell`) unterscheidet die Marke bewusst nicht: gezeichnet wird das
+ * Bauteil, und es ist an jedem Punkt dasselbe. Eine leere Liste und ein Alt-Wandelement ohne das
+ * Feld ergeben die LEERE Zeichenkette — es wird kein Punkt erfunden und keine leere Gruppe
+ * ausgegeben.
+ *
+ * FORM: gefuelltes Dreieck mit der Spitze nach OBEN an der Blechunterkante (`Y(0) + bth`), der
+ * Koerper vollstaendig DARUNTER — die klassische Auflagermarke. Das ist das NICHT FARBLICHE
+ * Merkmal (#15): Blechstoss (weisse senkrechte Linie) und Sonderzuschnitt (Schraffur) liegen beide
+ * IM Blechstreifen, das Einlegeblech ist ein OFFENES Profil auf einer Lagen-Oberkante. Diese Marke
+ * ist als einzige gefuellt UND liegt als einzige ausserhalb und unterhalb des Blechs; sie bleibt
+ * damit im Schwarz-Weiss-Ausdruck aufloesbar, Farbe kommt nur additiv dazu.
+ *
+ * Basisbreite und Hoehe sind FESTE SYMBOLMASSE aus `SPANN_MM` ([D-9]) und bewusst KEINE
+ * Bauteilmasse: fuer das Ausgleichsblech liegen keine bestaetigten Abmessungen vor, und ein hier
+ * gesetztes mm-Mass liesse sich als solches zurueckzulesen. Aus dem Symbol wird nichts abgeleitet —
+ * insbesondere keine Menge (die entsteht nach [A-18] in `sembla-bom.js` aus der LAENGE der Liste).
+ *
+ * Die Signatur ist absichtlich die von `bodenblechSvg()`: beide zeichnen dieselbe Fusszone, und
+ * beide Aufrufer halten diese Werte schon. Die Marke ist spiegelfest — sie ist symmetrisch um `x`,
+ * die Rueckansicht von Modul 1 (fallendes `X`) zeigt sie also unveraendert.
+ *
+ * @param {any} w Wandelement
+ * @param {(x:number)=>number} X Weltkoordinate x (mm) -> Zeichenkoordinate
+ * @param {(z:number)=>number} Y Weltkoordinate z (mm) -> Zeichenkoordinate
+ * @param {number} sc Massstabsfaktor (Zeichenkoordinaten je mm) — nur der Vollstaendigkeit der
+ *        Fusszonen-Signatur wegen entgegengenommen; die Marke ist ein Symbol und skaliert mit `e`.
+ * @param {number} bth Blechdicke in Zeichenkoordinaten
+ * @param {{n?:(v:number)=>any,e?:number,breite?:number,hoehe?:number,farbe?:string,
+ *          klasse?:string}} [opts]
+ *        `e` = Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`), `n` = Zahlenformatierer des
+ *        aufrufenden Moduls.
+ * @returns {string} SVG-Fragment (gefuellte Dreiecke) oder ""
+ */
+export function ausgleichspunktSvg(w, X, Y, sc, bth, opts = {}) {
+  const punkte = (w && Array.isArray(w.ausgleichspunkte)) ? w.ausgleichspunkte : [];
+  if (!punkte.length) return "";
+  const n = opts.n || (v => v);
+  const e = opts.e > 0 ? opts.e : 1;
+  const b = (opts.breite != null ? opts.breite : SPANN_MM.ag_b * e) / 2;
+  const h = opts.hoehe != null ? opts.hoehe : SPANN_MM.ag_h * e;
+  const farbe = opts.farbe || AUSGLEICHSPUNKT.farbe;
+  const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
+  // Bezugskante ist die UNTERKANTE des Blechs — dieselbe Zahl, mit der `bodenblechSvg()` seine
+  // Rechtecke schliesst. Die Spitze beruehrt sie, der Koerper haengt darunter.
+  const yo = Y(0) + bth;
+  let s = "";
+  for (const p of punkte) {
+    const x = X(+p.x_mm);
+    s += `<polygon${kl} points="${n(x)},${n(yo)} ${n(x - b)},${n(yo + h)} `
+      + `${n(x + b)},${n(yo + h)}" fill="${farbe}"/>`;
+  }
   return s;
 }
 
