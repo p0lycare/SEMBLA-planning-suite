@@ -51,7 +51,7 @@ const eingabenMitAuswahl = { planung: { produkte: { quelle: null, rollen: {
 
 const vg = WA.vorspannVorgaben(eingabenMitAuswahl, katalog);
 ok('[Z-1] Standardlaengen kommen unveraendert aus dem Katalog (absteigend)',
-  JSON.stringify(vg.rod_lengths_mm) === '[1000,850]' && vg.quelle === 'katalog');
+  JSON.stringify(vg.rod_lengths_mm) === '[1000,920]' && vg.quelle === 'katalog');
 ok('[Z-6] genau ein Reststueckprodukt ergibt seine Laenge',
   vg.rod_rest_mm === 100 && vg.rod_overhang_mm === ROD_OVERHANG);
 
@@ -84,7 +84,7 @@ const w = store.holeElement(a.id).wandelement;   // GESPEICHERTER Stand, nicht d
 ok('[P-18] die Anlage belegt die leeren Verwendungsstellen aus dem Katalog vor',
   (a.gesetzt.rod_std || []).length === 2 && (a.gesetzt.rod_rest || []).length === 1);
 ok('#15 der gespeicherte Stand traegt die Kataloglaengen',
-  JSON.stringify(w.prestress.rod_lengths_mm) === '[1000,850]');
+  JSON.stringify(w.prestress.rod_lengths_mm) === '[1000,920]');
 ok('#15 `rod_mm` ist die groesste gewaehlte Standardlaenge ([Z-2])',
   w.rod_mm === 1000 && w.prestress.rod_mm === 1000);
 ok('#62 nirgends im gespeicherten JSON steht die erfundene 1100-mm-Stange',
@@ -93,7 +93,7 @@ ok('[Z-6] das gewaehlte Reststueck steht in der Vorspannung', w.prestress.rod_re
 
 const st = alleStuecke(w);
 ok('[Z-1] jedes Standardstueck ist eine echte Kataloglaenge',
-  st.length > 0 && st.filter(s => s.art === 'standard').every(s => s.len_mm === 1000 || s.len_mm === 850));
+  st.length > 0 && st.filter(s => s.art === 'standard').every(s => s.len_mm === 1000 || s.len_mm === 920));
 const obereSegmente = (w.tension_columns || [])
   .flatMap(c => c.segments.filter(sg => sg.z1_mm === w.height_mm));
 ok('[Z-6] jedes Segment an der Wandoberkante schliesst mit dem Reststueck ab',
@@ -207,7 +207,7 @@ const schreibt = protokoll.filter(x => x.op === 'speichere');
 
 ok('#15 es gibt GENAU EINEN Schreibvorgang', schreibt.length === 1);
 ok('#15 und der erste geschriebene Stand ist bereits der fertige',
-  JSON.stringify(schreibt[0].wandelement.prestress.rod_lengths_mm) === '[1000,850]'
+  JSON.stringify(schreibt[0].wandelement.prestress.rod_lengths_mm) === '[1000,920]'
   && schreibt[0].wandelement.prestress.rod_rest_mm === 100
   && !JSON.stringify(schreibt[0].wandelement).includes('1100'));
 ok('#15 die Rollenauswahl reist im SELBEN Schreibvorgang mit ([P-13]/[P-18])',
@@ -242,8 +242,210 @@ ok('[P-13] der Patch trifft die Abschnitte der besitzenden Module',
   !!rollenP.patch.planung?.produkte?.rollen?.rod_std && !!rollenP.patch.aufbau?.produkte?.rollen?.latte
   && !rollenP.patch.planung.produkte.rollen.latte);
 ok('die reine Rechnung liefert denselben Stand wie die Anlage',
-  JSON.stringify(rein.wandelement.prestress.rod_lengths_mm) === '[1000,850]'
+  JSON.stringify(rein.wandelement.prestress.rod_lengths_mm) === '[1000,920]'
   && rein.wandelement.wandtyp === 'ohne_wind');
+
+
+// ===========================================================================
+// 6) Lesende Neurechnung eines GESPEICHERTEN Wandelements (#120)
+//    Die echte Kette: storage.js unter localStorage-Double + echter Standardkatalog
+//    -> WA.wandelementAktualisiert -> sembla-zeichnung.js (blattHtml/zeichnungSvg).
+// ===========================================================================
+const ENG = await import("../../docs/shared/sembla-engine.js");
+
+/** Frischer Speicher mit geladenem Standardkatalog und genau einer angelegten Wand. */
+function aufbau(){
+  globalThis.localStorage = new MemStorage();
+  store.setzeKatalog(KAT.parseKatalog(katalogText));
+  return WA.legeWandAn(store, { name: 'M7-Wand', laenge_mm: 3000, hoehe_mm: 2600,
+                                wandtyp: 'mit_wind' });
+}
+const stand = (id) => store.holeElement(id);
+const roh = () => localStorage.getItem('sembla:elemente');
+
+// --- Abnahmetest 1: veraltete Zerlegung (Altstand-Fallback) ----------------
+// Die Wand wird bewusst mit dem Altstand-Fallback des Cores gespeichert (Feld fehlt ganz,
+// rod_mm = 1100) — genau der Zustand aus #15/#62 —, waehrend ihre Produktauswahl die
+// Kataloglaengen fuehrt. Modul 7 muss daraus die Kataloglaengen und das Reststueck zeichnen.
+{
+  const p = aufbau();
+  const el = stand(p.id);
+  const alt = buildWall('M7-Wand', 3000, 2600, [], null,
+    { blech_mm: 1000, top_connection: 'spannplatte' });     // ohne rod_lengths_mm => 1100 mm
+  alt.wandtyp = 'mit_wind'; alt.abdichtung = el.wandelement.abdichtung;
+  store.speichere('M7-Wand', alt, p.id);
+  const vorher = roh();
+
+  const eing = store.holeEingaben(p.id);
+  const erg = WA.wandelementAktualisiert(store.holeElement(p.id).wandelement, eing,
+                                         store.holeKatalog(), ENG);
+  ok('#120/1 der Altstand traegt wirklich den 1100-mm-Fallback',
+    stand(p.id).wandelement.rod_mm === 1100);
+  ok('#120/1 die Neurechnung setzt die KATALOGLAENGEN ([Z-1])',
+    erg.aktualisiert && JSON.stringify(erg.wandelement.prestress.rod_lengths_mm) === '[1000,920]');
+  ok('#120/1 das Reststueck am oberen Wandabschluss ist real bestueckt ([Z-6])',
+    alleStuecke(erg.wandelement).some(x => x.art === 'rest')
+    && !alleStuecke(erg.wandelement).some(x => x.art === 'standard' && x.mass_mm === 1100));
+  ok('#120/1 der SPEICHER ist danach byte-gleich unveraendert ([P-1])', roh() === vorher);
+  ok('#120/1 das hereingereichte Wandelement wurde nicht angefasst',
+    stand(p.id).wandelement.rod_mm === 1100);
+  // … und das Blatt zeigt genau diesen Stand (dieselbe eine Zeichenableitung, [D-6]).
+  const blattNeu = ZEI.blattHtml(erg.wandelement, eing, ZEI.standardOptionen()).html;
+  const blattAlt = ZEI.blattHtml(stand(p.id).wandelement, eing, ZEI.standardOptionen()).html;
+  ok('#120/1 das Blatt traegt den neu gerechneten Stand', blattNeu !== blattAlt
+    && ZEI.zeichnungSvg(erg.wandelement).svg !== ZEI.zeichnungSvg(stand(p.id).wandelement).svg);
+}
+
+// --- Abnahmetest 2: nach einer Sammelaenderung an der Produktauswahl -------
+// Verglichen wird im NACHWEIS-Modus: die Wand traegt eine gespeicherte Vorspannkraft
+// (`prestress.force_kN`, so schreibt Modul 1 seine „feste Auslegung"), und genau daran
+// erkennt die Neurechnung, dass sie NACHWEISEN und nicht neu optimieren darf — eine
+// Ausgabe verschiebt die Auslegung einer Wand nicht stillschweigend. Der Auto-Modus
+// mischte zwei Fragen und ist hier nicht gemeint.
+{
+  const p = aufbau();
+  const el = stand(p.id);
+  // Wie Modul 1 im Modus „Feste Auslegung": die Kraft steht danach im Wandelement.
+  const fest = ENG.nachweisPruefen({
+    name: el.name, length_mm: 3000, height_mm: 2600, openings: [], sides: el.wandelement.sides,
+    steps: [], interlocks: [],
+    prestress: { ...el.wandelement.prestress, max_span_grid: 3, force_kN: 60 },
+    load: { ...WA.LAST_VORGABE } }).wandelement;
+  fest.wandtyp = 'mit_wind';
+  store.speichere(el.name, fest, p.id);
+  const vorherStuecke = JSON.stringify(alleStuecke(stand(p.id).wandelement));
+
+  // Sammelaenderung: NUR die Auswahl wird umgesetzt (derselbe eine Schreibweg, den auch der
+  // Sammel-Editor benutzt) — das gespeicherte Wandelement bleibt dabei stehen.
+  store.setzeProduktrolle('rod_std', ['gewindestange-m10-850'], p.id);
+  const roh2 = roh();
+  const eing = store.holeEingaben(p.id);
+  const we = stand(p.id).wandelement;
+  const erg = WA.wandelementAktualisiert(we, eing, store.holeKatalog(), ENG);
+
+  // Referenz: der Auslegungspfad von Modul 1 (wandplanung.html `vorgaben()` -> Engine) fuer
+  // dieselbe Wand — Vorspann-Hardware frisch aus derselben Auswahl, alles Uebrige aus dem
+  // gespeicherten Element.
+  const spez = KAT.produktSpezifikation(eing, store.holeKatalog());
+  const ps = { ...we.prestress };
+  delete ps.rod_mm; delete ps.rod_lengths_mm;
+  if (spez.rod.laengen_mm.length) ps.rod_lengths_mm = spez.rod.laengen_mm.slice();
+  ps.rod_rest_mm = spez.rod.rest_mm != null ? spez.rod.rest_mm : 0;
+  ps.rod_overhang_mm = we.prestress.rod_overhang_mm;
+  const m1 = ENG.nachweisPruefen({
+    name: we.name, length_mm: we.length_mm, height_mm: we.height_mm,
+    openings: [], sides: we.sides, steps: [], interlocks: [], prestress: ps,
+    load: { ...WA.LAST_VORGABE },
+    material: (we.verification && we.verification.material) || undefined }).wandelement;
+
+  ok('#120/2 Pruefaufbau: die Wand traegt eine gespeicherte Vorspannkraft',
+    we.prestress.force_kN === 60);
+  ok('#120/2 die Sammelaenderung liess das gespeicherte Wandelement veraltet stehen',
+    JSON.stringify(we.prestress.rod_lengths_mm) === '[1000,920]'
+    && JSON.stringify(alleStuecke(we)) === vorherStuecke);
+  ok('#120/2 Modul 7 leitet dieselben Masse ab wie der Auslegungspfad von Modul 1',
+    JSON.stringify(alleStuecke(erg.wandelement)) === JSON.stringify(alleStuecke(m1))
+    && JSON.stringify(erg.wandelement.prestress) === JSON.stringify(m1.prestress));
+  ok('#120/2 die gespeicherte Auslegung wird NACHGEWIESEN, nicht neu optimiert',
+    erg.wandelement.prestress.force_kN === 60
+    && erg.wandelement.verification.modus === 'nachweis');
+  ok('#120/2 und das sind wirklich die NEUEN Masse',
+    JSON.stringify(erg.wandelement.prestress.rod_lengths_mm) === '[920]'
+    && JSON.stringify(alleStuecke(erg.wandelement)) !== vorherStuecke);
+  ok('#120/2 auch dabei bleibt der Speicher byte-gleich', roh() === roh2);
+  ok('#120/2 das Blatt beider Wege ist deckungsgleich ([D-6])',
+    ZEI.blattHtml(erg.wandelement, eing, ZEI.standardOptionen()).html
+      === ZEI.blattHtml(m1, eing, ZEI.standardOptionen()).html);
+}
+
+// --- … und ohne gespeicherte Kraft bleibt es bei der Auslegung -------------
+// Ein im Auto-Modus geschriebenes Wandelement traegt keine `force_kN`; dann rechnet die
+// Neurechnung wie Modul 1 im Auto-Modus und wie der Geschosseditor in derselben Lage.
+{
+  const p = aufbau();
+  const we = stand(p.id).wandelement;
+  store.setzeProduktrolle('rod_std', ['gewindestange-m10-850'], p.id);
+  const eing = store.holeEingaben(p.id);
+  const erg = WA.wandelementAktualisiert(we, eing, store.holeKatalog(), ENG);
+  const spez = KAT.produktSpezifikation(eing, store.holeKatalog());
+  const ps = { ...we.prestress };
+  delete ps.rod_mm;
+  ps.rod_lengths_mm = spez.rod.laengen_mm.slice();
+  ps.rod_rest_mm = spez.rod.rest_mm; ps.rod_overhang_mm = we.prestress.rod_overhang_mm;
+  const m1auto = ENG.autoAuslegung({
+    name: we.name, length_mm: we.length_mm, height_mm: we.height_mm, openings: [],
+    sides: we.sides, steps: [], interlocks: [], prestress: ps,
+    load: { ...WA.LAST_VORGABE },
+    material: (we.verification && we.verification.material) || undefined }).wandelement;
+  ok('#120/2b ohne gespeicherte Kraft deckt sich die Neurechnung mit der Auto-Auslegung',
+    we.prestress.force_kN === null
+    && JSON.stringify(erg.wandelement.prestress) === JSON.stringify(m1auto.prestress)
+    && JSON.stringify(alleStuecke(erg.wandelement)) === JSON.stringify(alleStuecke(m1auto)));
+}
+
+// --- Abnahmetest 3: ohne zugeordneten Katalog ------------------------------
+{
+  const p = aufbau();
+  const we = stand(p.id).wandelement;
+  const eing = store.holeEingaben(p.id);
+  const erg = WA.wandelementAktualisiert(we, eing, null, ENG);
+  ok('#120/3 ohne Katalog gilt der GESPEICHERTE Stand', !erg.aktualisiert
+    && erg.wandelement === we && erg.grund === 'kein_katalog');
+  ok('#120/3 der Grund ist benannt ([L-12])',
+    /Bauteilkatalog/.test(WA.STAND_GRUND[erg.grund]) && !!WA.STAND_GRUND.produkt_fehlt);
+  ok('#120/3 es erscheint keine erfundene Standardlaenge',
+    JSON.stringify(erg.wandelement.prestress.rod_lengths_mm) === '[1000,920]');
+
+  // Ein gewaehltes Produkt, das der Katalog nicht kennt: derselbe Weg, eigener Grund.
+  store.setzeProduktrolle('rod_std', ['gibt-es-nicht'], p.id);
+  const e2 = WA.wandelementAktualisiert(stand(p.id).wandelement, store.holeEingaben(p.id),
+                                        store.holeKatalog(), ENG);
+  ok('#120/3 ein nicht auffindbares Produkt haelt die Neurechnung an, statt zu raten',
+    !e2.aktualisiert && e2.grund === 'produkt_fehlt'
+    && e2.fehlend.length === 1 && e2.fehlend[0].rolle === 'rod_std'
+    && e2.fehlend[0].ids[0] === 'gibt-es-nicht');
+}
+
+// --- Abnahmetest 4: ohne Produktauswahl bzw. ohne Kraftvorgabe -------------
+{
+  const p = aufbau();
+  const el = stand(p.id);
+  const we = JSON.parse(JSON.stringify(el.wandelement));
+  we.abdichtung = 'abgedichtet'; we.brandklasse = 'F30'; we.wandtyp = 'ohne_wind';
+  we.prestress.force_kN = null;                       // keine Kraftvorgabe => Auslegung
+  store.speichere(el.name, we, p.id);
+  // Auswahl leerraeumen — es gibt dann keine Standardlaenge mehr.
+  store.setzeProduktrolle('rod_std', [], p.id);
+  store.setzeProduktrolle('rod_rest', [], p.id);
+  const erg = WA.wandelementAktualisiert(stand(p.id).wandelement, store.holeEingaben(p.id),
+                                         store.holeKatalog(), ENG);
+  ok('#120/4 die Neurechnung laeuft auch ohne Auswahl und ohne Kraftvorgabe', erg.aktualisiert);
+  ok('#120/4 wandtyp, abdichtung und brandklasse stehen unveraendert im gezeichneten Stand',
+    erg.wandelement.wandtyp === 'ohne_wind' && erg.wandelement.abdichtung === 'abgedichtet'
+    && erg.wandelement.brandklasse === 'F30');
+  ok('#120/4 ohne Auswahl gilt derselbe Altstand-Fallback wie in Modul 1 (keine [] -Aussage)',
+    erg.wandelement.rod_mm === 1100);
+  ok('#120/4 Geometrie, Oeffnungen, Staffelung und Verzahnung bleiben die des Elements',
+    erg.wandelement.length_mm === 3000 && erg.wandelement.height_mm === 2600);
+}
+
+// --- Grenze dieses Pakets: die Nicht-Rod-Eingaenge werden DURCHGEREICHT ----
+// Bewusst so (Vorschlag C / [P-6] ist nicht Teil von #120) — hier festgehalten, damit die
+// Grenze eine gepruefte Aussage ist und keine stille Annahme.
+{
+  const p = aufbau();
+  const el = stand(p.id);
+  const we = JSON.parse(JSON.stringify(el.wandelement));
+  we.prestress.spannplatte_b_mm = 123;               // Ausweisungsmass aus einer alten Auswahl
+  we.prestress.blech_lengths_mm = [500];
+  store.speichere(el.name, we, p.id);
+  const erg = WA.wandelementAktualisiert(stand(p.id).wandelement, store.holeEingaben(p.id),
+                                         store.holeKatalog(), ENG);
+  ok('#120 Grenze: die Nicht-Rod-Eingaenge reisen unveraendert aus dem Element mit',
+    erg.wandelement.prestress.spannplatte_b_mm === 123
+    && JSON.stringify(erg.wandelement.prestress.blech_lengths_mm) === '[500]');
+}
+
 
 let fail = 0; for (const [n, c2] of checks){ console.log((c2 ? '  ok  ' : 'FAIL  ') + n); if (!c2) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`); process.exit(fail ? 1 : 0);

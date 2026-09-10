@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-09",
+    datum: "2026-09-10",
+    typ: "fix",
+    issue: 120,
+    titel: "Modul 7 zeigt die Zeichnung immer auf dem aktuellen Stand der Produktauswahl",
+    testbitte: "Wände gemeinsam bearbeiten, dann Modul 7 öffnen: die neuen Bauteilmaße "
+      + "stehen sofort im Blatt, ohne Umweg über Modul 1. Ohne Katalog gilt der "
+      + "gespeicherte Stand mit Grund; Bodenblechlängen und Ausweisungsmaße reisen "
+      + "unverändert mit.",
+  },
+  {
     id: "chg-20260910-08",
     datum: "2026-09-10",
     typ: "fix",

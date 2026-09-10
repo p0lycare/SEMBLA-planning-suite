@@ -116,6 +116,7 @@
         <div class="k">Verzahnung</div><div class="v" id="ovVerzahnung">–</div>
         <div class="k">Status</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
       </div>
+      <div class="hint" id="standmsg"></div>
     </div>
 
     <div class="btnrow"><button class="primary" id="print">Blatt drucken</button></div>
@@ -167,6 +168,7 @@ let WALL=null, EING={}, OPT=null, currentId=null, MASSSTAB=null;
 let _selfSave=false;
 // aus window.SEMBLA (in __zInit gebunden):
 let store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen;
+let wandelementAktualisiert, STAND_GRUND, ENG;
 /* CSS-Millimeter sind fest definiert (1 px = 1/96 Zoll) — das ist die Umrechnung des
    Bildschirmmassstabs, KEIN Papiermass. Die Papiermasse kommen ausschliesslich aus BLATT. */
 const PX_JE_MM = 96/25.4;
@@ -358,6 +360,37 @@ function kopfdatenGeaendert(){
   kdMelde('Am Projekt „'+ziel.projekt+'“ gespeichert.');
 }
 
+/* Der gezeichnete Stand (#120) — READ-ONLY neu gerechnet, nie gespeichert.
+
+   Das Problem: die realen Bauteilmaße einer Wand entstehen erst, wenn ihr Wandelement über
+   den Engine-Pfad neu gerechnet wird — bislang nur in Modul 1 („Auslegen"/jede Änderung) und
+   im Sammel-Editor des Geschosseditors. Wer diese Seite danach öffnete, sah das gespeicherte
+   JSON und damit den Stand des letzten Schreibvorgangs.
+
+   Gerechnet wird deshalb hier bei JEDEM Laden — aber ausschließlich im gemeinsamen Baustein
+   `WA.wandelementAktualisiert()` (sembla-wandanlage.js) über dieselbe Engine, die Modul 1 und
+   der Geschosseditor fahren. Dieses Modul rechnet und zerlegt selbst NICHTS ([D-4]/[D-6]) und
+   schreibt NICHTS: das Ergebnis lebt nur in `WALL`, der Speicher bleibt unberührt ([P-1]).
+   Ohne zugeordneten Katalog oder bei einem nicht auffindbaren Produkt gilt der GESPEICHERTE
+   Stand, und der Grund steht benannt in der Übersicht — es wird keine Länge und kein Maß
+   erfunden ([L-12]/[P-9]). */
+function aktuellerStand(we){
+  if(!we || !wandelementAktualisiert) return we;
+  const kat = (store&&store.holeKatalog) ? store.holeKatalog() : null;
+  let erg;
+  try{ erg = wandelementAktualisiert(we, EING, kat, ENG); }
+  catch(e){
+    // Eine Rechnung, die scheitert, darf kein Blatt verhindern: gezeigt wird dann der
+    // gespeicherte Stand mit benanntem Grund — geraten wird auch hier nichts.
+    standMelde('Der Stand konnte nicht neu gerechnet werden ('+((e&&e.message)||e)
+      +') — gezeigt wird der gespeicherte Stand.');
+    return we;
+  }
+  standMelde(erg.aktualisiert ? '' : ((STAND_GRUND&&STAND_GRUND[erg.grund])||''));
+  return erg.wandelement;
+}
+function standMelde(t){ const el=$('standmsg'); if(el) el.textContent=t||''; }
+
 // ---- Aktives Wandelement (localStorage) ----
 function loadFromStore(we,label){
   // Kopfdaten des Schriftfelds kommen nach [L-11] aus dem PROJEKT (Rueckfall: der
@@ -369,7 +402,9 @@ function loadFromStore(we,label){
   uiAusOptionen(OPT);
   uiAusKopfdaten(EING.projekt);          // #68: die gespeicherten Kopfdaten des Projekts
   kopfdatenUiStand(); kdMelde('');
-  applyWand(we);
+  // #120: EIN Ladepfad, eine Neurechnung — sie gilt damit beim Öffnen der Seite und bei
+  // jeder Speicheränderung über das Abonnement gleichermaßen.
+  applyWand(aktuellerStand(we));
   // Der Wandelementname ist nutzereingegeben und wird deshalb NIE als Markup gesetzt:
   // Beschriftung als Textknoten, Name als textContent eines <b>-Knotens (kein innerHTML,
   // kein eigener Escaping-Nachbau).
@@ -388,7 +423,7 @@ function clearWall(){
   $('ovVerzahnung').textContent='—';
   $('ovBadge').className='badge'; $('ovBadge').textContent='—';
   $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
-  uiAusKopfdaten({}); kopfdatenUiStand(); kdMelde('');
+  uiAusKopfdaten({}); kopfdatenUiStand(); kdMelde(''); standMelde('');
 }
 function loadInitial(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
@@ -428,7 +463,7 @@ function bindEvents(){
   if(window.addEventListener) window.addEventListener('resize',setzeVorschauMassstab);
 }
 
-window.__z={applyWand,render,optionGeaendert,optionenAusUi,setzeVorschauMassstab,
+window.__z={applyWand,render,optionGeaendert,optionenAusUi,setzeVorschauMassstab,aktuellerStand,
   get wall(){return WALL;}, get opt(){return OPT;}, get masstab(){return MASSSTAB;},
   get blattgeometrie(){return GEO;}};
 
@@ -437,6 +472,7 @@ window.__zInit=function(){
   store=S.store; blattHtml=S.blattHtml; normOptionen=S.normOptionen;
   standardOptionen=S.standardOptionen; druckCss=S.druckCss;
   ZEICHNUNG_CSS=S.ZEICHNUNG_CSS; BLATT=S.BLATT; blattInnen=S.blattInnen;
+  wandelementAktualisiert=S.wandelementAktualisiert; STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
   $('zcss').textContent=ZEICHNUNG_CSS;      // Blatt-CSS aus dem gemeinsamen Baustein
   bindEvents();
   setupStoreSync();
@@ -448,8 +484,13 @@ window.__zInit=function(){
   import { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen }
     from './shared/sembla-zeichnung.js';
   import * as store from './shared/storage.js';
+  // #120: die eine lesende Neurechnung (sembla-wandanlage.js) und der Rechenkern dahinter
+  // (sembla-engine.js) — dieselbe Engine, die Modul 1 und der Geschosseditor fahren.
+  import { wandelementAktualisiert, STAND_GRUND } from './shared/sembla-wandanlage.js';
+  import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen };
+  window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
+    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen } };
   mountNavbar(7);
   window.__zInit();
 </script>

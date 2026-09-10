@@ -80,6 +80,11 @@ const { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLAT
   = await import("../../docs/shared/sembla-zeichnung.js");
 const { zeichnungHtml, zeichnungSvgText } = await import("../../docs/shared/sembla-export.js");
 const store = await import("../../docs/shared/storage.js");
+// #120: die eine LESENDE Neurechnung und der Rechenkern dahinter — im Browser genauso
+// ueber window.SEMBLA gebunden.
+const WA = await import("../../docs/shared/sembla-wandanlage.js");
+const KAT7 = await import("../../docs/shared/sembla-katalog.js");
+const ENG7 = await import("../../docs/shared/sembla-engine.js");
 // #97: die GETEILTE Symbolquelle — verglichen wird gegen sie, damit das Blatt keine eigene
 // Geometrie fuehrt ([D-4]); `wirksameZwischenpunkte` ist die eine Ableitung der Punkte.
 const MONT = await import("../../docs/shared/sembla-montage.js");
@@ -129,7 +134,9 @@ const kopfIst = () => store.holeMappe().projekt.kopfdaten;
 const idW = stelleAktiv(W, { zeichnung: { format: "a3", masse: true, steintypen: true,
   planinhalt: "Wandabwicklung", wasserzeichen: false } });
 
-globalThis.window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen };
+globalThis.window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
+  wandelementAktualisiert: WA.wandelementAktualisiert, STAND_GRUND: WA.STAND_GRUND,
+  ENG: { autoAuslegung: ENG7.autoAuslegung, nachweisPruefen: ENG7.nachweisPruefen } };
 
 // App-Logik evaluieren und wie im Browser initialisieren.
 new Function(script)();
@@ -861,6 +868,75 @@ ok("Modul hat keine unabhaengigen Papiermasse und kein eigenes Seitenverhaeltnis
 ok("Blatt kommt ausschliesslich aus blattHtml(); Geometrie aus blattInnen()",
   (html.match(/blattHtml\(WALL/g) || []).length === 1 && /blattInnen\(/.test(html));
 ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.test(html));
+
+// --- 9) Der gezeichnete Stand ist der AKTUELLE (#120) --------------------
+// Bis hierher lief die Seite OHNE zugeordneten Bauteilkatalog — der gespeicherte Stand
+// galt also unveraendert, und genau das haben die Abschnitte 1–8 geprueft.
+{
+  ok("[#120] ohne Katalog zeichnet Modul 7 den GESPEICHERTEN Stand",
+    JSON.stringify(Z.wall) === JSON.stringify(W));
+  ok("[#120] und nennt den Grund sichtbar auf der Seite ([L-12])",
+    /Bauteilkatalog/.test($("standmsg").textContent)
+    && $("standmsg").textContent === WA.STAND_GRUND.kein_katalog);
+
+  // Jetzt einen echten Katalog zuordnen und eine Wand mit VERALTETER Zerlegung aktiv
+  // setzen: der Altstand-Fallback (1100 mm) steht im Speicher, die Produktauswahl fuehrt
+  // die Kataloglaengen.
+  const katalogText = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  store.setzeKatalog(KAT7.parseKatalog(katalogText));
+  const kat = store.holeKatalog();
+  const rollen = WA.produktrollenPatch(kat);
+  const altstand = buildWall("IW-alt", 3000, 2600, [], null, null);   // ohne rod_lengths_mm
+  const idAlt = stelleAktiv(altstand, rollen.patch);
+  const rohVorher = localStorage.getItem("sembla:elemente");
+
+  ok("[#120] Pruefaufbau: im Speicher steht der 1100-mm-Altstand",
+    store.holeElement(idAlt).wandelement.rod_mm === 1100);
+  ok("[#120] gezeichnet wird der neu gerechnete Stand mit den Kataloglaengen ([Z-1])",
+    Z.wall.rod_mm === 1000
+    && JSON.stringify(Z.wall.prestress.rod_lengths_mm) === "[1000,920]");
+  ok("[#120] das Blatt traegt genau diesen Stand ([D-6])",
+    $("blattwrap").innerHTML === blattHtml(Z.wall, eingIst(idAlt), Z.opt).html
+    && $("blattwrap").innerHTML !== blattHtml(store.holeElement(idAlt).wandelement,
+                                              eingIst(idAlt), Z.opt).html);
+  ok("[#120] die Meldezeile ist dann leer — es gibt nichts zu benennen",
+    $("standmsg").textContent === "");
+  ok("[#120] geschrieben wird dabei NICHTS ([P-1]/[D-1])",
+    localStorage.getItem("sembla:elemente") === rohVorher
+    && JSON.stringify(store.holeElement(idAlt).wandelement) === JSON.stringify(altstand));
+
+  // Derselbe Ladepfad, zweiter Fall: eine Speicheraenderung ueber das Abonnement.
+  const neuAlt = buildWall("IW-alt", 3000, 2400, [], null, null);
+  store.speichere("IW-alt", neuAlt, idAlt);
+  ok("[#120] auch die Speicheraenderung laeuft durch dieselbe Neurechnung",
+    Z.wall.height_mm === 2400 && Z.wall.rod_mm === 1000
+    && JSON.stringify(Z.wall.prestress.rod_lengths_mm) === "[1000,920]"
+    && store.holeElement(idAlt).wandelement.rod_mm === 1100);
+
+  // Ein nicht auffindbares Produkt: gespeicherter Stand, benannter Grund, nichts geraten.
+  store.setzeProduktrolle("rod_std", ["gibt-es-nicht"], idAlt);
+  store.setzeAktiv(idAlt);
+  ok("[#120] ein fehlendes Produkt haelt die Neurechnung an und wird benannt",
+    Z.wall.rod_mm === 1100
+    && $("standmsg").textContent === WA.STAND_GRUND.produkt_fehlt);
+
+  // Kein Bedienelement und kein Schreibweg fuer das Auslegen in diesem Modul: die
+  // Neurechnung haengt an keinem Knopf und an keinem Ereignis, sondern allein am Ladepfad.
+  ok("[#120] Modul 7 hat kein Bedienelement zum Auslegen",
+    !/<button[^>]*>[^<]*[Aa]usleg/.test(html) && !/id="[^"]*ausleg/i.test(html)
+    && !/addEventListener\([^)]*aktuellerStand/.test(script));
+  ok("[#120] die Neurechnung laeuft ausschliesslich im EINEN Ladepfad",
+    (script.match(/aktuellerStand\(/g) || []).length === 2      // Definition + Aufruf
+    && /applyWand\(aktuellerStand\(we\)\)/.test(script));
+  ok("[#120] gerechnet wird nur ueber den gemeinsamen Baustein, nicht im Modul",
+    !/buildWall\(|autoAuslegung\(|nachweisPruefen\(|semblaBom\(/.test(script)
+    && /erg = wandelementAktualisiert\(we, EING, kat, ENG\);/.test(script));
+  ok("[#120] und das Modul schreibt dabei keinen Wandstand zurueck ([D-1])",
+    !/store\.speichere|speichereAktiv/.test(script));
+
+  store.setzeAktiv(idW);
+}
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

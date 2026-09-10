@@ -39,16 +39,42 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die BENENNUNG DER BODENBLECHMARKEN IN DER LEGENDE VON MODUL 1 (#97) ist der neueste Eintrag —
+// Die LESENDE NEURECHNUNG DES GEZEICHNETEN STANDS IN MODUL 7 (#120) ist der neueste Eintrag —
 // er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die
 // KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 7 den gezeichneten Stand
+// beim Laden READ-ONLY neu rechnet. NICHT versprochen werden ein Schreibweg oder ein
+// Bedienelement in Modul 7, eine geaenderte Rechnung, ein neues Feld oder ein Versionssprung —
+// und ausdruecklich AUCH NICHT, dass die Bodenblechlaengen und die reinen Ausweisungsmasse neu
+// aus dem Katalog gebildet wuerden: die reisen aus dem gespeicherten Wandelement mit.
+const M7_STAND_120 = EINTRAEGE[0];
+ok("[#120] die lesende Neurechnung von Modul 7 ist der neueste Eintrag",
+  M7_STAND_120?.id === "chg-20260910-09" && M7_STAND_120?.issue === 120
+  && M7_STAND_120?.typ === "fix" && M7_STAND_120?.datum === "2026-09-10");
+ok("[#120] der Titel benennt Modul 7 und den aktuellen Stand",
+  /Modul 7/.test(M7_STAND_120?.titel || "")
+  && /aktuellen Stand/.test(M7_STAND_120?.titel || "")
+  && /Produktauswahl/.test(M7_STAND_120?.titel || "")
+  && !/Norm|Preis|Nachweis|Format|Migration|speicher/i.test(M7_STAND_120?.titel || ""));
+ok("[#120] die Testbitte fuehrt den echten Nutzerpfad samt Gegenprobe und Grenze",
+  /Modul 7/.test(M7_STAND_120?.testbitte || "")
+  && /Modul 1/.test(M7_STAND_120?.testbitte || "")
+  && /Ohne Katalog/.test(M7_STAND_120?.testbitte || "")
+  && /gespeicherte Stand/.test(M7_STAND_120?.testbitte || "")
+  && /unver.ndert mit/.test(M7_STAND_120?.testbitte || ""));
+ok("[#120] die Testbitte verspricht keinen Schreibweg und keine geaenderte Rechnung",
+  !/Norm|Preis|Nachweis|Rechnung|Format|Migration|gespeichert wird|Auslegen/i
+    .test(M7_STAND_120?.testbitte || ""));
+
+// Davor liegt die BENENNUNG DER BODENBLECHMARKEN IN DER LEGENDE VON MODUL 1 (#97) — ueber ihre
+// Kennung gesucht, weil sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die BENENNUNG zweier bereits
 // gezeichneter Marken in der Zuschnittlegende von Modul 1, im Wortlaut des Blattes von Modul 7.
 // NICHT versprochen werden eine geaenderte Zeichnung, eine geaenderte Blechaufteilung, eine
 // Menge, ein Preis, eine Rechnung, eine Aenderung an Modul 5 oder 7, ein neues Feld oder ein
 // Versionssprung.
-const BLECHLEGENDE_97 = EINTRAEGE[0];
-ok("[#97] die Benennung der Bodenblechmarken ist der neueste Eintrag",
+const BLECHLEGENDE_97 = EINTRAEGE.find(e => e.id === "chg-20260910-08");
+ok("[#97] die Benennung der Bodenblechmarken steht unveraendert in der Liste",
   BLECHLEGENDE_97?.id === "chg-20260910-08" && BLECHLEGENDE_97?.issue === 97
   && BLECHLEGENDE_97?.typ === "fix" && BLECHLEGENDE_97?.datum === "2026-09-10");
 ok("[#97] der Titel benennt Legende, Stoss und Sonderzuschnitt des Bodenblechs",
