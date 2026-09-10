@@ -1060,6 +1060,76 @@ t("#97 Beide Spannmuttermasse reisen durch psOf() (Auslegung und Nachweis)", () 
 });
 
 // ---------------------------------------------------------------------------
+// BREITE DER SPANNPLATTE (#97) — reine DURCHREICHE
+// ---------------------------------------------------------------------------
+// Modul 1 leitet `spannplatte_b_mm` aus dem Katalogfeld `breite_mm` der Rolle „Spannplatte" ab;
+// der Kern reicht die Breite unveraendert durch, damit die Ausgaben die Platte spaeter
+// masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]). GERECHNET wird damit nichts
+// — genau das halten die Tests fest: das Wandelement ist mit und ohne das Feld bis auf diesen
+// einen Schluessel bit-gleich. Nicht zu verwechseln mit `rod_kopf_zuschlag_mm`, der DICKE
+// derselben Platte: die ist ein echter Rechenwert und geht in den Bedarf ein.
+// Gefahren wird derselbe `orakel()`-Weg wie bei #92, der Kopplungsmutter und der Spannmutter:
+// das ECHTE Python-Orakel als Unterprozess, damit "beide Kerne bit-gleich" belegt ist.
+const PS97SP = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+  top_connection: "spannplatte", spannplatte_b_mm: 120 };
+const WAND97SP = { name: "spannplatte", length_mm: 6 * GRID, height_mm: 2000 };
+const bau97sp = (ps) => buildWall(WAND97SP.name, WAND97SP.length_mm, WAND97SP.height_mm, [], null, ps);
+
+t("#97 Die Plattenbreite reist durch den Kern und ist py/mjs bit-gleich (echtes Orakel)", () => {
+  const js = bau97sp(PS97SP);
+  assert(js.prestress.spannplatte_b_mm === 120, "Breite: " + js.prestress.spannplatte_b_mm);
+  deepEqual(js, orakel({ ...WAND97SP, prestress: PS97SP }));   // bit-genau, ganzes Wandelement
+  // Ein zweites Produkt mit anderer Breite ergibt einen anderen Wert — und aendert sonst NICHTS.
+  const js2 = bau97sp({ ...PS97SP, spannplatte_b_mm: 110 });
+  assert(js2.prestress.spannplatte_b_mm === 110, "zweites Produkt: " + js2.prestress.spannplatte_b_mm);
+  deepEqual({ ...js2, prestress: { ...js2.prestress, spannplatte_b_mm: 120 } }, js);
+  deepEqual(js2, orakel({ ...WAND97SP, prestress: { ...PS97SP, spannplatte_b_mm: 110 } }));
+});
+
+t("#97 Ohne Plattenbreite ist das Ergebnis bit-genau der Altstand", () => {
+  const { spannplatte_b_mm, ...ohne } = PS97SP;               // eslint-disable-line no-unused-vars
+  const a = bau97sp(ohne);
+  // Weder `0` noch `null` erfinden ein Feld — und beide sind bit-genau der Fall ohne Angabe.
+  deepEqual(bau97sp({ ...ohne, spannplatte_b_mm: 0 }), a);
+  deepEqual(bau97sp({ ...ohne, spannplatte_b_mm: null }), a);
+  assert(!("spannplatte_b_mm" in a.prestress),
+    "kein Schluessel ohne Angabe: " + Object.keys(a.prestress).join(","));
+  // Auch der Kern ohne Angabe ist py/mjs bit-gleich — das Ausbleiben des Schluessels ebenso.
+  deepEqual(a, orakel({ ...WAND97SP, prestress: ohne }));
+  // Und die Nullwirkung gegen den gesetzten Fall: nur dieser eine Schluessel kommt hinzu.
+  const mit = bau97sp(PS97SP);
+  delete mit.prestress.spannplatte_b_mm;
+  deepEqual(mit, a);
+  // Die Breite ist UNABHAENGIG von der Dicke (`rod_kopf_zuschlag_mm`): ein gesetzter
+  // Kopfzuschlag rechnet unveraendert weiter, die Breite kommt nur als Feld hinzu.
+  const mitDicke = bau97sp({ ...ohne, rod_kopf_zuschlag_mm: 10 });
+  const beide = bau97sp({ ...PS97SP, rod_kopf_zuschlag_mm: 10 });
+  assert(beide.prestress.spannplatte_b_mm === 120 && beide.prestress.rod_kopf_zuschlag_mm === 10,
+    "beide Masse: " + Object.keys(beide.prestress).join(","));
+  delete beide.prestress.spannplatte_b_mm;
+  deepEqual(beide, mitDicke);
+});
+
+t("#97 Die Plattenbreite reist durch psOf() (Auslegung und Nachweis)", () => {
+  // `psOf()` in `sembla-engine.js` ist eine FELDLISTE und baut `prestress` je Iteration neu —
+  // ohne Eintrag dort waere das Feld nach der ersten Iteration weg.
+  const last = { qk_area: 0.5, gammaQ: 1.5 };
+  const auto = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: PS97SP, load: last });
+  assert(auto.wandelement.prestress.spannplatte_b_mm === 120,
+    "nach der Auslegung: " + JSON.stringify(auto.wandelement.prestress.spannplatte_b_mm));
+  const nw = nachweisPruefen({ ...ENGINE_BASE, height_mm: 2000, load: { qk_area: 1.0, gammaQ: 1.5 },
+    prestress: { ...PS97SP, max_span_grid: 3, force_kN: 60 } }).wandelement;
+  assert(nw.prestress.spannplatte_b_mm === 120,
+    "im Nachweis-Modus: " + nw.prestress.spannplatte_b_mm);
+  // Und auch hier: die Auslegung selbst bleibt bit-genau der Altstand.
+  const { spannplatte_b_mm, ...ohne } = PS97SP;               // eslint-disable-line no-unused-vars
+  const b = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ohne, load: last });
+  delete auto.wandelement.prestress.spannplatte_b_mm;
+  deepEqual(auto.wandelement, b.wandelement);
+  assert(!("spannplatte_b_mm" in b.wandelement.prestress), "kein Schluessel ohne Angabe");
+});
+
+// ---------------------------------------------------------------------------
 // RANDVERBAENDE [V-3]/[V-11] (Paritaetsvertrag mit dem Python-Orakel, Issue #104)
 // ---------------------------------------------------------------------------
 // Akzeptanztest 1+3 des Pakets: die vier i2-/i3-Randkombinationen werden als REALE Waende

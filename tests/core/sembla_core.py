@@ -888,6 +888,17 @@ def _norm_prestress(p):
     _smsw = p.get("spannmutter_sw_mm")
     if _smsw is not None and float(_smsw) > 0:
         out["spannmutter_sw_mm"] = int(_smsw) if float(_smsw) == int(float(_smsw)) else float(_smsw)
+    # BREITE der Spannplatte (#97) — das reale Bauteilmass der Auflagerflaeche entlang der Wand,
+    # von Modul 1 aus dem gewaehlten Katalogprodukt (`breite_mm`) abgeleitet. Sie geht in KEINE
+    # Rechnung ein und wird nur DURCHGEREICHT, damit die Ausgaben die Platte masstaeblich
+    # zeichnen koennen, ohne den Katalog zu lesen ([D-1]). Nicht zu verwechseln mit
+    # `rod_kopf_zuschlag_mm` (der DICKE derselben Platte), die oben ein echter Rechenwert ist;
+    # deshalb haengt die Breite auch NICHT am oberen Anschluss.
+    # OPTIONAL: fehlend/ungueltig -> der Schluessel entsteht gar nicht, das Ergebnis ist
+    # bit-genau das bisherige. Eine Breite wird NIE erfunden ([P-9]).
+    _spb = p.get("spannplatte_b_mm")
+    if _spb is not None and float(_spb) > 0:
+        out["spannplatte_b_mm"] = int(_spb) if float(_spb) == int(float(_spb)) else float(_spb)
     # Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
     # er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
     # nirgends gespeichert wird, entsteht im Wandelement auch kein Feld dafuer. `build_wall`

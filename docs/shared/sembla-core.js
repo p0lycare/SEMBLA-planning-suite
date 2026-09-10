@@ -965,6 +965,23 @@ function normPrestress(p) {
   if (smH > 0) out.spannmutter_h_mm = smH;
   const smSw = (p && p.spannmutter_sw_mm != null && +p.spannmutter_sw_mm > 0) ? +p.spannmutter_sw_mm : 0;
   if (smSw > 0) out.spannmutter_sw_mm = smSw;
+  // BREITE der Spannplatte (#97) — das reale Bauteilmass der Auflagerflaeche entlang der Wand,
+  // von Modul 1 aus dem gewaehlten Katalogprodukt (`breite_mm`) abgeleitet. Sie geht in KEINE
+  // Rechnung ein und wird hier nur DURCHGEREICHT, damit die Ausgaben die Platte masstaeblich
+  // zeichnen koennen, ohne den Katalog zu lesen ([D-1]) — dieselbe reine Ausweisungsbahn wie
+  // `kupplung_sw_mm`, die Spannmuttermasse und die Blechdicken ([A-1]). Kein Produktmass darueber
+  // hinaus, keine Produkt-ID und kein Preis wandert dadurch ins Wandelement.
+  //
+  // NICHT zu verwechseln mit `rod_kopf_zuschlag_mm`: das ist die DICKE derselben Platte und ein
+  // echter Rechenwert (er geht unten in den Bedarf ein, s. `kopfZuschlag`). Die Breite tut das
+  // ausdruecklich nicht — deshalb haengt sie auch NICHT am oberen Anschluss: Spannplatten treten
+  // nach `ankerUnten`/`ankerOben` auch an Bruestung und Sturz auf, also unabhaengig davon, ob
+  // oben eine Platte oder ein Kopfblech sitzt.
+  //
+  // OPTIONAL: fehlt das Mass oder ist es ungueltig, entsteht der Schluessel gar nicht erst und
+  // das Ergebnis ist bit-genau das bisherige. Eine Breite wird NIE erfunden ([P-9]).
+  const spB = (p && p.spannplatte_b_mm != null && +p.spannplatte_b_mm > 0) ? +p.spannplatte_b_mm : 0;
+  if (spB > 0) out.spannplatte_b_mm = spB;
   return out;
 }
 

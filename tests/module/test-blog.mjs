@@ -39,9 +39,42 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die SPANNMUTTERMASSE IM SAMMEL-EDITOR (#97) sind der neueste Eintrag — er wird als
+// Die BREITE DER SPANNPLATTE AM WANDELEMENT (#97) ist der neueste Eintrag — er wird als
 // einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
 // ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 1 beim Auslegen die
+// reale Katalogbreite der gewaehlten Spannplatte ableitet und das gespeicherte Wandelement
+// sie fuehrt, und dass Zuschnitt und Mengen dabei wertgleich bleiben. Ausdruecklich MIT
+// gesagt wird, dass die Platte noch NICHT in dieser Breite gezeichnet wird — das ist das
+// Folgepaket. NICHT versprochen werden eine geaenderte Rechnung, ein Preis, eine Menge,
+// eine Norm, ein Nachweis, ein Bedienelement oder ein Versionssprung.
+const PLATTE_B_97 = EINTRAEGE[0];
+ok("[#97] die Plattenbreite am Wandelement ist der neueste Eintrag",
+  PLATTE_B_97?.id === "chg-20260910-01" && PLATTE_B_97?.issue === 97
+  && PLATTE_B_97?.typ === "feature" && PLATTE_B_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt Wandelement, Katalogbreite und die Spannplatte",
+  /Wandelement/.test(PLATTE_B_97?.titel || "")
+  && /[Bb]reite/.test(PLATTE_B_97?.titel || "")
+  && /Katalog/.test(PLATTE_B_97?.titel || "")
+  && /Spannplatte/.test(PLATTE_B_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format/i.test(PLATTE_B_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 1",
+  /Modul 1\b/.test(PLATTE_B_97?.testbitte || "")
+  && /Spannplatte/.test(PLATTE_B_97?.testbitte || "")
+  && /Auslegen/.test(PLATTE_B_97?.testbitte || ""));
+ok("[#97] die Testbitte sagt, dass Zuschnitt und Mengen gleich bleiben",
+  /Zuschnitt/.test(PLATTE_B_97?.testbitte || "")
+  && /Mengen/.test(PLATTE_B_97?.testbitte || "")
+  && /gleich/.test(PLATTE_B_97?.testbitte || ""));
+ok("[#97] die Testbitte sagt ausdruecklich, dass noch nicht gezeichnet wird",
+  /gezeichnet/.test(PLATTE_B_97?.testbitte || "")
+  && /unverändert|folgt/.test(PLATTE_B_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm und keine geaenderte Rechnung",
+  !/Norm|Preis|Menge\b|Nachweis|Rechnung|Format|Migration/i
+    .test((PLATTE_B_97?.testbitte || "").replace(/Mengen/g, "")));
+
+// Davor liegen die SPANNMUTTERMASSE IM SAMMEL-EDITOR (#97) — ueber ihre Kennung gesucht,
+// weil sie nicht mehr der neueste Eintrag sind. Ihre Aussagen bleiben inhaltlich unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der Sammel-Editor des
 // Geschosseditors Einbauhoehe und Schluesselweite der Spannmutter aus der Produktauswahl
 // der jeweiligen Wand nachzieht, sodass beide Masse in Modul 1 und Modul 7 unmittelbar
@@ -49,8 +82,8 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // versprochen werden ein neues Feld, ein neues Katalogmass, ein Bedienelement, eine
 // geaenderte Rechnung, ein Preis, eine Menge, eine Norm, ein Nachweis oder ein
 // Versionssprung.
-const SAMMEL_SPM_97 = EINTRAEGE[0];
-ok("[#97] die Spannmuttermasse im Sammel-Editor sind der neueste Eintrag",
+const SAMMEL_SPM_97 = EINTRAEGE.find(e => e.id === "chg-20260909-22");
+ok("[#97] die Spannmuttermasse im Sammel-Editor stehen unveraendert in der Reihe",
   SAMMEL_SPM_97?.id === "chg-20260909-22" && SAMMEL_SPM_97?.issue === 97
   && SAMMEL_SPM_97?.typ === "fix" && SAMMEL_SPM_97?.datum === "2026-09-09");
 ok("[#97] der Titel benennt den Sammel-Editor, beide Masse und die Spannmutter",

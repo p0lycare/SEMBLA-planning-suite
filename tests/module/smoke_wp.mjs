@@ -1516,6 +1516,21 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'kuppl-sw-17', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M10 SW17', einheit:'Stk', preis:0.65, hoehe_mm:50, sw_mm:17 },
   { id:'kuppl-sw-24', kategorie:'verbrauch', bezeichnung:'Kopplungsmutter M12 SW24', einheit:'Stk', preis:0.85, hoehe_mm:50, sw_mm:24 },
   { id:'platte-12', kategorie:'blech_platte', bezeichnung:'Spannplatte 12', einheit:'Stk', preis:6.4, breite_mm:125, hoehe_mm:125, dicke_mm:12 },
+  // #97 Eine weitere Spannplatte fuer die BREITE (`breite_mm`) mit den 120 mm des
+  // Standardkatalogs. Sie traegt dieselbe DICKE wie `platte-12` — so unterscheiden sich die
+  // beiden AUSSCHLIESSLICH in der Breite: die Gegenprobe auf wertgleiche Segmente, Zerlegung
+  // und Mengen misst wirklich nur dieses Feld (die Dicke ist als `rod_kopf_zuschlag_mm` ein
+  // echter Rechenwert und darf sich nicht mitbewegen), und gemeinsam machen sie allein die
+  // BREITE mehrdeutig.
+  //
+  // Ein Produkt OHNE `breite_mm` gibt es hier bewusst NICHT: die Kategorie „Blech / Platte
+  // (Stahl)" fuehrt `breite_mm` in `pflicht` (`sembla-katalog.js`), und die Rolle
+  // „Spannplatte" ist an genau diese Kategorie gebunden. Eine Platte ohne Breite ist damit
+  // kein gueltiges Katalogprodukt — anders als bei der Spannmutter (Kategorie „Verbrauch",
+  // dort sind `hoehe_mm`/`sw_mm` optional, weshalb es `spm-ohne` gibt). Der Fall
+  // „Maß fehlt" ist fuer diese Rolle also unerreichbar; unten wird genau das geprueft,
+  // statt ein ungueltiges Produkt zu erfinden.
+  { id:'platte-b120', kategorie:'blech_platte', bezeichnung:'Spannplatte 120×120', einheit:'Stk', preis:6.4, breite_mm:120, hoehe_mm:120, dicke_mm:12 },
   // #97 Spannmuttern mit gepflegten Massen (`hoehe_mm`/`sw_mm`) — vier Faelle, die sich
   // ausschliesslich in diesen beiden Feldern unterscheiden: vollstaendig gepflegt, gleiche
   // Hoehe mit ANDERER Schluesselweite (macht allein die Schluesselweite mehrdeutig), nur die
@@ -2379,6 +2394,144 @@ store.setzeKatalog(KATALOG);
     setzen('spannmutter','spm-h10-sw17',false); WP.run();
     ok('[#97] die Rechnung bleibt ueber alle Faelle unberuehrt', fp()===fp0);
   }
+
+  // Ausgangszustand wiederherstellen.
+  for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
+  document.getElementById('topConn').value='spannplatte';
+  WP.applyWand(vorherW);
+}
+
+// ---- Issue #97: die BREITE DER SPANNPLATTE erreicht das Wandelement --------------------
+// Gefahren wird der ECHTE Planerweg wie bei #92, der Kopplungsmutter und der Spannmutter:
+// Spannplatte im zugeordneten Katalog waehlen -> `vorgaben()` leitet `spannplatte_b_mm` aus
+// `breite_mm` ab -> dieselbe Engine rechnet -> das GESPEICHERTE Wandelement traegt die Breite.
+// GEZEICHNET wird in diesem Paket nichts; die Breite reist allein, damit die Ausgaben die
+// Platte spaeter ohne Katalogzugriff masstaeblich zeichnen koennen ([D-1]).
+//
+// Der zweite Teil ist die Nullwirkung: die Breite geht in KEINE Rechnung ein. Alle Faelle hier
+// fahren dieselbe Wand — Segmente, Zuschnitt, Bedarf, Spannachsen und die kanonischen
+// Stuecklistenmengen muessen ueber ALLE Faelle hinweg wertgleich sein.
+//
+// Gefahren wird der Block mit oberem Anschluss KOPFBLECH. Das ist kein Nebenschauplatz,
+// sondern die Aussage selbst: die Breite haengt bewusst NICHT am oberen Anschluss (anders als
+// die DICKE derselben Platte, die als `rod_kopf_zuschlag_mm` ein Rechenwert am oberen Anker
+// ist). Nebeneffekt: `kopfZuschlagMm()` ist dabei durchgehend `null`, der rechnerische
+// Fingerabdruck also ueber alle Faelle konstant — auch ueber den ohne jede Plattenauswahl.
+{
+  const meld=()=>document.getElementById('einbauQuelle').innerHTML;
+  const ROLLEN=['rod_std','rod_rest','blech_boden','kupplung','spannplatte','spannmutter'];
+  const leere=(rolle)=>((store.holeProdukte(1).rollen||{})[rolle]||[]).slice()
+    .forEach(id=>setzen(rolle,id,false));
+  const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
+  const vorherW=WP.RESULT.wandelement;
+  for(const r of ROLLEN) leere(r);
+  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  document.getElementById('topConn').value='blech';
+  document.getElementById('rodUeber').value='10';
+  setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
+  // Der RECHNERISCHE Fingerabdruck der Wand — alles, was sich NICHT aendern darf.
+  const fp=()=>{ const w=WP.RESULT.wandelement; return JSON.stringify({
+    achsen: w.tension_columns.map(c=>c.x_mm),
+    seg: w.tension_columns.map(c=>c.segments.map(g=>[g.z0_mm,g.z1_mm,g.bedarf_mm,
+      g.stuecke.map(x=>x.len_mm+':'+x.art).join(',')])),
+    bom: BOM.semblaBomItems(w) }); };
+  const psGespeichert=()=>store.aktivesWandelement().prestress;
+  const hatFeld=()=>('spannplatte_b_mm' in WP.RESULT.wandelement.prestress);
+
+  WP.run();
+  const fp0=fp();
+  ok('[#97] ohne gewaehlte Spannplatte entsteht keine Breite (nichts geraten)',
+    WP.spannplatteBreite===null
+    && WP.vorgaben().prestress.spannplatte_b_mm===undefined
+    && hatFeld()===false
+    && psGespeichert().spannplatte_b_mm===undefined);
+
+  // Akzeptanz 1: 120-mm-Platte gewaehlt -> genau dieser Katalogwert im GESPEICHERTEN Wandelement.
+  setzen('spannplatte','platte-b120',true); WP.run();
+  ok('[#97] Modul 1 leitet die Breite aus dem gewaehlten Produkt ab',
+    WP.spannplatteBreite===120
+    && WP.vorgaben().prestress.spannplatte_b_mm===120
+    && WP.RESULT.wandelement.prestress.spannplatte_b_mm===120);
+  ok('[#97] der GESPEICHERTE Stand traegt dieselbe Breite (kein Zwischenstand)',
+    psGespeichert().spannplatte_b_mm===120);
+  ok('[#97] die Breite gilt AUCH bei oberem Anschluss Kopfblech (kein topConn-Vorbehalt)',
+    document.getElementById('topConn').value==='blech'
+    && psGespeichert().spannplatte_b_mm===120
+    && WP.kopfZuschlag===null
+    && psGespeichert().rod_kopf_zuschlag_mm===undefined);
+  ok('[#97] kein Produktdatum im Wandelement (Ownership)', (()=>{
+    const j=JSON.stringify(store.aktivesWandelement());
+    return !j.includes('platte-b120') && !j.includes('Spannplatte 120') && !j.includes('preis'); })());
+  // Akzeptanz 4: die Rechnung ist dabei wertgleich zum Stand ganz ohne das Feld.
+  ok('[#97] Zuschnitt, Segmente, Bedarf und Mengen bleiben wertgleich', fp()===fp0);
+
+  // Eine zweite Platte ergibt eine andere Breite — und aendert sonst nichts.
+  setzen('spannplatte','platte-b120',false); setzen('spannplatte','platte-12',true); WP.run();
+  ok('[#97] ein anderes Produkt ergibt seine eigene Breite',
+    WP.spannplatteBreite===125 && psGespeichert().spannplatte_b_mm===125 && fp()===fp0);
+
+  // Akzeptanz 2a: der Fall "gewaehlt, aber Breite nicht gepflegt" ist fuer diese Rolle
+  // UNERREICHBAR — die Kategorie erzwingt `breite_mm`. Das ist keine Lucke im Test, sondern
+  // eine Eigenschaft des Katalogs, und sie wird hier festgehalten: jedes gueltige Produkt der
+  // Rolle traegt eine Breite. Faende die Eingabemaske spaeter einen Weg daran vorbei, faellt
+  // diese Pruefung — und `einbauMass()` liefert dann sauber `mass_fehlt` ohne Feld.
+  ok('[#97] jedes gueltige Spannplattenprodukt traegt eine Breite (Kategoriepflicht)', (()=>{
+    const pf=KAT.KATEGORIEN.find(k=>k.id==='blech_platte').pflicht;
+    const rolle=KAT.rolle('spannplatte');
+    return pf.includes('breite_mm') && rolle.kategorie==='blech_platte'
+      && KATALOG.produkte.filter(p=>p.kategorie==='blech_platte')
+           .every(p=>Number.isFinite(+p.breite_mm) && +p.breite_mm>0); })());
+
+  // Akzeptanz 2b: widersprechende Breiten -> keine wird bevorzugt, keine gemittelt.
+  setzen('spannplatte','platte-b120',true); WP.run();
+  ok('[#97] mehrere Breiten: keine wird bevorzugt und keine gemittelt',
+    WP.spannplatteBreite===null && hatFeld()===false
+    && psGespeichert().spannplatte_b_mm===undefined && fp()===fp0);
+
+  // Die Breite meldet BEWUSST nichts in `einbauMeldungen()` — dieselbe Begruendung wie bei der
+  // Schluesselweite der Kopplungsmutter: sie ist ein reines Zeichenmass an einem Bauteil, das
+  // ueber `dicke_mm` ohnehin gemeldet wird. Kein neuer Meldetext, in keinem der Faelle.
+  ok('[#97] die Breite erzeugt keinen eigenen Meldetext',
+    !/Breite/.test(meld()) && !/breite/.test(meld()));
+
+  // Akzeptanz 2c: OHNE wirksamen Katalog wird gar nichts abgeleitet.
+  setzen('spannplatte','platte-12',false); WP.run();
+  ok('[#97] Ausgangsstand fuer die Katalogprobe ist gesetzt', psGespeichert().spannplatte_b_mm===120);
+  store.loescheKatalog(); WP.run();
+  ok('[#97] ohne wirksamen Katalog entsteht keine Breite',
+    WP.spannplatteBreite===null && hatFeld()===false
+    && psGespeichert().spannplatte_b_mm===undefined);
+  store.setzeKatalog(KATALOG); WP.run();
+  ok('[#97] mit dem Katalog ist die Breite unveraendert wieder da',
+    psGespeichert().spannplatte_b_mm===120);
+
+  // Ein am WANDELEMENT gespeicherter Wert muss den Rechenweg ueberstehen, der ihn nicht neu
+  // ableitet — die Breite reist durch `psOf()`, Modul 1 bekommt dafuer KEINEN eigenen
+  // Erhaltungsmechanismus. Gebraucht wird das ueberall dort, wo eine Neurechnung ohne
+  // Produktauswahl laeuft (z. B. der Sammel-Editor des Geschosseditors, N7).
+  ok('[#97] ein gespeicherter Stand uebersteht den nicht neu ableitenden Rechenweg', (()=>{
+    const w=store.aktivesWandelement();
+    const neu=autoAuslegung({ name:w.name, length_mm:w.length_mm, height_mm:w.height_mm,
+      openings:[], sides:w.sides||null, prestress:{ ...w.prestress },
+      load:{ qk_area:1.0, gammaQ:1.5 } }).wandelement;
+    return neu.prestress.spannplatte_b_mm===120; })());
+
+  // Gegenprobe mit oberem Anschluss SPANNPLATTE: die Breite ist dieselbe, und sie steht
+  // NEBEN der Dicke — beide Masse derselben Platte, aber getrennte Felder mit getrennter
+  // Wirkung (die Dicke rechnet, die Breite nicht). Der Fingerabdruck aendert sich hier
+  // erwartungsgemaess EINMALIG, weil der Kopfzuschlag jetzt greift; ab dann bleibt er stehen.
+  document.getElementById('topConn').value='spannplatte'; WP.run();
+  const fpSp=fp();
+  ok('[#97] bei Anschluss Spannplatte stehen Breite und Dicke nebeneinander',
+    psGespeichert().spannplatte_b_mm===120 && WP.kopfZuschlag===12
+    && psGespeichert().rod_kopf_zuschlag_mm===12 && fpSp!==fp0);
+  // Und die Trennung in der Gegenrichtung: eine OFFENE Breite laesst die rechnende Dicke
+  // unberuehrt. Beide Platten tragen dieselbe Dicke 12 mm, mehrdeutig ist also ausschliesslich
+  // die Breite — der Kopfzuschlag und damit der ganze Fingerabdruck bleiben stehen.
+  ok('[#97] eine offene Breite laesst die rechnende Dicke unberuehrt', (()=>{
+    setzen('spannplatte','platte-12',true); WP.run();
+    return WP.spannplatteBreite===null && psGespeichert().spannplatte_b_mm===undefined
+      && WP.kopfZuschlag===12 && psGespeichert().rod_kopf_zuschlag_mm===12 && fp()===fpSp; })());
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }

@@ -131,6 +131,14 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // damit die Ausgaben die Mutter spaeter masstaeblich zeichnen koennen, ohne den Katalog zu
 // lesen ([D-1]). Fielen sie hier weg, traege das Element nach der Auslegung keine Masse mehr,
 // obwohl Modul 1 sie aus dem Katalog abgeleitet hat.
+// Und aus demselben Grund `spannplatte_b_mm` (#97): die BREITE der gewaehlten Spannplatte. Sie
+// geht — wie die Schluesselweiten und die Blechdicken — in KEINE Rechnung ein und wird allein
+// AUSGEWIESEN, damit die Ausgaben die Platte spaeter masstaeblich zeichnen koennen, ohne den
+// Katalog zu lesen ([D-1]). Nicht zu verwechseln mit `rod_kopf_zuschlag_mm` (der DICKE derselben
+// Platte), die oben als echter Rechenwert steht. Fiele die Breite hier weg, traege das Element
+// nach der Auslegung keine mehr, obwohl Modul 1 sie aus dem Katalog abgeleitet hat — und der
+// Sammel-Editor des Geschosseditors, der ein gespeichertes `prestress` nur kopiert und ueber
+// diesen Pfad neu rechnet, LOESCHTE sie bei jeder Sammelaenderung.
 // NICHT mitgereicht wird `start_axis_grid` (#104): [V-5] ist durch [V-3]/[V-11] abgeloest, der
 // Core liest das Feld nicht mehr, und die Iteration gibt ihm folglich auch keines mehr vor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
@@ -143,6 +151,7 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            blech_dicke_mm: p.blech_dicke_mm, kopfblech_dicke_mm: p.kopfblech_dicke_mm,
            kupplung_sw_mm: p.kupplung_sw_mm,
            spannmutter_h_mm: p.spannmutter_h_mm, spannmutter_sw_mm: p.spannmutter_sw_mm,
+           spannplatte_b_mm: p.spannplatte_b_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
            ausgleich_override_mm: p.ausgleich_override_mm,
            deckenanschluss_grid: p.deckenanschluss_grid }; }

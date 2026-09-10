@@ -432,6 +432,15 @@ function vorgaben(){
   // wären sie nach der ersten Iteration der Auslegung wieder weg.
   const smH=spannmutterHoeheMm(); if(smH!=null) hw.spannmutter_h_mm=smH;
   const smSw=spannmutterSwMm(); if(smSw!=null) hw.spannmutter_sw_mm=smSw;
+  // #97 Breite der Spannplatte: dieselbe Bedingung und dieselbe reine Ausweisungsbahn — nur bei
+  // eindeutigem Katalogmaß, sonst bleibt das Feld ganz weg. Sie geht in KEINE Rechnung ein (die
+  // DICKE derselben Platte steht oben als `rod_kopf_zuschlag_mm` und ist ein echter Rechenwert)
+  // und reist allein deshalb mit, damit die Ausgaben die Platte später maßstäblich zeichnen
+  // können ([D-1]).
+  //
+  // ⚠ Auch ihr Weg führt über die FELDLISTE `psOf()` in `sembla-engine.js` — ohne Eintrag dort
+  // wäre sie nach der ersten Iteration der Auslegung wieder weg.
+  const spB=spannplatteBreiteMm(); if(spB!=null) hw.spannplatte_b_mm=spB;
   // [A-1] Blechdicken: reine BAUTEILMASSE aus dem Katalog. Sie gehen in keine Rechnung ein und
   // werden nur ausgewiesen; fehlt oder widerspricht ein Maß, bleibt das Feld weg und die Lücke
   // steht in `einbauMeldungen()` — es gibt dafür weder ein Eingabefeld noch einen Default.
@@ -1193,6 +1202,26 @@ function kupplungSwMm(){ return einbauMass('kupplung','sw_mm').wert; }
 // ([P-9]), insbesondere nicht aus Gewinde oder Norm des Produkts.
 function spannmutterHoeheMm(){ return einbauMass('spannmutter','hoehe_mm').wert; }
 function spannmutterSwMm(){ return einbauMass('spannmutter','sw_mm').wert; }
+// #97 BREITE der Spannplatte — das reale Bauteilmaß der Auflagerfläche entlang der Wand. Sie
+// kommt aus dem Katalogfeld `breite_mm` der Rolle „Spannplatte" und wird über dasselbe
+// `einbauMass()` gelesen wie jedes andere Einbaumaß — es entsteht kein zweiter Ableitungsweg.
+//
+// Sie ist KEIN Rechenwert: sie geht in keine Höhe, keinen Bedarf und keine Menge ein und wird
+// allein AUSGEWIESEN — dieselbe Bahn wie die Schlüsselweiten und die Blechdicken ([A-1]).
+// Gebraucht wird sie, damit die Ausgaben die Platte später maßstäblich zeichnen können, ohne
+// den Katalog anzufassen ([D-1]); GEZEICHNET wird in diesem Paket noch nichts — dort steht
+// weiterhin das feste Bauteilmaß `SPANN_MM.platte_b_mm` (110 mm).
+//
+// ⚠ Bewusst OHNE `topConn`-Bedingung — anders als `kopfZuschlagMm()` und `kopfblechDickeMm()`:
+// die DICKE ist ein Rechenwert am OBEREN Anker (der Core wendet `rod_kopf_zuschlag_mm` nur bei
+// `ankerOben === "spannplatte"` an), die Breite ist ein reines Bauteilmaß. Spannplatten treten
+// nach `ankerUnten`/`ankerOben` auch an Brüstung und Sturz auf — eine Wand mit Kopfblech UND
+// Öffnung hat also reale Platten, und ein Vorbehalt hier nähme ihnen genau dort das Maß.
+// Für die Spannmutter ist dieselbe Entscheidung in `geschossplan.html` schon begründet.
+//
+// Fehlt das Maß oder widersprechen sich die gewählten Produkte, bleibt der Wert `null` und das
+// Feld entsteht gar nicht — es wird NIE eine Breite erfunden ([P-9]).
+function spannplatteBreiteMm(){ return einbauMass('spannplatte','breite_mm').wert; }
 // [A-1] Bodenblechdicke: Bauteilmaß der Rolle „Bodenblech". Alle Standardlängen einer Wand sind
 // gleich dick — mehrere gewählte Größen sind der Regelfall ([A-10]) und ergeben genau EINEN
 // Dickenwert. Tragen sie verschiedene, bleibt die Dicke offen; es wird keine bevorzugt.
@@ -1761,6 +1790,7 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   get fussOffset(){return fussOffsetMm();}, get kopfZuschlag(){return kopfZuschlagMm();},
   get kupplungSw(){return kupplungSwMm();},
   get spannmutterHoehe(){return spannmutterHoeheMm();}, get spannmutterSw(){return spannmutterSwMm();},
+  get spannplatteBreite(){return spannplatteBreiteMm();},
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},

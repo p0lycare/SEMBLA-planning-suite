@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-01",
+    datum: "2026-09-10",
+    typ: "feature",
+    issue: 97,
+    titel: "Wandelement weist die reale Katalogbreite der Spannplatte aus",
+    testbitte: "In Modul 1 eine Spannplatte mit gepflegter Breite wählen und „Auslegen\" "
+      + "drücken: die Wand führt die Breite danach mit. Zuschnitt und Mengen bleiben gleich; "
+      + "gezeichnet wird die Platte noch unverändert (folgt).",
+  },
+  {
     id: "chg-20260909-22",
     datum: "2026-09-09",
     typ: "fix",
