@@ -1130,6 +1130,100 @@ t("#97 Die Plattenbreite reist durch psOf() (Auslegung und Nachweis)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// MASSE DER MUTTER EINLEGEBLECH UND DER SECHSKANTSCHRAUBE FUSS (#97) — reine DURCHREICHE
+// ---------------------------------------------------------------------------
+// Modul 1 leitet `zp_mutter_h_mm`/`zp_mutter_sw_mm` aus der Rolle „Mutter Einlegeblech" und
+// `senkkopf_sw_mm` aus der Rolle „Sechskantschraube Fuss" ab; der Kern reicht alle drei
+// unveraendert durch, damit die Ausgaben beide Teile spaeter masstaeblich zeichnen koennen,
+// ohne den Katalog zu lesen ([D-1]). GERECHNET wird damit nichts — genau das halten die Tests
+// fest: das Wandelement ist mit und ohne die Felder bis auf diese Schluessel bit-gleich. Eine
+// KOPFHOEHE der Schraube gibt es bewusst nicht (keine Norm genannt), es wird also auch kein
+// Feld dafuer geprueft. Gefahren wird derselbe `orakel()`-Weg wie bei #92 und den drei
+// Vorgaengerteilen: das ECHTE Python-Orakel als Unterprozess.
+const PS97ZP = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+  top_connection: "spannplatte", zp_mutter_h_mm: 8, zp_mutter_sw_mm: 17, senkkopf_sw_mm: 17 };
+const WAND97ZP = { name: "einlegemutter", length_mm: 6 * GRID, height_mm: 2000 };
+const bau97zp = (ps) => buildWall(WAND97ZP.name, WAND97ZP.length_mm, WAND97ZP.height_mm, [], null, ps);
+
+t("#97 Alle drei Masse reisen durch den Kern und sind py/mjs bit-gleich (echtes Orakel)", () => {
+  const js = bau97zp(PS97ZP);
+  assert(js.prestress.zp_mutter_h_mm === 8, "Einbauhoehe Mutter: " + js.prestress.zp_mutter_h_mm);
+  assert(js.prestress.zp_mutter_sw_mm === 17, "SW Mutter: " + js.prestress.zp_mutter_sw_mm);
+  assert(js.prestress.senkkopf_sw_mm === 17, "SW Schraube: " + js.prestress.senkkopf_sw_mm);
+  deepEqual(js, orakel({ ...WAND97ZP, prestress: PS97ZP }));   // bit-genau, ganzes Wandelement
+  // Andere Produkte ergeben andere Werte — und aendern sonst NICHTS.
+  const js2 = bau97zp({ ...PS97ZP, zp_mutter_h_mm: 6.5, zp_mutter_sw_mm: 13, senkkopf_sw_mm: 13 });
+  assert(js2.prestress.zp_mutter_h_mm === 6.5 && js2.prestress.zp_mutter_sw_mm === 13
+    && js2.prestress.senkkopf_sw_mm === 13,
+    "zweites Produkt: " + JSON.stringify(js2.prestress.zp_mutter_h_mm) + "/"
+      + js2.prestress.zp_mutter_sw_mm + "/" + js2.prestress.senkkopf_sw_mm);
+  deepEqual({ ...js2, prestress: { ...js2.prestress, zp_mutter_h_mm: 8, zp_mutter_sw_mm: 17,
+    senkkopf_sw_mm: 17 } }, js);
+  // Der nicht ganzzahlige Fall belegt zugleich die int/float-Normalisierung des Orakels.
+  deepEqual(js2, orakel({ ...WAND97ZP, prestress: { ...PS97ZP, zp_mutter_h_mm: 6.5,
+    zp_mutter_sw_mm: 13, senkkopf_sw_mm: 13 } }));
+});
+
+t("#97 Ohne diese Masse ist das Ergebnis bit-genau der Altstand", () => {
+  const { zp_mutter_h_mm, zp_mutter_sw_mm, senkkopf_sw_mm, ...ohne } = PS97ZP;   // eslint-disable-line no-unused-vars
+  const a = bau97zp(ohne);
+  // Weder `0` noch `null` erfinden ein Feld — und beide sind bit-genau der Fall ohne Angabe.
+  deepEqual(bau97zp({ ...ohne, zp_mutter_h_mm: 0, zp_mutter_sw_mm: 0, senkkopf_sw_mm: 0 }), a);
+  deepEqual(bau97zp({ ...ohne, zp_mutter_h_mm: null, zp_mutter_sw_mm: null, senkkopf_sw_mm: null }), a);
+  assert(!("zp_mutter_h_mm" in a.prestress) && !("zp_mutter_sw_mm" in a.prestress)
+    && !("senkkopf_sw_mm" in a.prestress),
+    "kein Schluessel ohne Angabe: " + Object.keys(a.prestress).join(","));
+  // Auch der Kern ohne Angabe ist py/mjs bit-gleich — das Ausbleiben der Schluessel ebenso.
+  deepEqual(a, orakel({ ...WAND97ZP, prestress: ohne }));
+  // Die drei Masse sind UNABHAENGIG: nur die Hoehe der Mutter gepflegt ergibt genau ein Feld.
+  const nurH = bau97zp({ ...ohne, zp_mutter_h_mm: 8 });
+  assert(nurH.prestress.zp_mutter_h_mm === 8 && !("zp_mutter_sw_mm" in nurH.prestress)
+    && !("senkkopf_sw_mm" in nurH.prestress),
+    "nur die Hoehe: " + Object.keys(nurH.prestress).join(","));
+  deepEqual(nurH, orakel({ ...WAND97ZP, prestress: { ...ohne, zp_mutter_h_mm: 8 } }));
+  // Und ebenso allein die Schluesselweite der Schraube — sie haengt an keiner der beiden anderen.
+  const nurSk = bau97zp({ ...ohne, senkkopf_sw_mm: 17 });
+  assert(nurSk.prestress.senkkopf_sw_mm === 17 && !("zp_mutter_h_mm" in nurSk.prestress)
+    && !("zp_mutter_sw_mm" in nurSk.prestress),
+    "nur die Schraube: " + Object.keys(nurSk.prestress).join(","));
+  deepEqual(nurSk, orakel({ ...WAND97ZP, prestress: { ...ohne, senkkopf_sw_mm: 17 } }));
+  // Und die Nullwirkung gegen den gesetzten Fall: nur diese Schluessel kommen hinzu.
+  const mit = bau97zp(PS97ZP);
+  delete mit.prestress.zp_mutter_h_mm; delete mit.prestress.zp_mutter_sw_mm;
+  delete mit.prestress.senkkopf_sw_mm;
+  deepEqual(mit, a);
+});
+
+t("#97 Alle drei Masse reisen durch psOf() (Auslegung und Nachweis)", () => {
+  // `psOf()` in `sembla-engine.js` ist eine FELDLISTE und baut `prestress` je Iteration neu —
+  // ohne Eintrag dort waeren die Felder nach der ersten Iteration weg.
+  const last = { qk_area: 0.5, gammaQ: 1.5 };
+  const auto = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: PS97ZP, load: last });
+  assert(auto.wandelement.prestress.zp_mutter_h_mm === 8
+    && auto.wandelement.prestress.zp_mutter_sw_mm === 17
+    && auto.wandelement.prestress.senkkopf_sw_mm === 17,
+    "nach der Auslegung: " + JSON.stringify(auto.wandelement.prestress.zp_mutter_h_mm) + "/"
+      + JSON.stringify(auto.wandelement.prestress.zp_mutter_sw_mm) + "/"
+      + JSON.stringify(auto.wandelement.prestress.senkkopf_sw_mm));
+  const nw = nachweisPruefen({ ...ENGINE_BASE, height_mm: 2000, load: { qk_area: 1.0, gammaQ: 1.5 },
+    prestress: { ...PS97ZP, max_span_grid: 3, force_kN: 60 } }).wandelement;
+  assert(nw.prestress.zp_mutter_h_mm === 8 && nw.prestress.zp_mutter_sw_mm === 17
+    && nw.prestress.senkkopf_sw_mm === 17,
+    "im Nachweis-Modus: " + nw.prestress.zp_mutter_h_mm + "/" + nw.prestress.zp_mutter_sw_mm
+      + "/" + nw.prestress.senkkopf_sw_mm);
+  // Und auch hier: die Auslegung selbst bleibt bit-genau der Altstand.
+  const { zp_mutter_h_mm, zp_mutter_sw_mm, senkkopf_sw_mm, ...ohne } = PS97ZP;   // eslint-disable-line no-unused-vars
+  const b = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ohne, load: last });
+  delete auto.wandelement.prestress.zp_mutter_h_mm;
+  delete auto.wandelement.prestress.zp_mutter_sw_mm;
+  delete auto.wandelement.prestress.senkkopf_sw_mm;
+  deepEqual(auto.wandelement, b.wandelement);
+  assert(!("zp_mutter_h_mm" in b.wandelement.prestress)
+    && !("zp_mutter_sw_mm" in b.wandelement.prestress)
+    && !("senkkopf_sw_mm" in b.wandelement.prestress), "kein Schluessel ohne Angabe");
+});
+
+// ---------------------------------------------------------------------------
 // RANDVERBAENDE [V-3]/[V-11] (Paritaetsvertrag mit dem Python-Orakel, Issue #104)
 // ---------------------------------------------------------------------------
 // Akzeptanztest 1+3 des Pakets: die vier i2-/i3-Randkombinationen werden als REALE Waende

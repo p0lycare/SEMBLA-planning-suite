@@ -39,17 +39,47 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die PLATTENBREITE IM SAMMEL-EDITOR (#97) ist der neueste Eintrag — er wird als einziger
-// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
-// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Die MASSE VON MUTTER EINLEGEBLECH UND SECHSKANTSCHRAUBE FUSS (#97) sind der neueste
+// Eintrag — er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe
+// wird ueber die KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 1 beim Auslegen die
+// gepflegten Katalogmasse beider Teile ableitet und das gespeicherte Wandelement sie
+// ausweist, dass Zuschnitt und Mengen dabei gleich bleiben und dass noch nichts gezeichnet
+// wird. NICHT versprochen werden ein neues Katalogmass, ein Bedienelement, eine Kopfhoehe
+// der Schraube, eine Norm, ein Preis, eine Menge, ein Nachweis oder ein Versionssprung.
+const ZP_SK_97 = EINTRAEGE[0];
+ok("[#97] die Masse von Einlegemutter und Schraube sind der neueste Eintrag",
+  ZP_SK_97?.id === "chg-20260910-04" && ZP_SK_97?.issue === 97
+  && ZP_SK_97?.typ === "feature" && ZP_SK_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt das Wandelement und beide Bauteile",
+  /Wandelement/.test(ZP_SK_97?.titel || "")
+  && /Einlegeblech/.test(ZP_SK_97?.titel || "")
+  && /Sechskantschraube/.test(ZP_SK_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format/i.test(ZP_SK_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 1",
+  /Modul 1\b/.test(ZP_SK_97?.testbitte || "")
+  && /Einlegeblech/.test(ZP_SK_97?.testbitte || "")
+  && /Sechskantschraube/.test(ZP_SK_97?.testbitte || "")
+  && /auslegen|Auslegen/.test(ZP_SK_97?.testbitte || ""));
+ok("[#97] die Testbitte sagt, dass Zuschnitt und Mengen gleich bleiben",
+  /Zuschnitt/.test(ZP_SK_97?.testbitte || "")
+  && /gleich/.test(ZP_SK_97?.testbitte || ""));
+ok("[#97] die Testbitte sagt ausdruecklich, dass noch nicht gezeichnet wird",
+  /gezeichnet/.test(ZP_SK_97?.testbitte || "")
+  && /unver\u00e4ndert/.test(ZP_SK_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm und keine Kopfhoehe",
+  !/Norm|Preis|Nachweis|Format|Migration|Kopfh/i.test(ZP_SK_97?.testbitte || ""));
+
+// Davor liegt die PLATTENBREITE IM SAMMEL-EDITOR (#97) — ueber ihre Kennung gesucht, weil sie
+// nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben inhaltlich unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der Sammel-Editor des
 // Geschosseditors die reale Breite der Spannplatte aus der Produktauswahl der jeweiligen
 // Wand nachzieht, sodass Modul 1 und Modul 7 sie unmittelbar zeigen, und dass eine
 // uneindeutige Auswahl den gespeicherten Wert stehen laesst. NICHT versprochen werden ein
 // neues Feld, ein neues Katalogmass, ein Bedienelement, eine geaenderte Rechnung, ein
 // Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
-const SAMMEL_SPB_97 = EINTRAEGE[0];
-ok("[#97] die Plattenbreite im Sammel-Editor ist der neueste Eintrag",
+const SAMMEL_SPB_97 = EINTRAEGE.find(e => e.id === "chg-20260910-03");
+ok("[#97] die Plattenbreite im Sammel-Editor steht unveraendert in der Reihe",
   SAMMEL_SPB_97?.id === "chg-20260910-03" && SAMMEL_SPB_97?.issue === 97
   && SAMMEL_SPB_97?.typ === "fix" && SAMMEL_SPB_97?.datum === "2026-09-10");
 ok("[#97] der Titel benennt die Sammelaenderung, die Spannplatte und ihre Breite",

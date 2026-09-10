@@ -441,6 +441,20 @@ function vorgaben(){
   // ⚠ Auch ihr Weg führt über die FELDLISTE `psOf()` in `sembla-engine.js` — ohne Eintrag dort
   // wäre sie nach der ersten Iteration der Auslegung wieder weg.
   const spB=spannplatteBreiteMm(); if(spB!=null) hw.spannplatte_b_mm=spB;
+  // #97 Einbauhöhe und Schlüsselweite der MUTTER DES EINLEGEBLECHS sowie die Schlüsselweite
+  // der SECHSKANTSCHRAUBE FUSS: dieselbe Bedingung und dieselbe reine Ausweisungsbahn — nur bei
+  // eindeutigem Katalogmaß, sonst bleibt das jeweilige Feld ganz weg. Alle drei stehen für sich
+  // und gehen in KEINE Rechnung ein; sie reisen allein deshalb mit, damit die Ausgaben beide
+  // Teile später maßstäblich zeichnen können, ohne den Katalog anzufassen ([D-1]).
+  //
+  // Eine KOPFHÖHE der Schraube entsteht hier ausdrücklich nicht: dafür gibt es weder ein
+  // Katalogfeld noch eine genannte Norm, und sie ließe sich nur erfinden ([P-9]).
+  //
+  // ⚠ Auch ihr Weg führt über die FELDLISTE `psOf()` in `sembla-engine.js` — ohne Eintrag dort
+  // wären sie nach der ersten Iteration der Auslegung wieder weg.
+  const zpH=zpMutterHoeheMm(); if(zpH!=null) hw.zp_mutter_h_mm=zpH;
+  const zpSw=zpMutterSwMm(); if(zpSw!=null) hw.zp_mutter_sw_mm=zpSw;
+  const skSw=senkkopfSwMm(); if(skSw!=null) hw.senkkopf_sw_mm=skSw;
   // [A-1] Blechdicken: reine BAUTEILMASSE aus dem Katalog. Sie gehen in keine Rechnung ein und
   // werden nur ausgewiesen; fehlt oder widerspricht ein Maß, bleibt das Feld weg und die Lücke
   // steht in `einbauMeldungen()` — es gibt dafür weder ein Eingabefeld noch einen Default.
@@ -1232,6 +1246,31 @@ function spannmutterSwMm(){ return einbauMass('spannmutter','sw_mm').wert; }
 // Fehlt das Maß oder widersprechen sich die gewählten Produkte, bleibt der Wert `null` und das
 // Feld entsteht gar nicht — es wird NIE eine Breite erfunden ([P-9]).
 function spannplatteBreiteMm(){ return einbauMass('spannplatte','breite_mm').wert; }
+// #97 Einbauhöhe und Schlüsselweite der MUTTER DES EINLEGEBLECHS (Rolle `zp_mutter`, [A-16])
+// und Schlüsselweite der SECHSKANTSCHRAUBE FUSS (Rolle `senkkopf`, [A-19]). Alle drei kommen
+// aus denselben Katalogfeldern wie jedes andere Einbaumaß (`hoehe_mm`/`sw_mm`) und werden über
+// dasselbe `einbauMass()` gelesen wie Fußoffset, Kopfzuschlag, die Schlüsselweite der
+// Kopplungsmutter, die Spannmuttermaße und die Spannplattenbreite — es entsteht kein zweiter
+// Ableitungsweg.
+//
+// Es sind KEINE Rechenwerte: sie gehen in keine Höhe, keinen Bedarf und keine Menge ein und
+// werden allein AUSGEWIESEN — dieselbe Bahn wie die Schlüsselweiten und die Blechdicken
+// ([A-1]). Gebraucht werden sie, damit die Ausgaben beide Teile maßstäblich zeichnen können,
+// ohne den Katalog anzufassen ([D-1]); GEZEICHNET wird in diesem Paket noch nichts.
+//
+// ⚠ Bewusst OHNE `topConn`-Bedingung — anders als `kopfZuschlagMm()`/`kopfblechDickeMm()`:
+// beide Teile sitzen unabhängig vom oberen Anschluss in der Wand (die Mutter am
+// Zwischenspannpunkt, die Schraube am Fuß). Dieselbe Begründung wie bei
+// `spannplatteBreiteMm()`.
+//
+// Die drei Maße stehen für sich: ein Produkt mit gepflegter Höhe, aber ohne Schlüsselweite
+// liefert genau ein Feld. Fehlt ein Maß oder widersprechen sich die gewählten Produkte, bleibt
+// der Wert `null` und das Feld entsteht gar nicht — es wird NIE eines erfunden ([P-9]),
+// insbesondere nicht aus Gewinde oder Norm des Produkts. Eine KOPFHÖHE der Schraube gibt es
+// hier nicht: dafür ist keine Norm genannt, und geraten wird sie nicht.
+function zpMutterHoeheMm(){ return einbauMass('zp_mutter','hoehe_mm').wert; }
+function zpMutterSwMm(){ return einbauMass('zp_mutter','sw_mm').wert; }
+function senkkopfSwMm(){ return einbauMass('senkkopf','sw_mm').wert; }
 // [A-1] Bodenblechdicke: Bauteilmaß der Rolle „Bodenblech". Alle Standardlängen einer Wand sind
 // gleich dick — mehrere gewählte Größen sind der Regelfall ([A-10]) und ergeben genau EINEN
 // Dickenwert. Tragen sie verschiedene, bleibt die Dicke offen; es wird keine bevorzugt.
@@ -1801,6 +1840,8 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   get kupplungSw(){return kupplungSwMm();},
   get spannmutterHoehe(){return spannmutterHoeheMm();}, get spannmutterSw(){return spannmutterSwMm();},
   get spannplatteBreite(){return spannplatteBreiteMm();},
+  get zpMutterHoehe(){return zpMutterHoeheMm();}, get zpMutterSw(){return zpMutterSwMm();},
+  get senkkopfSw(){return senkkopfSwMm();},
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},

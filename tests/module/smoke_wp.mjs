@@ -1539,6 +1539,18 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'spm-h10-sw13', kategorie:'verbrauch', bezeichnung:'Spannmutter M8 SW13', einheit:'Stk', preis:0.8, hoehe_mm:10, sw_mm:13 },
   { id:'spm-h12', kategorie:'verbrauch', bezeichnung:'Spannmutter M10 ohne SW', einheit:'Stk', preis:0.9, hoehe_mm:12 },
   { id:'spm-ohne', kategorie:'verbrauch', bezeichnung:'Spannmutter ohne Maßangabe', einheit:'Stk', preis:0.9 },
+  // #97 Mutter Einlegeblech (Rolle `zp_mutter`) und Sechskantschraube Fuss (Rolle `senkkopf`)
+  // — je die Faelle vollstaendig gepflegt, widersprechend und ganz ohne Mass. Sie
+  // unterscheiden sich AUSSCHLIESSLICH in `hoehe_mm`/`sw_mm`; die Kategorie „Verbrauch" hat
+  // fuer beide Felder keine Pflichtliste, ein Produkt ohne Mass ist dort also gueltig.
+  // Ausgewaehlt werden sie nur im #97-Einlegemutter-/Schraubenblock.
+  { id:'zpm-h8-sw17', kategorie:'verbrauch', bezeichnung:'Mutter Einlegeblech M10 SW17', einheit:'Stk', preis:0.08, hoehe_mm:8, sw_mm:17 },
+  { id:'zpm-h8-sw13', kategorie:'verbrauch', bezeichnung:'Mutter Einlegeblech M8 SW13', einheit:'Stk', preis:0.07, hoehe_mm:8, sw_mm:13 },
+  { id:'zpm-h6', kategorie:'verbrauch', bezeichnung:'Mutter Einlegeblech flach ohne SW', einheit:'Stk', preis:0.07, hoehe_mm:6 },
+  { id:'zpm-ohne', kategorie:'verbrauch', bezeichnung:'Mutter Einlegeblech ohne Maßangabe', einheit:'Stk', preis:0.08 },
+  { id:'sk-sw17', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M10×25 SW17', einheit:'Stk', preis:0.45, laenge_mm:25, sw_mm:17 },
+  { id:'sk-sw13', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M8×25 SW13', einheit:'Stk', preis:0.4, laenge_mm:25, sw_mm:13 },
+  { id:'sk-ohne', kategorie:'verbrauch', bezeichnung:'Sechskantschraube ohne Maßangabe', einheit:'Stk', preis:0.45, laenge_mm:25 },
   { id:'rod-rest-210', kategorie:'gewindestange', bezeichnung:'Reststück 210', einheit:'Stk', preis:1.2, gewinde:'M10', laenge_mm:210 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1500', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
 ]};
@@ -2565,6 +2577,189 @@ store.setzeKatalog(KATALOG);
       const sc=ohne[0].b/MONT.SPANN_MM.platte_b_mm;
       return mit.every(r=>Math.abs(r.b-120*sc)<1e-9) && mit[0].b>ohne[0].b; })());
   }
+
+  // Ausgangszustand wiederherstellen.
+  for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
+  document.getElementById('topConn').value='spannplatte';
+  WP.applyWand(vorherW);
+}
+
+// ---- Issue #97: die MASSE VON MUTTER EINLEGEBLECH UND SECHSKANTSCHRAUBE FUSS -----------
+// Gefahren wird der ECHTE Planerweg wie bei #92, der Kopplungsmutter, der Spannmutter und der
+// Spannplatte: beide Teile im zugeordneten Katalog waehlen -> `vorgaben()` leitet
+// `zp_mutter_h_mm`/`zp_mutter_sw_mm` aus `hoehe_mm`/`sw_mm` der Rolle `zp_mutter` und
+// `senkkopf_sw_mm` aus `sw_mm` der Rolle `senkkopf` ab -> dieselbe Engine rechnet -> das
+// GESPEICHERTE Wandelement traegt genau diese Masse. GEZEICHNET wird in diesem Paket nichts;
+// die Masse reisen allein, damit die Ausgaben beide Teile spaeter ohne Katalogzugriff
+// masstaeblich zeichnen koennen ([D-1]).
+//
+// Eine KOPFHOEHE der Schraube entsteht ausdruecklich NICHT: dafuer ist keine Norm genannt,
+// und sie liesse sich nur erfinden — unten wird genau das geprueft.
+//
+// Der zweite Teil ist die Nullwirkung: keines der drei Masse geht in eine Rechnung ein. Alle
+// Faelle hier fahren dieselbe Wand — Segmente, Zuschnitt, Bedarf, Spannachsen und die
+// kanonischen Stuecklistenmengen muessen ueber ALLE Faelle hinweg wertgleich sein.
+{
+  const meld=()=>document.getElementById('einbauQuelle').innerHTML;
+  const ROLLEN=['rod_std','rod_rest','blech_boden','kupplung','spannplatte','spannmutter',
+                'zp_mutter','senkkopf'];
+  const leere=(rolle)=>((store.holeProdukte(1).rollen||{})[rolle]||[]).slice()
+    .forEach(id=>setzen(rolle,id,false));
+  const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
+  const vorherW=WP.RESULT.wandelement;
+  for(const r of ROLLEN) leere(r);
+  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  document.getElementById('topConn').value='blech';
+  document.getElementById('rodUeber').value='10';
+  setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
+  // Der RECHNERISCHE Fingerabdruck der Wand — alles, was sich NICHT aendern darf.
+  const fp=()=>{ const w=WP.RESULT.wandelement; return JSON.stringify({
+    achsen: w.tension_columns.map(c=>c.x_mm),
+    seg: w.tension_columns.map(c=>c.segments.map(g=>[g.z0_mm,g.z1_mm,g.bedarf_mm,
+      g.stuecke.map(x=>x.len_mm+':'+x.art).join(',')])),
+    bom: BOM.semblaBomItems(w) }); };
+  const psGespeichert=()=>store.aktivesWandelement().prestress;
+  const felder=()=>{ const ps=WP.RESULT.wandelement.prestress;
+    return [('zp_mutter_h_mm' in ps), ('zp_mutter_sw_mm' in ps), ('senkkopf_sw_mm' in ps)]; };
+
+  WP.run();
+  const fp0=fp();
+  ok('[#97] ohne Auswahl entstehen keine Masse (nichts geraten)',
+    WP.zpMutterHoehe===null && WP.zpMutterSw===null && WP.senkkopfSw===null
+    && WP.vorgaben().prestress.zp_mutter_h_mm===undefined
+    && WP.vorgaben().prestress.zp_mutter_sw_mm===undefined
+    && WP.vorgaben().prestress.senkkopf_sw_mm===undefined
+    && felder().join()==='false,false,false'
+    && psGespeichert().zp_mutter_h_mm===undefined
+    && psGespeichert().zp_mutter_sw_mm===undefined
+    && psGespeichert().senkkopf_sw_mm===undefined);
+
+  // Akzeptanz 1: gepflegte Masse -> genau diese Katalogwerte im GESPEICHERTEN Wandelement.
+  setzen('zp_mutter','zpm-h8-sw17',true); setzen('senkkopf','sk-sw17',true); WP.run();
+  ok('[#97] Modul 1 leitet Hoehe und Schluesselweite der Mutter und die SW der Schraube ab',
+    WP.zpMutterHoehe===8 && WP.zpMutterSw===17 && WP.senkkopfSw===17
+    && WP.vorgaben().prestress.zp_mutter_h_mm===8
+    && WP.vorgaben().prestress.zp_mutter_sw_mm===17
+    && WP.vorgaben().prestress.senkkopf_sw_mm===17
+    && WP.RESULT.wandelement.prestress.zp_mutter_h_mm===8
+    && WP.RESULT.wandelement.prestress.zp_mutter_sw_mm===17
+    && WP.RESULT.wandelement.prestress.senkkopf_sw_mm===17);
+  ok('[#97] der GESPEICHERTE Stand traegt dieselben Masse (kein Zwischenstand)',
+    psGespeichert().zp_mutter_h_mm===8 && psGespeichert().zp_mutter_sw_mm===17
+    && psGespeichert().senkkopf_sw_mm===17);
+  ok('[#97] kein Produktdatum im Wandelement (Ownership)', (()=>{
+    const j=JSON.stringify(store.aktivesWandelement());
+    return !j.includes('zpm-h8-sw17') && !j.includes('sk-sw17')
+      && !j.includes('Einlegeblech') && !j.includes('preis'); })());
+  // N1: eine Kopfhoehe der Schraube gibt es nicht — weder Feld noch Wert.
+  ok('[#97] keine Kopfhoehe der Schraube: kein Feld und kein Wert', (()=>{
+    const ps=store.aktivesWandelement().prestress;
+    return !Object.keys(ps).some(k=>/senkkopf/.test(k) && k!=='senkkopf_sw_mm'); })());
+  // Akzeptanz 3: die Rechnung ist dabei wertgleich zum Stand ganz ohne die Felder.
+  ok('[#97] die Rechnung bleibt dabei bit-genau dieselbe', fp()===fp0);
+
+  // Akzeptanz 2a: gewaehlte Produkte ganz OHNE Mass -> kein Feld, nichts erfunden.
+  setzen('zp_mutter','zpm-h8-sw17',false); setzen('zp_mutter','zpm-ohne',true);
+  setzen('senkkopf','sk-sw17',false); setzen('senkkopf','sk-ohne',true); WP.run();
+  ok('[#97] gewaehlte Teile ohne gepflegtes Mass: kein Feld, kein Ersatzmass',
+    WP.zpMutterHoehe===null && WP.zpMutterSw===null && WP.senkkopfSw===null
+    && felder().join()==='false,false,false'
+    && psGespeichert().zp_mutter_h_mm===undefined
+    && psGespeichert().zp_mutter_sw_mm===undefined
+    && psGespeichert().senkkopf_sw_mm===undefined && fp()===fp0);
+
+  // Die drei Masse sind UNABHAENGIG: nur die Hoehe der Mutter gepflegt -> genau ein Feld.
+  setzen('zp_mutter','zpm-ohne',false); setzen('zp_mutter','zpm-h6',true); WP.run();
+  ok('[#97] nur die Hoehe gepflegt: genau dieses eine Feld entsteht',
+    WP.zpMutterHoehe===6 && WP.zpMutterSw===null && WP.senkkopfSw===null
+    && felder().join()==='true,false,false'
+    && psGespeichert().zp_mutter_h_mm===6
+    && psGespeichert().zp_mutter_sw_mm===undefined
+    && psGespeichert().senkkopf_sw_mm===undefined && fp()===fp0);
+  // Und ebenso allein die Schraube — sie haengt an keinem der beiden Muttermasse.
+  setzen('zp_mutter','zpm-h6',false); setzen('senkkopf','sk-ohne',false);
+  setzen('senkkopf','sk-sw13',true); WP.run();
+  ok('[#97] allein die Schraube gepflegt: genau ihr Feld entsteht',
+    WP.zpMutterHoehe===null && WP.zpMutterSw===null && WP.senkkopfSw===13
+    && felder().join()==='false,false,true'
+    && psGespeichert().senkkopf_sw_mm===13 && fp()===fp0);
+
+  // Akzeptanz 2b: widersprechende Masse -> keines wird bevorzugt, keines gemittelt. Beide
+  // Muttern sind 8 mm hoch, mehrdeutig ist also ZUERST allein die Schluesselweite.
+  setzen('zp_mutter','zpm-h8-sw17',true); setzen('zp_mutter','zpm-h8-sw13',true);
+  setzen('senkkopf','sk-sw17',true); WP.run();
+  ok('[#97] mehrere Schluesselweiten: keine wird bevorzugt, die eindeutige Hoehe bleibt',
+    WP.zpMutterHoehe===8 && WP.zpMutterSw===null && WP.senkkopfSw===null
+    && felder().join()==='true,false,false'
+    && psGespeichert().zp_mutter_h_mm===8
+    && psGespeichert().zp_mutter_sw_mm===undefined
+    && psGespeichert().senkkopf_sw_mm===undefined && fp()===fp0);
+  // Gegenprobe: auch die HOEHE wird mehrdeutig, sobald sich die Produkte darin unterscheiden.
+  setzen('zp_mutter','zpm-h8-sw13',false); setzen('zp_mutter','zpm-h6',true); WP.run();
+  ok('[#97] mehrere Einbauhoehen: auch die Hoehe bleibt dann offen',
+    WP.zpMutterHoehe===null && felder()[0]===false
+    && psGespeichert().zp_mutter_h_mm===undefined && fp()===fp0);
+
+  // Beide Teile melden BEWUSST nichts in `einbauMeldungen()` — dieselbe Begruendung wie bei
+  // der Schluesselweite der Kopplungsmutter und der Breite der Spannplatte: reine
+  // Zeichenmasse. Kein neuer Meldetext, in keinem der Faelle.
+  ok('[#97] die drei Masse erzeugen keinen eigenen Meldetext',
+    !/Einlegeblech/.test(meld()) && !/Sechskantschraube/.test(meld()));
+
+  // Akzeptanz 2c: OHNE wirksamen Katalog wird gar nichts abgeleitet.
+  setzen('zp_mutter','zpm-h6',false); setzen('senkkopf','sk-sw13',false); WP.run();
+  ok('[#97] Ausgangsstand fuer die Katalogprobe ist gesetzt',
+    psGespeichert().zp_mutter_h_mm===8 && psGespeichert().zp_mutter_sw_mm===17
+    && psGespeichert().senkkopf_sw_mm===17);
+  store.loescheKatalog(); WP.run();
+  ok('[#97] ohne wirksamen Katalog entsteht kein Feld',
+    WP.zpMutterHoehe===null && WP.zpMutterSw===null && WP.senkkopfSw===null
+    && felder().join()==='false,false,false'
+    && psGespeichert().zp_mutter_h_mm===undefined
+    && psGespeichert().zp_mutter_sw_mm===undefined
+    && psGespeichert().senkkopf_sw_mm===undefined);
+  store.setzeKatalog(KATALOG); WP.run();
+  ok('[#97] mit dem Katalog sind alle drei Masse unveraendert wieder da',
+    psGespeichert().zp_mutter_h_mm===8 && psGespeichert().zp_mutter_sw_mm===17
+    && psGespeichert().senkkopf_sw_mm===17);
+
+  // Ein am WANDELEMENT gespeicherter Wert muss den Rechenweg ueberstehen, der ihn nicht neu
+  // ableitet — alle drei reisen durch `psOf()`, Modul 1 bekommt dafuer KEINEN eigenen
+  // Erhaltungsmechanismus. Gebraucht wird das ueberall dort, wo eine Neurechnung ohne
+  // Produktauswahl laeuft (z. B. der Sammel-Editor des Geschosseditors).
+  ok('[#97] ein gespeicherter Stand uebersteht den nicht neu ableitenden Rechenweg', (()=>{
+    const w=store.aktivesWandelement();
+    const neu=autoAuslegung({ name:w.name, length_mm:w.length_mm, height_mm:w.height_mm,
+      openings:[], sides:w.sides||null, prestress:{ ...w.prestress },
+      load:{ qk_area:1.0, gammaQ:1.5 } }).wandelement;
+    return neu.prestress.zp_mutter_h_mm===8 && neu.prestress.zp_mutter_sw_mm===17
+      && neu.prestress.senkkopf_sw_mm===17; })());
+
+  // M5/N2 als Gegenprobe am ECHTEN gespeicherten Stand: dasselbe Wandelement einmal MIT und
+  // einmal OHNE die drei Felder gerechnet ist bis auf genau diese Schluessel bit-gleich.
+  ok('[#97] Zuschnitt, Segmente, Bedarf und Mengen sind mit und ohne die Felder wertgleich',
+    (()=>{
+      const w=store.aktivesWandelement();
+      const basis={ name:w.name, length_mm:w.length_mm, height_mm:w.height_mm, openings:[],
+        sides:w.sides||null, load:{ qk_area:1.0, gammaQ:1.5 } };
+      const { zp_mutter_h_mm, zp_mutter_sw_mm, senkkopf_sw_mm, ...ohnePs }=w.prestress;
+      const mit=autoAuslegung({ ...basis, prestress:{ ...w.prestress } }).wandelement;
+      const ohne=autoAuslegung({ ...basis, prestress:ohnePs }).wandelement;
+      const kern=(x)=>JSON.stringify({ achsen:x.tension_columns.map(c=>c.x_mm),
+        seg:x.tension_columns.map(c=>c.segments.map(g=>[g.z0_mm,g.z1_mm,g.bedarf_mm,
+          g.ueberstand_mm,g.stuecke.map(y=>y.len_mm+':'+y.art).join(',')])),
+        bom:BOM.semblaBomItems(x) });
+      delete mit.prestress.zp_mutter_h_mm; delete mit.prestress.zp_mutter_sw_mm;
+      delete mit.prestress.senkkopf_sw_mm;
+      return kern(mit)===kern(ohne) && JSON.stringify(mit)===JSON.stringify(ohne)
+        && zp_mutter_h_mm===8 && zp_mutter_sw_mm===17 && senkkopf_sw_mm===17; })());
+
+  // N3: gezeichnet wird in diesem Paket nichts — die Wandansicht ist mit und ohne die drei
+  // Masse bit-gleich.
+  const svgMit=document.getElementById('plan').innerHTML;
+  setzen('zp_mutter','zpm-h8-sw17',false); setzen('senkkopf','sk-sw17',false); WP.run();
+  ok('[#97] die Wandansicht bleibt bit-gleich (in diesem Paket wird nichts gezeichnet)',
+    document.getElementById('plan').innerHTML===svgMit && fp()===fp0);
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }

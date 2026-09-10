@@ -899,6 +899,23 @@ def _norm_prestress(p):
     _spb = p.get("spannplatte_b_mm")
     if _spb is not None and float(_spb) > 0:
         out["spannplatte_b_mm"] = int(_spb) if float(_spb) == int(float(_spb)) else float(_spb)
+    # Einbauhoehe und Schluesselweite der MUTTER DES EINLEGEBLECHS ([A-16]) und Schluesselweite
+    # der SECHSKANTSCHRAUBE FUSS ([A-19]) (#97) — die realen Masse beider Bauteile, von Modul 1
+    # aus den gewaehlten Katalogprodukten abgeleitet. Auch sie gehen in KEINE Rechnung ein und
+    # werden nur DURCHGEREICHT, damit die Ausgaben beide Teile masstaeblich zeichnen koennen,
+    # ohne den Katalog zu lesen ([D-1]). Eine KOPFHOEHE der Schraube gibt es bewusst nicht:
+    # dafuer ist keine Norm genannt, und sie liesse sich nur erfinden.
+    # Alle drei OPTIONAL und voneinander UNABHAENGIG: fehlend/ungueltig -> der Schluessel
+    # entsteht gar nicht, das Ergebnis ist bit-genau das bisherige ([P-9]).
+    _zph = p.get("zp_mutter_h_mm")
+    if _zph is not None and float(_zph) > 0:
+        out["zp_mutter_h_mm"] = int(_zph) if float(_zph) == int(float(_zph)) else float(_zph)
+    _zpsw = p.get("zp_mutter_sw_mm")
+    if _zpsw is not None and float(_zpsw) > 0:
+        out["zp_mutter_sw_mm"] = int(_zpsw) if float(_zpsw) == int(float(_zpsw)) else float(_zpsw)
+    _sksw = p.get("senkkopf_sw_mm")
+    if _sksw is not None and float(_sksw) > 0:
+        out["senkkopf_sw_mm"] = int(_sksw) if float(_sksw) == int(float(_sksw)) else float(_sksw)
     # Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
     # er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
     # nirgends gespeichert wird, entsteht im Wandelement auch kein Feld dafuer. `build_wall`

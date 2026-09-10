@@ -982,6 +982,25 @@ function normPrestress(p) {
   // das Ergebnis ist bit-genau das bisherige. Eine Breite wird NIE erfunden ([P-9]).
   const spB = (p && p.spannplatte_b_mm != null && +p.spannplatte_b_mm > 0) ? +p.spannplatte_b_mm : 0;
   if (spB > 0) out.spannplatte_b_mm = spB;
+  // Einbauhoehe und Schluesselweite der MUTTER DES EINLEGEBLECHS ([A-16]) und Schluesselweite
+  // der SECHSKANTSCHRAUBE FUSS ([A-19]) (#97) — die realen Masse beider Bauteile, von Modul 1
+  // aus den gewaehlten Katalogprodukten abgeleitet. Auch sie gehen in KEINE Rechnung ein und
+  // werden hier nur DURCHGEREICHT, damit die Ausgaben beide Teile masstaeblich zeichnen
+  // koennen, ohne den Katalog zu lesen ([D-1]) — dieselbe reine Ausweisungsbahn wie die
+  // uebrigen Schluesselweiten und die Blechdicken ([A-1]). Kein Produktmass darueber hinaus,
+  // keine Produkt-ID und kein Preis wandert dadurch ins Wandelement.
+  //
+  // Eine KOPFHOEHE der Schraube gibt es bewusst NICHT: dafuer ist keine Norm genannt, und sie
+  // liesse sich nur erfinden ([P-9]).
+  //
+  // Alle drei OPTIONAL und voneinander UNABHAENGIG: fehlt eines oder ist es ungueltig, entsteht
+  // genau dieser Schluessel gar nicht erst und das Ergebnis ist bit-genau das bisherige.
+  const zpH = (p && p.zp_mutter_h_mm != null && +p.zp_mutter_h_mm > 0) ? +p.zp_mutter_h_mm : 0;
+  if (zpH > 0) out.zp_mutter_h_mm = zpH;
+  const zpSw = (p && p.zp_mutter_sw_mm != null && +p.zp_mutter_sw_mm > 0) ? +p.zp_mutter_sw_mm : 0;
+  if (zpSw > 0) out.zp_mutter_sw_mm = zpSw;
+  const skSw = (p && p.senkkopf_sw_mm != null && +p.senkkopf_sw_mm > 0) ? +p.senkkopf_sw_mm : 0;
+  if (skSw > 0) out.senkkopf_sw_mm = skSw;
   return out;
 }
 

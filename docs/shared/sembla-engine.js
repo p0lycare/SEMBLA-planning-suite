@@ -139,6 +139,14 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // nach der Auslegung keine mehr, obwohl Modul 1 sie aus dem Katalog abgeleitet hat — und der
 // Sammel-Editor des Geschosseditors, der ein gespeichertes `prestress` nur kopiert und ueber
 // diesen Pfad neu rechnet, LOESCHTE sie bei jeder Sammelaenderung.
+// Und aus demselben Grund `zp_mutter_h_mm`/`zp_mutter_sw_mm` und `senkkopf_sw_mm` (#97):
+// Einbauhoehe und Schluesselweite der MUTTER DES EINLEGEBLECHS und die Schluesselweite der
+// SECHSKANTSCHRAUBE FUSS. Sie gehen — wie die uebrigen Schluesselweiten und die Blechdicken —
+// in KEINE Rechnung ein und werden allein AUSGEWIESEN, damit die Ausgaben beide Teile spaeter
+// masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]). Fielen sie hier weg,
+// traege das Element nach der Auslegung keine Masse mehr, obwohl Modul 1 sie aus dem Katalog
+// abgeleitet hat. Eine KOPFHOEHE der Schraube gibt es bewusst nicht — dafuer ist keine Norm
+// genannt, und sie liesse sich nur erfinden.
 // NICHT mitgereicht wird `start_axis_grid` (#104): [V-5] ist durch [V-3]/[V-11] abgeloest, der
 // Core liest das Feld nicht mehr, und die Iteration gibt ihm folglich auch keines mehr vor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
@@ -152,6 +160,8 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            kupplung_sw_mm: p.kupplung_sw_mm,
            spannmutter_h_mm: p.spannmutter_h_mm, spannmutter_sw_mm: p.spannmutter_sw_mm,
            spannplatte_b_mm: p.spannplatte_b_mm,
+           zp_mutter_h_mm: p.zp_mutter_h_mm, zp_mutter_sw_mm: p.zp_mutter_sw_mm,
+           senkkopf_sw_mm: p.senkkopf_sw_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
            ausgleich_override_mm: p.ausgleich_override_mm,
            deckenanschluss_grid: p.deckenanschluss_grid }; }

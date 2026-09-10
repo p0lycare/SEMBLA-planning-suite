@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-04",
+    datum: "2026-09-10",
+    typ: "feature",
+    issue: 97,
+    titel: "Wandelement weist die Maße der Mutter des Einlegeblechs und der Sechskantschraube aus",
+    testbitte: "In Modul 1 eine Mutter Einlegeblech und eine Sechskantschraube Fuß mit "
+      + "gepflegten Maßen wählen und „Auslegen“ drücken: die Wand führt sie danach mit. "
+      + "Zuschnitt und Mengen bleiben gleich; gezeichnet werden beide Teile noch "
+      + "unverändert.",
+  },
+  {
     id: "chg-20260910-03",
     datum: "2026-09-10",
     typ: "fix",
