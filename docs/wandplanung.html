@@ -82,6 +82,14 @@
   .zlegende i.agp{width:0;height:0;border-top:0;
                   border-left:5px solid transparent;border-right:5px solid transparent;
                   border-bottom:8px solid currentColor}
+  /* Bodenblech (#91/#97): liegendes Blechfeld — dieselbe Form fuer Stoss und Sonderzuschnitt,
+     die Kennfarbe kommt je Eintrag inline aus dem Darstellungsschluessel ([D-4]). Der STOSS
+     traegt die weisse Marke als Strich IM stahlfarbenen Feld: ein weisses Feld allein waere
+     auf hellem Grund unsichtbar, genau wie im Blatt von Modul 7. */
+  .zlegende i.bpl{width:14px;height:9px;border-top:0;background:currentColor}
+  .zlegende i.bst{position:relative}
+  .zlegende i.bst::after{content:"";position:absolute;left:6px;top:0;width:2px;height:9px;
+                  background:var(--bst-marke)}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -287,6 +295,16 @@ let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
 // Bodenblech: EIN Zeichenweg fuer Modul 1, 5 und 7 ([A-10]/[D-4]) — die Teilfolge kommt
 // aus `base_plate.teile` des Rechenkerns, hier wird nichts nachgerechnet.
 let bodenblechSvg;
+// #97: die reale Teilfolge des Bodenblechs und ihre inneren Stoesse — dieselben Ableitungen,
+// aus denen `bodenblechSvg()` zeichnet. Die Zuschnittlegende nennt Stossmarke und
+// Sonderzuschnitt damit GENAU DANN, wenn die Ansicht sie auch zeigt ([D-4]); gerechnet
+// wird hier nichts nach.
+let bodenblechTeile, bodenblechStoesse, BLECHSTOSS;
+// Kennfarbe des Boden-/Kopfblechs. Sie gehoert nicht zu den Spannkomponenten und ist in
+// sembla-montage.js nicht ausgefuehrt; wie beim Haarlinien-Faktor (#112) steht sie lokal und
+// ihre Gleichheit mit `FARBE.stahl` von Modul 7 ist im Test gesichert ([P-6]/[D-4]).
+// Seit #97 braucht sie neben der Wandansicht auch das Legendenfeld der Stossmarke.
+const STEEL='#5b6673';
 let DECKENANSCHLUSS, deckenanschlussSvg;
 // Ausgleichspunkte ([A-20]…[A-24], #96/#97): Darstellungsschlüssel und die EINE Zeichenfunktion
 // der Marke unter dem Bodenblech — dieselbe Quelle und dieselbe Form wie im Blatt von Modul 7
@@ -728,8 +746,8 @@ function draw(w){
   const HAAR_B=kupplungDurchmesser(SYM,{sw_mm:kuSw,sc})*1.5, HAAR_SW=0.8, HAAR_FARBE='#fff';
   // Kennfarben der Spannkomponenten kommen aus SPANN_FARBE (sembla-montage.js, [D-4]/#110) —
   // dieselbe Quelle wie Modul 7, keine lokalen Hex-Werte mehr. STEEL ist das Boden-/Kopfblech
-  // und gehoert nicht zu den Spannkomponenten.
-  const STEEL='#5b6673';
+  // und gehoert nicht zu den Spannkomponenten; es steht seit #97 auf Dateiebene, weil auch das
+  // Legendenfeld der Stossmarke es braucht — ein zweiter Hex-Wert waere Drift.
   // Blechdicke aus dem Wandelement (Katalogmaß). Ohne Maß bleibt ein reines ZEICHENMASS
   // uebrig ([D-9]) — gezeichnet wird das Blech trotzdem, beschriftet aber als offen.
   const bdMm=(RESULT&&RESULT.wandelement&&RESULT.wandelement.base_plate
@@ -1001,8 +1019,25 @@ function renderZLegende(w){
   // der Marke (ihr nicht farbliches Merkmal) und nennt die Lage in Worten ([D-4]/#15).
   const agEintrag = (w && (w.ausgleichspunkte||[]).length)
     ? `<span><i class="agp" style="color:${AUSGLEICHSPUNKT.farbe}"></i>${AUSGLEICHSPUNKT.label} — unter dem Bodenblech</span>` : '';
+  // Bodenblech (#91/#97): Stossmarke und Sonderzuschnitt zeichnet `bodenblechSvg()` in die
+  // Wandansicht — die Legende nennt sie GENAU DANN, wenn sie dort auch stehen ([D-4]), mit
+  // demselben Wortlaut wie legendeHtml() in Modul 7. Ein Alt-Wandelement ohne
+  // `base_plate.teile` liefert ein durchgehendes Blech ohne Stoss und bekommt keinen der
+  // beiden Eintraege. Das Legendenfeld zeigt die Marke SO, WIE SIE IM BILD STEHT: eine weisse
+  // Linie IN einem stahlfarbenen Blechfeld.
+  const bstEintrag = (w && bodenblechStoesse(w).length)
+    ? `<span><i class="bpl bst" style="color:${STEEL};--bst-marke:${BLECHSTOSS.farbe}"></i>`
+      + `${BLECHSTOSS.label} (Bodenblech)</span>` : '';
+  // Der Sonderzuschnitt traegt sein NICHT FARBLICHES Merkmal — die Schraffur — ausdruecklich
+  // in Worten, damit er im Schwarz-Weiss-Ausdruck aufloesbar bleibt.
+  const bsoEintrag = (w && bodenblechTeile(w).some(t=>t.art==='sonder'))
+    ? `<span><i class="bpl" style="color:${stueckFarbe('sonder')}"></i>`
+      + `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : '';
+  const blechEintraege = bstEintrag+bsoEintrag;
   const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
-  if(!alle.length){ box.innerHTML=zpEintrag+dcEintrag+agEintrag; return; }   // kein bestimmter Zuschnitt -> keine Zuschnittlegende
+  // Ohne bestimmten Zuschnitt gibt es KEINE Zuschnittlegende — die Blecheintraege haengen
+  // aber nicht an der Stangenzerlegung und laufen deshalb hier mit.
+  if(!alle.length){ box.innerHTML=blechEintraege+zpEintrag+dcEintrag+agEintrag; return; }
   // Auch die Standardlänge wird nur genannt, wenn sie wirklich vorkommt: ein Stand aus reinem
   // Sonderzuschnitt plus Reststück ([Z-2]/[Z-6]) hat keine Standardlänge, und die Legende darf
   // keine behaupten. Reihenfolge bleibt standard · sonder · rest.
@@ -1011,7 +1046,8 @@ function renderZLegende(w){
   box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
     + teile.map(a=>`<span><i style="color:${stueckFarbe(a)}"></i>${STUECK_LABEL[a]}</span>`).join('')
     + `<span><i class="kop" style="color:${SPANN_FARBE.mutter}"></i>Kopplung</span>`
-    + zpEintrag + dcEintrag + agEintrag;
+    // Reihenfolge wie in legendeHtml() (Modul 7): erst die Bleche, dann die Punkte.
+    + blechEintraege + zpEintrag + dcEintrag + agEintrag;
 }
 
 // ---------- Öffnungs-UI ----------
@@ -1901,6 +1937,8 @@ window.__wpInit=function(){
   stangenStuecke=S.stangenStuecke;
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
   bodenblechSvg=S.bodenblechSvg;
+  bodenblechTeile=S.bodenblechTeile; bodenblechStoesse=S.bodenblechStoesse;
+  BLECHSTOSS=S.BLECHSTOSS;
   DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
   AUSGLEICHSPUNKT=S.AUSGLEICHSPUNKT; ausgleichspunktSvg=S.ausgleichspunktSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
@@ -1937,6 +1975,9 @@ window.__wpInit=function(){
            // #91: der EINE Zeichenweg des Bodenblechs — dieselbe Teilfolge und dieselben
            // Stossmarken wie Modul 5 und Modul 7 ([A-10]/[D-4]).
            bodenblechSvg,
+           // #97: dieselbe Teilfolge und derselbe Klartext fuer die Zuschnittlegende —
+           // die Legende nennt genau die Marken, die die Ansicht zeichnet ([D-4]).
+           bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { oeffneReparatur } from './shared/sembla-reparatur.js';
@@ -1944,6 +1985,7 @@ window.__wpInit=function(){
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
                     oeffneReparatur,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
+                    bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
                     AUSGLEICHSPUNKT, ausgleichspunktSvg,

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-08",
+    datum: "2026-09-10",
+    typ: "fix",
+    issue: 97,
+    titel: "Zuschnittlegende in Modul 1 erklärt Bodenblech-Stoß und Bodenblech-Sonderzuschnitt",
+    testbitte: "In Modul 1 eine Wand mit mehrteiligem Bodenblech auslegen: unter der "
+      + "Wandansicht stehen die weiße Stoßmarke und der schraffierte Sonderzuschnitt mit "
+      + "demselben Wortlaut wie im Blatt von Modul 7; bei durchgehendem Blech fehlen beide.",
+  },
+  {
     id: "chg-20260910-07",
     datum: "2026-09-10",
     typ: "feature",

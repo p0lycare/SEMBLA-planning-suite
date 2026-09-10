@@ -57,6 +57,10 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // #91: der EINE Zeichenweg des Bodenblechs — Modul 1 zeigt damit dieselbe reale
   // Teilfolge und dieselben Stossmarken wie Modul 5 und Modul 7 ([A-10]/[D-4]).
   bodenblechSvg: MONT.bodenblechSvg,
+  // #97: dieselbe Teilfolge und derselbe Klartext fuer die Zuschnittlegende — sie nennt
+  // genau die Marken, die `bodenblechSvg()` zeichnet ([D-4]).
+  bodenblechTeile: MONT.bodenblechTeile, bodenblechStoesse: MONT.bodenblechStoesse,
+  BLECHSTOSS: MONT.BLECHSTOSS,
   // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs kommen — wie der
   // Zuschnittschluessel — aus sembla-montage.js; die wirksamen Punkte aus dem Rechenkern.
   ZWISCHENPUNKT: MONT.ZWISCHENPUNKT, zwischenpunktSvg: MONT.zwischenpunktSvg,
@@ -3441,6 +3445,44 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
       const r=rects(t);
       return r.length===1 && !r[0].sonder && Math.abs(r[0].w-WALT.length_mm*sc)<1e-9
         && marken(t).length===0; })());
+
+  // ---- Issue #97: die Zuschnittlegende erklaert die beiden Bodenblechmarken ----------
+  // Gemeldet war: Modul 1 ZEICHNET Stossmarke und Schraffur seit #91, BENENNT sie aber nicht;
+  // das Blatt von Modul 7 tut es in `legendeHtml()`. Geprueft wird der echte Pfad: dieselbe
+  // ueber die Produktauswahl gerechnete Wand W91 und ihre Legende im eigenen DOM-Bereich.
+  const TXT_STOSS=`${MONT.BLECHSTOSS.label} (Bodenblech)`;
+  const TXT_SONDER=`Bodenblech ${MONT.STUECK_LABEL.sonder} (schraffiert)`;
+  ok('[#97] Legende nennt die Stossmarke mit dem Klartext aus sembla-montage.js',
+    zleg().includes(TXT_STOSS));
+  ok('[#97] Legende nennt den Bodenblech-Sonderzuschnitt samt Schraffur in Worten',
+    zleg().includes(TXT_SONDER));
+  ok('[#97] Wortlaut satzgleich zum Blatt von Modul 7 (legendeHtml)', (()=>{
+    const l7=ZEICH.legendeHtml(W91);
+    return l7.includes(TXT_STOSS) && l7.includes(TXT_SONDER); })());
+  // Das Legendenfeld traegt die Marke so, wie sie im Bild steht: weisse Linie IN einem
+  // stahlfarbenen Blechfeld. Beide Farben kommen aus dem Darstellungsschluessel; die
+  // Stahlfarbe steht lokal (STEEL) und ihre Gleichheit mit Modul 7 wird hier GEPRUEFT.
+  ok('[#97] Stoss-Chip traegt Blechfarbe und die weisse Marke aus BLECHSTOSS', (()=>{
+    const m=/<i class="bpl bst" style="color:([^;]+);--bst-marke:([^"]+)"/.exec(zleg());
+    return !!m && m[1]===ZEICH.FARBE.stahl && m[2]===MONT.BLECHSTOSS.farbe; })());
+  ok('[#97] Sonderzuschnitt-Chip traegt die Stueckfarbe aus sembla-montage.js',
+    zleg().includes(`<i class="bpl" style="color:${MONT.stueckFarbe('sonder')}"></i>`));
+  // Kein zweiter Hex-Wert fuer das Blech: die Farbe wird genau EINMAL erklaert und im
+  // Legendenfeld als Variable eingesetzt (`#5b6673` steht sonst nur in fachfremdem Text-CSS).
+  ok('[#97] Modul 1 fuehrt die Blechfarbe genau EINMAL und setzt sie als Variable ein',
+    (html.match(/const STEEL='#5b6673'/g)||[]).length===1
+    && /color:\$\{STEEL\};--bst-marke:\$\{BLECHSTOSS\.farbe\}/.test(html));
+  // Gegenprobe am echten Pfad: einteiliges Blech ohne Sonderzuschnitt -> KEIN Eintrag,
+  // die Legende bleibt zeichengleich zum Stand vor der Aenderung.
+  WP.applyWand(Object.assign(buildWall('Blech1',1250,2600,[],null,null),{wandtyp:'ohne_wind'}));
+  ok('[#97] einteiliges Bodenblech ohne Sonderzuschnitt: beide Eintraege fehlen', (()=>{
+    const w1=WP.RESULT.wandelement;
+    return MONT.bodenblechStoesse(w1).length===0
+      && !MONT.bodenblechTeile(w1).some(t=>t.art==='sonder')
+      && !zleg().includes(TXT_STOSS) && !zleg().includes(TXT_SONDER)
+      && !zleg().includes('class="bpl'); })());
+  ok('[#97] … und die uebrige Zuschnittlegende steht unveraendert',
+    /Zuschnitt:/.test(zleg()) && zleg().includes(MONT.STUECK_LABEL.standard));
 
   setzen('blech_boden','blech-boden-1250',false);   // Auswahl wieder zuruecknehmen
   WP.applyWand(vorher);   // Ausgangsstand fuer die folgenden Pruefungen

@@ -39,17 +39,45 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die DAUERHAFTE DARSTELLUNG DER AUSGLEICHSPUNKTE (#97) ist der neueste Eintrag — er wird als
-// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
-// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Die BENENNUNG DER BODENBLECHMARKEN IN DER LEGENDE VON MODUL 1 (#97) ist der neueste Eintrag —
+// er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die
+// KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die BENENNUNG zweier bereits
+// gezeichneter Marken in der Zuschnittlegende von Modul 1, im Wortlaut des Blattes von Modul 7.
+// NICHT versprochen werden eine geaenderte Zeichnung, eine geaenderte Blechaufteilung, eine
+// Menge, ein Preis, eine Rechnung, eine Aenderung an Modul 5 oder 7, ein neues Feld oder ein
+// Versionssprung.
+const BLECHLEGENDE_97 = EINTRAEGE[0];
+ok("[#97] die Benennung der Bodenblechmarken ist der neueste Eintrag",
+  BLECHLEGENDE_97?.id === "chg-20260910-08" && BLECHLEGENDE_97?.issue === 97
+  && BLECHLEGENDE_97?.typ === "fix" && BLECHLEGENDE_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt Legende, Stoss und Sonderzuschnitt des Bodenblechs",
+  /Legende/i.test(BLECHLEGENDE_97?.titel || "")
+  && /Modul 1/.test(BLECHLEGENDE_97?.titel || "")
+  && /Bodenblech-Sto/.test(BLECHLEGENDE_97?.titel || "")
+  && /Sonderzuschnitt/.test(BLECHLEGENDE_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration/i
+    .test(BLECHLEGENDE_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad samt Gegenprobe",
+  /Modul 1\b/.test(BLECHLEGENDE_97?.testbitte || "")
+  && /Modul 7\b/.test(BLECHLEGENDE_97?.testbitte || "")
+  && /Bodenblech/.test(BLECHLEGENDE_97?.testbitte || "")
+  && /schraffiert|Sonderzuschnitt/.test(BLECHLEGENDE_97?.testbitte || "")
+  && /fehlen|durchgehend/.test(BLECHLEGENDE_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine geaenderte Zeichnung und keine Rechnung",
+  !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration|Modul 5/i
+    .test(BLECHLEGENDE_97?.testbitte || ""));
+
+// Davor liegt die DAUERHAFTE DARSTELLUNG DER AUSGLEICHSPUNKTE (#97) — ueber ihre Kennung
+// gesucht, weil sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die DARSTELLUNG — Modul 1 zeigt die
 // vom Rechenkern gerechneten Ausgleichspunkte auch mit geschlossenem Editor als Marke unter dem
 // Bodenblech, und das Blatt von Modul 7 zeigt dieselbe Marke samt Legendeneintrag. NICHT
 // versprochen werden eine neue oder geaenderte Punktverteilung, ein Nachweis der Auflagerpunkte,
 // eine Menge, ein Preis, eine Rechnung, ein Bauteilmass, eine Darstellung in Modul 5, ein neues
 // Feld oder ein Versionssprung.
-const AG_ZEICHNEN_97 = EINTRAEGE[0];
-ok("[#97] die dauerhafte Darstellung der Ausgleichspunkte ist der neueste Eintrag",
+const AG_ZEICHNEN_97 = EINTRAEGE.find(e => e.id === "chg-20260910-07");
+ok("[#97] die dauerhafte Darstellung der Ausgleichspunkte steht unveraendert in der Reihe",
   AG_ZEICHNEN_97?.id === "chg-20260910-07" && AG_ZEICHNEN_97?.issue === 97
   && AG_ZEICHNEN_97?.typ === "feature" && AG_ZEICHNEN_97?.datum === "2026-09-10");
 ok("[#97] der Titel benennt Marke, Dauerhaftigkeit und die Lage unter dem Bodenblech",
