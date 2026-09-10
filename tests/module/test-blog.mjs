@@ -39,16 +39,43 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die MASSE VON MUTTER EINLEGEBLECH UND SECHSKANTSCHRAUBE FUSS (#97) sind der neueste
-// Eintrag — er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe
-// wird ueber die KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 1 beim Auslegen die
-// gepflegten Katalogmasse beider Teile ableitet und das gespeicherte Wandelement sie
-// ausweist, dass Zuschnitt und Mengen dabei gleich bleiben und dass noch nichts gezeichnet
-// wird. NICHT versprochen werden ein neues Katalogmass, ein Bedienelement, eine Kopfhoehe
-// der Schraube, eine Norm, ein Preis, eine Menge, ein Nachweis oder ein Versionssprung.
-const ZP_SK_97 = EINTRAEGE[0];
-ok("[#97] die Masse von Einlegemutter und Schraube sind der neueste Eintrag",
+// Das ZEICHNEN VON EINLEGEMUTTER UND SECHSKANTSCHRAUBE (#97) ist der neueste Eintrag — er
+// wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die
+// KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Modul 1 und Modul 7 beide
+// Teile mit ihren am Wandelement ausgewiesenen Massen zeichnen und dass dieselbe Wand in
+// beiden Ausgaben dieselben Bauteilmasse zeigt. NICHT versprochen werden eine Kopfhoehe der
+// Schraube, eine Norm, ein neues Feld, ein Bedienelement, eine geaenderte Rechnung, ein
+// Preis, eine Menge, ein Nachweis oder ein Versionssprung.
+const ZEICHNEN_97 = EINTRAEGE[0];
+ok("[#97] das Zeichnen beider Bauteile ist der neueste Eintrag",
+  ZEICHNEN_97?.id === "chg-20260910-05" && ZEICHNEN_97?.issue === 97
+  && ZEICHNEN_97?.typ === "feature" && ZEICHNEN_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt beide Bauteile und das masstaebliche Zeichnen",
+  /Einlegeblech/.test(ZEICHNEN_97?.titel || "")
+  && /Sechskantschraube/.test(ZEICHNEN_97?.titel || "")
+  && /gezeichnet|ma\u00dfst\u00e4blich/.test(ZEICHNEN_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Kopfh/i.test(ZEICHNEN_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad durch Modul 1 UND Modul 7",
+  /Modul 1\b/.test(ZEICHNEN_97?.testbitte || "")
+  && /Modul 7\b/.test(ZEICHNEN_97?.testbitte || "")
+  && /Zwischenspannpunkt/.test(ZEICHNEN_97?.testbitte || ""));
+ok("[#97] die Testbitte nennt die reale Groesse und die Gleichheit beider Ansichten",
+  /realen Gr\u00f6\u00dfe/.test(ZEICHNEN_97?.testbitte || "")
+  && /gleich/.test(ZEICHNEN_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm, keine Kopfhoehe und keine Rechnung",
+  !/Norm|Preis|Nachweis|Format|Migration|Kopfh|Menge/i.test(ZEICHNEN_97?.testbitte || ""));
+
+// Davor liegen die MASSE VON MUTTER EINLEGEBLECH UND SECHSKANTSCHRAUBE FUSS am Wandelement
+// (#97) — ueber ihre Kennung gesucht, weil sie nicht mehr der neueste Eintrag sind. Ihre
+// Aussagen bleiben inhaltlich unveraendert: geliefert war AUSSCHLIESSLICH, dass Modul 1 beim
+// Auslegen die gepflegten Katalogmasse beider Teile ableitet und das gespeicherte Wandelement
+// sie ausweist, dass Zuschnitt und Mengen dabei gleich bleiben und dass in JENEM Paket noch
+// nichts gezeichnet wurde. NICHT versprochen wurden ein neues Katalogmass, ein Bedienelement,
+// eine Kopfhoehe der Schraube, eine Norm, ein Preis, eine Menge, ein Nachweis oder ein
+// Versionssprung.
+const ZP_SK_97 = EINTRAEGE.find(e => e.id === "chg-20260910-04");
+ok("[#97] die Masse von Einlegemutter und Schraube stehen unveraendert in der Reihe",
   ZP_SK_97?.id === "chg-20260910-04" && ZP_SK_97?.issue === 97
   && ZP_SK_97?.typ === "feature" && ZP_SK_97?.datum === "2026-09-10");
 ok("[#97] der Titel benennt das Wandelement und beide Bauteile",

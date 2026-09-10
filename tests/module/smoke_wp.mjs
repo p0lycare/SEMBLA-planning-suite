@@ -2016,10 +2016,15 @@ store.setzeKatalog(KATALOG);
     const h7=g?[...g[1].matchAll(/height="([-\d.]+)"/g)].map(m=>+m[1]):[];
     return kop30.length>0 && h7.length>0
       && Math.abs(kop30[0].h/sc-30)<1e-9 && Math.abs(h7[0]*bl.masstab-30)<1e-2; })());
+  // Seit dem Folgepaket zu #97 traegt derselbe Aufruf zusaetzlich die eigene Schluesselweite
+  // der Schraube (`sw_mm:skSw`) — gepruft wird deshalb der Optionswert `hoehe_mm:kuH` selbst
+  // statt der frueheren Zeichenfolge `hoehe_mm:kuH,sc`. Die Aussage ist unveraendert: die
+  // Mutternhoehe kommt aus dem WANDELEMENT und nicht ein zweites Mal aus dem Katalog.
   ok('[#97] Modul 1 liest die Hoehe aus dem Wandelement, nicht ein zweites Mal aus dem Katalog',
     /kuH=2\*\(\(w\.prestress&&w\.prestress\.rod_fuss_offset_mm\)\|\|0\)/
       .test(html.replace(/\s+/g,''))
-    && /hoehe_mm:kuH,sc/.test(html.replace(/\s+/g,'')));
+    && /hoehe_mm:kuH/.test(html.replace(/\s+/g,''))
+    && !/hoehe_mm:einbauMass/.test(html.replace(/\s+/g,'')));
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN97){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
@@ -2589,9 +2594,9 @@ store.setzeKatalog(KATALOG);
 // Spannplatte: beide Teile im zugeordneten Katalog waehlen -> `vorgaben()` leitet
 // `zp_mutter_h_mm`/`zp_mutter_sw_mm` aus `hoehe_mm`/`sw_mm` der Rolle `zp_mutter` und
 // `senkkopf_sw_mm` aus `sw_mm` der Rolle `senkkopf` ab -> dieselbe Engine rechnet -> das
-// GESPEICHERTE Wandelement traegt genau diese Masse. GEZEICHNET wird in diesem Paket nichts;
-// die Masse reisen allein, damit die Ausgaben beide Teile spaeter ohne Katalogzugriff
-// masstaeblich zeichnen koennen ([D-1]).
+// GESPEICHERTE Wandelement traegt genau diese Masse. Seit dem Folgepaket zu #97 wird damit auch
+// GEZEICHNET — der zweite Teil dieses Blocks prueft die Wandansicht gegen die Bausteine aus
+// sembla-montage.js ([D-1]/[D-4]); die Masse reisen weiterhin ohne Katalogzugriff der Ausgabe.
 //
 // Eine KOPFHOEHE der Schraube entsteht ausdruecklich NICHT: dafuer ist keine Norm genannt,
 // und sie liesse sich nur erfinden — unten wird genau das geprueft.
@@ -2754,12 +2759,119 @@ store.setzeKatalog(KATALOG);
       return kern(mit)===kern(ohne) && JSON.stringify(mit)===JSON.stringify(ohne)
         && zp_mutter_h_mm===8 && zp_mutter_sw_mm===17 && senkkopf_sw_mm===17; })());
 
-  // N3: gezeichnet wird in diesem Paket nichts — die Wandansicht ist mit und ohne die drei
-  // Masse bit-gleich.
-  const svgMit=document.getElementById('plan').innerHTML;
-  setzen('zp_mutter','zpm-h8-sw17',false); setzen('senkkopf','sk-sw17',false); WP.run();
-  ok('[#97] die Wandansicht bleibt bit-gleich (in diesem Paket wird nichts gezeichnet)',
-    document.getElementById('plan').innerHTML===svgMit && fp()===fp0);
+  // ---- GEZEICHNET wird seit dem Folgepaket zu #97 ----------------------------------------
+  // Geprueft wird an der WANDANSICHT, die der echte Modul-1-Pfad oben erzeugt hat. Verglichen
+  // wird BYTEWEISE gegen die Bausteine aus sembla-montage.js mit DENSELBEN Massen — Modul 1
+  // darf nichts Eigenes rechnen und keine eigene Geometrie fuehren ([D-4]). Am Ende die
+  // Gegenprobe: ohne die Felder ist die Ansicht bit-gleich zum Stand vor diesem Paket.
+  setzen('zp_mutter','zpm-h6',false); setzen('senkkopf','sk-sw13',false);
+  setzen('zp_mutter','zpm-h8-sw17',true); setzen('senkkopf','sk-sw17',true); WP.run();
+  {
+    const E=MONT.SPANN_EINHEIT.ansicht;
+    const svg=()=>document.getElementById('plan').innerHTML;
+    // Mutter des Einlegeblechs: das einzige `<rect class="zsp">` je wirksamem Punkt.
+    const RE_ZSP=/<rect class="zsp" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g;
+    const zspMut=t=>[...t.matchAll(RE_ZSP)].map(m=>({x:+m[1],y:+m[2],b:+m[3],h:+m[4]}));
+    // Sechskantschraube: Schaft und Kopf sind die beiden Rechtecke in der Mutterfarbe OHNE
+    // Klasse, unmittelbar am Fuss. Gesucht wird die Zeichenkette selbst (s. `schrauben()`).
+    const schrauben=(sw)=>{
+      const wd=WP.RESULT.wandelement, sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
+      const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+      const kuH=2*((wd.prestress&&wd.prestress.rod_fuss_offset_mm)||0);
+      const bdMm=(wd.base_plate&&wd.base_plate.dicke_mm)||null;
+      const bth=Math.max(4,(bdMm||10)*sc);
+      const t=svg(); let n=0;
+      for(const col of wd.tension_columns) for(const g of col.segments){
+        const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
+        if(au!=='bodenblech') continue;
+        if(!t.includes(MONT.schraubeSvg(X(col.x_mm),Y(g.z0_mm),E,bth,
+          {hoehe_mm:kuH,sw_mm:sw,sc}))) return 0;
+        n++;
+      }
+      return n; };
+    // Und dasselbe fuer die Einlegemutter — bytegleich mit dem geteilten Baustein.
+    const bleche=(h,sw)=>{
+      const wd=WP.RESULT.wandelement, sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
+      const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+      const t=svg(); let n=0;
+      for(const zp of wirksameZwischenpunkte(wd)){
+        if(!t.includes(MONT.zwischenpunktSvg(X(zp.x_mm),Y(zp.z_mm),
+          {klasse:'zsp',strich:2,farbe:MONT.ZWISCHENPUNKT.farbe,e:E,
+           mutter_h_mm:h,mutter_sw_mm:sw,sc}))) return 0;
+        n++;
+      }
+      return n; };
+
+    const sc17=WP.ansichtSc(), m17=zspMut(svg());
+    ok('[#97] Voraussetzung: die Ansicht zeigt Einlegebleche und Fussschrauben',
+      m17.length>0 && m17.length===wirksameZwischenpunkte(WP.RESULT.wandelement).length
+      && schrauben(17)>0);
+    // Akzeptanz 1: genau 8 mm hoch und 17 mm breit im Ansichtsmasstab.
+    ok('[#97] die Mutter des Einlegeblechs ist 8 mm hoch und 17 mm breit im Ansichtsmasstab',
+      m17.every(m=>Math.abs(m.h-8*sc17)<1e-9 && Math.abs(m.b-17*sc17)<1e-9));
+    ok('[#97] jedes Einlegeblech ist bytegleich das des geteilten Bausteins', bleche(8,17)>0);
+    ok('[#97] die Mutter sitzt weiterhin AUF dem Querbalken (Lage unveraendert)', (()=>{
+      const wd=WP.RESULT.wandelement, hPx=wd.height_mm*sc17;
+      const Y=v=>46+(hPx-v*sc17), pk=wirksameZwischenpunkte(wd);
+      // Unterkante der Mutter == Lagen-Oberkante ihres Punktes; sie waechst nach OBEN.
+      return m17.every(m=>pk.some(q=>Math.abs((m.y+m.h)-Y(q.z_mm))<1e-9) && m.h>0); })());
+    // Akzeptanz 2: Kopf UND Schaft in der Schluesselweite, Kopfhoehe unveraendert Symbolmass.
+    ok('[#97] Kopf und Schaft der Schraube sind 17 mm breit, die Kopfhoehe bleibt Symbolmass',
+      (()=>{ const sr=MONT.schraubeSvg(0,0,E,4,{sw_mm:17,sc:sc17});
+        const b=[...sr.matchAll(/width="([-\d.]+)"/g)].map(m=>+m[1]);
+        const h=[...sr.matchAll(/height="([-\d.]+)"/g)].map(m=>+m[1]);
+        return svg().includes('width="'+(17*sc17)+'"')
+          && b.every(v=>Math.abs(v-17*sc17)<1e-9)
+          && Math.abs(h[1]-MONT.SPANN_MM.kopf_h*E)<1e-9; })());
+
+    // Zweites Produkt: dieselbe Einbauhoehe, kleinere Schluesselweite — die Achsen wirken
+    // getrennt, und die Ansicht zeigt genau das.
+    setzen('zp_mutter','zpm-h8-sw17',false); setzen('zp_mutter','zpm-h8-sw13',true);
+    setzen('senkkopf','sk-sw17',false); setzen('senkkopf','sk-sw13',true); WP.run();
+    const m13=zspMut(svg());
+    ok('[#97] ein anderes Produkt ergibt eine sichtbar schmalere Mutter, gleiche Hoehe',
+      m13.length===m17.length
+      && m13.every(m=>Math.abs(m.h-8*WP.ansichtSc())<1e-9
+        && Math.abs(m.b-13*WP.ansichtSc())<1e-9)
+      && m13[0].b<m17[0].b && Math.abs(m13[0].h-m17[0].h)<1e-9);
+    ok('[#97] auch mit 8/13 mm ist alles bytegleich der geteilten Funktion',
+      bleche(8,13)>0 && schrauben(13)>0);
+    // N2: keine Untergrenze — das kleine Bauteil bleibt klein.
+    ok('[#97] keine Untergrenze: die realen Masse sind kleiner als das Symbolmass',
+      m13[0].h<MONT.SPANN_MM.mutter_h*E && m13[0].b<MONT.SPANN_MM.d*E);
+
+    // Akzeptanz 3 / M4: GEGENPROBE ohne die Felder — die Ansicht faellt zeichenweise auf den
+    // Stand vor diesem Paket zurueck, und nur die drei Bauteile aendern sich.
+    const mit=svg();
+    setzen('zp_mutter','zpm-h8-sw13',false); setzen('senkkopf','sk-sw13',false); WP.run();
+    const ohne=svg();
+    ok('[#97] ohne die Felder bleibt die Ansicht beim festen Symbolmass', (()=>{
+      const m=zspMut(ohne);
+      return m.length===m17.length
+        && m.every(q=>Math.abs(q.h-MONT.SPANN_MM.mutter_h*E)<1e-9
+          && Math.abs(q.b-MONT.SPANN_MM.d*E)<1e-9)
+        && ohne!==mit && bleche(undefined,undefined)>0 && schrauben(undefined)>0; })());
+    ok('[#97] Steine, Stangen, Bleche und Bemassung bleiben dabei bytegleich', (()=>{
+      // Weggenommen werden genau die drei betroffenen Bauteile: die Mutter des Einlegeblechs
+      // und die zwei Rechtecke der Schraube. Die Schraubenrechtecke tragen keine Klasse und
+      // werden deshalb ueber ihre Zeichenkette aus dem geteilten Baustein entfernt.
+      const wd=WP.RESULT.wandelement, sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
+      const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+      const kuH=2*((wd.prestress&&wd.prestress.rod_fuss_offset_mm)||0);
+      const bth=Math.max(4,((wd.base_plate&&wd.base_plate.dicke_mm)||10)*sc);
+      const strip=(t,sw)=>{
+        let out=t.replace(/<rect class="zsp"[^>]*\/>/g,'');
+        for(const col of wd.tension_columns) for(const g of col.segments){
+          const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
+          if(au!=='bodenblech') continue;
+          out=out.split(MONT.schraubeSvg(X(col.x_mm),Y(g.z0_mm),E,bth,
+            {hoehe_mm:kuH,sw_mm:sw,sc})).join('');
+        }
+        return out; };
+      const a=strip(mit,13), b=strip(ohne,undefined);
+      return a===b && a.length>0 && !a.includes('class="zsp" x'); })());
+    ok('[#97] und die Rechnung ist in beiden Faellen unveraendert', fp()===fp0);
+  }
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }

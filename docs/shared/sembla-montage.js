@@ -218,9 +218,13 @@ function _zylinderMass(e, mm, sc, symMm) {
  * `_zylinderMass`). OHNE die Masse ist das Ergebnis bit-gleich zum Stand davor — es wird
  * weder eine Hoehe noch eine Breite erfunden, und die Mutter entfaellt nie.
  *
- * Die Mutter des Einlegeblechs (`zwischenpunktSvg`) und die des Deckenanschlusses geben
- * bewusst KEINE Masse herein: fuer diese Bauteile liegen keine bestaetigten Abmessungen vor,
- * sie bleiben also symbolisch.
+ * Seit dem Folgepaket zu #97 gibt auch die Mutter des EINLEGEBLECHS (`zwischenpunktSvg`) ihre
+ * realen Masse herein — `prestress.zp_mutter_h_mm`/`zp_mutter_sw_mm` am Wandelement, gefuehrt
+ * ueber die Rolle „Mutter Einlegeblech" ([A-16]). Sie ist damit dieselbe Mutter wie jede andere
+ * und laeuft durch DIESEN einen Baustein; ein eigener Zylinder im Zwischenpunkt waere die
+ * zweite Fassung, die [D-4] ausschliesst. Der Deckenanschluss gibt weiterhin bewusst KEINE
+ * Masse herein: fuer seine Winkel liegen keine bestaetigten Abmessungen vor, er bleibt also
+ * symbolisch — und er zeichnet ohnehin keine Mutter.
  *
  * @param {number} x @param {number} y Einbauhoehe (Mitte; mit `opts.auf` die Unterkante)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
@@ -342,26 +346,56 @@ export function kupplungHoehe(e, opts = {}) {
  * Die Blechdicke ist ein ZEICHENMASS des Aufrufers (beide Module skalieren die 10 mm mit
  * ihrer eigenen Sichtbarkeitsuntergrenze) — sie wird hier nicht nachgerechnet.
  *
+ * Seit dem Folgepaket zu #97 ist die BREITE von Kopf UND Schaft masstabsgetreu, sobald der
+ * Aufrufer die reale Schluesselweite als `opts.sw_mm` samt `opts.sc` hereingibt: beide sind dann
+ * `sw_mm * sc` breit und lassen sich im Blatt abmessen. Das Mass ist KEIN neues Feld — es steht
+ * als `prestress.senkkopf_sw_mm` am Wandelement, abgeleitet beim Auslegen aus dem gewaehlten
+ * Katalogprodukt der Rolle „Sechskantschraube Fuss"; hier wird es nur gezeichnet und nichts
+ * daraus abgeleitet. Bis dahin war die Schraube IMMER symbolisch: dieselbe Marke fuer eine
+ * SW-13- wie fuer eine SW-24-Schraube, und `opts.sw_mm` wurde stillschweigend geschluckt.
+ *
+ * Kopf und Schaft bekommen dabei AUSDRUECKLICH DASSELBE Mass (Paketentscheid zu #97): gefuehrt
+ * ist genau eine Schluesselweite, und ein Schaft-/Gewindedurchmesser liegt nicht vor — er wuerde
+ * also erfunden. Der Kopf ist damit auf dem masstabsgetreuen Zweig nicht mehr BREITER als der
+ * Schaft; er ragt weiterhin unter der Blechunterkante heraus und ist daran zu erkennen. Auf dem
+ * Symbolzweig bleibt `kopf_d` > `schaft_d` unveraendert.
+ *
+ * Die KOPFHOEHE bleibt Symbolmass (`SPANN_MM.kopf_h`), solange keine Norm genannt ist — es gibt
+ * dafuer kein Feld, und es wird keines angelegt.
+ *
+ * Ausdruecklich KEINE Untergrenze auf dem masstabsgetreuen Zweig (Entscheid zu #97, wie bei
+ * Plattendicke und Mutternmassen); nur ein nicht zeichenbares Ergebnis faellt auf das Symbolmass
+ * zurueck, die Schraube entfaellt nie. OHNE das Mass ist das Ergebnis bit-gleich zum Stand davor.
+ *
  * @param {number} x Zeichenkoordinate der Spannachse
  * @param {number} y Zeichenkoordinate der OBERKANTE Bodenblech (= Steinunterkante, z = 0)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
  * @param {number} blech Blechdicke in Zeichenkoordinaten
- * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,hoehe_mm?:number,sc?:number}} [opts]
- *        `hoehe_mm`/`sc`: reale Kopplungsmutterhoehe (#97) — sie bestimmt den Schaftbeginn.
+ * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,hoehe_mm?:number,sw_mm?:number,
+ *          sc?:number}} [opts]
+ *        `hoehe_mm`/`sc`: reale Kopplungsmutterhoehe (#97) — das FREMDE Mass des Nachbarteils,
+ *        es bestimmt allein den Schaftbeginn ([A-19]).
+ *        `sw_mm`: reale Schluesselweite der Schraube selbst (#97) — Breite von Kopf und Schaft.
  * @returns {string} SVG-Fragment (Schaft, dann Kopf)
  */
 export function schraubeSvg(x, y, e, blech, opts = {}) {
   const n = opts.n || (v => v);
   const farbe = opts.farbe || SPANN_FARBE.mutter;
   const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
-  const kh = SPANN_MM.kopf_h * e, kd = SPANN_MM.kopf_d * e, sd = SPANN_MM.schaft_d * e;
+  // HOEHE des Kopfs bleibt Symbolmass; die BREITEN kommen aus derselben einen Entscheidung wie
+  // alle anderen Bauteilmasse (`_zylinderMass`) — je Rechteck mit EIGENEM Rueckfall, damit der
+  // Symbolzweig bit-gleich bleibt und der Kopf dort weiterhin breiter ist als der Schaft.
+  const kh = SPANN_MM.kopf_h * e,
+    kd = _zylinderMass(e, opts.sw_mm, opts.sc, SPANN_MM.kopf_d),
+    sd = _zylinderMass(e, opts.sw_mm, opts.sc, SPANN_MM.schaft_d);
   // Schaft: von der Mitte der aufsitzenden Kopplungsmutter ([A-19]: je zur Haelfte) durch das
   // Bodenblech bis an dessen Unterkante. Kopf: unmittelbar darunter, ragt frei heraus.
   //
   // #97: Der Schaftbeginn ist ein aus der Mutternhoehe ABGELEITETER Wert und kein eigenes
   // Bauteilmass der Schraube — er folgt deshalb derselben Entscheidung wie die Mutter und wird
   // ueber `kupplungHoehe()` aus derselben Quelle geholt. Ohne reales Mass bleibt er bit-gleich.
-  // Die eigenen Symbolmasse der Schraube (`kopf_h`, `kopf_d`, `schaft_d`) sind unberuehrt.
+  // Von der Mutternhoehe unberuehrt bleiben die eigenen Masse der Schraube: `kopf_h` ist
+  // durchgehend Symbolmass, die BREITEN haengen allein an ihrer eigenen `sw_mm` (s. o.).
   const y0 = y - kupplungHoehe(e, opts) / 2, y1 = y + blech;
   return `<rect${kl} x="${n(x - sd / 2)}" y="${n(y0)}" width="${n(sd)}" `
     + `height="${n(y1 - y0)}" fill="${farbe}"/>`
@@ -531,11 +565,12 @@ export const ZWISCHENPUNKT = { farbe: "#0a7d6b", label: "Einlegeblech (Zwischens
  * Symbol eines Zwischenspannpunkts: nach unten geoeffnetes eckiges C-Profil auf der
  * Lagen-Oberkante ([A-14]).
  *
- * Balkenbreite, Schenkel und Strichstaerke sind FESTE SYMBOLMASSE aus `SPANN_MM` (#106) und
- * bewusst KEINE Bauteilmasse: fuer das Einlegeblech gibt es noch keine bestaetigten
- * Abmessungen, und ein hier gesetztes mm-Mass laese sich als solche lesen. Aus dem Symbol
- * wird nichts abgeleitet. Bis #106 gaben die Aufrufer die Masse als Vielfache der Lagenhoehe
- * herein — dasselbe Blech war damit je Wandgroesse verschieden gross.
+ * Balkenbreite, Schenkel und Strichstaerke des BLECHS sind FESTE SYMBOLMASSE aus `SPANN_MM`
+ * (#106) und bewusst KEINE Bauteilmasse: fuer das Einlegeblech selbst gibt es noch keine
+ * bestaetigten Abmessungen (das C-Profil ist eine ausdruecklich offene Frage zu #97), und ein
+ * hier gesetztes mm-Mass laese sich als solche lesen. Aus dem Symbol wird nichts abgeleitet.
+ * Bis #106 gaben die Aufrufer die Masse als Vielfache der Lagenhoehe herein — dasselbe Blech
+ * war damit je Wandgroesse verschieden gross.
  *
  * Auf dem Querbalken sitzt real GENAU EINE Mutter von oben ([A-16]). Sie wird gezeichnet,
  * sobald `opts.e` (Zeichenkoordinaten je Papier-mm) vorliegt — als eigener kurzer Zylinder
@@ -543,10 +578,30 @@ export const ZWISCHENPUNKT = { farbe: "#0a7d6b", label: "Einlegeblech (Zwischens
  * SITZT AUF dem Balken statt auf ihm zentriert zu sein. Ohne `e` bleibt das Ergebnis der
  * unveraenderte Polylinienzug; der Zug steht in jedem Fall ZUERST in der Zeichenkette.
  *
+ * Seit dem Folgepaket zu #97 ist DIESE MUTTER masstabsgetreu, sobald der Aufrufer ihre realen
+ * Masse als `opts.mutter_h_mm`/`opts.mutter_sw_mm` samt `opts.sc` hereingibt: sie ist dann
+ * `mutter_h_mm * sc` hoch und `mutter_sw_mm * sc` breit und laesst sich im Blatt abmessen. Die
+ * Masse sind KEINE neuen Felder — sie stehen als `prestress.zp_mutter_h_mm`/`zp_mutter_sw_mm`
+ * am Wandelement, abgeleitet beim Auslegen aus dem gewaehlten Katalogprodukt der Rolle „Mutter
+ * Einlegeblech"; hier werden sie nur DURCHGEREICHT und nichts daraus abgeleitet.
+ *
+ * Die Optionsnamen tragen bewusst das Praefix `mutter_` — genau wie in `spannplatteSvg()`, wo
+ * `dicke_mm`/`breite_mm` dem Traeger und `mutter_*_mm` der aufsitzenden Mutter gehoeren. Hier
+ * gehoeren `breite`/`schenkel`/`strich` dem BLECH, ein blankes `sw_mm` waere also
+ * verwechselbar. Entschieden wird trotzdem an genau EINER Stelle (`mutterSvg` ->
+ * `_zylinderMass`, je Achse eigener Rueckfall, KEINE Untergrenze) — kein zweiter
+ * Darstellungsschluessel. OHNE die Masse ist das Ergebnis bit-gleich zum Stand davor, und die
+ * Mutter entfaellt nie. Der AUFSITZPUNKT bleibt die Balkenoberkante `y`; die Mutter waechst
+ * nach OBEN, das Blech selbst bleibt unberuehrt.
+ *
  * @param {number} x Zeichenkoordinate der Spannachse
  * @param {number} y Zeichenkoordinate der Lagen-Oberkante
  * @param {{breite?:number,schenkel?:number,strich?:number,farbe?:string,klasse?:string,
- *          e?:number,n?:(v:number)=>any,mutter_farbe?:string}} [opts]
+ *          e?:number,n?:(v:number)=>any,mutter_farbe?:string,mutter_h_mm?:number,
+ *          mutter_sw_mm?:number,sc?:number}} [opts]
+ *        `mutter_h_mm`/`mutter_sw_mm`/`sc`: reale Einbauhoehe und Schluesselweite der
+ *        aufsitzenden Mutter in mm samt Zeichenkoordinaten je mm (#97) — masstabsgetreu statt
+ *        Symbolmass, je Achse mit eigenem Rueckfall.
  * @returns {string} SVG-Fragment (offener Polylinienzug, ggf. plus Mutter)
  */
 export function zwischenpunktSvg(x, y, opts = {}) {
@@ -564,9 +619,12 @@ export function zwischenpunktSvg(x, y, opts = {}) {
   let s = `<polyline${kl} points="${pts}" fill="none" stroke="${farbe}" `
     + `stroke-width="${n(sw)}" stroke-linejoin="miter"/>`;
   // Die Mutter SITZT AUF dem Querbalken ([A-16]) — Unterkante auf der Oberkante des Balkens.
+  // Ihre realen Masse (#97) werden UNVERAENDERT durchgereicht — dieselbe eine Entscheidung wie
+  // bei jeder anderen Mutter; ohne Masse bleibt der Aufruf wertgleich zum Stand davor.
   if (e > 0)
     s += mutterSvg(x, y, e, { n: opts.n, klasse: opts.klasse, auf: true,
-      farbe: opts.mutter_farbe || SPANN_FARBE.mutter });
+      farbe: opts.mutter_farbe || SPANN_FARBE.mutter,
+      hoehe_mm: opts.mutter_h_mm, sw_mm: opts.mutter_sw_mm, sc: opts.sc });
   return s;
 }
 

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-05",
+    datum: "2026-09-10",
+    typ: "feature",
+    issue: 97,
+    titel: "Mutter des Einlegeblechs und Sechskantschraube Fuß werden maßstäblich gezeichnet",
+    testbitte: "In Modul 1 die Wandansicht einer Wand mit Zwischenspannpunkt und danach das "
+      + "Blatt in Modul 7 öffnen: beide Teile stehen in ihrer realen Größe da, in beiden "
+      + "Ansichten gleich."
+  },
+  {
     id: "chg-20260910-04",
     datum: "2026-09-10",
     typ: "feature",

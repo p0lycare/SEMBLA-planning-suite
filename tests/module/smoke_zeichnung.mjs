@@ -80,6 +80,10 @@ const { blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLAT
   = await import("../../docs/shared/sembla-zeichnung.js");
 const { zeichnungHtml, zeichnungSvgText } = await import("../../docs/shared/sembla-export.js");
 const store = await import("../../docs/shared/storage.js");
+// #97: die GETEILTE Symbolquelle — verglichen wird gegen sie, damit das Blatt keine eigene
+// Geometrie fuehrt ([D-4]); `wirksameZwischenpunkte` ist die eine Ableitung der Punkte.
+const MONT = await import("../../docs/shared/sembla-montage.js");
+const { wirksameZwischenpunkte } = await import("../../docs/shared/sembla-core.js");
 
 const html = readFileSync(new URL("../../docs/zeichnung.html", import.meta.url), "utf8");
 // erstes attributloses <script> ist die App-Logik (das zweite ist type="module")
@@ -726,6 +730,125 @@ store.setzeAktiv(idW);
 
   store.setzeAktivesGeschoss(GESCHOSS);
   store.setzeAktiv(idW);
+}
+
+// --- 7c) #97: Mutter des Einlegeblechs und Sechskantschraube Fuss masstaeblich ----------
+// Gefahren wird der ECHTE Modul-7-Seitenpfad: eine Wand mit gepflegten Massen aktiv setzen,
+// die Seite rendert, und geprueft wird die VORSCHAU-Zeichenkette. Das Blatt liest die drei
+// Felder nur (`prestress.zp_mutter_h_mm`/`zp_mutter_sw_mm`/`senkkopf_sw_mm`) und reicht sie an
+// sembla-montage.js durch — kein Katalogzugriff ([D-1]), keine eigene Geometrie ([D-4]).
+{
+  const E1 = MONT.SPANN_EINHEIT.ansicht;      // Einheit der Wandansicht (Modul 1)
+  // Exakt die Rundung des Blattes (`_n` in sembla-zeichnung.js). Sie wird den geteilten
+  // Bausteinen als `n` mitgegeben: sonst stehen im Test rohe Gleitkommawerte (17 * 0,05 ist
+  // 0,8500000000000001) gegen die gerundeten Zahlen des Blattes.
+  const rund = v => (Math.round((isFinite(v) ? v : 0) * 1000) / 1000).toString();
+  // Dieselbe Wand zweimal: einmal MIT den drei Massen, einmal ohne. Gleicher Name, gleiche
+  // Geometrie — nur die Bauteilmasse unterscheiden sich, damit die Bit-Gleichheitsprobe unten
+  // ausser den drei Bauteilen nichts anderes findet (das Schriftfeld traegt den Namen).
+  const geo = () => [3000, 2600];
+  const WZO = buildWall("IW-97", ...geo(), [], null, { top_connection: "blech" });
+  const WZM = buildWall("IW-97", ...geo(), [], null,
+    { top_connection: "blech", zp_mutter_h_mm: 8, zp_mutter_sw_mm: 17, senkkopf_sw_mm: 17 });
+  const opt = { zeichnung: { format: "a3", masse: true, steintypen: true,
+    planinhalt: "Wandabwicklung", wasserzeichen: false } };
+
+  const idM = stelleAktiv(WZM, opt);
+  const blattMit = $("blattwrap").innerHTML, mst = Z.masstab, sc7 = 1 / mst;
+  // Die Einlegebleche stehen im Blatt als eigene Gruppe; die Mutter ist das Rechteck darin.
+  const zspGruppe = t => (/<g class="zsp">([\s\S]*?)<\/g>/.exec(t) || [, ""])[1];
+  const rects = t => [...t.matchAll(
+    /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+    .map(m => ({ x: +m[1], y: +m[2], b: +m[3], h: +m[4] }));
+  const zspMut = t => rects(zspGruppe(t));
+
+  ok("[#97] Voraussetzung: das Blatt zeigt Einlegebleche der Zwischenspannpunkte",
+    wirksameZwischenpunkte(WZM).length > 0
+    && zspMut(blattMit).length === wirksameZwischenpunkte(WZM).length);
+  // Akzeptanz 1: 8 mm hoch und 17 mm breit IM BLATTMASSTAB (Papier-mm, auf 3 Dezimalen).
+  ok("[#97] die Mutter des Einlegeblechs ist 8 mm hoch und 17 mm breit im Blattmasstab",
+    zspMut(blattMit).every(m => Math.abs(m.h * mst - 8) < 1e-2
+      && Math.abs(m.b * mst - 17) < 1e-2));
+  ok("[#97] gezeichnet wird sie durch den geteilten Baustein (bytegleiche Zeichenkette)",
+    (() => { const soll = MONT.zwischenpunktSvg(0, 0,
+      { n: rund, e: MONT.SPANN_EINHEIT.blatt, mutter_h_mm: 8, mutter_sw_mm: 17, sc: sc7 });
+      // Nur der RECHTECK-Teil: das `stroke-width` des Polylinienzugs traegt ebenfalls
+      // „width=" und waere sonst der erste Treffer.
+      const rct = soll.slice(soll.indexOf("<rect"));
+      const w = /width="([-\d.]+)"/.exec(rct)[1], h = /height="([-\d.]+)"/.exec(rct)[1];
+      return blattMit.includes('width="' + w + '" height="' + h + '"'); })());
+  // Akzeptanz 2: Kopf UND Schaft der Schraube in dieser Breite, Kopfhoehe bleibt Symbolmass.
+  ok("[#97] Kopf und Schaft der Schraube sind 17 mm breit im Blattmasstab",
+    (() => { const b = rund(17 * sc7);
+      return (blattMit.split('width="' + b + '"').length - 1) >= 2; })());
+  ok("[#97] die KOPFHOEHE der Schraube bleibt unveraendert Symbolmass (keine Norm genannt)",
+    (() => { const sr = MONT.schraubeSvg(0, 0, MONT.SPANN_EINHEIT.blatt, 0,
+      { n: rund, sw_mm: 17, sc: sc7 });
+      const h = [...sr.matchAll(/height="([-\d.]+)"/g)].map(m => +m[1]);
+      return Math.abs(h[1] - MONT.SPANN_MM.kopf_h * MONT.SPANN_EINHEIT.blatt) < 1e-9
+        && blattMit.includes('height="' + rund(h[1]) + '"'); })());
+
+  // M3: Modul 1 und Modul 7 messen fuer DIESELBE Wand dasselbe Bauteilmass in mm. Verglichen
+  // wird — wie bei Plattendicke, Plattenbreite und Kopplungsmutter — das ZURUECKGERECHNETE
+  // Mass; die beiden Ausgaben zeichnen in verschiedenen Einheiten und koennen keine
+  // bytegleiche Zeichenkette haben (Modul 1: feste Ansichtseinheit, Modul 7: Blattmasstab).
+  ok("[#97] Modul 1 und Modul 7 zeigen dasselbe Bauteilmass in mm (Mutter Einlegeblech)",
+    (() => {
+      const scM1 = (1000 - 2 * 46) / WZM.length_mm;
+      const a = MONT.zwischenpunktSvg(0, 0,
+        { e: E1, mutter_h_mm: 8, mutter_sw_mm: 17, sc: scM1 });
+      const aR = rects(a.slice(a.indexOf("<rect")))[0], b7 = zspMut(blattMit)[0];
+      return Math.abs(aR.h / scM1 - 8) < 1e-9 && Math.abs(aR.b / scM1 - 17) < 1e-9
+        && Math.abs(b7.h * mst - 8) < 1e-2 && Math.abs(b7.b * mst - 17) < 1e-2; })());
+  ok("[#97] und dasselbe fuer die Sechskantschraube Fuss",
+    (() => {
+      const scM1 = (1000 - 2 * 46) / WZM.length_mm;
+      const a = MONT.schraubeSvg(0, 0, E1, 0, { sw_mm: 17, sc: scM1 });
+      const b1 = [...a.matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
+      return b1.every(v => Math.abs(v / scM1 - 17) < 1e-9)
+        && blattMit.includes('width="' + rund(17 * sc7) + '"'); })());
+
+  // Akzeptanz 3 / M4: dieselbe Wand OHNE die drei Felder — das Blatt faellt zeichenweise auf
+  // das Symbolmass zurueck, und ausser den drei Bauteilen ist alles bytegleich.
+  const idO = stelleAktiv(WZO, opt);
+  const blattOhne = $("blattwrap").innerHTML;
+  ok("[#97] ohne die Felder bleibt das Blatt beim festen Symbolmass",
+    (() => { const m = zspMut(blattOhne);
+      return m.length === zspMut(blattMit).length && blattOhne !== blattMit
+        && m.every(q => Math.abs(q.h - MONT.SPANN_MM.mutter_h * MONT.SPANN_EINHEIT.blatt) < 1e-2
+          && Math.abs(q.b - MONT.SPANN_MM.d * MONT.SPANN_EINHEIT.blatt) < 1e-2); })());
+  ok("[#97] Masstab, Steine, Bleche, Bemassung und Schriftfeld bleiben bytegleich",
+    (() => {
+      // Weggenommen werden genau die betroffenen Bauteile: die Einlegeblech-Gruppe und die
+      // beiden Rechtecke der Schraube je Fussanschluss. Die Schraubenrechtecke tragen keine
+      // Klasse; erkannt werden sie an ihrer BREITE, und die kommt aus dem geteilten Baustein —
+      // je Zweig eine andere, deshalb wird getrennt gestrippt. Die Anzahl wird mitgeprueft,
+      // damit nicht versehentlich ein fremdes Rechteck derselben Breite verschwindet.
+      const SYM = MONT.SPANN_EINHEIT.blatt;
+      const breiten = (o) => [...MONT.schraubeSvg(0, 0, SYM, 0, { n: rund, ...o })
+        .matchAll(/width="([-\d.]+)"/g)].map(m => m[1]);
+      const fuesse = WZM.tension_columns.reduce((a, c) => a + c.segments
+        .filter(g => (g.anker_unten || (g.z0_mm === 0 ? "bodenblech" : "spannplatte"))
+          === "bodenblech").length, 0);
+      const strip = (t, o) => {
+        let out = t.replace(/<g class="zsp">[\s\S]*?<\/g>/g, ""), weg = 0;
+        for (const b of breiten(o)) {
+          const re = new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="'
+            + b.replace(/\./g, "\\.") + '" height="[-\\d.]+" fill="'
+            + MONT.SPANN_FARBE.mutter + '"\\/>', "g");
+          weg += (out.match(re) || []).length;
+          out = out.replace(re, "");
+        }
+        return { out, weg }; };
+      const a = strip(blattMit, { sw_mm: 17, sc: sc7 }), b = strip(blattOhne, {});
+      return fuesse > 0 && a.weg === 2 * fuesse && b.weg === 2 * fuesse
+        && a.out === b.out && a.out.length > 0 && Z.masstab === mst; })());
+  ok("[#97] das Blatt greift dafuer NICHT auf den Katalog zu ([D-1])",
+    !/sembla-katalog/.test(readFileSync(
+      new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8")));
+
+  store.setzeAktiv(idW);
+  void idM; void idO;
 }
 
 // --- 8) Modul-Oberflaeche: keine dezentrale Dateifunktion ---------------

@@ -682,6 +682,17 @@ function draw(w){
   // Breite erfunden. Die Sichtbarkeitsuntergrenze `platte_b_min` bleibt in Kraft — bei einer
   // sehr langen Wand zeigt die Ansicht deshalb weiterhin die geklemmte Breite.
   const spB=(w.prestress&&w.prestress.spannplatte_b_mm)||0;
+  // [D-4]/#97 Einbauhöhe und Schlüsselweite der MUTTER DES EINLEGEBLECHS ([A-16]) und
+  // Schlüsselweite der SECHSKANTSCHRAUBE FUSS ([A-19]): alle drei stehen als
+  // `zp_mutter_h_mm`/`zp_mutter_sw_mm`/`senkkopf_sw_mm` im Wandelement — abgeleitet beim
+  // Auslegen aus dem gewählten Katalogprodukt (`zpMutterHoeheMm()`/`zpMutterSwMm()`/
+  // `senkkopfSwMm()`). Gelesen wird auch hier ausdrücklich das WANDELEMENT und nicht noch
+  // einmal der Katalog: das wäre ein zweiter Datenweg, den Modul 7 gar nicht hat, und genau die
+  // Drift, die [D-4] ausschließt. Fehlt ein Maß, bleibt es für DIESES Maß beim festen
+  // Symbolmaß; es wird nie eines erfunden und kein Bauteil entfällt.
+  const zpH=(w.prestress&&w.prestress.zp_mutter_h_mm)||0;
+  const zpSw=(w.prestress&&w.prestress.zp_mutter_sw_mm)||0;
+  const skSw=(w.prestress&&w.prestress.senkkopf_sw_mm)||0;
   // Bezugsmaß aller Spannkomponenten-Symbole (#106): FESTE viewBox-Einheiten je Papier-mm
   // aus SPANN_EINHEIT. Vorher stand hier `COURSE*sc`, also die Lagenhöhe in
   // Zeichenkoordinaten — und weil `sc=(1000-2*pad)/L` allein an der WANDLÄNGE hängt, war
@@ -791,7 +802,10 @@ function draw(w){
         // Fußfolge nach [A-19] (#97): von unten die Sechskantschraube — ihr Kopf ragt unter
         // dem Bodenblech heraus —, darauf das Blech, darauf AUFLIEGEND die KOPPLUNGSMUTTER.
         // Bis #97 stand hier eine normale Mutter, zur Hälfte im Blech, und die Schraube fehlte.
-        s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth,{hoehe_mm:kuH,sc});
+        // `hoehe_mm` ist das FREMDE Maß der Kopplungsmutter (Schaftbeginn nach [A-19]);
+        // `sw_mm` ist das eigene Maß der Schraube und gibt seit #97 die Breite von Kopf UND
+        // Schaft. Die Kopfhöhe bleibt Symbolmaß — dafür gibt es kein Feld.
+        s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth,{hoehe_mm:kuH,sw_mm:skSw,sc});
         vorn+=kopplungsmutterSvg(x,Y(g.z0_mm),SYM,
           {klasse:'kop',auf:true,hoehe_mm:kuH,sw_mm:kuSw,sc});
       }
@@ -844,7 +858,11 @@ function draw(w){
   for(const zp of zpListe){
     const zx=X(zp.x_mm), zy=Y(zp.z_mm);
     const on=(zpEdit && selZp===zp.z_mm);
-    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,e:SYM});
+    // Die aufsitzende Mutter ([A-16]) bekommt seit #97 ihre realen Maße über
+    // `mutter_h_mm`/`mutter_sw_mm` und denselben `sc` wie alle anderen Bauteilmaße dieser
+    // Ansicht; Balken, Schenkel und Strichstärke des Blechs bleiben Symbolmaß.
+    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,
+      e:SYM,mutter_h_mm:zpH,mutter_sw_mm:zpSw,sc});
   }
   // Vordergrund der BAUTEILE (#106): die gesammelten Kopplungsmuttern — nach Strängen, Ankern,
   // Blechen und Einlegeblechen, damit keines davon sie überdeckt. Seit #112 (Rückmeldung

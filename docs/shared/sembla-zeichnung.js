@@ -577,6 +577,17 @@ export function zeichnungSvg(w, opts = {}) {
   // `platte_b_min` bleibt unveraendert in Kraft — bei kleinem Blattmasstab zeigt das Blatt
   // deshalb weiterhin die geklemmte Breite, real wie fest.
   const spB = (w.prestress && w.prestress.spannplatte_b_mm) || 0;
+  // [D-4]/#97 Einbauhoehe und Schluesselweite der MUTTER DES EINLEGEBLECHS ([A-16]) und
+  // Schluesselweite der SECHSKANTSCHRAUBE FUSS ([A-19]): alle drei stehen als
+  // `zp_mutter_h_mm`/`zp_mutter_sw_mm`/`senkkopf_sw_mm` im Wandelement (Modul 1 leitet sie beim
+  // Auslegen aus den gewaehlten Katalogprodukten ab). Auch sie werden hier NUR GELESEN und
+  // unveraendert an `zwischenpunktSvg()`/`schraubeSvg()` durchgereicht — dieselben Zahlen, die
+  // Modul 1 durchreicht, damit dieselbe Wand in beiden Ausgaben dieselben Bauteilmasse zeigt.
+  // Der Katalog wird hier nicht angefasst ([D-1]). Fehlt ein Mass, bleibt es fuer DIESES Mass
+  // beim festen Symbolmass; erfunden wird nie eines, und kein Bauteil entfaellt.
+  const zpH = (w.prestress && w.prestress.zp_mutter_h_mm) || 0;
+  const zpSw = (w.prestress && w.prestress.zp_mutter_sw_mm) || 0;
+  const skSw = (w.prestress && w.prestress.senkkopf_sw_mm) || 0;
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
@@ -675,7 +686,10 @@ export function zeichnungSvg(w, opts = {}) {
         // Fussfolge nach [A-19] (#97): von unten die Sechskantschraube (ihr Kopf ragt unter
         // dem Bodenblech heraus), darauf das Blech, darauf AUFLIEGEND die Kopplungsmutter.
         // Bis #97 stand hier eine normale Mutter, zur Haelfte im Blech, ohne Schraube.
-        s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n, hoehe_mm: kuH, sc });
+        // `hoehe_mm` ist das FREMDE Mass der Kopplungsmutter (Schaftbeginn nach [A-19]);
+        // `sw_mm` ist das eigene Mass der Schraube und gibt seit #97 die Breite von Kopf UND
+        // Schaft. Die Kopfhoehe bleibt Symbolmass — dafuer gibt es kein Feld.
+        s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n, hoehe_mm: kuH, sw_mm: skSw, sc });
         vorn += kopplungsmutterSvg(x, Y(sg.z0_mm), SYM,
           { n: _n, auf: true, hoehe_mm: kuH, sw_mm: kuSw, sc });
       } else s += spannplatteSvg(x, Y(sg.z0_mm), SYM, sc,
@@ -732,7 +746,11 @@ export function zeichnungSvg(w, opts = {}) {
         // Formgleich zur Wandansicht: Balkenbreite, Schenkel und Strichstaerke sind FESTE
         // Symbolmasse aus `SPANN_MM` (#106) und werden hier nicht mehr aus der Lagenhoehe
         // gerechnet — dasselbe Blech war so je Blattmasstab verschieden gross.
-        s += zwischenpunktSvg(X(p.x_mm), Y(p.z_mm), { n: _n, e: SYM });
+        // Die aufsitzende Mutter ([A-16]) bekommt seit #97 ihre realen Masse ueber
+        // `mutter_h_mm`/`mutter_sw_mm` und denselben `sc` wie alle anderen Bauteilmasse des
+        // Blattes; Balken, Schenkel und Strichstaerke des Blechs bleiben Symbolmass.
+        s += zwischenpunktSvg(X(p.x_mm), Y(p.z_mm),
+          { n: _n, e: SYM, mutter_h_mm: zpH, mutter_sw_mm: zpSw, sc });
       s += `</g>`;
     }
   }

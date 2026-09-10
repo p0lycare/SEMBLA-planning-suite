@@ -796,7 +796,10 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     ok("[#97] die Schraube sind ZWEI Zylinder: Schaft und Kopf",
       (sr.match(/<rect /g) || []).length === 2 && !/<circle/.test(sr) && !/<polygon/.test(sr)
       && sr.includes(SPANN_FARBE.mutter));
-    ok("[#97] der Kopf ist dicker als der Schaft",
+    // Diese Aussage ist die des SYMBOLZWEIGS (Aufruf ohne Schluesselweite) und bleibt genau so
+    // erhalten. Auf dem masstabsgetreuen Zweig gilt sie seit dem Folgepaket zu #97 NICHT mehr:
+    // dort tragen Kopf und Schaft dieselbe gefuehrte Schluesselweite (s. eigener Block unten).
+    ok("[#97] ohne Schluesselweite ist der Kopf dicker als der Schaft (Symbolzweig)",
       bs[1] > bs[0] && Math.abs(bs[0] - SPANN_MM.schaft_d * E1) < 1e-9
       && Math.abs(bs[1] - SPANN_MM.kopf_d * E1) < 1e-9);
     ok("[#97] der Kopf ragt UNTER dem Bodenblech heraus (vollstaendig unter der Blechunterkante)",
@@ -923,8 +926,18 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       && mutterSvg(100, 200, E1, { sw_mm: null, sc: scM1 }) === mutterSvg(100, 200, E1)
       && mutterSvg(100, 200, E1, { sw_mm: 17 }) === mutterSvg(100, 200, E1)      // ohne `sc`
       && mutterSvg(100, 200, E1, { sw_mm: 17, sc: 0 }) === mutterSvg(100, 200, E1));
-    ok("[#97] auch die Schraube behaelt ihre Symbolmasse (Kopf und Schaft unveraendert)",
-      schraubeSvg(100, 300, E1, 6, { sw_mm: 17, sc: scM1 }) === schraubeSvg(100, 300, E1, 6));
+    // Bis zum Folgepaket zu #97 stand hier die Gegenaussage: `schraubeSvg` NAHM `sw_mm` an und
+    // ignorierte es, ihre Breiten waren immer Symbolmass. Das ist jetzt aufgeloest — die
+    // Schluesselweite der Schraube ist ihr EIGENES gefuehrtes Bauteilmass
+    // (`prestress.senkkopf_sw_mm`), waehrend `sw_mm` der Kopplungsmutter deren eigenes bleibt.
+    // Beide Teile haben getrennte Aufrufe und teilen keinen Optionswert; geprueft wird das im
+    // eigenen Block weiter unten. Hier bleibt nur die Trennung der ZUSTAENDIGKEITEN stehen:
+    // die Schluesselweite der Kopplungsmutter aendert an der Schraube nichts.
+    ok("[#97] die Schluesselweite der Schraube ist ihr eigenes Mass (nicht das der Mutter)",
+      schraubeSvg(100, 300, E1, 6, { sw_mm: 17, sc: scM1 })
+        !== schraubeSvg(100, 300, E1, 6)
+      && schraubeSvg(100, 300, E1, 6, { hoehe_mm: 30, sc: scM1 })
+        === schraubeSvg(100, 300, E1, 6, { hoehe_mm: 30, sc: scM1, sw_mm: 0 }));
     // `kupplungDurchmesser()` ist die EINE Entscheidung — die Haarlinie nach #112 leitet ihre
     // Breite in beiden Ausgaben daraus ab und darf sie nicht selbst nachrechnen ([D-4]).
     ok("[#97] `kupplungDurchmesser()` ist genau die Breite der gezeichneten Mutter",
@@ -933,6 +946,113 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
           - kupplungDurchmesser(E1, o)) < 1e-9;
         return f({ sw_mm: 17, sc: scM1 }) && f({ sw_mm: 24, sc: scM1 }) && f({})
           && Math.abs(kupplungDurchmesser(E7, {}) - SPANN_MM.d * E7) < 1e-9; })());
+  }
+
+  // --- Masstabsgetreue MASSE DER MUTTER DES EINLEGEBLECHS (#97) ----------------------------
+  // Dieselbe Zusicherungsreihe wie bei Spannmutter und Kopplungsmutter: reale Masse, je Achse
+  // eigener Rueckfall, KEINE Untergrenze, unberuehrtes Traegerteil und Bit-Gleichheit ohne
+  // Masse. Die Werte kommen beim Aufrufer aus `prestress.zp_mutter_h_mm`/`zp_mutter_sw_mm`;
+  // hier werden die fertigen Bauteilmasse hereingegeben. Gezeichnet wird die Mutter durch
+  // DENSELBEN `mutterSvg`-Baustein — ein eigener Zylinder waere die zweite Fassung, die [D-4]
+  // ausschliesst.
+  {
+    const mut = t => t.slice(t.indexOf("<rect"));      // nur die Mutter, ohne den Polylinienzug
+    const zpU = zwischenpunktSvg(100, 200, { e: E1 }); // ohne Masse = Symbolmass
+    const zp = zwischenpunktSvg(100, 200,
+      { e: E1, mutter_h_mm: 8, mutter_sw_mm: 17, sc: scM1 });
+    ok("[#97] die Mutter des Einlegeblechs ist `mutter_h_mm * sc` hoch und `mutter_sw_mm * sc` breit",
+      Math.abs(hoehe(mut(zp)) - 8 * scM1) < 1e-9
+      && Math.abs(breite(mut(zp)) - 17 * scM1) < 1e-9);
+    ok("[#97] gezeichnet wird sie durch DENSELBEN mutterSvg-Baustein (kein eigener Zylinder)",
+      zp.endsWith(mutterSvg(100, 200, E1, { auf: true, hoehe_mm: 8, sw_mm: 17, sc: scM1 }))
+      && (zp.match(/<rect /g) || []).length === 1);
+    ok("[#97] zwei Katalogprodukte ergeben sichtbar verschieden grosse Muttern",
+      (() => {
+        const a = mut(zwischenpunktSvg(0, 0, { e: E1, mutter_h_mm: 8, mutter_sw_mm: 17, sc: scM1 }));
+        const b = mut(zwischenpunktSvg(0, 0, { e: E1, mutter_h_mm: 6.5, mutter_sw_mm: 13, sc: scM1 }));
+        return hoehe(a) > hoehe(b) && breite(a) > breite(b)
+          && Math.abs(hoehe(b) - 6.5 * scM1) < 1e-9 && Math.abs(breite(b) - 13 * scM1) < 1e-9; })());
+    ok("[#97] sie SITZT weiterhin auf der Balkenoberkante und waechst nach oben",
+      (() => { const m = mut(zp);
+        return Math.abs((num(m, "y")[0] + hoehe(m)) - 200) < 1e-9 && num(m, "y")[0] < 200; })());
+    ok("[#97] das Einlegeblech selbst bleibt bit-gleich (Balken, Schenkel, Strich, Farbe)",
+      zp.slice(0, zp.indexOf("<rect")) === zpU.slice(0, zpU.indexOf("<rect")));
+    ok("[#97] jede Achse hat ihren EIGENEN Rueckfall",
+      (() => {
+        const nurH = mut(zwischenpunktSvg(0, 0, { e: E1, mutter_h_mm: 8, sc: scM1 }));
+        const nurB = mut(zwischenpunktSvg(0, 0, { e: E1, mutter_sw_mm: 17, sc: scM1 }));
+        return Math.abs(hoehe(nurH) - 8 * scM1) < 1e-9
+          && Math.abs(breite(nurH) - SPANN_MM.d * E1) < 1e-9
+          && Math.abs(breite(nurB) - 17 * scM1) < 1e-9
+          && Math.abs(hoehe(nurB) - SPANN_MM.mutter_h * E1) < 1e-9; })());
+    ok("[#97] eine kleine Mutter in kleinem Masstab bekommt KEINE Untergrenze",
+      (() => { const m = mut(zwischenpunktSvg(0, 0,
+        { e: E7, mutter_h_mm: 8, mutter_sw_mm: 17, sc: 1 / 100 }));
+        return Math.abs(hoehe(m) - 8 / 100) < 1e-9 && Math.abs(breite(m) - 17 / 100) < 1e-9
+          && hoehe(m) > 0 && hoehe(m) < SPANN_MM.mutter_h * E7
+          && breite(m) < SPANN_MM.d * E7; })());
+    ok("[#97] ohne brauchbares Mass ist das Einlegeblech BIT-GLEICH zum Stand davor",
+      zwischenpunktSvg(100, 200, { e: E1, mutter_h_mm: 0, mutter_sw_mm: 0, sc: scM1 }) === zpU
+      && zwischenpunktSvg(100, 200,
+        { e: E1, mutter_h_mm: null, mutter_sw_mm: null, sc: scM1 }) === zpU
+      && zwischenpunktSvg(100, 200,
+        { e: E1, mutter_h_mm: undefined, mutter_sw_mm: undefined, sc: scM1 }) === zpU
+      && zwischenpunktSvg(100, 200, { e: E1, mutter_h_mm: "", mutter_sw_mm: "" , sc: scM1 }) === zpU
+      && zwischenpunktSvg(100, 200,
+        { e: E1, mutter_h_mm: "krumm", mutter_sw_mm: "krumm", sc: scM1 }) === zpU
+      && zwischenpunktSvg(100, 200,
+        { e: E1, mutter_h_mm: -8, mutter_sw_mm: -17, sc: scM1 }) === zpU
+      && zwischenpunktSvg(100, 200, { e: E1, mutter_h_mm: 8, mutter_sw_mm: 17 }) === zpU  // kein `sc`
+      && zwischenpunktSvg(100, 200,
+        { e: E1, mutter_h_mm: 8, mutter_sw_mm: 17, sc: 0 }) === zpU);
+    ok("[#97] ohne `e` gibt es weiterhin gar keine Mutter — auch mit gefuehrten Massen",
+      zwischenpunktSvg(100, 200, { mutter_h_mm: 8, mutter_sw_mm: 17, sc: scM1 })
+        === zwischenpunktSvg(100, 200, {}));
+  }
+
+  // --- Masstabsgetreue BREITE DER SECHSKANTSCHRAUBE FUSS (#97) ------------------------------
+  // Gefuehrt ist genau EINE Schluesselweite (`prestress.senkkopf_sw_mm`), und sie gilt nach dem
+  // Paketentscheid fuer Kopf UND Schaft: ein Schaft-/Gewindedurchmesser liegt nicht vor und
+  // wuerde erfunden. Der Kopf ist damit auf diesem Zweig nicht mehr breiter als der Schaft — er
+  // ragt weiterhin unter dem Bodenblech heraus. Die KOPFHOEHE bleibt Symbolmass (N1).
+  {
+    const blech = 6, yb = 300;
+    const srU = schraubeSvg(100, yb, E1, blech);                       // ohne Mass = Symbolmass
+    const sr = schraubeSvg(100, yb, E1, blech, { sw_mm: 17, sc: scM1 });
+    const bs = num(sr, "width"), hs = num(sr, "height"), ys = num(sr, "y");
+    ok("[#97] Kopf UND Schaft sind `sw_mm * sc` breit",
+      Math.abs(bs[0] - 17 * scM1) < 1e-9 && Math.abs(bs[1] - 17 * scM1) < 1e-9);
+    ok("[#97] zwei Schluesselweiten ergeben sichtbar verschieden breite Schrauben",
+      (() => { const b13 = num(schraubeSvg(0, 0, E1, 0, { sw_mm: 13, sc: scM1 }), "width");
+        return Math.abs(b13[0] - 13 * scM1) < 1e-9 && b13[0] < bs[0]
+          && Math.abs(bs[0] / b13[0] - 17 / 13) < 1e-9; })());
+    ok("[#97] die KOPFHOEHE bleibt unveraendert Symbolmass (keine Norm genannt, N1)",
+      Math.abs(hs[1] - SPANN_MM.kopf_h * E1) < 1e-9
+      && Math.abs(hs[1] - num(srU, "height")[1]) < 1e-9);
+    ok("[#97] der Kopf ragt weiterhin UNTER dem Bodenblech heraus, der Schaft bleibt zentriert",
+      Math.abs(ys[1] - (yb + blech)) < 1e-9 && ys[1] + hs[1] > yb + blech
+      && Math.abs((num(sr, "x")[0] + bs[0] / 2) - 100) < 1e-9
+      && Math.abs((num(sr, "x")[1] + bs[1] / 2) - 100) < 1e-9);
+    ok("[#97] der Schaftbeginn haengt allein an der Kopplungsmutter, nicht an der eigenen SW",
+      (() => { const a = num(schraubeSvg(100, yb, E1, blech,
+        { hoehe_mm: 30, sw_mm: 17, sc: scM1 }), "y")[0];
+        return Math.abs(a - (yb - 30 * scM1 / 2)) < 1e-9
+          && Math.abs(num(sr, "y")[0] - (yb - SPANN_MM.kupplung_h * E1 / 2)) < 1e-9; })());
+    ok("[#97] eine schmale Schraube in kleinem Masstab bekommt KEINE Untergrenze",
+      (() => { const b = num(schraubeSvg(0, 0, E7, 0, { sw_mm: 17, sc: 1 / 100 }), "width");
+        return Math.abs(b[0] - 17 / 100) < 1e-9 && Math.abs(b[1] - 17 / 100) < 1e-9
+          && b[0] > 0 && b[1] < SPANN_MM.kopf_d * E7; })());
+    ok("[#97] ohne brauchbares Mass ist die Schraube BIT-GLEICH zum Stand davor",
+      schraubeSvg(100, yb, E1, blech, { sw_mm: 0, sc: scM1 }) === srU
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: null, sc: scM1 }) === srU
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: undefined, sc: scM1 }) === srU
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: "", sc: scM1 }) === srU
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: "krumm", sc: scM1 }) === srU
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: -17, sc: scM1 }) === srU
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: 17 }) === srU            // ohne `sc`
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: 17, sc: 0 }) === srU);
+    ok("[#97] es bleiben ZWEI Rechtecke — kein Bauteil entfaellt",
+      (sr.match(/<rect /g) || []).length === 2 && sr.includes(SPANN_FARBE.mutter));
   }
 
   // --- Spannplatte: liegt AUF der Kante, Breite bleibt Bauteilmass -------------------------
@@ -1116,8 +1236,10 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         { dicke_mm: 8, mutter_h_mm: null, mutter_sw_mm: null }) === plO
       && spannplatteSvg(100, 200, E1, scM1,
         { dicke_mm: 8, mutter_h_mm: undefined, mutter_sw_mm: undefined }) === plO);
-    // Das Einlegeblech gibt bewusst KEINE Masse herein ([A-16]/N5) — es bleibt symbolisch.
-    ok("[#97] die Mutter des Einlegeblechs bleibt unveraendert symbolisch",
+    // Die Mutter des Einlegeblechs laeuft durch DENSELBEN Baustein ([A-16]/[D-4]) — OHNE
+    // gefuehrte Masse bleibt sie unveraendert symbolisch (der masstabsgetreue Zweig steht im
+    // eigenen Block unten).
+    ok("[#97] die Mutter des Einlegeblechs bleibt ohne Masse symbolisch",
       zwischenpunktSvg(100, 200, { e: E1 })
         .endsWith(mutterSvg(100, 200, E1, { auf: true })));
   }
