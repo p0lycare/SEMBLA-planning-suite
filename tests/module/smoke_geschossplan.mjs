@@ -5716,6 +5716,321 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   globalThis.confirm = confirmEchtSpm;
 }
 
+// ==========================================================================
+//  Issue #97 — BREITE der SPANNPLATTE im Sammel-Editor
+// ==========================================================================
+// Modul 1 leitet `prestress.spannplatte_b_mm` aus dem Katalogfeld `breite_mm` der
+// gewaehlten Spannplatte ab (`spannplatteBreiteMm` ueber `einbauMass`); Wandansicht und
+// Blatt von Modul 7 zeichnen die Platte damit masstaeblich, ohne den Katalog zu lesen
+// ([D-1]). Der Sammel-Editor ist die ZWEITE Schreibbahn ans Wandelement — er kannte bei
+// der Rolle `spannplatte` nur die DICKE (`rod_kopf_zuschlag_mm`) und stieg bei Kopfblech
+// sogar ganz aus. Nach einem dortigen Wechsel auf eine andere Platte blieb die alte
+// Breite bis zum naechsten „Auslegen" in Modul 1 stehen.
+//
+// Gefahren wird der ECHTE Editorpfad wie bei Kopplungs- und Spannmutter darueber:
+// Projekt und Katalog aufsetzen, Waende zeichnen, im Popup auswaehlen, uebernehmen — und
+// das GESPEICHERTE Wandelement pruefen.
+//
+// Die Pruefprodukte tragen ABSICHTLICH alle dieselbe Dicke (10 mm): so trifft jede
+// Aenderung nur die Breite, und die Nullwirkung ist wirklich an ihr gemessen — die Dicke
+// ist als `rod_kopf_zuschlag_mm` ein echter Rechenwert am oberen Anker und wuerde die
+// Zerlegung sonst mitbewegen.
+//   spb-a b=120 d=10 · spb-b b=140 d=10
+// Eine Spannplatte OHNE `breite_mm` gibt es dabei bewusst nicht: die Katalogpruefung
+// verlangt das Mass fuer die Kategorie „Blech / Platte (Stahl)", ein solches Produkt
+// waere also gar nicht speicherbar. „Kein eindeutiges Breitenmass" heisst hier deshalb
+// ausschliesslich: mehrere gewaehlte Platten tragen verschiedene Breiten.
+{
+  const katTextSpb = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const mappeSpb = store.fuegeProjektHinzu('Projekt 97 Spannplattenbreite',
+    { geschoss: 'EG97spb', hoehe_mm: 2600 });
+  const gsSpb = MAPPE.alleGeschosse(mappeSpb)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gsSpb);
+  store.importiereKatalogText(katTextSpb);
+  await warte();
+  GP.zeigeAlles();
+
+  const weSpb = (id) => store.holeElement(id).wandelement;
+  const psSpb = (id) => weSpb(id).prestress || {};
+  const bSpb = (id) => psSpb(id).spannplatte_b_mm;
+  const kzSpb = (id) => psSpb(id).rod_kopf_zuschlag_mm;
+  /** Genau die Zahlen, die sich NICHT aendern duerfen: Achsen, Segmente, Stuecke, Mengen. */
+  const fpSpb = (id) => { const w = weSpb(id); return JSON.stringify({
+    achsen: (w.tension_columns || []).map(c => c.x_mm),
+    seg: (w.tension_columns || []).map(c => (c.segments || []).map(sg => [sg.z0_mm, sg.z1_mm,
+      sg.bedarf_mm, sg.ueberstand_mm, (sg.stuecke || []).map(x => x.art + ':' + x.len_mm).join()])),
+    bom: w.bom, base: w.base_plate, top: w.top_plate }); };
+  /** Der Ein-Wert-Baustein von MODUL 1 (`einbauMass`), satzweise nachgebaut. */
+  const massSpb = (id, feld) => {
+    const kat = store.holeKatalog(); if (!kat) return null;
+    const v = [...new Set(KAT.produkteZuRolle(store.holeElement(id).eingaben || {}, kat, 'spannplatte')
+      .produkte.map(x => +x[feld]).filter(n => Number.isFinite(n) && n > 0))];
+    return v.length === 1 ? v[0] : null;
+  };
+
+  const neuesteSpb = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const aSpb = neuesteSpb().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const bSpbId = neuesteSpb().id;
+  await warte();
+  const idsSpb = [aSpb, bSpbId];
+
+  const SPB0 = KAT.rollenIds(store.holeProdukte(1, aSpb), 'spannplatte');
+  ok('#97/spb Pruefaufbau: [P-18] hat GENAU EINE Spannplatte vorbelegt (120 mm breit, '
+    + '10 mm dick); im Wandelement steht die Breite noch nicht',
+    SPB0.length === 1 && KAT.produkt(store.holeKatalog(), SPB0[0]).breite_mm === 120
+    && KAT.produkt(store.holeKatalog(), SPB0[0]).dicke_mm === 10
+    && idsSpb.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannplatte').join() === SPB0[0]
+      && !('spannplatte_b_mm' in psSpb(id))));
+
+  const confirmEchtSpb = globalThis.confirm;
+  globalThis.confirm = () => true;
+  const ridSpb = (r) => 'gp-sammel-rolle-' + r;
+  const hakeSpb = (r, pid, an = true) => $('gp-sammel-rollen').dispatch('change',
+    { target: { checked: an, dataset: { prolle: r, pid } } });
+  const waehleSpb = () => {
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+  };
+  /** Genau die Spannplatten ankreuzen, die uebergeben werden. */
+  const setzeSpb = async (pids) => {
+    waehleSpb();
+    await warte();
+    $(ridSpb('spannplatte') + '-an').checked = true;
+    $(ridSpb('spannplatte') + '-an').dispatch('change');
+    for (const o of KAT.rollenOptionen(store.holeKatalog(), 'spannplatte', []))
+      hakeSpb('spannplatte', o.id, false);
+    for (const q of pids) hakeSpb('spannplatte', q);
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+  };
+
+  // (a) Akzeptanz 4 (zweiter Fall) / Muss 3: NUR der Ueberstand ist angekreuzt — die
+  //     Breite der GESPEICHERTEN Auswahl wird trotzdem nachgezogen (#117-Bahn: jede
+  //     Neurechnung bildet alle Stellen neu).
+  waehleSpb();
+  await warte();
+  ok('#97/spb Pruefaufbau: zwei Waende ausgewaehlt, Popup offen',
+    GP.zustand.auswahl.length === 2 && $('gp-sammelblatt').hidden === false);
+  $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+  $('gp-sammel-ueber').value = '25';
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#97/spb nur der Ueberstand angekreuzt: die Breite der gespeicherten Spannplatte '
+    + 'wird mitgezogen — und die Dicke wie bisher auch',
+    idsSpb.every(id => bSpb(id) === 120 && kzSpb(id) === 10
+      && psSpb(id).rod_overhang_mm === 25));
+  ok('#97/spb (Muss 1) die Ableitung erreicht dieselbe Zahl wie Modul 1 fuer dieselbe '
+    + 'Auswahl',
+    idsSpb.every(id => bSpb(id) === massSpb(id, 'breite_mm') && massSpb(id, 'breite_mm') === 120));
+  // Ab hier ist der Rechenstand eingeschwungen — er ist der Vergleichsmassstab.
+  const fpVorSpb = idsSpb.map(fpSpb);
+
+  // Die drei Pruefprodukte (s. Kopf des Blocks). Nur im TEST — die Vorlage unter
+  // docs/vorlagen/ bleibt unberuehrt.
+  {
+    const kat = store.holeKatalog();
+    const basis = KAT.produkt(kat, SPB0[0]);
+    const mach = (id, breite) => ({ ...basis, id,
+      bezeichnung: 'Spannplatte Pruefmass ' + id, breite_mm: breite, dicke_mm: 10 });
+    store.setzeKatalog({ ...kat, produkte: [...(kat.produkte || []),
+      mach('spb-a', 120), mach('spb-b', 140)] });
+    await warte();
+    const q = (id) => KAT.produkt(store.holeKatalog(), id);
+    ok('#97/spb Pruefaufbau: drei Spannplatten im Katalog, der Katalog bleibt gueltig',
+      KAT.validiereKatalog(store.holeKatalog()).length === 0
+      && (store.holeKatalog().produkte || [])
+        .filter(x => (x.rollen || []).includes('spannplatte')).length === 3
+      && q('spb-a').breite_mm === 120 && q('spb-a').dicke_mm === 10
+      && q('spb-b').breite_mm === 140 && q('spb-b').dicke_mm === 10);
+  }
+
+  // (b) Die Breite WANDERT sichtbar: erst auf 140, damit die Akzeptanz-1-Probe darunter
+  //     wirklich Zaehne hat und nicht nur den Ausgangswert bestaetigt.
+  await setzeSpb(['spb-b']);
+  ok('#97/spb die Sammelaenderung zieht die Breite sichtbar nach (120 -> 140)',
+    idsSpb.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannplatte').join() === 'spb-b'
+      && bSpb(id) === 140 && bSpb(id) === massSpb(id, 'breite_mm')));
+  ok('#97/spb (Akzeptanz 5 / must-not 4) Zuschnitt, Segmente, Spannachsen und Mengen '
+    + 'sind wertgleich — die Breite geht in keine Rechnung ein',
+    idsSpb.every((id, i) => fpSpb(id) === fpVorSpb[i]));
+
+  // (c) Akzeptanz 1 / Muss 1: eine Sammelaenderung auf eine Spannplatte mit
+  //     `breite_mm = 120` setzt an JEDER betroffenen Wand genau diese 120.
+  const vorElementeSpb = idsSpb.map(id => JSON.parse(JSON.stringify(store.holeElement(id))));
+  const undoVorSpb = GP.undoStand.undo;
+  await setzeSpb(['spb-a']);
+  ok('#97/spb (Akzeptanz 1 / Muss 1) die Sammelaenderung schreibt an jeder Wand genau '
+    + 'das Katalogmass der gesetzten Spannplatte',
+    idsSpb.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannplatte').join() === 'spb-a'
+      && bSpb(id) === 120 && bSpb(id) === massSpb(id, 'breite_mm')));
+  ok('#97/spb (Akzeptanz 5) auch dabei bleibt die Rechnung wertgleich',
+    idsSpb.every((id, i) => fpSpb(id) === fpVorSpb[i]));
+  ok('#97/spb (Muss 5) die Sammelaenderung bleibt GENAU EIN Rueckgaengig-Schritt',
+    GP.undoStand.undo === undoVorSpb + 1);
+  GP.undo();
+  await warte();
+  ok('#97/spb (Akzeptanz 6 / Muss 5) Rueckgaengig stellt beide Wandelemente samt '
+    + 'Produktauswahl vollstaendig wieder her',
+    idsSpb.every((id, i) => JSON.stringify(store.holeElement(id).wandelement)
+        === JSON.stringify(vorElementeSpb[i].wandelement)
+      && JSON.stringify(store.holeElement(id).eingaben)
+        === JSON.stringify(vorElementeSpb[i].eingaben))
+    && idsSpb.every(id => bSpb(id) === 140));
+  GP.redo();
+  await warte();
+  ok('#97/spb Wiederholen setzt die Breite wieder auf den neuen Stand',
+    idsSpb.every(id => bSpb(id) === 120));
+
+  // (d) Akzeptanz 3 / Muss 3: zwei Platten VERSCHIEDENER Breite — das Feld bleibt
+  //     unveraendert wie zuvor gespeichert stehen ([P-9]). Die DICKE ist dabei
+  //     eindeutig (beide 10 mm) und wird geschrieben: die beiden Masse stehen fuer sich.
+  await setzeSpb(['spb-a', 'spb-b']);
+  ok('#97/spb (Akzeptanz 3 / Muss 3) mehrdeutige Breite: das Feld bleibt auf dem '
+    + 'gespeicherten Wert stehen, es wird keine Breite gemittelt oder bevorzugt',
+    idsSpb.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannplatte').length === 2
+      && massSpb(id, 'breite_mm') === null && massSpb(id, 'dicke_mm') === 10
+      && bSpb(id) === 120 && kzSpb(id) === 10));
+  ok('#97/spb (Akzeptanz 5) auch dabei bleibt die Rechnung wertgleich',
+    idsSpb.every((id, i) => fpSpb(id) === fpVorSpb[i]));
+
+  // (f) Akzeptanz 2 / Muss 2: eine Wand mit KOPFBLECH bekommt die Breite ebenfalls,
+  //     aber weiterhin keinen `rod_kopf_zuschlag_mm`. Gefahren wird das auf einem
+  //     frischen Waendepaar, das nie mit Spannplatte gerechnet hat — so ist sichtbar,
+  //     dass die Dicke gar nicht erst entsteht.
+  {
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 4000 }, { x: 3040, y: 4060 });   const cSpb = neuesteSpb().id;
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 6000 }, { x: 2040, y: 6060 });   const dSpb = neuesteSpb().id;
+    await warte();
+    const paarSpb = [cSpb, dSpb];
+    ok('#97/spb Pruefaufbau: zwei frische Waende ohne jedes der beiden Plattenmasse',
+      paarSpb.every(id => !('spannplatte_b_mm' in psSpb(id))
+        && !('rod_kopf_zuschlag_mm' in psSpb(id))));
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 4062.5 });
+    GP.tippe({ x: 1000, y: 6062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    $('gp-sammel-topconn-an').checked = true; $('gp-sammel-topconn-an').dispatch('change');
+    $('gp-sammel-topconn').value = 'blech';
+    $(ridSpb('spannplatte') + '-an').checked = true;
+    $(ridSpb('spannplatte') + '-an').dispatch('change');
+    for (const o of KAT.rollenOptionen(store.holeKatalog(), 'spannplatte', []))
+      hakeSpb('spannplatte', o.id, false);
+    hakeSpb('spannplatte', 'spb-b');
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#97/spb (Akzeptanz 2 / Muss 2) mit Kopfblech als oberem Anschluss entsteht die '
+      + 'BREITE ebenfalls — die DICKE dagegen nicht',
+      paarSpb.every(id => psSpb(id).top_connection === 'blech'
+        && bSpb(id) === 140 && bSpb(id) === massSpb(id, 'breite_mm')
+        && !('rod_kopf_zuschlag_mm' in psSpb(id))));
+  }
+
+  // (g) Akzeptanz 4 / Muss 4: OHNE zugeordneten Katalog. Zwei Faelle, die sich
+  //     unterscheiden — nur ein Merkmal angekreuzt laeuft durch und leitet nichts ab;
+  //     eine angekreuzte Verwendungsstelle wird benannt abgewiesen ([L-12]/[P-9]).
+  {
+    const mappeOhneSpb = store.fuegeProjektHinzu('Projekt 97 Spannplatte ohne Katalog',
+      { geschoss: 'EG97spbb', hoehe_mm: 2600 });
+    const gsOhneSpb = MAPPE.alleGeschosse(mappeOhneSpb)[0].geschoss.id;
+    store.setzeAktivesGeschoss(gsOhneSpb);
+    await warte();
+    ok('#97/spb Pruefaufbau: dem neuen Projekt ist kein Bauteilkatalog zugeordnet ([L-12])',
+      store.katalogStatus().status !== 'ok' && !store.holeKatalog());
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const eSpb = neuesteSpb().id;
+    GP.werkzeug('wand');
+    GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const fSpb = neuesteSpb().id;
+    await warte();
+    const paarOhneSpb = [eSpb, fSpb];
+    // Der Ausgangsstand entsteht ueber den echten Auslegungspfad — nicht durch ein von
+    // Hand verbogenes JSON: so passt die Zerlegung wirklich zu diesen Eingaengen.
+    for (const id of paarOhneSpb) {
+      const el = store.holeElement(id), w = el.wandelement;
+      const vorg = { name: el.name, length_mm: w.length_mm, height_mm: w.height_mm,
+        openings: (w.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art)),
+        sides: w.sides, steps: (w.steps || []).map(x => ({ ...x })),
+        interlocks: (w.interlocks || []).map(i => ({ ...i })),
+        prestress: { ...(w.prestress || {}), spannplatte_b_mm: 130 },
+        load: { qk_area: 1.00, gammaQ: 1.50 },
+        material: w.verification && w.verification.material };
+      const neu = ENG.autoAuslegung(vorg).wandelement;
+      neu.wandtyp = w.wandtyp; neu.abdichtung = w.abdichtung; neu.brandklasse = w.brandklasse;
+      store.speichere(el.name, neu, id);
+    }
+    await warte();
+    ok('#97/spb Pruefaufbau: beide Waende tragen eine gespeicherte Breite (130 mm)',
+      paarOhneSpb.every(id => bSpb(id) === 130));
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+    await warte();
+    $('gp-sammel-ueber-an').checked = true; $('gp-sammel-ueber-an').dispatch('change');
+    $('gp-sammel-ueber').value = '30';
+    $('gp-sammel-go').dispatch('click');
+    await warte();
+    ok('#97/spb (Akzeptanz 4 / Muss 4) ohne Katalog und nur mit angekreuztem Merkmal '
+      + 'laeuft die Uebernahme durch und leitet NICHTS ab — die gespeicherte Breite '
+      + 'bleibt unveraendert stehen',
+      paarOhneSpb.every(id => bSpb(id) === 130 && psSpb(id).rod_overhang_mm === 30));
+    {
+      const speicherVorSpb = localStorage.getItem('sembla:elemente');
+      const undoVorOhneSpb = GP.undoStand.undo;
+      GP.werkzeug('auswahl');
+      GP.tippe({ x: 1500, y: 62.5 });
+      GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+      $('gp-sammel-knopf').dispatch('click');
+      await warte();
+      $(ridSpb('spannplatte') + '-an').checked = true;
+      $(ridSpb('spannplatte') + '-an').dispatch('change');
+      $('gp-sammel-go').dispatch('click');
+      await warte();
+      ok('#97/spb (Akzeptanz 4 / Muss 4) ohne Katalog wird eine angekreuzte '
+        + 'Verwendungsstelle BENANNT abgewiesen — nichts geschrieben',
+        /Bauteilkatalog/.test($('gp-msg').textContent)
+        && /nichts ge/.test($('gp-msg').textContent)
+        && localStorage.getItem('sembla:elemente') === speicherVorSpb
+        && GP.undoStand.undo === undoVorOhneSpb);
+      $('gp-sammel-zu').dispatch('click');
+      await warte();
+    }
+  }
+
+  // (h) must-not 2: GENAU EIN Ableitungsweg, und der Vorbehalt haengt an der DICKE
+  //     statt an der Rolle — Modul 1 hat fuer die Breite keinen, und einer hier ergaebe
+  //     fuer dieselbe Auswahl eine andere Zahl.
+  ok('#97/spb (Akzeptanz 7 / must-not 2) genau EIN Ableitungsweg — die Breite wird im '
+    + 'Editor an genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
+    (html.match(/rollenMass\(eing, kat, 'spannplatte', 'breite_mm'\)/g) || []).length === 1
+    // … und die Rolle wird ueberhaupt nur zweimal abgegriffen: Breite und Dicke.
+    && (html.match(/rollenMass\(eing, kat, 'spannplatte',/g) || []).length === 2
+    // … und genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
+    // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
+    && (html.match(/spannplatte_b_mm:/g) || []).length === 1
+    && /b != null \? \{ spannplatte_b_mm: b \} : \{\}/.test(html));
+  ok('#97/spb (Muss 2) der Vorbehalt des oberen Anschlusses steht an der DICKE, nicht '
+    + 'mehr an der Rolle',
+    !/spannplatte: \(eing, kat, topConn\) => \{\n    if \(topConn === 'blech'\) return \{\};/
+      .test(html)
+    && /const d = topConn === 'blech'/.test(html));
+  ok('#97/spb (must-not 6) kein neues gespeichertes Feld, kein Schema-, Mappen-, '
+    + 'Katalog- oder Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
+    && store.PROJEKT_VERSION === 2
+    && KAT.KATALOG_VERSION === store.listeKataloge()[0].version
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  globalThis.confirm = confirmEchtSpb;
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

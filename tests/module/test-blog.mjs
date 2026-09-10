@@ -39,17 +39,44 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die GEZEICHNETE PLATTENBREITE (#97) ist der neueste Eintrag — er wird als einziger direkt
-// ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres Eintrags
-// gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass Wandansicht und Blatt die am
-// Wandelement ausgewiesene reale Breite zeichnen und dass ein Wandelement ohne dieses Mass
-// unveraendert bleibt. NICHT versprochen werden eine geaenderte Rechnung, ein Preis, eine
-// Menge, eine Norm, ein Nachweis, ein Bedienelement oder ein Versionssprung — und
-// insbesondere KEINE Zusage fuer Masstaebe, in denen die Sichtbarkeitsuntergrenze greift.
-const PLATTE_BZ_97 = EINTRAEGE[0];
-ok("[#97] die gezeichnete Plattenbreite ist der neueste Eintrag",
-  PLATTE_BZ_97?.id === "chg-20260910-02" && PLATTE_BZ_97?.issue === 97
+// Die PLATTENBREITE IM SAMMEL-EDITOR (#97) ist der neueste Eintrag — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass der Sammel-Editor des
+// Geschosseditors die reale Breite der Spannplatte aus der Produktauswahl der jeweiligen
+// Wand nachzieht, sodass Modul 1 und Modul 7 sie unmittelbar zeigen, und dass eine
+// uneindeutige Auswahl den gespeicherten Wert stehen laesst. NICHT versprochen werden ein
+// neues Feld, ein neues Katalogmass, ein Bedienelement, eine geaenderte Rechnung, ein
+// Preis, eine Menge, eine Norm, ein Nachweis oder ein Versionssprung.
+const SAMMEL_SPB_97 = EINTRAEGE[0];
+ok("[#97] die Plattenbreite im Sammel-Editor ist der neueste Eintrag",
+  SAMMEL_SPB_97?.id === "chg-20260910-03" && SAMMEL_SPB_97?.issue === 97
+  && SAMMEL_SPB_97?.typ === "fix" && SAMMEL_SPB_97?.datum === "2026-09-10");
+ok("[#97] der Titel benennt die Sammelaenderung, die Spannplatte und ihre Breite",
+  /Sammel/.test(SAMMEL_SPB_97?.titel || "")
+  && /Spannplatte/.test(SAMMEL_SPB_97?.titel || "")
+  && /[Bb]reite/.test(SAMMEL_SPB_97?.titel || "")
+  && !/Norm|Preis|Menge|Nachweis|Rechnung|Format/i.test(SAMMEL_SPB_97?.titel || ""));
+ok("[#97] die Testbitte fuehrt den echten Nutzerpfad vom Geschosseditor in 1 und 7",
+  /Geschosseditor/.test(SAMMEL_SPB_97?.testbitte || "")
+  && /Sammel/.test(SAMMEL_SPB_97?.testbitte || "")
+  && /Modul 1\b/.test(SAMMEL_SPB_97?.testbitte || "")
+  && /Modul 7\b/.test(SAMMEL_SPB_97?.testbitte || "")
+  && /Spannplatte/.test(SAMMEL_SPB_97?.testbitte || ""));
+ok("[#97] die Testbitte nennt den Rueckfall bei uneindeutiger Auswahl",
+  /uneindeutig/.test(SAMMEL_SPB_97?.testbitte || "")
+  && /unver\u00e4ndert/.test(SAMMEL_SPB_97?.testbitte || ""));
+ok("[#97] die Testbitte verspricht keine Norm und keine geaenderte Rechnung",
+  !/Norm|Preis|Menge|Nachweis|Rechnung|Format|Migration/i
+    .test(SAMMEL_SPB_97?.testbitte || ""));
+
+// Davor liegt die GEZEICHNETE PLATTENBREITE (#97) — ueber ihre Kennung gesucht, weil sie
+// nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben inhaltlich unveraendert:
+// Wandansicht und Blatt zeichnen die am Wandelement ausgewiesene reale Breite, und ein
+// Wandelement ohne dieses Mass bleibt unveraendert.
+const PLATTE_BZ_97 = EINTRAEGE.find(e => e.id === "chg-20260910-02");
+ok("[#97] die gezeichnete Plattenbreite steht unveraendert in der Reihe",
+  PLATTE_BZ_97?.issue === 97
   && PLATTE_BZ_97?.typ === "feature" && PLATTE_BZ_97?.datum === "2026-09-10");
 ok("[#97] der Titel benennt die Spannplatte, ihre Breite und das Zeichnen",
   /Spannplatte/.test(PLATTE_BZ_97?.titel || "")

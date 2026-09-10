@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260910-03",
+    datum: "2026-09-10",
+    typ: "fix",
+    issue: 97,
+    titel: "Sammeländerung zieht die reale Breite der Spannplatte nach",
+    testbitte: "Im Geschosseditor mehrere Wände auswählen, im Sammel-Popup eine andere "
+      + "Spannplatte übernehmen: Modul 1 und Modul 7 zeigen die Platte danach ohne "
+      + "erneutes Auslegen in der neuen Breite; bei uneindeutiger Auswahl bleibt sie "
+      + "unverändert.",
+  },
+  {
     id: "chg-20260910-02",
     datum: "2026-09-10",
     typ: "feature",

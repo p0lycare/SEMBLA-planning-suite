@@ -2471,8 +2471,9 @@ function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 // RECHENWIRKSAM sind: Standardlängen und Reststück der Gewindestange ([Z-1]/[Z-6]), der
 // Vorratssatz der Bodenblechlängen ([A-10]) und die beiden Einbaulagen des Spannsystems
 // (#92). Reine AUSWEISUNGSMASSE ohne Rechenbeitrag sind daneben die Blechdicken ([A-1])
-// sowie die Schlüsselweite der Kopplungsmutter und Einbauhöhe samt Schlüsselweite der
-// Spannmutter (#97) — sie stehen in derselben Tabelle, weil sie dieselbe Bahn nehmen:
+// sowie die Schlüsselweite der Kopplungsmutter, Einbauhöhe samt Schlüsselweite der
+// Spannmutter und die Breite der Spannplatte (#97) — sie stehen in derselben Tabelle,
+// weil sie dieselbe Bahn nehmen:
 // aus der Produktauswahl der Wand ins Wandelement, damit die Ausgaben sie zeichnen
 // können, ohne den Katalog zu lesen ([D-1]). Modul 1 rechnet die Wand
 // nach jeder Änderung an ihnen neu (`bindProdukte` -> `run()`); genau das tut der
@@ -2501,9 +2502,10 @@ function rollenFeldId(rolleId){ return 'gp-sammel-rolle-' + rolleId; }
 // Nachziehpunkt NICHT: sie ist ein reiner Feldabgriff über `rollenMass` — keine
 // Beziehung, keine Rechnung, kein zweiter Ableitungsweg — und steht deshalb hier wie in
 // Modul 1 als dieselbe eine Leseoperation auf demselben Katalogfeld. Für Einbauhöhe und
-// Schlüsselweite der SPANNMUTTER (`spannmutter_h_mm`/`spannmutter_sw_mm`) gilt Wort für
-// Wort dasselbe: auch sie sind zwei Feldabgriffe und keine Beziehung, weshalb auch sie
-// den [P-6]-Nachziehpunkt nicht vergrößern.
+// Schlüsselweite der SPANNMUTTER (`spannmutter_h_mm`/`spannmutter_sw_mm`) und für die
+// BREITE der Spannplatte (`spannplatte_b_mm`) gilt Wort für Wort dasselbe: auch sie sind
+// reine Feldabgriffe und keine Beziehung, weshalb auch sie den [P-6]-Nachziehpunkt nicht
+// vergrößern.
 const ROLLE_RECHNUNG = {
   rod_std: (eing, kat) => {
     // #117 Eine LEERE Auswahl setzt das Feld NICHT. Seit die Ableitung bei jeder
@@ -2548,10 +2550,32 @@ const ROLLE_RECHNUNG = {
     return { ...(h != null ? { rod_fuss_offset_mm: h / 2 } : {}),
              ...(sw != null ? { kupplung_sw_mm: sw } : {}) };
   },
+  // #97 Die BREITE der Spannplatte reist mit DERSELBEN Rolle mit wie ihre Dicke — dasselbe
+  // Muster wie Blechdicke und Schlüsselweite oben: ein reines AUSWEISUNGSMASS ohne jeden
+  // Rechenbeitrag, das die Ausgaben brauchen, um die Platte maßstäblich zu zeichnen, ohne
+  // den Katalog zu lesen ([D-1]). Gelesen wird derselbe Ein-Wert-Baustein `rollenMass` wie
+  // für die Dicke, also satzgleich zu `spannplatteBreiteMm()`/`einbauMass()` in Modul 1.
+  //
+  // ⚠ Die beiden Maße dieser Rolle tragen VERSCHIEDENE Vorbehalte, deshalb steht der
+  // Ausstieg an der DICKE und nicht mehr an der Rolle: die Dicke ist ein Rechenwert am
+  // OBEREN Anker (der Core wendet `rod_kopf_zuschlag_mm` nur bei `ankerOben ===
+  // "spannplatte"` an) und entfällt bei Kopfblech; die Breite ist ein reines Bauteilmaß
+  // und entsteht auch dann. Spannplatten treten nach `ankerUnten`/`ankerOben` auch an
+  // Brüstung und Sturz auf — eine Wand mit Kopfblech UND Öffnung hat also reale Platten,
+  // und ein Vorbehalt hier nähme ihnen genau dort das Maß. Modul 1 prüft für die Breite
+  // ebenfalls keinen oberen Anschluss; eine hier erfundene Bedingung ergäbe für dieselbe
+  // Auswahl eine andere Zahl.
+  //
+  // Beide Maße stehen FÜR SICH. Fehlt eines oder widersprechen sich die gewählten
+  // Produkte, entsteht das jeweilige Feld NICHT — dann bleibt der im Wandelement
+  // gespeicherte Wert stehen (`psOf` reicht ihn durch), statt von einer erfundenen Breite
+  // überschrieben zu werden ([P-9]).
   spannplatte: (eing, kat, topConn) => {
-    if (topConn === 'blech') return {};                 // bei Kopfblech gibt es keine Platte
-    const d = rollenMass(eing, kat, 'spannplatte', 'dicke_mm');
-    return d != null ? { rod_kopf_zuschlag_mm: d } : {};
+    const d = topConn === 'blech'                       // bei Kopfblech gibt es keine Platte
+      ? null : rollenMass(eing, kat, 'spannplatte', 'dicke_mm');
+    const b = rollenMass(eing, kat, 'spannplatte', 'breite_mm');
+    return { ...(d != null ? { rod_kopf_zuschlag_mm: d } : {}),
+             ...(b != null ? { spannplatte_b_mm: b } : {}) };
   },
   // #97 Einbauhöhe und Schlüsselweite der SPANNMUTTER — das Bauteil, das oben auf der
   // Spannplatte sitzt. Beide sind reine AUSWEISUNGSMASSE: sie gehen in keine Höhe,
