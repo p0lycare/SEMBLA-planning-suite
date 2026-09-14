@@ -1105,9 +1105,11 @@ ok("Strangzeilen je Spannachse", Z.strangZeilen(W).length === W.tension_columns.
     return ausListe.sort().join() === teile.map(t => t.id).sort().join(); })());
   ok("[P-19] jede ID traegt ihr Art-Symbol unmittelbar voran (schwarz-weiss lesbar)",
     Z.strangZeilen(W).every(r => r.teile.every(s => /^[■◆▲]GS-k\d+\.\d+\.\d+$/.test(s))));
+  // Entscheid 2026-09-14: das Reststueck ist ein Standardteil und steht nicht mehr eigens
+  // in der Legende; sein Symbol ist das Standardteil-Symbol.
   ok("[P-19] Blatt erklaert Symbole UND ID-Schema in der Legende",
-    /■ Standardteil/.test(blatt.html) && /◆ Sonderzuschnitt/.test(blatt.html)
-    && /▲ Reststück oben/.test(blatt.html)
+    /■ Standardteil/.test(blatt.html) && /◆ Sonderteil/.test(blatt.html)
+    && !/Reststück oben ·/.test(blatt.html) && !/▲/.test(blatt.html)
     && /Einbauteil-ID GS-k&lt;Spannachse&gt;/.test(blatt.html));
   ok("[P-19] Mengentabelle des Blattes kennzeichnet die Stueckart mit Symbol",
     Z.bomZeilen(W).filter(r => /Gewindestange/.test(r.label)).every(r => /^[■◆▲] /.test(r.label))

@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260914-02",
+    datum: "2026-09-14",
+    typ: "feature",
+    issue: 126,
+    titel: "Stückliste kennzeichnet jede Position als Standardteil, Sonderteil oder Normteil — Reststück ist Standardteil",
+    testbitte: "Modul 4 öffnen: jede Zeile mit Produkt trägt jetzt eine Teileart (● Normteil bei "
+      + "gefülltem Norm-Feld im Katalog), das Reststück steht als ■ Standardteil, und die "
+      + "Gesamtstückliste-Dateien führen eine Kommentarspalte.",
+  },
+  {
     id: "chg-20260914-01",
     datum: "2026-09-14",
     typ: "feature",

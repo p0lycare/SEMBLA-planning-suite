@@ -56,15 +56,27 @@ function _semNum(n) { return (isFinite(n) ? n : 0).toLocaleString("de-DE"); }
 
 // ------------------------------------------------- Einbauteile (Gewindestangen, [P-19])
 
-/** Klartext der Stückart in Liste, Datei und Zeichnung — EIN Wortlaut ([P-19]/[D-4]). */
-export const ART_LABEL = { standard: "Standardteil", sonder: "Sonderzuschnitt", rest: "Reststück oben" };
+/**
+ * Klartext der TEILEART in Liste, Datei und Zeichnung — EIN Wortlaut ([P-19]/[D-4]).
+ *
+ * Genau drei Teilearten (Entscheid 2026-09-14): Standardteil, Sonderteil, Normteil.
+ * Das RESTSTUECK ist KEINE eigene Teileart — es ist ein Standardteil aus dem
+ * Bauteilkatalog (eigene Rolle `rod_rest`, [Z-6]) und traegt deshalb Label und Symbol
+ * des Standardteils. Der interne art-Wert "rest" bleibt bestehen: an ihm haengen die
+ * Preisrolle (ART_ROLLE) und die eigene Position mit eigenem Fertigmass.
+ * NORMTEIL wird nicht hier vergeben, sondern erst am nach [P-14] aufgeloesten Produkt
+ * abgeleitet (Norm-Feld gefuellt, `stuecklistePositionen` in sembla-export.js) — die
+ * BOM kennt den Katalogeintrag der Position nicht.
+ */
+export const ART_LABEL = { standard: "Standardteil", sonder: "Sonderteil", rest: "Standardteil", norm: "Normteil" };
 
 /**
- * Zusätzliches, NICHT-farbliches Unterscheidungszeichen der Stückart ([P-19]): die
+ * Zusätzliches, NICHT-farbliches Unterscheidungszeichen der Teileart ([P-19]): die
  * Kennzeichnung muss im Schwarz-Weiß-Druck vollständig lesbar bleiben, Farbe ist deshalb
- * immer nur redundante Zugabe zu Symbol und Klartext.
+ * immer nur redundante Zugabe zu Symbol und Klartext. Das Reststück trägt das
+ * Standardteil-Symbol (s. ART_LABEL).
  */
-export const ART_SYMBOL = { standard: "■", sonder: "◆", rest: "▲" };
+export const ART_SYMBOL = { standard: "■", sonder: "◆", rest: "■", norm: "●" };
 
 /** Verwendungsrolle (= Stücklistenschlüssel) je Stückart — keine zweite Zuordnungsachse. */
 const ART_ROLLE = { standard: "rod_std", sonder: "rod_sonder", rest: "rod_rest" };

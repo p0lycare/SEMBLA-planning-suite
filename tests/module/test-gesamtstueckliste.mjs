@@ -281,6 +281,9 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   ok("#81 die Spaltenfolge der Gesamtdatei ist genau der neue Satz",
     JSON.stringify(kopfMit) === JSON.stringify(["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit",
       "Menge", "Einbauteil-IDs (Wand-ID:ID)", "EP (EUR)", "GP (EUR)", "Produkt (Katalog)", "Zuordnung",
+      // Entscheid 2026-09-14: die Kommentarspalte gibt es im gleichen Format wie in der
+      // Wanddatei, aber stets leer — Kommentare bleiben Wandangaben (#81).
+      "Kommentar",
       // #113: der Beschaffungsblock haengt HINTEN an — die Folge davor ist unveraendert.
       ...BESCHAFFUNG_SPALTEN]));
   ok("Preisschalter entfernt genau EP und GP",
@@ -992,9 +995,12 @@ const P = (ueber = {}) => ({
   }
 
   // (f) KEINE Ableitung: alle bisherigen Spalten und die Summenzeilen sind wertgleich.
+  // AUSGENOMMEN ist seit dem Entscheid 2026-09-14 die Spalte "Art": die Teileart wird aus dem
+  // Norm-Feld des aufgeloesten Produkts abgeleitet (Normteil) und haengt damit BEWUSST an der
+  // Beschaffungspflege — sie ist keine unabhaengige Altspalte mehr.
   const bisher = (aoa) => {
     const k = kopfvon(aoa);
-    const namen = k.slice(0, -BESCHAFFUNG_SPALTEN.length);
+    const namen = k.slice(0, -BESCHAFFUNG_SPALTEN.length).filter((n) => n !== "Art");
     return JSON.stringify([
       namen,
       datenvon(aoa).map((z) => namen.map((n) => z[k.indexOf(n)])),
@@ -1014,7 +1020,8 @@ const P = (ueber = {}) => ({
     ok("#113 die Gesamtstückliste führt dieselben Blockspalten in derselben Reihenfolge",
       JSON.stringify(kopfG.slice(-BESCHAFFUNG_SPALTEN.length))
         === JSON.stringify(kopfW.slice(-BESCHAFFUNG_SPALTEN.length))
-      && kopfG[kopfG.length - BESCHAFFUNG_SPALTEN.length - 1] === "Zuordnung");
+      && kopfG[kopfG.length - BESCHAFFUNG_SPALTEN.length - 1] === "Kommentar"
+      && kopfG[kopfG.length - BESCHAFFUNG_SPALTEN.length - 2] === "Zuordnung");
     ok("#113 die Gesamtstückliste trägt dieselben Beschaffungswerte wie die Wanddatei",
       JSON.stringify(block(gMit, labelI3)) === JSON.stringify(block(wandMit, labelI3))
       && JSON.stringify(block(gMit, labelRod)) === JSON.stringify(block(wandMit, labelRod)));

@@ -77,6 +77,22 @@ const BEPLANKUNG_KEYS = new Set(["latte", "beplankung", "verbinder"]);
  *   statusText:string,produkt:any|null,produktId:string|null,preisbasis:string|null,
  *   bepreisbar:boolean,hinweis:string|null,kandidaten:any[],fehlend:string[],vorgemerkt:any[]}>}
  */
+/**
+ * TEILEART einer Stuecklistenposition ([P-19], Entscheid 2026-09-14) — genau drei Werte:
+ * "sonder" (Sonderzuschnitt mit Fertigmass), "norm" (das nach [P-14] aufgeloeste Produkt
+ * traegt ein gefuelltes Norm-Feld) und "standard" (alles Uebrige, AUSDRUECKLICH auch das
+ * Reststueck [Z-6] — es ist ein Standardteil aus dem Katalog, keine eigene Teileart).
+ * Ohne aufgeloestes Produkt entscheidet die Stueckart der BOM (standard/rest -> standard);
+ * ohne beides bleibt die Teileart null — es wird keine geraten ([P-9]).
+ * @param {any} it BOM-Position @param {any} produkt nach [P-14] aufgeloest oder null
+ * @returns {"standard"|"sonder"|"norm"|null}
+ */
+export function teileart(it, produkt) {
+  if (it && it.art === "sonder") return "sonder";
+  if (produkt) return String(produkt.norm == null ? "" : produkt.norm).trim() ? "norm" : "standard";
+  return it && it.art ? "standard" : null;
+}
+
 export function stuecklistePositionen(w, eingaben, katalog = null) {
   const rollenIdsMap = produktRollen(eingaben);
   const kontext = preisKontext(w, eingaben, katalog);
@@ -88,10 +104,11 @@ export function stuecklistePositionen(w, eingaben, katalog = null) {
   return items.map(it => {
     const r = loesePreis(it, rollenIdsMap, katalog, kontext);
     const p = r.produkt;
+    const art = teileart(it, p);
     return {
       key: it.key, label: it.label, unit: it.unit, menge: it.menge,
       wand: it.wand || null,
-      art: it.art || null, art_label: it.art_label || null, art_symbol: it.art_symbol || null,
+      art, art_label: art ? ART_LABEL[art] : null, art_symbol: art ? ART_SYMBOL[art] : null,
       fertigmass_mm: it.fertigmass_mm != null ? it.fertigmass_mm : null,
       ids: it.ids ? it.ids.slice() : [],
       ep: r.ep, gp: (r.ep == null ? null : it.menge * r.ep),
@@ -455,9 +472,13 @@ export function stuecklisteAoa(w, eingaben, opts = {}, katalog = null) {
 /** Kennzeichnung einer Zeile: Symbol + Klartext, leer bei Positionen ohne Stückart. */
 function _artText(r) { return r && r.art ? r.art_symbol + " " + r.art_label : ""; }
 
-/** Erklaerung des Kennzeichnungsschluessels — identisch in Datei und Oberflaeche ([P-19]). */
+/**
+ * Erklaerung des Kennzeichnungsschluessels — identisch in Datei und Oberflaeche ([P-19]).
+ * Drei Teilearten (Entscheid 2026-09-14); das Reststueck steht hier nicht mehr eigens,
+ * es ist ein Standardteil (s. `teileart`).
+ */
 export const ART_KENNZEICHNUNG = ART_SYMBOL.standard + " " + ART_LABEL.standard + " · "
-  + ART_SYMBOL.sonder + " " + ART_LABEL.sonder + " · " + ART_SYMBOL.rest + " " + ART_LABEL.rest
+  + ART_SYMBOL.sonder + " " + ART_LABEL.sonder + " · " + ART_SYMBOL.norm + " " + ART_LABEL.norm
   + " · Einbauteil-ID: GS-k<Spannachse>.<Segment von unten>.<Stück von unten>";
 
 /**
@@ -623,6 +644,11 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
 
   const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge",
     "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung",
+    // Die Kommentarspalte gibt es im GLEICHEN Format wie in der Wanddatei, aber stets LEER
+    // (Entscheid zu #81 und vom 2026-09-14): Kommentare sind Wandangaben, eine Zeile steht
+    // hier fuer mehrere Waende, und zusammengefuehrt wird nichts. Die Spalte steht trotzdem
+    // IMMER — ein ebenenabhaengiger Spaltensatz waere maschinell nicht vergleichbar.
+    "Kommentar",
     // Derselbe Beschaffungsblock wie in der Wanddatei (#113): dieselben Ueberschriften in
     // derselben Reihenfolge, weil beide aus DEMSELBEN Baustein kommen.
     ...BESCHAFFUNG_SPALTEN];
@@ -640,6 +666,8 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
     const z = [r.label, r.art ? r.art_symbol + " " + r.art_label : "",
       r.fertigmass_mm == null ? "" : r.fertigmass_mm, r.unit, r.menge,
       r.ids.join(" "), r.produktId || "", r.statusText,
+      // Kommentarzelle — stets leer (s. Spaltenkommentar oben).
+      "",
       // Das aufgeloeste Produkt reist seit #113 durch das Falten mit; alle Positionen einer
       // gefalteten Zeile teilen es zwingend (`_faltSchluessel` enthaelt `produktId`).
       ...beschaffungZellen(r.produkt)];

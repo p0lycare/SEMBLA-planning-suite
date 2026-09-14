@@ -42,7 +42,7 @@
      nur redundante Zugabe — im Schwarz-Weiß-Druck bleibt die Zeile vollständig lesbar. */
   td.art{text-align:left;font-size:12px}
   td.art .sym{font-weight:700;margin-right:4px}
-  td.art.standard .sym{color:#1f6feb} td.art.sonder .sym{color:#e8702a} td.art.rest .sym{color:#7a3fd6}
+  td.art.standard .sym{color:#1f6feb} td.art.sonder .sym{color:#e8702a} td.art.norm .sym{color:#1a7f37}
   td.art.sonder{font-weight:600}
   /* Mengenübersteuerung ([P-20], #81): die WIRKSAME Menge steht oben, die BERECHNETE
      unmittelbar darunter — beide gleichzeitig, damit der Originalwert nie verdeckt wird.
@@ -853,12 +853,15 @@ function renderSets(rs){
 }
 
 function renderKennzeichnung(rs){
-  const arten=[['standard','■','Standardteil'],['sonder','◆','Sonderzuschnitt'],['rest','▲','Reststück oben']];
+  // Teilearten nach [P-19] (Entscheid 2026-09-14): das Reststück ist ein Standardteil und
+  // steht nicht mehr eigens; gezählt werden Positionen, weil auch Teile ohne Einzel-ID
+  // (Steine, Muttern, Bleche) eine Teileart tragen.
+  const arten=[['standard','■','Standardteil'],['sonder','◆','Sonderteil'],['norm','●','Normteil']];
   $('kennz').innerHTML='<b>Kennzeichnung.</b> '
     + arten.map(([k,sym,txt])=>{
-        const n=rs.filter(r=>r.art===k).reduce((a,r)=>a+r.ids.length,0);
+        const n=rs.filter(r=>r.art===k).length;
         return `<span class="art ${k}" style="display:inline-block;margin-right:12px">`
-          +`<span class="sym">${sym}</span>${txt} (${n}×)</span>`; }).join('');
+          +`<span class="sym">${sym}</span>${txt} (${n} Pos.)</span>`; }).join('');
 }
 
 function applyWand(w){

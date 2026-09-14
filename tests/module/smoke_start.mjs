@@ -2536,7 +2536,8 @@ globalThis.fetch = echtesFetch;
     for (const z of zeilen.slice(kopf + 1)) {
       if (!z[0] || z[0].startsWith('Summe netto') || z.length < 7) continue;
       // Spalten: Einbauteil;Art;Fertigmaß;Einheit;Menge;IDs;... (ohne Herkunft seit #81)
-      const art = z[1] ? ({ '■': 'standard', '◆': 'sonder', '▲': 'rest' })[z[1][0]] || '' : '';
+      // Teilearten seit 2026-09-14: standard/sonder/norm — das Reststueck traegt ■ (Standardteil).
+      const art = z[1] ? ({ '■': 'standard', '◆': 'sonder', '●': 'norm' })[z[1][0]] || '' : '';
       const k = [null, z[3], art, z[2] === '' ? '' : +z[2]].join('|');
       ist.set(k, (ist.get(k) || 0) + +z[4]);
     }

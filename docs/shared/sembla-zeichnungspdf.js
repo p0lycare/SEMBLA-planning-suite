@@ -600,9 +600,12 @@ export const VERZAHNUNG_FUSS = "Abgewiesene Bereiche sind im gezeichneten Verban
   + "in „Wandplanung\" zu berichtigen — hier wird nichts angenommen und nichts "
   + "stillschweigend zurechtgerückt.";
 
-/** Kennzeichnungsschluessel der Einbauteile unter der Legende ([P-19]). */
+/**
+ * Kennzeichnungsschluessel der Einbauteile unter der Legende ([P-19]). Das Reststueck ist
+ * ein Standardteil (Entscheid 2026-09-14) und steht nicht mehr eigens.
+ */
 export const EINBAUTEIL_FUSS = `${ART_SYMBOL.standard} ${ART_LABEL.standard} · `
-  + `${ART_SYMBOL.sonder} ${ART_LABEL.sonder} · ${ART_SYMBOL.rest} ${ART_LABEL.rest} · `
+  + `${ART_SYMBOL.sonder} ${ART_LABEL.sonder} · `
   + "Einbauteil-ID GS-k<Spannachse>.<Segment von unten>.<Stück von unten> — "
   + "dieselben IDs führt die Baustellenstückliste (Modul 4).";
 

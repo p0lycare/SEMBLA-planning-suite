@@ -847,8 +847,9 @@ export function zeichnungSvg(w, opts = {}) {
 /**
  * Stuecklisten-Zeilen des Blattes (Mengen aus `sembla-bom.js`, nur Menge > 0).
  *
- * Gewindestangenstuecke tragen ihr Art-SYMBOL voran ([P-19]): das Blatt kennzeichnet
- * Standardteil, Sonderzuschnitt und Reststueck damit auch ohne Farbe. Die Beplankung
+ * Gewindestangenstuecke tragen ihr Teileart-SYMBOL voran ([P-19]): das Blatt kennzeichnet
+ * Standardteil und Sonderteil damit auch ohne Farbe (das Reststueck ist ein Standardteil,
+ * Entscheid 2026-09-14, und bleibt als eigene Position mit Fertigmass lesbar). Die Beplankung
  * (Latten/Platten/Modul-2-Verbinder) hat hier ohnehin nie eine Zeile — das Blatt liest
  * allein das Wandelement ([D-1]).
  */
@@ -923,8 +924,8 @@ export function strangZeilen(w) {
       label: "k" + col.k + " · x = " + _fmt(col.x_mm / 10, 1) + " cm",
       wert: stangen + "×",
       ids: teile.map(t => t.id),
-      // Jede ID traegt ihr Art-SYMBOL unmittelbar voran: so ist Standardteil,
-      // Sonderzuschnitt und Reststück auch im Schwarz-Weiss-Druck am Blatt ablesbar, ohne
+      // Jede ID traegt ihr Teileart-SYMBOL unmittelbar voran: so sind Standardteil und
+      // Sonderteil auch im Schwarz-Weiss-Druck am Blatt ablesbar, ohne
       // die Fertigmaße zu wiederholen (die stehen in der Stücklisten-Tabelle des Blattes).
       teile: teile.map(t => ART_SYMBOL[t.art] + t.id),
     };
@@ -1186,8 +1187,10 @@ export function legendeHtml(w) {
     // dabei: Farbe allein waere im Schwarz-Weiss-Druck keine Kennzeichnung.
     // Wortlaut aus ART_LABEL — genau der der Baustellenstückliste, damit Blatt und Liste
     // dieselben Begriffe benutzen und nicht zwei Namen für dasselbe Bauteil führen.
+    // Das Reststueck ist ein Standardteil (Entscheid 2026-09-14) und steht nicht mehr eigens;
+    // Normteile kennt das Blatt nicht (keine Preis-/Produktaufloesung in der Zeichnung).
     + `<div class="zfuss">${ART_SYMBOL.standard} ${ART_LABEL.standard} · `
-    + `${ART_SYMBOL.sonder} ${ART_LABEL.sonder} · ${ART_SYMBOL.rest} ${ART_LABEL.rest} · `
+    + `${ART_SYMBOL.sonder} ${ART_LABEL.sonder} · `
     + `Einbauteil-ID GS-k&lt;Spannachse&gt;.&lt;Segment von unten&gt;.&lt;Stück von unten&gt; — `
     + `dieselben IDs führt die Baustellenstückliste (Modul 4).</div>`;
 }

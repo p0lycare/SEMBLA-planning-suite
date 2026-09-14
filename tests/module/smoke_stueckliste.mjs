@@ -887,10 +887,14 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
   })());
   ok('[P-19] Oberfläche: Standardteil mit Symbol UND Klartext',
     /class="art standard"[^>]*>.*?■.*?Standardteil/.test(tb));
-  ok('[P-19] Oberfläche: Sonderzuschnitt mit Symbol UND Klartext (nicht nur Farbe)',
-    /class="art sonder"[^>]*>.*?◆.*?Sonderzuschnitt/.test(tb));
-  ok('[P-19] Oberfläche: Reststück mit Symbol UND Klartext',
-    /class="art rest"[^>]*>.*?▲.*?Reststück oben/.test(tb));
+  ok('[P-19] Oberfläche: Sonderteil mit Symbol UND Klartext (nicht nur Farbe)',
+    /class="art sonder"[^>]*>.*?◆.*?Sonderteil/.test(tb));
+  // Entscheid 2026-09-14: das Reststueck ist KEINE eigene Teileart — es traegt die
+  // Standardteil-Kennzeichnung und bleibt nur als eigene Position (Fertigmass) lesbar.
+  ok('[P-19] Oberfläche: Reststück trägt die Standardteil-Kennzeichnung', (()=>{
+    const rest=rsE.find(r=>r.key==='rod_rest');
+    return rest && rest.art==='standard' && rest.art_label==='Standardteil'
+      && rest.art_symbol==='■' && !/class="art rest"/.test(tb) && !/▲/.test(tb); })());
   ok('[P-19] Oberfläche: Fertigmaß je Sonderzuschnitt sichtbar',
     sonderLaengen.every(mm=>tb.includes(fmtDe(mm/10)+' cm')));
   // R1 (#62): Die Liste ist immer genau EINE Wand — die Wandreferenz steht einmal im Blattkopf
@@ -899,21 +903,24 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     document.getElementById('printkopf').innerHTML.includes('Einbauteilwand') && !/class="wand"/.test(tb));
   ok('[P-19] Oberfläche: Aggregation nachvollziehbar (Menge = Anzahl der IDs)',
     rod.length>0 && rod.every(r=>r.ids.length===r.menge));
-  // #62: Die Legende erklaert weiter die drei Arten — aber nicht mehr das GS-k-ID-Schema.
+  // #62: Die Legende erklaert weiter die drei Teilearten — aber nicht mehr das GS-k-ID-Schema.
   // Eine Legende zu etwas, das auf dem Blatt gar nicht steht, ist Fuelltext; erklaert wird das
   // Schema dort, wo die IDs stehen (Einbauteilliste und Zeichnungsblatt, s. u.).
-  ok('[P-19] Oberfläche: Legende erklärt Standardteil, Sonderzuschnitt und Reststück', (()=>{
+  // Entscheid 2026-09-14: Standardteil / Sonderteil / Normteil; das Reststueck steht nicht
+  // mehr eigens (es ist ein Standardteil).
+  ok('[P-19] Oberfläche: Legende erklärt Standardteil, Sonderteil und Normteil', (()=>{
     const k=document.getElementById('kennz').innerHTML;
-    return /■/.test(k) && /◆/.test(k) && /▲/.test(k)
-      && /Standardteil/.test(k) && /Sonderzuschnitt/.test(k) && /Reststück oben/.test(k); })());
+    return /■/.test(k) && /◆/.test(k) && /●/.test(k) && !/▲/.test(k)
+      && /Standardteil/.test(k) && /Sonderteil/.test(k) && /Normteil/.test(k)
+      && !/Reststück oben/.test(k); })());
   ok('#62 Oberfläche: Legende erklärt kein ID-Schema und nennt keine ID', (()=>{
     const k=document.getElementById('kennz').innerHTML;
     return !/GS-k/.test(k) && !/Einbauteil-ID/.test(k) && !/Spannachse/.test(k)
       && !/Wand:ID/.test(k); })());
-  ok('[P-19] Oberfläche: Legende zählt die Einbauteile je Art', (()=>{
+  ok('[P-19] Oberfläche: Legende zählt die Positionen je Teileart', (()=>{
     const k=document.getElementById('kennz').innerHTML;
-    const summe=[...k.matchAll(/\((\d+)×\)/g)].reduce((a,m)=>a+ +m[1],0);
-    return summe===teile.length; })());
+    const summe=[...k.matchAll(/\((\d+) Pos\.\)/g)].reduce((a,m)=>a+ +m[1],0);
+    return summe===rsE.filter(r=>r.art).length; })());
   // [Z-4]/#58: Beplankung bleibt in Bildschirm UND Druck ausgeschlossen, obwohl egVoll()
   // Modul-2-Produkte vollstaendig gewaehlt hat; die Gewindestangen-Kopplung bleibt.
   ok('[Z-4] Oberfläche: keine Latten/Platten/Verbinder-Zeile',
@@ -935,10 +942,10 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const zeilen=csvT.trim().split('\n').filter(z=>/^GS-k/.test(z));
     return zeilen.length===teile.length; })());
   ok('[P-19] Export: Einzelteilliste nennt ID, Art, Fertigmaß und Wand', teile.every(t=>
-    csvT.includes([t.id,'gewindestange',(t.art==='standard'?'■ Standardteil':t.art==='sonder'?'◆ Sonderzuschnitt':'▲ Reststück oben'),
+    csvT.includes([t.id,'gewindestange',(t.art==='sonder'?'◆ Sonderteil':'■ Standardteil'),
       t.fertigmass_mm,t.wand].join(';'))));
   ok('[P-19] Export: beide Dateien nennen den Kennzeichnungsschlüssel',
-    /Kennzeichnung;■ Standardteil · ◆ Sonderzuschnitt · ▲ Reststück oben/.test(csvE)
+    /Kennzeichnung;■ Standardteil · ◆ Sonderteil · ● Normteil/.test(csvE)
     && /Einbauteil-ID: GS-k<Spannachse>/.test(csvT));
   ok('[P-19] Export: mindestens zwei Sonderzuschnittlängen als eigene Positionen',
     rsE.filter(r=>r.key==='rod_sonder'&&r.menge>0).length>=2);
@@ -2090,8 +2097,10 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
   // acceptance_test 4: ohne zugeordneten Katalog sind alle Mengen Position fuer Position
   // identisch zum Stand mit Baugruppen — es gibt keinen zweiten Rechenweg.
   {
+    // Die Teileart steht NICHT in der Spur: sie haengt seit dem Entscheid 2026-09-14 am
+    // aufgeloesten Produkt (Norm-Feld -> Normteil) und ist ohne Katalog bewusst leerer.
     const spur = d => JSON.stringify(d.positionen.map(p =>
-      [p.key,p.unit,p.art||'',p.fertigmass_mm??null,p.menge]));
+      [p.key,p.unit,p.fertigmass_mm??null,p.menge]));
     const mit = {}; for(const [ebene] of EBENEN4) mit[ebene]=spur(aufEbene(ebene));
     echterStore.setzeProjektKatalog(null);
     globalThis.window.__slInit();
