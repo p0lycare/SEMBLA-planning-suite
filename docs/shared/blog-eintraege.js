@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260914-04",
+    datum: "2026-09-14",
+    typ: "fix",
+    issue: 98,
+    titel: "Zeichnungs-PDFs, Stücklisten und Montageansicht zeigen immer den Stand der aktuellen Produktauswahl",
+    testbitte: "Produktauswahl einer Wand ändern (z. B. andere Stangenlänge), dann in Modul 0 "
+      + "„Zeichnungen als PDF“ und die Gesamtstückliste exportieren: beide müssen dieselben "
+      + "Maße zeigen wie Modul 1 und Modul 7.",
+  },
+  {
     id: "chg-20260914-03",
     datum: "2026-09-14",
     typ: "feature",

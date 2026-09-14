@@ -300,3 +300,66 @@ export function wandelementAktualisiert(wandelement, eingaben, katalog, engine) 
   neu.brandklasse = we.brandklasse;    // #79: reine Planungskennzeichnung
   return { wandelement: neu, aktualisiert: true, grund: null, fehlend: [], vorgaben };
 }
+
+/**
+ * Ein ELEMENTLESER, der jede Wand auf den Stand ihrer Produktauswahl rechnet
+ * (Nachtrag zu #120 fuer die AUSGABEN von Modul 0 und Modul 4, gemeldet in #98).
+ *
+ * Das Problem: `wandelementAktualisiert()` rechnete bislang nur das EINE Blatt von
+ * Modul 7 frisch. Jede andere Ausgabe — die Zeichnungs-PDFs des zentralen Exports,
+ * Gesamtstueckliste, Einkaufsliste und Baustellenstueckliste — las das gespeicherte
+ * Wandelement roh und zeigte damit die Zerlegung des LETZTEN Schreibvorgangs, nicht
+ * den Stand, den Modul 1 und Modul 7 zeigen.
+ *
+ * Dieser Leser ist die eine gemeinsame Antwort: er umhuellt einen bestehenden
+ * `holeElement`-Leser und liefert je Wand ein Element, dessen `wandelement` ueber
+ * `wandelementAktualisiert()` frisch gerechnet ist — MEMOISIERT je Kennung, damit ein
+ * Exportlauf jede Wand genau einmal rechnet. Rein und speicherfrei wie alles hier:
+ * geschrieben wird nichts, der gespeicherte Stand bleibt unberuehrt ([P-1]).
+ *
+ * Wird NICHT neu gerechnet (kein Katalog, fehlendes Produkt, Rechenfehler), gilt der
+ * gespeicherte Stand, und der Grund steht BENANNT in `hinweise` — dieselbe Aussage,
+ * die Modul 7 in dieser Lage auf der Seite zeigt; die Ausgaben bleiben damit in jedem
+ * Fall wertgleich zu Modul 7. Ausdruecklich NICHT fuer Datentransport gedacht:
+ * Wanddateien und Projektarchiv ([L-13]) transportieren den GESPEICHERTEN Stand und
+ * duerfen diesen Leser nicht benutzen.
+ *
+ * @param {{holeElement:(id:string)=>any, holeEingaben:(id:string)=>any,
+ *          katalog:any, engine:{autoAuslegung:Function, nachweisPruefen:Function}}} p
+ * @returns {{holeElement:(id:string)=>any,
+ *            hinweise:Array<{id:string, name:string|null, grund:string, text:string}>}}
+ */
+export function aktualisierteLeser(p) {
+  /** @type {Map<string, any>} */
+  const cache = new Map();
+  /** @type {Array<{id:string, name:string|null, grund:string, text:string}>} */
+  const hinweise = [];
+  const holeElement = (id) => {
+    const key = String(id);
+    if (cache.has(key)) return cache.get(key);
+    let el = null;
+    try { el = p.holeElement(key); } catch { el = null; }
+    let erg = el;
+    if (el && el.wandelement) {
+      let eingaben = {};
+      try { eingaben = p.holeEingaben(key) || {}; } catch { eingaben = {}; }
+      try {
+        const r = wandelementAktualisiert(el.wandelement, eingaben, p.katalog, p.engine);
+        if (r.aktualisiert) erg = { ...el, wandelement: r.wandelement };
+        else if (r.grund) {
+          hinweise.push({ id: key, name: el.name || null, grund: r.grund,
+            text: STAND_GRUND[r.grund] || r.grund });
+        }
+      } catch (e) {
+        // Eine Rechnung, die scheitert, darf keine Ausgabe verhindern (wie in Modul 7):
+        // es gilt der gespeicherte Stand, und der Grund steht benannt — geraten wird nichts.
+        hinweise.push({ id: key, name: el.name || null, grund: "fehler",
+          text: "Der Stand konnte nicht neu gerechnet werden ("
+            + ((e && e.message) || String(e)) + ") — es gilt der gespeicherte Stand." });
+      }
+    }
+    cache.set(key, erg);
+    return erg;
+  };
+  return { holeElement, hinweise };
+}

@@ -178,6 +178,9 @@ const ARCHIV = await import("../../docs/shared/sembla-archiv.js");
 // Rasterhilfe rein; genau die wird hier ersetzt (s. `zpdfRenderer`), damit der
 // Bedienweg ohne Browser laeuft und trotzdem eine ECHTE PDF entsteht.
 const ZPDF_ECHT = await import("../../docs/shared/sembla-zeichnungspdf.js");
+// #98 (Nachtrag zu #120): der zentrale Export rechnet jede Ausgabe-Wand ueber die
+// ECHTE Engine auf den Stand ihrer Produktauswahl — im Test wird sie unveraendert gereicht.
+const ENG = await import("../../docs/shared/sembla-engine.js");
 const { entpacke, zipSync } = await import("../../docs/shared/zip.js");
 
 // --- Produktcode aus docs/index.html laden --------------------------------
@@ -186,7 +189,7 @@ const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
 const BINDUNGEN = ["mountNavbar","MODULE","store","WA","baueDateien","gesamtstuecklisteDateien",
                    "gesamtUmfang","gesamtDaten","gesamtDateiRumpf","downloadZip",
-                   "entpacke","ARCHIV","KAT","MAPPE","CON","PLAN","ZPDF"];
+                   "entpacke","ARCHIV","KAT","MAPPE","CON","PLAN","ZPDF","ENG"];
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
 // Ersatz fuer die EINE DOM-nutzende Funktion des Zeichnungsexports (#98): statt das
 // Blatt zu rastern, liefert sie ein festes, winziges JPEG. Alles andere — Blattfolge,
@@ -205,7 +208,7 @@ new Function(...BINDUNGEN, src)(
   () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
   GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
   (name, files) => zipCalls.push({ name, files }),
-  entpacke, ARCHIV, KAT, MAPPE, CON, PLAN, ZPDF
+  entpacke, ARCHIV, KAT, MAPPE, CON, PLAN, ZPDF, ENG
 );
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);

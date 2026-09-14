@@ -447,5 +447,101 @@ const roh = () => localStorage.getItem('sembla:elemente');
 }
 
 
+// ===========================================================================
+// 7) Der frische ELEMENTLESER fuer Ausgaben (#98, Nachtrag zu #120)
+//    WA.aktualisierteLeser: jede Wand einer Ausgabe kommt auf dem Stand ihrer
+//    Produktauswahl — memoisiert, rein lesend, Nichtrechenbares benannt.
+// ===========================================================================
+{
+  const p = aufbau();
+  const el = stand(p.id);
+  // Veralteter Speicherstand (Altstand-Fallback), Auswahl fuehrt die Kataloglaengen.
+  const alt = buildWall('M7-Wand', 3000, 2600, [], null,
+    { blech_mm: 1000, top_connection: 'spannplatte' });
+  alt.wandtyp = 'mit_wind'; alt.abdichtung = el.wandelement.abdichtung;
+  store.speichere('M7-Wand', alt, p.id);
+  const vorher = roh();
+
+  const leser = WA.aktualisierteLeser({
+    holeElement: (id) => store.holeElement(id),
+    holeEingaben: (id) => store.holeEingaben(id),
+    katalog: store.holeKatalog(), engine: ENG,
+  });
+  const frisch = leser.holeElement(p.id);
+  ok('#98/1 der Leser liefert die KATALOGLAENGEN statt des gespeicherten Fallbacks',
+    JSON.stringify(frisch.wandelement.prestress.rod_lengths_mm) === '[1000,920]'
+    && frisch.wandelement.rod_mm !== 1100);
+  ok('#98/1 Kennung und Name des Elements bleiben erhalten',
+    String(frisch.id) === String(p.id) && frisch.name === 'M7-Wand');
+  ok('#98/1 memoisiert: der zweite Zugriff ist DERSELBE Stand (keine zweite Rechnung)',
+    leser.holeElement(p.id) === frisch);
+  ok('#98/1 der SPEICHER ist byte-gleich unveraendert ([P-1])', roh() === vorher);
+  ok('#98/1 kein Hinweis, wenn gerechnet wurde', leser.hinweise.length === 0);
+  ok('#98/1 eine unbekannte Kennung liefert null und keinen Hinweis',
+    leser.holeElement('gibt-es-nicht') === null && leser.hinweise.length === 0);
+
+  // --- Ableitung ≠ Transport: der echte Exportweg (hierarchieExport, Wandebene) ---
+  // Die Wanddatei traegt den GESPEICHERTEN Stand (Datentransport), die
+  // Baustellenstueckliste den FRISCHEN (Ausgabe) — beides in EINEM Lauf.
+  const ARCHIV = await import("../../docs/shared/sembla-archiv.js");
+  const EXP = await import("../../docs/shared/sembla-export.js");
+  const exp = ARCHIV.hierarchieExport(["wand", "stueckliste"], {
+    ebene: "wand", wandId: p.id, wandName: 'M7-Wand',
+    katalog: store.holeKatalog(),
+    holeElement: leser.holeElement,
+    holeEingaben: (id) => store.holeEingaben(id),
+    projektObjekt: (id) => store.projektObjekt(id),
+  });
+  const wandDatei = exp.dateien.find(d => d.name.endsWith('.json'));
+  const csvDateien = exp.dateien.filter(d => d.name.endsWith('.csv') && !d.name.startsWith('Einkaufsliste'));
+  const objGespeichert = store.projektObjekt(p.id);
+  const sollFrisch = EXP.baueDateien({ ...objGespeichert, wandelement: frisch.wandelement },
+    ["stueckliste"], store.holeKatalog(), { fassung: 'berechnet' });
+  const sollAlt = EXP.baueDateien(objGespeichert,
+    ["stueckliste"], store.holeKatalog(), { fassung: 'berechnet' });
+  ok('#98/2 die Wanddatei transportiert den GESPEICHERTEN Stand ([L-13])',
+    !!wandDatei && JSON.parse(wandDatei.data).wandelement.rod_mm === 1100);
+  ok('#98/2 die Baustellenstueckliste traegt den FRISCHEN Stand',
+    JSON.stringify(csvDateien.map(d => d.data)) === JSON.stringify(sollFrisch.map(d => d.data)));
+  ok('#98/2 ... und der unterscheidet sich nachweislich vom gespeicherten',
+    JSON.stringify(sollFrisch.map(d => d.data)) !== JSON.stringify(sollAlt.map(d => d.data)));
+}
+
+// --- Nicht rechenbar: benannt, gespeicherter Stand, genau EIN Hinweis je Wand ---
+{
+  const p = aufbau();
+  const vorher = roh();
+  const ohneKatalog = WA.aktualisierteLeser({
+    holeElement: (id) => store.holeElement(id),
+    holeEingaben: (id) => store.holeEingaben(id),
+    katalog: null, engine: ENG,
+  });
+  const e1 = ohneKatalog.holeElement(p.id);
+  ohneKatalog.holeElement(p.id);                       // zweiter Zugriff, memoisiert
+  ok('#98/3 ohne Katalog gilt der gespeicherte Stand (nichts erfunden)',
+    e1 === store.holeElement(p.id) || JSON.stringify(e1) === JSON.stringify(store.holeElement(p.id)));
+  ok('#98/3 der Grund steht GENAU EINMAL benannt (kein_katalog, Wortlaut von Modul 7)',
+    ohneKatalog.hinweise.length === 1
+    && ohneKatalog.hinweise[0].grund === 'kein_katalog'
+    && ohneKatalog.hinweise[0].text === WA.STAND_GRUND.kein_katalog
+    && ohneKatalog.hinweise[0].name === 'M7-Wand');
+
+  // Fehlendes Produkt: Auswahl zeigt auf eine Kennung, die der Katalog nicht kennt.
+  store.setzeProduktrolle('rod_std', ['gibt-es-nicht'], p.id);
+  const mitLuecke = WA.aktualisierteLeser({
+    holeElement: (id) => store.holeElement(id),
+    holeEingaben: (id) => store.holeEingaben(id),
+    katalog: store.holeKatalog(), engine: ENG,
+  });
+  mitLuecke.holeElement(p.id);
+  ok('#98/3 ein fehlendes Produkt wird benannt statt gerechnet (produkt_fehlt)',
+    mitLuecke.hinweise.length === 1 && mitLuecke.hinweise[0].grund === 'produkt_fehlt');
+  // Der LESER schreibt nichts (die eine Aenderung oben war das bewusste setzeProduktrolle).
+  const nachher = roh();
+  mitLuecke.holeElement(p.id);
+  ohneKatalog.holeElement(p.id);
+  ok('#98/3 der Leser selbst laesst den Speicher byte-gleich', roh() === nachher);
+}
+
 let fail = 0; for (const [n, c2] of checks){ console.log((c2 ? '  ok  ' : 'FAIL  ') + n); if (!c2) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`); process.exit(fail ? 1 : 0);

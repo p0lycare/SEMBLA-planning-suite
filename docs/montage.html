@@ -53,6 +53,9 @@
   <div class="panel controls">
     <h2>Wandelement</h2>
     <div id="wandinfo" class="hint" style="margin-top:8px">–</div>
+    <!-- Stand der Ableitung (#98, wie Modul 7 seit #120): konnte die Wand NICHT auf den
+         Stand ihrer Produktauswahl gerechnet werden, steht der Grund hier benannt. -->
+    <div id="standmsg" class="hint" style="margin-top:4px"></div>
 
     <div style="margin-top:16px"><h2>Übersicht</h2>
       <div class="res">
@@ -109,6 +112,30 @@
 const $ = id => document.getElementById(id);
 const fmt = (n,d=0)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 let WALL=null, ABS=[], CUR=0, currentId=null, EING={};
+// #98 (dasselbe Muster wie Modul 7 seit #120): die eine lesende Neurechnung samt Engine.
+let wandelementAktualisiert, STAND_GRUND, ENG;
+
+/* Der gezeigte Stand (#98/#120) — READ-ONLY neu gerechnet, nie gespeichert: die Stangenstücke
+   der Abschnitte stehen im gespeicherten Wandelement so, wie sie der LETZTE Schreibvorgang
+   zerlegt hat. Gezeichnet wird deshalb der Stand der aktuellen Produktauswahl, gerechnet im
+   gemeinsamen Baustein `wandelementAktualisiert()` (sembla-wandanlage.js) über dieselbe Engine
+   wie Modul 1. Ohne Katalog oder bei nicht auffindbarem Produkt gilt der GESPEICHERTE Stand,
+   und der Grund steht benannt auf der Seite — erfunden wird nichts ([L-12]/[P-9]). */
+function frischerStand(we){
+  standMelde('');
+  if(!we || !wandelementAktualisiert) return we;
+  const kat=(store&&store.holeKatalog)?store.holeKatalog():null;
+  let erg;
+  try{ erg = wandelementAktualisiert(we, EING, kat, ENG); }
+  catch(e){
+    standMelde('Der Stand konnte nicht neu gerechnet werden ('+((e&&e.message)||e)
+      +') — gezeigt wird der gespeicherte Stand.');
+    return we;
+  }
+  if(!erg.aktualisiert) standMelde((STAND_GRUND&&STAND_GRUND[erg.grund])||'');
+  return erg.wandelement;
+}
+function standMelde(t){ const el=$('standmsg'); if(el) el.textContent=t||''; }
 let showDim=true, showRaster=false;
 // aus window.SEMBLA (in __mInit gebunden):
 let semblaBomItems, semblaBomMenge, store,
@@ -165,7 +192,8 @@ function buildPrintDoc(w){
 // ---- Aktives Wandelement (localStorage) ----
 function loadFromStore(we,label){
   EING=(store&&store.aktiveEingaben)?store.aktiveEingaben():{};
-  applyWand(we); $('wandinfo').innerHTML=label+' <b>'+(we.name||'Wandelement')+'</b>';
+  // #98: EIN Ladepfad, eine Neurechnung — wie Modul 7 seit #120.
+  applyWand(frischerStand(we)); $('wandinfo').innerHTML=label+' <b>'+(we.name||'Wandelement')+'</b>';
 }
 // Anzeige leeren, wenn kein aktives Wandelement vorliegt (kein Demo/Platzhalter).
 function clearWall(){
@@ -176,6 +204,7 @@ function clearWall(){
   $('absLab').textContent='—'; $('absTitel').textContent='—'; $('absSub').textContent='';
   $('absSvg').innerHTML=''; $('mapSvg').innerHTML='';
   $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
+  standMelde('');
 }
 function loadInitial(){
   currentId = store&&store.aktivId ? store.aktivId() : null;
@@ -213,6 +242,7 @@ window.__mInit=function(){
   montageAbschnitte=S.montageAbschnitte; abschnittSvg=S.abschnittSvg; konturSvg=S.konturSvg;
   montageSeitenHtml=S.montageSeitenHtml; MONTAGE_CSS=S.MONTAGE_CSS; ART_LABEL=S.ART_LABEL||{};
   posCm=S.posCm;
+  wandelementAktualisiert=S.wandelementAktualisiert; STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
   bindEvents();
   setupStoreSync();
   loadInitial();
@@ -223,9 +253,14 @@ window.__mInit=function(){
   import { semblaBom, semblaBomItems, semblaBomMenge } from './shared/sembla-bom.js';
   import { montageAbschnitte, abschnittSvg, konturSvg, montageSeitenHtml, MONTAGE_CSS, ART_LABEL, posCm } from './shared/sembla-montage.js';
   import * as store from './shared/storage.js';
+  // #98 (dasselbe Muster wie Modul 7 seit #120): die eine lesende Neurechnung
+  // (sembla-wandanlage.js) und der Rechenkern dahinter (sembla-engine.js).
+  import { wandelementAktualisiert, STAND_GRUND } from './shared/sembla-wandanlage.js';
+  import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { semblaBom, semblaBomItems, semblaBomMenge, store,
-    montageAbschnitte, abschnittSvg, konturSvg, montageSeitenHtml, MONTAGE_CSS, ART_LABEL, posCm };
+    montageAbschnitte, abschnittSvg, konturSvg, montageSeitenHtml, MONTAGE_CSS, ART_LABEL, posCm,
+    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen } };
   mountNavbar(5);
   window.__mInit();
 </script>

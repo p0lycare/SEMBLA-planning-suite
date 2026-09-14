@@ -1257,8 +1257,15 @@ export function hierarchieExport(auswahl, p) {
     if (!el) {
       luecken.push(`Wandelement „${ref ? ref.name : p.wandId}“ fehlt im Wandspeicher — verwaister Eintrag ([L-4]); keine Baustellenstückliste im ZIP.`);
     } else {
+      // ABLEITUNG ≠ TRANSPORT (#98, Nachtrag zu #120): die Stueckliste wird aus dem
+      // Wandelement des ELEMENTLESERS gerechnet — reicht Modul 0 dort den frisch
+      // gerechneten Stand herein (`aktualisierteLeser`), traegt die Datei denselben
+      // Stand wie Modul 1/7. Die Wanddatei oben bleibt dagegen bewusst `projektObjekt`,
+      // also der GESPEICHERTE Stand: sie ist Datentransport ([L-13]), keine Ausgabe.
       const obj = projektObjekt(ref.wandId);
-      dateien.push(...baueDateien(obj, ["stueckliste"], p.katalog || null, { fassung }));
+      const objAbleitung = (el && el.wandelement)
+        ? { ...obj, wandelement: el.wandelement } : obj;
+      dateien.push(...baueDateien(objAbleitung, ["stueckliste"], p.katalog || null, { fassung }));
       // Die EINKAUFSLISTE gibt es seit #126 auch auf der Wandebene — sie ist die
       // massgebliche Bestellunterlage und muss auf jeder Ebene entstehen. Dieselbe eine
       // Ableitung wie auf den Gesamtebenen: `gesamtDaten` traegt fuer ebene "wand" genau
@@ -1274,7 +1281,7 @@ export function hierarchieExport(auswahl, p) {
       // im Dateikopf, aber ein Nutzer, der die angepasste Fassung ausdruecklich waehlt,
       // muss vor dem Speichern erfahren, dass ein Teil davon nicht wirkt ([P-9]/[P-20]).
       if (fassung === "angepasst") {
-        for (const l of _mengenLuecken(obj, p.katalog || null, ref ? ref.name : "")) luecken.push(l);
+        for (const l of _mengenLuecken(objAbleitung, p.katalog || null, ref ? ref.name : "")) luecken.push(l);
       }
     }
   }

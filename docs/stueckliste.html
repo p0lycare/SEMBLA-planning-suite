@@ -154,6 +154,10 @@
     <!-- Summe UND Vollstaendigkeit stehen ausschliesslich in der Summenzeile der Tabelle
          (tr.sum) — ein zweiter Summenblock darunter waere genau die erklaerende Wiederholung,
          die #62 abstellt. Die Lueckenliste (#44) ist etwas anderes: sie nennt fehlende WÄNDE. -->
+    <!-- Stand der Ableitung (#98, wie Modul 7 seit #120): konnte eine Wand NICHT auf den
+         Stand ihrer Produktauswahl gerechnet werden (kein Katalog, fehlendes Produkt),
+         steht der Grund hier benannt — gezeigt wird dann der gespeicherte Stand. -->
+    <div class="mhinweis" id="standmsg" hidden></div>
     <div class="luecken" id="luecken" hidden></div>
     <!-- Mengenübersteuerung ([P-20]): Abgrenzung (Ebene, Exportdatei) und BENANNTE
          Einträge, die zu keiner gerechneten Position mehr passen oder unzulässig sind.
@@ -303,9 +307,34 @@ let KFEHLER=null;
 // aus window.SEMBLA (in __slInit gebunden):
 let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, umfang, gesamtDaten,
     standText, wirksameMengen, semblaBomSets;
+// #98 (Nachtrag zu #120): die eine lesende Neurechnung und die Engine dahinter.
+let wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, ENG;
+// Benannte Gründe, aus denen NICHT frisch gerechnet wurde — Wandebene und Gesamtebenen
+// getrennt; beides reine Anzeige, gespeichert wird nichts.
+let STANDTEXT='', GES_HINWEISE=[];
 
 function eg(){ return EINGABEN || (EINGABEN={kosten:{waehrung:'EUR'},projekt:{},aufbau:{},planung:{}}); }
 function persist(teil,patch){ if(store&&store.mergeEingaben) store.mergeEingaben(teil,patch); }
+
+/* Der gezeigte Stand (#98, dasselbe Muster wie Modul 7 seit #120) — READ-ONLY neu gerechnet,
+   nie gespeichert: die Zerlegung im gespeicherten Wandelement ist so alt wie ihr letzter
+   Schreibvorgang; gerechnet wird deshalb bei jedem Laden über den gemeinsamen Baustein
+   `wandelementAktualisiert()` (sembla-wandanlage.js) mit derselben Engine wie Modul 1.
+   Ohne Katalog oder bei nicht auffindbarem Produkt gilt der GESPEICHERTE Stand, und der
+   Grund steht benannt auf der Seite ([L-12]/[P-9]) — erfunden wird nichts. */
+function frischerStand(we){
+  STANDTEXT='';
+  if(!we || !wandelementAktualisiert) return we;
+  let erg;
+  try{ erg = wandelementAktualisiert(we, eg(), KATALOG, ENG); }
+  catch(e){
+    STANDTEXT='Der Stand konnte nicht neu gerechnet werden ('+((e&&e.message)||e)
+      +') — gezeigt wird der gespeicherte Stand.';
+    return we;
+  }
+  if(!erg.aktualisiert) STANDTEXT=(STAND_GRUND&&STAND_GRUND[erg.grund])||'';
+  return erg.wandelement;
+}
 
 // Positionen + Preisauflösung zentral (identisch zum ZIP-Export in Modul 0).
 function rows(){ return WALL ? stuecklistePositionen(WALL, eg(), KATALOG) : []; }
@@ -344,10 +373,20 @@ function zeiger(){
 }
 function mappe(){ try{ return store&&store.holeMappe?store.holeMappe():null; }catch(e){ return null; } }
 function leser(){
+  // #98: Auch die WEITEREN Wände der Gesamtebenen kommen über den frischen Elementleser
+  // (sembla-wandanlage.js) — memoisiert je Aufruf, rein lesend. Die aktive Wand ist mit
+  // `frischerStand()` bereits frisch; ein zweites Rechnen wäre nur doppelte Arbeit.
+  const roh = (id)=> (store&&store.holeElement?store.holeElement(id):null);
+  const frisch = aktualisierteLeser ? aktualisierteLeser({
+    holeElement: roh,
+    holeEingaben: (id)=> (store&&store.holeEingaben?store.holeEingaben(id):{}),
+    katalog: KATALOG, engine: ENG,
+  }) : { holeElement: roh, hinweise: [] };
+  GES_HINWEISE = frisch.hinweise;
   return {
     holeElement:(id)=> (id===wandRef() && WALL)
       ? { id, name:wandName()||id, wandelement:WALL }
-      : (store&&store.holeElement?store.holeElement(id):null),
+      : frisch.holeElement(id),
     holeEingaben:(id)=> (id===wandRef()) ? eg()
       : (store&&store.holeEingaben?store.holeEingaben(id):{}),
     katalog:KATALOG,
@@ -587,6 +626,7 @@ function renderLeer(){
   renderKopfzeile(spalten());
   renderKopf({bezug:{},quellen:[],waende:[],titel:'Baustellenstückliste Wand'});
   $('kennz').innerHTML=''; $('luecken').hidden=true; $('luecken').innerHTML='';
+  $('standmsg').hidden=true; $('standmsg').innerHTML='';
   $('mhinweis').hidden=true; $('mhinweis').innerHTML='';
   $('sets').hidden=true; $('sets').innerHTML='';
   $('tbody').innerHTML=`<tr><td colspan="${spalten().length}" style="color:var(--sb-muted)">Kein aktives Wandelement — in „Start“ anlegen oder wählen.</td></tr>`;
@@ -682,12 +722,33 @@ function render(){
         +`${EBENE!=='wand'?' · '+esc(standText(d)):''}</td></tr>`;
   }
   $('tbody').innerHTML=html;
+  renderStand();
   renderLuecken(d);
   renderMengenHinweis(mstand, kstand, d);
   // [P-23]/#94: NACH der Tabelle und den Hinweisen — der Abschnitt erklärt die Zeilen
   // darueber und liest sie nur (Beschriftung); er verändert `rs` nicht.
   renderSets(rs);
   renderKennzeichnung(rs);
+}
+
+// Stand der Ableitung (#98/#120): je Grund GENAU EINE Zeile, Wandebene und Gesamtebenen
+// gemeinsam in einem Block. Der Text ist der EINE Wortlaut aus STAND_GRUND — derselbe,
+// den Modul 7 zeigt. Nur Anzeige; bereinigt und gespeichert wird nichts.
+function renderStand(){
+  const el=$('standmsg'); if(!el) return;
+  const teile=[];
+  if(EBENE==='wand' && STANDTEXT) teile.push(esc(STANDTEXT));
+  if(EBENE!=='wand'){
+    // „Kein Katalog“ ist EIN Zustand der Seite, nicht einer je Wand — je Wand wiederholt
+    // wäre dieselbe Aussage in Vervielfachung; sie steht dann genau einmal hier.
+    if(!KATALOG && STAND_GRUND) teile.push(esc(STAND_GRUND.kein_katalog));
+    for(const h of (GES_HINWEISE||[])){
+      if(h.grund==='kein_katalog') continue;
+      teile.push('„'+esc(h.name||h.id)+'“: '+esc(h.text));
+    }
+  }
+  el.hidden=!teile.length;
+  el.innerHTML=teile.length?('<b>Stand der Ableitung:</b><ul><li>'+teile.join('</li><li>')+'</li></ul>'):'';
 }
 
 // Hinweise zu Mengenübersteuerung und Kommentar ([P-20]). Der Block sagt seine Punkte, und
@@ -886,7 +947,8 @@ function loadModel(){
   EINGABEN = store&&store.aktiveEingaben ? store.aktiveEingaben() : eg();
   KATALOG = store&&store.holeKatalog ? store.holeKatalog() : null;
   const we = store&&store.aktivesWandelement ? store.aktivesWandelement() : null;
-  WALL = we || null;   // die Wandreferenz steht im Blattkopf, nicht in einer eigenen Infozeile
+  // #98: EIN Ladepfad, eine Neurechnung — die Wandreferenz steht im Blattkopf.
+  WALL = we ? frischerStand(we) : null;
   WNAME = leseWandName();
   syncInputs(); render();
 }
@@ -901,7 +963,11 @@ function setupStoreSync(){
     // Wandelement, Eingaben und Katalog frisch lesen — Mengen und Preise nie zwischenspeichern.
     EINGABEN = store.aktiveEingaben ? store.aktiveEingaben() : EINGABEN;
     KATALOG = store.holeKatalog ? store.holeKatalog() : null;
-    if(store.aktivesWandelement) WALL = store.aktivesWandelement() || WALL;
+    // #98: derselbe frische Stand wie beim Laden — auch nach jeder Speicheränderung.
+    if(store.aktivesWandelement){
+      const we = store.aktivesWandelement();
+      WALL = we ? frischerStand(we) : WALL;
+    }
     // #70: auch der NAME wird hier nachgezogen. Ein Umbenennen in Modul 0 laesst die id
     // unveraendert — ohne diese Zeile stuende im Blattkopf weiter die alte Bezeichnung.
     WNAME = leseWandName();
@@ -951,6 +1017,8 @@ window.__slInit=function(){
   wandflaeche=S.wandflaeche; store=S.store; einbauteile=S.einbauteile;
   umfang=S.umfang; gesamtDaten=S.gesamtDaten; standText=S.standText;
   wirksameMengen=S.wirksameMengen; semblaBomSets=S.semblaBomSets;
+  wandelementAktualisiert=S.wandelementAktualisiert; aktualisierteLeser=S.aktualisierteLeser;
+  STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
   bindEvents();
   setupStoreSync();
   loadModel();
@@ -962,9 +1030,15 @@ window.__slInit=function(){
   import { einbauteile, semblaBomSets } from './shared/sembla-bom.js';
   import { umfang, gesamtDaten, standText } from './shared/sembla-gesamtstueckliste.js';
   import * as store from './shared/storage.js';
+  // #98 (dasselbe Muster wie Modul 7 seit #120): die eine lesende Neurechnung
+  // (sembla-wandanlage.js) und der Rechenkern dahinter (sembla-engine.js).
+  import { wandelementAktualisiert, aktualisierteLeser, STAND_GRUND } from './shared/sembla-wandanlage.js';
+  import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store,
-                    umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets };
+                    umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets,
+                    wandelementAktualisiert, aktualisierteLeser, STAND_GRUND,
+                    ENG: { autoAuslegung, nachweisPruefen } };
   mountNavbar(4);
   window.__slInit();
 </script>

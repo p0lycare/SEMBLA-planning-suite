@@ -39,11 +39,28 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die EINKAUFSLISTEN-UEBERARBEITUNG (#126) ist der neueste Eintrag — er wird als einziger
-// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
-// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-const EINKAUF_126 = EINTRAEGE[0];
-ok("[#126] die Einkaufslisten-Ueberarbeitung ist der neueste Eintrag",
+// Der FRISCHE AUSGABESTAND (#98, Nachtrag zu #120) ist der neueste Eintrag — er wird als
+// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
+// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass die AUSGABEN (Zeichnungs-PDFs,
+// Gesamt-/Baustellenstueckliste, Einkaufsliste, Modul 4, Modul 5) den Stand der aktuellen
+// Produktauswahl zeigen — READ-ONLY gerechnet wie Modul 7 seit #120. NICHT versprochen werden
+// ein Schreibweg, eine geaenderte Rechnung, ein neues Feld oder ein Versionssprung; Wanddateien
+// und Projektarchiv transportieren weiter den gespeicherten Stand ([L-13]).
+const FRISCH_98 = EINTRAEGE[0];
+ok("[#98] der frische Ausgabestand ist der neueste Eintrag",
+  FRISCH_98?.id === "chg-20260914-04" && FRISCH_98?.issue === 98
+  && FRISCH_98?.typ === "fix" && FRISCH_98?.datum === "2026-09-14"
+  && /Produktauswahl/.test(FRISCH_98?.titel || "")
+  && /PDF/.test(FRISCH_98?.titel || ""));
+ok("[#98] die Testbitte prueft den Abgleich mit Modul 1 und Modul 7",
+  /Modul 1/.test(FRISCH_98?.testbitte || "") && /Modul 7/.test(FRISCH_98?.testbitte || "")
+  && /Gesamtst/.test(FRISCH_98?.testbitte || ""));
+
+// Davor liegt die EINKAUFSLISTEN-UEBERARBEITUNG (#126) — ueber die Kennung gesucht,
+// weil sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben unveraendert.
+const EINKAUF_126 = EINTRAEGE.find(e => e.id === "chg-20260914-03");
+ok("[#126] die Einkaufslisten-Ueberarbeitung steht mit ihrer Kennung in der Reihe",
   EINKAUF_126?.id === "chg-20260914-03" && EINKAUF_126?.issue === 126
   && EINKAUF_126?.typ === "feature" && EINKAUF_126?.datum === "2026-09-14"
   && /Einkaufsliste/.test(EINKAUF_126?.titel || "") && /Teileart/.test(EINKAUF_126?.titel || ""));
@@ -2097,13 +2114,13 @@ ok("[#98] die Testbitte fuehrt den Bedienweg, die Seitenfolge und den Fehlerpfad
   && /je Geschoss/.test(ZEICHNUNGSPDF?.testbitte || "")
   && /Seite 1/.test(ZEICHNUNGSPDF?.testbitte || "")
   && /Wandelement/.test(ZEICHNUNGSPDF?.testbitte || ""));
-// Fuer Issue 98 gibt es seit der Korrektur aus #98/#107 GENAU ZWEI Eintraege: die Lieferung
-// (feature, chg-20260905-01) und die Behebung des Tainted-Canvas-Fehlers samt Umzug in den
-// Exportdialog (fix, chg-20260907-10). Mehr darf es nicht werden.
-ok("genau zwei Eintraege fuer Issue 98 (Lieferung und Behebung)",
+// Fuer Issue 98 gibt es GENAU DREI Eintraege: die Lieferung (feature, chg-20260905-01),
+// die Behebung des Tainted-Canvas-Fehlers samt Umzug in den Exportdialog (fix,
+// chg-20260907-10) und den frischen Ausgabestand (fix, chg-20260914-04). Mehr nicht.
+ok("genau drei Eintraege fuer Issue 98 (Lieferung und zwei Behebungen)",
   EINTRAEGE.filter(e => e.issue === 98).map(e => e.id).join(",")
-    === "chg-20260907-10,chg-20260905-01"
-  && EINTRAEGE.filter(e => e.issue === 98).map(e => e.typ).join(",") === "fix,feature");
+    === "chg-20260914-04,chg-20260907-10,chg-20260905-01"
+  && EINTRAEGE.filter(e => e.issue === 98).map(e => e.typ).join(",") === "fix,fix,feature");
 
 // Die browserhohe Blattvorschau (#99) rueckt um eins nach hinten und zaehlt ab hier ueber
 // `VORSCHAUHOEHE`. Aussagewahr heisst hier: versprochen wird GENAU die Bildschirmhoehe des

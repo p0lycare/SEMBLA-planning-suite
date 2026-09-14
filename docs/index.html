@@ -427,8 +427,13 @@
 <script type="module">
   import { mountNavbar, MODULE } from './shared/navbar.js';
   import * as store from './shared/storage.js';
-  // `sembla-wandanlage.js` wird hier nicht mehr gebraucht: neue Wände entstehen seit
-  // Issue #56 ausschliesslich im Geschosseditor, der diesen Anlagepfad benutzt.
+  // Angelegt wird hier keine Wand mehr (seit #56 nur im Geschosseditor); aus
+  // `sembla-wandanlage.js` kommt seit #98 aber der EINE frische Elementleser für die
+  // AUSGABEN des zentralen Exports: `aktualisierteLeser` rechnet jede Wand über
+  // dieselbe Engine auf den Stand ihrer Produktauswahl, den auch Modul 1 und
+  // Modul 7 (#120) zeigen — memoisiert, rein lesend, ohne jeden Schreibvorgang.
+  import * as WA from './shared/sembla-wandanlage.js';
+  import * as ENG from './shared/sembla-engine.js';
   // Der zentrale Export läuft seit #67 vollständig über ARCHIV.hierarchieExport.
   import { downloadZip, entpacke } from './shared/zip.js';
   import * as ARCHIV from './shared/sembla-archiv.js';
@@ -1890,15 +1895,27 @@
       let dateien = [];
       let luecken = [];
       let zipStamm = null;
+      // Der Katalog des ANGEKLICKTEN Projekts ([L-12]) — nicht der des aktiven.
+      const katalog = k.mappe && k.mappe.katalog ? store.katalogNachId(k.mappe.katalog) : null;
+      // Der EINE frische Elementleser dieses Laufs (#98, Nachtrag zu #120): jede
+      // ABLEITUNG — Gesamtstückliste, Einkaufsliste, Baustellenstückliste und die
+      // Zeichnungs-PDFs — rechnet mit dem Stand der Produktauswahl, den Modul 1 und
+      // Modul 7 zeigen. Die Wanddateien bleiben `projektObjekt` und damit der
+      // gespeicherte Stand: sie sind Datentransport ([L-13]), keine Ausgabe.
+      // Nicht rechenbare Stände (kein Katalog, fehlendes Produkt) stehen benannt in
+      // `hinweise` und landen unten VOR der Bestätigung in den Lücken ([P-9]).
+      const frisch = WA.aktualisierteLeser({
+        holeElement: (id) => store.holeElement(id),
+        holeEingaben: (id) => store.holeEingaben(id),
+        katalog, engine: ENG,
+      });
       if (auswahl.length) {
-        // Der Katalog des ANGEKLICKTEN Projekts ([L-12]) — nicht der des aktiven.
-        const katalog = k.mappe && k.mappe.katalog ? store.katalogNachId(k.mappe.katalog) : null;
         const erg = ARCHIV.hierarchieExport(auswahl, {
           mappe: k.mappe, ebene: k.ebene,
           gebaeudeId: k.gebaeudeId, geschossId: k.geschossId,
           wandId: k.wandId, wandName: k.wandName,
           katalog,
-          holeElement: (id) => store.holeElement(id),
+          holeElement: frisch.holeElement,
           holeEingaben: (id) => store.holeEingaben(id),
           // projektObjekt zieht die Kopfdaten nach [L-11] aus dem Projekt (Rückfall: Altbestand).
           projektObjekt: (id) => store.projektObjekt(id),
@@ -1916,13 +1933,24 @@
       let plan = null;
       if (mitZeichnungen) {
         trZeige(`Zeichnungen für „${k.mappe.projekt.name}“ werden abgeleitet …`, true);
-        plan = await zpdfPlan(k.mappe);
+        plan = await zpdfPlan(k.mappe, frisch);
         for (const l of plan.luecken) luecken.push(l);
         if (!plan.geschosse.length) {
           luecken.push('Keine PDF erzeugt: ' + (plan.luecken.join(' ') || 'Das Projekt hat kein Geschoss.'));
           plan = null;
         }
         if (!zipStamm && plan) zipStamm = plan.zipName;
+      }
+      // Ein Stand, der nicht neu rechenbar war, gehört VOR den Download: die Datei
+      // trägt dann den gespeicherten Stand — genau wie Modul 7 in dieser Lage —, und
+      // der Grund wird je Wand genau einmal benannt (#98/#120). AUSGENOMMEN ist
+      // `kein_katalog`: ohne wirksamen Katalog gibt es keinen „frischeren" Stand,
+      // gespeicherter Stand und Modul-7-Anzeige sind deckungsgleich, und die fehlende
+      // Zuordnung meldet der Export dort, wo sie fachlich hängt ([L-12]) — eine
+      // Rückfrage je Wand wäre dieselbe Aussage in Vervielfachung.
+      for (const h of frisch.hinweise) {
+        if (h.grund === 'kein_katalog') continue;
+        luecken.push(`„${h.name || h.id}“: ${h.text}`);
       }
       // Fehlendes wird VOR dem Download benannt — kein stilles Teilergebnis
       // ([L-4]/[L-12]/[N-7]); beide Wege stehen in EINER Bestätigung.
@@ -2000,14 +2028,24 @@
    * Der Planhintergrund kommt aus der Bilddatenbank und damit asynchron; das Blattbauen
    * selbst bleibt synchron und deterministisch.
    */
-  async function zpdfPlan(m){
+  async function zpdfPlan(m, frisch){
     const hintergruende = new Map();
+    const ids = new Set();
     for (const o of MAPPE.alleGeschosse(m)) {
       hintergruende.set(o.geschoss.id, await zpdfHintergrund(o.geschoss));
+      for (const w of o.geschoss.waende) ids.add(String(w.id));
     }
+    // Jede dem Projekt zugeordnete Wand kommt über den FRISCHEN Elementleser
+    // (#98, Nachtrag zu #120): das Wandblatt der PDF trägt damit denselben Stand
+    // wie Modul 1 und Modul 7. NUR die zugeordneten — die übrigen Elemente des
+    // Wandspeichers gehören anderen Projekten mit anderem Katalog; sie erscheinen
+    // in keiner PDF und werden nicht gegen einen fremden Katalog gerechnet.
+    const elemente = store.listeElemente().map((el) =>
+      (el && el.id != null && ids.has(String(el.id)))
+        ? (frisch.holeElement(el.id) || el) : el);
     return ZPDF.blaetterProjekt({
       mappe: m,
-      elemente: store.listeElemente(),
+      elemente,
       // Kopfdaten nach [L-11] aus dem Projekt der Wand (Rückfall: Altbestand).
       leseEingaben: (id) => store.eingabenMitKopfdaten(id),
       hintergruende,
