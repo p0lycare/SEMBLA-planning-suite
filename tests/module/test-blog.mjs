@@ -39,15 +39,39 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die MASTABSGETREUE STANGENBREITE UND DER WEGFALL DER WANDUMRISSLINIE (#121/#123) sind der
-// neueste Eintrag — er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige
-// Reihe wird ueber die KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach
-// hinten.
+// Die NEUE DECKENANSCHLUSS-VERTEILREGEL (#124) ist der neueste Eintrag — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die VERTEILUNG ([A-26], Fassung vom
+// 2026-09-14) — erste und letzte Spannachse immer, dazwischen hoechstens 1125 mm Abstand.
+// NICHT versprochen werden eine Statik, ein Nachweis, geaenderte Spannachsen, ein neues
+// gespeichertes Feld oder ein Versionssprung; der Override ([A-27]) bleibt unveraendert.
+const DECKE_124 = EINTRAEGE[0];
+ok("[#124] die neue Deckenanschluss-Verteilregel ist der neueste Eintrag",
+  DECKE_124?.id === "chg-20260914-01" && DECKE_124?.issue === 124
+  && DECKE_124?.typ === "feature" && DECKE_124?.datum === "2026-09-14");
+ok("[#124] der Titel benennt Randachsen und den 1125-mm-Hoechstabstand",
+  /Deckenanschl/.test(DECKE_124?.titel || "")
+  && /erste und letzte/.test(DECKE_124?.titel || "")
+  && /1125 mm/.test(DECKE_124?.titel || "")
+  && !/Statik|Nachweis|Preis|Norm|Format|Migration|speicher/i.test(DECKE_124?.titel || ""));
+ok("[#124] die Testbitte fuehrt den echten Nutzerpfad in Modul 1",
+  /Modul 1/.test(DECKE_124?.testbitte || "")
+  && /rote Z/.test(DECKE_124?.testbitte || "")
+  && /1125 mm/.test(DECKE_124?.testbitte || "")
+  && /Spannachse/.test(DECKE_124?.testbitte || ""));
+ok("[#124] die Testbitte verspricht keine Statik und kein neues Feld",
+  !/Statik|Nachweis|Preis|Menge|Rechnung|Format|Migration|gespeichert wird|Option/i
+    .test(DECKE_124?.testbitte || ""));
+
+// Davor liegt die MASTABSGETREUE STANGENBREITE UND DER WEGFALL DER WANDUMRISSLINIE
+// (#121/#123) — ueber die Kennung gesucht, weil sie nicht mehr der neueste Eintrag ist. Ihre
+// Aussagen bleiben unveraendert.
 // Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die DARSTELLUNG — die Stange ist so
 // breit, wie ihr realer Durchmesser im Masstab ergibt, und die dicke aeussere Umrisslinie ist
 // ersatzlos weg. NICHT versprochen werden eine geaenderte Rechnung, andere Mengen oder Preise,
 // ein Bedienelement fuer Strichstaerke oder Umriss, ein neues Feld oder ein Versionssprung.
-const STANGE_121 = EINTRAEGE[0];
+const STANGE_121 = EINTRAEGE.find(e => e.id === "chg-20260910-10");
 ok("[#121] die masstabsgetreue Stangenbreite ist der neueste Eintrag",
   STANGE_121?.id === "chg-20260910-10" && STANGE_121?.issue === 121
   && STANGE_121?.typ === "fix" && STANGE_121?.datum === "2026-09-10");

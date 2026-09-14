@@ -1130,9 +1130,11 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
   const ks=()=>WP.deckenanschlusspunkte.map(p=>p.k);
   const achsen=()=>WP.RESULT.wandelement.tension_columns.map(c=>c.k);
   const auto=ks();
-  // Ausgangslage: verteilt nach [A-26], nichts davon gespeichert.
-  ok('[#95] Auto: ein Punkt je angefangenem Meter (3,25 m -> 4)',
-    auto.length===4 && auto[0]===achsen()[0] && auto[3]===achsen()[achsen().length-1]);
+  // Ausgangslage: verteilt nach [A-26] (Fassung #124) — erste und letzte Achse immer,
+  // dazwischen hoechstens 1125 mm (9 Raster) Abstand —, nichts davon gespeichert.
+  ok('[#95] Auto: erste/letzte Achse gesetzt, kein Abstand ueber 1125 mm ([A-26]/#124)',
+    auto.length>=2 && auto[0]===achsen()[0] && auto[auto.length-1]===achsen()[achsen().length-1]
+    && auto.every((k,i)=>i===0 || k-auto[i-1]<=9));
   ok('[#95] jeder Punkt liegt auf einer wirklichen Spannachse',
     auto.every(k=>achsen().includes(k)));
   ok('[#95] Auto wird NICHT gespeichert (kein Feld im Wandelement)',

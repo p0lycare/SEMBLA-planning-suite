@@ -29,7 +29,8 @@ __all__ = [
     "zwischenpunkte_segment", "wirksame_zwischenpunkte",
     "AUSGLEICH_DICHTE_JE_M", "AUSGLEICH_ACHSVERSATZ", "verteile_ausgleichspunkte",
     "norm_ausgleichspunkte",
-    "DECKENANSCHLUSS_JE_M", "verteile_deckenanschluss", "norm_deckenanschluss",
+    "DECKENANSCHLUSS_MAX_MM", "verteile_deckenanschluss", "norm_deckenanschluss",
+    "deckenanschluss_luecken",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -54,7 +55,7 @@ ROD_OVERHANG  = 10     # mm Ueberstand des Reststuecks ueber die Wandoberkante (
 # GENAU HIER — der Achsversatz ist ausdruecklich variabel gehalten ([A-23]).
 AUSGLEICH_DICHTE_JE_M = 3   # Zielpunktzahl je Meter Wandlaenge ([A-20])
 AUSGLEICH_ACHSVERSATZ = 20  # mm Abstand einer Auffuellung zur Spannachse ([A-23])
-DECKENANSCHLUSS_JE_M = 1    # Zielzahl der Deckenanschlusspunkte je Meter Wandlaenge ([A-26])
+DECKENANSCHLUSS_MAX_MM = 1125  # groesster Abstand benachbarter Deckenanschluesse ([A-26])
 
 
 # ---- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----
@@ -507,33 +508,51 @@ def norm_ausgleichspunkte(arr, length_mm):
 
 
 # ---- Deckenanschlusspunkte ([A-26]/[A-27]) ----
-# Bit-genaues Gegenstueck zu verteileDeckenanschluss()/normDeckenanschluss() in
-# docs/shared/sembla-core.js.
+# Bit-genaues Gegenstueck zu verteileDeckenanschluss()/deckenanschlussLuecken()/
+# normDeckenanschluss() in docs/shared/sembla-core.js.
 #
 # Der Deckenanschluss ist die ZWEITE moegliche Ausfuehrung der oberen Spannachse ([P-24]): an
-# einer Achse steht entweder der Wandabschluss ODER der Deckenanschluss, nie beides. [A-26] Die
-# Verteilung ist bewusst SIMPEL und ausdruecklich KEINE Statik: ein Anschlusspunkt je
-# angefangenem Meter Wandlaenge, mindestens einer; Kandidat ist JEDE Spannachse.
+# einer Achse steht entweder der Wandabschluss ODER der Deckenanschluss, nie beides. [A-26]
+# (Fassung vom 2026-09-14, #124): ERSTE und LETZTE Spannachse tragen immer einen
+# Deckenanschluss, dazwischen liegen hoechstens DECKENANSCHLUSS_MAX_MM zwischen zwei
+# benachbarten Punkten; Kandidat ist JEDE Spannachse, erfunden wird keine.
 
 
-def verteile_deckenanschluss(length_mm, achsen_k=()):
-    """Deckenanschlusspunkte deterministisch auf die Spannachsen verteilen ([A-26])."""
-    A = sorted(achsen_k or ())
+def verteile_deckenanschluss(achsen_k=()):
+    """Deckenanschlusspunkte deterministisch auf die Spannachsen verteilen ([A-26]).
+
+    Erste und letzte Achse sind immer gesetzt. Dazwischen wird von links nach rechts jeweils
+    die ENTFERNTESTE Achse gewaehlt, die von der zuletzt gesetzten aus noch innerhalb von
+    DECKENANSCHLUSS_MAX_MM liegt — kleinstmoegliche Punktzahl, vollstaendig deterministisch.
+    Traegt kein Nachbar die Reichweite, wird die naechste Achse trotzdem gesetzt; die
+    Ueberschreitung meldet deckenanschluss_luecken().
+    """
+    A = sorted(set(achsen_k or ()))
     if not A:
         return []
-    ziel = max(1, math.ceil(DECKENANSCHLUSS_JE_M * length_mm / 1000))
-    if ziel >= len(A):
-        return list(A)
-    # Genau ein Punkt: die ERSTE Achse. Die Bevorzugung von Anfang und Ende laesst sich mit
-    # einem einzigen Punkt nicht erfuellen; gewaehlt wird deshalb ausgesprochen der Anfang,
-    # statt eine Mitte zu erfinden.
-    if ziel == 1:
-        return [A[0]]
-    # Erste und letzte Achse gesetzt, die uebrigen gleichmaessig ueber die ACHSENLISTE verteilt
-    # (nicht ueber die Millimeter — ein Punkt liegt immer auf einer Achse). Gerundet wird mit
-    # Pythons `round` (half-to-even == pyRound), damit JS und Python bit-gleich waehlen.
-    out = [A[round(j * (len(A) - 1) / (ziel - 1))] for j in range(ziel)]
-    return sorted(set(out))
+    max_k = DECKENANSCHLUSS_MAX_MM // GRID   # 1125 mm = exakt 9 Rasterfelder
+    out = [A[0]]
+    i = 0
+    while i < len(A) - 1:
+        j = i
+        while j + 1 < len(A) and A[j + 1] - A[i] <= max_k:
+            j += 1
+        if j == i:
+            j = i + 1   # Achsluecke > 1125 mm: naechste Achse, Meldung kommt getrennt
+        out.append(A[j])
+        i = j
+    return out
+
+
+def deckenanschluss_luecken(punkte_k=()):
+    """Abstandsverletzungen einer Deckenanschluss-Punktliste benennen ([A-26])."""
+    P = list(punkte_k or ())
+    luecken = []
+    for i in range(1, len(P)):
+        abstand_mm = (P[i] - P[i - 1]) * GRID
+        if abstand_mm > DECKENANSCHLUSS_MAX_MM:
+            luecken.append({"von_k": P[i - 1], "bis_k": P[i], "abstand_mm": abstand_mm})
+    return luecken
 
 
 def norm_deckenanschluss(arr, achsen_k=(), n_grid=0):
@@ -1394,9 +1413,12 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     _DC, _DC_fehler = norm_deckenanschluss(_PS.get("deckenanschluss_grid"), _achsen_k, N)
     if _DC is not None:
         _PS["deckenanschluss_grid"] = _DC
-    _dc_k = _DC if _DC is not None else verteile_deckenanschluss(length_mm, _achsen_k)
+    _dc_k = _DC if _DC is not None else verteile_deckenanschluss(_achsen_k)
     deckenanschlusspunkte = [{"k": k, "x_mm": CHAMBER_OFFSET + GRID * k,
                               "art": "manuell" if _DC is not None else "auto"} for k in _dc_k]
+    # [A-26] Nur der Auto-Pfad wird gegen die 1125-mm-Vorgabe gehalten: ein Override sperrt
+    # die Verteilung vollstaendig ([A-27]) und ist die ausdrueckliche Entscheidung des Planers.
+    _dc_luecken = [] if _DC is not None else deckenanschluss_luecken(_dc_k)
 
     bom = {"i2": 0, "i3": 0}
     for c in courses:
@@ -1458,6 +1480,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        # [A-27] Abgewiesene manuelle Deckenanschlusspunkte — benannt, nie auf
                        # eine Nachbarachse geschoben; der Schluessel entsteht nur im Fehlerfall.
                        **({"deckenanschluss_fehler": _DC_fehler} if _DC_fehler else {}),
+                       # [A-26] Unerfuellbare 1125-mm-Vorgabe im Auto-Pfad — die Spannachsen
+                       # selbst liegen dort weiter auseinander. Nur im Fehlerfall.
+                       **({"deckenanschluss_luecken": _dc_luecken} if _dc_luecken else {}),
                        # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
                        "interlock_invalid_segments": interlock_invalid_segments},
         "courses": courses,

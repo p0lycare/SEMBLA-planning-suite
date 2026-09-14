@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260914-01",
+    datum: "2026-09-14",
+    typ: "feature",
+    issue: 124,
+    titel: "Deckenanschlüsse neu verteilt: erste und letzte Achse immer, dazwischen höchstens 1125 mm Abstand",
+    testbitte: "In Modul 1 eine Wand ohne eigene Anschluss-Auswahl ansehen: das rote Z sitzt "
+      + "jetzt auf der ersten und letzten Spannachse, und zwischen zwei Symbolen liegen nie "
+      + "mehr als 1125 mm.",
+  },
+  {
     id: "chg-20260910-10",
     datum: "2026-09-10",
     typ: "fix",

@@ -89,6 +89,11 @@
       "k": 1,
       "x_mm": 187.5,
       "art": "auto"
+    },
+    {
+      "k": 6,
+      "x_mm": 812.5,
+      "art": "auto"
     }
   ],
   "tension_columns": [

@@ -162,8 +162,8 @@
     <div class="grp"><h3>Deckenanschluss (obere Spannachse)</h3>
       <!-- [A-26]/[A-27]/#95: Anschlusspunkte liegen IMMER auf einer Spannachse; nicht jede
            Spannachse ist ein Anschlusspunkt. Ohne eigene Auswahl verteilt der Rechenkern sie
-           deterministisch — ein Punkt je angefangenem Meter Wandlänge, erste und letzte Achse
-           bevorzugt ([A-26]); dieses Ergebnis wird NICHT gespeichert. Erst eine hier getroffene
+           deterministisch — erste und letzte Achse immer, dazwischen höchstens 1125 mm Abstand
+           ([A-26], Fassung vom 2026-09-14/#124); dieses Ergebnis wird NICHT gespeichert. Erst eine hier getroffene
            Wahl ist ein gespeicherter Override — sie SPERRT die Verteilung vollständig, bis
            „Zurück zu Auto“ sie zurücknimmt ([A-27]). Ausdrücklich KEINE Statik: die Kraftübergabe
            an den Stahlbau in Modul 3 bleibt unberührt. -->
@@ -1837,8 +1837,8 @@ function renderDcHinweis(){
   el.textContent = manualDc
     ? 'Eigene Auswahl: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — gespeichert am '
       +'Wandelement; die automatische Verteilung ([A-26]) ist gesperrt, es wird nichts aufgefüllt.'
-    : 'Automatisch verteilt ([A-26]): '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — ein Punkt '
-      +'je angefangenem Meter Wandlänge, nicht gespeichert.';
+    : 'Automatisch verteilt ([A-26]): '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — erste und '
+      +'letzte Achse immer, dazwischen höchstens 1125 mm Abstand, nicht gespeichert.';
 }
 
 // ---------- Ereignis-Bindung + Start ----------

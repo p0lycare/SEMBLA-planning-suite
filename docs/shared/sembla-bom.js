@@ -238,7 +238,7 @@ export function semblaBom(w) {
   // [P-24]/[A-26] Deckenanschluss: je Anschlusspunkt genau EINE Baugruppe „Deckenanschluss".
   // Quelle ist ausschliesslich die vom Rechenkern gerechnete Punktliste
   // (`wandelement.deckenanschlusspunkte`) — die Menge ist deren LAENGE und wird hier nie
-  // nachgerechnet. Eine Ersatzrechnung aus der Wandlaenge (ein Punkt je Meter, [A-26]) waere
+  // nachgerechnet. Eine Ersatzrechnung aus den Achsabstaenden (1125-mm-Regel, [A-26]) waere
   // eine zweite Mengenquelle neben dem Kern und damit genau der Drift, den [P-6] ausschliesst;
   // sie steht deshalb ausdruecklich nicht hier. Fehlt das Feld (Altbestand, gespeichertes
   // Wandelement vor #95), ist die Menge 0 — es wird keine Punktzahl erfunden ([P-9]).
