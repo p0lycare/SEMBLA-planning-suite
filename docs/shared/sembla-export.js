@@ -642,8 +642,12 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
     }
   }
 
+  // Entscheid 2026-09-14: KEINE Einbauteil-IDs mehr in den Gesamtdateien — hunderte
+  // „Wand-ID:GS-k…"-Eintraege je Zelle machten die Datei unlesbar (dieselbe Begruendung wie
+  // die entfallene Wandherkunft, #81). Vollstaendig bleiben die IDs in der Einzelteilliste
+  // der Wandebene und im Zeichnungsblatt ([P-19]); die interne Aggregation fuehrt sie weiter.
   const spalten = ["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit", "Menge",
-    "Einbauteil-IDs (Wand-ID:ID)", "Produkt (Katalog)", "Zuordnung",
+    "Produkt (Katalog)", "Zuordnung",
     // Die Kommentarspalte gibt es im GLEICHEN Format wie in der Wanddatei, aber stets LEER
     // (Entscheid zu #81 und vom 2026-09-14): Kommentare sind Wandangaben, eine Zeile steht
     // hier fuer mehrere Waende, und zusammengefuehrt wird nichts. Die Spalte steht trotzdem
@@ -659,13 +663,13 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
   // der entfallenen Wandherkunft (#81) nichts zu tun.
   if (angepasst) spalten.splice(5, 0, "Menge berechnet", "Mengenherkunft");
   // EP/GP stehen unmittelbar VOR „Produkt (Katalog)“ — der Index folgt der Breite der
-  // Fassung (ohne Wandherkunft zwei Spalten frueher als bis #81).
-  if (preise) spalten.splice(angepasst ? 8 : 6, 0, "EP (" + cur + ")", "GP (" + cur + ")");
+  // Fassung (ohne Einbauteil-IDs eine Spalte frueher als bis 2026-09-14).
+  if (preise) spalten.splice(angepasst ? 7 : 5, 0, "EP (" + cur + ")", "GP (" + cur + ")");
 
   const zeilen = daten.positionen.map(r => {
     const z = [r.label, r.art ? r.art_symbol + " " + r.art_label : "",
       r.fertigmass_mm == null ? "" : r.fertigmass_mm, r.unit, r.menge,
-      r.ids.join(" "), r.produktId || "", r.statusText,
+      r.produktId || "", r.statusText,
       // Kommentarzelle — stets leer (s. Spaltenkommentar oben).
       "",
       // Das aufgeloeste Produkt reist seit #113 durch das Falten mit; alle Positionen einer
@@ -677,7 +681,7 @@ export function gesamtstuecklisteAoa(daten, opts = {}) {
       z.splice(5, 0, r.menge_berechnet,
         r.manuell_ebene ? "manuell (Geschoss)" : (r.manuell ? "manuell" : "berechnet"));
     }
-    if (preise) z.splice(angepasst ? 8 : 6, 0, n2(r.ep), n2(r.gp));
+    if (preise) z.splice(angepasst ? 7 : 5, 0, n2(r.ep), n2(r.gp));
     return z;
   });
 
@@ -737,11 +741,17 @@ export function gesamtstuecklisteCsv(daten, opts = {}) {
 // bleiben, und ein gemeinsamer Baustein haette sie angefasst. Dass beide Koepfe wortgleich
 // sind, ist deshalb im Regressionstest festgehalten und nicht im Code verdrahtet.
 
-/** Ueberschrift des Artikelteils — Produkt, Einheit, Menge, Herkunft, dann der Beschaffungsblock. */
+/**
+ * Ueberschrift des Artikelteils — Produkt, Einheit, Menge, Teileart, Herkunft, dann der
+ * Beschaffungsblock. Die TEILEART (#126) steht auch hier: eine Artikelzeile hat immer ein
+ * aufgeloestes Produkt, sie ist also stets Standardteil oder Normteil; Sonderteile haben
+ * kein Katalogprodukt und stehen vollstaendig im Klaerungsblock.
+ */
 export const EINKAUF_SPALTEN = [
   "Produkt-ID (Katalog)",
   "Einheit",
   "Menge",
+  "Art",
   "Einbaustellen",
   // Derselbe eine Baustein wie in beiden Stuecklistendateien (#113) — eine zweite
   // Spaltenliste waere genau der Drift, den [P-6] ausschliesst.
@@ -792,19 +802,19 @@ export function einkaufslisteAoa(daten, opts = {}) {
   const fassung = normFassung(daten.fassung || mengen.fassung);
   const angepasst = fassung === "angepasst";
 
+  // SCHLANKER Kopf (Entscheid 2026-09-14): die Einkaufsliste ist die massgebliche
+  // Bestellunterlage und traegt nur den Blattbezug, das Datum, die Mengenfassung und die
+  // Vollstaendigkeit. Entfallen sind „Grundlage", „Ebene", „Katalog" und „Wände" — der Bezug
+  // steht in den Ortszeilen, und eine unvollstaendige Datei sagt es in der Vollstaendigkeit
+  // samt Luecken weiterhin ausdruecklich ([P-9]).
   const kopf = [
     ["SEMBLA – Einkaufsliste (Beschaffung)"],
-    // Die Liste steht nie allein: sie ist die Artikelsicht GENAU dieser Gesamtstückliste.
-    ["Grundlage", daten.titel],
-    ["Ebene", daten.ebene_label],
     ["Projekt", b.projekt || ""],
   ];
   if (b.gebaeude) kopf.push(["Gebäude", b.gebaeude]);
   if (b.geschoss) kopf.push(["Geschoss", b.geschoss]);
   if (b.wand) kopf.push(["Wand", b.wand]);
   kopf.push(["Datum", opts.datum || _heute()]);
-  kopf.push(["Katalog", daten.katalog ? (daten.katalog.name || "Bauteilkatalog") : "kein Bauteilkatalog geladen"]);
-  kopf.push(["Wände", daten.quellen.length + " von " + daten.waende.length]);
   kopf.push(["Vollständigkeit", _standTextDatei(daten)]);
   // WORTGLEICH zur Gesamtstückliste ([P-20]): eine Bestellunterlage, der man ihre
   // Mengenfassung nicht ansieht, waere unbrauchbar — und zwei Dateien desselben Laufs, die
@@ -845,10 +855,17 @@ export function einkaufslisteAoa(daten, opts = {}) {
     if (!a.stellen.includes(p.label)) a.stellen.push(p.label);
   }
 
-  const zeilen = [...artikel.values()].map((a) => [
-    a.produktId || "", a.unit, _einkaufMenge(a.mengen), a.stellen.join(" · "),
-    ...beschaffungZellen(a.produkt),
-  ]);
+  const zeilen = [...artikel.values()].map((a) => {
+    // Teileart aus dem aufgeloesten Produkt (#126): Norm-Feld gefuellt -> Normteil, sonst
+    // Standardteil. Eine Artikelzeile ohne Produkt gibt es nicht (s. Klaerungsblock).
+    const art = teileart(null, a.produkt);
+    return [
+      a.produktId || "", a.unit, _einkaufMenge(a.mengen),
+      art ? ART_SYMBOL[art] + " " + ART_LABEL[art] : "",
+      a.stellen.join(" · "),
+      ...beschaffungZellen(a.produkt),
+    ];
+  });
 
   const klaerBlock = [[], [KLAERUNG_TITEL], ["",
     "Diese Positionen sind nicht bestellbar, weil ihnen kein eindeutiges Katalogprodukt "

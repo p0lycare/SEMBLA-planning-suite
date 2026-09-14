@@ -265,11 +265,14 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   ok("CSV-Kopf nennt Blatt, Ebene und Bezug", mitPreis[0][0] === "SEMBLA – Gesamtstückliste Geschoss"
     && mitPreis.some(z => z[0] === "Ebene" && z[1] === "Geschoss")
     && mitPreis.some(z => z[0] === "Geschoss" && z[1] === "EG"));
-  // #81: Die Wandherkunft ist ersatzlos entfallen — die qualifizierten IDs bleiben.
-  ok("#81 CSV führt KEINE Herkunftsspalte mehr, die qualifizierten IDs bleiben",
+  // #81: Die Wandherkunft ist ersatzlos entfallen; seit dem Entscheid 2026-09-14 (#126)
+  // fuehrt die Gesamtdatei auch KEINE Einbauteil-IDs mehr — sie machten die Datei unlesbar.
+  // Vollstaendig bleiben die IDs in der Einzelteilliste der Wandebene und im Zeichnungsblatt.
+  ok("#81/#126 CSV führt weder Herkunftsspalte noch Einbauteil-IDs",
     !kopfMit.includes("Wände (Herkunft)") && !kopfOhne.includes("Wände (Herkunft)")
     && !kopfMit.some((t) => /Herkunft/.test(t))
-    && kopfMit.includes("Einbauteil-IDs (Wand-ID:ID)"));
+    && !kopfMit.includes("Einbauteil-IDs (Wand-ID:ID)")
+    && !kopfMit.some((t) => /Einbauteil-ID/.test(t)));
   ok("#81 kein Wandname mehr in einer Positionszeile", (() => {
     const zeilen = mitPreis.slice(mitPreis.indexOf(kopfMit) + 1)
       .filter((z) => z.length > 1 && !String(z[0]).startsWith("Summe netto"));
@@ -280,7 +283,7 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
     && kopfMit.indexOf("EP (EUR)") === kopfMit.indexOf("GP (EUR)") - 1);
   ok("#81 die Spaltenfolge der Gesamtdatei ist genau der neue Satz",
     JSON.stringify(kopfMit) === JSON.stringify(["Einbauteil", "Art", "Fertigmaß (mm)", "Einheit",
-      "Menge", "Einbauteil-IDs (Wand-ID:ID)", "EP (EUR)", "GP (EUR)", "Produkt (Katalog)", "Zuordnung",
+      "Menge", "EP (EUR)", "GP (EUR)", "Produkt (Katalog)", "Zuordnung",
       // Entscheid 2026-09-14: die Kommentarspalte gibt es im gleichen Format wie in der
       // Wanddatei, aber stets leer — Kommentare bleiben Wandangaben (#81).
       "Kommentar",
@@ -296,7 +299,7 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   ok("Preisschalter lässt Mengen und IDs unverändert", (() => {
     // Verglichen wird ueber die SPALTENNAMEN, nicht ueber feste Indizes: sonst haengt der Test
     // an der Breite der Fassung (#81 hat sie geaendert).
-    const namen = ["Einbauteil", "Einheit", "Menge", "Einbauteil-IDs (Wand-ID:ID)", "Zuordnung"];
+    const namen = ["Einbauteil", "Einheit", "Menge", "Zuordnung"];
     const spalten = (aoa, kopf) => aoa.slice(aoa.indexOf(kopf) + 1)
       .filter(z => z.length > 1 && !String(z[0]).startsWith("Summe netto"))
       .map(z => namen.map((n) => z[kopf.indexOf(n)]).join("|"));
@@ -312,8 +315,9 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
   })());
   ok("CSV meldet Vollständigkeit", mitPreis.some(z => z[0] === "Vollständigkeit" && /vollständig – 2 von 2/.test(z[1])));
   const csv = gesamtstuecklisteCsv(d, { datum: "01.01.2026" });
-  ok("CSV-Text ist semikolongetrennt und führt jede qualifizierte ID",
-    /;/.test(csv) && d.positionen.flatMap(p => p.ids).every(x => csv.includes(x)));
+  ok("CSV-Text ist semikolongetrennt; die IDs bleiben in der Aggregation, nicht in der Datei (#126)",
+    /;/.test(csv) && d.positionen.flatMap(p => p.ids).length > 0
+    && !d.positionen.flatMap(p => p.ids).some(x => csv.includes(x)));
   ok("Dateirumpf nennt Ebene und Bezug", dateiRumpf(d) === "Gesamtstueckliste_Geschoss_EG"
     && dateiRumpf(daten("wand", Z)) === "Baustellenstueckliste_Wand_Wand_A"
     && dateiRumpf(daten("projekt", Z)) === "Gesamtstueckliste_Projekt_Projekt_44");
@@ -442,10 +446,15 @@ const P = (ueber = {}) => ({
   // Wandebene: Wanddatei + Baustellenstueckliste, bitgleich der bestehende Wandpfad.
   const ew = hierarchieExport(["wand", "stueckliste"], P({ ebene: "wand" }));
   const sollW = baueDateien(projektObjekt("w-a"), ["stueckliste"], KATALOG);
-  ok("#67 Wandebene: Wanddatei + 2 Stuecklisten-CSVs, bitgleich baueDateien",
-    ew.dateien.length === 3
+  // Seit #126 kommt die EINKAUFSLISTE auch auf der Wandebene dazu — sie ist die
+  // massgebliche Bestellunterlage und entsteht auf jeder Ebene.
+  ok("#67/#126 Wandebene: Wanddatei + 2 Stuecklisten-CSVs (bitgleich baueDateien) + Einkaufsliste",
+    ew.dateien.length === 4
     && ew.dateien[0].name === wandPfad({ id: "w-a", name: "Wand A" })
     && ew.dateien[1].data === sollW[0].data && ew.dateien[2].data === sollW[1].data
+    && ew.dateien[3].name === "Einkaufsliste_Wand_" + sicherStamm("Wand A") + ".csv"
+    && /^SEMBLA – Einkaufsliste \(Beschaffung\)/.test(ew.dateien[3].data)
+    && /\nWand;Wand A/.test(ew.dateien[3].data)
     && ew.zipName === "SEMBLA_Export_Wand_" + sicherStamm("Wand A"));
   ok("#67 eine unverortete Wand bleibt ohne Mappe exportierbar", (() => {
     const solo = hierarchieExport(["wand"], P({ ebene: "wand", mappe: null }));
@@ -1139,10 +1148,10 @@ const P = (ueber = {}) => ({
     JSON.stringify(BESCHAFFUNG_SPALTEN.map((sp) => zelle("kuppl", sp)))
       === JSON.stringify(["Kopplungsmutter", "DIN 6334", "Stahl", "8", "verzinkt", "M10", "",
         "Würth", "024010"]));
-  ok("#113 der Beschaffungsblock steht hinten, hinter den vier Artikelspalten",
-    JSON.stringify(EINKAUF_SPALTEN.slice(0, 4))
-      === JSON.stringify(["Produkt-ID (Katalog)", "Einheit", "Menge", "Einbaustellen"])
-    && JSON.stringify(EINKAUF_SPALTEN.slice(4)) === JSON.stringify([...BESCHAFFUNG_SPALTEN]));
+  ok("#113/#126 der Beschaffungsblock steht hinten, hinter den fünf Artikelspalten",
+    JSON.stringify(EINKAUF_SPALTEN.slice(0, 5))
+      === JSON.stringify(["Produkt-ID (Katalog)", "Einheit", "Menge", "Art", "Einbaustellen"])
+    && JSON.stringify(EINKAUF_SPALTEN.slice(5)) === JSON.stringify([...BESCHAFFUNG_SPALTEN]));
 
   // (e) Kopf: derselbe Blattbezug, dieselbe Mengenfassung — wortgleich, nicht verdrahtet.
   const kopfMap = (a) => {
@@ -1150,13 +1159,15 @@ const P = (ueber = {}) => ({
     for (const z of a) { if (!z.length) break; if (z.length >= 2) o[z[0]] = z.slice(1).join("|"); }
     return o;
   };
-  const GETEILT = ["Ebene", "Projekt", "Gebäude", "Geschoss", "Datum", "Katalog", "Wände",
-    "Vollständigkeit", "Mengen"];
+  // Schlanker Kopf seit #126: geteilt bleiben Blattbezug, Datum, Vollstaendigkeit und
+  // Mengenfassung; "Grundlage", "Ebene", "Katalog" und "Wände" fuehrt nur noch die Gesamtdatei.
+  const GETEILT = ["Projekt", "Gebäude", "Geschoss", "Datum", "Vollständigkeit", "Mengen"];
   {
     const gK = kopfMap(gesamtstuecklisteAoa(d, OPTD)), eK = kopfMap(aoa);
-    ok("#113 der Kopf nennt denselben Blattbezug und dieselbe Mengenfassung",
+    ok("#113/#126 der Kopf nennt denselben Blattbezug und dieselbe Mengenfassung",
       GETEILT.every((k) => gK[k] !== undefined && eK[k] === gK[k])
-      && eK["Grundlage"] === d.titel);
+      && eK["Grundlage"] === undefined && eK["Ebene"] === undefined
+      && eK["Katalog"] === undefined && eK["Wände"] === undefined);
     const dAng = gesamtDaten(umfang(M, "geschoss", Z), les, { fassung: "angepasst" });
     const gA = kopfMap(gesamtstuecklisteAoa(dAng, OPTD)), eA = kopfMap(einkaufslisteAoa(dAng, OPTD));
     ok("#113 auch in der angepassten Fassung ist die Mengenzeile wortgleich",
@@ -1181,8 +1192,9 @@ const P = (ueber = {}) => ({
     const zs = a.slice(a.findIndex((z) => z[0] === "Produkt-ID (Katalog)") + 1,
       a.findIndex((z) => z[0] === KLAERUNG_TITEL) - 1);
     ok("#113 verschiedene Einheiten desselben Produkts bleiben getrennte Zeilen",
-      zs.length === 2 && zs[0][1] === "Stk" && zs[0][2] === 7 && zs[0][3] === "A · C"
-      && zs[1][1] === "m" && zs[1][2] === 3 && zs[1][3] === "B");
+      zs.length === 2 && zs[0][1] === "Stk" && zs[0][2] === 7 && zs[0][4] === "A · C"
+      && zs[1][1] === "m" && zs[1][2] === 3 && zs[1][4] === "B"
+      && zs.every((z) => z[3] === "■ Standardteil"));
     ok("#113 ohne unaufgeloeste Position sagt der Klaerungsblock ausdruecklich „keine“",
       /keine – jede Position ist einem Katalogprodukt zugeordnet/.test(einkaufslisteCsv(synth, OPTD)));
   }

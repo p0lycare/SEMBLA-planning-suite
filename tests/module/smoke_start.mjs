@@ -345,10 +345,11 @@ ok('#67 die gerenderten Optionen sind genau die der Wandebene',
 // Nur die Baustellenstueckliste ist gewaehlt (wie ein Nutzer, der die Wanddatei abwaehlt).
 $('exp-overlay')._sel = [{ value: 'stueckliste' }];
 $('exp-go').dispatch('click');
-ok('#67 Baustellenstueckliste: ZIP mit genau zwei CSVs', zipCalls.length === 1
-  && zipCalls[0].files.length === 2
+ok('#67/#126 Baustellenstueckliste: ZIP mit drei CSVs (inkl. Einkaufsliste)', zipCalls.length === 1
+  && zipCalls[0].files.length === 3
   && /^Baustellenstueckliste_/.test(zipCalls[0].files[0].name)
-  && /^Einbauteile_Gewindestangen_/.test(zipCalls[0].files[1].name));
+  && /^Einbauteile_Gewindestangen_/.test(zipCalls[0].files[1].name)
+  && /^Einkaufsliste_Wand_/.test(zipCalls[0].files[2].name));
 ok('#67 bitgleich die bestehende Wandableitung (kein zweiter Mengenpfad)', (() => {
   const soll = baueDateien(store.projektObjekt(aktivId), ['stueckliste'], null);
   return zipCalls.length && zipCalls[0].files[0].data === soll[0].data
@@ -2509,7 +2510,7 @@ globalThis.fetch = echtesFetch;
   ok('#113 die zweite Datei ist die Einkaufsliste je Katalogprodukt',
     gFiles[1].name === 'Gesamtstueckliste_Geschoss_' + store.sicherName(gsName) + '_Einkaufsliste.csv'
     && /^SEMBLA – Einkaufsliste \(Beschaffung\)/.test(gFiles[1].data)
-    && /\nProdukt-ID \(Katalog\);Einheit;Menge;Einbaustellen;/.test(gFiles[1].data)
+    && /\nProdukt-ID \(Katalog\);Einheit;Menge;Art;Einbaustellen;/.test(gFiles[1].data)
     && /\nKlärung vor der Bestellung nötig/.test(gFiles[1].data));
   ok('#67 ZIP-Name folgt Ebene und Geschoss',
     zipCalls.length && zipCalls[0].name === 'SEMBLA_Export_Geschoss_' + ARCHIV.sicherStamm(gsName) + '.zip');
@@ -2548,8 +2549,10 @@ globalThis.fetch = echtesFetch;
     }
     return ist.size === soll.size && [...soll].every(([k, v]) => Math.abs((ist.get(k) ?? NaN) - v) < 1e-9);
   })());
-  ok('#67 CSV fuehrt die Einbauteil-IDs als Wand-ID:ID',
-    new RegExp(idG1 + ':GS-k').test(gCsv) && new RegExp(idG2 + ':GS-k').test(gCsv));
+  // #126: Die Gesamtdatei fuehrt KEINE Einbauteil-IDs mehr — sie machten die Datei unlesbar.
+  ok('#126 CSV fuehrt keine Einbauteil-IDs mehr',
+    !new RegExp(idG1 + ':GS-k').test(gCsv) && !new RegExp(idG2 + ':GS-k').test(gCsv)
+    && !/Einbauteil-IDs/.test(gCsv));
   ok('#67 der Geschoss-Export setzt keinen Zeiger um', zeigerJetzt() === zeiger9);
 
   // (a2) #81: Mengenfassung der GESAMTSTÜCKLISTE — der echte Nutzerpfad auf Geschossebene.

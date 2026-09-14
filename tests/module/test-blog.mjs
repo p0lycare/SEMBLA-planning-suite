@@ -39,12 +39,17 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die TEILEART-KENNZEICHNUNG (#126) ist der neueste Eintrag — er wird als einziger direkt
-// ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres Eintrags
-// gesucht und rueckt deshalb geraeuschlos nach hinten.
-const TEILEART_126 = EINTRAEGE[0];
-ok("[#126] die Teileart-Kennzeichnung ist der neueste Eintrag",
-  TEILEART_126?.id === "chg-20260914-02" && TEILEART_126?.issue === 126
+// Die EINKAUFSLISTEN-UEBERARBEITUNG (#126) ist der neueste Eintrag — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+const EINKAUF_126 = EINTRAEGE[0];
+ok("[#126] die Einkaufslisten-Ueberarbeitung ist der neueste Eintrag",
+  EINKAUF_126?.id === "chg-20260914-03" && EINKAUF_126?.issue === 126
+  && EINKAUF_126?.typ === "feature" && EINKAUF_126?.datum === "2026-09-14"
+  && /Einkaufsliste/.test(EINKAUF_126?.titel || "") && /Teileart/.test(EINKAUF_126?.titel || ""));
+const TEILEART_126 = EINTRAEGE.find(e => e.id === "chg-20260914-02");
+ok("[#126] die Teileart-Kennzeichnung steht weiter mit ihrer Kennung in der Reihe",
+  TEILEART_126?.issue === 126
   && TEILEART_126?.typ === "feature" && TEILEART_126?.datum === "2026-09-14");
 ok("[#126] der Titel benennt die drei Teilearten und das Reststueck als Standardteil",
   /Standardteil/.test(TEILEART_126?.titel || "") && /Sonderteil/.test(TEILEART_126?.titel || "")

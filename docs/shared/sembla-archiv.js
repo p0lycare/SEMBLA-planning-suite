@@ -52,7 +52,7 @@ import {
 } from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
 import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
-import { baueDateien, gesamtstuecklisteDateien, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
+import { baueDateien, einkaufslisteCsv, gesamtstuecklisteDateien, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
 
 /** Name der Mappendatei im Archiv — das Erkennungsmerkmal eines Projektarchivs. */
 export const DATEI_MAPPE = "projekt.json";
@@ -1259,6 +1259,17 @@ export function hierarchieExport(auswahl, p) {
     } else {
       const obj = projektObjekt(ref.wandId);
       dateien.push(...baueDateien(obj, ["stueckliste"], p.katalog || null, { fassung }));
+      // Die EINKAUFSLISTE gibt es seit #126 auch auf der Wandebene — sie ist die
+      // massgebliche Bestellunterlage und muss auf jeder Ebene entstehen. Dieselbe eine
+      // Ableitung wie auf den Gesamtebenen: `gesamtDaten` traegt fuer ebene "wand" genau
+      // diese eine Wand, gerechnet wird nichts Eigenes.
+      const ekDaten = gesamtDaten(umf, {
+        holeElement, holeEingaben: p.holeEingaben, katalog: p.katalog || null,
+      }, { fassung });
+      dateien.push({
+        name: "Einkaufsliste_Wand_" + sicherStamm(ref.name || String(ref.wandId)) + ".csv",
+        data: einkaufslisteCsv(ekDaten, {}),
+      });
       // Nicht anwendbare Uebersteuerungen gehoeren VOR den Download: sie stehen zwar auch
       // im Dateikopf, aber ein Nutzer, der die angepasste Fassung ausdruecklich waehlt,
       // muss vor dem Speichern erfahren, dass ein Teil davon nicht wirkt ([P-9]/[P-20]).

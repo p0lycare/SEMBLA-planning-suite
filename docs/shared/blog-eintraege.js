@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260914-03",
+    datum: "2026-09-14",
+    typ: "feature",
+    issue: 126,
+    titel: "Einkaufsliste auf allen Ebenen mit Teileart und schlankem Kopf; Gesamtstückliste ohne ID-Kolonnen",
+    testbitte: "Eine Wand, ein Geschoss und das Projekt exportieren: jedes ZIP enthält eine "
+      + "Einkaufsliste mit Art-Spalte, und in der Gesamtstückliste-CSV stehen keine "
+      + "Einbauteil-ID-Kolonnen mehr.",
+  },
+  {
     id: "chg-20260914-02",
     datum: "2026-09-14",
     typ: "feature",
