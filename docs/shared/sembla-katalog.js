@@ -143,6 +143,37 @@ export function istVorlagenKatalog(k) {
   try { return String(k.id) === vorlageKatalogId(pfad); } catch { return false; }
 }
 
+/**
+ * Fassungsstand einer gespeicherten Katalogressource gegenueber dem Vorlagenverzeichnis
+ * (#129) — rein und DOM-frei, genutzt von Modul 0 (Warnkasten, Zuordnungsauswahl) und
+ * Modul 10 (Repo-Liste). Eine zweite Einordnung je Modul waere der Drift aus [P-6].
+ *
+ *   "eigener"   — kein Vorlagenkatalog; ueber Fassungen ist nichts zu sagen.
+ *   "unbekannt" — Vorlage, aber kein (lesbares) Verzeichnis: es wird nichts geraten.
+ *   "aktuell"   — die als aktuell benannte Fassung.
+ *   "aelter"    — eine herausgegebene, aber nicht mehr aktuelle Fassung.
+ *   "veraltet"  — eine Vorlage, deren Pfad in KEINER herausgegebenen Fassung mehr steht
+ *                 (Altbestand aus der Zeit vor der Versionierung, #118): ihr Inhalt
+ *                 entspricht keinem herausgegebenen Stand.
+ *
+ * @param {any} k gespeicherter Katalog
+ * @param {{aktuell:string,fassungen:Array<{pfad:string,version:string,datum:string,notiz:string,id:string}>}|null} manifest
+ * @returns {{stand:"eigener"|"unbekannt"|"aktuell"|"aelter"|"veraltet",
+ *            fassung:{pfad:string,version:string,datum:string,notiz:string,id:string}|null,
+ *            aktuelle:{pfad:string,version:string,datum:string,notiz:string,id:string}|null}}
+ */
+export function fassungsStand(k, manifest) {
+  if (!istVorlagenKatalog(k)) return { stand: "eigener", fassung: null, aktuelle: null };
+  if (!manifest || !Array.isArray(manifest.fassungen) || !manifest.fassungen.length) {
+    return { stand: "unbekannt", fassung: null, aktuelle: null };
+  }
+  const pfad = String(k[VORLAGE_FELD]);
+  const fassung = manifest.fassungen.find((f) => f && f.pfad === pfad) || null;
+  const aktuelle = manifest.fassungen.find((f) => f && f.pfad === manifest.aktuell) || null;
+  if (!fassung) return { stand: "veraltet", fassung: null, aktuelle };
+  return { stand: pfad === String(manifest.aktuell) ? "aktuell" : "aelter", fassung, aktuelle };
+}
+
 /** Zulaessige Einheiten = explizite Preisbasis. */
 export const EINHEITEN = ["Stk", "m", "m2"];
 

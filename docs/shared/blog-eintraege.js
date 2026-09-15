@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260915-01",
+    datum: "2026-09-15",
+    typ: "fix",
+    issue: 129,
+    titel: "Veraltete Katalogfassungen werden gemeldet und sind behandelbar; herausgegebene Fassungen sind eingefroren",
+    testbitte: "In Modul 0 prüfen, ob der Warnkasten bei einem Projekt mit alter Standardkatalog-Fassung "
+      + "eine Meldung zeigt; in Modul 10 einen veralteten Vorlagen-Slot ansehen, übernehmen oder entfernen",
+  },
+  {
     id: "chg-20260914-04",
     datum: "2026-09-14",
     typ: "fix",

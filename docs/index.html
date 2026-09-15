@@ -675,6 +675,29 @@
       teile.push('<b>Kein aktives Projekt, aber mehrere Kataloge</b> — es wird keiner geraten ([L-12]). '
         + 'Oben ein Projekt aktiv setzen.');
     }
+    // #129 Fassungsstand des zugeordneten Standardkatalogs — der Hinweis gehoert zum
+    // ZUORDNUNGSORT: gewechselt wird nur hier, bewusst und mit Vorpruefung. Automatisch
+    // umgestellt wird NIE; ohne gelesenes Verzeichnis (PP_MANIFEST null) sagt
+    // `fassungsStand` „unbekannt“ und es erscheint keine Meldung — geraten wird nichts.
+    if (st.status === 'ok' && st.vorlage) {
+      const fs = KAT.fassungsStand(st.katalog, PP_MANIFEST);
+      if (fs.stand === 'veraltet') {
+        teile.push('<b>Veralteter Standardkatalog:</b> der wirksame Katalog stammt aus einer '
+          + '<b>nicht mehr herausgegebenen</b> Vorlage aus der Zeit vor der Fassungsverwaltung — '
+          + 'sein Inhalt entspricht keiner herausgegebenen Fassung. Im Projekt-Dialog auf die '
+          + (fs.aktuelle ? 'aktuelle Fassung <b>' + esc(fs.aktuelle.version) + '</b>' : 'aktuelle Fassung')
+          + ' wechseln; die Vorprüfung nennt vorab jede Produkt-Kennung, die dort fehlt. Der alte '
+          + 'Stand ist in <a href="katalog.html">Modul 10</a> einsehbar, als eigener Katalog '
+          + 'übernehmbar und entfernbar.');
+      } else if (fs.stand === 'aelter') {
+        teile.push('<b>Neuere Standardkatalog-Fassung verfügbar:</b> wirksam ist Fassung <b>'
+          + esc(fs.fassung.version) + '</b>' + (fs.fassung.datum ? ' vom ' + esc(fs.fassung.datum) : '')
+          + ', herausgegeben ist <b>' + esc(fs.aktuelle ? fs.aktuelle.version : '') + '</b>'
+          + (fs.aktuelle && fs.aktuelle.datum ? ' vom ' + esc(fs.aktuelle.datum) : '') + '. '
+          + 'Umgestellt wird nie automatisch — der Wechsel ist eine bewusste Entscheidung im '
+          + 'Projekt-Dialog, mit Vorprüfung der Produkt-Kennungen.');
+      }
+    }
     const aktiv = store.aktivId();
     if (aktiv) {
       const n = KAT.anzahlAuswahl(store.katalogAuswahl());
@@ -1245,14 +1268,25 @@
   let PP_MANIFEST = null;        // flüchtiger Lesecache; nie gespeichert
 
   /**
+   * Das Vorlagenverzeichnis EINMAL lesen (#118/#129). Fehlt es, bleibt PP_MANIFEST null —
+   * dann sagt `fassungsStand` „unbekannt“ und es wird weder gewarnt noch geraten.
+   * @returns {Promise<object|null>}
+   */
+  async function manifestLaden(){
+    if (PP_MANIFEST) return PP_MANIFEST;
+    try { PP_MANIFEST = KAT.parseVorlagenManifest(await vorlageText(KAT.VORLAGEN_MANIFEST_PFAD)); }
+    catch { return null; }
+    return PP_MANIFEST;
+  }
+
+  /**
    * Das Vorlagenverzeichnis nachladen und die Auswahl EINMAL neu zeichnen (#118).
    * Fehlt es, bleibt die Auswahl genau die bisherige — gemeldet wird das nicht, weil
    * ohne Verzeichnis nichts fehlt, was hier zuordenbar waere.
    */
   async function ppFassungenNachladen(gewaehlt, mitVorlage){
     if (PP_MANIFEST) return;
-    try { PP_MANIFEST = KAT.parseVorlagenManifest(await vorlageText(KAT.VORLAGEN_MANIFEST_PFAD)); }
-    catch { return; }
+    if (!(await manifestLaden())) return;
     if (!ppOverlay.hidden) ppKatalogListe(gewaehlt, mitVorlage);
   }
 
@@ -1260,8 +1294,17 @@
     const alle = store.listeKataloge();
     // #118 Dieselbe Gliederung wie in Modul 10 — die Marken „Vorlage“/„zugeordnet“ stehen
     // dort im Kopfbereich, hier traegt die Zeile nur Name und Anzahl.
+    // #129 Fassungsmarke der Vorlagen-Optionen: dieselbe Einordnung wie im Warnkasten
+    // (fassungsStand) — ohne gelesenes Verzeichnis steht keine Marke, geraten wird nichts.
+    const marke = (k) => {
+      const fs = KAT.fassungsStand(k, PP_MANIFEST);
+      if (fs.stand === 'aktuell') return ' — aktuelle Fassung';
+      if (fs.stand === 'aelter') return ' — ältere Fassung';
+      if (fs.stand === 'veraltet') return ' — veraltet, nicht mehr herausgegeben';
+      return '';
+    };
     const opt = (k) => `<option value="${esc(k.id)}"${k.id === gewaehlt ? ' selected' : ''}>`
-      + `${esc(k.name)} (${(k.produkte || []).length} Produkte)</option>`;
+      + `${esc(k.name)} (${(k.produkte || []).length} Produkte)${esc(marke(k))}</option>`;
     // #102: Die Vorlagenressource wird an ihrer kanonischen Kennung erkannt — nie am Namen.
     const vorlagen = alle.filter(k => KAT.istVorlagenKatalog(k));
     const eigene = alle.filter(k => !KAT.istVorlagenKatalog(k));
@@ -1676,7 +1719,10 @@
     // Der Katalogpfad kommt aus sembla-katalog.js — er definiert zugleich die kanonische
     // Vorlagenidentitaet der geladenen Browserressource (#102). Zwei Pfadangaben waeren zwei
     // Identitaeten.
-    katalog: { pfad: KAT.VORLAGE_KATALOG_PFAD, quelle: 'SEMBLA_Standardkatalog.json (Repo-Vorlage)' },
+    // Die Quellenangabe traegt bewusst KEINEN Dateinamen: welcher Pfad die aktuelle
+    // Fassung ist, sagt allein die Konstante — ein zweiter fest verdrahteter Name war
+    // schon einmal veraltet (#129).
+    katalog: { pfad: KAT.VORLAGE_KATALOG_PFAD, quelle: 'SEMBLA Standardkatalog (Repo-Vorlage)' },
   };
 
   /** Vorlagentext holen. Fehler werden benannt, nicht stillschweigend geschluckt. */
@@ -2055,6 +2101,10 @@
   // --- Auffrischen ---------------------------------------------------------
   store.abonniere(trRender);
   trRender();
+  // #129 Das Vorlagenverzeichnis einmal lesen und die Warnungen nachziehen: erst damit
+  // kann der Warnkasten einen veralteten Standardkatalog benennen. Ohne Verzeichnis
+  // bleibt alles wie gezeichnet — gemeldet wird dann nichts, geraten auch nichts.
+  manifestLaden().then((m) => { if (m) trWarnungen(); });
 </script>
 </body>
 </html>

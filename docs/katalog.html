@@ -161,20 +161,19 @@
       fachlich hingehört: in <b>Modul&nbsp;1</b> (Steine, Vorspannung, Anschluss inkl. getrennter
       Boden-/Kopfbleche, Fugen) und <b>Modul&nbsp;2</b> (Lattenstange, Beplankungsplatte,
       Verbinderprodukt) — jeweils direkt aus dem vollständigen Katalog ([P-13]).<br>
-      „<b>Standardkatalog laden</b>“ liest bei jeder Bedienung die mitgelieferte Repo-Vorlage
-      (<code>vorlagen/SEMBLA_Standardkatalog.json</code>, Katalogformat&nbsp;v1 — sie wird beim
-      Laden nach v2 migriert) <b>frisch</b>; eigene Kataloge und frühere Kopien bleiben unangetastet.<br>
-      <b>Der Standardkatalog ist eine unveränderliche Vorlage.</b> Erkannt wird sie an einer
-      kanonischen, aus dem Vorlagenpfad abgeleiteten Kennung — <b>nie am Katalognamen</b>. Erneutes
-      Laden stellt deshalb immer den aktuellen Repo-Stand her und ersetzt <b>nur</b> diese eine
-      Ressource. Die <b>erste Bearbeitung</b> (Katalogname, Produkt anlegen, bearbeiten oder löschen)
-      <b>fragt vorher ausdrücklich nach</b> und nennt dabei den Namen der entstehenden
-      <b>eigenen Variante</b>: „Abbrechen“ speichert nichts und legt keine Variante an;
-      „OK“ legt sie mit neuer Kennung an, speichert die Änderung dort und sagt in einem
-      <b>hervorgehobenen Hinweis</b>, welche Variante jetzt bearbeitet wird und wie es um die
-      Projektzuordnung steht. Die Vorlage, andere Projekte, eigene Kataloge und frühere
-      Varianten bleiben unverändert. Zusammengeführt oder rekonstruiert wird nichts, und es
-      gibt keine Katalog-Historie.<br>
+      <b>Der Standardkatalog wird versioniert herausgegeben (#118):</b> eine geänderte Fassung
+      ersetzt keine bestehende, sondern tritt als eigene Datei daneben — welche es gibt, steht
+      oben in der Repo-Liste. „<b>Laden und ansehen</b>“ liest die Fassung <b>frisch</b> aus dem
+      Repo in genau eine Browserressource (erkannt an der kanonischen, aus dem Vorlagenpfad
+      abgeleiteten Kennung — <b>nie am Katalognamen</b>); eigene Kataloge und frühere Kopien
+      bleiben unangetastet.<br>
+      <b>Repo-Vorlagen werden nicht bearbeitet (#119).</b> Der Weg zum Ändern ist das
+      ausdrückliche „<b>Als eigenen Katalog übernehmen</b>“ — der eigene Katalog bekommt eine
+      neue Kennung, die Vorlage bleibt unverändert daneben. Ein Slot mit der Marke
+      „<b>veraltet — nicht mehr herausgegeben</b>“ ist ein Altbestand aus der Zeit vor der
+      Fassungsverwaltung: sein Inhalt entspricht keiner herausgegebenen Fassung; er lässt sich
+      ansehen, als eigener Katalog übernehmen oder aus dem Browser entfernen (#129).
+      Zusammengeführt oder rekonstruiert wird nichts, und es gibt keine Katalog-Historie.<br>
       <b>Startklar statt leer ([P-18]):</b> Jedes Produkt kann im Feld <code>rollen</code> die
       Verwendungsstelle nennen, die es im Regelfall ausführt. Beim Anlegen einer Wand und beim
       Laden/Importieren eines Katalogs übernehmen <b>nur noch leere</b> Verwendungsstellen diese
@@ -430,6 +429,25 @@ function kListen(){
                    : kBtn('laden', f.pfad, 'Laden und ansehen')),
         marken);
     }).join('');
+    // #129 VERALTETE Vorlagen-Slots: gespeicherte Vorlagenressourcen, deren Pfad in
+    // keiner herausgegebenen Fassung mehr steht (Altbestand aus der Zeit vor der
+    // Versionierung, #118). Sie waren vorher UNSICHTBAR — nicht im Verzeichnis, also
+    // nicht in der Repo-Liste; Vorlage, also nicht in der lokalen Liste — und damit
+    // weder ansehbar noch entfernbar. Hier stehen sie benannt: ansehen, als eigenen
+    // Katalog uebernehmen (der gespeicherte Stand, nicht die Repo-Datei — nur ihn hat
+    // der Nutzer wirklich benutzt) oder aus dem Browser entfernen.
+    const veraltet = store.listeKataloge()
+      .filter((k) => KAT.fassungsStand(k, VORL_FASSUNGEN).stand === 'veraltet');
+    if (veraltet.length) {
+      repo.innerHTML += veraltet.map((k) => kZeileHtml(
+        { id: k.id, name: k.name, anzahl: k.produkte.length,
+          zusatz: 'Altbestand aus der Zeit vor der Fassungsverwaltung — der Inhalt '
+            + 'entspricht keiner herausgegebenen Fassung' },
+        kBtn('ansehen', k.id, 'Inhalt ansehen')
+        + kBtn('uebernehmen-gespeichert', k.id, 'Als eigenen Katalog übernehmen', 'p')
+        + kBtn('vorlage-entfernen', k.id, 'Aus Browser entfernen', 'd'),
+        ['nur lesen', 'veraltet — nicht mehr herausgegeben'])).join('');
+    }
   }
 
   // (b) Lokal: alles Bearbeitbare.
@@ -895,11 +913,39 @@ function katVerdrahte(){
       return;
     }
 
+    if (akt === 'uebernehmen-gespeichert') {
+      // #129 Uebernahme eines VERALTETEN Vorlagen-Slots: kopiert wird der GESPEICHERTE
+      // Stand — genau der, mit dem der Nutzer bisher gearbeitet hat —, nicht eine
+      // Repo-Datei (die es zu diesem Pfad nicht mehr herausgegeben gibt). Der Weg ist
+      // der Kopierschutz von `setzeKatalog`: die Vorlage bleibt unveraendert daneben.
+      const k = store.katalogNachId(String(wert));
+      if (!k) { kZeige('Dieser Katalog ist nicht mehr vorhanden.', false); return; }
+      const vorhanden = new Set(store.listeKataloge().map(x => x.name));
+      let name = k.name + ' (eigener Katalog)';
+      for (let n = 2; vorhanden.has(name); n++) name = k.name + ` (eigener Katalog ${n})`;
+      let erg;
+      try { erg = store.setzeKatalog({ ...k, name }, { zuordnen: false }); }
+      catch (e) { kZeige('Nicht angelegt: ' + fehlerText(e), false); return; }
+      KID = String(erg.id);
+      kFrisch(`Eigener Katalog „${name}“ aus dem gespeicherten Stand angelegt `
+        + `(${erg.produkte.length} Produkt(e)) und zur Bearbeitung gewählt. `
+        + 'Der veraltete Vorlagen-Slot bleibt daneben stehen, bis er entfernt wird.');
+      return;
+    }
+
     if (akt === 'vorlage-entfernen') {
       const k = store.katalogNachId(String(wert));
       if (!k) return;
+      // #129 Der Text unterscheidet, ob die Fassung wieder ladbar ist: eine herausgegebene
+      // steht im Verzeichnis, ein veralteter Slot nicht — entfernt ist er endgueltig weg
+      // (vorher „Als eigenen Katalog uebernehmen“, wenn der Stand noch gebraucht wird).
+      const wiederLadbar = KAT.fassungsStand(k, VORL_FASSUNGEN).stand !== 'veraltet';
       if (!confirm(`„${k.name}“ aus diesem Browser entfernen?\n\n`
-        + 'Die Repo-Vorlage selbst bleibt bestehen und ist jederzeit wieder ladbar. '
+        + (wiederLadbar
+          ? 'Die Repo-Vorlage selbst bleibt bestehen und ist jederzeit wieder ladbar. '
+          : 'Diese Fassung wird nicht mehr herausgegeben — nach dem Entfernen ist genau '
+            + 'dieser Stand nicht wieder ladbar. Wird er noch gebraucht, vorher „Als '
+            + 'eigenen Katalog übernehmen“. ')
         + 'Verwendet ein Projekt sie noch, bleibt sie erhalten.')) return;
       try { store.loescheKatalog(k.id); }
       catch (e) { kZeige('Nicht entfernt: ' + fehlerText(e), false); return; }

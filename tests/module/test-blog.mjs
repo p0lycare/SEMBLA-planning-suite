@@ -39,16 +39,30 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Der FRISCHE AUSGABESTAND (#98, Nachtrag zu #120) ist der neueste Eintrag — er wird als
-// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
-// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH, dass die AUSGABEN (Zeichnungs-PDFs,
-// Gesamt-/Baustellenstueckliste, Einkaufsliste, Modul 4, Modul 5) den Stand der aktuellen
-// Produktauswahl zeigen — READ-ONLY gerechnet wie Modul 7 seit #120. NICHT versprochen werden
-// ein Schreibweg, eine geaenderte Rechnung, ein neues Feld oder ein Versionssprung; Wanddateien
-// und Projektarchiv transportieren weiter den gespeicherten Stand ([L-13]).
-const FRISCH_98 = EINTRAEGE[0];
-ok("[#98] der frische Ausgabestand ist der neueste Eintrag",
+// Die KATALOGFASSUNGS-BEHANDLUNG (#129) ist der neueste Eintrag — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die MELDUNG veralteter Fassungen
+// (Modul 0) und die BEHANDELBARKEIT alter Vorlagen-Slots (Modul 10: ansehen, uebernehmen,
+// entfernen) plus der Freeze-Test der herausgegebenen Fassungen. NICHT versprochen werden
+// ein automatischer Fassungswechsel, ein neues gespeichertes Feld oder ein Versionssprung.
+const FRISCH_129 = EINTRAEGE[0];
+ok("[#129] die Katalogfassungs-Behandlung ist der neueste Eintrag",
+  FRISCH_129?.id === "chg-20260915-01" && FRISCH_129?.issue === 129
+  && FRISCH_129?.typ === "fix" && FRISCH_129?.datum === "2026-09-15"
+  && /[Vv]eraltet/.test(FRISCH_129?.titel || "")
+  && /eingefroren/.test(FRISCH_129?.titel || ""));
+ok("[#129] die Testbitte prueft Warnkasten (Modul 0) und Vorlagen-Slot (Modul 10)",
+  /Modul 0/.test(FRISCH_129?.testbitte || "") && /Modul 10/.test(FRISCH_129?.testbitte || "")
+  && /[Ww]arnkasten/.test(FRISCH_129?.testbitte || ""));
+
+// Davor der FRISCHE AUSGABESTAND (#98, Nachtrag zu #120) — ueber die Kennung gesucht,
+// weil er nicht mehr der neueste Eintrag ist. Seine Aussagen bleiben unveraendert:
+// die AUSGABEN (Zeichnungs-PDFs, Gesamt-/Baustellenstueckliste, Einkaufsliste, Modul 4,
+// Modul 5) zeigen den Stand der aktuellen Produktauswahl — READ-ONLY gerechnet wie
+// Modul 7 seit #120; kein Schreibweg, keine geaenderte Rechnung, kein Versionssprung.
+const FRISCH_98 = EINTRAEGE.find(e => e.id === "chg-20260914-04");
+ok("[#98] der frische Ausgabestand steht mit seiner Kennung in der Reihe",
   FRISCH_98?.id === "chg-20260914-04" && FRISCH_98?.issue === 98
   && FRISCH_98?.typ === "fix" && FRISCH_98?.datum === "2026-09-14"
   && /Produktauswahl/.test(FRISCH_98?.titel || "")

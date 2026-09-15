@@ -2809,7 +2809,13 @@ new Function(...BINDUNGEN, src)(
 const frischKatalog = globalThis.localStorage.getItem('sembla:kataloge');
 const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
 globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
-ok('Initialisierung ruft KEIN fetch auf (kein Autoload)', frischeAufrufe.length === 0);
+// #129: Beim Initialisieren wird hoechstens das VORLAGENVERZEICHNIS gelesen — die eine
+// read-only Metadatei, aus der der Warnkasten einen veralteten Standardkatalog benennen
+// kann, OHNE dass der Nutzer erst den Projekt-Dialog oeffnen muss. Ein Katalog wird dabei
+// weiterhin NIE geladen und NICHTS geschrieben (die zwei ok-Zeilen darunter); jede
+// Vorlage selbst haengt unveraendert an einer Bedienung (Quelltext-Zaehlung unten).
+ok('Initialisierung liest hoechstens das Vorlagenverzeichnis (kein Katalog-Autoload, #129)',
+  frischeAufrufe.every(p => p === KAT.VORLAGEN_MANIFEST_PFAD) && frischeAufrufe.length <= 1);
 ok('Initialisierung legt keinen Katalog an', frischKatalog === null);
 ok('Initialisierung legt kein Wandelement an', frischElemente === null);
 // #56: Der Anlegen-Handler ist entfallen und mit ihm sein Nachladen des Standardkatalogs —
@@ -2819,10 +2825,11 @@ ok('Initialisierung legt kein Wandelement an', frischElemente === null);
 ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
   // #108: Der Katalogvorlagen-Knopf ist mit der Pflege nach Modul 10 gezogen; in Modul 0
   // bleiben die Wandvorlage und die Standardkatalog-Vorbelegung der Projektanlage (#68).
-  // #118 Dazu kommen zwei Aufrufe fuer die herausgegebenen Fassungen: das Verzeichnis beim
-  // OEFFNEN des Projekt-Dialogs und die gewaehlte Fassung beim SPEICHERN. Beide haengen an
-  // einer Bedienung, nicht am Seitenstart — dass beim Initialisieren nichts geholt wird,
-  // prueft der fetch-Zaehler oben unabhaengig davon.
+  // #118 Dazu kommen die herausgegebenen Fassungen: die gewaehlte Fassung wird beim
+  // SPEICHERN des Projekt-Dialogs geholt (Bedienung). Das VERZEICHNIS liest seit #129
+  // `manifestLaden` — beim Seitenstart (fuer den Warnkasten) und beim Oeffnen des
+  // Dialogs; es ist read-only Metadaten, kein Katalog. Dass die Initialisierung
+  // hoechstens dieses eine Verzeichnis holt, prueft der fetch-Zaehler oben.
   (src.match(/vorlageText\(/g) || []).length === 5           // 1 Definition + 4 Aufrufe
   && (src.match(/fetch\(/g) || []).length === 1);
 
