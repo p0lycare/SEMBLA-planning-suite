@@ -211,9 +211,14 @@ function build(w){
     const tl3d=topLagen?topLagen(w):null;
     const lt3d=k=>(tl3d&&tl3d[k]!=null)?tl3d[k]*course:H;
     for(const col of (w.tension_columns||[])){ const x=col.x_mm*MM; const lt=lt3d(col.k);
-      for(const sg of (col.segments||[])){ const h=(sg.z1_mm-sg.z0_mm); const cz=(sg.z0_mm+h/2)*MM;
-        group.add(box(34*MM,34*MM,h*MM,x,(T/2)*MM,cz,matSteel));
+      for(const sg of (col.segments||[])){
         const au=sg.anker_unten||(sg.z0_mm===0?'bodenblech':'spannplatte');
+        // #128/[A-19]: die Stange beginnt am Bodenblech eine halbe Kopplungsmutterhoehe ueber
+        // dem Segmentfuss (Fussoffset aus dem Wandelement) — dieselbe Weiche wie in den
+        // zeichnenden Lesern (sembla-montage.js); ohne Katalogmass ist der Offset 0.
+        const fo=(au==='bodenblech')?((w.prestress&&w.prestress.rod_fuss_offset_mm)||0):0;
+        const z0=sg.z0_mm+fo, h=(sg.z1_mm-z0), cz=(z0+h/2)*MM;
+        group.add(box(34*MM,34*MM,h*MM,x,(T/2)*MM,cz,matSteel));
         const ao=sg.anker_oben||(sg.z1_mm===lt?topConn:'spannplatte');
         if(au!=='bodenblech') group.add(box(120*MM,90*MM,16*MM,x,(T/2)*MM,sg.z0_mm*MM,matPlate));
         if(ao==='spannplatte') group.add(box(120*MM,90*MM,16*MM,x,(T/2)*MM,sg.z1_mm*MM,matPlate));

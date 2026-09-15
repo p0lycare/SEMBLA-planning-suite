@@ -448,20 +448,44 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
     const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(zK30.svg)[1];
     const b = [...kop.matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
     return b.length > 0 && b.every(v => Math.abs(v - rnd(SPANN_MM.d * E)) < 1e-3); })());
-  // Der eigentliche Nachweis, dass NUR gezeichnet wurde: alles ausser den mutterfarbenen
-  // Rechtecken (Kopplungsmuttern, Schraube, Spannmuttern) ist zwischen "mit Mass" und "ohne
-  // Mass" BYTEGLEICH — Steine, Bleche, Stangenstuecke, Bemassung und Masstab inbegriffen.
-  ok("[#97] Stangenzuschnitt, Bleche, Bemassung und Masstab bleiben wertgleich", (() => {
+  // Der Nachweis, dass NUR Vorspannsymbole und Stangengeometrie am Offset haengen (#128):
+  // alles ausser den mutterfarbenen Rechtecken (Kopplungsmuttern, Schraube, Spannmuttern),
+  // der Kopplungsgruppe und der Stangengruppe ist zwischen "mit Mass" und "ohne Mass"
+  // BYTEGLEICH — Steine, Bleche, Bemassung und Masstab inbegriffen. Die Stangengruppe selbst
+  // darf seit #128 NICHT mehr gleich sein: die Stange beginnt mit Mass eine halbe
+  // Mutternhoehe hoeher ([A-19]).
+  ok("[#97]/[#128] Steine, Bleche, Bemassung und Masstab bleiben wertgleich", (() => {
     const strip = t => t.replace(new RegExp(`<rect[^>]*fill="${Z.FARBE.mutter}"/>`, "g"), "")
-      .replace(/<g class="kop">[\s\S]*?<\/g>/, "");
+      .replace(/<g class="kop">[\s\S]*?<\/g>/, "")
+      .replace(/<g class="stg">[\s\S]*?<\/g>/, "");
+    const stg = t => /<g class="stg">([\s\S]*?)<\/g>/.exec(t)[1];
     return zK30.masstab === zKo.masstab && strip(zK30.svg) === strip(zKo.svg)
-      && strip(zK30.svg).length > 0; })());
-  ok("[#97] auch die Stueckliste des Blattes bleibt wertgleich",
-    JSON.stringify(semblaBomItems(WKU30)) === JSON.stringify(semblaBomItems(WKUo))
-    && JSON.stringify(WKU30.tension_columns.flatMap(c => c.segments)
-        .map(g => stangenStuecke(WKU30, g)))
-      === JSON.stringify(WKUo.tension_columns.flatMap(c => c.segments)
-        .map(g => stangenStuecke(WKUo, g))));
+      && strip(zK30.svg).length > 0 && stg(zK30.svg) !== stg(zKo.svg); })());
+  // Die STUECKLISTE (Mengen, Fertigmasse) bleibt wertgleich — der Offset ist Einbaulage,
+  // kein Material. Die gezeichneten Stuecke wandern dagegen um GENAU den Offset nach oben
+  // (#128/[A-19]): gleicher Zuschnitt, am Bodenblech-Segment um 15 mm angehobene Spannen.
+  ok("[#97]/[#128] Stueckliste wertgleich, Stuecke um den Fussoffset angehoben", (() => {
+    if (JSON.stringify(semblaBomItems(WKU30)) !== JSON.stringify(semblaBomItems(WKUo)))
+      return false;
+    const segs30 = WKU30.tension_columns.flatMap(c => c.segments);
+    const segsO = WKUo.tension_columns.flatMap(c => c.segments);
+    return segs30.every((g, i) => {
+      const a = stangenStuecke(WKU30, g), b = stangenStuecke(WKUo, segsO[i]);
+      const fo = (g.anker_unten || (g.z0_mm === 0 ? "bodenblech" : "spannplatte"))
+        === "bodenblech" ? 15 : 0;
+      return a.length === b.length && a.every((s, j) =>
+        s.len_mm === b[j].len_mm && s.art === b[j].art
+        && Math.abs(s.z0_mm - (b[j].z0_mm + fo)) < 1e-9
+        // Das LETZTE Stueck endet beidseits am Segmentende/Materialende ([Z-6]) — nur die
+        // inneren Stoesse wandern mit.
+        && (j === a.length - 1 || Math.abs(s.z1_mm - (b[j].z1_mm + fo)) < 1e-9));
+    }); })());
+  ok("[#128] die gezeichnete Stange beginnt eine halbe Mutternhoehe ueber dem Bodenblech",
+    WKU30.tension_columns.flatMap(c => c.segments)
+      .filter(g => (g.anker_unten || (g.z0_mm === 0 ? "bodenblech" : "spannplatte"))
+        === "bodenblech")
+      .every(g => stangenStuecke(WKU30, g)[0].z0_mm === g.z0_mm + 15
+        && stangenEnden(WKU30, g)[0] === g.z0_mm + 15 + g.stuecke[0].len_mm));
   // [D-4]/#97 Muss: Modul 1 und Modul 7 messen dieselbe Mutternhoehe. Das Blatt rechnet in
   // Papier-mm (`1/masstab`), die Wandansicht in ihren viewBox-Einheiten — verglichen wird das
   // ZURUECKGERECHNETE Bauteilmass in mm, und das muss beidseits 30 mm sein.

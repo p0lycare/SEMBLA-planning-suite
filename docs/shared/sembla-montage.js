@@ -835,6 +835,29 @@ function _stueck(w, sg) {
 }
 
 /**
+ * Realer STANGENBEGINN eines Segments ueber dem Segmentfuss ([A-19]/#92, #128).
+ *
+ * Am Bodenblech steckt die Sechskantschraube von unten zur Haelfte in der aufliegenden
+ * Kopplungsmutter; die erste Gewindestange greift von oben in DIESELBE Mutter und beginnt
+ * damit eine HALBE Mutternhoehe ueber dem Segmentfuss — genau der Fussoffset, um den der
+ * Core seit #92 den Bedarf verkuerzt (`kombiniereSegment`, `prestress.rod_fuss_offset_mm`).
+ * Bis #128 stapelten die zeichnenden Leser ihre Stuecke trotzdem ab `z0_mm` (die in
+ * sembla-core.js benannte, bewusst offene Luecke aus #97); seit #128 beginnt die gezeichnete
+ * Stange dort, wo der gerechnete Bedarf beginnt — Stuecke und Kopplungshoehen wandern also
+ * gemeinsam um den Offset nach oben. Anker (Schraube, Fuss-Kopplungsmutter, Spannplatte)
+ * bleiben unveraendert an ihrer Position.
+ *
+ * Der Offset gilt NUR am Bodenblech (ein Segment auf einer Spannplatte beginnt unveraendert
+ * am Segmentfuss — dieselbe Weiche wie im Core) und nur, wenn das Katalogmass gefuehrt ist;
+ * ohne Mass ist er 0 und alles bleibt bit-genau. Hier wird nichts nachgerechnet: gelesen
+ * wird dasselbe Feld, das der Core beim Auslegen geschrieben hat.
+ */
+function _fussOffset(w, sg) {
+  const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
+  return au === "bodenblech" ? ((w.prestress && w.prestress.rod_fuss_offset_mm) || 0) : 0;
+}
+
+/**
  * Oberkanten der einzelnen Stangen eines Segments (letzter Wert = Segmentende).
  *
  * Quelle ist die KANONISCHE Stueckliste des Segments (`stuecke`, [Z-2]/[Z-3]): die
@@ -852,14 +875,18 @@ function _stueck(w, sg) {
  */
 export function stangenEnden(w, sg) {
   const out = [];
+  // #128 Kumuliert wird ab dem realen STANGENBEGINN (Fussoffset [A-19]), nicht ab dem
+  // Segmentfuss: die Stoesse liegen um genau den Offset hoeher — dieselbe Geometrie, aus der
+  // der Core den Bedarf rechnet. Ohne gefuehrtes Katalogmass ist der Offset 0 (bit-genau).
+  const fo = _fussOffset(w, sg);
   if (Array.isArray(sg.stuecke) && sg.stuecke.length) {
-    let z = sg.z0_mm;
+    let z = sg.z0_mm + fo;
     for (const st of sg.stuecke) { z += st.len_mm; out.push(z); }
     out[out.length - 1] = sg.z1_mm;           // Rundungsschutz: letztes Ende ist das Segmentende
     return out;
   }
   const rod = _rod(w), st = _stueck(w, sg);
-  for (let j = 1; j < st; j++) out.push(sg.z0_mm + j * rod);
+  for (let j = 1; j < st; j++) out.push(sg.z0_mm + fo + j * rod);
   out.push(sg.z1_mm);
   return out;
 }
@@ -889,8 +916,11 @@ export function stangenStuecke(w, sg) {
   const hat = Array.isArray(sg.stuecke);
   if (hat && !sg.stuecke.length) return [];
   const out = [];
+  // #128 Gestapelt wird ab dem realen STANGENBEGINN ([A-19]): am Bodenblech eine halbe
+  // Kopplungsmutterhoehe ueber dem Segmentfuss — dort, wo der gerechnete Bedarf beginnt.
+  const fo = _fussOffset(w, sg);
   if (hat) {
-    let z = sg.z0_mm;
+    let z = sg.z0_mm + fo;
     for (let i = 0; i < sg.stuecke.length; i++) {
       const st = sg.stuecke[i], letzter = i === sg.stuecke.length - 1;
       const ende = z + st.len_mm;
@@ -901,7 +931,7 @@ export function stangenStuecke(w, sg) {
     return out;
   }
   const enden = stangenEnden(w, sg);
-  let z = sg.z0_mm;
+  let z = sg.z0_mm + fo;
   for (let i = 0; i < enden.length; i++) {
     out.push({ z0_mm: z, z1_mm: enden[i], len_mm: enden[i] - z,
       art: stueckArt(w, sg, i, i === enden.length - 1) });
@@ -945,7 +975,11 @@ export function stueckArt(w, sg, i, letzter) {
 function _stueckeSicht(w, sg, echtMm, obenMm) {
   if (!Array.isArray(sg.stuecke) || !sg.stuecke.length) return [];
   const out = [];
-  let z = sg.z0_mm, material = sg.z0_mm;
+  // #128 Auch der Montagestand stapelt ab dem realen Stangenbeginn ([A-19]) — dieselbe
+  // Geometrie wie `stangenStuecke()`/`stangenEnden()`, sonst laege der Zwischenstand tiefer
+  // als das fertige Blatt.
+  const fo = _fussOffset(w, sg);
+  let z = sg.z0_mm + fo, material = sg.z0_mm + fo;
   for (let i = 0; i < sg.stuecke.length; i++) {
     const art = stueckArt(w, sg, i, i === sg.stuecke.length - 1);
     const z1 = z + sg.stuecke[i].len_mm;

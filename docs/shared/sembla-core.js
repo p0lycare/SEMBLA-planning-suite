@@ -1374,14 +1374,11 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter });
       // `z0_mm` bleibt STEINGEOMETRIE (daran haengen Lagen, Belegung und die Zwischenpunkte).
       // Der reale Stangenbeginn liegt um `fussOffset` hoeher, bekommt hier aber BEWUSST KEIN
-      // eigenes Feld: kein Leser im Umfang dieses Pakets wertet eines aus, und ein Datum ohne
-      // Leser waere ein zweites, ungeprueftes Geometriemodell neben `bedarf_mm`/`stuecke`.
-      //
-      // BEKANNTE LUECKE (#97, bewusst offen): die ZEICHNENDEN Leser stapeln ihre Stuecke
-      // weiterhin ab `z0_mm` (`stangenStuecke` in sembla-montage.js). Die gezeichnete Stange
-      // beginnt daher weiter an der Steinunterkante, waehrend der gerechnete Bedarf schon
-      // verkuerzt ist. Das ist Darstellung und wird in #97 nachgezogen — hier wird dafuer
-      // NICHTS ersatzweise angepasst.
+      // eigenes Feld: die zeichnenden Leser leiten ihn seit #128 selbst aus `anker_unten` +
+      // `prestress.rod_fuss_offset_mm` ab (`_fussOffset` in sembla-montage.js) — dieselbe
+      // Weiche wie oben, und ein Datum ohne eigenen Leser waere ein zweites, ungeprueftes
+      // Geometriemodell neben `bedarf_mm`/`stuecke`. Die frueher hier benannte Luecke aus #97
+      // (Stuecke gezeichnet ab `z0_mm` statt ab dem Stangenbeginn) ist damit GESCHLOSSEN.
       r = r2 + 1;
     }
     if (!segs.length) continue;

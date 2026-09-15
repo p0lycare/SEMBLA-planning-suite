@@ -138,7 +138,13 @@ export function einbauteile(w) {
     for (let si = 0; si < segs.length; si++) {
       const sg = segs[si];
       const roh = Array.isArray(sg.stuecke) ? sg.stuecke : _altStuecke(sg, col, rodFallback);
-      let z = +sg.z0_mm || 0;
+      // #128/[A-19]: die Einbaulage beginnt am realen STANGENBEGINN — am Bodenblech eine
+      // halbe Kopplungsmutterhoehe (Fussoffset #92) ueber dem Segmentfuss. Dieselbe Weiche
+      // wie in den zeichnenden Lesern (`_fussOffset` in sembla-montage.js); ohne gefuehrtes
+      // Katalogmass ist der Offset 0 und alles bleibt bit-genau.
+      const au = sg.anker_unten || (sg.z0_mm === 0 ? "bodenblech" : "spannplatte");
+      const fo = au === "bodenblech" ? ((w.prestress && w.prestress.rod_fuss_offset_mm) || 0) : 0;
+      let z = (+sg.z0_mm || 0) + fo;
       for (let i = 0; i < roh.length; i++) {
         const s = roh[i];
         const len = Math.round(s.len_mm);

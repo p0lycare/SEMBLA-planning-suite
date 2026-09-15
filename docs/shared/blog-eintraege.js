@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260915-04",
+    datum: "2026-09-15",
+    typ: "fix",
+    issue: 128,
+    titel: "Die unterste Gewindestange beginnt in allen Ansichten wieder auf halber Kopplungsmutterhöhe",
+    testbitte: "In Modul 1, Modul 7 und der 3D-Vorschau prüfen: die erste Stange setzt sichtbar in der "
+      + "Fußmutter an, nicht an der Blechoberkante — Schraube, Blech und Fußmutter bleiben, wo sie waren",
+  },
+  {
     id: "chg-20260915-03",
     datum: "2026-09-15",
     typ: "fix",

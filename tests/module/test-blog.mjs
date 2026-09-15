@@ -46,8 +46,24 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-const FRISCH_131 = EINTRAEGE[0];
-ok("[#131] die Katalogauswahl nach Herkunft ist der neueste Eintrag",
+// Der NEUESTE Eintrag ist die STARTPOSITION DER GEWINDESTANGEN (#128). Geliefert: die
+// zeichnenden Leser stapeln ihre Stuecke ab dem realen Stangenbeginn nach [A-19] — eine
+// halbe Kopplungsmutterhoehe ueber dem Bodenblech — statt ab der Steinunterkante. NICHT
+// versprochen werden geaenderte Mengen, eine geaenderte Fachregel oder die bis heute
+// fehlende Fussfolge im Modul-5-Baugruppenbild.
+const FRISCH_128 = EINTRAEGE[0];
+ok("[#128] die Startposition der Gewindestangen ist der neueste Eintrag",
+  FRISCH_128?.id === "chg-20260915-04" && FRISCH_128?.issue === 128
+  && FRISCH_128?.typ === "fix" && FRISCH_128?.datum === "2026-09-15"
+  && /unterste Gewindestange/.test(FRISCH_128?.titel || "")
+  && /halber Kopplungsmutterhöhe/.test(FRISCH_128?.titel || ""));
+ok("[#128] die Testbitte nennt die Ansichten und die unveraenderten Fussbauteile",
+  /Modul 7/.test(FRISCH_128?.testbitte || "")
+  && /Fußmutter/.test(FRISCH_128?.testbitte || ""));
+
+// Davor die KATALOGAUSWAHL NACH HERKUNFT (#131) — ueber die Kennung gesucht.
+const FRISCH_131 = EINTRAEGE.find(e => e.id === "chg-20260915-03");
+ok("[#131] die Katalogauswahl nach Herkunft steht mit ihrer Kennung in der Reihe",
   FRISCH_131?.id === "chg-20260915-03" && FRISCH_131?.issue === 131
   && FRISCH_131?.typ === "fix" && FRISCH_131?.datum === "2026-09-15"
   && /zwei Gruppen/.test(FRISCH_131?.titel || "")
