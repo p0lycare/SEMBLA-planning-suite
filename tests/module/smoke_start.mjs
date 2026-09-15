@@ -1062,7 +1062,7 @@ ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
                 'verbrauch-senkkopfschraube-fuss'];
   ok('#97 die vorbelegte Fassung ist die aus VORLAGE_KATALOG_PFAD',
     kat().id === KAT.vorlageKatalogId(KAT.VORLAGE_KATALOG_PFAD)
-    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v2/.test(kat().name));
+    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v3/.test(kat().name));
   ok('#97 Spannmutter, Mutter Einlegeblech und Sechskantschraube Fuß fuehren SW 17 mm',
     SW97.every(id => KAT.produkt(kat(), id).sw_mm === 17));
   ok('#97 die Herleitung aus dem Gewinde M10 steht am Produkt, nicht im Testtext',
@@ -2469,8 +2469,14 @@ globalThis.fetch = echtesFetch;
   const csvZeilen = (t) => t.split('\n').map(z => z.split(';'));
   const zeigerJetzt = () => JSON.stringify([store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()]);
   /** Reine Erwartung: Summe der kanonischen Wandstuecklisten. */
+  // #130: die Ausgaben rechnen jede Wand ueber den FRISCHEN Leser (voller Vorspann-
+  // Eingangssatz aus Auswahl + Katalog) — die Erwartung hier setzt denselben Stand an,
+  // sonst vergliche der Test zwei verschiedene Staende.
+  const holeFrisch = WA.aktualisierteLeser({
+    holeElement: (id) => store.holeElement(id), holeEingaben: (id) => store.holeEingaben(id),
+    katalog: katalogG, engine: ENG }).holeElement;
   const erwarteteMengen = (ids) => { const m = new Map();
-    for (const id of ids) for (const p of stuecklistePositionen(store.holeElement(id).wandelement,
+    for (const id of ids) for (const p of stuecklistePositionen(holeFrisch(id).wandelement,
         store.holeEingaben(id), katalogG)) {
       const k = [p.key, p.unit, p.art || '', p.fertigmass_mm ?? ''].join('|');
       m.set(k, (m.get(k) || 0) + p.menge); }
@@ -2562,18 +2568,18 @@ globalThis.fetch = echtesFetch;
   // Genau ein Geschoss, zwei Waende, eine davon mit gespeicherter Uebersteuerung: der
   // Dialog wird geoeffnet, die angepasste Fassung gewaehlt und an den ZIP-BYTES geprueft.
   {
-    const posI3 = stuecklistePositionen(store.holeElement(idG1).wandelement,
+    const posI3 = stuecklistePositionen(holeFrisch(idG1).wandelement,
       store.holeEingaben(idG1), katalogG).find(p => p.key === 'i3');
     const kennung = store.mengenKennung(posI3);
     const berechnetG = [idG1, idG2].reduce((a, id) => a + stuecklistePositionen(
-      store.holeElement(id).wandelement, store.holeEingaben(id), katalogG)
+      holeFrisch(id).wandelement, store.holeEingaben(id), katalogG)
       .find(p => p.key === 'i3').menge, 0);
     store.setzeMengenUebersteuerung(kennung, 7, idG1);
     const wirksamG = berechnetG - posI3.menge + 7;
     /** Kanonische Ableitung der Ebene — dieselbe, die auch Modul 4 benutzt. */
     const sollDatei = (fassung) => {
       const d = GES.gesamtDaten(GES.umfang(store.holeMappe(), 'geschoss', { geschossId: gsG }),
-        { holeElement: (id) => store.holeElement(id), holeEingaben: (id) => store.holeEingaben(id),
+        { holeElement: holeFrisch, holeEingaben: (id) => store.holeEingaben(id),
           katalog: katalogG }, { fassung });
       return gesamtstuecklisteDateien(d, { preise: true, rumpf: GES.dateiRumpf(d) })[0].data;
     };

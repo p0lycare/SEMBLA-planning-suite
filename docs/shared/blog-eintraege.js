@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260915-02",
+    datum: "2026-09-15",
+    typ: "fix",
+    issue: 130,
+    titel: "Alle Ausgaben zeichnen die Bauteile maßstabsgetreu aus dem aktuellen Katalog; Standardkatalog v3",
+    testbitte: "Projekt der Fassung v3 zuordnen und in Modul 7 prüfen, dass Spannplatte, Muttern und "
+      + "Schraube in realen Maßen erscheinen — auch bei Wänden, die lange nicht neu ausgelegt wurden",
+  },
+  {
     id: "chg-20260915-01",
     datum: "2026-09-15",
     typ: "fix",

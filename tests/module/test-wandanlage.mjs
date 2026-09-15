@@ -328,6 +328,10 @@ const roh = () => localStorage.getItem('sembla:elemente');
   // gespeicherten Element.
   const spez = KAT.produktSpezifikation(eing, store.holeKatalog());
   const ps = { ...we.prestress };
+  // #130: `vorgaben()` in Modul 1 bildet den VOLLEN Eingangssatz aus der Auswahl —
+  // die Referenz hier tut seitdem dasselbe (gemeinsamer Baustein, keine zweite Logik).
+  Object.assign(ps, WA.vorspannEingaenge(eing, store.holeKatalog(),
+    ps.top_connection === 'blech' ? 'blech' : 'spannplatte') || {});
   delete ps.rod_mm; delete ps.rod_lengths_mm;
   if (spez.rod.laengen_mm.length) ps.rod_lengths_mm = spez.rod.laengen_mm.slice();
   ps.rod_rest_mm = spez.rod.rest_mm != null ? spez.rod.rest_mm : 0;
@@ -369,6 +373,9 @@ const roh = () => localStorage.getItem('sembla:elemente');
   const erg = WA.wandelementAktualisiert(we, eing, store.holeKatalog(), ENG);
   const spez = KAT.produktSpezifikation(eing, store.holeKatalog());
   const ps = { ...we.prestress };
+  // #130: dieselbe Nachbildung wie oben — voller Eingangssatz aus der Auswahl.
+  Object.assign(ps, WA.vorspannEingaenge(eing, store.holeKatalog(),
+    ps.top_connection === 'blech' ? 'blech' : 'spannplatte') || {});
   delete ps.rod_mm;
   ps.rod_lengths_mm = spez.rod.laengen_mm.slice();
   ps.rod_rest_mm = spez.rod.rest_mm; ps.rod_overhang_mm = we.prestress.rod_overhang_mm;
@@ -429,9 +436,11 @@ const roh = () => localStorage.getItem('sembla:elemente');
     erg.wandelement.length_mm === 3000 && erg.wandelement.height_mm === 2600);
 }
 
-// --- Grenze dieses Pakets: die Nicht-Rod-Eingaenge werden DURCHGEREICHT ----
-// Bewusst so (Vorschlag C / [P-6] ist nicht Teil von #120) — hier festgehalten, damit die
-// Grenze eine gepruefte Aussage ist und keine stille Annahme.
+// --- Die fruehere #120-Grenze ist mit #130 geschlossen ----------------------
+// Bis #130 reisten die Nicht-Rod-Eingaenge unveraendert aus dem gespeicherten Element mit
+// (der dort dokumentierte „Vorschlag C"). Seitdem werden sie aus der AKTUELLEN Auswahl
+// neu gebildet: ein veraltetes Ausweisungsmass wird durch den eindeutigen Katalogwert
+// ersetzt, der Vorratssatz der Bodenblechlaengen kommt vollstaendig aus der Auswahl.
 {
   const p = aufbau();
   const el = stand(p.id);
@@ -441,9 +450,11 @@ const roh = () => localStorage.getItem('sembla:elemente');
   store.speichere(el.name, we, p.id);
   const erg = WA.wandelementAktualisiert(stand(p.id).wandelement, store.holeEingaben(p.id),
                                          store.holeKatalog(), ENG);
-  ok('#120 Grenze: die Nicht-Rod-Eingaenge reisen unveraendert aus dem Element mit',
-    erg.wandelement.prestress.spannplatte_b_mm === 123
-    && JSON.stringify(erg.wandelement.prestress.blech_lengths_mm) === '[500]');
+  ok('#130: ein veraltetes Ausweisungsmass wird aus der aktuellen Auswahl neu gebildet',
+    erg.wandelement.prestress.spannplatte_b_mm === 120);
+  ok('#130: der Vorratssatz der Bodenblechlaengen kommt aus der Auswahl ([A-10])',
+    JSON.stringify(erg.wandelement.prestress.blech_lengths_mm) !== '[500]'
+    && (erg.wandelement.prestress.blech_lengths_mm || []).includes(1250));
 }
 
 
@@ -541,6 +552,63 @@ const roh = () => localStorage.getItem('sembla:elemente');
   mitLuecke.holeElement(p.id);
   ohneKatalog.holeElement(p.id);
   ok('#98/3 der Leser selbst laesst den Speicher byte-gleich', roh() === nachher);
+}
+
+// ===========================================================================
+// #130: Der Frischpfad legt den VOLLEN Vorspann-Eingangssatz aus der aktuellen
+// Produktauswahl ueber den gespeicherten prestress-Block — die frueher dokumentierte
+// #120-Grenze ("nur Gewindestangen-Eingaenge") ist geschlossen. Erst damit wirkt ein
+// Fassungswechsel des Katalogs auf die Darstellung aller lesenden Ausgaben, ohne dass
+// jede Wand einzeln neu ausgelegt werden muss. Katalogquelle ist die herausgegebene
+// Fassung v3 (traegt die #97-Masse inkl. Schluesselweiten).
+// ===========================================================================
+const v3Text = readFileSync(
+  new URL("../../docs/vorlagen/SEMBLA_Standardkatalog-v3.json", import.meta.url), "utf8");
+{
+  globalThis.localStorage = new MemStorage();
+  store.setzeKatalog(KAT.parseKatalog(v3Text));
+  const p = WA.legeWandAn(store, { name: '130-Wand', laenge_mm: 3000, hoehe_mm: 2600,
+                                   wandtyp: 'mit_wind' });
+  // Altbestand simulieren: Wandelement aus der Zeit VOR #97 — prestress ohne die
+  // Ausweisungsmasse und Einbaulagen; die Produktauswahl der Wand ist vorbelegt ([P-18]).
+  const alt = buildWall('130-Wand', 3000, 2600, [], null,
+    { blech_mm: 1000, top_connection: 'spannplatte' });
+  alt.wandtyp = 'mit_wind';
+  store.speichere('130-Wand', alt, p.id);
+  const vorher = roh();
+  ok('#130/1 der gespeicherte Altbestand traegt die #97-Masse nicht',
+    !(store.holeElement(p.id).wandelement.prestress || {}).spannplatte_b_mm);
+  const erg = WA.wandelementAktualisiert(store.holeElement(p.id).wandelement,
+    store.holeEingaben(p.id), store.holeKatalog(), ENG);
+  const ps = (erg.wandelement && erg.wandelement.prestress) || {};
+  ok('#130/1 der Frischpfad leitet die Ausweisungsmasse aus dem Katalog nach (#97)',
+    erg.aktualisiert && ps.spannplatte_b_mm === 120 && ps.kupplung_sw_mm === 17
+    && ps.spannmutter_h_mm === 10 && ps.spannmutter_sw_mm === 17
+    && ps.zp_mutter_h_mm === 8 && ps.zp_mutter_sw_mm === 17 && ps.senkkopf_sw_mm === 17);
+  ok('#130/1 dazu die Einbaulagen (#92): Fussoffset = halbe Mutternhoehe, Kopfzuschlag = Plattendicke',
+    ps.rod_fuss_offset_mm === 15 && ps.rod_kopf_zuschlag_mm === 10);
+  ok('#130/1 die Blechdicke reist mit ([A-1])', ps.blech_dicke_mm === 10);
+  ok('#130/1 der Speicher bleibt byte-gleich ([P-1])', roh() === vorher);
+
+  // Mehrdeutiges Mass: zwei gewaehlte Produkte mit verschiedener Einbauhoehe an der
+  // Spannmutter-Rolle -> kein eindeutiger Wert -> der GESPEICHERTE Wert bleibt stehen,
+  // erfunden oder gemittelt wird nichts ([P-9]). Die eindeutige Schluesselweite (beide
+  // Produkte SW 17) entsteht dagegen weiter — jedes Mass steht fuer sich.
+  const alt2 = buildWall('130-Wand', 3000, 2600, [], null,
+    { blech_mm: 1000, top_connection: 'spannplatte', spannmutter_h_mm: 99 });
+  alt2.wandtyp = 'mit_wind';
+  store.speichere('130-Wand', alt2, p.id);
+  store.setzeProduktrolle('spannmutter',
+    ['verbrauch-spannmutter', 'verbrauch-kopplungsmutter'], p.id);
+  const erg2 = WA.wandelementAktualisiert(store.holeElement(p.id).wandelement,
+    store.holeEingaben(p.id), store.holeKatalog(), ENG);
+  const ps2 = (erg2.wandelement && erg2.wandelement.prestress) || {};
+  ok('#130/2 der Altbestand traegt das gespeicherte Mass',
+    (store.holeElement(p.id).wandelement.prestress || {}).spannmutter_h_mm === 99);
+  ok('#130/2 mehrdeutiges Mass laesst den gespeicherten Wert stehen ([P-9])',
+    erg2.aktualisiert && ps2.spannmutter_h_mm === 99);
+  ok('#130/2 das eindeutige Mass derselben Rolle entsteht trotzdem',
+    ps2.spannmutter_sw_mm === 17);
 }
 
 let fail = 0; for (const [n, c2] of checks){ console.log((c2 ? '  ok  ' : 'FAIL  ') + n); if (!c2) fail++; }

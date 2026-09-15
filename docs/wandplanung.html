@@ -285,6 +285,9 @@ const pct=u=>fmt(u*100,0)+' %';
 const M=1000;
 // aus window.SEMBLA (in __wpInit gebunden):
 let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store, KAT;
+// #130: die eine Liste der Rollen, deren Auswahl den Vorspann-Eingangssatz bildet —
+// aus sembla-wandanlage.js, nicht lokal wiederholt ([P-6]).
+let ROLLE_RECHNUNG;
 // #115 Reparaturdialog (shared/sembla-reparatur.js) — wie alles hier ueber window.SEMBLA.
 let oeffneReparatur;
 // Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
@@ -1488,9 +1491,13 @@ function vorbelegeProdukte(){
   // `blech_boden` gehört dazu, seit der Vorratssatz der Bodenblech-Standardlängen aus der Auswahl
   // kommt ([A-10]): ohne Neurechnen stünde im gespeicherten JSON weiter die Fallback-Aufteilung.
   // `kupplung`/`spannplatte` gehören seit #92 dazu: aus ihren Maßen entstehen Fußoffset und
-  // Kopfzuschlag, also ein anderer Stangenbedarf.
-  const massWirksam=gesetzt.some(r=>r==='rod_std'||r==='rod_rest'||r==='blech_boden'
-    ||r==='kupplung'||r==='spannplatte');
+  // Kopfzuschlag, also ein anderer Stangenbedarf. Seit #130 stehen ALLE Rollen aus
+  // `ROLLE_RECHNUNG` (sembla-wandanlage.js) in der Liste — auch die reinen Ausweisungsmaße (#97: Spannmutter,
+  // Einlegeblech-Mutter, Sechskantschraube, Kopfblechdicke): ihre vorbelegte Auswahl stand
+  // sonst zwar in `eingaben`, ihre Maße aber nicht im GESPEICHERTEN Wandelement — und
+  // Wanddatei/Projektarchiv transportieren genau diesen Stand ([L-13]). Die Liste wird
+  // GELESEN, nicht wiederholt ([P-6]).
+  const massWirksam=gesetzt.some(r=>!!ROLLE_RECHNUNG[r]);
   if(massWirksam) VB_MASS_OFFEN=true;
   return massWirksam;
 }
@@ -1950,6 +1957,7 @@ window.__wpInit=function(){
   const S=window.SEMBLA||{};
   GRID=S.GRID; COURSE=S.COURSE; Opening=S.Opening; buildWall=S.buildWall;
   autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store; KAT=S.KAT;
+  ROLLE_RECHNUNG=S.ROLLE_RECHNUNG;
   oeffneReparatur=S.oeffneReparatur;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
@@ -1999,8 +2007,10 @@ window.__wpInit=function(){
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { oeffneReparatur } from './shared/sembla-reparatur.js';
+  import { ROLLE_RECHNUNG } from './shared/sembla-wandanlage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+                    ROLLE_RECHNUNG,
                     oeffneReparatur,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
                     bodenblechTeile, bodenblechStoesse, BLECHSTOSS,

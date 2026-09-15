@@ -28,7 +28,7 @@
  */
 
 import { buildWall, Opening, ROD_OVERHANG } from "./sembla-core.js";
-import { produktSpezifikation, produktrollenVorschlag, produkteZuRolle, rollenVonModul } from "./sembla-katalog.js";
+import { produktSpezifikation, produktrollenVorschlag, produkteZuRolle, rollenVonModul, rolle } from "./sembla-katalog.js";
 
 /** Verwendungsrollen gehoeren Modul 1 (`planung`) oder Modul 2 (`aufbau`) — sonst nichts. */
 const TEIL = { 1: "planung", 2: "aufbau" };
@@ -165,22 +165,164 @@ export function vorspannText(vorgaben) {
  * Stand, den Modul 1 mit „Auslegen" liefern wuerde; gespeichert bleibt, was gespeichert
  * war ([P-1]: Modul 1 bleibt einziger Schreibweg der Wandplanung).
  *
- * ⚠ GRENZE dieses Pakets (#120): aus der Produktauswahl NEU GEBILDET werden hier
- * ausschliesslich die Gewindestangen-Eingaenge ueber `vorspannVorgaben()` ([Z-1]/[Z-6]).
- * Alle uebrigen aus der Auswahl abgeleiteten Vorspann-Eingaenge — der Vorratssatz der
- * Bodenblechlaengen `blech_lengths_mm` ([A-10]), die Einbaulagen
- * `rod_fuss_offset_mm`/`rod_kopf_zuschlag_mm` (#92) und die reinen Ausweisungsmasse aus
- * #97 (`kupplung_sw_mm`, `spannmutter_h_mm`/`_sw_mm`, `spannplatte_b_mm`,
- * `zp_mutter_h_mm`/`_sw_mm`, `senkkopf_sw_mm`, `blech_dicke_mm`, `kopfblech_dicke_mm`) —
- * werden aus dem GESPEICHERTEN Wandelement DURCHGEREICHT und nicht neu abgeleitet. Fuer
- * den gemeldeten Nutzerfluss genuegt das: der Sammel-Editor und Modul 1 haben sie beim
- * Schreiben bereits aus derselben Auswahl gebildet. Eine Wand, die sie nie hatte,
- * bekommt sie hier NICHT — dafuer braeuchte es den gemeinsamen Rechenbaustein fuer
- * Modul 1 UND den Geschosseditor (Vorschlag C zu #120, der [P-6]-Nachziehpunkt an
- * `vorspannEingaenge`/`ROLLE_RECHNUNG` in `geschossplan.html` und der
- * `einbauMass()`-Familie in `wandplanung.html`). Der ist ausdruecklich NICHT Teil dieses
- * Pakets; erfunden wird hier nichts.
+ * Die fruehere GRENZE dieses Pakets (#120) — nur die Gewindestangen-Eingaenge wurden neu
+ * gebildet, alles Uebrige aus dem gespeicherten Element durchgereicht — ist mit #130
+ * GESCHLOSSEN (der dort benannte „Vorschlag C"): `vorspannEingaenge()` liegt jetzt als
+ * gemeinsamer Baustein in dieser Datei (s. o.), und die Neurechnung legt den VOLLEN Satz
+ * aus der aktuellen Produktauswahl ueber den gespeicherten `prestress`-Block — Vorratssatz
+ * der Bodenblechlaengen ([A-10]), Einbaulagen (#92) und die Ausweisungsmasse aus #97.
+ * Erst damit wirkt ein Fassungswechsel des Katalogs ([L-12]) auf die Darstellung ALLER
+ * lesenden Ausgaben, ohne dass jede Wand einzeln neu ausgelegt werden muss; eine Wand aus
+ * der Zeit vor #97 bekommt ihre Masse hier nach. Ein Mass, das sich aus der Auswahl nicht
+ * eindeutig ergibt, laesst sein Feld weg — dann gilt der gespeicherte Wert, erfunden wird
+ * nichts ([P-9]).
  */
+
+// --- Vorspann-Eingänge aus der Produktauswahl (#111/#117, hierher mit #130) ----------
+// Die Verwendungsstellen, deren Auswahl den Vorspann-Eingangssatz einer Wand bildet.
+// RECHENWIRKSAM sind: Standardlaengen und Reststueck der Gewindestange ([Z-1]/[Z-6]), der
+// Vorratssatz der Bodenblechlaengen ([A-10]) und die beiden Einbaulagen des Spannsystems
+// (#92). Reine AUSWEISUNGSMASSE ohne Rechenbeitrag sind daneben die Blechdicken ([A-1])
+// sowie die Schluesselweite der Kopplungsmutter, Einbauhoehe samt Schluesselweite von
+// Spannmutter und Einlegeblech-Mutter, die Breite der Spannplatte und die
+// Schluesselweite der Sechskantschraube Fuss (#97) — sie stehen in derselben Tabelle,
+// weil sie dieselbe Bahn nehmen: aus der Produktauswahl der Wand ins Wandelement, damit
+// die Ausgaben sie zeichnen koennen, ohne den Katalog zu lesen ([D-1]).
+//
+// Bis #130 lag diese Tabelle im Geschosseditor (Sammel-Editor, #111/#117) und der
+// Read-only-Frischpfad unten kannte sie nicht — der dort dokumentierte „Vorschlag C zu
+// #120". Seit #130 liegt sie HIER als der eine gemeinsame Baustein: der Sammel-Editor
+// delegiert, und `wandelementAktualisiert()` legt denselben Satz ueber den gespeicherten
+// `prestress`-Block. ⚠ Nachziehpunkt [P-6]: die `einbauMass()`-Familie in Modul 1
+// (`wandplanung.html`) bildet dieselben Werte noch einmal fuer ihre Statusmeldungen
+// (keine_auswahl/mehrdeutig je Rolle); die Zahlen sind satzgleich, die Zusammenfuehrung
+// bleibt offen.
+//
+// Jede Stelle laesst ihr Feld WEG, wenn die Auswahl keinen eindeutigen Wert hergibt —
+// dann bleibt der gespeicherte Eingang stehen, erfunden wird nie einer ([P-9]).
+/** @type {Record<string, (eing:any, kat:any, topConn?:string)=>Record<string, any>>} */
+export const ROLLE_RECHNUNG = {
+  rod_std: (eing, kat) => {
+    // #117 Eine LEERE Auswahl setzt das Feld NICHT: ein leeres Feld wuerde einen
+    // gespeicherten Satz LOESCHEN statt ihn stehen zu lassen ([P-9]) — Modul 1 laesst es
+    // aus demselben Grund weg (`vorgaben()`: `rodL.length ? … : {}`), und der Core nutzt
+    // dann seinen dokumentierten Altstand-Fallback.
+    const l = vorspannVorgaben(eing, kat).rod_lengths_mm;
+    return l.length ? { rod_lengths_mm: l.slice() } : {};
+  },
+  // [Z-6] Das Reststueck folgt Modul 1 SATZWEISE: liegt kein eindeutiges Reststueckprodukt
+  // vor, ist `0` die kanonische Aussage „kein Reststueck gewaehlt" (`vorspannVorgaben`) und
+  // keine erfundene Laenge — der offene obere Abschluss steht sichtbar in
+  // `validation.zuschnitt_konflikte`.
+  rod_rest: (eing, kat) => ({ rod_rest_mm: vorspannVorgaben(eing, kat).rod_rest_mm }),
+  blech_boden: (eing, kat) => {
+    const l = rollenMasse(eing, kat, "blech_boden");
+    const d = rollenMass(eing, kat, "blech_boden", "dicke_mm");
+    // [A-1] Die Blechdicke ist ein reines AUSWEISUNGSMASS (keine Rechnung, s. [A-19]) und
+    // reist mit derselben Rolle mit; fehlt sie, entsteht das Feld nicht und die Ausgaben
+    // benennen die Luecke, statt eine Zahl zu erfinden.
+    return { ...(l.length ? { blech_lengths_mm: l } : {}), ...(d != null ? { blech_dicke_mm: d } : {}) };
+  },
+  blech_kopf: (eing, kat, topConn) => {
+    if (topConn !== "blech") return {};                 // ohne Kopfblech gibt es keine Dicke
+    const d = rollenMass(eing, kat, "blech_kopf", "dicke_mm");
+    return d != null ? { kopfblech_dicke_mm: d } : {};
+  },
+  kupplung: (eing, kat) => {
+    const h = rollenMass(eing, kat, "kupplung", "hoehe_mm");
+    // #97 Die Schluesselweite reist mit DERSELBEN Rolle mit — ein reines AUSWEISUNGSMASS,
+    // das die Ausgaben brauchen, um die Mutter masstaeblich zu zeichnen ([D-1]).
+    const sw = rollenMass(eing, kat, "kupplung", "sw_mm");
+    return { ...(h != null ? { rod_fuss_offset_mm: h / 2 } : {}),
+             ...(sw != null ? { kupplung_sw_mm: sw } : {}) };
+  },
+  // #97 Die beiden Masse der Spannplatte tragen VERSCHIEDENE Vorbehalte, deshalb steht der
+  // Ausstieg an der DICKE und nicht an der Rolle: die Dicke ist ein Rechenwert am OBEREN
+  // Anker (der Core wendet `rod_kopf_zuschlag_mm` nur bei `ankerOben === "spannplatte"` an)
+  // und entfaellt bei Kopfblech; die Breite ist ein reines Bauteilmass und entsteht auch
+  // dann — Spannplatten treten nach `ankerUnten`/`ankerOben` auch an Bruestung und Sturz
+  // auf, und Modul 1 prueft fuer die Breite ebenfalls keinen oberen Anschluss.
+  spannplatte: (eing, kat, topConn) => {
+    const d = topConn === "blech"                       // bei Kopfblech gibt es keine Platte
+      ? null : rollenMass(eing, kat, "spannplatte", "dicke_mm");
+    const b = rollenMass(eing, kat, "spannplatte", "breite_mm");
+    return { ...(d != null ? { rod_kopf_zuschlag_mm: d } : {}),
+             ...(b != null ? { spannplatte_b_mm: b } : {}) };
+  },
+  // #97 Einbauhoehe und Schluesselweite der SPANNMUTTER — reine Ausweisungsmasse, beide
+  // FUER SICH: ein Produkt mit gepflegter Hoehe, aber ohne Schluesselweite liefert genau
+  // ein Feld. Bewusst OHNE `topConn`-Bedingung: Modul 1 prueft hier den oberen Anschluss
+  // nicht, und eine hier erfundene Bedingung ergaebe fuer dieselbe Auswahl eine andere Zahl.
+  spannmutter: (eing, kat) => {
+    const h = rollenMass(eing, kat, "spannmutter", "hoehe_mm");
+    const sw = rollenMass(eing, kat, "spannmutter", "sw_mm");
+    return { ...(h != null ? { spannmutter_h_mm: h } : {}),
+             ...(sw != null ? { spannmutter_sw_mm: sw } : {}) };
+  },
+  // #97 Einbauhoehe und Schluesselweite der MUTTER DES EINLEGEBLECHS ([A-16]) — dasselbe
+  // Muster und derselbe Baustein; abgeleitet wird nichts aus Gewinde oder Norm.
+  zp_mutter: (eing, kat) => {
+    const h = rollenMass(eing, kat, "zp_mutter", "hoehe_mm");
+    const sw = rollenMass(eing, kat, "zp_mutter", "sw_mm");
+    return { ...(h != null ? { zp_mutter_h_mm: h } : {}),
+             ...(sw != null ? { zp_mutter_sw_mm: sw } : {}) };
+  },
+  // #97 Schluesselweite der SECHSKANTSCHRAUBE FUSS ([A-19]) — eine KOPFHOEHE gibt es hier
+  // nicht: dafuer ist keine Norm genannt, und geraten wird sie nicht.
+  senkkopf: (eing, kat) => {
+    const sw = rollenMass(eing, kat, "senkkopf", "sw_mm");
+    return sw != null ? { senkkopf_sw_mm: sw } : {};
+  },
+};
+
+/**
+ * Die abgeleiteten Vorspann-Eingaenge EINER Wand — vollstaendig aus ihrer Produktauswahl
+ * (#117). Gebildet wird der Satz fuer ALLE Stellen aus `ROLLE_RECHNUNG`: genau das tut
+ * `vorgaben()` in Modul 1 bei jeder Auslegung. Ein Mass, das sich aus der Auswahl nicht
+ * eindeutig ergibt, laesst sein Feld WEG — dann bleibt der Eingang stehen, den das
+ * gespeicherte Wandelement mitbringt, und es wird keines erfunden ([P-9]).
+ *
+ * Ohne wirksamen Bauteilkatalog ([L-12]) wird GAR NICHTS abgeleitet (`null`): eine
+ * Ableitung aus einem fehlenden Katalog waere keine Aussage, sondern eine Loeschung.
+ *
+ * @param {any} eing `eingaben` der Wand
+ * @param {any} kat zugeordneter Bauteilkatalog oder null
+ * @param {string} [topConn] oberer Anschluss dieser Wand ('blech'|'spannplatte')
+ * @returns {Record<string, any>|null}
+ */
+export function vorspannEingaenge(eing, kat, topConn) {
+  if (!kat) return null;
+  const pp = {};
+  for (const fn of Object.values(ROLLE_RECHNUNG)) Object.assign(pp, fn(eing, kat, topConn));
+  return pp;
+}
+
+/**
+ * Ein Massfeld der gewaehlten Produkte einer Rolle: GENAU EIN Wert, sonst `null`.
+ * Mehrere verschiedene Masse heissen „bleibt offen" — es wird keines bevorzugt und
+ * keines gemittelt ([P-9]).
+ */
+function rollenMass(eing, kat, rolleId, feld) {
+  if (!kat) return null;
+  const auf = produkteZuRolle(eing, kat, rolleId);
+  const v = [...new Set(auf.produkte.map((p) => +p[feld]).filter((n) => Number.isFinite(n) && n > 0))];
+  return v.length === 1 ? v[0] : null;
+}
+
+/**
+ * Der Vorratssatz der massgebenden Masse einer Rolle (Bodenblech, [A-10]). Massgebend ist
+ * dasselbe Feld, nach dem `loesePreis`/`rollenStatus` die Position ihrem Produkt
+ * zuordnen: das erste belegte aus `rolle(...).mass.felder` — GELESEN, nicht wiederholt.
+ * Sortiert und gefiltert wird im Core (`normBlechLaengen`), hier wird nichts gerundet.
+ */
+function rollenMasse(eing, kat, rolleId) {
+  if (!kat) return [];
+  const r = rolle(rolleId), felder = (r && r.mass && r.mass.felder) || [];
+  const p = produkteZuRolle(eing, kat, rolleId).produkte;
+  const v = p.map((x) => felder.map((f) => +x[f]).find((n) => Number.isFinite(n) && n > 0))
+             .filter((n) => Number.isFinite(n) && n > 0);
+  return [...new Set(v)];
+}
 
 /** Verkehrslast und Teilsicherheitsbeiwert einer Neurechnung.
  *
@@ -264,6 +406,14 @@ export function wandelementAktualisiert(wandelement, eingaben, katalog, engine) 
   if (fehlend.length) return unveraendert("produkt_fehlt", fehlend);
 
   const ps = { ...(we.prestress || {}) };
+  // #130: ZUERST der volle abgeleitete Eingangssatz aus der aktuellen Produktauswahl —
+  // fehlende/nicht eindeutige Felder bleiben die gespeicherten ([P-9]). DANACH der
+  // Gewindestangen-Block unten: er behaelt die #120-Semantik (ohne Auswahl faellt
+  // `rod_lengths_mm` ganz weg -> dokumentierter Altstand-Fallback des Cores), die
+  // `ROLLE_RECHNUNG.rod_std` fuer den Sammel-Editor bewusst nicht hat.
+  const abgeleitet = vorspannEingaenge(eingaben, katalog,
+    ps.top_connection === "blech" ? "blech" : "spannplatte");
+  if (abgeleitet) Object.assign(ps, abgeleitet);
   const vorgaben = vorspannVorgaben(eingaben, katalog, ps.rod_overhang_mm);
   // Die Gewindestangen-Eingaenge werden GENAU SO gebildet wie in `vorgaben()` von Modul 1:
   // der Einzelwert `rod_mm` ist seit [Z-1] kein Eingang mehr (kein Feld, kein Default) und

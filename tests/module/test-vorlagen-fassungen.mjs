@@ -33,6 +33,8 @@ const FREEZE = {
     "d656fdc12086a0b3126f1cf9d27c48f2240686b5e44c6875b5837c6688081463",
   "./vorlagen/SEMBLA_Standardkatalog-v2.json":
     "87a01210381041889013d479b213bf98d71a0fe9f627ce07fe1ce36bc52f2f33",
+  "./vorlagen/SEMBLA_Standardkatalog-v3.json":
+    "9e78ff6e9565f46bb15c0ac74e5b76d09dd55dd7d095273730f4d2aca4f1a95f",
 };
 
 // Der tote Altpfad aus der Zeit vor der Versionierung: wird von keinem Codepfad mehr

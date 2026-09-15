@@ -2,8 +2,14 @@
   "format": "SEMBLA-Katalogvorlagen",
   "version": 1,
   "hinweis": "Herausgegebene Fassungen des mitgelieferten Standardkatalogs. Eine geaenderte Fassung ERSETZT keine bestehende, sondern tritt als eigene Datei daneben — die Vorlagenidentitaet der Browserressource leitet sich allein aus dem PFAD ab (vorlageKatalogId, #102). Alte Fassungen bleiben deshalb dauerhaft im Repo: ein Projekt, das ihnen zugeordnet ist, muss seinen Katalog auch in einem frischen Browser laden koennen. Neueste Fassung zuerst.",
-  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v2.json",
+  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v3.json",
   "fassungen": [
+    {
+      "pfad": "./vorlagen/SEMBLA_Standardkatalog-v3.json",
+      "version": "v3",
+      "datum": "2026-09-15",
+      "notiz": "Inhaltsgleich mit v2 (gleiche Produkte, Baugruppen und Kennungen — der Umstieg erzeugt keinen Reparaturbefund). Herausgegeben mit #130: die Ausgaben leiten die realen Bauteilmasse seither bei jeder Ausgabe frisch aus dem zugeordneten Katalog ab; diese Fassung ist der verifizierbare Umstieg auf die neue Fassungskette (#129)."
+    },
     {
       "pfad": "./vorlagen/SEMBLA_Standardkatalog-v2.json",
       "version": "v2",

@@ -39,15 +39,28 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Die KATALOGFASSUNGS-BEHANDLUNG (#129) ist der neueste Eintrag — er wird als einziger
+// Der MASSSTABSGETREUE FRISCHPFAD (#130) ist der neueste Eintrag — er wird als einziger
 // direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
 // Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist AUSSCHLIESSLICH die MELDUNG veralteter Fassungen
-// (Modul 0) und die BEHANDELBARKEIT alter Vorlagen-Slots (Modul 10: ansehen, uebernehmen,
-// entfernen) plus der Freeze-Test der herausgegebenen Fassungen. NICHT versprochen werden
-// ein automatischer Fassungswechsel, ein neues gespeichertes Feld oder ein Versionssprung.
-const FRISCH_129 = EINTRAEGE[0];
-ok("[#129] die Katalogfassungs-Behandlung ist der neueste Eintrag",
+// Aussagewahr heisst hier: geliefert ist, dass der Read-only-Frischpfad (Modul 4/7,
+// zentraler Export) den VOLLEN Vorspann-Eingangssatz (#92/#97) aus der aktuellen
+// Produktauswahl und dem zugeordneten Katalog ableitet, plus die inhaltsgleiche Fassung
+// v3 als verifizierbarer Umstieg. NICHT versprochen werden Modul-5-Baugruppenbilder in
+// #97-Symbolen (dokumentierter Nachziehpunkt), ein neues Feld oder ein Versionssprung.
+const FRISCH_130 = EINTRAEGE[0];
+ok("[#130] der masstabsgetreue Frischpfad ist der neueste Eintrag",
+  FRISCH_130?.id === "chg-20260915-02" && FRISCH_130?.issue === 130
+  && FRISCH_130?.typ === "fix" && FRISCH_130?.datum === "2026-09-15"
+  && /maßstabsgetreu/.test(FRISCH_130?.titel || "")
+  && /v3/.test(FRISCH_130?.titel || ""));
+ok("[#130] die Testbitte prueft Modul 7 mit Fassung v3",
+  /Modul 7/.test(FRISCH_130?.testbitte || "") && /v3/.test(FRISCH_130?.testbitte || ""));
+
+// Davor die KATALOGFASSUNGS-BEHANDLUNG (#129) — ueber die Kennung gesucht. Geliefert ist
+// die MELDUNG veralteter Fassungen (Modul 0) und die BEHANDELBARKEIT alter Vorlagen-Slots
+// (Modul 10) plus der Freeze-Test; kein automatischer Fassungswechsel.
+const FRISCH_129 = EINTRAEGE.find(e => e.id === "chg-20260915-01");
+ok("[#129] die Katalogfassungs-Behandlung steht mit ihrer Kennung in der Reihe",
   FRISCH_129?.id === "chg-20260915-01" && FRISCH_129?.issue === 129
   && FRISCH_129?.typ === "fix" && FRISCH_129?.datum === "2026-09-15"
   && /[Vv]eraltet/.test(FRISCH_129?.titel || "")

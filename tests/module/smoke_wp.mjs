@@ -43,6 +43,9 @@ const KAT = await import("../../docs/shared/sembla-katalog.js");
 const MONT = await import("../../docs/shared/sembla-montage.js");
 // Stuecklistenpositionen fuer den Realpfad-Nachweis der Bodenblech-Bepreisung ([A-10]/[P-14]).
 const BOM = await import("../../docs/shared/sembla-bom.js");
+// #130: die eine Rollenliste des Vorspann-Eingangssatzes — wie im Browser aus
+// sembla-wandanlage.js gebunden (Modul 1 liest sie fuer die masswirksame Vorbelegung).
+const { ROLLE_RECHNUNG } = await import("../../docs/shared/sembla-wandanlage.js");
 // #112: das Blatt von Modul 7 — nur zum QUERVERGLEICH. Modul 1 zieht daraus nichts; geprueft
 // wird, dass beide Ansichten derselben Wand dieselbe Zahl weisser Haarlinien zeigen und
 // dieselbe abgeleitete Breite benutzen (das lokale Doppelmass, [P-6]/[D-4]).
@@ -52,6 +55,7 @@ const ZEICH = await import("../../docs/shared/sembla-zeichnung.js");
 const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
 const idA=store.speichere('Wand A', startWand); store.setzeAktiv(idA);
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+  ROLLE_RECHNUNG,
   STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL,
   stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke,
   // #91: der EINE Zeichenweg des Bodenblechs — Modul 1 zeigt damit dieselbe reale

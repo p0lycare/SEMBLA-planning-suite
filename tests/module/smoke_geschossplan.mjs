@@ -140,6 +140,10 @@ const { mountNavbar, MODULE } = await import("../../docs/shared/navbar.js");
 PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
+// #130: Die Vorspann-Eingangs-Ableitung (`ROLLE_RECHNUNG`/`vorspannEingaenge`/`rollenMass`)
+// liegt seit #130 im gemeinsamen Baustein `sembla-wandanlage.js` — der Editor delegiert.
+// Die Quelltext-Pruefungen "genau EIN Ableitungsweg" lesen deshalb DIESE Datei.
+const waSrc = readFileSync(new URL("../../docs/shared/sembla-wandanlage.js", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
 globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH, ROD_OVERHANG };
 
@@ -5193,8 +5197,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     + 'mit den Eingaengen aus WA.vorspannVorgaben/KAT.produkteZuRolle',
     (html.match(/ENG\.autoAuslegung/g) || []).length === 1
     && (html.match(/ENG\.nachweisPruefen/g) || []).length === 1
-    && (html.match(/function vorspannEingaenge/g) || []).length === 1
-    && /Object\.values\(ROLLE_RECHNUNG\)/.test(html)
+    // #130: die Ableitung liegt im gemeinsamen Baustein (sembla-wandanlage.js), der
+    // Editor DELEGIERT — im Editor gibt es keine eigene Tabelle mehr.
+    && (waSrc.match(/export function vorspannEingaenge/g) || []).length === 1
+    && /Object\.values\(ROLLE_RECHNUNG\)/.test(waSrc)
+    && !/const ROLLE_RECHNUNG = \{/.test(html)
+    && /WA\.vorspannEingaenge\(/.test(html)
     // Genau EINE Stelle bildet die Vorgabe und ruft die Engine — die Ableitung
     // liegt im Aufrufer, nicht in einer zweiten Rechnung.
     && (html.match(/function rechneWandelement/g) || []).length === 1
@@ -5420,11 +5428,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   // DIESES Bauteil waere — fuer die Kopplungsmutter ist es keiner.
   ok('#97 (must-not 6) genau EIN Ableitungsweg — die Schluesselweite der Kopplungsmutter '
     + 'wird im Editor an genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
-    (html.match(/rollenMass\(eing, kat, 'kupplung', 'sw_mm'\)/g) || []).length === 1
+    (waSrc.match(/rollenMass\(eing, kat, "kupplung", "sw_mm"\)/g) || []).length === 1
     // … und genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
     // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
-    && (html.match(/kupplung_sw_mm:/g) || []).length === 1
-    && /sw != null \? \{ kupplung_sw_mm: sw \} : \{\}/.test(html));
+    && (waSrc.match(/kupplung_sw_mm:/g) || []).length === 1
+    && /sw != null \? \{ kupplung_sw_mm: sw \} : \{\}/.test(waSrc));
   ok('#97 (must-not 2) kein neues gespeichertes Feld, kein Schema-, Mappen-, Katalog- '
     + 'oder Projektformatsprung',
     store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
@@ -5694,19 +5702,19 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   //     Modul 1 hat keine, und eine hier ergaebe fuer dieselbe Auswahl eine andere Zahl.
   ok('#97/spm (must-not 6) genau EIN Ableitungsweg — beide Masse werden im Editor an je '
     + 'genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
-    /rollenMass\(eing, kat, 'spannmutter', 'hoehe_mm'\)/.test(html)
-    && /rollenMass\(eing, kat, 'spannmutter', 'sw_mm'\)/.test(html)
-    && (html.match(/'spannmutter',/g) || []).length === 2
+    /rollenMass\(eing, kat, "spannmutter", "hoehe_mm"\)/.test(waSrc)
+    && /rollenMass\(eing, kat, "spannmutter", "sw_mm"\)/.test(waSrc)
+    && (waSrc.match(/"spannmutter",/g) || []).length === 2
     // … und je genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
     // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
-    && (html.match(/spannmutter_h_mm:/g) || []).length === 1
-    && (html.match(/spannmutter_sw_mm:/g) || []).length === 1
-    && /h != null \? \{ spannmutter_h_mm: h \} : \{\}/.test(html)
-    && /sw != null \? \{ spannmutter_sw_mm: sw \} : \{\}/.test(html));
+    && (waSrc.match(/spannmutter_h_mm:/g) || []).length === 1
+    && (waSrc.match(/spannmutter_sw_mm:/g) || []).length === 1
+    && /h != null \? \{ spannmutter_h_mm: h \} : \{\}/.test(waSrc)
+    && /sw != null \? \{ spannmutter_sw_mm: sw \} : \{\}/.test(waSrc));
   ok('#97/spm (Muss 6) der Rollen-Baustein nimmt KEINEN oberen Anschluss entgegen — '
     + 'anders als Spannplatte und Kopfblech, und satzgleich zu Modul 1',
-    /\n  spannmutter: \(eing, kat\) => \{/.test(html)
-    && /spannplatte: \(eing, kat, topConn\) => \{/.test(html));
+    /\n  spannmutter: \(eing, kat\) => \{/.test(waSrc)
+    && /spannplatte: \(eing, kat, topConn\) => \{/.test(waSrc));
   ok('#97/spm (must-not 2) kein neues gespeichertes Feld, kein Schema-, Mappen-, Katalog- '
     + 'oder Projektformatsprung',
     store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
@@ -6010,18 +6018,18 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   //     fuer dieselbe Auswahl eine andere Zahl.
   ok('#97/spb (Akzeptanz 7 / must-not 2) genau EIN Ableitungsweg — die Breite wird im '
     + 'Editor an genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
-    (html.match(/rollenMass\(eing, kat, 'spannplatte', 'breite_mm'\)/g) || []).length === 1
+    (waSrc.match(/rollenMass\(eing, kat, "spannplatte", "breite_mm"\)/g) || []).length === 1
     // … und die Rolle wird ueberhaupt nur zweimal abgegriffen: Breite und Dicke.
-    && (html.match(/rollenMass\(eing, kat, 'spannplatte',/g) || []).length === 2
+    && (waSrc.match(/rollenMass\(eing, kat, "spannplatte",/g) || []).length === 2
     // … und genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
     // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
-    && (html.match(/spannplatte_b_mm:/g) || []).length === 1
-    && /b != null \? \{ spannplatte_b_mm: b \} : \{\}/.test(html));
+    && (waSrc.match(/spannplatte_b_mm:/g) || []).length === 1
+    && /b != null \? \{ spannplatte_b_mm: b \} : \{\}/.test(waSrc));
   ok('#97/spb (Muss 2) der Vorbehalt des oberen Anschlusses steht an der DICKE, nicht '
     + 'mehr an der Rolle',
-    !/spannplatte: \(eing, kat, topConn\) => \{\n    if \(topConn === 'blech'\) return \{\};/
-      .test(html)
-    && /const d = topConn === 'blech'/.test(html));
+    !/spannplatte: \(eing, kat, topConn\) => \{\n    if \(topConn === "blech"\) return \{\};/
+      .test(waSrc)
+    && /const d = topConn === "blech"/.test(waSrc));
   ok('#97/spb (must-not 6) kein neues gespeichertes Feld, kein Schema-, Mappen-, '
     + 'Katalog- oder Projektformatsprung',
     store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2
@@ -6380,24 +6388,24 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   //     Modul 1 hat keine, und eine hier ergaebe fuer dieselbe Auswahl eine andere Zahl.
   ok('#97/zpm (must-not 2) genau EIN Ableitungsweg — alle drei Masse werden im Editor an '
     + 'je genau einer Stelle und ausschliesslich ueber `rollenMass` gelesen',
-    /rollenMass\(eing, kat, 'zp_mutter', 'hoehe_mm'\)/.test(html)
-    && /rollenMass\(eing, kat, 'zp_mutter', 'sw_mm'\)/.test(html)
-    && (html.match(/'zp_mutter',/g) || []).length === 2
-    && /rollenMass\(eing, kat, 'senkkopf', 'sw_mm'\)/.test(html)
-    && (html.match(/'senkkopf',/g) || []).length === 1
+    /rollenMass\(eing, kat, "zp_mutter", "hoehe_mm"\)/.test(waSrc)
+    && /rollenMass\(eing, kat, "zp_mutter", "sw_mm"\)/.test(waSrc)
+    && (waSrc.match(/"zp_mutter",/g) || []).length === 2
+    && /rollenMass\(eing, kat, "senkkopf", "sw_mm"\)/.test(waSrc)
+    && (waSrc.match(/"senkkopf",/g) || []).length === 1
     // … und je genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
     // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
-    && (html.match(/zp_mutter_h_mm:/g) || []).length === 1
-    && (html.match(/zp_mutter_sw_mm:/g) || []).length === 1
-    && (html.match(/senkkopf_sw_mm:/g) || []).length === 1
-    && /h != null \? \{ zp_mutter_h_mm: h \} : \{\}/.test(html)
-    && /sw != null \? \{ zp_mutter_sw_mm: sw \} : \{\}/.test(html)
-    && /sw != null \? \{ senkkopf_sw_mm: sw \} : \{\}/.test(html));
+    && (waSrc.match(/zp_mutter_h_mm:/g) || []).length === 1
+    && (waSrc.match(/zp_mutter_sw_mm:/g) || []).length === 1
+    && (waSrc.match(/senkkopf_sw_mm:/g) || []).length === 1
+    && /h != null \? \{ zp_mutter_h_mm: h \} : \{\}/.test(waSrc)
+    && /sw != null \? \{ zp_mutter_sw_mm: sw \} : \{\}/.test(waSrc)
+    && /sw != null \? \{ senkkopf_sw_mm: sw \} : \{\}/.test(waSrc));
   ok('#97/zpm (Muss 3) beide Rollen-Bausteine nehmen KEINEN oberen Anschluss entgegen — '
     + 'anders als Spannplatte und Kopfblech, und satzgleich zu Modul 1',
-    /\n  zp_mutter: \(eing, kat\) => \{/.test(html)
-    && /\n  senkkopf: \(eing, kat\) => \{/.test(html)
-    && /spannplatte: \(eing, kat, topConn\) => \{/.test(html));
+    /\n  zp_mutter: \(eing, kat\) => \{/.test(waSrc)
+    && /\n  senkkopf: \(eing, kat\) => \{/.test(waSrc)
+    && /spannplatte: \(eing, kat, topConn\) => \{/.test(waSrc));
   ok('#97/zpm (must-not 6) kein neues gespeichertes Feld, kein Schema-, Mappen-, '
     + 'Katalog- oder Projektformatsprung',
     store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2

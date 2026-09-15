@@ -1080,12 +1080,12 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Fassung von selbst eine eigene, unveraenderliche Identitaet und tritt neben die
   // anderen statt sie zu ersetzen.
   ok("#118 der Vorlagenpfad zeigt auf eine VERSIONIERTE Repo-Datei",
-    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v2.json");
+    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v3.json");
   const id = KAT.vorlageKatalogId(PFAD);
   ok("#102 die Kennung ist deterministisch und pfadabgeleitet",
-    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v2"
+    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v3"
     && KAT.vorlageKatalogId(PFAD) === id
-    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v2.json") === id);
+    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v3.json") === id);
   ok("#118 jede Fassung ergibt eine EIGENE Kennung — keine ersetzt eine andere",
     KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v1.json") !== id);
   ok("#102 ein anderer Pfad ergibt eine andere Kennung",
@@ -1194,11 +1194,20 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
 
   // Das Verzeichnis (#118) ist der EINE Ort, an dem eine Fassung bekanntgegeben wird.
   const man = KAT.parseVorlagenManifest(lies("kataloge.json"));
-  ok("#97 das Verzeichnis fuehrt BEIDE Fassungen und weist aktuell auf v2",
-    man.fassungen.length === 2
-    && man.fassungen.map((f) => f.version).join() === "v2,v1"
-    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v2.json"
+  // #130: v3 tritt neben v2 und v1 (inhaltsgleich mit v2, s. Manifest-Notiz) und ist
+  // die aktuell empfohlene Fassung; v1/v2 bleiben unveraendert daneben (Freeze-Test).
+  ok("#97/#130 das Verzeichnis fuehrt ALLE Fassungen und weist aktuell auf v3",
+    man.fassungen.length === 3
+    && man.fassungen.map((f) => f.version).join() === "v3,v2,v1"
+    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v3.json"
     && man.aktuell === KAT.VORLAGE_KATALOG_PFAD);
+  ok("#130 v3 ist inhaltsgleich mit v2 (gleiche Produkte, Baugruppen und Kennungen)",
+    (() => {
+      const v3 = KAT.parseKatalog(lies("SEMBLA_Standardkatalog-v3.json"));
+      return JSON.stringify(v3.produkte) === JSON.stringify(v2.produkte)
+        && JSON.stringify(v3.sets) === JSON.stringify(v2.sets)
+        && /Standardkatalog v3/.test(v3.name);
+    })());
   ok("#97 der v1-Eintrag steht unveraendert daneben und bleibt eigenstaendig ladbar",
     (() => {
       const f1 = man.fassungen.find((f) => f.version === "v1");
