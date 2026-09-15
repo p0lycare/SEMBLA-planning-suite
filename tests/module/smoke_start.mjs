@@ -1540,9 +1540,17 @@ globalThis.fetch = echtesFetch;
     store.holeKatalog() === null && store.katalogStatus().status === 'nicht_zugeordnet'
     && /kein Bauteilkatalog zugeordnet/.test($('tr-warn').innerHTML));
   baum('prj-bearbeiten', pB.projekt.id);
-  ok('Projekt-Dialog bietet die vorhandenen Kataloge zur Wahl',
+  // #131: Das Dropdown folgt der HERKUNFT — Repo-Fassungen stehen als Fassungseintraege
+  // (Wert = Pfad, beim Speichern frisch geladen), eigene Kataloge mit ihrer Kennung.
+  // Vorlagen-SNAPSHOTS erscheinen nicht mehr als eigene Eintraege.
+  ok('Projekt-Dialog bietet eigene Kataloge und die Repo-Fassungen zur Wahl',
     /kein Katalog zugeordnet/.test($('pp-katalog').innerHTML)
-    && store.listeKataloge().every(k => $('pp-katalog').innerHTML.includes(k.id)));
+    && /Standardkataloge \(aus dem Repo\)/.test($('pp-katalog').innerHTML)
+    && $('pp-katalog').innerHTML.includes(KAT.VORLAGE_KATALOG_PFAD)
+    && store.listeKataloge().filter(k => !KAT.istVorlagenKatalog(k))
+         .every(k => $('pp-katalog').innerHTML.includes(k.id))
+    && !/Weitere Fassungen/.test($('pp-katalog').innerHTML)
+    && !/nur lesen/.test($('pp-katalog').innerHTML));
   $('pp-katalog').value = store.listeKataloge()[0].id;
   await $('pp-speichern').dispatch('click');
   ok('[L-12] die Zuordnung haengt danach am Projekt',
@@ -1658,10 +1666,10 @@ globalThis.fetch = echtesFetch;
   const prjVor = prjSlot(), katVor = katSlot(), aktivVor = store.aktivesProjektId();
   $('tr-projekt-neu').dispatch('click');
   ok('#68 der Anlage-Dialog belegt den SEMBLA-Standardkatalog vor',
-    $('pp-katalog').value === '__vorlage__'
-    // #118 Seit der Versionierung heisst die Vorbelegung nach ihrer FASSUNG, nicht nach
-    // ihrer Herkunft — „Repo-Vorlage“ unterschied nichts mehr, sobald es mehrere gibt.
-    && /SEMBLA Standardkatalog \(aktuelle Fassung\)/.test($('pp-katalog').innerHTML));
+    // #131: Vorbelegt ist der FASSUNGSEINTRAG der aktuellen Fassung (Wert = Pfad) —
+    // gespeichert wird sie frisch aus dem Repo, nie aus einem Browser-Snapshot.
+    $('pp-katalog').value === '__fassung__:' + KAT.VORLAGE_KATALOG_PFAD
+    && / — aktuelle Fassung/.test($('pp-katalog').innerHTML));
   ok('#68 das Oeffnen selbst schreibt nichts', prjSlot() === prjVor && katSlot() === katVor);
 
   // (b) Abbrechen: Projekt- UND Katalogspeicher bleiben byte-unveraendert

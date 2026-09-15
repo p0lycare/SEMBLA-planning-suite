@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260915-03",
+    datum: "2026-09-15",
+    typ: "fix",
+    issue: 131,
+    titel: "Katalogauswahl in Modul 0 mit zwei Gruppen nach Herkunft; Repo-Fassungen werden immer frisch geladen",
+    testbitte: "Im Projekt-Dialog prüfen: nur „Standardkataloge (aus dem Repo)“ und „Eigene Kataloge“; "
+      + "eine Fassung wählen und speichern — die Meldung nennt das frische Laden aus dem Repo",
+  },
+  {
     id: "chg-20260915-02",
     datum: "2026-09-15",
     typ: "fix",

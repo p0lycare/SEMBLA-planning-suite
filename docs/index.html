@@ -1292,51 +1292,61 @@
 
   function ppKatalogListe(gewaehlt, mitVorlage){
     const alle = store.listeKataloge();
-    // #118 Dieselbe Gliederung wie in Modul 10 — die Marken „Vorlage“/„zugeordnet“ stehen
-    // dort im Kopfbereich, hier traegt die Zeile nur Name und Anzahl.
-    // #129 Fassungsmarke der Vorlagen-Optionen: dieselbe Einordnung wie im Warnkasten
-    // (fassungsStand) — ohne gelesenes Verzeichnis steht keine Marke, geraten wird nichts.
-    const marke = (k) => {
-      const fs = KAT.fassungsStand(k, PP_MANIFEST);
-      if (fs.stand === 'aktuell') return ' — aktuelle Fassung';
-      if (fs.stand === 'aelter') return ' — ältere Fassung';
-      if (fs.stand === 'veraltet') return ' — veraltet, nicht mehr herausgegeben';
-      return '';
-    };
-    const opt = (k) => `<option value="${esc(k.id)}"${k.id === gewaehlt ? ' selected' : ''}>`
-      + `${esc(k.name)} (${(k.produkte || []).length} Produkte)${esc(marke(k))}</option>`;
+    // #131 Das Dropdown folgt der HERKUNFT, nicht dem Speicherzustand:
+    //   (1) „Standardkataloge (aus dem Repo)“ — IMMER die herausgegebenen Fassungen aus dem
+    //       Verzeichnis, egal ob im Browser schon ein Snapshot liegt. Beim Speichern wird
+    //       die gewaehlte Fassung IMMER frisch aus dem Repo gelesen (s. pp-speichern) — der
+    //       Browser-Snapshot ist ein technischer Zwischenspeicher, kein eigenes Angebot.
+    //   (2) „Eigene Kataloge“ — der lokale, bearbeitbare Bestand (Pflege in Modul 10).
+    //   Die frueheren Gruppen „Vorlagen (geladen, nur lesen)“ und „Weitere Fassungen“
+    //   bildeten den INTERNEN Speicherzustand ab — fuer die Zuordnungsfrage ohne Bedeutung
+    //   und als Unterscheidung unverstaendlich; sie sind ersatzlos entfallen.
+    const opt = (k) => `<option value="${esc(k.id)}">`
+      + `${esc(k.name)} (${(k.produkte || []).length} Produkte)</option>`;
     // #102: Die Vorlagenressource wird an ihrer kanonischen Kennung erkannt — nie am Namen.
-    const vorlagen = alle.filter(k => KAT.istVorlagenKatalog(k));
     const eigene = alle.filter(k => !KAT.istVorlagenKatalog(k));
-    // Herausgegebene Fassungen, die hier noch gar nicht liegen: sonst waere eine neue
-    // Fassung in Modul 0 unsichtbar, obwohl Modul 10 sie anbietet.
-    const offen = ((PP_MANIFEST && PP_MANIFEST.fassungen) || [])
-      .filter(f => !alle.some(k => String(k.id) === f.id));
+    const fassungen = (PP_MANIFEST && PP_MANIFEST.fassungen) || [];
+    // Eine zugeordnete Repo-Fassung wird ueber ihre kanonische Kennung (#102) als
+    // FASSUNGSEINTRAG vorgewaehlt — auch wenn ihr Snapshot in diesem Browser fehlt:
+    // Speichern laedt sie dann einfach frisch, statt „fehlt“ stehen zu lassen.
+    const fGewaehlt = fassungen.find(f => f.id === String(gewaehlt || '')) || null;
+    // Ein zugeordneter Vorlagen-Snapshot, der in keiner herausgegebenen Fassung mehr steht
+    // (Altbestand vor der Versionierung, #129): er bleibt als das waehlbar, was er ist —
+    // der Warnkasten und Modul 10 nennen den Ausweg. Nie still aus der Auswahl entfernt.
+    const kGewaehlt = alle.find(k => String(k.id) === String(gewaehlt || '')) || null;
+    const veraltetZug = (!fGewaehlt && kGewaehlt && KAT.istVorlagenKatalog(kGewaehlt)) ? kGewaehlt : null;
+    const fLabel = (f) => 'SEMBLA Standardkatalog ' + f.version
+      + (f.datum ? ' vom ' + f.datum : '')
+      + (f.pfad === PP_MANIFEST.aktuell ? ' — aktuelle Fassung' : ' — ältere Fassung');
     $('pp-katalog').innerHTML =
-      (mitVorlage ? `<option value="${PP_VORLAGE}">SEMBLA Standardkatalog (aktuelle Fassung)</option>` : '')
+      // Solange das Verzeichnis nicht gelesen ist, traegt die ANLAGE den bisherigen
+      // Platzhalterwert (loest beim Speichern VORLAGE_KATALOG_PFAD frisch aus dem Repo) —
+      // sobald es da ist, ersetzt ihn der Fassungseintrag der aktuellen Fassung.
+      ((mitVorlage && !fassungen.length)
+        ? `<option value="${PP_VORLAGE}">SEMBLA Standardkatalog (aktuelle Fassung)</option>` : '')
       + '<option value="">– kein Katalog zugeordnet –</option>'
-      + (vorlagen.length ? '<optgroup label="Standardkataloge (Vorlagen, nur lesen)">'
-          + vorlagen.map(opt).join('') + '</optgroup>' : '')
+      + '<optgroup label="Standardkataloge (aus dem Repo)">'
+      + (fassungen.length
+        ? fassungen.map(f => `<option value="${esc(PP_FASSUNG + f.pfad)}">${esc(fLabel(f))}</option>`).join('')
+        : '<option value="" disabled>Repo-Verzeichnis wird gelesen…</option>')
+      + (veraltetZug ? `<option value="${esc(veraltetZug.id)}">${esc(veraltetZug.name)}`
+          + ' — veraltet, nicht mehr herausgegeben</option>' : '')
+      + '</optgroup>'
       + (eigene.length ? '<optgroup label="Eigene Kataloge">'
-          + eigene.map(opt).join('') + '</optgroup>' : '')
-      + (offen.length ? '<optgroup label="Weitere Fassungen (werden beim Speichern geladen)">'
-          + offen.map(f => `<option value="${esc(PP_FASSUNG + f.pfad)}">`
-            + `SEMBLA Standardkatalog ${esc(f.version)}`
-            + (f.datum ? ` vom ${esc(f.datum)}` : '') + '</option>').join('') + '</optgroup>' : '');
-    $('pp-katalog').value = mitVorlage ? PP_VORLAGE : (gewaehlt || '');
+          + eigene.map(opt).join('') + '</optgroup>' : '');
+    $('pp-katalog').value = mitVorlage
+      ? (fassungen.length ? PP_FASSUNG + PP_MANIFEST.aktuell : PP_VORLAGE)
+      : (fGewaehlt ? PP_FASSUNG + fGewaehlt.pfad : (gewaehlt || ''));
     $('pp-katalog-hinweis').innerHTML = mitVorlage
-      ? 'Vorbelegt ist der mitgelieferte <b>SEMBLA-Standardkatalog</b> (#68) — geladen und diesem '
-        + 'Projekt zugeordnet wird er erst mit „Speichern“ ([L-12]). Er ist die <b>unveränderliche '
-        + 'Vorlage</b>: geladen wird immer der aktuelle Repo-Stand in genau eine Ressource (nie '
-        + 'doppelt), und die erste Bearbeitung legt automatisch eine eigene Projektkopie an. '
+      ? 'Vorbelegt ist die <b>aktuelle Fassung des SEMBLA-Standardkatalogs</b> — geladen wird sie '
+        + 'mit „Speichern“ <b>frisch aus dem Repo</b> und diesem Projekt zugeordnet ([L-12]). '
         + 'Abbrechen schreibt nichts.'
-      : (alle.length
-        ? 'Der zugeordnete Katalog ist die Preisquelle dieses Projekts ([P-14]). Ohne Zuordnung wird '
-          + 'das in Modul 1/2/4 <b>gemeldet</b> — es wird kein Katalog geraten ([L-12]). '
-          + '<b>Gepflegt</b> werden Produkte, Preise und Baugruppen in <b>Modul 10 „Katalog“</b> '
-          + '(#108) — hier wird nur zugeordnet.'
-        : 'Noch kein Katalog vorhanden — in <b>Modul 10 „Katalog“</b> einen anlegen, importieren '
-          + 'oder den Standardkatalog laden (#108); zugeordnet wird er dann hier ([L-12]).');
+      : 'Der zugeordnete Katalog ist die Preisquelle dieses Projekts ([P-14]). '
+        + '<b>Standardkataloge</b> kommen beim Speichern immer <b>frisch aus dem Repo</b> '
+        + '(herausgegebene Fassungen ändern sich nie, #118); <b>eigene Kataloge</b> liegen in '
+        + 'diesem Browser und werden in <b>Modul 10 „Katalog“</b> gepflegt — '
+        + 'hier wird nur zugeordnet ([L-12]). Ohne Zuordnung wird das in Modul 1/2/4 '
+        + 'gemeldet, kein Katalog geraten.';
   }
 
   function ppOeffne(id){
@@ -1387,19 +1397,29 @@
     for (const [key, feld] of Object.entries(PP_FELDER)) patch[key] = $(feld).value;
     let wahl = $('pp-katalog').value;
     const mitVorlage = !ppId && wahl === PP_VORLAGE;
-    // #118 Eine noch nicht geladene Fassung wird ZUERST geladen — danach ist sie eine
-    // gewoehnliche gespeicherte Ressource und der Rest des Weges ist unveraendert
-    // (Vorpruefung, Zuordnung). Zugeordnet wird beim Laden ausdruecklich NICHTS (#108);
-    // die Zuordnung entsteht erst unten ueber `setzeKatalogRef`. Schlaegt das Laden fehl,
-    // wird gemeldet und NICHTS gespeichert — geraten wird kein Katalog ([L-12]).
+    // #118/#131 Eine gewaehlte Repo-Fassung wird IMMER ZUERST FRISCH aus dem Repo gelesen —
+    // auch wenn in diesem Browser schon ein Snapshot liegt: der Snapshot ist ein
+    // technischer Zwischenspeicher und nie das Angebot. Ein vor der Versionierung
+    // divergierter Stand heilt sich damit beim naechsten Zuordnen von selbst. Danach ist
+    // die Fassung eine gewoehnliche gespeicherte Ressource und der Rest des Weges ist
+    // unveraendert (Vorpruefung, Zuordnung); zugeordnet wird beim Laden NICHTS (#108).
+    // Schlaegt das Laden fehl: BEARBEITEN speichert nichts (die bestehende Zuordnung darf
+    // nicht durch eine Luecke ersetzt werden); die ANLAGE legt das Projekt trotzdem an und
+    // benennt die fehlende Zuordnung — wie der Vorlagenweg darunter ([L-12], nie geraten).
+    let fassungGeladen = null, fassungFehler = null;
     if (String(wahl).startsWith(PP_FASSUNG)) {
       const pfad = String(wahl).slice(PP_FASSUNG.length);
       try {
         const k = store.ladeVorlagenKatalog(await vorlageText(pfad), pfad, { zuordnen: false });
         wahl = String(k.id);
+        fassungGeladen = k;
       } catch (e) {
-        ppZeige('Fassung nicht geladen (' + fehlerText(e) + ') — es wurde nichts gespeichert.', false);
-        return;
+        if (ppId) {
+          ppZeige('Fassung nicht geladen (' + fehlerText(e) + ') — es wurde nichts gespeichert.', false);
+          return;
+        }
+        fassungFehler = e;
+        wahl = '';
       }
     }
     // #115 VORPRUEFUNG des Zuordnungswechsels ([L-12]): wechselt ein BESTEHENDES Projekt
@@ -1451,6 +1471,14 @@
       }
       const war = ppId;
       let katText = '', katOk = true;
+      if (fassungGeladen) {
+        katText = ` Der Katalog „${fassungGeladen.name}“ wurde frisch aus dem Repo geladen und `
+          + 'zugeordnet.';
+      } else if (fassungFehler) {
+        katOk = false;
+        katText = ` ⚠ Der Standardkatalog wurde nicht geladen (${fehlerText(fassungFehler)}) — `
+          + 'Zuordnung über „Projekt bearbeiten…“ nachholen ([L-12]).';
+      }
       if (mitVorlage) {
         try {
           const k = await ppStandardkatalog();

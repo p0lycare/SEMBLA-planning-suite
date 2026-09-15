@@ -39,16 +39,29 @@ ok("genau ein Eintrag fuer Issue 55", neu55.length === 1);
 ok("zwei getrennte aktuelle Korrekturen fuer Issue 15", neu15.length === 2);
 const neu22 = EINTRAEGE.filter(e => e.issue === 22);
 ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1);
-// Der MASSSTABSGETREUE FRISCHPFAD (#130) ist der neueste Eintrag — er wird als einziger
+// Die KATALOGAUSWAHL NACH HERKUNFT (#131) ist der neueste Eintrag — er wird als einziger
 // direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
 // Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
-// Aussagewahr heisst hier: geliefert ist, dass der Read-only-Frischpfad (Modul 4/7,
-// zentraler Export) den VOLLEN Vorspann-Eingangssatz (#92/#97) aus der aktuellen
-// Produktauswahl und dem zugeordneten Katalog ableitet, plus die inhaltsgleiche Fassung
-// v3 als verifizierbarer Umstieg. NICHT versprochen werden Modul-5-Baugruppenbilder in
-// #97-Symbolen (dokumentierter Nachziehpunkt), ein neues Feld oder ein Versionssprung.
-const FRISCH_130 = EINTRAEGE[0];
-ok("[#130] der masstabsgetreue Frischpfad ist der neueste Eintrag",
+// Aussagewahr heisst hier: geliefert sind ZWEI Gruppen im Zuordnungs-Dropdown von Modul 0
+// (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
+// FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
+// ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
+const FRISCH_131 = EINTRAEGE[0];
+ok("[#131] die Katalogauswahl nach Herkunft ist der neueste Eintrag",
+  FRISCH_131?.id === "chg-20260915-03" && FRISCH_131?.issue === 131
+  && FRISCH_131?.typ === "fix" && FRISCH_131?.datum === "2026-09-15"
+  && /zwei Gruppen/.test(FRISCH_131?.titel || "")
+  && /frisch geladen/.test(FRISCH_131?.titel || ""));
+ok("[#131] die Testbitte prueft die zwei Gruppen und das frische Laden",
+  /aus dem Repo/.test(FRISCH_131?.testbitte || "")
+  && /Eigene Kataloge/.test(FRISCH_131?.testbitte || ""));
+
+// Davor der MASSSTABSGETREUE FRISCHPFAD (#130) — ueber die Kennung gesucht. Geliefert:
+// der Read-only-Frischpfad (Modul 4/7, zentraler Export) leitet den vollen
+// Vorspann-Eingangssatz (#92/#97) aus Auswahl + Katalog ab; dazu die inhaltsgleiche
+// Fassung v3. Modul-5-Baugruppenbilder bleiben der dokumentierte Nachziehpunkt.
+const FRISCH_130 = EINTRAEGE.find(e => e.id === "chg-20260915-02");
+ok("[#130] der masstabsgetreue Frischpfad steht mit seiner Kennung in der Reihe",
   FRISCH_130?.id === "chg-20260915-02" && FRISCH_130?.issue === 130
   && FRISCH_130?.typ === "fix" && FRISCH_130?.datum === "2026-09-15"
   && /maßstabsgetreu/.test(FRISCH_130?.titel || "")
