@@ -52,7 +52,7 @@ import {
 } from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
 import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
-import { baueDateien, einkaufslisteCsv, gesamtstuecklisteDateien, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
+import { baueDateien, einkaufslisteCsv, gesamtstuecklisteDateien, matrixStuecklisteCsv, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
 
 /** Name der Mappendatei im Archiv — das Erkennungsmerkmal eines Projektarchivs. */
 export const DATEI_MAPPE = "projekt.json";
@@ -1050,7 +1050,9 @@ export const ORDNER_GESCHOSSE = "geschosse";
 
 /** Die je Ebene zulaessigen Auswahloptionen — mehr bietet der Dialog nicht an. */
 export const EXPORT_OPTIONEN = {
-  projekt: ["mappe", "gesamt", "geschosse", "waende", "katalog"],
+  // `matrix` (#132) gibt es nur auf der PROJEKTEBENE: die Matrix-Stückliste ist eine
+  // projektweite Ausgabe (Wandzeilen, Geschoss-Zwischensummen, Projekt-Gesamtsumme).
+  projekt: ["mappe", "gesamt", "matrix", "geschosse", "waende", "katalog"],
   gebaeude: ["mappe", "gesamt", "geschosse", "waende", "katalog"],
   geschoss: ["geschoss", "gesamt", "waende"],
   wand: ["wand", "stueckliste"],
@@ -1286,7 +1288,12 @@ export function hierarchieExport(auswahl, p) {
     }
   }
 
-  if (gewaehlt.includes("gesamt")) {
+  // Gesamtstückliste und Matrix-Stückliste (#132) teilen sich EINE Ableitung: beide
+  // pivotieren dieselben kanonisch gefalteten Zeilen, ein zweiter `gesamtDaten`-Lauf
+  // waere derselbe Rechenweg zweimal — nie ein zweites Mengenmodell, aber vergeudet.
+  let gDaten = null;
+  const holeGesamtDaten = () => {
+    if (gDaten) return gDaten;
     // Dieselbe `fassung` wie oben ([P-20]/#81): die Aggregation rechnet sie NICHT selbst,
     // sie reicht sie an `wirksameMengen()` je Wand weiter.
     // Die manuellen Mengen der GESCHOSSEBENE ([P-20], #81) werden nur GELESEN und
@@ -1294,9 +1301,14 @@ export function hierarchieExport(auswahl, p) {
     // Fassung (dieselbe eine `fassung` wie oben). Oberhalb des Geschosses gibt es sie nicht.
     const ebenenMengen = (m && ebene === "geschoss" && p.geschossId)
       ? geschossMengen(m, p.geschossId) : null;
-    const daten = gesamtDaten(umf, {
+    gDaten = gesamtDaten(umf, {
       holeElement, holeEingaben: p.holeEingaben, katalog: p.katalog || null,
     }, { fassung, ebenenMengen });
+    return gDaten;
+  };
+
+  if (gewaehlt.includes("gesamt")) {
+    const daten = holeGesamtDaten();
     for (const l of daten.luecken) {
       luecken.push(`Gesamtstückliste: ${l.pfad ? l.pfad + " — " : ""}${l.grund}`);
     }
@@ -1304,6 +1316,24 @@ export function hierarchieExport(auswahl, p) {
     // WANDBEZUG, weil die Kennung ueber mehrere Waende hinweg nicht auflösbar waere.
     for (const l of gesamtMengenLuecken(daten)) luecken.push(l);
     dateien.push(...gesamtstuecklisteDateien(daten, { preise: p.preise !== false, rumpf: dateiRumpf(daten) }));
+  }
+
+  if (gewaehlt.includes("matrix")) {
+    // Matrix-Stückliste Wand × Artikel (#132): zusaetzliche, eigenstaendige CSV — die
+    // bestehenden Dateien oben bleiben byte-gleich. Fehlende/fehlerhafte Wandstuecklisten
+    // stehen im Bestaetigungsdialog; ist die Gesamtstückliste mitgewaehlt, hat sie
+    // dieselben Luecken schon benannt (dieselbe eine Ableitung), nichts wird doppelt gesagt.
+    const daten = holeGesamtDaten();
+    if (!gewaehlt.includes("gesamt")) {
+      for (const l of daten.luecken) {
+        luecken.push(`Matrix-Stückliste: ${l.pfad ? l.pfad + " — " : ""}${l.grund}`);
+      }
+      for (const l of gesamtMengenLuecken(daten)) luecken.push(l);
+    }
+    dateien.push({
+      name: "Matrix-Stueckliste_Wand_x_Artikel_" + sicherStamm((m && m.projekt.name) || "Projekt") + ".csv",
+      data: matrixStuecklisteCsv(daten, {}),
+    });
   }
 
   if (gewaehlt.includes("katalog") && m) {

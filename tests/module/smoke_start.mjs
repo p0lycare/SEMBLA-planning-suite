@@ -2496,9 +2496,12 @@ globalThis.fetch = echtesFetch;
     const soll = [...erwarteteMengen(ids).values()].reduce((a, v) => a + v, 0);
     return Math.abs(summe - soll) < 1e-9; };
 
-  ok('#67 Projekt-/Gebaeudeebene bieten Mappe, Gesamtstueckliste, Geschosse, Waende, Katalog',
-    JSON.stringify(ARCHIV.exportOptionen('projekt')) === JSON.stringify(['mappe', 'gesamt', 'geschosse', 'waende', 'katalog'])
-    && JSON.stringify(ARCHIV.exportOptionen('gebaeude')) === JSON.stringify(ARCHIV.exportOptionen('projekt')));
+  // Seit #132 hat die Projektebene zusaetzlich die Matrix-Stückliste; das Gebaeude nicht —
+  // die Matrix ist eine projektweite Ausgabe.
+  ok('#67/#132 Projektebene bietet Mappe, Gesamtstueckliste, Matrix, Geschosse, Waende, Katalog',
+    JSON.stringify(ARCHIV.exportOptionen('projekt')) === JSON.stringify(['mappe', 'gesamt', 'matrix', 'geschosse', 'waende', 'katalog']));
+  ok('#67/#132 Gebaeudeebene bietet dieselben Dateien OHNE Matrix',
+    JSON.stringify(ARCHIV.exportOptionen('gebaeude')) === JSON.stringify(['mappe', 'gesamt', 'geschosse', 'waende', 'katalog']));
   ok('#67 Geschossebene bietet Geschossdaten, Gesamtstueckliste, Waende — keine Projektmappe',
     JSON.stringify(ARCHIV.exportOptionen('geschoss')) === JSON.stringify(['geschoss', 'gesamt', 'waende']));
   ok('#67 der Preisschalter steht ausserhalb der Dateiauswahl',
@@ -2689,6 +2692,23 @@ globalThis.fetch = echtesFetch;
     && zipCalls[0].files[0].name === 'Gesamtstueckliste_Projekt_Exportprojekt_44.csv'
     && /Ebene;Projekt/.test(zipCalls[0].files[0].data)
     && mengenSumme(zipCalls[0].files[0].data, [idG1, idG2, idG3]));
+
+  // (d2) Matrix-Stückliste (#132): eigene auswaehlbare Datei der Projektebene, im ZIP enthalten
+  zipCalls.length = 0;
+  baum('prj-export', prjId);
+  ok('#132 der Projekt-Dialog bietet die Matrix-Stückliste als eigene Option an',
+    /value="matrix"/.test($('exp-opts').innerHTML)
+    && /Matrix-Stückliste Wand × Artikel/.test($('exp-opts').innerHTML));
+  $('exp-overlay')._sel = [{ value: 'gesamt' }, { value: 'matrix' }];
+  $('exp-go').dispatch('click');
+  ok('#132 die Matrix-Datei liegt zusaetzlich im ZIP, die bestehenden Dateien unveraendert',
+    zipCalls.length === 1 && zipCalls[0].files.length === 3
+    && zipCalls[0].files[0].name === 'Gesamtstueckliste_Projekt_Exportprojekt_44.csv'
+    && zipCalls[0].files[1].name === 'Gesamtstueckliste_Projekt_Exportprojekt_44_Einkaufsliste.csv'
+    && /^Matrix-Stueckliste_Wand_x_Artikel_/.test(zipCalls[0].files[2].name)
+    && /^SEMBLA – Matrix-Stückliste Wand × Artikel/.test(zipCalls[0].files[2].data)
+    && /Zwischensumme Geschoss/.test(zipCalls[0].files[2].data)
+    && /Gesamtsumme Projekt/.test(zipCalls[0].files[2].data));
 
   // (e) Vollpaket Projektebene: der ZIP-Inhalt ist EXAKT die Auswahl
   zipCalls.length = 0;

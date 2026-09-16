@@ -910,6 +910,166 @@ export function gesamtstuecklisteDateien(daten, opts = {}) {
   ];
 }
 
+// ---------- Matrix-Stückliste Wand × Artikel (#132) ----------
+//
+// Die Projekt- und Baustellenleitung will einer GESAMTMENGE ansehen, aus welchen Waenden
+// und Geschossen sie stammt. Die Matrix pivotiert dafuer die bereits gefalteten Zeilen aus
+// `gesamtDaten()`: eine ZEILE je Wand, eine SPALTE je gefalteter Position (Artikel bzw.
+// Bauteillaenge/Fertigmass), nach jedem Geschoss eine Zwischensumme, am Ende die
+// Gesamtsumme der Ebene.
+//
+// GERECHNET WIRD HIER NICHTS. Quelle sind ausschliesslich `daten.positionen` (die kanonisch
+// gefalteten Zeilen samt Baugruppenaufloesung, #44/#94) und deren `herkunft` je Wand — genau
+// die Aufloesbarkeit, die die Aggregation ohnehin mitfuehrt. Es entsteht keine zweite Mengen-,
+// Produkt- oder Preisaufloesung, und die bestehende Gesamt- und Einkaufsdatei bleiben
+// unveraendert daneben stehen (#132: zusaetzliche, eigenstaendige Ausgabe).
+//
+// SPALTE = GEFALTETE ZEILE. Jede Spalte entspricht exakt einer Zeile der Gesamtstückliste
+// (`_faltSchluessel`: Stuecklistenschluessel, Einheit, Stueckart, Fertigmass, Produkt, Status,
+// EP). Gleich bezeichnete Teile mit verschiedenem Fertigmass bleiben damit zwingend getrennt,
+// und die Gesamtsummenzeile IST `p.menge` — die Spaltensumme entspricht der kanonischen
+// Gesamtstückliste per Konstruktion, nicht per Nachrechnung.
+//
+// LUECKEN WERDEN NIE ZUR NULL. Eine Wand ohne ableitbare Stueckliste steht als eigene Zeile
+// mit benanntem Grund und LEEREN Artikelzellen; die 0 ist den gerechneten Waenden vorbehalten
+// (nicht vorkommende Kombination). Zusaetzlich steht jede Luecke wie in den anderen Dateien
+// im Kopf ([P-9]).
+
+/** Feste fuehrende Spalten der Matrix — die Wandreferenz (#132). Die Nummer ist die laufende
+ * Nummer der KANONISCHEN Mappenreihenfolge je Geschoss — dieselbe, die Lageplan (#59/#73) und
+ * Geschosseditor tragen; sie wird hier aus derselben Reihenfolge gezaehlt, nie gespeichert. */
+export const MATRIX_KOPFSPALTEN = ["Gebäude", "Geschoss", "Wand", "Nr. (Lageplan)", "Stand"];
+
+/** Wortlaut der Summenzeilen — klar benannt, wie das Issue es verlangt (#132). */
+export const MATRIX_ZWISCHENSUMME = "Zwischensumme Geschoss";
+export const MATRIX_GESAMTSUMME = "Gesamtsumme";
+
+/**
+ * Eindeutige Spaltentitel der Artikel — Bezeichnung, Fertigmass und Einheit. Reicht das nicht
+ * (zwei gefaltete Zeilen mit gleicher Bezeichnung, gleichem Fertigmass und gleicher Einheit,
+ * etwa verschiedene Produkte/Status), wird DETERMINISTISCH nachgeschaerft statt still
+ * zusammengeworfen: erst um die Produkt-Kennung, zuletzt um die laufende Spaltennummer.
+ * @param {Array<object>} positionen gefaltete Zeilen aus `gesamtDaten()`
+ * @returns {string[]}
+ */
+export function matrixSpaltenTitel(positionen) {
+  const stufe1 = positionen.map((p) => p.label
+    + (p.fertigmass_mm == null ? "" : " " + p.fertigmass_mm + " mm")
+    + " (" + p.unit + ")");
+  const zaehle = (arr) => arr.reduce((m, t) => m.set(t, (m.get(t) || 0) + 1), new Map());
+  let n = zaehle(stufe1);
+  const stufe2 = stufe1.map((t, i) => (n.get(t) > 1 && positionen[i].produktId)
+    ? t + " · " + positionen[i].produktId : t);
+  n = zaehle(stufe2);
+  return stufe2.map((t, i) => (n.get(t) > 1 ? t + " · Spalte " + (i + 1) : t));
+}
+
+/** Dieselbe Glaettung wie beim Falten (s. `_einkaufMenge` — gleicher bewusster Doppelgaenger). */
+function _matrixMenge(werte) {
+  const s = werte.reduce((a, v) => a + v, 0);
+  return Number.isInteger(s) ? s : Math.round(s * 1e6) / 1e6;
+}
+
+/**
+ * MATRIX-STÜCKLISTE Wand × Artikel einer Projektstufe als AoA (#132).
+ *
+ * Zeilenstruktur: je Wand des Umfangs eine Zeile in der kanonischen Mappenreihenfolge,
+ * nach jedem Geschoss die benannte Zwischensumme, am Ende die benannte Gesamtsumme der
+ * Ebene. Zellen: die Menge der Wand an dieser Spalte; 0 fuer eine gerechnete Wand ohne
+ * diesen Artikel; LEER fuer eine Wand mit Luecke (nie eine stille Nullmenge).
+ *
+ * @param {object} daten Ergebnis von `gesamtDaten()`
+ * @param {{datum?:string}} [opts] `preise` wirkt hier NICHT — die Matrix ist eine Mengen-,
+ *   keine Kostenaufstellung (dieselbe Abgrenzung wie die Einkaufsliste, #113/#132)
+ */
+export function matrixStuecklisteAoa(daten, opts = {}) {
+  const b = daten.bezug || {};
+  const positionen = daten.positionen || [];
+  const fassung = normFassung(daten.fassung || (daten.mengen && daten.mengen.fassung));
+
+  // Schlanker Kopf nach dem Muster der Einkaufsliste: Blattbezug, Datum, Mengenfassung,
+  // Vollstaendigkeit — Projekt und Ausgabe sind damit eindeutig identifiziert (#132).
+  const kopf = [
+    ["SEMBLA – Matrix-Stückliste Wand × Artikel"],
+    ["Projekt", b.projekt || ""],
+  ];
+  if (b.gebaeude) kopf.push(["Gebäude", b.gebaeude]);
+  if (b.geschoss) kopf.push(["Geschoss", b.geschoss]);
+  if (b.wand) kopf.push(["Wand", b.wand]);
+  kopf.push(["Datum", opts.datum || _heute()]);
+  kopf.push(["Mengen", MENGEN_FASSUNG[fassung]]);
+  kopf.push(["Vollständigkeit", _standTextDatei(daten)]);
+  // Jede Luecke mit Projektpfad und Ursache — sie steht ZUSAETZLICH an ihrer Wandzeile.
+  for (const l of daten.luecken) kopf.push(["Lücke", l.pfad || "", l.grund]);
+
+  // Zellen je Wand und Spalte aus der Herkunft der gefalteten Zeilen — die Aufloesbarkeit,
+  // die die Aggregation ohnehin traegt. Mehrere Positionen derselben Wand in derselben
+  // gefalteten Zeile (gleicher Faltschluessel) summieren sich wie beim Falten selbst.
+  /** @type {Map<string, number[]>} wandId -> Mengenliste je Spaltenindex */
+  const zellen = new Map();
+  positionen.forEach((p, j) => {
+    for (const h of p.herkunft || []) {
+      let z = zellen.get(h.wandId);
+      if (!z) { z = new Array(positionen.length).fill(0); zellen.set(h.wandId, z); }
+      z[j] = _matrixMenge([z[j], h.menge]);
+    }
+  });
+
+  // Welche Wand gerechnet ist, sagen die QUELLEN; den Grund einer Luecke die Lueckenliste.
+  const gerechnet = new Set((daten.quellen || []).map((q) => q.wandId));
+  const luecke = new Map();
+  for (const l of daten.luecken) if (l.wandId) luecke.set(l.wandId, l.grund);
+
+  const spalten = [...MATRIX_KOPFSPALTEN, ...matrixSpaltenTitel(positionen)];
+  const zeilen = [];
+  /** @type {Map<string, {gebaeude:string, geschoss:string, mengen:number[][]}>} */
+  const geschossSummen = new Map();
+  let vorigesGeschoss = null;
+  const nummer = new Map();   // laufende Nummer je Geschoss (kanonische Mappenreihenfolge)
+
+  const zwischensumme = (gid) => {
+    const g = geschossSummen.get(gid);
+    if (!g) return;
+    zeilen.push([g.gebaeude, g.geschoss, MATRIX_ZWISCHENSUMME + " „" + g.geschoss + "“", "", "",
+      ...positionen.map((_, j) => _matrixMenge(g.mengen.map((z) => z[j])))]);
+  };
+
+  for (const ref of daten.waende || []) {
+    const gid = ref.geschossId == null ? "" : String(ref.geschossId);
+    if (vorigesGeschoss !== null && gid !== vorigesGeschoss) zwischensumme(vorigesGeschoss);
+    vorigesGeschoss = gid;
+    const nr = (nummer.get(gid) || 0) + 1;
+    nummer.set(gid, nr);
+    const ok = gerechnet.has(ref.wandId);
+    const zelle = zellen.get(ref.wandId) || new Array(positionen.length).fill(0);
+    zeilen.push([
+      ref.gebaeude || "", ref.geschoss || "", ref.name, nr,
+      ok ? "" : "LÜCKE – " + (luecke.get(ref.wandId) || "Wandstückliste nicht ableitbar."),
+      // Leere Zellen einer Luecken-Wand: sie geht NIE als stille Null in die Summen ein.
+      ...(ok ? zelle : new Array(positionen.length).fill("")),
+    ]);
+    // Die Zwischensumme gibt es fuer JEDES Geschoss — auch eines, dessen Waende alle
+    // Luecken sind (dann 0: genau so viel traegt es zur Gesamtsumme bei; die Luecken
+    // selbst stehen benannt an Zeile und Kopf, nichts geht still als Null ein).
+    let g = geschossSummen.get(gid);
+    if (!g) { g = { gebaeude: ref.gebaeude || "", geschoss: ref.geschoss || "", mengen: [] }; geschossSummen.set(gid, g); }
+    if (ok) g.mengen.push(zelle);
+  }
+  if (vorigesGeschoss !== null) zwischensumme(vorigesGeschoss);
+
+  // Gesamtsumme der Ebene = `p.menge` der gefalteten Zeile — exakt die kanonische
+  // Gesamtstückliste, per Konstruktion und nicht per Nachrechnung (#132).
+  zeilen.push(["", "", MATRIX_GESAMTSUMME + " " + (daten.ebene_label || ""), "", "",
+    ...positionen.map((p) => p.menge)]);
+
+  return [...kopf, [], spalten, ...zeilen];
+}
+
+/** Matrix-Stückliste einer Projektstufe direkt als CSV-Text. */
+export function matrixStuecklisteCsv(daten, opts = {}) {
+  return aoaToCsv(matrixStuecklisteAoa(daten, opts));
+}
+
 // ---------- Zuschnittliste (Latten) ----------
 
 /**

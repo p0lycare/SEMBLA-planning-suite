@@ -46,14 +46,30 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die STARTPOSITION DER GEWINDESTANGEN (#128). Geliefert: die
-// zeichnenden Leser stapeln ihre Stuecke ab dem realen Stangenbeginn nach [A-19] — eine
+// Der NEUESTE Eintrag ist die MATRIX-STÜCKLISTE WAND × ARTIKEL (#132). Geliefert: eine
+// zusaetzliche, eigenstaendige CSV im zentralen Projekt-Export — je Wand eine Zeile mit
+// Lageplan-Nummer, Zwischensumme je Geschoss, Gesamtsumme des Projekts, aus derselben
+// einen `gesamtDaten`-Ableitung. NICHT versprochen werden neue Bauteile oder Mengen,
+// eine geaenderte bestehende Stueckliste oder eine Einkaufs-/Preisrechnung in der Matrix.
+const FRISCH_132 = EINTRAEGE[0];
+ok("[#132] die Matrix-Stückliste ist der neueste Eintrag",
+  FRISCH_132?.id === "chg-20260916-01" && FRISCH_132?.issue === 132
+  && FRISCH_132?.typ === "feature" && FRISCH_132?.datum === "2026-09-16"
+  && /Matrix-Stückliste Wand × Artikel/.test(FRISCH_132?.titel || "")
+  && /Geschoss- und Projektsummen/.test(FRISCH_132?.titel || ""));
+ok("[#132] die Testbitte nennt Export, Summenzeilen und die Lageplan-Nummer",
+  /Modul 0/.test(FRISCH_132?.testbitte || "")
+  && /Zwischensumme je Geschoss/.test(FRISCH_132?.testbitte || "")
+  && /Lageplan-Nummer/.test(FRISCH_132?.testbitte || ""));
+
+// Davor die STARTPOSITION DER GEWINDESTANGEN (#128) — ueber die Kennung gesucht. Geliefert:
+// die zeichnenden Leser stapeln ihre Stuecke ab dem realen Stangenbeginn nach [A-19] — eine
 // halbe Kopplungsmutterhoehe ueber dem Bodenblech — statt ab der Steinunterkante. NICHT
 // versprochen werden geaenderte Mengen, eine geaenderte Fachregel oder die bis heute
 // fehlende Fussfolge im Modul-5-Baugruppenbild.
-const FRISCH_128 = EINTRAEGE[0];
-ok("[#128] die Startposition der Gewindestangen ist der neueste Eintrag",
-  FRISCH_128?.id === "chg-20260915-04" && FRISCH_128?.issue === 128
+const FRISCH_128 = EINTRAEGE.find(e => e.id === "chg-20260915-04");
+ok("[#128] die Startposition der Gewindestangen steht als Eintrag davor",
+  FRISCH_128?.issue === 128
   && FRISCH_128?.typ === "fix" && FRISCH_128?.datum === "2026-09-15"
   && /unterste Gewindestange/.test(FRISCH_128?.titel || "")
   && /halber Kopplungsmutterhöhe/.test(FRISCH_128?.titel || ""));

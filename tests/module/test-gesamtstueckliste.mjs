@@ -13,6 +13,8 @@ import {
   stuecklistePositionen, gesamtstuecklisteAoa, gesamtstuecklisteCsv, gesamtstuecklisteDateien, baueDateien,
   stuecklisteAoa, BESCHAFFUNG_SPALTEN,
   einkaufslisteAoa, einkaufslisteCsv, EINKAUF_SPALTEN, KLAERUNG_TITEL,
+  matrixStuecklisteAoa, matrixStuecklisteCsv, matrixSpaltenTitel,
+  MATRIX_KOPFSPALTEN, MATRIX_ZWISCHENSUMME, MATRIX_GESAMTSUMME,
 } from "../../docs/shared/sembla-export.js";
 import {
   EBENEN, ebeneTitel, umfang, gesamtDaten, standText, herkunftText, dateiRumpf,
@@ -348,9 +350,12 @@ const P = (ueber = {}) => ({
 
 // ---- 8. Optionen je Ebene: genau die zulaessigen, zyklusfremde gibt es nicht --------------
 {
-  ok("#67 Projekt-/Gebaeudeebene: Mappe, Gesamtstueckliste, Geschosse, Waende, Katalog",
-    JSON.stringify(EXPORT_OPTIONEN.projekt) === JSON.stringify(["mappe", "gesamt", "geschosse", "waende", "katalog"])
-    && JSON.stringify(EXPORT_OPTIONEN.gebaeude) === JSON.stringify(EXPORT_OPTIONEN.projekt));
+  // Seit #132 traegt die PROJEKTEBENE zusaetzlich die Matrix-Stückliste; die Gebaeudeebene
+  // bleibt ohne sie — die Matrix ist eine projektweite Ausgabe.
+  ok("#67/#132 Projektebene: Mappe, Gesamtstueckliste, Matrix, Geschosse, Waende, Katalog",
+    JSON.stringify(EXPORT_OPTIONEN.projekt) === JSON.stringify(["mappe", "gesamt", "matrix", "geschosse", "waende", "katalog"]));
+  ok("#67/#132 Gebaeudeebene: wie Projekt, aber OHNE Matrix",
+    JSON.stringify(EXPORT_OPTIONEN.gebaeude) === JSON.stringify(["mappe", "gesamt", "geschosse", "waende", "katalog"]));
   ok("#67 Geschossebene: Geschossdaten, Gesamtstueckliste, Waende — keine Projektmappe",
     JSON.stringify(EXPORT_OPTIONEN.geschoss) === JSON.stringify(["geschoss", "gesamt", "waende"]));
   ok("#67 Wandebene: Wanddatei und Baustellenstueckliste",
@@ -1379,6 +1384,121 @@ const P = (ueber = {}) => ({
         && dA.mengen.fremd.length === 1 && dA.mengen.fremd[0].wandId === "w-a");
     }
   }
+}
+
+// ==== Matrix-Stückliste Wand × Artikel (#132) ==============================================
+// Die Matrix ist eine ZUSAETZLICHE Ausgabe: eine Zeile je Wand, eine Spalte je gefalteter
+// Position, Zwischensumme je Geschoss, Gesamtsumme des Projekts. Grundlage ist dieselbe
+// eine `gesamtDaten`-Ableitung — die Spaltensummen MUESSEN deshalb exakt der kanonischen
+// Gesamtstückliste entsprechen, und die bestehenden Dateien bleiben byte-gleich.
+{
+  const nah = (a, b) => Math.abs(a - b) < 1e-9;
+  const d = daten("projekt", Z);
+  const aoa = matrixStuecklisteAoa(d, { datum: "01.01.2026" });
+  const kopfIdx = aoa.findIndex((r) => r[0] === MATRIX_KOPFSPALTEN[0]);
+  const spalten = aoa[kopfIdx];
+  const koerper = aoa.slice(kopfIdx + 1);
+  const nLead = MATRIX_KOPFSPALTEN.length;
+  const nArt = d.positionen.length;
+
+  ok("#132 Kopf identifiziert Projekt und Ausgabe",
+    aoa[0][0] === "SEMBLA – Matrix-Stückliste Wand × Artikel"
+    && aoa.some((r) => r[0] === "Projekt" && r[1] === "Projekt #44")
+    && aoa.some((r) => r[0] === "Mengen"));
+  ok("#132 Spalten: Wandreferenz + genau eine Spalte je gefalteter Position",
+    JSON.stringify(spalten.slice(0, nLead)) === JSON.stringify(MATRIX_KOPFSPALTEN)
+    && spalten.length === nLead + nArt);
+
+  // Zeilenstruktur in stabiler Mappenreihenfolge: EG (w-a, w-b) + Zwischensumme,
+  // OG (w-c) + Zwischensumme, EG Süd (w-d) + Zwischensumme, dann die Gesamtsumme.
+  const wandZeilen = koerper.filter((r) => r[3] !== "");
+  const zwischen = koerper.filter((r) => String(r[2]).startsWith(MATRIX_ZWISCHENSUMME));
+  const gesamtZeile = koerper[koerper.length - 1];
+  ok("#132 je Wand eine Zeile mit Geschoss, Name und Lageplan-Nummer, in Mappenreihenfolge",
+    wandZeilen.map((r) => r[2]).join() === "Wand A,Wand B,Wand C,Wand D (2. Gebäude)"
+    && wandZeilen.map((r) => r[1]).join() === "EG,EG,OG,EG Süd"
+    && wandZeilen.map((r) => r[0]).join() === "Haus Nord,Haus Nord,Haus Nord,Haus Süd"
+    && wandZeilen.map((r) => r[3]).join() === "1,2,1,1");
+  ok("#132 nach jedem Geschoss eine klar benannte Zwischensumme, am Ende die Gesamtsumme",
+    zwischen.length === 3
+    && zwischen.map((r) => r[2]).join("|") === `${MATRIX_ZWISCHENSUMME} „EG“|${MATRIX_ZWISCHENSUMME} „OG“|${MATRIX_ZWISCHENSUMME} „EG Süd“`
+    && koerper.indexOf(zwischen[0]) === 2 && koerper.indexOf(zwischen[1]) === 4
+    && koerper.indexOf(zwischen[2]) === 6
+    && gesamtZeile[2] === MATRIX_GESAMTSUMME + " Projekt");
+
+  // Die Messlatte des Issues: Summe der Wandzeilen = Summe der Geschosszeilen =
+  // Gesamtsumme = Menge derselben Position in der kanonischen Gesamtstückliste.
+  let summenOk = true;
+  for (let j = 0; j < nArt; j++) {
+    const c = nLead + j;
+    const sWand = wandZeilen.reduce((a, r) => a + +r[c], 0);
+    const sGeschoss = zwischen.reduce((a, r) => a + +r[c], 0);
+    if (!nah(sWand, sGeschoss) || !nah(sGeschoss, +gesamtZeile[c])
+      || !nah(+gesamtZeile[c], d.positionen[j].menge)) summenOk = false;
+  }
+  ok("#132 jede Spaltensumme: Wandzeilen = Geschosszeilen = Gesamtsumme = kanonische Menge",
+    summenOk && nArt > 0);
+
+  // Gleich bezeichnete Teile mit verschiedenem Fertigmass bleiben getrennte Spalten —
+  // real (zwei Sonderzuschnitt-Fertigmaße = zwei Spalten) und synthetisch bis in die
+  // deterministische Nachschaerfung (gleiches Mass -> Produkt-Kennung -> Spaltennummer).
+  const titel = matrixSpaltenTitel(d.positionen);
+  ok("#132 zwei Sonderzuschnitt-Fertigmaße sind zwei getrennte, eindeutige Spalten",
+    d.positionen.filter((p) => p.key === "rod_sonder").length >= 2
+    && new Set(titel).size === titel.length);
+  const synth = [
+    { label: "Teil X", fertigmass_mm: 500, unit: "Stk", produktId: "p-1" },
+    { label: "Teil X", fertigmass_mm: 750, unit: "Stk", produktId: "p-1" },
+    { label: "Teil X", fertigmass_mm: 750, unit: "Stk", produktId: "p-2" },
+    { label: "Teil X", fertigmass_mm: 750, unit: "Stk", produktId: "p-2" },
+    { label: "Teil X", fertigmass_mm: 750, unit: "Stk", produktId: null },
+  ];
+  const st = matrixSpaltenTitel(synth);
+  ok("#132 gleicher Name, anderes Fertigmass/Produkt: Spaltentitel bleiben eindeutig",
+    new Set(st).size === synth.length && st[0].includes("500 mm") && st[1].includes("750 mm"));
+
+  // Nicht vorkommende Kombinationen sind konsistent 0 — Wand D hat keine Oeffnung und
+  // damit andere Sonderzuschnitte als die Fensterwaende.
+  const zD = wandZeilen[3];
+  ok("#132 nicht vorkommende Kombination einer gerechneten Wand ist die Zahl 0",
+    zD.slice(nLead).some((v) => v === 0) && zD.slice(nLead).every((v) => v !== ""));
+
+  // Luecke: die verwaiste Wand steht benannt an ihrer Zeile UND im Kopf — mit LEEREN
+  // Zellen, nie als stille Nullmenge; die Zwischensumme traegt nur die gerechneten Waende.
+  const ML = setzeWand(M, EG, { id: "w-verwaist", name: "Verwaiste Wand" });
+  const dL = gesamtDaten(umfang(ML, "projekt", Z), leser());
+  const aoaL = matrixStuecklisteAoa(dL, { datum: "01.01.2026" });
+  const kL = aoaL.findIndex((r) => r[0] === MATRIX_KOPFSPALTEN[0]);
+  const zeileL = aoaL.slice(kL + 1).find((r) => r[2] === "Verwaiste Wand");
+  const zwEGL = aoaL.slice(kL + 1).find((r) => String(r[2]) === `${MATRIX_ZWISCHENSUMME} „EG“`);
+  const aoaOhne = matrixStuecklisteAoa(daten("projekt", Z), { datum: "01.01.2026" });
+  const zwEG = aoaOhne.slice(aoaOhne.findIndex((r) => r[0] === MATRIX_KOPFSPALTEN[0]) + 1)
+    .find((r) => String(r[2]) === `${MATRIX_ZWISCHENSUMME} „EG“`);
+  ok("#132 fehlende Wandstückliste: benannte LÜCKE-Zeile mit leeren Zellen, Lücke im Kopf",
+    !!zeileL && String(zeileL[4]).startsWith("LÜCKE – ")
+    && zeileL.slice(nLead).every((v) => v === "")
+    && aoaL.some((r) => r[0] === "Lücke" && /Verwaiste Wand/.test(String(r[1])))
+    && /UNVOLLSTÄNDIG/.test(matrixStuecklisteCsv(dL, { datum: "01.01.2026" })));
+  ok("#132 die Lücke geht NICHT als Null in die Zwischensumme ein",
+    !!zwEGL && !!zwEG && JSON.stringify(zwEGL.slice(nLead)) === JSON.stringify(zwEG.slice(nLead)));
+
+  // Hierarchischer Export: die Matrix ist eine EIGENE auswaehlbare Datei der Projektebene;
+  // die bestehenden Dateien bleiben byte-gleich, auf anderen Ebenen wird sie abgewiesen.
+  const nurGesamt = hierarchieExport(["gesamt"], P());
+  const beide = hierarchieExport(["gesamt", "matrix"], P());
+  const nurMatrix = hierarchieExport(["matrix"], P());
+  ok("#132 Export: eigene Datei mit eindeutigem Namen, zusätzlich zur Gesamtstückliste",
+    beide.dateien.length === nurGesamt.dateien.length + 1
+    && beide.dateien[beide.dateien.length - 1].name === "Matrix-Stueckliste_Wand_x_Artikel_Projekt__44.csv"
+    && nurMatrix.dateien.length === 1
+    && /^SEMBLA – Matrix-Stückliste Wand × Artikel/.test(nurMatrix.dateien[0].data));
+  ok("#132 Regression: die bestehenden Exportdateien bleiben byte-gleich",
+    nurGesamt.dateien.every((f, i) => beide.dateien[i].name === f.name && beide.dateien[i].data === f.data));
+  ok("#132 auf Gebäude-, Geschoss- und Wandebene ist die Matrix nicht wählbar",
+    ["gebaeude", "geschoss", "wand"].every((e) => {
+      try { hierarchieExport(["matrix"], { ...P(), ebene: e }); return false; }
+      catch { return true; }
+    }));
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

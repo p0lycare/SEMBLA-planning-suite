@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260916-01",
+    datum: "2026-09-16",
+    typ: "feature",
+    issue: 132,
+    titel: "Neue Matrix-Stückliste Wand × Artikel im Projekt-Export: je Wand eine Zeile, mit Geschoss- und Projektsummen",
+    testbitte: "In Modul 0 das Projekt exportieren und die Matrix-CSV in einer Tabellenkalkulation öffnen: "
+      + "Wandzeilen mit Lageplan-Nummer, Zwischensumme je Geschoss, Gesamtsumme am Ende prüfen",
+  },
+  {
     id: "chg-20260915-04",
     datum: "2026-09-15",
     typ: "fix",
