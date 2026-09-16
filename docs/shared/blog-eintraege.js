@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260916-02",
+    datum: "2026-09-16",
+    typ: "fix",
+    issue: 133,
+    titel: "Kein Platzhalter „Sonderzuschnitt“ mit Menge 0 mehr — die Zeile gibt es nur noch bei realen Zuschnitten",
+    testbitte: "Eine Wand ohne Sonderzuschnitt in Modul 4 öffnen und exportieren: keine Sonderzuschnitt-Zeile "
+      + "mit Menge 0 im Maß der größten Standardlänge mehr; echte Zuschnitte bleiben unverändert",
+  },
+  {
     id: "chg-20260916-01",
     datum: "2026-09-16",
     typ: "feature",

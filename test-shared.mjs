@@ -249,8 +249,12 @@ for(const [name,l,h,ops] of cases){
     const bl=iAlt.find(it=>it.key==='einlegeblech'), mu=iAlt.find(it=>it.key==='zp_mutter');
     return !!bl && !!mu && bl.menge===0 && mu.menge===0
       && semblaBom(alt).zwischenpunkte===0; })());
+  // Seit #133 existiert eine Sonderzuschnitt-Zeile nur noch bei realen Stuecken; der
+  // Altbestand ohne `tension_columns` hat keine — verglichen wird deshalb OHNE die
+  // Stangenzeilen: gemeint war hier immer, dass die ZP-Zeilen stehen bleiben.
+  const ohneRod=its=>its.filter(it=>!String(it.key).startsWith('rod')).length;
   t("A-25 · Positionszahl unterscheidet sich nicht (die Zeilen bleiben stehen)",
-    iAlt.length===iVoll.length && iLeer.length===iVoll.length);
+    iLeer.length===iVoll.length && ohneRod(iAlt)===ohneRod(iVoll));
   // Der Override aendert die Zwischenpunkte — und NUR sie. Verglichen wird deshalb gegen den
   // Auto-Stand derselben Wand: jede uebrige Position muss bitgenau gleich bleiben.
   t("A-25 · uebrige Positionen bitgenau gleich (rein additiv)", (()=>{

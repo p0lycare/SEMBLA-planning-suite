@@ -408,7 +408,12 @@ function _flachePositionen(w, b) {
   // Fertigmaß und die Stückzahl, die verbaut werden. Aus welcher Lagerlänge geschnitten wird,
   // ist Sache des Einkaufs: es gibt kein Ausgangsprodukt, keine Herkunftsangabe im Label und
   // keinen Preis (die Rolle ist nicht bepreist). `mass_mm` ist deshalb das FERTIGMASS.
-  const rodSonderItems = (b.stangenSonder.length ? b.stangenSonder : [{ len_mm: b.rod_mm, anzahl: 0, ids: [] }])
+  // OHNE realen Sonderzuschnitt existiert die Position gar nicht (#133) — dieselbe Regel wie
+  // beim Reststück: eine Menge-0-Zeile wäre die Behauptung eines Zuschnitts, den niemand
+  // braucht. Der frühere Platzhalter aus #22 trug obendrein das irreführende Maß `rod_mm`
+  // (seit [Z-2] die GRÖSSTE Standardlänge) und stand damit als „Sonderzuschnitt 1000 mm"
+  // neben dem echten Standardteil 1000 mm.
+  const rodSonderItems = b.stangenSonder
     .map(x => stange("sonder", x, "Gewindestange Sonderzuschnitt " + cm(x.len_mm) + " cm"));
   // [Z-6] Reststueck am oberen Wandabschluss: eigene Rolle, eigene Position, eigenes Maß.
   // Ohne gewaehltes Reststueck existiert die Position gar nicht (Menge 0 waere eine

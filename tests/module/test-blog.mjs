@@ -46,14 +46,29 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die MATRIX-STÜCKLISTE WAND × ARTIKEL (#132). Geliefert: eine
-// zusaetzliche, eigenstaendige CSV im zentralen Projekt-Export — je Wand eine Zeile mit
+// Der NEUESTE Eintrag ist der ENTFALLENE SONDERZUSCHNITT-PLATZHALTER (#133). Geliefert:
+// die Menge-0-Zeile „Gewindestange Sonderzuschnitt" (im irrefuehrenden Mass der groessten
+// Standardlaenge, Altlast aus #22) entfaellt — die Position existiert nur noch bei realen
+// Zuschnitten, dieselbe Regel wie beim Reststueck. NICHT versprochen werden geaenderte
+// Mengen realer Positionen oder eine geaenderte Fachregel.
+const FRISCH_133 = EINTRAEGE[0];
+ok("[#133] der entfallene Sonderzuschnitt-Platzhalter ist der neueste Eintrag",
+  FRISCH_133?.id === "chg-20260916-02" && FRISCH_133?.issue === 133
+  && FRISCH_133?.typ === "fix" && FRISCH_133?.datum === "2026-09-16"
+  && /Sonderzuschnitt/.test(FRISCH_133?.titel || "")
+  && /Menge 0/.test(FRISCH_133?.titel || ""));
+ok("[#133] die Testbitte nennt Modul 4, Export und die unveraenderten echten Zuschnitte",
+  /Modul 4/.test(FRISCH_133?.testbitte || "")
+  && /echte Zuschnitte bleiben unverändert/.test(FRISCH_133?.testbitte || ""));
+
+// Davor die MATRIX-STÜCKLISTE WAND × ARTIKEL (#132) — ueber die Kennung gesucht. Geliefert:
+// eine zusaetzliche, eigenstaendige CSV im zentralen Projekt-Export — je Wand eine Zeile mit
 // Lageplan-Nummer, Zwischensumme je Geschoss, Gesamtsumme des Projekts, aus derselben
 // einen `gesamtDaten`-Ableitung. NICHT versprochen werden neue Bauteile oder Mengen,
 // eine geaenderte bestehende Stueckliste oder eine Einkaufs-/Preisrechnung in der Matrix.
-const FRISCH_132 = EINTRAEGE[0];
-ok("[#132] die Matrix-Stückliste ist der neueste Eintrag",
-  FRISCH_132?.id === "chg-20260916-01" && FRISCH_132?.issue === 132
+const FRISCH_132 = EINTRAEGE.find(e => e.id === "chg-20260916-01");
+ok("[#132] die Matrix-Stückliste steht als Eintrag davor",
+  FRISCH_132?.issue === 132
   && FRISCH_132?.typ === "feature" && FRISCH_132?.datum === "2026-09-16"
   && /Matrix-Stückliste Wand × Artikel/.test(FRISCH_132?.titel || "")
   && /Geschoss- und Projektsummen/.test(FRISCH_132?.titel || ""));
