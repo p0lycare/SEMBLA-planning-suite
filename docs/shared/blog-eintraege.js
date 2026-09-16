@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260916-04",
+    datum: "2026-09-16",
+    typ: "feature",
+    issue: 135,
+    titel: "Stücklisten im zentralen Export wahlweise als echtes Excel (.xlsx) — Excel ist im Dialog vorausgewählt",
+    testbitte: "Zentralen Export öffnen (Wand- und Projektebene): „Dateiformat der Stücklisten“ steht auf Excel; "
+      + "die XLSX öffnet in Excel ohne Importdialog, Mengen/Preise sind Zahlenzellen, CSV bleibt wählbar",
+  },
+  {
     id: "chg-20260916-03",
     datum: "2026-09-16",
     typ: "fix",

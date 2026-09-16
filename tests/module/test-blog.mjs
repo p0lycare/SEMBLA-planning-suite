@@ -46,13 +46,28 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die ENTFALLENE STEINTYP-NULLZEILE (#134). Geliefert: je
-// VERWENDETEM Steintyp eine Position — eine reine i2-Wand fuehrt keine i3-Zeile mit
-// Menge 0 mehr (dieselbe Regel wie bei den Standardlaengen, [Z-4]). NICHT versprochen
-// werden geaenderte Mengen realer Positionen oder ein Entfall der bewussten
+// Der NEUESTE Eintrag ist der EXCEL-EXPORT DER STÜCKLISTEN (#135). Geliefert: die
+// tabellarischen Stuecklistenausgaben des zentralen Exports (Baustellen- samt
+// Einzelteilliste, Gesamt-, Matrix-Stückliste) wahlweise als echtes XLSX, im Dialog
+// mit Excel als Default; CSV bleibt waehlbar. NICHT versprochen werden geaenderte
+// Mengen/Preise, Excel-Formatierung oder ein Formatwechsel der uebrigen Dateien.
+const FRISCH_135 = EINTRAEGE[0];
+ok("[#135] der Excel-Export der Stuecklisten ist der neueste Eintrag",
+  FRISCH_135?.id === "chg-20260916-04" && FRISCH_135?.issue === 135
+  && FRISCH_135?.typ === "feature" && FRISCH_135?.datum === "2026-09-16"
+  && /Excel \(\.xlsx\)/.test(FRISCH_135?.titel || "")
+  && /vorausgewählt/.test(FRISCH_135?.titel || ""));
+ok("[#135] die Testbitte nennt Zahlenzellen und die weiterhin waehlbare CSV",
+  /Zahlenzellen/.test(FRISCH_135?.testbitte || "")
+  && /CSV bleibt wählbar/.test(FRISCH_135?.testbitte || ""));
+
+// Davor die ENTFALLENE STEINTYP-NULLZEILE (#134) — ueber die Kennung gesucht.
+// Geliefert: je VERWENDETEM Steintyp eine Position — eine reine i2-Wand fuehrt keine
+// i3-Zeile mit Menge 0 mehr (dieselbe Regel wie bei den Standardlaengen, [Z-4]). NICHT
+// versprochen werden geaenderte Mengen realer Positionen oder ein Entfall der bewussten
 // Nullfall-Zeilen (Einlegeblech/Mutter [A-25], Ausgleichsblech #96, Kopfblech).
-const FRISCH_134 = EINTRAEGE[0];
-ok("[#134] die entfallene Steintyp-Nullzeile ist der neueste Eintrag",
+const FRISCH_134 = EINTRAEGE.find(e => e.id === "chg-20260916-03");
+ok("[#134] die entfallene Steintyp-Nullzeile steht als Eintrag davor",
   FRISCH_134?.id === "chg-20260916-03" && FRISCH_134?.issue === 134
   && FRISCH_134?.typ === "fix" && FRISCH_134?.datum === "2026-09-16"
   && /Steintyp-Zeile mit Menge 0/.test(FRISCH_134?.titel || "")

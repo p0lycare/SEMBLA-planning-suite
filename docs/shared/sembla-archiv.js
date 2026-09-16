@@ -52,7 +52,7 @@ import {
 } from "./sembla-projektmappe.js";
 import { katalogObjekt } from "./sembla-katalog.js";
 import { dateiRumpf, gesamtDaten, pfadText, umfang } from "./sembla-gesamtstueckliste.js";
-import { baueDateien, einkaufslisteCsv, gesamtstuecklisteDateien, matrixStuecklisteCsv, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
+import { baueDateien, einkaufslisteCsv, gesamtstuecklisteDateien, matrixStuecklisteCsv, matrixStuecklisteXlsx, normDateiformat, normFassung, stuecklistePositionen, wirksameMengen } from "./sembla-export.js";
 
 /** Name der Mappendatei im Archiv — das Erkennungsmerkmal eines Projektarchivs. */
 export const DATEI_MAPPE = "projekt.json";
@@ -1183,16 +1183,20 @@ export function gesamtMengenLuecken(daten) {
  * @param {{mappe?:object|null, ebene:string, gebaeudeId?:string|null, geschossId?:string|null,
  *   wandId?:string|null, wandName?:string|null, katalog?:object|null,
  *   holeElement?:(id:string)=>any, holeEingaben?:(id:string)=>any,
- *   projektObjekt?:(id:string)=>any, preise?:boolean, fassung?:string}} p
+ *   projektObjekt?:(id:string)=>any, preise?:boolean, fassung?:string, format?:string}} p
  *   `fassung` waehlt die Mengenfassung der Stuecklisten ([P-20]): `'berechnet'` (Default)
  *   oder `'angepasst'`. Sie wird nur DURCHGEREICHT — an die Baustellenstueckliste der Wand
  *   und an die Gesamtstueckliste der Ebene, und zwar aus GENAU EINER Variablen: ein
  *   Exportlauf kann damit gar nicht zwei Mengenfassungen im selben ZIP haben (#81).
- * @returns {{dateien:Array<{name:string,data:string}>, luecken:string[], zipName:string, bezug:string}}
+ *   `format` waehlt das DATEIFORMAT der Stuecklisten (#135): `'csv'` (Default) oder
+ *   `'xlsx'` — genauso nur durchgereicht und genauso aus EINER Variablen fuer alle
+ *   Stuecklistendateien des Laufs (Baustellen-, Einzelteil-, Gesamt-, Matrix-Stückliste).
+ * @returns {{dateien:Array<{name:string,data:string|Uint8Array}>, luecken:string[], zipName:string, bezug:string}}
  */
 export function hierarchieExport(auswahl, p) {
   const ebene = String(p.ebene || "");
   const fassung = normFassung(p.fassung);
+  const format = normDateiformat(p.format);
   const erlaubt = EXPORT_OPTIONEN[ebene];
   if (!erlaubt) throw new Error(`Unbekannte Exportebene „${ebene}“.`);
   const gewaehlt = [...new Set((auswahl || []).map(String))];
@@ -1267,7 +1271,7 @@ export function hierarchieExport(auswahl, p) {
       const obj = projektObjekt(ref.wandId);
       const objAbleitung = (el && el.wandelement)
         ? { ...obj, wandelement: el.wandelement } : obj;
-      dateien.push(...baueDateien(objAbleitung, ["stueckliste"], p.katalog || null, { fassung }));
+      dateien.push(...baueDateien(objAbleitung, ["stueckliste"], p.katalog || null, { fassung, format }));
       // Die EINKAUFSLISTE gibt es seit #126 auch auf der Wandebene — sie ist die
       // massgebliche Bestellunterlage und muss auf jeder Ebene entstehen. Dieselbe eine
       // Ableitung wie auf den Gesamtebenen: `gesamtDaten` traegt fuer ebene "wand" genau
@@ -1315,7 +1319,7 @@ export function hierarchieExport(auswahl, p) {
     // Nicht anwendbare Uebersteuerungen gehoeren auch hier VOR den Download — mit
     // WANDBEZUG, weil die Kennung ueber mehrere Waende hinweg nicht auflösbar waere.
     for (const l of gesamtMengenLuecken(daten)) luecken.push(l);
-    dateien.push(...gesamtstuecklisteDateien(daten, { preise: p.preise !== false, rumpf: dateiRumpf(daten) }));
+    dateien.push(...gesamtstuecklisteDateien(daten, { preise: p.preise !== false, rumpf: dateiRumpf(daten), format }));
   }
 
   if (gewaehlt.includes("matrix")) {
@@ -1330,10 +1334,11 @@ export function hierarchieExport(auswahl, p) {
       }
       for (const l of gesamtMengenLuecken(daten)) luecken.push(l);
     }
-    dateien.push({
-      name: "Matrix-Stueckliste_Wand_x_Artikel_" + sicherStamm((m && m.projekt.name) || "Projekt") + ".csv",
-      data: matrixStuecklisteCsv(daten, {}),
-    });
+    // Dieselbe eine Formatwahl wie oben (#135): CSV oder echtes XLSX aus demselben AoA.
+    const matrixStamm = "Matrix-Stueckliste_Wand_x_Artikel_" + sicherStamm((m && m.projekt.name) || "Projekt");
+    dateien.push(format === "xlsx"
+      ? { name: matrixStamm + ".xlsx", data: matrixStuecklisteXlsx(daten, {}) }
+      : { name: matrixStamm + ".csv", data: matrixStuecklisteCsv(daten, {}) });
   }
 
   if (gewaehlt.includes("katalog") && m) {

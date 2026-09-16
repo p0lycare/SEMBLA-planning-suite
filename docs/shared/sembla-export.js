@@ -27,6 +27,8 @@ import { nachweise, nachweisParams } from "./sembla-statik.js";
 // Keine davon liest oder schreibt einen Speicher — sie bringen nur die kanonische
 // Fassung dieser Regeln mit, die hier sonst ein zweites Mal entstuende.
 import { mengenKennung, pruefeKommentar, pruefeMenge, sicherName } from "./storage.js";
+// Excel-Ausgabe der Stuecklisten (#135): derselbe AoA wie fuer die CSV, nur anders verpackt.
+import { aoaToXlsx } from "./xlsx.js";
 
 const _fmt = (n, d = 2) => (isFinite(n) ? n : 0).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -534,6 +536,31 @@ export function stuecklisteCsv(w, eingaben, opts, katalog = null) {
   return aoaToCsv(stuecklisteAoa(w, eingaben, opts, katalog));
 }
 
+// ---------- Dateiformat der Stuecklisten (#135) ----------
+//
+// Jede tabellarische Stuecklistenausgabe entsteht wahlweise als CSV oder als echtes
+// XLSX — aus DEMSELBEN AoA, an derselben Stelle, an der bisher nur `aoaToCsv` stand.
+// Das Format ist reine VERPACKUNG: Inhalt, Mengenfassung, Preisoption, Kommentare,
+// Warnungen, Summen und Reihenfolge sind in beiden Dateien wertgleich; es gibt keinen
+// zweiten Mengen- oder Preisberechnungspfad. Die Wahl ist — wie die Mengenfassung
+// ([P-20]) — eine Ausgabeentscheidung je Exportlauf und wird nirgends gespeichert.
+// Im DIALOG (Modul 0) ist Excel bei jedem Oeffnen vorausgewaehlt (#135); der
+// API-Standardwert bleibt bewusst `csv`, damit jeder bestehende Aufrufer ohne Angabe
+// byte-gleich weiterlaeuft.
+
+/** Formatwahl normalisieren: `'xlsx'` oder `'csv'` (Default, auch ohne Angabe). */
+export function normDateiformat(v) { return String(v) === "xlsx" ? "xlsx" : "csv"; }
+
+/** Baustellenstückliste als XLSX — Optionen wie `stuecklisteCsv` ([P-20]/#135). */
+export function stuecklisteXlsx(w, eingaben, opts, katalog = null) {
+  return aoaToXlsx(stuecklisteAoa(w, eingaben, opts, katalog), { blatt: "Baustellenstückliste" });
+}
+
+/** Einzelteilliste der Gewindestangen als XLSX (#135). */
+export function einbauteileXlsx(w, eingaben = {}, opts = {}) {
+  return aoaToXlsx(einbauteileAoa(w, eingaben, opts), { blatt: "Einbauteile Gewindestangen" });
+}
+
 // ---------- Gesamtstueckliste ueber die aktiven Projektstufen (#44) ----------
 
 /**
@@ -718,6 +745,11 @@ export function gesamtstuecklisteCsv(daten, opts = {}) {
   return aoaToCsv(gesamtstuecklisteAoa(daten, opts));
 }
 
+/** Gesamtstückliste als XLSX — Optionen wie `gesamtstuecklisteCsv` (#135). */
+export function gesamtstuecklisteXlsx(daten, opts = {}) {
+  return aoaToXlsx(gesamtstuecklisteAoa(daten, opts), { blatt: "Gesamtstückliste" });
+}
+
 // ---------- Einkaufsliste je Katalogprodukt (#113) ----------
 //
 // Wer bestellt, denkt nicht in Einbaustellen, sondern in ARTIKELN: dasselbe Katalogprodukt
@@ -895,17 +927,24 @@ export function einkaufslisteCsv(daten, opts = {}) {
  *
  * ZWEI Dateien (#113): die Gesamtstückliste je Einbaustelle und daneben die Einkaufsliste je
  * Katalogprodukt. Beide entstehen aus DEMSELBEN `daten`-Objekt — es wird nichts nachgerechnet.
- * @param {object} daten @param {{preise?:boolean, datum?:string, rumpf?:string}} [opts]
- * @returns {Array<{name:string,data:string}>}
+ * @param {object} daten @param {{preise?:boolean, datum?:string, rumpf?:string, format?:string}} [opts]
+ *   `format` waehlt das Dateiformat der Gesamtstückliste (#135): `'csv'` (Default) oder
+ *   `'xlsx'` — gleicher Inhalt, gleiche Ableitung, nur die Verpackung wechselt.
+ * @returns {Array<{name:string,data:string|Uint8Array}>}
  */
 export function gesamtstuecklisteDateien(daten, opts = {}) {
   const rumpf = sicherName(opts.rumpf || daten.titel);
+  const xlsx = normDateiformat(opts.format) === "xlsx";
   return [
-    // Index 0 bleibt BYTE-GLEICH der bisherige Stand — die Einkaufsliste tritt daneben,
-    // nie an seine Stelle.
-    { name: rumpf + ".csv", data: gesamtstuecklisteCsv(daten, opts) },
+    // Index 0: bei CSV BYTE-GLEICH der bisherige Stand — die Einkaufsliste tritt daneben,
+    // nie an seine Stelle. Bei XLSX (#135) derselbe AoA, nur als Excel-Paket.
+    xlsx
+      ? { name: rumpf + ".xlsx", data: gesamtstuecklisteXlsx(daten, opts) }
+      : { name: rumpf + ".csv", data: gesamtstuecklisteCsv(daten, opts) },
     // Dieselben Daten, je Katalogprodukt statt je Einbaustelle (#113). Derselbe Rumpf haelt
     // die beiden Dateien im ZIP beieinander und schliesst eine Namenskollision aus.
+    // Die Einkaufsliste bleibt bewusst CSV: #135 nennt genau die Stuecklistenausgaben
+    // (Baustellen-, Gesamt-, Matrix-Stückliste) — die Bestellunterlage gehoert nicht dazu.
     { name: rumpf + "_Einkaufsliste.csv", data: einkaufslisteCsv(daten, opts) },
   ];
 }
@@ -1068,6 +1107,11 @@ export function matrixStuecklisteAoa(daten, opts = {}) {
 /** Matrix-Stückliste einer Projektstufe direkt als CSV-Text. */
 export function matrixStuecklisteCsv(daten, opts = {}) {
   return aoaToCsv(matrixStuecklisteAoa(daten, opts));
+}
+
+/** Matrix-Stückliste als XLSX — Optionen wie `matrixStuecklisteCsv` (#132/#135). */
+export function matrixStuecklisteXlsx(daten, opts = {}) {
+  return aoaToXlsx(matrixStuecklisteAoa(daten, opts), { blatt: "Matrix-Stückliste" });
 }
 
 // ---------- Zuschnittliste (Latten) ----------
@@ -1381,10 +1425,11 @@ function _heute() { try { return new Date().toLocaleDateString("de-DE"); } catch
  * @param {object|null} [katalog] geladener Bauteilkatalog — Preisquelle der Stückliste
  *   ([P-14]). Ohne Katalog entsteht die Datei weiterhin, aber ohne Preise und mit
  *   benanntem Grund je Position (nie mit Nullpreisen).
- * @param {{fassung?:string}} [opts] Mengenfassung der Stückliste ([P-20]): `'berechnet'`
- *   (Default, auch ohne Angabe) oder `'angepasst'`. Die Wahl ist eine Ausgabeentscheidung
- *   je Exportlauf und wird nirgends gespeichert.
- * @returns {Array<{name:string,data:string}>}
+ * @param {{fassung?:string, format?:string}} [opts] Mengenfassung der Stückliste ([P-20]):
+ *   `'berechnet'` (Default, auch ohne Angabe) oder `'angepasst'`; `format` das Dateiformat
+ *   der Stuecklisten (#135): `'csv'` (Default) oder `'xlsx'`. Beides sind
+ *   Ausgabeentscheidungen je Exportlauf und werden nirgends gespeichert.
+ * @returns {Array<{name:string,data:string|Uint8Array}>}
  */
 export function baueDateien(projekt, auswahl, katalog = null, opts = {}) {
   const w = projekt.wandelement, eingaben = projekt.eingaben;
@@ -1397,9 +1442,18 @@ export function baueDateien(projekt, auswahl, katalog = null, opts = {}) {
     // Einzelteilliste mit den IDs. Beide lesen dieselbe Einbauteilliste — es gibt keinen
     // zweiten Mengen- oder Identitätspfad. Die Fassungswahl nach [P-20] wirkt allein auf die
     // aggregierte Liste; die Einzelteilliste bleibt abgeleitet und sagt das (EINZELTEIL_FASSUNG).
-    files.push({ name: "Baustellenstueckliste_" + base + ".csv",
-      data: stuecklisteCsv(w, eingaben, { fassung: normFassung(opts.fassung) }, katalog) });
-    files.push({ name: "Einbauteile_Gewindestangen_" + base + ".csv", data: einbauteileCsv(w, eingaben) });
+    // Das Dateiformat (#135) gilt fuer BEIDE — die Einzelteilliste gehoert laut Issue zur
+    // Baustellenstückliste; der AoA-Inhalt ist in CSV und XLSX wertgleich.
+    const fassung = normFassung(opts.fassung);
+    if (normDateiformat(opts.format) === "xlsx") {
+      files.push({ name: "Baustellenstueckliste_" + base + ".xlsx",
+        data: stuecklisteXlsx(w, eingaben, { fassung }, katalog) });
+      files.push({ name: "Einbauteile_Gewindestangen_" + base + ".xlsx", data: einbauteileXlsx(w, eingaben) });
+    } else {
+      files.push({ name: "Baustellenstueckliste_" + base + ".csv",
+        data: stuecklisteCsv(w, eingaben, { fassung }, katalog) });
+      files.push({ name: "Einbauteile_Gewindestangen_" + base + ".csv", data: einbauteileCsv(w, eingaben) });
+    }
   }
   if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben, katalog) });
   if (set.has("montage")) files.push({ name: "Montageanleitung_" + base + ".html", data: montageHtml(w, eingaben) });

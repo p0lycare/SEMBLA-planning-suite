@@ -402,6 +402,22 @@
         <b>Einzelteilliste</b> der Gewindestangen bleibt in beiden Fällen abgeleitet — eine
         manuelle Menge ließe sich dort nur mit erfundenen Einbauteil-IDs abbilden ([P-19]).</div>
     </div>
+    <!-- Dateiformat der Stücklisten (#135): CSV oder echtes XLSX — aus DERSELBEN Ableitung,
+         nur anders verpackt (kein zweiter Mengen- oder Preispfad). Excel ist bei JEDEM
+         Öffnen vorausgewählt; die Wahl gilt nur für diesen Exportlauf und wird nirgends
+         gespeichert. Sichtbar wie die Mengenfassung: sobald der Umfang mindestens eine
+         Stücklistenausgabe anbietet. -->
+    <div class="opt-zusatz" id="exp-format-optionen" style="margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <span>Dateiformat der Stücklisten:</span>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-format" id="exp-format-xlsx" checked>Excel (.xlsx)</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-format" id="exp-format-csv">CSV (.csv)</label>
+      </div>
+      <div style="margin-top:3px">Gilt für Baustellenstückliste samt Einzelteilliste,
+        Gesamtstückliste und Matrix-Stückliste dieses Laufs — gleicher Inhalt, gleiche
+        Reihenfolge, in Excel mit echten Zahlenzellen. Die übrigen Dateien (JSON, HTML,
+        SVG, IFC, PDF, Einkaufsliste als CSV) bleiben unberührt.</div>
+    </div>
     <!-- Zeichnungen als PDF (#98/#107). Ausgelöst wird das hier, im EINEN Exportdialog —
          die frühere eigene Projekt-Schaltfläche ist ersatzlos entfallen: sie stand neben
          „Exportieren“ und erzeugte einen zweiten Download für denselben Bezug. Das Häkchen
@@ -1934,6 +1950,14 @@
       !(optionen.includes('stueckliste') || optionen.includes('gesamt'));
     $('exp-fassung-berechnet').checked = true;
     $('exp-fassung-angepasst').checked = false;
+    // Dateiformat der Stücklisten (#135): sichtbar, sobald der Umfang mindestens eine
+    // Stücklistenausgabe anbietet (Baustellen-, Gesamt- oder Matrix-Stückliste). Excel
+    // ist bei JEDEM Öffnen der Default — die Wahl gilt nur für diesen Lauf und darf
+    // nicht aus einem früheren Export nachhängen.
+    $('exp-format-optionen').hidden = !(optionen.includes('stueckliste')
+      || optionen.includes('gesamt') || optionen.includes('matrix'));
+    $('exp-format-xlsx').checked = true;
+    $('exp-format-csv').checked = false;
     // Zeichnungs-PDFs (#98/#107): nur auf der Projektebene, und bei JEDEM Öffnen wieder
     // AUS. Sie sind der teuerste Teil des Laufs (jedes Blatt wird gerastert) und dürfen
     // deshalb nicht aus einem früheren Export nachhängen.
@@ -1998,6 +2022,9 @@
           // Ausgabeentscheidung dieses Laufs ([P-20]) — sie wird nur durchgereicht und
           // nirgends gespeichert; gerechnet wird die wirksame Menge in sembla-export.js.
           fassung: $('exp-fassung-angepasst').checked ? 'angepasst' : 'berechnet',
+          // Dateiformat der Stücklisten (#135) — ebenfalls nur durchgereicht; gebaut
+          // werden CSV wie XLSX in sembla-export.js aus demselben AoA.
+          format: $('exp-format-csv').checked ? 'csv' : 'xlsx',
         });
         dateien = erg.dateien.slice();
         luecken = erg.luecken.slice();

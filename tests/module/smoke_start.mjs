@@ -226,6 +226,17 @@ function baum(act, id, host = 'tr-baum'){
 const trMsgTxt = () => $('tr-msg').textContent;
 const trFehler = () => $('tr-msg').className === 'msg err';
 /**
+ * Exportdialog oeffnen und ausdruecklich CSV waehlen (#135): der Dialog startet seit #135
+ * mit Excel (.xlsx) als Default, die historischen Inhaltspruefungen dieses Smokes lesen
+ * aber die CSV-Texte. Der Excel-Default selbst hat seinen eigenen Abschnitt „#135“.
+ */
+function baumExportCsv(act, id){
+  const r = baum(act, id);
+  $('exp-format-csv').checked = true;
+  $('exp-format-xlsx').checked = false;
+  return r;
+}
+/**
  * Projekt ueber den echten Dialog anlegen (und aktiv setzen). Seit #68 belegt die Anlage
  * den SEMBLA-Standardkatalog vor; die historischen Aufrufer dieses Helfers erwarten aber
  * ein Projekt OHNE Katalog — deshalb wird hier ausdruecklich abgewaehlt. Die Vorbelegung
@@ -337,7 +348,7 @@ ok('#67 EIN Exportzugang je Eintrag: keine Alt-Knoepfe mehr im Markup',
 const aktivId = store.aktivId();
 const zeigerStand = () => JSON.stringify([store.aktivesProjektId(), store.aktivesGeschossId(), store.aktivId()]);
 const zeiger0 = zeigerStand();
-baum('wand-export', aktivId);
+baumExportCsv('wand-export', aktivId);
 ok('Klick auf „Exportieren" oeffnet den Dialog', $('exp-overlay').hidden === false
   && $('exp-titel').textContent === 'Wand exportieren');
 ok('#67 die gerenderten Optionen sind genau die der Wandebene',
@@ -385,7 +396,7 @@ ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
 
   // (a) Voreinstellung: berechnete Fassung — bitgleich dem bestehenden Wandpfad.
   zipCalls.length = 0;
-  baum('wand-export', wandId);
+  baumExportCsv('wand-export', wandId);
   ok('#81 die Fassungswahl ist auf der Wandebene sichtbar und startet auf „berechnet“',
     $('exp-stueckliste-optionen').hidden === false
     && $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
@@ -399,7 +410,7 @@ ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
 
   // (b) Angepasste Fassung — ueber genau das Bedienelement des Dialogs.
   zipCalls.length = 0;
-  baum('wand-export', wandId);
+  baumExportCsv('wand-export', wandId);
   $('exp-fassung-berechnet').checked = false;
   $('exp-fassung-angepasst').checked = true;
   $('exp-overlay')._sel = [{ value: 'stueckliste' }];
@@ -420,7 +431,7 @@ ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
     && /\nMengen;berechnet – Einzelteile werden stets abgeleitet/.test(zipCalls[0].files[1].data));
 
   // (c) Die Wahl ist fluechtig: ein neu geoeffneter Dialog startet wieder auf „berechnet“.
-  baum('wand-export', wandId);
+  baumExportCsv('wand-export', wandId);
   ok('#81 die Wahl haengt nicht aus dem vorigen Lauf nach',
     $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
   $('exp-cancel').dispatch('click');
@@ -431,7 +442,7 @@ ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
   // (d) Seit #81 gilt die Wahl fuer JEDE Stuecklistendatei — auf der Projektebene also
   // fuer die Gesamtstueckliste. Sichtbar ist sie deshalb auch dort, und sie startet
   // ebenso auf „berechnet“.
-  baum('prj-export', store.aktivesProjektId());
+  baumExportCsv('prj-export', store.aktivesProjektId());
   ok('#81 auf der Projektebene ist die Fassungswahl sichtbar (Gesamtstückliste)',
     $('exp-stueckliste-optionen').hidden === false
     && $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
@@ -441,7 +452,7 @@ ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
   store.setzeMengenUebersteuerung('rod_std@424242', 5, wandId);
   confirmAntwort = false;
   zipCalls.length = 0;
-  baum('wand-export', wandId);
+  baumExportCsv('wand-export', wandId);
   $('exp-fassung-angepasst').checked = true;
   $('exp-overlay')._sel = [{ value: 'stueckliste' }];
   $('exp-go').dispatch('click');
@@ -464,9 +475,46 @@ ok('Dialog schliesst nach dem Export', $('exp-overlay').hidden === true);
     Object.keys(store.holeMengen(wandId)).length === 0);
 }
 
+// --- 4a2) #135: Dateiformat der Stuecklisten — Excel ist der Dialog-Default ---------------
+// Der ECHTE Modul-0-Pfad: Dialog oeffnen (OHNE den CSV-Helfer), Default pruefen,
+// exportieren, Bytes pruefen. Die Wahl ist fluechtig und startet bei jedem Oeffnen neu.
+{
+  ok('#135 der Dialog bietet die Formatwahl im Markup an',
+    /id="exp-format-optionen"/.test(html)
+    && /id="exp-format-xlsx"[^>]*checked/.test(html) && /id="exp-format-csv"/.test(html));
+  zipCalls.length = 0;
+  baum('wand-export', aktivId);
+  ok('#135 die Formatwahl ist sichtbar und startet auf Excel (.xlsx)',
+    $('exp-format-optionen').hidden === false
+    && $('exp-format-xlsx').checked === true && $('exp-format-csv').checked === false);
+  $('exp-overlay')._sel = [{ value: 'stueckliste' }];
+  $('exp-go').dispatch('click');
+  ok('#135 ohne Zutun entstehen echte XLSX-Dateien (PK-Signatur), Einkaufsliste bleibt CSV',
+    zipCalls.length === 1
+    && /^Baustellenstueckliste_.*\.xlsx$/.test(zipCalls[0].files[0].name)
+    && /^Einbauteile_Gewindestangen_.*\.xlsx$/.test(zipCalls[0].files[1].name)
+    && zipCalls[0].files[0].data instanceof Uint8Array
+    && zipCalls[0].files[0].data[0] === 0x50 && zipCalls[0].files[0].data[1] === 0x4B
+    && /^Einkaufsliste_Wand_.*\.csv$/.test(zipCalls[0].files[2].name));
+  ok('#135 bitgleich der gemeinsamen Ableitung (kein zweiter Exportpfad)', (() => {
+    const soll = baueDateien(store.projektObjekt(aktivId), ['stueckliste'], null, { format: 'xlsx' });
+    const b = zipCalls[0].files[0].data;
+    return soll[0].name === zipCalls[0].files[0].name && soll[0].data.length === b.length
+      && soll[0].data.every((v, i) => v === b[i]);
+  })());
+  // Die Wahl haengt nicht nach: CSV waehlen, schliessen, neu oeffnen -> wieder Excel.
+  baum('wand-export', aktivId);
+  $('exp-format-csv').checked = true; $('exp-format-xlsx').checked = false;
+  $('exp-cancel').dispatch('click');
+  baum('wand-export', aktivId);
+  ok('#135 ein neu geoeffneter Dialog startet wieder auf Excel (nichts haengt nach)',
+    $('exp-format-xlsx').checked === true && $('exp-format-csv').checked === false);
+  $('exp-cancel').dispatch('click');
+}
+
 // --- 4b) Wanddatei-Option: bestehendes Format SEMBLA-Projekt v2 --------------
 zipCalls.length = 0;
-baum('wand-export', aktivId);
+baumExportCsv('wand-export', aktivId);
 $('exp-overlay')._sel = [{ value: 'wand' }];
 $('exp-go').dispatch('click');
 const wDatei = zipCalls.length ? zipCalls[0].files[0] : { name: '', data: '' };
@@ -1616,7 +1664,7 @@ globalThis.fetch = echtesFetch;
   // Der reine Struktur-Weg ([L-13]: „nur Struktur (JSON)“) ist seit #67 die
   // Mappen-Option des zentralen Exportdialogs — derselbe Inhalt, ein Zugang.
   zipCalls.length = 0;
-  baum('prj-export', prj0.projekt.id);
+  baumExportCsv('prj-export', prj0.projekt.id);
   $('exp-overlay')._sel = [{ value: 'mappe' }];
   $('exp-go').dispatch('click');
   const mappeDatei = zipCalls.length ? zipCalls[0].files[0].data : '';
@@ -2145,7 +2193,7 @@ globalThis.fetch = echtesFetch;
   await warte();
 
   zipCalls.length = 0;
-  baum('prj-export', prjA.projekt.id);
+  baumExportCsv('prj-export', prjA.projekt.id);
   $('exp-overlay')._sel = [{ value: 'mappe' }, { value: 'geschosse' }, { value: 'waende' }];
   $('exp-go').dispatch('click');
   const expDateien = zipCalls.length ? zipCalls[0].files : [];
@@ -2510,7 +2558,7 @@ globalThis.fetch = echtesFetch;
   // (a) Geschossebene mit Preisen — ueber den echten Geschoss-Knopf
   const zeiger9 = zeigerJetzt();
   zipCalls.length = 0;
-  baum('gs-export', gsG);
+  baumExportCsv('gs-export', gsG);
   ok('#67 der Geschoss-Dialog oeffnet mit den Geschoss-Optionen und nennt den Bezug',
     $('exp-overlay').hidden === false && $('exp-titel').textContent === 'Geschoss exportieren'
     && /value="geschoss"/.test($('exp-opts').innerHTML) && /value="gesamt"/.test($('exp-opts').innerHTML)
@@ -2598,7 +2646,7 @@ globalThis.fetch = echtesFetch;
 
     // Voreinstellung: berechnet — die Datei bleibt der bisherige Stand.
     zipCalls.length = 0;
-    baum('gs-export', gsG);
+    baumExportCsv('gs-export', gsG);
     ok('#81 auf der Geschossebene ist die Fassungswahl sichtbar und startet auf „berechnet“',
       $('exp-stueckliste-optionen').hidden === false
       && $('exp-fassung-berechnet').checked === true && $('exp-fassung-angepasst').checked === false);
@@ -2612,7 +2660,7 @@ globalThis.fetch = echtesFetch;
 
     // Angepasst — ueber genau das Bedienelement des Dialogs.
     zipCalls.length = 0;
-    baum('gs-export', gsG);
+    baumExportCsv('gs-export', gsG);
     $('exp-fassung-berechnet').checked = false;
     $('exp-fassung-angepasst').checked = true;
     $('exp-overlay')._sel = [{ value: 'gesamt' }];
@@ -2635,7 +2683,7 @@ globalThis.fetch = echtesFetch;
       return zA[ep] === zB[epB] && Math.abs(+zA[gp] - wirksamG * +zA[ep]) < 1e-6;
     })());
     ok('#81 ein neu geoeffneter Dialog startet wieder auf „berechnet“ (nichts haengt nach)',
-      (() => { baum('gs-export', gsG); const b = $('exp-fassung-berechnet').checked === true
+      (() => { baumExportCsv('gs-export', gsG); const b = $('exp-fassung-berechnet').checked === true
         && $('exp-fassung-angepasst').checked === false; $('exp-cancel').dispatch('click'); return b; })());
     ok('#81 der Export hat die gespeicherte Uebersteuerung nicht angetastet',
       store.holeMengen(idG1)[kennung] === 7);
@@ -2648,7 +2696,7 @@ globalThis.fetch = echtesFetch;
 
   // (b) Preisschalter im Export
   zipCalls.length = 0;
-  baum('gs-export', gsG);
+  baumExportCsv('gs-export', gsG);
   $('exp-preise').checked = false;
   $('exp-overlay')._sel = [{ value: 'gesamt' }];
   $('exp-go').dispatch('click');
@@ -2669,7 +2717,7 @@ globalThis.fetch = echtesFetch;
 
   // (c) Ein NICHT aktives Geschoss ist genauso exportierbar — ohne Zeigerwechsel ([L-10])
   zipCalls.length = 0;
-  baum('gs-export', gs2);
+  baumExportCsv('gs-export', gs2);
   $('exp-overlay')._sel = [{ value: 'gesamt' }];
   $('exp-go').dispatch('click');
   ok('#67 auch ein nicht aktives Geschoss exportiert — der Zeiger bleibt',
@@ -2680,7 +2728,7 @@ globalThis.fetch = echtesFetch;
 
   // (d) Projektebene: Gesamtstueckliste ueber den Projekt-Knopf
   zipCalls.length = 0;
-  baum('prj-export', prjId);
+  baumExportCsv('prj-export', prjId);
   ok('#67 der Projekt-Dialog oeffnet mit den Projekt-Optionen',
     $('exp-titel').textContent === 'Projekt exportieren'
     && /value="mappe"/.test($('exp-opts').innerHTML) && /value="katalog"/.test($('exp-opts').innerHTML)
@@ -2695,7 +2743,7 @@ globalThis.fetch = echtesFetch;
 
   // (d2) Matrix-Stückliste (#132): eigene auswaehlbare Datei der Projektebene, im ZIP enthalten
   zipCalls.length = 0;
-  baum('prj-export', prjId);
+  baumExportCsv('prj-export', prjId);
   ok('#132 der Projekt-Dialog bietet die Matrix-Stückliste als eigene Option an',
     /value="matrix"/.test($('exp-opts').innerHTML)
     && /Matrix-Stückliste Wand × Artikel/.test($('exp-opts').innerHTML));
@@ -2712,7 +2760,7 @@ globalThis.fetch = echtesFetch;
 
   // (e) Vollpaket Projektebene: der ZIP-Inhalt ist EXAKT die Auswahl
   zipCalls.length = 0;
-  baum('prj-export', prjId);
+  baumExportCsv('prj-export', prjId);
   $('exp-overlay')._sel = [{ value: 'mappe' }, { value: 'gesamt' }, { value: 'geschosse' },
     { value: 'waende' }, { value: 'katalog' }];
   $('exp-go').dispatch('click');
@@ -2769,7 +2817,7 @@ globalThis.fetch = echtesFetch;
   store.setzeAktivesProjekt(prjId);
   store.setzeAktivesGeschoss(gsG);
   zipCalls.length = 0;
-  baum('prj-export', zweitId);
+  baumExportCsv('prj-export', zweitId);
   ok('#67 Dialog oeffnet fuer das angeklickte, nicht aktive Projekt',
     $('exp-overlay').hidden === false && $('exp-name').textContent === 'Zweitprojekt #67');
   $('exp-overlay')._sel = [{ value: 'mappe' }];
@@ -2784,7 +2832,7 @@ globalThis.fetch = echtesFetch;
   store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsG, { id: 'w-weg', name: 'Verschwundene Wand' }));
   confirmAntwort = false;
   zipCalls.length = 0;
-  baum('gs-export', gsG);
+  baumExportCsv('gs-export', gsG);
   $('exp-overlay')._sel = [{ value: 'waende' }];
   $('exp-go').dispatch('click');
   ok('#67 Luecke wird vor dem Download benannt — ohne Bestaetigung kein ZIP',
@@ -2804,14 +2852,14 @@ globalThis.fetch = echtesFetch;
   store.setzeMappe(MAPPE.setzeKatalogRef(store.holeMappe(), 'kat-weg'));
   confirmAntwort = true;
   zipCalls.length = 0;
-  baum('prj-export', prjId);
+  baumExportCsv('prj-export', prjId);
   $('exp-overlay')._sel = [{ value: 'katalog' }];
   $('exp-go').dispatch('click');
   ok('#67 fehlender zugeordneter Katalog: keine Datei, benannte Meldung, Referenz bleibt',
     zipCalls.length === 0 && /kat-weg/.test(trMsgTxt()) && /nicht gespeichert/.test(trMsgTxt())
     && trFehler() && store.holeMappe().katalog === 'kat-weg');
   store.setzeMappe(MAPPE.setzeKatalogRef(store.holeMappe(), null));
-  baum('prj-export', prjId);
+  baumExportCsv('prj-export', prjId);
   $('exp-overlay')._sel = [{ value: 'katalog' }];
   $('exp-go').dispatch('click');
   ok('#67 kein zugeordneter Katalog wird benannt ([L-12])',
@@ -3036,18 +3084,18 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
 
   /** Ein Lauf ueber den zentralen Exportdialog — nur die Zeichnungen, keine Archivdatei. */
   const zpdfLauf = async () => {
-    baum('prj-export', zpdfPrjId);
+    baumExportCsv('prj-export', zpdfPrjId);
     $('exp-overlay')._sel = [];                 // keine Datei der Archivauswahl gewaehlt
     $('exp-zeichnungen').checked = true;
     $('exp-go').dispatch('click');
     await warte();
   };
 
-  baum('prj-export', zpdfPrjId);
+  baumExportCsv('prj-export', zpdfPrjId);
   ok('#107 der zentrale Exportdialog bietet die Zeichnungen an — und startet AUS',
     $('exp-zeichnungen-optionen').hidden === false
     && $('exp-zeichnungen').checked === false);
-  baum('gs-export', zpdfEG);
+  baumExportCsv('gs-export', zpdfEG);
   ok('#107 auf Geschoss- und Wandebene gibt es die Zeichnungswahl nicht',
     $('exp-zeichnungen-optionen').hidden === true);
 
