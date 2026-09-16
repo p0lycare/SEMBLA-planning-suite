@@ -420,11 +420,19 @@ function _flachePositionen(w, b) {
   // Behauptung ueber ein Produkt, das niemand gewaehlt hat).
   const rodRestItems = b.stangenRest.map(x =>
     stange("rest", x, "Gewindestange Reststück " + cm(x.len_mm) + " cm (oberer Abschluss)"));
+  // Steintypen wie Standardlaengen ([Z-4], #134): je VERWENDETEM Typ eine Position. Eine
+  // Wand im reinen i2-Verband fuehrt keine i3-Zeile mit Menge 0 (und umgekehrt) — ein nicht
+  // verwendeter Typ spannt keine Zeile auf. BEWUSST anders bleiben die festen Einbaustellen
+  // mit Nullfall-Aussage: Einlegeblech/Mutter ([A-25]), Ausgleichsblech (#96) und Kopfblech
+  // beim oberen Anschluss „Spannplatte" stehen weiter mit Menge 0 (nicht_erforderlich).
+  const steinItems = [
+    { key: "i3",          label: "Stein i3 (37,5 cm)",                unit: "Stk", menge: b.i3 },
+    { key: "i2",          label: "Stein i2 (25 cm)",                  unit: "Stk", menge: b.i2 },
+  ].filter((s) => s.menge > 0);
   // Jede Zeile nennt die Wand, an der sie verbaut wird ([P-19]) — auch die Mengenpositionen
   // ohne Einzelteil-Identität (Steine, Muttern, Bleche, Dichtstreifen).
   return _mitWand(b.wand, [
-    { key: "i3",          label: "Stein i3 (37,5 cm)",                unit: "Stk", menge: b.i3 },
-    { key: "i2",          label: "Stein i2 (25 cm)",                  unit: "Stk", menge: b.i2 },
+    ...steinItems,
     ...rodStdItems,
     ...rodSonderItems,
     ...rodRestItems,

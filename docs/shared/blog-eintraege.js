@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260916-03",
+    datum: "2026-09-16",
+    typ: "fix",
+    issue: 134,
+    titel: "Keine Steintyp-Zeile mit Menge 0 mehr — je verwendetem Steintyp eine Position, wie bei den Standardlängen",
+    testbitte: "Eine Wand im reinen i2-Verband in Modul 4 öffnen und exportieren: keine Zeile „Stein i3“ mit "
+      + "Menge 0 mehr; gemischte Verbände zeigen beide Typen unverändert",
+  },
+  {
     id: "chg-20260916-02",
     datum: "2026-09-16",
     typ: "fix",

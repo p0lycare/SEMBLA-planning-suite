@@ -46,14 +46,29 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist der ENTFALLENE SONDERZUSCHNITT-PLATZHALTER (#133). Geliefert:
-// die Menge-0-Zeile „Gewindestange Sonderzuschnitt" (im irrefuehrenden Mass der groessten
-// Standardlaenge, Altlast aus #22) entfaellt — die Position existiert nur noch bei realen
-// Zuschnitten, dieselbe Regel wie beim Reststueck. NICHT versprochen werden geaenderte
+// Der NEUESTE Eintrag ist die ENTFALLENE STEINTYP-NULLZEILE (#134). Geliefert: je
+// VERWENDETEM Steintyp eine Position — eine reine i2-Wand fuehrt keine i3-Zeile mit
+// Menge 0 mehr (dieselbe Regel wie bei den Standardlaengen, [Z-4]). NICHT versprochen
+// werden geaenderte Mengen realer Positionen oder ein Entfall der bewussten
+// Nullfall-Zeilen (Einlegeblech/Mutter [A-25], Ausgleichsblech #96, Kopfblech).
+const FRISCH_134 = EINTRAEGE[0];
+ok("[#134] die entfallene Steintyp-Nullzeile ist der neueste Eintrag",
+  FRISCH_134?.id === "chg-20260916-03" && FRISCH_134?.issue === 134
+  && FRISCH_134?.typ === "fix" && FRISCH_134?.datum === "2026-09-16"
+  && /Steintyp-Zeile mit Menge 0/.test(FRISCH_134?.titel || "")
+  && /je verwendetem Steintyp/.test(FRISCH_134?.titel || ""));
+ok("[#134] die Testbitte nennt den reinen i2-Verband und die unveraenderten Mischverbände",
+  /reinen i2-Verband/.test(FRISCH_134?.testbitte || "")
+  && /beide Typen unverändert/.test(FRISCH_134?.testbitte || ""));
+
+// Davor der ENTFALLENE SONDERZUSCHNITT-PLATZHALTER (#133) — ueber die Kennung gesucht.
+// Geliefert: die Menge-0-Zeile „Gewindestange Sonderzuschnitt" (im irrefuehrenden Mass der
+// groessten Standardlaenge, Altlast aus #22) entfaellt — die Position existiert nur noch bei
+// realen Zuschnitten, dieselbe Regel wie beim Reststueck. NICHT versprochen werden geaenderte
 // Mengen realer Positionen oder eine geaenderte Fachregel.
-const FRISCH_133 = EINTRAEGE[0];
-ok("[#133] der entfallene Sonderzuschnitt-Platzhalter ist der neueste Eintrag",
-  FRISCH_133?.id === "chg-20260916-02" && FRISCH_133?.issue === 133
+const FRISCH_133 = EINTRAEGE.find(e => e.id === "chg-20260916-02");
+ok("[#133] der entfallene Sonderzuschnitt-Platzhalter steht als Eintrag davor",
+  FRISCH_133?.issue === 133
   && FRISCH_133?.typ === "fix" && FRISCH_133?.datum === "2026-09-16"
   && /Sonderzuschnitt/.test(FRISCH_133?.titel || "")
   && /Menge 0/.test(FRISCH_133?.titel || ""));
