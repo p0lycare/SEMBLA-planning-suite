@@ -828,8 +828,8 @@ class Zwischenspannpunkte(unittest.TestCase):
 #
 # Jede Steinlage traegt Unterkante, Oberkante und Hoehe in mm als benannte Felder; die
 # Lagenoberkante wird nirgends mehr aus „Lagenindex x course_mm" gerechnet, sondern aus diesen
-# Feldern gelesen. `course_mm` bleibt die regulaere Lagenhoehe (200 mm). Es gibt weiterhin
-# KEINE Ausgleichslage und KEINE freie Wandhoehe.
+# Feldern gelesen. `course_mm` bleibt die regulaere Lagenhoehe (200 mm) — genau deshalb kann die
+# Hoehenzerlegung (#136) eine einzelne Ausgleichslage anhaengen, ohne dass ein Leser es merkt.
 # ---------------------------------------------------------------------------
 class TestLagenkanten(unittest.TestCase):
     def test_2600er_wand_traegt_je_lage_unterkante_oberkante_hoehe(self):
@@ -896,8 +896,8 @@ class TestLagenkanten(unittest.TestCase):
         self.assertEqual(sc.wirksame_zwischenpunkte(w), sc.wirksame_zwischenpunkte(ohne))
 
     def test_wandhoehe_bleibt_vielfaches_der_lagenhoehe(self):
-        # MUSS NOT: nicht durch 200 teilbare Hoehen werden weiter mit derselben Meldung
-        # abgewiesen — es gibt keine Ausgleichslage und keine freie Wandhoehe.
+        # MUSS NOT: OHNE aktivierte Ausgleichslage werden nicht durch 200 teilbare Hoehen
+        # weiter mit derselben Meldung abgewiesen.
         with self.assertRaises(InvalidDimensionError) as cm:
             build_wall("krumm", 1000, 2500, [])
         self.assertEqual(str(cm.exception), "Wandhoehe 2500 ist kein Vielfaches von 200 mm")
@@ -973,6 +973,114 @@ class TestLagenkanten(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(roh.encode()).hexdigest(),
                                  self.STRUKTUR_VOR_136[key])
 
+
+
+# ---------------------------------------------------------------------------
+# AUSGLEICHSLAGE — freie Wandhoehe mit genau EINER oberen Ausgleichslage (#136)
+#
+# n = floor(H/200) regulaere Lagen plus — bei Resthoehe > 0 und aktiviertem Flag — GENAU EINE
+# oberste Lage mit der Resthoehe. Ohne das Flag bleibt dieselbe Hoehe ein benannter Konflikt.
+# H wird in keinem Pfad gerundet. Der JS-Core rechnet paritaetisch (test-sembla-core.mjs).
+# ---------------------------------------------------------------------------
+class TestAusgleichslage(unittest.TestCase):
+    @staticmethod
+    def _ausgleichslagen(w):
+        return [c for c in w["courses"] if c.get("ausgleich") is True]
+
+    def test_zerlegung_ist_die_eine_stelle(self):
+        z = sc.hoehen_zerlegung(2600, True)
+        self.assertEqual((z["lagen"], z["regulaer"], z["rest_mm"]), (13, 13, 0))
+        self.assertEqual(z["kanten"], sc.lagen_kanten(13))
+        z2 = sc.hoehen_zerlegung(2570, True)
+        self.assertEqual((z2["lagen"], z2["regulaer"], z2["rest_mm"]), (13, 12, 170))
+        self.assertEqual(z2["kanten"][-1], {"lage": 12, "unterkante_mm": 2400,
+                                            "oberkante_mm": 2570, "hoehe_mm": 170,
+                                            "ausgleich": True})
+        self.assertEqual(z2["kanten"][:12], sc.lagen_kanten(12))
+        # Die Zielhoehe wird NIE gerundet — die Kantenliste endet exakt auf ihr.
+        self.assertEqual(z2["kanten"][-1]["oberkante_mm"], 2570)
+
+    def test_resthoehe_null_erzeugt_keine_ausgleichslage(self):
+        w = build_wall("h2600", 1000, 2600, [], None, None, [], None, True)
+        self.assertEqual(w["lagen"], 13)
+        self.assertEqual(self._ausgleichslagen(w), [])
+        self.assertTrue(all(c["hoehe_mm"] == COURSE for c in w["courses"]))
+
+    def test_genau_eine_oberste_ausgleichslage(self):
+        w = build_wall("h2570", 1000, 2570, [], None, None, [], None, True)
+        self.assertEqual(w["height_mm"], 2570)
+        self.assertEqual(w["lagen"], 13)
+        self.assertTrue(w["ausgleichslage_aktiv"])
+        ag = self._ausgleichslagen(w)
+        self.assertEqual(len(ag), 1)
+        self.assertEqual(ag[0]["lage"], 12)
+        self.assertEqual((ag[0]["unterkante_mm"], ag[0]["oberkante_mm"], ag[0]["hoehe_mm"]),
+                         (2400, 2570, 170))
+        # Keine regulaere Lage entfernt, nie zwei niedrigere kombiniert.
+        self.assertEqual(len([c for c in w["courses"] if c["hoehe_mm"] == COURSE]), 12)
+
+    def test_deaktiviert_wird_benannt_abgewiesen(self):
+        for flag in (None, False, "true", 1):
+            with self.subTest(flag=flag):
+                with self.assertRaises(InvalidDimensionError) as cm:
+                    build_wall("krumm", 1000, 2570, [], None, None, [], None, flag)
+                self.assertEqual(str(cm.exception),
+                                 "Wandhoehe 2570 ist kein Vielfaches von 200 mm")
+                self.assertEqual(getattr(cm.exception, "grund", None), sc.AUSGLEICH_KONFLIKT)
+
+    def test_ohne_feld_unveraendert(self):
+        w = build_wall("alt", 2000, 2600, [Opening(5, 11, 0, 10, "tuer")])
+        self.assertNotIn("ausgleichslage_aktiv", w)
+        self.assertTrue(all("ausgleich" not in c for c in w["courses"]))
+
+    def test_sehr_kleine_resthoehe(self):
+        w = build_wall("h2403", 1000, 2403, [], None, None, [], None, True)
+        ag = self._ausgleichslagen(w)
+        self.assertEqual(len(ag), 1)
+        self.assertEqual((ag[0]["unterkante_mm"], ag[0]["oberkante_mm"], ag[0]["hoehe_mm"]),
+                         (2400, 2403, 3))
+
+    def test_ausgleichslage_entsteht_im_bestehenden_tiling(self):
+        w = build_wall("h2570", 2000, 2570, [], None, None, [], None, True)
+        ag = self._ausgleichslagen(w)[0]
+        self.assertTrue(ag["stones"])
+        self.assertTrue(all(s["type"] in ("i2", "i3") for s in ag["stones"]))
+        self.assertEqual(ag["stones"][0]["x0"], 0)
+        self.assertEqual(ag["stones"][-1]["x1"], 2000)
+        self.assertFalse(set(ag["joints_grid"]) & set(w["courses"][11]["joints_grid"]))
+        self.assertEqual(w["bom"]["dichtstreifen_mm"],
+                         sum(len(c["joints_grid"]) * c["hoehe_mm"] for c in w["courses"]))
+
+    def test_vorspannung_rechnet_mit_realer_hoehe(self):
+        ps = {"top_connection": "spannplatte", "rod_lengths_mm": [1000, 625, 375],
+              "rod_rest_mm": 375, "rod_overhang_mm": 10}
+        w = build_wall("h2570", 1000, 2570, [], None, ps, [], None, True)
+        for col in w["tension_columns"]:
+            sg = col["segments"][0]
+            self.assertEqual((sg["z0_mm"], sg["z1_mm"]), (0, 2570))
+            self.assertEqual(sg["bedarf_mm"], 2580)
+        zp = sc.wirksame_zwischenpunkte(w)
+        self.assertTrue(zp)
+        self.assertTrue(all(p["z_mm"] % COURSE == 0 and p["z_mm"] < 2570 for p in zp))
+
+    def test_staffelung_erzeugt_keine_zweite_ausgleichslage(self):
+        steps = [{"x0_mm": 0, "x1_mm": 1000, "height_mm": 1800}]
+        w = build_wall("staffel2570", 2000, 2570, [], None, None, steps, None, True)
+        self.assertEqual(len(self._ausgleichslagen(w)), 1)
+        self.assertEqual(w["steps"][0]["height_mm"], 1800)
+        tief = [c for c in w["tension_columns"] if c["x_mm"] < 1000]
+        self.assertTrue(tief)
+        self.assertTrue(all(c["segments"][-1]["z1_mm"] == 1800 for c in tief))
+        hoch = [c for c in w["tension_columns"] if c["x_mm"] > 1000]
+        self.assertTrue(all(c["segments"][-1]["z1_mm"] == 2570 for c in hoch))
+        self.assertTrue(all(s["x0"] >= 1000 for s in self._ausgleichslagen(w)[0]["stones"]))
+
+    def test_oeffnung_erzeugt_keine_zweite_ausgleichslage(self):
+        w = build_wall("oeffnung2570", 2000, 2570, [Opening(5, 11, 0, 10, "tuer")],
+                       None, None, [], None, True)
+        ag = self._ausgleichslagen(w)
+        self.assertEqual(len(ag), 1)
+        self.assertEqual(ag[0]["lage"], len(w["courses"]) - 1)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

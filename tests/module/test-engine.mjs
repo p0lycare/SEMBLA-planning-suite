@@ -104,6 +104,61 @@ t("[A-10] Kopfblech-Modulzaehlung haengt weiter allein an blech_mm", ()=>{
     "Kopfblech-Module aendern sich: "+a.wandelement.top_plate.module+" -> "+b.wandelement.top_plate.module);
 });
 
+// ---- #136 Freie Wandhoehe: das Aktivierungs-Flag ueberlebt den Neuberechnungspfad ----------
+// Der REALE Pfad ist: Wandelement (freie Zielhoehe + Flag) -> Engine -> Core -> Lagenliste mit
+// Kanten. `ausgleichOf` ist — wie `psOf` — eine Whitelist: faellt das Flag dort heraus, wiese der
+// Core dieselbe Wand ab der ersten Iteration ab. Geprueft wird deshalb am Ergebnis der VOLLEN
+// Auslegung und zusaetzlich im Nachweis-Modus.
+const frei={ name:"W2570", length_mm:2000, height_mm:2570, openings:[], sides:null,
+  ausgleichslage_aktiv:true };
+const ausgleichslagen=(w)=>w.courses.filter(c=>c.ausgleich===true);
+
+t("#136 freie Zielhoehe + Flag ueberlebt die Auto-Auslegung", ()=>{
+  const r=autoAuslegung({...frei, load:{qk_area:0.5,gammaQ:1.5}});
+  A(r.status==="konvergiert","status "+r.status);
+  const w=r.wandelement;
+  A(w.height_mm===2570,"Zielhoehe gerundet: "+w.height_mm);
+  A(w.ausgleichslage_aktiv===true,"Flag verloren");
+  A(w.lagen===13,"Lagen: "+w.lagen);
+  const ag=ausgleichslagen(w);
+  A(ag.length===1,"nicht genau eine Ausgleichslage: "+ag.length);
+  A(ag[0].unterkante_mm===2400&&ag[0].oberkante_mm===2570&&ag[0].hoehe_mm===170,
+    "Kanten: "+JSON.stringify(ag[0]));
+  A(w.courses.filter(c=>c.hoehe_mm===200).length===12,"12 regulaere Lagen");
+});
+
+t("#136 freie Zielhoehe + Flag ueberlebt den Nachweis-Modus", ()=>{
+  const r=nachweisPruefen({...frei, prestress:{max_span_grid:3,force_kN:60},
+    load:{qk_area:1.0,gammaQ:1.5}});
+  const w=r.wandelement;
+  A(w.height_mm===2570,"Zielhoehe: "+w.height_mm);
+  A(ausgleichslagen(w).length===1,"nicht genau eine Ausgleichslage");
+  // Die Vorspannung rechnet mit der REALEN Wandhoehe.
+  A(w.tension_columns.every(c=>c.segments[c.segments.length-1].z1_mm===2570),
+    "Segmentkopf nicht auf der realen Oberkante");
+});
+
+t("#136 ohne Flag wird dieselbe Zielhoehe sichtbar abgewiesen (nie gerundet)", ()=>{
+  let e=null;
+  try{ autoAuslegung({...frei, ausgleichslage_aktiv:undefined, load:{qk_area:0.5,gammaQ:1.5}}); }
+  catch(x){ e=x; }
+  A(e!==null,"keine Abweisung");
+  A(e.message==="Wandhoehe 2570 ist kein Vielfaches von 200 mm","Meldung: "+e.message);
+  A(e.grund==="hoehe_nicht_im_lagenraster","Konflikt nicht benannt: "+e.grund);
+});
+
+t("#136 eine glatte 2600er Wand bleibt mit und ohne Flag identisch", ()=>{
+  const sig=(w)=>JSON.stringify({lagen:w.lagen,
+    courses:w.courses.map(c=>[c.unterkante_mm,c.oberkante_mm,c.hoehe_mm,c.stones.length]),
+    bom:w.bom});
+  const ohne=nachweisPruefen({...base, prestress:{max_span_grid:3,force_kN:60},
+    load:{qk_area:1.0,gammaQ:1.5}}).wandelement;
+  const mit =nachweisPruefen({...base, ausgleichslage_aktiv:true,
+    prestress:{max_span_grid:3,force_kN:60}, load:{qk_area:1.0,gammaQ:1.5}}).wandelement;
+  A(sig(ohne)===sig(mit),"Flag aendert die glatte Wand");
+  A(ausgleichslagen(mit).length===0,"Ausgleichslage bei Resthoehe 0");
+});
+
 const demo=autoAuslegung({...base, load:{qk_area:3.0,gammaQ:1.5}});
 console.log("\nOptimierung (qk=3,0): sp="+demo.wandelement.verification.auslegung.max_span_grid+
   " N="+demo.wandelement.verification.auslegung.force_kN+"kN Stränge="+demo.wandelement.verification.auslegung.strands+

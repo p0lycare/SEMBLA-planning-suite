@@ -25,7 +25,7 @@ __all__ = [
     "build_wall", "is_buildable", "save",
     "MIN_FERTIGMASS_MM", "ROD_OVERHANG", "norm_laengen", "quelle_fuer_mass",
     "kombiniere_laengen", "kombiniere_segment",
-    "lagen_kanten", "wand_lagen_kanten",
+    "lagen_kanten", "wand_lagen_kanten", "hoehen_zerlegung", "AUSGLEICH_KONFLIKT",
     "lagen_oberkanten_innen", "auto_zwischenpunkt", "norm_zwischenpunkte",
     "zwischenpunkte_segment", "wirksame_zwischenpunkte",
     "AUSGLEICH_DICHTE_JE_M", "AUSGLEICH_ACHSVERSATZ", "verteile_ausgleichspunkte",
@@ -282,8 +282,9 @@ def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
 # Bit-genaues Gegenstueck zu lagenKanten/wandLagenKanten in docs/shared/sembla-core.js.
 # Jede Steinlage traegt ihre Geometrie selbst: Unterkante, Oberkante und Hoehe in mm. Wo frueher
 # „Lagenindex x 200 mm" gerechnet wurde, wird die Kante jetzt GELESEN. `course_mm` bleibt dabei
-# unveraendert die regulaere Lagenhoehe — die Kantenliste entsteht aus ihm. Eine Ausgleichslage
-# oder eine freie Wandhoehe gibt es ausdruecklich nicht.
+# unveraendert die regulaere Lagenhoehe — die Kantenliste entsteht aus ihm. Genau deshalb kann
+# die Hoehenzerlegung darunter (#136) eine einzelne abweichende Lage anhaengen, ohne dass
+# irgendein Leser es merkt.
 def lagen_kanten(lagen_anzahl, course_mm=COURSE):
     """Kanonische Lagenkanten einer Wand (aufsteigend, luecken- und ueberlappungsfrei)."""
     out, z = [], 0
@@ -292,6 +293,43 @@ def lagen_kanten(lagen_anzahl, course_mm=COURSE):
                     "hoehe_mm": course_mm})
         z += course_mm
     return out
+
+
+# ---- Freie Wandhoehe mit EINER oberen Ausgleichslage (#136) ----
+# Bit-genaues Gegenstueck zu hoehenZerlegung in docs/shared/sembla-core.js.
+#
+#     n    = floor(H / COURSE)      regulaere Lagen zu COURSE
+#     rest = H − n × COURSE         Resthoehe, NIE gerundet
+#
+# Ist `rest > 0` und die Ausgleichslage aktiviert, entsteht GENAU EINE zusaetzliche oberste Lage
+# mit der Hoehe `rest` — an der GLOBALEN oberen Wandkante, nie tiefer und nie mehrfach. Keine
+# regulaere Lage wird entfernt, nie werden zwei niedrigere Lagen kombiniert. Ist sie NICHT
+# aktiviert (Regelfall und jeder Altbestand ohne das Feld), ist eine nicht durch COURSE teilbare
+# Hoehe ein BENANNTER Konflikt und wird abgewiesen — H wird in keinem Pfad gerundet.
+AUSGLEICH_KONFLIKT = "hoehe_nicht_im_lagenraster"
+
+
+def hoehen_zerlegung(height_mm, ausgleich_aktiv=False, course_mm=COURSE):
+    """Hoehenzerlegung einer Wand — die EINE Stelle, an der aus einer Zielhoehe Lagen werden."""
+    ganz = isinstance(height_mm, int) and not isinstance(height_mm, bool)
+    n = int(math.floor(height_mm / course_mm)) if ganz else 0
+    rest = height_mm - n * course_mm if ganz else 0
+    if not ganz or (rest > 0 and not ausgleich_aktiv):
+        # Wortlaut unveraendert (Altverhalten), zusaetzlich BENANNT ueber `grund`.
+        e = InvalidDimensionError(
+            f"Wandhoehe {height_mm} ist kein Vielfaches von {course_mm} mm")
+        e.grund = AUSGLEICH_KONFLIKT
+        raise e
+    if height_mm < course_mm:
+        raise InvalidDimensionError(f"Wandhoehe {height_mm} < {course_mm} mm")
+    kanten = lagen_kanten(n, course_mm)
+    # GENAU EINE Ausgleichslage, immer oben. `ausgleich` steht nur an ihr — eine regulaere Lage
+    # bekommt kein Feld, das sie vorher nicht hatte.
+    if rest > 0:
+        kanten.append({"lage": n, "unterkante_mm": n * course_mm, "oberkante_mm": height_mm,
+                       "hoehe_mm": rest, "ausgleich": True})
+    return {"kanten": kanten, "lagen": len(kanten), "regulaer": n, "rest_mm": rest,
+            "regulaer_hoehe_mm": n * course_mm}
 
 
 def wand_lagen_kanten(w):
@@ -819,16 +857,18 @@ def _grundachsen(steine, N: int) -> set[int]:
     return out
 
 
-def _validate_inputs(length_mm: int, height_mm: int, openings: list[Opening]):
+# #136 Die Hoehe wird hier nicht mehr selbst geprueft, sondern ZERLEGT (`hoehen_zerlegung`) — die
+# Pruefung ist Teil der Zerlegung und wirft denselben Fehler wie zuvor. Die REIHENFOLGE der
+# Gruende bleibt unveraendert (Laenge vor Hoehe vor Oeffnungen), und die Oeffnungen werden gegen
+# die WIRKLICHE Lagenzahl gehalten — mit Ausgleichslage ist das eine Lage mehr.
+def _validate_inputs(length_mm: int, height_mm: int, openings: list[Opening],
+                     ausgleich_aktiv: bool = False):
     if not isinstance(length_mm, int) or length_mm % GRID != 0:
         raise InvalidDimensionError(f"Wandlaenge {length_mm} ist kein Vielfaches von {GRID} mm")
     if length_mm < 2 * GRID:
         raise InvalidDimensionError(f"Wandlaenge {length_mm} < Mindestmaß {2*GRID} mm")
-    if not isinstance(height_mm, int) or height_mm % COURSE != 0:
-        raise InvalidDimensionError(f"Wandhoehe {height_mm} ist kein Vielfaches von {COURSE} mm")
-    if height_mm < COURSE:
-        raise InvalidDimensionError(f"Wandhoehe {height_mm} < {COURSE} mm")
-    N, L = length_mm // GRID, height_mm // COURSE
+    Z = hoehen_zerlegung(height_mm, ausgleich_aktiv, COURSE)
+    N, L = length_mm // GRID, Z["lagen"]
     for op in openings:
         if op.g1 > N:
             raise InvalidOpeningError(f"Oeffnung ragt ueber Wandlaenge hinaus (g1={op.g1} > N={N})")
@@ -840,6 +880,7 @@ def _validate_inputs(length_mm: int, height_mm: int, openings: list[Opening]):
             a, b = openings[i], openings[j]
             if a.g0 < b.g1 and b.g0 < a.g1 and a.l0 < b.l1 and b.l0 < a.l1:
                 raise InvalidOpeningError(f"Oeffnungen ueberlappen: #{i} und #{j}")
+    return Z
 
 
 # ---- Aufbau ----
@@ -1012,12 +1053,16 @@ def _norm_prestress(p):
 # #136 Eingangsnormalisierung, kein Kantenleser: die Stufenhoehe wird — genau wie x0/x1 auf das
 # GRID — auf das Lagenraster gebracht. Welche Lage damit gemeint ist und wo deren Oberkante
 # liegt, entscheidet danach allein die kanonische Kantenliste in `build_wall`.
-def _norm_steps(steps, length_mm, height_mm):
+#
+# #136 `max_hoehe_mm` ist die REGULAERE Wandhoehe (n x COURSE), nicht die Zielhoehe: eine
+# Staffelung bleibt im 200-mm-Raster und erzeugt NIE eine zweite Ausgleichslage. Ohne
+# Ausgleichslage sind beide Masse identisch und die Normalisierung bit-genau die bisherige.
+def _norm_steps(steps, length_mm, max_hoehe_mm):
     out = []
     for s in (steps or []):
         x0 = max(0, round(int(s.get("x0_mm", 0)) / GRID) * GRID)
         x1 = min(length_mm, round(int(s.get("x1_mm", 0)) / GRID) * GRID)
-        h = max(0, min(height_mm, round(int(s.get("height_mm", 0)) / COURSE) * COURSE))
+        h = max(0, min(max_hoehe_mm, round(int(s.get("height_mm", 0)) / COURSE) * COURSE))
         if x1 > x0:
             out.append({"x0_mm": x0, "x1_mm": x1, "height_mm": h})
     return out
@@ -1091,7 +1136,7 @@ def norm_interlocks(arr, N, openings=None):
 
 def build_wall(name: str, length_mm: int, height_mm: int,
                openings: Iterable[Opening] | None = None, sides=None, prestress=None, steps=None,
-               interlocks=None) -> dict:
+               interlocks=None, ausgleichslage_aktiv: bool = False) -> dict:
     _PS = _norm_prestress(prestress)
     _maxspan = _PS["max_span_grid"]
     _rod = _PS["rod_mm"]
@@ -1103,11 +1148,16 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     als Exception geworfen, sondern im Feld 'validation' gemeldet (buildable=False).
     """
     openings = list(openings or [])
-    _validate_inputs(length_mm, height_mm, openings)
-    N, L = length_mm // GRID, height_mm // COURSE
+    # #136 Nur ein AUSDRUECKLICHES True aktiviert die Ausgleichslage. Alles andere (fehlend,
+    # None, "false") ist der Altstand und wird nie als Aktivierung gedeutet.
+    _AUSGLEICH = ausgleichslage_aktiv is True
+    _Z = _validate_inputs(length_mm, height_mm, openings, _AUSGLEICH)
+    N, L = length_mm // GRID, _Z["lagen"]
     # #136 Die KANONISCHE Lagengeometrie: je Lage Unterkante, Oberkante und Hoehe in mm. Ab hier
     # wird keine Lagenkante mehr aus `Lagenindex x COURSE` gerechnet, sondern aus _KANTEN gelesen.
-    _KANTEN = lagen_kanten(L, COURSE)
+    # #136 Die oberste Lage kann eine Ausgleichslage mit der Resthoehe sein — jeder Leser unten
+    # rechnet damit unveraendert weiter, weil er die Kante LIEST.
+    _KANTEN = _Z["kanten"]
 
     def _oberkante_bis_lage(n):
         """Oberkante der obersten vorhandenen Lage einer Rasterspalte (0 Lagen -> 0 mm)."""
@@ -1121,17 +1171,21 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         _PS["zwischenpunkte_mm"] = _ZP
 
     # Staffelung / getreppter Aufbau: je Spalte lokale Oberkante (Anzahl Lagen)
-    _STEPS = _norm_steps(steps, length_mm, height_mm)
+    _STEPS = _norm_steps(steps, length_mm, _Z["regulaer_hoehe_mm"])
     _top_lage = []
     for k in range(N):
         xc = (k + 0.5) * GRID
-        h = height_mm
+        st = None
         for s in _STEPS:
             if s["x0_mm"] <= xc < s["x1_mm"]:
-                h = s["height_mm"]; break
+                st = s; break
         # #136 Hier entsteht nur die ANZAHL der Lagen dieser Spalte (Eingangsmass -> Lagenraster,
         # wie x0/x1 -> GRID). Die zugehoerige Oberkante wird danach aus _KANTEN gelesen.
-        _top_lage.append(max(0, min(L, round(h / COURSE))))
+        # #136 OHNE Staffelung reicht die Spalte an die GLOBALE Oberkante — einschliesslich der
+        # Ausgleichslage. MIT Staffelung bleibt sie im 200-mm-Raster und endet spaetestens auf
+        # der obersten REGULAEREN Lage: eine Stufe erzeugt nie eine zweite Ausgleichslage.
+        _top_lage.append(max(0, min(_Z["regulaer"], round(st["height_mm"] / COURSE)))
+                         if st is not None else L)
 
     def _runs_at(li):
         runs = []; start = None
@@ -1176,10 +1230,16 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         if rig:
             rigid_lagen.append(li)
         # #136 Jede Lage traegt ihre Geometrie selbst — Unterkante, Oberkante und Hoehe in mm.
-        courses.append({"lage": li, "unterkante_mm": _KANTEN[li]["unterkante_mm"],
-                        "oberkante_mm": _KANTEN[li]["oberkante_mm"],
-                        "hoehe_mm": _KANTEN[li]["hoehe_mm"],
-                        "stones": stones, "joints_grid": sorted(joints)})
+        _c = {"lage": li, "unterkante_mm": _KANTEN[li]["unterkante_mm"],
+              "oberkante_mm": _KANTEN[li]["oberkante_mm"],
+              "hoehe_mm": _KANTEN[li]["hoehe_mm"]}
+        # #136 Nur die Ausgleichslage traegt das Merkmal — eine regulaere Lage bekommt kein Feld,
+        # das sie vorher nicht hatte (die goldenen 200-mm-Fixtures bleiben unveraendert).
+        if _KANTEN[li].get("ausgleich"):
+            _c["ausgleich"] = True
+        _c["stones"] = stones
+        _c["joints_grid"] = sorted(joints)
+        courses.append(_c)
         prev = joints
 
     # Versatz-Validierung
@@ -1517,10 +1577,15 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     ]
 
     buildable = not invalid_segments  # strukturell; Versatz separat in 'validation'
+    # #136 Das Aktivierungs-Flag der Ausgleichslage reist am Wandelement mit — aber NUR, wenn es
+    # ausdruecklich gesetzt ist. Eine Wand ohne Ausgleichslage bekommt kein Feld, das es vorher
+    # nicht gab (dieselbe Bahn wie die Overrides im Vorspannblock).
+    _ausgleich_feld = {"ausgleichslage_aktiv": True} if _AUSGLEICH else {}
     return {
         "name": name, "length_mm": length_mm, "height_mm": height_mm,
         "grid_mm": GRID, "course_mm": COURSE, "thickness_mm": THICK, "rod_mm": _rod,
         "N_grid": N, "lagen": L,
+        **_ausgleich_feld,
         "openings": [op.as_dict() for op in openings],
         "steps": _STEPS,
         # [G-10] Verzahnungsbereiche (optional, nur die validen)

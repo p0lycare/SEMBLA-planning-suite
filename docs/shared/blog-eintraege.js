@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260917-02",
+    datum: "2026-09-17",
+    typ: "feature",
+    issue: 136,
+    titel: "Rechenkern beherrscht freie Wandhöhen: genau eine obere Ausgleichslage mit der Resthöhe, je Wand aktivierbar",
+    testbitte: "Noch ohne Bedienelement — eine Wand mit aktivierter Ausgleichslage und Höhe 2570 mm ergibt intern "
+      + "12 Lagen à 200 mm plus eine 170-mm-Oberlage; ohne Aktivierung bleibt die Höhe wie bisher abgewiesen",
+  },
+  {
     id: "chg-20260917-01",
     datum: "2026-09-17",
     typ: "intern",

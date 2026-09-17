@@ -46,14 +46,30 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist das KANONISCHE LAGENKANTENMODELL (#136). Geliefert: der
+// Der NEUESTE Eintrag ist die AUSGLEICHSLAGE IM RECHENKERN (#136). Geliefert: freie
+// Ziel-Wandhoehen im Core — n regulaere 200-mm-Lagen plus bei Resthoehe genau eine
+// oberste Ausgleichslage, je Wand ueber ein optionales Flag aktivierbar; deaktiviert
+// bleibt eine unpassende Hoehe ein benannter Konflikt. NICHT versprochen werden ein
+// Bedienelement, Katalogrollen/Sonderzuschnitt oder Aenderungen an bestehenden
+// 200-mm-Waenden (die Testbitte sagt ausdruecklich "noch ohne Bedienelement").
+const FRISCH_136B = EINTRAEGE[0];
+ok("[#136] die Ausgleichslage im Rechenkern ist der neueste Eintrag",
+  FRISCH_136B?.id === "chg-20260917-02" && FRISCH_136B?.issue === 136
+  && FRISCH_136B?.typ === "feature" && FRISCH_136B?.datum === "2026-09-17"
+  && /freie Wandhöhen/.test(FRISCH_136B?.titel || "")
+  && /genau eine obere Ausgleichslage/.test(FRISCH_136B?.titel || ""));
+ok("[#136] die Testbitte nennt das fehlende Bedienelement und den 2570-Fall",
+  /ohne Bedienelement/.test(FRISCH_136B?.testbitte || "")
+  && /2570/.test(FRISCH_136B?.testbitte || ""));
+
+// Davor das KANONISCHE LAGENKANTENMODELL (#136) — ueber die Kennung gesucht, weil
+// es nicht mehr der neueste Eintrag ist. Seine Aussagen bleiben unveraendert: der
 // Rechenkern (JS-Core und Python-Referenzkern) fuehrt je Steinlage Unterkante,
 // Oberkante und Hoehe als eigene Felder; alle Core-Leser beziehen die Oberkante
-// daraus statt aus Lagenindex mal 200 mm. NICHT versprochen werden eine
-// Ausgleichslage, eine freie Wandhoehe oder irgendeine sichtbare Aenderung —
-// bestehende Waende rechnen strukturidentisch (typ "intern", keine Testbitte).
-const FRISCH_136 = EINTRAEGE[0];
-ok("[#136] das kanonische Lagenkantenmodell ist der neueste Eintrag",
+// daraus statt aus Lagenindex mal 200 mm. Bestehende Waende rechnen
+// strukturidentisch (typ "intern", keine Testbitte).
+const FRISCH_136 = EINTRAEGE.find(e => e.id === "chg-20260917-01");
+ok("[#136] das kanonische Lagenkantenmodell steht als Eintrag davor",
   FRISCH_136?.id === "chg-20260917-01" && FRISCH_136?.issue === 136
   && FRISCH_136?.typ === "intern" && FRISCH_136?.datum === "2026-09-17"
   && /Unterkante, Oberkante und Höhe/.test(FRISCH_136?.titel || "")

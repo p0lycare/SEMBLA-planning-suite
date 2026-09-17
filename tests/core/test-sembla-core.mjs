@@ -12,7 +12,7 @@ import {
   zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
-  lagenKanten, wandLagenKanten,
+  lagenKanten, wandLagenKanten, hoehenZerlegung, AUSGLEICH_KONFLIKT,
   AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M, verteileAusgleichspunkte, normAusgleichspunkte,
   DECKENANSCHLUSS_MAX_MM, verteileDeckenanschluss, deckenanschlussLuecken, normDeckenanschluss,
 } from "../../docs/shared/sembla-core.js";
@@ -1743,12 +1743,14 @@ t("#136 kein Core-Leser leitet die Lagenoberkante aus Lagenindex x course_mm ab"
     /\(r2\s*\+\s*1\)\s*\*\s*COURSE/,       // Segmentkopf
     /stossfugen\s*\*\s*COURSE/,            // Dichtstreifenhoehe
   ]) assert(!muster.test(src), "Ableitung wieder eingebaut: " + muster);
-  assert(/const KANTEN = lagenKanten\(L, COURSE\);/.test(src), "KANTEN fehlt");
+  // Seit #136 kommt die Kantenliste aus der Hoehenzerlegung — weiterhin GENAU EINE Quelle.
+  assert(/const KANTEN = Z\.kanten;/.test(src), "KANTEN fehlt");
+  assert(/const Z = validateInputs\(/.test(src), "Hoehenzerlegung fehlt");
   // Gegenprobe: `course_mm` ist als regulaere Lagenhoehe unveraendert vorhanden ([#136] MUSS).
   assert(/course_mm: COURSE/.test(src), "course_mm wurde entfernt");
 });
 
-t("#136 die Wandhoehe bleibt ein Vielfaches der Lagenhoehe — keine Ausgleichslage", () => {
+t("#136 ohne aktivierte Ausgleichslage bleibt die Wandhoehe ein Vielfaches der Lagenhoehe", () => {
   // MUSS NOT: nicht durch 200 teilbare Hoehen werden weiter mit derselben Meldung abgewiesen.
   let msg = null;
   try { buildWall("krumm", 1000, 2500, []); }
@@ -1810,6 +1812,186 @@ for (const key of Object.keys(VERGLEICHSWAENDE)) {
     assert(h === STRUKTUR_VOR_136[key], `Strukturaenderung an ${key}: ${h}`);
   });
 }
+
+// ---------------------------------------------------------------------------
+// AUSGLEICHSLAGE — freie Wandhoehe mit genau EINER oberen Ausgleichslage (#136)
+// ---------------------------------------------------------------------------
+// Die Zielhoehe H wird in n = floor(H/200) regulaere Lagen und die Resthoehe zerlegt. Bei
+// Resthoehe > 0 und aktivierter Ausgleichslage entsteht GENAU EINE oberste Lage mit der
+// Resthoehe; ohne das Flag bleibt dieselbe Hoehe ein benannter Konflikt. H wird NIE gerundet.
+console.log("\nAUSGLEICHSLAGE [#136]:");
+
+const PY_ORAKEL_AUSGLEICH = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import build_wall, Opening
+a = json.loads(sys.argv[1])
+ops = [Opening(o["g0"], o["g1"], o["l0"], o["l1"], o.get("art", "tuer")) for o in a.get("openings", [])]
+print(json.dumps(build_wall(a["name"], a["length_mm"], a["height_mm"], ops, None,
+                            a.get("prestress"), a.get("steps", []), None,
+                            a.get("ausgleichslage_aktiv", False))))
+`;
+/** Wie `orakelVoll`, aber mit dem Aktivierungs-Flag der Ausgleichslage. */
+function orakelAusgleich(arg) {
+  return JSON.parse(execFileSync("python3", ["-c", PY_ORAKEL_AUSGLEICH, JSON.stringify(arg)],
+    { encoding: "utf8" }));
+}
+/** Die Lagen mit abweichender Hoehe — es darf hoechstens EINE geben, und nur ganz oben. */
+const ausgleichslagen = (w) => w.courses.filter(c => c.ausgleich === true);
+
+t("#136 Resthoehe 0: 2600 mm sind 13 regulaere Lagen, keine Ausgleichslage", () => {
+  const w = buildWall("h2600", 1000, 2600, [], null, null, [], null, true);
+  assert(w.lagen === 13, "Lagen: " + w.lagen);
+  assert(w.courses.length === 13, "courses: " + w.courses.length);
+  assert(w.courses.every(c => c.hoehe_mm === COURSE), "abweichende Lagenhoehe");
+  assert(ausgleichslagen(w).length === 0, "Ausgleichslage trotz Resthoehe 0");
+  assert(w.courses[12].oberkante_mm === 2600, "Oberkante: " + w.courses[12].oberkante_mm);
+  // Und das Flag allein aendert an einer glatten Wand GAR NICHTS.
+  const ohne = buildWall("h2600", 1000, 2600, [], null, null, [], null);
+  deepEqual(strukturDigest(w), strukturDigest(ohne));
+});
+
+t("#136 Resthoehe > 0 aktiviert: 2570 mm = 12 x 200 + eine 170-mm-Lage (2400 -> 2570)", () => {
+  const w = buildWall("h2570", 1000, 2570, [], null, null, [], null, true);
+  assert(w.height_mm === 2570, "Zielhoehe gerundet: " + w.height_mm);
+  assert(w.lagen === 13, "Lagen: " + w.lagen);
+  const reg = w.courses.slice(0, 12);
+  assert(reg.length === 12 && reg.every(c => c.hoehe_mm === COURSE), "12 regulaere Lagen");
+  const ag = ausgleichslagen(w);
+  assert(ag.length === 1, "genau EINE Ausgleichslage, gezaehlt: " + ag.length);
+  assert(ag[0].lage === 12, "Ausgleichslage nicht oben: " + ag[0].lage);
+  assert(ag[0].unterkante_mm === 2400 && ag[0].oberkante_mm === 2570 && ag[0].hoehe_mm === 170,
+    "Kanten: " + JSON.stringify(ag[0]));
+  assert(w.ausgleichslage_aktiv === true, "Flag reist nicht am Wandelement mit");
+  // MUSS NOT: keine 200-mm-Lage entfernt, keine zwei niedrigeren Lagen kombiniert.
+  assert(w.courses.filter(c => c.hoehe_mm === COURSE).length === 12, "regulaere Lagen veraendert");
+});
+
+t("#136 deaktiviert wird 2570 mm benannt abgewiesen — nie gerundet, nie eine stille Lage", () => {
+  for (const flag of [undefined, false, null, "true", 1]) {
+    let e = null;
+    try { buildWall("krumm", 1000, 2570, [], null, null, [], null, flag); } catch (x) { e = x; }
+    assert(e instanceof InvalidDimensionError, "keine Abweisung bei Flag " + String(flag));
+    assert(e.message === `Wandhoehe 2570 ist kein Vielfaches von ${COURSE} mm`, "Meldung: " + e.message);
+    assert(e.grund === AUSGLEICH_KONFLIKT, "Konflikt nicht benannt: " + e.grund);
+  }
+});
+
+t("#136 Projekte ohne das neue Feld verhalten sich unveraendert", () => {
+  // Weder das Wandelement noch eine Lage bekommt ein Feld, das es vorher nicht gab.
+  const w = buildWall("alt", 2000, 2600, [new Opening(5, 11, 0, 10, "tuer")]);
+  assert(!("ausgleichslage_aktiv" in w), "Feld am Altstand entstanden");
+  assert(w.courses.every(c => !("ausgleich" in c)), "Lagenfeld am Altstand entstanden");
+});
+
+t("#136 sehr kleine Resthoehe (3 mm) wird nicht blockiert", () => {
+  const w = buildWall("h2403", 1000, 2403, [], null, null, [], null, true);
+  const ag = ausgleichslagen(w);
+  assert(w.lagen === 13, "Lagen: " + w.lagen);
+  assert(ag.length === 1 && ag[0].hoehe_mm === 3, "3-mm-Lage fehlt: " + JSON.stringify(ag));
+  assert(ag[0].unterkante_mm === 2400 && ag[0].oberkante_mm === 2403, "Kanten: " + JSON.stringify(ag[0]));
+});
+
+t("#136 die Ausgleichslage entsteht im BESTEHENDEN Tiling-Pfad (Verband, i2/i3)", () => {
+  const w = buildWall("h2570", 2000, 2570, [], null, null, [], null, true);
+  const ag = ausgleichslagen(w)[0];
+  assert(ag.stones.length > 0, "keine Steine in der Ausgleichslage");
+  assert(ag.stones.every(s => s.type === "i2" || s.type === "i3"), "fremder Steintyp");
+  assert(ag.stones[0].x0 === 0 && ag.stones[ag.stones.length - 1].x1 === 2000, "Lage nicht voll belegt");
+  // Der Verband gilt auch fuer sie: keine durchgehende Stossfuge zur Lage darunter.
+  const unten = new Set(w.courses[11].joints_grid);
+  assert(!ag.joints_grid.some(j => unten.has(j)), "Stossfuge durchgehend");
+  // Und der Dichtstreifen misst ihre REALE Hoehe.
+  const erwartet = w.courses.reduce((a, c) => a + c.joints_grid.length * c.hoehe_mm, 0);
+  assert(w.bom.dichtstreifen_mm === erwartet, "Dichtstreifen: " + w.bom.dichtstreifen_mm);
+});
+
+t("#136 Vorspannung rechnet mit der REALEN Wandhoehe und den realen Lagenkanten", () => {
+  const PS = { top_connection: "spannplatte", rod_lengths_mm: [1000, 625, 375],
+    rod_rest_mm: 375, rod_overhang_mm: 10 };
+  const w = buildWall("h2570", 1000, 2570, [], null, PS, [], null, true);
+  for (const col of w.tension_columns) {
+    const sg = col.segments[0];
+    assert(sg.z0_mm === 0 && sg.z1_mm === 2570, "Segmentkanten: " + sg.z0_mm + ".." + sg.z1_mm);
+    assert(sg.bedarf_mm === 2580, "Bedarf (h + Ueberstand): " + sg.bedarf_mm);
+  }
+  // [A-15] Der Zwischenspannpunkt liegt weiter auf einer REGULAEREN Lagenoberkante.
+  const zp = wirksameZwischenpunkte(w);
+  assert(zp.length > 0, "kein Zwischenspannpunkt");
+  assert(zp.every(p => p.z_mm % COURSE === 0 && p.z_mm < 2570), "Punkt nicht auf Lagenkante: "
+    + JSON.stringify(zp.map(p => p.z_mm)));
+});
+
+t("#136 Staffelung: genau EINE Ausgleichslage an der globalen Oberkante", () => {
+  const steps = [{ x0_mm: 0, x1_mm: 1000, height_mm: 1800 }];
+  const w = buildWall("staffel2570", 2000, 2570, [], null, null, steps, null, true);
+  assert(ausgleichslagen(w).length === 1, "nicht genau eine Ausgleichslage");
+  // Die gestaffelte Haelfte endet auf einer REGULAEREN Lagenkante (200-mm-Raster).
+  assert(w.steps[0].height_mm === 1800, "Stufenhoehe verschoben: " + w.steps[0].height_mm);
+  const tief = w.tension_columns.filter(c => c.x_mm < 1000);
+  assert(tief.length > 0 && tief.every(c => c.segments[c.segments.length - 1].z1_mm === 1800),
+    "Stufe nicht im 200-mm-Raster: " + JSON.stringify(tief.map(c => c.segments.map(s => s.z1_mm))));
+  const hoch = w.tension_columns.filter(c => c.x_mm > 1000);
+  assert(hoch.every(c => c.segments[c.segments.length - 1].z1_mm === 2570), "Oberkante nicht erreicht");
+  // Die Ausgleichslage liegt nur ueber dem hohen Abschnitt — sie ist EINE Lage, kein zweiter Rest.
+  assert(ausgleichslagen(w)[0].stones.every(s => s.x0 >= 1000), "Steine unter der Stufe");
+});
+
+t("#136 Oeffnung: genau EINE Ausgleichslage an der globalen Oberkante", () => {
+  const w = buildWall("oeffnung2570", 2000, 2570, [new Opening(5, 11, 0, 10, "tuer")],
+    null, null, [], null, true);
+  assert(ausgleichslagen(w).length === 1, "nicht genau eine Ausgleichslage");
+  assert(ausgleichslagen(w)[0].lage === w.courses.length - 1, "nicht die oberste Lage");
+  assert(w.lagen === 13, "Lagen: " + w.lagen);
+});
+
+t("#136 Paritaet JS <-> Python: 2600, 2570 und ein Staffelfall", () => {
+  const faelle = [
+    { name: "p2600", length_mm: 2000, height_mm: 2600, ausgleichslage_aktiv: true },
+    { name: "p2570", length_mm: 2000, height_mm: 2570, ausgleichslage_aktiv: true },
+    { name: "p2403", length_mm: 1000, height_mm: 2403, ausgleichslage_aktiv: true },
+    { name: "pstaffel", length_mm: 2000, height_mm: 2570, ausgleichslage_aktiv: true,
+      steps: [{ x0_mm: 0, x1_mm: 1000, height_mm: 1800 }] },
+    { name: "poeffnung", length_mm: 2000, height_mm: 2570, ausgleichslage_aktiv: true,
+      openings: [{ g0: 5, g1: 11, l0: 0, l1: 10, art: "tuer" }] },
+  ];
+  for (const f of faelle) {
+    const ops = (f.openings || []).map(o => new Opening(o.g0, o.g1, o.l0, o.l1, o.art));
+    const js = buildWall(f.name, f.length_mm, f.height_mm, ops, null, null, f.steps || [], null,
+      f.ausgleichslage_aktiv);
+    deepEqual(js, orakelAusgleich(f));
+  }
+});
+
+t("#136 das Python-Orakel weist die deaktivierte krumme Hoehe genauso ab", () => {
+  const PY = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import build_wall, InvalidDimensionError
+try:
+    build_wall("krumm", 1000, 2570)
+    print(json.dumps({"ok": True}))
+except InvalidDimensionError as e:
+    print(json.dumps({"ok": False, "msg": str(e), "grund": getattr(e, "grund", None)}))
+`;
+  const r = JSON.parse(execFileSync("python3", ["-c", PY], { encoding: "utf8" }));
+  assert(r.ok === false, "Python hat die krumme Hoehe angenommen");
+  assert(r.msg === `Wandhoehe 2570 ist kein Vielfaches von ${COURSE} mm`, "Meldung: " + r.msg);
+  assert(r.grund === AUSGLEICH_KONFLIKT, "Grund: " + r.grund);
+});
+
+t("#136 hoehenZerlegung ist die EINE Zerlegung (JS == Python)", () => {
+  const PY = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import hoehen_zerlegung
+a = json.loads(sys.argv[1])
+print(json.dumps([hoehen_zerlegung(h, True) for h in a]))
+`;
+  const hs = [200, 2600, 2570, 2403, 4000, 201];
+  const py = JSON.parse(execFileSync("python3", ["-c", PY, JSON.stringify(hs)], { encoding: "utf8" }));
+  deepEqual(hs.map(h => hoehenZerlegung(h, true)), py);
+});
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

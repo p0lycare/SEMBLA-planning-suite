@@ -326,9 +326,9 @@ export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm
 // Jede Steinlage traegt ihre Geometrie SELBST: Unterkante, Oberkante und Hoehe in mm. Wo frueher
 // „Lagenindex x 200 mm" gerechnet wurde, wird jetzt die Kante GELESEN. `course_mm` bleibt dabei
 // unveraendert die regulaere Lagenhoehe — es wird weder umgedeutet noch abgeschafft; die
-// Kantenliste entsteht aus ihm. Eine Ausgleichslage oder eine freie Wandhoehe gibt es
-// ausdruecklich NICHT: die Validierung „Wandhoehe ist Vielfaches von COURSE" bleibt in Kraft.
-// Der Gewinn ist, dass es nur noch EINE Stelle gibt, an der eine Lagenhoehe entsteht.
+// Kantenliste entsteht aus ihm. Der Gewinn ist, dass es nur noch EINE Stelle gibt, an der eine
+// Lagenhoehe entsteht — und genau deshalb kann die Hoehenzerlegung darunter (#136,
+// Ausgleichslage) eine einzelne abweichende Lage anhaengen, ohne dass irgendein Leser es merkt.
 
 /**
  * Kanonische Lagenkanten einer Wand (aufsteigend, luecken- und ueberlappungsfrei).
@@ -344,6 +344,57 @@ export function lagenKanten(lagenAnzahl, courseMm = COURSE) {
     z += courseMm;
   }
   return out;
+}
+
+// ---------- Freie Wandhoehe mit EINER oberen Ausgleichslage (#136) ----------
+// Die Zielhoehe H einer Wand ist nicht laenger an das 200-mm-Lagenraster gebunden. Zerlegt wird
+// sie GENAU EINMAL und GENAU HIER:
+//
+//     n    = floor(H / COURSE)      reguläre Lagen zu COURSE
+//     rest = H − n × COURSE         Resthoehe, NIE gerundet
+//
+// Ist `rest > 0` und die Ausgleichslage an dieser Wand aktiviert, entsteht GENAU EINE zusaetzliche
+// oberste Lage mit der Hoehe `rest` — an der GLOBALEN oberen Wandkante, nie tiefer und nie
+// mehrfach. Es wird KEINE regulaere Lage entfernt und es werden NIE zwei niedrigere Lagen
+// kombiniert: einen Optimierer ueber Steinhoehen gibt es ausdruecklich nicht.
+//
+// Ist die Ausgleichslage NICHT aktiviert (Regelfall, insbesondere jeder Altbestand ohne das
+// Feld), bleibt die bisherige Bedingung unveraendert in Kraft: eine nicht durch COURSE teilbare
+// Hoehe ist ein BENANNTER Konflikt (`grund` = AUSGLEICH_KONFLIKT) und wird abgewiesen. H wird in
+// keinem Pfad gerundet und es wird nie still eine Lage erzeugt ([P-6]/[P-9]).
+
+/** Benannter Grund der abgewiesenen Hoehe (deaktivierte Ausgleichslage). */
+export const AUSGLEICH_KONFLIKT = "hoehe_nicht_im_lagenraster";
+
+/**
+ * Hoehenzerlegung einer Wand — die EINE Stelle, an der aus einer Zielhoehe Lagen werden.
+ * @param {number} heightMm Ziel-Wandhoehe in mm (wird NIE gerundet)
+ * @param {boolean} [ausgleichAktiv] Ausgleichslage an dieser Wand aktiviert?
+ * @param {number} [courseMm] regulaere Lagenhoehe
+ * @returns {{kanten:Array<{lage:number,unterkante_mm:number,oberkante_mm:number,hoehe_mm:number,
+ *            ausgleich?:boolean}>, lagen:number, regulaer:number, rest_mm:number,
+ *            regulaer_hoehe_mm:number}}
+ */
+export function hoehenZerlegung(heightMm, ausgleichAktiv = false, courseMm = COURSE) {
+  const ganz = Number.isInteger(heightMm);
+  const n = ganz ? Math.floor(heightMm / courseMm) : 0;
+  const rest = ganz ? heightMm - n * courseMm : 0;
+  if (!ganz || (rest > 0 && !ausgleichAktiv)) {
+    // Wortlaut unveraendert (Altverhalten), zusaetzlich BENANNT ueber `grund`.
+    const e = new InvalidDimensionError(`Wandhoehe ${heightMm} ist kein Vielfaches von ${courseMm} mm`);
+    // @ts-ignore — benannter Grund neben der Meldung
+    e.grund = AUSGLEICH_KONFLIKT;
+    throw e;
+  }
+  if (heightMm < courseMm)
+    throw new InvalidDimensionError(`Wandhoehe ${heightMm} < ${courseMm} mm`);
+  const kanten = lagenKanten(n, courseMm);
+  // GENAU EINE Ausgleichslage, immer oben. `ausgleich` steht nur an ihr — eine regulaere Lage
+  // bekommt kein Feld, das sie vorher nicht hatte.
+  if (rest > 0) kanten.push({ lage: n, unterkante_mm: n * courseMm, oberkante_mm: heightMm,
+    hoehe_mm: rest, ausgleich: true });
+  return { kanten, lagen: kanten.length, regulaer: n, rest_mm: rest,
+    regulaer_hoehe_mm: n * courseMm };
 }
 
 /**
@@ -901,16 +952,17 @@ function grundachsen(steine, N) {
   return out;
 }
 
-function validateInputs(lengthMm, heightMm, openings) {
+// #136 Die Hoehe wird hier nicht mehr selbst geprueft, sondern ZERLEGT (`hoehenZerlegung`) — die
+// Pruefung ist Teil der Zerlegung und wirft denselben Fehler wie zuvor. Die REIHENFOLGE der
+// Gruende bleibt unveraendert (Laenge vor Hoehe vor Oeffnungen), und die Oeffnungen werden gegen
+// die WIRKLICHE Lagenzahl gehalten — mit Ausgleichslage ist das eine Lage mehr.
+function validateInputs(lengthMm, heightMm, openings, ausgleichAktiv = false) {
   if (!Number.isInteger(lengthMm) || lengthMm % GRID !== 0)
     throw new InvalidDimensionError(`Wandlaenge ${lengthMm} ist kein Vielfaches von ${GRID} mm`);
   if (lengthMm < 2 * GRID)
     throw new InvalidDimensionError(`Wandlaenge ${lengthMm} < Mindestmass ${2 * GRID} mm`);
-  if (!Number.isInteger(heightMm) || heightMm % COURSE !== 0)
-    throw new InvalidDimensionError(`Wandhoehe ${heightMm} ist kein Vielfaches von ${COURSE} mm`);
-  if (heightMm < COURSE)
-    throw new InvalidDimensionError(`Wandhoehe ${heightMm} < ${COURSE} mm`);
-  const N = lengthMm / GRID, L = heightMm / COURSE;
+  const Z = hoehenZerlegung(heightMm, ausgleichAktiv, COURSE);
+  const N = lengthMm / GRID, L = Z.lagen;
   for (const op of openings) {
     if (op.g1 > N) throw new InvalidOpeningError(`Oeffnung ueber Wandlaenge (g1=${op.g1} > N=${N})`);
     if (op.l1 > L) throw new InvalidOpeningError(`Oeffnung ueber Wandhoehe (l1=${op.l1} > L=${L})`);
@@ -921,6 +973,7 @@ function validateInputs(lengthMm, heightMm, openings) {
       if (a.g0 < b.g1 && b.g0 < a.g1 && a.l0 < b.l1 && b.l0 < a.l1)
         throw new InvalidOpeningError(`Oeffnungen ueberlappen: #${i} und #${j}`);
     }
+  return Z;
 }
 
 /**
@@ -1094,12 +1147,16 @@ function normPrestress(p) {
 // #136 Eingangsnormalisierung, kein Kantenleser: die Stufenhoehe wird — genau wie x0/x1 auf das
 // GRID — auf das Lagenraster gebracht. Welche Lage damit gemeint ist und wo deren Oberkante
 // liegt, entscheidet danach allein die kanonische Kantenliste in `buildWall`.
-function normSteps(steps, lengthMm, heightMm) {
+//
+// #136 `maxHoeheMm` ist die REGULAERE Wandhoehe (n x COURSE), nicht die Zielhoehe: eine
+// Staffelung bleibt im 200-mm-Raster und erzeugt NIE eine zweite Ausgleichslage. Ohne
+// Ausgleichslage sind beide Masse identisch und die Normalisierung bit-genau die bisherige.
+function normSteps(steps, lengthMm, maxHoeheMm) {
   const out = [];
   for (const s of (steps || [])) {
     const x0 = Math.max(0, pyRound((s.x0_mm || 0) / GRID) * GRID);
     const x1 = Math.min(lengthMm, pyRound((s.x1_mm || 0) / GRID) * GRID);
-    const h = Math.max(0, Math.min(heightMm, pyRound((s.height_mm || 0) / COURSE) * COURSE));
+    const h = Math.max(0, Math.min(maxHoeheMm, pyRound((s.height_mm || 0) / COURSE) * COURSE));
     if (x1 > x0) out.push({ x0_mm: x0, x1_mm: x1, height_mm: h });
   }
   return out;
@@ -1162,16 +1219,26 @@ export function normInterlocks(arr, N, openings = []) {
   return { interlocks: out, fehler };
 }
 
-export function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null, steps = [], interlocks = null) {
+/**
+ * @param {boolean} [ausgleichslageAktiv] #136 Aktivierungs-Flag der oberen Ausgleichslage.
+ *        OPTIONAL und abwaertskompatibel: fehlt es (oder ist es nicht ausdruecklich `true`),
+ *        gilt unveraendert das bisherige Verhalten — nur Vielfache von COURSE sind zulaessig.
+ */
+export function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null, steps = [], interlocks = null, ausgleichslageAktiv = false) {
   const PS = normPrestress(prestress);
   const maxSpan = PS.max_span_grid;
   const ROD_ = PS.rod_mm;
   const TOP = PS.top_connection;   // 'blech' (Kopfblech) | 'spannplatte'
-  validateInputs(lengthMm, heightMm, openings);
-  const N = lengthMm / GRID, L = heightMm / COURSE;
+  // #136 Nur ein AUSDRUECKLICHES `true` aktiviert die Ausgleichslage. Alles andere (fehlend,
+  // null, "false") ist der Altstand und wird nie als Aktivierung gedeutet.
+  const AUSGLEICH = ausgleichslageAktiv === true;
+  const Z = validateInputs(lengthMm, heightMm, openings, AUSGLEICH);
+  const N = lengthMm / GRID, L = Z.lagen;
   // #136 Die KANONISCHE Lagengeometrie: je Lage Unterkante, Oberkante und Hoehe in mm. Ab hier
   // wird keine Lagenkante mehr aus `Lagenindex x COURSE` gerechnet, sondern aus KANTEN gelesen.
-  const KANTEN = lagenKanten(L, COURSE);
+  // #136 Die oberste Lage kann eine Ausgleichslage mit der Resthoehe sein — jeder Leser unten
+  // rechnet damit unveraendert weiter, weil er die Kante LIEST.
+  const KANTEN = Z.kanten;
   /** Oberkante der obersten vorhandenen Lage einer Rasterspalte (0 Lagen -> 0 mm). */
   const oberkanteBisLage = (n) => (n > 0 ? KANTEN[n - 1].oberkante_mm : 0);
   // [G-10]/[G-12] Verzahnungsbereiche normalisieren und validieren
@@ -1182,14 +1249,17 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   if (ZP.punkte) PS.zwischenpunkte_mm = ZP.punkte;
 
   // Staffelung / getreppter Aufbau: je Spalte eine lokale Oberkante (Anzahl Lagen)
-  const STEPS = normSteps(steps, lengthMm, heightMm);
+  const STEPS = normSteps(steps, lengthMm, Z.regulaer_hoehe_mm);
   const topLage = new Array(N);
   for (let k = 0; k < N; k++) {
-    const xc = (k + 0.5) * GRID; let h = heightMm;
-    for (const s of STEPS) { if (xc >= s.x0_mm && xc < s.x1_mm) { h = s.height_mm; break; } }
+    const xc = (k + 0.5) * GRID; let st = null;
+    for (const s of STEPS) { if (xc >= s.x0_mm && xc < s.x1_mm) { st = s; break; } }
     // #136 Hier entsteht nur die ANZAHL der Lagen dieser Spalte (Eingangsmass -> Lagenraster,
     // wie x0/x1 -> GRID). Die zugehoerige Oberkante wird danach aus KANTEN gelesen.
-    topLage[k] = Math.max(0, Math.min(L, pyRound(h / COURSE)));
+    // #136 OHNE Staffelung reicht die Spalte an die GLOBALE Oberkante — einschliesslich der
+    // Ausgleichslage. MIT Staffelung bleibt sie im 200-mm-Raster und endet spaetestens auf der
+    // obersten REGULAEREN Lage: eine Stufe erzeugt nie eine zweite Ausgleichslage.
+    topLage[k] = st ? Math.max(0, Math.min(Z.regulaer, pyRound(st.height_mm / COURSE))) : L;
   }
   const runsAt = (li) => { const runs = []; let s = null;
     for (let k = 0; k < N; k++) { const present = topLage[k] > li; if (present) { if (s === null) s = k; } else if (s !== null) { runs.push([s, k]); s = null; } }
@@ -1234,6 +1304,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     // #136 Jede Lage traegt ihre Geometrie selbst — Unterkante, Oberkante und Hoehe in mm.
     courses.push({ lage: li, unterkante_mm: KANTEN[li].unterkante_mm,
       oberkante_mm: KANTEN[li].oberkante_mm, hoehe_mm: KANTEN[li].hoehe_mm,
+      // #136 Nur die Ausgleichslage traegt das Merkmal — eine regulaere Lage bekommt kein Feld,
+      // das sie vorher nicht hatte (die goldenen 200-mm-Fixtures bleiben unveraendert).
+      ...(KANTEN[li].ausgleich ? { ausgleich: true } : {}),
       stones, joints_grid: [...joints].sort((a, b) => a - b) });
     prev = joints;
   }
@@ -1567,6 +1640,10 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     name, length_mm: lengthMm, height_mm: heightMm,
     grid_mm: GRID, course_mm: COURSE, thickness_mm: THICK, rod_mm: ROD_,
     N_grid: N, lagen: L,
+    // #136 Das Aktivierungs-Flag der Ausgleichslage reist am Wandelement mit — aber NUR, wenn es
+    // ausdruecklich gesetzt ist. Eine Wand ohne Ausgleichslage bekommt kein Feld, das es vorher
+    // nicht gab (dieselbe Bahn wie die Overrides im Vorspannblock).
+    ...(AUSGLEICH ? { ausgleichslage_aktiv: true } : {}),
     openings: openings.map(op => op.asDict()),
     steps: STEPS,
     // [G-10] Verzahnungsbereiche (optional, nur die validen)
