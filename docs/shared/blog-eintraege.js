@@ -37,6 +37,13 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260917-03",
+    datum: "2026-09-17",
+    typ: "doku",
+    issue: 136,
+    titel: "Regelwerk Kapitel 16: freie Wandhöhe mit Ausgleichslage ersetzt die 200-mm-Vielfachen-Regel ([G-13]…[G-19])",
+  },
+  {
     id: "chg-20260917-02",
     datum: "2026-09-17",
     typ: "feature",

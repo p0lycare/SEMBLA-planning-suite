@@ -46,14 +46,27 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die AUSGLEICHSLAGE IM RECHENKERN (#136). Geliefert: freie
+// Der NEUESTE Eintrag ist das REGELWERK ZUR AUSGLEICHSLAGE (#136). Geliefert: Kapitel 16
+// ersetzt die 200-mm-Vielfachen-Regel durch die Regeln [G-13]…[G-19] (freie Zielhoehe,
+// genau eine obere Ausgleichslage, Aktivierungs-Flag, reale Lagenkanten); [G-16]…[G-18]
+// sind gekennzeichnete Zielregeln. NICHT versprochen werden Katalogrolle, Bedienung
+// oder Ausgaben (typ "doku", keine Testbitte — es gibt nichts zu bedienen).
+const FRISCH_136C = EINTRAEGE[0];
+ok("[#136] das Regelwerk zur Ausgleichslage ist der neueste Eintrag",
+  FRISCH_136C?.id === "chg-20260917-03" && FRISCH_136C?.issue === 136
+  && FRISCH_136C?.typ === "doku" && FRISCH_136C?.datum === "2026-09-17"
+  && /Kapitel 16/.test(FRISCH_136C?.titel || "")
+  && /200-mm-Vielfachen-Regel/.test(FRISCH_136C?.titel || ""));
+
+// Davor die AUSGLEICHSLAGE IM RECHENKERN (#136) — ueber die Kennung gesucht, weil
+// sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben unveraendert: freie
 // Ziel-Wandhoehen im Core — n regulaere 200-mm-Lagen plus bei Resthoehe genau eine
 // oberste Ausgleichslage, je Wand ueber ein optionales Flag aktivierbar; deaktiviert
 // bleibt eine unpassende Hoehe ein benannter Konflikt. NICHT versprochen werden ein
 // Bedienelement, Katalogrollen/Sonderzuschnitt oder Aenderungen an bestehenden
 // 200-mm-Waenden (die Testbitte sagt ausdruecklich "noch ohne Bedienelement").
-const FRISCH_136B = EINTRAEGE[0];
-ok("[#136] die Ausgleichslage im Rechenkern ist der neueste Eintrag",
+const FRISCH_136B = EINTRAEGE.find(e => e.id === "chg-20260917-02");
+ok("[#136] die Ausgleichslage im Rechenkern steht als Eintrag davor",
   FRISCH_136B?.id === "chg-20260917-02" && FRISCH_136B?.issue === 136
   && FRISCH_136B?.typ === "feature" && FRISCH_136B?.datum === "2026-09-17"
   && /freie Wandhöhen/.test(FRISCH_136B?.titel || "")
