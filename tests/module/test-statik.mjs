@@ -1,4 +1,5 @@
-import { nachweise, nachweisWand, nachweisSpannsystem, lasten, vorspannung, forecastLin, transport, DEFAULTS } from "../../docs/shared/sembla-statik.js";
+import { nachweise, nachweisWand, nachweisSpannsystem, lasten, vorspannung, forecastLin, transport, nachweisParams, DEFAULTS } from "../../docs/shared/sembla-statik.js";
+import { buildWall } from "../../docs/shared/sembla-core.js";
 let pass = 0, fail = 0;
 const t = (n, fn) => { try { fn(); pass++; console.log("  ok  " + n); } catch (e) { fail++; console.log("FAIL  " + n + "\n        " + e.message); } };
 const near = (a, b, tol, m) => { if (Math.abs(a - b) > tol) throw new Error((m || "") + `: ${a} != ${b} (±${tol})`); };
@@ -96,6 +97,25 @@ t("Öffnungen: 16 Regelstäbe, 0 Zusatz, 16 gesamt", () => {
 t("γP,fav=2,0 (worst case) erhöht η_Biegung deutlich", () => {
   const w = nachweisWand({ ...P, gammaP_fav: 2.0 });
   if (!(w.biegung.eta > nachweisWand(P).biegung.eta)) throw new Error("η sollte steigen");
+});
+
+
+// ---- #136 Ausgleichslage: die Statik liest die REALE Gesamtwandhoehe --------------------
+// Aus der Ausgleichslage wird NICHTS abgeleitet: kein Materialkennwert, keine Freigabe, kein
+// Nachweis des Sonderzuschnitts. Maßgebend bleibt allein `wandelement.height_mm`.
+t("#136 Statik: h kommt als reale Gesamthoehe aus dem Wandelement (2,570 m, nicht 2,400 m)", () => {
+  const W = buildWall("AG", 3000, 2570, [], null, null, [], null, true);
+  const p = nachweisParams(W, {});
+  near(p.h_m, 2.570, 1e-9, "h_m");
+  if (W.courses[W.courses.length - 1].ausgleich !== true) throw new Error("keine Ausgleichslage");
+});
+t("#136 Statik: aus der Ausgleichslage entsteht kein Kennwert und keine Freigabe", () => {
+  const W = buildWall("AG", 3000, 2570, [], null, null, [], null, true,
+    { i2: [170], i3: [170] });
+  const a = nachweisParams(W, {}), b = nachweisParams({ ...W, courses: [] }, {});
+  // Ausser der Geometrie (h/L/t/Oeffnungszahl/Wandtyp) haengt KEIN Parameter an den Lagen.
+  if (JSON.stringify({ ...a, }) !== JSON.stringify({ ...b })) throw new Error("Lagen wirken auf Parameter");
+  if (a.fcd !== DEFAULTS.fcd) throw new Error("Materialkennwert veraendert");
 });
 
 console.log(`\n${pass} ok, ${fail} fail`); process.exit(fail ? 1 : 0);

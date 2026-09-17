@@ -6,7 +6,10 @@
 // (Der IFC4-Export läuft zentral über die Startseite, nicht mehr in Modul 6.)
 import { readFileSync } from "node:fs";
 import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
-import { topLagen, oberkantenAbschnitte } from "../../docs/shared/sembla-montage.js";
+import { topLagen, oberkantenAbschnitte, lagenKantenVonWand, lagenOberkanteMm }
+  from "../../docs/shared/sembla-montage.js";
+import { wandelementToIfc } from "../../docs/shared/sembla-ifc.js";
+import { createHash } from "node:crypto";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
 
 const html = readFileSync(new URL("../../docs/ifc-3d.html", import.meta.url), "utf8");
@@ -62,7 +65,8 @@ const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we,
   holeObj:(t)=>_obj[t], setzeObj:(t,v)=>{_obj[t]=v;}, loescheObj:(t)=>{_obj[t]=null;} };
 const fireStore=()=>_subs.forEach(cb=>cb());
 
-globalThis.window.SEMBLA={ buildWall, Opening, store:storeMock, topLagen, oberkantenAbschnitte };
+globalThis.window.SEMBLA={ buildWall, Opening, store:storeMock, topLagen, oberkantenAbschnitte,
+  lagenKanten: lagenKantenVonWand, lagenOberkanteMm };
 
 eval(script);
 globalThis.window.__ifcInit();
@@ -175,6 +179,78 @@ ok('Store-Sync: neues aktives Element geladen', A.wall && A.wall.length_mm===500
   ok('Bodenblech bleibt wandlang und unveraendert (ein Segment)',
     A.bodenblechSegmente(W4).length===1
     && A.bodenblechSegmente(W4)[0].x1_mm===W4.base_plate.laenge_mm);
+  A.build(W);
+}
+
+
+// --- #136 Ausgleichslage in IFC und 3D-Vorschau --------------------------------
+// Die obere Ausgleichslage ist eine ECHTE Lage mit eigener Hoehe. IFC-Export und 3D-Aufbau
+// duerfen dafuer keine 200-mm-Ersatzgeometrie mehr erzeugen; einzige Quelle sind die
+// kanonischen Lagenkanten des Wandelements ([D-4]).
+{
+  // Normalisierte IFC-Zeichenkette: GUIDs und Zeitstempel sind je Lauf neu und tragen keine
+  // Aussage — alles andere (Koordinaten, Hoehen, Reihenfolge) wird eingefroren.
+  const normIfc = t => t.replace(/'[0-9A-Za-z_$]{22}'/g, "'GUID'")
+                        .replace(/'\d{4}-\d\d-\d\dT[\d:]+'/g, "'TS'");
+  const sha = t => createHash('sha256').update(normIfc(t)).digest('hex');
+
+  // (a) Referenzwand 2600 mm: bit-genau der Stand VOR dem Umbau (Hash vor der Aenderung
+  //     eingefroren). Eine reine 200-mm-Wand darf sich durch #136 nicht bewegen.
+  ok('[#136] IFC der 2600-mm-Referenzwand bleibt wertgleich zum Stand vor dem Umbau',
+    sha(wandelementToIfc(W)) === '2afdf03a03c8021a58944bcfbce37d188fc3ab7b446a4889453836e2452145a8');
+
+  // (b) 2570-mm-Wand: 12 regulaere Lagen + genau eine Ausgleichslage 2400…2570.
+  const WA = buildWall('Ausgleichswand', 3000, 2570, [], null, null, [], null, true);
+  const AGC = WA.courses[WA.courses.length - 1];
+  ok('[#136] Testwand hat genau eine Ausgleichslage 2400…2570 mm',
+    AGC.ausgleich === true && AGC.unterkante_mm === 2400 && AGC.oberkante_mm === 2570
+    && AGC.hoehe_mm === 170 && WA.courses.filter(c => c.ausgleich).length === 1);
+
+  const ifcA = wandelementToIfc(WA);
+  // Jeder Stein der Ausgleichslage steht bei z = 2,400000 m und ist 0,170000 m hoch.
+  const platz = (ifcA.match(/IFCCARTESIANPOINT\(\([-\d.]+,[-\d.]+,2\.400000\)\)/g) || []).length;
+  const hoehen = (ifcA.match(/IFCEXTRUDEDAREASOLID\([^)]*,0\.170000\)/g) || []).length;
+  ok('[#136] IFC: oberste Steinreihe steht auf z = 2400 mm', platz === AGC.stones.length);
+  ok('[#136] IFC: oberste Steinreihe ist 170 mm hoch (keine 200-mm-Ersatzgeometrie)',
+    hoehen === AGC.stones.length);
+  ok('[#136] IFC: keine Steingeometrie oberhalb der realen Wandoberkante',
+    !/IFCCARTESIANPOINT\(\([-\d.]+,[-\d.]+,2\.[5-9]\d{5}\)\)/.test(ifcA));
+
+  // Mit echter OBJ-Geometrie bleibt die Ausgleichslage der Quader mit realer Hoehe (der
+  // hinterlegte OBJ-Stein ist ein voller Regelstein und waere hier das falsche Bauteil).
+  const ifcReal = wandelementToIfc(WA, { realGeom: true, objText: { i2: objI2, i3: objI3 } });
+  ok('[#136] IFC mit echter Geometrie: Ausgleichslage bleibt realer Quader',
+    (ifcReal.match(/IFCEXTRUDEDAREASOLID\([^)]*,0\.170000\)/g) || []).length === AGC.stones.length);
+
+  // (c) 3D-Vorschau: dieselbe Quelle. Steinquader der Ausgleichslage liegen auf 2400 mm und
+  //     sind 170 mm hoch; die Regellagen bleiben bit-genau bei `lage x 200 mm`.
+  A.opt.real = false; A.build(W);
+  // Nur die STEINE (Materialfarbe i3/i2) — Bleche, Stangen und Spannplatten haengen in
+  // derselben Gruppe und haben eine eigene Hoehe.
+  const STEINFARBEN = new Set([0xcfd3d8, 0xaab0b8]);
+  const steine = g => g.children.filter(o => o.__kind === 'mesh' && o.geometry && o.geometry.h
+    && o.material && STEINFARBEN.has(o.material.color));
+  const nah = (a, b) => Math.abs(a - b) < 1e-9;
+  {
+    const grp = A.gruppe;
+    const s200 = steine(grp);
+    ok('[#136] 3D: reine 200-mm-Wand unveraendert (Hoehe 0,200 m, Mitte auf lage x 200 + 100)',
+      s200.length > 0 && s200.every(m => nah(m.geometry.h, 0.2))
+      && W.courses.every(c => c.stones.every(st =>
+        s200.some(m => nah(m.position.y, (c.lage * 200 + 100) * 0.001)
+                    && nah(m.position.x, (st.x0 + (st.x1 - st.x0) / 2) * 0.001)))));
+  }
+  A.build(WA);
+  {
+    const s = steine(A.gruppe);
+    const oben = s.filter(m => nah(m.geometry.h, 0.17));
+    ok('[#136] 3D: oberste Steinreihe 170 mm hoch, Mitte bei 2485 mm',
+      oben.length === AGC.stones.length && oben.every(m => nah(m.position.y, 2.485)));
+    ok('[#136] 3D: keine 200-mm-Ersatzgeometrie oberhalb 2400 mm',
+      !s.some(m => nah(m.geometry.h, 0.2) && m.position.y > 2.4));
+    ok('[#136] 3D: kein Steinquader ragt ueber die reale Wandoberkante',
+      s.every(m => m.position.y + m.geometry.h / 2 <= 2.570 + 1e-9));
+  }
   A.build(W);
 }
 

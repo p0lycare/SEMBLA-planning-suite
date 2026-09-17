@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260917-07",
+    datum: "2026-09-17",
+    typ: "feature",
+    issue: 136,
+    titel: "Ausgleichslage in allen Datenpfaden: reale Höhe in IFC/3D, Wandaufbau ohne erfundene Verbinder, Roundtrip erhält alles",
+    testbitte: "2570-mm-Wand als IFC/3D ausgeben (oberste Steine bei 2400 mm, 170 mm hoch), Modul 2 öffnen (rote Meldung, "
+      + "kein Verbinder in der Ausgleichslage), Projekt exportieren und wieder importieren — die Wand bleibt 12 × 200 + 1 × 170",
+  },
+  {
     id: "chg-20260917-06",
     datum: "2026-09-17",
     typ: "feature",

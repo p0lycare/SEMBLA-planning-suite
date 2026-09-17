@@ -20,7 +20,17 @@
  * ES-Modul: laeuft im Browser (GH Pages) und wird von den Node-Tests per import geladen.
  */
 
+// #136: die kanonischen Lagenkanten (`unterkante_mm`/`oberkante_mm`/`hoehe_mm` je Lage) des
+// FERTIGEN Wandelements und die EINE erlaubte Umrechnung Reihenzahl -> Hoehe. Eine z-Lage oder
+// Steinhoehe entsteht hier NIE mehr aus `Lagenindex x COURSE` — sonst exportierte die obere
+// Ausgleichslage als 200-mm-Ersatzgeometrie ([D-4]/[P-6]).
+import { wandLagenKanten } from "./sembla-core.js";
+import { lagenOberkanteMm } from "./sembla-montage.js";
+
 export const THICK = 125;          // Wandstaerke mm
+// GRID ist das Rastermaß der Oeffnungsbreite. COURSE ist die REGULAERE Lagenhoehe und wird
+// hier ausdruecklich NICHT mehr zur Ableitung einer z-Koordinate benutzt (s. o.); es bleibt als
+// bisher exportierte Konstante erhalten.
 export const GRID = 125, COURSE = 200;
 
 // ---------- OBJ ----------
@@ -167,6 +177,12 @@ export function wandelementToIfc(wall, opts = {}) {
     }
   }
 
+  // #136 Kanonische Lagenkanten: EINE Quelle fuer jede z-Koordinate und jede Steinhoehe dieser
+  // Datei. Gelesen, nie gerechnet.
+  const KANTEN = wandLagenKanten(wall);
+  const KA = new Map(KANTEN.map((k) => [k.lage, k]));
+  const OK = (n) => lagenOberkanteMm(wall, n, KANTEN);   // Oberkante der n-ten Reihe von unten
+
   // Wand am Ursprung
   const L = wall.length_mm, H = wall.height_mm;
   const wallPl = localPlace(storPl, 0, 0, 0);
@@ -175,8 +191,11 @@ export function wandelementToIfc(wall, opts = {}) {
 
   // Oeffnungen ausschneiden
   for (const o of (wall.openings || [])) {
-    const ow = (o.g1 - o.g0) * GRID, oh = (o.l1 - o.l0) * COURSE;
-    const opl = localPlace(wallPl, o.g0 * GRID, 0, o.l0 * COURSE);
+    // Hoehe/Unterkante einer Oeffnung kommen aus den Lagenkanten (fuer eine reine 200-mm-Wand
+    // wertgleich zu `l x COURSE`, mit Ausgleichslage aber real statt erfunden).
+    const oz0 = OK(o.l0);
+    const ow = (o.g1 - o.g0) * GRID, oh = OK(o.l1) - oz0;
+    const opl = localPlace(wallPl, o.g0 * GRID, 0, oz0);
     const oshape = box(ow, THICK, oh);
     const opName = o.art === "fenster" ? "Fenster" : o.art === "durchbruch" ? "Durchbruch" : "Tuer";
     const op = f.e("IFCOPENINGELEMENT", `'${ifcGuid()}',${owner},'${opName}',$,$,${opl},${oshape},$,.OPENING.`);
@@ -187,15 +206,19 @@ export function wandelementToIfc(wall, opts = {}) {
   if (stones) {
     const parts = [];
     for (const c of wall.courses) for (const st of c.stones) {
-      const spl = localPlace(wallPl, st.x0, 0, c.lage * COURSE);
+      const ka = KA.get(c.lage) || { unterkante_mm: 0, oberkante_mm: 0, hoehe_mm: 0 };
+      const spl = localPlace(wallPl, st.x0, 0, ka.unterkante_mm);
       let sshape;
-      if (repMap[st.type]) {                                   // echte Geometrie referenzieren
+      // Die Ausgleichslage bekommt IMMER den Quader mit ihrer REALEN Hoehe: die hinterlegte
+      // OBJ-Geometrie ist ein voller Regelstein (200 mm) und waere hier schlicht das falsche
+      // Bauteil. Geraten wird nichts — die Hoehe steht in der Lagenkante.
+      if (repMap[st.type] && c.ausgleich !== true) {            // echte Geometrie referenzieren
         const cto = f.e("IFCCARTESIANTRANSFORMATIONOPERATOR3D", `$,$,${org0},$,$`);  // Identitaet
         const mi = f.e("IFCMAPPEDITEM", `${repMap[st.type]},${cto}`);
         const rep = f.e("IFCSHAPEREPRESENTATION", `${ctx},'Body','MappedRepresentation',(${mi})`);
         sshape = f.e("IFCPRODUCTDEFINITIONSHAPE", `$,$,(${rep})`);
       } else {
-        sshape = box(st.x1 - st.x0, THICK, COURSE);
+        sshape = box(st.x1 - st.x0, THICK, ka.hoehe_mm);
       }
       const sp = f.e("IFCBUILDINGELEMENTPROXY", `'${ifcGuid()}',${owner},'${st.type}',$,$,${spl},${sshape},$,.NOTDEFINED.`);
       parts.push(sp);

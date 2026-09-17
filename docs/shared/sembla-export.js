@@ -27,6 +27,10 @@ import { nachweise, nachweisParams } from "./sembla-statik.js";
 // Keine davon liest oder schreibt einen Speicher — sie bringen nur die kanonische
 // Fassung dieser Regeln mit, die hier sonst ein zweites Mal entstuende.
 import { mengenKennung, pruefeKommentar, pruefeMenge, sicherName } from "./storage.js";
+// #136: die kanonischen Lagenkanten des FERTIGEN Wandelements. Eine Hoehe entsteht hier NIE aus
+// `Lagenindex x course_mm` — mit oberer Ausgleichslage waere das eine erfundene Hoehe ([D-4]).
+// Die uebrigen Ausgabedateien (IFC, Zeichnung, Montage) lesen sie in ihren eigenen Modulen.
+import { wandLagenKanten } from "./sembla-core.js";
 // Excel-Ausgabe der Stuecklisten (#135): derselbe AoA wie fuer die CSV, nur anders verpackt.
 import { aoaToXlsx } from "./xlsx.js";
 
@@ -35,8 +39,12 @@ const _fmt = (n, d = 2) => (isFinite(n) ? n : 0).toLocaleString("de-DE", { minim
 /** Netto-Wandflaeche (m²) eines Wandelements (Bruttoflaeche minus Oeffnungen). */
 export function wandflaeche(w) {
   const a = (w.length_mm / 1000) * (w.height_mm / 1000);
+  // Oeffnungshoehe aus den Lagenkanten gelesen (fuer eine reine 200-mm-Wand wertgleich zu
+  // `(l1 - l0) x course_mm`, mit Ausgleichslage aber real statt erfunden).
+  const K = wandLagenKanten(w);
+  const OK = (n) => (n > 0 && K.length) ? K[Math.min(n, K.length) - 1].oberkante_mm : 0;
   const op = (w.openings || []).reduce((s, o) => {
-    const gw = ((o.g1 - o.g0) * (w.grid_mm || 125)) / 1000, gh = ((o.l1 - o.l0) * (w.course_mm || 200)) / 1000;
+    const gw = ((o.g1 - o.g0) * (w.grid_mm || 125)) / 1000, gh = (OK(o.l1) - OK(o.l0)) / 1000;
     return s + gw * gh;
   }, 0);
   return Math.max(0.01, a - op);

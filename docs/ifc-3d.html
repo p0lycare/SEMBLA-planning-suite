@@ -81,7 +81,7 @@
 <script>
 // ===== Klassisches App-Skript (ohne Modulauflösung testbar) =====
 // Shared-Code (buildWall/Opening/store, Konturableitung) wird via window.SEMBLA injiziert.
-let buildWall, Opening, store, topLagen, oberkantenAbschnitte;
+let buildWall, Opening, store, topLagen, oberkantenAbschnitte, lagenKanten, lagenOberkanteMm;
 
 const $=id=>document.getElementById(id);
 const MM=0.001; // mm -> Szene (m)
@@ -182,18 +182,25 @@ function kopfblechSegmente(w){
 
 function build(w){
   clearGroup(); WALL=w;
-  const L=w.length_mm,H=w.height_mm,T=w.thickness_mm||125,course=w.course_mm||200;
+  const L=w.length_mm,H=w.height_mm,T=w.thickness_mm||125;
   const matI3=new THREE.MeshStandardMaterial({color:0xcfd3d8,roughness:0.85,metalness:0.0,side:THREE.DoubleSide});
   const matI2=new THREE.MeshStandardMaterial({color:0xaab0b8,roughness:0.85,metalness:0.0,side:THREE.DoubleSide});
   const matSteel=new THREE.MeshStandardMaterial({color:0x1f6feb,roughness:0.35,metalness:0.6});
   const matPlate=new THREE.MeshStandardMaterial({color:0x14559c,roughness:0.4,metalness:0.5});
   const edgeMat=new THREE.LineBasicMaterial({color:0x8a9098,transparent:true,opacity:0.55});
   if(opt.stones){
-    for(const c of (w.courses||[])){ const z0=c.lage*course;
+    // #136 z-Lage und Hoehe jeder Steinreihe kommen aus den KANONISCHEN Lagenkanten des
+    // Wandelements — `Lagenindex x course_mm` ist hier ersatzlos entfallen, sonst staende die
+    // obere Ausgleichslage als 200-mm-Ersatzquader im Bild ([D-4]).
+    const KA=new Map(lagenKanten(w).map(k=>[k.lage,k]));
+    for(const c of (w.courses||[])){ const ka=KA.get(c.lage)||{unterkante_mm:0,hoehe_mm:0}; const z0=ka.unterkante_mm, hmm=ka.hoehe_mm;
       for(const st of c.stones){ const wmm=st.x1-st.x0;
-        if(opt.real){ const g=stoneGeom(st.type); if(g){ const m=new THREE.Mesh(g, st.type==='i3'?matI3:matI2); m.position.set(st.x0*MM, z0*MM, 0); group.add(m); continue; } }
-        const cx=(st.x0+wmm/2)*MM, cy=(T/2)*MM, cz=(z0+course/2)*MM;
-        const mesh=box(wmm*MM,T*MM,course*MM,cx,cy,cz, st.type==='i3'?matI3:matI2); group.add(mesh);
+        // Die hinterlegte OBJ-Geometrie ist ein voller Regelstein; fuer die Ausgleichslage
+        // (Sonderzuschnitt) waere sie das falsche Bauteil — dort bleibt es beim Quader mit der
+        // realen Hoehe.
+        if(opt.real&&c.ausgleich!==true){ const g=stoneGeom(st.type); if(g){ const m=new THREE.Mesh(g, st.type==='i3'?matI3:matI2); m.position.set(st.x0*MM, z0*MM, 0); group.add(m); continue; } }
+        const cx=(st.x0+wmm/2)*MM, cy=(T/2)*MM, cz=(z0+hmm/2)*MM;
+        const mesh=box(wmm*MM,T*MM,hmm*MM,cx,cy,cz, st.type==='i3'?matI3:matI2); group.add(mesh);
         if(opt.edges){ const eg=new THREE.EdgesGeometry(mesh.geometry); const ls=new THREE.LineSegments(eg,edgeMat); ls.position.copy(mesh.position); group.add(ls); }
       }
     }
@@ -209,7 +216,8 @@ function build(w){
     // Lokale Oberkante je Spannachse aus DERSELBEN Kontur (frueher eine modul-eigene,
     // ungerundete Zweitrechnung aus `steps` -> Drift bei Stufenhoehen ausserhalb des Lagenrasters).
     const tl3d=topLagen?topLagen(w):null;
-    const lt3d=k=>(tl3d&&tl3d[k]!=null)?tl3d[k]*course:H;
+    // #136 Reihenzahl -> Hoehe geht ausschliesslich ueber die kanonische Umrechnung.
+    const lt3d=k=>(tl3d&&tl3d[k]!=null)?lagenOberkanteMm(w,tl3d[k]):H;
     for(const col of (w.tension_columns||[])){ const x=col.x_mm*MM; const lt=lt3d(col.k);
       for(const sg of (col.segments||[])){
         const au=sg.anker_unten||(sg.z0_mm===0?'bodenblech':'spannplatte');
@@ -306,12 +314,13 @@ function bindEvents(){
 
 window.__ifc={applyWand,build,clearWall,parseObjScene,stoneGeom,opt,OBJTEXT,
   kopfblechSegmente,bodenblechSegmente,
-  get wall(){return WALL;}};
+  get wall(){return WALL;}, get gruppe(){return group;}};
 
 window.__ifcInit=function(){
   const S=window.SEMBLA||{};
   buildWall=S.buildWall; Opening=S.Opening; store=S.store;
   topLagen=S.topLagen; oberkantenAbschnitte=S.oberkantenAbschnitte;
+  lagenKanten=S.lagenKanten; lagenOberkanteMm=S.lagenOberkanteMm;
   THREE_OK = (typeof THREE!=='undefined');
   if(THREE_OK){ try{ initThree(); }catch(e){ THREE_OK=false; } }
   if(!THREE_OK){ const m=$('stagemsg'); if(m){ m.style.display='flex';
@@ -326,9 +335,10 @@ window.__ifcInit=function(){
 <script type="module">
   import { buildWall, Opening } from './shared/sembla-core.js';
   import * as store from './shared/storage.js';
-  import { topLagen, oberkantenAbschnitte } from './shared/sembla-montage.js';
+  import { topLagen, oberkantenAbschnitte, lagenKantenVonWand, lagenOberkanteMm } from './shared/sembla-montage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, store, topLagen, oberkantenAbschnitte };
+  window.SEMBLA = { buildWall, Opening, store, topLagen, oberkantenAbschnitte,
+    lagenKanten: lagenKantenVonWand, lagenOberkanteMm };
   mountNavbar(6);
   window.__ifcInit();
 </script>

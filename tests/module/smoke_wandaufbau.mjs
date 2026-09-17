@@ -682,6 +682,54 @@ ok('E4 [U-12]: keine unzulaessigen Punkte trotz Leerfall ([U-11] bleibt gewahrt)
 WA.clearFeld();
 WA.applyWand(W);
 
+// ================= F: [U-13] obere Ausgleichslage (#136) =================
+// Freie Wandhoehe -> genau eine obere Ausgleichslage mit Resthoehe. Sie ist ein
+// Sonderzuschnitt; wo in ihr eine Nut laege, ist konstruktiv nicht nachgewiesen. Modul 2
+// darf darin deshalb WEDER eine Nut- NOCH eine Verbinderposition annehmen und muss die
+// fehlende Eignung SICHTBAR melden. Einzige Hoehenquelle sind die kanonischen Lagenkanten.
+WA.clearFeld();
+{
+  // (a) Referenzfall: eine reine 200-mm-Wand ist wertgleich zum Stand vor #136 (eingefroren).
+  const F0W=buildWall('AG-Referenz 2600', 3000, 2600, [new Opening(4,8,0,10,'tuer')]);
+  WA.applyWand(F0W); const F0=WA.compute();
+  ok('[#136] 2600-mm-Referenzwand: Verbinderreihen unveraendert 10/70/150/190/250 cm',
+     F0.ys.join(',')==='10,70,150,190,250');
+  ok('[#136] 2600-mm-Referenzwand: kein Ausgleichsbefund erfunden',
+     F0.ausgleichslage===null && F0.ausgleichMeldung===null);
+  ok('[#136] 2600-mm-Referenzwand: Verbinderreihen sind exakt die Steinmitten lage x 20 + 10',
+     F0.ys.every(y=>Math.abs(((y-10)/20)-Math.round((y-10)/20))<1e-9));
+
+  // (b) 2570 mm = 12 regulaere Lagen + Ausgleichslage 240…257 cm.
+  const FW=buildWall('AG-Wand 2570', 3000, 2570, [], null, null, [], null, true);
+  WA.applyWand(FW); const F=WA.compute();
+  ok('[#136] Testwand traegt genau eine Ausgleichslage 2400…2570 mm',
+     FW.courses.filter(c=>c.ausgleich).length===1
+     && FW.courses[FW.courses.length-1].unterkante_mm===2400
+     && FW.courses[FW.courses.length-1].hoehe_mm===170);
+  ok('[#136] [U-13] kein Verbinder in der Ausgleichslage (keine erfundene Position)',
+     F.pts.length>0 && F.pts.every(p=>p.y_cm<240-1e-6));
+  ok('[#136] [U-13] keine Verbinderreihe oberhalb der letzten regulaeren Lage',
+     F.ys.every(y=>y<240-1e-6) && !F.ys.includes(250));
+  ok('[#136] [U-13] Achsenoberkante endet an der letzten regulaeren Lage (240 cm)',
+     F.xs.length>0 && F.xs.every(x=>F.axisTop(x)<=240+1e-9));
+  ok('[#136] [U-13] Latten enden bei 240 cm — keine Latte in der Ausgleichslage',
+     F.batt.axes.every(a=>a.segments.every(sg=>sg.y1_cm<=240+1e-6)));
+  ok('[#136] der Befund steht mit REALEM Mass im Ergebnis',
+     !!F.ausgleichslage && F.ausgleichslage.von_cm===240 && F.ausgleichslage.bis_cm===257
+     && F.ausgleichslage.hoehe_cm===17);
+  ok('[#136] die Meldung benennt die fehlende konstruktive Eignung',
+     /ohne konstruktiv geeignete Verbinderposition/.test(F.ausgleichMeldung||'')
+     && /17,0 cm/.test(F.ausgleichMeldung||''));
+  ok('[#136] die Meldung ist in der Bildunterschrift von Modul 2 sichtbar',
+     /ohne konstruktiv geeignete Verbinderposition/.test(document.getElementById('cap').innerHTML));
+  // Gegenprobe: derselbe Satz taucht bei einer reinen 200-mm-Wand nirgends auf.
+  WA.applyWand(F0W); WA.compute();
+  ok('[#136] reine 200-mm-Wand zeigt die Ausgleichsmeldung nicht',
+     !/ohne konstruktiv geeignete Verbinderposition/.test(document.getElementById('cap').innerHTML));
+}
+WA.clearFeld();
+WA.applyWand(W);
+
 // --- Issue #35: Produkte dieses Aufbaus an der echten Modul-2-Oberflaeche ----------------
 // Modul 2 waehlt DIREKT aus dem vollstaendigen Katalog (kein Freigabepool in Modul 0) und
 // besitzt genau die Rollen Latte, Beplankung und Verbinderprodukt. Nur Fantasiedaten.

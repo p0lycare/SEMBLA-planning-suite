@@ -585,5 +585,115 @@ t("norm: unsinnige Lage wird NICHT repariert (faellt in der Validierung auf)",
   }
 }
 
+
+// ===========================================================================
+// #136 Export/Import der Ausgleichslage — am ECHTEN Pfad (storage.js)
+// ---------------------------------------------------------------------------
+// Die neuen Geometrie- und Wandfelder (`courses[].unterkante_mm/oberkante_mm/hoehe_mm`,
+// `courses[].ausgleich`, `wandelement.ausgleichslage_aktiv`) und die Produktrollen der
+// Ausgleichssteine muessen den Roundtrip Export -> Datei -> Import WERTGLEICH ueberstehen.
+// Zugleich gilt: KEIN Formatsprung und KEINE stille Migration beim Lesen — eine vor #136
+// erzeugte Datei wird unveraendert gelesen und rechnet wie bisher.
+{
+  // Minimal-Polyfills wie in smoke_storage.mjs — storage.js braucht nur so viel.
+  class MemStorage {
+    constructor() { this.m = new Map(); }
+    getItem(k) { return this.m.has(k) ? this.m.get(k) : null; }
+    setItem(k, v) { this.m.set(k, String(v)); }
+    removeItem(k) { this.m.delete(k); }
+  }
+  globalThis.localStorage = new MemStorage();
+  globalThis.Blob = class { constructor(parts) { this._t = parts.join(""); } };
+  globalThis.URL = { createObjectURL: () => "blob:x", revokeObjectURL() {} };
+  globalThis.document = {
+    body: { appendChild() {}, insertBefore() {}, firstChild: null },
+    createElement: () => ({ click() {}, remove() {}, set href(_) {}, set download(_) {} }),
+  };
+  globalThis.window = { addEventListener() {} };
+
+  const store = await import("../../docs/shared/storage.js");
+  const { buildWall, wandLagenKanten } = await import("../../docs/shared/sembla-core.js");
+
+  // --- Wand mit Ausgleichslage anlegen und Produktrollen setzen ------------
+  const AGW = buildWall("AG-Wand", 3000, 2570, [], null, null, [], null, true,
+    { i2: [170], i3: [170] });
+  const agId = store.speichere("AG-Wand", AGW);
+  store.setzeAktiv(agId);
+  store.setzeProduktrolle("ausgl_i2", ["ag-i2-170"], agId);
+  store.setzeProduktrolle("ausgl_i3", ["ag-i3-170"], agId);
+
+  const AGC = AGW.courses[AGW.courses.length - 1];
+  t("#136 Ausgangswand: genau eine Ausgleichslage 2400…2570 mm",
+    AGW.height_mm === 2570 && AGW.ausgleichslage_aktiv === true
+    && AGW.courses.filter((c) => c.ausgleich === true).length === 1
+    && AGC.unterkante_mm === 2400 && AGC.oberkante_mm === 2570 && AGC.hoehe_mm === 170);
+
+  // --- Export: additive Felder, KEIN Formatsprung --------------------------
+  const p = store.projektObjekt(agId);
+  const datei = JSON.stringify(p, null, 2);
+  t("#136 Export: Formatversion bleibt 2 (kein Schema-/Formatsprung)",
+    p.format === "SEMBLA-Projekt" && p.version === 2 && store.PROJEKT_VERSION === 2);
+  t("#136 Export: die Lagenkanten stehen als Felder in der Datei",
+    /"unterkante_mm"/.test(datei) && /"oberkante_mm"/.test(datei) && /"hoehe_mm"/.test(datei));
+  t("#136 Export: Aktivierung und Ausgleichslage stehen in der Datei",
+    /"ausgleichslage_aktiv": true/.test(datei) && /"ausgleich": true/.test(datei));
+  t("#136 Export: die Produktrollen der Ausgleichssteine reisen mit",
+    p.eingaben.planung.produkte.rollen.ausgl_i2[0] === "ag-i2-170"
+    && p.eingaben.planung.produkte.rollen.ausgl_i3[0] === "ag-i3-170");
+
+  // --- Import: wertgleicher Roundtrip -------------------------------------
+  const neuId = store.importiereText(datei, "AG-Wand.json");
+  const zurueck = store.holeElement(neuId);
+  // `wandtyp` ist die EINE dokumentierte Altfeld-Normalisierung beim Lesen (Schema v3) und
+  // hat mit #136 nichts zu tun; sie wird hier ausgeklammert, nicht verschwiegen.
+  const ohneWandtyp = (x) => { const o = { ...x }; delete o.wandtyp; return JSON.stringify(o); };
+  t("#136 Roundtrip: das Wandelement ist wertgleich (Zielhoehe, Aktivierung, Lagenkanten)",
+    ohneWandtyp(zurueck.wandelement) === ohneWandtyp(AGW));
+  t("#136 Roundtrip: Zielhoehe und Aktivierung einzeln nachgewiesen",
+    zurueck.wandelement.height_mm === 2570 && zurueck.wandelement.ausgleichslage_aktiv === true);
+  t("#136 Roundtrip: Ausgleichslagengeometrie wertgleich", (() => {
+    const c = zurueck.wandelement.courses[zurueck.wandelement.courses.length - 1];
+    return c.ausgleich === true && c.unterkante_mm === 2400 && c.oberkante_mm === 2570
+      && c.hoehe_mm === 170;
+  })());
+  t("#136 Roundtrip: die Produktrollen sind wertgleich",
+    JSON.stringify(store.holeEingaben(neuId).planung.produkte.rollen.ausgl_i2) === '["ag-i2-170"]'
+    && JSON.stringify(store.holeEingaben(neuId).planung.produkte.rollen.ausgl_i3) === '["ag-i3-170"]');
+
+  // --- Altformat: eingefrorene Datei VOR #136 ------------------------------
+  // Wortwoertlich der damalige Stand: keine Lagenkanten, kein `ausgleich`, kein
+  // `ausgleichslage_aktiv`. Sie muss unveraendert lesbar bleiben und darf beim Lesen NICHT
+  // still migriert werden.
+  const ALT = JSON.stringify({
+    format: "SEMBLA-Projekt", version: 2, name: "Altwand 2600",
+    wandelement: {
+      name: "Altwand 2600", length_mm: 500, height_mm: 400, grid_mm: 125, course_mm: 200,
+      lagen: 2, raster: 4,
+      courses: [
+        { lage: 0, stones: [{ x0: 0, x1: 375, type: "i3" }, { x0: 375, x1: 500, type: "i2" }] },
+        { lage: 1, stones: [{ x0: 0, x1: 125, type: "i2" }, { x0: 125, x1: 500, type: "i3" }] },
+      ],
+      openings: [],
+    },
+    eingaben: { planung: { produkte: { quelle: null, rollen: {} } } },
+  });
+  const altId = store.importiereText(ALT, "Altwand.json");
+  const altGelesen = store.holeElement(altId).wandelement;
+  t("#136 Altformat: die Datei bleibt lesbar",
+    altGelesen.height_mm === 400 && altGelesen.courses.length === 2);
+  t("#136 Altformat: beim Lesen wird kein #136-Feld ergaenzt (keine stille Migration)",
+    ohneWandtyp(altGelesen) === JSON.stringify(JSON.parse(ALT).wandelement)
+    && !("ausgleichslage_aktiv" in altGelesen)
+    && altGelesen.courses.every((c) => !("unterkante_mm" in c) && !("oberkante_mm" in c)
+      && !("hoehe_mm" in c) && !("ausgleich" in c)));
+  t("#136 Altformat: sie rechnet wie bisher (200-mm-Lagen aus dem Rueckfall)",
+    JSON.stringify(wandLagenKanten(altGelesen))
+    === JSON.stringify([{ lage: 0, unterkante_mm: 0, oberkante_mm: 200, hoehe_mm: 200 },
+                        { lage: 1, unterkante_mm: 200, oberkante_mm: 400, hoehe_mm: 200 }]));
+  // Erst ein SPEICHERN schreibt das erweiterte Format — das Lesen allein nie.
+  t("#136 Altformat: der Roundtrip der Altdatei ist wieder wertgleich",
+    ohneWandtyp(store.projektObjekt(altId).wandelement) === JSON.stringify(JSON.parse(ALT).wandelement));
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

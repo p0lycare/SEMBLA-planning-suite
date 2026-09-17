@@ -46,14 +46,32 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die AUSGLEICHSLAGE IN ZEICHNUNG UND MONTAGE (#136). Geliefert:
+// Der NEUESTE Eintrag ist die AUSGLEICHSLAGE IN ALLEN DATENPFADEN (#136, Abschluss der
+// Serie). Geliefert: IFC/3D mit realer z-Position und Hoehe der Ausgleichslagensteine,
+// Modul 2 ohne erfundene Verbinderposition mit sichtbarer Meldung ([U-13]), Export/Import-
+// Roundtrip erhaelt Zielhoehe, Aktivierung, Rollen und Lagenkanten; Altformat-Dateien
+// bleiben ohne stille Migration lesbar. NICHT versprochen werden ein statischer Nachweis
+// oder eine Freigabe des Sonderzuschnitts.
+const FRISCH_136G = EINTRAEGE[0];
+ok("[#136] die Ausgleichslage in allen Datenpfaden ist der neueste Eintrag",
+  FRISCH_136G?.id === "chg-20260917-07" && FRISCH_136G?.issue === 136
+  && FRISCH_136G?.typ === "feature" && FRISCH_136G?.datum === "2026-09-17"
+  && /IFC\/3D/.test(FRISCH_136G?.titel || "")
+  && /ohne erfundene Verbinder/.test(FRISCH_136G?.titel || ""));
+ok("[#136] die Testbitte fuehrt IFC, Modul 2 und den Roundtrip mit realen Massen",
+  /2400 mm/.test(FRISCH_136G?.testbitte || "")
+  && /importieren/.test(FRISCH_136G?.testbitte || "")
+  && /12 × 200 \+ 1 × 170/.test(FRISCH_136G?.testbitte || ""));
+
+// Davor die AUSGLEICHSLAGE IN ZEICHNUNG UND MONTAGE (#136) — ueber die Kennung gesucht,
+// weil sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben unveraendert:
 // Modul 7 zeichnet die oberste Lage massstaeblich mit realer Hoehe und eigener Bemassung
 // (ein Zeichenpfad fuer Vorschau/Druck/SVG), Modul 5 zeigt sie als genau eine eigene,
 // fortlaufend nummerierte oberste Reihe mit realem Mass; alle Hoehen kommen aus den
 // kanonischen Lagenkanten. NICHT versprochen werden IFC/3D, Modul 2 oder Export/Import —
 // reine 200-mm-Waende bleiben zeichenkettengleich.
-const FRISCH_136F = EINTRAEGE[0];
-ok("[#136] die Ausgleichslage in Zeichnung und Montage ist der neueste Eintrag",
+const FRISCH_136F = EINTRAEGE.find(e => e.id === "chg-20260917-06");
+ok("[#136] die Ausgleichslage in Zeichnung und Montage steht als Eintrag davor",
   FRISCH_136F?.id === "chg-20260917-06" && FRISCH_136F?.issue === 136
   && FRISCH_136F?.typ === "feature" && FRISCH_136F?.datum === "2026-09-17"
   && /maßstäblich/.test(FRISCH_136F?.titel || "")
