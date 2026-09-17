@@ -302,7 +302,7 @@
         <div id="gp-sammel" hidden>
           <div class="row">
             <span id="gp-sammel-info">–</span>
-            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam setzen — allgemeine Wandmerkmale (Höhe, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge, Überstand) und die Produktauswahl von Modul 1 (mehrere Produkte je Verwendungsstelle)">Gemeinsam bearbeiten…</button>
+            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam setzen — allgemeine Wandmerkmale (Höhe, Ausgleichslage, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge, Überstand) und die Produktauswahl von Modul 1 (mehrere Produkte je Verwendungsstelle)">Gemeinsam bearbeiten…</button>
           </div>
         </div>
       </div>
@@ -427,7 +427,8 @@
            Fokus, Auswahl und Behandler. Die IDs stehen fest im Markup und werden nicht
            erzeugt — nur so ist das Popup über denselben Weg bedienbar wie jedes andere
            Bedienelement der Seite.
-           Geführt werden GENAU NEUN allgemeine Wandmerkmale. Geometrie- und
+           Geführt werden GENAU ZEHN allgemeine Wandmerkmale (seit #136 auch die
+           Ausgleichslage). Geometrie- und
            positionsabhängige Angaben (Länge, Lage, Öffnungen, Durchbrüche, Staffelungen,
            Verzahnungen, manuelle Spannachsen, Zwischenspannpunkte) sind ausdrücklich
            NICHT dabei, und eine gemeinsame Produktauswahl ebenfalls nicht.
@@ -439,10 +440,23 @@
         <div class="hint" id="gp-sammel-ist" style="margin-top:0">–</div>
 
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-hoehe-an" title="Gemeinsame Wandhöhe übernehmen — jede ausgewählte Wand wird über den Auslegungspfad von Modul 1 neu gerechnet (#56)">
+          <label class="chk" for="gp-sammel-hoehe-an" title="Gemeinsame Wandhöhe in mm übernehmen — seit #136 FREI, ohne 200er-Rasterzwang, sofern die Ausgleichslage wirkt. Jede ausgewählte Wand wird über den Auslegungspfad von Modul 1 neu gerechnet (#56).">
             <input type="checkbox" id="gp-sammel-hoehe-an"><span>Wandhöhe (mm)</span></label>
-          <input id="gp-sammel-hoehe" type="number" step="200" min="200" disabled>
+          <input id="gp-sammel-hoehe" type="number" step="10" min="200" disabled>
           <span class="sist" id="gp-sammel-hoehe-ist">–</span>
+        </div>
+        <!-- #136 Ausgleichslage: genau EINE oberste Lage mit der Resthöhe ([G-14]). Nur mit ihr
+             nimmt der Rechenkern eine Zielhöhe außerhalb des 200-mm-Rasters an; ohne sie ist
+             eine solche Höhe ein benannter Konflikt und wird NIE gerundet. -->
+        <div class="sfeld">
+          <label class="chk" for="gp-sammel-ausgleich-an" title="Ausgleichslage je Wand aktivieren/deaktivieren (#136) — aktiviert nimmt der Rechenkern die Resthöhe als genau eine oberste Lage; deaktiviert muss die Höhe ein Vielfaches von 200 mm sein.">
+            <input type="checkbox" id="gp-sammel-ausgleich-an"><span>Ausgleichslage</span></label>
+          <select id="gp-sammel-ausgleich" disabled>
+            <option value="" disabled hidden>– gemischt –</option>
+            <option value="an">aktiviert</option>
+            <option value="aus">nicht aktiviert</option>
+          </select>
+          <span class="sist" id="gp-sammel-ausgleich-ist">–</span>
         </div>
         <div class="sfeld">
           <label class="chk" for="gp-sammel-wandtyp-an" title="Windsituation (Wandtyp) — Fachmerkmal der Wand, ohne Einfluss auf Tiling und Stückliste">
@@ -2274,15 +2288,16 @@ function sammelWaende(){ return GP.auswahl.filter(id => !!wand(id)); }
 /** Lesbarer Text der Windsituation — dieselben Worte wie in der Bauteilliste. */
 function wandtypText(t){ return t === 'ohne_wind' ? 'ohne Wind' : 'mit Wind'; }
 
-// --- #111: die neun gemeinsam einstellbaren Wandmerkmale --------------------
+// --- #111/#136: die zehn gemeinsam einstellbaren Wandmerkmale ---------------
 //
-// Alle neun leben AUSSCHLIESSLICH am Wandelement — nicht in `eingaben`, nicht in
+// Alle zehn leben AUSSCHLIESSLICH am Wandelement — nicht in `eingaben`, nicht in
 // der Projektmappe, nicht im Katalog. Es entsteht also kein neues gespeichertes
 // Feld und kein Versionssprung.
 //
 // Der Unterschied, der zählt, ist `core`:
-//   core: true  — der Wert ist EINGANG des Rechenkerns (Höhe, Seitenfunktionen,
-//                 oberer Anschluss, Kopfblech-Modullänge, Überstand). Er wird VOR
+//   core: true  — der Wert ist EINGANG des Rechenkerns (Höhe, Ausgleichslage,
+//                 Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge,
+//                 Überstand). Er wird VOR
 //                 dem Engine-Aufruf in die Vorgabe gesetzt, und das Wandelement
 //                 wird über denselben einen Auslegungspfad neu gerechnet.
 //   core: false — der Wert hängt NICHT am Core (Windsituation, Brandschutz-
@@ -2324,6 +2339,16 @@ function ganzeZahl(roh){
   return Number.isInteger(v) ? v : null;
 }
 
+/**
+ * #136 Die WIRKSAME Ausgleichslage einer Wand für diesen Sammellauf: der ausdrücklich
+ * angekreuzte Zielwert, sonst der gespeicherte Stand der Wand. Geraten wird nichts.
+ * @param {any} we Wandelement @param {Array<{feld:any,wert:any}>} [aktiv] angekreuzte Merkmale
+ */
+function wirksamerAusgleich(we, aktiv){
+  const a = (aktiv || []).find(x => x.feld.id === 'ausgleich');
+  return a ? (a.wert === 'an') : (we.ausgleichslage_aktiv === true);
+}
+
 /** Auswahlfeld-Prüfung: gemischt bleibt gemischt, bis ausdrücklich gewählt wurde. */
 function wahlPruefung(werte, was){
   return (roh) => werte.includes(roh) ? { wert: roh }
@@ -2342,7 +2367,21 @@ const SAMMEL_FELDER = [
     },
     // Das Lagenraster und alles, was der neuen Höhe im Weg steht, wird je Wand
     // geprüft und benannt — nie gekappt (#75).
-    hindernisse: (we, v) => hoehenHindernisse(we, v) },
+    // #136: Maßgebend ist die WIRKSAME Ausgleichslage — der angekreuzte Sammelwert, sonst der
+    // der jeweiligen Wand. Sonst wiese eine gemeinsam aktivierte Ausgleichslage ihre eigene
+    // freie Zielhöhe ab.
+    hindernisse: (we, v, aktiv) => hoehenHindernisse(we, v, wirksamerAusgleich(we, aktiv)) },
+
+  // #136 Die Ausgleichslage: genau EINE oberste Lage mit der Resthöhe, je Wand ausdrücklich
+  // aktiviert ([G-14]). Sie ist EINGANG des Rechenkerns (`core: true`) und wird deshalb VOR dem
+  // Engine-Aufruf in die Vorgabe gesetzt — dieselbe eine `vorg`-Struktur wie die Höhe daneben,
+  // kein zweiter Rechenweg. Das Feld lebt am Wandelement, nicht in `eingaben`: kein neues
+  // gespeichertes Feld, kein Versionssprung.
+  { id: 'ausgleich', name: 'Ausgleichslage', core: true, wahl: true,
+    lies: we => (we.ausgleichslage_aktiv === true) ? 'an' : 'aus',
+    text: v => (v === 'an') ? 'aktiviert' : 'nicht aktiviert',
+    pruefe: wahlPruefung(['an', 'aus'], 'die Ausgleichslage an oder aus'),
+    setze: (vorg, v) => { vorg.ausgleichslage_aktiv = (v === 'an'); } },
 
   { id: 'wandtyp', name: 'Windsituation', core: false, wahl: true,
     lies: we => store.normWandtyp(we.wandtyp),
@@ -2880,7 +2919,9 @@ function sammelAnwenden(){
     }
     for (const { feld, wert } of aktiv) {
       if (!feld.hindernisse) continue;
-      const hindernisse = feld.hindernisse(el.wandelement, wert);
+      // #136 Die Hindernisprüfung sieht ALLE angekreuzten Merkmale: die Höhe hängt seit der
+      // Ausgleichslage von einem zweiten Zielwert desselben Laufs ab.
+      const hindernisse = feld.hindernisse(el.wandelement, wert, aktiv);
       if (hindernisse.length) {
         zeige(`Sammeländerung nicht möglich („${el.name || id}“): `
           + hindernisse.join(' ') + ' Es wurde nichts geändert.', false);
@@ -2937,14 +2978,20 @@ function sammelAnwenden(){
       // gespeicherten, womöglich veralteten Eingängen weiter. Die angekreuzte
       // Produktmenge liegt dabei über der gespeicherten Auswahl (`eingabenMitRollen`),
       // für die übrigen Stellen gilt die gespeicherte.
+      const eingNach = rechnen ? eingabenMitRollen(id, rollenAktiv) : null;
       const pp = rechnen
-        ? vorspannEingaenge(eingabenMitRollen(id, rollenAktiv), kat,
+        ? vorspannEingaenge(eingNach, kat,
             (aktiv.find(a => a.feld.id === 'topconn') || {}).wert
             || (((el.wandelement.prestress || {}).top_connection === 'blech')
                 ? 'blech' : 'spannplatte'))
         : null;
+      // #136 Die Kataloghöhen der Ausgleichssteine ([G-16]) auf demselben Weg: aus der Auswahl,
+      // wie sie NACH der Übernahme gilt — sonst rechnete die Wand mit der alten Auswahl und
+      // hielte jeden Ausgleichsstein für einen Sonderzuschnitt. Ohne zugeordneten Katalog wird
+      // nichts abgeleitet (leere Listen), nichts erfunden ([P-9]).
+      const agh = rechnen ? WA.ausgleichSteinHoehen(eingNach, kat) : undefined;
       neu = rechnen
-        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch, pp)
+        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch, pp, agh)
         : JSON.parse(JSON.stringify(el.wandelement));
     } catch (e) {
       zeige(`Sammeländerung nicht möglich („${el.name || id}“): ` + fehlerText(e)
@@ -3718,18 +3765,30 @@ function laengeHindernisse(we, laengeGrid){
  * Rechenkern sonst abbrechen (Öffnung über der Wandhöhe) oder STILL klemmen
  * würde (eine Staffelstufe wird in `normSteps` auf die Wandhöhe gekappt — das
  * wäre eine unbemerkte Änderung einer fachlichen Eingabe).
+ * #136: Die Höhe ist FREI, sobald die Ausgleichslage an dieser Wand wirkt — dann nimmt der
+ * Rechenkern die Resthöhe als genau eine oberste Lage ([G-14]). Ist sie NICHT aktiviert, gilt
+ * die 200-mm-Bedingung unverändert und wird BENANNT, nie gerundet ([P-9]).
+ *
  * @param {any} we gespeichertes Wandelement
  * @param {number} hoeheMm gewünschte gemeinsame Höhe
+ * @param {boolean} [ausgleichAktiv] wirksame Ausgleichslage (Sammel-Wert, sonst der der Wand)
  * @returns {string[]} leer = zulässig
  */
-function hoehenHindernisse(we, hoeheMm){
+function hoehenHindernisse(we, hoeheMm, ausgleichAktiv){
   const gruende = [];
-  if (!(Number.isInteger(hoeheMm) && hoeheMm >= 200 && hoeheMm % 200 === 0)) {
-    gruende.push(`Die Wandhöhe muss ein positives Vielfaches von 200 mm sein (Lagenraster) — `
-      + `${hoeheMm} mm passt nicht.`);
+  const ag = ausgleichAktiv === undefined ? (we.ausgleichslage_aktiv === true) : ausgleichAktiv === true;
+  if (!(Number.isInteger(hoeheMm) && hoeheMm >= 200 && (ag || hoeheMm % 200 === 0))) {
+    gruende.push(ag
+      ? `Die Wandhöhe muss eine ganze Zahl ab 200 mm sein — ${hoeheMm} mm passt nicht.`
+      : `Die Ausgleichslage ist an dieser Wand nicht aktiviert — dann muss die Wandhöhe ein `
+        + `positives Vielfaches von 200 mm sein (Lagenraster); ${hoeheMm} mm passt nicht. `
+        + `Entweder die Ausgleichslage mit übernehmen oder eine Rasterhöhe wählen; gerundet `
+        + `wird nichts.`);
     return gruende;                            // ohne gültiges Lagenraster erübrigt sich alles Weitere
   }
-  const L = hoeheMm / 200;
+  // Öffnungen und Staffelungen rechnen im 200-mm-Raster: maßgebend sind die REGULÄREN Lagen.
+  // In die Ausgleichslage reicht keine Öffnung hinein.
+  const L = Math.floor(hoeheMm / 200);
   const arten = { tuer: 'Tür', fenster: 'Fenster', durchbruch: 'Durchbruch' };
   for (const op of (we.openings || [])) {
     if (op.l1 > L) gruende.push(`${arten[op.art] || 'Öffnung'} reicht bis Lage ${op.l1} `
@@ -3765,7 +3824,7 @@ function hoehenHindernisse(we, hoeheMm){
  *   ([A-10]) und die Einbaulagen (#92). Ersetzt AUSSCHLIESSLICH diese Eingänge derselben
  *   einen `vorg`-Struktur; alles Übrige bleibt so, wie es aus dem Wandelement kam.
  */
-function rechneWandelement(el, laengeGrid, hoeheMm, patch, prestressPatch){
+function rechneWandelement(el, laengeGrid, hoeheMm, patch, prestressPatch, ausgleichHoehen){
   const we = el.wandelement;
   const vorg = {
     name: el.name || we.name,
@@ -3778,6 +3837,19 @@ function rechneWandelement(el, laengeGrid, hoeheMm, patch, prestressPatch){
     // ausschließlich in Modul 1. Sie reisen über den Engine-Pfad in `buildWall()`.
     interlocks: (we.interlocks || []).map(i => ({ ...i })),
     prestress: { ...(we.prestress || {}) },
+    // #136 Die Ausgleichslage ist ein Merkmal der WAND und hängt nicht am Vorspannblock: ohne
+    // diese Zeile fiele das Flag bei JEDER Neurechnung weg (Länge, Höhe, Sammeländerung), der
+    // Core rechnete wieder mit dem 200-mm-Zwang und wiese dieselbe Wand ab, die gespeichert ist
+    // ([G-14]) — genau der Fehler, den `wandtyp`/`abdichtung`/`brandklasse` unten vermeiden.
+    // Geändert wird es ausschließlich über den Sammel-Patch (`SAMMEL_FELDER`), sonst nur
+    // MITGEFÜHRT.
+    ausgleichslage_aktiv: we.ausgleichslage_aktiv === true,
+    // #136 Aus demselben Grund die Kataloghöhen der Ausgleichssteine ([G-16]): sie kommen aus
+    // der Produktauswahl DIESER Wand und dem zugeordneten Katalog ([L-12]) — gebildet über den
+    // gemeinsamen Baustein aus `sembla-wandanlage.js`, nie hier nachgebaut. Der Aufrufer darf
+    // sie vorgeben (Sammel-Editor: die angekreuzte Menge gilt schon vor dem Schreiben).
+    ausgleich_stein_hoehen_mm: ausgleichHoehen !== undefined ? ausgleichHoehen
+      : WA.ausgleichSteinHoehen(el.eingaben || {}, store.katalogStatus().katalog),
     load: { ...LAST_VORGABE },
     // Materialkennwerte reisen im Nachweis des Elements mit; fehlen sie (frisch
     // gezeichnete Wand ohne Nachweis), gelten die Vorgaben der Engine.

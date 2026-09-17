@@ -6,7 +6,9 @@
 // lassen sich das Auto-Speichern, die wandbezogene Produktauswahl (Issue #35) und deren
 // Fortbestand ueber einen Reload (erneutes __wpInit()) am echten Datenpfad pruefen.
 import { readFileSync } from "node:fs";
-import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte } from "../../docs/shared/sembla-core.js";
+import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte,
+         // #136: der BENANNTE Grund der abgewiesenen Hoehe — Modul 1 zeigt ihn an.
+         AUSGLEICH_KONFLIKT, hoehenZerlegung } from "../../docs/shared/sembla-core.js";
 import { autoAuslegung, nachweisPruefen } from "../../docs/shared/sembla-engine.js";
 
 class MemStorage {
@@ -30,7 +32,7 @@ class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';thi
   getBoundingClientRect(){ return this._rect || {left:0,width:1000}; } get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
   querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
   querySelectorAll(){return [];} appendChild(){} }
-const dv={len:'2.00',hgt:'2.60',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
+const dv={len:'2.00',hgt:'2600',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
 const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
 globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},
   _h:{}, addEventListener(e,f){(this._h[e]||(this._h[e]=[])).push(f);},
@@ -45,7 +47,7 @@ const MONT = await import("../../docs/shared/sembla-montage.js");
 const BOM = await import("../../docs/shared/sembla-bom.js");
 // #130: die eine Rollenliste des Vorspann-Eingangssatzes — wie im Browser aus
 // sembla-wandanlage.js gebunden (Modul 1 liest sie fuer die masswirksame Vorbelegung).
-const { ROLLE_RECHNUNG } = await import("../../docs/shared/sembla-wandanlage.js");
+const { ROLLE_RECHNUNG, ausgleichSteinHoehen } = await import("../../docs/shared/sembla-wandanlage.js");
 // #112: das Blatt von Modul 7 — nur zum QUERVERGLEICH. Modul 1 zieht daraus nichts; geprueft
 // wird, dass beide Ansichten derselben Wand dieselbe Zahl weisser Haarlinien zeigen und
 // dieselbe abgeleitete Breite benutzen (das lokale Doppelmass, [P-6]/[D-4]).
@@ -55,7 +57,7 @@ const ZEICH = await import("../../docs/shared/sembla-zeichnung.js");
 const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
 const idA=store.speichere('Wand A', startWand); store.setzeAktiv(idA);
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
-  ROLLE_RECHNUNG,
+  ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
   STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL,
   stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke,
   // #91: der EINE Zeichenweg des Bodenblechs — Modul 1 zeigt damit dieselbe reale
@@ -761,7 +763,7 @@ ok('fehlende Auswahl wird sichtbar gemeldet',
   /Kein Gewindestangenprodukt gewählt/.test(document.getElementById('rodQuelle').innerHTML));
 
 // Staffelung / getreppter Aufbau: rechte Hälfte niedriger -> keine Öffnungs-Überlappung, oben rechts keine Steine
-setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
+setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
 WP.addStep(); WP.steps[0].x0=1.00; WP.steps[0].x1=2.00; WP.steps[0].h=1.00; WP.run();
 const wst=WP.RESULT.wandelement;
 ok('Staffelung im Wandelement (steps)', Array.isArray(wst.steps) && wst.steps.length===1 && wst.steps[0].height_mm===1000);
@@ -774,7 +776,7 @@ ok('unterste Lage volle Breite (2,0 m)', Math.max(0,...untenc.stones.map(s=>s.x1
 // Projekt-Kopfdaten wurden nach Modul 0 (Startseite) verschoben — hier nicht mehr getestet.
 
 // Feature-Requests: Anschluss-Modell + Reihennummern
-setzeLaenge(2000); document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
+setzeLaenge(2000); document.getElementById('hgt').value='2600'; document.getElementById('modus').value='auto'; WP.run();
 const wfr=WP.RESULT.wandelement;
 ok('prestress hat blech_mm + top_connection', wfr.prestress.blech_mm>0 && (wfr.prestress.top_connection==='blech'||wfr.prestress.top_connection==='spannplatte'));
 // [A-1] Die Blechdicke ist ein KATALOGMASS. Ohne gewaehltes Bodenblechprodukt gibt es keines —
@@ -823,7 +825,7 @@ document.getElementById('topConn').value='blech'; document.getElementById('topCo
 document.getElementById('topConn').value='blech'; document.getElementById('topConn').dispatch('change');
 
 // Feature: manueller Spannachsen-Editor (Sonderkonstruktion)
-setzeLaenge(2000); document.getElementById('hgt').value='2.60'; document.getElementById('modus').value='auto'; WP.run();
+setzeLaenge(2000); document.getElementById('hgt').value='2600'; document.getElementById('modus').value='auto'; WP.run();
 WP.setManualCols([0,8,15]);
 const mks=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
 ok('manuelle Achsen: nur gesetzte k', mks.every(k=>[0,8,15].includes(k)) && mks.includes(0) && mks.includes(15));
@@ -838,7 +840,7 @@ WP.setAxisEdit(false);
 // Issue #93: Zwischenspannpunkte (Einlegeblech) lagengenau planen — Auto-Anzeige, Hinzufuegen,
 // Verschieben, Loeschen, „Zurueck zu Auto" bis zum GESPEICHERTEN Wandelement, plus das
 // gemeinsame C-Profil-Symbol aus sembla-montage.js.
-setzeLaenge(2000); document.getElementById('hgt').value='2.60';
+setzeLaenge(2000); document.getElementById('hgt').value='2600';
 document.getElementById('modus').value='auto'; WP.run();
 {
   const svg=()=>document.getElementById('plan').innerHTML;
@@ -926,7 +928,7 @@ document.getElementById('modus').value='auto'; WP.run();
     return true;
   })());
 }
-document.getElementById('hgt').value='2.60'; WP.run();
+document.getElementById('hgt').value='2600'; WP.run();
 
 // ---------------------------------------------------------------------------------------------
 // Issue #96 / [A-24]: Ausgleichspunkt-Editor in Modul 1.
@@ -935,7 +937,7 @@ document.getElementById('hgt').value='2.60'; WP.run();
 // sondern das GESPEICHERTE Wandelement geprueft (`store.aktivesWandelement()`). Genau das ist
 // der Speicher-Lade-Umlauf: run() -> vorgaben() -> Engine -> Core -> persistAktiv -> Speicher.
 // ---------------------------------------------------------------------------------------------
-setzeLaenge(2000); document.getElementById('hgt').value='2.60';
+setzeLaenge(2000); document.getElementById('hgt').value='2600';
 document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEdit(false); WP.run();
 {
   const svg=()=>document.getElementById('plan').innerHTML;
@@ -1053,7 +1055,7 @@ document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEd
     const unten=r.filter(t=>t.y===r[0].y);
     return { uk:unten[0].y+unten[0].h, x0:Math.min(...unten.map(t=>t.x)) }; };
 
-  setzeLaenge(3000); document.getElementById('hgt').value='2.60';
+  setzeLaenge(3000); document.getElementById('hgt').value='2600';
   WP.setAgEdit(false); WP.setZpEdit(false); WP.setAxisEdit(false); WP.setEdit(false); WP.run();
   const AGP=WP.ausgleichspunkte.map(p=>p.x_mm);
   const sc97=WP.ansichtSc();
@@ -1125,7 +1127,7 @@ document.getElementById('modus').value='auto'; WP.setZpEdit(false); WP.setAxisEd
 // Wandelement geprueft (`store.aktivesWandelement()`), nicht das Formular. Gespeichert werden
 // ACHSENRASTER-Indizes, nicht Millimeter.
 // ---------------------------------------------------------------------------------------------
-setzeLaenge(3250); document.getElementById('hgt').value='2.60';
+setzeLaenge(3250); document.getElementById('hgt').value='2600';
 document.getElementById('modus').value='auto';
 WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
 {
@@ -1320,7 +1322,7 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
   WP.dcAuto();
 }
 
-setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
+setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
 
 // ---------------------------------------------------------------------------------------------
 // Issue #106 (Bedienteil): Achsen treffen dort, wo geklickt wird, und werden verschoben statt
@@ -1507,7 +1509,7 @@ setzeLaenge(2000); document.getElementById('hgt').value='2.60'; WP.run();
     && /function bildPunkt\(e\)\{[\s\S]*?getBoundingClientRect/.test(html)
     && !/getAttribute\('viewBox'\)/.test(html));
 }
-document.getElementById('hgt').value='2.60'; WP.run();
+document.getElementById('hgt').value='2600'; WP.run();
 
 // Issue #104: Die Startachse ist ERSATZLOS zurueckgebaut. Der Rechenkern leitet die
 // Grundachsen seit a70e169 allein aus dem Verband der untersten Lage ab ([V-3]/[V-11]);
@@ -1558,7 +1560,7 @@ ok('#104 Altstand ohne Feld liefert bit-genau dieselben Achsen',
 
 // Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element.
 // Gefahren wird das ueber die HOEHE — die Laenge ist seit #56 kein Bedienweg mehr (s. u.).
-document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
+document.getElementById('hgt').value='2600'; document.getElementById('hgt').dispatch('input');
 const gesp=store.aktivesWandelement();
 ok('Auto-Speichern übergibt Wandelement an Storage', gesp && gesp.length_mm>0 && !!gesp.verification);
 
@@ -1982,7 +1984,7 @@ store.setzeKatalog(KATALOG);
   // Ende genau so wiederhergestellt, damit dieser Abschnitt keine Nebenwirkung hinterlaesst.
   const vorher=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
   for(const r of ROLLEN92) leere(r);
-  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  setzeLaenge(2000); document.getElementById('hgt').value='2000';
   document.getElementById('topConn').value='spannplatte';
   document.getElementById('rodUeber').value='10';
   // Vorratssatz und Reststueck, damit [Z-2]/[Z-6] ueberhaupt eine Zerlegung liefern.
@@ -2104,7 +2106,7 @@ store.setzeKatalog(KATALOG);
   const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
   const vorherW=WP.RESULT.wandelement;
   for(const r of ROLLEN97) leere(r);
-  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  setzeLaenge(2000); document.getElementById('hgt').value='2000';
   document.getElementById('topConn').value='blech';
   document.getElementById('rodUeber').value='10';
   setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
@@ -2230,7 +2232,7 @@ store.setzeKatalog(KATALOG);
   const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
   const vorherW=WP.RESULT.wandelement;
   for(const r of ROLLEN) leere(r);
-  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  setzeLaenge(2000); document.getElementById('hgt').value='2000';
   document.getElementById('topConn').value='blech';
   document.getElementById('rodUeber').value='10';
   setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
@@ -2415,7 +2417,7 @@ store.setzeKatalog(KATALOG);
   const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
   const vorherW=WP.RESULT.wandelement;
   for(const r of ROLLEN) leere(r);
-  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  setzeLaenge(2000); document.getElementById('hgt').value='2000';
   document.getElementById('topConn').value='blech';
   document.getElementById('rodUeber').value='10';
   setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
@@ -2622,7 +2624,7 @@ store.setzeKatalog(KATALOG);
   const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
   const vorherW=WP.RESULT.wandelement;
   for(const r of ROLLEN) leere(r);
-  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  setzeLaenge(2000); document.getElementById('hgt').value='2000';
   document.getElementById('topConn').value='blech';
   document.getElementById('rodUeber').value='10';
   setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
@@ -2793,7 +2795,7 @@ store.setzeKatalog(KATALOG);
   const vorherR=JSON.parse(JSON.stringify(store.holeProdukte(1).rollen||{}));
   const vorherW=WP.RESULT.wandelement;
   for(const r of ROLLEN) leere(r);
-  setzeLaenge(2000); document.getElementById('hgt').value='2.00';
+  setzeLaenge(2000); document.getElementById('hgt').value='2000';
   document.getElementById('topConn').value='blech';
   document.getElementById('rodUeber').value='10';
   setzen('rod_std','rod-1000',true); setzen('rod_rest','rod-rest-210',true);
@@ -3111,12 +3113,12 @@ store.setzeKatalog(KATALOG);
   // Reststueck kommt ohne EINE Standardlaenge aus (Rest + Sonderzuschnitt). Dann darf auch
   // „Standardlaenge“ nicht in der Legende stehen — genau das war vorher fest eingetragen.
   ok('[#63] Stand ohne Standardstueck nennt keine Standardlaenge', (()=>{
-    document.getElementById('hgt').value='0.20'; WP.run();
+    document.getElementById('hgt').value='200'; WP.run();
     const alle=WP.RESULT.wandelement.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
     const treffer = alle.length>0 && !alle.some(p=>p.art==='standard')
       && legendeStimmt() && !zleg().includes(MONT.STUECK_LABEL.standard)
       && !zleg().includes(MONT.STUECK_FARBE.standard);
-    document.getElementById('hgt').value='2.60'; WP.run();
+    document.getElementById('hgt').value='2600'; WP.run();
     return treffer; })());
   store.setzeKatalog(KATALOG); store.setzeAktiv(idA); WP.renderProdukte();
 }
@@ -3136,10 +3138,10 @@ store.setzeKatalog(KATALOG);
   // gilt beim Lesen als „nicht abgedichtet“. Geschrieben wird erst durch eine echte Bedienung.
   ok('[A-6] Laden normalisiert nur, es schreibt den Standard nicht zurueck',
     !('abdichtung' in store.aktivesWandelement()));
-  document.getElementById('hgt').value='2.40'; document.getElementById('hgt').dispatch('input');
+  document.getElementById('hgt').value='2400'; document.getElementById('hgt').dispatch('input');
   ok('[A-6] erste echte Bedienung schreibt den Standard ans Wandelement',
     store.aktivesWandelement().abdichtung==='nicht_abgedichtet');
-  document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
+  document.getElementById('hgt').value='2600'; document.getElementById('hgt').dispatch('input');
   feld.value='abgedichtet'; feld.dispatch('change');   // echter Bedienweg
   ok('[A-6] Wahl „abgedichtet“ steht am gespeicherten Wandelement',
     store.aktivesWandelement().abdichtung==='abgedichtet');
@@ -3185,10 +3187,10 @@ store.setzeKatalog(KATALOG);
     !('brandklasse' in store.aktivesWandelement()));
   ok('[#79] Altbestand ohne Feld wird als F0 gelesen, nie als F30',
     store.normBrandklasse(store.aktivesWandelement().brandklasse)==='F0');
-  document.getElementById('hgt').value='2.40'; document.getElementById('hgt').dispatch('input');
+  document.getElementById('hgt').value='2400'; document.getElementById('hgt').dispatch('input');
   ok('[#79] erste echte Bedienung schreibt den Standard ans Wandelement',
     store.aktivesWandelement().brandklasse==='F0');
-  document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
+  document.getElementById('hgt').value='2600'; document.getElementById('hgt').dispatch('input');
   // Alle uebrigen Wandelementwerte VOR der Umstellung merken (Akzeptanztest 2).
   const vorher=store.aktivesWandelement();
   const bar=x=>JSON.stringify({c:x.courses,t:x.tension_columns,b:x.bom,p:x.prestress,
@@ -3209,9 +3211,9 @@ store.setzeKatalog(KATALOG);
     store.aktivesWandelement().brandklasse==='F30'
     && document.getElementById('brandklasse').value==='F30');
   ok('[#79] fremde Bedienung ueberschreibt eine bestehende F30 nicht', (()=>{
-    document.getElementById('hgt').value='2.40'; document.getElementById('hgt').dispatch('input');
+    document.getElementById('hgt').value='2400'; document.getElementById('hgt').dispatch('input');
     const a=store.aktivesWandelement().brandklasse==='F30';
-    document.getElementById('hgt').value='2.60'; document.getElementById('hgt').dispatch('input');
+    document.getElementById('hgt').value='2600'; document.getElementById('hgt').dispatch('input');
     WP.run();
     return a && store.aktivesWandelement().brandklasse==='F30'; })());
   // Wandbezogen: eine zweite Wand erbt nichts von der ersten (keine Vererbung).
@@ -3571,6 +3573,124 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   WP.applyWand(vorher);   // Ausgangsstand fuer die folgenden Pruefungen
 }
 
+// ---------------------------------------------------------------------------
+// #136 Bedienung: freie Ziel-Wandhoehe und Ausgleichslage in Modul 1
+// ---------------------------------------------------------------------------
+// Geprueft wird am REALEN Pfad (geladener Seitencode unter dem DOM-Mock, echte
+// Speicherschicht): die Hoehe wird millimetergenau uebernommen und NIE gerundet, die
+// Ausgleichslage ist je Wand aktivierbar, die Zerlegung entsteht ausschliesslich aus dem
+// CORE-ERGEBNIS, und der deaktivierte Fall meldet den BENANNTEN Konflikt statt zu runden.
+{
+  const H=document.getElementById('hgt'), AG=document.getElementById('ausgleich');
+  const ZL=document.getElementById('zerlegung'), AGH=document.getElementById('ausgleichHinweis');
+  const WARN=document.getElementById('warns'), BADGE=document.getElementById('statusBadge');
+  // Eigener Katalog mit Ausgleichssteinen: 170 mm passt zur Resthoehe von 2570 mm EXAKT,
+  // 150 mm passt ausdruecklich nicht (Gegenprobe zum Sonderzuschnitt nach [G-17]).
+  const KAT136={ ...KATALOG, name:'Testkatalog M1 #136', produkte:[...KATALOG.produkte,
+    { id:'ag-i3-170', kategorie:'stein', bezeichnung:'Ausgleichsstein i3 170', einheit:'Stk',
+      preis:8.1, breite_mm:375, hoehe_mm:170, dicke_mm:125 },
+    { id:'ag-i2-170', kategorie:'stein', bezeichnung:'Ausgleichsstein i2 170', einheit:'Stk',
+      preis:6.3, breite_mm:250, hoehe_mm:170, dicke_mm:125 },
+    { id:'ag-i2-150', kategorie:'stein', bezeichnung:'Ausgleichsstein i2 150', einheit:'Stk',
+      preis:6.0, breite_mm:250, hoehe_mm:150, dicke_mm:125 }] };
+  const w136=Object.assign(buildWall('Wand 136',2000,2600,[]),{wandtyp:'ohne_wind'});
+  const id136=store.speichere('Wand 136', w136);
+  store.setzeAktiv(id136); store.setzeKatalog(KAT136); WP.applyWand(w136);
+
+  // --- Akzeptanz 1: 2570 mm + aktivierte Ausgleichslage --------------------
+  H.value='2570'; AG.value='an'; WP.run();
+  ok('[#136] (Muss 1) die freie Zielhoehe wird millimetergenau uebernommen, nicht gerundet',
+    WP.RESULT.wandelement.height_mm===2570);
+  ok('[#136] (Muss 2) das Aktivierungs-Flag steht am gerechneten Wandelement',
+    WP.RESULT.wandelement.ausgleichslage_aktiv===true);
+  ok('[#136] (Akzeptanz 1) sichtbare Zerlegung „12 × 200 + 1 × 170 = 2570 mm"',
+    WP.zerlegung==='12 × 200 + 1 × 170 = 2570 mm');
+  ok('[#136] (Muss 3) … und genau dieser Satz steht im Formular',
+    ZL.innerHTML.includes('12 × 200 + 1 × 170 = 2570 mm'));
+  // Die Anzeige ist NICHT selbst gerechnet: sie liest die Lagen des Core-Ergebnisses
+  // (Kantenfelder nach [G-15]) und deckt sich Lage fuer Lage mit `hoehenZerlegung()`.
+  ok('[#136] (must-not 1) die Zerlegung deckt sich Lage fuer Lage mit dem Rechenkern', (()=>{
+    const Z=hoehenZerlegung(2570,true), cs=WP.RESULT.wandelement.courses;
+    return Z.kanten.length===cs.length && Z.kanten.every((k,i)=>
+      cs[i].hoehe_mm===k.hoehe_mm && cs[i].unterkante_mm===k.unterkante_mm
+      && cs[i].oberkante_mm===k.oberkante_mm && (cs[i].ausgleich===true)===(k.ausgleich===true)); })());
+  ok('[#136] (must-not 1) `zerlegungText` liest die Lagen und rechnet selbst nichts',
+    /function zerlegungText\(w\)\{[\s\S]{0,900}?w\.courses/.test(html)
+    && !/function zerlegungText\(w\)\{[\s\S]{0,900}?\/\s*COURSE/.test(html));
+  ok('[#136] (Muss 1) auch der GESPEICHERTE Stand traegt die freie Hoehe und das Flag', (()=>{
+    const el=store.holeElement(id136);
+    return el.wandelement.height_mm===2570 && el.wandelement.ausgleichslage_aktiv===true; })());
+
+  // --- Muss 8: Sonderzuschnitte der Ausgleichslage sichtbar ----------------
+  // Ohne gewaehltes Ausgleichsstein-Produkt passt keine Kataloghoehe -> jeder Stein der
+  // Ausgleichslage ist ein Sonderzuschnitt ([G-17]); der Pruefhinweis steht im Wortlaut
+  // des Rechenkerns ([G-18]) in der bestehenden Konflikt-/Hinweisanzeige.
+  ok('[#136] (Muss 8) ohne Auswahl meldet der Kern die Sonderzuschnitte',
+    (WP.RESULT.wandelement.validation.ausgleich_sonderzuschnitte||[]).length>0);
+  ok('[#136] (Muss 8) … und Modul 1 zeigt sie mit dem Wortlaut des Kerns an', (()=>{
+    const s=WP.RESULT.wandelement.validation.ausgleich_sonderzuschnitte;
+    return WARN.textContent.includes('Ausgleichslage [G-17]') && WARN.textContent.includes(s[0].text); })());
+
+  // --- Muss 2: die Rollen ausgl_i2/ausgl_i3 stehen in Modul 1 zur Wahl -----
+  WP.renderProdukte();
+  ok('[#136] (Muss 2) beide Ausgleichsstein-Rollen erscheinen in der Produktauswahl', (()=>{
+    const s=document.getElementById('prodRollen').innerHTML;
+    return s.includes('data-prol="ausgl_i2"') && s.includes('data-prol="ausgl_i3"')
+      && s.includes('Ausgleichsstein i2') && s.includes('Ausgleichsstein i3'); })());
+  ok('[#136] (Muss 2) die nicht waehlbaren Beschaffungsrollen erscheinen dort NICHT',
+    !document.getElementById('prodRollen').innerHTML.includes('ausgl_i2_sonder'));
+  // Getrennt waehlbar: je Steintyp eine eigene Verwendungsstelle, nie zusammengelegt.
+  store.setzeProduktrolle('ausgl_i3',['ag-i3-170']);
+  store.setzeProduktrolle('ausgl_i2',['ag-i2-170']);
+  WP.run();
+  ok('[#136] (Muss 2) die gewaehlten Kataloghoehen reisen ueber den EINEN Vorgabepfad mit',
+    WP.ausgleichHoehen.i2.join()==='170' && WP.ausgleichHoehen.i3.join()==='170');
+  ok('[#136] (Muss 8) mit exakt passender Kataloghoehe verschwindet der Sonderzuschnitt',
+    !(WP.RESULT.wandelement.validation.ausgleich_sonderzuschnitte||[]).length
+    && !WARN.textContent.includes('Ausgleichslage [G-17]'));
+  // Gegenprobe: eine nicht passende Hoehe wird NICHT naeherungsweise genommen ([G-16]).
+  store.setzeProduktrolle('ausgl_i2',['ag-i2-150']); WP.run();
+  ok('[#136] (must-not 2) 150 mm passt nicht zu 170 mm — Sonderzuschnitt statt Naeherung',
+    (WP.RESULT.wandelement.validation.ausgleich_sonderzuschnitte||[]).some(s=>s.typ==='i2'));
+  store.setzeProduktrolle('ausgl_i2',['ag-i2-170']); WP.run();
+
+  // --- Akzeptanz 2: deaktiviert -> benannter Konflikt, nichts gerundet -----
+  const standVorKonflikt=JSON.stringify(store.holeElement(id136).wandelement);
+  AG.value='aus'; WP.run();
+  ok('[#136] (Akzeptanz 2) deaktiviert + krumme Hoehe: der Konflikt wird BENANNT angezeigt',
+    AGH.innerHTML.includes('Höhe nicht im Lagenraster'));
+  ok('[#136] (Akzeptanz 2) … die Eingabe wird als ungueltig gemeldet',
+    BADGE.textContent==='Eingabe ungültig' && /Vielfaches von 200 mm/.test(WARN.textContent));
+  ok('[#136] (must-not 2) … die eingegebene Hoehe bleibt unveraendert stehen',
+    H.value==='2570');
+  ok('[#136] (Muss 3) … und es wird keine Zerlegung behauptet', ZL.innerHTML==='');
+  ok('[#136] (must-not 2) … der gespeicherte Stand bleibt unberuehrt',
+    JSON.stringify(store.holeElement(id136).wandelement)===standVorKonflikt);
+
+  // Rasterhoehe ohne Ausgleichslage: unveraendertes Altverhalten, kein Restanteil.
+  H.value='2600'; WP.run();
+  ok('[#136] Rasterhoehe ohne Ausgleichslage rechnet unveraendert',
+    WP.RESULT.wandelement.height_mm===2600 && WP.zerlegung==='13 × 200 = 2600 mm'
+    && !WP.RESULT.wandelement.courses.some(c=>c.ausgleich===true));
+  ok('[#136] … und das Element traegt das Flag dann NICHT',
+    WP.RESULT.wandelement.ausgleichslage_aktiv===undefined);
+  // Aktivierte Ausgleichslage bei aufgehender Hoehe erzeugt KEINE Leerlage.
+  AG.value='an'; WP.run();
+  ok('[#136] aktivierte Ausgleichslage bei aufgehender Hoehe erzeugt keine Lage',
+    WP.RESULT.wandelement.courses.length===13
+    && !WP.RESULT.wandelement.courses.some(c=>c.ausgleich===true));
+
+  // Das Laden einer Wand stellt Hoehe und Flag unveraendert im Formular ein.
+  WP.applyWand(store.holeElement(id136).wandelement);
+  ok('[#136] (Muss 1/2) Laden stellt Hoehe in mm und das Flag im Formular ein',
+    H.value==='2600' && AG.value==='an');
+  const wAlt=Object.assign(buildWall('Alt 136',2000,2400,[]),{wandtyp:'ohne_wind'});
+  WP.applyWand(wAlt);
+  ok('[#136] Altbestand ohne Feld gilt als NICHT aktiviert (nur explizites true aktiviert)',
+    AG.value==='aus' && H.value==='2400');
+  store.setzeKatalog(KATALOG);
+}
+
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.
 const anzahlVorher=store.listeElemente().length;
 store.setzeAktiv(null);
@@ -3579,7 +3699,7 @@ ok('ohne aktives Element: leere Vorschau + Verweis auf Modul 0',
   && /Start/.test(document.getElementById('saveHint').textContent));
 // Issue #63: im echten Leerzustand darf keine irrefuehrende Zuschnittlegende stehenbleiben.
 ok('[#63] Leerzustand: Legendenbereich ist leer', zleg()==='');
-document.getElementById('hgt').value='3.00'; document.getElementById('hgt').dispatch('input');
+document.getElementById('hgt').value='3000'; document.getElementById('hgt').dispatch('input');
 ok('ohne aktives Element: keine stille Neuanlage', store.listeElemente().length===anzahlVorher && !WP.RESULT);
 ok('ohne aktives Element: keine Produktauswahl möglich', (()=>{
   document.getElementById('prodRollen').dispatch('change',{target:{dataset:{prolle:'i3',pid:'stein-i3'},checked:true}});

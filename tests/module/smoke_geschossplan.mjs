@@ -6420,6 +6420,259 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   globalThis.confirm = confirmEchtZpm;
 }
 
+// ==========================================================================
+//  Issue #136 — Ausgleichslage und freie Wandhoehe im Sammel-Editor
+// ==========================================================================
+// Geprueft wird der ECHTE Pfad: Projekt und Katalog aufsetzen, Waende zeichnen,
+// je Wand ein ANDERES Ausgleichsstein-Produkt waehlen, im Popup einzelne Merkmale
+// ankreuzen, uebernehmen — und den gespeicherten Wandbestand vor/nach vergleichen.
+// Geprueft werden: gemischt-Anzeige, selektive Uebernahme, freie Zielhoehe ohne
+// Rundung, der benannte Konflikt bei deaktivierter Ausgleichslage, der atomare
+// Rollback eines fehlschlagenden Laufs und Undo/Redo.
+{
+  const katText136 = readFileSync(
+    new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
+  const mappe136 = store.fuegeProjektHinzu('Projekt 136', { geschoss: 'EG136', hoehe_mm: 2600 });
+  const gs136 = MAPPE.alleGeschosse(mappe136)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs136);
+  store.importiereKatalogText(katText136);
+  await warte();
+  // Drei Ausgleichssteine mit VERSCHIEDENEN realen Steinhoehen: nur 170 mm passt zur
+  // Resthoehe von 2570 mm exakt ([G-16]), 150/120 mm ergeben Sonderzuschnitte ([G-17]).
+  const stein136 = (id, h, b) => ({ id, kategorie: 'stein', bezeichnung: `Ausgleichsstein ${id}`,
+    einheit: 'Stk', preis: 6.3, breite_mm: b, hoehe_mm: h, dicke_mm: 125 });
+  const katVor136 = store.holeKatalog();
+  store.setzeKatalog({ ...katVor136, produkte: [...(katVor136.produkte || []),
+    stein136('ag-i2-170', 170, 250), stein136('ag-i2-150', 150, 250),
+    stein136('ag-i2-120', 120, 250), stein136('ag-i3-170', 170, 375)] });
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const we136 = (id) => store.holeElement(id).wandelement;
+  const stand136 = (id) => JSON.parse(JSON.stringify(store.holeElement(id)));
+  const agRolle136 = (id) => KAT.rollenIds(store.holeProdukte(1, id), 'ausgl_i2').join();
+  const neueste136 = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  $('gp-hoehe').value = '2600'; $('gp-wandtyp').value = 'mit_wind';
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const a136 = neueste136().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const b136 = neueste136().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2540, y: 4060 });   const c136 = neueste136().id;
+  await warte();
+  const ids136 = [a136, b136, c136];
+  // Je Wand ein ANDERES Ausgleichsstein-Produkt — Ausgangslage der gemischt-Anzeige.
+  store.setzeProduktrolle('ausgl_i2', ['ag-i2-170'], a136);
+  store.setzeProduktrolle('ausgl_i2', ['ag-i2-150'], b136);
+  store.setzeProduktrolle('ausgl_i2', ['ag-i2-120'], c136);
+  store.setzeProduktrolle('ausgl_i3', ['ag-i3-170'], a136);
+  store.setzeProduktrolle('ausgl_i3', ['ag-i3-170'], b136);
+  store.setzeProduktrolle('ausgl_i3', ['ag-i3-170'], c136);
+  await warte();
+  ok('#136 Pruefaufbau: drei Waende, drei verschiedene Ausgleichsstein-Produkte',
+    ids136.length === 3 && agRolle136(a136) === 'ag-i2-170' && agRolle136(b136) === 'ag-i2-150'
+    && agRolle136(c136) === 'ag-i2-120'
+    && ids136.every(id => we136(id).height_mm === 2600
+      && we136(id).ausgleichslage_aktiv === undefined));
+
+  const confirmEcht136 = globalThis.confirm;
+  let confirmText136 = null;
+  globalThis.confirm = (t) => { confirmText136 = String(t); return true; };
+  const waehle136 = () => {
+    GP.werkzeug('auswahl');
+    GP.tippe({ x: 1500, y: 62.5 });
+    GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+    GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+    $('gp-sammel-knopf').dispatch('click');
+  };
+  /** Alle Haekchen des Popups zuruecknehmen — jeder Lauf kreuzt nur an, was er meint. */
+  const leer136 = () => {
+    for (const m of ['hoehe', 'ausgleich', 'wandtyp', 'brand', 'abdicht', 'vorne', 'hinten',
+                     'topconn', 'blech', 'ueber']) {
+      $('gp-sammel-' + m + '-an').checked = false;
+      $('gp-sammel-' + m + '-an').dispatch('change');
+    }
+  };
+  const kreuze136 = (m, wert) => {
+    $('gp-sammel-' + m + '-an').checked = true; $('gp-sammel-' + m + '-an').dispatch('change');
+    $('gp-sammel-' + m).value = wert;
+  };
+  waehle136();
+  await warte();
+
+  // (a) Muss 4: das Merkmal steht als eigenes Bedienelement im Popup.
+  const blatt136 = (html.split('id="gp-sammelblatt"')[1] || '').split('id="gp-msg"')[0];
+  ok('#136 (Muss 4) die Ausgleichslage ist ein eigenes Merkmal des Sammel-Editors — '
+    + 'Haekchen, Auswahlfeld und Ist-Anzeige',
+    (blatt136.match(/id="gp-sammel-ausgleich-an"/g) || []).length === 1
+    && (blatt136.match(/id="gp-sammel-ausgleich"/g) || []).length === 1
+    && (blatt136.match(/id="gp-sammel-ausgleich-ist"/g) || []).length === 1
+    && /Ausgleichslage/.test(blatt136));
+  ok('#136 (Muss 4) ohne Haekchen ist es nicht bedienbar — ein EINDEUTIGER Ausgangswert '
+    + 'wird vorbelegt (wie beim oberen Anschluss), ein gemischter nie',
+    $('gp-sammel-ausgleich').disabled === true && $('gp-sammel-ausgleich').value === 'aus');
+  ok('#136 (Muss 4) die gemeinsame Wandhoehe bleibt erhalten und nimmt freie Werte an',
+    (blatt136.match(/id="gp-sammel-hoehe"/g) || []).length === 1
+    && /id="gp-sammel-hoehe" type="number" step="10"/.test(blatt136));
+  // (b) Akzeptanz 2 / Muss 5: verschiedene Ausgleichsstein-Produkte stehen als „gemischt“.
+  ok('#136 (Akzeptanz 2) drei verschiedene Ausgleichsstein-Produkte stehen als gemischt', (()=>{
+    const s = $('gp-sammel-rolle-ausgl_i2-ist').innerHTML;
+    return /gemischt/.test(s) && /170/.test(s) && /150/.test(s) && /120/.test(s); })());
+  ok('#136 (Muss 5) ein gemischter Ausgangszustand wird nicht vorbelegt',
+    (GP.zustand.sammelWahl.ausgl_i2 || []).length === 0);
+  ok('#136 (Muss 4) die eindeutige Rolle ausgl_i3 wird dagegen vorbelegt',
+    !/gemischt/.test($('gp-sammel-rolle-ausgl_i3-ist').innerHTML)
+    && (GP.zustand.sammelWahl.ausgl_i3 || []).join() === 'ag-i3-170');
+  ok('#136 (Muss 4) die Ausgleichslage steht einheitlich als „nicht aktiviert“',
+    !/gemischt/.test($('gp-sammel-ausgleich-ist').innerHTML)
+    && /nicht aktiviert/.test($('gp-sammel-ausgleich-ist').innerHTML));
+
+  // (c) Akzeptanz 2 / Muss 5: selektive Uebernahme — NUR das angekreuzte Feld aendert sich.
+  const vor136 = ids136.map(stand136);
+  leer136();
+  kreuze136('ausgleich', 'an');
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#136 (Akzeptanz 2) das angekreuzte Merkmal aendert sich auf ALLEN ausgewaehlten Waenden',
+    ids136.every(id => we136(id).ausgleichslage_aktiv === true));
+  ok('#136 (Akzeptanz 2 / Muss 5) und NUR dieses Feld — Produktauswahl, Hoehe, Windsituation '
+    + 'und Lage bleiben je Wand, wie sie waren',
+    ids136.every((id, i) => we136(id).height_mm === vor136[i].wandelement.height_mm
+      && we136(id).wandtyp === vor136[i].wandelement.wandtyp
+      && we136(id).length_mm === vor136[i].wandelement.length_mm)
+    && agRolle136(a136) === 'ag-i2-170' && agRolle136(b136) === 'ag-i2-150'
+    && agRolle136(c136) === 'ag-i2-120'
+    && ids136.every(id => !!MAPPE.findeWand(store.holeMappe(), id).wand.lage));
+  ok('#136 (Muss 6) die Bestaetigung nennt das Merkmal mit seinem Zielwert',
+    /Ausgleichslage → aktiviert/.test(confirmText136 || ''));
+
+  // (d) Akzeptanz 1 im Sammel-Editor: freie Zielhoehe 2570 mm, nichts gerundet.
+  const vorHoehe136 = ids136.map(stand136);
+  leer136();
+  kreuze136('hoehe', '2570');
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#136 (Muss 4) die freie Zielhoehe wird uebernommen und NICHT gerundet',
+    ids136.every(id => we136(id).height_mm === 2570));
+  ok('#136 (Muss 4) jede Wand traegt GENAU EINE oberste Ausgleichslage mit der Resthoehe',
+    ids136.every(id => {
+      const ag = (we136(id).courses || []).filter(c => c.ausgleich === true);
+      return ag.length === 1 && ag[0].hoehe_mm === 170 && ag[0].oberkante_mm === 2570
+        && we136(id).courses.length === 13; }));
+  // Die Kataloghoehen reisen je Wand aus IHRER Auswahl mit: nur Wand A hat ein Produkt
+  // mit exakt 170 mm, B und C bekommen Sonderzuschnitte ([G-16]/[G-17]).
+  ok('#136 (Muss 4) die Ausgleichsstein-Kataloghoehen kommen je Wand aus IHRER Auswahl',
+    !(we136(a136).validation.ausgleich_sonderzuschnitte || []).some(s => s.typ === 'i2')
+    && (we136(b136).validation.ausgleich_sonderzuschnitte || []).some(s => s.typ === 'i2')
+    && (we136(c136).validation.ausgleich_sonderzuschnitte || []).some(s => s.typ === 'i2'));
+
+  // (e) Akzeptanz 3 / Muss 6: ein fehlschlagender Lauf laesst ALLES unveraendert.
+  //     Die vierte Wand ist frisch gezeichnet und hat KEINE Ausgleichslage — eine
+  //     gemeinsame krumme Hoehe ohne angekreuzte Ausgleichslage muss deshalb scheitern.
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 6000 }, { x: 2040, y: 6060 });    const d136 = neueste136().id;
+  await warte();
+  const alle136 = [...ids136, d136];
+  ok('#136 Pruefaufbau: die vierte Wand hat keine Ausgleichslage',
+    we136(d136).ausgleichslage_aktiv === undefined && we136(d136).height_mm === 2600);
+  const vorFehl136 = alle136.map(stand136);
+  const speicherVorFehl136 = localStorage.getItem('sembla:elemente');
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1500, y: 62.5 });
+  GP.tippe({ x: 1000, y: 2062.5 }, { shiftKey: true });
+  GP.tippe({ x: 1000, y: 4062.5 }, { ctrlKey: true });
+  GP.tippe({ x: 1000, y: 6062.5 }, { ctrlKey: true });
+  $('gp-sammel-knopf').dispatch('click');
+  await warte();
+  leer136();
+  kreuze136('hoehe', '2370');
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#136 (Akzeptanz 3) der Lauf wird BENANNT abgewiesen — die Ausgleichslage fehlt an '
+    + 'einer Wand, und es wird nichts gerundet',
+    /Ausgleichslage ist an dieser Wand nicht aktiviert/.test($('gp-msg').textContent)
+    && /nichts ge/.test($('gp-msg').textContent));
+  ok('#136 (Akzeptanz 3) ALLE ausgewaehlten Waende bleiben unveraendert (atomarer Rollback)',
+    alle136.every((id, i) => JSON.stringify(stand136(id)) === JSON.stringify(vorFehl136[i]))
+    && localStorage.getItem('sembla:elemente') === speicherVorFehl136);
+  // Gegenprobe: mit ANGEKREUZTER Ausgleichslage laeuft derselbe Lauf durch.
+  leer136();
+  kreuze136('hoehe', '2370'); kreuze136('ausgleich', 'an');
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#136 (Muss 4) mit angekreuzter Ausgleichslage laeuft dieselbe freie Hoehe durch',
+    alle136.every(id => we136(id).height_mm === 2370
+      && we136(id).ausgleichslage_aktiv === true
+      && (we136(id).courses || []).filter(c => c.ausgleich === true)
+        .every(c => c.hoehe_mm === 170)));
+
+  // (f) Akzeptanz 4 / Muss 7: Undo stellt alle betroffenen Waende vollstaendig wieder
+  //     her, Redo wendet die Sammelaenderung erneut an — EIN Schritt ueber alle Waende.
+  // Verglichen wird der FACHLICHE Stand je Wand: Wandelement und Produktauswahl.
+  const fach136 = (id) => JSON.stringify([we136(id), store.holeProdukte(1, id)]);
+  const nach136 = alle136.map(fach136);
+  const vorFach136 = vorFehl136.map(v => JSON.stringify([v.wandelement,
+    ((v.eingaben || {}).planung || {}).produkte]));
+  GP.undo();
+  await warte();
+  ok('#136 (Akzeptanz 4) Rueckgaengig stellt alle betroffenen Waende vollstaendig wieder her',
+    alle136.every((id, i) => fach136(id) === vorFach136[i]));
+  GP.redo();
+  await warte();
+  ok('#136 (Akzeptanz 4) Wiederholen wendet die Sammelaenderung erneut an',
+    alle136.every((id, i) => fach136(id) === nach136[i]));
+
+  // (g) Deaktivieren ist ebenso moeglich — und zieht bei krummer Hoehe den benannten
+  //     Konflikt nach sich, statt die Hoehe still ins Raster zu runden.
+  const vorAus136 = alle136.map(stand136);
+  leer136();
+  kreuze136('ausgleich', 'aus');
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#136 (must-not 2) die Ausgleichslage laesst sich nicht abschalten, solange die Hoehe '
+    + 'sie braucht — benannt abgewiesen, nichts gerundet',
+    alle136.every((id, i) => JSON.stringify(stand136(id)) === JSON.stringify(vorAus136[i]))
+    && /Lagenraster|Vielfaches von 200 mm/.test($('gp-msg').textContent));
+  leer136();
+  kreuze136('ausgleich', 'aus'); kreuze136('hoehe', '2400');
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#136 zusammen mit einer Rasterhoehe laesst sie sich abschalten',
+    alle136.every(id => we136(id).height_mm === 2400
+      && we136(id).ausgleichslage_aktiv === undefined
+      && !(we136(id).courses || []).some(c => c.ausgleich === true)));
+
+  // (h) Must-not: ein Merkmal, das NICHT angekreuzt ist, bleibt unberuehrt — und das
+  //     Flag ueberlebt jede Laengenaenderung (der Fehler, den #111 fuer die Brandklasse
+  //     benannt hat: `buildWall()` erzeugt das Wandelement neu).
+  leer136();
+  kreuze136('ausgleich', 'an'); kreuze136('hoehe', '2570');
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  const laengeVor136 = we136(a136).length_mm;
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1500, y: 62.5 });
+  const griff136 = GP.griffe().find(g => g.ende === 'max');
+  GP.ziehe(griff136, { x: griff136.x - 250, y: griff136.y });     // echter Endgriff
+  await warte();
+  ok('#136 (must-not 1) das Flag ueberlebt eine Laengenaenderung am Endgriff — es wird bei '
+    + 'jeder Neurechnung MITGEFUEHRT, nie still zurueckgesetzt',
+    we136(a136).length_mm === laengeVor136 - 250
+    && we136(a136).ausgleichslage_aktiv === true && we136(a136).height_mm === 2570
+    && (we136(a136).courses || []).filter(c => c.ausgleich === true).length === 1);
+  ok('#136 (must-not 3) kein neues gespeichertes Feld, kein Schema-, Mappen- oder '
+    + 'Projektformatsprung',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    && MAPPE.validiereMappe(store.holeMappe()).length === 0);
+  ok('#136 (must-not 1) der Editor rechnet die Zerlegung nicht selbst — die Ausgleichslage '
+    + 'reist als EINGANG durch denselben einen Engine-Pfad',
+    /ausgleichslage_aktiv: we\.ausgleichslage_aktiv === true/.test(html)
+    && /ausgleich_stein_hoehen_mm/.test(html)
+    && (html.match(/ENG\.autoAuslegung\(vorg\)/g) || []).length === 1);
+  globalThis.confirm = confirmEcht136;
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

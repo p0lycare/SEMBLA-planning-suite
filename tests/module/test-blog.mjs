@@ -46,14 +46,30 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag sind die AUSGLEICHSSTEIN-KATALOGROLLEN (#136). Geliefert: die
+// Der NEUESTE Eintrag ist die BEDIENUNG DER AUSGLEICHSLAGE (#136). Geliefert: Modul 1
+// nimmt die Ziel-Wandhoehe millimetergenau an, bietet die Aktivierung der Ausgleichslage
+// und zeigt die Zerlegung aus dem Core-Ergebnis; der Sammel-Editor setzt Aktivierung und
+// freie Hoehen fuer mehrere Waende atomar mit gemischt-Anzeige. NICHT versprochen werden
+// Zeichnungs-/Montage-/IFC-Darstellung oder eine freie Hoehe am Zeichenwerkzeug.
+const FRISCH_136E = EINTRAEGE[0];
+ok("[#136] die Bedienung der Ausgleichslage ist der neueste Eintrag",
+  FRISCH_136E?.id === "chg-20260917-05" && FRISCH_136E?.issue === 136
+  && FRISCH_136E?.typ === "feature" && FRISCH_136E?.datum === "2026-09-17"
+  && /Millimetereingabe/.test(FRISCH_136E?.titel || "")
+  && /Sammel-Editor/.test(FRISCH_136E?.titel || ""));
+ok("[#136] die Testbitte fuehrt den 2570-Bedienweg samt Konfliktfall",
+  /2570/.test(FRISCH_136E?.testbitte || "")
+  && /benannte Konflikt/.test(FRISCH_136E?.testbitte || ""));
+
+// Davor die AUSGLEICHSSTEIN-KATALOGROLLEN (#136) — ueber die Kennung gesucht, weil
+// sie nicht mehr der neueste Eintrag sind. Ihre Aussagen bleiben unveraendert: die
 // waehlbaren Rollen Ausgleichsstein i2/i3 (reale hoehe_mm, exakte Zuordnung ohne
 // Toleranz) und der Sonderzuschnitt-Fallback als unbepreister Beschaffungsbedarf mit
 // sichtbarem Pruefhinweis samt realem Mass; Stueckliste zaehlt regulaere Steine,
 // Ausgleichssteine und Sonderzuschnitte getrennt. NICHT versprochen werden ein
 // Bedienelement fuer das Flag, eine Warnschwelle oder Zeichnungs-/IFC-Darstellung.
-const FRISCH_136D = EINTRAEGE[0];
-ok("[#136] die Ausgleichsstein-Katalogrollen sind der neueste Eintrag",
+const FRISCH_136D = EINTRAEGE.find(e => e.id === "chg-20260917-04");
+ok("[#136] die Ausgleichsstein-Katalogrollen stehen als Eintrag davor",
   FRISCH_136D?.id === "chg-20260917-04" && FRISCH_136D?.issue === 136
   && FRISCH_136D?.typ === "feature" && FRISCH_136D?.datum === "2026-09-17"
   && /aus dem Katalog/.test(FRISCH_136D?.titel || "")

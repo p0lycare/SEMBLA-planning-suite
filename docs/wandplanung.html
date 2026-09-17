@@ -130,7 +130,23 @@
            neu gerechnet. Ein zweites Eingabefeld wäre ein konkurrierender Schreibweg. -->
       <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125" readonly
         title="Nur Anzeige — die Länge wird im Geschosseditor geführt (Endgriff oder Längenmaß)."><small>m · nur Anzeige</small></label>
-      <label><span>Höhe</span><input type="number" id="hgt" value="2.60" step="0.20"><small>m · ×20cm</small></label>
+      <!-- #136: Die Ziel-Wandhöhe wird MILLIMETERGENAU eingegeben und NICHT ins 200-mm-Raster
+           gezwungen. Zerlegt wird sie allein im Rechenkern (`hoehenZerlegung`); hier wird nichts
+           gerundet und nichts still korrigiert ([P-9]). Passt die Höhe nicht ins Lagenraster und
+           ist die Ausgleichslage NICHT aktiviert, steht der benannte Konflikt sichtbar da. -->
+      <label><span>Höhe</span><input type="number" id="hgt" value="2600" step="10" min="200"
+        title="Ziel-Wandhöhe in mm — frei, ohne 200er-Rasterzwang. Eine Resthöhe braucht die aktivierte Ausgleichslage (#136)."><small>mm · frei</small></label>
+    </div>
+    <!-- #136 Ausgleichslage: genau EINE oberste Lage mit der Resthöhe, je Wand ausdrücklich zu
+         aktivieren. Das Flag lebt am Wandelement (`ausgleichslage_aktiv`) und ist EINGANG des
+         Rechenkerns — es reist über `vorgaben()` durch denselben Auslegungspfad wie jedes andere
+         Maß. Die Zerlegung darunter kommt AUS DEM CORE-ERGEBNIS (Lagen/Kantenfelder) und wird
+         hier nie selbst gerechnet. -->
+    <div class="grp"><h3>Ausgleichslage (oberste Lage)</h3>
+      <label><span>Ausgleichslage</span><select id="ausgleich"
+        title="Aktiviert: eine krumme Zielhöhe erhält oben GENAU EINE Ausgleichslage mit der Resthöhe ([G-14]). Deaktiviert: die Höhe muss ein Vielfaches von 200 mm sein, sonst benannter Konflikt."><option value="aus" selected>nicht aktiviert (Standard)</option><option value="an">aktiviert</option></select></label>
+      <div class="lockhint" id="zerlegung"></div>
+      <div class="lockhint" id="ausgleichHinweis"></div>
     </div>
     <div class="grp"><h3>Öffnungen</h3>
       <div id="ops"></div>
@@ -288,6 +304,10 @@ let GRID, COURSE, Opening, buildWall, autoAuslegung, nachweisPruefen, store, KAT
 // #130: die eine Liste der Rollen, deren Auswahl den Vorspann-Eingangssatz bildet —
 // aus sembla-wandanlage.js, nicht lokal wiederholt ([P-6]).
 let ROLLE_RECHNUNG;
+// #136: der benannte Grund der abgewiesenen Höhe (`hoehe_nicht_im_lagenraster`) aus dem
+// Rechenkern und der gemeinsame Baustein der Ausgleichsstein-Kataloghöhen aus
+// sembla-wandanlage.js — beides wird hier NIE nachgebildet ([P-6]).
+let AUSGLEICH_KONFLIKT, AUSGLEICH_HOEHEN;
 // #115 Reparaturdialog (shared/sembla-reparatur.js) — wie alles hier ueber window.SEMBLA.
 let oeffneReparatur;
 // Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
@@ -392,7 +412,22 @@ function leseAbdichtung(){ return store&&store.normAbdichtung ? store.normAbdich
 // #79: kanonischer Wert der Brandschutzklassifikation. Normalisiert wird ebenfalls ueber die
 // Speicherschicht — die kanonischen Werte stehen dort an EINER Stelle, nicht zweitgeschrieben.
 function leseBrandklasse(){ return store&&store.normBrandklasse ? store.normBrandklasse($('brandklasse').value) : 'F0'; }
-function dims(){ let L=snap(+$('len').value*M,GRID); if(L<2*GRID)L=2*GRID; let H=snap(+$('hgt').value*M,COURSE); if(H<COURSE)H=COURSE; return {L,H,N:L/GRID,Lg:H/COURSE}; }
+// #136 Die HÖHE wird NICHT mehr ins Lagenraster gesnappt: eingegeben wird die freie Zielhöhe in
+// Millimetern, zerlegt wird sie ausschließlich im Rechenkern (`hoehenZerlegung`). Gerundet wird
+// hier nichts — eine nicht ins Raster passende Höhe ohne aktivierte Ausgleichslage ist ein
+// BENANNTER Konflikt und wird als solcher angezeigt ([P-9]). `Lg` bleibt die Zahl der REGULÄREN
+// Lagen: Öffnungen und Staffelungen rechnen unverändert im 200-mm-Raster und reichen nie in die
+// Ausgleichslage hinein.
+function dims(){ let L=snap(+$('len').value*M,GRID); if(L<2*GRID)L=2*GRID; let H=+$('hgt').value||0; if(H<COURSE)H=COURSE; return {L,H,N:L/GRID,Lg:Math.floor(H/COURSE)}; }
+/** #136 Aktivierungs-Flag der Ausgleichslage aus dem Bedienelement (nur „an" aktiviert). */
+function leseAusgleich(){ return $('ausgleich').value==='an'; }
+/**
+ * #136 Kataloghöhen der Ausgleichssteine dieser Wand ([G-16]) — je Steintyp die realen
+ * Steinhöhen der für `ausgl_i2`/`ausgl_i3` gewählten Produkte. Gebildet wird das über den
+ * GEMEINSAMEN Baustein aus `sembla-wandanlage.js`, denselben, den der Read-only-Frischpfad und
+ * der Sammel-Editor benutzen — Modul 1 führt dafür keine eigene Rollen- oder Maßlogik.
+ */
+function ausgleichHoehen(){ return AUSGLEICH_HOEHEN(prodEingaben(), prodKatalog()); }
 function buildOpenings(N,Lg){
   const out=[];
   const blockers=[];
@@ -420,6 +455,13 @@ function vorgaben(){
     interlocks: buildInterlocks(N),
     load:{ qk_area:+$('qk').value, gammaQ:+$('gammaQ').value },
     material:{ fcd_Nmm2:+$('fcd').value, cfd:+$('cfd').value, rho:+$('rho').value } };
+  // #136 Die Ausgleichslage ist ein Merkmal DIESER Wand und hängt NICHT am Vorspannblock: sie
+  // reist als eigener Eingang derselben Vorgabe durch den Engine-Pfad, genau wie Länge und Höhe
+  // ([G-14]). Die Kataloghöhen der Ausgleichssteine ([G-16]) kommen aus der Produktauswahl
+  // dieser Wand — nur MASSE, keine Kennungen und keine Preise; ohne Auswahl bleiben die Listen
+  // leer, dann sind die Steine der Ausgleichslage Sonderzuschnitte ([G-17]).
+  v.ausgleichslage_aktiv = leseAusgleich();
+  v.ausgleich_stein_hoehen_mm = ausgleichHoehen();
   // Gewindestangen-Standardlängen kommen AUSSCHLIESSLICH aus dem Bauteilkatalog ([Z-1]).
   // Es gibt kein Eingabefeld mehr: welche Standardlängen es gibt, entscheidet der Katalog,
   // und die unterste Stange ist immer die größte gewählte davon ([Z-2]) — nicht wählbar.
@@ -522,6 +564,48 @@ function vorgaben(){
   return v;
 }
 
+/**
+ * #136 Die Zerlegung der Zielhöhe VERSTÄNDLICH anzeigen — „12 × 200 + 1 × 170 = 2570 mm".
+ *
+ * Gelesen wird ausschließlich das CORE-ERGEBNIS: die Lagen des Wandelements tragen ihre
+ * Geometrie selbst (`hoehe_mm`, `ausgleich`), und die Ausgleichslage ist genau die eine Lage
+ * mit dem Merkmal ([G-15]). Hier wird NICHTS nachgerechnet — kein Teilen, kein Runden, kein
+ * Erfinden einer Lagenzahl ([P-6]).
+ */
+function zerlegungText(w){
+  const cs=(w&&w.courses)||[];
+  if(!cs.length) return '';
+  const reg=cs.filter(c=>c.ausgleich!==true), ag=cs.filter(c=>c.ausgleich===true);
+  const teile=[];
+  // Die regulären Lagen tragen alle dieselbe Höhe; genommen wird die der ersten — nicht COURSE,
+  // damit der Text auch dann stimmt, wenn der Kern eine andere Lagenhöhe rechnete.
+  if(reg.length) teile.push(reg.length+' × '+(reg[0].hoehe_mm!=null?reg[0].hoehe_mm:COURSE));
+  for(const c of ag) teile.push('1 × '+c.hoehe_mm);
+  return teile.join(' + ')+' = '+w.height_mm+' mm';
+}
+/**
+ * #136 Zerlegungs- und Konfliktanzeige. Entweder liegt ein Ergebnis vor — dann steht die
+ * Zerlegung aus dem Core da —, oder die Höhe wurde BENANNT abgewiesen; ein dritter Zustand
+ * („stillschweigend gerundet") entsteht nicht.
+ */
+function zeigeZerlegung(w, err){
+  const zeile=$('zerlegung'), hin=$('ausgleichHinweis');
+  if(err){
+    zeile.innerHTML='';
+    hin.innerHTML = (err.grund===AUSGLEICH_KONFLIKT)
+      ? '<b>Höhe nicht im Lagenraster</b> — die Ausgleichslage ist nicht aktiviert, dann muss die '
+        +'Zielhöhe ein Vielfaches von '+COURSE+' mm sein. Die eingegebene Höhe bleibt stehen und '
+        +'wird nicht gerundet; zum Bauen entweder die Ausgleichslage aktivieren oder die Höhe ändern.'
+      : '';
+    return;
+  }
+  zeile.innerHTML = w ? 'Zerlegung: <b>'+escP(zerlegungText(w))+'</b>' : '';
+  hin.innerHTML = leseAusgleich()
+    ? (((w&&w.courses)||[]).some(c=>c.ausgleich===true)
+        ? 'Ausgleichslage aktiviert — genau eine oberste Lage mit der Resthöhe ([G-14]).'
+        : 'Ausgleichslage aktiviert — die Höhe geht im Lagenraster auf, es entsteht keine Ausgleichslage.')
+    : 'Ausgleichslage nicht aktiviert — die Zielhöhe muss ein Vielfaches von '+COURSE+' mm sein.';
+}
 function run(){
   if(!hatWand){ renderLeer(); return; }        // ohne aktives Wandelement kein (fiktives) Ergebnis
   const auto=$('modus').value==='auto';
@@ -529,8 +613,13 @@ function run(){
   $('itWrap').style.display=auto?'block':'none';
   let err=null;
   try{ RESULT = auto ? autoAuslegung(vorgaben()) : nachweisPruefen(vorgaben()); }
-  catch(e){ err=e.message; }
-  if(err){ $('statusBadge').className='badge no'; $('statusBadge').textContent='Eingabe ungültig'; $('warns').textContent=err; return; }
+  catch(e){ err=e; }
+  if(err){ $('statusBadge').className='badge no'; $('statusBadge').textContent='Eingabe ungültig';
+    $('warns').textContent=err.message;
+    // #136 Der Höhenkonflikt ist BENANNT (`grund`), nicht aus dem Meldungstext geraten: die
+    // eingegebene Zielhöhe bleibt unverändert stehen und wird NIE ins Raster gerundet ([P-9]).
+    zeigeZerlegung(null, err);
+    return; }
   RESULT.wandelement.wandtyp=aktWandtyp;       // Wandtyp des Elements unveraendert mitfuehren
   // [A-6]/#71: Die Abdichtung ist ein Fachmerkmal DIESER Wand und wird hier gewaehlt. Sie
   // haengt — wie der Wandtyp — nicht am Core, wird also nach dem Neuaufbau durch buildWall()
@@ -554,7 +643,10 @@ function run(){
   const w=RESULT.wandelement, v=w.verification;
   const vv=w.validation; const verbandOk = vv.versatz_ok && vv.buildable;
   const {L,H}=dims();
-  $('dims').textContent=fmt(L/1000,3)+' m × '+fmt(H/1000,2)+' m';
+  // #136 Die Höhe ist frei — angezeigt wird sie deshalb millimetergenau (3 Nachkommastellen in m),
+  // damit 2570 mm nicht als 2,57 m erscheint, wo 2565 mm dasselbe ergäbe.
+  $('dims').textContent=fmt(L/1000,3)+' m × '+fmt(H/1000,3)+' m';
+  zeigeZerlegung(w, null);
   $('statusBadge').className='badge '+(verbandOk?'ok':'no');
   $('statusBadge').textContent= verbandOk ? 'Auslegung erstellt' : 'Verband regelwidrig – siehe Warnung';
   const sd=readSides(); const af=VIEW==='vorne'?sd.vorne.funktion:sd.hinten.funktion;
@@ -599,6 +691,12 @@ function run(){
   const dcf=vv.deckenanschluss_fehler||[];
   if(dcf.length) warns.push('⚠ Deckenanschluss [A-27]: '+dcf.length+' Wert(e) abgewiesen ('
     +DC_GRUND[dcf[0].grund]+', z. B. Rasterachse '+dcf[0].wert+') — nicht angewandt, nichts verschoben.');
+  // [G-17]/[G-18] Sonderzuschnitte der Ausgleichslage: der Katalog führt für diese Resthöhe kein
+  // Produkt mit exakt passender Steinhöhe. KEIN Baubarkeitsausschluss — ein sichtbarer
+  // Prüfhinweis mit dem TATSÄCHLICHEN Maß, im Wortlaut des Rechenkerns (nicht neu formuliert).
+  const ags=vv.ausgleich_sonderzuschnitte||[];
+  if(ags.length) warns.push('⚠ Ausgleichslage [G-17]: '+ags.length+' Sonderzuschnitt(e) — '
+    +ags.map(s=>s.text+' ('+s.anzahl+' Stück)').join(' · ')+'.');
   $('warns').textContent=warns.join('   ');
   // Verzahnungs-Validierung anzeigen ([G-10]/[G-11]/[G-12])
   renderInterlockWarns(vv);
@@ -618,6 +716,7 @@ function renderLeer(){
   RESULT=null;
   $('statusBadge').className='badge'; $('statusBadge').textContent='Neu';
   $('warns').textContent='';
+  $('zerlegung').innerHTML=''; $('ausgleichHinweis').innerHTML='';   // #136 kein Ergebnis, keine Zerlegung
   ['dims','rSp','rStrands','rN','rGrid','rSteine'].forEach(id=>$(id).textContent='—');
   $('itTable').querySelector('tbody').innerHTML='';
   $('plan').setAttribute('viewBox','0 0 1000 120');
@@ -1215,7 +1314,12 @@ function applyWand(w){
   // frisch gezeichnete Wand) gilt beim Lesen als F0. Normalisiert, nicht zurueckgeschrieben:
   // bloßes Laden faellt nie in ein Speichern, und F30 wird niemals behauptet.
   $('brandklasse').value=(store&&store.normBrandklasse)?store.normBrandklasse(w.brandklasse):'F0';
-  $('len').value=(w.length_mm/1000).toFixed(3); $('hgt').value=(w.height_mm/1000).toFixed(2);
+  // #136 Die Ausgleichslage ist ein Merkmal DIESER Wand; ein Element ohne das Feld (Altbestand,
+  // frisch gezeichnete Wand) gilt beim Lesen als NICHT aktiviert — nur ein ausdrückliches `true`
+  // aktiviert. Normalisiert, nicht zurückgeschrieben: bloßes Laden speichert nichts.
+  $('ausgleich').value = (w.ausgleichslage_aktiv===true) ? 'an' : 'aus';
+  // #136 Die Höhe steht in MILLIMETERN im Feld — unverändert, ohne Rundung.
+  $('len').value=(w.length_mm/1000).toFixed(3); $('hgt').value=String(w.height_mm);
   if(w.sides){ $('sideVorne').value=(w.sides.vorne&&w.sides.vorne.funktion)||'fassade'; $('sideHinten').value=(w.sides.hinten&&w.sides.hinten.funktion)||'innenausbau'; }
   openings=(w.openings||[]).map(o=>({art:o.art||'tuer',x:o.g0*125/1000,w:(o.g1-o.g0)*125/1000,sill:(o.art==='fenster')?o.l0*200/1000:0,h:(o.l1-o.l0)*200/1000}));
   stepsArr=(w.steps||[]).map(s=>({x0:s.x0_mm/1000, x1:s.x1_mm/1000, h:s.height_mm/1000}));
@@ -1854,7 +1958,10 @@ function bindEvents(){
   // `len` steht bewusst NICHT in dieser Liste (Issue #56): das Feld ist nur Anzeige, und
   // es gibt hier keinen — auch keinen indirekten — Schreibweg fuer die Wandlaenge mehr.
   ['hgt','qk','gammaQ','fcd','cfd','rho','spacing','force','blechCm','rodUeber'].forEach(id=>$(id).addEventListener('input',run));
-  ['sideVorne','sideHinten','modus','topConn','abdichtung','brandklasse'].forEach(id=>$(id).addEventListener('change',run));
+  ['sideVorne','sideHinten','modus','topConn','abdichtung','brandklasse',
+   // #136 Die Ausgleichslage ist ein Core-Eingang: jede Umschaltung rechnet die Wand über
+   // denselben einen Auslegungspfad neu — es gibt keinen zweiten Schreibweg.
+   'ausgleich'].forEach(id=>$(id).addEventListener('change',run));
   $('durchTool').addEventListener('click',()=>{ editMode=!editMode; if(editMode){ agEdit=false; dcEdit=false; syncAgTool(); syncDcTool(); } $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });
@@ -1938,6 +2045,10 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   setDcEdit, setManualDc, addDcAt, delDc, dcAuto:()=>{ manualDc=null; selDc=null; run(); },
   selDc:(k)=>{ selDc=k; }, get manualDc(){return manualDc;}, get dcEdit(){return dcEdit;},
   get deckenanschlusspunkte(){ return RESULT?(RESULT.wandelement.deckenanschlusspunkte||[]):[]; },
+  // #136 Zerlegung und Ausgleichslage — der Text stammt AUSSCHLIESSLICH aus dem Core-Ergebnis.
+  get ausgleichAktiv(){ return leseAusgleich(); },
+  get zerlegung(){ return RESULT?zerlegungText(RESULT.wandelement):''; },
+  get ausgleichHoehen(){ return ausgleichHoehen(); },
   renderProdukte, prodStatus:(rolleId)=>KAT.rollenStatus(rolleId, prodEingaben(), prodKatalog(), prodKontext()),
   vorgaben, spez:prodSpez, get rodLaengen(){return rodLaengenMm();},
   get blechLaengen(){return blechLaengenMm();}, syncLegacyFelder,
@@ -1958,6 +2069,7 @@ window.__wpInit=function(){
   GRID=S.GRID; COURSE=S.COURSE; Opening=S.Opening; buildWall=S.buildWall;
   autoAuslegung=S.autoAuslegung; nachweisPruefen=S.nachweisPruefen; store=S.store; KAT=S.KAT;
   ROLLE_RECHNUNG=S.ROLLE_RECHNUNG;
+  AUSGLEICH_KONFLIKT=S.AUSGLEICH_KONFLIKT; AUSGLEICH_HOEHEN=S.ausgleichSteinHoehen;
   oeffneReparatur=S.oeffneReparatur;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
@@ -1989,7 +2101,10 @@ window.__wpInit=function(){
 </script>
 
 <script type="module">
-  import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte } from './shared/sembla-core.js';
+  import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte,
+           // #136 der BENANNTE Grund der abgewiesenen Höhe — Modul 1 zeigt ihn an, statt ihn
+           // aus dem Meldungstext zu erraten.
+           AUSGLEICH_KONFLIKT } from './shared/sembla-core.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
@@ -2007,10 +2122,12 @@ window.__wpInit=function(){
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { oeffneReparatur } from './shared/sembla-reparatur.js';
-  import { ROLLE_RECHNUNG } from './shared/sembla-wandanlage.js';
+  // #136 `ausgleichSteinHoehen` ist der gemeinsame Baustein der Ausgleichsstein-Kataloghöhen
+  // ([G-16]) — dieselbe Ableitung, die der Read-only-Frischpfad und der Sammel-Editor nutzen.
+  import { ROLLE_RECHNUNG, ausgleichSteinHoehen } from './shared/sembla-wandanlage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
-                    ROLLE_RECHNUNG,
+                    ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
                     oeffneReparatur,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
                     bodenblechTeile, bodenblechStoesse, BLECHSTOSS,

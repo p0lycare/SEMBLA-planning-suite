@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260917-05",
+    datum: "2026-09-17",
+    typ: "feature",
+    issue: 136,
+    titel: "Freie Wandhöhe bedienbar: Millimetereingabe und Ausgleichslage in Modul 1, gemeinsames Setzen im Sammel-Editor",
+    testbitte: "In Modul 1 Höhe 2570 mm eingeben und Ausgleichslage aktivieren: die Zerlegung „12 × 200 + 1 × 170 = 2570 mm“ "
+      + "erscheint; deaktiviert bleibt der benannte Konflikt. Im Geschosseditor mehrere Wände gemeinsam umstellen",
+  },
+  {
     id: "chg-20260917-04",
     datum: "2026-09-17",
     typ: "feature",
