@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260917-06",
+    datum: "2026-09-17",
+    typ: "feature",
+    issue: 136,
+    titel: "Zeichnung und Montage zeigen die Ausgleichslage maßstäblich: reale Höhe, eigene Bemaßung, eigene oberste Reihe",
+    testbitte: "2570-mm-Wand mit Ausgleichslage in Modul 7 öffnen: die oberste Lage ist sichtbar niedriger und rechts mit "
+      + "170 mm bemaßt, Gesamthöhe 2570 mm; in Modul 5 erscheint sie als eigene oberste Reihe mit Nummer und Maß",
+  },
+  {
     id: "chg-20260917-05",
     datum: "2026-09-17",
     typ: "feature",

@@ -60,12 +60,20 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
          ZWISCHENPUNKT, zwischenpunktSvg,
          DECKENANSCHLUSS, deckenanschlussSvg,
+         // #136: die EINE erlaubte Umrechnung Reihenzahl -> Hoehe. Sie liegt bei der
+         // Konturableitung (`topLagen`), deren Ergebnis sie deutet — eine zweite Umrechnung
+         // hier waere genau die Drift, die [D-4] verbietet.
+         lagenOberkanteMm,
          // [A-20]…[A-24]/#97: Marke, Kennfarbe und Klartext des Ausgleichspunkts — dieselbe
          // Quelle und dieselbe Zeichenfunktion wie die Wandansicht von Modul 1 ([D-4]).
          AUSGLEICHSPUNKT, ausgleichspunktSvg } from "./sembla-montage.js";
 // #110: die wirksamen Zwischenspannpunkte kommen aus der EINEN Ableitung des Rechenkerns —
 // hier wird nichts nachgerechnet und keine Punkthoehe erfunden.
 import { wirksameZwischenpunkte } from "./sembla-core.js";
+// #136: die kanonischen Lagenkanten (`unterkante_mm`/`oberkante_mm`/`hoehe_mm` je Lage) des
+// FERTIGEN Wandelements. Das Blatt liest sie nur; eine Lagenhoehe entsteht hier NIE mehr aus
+// `Lagenindex x course_mm` — sonst zeichnete die obere Ausgleichslage als 200-mm-Lage.
+import { wandLagenKanten } from "./sembla-core.js";
 // #79: NUR der reine Normalisierer der Brandschutzklassifikation (F0/F30, Standard
 // F0) — kein Speicherzugriff, keine Lese- oder Schreibfunktion. Er liegt kanonisch in
 // storage.js, weil Modul 1 (der einzige Schreibweg) dieselbe Stelle nutzt; eine zweite
@@ -367,7 +375,7 @@ function _schraffur(x, y, w, h, farbe) {
  *
  * Ohne Verzahnungsbereich wird die leere Zeichenkette geliefert — keine leere Gruppe.
  */
-function _verzahnungSvg(w, X, Y, sc, tl, G, C, LF) {
+function _verzahnungSvg(w, X, Y, sc, tl, G, KA, OK, LF) {
   const ils = (w.interlocks || []);
   if (!ils.length) return "";
   const F = FARBE.verzahnung;
@@ -388,7 +396,7 @@ function _verzahnungSvg(w, X, Y, sc, tl, G, C, LF) {
         const da = k < k1 && tl[k] > li;
         if (da && a === null) a = k;
         if (!da && a !== null) {
-          s += _schraffur(X(a * G), Y((li + 1) * C), (k - a) * G * sc, C * sc, F);
+          s += _schraffur(X(a * G), Y(KA(li).oberkante_mm), (k - a) * G * sc, KA(li).hoehe_mm * sc, F);
           if (li > letzteLage) { letzteLage = li; textLauf = [a, k]; }
           else if (textLauf && (k - a) > (textLauf[1] - textLauf[0])) textLauf = [a, k];
           a = null;
@@ -398,14 +406,15 @@ function _verzahnungSvg(w, X, Y, sc, tl, G, C, LF) {
     // (b) Begrenzungslinien an den Bereichsraendern (gestrichelt, volle lokale Hoehe)
     for (const [k, h] of [[k0, tl[k0]], [k1, tl[k1 - 1]]]) {
       if (h <= 0) continue;
-      s += `<line x1="${_n(X(k * G))}" y1="${_n(Y(0))}" x2="${_n(X(k * G))}" y2="${_n(Y(h * C))}" `
+      s += `<line x1="${_n(X(k * G))}" y1="${_n(Y(0))}" x2="${_n(X(k * G))}" y2="${_n(Y(OK(h)))}" `
         + `stroke="${F}" stroke-width="${VZ_RAND_LW}" stroke-dasharray="1.6 1.1"/>`;
     }
     // (c) Kurztext im obersten ausgesparten Feld (steinfrei) — nur, wenn er dort hinpasst
     if (textLauf) {
       const [a, b] = textLauf, breite = (b - a) * G * sc, fs = Math.min(2.6, LF);
-      if (breite > VERZAHNUNG.kuerzel.length * fs * 0.6 && C * sc > 3) {
-        s += `<text x="${_n(X((a + b) / 2 * G))}" y="${_n(Y((letzteLage + 0.5) * C) + fs * 0.35)}" `
+      const kt = KA(letzteLage), mitte = kt.unterkante_mm + kt.hoehe_mm / 2;
+      if (breite > VERZAHNUNG.kuerzel.length * fs * 0.6 && kt.hoehe_mm * sc > 3) {
+        s += `<text x="${_n(X((a + b) / 2 * G))}" y="${_n(Y(mitte) + fs * 0.35)}" `
           + `font-size="${_n(fs)}" fill="${F}" text-anchor="middle">${VERZAHNUNG.kuerzel}`
           + `<title>${_esc(VERZAHNUNG.name)}</title></text>`;
       }
@@ -420,7 +429,7 @@ function _verzahnungSvg(w, X, Y, sc, tl, G, C, LF) {
  * Staffelungsmasse ALLE als reine Millimeterzahl ([D-3]). Es gibt genau eine
  * Einheit, sie steht einmal im Schriftfeld — nicht an jeder Masszahl.
  */
-function _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, openings) {
+function _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, openings, kanten = null) {
   const C = FARBE.mass, A = FARBE.oeffnung, STP = FARBE.staffel;
   const T = 1.3, F = 2.4, LW = 0.3;
   const tk = (x, y, v) => v
@@ -440,7 +449,22 @@ function _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, openings) {
   let s = "";
   const left0 = pad, right0 = pad + wPx, bot0 = Y(0), top0 = Y(H);
   s += hD(left0, right0, bot0 + 7, _mm(L));
+  // Gesamthoehe: `H` ist die REALE Zielhoehe des Wandelements — bei freier Wandhoehe also
+  // z. B. 2570 und nicht die regulaere Lagensumme 2400 (#136).
   s += vD(top0, bot0, left0 - 7, _mm(H));
+  // Hoehe der oberen Ausgleichslage (#136): eigene Massketten-Angabe RECHTS der Wand, damit
+  // sie die Gesamthoehe links nicht beruehrt. Sie entsteht NUR, wenn der Rechenkern an genau
+  // einer Lage `ausgleich: true` gesetzt hat; eine reine 200-mm-Wand bleibt zeichengleich.
+  {
+    const cs = (w.courses || []);
+    const ag = cs.length && cs[cs.length - 1] && cs[cs.length - 1].ausgleich === true
+      ? cs[cs.length - 1] : null;
+    const kag = (ag && kanten && kanten[ag.lage]) ? kanten[ag.lage] : null;
+    if (ag && kag)
+      s += `<g class="ausgleichslage" data-ausgleich-hoehe="${_n(kag.hoehe_mm)}">`
+        + vD(Y(kag.oberkante_mm), Y(kag.unterkante_mm), right0 + 7, _mm(kag.hoehe_mm))
+        + `</g>`;
+  }
   for (const op of openings) {
     const L_ = Math.min(X(op.x0), X(op.x1)), R_ = Math.max(X(op.x0), X(op.x1)), T_ = Y(op.y1), B_ = Y(op.y0);
     s += hD(L_, R_, T_ - 2, _mm(op.x1 - op.x0), A);
@@ -480,17 +504,27 @@ export function zeichnungSvg(w, opts = {}) {
   const sc = 1 / masstab, pad = PAD_MM;              // sc: Papier-mm je Wand-mm
   const wPx = L * sc, hPx = H * sc, vbW = wPx + 2 * pad, vbH = hPx + 2 * pad + 4;
   const X = x => pad + x * sc, Y = y => pad + (hPx - y * sc);
+  // `LF` ist eine SCHRIFTGROESSE des Blattes, keine Geometrie: sie haengt bewusst weiter an der
+  // REGULAEREN Lagenhoehe, damit die Beschriftung ueber das ganze Blatt gleich gross bleibt. Ob
+  // ein Text in eine Lage passt, wird dagegen an deren REALER Hoehe entschieden (s. u., #136).
   const SW = 0.22, LF = Math.min(3.2, C * sc * 0.55);
+  // #136 EINE Quelle fuer jede z-Koordinate einer Steinlage: die kanonischen Kanten des
+  // Wandelements. `KA(li)` ist die Kante der Lage `li`, `OK(n)` die Oberkante nach `n` Lagen
+  // (die Deutung der Konturwerte aus `topLagen()`). Fuer eine reine 200-mm-Wand liefern beide
+  // exakt `li x 200` bzw. `n x 200` — das Blatt bleibt dort zeichengleich.
+  const KANTEN = wandLagenKanten(w);
+  const KA = li => KANTEN[li] || { unterkante_mm: 0, oberkante_mm: 0, hoehe_mm: 0 };
+  const OK = n => lagenOberkanteMm(w, n, KANTEN);
   let s = "";
 
-  // Steine je Lage
+  // Steine je Lage — maßstäblich mit der REALEN Lagenhoehe und Lagenkante ([D-4]/#136).
   for (const c of (w.courses || [])) {
-    const y1 = (c.lage + 1) * C, y0 = c.lage * C;
+    const k = KA(c.lage), y1 = k.oberkante_mm, y0 = k.unterkante_mm, hc = k.hoehe_mm;
     for (const st of (c.stones || [])) {
       const fill = st.type === "i3" ? FARBE.i3 : FARBE.i2;
-      s += `<rect x="${_n(X(st.x0))}" y="${_n(Y(y1))}" width="${_n((st.x1 - st.x0) * sc)}" height="${_n(C * sc)}" `
+      s += `<rect x="${_n(X(st.x0))}" y="${_n(Y(y1))}" width="${_n((st.x1 - st.x0) * sc)}" height="${_n(hc * sc)}" `
         + `fill="${fill}" stroke="${FARBE.stein_rand}" stroke-width="${SW}"/>`;
-      if (o.steintypen && (st.x1 - st.x0) * sc > 7 && C * sc > 4.5)
+      if (o.steintypen && (st.x1 - st.x0) * sc > 7 && hc * sc > 4.5)
         s += `<text x="${_n(X((st.x0 + st.x1) / 2))}" y="${_n(Y((y0 + y1) / 2) + LF * 0.35)}" font-size="${_n(LF)}" `
           + `fill="${FARBE.stein_text}" text-anchor="middle">${st.type}</text>`;
     }
@@ -498,7 +532,7 @@ export function zeichnungSvg(w, opts = {}) {
 
   // Oeffnungen
   for (const op of (w.openings || [])) {
-    const x0 = op.g0 * G, x1 = op.g1 * G, y0 = op.l0 * C, y1 = op.l1 * C;
+    const x0 = op.g0 * G, x1 = op.g1 * G, y0 = OK(op.l0), y1 = OK(op.l1);
     s += `<rect x="${_n(X(x0))}" y="${_n(Y(y1))}" width="${_n((x1 - x0) * sc)}" height="${_n((y1 - y0) * sc)}" `
       + `fill="#fff" stroke="${FARBE.oeffnung}" stroke-width="${_n(SW * 1.6)}" stroke-dasharray="1.6 1.1"/>`;
     s += `<text x="${_n(X((x0 + x1) / 2))}" y="${_n(Y((y0 + y1) / 2) + 1)}" font-size="${_n(Math.min(3.4, LF * 1.2))}" `
@@ -513,7 +547,7 @@ export function zeichnungSvg(w, opts = {}) {
   // Verzahnungsbereiche (#82, [G-10]): eigene Gruppe unmittelbar NACH den Steinen und
   // VOR Kontur, Blechen, Straengen, Bemassung und Brandschutz-Kurztext. Damit verdeckt sie
   // nichts vom Ausfuehrungsnoetigen, und die Brandschutzgruppe bleibt die letzte des SVG.
-  s += _verzahnungSvg(w, X, Y, sc, tl, G, C, LF);
+  s += _verzahnungSvg(w, X, Y, sc, tl, G, KA, OK, LF);
 
   // Die dicke schwarze AEUSSERE UMRISSLINIE der Wand ist mit #123 ERSATZLOS entfallen — hier
   // stand die gestufte Konturpolylinie (`stroke-width = SW * 2.4`). Sie war die staerkste Linie
@@ -610,7 +644,9 @@ export function zeichnungSvg(w, opts = {}) {
   }
   if (topConn === "blech") {
     for (let k = 0; k < N; k++) {
-      const h = tl[k] * C;
+      // #136 Das Kopfblech liegt auf der REALEN lokalen Oberkante (bei Ausgleichslage also
+      // auf der Wandhoehe, nicht auf dem naechsten 200er-Raster).
+      const h = OK(tl[k]);
       if (h <= 0) continue;
       s += `<rect x="${_n(X(k * G))}" y="${_n(Y(h) - bth)}" width="${_n(G * sc)}" height="${_n(bth)}" `
         + `fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="${_n(SW * 0.4)}"/>`;
@@ -811,11 +847,13 @@ export function zeichnungSvg(w, opts = {}) {
 
   // Bemassung + Steinreihen-Nummerierung
   if (o.masse) {
-    const ops = (w.openings || []).map(op => ({ x0: op.g0 * G, x1: op.g1 * G, y0: op.l0 * C, y1: op.l1 * C }));
-    s += _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, ops);
+    const ops = (w.openings || []).map(op => ({ x0: op.g0 * G, x1: op.g1 * G, y0: OK(op.l0), y1: OK(op.l1) }));
+    s += _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, ops, KANTEN);
   }
+  // Steinreihen-Nummerierung: je Reihe an ihrer REALEN Mitte — die Ausgleichslage bekommt
+  // damit ihre eigene fortlaufende Nummer an ihrer tatsaechlichen Hoehe (#136).
   for (let r = 0; r < _lagen(w); r++) {
-    const yc = Y((r + 0.5) * C);
+    const kr = KA(r), yc = Y(kr.unterkante_mm + kr.hoehe_mm / 2);
     s += `<text x="${_n(pad - 3)}" y="${_n(yc + 1)}" font-size="${_n(Math.min(3, LF))}" fill="${FARBE.reihe}" text-anchor="end">${r + 1}</text>`;
   }
 

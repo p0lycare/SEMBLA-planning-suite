@@ -34,6 +34,11 @@
  */
 
 import { semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
+// #136 Die Lagenkanten sind KANONISCH und werden hier nur GELESEN: `wandLagenKanten()` liefert
+// je Lage `unterkante_mm`/`oberkante_mm`/`hoehe_mm` aus `courses[]` des Rechenkerns (mit dessen
+// eigenem Rueckfall fuer Altbestand). Eine Lagenhoehe darf in diesem Modul deshalb NIE mehr aus
+// `Lagenindex x course_mm` entstehen — sonst zeichnete die obere Ausgleichslage als 200-mm-Lage.
+import { wandLagenKanten } from "./sembla-core.js";
 
 const COURSE_FALLBACK = 200;
 const GRID_FALLBACK = 125;
@@ -821,6 +826,35 @@ const _grid = w => w.grid_mm || GRID_FALLBACK;
 const _rod = w => w.rod_mm || ROD_FALLBACK;
 const _lagen = w => w.lagen || Math.round(w.height_mm / _course(w));
 
+// ---------------------------------------------------- Lagenkanten (#136, [D-4])
+// EINE Quelle fuer jede z-Koordinate einer Steinreihe in diesem Modul. Die Kanten kommen
+// unveraendert aus dem Rechenkern; hier wird nur nachgeschlagen.
+
+/** Kanonische Lagenkanten des Wandelements (gelesen, nie gerechnet). */
+export const lagenKantenVonWand = w => wandLagenKanten(w);
+
+/**
+ * Zahl der Steinreihen, die VOLLSTAENDIG unterhalb der Hoehe `hMm` liegen.
+ * Fuer eine reine 200-mm-Wand ist das `floor(h/200)` — bit-gleich zum Altstand; mit oberer
+ * Ausgleichslage zaehlt sie die reale Kantenliste ab und erfindet keine 200er-Lage.
+ */
+function _lagenBis(kanten, hMm) {
+  let n = 0;
+  for (const c of kanten) { if (c.oberkante_mm <= hMm + 1e-9) n++; else break; }
+  return n;
+}
+
+/**
+ * z-Koordinate der Oberkante der `n`-ten Steinreihe (n = Reihenzahl von unten, 0 = Fussboden).
+ * Das ist die EINE erlaubte Umrechnung Reihenzahl -> Hoehe ([D-4]) — `n * course_mm` waere fuer
+ * die obere Ausgleichslage schlicht falsch.
+ */
+export function lagenOberkanteMm(w, n, kanten = null) {
+  const K = kanten || wandLagenKanten(w);
+  if (!(n > 0) || !K.length) return 0;
+  return K[Math.min(n, K.length) - 1].oberkante_mm;
+}
+
 /** Segmente eines Strangs (Fallback fuer Alt-Bundles ohne `segments`). */
 function _segmente(w, col) {
   if (Array.isArray(col.segments) && col.segments.length) return col.segments;
@@ -993,13 +1027,17 @@ function _stueckeSicht(w, sg, echtMm, obenMm) {
 
 /** Lokale Oberkante je Rasterspalte (Lagenzahl) — Wandkontur inkl. Staffelung. */
 export function topLagen(w) {
-  const G = _grid(w), C = _course(w), L = _lagen(w);
+  const G = _grid(w), L = _lagen(w), K = wandLagenKanten(w);
   const N = w.N_grid || Math.round(w.length_mm / G);
   const out = [];
   for (let k = 0; k < N; k++) {
     const xc = (k + 0.5) * G; let h = w.height_mm;
     for (const s of (w.steps || [])) { if (xc >= s.x0_mm && xc < s.x1_mm) { h = s.height_mm; break; } }
-    out.push(Math.max(0, Math.min(L, Math.round(h / C))));
+    // #136 Abgezaehlt wird an der kanonischen Kantenliste statt `round(h/course_mm)`: die
+    // Staffelung liegt im 200-mm-Raster (Core-Normalisierung) und ergibt damit unveraendert
+    // dieselbe Zahl, die volle Wandhoehe einer Wand MIT Ausgleichslage aber die reale
+    // Reihenzahl inklusive der niedrigeren obersten Lage.
+    out.push(Math.max(0, Math.min(L, _lagenBis(K, h))));
   }
   return out;
 }
@@ -1024,13 +1062,15 @@ export function topLagen(w) {
  * @returns {Array<{x0_mm:number,x1_mm:number,hoehe_mm:number,lagen:number}>}
  */
 export function oberkantenAbschnitte(w) {
-  const G = _grid(w), C = _course(w), tl = topLagen(w);
+  const G = _grid(w), K = wandLagenKanten(w), tl = topLagen(w);
   const out = [];
   for (let k = 0; k < tl.length; k++) {
     if (tl[k] <= 0) continue;
     const letzte = out[out.length - 1];
     if (letzte && letzte.lagen === tl[k] && letzte.x1_mm === k * G) letzte.x1_mm = (k + 1) * G;
-    else out.push({ x0_mm: k * G, x1_mm: (k + 1) * G, hoehe_mm: tl[k] * C, lagen: tl[k] });
+    // #136 `hoehe_mm` ist die REALE Oberkante aus der Kantenliste, nicht `lagen x course_mm`.
+    else out.push({ x0_mm: k * G, x1_mm: (k + 1) * G,
+      hoehe_mm: lagenOberkanteMm(w, tl[k], K), lagen: tl[k] });
   }
   return out;
 }
@@ -1053,7 +1093,9 @@ export function oberkantenAbschnitte(w) {
  * @param {any} w Wandelement
  */
 export function montageEreignisse(w) {
-  const C = _course(w);
+  // #136 `reihe_vor` zaehlt die vollstaendig darunterliegenden Reihen an der kanonischen
+  // Kantenliste ab — fuer eine reine 200-mm-Wand identisch zu `floor(z/200)`.
+  const K = wandLagenKanten(w);
   const roh = [];
   for (const col of (w.tension_columns || [])) {
     for (const sg of _segmente(w, col)) {
@@ -1071,7 +1113,7 @@ export function montageEreignisse(w) {
   for (const r of roh) {
     const key = r.art + "@" + r.z_mm;
     let e = map.get(key);
-    if (!e) { e = { art: r.art, z_mm: r.z_mm, reihe_vor: Math.floor(r.z_mm / C), straenge: [] }; map.set(key, e); }
+    if (!e) { e = { art: r.art, z_mm: r.z_mm, reihe_vor: _lagenBis(K, r.z_mm), straenge: [] }; map.set(key, e); }
     e.straenge.push({
       k: r.col.k, x_mm: r.col.x_mm, anker: r.anker, stange_nr: r.stange_nr || null,
       seg_z0_mm: r.sg.z0_mm, seg_z1_mm: r.sg.z1_mm, stangen: _stueck(w, r.sg),
@@ -1171,12 +1213,13 @@ export function montageAbschnitte(w) {
   });
   if (offen.length && abschnitte.length) abschnitte[0].ereignisse.unshift(...offen);
   // 3) Kennwerte je Abschnitt (Straenge, Hoehen, Titel)
-  const C = _course(w);
+  const C = _course(w), K = wandLagenKanten(w);
   abschnitte.forEach((ab, i) => {
     ab.art = "abschnitt";
     ab.nr = i + 1;
-    ab.z_von_mm = (ab.reihen.von - 1) * C;
-    ab.z_bis_mm = ab.reihen.bis * C;
+    // #136 Fuss und Kopf des Reihenbereichs sind REALE Kanten aus der Kantenliste.
+    ab.z_von_mm = lagenOberkanteMm(w, ab.reihen.von - 1, K);
+    ab.z_bis_mm = lagenOberkanteMm(w, ab.reihen.bis, K);
     ab.straenge = _strangZustand(w, ab);
     const weiter = ab.straenge.filter(s => !s.abgeschlossen);
     ab.stange_oberkante_mm = Math.max(ab.z_bis_mm, ...ab.straenge.map(s => s.zeichen_oben_mm));
@@ -1450,11 +1493,14 @@ export function ausgleichspunktSvg(w, X, Y, sc, bth, opts = {}) {
 
 /** Konturzug der Wand (Aussenkante inkl. Staffelung) als Punktliste in mm. */
 function _konturPunkte(w) {
-  const G = _grid(w), C = _course(w), tl = topLagen(w);
-  const pts = [[0, 0], [0, tl[0] * C]];
+  // #136 Die lokale Oberkante kommt aus der kanonischen Kantenliste (`lagenOberkanteMm`);
+  // eine Wand mit Ausgleichslage schliesst damit real oben ab, nicht auf dem 200er-Raster.
+  const G = _grid(w), K = wandLagenKanten(w), tl = topLagen(w);
+  const ok = n => lagenOberkanteMm(w, n, K);
+  const pts = [[0, 0], [0, ok(tl[0])]];
   for (let k = 0; k < tl.length; k++) {
-    pts.push([(k + 1) * G, tl[k] * C]);
-    if (k < tl.length - 1 && tl[k + 1] !== tl[k]) pts.push([(k + 1) * G, tl[k + 1] * C]);
+    pts.push([(k + 1) * G, ok(tl[k])]);
+    if (k < tl.length - 1 && tl[k + 1] !== tl[k]) pts.push([(k + 1) * G, ok(tl[k + 1])]);
   }
   pts.push([w.length_mm, 0], [0, 0]);
   return pts;
@@ -1470,6 +1516,12 @@ function _konturPunkte(w) {
  */
 export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   const C = _course(w), G = _grid(w), L = w.length_mm;
+  // #136 Jede Reihenhoehe und jede Reihenkante kommt aus der kanonischen Kantenliste. Die
+  // obere Ausgleichslage erscheint dadurch als GENAU EINE eigene, real niedrigere oberste
+  // Reihe mit fortlaufender Nummer — es gibt keine 200-mm-Ersatzgeometrie mehr.
+  const K = wandLagenKanten(w);
+  const ok = n => lagenOberkanteMm(w, n, K);
+  const kante = li => K[li] || { unterkante_mm: 0, oberkante_mm: 0, hoehe_mm: 0 };
   const padL = 52, padR = 34, padT = 34, padB = 26;
   // Massstab: global konstant ueber alle Baugruppenbilder ([A-9]); `z_top_mm` setzt
   // montageAbschnitte(). Fallback nur fuer direkt gebaute Abschnitte ohne dieses Feld.
@@ -1483,31 +1535,33 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   // bereits montierte Reihen (Orientierung, blass)
   for (const c of (w.courses || [])) {
     if (c.lage >= li0) continue;
+    const kc = kante(c.lage);
     for (const st of c.stones)
-      s += `<rect x="${X(st.x0)}" y="${Y((c.lage + 1) * C)}" width="${(st.x1 - st.x0) * sc}" height="${C * sc}" `
+      s += `<rect x="${X(st.x0)}" y="${Y(kc.oberkante_mm)}" width="${(st.x1 - st.x0) * sc}" height="${kc.hoehe_mm * sc}" `
         + `fill="${FARBE.fertig}" stroke="${FARBE.fertig_rand}" stroke-width="0.6"/>`;
   }
   // Reihen dieses Abschnitts
   for (const c of (w.courses || [])) {
     if (c.lage < li0 || c.lage > li1) continue;
+    const kc = kante(c.lage);
     for (const st of c.stones) {
       const bw = (st.x1 - st.x0) * sc;
-      s += `<rect x="${X(st.x0)}" y="${Y((c.lage + 1) * C)}" width="${bw}" height="${C * sc}" `
+      s += `<rect x="${X(st.x0)}" y="${Y(kc.oberkante_mm)}" width="${bw}" height="${kc.hoehe_mm * sc}" `
         + `fill="${st.type === "i3" ? FARBE.i3 : FARBE.i2}" stroke="${FARBE.stein_rand}" stroke-width="1.1"/>`;
-      if (bw > 24) s += `<text x="${X((st.x0 + st.x1) / 2)}" y="${Y(c.lage * C) - C * sc / 2 + 3.5}" `
+      if (bw > 24) s += `<text x="${X((st.x0 + st.x1) / 2)}" y="${Y(kc.unterkante_mm) - kc.hoehe_mm * sc / 2 + 3.5}" `
         + `font-size="9.5" fill="#5b6670" text-anchor="middle">${st.type}</text>`;
     }
     // Reihennummer (durchgehende Nummerierung, 1-basiert)
-    const yc = Y(c.lage * C) - C * sc / 2 + 3.5;
+    const yc = Y(kc.unterkante_mm) - kc.hoehe_mm * sc / 2 + 3.5;
     s += `<text x="${X(0) - 8}" y="${yc}" font-size="10" font-weight="600" fill="#46505e" text-anchor="end">${c.lage + 1}</text>`;
   }
   // Öffnungen im dargestellten Bereich
   for (const o of (w.openings || [])) {
     if (o.l1 <= 0 || o.l0 > li1) continue;
     const oy1 = Math.min(o.l1, li1 + 1), ox = X(o.g0 * G), ow = (o.g1 - o.g0) * G * sc;
-    s += `<rect x="${ox}" y="${Y(oy1 * C)}" width="${ow}" height="${(oy1 - o.l0) * C * sc}" fill="#fff" `
+    s += `<rect x="${ox}" y="${Y(ok(oy1))}" width="${ow}" height="${(ok(oy1) - ok(o.l0)) * sc}" fill="#fff" `
       + `stroke="${FARBE.oeffnung}" stroke-width="1.2" stroke-dasharray="5 4"/>`;
-    if (ow > 46) s += `<text x="${ox + ow / 2}" y="${Y(o.l0 * C) - 6}" font-size="9.5" fill="${FARBE.oeffnung}" `
+    if (ow > 46) s += `<text x="${ox + ow / 2}" y="${Y(ok(o.l0)) - 6}" font-size="9.5" fill="${FARBE.oeffnung}" `
       + `text-anchor="middle">${o.art === "fenster" ? "Fenster" : o.art === "durchbruch" ? "Durchbruch" : "Tür"}</text>`;
   }
   // Wandkontur (Staffelung sichtbar) — in Schnitt 0 nicht: dort nur die Fuss-Baugruppe ([A-9])
@@ -1668,8 +1722,12 @@ function _kurzEreignis(e) {
  * Öffnungsmaße, optional das 12,5-cm-/20-cm-Raster.
  */
 function _dimLayer(X, Y, w, opts) {
-  const G = _grid(w), C = _course(w), L = w.length_mm, H = w.height_mm;
+  const G = _grid(w), L = w.length_mm, H = w.height_mm;
   if (!opts.masse && !opts.raster) return "";
+  // #136 Lagenraster und Oeffnungsmasse lesen die kanonischen Kanten; `H` ist ohnehin die
+  // reale Gesamthoehe des Wandelements.
+  const K = wandLagenKanten(w);
+  const ok = n => lagenOberkanteMm(w, n, K);
   const CO = "#46505e", A = FARBE.oeffnung, GR = "#9aa3ad";
   const mC = mm => _fmt(mm / 10, (mm / 10) % 1 !== 0 ? 1 : 0) + " cm", mM = mm => _fmt(mm / 1000, 2) + " m";
   const tk = (x, y, v) => v ? `<line x1="${x - 3}" y1="${y - 3}" x2="${x + 3}" y2="${y + 3}" stroke="${CO}" stroke-width="1"/>`
@@ -1682,16 +1740,16 @@ function _dimLayer(X, Y, w, opts) {
   let s = "";
   if (opts.raster) {
     for (let gx = 0; gx <= L + 1e-6; gx += G) s += `<line x1="${X(gx)}" y1="${Y(H)}" x2="${X(gx)}" y2="${Y(0)}" stroke="${GR}" stroke-width="0.6" stroke-opacity="0.3"/>`;
-    for (let gy = 0; gy <= H + 1e-6; gy += C) s += `<line x1="${X(0)}" y1="${Y(gy)}" x2="${X(L)}" y2="${Y(gy)}" stroke="${GR}" stroke-width="0.6" stroke-opacity="0.3"/>`;
+    for (const gy of [0, ...K.map(c => c.oberkante_mm)]) s += `<line x1="${X(0)}" y1="${Y(gy)}" x2="${X(L)}" y2="${Y(gy)}" stroke="${GR}" stroke-width="0.6" stroke-opacity="0.3"/>`;
   }
   if (opts.masse) {
     s += hD(X(0), X(L), Y(0) + 20, mM(L));
     s += vD(Y(H), Y(0), X(0) - 20, mM(H));
     for (const o of (w.openings || [])) {
-      const l = X(o.g0 * G), r = X(o.g1 * G), t = Y(o.l1 * C), b = Y(o.l0 * C);
+      const l = X(o.g0 * G), r = X(o.g1 * G), t = Y(ok(o.l1)), b = Y(ok(o.l0));
       s += hD(l, r, t - 6, mC((o.g1 - o.g0) * G), A);
-      s += vD(t, b, l - 6, mC((o.l1 - o.l0) * C), A);
-      if (o.l0 > 0) s += vD(b, Y(0), l - 6, mC(o.l0 * C), A);
+      s += vD(t, b, l - 6, mC(ok(o.l1) - ok(o.l0)), A);
+      if (o.l0 > 0) s += vD(b, Y(0), l - 6, mC(ok(o.l0)), A);
     }
   }
   return s;
@@ -1704,7 +1762,11 @@ function _dimLayer(X, Y, w, opts) {
  * @param {{masse?:boolean,raster?:boolean}} [opts]
  */
 export function konturSvg(w, ab = null, vbW = 900, vbH = 250, opts = {}) {
-  const C = _course(w), G = _grid(w), L = w.length_mm, H = w.height_mm;
+  const G = _grid(w), L = w.length_mm, H = w.height_mm;
+  // #136 Auch der Wandueberblick zeichnet jede Reihe mit ihrer REALEN Hoehe und Lage.
+  const K = wandLagenKanten(w);
+  const ok = n => lagenOberkanteMm(w, n, K);
+  const kante = li => K[li] || { unterkante_mm: 0, oberkante_mm: 0, hoehe_mm: 0 };
   const zeig_masse = opts.masse !== false, zeig_raster = !!opts.raster;
   const padL = zeig_masse ? 62 : 44, padR = 24, padT = 16, padB = zeig_masse ? 40 : 26;
   const sc = Math.min((vbW - padL - padR) / L, (vbH - padT - padB) / H);
@@ -1713,14 +1775,14 @@ export function konturSvg(w, ab = null, vbW = 900, vbH = 250, opts = {}) {
   const von = ab ? ab.reihen.von : 0, bis = ab ? ab.reihen.bis : -1;
   let s = "";
   for (const c of (w.courses || [])) {
-    const hi = (c.lage + 1 >= von && c.lage + 1 <= bis);
+    const hi = (c.lage + 1 >= von && c.lage + 1 <= bis), kc = kante(c.lage);
     for (const st of c.stones)
-      s += `<rect x="${X(st.x0)}" y="${Y((c.lage + 1) * C)}" width="${(st.x1 - st.x0) * sc}" height="${C * sc}" `
+      s += `<rect x="${X(st.x0)}" y="${Y(kc.oberkante_mm)}" width="${(st.x1 - st.x0) * sc}" height="${kc.hoehe_mm * sc}" `
         + `fill="${hi ? FARBE.stange : (st.type === "i3" ? "#dfe2e6" : FARBE.i3)}" fill-opacity="${hi ? 0.8 : 1}" `
         + `stroke="#aeb3ba" stroke-width="0.6"/>`;
   }
   for (const o of (w.openings || []))
-    s += `<rect x="${X(o.g0 * G)}" y="${Y(o.l1 * C)}" width="${(o.g1 - o.g0) * G * sc}" height="${(o.l1 - o.l0) * C * sc}" `
+    s += `<rect x="${X(o.g0 * G)}" y="${Y(ok(o.l1))}" width="${(o.g1 - o.g0) * G * sc}" height="${(ok(o.l1) - ok(o.l0)) * sc}" `
       + `fill="#fff" stroke="${FARBE.oeffnung}" stroke-width="1.1" stroke-dasharray="4 3"/>`;
   s += `<polyline points="${_konturPunkte(w).map(p => X(p[0]) + "," + Y(p[1])).join(" ")}" fill="none" `
     + `stroke="${FARBE.kontur}" stroke-width="1.3"/>`;
@@ -1734,8 +1796,9 @@ export function konturSvg(w, ab = null, vbW = 900, vbH = 250, opts = {}) {
       + `stroke="${FARBE.stange}" stroke-width="0.9" stroke-opacity="0.55"/>`;
   const L_ = _lagen(w);
   for (let r = 0; r < L_; r++) {
-    const yc = Y(r * C) - C * sc / 2 + 3;
-    const zeig = (C * sc >= 9) || (r === 0) || (r === L_ - 1) || ((r + 1) % 5 === 0) || (r + 1 === von) || (r + 1 === bis);
+    const kr = kante(r);
+    const yc = Y(kr.unterkante_mm) - kr.hoehe_mm * sc / 2 + 3;
+    const zeig = (kr.hoehe_mm * sc >= 9) || (r === 0) || (r === L_ - 1) || ((r + 1) % 5 === 0) || (r + 1 === von) || (r + 1 === bis);
     if (zeig) s += `<text x="${X(0) - 6}" y="${yc}" font-size="8.5" fill="${(r + 1 >= von && r + 1 <= bis) ? "#1f6feb" : "#8f96a0"}" text-anchor="end">${r + 1}</text>`;
   }
   s += _dimLayer(X, Y, w, { masse: zeig_masse, raster: zeig_raster });
@@ -1770,6 +1833,20 @@ export const MONTAGE_CSS = `
 /** Kurzlabel der Ereignisarten (Vorschau UND Dokument). */
 export const ART_LABEL = { fuss: "Erste Stange", neustart: "Neue Stange", kopplung: "Kopplung", abschluss: "Oberer Abschluss" };
 
+/**
+ * Die obere Ausgleichslage des Wandelements (#136) — oder `null`.
+ *
+ * Gelesen wird ausschliesslich das Feld `ausgleich` an `courses[]`, das der Rechenkern an GENAU
+ * EINER, immer der obersten Lage setzt. Hier wird nichts erkannt, geraten oder nachgerechnet:
+ * eine reine 200-mm-Wand (und jeder Altbestand) liefert `null`, und dann bleibt jede Ausgabe
+ * zeichengleich zum Stand davor.
+ */
+function _ausgleichslage(w) {
+  const cs = (w && Array.isArray(w.courses)) ? w.courses : [];
+  for (let i = cs.length - 1; i >= 0; i--) if (cs[i] && cs[i].ausgleich === true) return cs[i];
+  return null;
+}
+
 /** Kurz-Stückliste (nur Menge > 0) als HTML-Zeilen — Mengen aus sembla-bom.js. */
 function _bomRows(w) {
   return semblaBomItems(w).filter(it => it.menge > 0)
@@ -1798,7 +1875,12 @@ export function montageSeiten(w, eingaben = {}) {
   u += `<p>Projekt <b>${_esc(pName)}</b>${projekt.plan_nr ? " · Plan-Nr. " + _esc(projekt.plan_nr) : ""}`
     + `${projekt.index ? " · Index " + _esc(projekt.index) : ""}. Maße `
     + `${_fmt(w.length_mm / 1000, 3)} × ${_fmt(w.height_mm / 1000, 2)} m · ${w.N_grid} Raster · `
-    + `${_lagen(w)} Steinreihen · ${(w.tension_columns || []).length} Vorspannstränge · `
+    + `${_lagen(w)} Steinreihen`
+    // #136 Die oberste Reihe ist bei freier Wandhoehe die Ausgleichslage — sie wird mit ihrer
+    // REALEN Hoehe benannt, statt sie als weitere 20-cm-Reihe auszugeben.
+    + (_ausgleichslage(w)
+        ? ` (oberste Reihe ${_lagen(w)} = Ausgleichslage, ${_fmt(_ausgleichslage(w).hoehe_mm, 0)} mm)` : "")
+    + ` · ${(w.tension_columns || []).length} Vorspannstränge · `
     + `${abschnitte.filter(ab => ab.art !== "schnitt0").length} Baugruppenabschnitte`
     + `${abschnitte.some(ab => ab.art === "schnitt0") ? " (zzgl. Schnitt 0)" : ""}.</p>`;
   u += `<div class="mbild"><svg viewBox="0 0 900 250" preserveAspectRatio="xMidYMid meet">${konturSvg(w, null, 900, 250)}</svg></div>`;
@@ -1809,8 +1891,11 @@ export function montageSeiten(w, eingaben = {}) {
       + `<td>${ab.art === "schnitt0" ? "—" : ab.reihen.von + "–" + ab.reihen.bis}</td></tr>`).join("")
     + "</table>";
   u += `<h2>Stückliste (Kurzform)</h2><table class="mtab">${_bomRows(w)}</table>`;
+  const agL = _ausgleichslage(w);
   u += `<div class="mhinweis"><b>Hinweis.</b> Aufbau von unten, Steinreihen durchgehend nummeriert
-    (Reihe 1 = unterste Reihe, je 20 cm). i3-Steine maximiert, i2 nur als Abschluss an den Enden,
+    (Reihe 1 = unterste Reihe, je 20 cm)${agL
+      ? `; die oberste Reihe ${_lagen(w)} ist die <b>Ausgleichslage</b> mit ${_fmt(agL.hoehe_mm, 0)} mm `
+        + `(Oberkante ${_fmt(agL.oberkante_mm, 0)} mm)` : ""}. i3-Steine maximiert, i2 nur als Abschluss an den Enden,
     Versatz beachten. Vorspannung in den durchgehenden Hohlkammern; Zwischenkopplungen handfest
     (Lagesicherung), Endvorspannung über die Stahlbleche/Spannplatten. Eine Kopplung wird immer
     <b>vor</b> der Steinreihe gesetzt, die die Stangenoberkante überschneidet — die Mutter bleibt

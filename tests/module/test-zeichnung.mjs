@@ -18,7 +18,10 @@
 // keine vertrauliche Geometrie.
 
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
+import { createHash } from "node:crypto";
+// #136: `wandLagenKanten` ist der PRUEFMASSSTAB der Lagenhoehen — der Test vergleicht die
+// Zeichnung gegen die kanonischen Kanten und rechnet keine zweite Geometrie nach.
+import { buildWall, Opening, wandLagenKanten } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import { einbauteile, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
@@ -1897,6 +1900,115 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
       W.tension_columns.map(c => c.x_mm),
       W.tension_columns.flatMap(c => c.segments).map(sg => stangenStuecke(W, sg))]);
     return vor === nach; })());
+}
+
+// ---- Issue #136: obere Ausgleichslage in der technischen Zeichnung ---------------------------
+//
+// Das Blatt zeichnet die obere Ausgleichslage MASSSTAEBLICH mit ihrer realen Hoehe und ihrer
+// realen z-Lage und bemasst beides (Ausgleichshoehe + reale Gesamtwandhoehe). Alle Lagenhoehen
+// stammen aus den kanonischen Lagenkanten des Rechenkerns — keine Ableitung `Lagenindex x 200`
+// und keine 200-mm-Ersatzgeometrie. Vorschau, Druck-HTML und die eigenstaendige SVG-Datei
+// tragen dieselbe Zeichenkette ([D-6]).
+{
+  // 2570 mm = 12 reguläre Lagen (2400) + EINE Ausgleichslage 170 mm (2400 … 2570), M 1:20.
+  const W136 = buildWall("IW-AGL", 3000, 2570, [], null, { top_connection: "blech" }, [], null, true);
+  const K136 = wandLagenKanten(W136);
+  const z136 = Z.zeichnungSvg(W136, {});
+  const sc136 = 1 / z136.masstab, hPx136 = W136.height_mm * sc136;
+  const Y136 = y => Z.PAD_MM + (hPx136 - y * sc136);
+  const steine136 = [...z136.svg.matchAll(
+    /<rect x="[-\d.]+" y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)" fill="(#[0-9a-f]+)" stroke="([^"]+)" stroke-width="0\.22"/g)]
+    .map(m => ({ y: +m[1], h: +m[2] }));
+  const kurz = t => createHash("sha256").update(String(t)).digest("hex").slice(0, 16);
+
+  ok("[#136] Vorbedingung: der Core liefert EINE Ausgleichslage 170 mm bei 2400 … 2570",
+    W136.lagen === 13 && W136.height_mm === 2570 && z136.masstab === 20
+    && W136.courses.filter(c => c.ausgleich === true).length === 1
+    && K136[12].unterkante_mm === 2400 && K136[12].oberkante_mm === 2570
+    && K136[12].hoehe_mm === 170);
+
+  // (a) MUSS 1: die oberste Lage ist 170 mm x Masstab hoch und liegt an z = 2400 … 2570.
+  const oben136 = steine136.filter(r => Math.abs(r.y - Y136(2570)) < 1e-9);
+  ok("[#136] die oberste Lage ist 170 mm x Masstab hoch und liegt an z = 2400 … 2570",
+    oben136.length > 0
+    && oben136.every(r => Math.abs(r.h - 170 * sc136) < 1e-9)
+    && steine136.every(r => r.y >= Y136(2570) - 1e-9));
+  // MUSS-NICHT: keine 200-mm-Ersatzgeometrie — weder als Hoehe noch als Oberkante.
+  ok("[#136] keine 200-mm-Ersatzgeometrie fuer die Ausgleichslage im Blatt",
+    oben136.every(r => Math.abs(r.h - 200 * sc136) > 1e-9)
+    && !steine136.some(r => r.y < Y136(2570) - 1e-9));
+
+  // (b) MUSS 5: JEDE Steinreihe steht auf ihrer kanonischen Kante — nichts aus Index x 200.
+  ok("[#136] alle Lagenhoehen/-kanten des Blattes stammen aus den kanonischen Lagenkanten",
+    (() => {
+      const soll = K136.map(k => ({ y: Y136(k.oberkante_mm), h: k.hoehe_mm * sc136 }));
+      return steine136.length > 0 && steine136.every(r =>
+        soll.some(s => Math.abs(s.y - r.y) < 1e-9 && Math.abs(s.h - r.h) < 1e-9)); })());
+  // Das Kopfblech liegt auf der REALEN Oberkante 2570, nicht auf dem naechsten 200er-Raster.
+  ok("[#136] das Kopfblech sitzt auf der realen Wandoberkante 2570",
+    (() => {
+      const bl = [...z136.svg.matchAll(new RegExp(
+        `<rect x="[-\\d.]+" y="([-\\d.]+)" width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.stahl}"`,
+        "g"))].map(m => ({ y: +m[1], h: +m[2] }));
+      const oben = bl.filter(r => r.y < Y136(1000));
+      return oben.length > 0
+        && oben.every(r => Math.abs(r.y + r.h - Y136(2570)) < 1e-9); })());
+
+  // (c) MUSS 2: die Hoehenbemassung weist 170 mm UND 2570 mm aus.
+  ok("[#136] die Bemassung nennt die reale Ausgleichshoehe 170 und die Gesamthoehe 2570",
+    (() => {
+      const grp = /<g class="ausgleichslage" data-ausgleich-hoehe="170">[\s\S]*?<\/g>/.exec(z136.svg);
+      const zahlen = [...z136.svg.matchAll(/>(\d+)<\/text>/g)].map(m => m[1]);
+      return !!grp && /">170<\/text>/.test(grp[0])
+        && zahlen.includes("2570") && zahlen.includes("170")
+        // GENAU EINE Ausgleichs-Massangabe, nicht je Lage eine.
+        && (z136.svg.match(/class="ausgleichslage"/g) || []).length === 1; })());
+  // Die Massangabe steht an der realen z-Lage der Ausgleichslage.
+  ok("[#136] die Ausgleichs-Massangabe steht an z = 2400 … 2570",
+    (() => {
+      const grp = /<g class="ausgleichslage"[^>]*>([\s\S]*?)<\/g>/.exec(z136.svg);
+      if (!grp) return false;
+      const li = /<line x1="[-\d.]+" y1="([-\d.]+)" x2="[-\d.]+" y2="([-\d.]+)"/.exec(grp[1]);
+      return !!li && Math.abs(+li[1] - Y136(2570)) < 1e-9 && Math.abs(+li[2] - Y136(2400)) < 1e-9; })());
+
+  // (d) MUSS 3/[D-6]: EIN Zeichenpfad — Vorschau, Druck-HTML und SVG-Datei tragen dieselbe
+  // Zeichenkette. Geprueft an der Zeichenkette selbst, nicht an einer zweiten Rechnung.
+  ok("[#136]/[D-6] Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Zeichenkette", (() => {
+    const blatt = Z.blattHtml(W136, standardEingaben(), {});
+    const dok = Z.zeichnungDokument(W136, standardEingaben(), {});
+    const datei = Z.zeichnungSvgDatei(W136, standardEingaben(), {});
+    const exp = zeichnungSvgText(W136, standardEingaben(), {});
+    // Vorschau/Blatt und Druck-HTML tragen das ganze Blatt-SVG; die eigenstaendige
+    // SVG-Datei bettet dessen Zeicheninhalt (`inner`) unter ihrer Kopfzeile ein — in beiden
+    // Faellen dieselbe, in `zeichnungSvg()` entstandene Zeichenkette ([D-6]).
+    return blatt.svg === z136.svg && blatt.html.includes(z136.svg)
+      && dok.includes(z136.svg)
+      && datei.includes(z136.inner) && exp.includes(z136.inner)
+      // und die Ausgleichslage steckt nachweislich in dieser einen Zeichenkette
+      && z136.inner.includes('<g class="ausgleichslage" data-ausgleich-hoehe="170">'); })());
+
+  // (e) Quelltext-Waechter: keine eigene Hoehenrechnung, keine zweite Geometriequelle.
+  ok("[#136] keine Lagenhoehe mehr aus `Lagenindex x course_mm` im Zeichnungscode", (() => {
+    const q = readFileSync(new URL("../../docs/shared/sembla-zeichnung.js", import.meta.url), "utf8");
+    return !/\(c\.lage \+ 1\) \* C/.test(q) && !/op\.l0 \* C/.test(q) && !/tl\[k\] \* C/.test(q)
+      && !/\(r \+ 0\.5\) \* C/.test(q)
+      && /import \{ wandLagenKanten \} from "\.\/sembla-core\.js"/.test(q)
+      && /lagenOberkanteMm,/.test(q); })());
+
+  // (f) MUSS 6: eine reine 200-mm-Wand bleibt zeichenkettengleich — eingefroren.
+  const W136r = buildWall("IW-200", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null,
+    { top_connection: "blech" }, [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
+  ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
+    kurz(Z.zeichnungSvg(W136r, {}).svg) === "93b0deb1bd6d5fc8"
+    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "34a07b5c84f617e0");
+  ok("[#136] Nicht-Ziel: ohne Ausgleichslage entsteht keine Ausgleichs-Massangabe",
+    !Z.zeichnungSvg(W136r, {}).svg.includes("ausgleichslage"));
+
+  // (g) MUSS-NICHT: das Zeichnen aendert nichts am Rechenergebnis.
+  ok("[#136] keine Rechenwirkung: Wandelement und Stueckliste bleiben unberuehrt", (() => {
+    const vor = JSON.stringify([W136, semblaBomItems(W136)]);
+    Z.zeichnungSvg(W136, {}); Z.blattHtml(W136, standardEingaben(), {});
+    return JSON.stringify([W136, semblaBomItems(W136)]) === vor; })());
 }
 
 let fail = 0;

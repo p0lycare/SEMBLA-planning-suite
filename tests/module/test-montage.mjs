@@ -36,7 +36,12 @@ import {
   ZWISCHENPUNKT, zwischenpunktSvg,
   DECKENANSCHLUSS, deckenanschlussSvg,
   AUSGLEICHSPUNKT, ausgleichspunktSvg,
+  // #136: die EINE erlaubte Umrechnung Reihenzahl -> Hoehe (Pruefmassstab, kein Nachbau).
+  lagenOberkanteMm, lagenKantenVonWand,
 } from "../../docs/shared/sembla-montage.js";
+// #136: die kanonischen Lagenkanten des Rechenkerns — der Test vergleicht die Darstellung
+// GEGEN sie und rechnet keine zweite Geometrie nach.
+import { wandLagenKanten } from "../../docs/shared/sembla-core.js";
 import { semblaBom } from "../../docs/shared/sembla-bom.js";
 import { FARBE as Z_FARBE } from "../../docs/shared/sembla-zeichnung.js";
 import { montageHtml, baueDateien } from "../../docs/shared/sembla-export.js";
@@ -1445,6 +1450,106 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       ausgleichspunktSvg(WAG, XAG, YAG, scAG, bthAG, { e: eAG });
       return JSON.stringify(semblaBom(WAG)) === vor
         && semblaBom(WAG).ausgleichspunkte === WAG.ausgleichspunkte.length; })());
+}
+
+// ---- Issue #136: obere Ausgleichslage in der Montagedarstellung -------------------------------
+//
+// Die Montage zeigt GENAU EINE obere Ausgleichsreihe mit ihrer REALEN Hoehe und ihrer realen
+// z-Lage, fortlaufend nummeriert. Jede Reihenhoehe kommt aus den kanonischen Lagenkanten des
+// Rechenkerns (`courses[]`/`wandLagenKanten`) — es gibt keine 200-mm-Ersatzgeometrie und keine
+// zweite Hoehenrechnung in diesem Modul. Die Nummerierung der regulaeren Lagen bleibt unberuehrt,
+// und eine reine 200-mm-Wand ist zeichenkettengleich zum Stand davor (eingefroren).
+{
+  // 2570 mm = 12 reguläre Lagen (2400) + EINE Ausgleichslage 170 mm (2400 … 2570).
+  const WAGL = buildWall("IW-AGL", 3000, 2570, [], null, { top_connection: "blech" }, [], null, true);
+  const KAGL = wandLagenKanten(WAGL);
+  const letzteK = KAGL[KAGL.length - 1];
+  const kurz = t => createHash("sha256").update(String(t)).digest("hex").slice(0, 16);
+
+  ok("[#136] Vorbedingung: der Core liefert 13 Lagen mit EINER Ausgleichslage 170 mm",
+    WAGL.lagen === 13 && WAGL.height_mm === 2570
+    && WAGL.courses.filter(c => c.ausgleich === true).length === 1
+    && letzteK.lage === 12 && letzteK.unterkante_mm === 2400
+    && letzteK.oberkante_mm === 2570 && letzteK.hoehe_mm === 170);
+
+  // (a) Die Kontur der Wand schliesst REAL auf 2570 ab — nicht auf dem naechsten 200er-Raster.
+  ok("[#136] topLagen/oberkantenAbschnitte fuehren die reale Oberkante 2570",
+    topLagen(WAGL).every(n => n === 13)
+    && oberkantenAbschnitte(WAGL).every(a => a.hoehe_mm === 2570 && a.lagen === 13)
+    && lagenOberkanteMm(WAGL, 13) === 2570 && lagenOberkanteMm(WAGL, 12) === 2400);
+
+  // (b) GENAU EINE oberste Ausgleichsreihe im Baugruppenbild, real 170 mm hoch, an z = 2400…2570.
+  const absAGL = montageAbschnitte(WAGL);
+  const letzterAb = absAGL[absAGL.length - 1];
+  const svgAGL = abschnittSvg(WAGL, letzterAb, 900, 430);
+  // Dieselbe Abbildung wie im Produktivcode — hier nur nachvollzogen, nicht nachgerechnet.
+  const scAGL = Math.min((900 - 52 - 34) / WAGL.length_mm, (430 - 34 - 26) / letzterAb.z_top_mm);
+  const yAGL = z => 34 + letzterAb.z_top_mm * scAGL - z * scAGL;
+  const reAGL = [...svgAGL.matchAll(/<rect x="[-\d.e]+" y="([-\d.e]+)" width="[-\d.e]+" height="([-\d.e]+)" fill="(#[0-9a-f]+)"/g)]
+    .map(m => ({ y: +m[1], h: +m[2], f: m[3] }))
+    // Steinfarben des Baugruppenbildes (i3/i2 und die blassen, bereits montierten Reihen).
+    .filter(r => ["#cfd3d8", "#bcc2c9", "#e9ebee"].includes(r.f));
+  const obenAGL = reAGL.filter(r => Math.abs(r.y - yAGL(2570)) < 1e-6);
+  ok("[#136] Baugruppenbild: die oberste Steinreihe liegt real bei 2400…2570 mm",
+    obenAGL.length > 0
+    && obenAGL.every(r => Math.abs(r.h - 170 * scAGL) < 1e-6)
+    && reAGL.every(r => r.y >= yAGL(2570) - 1e-6));
+  ok("[#136] Baugruppenbild: KEINE 200-mm-Ersatzgeometrie fuer die Ausgleichslage",
+    obenAGL.every(r => Math.abs(r.h - 200 * scAGL) > 1e-6));
+
+  // (c) Fortlaufende Nummerierung: die Ausgleichsreihe ist Reihe 13, die regulaeren 1…12.
+  ok("[#136] Baugruppenbild: die Ausgleichsreihe traegt die fortlaufende Nummer 13",
+    letzterAb.reihen.bis === 13 && letzterAb.z_bis_mm === 2570
+    && />13<\/text>/.test(svgAGL));
+  ok("[#136] die Reihenbereiche decken 1…13 lueckenlos ab (Nummerierung unveraendert)",
+    (() => {
+      const echte = absAGL.filter(a => a.art !== "schnitt0");
+      let c = 1;
+      for (const a of echte) { if (a.reihen.von !== c) return false; c = a.reihen.bis + 1; }
+      return c === 14; })());
+
+  // (d) Wandueberblick: jede Reihe steht auf ihrer kanonischen Kante, die Nummer 13 ist sichtbar.
+  const konAGL = konturSvg(WAGL, letzterAb, 900, 250);
+  ok("[#136] Wandueberblick: Reihenhoehen == kanonische Lagenkanten, Nummer 13 sichtbar",
+    (() => {
+      const sc = Math.min((900 - 62 - 24) / WAGL.length_mm, (250 - 16 - 40) / WAGL.height_mm);
+      const yB = 16 + WAGL.height_mm * sc;
+      const soll = KAGL.map(k => ({ y: yB - k.oberkante_mm * sc, h: k.hoehe_mm * sc }));
+      // Nur die STEINRECHTECKE (sie tragen `stroke="#aeb3ba"`) — Oeffnungen und Bleche
+      // haben eigene Kanten und gehoeren nicht zur Lagenpruefung.
+      const re = [...konAGL.matchAll(/<rect x="[-\d.e]+" y="([-\d.e]+)" width="[-\d.e]+" height="([-\d.e]+)"[^>]*stroke="#aeb3ba"/g)]
+        .map(m => ({ y: +m[1], h: +m[2] }));
+      return re.length > 0
+        && re.every(r => soll.some(s => Math.abs(s.y - r.y) < 1e-6 && Math.abs(s.h - r.h) < 1e-6))
+        && soll.some(s => re.some(r => Math.abs(r.h - 170 * sc) < 1e-6))
+        && />13<\/text>/.test(konAGL); })());
+
+  // (e) Die Anleitung BENENNT die Ausgleichslage mit ihrem realen Mass — sie behauptet nicht
+  // weiterhin „je 20 cm" fuer die oberste Reihe.
+  const seitenAGL = montageSeiten(WAGL);
+  ok("[#136] die Uebersichtsseite nennt die oberste Reihe als Ausgleichslage mit 170 mm",
+    /oberste Reihe 13 = Ausgleichslage, 170 mm/.test(seitenAGL[0].html)
+    && /oberste Reihe 13 ist die <b>Ausgleichslage<\/b> mit 170 mm/.test(seitenAGL[0].html));
+
+  // (f) Die Hoehen stammen aus der EINEN kanonischen Quelle — kein Nachbau im Modul.
+  ok("[#136] lagenKantenVonWand liefert unveraendert die Kanten des Rechenkerns",
+    JSON.stringify(lagenKantenVonWand(WAGL)) === JSON.stringify(wandLagenKanten(WAGL)));
+  ok("[#136] keine Lagenhoehe mehr aus `Lagenindex x course_mm` im Montagecode", (() => {
+    const q = readFileSync(new URL("../../docs/shared/sembla-montage.js", import.meta.url), "utf8");
+    return !/\(c\.lage \+ 1\) \* C/.test(q) && !/tl\[k\] \* C/.test(q)
+      && !/Math\.floor\(r\.z_mm \/ C\)/.test(q) && !/Math\.round\(h \/ C\)/.test(q)
+      && /import \{ wandLagenKanten \} from "\.\/sembla-core\.js"/.test(q); })());
+
+  // (g) MUSS-NICHT: eine reine 200-mm-Wand bleibt zeichenkettengleich — eingefroren.
+  const W200 = buildWall("IW-200", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null,
+    { top_connection: "blech" }, [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
+  const bilder200 = montageAbschnitte(W200).map(a => abschnittSvg(W200, a, 900, 430)).join("");
+  ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
+    kurz(konturSvg(W200, null, 900, 250)) === "0070c1b668325f95"
+    && kurz(bilder200) === "134d44631bacf1ff"
+    && kurz(JSON.stringify(montageSeiten(W200))) === "729be715a788b2b3");
+  ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand nennt keine Ausgleichslage",
+    !/Ausgleichslage/.test(montageSeiten(W200).map(s => s.html).join("")));
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
