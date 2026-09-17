@@ -46,13 +46,30 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist das REGELWERK ZUR AUSGLEICHSLAGE (#136). Geliefert: Kapitel 16
+// Der NEUESTE Eintrag sind die AUSGLEICHSSTEIN-KATALOGROLLEN (#136). Geliefert: die
+// waehlbaren Rollen Ausgleichsstein i2/i3 (reale hoehe_mm, exakte Zuordnung ohne
+// Toleranz) und der Sonderzuschnitt-Fallback als unbepreister Beschaffungsbedarf mit
+// sichtbarem Pruefhinweis samt realem Mass; Stueckliste zaehlt regulaere Steine,
+// Ausgleichssteine und Sonderzuschnitte getrennt. NICHT versprochen werden ein
+// Bedienelement fuer das Flag, eine Warnschwelle oder Zeichnungs-/IFC-Darstellung.
+const FRISCH_136D = EINTRAEGE[0];
+ok("[#136] die Ausgleichsstein-Katalogrollen sind der neueste Eintrag",
+  FRISCH_136D?.id === "chg-20260917-04" && FRISCH_136D?.issue === 136
+  && FRISCH_136D?.typ === "feature" && FRISCH_136D?.datum === "2026-09-17"
+  && /aus dem Katalog/.test(FRISCH_136D?.titel || "")
+  && /Sonderzuschnitt mit Prüfhinweis/.test(FRISCH_136D?.titel || ""));
+ok("[#136] die Testbitte nennt den Pruefhinweis-Wortlaut und die unbepreiste Position",
+  /konstruktive Ausführung prüfen/.test(FRISCH_136D?.testbitte || "")
+  && /unbepreist/.test(FRISCH_136D?.testbitte || ""));
+
+// Davor das REGELWERK ZUR AUSGLEICHSLAGE (#136) — ueber die Kennung gesucht, weil
+// es nicht mehr der neueste Eintrag ist. Seine Aussagen: Kapitel 16
 // ersetzt die 200-mm-Vielfachen-Regel durch die Regeln [G-13]…[G-19] (freie Zielhoehe,
 // genau eine obere Ausgleichslage, Aktivierungs-Flag, reale Lagenkanten); [G-16]…[G-18]
 // sind gekennzeichnete Zielregeln. NICHT versprochen werden Katalogrolle, Bedienung
 // oder Ausgaben (typ "doku", keine Testbitte — es gibt nichts zu bedienen).
-const FRISCH_136C = EINTRAEGE[0];
-ok("[#136] das Regelwerk zur Ausgleichslage ist der neueste Eintrag",
+const FRISCH_136C = EINTRAEGE.find(e => e.id === "chg-20260917-03");
+ok("[#136] das Regelwerk zur Ausgleichslage steht als Eintrag davor",
   FRISCH_136C?.id === "chg-20260917-03" && FRISCH_136C?.issue === 136
   && FRISCH_136C?.typ === "doku" && FRISCH_136C?.datum === "2026-09-17"
   && /Kapitel 16/.test(FRISCH_136C?.titel || "")

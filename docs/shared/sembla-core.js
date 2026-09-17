@@ -397,6 +397,42 @@ export function hoehenZerlegung(heightMm, ausgleichAktiv = false, courseMm = COU
     regulaer_hoehe_mm: n * courseMm };
 }
 
+// ---------- Ausgleichssteine: Kataloghoehen und Sonderzuschnitt (#136, [G-16]…[G-18]) ----------
+// Der Core kennt KEINE Produkte, keine Preise und keine Kennungen — er bekommt allein die MASSE,
+// die der zugeordnete Katalog fuer die Ausgleichslage fuehrt (je Steintyp die realen Steinhoehen
+// der gewaehlten Produkte), gereicht ueber denselben kanonischen Neuberechnungspfad wie jedes
+// andere Katalogmass. Daraus entsteht genau EINE Aussage je Stein der Ausgleichslage: fuehrt der
+// Katalog seine Hoehe EXAKT ([G-16]), ist es ein Katalogstein; sonst ist es ein SONDERZUSCHNITT
+// ([G-17]) — ohne Toleranz, ohne Rundung, ohne Mindesthoehe und ohne harte Sperre. Die Geometrie
+// aendert sich dadurch NICHT: es bleibt bei genau einer Ausgleichslage mit der Resthoehe.
+
+/**
+ * Kataloghoehen der Ausgleichssteine je Steintyp — normalisiert (positiv, eindeutig, sortiert).
+ * Fehlt die Angabe (kein Katalog, keine Auswahl), bleibt sie LEER: dann passt keine Hoehe, und
+ * jeder Stein der Ausgleichslage ist ein Sonderzuschnitt. Geraten wird nichts ([P-9]).
+ * @param {{i2?:number[],i3?:number[]}|null} [v]
+ * @returns {{i2:number[],i3:number[]}}
+ */
+export function normAusgleichHoehen(v) {
+  const eine = (a) => [...new Set((Array.isArray(a) ? a : [])
+    .map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
+  const o = (v && typeof v === "object") ? v : {};
+  return { i2: eine(o.i2), i3: eine(o.i3) };
+}
+
+/**
+ * [G-18] Sichtbarer Pruefhinweis zu einem Sonderzuschnitt der Ausgleichslage — mit dem
+ * TATSAECHLICHEN Mass. Es gibt bewusst KEINE numerische Warnschwelle: der Hinweis steht an
+ * JEDEM Sonderzuschnitt, gleich ob 3 mm oder 170 mm, und behauptet keine Grenze, die niemand
+ * genannt hat ([P-9]). Der Wortlaut liegt hier, damit Wandelement und Stueckliste denselben
+ * Satz fuehren.
+ * @param {string} typ Steintyp ("i2"/"i3") @param {number} hoeheMm reales Fertigmass
+ */
+export function ausgleichPruefhinweis(typ, hoeheMm) {
+  return `Ausgleichsstein ${typ} Sonderzuschnitt ${hoeheMm} mm – geringe Höhe/konstruktive `
+    + `Ausführung prüfen`;
+}
+
 /**
  * Kanonische Lagenkanten eines FERTIGEN Wandelements.
  *
@@ -1223,8 +1259,12 @@ export function normInterlocks(arr, N, openings = []) {
  * @param {boolean} [ausgleichslageAktiv] #136 Aktivierungs-Flag der oberen Ausgleichslage.
  *        OPTIONAL und abwaertskompatibel: fehlt es (oder ist es nicht ausdruecklich `true`),
  *        gilt unveraendert das bisherige Verhalten — nur Vielfache von COURSE sind zulaessig.
+ * @param {{i2?:number[],i3?:number[]}|null} [ausgleichHoehenMm] #136 Steinhoehen, die der
+ *        zugeordnete Katalog fuer die Ausgleichslage fuehrt ([G-16]) — NUR MASSE, keine
+ *        Produkte. OPTIONAL: ohne Angabe passt keine Hoehe und die Ausgleichssteine sind
+ *        Sonderzuschnitte ([G-17]). Auf Geometrie, Verband und Mengen hat das KEINEN Einfluss.
  */
-export function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null, steps = [], interlocks = null, ausgleichslageAktiv = false) {
+export function buildWall(name, lengthMm, heightMm, openings = [], sides = null, prestress = null, steps = [], interlocks = null, ausgleichslageAktiv = false, ausgleichHoehenMm = null) {
   const PS = normPrestress(prestress);
   const maxSpan = PS.max_span_grid;
   const ROD_ = PS.rod_mm;
@@ -1393,6 +1433,31 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       prevIl = new Set(courses[li].joints_grid);
     }
   }
+
+  // ---- Ausgleichssteine: Katalogstein oder Sonderzuschnitt ([G-16]/[G-17]/[G-18]) ----
+  // Erst HIER, nach BEIDEN Tiling-Durchgaengen: der Verzahnungsdurchgang oben ersetzt die
+  // Steinliste einer Lage vollstaendig — eine frueher gesetzte Kennzeichnung waere verloren.
+  // Gekennzeichnet wird NUR die Ausgleichslage und dort NUR der Sonderfall; eine regulaere Lage
+  // und jede reine 200-mm-Wand bekommen kein Feld, das sie vorher nicht hatten.
+  const AGH = normAusgleichHoehen(ausgleichHoehenMm);
+  const ausgleichSonder = [];
+  for (const c of courses) {
+    if (c.ausgleich !== true) continue;
+    const anz = { i2: 0, i3: 0 };
+    for (const st of c.stones) {
+      const hoehen = AGH[st.type] || [];
+      // EXAKT, ohne Toleranz: die Kataloghoehe muss die Lagenhoehe treffen ([G-16]).
+      if (hoehen.some((h) => Math.abs(h - c.hoehe_mm) < 1e-9)) continue;
+      st.sonder = true;
+      anz[st.type] += 1;
+    }
+    for (const typ of ["i3", "i2"]) {
+      if (!anz[typ]) continue;
+      ausgleichSonder.push({ lage: c.lage, typ, hoehe_mm: c.hoehe_mm, anzahl: anz[typ],
+        text: ausgleichPruefhinweis(typ, c.hoehe_mm) });
+    }
+  }
+
   // ---- Spannachsen ----------------------------------------------------------------
   // Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11] Grundachsen aus dem
   // Verband der untersten Lage > [V-2] Steinabdeckung (MUSS, additiv) > [V-7]/[V-8] Zusatzachsen
@@ -1682,6 +1747,13 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       ...(dcLuecken.length ? { deckenanschluss_luecken: dcLuecken } : {}),
       // [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
       interlock_invalid_segments: interlockInvalidSegments,
+      // [G-18] Sonderzuschnitte der Ausgleichslage — je Steintyp ein Eintrag mit dem REALEN
+      // Mass, der Stueckzahl und dem Pruefhinweis im Wortlaut. Das ist eine sichtbare
+      // Meldung und KEIN Baubarkeitsausschluss: die Wand bleibt baubar, die Mengen bleiben
+      // unveraendert, und eine Mindesthoehe gibt es nicht ([G-17]). Der Schluessel entsteht
+      // NUR im Sonderfall — eine Wand ohne Ausgleichslage bekommt kein Feld, das es vorher
+      // nicht gab.
+      ...(ausgleichSonder.length ? { ausgleich_sonderzuschnitte: ausgleichSonder } : {}),
     },
     courses,
   };

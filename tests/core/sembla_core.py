@@ -26,6 +26,7 @@ __all__ = [
     "MIN_FERTIGMASS_MM", "ROD_OVERHANG", "norm_laengen", "quelle_fuer_mass",
     "kombiniere_laengen", "kombiniere_segment",
     "lagen_kanten", "wand_lagen_kanten", "hoehen_zerlegung", "AUSGLEICH_KONFLIKT",
+    "norm_ausgleich_hoehen", "ausgleich_pruefhinweis",
     "lagen_oberkanten_innen", "auto_zwischenpunkt", "norm_zwischenpunkte",
     "zwischenpunkte_segment", "wirksame_zwischenpunkte",
     "AUSGLEICH_DICHTE_JE_M", "AUSGLEICH_ACHSVERSATZ", "verteile_ausgleichspunkte",
@@ -330,6 +331,38 @@ def hoehen_zerlegung(height_mm, ausgleich_aktiv=False, course_mm=COURSE):
                        "hoehe_mm": rest, "ausgleich": True})
     return {"kanten": kanten, "lagen": len(kanten), "regulaer": n, "rest_mm": rest,
             "regulaer_hoehe_mm": n * course_mm}
+
+
+# ---- Ausgleichssteine: Kataloghoehen und Sonderzuschnitt (#136, [G-16]…[G-18]) ----
+# Der Rechenkern kennt KEINE Produkte, keine Preise und keine Kennungen — er bekommt allein die
+# MASSE, die der zugeordnete Katalog fuer die Ausgleichslage fuehrt (je Steintyp die realen
+# Steinhoehen der gewaehlten Produkte). Daraus entsteht genau EINE Aussage je Stein der
+# Ausgleichslage: fuehrt der Katalog seine Hoehe EXAKT ([G-16]), ist es ein Katalogstein; sonst
+# ist es ein SONDERZUSCHNITT ([G-17]) — ohne Toleranz, ohne Rundung, ohne Mindesthoehe und ohne
+# harte Sperre. Die Geometrie aendert sich dadurch NICHT.
+
+
+def norm_ausgleich_hoehen(v):
+    """Kataloghoehen der Ausgleichssteine je Steintyp (positiv, eindeutig, sortiert)."""
+    def eine(a):
+        out = []
+        for x in (a or []):
+            try:
+                n = float(x)
+            except (TypeError, ValueError):
+                continue
+            if n > 0 and n not in out:
+                out.append(n)
+        return sorted(out)
+    o = v if isinstance(v, dict) else {}
+    return {"i2": eine(o.get("i2")), "i3": eine(o.get("i3"))}
+
+
+def ausgleich_pruefhinweis(typ, hoehe_mm):
+    """[G-18] Sichtbarer Pruefhinweis mit dem TATSAECHLICHEN Mass — ohne Warnschwelle."""
+    h = int(hoehe_mm) if float(hoehe_mm).is_integer() else hoehe_mm
+    return (f"Ausgleichsstein {typ} Sonderzuschnitt {h} mm – geringe Höhe/konstruktive "
+            f"Ausführung prüfen")
 
 
 def wand_lagen_kanten(w):
@@ -1136,7 +1169,8 @@ def norm_interlocks(arr, N, openings=None):
 
 def build_wall(name: str, length_mm: int, height_mm: int,
                openings: Iterable[Opening] | None = None, sides=None, prestress=None, steps=None,
-               interlocks=None, ausgleichslage_aktiv: bool = False) -> dict:
+               interlocks=None, ausgleichslage_aktiv: bool = False,
+               ausgleich_hoehen_mm=None) -> dict:
     _PS = _norm_prestress(prestress)
     _maxspan = _PS["max_span_grid"]
     _rod = _PS["rod_mm"]
@@ -1318,6 +1352,31 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             courses[li]["stones"] = stones
             # prev fuer die naechste Lage kommt aus dem vollstaendigen Verband (joints_grid unveraendert)
             prev_il = set(courses[li]["joints_grid"])
+
+    # ---- Ausgleichssteine: Katalogstein oder Sonderzuschnitt ([G-16]/[G-17]/[G-18]) ----
+    # Erst HIER, nach BEIDEN Tiling-Durchgaengen: der Verzahnungsdurchgang oben ersetzt die
+    # Steinliste einer Lage vollstaendig. Gekennzeichnet wird NUR die Ausgleichslage und dort
+    # NUR der Sonderfall — jede reine 200-mm-Wand bleibt unveraendert.
+    _AGH = norm_ausgleich_hoehen(ausgleich_hoehen_mm)
+    ausgleich_sonder = []
+    for c in courses:
+        if c.get("ausgleich") is not True:
+            continue
+        anz = {"i2": 0, "i3": 0}
+        for st in c["stones"]:
+            hoehen = _AGH.get(st["type"], [])
+            # EXAKT, ohne Toleranz: die Kataloghoehe muss die Lagenhoehe treffen ([G-16]).
+            if any(abs(h - c["hoehe_mm"]) < 1e-9 for h in hoehen):
+                continue
+            st["sonder"] = True
+            anz[st["type"]] += 1
+        for typ in ("i3", "i2"):
+            if not anz[typ]:
+                continue
+            ausgleich_sonder.append({"lage": c["lage"], "typ": typ,
+                                     "hoehe_mm": c["hoehe_mm"], "anzahl": anz[typ],
+                                     "text": ausgleich_pruefhinweis(typ, c["hoehe_mm"])})
+
     # ---- Spannachsen ---------------------------------------------------------------
     # Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11] Grundachsen aus dem
     # Verband der untersten Lage > [V-2] Steinabdeckung (MUSS, additiv) > [V-7]/[V-8] Zusatzachsen
@@ -1622,7 +1681,11 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        # selbst liegen dort weiter auseinander. Nur im Fehlerfall.
                        **({"deckenanschluss_luecken": _dc_luecken} if _dc_luecken else {}),
                        # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
-                       "interlock_invalid_segments": interlock_invalid_segments},
+                       "interlock_invalid_segments": interlock_invalid_segments,
+                       # [G-18] Sonderzuschnitte der Ausgleichslage — sichtbare Meldung mit dem
+                       # REALEN Mass, KEIN Baubarkeitsausschluss. Nur im Sonderfall.
+                       **({"ausgleich_sonderzuschnitte": ausgleich_sonder}
+                          if ausgleich_sonder else {})},
         "courses": courses,
     }
 

@@ -88,13 +88,16 @@ console.log("[G-15] Kanonische Lagenkanten:");
   inRegel("ausgleich=true nur an der Ausgleichslage", "G-15", "ausgleich = true");
 }
 
-// ------------------------------------------------- [G-16]…[G-18] Zielregeln
+// ------------------------------------------------- [G-16]…[G-18] umgesetzt (#136)
 console.log("[G-16]…[G-18] Katalogprodukt, Sonderzuschnitt, Pruefhinweis:");
 {
   for (const id of ["G-16", "G-17", "G-18"]) {
     ok("[" + id + "] existiert", regel(id) !== null);
-    inRegel("[" + id + "] als Zielregel gekennzeichnet", id, "ZIEL – OFFEN");
-    inRegel("[" + id + "] Stand: nicht implementiert", id, "nicht implementiert");
+    // #136 Folgepaket: die drei sind KEINE Zielregeln mehr — Katalogrollen, Sonderzuschnitt
+    // und Pruefhinweis sind umgesetzt und in den Modul-4/10-Tests am echten Pfad geprueft.
+    ok("[" + id + "] ist nicht mehr als Zielregel gekennzeichnet",
+      !/ZIEL – OFFEN/.test(regel(id)));
+    inRegel("[" + id + "] Stand: umgesetzt", id, "Stand: **umgesetzt** (#136)");
   }
   inRegel("Ausgleichsstein ist Katalogprodukt", "G-16", "Bauteilkatalog");
   inRegel("Ausgleichsstein in i2 und i3", "G-16", "**i2** und **i3**");
@@ -125,10 +128,10 @@ console.log("[G-19] Betroffene Regeln beziehen sich auf reale Lagenkanten:");
   inRegel("[A-17] Override auf realer Lagenkante", "A-17", "nie aus Lagenindex × 200 mm abgeleitet");
   inRegel("[A-6] Dichtstreifen nach realer Lagenhoehe", "A-6", "reale Höhe der Lage");
   inRegel("[A-6] keine Pauschalrechnung", "A-6", "Fugen × 200 mm");
-  inRegel("[A-6] Stand gekennzeichnet", "A-6", "noch nicht implementiert");
+  inRegel("[A-6] Stand gekennzeichnet", "A-6", "Stoßfugen × reale Lagenhöhe");
   inRegel("[P-19] Stueckliste nennt reale Maße", "P-19", "realen Lagenkanten");
   inRegel("[P-19] Ausgleichslage als eigene Position", "P-19", "**eigene Position**");
-  inRegel("[P-19] Stand gekennzeichnet", "P-19", "noch nicht implementiert");
+  inRegel("[P-19] Stand gekennzeichnet", "P-19", "seit #136 umgesetzt");
   inRegel("[L-5] Standard-Wandhöhe ohne Rasterpflicht", "L-5", "freie Zielhöhe");
 }
 

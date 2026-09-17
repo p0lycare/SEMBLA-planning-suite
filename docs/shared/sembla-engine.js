@@ -90,6 +90,13 @@ function interlocksOf(vorg) { return vorg.interlocks || []; }
 // wiese dieselbe Wand ab, die Modul 1 eben noch gebaut hat. Nur ein ausdrueckliches `true`
 // aktiviert; fehlt das Feld, bleibt alles bit-genau wie zuvor.
 function ausgleichOf(vorg) { return vorg.ausgleichslage_aktiv === true; }
+// #136 Kataloghoehen der Ausgleichssteine ([G-16]). Sie liegen — wie das Aktivierungs-Flag —
+// NICHT im Vorspannblock, sondern sind eine Eigenschaft der Wand aus ihrer Produktauswahl
+// ([P-13]), und sie muessen aus demselben Grund durch JEDE Iteration mitreisen: fielen sie hier
+// weg, haelte der Core ab der ersten Iteration jeden Ausgleichsstein fuer einen Sonderzuschnitt,
+// obwohl der Katalog die Hoehe fuehrt. FEHLT das Feld, bleibt es `null`: dann passt keine Hoehe,
+// und es wird keine erfunden ([P-9]).
+function ausgleichHoehenOf(vorg) { return vorg.ausgleich_stein_hoehen_mm || null; }
 // Prestress-Durchreiche: Hardware-Felder bleiben erhalten. `rod_lengths_mm` (der Satz der in
 // Modul 1 gewaehlten Standardlaengen, [Z-1]) MUSS mitreisen — sonst fiele der Core bei jeder
 // Auslegungs-Iteration auf den Einzelwert/Default zurueck und die Kombination waere unwirksam.
@@ -172,7 +179,7 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            ausgleich_override_mm: p.ausgleich_override_mm,
            deckenanschluss_grid: p.deckenanschluss_grid }; }
 function buildN(vorg, sp) {
-  return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg));
+  return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg), ausgleichHoehenOf(vorg));
 }
 
 /** Optimierung: min. Material (zuerst Strangabstand grob, dann kleinste passende Kraft N). */
@@ -188,12 +195,12 @@ export function autoAuslegung(vorg) {
     for (const N of Ns) { const c = pruefe(w, vorg, N); last = { sp, strands, N, c }; if (c.ok) { hit = { N, c }; break; } }
     log.push({ max_span_grid: sp, strands, N: hit ? hit.N : null, util: hit ? hit.c.governing.util : (last ? last.c.governing.util : null), governing: hit ? hit.c.governing.name : null, ok: !!hit });
     if (hit) {
-      const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: hit.N }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg));
+      const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: hit.N }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg), ausgleichHoehenOf(vorg));
       wf.verification = { status: "geprüft", auslegung: { max_span_grid: sp, force_kN: hit.N, strands }, nachweise: hit.c.checks, governing: hit.c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, iterationen: log.length };
       return { wandelement: wf, status: "konvergiert", iterationen: log };
     }
   }
-  const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: kand[kand.length - 1], force_kN: last.N }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg));
+  const wf = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: kand[kand.length - 1], force_kN: last.N }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg), ausgleichHoehenOf(vorg));
   wf.verification = { status: "nicht erfüllt", auslegung: { max_span_grid: last.sp, force_kN: last.N, strands: last.strands }, nachweise: last.c.checks, governing: last.c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, iterationen: log.length };
   return { wandelement: wf, status: "nicht erfüllt", iterationen: log };
 }
@@ -202,7 +209,7 @@ export function autoAuslegung(vorg) {
 export function nachweisPruefen(vorg) {
   const sp = (vorg.prestress && vorg.prestress.max_span_grid) || 3;
   const N = (vorg.prestress && vorg.prestress.force_kN) || 0;
-  const w = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: N }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg));
+  const w = buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp, force_kN: N }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg), ausgleichHoehenOf(vorg));
   const c = pruefe(w, vorg, N);
   w.verification = { status: c.ok ? "geprüft" : "nicht erfüllt", auslegung: { max_span_grid: sp, force_kN: N, strands: w.tension_columns.filter(c => c.durchgehend).length }, nachweise: c.checks, governing: c.governing, material: { ...DEF_MAT, ...(vorg.material || {}) }, modus: "nachweis" };
   return { wandelement: w, status: c.ok ? "erfüllt" : "nicht erfüllt", nachweis: c };

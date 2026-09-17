@@ -1106,8 +1106,12 @@ ok('geladene Produkte tragen die Produktvorgaben der Suite',
   && KAT.produkt(kat(), 'gewindestange-m10-1000').laenge_mm === 1000);
 // [P-18] Der Standardkatalog macht die Suite startklar: Standardlaengen 1000/920, EIN Reststueck
 // 100 mm, EINE Kopplungsmutter fuer Stoß und Fuß, und jede waehlbare Rolle ist vorbelegt.
+// #136 Einzige Ausnahme sind die beiden Ausgleichsstein-Rollen ([G-16]): fuer sie ist noch
+// kein Produkt freigegeben (keine Steinhoehe, kein Preis fachlich genannt), und erfunden wird
+// keines ([P-9]). Bis eine Fassung sie fuehrt, erscheinen die Steine der Ausgleichslage als
+// Sonderzuschnitt mit Fertigmass und Pruefhinweis ([G-17]/[G-18]).
 ok('Standardkatalog belegt jede waehlbare Verwendungsstelle vor ([P-18])',
-  KAT.rollenOhneVorschlag(kat()).length === 0);
+  KAT.rollenOhneVorschlag(kat()).join() === 'ausgl_i3,ausgl_i2');
 ok('Standardkatalog fuehrt genau eine Kopplungsmutter (Stoß = Fuß)',
   kat().produkte.filter(p => /kopplungsmutter/i.test(p.id)).length === 1
   && KAT.produktrollenVorschlag(kat()).kupplung.length === 1);

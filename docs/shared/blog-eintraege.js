@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260917-04",
+    datum: "2026-09-17",
+    typ: "feature",
+    issue: 136,
+    titel: "Ausgleichssteine kommen aus dem Katalog (Rollen i2/i3); ohne passendes Produkt Sonderzuschnitt mit Prüfhinweis",
+    testbitte: "Wand mit Ausgleichslage rechnen und Stückliste öffnen: bei exakt passendem Katalogprodukt eigene "
+      + "Ausgleichsstein-Positionen, sonst „Sonderzuschnitt X mm – geringe Höhe/konstruktive Ausführung prüfen“ unbepreist",
+  },
+  {
     id: "chg-20260917-03",
     datum: "2026-09-17",
     typ: "doku",

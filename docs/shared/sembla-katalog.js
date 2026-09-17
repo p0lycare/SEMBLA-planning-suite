@@ -816,6 +816,47 @@ export const ROLLEN = [
     mass: { felder: ["breite_mm"], kontext: "stein_i3_mm" }, bepreist: true },
   { id: "i2", label: "i2-Stein", kategorie: "stein", modul: 1, gruppe: "Steine", einheit: "Stk",
     mass: { felder: ["breite_mm"], kontext: "stein_i2_mm" }, bepreist: true },
+  // #136 AUSGLEICHSSTEINE der oberen Ausgleichslage ([G-16]…[G-18]). Die oberste Lage einer
+  // Wand mit freier Hoehe ist NICHT 200 mm hoch, sondern traegt die Resthoehe ([G-13]). Ihre
+  // Steine sind deshalb ANDERE Bauteile als die regulaeren 200-mm-Steine und bekommen eigene
+  // Verwendungsstellen — je Steintyp eine, weil der Rollenschluessel zugleich der
+  // Stuecklistenschluessel ist ([P-13]): i2 und i3 sind zwei Positionen und werden nicht
+  // zusammengelegt.
+  //
+  // Der Mass-Diskriminator ist die REALE Steinhoehe des Produkts gegen die REALE Hoehe der
+  // Ausgleichslage (`ausgleich_hoehe_mm`, aus den Lagenkanten des Wandelements gelesen) —
+  // EXAKT, ohne Toleranz und ohne Rundung ([G-16]). Ein regulaerer 200-mm-Stein passt damit
+  // nie in eine 170-mm-Lage, und es wird auch keiner „naeherungsweise" genommen.
+  { id: "ausgl_i3", label: "Ausgleichsstein i3", kategorie: "stein", modul: 1,
+    gruppe: "Steine", einheit: "Stk",
+    mass: { felder: ["hoehe_mm"], kontext: "ausgleich_hoehe_mm" }, bepreist: true,
+    hinweis: "Stein der oberen Ausgleichslage ([G-13]) im i3-Verband. Massgebend ist die REALE "
+      + "Steinhoehe des Produkts: sie muss der Resthoehe der Ausgleichslage EXAKT entsprechen "
+      + "([G-16]) — es gibt keine Toleranz, keine Rundung und keinen Ersatz durch den regulären "
+      + "200-mm-Stein. Passt kein gewähltes Produkt, erscheinen die benötigten Steine als "
+      + "Sonderzuschnitt mit Fertigmaß ([G-17]); die Geometrie bleibt dieselbe eine Lage." },
+  { id: "ausgl_i2", label: "Ausgleichsstein i2", kategorie: "stein", modul: 1,
+    gruppe: "Steine", einheit: "Stk",
+    mass: { felder: ["hoehe_mm"], kontext: "ausgleich_hoehe_mm" }, bepreist: true,
+    hinweis: "Stein der oberen Ausgleichslage ([G-13]) im i2-Verband — im Übrigen wie der "
+      + "Ausgleichsstein i3: die reale Steinhöhe muss der Resthöhe EXAKT entsprechen ([G-16])." },
+  // [G-17] Sonderzuschnitte der Ausgleichslage — dasselbe Muster wie `rod_sonder` und
+  // `blech_boden_sonder`: nicht waehlbar, nicht bepreist, Status `beschaffung`. Es gibt KEINE
+  // Mindesthoehe und KEINE harte Sperre; die Stueckliste nennt Fertigmass und Stueckzahl, und
+  // der Pruefhinweis mit dem realen Mass steht am Wandelement ([G-18]).
+  { id: "ausgl_i3_sonder", label: "Ausgleichsstein i3 – Sonderzuschnitt", kategorie: "stein",
+    modul: 1, gruppe: "Steine", einheit: "Stk", mass: null, bepreist: false,
+    waehlbar: false, status_frei: "beschaffung",
+    hinweis: "Deckt keine gewählte Kataloghöhe die Resthöhe der Ausgleichslage exakt, werden die "
+      + "benötigten i3-Steine als Sonderzuschnitt mit ihrem Fertigmaß ausgewiesen ([G-17]). WORAUS "
+      + "sie zugeschnitten werden, ist Sache der Beschaffung — dazu wird hier kein Produkt "
+      + "gewählt, kein Preis gebildet und keine Verschnittrechnung geführt ([P-18]). Jeder "
+      + "Sonderzuschnitt trägt einen sichtbaren Prüfhinweis mit dem realen Maß ([G-18]); eine "
+      + "Mindesthöhe gibt es ausdrücklich nicht." },
+  { id: "ausgl_i2_sonder", label: "Ausgleichsstein i2 – Sonderzuschnitt", kategorie: "stein",
+    modul: 1, gruppe: "Steine", einheit: "Stk", mass: null, bepreist: false,
+    waehlbar: false, status_frei: "beschaffung",
+    hinweis: "Wie der Sonderzuschnitt i3, für den i2-Verband ([G-17]/[G-18])." },
   { id: "rod_std", label: "Gewindestange", kategorie: "gewindestange", modul: 1, einheit: "Stk",
     gruppe: "Vorspannung", mass: { felder: ["laenge_mm"], kontext: "rod_mm" }, bepreist: true,
     kombinierbar: true },
@@ -1251,6 +1292,16 @@ const _EINHEIT_ZU_BASIS = { Stk: "Stk", m: "m", "m²": "m2", m2: "m2" };
  * @param {any} w Wandelement @param {any} [eingaben]
  * @returns {Record<string,number>}
  */
+/**
+ * #136 Reale Hoehe der oberen Ausgleichslage eines Wandelements — GELESEN, nie gerechnet.
+ * Ohne Ausgleichslage (Regelfall, jede reine 200-mm-Wand) gibt es kein Mass: NaN.
+ * @param {any} w Wandelement
+ */
+function _ausgleichHoehe(w) {
+  const c = ((w && w.courses) || []).find((x) => x && x.ausgleich === true);
+  return (c && +c.hoehe_mm > 0) ? +c.hoehe_mm : NaN;
+}
+
 export function preisKontext(w, eingaben = {}, katalog = null) {
   const ww = w || {};
   const ps = ww.prestress || {};
@@ -1273,6 +1324,11 @@ export function preisKontext(w, eingaben = {}, katalog = null) {
     stange_mm: stangeKat != null ? stangeKat : (+latten.stange_cm > 0 ? +latten.stange_cm : 150) * 10,
     stein_i3_mm: grid * 3,
     stein_i2_mm: grid * 2,
+    // #136 Massgebend fuer die Ausgleichssteine ([G-16]) ist die REALE Hoehe der Ausgleichslage.
+    // Sie wird aus den Lagenkanten des Wandelements GELESEN (die Lage traegt sie selbst, [G-15])
+    // und nirgends nachgerechnet. Hat die Wand keine Ausgleichslage, bleibt der Wert NaN — dann
+    // greift die Mass-Eingrenzung nicht, statt ein Mass zu erfinden (wie bei `rod_rest_mm`).
+    ausgleich_hoehe_mm: _ausgleichHoehe(ww),
   };
 }
 

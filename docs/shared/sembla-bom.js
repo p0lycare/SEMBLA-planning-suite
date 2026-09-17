@@ -49,7 +49,7 @@
 // das sich hier bloss auszaehlen liesse — die Punkte werden bei jeder Rechnung frisch abgeleitet.
 // Eine Zweitrechnung an dieser Stelle waere genau der Drift, den [P-6] ausschliesst; der Kern
 // importiert selbst nichts, es entsteht also kein Zyklus.
-import { wirksameZwischenpunkte } from "./sembla-core.js";
+import { wirksameZwischenpunkte, ausgleichPruefhinweis } from "./sembla-core.js";
 
 /** Deutsche Tausendertrennung ohne Nachkommastellen (für Labels). */
 function _semNum(n) { return (isFinite(n) ? n : 0).toLocaleString("de-DE"); }
@@ -179,8 +179,28 @@ export function wandReferenz(w) { return (w && w.name) || "Wandelement"; }
  */
 export function semblaBom(w) {
   const bom = w.bom || {};
+  // #136 Die obere AUSGLEICHSLAGE traegt nicht die regulaeren 200-mm-Steine, sondern Steine mit
+  // der REALEN Resthoehe ([G-13]/[G-15]) — fachlich andere Bauteile. Gezaehlt wird deshalb
+  // GETRENNT, und zwar aus DERSELBEN einen Quelle (den Lagen des Wandelements): reguläre Steine,
+  // katalogisierte Ausgleichssteine ([G-16]) und Sonderzuschnitte ([G-17]). Kein Stein zaehlt in
+  // zwei Toepfe — jeder wird genau einmal betrachtet. Welcher Ausgleichsstein ein
+  // Sonderzuschnitt ist, entscheidet ALLEIN der Rechenkern (`stones[].sonder`); hier wird das
+  // GELESEN und nicht nachgerechnet ([P-6]) — diese Datei kennt den Katalog nicht.
   let i2 = 0, i3 = 0, haveStones = false;
-  for (const c of (w.courses || [])) for (const st of c.stones) { haveStones = true; if (st.type === "i2") i2++; else if (st.type === "i3") i3++; }
+  const ag = { i2: 0, i3: 0, i2_sonder: 0, i3_sonder: 0 };
+  let agHoehe = null;
+  for (const c of (w.courses || [])) {
+    const istAusgleich = c && c.ausgleich === true;
+    for (const st of c.stones) {
+      haveStones = true;
+      if (st.type !== "i2" && st.type !== "i3") continue;
+      if (istAusgleich) {
+        agHoehe = +c.hoehe_mm;
+        ag[st.type + (st.sonder === true ? "_sonder" : "")] += 1;
+      } else if (st.type === "i2") i2++;
+      else i3++;
+    }
+  }
   if (!haveStones) { i2 = bom.i2 || 0; i3 = bom.i3 || 0; }
 
   // --- Gewindestangen: KANONISCH aus den Einbauteilen ([Z-2]/[Z-3]/[P-19]) ---------------
@@ -312,7 +332,13 @@ export function semblaBom(w) {
     ? ((w.top_plate && Number.isFinite(+w.top_plate.module)) ? +w.top_plate.module : 0)
     : Math.max(0, blechModule - blechBoden);
 
-  return { i2, i3, rod_mm: rodFallback, rodStd, rodSonder, rodRest, sonderList,
+  return { i2, i3,
+           // #136 Ausgleichslage: Menge je Steintyp, getrennt nach Katalogstein und
+           // Sonderzuschnitt, dazu ihre REALE Hoehe (das Fertigmass beider Positionen).
+           ausgleich_i2: ag.i2, ausgleich_i3: ag.i3,
+           ausgleich_i2_sonder: ag.i2_sonder, ausgleich_i3_sonder: ag.i3_sonder,
+           ausgleich_hoehe_mm: agHoehe,
+           rod_mm: rodFallback, rodStd, rodSonder, rodRest, sonderList,
            stangenStd, stangenSonder, stangenRest, stueckAbleitung: haveStuecke,
            einbauteile: teile, wand: wandReferenz(w),
            gewindestangen_gesamt: gesamt, verbindungsmuttern: verbSplice,
@@ -425,9 +451,43 @@ function _flachePositionen(w, b) {
   // verwendeter Typ spannt keine Zeile auf. BEWUSST anders bleiben die festen Einbaustellen
   // mit Nullfall-Aussage: Einlegeblech/Mutter ([A-25]), Ausgleichsblech (#96) und Kopfblech
   // beim oberen Anschluss „Spannplatte" stehen weiter mit Menge 0 (nicht_erforderlich).
+  // #136 Die Steine der oberen AUSGLEICHSLAGE stehen als EIGENE Positionen ([G-16]/[G-17]) —
+  // getrennt nach Steintyp und getrennt nach Katalogstein und Sonderzuschnitt. Sie treten NEBEN
+  // die regulaeren 200-mm-Zeilen und ersetzen sie nicht; gezaehlt wird jeder Stein genau einmal
+  // (s. `semblaBom`). Eine reine 200-mm-Wand hat keine Ausgleichslage und behaelt damit ihre
+  // Positionen unveraendert.
+  //
+  // `mass_mm` und `fertigmass_mm` sind BEIDE die reale Lagenhoehe: sie ist zugleich der
+  // Preis-Diskriminator gegen das Katalogprodukt ([P-14], Feld `hoehe_mm`) und das Fertigmass
+  // des Sonderzuschnitts — und sie macht die Positionskennung nach [P-20] eindeutig.
+  //
+  // [G-18] Der Sonderzuschnitt traegt den Pruefhinweis MIT DEM REALEN MASS in seiner
+  // Bezeichnung: damit steht er in jeder Ausgabe, die die Stueckliste zeigt, ohne dass ein
+  // Modul ihn eigens einbauen muesste. Der Wortlaut kommt aus dem Rechenkern
+  // (`ausgleichPruefhinweis`) — derselbe Satz, der auch im Wandelement steht
+  // (`validation.ausgleich_sonderzuschnitte`); zwei Wortlaute gibt es nicht.
+  const agH = b.ausgleich_hoehe_mm;
+  const agPos = (typ, sonder) => ({
+    key: "ausgl_" + typ + (sonder ? "_sonder" : ""),
+    label: sonder
+      ? ausgleichPruefhinweis(typ, agH) + " (Fertigmaß " + _semNum(agH) + " mm)"
+      : "Ausgleichsstein " + typ + " (" + _semNum(agH) + " mm hoch)",
+    unit: "Stk", menge: b["ausgleich_" + typ + (sonder ? "_sonder" : "")] || 0,
+    mass_mm: agH, fertigmass_mm: agH,
+    // [P-19] Der Sonderzuschnitt ist ein SONDERTEIL — dieselbe Teileart wie beim
+    // Gewindestangen-Sonderzuschnitt, mit demselben Klartext und demselben Symbol. Der
+    // Katalogstein bleibt ohne eigene Angabe: seine Teileart entsteht wie bei den regulaeren
+    // Steinen aus dem nach [P-14] aufgeloesten Produkt.
+    ...(sonder ? { art: "sonder", art_label: ART_LABEL.sonder, art_symbol: ART_SYMBOL.sonder } : {}),
+  });
+  // OHNE Ausgleichslage entstehen die vier Zeilen GAR NICHT — nicht einmal als Menge-0-Zeile
+  // (#133/#134): eine solche Zeile behauptete eine Lage, die diese Wand nicht hat.
+  const agItems = agH > 0
+    ? [agPos("i3", false), agPos("i2", false), agPos("i3", true), agPos("i2", true)] : [];
   const steinItems = [
     { key: "i3",          label: "Stein i3 (37,5 cm)",                unit: "Stk", menge: b.i3 },
     { key: "i2",          label: "Stein i2 (25 cm)",                  unit: "Stk", menge: b.i2 },
+    ...agItems,
   ].filter((s) => s.menge > 0);
   // Jede Zeile nennt die Wand, an der sie verbaut wird ([P-19]) — auch die Mengenpositionen
   // ohne Einzelteil-Identität (Steine, Muttern, Bleche, Dichtstreifen).

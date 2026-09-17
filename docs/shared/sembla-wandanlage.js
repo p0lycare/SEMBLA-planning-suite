@@ -276,6 +276,34 @@ export const ROLLE_RECHNUNG = {
 };
 
 /**
+ * #136 Kataloghoehen der AUSGLEICHSSTEINE einer Wand ([G-16]) — je Steintyp die realen
+ * Steinhoehen der fuer die Rollen `ausgl_i2`/`ausgl_i3` gewaehlten Produkte.
+ *
+ * Bewusst KEIN Eintrag in `ROLLE_RECHNUNG`: die Ausgleichssteine gehoeren nicht in den
+ * Vorspannblock (`prestress`), sondern sind — wie das Aktivierungs-Flag der Ausgleichslage —
+ * ein Merkmal der Wand selbst. Gereicht wird deshalb ein eigenes Eingangsfeld
+ * (`vorg.ausgleich_stein_hoehen_mm`), und zwar NUR MASSE: Produktkennungen, Preise und
+ * Bezeichnungen bleiben ausserhalb des Rechenkerns.
+ *
+ * MEHRERE gewaehlte Hoehen sind kein Konflikt, sondern ein Vorrat (wie die Standardlaengen
+ * nach [Z-2]): der Core nimmt die, die zur Resthoehe EXAKT passt. Ohne Katalog oder ohne
+ * Auswahl bleiben die Listen leer — dann passt keine Hoehe, und die benoetigten Steine sind
+ * Sonderzuschnitte ([G-17]). Erfunden wird keine Hoehe ([P-9]).
+ *
+ * @param {any} eing `eingaben` der Wand @param {any} kat zugeordneter Katalog oder null
+ * @returns {{i2:number[],i3:number[]}}
+ */
+export function ausgleichSteinHoehen(eing, kat) {
+  const hoehen = (rolleId) => {
+    if (!kat) return [];
+    const p = produkteZuRolle(eing || {}, kat, rolleId).produkte;
+    return [...new Set(p.map((x) => +x.hoehe_mm).filter((n) => Number.isFinite(n) && n > 0))]
+      .sort((a, b) => a - b);
+  };
+  return { i2: hoehen("ausgl_i2"), i3: hoehen("ausgl_i3") };
+}
+
+/**
  * Die abgeleiteten Vorspann-Eingaenge EINER Wand — vollstaendig aus ihrer Produktauswahl
  * (#117). Gebildet wird der Satz fuer ALLE Stellen aus `ROLLE_RECHNUNG`: genau das tut
  * `vorgaben()` in Modul 1 bei jeder Auslegung. Ein Mass, das sich aus der Auswahl nicht
@@ -437,6 +465,14 @@ export function wandelementAktualisiert(wandelement, eingaben, katalog, engine) 
     steps: (we.steps || []).map((s) => ({ ...s })),
     interlocks: (we.interlocks || []).map((i) => ({ ...i })),
     prestress: ps,
+    // #136 Die Ausgleichslage ist ein Merkmal der WAND und haengt nicht am Vorspannblock: ohne
+    // diese Zeile fiele das Flag bei jeder Neurechnung weg, der Core rechnete wieder mit dem
+    // 200-mm-Zwang und wiese dieselbe Wand ab, die gespeichert ist ([G-14]).
+    ausgleichslage_aktiv: we.ausgleichslage_aktiv === true,
+    // #136 Und aus demselben Grund die Kataloghoehen der Ausgleichssteine ([G-16]): sie kommen
+    // aus der aktuellen Produktauswahl dieser Wand — ein Fassungswechsel ([L-12]) wirkt damit
+    // sofort, ohne dass die Wand einzeln neu ausgelegt werden muss.
+    ausgleich_stein_hoehen_mm: ausgleichSteinHoehen(eingaben, katalog),
     load: { ...LAST_VORGABE },
     // Materialkennwerte reisen im Nachweis des Elements mit; fehlen sie, gelten die
     // Vorgaben der Engine — geraten wird hier keiner.

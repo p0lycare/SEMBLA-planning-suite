@@ -25,6 +25,11 @@ import {
   geschossMengen, setzeGeschossMenge, mappeObjekt, validiereMappe,
 } from "../../docs/shared/sembla-projektmappe.js";
 import { katalogObjekt, parseKatalog } from "../../docs/shared/sembla-katalog.js";
+// #136 Der kanonische Neuberechnungspfad einer BESTEHENDEN Wand (#120/#130) — genau der Weg,
+// den Modul 4, Modul 7 und der zentrale Export fahren. Er bringt die Kataloghoehen der
+// Ausgleichssteine ([G-16]) in den Rechenkern; ein zweiter Rechenweg entsteht hier nicht.
+import { wandelementAktualisiert } from "../../docs/shared/sembla-wandanlage.js";
+import * as ENGINE from "../../docs/shared/sembla-engine.js";
 import {
   EXPORT_OPTIONEN, exportOptionen, geschossTeilmappe, geschossPfad, gesamtMengenLuecken,
   hierarchieExport, wandPfad, sicherStamm,
@@ -1499,6 +1504,151 @@ const P = (ueber = {}) => ({
       try { hierarchieExport(["matrix"], { ...P(), ebene: e }); return false; }
       catch { return true; }
     }));
+}
+
+// --- #136 Ausgleichslage in der Stueckliste: Katalogstein, Sonderzuschnitt, Dichtstreifen ---
+// Geprueft wird der ECHTE Pfad: Katalogfassung (mit/ohne passendem Ausgleichsstein) ->
+// Wandelement mit Produktrolle ([P-13]) -> KANONISCHER Neuberechnungspfad
+// (`wandelementAktualisiert` ueber `sembla-engine.js`) -> Core-Geometrie -> Stueckliste.
+// Kein Fixture und kein Nachbau: die Mengen kommen aus denselben Funktionen wie in Modul 4.
+{
+  const AG = { format: "SEMBLA-Bauteilkatalog", version: 1, name: "Testkatalog #136", produkte: [
+    ...KATALOG.produkte,
+    { id: "ausgl-i3-170", kategorie: "stein", bezeichnung: "Ausgleichsstein i3 170 mm",
+      einheit: "Stk", preis: 8.1, breite_mm: 375, hoehe_mm: 170, dicke_mm: 125 },
+    { id: "ausgl-i2-170", kategorie: "stein", bezeichnung: "Ausgleichsstein i2 170 mm",
+      einheit: "Stk", preis: 6.2, breite_mm: 250, hoehe_mm: 170, dicke_mm: 125 },
+  ]};
+  // Dieselbe Fassung OHNE die beiden Ausgleichssteine — der zweite geforderte Fall.
+  const OHNE = { ...AG, name: "Testkatalog #136 ohne Ausgleichsstein",
+    produkte: AG.produkte.filter((p) => !/^ausgl-/.test(p.id)) };
+
+  const eingabenAG = (mitAusgleich) => {
+    const e = eingabenFuer();
+    if (mitAusgleich) {
+      e.planung.produkte.rollen.ausgl_i3 = ["ausgl-i3-170"];
+      e.planung.produkte.rollen.ausgl_i2 = ["ausgl-i2-170"];
+    }
+    return e;
+  };
+  // Das gespeicherte Wandelement: freie Hoehe mit aktivierter Ausgleichslage ([G-14]).
+  const gespeichert = (hoehe) => {
+    const w = buildWall("AG-Wand", 2000, hoehe, [], null,
+      { top_connection: "spannplatte", rod_lengths_mm: [1000, 500], rod_rest_mm: 300,
+        force_kN: 40 }, [], null, true);
+    // [A-6]/#71 Nur eine ABGEDICHTETE Wand fuehrt Dichtstreifen — genau die wird hier geprueft.
+    w.abdichtung = "abgedichtet";
+    return w;
+  };
+  // Der kanonische Neuberechnungspfad — derselbe, den Modul 4/7 und der Export fahren.
+  const frisch = (hoehe, kat, mitAusgleich) => {
+    const e = eingabenAG(mitAusgleich);
+    const r = wandelementAktualisiert(gespeichert(hoehe), e, kat, ENGINE);
+    return { r, eingaben: e };
+  };
+  const zeile = (posn, key) => posn.find((p) => p.key === key) || null;
+
+  // (1) MIT exakt passendem Produkt: die Steine der REALEN oberen Lage sind eindeutig
+  //     zugeordnet — eigene Position, eigenes Fertigmass, aufgeloester Preis.
+  {
+    const { r, eingaben } = frisch(2570, AG, true);
+    const w = r.wandelement;
+    const oben = w.courses[w.courses.length - 1];
+    const posn = stuecklistePositionen(w, eingaben, AG);
+    const i3 = zeile(posn, "ausgl_i3"), i2 = zeile(posn, "ausgl_i2");
+    ok("#136 die Neurechnung fuehrt die Ausgleichslage mit (Flag und Kataloghoehen reisen mit)",
+      r.aktualisiert === true && w.ausgleichslage_aktiv === true
+      && oben.ausgleich === true && oben.hoehe_mm === 170 && w.height_mm === 2570);
+    ok("#136 ein exakt 170 mm hohes Katalogprodukt ist der oberen Lage eindeutig zugeordnet",
+      i3 && i2 && i3.produktId === "ausgl-i3-170" && i2.produktId === "ausgl-i2-170"
+      && i3.status === "ok" && i2.status === "ok" && i3.ep === 8.1 && i2.ep === 6.2
+      && i3.fertigmass_mm === 170 && i2.fertigmass_mm === 170);
+    ok("#136 die Mengen der Ausgleichszeilen sind genau die Steine DIESER Lage",
+      i3.menge === oben.stones.filter((s) => s.type === "i3").length
+      && i2.menge === oben.stones.filter((s) => s.type === "i2").length
+      && i3.menge > 0 && i2.menge > 0);
+    ok("#136 mit passendem Produkt gibt es KEINEN Sonderzuschnitt und keinen Pruefhinweis",
+      !zeile(posn, "ausgl_i3_sonder") && !zeile(posn, "ausgl_i2_sonder")
+      && !("ausgleich_sonderzuschnitte" in w.validation)
+      && w.courses.every((c) => c.stones.every((st) => st.sonder !== true)));
+    // Nichts doppelt: jeder Stein der Wand steht in GENAU EINER Stuecklistenzeile.
+    const steineGesamt = w.courses.reduce((a, c) => a + c.stones.length, 0);
+    ok("#136 regulaere Steine und Ausgleichssteine sind ueberschneidungsfrei gezaehlt",
+      ["i3", "i2", "ausgl_i3", "ausgl_i2"].reduce((a, k) =>
+        a + (zeile(posn, k) ? zeile(posn, k).menge : 0), 0) === steineGesamt
+      && zeile(posn, "i3").menge
+         === w.courses.filter((c) => !c.ausgleich)
+              .reduce((a, c) => a + c.stones.filter((s) => s.type === "i3").length, 0));
+    // [A-6] Der Dichtstreifen der oberen Lage misst IHRE reale Hoehe, nicht pauschal 200 mm.
+    const erwartet = w.courses.reduce((a, c) => a + c.joints_grid.length * c.hoehe_mm, 0);
+    ok("#136 die Dichtstreifenmenge rechnet mit der REALEN Hoehe der oberen Lage",
+      w.bom.dichtstreifen_mm === erwartet
+      && erwartet !== w.courses.reduce((a, c) => a + c.joints_grid.length * 200, 0)
+      && zeile(posn, "dicht").menge === +((erwartet / 1000).toFixed(2)));
+  }
+
+  // (2) OHNE passendes Produkt: dieselbe EINE Lage, aber Sonderzuschnitte mit Fertigmass,
+  //     sichtbarem Pruefhinweis und ohne Preis.
+  {
+    const { r, eingaben } = frisch(2570, OHNE, false);
+    const w = r.wandelement;
+    const oben = w.courses[w.courses.length - 1];
+    const posn = stuecklistePositionen(w, eingaben, OHNE);
+    const s3 = zeile(posn, "ausgl_i3_sonder"), s2 = zeile(posn, "ausgl_i2_sonder");
+    ok("#136 ohne passendes Produkt bleibt die Geometrie EINE 170-mm-Lage",
+      w.height_mm === 2570 && w.courses.length === 13
+      && w.courses.filter((c) => c.ausgleich === true).length === 1
+      && oben.hoehe_mm === 170 && w.courses.slice(0, 12).every((c) => c.hoehe_mm === 200));
+    ok("#136 die benoetigten Steine erscheinen als Sonderzuschnitt mit Fertigmass",
+      s3 && s2 && s3.fertigmass_mm === 170 && s2.fertigmass_mm === 170
+      && s3.menge === oben.stones.filter((s) => s.type === "i3").length
+      && s2.menge === oben.stones.filter((s) => s.type === "i2").length
+      && !zeile(posn, "ausgl_i3") && !zeile(posn, "ausgl_i2"));
+    ok("#136 der Sonderzuschnitt ist unbepreist — Beschaffungsbedarf wie eine Sonderlaenge",
+      [s3, s2].every((z) => z.ep === null && z.gp === null && z.bepreisbar === false
+        && z.status === "beschaffung" && z.produktId === null
+        && z.art === "sonder" && z.art_label === "Sonderteil"));
+    ok("#136 jeder Sonderzuschnitt traegt einen sichtbaren Pruefhinweis MIT dem realen Mass",
+      [s3, s2].every((z) => /Sonderzuschnitt 170 mm/.test(z.label)
+        && /geringe Höhe\/konstruktive Ausführung prüfen/.test(z.label))
+      && w.validation.ausgleich_sonderzuschnitte.length === 2
+      && w.validation.ausgleich_sonderzuschnitte.every((x) => x.hoehe_mm === 170
+        && /Sonderzuschnitt 170 mm/.test(x.text))
+      && w.validation.ausgleich_sonderzuschnitte.map((x) => x.typ).join() === "i3,i2");
+    const steineGesamt = w.courses.reduce((a, c) => a + c.stones.length, 0);
+    ok("#136 auch hier zaehlt kein Stein doppelt",
+      ["i3", "i2", "ausgl_i3_sonder", "ausgl_i2_sonder"].reduce((a, k) =>
+        a + (zeile(posn, k) ? zeile(posn, k).menge : 0), 0) === steineGesamt);
+  }
+
+  // (3) Resthoehe 3 mm: nicht blockiert, keine Mindesthoehe — Sonderzuschnitt mit 3 mm.
+  {
+    const { r, eingaben } = frisch(2403, OHNE, false);
+    const w = r.wandelement;
+    const posn = stuecklistePositionen(w, eingaben, OHNE);
+    const s3 = zeile(posn, "ausgl_i3_sonder");
+    ok("#136 Resthoehe 3 mm wird nicht blockiert — Sonderzuschnitt 3 mm mit Pruefhinweis",
+      r.aktualisiert === true && w.validation.buildable === true
+      && w.courses[w.courses.length - 1].hoehe_mm === 3
+      && s3 && s3.fertigmass_mm === 3 && s3.ep === null
+      && /Sonderzuschnitt 3 mm – geringe Höhe/.test(s3.label)
+      && w.validation.ausgleich_sonderzuschnitte.every((x) => x.hoehe_mm === 3));
+  }
+
+  // (4) Gegenprobe: eine reine 200-mm-Wand behaelt ihre Positionen WERTGLEICH.
+  {
+    const e = eingabenAG(true);
+    const rein = buildWall("rein", 2000, 2600, [], null,
+      { top_connection: "spannplatte", rod_lengths_mm: [1000, 500], rod_rest_mm: 300,
+        force_kN: 40 }, []);
+    const vorher = stuecklistePositionen(rein, eingabenFuer(), KATALOG);
+    const nachher = stuecklistePositionen(rein, e, AG);
+    ok("#136 eine reine 200-mm-Wand bekommt KEINE Ausgleichszeile und bleibt wertgleich",
+      !rein.courses.some((c) => c.ausgleich)
+      && !nachher.some((p) => /^ausgl_/.test(p.key))
+      && vorher.map((p) => p.key + ":" + p.menge + ":" + p.ep).join("|")
+         === nachher.map((p) => p.key + ":" + p.menge + ":" + p.ep).join("|"));
+  }
 }
 
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }

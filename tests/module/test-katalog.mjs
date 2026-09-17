@@ -853,8 +853,15 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   const roh = readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url), "utf8");
   const std = KAT.parseKatalog(roh);
   const v = KAT.produktrollenVorschlag(std);
+  // #136 AUSNAHME und einzige: die beiden Ausgleichsstein-Rollen ([G-16]). Fuer sie gibt es
+  // noch KEIN freigegebenes Produkt — weder eine Steinhoehe noch ein Preis ist fachlich
+  // genannt —, und eines zu erfinden hiesse zu entscheiden, welche Wandhoehen ohne
+  // Sonderzuschnitt auskommen ([P-9]). Bis eine Fassung sie fuehrt, greift genau der dafuer
+  // gebaute Weg: die Steine der Ausgleichslage erscheinen als Sonderzuschnitt mit Fertigmass
+  // und Pruefhinweis ([G-17]/[G-18]). Alles ANDERE bleibt vorbelegt — die Suite startet
+  // unveraendert nicht leer.
   ok("Standardkatalog ist gueltig und belegt JEDE waehlbare Rolle vor ([P-18])",
-    KAT.rollenOhneVorschlag(std).length === 0);
+    KAT.rollenOhneVorschlag(std).join() === "ausgl_i3,ausgl_i2");
   // Die Vorlage bringt KEIN Unterlegscheiben-Produkt mehr mit (Fachauskunft 2026-09-08).
   // Das Produkt war ausdruecklich als „vorläufig — fachlich unbestätigt" gekennzeichnet und
   // trug einen frei angenommenen Preis; die Auskunft loest diesen offenen Punkt auf.
@@ -1188,9 +1195,13 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     v2.produkte.map((p) => p.id + ":" + p.preis + ":" + p.einheit).join("|")
       === v1.produkte.map((p) => p.id + ":" + p.preis + ":" + p.einheit).join("|")
     && JSON.stringify(v2.sets) === JSON.stringify(v1.sets));
+  // #136 Auch hier die eine Ausnahme: die Ausgleichsstein-Rollen kamen NACH v1/v2 hinzu und
+  // koennen in einer eingefrorenen Fassung gar nicht vorbelegt sein — eine herausgegebene
+  // Fassung wird nie nachtraeglich geaendert (#118/#129). Geprueft wird deshalb, dass v2 und v1
+  // GLEICH weit tragen und ausser den beiden neuen Rollen nichts offen bleibt.
   ok("#97 v2 macht die Suite unverändert startklar ([P-18])",
-    KAT.rollenOhneVorschlag(v2).length === KAT.rollenOhneVorschlag(v1).length
-    && KAT.rollenOhneVorschlag(v2).length === 0);
+    KAT.rollenOhneVorschlag(v2).join() === KAT.rollenOhneVorschlag(v1).join()
+    && KAT.rollenOhneVorschlag(v2).join() === "ausgl_i3,ausgl_i2");
 
   // Das Verzeichnis (#118) ist der EINE Ort, an dem eine Fassung bekanntgegeben wird.
   const man = KAT.parseVorlagenManifest(lies("kataloge.json"));
@@ -1605,6 +1616,91 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Und die Gegenprobe zum Paketziel: KATALOG_VERSION bleibt, wo sie war.
   ok("#113 die Vorlage bleibt bei Katalogformat Version 2 (kein Sprung)",
     JSON.parse(roh).version === 2 && std.version === KAT.KATALOG_VERSION);
+}
+
+// --- 14) Ausgleichssteine i2/i3: Rollen, Massbezug und Sonderzuschnitt (#136) ---------
+// [G-16]/[G-17]/[G-18]. Geprueft wird am ECHTEN Pfad: Katalogfassung -> Produktauswahl der
+// Wand ([P-13]) -> kanonischer Neuberechnungspfad (Engine/Core) -> Preisaufloesung ([P-14]).
+{
+  const R = (id) => KAT.rolle(id);
+  ok("#136 es gibt ZWEI getrennte waehlbare Ausgleichsstein-Rollen (i2 und i3)", (() => {
+    const a2 = R("ausgl_i2"), a3 = R("ausgl_i3");
+    return a2 && a3 && a2.modul === 1 && a3.modul === 1
+      && a2.kategorie === "stein" && a3.kategorie === "stein"
+      && a2.gruppe === "Steine" && a3.gruppe === "Steine"
+      && a2.bepreist === true && a3.bepreist === true
+      && KAT.rollenVonModul(1).some((r) => r.id === "ausgl_i2")
+      && KAT.rollenVonModul(1).some((r) => r.id === "ausgl_i3")
+      // Getrennt heisst: eigene Kennung, eigene Beschriftung, keine gemeinsame Zeile.
+      && a2.label !== a3.label && a2.id !== a3.id;
+  })());
+  ok("#136 massgebend ist die REALE Steinhoehe gegen die Hoehe der Ausgleichslage", (() => {
+    const felder = ["ausgl_i2", "ausgl_i3"].map((id) => JSON.stringify(R(id).mass));
+    return felder.every((f) => f === JSON.stringify({ felder: ["hoehe_mm"],
+      kontext: "ausgleich_hoehe_mm" }));
+  })());
+  ok("#136 die beiden Sonderzuschnitt-Rollen folgen dem Muster von `rod_sonder`", (() => {
+    const vorbild = R("rod_sonder");
+    return ["ausgl_i2_sonder", "ausgl_i3_sonder"].every((id) => {
+      const r = R(id);
+      return r && r.modul === 1 && r.mass === null
+        && r.waehlbar === false && r.bepreist === false
+        && r.status_frei === vorbild.status_frei && r.status_frei === "beschaffung"
+        && !KAT.rollenVonModul(1).some((x) => x.id === id);
+    });
+  })());
+
+  // Der Massbezug kommt aus den LAGENKANTEN des Wandelements — gelesen, nie gerechnet.
+  const wandMit = (hoehe) => ({ grid_mm: 125, courses: [
+    { lage: 0, unterkante_mm: 0, oberkante_mm: 200, hoehe_mm: 200 },
+    ...(hoehe ? [{ lage: 1, unterkante_mm: 200, oberkante_mm: 200 + hoehe, hoehe_mm: hoehe,
+      ausgleich: true }] : []) ] });
+  ok("#136 preisKontext liest die Hoehe der Ausgleichslage aus dem Wandelement",
+    KAT.preisKontext(wandMit(170)).ausgleich_hoehe_mm === 170
+    && KAT.preisKontext(wandMit(3)).ausgleich_hoehe_mm === 3);
+  ok("#136 ohne Ausgleichslage gibt es KEIN Mass — NaN statt einer erfundenen Zahl",
+    Number.isNaN(KAT.preisKontext(wandMit(0)).ausgleich_hoehe_mm)
+    && Number.isNaN(KAT.preisKontext(null).ausgleich_hoehe_mm));
+
+  // Eine Fassung MIT passendem Produkt (170 mm) und eine OHNE. Beide nur Fantasiedaten.
+  const P170 = { id: "ausgl-i3-170", kategorie: "stein", bezeichnung: "Ausgleichsstein i3 170",
+    einheit: "Stk", preis: 8.1, breite_mm: 375, hoehe_mm: 170, dicke_mm: 125,
+    rollen: ["ausgl_i3"] };
+  const P120 = { ...P170, id: "ausgl-i3-120", hoehe_mm: 120, bezeichnung: "Ausgleichsstein i3 120" };
+  const fassung = (prod) => ({ format: KAT.KATALOG_FORMAT, version: 2, name: "Fassung #136",
+    produkte: [prod] });
+  ok("#136 ein Ausgleichsstein-Produkt ist gueltig und darf seine Rolle benennen ([P-18])",
+    KAT.validiereProdukt(P170).length === 0
+    && KAT.validiereKatalog(fassung(P170)).length === 0
+    && (KAT.produktrollenVorschlag(fassung(P170)).ausgl_i3 || []).join() === "ausgl-i3-170");
+  ok("#136 die NICHT waehlbare Sonderzuschnitt-Rolle darf kein Produkt benennen ([P-18])",
+    KAT.validiereProdukt({ ...P170, id: "x", rollen: ["ausgl_i3_sonder"] })
+      .some((m) => /nicht wählbar/.test(m)));
+
+  const eing = (ids) => ({ planung: { produkte: { quelle: null, rollen: { ausgl_i3: ids } } } });
+  const pos = (menge, mass) => ({ key: "ausgl_i3", unit: "Stk", menge, mass_mm: mass });
+  ok("#136 EXAKT passende Kataloghoehe -> genau ein Produkt, Preis aufgeloest ([P-14])", (() => {
+    const kat = fassung(P170);
+    const r = KAT.loesePreis(pos(4, 170), KAT.produktRollen(eing(["ausgl-i3-170"])), kat,
+      KAT.preisKontext(wandMit(170), {}, kat));
+    return r.status === "ok" && r.ep === 8.1 && r.produkt.id === "ausgl-i3-170";
+  })());
+  ok("#136 keine Toleranz: 120 mm fuer eine 170-mm-Lage ist kein Ersatz, sondern massfremd",
+    (() => {
+      const kat = fassung(P120);
+      const r = KAT.loesePreis(pos(4, 170), KAT.produktRollen(eing(["ausgl-i3-120"])), kat,
+        KAT.preisKontext(wandMit(170), {}, kat));
+      return r.status === "mass_abweichend" && r.ep === null;
+    })());
+  ok("#136 der Sonderzuschnitt ist unbepreister Beschaffungsbedarf — wie `rod_sonder`", (() => {
+    const kat = fassung(P170);
+    const r = KAT.loesePreis({ key: "ausgl_i3_sonder", unit: "Stk", menge: 4, mass_mm: 3 },
+      KAT.produktRollen(eing(["ausgl-i3-170"])), kat, KAT.preisKontext(wandMit(3), {}, kat));
+    const rod = KAT.loesePreis({ key: "rod_sonder", unit: "Stk", menge: 1, mass_mm: 300 }, {},
+      kat, {});
+    return r.status === "beschaffung" && r.ep === null && r.bepreisbar === false
+      && r.status === rod.status && r.text === KAT.STATUS_TEXT.beschaffung;
+  })());
 }
 
 let fail = 0;

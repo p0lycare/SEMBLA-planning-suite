@@ -3475,7 +3475,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
       // entfallen (hebt #92 auf) — am Wandabschluss gibt es am Spannglied keine Scheibe.
       // 22 seit der verbindlichen Bauteilliste des Deckenanschlusses ([P-24], #95): dessen
       // sieben eigene Verwendungsstellen sind in Modul 1 waehlbar und stehen deshalb auch hier.
-      erwartet111.length === 22
+      // 24 seit #136: die beiden Ausgleichssteine ([G-16]) sind ebenfalls waehlbare
+      // Modul-1-Rollen. Das Popup baut seine Liste ausschliesslich aus `rollenVonModul(1)` —
+      // sie stehen also von selbst darin, ohne dass hier eine Zeile dafuer gebaut waere; die
+      // nicht waehlbaren Sonderzuschnitte bleiben wie `rod_sonder` draussen (s. u.).
+      erwartet111.length === 24
       && JSON.stringify(gezeigt111) === JSON.stringify(erwartet111));
     const gruppen111 = [...rollenHtml111.matchAll(/class="sgruppe">([^<]+)</g)].map(m => m[1]);
     ok('#111 (Muss 1) gegliedert nach `gruppe` — dieselbe Gruppenreihenfolge wie Modul 1',
@@ -3487,7 +3491,8 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
         && (rollenHtml111.match(new RegExp('id="gp-sammel-rolle-' + r + '"', 'g')) || []).length === 1
         && (rollenHtml111.match(new RegExp('id="gp-sammel-rolle-' + r + '-ist"', 'g')) || []).length === 1));
     ok('#111 (Nicht-Ziel 3) keine Modul-2-Rolle und keine nicht waehlbare Rolle im Popup',
-      ['latte', 'verbinder', 'beplankung', 'rod_sonder', 'blech_boden_sonder']
+      ['latte', 'verbinder', 'beplankung', 'rod_sonder', 'blech_boden_sonder',
+       'ausgl_i2_sonder', 'ausgl_i3_sonder']
         .every(r => !gezeigt111.includes(r)));
     ok('#111 (Muss 2) ohne Haekchen ist kein Rollenfeld bedienbar',
       erwartet111.every(r => $(rid(r)).disabled === true));
