@@ -37,6 +37,13 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260917-01",
+    datum: "2026-09-17",
+    typ: "intern",
+    issue: 136,
+    titel: "Rechenkern führt je Steinlage jetzt Unterkante, Oberkante und Höhe als eigene Felder — Verhalten unverändert",
+  },
+  {
     id: "chg-20260916-04",
     datum: "2026-09-16",
     typ: "feature",

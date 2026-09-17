@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Testsuite fuer den SEMBLA Core. Lauf: python3 -m unittest -v  (oder pytest)."""
-import json, math, os, unittest
+import hashlib, json, math, os, unittest
 import sembla_core as sc
 from sembla_core import (build_wall, build_reference, Opening, is_buildable,
                          InvalidDimensionError, InvalidOpeningError,
@@ -821,6 +821,157 @@ class Zwischenspannpunkte(unittest.TestCase):
         self.assertIsNone(b["konflikt"])
         c = sc.kombiniere_segment(1700, [1000, 500], True, 210, 10, [1500])
         self.assertEqual(c["konflikt"], "stoss_auf_zwischenpunkt")
+
+
+# ---------------------------------------------------------------------------
+# KANONISCHES LAGENKANTENMODELL (#136)
+#
+# Jede Steinlage traegt Unterkante, Oberkante und Hoehe in mm als benannte Felder; die
+# Lagenoberkante wird nirgends mehr aus „Lagenindex x course_mm" gerechnet, sondern aus diesen
+# Feldern gelesen. `course_mm` bleibt die regulaere Lagenhoehe (200 mm). Es gibt weiterhin
+# KEINE Ausgleichslage und KEINE freie Wandhoehe.
+# ---------------------------------------------------------------------------
+class TestLagenkanten(unittest.TestCase):
+    def test_2600er_wand_traegt_je_lage_unterkante_oberkante_hoehe(self):
+        w = build_wall("kanten2600", 2000, 2600, [])
+        self.assertEqual(w["lagen"], 13)
+        self.assertEqual(len(w["courses"]), 13)
+        self.assertEqual(w["course_mm"], sc.COURSE)
+        self.assertEqual(sc.COURSE, 200)
+        for n, c in enumerate(w["courses"]):
+            with self.subTest(lage=n):
+                self.assertEqual(c["lage"], n)
+                self.assertEqual(c["unterkante_mm"], n * 200)
+                self.assertEqual(c["oberkante_mm"], (n + 1) * 200)
+                self.assertEqual(c["hoehe_mm"], 200)
+        self.assertEqual(w["courses"][0]["unterkante_mm"], 0)
+        self.assertEqual(w["courses"][-1]["oberkante_mm"], w["height_mm"])
+        for a, b in zip(w["courses"], w["courses"][1:]):
+            self.assertEqual(a["oberkante_mm"], b["unterkante_mm"])
+
+    def test_segmentkanten_stammen_aus_den_lagenkanten(self):
+        w = build_wall("kantenSeg", 3000, 2600, [Opening(5, 11, 0, 10, "tuer")], None, None,
+                       [{"x0_mm": 1500, "x1_mm": 3000, "height_mm": 1800}])
+        unter = [c["unterkante_mm"] for c in w["courses"]]
+        ober = [c["oberkante_mm"] for c in w["courses"]]
+        for col in w["tension_columns"]:
+            for sg in col["segments"]:
+                with self.subTest(k=col["k"], z0=sg["z0_mm"]):
+                    self.assertEqual(sg["z0_mm"], unter[sg["lage0"]])
+                    self.assertEqual(sg["z1_mm"], ober[sg["lage1"] - 1])
+                    self.assertEqual(sg["z1_mm"] - sg["z0_mm"],
+                                     sum(c["hoehe_mm"] for c in w["courses"][sg["lage0"]:sg["lage1"]]))
+        # Der Dichtstreifen einer Stossfuge ist so hoch wie SEINE Lage.
+        self.assertEqual(w["bom"]["dichtstreifen_mm"],
+                         sum(len(c["joints_grid"]) * c["hoehe_mm"] for c in w["courses"]))
+
+    def test_lagen_kanten_und_wand_lagen_kanten(self):
+        self.assertEqual(sc.lagen_kanten(3), [
+            {"lage": 0, "unterkante_mm": 0, "oberkante_mm": 200, "hoehe_mm": 200},
+            {"lage": 1, "unterkante_mm": 200, "oberkante_mm": 400, "hoehe_mm": 200},
+            {"lage": 2, "unterkante_mm": 400, "oberkante_mm": 600, "hoehe_mm": 200}])
+        self.assertEqual(sc.lagen_kanten(0), [])
+        w = build_wall("kantenQuelle", 1000, 2000, [])
+        self.assertEqual(sc.wand_lagen_kanten(w), sc.lagen_kanten(10))
+        # Altstand OHNE die Felder bleibt lesbar (Rueckfall auf die regulaere Lagenhoehe).
+        alt = {"course_mm": 200, "lagen": 10, "height_mm": 2000,
+               "courses": [{"lage": c["lage"], "stones": c["stones"],
+                            "joints_grid": c["joints_grid"]} for c in w["courses"]]}
+        self.assertEqual(sc.wand_lagen_kanten(alt), sc.lagen_kanten(10))
+        self.assertEqual(sc.wand_lagen_kanten({"course_mm": 200, "height_mm": 600}),
+                         sc.lagen_kanten(3))
+
+    def test_lagen_oberkanten_innen_liest_die_kantenliste(self):
+        K = sc.lagen_kanten(13)
+        self.assertEqual(sc.lagen_oberkanten_innen(0, 1000, K), sc.lagen_oberkanten_innen(0, 1000))
+        self.assertEqual(sc.lagen_oberkanten_innen(800, 2600, K),
+                         sc.lagen_oberkanten_innen(800, 2600))
+        self.assertEqual(sc.lagen_oberkanten_innen(0, 200, K), [])
+        self.assertEqual(sc.auto_zwischenpunkt(0, 2600, K), sc.auto_zwischenpunkt(0, 2600))
+        self.assertEqual(sc.zwischenpunkte_segment(0, 2600, None, K),
+                         sc.zwischenpunkte_segment(0, 2600, None))
+        w = build_wall("kantenZp", 2000, 2600, [])
+        ohne = dict(w, courses=[{"lage": c["lage"], "stones": c["stones"],
+                                 "joints_grid": c["joints_grid"]} for c in w["courses"]])
+        self.assertEqual(sc.wirksame_zwischenpunkte(w), sc.wirksame_zwischenpunkte(ohne))
+
+    def test_wandhoehe_bleibt_vielfaches_der_lagenhoehe(self):
+        # MUSS NOT: nicht durch 200 teilbare Hoehen werden weiter mit derselben Meldung
+        # abgewiesen — es gibt keine Ausgleichslage und keine freie Wandhoehe.
+        with self.assertRaises(InvalidDimensionError) as cm:
+            build_wall("krumm", 1000, 2500, [])
+        self.assertEqual(str(cm.exception), "Wandhoehe 2500 ist kein Vielfaches von 200 mm")
+        with self.assertRaises(InvalidDimensionError) as cm2:
+            build_wall("winzig", 1000, 100, [])
+        self.assertEqual(str(cm2.exception), "Wandhoehe 100 ist kein Vielfaches von 200 mm")
+        for h in (200, 1800, 2600, 4000):
+            with self.subTest(hoehe=h):
+                w = build_wall("h%d" % h, 1000, h, [])
+                self.assertEqual(len(w["courses"]), h // sc.COURSE)
+                self.assertTrue(all(c["hoehe_mm"] == sc.COURSE for c in w["courses"]))
+
+    # Vergleichstest vor/nach dem Umbau: die strukturelle Signatur mehrerer Referenzwaende —
+    # Verband (Steine, Stossfugen), Spannachsen (Segmente, Zuschnittstuecke) und Mengen (BOM,
+    # Bleche, Punkte, Validierung) — ist an den Stand VOR #136 genagelt. Die Hashes stammen aus
+    # genau diesem Stand; sie decken auch Faelle ab, die die goldenen Fixtures nicht tragen
+    # (Staffelung, Zuschnitt aus mehreren Standardlaengen). Die neuen Lagenkantenfelder stehen
+    # bewusst NICHT im Digest — geprueft wird die Strukturgleichheit, nicht die Zusatzangabe.
+    STRUKTUR_VOR_136 = {
+        "ref1_glatte_wand": "713ac098903a19c7a1ffef2084b10df2f4f095a4cfa1e6d0410089e5e31f8870",
+        "ref2_wand_tuer": "80a9808f1aa5563a946944f8f5d4478ebd3a1e68ac10ffa5ba41484c47f4852e",
+        "ref3_wand_fenster": "42e1c346a9bcadc96f1c00dc99de2f596a9ab38659beadd1cd5e24548ba7ad68",
+        "staffel": "f0496b283ada1a52e2f52ce58036d11e19eccb597f180ebd0d664e51b4419bc1",
+        "zuschnitt": "50c79ae882346edfc2698d0dce87cc1e08b23f9b9d1747f086f6c4c1cfca179c",
+    }
+
+    @staticmethod
+    def _vergleichswaende():
+        return {
+            "ref1_glatte_wand": build_wall("ref1_glatte_wand", 1000, 2000, [], None,
+                                           {"top_connection": "blech"}),
+            "ref2_wand_tuer": build_wall("ref2_wand_tuer", 2000, 2600,
+                                         [Opening(5, 11, 0, 10, "tuer")], None,
+                                         {"top_connection": "blech"}),
+            "ref3_wand_fenster": build_wall("ref3_wand_fenster", 2000, 2600,
+                                            [Opening(6, 10, 4, 10, "fenster")], None,
+                                            {"top_connection": "blech"}),
+            "staffel": build_wall("staffel", 3000, 2600, [], None, {"top_connection": "blech"},
+                                  [{"x0_mm": 1500, "x1_mm": 3000, "height_mm": 1800}]),
+            "zuschnitt": build_wall("zuschnitt", 2000, 2600, [Opening(5, 11, 0, 10, "tuer")],
+                                    None, {"top_connection": "spannplatte",
+                                           "rod_lengths_mm": [1000, 625, 375],
+                                           "rod_rest_mm": 375, "rod_overhang_mm": 10}),
+        }
+
+    @staticmethod
+    def _struktur_digest(w):
+        """Strukturelle Signatur einer Wand — bewusst OHNE die neuen Lagenkantenfelder."""
+        return {
+            "courses": [{"lage": c["lage"], "joints": c["joints_grid"],
+                         "stones": [[s["type"], s["x0"], s["x1"]] for s in c["stones"]]}
+                        for c in w["courses"]],
+            "achsen": [{"k": c["k"], "x_mm": c["x_mm"], "durchgehend": c["durchgehend"],
+                        "segments": [{"z0": s["z0_mm"], "z1": s["z1_mm"], "lage0": s["lage0"],
+                                      "lage1": s["lage1"], "bedarf": s["bedarf_mm"],
+                                      "ueberstand": s["ueberstand_mm"],
+                                      "verschnitt": s["verschnitt_mm"],
+                                      "stuecke": [[x["len_mm"], x["art"], x["quelle_mm"]]
+                                                  for x in s["stuecke"]],
+                                      "konflikt": s["zuschnitt_konflikt"]}
+                                     for s in c["segments"]]}
+                       for c in w["tension_columns"]],
+            "bom": w["bom"], "base_plate": w["base_plate"], "top_plate": w["top_plate"],
+            "ausgleichspunkte": w["ausgleichspunkte"],
+            "deckenanschlusspunkte": w["deckenanschlusspunkte"],
+            "validation": w["validation"],
+        }
+
+    def test_referenzwaende_strukturidentisch_zum_stand_vor_dem_umbau(self):
+        for key, w in self._vergleichswaende().items():
+            with self.subTest(wand=key):
+                roh = json.dumps(self._struktur_digest(w), sort_keys=True, separators=(",", ":"))
+                self.assertEqual(hashlib.sha256(roh.encode()).hexdigest(),
+                                 self.STRUKTUR_VOR_136[key])
 
 
 if __name__ == "__main__":

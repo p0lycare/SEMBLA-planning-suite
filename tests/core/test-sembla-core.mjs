@@ -1,5 +1,6 @@
 // Paritaets- und Regeltests fuer den JS-Core. Lauf: node test-sembla-core.mjs
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -11,6 +12,7 @@ import {
   zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
+  lagenKanten, wandLagenKanten,
   AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M, verteileAusgleichspunkte, normAusgleichspunkte,
   DECKENANSCHLUSS_MAX_MM, verteileDeckenanschluss, deckenanschlussLuecken, normDeckenanschluss,
 } from "../../docs/shared/sembla-core.js";
@@ -756,6 +758,22 @@ print(json.dumps(build_wall(a["name"], a["length_mm"], a["height_mm"], [], None,
 /** Die Wand aus dem ECHTEN Python-Orakel (Unterprozess), nicht aus einem Fixture. */
 function orakel(arg) {
   return JSON.parse(execFileSync("python3", ["-c", PY_ORAKEL, JSON.stringify(arg)],
+    { encoding: "utf8" }));
+}
+// Dasselbe Orakel fuer Waende MIT Oeffnungen und Staffelung — die Faelle, an denen die
+// Lagenkanten die Segmentgrenzen bestimmen (#136).
+const PY_ORAKEL_VOLL = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import build_wall, Opening
+a = json.loads(sys.argv[1])
+ops = [Opening(o["g0"], o["g1"], o["l0"], o["l1"], o.get("art", "tuer")) for o in a.get("openings", [])]
+print(json.dumps(build_wall(a["name"], a["length_mm"], a["height_mm"], ops, None,
+                            a.get("prestress"), a.get("steps", []))))
+`;
+/** Wie `orakel`, aber mit Oeffnungen und Staffelung. */
+function orakelVoll(arg) {
+  return JSON.parse(execFileSync("python3", ["-c", PY_ORAKEL_VOLL, JSON.stringify(arg)],
     { encoding: "utf8" }));
 }
 // Kopplungsmutter 50 mm hoch -> Fussoffset 25 mm (halbe Hoehe); Spannplatte 12 mm dick.
@@ -1619,6 +1637,179 @@ t("[A-26]/[A-27] Modul 3 bleibt unberuehrt: keine Vorspann- oder Mengenwirkung",
   deepEqual(mit.ausgleichspunkte, basis.ausgleichspunkte);
   deepEqual(mit.validation, basis.validation);
 });
+
+
+// ---------------------------------------------------------------------------
+// KANONISCHES LAGENKANTENMODELL (#136)
+//
+// Jede Steinlage traegt Unterkante, Oberkante und Hoehe in mm als benannte Felder. Die
+// Lagenoberkante wird im Core nirgends mehr aus `Lagenindex x course_mm` gerechnet, sondern aus
+// diesen Feldern GELESEN. `course_mm` bleibt dabei unveraendert die regulaere Lagenhoehe
+// (200 mm) — es wird weder umgedeutet noch entfernt —, und es gibt WEITERHIN keine
+// Ausgleichslage und keine freie Wandhoehe.
+// ---------------------------------------------------------------------------
+console.log("\nLAGENKANTENMODELL [#136]:");
+
+t("#136 jede Lage einer 2600-mm-Wand traegt Unterkante, Oberkante und Hoehe", () => {
+  const w = buildWall("kanten2600", 2000, 2600, []);
+  assert(w.lagen === 13 && w.courses.length === 13, "13 Lagen: " + w.courses.length);
+  assert(w.course_mm === COURSE && COURSE === 200, "course_mm bleibt 200: " + w.course_mm);
+  w.courses.forEach((c, n) => {
+    assert(c.lage === n, "Lagenindex " + c.lage);
+    assert(c.unterkante_mm === n * 200, `Unterkante Lage ${n}: ${c.unterkante_mm}`);
+    assert(c.oberkante_mm === (n + 1) * 200, `Oberkante Lage ${n}: ${c.oberkante_mm}`);
+    assert(c.hoehe_mm === 200, `Hoehe Lage ${n}: ${c.hoehe_mm}`);
+  });
+  // Lueckenlos und ueberlappungsfrei bis zur Wandoberkante.
+  assert(w.courses[0].unterkante_mm === 0, "unterste Lage beginnt bei 0");
+  assert(w.courses[12].oberkante_mm === w.height_mm, "oberste Lage endet an der Wandoberkante");
+  for (let i = 1; i < w.courses.length; i++)
+    assert(w.courses[i].unterkante_mm === w.courses[i - 1].oberkante_mm, "Luecke vor Lage " + i);
+});
+
+t("#136 JS-Core und Python-Orakel liefern identische Kantenwerte (2600 mm)", () => {
+  const js = buildWall("kanten2600", 2000, 2600, []);
+  const py = orakelVoll({ name: "kanten2600", length_mm: 2000, height_mm: 2600 });
+  deepEqual(js.courses.map(c => [c.lage, c.unterkante_mm, c.oberkante_mm, c.hoehe_mm]),
+    py.courses.map(c => [c.lage, c.unterkante_mm, c.oberkante_mm, c.hoehe_mm]));
+  // … und ebenso fuer eine Wand mit Oeffnung und Staffelung (dort haengen Segmentkanten daran).
+  const jsS = buildWall("kantenStaffel", 3000, 2600, [new Opening(5, 11, 0, 10, "tuer")], null,
+    null, [{ x0_mm: 1500, x1_mm: 3000, height_mm: 1800 }]);
+  const pyS = orakelVoll({ name: "kantenStaffel", length_mm: 3000, height_mm: 2600,
+    openings: [{ g0: 5, g1: 11, l0: 0, l1: 10, art: "tuer" }],
+    steps: [{ x0_mm: 1500, x1_mm: 3000, height_mm: 1800 }] });
+  deepEqual(jsS.courses.map(c => [c.lage, c.unterkante_mm, c.oberkante_mm, c.hoehe_mm]),
+    pyS.courses.map(c => [c.lage, c.unterkante_mm, c.oberkante_mm, c.hoehe_mm]));
+  deepEqual(jsS.tension_columns.map(c => c.segments.map(s => [s.z0_mm, s.z1_mm])),
+    pyS.tension_columns.map(c => c.segments.map(s => [s.z0_mm, s.z1_mm])));
+});
+
+t("#136 die Segment- und Kopfkanten stammen aus den Lagenkanten", () => {
+  // Jede Segmentkante ist die Unter- bzw. Oberkante einer echten Lage — und zwar genau der
+  // Lage, die `lage0`/`lage1` nennen. Damit ist ausgeschlossen, dass irgendwo noch
+  // `Lagenindex x 200` gerechnet und nur zufaellig dasselbe getroffen wird.
+  const w = buildWall("kantenSeg", 3000, 2600, [new Opening(5, 11, 0, 10, "tuer")], null, null,
+    [{ x0_mm: 1500, x1_mm: 3000, height_mm: 1800 }]);
+  const unter = w.courses.map(c => c.unterkante_mm), ober = w.courses.map(c => c.oberkante_mm);
+  for (const col of w.tension_columns) for (const sg of col.segments) {
+    assert(sg.z0_mm === unter[sg.lage0], `z0 ${sg.z0_mm} != Unterkante Lage ${sg.lage0}`);
+    assert(sg.z1_mm === ober[sg.lage1 - 1], `z1 ${sg.z1_mm} != Oberkante Lage ${sg.lage1 - 1}`);
+    assert(sg.z1_mm - sg.z0_mm
+      === w.courses.slice(sg.lage0, sg.lage1).reduce((a, c) => a + c.hoehe_mm, 0),
+      "Segmenthoehe ist die Summe der Lagenhoehen");
+  }
+  // Der Dichtstreifen einer Stossfuge ist so hoch wie SEINE Lage.
+  assert(w.bom.dichtstreifen_mm
+    === w.courses.reduce((a, c) => a + c.joints_grid.length * c.hoehe_mm, 0),
+    "Dichtstreifen aus den Lagenhoehen: " + w.bom.dichtstreifen_mm);
+});
+
+t("#136 lagenKanten/wandLagenKanten sind die eine Quelle der Kanten", () => {
+  deepEqual(lagenKanten(3), [
+    { lage: 0, unterkante_mm: 0, oberkante_mm: 200, hoehe_mm: 200 },
+    { lage: 1, unterkante_mm: 200, oberkante_mm: 400, hoehe_mm: 200 },
+    { lage: 2, unterkante_mm: 400, oberkante_mm: 600, hoehe_mm: 200 }]);
+  deepEqual(lagenKanten(0), []);
+  const w = buildWall("kantenQuelle", 1000, 2000, []);
+  deepEqual(wandLagenKanten(w), lagenKanten(10));
+  // Altstand OHNE die Felder bleibt lesbar: der Rueckfall baut dieselbe Liste aus course_mm.
+  const alt = { course_mm: 200, lagen: 10, height_mm: 2000,
+    courses: w.courses.map(c => ({ lage: c.lage, stones: c.stones, joints_grid: c.joints_grid })) };
+  deepEqual(wandLagenKanten(alt), lagenKanten(10));
+  deepEqual(wandLagenKanten({ course_mm: 200, height_mm: 600 }), lagenKanten(3));
+});
+
+t("#136 lagenOberkantenInnen liest die Kantenliste (gleiches Ergebnis wie ueber die Lagenhoehe)", () => {
+  const K = lagenKanten(13);
+  deepEqual(lagenOberkantenInnen(0, 1000, K), lagenOberkantenInnen(0, 1000));
+  deepEqual(lagenOberkantenInnen(800, 2600, K), lagenOberkantenInnen(800, 2600));
+  deepEqual(lagenOberkantenInnen(0, 200, K), []);
+  assert(autoZwischenpunkt(0, 2600, K) === autoZwischenpunkt(0, 2600));
+  deepEqual(zwischenpunkteSegment(0, 2600, null, K), zwischenpunkteSegment(0, 2600, null));
+  // Der Leser des fertigen Wandelements zieht die Kanten aus den Lagen, nicht aus course_mm.
+  const w = buildWall("kantenZp", 2000, 2600, []);
+  const ohneFelder = { ...w, courses: w.courses.map(c =>
+    ({ lage: c.lage, stones: c.stones, joints_grid: c.joints_grid })) };
+  deepEqual(wirksameZwischenpunkte(w), wirksameZwischenpunkte(ohneFelder));
+});
+
+t("#136 kein Core-Leser leitet die Lagenoberkante aus Lagenindex x course_mm ab", () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)),
+    "../../docs/shared/sembla-core.js"), "utf8");
+  // Die frueheren Ableitungsstellen — sie duerfen im Core nicht wieder auftauchen.
+  for (const muster of [
+    /topLage\[k\]\s*\*\s*COURSE/,          // lokale Oberkante einer Rasterspalte
+    /\br\s*\*\s*COURSE\b/,                 // Segmentfuss
+    /\(r2\s*\+\s*1\)\s*\*\s*COURSE/,       // Segmentkopf
+    /stossfugen\s*\*\s*COURSE/,            // Dichtstreifenhoehe
+  ]) assert(!muster.test(src), "Ableitung wieder eingebaut: " + muster);
+  assert(/const KANTEN = lagenKanten\(L, COURSE\);/.test(src), "KANTEN fehlt");
+  // Gegenprobe: `course_mm` ist als regulaere Lagenhoehe unveraendert vorhanden ([#136] MUSS).
+  assert(/course_mm: COURSE/.test(src), "course_mm wurde entfernt");
+});
+
+t("#136 die Wandhoehe bleibt ein Vielfaches der Lagenhoehe — keine Ausgleichslage", () => {
+  // MUSS NOT: nicht durch 200 teilbare Hoehen werden weiter mit derselben Meldung abgewiesen.
+  let msg = null;
+  try { buildWall("krumm", 1000, 2500, []); }
+  catch (e) { assert(e instanceof InvalidDimensionError, "falsche Fehlerklasse"); msg = e.message; }
+  assert(msg === `Wandhoehe 2500 ist kein Vielfaches von ${COURSE} mm`, "Meldung: " + msg);
+  let msg2 = null;
+  try { buildWall("winzig", 1000, 100, []); } catch (e) { msg2 = e.message; }
+  assert(msg2 === `Wandhoehe 100 ist kein Vielfaches von ${COURSE} mm`, "Meldung: " + msg2);
+  // Und es entsteht keine Lage mit abweichender Hoehe.
+  for (const h of [200, 1800, 2600, 4000]) {
+    const w = buildWall("h" + h, 1000, h, []);
+    assert(w.courses.every(c => c.hoehe_mm === COURSE), "abweichende Lagenhoehe bei " + h);
+    assert(w.courses.length === h / COURSE, "Lagenzahl bei " + h);
+  }
+});
+
+// Vergleichstest vor/nach dem Umbau: die strukturelle Signatur mehrerer Referenzwaende —
+// Verband (Steine, Stossfugen), Spannachsen (Segmente, Zuschnittstuecke) und Mengen (BOM,
+// Bleche, Punkte, Validierung) — ist an den Stand VOR #136 genagelt. Die Hashes sind aus genau
+// diesem Stand genommen; jede strukturelle Abweichung faellt hier auf, auch eine, die die
+// goldenen Fixtures nicht abdecken (Staffelung, Zuschnitt aus mehreren Standardlaengen).
+const STRUKTUR_VOR_136 = {
+  ref1_glatte_wand: "23f1e7a19cf32713dbea9c25eab6a6b9b14c857d36e8cdbbcc4a76634d7ddac3",
+  ref2_wand_tuer: "adb38779fb0420d201f3f395222c93c37f74609ee3a62dd30f84067717b7a324",
+  ref3_wand_fenster: "dc47928634afbb1530f80cefddb1e5227424dddfde0b30977d4484676e45f92c",
+  staffel: "0cadf836fb8619c6ae24daadac22ba8742bbc3a764c6eaa04b227262609fa27a",
+  zuschnitt: "14d349925bc3045562802f4ee15d13bd1a7e17e70e231e3a11478660eff3062e",
+};
+const VERGLEICHSWAENDE = {
+  ref1_glatte_wand: () => buildReference("ref1_glatte_wand"),
+  ref2_wand_tuer: () => buildReference("ref2_wand_tuer"),
+  ref3_wand_fenster: () => buildReference("ref3_wand_fenster"),
+  staffel: () => buildWall("staffel", 3000, 2600, [], null, { top_connection: "blech" },
+    [{ x0_mm: 1500, x1_mm: 3000, height_mm: 1800 }]),
+  zuschnitt: () => buildWall("zuschnitt", 2000, 2600, [new Opening(5, 11, 0, 10, "tuer")], null,
+    { top_connection: "spannplatte", rod_lengths_mm: [1000, 625, 375], rod_rest_mm: 375,
+      rod_overhang_mm: 10 }),
+};
+/** Strukturelle Signatur einer Wand — bewusst OHNE die neuen Lagenkantenfelder. */
+function strukturDigest(w) {
+  return {
+    courses: w.courses.map(c => ({ lage: c.lage, joints: c.joints_grid,
+      stones: c.stones.map(s => [s.type, s.x0, s.x1]) })),
+    achsen: w.tension_columns.map(c => ({ k: c.k, x_mm: c.x_mm, durchgehend: c.durchgehend,
+      segments: c.segments.map(s => ({ z0: s.z0_mm, z1: s.z1_mm, lage0: s.lage0, lage1: s.lage1,
+        bedarf: s.bedarf_mm, ueberstand: s.ueberstand_mm, verschnitt: s.verschnitt_mm,
+        stuecke: s.stuecke.map(x => [x.len_mm, x.art, x.quelle_mm]),
+        konflikt: s.zuschnitt_konflikt })) })),
+    bom: w.bom,
+    base_plate: w.base_plate, top_plate: w.top_plate,
+    ausgleichspunkte: w.ausgleichspunkte, deckenanschlusspunkte: w.deckenanschlusspunkte,
+    validation: w.validation,
+  };
+}
+for (const key of Object.keys(VERGLEICHSWAENDE)) {
+  t(`#136 ${key}: Verband, Spannachsen und Mengen strukturidentisch zum Stand vor dem Umbau`, () => {
+    const h = createHash("sha256").update(JSON.stringify(strukturDigest(VERGLEICHSWAENDE[key]())))
+      .digest("hex");
+    assert(h === STRUKTUR_VOR_136[key], `Strukturaenderung an ${key}: ${h}`);
+  });
+}
 
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

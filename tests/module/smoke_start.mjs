@@ -1008,12 +1008,27 @@ const neuGebaut = buildWall(wandRoh.name, wv.length_mm, wv.height_mm, wv.opening
 // bleibt dabei unveraendert und setzt das Feld weiterhin unbedingt mit seinem Default 0. Es
 // bewegt keine Achse mehr — der Unterschied ist also erwartet und wird beidseitig
 // herausgenommen, statt ihn im Kern oder in der Vorlage zu kaschieren.
+//
+// #136 hat eine DRITTE Ausnahme derselben Art hinzugefuegt: die kanonischen Lagenkanten
+// (`courses[].unterkante_mm`/`oberkante_mm`/`hoehe_mm`). Sie sind rein additiv — die Vorlage
+// ist Altbestand ohne sie, der Kern liefert sie jetzt fuer jede Lage. Herausgenommen wird auch
+// das beidseitig, statt es in der Vorlage oder im Kern zu kaschieren; dass die Kanten wirklich
+// nur hinzukommen und nichts verschieben, steht unmittelbar darunter.
 const ohneZusatz = (w) => { const c = JSON.parse(JSON.stringify(w));
   delete c.prestress.blech_lengths_mm; delete c.base_plate.teile; delete c.base_plate.module;
   delete c.validation.blech_konflikte; delete c.bom.stahlblech_module;
-  delete c.prestress.start_axis_grid; return c; };
-ok('Wandelement der Vorlage ist exakt die Ausgabe des heutigen Cores (ohne die #91-/#104-Zusatzfelder)',
+  delete c.prestress.start_axis_grid;
+  for (const lg of (c.courses || [])) {
+    delete lg.unterkante_mm; delete lg.oberkante_mm; delete lg.hoehe_mm;
+  }
+  return c; };
+ok('Wandelement der Vorlage ist exakt die Ausgabe des heutigen Cores (ohne die #91-/#104-/#136-Zusatzfelder)',
   JSON.stringify(ohneZusatz(neuGebaut)) === JSON.stringify(ohneZusatz(wv)));
+// #136: die Vorlage kennt die Lagenkanten nicht, der heutige Kern fuehrt sie je Lage.
+ok('#136 Lagenkanten kommen nur hinzu (Vorlage ohne, heutiger Kern mit)',
+  wv.courses.every(lg => !('oberkante_mm' in lg))
+  && neuGebaut.courses.every((lg, n) => lg.unterkante_mm === n * wv.course_mm
+    && lg.oberkante_mm === (n + 1) * wv.course_mm && lg.hoehe_mm === wv.course_mm));
 ok('#91 und #104 sind die einzigen Abweichungen zur Vorlage (Bodenblech-Teile, Startachse)',
   !('blech_lengths_mm' in wv.prestress) && !('teile' in wv.base_plate)
   && !('blech_konflikte' in wv.validation)

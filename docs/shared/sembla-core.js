@@ -5,6 +5,8 @@
  * Bit-genau identisch zum Python-Core (gepruefte Paritaet gegen die goldenen Fixtures).
  *
  * Einheiten: mm. 'grid' = Rastereinheit (125mm), 'lage' = Lagenindex (200mm).
+ * Die LAGE einer Kante kommt seit #136 aus den kanonischen Feldern der Steinlage
+ * (`unterkante_mm`/`oberkante_mm`/`hoehe_mm`) und nicht mehr aus Lagenindex x Lagenhoehe.
  */
 
 export const GRID = 125;
@@ -320,13 +322,67 @@ export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm
 // und NICHT als manueller Wert ausgegeben: gespeichert ist ausschliesslich ein ausdruecklich
 // gesetzter Override in `prestress.zwischenpunkte_mm` ([A-17]).
 
+// ---------- Kanonisches Lagenkantenmodell (#136) ----------
+// Jede Steinlage traegt ihre Geometrie SELBST: Unterkante, Oberkante und Hoehe in mm. Wo frueher
+// „Lagenindex x 200 mm" gerechnet wurde, wird jetzt die Kante GELESEN. `course_mm` bleibt dabei
+// unveraendert die regulaere Lagenhoehe — es wird weder umgedeutet noch abgeschafft; die
+// Kantenliste entsteht aus ihm. Eine Ausgleichslage oder eine freie Wandhoehe gibt es
+// ausdruecklich NICHT: die Validierung „Wandhoehe ist Vielfaches von COURSE" bleibt in Kraft.
+// Der Gewinn ist, dass es nur noch EINE Stelle gibt, an der eine Lagenhoehe entsteht.
+
+/**
+ * Kanonische Lagenkanten einer Wand (aufsteigend, luecken- und ueberlappungsfrei).
+ * @param {number} lagenAnzahl Anzahl der Steinlagen
+ * @param {number} [courseMm] regulaere Lagenhoehe
+ * @returns {Array<{lage:number,unterkante_mm:number,oberkante_mm:number,hoehe_mm:number}>}
+ */
+export function lagenKanten(lagenAnzahl, courseMm = COURSE) {
+  const out = [];
+  let z = 0;
+  for (let li = 0; li < lagenAnzahl; li++) {
+    out.push({ lage: li, unterkante_mm: z, oberkante_mm: z + courseMm, hoehe_mm: courseMm });
+    z += courseMm;
+  }
+  return out;
+}
+
+/**
+ * Kanonische Lagenkanten eines FERTIGEN Wandelements.
+ *
+ * Gelesen werden die Felder der Lagen selbst. Der Rueckfall auf `course_mm` gilt allein
+ * gespeicherten Altstaenden, die die Felder noch nicht fuehren — er rechnet nichts anderes,
+ * sondern baut dieselbe Kantenliste aus der regulaeren Lagenhoehe.
+ * @param {any} w Wandelement
+ * @returns {Array<{lage:number,unterkante_mm:number,oberkante_mm:number,hoehe_mm:number}>}
+ */
+export function wandLagenKanten(w) {
+  const cs = (w && Array.isArray(w.courses)) ? w.courses : null;
+  if (cs && cs.length && cs.every((c) => c && Number.isFinite(c.oberkante_mm)
+    && Number.isFinite(c.unterkante_mm) && Number.isFinite(c.hoehe_mm)))
+    return cs.map((c) => ({ lage: c.lage, unterkante_mm: c.unterkante_mm,
+      oberkante_mm: c.oberkante_mm, hoehe_mm: c.hoehe_mm }));
+  const C = (w && w.course_mm > 0) ? w.course_mm : COURSE;
+  const L = (w && Number.isFinite(w.lagen)) ? w.lagen
+    : (w && Number.isFinite(w.height_mm) ? Math.floor(w.height_mm / C) : 0);
+  return lagenKanten(Math.max(0, L), C);
+}
+
 /**
  * Steinlagen-Oberkanten ECHT INNERHALB eines Segments (aufsteigend).
- * @param {number} z0Mm Segmentfuss @param {number} z1Mm Segmentkopf @param {number} [courseMm]
+ *
+ * `kanten` ist entweder die kanonische Kantenliste (bevorzugt — dann werden die Oberkanten
+ * GELESEN) oder, fuer Altaufrufer, eine regulaere Lagenhoehe in mm.
+ * @param {number} z0Mm Segmentfuss @param {number} z1Mm Segmentkopf
+ * @param {Array<{oberkante_mm:number}>|number} [kanten]
  * @returns {number[]}
  */
-export function lagenOberkantenInnen(z0Mm, z1Mm, courseMm = COURSE) {
+export function lagenOberkantenInnen(z0Mm, z1Mm, kanten = COURSE) {
+  if (Array.isArray(kanten))
+    return kanten.map((c) => c.oberkante_mm)
+      .filter((z) => z > z0Mm + 1e-9 && z < z1Mm - 1e-9)
+      .sort((a, b) => a - b);
   const out = [];
+  const courseMm = kanten;
   if (!(courseMm > 0)) return out;
   const erste = Math.floor(z0Mm / courseMm) + 1;
   for (let r = erste; r * courseMm < z1Mm - 1e-9; r++) {
@@ -342,11 +398,12 @@ export function lagenOberkantenInnen(z0Mm, z1Mm, courseMm = COURSE) {
  * Genommen wird die innere Lagen-Oberkante mit dem KLEINSTEN ABSTAND zur halben Segmenthoehe;
  * bei Gleichstand deterministisch die NIEDRIGERE (die Kandidaten laufen aufsteigend, und nur ein
  * strikt kleinerer Abstand gewinnt). Ohne innere Lagen-Oberkante gibt es keinen Punkt -> null.
- * @param {number} z0Mm @param {number} z1Mm @param {number} [courseMm]
+ * @param {number} z0Mm @param {number} z1Mm
+ * @param {Array<{oberkante_mm:number}>|number} [kanten]
  * @returns {number|null}
  */
-export function autoZwischenpunkt(z0Mm, z1Mm, courseMm = COURSE) {
-  const kand = lagenOberkantenInnen(z0Mm, z1Mm, courseMm);
+export function autoZwischenpunkt(z0Mm, z1Mm, kanten = COURSE) {
+  const kand = lagenOberkantenInnen(z0Mm, z1Mm, kanten);
   if (!kand.length) return null;
   const mitte = (z0Mm + z1Mm) / 2;
   let best = kand[0], bestD = Math.abs(kand[0] - mitte);
@@ -366,6 +423,10 @@ export function autoZwischenpunkt(z0Mm, z1Mm, courseMm = COURSE) {
  *
  * `punkte === null` heisst „kein Override" (Auto-Ableitung). Eine AUSDRUECKLICH leere Liste ist
  * dagegen die Aussage „diese Wand hat keine Zwischenspannpunkte" und faellt nicht auf Auto zurueck.
+ *
+ * #136 Hier steht bewusst weiter die Lagenhoehe und nicht die Kantenliste: geprueft wird eine
+ * EINGABE gegen das Lagenraster — auch ausserhalb der Wand, wo es keine Lage und damit keine
+ * Kante gibt. Die Rangfolge der Gruende (Raster vor Wandgrenze) bleibt dadurch unveraendert.
  * @param {number[]|null|undefined} arr @param {number} heightMm Wandhoehe @param {number} [courseMm]
  * @returns {{punkte:number[]|null,fehler:Array<{grund:string,wert:any}>}}
  */
@@ -388,14 +449,15 @@ export function normZwischenpunkte(arr, heightMm, courseMm = COURSE) {
  * Mit Override gelten genau die gesetzten Punkte, die in diesem Segment eine innere
  * Lagen-Oberkante sind — nichts wird verschoben und nichts ergaenzt. Ohne Override gilt die
  * Ableitung nach [A-15].
- * @param {number} z0Mm @param {number} z1Mm @param {number[]|null} [override] @param {number} [courseMm]
+ * @param {number} z0Mm @param {number} z1Mm @param {number[]|null} [override]
+ * @param {Array<{oberkante_mm:number}>|number} [kanten]
  * @returns {number[]}
  */
-export function zwischenpunkteSegment(z0Mm, z1Mm, override = null, courseMm = COURSE) {
-  const innen = lagenOberkantenInnen(z0Mm, z1Mm, courseMm);
+export function zwischenpunkteSegment(z0Mm, z1Mm, override = null, kanten = COURSE) {
+  const innen = lagenOberkantenInnen(z0Mm, z1Mm, kanten);
   if (Array.isArray(override))
     return innen.filter((z) => override.some((o) => Math.abs(Number(o) - z) < 1e-9));
-  const a = autoZwischenpunkt(z0Mm, z1Mm, courseMm);
+  const a = autoZwischenpunkt(z0Mm, z1Mm, kanten);
   return a == null ? [] : [a];
 }
 
@@ -407,12 +469,14 @@ export function zwischenpunkteSegment(z0Mm, z1Mm, override = null, courseMm = CO
  */
 export function wirksameZwischenpunkte(w) {
   if (!w || !Array.isArray(w.tension_columns)) return [];
-  const C = (w.course_mm > 0) ? w.course_mm : COURSE;
+  // #136 Die Lagenoberkanten kommen aus den kanonischen Lagenkanten der Wand, nicht mehr aus
+  // Lagenindex x `course_mm`.
+  const KANTEN = wandLagenKanten(w);
   const ov = (w.prestress && Array.isArray(w.prestress.zwischenpunkte_mm))
     ? w.prestress.zwischenpunkte_mm : null;
   const out = [];
   for (const col of w.tension_columns) for (const sg of (col.segments || []))
-    for (const z of zwischenpunkteSegment(sg.z0_mm, sg.z1_mm, ov, C))
+    for (const z of zwischenpunkteSegment(sg.z0_mm, sg.z1_mm, ov, KANTEN))
       out.push({ k: col.k, x_mm: col.x_mm, z_mm: z, z0_mm: sg.z0_mm, z1_mm: sg.z1_mm });
   return out;
 }
@@ -1027,6 +1091,9 @@ function normPrestress(p) {
   return out;
 }
 
+// #136 Eingangsnormalisierung, kein Kantenleser: die Stufenhoehe wird — genau wie x0/x1 auf das
+// GRID — auf das Lagenraster gebracht. Welche Lage damit gemeint ist und wo deren Oberkante
+// liegt, entscheidet danach allein die kanonische Kantenliste in `buildWall`.
 function normSteps(steps, lengthMm, heightMm) {
   const out = [];
   for (const s of (steps || [])) {
@@ -1102,6 +1169,11 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   const TOP = PS.top_connection;   // 'blech' (Kopfblech) | 'spannplatte'
   validateInputs(lengthMm, heightMm, openings);
   const N = lengthMm / GRID, L = heightMm / COURSE;
+  // #136 Die KANONISCHE Lagengeometrie: je Lage Unterkante, Oberkante und Hoehe in mm. Ab hier
+  // wird keine Lagenkante mehr aus `Lagenindex x COURSE` gerechnet, sondern aus KANTEN gelesen.
+  const KANTEN = lagenKanten(L, COURSE);
+  /** Oberkante der obersten vorhandenen Lage einer Rasterspalte (0 Lagen -> 0 mm). */
+  const oberkanteBisLage = (n) => (n > 0 ? KANTEN[n - 1].oberkante_mm : 0);
   // [G-10]/[G-12] Verzahnungsbereiche normalisieren und validieren
   const IL = normInterlocks(interlocks, N, openings);
   // [A-17] Manuelle Zwischenspannpunkte validieren. Ohne Override bleibt `punkte` null und die
@@ -1115,6 +1187,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   for (let k = 0; k < N; k++) {
     const xc = (k + 0.5) * GRID; let h = heightMm;
     for (const s of STEPS) { if (xc >= s.x0_mm && xc < s.x1_mm) { h = s.height_mm; break; } }
+    // #136 Hier entsteht nur die ANZAHL der Lagen dieser Spalte (Eingangsmass -> Lagenraster,
+    // wie x0/x1 -> GRID). Die zugehoerige Oberkante wird danach aus KANTEN gelesen.
     topLage[k] = Math.max(0, Math.min(L, pyRound(h / COURSE)));
   }
   const runsAt = (li) => { const runs = []; let s = null;
@@ -1157,7 +1231,10 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       }
     }
     if (rig) rigidLagen.push(li);
-    courses.push({ lage: li, stones, joints_grid: [...joints].sort((a, b) => a - b) });
+    // #136 Jede Lage traegt ihre Geometrie selbst — Unterkante, Oberkante und Hoehe in mm.
+    courses.push({ lage: li, unterkante_mm: KANTEN[li].unterkante_mm,
+      oberkante_mm: KANTEN[li].oberkante_mm, hoehe_mm: KANTEN[li].hoehe_mm,
+      stones, joints_grid: [...joints].sort((a, b) => a - b) });
     prev = joints;
   }
 
@@ -1315,12 +1392,13 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   const columns = [];
   let anchSenkkopf = 0, anchSpannmutter = 0, anchSpannplatten = 0;
   for (const k of colArr) {
-    const localTop = topLage[k] * COURSE;
+    const localTop = oberkanteBisLage(topLage[k]);
     const segs = []; let r = 0;
     while (r < L) {
       if (!occ[r][k]) { r++; continue; }
       let r2 = r; while (r2 + 1 < L && occ[r2 + 1][k]) r2++;
-      const z0 = r * COURSE, z1 = (r2 + 1) * COURSE, h = z1 - z0;
+      // #136 Segmentfuss und -kopf sind die kanonischen Kanten der beteiligten Lagen.
+      const z0 = KANTEN[r].unterkante_mm, z1 = KANTEN[r2].oberkante_mm, h = z1 - z0;
       // Anschluss-Ausbildung je Segmentende:
       //   Fuß der Wand (z0==0)      -> Bodenblech: Senkkopfschraube + Kopplungsmutter
       //   Wandoberkante (z1==Top)   -> Kopfblech (Spannmutter) ODER Spannplatte (Platte + Spannmutter)
@@ -1344,7 +1422,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // keine Platte, und ein Kopfblechmass wird dafuer nicht ersatzweise genommen.
       const fussOffset = bottomBase ? (PS.rod_fuss_offset_mm || 0) : 0;
       const kopfZuschlag = (ankerOben === "spannplatte") ? (PS.rod_kopf_zuschlag_mm || 0) : 0;
-      const zpSeg = zwischenpunkteSegment(z0, z1, ZP.punkte, COURSE);
+      const zpSeg = zwischenpunkteSegment(z0, z1, ZP.punkte, KANTEN);
       // Die Sperren sind relativ zur bestueckten Strecke — also zum STANGENFUSS, nicht zum
       // Segmentfuss. Ohne den Offset wanderte jede [Z-7]-Sperre um genau diesen Betrag.
       const kombi = kombiniereSegment(h, PS.rod_lengths_mm, topReach, PS.rod_rest_mm,
@@ -1382,7 +1460,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       r = r2 + 1;
     }
     if (!segs.length) continue;
-    const durch = segs.length === 1 && segs[0].z0_mm === 0 && segs[0].z1_mm === topLage[k] * COURSE;
+    const durch = segs.length === 1 && segs[0].z0_mm === 0 && segs[0].z1_mm === localTop;
     columns.push({ k, x_mm: CHAMBER_OFFSET + GRID * k, durchgehend: durch, segments: segs,
       gewindestangen: segs.reduce((a, sg) => a + sg.gewindestangen, 0),
       verbindungsmuttern: segs.reduce((a, sg) => a + sg.verbindungsmuttern, 0),
@@ -1465,7 +1543,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   bom.stahlblech_mm = lengthMm + (TOP === "blech" ? topEdgeLen : 0);
   bom.stahlblech_dicke_mm = PS.blech_dicke_mm;
   bom.stossfugen = stossfugen;
-  bom.dichtstreifen_mm = stossfugen * COURSE;
+  // #136 Die Hoehe eines Dichtstreifens ist die Hoehe SEINER Lage — gelesen, nicht gerechnet.
+  bom.dichtstreifen_mm = courses.reduce((a, c) => a + c.joints_grid.length * c.hoehe_mm, 0);
   bom.verschnitt_mm = columns.reduce((a, c) => a + c.segments.reduce((b, sg) => b + sg.verschnitt_mm, 0), 0);
 
   // [Z-5]/[Z-6] Zuschnitt-Konflikte sichtbar machen (nie still): je betroffenes Segment ein

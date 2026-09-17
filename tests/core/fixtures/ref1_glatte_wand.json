@@ -278,6 +278,9 @@
   "courses": [
     {
       "lage": 0,
+      "unterkante_mm": 0,
+      "oberkante_mm": 200,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i2",
@@ -302,6 +305,9 @@
     },
     {
       "lage": 1,
+      "unterkante_mm": 200,
+      "oberkante_mm": 400,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i3",
@@ -326,6 +332,9 @@
     },
     {
       "lage": 2,
+      "unterkante_mm": 400,
+      "oberkante_mm": 600,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i2",
@@ -350,6 +359,9 @@
     },
     {
       "lage": 3,
+      "unterkante_mm": 600,
+      "oberkante_mm": 800,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i3",
@@ -374,6 +386,9 @@
     },
     {
       "lage": 4,
+      "unterkante_mm": 800,
+      "oberkante_mm": 1000,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i2",
@@ -398,6 +413,9 @@
     },
     {
       "lage": 5,
+      "unterkante_mm": 1000,
+      "oberkante_mm": 1200,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i3",
@@ -422,6 +440,9 @@
     },
     {
       "lage": 6,
+      "unterkante_mm": 1200,
+      "oberkante_mm": 1400,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i2",
@@ -446,6 +467,9 @@
     },
     {
       "lage": 7,
+      "unterkante_mm": 1400,
+      "oberkante_mm": 1600,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i3",
@@ -470,6 +494,9 @@
     },
     {
       "lage": 8,
+      "unterkante_mm": 1600,
+      "oberkante_mm": 1800,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i2",
@@ -494,6 +521,9 @@
     },
     {
       "lage": 9,
+      "unterkante_mm": 1800,
+      "oberkante_mm": 2000,
+      "hoehe_mm": 200,
       "stones": [
         {
           "type": "i3",

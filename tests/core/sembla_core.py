@@ -25,6 +25,7 @@ __all__ = [
     "build_wall", "is_buildable", "save",
     "MIN_FERTIGMASS_MM", "ROD_OVERHANG", "norm_laengen", "quelle_fuer_mass",
     "kombiniere_laengen", "kombiniere_segment",
+    "lagen_kanten", "wand_lagen_kanten",
     "lagen_oberkanten_innen", "auto_zwischenpunkt", "norm_zwischenpunkte",
     "zwischenpunkte_segment", "wirksame_zwischenpunkte",
     "AUSGLEICH_DICHTE_JE_M", "AUSGLEICH_ACHSVERSATZ", "verteile_ausgleichspunkte",
@@ -277,9 +278,55 @@ def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
 # ([A-3]), die unveraendert bleibt. Die Punkte liegen lagengenau ECHT INNERHALB des Segments;
 # ein Segment mit nur einer Lage erzeugt keinen Punkt. Abgeleitet wird bei jeder Rechnung
 # frisch und NIE gespeichert — gespeichert ist nur ein ausdruecklicher Override.
-def lagen_oberkanten_innen(z0_mm, z1_mm, course_mm=COURSE):
-    """Steinlagen-Oberkanten echt innerhalb eines Segments (aufsteigend)."""
+# ---- Kanonisches Lagenkantenmodell (#136) ----
+# Bit-genaues Gegenstueck zu lagenKanten/wandLagenKanten in docs/shared/sembla-core.js.
+# Jede Steinlage traegt ihre Geometrie selbst: Unterkante, Oberkante und Hoehe in mm. Wo frueher
+# „Lagenindex x 200 mm" gerechnet wurde, wird die Kante jetzt GELESEN. `course_mm` bleibt dabei
+# unveraendert die regulaere Lagenhoehe — die Kantenliste entsteht aus ihm. Eine Ausgleichslage
+# oder eine freie Wandhoehe gibt es ausdruecklich nicht.
+def lagen_kanten(lagen_anzahl, course_mm=COURSE):
+    """Kanonische Lagenkanten einer Wand (aufsteigend, luecken- und ueberlappungsfrei)."""
+    out, z = [], 0
+    for li in range(int(lagen_anzahl)):
+        out.append({"lage": li, "unterkante_mm": z, "oberkante_mm": z + course_mm,
+                    "hoehe_mm": course_mm})
+        z += course_mm
+    return out
+
+
+def wand_lagen_kanten(w):
+    """Kanonische Lagenkanten eines FERTIGEN Wandelements.
+
+    Gelesen werden die Felder der Lagen selbst. Der Rueckfall auf `course_mm` gilt allein
+    gespeicherten Altstaenden ohne die Felder und baut dieselbe Kantenliste.
+    """
+    cs = (w or {}).get("courses")
+    def _zahl(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+    _felder = ("unterkante_mm", "oberkante_mm", "hoehe_mm")
+    if isinstance(cs, list) and cs and all(
+            isinstance(c, dict) and all(_zahl(c.get(f)) for f in _felder) for c in cs):
+        return [{"lage": c["lage"], "unterkante_mm": c["unterkante_mm"],
+                 "oberkante_mm": c["oberkante_mm"], "hoehe_mm": c["hoehe_mm"]} for c in cs]
+    C = (w or {}).get("course_mm") or COURSE
+    L = (w or {}).get("lagen")
+    if not isinstance(L, int) or isinstance(L, bool):
+        h = (w or {}).get("height_mm")
+        L = int(math.floor(h / C)) if isinstance(h, (int, float)) and not isinstance(h, bool) else 0
+    return lagen_kanten(max(0, L), C)
+
+
+def lagen_oberkanten_innen(z0_mm, z1_mm, kanten=COURSE):
+    """Steinlagen-Oberkanten echt innerhalb eines Segments (aufsteigend).
+
+    `kanten` ist entweder die kanonische Kantenliste (bevorzugt — dann werden die Oberkanten
+    GELESEN) oder, fuer Altaufrufer, eine regulaere Lagenhoehe in mm.
+    """
+    if isinstance(kanten, (list, tuple)):
+        return sorted(_mm(c["oberkante_mm"]) for c in kanten
+                      if c["oberkante_mm"] > z0_mm + 1e-9 and c["oberkante_mm"] < z1_mm - 1e-9)
     out = []
+    course_mm = kanten
     if not course_mm > 0:
         return out
     r = math.floor(z0_mm / course_mm) + 1
@@ -291,14 +338,14 @@ def lagen_oberkanten_innen(z0_mm, z1_mm, course_mm=COURSE):
     return out
 
 
-def auto_zwischenpunkt(z0_mm, z1_mm, course_mm=COURSE):
+def auto_zwischenpunkt(z0_mm, z1_mm, kanten=COURSE):
     """Automatischer Zwischenspannpunkt eines Segments ([A-15]).
 
     Innere Lagen-Oberkante mit dem kleinsten Abstand zur halben Segmenthoehe; bei Gleichstand
     deterministisch die NIEDRIGERE (aufsteigende Kandidaten, nur strikt kleinerer Abstand
     gewinnt). Ohne innere Lagen-Oberkante -> None.
     """
-    kand = lagen_oberkanten_innen(z0_mm, z1_mm, course_mm)
+    kand = lagen_oberkanten_innen(z0_mm, z1_mm, kanten)
     if not kand:
         return None
     mitte = (z0_mm + z1_mm) / 2
@@ -317,6 +364,10 @@ def norm_zwischenpunkte(arr, height_mm, course_mm=COURSE):
     unzulaessiger Wert wird NICHT auf eine andere Lage gerundet, sondern benannt und nicht
     angewandt. `None` heisst „kein Override"; eine ausdruecklich leere Liste heisst „keine
     Zwischenspannpunkte" und faellt nicht auf Auto zurueck.
+
+    #136 Hier steht bewusst weiter die Lagenhoehe und nicht die Kantenliste: geprueft wird eine
+    EINGABE gegen das Lagenraster — auch ausserhalb der Wand, wo es keine Lage und damit keine
+    Kante gibt. Die Rangfolge der Gruende (Raster vor Wandgrenze) bleibt unveraendert.
     """
     if not isinstance(arr, (list, tuple)):
         return None, []
@@ -332,12 +383,12 @@ def norm_zwischenpunkte(arr, height_mm, course_mm=COURSE):
     return sorted(set(out)), fehler
 
 
-def zwischenpunkte_segment(z0_mm, z1_mm, override=None, course_mm=COURSE):
+def zwischenpunkte_segment(z0_mm, z1_mm, override=None, kanten=COURSE):
     """Wirksame Zwischenspannpunkte EINES Segments (aufsteigend, absolute Hoehen in mm)."""
-    innen = lagen_oberkanten_innen(z0_mm, z1_mm, course_mm)
+    innen = lagen_oberkanten_innen(z0_mm, z1_mm, kanten)
     if isinstance(override, (list, tuple)):
         return [z for z in innen if any(abs(float(o) - z) < 1e-9 for o in override)]
-    a = auto_zwischenpunkt(z0_mm, z1_mm, course_mm)
+    a = auto_zwischenpunkt(z0_mm, z1_mm, kanten)
     return [] if a is None else [a]
 
 
@@ -345,14 +396,16 @@ def wirksame_zwischenpunkte(w):
     """Wirksame Zwischenspannpunkte eines fertigen Wandelements (frisch, nie gespeichert)."""
     if not w or not isinstance(w.get("tension_columns"), list):
         return []
-    C = w.get("course_mm") or COURSE
+    # #136 Die Lagenoberkanten kommen aus den kanonischen Lagenkanten der Wand, nicht mehr aus
+    # Lagenindex x `course_mm`.
+    _kanten = wand_lagen_kanten(w)
     ov = (w.get("prestress") or {}).get("zwischenpunkte_mm")
     if not isinstance(ov, (list, tuple)):
         ov = None
     out = []
     for col in w["tension_columns"]:
         for sg in col.get("segments", []):
-            for z in zwischenpunkte_segment(sg["z0_mm"], sg["z1_mm"], ov, C):
+            for z in zwischenpunkte_segment(sg["z0_mm"], sg["z1_mm"], ov, _kanten):
                 out.append({"k": col["k"], "x_mm": col["x_mm"], "z_mm": z,
                             "z0_mm": sg["z0_mm"], "z1_mm": sg["z1_mm"]})
     return out
@@ -956,6 +1009,9 @@ def _norm_prestress(p):
         out["deckenanschluss_grid"] = list(_dc)
     return out
 
+# #136 Eingangsnormalisierung, kein Kantenleser: die Stufenhoehe wird — genau wie x0/x1 auf das
+# GRID — auf das Lagenraster gebracht. Welche Lage damit gemeint ist und wo deren Oberkante
+# liegt, entscheidet danach allein die kanonische Kantenliste in `build_wall`.
 def _norm_steps(steps, length_mm, height_mm):
     out = []
     for s in (steps or []):
@@ -1049,6 +1105,13 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     openings = list(openings or [])
     _validate_inputs(length_mm, height_mm, openings)
     N, L = length_mm // GRID, height_mm // COURSE
+    # #136 Die KANONISCHE Lagengeometrie: je Lage Unterkante, Oberkante und Hoehe in mm. Ab hier
+    # wird keine Lagenkante mehr aus `Lagenindex x COURSE` gerechnet, sondern aus _KANTEN gelesen.
+    _KANTEN = lagen_kanten(L, COURSE)
+
+    def _oberkante_bis_lage(n):
+        """Oberkante der obersten vorhandenen Lage einer Rasterspalte (0 Lagen -> 0 mm)."""
+        return _KANTEN[n - 1]["oberkante_mm"] if n > 0 else 0
     # [G-10]/[G-12] Verzahnungsbereiche normalisieren und validieren
     _IL_interlocks, _IL_fehler = norm_interlocks(interlocks, N, openings)
     # [A-17] Manuelle Zwischenspannpunkte validieren. Ohne Override bleibt `_ZP` None und die
@@ -1066,6 +1129,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         for s in _STEPS:
             if s["x0_mm"] <= xc < s["x1_mm"]:
                 h = s["height_mm"]; break
+        # #136 Hier entsteht nur die ANZAHL der Lagen dieser Spalte (Eingangsmass -> Lagenraster,
+        # wie x0/x1 -> GRID). Die zugehoerige Oberkante wird danach aus _KANTEN gelesen.
         _top_lage.append(max(0, min(L, round(h / COURSE))))
 
     def _runs_at(li):
@@ -1110,7 +1175,11 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                 g += b
         if rig:
             rigid_lagen.append(li)
-        courses.append({"lage": li, "stones": stones, "joints_grid": sorted(joints)})
+        # #136 Jede Lage traegt ihre Geometrie selbst — Unterkante, Oberkante und Hoehe in mm.
+        courses.append({"lage": li, "unterkante_mm": _KANTEN[li]["unterkante_mm"],
+                        "oberkante_mm": _KANTEN[li]["oberkante_mm"],
+                        "hoehe_mm": _KANTEN[li]["hoehe_mm"],
+                        "stones": stones, "joints_grid": sorted(joints)})
         prev = joints
 
     # Versatz-Validierung
@@ -1266,7 +1335,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     columns = []
     anch_senkkopf = 0; anch_spannmutter = 0; anch_spannplatten = 0
     for k in col_ks:
-        local_top = _top_lage[k] * COURSE
+        local_top = _oberkante_bis_lage(_top_lage[k])
         segs = []
         r = 0
         while r < L:
@@ -1275,7 +1344,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             r2 = r
             while r2 + 1 < L and occ[r2 + 1][k]:
                 r2 += 1
-            z0, z1 = r * COURSE, (r2 + 1) * COURSE
+            # #136 Segmentfuss und -kopf sind die kanonischen Kanten der beteiligten Lagen.
+            z0, z1 = _KANTEN[r]["unterkante_mm"], _KANTEN[r2]["oberkante_mm"]
             h = z1 - z0
             # Anschluss-Ausbildung je Segmentende (Fuss=Bodenblech, oben=Kopfblech/Spannplatte, sonst Spannplatte)
             bottom_base = z0 == 0
@@ -1294,7 +1364,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             # wird dafuer nicht ersatzweise genommen.
             _fuss_offset = _PS.get("rod_fuss_offset_mm", 0) if bottom_base else 0
             _kopf_zuschlag = _PS.get("rod_kopf_zuschlag_mm", 0) if anker_oben == "spannplatte" else 0
-            _zp_seg = zwischenpunkte_segment(z0, z1, _ZP, COURSE)
+            _zp_seg = zwischenpunkte_segment(z0, z1, _ZP, _KANTEN)
             # Die Sperren sind relativ zur bestueckten Strecke — also zum STANGENFUSS, nicht zum
             # Segmentfuss. Ohne den Offset wanderte jede [Z-7]-Sperre um genau diesen Betrag.
             _kombi = kombiniere_segment(h, _PS["rod_lengths_mm"], top_reach,
@@ -1346,7 +1416,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             r = r2 + 1
         if not segs:
             continue
-        durch = len(segs) == 1 and segs[0]["z0_mm"] == 0 and segs[0]["z1_mm"] == _top_lage[k] * COURSE
+        durch = len(segs) == 1 and segs[0]["z0_mm"] == 0 and segs[0]["z1_mm"] == local_top
         columns.append({"k": k, "x_mm": CHAMBER_OFFSET + GRID * k, "durchgehend": durch, "segments": segs,
                         "gewindestangen": sum(g["gewindestangen"] for g in segs),
                         "verbindungsmuttern": sum(g["verbindungsmuttern"] for g in segs),
@@ -1431,7 +1501,10 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                stahlblech_module=boden_module + kopf_module,
                stahlblech_mm=length_mm + (top_edge_len if _top == "blech" else 0),
                stahlblech_dicke_mm=_PS["blech_dicke_mm"],
-               stossfugen=stossfugen, dichtstreifen_mm=stossfugen * COURSE,
+               stossfugen=stossfugen,
+               # #136 Die Hoehe eines Dichtstreifens ist die Hoehe SEINER Lage — gelesen,
+               # nicht gerechnet.
+               dichtstreifen_mm=sum(len(c["joints_grid"]) * c["hoehe_mm"] for c in courses),
                verschnitt_mm=sum(g["verschnitt_mm"] for c in columns for g in c["segments"]))
 
     # [Z-5]/[Z-6] Zuschnitt-Konflikte sichtbar machen (nie still); kein Baubarkeitsausschluss.

@@ -46,13 +46,27 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist der EXCEL-EXPORT DER STÜCKLISTEN (#135). Geliefert: die
+// Der NEUESTE Eintrag ist das KANONISCHE LAGENKANTENMODELL (#136). Geliefert: der
+// Rechenkern (JS-Core und Python-Referenzkern) fuehrt je Steinlage Unterkante,
+// Oberkante und Hoehe als eigene Felder; alle Core-Leser beziehen die Oberkante
+// daraus statt aus Lagenindex mal 200 mm. NICHT versprochen werden eine
+// Ausgleichslage, eine freie Wandhoehe oder irgendeine sichtbare Aenderung —
+// bestehende Waende rechnen strukturidentisch (typ "intern", keine Testbitte).
+const FRISCH_136 = EINTRAEGE[0];
+ok("[#136] das kanonische Lagenkantenmodell ist der neueste Eintrag",
+  FRISCH_136?.id === "chg-20260917-01" && FRISCH_136?.issue === 136
+  && FRISCH_136?.typ === "intern" && FRISCH_136?.datum === "2026-09-17"
+  && /Unterkante, Oberkante und Höhe/.test(FRISCH_136?.titel || "")
+  && /Verhalten unverändert/.test(FRISCH_136?.titel || ""));
+
+// Davor der EXCEL-EXPORT DER STÜCKLISTEN (#135) — ueber die Kennung gesucht, weil
+// er nicht mehr der neueste Eintrag ist. Seine Aussagen bleiben unveraendert: die
 // tabellarischen Stuecklistenausgaben des zentralen Exports (Baustellen- samt
 // Einzelteilliste, Gesamt-, Matrix-Stückliste) wahlweise als echtes XLSX, im Dialog
 // mit Excel als Default; CSV bleibt waehlbar. NICHT versprochen werden geaenderte
 // Mengen/Preise, Excel-Formatierung oder ein Formatwechsel der uebrigen Dateien.
-const FRISCH_135 = EINTRAEGE[0];
-ok("[#135] der Excel-Export der Stuecklisten ist der neueste Eintrag",
+const FRISCH_135 = EINTRAEGE.find(e => e.id === "chg-20260916-04");
+ok("[#135] der Excel-Export der Stuecklisten steht als Eintrag davor",
   FRISCH_135?.id === "chg-20260916-04" && FRISCH_135?.issue === 135
   && FRISCH_135?.typ === "feature" && FRISCH_135?.datum === "2026-09-16"
   && /Excel \(\.xlsx\)/.test(FRISCH_135?.titel || "")
