@@ -436,9 +436,9 @@
            erzeugt — nur so ist das Popup über denselben Weg bedienbar wie jedes andere
            Bedienelement der Seite.
            Geführt werden GENAU ZEHN allgemeine Wandmerkmale (seit #136 auch die
-           Ausgleichslage). Geometrie- und
-           positionsabhängige Angaben (Länge, Lage, Öffnungen, Durchbrüche, Staffelungen,
-           Verzahnungen, manuelle Spannachsen, Zwischenspannpunkte) sind ausdrücklich
+           Ausgleichslage) und seit #139 die NUMMERIERTEN Zwischenspannbleche. Die übrigen
+           geometrie- und positionsabhängigen Angaben (Länge, Lage, Öffnungen, Durchbrüche,
+           Staffelungen, Verzahnungen, manuelle Spannachsen) sind ausdrücklich
            NICHT dabei, und eine gemeinsame Produktauswahl ebenfalls nicht.
            Geschrieben wird ausschließlich über „Übernehmen…“ nach Bestätigung; jedes
            Merkmal wirkt nur mit gesetztem Häkchen. -->
@@ -543,6 +543,26 @@
           <span class="sist" id="gp-sammel-ueber-ist">–</span>
         </div>
 
+        <!-- #139 Zwischenspannbleche: die Zeilen sind NUMMERIERT und entstehen aus den
+             wirksamen manuellen Zwischenspannpunkten (`prestress.zwischenpunkte_mm`) der
+             ausgewählten Wände — aufsteigend sortiert, „Blech 1“ ist also das unterste.
+             Die Nummer ist reine BEDIENUNG: sie wird nirgends gespeichert, es gibt keine
+             Blech-Kennung und keine zweite Datenstruktur. Weil die Zeilenzahl von der
+             Auswahl abhängt, wird der Kasten bei jedem WECHSEL neu geschrieben und über
+             EINEN delegierten Behandler bedient; der Bedienzustand lebt flüchtig in
+             `GP.blechAn`/`GP.blechZiel`. -->
+        <div class="sgruppe" style="margin-top:12px">Zwischenspannbleche (Einlegeblech, [A-14])</div>
+        <div id="gp-sammel-bleche"></div>
+        <div class="hint" style="margin-top:2px">Gezählt wird <b>von unten</b>: „Blech 1“ ist der
+          niedrigste manuell gesetzte Zwischenspannpunkt jeder Wand. Ziel ist immer eine
+          <b>reale Lagenoberkante der jeweiligen Wand</b> aus ihren kanonischen Lagenkanten
+          (einschließlich einer oberen <b>Ausgleichslage</b>, #136) — eine freie
+          Millimetereingabe gibt es hier nicht. Ein vorhandenes Blech dieser Nummer wird
+          <b>verschoben</b>; fehlt es bei einer Wand, wird es dort <b>neu angelegt</b>. Fehlt die
+          Ziel-Lage bei einer Wand oder entstünde ein doppelter Punkt, wird die <b>ganze</b>
+          Sammeländerung benannt abgewiesen — es wird nichts geklemmt, zusammengeführt oder
+          entfernt.</div>
+
         <!-- #111 Produktauswahl aus Modul 1: die Zeilen entstehen EINMAL beim Binden aus
              `KAT.rollenVonModul(1)` und sind danach je Rolle über eine stabile Kennung
              bedienbar (`gp-sammel-rolle-<rolleId>`). Sie werden bewusst NICHT bei jedem
@@ -563,7 +583,7 @@
           andere bleibt je Wand unverändert. Verschiedene Ausgangswerte stehen als
           <b>gemischt</b> und werden nie still durch einen Standardwert ersetzt. Länge, Lage,
           Öffnungen, Durchbrüche, Staffelungen, Verzahnungen, manuelle Spannachsen,
-          Zwischenspannpunkte und Bemaßungen bleiben unberührt. Der ganze Vorgang ist
+          nicht angekreuzte Zwischenspannbleche und Bemaßungen bleiben unberührt. Der ganze Vorgang ist
           <b>ein</b> Rückgängig-Schritt (Strg+Z) — samt Produktauswahl aller betroffenen
           Wände.</div>
       </div>
@@ -608,6 +628,11 @@ let KAT;
 // Sie kommen aus `sembla-core.js` und werden hier NICHT nachgebaut — eine zweite Zahl
 // wäre genau der Drift, den [P-6] ausschließt.
 let BLECH_STD, UEBERSTAND_STD;
+// #139 Die kanonischen Lagenkanten EINER Wand (`wandLagenKanten` aus `sembla-core.js`) — die
+// eine Stelle, an der aus einem Wandelement Lagenoberkanten werden. Der Editor rechnet sie
+// NICHT nach: „Lage × 200 mm“ wäre genau der Drift, den #136 (obere Ausgleichslage) und
+// [P-6] ausschließen.
+let wandLagenKanten;
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
@@ -654,6 +679,15 @@ const GP = {
   // hier und NICHT im DOM, weil die Häkchen beim Auffrischen der Produktliste neu
   // geschrieben werden. Gespeichert wird sie nie — geschrieben wird erst „Übernehmen…“.
   sammelWahl: {},
+  // #139 Die nummerierten Zwischenspannbleche des Sammel-Editors. Beide Abbildungen sind
+  // reine BEDIENUNG (Ordinal als Zeichenkette -> angekreuzt bzw. gewählte Ziel-Lage); sie
+  // leben hier und NICHT im DOM, weil der Kasten bei jedem Wechsel der Auswahl neu
+  // geschrieben wird. Gespeichert wird davon nichts: es gibt keine Blech-Kennung und keine
+  // zweite Zwischenspann-Datenstruktur — kanonisch bleibt `prestress.zwischenpunkte_mm`.
+  blechAn: {},                // '1' -> true/false
+  blechZiel: {},              // '1' -> '6' (Ordinal der Ziel-LAGE, '' = nichts gewählt)
+  blechFuer: undefined,       // Signatur, für die die Blechzeilen gebaut sind
+  blechAuswahlFuer: undefined, // Auswahl, für die Häkchen und Zielwahl gelten
   // Kalibrieren (#52): ein Modus AUF der Bühne, kein zweiter Editor. `punkte`
   // sind BILDpunkte — deshalb ist das Ergebnis von Zoom und Pan unabhängig.
   kal: { an: false, punkte: [] },
@@ -2775,6 +2809,239 @@ function rollenWertText(wert, kat){
   }).join(' · ');
 }
 
+// --- #139: nummerierte Zwischenspannbleche gemeinsam verschieben -----------
+//
+// Ein Zwischenspannpunkt ist ein EINLEGEBLECH auf einer Steinlagen-Oberkante ([A-14]).
+// Gespeichert ist davon ausschließlich der manuelle Override `prestress.zwischenpunkte_mm`
+// ([A-17]) — eine aufsteigende Liste absoluter Höhen in mm, sonst nichts. Genau daraus
+// entsteht hier die NUMMERIERUNG: das unterste Blech einer Wand ist „Blech 1“, das nächste
+// „Blech 2“ und so fort. Die Nummer ist reine Bedienung und wird NIRGENDS gespeichert; es
+// gibt keine Blech-Kennung, keine zweite Datenstruktur und keinen zweiten Schreibweg.
+//
+// Das ZIEL ist immer eine REALE Lagenoberkante der jeweiligen Wand. Gelesen wird sie aus den
+// kanonischen Lagenkanten (`wandLagenKanten`, `sembla-core.js`) — einschließlich einer oberen
+// Ausgleichslage (#136), deren Unterkante genau die Oberkante ist, die es ohne sie nicht gäbe.
+// „Lage × 200 mm“ wird ausdrücklich NICHT gerechnet, und eine freie Millimetereingabe gibt es
+// hier nicht.
+//
+// Die automatische Ableitung des Rechenkerns ([A-15]) bleibt unberührt: gelesen und
+// geschrieben wird allein der Override, und eine Wand ohne Override hat für diesen Editor
+// KEIN nummeriertes Blech (sie steht als „fehlt“).
+
+/** Kennung der Bedienfelder EINER Blechzeile (Ordinal, 1-basiert). */
+function blechFeldId(n){ return 'gp-sammel-zp-' + n; }
+
+/**
+ * Die WIRKSAMEN MANUELLEN Zwischenspannpunkte einer Wand — aufsteigend.
+ *
+ * `null`/fehlend heißt „kein Override“ (der Kern leitet ab, [A-15]); das ist hier eine Wand
+ * ohne nummeriertes Blech und ausdrücklich keine geratene Liste.
+ */
+function manuelleZwischenpunkte(we){
+  const a = (we && we.prestress && Array.isArray(we.prestress.zwischenpunkte_mm))
+    ? we.prestress.zwischenpunkte_mm : null;
+  return a ? a.map(Number).filter(Number.isFinite).slice().sort((x, y) => x - y) : [];
+}
+
+/**
+ * Die möglichen ZIEL-Lagen EINER Wand: ihre kanonischen Lagenoberkanten ECHT INNERHALB der
+ * Wand. Die oberste Kante ist die Wandoberkante und damit kein Zwischenpunkt ([A-14]) — sie
+ * fällt heraus, ohne dass hier etwas gerundet oder erfunden würde.
+ * @returns {Array<{lage:number,z:number}>} `lage` ist 1-basiert (Bedienung), `z` die reale Höhe
+ */
+function zielLagen(we){
+  if (!we || !wandLagenKanten) return [];
+  return wandLagenKanten(we)
+    .filter(k => k.oberkante_mm > 0 && k.oberkante_mm < we.height_mm)
+    .map(k => ({ lage: k.lage + 1, z: k.oberkante_mm }));
+}
+
+/** Lesbarer Name einer Höhe an DIESER Wand — die Lage, wenn es eine ist; sonst benannt. */
+function blechLageText(we, z){
+  const k = zielLagen(we).find(x => x.z === z);
+  return k ? `Lage ${k.lage} (${k.z} mm)` : `${z} mm (keine Lagenoberkante dieser Wand)`;
+}
+
+/**
+ * Der Ist-Stand der nummerierten Bleche über die ausgewählten Wände.
+ *
+ * Es entstehen so viele Zeilen, wie die Wand mit den MEISTEN manuellen Punkten hat; je Zeile
+ * werden die verschiedenen Ist-Lagen gesammelt und die Wände gezählt, denen dieses Blech
+ * FEHLT. Aufgefüllt oder geraten wird nichts.
+ */
+function blechStand(ids){
+  const waende = [];
+  for (const id of ids) {
+    const el = store.holeElement(id);
+    if (!el || !el.wandelement) continue;
+    waende.push({ id, we: el.wandelement, punkte: manuelleZwischenpunkte(el.wandelement) });
+  }
+  const max = waende.reduce((m, w) => Math.max(m, w.punkte.length), 0);
+  const zeilen = [];
+  for (let n = 1; n <= max; n++) {
+    const lagen = [], fehlt = [];
+    for (const w of waende) {
+      const z = w.punkte[n - 1];
+      if (z === undefined) { fehlt.push(w.id); continue; }
+      const t = blechLageText(w.we, z);
+      if (!lagen.includes(t)) lagen.push(t);
+    }
+    zeilen.push({ n, lagen, fehlt: fehlt.length, gesamt: waende.length });
+  }
+  // Die Auswahlliste der Ziel-Lagen ist die VEREINIGUNG der realen Lagen aller Wände: eine
+  // Lage, die einer kürzeren Wand fehlt, wird als solche BENANNT und bleibt wählbar — sie
+  // bricht die Sammeländerung dann mit Grund ab, statt hier still zu verschwinden.
+  const karte = new Map();
+  for (const w of waende) for (const k of zielLagen(w.we)) {
+    const e = karte.get(k.lage) || { lage: k.lage, hoehen: [], da: 0 };
+    if (!e.hoehen.includes(k.z)) e.hoehen.push(k.z);
+    e.da++;
+    karte.set(k.lage, e);
+  }
+  const lagen = [...karte.values()].sort((a, b) => a.lage - b.lage)
+    .map(e => ({ lage: e.lage, hoehen: e.hoehen.slice().sort((a, b) => a - b),
+                 fehltBei: waende.length - e.da }));
+  return { waende, zeilen, lagen };
+}
+
+/**
+ * Die Blechzeilen neu schreiben — NUR beim Wechsel der Auswahl bzw. der Zeilenzahl.
+ *
+ * Anders als die Rollenzeilen (#111) hängt ihre ANZAHL von der Auswahl ab; sie können
+ * deshalb nicht einmalig beim Binden entstehen. Ein Neuschreiben bei jedem `render()` nähme
+ * aber ein offenes Auswahlfeld mit — geschrieben wird darum nur bei echter Änderung, und der
+ * Bedienzustand steht ohnehin in `GP.blechAn`/`GP.blechZiel`.
+ */
+function blecheAufbauen(st){
+  const box = $('gp-sammel-bleche');
+  if (!box) return;
+  if (!st.zeilen.length) {
+    box.innerHTML = '<div class="pnote">Keine der ausgewählten Wände führt manuell gesetzte '
+      + 'Zwischenspannbleche ([A-17]) — deshalb gibt es hier keine nummerierte Zeile. Das '
+      + 'erste Blech einer Wand wird in <b>Modul 1</b> gesetzt; gemeinsam <b>verschoben</b> '
+      + 'wird hier.</div>';
+    return;
+  }
+  const optionen = (ziel) => '<option value="">– Ziel-Lage wählen –</option>'
+    + st.lagen.map(o => `<option value="${o.lage}"${String(o.lage) === ziel ? ' selected' : ''}>`
+        + `Lage ${o.lage} (Oberkante ${o.hoehen.join(' / ')} mm)`
+        + (o.fehltBei ? ` — fehlt bei ${o.fehltBei} Wand/Wänden` : '') + '</option>').join('');
+  let h = '';
+  for (const z of st.zeilen) {
+    const k = blechFeldId(z.n);
+    const an = GP.blechAn[String(z.n)] === true;
+    const ziel = String(GP.blechZiel[String(z.n)] || '');
+    h += `<div class="sfeld"><label class="chk" for="${k}-an" title="Blech ${z.n} — das `
+      + `${z.n}. Zwischenspannblech von unten. Angekreuzt wird es bei jeder ausgewählten Wand `
+      + `auf die reale Oberkante der gewählten Lage verschoben; fehlt es bei einer Wand, wird `
+      + `es dort neu angelegt. Nicht angekreuzte Bleche bleiben unverändert."`
+      + `><input type="checkbox" id="${k}-an" data-zp="${z.n}" data-art="an"`
+      + `${an ? ' checked' : ''}><span>Blech ${z.n}</span></label>`
+      + `<select id="${k}" data-zp="${z.n}" data-art="ziel"${an ? '' : ' disabled'}>`
+      + optionen(ziel) + '</select>'
+      + `<span class="sist" id="${k}-ist">–</span></div>`;
+  }
+  box.innerHTML = h;
+}
+
+/**
+ * Ist-Stand und Freigabe der Blechzeilen angleichen (aus `sammelSync`).
+ *
+ * Eine gemeinsame Lage steht nur, wenn ALLE ausgewählten Wände dieses Blech führen UND es
+ * überall auf derselben Lage liegt; sonst steht dort ausdrücklich „gemischt“, und fehlende
+ * Bleche werden mit ihrer ANZAHL benannt. Vorbelegt wird ein Zielwert nie — auch nicht bei
+ * einem eindeutigen Ist-Stand: verschoben wird nur, was ausdrücklich gewählt wurde.
+ */
+function blechSync(ids){
+  const st = blechStand(ids);
+  const schluessel = ids.slice().sort().join('|');
+  const sig = schluessel + '\n' + st.zeilen.length + '\n'
+    + st.lagen.map(o => o.lage + ':' + o.hoehen.join(',') + ':' + o.fehltBei).join('|');
+  // Wechselt die AUSWAHL, stehen Häkchen und Zielwahl auf Anfang — eine Entscheidung aus
+  // einer anderen Wandmenge darf hier nicht unsichtbar weitergelten. Ändert sich nur der
+  // Ist-Stand (etwa nach der eigenen Übernahme), bleibt die laufende Eingabe stehen.
+  if (GP.blechAuswahlFuer !== schluessel) {
+    GP.blechAuswahlFuer = schluessel;
+    GP.blechAn = {}; GP.blechZiel = {};
+  }
+  if (GP.blechFuer !== sig) { GP.blechFuer = sig; blecheAufbauen(st); }
+  for (const z of st.zeilen) {
+    const el = $(blechFeldId(z.n) + '-ist');
+    if (!el) continue;
+    const fehltText = z.fehlt
+      ? `fehlt bei ${z.fehlt} von ${z.gesamt} Wänden` : '';
+    el.innerHTML = 'Ist: ' + (
+      z.lagen.length === 0 ? `<b>–</b> (${esc(fehltText)})`
+      : (z.lagen.length === 1 && !z.fehlt) ? `<b>${esc(z.lagen[0])}</b>`
+      : `<b>gemischt</b> (${[...z.lagen.map(esc), ...(fehltText ? [esc(fehltText)] : [])]
+          .join(' · ')})`);
+    const feld = $(blechFeldId(z.n));
+    if (feld) feld.disabled = GP.blechAn[String(z.n)] !== true;
+  }
+  return st;
+}
+
+/**
+ * Die angekreuzten Blechzeilen — aufsteigend nach Ordinal, damit ein neu angelegtes Blech
+ * die Reihenfolge der übrigen nicht durcheinanderbringt.
+ * @returns {{aktiv:Array<{n:number,lage:number}>}|{fehler:string}}
+ */
+function blecheAktiv(st){
+  const aktiv = [];
+  for (const z of st.zeilen) {
+    if (GP.blechAn[String(z.n)] !== true) continue;
+    const roh = String(GP.blechZiel[String(z.n)] || '').trim();
+    const lage = Number(roh);
+    if (!roh || !Number.isInteger(lage)) {
+      return { fehler: `für „Blech ${z.n}“ ist keine Ziel-Lage gewählt — ein gemischter `
+        + 'Ausgangszustand wird nie still vereinheitlicht.' };
+    }
+    aktiv.push({ n: z.n, lage });
+  }
+  return { aktiv };
+}
+
+/**
+ * Die neue Punktliste EINER Wand — ohne jeden Schreibvorgang.
+ *
+ * Ein vorhandenes nummeriertes Blech wird auf die reale Oberkante der gewählten Lage DIESER
+ * Wand verschoben; fehlt es, wird es dort neu angelegt. Alle übrigen Punkte bleiben
+ * unverändert, das Ergebnis steht aufsteigend. Fehlt die Ziel-Lage oder entstünde ein
+ * doppelter beziehungsweise ungültiger Punkt, wird das BENANNT — nichts wird geklemmt,
+ * zusammengeführt oder entfernt ([P-9]).
+ * @returns {{punkte:number[],neu:number,verschoben:number}|{fehler:string}}
+ */
+function blechPlan(we, aktiv){
+  const kanten = zielLagen(we);
+  const punkte = manuelleZwischenpunkte(we).slice();
+  let neu = 0, verschoben = 0;
+  for (const { n, lage } of aktiv) {
+    const k = kanten.find(x => x.lage === lage);
+    if (!k) {
+      return { fehler: `Blech ${n}: diese Wand hat keine Lage ${lage} als Zwischenspann-Lage — `
+        + (kanten.length
+          ? `wählbar wären hier Lage 1 bis ${kanten[kanten.length - 1].lage}.`
+          : 'sie hat überhaupt keine Lagenoberkante innerhalb der Wand.') };
+    }
+    if (n - 1 < punkte.length) { punkte[n - 1] = k.z; verschoben++; }
+    else { punkte.push(k.z); neu++; }
+  }
+  const sortiert = punkte.slice().sort((a, b) => a - b);
+  for (let i = 1; i < sortiert.length; i++) {
+    if (sortiert[i] === sortiert[i - 1]) {
+      return { fehler: `zwei Zwischenspannbleche lägen auf derselben Lagenoberkante `
+        + `(${sortiert[i]} mm). Doppelte Punkte werden nie still zusammengeführt.` };
+    }
+  }
+  for (const z of sortiert) {
+    if (!kanten.some(x => x.z === z)) {
+      return { fehler: `${z} mm ist keine Lagenoberkante innerhalb dieser Wand — ein solcher `
+        + 'Punkt wird nie still entfernt oder auf eine andere Lage gerundet ([A-17]).' };
+    }
+  }
+  return { punkte: sortiert, neu, verschoben };
+}
+
 /**
  * Ausgangswerte der Auswahl aggregieren — je Merkmal alle VERSCHIEDENEN Werte,
  * damit ein gemischter Zustand ausdrücklich als „gemischt“ erscheint und nie
@@ -2912,6 +3179,10 @@ function sammelSync(){
       rollenMenu(r, kat);
     }
   }
+  // #139 Die Blechzeilen hängen an der AUSWAHL und werden deshalb erst gelesen, wenn das
+  // Popup offen ist — wie die Rollenzeilen. Sie führen ihren eigenen Aufbau- und
+  // Vorbelegungsschlüssel (`blechSync`).
+  if (offen) blechSync(ids);
   sammelFelder();
 }
 
@@ -2946,11 +3217,17 @@ function sammelSync(){
  * jeweiligen Wand gebildet — nicht nur für die angekreuzten —, damit im gespeicherten
  * Wandelement dieselbe Zerlegung steht, die Modul 1 mit „Auslegen" liefert.
  *
+ * Seit #139 gilt dasselbe für die NUMMERIERTEN ZWISCHENSPANNBLECHE: eine angekreuzte
+ * Blechzeile wird je Wand auf die reale Oberkante der gewählten Lage DIESER Wand gesetzt
+ * (`blechPlan`) und reist als gewöhnlicher `prestress`-Eingang durch denselben einen
+ * Rechenpfad. Fehlt die Lage bei einer Wand oder entstünde ein doppelter beziehungsweise
+ * ungültiger Punkt, bricht schon die Prüfphase die GANZE Sammeländerung benannt ab.
+ *
  * Der ganze Vorgang ist GENAU EIN Undo/Redo-Schritt über alle betroffenen
  * Wandspeicher-Einträge — samt Produktauswahl, weil die Momentaufnahmen `eingaben`
  * mitführen. Mappe, Lagen, Öffnungen, Durchbrüche, Staffelungen, Verzahnungen,
- * manuelle Spannachsen, Zwischenspannpunkte und Bemaßungen bleiben unberührt,
- * ebenso `eingaben.aufbau` (Modul 2) und der Bauteilkatalog selbst.
+ * manuelle Spannachsen, nicht angekreuzte Zwischenspannpunkte und Bemaßungen bleiben
+ * unberührt, ebenso `eingaben.aufbau` (Modul 2) und der Bauteilkatalog selbst.
  */
 function sammelAnwenden(){
   const ids = sammelWaende();
@@ -2998,9 +3275,30 @@ function sammelAnwenden(){
     }
     rollenAktiv.push({ rolle: r, pids });
   }
-  if (!aktiv.length && !rollenAktiv.length) {
-    zeige('Nichts zu übernehmen — erst mindestens ein Merkmal oder eine Verwendungsstelle '
-      + 'zur Übernahme ankreuzen.', false);
+  // 1d. Die angekreuzten ZWISCHENSPANNBLECHE einsammeln (#139) — wieder ohne jeden
+  //     Schreibvorgang. Gelesen wird der Bedienzustand, der Ist-Stand kommt frisch aus dem
+  //     Wandspeicher; eine Zeile ohne gewählte Ziel-Lage wird benannt abgewiesen.
+  const blechStandJetzt = blechStand(ids);
+  const blechErg = blecheAktiv(blechStandJetzt);
+  if (blechErg.fehler) {
+    zeige(`Sammeländerung nicht möglich: ${blechErg.fehler} Es wurde nichts geändert.`, false);
+    return false;
+  }
+  const blecheAn = blechErg.aktiv;
+  // Die Ziel-Lagen sind REALE Lagenoberkanten der jeweiligen Wand. Ändert derselbe Lauf
+  // Wandhöhe oder Ausgleichslage, verschöben sich genau diese Kanten — dann stünde hier eine
+  // Lage, die es nach der Rechnung nicht mehr gibt. Das wird BENANNT abgewiesen, statt
+  // still auf der alten oder neuen Zerlegung zu rechnen ([P-9]).
+  if (blecheAn.length && aktiv.some(a => a.feld.id === 'hoehe' || a.feld.id === 'ausgleich')) {
+    zeige('Sammeländerung nicht möglich: Zwischenspannbleche lassen sich nicht im selben '
+      + 'Schritt wie Wandhöhe oder Ausgleichslage verschieben — die Ziel-Lagen entstehen aus '
+      + 'den realen Lagenkanten und würden sich dabei verschieben. Erst das eine übernehmen, '
+      + 'dann das andere. Es wurde nichts geändert.', false);
+    return false;
+  }
+  if (!aktiv.length && !rollenAktiv.length && !blecheAn.length) {
+    zeige('Nichts zu übernehmen — erst mindestens ein Merkmal, eine Verwendungsstelle oder '
+      + 'ein Zwischenspannblech zur Übernahme ankreuzen.', false);
     return false;
   }
   // 1b. Prüfphase je Wand — VOR jedem Schreiben; der erste benannte Grund bricht ab.
@@ -3023,7 +3321,19 @@ function sammelAnwenden(){
         return false;
       }
     }
-    eintraege.push({ id, el });
+    // #139 Die neue Punktliste dieser Wand entsteht HIER — vollständig geprüft und ohne
+    //      jeden Schreibvorgang. Der erste benannte Grund bricht die GANZE Sammeländerung ab.
+    let zp;
+    if (blecheAn.length) {
+      const p = blechPlan(el.wandelement, blecheAn);
+      if (p.fehler) {
+        zeige(`Sammeländerung nicht möglich („${el.name || id}“): ${p.fehler} Es wurde nichts `
+          + 'geändert.', false);
+        return false;
+      }
+      zp = p;
+    }
+    eintraege.push({ id, el, zp });
   }
   // 2. Ausdrückliche Bestätigung: Anzahl und GENAU die zu ändernden Merkmale und
   //    Verwendungsstellen — jede mit ihrem Zielprodukt.
@@ -3031,15 +3341,37 @@ function sammelAnwenden(){
   const rollenTeile = rollenAktiv.map(({ rolle, pids }) =>
     `${KAT.rollenLabel(rolle.id)} → ${rollenWertText(pids.join(','), kat)}`);
   const massAn = rollenAktiv.some(a => rolleWirkt(a.rolle.id));
+  // #139 Je angekreuztem Blech GENAU eine Zeile: Blechordinal, Ziel-Lage und die Zahl der
+  //      betroffenen Wände — aufgeschlüsselt nach verschoben und neu angelegt.
+  const blechTeile = blecheAn.map(({ n, lage }) => {
+    const wirk = eintraege.map(e => e.zp).filter(Boolean);
+    const neuZahl = eintraege.filter(e => {
+      const p = manuelleZwischenpunkte(e.el.wandelement);
+      return p.length < n;
+    }).length;
+    const hoehen = [...new Set(eintraege.map(e => {
+      const k = zielLagen(e.el.wandelement).find(x => x.lage === lage);
+      return k ? k.z : null;
+    }).filter(z => z != null))];
+    return `Blech ${n} → Lage ${lage} (Oberkante ${hoehen.join(' / ')} mm) · `
+      + `${wirk.length} Wände (${wirk.length - neuZahl} verschoben, ${neuZahl} neu angelegt)`;
+  });
   if (!confirm(`${ids.length} ausgewählte Wände gemeinsam ändern?\n\n`
-    + [...teile, ...rollenTeile].join('\n') + '\n\n'
+    + [...teile, ...rollenTeile, ...blechTeile].join('\n') + '\n\n'
+    + (blechTeile.length
+      ? 'Je genanntem Zwischenspannblech wird der nummerierte Punkt jeder Wand auf die reale '
+        + 'Oberkante der genannten Lage DIESER Wand gesetzt; fehlt er dort, wird er neu '
+        + 'angelegt. Nicht angekreuzte Zwischenspannpunkte bleiben unverändert, und die '
+        + 'Nummerierung entsteht danach wieder aus den Höhen.\n\n'
+      : '')
     + (rollenTeile.length
       ? 'Je genannter Verwendungsstelle wird genau die angekreuzte Produktmenge gesetzt; '
         + 'sie ersetzt die bisherige Auswahl der Wand.'
         + (massAn ? ' Die betroffenen Wände werden dafür über den Auslegungspfad von '
             + 'Modul 1 neu gerechnet ([Z-1]).' : '') + '\n\n'
       : '')
-    + 'Nicht angekreuzte Merkmale und Verwendungsstellen bleiben je Wand unverändert. '
+    + 'Nicht angekreuzte Merkmale, Verwendungsstellen und Zwischenspannbleche bleiben je Wand '
+    + 'unverändert. '
     + 'Länge, Lage, Öffnungen, Verzahnungen und Bemaßungen bleiben unberührt. '
     + 'Rückgängig geht mit Strg+Z, solange dieses Geschoss geöffnet bleibt.')) {
     zeige('Sammeländerung abgebrochen — nichts geändert.', true);
@@ -3058,8 +3390,11 @@ function sammelAnwenden(){
     if (feld.setze) patch[feld.id] = wert;
   }
   const arbeit = [];
-  const rechnen = coreAn || rollenAktiv.length > 0;
-  for (const { id, el } of eintraege) {
+  // #139 Eine Blechänderung ist immer core-relevant: die Punkte reisen als Eingang derselben
+  //      einen Vorgabe in den Rechenkern, damit Modul 1 und jeder andere Leser unmittelbar den
+  //      NEU GERECHNETEN Stand sehen — nicht eine nachträglich ins Element geschriebene Liste.
+  const rechnen = coreAn || rollenAktiv.length > 0 || blecheAn.length > 0;
+  for (const { id, el, zp } of eintraege) {
     let neu;
     try {
       // #111/#117 Die maßwirksamen Verwendungsstellen gehen als abgeleiteter
@@ -3085,8 +3420,13 @@ function sammelAnwenden(){
       // hielte jeden Ausgleichsstein für einen Sonderzuschnitt. Ohne zugeordneten Katalog wird
       // nichts abgeleitet (leere Listen), nichts erfunden ([P-9]).
       const agh = rechnen ? WA.ausgleichSteinHoehen(eingNach, kat) : undefined;
+      // #139 Die neue Punktliste dieser Wand reist in DERSELBEN einen Vorgabe: sie ist ein
+      // gewöhnlicher `prestress`-Eingang ([A-17]) und wird deshalb hier — und nur hier —
+      // in den Vorspann-Patch gelegt. Ein zweiter Schreibweg oder ein nachträgliches
+      // Setzen am gerechneten Element entstünde sonst genau an dieser Stelle.
+      const ppAlles = zp ? { ...(pp || {}), zwischenpunkte_mm: zp.punkte.slice() } : pp;
       neu = rechnen
-        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch, pp, agh)
+        ? rechneWandelement(el, el.wandelement.length_mm / CON.GRID_MM, hoehe, patch, ppAlles, agh)
         : JSON.parse(JSON.stringify(el.wandelement));
     } catch (e) {
       zeige(`Sammeländerung nicht möglich („${el.name || id}“): ` + fehlerText(e)
@@ -3125,7 +3465,8 @@ function sammelAnwenden(){
     return false;
   }
   buchen(vor, [], schnappschuesse);
-  zeige(`${ids.length} Wände gemeinsam geändert: ${[...teile, ...rollenTeile].join(' · ')}. `
+  zeige(`${ids.length} Wände gemeinsam geändert: `
+    + `${[...teile, ...rollenTeile, ...blechTeile].join(' · ')}. `
     + (rechnen
       ? 'Jedes Wandelement wurde über den Auslegungspfad von Modul 1 neu gerechnet. ' : '')
     + 'Länge, Lage, Öffnungen und Bemaßungen sind unverändert. Rückgängig: Strg+Z.', true);
@@ -5231,6 +5572,20 @@ function binde(){
     // nähme dem Nutzer mitten in der Mehrfachauswahl den Fokus.
     if (r) rollenSumm(r, store.katalogStatus().katalog);
   });
+  // #139 Die Blechzeilen hängen in ihrer ANZAHL an der Auswahl; sie können deshalb nicht
+  // einmalig beim Binden entstehen und werden — wie die Produkthäkchen — über EINEN
+  // delegierten Behandler am Kasten bedient. Geschrieben wird dabei nichts: Häkchen und
+  // Ziel-Lage stehen in `GP.blechAn`/`GP.blechZiel`, bis „Übernehmen…“ bestätigt ist.
+  $('gp-sammel-bleche').addEventListener('change', ev => {
+    const t = ev && ev.target;
+    if (!t || !t.dataset || !t.dataset.zp) return;
+    const n = String(t.dataset.zp);
+    if (t.dataset.art === 'an') GP.blechAn[n] = !!t.checked;
+    // Ohne Häkchen wirkt die Zielwahl nicht — dieselbe Regel, die `blechSync()` sichtbar
+    // macht, hier noch einmal im Code.
+    else if (GP.blechAn[n] === true) GP.blechZiel[n] = String(t.value || '');
+    sammelSync();
+  });
   $('gp-sammel-knopf').addEventListener('click', () => { GP.sammelOffen = true; render(); });
   $('gp-sammel-zu').addEventListener('click', () => { GP.sammelOffen = false; render(); });
   $('gp-sammel-go').addEventListener('click', sammelAnwenden);
@@ -5447,6 +5802,8 @@ window.__gp = {
   /** Griffe der aktiven Wand in Weltkoordinaten. */
   griffe(){ const w = GP.aktiv ? wand(GP.aktiv) : null; return w ? griffe(w) : []; },
   taste(key, target, ev){ beiTaste({ key, target: target || {}, ...(ev || {}) }); },
+  /** #139 Der Ist-Stand der nummerierten Zwischenspannbleche der aktuellen Auswahl. */
+  blechStand: () => blechStand(sammelWaende()),
   get zustand(){ return GP; },
   get blick(){ return V; },
   get svg(){ return $('gp-buehne').innerHTML; },
@@ -5457,6 +5814,7 @@ window.__gpInit = function(){
   store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; WA = S.WA;
   ENG = S.ENG; Opening = S.Opening; KAT = S.KAT;
   BLECH_STD = S.BLECH; UEBERSTAND_STD = S.ROD_OVERHANG;
+  wandLagenKanten = S.wandLagenKanten;
   sammelPruefungen();
   binde();
   store.abonniere(() => { auffrischen().catch(() => {}); });
@@ -5481,8 +5839,12 @@ window.__gpInit = function(){
   import * as ENG from './shared/sembla-engine.js';
   // BLECH/ROD_OVERHANG sind die Standardwerte des Rechenkerns; der Sammel-Editor
   // zeigt sie als Ist-Wert an, wenn ein Altstand das Feld gar nicht führt (#111).
-  import { Opening, BLECH, ROD_OVERHANG } from './shared/sembla-core.js';
-  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH, ROD_OVERHANG };
+  // #139 `wandLagenKanten` liefert die kanonischen Lagenkanten einer Wand — einschließlich
+  // einer oberen Ausgleichslage (#136). Der Sammel-Editor liest daraus die realen
+  // Ziel-Lagenoberkanten je Wand, statt „Lage × 200 mm“ nachzurechnen.
+  import { Opening, BLECH, ROD_OVERHANG, wandLagenKanten } from './shared/sembla-core.js';
+  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH, ROD_OVERHANG,
+    wandLagenKanten };
   // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
   // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
   // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.

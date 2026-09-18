@@ -124,7 +124,12 @@ const PLAN = await import("../../docs/shared/sembla-plan.js");
 const MB = await import("../../docs/shared/sembla-massbild.js");
 // BLECH/ROD_OVERHANG sind die Standardwerte des Kerns; der Sammel-Editor zeigt sie als
 // Ist-Wert an, wenn ein Altstand das Feld gar nicht fuehrt (#111) — gebunden wird wie im Browser.
-const { buildWall, Opening, BLECH, ROD_OVERHANG } = await import("../../docs/shared/sembla-core.js");
+// #139 `wandLagenKanten` liefert die kanonischen Lagenkanten einer Wand (inkl. oberer
+// Ausgleichslage, #136) — der Sammel-Editor liest daraus seine Ziel-Lagen, statt „Lage x 200 mm"
+// nachzurechnen. `wirksameZwischenpunkte` ist die eine Ableitung, an der der Test prueft, dass
+// das Wandelement wirklich NEU GERECHNET wurde.
+const { buildWall, Opening, BLECH, ROD_OVERHANG, wandLagenKanten, wirksameZwischenpunkte }
+  = await import("../../docs/shared/sembla-core.js");
 // Der Auslegungspfad von Modul 1 (#56): eine Laengenaenderung im Editor rechnet das
 // vorhandene Wandelement damit NEU — derselbe Baustein, kein zweiter Rechenkern.
 const ENG = await import("../../docs/shared/sembla-engine.js");
@@ -145,7 +150,8 @@ const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.ur
 // Die Quelltext-Pruefungen "genau EIN Ableitungsweg" lesen deshalb DIESE Datei.
 const waSrc = readFileSync(new URL("../../docs/shared/sembla-wandanlage.js", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH, ROD_OVERHANG };
+globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH,
+  ROD_OVERHANG, wandLagenKanten };
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
@@ -6863,6 +6869,238 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#125 (must-not 2) am Sammel-Editor selbst wurde nichts umgebaut — er erscheint '
     + 'unveraendert ab zwei ausgewaehlten Waenden',
     /const ids = sammelWaende\(\);\s*\n\s*if \(ids\.length < 2\)/.test(html));
+}
+
+// --- #139: nummerierte Zwischenspannbleche gemeinsam verschieben -----------
+//
+// Gepruefter realer Pfad: mehrere Waende mit verschiedenen `zwischenpunkte_mm` und
+// verschiedenen realen Lagenkanten werden gespeichert, das Sammel-Popup geoeffnet, die
+// Ist-/gemischt-/fehlt-Anzeige gelesen, eine Ordinalzeile ueber den ECHTEN delegierten
+// Behandler aktiviert und der ECHTE Uebernahme-Handler bestaetigt. Verglichen werden die
+// gespeicherten Wandelemente vor/nach Erfolg, Rollback, Undo und Redo.
+{
+  const mappe139 = store.fuegeProjektHinzu('Projekt 139', { geschoss: 'EG139', hoehe_mm: 2600 });
+  const gs139 = MAPPE.alleGeschosse(mappe139)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gs139);
+  await warte();
+  GP.render();
+
+  /** Eine Wand mit AUSDRUECKLICH gesetztem manuellem Override ([A-17]) eintragen. */
+  const lege139 = (name, hoehe, punkte, ausgleich) => {
+    const we = buildWall(name, 2000, hoehe, [], null, { zwischenpunkte_mm: punkte.slice() },
+      [], null, !!ausgleich);
+    const id = store.speichere(name, we);
+    store.verorteWand(id, gs139, { name, lage: null });
+    return id;
+  };
+  // Drei Waende mit den Punktlisten des Akzeptanztests — und mit VERSCHIEDEN vielen
+  // Lagen: „C139" ist kuerzer und hat deshalb Lage 10 gar nicht.
+  const a139 = lege139('A139', 2600, [400, 1200]);
+  const b139 = lege139('B139', 2600, [600]);
+  const c139 = lege139('C139', 1800, [400, 1400]);
+  await warte();
+  GP.render();
+
+  const zp139 = (id) => {
+    const el = store.holeElement(id);
+    const p = el && el.wandelement && el.wandelement.prestress;
+    return JSON.stringify((p && p.zwischenpunkte_mm) || null);
+  };
+  const stand139 = () => [a139, b139, c139].map(zp139).join(' | ');
+  const alleDaten139 = () => [a139, b139, c139].map(id => {
+    const w = store.holeElement(id).wandelement;
+    return JSON.stringify({ h: w.height_mm, l: w.length_mm, t: w.wandtyp,
+      zp: (w.prestress || {}).zwischenpunkte_mm || null });
+  }).join(' | ');
+  /** Der ECHTE delegierte Behandler des Blechkastens — derselbe Weg wie Haekchen und Feld. */
+  const blech139 = (n, art, wert) => $('gp-sammel-bleche').dispatch('change',
+    { target: { dataset: { zp: String(n), art },
+                checked: art === 'an' ? !!wert : undefined,
+                value: art === 'ziel' ? String(wert) : undefined } });
+
+  gp('alleUmschalten');
+  $('gp-sammel-knopf').dispatch('click');
+  GP.render();
+  ok('#139 Pruefaufbau: drei ausgewaehlte Waende mit [400,1200], [600] und [400,1400]',
+    GP.zustand.auswahl.length === 3 && $('gp-sammelblatt').hidden === false
+    && stand139() === '[400,1200] | [600] | [400,1400]');
+
+  // (a) Akzeptanz 1 — Nummerierung von unten, gemischt und fehlend BENANNT, nichts vorbelegt.
+  const st139 = gp('blechStand');
+  ok('#139 (Muss 1) es entstehen genau so viele Blechzeilen, wie die Wand mit den meisten '
+    + 'manuellen Punkten fuehrt',
+    !!st139 && st139.zeilen.length === 2
+    && st139.zeilen[0].n === 1 && st139.zeilen[1].n === 2);
+  ok('#139 (Muss 2, Akzeptanz 1) Blech 1 steht als gemischt mit beiden Ist-Lagen',
+    /gemischt/.test($('gp-sammel-zp-1-ist').innerHTML)
+    && /Lage 2 \(400 mm\)/.test($('gp-sammel-zp-1-ist').innerHTML)
+    && /Lage 3 \(600 mm\)/.test($('gp-sammel-zp-1-ist').innerHTML)
+    && !/fehlt bei/.test($('gp-sammel-zp-1-ist').innerHTML));
+  ok('#139 (Muss 2, Akzeptanz 1) Blech 2 steht als gemischt und nennt das EINE fehlende '
+    + 'Vorkommen mit seiner Anzahl',
+    /gemischt/.test($('gp-sammel-zp-2-ist').innerHTML)
+    && /Lage 6 \(1200 mm\)/.test($('gp-sammel-zp-2-ist').innerHTML)
+    && /Lage 7 \(1400 mm\)/.test($('gp-sammel-zp-2-ist').innerHTML)
+    && /fehlt bei 1 von 3 Wänden/.test($('gp-sammel-zp-2-ist').innerHTML));
+  ok('#139 (Akzeptanz 1) kein Zielwert ist still vorbelegt — weder im Zustand noch als '
+    + 'ausgewaehlte Option',
+    JSON.stringify(GP.zustand.blechZiel) === '{}'
+    && JSON.stringify(GP.zustand.blechAn) === '{}'
+    && !/ selected/.test($('gp-sammel-bleche').innerHTML)
+    && /– Ziel-Lage wählen –/.test($('gp-sammel-bleche').innerHTML));
+  // Die Ziel-Lagen kommen aus den REALEN Lagenkanten je Wand: Lage 10 gibt es nur bei den
+  // beiden 2600er Waenden, und das steht als solches in der Auswahlliste.
+  ok('#139 (Muss 6) die Ziel-Lagen sind die realen Lagenoberkanten; eine nur teilweise '
+    + 'vorhandene Lage wird als fehlend BENANNT statt still weggelassen',
+    st139.lagen.length === 12
+    && st139.lagen[11].lage === 12 && st139.lagen[11].fehltBei === 1
+    && st139.lagen[7].lage === 8 && st139.lagen[7].fehltBei === 0
+    && /Lage 10 \(Oberkante 2000 mm\) — fehlt bei 1 Wand/.test($('gp-sammel-bleche').innerHTML));
+
+  // (b) Akzeptanz 3 — fehlende Ziellage: alles bleibt unveraendert, der Grund wird genannt.
+  const vorFehl139 = alleDaten139();
+  const undoVor139 = GP.undoStand.undo;
+  blech139(2, 'an', true);
+  blech139(2, 'ziel', 10);
+  confirmAntwort = true;
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#139 (Muss 7, Akzeptanz 3) eine bei einer Wand fehlende Ziel-Lage bricht die GANZE '
+    + 'Sammelaenderung benannt ab — nichts ist geschrieben, nichts gebucht',
+    /nicht möglich/.test($('gp-msg').textContent)
+    && /C139/.test($('gp-msg').textContent) && /Lage 10/.test($('gp-msg').textContent)
+    && alleDaten139() === vorFehl139 && GP.undoStand.undo === undoVor139);
+  // … und ein Ziel, das mit einem vorhandenen Punkt derselben Wand zusammenfaellt.
+  blech139(2, 'ziel', 2);
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#139 (Muss 7, Akzeptanz 3) ein doppelter Punkt wird benannt abgewiesen statt still '
+    + 'zusammengefuehrt — alle Waende bleiben unveraendert',
+    /nicht möglich/.test($('gp-msg').textContent)
+    && /A139|C139/.test($('gp-msg').textContent)
+    && /derselben Lagenoberkante \(400 mm\)/.test($('gp-msg').textContent)
+    && alleDaten139() === vorFehl139 && GP.undoStand.undo === undoVor139);
+  // … und die benannte Grenze gegen Hoehe/Ausgleichslage im selben Schritt.
+  $('gp-sammel-hoehe-an').checked = true; $('gp-sammel-hoehe-an').dispatch('change');
+  $('gp-sammel-hoehe').value = '2400';
+  blech139(2, 'ziel', 5);
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#139 Bleche und Wandhöhe im selben Schritt werden benannt abgewiesen — die Ziel-Lagen '
+    + 'wuerden sich dabei verschieben',
+    /nicht möglich/.test($('gp-msg').textContent)
+    && /Wandhöhe oder Ausgleichslage/.test($('gp-msg').textContent)
+    && alleDaten139() === vorFehl139 && GP.undoStand.undo === undoVor139);
+  $('gp-sammel-hoehe-an').checked = false; $('gp-sammel-hoehe-an').dispatch('change');
+
+  // (c) Akzeptanz 2 — der echte Erfolgsfall: verschieben, neu anlegen, alles andere lassen.
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  GP.render();
+  ok('#139 (Muss 4/5, Akzeptanz 2) Blech 2 auf eine fuer alle gueltige Lage verschiebt die '
+    + 'vorhandenen zweiten Punkte, legt den fehlenden neu an und laesst die ersten Punkte '
+    + 'unveraendert',
+    stand139() === '[400,1000] | [600,1000] | [400,1000]');
+  ok('#139 (Muss 3) die Bestaetigungsmeldung nennt Blechordinal, Ziel-Lage und die Zahl der '
+    + 'betroffenen Waende',
+    /Blech 2 → Lage 5/.test($('gp-msg').textContent)
+    && /Oberkante 1000 mm/.test($('gp-msg').textContent)
+    && /3 Wände \(2 verschoben, 1 neu angelegt\)/.test($('gp-msg').textContent));
+  ok('#139 (must-not 6) ausser den Zwischenspannpunkten hat sich an den Waenden nichts '
+    + 'geaendert (Hoehe, Laenge, Windsituation)',
+    [a139, b139, c139].every(id => {
+      const w = store.holeElement(id).wandelement;
+      return w.length_mm === 2000 && (id === c139 ? w.height_mm === 1800 : w.height_mm === 2600);
+    }));
+  ok('#139 (Muss 8) jedes Wandelement ist NEU GERECHNET — die wirksamen Punkte des Kerns '
+    + 'stehen unmittelbar auf der neuen Hoehe',
+    [a139, b139, c139].every(id => {
+      const w = store.holeElement(id).wandelement;
+      const z = [...new Set(wirksameZwischenpunkte(w).map(x => x.z_mm))].sort((p, q) => p - q);
+      return z.includes(1000);
+    }));
+  ok('#139 (Muss 8) die gesamte Sammelaenderung ist GENAU EIN Undo-Schritt',
+    GP.undoStand.undo === undoVor139 + 1);
+
+  // (d) Akzeptanz 4 — Undo nimmt alle drei Punktlisten in EINEM Schritt zurueck, Redo setzt
+  //     die vollstaendige gemeinsame Aenderung wieder ein.
+  gp('undo');
+  await warte();
+  ok('#139 (Akzeptanz 4) ein Undo stellt alle urspruenglichen Punktlisten in einem Schritt '
+    + 'wieder her',
+    stand139() === '[400,1200] | [600] | [400,1400]'
+    && GP.undoStand.undo === undoVor139 && GP.undoStand.redo === 1);
+  gp('redo');
+  await warte();
+  ok('#139 (Akzeptanz 4) Redo wendet die vollstaendige gemeinsame Aenderung erneut an',
+    stand139() === '[400,1000] | [600,1000] | [400,1000]'
+    && GP.undoStand.undo === undoVor139 + 1);
+
+  // (e) Die realen Lagenkanten einer Wand MIT oberer Ausgleichslage (#136): ihre Unterkante
+  //     ist eine echte Zwischenspann-Lage, die es ohne sie nicht gaebe. Genau daran haengt
+  //     das Verbot der pauschalen Ableitung „Lage x 200 mm".
+  const mappeAg = store.fuegeProjektHinzu('Projekt 139 AG', { geschoss: 'EG139AG', hoehe_mm: 2400 });
+  const gsAg = MAPPE.alleGeschosse(mappeAg)[0].geschoss.id;
+  store.setzeAktivesGeschoss(gsAg);
+  await warte();
+  const legeAg = (name, hoehe, punkte, ausgleich) => {
+    const we = buildWall(name, 2000, hoehe, [], null, { zwischenpunkte_mm: punkte.slice() },
+      [], null, !!ausgleich);
+    const id = store.speichere(name, we);
+    store.verorteWand(id, gsAg, { name, lage: null });
+    return id;
+  };
+  const o139 = legeAg('Ohne AG', 2400, [400]);          // Lagen 1…11 (2400 ist die Wandoberkante)
+  const m139 = legeAg('Mit AG', 2500, [400], true);     // Lagen 1…12 (2400 ist Unterkante der AG)
+  await warte();
+  GP.render();
+  gp('alleUmschalten');
+  $('gp-sammel-knopf').dispatch('click');
+  GP.render();
+  const stAg = gp('blechStand');
+  ok('#139 (Muss 6) die obere Ausgleichslage macht ihre Unterkante zu einer echten '
+    + 'Zwischenspann-Lage — sie steht als Lage 12 und fehlt der Wand ohne Ausgleichslage',
+    !!stAg && stAg.lagen.length === 12
+    && stAg.lagen[10].lage === 11 && stAg.lagen[10].fehltBei === 0
+    && stAg.lagen[11].lage === 12 && stAg.lagen[11].hoehen.join(',') === '2400'
+    && stAg.lagen[11].fehltBei === 1);
+  const vorAg = [o139, m139].map(zp139).join(' | ');
+  blech139(1, 'an', true);
+  blech139(1, 'ziel', 12);
+  confirmAntwort = true;
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#139 (Muss 6/7) Lage 12 fehlt der Wand ohne Ausgleichslage — die Sammelaenderung wird '
+    + 'benannt abgebrochen und beide Waende bleiben unveraendert',
+    /nicht möglich/.test($('gp-msg').textContent) && /Ohne AG/.test($('gp-msg').textContent)
+    && [o139, m139].map(zp139).join(' | ') === vorAg);
+  blech139(1, 'ziel', 11);
+  $('gp-sammel-go').dispatch('click');
+  await warte();
+  ok('#139 die bei BEIDEN vorhandene Lage 11 wird auf die reale Oberkante 2200 mm gesetzt',
+    [o139, m139].map(zp139).join(' | ') === '[2200] | [2200]');
+
+  // (f) Must-not im Quelltext: keine gespeicherte Blech-Kennung, keine zweite
+  //     Datenstruktur, keine pauschale Ableitung und kein zweiter Schreibweg.
+  ok('#139 (must-not 1) die Nummerierung entsteht aus den Hoehen — es gibt kein '
+    + 'gespeichertes Blech-Feld und keine zweite Zwischenspann-Struktur',
+    !/blech_id|blech_nr|bleche_mm|zwischenbleche/.test(html)
+    && (html.match(/zwischenpunkte_mm/g) || []).length > 0);
+  const zielQuell139 = (html.match(/function zielLagen\(we\)\{[\s\S]*?\n\}/) || [''])[0];
+  ok('#139 (must-not 2/4) die Ziel-Lagen kommen aus `wandLagenKanten` — der Editor rechnet '
+    + 'weder Lage × 200 mm nach noch aendert er die Default-Ableitung des Kerns',
+    /wandLagenKanten\(we\)/.test(zielQuell139) && !/200/.test(zielQuell139)
+    && !/autoZwischenpunkt|lagenOberkantenInnen/.test(html));
+  const blechQuell = (html.match(/function (blechPlan|blechStand|zielLagen|manuelleZwischenpunkte)\([\s\S]*?\n\}/g) || []);
+  ok('#139 (must-not 3/5) Ist-Stand und Planung schreiben nichts: kein `store.speichere(`, '
+    + 'kein `buchen(`, kein Leeren der Punktliste',
+    blechQuell.length === 4
+    && blechQuell.every(q => !/store\.speichere\(|buchen\(|zwischenpunkte_mm\s*=\s*\[\]/.test(q)));
+  ok('#139 die Punkte reisen als gewoehnlicher `prestress`-Eingang durch DENSELBEN einen '
+    + 'Rechenpfad — es gibt keinen zweiten Schreibweg am gerechneten Element',
+    /ppAlles = zp \? \{ \.\.\.\(pp \|\| \{\}\), zwischenpunkte_mm: zp\.punkte\.slice\(\) \} : pp/
+      .test(html)
+    && (html.match(/rechneWandelement\(el, el\.wandelement\.length_mm/g) || []).length === 1);
 }
 
 let fail = 0;

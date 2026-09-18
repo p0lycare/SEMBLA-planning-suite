@@ -46,15 +46,35 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die GESCHOSSWEITE WANDAUSWAHL (#125). Geliefert: eine
+// Der NEUESTE Eintrag sind die NUMMERIERTEN ZWISCHENSPANNBLECHE IM SAMMEL-EDITOR (#139).
+// Geliefert: die wirksamen manuellen Zwischenspannpunkte ausgewaehlter Waende erscheinen
+// aufsteigend als Zeilen „Blech 1", „Blech 2" … mit Ist-Stand (gemeinsame Lage, gemischt,
+// fehlt bei n Waenden); aktivierte Zeilen setzen das Blech je Wand auf die reale
+// Lagenoberkante der gewaehlten Lage (inkl. Ausgleichslage), fehlende Bleche entstehen
+// dort neu, ungueltige Ziele brechen die gesamte Aenderung benannt und atomar ab, alles
+// ist genau ein Undo-/Redo-Schritt. NICHT versprochen werden gespeicherte Blech-IDs,
+// freie mm-Eingabe oder eine Aenderung der automatischen Default-Ableitung im Core.
+const FRISCH_139 = EINTRAEGE[0];
+ok("[#139] die nummerierten Zwischenspannbleche sind der neueste Eintrag",
+  FRISCH_139?.id === "chg-20260918-04" && FRISCH_139?.issue === 139
+  && FRISCH_139?.typ === "feature" && FRISCH_139?.datum === "2026-09-18"
+  && /Zwischenspannbleche/.test(FRISCH_139?.titel || "")
+  && /reale Lagenoberkante/.test(FRISCH_139?.titel || ""));
+ok("[#139] die Testbitte fuehrt Ist-Anzeige, gemeinsames Setzen und Undo",
+  /Gemeinsam bearbeiten/.test(FRISCH_139?.testbitte || "")
+  && /gemischt/.test(FRISCH_139?.testbitte || "")
+  && /Undo/.test(FRISCH_139?.testbitte || ""));
+
+// Davor die GESCHOSSWEITE WANDAUSWAHL (#125) — ueber die Kennung gesucht, weil sie
+// nicht mehr der neueste Eintrag ist. Geliefert: eine
 // Umschaltaktion „Alle auswaehlen"/„Auswahl aufheben" oberhalb der rechten Wandliste,
 // die alle verorteten und unverorteten Waende des AKTIVEN Geschosses in den bestehenden
 // GP-Auswahlzustand nimmt (nie andere Geschosse), die aktive Wand aktiv laesst und ab
 // zwei Waenden „Gemeinsam bearbeiten" nutzbar macht; Aufheben stellt den gueltigen
 // Einzelzustand wieder her. NICHT versprochen werden eine projektweite Auswahl, ein
 // Undo-Schritt fuer den Auswahlvorgang oder Aenderungen am Sammel-Editor.
-const FRISCH_125 = EINTRAEGE[0];
-ok("[#125] die geschossweite Wandauswahl ist der neueste Eintrag",
+const FRISCH_125 = EINTRAEGE.find(e => e.id === "chg-20260918-03");
+ok("[#125] die geschossweite Wandauswahl steht als Eintrag davor",
   FRISCH_125?.id === "chg-20260918-03" && FRISCH_125?.issue === 125
   && FRISCH_125?.typ === "feature" && FRISCH_125?.datum === "2026-09-18"
   && /Alle auswählen/.test(FRISCH_125?.titel || "")

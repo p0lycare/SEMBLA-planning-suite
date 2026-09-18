@@ -3911,6 +3911,31 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   store.setzeKatalog(KATALOG);
 }
 
+// Issue #139: Der Sammel-Editor des Geschosseditors verschiebt die nummerierten
+// Zwischenspannbleche mehrerer Waende gemeinsam und schreibt das Ergebnis als gewoehnlichen
+// manuellen Override `prestress.zwischenpunkte_mm` ([A-17]) — es gibt keine Blech-Kennung und
+// keine zweite Datenstruktur. Modul 1 muss genau diesen Stand beim LADEN lesen: unmittelbar,
+// ohne reparierenden Zwischenklick und ohne ihn dabei zurueckzuschreiben ([P-1]).
+{
+  const zp139=[400,1000];
+  const id139=store.speichere('Sammel 139',
+    buildWall('Sammel 139',2000,2600,[],null,{zwischenpunkte_mm:zp139.slice()}));
+  store.setzeAktiv(id139);
+  const vorher139=JSON.stringify(store.aktivesWandelement().prestress);
+  globalThis.window.__wpInit();                 // genau der Ladepfad, kein Bedienschritt
+  ok('[#139] Modul 1 liest den gemeinsam gesetzten Override unveraendert als eigene Auswahl',
+    JSON.stringify(WP.manualZp)===JSON.stringify(zp139));
+  ok('[#139] die wirksamen Punkte stehen unmittelbar auf den gesetzten Lagen — ohne '
+    +'reparierenden Zwischenklick',
+    (()=>{ const z=[...new Set(WP.zwischenpunkte.map(x=>x.z_mm))].sort((a,b)=>a-b);
+      return JSON.stringify(z)===JSON.stringify(zp139); })());
+  ok('[#139] blosses Laden schreibt den Override nicht zurueck und veraendert ihn nicht ([P-1])',
+    JSON.stringify(store.aktivesWandelement().prestress)===vorher139
+    && JSON.stringify(store.aktivesWandelement().prestress.zwischenpunkte_mm)
+       ===JSON.stringify(zp139));
+  store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.
 const anzahlVorher=store.listeElemente().length;
 store.setzeAktiv(null);

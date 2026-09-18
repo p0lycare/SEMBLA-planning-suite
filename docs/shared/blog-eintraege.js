@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260918-04",
+    datum: "2026-09-18",
+    typ: "feature",
+    issue: 139,
+    titel: "Sammel-Editor: Zwischenspannbleche als Blech 1, Blech 2 … gemeinsam auf eine reale Lagenoberkante setzen",
+    testbitte: "Drei Wände mit unterschiedlichen Zwischenspannpunkten auswählen, „Gemeinsam bearbeiten“ öffnen: je Blech "
+      + "eine Zeile mit Ist/gemischt/fehlt; Blech 2 auf eine Lage setzen — vorhandene wandern, fehlende entstehen, ein Undo",
+  },
+  {
     id: "chg-20260918-03",
     datum: "2026-09-18",
     typ: "feature",
