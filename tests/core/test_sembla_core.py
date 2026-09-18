@@ -1082,5 +1082,111 @@ class TestAusgleichslage(unittest.TestCase):
         self.assertEqual(len(ag), 1)
         self.assertEqual(ag[0]["lage"], len(w["courses"]) - 1)
 
+class BodenblechAussparungen(unittest.TestCase):
+    """Manuell gewaehlte 125-mm-Rasterfelder ohne Bodenblech ([A-28]/[A-29]/[A-30], #138).
+
+    DIESELBEN Faelle stehen wortgleich in test-sembla-core.mjs — sie sind der
+    Paritaetsvertrag zwischen Orakel und Betriebskopie.
+    """
+    @staticmethod
+    def wand(g, laenge=2000, ps=None):
+        p = dict(ps or {})
+        p["base_plate_aussparungen_grid"] = g
+        return build_wall("as", laenge, 2600, [], None, p)
+
+    @staticmethod
+    def kurz(w):
+        return " ".join(str(t["x0_mm"]) + ":" + str(t["raster_mm"])
+                        + ("S" if t["art"] == "sonder" else "")
+                        for t in w["base_plate"]["teile"])
+
+    def test_anfang_mitte_ende_disjunkt_und_zusammengefasst(self):
+        # 7 und 8 sind BENACHBART und werden zu genau EINEM Intervall zusammengefasst.
+        w = self.wand([15, 7, 0, 8, 7])                  # ungeordnet + doppelt: egal
+        self.assertEqual(w["prestress"]["base_plate_aussparungen_grid"], [0, 7, 8, 15])
+        lu = w["base_plate"]["aussparungen"]
+        self.assertEqual([(l["g0"], l["g1"]) for l in lu], [(0, 1), (7, 9), (15, 16)])
+        for a, b in zip(lu, lu[1:]):
+            self.assertLess(a["x1_mm"], b["x0_mm"])
+        for t in w["base_plate"]["teile"]:
+            for l in lu:
+                self.assertTrue(t["x0_mm"] >= l["x1_mm"]
+                                or t["x0_mm"] + t["raster_mm"] <= l["x0_mm"])
+        self.assertEqual(self.kurz(w), "125:750 1125:750")
+        self.assertEqual(w["validation"]["blech_konflikte"], [])
+
+    def test_summe_der_rastermasse_plus_luecken_ist_die_wandlaenge(self):
+        for g in ([0], [8], [0, 7, 8, 15], [15], [3, 4, 5]):
+            with self.subTest(g=g):
+                w = self.wand(g)
+                teile_mm = sum(t["raster_mm"] for t in w["base_plate"]["teile"])
+                lu_mm = sum(l["laenge_mm"] for l in w["base_plate"]["aussparungen"])
+                self.assertEqual(teile_mm + lu_mm, w["length_mm"])
+                self.assertEqual(lu_mm, len(g) * GRID)
+                # Mengenbasis: nur die Teile.
+                self.assertEqual(w["base_plate"]["laenge_mm"], teile_mm)
+                self.assertEqual(w["bom"]["stahlblech_mm"], teile_mm)
+                self.assertEqual(w["base_plate"]["module"], len(w["base_plate"]["teile"]))
+
+    def test_unbaubarer_kurzbereich_wird_benannt_und_nicht_ueberbrueckt(self):
+        w = self.wand([1])                                # Rest [0, 125) < 250 mm
+        self.assertEqual(w["validation"]["blech_konflikte"],
+                         [{"grund": "bereich_unbaubar", "x_mm": 0, "x0_mm": 0,
+                           "x1_mm": 125, "laenge_mm": 125}])
+        self.assertEqual(self.kurz(w), "0:125S 250:1250 1500:500")
+        self.assertTrue(w["validation"]["buildable"])
+
+    def test_unzulaessige_felder_verworfen_und_benannt(self):
+        w = self.wand([2, 2.5, 99, -1, 2])
+        self.assertEqual(w["prestress"]["base_plate_aussparungen_grid"], [2])
+        self.assertEqual(w["validation"]["aussparung_fehler"],
+                         [{"grund": "nicht_ganzzahlig", "wert": 2.5},
+                          {"grund": "ausserhalb_wand", "wert": 99},
+                          {"grund": "ausserhalb_wand", "wert": -1}])
+        self.assertEqual(len(w["base_plate"]["aussparungen"]), 1)
+        self.assertEqual(w["base_plate"]["aussparungen"][0]["g0"], 2)
+
+    def test_gekuerzte_wand_verwirft_das_aussenliegende_feld(self):
+        lang = self.wand([3, 14], 2000)
+        self.assertEqual(len(lang["base_plate"]["aussparungen"]), 2)
+        self.assertNotIn("aussparung_fehler", lang["validation"])
+        kurz = self.wand([3, 14], 1000)                   # 8 Raster -> 14 liegt draussen
+        self.assertEqual(kurz["validation"]["aussparung_fehler"],
+                         [{"grund": "ausserhalb_wand", "wert": 14}])
+        self.assertEqual(kurz["prestress"]["base_plate_aussparungen_grid"], [3])
+        self.assertEqual(sum(t["raster_mm"] for t in kurz["base_plate"]["teile"]) + GRID, 1000)
+
+    def test_stossregel_gilt_im_bereich_nicht_an_seinen_enden(self):
+        w = self.wand([3], 5000, {"blech_lengths_mm": [1250, 500, 375]})
+        fugen = set(w["courses"][0]["joints_grid"])
+        for t in w["base_plate"]["teile"]:
+            e = t["x0_mm"] + t["raster_mm"]
+            bereichsende = e in (375, 5000)
+            self.assertTrue(bereichsende or (e // GRID) not in fugen
+                            or any(k["grund"] == "stoss_auf_steinstoss" and k["x_mm"] == e
+                                   for k in w["validation"]["blech_konflikte"]), f"Stoss {e}")
+            self.assertEqual(t["bauteil_mm"], t["raster_mm"] - sc.BLECH_SPIEL)
+
+    def test_bereiche_sind_das_komplement_der_luecken(self):
+        r = sc.zerlege_bodenblech(2000, sc.BLECH_LAENGEN, [], [{"g0": 4, "g1": 6}])
+        self.assertEqual([(b["x0_mm"], b["x1_mm"]) for b in r["bereiche"]],
+                         [(0, 500), (750, 2000)])
+        self.assertEqual(sum(b["laenge_mm"] for b in r["bereiche"])
+                         + sum(l["laenge_mm"] for l in r["luecken"]), 2000)
+        ohne = sc.zerlege_bodenblech(2000, sc.BLECH_LAENGEN, [])
+        self.assertEqual(ohne["bereiche"], [{"x0_mm": 0, "x1_mm": 2000, "laenge_mm": 2000}])
+        self.assertEqual(ohne["luecken"], [])
+        self.assertEqual(ohne["konflikte"], [])
+
+    def test_bestandswaende_ohne_aussparung_bleiben_identisch(self):
+        for ps in (None, {}, {"top_connection": "blech"}, {"blech_lengths_mm": [1250]}):
+            with self.subTest(ps=ps):
+                w = build_wall("ohne", 5000, 2600, [], None, ps)
+                self.assertNotIn("base_plate_aussparungen_grid", w["prestress"])
+                self.assertNotIn("aussparungen", w["base_plate"])
+                self.assertNotIn("aussparung_fehler", w["validation"])
+                self.assertEqual(w["base_plate"]["laenge_mm"], 5000)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

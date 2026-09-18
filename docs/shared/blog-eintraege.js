@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260918-01",
+    datum: "2026-09-18",
+    typ: "feature",
+    issue: 138,
+    titel: "Rechenkern beherrscht Bodenblech-Aussparungen: gewählte 125-mm-Rasterfelder bleiben frei, Bereiche einzeln zerlegt",
+    testbitte: "Noch ohne Bedienelement — eine Wand mit ausgesparten Rasterfeldern erhält intern kein überbrückendes Blech; "
+      + "jeder verbleibende Bereich wird separat zerlegt, unbaubare Reste werden benannt statt still überdeckt",
+  },
+  {
     id: "chg-20260917-07",
     datum: "2026-09-17",
     typ: "feature",

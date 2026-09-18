@@ -46,14 +46,33 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die AUSGLEICHSLAGE IN ALLEN DATENPFADEN (#136, Abschluss der
-// Serie). Geliefert: IFC/3D mit realer z-Position und Hoehe der Ausgleichslagensteine,
+// Der NEUESTE Eintrag sind die BODENBLECH-AUSSPARUNGEN IM RECHENKERN (#138, Fundament).
+// Geliefert: manuell gewaehlte volle 125-mm-Rasterfelder als kanonische Eingabe
+// (`prestress.base_plate_aussparungen_grid`), deterministische Normalisierung zu
+// disjunkten Luecken ([A-28]), unabhaengiges Slicing jedes verbleibenden Bereichs ohne
+// Ueberbrueckung mit benannten unbaubaren Resten ([A-29]), deterministisches Verwerfen
+// unzulaessiger Felder mit Befund ([A-30]) und JS/Python-Paritaet. NICHT versprochen
+// werden Bedienelemente, Stuecklisten- oder Zeichnungsdarstellung — das folgt separat.
+const FRISCH_138A = EINTRAEGE[0];
+ok("[#138] die Bodenblech-Aussparungen im Rechenkern sind der neueste Eintrag",
+  FRISCH_138A?.id === "chg-20260918-01" && FRISCH_138A?.issue === 138
+  && FRISCH_138A?.typ === "feature" && FRISCH_138A?.datum === "2026-09-18"
+  && /Bodenblech-Aussparungen/.test(FRISCH_138A?.titel || "")
+  && /125-mm-Rasterfelder/.test(FRISCH_138A?.titel || ""));
+ok("[#138] die Testbitte benennt den internen Stand ohne Bedienelement",
+  /ohne Bedienelement/.test(FRISCH_138A?.testbitte || "")
+  && /kein überbrückendes Blech/.test(FRISCH_138A?.testbitte || "")
+  && /benannt/.test(FRISCH_138A?.testbitte || ""));
+
+// Davor die AUSGLEICHSLAGE IN ALLEN DATENPFADEN (#136, Abschluss der Serie) — ueber die
+// Kennung gesucht, weil sie nicht mehr der neueste Eintrag ist. Ihre Aussagen bleiben
+// unveraendert: IFC/3D mit realer z-Position und Hoehe der Ausgleichslagensteine,
 // Modul 2 ohne erfundene Verbinderposition mit sichtbarer Meldung ([U-13]), Export/Import-
 // Roundtrip erhaelt Zielhoehe, Aktivierung, Rollen und Lagenkanten; Altformat-Dateien
 // bleiben ohne stille Migration lesbar. NICHT versprochen werden ein statischer Nachweis
 // oder eine Freigabe des Sonderzuschnitts.
-const FRISCH_136G = EINTRAEGE[0];
-ok("[#136] die Ausgleichslage in allen Datenpfaden ist der neueste Eintrag",
+const FRISCH_136G = EINTRAEGE.find(e => e.id === "chg-20260917-07");
+ok("[#136] die Ausgleichslage in allen Datenpfaden steht als Eintrag davor",
   FRISCH_136G?.id === "chg-20260917-07" && FRISCH_136G?.issue === 136
   && FRISCH_136G?.typ === "feature" && FRISCH_136G?.datum === "2026-09-17"
   && /IFC\/3D/.test(FRISCH_136G?.titel || "")

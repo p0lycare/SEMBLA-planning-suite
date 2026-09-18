@@ -1993,5 +1993,149 @@ print(json.dumps([hoehen_zerlegung(h, True) for h in a]))
   deepEqual(hs.map(h => hoehenZerlegung(h, true)), py);
 });
 
+// ---------------------------------------------------------------------------
+// BODENBLECH-AUSSPARUNGEN — manuell gewaehlte 125-mm-Rasterfelder ([A-28]…[A-30], #138)
+// ---------------------------------------------------------------------------
+// Ein Aussparungseintrag ist GENAU EIN vollstaendiges Rasterfeld ohne Bodenblech. Der Core
+// normalisiert die Eintraege zu disjunkten Intervallen, slict jeden verbleibenden Bereich
+// UNABHAENGIG mit [A-10]…[A-12] und benennt, was damit nicht baubar ist. Das Python-Orakel wird
+// als ECHTER Unterprozess gefahren (`orakel`), nicht ueber ein eingefrorenes Fixture.
+console.log("\nBODENBLECH-AUSSPARUNGEN [A-28]/[A-29]/[A-30] (#138):");
+
+/** Wand mit Aussparungen — `g` sind die Rasterindizes der ausgesparten Felder. */
+const wandMitAussparung = (g, laenge = 2000, ps = {}) =>
+  buildWall("as", laenge, 2600, [], null, { ...ps, base_plate_aussparungen_grid: g });
+const teilKurz = (w) => w.base_plate.teile
+  .map(tl => tl.x0_mm + ":" + tl.raster_mm + (tl.art === "sonder" ? "S" : "")).join(" ");
+
+t("[A-28] Aussparungen am Anfang, in der Mitte und am Ende: disjunkte Luecken, kein Teil darin", () => {
+  // 7 und 8 sind BENACHBART und werden zu genau EINEM Intervall zusammengefasst.
+  const w = wandMitAussparung([15, 7, 0, 8, 7]);        // ungeordnet + doppelt: egal
+  assert(JSON.stringify(w.prestress.base_plate_aussparungen_grid) === "[0,7,8,15]",
+    JSON.stringify(w.prestress.base_plate_aussparungen_grid));
+  const lu = w.base_plate.aussparungen;
+  assert(lu.map(l => l.g0 + "-" + l.g1).join(" ") === "0-1 7-9 15-16", JSON.stringify(lu));
+  // Disjunkt und aufsteigend.
+  for (let i = 0; i + 1 < lu.length; i++) assert(lu[i].x1_mm < lu[i + 1].x0_mm, "nicht disjunkt");
+  // Kein Teil ueberdeckt eine Luecke — auch nicht teilweise.
+  for (const tl of w.base_plate.teile) for (const l of lu)
+    assert(tl.x0_mm >= l.x1_mm || tl.x0_mm + tl.raster_mm <= l.x0_mm,
+      "Teil ueberbrueckt Luecke: " + teilKurz(w));
+  // Jeder verbleibende Bereich ist FUER SICH gesliced: zwei Bereiche à 750 mm -> je ein Teil.
+  assert(teilKurz(w) === "125:750 1125:750", teilKurz(w));
+  assert(w.validation.blech_konflikte.length === 0, JSON.stringify(w.validation.blech_konflikte));
+});
+
+t("[A-29] Summe der Rastermasse + ausgesparte Laenge == Wandlaenge; nur Teile gehen in die Menge", () => {
+  for (const g of [[0], [8], [0, 7, 8, 15], [15], [3, 4, 5]]) {
+    const w = wandMitAussparung(g);
+    const teileMm = w.base_plate.teile.reduce((a, tl) => a + tl.raster_mm, 0);
+    const luMm = w.base_plate.aussparungen.reduce((a, l) => a + l.laenge_mm, 0);
+    assert(teileMm + luMm === w.length_mm, "Summe " + g + ": " + teileMm + "+" + luMm);
+    assert(luMm === g.length * GRID, "ausgesparte Laenge " + g + ": " + luMm);
+    // Mengenbasis: Bodenblechlaenge und BOM fuehren AUSSCHLIESSLICH die Teile.
+    assert(w.base_plate.laenge_mm === teileMm, "base_plate.laenge_mm: " + w.base_plate.laenge_mm);
+    assert(w.bom.stahlblech_mm === teileMm, "stahlblech_mm: " + w.bom.stahlblech_mm);
+    assert(w.base_plate.module === w.base_plate.teile.length, "module");
+  }
+});
+
+t("[A-29] unbaubarer Kurzbereich: benannter Konflikt, nichts wird ueberbrueckt", () => {
+  const w = wandMitAussparung([1]);                     // Rest [0, 125) < 250 mm
+  const k = w.validation.blech_konflikte;
+  assert(JSON.stringify(k) === '[{"grund":"bereich_unbaubar","x_mm":0,"x0_mm":0,"x1_mm":125,'
+    + '"laenge_mm":125}]', JSON.stringify(k));
+  // Die Aussparung bleibt stehen — der Kurzbereich wird NICHT mit dem Nachbarn verbunden.
+  assert(teilKurz(w) === "0:125S 250:1250 1500:500", teilKurz(w));
+  assert(w.validation.buildable, "kein Baubarkeitsausschluss");
+  // Dasselbe Ergebnis im Python-Orakel (Geometrie, Teile, Mengen, Konflikte).
+  deepEqual(w, orakel({ name: "as", length_mm: 2000, height_mm: 2600,
+    prestress: { base_plate_aussparungen_grid: [1] } }));
+});
+
+t("[A-30] unzulaessige Felder werden verworfen und benannt, nie verschoben", () => {
+  const w = wandMitAussparung([2, 2.5, 99, -1, 2]);
+  assert(JSON.stringify(w.prestress.base_plate_aussparungen_grid) === "[2]",
+    JSON.stringify(w.prestress.base_plate_aussparungen_grid));
+  assert(JSON.stringify(w.validation.aussparung_fehler)
+    === '[{"grund":"nicht_ganzzahlig","wert":2.5},{"grund":"ausserhalb_wand","wert":99},'
+      + '{"grund":"ausserhalb_wand","wert":-1}]', JSON.stringify(w.validation.aussparung_fehler));
+  // Genau EIN Feld ist wirksam — kein verworfener Wert ist auf ein Nachbarfeld gewandert.
+  assert(w.base_plate.aussparungen.length === 1 && w.base_plate.aussparungen[0].g0 === 2,
+    JSON.stringify(w.base_plate.aussparungen));
+});
+
+t("[A-30] eine nachtraeglich gekuerzte Wand verwirft das aussenliegende Feld benannt", () => {
+  const lang = wandMitAussparung([3, 14], 2000);
+  assert(lang.base_plate.aussparungen.length === 2, "Ausgangslage");
+  assert(!("aussparung_fehler" in lang.validation), "kein Fehler in der langen Wand");
+  const kurz = wandMitAussparung([3, 14], 1000);        // 1000 mm = 8 Raster -> 14 liegt draussen
+  assert(JSON.stringify(kurz.validation.aussparung_fehler)
+    === '[{"grund":"ausserhalb_wand","wert":14}]', JSON.stringify(kurz.validation.aussparung_fehler));
+  assert(JSON.stringify(kurz.prestress.base_plate_aussparungen_grid) === "[3]", "nur das innere Feld");
+  assert(kurz.base_plate.teile.reduce((a, tl) => a + tl.raster_mm, 0) + GRID === 1000, "Summe");
+});
+
+t("[A-11] gilt innerhalb jedes Bereichs, an seinen Enden aber nicht", () => {
+  // Ein Steinstoss der untersten Lage liegt bei Raster 10 (1250 mm). Die Aussparung endet bei
+  // Raster 4 — dort steht kein zweites Blech, also ist das kein Stoss und kein Konflikt.
+  const w = wandMitAussparung([3], 5000, { blech_lengths_mm: [1250, 500, 375] });
+  const fugen = new Set(w.courses[0].joints_grid);
+  for (const tl of w.base_plate.teile) {
+    const e = tl.x0_mm + tl.raster_mm;
+    const bereichsende = e === 375 || e === 5000;       // freies Blechende
+    assert(bereichsende || !fugen.has(e / GRID) || w.validation.blech_konflikte
+      .some(k => k.grund === "stoss_auf_steinstoss" && k.x_mm === e), "ungemeldeter Stoss bei " + e);
+  }
+  assert(w.base_plate.teile.every(tl => tl.bauteil_mm === tl.raster_mm - BLECH_SPIEL), "[A-12]");
+});
+
+t("[A-28] direkte Zerlegung: die Bereiche sind das Komplement der Luecken", () => {
+  const r = zerlegeBodenblech(2000, BLECH_LAENGEN, [], [{ g0: 4, g1: 6 }]);
+  assert(JSON.stringify(r.bereiche.map(b => [b.x0_mm, b.x1_mm]))
+    === "[[0,500],[750,2000]]", JSON.stringify(r.bereiche));
+  assert(r.bereiche.reduce((a, b) => a + b.laenge_mm, 0)
+    + r.luecken.reduce((a, l) => a + l.laenge_mm, 0) === 2000, "ueberdeckungsfrei");
+  // Ohne Aussparung bleibt alles bit-genau wie bisher.
+  const ohne = zerlegeBodenblech(2000, BLECH_LAENGEN, []);
+  assert(JSON.stringify(ohne.bereiche) === '[{"x0_mm":0,"x1_mm":2000,"laenge_mm":2000}]',
+    JSON.stringify(ohne.bereiche));
+  assert(ohne.luecken.length === 0 && ohne.konflikte.length === 0, "kein Befund");
+});
+
+t("#138 Bestandswaende ohne Aussparung bleiben struktur- und mengenidentisch", () => {
+  // Goldene Referenzwaende: dieselbe Wand, gebaut ohne das Feld — Feld fuer Feld gleich.
+  for (const key of Object.keys(REFERENCE_WALLS)) {
+    const golden = JSON.parse(readFileSync(join(FIX, `${key}.json`), "utf8"));
+    deepEqual(buildReference(key), golden);
+  }
+  // Und keine Wand ohne Aussparung bekommt ein Feld, das es vorher nicht gab.
+  for (const ps of [null, {}, { top_connection: "blech" }, { blech_lengths_mm: [1250] }]) {
+    const w = buildWall("ohne", 5000, 2600, [], null, ps);
+    assert(!("base_plate_aussparungen_grid" in w.prestress), "Feld im Vorspannblock entstanden");
+    assert(!("aussparungen" in w.base_plate), "Feld am Bodenblech entstanden");
+    assert(!("aussparung_fehler" in w.validation), "Feld in der Validierung entstanden");
+    assert(w.base_plate.laenge_mm === 5000, "Bodenblechlaenge: " + w.base_plate.laenge_mm);
+  }
+});
+
+t("#138 Paritaet JS <-> Python fuer Geometrie, Teile, Mengen und Konflikte", () => {
+  const faelle = [
+    { name: "as", length_mm: 2000, height_mm: 2600, prestress: { base_plate_aussparungen_grid: [] } },
+    { name: "as", length_mm: 2000, height_mm: 2600, prestress: { base_plate_aussparungen_grid: [0, 7, 8, 15] } },
+    { name: "as", length_mm: 2000, height_mm: 2600, prestress: { base_plate_aussparungen_grid: [1] } },
+    { name: "as", length_mm: 2000, height_mm: 2600, prestress: { base_plate_aussparungen_grid: [2, 2.5, 99, -1, 2] } },
+    { name: "as", length_mm: 5000, height_mm: 2600,
+      prestress: { base_plate_aussparungen_grid: [3], blech_lengths_mm: [1250, 500, 375],
+        top_connection: "blech" } },
+    { name: "as", length_mm: 5000, height_mm: 2600,
+      prestress: { base_plate_aussparungen_grid: [10, 11, 12], top_connection: "blech" } },
+  ];
+  for (const f of faelle) {
+    const js = buildWall(f.name, f.length_mm, f.height_mm, [], null, f.prestress);
+    deepEqual(js, orakel(f));
+  }
+});
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);

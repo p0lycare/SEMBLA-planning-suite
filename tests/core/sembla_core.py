@@ -726,29 +726,61 @@ def norm_blech_laengen(l):
             if isinstance(x, int) and x % GRID == 0 and BLECH_MIN_MM <= x <= BLECH_MAX_MM]
 
 
-def zerlege_bodenblech(length_mm, laengen_mm, stoss_grid=()):
-    """Bodenblech deterministisch in reale Teile zerlegen ([A-10]/[A-11]/[A-12])."""
-    L = norm_blech_laengen(laengen_mm)
-    stoss = {int(g) for g in (stoss_grid or ())}
-    konflikte = []
-    if not L:
-        konflikte.append({"grund": "keine_standardlaenge"})
+# ---- Bodenblech-Aussparungen ([A-28]/[A-29]/[A-30], #138) ----
+# Ein Aussparungseintrag bezeichnet GENAU EIN vollstaendiges 125-mm-Rasterfeld ohne Bodenblech;
+# er ist eine MANUELLE Planungseingabe und wird nie abgeleitet, nie gewaehlt und nie verschoben.
+# Kanonisch gefuehrt wird er als Rasterindex im Vorspannblock des Wandelements
+# (prestress.base_plate_aussparungen_grid).
+# [A-28] Aus den Eintraegen entstehen DISJUNKTE Intervalle innerhalb der Wand: dedupliziert,
+# aufsteigend, benachbarte Felder zusammengefasst — ueberdeckungsfrei und eingabereihenfolgeunabhaengig.
+# [A-30] Ein unzulaessiger Eintrag wird deterministisch VERWORFEN und dabei BENANNT; er wird nie
+# auf ein anderes Feld geschoben.
+# Bit-genaues Gegenstueck zu normBodenblechAussparungen()/zerlegeBodenblech() im JS-Core.
 
-    def frei(x):                       # das Wandende ist kein Stoss
-        return x >= length_mm or (x // GRID) not in stoss
+def norm_bodenblech_aussparungen(arr, n_grid):
+    """Manuelle Bodenblech-Aussparungen normalisieren und validieren ([A-28]/[A-30]).
+
+    Gibt (felder, bereiche, fehler) zurueck; `felder is None` heisst „keine Aussparungen".
+    """
+    if not isinstance(arr, (list, tuple)):
+        return None, [], []
+    out, fehler = [], []
+    for raw in arr:
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            fehler.append({"grund": "nicht_ganzzahlig", "wert": raw}); continue
+        if raw < 0 or raw >= n_grid:
+            fehler.append({"grund": "ausserhalb_wand", "wert": raw}); continue
+        out.append(raw)
+    felder = sorted(set(out))
+    # [A-28] Benachbarte Felder werden deterministisch zu EINEM Intervall zusammengefasst.
+    bereiche = []
+    for k in felder:
+        if bereiche and bereiche[-1]["g1"] == k:
+            bereiche[-1]["g1"] = k + 1
+        else:
+            bereiche.append({"g0": k, "g1": k + 1})
+    return felder, bereiche, fehler
+
+
+def _zerlege_blechbereich(x0_mm, x1_mm, L, stoss):
+    """[A-29] EINEN zusammenhaengenden Bodenblechbereich [x0, x1) zerlegen — mit genau den
+    Regeln aus [A-10]/[A-11]/[A-12]. Seine Enden sind freie Blechenden und keine Stoesse."""
+
+    def frei(x):                       # ein Bereichsende ist kein Stoss
+        return x >= x1_mm or (x // GRID) not in stoss
 
     def exakt(strict):
         """Stufe 1: exakte Kombination — geringste Teilezahl, darunter die groessten Teile."""
         memo = {}
 
         def rec(x):
-            if x == length_mm:
+            if x == x1_mm:
                 return (0, [])
             if x in memo:
                 return memo[x]
             best = None
             for l in L:                # absteigend: groesste zuerst
-                if x + l > length_mm or (strict and not frei(x + l)):
+                if x + l > x1_mm or (strict and not frei(x + l)):
                     continue
                 t = rec(x + l)
                 if t is None:
@@ -761,7 +793,7 @@ def zerlege_bodenblech(length_mm, laengen_mm, stoss_grid=()):
             memo[x] = best
             return best
 
-        r = rec(0)
+        r = rec(x0_mm)
         return r[1] if r is not None else None
 
     def mit_sonder(strict):
@@ -769,27 +801,27 @@ def zerlege_bodenblech(length_mm, laengen_mm, stoss_grid=()):
         memo = {}
 
         def rec(x):
-            if x == length_mm:
+            if x == x1_mm:
                 return []
             if x in memo:
                 return memo[x]
             out = None
             for l in L:                # absteigend: groesste zuerst
-                if x + l > length_mm or (strict and not frei(x + l)):
+                if x + l > x1_mm or (strict and not frei(x + l)):
                     continue
                 t = rec(x + l)
                 if t is not None:
                     out = [{"x0_mm": x, "raster_mm": l, "art": "standard"}] + t
                     break
             if out is None:
-                rest = length_mm - x
+                rest = x1_mm - x
                 # [A-10] Sonderzuschnitt nur, wenn keine Standardlaenge mehr passt
                 if rest > 0 and not any(l <= rest for l in L):
                     out = [{"x0_mm": x, "raster_mm": rest, "art": "sonder"}]
             memo[x] = out
             return out
 
-        return rec(0)
+        return rec(x0_mm)
 
     # Reihenfolge der Wahl: stossfrei exakt -> exakt (Stoss gemeldet) -> stossfrei mit
     # Sonderzuschnitt -> mit Sonderzuschnitt (Stoss gemeldet). Gemeldet wird danach an EINER
@@ -801,14 +833,51 @@ def zerlege_bodenblech(length_mm, laengen_mm, stoss_grid=()):
         if teile:
             break
     teile = teile or []
+    konflikte = []
     for tl in teile:
         e = tl["x0_mm"] + tl["raster_mm"]
         if not frei(e):
             konflikte.append({"grund": "stoss_auf_steinstoss", "x_mm": e, "grid": e // GRID})
+    return teile, konflikte
+
+
+def zerlege_bodenblech(length_mm, laengen_mm, stoss_grid=(), aussparungen=()):
+    """Bodenblech deterministisch in reale Teile zerlegen ([A-10]/[A-11]/[A-12] je Bereich,
+    [A-28]/[A-29] fuer die Aussparungen). Ohne Aussparungen ist der einzige Bereich die ganze
+    Wand — das Ergebnis ist dann bit-genau das bisherige."""
+    L = norm_blech_laengen(laengen_mm)
+    stoss = {int(g) for g in (stoss_grid or ())}
+    konflikte = []
+    if not L:
+        konflikte.append({"grund": "keine_standardlaenge"})
+    luecken = [{"g0": a["g0"], "g1": a["g1"], "x0_mm": a["g0"] * GRID, "x1_mm": a["g1"] * GRID,
+                "laenge_mm": (a["g1"] - a["g0"]) * GRID} for a in (aussparungen or ())]
+    # [A-29] Belegte und ausgesparte Intervalle sind das Komplement voneinander —
+    # ueberdeckungsfrei und zusammen exakt die Wandlaenge.
+    bereiche, x = [], 0
+    for lu in luecken:
+        if lu["x0_mm"] > x:
+            bereiche.append({"x0_mm": x, "x1_mm": lu["x0_mm"], "laenge_mm": lu["x0_mm"] - x})
+        x = lu["x1_mm"]
+    if length_mm > x:
+        bereiche.append({"x0_mm": x, "x1_mm": length_mm, "laenge_mm": length_mm - x})
+
+    teile = []
+    for b in bereiche:
+        # [A-29] Ein Bereich, der kuerzer ist als die kleinste zulaessige Standardlaenge, ist
+        # mit den bestehenden Regeln NICHT baubar. Gemeldet wird das BENANNT — die Aussparung
+        # wird nie still fallengelassen und der Bereich nie mit dem Nachbarn ueberbrueckt.
+        if b["laenge_mm"] < BLECH_MIN_MM:
+            konflikte.append({"grund": "bereich_unbaubar", "x_mm": b["x0_mm"],
+                              "x0_mm": b["x0_mm"], "x1_mm": b["x1_mm"],
+                              "laenge_mm": b["laenge_mm"]})
+        bt, bk = _zerlege_blechbereich(b["x0_mm"], b["x1_mm"], L, stoss)
+        teile.extend(bt)
+        konflikte.extend(bk)
     return {"teile": [{"x0_mm": t["x0_mm"], "raster_mm": t["raster_mm"],
                        "bauteil_mm": t["raster_mm"] - BLECH_SPIEL, "art": t["art"]}
                       for t in teile],
-            "konflikte": konflikte}
+            "konflikte": konflikte, "bereiche": bereiche, "luecken": luecken}
 
 
 def _seg_joints(start_grid: int, tiling: list[int]) -> set[int]:
@@ -1081,6 +1150,14 @@ def _norm_prestress(p):
     _dc = p.get("deckenanschluss_grid")
     if isinstance(_dc, (list, tuple)):
         out["deckenanschluss_grid"] = list(_dc)
+    # Manuell gewaehlte Bodenblech-Aussparungen ([A-28], #138) sind eine kanonische
+    # PLANUNGSEINGABE und stehen — wie der Vorratssatz der Bodenblechlaengen — im Vorspannblock.
+    # Der Schluessel entsteht NUR, wenn er ausdruecklich gesetzt ist: eine Wand ohne
+    # Aussparungen bleibt bit-genau unveraendert. build_wall ersetzt die rohe Liste durch die
+    # validierte (dedupliziert, sortiert).
+    _bpa = p.get("base_plate_aussparungen_grid")
+    if isinstance(_bpa, (list, tuple)):
+        out["base_plate_aussparungen_grid"] = list(_bpa)
     return out
 
 # #136 Eingangsnormalisierung, kein Kantenleser: die Stufenhoehe wird — genau wie x0/x1 auf das
@@ -1565,14 +1642,28 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # Teilen ([A-10]/[A-11]/[A-12]) statt aus einer Modulzaehlung; Kopfblech unveraendert.
     occ_cols = sum(1 for t in _top_lage if t > 0)
     top_edge_len = occ_cols * GRID
+    # [A-28]/[A-30] Die manuell gewaehlten Aussparungsfelder werden GENAU HIER normalisiert und
+    # validiert; abgewiesene Eintraege werden benannt und nicht angewandt.
+    _AS, _AS_bereiche, _AS_fehler = norm_bodenblech_aussparungen(
+        _PS.get("base_plate_aussparungen_grid"), N)
+    if _AS is not None:
+        _PS["base_plate_aussparungen_grid"] = _AS
     boden_zerlegung = zerlege_bodenblech(length_mm, _PS["blech_lengths_mm"],
-                                         courses[0]["joints_grid"] if courses else [])
+                                         courses[0]["joints_grid"] if courses else [],
+                                         _AS_bereiche)
     boden_teile = boden_zerlegung["teile"]
     boden_module = len(boden_teile)          # Anzahl REALER Bodenblechteile
     kopf_module = math.ceil(top_edge_len / _PS["blech_mm"]) if _top == "blech" else 0
-    base_plate = {"rolle": "bodenblech", "laenge_mm": length_mm, "breite_mm": THICK,
+    # [A-29] Die ausgesparte Laenge erzeugt kein Teil und keine Menge: das Bodenblech ist genau
+    # so lang wie die Summe seiner belegten Bereiche.
+    _ausgespart_mm = sum(lu["laenge_mm"] for lu in boden_zerlegung["luecken"])
+    boden_laenge = length_mm - _ausgespart_mm
+    base_plate = {"rolle": "bodenblech", "laenge_mm": boden_laenge, "breite_mm": THICK,
                   "dicke_mm": _PS["blech_dicke_mm"], "modul_mm": _PS["blech_mm"],
-                  "module": boden_module, "teile": boden_teile}
+                  "module": boden_module, "teile": boden_teile,
+                  # [A-28] Die kanonischen Luecken — nur wenn es welche gibt.
+                  **({"aussparungen": boden_zerlegung["luecken"]}
+                     if boden_zerlegung["luecken"] else {})}
     top_plate = ({"rolle": "kopfblech", "laenge_mm": top_edge_len, "breite_mm": THICK,
                   "dicke_mm": _PS["kopfblech_dicke_mm"], "modul_mm": _PS["blech_mm"],
                   "module": kopf_module}
@@ -1589,7 +1680,12 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     _AG, _AG_fehler = norm_ausgleichspunkte(_PS.get("ausgleich_override_mm"), length_mm)
     if _AG is not None:
         _PS["ausgleich_override_mm"] = _AG
-    boden_stoesse = [t["x0_mm"] + t["raster_mm"] for t in boden_teile[:-1]]
+    # [A-21]/[A-29] Ein Blechstoss ist nur, wo zwei Bodenbleche WIRKLICH aneinanderstossen. Die
+    # Kante einer Aussparung ist keiner — dort endet das Blech frei — und erzeugt deshalb keinen
+    # Pflichtpunkt. Ohne Aussparungen ist die Liste bit-genau die bisherige.
+    boden_stoesse = [a["x0_mm"] + a["raster_mm"]
+                     for a, b in zip(boden_teile, boden_teile[1:])
+                     if a["x0_mm"] + a["raster_mm"] == b["x0_mm"]]
     ausgleichspunkte = ([{"x_mm": x, "art": "manuell"} for x in _AG] if _AG is not None
                         else verteile_ausgleichspunkte(length_mm, boden_stoesse,
                                                        [c["x_mm"] for c in columns]))
@@ -1618,7 +1714,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                senkkopfschrauben=anch_senkkopf, kopplungsmuttern_basis=anch_senkkopf,
                spannplatten=anch_spannplatten, spannmuttern=anch_spannmutter,
                stahlblech_module=boden_module + kopf_module,
-               stahlblech_mm=length_mm + (top_edge_len if _top == "blech" else 0),
+               # [A-29] Nur die belegte Bodenblechlaenge geht in die Menge ein.
+               stahlblech_mm=boden_laenge + (top_edge_len if _top == "blech" else 0),
                stahlblech_dicke_mm=_PS["blech_dicke_mm"],
                stossfugen=stossfugen,
                # #136 Die Hoehe eines Dichtstreifens ist die Hoehe SEINER Lage — gelesen,
@@ -1661,9 +1758,13 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        "versatz_violations": viol, "tension_span_ok": span_ok,
                        "rigid_lagen": rigid_lagen, "invalid_segments": invalid_segments,
                        "zuschnitt_konflikte": zuschnitt_konflikte,
-                       # [A-11] Blechstoesse auf einem Steinstoss der untersten Lage sowie ein
-                       # leerer Vorratssatz — sichtbar, KEIN Baubarkeitsausschluss.
+                       # [A-11] Blechstoesse auf einem Steinstoss der untersten Lage, ein leerer
+                       # Vorratssatz sowie ein nach [A-29] unbaubarer Kurzbereich — sichtbar,
+                       # KEIN Baubarkeitsausschluss.
                        "blech_konflikte": boden_zerlegung["konflikte"],
+                       # [A-30] Abgewiesene manuelle Aussparungsfelder — benannt, verworfen,
+                       # nie verschoben. Der Schluessel entsteht NUR im Fehlerfall.
+                       **({"aussparung_fehler": _AS_fehler} if _AS_fehler else {}),
                        # [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuell: echter Befund.
                        "ungehaltene_steine": ungehaltene_steine,
                        # [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)

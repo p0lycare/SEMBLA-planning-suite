@@ -598,6 +598,11 @@ export function wirksameZwischenpunkte(w) {
 // Nur wenn KEINE exakte Kombination die Laenge deckt, greift der Sonderpfad: Groessenpraeferenz
 // von unten, und GENAU EIN Sonderzuschnitt am Ende — fuer den Rest, in den keine Standardlaenge
 // mehr passt. Auch dieser Pfad weicht Stoessen zuerst aus und meldet, was uebrig bleibt.
+//
+// #138 Gerechnet wird das alles je BEREICH: eine Wand kann manuell gewaehlte Rasterfelder ohne
+// Bodenblech fuehren ([A-28]), und jeder verbleibende zusammenhaengende Bereich wird UNABHAENGIG
+// mit genau diesen Regeln zerlegt ([A-29]). Ohne Aussparungen ist der einzige Bereich die ganze
+// Wand — dann ist das Ergebnis bit-genau das bisherige.
 
 /** Vorratssatz auf zulaessige Bodenblech-Standardlaengen eingrenzen. @param {number[]} l */
 export function normBlechLaengen(l) {
@@ -605,21 +610,63 @@ export function normBlechLaengen(l) {
     && x >= BLECH_MIN_MM && x <= BLECH_MAX_MM);
 }
 
+// ---------- Bodenblech-Aussparungen ([A-28]/[A-29]/[A-30], #138) ----------
+// Ein Aussparungseintrag bezeichnet GENAU EIN vollstaendiges 125-mm-Rasterfeld ohne Bodenblech;
+// er ist eine MANUELLE Planungseingabe und wird nie abgeleitet, nie gewaehlt und nie verschoben.
+// Kanonisch gefuehrt wird er als Rasterindex k im Vorspannblock des Wandelements
+// (`prestress.base_plate_aussparungen_grid`) — derselbe Ort, an dem schon der Vorratssatz der
+// Bodenblechlaengen und die uebrigen Overrides stehen.
+//
+// [A-28] Aus den Eintraegen entstehen DISJUNKTE Intervalle innerhalb der Wand: dedupliziert,
+// aufsteigend, und BENACHBARTE Felder zu genau einem Intervall zusammengefasst. Damit gibt es zu
+// jeder Wand genau eine Lesart von „ausgespart" und „belegt" — ueberdeckungsfrei und unabhaengig
+// von der Eingabereihenfolge.
+// [A-30] Ein unzulaessiger Eintrag (nicht ganzzahlig, ausserhalb der — ggf. nachtraeglich
+// gekuerzten — Wand) wird deterministisch VERWORFEN und dabei BENANNT; er wird nie auf ein
+// anderes Feld geschoben, weil dabei still eine andere Aussparung entstuende ([P-9]).
+
 /**
- * Bodenblech einer Wand deterministisch in reale Teile zerlegen ([A-10]/[A-11]/[A-12]).
- * @param {number} lengthMm Wandlaenge (Vielfaches von 125 mm)
- * @param {number[]} laengenMm Vorratssatz der Standardlaengen
- * @param {number[]} [stossGrid] Rasterpositionen der Steinstoesse der untersten Lage
- * @returns {{teile:Array<{x0_mm:number,raster_mm:number,bauteil_mm:number,art:"standard"|"sonder"}>,
- *            konflikte:Array<{grund:string,x_mm?:number,grid?:number}>}}
+ * Manuelle Bodenblech-Aussparungen normalisieren und validieren ([A-28]/[A-30]).
+ *
+ * `arr === null/undefined` heisst „keine Aussparungen" (kein Feld am Wandelement). Eine
+ * ausdrueckliche Liste wird geprueft; jeder abgewiesene Wert steht in `fehler`.
+ * @param {number[]|null|undefined} arr Rasterindizes der ausgesparten Felder
+ * @param {number} N Wandlaenge in Rastern
+ * @returns {{felder:number[]|null, bereiche:Array<{g0:number,g1:number}>,
+ *            fehler:Array<{grund:string,wert:any}>}}
  */
-export function zerlegeBodenblech(lengthMm, laengenMm, stossGrid = []) {
-  const L = normBlechLaengen(laengenMm);
-  const stoss = new Set((stossGrid || []).map(Number));
-  const konflikte = [];
-  if (!L.length) konflikte.push({ grund: "keine_standardlaenge" });
-  // Das Wandende ist kein Stoss — dort endet das Bodenblech ohnehin.
-  const frei = (x) => x >= lengthMm || !stoss.has(x / GRID);
+export function normBodenblechAussparungen(arr, N) {
+  if (!Array.isArray(arr)) return { felder: null, bereiche: [], fehler: [] };
+  const out = [], fehler = [];
+  for (const raw of arr) {
+    const k = (typeof raw === "boolean") ? NaN : Number(raw);
+    if (!Number.isInteger(k)) { fehler.push({ grund: "nicht_ganzzahlig", wert: raw }); continue; }
+    if (k < 0 || k >= N) { fehler.push({ grund: "ausserhalb_wand", wert: raw }); continue; }
+    out.push(k);
+  }
+  const felder = [...new Set(out)].sort((a, b) => a - b);
+  // [A-28] Benachbarte Felder werden deterministisch zu EINEM Intervall zusammengefasst.
+  const bereiche = [];
+  for (const k of felder) {
+    const letzt = bereiche.length ? bereiche[bereiche.length - 1] : null;
+    if (letzt && letzt.g1 === k) letzt.g1 = k + 1;
+    else bereiche.push({ g0: k, g1: k + 1 });
+  }
+  return { felder, bereiche, fehler };
+}
+
+/**
+ * [A-29] EINEN zusammenhaengenden Bodenblechbereich [x0, x1) zerlegen — mit genau den Regeln
+ * aus [A-10]/[A-11]/[A-12]. Der Bereich wird UNABHAENGIG von jedem anderen gerechnet: seine
+ * Enden sind freie Blechenden und keine Stoesse, und kein Teil reicht ueber sie hinaus.
+ * @param {number} x0Mm @param {number} x1Mm
+ * @param {number[]} L normalisierter Vorratssatz (absteigend)
+ * @param {Set<number>} stoss Rasterpositionen der Steinstoesse der untersten Lage
+ */
+function zerlegeBlechbereich(x0Mm, x1Mm, L, stoss) {
+  // Ein Bereichsende ist kein Stoss — dort endet das Bodenblech ohnehin (am Wandende, an einer
+  // Aussparung oder an beidem).
+  const frei = (x) => x >= x1Mm || !stoss.has(x / GRID);
 
   // Stufe 1: EXAKTE Kombination — geringste Teilezahl, darunter die groessten Teile.
   // `strict` = die Stossregel [A-11] wird eingehalten.
@@ -627,11 +674,11 @@ export function zerlegeBodenblech(lengthMm, laengenMm, stossGrid = []) {
     /** @type {Map<number, {anzahl:number,teile:any[]}|null>} */
     const memo = new Map();
     const rec = (x) => {
-      if (x === lengthMm) return { anzahl: 0, teile: [] };
+      if (x === x1Mm) return { anzahl: 0, teile: [] };
       if (memo.has(x)) return memo.get(x);
       let best = null;
       for (const l of L) {                                 // absteigend: groesste zuerst
-        if (x + l > lengthMm) continue;
+        if (x + l > x1Mm) continue;
         if (strict && !frei(x + l)) continue;              // [A-11]
         const t = rec(x + l);
         if (!t) continue;
@@ -645,7 +692,7 @@ export function zerlegeBodenblech(lengthMm, laengenMm, stossGrid = []) {
       memo.set(x, best);
       return best;
     };
-    const r = rec(0);
+    const r = rec(x0Mm);
     return r ? r.teile : null;
   };
 
@@ -655,38 +702,89 @@ export function zerlegeBodenblech(lengthMm, laengenMm, stossGrid = []) {
     /** @type {Map<number, any[]|null>} */
     const memo = new Map();
     const rec = (x) => {
-      if (x === lengthMm) return [];
+      if (x === x1Mm) return [];
       if (memo.has(x)) return memo.get(x);
       let out = null;
       for (const l of L) {                                 // absteigend: groesste zuerst
-        if (x + l > lengthMm) continue;
+        if (x + l > x1Mm) continue;
         if (strict && !frei(x + l)) continue;              // [A-11]
         const t = rec(x + l);
         if (t) { out = [{ x0_mm: x, raster_mm: l, art: "standard" }, ...t]; break; }
       }
       if (!out) {
-        const rest = lengthMm - x;
+        const rest = x1Mm - x;
         // [A-10] Sonderzuschnitt nur, wenn arithmetisch KEINE Standardlaenge mehr passt.
         if (rest > 0 && !L.some((l) => l <= rest)) out = [{ x0_mm: x, raster_mm: rest, art: "sonder" }];
       }
       memo.set(x, out);
       return out;
     };
-    return rec(0);
+    return rec(x0Mm);
   };
 
   // Reihenfolge der Wahl: stossfrei exakt -> exakt (Stoss gemeldet) -> stossfrei mit
   // Sonderzuschnitt -> mit Sonderzuschnitt (Stoss gemeldet). Gemeldet wird danach an EINER
   // Stelle aus der gewaehlten Folge, damit kein Pfad still eine Stossverletzung durchlaesst.
   const teile = exakt(true) || exakt(false) || mitSonder(true) || mitSonder(false) || [];
+  const konflikte = [];
   for (const tl of teile) {
     const e = tl.x0_mm + tl.raster_mm;
     if (!frei(e)) konflikte.push({ grund: "stoss_auf_steinstoss", x_mm: e, grid: e / GRID });
   }
+  return { teile, konflikte };
+}
+
+/**
+ * Bodenblech einer Wand deterministisch in reale Teile zerlegen
+ * ([A-10]/[A-11]/[A-12] je Bereich, [A-28]/[A-29] fuer die Aussparungen).
+ *
+ * Ohne Aussparungen ist der einzige Bereich die ganze Wand — das Ergebnis ist dann bit-genau
+ * das bisherige.
+ * @param {number} lengthMm Wandlaenge (Vielfaches von 125 mm)
+ * @param {number[]} laengenMm Vorratssatz der Standardlaengen
+ * @param {number[]} [stossGrid] Rasterpositionen der Steinstoesse der untersten Lage
+ * @param {Array<{g0:number,g1:number}>} [aussparungen] normalisierte, disjunkte Rasterintervalle
+ *        ohne Bodenblech ([A-28]) — innerhalb der Wand, aufsteigend, nicht benachbart
+ * @returns {{teile:Array<{x0_mm:number,raster_mm:number,bauteil_mm:number,art:"standard"|"sonder"}>,
+ *            konflikte:Array<{grund:string,x_mm?:number,grid?:number}>,
+ *            bereiche:Array<{x0_mm:number,x1_mm:number,laenge_mm:number}>,
+ *            luecken:Array<{g0:number,g1:number,x0_mm:number,x1_mm:number,laenge_mm:number}>}}
+ */
+export function zerlegeBodenblech(lengthMm, laengenMm, stossGrid = [], aussparungen = []) {
+  const L = normBlechLaengen(laengenMm);
+  const stoss = new Set((stossGrid || []).map(Number));
+  const konflikte = [];
+  if (!L.length) konflikte.push({ grund: "keine_standardlaenge" });
+  const luecken = (Array.isArray(aussparungen) ? aussparungen : [])
+    .map((a) => ({ g0: a.g0, g1: a.g1, x0_mm: a.g0 * GRID, x1_mm: a.g1 * GRID,
+      laenge_mm: (a.g1 - a.g0) * GRID }));
+  // [A-29] Belegte und ausgesparte Intervalle sind das Komplement voneinander — ueberdeckungsfrei
+  // und zusammen exakt die Wandlaenge.
+  const bereiche = [];
+  let x = 0;
+  for (const lu of luecken) {
+    if (lu.x0_mm > x) bereiche.push({ x0_mm: x, x1_mm: lu.x0_mm, laenge_mm: lu.x0_mm - x });
+    x = lu.x1_mm;
+  }
+  if (lengthMm > x) bereiche.push({ x0_mm: x, x1_mm: lengthMm, laenge_mm: lengthMm - x });
+
+  const teile = [];
+  for (const b of bereiche) {
+    // [A-29] Ein Bereich, der kuerzer ist als die kleinste zulaessige Bodenblech-Standardlaenge,
+    // ist mit den bestehenden Regeln NICHT baubar. Gemeldet wird das BENANNT — die Aussparung
+    // wird dafuer nie still fallengelassen und der Bereich nie mit dem Nachbarn ueberbrueckt.
+    // Ohne Aussparungen kann der Fall nicht auftreten (die Wandlaenge ist >= 250 mm).
+    if (b.laenge_mm < BLECH_MIN_MM)
+      konflikte.push({ grund: "bereich_unbaubar", x_mm: b.x0_mm, x0_mm: b.x0_mm,
+        x1_mm: b.x1_mm, laenge_mm: b.laenge_mm });
+    const r = zerlegeBlechbereich(b.x0_mm, b.x1_mm, L, stoss);
+    for (const tl of r.teile) teile.push(tl);
+    for (const k of r.konflikte) konflikte.push(k);
+  }
   return {
     teile: teile.map((tl) => ({ x0_mm: tl.x0_mm, raster_mm: tl.raster_mm,
       bauteil_mm: tl.raster_mm - BLECH_SPIEL, art: tl.art })),
-    konflikte,
+    konflikte, bereiche, luecken,
   };
 }
 
@@ -1103,6 +1201,14 @@ function normPrestress(p) {
   // dafuer. `buildWall` ersetzt die rohe Liste unten durch die validierte, sobald die Spannachsen
   // feststehen (vorher ist gar nicht entscheidbar, ob ein Index eine Achse ist).
   if (Array.isArray(p && p.deckenanschluss_grid)) out.deckenanschluss_grid = p.deckenanschluss_grid.slice();
+  // Manuell gewaehlte Bodenblech-Aussparungen ([A-28], #138) sind eine kanonische
+  // PLANUNGSEINGABE und stehen deshalb — wie der Vorratssatz der Bodenblechlaengen — im
+  // Vorspannblock des Wandelements. Der Schluessel entsteht NUR, wenn er ausdruecklich gesetzt
+  // ist: eine Wand ohne Aussparungen bekommt kein Feld, das es vorher nicht gab, und bleibt
+  // strukturell und mengenmaessig bit-genau unveraendert. `buildWall` ersetzt die rohe Liste
+  // unten durch die validierte (dedupliziert, sortiert).
+  if (Array.isArray(p && p.base_plate_aussparungen_grid))
+    out.base_plate_aussparungen_grid = p.base_plate_aussparungen_grid.slice();
   // Einbaulagen des Spannsystems ([Z-6]/#92) — beide ABGELEITETE Rechenwerte, die Modul 1 aus
   // den gewaehlten Katalogprodukten bildet (Praezedenz `rod_rest_mm`): der Fussoffset aus der
   // halben Kopplungsmutterhoehe, der Kopfzuschlag aus der Spannplattendicke.
@@ -1625,12 +1731,22 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // top_connection=='blech' und weiterhin in Modulen der Blechlänge (Slicing folgt getrennt).
   const occCols = topLage.filter(t => t > 0).length;
   const topEdgeLen = occCols * GRID;
+  // [A-28]/[A-30] Die manuell gewaehlten Aussparungsfelder werden GENAU HIER normalisiert und
+  // validiert; abgewiesene Eintraege werden benannt und nicht angewandt.
+  const AS = normBodenblechAussparungen(PS.base_plate_aussparungen_grid, N);
+  if (AS.felder) PS.base_plate_aussparungen_grid = AS.felder;
   const bodenZerlegung = zerlegeBodenblech(lengthMm, PS.blech_lengths_mm,
-    courses.length ? courses[0].joints_grid : []);
+    courses.length ? courses[0].joints_grid : [], AS.bereiche);
   const bodenTeile = bodenZerlegung.teile;
   const bodenModule = bodenTeile.length;      // Anzahl REALER Bodenblechteile
   const kopfModule = (TOP === "blech") ? Math.ceil(topEdgeLen / PS.blech_mm) : 0;
-  const basePlate = { rolle: "bodenblech", laenge_mm: lengthMm, breite_mm: THICK, dicke_mm: PS.blech_dicke_mm, modul_mm: PS.blech_mm, module: bodenModule, teile: bodenTeile };
+  // [A-29] Die ausgesparte Laenge erzeugt kein Teil und keine Menge: das Bodenblech ist genau so
+  // lang wie die Summe seiner belegten Bereiche. Ohne Aussparungen ist das die volle Wandlaenge.
+  const ausgespartMm = bodenZerlegung.luecken.reduce((a, lu) => a + lu.laenge_mm, 0);
+  const bodenLaenge = lengthMm - ausgespartMm;
+  const basePlate = { rolle: "bodenblech", laenge_mm: bodenLaenge, breite_mm: THICK, dicke_mm: PS.blech_dicke_mm, modul_mm: PS.blech_mm, module: bodenModule, teile: bodenTeile,
+    // [A-28] Die kanonischen Luecken — nur wenn es welche gibt.
+    ...(bodenZerlegung.luecken.length ? { aussparungen: bodenZerlegung.luecken } : {}) };
   const topPlate = (TOP === "blech")
     ? { rolle: "kopfblech", laenge_mm: topEdgeLen, breite_mm: THICK, dicke_mm: PS.kopfblech_dicke_mm, modul_mm: PS.blech_mm, module: kopfModule }
     : null;
@@ -1646,7 +1762,14 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // ([A-21]). Ohne Override laeuft unveraendert die Verteilung nach [A-20]…[A-23].
   const AG = normAusgleichspunkte(PS.ausgleich_override_mm, lengthMm);
   if (AG.punkte) PS.ausgleich_override_mm = AG.punkte;
-  const bodenStoesse = bodenTeile.slice(0, -1).map((tl) => tl.x0_mm + tl.raster_mm);
+  // [A-21]/[A-29] Ein Blechstoss ist nur, wo zwei Bodenbleche WIRKLICH aneinanderstossen. Die
+  // Kante einer Aussparung ist keiner — dort endet das Blech frei —, und sie erzeugt deshalb
+  // keinen Pflichtpunkt. Ohne Aussparungen ist die Liste bit-genau die bisherige.
+  const bodenStoesse = [];
+  for (let i = 0; i + 1 < bodenTeile.length; i++) {
+    const e = bodenTeile[i].x0_mm + bodenTeile[i].raster_mm;
+    if (e === bodenTeile[i + 1].x0_mm) bodenStoesse.push(e);
+  }
   const ausgleichspunkte = AG.punkte
     ? AG.punkte.map((x) => ({ x_mm: x, art: "manuell" }))
     : verteileAusgleichspunkte(lengthMm, bodenStoesse, columns.map((c) => c.x_mm));
@@ -1678,7 +1801,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   bom.spannplatten = anchSpannplatten;
   bom.spannmuttern = anchSpannmutter;
   bom.stahlblech_module = bodenModule + kopfModule;
-  bom.stahlblech_mm = lengthMm + (TOP === "blech" ? topEdgeLen : 0);
+  // [A-29] Nur die belegte Bodenblechlaenge geht in die Menge ein — ausgesparte Laenge nie.
+  bom.stahlblech_mm = bodenLaenge + (TOP === "blech" ? topEdgeLen : 0);
   bom.stahlblech_dicke_mm = PS.blech_dicke_mm;
   bom.stossfugen = stossfugen;
   // #136 Die Hoehe eines Dichtstreifens ist die Hoehe SEINER Lage — gelesen, nicht gerechnet.
@@ -1725,9 +1849,13 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       buildable, versatz_ok: versatzOk, versatz_violations: viol,
       tension_span_ok: spanOk, rigid_lagen: rigidLagen, invalid_segments: invalidSegments,
       zuschnitt_konflikte: zuschnittKonflikte,
-      // [A-11] Blechstoesse, die auf einem Steinstoss der untersten Lage liegen, sowie ein
-      // leerer Vorratssatz — sichtbare Meldung, KEIN Baubarkeitsausschluss.
+      // [A-11] Blechstoesse, die auf einem Steinstoss der untersten Lage liegen, ein leerer
+      // Vorratssatz sowie ein durch eine Aussparung entstandener, nach [A-29] unbaubarer
+      // Kurzbereich — sichtbare Meldung, KEIN Baubarkeitsausschluss.
       blech_konflikte: bodenZerlegung.konflikte,
+      // [A-30] Abgewiesene manuelle Aussparungsfelder — benannt, verworfen, nie verschoben.
+      // Der Schluessel entsteht NUR im Fehlerfall.
+      ...(AS.fehler.length ? { aussparung_fehler: AS.fehler } : {}),
       // [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuelle Achsen: echter Befund.
       ungehaltene_steine: ungehalteneSteine,
       // [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)
