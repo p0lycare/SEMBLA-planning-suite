@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260918-03",
+    datum: "2026-09-18",
+    typ: "feature",
+    issue: 125,
+    titel: "Geschosseditor: „Alle auswählen“ über der Wandliste nimmt alle Wände des aktiven Geschosses in die Sammelbearbeitung",
+    testbitte: "Geschoss mit verorteten und unverorteten Wänden öffnen, „Alle auswählen“ klicken: alle Wände markiert, "
+      + "„Gemeinsam bearbeiten“ nutzbar; „Auswahl aufheben“ stellt die Einzelauswahl wieder her, Wanddaten unverändert",
+  },
+  {
     id: "chg-20260918-02",
     datum: "2026-09-18",
     typ: "feature",

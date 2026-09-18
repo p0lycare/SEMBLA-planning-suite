@@ -46,15 +46,34 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag ist die BEDIENUNG DER BODENBLECH-AUSSPARUNGEN (#138, Abschluss).
+// Der NEUESTE Eintrag ist die GESCHOSSWEITE WANDAUSWAHL (#125). Geliefert: eine
+// Umschaltaktion „Alle auswaehlen"/„Auswahl aufheben" oberhalb der rechten Wandliste,
+// die alle verorteten und unverorteten Waende des AKTIVEN Geschosses in den bestehenden
+// GP-Auswahlzustand nimmt (nie andere Geschosse), die aktive Wand aktiv laesst und ab
+// zwei Waenden „Gemeinsam bearbeiten" nutzbar macht; Aufheben stellt den gueltigen
+// Einzelzustand wieder her. NICHT versprochen werden eine projektweite Auswahl, ein
+// Undo-Schritt fuer den Auswahlvorgang oder Aenderungen am Sammel-Editor.
+const FRISCH_125 = EINTRAEGE[0];
+ok("[#125] die geschossweite Wandauswahl ist der neueste Eintrag",
+  FRISCH_125?.id === "chg-20260918-03" && FRISCH_125?.issue === 125
+  && FRISCH_125?.typ === "feature" && FRISCH_125?.datum === "2026-09-18"
+  && /Alle auswählen/.test(FRISCH_125?.titel || "")
+  && /aktiven Geschosses/.test(FRISCH_125?.titel || ""));
+ok("[#125] die Testbitte fuehrt Auswaehlen und Aufheben mit unveraenderten Wanddaten",
+  /Alle auswählen/.test(FRISCH_125?.testbitte || "")
+  && /Auswahl aufheben/.test(FRISCH_125?.testbitte || "")
+  && /Wanddaten unverändert/.test(FRISCH_125?.testbitte || ""));
+
+// Davor die BEDIENUNG DER BODENBLECH-AUSSPARUNGEN (#138, Abschluss) — ueber die Kennung
+// gesucht, weil sie nicht mehr der neueste Eintrag ist.
 // Geliefert: Auswahlmodus „Bodenblech aussparen" in Modul 1 (Felder einzeln an-/abwaehlen,
 // alle zuruecksetzen), jede Aktion schreibt die kanonische Eingabe und laeuft durch den
 // bestehenden Neuberechnungs- und Speicherpfad, Luecken ueberleben Neuladen und
 // Projekt-Roundtrip, Modul 4 zaehlt nur reale Bleche und der gemeinsame Zeichnungspfad
 // zeigt Luecken gestrichelt mit Kreuz — eindeutig getrennt von weissen Stossmarken.
 // NICHT versprochen werden IFC-Aenderungen oder eine automatische Feldwahl.
-const FRISCH_138B = EINTRAEGE[0];
-ok("[#138] die Bedienung der Bodenblech-Aussparungen ist der neueste Eintrag",
+const FRISCH_138B = EINTRAEGE.find(e => e.id === "chg-20260918-02");
+ok("[#138] die Bedienung der Bodenblech-Aussparungen steht als Eintrag davor",
   FRISCH_138B?.id === "chg-20260918-02" && FRISCH_138B?.issue === 138
   && FRISCH_138B?.typ === "feature" && FRISCH_138B?.datum === "2026-09-18"
   && /Bodenblech aussparen/.test(FRISCH_138B?.titel || "")

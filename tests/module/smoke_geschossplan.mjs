@@ -6673,6 +6673,198 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   globalThis.confirm = confirmEcht136;
 }
 
+// --- #125: Alle Waende des aktiven Geschosses ueber die Wandliste auswaehlen ---
+//
+// Gepruefte Muss-Punkte: die Umschaltaktion steht OBERHALB der Zeilen, sie trifft
+// verortete UND unverortete Waende des AKTIVEN Geschosses und keine fremden, die
+// aktive Wand bleibt aktiv und Teil der Auswahl, „Gemeinsam bearbeiten" arbeitet
+// mit genau dieser Menge, und Loeschen, leeres Geschoss, Einzelwand sowie
+// Geschosswechsel hinterlassen weder veraltete IDs noch einen falschen Knopf.
+// Must-not: keine Datenaenderung, kein Rueckgaengig-Schritt, keine zweite
+// Auswahlhaltung neben `GP.auswahl`/`GP.aktiv`.
+{
+  const mappe125 = store.fuegeProjektHinzu('Projekt 125', { geschoss: 'EG125', hoehe_mm: 2600 });
+  const gs125 = MAPPE.alleGeschosse(mappe125)[0].geschoss.id;
+  const geb125 = MAPPE.findeGeschoss(store.holeMappe(), gs125).gebaeude.id;
+  let og125, leer125;
+  store.aendereMappe(m => { const r = MAPPE.fuegeGeschossHinzu(m, geb125, 'OG125', 2600); og125 = r.id; return r.mappe; });
+  store.aendereMappe(m => { const r = MAPPE.fuegeGeschossHinzu(m, geb125, 'LEER125', 2600); leer125 = r.id; return r.mappe; });
+  store.setzeAktivesGeschoss(gs125);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  GP.zeigeAlles();
+
+  const neueste125 = () => store.listeElemente()[0];
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 3040, y: 60 });        const a125 = neueste125().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 2000 }, { x: 2040, y: 2060 });   const b125 = neueste125().id;
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 4000 }, { x: 2040, y: 4060 });   const c125 = neueste125().id;
+  await warte();
+  // Zwei UNVERORTETE Waende desselben Geschosses — so, wie Modul 1 sie eintraegt:
+  // Wandelement vorhanden, `lage: null`. Sie stehen nur in der Liste, nicht im Bild.
+  const u1 = store.speichere('Frei 125 A', buildWall('Frei 125 A', 1000, 2600, []));
+  store.verorteWand(u1, gs125, { name: 'Frei 125 A', lage: null });
+  const u2 = store.speichere('Frei 125 B', buildWall('Frei 125 B', 1500, 2600, []));
+  store.verorteWand(u2, gs125, { name: 'Frei 125 B', lage: null });
+  await warte();
+  // Eine Wand in einem ANDEREN Geschoss desselben Projekts — sie darf in keinem
+  // Auswahlpfad auftauchen.
+  store.setzeAktivesGeschoss(og125);
+  await warte();
+  GP.zeigeAlles();
+  GP.werkzeug('wand');
+  GP.zeichne({ x: 0, y: 0 }, { x: 2040, y: 60 });        const fremd125 = neueste125().id;
+  await warte();
+  store.setzeAktivesGeschoss(gs125);
+  await warte();
+  GP.render();
+
+  const liste125 = () => $('gp-liste').innerHTML;
+  const knopf125 = () => {
+    const m = liste125().match(/data-alle="1"([^>]*)>([^<]*)</);
+    return m ? { text: m[2], gesperrt: /\sdisabled/.test(m[1]) } : null;
+  };
+  const alle5 = [a125, b125, c125, u1, u2];
+  const sortiert = (ids) => ids.slice().sort().join(',');
+  const stand125 = () => ({ el: localStorage.getItem('sembla:elemente'),
+    mappe: localStorage.getItem('sembla:projekte'),
+    undo: GP.undoStand.undo, redo: GP.undoStand.redo });
+
+  GP.werkzeug('auswahl');
+  GP.tippe({ x: 1500, y: 62.5 });                        // Wand A aktiv (einzeln)
+  ok('#125 Pruefaufbau: drei verortete und zwei unverortete Waende im aktiven Geschoss, '
+    + 'eine weitere in einem anderen Geschoss',
+    (liste125().match(/class="gp-zeile/g) || []).length === 5
+    && MAPPE.findeWand(store.holeMappe(), u1).wand.lage === null
+    && MAPPE.findeWand(store.holeMappe(), u2).wand.lage === null
+    && !!MAPPE.findeWand(store.holeMappe(), fremd125)
+    && GP.zustand.aktiv === a125 && GP.zustand.auswahl.length === 1);
+  ok('#125 (Muss 1) die Umschaltaktion steht OBERHALB der Wandliste und heisst zunaechst '
+    + '„Alle auswaehlen"',
+    liste125().indexOf('data-alle') > -1
+    && liste125().indexOf('data-alle') < liste125().indexOf('class="gp-zeile')
+    && knopf125().text === 'Alle auswählen' && knopf125().gesperrt === false);
+
+  // (a) Akzeptanztest 1 — Alle auswaehlen nimmt genau die fuenf Waende dieses
+  //     Geschosses und macht „Gemeinsam bearbeiten" nutzbar.
+  const vorAlle125 = stand125();
+  gp('alleUmschalten');
+  ok('#125 (Akzeptanz 1) „Alle auswaehlen" uebernimmt GENAU die fuenf verorteten und '
+    + 'unverorteten Waende des aktiven Geschosses in den vorhandenen Auswahlzustand',
+    sortiert(GP.zustand.auswahl) === sortiert(alle5));
+  ok('#125 (Muss 2, Akzeptanz 4) keine Wand eines anderen Geschosses gerät in die Auswahl',
+    !GP.zustand.auswahl.includes(fremd125) && GP.zustand.aktiv !== fremd125);
+  ok('#125 (Muss 3) die aktive Wand bleibt eindeutig aktiv UND Bestandteil der Mehrfachauswahl',
+    GP.zustand.aktiv === a125 && GP.zustand.auswahl.includes(a125)
+    && store.aktivId() === a125
+    && (liste125().match(/gp-zeile aktiv/g) || []).length === 1
+    && (liste125().match(/gp-zeile gewaehlt/g) || []).length === 4);
+  ok('#125 (Muss 6) ab zwei Waenden arbeitet „Gemeinsam bearbeiten" mit genau dieser Auswahl',
+    $('gp-sammel').hidden === false && /<b>5<\/b>/.test($('gp-sammel-info').innerHTML));
+  $('gp-sammel-knopf').dispatch('click');
+  ok('#125 (Muss 6) das vorhandene Popup oeffnet sich mit denselben fuenf Waenden — es ist '
+    + 'derselbe Sammel-Editor, kein zweiter',
+    $('gp-sammelblatt').hidden === false && /<b>5<\/b>/.test($('gp-sammel-ist').innerHTML));
+  ok('#125 (must-not 2/3) der reine Auswahlvorgang aendert keine Wanddaten und bucht keinen '
+    + 'Rueckgaengig-Schritt',
+    JSON.stringify(stand125()) === JSON.stringify(vorAlle125));
+  ok('#125 (Muss 1) im aufgenommenen Zustand heisst dieselbe Aktion „Auswahl aufheben"',
+    knopf125().text === 'Auswahl aufheben' && /5 von 5 ausgewählt/.test(liste125()));
+
+  // (b) Akzeptanztest 2 — Auswahl aufheben laesst die aktive Wand als gueltige
+  //     Einzelauswahl stehen und fasst keine Wanddaten an.
+  gp('alleUmschalten');
+  ok('#125 (Akzeptanz 2, Muss 4) „Auswahl aufheben" stellt den gueltigen Einzel-/Aktivzustand her',
+    GP.zustand.auswahl.length === 1 && GP.zustand.auswahl[0] === a125
+    && GP.zustand.aktiv === a125 && store.aktivId() === a125
+    && knopf125().text === 'Alle auswählen');
+  ok('#125 (Akzeptanz 2) dabei bleibt jedes gespeicherte Wandelement unveraendert, und der '
+    + 'Sammel-Editor verschwindet wieder',
+    JSON.stringify(stand125()) === JSON.stringify(vorAlle125)
+    && $('gp-sammel').hidden === true && $('gp-sammelblatt').hidden === true);
+
+  // (c) Akzeptanztest 3 — Loeschen einer AUSGEWAEHLTEN Wand: keine veraltete ID,
+  //     der Knopf steht danach richtig.
+  gp('alleUmschalten');
+  confirmAntwort = true;
+  $('gp-wand-loeschen').dispatch('click');
+  await warte();
+  GP.render();
+  ok('#125 (Akzeptanz 3) nach dem Loeschen der aktiven, ausgewaehlten Wand bleibt keine '
+    + 'veraltete ID in der Auswahl',
+    // Der vorhandene Loeschweg (#74) setzt `aktiv` auf null und laesst die uebrigen
+    // ausgewaehlt — daran aendert #125 nichts; geprueft wird, dass die geloeschte
+    // Kennung nirgends mehr steht.
+
+    !GP.zustand.auswahl.includes(a125) && GP.zustand.aktiv !== a125
+    && sortiert(GP.zustand.auswahl) === sortiert([b125, c125, u1, u2])
+    && (GP.zustand.aktiv === null || GP.zustand.auswahl.includes(GP.zustand.aktiv)));
+  ok('#125 (Akzeptanz 3) der Knopf kennt danach den richtigen Stand — es sind weiterhin ALLE '
+    + 'vorhandenen Waende ausgewaehlt',
+    knopf125().text === 'Auswahl aufheben' && /4 von 4 ausgewählt/.test(liste125()));
+  gp('alleUmschalten');
+  ok('#125 (Muss 4/5) „Auswahl aufheben" fuehrt auch nach dem Loeschen in einen gueltigen '
+    + 'Zustand — hoechstens die aktive Wand bleibt, veraltete Kennungen bleiben aus',
+    GP.zustand.auswahl.length <= 1
+    && GP.zustand.auswahl.every(id => [b125, c125, u1, u2].includes(id))
+    && (GP.zustand.aktiv === null || GP.zustand.auswahl.includes(GP.zustand.aktiv)));
+
+  // (d) Akzeptanztest 3 — Geschosswechsel: die Auswahl des alten Geschosses bleibt
+  //     nirgends haengen, und in einem Geschoss mit GENAU EINER Wand stimmt beides.
+  store.setzeAktivesGeschoss(og125);
+  await warte();
+  GP.render();
+  ok('#125 (Akzeptanz 3/4) der Geschosswechsel laesst keine ID des alten Geschosses stehen',
+    GP.zustand.auswahl.every(id => ![b125, c125, u1, u2].includes(id))
+    && (GP.zustand.aktiv === null || GP.zustand.aktiv === fremd125));
+  gp('alleUmschalten');
+  ok('#125 (Akzeptanz 3) genau eine Wand: sie ist ausgewaehlt und aktiv, und „Gemeinsam '
+    + 'bearbeiten" bleibt zu Recht aus',
+    sortiert(GP.zustand.auswahl) === fremd125 && GP.zustand.aktiv === fremd125
+    && $('gp-sammel').hidden === true && knopf125().text === 'Auswahl aufheben');
+  gp('alleUmschalten');
+  ok('#125 (Akzeptanz 3) „Auswahl aufheben" haelt die eine Wand als gueltige Einzelauswahl',
+    sortiert(GP.zustand.auswahl) === fremd125 && GP.zustand.aktiv === fremd125);
+
+  // (e) Akzeptanztest 3 — leeres Geschoss: gesperrter Knopf, leere Auswahl, benannt.
+  store.setzeAktivesGeschoss(leer125);
+  await warte();
+  GP.render();
+  const vorLeer125 = stand125();
+  ok('#125 (Akzeptanz 3) im leeren Geschoss ist die Aktion gesperrt und die Auswahl leer',
+    knopf125().gesperrt === true && knopf125().text === 'Alle auswählen'
+    && GP.zustand.auswahl.length === 0 && GP.zustand.aktiv === null
+    && /0 von 0 ausgewählt/.test(liste125()));
+  gp('alleUmschalten');
+  ok('#125 (Akzeptanz 3) auch ausgeloest bleibt im leeren Geschoss alles leer, benannt und '
+    + 'ohne jede Datenaenderung',
+    GP.zustand.auswahl.length === 0 && GP.zustand.aktiv === null
+    && /nichts auszuwählen/.test($('gp-msg').textContent)
+    && JSON.stringify(stand125()) === JSON.stringify(vorLeer125));
+
+  // (f) Must-not im Quelltext: die Menge kommt aus der Wandliste des AKTIVEN
+  //     Geschosses (`waende()`), nicht aus dem projektweiten Wandspeicher, und es
+  //     entsteht keine zweite Auswahlhaltung neben `GP.auswahl`/`GP.aktiv`.
+  ok('#125 (must-not 1) die Menge stammt aus `waende()` — dem aktiven Geschoss ([L-10]) —, '
+    + 'nicht aus `store.listeElemente()`',
+    /function alleWandIds\(\)\s*\{\s*return waende\(\)\.map/.test(html)
+    && !/alleWandIds[\s\S]{0,200}store\.listeElemente/.test(html));
+  ok('#125 (must-not 4) es gibt keinen zweiten Auswahlzustand: geschrieben wird in '
+    + '`GP.auswahl`/`GP.aktiv`, gelesen von `sammelWaende()` derselbe',
+    /function sammelWaende\(\)\{ return GP\.auswahl\.filter/.test(html)
+    && !/GP\.alleAuswahl|alleAuswahlIds\s*=|GP\.auswahlAlle/.test(html));
+  const quell125 = (html.match(/function (alleWaehlen|auswahlAufheben|alleUmschalten)\(\)\{[\s\S]*?\n\}/g) || []);
+  ok('#125 (must-not 3) die drei Auswahlfunktionen buchen nichts und schreiben nichts — '
+    + 'kein `buchen(`, kein `store.speichere(`, kein `aendereMappe(`',
+    quell125.length === 3
+    && quell125.every(q => !/buchen\(|store\.speichere\(|aendereMappe\(/.test(q)));
+  ok('#125 (must-not 2) am Sammel-Editor selbst wurde nichts umgebaut — er erscheint '
+    + 'unveraendert ab zwei ausgewaehlten Waenden',
+    /const ids = sammelWaende\(\);\s*\n\s*if \(ids\.length < 2\)/.test(html));
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

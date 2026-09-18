@@ -208,6 +208,14 @@
   .gp-zeile .pkt{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;
                  vertical-align:middle}
   .gp-zeile .warn{color:#c0392b}
+  /* Umschaltaktion „Alle auswaehlen“/„Auswahl aufheben“ (#125): sie steht OBERHALB
+     der Zeilen und gehoert damit sichtbar zur Liste, deren Menge sie trifft. */
+  .gp-liste-alle{display:flex;align-items:center;gap:7px;margin:0 0 7px}
+  .gp-liste-alle button{flex:none;background:#fff;border:1px solid var(--sb-line);border-radius:7px;
+                        padding:4px 8px;font-size:11px;cursor:pointer;color:#1c2430}
+  .gp-liste-alle button:hover:not([disabled]){background:#eaf7ef;border-color:#1f9d4d}
+  .gp-liste-alle button[disabled]{opacity:.5;cursor:default}
+  .gp-liste-alle .stand{color:var(--sb-muted);font-size:11px;line-height:1.3}
   .gp-liste-leer,.gp-liste-fuss{color:var(--sb-muted);font-size:11px;line-height:1.45}
   .gp-liste-fuss{margin-top:7px;border-top:1px solid var(--sb-line);padding-top:6px}
 
@@ -1261,6 +1269,79 @@ function auswahlPruefen(){
 }
 
 /**
+ * „Alle auswählen“ (#125) — die Menge, die die Umschaltaktion über der Wandliste
+ * trifft: JEDE Wand des AKTIVEN Geschosses, verortet wie unverortet, und keine
+ * einzige darüber hinaus.
+ *
+ * Gelesen wird dafür `waende()`, also genau die Liste, die rechts auch angezeigt
+ * wird ([L-10]). Eine projektweite Menge über mehrere Geschosse gibt es hier
+ * nicht — sie stünde in keiner Liste und ließe sich auch nirgends zurücknehmen.
+ */
+function alleWandIds(){ return waende().map(w => w.id); }
+
+/** Sind ALLE Wände des aktiven Geschosses ausgewählt? (Leeres Geschoss: nein.) */
+function alleGewaehlt(){
+  const ids = alleWandIds();
+  return ids.length > 0 && ids.every(id => istAusgewaehlt(id));
+}
+
+/**
+ * Alle Wände des Geschosses in den BESTEHENDEN Auswahlzustand übernehmen (#125).
+ *
+ * Geschrieben wird in `GP.auswahl`/`GP.aktiv` — dieselben zwei Felder, die Klick,
+ * Umschalt-Klick und die Bauteilliste führen. Es entsteht ausdrücklich keine
+ * zweite Auswahlhaltung: `sammelWaende()` und die Zeichnung lesen weiter genau
+ * hier, und „Gemeinsam bearbeiten“ bekommt damit ohne Zutun dieselbe Menge.
+ *
+ * AKTIV bleibt genau eine Wand: die bisher aktive, sofern sie zu diesem Geschoss
+ * gehört — sonst die zuletzt eingereihte, wie es auch `waehle()` beim Hinzufügen
+ * tut. Wanddaten werden dabei nicht angefasst und nichts gebucht: Auswahl ist
+ * Bedienzustand und steht in keinem Rückgängig-Schritt ([K-10]).
+ */
+function alleWaehlen(){
+  const ids = alleWandIds();
+  if (!ids.length) return;
+  const aktiv = (GP.aktiv && ids.indexOf(GP.aktiv) >= 0) ? GP.aktiv : ids[ids.length - 1];
+  GP.auswahl = ids.slice();
+  GP.aktiv = aktiv;
+  aktivSync();
+}
+
+/**
+ * Die Auswahl auf den gültigen Einzel-/Aktivzustand zurücknehmen (#125). Ist eine
+ * Wand aktiv, bleibt genau sie ausgewählt UND aktiv; gibt es keine (leeres
+ * Geschoss, aktive Wand gelöscht), bleibt die Auswahl leer. Gelaufen wird über
+ * `waehle()` — es gibt keinen zweiten Weg, eine Auswahl zu setzen.
+ */
+function auswahlAufheben(){
+  waehle(GP.aktiv && wand(GP.aktiv) ? GP.aktiv : null, false);
+}
+
+/**
+ * Die Umschaltaktion über der Wandliste (#125). Sie hat genau zwei Stellungen und
+ * liest ihren Zustand aus der Auswahl selbst — es gibt kein gemerktes „Modus“-Flag,
+ * das nach Löschen oder Geschosswechsel veralten könnte.
+ */
+function alleUmschalten(){
+  const ids = alleWandIds();
+  if (!ids.length) {
+    zeige('Keine Wand in diesem Geschoss — hier gibt es nichts auszuwählen.', false);
+    render();
+    return;
+  }
+  if (alleGewaehlt()) {
+    auswahlAufheben();
+    zeige(GP.aktiv
+      ? 'Auswahl aufgehoben — ausgewählt und aktiv bleibt genau die aktive Wand.'
+      : 'Auswahl aufgehoben.', true);
+  } else {
+    alleWaehlen();
+    zeige(`Alle ${ids.length} Wände dieses Geschosses ausgewählt — Wanddaten bleiben unberührt.`, true);
+  }
+  render();
+}
+
+/**
  * Die drei Griffe der aktiven Wand in Weltkoordinaten: `min`/`max` sitzen auf den
  * Stirnkanten und ändern die LÄNGE, `mitte` verschiebt die ganze Wand.
  * @returns {{ende:'min'|'max'|'mitte', x:number, y:number}[]}
@@ -2070,7 +2151,21 @@ function listeSync(erg, koll, els){
         + 'title="Diese Wand aktiv setzen und in Modul 1 (Wandplanung) öffnen.">Planen</button>' : '')
       + '</div>';
   });
+  // #125 Die Umschaltaktion über den Zeilen. Beschriftung UND Freigabe entstehen bei
+  // JEDEM Bild neu aus der Auswahl selbst — nach Löschen, Geschosswechsel oder einem
+  // gewöhnlichen Klick steht damit nie ein veralteter Zustand am Knopf.
+  const alle = alleGewaehlt();
+  const gewaehlt = GP.auswahl.filter(id => !!wand(id)).length;
+  const knopf = '<div class="gp-liste-alle">'
+    + `<button type="button" data-alle="1"${liste.length ? '' : ' disabled'} title="${alle
+      ? 'Die Mehrfachauswahl zurücknehmen — ausgewählt und aktiv bleibt genau die aktive Wand.'
+      : 'Alle Wände dieses Geschosses auswählen — verortete und unverortete, keine aus anderen '
+        + 'Geschossen. Ab zwei Wänden arbeitet „Gemeinsam bearbeiten“ mit genau dieser Auswahl.'
+      }">${alle ? 'Auswahl aufheben' : 'Alle auswählen'}</button>`
+    + `<span class="stand">${gewaehlt} von ${liste.length} ausgewählt</span>`
+    + '</div>';
   p.innerHTML = `<h4>Wände im Geschoss <span>${liste.length}</span></h4>`
+    + knopf
     + (zeilen.join('') || '<div class="gp-liste-leer">Noch keine Wand in diesem Geschoss.</div>')
     + '<div class="gp-liste-fuss">Klick wählt aus, Umschalt/Strg mehrere; <b>aktiv</b> ist immer '
     + 'genau eine. Anzeige und Auswahl — verortet wird mit „Wand zeichnen“.</div>';
@@ -5053,6 +5148,10 @@ function binde(){
   // bei jedem `render()` neu geschrieben.
   $('gp-liste').addEventListener('click', (ev) => {
     if (!ev.target || !ev.target.closest) return;
+    // #125 Die Umschaltaktion über der Liste: sie liegt im selben Panel und geht
+    // deshalb durch denselben Behandler — ein zweiter Zuhörer ginge beim nächsten
+    // `render()` mit dem neu geschriebenen Knopf verloren.
+    if (ev.target.closest('[data-alle]')) { alleUmschalten(); return; }
     // „Planen“ zuerst: der Knopf liegt neben der Zeile, ein Treffer dort ist nie Auswahl.
     const p = ev.target.closest('[data-planen]');
     if (p) { planeWand(p.getAttribute('data-planen')); return; }
@@ -5296,6 +5395,8 @@ window.__gp = {
   },
   /** Klick auf eine Zeile der Bauteilliste (im Browser der delegierte Behandler). */
   listeKlick,
+  /** Klick auf „Alle auswählen“/„Auswahl aufheben“ über der Liste (#125). */
+  alleUmschalten,
   /** Wand aktiv setzen und Modul 1 öffnen — dieselbe Funktion wie beide Knöpfe. */
   planeWand,
   /** Doppelklick an einem WELTpunkt — derselbe Behandler wie im Browser. */
