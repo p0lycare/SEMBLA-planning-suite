@@ -78,6 +78,23 @@ export function stueckFarbe(art) {
 export const BLECHSTOSS = { farbe: "#fff", label: "Blechstoß" };
 
 /**
+ * Darstellungsschluessel der BODENBLECH-AUSSPARUNG ([D-4], [A-28]/[A-29]/#138) — Kennfarbe und
+ * Klartext der Marke, die einen manuell ausgesparten Bereich OHNE Bodenblech ausweist.
+ *
+ * Er liegt hier neben `BLECHSTOSS`, weil dieselbe Datei die Fusszone zeichnet (`bodenblechSvg`)
+ * und die Marke in Modul 1, Modul 5 und Modul 7 gleich aussehen muss; ein modul-eigener
+ * Schluessel oder ein Hex-Wert in der Zeichenzeile waere genau die Drift, die [D-4] ausschliesst.
+ *
+ * Die Farbe ist ausdruecklich NICHT die des Blechstosses (`BLECHSTOSS.farbe`, weiss) und auch
+ * keine der Zuschnitt-, Anschluss- oder Bauteilfarben: Aussparung und Blechstoss sind ZWEI
+ * verschiedene Aussagen — dort endet gar kein Blech, hier stossen zwei Bleche aneinander —, und
+ * sie duerfen weder dieselbe Farbe noch dasselbe Symbol tragen. Der Stoss ist eine schmale
+ * senkrechte Linie IM Streifen, die Aussparung ein UMRISS ueber die ganze Luecke mit Kreuz
+ * darin; die Unterscheidung traegt damit auch im Schwarz-Weiss-Ausdruck.
+ */
+export const AUSSPARUNG = { farbe: "#8a6a00", label: "Bodenblech-Aussparung" };
+
+/**
  * Darstellungsschluessel des AUSGLEICHSPUNKTS ([D-4], [A-20]…[A-24]/#96/#97) — Kennfarbe und
  * Klartext der Marke, die ein Ausgleichsblech UNTER dem Bodenblech ausweist.
  *
@@ -805,8 +822,35 @@ export function bodenblechTeile(w) {
  */
 export function bodenblechStoesse(w) {
   const t = bodenblechTeile(w), out = [];
-  for (let i = 0; i < t.length - 1; i++) out.push(t[i].x0_mm + t[i].raster_mm);
+  // [A-29]/#138 Ein Stoss ist NUR, wo zwei Bleche wirklich aneinanderstossen. Endet ein Teil an
+  // einer Aussparung, beginnt das naechste erst hinter der Luecke — dort endet das Blech frei,
+  // und eine Stossmarke behauptete eine Teilgrenze, die es nicht gibt. Dieselbe Pruefung steht
+  // im Rechenkern fuer die Pflichtpunkte ([A-21]); ohne Aussparungen ist die Liste bit-genau
+  // die bisherige, weil die Teile dann lueckenlos aneinanderliegen.
+  for (let i = 0; i < t.length - 1; i++) {
+    const e = t[i].x0_mm + t[i].raster_mm;
+    if (e === t[i + 1].x0_mm) out.push(e);
+  }
   return out;
+}
+
+/**
+ * Kanonische BODENBLECH-AUSSPARUNGEN eines Wandelements ([A-28]/#138) — die vom Rechenkern
+ * gerechneten Luecken, GELESEN und nicht nachgerechnet.
+ *
+ * Die Wahl selbst steht als Rasterindizes in `prestress.base_plate_aussparungen_grid`; die
+ * daraus gebildeten, zusammengefassten Intervalle stehen als `base_plate.aussparungen`. Hier
+ * wird ausschliesslich das ERGEBNIS gelesen — keine zweite Slicing- oder Zusammenfasslogik.
+ * Eine Wand ohne Aussparungen (und jedes Alt-Wandelement) liefert eine leere Liste.
+ *
+ * @param {any} w Wandelement
+ * @returns {Array<{g0:number,g1:number,x0_mm:number,x1_mm:number,laenge_mm:number}>}
+ */
+export function bodenblechAussparungen(w) {
+  const a = (w && w.base_plate && Array.isArray(w.base_plate.aussparungen))
+    ? w.base_plate.aussparungen : [];
+  return a.map(l => ({ g0: +l.g0, g1: +l.g1, x0_mm: +l.x0_mm, x1_mm: +l.x1_mm,
+                       laenge_mm: +l.laenge_mm }));
 }
 
 /** Reihenfolge mehrerer Ereignisse auf derselben Hoehe: erst schliessen, dann koppeln, dann neu ansetzen. */
@@ -1423,6 +1467,24 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
   for (const xm of bodenblechStoesse(w))
     s += `<line x1="${n(X(xm))}" y1="${n(y0)}" x2="${n(X(xm))}" y2="${n(y0 + bth)}" `
       + `stroke="${BLECHSTOSS.farbe}" stroke-width="${n(sStoss)}"/>`;
+  // [A-28]/[A-29]/#138 Die kanonischen AUSSPARUNGEN — massstaeblich ueber ihre ganze Laenge und
+  // mit einem eigenen, vom Blechstoss klar verschiedenen Symbol: ein gestrichelter UMRISS im
+  // Blechstreifen mit Kreuz darin, wo gar kein Blech liegt. Der Stoss bleibt die schmale weisse
+  // Linie zwischen zwei Blechen; hier steht kein Blech, das man teilen koennte. Gezeichnet wird
+  // allein `base_plate.aussparungen` aus dem Rechenkern — ohne Aussparungen entsteht nichts,
+  // und die Ausgabe bleibt bit-genau die bisherige.
+  for (const lu of bodenblechAussparungen(w)) {
+    const bw = (lu.x1_mm - lu.x0_mm) * sc;
+    const x = Math.min(X(lu.x0_mm), X(lu.x1_mm));
+    const d = Math.max(1.2, bth * 0.45);
+    s += `<rect class="bbaus" x="${n(x)}" y="${n(y0)}" width="${n(bw)}" height="${n(bth)}" `
+      + `fill="none" stroke="${AUSSPARUNG.farbe}" stroke-width="${n(rand * 1.6)}" `
+      + `stroke-dasharray="${n(d)} ${n(d)}"/>`;
+    s += `<line x1="${n(x)}" y1="${n(y0)}" x2="${n(x + bw)}" y2="${n(y0 + bth)}" `
+      + `stroke="${AUSSPARUNG.farbe}" stroke-width="${n(rand * 1.2)}"/>`;
+    s += `<line x1="${n(x)}" y1="${n(y0 + bth)}" x2="${n(x + bw)}" y2="${n(y0)}" `
+      + `stroke="${AUSSPARUNG.farbe}" stroke-width="${n(rand * 1.2)}"/>`;
+  }
   return s;
 }
 
@@ -1677,7 +1739,10 @@ function _zuschnittLegende(w, ab, x0, y) {
     .filter(a => (ab.straenge || []).some(st => (st.stuecke_sicht || []).some(p => p.art === a)));
   const stoss = bodenblechStoesse(w).length > 0;
   const sonderBlech = bodenblechTeile(w).some(t => t.art === "sonder");
-  if (!arten.length && !stoss && !sonderBlech) return "";
+  // #138 Die Aussparung steht nur da, wenn es wirklich eine gibt — dieselbe Regel wie beim
+  // Blechstoss und beim Sonderzuschnitt.
+  const ausgespart = bodenblechAussparungen(w).length > 0;
+  if (!arten.length && !stoss && !sonderBlech && !ausgespart) return "";
   let lx = x0;
   let s = `<text x="${lx}" y="${y}" font-size="9" fill="${FARBE.text}">Zuschnitt:</text>`;
   lx += 52;
@@ -1703,6 +1768,17 @@ function _zuschnittLegende(w, ab, x0, y) {
       + `stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
       + `<line x1="${lx + 5}" y1="${y - 7}" x2="${lx + 5}" y2="${y - 1}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
       + `<line x1="${lx + 10}" y1="${y - 7}" x2="${lx + 10}" y2="${y - 1}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
+      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
+    lx += 26 + t.length * 5;
+  }
+  if (ausgespart) {
+    // Das Feld zeigt die Marke SO, WIE SIE IM BLATT STEHT: ein leerer, gestrichelter Umriss mit
+    // Kreuz — ausdruecklich KEIN stahlfarbenes Feld, denn dort liegt gar kein Blech.
+    const t = AUSSPARUNG.label;
+    s += `<rect x="${lx}" y="${y - 7}" width="14" height="6" fill="none" `
+      + `stroke="${AUSSPARUNG.farbe}" stroke-width="0.9" stroke-dasharray="2 2"/>`
+      + `<line x1="${lx}" y1="${y - 7}" x2="${lx + 14}" y2="${y - 1}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
+      + `<line x1="${lx}" y1="${y - 1}" x2="${lx + 14}" y2="${y - 7}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
       + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
   }
   return s;

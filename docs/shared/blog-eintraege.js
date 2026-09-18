@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260918-02",
+    datum: "2026-09-18",
+    typ: "feature",
+    issue: 138,
+    titel: "Bodenblech aussparen in Modul 1: 125-mm-Felder anklicken, Lücken in Stückliste und Zeichnung ohne Blech",
+    testbitte: "In Modul 1 „Bodenblech aussparen“ aktivieren, je ein Feld am Rand und in der Mitte anklicken: die Lücke "
+      + "erscheint gestrichelt mit Kreuz, überlebt Neuladen und Projekt-Roundtrip, Modul 4 zählt nur reale Bleche",
+  },
+  {
     id: "chg-20260918-01",
     datum: "2026-09-18",
     typ: "feature",

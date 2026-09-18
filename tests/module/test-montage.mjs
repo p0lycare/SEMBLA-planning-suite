@@ -30,6 +30,8 @@ import {
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
   STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt, stangenEnden, stangenStuecke,
   topLagen, oberkantenAbschnitte, bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
+  // #138: die kanonischen Bodenblech-Aussparungen und ihr Darstellungsschluessel ([A-28]).
+  bodenblechAussparungen, AUSSPARUNG,
   SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, kupplungDurchmesser,
   mutterSvg, kopplungsmutterSvg, spannplatteSvg,
   schraubeSvg,
@@ -710,6 +712,63 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   // (c) Alt-Wandelement ohne `teile`: EIN durchgehendes Blech, nichts erfunden
   const WA = JSON.parse(JSON.stringify(WM));
   delete WA.base_plate.teile;
+  // (d) Bodenblech-AUSSPARUNGEN (#138, [A-28]/[A-29]): massstaeblich gezeichnet und vom
+  // Blechstoss EINDEUTIG unterschieden — andere Farbe UND anderes Symbol.
+  {
+    const WL = buildWall("Blech-luecke", 4000, 2600, [], null,
+      { blech_lengths_mm: [1250, 1125, 1000, 875, 750, 625, 500, 375, 250],
+        base_plate_aussparungen_grid: [0, 16, 17] });
+    const luecken = bodenblechAussparungen(WL);
+    ok("[A-28] Testwand fuehrt zwei kanonische Luecken, davon eine aus zwei Feldern",
+      luecken.length === 2 && luecken[0].laenge_mm === 125 && luecken[1].laenge_mm === 250
+      && JSON.stringify(luecken) === JSON.stringify(WL.base_plate.aussparungen));
+    const abL = montageAbschnitte(WL), bildL = abschnittSvg(WL, abL[abL.length - 1], 900, 430);
+    const rL = rects(bildL), scL = rL.length ? rL[0].w / bodenblechTeile(WL)[0].raster_mm : 0;
+    // Zeichennullpunkt der Wand aus dem ERSTEN gezeichneten Teil und seiner Weltlage.
+    const x0L = rL.length ? rL[0].x - bodenblechTeile(WL)[0].x0_mm * scL : 0;
+    ok("[A-29] je belegtem Bereich Teile, aber KEIN Rechteck ueber einer Luecke",
+      rL.length === bodenblechTeile(WL).length
+      && !rL.some(r => luecken.some(l => r.x < x0L + l.x1_mm * scL - 1e-9
+        && r.x + r.w > x0L + l.x0_mm * scL + 1e-9)));
+    ok("[#138] die Summe der gezeichneten Teilbreiten ist die BELEGTE Laenge",
+      Math.abs(rL.reduce((a, r) => a + r.w, 0) - WL.base_plate.laenge_mm * scL) < 1e-9
+      && WL.base_plate.laenge_mm === WL.length_mm - luecken.reduce((a, l) => a + l.laenge_mm, 0));
+    // Die Marke: je Luecke genau ein gestrichelter Umriss in der Kennfarbe, massstaeblich.
+    const marken = [...bildL.matchAll(/<rect class="bbaus" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="none" stroke="([^"]+)"/g)]
+      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4], farbe: m[5] }));
+    ok("[#138] je kanonischer Luecke genau eine massstaebliche Marke",
+      marken.length === luecken.length
+      && marken.every((r, i) => Math.abs(r.w - luecken[i].laenge_mm * scL) < 1e-9)
+      && marken.every(r => Math.abs(r.h - rL[0].h) < 1e-9 && r.y === rL[0].y));
+    ok("[D-4] die Marke traegt die Kennfarbe des Darstellungsschluessels",
+      marken.every(r => r.farbe === AUSSPARUNG.farbe)
+      && AUSSPARUNG.farbe !== BLECHSTOSS.farbe && AUSSPARUNG.farbe !== Z_FARBE.stahl);
+    // Nicht farbliches Merkmal: das Kreuz (zwei SCHRAEGE Linien je Luecke). Die Stossmarke ist
+    // eine senkrechte Linie und hat nie eine schraege — die beiden sind damit auch im
+    // Schwarz-Weiss-Ausdruck nicht zu verwechseln.
+    const schraeg = [...bildL.matchAll(new RegExp('<line x1="([\\d.]+)" y1="([\\d.]+)" x2="([\\d.]+)" y2="([\\d.]+)" stroke="' + AUSSPARUNG.farbe + '"', "g"))]
+      // Nur die Linien IM Blechstreifen — das gleichfarbige Legendenfeld steht tiefer im Bild.
+      .filter(m => m[1] !== m[3] && m[2] !== m[4]
+        && Math.min(+m[2], +m[4]) >= rL[0].y - 1e-9
+        && Math.max(+m[2], +m[4]) <= rL[0].y + rL[0].h + 1e-9);
+    ok("[#138] Aussparung und Blechstoss sind NICHT dasselbe Symbol",
+      // Der Stoss: senkrechte weisse Linie IM Streifen, genau an den realen Stoessen.
+      stossLinien(bildL).length === bodenblechStoesse(WL).length
+      && stossLinien(bildL).every(l => l.y0 === rL[0].y)
+      // Die Aussparung: offener Umriss in eigener Farbe PLUS zwei schraege Linien je Luecke —
+      // eine Form, die die Stossmarke nie hat.
+      && schraeg.length === 2 * luecken.length
+      && marken.every(r => r.farbe !== BLECHSTOSS.farbe));
+    ok("[A-21]/[#138] eine Aussparungskante wird NICHT als Blechstoss gezeichnet",
+      bodenblechStoesse(WL).every(x => !luecken.some(l => l.x0_mm === x || l.x1_mm === x)));
+    ok("[D-4] die Legende benennt die Aussparung in Worten, getrennt vom Blechstoss",
+      bildL.includes(AUSSPARUNG.label) && bildL.includes(BLECHSTOSS.label));
+    // Gegenprobe: ohne Aussparungen entsteht nichts Neues.
+    ok("[#138] eine Wand ohne Aussparungen bleibt bildgleich (keine Marke, keine Legende)",
+      !/<rect class="bbaus"/.test(bildM) && !bildM.includes(AUSSPARUNG.label)
+      && bodenblechAussparungen(WM).length === 0);
+  }
+
   ok("Alt-Fall: bodenblechTeile liefert genau ein Teil ueber die volle Laenge",
     (() => { const t = bodenblechTeile(WA);
       return t.length === 1 && t[0].x0_mm === 0 && t[0].raster_mm === WA.length_mm

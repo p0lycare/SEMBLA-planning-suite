@@ -26,6 +26,8 @@ import { standardEingaben } from "../../docs/shared/storage.js";
 import { einbauteile, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { stangenEnden, stangenStuecke, STUECK_FARBE, STUECK_LABEL,
          bodenblechTeile, bodenblechStoesse, BLECHSTOSS, abschnittSvg, montageAbschnitte,
+         // #138: die kanonischen Bodenblech-Aussparungen und ihr Darstellungsschluessel ([A-28]).
+         bodenblechAussparungen, AUSSPARUNG,
          // #110: die gemeinsame Symbolquelle der Spannkomponenten — das Blatt darf dafuer
          // keine eigene Geometrie und keine eigenen Hex-Werte fuehren ([D-4]).
          SPANN_FARBE, SPANN_MM, SPANN_EINHEIT, kupplungDurchmesser, mutterSvg,
@@ -1728,6 +1730,58 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
     && Z.zeichnungDokument(WBS, eingaben, { format: "a3" }).includes(blechGruppe)
     && Z.zeichnungSvgDatei(WBS, eingaben, { format: "a3" }).includes(blechGruppe)
     && zeichnungHtml(WBS, eingaben, { format: "a3" }).includes(blechGruppe));
+
+  // (d2) Bodenblech-AUSSPARUNGEN (#138, [A-28]/[A-29]): dieselbe kanonische Luecke im Blatt
+  // wie in Modul 5 — massstaeblich und mit einem eigenen, vom Blechstoss verschiedenen Symbol.
+  {
+    const WBL = buildWall("Blech-luecke", 4000, 2600, [], null,
+      { blech_lengths_mm: [1250, 1125, 1000, 875, 750, 625, 500, 375, 250],
+        base_plate_aussparungen_grid: [0, 16, 17] });
+    const luecken = bodenblechAussparungen(WBL);
+    ok("[A-28] Testwand fuehrt zwei kanonische Luecken (Voraussetzung)",
+      luecken.length === 2 && luecken[0].laenge_mm === 125 && luecken[1].laenge_mm === 250);
+    const svgL = Z.zeichnungSvg(WBL, { format: "a3" }).svg;
+    const rL = rects(svgL), tL = bodenblechTeile(WBL);
+    const scL = rL.length ? rL[0].w / tL[0].raster_mm : 0;
+    const x0L = rL.length ? rL[0].x - tL[0].x0_mm * scL : 0;
+    ok("[A-29] das Blatt zeichnet kein Blech ueber einer Aussparung",
+      rL.length === tL.length
+      && !rL.some(r => luecken.some(l => r.x < x0L + l.x1_mm * scL - 5e-3
+        && r.x + r.w > x0L + l.x0_mm * scL + 5e-3)));
+    const marken = [...svgL.matchAll(/<rect class="bbaus" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" fill="none" stroke="([^"]+)"/g)]
+      .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4], farbe: m[5] }));
+    ok("[#138] je kanonischer Luecke genau eine massstaebliche Marke im Blatt",
+      marken.length === luecken.length
+      && marken.every((r, i) => Math.abs(r.w - luecken[i].laenge_mm * scL) < 5e-3)
+      && marken.every((r, i) => Math.abs(r.x - (x0L + luecken[i].x0_mm * scL)) < 5e-3)
+      && marken.every(r => r.y === rL[0].y && Math.abs(r.h - rL[0].h) < 5e-3));
+    const schraeg = [...svgL.matchAll(new RegExp('<line x1="([-\\d.]+)" y1="([-\\d.]+)" x2="([-\\d.]+)" y2="([-\\d.]+)" stroke="' + AUSSPARUNG.farbe + '"', "g"))]
+      .filter(m => m[1] !== m[3] && m[2] !== m[4]);
+    ok("[#138] Aussparung und Blechstoss sind WEDER farb- NOCH formgleich",
+      AUSSPARUNG.farbe !== BLECHSTOSS.farbe
+      && marken.every(r => r.farbe === AUSSPARUNG.farbe)
+      && schraeg.length === 2 * luecken.length
+      && stossX(svgL).length === bodenblechStoesse(WBL).length);
+    ok("[A-21]/[#138] eine Aussparungskante wird NICHT als Blechstoss gezeichnet",
+      bodenblechStoesse(WBL).every(x => !luecken.some(l => l.x0_mm === x || l.x1_mm === x)));
+    ok("[D-4] die Legende benennt die Aussparung in Worten, getrennt vom Blechstoss",
+      Z.legendeHtml(WBL).includes(`${AUSSPARUNG.label} (kein Bodenblech)`)
+      && /Blechstoß \(Bodenblech\)/.test(Z.legendeHtml(WBL)));
+    // [D-4] Modul 5 und Modul 7 zeigen DIESELBEN Luecken — gleiche Anzahl, gleiche relative Lage.
+    const ab5 = montageAbschnitte(WBL);
+    const s5 = abschnittSvg(WBL, ab5[ab5.length - 1], 900, 430);
+    const r5 = rects(s5);
+    const m5 = [...s5.matchAll(/<rect class="bbaus" x="([-\d.]+)" y="[-\d.]+" width="([-\d.]+)"/g)]
+      .map(m => ({ x: +m[1], w: +m[2] }));
+    const relL = (r, x, w) => [(x - r[0].x) / r.reduce((a, z) => a + z.w, 0),
+                               w / r.reduce((a, z) => a + z.w, 0)];
+    ok("[D-4] Modul 5 und Modul 7 zeigen dieselben Luecken an derselben relativen Stelle",
+      m5.length === marken.length
+      && m5.every((r, i) => relL(r5, r.x, r.w)
+        .every((v, j) => Math.abs(v - relL(rL, marken[i].x, marken[i].w)[j]) < 1e-6)));
+    ok("[#138] eine Wand ohne Aussparungen bleibt blattgleich (keine Marke, keine Legende)",
+      !/<rect class="bbaus"/.test(svgM) && !Z.legendeHtml(WBM).includes(AUSSPARUNG.label));
+  }
 
   // (e) Alt-Wandelement ohne `teile`: EIN durchgehendes Blech, nichts erfunden
   const WBA = JSON.parse(JSON.stringify(WBM));

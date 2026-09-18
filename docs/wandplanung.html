@@ -90,6 +90,14 @@
   .zlegende i.bst{position:relative}
   .zlegende i.bst::after{content:"";position:absolute;left:6px;top:0;width:2px;height:9px;
                   background:var(--bst-marke)}
+  /* Bodenblech-Aussparung (#138): LEERES Feld mit gestricheltem Rand und Kreuz — bewusst KEIN
+     gefuelltes Blechfeld und keine weisse Marke darin, damit sie mit dem Blechstoss weder
+     farblich noch in der Form zu verwechseln ist ([D-4]). */
+  .zlegende i.bas{width:14px;height:9px;border:1px dashed currentColor;background:none;
+                  position:relative}
+  .zlegende i.bas::after{content:"";position:absolute;left:-1px;top:-1px;right:-1px;bottom:-1px;
+                  background:linear-gradient(to bottom right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%),
+                             linear-gradient(to top right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%)}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -174,6 +182,17 @@
       <div class="btnrow"><button class="mini" id="agTool"
         title="Punkte am Wandfuß setzen, verschieben (ziehen) und löschen (Doppelklick). Manuelle Punkte sperren die automatische Verteilung, bis „Zurück zu Auto“.">Ausgleichspunkte bearbeiten</button><button class="mini" id="agDel">Punkt löschen</button><button class="mini" id="agAuto">Zurück zu Auto</button></div>
       <div id="agHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
+    </div>
+    <div class="grp"><h3>Bodenblech-Aussparungen (125-mm-Raster)</h3>
+      <!-- [A-28]…[A-30]/#138: Bereiche der Wand OHNE Bodenblech. Gewählt wird ausschließlich
+           von Hand — je Klick genau EIN vollständiges 125-mm-Rasterfeld, einzeln, mehrfach oder
+           benachbart; der Rechenkern wählt nichts aus, füllt nichts auf und verschiebt nichts.
+           Aus der Wahl rechnet er die belegten Bereiche und zerlegt jeden UNABHÄNGIG ([A-29]);
+           ein zu kurzer Rest wird benannt statt überbrückt. „Alle zurücksetzen“ nimmt die Wahl
+           vollständig zurück — danach trägt das Wandelement wieder kein Feld. -->
+      <div class="btnrow"><button class="mini" id="asTool"
+        title="Rasterfelder am Wandfuß anklicken: ein Klick spart das Feld aus, ein zweiter nimmt es zurück. Benachbarte Felder fasst der Rechenkern zu einer Lücke zusammen ([A-28]).">Bodenblech aussparen</button><button class="mini" id="asClear">Alle zurücksetzen</button></div>
+      <div id="asHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
     </div>
     <div class="grp"><h3>Deckenanschluss (obere Spannachse)</h3>
       <!-- [A-26]/[A-27]/#95: Anschlusspunkte liegen IMMER auf einer Spannachse; nicht jede
@@ -323,6 +342,9 @@ let bodenblechSvg;
 // Sonderzuschnitt damit GENAU DANN, wenn die Ansicht sie auch zeigt ([D-4]); gerechnet
 // wird hier nichts nach.
 let bodenblechTeile, bodenblechStoesse, BLECHSTOSS;
+// #138: die kanonischen Bodenblech-Aussparungen ([A-28]) und ihr Darstellungsschluessel — auch
+// sie kommen aus sembla-montage.js, damit Modul 1, 5 und 7 dieselbe Marke zeigen ([D-4]).
+let bodenblechAussparungen, AUSSPARUNG;
 // Kennfarbe des Boden-/Kopfblechs. Sie gehoert nicht zu den Spannkomponenten und ist in
 // sembla-montage.js nicht ausgefuehrt; wie beim Haarlinien-Faktor (#112) steht sie lokal und
 // ihre Gleichheit mit `FARBE.stahl` von Modul 7 ist im Test gesichert ([P-6]/[D-4]).
@@ -403,6 +425,13 @@ let agEdit=false, manualAg=null, selAg=null;
 // Override „genau diese Achsen“ und wird als solcher gespeichert; er sperrt die Verteilung
 // vollständig. Gespeichert werden ACHSENRASTER-Indizes (Muster `columns_grid`), keine mm.
 let dcEdit=false, manualDc=null, selDc=null;
+// Bodenblech-Aussparungen ([A-28]…[A-30], #138): AUSSCHLIESSLICH manuell — der Rechenkern leitet
+// hier nichts ab und korrigiert nichts. `manualAs === null` heißt „keine Aussparungen"; genau
+// dann bekommt das Wandelement auch kein Feld, und eine Wand ohne Aussparungen bleibt in jeder
+// Hinsicht die bisherige. Gespeichert werden 125-mm-RASTERINDIZES (Muster `deckenanschluss_grid`),
+// keine mm. Wird das letzte Feld abgewählt, geht der Zustand auf `null` zurück — eine leere Liste
+// und „keine Aussparungen" sind hier dieselbe Aussage, und das Feld soll dann nicht entstehen.
+let asEdit=false, manualAs=null;
 
 function snap(v,s){ return Math.round(v/s)*s; }
 function readSides(){ return { vorne:{funktion:$('sideVorne').value}, hinten:{funktion:$('sideHinten').value} }; }
@@ -561,6 +590,11 @@ function vorgaben(){
   // Auswahl wird das Feld gar nicht gesetzt, damit im Wandelement kein verteilter Punkt landet.
   // Eine leere Liste ist eine echte Aussage („kein Deckenanschluss“) und wird mitgegeben.
   if(manualDc) v.prestress.deckenanschluss_grid=manualDc.slice();
+  // [A-28] Die manuell gewählten Bodenblech-Aussparungen: nur eine echte Auswahl reist mit.
+  // Ohne Auswahl wird das Feld gar nicht gesetzt — die Wand bekommt kein Feld, das es vorher
+  // nicht gab, und rechnet bit-genau wie zuvor. Es gibt hier keinen Auto-Stand, den eine leere
+  // Liste abgrenzen müsste: leer und „keine Auswahl" sind dieselbe Aussage.
+  if(manualAs && manualAs.length) v.prestress.base_plate_aussparungen_grid=manualAs.slice();
   return v;
 }
 
@@ -691,6 +725,18 @@ function run(){
   const dcf=vv.deckenanschluss_fehler||[];
   if(dcf.length) warns.push('⚠ Deckenanschluss [A-27]: '+dcf.length+' Wert(e) abgewiesen ('
     +DC_GRUND[dcf[0].grund]+', z. B. Rasterachse '+dcf[0].wert+') — nicht angewandt, nichts verschoben.');
+  // [A-29] Ein durch eine Aussparung entstandener Bereich unter der kleinsten zulässigen
+  // Bodenblechlänge ist NICHT baubar. Benannt statt kaschiert: die Ansicht überbrückt ihn
+  // ausdrücklich nicht — dort steht kein Blech, und es wird auch keines dargestellt.
+  const bku=(vv.blech_konflikte||[]).filter(k=>k.grund==='bereich_unbaubar');
+  if(bku.length) warns.push('⚠ Bodenblech [A-29]: '+bku.length+' Bereich(e) zwischen den '
+    +'Aussparungen zu kurz für ein Bodenblech (z. B. '+fmt(bku[0].laenge_mm/10,1)+' cm ab '
+    +fmt(bku[0].x0_mm/10,1)+' cm) — kein Blech überbrückt die Lücke; Aussparung ändern oder '
+    +'kürzere Standardlänge wählen.');
+  // [A-30] Abgewiesene Aussparungsfelder: benannt, verworfen, nie auf ein anderes Feld geschoben.
+  const asf=vv.aussparung_fehler||[];
+  if(asf.length) warns.push('⚠ Bodenblech-Aussparungen [A-30]: '+asf.length+' Feld(er) abgewiesen ('
+    +AS_GRUND[asf[0].grund]+', z. B. Rasterfeld '+asf[0].wert+') — nicht angewandt, nichts verschoben.');
   // [G-17]/[G-18] Sonderzuschnitte der Ausgleichslage: der Katalog führt für diese Resthöhe kein
   // Produkt mit exakt passender Steinhöhe. KEIN Baubarkeitsausschluss — ein sichtbarer
   // Prüfhinweis mit dem TATSÄCHLICHEN Maß, im Wortlaut des Rechenkerns (nicht neu formuliert).
@@ -704,6 +750,7 @@ function run(){
   renderZpHinweis();
   renderAgHinweis();
   renderDcHinweis();
+  renderAsHinweis();
   persistAktiv(w);
   // Maßgebende Werte der Preis-Zuordnung (Stangenlänge, Blech-Modullänge) können sich mit
   // jeder Auslegung ändern -> Auswahlstatus frisch anzeigen, nie zwischenspeichern.
@@ -728,6 +775,7 @@ function renderLeer(){
   renderZpHinweis();      // … und keine stehengebliebene Aussage zu Zwischenspannpunkten
   renderAgHinweis();      // … dasselbe für die Ausgleichspunkte
   renderDcHinweis();      // … und für den Deckenanschluss
+  renderAsHinweis();      // … und zu den Bodenblech-Aussparungen
   if(KAT) renderProdukte();
 }
 function renderIter(its){ const tb=$('itTable').querySelector('tbody'); tb.innerHTML='';
@@ -1088,6 +1136,25 @@ function draw(w){
       s+=`<circle cx="${ax}" cy="${yT-16}" r="${on?5:4}" fill="${on?'#c9461c':dcf}" stroke="#fff" stroke-width="1.2" style="cursor:grab"/>`;
       s+=`<text x="${ax}" y="${yT-22}" font-size="9" fill="${on?'#c9461c':dcf}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
 
+  // ---- Auswahlmodus „Bodenblech aussparen": Rasterfelder am Wandfuß ([A-28], #138) ----
+  // Reine BEDIENHILFE, ausschließlich im Auswahlmodus vorhanden — dasselbe Muster wie die
+  // übrigen Editoren. Je 125-mm-Rasterfeld genau EIN anklickbares Feld über dem Blechstreifen:
+  // ein freies trägt `cursor:copy` und eine blasse Umrandung, ein GEWÄHLTES trägt die Kennfarbe
+  // des Bauteilschlüssels aus sembla-montage.js ([D-4]) und `cursor:pointer` — ein weiterer
+  // Klick nimmt es zurück. Maßgebend für „gewählt" ist die KANONISCHE Eingabe (`manualAs`),
+  // nicht der gezeichnete Zustand: es gibt keine DOM-Schattenauswahl.
+  //
+  // Die DAUERHAFTE Darstellung der Lücken ist ausdrücklich nicht hier, sondern im gemeinsamen
+  // `bodenblechSvg()` — sie steht auch ohne geöffneten Auswahlmodus im Bild.
+  if(asEdit){ const gew=new Set(manualAs||[]);
+    const y0=Y(0), asf=AUSSPARUNG.farbe;
+    for(let k=0;k<w.N_grid;k++){ const on=gew.has(k);
+      const lx=Math.min(X(k*GRID),X((k+1)*GRID));
+      s+=`<rect class="${on?'asz asx':'asz'}" data-as="${k}" x="${lx}" y="${y0}" `
+        +`width="${GRID*sc}" height="${bth}" fill="${asf}" fill-opacity="${on?0.45:0}" `
+        +`stroke="${asf}" stroke-width="${on?1.4:0.7}" stroke-opacity="${on?0.95:0.3}" `
+        +`stroke-dasharray="${on?'':'2 3'}" style="cursor:${on?'pointer':'copy'}"/>`; } }
+
   // ---- Reihennummern der Steinreihen (links) ----
   for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
     s+=`<text x="${pad-10}" y="${yc+3}" font-size="9" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
@@ -1153,7 +1220,14 @@ function renderZLegende(w){
   const bsoEintrag = (w && bodenblechTeile(w).some(t=>t.art==='sonder'))
     ? `<span><i class="bpl" style="color:${stueckFarbe('sonder')}"></i>`
       + `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : '';
-  const blechEintraege = bstEintrag+bsoEintrag;
+  // #138 Ebenso die Aussparung — genannt GENAU DANN, wenn die Wand wirklich eine Lücke führt.
+  // Das Legendenfeld zeigt sie SO, WIE SIE IM BILD STEHT: ein leerer, gestrichelter Umriss mit
+  // Kreuz, ausdrücklich OHNE Blechfeld — dort liegt kein Blech. Damit ist sie auch in der
+  // Legende nicht mit der weißen Stoßmarke zu verwechseln ([D-4]).
+  const basEintrag = (w && bodenblechAussparungen(w).length)
+    ? `<span><i class="bas" style="color:${AUSSPARUNG.farbe}"></i>`
+      + `${AUSSPARUNG.label} (kein Bodenblech)</span>` : '';
+  const blechEintraege = bstEintrag+bsoEintrag+basEintrag;
   const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
   // Ohne bestimmten Zuschnitt gibt es KEINE Zuschnittlegende — die Blecheintraege haengen
   // aber nicht an der Stangenzerlegung und laufen deshalb hier mit.
@@ -1235,6 +1309,12 @@ const DC_GRUND={
   nicht_ganzzahlig:'nicht ganzzahlig',
   ausserhalb_wand:'außerhalb der Wand',
   keine_spannachse:'keine Spannachse an dieser Rasterstelle'
+};
+// [A-30] Abgewiesene manuelle Bodenblech-Aussparungen. Der Grund kommt BENANNT aus dem
+// Rechenkern (`validation.aussparung_fehler`) und wird hier nur in Klartext übersetzt.
+const AS_GRUND={
+  nicht_ganzzahlig:'kein ganzes Rasterfeld',
+  ausserhalb_wand:'außerhalb der Wandlänge'
 };
 const INTERLOCK_GRUND={
   nicht_ganzzahlig:'Position/Breite nicht ganzzahlig',
@@ -1343,6 +1423,11 @@ function applyWand(w){
   // die automatische Verteilung. Bloßes Laden normalisiert nichts zurück und schreibt nichts.
   manualDc=(w.prestress&&Array.isArray(w.prestress.deckenanschluss_grid))?w.prestress.deckenanschluss_grid.slice():null;
   selDc=null;
+  // [A-28] Die gespeicherte Wahl wird übernommen; fehlt das Feld (oder ist es leer), hat die Wand
+  // keine Aussparungen. Bloßes Laden normalisiert nichts zurück und schreibt nichts.
+  manualAs=(w.prestress&&Array.isArray(w.prestress.base_plate_aussparungen_grid)
+    &&w.prestress.base_plate_aussparungen_grid.length)
+    ? w.prestress.base_plate_aussparungen_grid.slice() : null;
   if(w.name) aktName=w.name;
   renderSteps(); renderOps(); renderInterlocks(); run();
 }
@@ -1816,7 +1901,7 @@ function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelemen
 function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
 function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
 function setManualCols(arr){ manualCols=(arr&&arr.length)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAxis=null; run(); }
-function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
+function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; asEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); syncAsTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
   $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; if(RESULT) draw(RESULT.wandelement); }
 
 // ---- Zwischenspannpunkte ([A-14]…[A-17], #93) ----------------------------------------------
@@ -1846,9 +1931,9 @@ function addZpAt(z){ ensureManualZp(); if(!manualZp.includes(z)){ manualZp.push(
 function delZp(z){ ensureManualZp(); const i=manualZp.indexOf(z); if(i>=0) manualZp.splice(i,1); if(selZp===z) selZp=null; }
 function setManualZp(arr){ manualZp=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selZp=null; run(); }
 function syncZpTool(){ $('zpTool').style.background=zpEdit?'#1f6feb':''; $('zpTool').style.color=zpEdit?'#fff':''; }
-function setZpEdit(v){ zpEdit=!!v; if(zpEdit){ editMode=false; axisEdit=false; agEdit=false; dcEdit=false;
+function setZpEdit(v){ zpEdit=!!v; if(zpEdit){ editMode=false; axisEdit=false; agEdit=false; dcEdit=false; asEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color='';
-    syncAgTool(); syncDcTool();
+    syncAgTool(); syncDcTool(); syncAsTool();
     $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualZp(); }
   syncZpTool(); if(RESULT) draw(RESULT.wandelement); renderZpHinweis(); }
 /** Zustand benennen: abgeleitet oder ausdrücklich gewählt — nie beides behaupten. */
@@ -1888,9 +1973,9 @@ function addAgAt(x){ ensureManualAg(); if(!manualAg.includes(x)){ manualAg.push(
 function delAg(x){ ensureManualAg(); const i=manualAg.indexOf(x); if(i>=0) manualAg.splice(i,1); if(selAg===x) selAg=null; }
 function setManualAg(arr){ manualAg=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAg=null; run(); }
 function syncAgTool(){ $('agTool').style.background=agEdit?'#1f6feb':''; $('agTool').style.color=agEdit?'#fff':''; }
-function setAgEdit(v){ agEdit=!!v; if(agEdit){ editMode=false; axisEdit=false; zpEdit=false; dcEdit=false;
+function setAgEdit(v){ agEdit=!!v; if(agEdit){ editMode=false; axisEdit=false; zpEdit=false; dcEdit=false; asEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color='';
-    syncZpTool(); syncDcTool();
+    syncZpTool(); syncDcTool(); syncAsTool();
     $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualAg(); }
   syncAgTool(); if(RESULT) draw(RESULT.wandelement); renderAgHinweis(); }
 /** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
@@ -1934,9 +2019,9 @@ function addDcAt(k){ ensureManualDc(); if(k!=null && !manualDc.includes(k)){ man
 function delDc(k){ ensureManualDc(); const i=manualDc.indexOf(k); if(i>=0) manualDc.splice(i,1); if(selDc===k) selDc=null; }
 function setManualDc(arr){ manualDc=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selDc=null; run(); }
 function syncDcTool(){ $('dcTool').style.background=dcEdit?'#1f6feb':''; $('dcTool').style.color=dcEdit?'#fff':''; }
-function setDcEdit(v){ dcEdit=!!v; if(dcEdit){ editMode=false; axisEdit=false; zpEdit=false; agEdit=false;
+function setDcEdit(v){ dcEdit=!!v; if(dcEdit){ editMode=false; axisEdit=false; zpEdit=false; agEdit=false; asEdit=false;
     $('axisTool').style.background=''; $('axisTool').style.color='';
-    syncZpTool(); syncAgTool();
+    syncZpTool(); syncAgTool(); syncAsTool();
     $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualDc(); }
   syncDcTool(); if(RESULT) draw(RESULT.wandelement); renderDcHinweis(); }
 /** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
@@ -1952,6 +2037,54 @@ function renderDcHinweis(){
       +'letzte Achse immer, dazwischen höchstens 1125 mm Abstand, nicht gespeichert.';
 }
 
+// ---- Bodenblech-Aussparungen ([A-28]…[A-30], #138) ------------------------------------------
+// Bedienung nach demselben Muster wie die bestehenden Editiermodi — mit EINEM Unterschied: es
+// gibt hier keinen Auto-Stand, den man übernehmen oder zu dem man zurückkehren könnte. Eine
+// Aussparung ist ausschließlich eine Planerentscheidung; der Rechenkern leitet keine ab, wählt
+// keine aus und korrigiert keine ([A-28]/[P-9]). Geschrieben wird allein die kanonische Eingabe
+// `prestress.base_plate_aussparungen_grid` (über vorgaben() -> Rechenkern -> persistAktiv); die
+// Wandansicht zeigt danach, was der Kern daraus gerechnet hat — nicht, was angeklickt wurde.
+function syncAsTool(){ $('asTool').style.background=asEdit?'#1f6feb':''; $('asTool').style.color=asEdit?'#fff':''; }
+function setAsEdit(v){ asEdit=!!v; if(asEdit){ editMode=false; axisEdit=false; zpEdit=false; agEdit=false; dcEdit=false;
+    $('axisTool').style.background=''; $('axisTool').style.color='';
+    syncZpTool(); syncAgTool(); syncDcTool();
+    $('durchTool').style.background=''; $('durchTool').style.color=''; }
+  syncAsTool(); if(RESULT) draw(RESULT.wandelement); renderAsHinweis(); }
+/**
+ * EIN Rasterfeld an- oder abwählen — der einzige Bedienweg, und er schreibt unmittelbar die
+ * kanonische Eingabe und rechnet über run() neu. Kein Zwischenstand im DOM.
+ */
+function toggleAs(k){
+  if(!Number.isInteger(k)) return;
+  const felder=new Set(manualAs||[]);
+  if(felder.has(k)) felder.delete(k); else felder.add(k);
+  // Leer heißt hier „keine Aussparungen" — dann verschwindet das Feld wieder vollständig.
+  manualAs = felder.size ? [...felder].sort((a,b)=>a-b) : null;
+  run();
+}
+/** Auswahl vollständig zurücknehmen: das Wandelement trägt danach wieder kein Feld. */
+function asClear(){ manualAs=null; run(); }
+/** Auswahl in einem Zug setzen (Bedienweg „mehrere Felder"); leere Liste = keine Aussparungen. */
+function setManualAs(arr){
+  manualAs = (Array.isArray(arr) && arr.length)
+    ? [...new Set(arr.map(Number))].sort((a,b)=>a-b) : null;
+  run();
+}
+/** Zustand benennen — gezählt werden die KANONISCHEN Lücken des Rechenkerns, nicht die Klicks. */
+function renderAsHinweis(){
+  const el=$('asHinweis'); if(!el) return;
+  if(!RESULT){ el.textContent=''; return; }
+  const bp=RESULT.wandelement.base_plate||{};
+  const luecken=bp.aussparungen||[];
+  const felder=(RESULT.wandelement.prestress&&RESULT.wandelement.prestress.base_plate_aussparungen_grid)||[];
+  el.textContent = luecken.length
+    ? 'Eigene Auswahl: '+felder.length+' Rasterfeld(er) in '+luecken.length+' Lücke(n) — '
+      +'gespeichert am Wandelement; das Bodenblech wird je verbleibendem Bereich unabhängig '
+      +'zerlegt ([A-29]), ausgesparte Länge erzeugt keine Teile.'
+    : 'Keine Aussparungen — das Bodenblech läuft über die volle Wandlänge. Gewählt wird '
+      +'ausschließlich von Hand ([A-28]); es wird nichts abgeleitet.';
+}
+
 // ---------- Ereignis-Bindung + Start ----------
 let axisDragging=false, zpDragging=false, agDragging=false, dcDragging=false;
 function bindEvents(){
@@ -1962,7 +2095,7 @@ function bindEvents(){
    // #136 Die Ausgleichslage ist ein Core-Eingang: jede Umschaltung rechnet die Wand über
    // denselben einen Auslegungspfad neu — es gibt keinen zweiten Schreibweg.
    'ausgleich'].forEach(id=>$(id).addEventListener('change',run));
-  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; if(editMode){ agEdit=false; dcEdit=false; syncAgTool(); syncDcTool(); } $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
+  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; if(editMode){ agEdit=false; dcEdit=false; asEdit=false; syncAgTool(); syncDcTool(); syncAsTool(); } $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });
   $('axisTool').addEventListener('click',()=>setAxisEdit(!axisEdit));
@@ -2018,6 +2151,14 @@ function bindEvents(){
     if(k!=null && k!==selDc && !manualDc.includes(k)){ const i=manualDc.indexOf(selDc); if(i>=0){ manualDc[i]=k; manualDc.sort((a,b)=>a-b); selDc=k; run(); } } });
   window.addEventListener('pointerup',()=>{ dcDragging=false; });
   $('plan').addEventListener('dblclick',e=>{ if(!dcEdit) return; const treffer=dcImFang(e); if(treffer!=null){ delDc(treffer); run(); } });
+  // Bodenblech-Aussparungen: EIN Klick auf ein Rasterfeld wählt an bzw. ab ([A-28], #138).
+  // Der Hörer liegt — wie beim Durchbruch-Modus — delegiert auf der Wandansicht und wirkt nur im
+  // eigenen Auswahlmodus; er schreibt unmittelbar die kanonische Eingabe und rechnet neu.
+  $('asTool').addEventListener('click',()=>setAsEdit(!asEdit));
+  $('asClear').addEventListener('click',asClear);
+  $('plan').addEventListener('click',e=>{ if(!asEdit) return; const t=e.target;
+    const a=t&&t.getAttribute&&t.getAttribute('data-as');
+    if(a!==null&&a!==undefined&&a!=='') toggleAs(+a); });
   $('showDim').addEventListener('change',e=>{ showDim=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('showRaster').addEventListener('change',e=>{ showRaster=e.target.checked; if(RESULT) draw(RESULT.wandelement); });
   $('addTuer').addEventListener('click',()=>addOpening('tuer'));
@@ -2042,6 +2183,9 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   setAgEdit, setManualAg, addAgAt, delAg, agAuto:()=>{ manualAg=null; selAg=null; run(); },
   selAg:(x)=>{ selAg=x; }, get manualAg(){return manualAg;}, get agEdit(){return agEdit;},
   get ausgleichspunkte(){ return RESULT?(RESULT.wandelement.ausgleichspunkte||[]):[]; },
+  setAsEdit, toggleAs, asClear, setManualAs,
+  get manualAs(){return manualAs;}, get asEdit(){return asEdit;},
+  get aussparungen(){ return RESULT?((RESULT.wandelement.base_plate&&RESULT.wandelement.base_plate.aussparungen)||[]):[]; },
   setDcEdit, setManualDc, addDcAt, delDc, dcAuto:()=>{ manualDc=null; selDc=null; run(); },
   selDc:(k)=>{ selDc=k; }, get manualDc(){return manualDc;}, get dcEdit(){return dcEdit;},
   get deckenanschlusspunkte(){ return RESULT?(RESULT.wandelement.deckenanschlusspunkte||[]):[]; },
@@ -2077,6 +2221,7 @@ window.__wpInit=function(){
   bodenblechSvg=S.bodenblechSvg;
   bodenblechTeile=S.bodenblechTeile; bodenblechStoesse=S.bodenblechStoesse;
   BLECHSTOSS=S.BLECHSTOSS;
+  bodenblechAussparungen=S.bodenblechAussparungen; AUSSPARUNG=S.AUSSPARUNG;
   DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
   AUSGLEICHSPUNKT=S.AUSGLEICHSPUNKT; ausgleichspunktSvg=S.ausgleichspunktSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
@@ -2119,6 +2264,9 @@ window.__wpInit=function(){
            // #97: dieselbe Teilfolge und derselbe Klartext fuer die Zuschnittlegende —
            // die Legende nennt genau die Marken, die die Ansicht zeichnet ([D-4]).
            bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
+           // #138: die kanonischen Luecken und ihr Darstellungsschluessel — dieselbe Quelle,
+           // aus der Modul 5 und Modul 7 sie zeichnen ([A-28]/[D-4]).
+           bodenblechAussparungen, AUSSPARUNG,
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { oeffneReparatur } from './shared/sembla-reparatur.js';
@@ -2131,6 +2279,7 @@ window.__wpInit=function(){
                     oeffneReparatur,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
                     bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
+                    bodenblechAussparungen, AUSSPARUNG,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
                     AUSGLEICHSPUNKT, ausgleichspunktSvg,

@@ -313,6 +313,15 @@ export function semblaBom(w) {
   // eine. Fehlt die Teilliste (Alt-Bundle, gespeichertes Wandelement vor #91), bleibt es bei
   // der bisherigen EINEN Position aus der Modulzahl; es wird nichts nachgerechnet und nichts
   // erfunden.
+  //
+  // [A-28]/[A-29]/#138 Manuell ausgesparte 125-mm-Rasterfelder erzeugen hier ausdruecklich
+  // KEINE Position und KEINE Menge: gezaehlt werden allein die REAL gerechneten Teile aus
+  // `base_plate.teile` und — fuer die laufende Laenge — `bom.stahlblech_mm`, das der Core schon
+  // ohne die ausgesparten Bereiche fuehrt. Die Luecken (`base_plate.aussparungen`) werden hier
+  // bewusst NICHT gelesen: eine Menge daraus abzuleiten hiesse, die Zerlegung ein zweites Mal
+  // zu rechnen ([P-6]). Der Rueckfall aus Wandlaenge/Modullaenge greift nur fuer Alt-Bundles
+  // ohne `base_plate` — die fuehren auch keine Aussparungen, es kann dort also keine
+  // ausgesparte Laenge mitgezaehlt werden.
   const bpTeile = (w.base_plate && Array.isArray(w.base_plate.teile)) ? w.base_plate.teile : null;
   let blechBodenTeile = null;
   if (bpTeile) {

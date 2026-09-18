@@ -160,6 +160,13 @@ function ausgleichHoehenOf(vorg) { return vorg.ausgleich_stein_hoehen_mm || null
 // traege das Element nach der Auslegung keine Masse mehr, obwohl Modul 1 sie aus dem Katalog
 // abgeleitet hat. Eine KOPFHOEHE der Schraube gibt es bewusst nicht — dafuer ist keine Norm
 // genannt, und sie liesse sich nur erfinden.
+// Und aus demselben Grund `base_plate_aussparungen_grid` ([A-28]/#138): die in Modul 1 manuell
+// gewaehlten Rasterfelder OHNE Bodenblech bestimmen, in welche Bereiche der Core das Bodenblech
+// zerlegt ([A-29]) und welche Laenge und Teilezahl die Stueckliste fuehrt. Fiele das Feld in der
+// Iteration weg, rechnete der Core mit durchgehendem Blech weiter, und die gewaehlten
+// Aussparungen waeren unwirksam — samt der daraus folgenden Mengen. FEHLT das Feld, bleibt es
+// `undefined` und damit kein Array: der Core setzt dann kein Feld, und der Weg ohne Aussparungen
+// bleibt bit-genau wie zuvor.
 // NICHT mitgereicht wird `start_axis_grid` (#104): [V-5] ist durch [V-3]/[V-11] abgeloest, der
 // Core liest das Feld nicht mehr, und die Iteration gibt ihm folglich auch keines mehr vor.
 function psOf(vorg, extra) { const p = vorg.prestress || {};
@@ -177,7 +184,8 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            senkkopf_sw_mm: p.senkkopf_sw_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
            ausgleich_override_mm: p.ausgleich_override_mm,
-           deckenanschluss_grid: p.deckenanschluss_grid }; }
+           deckenanschluss_grid: p.deckenanschluss_grid,
+           base_plate_aussparungen_grid: p.base_plate_aussparungen_grid }; }
 function buildN(vorg, sp) {
   return buildWall(vorg.name, vorg.length_mm, vorg.height_mm, vorg.openings || [], vorg.sides, psOf(vorg, { max_span_grid: sp }), stepsOf(vorg), interlocksOf(vorg), ausgleichOf(vorg), ausgleichHoehenOf(vorg));
 }

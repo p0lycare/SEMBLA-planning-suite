@@ -67,6 +67,9 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // genau die Marken, die `bodenblechSvg()` zeichnet ([D-4]).
   bodenblechTeile: MONT.bodenblechTeile, bodenblechStoesse: MONT.bodenblechStoesse,
   BLECHSTOSS: MONT.BLECHSTOSS,
+  // #138: die kanonischen Bodenblech-Aussparungen und ihr Darstellungsschluessel — dieselbe
+  // Quelle, aus der Modul 5 und Modul 7 die Luecken zeichnen ([A-28]/[D-4]).
+  bodenblechAussparungen: MONT.bodenblechAussparungen, AUSSPARUNG: MONT.AUSSPARUNG,
   // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs kommen — wie der
   // Zuschnittschluessel — aus sembla-montage.js; die wirksamen Punkte aus dem Rechenkern.
   ZWISCHENPUNKT: MONT.ZWISCHENPUNKT, zwischenpunktSvg: MONT.zwischenpunktSvg,
@@ -1320,6 +1323,223 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
     JSON.stringify(WP.RESULT.wandelement.bom)===vorherBom
     && JSON.stringify(achsen())===vorherAchsen);
   WP.dcAuto();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Issue #138 / [A-28]…[A-30]: Auswahlmodus „Bodenblech aussparen" in Modul 1.
+// Gefahren wird derselbe ECHTE Pfad OHNE MAUS wie bei #95/#96: Modus an, Rasterfelder ueber den
+// delegierten Klickhoerer der Wandansicht an- und abwaehlen, zuruecksetzen — und nach jedem
+// Schritt wird das GESPEICHERTE Wandelement geprueft (`store.aktivesWandelement()`), nicht das
+// Formular. Gespeichert werden 125-mm-RASTERINDIZES, gerechnet wird ausschliesslich im Core.
+// ---------------------------------------------------------------------------------------------
+setzeLaenge(4000); document.getElementById('hgt').value='2600';
+document.getElementById('modus').value='auto';
+WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.setDcEdit(false); WP.run();
+{
+  const planEl=document.getElementById('plan');
+  const svg=()=>planEl.innerHTML;
+  const we=()=>store.aktivesWandelement();
+  const ps=()=>we().prestress;
+  const bp=()=>we().base_plate;
+  const vv=()=>WP.RESULT.wandelement.validation;
+  const warns=()=>document.getElementById('warns').textContent;
+  // Der Klick trifft GENAU das gezeichnete Rasterfeld: der delegierte Hoerer liest `data-as`
+  // vom Ziel, so wie ihn die Oberflaeche ausloest. Kein Aufruf einer inneren Funktion.
+  const klick=(k)=>planEl.dispatch('click',
+    { target:{ getAttribute:(n)=>(n==='data-as'?String(k):null) } });
+  const felder=()=>ps().base_plate_aussparungen_grid;
+  const luecken=()=>bp().aussparungen||[];
+  const gewaehlt=()=>(svg().match(/class="asz asx"/g)||[]).length;
+  const zellen=()=>(svg().match(/class="asz[^"]*"/g)||[]).length;
+  const teile=()=>MONT.bodenblechTeile(we());
+
+  // Ausgangslage: kein Feld, keine Luecke, keine Bedienhilfe im Bild.
+  ok('[#138] Ausgangslage: eine Wand ohne Aussparungen traegt kein Feld',
+    !('base_plate_aussparungen_grid' in ps()) && WP.manualAs===null
+    && luecken().length===0 && !/class="asz/.test(svg()));
+  ok('[#138] ohne Aussparungen laeuft das Bodenblech ueber die volle Wandlaenge',
+    bp().laenge_mm===we().length_mm
+    && teile().reduce((a,t)=>a+t.raster_mm,0)===we().length_mm);
+
+  // Modus an: je Rasterfeld genau EIN anklickbares Feld, geschrieben ist noch nichts.
+  WP.setAsEdit(true);
+  const N=WP.RESULT.wandelement.N_grid;
+  ok('[#138] Auswahlmodus an: je 125-mm-Rasterfeld genau ein anklickbares Feld',
+    WP.asEdit===true && zellen()===N && gewaehlt()===0);
+  ok('[#138] Einschalten allein schreibt noch nichts',
+    !('base_plate_aussparungen_grid' in ps()) && luecken().length===0);
+  // Exklusivitaet in BEIDE Richtungen — gegen alle vier bestehenden Modi und den Durchbruch.
+  WP.setEdit(true); WP.setAsEdit(true);
+  ok('[#138] der Auswahlmodus schaltet den Durchbruch-Modus ab', WP.asEdit===true);
+  WP.setAxisEdit(true);
+  ok('[#138] Achsen-Editor schaltet ihn ab', WP.axisEdit===true && WP.asEdit===false);
+  WP.setAsEdit(true);
+  ok('[#138] und umgekehrt', WP.asEdit===true && WP.axisEdit===false);
+  WP.setZpEdit(true);  const nachZp=WP.asEdit;
+  WP.setAgEdit(true);  const nachAg=WP.asEdit;
+  WP.setDcEdit(true);  const nachDc=WP.asEdit;
+  ok('[#138] Zwischenspann-, Ausgleichs- und Deckenanschluss-Editor schalten ihn ebenfalls ab',
+    nachZp===false && nachAg===false && nachDc===false);
+  WP.setAsEdit(true);
+  ok('[#138] der Auswahlmodus schaltet alle vier ab',
+    WP.asEdit===true && WP.zpEdit===false && WP.agEdit===false
+    && WP.dcEdit===false && WP.axisEdit===false);
+  // Jeder der vier Editoren uebernimmt beim Einschalten seinen Auto-Stand als Override — die
+  // Gegenproben oben haben also Achsen, Zwischen-, Ausgleichs- und Deckenanschlusspunkte
+  // materialisiert. Zurueckgenommen, damit dieser Abschnitt allein die Aussparungen misst und
+  // die Gegenprobe „bit-genau die alte Wand" am Ende wirklich nur sie betrifft.
+  WP.zpAuto(); WP.agAuto(); WP.dcAuto(); WP.setManualCols(null); WP.run();
+  const ohneAussparung=JSON.stringify(we());
+
+  // EINZELNES Feld am Rand.
+  klick(0);
+  ok('[#138] ein Randfeld anklicken schreibt die kanonische Eingabe',
+    JSON.stringify(felder())==='[0]');
+  ok('[#138] der Core rechnet daraus genau eine Luecke am Wandanfang',
+    luecken().length===1 && luecken()[0].g0===0 && luecken()[0].g1===1
+    && luecken()[0].x0_mm===0 && luecken()[0].x1_mm===125 && luecken()[0].laenge_mm===125);
+  ok('[#138] das ausgewaehlte Feld ist in der Wandansicht gekennzeichnet', gewaehlt()===1);
+
+  // MEHRERE und BENACHBARTE Felder in der Wandmitte.
+  klick(16); klick(17);
+  ok('[#138] mehrere und benachbarte Felder landen alle in der Eingabe',
+    JSON.stringify(felder())==='[0,16,17]');
+  ok('[#138] benachbarte Felder fasst der Core zu GENAU EINER Luecke zusammen ([A-28])',
+    luecken().length===2
+    && luecken()[1].g0===16 && luecken()[1].g1===18
+    && luecken()[1].x0_mm===2000 && luecken()[1].x1_mm===2250 && luecken()[1].laenge_mm===250);
+  ok('[#138] alle gewaehlten Felder sind einzeln gekennzeichnet', gewaehlt()===3);
+
+  // [A-29] Kein Teil ueberbrueckt eine Luecke, und die ausgesparte Laenge erzeugt keine Menge.
+  const inLuecke=(t)=>luecken().some(l=>t.x0_mm<l.x1_mm && (t.x0_mm+t.raster_mm)>l.x0_mm);
+  ok('[#138] kein Bodenblechteil reicht in eine Aussparung hinein ([A-29])',
+    teile().length>0 && !teile().some(inLuecke));
+  const ausgespart=luecken().reduce((a,l)=>a+l.laenge_mm,0);
+  ok('[#138] das Bodenblech ist genau so lang wie die belegten Bereiche',
+    bp().laenge_mm===we().length_mm-ausgespart
+    && teile().reduce((a,t)=>a+t.raster_mm,0)===bp().laenge_mm);
+
+  // Modul 4: die Stueckliste zaehlt NUR gerechnete Teile — kein Posten je ausgespartem Feld.
+  {
+    const b=BOM.semblaBom(we());
+    ok('[#138] Modul 4 zaehlt genau die real gerechneten Bodenblechteile',
+      b.blech_boden_teile.reduce((a,t)=>a+t.anzahl,0)===teile().length
+      && b.stahlblech_module_boden===teile().length);
+    ok('[#138] die Stueckliste fuehrt keine Menge fuer ausgesparte Rasterfelder',
+      b.blech_boden_teile.reduce((a,t)=>a+t.anzahl*t.raster_mm,0)===bp().laenge_mm
+      && b.stahlblech_mm===bp().laenge_mm+((we().top_plate&&we().top_plate.laenge_mm)||0));
+    const pos=BOM.semblaBomItems(we()).filter(p=>p.key==='blech_boden'
+      || p.key==='blech_boden_sonder');
+    ok('[#138] die Positionsmengen summieren sich auf die Teilezahl, nicht auf die Wandlaenge',
+      pos.reduce((a,p)=>a+p.menge,0)===teile().length
+      && pos.reduce((a,p)=>a+p.menge*p.mass_mm,0)===bp().laenge_mm);
+  }
+
+  // [D-4] Modul 1, Montage und Zeichnung lesen DIESELBEN kanonischen Luecken.
+  ok('[#138] der gemeinsame Renderer liest genau die kanonischen Luecken',
+    JSON.stringify(MONT.bodenblechAussparungen(we()))===JSON.stringify(luecken()));
+  ok('[#138] eine Aussparungskante ist KEIN Blechstoss (dort endet das Blech frei)',
+    MONT.bodenblechStoesse(we()).every(x=>!luecken().some(l=>l.x0_mm===x||l.x1_mm===x)));
+  // Die Luecke ist massstaeblich gezeichnet und traegt ein EIGENES Symbol — nicht die weisse
+  // Stossmarke. Geprueft wird am erzeugten Bild: Kennfarbe, Breite und Symbolform.
+  {
+    const rects=[...svg().matchAll(/<rect class="bbaus" x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" fill="none" stroke="([^"]+)"/g)]
+      .map(m=>({x:+m[1],y:+m[2],w:+m[3],h:+m[4],farbe:m[5]}));
+    const sc=WP.ansichtSc();
+    ok('[#138] je kanonischer Luecke genau eine massstaebliche Marke im Bild',
+      rects.length===luecken().length
+      && rects.every((r,i)=>Math.abs(r.w-luecken()[i].laenge_mm*sc)<1e-9));
+    ok('[#138] die Marke traegt den gemeinsamen Darstellungsschluessel ([D-4])',
+      rects.every(r=>r.farbe===MONT.AUSSPARUNG.farbe)
+      // Kein lokaler Hex-Wert in Modul 1 — die Farbe kommt nur aus sembla-montage.js.
+      && !new RegExp(MONT.AUSSPARUNG.farbe).test(html));
+    ok('[#138] Aussparung und Blechstoss sind WEDER farb- NOCH formgleich',
+      MONT.AUSSPARUNG.farbe!==MONT.BLECHSTOSS.farbe
+      && rects.every(r=>r.farbe!==MONT.BLECHSTOSS.farbe)
+      // Der Stoss bleibt die schmale weisse Linie IM Streifen, die Aussparung ein offener
+      // Umriss mit Kreuz: zwei Schraeglinien je Luecke, die die weisse Marke nie hat.
+      && [...svg().matchAll(new RegExp('<line x1="([-\\d.]+)" y1="([-\\d.]+)" x2="([-\\d.]+)" y2="([-\\d.]+)" stroke="'+MONT.AUSSPARUNG.farbe+'"','g'))]
+        .filter(m=>m[1]!==m[3] && m[2]!==m[4]).length===2*luecken().length
+      && /stroke="#fff"/.test(svg()));
+    ok('[#138] die Legende nennt die Aussparung in Worten, getrennt vom Blechstoss',
+      zleg().includes(MONT.AUSSPARUNG.label) && zleg().includes(MONT.BLECHSTOSS.label));
+  }
+
+  // ABWAEHLEN: derselbe Klick nimmt das Feld zurueck.
+  klick(0);
+  ok('[#138] ein zweiter Klick nimmt das Feld wieder zurueck',
+    JSON.stringify(felder())==='[16,17]' && luecken().length===1 && gewaehlt()===2);
+
+  // Speichern/Neuladen: das gespeicherte Element zurueck ins Formular -> dieselben Felder.
+  const gespeichert=JSON.parse(JSON.stringify(we()));
+  ok('[#138] die Wahl steht so im gespeicherten Wandelement',
+    JSON.stringify(gespeichert.prestress.base_plate_aussparungen_grid)==='[16,17]');
+  WP.applyWand(gespeichert); WP.run();
+  ok('[#138] Neuladen liefert dieselbe Wahl und dieselben kanonischen Teile',
+    JSON.stringify(WP.manualAs)==='[16,17]'
+    && JSON.stringify(felder())==='[16,17]'
+    && JSON.stringify(luecken())===JSON.stringify(gespeichert.base_plate.aussparungen)
+    && JSON.stringify(bp().teile)===JSON.stringify(gespeichert.base_plate.teile));
+
+  // Projekt-Export/-Import (derselbe Weg, den auch das Projektarchiv je Wand geht).
+  {
+    const vorherId=store.aktivId();
+    const datei=JSON.stringify(store.projektObjekt(vorherId));
+    const neuId=store.importiereText(datei,'roundtrip.json');
+    const importiert=store.holeElement(neuId).wandelement;
+    ok('[#138] Projekt-Export/-Import erhaelt die manuell gewaehlten Rasterfelder',
+      JSON.stringify(importiert.prestress.base_plate_aussparungen_grid)==='[16,17]');
+    ok('[#138] und fuehrt wieder zu denselben kanonischen Luecken und Teilen',
+      JSON.stringify(importiert.base_plate.aussparungen)===JSON.stringify(gespeichert.base_plate.aussparungen)
+      && JSON.stringify(importiert.base_plate.teile)===JSON.stringify(gespeichert.base_plate.teile));
+    WP.applyWand(importiert); WP.run();
+    ok('[#138] die importierte Wand laesst sich unveraendert weiterrechnen',
+      JSON.stringify(felder())==='[16,17]'
+      && JSON.stringify(luecken())===JSON.stringify(gespeichert.base_plate.aussparungen));
+    store.loesche(neuId);
+    store.setzeAktiv(vorherId); WP.applyWand(gespeichert); WP.run();
+  }
+
+  // [A-29] Ein zu kurzer Restbereich wird BENANNT — und nicht ueberbrueckt.
+  WP.setManualAs([1]);
+  ok('[#138] ein unbaubarer Restbereich steht benannt im Core-Ergebnis ([A-29])',
+    (vv().blech_konflikte||[]).some(k=>k.grund==='bereich_unbaubar'
+      && k.x0_mm===0 && k.x1_mm===125 && k.laenge_mm===125));
+  ok('[#138] Modul 1 zeigt den benannten Konflikt an',
+    /Bodenblech \[A-29\]/.test(warns()));
+  ok('[#138] und stellt KEIN ueberbrueckendes Blech dar',
+    !teile().some(t=>t.x0_mm<250 && (t.x0_mm+t.raster_mm)>125)
+    && MONT.bodenblechTeile(we()).every(t=>!(t.x0_mm<250 && (t.x0_mm+t.raster_mm)>125)));
+
+  // [A-30] Ein Feld ausserhalb der Wand wird benannt, verworfen und nie verschoben.
+  WP.setManualAs([2,999]);
+  ok('[#138] ein Feld ausserhalb der Wand wird benannt statt verschoben ([A-30])',
+    (vv().aussparung_fehler||[]).length===1
+    && vv().aussparung_fehler[0].grund==='ausserhalb_wand'
+    && JSON.stringify(felder())==='[2]'
+    && luecken().length===1 && luecken()[0].g0===2);
+  ok('[#138] Modul 1 zeigt auch diesen Konflikt benannt an',
+    /Bodenblech-Aussparungen \[A-30\]/.test(warns()));
+
+  // Alles zuruecksetzen: das Feld verschwindet vollstaendig, die Wand ist wieder die alte.
+  // Das Laden des gespeicherten Elements oben hat das Vorgehen auf „Feste Auslegung" gestellt
+  // (die Wand traegt eine gerechnete Kraft) — zurueck auf Auto, damit die Gegenprobe darunter
+  // wirklich nur die Aussparungen misst und nicht den Auslegungsweg.
+  document.getElementById('modus').value='auto';
+  WP.asClear();
+  ok('[#138] „alle zuruecksetzen" leert die Wahl und entfernt das Feld',
+    WP.manualAs===null && !('base_plate_aussparungen_grid' in ps())
+    && luecken().length===0 && gewaehlt()===0);
+  ok('[#138] eine Wand ohne Aussparungen ist danach bit-genau die alte',
+    JSON.stringify(we())===ohneAussparung);
+  WP.setAsEdit(false);
+  ok('[#138] Modus aus: die Bedienhilfe verschwindet wieder', !/class="asz/.test(svg()));
+  // Blosses LADEN darf keine Aussparung schreiben ([P-1]).
+  const vorherAs=JSON.stringify(ps());
+  WP.applyWand(we());
+  ok('[#138] blosses Laden schreibt keine Aussparung ins Element',
+    JSON.stringify(ps())===vorherAs && !('base_plate_aussparungen_grid' in ps())
+    && WP.manualAs===null);
 }
 
 setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();

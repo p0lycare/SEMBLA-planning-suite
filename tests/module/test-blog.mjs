@@ -46,15 +46,34 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // (Repo-Fassungen aus dem Verzeichnis, eigene Kataloge aus dem Browser) und das
 // FRISCHE Laden jeder gewaehlten Repo-Fassung beim Speichern. NICHT versprochen werden
 // ein neues gespeichertes Feld, ein Versionssprung oder Aenderungen an Modul 10.
-// Der NEUESTE Eintrag sind die BODENBLECH-AUSSPARUNGEN IM RECHENKERN (#138, Fundament).
-// Geliefert: manuell gewaehlte volle 125-mm-Rasterfelder als kanonische Eingabe
+// Der NEUESTE Eintrag ist die BEDIENUNG DER BODENBLECH-AUSSPARUNGEN (#138, Abschluss).
+// Geliefert: Auswahlmodus „Bodenblech aussparen" in Modul 1 (Felder einzeln an-/abwaehlen,
+// alle zuruecksetzen), jede Aktion schreibt die kanonische Eingabe und laeuft durch den
+// bestehenden Neuberechnungs- und Speicherpfad, Luecken ueberleben Neuladen und
+// Projekt-Roundtrip, Modul 4 zaehlt nur reale Bleche und der gemeinsame Zeichnungspfad
+// zeigt Luecken gestrichelt mit Kreuz — eindeutig getrennt von weissen Stossmarken.
+// NICHT versprochen werden IFC-Aenderungen oder eine automatische Feldwahl.
+const FRISCH_138B = EINTRAEGE[0];
+ok("[#138] die Bedienung der Bodenblech-Aussparungen ist der neueste Eintrag",
+  FRISCH_138B?.id === "chg-20260918-02" && FRISCH_138B?.issue === 138
+  && FRISCH_138B?.typ === "feature" && FRISCH_138B?.datum === "2026-09-18"
+  && /Bodenblech aussparen/.test(FRISCH_138B?.titel || "")
+  && /Stückliste und Zeichnung/.test(FRISCH_138B?.titel || ""));
+ok("[#138] die Testbitte fuehrt den Bedienweg mit Roundtrip und Modul 4",
+  /Bodenblech aussparen/.test(FRISCH_138B?.testbitte || "")
+  && /Roundtrip/.test(FRISCH_138B?.testbitte || "")
+  && /Modul 4/.test(FRISCH_138B?.testbitte || ""));
+
+// Davor die BODENBLECH-AUSSPARUNGEN IM RECHENKERN (#138, Fundament) — ueber die Kennung
+// gesucht, weil sie nicht mehr der neueste Eintrag sind. Geliefert: manuell gewaehlte
+// volle 125-mm-Rasterfelder als kanonische Eingabe
 // (`prestress.base_plate_aussparungen_grid`), deterministische Normalisierung zu
 // disjunkten Luecken ([A-28]), unabhaengiges Slicing jedes verbleibenden Bereichs ohne
 // Ueberbrueckung mit benannten unbaubaren Resten ([A-29]), deterministisches Verwerfen
 // unzulaessiger Felder mit Befund ([A-30]) und JS/Python-Paritaet. NICHT versprochen
 // werden Bedienelemente, Stuecklisten- oder Zeichnungsdarstellung — das folgt separat.
-const FRISCH_138A = EINTRAEGE[0];
-ok("[#138] die Bodenblech-Aussparungen im Rechenkern sind der neueste Eintrag",
+const FRISCH_138A = EINTRAEGE.find(e => e.id === "chg-20260918-01");
+ok("[#138] die Bodenblech-Aussparungen im Rechenkern stehen als Eintrag davor",
   FRISCH_138A?.id === "chg-20260918-01" && FRISCH_138A?.issue === 138
   && FRISCH_138A?.typ === "feature" && FRISCH_138A?.datum === "2026-09-18"
   && /Bodenblech-Aussparungen/.test(FRISCH_138A?.titel || "")

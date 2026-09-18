@@ -1965,6 +1965,21 @@ globalThis.fetch = echtesFetch;
   // Test Zustand mit noch laufenden Fortsetzungen der beiden Klick-Handler.
   await warte();
 
+  // #138 Bodenblech-Aussparungen ([A-28]) sind Wandbestand im Vorspannblock — sie muessen den
+  // Archivumlauf ueberleben. Gesetzt wird ueber den echten Rechenkern, damit im Archivstand die
+  // kanonischen Luecken stehen und nicht bloss die Rasterindizes.
+  {
+    const el = store.holeElement(wEg), we = el.wandelement;
+    const neu = buildWall(we.name, we.length_mm, we.height_mm, we.openings || [], we.sides,
+      { ...(we.prestress || {}), base_plate_aussparungen_grid: [8, 9] });
+    neu.wandtyp = we.wandtyp;
+    store.speichere(el.name, neu, wEg);
+    ok('[#138] Ausgangsstand traegt die gewaehlten Bodenblech-Aussparungen',
+      JSON.stringify(store.holeElement(wEg).wandelement.prestress.base_plate_aussparungen_grid)
+        === '[8,9]'
+      && store.holeElement(wEg).wandelement.base_plate.aussparungen.length === 1);
+  }
+
   // Lage und Bemassung schreibt sonst der Layout-Editor ([K-10]) — hier ueber
   // dieselben reinen Operationen, damit der Archivtest echte Nutzdaten sieht.
   store.setzeMappe(MAPPE.setzeWand(store.holeMappe(), gsEg, {
@@ -2067,6 +2082,12 @@ globalThis.fetch = echtesFetch;
     $('arc-overlay').hidden === true && store.aktivesProjektId() === prjA.projekt.id);
   ok('[L-13] fachlich identischer Stand (Struktur, Lage, Bemassungen, Kopfdaten, Eingaben)',
     vergleich() === standVorher);
+  ok('[#138] die Bodenblech-Aussparungen sind nach dem Import unveraendert da',
+    (() => { const w = store.holeElement(wEg).wandelement;
+      return JSON.stringify(w.prestress.base_plate_aussparungen_grid) === '[8,9]'
+        && w.base_plate.aussparungen.length === 1
+        && w.base_plate.aussparungen[0].g0 === 8 && w.base_plate.aussparungen[0].g1 === 10
+        && w.base_plate.laenge_mm === w.length_mm - 250; })());
   ok('[L-11] die Kopfdaten stehen wieder am Projekt',
     store.holeMappe().projekt.kopfdaten.bauherr === 'AWG Musterstadt');
   ok('[K-10] die Bemassung ist wieder da', MAPPE.bemassungen(store.holeMappe(), gsEg).length === 1);

@@ -49,6 +49,9 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          // #91: Kennfarbe und Klartext der Blechstossmarke — dieselbe Quelle, aus der das
          // Blatt-SVG die Marke zeichnet; eine zweite Werteliste hier waere Drift ([D-4]).
          BLECHSTOSS,
+         // #138: die kanonischen Bodenblech-Aussparungen und ihr Darstellungsschluessel —
+         // dieselbe Quelle, aus der `bodenblechSvg()` die Luecken zeichnet ([A-28]/[D-4]).
+         bodenblechAussparungen, AUSSPARUNG,
          // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
          // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
          // #112: `SPANN_MM` kommt hinzu, weil die weisse Haarlinie am Stangenstoss aus dem
@@ -1183,6 +1186,13 @@ export function legendeHtml(w) {
             + `${FARBE.stahl} 60% 100%)`, "plate")}${BLECHSTOSS.label} (Bodenblech)</span>` : "")
     + (bodenblechTeile(w).some(t => t.art === "sonder")
         ? `<span>${i(FARBE.stange_sonder, "plate")}Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : "")
+    // Bodenblech-Aussparung ([A-28]/#138): genannt GENAU DANN, wenn die Wand wirklich eine
+    // Luecke fuehrt. Das Feld traegt — wie im Blatt — einen LEEREN, gestrichelten Umriss statt
+    // eines Blechfeldes: dort liegt kein Blech, und die Aussparung darf mit der weissen
+    // Stossmarke weder farblich noch in der Form verwechselbar sein ([D-4]).
+    + ((w && bodenblechAussparungen(w).length)
+        ? `<span><i class="bas" style="color:${AUSSPARUNG.farbe}"></i>`
+          + `${AUSSPARUNG.label} (kein Bodenblech)</span>` : "")
     // Einlegeblech der Zwischenspannpunkte ([A-14]/#110): genannt nur, wenn die Wand
     // wirklich einen wirksamen Punkt fuehrt, und mit dem Klartext aus sembla-montage.js.
     + ((w && wirksameZwischenpunkte(w).length)
@@ -1339,6 +1349,14 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
   .zlegende i.agp{background:none;height:0;width:0;border-radius:0;
                   border-left:5px solid transparent;border-right:5px solid transparent;
                   border-bottom:8px solid}
+  /* Bodenblech-Aussparung (#138): LEERER, gestrichelter Umriss mit Kreuz — bewusst kein
+     gefuelltes Blechfeld und keine weisse Marke darin, damit sie mit dem Blechstoss weder
+     farblich noch in der Form zu verwechseln ist ([D-4]). */
+  .zlegende i.bas{background:none;height:9px;width:13px;border-radius:0;position:relative;
+                  border:1px dashed currentColor}
+  .zlegende i.bas::after{content:"";position:absolute;left:-1px;top:-1px;right:-1px;bottom:-1px;
+                  background:linear-gradient(to bottom right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%),
+                             linear-gradient(to top right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%)}
   .ztitleblock{grid-column:1 / span 2;grid-row:2;display:grid;
                grid-template-columns:2.2fr 1.2fr 1.1fr;border:1.5px solid #13202e;
                border-radius:3px;overflow:hidden;font-size:11px}
