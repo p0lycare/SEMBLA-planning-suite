@@ -9,7 +9,7 @@
     "grid_mm": 125,
     "course_mm": 200,
     "thickness_mm": 125,
-    "rod_mm": 1000,
+    "rod_mm": 1050,
     "N_grid": 24,
     "lagen": 13,
     "openings": [],
@@ -42,9 +42,9 @@
     "prestress": {
       "max_span_grid": 3,
       "force_kN": 50,
-      "rod_mm": 1000,
+      "rod_mm": 1050,
       "rod_lengths_mm": [
-        1000
+        1050
       ],
       "blech_mm": 1000,
       "blech_dicke_mm": 10,
@@ -144,26 +144,26 @@
             "gewindestangen": 3,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 600,
+                "len_mm": 500,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 2600,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 600,
-            "verschnitt_mm": 400,
+            "letzte_stange_mm": 500,
+            "verschnitt_mm": 550,
             "verbindungsmuttern": 2,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -191,26 +191,26 @@
             "gewindestangen": 3,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 600,
+                "len_mm": 500,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 2600,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 600,
-            "verschnitt_mm": 400,
+            "letzte_stange_mm": 500,
+            "verschnitt_mm": 550,
             "verbindungsmuttern": 2,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -238,26 +238,26 @@
             "gewindestangen": 3,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 600,
+                "len_mm": 500,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 2600,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 600,
-            "verschnitt_mm": 400,
+            "letzte_stange_mm": 500,
+            "verschnitt_mm": 550,
             "verbindungsmuttern": 2,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -285,26 +285,26 @@
             "gewindestangen": 3,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 600,
+                "len_mm": 500,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 2600,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 600,
-            "verschnitt_mm": 400,
+            "letzte_stange_mm": 500,
+            "verschnitt_mm": 550,
             "verbindungsmuttern": 2,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -332,26 +332,26 @@
             "gewindestangen": 3,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 600,
+                "len_mm": 500,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 2600,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 600,
-            "verschnitt_mm": 400,
+            "letzte_stange_mm": 500,
+            "verschnitt_mm": 550,
             "verbindungsmuttern": 2,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -379,26 +379,26 @@
             "gewindestangen": 3,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 200,
+                "len_mm": 100,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
-            "zuschnitt_konflikt": "kein_reststueck",
+            "zuschnitt_konflikt": "mindestmass",
             "bedarf_mm": 2200,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 200,
-            "verschnitt_mm": 800,
+            "letzte_stange_mm": 100,
+            "verschnitt_mm": 950,
             "verbindungsmuttern": 2,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -426,26 +426,26 @@
             "gewindestangen": 3,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 200,
+                "len_mm": 100,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
-            "zuschnitt_konflikt": "kein_reststueck",
+            "zuschnitt_konflikt": "mindestmass",
             "bedarf_mm": 2200,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 200,
-            "verschnitt_mm": 800,
+            "letzte_stange_mm": 100,
+            "verschnitt_mm": 950,
             "verbindungsmuttern": 2,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -473,21 +473,21 @@
             "gewindestangen": 2,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 800,
+                "len_mm": 750,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 1800,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 800,
-            "verschnitt_mm": 200,
+            "letzte_stange_mm": 750,
+            "verschnitt_mm": 300,
             "verbindungsmuttern": 1,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -515,21 +515,21 @@
             "gewindestangen": 2,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 800,
+                "len_mm": 750,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 1800,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 800,
-            "verschnitt_mm": 200,
+            "letzte_stange_mm": 750,
+            "verschnitt_mm": 300,
             "verbindungsmuttern": 1,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -557,21 +557,21 @@
             "gewindestangen": 2,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 800,
+                "len_mm": 750,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 1800,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 800,
-            "verschnitt_mm": 200,
+            "letzte_stange_mm": 750,
+            "verschnitt_mm": 300,
             "verbindungsmuttern": 1,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -599,21 +599,21 @@
             "gewindestangen": 2,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 400,
+                "len_mm": 350,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 1400,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 400,
-            "verschnitt_mm": 600,
+            "letzte_stange_mm": 350,
+            "verschnitt_mm": 700,
             "verbindungsmuttern": 1,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -641,21 +641,21 @@
             "gewindestangen": 2,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 400,
+                "len_mm": 350,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 1400,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 400,
-            "verschnitt_mm": 600,
+            "letzte_stange_mm": 350,
+            "verschnitt_mm": 700,
             "verbindungsmuttern": 1,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -683,21 +683,21 @@
             "gewindestangen": 2,
             "stuecke": [
               {
-                "len_mm": 1000,
+                "len_mm": 1050,
                 "art": "standard",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               },
               {
-                "len_mm": 400,
+                "len_mm": 350,
                 "art": "sonder",
-                "quelle_mm": 1000
+                "quelle_mm": 1050
               }
             ],
             "zuschnitt_konflikt": "kein_reststueck",
             "bedarf_mm": 1400,
             "ueberstand_mm": 0,
-            "letzte_stange_mm": 400,
-            "verschnitt_mm": 600,
+            "letzte_stange_mm": 350,
+            "verschnitt_mm": 700,
             "verbindungsmuttern": 1,
             "anker_unten": "bodenblech",
             "anker_oben": "kopfblech",
@@ -727,7 +727,7 @@
       "stahlblech_dicke_mm": 10,
       "stossfugen": 77,
       "dichtstreifen_mm": 15400,
-      "verschnitt_mm": 6000
+      "verschnitt_mm": 7650
     },
     "validation": {
       "buildable": true,
@@ -742,91 +742,91 @@
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 600
+          "fertigmass_mm": 500
         },
         {
           "k": 3,
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 600
+          "fertigmass_mm": 500
         },
         {
           "k": 4,
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 600
+          "fertigmass_mm": 500
         },
         {
           "k": 7,
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 600
+          "fertigmass_mm": 500
         },
         {
           "k": 9,
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 600
+          "fertigmass_mm": 500
         },
         {
           "k": 10,
           "z0_mm": 0,
           "z1_mm": 2200,
-          "grund": "kein_reststueck",
-          "fertigmass_mm": 200
+          "grund": "mindestmass",
+          "fertigmass_mm": 100
         },
         {
           "k": 12,
           "z0_mm": 0,
           "z1_mm": 2200,
-          "grund": "kein_reststueck",
-          "fertigmass_mm": 200
+          "grund": "mindestmass",
+          "fertigmass_mm": 100
         },
         {
           "k": 13,
           "z0_mm": 0,
           "z1_mm": 1800,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 800
+          "fertigmass_mm": 750
         },
         {
           "k": 16,
           "z0_mm": 0,
           "z1_mm": 1800,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 800
+          "fertigmass_mm": 750
         },
         {
           "k": 17,
           "z0_mm": 0,
           "z1_mm": 1800,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 800
+          "fertigmass_mm": 750
         },
         {
           "k": 18,
           "z0_mm": 0,
           "z1_mm": 1400,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 400
+          "fertigmass_mm": 350
         },
         {
           "k": 19,
           "z0_mm": 0,
           "z1_mm": 1400,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 400
+          "fertigmass_mm": 350
         },
         {
           "k": 22,
           "z0_mm": 0,
           "z1_mm": 1400,
           "grund": "kein_reststueck",
-          "fertigmass_mm": 400
+          "fertigmass_mm": 350
         }
       ],
       "ungehaltene_steine": [],
@@ -1472,7 +1472,7 @@
             "stein-i2-250"
           ],
           "rod_std": [
-            "gewindestange-m10-1000"
+            "gewindestange-m10-1050"
           ],
           "kupplung": [
             "verbrauch-kopplungsmutter"

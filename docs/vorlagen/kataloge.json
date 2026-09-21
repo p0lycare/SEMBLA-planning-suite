@@ -2,8 +2,14 @@
   "format": "SEMBLA-Katalogvorlagen",
   "version": 1,
   "hinweis": "Herausgegebene Fassungen des mitgelieferten Standardkatalogs. Eine geaenderte Fassung ERSETZT keine bestehende, sondern tritt als eigene Datei daneben — die Vorlagenidentitaet der Browserressource leitet sich allein aus dem PFAD ab (vorlageKatalogId, #102). Alte Fassungen bleiben deshalb dauerhaft im Repo: ein Projekt, das ihnen zugeordnet ist, muss seinen Katalog auch in einem frischen Browser laden koennen. Neueste Fassung zuerst.",
-  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v3.json",
+  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v4.json",
   "fassungen": [
+    {
+      "pfad": "./vorlagen/SEMBLA_Standardkatalog-v4.json",
+      "version": "v4",
+      "datum": "2026-09-21",
+      "notiz": "Wie v3, aber mit den fachlich bestaetigten Standardlaengen der M10-Gewindestangen: 1050 mm statt 1000 mm und 820 mm statt 920 mm (#103). Beide Produkte tragen sprechende Kennungen (gewindestange-m10-1050 / gewindestange-m10-820), die zur Laenge passen — der Umstieg eines Bestandsprojekts erzeugt deshalb bewusst einen Reparaturbefund (#118) statt einer stillen Laengenaenderung. Sonst inhaltsgleich mit v3: keine weitere Produktzeile, kein Preis, keine Baugruppe geaendert."
+    },
     {
       "pfad": "./vorlagen/SEMBLA_Standardkatalog-v3.json",
       "version": "v3",

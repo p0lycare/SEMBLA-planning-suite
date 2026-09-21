@@ -54,8 +54,30 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // dort neu, ungueltige Ziele brechen die gesamte Aenderung benannt und atomar ab, alles
 // ist genau ein Undo-/Redo-Schritt. NICHT versprochen werden gespeicherte Blech-IDs,
 // freie mm-Eingabe oder eine Aenderung der automatischen Default-Ableitung im Core.
-const FRISCH_139 = EINTRAEGE[0];
-ok("[#139] die nummerierten Zwischenspannbleche sind der neueste Eintrag",
+// Der NEUESTE Eintrag ist die STANDARDKATALOG-FASSUNG v4 (#103) — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist eine NEUE herausgegebene Katalogfassung mit den
+// Standardgewindestangen 1050 mm und 820 mm, die fuer NEUE Projekte gilt; ausdruecklich
+// NICHT versprochen werden eine Umstellung vorhandener Projekte, eine Aenderung alter
+// Fassungen oder eine geaenderte Auswahl-/Zuschnittlogik ([Z-2]/[Z-6] unberuehrt).
+const FASSUNG_103 = EINTRAEGE[0];
+ok("[#103] die Standardkatalog-Fassung v4 ist der neueste Eintrag",
+  FASSUNG_103?.id === "chg-20260921-01" && FASSUNG_103?.issue === 103
+  && FASSUNG_103?.typ === "fix" && FASSUNG_103?.datum === "2026-09-21"
+  && /1050 mm/.test(FASSUNG_103?.titel || "")
+  && /820 mm/.test(FASSUNG_103?.titel || "")
+  // Keine Migrations-/Logikzusage: gerechnet und zugeordnet wird unveraendert.
+  && !/migriert|umgestellt|Zuschnitt|Vorspannung/i.test(FASSUNG_103?.titel || ""));
+ok("[#103] der Eintrag sagt, dass alte Fassungen unveraendert bleiben",
+  /alte Fassungen unver/.test(FASSUNG_103?.titel || ""));
+ok("[#103] die Testbitte fuehrt neues Projekt UND den Bestandsfall",
+  /[Nn]eues Projekt/.test(FASSUNG_103?.testbitte || "")
+  && /Bestandsprojekt/.test(FASSUNG_103?.testbitte || "")
+  && /v3/.test(FASSUNG_103?.testbitte || ""));
+
+const FRISCH_139 = EINTRAEGE.find(e => e.id === "chg-20260918-04");
+ok("[#139] die nummerierten Zwischenspannbleche folgen darauf",
   FRISCH_139?.id === "chg-20260918-04" && FRISCH_139?.issue === 139
   && FRISCH_139?.typ === "feature" && FRISCH_139?.datum === "2026-09-18"
   && /Zwischenspannbleche/.test(FRISCH_139?.titel || "")
@@ -2472,8 +2494,16 @@ ok("die Testbitte fuehrt den echten Bedienweg samt beiden sichtbaren Angaben",
   && /Standardkatalog laden/.test(STANDARDLAENGE?.testbitte || "")
   && /920 mm/.test(STANDARDLAENGE?.testbitte || "")
   && /Bezeichnung/.test(STANDARDLAENGE?.testbitte || ""));
-ok("genau ein Eintrag fuer Issue 103 (Standardlaenge der Gewindestange)",
-  EINTRAEGE.filter(e => e.issue === 103).length === 1);
+// Issue 103 traegt ZWEI Eintraege — und das ist hier richtig: die fachlich bestaetigte
+// Standardlaenge hat sich ein zweites Mal geaendert (920 mm -> 820 mm), und jede
+// Auslieferung ist ein eigenes, zum jeweiligen Zeitpunkt wahres Ereignis. Der aeltere
+// Eintrag wird NICHT umgeschrieben: die Aenderungsliste ist eine Chronik, keine
+// Zustandsanzeige. Mehr als zwei waeren dagegen ein Doppeleintrag derselben Lieferung.
+const ALLE_103 = EINTRAEGE.filter(e => e.issue === 103);
+ok("zwei getrennte Auslieferungen fuer Issue 103 (920 mm, dann Fassung v4 mit 820 mm)",
+  ALLE_103.length === 2);
+ok("der neuere 103-Eintrag steht vor dem aelteren (Chronik: neu -> alt)",
+  ALLE_103[0]?.id === "chg-20260921-01" && ALLE_103[1]?.id === "chg-20260904-11");
 
 // Der Kopierschutz des Standardkatalogs (#102) rueckt geschlossen um eins nach hinten und
 // zaehlt ab hier ueber `KOPIERSCHUTZ`. Aussagewahr heisst hier: versprochen wird die

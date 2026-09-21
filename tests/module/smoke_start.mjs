@@ -985,7 +985,9 @@ ok('jedes vorlaeufige Produkt ist einzeln gekennzeichnet',
   // nebenbei: das waere eine Katalogaenderung ausserhalb dieses Pakets.
   // Fachauskunft 2026-09-08: die vorlaeufige Unterlegscheibe des Wandabschlusses ist entfallen
   // (hebt #92 auf) -> zwoelf.
-  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 12
+  // #103: die zweite Standardgewindestange ist fachlich bestaetigt (820 mm) und traegt die
+  // Kennzeichnung in der Fassung v4 zu Recht nicht mehr -> elf.
+  katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung)).length === 11
   && katRoh.produkte.filter(p => /\(vorläufig\)/.test(p.bezeichnung))
        .every(p => (p.hinweis || '').startsWith('vorläufig — fachlich unbestätigt')));
 ok('Wandvorlage traegt Projektformat v2 (kein Formatbump)',
@@ -1042,9 +1044,12 @@ ok('#91 und #104 sind die einzigen Abweichungen zur Vorlage (Bodenblech-Teile, S
 ok('AWG-Maße/Raster unveraendert',
   wv.length_mm === 3000 && wv.height_mm === 2600 && wv.thickness_mm === 125
   && wv.grid_mm === 125 && wv.course_mm === 200 && wv.N_grid === 24 && wv.lagen === 13);
-ok('AWG-Vorspannvorgaben unveraendert',
-  wv.rod_mm === 1000 && wv.prestress.max_span_grid === 3 && wv.prestress.force_kN === 50
-  && wv.prestress.rod_mm === 1000);
+// #103: Die fachlich bestaetigte Standardlaenge ist 1050 mm (vorher 1000 mm). Die Vorlage ist
+// darauf nachgezogen — die uebrigen AWG-Vorgaben (Raster, Achsabstand, Vorspannkraft) sind
+// davon unberuehrt.
+ok('AWG-Vorspannvorgaben unveraendert (Standardlaenge nach #103: 1050 mm)',
+  wv.rod_mm === 1050 && wv.prestress.max_span_grid === 3 && wv.prestress.force_kN === 50
+  && wv.prestress.rod_mm === 1050 && wv.prestress.rod_lengths_mm.join() === '1050');
 ok('AWG-Staffelung (3 Stufen) unveraendert',
   wv.steps.length === 3 && wv.steps[0].height_mm === 2200 && wv.steps[1].height_mm === 1800
   && wv.steps[2].height_mm === 1400 && wv.openings.length === 0);
@@ -1064,8 +1069,10 @@ ok('#104 AWG: kein Strang im aeusseren Randfeld',
              && ks.includes(1) && ks.includes(wv.N_grid - 2); })());
 ok('AWG-Tiling unveraendert (Kernmengen des Anhangs)',
   wv.bom.i2 === 20 && wv.bom.i3 === 70);
+// Stangenzahl und Verbindungsmuttern folgen den 13 Achsen und sind von der Standardlaenge
+// unabhaengig; der Verschnitt folgt ihr (#103: 1050 statt 1000 mm -> 7650 statt 6000 mm).
 ok('AWG-Vorspannmengen folgen den 13 Achsen',
-  wv.bom.gewindestangen === 33 && wv.bom.verbindungsmuttern === 20 && wv.bom.verschnitt_mm === 6000);
+  wv.bom.gewindestangen === 33 && wv.bom.verbindungsmuttern === 20 && wv.bom.verschnitt_mm === 7650);
 ok('AWG-Wand erfuellt die Muss-Regel [V-2] (kein ungehaltener Stein)',
   wv.validation.ungehaltene_steine.length === 0);
 ok('AWG-Wand ist baubar geprueft', wv.validation.buildable === true && wv.validation.tension_span_ok === true);
@@ -1103,8 +1110,17 @@ ok('Kennzeichnung „vorläufig" ueberlebt die Persistenz',
   KAT.produkt(kat(), 'latte-40-60-1500').hinweis.startsWith('vorläufig — fachlich unbestätigt'));
 ok('geladene Produkte tragen die Produktvorgaben der Suite',
   KAT.produkt(kat(), 'stein-i3-375').preis === 9.5 && KAT.produkt(kat(), 'stein-i2-250').preis === 7.2
-  && KAT.produkt(kat(), 'gewindestange-m10-1000').laenge_mm === 1000);
-// [P-18] Der Standardkatalog macht die Suite startklar: Standardlaengen 1000/920, EIN Reststueck
+  && KAT.produkt(kat(), 'gewindestange-m10-1050').laenge_mm === 1050);
+// #103 Die fachlich bestaetigten Standardlaengen sind seit Fassung v4 1050 und 820 mm; die
+// Kennung nennt die Laenge (sprechende IDs), und die ueberholten 1000/920 mm stehen in der
+// aktuellen Fassung nicht mehr.
+ok('#103 die aktuelle Fassung fuehrt genau die Standardlaengen 1050 und 820 mm',
+  kat().produkte.filter(p => (p.rollen || []).includes('rod_std'))
+    .map(p => p.id + ':' + p.laenge_mm).join()
+    === 'gewindestange-m10-1050:1050,gewindestange-m10-820:820'
+  && KAT.produkt(kat(), 'gewindestange-m10-1000') === null
+  && KAT.produkt(kat(), 'gewindestange-m10-850') === null);
+// [P-18] Der Standardkatalog macht die Suite startklar: Standardlaengen 1050/820, EIN Reststueck
 // 100 mm, EINE Kopplungsmutter fuer Stoß und Fuß, und jede waehlbare Rolle ist vorbelegt.
 // #136 Einzige Ausnahme sind die beiden Ausgleichsstein-Rollen ([G-16]): fuer sie ist noch
 // kein Produkt freigegeben (keine Steinhoehe, kein Preis fachlich genannt), und erfunden wird
@@ -1129,7 +1145,7 @@ ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
                 'verbrauch-senkkopfschraube-fuss'];
   ok('#97 die vorbelegte Fassung ist die aus VORLAGE_KATALOG_PFAD',
     kat().id === KAT.vorlageKatalogId(KAT.VORLAGE_KATALOG_PFAD)
-    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v3/.test(kat().name));
+    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v4/.test(kat().name));
   ok('#97 Spannmutter, Mutter Einlegeblech und Sechskantschraube Fuß fuehren SW 17 mm',
     SW97.every(id => KAT.produkt(kat(), id).sw_mm === 17));
   ok('#97 die Herleitung aus dem Gewinde M10 steht am Produkt, nicht im Testtext',
@@ -1209,7 +1225,7 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
   const eMw = store.holeEingaben(mw.id);
   const rollen = KAT.produktRollen(eMw);
   ok('Vorlage bringt Rollen fuer Modul 1 und Modul 2 mit',
-    rollen.i3.join() === 'stein-i3-375' && rollen.rod_std.join() === 'gewindestange-m10-1000'
+    rollen.i3.join() === 'stein-i3-375' && rollen.rod_std.join() === 'gewindestange-m10-1050'
     && rollen.blech_boden.join() === 'blech-bodenblech-1000' && rollen.blech_kopf.join() === 'blech-kopfblech-1000'
     && rollen.latte.join() === 'latte-40-60-1500' && rollen.beplankung.join() === 'beplankung-625-1500');
   ok('Vorlage laesst das Verbinderprodukt bewusst leer (kein Rateschluss)',
@@ -1262,8 +1278,14 @@ ok('erneuter Klick auf „Importieren" speichert nicht doppelt',
   ok('keine Beplankungsposition und keine offene Zeile daraus ([Z-4])',
     !rsMw.some(r => ['verbinder', 'latte', 'beplankung'].includes(r.key))
     && !offen.some(r => ['verbinder', 'latte', 'beplankung'].includes(r.key)));
-  ok('Vorlage nutzt die zur Wand passende Stangenlänge (1000 mm)',
-    rsMw.find(r => r.key === 'rod_std').produktId === 'gewindestange-m10-1000');
+  // #103 Die Vorlage ist auf die Fassung v4 nachgezogen: gewaehlt ist die 1050-mm-Stange,
+  // und die gespeicherte Zerlegung des Wandelements fuehrt dieselbe Laenge — nur dann loest
+  // die Position nach [P-14] ueberhaupt auf (Mass gegen Mass, keine Umrechnung).
+  ok('Vorlage nutzt die zur Wand passende Stangenlänge (1050 mm)',
+    rsMw.find(r => r.key === 'rod_std').produktId === 'gewindestange-m10-1050'
+    && rsMw.find(r => r.key === 'rod_std').status === 'ok'
+    && mw.wandelement.prestress.rod_lengths_mm.join() === '1050'
+    && mw.wandelement.rod_mm === 1050);
   ok('Vorlage: Boden- und Kopfblech getrennt bepreist',
     rsMw.find(r => r.key === 'blech_boden').ep === 18 && rsMw.find(r => r.key === 'blech_kopf').ep === 18
     && rsMw.find(r => r.key === 'blech_boden').menge + rsMw.find(r => r.key === 'blech_kopf').menge
@@ -2495,7 +2517,7 @@ globalThis.fetch = echtesFetch;
     && neueStaende.every(v => !JSON.stringify(JSON.parse(v)[idZ]).includes('1100')));
   ok('#15 schon der erste geschriebene Stand traegt Kataloglaengen und Reststueck',
     JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_rest_mm === 100
-    && JSON.stringify(JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_lengths_mm) === '[1000,920]');
+    && JSON.stringify(JSON.parse(neueStaende[0])[idZ].wandelement.prestress.rod_lengths_mm) === '[1050,820]');
   ok('[P-18] und im selben Stand stehen bereits die vorbelegten Verwendungsstellen',
     (JSON.parse(neueStaende[0])[idZ].eingaben?.planung?.produkte?.rollen?.rod_std || []).length === 2);
   ok('#15 der Anlagepfad benennt den Zuschnitt genau einmal — nie einen Zwischenstand',
@@ -2504,15 +2526,19 @@ globalThis.fetch = echtesFetch;
 
   ok('#15 der geladene Katalog belegt die Verwendungsstellen vor ([P-18])',
     !!store.holeKatalog() && store.holeProdukte(1, idZ).rollen.rod_std.length === 2);
-  ok('#15 das unmittelbar gespeicherte JSON traegt die Kataloglaengen',
-    JSON.stringify(wZ.prestress.rod_lengths_mm) === '[1000,920]' && wZ.rod_mm === 1000);
+  // #103: Die aktuelle Fassung fuehrt 1050 und 820 mm. Der ERSTE gespeicherte Stand einer
+  // frisch angelegten Wand traegt genau diese Laengen — kein 1000-/920-mm-Zwischenstand.
+  ok('#15/#103 das unmittelbar gespeicherte JSON traegt die Kataloglaengen (1050/820)',
+    JSON.stringify(wZ.prestress.rod_lengths_mm) === '[1050,820]' && wZ.rod_mm === 1050
+    && !JSON.stringify(wZ).includes('"1000"') && !stuecke(wZ).some(s =>
+         s.art === 'standard' && (s.len_mm === 1000 || s.len_mm === 920)));
   ok('#15 [Z-6] das Reststueck steht in der Vorspannung und oben in den Stuecken',
     wZ.prestress.rod_rest_mm === 100
     && wZ.tension_columns.every(c => c.segments.every(sg =>
          sg.z1_mm !== wZ.height_mm || sg.stuecke[sg.stuecke.length - 1].art === 'rest')));
   ok('#62 keine erfundene 1100-mm-Stange im gespeicherten Stand',
     !JSON.stringify(wZ).includes('1100')
-    && stuecke(wZ).every(s => s.len_mm === 1000 || s.len_mm === 920 || s.art !== 'standard'));
+    && stuecke(wZ).every(s => s.len_mm === 1050 || s.len_mm === 820 || s.art !== 'standard'));
   ok('#62 Baustellenstueckliste und Zeichnung leiten OHNE Modul 1 denselben Satz ab',
     BOM.einbauteile(wZ).length === stuecke(wZ).length
     && BOM.semblaBomItems(wZ).filter(p => /^rod_/.test(p.key) && p.menge > 0)

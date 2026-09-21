@@ -1087,12 +1087,12 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Fassung von selbst eine eigene, unveraenderliche Identitaet und tritt neben die
   // anderen statt sie zu ersetzen.
   ok("#118 der Vorlagenpfad zeigt auf eine VERSIONIERTE Repo-Datei",
-    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v3.json");
+    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v4.json");
   const id = KAT.vorlageKatalogId(PFAD);
   ok("#102 die Kennung ist deterministisch und pfadabgeleitet",
-    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v3"
+    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v4"
     && KAT.vorlageKatalogId(PFAD) === id
-    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v3.json") === id);
+    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v4.json") === id);
   ok("#118 jede Fassung ergibt eine EIGENE Kennung — keine ersetzt eine andere",
     KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v1.json") !== id);
   ok("#102 ein anderer Pfad ergibt eine andere Kennung",
@@ -1205,12 +1205,13 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
 
   // Das Verzeichnis (#118) ist der EINE Ort, an dem eine Fassung bekanntgegeben wird.
   const man = KAT.parseVorlagenManifest(lies("kataloge.json"));
-  // #130: v3 tritt neben v2 und v1 (inhaltsgleich mit v2, s. Manifest-Notiz) und ist
-  // die aktuell empfohlene Fassung; v1/v2 bleiben unveraendert daneben (Freeze-Test).
-  ok("#97/#130 das Verzeichnis fuehrt ALLE Fassungen und weist aktuell auf v3",
-    man.fassungen.length === 3
-    && man.fassungen.map((f) => f.version).join() === "v3,v2,v1"
-    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v3.json"
+  // #130: v3 tritt neben v2 und v1 (inhaltsgleich mit v2, s. Manifest-Notiz).
+  // #103: v4 tritt daneben und ist die aktuell empfohlene Fassung; v1/v2/v3 bleiben
+  // unveraendert erhalten (Freeze-Test).
+  ok("#97/#130/#103 das Verzeichnis fuehrt ALLE Fassungen und weist aktuell auf v4",
+    man.fassungen.length === 4
+    && man.fassungen.map((f) => f.version).join() === "v4,v3,v2,v1"
+    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v4.json"
     && man.aktuell === KAT.VORLAGE_KATALOG_PFAD);
   ok("#130 v3 ist inhaltsgleich mit v2 (gleiche Produkte, Baugruppen und Kennungen)",
     (() => {
@@ -1231,6 +1232,74 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     SW_ROLLEN.every((id) => KAT.produkt(v1, id).sw_mm == null));
 }
 
+
+
+// --- 12b) Herausgegebene Fassung v4: die Standardlaengen 1050 und 820 mm (#103) ---
+// Die fachlich bestaetigten Standardlaengen der M10-Gewindestangen sind 1050 mm und 820 mm.
+// Herausgegeben wird das als EIGENE Fassung: v3 bleibt byte-gleich daneben (Freeze-Test),
+// und weil die Kennung einer Vorlagenressource allein aus dem PFAD folgt (#102), stellt
+// die neue Fassung kein Bestandsprojekt still um. Die Produkt-IDs sind sprechend — die
+// alte Zeile `gewindestange-m10-850` trug 920 mm, also gerade NICHT ihre Laenge; ein
+// Bestandsprojekt bekommt beim bewussten Fassungswechsel deshalb den Reparaturbefund
+// nach #118 statt einer stillen Laengenaenderung.
+{
+  const lies = (n) => readFileSync(new URL("../../docs/vorlagen/" + n, import.meta.url), "utf8");
+  const rohV3 = lies("SEMBLA_Standardkatalog-v3.json");
+  const rohV4 = lies("SEMBLA_Standardkatalog-v4.json");
+  const v3 = KAT.parseKatalog(rohV3), v4 = KAT.parseKatalog(rohV4);
+
+  ok("#103 die Fassung v4 ist gegen den echten Parser gueltig und traegt Katalogformat 2",
+    v4.produkte.length > 0 && v4.version === 2
+    && v4.produkte.every((p) => KAT.validiereProdukt(p).length === 0));
+
+  const std = v4.produkte.filter((p) => (p.rollen || []).includes("rod_std"));
+  ok("#103 v4 fuehrt GENAU zwei Standardgewindestangen: 1050 und 820 mm",
+    std.length === 2 && std.map((p) => p.laenge_mm).join() === "1050,820");
+  ok("#103 beide sind M10, Guete 8.8 und tragen nur die Rolle rod_std",
+    std.every((p) => p.gewinde === "M10" && p.guete === "8.8"
+      && p.kategorie === "gewindestange" && p.rollen.join() === "rod_std"));
+  ok("#103 Kennung und Bezeichnung nennen dieselbe Laenge wie laenge_mm (sprechende IDs)",
+    std.every((p) => p.id === "gewindestange-m10-" + p.laenge_mm
+      && p.bezeichnung.includes(p.laenge_mm + " mm")));
+  ok("#103 die ueberholten Laengen 1000/920 stehen in v4 nicht mehr",
+    !std.some((p) => p.laenge_mm === 1000 || p.laenge_mm === 920)
+    && KAT.produkt(v4, "gewindestange-m10-1000") === null
+    && KAT.produkt(v4, "gewindestange-m10-850") === null);
+  ok("#103 das Reststueck ([Z-6]) bleibt unveraendert und eindeutig",
+    v4.produkte.filter((p) => (p.rollen || []).includes("rod_rest")).length === 1
+    && KAT.produkt(v4, "gewindestange-m10-100-rest").laenge_mm === 100);
+
+  // Der Kern des Pakets: v4 ist eine FASSUNG von v3, keine neue Datenlage. Unterschieden
+  // werden duerfen genau der Fassungsname und die beiden rod_std-Zeilen.
+  ok("#103 v4 unterscheidet sich von v3 NUR im Fassungsnamen und in den zwei rod_std-Zeilen",
+    (() => {
+      const o3 = JSON.parse(rohV3), o4 = JSON.parse(rohV4);
+      const felder = [...new Set([...Object.keys(o3), ...Object.keys(o4)])]
+        .filter((k) => JSON.stringify(o3[k]) !== JSON.stringify(o4[k]));
+      if (felder.join() !== "name,produkte") return false;
+      if (o3.name.replace(" v3 ", " v4 ") !== o4.name) return false;
+      if (o3.produkte.length !== o4.produkte.length) return false;
+      return o3.produkte.every((p, i) => {
+        const q = o4.produkte[i];
+        const rod = (p.rollen || []).includes("rod_std");
+        if (!rod) return JSON.stringify(p) === JSON.stringify(q);
+        // gleiche Position, gleiche Rolle, gleicher Preis, gleiche Einheit — neue Laenge
+        return (q.rollen || []).join() === "rod_std" && q.preis === p.preis
+          && q.einheit === p.einheit && q.laenge_mm !== p.laenge_mm;
+      });
+    })());
+  ok("#103 Preise und Baugruppen bleiben in v4 wertgleich zu v3",
+    v4.produkte.map((p) => p.preis).join() === v3.produkte.map((p) => p.preis).join()
+    && JSON.stringify(v4.sets) === JSON.stringify(v3.sets));
+  ok("#103 v4 macht die Suite unveraendert startklar ([P-18])",
+    KAT.rollenOhneVorschlag(v4).join() === KAT.rollenOhneVorschlag(v3).join()
+    && KAT.rollenOhneVorschlag(v4).join() === "ausgl_i3,ausgl_i2");
+  ok("#103 v3 bleibt eigenstaendig ladbar und behaelt seinen historischen Stand",
+    KAT.produkt(v3, "gewindestange-m10-1000").laenge_mm === 1000
+    && KAT.produkt(v3, "gewindestange-m10-850").laenge_mm === 920
+    && KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v3.json")
+       !== KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v4.json"));
+}
 
 // --- Deckenanschluss: Verwendungsstellen und Default-Set ([P-24], #95/#94) -
 // Die Bauteilliste ist eine FACHVORGABE vom 2026-09-08 und steht genau einmal: hier als

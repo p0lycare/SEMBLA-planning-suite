@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260921-01",
+    datum: "2026-09-21",
+    typ: "fix",
+    issue: 103,
+    titel: "Standardkatalog v4: Gewindestangen 1050 mm und 820 mm für neue Projekte, alte Fassungen unverändert daneben",
+    testbitte: "Neues Projekt anlegen, Wand planen: Modul 1, Stückliste und Zeichnung zeigen nur 1050/820 mm; "
+      + "ein Bestandsprojekt auf v3 behält seine bisherigen Längen, bis man die Fassung bewusst wechselt",
+  },
+  {
     id: "chg-20260918-04",
     datum: "2026-09-18",
     typ: "feature",
