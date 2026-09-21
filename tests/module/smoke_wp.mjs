@@ -6,9 +6,14 @@
 // lassen sich das Auto-Speichern, die wandbezogene Produktauswahl (Issue #35) und deren
 // Fortbestand ueber einen Reload (erneutes __wpInit()) am echten Datenpfad pruefen.
 import { readFileSync } from "node:fs";
+// #140: kurzer Fingerabdruck der gezeichneten Ansicht — Einfrieren der 200-mm-Referenz.
+import { createHash } from "node:crypto";
+const hash140=t=>createHash("sha256").update(String(t)).digest("hex").slice(0,16);
 import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte,
          // #136: der BENANNTE Grund der abgewiesenen Hoehe — Modul 1 zeigt ihn an.
-         AUSGLEICH_KONFLIKT, hoehenZerlegung } from "../../docs/shared/sembla-core.js";
+         AUSGLEICH_KONFLIKT, hoehenZerlegung,
+         // #140: die kanonischen Lagenkanten — PRUEFMASSSTAB der z-Koordinaten der Ansicht.
+         wandLagenKanten } from "../../docs/shared/sembla-core.js";
 import { autoAuslegung, nachweisPruefen } from "../../docs/shared/sembla-engine.js";
 
 class MemStorage {
@@ -93,6 +98,9 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   mutterSvg: MONT.mutterSvg,
   kopplungsmutterSvg: MONT.kopplungsmutterSvg, spannplatteSvg: MONT.spannplatteSvg,
   schraubeSvg: MONT.schraubeSvg,
+  // #140: die kanonischen Lagenkanten und die eine Umrechnung Reihenzahl -> Hoehe —
+  // dieselben Funktionen, aus denen Modul 7 seine z-Koordinaten bezieht ([D-4]).
+  wandLagenKanten, lagenOberkanteMm: MONT.lagenOberkanteMm,
   wirksameZwischenpunkte };
 
 eval(script);
@@ -4006,6 +4014,173 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     JSON.stringify(store.aktivesWandelement().prestress)===vorher139
     && JSON.stringify(store.aktivesWandelement().prestress.zwischenpunkte_mm)
        ===JSON.stringify(zp139));
+  store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
+// ---------------------------------------------------------------------------
+// Issue #140: Modul 1 zeichnet die Steinlagen auf den REALEN Lagenkanten
+// ---------------------------------------------------------------------------
+// Gemeldet war: bei aktivierter Ausgleichslage (#136) lagen Steinreihen und Fugen in Modul 1
+// weiter im 200-mm-Raster (`lage * COURSE`), waehrend die Spannplatten rechnerisch richtig auf
+// der REALEN Wandoberkante sassen — optisch schnitten sie damit mitten durch eine Steinreihe.
+// Geprueft wird deshalb an den TATSAECHLICHEN SVG-GEOMETRIEATTRIBUTEN (y/height der
+// Steinrechtecke, Achsen der Bauteile) und nicht an Beschriftungen oder Datenobjekten — und
+// zusaetzlich gegen das Blatt von Modul 7, das denselben kanonischen Kanten folgt ([D-4]).
+{
+  const H140=document.getElementById('hgt'), AG140=document.getElementById('ausgleich');
+  const TC140=document.getElementById('topConn');
+  const svg140=()=>document.getElementById('plan').innerHTML;
+  // Steinrechtecke der Wandansicht: genau die Rechtecke mit dem Steinrand.
+  const steine140=t=>[...t.matchAll(
+    /<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" fill="(#cfd3d8|#bcc2c9)" stroke="#aeb3ba" stroke-width="1"\/>/g)]
+    .map(m=>({x:+m[1],y:+m[2],b:+m[3],h:+m[4]}));
+  // Spannplatten: dieselbe Kennfarbe wie im Blatt, in beiden Modulen aus spannplatteSvg().
+  const platten140=t=>[...t.matchAll(new RegExp(
+    '<rect x="([-\\d.]+)" y="([-\\d.]+)" width="([-\\d.]+)" height="([-\\d.]+)" fill="'
+    +MONT.SPANN_FARBE.platte+'"/>','g'))].map(m=>({x:+m[1],y:+m[2],b:+m[3],h:+m[4]}));
+
+  // --- (A) Wand mit oberer 170-mm-Ausgleichslage --------------------------------------------
+  // 2570 mm = 12 regulaere Lagen (2400) + EINE Ausgleichslage 170 mm (2400 … 2570).
+  const w140=Object.assign(buildWall('Wand 140',3000,2600,[]),{wandtyp:'ohne_wind'});
+  const id140=store.speichere('Wand 140', w140);
+  store.setzeAktiv(id140); WP.applyWand(w140);
+  TC140.value='spannplatte'; H140.value='2570'; AG140.value='an'; WP.run();
+  const W140=WP.RESULT.wandelement, K140=wandLagenKanten(W140);
+  const LD140=WP.LASTDRAW, SC140=LD140.sc;
+  const Y140=z=>LD140.pad+(LD140.hPx-z*SC140);       // Modell-mm -> viewBox-y
+  const Z140=y=>(LD140.pad+LD140.hPx-y)/SC140;       // viewBox-y -> Modell-mm
+  const R140=steine140(svg140());
+
+  ok('[#140] Vorbedingung: EINE Ausgleichslage 170 mm bei 2400 … 2570',
+    W140.height_mm===2570 && W140.lagen===13
+    && W140.courses.filter(c=>c.ausgleich===true).length===1
+    && K140[12].unterkante_mm===2400 && K140[12].oberkante_mm===2570 && K140[12].hoehe_mm===170);
+
+  // Akzeptanz 1: die obere Lage ist im Modellmassstab EXAKT 170 mm hoch und liegt an 2400…2570.
+  const oben140=R140.filter(r=>Math.abs(r.y-Y140(2570))<1e-9);
+  ok('[#140] (Akzeptanz 1) die obere Lage ist 170 mm x Massstab hoch und liegt an z = 2400 … 2570',
+    oben140.length>0
+    && oben140.every(r=>Math.abs(r.h-170*SC140)<1e-9)
+    && oben140.every(r=>Math.abs(Z140(r.y)-2570)<1e-9 && Math.abs(Z140(r.y+r.h)-2400)<1e-9)
+    && R140.every(r=>r.y>=Y140(2570)-1e-9));
+  ok('[#140] keine 200-mm-Ersatzgeometrie in der Wandansicht',
+    R140.length>0 && oben140.every(r=>Math.abs(r.h-200*SC140)>1e-9)
+    && !R140.some(r=>r.y<Y140(2570)-1e-9));
+
+  // JEDE Steinreihe steht auf ihrer kanonischen Kante — nichts aus `Lagenindex x 200`.
+  ok('[#140] alle Steinrechtecke stammen aus den kanonischen Lagenkanten', (()=>{
+    const soll=K140.map(k=>({y:Y140(k.oberkante_mm), h:k.hoehe_mm*SC140}));
+    return R140.length>0 && R140.every(r=>soll.some(
+      q=>Math.abs(q.y-r.y)<1e-9 && Math.abs(q.h-r.h)<1e-9)); })());
+  // Die Fugen der Ansicht sind genau die kanonischen Lagenkanten — keine Fuge auf 2600.
+  ok('[#140] die Lagenfugen liegen auf den kanonischen Kanten (keine Fuge im 200er-Raster darueber)', (()=>{
+    const fugen=[...new Set(R140.flatMap(r=>[Z140(r.y), Z140(r.y+r.h)])
+      .map(z=>Math.round(z*1e6)/1e6))].sort((a,b)=>a-b);
+    const soll=[...new Set(K140.flatMap(k=>[k.unterkante_mm,k.oberkante_mm]))].sort((a,b)=>a-b);
+    return JSON.stringify(fugen)===JSON.stringify(soll); })());
+  // Die Reihennummer folgt der REALEN Lagenmitte (Beschriftung ueber korrigierter Geometrie).
+  ok('[#140] die Reihennummern sitzen in der Mitte der realen Lage', (()=>{
+    const ys=[...svg140().matchAll(
+      /<text x="[-\d.]+" y="([-\d.]+)" font-size="9" fill="#8f96a0" text-anchor="end">(\d+)<\/text>/g)]
+      .map(m=>({y:+m[1], r:+m[2]}));
+    return ys.length===W140.lagen && ys.every(t=>{
+      const k=K140[t.r-1];
+      return Math.abs(t.y-(Y140((k.unterkante_mm+k.oberkante_mm)/2)+3))<1e-9; }); })());
+
+  // --- Akzeptanz 2: dieselben Modell-z wie im Blatt von Modul 7 ------------------------------
+  // Verglichen werden MODELL-Koordinaten, nicht Pixel: beide Ansichten haben eigene Massstaebe.
+  // Die Rueckrechnung nutzt nur die jeweilige Abbildung des Moduls — nachgerechnet wird nichts.
+  {
+    const z7=ZEICH.zeichnungSvg(W140,{}), sc7=1/z7.masstab, hPx7=W140.height_mm*sc7;
+    const Z7=y=>(ZEICH.PAD_MM+hPx7-y)/sc7;
+    const st7=[...z7.svg.matchAll(
+      /<rect x="[-\d.]+" y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)" fill="(?:#[0-9a-f]+)" stroke="[^"]+" stroke-width="0\.22"\/>/g)]
+      .map(m=>({y:+m[1], h:+m[2]}));
+    const pl7=[...z7.svg.matchAll(new RegExp(
+      '<rect x="[-\\d.]+" y="([-\\d.]+)" width="[-\\d.]+" height="([-\\d.]+)" fill="'
+      +MONT.SPANN_FARBE.platte+'"/>','g'))].map(m=>({y:+m[1], h:+m[2]}));
+    // `_n()` rundet im Blatt auf 1/1000 Papier-mm — bei M 1:20 sind das 0,02 Modell-mm.
+    const menge=(arr,f)=>[...new Set(arr.map(r=>Math.round(f(r)*20)/20))].sort((a,b)=>a-b);
+    const fugen1=menge(R140,r=>Z140(r.y)).concat(menge(R140,r=>Z140(r.y+r.h)));
+    const fugen7=menge(st7,r=>Z7(r.y)).concat(menge(st7,r=>Z7(r.y+r.h)));
+    ok('[#140] (Akzeptanz 2) die Lagenfugen haben in Modul 1 und Modul 7 dieselben Modell-z',
+      fugen1.length>0 && JSON.stringify(fugen1)===JSON.stringify(fugen7));
+    // Spannplatten: die Unterkante des Plattenrechtecks sitzt auf der Auflagerkante.
+    ok('[#140] (Akzeptanz 2) die Spannplatten sitzen in Modul 1 und Modul 7 auf demselben Modell-z',
+      (()=>{
+        const a=menge(platten140(svg140()),r=>Z140(r.y+r.h));
+        const b=menge(pl7,r=>Z7(r.y+r.h));
+        return a.length>0 && b.length>0 && JSON.stringify(a)===JSON.stringify(b)
+          // … und zwar auf der REALEN Wandoberkante 2570, nicht auf dem 200er-Raster
+          && a.every(z=>Math.abs(z-2570)<0.05); })());
+    // Die Spannplatte sitzt damit auf der Oberkante der obersten Steinreihe — genau das war
+    // der gemeldete Fehler (sie lag optisch mitten in der Reihe).
+    ok('[#140] die Spannplatte sitzt auf der Oberkante der obersten gezeichneten Steinreihe',
+      platten140(svg140()).every(pl=>oben140.some(r=>Math.abs((pl.y+pl.h)-r.y)<1e-6)));
+  }
+
+  // --- Nicht-Ziel: eine reine 200-mm-Wand bleibt pixelgeometrisch UNVERAENDERT ---------------
+  // Nachgerechnet wird hier ausdruecklich die ALTE Formel (`Lagenindex x 200`): jedes
+  // Steinrechteck, jede Oeffnung, jede Reihennummer und jedes Durchbruch-Trefferfeld muss
+  // exakt dort stehen, wo sie vor #140 stand.
+  {
+    const wR=Object.assign(buildWall('Wand 140r',3000,2600,
+      [new Opening(6,12,0,10,'tuer')]),{wandtyp:'ohne_wind'});
+    const idR=store.speichere('Wand 140r', wR);
+    store.setzeAktiv(idR); WP.applyWand(wR);
+    H140.value='2600'; AG140.value='aus'; WP.run();
+    const WR=WP.RESULT.wandelement, LDR=WP.LASTDRAW, SCR=LDR.sc;
+    const YR=z=>LDR.pad+(LDR.hPx-z*SCR);
+    const t=svg140();
+    ok('[#140] (Nicht-Ziel) Vorbedingung: reine 200-mm-Wand ohne Ausgleichslage',
+      WR.height_mm===2600 && WR.lagen===13
+      && !WR.courses.some(c=>c.ausgleich===true));
+    ok('[#140] (Nicht-Ziel) jedes Steinrechteck steht exakt auf `Lagenindex x 200` wie zuvor', (()=>{
+      const soll=WR.courses.map(c=>({y:YR((c.lage+1)*COURSE), h:COURSE*SCR}));
+      const R=steine140(t);
+      return R.length>0 && R.every(r=>soll.some(
+        q=>Math.abs(q.y-r.y)<1e-12 && Math.abs(q.h-r.h)<1e-12)); })());
+    ok('[#140] (Nicht-Ziel) die Oeffnung steht exakt auf der alten Lagenrechnung', (()=>{
+      const op=WR.openings[0];
+      const m=/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)" fill="#fff" stroke="#c9461c"/.exec(t);
+      return !!m && Math.abs(+m[2]-YR(op.l1*COURSE))<1e-12
+        && Math.abs(+m[4]-(op.l1-op.l0)*COURSE*SCR)<1e-12; })());
+    ok('[#140] (Nicht-Ziel) die Reihennummern stehen exakt auf der alten Lagenmitte', (()=>{
+      const ys=[...t.matchAll(
+        /<text x="[-\d.]+" y="([-\d.]+)" font-size="9" fill="#8f96a0" text-anchor="end">(\d+)<\/text>/g)]
+        .map(m=>({y:+m[1], r:+m[2]}));
+      return ys.length===WR.lagen
+        && ys.every(q=>Math.abs(q.y-(YR((q.r-0.5)*COURSE)+3))<1e-12); })());
+    ok('[#140] (Nicht-Ziel) die Durchbruch-Trefferfelder stehen exakt auf der alten Lagenrechnung',
+      (()=>{
+        WP.setEdit(true); WP.run();
+        const z=svg140();
+        const zellen=[...z.matchAll(
+          /<rect class="cell" data-r="(\d+)" data-c="\d+" x="[-\d.]+" y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/g)]
+          .map(m=>({r:+m[1], y:+m[2], h:+m[3]}));
+        const LD2=WP.LASTDRAW, Y2=v=>LD2.pad+(LD2.hPx-v*LD2.sc);
+        const alles=zellen.length===WR.lagen*WR.N_grid && zellen.every(
+          q=>Math.abs(q.y-Y2((q.r+1)*COURSE))<1e-12 && Math.abs(q.h-COURSE*LD2.sc)<1e-12);
+        WP.setEdit(false); WP.run();
+        return alles; })());
+    // Und die ganze Ansicht als Zeichenkette: eingefroren, damit kein spaeterer Eingriff die
+    // 200-mm-Wand unbemerkt verschiebt.
+    ok('[#140] (Nicht-Ziel) die 200-mm-Referenzansicht bleibt zeichenkettengleich (eingefroren)',
+      hash140(svg140())==='8d677911b003331b');
+  }
+  // Gegenprobe: das Zeichnen hat KEINE Rechenwirkung — das gespeicherte Wandelement und die
+  // Stueckliste bleiben unberuehrt.
+  ok('[#140] keine Rechenwirkung: Wandelement und Stueckliste bleiben unberuehrt', (()=>{
+    const vor=JSON.stringify([store.aktivesWandelement(), BOM.semblaBom(store.aktivesWandelement())]);
+    WP.run();
+    return JSON.stringify([store.aktivesWandelement(), BOM.semblaBom(store.aktivesWandelement())])===vor; })());
+  // Quelltext-Waechter: keine zweite Berechnung variabler Lagenhoehen in Modul 1.
+  ok('[#140] Modul 1 rechnet die Lagenhoehe nicht selbst, sondern nutzt die kanonische Quelle',
+    /wandLagenKanten=S\.wandLagenKanten; lagenOberkanteMm=S\.lagenOberkanteMm;/.test(html)
+    && /const KANTEN=wandLagenKanten\(w\);/.test(html)
+    && !/c\.lage\*COURSE/.test(html) && !/\(c\.lage\+1\)\*COURSE/.test(html)
+    && !/op\.l1\*COURSE/.test(html) && !/\(r\+0\.5\)\*COURSE/.test(html)
+    && !/\(r\+1\)\*COURSE/.test(html));
   store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 

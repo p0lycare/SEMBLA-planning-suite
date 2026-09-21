@@ -69,8 +69,29 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // verwaister Punkt an einem ueberholten Stoss. NICHT versprochen werden eine eigene
 // Kennzeichnung der Bereichsenden im Blatt, eine geaenderte Zieldichte oder eine statische
 // Betrachtung der Auflagerpunkte.
-const BEREICHE_138 = EINTRAEGE[0];
-ok("[#138] die Ausgleichsbleche an realen Segmentenden sind der neueste Eintrag",
+// Der NEUESTE Eintrag ist die VARIABLE STEINLAGE AN REALEN LAGENKANTEN IN MODUL 1 (#140) —
+// er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber
+// die KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist eine reine DARSTELLUNGSKORREKTUR — Modul 1 zeichnet
+// dieselben realen Lagenkanten wie Modul 7. NICHT versprochen werden eine geaenderte
+// Wandhoehe, Lagenzerlegung, Stueckliste oder Vorspannberechnung; die Spannplatte lag
+// rechnerisch schon immer richtig.
+const KANTEN_140 = EINTRAEGE[0];
+ok("[#140] die realen Lagenkanten in Modul 1 sind der neueste Eintrag",
+  KANTEN_140?.id === "chg-20260921-03" && KANTEN_140?.issue === 140
+  && KANTEN_140?.typ === "fix" && KANTEN_140?.datum === "2026-09-21"
+  && /Modul 1/.test(KANTEN_140?.titel || "")
+  && /realen Höhe/.test(KANTEN_140?.titel || "")
+  // Keine Rechenzusage: es wird nichts neu gerechnet, nur richtig gezeichnet.
+  && !/Stückliste|Vorspannung|Wandhöhe|berechnet/i.test(KANTEN_140?.titel || ""));
+ok("[#140] der Eintrag benennt den sichtbaren Fehler, den er behebt",
+  /Spannplatte/.test(KANTEN_140?.titel || "") && /Stein/.test(KANTEN_140?.titel || ""));
+ok("[#140] die Testbitte nennt den Pruefweg und die Gegenprobe in Modul 7",
+  /Ausgleichslage/.test(KANTEN_140?.testbitte || "")
+  && /Modul 7/.test(KANTEN_140?.testbitte || ""));
+
+const BEREICHE_138 = EINTRAEGE.find(e => e.id === "chg-20260921-02");
+ok("[#138] die Ausgleichsbleche an realen Segmentenden folgen darauf",
   BEREICHE_138?.id === "chg-20260921-02" && BEREICHE_138?.issue === 138
   && BEREICHE_138?.typ === "fix" && BEREICHE_138?.datum === "2026-09-21"
   && /Ausgleichsblech/.test(BEREICHE_138?.titel || "")

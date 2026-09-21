@@ -2065,6 +2065,61 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
     return JSON.stringify([W136, semblaBomItems(W136)]) === vor; })());
 }
 
+// ---- Issue #140: Modul 7 ist der Massstab, dem Modul 1 folgt ---------------------------------
+//
+// Die Wandansicht von Modul 1 zeichnete ihre Steinlagen bis #140 pauschal mit `lage x 200`.
+// Geprueft wird hier die andere Haelfte des Vertrags: das Blatt gibt die MODELL-z-Koordinaten
+// seiner Steinkanten exakt aus den kanonischen Lagenkanten aus (Rueckrechnung aus den echten
+// SVG-Geometrieattributen, nicht aus einem Datenobjekt), und beide Module beziehen diese
+// Koordinaten aus DERSELBEN Quelle — es gibt keinen zweiten Renderer und keine zweite
+// Berechnung variabler Lagenhoehen ([D-4]/[P-6]).
+{
+  const W140 = buildWall("IW-140", 3000, 2570, [], null, { top_connection: "spannplatte" }, [], null, true);
+  const K140 = wandLagenKanten(W140);
+  const z140 = Z.zeichnungSvg(W140, {});
+  const sc140 = 1 / z140.masstab, hPx140 = W140.height_mm * sc140;
+  const zMm = y => (Z.PAD_MM + hPx140 - y) / sc140;          // Blatt-y -> Modell-mm
+  const st140 = [...z140.svg.matchAll(
+    /<rect x="[-\d.]+" y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)" fill="(?:#[0-9a-f]+)" stroke="[^"]+" stroke-width="0\.22"\/>/g)]
+    .map(m => ({ y: +m[1], h: +m[2] }));
+
+  ok("[#140] Vorbedingung: EINE Ausgleichslage 170 mm bei 2400 … 2570",
+    W140.height_mm === 2570 && W140.lagen === 13
+    && K140[12].unterkante_mm === 2400 && K140[12].oberkante_mm === 2570
+    && K140[12].hoehe_mm === 170);
+
+  // `_n()` rundet auf 1/1000 Papier-mm; bei M 1:20 sind das 0,02 Modell-mm.
+  const rnd = v => Math.round(v * 20) / 20;
+  ok("[#140] die Modell-z der Steinkanten des Blattes sind genau die kanonischen Lagenkanten",
+    (() => {
+      const ist = [...new Set(st140.flatMap(r => [rnd(zMm(r.y)), rnd(zMm(r.y + r.h))]))]
+        .sort((a, b) => a - b);
+      const soll = [...new Set(K140.flatMap(k => [k.unterkante_mm, k.oberkante_mm]))]
+        .sort((a, b) => a - b);
+      return ist.length > 0 && JSON.stringify(ist) === JSON.stringify(soll); })());
+  // Die Spannplatte sitzt auf der REALEN Wandoberkante — dieselbe Kante, an der auch die
+  // oberste Steinreihe endet. Genau dieses Verhaeltnis prueft Modul 1 gegen dieses Blatt.
+  ok("[#140] die Spannplatte sitzt auf der Oberkante der obersten Steinreihe (2570)",
+    (() => {
+      const pl = [...z140.svg.matchAll(new RegExp(
+        '<rect x="[-\\d.]+" y="([-\\d.]+)" width="[-\\d.]+" height="([-\\d.]+)" '
+        + 'fill="' + SPANN_FARBE.platte + '"/>', "g"))].map(m => ({ y: +m[1], h: +m[2] }));
+      const oben = st140.filter(r => Math.abs(rnd(zMm(r.y)) - 2570) < 1e-9);
+      return pl.length > 0 && oben.length > 0
+        && pl.every(q => Math.abs(rnd(zMm(q.y + q.h)) - 2570) < 1e-9); })());
+
+  // EINE Quelle fuer beide Module: Modul 1 bindet dieselben kanonischen Funktionen und rechnet
+  // keine Lagenhoehe mehr aus dem Lagenindex.
+  ok("[#140] Modul 1 bezieht seine Lagen-z aus derselben kanonischen Quelle wie das Blatt",
+    (() => {
+      const m1 = readFileSync(new URL("../../docs/wandplanung.html", import.meta.url), "utf8");
+      return /const KANTEN=wandLagenKanten\(w\);/.test(m1)
+        && /const OK=n=>lagenOberkanteMm\(w,n,KANTEN\);/.test(m1)
+        && /wandLagenKanten,/.test(m1) && /lagenOberkanteMm,/.test(m1)
+        && !/c\.lage\*COURSE/.test(m1) && !/\(c\.lage\+1\)\*COURSE/.test(m1)
+        && !/op\.l1\*COURSE/.test(m1); })());
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

@@ -329,6 +329,11 @@ let ROLLE_RECHNUNG;
 let AUSGLEICH_KONFLIKT, AUSGLEICH_HOEHEN;
 // #115 Reparaturdialog (shared/sembla-reparatur.js) — wie alles hier ueber window.SEMBLA.
 let oeffneReparatur;
+// #140: die KANONISCHEN Lagenkanten des Wandelements (sembla-core.js) und die eine erlaubte
+// Umrechnung Reihenzahl -> Hoehe (sembla-montage.js). Modul 1 rechnet daraus NICHTS nach und
+// bildet insbesondere keine zweite Berechnung variabler Lagenhoehen ([D-4]/[P-6]) — es sind
+// dieselben Funktionen, aus denen das Blatt von Modul 7 seine z-Koordinaten bezieht.
+let wandLagenKanten, lagenOberkanteMm;
 // Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
 let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
 // Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
@@ -373,7 +378,12 @@ const SIDE_LABEL={fassade:'Fassade',innenausbau:'Innenausbau',sicht:'Sichtfläch
 let openings=[], stepsArr=[], interlocksArr=[], VIEW='vorne', RESULT=null;
 let showDim=true, showRaster=false;
 // ---- Bemaßungsschicht (SVG), einheitlich über die Module ----
-function dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H){
+// #140 `OK(n)` ist die Oberkante nach `n` Steinreihen aus den kanonischen Lagenkanten — der
+// Aufrufer reicht sie durch, damit Bemassung und Steinbild derselben z-Quelle folgen. Der
+// Rueckfall `n * COURSE` gilt nur einem Aufruf ohne Kanten; fuer eine reine 200-mm-Wand sind
+// beide Wege zahlengleich.
+function dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H,OK){
+  if(typeof OK!=='function') OK=n=>n*COURSE;
   if(!showDim && !showRaster) return '';
   const C='#46505e', A='#c9461c', G='#9aa3ad', STP='#0a7f8c';
   const mC=mm=>fmt(mm/10,(mm/10)%1!==0?1:0)+' cm';
@@ -394,7 +404,7 @@ function dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H){
     s+=hD(left0,right0,bot0+24,mM(L));                 // Gesamtbreite
     s+=vD(top0,bot0,left0-24,mM(H));                   // Gesamthöhe
     for(const op of w.openings){
-      const x0=op.g0*GRID,x1=op.g1*GRID,y0=op.l0*COURSE,y1=op.l1*COURSE;
+      const x0=op.g0*GRID,x1=op.g1*GRID,y0=OK(op.l0),y1=OK(op.l1);
       const L_=Math.min(X(x0),X(x1)), R_=Math.max(X(x0),X(x1)), T_=Y(y1), B_=Y(y0);
       s+=hD(L_,R_,T_-7,mC(x1-x0),A);                   // Öffnungsbreite (über Öffnung)
       s+=vD(T_,B_,L_-7,mC(y1-y0),A);                   // Öffnungshöhe (Laibung)
@@ -797,11 +807,22 @@ function draw(w){
   // SVG-Defs für Verzahnungs-Schraffurmuster
   let s='<defs><pattern id="verzPattern" patternUnits="userSpaceOnUse" width="8" height="8">'
     +'<path d="M0,8 L8,0" stroke="#8b5cf6" stroke-width="1"/></pattern></defs>';
-  for(const c of w.courses){ const y0=c.lage*COURSE,y1=(c.lage+1)*COURSE;
+  // #140 EINE Quelle fuer jede z-Koordinate einer Steinlage: die kanonischen Kanten des
+  // Wandelements. `KA(li)` ist die Kante der Lage `li`, `OK(n)` die Oberkante nach `n` Lagen.
+  // Vorher stand hier `lage * COURSE` — bei aktivierter Ausgleichslage (#136) lag die
+  // Steinreihe damit an einer Hoehe, an der kein Stein sitzt, und die rechnerisch richtig
+  // gezeichneten Spannplatten schnitten optisch mitten durch eine Reihe. Fuer eine reine
+  // 200-mm-Wand liefern beide Wege exakt `li x 200` bzw. `n x 200` — die Ansicht bleibt dort
+  // pixelgleich. Gerechnet wird hier nichts: beide Funktionen sind dieselben, die Modul 7
+  // benutzt ([D-4]).
+  const KANTEN=wandLagenKanten(w);
+  const KA=li=>KANTEN[li]||{unterkante_mm:0,oberkante_mm:0,hoehe_mm:0};
+  const OK=n=>lagenOberkanteMm(w,n,KANTEN);
+  for(const c of w.courses){ const ka=KA(c.lage), y0=ka.unterkante_mm, y1=ka.oberkante_mm, hc=ka.hoehe_mm;
     for(const st of c.stones){ const fill=st.type==='i3'?'#cfd3d8':'#bcc2c9'; const lx=Math.min(X(st.x0),X(st.x1));
-      s+=`<rect x="${lx}" y="${Y(y1)}" width="${(st.x1-st.x0)*sc}" height="${COURSE*sc}" fill="${fill}" stroke="#aeb3ba" stroke-width="1"/>`;
-      if((st.x1-st.x0)*sc>26&&COURSE*sc>13) s+=`<text x="${X((st.x0+st.x1)/2)}" y="${Y((y0+y1)/2)+3.5}" font-size="9.5" fill="#8f96a0" text-anchor="middle">${st.type}</text>`; } }
-  for(const op of w.openings){ const ox=Math.min(X(op.g0*GRID),X(op.g1*GRID)), oy=Y(op.l1*COURSE), ow=(op.g1-op.g0)*GRID*sc, oh=(op.l1-op.l0)*COURSE*sc;
+      s+=`<rect x="${lx}" y="${Y(y1)}" width="${(st.x1-st.x0)*sc}" height="${hc*sc}" fill="${fill}" stroke="#aeb3ba" stroke-width="1"/>`;
+      if((st.x1-st.x0)*sc>26&&hc*sc>13) s+=`<text x="${X((st.x0+st.x1)/2)}" y="${Y((y0+y1)/2)+3.5}" font-size="9.5" fill="#8f96a0" text-anchor="middle">${st.type}</text>`; } }
+  for(const op of w.openings){ const ox=Math.min(X(op.g0*GRID),X(op.g1*GRID)), oy=Y(OK(op.l1)), ow=(op.g1-op.g0)*GRID*sc, oh=(OK(op.l1)-OK(op.l0))*sc;
     s+=`<rect x="${ox}" y="${oy}" width="${ow}" height="${oh}" fill="#fff" stroke="#c9461c" stroke-width="1.5" stroke-dasharray="5 4"/>`;
     s+=`<text x="${ox+ow/2}" y="${oy+oh/2+4}" font-size="11" fill="#c9461c" text-anchor="middle">${op.art==='fenster'?'Fenster':(op.art==='durchbruch'?'Durchbruch':'Tür')}</text>`; }
   // gestufte Oberkante (je Rasterspalte lokale Höhe)
@@ -1156,14 +1177,19 @@ function draw(w){
         +`stroke-dasharray="${on?'':'2 3'}" style="cursor:${on?'pointer':'copy'}"/>`; } }
 
   // ---- Reihennummern der Steinreihen (links) ----
-  for(let r=0;r<w.lagen;r++){ const yc=Y((r+0.5)*COURSE);
+  // #140 Die Reihennummer steht in der Mitte der REALEN Lage — sie folgt der darunter
+  // gezeichneten Steingeometrie und wird nie losgeloest von ihr verschoben.
+  for(let r=0;r<w.lagen;r++){ const kr=KA(r), yc=Y((kr.unterkante_mm+kr.oberkante_mm)/2);
     s+=`<text x="${pad-10}" y="${yc+3}" font-size="9" fill="#8f96a0" text-anchor="end">${r+1}</text>`; }
   s+=`<text x="${pad}" y="22" font-size="13" fill="#6b7682">${back?'Rückseite (gespiegelt)':'Vorderseite'} · ${fmt(L/1000,3)} × ${fmt(H/1000,2)} m · ${w.tension_columns.length} Stränge · N=${fmt(w.prestress.force_kN,0)} kN${editMode?' · Durchbruch-Modus':''}</text>`;
   // Legende des Slicings steht AUSSERHALB des SVG (Issue #63) — s. renderZLegende().
   renderZLegende(w);
   if(editMode){ const Ng=w.N_grid, Lg=w.lagen;
-    for(let r=0;r<Lg;r++) for(let c=0;c<Ng;c++){ const lx=Math.min(X(c*GRID),X((c+1)*GRID));
-      s+=`<rect class="cell" data-r="${r}" data-c="${c}" x="${lx}" y="${Y((r+1)*COURSE)}" width="${GRID*sc}" height="${COURSE*sc}" fill="transparent" stroke="#1f6feb" stroke-opacity="0.18" stroke-width="0.6" style="cursor:pointer"/>`; } }
+    // #140 Das Trefferfeld deckt die REALE Lage — sonst laege es bei aktivierter
+    // Ausgleichslage neben der Steinreihe, die es auswaehlt.
+    for(let r=0;r<Lg;r++){ const kr=KA(r);
+      for(let c=0;c<Ng;c++){ const lx=Math.min(X(c*GRID),X((c+1)*GRID));
+        s+=`<rect class="cell" data-r="${r}" data-c="${c}" x="${lx}" y="${Y(kr.oberkante_mm)}" width="${GRID*sc}" height="${kr.hoehe_mm*sc}" fill="transparent" stroke="#1f6feb" stroke-opacity="0.18" stroke-width="0.6" style="cursor:pointer"/>`; } } }
   // ---- Spannachsen-Editor: Griffe je Achse + Auswahl ----
   // Erkennbar getrennt (#106): eine BELEGTE Rasterspalte laesst sich anfassen (Griff, Achslinie,
   // `cursor:grab`), eine FREIE zeigt als blasse Strichlinie samt `cursor:copy` an, dass ein Klick
@@ -1179,7 +1205,7 @@ function draw(w){
       s+=`<line x1="${x}" y1="${Y(0)}" x2="${x}" y2="${Y(H)}" stroke="${on?'#c9461c':'#1f6feb'}" stroke-width="${on?3:2}" stroke-opacity="0.9" style="cursor:grab"/>`;
       s+=`<circle cx="${x}" cy="${Y(H)-6}" r="6" fill="${on?'#c9461c':'#1f6feb'}" stroke="#fff" stroke-width="1.5" style="cursor:grab"/>`;
       s+=`<text x="${x}" y="${Y(H)-14}" font-size="9" fill="${on?'#c9461c':'#1f6feb'}" text-anchor="middle">${fmt(col.x_mm/10,1)}</text>`; } }
-  s+=dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H);
+  s+=dimLayer(w,X,Y,pad,wPx,hPx,sc,L,H,OK);
   svg.innerHTML=s;
   // Ganz zuletzt: ohne eigene Zoomwahl die Ansicht einpassen, damit die Wand VOLLSTAENDIG zu
   // sehen ist (#106). Erst hier stehen viewBox-Masse und Anzeigebreite fest.
@@ -2216,6 +2242,7 @@ window.__wpInit=function(){
   ROLLE_RECHNUNG=S.ROLLE_RECHNUNG;
   AUSGLEICH_KONFLIKT=S.AUSGLEICH_KONFLIKT; AUSGLEICH_HOEHEN=S.ausgleichSteinHoehen;
   oeffneReparatur=S.oeffneReparatur;
+  wandLagenKanten=S.wandLagenKanten; lagenOberkanteMm=S.lagenOberkanteMm;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
@@ -2248,6 +2275,8 @@ window.__wpInit=function(){
 
 <script type="module">
   import { buildWall, Opening, GRID, COURSE, wirksameZwischenpunkte,
+           // #140 die kanonischen Lagenkanten — dieselbe Quelle, aus der Modul 7 zeichnet.
+           wandLagenKanten,
            // #136 der BENANNTE Grund der abgewiesenen Höhe — Modul 1 zeigt ihn an, statt ihn
            // aus dem Meldungstext zu erraten.
            AUSGLEICH_KONFLIKT } from './shared/sembla-core.js';
@@ -2268,6 +2297,8 @@ window.__wpInit=function(){
            // #138: die kanonischen Luecken und ihr Darstellungsschluessel — dieselbe Quelle,
            // aus der Modul 5 und Modul 7 sie zeichnen ([A-28]/[D-4]).
            bodenblechAussparungen, AUSSPARUNG,
+           // #140 die EINE erlaubte Umrechnung Reihenzahl -> Hoehe ([D-4]).
+           lagenOberkanteMm,
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { oeffneReparatur } from './shared/sembla-reparatur.js';
@@ -2276,6 +2307,7 @@ window.__wpInit=function(){
   import { ROLLE_RECHNUNG, ausgleichSteinHoehen } from './shared/sembla-wandanlage.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+                    wandLagenKanten, lagenOberkanteMm,
                     ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
                     oeffneReparatur,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,

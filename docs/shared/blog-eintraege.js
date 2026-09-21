@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260921-03",
+    datum: "2026-09-21",
+    typ: "fix",
+    issue: 140,
+    titel: "Modul 1 zeichnet die variable Steinlage mit ihrer realen Höhe — Spannplatten liegen auf der Lagenkante statt im Stein",
+    testbitte: "Eine Wand mit aktivierter Ausgleichslage (z. B. 2570 mm) in Modul 1 öffnen: die niedrigere Lage ist "
+      + "sichtbar niedriger und die Spannplatte sitzt auf deren Oberkante — dieselbe Stelle wie in Modul 7",
+  },
+  {
     id: "chg-20260921-02",
     datum: "2026-09-21",
     typ: "fix",
