@@ -61,8 +61,31 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // Standardgewindestangen 1050 mm und 820 mm, die fuer NEUE Projekte gilt; ausdruecklich
 // NICHT versprochen werden eine Umstellung vorhandener Projekte, eine Aenderung alter
 // Fassungen oder eine geaenderte Auswahl-/Zuschnittlogik ([Z-2]/[Z-6] unberuehrt).
-const FASSUNG_103 = EINTRAEGE[0];
-ok("[#103] die Standardkatalog-Fassung v4 ist der neueste Eintrag",
+// Der NEUESTE Eintrag sind die AUSGLEICHSBLECHE AN REALEN BODENBLECHSEGMENTEN (#138) — er
+// wird als einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die
+// KENNUNG ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist die Verteilung je REAL BELEGTEM Bodenblechbereich
+// ([A-31]) — Pflichtauflager an jedem Bereichsende, keines in einer Aussparung, kein
+// verwaister Punkt an einem ueberholten Stoss. NICHT versprochen werden eine eigene
+// Kennzeichnung der Bereichsenden im Blatt, eine geaenderte Zieldichte oder eine statische
+// Betrachtung der Auflagerpunkte.
+const BEREICHE_138 = EINTRAEGE[0];
+ok("[#138] die Ausgleichsbleche an realen Segmentenden sind der neueste Eintrag",
+  BEREICHE_138?.id === "chg-20260921-02" && BEREICHE_138?.issue === 138
+  && BEREICHE_138?.typ === "fix" && BEREICHE_138?.datum === "2026-09-21"
+  && /Ausgleichsblech/.test(BEREICHE_138?.titel || "")
+  // Beide Seiten der Zusage stehen im Titel: wo eines hinkommt und wo keines hingehoert.
+  && /Segmentende/.test(BEREICHE_138?.titel || "")
+  && /Lücke/.test(BEREICHE_138?.titel || "")
+  // Keine Statik-/Dichtezusage.
+  && !/Statik|Nachweis|Dichte|Tragf/i.test(BEREICHE_138?.titel || ""));
+ok("[#138] die Testbitte fuehrt den echten Bedienweg samt Rueckkehrfall",
+  /Modul 1/.test(BEREICHE_138?.testbitte || "")
+  && /aussparen/.test(BEREICHE_138?.testbitte || "")
+  && /wieder entfernen/.test(BEREICHE_138?.testbitte || ""));
+
+const FASSUNG_103 = EINTRAEGE.find(e => e.id === "chg-20260921-01");
+ok("[#103] die Standardkatalog-Fassung v4 folgt darauf",
   FASSUNG_103?.id === "chg-20260921-01" && FASSUNG_103?.issue === 103
   && FASSUNG_103?.typ === "fix" && FASSUNG_103?.datum === "2026-09-21"
   && /1050 mm/.test(FASSUNG_103?.titel || "")

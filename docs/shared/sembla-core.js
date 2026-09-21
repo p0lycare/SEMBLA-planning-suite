@@ -824,34 +824,36 @@ function achsversatz(xMm, achsenXMm, versatzMm) {
 }
 
 /**
- * Ausgleichspunkte einer Wand deterministisch verteilen ([A-20]/[A-21]/[A-22]/[A-23]).
- * Reine Funktion — gleiche Eingabe, gleiche Ausgabe, kein Zustand.
- * @param {number} lengthMm Wandlaenge (Vielfaches von 125 mm)
- * @param {number[]} [stossXMm] INNERE Blechstoesse des Bodenblechs in mm
- * @param {number[]} [achsenXMm] Spannachsen in mm (62,5 + 125k), aufsteigend
- * @param {number} [versatzMm] Abstand einer Auffuellung zur naechsten Spannachse
- * @returns {Array<{x_mm:number,art:"wandende"|"blechstoss"|"auffuellung"}>}
+ * Ausgleichspunkte EINES belegten Bodenblechbereichs verteilen ([A-20]…[A-23] je Bereich,
+ * [A-31]). Reine Funktion; der Bereich ist die Rechenlaenge, nicht die Wandlaenge.
+ * @param {number} x0Mm Bereichsanfang @param {number} x1Mm Bereichsende
+ * @param {number} lengthMm Wandlaenge (nur zur Unterscheidung Wandende/Bereichsende)
+ * @param {number[]} stossXMm INNERE Blechstoesse des Bodenblechs in mm (ganze Wand)
+ * @param {number[]} achsenXMm Spannachsen in mm @param {number} versatzMm Achsversatz
+ * @returns {Array<{x_mm:number,art:string}>}
  */
-export function verteileAusgleichspunkte(lengthMm, stossXMm = [], achsenXMm = [],
-                                         versatzMm = AUSGLEICH_ACHSVERSATZ) {
-  // [A-21] Der Stoss IST der Punkt: die Blechmitte sitzt im Stosspunkt, damit beide Bleche
-  // aufliegen. Alle Pflichtwerte sind ganzzahlige mm (Vielfache von 125) — nichts zu runden.
+function bereichsAusgleichspunkte(x0Mm, x1Mm, lengthMm, stossXMm, achsenXMm, versatzMm) {
+  const laengeMm = x1Mm - x0Mm;
+  // [A-21]/[A-31] Pflichtpunkte sind ANFANG und ENDE des belegten Bereichs sowie jeder REALE
+  // innere Blechstoss DARIN. Ein Bereichsende, das zugleich ein Wandende ist, heisst weiter
+  // "wandende" — die Kante einer Aussparung ist ein "bereichsende" und kein Stoss ([A-29]).
   const pflicht = new Map();
-  pflicht.set(0, "wandende");
-  pflicht.set(lengthMm, "wandende");
-  for (const x of stossXMm) if (x > 0 && x < lengthMm && !pflicht.has(x)) pflicht.set(x, "blechstoss");
+  pflicht.set(x0Mm, x0Mm === 0 ? "wandende" : "bereichsende");
+  pflicht.set(x1Mm, x1Mm === lengthMm ? "wandende" : "bereichsende");
+  for (const x of stossXMm) if (x > x0Mm && x < x1Mm && !pflicht.has(x)) pflicht.set(x, "blechstoss");
   const stellen = [...pflicht.keys()].sort((a, b) => a - b);
 
-  // [A-20] Zielpunktzahl. `AUSGLEICH_DICHTE_JE_M * lengthMm` ist ganzzahlig und lengthMm ein
-  // Vielfaches von 125, der Quotient also exakt darstellbar — die Aufrundung ist damit in
-  // beiden Cores dieselbe. Mehr Pflichtpunkte als die Dichte verlangt: dann gilt deren Anzahl.
-  const ziel = Math.max(stellen.length, Math.ceil(AUSGLEICH_DICHTE_JE_M * lengthMm / 1000));
+  // [A-20] Zielpunktzahl DIESES Bereichs. `AUSGLEICH_DICHTE_JE_M * laengeMm` ist ganzzahlig und
+  // laengeMm ein Vielfaches von 125, der Quotient also exakt darstellbar — die Aufrundung ist
+  // damit in beiden Cores dieselbe. Mehr Pflichtpunkte als die Dichte verlangt: dann gilt deren
+  // Anzahl. Ohne Aussparungen ist der einzige Bereich die ganze Wand ⇒ bit-genau der Altstand.
+  const ziel = Math.max(stellen.length, Math.ceil(AUSGLEICH_DICHTE_JE_M * laengeMm / 1000));
 
-  // [A-22] Restpunkte nach Laengenanteil auf die Luecken — groesste-Reste-Verfahren in REINER
-  // Ganzzahlarithmetik. Weil die Luecken die Wand lueckenlos abdecken, ist die Summe ihrer
-  // Laengen exakt die Wandlaenge; der Quotient ist damit genau der Laengenanteil. Bei gleichem
-  // Rest gewinnt die KLEINERE Lueckennummer — die Gleichstandsregel ist ausgesprochen, nicht
-  // der Reihenfolge einer Datenstruktur ueberlassen.
+  // [A-22] Restpunkte nach Laengenanteil auf die Luecken DIESES Bereichs — groesste-Reste-
+  // Verfahren in REINER Ganzzahlarithmetik. Weil die Luecken den Bereich lueckenlos abdecken,
+  // ist die Summe ihrer Laengen exakt die Bereichslaenge; der Quotient ist damit genau der
+  // Laengenanteil. Bei gleichem Rest gewinnt die KLEINERE Lueckennummer — die Gleichstandsregel
+  // ist ausgesprochen, nicht der Reihenfolge einer Datenstruktur ueberlassen.
   const luecken = [];
   for (let i = 0; i < stellen.length - 1; i++)
     luecken.push({ i, a: stellen[i], b: stellen[i + 1], n: 0, r: 0 });
@@ -860,8 +862,8 @@ export function verteileAusgleichspunkte(lengthMm, stossXMm = [], achsenXMm = []
     let vergeben = 0;
     for (const lk of luecken) {
       const z = rest * (lk.b - lk.a);
-      lk.n = Math.floor(z / lengthMm);
-      lk.r = z % lengthMm;
+      lk.n = Math.floor(z / laengeMm);
+      lk.r = z % laengeMm;
       vergeben += lk.n;
     }
     const reihe = luecken.slice().sort((p, q) => (q.r - p.r) || (p.i - q.i));
@@ -880,6 +882,34 @@ export function verteileAusgleichspunkte(lengthMm, stossXMm = [], achsenXMm = []
       out.push({ x_mm: achsversatz(x, achsenXMm, versatzMm), art: "auffuellung" });
     }
   }
+  return out;
+}
+
+/**
+ * Ausgleichspunkte einer Wand deterministisch verteilen ([A-20]/[A-21]/[A-22]/[A-23]/[A-31]).
+ * Reine Funktion — gleiche Eingabe, gleiche Ausgabe, kein Zustand.
+ *
+ * [A-31] Gerechnet wird JE REAL BELEGTEM Bodenblechbereich ([A-29]) und nie ueber die ganze
+ * Wandlaenge hinweg: in einer Aussparung liegt kein Ausgleichspunkt, und ein durch die
+ * Aussparung ueberholter frueherer Stoss traegt keinen. Ohne Aussparungen ist der einzige
+ * Bereich die ganze Wand — das Ergebnis ist dann bit-genau das bisherige.
+ * @param {number} lengthMm Wandlaenge (Vielfaches von 125 mm)
+ * @param {number[]} [stossXMm] INNERE Blechstoesse des Bodenblechs in mm
+ * @param {number[]} [achsenXMm] Spannachsen in mm (62,5 + 125k), aufsteigend
+ * @param {number} [versatzMm] Abstand einer Auffuellung zur naechsten Spannachse
+ * @param {Array<{x0_mm:number,x1_mm:number}>} [bereiche] belegte Bereiche aus
+ *        `zerlegeBodenblech()`; fehlend/leer = die ganze Wand ist belegt
+ * @returns {Array<{x_mm:number,art:"wandende"|"bereichsende"|"blechstoss"|"auffuellung"}>}
+ */
+export function verteileAusgleichspunkte(lengthMm, stossXMm = [], achsenXMm = [],
+                                         versatzMm = AUSGLEICH_ACHSVERSATZ, bereiche = null) {
+  const B = (Array.isArray(bereiche) && bereiche.length)
+    ? bereiche : [{ x0_mm: 0, x1_mm: lengthMm }];
+  const out = [];
+  for (const b of B)
+    for (const p of bereichsAusgleichspunkte(b.x0_mm, b.x1_mm, lengthMm,
+                                             stossXMm || [], achsenXMm || [], versatzMm))
+      out.push(p);
   return out;
 }
 
@@ -1763,16 +1793,21 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   const AG = normAusgleichspunkte(PS.ausgleich_override_mm, lengthMm);
   if (AG.punkte) PS.ausgleich_override_mm = AG.punkte;
   // [A-21]/[A-29] Ein Blechstoss ist nur, wo zwei Bodenbleche WIRKLICH aneinanderstossen. Die
-  // Kante einer Aussparung ist keiner — dort endet das Blech frei —, und sie erzeugt deshalb
-  // keinen Pflichtpunkt. Ohne Aussparungen ist die Liste bit-genau die bisherige.
+  // Kante einer Aussparung ist keiner — dort endet das Blech frei — und traegt darum keinen
+  // Stosspunkt; als BEREICHSENDE ist sie nach [A-31] trotzdem ein Pflichtauflager.
   const bodenStoesse = [];
   for (let i = 0; i + 1 < bodenTeile.length; i++) {
     const e = bodenTeile[i].x0_mm + bodenTeile[i].raster_mm;
     if (e === bodenTeile[i + 1].x0_mm) bodenStoesse.push(e);
   }
+  // [A-31] Verteilt wird JE REAL BELEGTEM Bereich — dieselben Bereiche, aus denen die
+  // Bodenbleche zerlegt wurden ([A-29]), damit kein Punkt in einer Aussparung landet und keiner
+  // an einem ueberholten frueheren Stoss stehen bleibt. Ohne Aussparungen ist die Liste
+  // bit-genau die bisherige.
   const ausgleichspunkte = AG.punkte
     ? AG.punkte.map((x) => ({ x_mm: x, art: "manuell" }))
-    : verteileAusgleichspunkte(lengthMm, bodenStoesse, columns.map((c) => c.x_mm));
+    : verteileAusgleichspunkte(lengthMm, bodenStoesse, columns.map((c) => c.x_mm),
+                               AUSGLEICH_ACHSVERSATZ, bodenZerlegung.bereiche);
 
   // [A-26]/[A-27] Deckenanschlusspunkte auf den Spannachsen. Gelesen werden ausschliesslich
   // FERTIGE Werte — Wandlaenge und die eben gebildeten Spannachsen; geschrieben wird in keine

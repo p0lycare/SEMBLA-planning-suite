@@ -1188,5 +1188,83 @@ class BodenblechAussparungen(unittest.TestCase):
                 self.assertEqual(w["base_plate"]["laenge_mm"], 5000)
 
 
+class TestAusgleichspunkteJeBereich(unittest.TestCase):
+    """Ausgleichspunkte je REAL BELEGTEM Bodenblechbereich ([A-31], #138).
+
+    Vorher lief die Verteilung ueber die ganze Wandlaenge: ein von einer Aussparung
+    UEBERHOLTER frueherer Blechstoss trug weiter ein Ausgleichsblech, und das neue reale
+    Segmentende blieb ohne Auflager.
+    """
+
+    @staticmethod
+    def _wand(g):
+        ps = None if g is None else {"base_plate_aussparungen_grid": g}
+        return build_wall("ag", 5000, 2600, [], None, ps)
+
+    @staticmethod
+    def _bereiche(w):
+        luecken, bereiche, x = w["base_plate"].get("aussparungen", []), [], 0
+        for lu in luecken:
+            if lu["x0_mm"] > x:
+                bereiche.append((x, lu["x0_mm"]))
+            x = lu["x1_mm"]
+        if x < 5000:
+            bereiche.append((x, 5000))
+        return luecken, bereiche
+
+    def test_mittige_aussparung_setzt_beide_segmentenden(self):
+        w = self._wand([19, 20])                      # 2375 mm … 2625 mm ausgespart
+        arten = {p["x_mm"]: p["art"] for p in w["ausgleichspunkte"]}
+        self.assertEqual(arten.get(2375), "bereichsende")
+        self.assertEqual(arten.get(2625), "bereichsende")
+        self.assertFalse([p for p in w["ausgleichspunkte"] if 2375 < p["x_mm"] < 2625])
+        # Ohne Aussparung liegt bei 2250 ein Stosspunkt — mit Aussparung ist er ueberholt.
+        ohne = {p["x_mm"]: p["art"] for p in self._wand(None)["ausgleichspunkte"]}
+        self.assertEqual(ohne.get(2250), "blechstoss")
+        self.assertNotIn(2250, arten)
+
+    def test_randseitige_und_mehrere_aussparungen(self):
+        for g in ([0, 1], [38, 39], [8, 9, 25, 26], [0, 1, 19, 20, 38, 39]):
+            with self.subTest(g=g):
+                w = self._wand(g)
+                luecken, bereiche = self._bereiche(w)
+                for p in w["ausgleichspunkte"]:
+                    self.assertFalse(any(lu["x0_mm"] < p["x_mm"] < lu["x1_mm"] for lu in luecken))
+                gesetzt = {p["x_mm"] for p in w["ausgleichspunkte"]}
+                for a, b in bereiche:
+                    self.assertIn(a, gesetzt)
+                    self.assertIn(b, gesetzt)
+                # Deterministisch: dieselbe Eingabe, dieselbe Liste.
+                self.assertEqual(w["ausgleichspunkte"], self._wand(g)["ausgleichspunkte"])
+
+    def test_zieldichte_gilt_je_bereich(self):
+        w = self._wand([8, 9, 25, 26])
+        _, bereiche = self._bereiche(w)
+        for a, b in bereiche:
+            n = len([p for p in w["ausgleichspunkte"] if a <= p["x_mm"] <= b])
+            self.assertGreaterEqual(n, math.ceil(3 * (b - a) / 1000))
+
+    def test_rueckkehr_ohne_aussparung_ist_bit_genau_der_altstand(self):
+        ohne = self._wand(None)
+        zurueck = self._wand([])
+        self.assertEqual(zurueck["ausgleichspunkte"], ohne["ausgleichspunkte"])
+        self.assertEqual(zurueck["base_plate"]["teile"], ohne["base_plate"]["teile"])
+        self.assertFalse([p for p in zurueck["ausgleichspunkte"] if p["art"] == "bereichsende"])
+        achsen = [c["x_mm"] for c in ohne["tension_columns"]]
+        self.assertEqual(
+            sc.verteile_ausgleichspunkte(5000, [1125, 2250, 3375, 4500], achsen),
+            sc.verteile_ausgleichspunkte(5000, [1125, 2250, 3375, 4500], achsen,
+                                         sc.AUSGLEICH_ACHSVERSATZ,
+                                         [{"x0_mm": 0, "x1_mm": 5000}]))
+
+    def test_override_sperrt_auch_die_bereichsverteilung(self):
+        w = build_wall("ag", 5000, 2600, [], None,
+                       {"base_plate_aussparungen_grid": [19, 20],
+                        "ausgleich_override_mm": [0, 2400, 5000]})
+        self.assertEqual(w["ausgleichspunkte"],
+                         [{"x_mm": 0, "art": "manuell"}, {"x_mm": 2400, "art": "manuell"},
+                          {"x_mm": 5000, "art": "manuell"}])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

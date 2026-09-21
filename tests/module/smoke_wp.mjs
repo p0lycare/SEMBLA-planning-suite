@@ -1542,6 +1542,79 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.setDcEdit(fa
     && WP.manualAs===null);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Issue #138 / [A-31]: Ausgleichsbleche folgen den REALEN Bodenblechsegmenten.
+// Gefahren wird derselbe ECHTE Pfad wie oben — Auswahlmodus an, Rasterfelder ueber den
+// delegierten Klickhoerer schalten — und danach wird geprueft, was im GESPEICHERTEN Wandelement,
+// in der gezeichneten Wandansicht und in der Stueckliste steht. Es gibt genau EINE Punktliste:
+// Ansicht und BOM lesen `w.ausgleichspunkte` und rechnen keine Position nach ([P-6]).
+// ---------------------------------------------------------------------------------------------
+setzeLaenge(5000); document.getElementById('hgt').value='2600';
+document.getElementById('modus').value='auto';
+WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.setDcEdit(false);
+WP.asClear(); WP.run();
+{
+  const planEl=document.getElementById('plan');
+  const svg=()=>planEl.innerHTML;
+  const we=()=>store.aktivesWandelement();
+  const klick=(k)=>planEl.dispatch('click',
+    { target:{ getAttribute:(n)=>(n==='data-as'?String(k):null) } });
+  const punkte=()=>we().ausgleichspunkte;
+  const xs=()=>punkte().map(p=>p.x_mm);
+  const art=(x)=>(punkte().find(p=>p.x_mm===x)||{}).art;
+  const luecken=()=>we().base_plate.aussparungen||[];
+  // Belegte Bereiche als Komplement der Luecken — hier NUR zum Pruefen, nicht als zweite
+  // Rechnung: verglichen wird gegen die Punktliste des Kerns.
+  const bereiche=()=>{ const out=[]; let x=0;
+    for(const lu of luecken()){ if(lu.x0_mm>x) out.push([x,lu.x0_mm]); x=lu.x1_mm; }
+    if(x<5000) out.push([x,5000]); return out; };
+  const AGFARBE=MONT.AUSGLEICHSPUNKT.farbe;
+  const marken=()=>(svg().match(new RegExp(
+    '<polygon points="[^"]+" fill="'+AGFARBE+'"/>','g'))||[]).length;
+
+  const ohne=JSON.stringify(xs());
+  const ohneBom=BOM.semblaBom(we()).ausgleichspunkte;
+  ok('[A-31] Ausgangslage: ohne Aussparung ein Stosspunkt bei 2250 mm',
+    art(2250)==='blechstoss' && art(0)==='wandende' && art(5000)==='wandende');
+
+  // (1) MITTIGE Aussparung: Felder 19+20 -> 2375 mm … 2625 mm.
+  WP.setAsEdit(true); klick(19); klick(20); WP.run();
+  ok('[A-31] mittige Aussparung: Pflichtauflager an beiden neuen Segmentenden',
+    art(2375)==='bereichsende' && art(2625)==='bereichsende');
+  ok('[A-31] kein Ausgleichspunkt IN der Aussparung',
+    !xs().some(x=>x>2375 && x<2625));
+  ok('[A-31] kein verwaister Punkt am ueberholten frueheren Stoss (2250 mm)',
+    !xs().includes(2250));
+  ok('[A-31] jeder Stosspunkt ist ein REALER Stoss zweier Bodenbleche',
+    (()=>{ const t=we().base_plate.teile;
+      const enden=new Set(t.map(tl=>tl.x0_mm+tl.raster_mm)), start=new Set(t.map(tl=>tl.x0_mm));
+      return punkte().filter(p=>p.art==='blechstoss')
+        .every(p=>enden.has(p.x_mm)&&start.has(p.x_mm)); })());
+  ok('[A-31] Wandansicht und Stueckliste folgen derselben Liste — keine zweite Rechnung',
+    marken()===punkte().length && BOM.semblaBom(we()).ausgleichspunkte===punkte().length);
+
+  // (2) MEHRERE Aussparungen, eine davon randseitig.
+  WP.setManualAs([0,1,19,20,38,39]); WP.run();
+  ok('[A-31] mehrere Aussparungen: jeder belegte Bereich traegt Anfang und Ende',
+    (()=>{ const g=new Set(xs());
+      return bereiche().every(([a,b])=>g.has(a)&&g.has(b)); })());
+  ok('[A-31] randseitige Aussparung: das ausgesparte Wandende traegt keinen Punkt',
+    !xs().includes(0) && xs()[0]===250);
+  ok('[A-31] in keiner Aussparung liegt ein Punkt',
+    !punkte().some(p=>luecken().some(lu=>p.x_mm>lu.x0_mm && p.x_mm<lu.x1_mm)));
+  ok('[A-31] Zieldichte gilt je Bereich (mindestens 3 je Meter im Bereich)',
+    bereiche().every(([a,b])=>xs().filter(x=>x>=a&&x<=b).length>=Math.ceil(3*(b-a)/1000)));
+  ok('[A-31] auch hier speisen Ansicht und Stueckliste dieselbe Liste',
+    marken()===punkte().length && BOM.semblaBom(we()).ausgleichspunkte===punkte().length);
+
+  // (3) RUECKKEHR ohne Aussparung: alles wieder wie zuvor.
+  WP.asClear(); WP.setAsEdit(false); WP.run();
+  ok('[A-31] nach dem Zuruecksetzen ist die Punktliste bit-genau die alte',
+    JSON.stringify(xs())===ohne && !punkte().some(p=>p.art==='bereichsende'));
+  ok('[A-31] und die Stuecklistenmenge ebenso',
+    BOM.semblaBom(we()).ausgleichspunkte===ohneBom && marken()===punkte().length);
+}
+
 setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
 
 // ---------------------------------------------------------------------------------------------

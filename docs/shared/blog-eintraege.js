@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260921-02",
+    datum: "2026-09-21",
+    typ: "fix",
+    issue: 138,
+    titel: "Ausgleichsbleche folgen den ausgesparten Bodenblechen: Auflager an jedem realen Segmentende, keines in der Lücke",
+    testbitte: "In Modul 1 ein Bodenblechfeld mitten in der Wand aussparen: beide neuen Segmentenden tragen ein "
+      + "Ausgleichsblech, die Lücke keines und der frühere Stoßpunkt verschwindet; Aussparung wieder entfernen "
+      + "stellt die alte Verteilung her",
+  },
+  {
     id: "chg-20260921-01",
     datum: "2026-09-21",
     typ: "fix",

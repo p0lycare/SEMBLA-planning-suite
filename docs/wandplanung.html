@@ -1985,9 +1985,10 @@ function renderAgHinweis(){
   const n=(RESULT.wandelement.ausgleichspunkte||[]).length;
   el.textContent = manualAg
     ? 'Eigene Auswahl: '+n+' Punkt(e) — gespeichert am Wandelement; die automatische Verteilung '
-      +'([A-20]…[A-23]) ist gesperrt, es wird nichts aufgefüllt.'
-    : 'Automatisch verteilt ([A-20]…[A-23]): '+n+' Punkt(e) aus Wandlänge, Bodenblech-Stößen und '
-      +'Spannachsen — nicht gespeichert.';
+      +'([A-20]…[A-23]/[A-31]) ist gesperrt, es wird nichts aufgefüllt.'
+    : 'Automatisch verteilt ([A-20]…[A-23]/[A-31]): '+n+' Punkt(e) — je real belegtem '
+      +'Bodenblechbereich aus dessen Länge, den Bereichsenden, den Bodenblech-Stößen darin und '
+      +'den Spannachsen; nicht gespeichert.';
 }
 
 // ---- Deckenanschlusspunkte ([A-26]/[A-27], #95) --------------------------------------------

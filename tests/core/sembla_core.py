@@ -558,27 +558,28 @@ def _achsversatz(x_mm, achsen_x_mm, versatz_mm):
     return nah + (-versatz_mm if d < 0 else versatz_mm)
 
 
-def verteile_ausgleichspunkte(length_mm, stoss_x_mm=(), achsen_x_mm=(),
-                              versatz_mm=AUSGLEICH_ACHSVERSATZ):
-    """Ausgleichspunkte deterministisch verteilen ([A-20]/[A-21]/[A-22]/[A-23])."""
-    # [A-21] Der Stoss IST der Punkt: die Blechmitte sitzt im Stosspunkt, damit beide Bleche
-    # aufliegen. Alle Pflichtwerte sind ganzzahlige mm (Vielfache von 125) — nichts zu runden.
-    pflicht = {0: "wandende", length_mm: "wandende"}
-    for x in (stoss_x_mm or ()):
-        if 0 < x < length_mm and x not in pflicht:
+def _bereichs_ausgleichspunkte(x0_mm, x1_mm, length_mm, stoss_x_mm, achsen_x_mm, versatz_mm):
+    """Ausgleichspunkte EINES belegten Bodenblechbereichs ([A-20]…[A-23] je Bereich, [A-31]).
+    Bit-genaues Gegenstueck zu bereichsAusgleichspunkte() in docs/shared/sembla-core.js."""
+    laenge_mm = x1_mm - x0_mm
+    # [A-21]/[A-31] Pflichtpunkte sind ANFANG und ENDE des belegten Bereichs sowie jeder REALE
+    # innere Blechstoss DARIN. Ein Bereichsende, das zugleich ein Wandende ist, heisst weiter
+    # "wandende"; die Kante einer Aussparung ist ein "bereichsende" und kein Stoss ([A-29]).
+    pflicht = {x0_mm: "wandende" if x0_mm == 0 else "bereichsende",
+               x1_mm: "wandende" if x1_mm == length_mm else "bereichsende"}
+    for x in stoss_x_mm:
+        if x0_mm < x < x1_mm and x not in pflicht:
             pflicht[x] = "blechstoss"
     stellen = sorted(pflicht)
 
-    # [A-20] Zielpunktzahl. `AUSGLEICH_DICHTE_JE_M * length_mm` ist ganzzahlig und length_mm ein
-    # Vielfaches von 125, der Quotient also exakt darstellbar — die Aufrundung ist damit in
-    # beiden Cores dieselbe. Mehr Pflichtpunkte als die Dichte verlangt: dann gilt deren Anzahl.
-    ziel = max(len(stellen), math.ceil(AUSGLEICH_DICHTE_JE_M * length_mm / 1000))
+    # [A-20] Zielpunktzahl DIESES Bereichs. `AUSGLEICH_DICHTE_JE_M * laenge_mm` ist ganzzahlig
+    # und laenge_mm ein Vielfaches von 125, der Quotient also exakt darstellbar. Mehr
+    # Pflichtpunkte als die Dichte verlangt: dann gilt deren Anzahl.
+    ziel = max(len(stellen), math.ceil(AUSGLEICH_DICHTE_JE_M * laenge_mm / 1000))
 
-    # [A-22] Restpunkte nach Laengenanteil auf die Luecken — groesste-Reste-Verfahren in REINER
-    # Ganzzahlarithmetik. Weil die Luecken die Wand lueckenlos abdecken, ist die Summe ihrer
-    # Laengen exakt die Wandlaenge; der Quotient ist damit genau der Laengenanteil. Bei gleichem
-    # Rest gewinnt die KLEINERE Lueckennummer — die Gleichstandsregel ist ausgesprochen, nicht
-    # der Reihenfolge einer Datenstruktur ueberlassen.
+    # [A-22] Restpunkte nach Laengenanteil auf die Luecken DIESES Bereichs — groesste-Reste-
+    # Verfahren in REINER Ganzzahlarithmetik. Bei gleichem Rest gewinnt die KLEINERE
+    # Lueckennummer.
     luecken = [{"i": i, "a": stellen[i], "b": stellen[i + 1], "n": 0, "r": 0}
                for i in range(len(stellen) - 1)]
     rest = ziel - len(stellen)
@@ -586,8 +587,8 @@ def verteile_ausgleichspunkte(length_mm, stoss_x_mm=(), achsen_x_mm=(),
         vergeben = 0
         for lk in luecken:
             z = rest * (lk["b"] - lk["a"])
-            lk["n"] = z // length_mm
-            lk["r"] = z % length_mm
+            lk["n"] = z // laenge_mm
+            lk["r"] = z % laenge_mm
             vergeben += lk["n"]
         reihe = sorted(luecken, key=lambda lk: (-lk["r"], lk["i"]))
         for j in range(rest - vergeben):
@@ -604,6 +605,23 @@ def verteile_ausgleichspunkte(length_mm, stoss_x_mm=(), achsen_x_mm=(),
             # Python und JS bit-gleich runden (Pythons `round` ist half-to-even == pyRound).
             x = round(lk["a"] + (lk["b"] - lk["a"]) * j / (lk["n"] + 1))
             out.append({"x_mm": _achsversatz(x, achsen_x_mm, versatz_mm), "art": "auffuellung"})
+    return out
+
+
+def verteile_ausgleichspunkte(length_mm, stoss_x_mm=(), achsen_x_mm=(),
+                              versatz_mm=AUSGLEICH_ACHSVERSATZ, bereiche=None):
+    """Ausgleichspunkte deterministisch verteilen ([A-20]/[A-21]/[A-22]/[A-23]/[A-31]).
+
+    [A-31] Gerechnet wird JE REAL BELEGTEM Bodenblechbereich ([A-29]) und nie ueber die ganze
+    Wandlaenge hinweg: in einer Aussparung liegt kein Ausgleichspunkt, und ein ueberholter
+    frueherer Stoss traegt keinen. Ohne Aussparungen ist der einzige Bereich die ganze Wand —
+    das Ergebnis ist dann bit-genau das bisherige.
+    """
+    B = list(bereiche) if bereiche else [{"x0_mm": 0, "x1_mm": length_mm}]
+    out = []
+    for b in B:
+        out.extend(_bereichs_ausgleichspunkte(b["x0_mm"], b["x1_mm"], length_mm,
+                                              list(stoss_x_mm or ()), achsen_x_mm, versatz_mm))
     return out
 
 
@@ -1681,14 +1699,18 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     if _AG is not None:
         _PS["ausgleich_override_mm"] = _AG
     # [A-21]/[A-29] Ein Blechstoss ist nur, wo zwei Bodenbleche WIRKLICH aneinanderstossen. Die
-    # Kante einer Aussparung ist keiner — dort endet das Blech frei — und erzeugt deshalb keinen
-    # Pflichtpunkt. Ohne Aussparungen ist die Liste bit-genau die bisherige.
+    # Kante einer Aussparung ist keiner — dort endet das Blech frei — und traegt darum keinen
+    # Stosspunkt; als BEREICHSENDE ist sie nach [A-31] trotzdem ein Pflichtauflager.
     boden_stoesse = [a["x0_mm"] + a["raster_mm"]
                      for a, b in zip(boden_teile, boden_teile[1:])
                      if a["x0_mm"] + a["raster_mm"] == b["x0_mm"]]
+    # [A-31] Verteilt wird JE REAL BELEGTEM Bereich — dieselben Bereiche, aus denen die
+    # Bodenbleche zerlegt wurden ([A-29]). Ohne Aussparungen bit-genau der Altstand.
     ausgleichspunkte = ([{"x_mm": x, "art": "manuell"} for x in _AG] if _AG is not None
                         else verteile_ausgleichspunkte(length_mm, boden_stoesse,
-                                                       [c["x_mm"] for c in columns]))
+                                                       [c["x_mm"] for c in columns],
+                                                       AUSGLEICH_ACHSVERSATZ,
+                                                       boden_zerlegung["bereiche"]))
 
     # [A-26]/[A-27] Deckenanschlusspunkte auf den Spannachsen. Gelesen werden ausschliesslich
     # FERTIGE Werte — Wandlaenge und die eben gebildeten Spannachsen. Der Kern rechnet allein die

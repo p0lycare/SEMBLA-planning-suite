@@ -2137,5 +2137,107 @@ t("#138 Paritaet JS <-> Python fuer Geometrie, Teile, Mengen und Konflikte", () 
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// AUSGLEICHSPUNKTE JE BELEGTEM BODENBLECHBEREICH [A-31] (#138, Nutzerabnahme)
+//
+// Vorher lief die Verteilung ueber die ganze Wandlaenge: ein von einer Aussparung UEBERHOLTER
+// frueherer Blechstoss trug weiter ein Ausgleichsblech, und das neue reale Segmentende blieb
+// ohne Auflager. Jetzt rechnet jeder belegte Bereich fuer sich.
+// ---------------------------------------------------------------------------
+console.log("\nAUSGLEICHSPUNKTE JE BEREICH [A-31] (#138):");
+
+/** x-Werte der Ausgleichspunkte einer 5000er-Wand mit den gegebenen Aussparungsfeldern. */
+const agWand = (g) => buildWall("ag", 5000, 2600, [], null,
+  g == null ? null : { base_plate_aussparungen_grid: g });
+
+t("[A-31] mittige Aussparung: Pflichtpunkte an beiden neuen Segmentenden", () => {
+  const w = agWand([19, 20]);                       // 2375 mm … 2625 mm ausgespart
+  const p = new Map(w.ausgleichspunkte.map((q) => [q.x_mm, q.art]));
+  assert(p.get(2375) === "bereichsende" && p.get(2625) === "bereichsende",
+    "Segmentenden fehlen: " + JSON.stringify(w.ausgleichspunkte));
+  // Kein Punkt IN der Luecke — auch keine Auffuellung.
+  assert(!w.ausgleichspunkte.some((q) => q.x_mm > 2375 && q.x_mm < 2625), "Punkt in der Aussparung");
+  // Und kein verwaister Punkt am ueberholten frueheren Stoss (ohne Aussparung liegt dort einer).
+  assert(agWand(null).ausgleichspunkte.some((q) => q.x_mm === 2250 && q.art === "blechstoss"),
+    "Testvoraussetzung: frueherer Stoss bei 2250");
+  assert(!p.has(2250), "verwaister Punkt am ueberholten Stoss");
+  // Jeder gemeldete Stosspunkt ist ein REALER Stoss zweier Bodenbleche.
+  const enden = new Set(w.base_plate.teile.map((tl) => tl.x0_mm + tl.raster_mm));
+  const starts = new Set(w.base_plate.teile.map((tl) => tl.x0_mm));
+  for (const q of w.ausgleichspunkte)
+    if (q.art === "blechstoss") assert(enden.has(q.x_mm) && starts.has(q.x_mm), "kein realer Stoss");
+});
+
+t("[A-31] randseitige und mehrere Aussparungen: jeder Bereich unabhaengig, nichts in der Luecke", () => {
+  for (const g of [[0, 1], [38, 39], [8, 9, 25, 26], [0, 1, 19, 20, 38, 39]]) {
+    const w = agWand(g);
+    const luecken = w.base_plate.aussparungen || [];
+    for (const q of w.ausgleichspunkte)
+      assert(!luecken.some((lu) => q.x_mm > lu.x0_mm && q.x_mm < lu.x1_mm),
+        "Punkt in der Aussparung bei " + q.x_mm + " (" + JSON.stringify(g) + ")");
+    // Anfang und Ende JEDES belegten Bereichs sind gesetzt.
+    const gesetzt = new Set(w.ausgleichspunkte.map((q) => q.x_mm));
+    const bereiche = [];
+    let x = 0;
+    for (const lu of luecken) { if (lu.x0_mm > x) bereiche.push([x, lu.x0_mm]); x = lu.x1_mm; }
+    if (x < 5000) bereiche.push([x, 5000]);
+    for (const [a, b] of bereiche)
+      assert(gesetzt.has(a) && gesetzt.has(b), "Bereichsende fehlt: " + a + "/" + b);
+    // Deterministisch: dieselbe Eingabe, dieselbe Liste.
+    deepEqual(w.ausgleichspunkte, agWand(g).ausgleichspunkte);
+  }
+});
+
+t("[A-31] Zieldichte und Achsversatz gelten INNERHALB des Bereichs", () => {
+  // Jeder Bereich traegt mindestens ceil(3 je Meter) Punkte — gezaehlt werden seine eigenen.
+  const w = agWand([8, 9, 25, 26]);
+  const luecken = w.base_plate.aussparungen;
+  const bereiche = [];
+  let x = 0;
+  for (const lu of luecken) { if (lu.x0_mm > x) bereiche.push([x, lu.x0_mm]); x = lu.x1_mm; }
+  bereiche.push([x, 5000]);
+  for (const [a, b] of bereiche) {
+    const n = w.ausgleichspunkte.filter((q) => q.x_mm >= a && q.x_mm <= b).length;
+    assert(n >= Math.ceil(3 * (b - a) / 1000), `Dichte im Bereich ${a}..${b}: ${n}`);
+  }
+  // Der Achsversatz gilt fuer Auffuellungen unveraendert ([A-23]).
+  const achsen = w.tension_columns.map((c) => c.x_mm);
+  for (const q of w.ausgleichspunkte)
+    if (q.art === "auffuellung")
+      assert(Math.min(...achsen.map((xa) => Math.abs(xa - q.x_mm))) >= AUSGLEICH_ACHSVERSATZ - 1e-9,
+        "Achsversatz verletzt bei " + q.x_mm);
+});
+
+t("[A-31] Rueckkehr ohne Aussparung: Punktliste, Menge und Wandelement bit-genau wie zuvor", () => {
+  const ohne = agWand(null);
+  const zurueck = buildWall("ag", 5000, 2600, [], null, { base_plate_aussparungen_grid: [] });
+  deepEqual(zurueck.ausgleichspunkte, ohne.ausgleichspunkte);
+  deepEqual(zurueck.base_plate.teile, ohne.base_plate.teile);
+  assert(!zurueck.ausgleichspunkte.some((q) => q.art === "bereichsende"), "Bereichsende ohne Luecke");
+  // Die direkte Funktion ohne Bereiche ist derselbe Altstand.
+  deepEqual(verteileAusgleichspunkte(5000, [1125, 2250, 3375, 4500],
+      ohne.tension_columns.map((c) => c.x_mm)),
+    verteileAusgleichspunkte(5000, [1125, 2250, 3375, 4500],
+      ohne.tension_columns.map((c) => c.x_mm), AUSGLEICH_ACHSVERSATZ,
+      [{ x0_mm: 0, x1_mm: 5000 }]));
+});
+
+t("[A-31] der Override nach [A-24] sperrt auch die Bereichsverteilung", () => {
+  const w = buildWall("ag", 5000, 2600, [], null,
+    { base_plate_aussparungen_grid: [19, 20], ausgleich_override_mm: [0, 2400, 5000] });
+  deepEqual(w.ausgleichspunkte, [{ x_mm: 0, art: "manuell" }, { x_mm: 2400, art: "manuell" },
+    { x_mm: 5000, art: "manuell" }]);
+});
+
+t("[A-31] Paritaet JS <-> Python fuer die Ausgleichspunkte mit Aussparungen", () => {
+  for (const g of [[19, 20], [0, 1], [38, 39], [8, 9, 25, 26], [0, 1, 19, 20, 38, 39], [3]]) {
+    const arg = { name: "ag", length_mm: 5000, height_mm: 2600, openings: [],
+      prestress: { base_plate_aussparungen_grid: g } };
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+    deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
+  }
+});
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail ? 1 : 0);
