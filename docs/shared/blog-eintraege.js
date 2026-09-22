@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260922-03",
+    datum: "2026-09-22",
+    typ: "feature",
+    issue: 145,
+    titel: "Geschosseditor: benannte Bedienelemente, beschriftete Sammel-Eingaben und "
+      + "tastaturfeste Bedienblätter",
+    testbitte: "„Gemeinsam bearbeiten…“ nur mit der Tastatur bedienen: jedes Wertfeld nennt "
+      + "Merkmal und Einheit, der Fokus bleibt im Blatt und kehrt beim Schließen zum Knopf "
+      + "zurück; Escape speichert nichts",
+  },
+  {
     id: "chg-20260922-02",
     datum: "2026-09-22",
     typ: "feature",

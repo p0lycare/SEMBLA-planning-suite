@@ -176,6 +176,23 @@ export function verknuepfe(el, textEl) {
 }
 
 /**
+ * Den sichtbaren Tooltip einer BESTEHENDEN Beschreibung an einem ZWEITEN Element
+ * ausloesen — ohne eine zweite Beschreibung anzulegen.
+ *
+ * Gebraucht wird das, wo Bedienelement und Hoverflaeche auseinanderfallen: ein
+ * Haekchen liegt in seinem `<label>`, die sichtbare Flaeche ist aber der Beschriftungs-
+ * text daneben. `aria-describedby` gehoert dann an das EINGABEELEMENT (nur dort wird es
+ * vorgelesen), der Tooltip-Ausloeser `data-ax-tip` an das umgebende Label — beide zeigen
+ * auf DENSELBEN Textknoten, es entsteht also kein zweiter Text und keine zweite Aussage.
+ * @param {any} el @param {string|null|undefined} id Kennung des Beschreibungstextes
+ */
+export function tippZiel(el, id) {
+  if (!el || typeof el.setAttribute !== 'function') return;
+  const i = String(id == null ? '' : id).trim();
+  if (i) el.setAttribute('data-ax-tip', i);
+}
+
+/**
  * Beschreibung fuer ein vorhandenes Element ERZEUGEN (wenn es keinen sichtbaren Text
  * gibt, an den sich anknuepfen liesse). Der Knoten ist nur fuer Hilfsmittel sichtbar
  * und wird unmittelbar hinter dem Bedienelement eingehaengt.
@@ -367,10 +384,19 @@ function _sichtbar(el) {
  * @param {boolean} [opts.escape] eigenes Escape binden (Standard: ja)
  * @param {() => any} [opts.ersatzFokus] Fokusziel, wenn der Ausloeser verschwunden ist
  * @param {() => any} [opts.erstFokus] gewuenschtes Fokusziel beim Oeffnen
+ * @param {boolean} [opts.modal] MODAL (Standard) oder nicht — s. u.
  * @param {any} [opts.dokument]
  */
 export function modalDialog(opts) {
   const o = opts || {};
+  // NICHT jeder Dialog ist modal, und ein nicht modaler darf nicht so tun.
+  // `modal: false` ist fuer Bedienblaetter gedacht, deren Zweck GERADE die Arbeit am
+  // Hintergrund ist (im Editor etwa die Planverwaltung: kalibriert und verschoben wird
+  // auf der Zeichenflaeche, waehrend das Blatt offenbleibt). Ein solcher Dialog bekommt
+  // Rolle, Namen, Fokus beim Oeffnen und Fokusrueckgabe beim Schliessen — aber KEIN
+  // `aria-modal`, KEINE Fokusfalle und KEINE Hintergrundsperre. Beides zu behaupten
+  // waere eine falsche Zusage an die Hilfsmittel.
+  const modal = o.modal !== false;
   const d = o.dokument || (typeof document !== 'undefined' ? document : null);
   const overlay = o.overlay;
   const kasten = o.dialog || overlay;
@@ -379,7 +405,8 @@ export function modalDialog(opts) {
 
   if (kasten && typeof kasten.setAttribute === 'function') {
     kasten.setAttribute('role', 'dialog');
-    kasten.setAttribute('aria-modal', 'true');
+    if (modal) kasten.setAttribute('aria-modal', 'true');
+    else if (typeof kasten.removeAttribute === 'function') kasten.removeAttribute('aria-modal');
     if (o.titelId) kasten.setAttribute('aria-labelledby', String(o.titelId));
     else if (o.name) kasten.setAttribute('aria-label', String(o.name));
     kasten.setAttribute('tabindex', '-1');
@@ -399,6 +426,7 @@ export function modalDialog(opts) {
   }
 
   function hintergrundSperren(an) {
+    if (!modal) return;
     for (const el of _alle(d, `[${HINTERGRUND_ATTR}]`)) {
       if (typeof el.setAttribute !== 'function') continue;
       if (an) { el.setAttribute('aria-hidden', 'true'); el.setAttribute('inert', ''); }
@@ -416,6 +444,7 @@ export function modalDialog(opts) {
       return;
     }
     if (ev.key !== 'Tab') return;
+    if (!modal) return;                     // nicht modal: der Fokus darf hinaus
     const k = kette();
     if (!k.length) return;
     const aktuell = d && d.activeElement ? d.activeElement : null;
@@ -436,14 +465,14 @@ export function modalDialog(opts) {
      */
     oeffne(vonEl) {
       ausloeser = vonEl || (d && d.activeElement) || null;
-      if (!istOffen) { istOffen = true; _offen += 1; }
+      if (!istOffen) { istOffen = true; if (modal) _offen += 1; }
       hintergrundSperren(true);
       const wunsch = typeof o.erstFokus === 'function' ? o.erstFokus() : null;
       if (!fokussiere(wunsch)) { const k = kette(); if (!fokussiere(k[0])) fokussiere(kasten); }
     },
     /** Anmelden, dass der Dialog zu ist: Hintergrund frei, Fokus zurueck. */
     schliesse() {
-      if (istOffen) { istOffen = false; _offen = Math.max(0, _offen - 1); }
+      if (istOffen) { istOffen = false; if (modal) _offen = Math.max(0, _offen - 1); }
       if (_offen === 0) hintergrundSperren(false);
       const zurueck = (ausloeser && ausloeser.isConnected !== false) ? ausloeser : null;
       ausloeser = null;

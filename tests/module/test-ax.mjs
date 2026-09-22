@@ -196,6 +196,7 @@ const AX = await import('../../docs/shared/sembla-ax.js');
 // --- (c) Modaler Dialog ---------------------------------------------------
 {
   const hintergrund = dok.createElement('div');
+  hintergrund.setAttribute('id', 'hg');
   hintergrund.setAttribute(AX.HINTERGRUND_ATTR, '');
   const ausloeser = dok.createElement('button');
   ausloeser.setAttribute('id', 'ausloeser');
@@ -297,6 +298,81 @@ const AX = await import('../../docs/shared/sembla-ax.js');
   overlay3.dispatch('keydown', { key: 'Escape' });
   ok('escape:false ueberlaesst Escape dem zentralen Weg der Seite', abbruch3 === 0);
   dlg3.schliesse();
+}
+
+// --- (c2) NICHT modales Bedienblatt (#145) --------------------------------
+//
+// Die Planverwaltung des Geschosseditors ist ein Dialog, dessen ZWECK die Arbeit am
+// Hintergrund ist: kalibriert und verschoben wird auf der Zeichenflaeche, waehrend das
+// Blatt offen bleibt. Er bekommt deshalb Rolle, Namen und Fokusfuehrung — aber weder
+// `aria-modal` noch Fokusfalle noch Hintergrundsperre. Beides zu behaupten waere eine
+// falsche Zusage an die Hilfsmittel.
+{
+  const hg = dok.getElementById('hg');
+  const ausloeser = dok.getElementById('ausloeser');
+  const blatt = dok.createElement('div');
+  const erstes = dok.createElement('button');
+  const letztes = dok.createElement('button');
+  blatt.appendChild(erstes); blatt.appendChild(letztes);
+  dok.body.appendChild(blatt);
+  let abbruch = 0;
+  const nd = AX.modalDialog({ overlay: blatt, dialog: blatt, name: 'Geschossplan',
+    modal: false, dokument: dok, abbruch: () => { abbruch += 1; } });
+
+  ok('das nicht modale Blatt traegt role="dialog" und einen eigenen Namen',
+    blatt.getAttribute('role') === 'dialog' && blatt.getAttribute('aria-label') === 'Geschossplan');
+  ok('das nicht modale Blatt behauptet NICHT, modal zu sein',
+    blatt.getAttribute('aria-modal') === null);
+
+  ausloeser.focus();
+  nd.oeffne(ausloeser);
+  ok('Oeffnen setzt den Fokus auch beim nicht modalen Blatt hinein', dok.activeElement === erstes);
+  ok('der Hintergrund bleibt beim nicht modalen Blatt bedienbar',
+    hg.getAttribute('inert') === null && hg.getAttribute('aria-hidden') === null);
+
+  letztes.focus();
+  const ev = blatt.dispatch('keydown', { key: 'Tab' });
+  ok('Tab verlaesst das nicht modale Blatt (keine Fokusfalle)',
+    ev.defaultPrevented === false && dok.activeElement === letztes);
+
+  blatt.dispatch('keydown', { key: 'Escape' });
+  ok('Escape bricht auch das nicht modale Blatt ab', abbruch === 1);
+  nd.schliesse();
+  ok('Schliessen gibt den Fokus an den Ausloeser zurueck', dok.activeElement === ausloeser);
+
+  // Ein nicht modales Blatt darf die Sperre eines ECHTEN modalen Dialogs weder
+  // setzen noch aufheben — sonst risse es den Hintergrund unter ihm auf.
+  const ov = dok.createElement('div');
+  const md = dok.createElement('div');
+  const k = dok.createElement('button');
+  md.appendChild(k); ov.appendChild(md); dok.body.appendChild(ov);
+  const echt = AX.modalDialog({ overlay: ov, dialog: md, name: 'Echt', dokument: dok });
+  echt.oeffne(ausloeser);
+  nd.oeffne(ausloeser);
+  nd.schliesse();
+  ok('das nicht modale Blatt hebt die Sperre eines offenen modalen Dialogs nicht auf',
+    hg.getAttribute('inert') === '');
+  echt.schliesse();
+  ok('erst der modale Dialog gibt den Hintergrund frei', hg.getAttribute('inert') === null);
+}
+
+// --- (a2) Tooltip-Ausloeser an einer zweiten Flaeche (#145) ----------------
+{
+  const label = dok.createElement('label');
+  const haken = dok.createElement('input');
+  label.appendChild(haken);
+  dok.body.appendChild(label);
+  const id = AX.beschreibe(haken, 'Setzt die Wandhöhe aller ausgewählten Wände.', dok);
+  AX.tippZiel(label, id);
+  ok('die Beschreibung haengt am EINGABEELEMENT (nur dort wird sie vorgelesen)',
+    haken.getAttribute('aria-describedby') === id);
+  ok('der Tooltip laesst sich zusaetzlich am umgebenden Label ausloesen',
+    label.getAttribute('data-ax-tip') === id);
+  ok('tippZiel legt KEINEN zweiten Beschreibungstext an',
+    dok.getElementById(id).textContent === 'Setzt die Wandhöhe aller ausgewählten Wände.');
+  const leer = dok.createElement('span');
+  AX.tippZiel(leer, null);
+  ok('tippZiel ohne Kennung setzt nichts', leer.getAttribute('data-ax-tip') === null);
 }
 
 // --- Reinheit -------------------------------------------------------------

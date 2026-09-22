@@ -31,7 +31,28 @@ class El {
     this.id = id; this.value = ''; this.textContent = ''; this._h = ''; this.className = '';
     this.hidden = false; this.checked = false; this.disabled = false; this.style = {};
     this.dataset = {}; this.listeners = {}; this.files = [];
+    // #144/#145: der Accessibility-Baustein arbeitet ueber Attribute (aria-label,
+    // aria-describedby, role, aria-modal, inert). Das Double fuehrt sie deshalb wirklich
+    // mit — sonst liefe die gepruefte Logik an der echten Seite vorbei.
+    this.attrs = {}; this.parentNode = null; this.isConnected = true;
   }
+  setAttribute(n, v){
+    this.attrs[n] = String(v);
+    if (n === 'id') { this.id = String(v); document._e[String(v)] = this; }
+  }
+  getAttribute(n){ return Object.prototype.hasOwnProperty.call(this.attrs, n) ? this.attrs[n] : null; }
+  removeAttribute(n){ delete this.attrs[n]; }
+  hasAttribute(n){ return Object.prototype.hasOwnProperty.call(this.attrs, n); }
+  appendChild(k){ k.parentNode = this; return k; }
+  insertBefore(k){ k.parentNode = this; return k; }
+  // Nur so viel Selektorlogik, wie die Seite braucht: `.gp-sheet` trennt die
+  // schwebenden Bedienblaetter vom Rest (Tastenkuerzel, #145).
+  matches(sel){
+    return String(sel).split(',').map(x => x.trim()).some(x =>
+      x.startsWith('.') ? String(this.className).split(/\s+/).includes(x.slice(1))
+      : x.startsWith('#') ? this.id === x.slice(1) : false);
+  }
+  closest(sel){ let n = this; while (n) { if (n.matches && n.matches(sel)) return n; n = n.parentNode; } return null; }
   // Wie im echten DOM: dieselbe Funktion wird je Ereignis nur EINMAL registriert —
   // sonst feuerte der zweite __gpInit()-Lauf (#43) jeden Klick doppelt.
   addEventListener(e, f){
@@ -41,7 +62,7 @@ class El {
   // Fokus und Textauswahl der Inline-Masseingabe (#51): `blur()` laeuft ueber
   // dieselben Behandler wie im Browser, damit die Uebernahme bei Fokusverlust
   // wirklich geprueft wird.
-  focus(){ this.fokus = true; }
+  focus(){ this.fokus = true; document.activeElement = this; }
   select(){ this.markiert = true; }
   blur(){ this.fokus = false; this.markiert = false; this.dispatch('blur', { target: this }); }
   dispatch(e, ev){ let r; (this.listeners[e] || []).forEach(f => { r = f(ev || { target: this }); }); return r; }
@@ -68,6 +89,7 @@ const START = { 'gp-fang': { checked: false }, 'gp-plan-lock': { checked: true }
                 'gp-sammel': { hidden: true }, 'gp-sammelblatt': { hidden: true } };
 const document = {
   _e: {},
+  activeElement: null,
   getElementById(id){
     let e = this._e[id];
     if (!e) { e = this._e[id] = new El(id); Object.assign(e, START[id] || {}); }
@@ -75,6 +97,12 @@ const document = {
   },
   createElement(){ return new El('_'); },
   querySelector(){ return null; },
+  // Der Baustein sperrt den Hintergrund ueber `[data-ax-hintergrund]`; im Double
+  // stehen die Bereiche als angelegte Elemente bereit.
+  querySelectorAll(sel){
+    if (!/data-ax-hintergrund/.test(String(sel))) return [];
+    return Object.values(this._e).filter(e => e.hasAttribute && e.hasAttribute('data-ax-hintergrund'));
+  },
   _l: {},
   // Auch hier Browser-Semantik: dieselbe Funktion nur einmal je Ereignis.
   addEventListener(e, f){
@@ -142,6 +170,9 @@ const KAT = await import("../../docs/shared/sembla-katalog.js");
 // #43: Der Reiter 0,5 der gemeinsamen Kopfleiste ist der direkte Absprung hierher —
 // im Test wird die ECHTE Navbar gemountet, nicht ein Nachbau ihres Markups.
 const { mountNavbar, MODULE } = await import("../../docs/shared/navbar.js");
+// #144/#145 Der gemeinsame Accessibility-Baustein — gebunden wie im Browser. Der Editor
+// baut nichts davon nach; geprueft wird deshalb die ECHTE Namens- und Dialoglogik.
+const AX = await import("../../docs/shared/sembla-ax.js");
 PLAN.setzeIndexedDB(fakeIndexedDB());
 
 const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.url), "utf8");
@@ -150,8 +181,13 @@ const html = readFileSync(new URL("../../docs/geschossplan.html", import.meta.ur
 // Die Quelltext-Pruefungen "genau EIN Ableitungsweg" lesen deshalb DIESE Datei.
 const waSrc = readFileSync(new URL("../../docs/shared/sembla-wandanlage.js", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische Skript
-globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH,
+globalThis.window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, AX, Opening, BLECH,
   ROD_OVERHANG, wandLagenKanten };
+// Die Hintergrundbereiche stehen im Markup als `data-ax-hintergrund`; das Double liest
+// kein HTML und bekommt sie deshalb hier — die Liste wird unten gegen das Markup geprueft.
+for (const id of ['gp-buehne', 'gp-oben', 'gp-liste', 'gp-ansicht', 'gp-msg', 'gp-status']) {
+  document.getElementById(id).setAttribute('data-ax-hintergrund', '');
+}
 
 const checks = []; const ok = (n, c) => checks.push([n, !!c]);
 const $ = id => document.getElementById(id);
@@ -172,6 +208,21 @@ const gp = (name, ...args) => (typeof GP[name] === 'function' ? GP[name](...args
  * aus den vorhandenen Ereignis-Pruefhilfen der Seite.
  */
 const doppel = (welt) => { gp('tippe', welt); gp('tippe', welt); gp('doppeltippe', welt); };
+
+/**
+ * Der Hinweistext EINER Rollen- oder Merkmalszeile des Sammel-Editors (#145).
+ *
+ * Er steht seit diesem Paket nicht mehr in einem `title`, sondern als eigener Textknoten
+ * im Accessibility Tree; das Label verweist per `aria-describedby` darauf. Gelesen wird
+ * genau diese Beziehung — also das, was ein Hilfsmittel vorliest.
+ */
+const zeilenHinweis = (kastenId, feldId) => {
+  const h = $(kastenId).innerHTML || '';
+  const m = h.match(new RegExp('for="' + feldId + '-an"[^>]*aria-describedby="([^"]+)"'));
+  if (!m) return '';
+  const t = h.match(new RegExp('<span class="ax-sr" id="' + m[1] + '">([^<]*)</span>'));
+  return t ? t[1] : '';
+};
 
 /** Wert ins Inline-Feld schreiben und mit Enter uebernehmen — wie im Browser. */
 const inlineEnter = (v) => { $('gp-inline').value = String(v); gp('inlineTaste', 'Enter'); };
@@ -208,7 +259,7 @@ ok('#64 der Editor nennt die Einheit genau einmal („Einheit: mm")',
   (html.match(/Einheit: mm/g) || []).length === 1
   && /<span id="gp-einheit"[^>]*>Einheit: mm<\/span>/.test(html)
   // … und zwar dauerhaft sichtbar in der Ansichtsleiste (kein `hidden`, kein Popup).
-  && /<div class="gp-leiste" id="gp-ansicht">[\s\S]*?<span id="gp-einheit"[^>]*>[\s\S]*?<\/div>/
+  && /<div class="gp-leiste" id="gp-ansicht"[^>]*>[\s\S]*?<span id="gp-einheit"[^>]*>[\s\S]*?<\/div>/
     .test(html)
   && !/<span id="gp-einheit"[^>]*\shidden/.test(html));
 // #60: Das separate Fixierwerkzeug ist ERSATZLOS entfallen — es bleibt kein
@@ -228,7 +279,13 @@ ok('#52 der Rasterfang ist beim Start AUS — im Zustand UND im Markup',
   GP.zustand.fang === false && !/id="gp-fang"[^>]*checked/.test(html));
 const ansichtLeiste = (html.split('id="gp-ansicht"')[1] || '').split('<!-- Planverwaltung')[0];
 ok('#52 es gibt genau EINEN Fang-Schalter, und er sagt, dass er fuer alle Waende gilt',
-  (html.match(/id="gp-fang"/g) || []).length === 1 && /JEDER Wand/.test(ansichtLeiste));
+  (html.match(/id="gp-fang"/g) || []).length === 1
+  // #145 Der Geltungsbereich steht in der BESCHREIBUNG des Schalters (vorher in einem
+  // `title`, das bei Tastaturfokus nie erschien) — geprueft wird er dort, wo er wirkt.
+  && /JEDER Wand/.test((gp('ax', 'gp-fang') || {}).beschreibung || '')
+  // … und an keinem BEDIENELEMENT der Leiste haengt noch ein blosses `title`
+  // (die Legende daneben ist reiner Text, kein Bedienelement).
+  && !/<(?:button|input|select|label)[^>]*\stitle=/.test(ansichtLeiste));
 // Die Geometrieabschnitte 2–8 rechnen mit dem 125-mm-Raster — deshalb hier
 // ausdruecklich einschalten (Abschnitt 9 prueft beide Stellungen).
 $('gp-fang').checked = true;
@@ -1199,7 +1256,7 @@ await warte();
 GP.render();
 
 ok('die Bauteilliste liegt als eigenes Panel UEBER der Zeichenflaeche, nicht in ihr',
-  /id="gp-liste"/.test(html) && /<div class="gp-buehne" id="gp-buehne"><\/div>/.test(html));
+  /id="gp-liste"/.test(html) && /<div class="gp-buehne" id="gp-buehne"[^>]*>\s*<\/div>/.test(html));
 ok('sie fuehrt ALLE Waende des aktiven Geschosses auf',
   (liste().match(/class="gp-zeile/g) || []).length === gsWaende().length);
 {
@@ -1521,7 +1578,7 @@ ok('#51 der separate linke Masseditor ist vollstaendig entfernt',
   && !/id="gp-bem-weg"/.test(html) && !/id="gp-bem-abbrechen"/.test(html)
   && !/>Maß setzen</.test(html) && !/>Maß löschen</.test(html));
 ok('#51 die Inline-Eingabe liegt NEBEN der Buehne im Markup (render() schreibt die Buehne neu)',
-  /<div class="gp-buehne" id="gp-buehne"><\/div>/.test(html)
+  /<div class="gp-buehne" id="gp-buehne"[^>]*>\s*<\/div>/.test(html)
   && /<input class="gp-inline" id="gp-inline"/.test(html)
   && html.indexOf('id="gp-inline"') > html.indexOf('id="gp-buehne"')
   && html.indexOf('id="gp-inline"') < html.indexOf('class="gp-status"'));
@@ -1962,7 +2019,7 @@ ok('#53 es gibt keine linke Bedienflaeche mehr',
   !/class="gp-tools"/.test(html) && !/<aside/.test(html) && !/gp-zurueck/.test(html));
 ok('#53 die Zeichenflaeche liegt in einem eigenen Raum, die Bedienung schwebt darueber',
   /<div class="gp-raum">/.test(html)
-  && /<div class="gp-buehne" id="gp-buehne"><\/div>/.test(html));
+  && /<div class="gp-buehne" id="gp-buehne"[^>]*>\s*<\/div>/.test(html));
 ok('#53 der Rueckweg nach Modul 0 bleibt erreichbar',
   /index\.html">‹ Projektplaner/.test(html));
 
@@ -1977,8 +2034,21 @@ ok('#53 der Rueckweg nach Modul 0 bleibt erreichbar',
     && oben.includes('id="gp-drehen"'));
   ok('#53 „Plan verschieben" steht ausdruecklich NICHT in der Werkzeugleiste',
     !oben.includes('gp-plan-schieben') && !/id="wz-plan"/.test(html));
-  ok('#53 jedes Werkzeug nennt Bedeutung und Kuerzel im Tooltip',
-    (oben.match(/title="[^"]*\((?:Esc|W|D|R|Strg\+Z|Strg\+Umschalt\+Z)\)/g) || []).length >= 5);
+  // #144/#145 Die Tooltips der Leiste haengen nicht mehr an einem `title` (das erschien
+  // nie bei Tastaturfokus und taugte auch nicht als Name): jedes Werkzeug traegt einen
+  // KURZEN Namen und daneben eine eigene Beschreibung, in der das Kuerzel steht.
+  ok('#53/#144 jedes Werkzeug nennt Bedeutung und Kuerzel — kurzer Name plus eigene Beschreibung',
+    !/title=/.test(oben)
+    && ['wz-auswahl', 'wz-wand', 'wz-bemassen', 'wz-ursprung', 'gp-undo', 'gp-redo', 'gp-drehen']
+      .every(i => { const a = gp('ax', i); return !!(a && a.name && a.beschreibung.length > 20); })
+    && gp('ax', 'wz-wand').name === 'Wand zeichnen'
+    && /Start- und Endpunkt/.test(gp('ax', 'wz-wand').beschreibung)
+    && /Taste W\./.test(gp('ax', 'wz-wand').beschreibung)
+    && /Escape/.test(gp('ax', 'wz-auswahl').beschreibung)
+    && /Taste D\./.test(gp('ax', 'wz-bemassen').beschreibung)
+    && /Taste U\./.test(gp('ax', 'wz-ursprung').beschreibung)
+    && /Strg\+Z/.test(gp('ax', 'gp-undo').beschreibung)
+    && /Taste R\./.test(gp('ax', 'gp-drehen').beschreibung));
 }
 GP.werkzeug('wand');
 ok('#53 das aktive Werkzeug ist eindeutig hervorgehoben — und nur dieses',
@@ -2041,7 +2111,8 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && (html.split('id="gp-planblatt"')[1] || '').includes('id="gp-kal-start"')
     && (html.split('id="gp-planblatt"')[1] || '').includes('id="gp-plan-schieben"'));
   ok('#53 der Uploadweg nimmt nur Rasterbilder an ([L-8])',
-    /<input id="gp-plan-import" type="file" accept="image\/png,image\/jpeg,image\/webp"/.test(html));
+    /<input id="gp-plan-import" class="ax-datei" type="file"\s+accept="image\/png,image\/jpeg,image\/webp"/
+      .test(html));
 
   ok('#53 das Blatt ist zu, bis es geoeffnet wird', $('gp-planblatt').hidden === true);
   $('gp-plan-knopf').dispatch('click');
@@ -5648,8 +5719,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   waehleSpm();
   await warte();
   /** Der Hinweistext EINER Rollenzeile im Popup — `wirkt` liest genau `ROLLE_RECHNUNG`. */
-  const titelSpm = (r) => ((($('gp-sammel-rollen').innerHTML || '')
-    .match(new RegExp('for="' + ridSpm(r) + '-an" title="([^"]*)"')) || [])[1] || '');
+  const titelSpm = (r) => zeilenHinweis('gp-sammel-rollen', ridSpm(r));
   ok('#97/spm (Muss 7) das Popup weist die Spannmutter als rechenwirksame '
     + 'Verwendungsstelle aus — dieselbe Bahn wie die uebrigen Rollen mit Rollenrechnung, '
     + 'und anders als eine Rolle ohne Rollenrechnung (Einlegeblech) daneben',
@@ -6311,8 +6381,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   waehleZpm();
   await warte();
   /** Der Hinweistext EINER Rollenzeile im Popup — `wirkt` liest genau `ROLLE_RECHNUNG`. */
-  const titelZpm = (r) => ((($('gp-sammel-rollen').innerHTML || '')
-    .match(new RegExp('for="' + ridZpm(r) + '-an" title="([^"]*)"')) || [])[1] || '');
+  const titelZpm = (r) => zeilenHinweis('gp-sammel-rollen', ridZpm(r));
   ok('#97/zpm (Muss 7) das Popup weist beide Stellen als rechenwirksame '
     + 'Verwendungsstellen aus — anders als eine Rolle ohne Rollenrechnung (Einlegeblech)',
     /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('zp_mutter'))
@@ -7101,6 +7170,193 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     /ppAlles = zp \? \{ \.\.\.\(pp \|\| \{\}\), zwischenpunkte_mm: zp\.punkte\.slice\(\) \} : pp/
       .test(html)
     && (html.match(/rechneWandelement\(el, el\.wandelement\.length_mm/g) || []).length === 1);
+}
+
+// --- #144/#145: Namen, Beschreibungen und Dialogsemantik ------------------
+//
+// Geprueft wird die ECHTE Seitenlogik: die Namensvergabe laeuft ueber den gemeinsamen
+// Baustein `sembla-ax.js`, die Bedienblaetter ueber seine Dialogverwaltung. Bedient wird
+// ausschliesslich ueber die realen Oeffnen-/Schliessen-Handler und den zentralen
+// Tastenbehandler — nicht ueber nachgebaute Zustaende.
+{
+  // (a) Jedes feste Bedienelement traegt einen KURZEN Namen und daneben eine eigene
+  //     Beschreibung. Beide haengen an DEMSELBEN Textknoten, den auch der Tooltip zeigt.
+  const tabelle = (html.match(/const AX_TEXTE = \{[\s\S]*?\n\};/) || [''])[0];
+  const axIds = [...tabelle.matchAll(/\n  '([\w-]+)':/g)].map(m => m[1]);
+  ok('#144 die Namenstabelle deckt die ganze Bedienoberflaeche ab (Werkzeuge, Parameter, '
+    + 'Ansicht, Planverwaltung, Sammel-Editor, Inline-Eingabe)',
+    axIds.length >= 35
+    && ['wz-auswahl', 'wz-wand', 'wz-bemassen', 'wz-ursprung', 'gp-undo', 'gp-redo',
+        'gp-drehen', 'gp-wenden', 'gp-dupl', 'gp-lage-weg', 'gp-wand-loeschen', 'gp-ziel',
+        'gp-hoehe', 'gp-wandtyp', 'gp-ursprung-ok', 'gp-ursprung-weg', 'gp-sammel-knopf',
+        'gp-sammel-zu', 'gp-sammel-go', 'gp-zoom-plus', 'gp-zoom-minus', 'gp-zoom-alles',
+        'gp-fang', 'gp-raster', 'gp-plan-knopf', 'gp-plan-zu', 'gp-plan-import',
+        'gp-plan-entfernen', 'gp-kal-start', 'gp-kal-mm', 'gp-kal-go', 'gp-kal-abbruch',
+        'gp-mmjepx', 'gp-vx', 'gp-vy', 'gp-plan-schieben', 'gp-plan-lock', 'gp-inline']
+      .every(i => axIds.includes(i)));
+  const HAEKCHEN145 = ['gp-fang', 'gp-raster', 'gp-masse', 'gp-plan-lock'];
+  ok('#144 jedes davon hat am Element wirklich Name und verknuepfte Beschreibung — '
+    + 'Haekchen bekommen ihren Namen von ihrer sichtbaren Beschriftung',
+    axIds.every(i => {
+      const a = gp('ax', i);
+      if (!a) return false;
+      const name = HAEKCHEN145.includes(i) ? a.name === null : !!a.name && a.name.length < 60;
+      return name && a.beschreibung.length > 15 && a.tip === a.beschreibungId;
+    }));
+  ok('#144 die Erklaerung steht NIE im Namen',
+    axIds.every(i => { const a = gp('ax', i); return !a.name || a.name.length <= 45; }));
+  ok('#144 in den Bedienhinweisen stehen keine Regel- oder Issue-Nummern mehr',
+    axIds.every(i => !/\[[A-Z]-\d+\]|#\d\d/.test(gp('ax', i).beschreibung))
+    && !/\[[A-Z]-\d+\]/.test((html.match(/const AX_TEXTE = \{[\s\S]*?\n\};/) || [''])[0]));
+  ok('#144 kein Bedienelement des Markups haengt noch an einem blossen `title`',
+    !/<(?:button|input|select|label)[^>]*\stitle=/.test(html));
+
+  // (b) Die zehn Wertfelder des Sammel-Editors: eigener Name samt Einheit, und das
+  //     Aktivier-Haekchen daneben ist GETRENNT benannt („Wandhöhe ändern").
+  const S145 = [['hoehe', 'Wandhöhe', 'mm'], ['ausgleich', 'Ausgleichslage', null],
+    ['wandtyp', 'Windsituation', null], ['brand', 'Brandschutzklasse', null],
+    ['abdicht', 'Stoßfugen-Abdichtung', null], ['vorne', 'Funktion der Vorderseite', null],
+    ['hinten', 'Funktion der Rückseite', null], ['topconn', 'Oberer Anschluss', null],
+    ['blech', 'Kopfblech-Modullänge', 'mm'], ['ueber', 'Überstand Reststück', 'mm']];
+  ok('#145 alle zehn Wertfelder des Sammel-Editors haben einen eigenen Namen — mit Einheit, '
+    + 'wo es eine gibt (vorher: zehn namenlose Felder)',
+    S145.every(([id, name, einheit]) => {
+      const a = gp('ax', 'gp-sammel-' + id);
+      return !!a && a.name === (einheit ? `${name} in ${einheit}` : name)
+        && /Zielwert für alle ausgewählten Wände/.test(a.beschreibung);
+    }));
+  ok('#145 das Aktivier-Haekchen ist getrennt vom Wertfeld benannt („<Merkmal> ändern") — '
+    + 'sichtbar wie im Accessibility Tree, und mit eigener Beschreibung',
+    S145.every(([id, name]) => {
+      const a = gp('ax', 'gp-sammel-' + id + '-an');
+      return !!a && a.name === null && a.beschreibung.length > 20
+        && html.includes(`<span>${name} ändern</span>`);
+    }));
+  ok('#145 Haekchen und Wertfeld zeigen NICHT auf denselben Text — es sind zwei Aussagen',
+    S145.every(([id]) => gp('ax', 'gp-sammel-' + id).beschreibungId
+      !== gp('ax', 'gp-sammel-' + id + '-an').beschreibungId));
+
+  // (c) Wiederholte Aktionen der Wandliste nennen ihr Objekt.
+  const listeHtml = $('gp-liste').innerHTML || '';
+  ok('#144 jede Zeile der Wandliste nennt ihre Wand im Namen („Wand A auswählen", '
+    + '„Wand A planen") und traegt ihre Kenndaten als eigene Beschreibung',
+    /aria-label="[^"]+ auswählen"/.test(listeHtml)
+    && /aria-label="[^"]+ planen"/.test(listeHtml)
+    && /<span class="ax-sr" id="ax-b-\d+">/.test(listeHtml)
+    && !/title=/.test(listeHtml));
+
+  // (d) Dialogsemantik und die REALEN Oeffnen-/Schliessen-Handler.
+  const mappe145 = store.fuegeProjektHinzu('Projekt 145', { geschoss: 'EG145', hoehe_mm: 2600 });
+  store.setzeAktivesGeschoss(MAPPE.alleGeschosse(mappe145)[0].geschoss.id);
+  await warte();
+  $('gp-fang').checked = true; $('gp-fang').dispatch('change');
+  gp('zeigeAlles');
+  const neu145 = () => store.listeElemente()[0];
+  gp('werkzeug', 'wand');
+  gp('zeichne', { x: 0, y: 0 }, { x: 2040, y: 60 });      const idA145 = neu145().id;
+  gp('werkzeug', 'wand');
+  gp('zeichne', { x: 0, y: 2000 }, { x: 2040, y: 2060 }); const idB145 = neu145().id;
+  await warte();
+  gp('werkzeug', 'auswahl');
+  gp('listeKlick', idA145);
+  gp('listeKlick', idB145, { shiftKey: true });
+  ok('#145 Pruefaufbau: zwei Waende ausgewaehlt, das Sammel-Blatt ist noch zu',
+    GP.zustand.auswahl.length === 2 && $('gp-sammelblatt').hidden === true);
+
+  const standVor145 = JSON.stringify([store.holeElement(idA145), store.holeElement(idB145)]);
+  $('gp-sammel-knopf').focus();
+  $('gp-sammel-knopf').dispatch('click');                  // der ECHTE Oeffnen-Handler
+  await warte();
+  const d145 = gp('axDialog', 'gp-sammelblatt');
+  ok('#145 der Sammel-Editor ist ein modaler Dialog mit Rolle und Namen',
+    d145.rolle === 'dialog' && d145.modal === 'true'
+    && d145.benanntDurch === 'gp-sammel-titel' && d145.offen === true
+    && /id="gp-sammel-titel"/.test(html));
+  ok('#145 der ausloesende Knopf sagt, dass das Blatt aufgeklappt ist',
+    gp('ax', 'gp-sammel-knopf').aufgeklappt === 'true');
+  ok('#145 das Oeffnen setzt den Fokus in den Dialog',
+    document.activeElement === $('gp-sammel-hoehe-an'));
+  ok('#145 der Hintergrund ist waehrenddessen nicht bedienbar',
+    ['gp-buehne', 'gp-oben', 'gp-liste', 'gp-ansicht'].every(i =>
+      $(i).getAttribute('inert') === '' && $(i).getAttribute('aria-hidden') === 'true'));
+  ok('#145 die Hintergrundbereiche sind im MARKUP ausgezeichnet, nicht erst im Test',
+    ['gp-buehne', 'gp-oben', 'gp-liste', 'gp-ansicht', 'gp-msg', 'gp-status']
+      .every(i => new RegExp('id="' + i + '"[^>]*data-ax-hintergrund|data-ax-hintergrund[^>]*id="' + i + '"')
+        .test(html.replace(/\n\s+/g, ' '))));
+
+  // Tastenkuerzel der Buehne schweigen, solange der Dialog offen ist — sonst schluege
+  // W, R oder Entfernen mitten in der Bearbeitung auf die Zeichenflaeche durch.
+  const wzVor145 = GP.zustand.werkzeug;
+  const msgVor145 = $('gp-msg').textContent;
+  gp('taste', 'w', { tagName: 'BUTTON' });
+  gp('taste', 'r', { tagName: 'BUTTON' });
+  gp('taste', 'Delete', { tagName: 'BUTTON' });
+  ok('#145 waehrend der Dialog offen ist, schlaegt kein Tastenkuerzel der Buehne durch',
+    GP.zustand.werkzeug === wzVor145 && $('gp-msg').textContent === msgVor145
+    && $('gp-sammelblatt').hidden === false);
+
+  // Escape ist Abbruch: er schliesst, gibt den Fokus zurueck und speichert nichts.
+  gp('taste', 'Escape', { tagName: 'BUTTON' });
+  await warte();
+  ok('#145 Escape schliesst den Dialog und speichert nichts',
+    GP.zustand.sammelOffen === false && $('gp-sammelblatt').hidden === true
+    && JSON.stringify([store.holeElement(idA145), store.holeElement(idB145)]) === standVor145);
+  ok('#145 das Schliessen gibt den Fokus an den ausloesenden Knopf zurueck',
+    document.activeElement === $('gp-sammel-knopf')
+    && gp('ax', 'gp-sammel-knopf').aufgeklappt === 'false');
+  ok('#145 danach ist der Hintergrund wieder bedienbar',
+    ['gp-buehne', 'gp-oben', 'gp-liste', 'gp-ansicht'].every(i =>
+      $(i).getAttribute('inert') === null && $(i).getAttribute('aria-hidden') === null));
+
+  // (e) Die Planverwaltung ist ein Dialog, aber ausdruecklich KEIN modaler: kalibriert und
+  //     verschoben wird auf der Zeichenflaeche, waehrend das Blatt offen bleibt.
+  $('gp-plan-knopf').focus();
+  gp('taste', 'p', {});                                    // der ECHTE Oeffnen-Weg (Taste P)
+  await warte();
+  const p145 = gp('axDialog', 'gp-planblatt');
+  ok('#145 die Planverwaltung traegt Rolle und Namen, behauptet aber NICHT modal zu sein',
+    p145.rolle === 'dialog' && p145.modal === null
+    && p145.benanntDurch === 'gp-plan-titel' && p145.offen === true
+    && gp('ax', 'gp-plan-knopf').aufgeklappt === 'true');
+  ok('#145 sie sperrt den Hintergrund nicht — Kalibrieren und Plan verschieben arbeiten dort',
+    $('gp-buehne').getAttribute('inert') === null);
+  ok('#145 das Oeffnen setzt den Fokus in das Blatt',
+    document.activeElement === $('gp-plan-import'));
+  ok('#145 die Dateiauswahl ist erstmals mit der Tastatur erreichbar (nicht mehr `hidden`)',
+    /<input id="gp-plan-import" class="ax-datei"/.test(html)
+    && !/id="gp-plan-import"[^>]*\shidden/.test(html));
+  $('gp-plan-zu').dispatch('click');                       // der ECHTE Schliessen-Handler
+  await warte();
+  ok('#145 „Schließen" gibt den Fokus an den ausloesenden Knopf zurueck',
+    $('gp-planblatt').hidden === true
+    && document.activeElement === $('gp-plan-knopf')
+    && gp('ax', 'gp-plan-knopf').aufgeklappt === 'false');
+
+  // (f) Zustaende bleiben semantisch: aktives Werkzeug, gesperrter Schalter mit Grund.
+  gp('werkzeug', 'wand');
+  ok('#144 das aktive Werkzeug steht nicht nur in der Farbe, sondern in `aria-pressed`',
+    gp('ax', 'wz-wand').gedrueckt === 'true' && gp('ax', 'wz-auswahl').gedrueckt === 'false'
+    && gp('ax', 'wz-bemassen').gedrueckt === 'false');
+  gp('werkzeug', 'bemassen');
+  ok('#144 der gesperrte Bemassungsschalter nennt den GRUND in seiner Beschreibung — '
+    + 'nicht in seinem Namen',
+    gp('ax', 'gp-masse').gesperrt === true
+    && /gerade gesperrt/.test(gp('ax', 'gp-masse').beschreibung)
+    && gp('ax', 'wz-bemassen').gedrueckt === 'true');
+  gp('werkzeug', 'auswahl');
+  ok('#144 ohne Sperre steht der Grund auch nicht mehr da',
+    gp('ax', 'gp-masse').gesperrt === false
+    && !/gerade gesperrt/.test(gp('ax', 'gp-masse').beschreibung));
+
+  // (g) Must-not: kein Datenmodell, kein Schema, kein zweiter Baustein.
+  ok('#145 (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt',
+    store.SCHEMA_VERSION === 6 && MAPPE.MAPPE_VERSION === 2 && store.PROJEKT_VERSION === 2
+    && !/aria|ax-b-|ax_tip/i.test(localStorage.getItem('sembla:projekte') || '')
+    && !/aria|ax-b-/i.test(localStorage.getItem('sembla:elemente') || ''));
+  ok('#145 (must-not) der Editor baut den Baustein nicht nach — er benutzt ihn',
+    /import \* as AX from '\.\/shared\/sembla-ax\.js'/.test(html)
+    && /AX = S\.AX/.test(html)
+    && !/function (benennung|modalDialog|tooltips)\(/.test(html));
 }
 
 let fail = 0;

@@ -236,29 +236,31 @@
 <div class="gp-app">
   <div class="gp-main">
     <div class="gp-raum">
-      <div class="gp-buehne" id="gp-buehne"></div>
+      <div class="gp-buehne" id="gp-buehne" data-ax-hintergrund
+           role="group" aria-label="Zeichenfläche des Geschosses"></div>
 
       <!-- Obere CAD-Werkzeugleiste (#53, Paket 3). Sie führt AUSSCHLIESSLICH die
            Werkzeuge der Zeichenfläche, dazu Rückgängig/Wiederholen und Drehen.
            „Plan verschieben“ steht bewusst NICHT hier: es ist Planverwaltung und
            lebt allein im Planblatt (unten über „Plan…“). -->
-      <div class="gp-leiste" id="gp-oben">
+      <div class="gp-leiste" id="gp-oben" data-ax-hintergrund role="group"
+           aria-label="Werkzeuge">
         <div class="kopf">
           <a href="index.html">‹ Projektplaner</a>
-          <div class="wz">
-            <button id="wz-auswahl" data-wz="auswahl" title="Auswählen &amp; ziehen — Wand anklicken, am Körper oder Mittelgriff verschieben, an den Endgriffen die Länge ändern (Esc)"><span class="k">↖</span> Auswahl</button>
-            <button id="wz-wand" data-wz="wand" title="Wand zeichnen — drücken, ziehen, loslassen; orthogonal, Länge im 125-mm-Raster (W)"><span class="k">▭</span> Wand</button>
-            <button id="wz-bemassen" data-wz="bemassen" title="Bemaßen — zwei parallele Bezüge anklicken (auch die Linien des Geschossursprungs), Maß in mm direkt im Plan eintragen (D)"><span class="k">↔</span> Maß</button>
-            <button id="wz-ursprung" data-wz="ursprung" title="Geschossursprung setzen — Punkt im Plan anklicken, Auswirkung auf die Ursprungsmaße prüfen, dann übernehmen (U). Wandlagen bleiben unverändert."><span class="k">✛</span> Ursprung</button>
+          <div class="wz" role="group" aria-label="Zeichenwerkzeuge">
+            <button id="wz-auswahl" data-wz="auswahl"><span class="k">↖</span> Auswahl</button>
+            <button id="wz-wand" data-wz="wand"><span class="k">▭</span> Wand</button>
+            <button id="wz-bemassen" data-wz="bemassen"><span class="k">↔</span> Maß</button>
+            <button id="wz-ursprung" data-wz="ursprung"><span class="k">✛</span> Ursprung</button>
             <span class="trenner"></span>
-            <button class="btn-s" id="gp-undo" disabled title="Rückgängig (Strg+Z) — nur Lagen und Bemaßungen ([K-10])">↶</button>
-            <button class="btn-s" id="gp-redo" disabled title="Wiederholen (Strg+Umschalt+Z)">↷</button>
-            <button class="btn-s" id="gp-drehen" disabled title="Aktive Wand um 90° um ihre Min-Ecke drehen (R) — die Vorderseite dreht mit. Gesperrt, sobald ein Maß an der Wand hängt.">⟳</button>
-            <button class="btn-s" id="gp-wenden" disabled title="Aktive Wand um 180° wenden (Umschalt+R) — tauscht nur Vorder- und Rückseite; Lage, Länge, Maße und Bezüge bleiben unverändert (#84)">⇆ 180°</button>
-            <button class="btn-s" id="gp-dupl" disabled title="Aktive Wand duplizieren (#74) — unabhängige Kopie von Wandelement und Eingaben unter neuem Namen, sofort sichtbar zwei Rasterfelder (250 mm) neben dem Original verortet (#88); Bemaßungen wandern nicht mit, die Kopie ist frei verschiebbar">⧉ Duplizieren</button>
+            <button class="btn-s" id="gp-undo" disabled>↶</button>
+            <button class="btn-s" id="gp-redo" disabled>↷</button>
+            <button class="btn-s" id="gp-drehen" disabled>⟳</button>
+            <button class="btn-s" id="gp-wenden" disabled>⇆ 180°</button>
+            <button class="btn-s" id="gp-dupl" disabled>⧉ Duplizieren</button>
             <span class="trenner"></span>
-            <button class="btn-d" id="gp-lage-weg" disabled title="Lage der aktiven Wand aufheben — die Wand bleibt im Geschoss eingetragen ([L-4])">Lage aufheben</button>
-            <button class="btn-d" id="gp-wand-loeschen" disabled title="Aktive Wand nach Bestätigung vollständig löschen (#74) — Wandelement, Geschosseintrag und genau die Maße dieses Geschosses, die an der Wand hängen; rückgängig mit Strg+Z">Wand löschen</button>
+            <button class="btn-d" id="gp-lage-weg" disabled>Lage aufheben</button>
+            <button class="btn-d" id="gp-wand-loeschen" disabled>Wand löschen</button>
           </div>
           <div class="gp-ort" id="gp-ort">–</div>
         </div>
@@ -266,7 +268,8 @@
         <!-- Parameter des Werkzeugs „Wand zeichnen“ (#50): sichtbar genau dann,
              wenn das Werkzeug aktiv ist. Erzeugt wird ausschließlich durch
              Zeichnen — Ziel, Standard-Wandhöhe ([L-5]) und Wandtyp gehören dazu. -->
-        <div id="wz-wand-parameter" hidden>
+        <div id="wz-wand-parameter" hidden role="group"
+             aria-label="Parameter des Werkzeugs Wand zeichnen">
           <div class="row">
             <div class="field"><label for="gp-ziel">Gezeichnet wird</label>
               <select id="gp-ziel" style="width:210px"></select></div>
@@ -284,7 +287,8 @@
         <!-- Auswirkungsvorschau des Ursprungswerkzeugs (#76): sichtbar genau dann,
              wenn ein Punkt gewählt ist. Übernommen wird erst hier — der Klick auf
              die Bühne schreibt nichts ([K-3]-Muster wie beim Bemaßen). -->
-        <div id="wz-ursprung-parameter" hidden>
+        <div id="wz-ursprung-parameter" hidden role="group"
+             aria-label="Auswirkung des neuen Geschossursprungs">
           <div class="row" style="align-items:flex-end">
             <div class="field" style="flex:1 1 auto">
               <div class="hint" id="gp-ursprung-vorschau"></div>
@@ -294,10 +298,12 @@
           </div>
         </div>
 
-        <div class="kontext">
+        <div class="kontext" role="group" aria-label="Hinweise zum aktuellen Werkzeug">
           <div id="wz-hinweis">–</div>
           <div id="gp-bem-info">–</div>
-          <div id="gp-auswahl-info">Keine Wand aktiv.</div>
+          <!-- Die Auswahl aendert sich ohne Seitenwechsel; ihr Stand wird deshalb
+               hoeflich angesagt statt nur gezeichnet. -->
+          <div id="gp-auswahl-info" aria-live="polite">Keine Wand aktiv.</div>
         </div>
 
         <!-- Sammel-Editor (#75/#111): mehrere AUSGEWÄHLTE Wände in einem bestätigten
@@ -310,36 +316,40 @@
         <div id="gp-sammel" hidden>
           <div class="row">
             <span id="gp-sammel-info">–</span>
-            <button class="btn-p" id="gp-sammel-knopf" title="Alle ausgewählten Wände gemeinsam setzen — allgemeine Wandmerkmale (Höhe, Ausgleichslage, Windsituation, Brandschutz, Abdichtung, Seitenfunktionen, oberer Anschluss, Kopfblech-Modullänge, Überstand) und die Produktauswahl von Modul 1 (mehrere Produkte je Verwendungsstelle)">Gemeinsam bearbeiten…</button>
+            <button class="btn-p" id="gp-sammel-knopf" aria-expanded="false"
+                    aria-controls="gp-sammelblatt">Gemeinsam bearbeiten…</button>
           </div>
         </div>
       </div>
 
       <!-- Schwebende Bauteilliste (C4c): Anzeige und Auswahl, kein Schreibweg. -->
-      <div class="gp-liste" id="gp-liste"></div>
+      <div class="gp-liste" id="gp-liste" data-ax-hintergrund role="group"
+           aria-label="Wände im Geschoss"></div>
 
       <!-- Inline-Eingabe des Maßwerts (#51): sitzt beim Bearbeiten genau auf der
            dargestellten Maßzahl und schreibt über den VORHANDENEN Weg
            (`bemSetzen` → `speichereBemassung`) — kein zweiter Bearbeitungspfad. -->
       <input class="gp-inline" id="gp-inline" type="text" inputmode="numeric" hidden
-             aria-label="Maß in Millimetern" title="Enter übernimmt · Escape verwirft">
+             aria-label="Maß in Millimetern">
 
       <!-- Untere Ansichtsleiste (#53): ausschließlich Ansicht. Nichts davon wird
            gespeichert — weder Zoom noch Fang noch die Ebenenschalter. -->
-      <div class="gp-leiste" id="gp-ansicht">
+      <div class="gp-leiste" id="gp-ansicht" data-ax-hintergrund role="group"
+           aria-label="Ansicht">
         <div class="grp">
-          <button class="btn-s" id="gp-zoom-minus" title="Herauszoomen (−)">–</button>
-          <button class="btn-s" id="gp-zoom-plus" title="Hineinzoomen (+)">+</button>
-          <button class="btn-s" id="gp-zoom-alles" title="Alles zeigen (0)">Alles zeigen</button>
+          <button class="btn-s" id="gp-zoom-minus">–</button>
+          <button class="btn-s" id="gp-zoom-plus">+</button>
+          <button class="btn-s" id="gp-zoom-alles">Alles zeigen</button>
         </div>
-        <label class="chk" title="Fang auf das 125-mm-Raster — gilt für Zeichnen, Verschieben und Größenziehen JEDER Wand. Aus rasten Positionen auf halbe Millimeter ([L-1]); die Länge bleibt immer im 125-mm-Raster.">
+        <label class="chk" id="gp-fang-lab">
           <input type="checkbox" id="gp-fang"><span>Fang 125&nbsp;mm</span></label>
-        <label class="chk" title="Das 125-mm-Raster ein- oder ausblenden. Reine Ansicht — über einem unkalibrierten Plan bleibt es ohnehin aus ([L-9]).">
+        <label class="chk" id="gp-raster-lab">
           <input type="checkbox" id="gp-raster" checked><span>Raster</span></label>
-        <label class="chk" title="Bemaßungen ein- oder ausblenden. Reine Ansicht: Werte, Löser und Wandlagen bleiben unberührt ([K-5]). In den Werkzeugen Maß und Fix sind sie immer sichtbar.">
+        <label class="chk" id="gp-masse-lab">
           <input type="checkbox" id="gp-masse" checked><span>Bemaßungen</span></label>
         <div class="grp">
-          <button class="btn-s" id="gp-plan-knopf" title="Planverwaltung öffnen: hochladen, ersetzen, löschen, kalibrieren, Maßstab, Versatz und Plan verschieben (P)">Plan…</button>
+          <button class="btn-s" id="gp-plan-knopf" aria-expanded="false"
+            aria-controls="gp-planblatt">Plan…</button>
           <span id="gp-plan-chip">–</span>
         </div>
         <span id="gp-einheit" title="Geplant wird ausschließlich in Millimetern. Die Maßzahlen im Plan stehen deshalb ohne Einheit — die Einheit steht genau einmal hier.">Einheit: mm</span>
@@ -368,8 +378,8 @@
            eigenen IndexedDB ([L-8]), in der Mappe stehen nur Dateiname, Bildmaße,
            Maßstab und Versatz. -->
       <div class="gp-sheet" id="gp-planblatt" hidden>
-        <h4><span>Geschossplan</span>
-          <button class="btn-s" id="gp-plan-zu" title="Planverwaltung schließen">Schließen</button></h4>
+        <h4><span id="gp-plan-titel">Geschossplan</span>
+          <button class="btn-s" id="gp-plan-zu">Schließen</button></h4>
         <div class="hint" id="gp-plan-info" style="margin-top:0">–</div>
 
         <!-- Während der Punktwahl bleibt NUR dieser Block stehen (`.kompakt`):
@@ -392,8 +402,11 @@
 
         <div id="gp-plan-koerper">
           <div class="row">
+            <!-- Die Dateiauswahl ist optisch unsichtbar, aber FOKUSSIERBAR (#144): ein
+                 `hidden`-Input laesst sich nur mit der Maus ueber sein Label ausloesen. -->
+            <input id="gp-plan-import" class="ax-datei" type="file"
+                   accept="image/png,image/jpeg,image/webp">
             <label class="btn-s" id="gp-plan-import-label" for="gp-plan-import">Plan hochladen / ersetzen…</label>
-            <input id="gp-plan-import" type="file" accept="image/png,image/jpeg,image/webp" hidden>
             <button class="btn-d" id="gp-plan-entfernen">Plan entfernen</button>
           </div>
           <div class="hint" style="margin-top:2px">Der Upload wirkt <b>sofort</b> und legt das Bild in
@@ -419,8 +432,8 @@
             <button class="btn-s" id="gp-versatz-null">Auf 0 / 0</button>
           </div>
           <div class="row">
-            <button class="btn-s" id="gp-plan-schieben" title="Den Plan mit der Maus verschieben (P). Verschoben wird der PLAN, nie eine Wandlage.">Plan verschieben</button>
-            <label class="chk"><input type="checkbox" id="gp-plan-lock" checked>
+            <button class="btn-s" id="gp-plan-schieben">Plan verschieben</button>
+            <label class="chk" id="gp-plan-lock-lab"><input type="checkbox" id="gp-plan-lock" checked>
               <span>Plan gesperrt</span></label>
           </div>
           <div class="hint" style="margin-top:2px">Maßstab und Versatz sind ausdrücklich gesetzte
@@ -443,13 +456,13 @@
            Geschrieben wird ausschließlich über „Übernehmen…“ nach Bestätigung; jedes
            Merkmal wirkt nur mit gesetztem Häkchen. -->
       <div class="gp-sheet" id="gp-sammelblatt" hidden>
-        <h4><span>Gemeinsam bearbeiten</span>
-          <button class="btn-s" id="gp-sammel-zu" title="Popup schließen (Escape) — es wird nichts gespeichert">Schließen</button></h4>
+        <h4><span id="gp-sammel-titel">Gemeinsam bearbeiten</span>
+          <button class="btn-s" id="gp-sammel-zu">Schließen</button></h4>
         <div class="hint" id="gp-sammel-ist" style="margin-top:0">–</div>
 
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-hoehe-an" title="Gemeinsame Wandhöhe in mm übernehmen — seit #136 FREI, ohne 200er-Rasterzwang, sofern die Ausgleichslage wirkt. Jede ausgewählte Wand wird über den Auslegungspfad von Modul 1 neu gerechnet (#56).">
-            <input type="checkbox" id="gp-sammel-hoehe-an"><span>Wandhöhe (mm)</span></label>
+          <label class="chk" id="gp-sammel-hoehe-lab" for="gp-sammel-hoehe-an">
+            <input type="checkbox" id="gp-sammel-hoehe-an"><span>Wandhöhe ändern</span></label>
           <input id="gp-sammel-hoehe" type="number" step="10" min="200" disabled>
           <span class="sist" id="gp-sammel-hoehe-ist">–</span>
         </div>
@@ -457,8 +470,8 @@
              nimmt der Rechenkern eine Zielhöhe außerhalb des 200-mm-Rasters an; ohne sie ist
              eine solche Höhe ein benannter Konflikt und wird NIE gerundet. -->
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-ausgleich-an" title="Ausgleichslage je Wand aktivieren/deaktivieren (#136) — aktiviert nimmt der Rechenkern die Resthöhe als genau eine oberste Lage; deaktiviert muss die Höhe ein Vielfaches von 200 mm sein.">
-            <input type="checkbox" id="gp-sammel-ausgleich-an"><span>Ausgleichslage</span></label>
+          <label class="chk" id="gp-sammel-ausgleich-lab" for="gp-sammel-ausgleich-an">
+            <input type="checkbox" id="gp-sammel-ausgleich-an"><span>Ausgleichslage ändern</span></label>
           <select id="gp-sammel-ausgleich" disabled>
             <option value="" disabled hidden>– gemischt –</option>
             <option value="an">aktiviert</option>
@@ -467,8 +480,8 @@
           <span class="sist" id="gp-sammel-ausgleich-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-wandtyp-an" title="Windsituation (Wandtyp) — Fachmerkmal der Wand, ohne Einfluss auf Tiling und Stückliste">
-            <input type="checkbox" id="gp-sammel-wandtyp-an"><span>Windsituation</span></label>
+          <label class="chk" id="gp-sammel-wandtyp-lab" for="gp-sammel-wandtyp-an">
+            <input type="checkbox" id="gp-sammel-wandtyp-an"><span>Windsituation ändern</span></label>
           <select id="gp-sammel-wandtyp" disabled>
             <option value="" disabled hidden>– gemischt –</option>
             <option value="mit_wind">mit Wind (Cpi)</option>
@@ -477,8 +490,8 @@
           <span class="sist" id="gp-sammel-wandtyp-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-brand-an" title="Brandschutzklassifikation (#79) — reine Planungskennzeichnung, aus ihr wird nichts abgeleitet">
-            <input type="checkbox" id="gp-sammel-brand-an"><span>Brandschutzklasse</span></label>
+          <label class="chk" id="gp-sammel-brand-lab" for="gp-sammel-brand-an">
+            <input type="checkbox" id="gp-sammel-brand-an"><span>Brandschutzklasse ändern</span></label>
           <select id="gp-sammel-brand" disabled>
             <option value="" disabled hidden>– gemischt –</option>
             <option value="F0">F0</option>
@@ -487,8 +500,8 @@
           <span class="sist" id="gp-sammel-brand-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-abdicht-an" title="Stoßfugen-Abdichtung ([A-6]) — die Dichtstreifenlänge der Stückliste ist nachrichtlich und wird nie bepreist">
-            <input type="checkbox" id="gp-sammel-abdicht-an"><span>Stoßfugen-Abdichtung</span></label>
+          <label class="chk" id="gp-sammel-abdicht-lab" for="gp-sammel-abdicht-an">
+            <input type="checkbox" id="gp-sammel-abdicht-an"><span>Stoßfugen-Abdichtung ändern</span></label>
           <select id="gp-sammel-abdicht" disabled>
             <option value="" disabled hidden>– gemischt –</option>
             <option value="nicht_abgedichtet">nicht abgedichtet</option>
@@ -497,8 +510,8 @@
           <span class="sist" id="gp-sammel-abdicht-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-vorne-an" title="Funktion der Vorderseite — Eingang der Auslegung, jede Wand wird damit neu gerechnet">
-            <input type="checkbox" id="gp-sammel-vorne-an"><span>Funktion der Vorderseite</span></label>
+          <label class="chk" id="gp-sammel-vorne-lab" for="gp-sammel-vorne-an">
+            <input type="checkbox" id="gp-sammel-vorne-an"><span>Funktion der Vorderseite ändern</span></label>
           <select id="gp-sammel-vorne" disabled>
             <option value="" disabled hidden>– gemischt –</option>
             <option value="fassade">Fassade</option>
@@ -509,8 +522,8 @@
           <span class="sist" id="gp-sammel-vorne-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-hinten-an" title="Funktion der Rückseite — Eingang der Auslegung, jede Wand wird damit neu gerechnet">
-            <input type="checkbox" id="gp-sammel-hinten-an"><span>Funktion der Rückseite</span></label>
+          <label class="chk" id="gp-sammel-hinten-lab" for="gp-sammel-hinten-an">
+            <input type="checkbox" id="gp-sammel-hinten-an"><span>Funktion der Rückseite ändern</span></label>
           <select id="gp-sammel-hinten" disabled>
             <option value="" disabled hidden>– gemischt –</option>
             <option value="fassade">Fassade</option>
@@ -521,8 +534,8 @@
           <span class="sist" id="gp-sammel-hinten-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-topconn-an" title="Oberer Anschluss ([A-2]) — Spannplatte ist der Standard, Kopfblech muss ausgesprochen werden">
-            <input type="checkbox" id="gp-sammel-topconn-an"><span>Oberer Anschluss</span></label>
+          <label class="chk" id="gp-sammel-topconn-lab" for="gp-sammel-topconn-an">
+            <input type="checkbox" id="gp-sammel-topconn-an"><span>Oberer Anschluss ändern</span></label>
           <select id="gp-sammel-topconn" disabled>
             <option value="" disabled hidden>– gemischt –</option>
             <option value="blech">Kopfblech</option>
@@ -531,14 +544,14 @@
           <span class="sist" id="gp-sammel-topconn-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-blech-an" title="Modullänge des KOPFBLECHS in mm — ganze Zahl, Vielfaches von 10 mm, mindestens 200 mm. Ein unzulässiger Wert wird benannt abgewiesen, nie geklemmt.">
-            <input type="checkbox" id="gp-sammel-blech-an"><span>Kopfblech-Modullänge (mm)</span></label>
+          <label class="chk" id="gp-sammel-blech-lab" for="gp-sammel-blech-an">
+            <input type="checkbox" id="gp-sammel-blech-an"><span>Kopfblech-Modullänge ändern</span></label>
           <input id="gp-sammel-blech" type="number" step="10" min="200" disabled>
           <span class="sist" id="gp-sammel-blech-ist">–</span>
         </div>
         <div class="sfeld">
-          <label class="chk" for="gp-sammel-ueber-an" title="Überstand des Reststücks über die Oberkante ([Z-6]) in mm — ganze Zahl ab 0. Ein unzulässiger Wert wird benannt abgewiesen, nie gerundet.">
-            <input type="checkbox" id="gp-sammel-ueber-an"><span>Überstand Reststück (mm)</span></label>
+          <label class="chk" id="gp-sammel-ueber-lab" for="gp-sammel-ueber-an">
+            <input type="checkbox" id="gp-sammel-ueber-an"><span>Überstand Reststück ändern</span></label>
           <input id="gp-sammel-ueber" type="number" step="1" min="0" disabled>
           <span class="sist" id="gp-sammel-ueber-ist">–</span>
         </div>
@@ -577,7 +590,7 @@
           Gewählt wird ausschließlich aus dem Bauteilkatalog des aktiven Projekts ([L-12]).</div>
 
         <div class="row">
-          <button class="btn-p" id="gp-sammel-go" title="Die angekreuzten Merkmale und Verwendungsstellen nach Bestätigung für ALLE ausgewählten Wände übernehmen — genau ein Rückgängig-Schritt">Übernehmen…</button>
+          <button class="btn-p" id="gp-sammel-go">Übernehmen…</button>
         </div>
         <div class="hint" style="margin-top:2px">Geändert wird <b>nur</b>, was angekreuzt ist; alles
           andere bleibt je Wand unverändert. Verschiedene Ausgangswerte stehen als
@@ -589,8 +602,11 @@
       </div>
     </div>
 
-    <div class="msg" id="gp-msg"></div>
-    <div class="gp-status" id="gp-status"></div>
+    <!-- Jede Rueckmeldung der Seite laeuft ueber DIESE eine Zeile; sie wird deshalb
+         hoeflich angesagt, statt nur zu erscheinen. -->
+    <div class="msg" id="gp-msg" role="status" aria-live="polite" data-ax-hintergrund></div>
+    <div class="gp-status" id="gp-status" role="group"
+         aria-label="Zusammenfassung des Geschosses" data-ax-hintergrund></div>
   </div>
 </div>
 
@@ -633,6 +649,129 @@ let BLECH_STD, UEBERSTAND_STD;
 // NICHT nach: „Lage × 200 mm“ wäre genau der Drift, den #136 (obere Ausgleichslage) und
 // [P-6] ausschließen.
 let wandLagenKanten;
+// #144/#145 Der EINE Accessibility-Baustein der Suite: Namen, Beschreibungen, Tooltips
+// und Dialogsemantik. Er ist rein DOM-nah — kein Speicherzugriff, keine Fachlogik, kein
+// gespeichertes Feld; der Editor baut davon nichts nach.
+let AX;
+// Die beiden Bedienblätter als Dialoge (#145). Sie entstehen EINMAL in `binde()`, weil
+// `AX` erst dort gebunden ist, und werden ausschließlich beim WECHSEL ihres
+// Sichtbarkeitszustands angemeldet — s. `dialogStand()`.
+let planDialog = null, sammelDialog = null;
+
+/**
+ * Name und Beschreibung JEDES festen Bedienelements der Seite (#144/#145).
+ *
+ * Der NAME ist kurz und sagt, was das Element tut („Wand zeichnen"); die ERKLÄRUNG steht
+ * daneben als eigene Beschreibung und landet über `aria-describedby` auf einem realen
+ * Textknoten — sie wandert nie in den Namen. Das frühere alleinige `title` ist ersatzlos
+ * weg: es taugt weder als Name noch erscheint es bei Tastaturfokus.
+ *
+ * Regel- und Issue-Nummern stehen hier bewusst NICHT mehr drin — das sind Bedienhinweise,
+ * keine Quellenangaben. Das Tastenkürzel darf ergänzend am Ende genannt werden.
+ */
+const AX_TEXTE = {
+  'wz-auswahl': ['Auswählen und ziehen',
+    'Wand anklicken, am Körper oder am Mittelgriff verschieben, an den Endgriffen die Länge '
+    + 'ändern. Taste Escape.'],
+  'wz-wand': ['Wand zeichnen',
+    'Wandwerkzeug aktivieren, um eine Wand durch Start- und Endpunkt zu zeichnen: drücken, '
+    + 'ziehen, loslassen. Die Wand liegt orthogonal, die Länge rastet auf 125 mm. Taste W.'],
+  'wz-bemassen': ['Bemaßen',
+    'Zwei parallele Bezüge anklicken — auch die Linien des Geschossursprungs — und den Wert '
+    + 'in Millimetern direkt im Plan eintragen. Taste D.'],
+  'wz-ursprung': ['Geschossursprung setzen',
+    'Punkt im Plan anklicken, die Auswirkung auf die Ursprungsmaße prüfen und dann '
+    + 'übernehmen. Wandlagen bleiben unverändert. Taste U.'],
+  'gp-undo': ['Rückgängig',
+    'Nimmt den letzten Schritt an Lagen und Bemaßungen zurück. Planbild, Maßstab, Versatz, '
+    + 'Blick und Auswahl bleiben unberührt. Taste Strg+Z.'],
+  'gp-redo': ['Wiederholen',
+    'Stellt den zuletzt zurückgenommenen Schritt wieder her. Taste Strg+Umschalt+Z.'],
+  'gp-drehen': ['Aktive Wand um 90 Grad drehen',
+    'Dreht die aktive Wand um ihre Min-Ecke; die Vorderseite dreht mit. Gesperrt, sobald ein '
+    + 'Maß unmittelbar an der Wand hängt. Taste R.'],
+  'gp-wenden': ['Aktive Wand wenden',
+    'Tauscht Vorder- und Rückseite der aktiven Wand. Lage, Länge, Maße und Bezüge bleiben '
+    + 'unverändert. Taste Umschalt+R.'],
+  'gp-dupl': ['Aktive Wand duplizieren',
+    'Legt eine unabhängige Kopie von Wandelement und Eingaben unter neuem Namen an, verortet '
+    + 'zwei Rasterfelder daneben. Bemaßungen wandern nicht mit.'],
+  'gp-lage-weg': ['Lage der aktiven Wand aufheben',
+    'Die Wand bleibt im Geschoss eingetragen und lässt sich erneut verorten.'],
+  'gp-wand-loeschen': ['Aktive Wand löschen',
+    'Löscht nach Bestätigung Wandelement, Geschosseintrag und genau die Maße dieses '
+    + 'Geschosses, die an der Wand hängen. Rückgängig mit Strg+Z.'],
+  'gp-ziel': ['Gezeichnet wird',
+    'Neue Wand anlegen oder eine eingetragene, aber unverortete Wand verorten. Beim Verorten '
+    + 'bleiben Höhe, Wandtyp, Öffnungen und Produkte unverändert.'],
+  'gp-hoehe': ['Standard-Wandhöhe in Millimetern',
+    'Vorgabe für NEU gezeichnete Wände. Sie wird nie zurückgeschrieben und ändert keine '
+    + 'bestehende Wand.'],
+  'gp-wandtyp': ['Wandtyp',
+    'Windsituation der neu gezeichneten Wand. Sie ist ein Fachmerkmal der Wand und ändert '
+    + 'weder Steinverband noch Stückliste.'],
+  'gp-ursprung-ok': ['Geschossursprung übernehmen',
+    'Setzt den gewählten Punkt und führt die Ursprungsmaße als EINEN Schritt mit. Vorher wird '
+    + 'nichts geschrieben.'],
+  'gp-ursprung-weg': ['Ursprungsentwurf verwerfen',
+    'Verwirft den gewählten Punkt. Es wurde nichts gespeichert.'],
+  'gp-sammel-knopf': ['Ausgewählte Wände gemeinsam bearbeiten',
+    'Öffnet das Blatt, in dem allgemeine Wandmerkmale und die Produktauswahl von Modul 1 für '
+    + 'alle ausgewählten Wände gemeinsam gesetzt werden.'],
+  'gp-sammel-zu': ['Gemeinsam bearbeiten schließen',
+    'Schließt das Blatt. Es wird nichts gespeichert. Taste Escape.'],
+  'gp-sammel-go': ['Für alle ausgewählten Wände übernehmen',
+    'Übernimmt nach Bestätigung genau die angekreuzten Merkmale und Verwendungsstellen für '
+    + 'alle ausgewählten Wände — als ein Rückgängig-Schritt.'],
+  'gp-zoom-minus': ['Herauszoomen', 'Verkleinert den Ausschnitt. Taste Minus.'],
+  'gp-zoom-plus': ['Hineinzoomen', 'Vergrößert den Ausschnitt. Taste Plus.'],
+  'gp-zoom-alles': ['Alles zeigen', 'Zeigt das ganze Geschoss im Ausschnitt. Taste 0.'],
+  'gp-fang': ['Fang 125 mm',
+    'Fängt Zeichnen, Verschieben und Größenziehen JEDER Wand auf das 125-mm-Raster. Aus '
+    + 'rasten Positionen auf halbe Millimeter; die Länge bleibt immer im 125-mm-Raster.'],
+  'gp-raster': ['Raster',
+    'Blendet das 125-mm-Raster ein oder aus. Reine Ansicht — über einem unkalibrierten Plan '
+    + 'bleibt es ohnehin aus.'],
+  'gp-plan-knopf': ['Planverwaltung',
+    'Öffnet das Blatt für den Geschossplan: hochladen, ersetzen, entfernen, kalibrieren, '
+    + 'Maßstab, Versatz und Plan verschieben.'],
+  'gp-plan-zu': ['Planverwaltung schließen',
+    'Schließt das Blatt. Maßstab und Versatz bleiben, wie sie gesetzt sind.'],
+  'gp-plan-import': ['Plan hochladen oder ersetzen',
+    'Zulässig sind PNG, JPEG und WebP bis 20 MB; ein PDF wird benannt abgewiesen. Ein neues '
+    + 'Bild setzt Maßstab und Versatz zurück; Wandlagen bleiben unberührt.'],
+  'gp-plan-entfernen': ['Plan entfernen',
+    'Entfernt Bild und Planangaben dieses Geschosses. Wandlagen bleiben unberührt.'],
+  'gp-kal-start': ['Maßstab aus Plan übernehmen',
+    'Startet das Messen auf der Zeichenfläche: zwei Punkte anklicken, deren realen Abstand du '
+    + 'kennst. Zoomen und Verschieben bleiben dabei nutzbar.'],
+  'gp-kal-mm': ['Reale Länge der Messlinie in Millimetern',
+    'Der tatsächliche Abstand der beiden angeklickten Punkte. Daraus entsteht der Maßstab; '
+    + 'geschätzt wird nichts.'],
+  'gp-kal-go': ['Maßstab übernehmen', 'Setzt den gemessenen Maßstab für diesen Plan.'],
+  'gp-kal-reset': ['Messpunkte verwerfen',
+    'Verwirft die angeklickten Punkte; das Messen läuft weiter.'],
+  'gp-kal-abbruch': ['Messen abbrechen',
+    'Beendet das Messen, ohne einen Maßstab zu setzen. Taste Escape.'],
+  'gp-mmjepx': ['Millimeter je Bildpixel',
+    'Maßstab des Plans als Zahleneingabe — gleichwertig zum Messen auf der Zeichenfläche.'],
+  'gp-mass-uebernehmen': ['Maßstab setzen',
+    'Übernimmt die eingetragene Zahl als Maßstab dieses Plans. Wandlagen bleiben unberührt.'],
+  'gp-vx': ['Versatz X in Millimetern', 'Verschiebt die Darstellung des Plans in X-Richtung.'],
+  'gp-vy': ['Versatz Y in Millimetern', 'Verschiebt die Darstellung des Plans in Y-Richtung.'],
+  'gp-versatz-uebernehmen': ['Versatz setzen',
+    'Übernimmt die eingetragenen Versatzwerte. Das ist reine Anzeige — keine Wandlage ändert '
+    + 'sich dadurch.'],
+  'gp-versatz-null': ['Versatz auf 0 / 0 setzen', 'Stellt den Planversatz auf null zurück.'],
+  'gp-plan-schieben': ['Plan verschieben',
+    'Verschiebt den PLAN mit der Maus, nie eine Wandlage. Erst nach der Kalibrierung möglich. '
+    + 'Taste P.'],
+  'gp-plan-lock': ['Plan gesperrt',
+    'Solange der Plan gesperrt ist, bewegt ihn kein Ziehen auf der Zeichenfläche.'],
+  'gp-inline': ['Maß in Millimetern',
+    'Enter übernimmt den Wert, Escape verwirft ihn. Ein ungültiger Wert wird benannt '
+    + 'abgewiesen und nichts gespeichert.'],
+};
 
 /** Zustand der Oberfläche — reine Bedienung, nichts davon gehört ins Datenmodell. */
 const GP = {
@@ -2172,17 +2311,28 @@ function listeSync(erg, koll, els){
       brandklasse(el) || '–',
       w.lage ? bestimmtText(erg.bestimmt[w.id]) : 'frei',
     ];
+    // #144 Beide Knöpfe einer Zeile heißen gleich oft — ihr Name nennt deshalb SELBST
+    // die Wand („Wand A auswählen“, „Wand A planen“). Die Kenndaten der Zeile stehen als
+    // eigene BESCHREIBUNG daneben, nie im Namen; Beschreibungsknoten und Knopf liegen in
+    // derselben gerenderten Zeichenkette und werden mit ihr ersetzt.
+    const bez = w.name || w.id;
+    const bz = AX.benennung(AX.objektAktion('auswählen', bez),
+      `${det.join(' · ')}.${we ? '' : ' Verwaister Eintrag ohne Wandelement.'} Klick wählt aus, `
+      + 'Umschalt oder Strg wählt mehrere.');
+    const bp = el ? AX.benennung(AX.objektAktion('planen', bez),
+      'Setzt diese Wand aktiv und öffnet sie in Modul 1 (Wandplanung).') : null;
     // „Planen“ nur, wo es ein Wandelement GIBT: ein verwaister Eintrag bekommt keinen
     // Knopf, statt einen Weg vorzutäuschen, den es nicht gibt ([L-4]).
     return '<div class="gp-eintrag">'
-      + `<button type="button" class="${klassen}" data-wand="${esc(w.id)}">`
+      + `<button type="button" class="${klassen}" ${bz.attrs}`
+      + ` aria-pressed="${istAusgewaehlt(w.id) ? 'true' : 'false'}" data-wand="${esc(w.id)}">`
       + `<span class="pkt" style="background:${CON.FARBEN[zu]}"></span>`
       + `<span class="nam">${esc(w.name || w.id)}</span>`
       + `<span class="det">${esc(det.join(' · '))}</span>`
       + (we ? '' : '<span class="det warn">verwaister Eintrag ohne Wandelement ([L-4])</span>')
-      + '</button>'
-      + (el ? `<button type="button" class="gp-plan" data-planen="${esc(w.id)}" `
-        + 'title="Diese Wand aktiv setzen und in Modul 1 (Wandplanung) öffnen.">Planen</button>' : '')
+      + '</button>' + bz.html
+      + (bp ? `<button type="button" class="gp-plan" ${bp.attrs} `
+        + `data-planen="${esc(w.id)}">Planen</button>${bp.html}` : '')
       + '</div>';
   });
   // #125 Die Umschaltaktion über den Zeilen. Beschriftung UND Freigabe entstehen bei
@@ -2190,12 +2340,13 @@ function listeSync(erg, koll, els){
   // gewöhnlichen Klick steht damit nie ein veralteter Zustand am Knopf.
   const alle = alleGewaehlt();
   const gewaehlt = GP.auswahl.filter(id => !!wand(id)).length;
+  const ba = AX.benennung(alle ? 'Auswahl aufheben' : 'Alle Wände auswählen', alle
+    ? 'Nimmt die Mehrfachauswahl zurück — ausgewählt und aktiv bleibt genau die aktive Wand.'
+    : 'Wählt alle Wände dieses Geschosses aus, verortete wie unverortete. Ab zwei Wänden '
+      + 'arbeitet „Gemeinsam bearbeiten“ mit genau dieser Auswahl.');
   const knopf = '<div class="gp-liste-alle">'
-    + `<button type="button" data-alle="1"${liste.length ? '' : ' disabled'} title="${alle
-      ? 'Die Mehrfachauswahl zurücknehmen — ausgewählt und aktiv bleibt genau die aktive Wand.'
-      : 'Alle Wände dieses Geschosses auswählen — verortete und unverortete, keine aus anderen '
-        + 'Geschossen. Ab zwei Wänden arbeitet „Gemeinsam bearbeiten“ mit genau dieser Auswahl.'
-      }">${alle ? 'Auswahl aufheben' : 'Alle auswählen'}</button>`
+    + `<button type="button" data-alle="1"${liste.length ? '' : ' disabled'} ${ba.attrs}`
+    + `>${alle ? 'Auswahl aufheben' : 'Alle auswählen'}</button>${ba.html}`
     + `<span class="stand">${gewaehlt} von ${liste.length} ausgewählt</span>`
     + '</div>';
   p.innerHTML = `<h4>Wände im Geschoss <span>${liste.length}</span></h4>`
@@ -2486,6 +2637,10 @@ function wahlPruefung(werte, was){
 
 const SAMMEL_FELDER = [
   { id: 'hoehe', name: 'Wandhöhe', core: true, wahl: false,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: 'mm',
+    hinweis: 'Setzt die gemeinsame Wandhöhe. Sie ist frei, ohne 200er-Rasterzwang, sofern die Ausgleichslage wirkt. Jede ausgewählte Wand wird damit neu gerechnet.',
     lies: we => we.height_mm,
     text: v => `${v} mm`,
     pruefe: (roh) => {
@@ -2507,12 +2662,20 @@ const SAMMEL_FELDER = [
   // kein zweiter Rechenweg. Das Feld lebt am Wandelement, nicht in `eingaben`: kein neues
   // gespeichertes Feld, kein Versionssprung.
   { id: 'ausgleich', name: 'Ausgleichslage', core: true, wahl: true,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: null,
+    hinweis: 'Aktiviert oder deaktiviert die Ausgleichslage je Wand. Aktiviert nimmt der Rechenkern die Resthöhe als genau eine oberste Lage; deaktiviert muss die Höhe ein Vielfaches von 200 mm sein.',
     lies: we => (we.ausgleichslage_aktiv === true) ? 'an' : 'aus',
     text: v => (v === 'an') ? 'aktiviert' : 'nicht aktiviert',
     pruefe: wahlPruefung(['an', 'aus'], 'die Ausgleichslage an oder aus'),
     setze: (vorg, v) => { vorg.ausgleichslage_aktiv = (v === 'an'); } },
 
   { id: 'wandtyp', name: 'Windsituation', core: false, wahl: true,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: null,
+    hinweis: 'Windsituation der Wand. Ein Fachmerkmal ohne Einfluss auf Steinverband und Stückliste.',
     lies: we => store.normWandtyp(we.wandtyp),
     text: wandtypText,
     // Die zulässigen Werte kommen aus `storage.js` und werden in `sammelPruefungen()`
@@ -2523,24 +2686,40 @@ const SAMMEL_FELDER = [
   // #79: reine Planungskennzeichnung. Sie hängt nicht am Core, aus ihr wird nichts
   // abgeleitet — deshalb steht sie hinter dem Rechnen und ist keine neue Fachregel.
   { id: 'brand', name: 'Brandschutzklasse', core: false, wahl: true,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: null,
+    hinweis: 'Brandschutzklassifikation der Wand — reine Planungskennzeichnung, aus ihr wird nichts abgeleitet.',
     lies: we => store.normBrandklasse(we.brandklasse),
     text: v => v,
     pruefe: wahlPruefung([], 'eine Brandschutzklasse'),   // Werte s. `sammelPruefungen()`
     setze: (neu, v) => { neu.brandklasse = v; } },
 
   { id: 'abdicht', name: 'Stoßfugen-Abdichtung', core: false, wahl: true,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: null,
+    hinweis: 'Abdichtung der Stoßfugen. Die Dichtstreifenlänge der Stückliste ist nachrichtlich und wird nie bepreist.',
     lies: we => store.normAbdichtung(we.abdichtung),
     text: v => ABDICHT_TEXT[v] || v,
     pruefe: wahlPruefung([], 'eine Abdichtung'),         // Werte s. `sammelPruefungen()`
     setze: (neu, v) => { neu.abdichtung = v; } },
 
   { id: 'vorne', name: 'Funktion der Vorderseite', core: true, wahl: true,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: null,
+    hinweis: 'Funktion der Vorderseite. Sie geht in die Auslegung ein; jede Wand wird damit neu gerechnet.',
     lies: we => seiteFunktion(we, 'vorne'),
     text: v => SEITE_TEXT[v] || v,
     pruefe: wahlPruefung(Object.keys(SEITE_TEXT), 'eine Funktion der Vorderseite'),
     setze: (vorg, v) => setzeSeite(vorg, 'vorne', v) },
 
   { id: 'hinten', name: 'Funktion der Rückseite', core: true, wahl: true,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: null,
+    hinweis: 'Funktion der Rückseite. Sie geht in die Auslegung ein; jede Wand wird damit neu gerechnet.',
     lies: we => seiteFunktion(we, 'hinten'),
     text: v => SEITE_TEXT[v] || v,
     pruefe: wahlPruefung(Object.keys(SEITE_TEXT), 'eine Funktion der Rückseite'),
@@ -2549,12 +2728,20 @@ const SAMMEL_FELDER = [
   // [A-2]/#92: Standard ist die SPANNPLATTE — auch als Rückfall, wenn das Feld
   // fehlt. Genau das rechnet der Core, und genau das wird hier angezeigt.
   { id: 'topconn', name: 'Oberer Anschluss', core: true, wahl: true,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: null,
+    hinweis: 'Oberer Anschluss der Wand. Die Spannplatte ist der Standard, das Kopfblech muss ausgesprochen werden.',
     lies: we => ((we.prestress || {}).top_connection === 'blech') ? 'blech' : 'spannplatte',
     text: v => TOPCONN_TEXT[v] || v,
     pruefe: wahlPruefung(['blech', 'spannplatte'], 'einen oberen Anschluss'),
     setze: (vorg, v) => { vorg.prestress.top_connection = v; } },
 
   { id: 'blech', name: 'Kopfblech-Modullänge', core: true, wahl: false,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: 'mm',
+    hinweis: 'Modullänge des Kopfblechs: ganze Zahl, Vielfaches von 10 mm, mindestens 200 mm. Ein unzulässiger Wert wird benannt abgewiesen, nie geklemmt.',
     lies: we => {
       const v = (we.prestress || {}).blech_mm;
       return (v != null && +v > 0) ? +v : BLECH_STD;
@@ -2572,6 +2759,10 @@ const SAMMEL_FELDER = [
 
   // [Z-6]: der Überstand ist eingebautes Material, kein Verschnitt.
   { id: 'ueber', name: 'Überstand Reststück', core: true, wahl: false,
+    // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
+    // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
+    einheit: 'mm',
+    hinweis: 'Überstand des Reststücks über die Wandoberkante: ganze Zahl ab 0. Ein unzulässiger Wert wird benannt abgewiesen, nie gerundet.',
     lies: we => {
       const v = (we.prestress || {}).rod_overhang_mm;
       return (v != null && +v >= 0) ? +v : UEBERSTAND_STD;
@@ -2715,17 +2906,26 @@ function sammelRollenAufbauen(){
     for (const r of rollen.filter(x => x.gruppe === g)) {
       const k = rollenFeldId(r.id);
       const wirkt = rolleWirkt(r.id);
-      h += `<div class="sfeld"><label class="chk" for="${k}-an" title="${esc(KAT.rollenLabel(r.id))}`
-        + ` — die angekreuzten Produkte für alle ausgewählten Wände setzen (Mehrfachauswahl`
-        + ` wie in Modul 1)`
-        + (wirkt ? '. Diese Verwendungsstelle geht in die Rechnung ein: jede Wand wird damit über '
-            + 'den Auslegungspfad von Modul 1 neu gerechnet.' : '.')
-        + `"><input type="checkbox" id="${k}-an"><span>${esc(KAT.rollenLabel(r.id))}</span></label>`
+      // #145 Häkchen und Produktauswahl sind ZWEI Bedienelemente und tragen deshalb zwei
+      // getrennte Namen: „<Verwendungsstelle> ändern“ schaltet frei, „<Verwendungsstelle>,
+      // Produkte wählen“ klappt die Häkchenliste auf. Die Erklärung steht als eigene
+      // Beschreibung daneben — nie im Namen, nie nur in einem `title`.
+      const lab = esc(KAT.rollenLabel(r.id));
+      const ban = AX.benennung('', `Setzt die hier angekreuzten Produkte für alle ausgewählten `
+        + `Wände. Die angekreuzte Menge ersetzt die bisherige Auswahl der Wand.`
+        + (wirkt ? ' Diese Verwendungsstelle geht in die Rechnung ein: jede Wand wird damit '
+            + 'über den Auslegungspfad von Modul 1 neu gerechnet.' : ''));
+      const bdd = AX.benennung(`${KAT.rollenLabel(r.id)}, Produkte wählen`,
+        'Klappt die Produktliste dieser Verwendungsstelle auf. Mehrere Produkte sind '
+        + 'wählbar; wirksam wird die Auswahl nur mit gesetztem Häkchen.');
+      h += `<div class="sfeld"><label class="chk" id="${k}-lab" for="${k}-an" ${ban.attrs}`
+        + `><input type="checkbox" id="${k}-an" aria-describedby="${ban.id}"`
+        + `><span>${lab} ändern</span></label>${ban.html}`
         + `<details class="pdd" id="${k}" data-aus="1">`
-        + `<summary aria-haspopup="listbox" title="${esc(KAT.rollenLabel(r.id))} — Produkte `
-        + `ankreuzen"><span class="psum" id="${k}-summ">keine Auswahl</span></summary>`
+        + `<summary aria-haspopup="listbox" ${bdd.attrs}>`
+        + `<span class="psum" id="${k}-summ">keine Auswahl</span></summary>${bdd.html}`
         + `<div class="pmenu" role="group" id="${k}-menu" `
-        + `aria-label="${esc(KAT.rollenLabel(r.id))}"></div></details>`
+        + `aria-label="Produkte für ${lab}"></div></details>`
         + `<span class="sist" id="${k}-ist">–</span></div>`;
     }
   }
@@ -2931,14 +3131,22 @@ function blecheAufbauen(st){
     const k = blechFeldId(z.n);
     const an = GP.blechAn[String(z.n)] === true;
     const ziel = String(GP.blechZiel[String(z.n)] || '');
-    h += `<div class="sfeld"><label class="chk" for="${k}-an" title="Blech ${z.n} — das `
-      + `${z.n}. Zwischenspannblech von unten. Angekreuzt wird es bei jeder ausgewählten Wand `
-      + `auf die reale Oberkante der gewählten Lage verschoben; fehlt es bei einer Wand, wird `
-      + `es dort neu angelegt. Nicht angekreuzte Bleche bleiben unverändert."`
+    // #145 Auch hier tragen Häkchen und Wertfeld getrennte Namen, und beide nennen die
+    // NUMMER des Blechs — sonst unterschieden sich mehrere gleich aufgebaute Zeilen nur
+    // durch ihre Reihenfolge.
+    const ban = AX.benennung('', `Das ${z.n}. Zwischenspannblech von unten. Angekreuzt wird es `
+      + 'bei jeder ausgewählten Wand auf die reale Oberkante der gewählten Lage verschoben; '
+      + 'fehlt es bei einer Wand, wird es dort neu angelegt. Nicht angekreuzte Bleche bleiben '
+      + 'unverändert.');
+    const bz = AX.benennung(`Ziel-Lage für Blech ${z.n}`,
+      'Reale Lagenoberkante der jeweiligen Wand. Eine freie Millimetereingabe gibt es hier '
+      + 'nicht; wirksam wird die Wahl nur mit gesetztem Häkchen.');
+    h += `<div class="sfeld"><label class="chk" id="${k}-lab" for="${k}-an" ${ban.attrs}`
       + `><input type="checkbox" id="${k}-an" data-zp="${z.n}" data-art="an"`
-      + `${an ? ' checked' : ''}><span>Blech ${z.n}</span></label>`
-      + `<select id="${k}" data-zp="${z.n}" data-art="ziel"${an ? '' : ' disabled'}>`
-      + optionen(ziel) + '</select>'
+      + ` aria-describedby="${ban.id}"${an ? ' checked' : ''}`
+      + `><span>Blech ${z.n} ändern</span></label>${ban.html}`
+      + `<select id="${k}" data-zp="${z.n}" data-art="ziel" ${bz.attrs}${an ? '' : ' disabled'}>`
+      + optionen(ziel) + '</select>' + bz.html
       + `<span class="sist" id="${k}-ist">–</span></div>`;
   }
   box.innerHTML = h;
@@ -3109,11 +3317,13 @@ function sammelSync(){
   if (ids.length < 2) {
     box.hidden = true; blatt.hidden = true;
     GP.sammelFuer = undefined; GP.sammelRollenFuer = undefined; GP.sammelOffen = false;
+    axSammelStand(false);
     return;
   }
   box.hidden = false;
   blatt.hidden = !GP.sammelOffen;
   const offen = !!GP.sammelOffen;
+  axSammelStand(offen);
   const st = sammelStand(ids, offen);
   const kstatus = offen ? store.katalogStatus() : null;
   const kat = kstatus ? kstatus.katalog : null;
@@ -3229,6 +3439,22 @@ function sammelSync(){
  * manuelle Spannachsen, nicht angekreuzte Zwischenspannpunkte und Bemaßungen bleiben
  * unberührt, ebenso `eingaben.aufbau` (Modul 2) und der Bauteilkatalog selbst.
  */
+/**
+ * Aufklappzustand und Dialogsemantik des Sammel-Editors angleichen (#145).
+ *
+ * Modal: solange das Blatt offen ist, ist der Hintergrund nicht bedienbar, Tab bleibt
+ * drin und der Fokus steht beim Öffnen im Blatt. Geschlossen wird er an den auslösenden
+ * Knopf zurückgegeben — auch dann, wenn das Blatt nicht über ihn geschlossen wurde
+ * (Escape, Auswahlwechsel, zu wenige Wände).
+ */
+function axSammelStand(offen){
+  const kn = $('gp-sammel-knopf');
+  if (kn && typeof kn.setAttribute === 'function') {
+    kn.setAttribute('aria-expanded', offen ? 'true' : 'false');
+  }
+  dialogStand(sammelDialog, offen, SAMMEL_DIALOG_STAND);
+}
+
 function sammelAnwenden(){
   const ids = sammelWaende();
   if (ids.length < 2) {
@@ -3621,7 +3847,12 @@ function kopfSync(){
   // „plan“ hat bewusst keinen Knopf in dieser Leiste (#53) — es wird im Planblatt
   // eingeschaltet und dort hervorgehoben (s. `planKopfSync`).
   for (const b of WZ_KNOEPFE) {
-    $('wz-' + b).className = GP.werkzeug === b ? 'an' : '';
+    const kn = $('wz-' + b);
+    kn.className = GP.werkzeug === b ? 'an' : '';
+    // Welches Werkzeug aktiv ist, darf nicht nur an der Farbe hängen (#144).
+    if (typeof kn.setAttribute === 'function') {
+      kn.setAttribute('aria-pressed', GP.werkzeug === b ? 'true' : 'false');
+    }
   }
   $('wz-hinweis').innerHTML = GP.werkzeug === 'bemassen'
     ? 'Zwei <b>parallele</b> Bezüge anklicken — mit dem ersten Klick steht die <b>Achse</b> fest '
@@ -3718,19 +3949,20 @@ function kopfSync(){
   $('gp-raster').checked = GP.rasterAn;
   $('gp-masse').checked = GP.masseAn;
   $('gp-masse').disabled = massPflicht;
-  $('gp-masse').title = massPflicht
-    ? 'Im Werkzeug Maß (D) bleiben Bemaßungen sichtbar — sonst bearbeitete man '
-      + 'unsichtbare Maße.'
-    : 'Bemaßungen ein- oder ausblenden. Reine Ansicht: Werte, Löser und Wandlagen bleiben unberührt ([K-5]).';
+  // Der GRUND der Sperre gehört in die Beschreibung, nicht in den Namen (#144).
+  axMasseBeschreiben();
 
   sammelSync();
   bemKopfSync();
   ursprungKopfSync();
   $('gp-undo').disabled = !GP.undo.length;
   $('gp-redo').disabled = !GP.redo.length;
-  $('gp-undo').title = `Rückgängig (Strg+Z) · ${GP.undo.length} Schritt(e). Zurückgenommen werden nur `
-    + 'Lagen und Bemaßungen ([K-10]) — Planbild, Maßstab, Versatz, Blick und Auswahl bleiben unberührt.';
-  $('gp-redo').title = `Wiederholen (Strg+Umschalt+Z) · ${GP.redo.length} Schritt(e).`;
+  // Die ZAHL der Schritte ist ein wechselnder Stand und gehört deshalb in die
+  // Beschreibung — der Name bleibt kurz „Rückgängig“ (#144).
+  if (AX) {
+    AX.beschreibe($('gp-undo'), `${AX_TEXTE['gp-undo'][1]} Gerade ${GP.undo.length} Schritt(e).`);
+    AX.beschreibe($('gp-redo'), `${AX_TEXTE['gp-redo'][1]} Gerade ${GP.redo.length} Schritt(e).`);
+  }
   planKopfSync();
 }
 
@@ -3801,6 +4033,12 @@ function planKopfSync(){
   const blatt = $('gp-planblatt');
   blatt.hidden = !offen;
   blatt.className = 'gp-sheet' + (GP.kal.an ? ' kompakt' : '');
+  // Aufgeklappt/zugeklappt und Fokusführung: angemeldet wird am WECHSEL, nicht an
+  // jedem einzelnen Öffnungsweg (#145).
+  if (typeof $('gp-plan-knopf').setAttribute === 'function') {
+    $('gp-plan-knopf').setAttribute('aria-expanded', offen ? 'true' : 'false');
+  }
+  dialogStand(planDialog, offen, PLAN_DIALOG_STAND);
   $('gp-plan-knopf').disabled = !gs;
   $('gp-plan-import').disabled = !gs;
   for (const id of ['gp-plan-entfernen', 'gp-kal-start', 'gp-mass-uebernehmen',
@@ -3814,6 +4052,9 @@ function planKopfSync(){
   // Verschieben braucht ein Millimetermaß: ohne Kalibrierung gibt es keines ([L-9]).
   if (p && !PLAN.planKalibriert(p)) $('gp-plan-schieben').disabled = true;
   $('gp-plan-schieben').className = 'btn-s' + (GP.werkzeug === 'plan' ? ' an' : '');
+  if (typeof $('gp-plan-schieben').setAttribute === 'function') {
+    $('gp-plan-schieben').setAttribute('aria-pressed', GP.werkzeug === 'plan' ? 'true' : 'false');
+  }
   kalKopfSync();
   const chip = $('gp-plan-chip');
   chip.className = p && !PLAN.planKalibriert(p) ? 'warn' : '';
@@ -5465,7 +5706,137 @@ function werkzeug(name){
   render();
 }
 
+// ---------------------------------------------------------------------------
+//  Zugänglichkeit: Namen, Beschreibungen, Dialoge (#144/#145)
+// ---------------------------------------------------------------------------
+/**
+ * Die festen Bedienelemente EINMAL benennen und beschreiben.
+ *
+ * Gesetzt wird ausschließlich über den gemeinsamen Baustein: kurzer Name am Element,
+ * Erklärung als eigener Textknoten (`aria-describedby`), sichtbar als Tooltip bei Hover
+ * UND Tastaturfokus. Bei einem Häkchen bleibt der NAME die sichtbare Beschriftung des
+ * Labels — die Beschreibung hängt am Eingabeelement (nur dort wird sie vorgelesen), der
+ * Tooltip zusätzlich am umgebenden Label, damit auch das Überfahren der Beschriftung ihn
+ * zeigt. Beide zeigen auf DENSELBEN Textknoten.
+ */
+function axBenennen(){
+  if (!AX) return;
+  const HAEKCHEN = { 'gp-fang': 'gp-fang-lab', 'gp-raster': 'gp-raster-lab',
+                     'gp-masse': 'gp-masse-lab', 'gp-plan-lock': 'gp-plan-lock-lab' };
+  for (const id of Object.keys(AX_TEXTE)) {
+    const el = $(id);
+    if (!el) continue;
+    const [name, besch] = AX_TEXTE[id];
+    // Ein Häkchen bekommt seinen Namen von seinem sichtbaren Label — ein zweiter Name
+    // am Element widerspräche der Beschriftung, die daneben steht.
+    if (!HAEKCHEN[id]) AX.benenne(el, name);
+    const bid = AX.beschreibe(el, besch);
+    if (HAEKCHEN[id]) AX.tippZiel($(HAEKCHEN[id]), bid);
+  }
+  // Der Bemaßungsschalter trägt seine Beschreibung zustandsabhängig (gesperrt im
+  // Werkzeug Maß) — sie wird in `kopfSync()` nachgeführt, hier steht der Ausgangstext.
+  axMasseBeschreiben();
+  axSammelBenennen();
+  // Die Kopfleiste liegt außerhalb dieser Seite (sie wird von `navbar.js` eingehängt);
+  // für die Hintergrundsperre eines modalen Dialogs zählt sie trotzdem dazu.
+  const nav = typeof document.querySelector === 'function' ? document.querySelector('.sb-nav') : null;
+  if (nav && typeof nav.setAttribute === 'function') nav.setAttribute('data-ax-hintergrund', '');
+}
+
+/** Beschreibung des Bemaßungsschalters — im Werkzeug Maß ist er gesperrt und sagt warum. */
+function axMasseBeschreiben(){
+  if (!AX) return;
+  const gesperrt = GP.werkzeug === 'bemassen';
+  const bid = AX.beschreibe($('gp-masse'), gesperrt
+    ? 'Im Werkzeug Bemaßen bleiben die Bemaßungen sichtbar — sonst bearbeitete man '
+      + 'unsichtbare Maße. Der Schalter ist deshalb gerade gesperrt.'
+    : 'Blendet die Bemaßungen ein oder aus. Reine Ansicht: Werte, Löser und Wandlagen '
+      + 'bleiben unberührt.');
+  AX.tippZiel($('gp-masse-lab'), bid);
+}
+
+/**
+ * Häkchen und Wertfeld des Sammel-Editors GETRENNT benennen (#145).
+ *
+ * Das Häkchen heißt „Wandhöhe ändern“ (so steht es auch sichtbar daneben), das Wertfeld
+ * „Wandhöhe in mm“ — mit Einheit, wo es eine gibt. Vorher trug das Wertfeld gar keinen
+ * Namen: zehn namenlose Felder, deren Bedeutung nur aus der Sitzordnung hervorging.
+ * Beides kommt aus DERSELBEN Quelle wie die Fachlogik (`SAMMEL_FELDER`) — ein zweiter
+ * Merkmalsname entstünde sonst hier.
+ */
+function axSammelBenennen(){
+  if (!AX) return;
+  for (const f of SAMMEL_FELDER) {
+    const an = $(sammelFeldId(f) + '-an');
+    const feld = $(sammelFeldId(f));
+    const lab = $(sammelFeldId(f) + '-lab');
+    const bid = AX.beschreibe(an, f.hinweis);
+    AX.tippZiel(lab, bid);
+    AX.benenne(feld, f.einheit ? `${f.name} in ${f.einheit}` : f.name);
+    AX.beschreibe(feld, `Zielwert für alle ausgewählten Wände. Er wirkt nur mit gesetztem `
+      + `Häkchen „${f.name} ändern“; ohne Häkchen bleibt das Feld gesperrt.`);
+  }
+}
+
+/**
+ * Die beiden Bedienblätter als Dialoge anmelden (#145).
+ *
+ * Der Sammel-Editor ist MODAL: er ist ein bestätigter Bearbeitungsschritt über genau der
+ * Auswahl, mit der er geöffnet wurde — währenddessen ist der Hintergrund nicht bedienbar,
+ * Tab bleibt drin, Escape bricht ab und speichert nichts.
+ *
+ * Die Planverwaltung ist ausdrücklich NICHT modal: Kalibrieren und Plan verschieben
+ * arbeiten auf der Zeichenfläche, während das Blatt offen bleibt (#52/#53). Sie bekommt
+ * Rolle, Namen und Fokusführung — aber keine Fokusfalle und keine Hintergrundsperre;
+ * beides zu behaupten wäre eine falsche Zusage.
+ *
+ * Escape führt in beiden Fällen der ZENTRALE Tastenbehandler der Seite (`beiTaste`), der
+ * die Abbruchreihenfolge kennt (Messung vor Entwurf vor Popup) — deshalb `escape: false`.
+ */
+function dialogeAnmelden(){
+  if (!AX) return;
+  // Wird die Seitenlogik ein zweites Mal aufgesetzt (im Test der Sprung über den Reiter,
+  // #43), entstehen neue Dialogobjekte. Ein noch offenes ALTES Blatt muss vorher sauber
+  // abgemeldet werden — sonst bliebe seine Hintergrundsperre für immer stehen, weil das
+  // neue Objekt sie nie zu schließen gelernt hat.
+  if (planDialog) planDialog.schliesse();
+  if (sammelDialog) sammelDialog.schliesse();
+  PLAN_DIALOG_STAND.offen = undefined;
+  SAMMEL_DIALOG_STAND.offen = undefined;
+  planDialog = AX.modalDialog({ overlay: $('gp-planblatt'), modal: false, escape: false,
+    titelId: 'gp-plan-titel',
+    // Ein gesperrtes Feld ist kein Fokusziel — dann steht der Fokus am Schließen-Knopf,
+    // also weiterhin IM Blatt.
+    erstFokus: () => (!$('gp-plan-import').disabled ? $('gp-plan-import') : $('gp-plan-zu')),
+    ersatzFokus: () => $('gp-plan-knopf') });
+  sammelDialog = AX.modalDialog({ overlay: $('gp-sammelblatt'), escape: false,
+    titelId: 'gp-sammel-titel', erstFokus: () => $('gp-sammel-hoehe-an'),
+    ersatzFokus: () => $('gp-sammel-knopf') });
+}
+
+/**
+ * Öffnen und Schließen eines Blattes am WECHSEL seiner Sichtbarkeit anmelden.
+ *
+ * Beide Blätter werden an mehreren Stellen geöffnet und geschlossen (Knopf, Escape,
+ * Werkzeugwechsel, Geschosswechsel, zu wenige ausgewählte Wände). Angemeldet wird deshalb
+ * nicht an jedem einzelnen Weg, sondern genau dort, wo die Sichtbarkeit entsteht — sonst
+ * bliebe ein Weg übrig, der den Fokus und die Hintergrundsperre stehen ließe. `render()`
+ * läuft bei jedem Zeigerereignis; ohne Wechsel passiert hier nichts, der Fokus wird also
+ * niemandem aus der Hand genommen.
+ * @param {any} dlg @param {boolean} offen @param {{offen?:boolean}} merker
+ */
+function dialogStand(dlg, offen, merker){
+  if (!dlg) return;
+  if (!!merker.offen === !!offen) return;
+  merker.offen = !!offen;
+  if (offen) dlg.oeffne(); else dlg.schliesse();
+}
+const PLAN_DIALOG_STAND = {};
+const SAMMEL_DIALOG_STAND = {};
+
 function binde(){
+  axBenennen();
+  dialogeAnmelden();
   for (const b of WZ_KNOEPFE) {
     $('wz-' + b).addEventListener('click', () => werkzeug(b));
   }
@@ -5647,6 +6018,17 @@ function binde(){
   window.addEventListener('resize', () => render());
 }
 
+/**
+ * Liegt das Ereignis in einem der schwebenden Bedienblätter (#145)?
+ *
+ * Geprüft wird über `closest` — die Blätter liegen im Markup NEBEN der Bühne und tragen
+ * beide die Klasse `.gp-sheet`. Fehlt `closest` (minimales DOM-Double), gilt „nicht im
+ * Blatt“: die Antwort ist dann dieselbe wie vor diesem Paket.
+ */
+function imBedienblatt(el){
+  return !!(el && typeof el.closest === 'function' && el.closest('.gp-sheet'));
+}
+
 function beiTaste(ev){
   if (ev.key === ' ') { GP.raumTaste = true; return; }
   if (ev.key === 'Escape') {
@@ -5670,6 +6052,11 @@ function beiTaste(ev){
   // Tastenkürzel nur außerhalb von Eingabefeldern
   const tag = ev.target && ev.target.tagName ? String(ev.target.tagName).toLowerCase() : '';
   if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+  // … und nicht, während ein Bedienblatt offen ist (#145). Sonst schlüge jede Taste auf
+  // die Zeichenfläche durch, sobald der Fokus im Blatt auf einem KNOPF steht: W wechselte
+  // das Werkzeug, R drehte eine Wand, Delete löschte ein Maß — mitten im Dialog. Escape
+  // ist davon ausgenommen (er steht oben) und bleibt der eine Abbruchweg.
+  if (GP.sammelOffen || imBedienblatt(ev.target)) return;
   const k = String(ev.key || '').toLowerCase();
   if (k === 'delete' || k === 'backspace') {
     if (GP.inline) return;
@@ -5804,6 +6191,26 @@ window.__gp = {
   taste(key, target, ev){ beiTaste({ key, target: target || {}, ...(ev || {}) }); },
   /** #139 Der Ist-Stand der nummerierten Zwischenspannbleche der aktuellen Auswahl. */
   blechStand: () => blechStand(sammelWaende()),
+  /** #145 Zugänglichkeit: Name, Beschreibungstext und Zustand EINES Bedienelements. */
+  ax(id){
+    const el = $(id);
+    if (!el || typeof el.getAttribute !== 'function') return null;
+    const bid = el.getAttribute('aria-describedby');
+    const b = bid ? $(bid) : null;
+    return { name: el.getAttribute('aria-label'), beschreibungId: bid,
+             beschreibung: b ? String(b.textContent || '') : '',
+             tip: el.getAttribute('data-ax-tip'),
+             gedrueckt: el.getAttribute('aria-pressed'),
+             aufgeklappt: el.getAttribute('aria-expanded'),
+             gesperrt: !!el.disabled };
+  },
+  /** #145 Die Dialogsemantik eines Bedienblatts — Rolle, Name, Modalität. */
+  axDialog(id){
+    const el = $(id);
+    if (!el || typeof el.getAttribute !== 'function') return null;
+    return { rolle: el.getAttribute('role'), modal: el.getAttribute('aria-modal'),
+             benanntDurch: el.getAttribute('aria-labelledby'), offen: !el.hidden };
+  },
   get zustand(){ return GP; },
   get blick(){ return V; },
   get svg(){ return $('gp-buehne').innerHTML; },
@@ -5812,7 +6219,7 @@ window.__gp = {
 window.__gpInit = function(){
   const S = window.SEMBLA || {};
   store = S.store; MAPPE = S.MAPPE; CON = S.CON; PLAN = S.PLAN; MB = S.MB; WA = S.WA;
-  ENG = S.ENG; Opening = S.Opening; KAT = S.KAT;
+  ENG = S.ENG; Opening = S.Opening; KAT = S.KAT; AX = S.AX;
   BLECH_STD = S.BLECH; UEBERSTAND_STD = S.ROD_OVERHANG;
   wandLagenKanten = S.wandLagenKanten;
   sammelPruefungen();
@@ -5834,6 +6241,10 @@ window.__gpInit = function(){
   // #111 Verwendungsrollen, Gruppen, Produktoptionen und Produktnachschlag der
   // gemeinsamen Produktauswahl — der Editor rechnet davon nichts nach ([P-13]/[P-14]).
   import * as KAT from './shared/sembla-katalog.js';
+  // Der EINE Accessibility-Baustein der Suite (#144/#145): Namen, Beschreibungen,
+  // Tooltips und Dialogsemantik. Stil und Tooltip-Schicht hängt bereits `mountNavbar`
+  // ein; beide Funktionen sind ausdrücklich mehrfach aufrufbar und tun dann nichts.
+  import * as AX from './shared/sembla-ax.js';
   // Der Auslegungspfad von Modul 1 (#56): eine Längenänderung im Editor rechnet das
   // vorhandene Wandelement damit NEU — kein zweiter Rechenkern, keine eigene Wandgeometrie.
   import * as ENG from './shared/sembla-engine.js';
@@ -5843,8 +6254,10 @@ window.__gpInit = function(){
   // einer oberen Ausgleichslage (#136). Der Sammel-Editor liest daraus die realen
   // Ziel-Lagenoberkanten je Wand, statt „Lage × 200 mm“ nachzurechnen.
   import { Opening, BLECH, ROD_OVERHANG, wandLagenKanten } from './shared/sembla-core.js';
-  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, Opening, BLECH, ROD_OVERHANG,
-    wandLagenKanten };
+  window.SEMBLA = { store, MAPPE, CON, PLAN, MB, WA, KAT, ENG, AX, Opening, BLECH,
+    ROD_OVERHANG, wandLagenKanten };
+  AX.stilEinhaengen();
+  AX.tooltips();
   // Diese Seite gehört fachlich zu Modul 0 (Projektplaner) und ist kein eigenes Modul.
   // Sie war der Grund für die frühere Festlegung „kein Modul 9“ — die ist mit Issue #54
   // überholt: der LAGEPLAN ist ein eigenes Modul 9, dieser EDITOR bleibt Teil von Modul 0.

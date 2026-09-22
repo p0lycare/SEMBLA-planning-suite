@@ -83,8 +83,30 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // Aussagewahr heisst hier: geliefert sind benannte Bedienelemente mit getrennter Beschreibung
 // und tastaturfeste modale Dialoge in Modul 0 und der gemeinsamen Kopfleiste. NICHT versprochen
 // werden die uebrigen Module, eine Fachregelaenderung oder ein neues gespeichertes Feld.
-const AX_144 = EINTRAEGE[0];
-ok("[#144] die zugaengliche Bedienung von Modul 0 ist der neueste Eintrag",
+// Der NEUESTE Eintrag ist die ZUGAENGLICHKEIT DES GESCHOSSEDITORS (#145) — er wird als
+// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
+// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+//
+// Aussagewahr heisst hier: geliefert sind benannte Bedienelemente, GETRENNT benannte Haekchen
+// und Wertfelder des Sammel-Editors und tastaturfeste Bedienblaetter im Geschosseditor. NICHT
+// versprochen werden numerische Alternativen zum Zeichnen, die uebrigen Module, eine
+// Fachregelaenderung oder ein neues gespeichertes Feld.
+const AX_145 = EINTRAEGE[0];
+ok("[#145] die zugaengliche Bedienung des Geschosseditors ist der neueste Eintrag",
+  AX_145?.id === "chg-20260922-03" && AX_145?.issue === 145
+  && AX_145?.typ === "feature" && AX_145?.datum === "2026-09-22"
+  && /Geschosseditor/.test(AX_145?.titel || ""));
+ok("[#145] der Eintrag benennt beide Seiten: Benennung UND Bedienblaetter",
+  /[Bb]enannte Bedienelemente/.test(AX_145?.titel || "")
+  && /beschriftete/.test(AX_145?.titel || "")
+  && /Bedienblätter/.test(AX_145?.titel || ""));
+ok("[#145] der Eintrag verspricht keine Fachaenderung",
+  !/Regel|Rechenlogik|Stückliste|Vorspannung|Format/i.test(AX_145?.titel || ""));
+ok("[#145] die Testbitte nennt den Tastaturweg und die Abbruchsemantik",
+  /Tastatur/.test(AX_145?.testbitte || "") && /Fokus/.test(AX_145?.testbitte || "")
+  && /Escape/.test(AX_145?.testbitte || ""));
+const AX_144 = EINTRAEGE.find(e => e.id === "chg-20260922-02");
+ok("[#144] die zugaengliche Bedienung von Modul 0 steht in der Reihe",
   AX_144?.id === "chg-20260922-02" && AX_144?.issue === 144
   && AX_144?.typ === "feature" && AX_144?.datum === "2026-09-22"
   && /Modul 0/.test(AX_144?.titel || "") && /Kopfleiste/.test(AX_144?.titel || ""));
