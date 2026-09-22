@@ -510,8 +510,78 @@ t("[G-10] BOM-Steinmenge ist mit Verzahnung reduziert", () => {
   const ohneSteine = ohne.bom.i2 + ohne.bom.i3;
   const mitSteine = mit.bom.i2 + mit.bom.i3;
   assert(mitSteine < ohneSteine, `Steinmenge sollte reduziert sein: ${mitSteine} >= ${ohneSteine}`);
-  // Stossfugen bleiben gleich (basieren auf vollstaendigem Verband)
-  assert(ohne.bom.stossfugen === mit.bom.stossfugen, `Stossfugen verschieden: ${ohne.bom.stossfugen} vs ${mit.bom.stossfugen}`);
+  // [G-5]/#143 Die Stossfugen sind die REALEN Steinberuehrungen des ausgesparten Verbands —
+  // weniger Steine, also weniger Fugen. Die Vorspannung bleibt nach [G-11] bitgleich (eigener Test).
+  assert(mit.bom.stossfugen < ohne.bom.stossfugen, `Stossfugen nicht reduziert: ${ohne.bom.stossfugen} vs ${mit.bom.stossfugen}`);
+  for (const c of mit.courses) {
+    const real = c.stones.filter((st, i) => i && c.stones[i - 1].x1 === st.x0).map(st => st.x0 / 125);
+    assert(JSON.stringify(c.joints_grid) === JSON.stringify(real),
+      `joints_grid passt nicht zu den Steinen in Lage ${c.lage}`);
+  }
+});
+// ---- #143: Fugenversatz nach Verzahnungsaussparung [G-5] ------------------------------------
+/** Reale Stossfugen einer Lage: nur dort, wo zwei Steine einander wirklich beruehren. */
+function realeFugen(c) {
+  return c.stones.filter((st, i) => i && c.stones[i - 1].x1 === st.x0).map(st => st.x0 / GRID);
+}
+function pruefeVerband(w, was) {
+  for (const c of w.courses) {
+    assert(JSON.stringify(c.joints_grid) === JSON.stringify(realeFugen(c)),
+      `${was}: joints_grid passt nicht zu den Steinen in Lage ${c.lage}`);
+  }
+  // Die gemeldeten Verletzungen muessen den REALEN Beruehrungen entsprechen.
+  const erwartet = [];
+  for (let li = 0; li < w.courses.length - 1; li++) {
+    const a = new Set(realeFugen(w.courses[li]));
+    const bad = realeFugen(w.courses[li + 1]).filter(x => a.has(x));
+    if (bad.length) erwartet.push({ zwischen_lagen: [li, li + 1], fugen_grid: bad });
+  }
+  assert(w.validation.versatz_ok === (erwartet.length === 0),
+    `${was}: versatz_ok=${w.validation.versatz_ok} passt nicht zu ${erwartet.length} realen Verletzungen`);
+  assert(JSON.stringify(w.validation.versatz_violations) === JSON.stringify(erwartet),
+    `${was}: versatz_violations falsch: ${JSON.stringify(w.validation.versatz_violations)} vs ${JSON.stringify(erwartet)}`);
+}
+t("[G-5]/#143 gemeldeter Fall 3125x2930 mit Ausgleichslage: Lagen 0/1 versetzt", () => {
+  const w = buildWall("vz143", 3125, 2930, [], null, null, [], [{ g0: 24, g1: 25, start_parity: 0 }], true);
+  pruefeVerband(w, "3125x2930");
+  const f0 = new Set(realeFugen(w.courses[0]));
+  assert(!realeFugen(w.courses[1]).some(j => f0.has(j)), "Lage 0/1 fluchten weiterhin");
+  assert(w.validation.versatz_ok === true && w.validation.versatz_violations.length === 0,
+    "versatz_ok muss zum versetzten Verband passen");
+});
+t("[G-5]/#143 Verband und Pruefung bleiben konsistent (Hoehen, Paritaeten, Lage der Verzahnung)", () => {
+  const faelle = [
+    ["3125x2930 Rand p0 + Ausgleich", 3125, 2930, [], [{ g0: 24, g1: 25, start_parity: 0 }], true],
+    ["3125x2930 Rand p1 + Ausgleich", 3125, 2930, [], [{ g0: 24, g1: 25, start_parity: 1 }], true],
+    ["3125x3000 Rand p0 ohne Ausgleich", 3125, 3000, [], [{ g0: 24, g1: 25, start_parity: 0 }], false],
+    ["3125x3000 Rand p1 ohne Ausgleich", 3125, 3000, [], [{ g0: 24, g1: 25, start_parity: 1 }], false],
+    ["3125x3000 linker Rand p0", 3125, 3000, [], [{ g0: 0, g1: 1, start_parity: 0 }], false],
+    ["3125x3000 innen p0", 3125, 3000, [], [{ g0: 12, g1: 13, start_parity: 0 }], false],
+    ["3125x3000 ohne Verzahnung", 3125, 3000, [], [], false],
+    ["mit Oeffnung + Randverzahnung", 3125, 3000, [new Opening(8, 14, 2, 8, "fenster")],
+      [{ g0: 24, g1: 25, start_parity: 0 }], false],
+  ];
+  for (const [was, l, h, ops, il, ag] of faelle) {
+    pruefeVerband(buildWall("vz", l, h, ops, null, null, [], il, ag), was);
+  }
+});
+t("[G-5]/#143 unaufloesbarer Verband wird gemeldet statt still hingenommen", () => {
+  // 8 Raster, Verzahnung [0,1) in den geraden Lagen: fuer die verbleibenden 7 Raster gibt es nur
+  // Belegungen, deren Fugen mit der vollen Nachbarlage fluchten — das MUSS sichtbar werden.
+  const w = buildWall("vzKonflikt", 1000, 1000, [], null, null, [], [{ g0: 0, g1: 1, start_parity: 0 }]);
+  assert(w.validation.versatz_ok === false, "unaufloesbarer Verband muss versatz_ok=false liefern");
+  assert(w.validation.versatz_violations.length > 0, "Verletzung muss benannt sein");
+  pruefeVerband(w, "unaufloesbar");
+  assert(w.validation.buildable === true, "[G-5] ist eine Warnung, kein Baubarkeitsausschluss");
+});
+t("[G-11]/#143 Achsen, Segmente und Stangenstuecke bleiben ohne Aussparungsbezug", () => {
+  for (const sp of [0, 1]) for (const [h, ag] of [[2930, true], [3000, false]]) {
+    const mit = buildWall("mitVz", 3125, h, [], null, null, [], [{ g0: 24, g1: 25, start_parity: sp }], ag);
+    const ohne = buildWall("ohneVz", 3125, h, [], null, null, [], [], ag);
+    const kern = w => JSON.stringify(w.tension_columns.map(c => ({ k: c.k,
+      seg: c.segments.map(s => ({ z0: s.z0_mm, z1: s.z1_mm, st: s.stuecke })) })));
+    assert(kern(mit) === kern(ohne), `Vorspannung verschieden (h=${h}, parity=${sp})`);
+  }
 });
 t("[G-12] Ungueltige Verzahnung wird benannt abgewiesen", () => {
   // Bereich ausserhalb der Wand

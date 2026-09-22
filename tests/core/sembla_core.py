@@ -1371,14 +1371,6 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         courses.append(_c)
         prev = joints
 
-    # Versatz-Validierung
-    versatz_ok, viol = True, []
-    for li in range(L - 1):
-        bad = set(courses[li]["joints_grid"]) & set(courses[li + 1]["joints_grid"])
-        if bad:
-            versatz_ok = False
-            viol.append({"zwischen_lagen": [li, li + 1], "fugen_grid": sorted(bad)})
-
     # `occ`, `stein_iv_voll` und `wunsch_voll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
     occ = [[False] * N for _ in range(L)]
     stein_iv_voll = []
@@ -1402,14 +1394,13 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # Stossfugen und occ bleiben beim vollstaendigen Verband — Vorspannung bleibt bitgleich ([G-11]).
     interlock_invalid_segments = []
     if _IL_interlocks:
+        # [G-5] Der REALE Verband wird LAGENUEBERGREIFEND neu gelegt — auch die nicht ausgesparten
+        # Lagen. Sonst blieben sie aus dem Vollverband stehen und ihre Fugen fluchteten mit der
+        # darunter neu gelegten, verkuerzten Lage (#143).
+        # [G-11] bleibt unberuehrt: occ/stein_iv_voll/lage0_voll stehen oben bereits aus dem
+        # VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
         prev_il = set()
         for li in range(L):
-            # Pruefen, ob diese Lage in mindestens einem Verzahnungsbereich ausgespart wird
-            relevant_ils = [il for il in _IL_interlocks if li % 2 == il["start_parity"]]
-            if not relevant_ils:
-                # Keine Aussparung in dieser Lage — Steine bleiben unveraendert, prev fuer naechste Lage
-                prev_il = set(courses[li]["joints_grid"])
-                continue
             # cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
             cuts = _runs_at(li)
             for op in openings:
@@ -1422,6 +1413,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                         if op.g1 < e: nc.append((op.g1, e))
                     cuts = nc
             # Verzahnungsbereiche DIESER Lage (passende Paritaet) wie Luecken herausschneiden
+            relevant_ils = [il for il in _IL_interlocks if li % 2 == il["start_parity"]]
             for il in relevant_ils:
                 nc = []
                 for (s, e) in cuts:
@@ -1430,23 +1422,36 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                     if il["g0"] > s: nc.append((s, il["g0"]))
                     if il["g1"] < e: nc.append((il["g1"], e))
                 cuts = nc
-            # Neues Tiling fuer die reduzierte Lage
-            stones = []
+            # Neues Tiling gegen die REALEN Fugen der Lage darunter
+            stones, joints = [], set()
             for (s, e) in cuts:
                 w = e - s
-                # Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den strukturellen)
-                if w in FORBIDDEN_N:
+                # Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den
+                # strukturellen); ohne Aussparung in dieser Lage steht die Restbreite schon oben.
+                if relevant_ils and w in FORBIDDEN_N:
                     seg = {"lage": li, "start_grid": s, "breite_grid": w}
                     if seg not in interlock_invalid_segments:
                         interlock_invalid_segments.append(seg)
                 comp = _pick_tiling(s, w, prev_il)
+                joints |= _seg_joints(s, comp)
                 g = s
                 for b in comp:
                     stones.append({"type": "i2" if b == 2 else "i3", "x0": g * GRID, "x1": (g + b) * GRID})
                     g += b
             courses[li]["stones"] = stones
-            # prev fuer die naechste Lage kommt aus dem vollstaendigen Verband (joints_grid unveraendert)
-            prev_il = set(courses[li]["joints_grid"])
+            # [G-5] Die Fugen der Lage sind die REALEN Steinberuehrungen des ausgesparten
+            # Verbands — Aussen- und Lueckenkanten zaehlen nicht.
+            courses[li]["joints_grid"] = sorted(joints)
+            prev_il = joints
+
+    # [G-5] Fugenversatz benachbarter Lagen — geprueft auf dem REALEN Verband, also NACH der
+    # Verzahnungsaussparung. Ohne Verzahnungsbereiche bitgleich zur Pruefung am Vollverband.
+    versatz_ok, viol = True, []
+    for li in range(L - 1):
+        bad = set(courses[li]["joints_grid"]) & set(courses[li + 1]["joints_grid"])
+        if bad:
+            versatz_ok = False
+            viol.append({"zwischen_lagen": [li, li + 1], "fugen_grid": sorted(bad)})
 
     # ---- Ausgleichssteine: Katalogstein oder Sonderzuschnitt ([G-16]/[G-17]/[G-18]) ----
     # Erst HIER, nach BEIDEN Tiling-Durchgaengen: der Verzahnungsdurchgang oben ersetzt die

@@ -76,8 +76,30 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // dieselben realen Lagenkanten wie Modul 7. NICHT versprochen werden eine geaenderte
 // Wandhoehe, Lagenzerlegung, Stueckliste oder Vorspannberechnung; die Spannplatte lag
 // rechnerisch schon immer richtig.
-const KANTEN_140 = EINTRAEGE[0];
-ok("[#140] die realen Lagenkanten in Modul 1 sind der neueste Eintrag",
+// Der NEUESTE Eintrag ist der VERSETZTE STEINVERBAND VERZAHNTER WAENDE (#143) — er wird als
+// einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
+// ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+// Aussagewahr heisst hier: geliefert ist ein lagenuebergreifend neu gelegter REALER Verband
+// samt einer Fugenwarnung, die die tatsaechlichen Stossfugen meldet. NICHT versprochen werden
+// eine geaenderte Vorspannung ([G-11] bleibt bitgleich), eine neue Fachregel oder ein
+// Baubarkeitsausschluss — die Versatzverletzung bleibt eine Warnung.
+const VERBAND_143 = EINTRAEGE[0];
+ok("[#143] der versetzte Verband verzahnter Waende ist der neueste Eintrag",
+  VERBAND_143?.id === "chg-20260922-01" && VERBAND_143?.issue === 143
+  && VERBAND_143?.typ === "fix" && VERBAND_143?.datum === "2026-09-22"
+  && /[Vv]erzahn/.test(VERBAND_143?.titel || "")
+  && /versetzt/.test(VERBAND_143?.titel || "")
+  // Keine Vorspann-/Regelzusage: gerechnet wird die Vorspannung unveraendert.
+  && !/Vorspannung|Spannachse|Stückliste|Regel/i.test(VERBAND_143?.titel || ""));
+ok("[#143] der Eintrag benennt beide Seiten: Verband UND Fugenwarnung",
+  /Stoßfugen/.test(VERBAND_143?.titel || "") && /Fugenwarnung|Warnung/.test(VERBAND_143?.titel || ""));
+ok("[#143] die Testbitte nennt den Pruefweg und den Warnfall",
+  /Modul 1/.test(VERBAND_143?.testbitte || "")
+  && /3125/.test(VERBAND_143?.testbitte || "")
+  && /Warnung/.test(VERBAND_143?.testbitte || ""));
+
+const KANTEN_140 = EINTRAEGE.find(e => e.id === "chg-20260921-03");
+ok("[#140] die realen Lagenkanten in Modul 1 folgen darauf",
   KANTEN_140?.id === "chg-20260921-03" && KANTEN_140?.issue === 140
   && KANTEN_140?.typ === "fix" && KANTEN_140?.datum === "2026-09-21"
   && /Modul 1/.test(KANTEN_140?.titel || "")

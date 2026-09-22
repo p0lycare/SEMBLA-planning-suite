@@ -1487,13 +1487,6 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     prev = joints;
   }
 
-  let versatzOk = true; const viol = [];
-  for (let li = 0; li < L - 1; li++) {
-    const a = new Set(courses[li].joints_grid);
-    const bad = courses[li + 1].joints_grid.filter(x => a.has(x));
-    if (bad.length) { versatzOk = false; viol.push({ zwischen_lagen: [li, li + 1], fugen_grid: bad.slice().sort((p, q) => p - q) }); }
-  }
-
   // `occ`, `steinIvVoll` und `wunschVoll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
   const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
   const steinIvVoll = [];
@@ -1515,15 +1508,13 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // Stoßfugen und occ bleiben beim vollstaendigen Verband — Vorspannung bleibt bitgleich ([G-11]).
   const interlockInvalidSegments = [];
   if (IL.interlocks.length) {
+    // [G-5] Der REALE Verband wird LAGENUEBERGREIFEND neu gelegt — auch die nicht ausgesparten
+    // Lagen. Sonst blieben sie aus dem Vollverband stehen und ihre Fugen fluchteten mit der
+    // darunter neu gelegten, verkuerzten Lage (#143).
+    // [G-11] bleibt unberuehrt: `occ`, `steinIvVoll` und `lage0Voll` stehen oben bereits aus dem
+    // VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
     let prevIl = new Set();
     for (let li = 0; li < L; li++) {
-      // Pruefen, ob diese Lage in mindestens einem Verzahnungsbereich ausgespart wird
-      const relevantIls = IL.interlocks.filter(il => li % 2 === il.start_parity);
-      if (!relevantIls.length) {
-        // Keine Aussparung in dieser Lage — Steine bleiben unveraendert, prev fuer naechste Lage
-        prevIl = new Set(courses[li].joints_grid);
-        continue;
-      }
       // cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
       let cuts = runsAt(li);
       for (const op of openings) {
@@ -1538,6 +1529,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         }
       }
       // Verzahnungsbereiche DIESER Lage (passende Paritaet) wie Luecken herausschneiden
+      const relevantIls = IL.interlocks.filter(il => li % 2 === il.start_parity);
       for (const il of relevantIls) {
         const nc = [];
         for (const [s, e] of cuts) {
@@ -1547,17 +1539,19 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         }
         cuts = nc;
       }
-      // Neues Tiling fuer die reduzierte Lage
-      const stones = [];
+      // Neues Tiling gegen die REALEN Fugen der Lage darunter
+      const stones = []; const joints = new Set();
       for (const [s, e] of cuts) {
         const w = e - s;
-        // Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den strukturellen)
-        if (FORBIDDEN_N.has(w)) {
+        // Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den strukturellen);
+        // ohne Aussparung in dieser Lage ist die Restbreite strukturell und steht schon oben.
+        if (relevantIls.length && FORBIDDEN_N.has(w)) {
           const seg = { lage: li, start_grid: s, breite_grid: w };
           if (!interlockInvalidSegments.some(x => x.lage === li && x.start_grid === s && x.breite_grid === w))
             interlockInvalidSegments.push(seg);
         }
         const comp = pickTiling(s, w, prevIl);
+        for (const j of segJoints(s, comp)) joints.add(j);
         let g = s;
         for (const b of comp) {
           stones.push({ type: b === 2 ? "i2" : "i3", x0: g * GRID, x1: (g + b) * GRID });
@@ -1565,9 +1559,21 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         }
       }
       courses[li].stones = stones;
-      // prev fuer die naechste Lage kommt aus dem vollstaendigen Verband (joints_grid unveraendert)
-      prevIl = new Set(courses[li].joints_grid);
+      // [G-5] Die Fugen der Lage sind die REALEN Steinberuehrungen des ausgesparten Verbands —
+      // Aussen- und Lueckenkanten zaehlen nicht (`segJoints` liefert nur Fugen INNERHALB eines
+      // zusammenhaengenden Abschnitts).
+      courses[li].joints_grid = [...joints].sort((a, b) => a - b);
+      prevIl = joints;
     }
+  }
+
+  // [G-5] Fugenversatz benachbarter Lagen — geprueft auf dem REALEN Verband, also NACH der
+  // Verzahnungsaussparung. Ohne Verzahnungsbereiche ist das bitgleich zur Pruefung am Vollverband.
+  let versatzOk = true; const viol = [];
+  for (let li = 0; li < L - 1; li++) {
+    const a = new Set(courses[li].joints_grid);
+    const bad = courses[li + 1].joints_grid.filter(x => a.has(x));
+    if (bad.length) { versatzOk = false; viol.push({ zwischen_lagen: [li, li + 1], fugen_grid: bad.slice().sort((p, q) => p - q) }); }
   }
 
   // ---- Ausgleichssteine: Katalogstein oder Sonderzuschnitt ([G-16]/[G-17]/[G-18]) ----

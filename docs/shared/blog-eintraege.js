@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260922-01",
+    datum: "2026-09-22",
+    typ: "fix",
+    issue: 143,
+    titel: "Verzahnte Wände: Steinverband wird lagenübergreifend versetzt gelegt, Fugenwarnung meldet jetzt die echten Stoßfugen",
+    testbitte: "Wand mit seitlicher Verzahnung in Modul 1 öffnen (z. B. 3125 × 2930 mm): die Stoßfugen der "
+      + "untersten beiden Lagen sind versetzt; bleibt eine Fuge durchgehend, steht die Versatz-Warnung dabei",
+  },
+  {
     id: "chg-20260921-03",
     datum: "2026-09-21",
     typ: "fix",

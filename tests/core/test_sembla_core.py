@@ -588,8 +588,64 @@ class Verzahnung(unittest.TestCase):
         ohne_steine = ohne["bom"]["i2"] + ohne["bom"]["i3"]
         mit_steine = mit["bom"]["i2"] + mit["bom"]["i3"]
         self.assertLess(mit_steine, ohne_steine)
-        # Stossfugen bleiben gleich (basieren auf vollstaendigem Verband)
-        self.assertEqual(ohne["bom"]["stossfugen"], mit["bom"]["stossfugen"])
+        # [G-5]/#143 Die Stossfugen sind die REALEN Steinberuehrungen des ausgesparten
+        # Verbands — weniger Steine, also weniger Fugen. (Die Vorspannung bleibt nach [G-11]
+        # bitgleich; das prueft test_vorspannung_identisch_mit_und_ohne_verzahnung.)
+        self.assertLess(mit["bom"]["stossfugen"], ohne["bom"]["stossfugen"])
+        for c in mit["courses"]:
+            real = [st["x0"] // GRID for i, st in enumerate(c["stones"])
+                    if i and c["stones"][i - 1]["x1"] == st["x0"]]
+            self.assertEqual(c["joints_grid"], sorted(real))
+
+    # ---- #143: Fugenversatz nach Verzahnungsaussparung [G-5] ----
+    @staticmethod
+    def _reale_fugen(c):
+        return [st["x0"] // GRID for i, st in enumerate(c["stones"])
+                if i and c["stones"][i - 1]["x1"] == st["x0"]]
+
+    def _pruefe_verband(self, w, was):
+        for c in w["courses"]:
+            self.assertEqual(c["joints_grid"], sorted(self._reale_fugen(c)),
+                             f"{was}: joints_grid passt nicht zu den Steinen in Lage {c['lage']}")
+        erwartet = []
+        for li in range(len(w["courses"]) - 1):
+            a = set(self._reale_fugen(w["courses"][li]))
+            bad = sorted(set(self._reale_fugen(w["courses"][li + 1])) & a)
+            if bad:
+                erwartet.append({"zwischen_lagen": [li, li + 1], "fugen_grid": bad})
+        self.assertEqual(w["validation"]["versatz_ok"], not erwartet, was)
+        self.assertEqual(w["validation"]["versatz_violations"], erwartet, was)
+
+    def test_g5_gemeldeter_fall_3125x2930(self):
+        w = build_wall("vz143", 3125, 2930, [], interlocks=[{"g0": 24, "g1": 25, "start_parity": 0}],
+                       ausgleichslage_aktiv=True)
+        self._pruefe_verband(w, "3125x2930")
+        f0 = set(self._reale_fugen(w["courses"][0]))
+        self.assertFalse(f0 & set(self._reale_fugen(w["courses"][1])), "Lage 0/1 fluchten weiterhin")
+        self.assertTrue(w["validation"]["versatz_ok"])
+
+    def test_g5_verband_konsistent_ueber_faelle(self):
+        faelle = [
+            ("3125x2930 Rand p0 + Ausgleich", 3125, 2930, [], [{"g0": 24, "g1": 25, "start_parity": 0}], True),
+            ("3125x2930 Rand p1 + Ausgleich", 3125, 2930, [], [{"g0": 24, "g1": 25, "start_parity": 1}], True),
+            ("3125x3000 Rand p0", 3125, 3000, [], [{"g0": 24, "g1": 25, "start_parity": 0}], False),
+            ("3125x3000 Rand p1", 3125, 3000, [], [{"g0": 24, "g1": 25, "start_parity": 1}], False),
+            ("3125x3000 linker Rand", 3125, 3000, [], [{"g0": 0, "g1": 1, "start_parity": 0}], False),
+            ("3125x3000 innen", 3125, 3000, [], [{"g0": 12, "g1": 13, "start_parity": 0}], False),
+            ("3125x3000 ohne Verzahnung", 3125, 3000, [], [], False),
+            ("mit Oeffnung + Randverzahnung", 3125, 3000, [Opening(8, 14, 2, 8, "fenster")],
+             [{"g0": 24, "g1": 25, "start_parity": 0}], False),
+        ]
+        for was, l, h, ops, il, ag in faelle:
+            self._pruefe_verband(build_wall("vz", l, h, ops, interlocks=il, ausgleichslage_aktiv=ag), was)
+
+    def test_g5_unaufloesbarer_verband_wird_gemeldet(self):
+        w = build_wall("vzKonflikt", 1000, 1000, [], interlocks=[{"g0": 0, "g1": 1, "start_parity": 0}])
+        self.assertFalse(w["validation"]["versatz_ok"])
+        self.assertTrue(w["validation"]["versatz_violations"])
+        self._pruefe_verband(w, "unaufloesbar")
+        # [G-5] ist eine Warnung, kein Baubarkeitsausschluss
+        self.assertTrue(w["validation"]["buildable"])
 
     def test_ungueltige_verzahnung_gemeldet(self):
         # Bereich ausserhalb der Wand
