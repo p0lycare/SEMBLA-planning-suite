@@ -76,15 +76,31 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // dieselben realen Lagenkanten wie Modul 7. NICHT versprochen werden eine geaenderte
 // Wandhoehe, Lagenzerlegung, Stueckliste oder Vorspannberechnung; die Spannplatte lag
 // rechnerisch schon immer richtig.
-// Der NEUESTE Eintrag ist der VERSETZTE STEINVERBAND VERZAHNTER WAENDE (#143) — er wird als
+// Der NEUESTE Eintrag ist die ZUGAENGLICHKEIT VON MODUL 0 UND KOPFLEISTE (#144) — er wird als
 // einziger direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG
 // ihres Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+//
+// Aussagewahr heisst hier: geliefert sind benannte Bedienelemente mit getrennter Beschreibung
+// und tastaturfeste modale Dialoge in Modul 0 und der gemeinsamen Kopfleiste. NICHT versprochen
+// werden die uebrigen Module, eine Fachregelaenderung oder ein neues gespeichertes Feld.
+const AX_144 = EINTRAEGE[0];
+ok("[#144] die zugaengliche Bedienung von Modul 0 ist der neueste Eintrag",
+  AX_144?.id === "chg-20260922-02" && AX_144?.issue === 144
+  && AX_144?.typ === "feature" && AX_144?.datum === "2026-09-22"
+  && /Modul 0/.test(AX_144?.titel || "") && /Kopfleiste/.test(AX_144?.titel || ""));
+ok("[#144] der Eintrag benennt beide Seiten: Benennung UND Dialogbedienung",
+  /[Bb]eschreibung/.test(AX_144?.titel || "") && /Dialog/.test(AX_144?.titel || ""));
+ok("[#144] der Eintrag verspricht keine Fachaenderung",
+  !/Regel|Rechenlogik|Stückliste|Vorspannung|Format/i.test(AX_144?.titel || ""));
+ok("[#144] die Testbitte nennt den Tastaturweg und die Abbruchsemantik",
+  /Tastatur/.test(AX_144?.testbitte || "") && /Fokus/.test(AX_144?.testbitte || "")
+  && /Escape/.test(AX_144?.testbitte || ""));
 // Aussagewahr heisst hier: geliefert ist ein lagenuebergreifend neu gelegter REALER Verband
 // samt einer Fugenwarnung, die die tatsaechlichen Stossfugen meldet. NICHT versprochen werden
 // eine geaenderte Vorspannung ([G-11] bleibt bitgleich), eine neue Fachregel oder ein
 // Baubarkeitsausschluss — die Versatzverletzung bleibt eine Warnung.
-const VERBAND_143 = EINTRAEGE[0];
-ok("[#143] der versetzte Verband verzahnter Waende ist der neueste Eintrag",
+const VERBAND_143 = EINTRAEGE.find(e => e.id === "chg-20260922-01");
+ok("[#143] der versetzte Verband verzahnter Waende steht in der Reihe",
   VERBAND_143?.id === "chg-20260922-01" && VERBAND_143?.issue === 143
   && VERBAND_143?.typ === "fix" && VERBAND_143?.datum === "2026-09-22"
   && /[Vv]erzahn/.test(VERBAND_143?.titel || "")

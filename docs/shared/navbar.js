@@ -14,6 +14,11 @@
  */
 
 import * as store from "./storage.js";
+// Der EINE Accessibility-Baustein der Suite (#144/#145): kurze Namen, Erklaerungen als
+// echte Beschreibung im Accessibility Tree, Tooltip bei Hover UND Tastaturfokus. Die
+// Kopfleiste war vorher vollstaendig auf `title` gebaut — das ist weder ein tragfaehiger
+// Name noch bei Tastaturbedienung sichtbar.
+import * as AX from "./sembla-ax.js";
 
 /**
  * Modul-Register: Nummer, Datei, Kurzname (Reiter), Titel.
@@ -52,6 +57,7 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Hel
         padding:5px 10px;border-radius:7px;font-size:13px;white-space:nowrap}
 .sb-tab:hover{background:rgba(255,255,255,.08);color:#fff}
 .sb-tab.active{background:var(--sb-accent);color:#fff;font-weight:600}
+.sb-tab:focus-visible,.sb-brand:focus-visible,.sb-active select:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .sb-tab .n{opacity:.7;font-variant-numeric:tabular-nums}
 .sb-active{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);
            border-radius:8px;padding:4px 8px}
@@ -74,6 +80,8 @@ let _unsub = null;
  */
 export function mountNavbar(activeIndex = 0) {
   store.migrieren();
+  AX.stilEinhaengen();
+  AX.tooltips();
 
   if (!document.getElementById("sb-nav-css")) {
     const st = document.createElement("style");
@@ -90,26 +98,46 @@ export function mountNavbar(activeIndex = 0) {
   }
 
   // Versteckte Module erscheinen nicht als Reiter — ausser man steht gerade darauf.
+  //
+  // NAME und BESCHREIBUNG sind getrennt (#144): der Reiter heisst kurz „Modul 4 Stückliste",
+  // erklaert wird er in einer eigenen Beschreibung. Das frueher alleinige `title` ist
+  // ersatzlos weg — es taugt weder als Name noch erscheint es bei Tastaturfokus. Der
+  // aktive Reiter ist zusaetzlich `aria-current="page"`, damit der Zustand nicht nur
+  // farblich existiert.
+  const beschreibungen = [];
   const tabs = MODULE.filter((m) => !m.versteckt || m.nr === activeIndex).map((m) => {
-    const active = m.nr === activeIndex ? " active" : "";
-    return `<a class="sb-tab${active}" href="${m.datei}" title="${m.titel}">`
-      + `<span class="n">${m.nr}</span> ${m.kurz}</a>`;
+    const aktiv = m.nr === activeIndex;
+    const b = AX.benennung(`Modul ${m.nr} ${m.kurz}`, `${m.titel} — öffnet Modul ${m.nr}.`);
+    beschreibungen.push(b.html);
+    return `<a class="sb-tab${aktiv ? " active" : ""}" href="${m.datei}" ${b.attrs}`
+      + (aktiv ? ` aria-current="page"` : "")
+      + `><span class="n">${m.nr}</span> ${m.kurz}</a>`;
   });
   // Reiter 0,5 — direkter Absprung in den Geschossplaner (Issue #43). BEWUSST kein
   // Eintrag im MODULE-Register: der Editor ist kein Modul (er gehoert fachlich zu
   // Modul 0), und die Modulübersicht in Modul 0 rendert das Register — dort darf
   // keine Pseudo-Modulkarte entstehen. Der Link ist reine Navigation und setzt
   // keinen Zeiger; der Editor liest den aktiven Geschosszeiger unveraendert selbst.
-  const gpAktiv = activeIndex === 0.5 ? " active" : "";
+  const gpAktiv = activeIndex === 0.5;
+  const gpB = AX.benennung("Geschossplan", "Layout-Editor des aktiven Geschosses — "
+    + "Wände zeichnen, verorten und bemaßen.");
+  beschreibungen.push(gpB.html);
   tabs.splice(1, 0,
-    `<a class="sb-tab${gpAktiv}" href="geschossplan.html" `
-    + `title="Geschossplaner des aktiven Geschosses (Layout-Editor)">`
-    + `<span class="n">0,5</span> Geschossplan</a>`);
+    `<a class="sb-tab${gpAktiv ? " active" : ""}" href="geschossplan.html" ${gpB.attrs}`
+    + (gpAktiv ? ` aria-current="page"` : "")
+    + `><span class="n">0,5</span> Geschossplan</a>`);
 
+  // Landmarke benennen. Defensiv, weil die Smoke-Tests die Kopfleiste unter einem
+  // minimalen DOM-Double mounten — fehlt `setAttribute`, bleibt alles Uebrige gueltig.
+  if (typeof nav.setAttribute === "function") nav.setAttribute("aria-label", "Module und aktiver Planungspfad");
+  const markeB = AX.benennung("SEMBLA Planungs-Suite, zur Übersicht",
+    "Öffnet Modul 0 — Projekte, Geschosse und Wände.");
   nav.innerHTML =
-    `<a class="sb-brand" href="index.html">SEMBLA<span>Planungs-Suite</span></a>`
+    `<a class="sb-brand" href="index.html" ${markeB.attrs}>SEMBLA<span>Planungs-Suite</span></a>`
+    + markeB.html
     + `<div class="sb-tabs">${tabs.join("")}</div>`
-    + `<div class="sb-pfad" id="sb-pfad"></div>`
+    + beschreibungen.join("")
+    + `<div class="sb-pfad" id="sb-pfad" role="group" aria-label="Aktiver Pfad"></div>`
     + `<div class="sb-active" id="sb-active"></div>`;
 
   const abmelden = _renderAktiv();
@@ -158,13 +186,22 @@ function _renderAktiv() {
     `<option value="${e.id}"${e.id === aktiv ? " selected" : ""}>${_esc(e.name)}</option>`
   ).join("");
 
-  host.innerHTML = `<label for="sb-sel">Aktiv:</label>`
-    + `<select id="sb-sel" title="Aktives Wandelement wählen">${opts}</select>`;
+  // Kurzer Name am Bedienelement, Erklaerung als eigene Beschreibung (#144). Der
+  // sichtbare Kurztext „Aktiv:" bleibt als optische Beschriftung stehen.
+  const selB = AX.benennung("Aktive Wand",
+    "Wählt das Wandelement, auf dem die Module 1 bis 9 arbeiten. "
+    + "Angeboten wird, was im aktiven Geschoss liegt oder noch keinem Geschoss zugeordnet ist.");
+  host.innerHTML = `<label for="sb-sel" aria-hidden="true">Aktiv:</label>`
+    + `<select id="sb-sel" ${selB.attrs}>${opts}</select>` + selB.html;
 
   const sel = /** @type {HTMLSelectElement} */ (document.getElementById("sb-sel"));
   sel.addEventListener("change", () => {
     try { store.setzeAktiv(sel.value); }
-    catch (e) { sel.title = e && e.message ? e.message : String(e); _renderAktiv(); }
+    catch (e) {
+      // Der Grund gehoert in die sichtbare Beschreibung, nicht in ein `title` ([P-9]).
+      AX.beschreibe(sel, "Nicht gewechselt: " + (e && e.message ? e.message : String(e)));
+      _renderAktiv();
+    }
   });
   return () => {};
 }
@@ -176,8 +213,10 @@ function _renderPfad() {
   const m = store.holeMappe();
   const gs = store.aktivesGeschoss();
   const w = store.aktivesElement();
+  // „–" allein ist fuer Hilfsmittel stumm — der nicht gesetzte Zeiger wird deshalb
+  // ausgesprochen, statt ihn nur als Strich zu zeigen (#144).
   const teil = (label, wert) => `<span><span class="k">${label}</span> `
-    + (wert ? `<b>${_esc(wert)}</b>` : "–") + "</span>";
+    + (wert ? `<b>${_esc(wert)}</b>` : `–<span class="ax-sr">nicht gesetzt</span>`) + "</span>";
   host.innerHTML = teil("Projekt", m ? m.projekt.name : null)
     + teil("Geschoss", gs ? gs.geschoss.name : null)
     + teil("Wand", w ? w.name : null);

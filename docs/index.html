@@ -29,6 +29,9 @@
   .btn-d{background:#fdecec;color:#c0392b}
   .btn-p:hover,.btn-s:hover,.btn-d:hover{filter:brightness(.97)}
   button[disabled]{opacity:.45;cursor:not-allowed;filter:none}
+  /* Tastaturfokus muss sichtbar sein — vorher war er browserabhängig unsichtbar (#145). */
+  a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,
+  textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--sb-accent);outline-offset:2px}
   table{width:100%;border-collapse:collapse;font-size:13.5px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--sb-line)}
   th{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--sb-muted)}
@@ -91,7 +94,7 @@
 </head>
 <body>
 
-<header class="hero">
+<header class="hero" data-ax-hintergrund>
   <h1>SEMBLA Planungs-Suite</h1>
   <p>Digitale Planung des kreislauffähigen Massivbausystems. Modul&nbsp;0 ist der
      <b>Projektplaner</b>: hier entstehen Projekte, Geschosse und Wände. Alle anderen Module arbeiten
@@ -99,7 +102,7 @@
      Kopfleiste.</p>
 </header>
 
-<div class="wrap">
+<div class="wrap" data-ax-hintergrund>
 
   <h2>Module</h2>
   <div class="grid" id="modul-grid"></div>
@@ -111,7 +114,7 @@
       <button class="btn-s" id="tr-import">Projekt importieren…</button>
       <div class="muted" id="tr-stand" style="font-size:12.5px;padding-bottom:8px">–</div>
     </div>
-    <div class="msg" id="tr-msg"></div>
+    <div class="msg" id="tr-msg" role="status" aria-live="polite"></div>
     <div class="empty" id="tr-leer" hidden>Noch kein Projekt angelegt. Ein Projekt hält
       <b>Struktur und Lage</b> (Geschosse, Wände im 125-mm-Raster) sowie die
       <b>Projekt-Kopfdaten</b> und den zugeordneten <b>Bauteilkatalog</b> — die Wandgeometrie selbst
@@ -145,7 +148,7 @@
 <!-- Projekt anlegen/bearbeiten: Name, Kopfdaten ([L-11]), Bauteilkatalog ([L-12]).
      Geschrieben wird AUSSCHLIESSLICH mit „Speichern“. -->
 <div class="overlay" id="pp-overlay" hidden>
-  <div class="modal">
+  <div class="modal" id="pp-modal">
     <h3 id="pp-titel">Projekt anlegen</h3>
     <p class="sub">Die <b>Kopfdaten</b> gehören zum Projekt ([L-11]). Gepflegt wird hier nur die
       <b>Bauherrenschaft</b>; die übrigen Kopfdaten (Planverfasser, Phase, Plan-Nr., Index, Gez.)
@@ -163,12 +166,14 @@
       · genau einer je Projekt ([L-12])</span></div>
     <div class="row">
       <div class="field"><label for="pp-katalog">Zugeordneter Katalog</label>
-        <select id="pp-katalog" style="width:250px"></select></div>
+        <select id="pp-katalog" style="width:250px" aria-describedby="pp-katalog-hinweis"></select></div>
       <a class="btn-s" href="katalog.html" id="pp-katalog-link" style="align-self:flex-end"
-         title="Produkte, Preise und Baugruppen pflegen (Modul 10)">Katalog pflegen (Modul&nbsp;10)&nbsp;↗</a>
+         aria-describedby="pp-katalog-link-b" data-ax-tip="pp-katalog-link-b">Katalog pflegen (Modul&nbsp;10)&nbsp;↗</a>
+      <span class="ax-sr" id="pp-katalog-link-b">Öffnet Modul 10 in derselben Ansicht. Dort werden
+        Produkte, Preise und Baugruppen gepflegt; zugeordnet wird ein Katalog hier.</span>
     </div>
     <div class="hint" id="pp-katalog-hinweis"></div>
-    <div class="msg" id="pp-msg"></div>
+    <div class="msg" id="pp-msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="btn-s" id="pp-cancel">Abbrechen</button>
       <button class="btn-p" id="pp-speichern">Speichern</button>
@@ -178,15 +183,16 @@
 
 <!-- Geschoss anlegen/bearbeiten -->
 <div class="overlay" id="gp-overlay" hidden>
-  <div class="modal">
+  <div class="modal" id="gp-modal">
     <h3 id="gp-titel">Geschoss anlegen</h3>
-    <p class="sub">Die <b>Standard-Wandhöhe ist nur eine Vorgabe</b> für neu angelegte Wände; sie wird in
+    <p class="sub" id="gp-sub">Die <b>Standard-Wandhöhe ist nur eine Vorgabe</b> für neu angelegte Wände; sie wird in
       Modul&nbsp;1 frei überschrieben und nie zurückgeschrieben ([L-5]).</p>
     <div class="row">
       <div class="field"><label for="gp-name">Bezeichnung</label>
         <input id="gp-name" type="text" style="width:200px" placeholder="z. B. EG"></div>
       <div class="field"><label for="gp-hoehe">Standard-Wandhöhe (mm)</label>
-        <input id="gp-hoehe" class="s" type="number" step="200" min="200" placeholder="leer = keine"></div>
+        <input id="gp-hoehe" class="s" type="number" step="200" min="200" placeholder="leer = keine"
+               aria-describedby="gp-sub"></div>
     </div>
     <div class="hint" id="gp-hinweis"></div>
 
@@ -194,7 +200,10 @@
       · Hintergrund für die Verortung, keine Datenquelle ([L-9])</span></div>
     <div id="gp-plan-block">
       <div class="row">
-        <button class="btn-s" id="gp-plan-oeffnen">Geschoss öffnen…</button>
+        <button class="btn-s" id="gp-plan-oeffnen" aria-describedby="gp-plan-oeffnen-b"
+                data-ax-tip="gp-plan-oeffnen-b">Geschoss öffnen…</button>
+        <span class="ax-sr" id="gp-plan-oeffnen-b">Schließt diesen Dialog und öffnet den
+          Layout-Editor dieses Geschosses — dort wird der Geschossplan verwaltet.</span>
       </div>
       <div class="muted" id="gp-plan-info" style="font-size:12.5px;margin-top:6px">–</div>
     </div>
@@ -206,7 +215,7 @@
       <b>PNG, JPEG und WebP</b> bis 20 MB, ein <b>PDF wird abgewiesen</b>, ein <b>neues Bild setzt
       Maßstab und Versatz zurück</b> statt einen Maßstab zu übernehmen, den es nicht gibt ([L-9]) —
       und die Lagen bereits verorteter Wände bleiben unberührt ([L-1]).</div>
-    <div class="msg" id="gp-msg"></div>
+    <div class="msg" id="gp-msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="btn-s" id="gp-cancel">Abbrechen</button>
       <button class="btn-p" id="gp-speichern">Speichern</button>
@@ -220,7 +229,7 @@
      Öffnungen gehören dem Wandelement ([P-1]), die Länge einer verorteten Wand
      wird im Geschosseditor geführt. -->
 <div class="overlay" id="wp-overlay" hidden>
-  <div class="modal">
+  <div class="modal" id="wp-modal">
     <h3 id="wp-titel">Wand importieren</h3>
     <p class="sub" id="wp-sub">Eine gespeicherte Wanddatei wird im gewählten Geschoss eingetragen —
       <b>am Geschossursprung</b>, damit sie im Geschosseditor sofort sichtbar ist; sie ist dort
@@ -230,9 +239,15 @@
         <input id="f-name" type="text" placeholder="z. B. Wand A" value="Neue Wand"></div>
     </div>
     <div class="row" style="margin-top:12px" id="wp-quellen">
+      <input id="f-import" class="ax-datei" type="file" accept=".json,application/json"
+             aria-describedby="f-import-b" data-ax-tip="f-import-b">
       <label class="btn-s" for="f-import">Datei importieren…</label>
-      <input id="f-import" type="file" accept=".json,application/json" hidden>
-      <button class="btn-s" id="btn-vorlage-wand">Musterwand laden…</button>
+      <span class="ax-sr" id="f-import-b">Liest eine gespeicherte SEMBLA-Wanddatei. Der Inhalt
+        wird zuerst angezeigt und erst nach Bestätigung gespeichert.</span>
+      <button class="btn-s" id="btn-vorlage-wand" aria-describedby="btn-vorlage-wand-b"
+              data-ax-tip="btn-vorlage-wand-b">Musterwand laden…</button>
+      <span class="ax-sr" id="btn-vorlage-wand-b">Lädt die mitgelieferte Beispielwand als neues
+        Wandelement. Bestehende Wände bleiben unverändert.</span>
     </div>
     <div class="hint" id="wp-neu-hinweis"><b>Neue Wände entstehen im Geschosseditor</b>: Geschoss
       auswählen, „Geschoss öffnen“, Werkzeug <b>Wand zeichnen</b> (W). Dort werden Länge, Höhe und
@@ -244,7 +259,7 @@
       automatisch. Sie läuft durch denselben Bestätigungsdialog wie ein Dateiimport und wird als
       <b>neues</b> Wandelement angelegt; bestehende Elemente bleiben unangetastet.</div>
     <div class="hint" id="wp-hinweis"></div>
-    <div class="msg" id="msg"></div>
+    <div class="msg" id="msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="btn-s" id="wp-cancel">Abbrechen</button>
       <button class="btn-p" id="btn-neu" hidden>Namen speichern</button>
@@ -255,7 +270,7 @@
 <!-- Import-Bestaetigung: Name und Inhalt werden VOR dem Anlegen bestaetigt.
      Bis „Importieren“ liegt die geparste Datei nur im Speicher der Seite. -->
 <div class="overlay" id="imp-overlay" hidden>
-  <div class="modal">
+  <div class="modal" id="imp-modal">
     <h3>Wandelement importieren</h3>
     <p class="sub">Die Datei <b id="imp-datei">–</b> wurde gelesen, aber <b>noch nicht gespeichert</b>.
       Name prüfen und bestätigen — „Abbrechen“ legt kein Element an.</p>
@@ -264,7 +279,7 @@
       <input id="imp-name" type="text" style="width:100%">
     </div>
     <div class="zus" id="imp-info"></div>
-    <div class="msg" id="imp-msg"></div>
+    <div class="msg" id="imp-msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="btn-s" id="imp-cancel">Abbrechen</button>
       <button class="btn-p" id="imp-go">Importieren &amp; aktiv setzen</button>
@@ -280,7 +295,7 @@
      nach dem bestätigten Prüfbericht. Einzelwand- und Katalogimport bleiben getrennte,
      eigens benannte Wege ([L-12]). -->
 <div class="overlay" id="pi-overlay" hidden>
-  <div class="modal">
+  <div class="modal" id="pi-modal">
     <h3>Projekt importieren</h3>
     <p class="sub"><b>ZIP-Datei und Ordner sind gleichwertig.</b> Erkannt werden das vollständige
       <b>Projektarchiv</b> (mit <code>projekt.json</code> und Planbildern) und die <b>Projekt-ZIP des
@@ -288,16 +303,23 @@
       Der Inhalt wird zuerst <b>gelesen, geprüft und angezeigt</b> — gespeichert wird erst nach
       Bestätigung ([L-13]).</p>
     <div class="row">
+      <input id="pi-datei" class="ax-datei" type="file"
+             accept=".zip,.json,application/zip,application/json"
+             aria-describedby="pi-datei-b" data-ax-tip="pi-datei-b">
       <label class="btn-s" for="pi-datei">ZIP- oder JSON-Datei wählen…</label>
-      <input id="pi-datei" type="file" accept=".zip,.json,application/zip,application/json" hidden>
+      <span class="ax-sr" id="pi-datei-b">Nimmt ein Projektarchiv, eine Projekt-ZIP oder eine
+        Mappendatei. Welche Fassung vorliegt, erkennt die Prüfung am Inhalt.</span>
+      <input id="pi-ordner" class="ax-datei" type="file" webkitdirectory directory multiple
+             aria-describedby="pi-ordner-b" data-ax-tip="pi-ordner-b">
       <label class="btn-s" for="pi-ordner">Entpackten Ordner wählen…</label>
-      <input id="pi-ordner" type="file" webkitdirectory directory multiple hidden>
+      <span class="ax-sr" id="pi-ordner-b">Nimmt denselben Inhalt als entpackten Ordner —
+        gleichwertig zur ZIP-Datei.</span>
     </div>
     <div class="hint">Getrennt bleiben: eine <b>einzelne Wand</b> über „Wand hinzufügen…" am Geschoss,
       ein <b>Bauteilkatalog</b> über „Katalog importieren…" ([L-12]). Liegt eine Katalogdatei im ZIP,
       wird sie <b>benannt übergangen</b> statt still mitimportiert; ein <b>Planbild</b> ist in der ZIP des
       zentralen Exports nie enthalten ([L-8]) — das ist dort ein Hinweis, kein Fehler.</div>
-    <div class="msg" id="pi-msg"></div>
+    <div class="msg" id="pi-msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="btn-s" id="pi-cancel">Abbrechen</button>
     </div>
@@ -308,7 +330,7 @@
      „Importieren“ liegt der geprüfte Stand nur im Speicher der Seite; ein Fehler beim
      Schreiben setzt den vorherigen Stand vollständig zurück (store.schreibeArchiv). -->
 <div class="overlay" id="arc-overlay" hidden>
-  <div class="modal" style="max-width:620px">
+  <div class="modal" id="arc-modal" style="max-width:620px">
     <h3 id="arc-titel">Projektimport prüfen</h3>
     <p class="sub">Die Quelle <b id="arc-quelle">–</b> wurde <b>vollständig</b> gelesen und geprüft,
       aber <b>noch nichts gespeichert</b>. Übernommen wird, was unten gewählt ist — ohne Zutun
@@ -356,10 +378,11 @@
       </div>
       <div class="zus" id="arc-umfang-bericht"></div>
     </div>
-    <label class="opt" id="arc-ueber-box" hidden><input type="checkbox" id="arc-ueber"><span>
+    <label class="opt" id="arc-ueber-box" hidden><input type="checkbox" id="arc-ueber"
+        aria-labelledby="arc-ueber-titel" aria-describedby="arc-ueber-text"><span>
       <span class="t" id="arc-ueber-titel">Vorhandene Einträge überschreiben</span><br>
       <span class="d" id="arc-ueber-text"></span></span></label>
-    <div class="msg" id="arc-msg"></div>
+    <div class="msg" id="arc-msg" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="btn-s" id="arc-cancel">Abbrechen</button>
       <button class="btn-p" id="arc-go">Importieren</button>
@@ -374,14 +397,17 @@
      kein Drift, kein zweiter Mengenpfad. Das ZIP ist KEIN Projektarchiv nach [L-13]
      (keine Planbilder); das vollständige Archiv bleibt der Importweg. -->
 <div class="overlay" id="exp-overlay" hidden>
-  <div class="modal">
+  <div class="modal" id="exp-modal">
     <h3 id="exp-titel">Exportieren</h3>
     <p class="sub">Auswahl wird als <b>ZIP</b> heruntergeladen und komplett aus dem aktuellen
       Datenmodell neu erzeugt — kein Drift. Aktive Zeiger und gespeicherte Daten bleiben
       unberührt. <span id="exp-bezug">Bezug:</span> <b id="exp-name">–</b></p>
     <div id="exp-opts"></div>
     <div class="opt-zusatz" id="exp-gesamt-optionen" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
-      <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="exp-preise" checked>Preise in der Gesamtstückliste</label>
+      <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="exp-preise" checked
+        aria-describedby="exp-preise-b" data-ax-tip="exp-preise-b">Preise in der Gesamtstückliste</label>
+      <span class="ax-sr" id="exp-preise-b">Ohne Häkchen enthält die Gesamtstückliste nur Mengen,
+        keine Einzel- und Gesamtpreise.</span>
     </div>
     <!-- Mengenfassung der Stücklisten ([P-20], #81). Die manuelle Menge aus Modul 4
          steht NEBEN der berechneten, nie an ihrer Stelle — welche von beiden in die Datei
@@ -391,16 +417,17 @@
          der einzige Schreibweg. Sie gilt für ALLE Stücklistendateien dieses Laufs: die
          Baustellenstückliste der Wand UND die Gesamtstückliste der Ebene. -->
     <div class="opt-zusatz" id="exp-stueckliste-optionen" style="margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <span>Mengen der Stückliste:</span>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"
+           role="radiogroup" aria-labelledby="exp-fassung-titel" aria-describedby="exp-fassung-hinweis">
+        <span id="exp-fassung-titel">Mengen der Stückliste:</span>
         <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-fassung" id="exp-fassung-berechnet" checked>berechnet</label>
         <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-fassung" id="exp-fassung-angepasst">angepasst (manuelle Mengen aus Modul&nbsp;4)</label>
       </div>
-      <div style="margin-top:3px">Die gewählte Fassung gilt für <b>alle</b> Stücklistendateien
+      <div style="margin-top:3px" id="exp-fassung-hinweis">Die gewählte Fassung gilt für <b>alle</b> Stücklistendateien
         dieses Exportlaufs und steht im Kopf jeder Datei; in der Gesamtstückliste folgt jede
         Zeile den wirksamen Mengen ihrer Wände und führt die berechnete daneben. Die
         <b>Einzelteilliste</b> der Gewindestangen bleibt in beiden Fällen abgeleitet — eine
-        manuelle Menge ließe sich dort nur mit erfundenen Einbauteil-IDs abbilden ([P-19]).</div>
+        manuelle Menge ließe sich dort nur mit erfundenen Einbauteil-IDs abbilden.</div>
     </div>
     <!-- Dateiformat der Stücklisten (#135): CSV oder echtes XLSX — aus DERSELBEN Ableitung,
          nur anders verpackt (kein zweiter Mengen- oder Preispfad). Excel ist bei JEDEM
@@ -408,12 +435,13 @@
          gespeichert. Sichtbar wie die Mengenfassung: sobald der Umfang mindestens eine
          Stücklistenausgabe anbietet. -->
     <div class="opt-zusatz" id="exp-format-optionen" style="margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
-      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-        <span>Dateiformat der Stücklisten:</span>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"
+           role="radiogroup" aria-labelledby="exp-format-titel" aria-describedby="exp-format-hinweis">
+        <span id="exp-format-titel">Dateiformat der Stücklisten:</span>
         <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-format" id="exp-format-xlsx" checked>Excel (.xlsx)</label>
         <label style="display:flex;gap:6px;align-items:center"><input type="radio" name="exp-format" id="exp-format-csv">CSV (.csv)</label>
       </div>
-      <div style="margin-top:3px">Gilt für Baustellenstückliste samt Einzelteilliste,
+      <div style="margin-top:3px" id="exp-format-hinweis">Gilt für Baustellenstückliste samt Einzelteilliste,
         Gesamtstückliste und Matrix-Stückliste dieses Laufs — gleicher Inhalt, gleiche
         Reihenfolge, in Excel mit echten Zahlenzellen. Die übrigen Dateien (JSON, HTML,
         SVG, IFC, PDF, Einkaufsliste als CSV) bleiben unberührt.</div>
@@ -426,12 +454,13 @@
          Laufs: es startet AUS, wird nirgends gespeichert und schreibt nichts. Angeboten wird
          es nur auf der Projektebene — die Blattfolge ist eine PDF je Geschoss des Projekts. -->
     <div class="opt-zusatz" id="exp-zeichnungen-optionen" style="margin:-2px 0 10px 30px;font-size:12.5px;color:var(--sb-muted)">
-      <label style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" id="exp-zeichnungen" style="margin-top:2px">
-        <span><b>Zeichnungen als PDF (je Geschoss eine)</b><br>
-        Je Geschoss dieses Projekts eine PDF im selben ZIP (Ordner <code>zeichnungen/</code>):
+      <label style="display:flex;gap:6px;align-items:flex-start"><input type="checkbox" id="exp-zeichnungen" style="margin-top:2px"
+        aria-labelledby="exp-zeichnungen-titel" aria-describedby="exp-zeichnungen-text">
+        <span><b id="exp-zeichnungen-titel">Zeichnungen als PDF (je Geschoss eine)</b><br>
+        <span id="exp-zeichnungen-text">Je Geschoss dieses Projekts eine PDF im selben ZIP (Ordner <code>zeichnungen/</code>):
         Seite&nbsp;1 der frisch abgeleitete Lageplan (Modul&nbsp;9), danach je zugeordneter Wand
         das vollständige Wandblatt (Modul&nbsp;7) in Reihenfolge der Projektmappe. Die Blätter
-        werden im Browser gerastert — das dauert bei vielen Wänden einen Moment.</span></label>
+        werden im Browser gerastert — das dauert bei vielen Wänden einen Moment.</span></span></label>
     </div>
     <div class="modal-actions">
       <button class="btn-s" id="exp-cancel">Abbrechen</button>
@@ -466,8 +495,14 @@
   // ausdrücklich NICHT selbst ein und ruft keine ihrer Ausgabefunktionen auf: der
   // einzige Zugang ist ZPDF ([N-1]/[D-6]).
   import * as ZPDF from './shared/sembla-zeichnungspdf.js';
+  // Der EINE Accessibility-Baustein der Suite (#144/#145): Namen, Beschreibungen,
+  // Tooltips und modale Dialoge. Er ist rein DOM-nah — kein Speicherzugriff, keine
+  // Fachlogik, kein gespeichertes Feld; ein zweiter Schreibweg entsteht nirgends.
+  import * as AX from './shared/sembla-ax.js';
 
   mountNavbar(0);
+  AX.stilEinhaengen();
+  AX.tooltips();
 
   function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
   const $ = id => document.getElementById(id);
@@ -475,10 +510,15 @@
 
   // --- Modulkarten ---
   const grid = $('modul-grid');
-  grid.innerHTML = MODULE.filter(m => m.nr !== 0 && !m.versteckt).map(m =>
-    `<a class="card" href="${m.datei}"><div class="t"><span class="n">${m.nr}</span>${m.titel}</div>`
-    + `<div class="d">${_beschreibung(m.nr)}</div></a>`
-  ).join('');
+  // Der NAME der Karte bleibt kurz („Modul 4 Baustellenstückliste"); der schon sichtbare
+  // Erklärtext wird als BESCHREIBUNG verknüpft, statt ihn in den Namen zu ziehen (#144).
+  grid.innerHTML = MODULE.filter(m => m.nr !== 0 && !m.versteckt).map(m => {
+    const did = 'modul-d-' + m.nr;
+    return `<a class="card" href="${m.datei}" aria-label="Modul ${m.nr} ${esc(m.titel)}"`
+      + ` aria-describedby="${did}">`
+      + `<div class="t"><span class="n">${m.nr}</span>${m.titel}</div>`
+      + `<div class="d" id="${did}">${_beschreibung(m.nr)}</div></a>`;
+  }).join('');
 
   function _beschreibung(nr){
     return ({
@@ -529,9 +569,40 @@
       : t;
   }
 
-  const knopf = (act, id, text, klasse, gesperrt, grund) =>
-    `<button class="${klasse || 'btn-s'}" data-act="${act}" data-id="${esc(id)}"`
-    + (gesperrt ? ` disabled title="${esc(grund || '')}"` : '') + `>${text}</button>`;
+  /**
+   * Ein Knopf der Baumliste — mit eindeutigem OBJEKTBEZUG im Namen (#144).
+   *
+   * Sichtbar steht weiter nur „Löschen"; der zugängliche Name lautet „Wand A löschen".
+   * Die Erklärung (bzw. bei gesperrten Knöpfen der Grund) landet als eigene
+   * BESCHREIBUNG im Accessibility Tree — nie im Namen und nie nur in einem `title`.
+   * Beschreibungsknoten und Knopf stehen in derselben gerenderten Zeichenkette, leben
+   * also gemeinsam und hinterlassen beim Neuzeichnen keinen verwaisten Rest.
+   * @param {string} act @param {string} id @param {string} text
+   * @param {string} [klasse] @param {boolean} [gesperrt] @param {string} [grund]
+   * @param {{bezug?:string, beschreibung?:string}} [ax]
+   */
+  const knopf = (act, id, text, klasse, gesperrt, grund, ax) => {
+    const a = ax || {};
+    const b = AX.benennung(AX.objektAktion(text, a.bezug),
+      gesperrt ? (grund || a.beschreibung || '') : (a.beschreibung || ''));
+    return `<button class="${klasse || 'btn-s'}" ${b.attrs} data-act="${act}" data-id="${esc(id)}"`
+      + (gesperrt ? ` disabled title="${esc(grund || '')}"` : '') + `>${text}</button>` + b.html;
+  };
+
+  /** Auf-/Zuklappknopf: der Zustand steht in `aria-expanded`, nicht nur im Dreieck. */
+  const klappKnopf = (id, offen, bezug) => {
+    const b = AX.benennung(AX.objektAktion(offen ? 'zuklappen' : 'aufklappen', bezug),
+      'Blendet den Inhalt nur ein oder aus — der aktive Pfad bleibt unverändert.');
+    return `<button class="klapp" ${b.attrs} aria-expanded="${offen ? 'true' : 'false'}"`
+      + ` data-act="klapp" data-id="${esc(id)}">${offen ? '▾' : '▸'}</button>` + b.html;
+  };
+
+  /** „+"-Knopf am Ende einer Kinderliste — ebenfalls mit Objektbezug. */
+  const plusKnopf = (act, id, text, name, beschreibung) => {
+    const b = AX.benennung(name, beschreibung);
+    return `<button class="plus" ${b.attrs} data-act="${act}" data-id="${esc(id)}">${text}</button>`
+      + b.html;
+  };
 
   function trBaumHtml(){
     const projekte = store.listeProjekte();
@@ -553,26 +624,40 @@
       const anzW = gsListe.reduce((s, gs) => s + gs.waende.length, 0);
       const katName = m.katalog ? (store.katalogNachId(m.katalog)?.name || '⚠ Katalog fehlt') : 'kein Katalog';
       const kopf = `<div class="kopf">`
-        + `<button class="klapp" data-act="klapp" data-id="${esc(m.projekt.id)}">${offen ? '▾' : '▸'}</button>`
+        + klappKnopf(m.projekt.id, offen, `Projekt ${m.projekt.name}`)
         + `<span class="titel">${esc(m.projekt.name)}</span>`
         + (istAktivPrj ? ' <span class="badge">aktiv</span>' : '')
         + `<span class="meta">${gsListe.length} Geschoss(e) · ${anzW} Wand/Wände · ${esc(katName)}</span>`
         + `<span class="akt">`
-        + (istAktivPrj ? '' : knopf('prj-aktiv', m.projekt.id, 'Aktiv setzen'))
-        + knopf('prj-bearbeiten', m.projekt.id, 'Bearbeiten')
+        + (istAktivPrj ? '' : knopf('prj-aktiv', m.projekt.id, 'Aktiv setzen', 'btn-s', false, '',
+            { bezug: `Projekt ${m.projekt.name}`,
+              beschreibung: 'Macht dieses Projekt zum aktiven. Geschoss- und Wandzeiger werden '
+                + 'dabei aufgehoben statt auf Fremdes gebogen.' }))
+        + knopf('prj-bearbeiten', m.projekt.id, 'Bearbeiten', 'btn-s', false, '',
+            { bezug: `Projekt ${m.projekt.name}`,
+              beschreibung: 'Öffnet den Dialog für Projektname, Bauherrenschaft und die '
+                + 'Zuordnung des Bauteilkatalogs.' })
         // EIN Exportzugang je Eintrag (#67): der Dialog leitet seinen Umfang aus dem
         // ANGEKLICKTEN Projekt ab und setzt dabei keinen Zeiger um ([L-10]) — deshalb
         // ist der Knopf auch an nicht aktiven Projekten nutzbar.
         // Seit #107 fuehrt dieser EINE Knopf auch die Zeichnungs-PDFs (#98): sie sind
         // dort ein Haekchen des Dialogs. Ein zweiter Knopf am Projekt hat sich als nicht
         // praktikabel erwiesen — zwei Ausgaenge fuer denselben Bezug, zwei Downloads.
-        + knopf('prj-export', m.projekt.id, 'Exportieren', 'btn-p')
-        + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d')
+        + knopf('prj-export', m.projekt.id, 'Exportieren', 'btn-p', false, '',
+            { bezug: `Projekt ${m.projekt.name}`,
+              beschreibung: 'Öffnet den Exportdialog für dieses Projekt. Aktive Zeiger und '
+                + 'gespeicherte Daten bleiben unberührt.' })
+        + knopf('prj-loeschen', m.projekt.id, 'Löschen', 'btn-d', false, '',
+            { bezug: `Projekt ${m.projekt.name}`,
+              beschreibung: 'Entfernt Struktur, Lage, Bemaßungen und Kopfdaten. Ob die '
+                + 'zugeordneten Wandelemente mitgehen, wird getrennt gefragt.' })
         + `</span></div>`;
       if (!offen) return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}</div>`;
 
       const kinder = gsListe.map(gs => trGeschossHtml(m, gs, istAktivPrj, gsAktiv, wAktiv)).join('')
-        + `<button class="plus" data-act="gs-neu" data-id="${esc(m.projekt.id)}">+ Geschoss hinzufügen</button>`;
+        + plusKnopf('gs-neu', m.projekt.id, '+ Geschoss hinzufügen',
+            `Geschoss in Projekt ${m.projekt.name} hinzufügen`,
+            'Öffnet den Dialog für Bezeichnung und Standard-Wandhöhe des neuen Geschosses.');
       return `<div class="knoten prj${istAktivPrj ? ' aktiv' : ''}">${kopf}<div class="kinder">${kinder}</div></div>`;
     }).join('');
   }
@@ -585,20 +670,33 @@
                                       : 'ohne Standard-Wandhöhe')
       + ` · ${gs.waende.length} Wand/Wände · ` + (gs.plan ? 'Plan hinterlegt' : 'kein Plan');
     const kopf = `<div class="kopf">`
-      + `<button class="klapp" data-act="klapp" data-id="${esc(gs.id)}">${offen ? '▾' : '▸'}</button>`
+      + klappKnopf(gs.id, offen, `Geschoss ${gs.name}`)
       + `<span class="titel">${esc(gs.name)}</span>`
       + (istAktiv ? ' <span class="badge">aktiv</span>' : '')
       + `<span class="meta">${esc(meta)}</span>`
       + `<span class="akt">`
       + (istAktiv ? '' : knopf('gs-aktiv', gs.id, 'Aktiv setzen', 'btn-s', !istAktivPrj,
-          `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`))
+          `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`,
+          { bezug: `Geschoss ${gs.name}`,
+            beschreibung: 'Macht dieses Geschoss zum aktiven. Ein Geschoss ist nur im aktiven '
+              + 'Projekt aktivierbar.' }))
       + knopf('gs-oeffnen', gs.id, 'Geschoss öffnen', 'btn-p', !istAktivPrj,
-          `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`)
+          `Erst das Projekt „${m.projekt.name}“ aktiv setzen ([L-10]).`,
+          { bezug: `Geschoss ${gs.name}`,
+            beschreibung: 'Öffnet den Layout-Editor: Wände zeichnen, verorten, bemaßen und den '
+              + 'Geschossplan verwalten.' })
       // EIN Exportzugang je Eintrag (#67): Umfang aus dem ANGEKLICKTEN Geschoss,
       // ohne Zeiger umzusetzen ([L-10]) — darum nicht an „aktiv“ gebunden.
-      + knopf('gs-export', gs.id, 'Exportieren')
-      + knopf('gs-bearbeiten', gs.id, 'Bearbeiten')
-      + knopf('gs-loeschen', gs.id, 'Löschen', 'btn-d')
+      + knopf('gs-export', gs.id, 'Exportieren', 'btn-s', false, '',
+          { bezug: `Geschoss ${gs.name}`,
+            beschreibung: 'Öffnet den Exportdialog für genau dieses Geschoss.' })
+      + knopf('gs-bearbeiten', gs.id, 'Bearbeiten', 'btn-s', false, '',
+          { bezug: `Geschoss ${gs.name}`,
+            beschreibung: 'Öffnet den Dialog für Bezeichnung und Standard-Wandhöhe.' })
+      + knopf('gs-loeschen', gs.id, 'Löschen', 'btn-d', false, '',
+          { bezug: `Geschoss ${gs.name}`,
+            beschreibung: 'Entfernt Struktur, Lage und Bemaßungen dieses Geschosses. Ob die '
+              + 'zugeordneten Wandelemente mitgehen, wird getrennt gefragt.' })
       + `</span></div>`;
     if (!offen) return `<div class="knoten gs${istAktiv ? ' aktiv' : ''}">${kopf}</div>`;
 
@@ -607,10 +705,12 @@
     // Neue Wände entstehen ausschliesslich durch Zeichnen im Geschosseditor (#56);
     // hier steht nur noch der Weg dorthin und der unveraenderte Dateiimport ([L-4]).
     const kinder = waende
-      + `<button class="plus" data-act="gs-oeffnen" data-id="${esc(gs.id)}">`
-      + '+ Neue Wand zeichnen (Geschosseditor)</button>'
-      + `<button class="plus" data-act="wand-import" data-id="${esc(gs.id)}">`
-      + 'Wand aus Datei importieren…</button>';
+      + plusKnopf('gs-oeffnen', gs.id, '+ Neue Wand zeichnen (Geschosseditor)',
+          `Neue Wand in Geschoss ${gs.name} zeichnen`,
+          'Öffnet den Layout-Editor. Neue Wände entstehen ausschließlich dort durch Zeichnen.')
+      + plusKnopf('wand-import', gs.id, 'Wand aus Datei importieren…',
+          `Wand in Geschoss ${gs.name} aus Datei importieren`,
+          'Liest eine gespeicherte Wanddatei und trägt sie in diesem Geschoss ein.');
     return `<div class="knoten gs${istAktiv ? ' aktiv' : ''}">${kopf}<div class="kinder">${kinder}</div></div>`;
   }
 
@@ -620,6 +720,9 @@
     const masse = el && el.wandelement
       ? `${el.wandelement.length_mm ?? '?'} × ${el.wandelement.height_mm ?? '?'} mm`
       : '⚠ kein Wandelement (verwaister Eintrag, [L-4])';
+    // Zwei Wände dürfen gleich heißen; der zugängliche Name nennt deshalb immer auch
+    // das Geschoss, statt die Unterscheidung einer technischen Kennung zu überlassen.
+    const wandBezug = `Wand ${w.name || w.id} in Geschoss ${gs.name}`;
     return `<div class="knoten wand${istAktiv ? ' aktiv' : ''}${w.id === neuId ? ' neu' : ''}" data-wand="${esc(w.id)}"><div class="kopf">`
       + `<span style="width:26px"></span>`
       + `<span class="titel">${esc(w.name || w.id)}</span>`
@@ -627,12 +730,21 @@
       + `<span class="meta">${esc(masse)} · </span>${trLageText(w, el)}`
       + `<span class="akt">`
       + (istAktiv || !el ? '' : knopf('wand-aktiv', w.id, 'Aktiv setzen', 'btn-s', !gsIstAktiv,
-          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`))
+          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`,
+          { bezug: wandBezug,
+            beschreibung: 'Macht diese Wand zur aktiven. Die Module 1 bis 9 arbeiten danach '
+              + 'auf ihr.' }))
       + (el ? knopf('wand-planen', w.id, 'In Modul 1 planen', 'btn-s', !gsIstAktiv,
-          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`) : '')
-      + (el ? knopf('wand-bearbeiten', w.id, 'Bearbeiten') : '')
-      + (el ? knopf('wand-export', w.id, 'Exportieren') : '')
-      + knopf('wand-loeschen', w.id, 'Löschen', 'btn-d')
+          `Erst das Geschoss „${gs.name}“ aktiv setzen ([L-10]).`,
+          { bezug: wandBezug,
+            beschreibung: 'Setzt die Wand aktiv und wechselt in die Wandplanung.' }) : '')
+      + (el ? knopf('wand-bearbeiten', w.id, 'Bearbeiten', 'btn-s', false, '',
+          { bezug: wandBezug, beschreibung: 'Öffnet den Dialog zum Umbenennen dieser Wand.' }) : '')
+      + (el ? knopf('wand-export', w.id, 'Exportieren', 'btn-s', false, '',
+          { bezug: wandBezug, beschreibung: 'Öffnet den Exportdialog für genau diese Wand.' }) : '')
+      + knopf('wand-loeschen', w.id, 'Löschen', 'btn-d', false, '',
+          { bezug: wandBezug,
+            beschreibung: 'Entfernt das Wandelement endgültig aus dem Speicher dieses Browsers.' })
       + `</span></div></div>`;
   }
 
@@ -732,9 +844,14 @@
   function trZuordnenHtml(ids){
     const gs = aktGeschoss();
     if (!gs) return '';
-    return '<div style="margin-top:5px">' + ids.map(id =>
-      `<button class="btn-s" data-act="wand-zuordnen" data-id="${esc(id)}" style="margin:2px 4px 2px 0">`
-      + `„${esc((store.holeElement(id)?.name) || id)}“ → ${esc(gs.name)}</button>`).join('') + '</div>';
+    return '<div style="margin-top:5px">' + ids.map(id => {
+      const nm = (store.holeElement(id)?.name) || id;
+      const b = AX.benennung(`Wand ${nm} in Geschoss ${gs.name} eintragen`,
+        'Trägt die Wand am Geschossursprung ein — unbemaßt und im Layout-Editor frei '
+        + 'verschiebbar.');
+      return `<button class="btn-s" ${b.attrs} data-act="wand-zuordnen" data-id="${esc(id)}" `
+        + `style="margin:2px 4px 2px 0">„${esc(nm)}“ → ${esc(gs.name)}</button>` + b.html;
+    }).join('') + '</div>';
   }
 
   function trRender(){
@@ -758,14 +875,20 @@
   // Der Rueckgabewert wird durchgereicht: der Zeichnungsexport (#98) ist asynchron
   // (Rastern der Blaetter), und ohne dieses `return` waere sein Ende von aussen —
   // auch im Smoke-Test — nicht abwartbar. Fuer alle uebrigen Aktionen ist es wirkungslos.
+  // Der angeklickte Knopf ist der AUSLOESER eines Dialogs: an ihn geht der Fokus nach dem
+  // Schliessen zurueck (#145). Die Baumliste wird bei jeder Aenderung neu gezeichnet — ist
+  // der Knopf dann weg, greift der benannte Ersatzfokus des jeweiligen Dialogs.
+  let letzterAusloeser = null;
   $('tr-baum').addEventListener('click', (ev) => {
     const btn = ev.target.closest ? ev.target.closest('button[data-act]') : null;
     if (!btn) return;
+    letzterAusloeser = btn;
     return trAktion(btn.dataset.act, btn.dataset.id);
   });
   $('tr-warn').addEventListener('click', (ev) => {
     const btn = ev.target.closest ? ev.target.closest('button[data-act]') : null;
     if (!btn) return;
+    letzterAusloeser = btn;
     return trAktion(btn.dataset.act, btn.dataset.id);
   });
 
@@ -990,14 +1113,21 @@
   // Projekt-ZIP des zentralen Exports), entscheidet der INHALT, nicht der Name.
 
   const piOverlay = $('pi-overlay');
+  // Modaler Dialog nach dem einen Baustein: Rolle, Name, Fokus hinein, Fokusfalle,
+  // gesperrter Hintergrund, Fokus zurueck. Escape bleibt beim zentralen Behandler
+  // weiter unten — er bedient alle Dialoge dieser Seite an EINER Stelle.
+  const piAX = AX.modalDialog({ overlay: piOverlay, dialog: $('pi-modal'), escape: false,
+    name: 'Projekt importieren', abbruch: () => piAbbruch(),
+    erstFokus: () => $('pi-datei'), ersatzFokus: () => $('tr-import') });
   /** Wanddateien laufen durch den EINEN vorhandenen Wandparser ([P-6]). */
   const PI_OPT = { parseWand: (obj) => store.parseImport(JSON.stringify(obj)) };
 
   function piOeffne(){
     $('pi-msg').textContent = ''; $('pi-msg').className = 'msg';
     piOverlay.hidden = false;
+    piAX.oeffne($('tr-import'));
   }
-  function piSchliesse(){ piOverlay.hidden = true; }
+  function piSchliesse(){ piOverlay.hidden = true; piAX.schliesse(); }
   function piAbbruch(){ piSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
   /** Ursache benennen, nicht pauschal „nicht möglich" ([P-9]) — der Dialog bleibt offen. */
   function piFehler(e){
@@ -1045,6 +1175,9 @@
 
   // --- Prüfbericht, Teilauswahl, Bestätigung, erst dann schreiben ([L-13]) ---
   const arcOverlay = $('arc-overlay');
+  const arcAX = AX.modalDialog({ overlay: arcOverlay, dialog: $('arc-modal'), escape: false,
+    titelId: 'arc-titel', abbruch: () => { arcSchliesse(); trZeige('Import abgebrochen — es wurde nichts gespeichert.', false); },
+    erstFokus: () => $('arc-umfang'), ersatzFokus: () => $('tr-import') });
   let arcOffen = null;              // { gelesen, quelle, wahl, uebernommen } — nur im Seitenspeicher
 
   /** Wert des Zielprojekt-Feldes für „neues Projekt anlegen“ (kein Projekt trägt diese Kennung). */
@@ -1074,6 +1207,7 @@
     $('arc-msg').className = 'msg';
     arcTeilRender();
     arcOverlay.hidden = false;
+    arcAX.oeffne($('tr-import'));
   }
 
   /**
@@ -1222,7 +1356,7 @@
   $('arc-ziel-prj-name').addEventListener('input', arcTeilAendern);
   $('arc-ziel-prj-name').addEventListener('change', arcTeilAendern);
 
-  function arcSchliesse(){ arcOverlay.hidden = true; arcOffen = null; }
+  function arcSchliesse(){ arcOverlay.hidden = true; arcOffen = null; arcAX.schliesse(); }
   $('arc-cancel').addEventListener('click', () => { arcSchliesse(); trZeige('Import abgebrochen — es wurde nichts gespeichert.', false); });
   arcOverlay.addEventListener('click', (ev) => { if (ev.target === arcOverlay) arcSchliesse(); });
 
@@ -1266,6 +1400,9 @@
   //  Popup Projekt (Name, Kopfdaten [L-11], Bauteilkatalog [L-12])
   // =====================================================================
   const ppOverlay = $('pp-overlay');
+  const ppAX = AX.modalDialog({ overlay: ppOverlay, dialog: $('pp-modal'), escape: false,
+    titelId: 'pp-titel', abbruch: () => ppAbbruch(),
+    erstFokus: () => $('pp-name'), ersatzFokus: () => $('tr-projekt-neu') });
   let ppId = null;                       // null = Anlage, sonst Projekt-Kennung
   // #68: Der Anlagedialog fuehrt nur noch die Bauherrenschaft. Die uebrigen Kopfdatenfelder
   // bleiben am Projekt erhalten — `setzeKopfdaten` ist ein Patch, nicht genannte Felder
@@ -1377,11 +1514,12 @@
     ppKatalogListe(m ? (m.katalog || '') : '', !m);
     ppZeige('', true);
     ppOverlay.hidden = false;
+    ppAX.oeffne(letzterAusloeser || $('tr-projekt-neu'));
     // #118 Die herausgegebenen Fassungen kommen aus einer Datei; die Auswahl steht sofort
     // und wird ergaenzt, sobald das Verzeichnis gelesen ist.
     ppFassungenNachladen(m ? (m.katalog || '') : '', !m);
   }
-  function ppSchliesse(){ ppOverlay.hidden = true; ppId = null; }
+  function ppSchliesse(){ ppOverlay.hidden = true; ppId = null; ppAX.schliesse(); }
 
   /** Abbruch (Button, Escape, Klick neben den Dialog): schliesst und meldet — schreibt nichts. */
   function ppAbbruch(){ ppSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
@@ -1521,6 +1659,9 @@
   //  Popup Geschoss
   // =====================================================================
   const gpOverlay = $('gp-overlay');
+  const gpAX = AX.modalDialog({ overlay: gpOverlay, dialog: $('gp-modal'), escape: false,
+    titelId: 'gp-titel', abbruch: () => gpAbbruch(),
+    erstFokus: () => $('gp-name'), ersatzFokus: () => $('tr-projekt-neu') });
   let gpProjektId = null, gpGeschossId = null;
   function gpZeige(text, ok){ $('gp-msg').textContent = text; $('gp-msg').className = 'msg ' + (ok ? 'ok' : 'err'); }
 
@@ -1537,11 +1678,12 @@
     $('gp-hinweis').innerHTML = '';
     gpZeige('', true);
     gpOverlay.hidden = false;
+    gpAX.oeffne(letzterAusloeser || $('tr-projekt-neu'));
     // Der Planblock haengt an einer BESTEHENDEN Geschoss-Kennung ([L-4]) — beim Anlegen
     // gibt es die noch nicht, dann bleibt er verborgen.
     gpPlanInfo().catch(() => {});
   }
-  function gpSchliesse(){ gpOverlay.hidden = true; gpProjektId = null; gpGeschossId = null; }
+  function gpSchliesse(){ gpOverlay.hidden = true; gpProjektId = null; gpGeschossId = null; gpAX.schliesse(); }
 
   function gpAbbruch(){ gpSchliesse(); trZeige('Abgebrochen — es wurde nichts gespeichert.', true); }
   $('gp-cancel').addEventListener('click', gpAbbruch);
@@ -1602,6 +1744,9 @@
   // Beim UMBENENNEN ist ausschliesslich der Name aenderbar: Oeffnungen und
   // Auslegung gehoeren Modul 1, die Laenge einer verorteten Wand dem Geschosseditor.
   const wpOverlay = $('wp-overlay');
+  const wpAX = AX.modalDialog({ overlay: wpOverlay, dialog: $('wp-modal'), escape: false,
+    titelId: 'wp-titel', abbruch: () => wpAbbruch(),
+    erstFokus: () => $('f-name'), ersatzFokus: () => $('tr-projekt-neu') });
   let wpGeschossId = null, wpWandId = null;
   const msg = $('msg');
   function zeige(text, ok){ msg.textContent = text; msg.className = 'msg ' + (ok ? 'ok' : 'err'); }
@@ -1642,8 +1787,9 @@
     }
     zeige('', true);
     wpOverlay.hidden = false;
+    wpAX.oeffne(letzterAusloeser || $('tr-projekt-neu'));
   }
-  function wpSchliesse(){ wpOverlay.hidden = true; wpGeschossId = null; wpWandId = null; }
+  function wpSchliesse(){ wpOverlay.hidden = true; wpGeschossId = null; wpWandId = null; wpAX.schliesse(); }
 
   function wpAbbruch(){ wpSchliesse(); trZeige('Abgebrochen — es wurde nichts geändert.', true); }
   $('wp-cancel').addEventListener('click', wpAbbruch);
@@ -1700,6 +1846,9 @@
   // und echter Inhaltszusammenfassung -> erst „Importieren“ speichert. Abbrechen laesst
   // gespeicherte Elemente und den aktiven Zeiger unberuehrt.
   const impOverlay = $('imp-overlay');
+  const impAX = AX.modalDialog({ overlay: impOverlay, dialog: $('imp-modal'), escape: false,
+    name: 'Wandelement importieren', abbruch: () => impSchliesse(),
+    erstFokus: () => $('imp-name'), ersatzFokus: () => $('tr-projekt-neu') });
   const impMsg = $('imp-msg');
   let impOffen = null;          // { parse, dateiname, geschossId } — nur im Speicher der Seite
 
@@ -1734,6 +1883,7 @@
   function impSchliesse(){
     impOffen = null;
     impOverlay.hidden = true;
+    impAX.schliesse();
     impMsg.textContent = ''; impMsg.className = 'msg';
     $('f-import').value = '';
   }
@@ -1747,6 +1897,7 @@
     $('imp-info').innerHTML = impZusammenfassung(parse.wandelement);
     impMsg.textContent = ''; impMsg.className = 'msg';
     impOverlay.hidden = false;
+    impAX.oeffne($('f-import'));
     zeige('', true);
   }
 
@@ -1886,19 +2037,25 @@
   //  Zentraler hierarchischer Export-Dialog (#67)
   // =====================================================================
   const overlay = $('exp-overlay');
+  const expAX = AX.modalDialog({ overlay, dialog: $('exp-modal'), escape: false,
+    titelId: 'exp-titel', abbruch: () => schliesseExport(),
+    erstFokus: () => $('exp-go'), ersatzFokus: () => $('tr-projekt-neu') });
   let expKontext = null;      // { ebene, mappe, gebaeudeId, geschossId, wandId, wandName }
 
   /** Beschriftung je Option — die Schlüssel sind EXPORT_OPTIONEN (sembla-archiv.js). */
+  // Erster Eintrag = kurzer NAME des Häkchens, zweiter = BESCHREIBUNG. In den
+  // Beschreibungen stehen keine Regel- oder Issue-Nummern mehr (#144): sie sind
+  // Bedienhinweise, keine Quellenangaben.
   const EXP_TEXTE = {
-    mappe: ['Projektmappe — nur Struktur (JSON)', 'Struktur, Lage, Bemaßungen, Kopfdaten und Katalogverweis ([L-13]) — ohne Wandelemente, Planbilder und Katalog; hier wieder importierbar.'],
-    gesamt: ['Gesamtstückliste (CSV)', 'Summe der Baustellenstücklisten aller Wände dieses Umfangs — mit Einbauteil-IDs als <b>Wand-ID:ID</b> und benannten Lücken. Die <b>Mengenfassung</b> wird unten gewählt ([P-20]).'],
-    matrix: ['Matrix-Stückliste Wand × Artikel (CSV)', 'Eine Zeile je Wand, eine Spalte je Artikel/Fertigmaß — mit Zwischensumme je Geschoss und Projekt-Gesamtsumme (#132). Zusätzlich zur Gesamtstückliste; fehlende Wandstücklisten werden benannt, nie als Null gezählt.'],
+    mappe: ['Projektmappe — nur Struktur (JSON)', 'Struktur, Lage, Bemaßungen, Kopfdaten und Katalogverweis — ohne Wandelemente, Planbilder und Katalog; hier wieder importierbar.'],
+    gesamt: ['Gesamtstückliste (CSV)', 'Summe der Baustellenstücklisten aller Wände dieses Umfangs — mit Einbauteil-IDs als <b>Wand-ID:ID</b> und benannten Lücken. Die <b>Mengenfassung</b> wird unten gewählt.'],
+    matrix: ['Matrix-Stückliste Wand × Artikel (CSV)', 'Eine Zeile je Wand, eine Spalte je Artikel/Fertigmaß — mit Zwischensumme je Geschoss und Projekt-Gesamtsumme. Zusätzlich zur Gesamtstückliste; fehlende Wandstücklisten werden benannt, nie als Null gezählt.'],
     geschosse: ['Geschossdaten (JSON je Geschoss)', 'Je enthaltenem Geschoss eine Teilmappe im Format SEMBLA-Projektmappe v2 — genau das eine Gebäude mit genau diesem Geschoss.'],
     geschoss: ['Geschossdaten (JSON)', 'Dieses Geschoss als Teilmappe im Format SEMBLA-Projektmappe v2 — genau das eine Gebäude mit genau diesem Geschoss, ohne die vollständige Projektmappe.'],
-    waende: ['Wandelementdateien (JSON je Wand)', 'Je enthaltener Wand eine SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben). Fehlende Wandelemente werden benannt, nie ersetzt ([L-4]).'],
+    waende: ['Wandelementdateien (JSON je Wand)', 'Je enthaltener Wand eine SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben). Fehlende Wandelemente werden benannt, nie ersetzt.'],
     wand: ['Wanddatei (JSON)', 'Diese Wand als SEMBLA-Projekt-v2-Datei (Wandelement + Eingaben) — hier wieder importierbar.'],
-    katalog: ['Bauteilkatalog (JSON)', 'Der dem Projekt zugeordnete Katalog als eigene SEMBLA-Bauteilkatalog-Datei ([L-12]) — nie in Mappe oder Wanddatei eingebettet.'],
-    stueckliste: ['Baustellenstückliste (2× CSV)', 'Real einzubauende Teile in Fertigmaßen — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs. Die <b>Mengenfassung</b> der aggregierten Liste wird unten gewählt ([P-20]).'],
+    katalog: ['Bauteilkatalog (JSON)', 'Der dem Projekt zugeordnete Katalog als eigene SEMBLA-Bauteilkatalog-Datei — nie in Mappe oder Wanddatei eingebettet.'],
+    stueckliste: ['Baustellenstückliste (2× CSV)', 'Real einzubauende Teile in Fertigmaßen — aggregierte Liste plus Einzelteilliste der Gewindestangen mit Einbauteil-IDs. Die <b>Mengenfassung</b> der aggregierten Liste wird unten gewählt.'],
   };
 
   /**
@@ -1933,8 +2090,13 @@
       $('exp-name').textContent = e.name + (ort ? ` · Geschoss „${ort.geschoss.name}“` : '');
     }
     expKontext = kontext;
+    // Der NAME des Häkchens ist die kurze Dateibezeichnung; der Erklärabsatz steht
+    // daneben und wird als BESCHREIBUNG verknüpft — nie in den Namen gezogen (#144).
     $('exp-opts').innerHTML = ARCHIV.exportOptionen(kontext.ebene).map(o =>
-      `<label class="opt"><input type="checkbox" value="${o}" checked><span><span class="t">${EXP_TEXTE[o][0]}</span><br><span class="d">${EXP_TEXTE[o][1]}</span></span></label>`
+      `<label class="opt"><input type="checkbox" value="${o}" checked`
+      + ` aria-label="${esc(EXP_TEXTE[o][0])}" aria-describedby="exp-d-${o}">`
+      + `<span><span class="t">${EXP_TEXTE[o][0]}</span><br>`
+      + `<span class="d" id="exp-d-${o}">${EXP_TEXTE[o][1]}</span></span></label>`
     ).join('');
     // Der Preisschalter gehoert zur Gesamtstückliste — auf der Wandebene gibt es sie nicht.
     const optionen = ARCHIV.exportOptionen(kontext.ebene);
@@ -1964,8 +2126,9 @@
     $('exp-zeichnungen-optionen').hidden = kontext.ebene !== 'projekt';
     $('exp-zeichnungen').checked = false;
     overlay.hidden = false;
+    expAX.oeffne(letzterAusloeser);
   }
-  function schliesseExport(){ overlay.hidden = true; expKontext = null; }
+  function schliesseExport(){ overlay.hidden = true; expKontext = null; expAX.schliesse(); }
   $('exp-cancel').addEventListener('click', schliesseExport);
   overlay.addEventListener('click', (ev) => { if (ev.target === overlay) schliesseExport(); });
   document.addEventListener('keydown', (ev) => {

@@ -32,7 +32,14 @@ globalThis.window = { addEventListener(){}, location: { href: '' } };
 const scrollAufrufe = [];
 class El {
   constructor(id){ this.id=id; this.value=''; this.textContent=''; this._h=''; this.className='';
-    this.hidden=false; this.checked=false; this.style={}; this.dataset={}; this.listeners={}; this.files=[]; }
+    this.hidden=false; this.checked=false; this.style={}; this.dataset={}; this.listeners={}; this.files=[];
+    // #144/#145: der Accessibility-Baustein setzt und liest echte Attribute und fuehrt
+    // den Fokus. Beides gehoert deshalb ins Double, statt die Pruefung zu umgehen.
+    this.attrs={}; this.isConnected=true; }
+  setAttribute(n,v){ this.attrs[n]=String(v); }
+  getAttribute(n){ return Object.prototype.hasOwnProperty.call(this.attrs,n) ? this.attrs[n] : null; }
+  removeAttribute(n){ delete this.attrs[n]; }
+  focus(){ document.activeElement = this; }
   addEventListener(e,f){ (this.listeners[e]||(this.listeners[e]=[])).push(f); }
   // Rueckgabewert des letzten Hoerers durchreichen (async-Hoerer: Promise abwarten).
   dispatch(e,ev){ let r; (this.listeners[e]||[]).forEach(f=>{ r=f(ev||{target:this}); }); return r; }
@@ -62,6 +69,10 @@ const document = {
   getElementById(id){ let e=this._e[id]; if(!e) e=this._e[id]=new El(id); return e; },
   createElement(){ letzterAnker = new El('_'); return letzterAnker; },
   querySelector(){ return null; },
+  // Der Dialogbaustein sperrt den Hintergrund ueber [data-ax-hintergrund]; im Double
+  // gibt es ihn nicht, die Abfrage muss aber beantwortbar sein (#145).
+  querySelectorAll(){ return []; },
+  activeElement: null,
   _l:{},
   addEventListener(e,f){ (this._l[e]||(this._l[e]=[])).push(f); },
   dispatch(e,ev){ (this._l[e]||[]).forEach(f=>f(ev)); },
@@ -182,6 +193,9 @@ const ZPDF_ECHT = await import("../../docs/shared/sembla-zeichnungspdf.js");
 // ECHTE Engine auf den Stand ihrer Produktauswahl — im Test wird sie unveraendert gereicht.
 const ENG = await import("../../docs/shared/sembla-engine.js");
 const { entpacke, zipSync } = await import("../../docs/shared/zip.js");
+// #144/#145: der EINE Accessibility-Baustein — Modul 0 benennt damit seine Bedienelemente
+// und fuehrt damit seine modalen Dialoge.
+const AX = await import("../../docs/shared/sembla-ax.js");
 
 // --- Produktcode aus docs/index.html laden --------------------------------
 const html = readFileSync(new URL("../../docs/index.html", import.meta.url), "utf8");
@@ -189,7 +203,7 @@ const modScript = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
 const src = modScript.replace(/^\s*import .*?;\s*$/gm, "");   // Imports -> Funktionsargumente
 const BINDUNGEN = ["mountNavbar","MODULE","store","WA","baueDateien","gesamtstuecklisteDateien",
                    "gesamtUmfang","gesamtDaten","gesamtDateiRumpf","downloadZip",
-                   "entpacke","ARCHIV","KAT","MAPPE","CON","PLAN","ZPDF","ENG"];
+                   "entpacke","ARCHIV","KAT","MAPPE","CON","PLAN","ZPDF","ENG","AX"];
 const zipCalls = [];                                          // downloadZip-Aufrufe des Produktcodes
 // Ersatz fuer die EINE DOM-nutzende Funktion des Zeichnungsexports (#98): statt das
 // Blatt zu rastern, liefert sie ein festes, winziges JPEG. Alles andere — Blattfolge,
@@ -208,7 +222,7 @@ new Function(...BINDUNGEN, src)(
   () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
   GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
   (name, files) => zipCalls.push({ name, files }),
-  entpacke, ARCHIV, KAT, MAPPE, CON, PLAN, ZPDF, ENG
+  entpacke, ARCHIV, KAT, MAPPE, CON, PLAN, ZPDF, ENG, AX
 );
 
 const checks=[]; const ok=(n,c)=>checks.push([n,!!c]);
@@ -217,8 +231,12 @@ const $=id=>document.getElementById(id);
 // --- Bedienhilfen der neuen Baumliste (Etappe C3.1) -----------------------
 // Alle Aktionen laufen ueber die ECHTE Ereignisdelegation von #tr-baum bzw. #tr-warn:
 // der Test stellt nur das <button data-act data-id> nach, das der Produktcode rendert.
+// Der zuletzt „angeklickte" Knopf — #145 gibt ihm nach dem Schliessen eines Dialogs
+// den Fokus zurueck, das laesst sich nur mit dem echten Ausloeser pruefen.
+let letzterBaumKnopf = null;
 function baum(act, id, host = 'tr-baum'){
   const btn = new El('b'); btn.dataset = { act, id: id == null ? '' : String(id) };
+  letzterBaumKnopf = btn;
   // Rueckgabe durchreichen: der Zeichnungsexport (#98) ist asynchron und muss
   // abwartbar sein. Fuer alle uebrigen Aktionen ist der Wert `undefined`.
   return $(host).dispatch('click', { target: { closest: sel => sel === 'button[data-act]' ? btn : null } });
@@ -294,7 +312,9 @@ ok('#56 keine Geometrie-/Wandtypfelder mehr im Wand-Popup',
 ok('#56 die Baumliste verweist fuer neue Waende auf den Geschosseditor',
   /Neue Wand zeichnen \(Geschosseditor\)/.test(html));
 ok('#56 der Dateiimport bleibt als eigener, ausdruecklicher Weg erhalten',
-  /data-act="wand-import"/.test(html) && /Wand aus Datei importieren/.test(html)
+  // Der Knopf entsteht seit #144 ueber `plusKnopf(...)` — die Aktion steht als Argument
+  // im Quelltext statt als fertiges Attribut, gerendert wird unveraendert `data-act`.
+  /'wand-import'/.test(html) && /Wand aus Datei importieren/.test(html)
   && /id="f-import"/.test(html) && /id="btn-vorlage-wand"/.test(html));
 ok('#56 der einzige Schreibknopf des Popups ist das Umbenennen',
   /id="btn-neu" hidden>Namen speichern</.test(html));
@@ -928,7 +948,10 @@ installFetch();
 ok('#108 Modul 0 hat keinen Knopf „Standardkatalog laden" mehr',
   !/id="k-vorlage"/.test(html));
 ok('Button „Musterwand laden…" im Wand-Dialog',
-  /<button class="btn-s" id="btn-vorlage-wand">Musterwand laden…<\/button>/.test(html));
+  // Seit #144 traegt er zusaetzlich eine eigene Beschreibung (aria-describedby) — der
+  // sichtbare Text bleibt derselbe.
+  /<button class="btn-s" id="btn-vorlage-wand"[^>]*>Musterwand laden…<\/button>/.test(html)
+  && /aria-describedby="btn-vorlage-wand-b"/.test(html));
 ok('Hinweis nennt die Wandvorlage als bewusst zu ladende Repo-Datei',
   /vorlagen\/SEMBLA_Musterwand\.json/.test(html) && /bewusst auf Klick, nie/.test(html));
 
@@ -2946,6 +2969,7 @@ globalThis.localStorage = new MemStorage();
 globalThis.document = {
   _e:{}, getElementById(id){ return this._e[id] || (this._e[id] = new El(id)); },
   createElement(){ return new El('_'); }, querySelector(){ return null; },
+  querySelectorAll(){ return []; }, activeElement: null,
   addEventListener(){}, head:{ appendChild(){} },
   body:{ appendChild(){}, insertBefore(){}, firstChild:null },
 };
@@ -2953,7 +2977,7 @@ globalThis.fetch = async (pfad) => { frischeAufrufe.push(String(pfad)); return {
 new Function(...BINDUNGEN, src)(
   () => {}, MODULE, store, WA, baueDateien, gesamtstuecklisteDateien,
   GES.umfang, GES.gesamtDaten, GES.dateiRumpf,
-  () => {}, entpacke, ARCHIV, KAT, MAPPE, CON, PLAN);
+  () => {}, entpacke, ARCHIV, KAT, MAPPE, CON, PLAN, ZPDF, ENG, AX);
 const frischKatalog = globalThis.localStorage.getItem('sembla:kataloge');
 const frischElemente = globalThis.localStorage.getItem('sembla:elemente');
 globalThis.localStorage = altStorage; globalThis.document = altDocument; installFetch();
@@ -3262,6 +3286,138 @@ ok('Vorlagen werden ausschliesslich in Klick-Handlern geladen',
     && /fehlgeschlagen/.test(trMsgTxt()) && /Wand PDF B/.test(trMsgTxt()));
 
   confirmFolge = [];
+}
+
+// ==========================================================================
+//  Zugaengliche Bedienelemente und modale Dialoge (#144/#145)
+// ==========================================================================
+// Geprueft wird an der ECHTEN Oberflaeche: das gerenderte Markup der Baumliste und des
+// Exportdialogs sowie die realen Oeffnen-/Schliessen-Handler samt Fokusfuehrung.
+{
+  // --- (1) Namen und Beschreibungen der dynamischen Zeilen -----------------
+  const prjAX = store.fuegeProjektHinzu('AX-Prüfprojekt', { geschoss: 'EG', hoehe_mm: 2600 });
+  const gsAX = MAPPE.alleGeschosse(prjAX)[0].geschoss.id;
+  store.setzeAktivesProjekt(prjAX.projekt.id);
+  store.setzeAktivesGeschoss(gsAX);
+  const idAX = store.speichere('AX-Wand', buildWall('AX-Wand', 2000, 2600, []));
+  store.verorteWand(idAX, gsAX, { name: 'AX-Wand' });
+  baum('klapp', prjAX.projekt.id);
+  baum('klapp', gsAX);
+  const bh = () => $('tr-baum').innerHTML;
+  const offenNow = (id) => new RegExp('data-act="klapp" data-id="' + id + '">▾').test(bh());
+  if (!offenNow(prjAX.projekt.id)) baum('klapp', prjAX.projekt.id);
+  if (!offenNow(gsAX)) baum('klapp', gsAX);
+
+  /** Der zugaengliche NAME eines Knopfes der Baumliste. */
+  const nameVon = (act, id) => {
+    const m = new RegExp('<button[^>]*aria-label="([^"]*)"[^>]*data-act="' + act
+      + '" data-id="' + id + '"').exec(bh());
+    return m ? m[1] : null;
+  };
+  /** Der BESCHREIBUNGSTEXT, auf den ein Knopf per aria-describedby zeigt. */
+  const beschreibungVon = (act, id) => {
+    const m = new RegExp('<button[^>]*aria-describedby="(ax-b-\\d+)"[^>]*data-act="' + act
+      + '" data-id="' + id + '"').exec(bh());
+    if (!m) return null;
+    const t = new RegExp('<span class="ax-sr" id="' + m[1] + '">([^<]*)</span>').exec(bh());
+    return t ? t[1] : null;
+  };
+
+  ok('#144 die wiederholte Aktion „Löschen" traegt den Objektbezug im Namen',
+    nameVon('prj-loeschen', prjAX.projekt.id) === 'Projekt AX-Prüfprojekt löschen');
+  ok('#144 auch Geschoss- und Wandaktionen sind eindeutig benannt',
+    nameVon('gs-loeschen', gsAX) === 'Geschoss EG löschen'
+    && nameVon('wand-loeschen', idAX) === 'Wand AX-Wand in Geschoss EG löschen');
+  ok('#144 gleiche Wandnamen bleiben unterscheidbar — der Name nennt das Geschoss, nicht die Kennung',
+    !/aria-label="[^"]*w-[0-9a-z]/i.test(bh()));
+  ok('#144 die Erklaerung steht als eigene Beschreibung da, nicht im Namen',
+    /Entfernt das Wandelement endgültig/.test(beschreibungVon('wand-loeschen', idAX) || '')
+    && !/Entfernt das Wandelement/.test(nameVon('wand-loeschen', idAX) || ''));
+  ok('#144 die Beschreibung haengt an einem REALEN Textelement (aria-describedby)',
+    /<button[^>]*aria-describedby="ax-b-\d+"[^>]*data-act="wand-loeschen"/.test(bh())
+    && /<span class="ax-sr" id="ax-b-\d+">/.test(bh()));
+  ok('#144 kein Knopf der Baumliste traegt seinen Namen nur als title',
+    !/<button(?![^>]*aria-label)[^>]*title="/.test(bh()));
+  ok('#144 der Zustand „aufgeklappt" ist semantisch vorhanden, nicht nur als Dreieck',
+    new RegExp('aria-expanded="true"[^>]*data-act="klapp" data-id="' + gsAX + '"').test(bh()));
+  baum('klapp', gsAX);
+  ok('#144 Zuklappen setzt aria-expanded zurueck — und aendert keinen Zeiger ([L-10])',
+    new RegExp('aria-expanded="false"[^>]*data-act="klapp" data-id="' + gsAX + '"').test(bh())
+    && store.aktivesGeschossId() === gsAX);
+  baum('klapp', gsAX);
+
+  ok('#144 ein gesperrter Knopf nennt seinen Grund zusaetzlich als Beschreibung',
+    (() => {
+      const zweit = store.fuegeProjektHinzu('AX-Zweitprojekt', { geschoss: 'OG' });
+      const gs2 = MAPPE.alleGeschosse(zweit)[0].geschoss.id;
+      // Das Geschoss eines NICHT aktiven Projekts ist nach [L-10] gesperrt.
+      store.setzeAktivesProjekt(prjAX.projekt.id);
+      if (!offenNow(zweit.projekt.id)) baum('klapp', zweit.projekt.id);
+      const gesperrtGrund = beschreibungVon('gs-aktiv', gs2);
+      return /aktiv setzen/.test(gesperrtGrund || '');
+    })());
+
+  // --- (2) Exportdialog: kurzer Name, Erklaerabsatz als Beschreibung -------
+  baum('prj-export', prjAX.projekt.id);
+  const optHtml = $('exp-opts').innerHTML;
+  ok('#144 Export-Haekchen tragen den kurzen Dateinamen als Namen',
+    /aria-label="Projektmappe — nur Struktur \(JSON\)"/.test(optHtml));
+  ok('#144 der Erklaerabsatz steht NICHT im Namen, sondern als Beschreibung daneben',
+    !/aria-label="[^"]*Struktur, Lage, Bemaßungen/.test(optHtml)
+    && /aria-describedby="exp-d-mappe"/.test(optHtml)
+    && /id="exp-d-mappe"/.test(optHtml));
+  ok('#144 in den Bedienhinweisen der Export-Haekchen stehen keine Regel-/Issue-Nummern',
+    !/\[[A-Z]-\d+\]/.test(optHtml) && !/\(#\d+\)/.test(optHtml));
+
+  // --- (3) Modale Dialoge: Rolle, Name, Fokus, Hintergrund ----------------
+  const dlgs = [['pp-modal', 'pp-titel'], ['gp-modal', 'gp-titel'], ['wp-modal', 'wp-titel'],
+                ['imp-modal', null], ['pi-modal', null], ['arc-modal', 'arc-titel'],
+                ['exp-modal', 'exp-titel']];
+  ok('#145 jeder Dialog traegt Rolle und Modalitaet',
+    dlgs.every(([id]) => $(id).getAttribute('role') === 'dialog'
+      && $(id).getAttribute('aria-modal') === 'true'));
+  ok('#145 jeder Dialog traegt einen Namen (Ueberschrift oder eigener Name)',
+    dlgs.every(([id, titel]) => titel
+      ? $(id).getAttribute('aria-labelledby') === titel
+      : !!$(id).getAttribute('aria-label')));
+  ok('#145 der Exportdialog hat beim Oeffnen den Fokus im Dialog',
+    document.activeElement === $('exp-go'));
+  const expAusloeser = letzterBaumKnopf;
+  $('exp-cancel').dispatch('click');
+  ok('#145 Schliessen gibt den Fokus an den Ausloeser zurueck',
+    $('exp-overlay').hidden === true && document.activeElement === expAusloeser);
+
+  // Escape ist Abbruch — der zentrale Behandler der Seite bedient alle Dialoge.
+  const anzahlVorEsc = store.listeElemente().length;
+  baum('prj-bearbeiten', prjAX.projekt.id);
+  ok('#145 „Bearbeiten" oeffnet den Projektdialog mit Fokus im Dialog',
+    $('pp-overlay').hidden === false && document.activeElement === $('pp-name'));
+  $('pp-name').value = 'NICHT SPEICHERN';
+  document.dispatch('keydown', { key: 'Escape' });
+  ok('#145 Escape schliesst den Dialog, ohne still zu speichern',
+    $('pp-overlay').hidden === true
+    && store.projektMappe(prjAX.projekt.id).projekt.name === 'AX-Prüfprojekt'
+    && store.listeElemente().length === anzahlVorEsc);
+  ok('#145 nach Escape ist der Fokus wieder ausserhalb des Dialogs',
+    document.activeElement !== $('pp-name'));
+
+  // Die Dateiauswahlen sind mit der Tastatur erreichbar: kein `hidden`-Input mehr,
+  // sondern optisch versteckt und trotzdem fokussierbar.
+  ok('#145 die Dateiauswahlen sind tastaturerreichbar (kein hidden-Input hinter einem label)',
+    /<input id="f-import" class="ax-datei"/.test(html)
+    && /<input id="pi-datei" class="ax-datei"/.test(html)
+    && /<input id="pi-ordner" class="ax-datei"/.test(html)
+    && !/id="f-import"[^>]*\shidden/.test(html));
+
+  // Der Hintergrund traegt die Markierung, die der Baustein zum Sperren braucht.
+  ok('#145 die Seite markiert ihre Hintergrundbereiche fuer modale Dialoge',
+    /<header class="hero" data-ax-hintergrund>/.test(html)
+    && /<div class="wrap" data-ax-hintergrund>/.test(html));
+
+  // Meldezeilen werden angesagt statt nur gezeigt.
+  ok('#145 Meldezeilen der Dialoge sind als Statusbereich ausgezeichnet',
+    ['tr-msg','pp-msg','gp-msg','msg','imp-msg','pi-msg','arc-msg']
+      .every(id => new RegExp('id="' + id + '" role="status" aria-live="polite"').test(html)));
 }
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c)fail++; }

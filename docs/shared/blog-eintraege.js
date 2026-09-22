@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260922-02",
+    datum: "2026-09-22",
+    typ: "feature",
+    issue: 144,
+    titel: "Modul 0 und Kopfleiste: benannte Bedienelemente, Erklärungen als Beschreibung, "
+      + "tastaturfeste Dialoge",
+    testbitte: "In Modul 0 nur mit der Tastatur bedienen: jeder Knopf nennt sein Objekt "
+      + "(„Wand A löschen“), der Fokus bleibt im geöffneten Dialog und kehrt beim Schließen zum "
+      + "auslösenden Knopf zurück; Escape bricht ab, ohne zu speichern",
+  },
+  {
     id: "chg-20260922-01",
     datum: "2026-09-22",
     typ: "fix",
