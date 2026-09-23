@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260923-03",
+    datum: "2026-09-23",
+    typ: "feature",
+    issue: 145,
+    titel: "Modul 7: benannte Darstellungsoptionen und ein Plankopf, der seinen "
+      + "Schreibschutz samt Grund ansagt",
+    testbitte: "Modul 7 nur mit der Tastatur bedienen: Planverfasser und Phase sagen, dass "
+      + "sie auf keinem Blatt erscheinen; bei einer Wand ohne aktives Projekt sind die "
+      + "Felder erreichbar, schreibgeschützt und nennen den Grund",
+  },
+  {
     id: "chg-20260923-02",
     datum: "2026-09-23",
     typ: "feature",

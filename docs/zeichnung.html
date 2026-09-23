@@ -71,9 +71,9 @@
       <label class="feld">Planinhalt
         <input type="text" id="planinhalt" placeholder="Wandabwicklung">
       </label>
-      <label class="f"><input type="checkbox" id="masse" checked> Bemaßung</label>
-      <label class="f"><input type="checkbox" id="steintypen" checked> Steintypen beschriften</label>
-      <label class="f"><input type="checkbox" id="wm"> Vorabzug (Wasserzeichen)</label>
+      <label class="f" id="lbl-masse"><input type="checkbox" id="masse" checked> Bemaßung</label>
+      <label class="f" id="lbl-steintypen"><input type="checkbox" id="steintypen" checked> Steintypen beschriften</label>
+      <label class="f" id="lbl-wm"><input type="checkbox" id="wm"> Vorabzug (Wasserzeichen)</label>
     </div>
 
     <!-- Plankopf (#68): die Projekt-Kopfdaten des Schriftfelds. Sie leben am PROJEKT
@@ -130,7 +130,7 @@
       Legende erklärt, regelwidrige Bereiche stehen benannt daneben; angelegt werden auch sie in
       „Wandplanung“.
       Der <b>Plankopf</b> (Planverfasser, Phase, Plan-Nr., Index, Gez.) wird hier gepflegt und
-      gehört zum <b>Projekt</b> ([L-11]) — Projektname und Bauherrenschaft bleiben in „Start“.
+      gehört zum <b>Projekt</b> — Projektname und Bauherrenschaft bleiben in „Start“.
       <b>Regeltexte trägt es nicht</b> — das Fachregelwerk steht im Handbuch.
       Der statische Nachweis ist <b>nicht Bestandteil dieser Zeichnung</b> — er entsteht in Modul
       „Statik" und liegt als eigenes Dokument im zentralen Export.
@@ -168,12 +168,95 @@ let WALL=null, EING={}, OPT=null, currentId=null, MASSSTAB=null;
 let _selfSave=false;
 // aus window.SEMBLA (in __zInit gebunden):
 let store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen;
-let wandelementAktualisiert, STAND_GRUND, ENG;
+let wandelementAktualisiert, STAND_GRUND, ENG, AX;
 /* CSS-Millimeter sind fest definiert (1 px = 1/96 Zoll) — das ist die Umrechnung des
    Bildschirmmassstabs, KEIN Papiermass. Die Papiermasse kommen ausschliesslich aus BLATT. */
 const PX_JE_MM = 96/25.4;
 // zuletzt gesetzte Vorschaugeometrie (Papier-mm aus BLATT + reiner Bildschirmfaktor)
 let GEO={format:'a3',breite_mm:0,hoehe_mm:0,skala:1};
+
+/* ---- Zugänglichkeit: Namen, Beschreibungen, Zustände (#144/#145) ---------------------------
+ * Der NAME ist kurz und sagt, was das Element tut oder welchen Wert es trägt — bei einem
+ * Wertfeld einschließlich Einheit bzw. Zweck. Die ERKLÄRUNG steht daneben als eigene
+ * Beschreibung und landet über `aria-describedby` auf einem realen Textknoten; sichtbar wird
+ * sie als Tooltip bei Hover UND bei Tastaturfokus. `title`-Attribute als alleinige Erklärung
+ * gibt es hier nicht — ein `title` ist weder ein Name noch erscheint es bei Tastaturbedienung.
+ *
+ * Regel- und Issue-Nummern stehen in den Bedienhinweisen bewusst NICHT — das sind
+ * Bedientexte, keine Quellenangaben.
+ */
+const AX_TEXTE = {
+  'fmt': ['Blattformat',
+    'Wählt das Papierformat von Vorschau und Druck — A3 quer oder A4 quer. Der Maßstab wird '
+    + 'für das gewählte Format neu bestimmt; am Blattinhalt ändert sich nichts.'],
+  'planinhalt': ['Planinhalt (Titel im Schriftfeld)',
+    'Kurzer Titel dieser Zeichnung. Er steht im Schriftfeld des Blattes; bleibt das Feld leer, '
+    + 'gilt „Wandabwicklung“.'],
+  'masse': ['Bemaßung',
+    'Zeigt oder verbirgt die Maßketten der Wand. Die Zeichnung bleibt in beiden Fällen '
+    + 'maßstabsgetreu; gerechnet wird nichts neu.'],
+  'steintypen': ['Steintypen beschriften',
+    'Schreibt die Steinart in jeden gezeichneten Stein. Betrifft nur die Beschriftung — '
+    + 'Steinverband, Mengen und Stückliste bleiben unverändert.'],
+  'wm': ['Vorabzug (Wasserzeichen)',
+    'Legt den Schriftzug „Vorabzug“ über das Blatt und kennzeichnet es damit als noch nicht '
+    + 'freigegeben. Der Blattinhalt bleibt vollständig lesbar.'],
+  'kd-planverfasser': ['Planverfasser',
+    'Büro oder Person, die den Plan verfasst. Die Angabe wird am Projekt gespeichert und gilt '
+    + 'für alle seine Wände, erscheint aber auf keinem Blatt — das Schriftfeld führt sie nicht.'],
+  'kd-phase': ['Phase',
+    'Leistungs- oder Planungsphase, etwa Ausführungsplanung. Die Angabe wird am Projekt '
+    + 'gespeichert und gilt für alle seine Wände, erscheint aber auf keinem Blatt — das '
+    + 'Schriftfeld führt sie nicht.'],
+  'kd-plannr': ['Plan-Nr.',
+    'Nummer dieses Plans. Sie steht im Schriftfeld des Blattes; ein leeres Feld entfernt die '
+    + 'Angabe, und die Zeile entfällt dort ersatzlos.'],
+  'kd-index': ['Index (Änderungsstand)',
+    'Änderungsstand dieses Plans. Er steht im Schriftfeld des Blattes; ein leeres Feld '
+    + 'entfernt die Angabe, und die Zeile entfällt dort ersatzlos.'],
+  'kd-gez': ['Gez. (Kürzel)',
+    'Kürzel der zeichnenden Person. Es steht im Schriftfeld des Blattes; ein leeres Feld '
+    + 'entfernt die Angabe, und die Zeile entfällt dort ersatzlos.'],
+  'print': ['Blatt drucken',
+    'Öffnet den Druckdialog für dieses Blatt. Gedruckt wird genau die gezeigte Vorschau in '
+    + 'echter Papiergröße; Bedienelemente entfallen dabei.'],
+};
+/**
+ * Die Häkchen bekommen ihren Namen von ihrer SICHTBAREN Beschriftung; ein zweiter Name am
+ * Element widerspräche dem Text daneben. Ihren Zustand melden sie von Haus aus (gesetzt/nicht
+ * gesetzt). Der Tooltip wird zusätzlich am umgebenden Label ausgelöst — beide zeigen auf
+ * DENSELBEN Textknoten, es entsteht also keine zweite Aussage.
+ */
+const AX_HAEKCHEN = { 'masse':'lbl-masse', 'steintypen':'lbl-steintypen', 'wm':'lbl-wm' };
+/**
+ * Zustandszeilen, die den aktuellen Stand EINES Bedienelements sichtbar nennen: die
+ * Blattwahl meldet ihn über die Blattgrößenzeile der Übersicht (gewähltes Format samt
+ * Blatt- und Feldmaß), die fünf Plankopffelder über die Statuszeile des Plankopfs (an
+ * welchem Projekt gepflegt wird — oder warum gerade nicht). Sie werden ERGÄNZEND verknüpft;
+ * die dauerhafte Erklärung bleibt daneben stehen, und es entsteht kein zweiter Text.
+ */
+const AX_ZUSTAND = { 'fmt':'ovSheet', 'kd-planverfasser':'kd-status', 'kd-phase':'kd-status',
+  'kd-plannr':'kd-status', 'kd-index':'kd-status', 'kd-gez':'kd-status' };
+function axBenennen(){
+  if(!AX) return;
+  for(const id of Object.keys(AX_TEXTE)){
+    const el=$(id); if(!el) continue;
+    const [name,besch]=AX_TEXTE[id];
+    if(!AX_HAEKCHEN[id]) AX.benenne(el,name);
+    const bid=AX.beschreibe(el,besch);
+    if(AX_HAEKCHEN[id]) AX.tippZiel($(AX_HAEKCHEN[id]),bid);
+    const zus=AX_ZUSTAND[id]?$(AX_ZUSTAND[id]):null;
+    if(zus) AX.ergaenzeBeschreibung(el,zus);
+  }
+}
+/**
+ * Ein Plankopffeld als ungültig kennzeichnen bzw. die Kennzeichnung zurücknehmen.
+ *
+ * Der GRUND ist die sichtbare Meldezeile des Plankopfs — es wird kein zweiter, nur
+ * vorgelesener Wortlaut erfunden. Ohne den Baustein passiert nichts; bedienbar bleibt die
+ * Seite unverändert.
+ */
+function axUngueltig(el, ja){ if(AX&&el) AX.ungueltig(el, ja?$('kd-msg'):null); }
 
 /** Darstellungsoptionen aus den Bedienelementen lesen (normalisiert). */
 function optionenAusUi(){
@@ -309,7 +392,7 @@ function kopfdatenZiel(){
   if(!id) return {ok:false, grund:'Kein aktives Wandelement — in „Start“ anlegen oder wählen.'};
   if(store.wirksameKopfdaten(id).quelle !== 'projekt'){
     return {ok:false, grund:'Diese Wand ist keinem Projekt zugeordnet — Kopfdaten gehören zum '
-      + 'Projekt ([L-11]). Angezeigt wird nur der Altbestand am Wandelement; hier wird nichts '
+      + 'Projekt. Angezeigt wird nur der Altbestand am Wandelement; hier wird nichts '
       + 'gespeichert. Die Wand ist zuerst in „Start“ einem Geschoss zuzuordnen.'};
   }
   const ort = store.wandVerortung ? store.wandVerortung(id) : null;
@@ -318,7 +401,7 @@ function kopfdatenZiel(){
   if(ort.mappe.projekt.id !== aktiv){
     return {ok:false, grund:'Das Projekt dieser Wand („'+ort.mappe.projekt.name+'“) ist nicht das '
       + 'aktive Projekt — hier wird nichts gespeichert, damit die Angabe nicht in ein fremdes '
-      + 'Projekt gerät. Zuerst in „Start“ dieses Projekt aktiv setzen ([L-10]).'};
+      + 'Projekt gerät. Zuerst in „Start“ dieses Projekt aktiv setzen.'};
   }
   return {ok:true, projekt: ort.mappe.projekt.name};
 }
@@ -327,30 +410,60 @@ function kopfdatenZiel(){
 function kdMelde(text){ $('kd-msg').textContent = text || ''; }
 
 /**
- * Bedienbarkeit und Statuszeile des Plankopfs nachführen. Ist kein Schreibweg da,
- * werden die Felder gesperrt statt eine Pflege vorzutäuschen, die nichts speichert.
+ * Statuszeile des Plankopfs nachführen und die fünf Felder auf den Pflegezustand stellen.
+ *
+ * Ohne Schreibweg sind die Felder **schreibgeschützt** (`readonly`) und **als deaktiviert
+ * ausgezeichnet** (`aria-disabled`) — nicht `disabled` (#144/#145). Der Unterschied ist der
+ * ganze Punkt: ein `disabled`-Feld ist nicht fokussierbar, sein Name und sein Grund werden
+ * also nie angesagt; ein schreibgeschütztes Feld springt die Tastatur an, die Vorlesehilfe
+ * nennt Namen, Zustand und den Grund (er hängt als Beschreibung am Feld) — und eintippen
+ * lässt sich trotzdem nichts, was danach verworfen würde. Sobald ein Schreibweg da ist,
+ * fallen beide Kennzeichen weg und die Felder sind ganz normal pflegbar.
  */
 function kopfdatenUiStand(){
   const ziel=kopfdatenZiel();
-  for(const key in KD_FELDER) $(KD_FELDER[key]).disabled = !ziel.ok;
   $('kd-status').textContent = ziel.ok
-    ? 'Gepflegt am Projekt „'+ziel.projekt+'“ — die Angaben gelten für alle Wände dieses Projekts ([L-11]).'
+    ? 'Gepflegt am Projekt „'+ziel.projekt+'“ — die Angaben gelten für alle Wände dieses Projekts.'
     : ziel.grund;
+  for(const key in KD_FELDER){
+    const el=$(KD_FELDER[key]);
+    el.readOnly = !ziel.ok;
+    if(ziel.ok){
+      if(el.removeAttribute) el.removeAttribute('aria-disabled');
+      axUngueltig(el, false);
+    } else if(el.setAttribute) el.setAttribute('aria-disabled','true');
+  }
   return ziel;
 }
 
-/** Kopfdatum geändert: prüfen, am Projekt speichern, Blatt unmittelbar neu zeichnen. */
-function kopfdatenGeaendert(){
+/**
+ * Kopfdatum geändert: prüfen, am Projekt speichern, Blatt unmittelbar neu zeichnen.
+ *
+ * `feldId` benennt das tatsächlich bediente Feld. Wird der Speicherversuch benannt
+ * abgewiesen, wird GENAU dieses Feld als ungültig gekennzeichnet und auf den sichtbaren
+ * Grund verwiesen — die übrigen vier bleiben unberührt, denn an ihnen hat niemand etwas
+ * versucht.
+ *
+ * Das übliche Tor dorthin ist der **Wurf aus `store.setzeKopfdaten`**: der Schreibweg kann
+ * scheitern, nachdem die Oberfläche gezeichnet wurde — etwa wenn sich das aktive Projekt
+ * zwischen Rendern und Speichern ändert. Der Zweig darüber (kein Schreibweg) ist seltener,
+ * weil ein schreibgeschütztes Feld gar keine Änderung mehr auslöst; er bleibt als zweite
+ * Schranke stehen und speichert ebenfalls nichts.
+ */
+function kopfdatenGeaendert(feldId){
+  const feld = feldId ? $(feldId) : null;
   const ziel=kopfdatenUiStand();
-  if(!ziel.ok){ uiAusKopfdaten(EING.projekt); kdMelde(ziel.grund); return; }
+  if(!ziel.ok){ uiAusKopfdaten(EING.projekt); kdMelde(ziel.grund); axUngueltig(feld,true); return; }
   try {
     _selfSave=true;
     store.setzeKopfdaten(kopfdatenAusUi());
   } catch(e){
     uiAusKopfdaten(EING.projekt);                 // nichts gespeichert ⇒ nichts anzeigen
     kdMelde('Nicht gespeichert: '+((e && e.message) || e));
+    axUngueltig(feld,true);
     return;
   } finally { _selfSave=false; }
+  axUngueltig(feld,false);
   // Frisch aus der EINEN Quelle nachlesen statt die Eingabe zu spiegeln — so steht im
   // Blatt genau das, was gespeichert ist. Der Abonnent unten ist für den eigenen
   // Schreibvorgang durch `_selfSave` stillgelegt, deshalb hier ausdrücklich.
@@ -457,7 +570,10 @@ function bindEvents(){
   $('steintypen').addEventListener('change',optionGeaendert);
   $('wm').addEventListener('change',optionGeaendert);
   $('planinhalt').addEventListener('change',optionGeaendert);
-  for(const key in KD_FELDER) $(KD_FELDER[key]).addEventListener('change',kopfdatenGeaendert);
+  for(const key in KD_FELDER){
+    const id=KD_FELDER[key];
+    $(id).addEventListener('change',()=>kopfdatenGeaendert(id));
+  }
   $('print').addEventListener('click',()=>{ if(!WALL){ alert('Kein aktives Wandelement — in „Start“ anlegen oder wählen.'); return; } window.print(); });
   // Fenstergroesse geaendert: nur den Bildschirmfaktor nachziehen, nicht neu zeichnen.
   if(window.addEventListener) window.addEventListener('resize',setzeVorschauMassstab);
@@ -473,7 +589,9 @@ window.__zInit=function(){
   standardOptionen=S.standardOptionen; druckCss=S.druckCss;
   ZEICHNUNG_CSS=S.ZEICHNUNG_CSS; BLATT=S.BLATT; blattInnen=S.blattInnen;
   wandelementAktualisiert=S.wandelementAktualisiert; STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
+  AX=S.AX;
   $('zcss').textContent=ZEICHNUNG_CSS;      // Blatt-CSS aus dem gemeinsamen Baustein
+  axBenennen();
   bindEvents();
   setupStoreSync();
   loadInitial();
@@ -489,8 +607,12 @@ window.__zInit=function(){
   import { wandelementAktualisiert, STAND_GRUND } from './shared/sembla-wandanlage.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
   import { mountNavbar } from './shared/navbar.js';
+  // #144/#145: der EINE Accessibility-Baustein der Suite — nichts davon wird hier nachgebaut.
+  import * as AX from './shared/sembla-ax.js';
   window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
-    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen } };
+    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen }, AX };
+  AX.stilEinhaengen();
+  AX.tooltips();
   mountNavbar(7);
   window.__zInit();
 </script>

@@ -46,11 +46,20 @@ class El {
     this.style = { setProperty(k, v) { this[k] = v; } };
     this.clientWidth = 0;
     this.checked = false; this.listeners = {}; this.kinder = [];
+    // #144/#145: der Accessibility-Baustein arbeitet ueber Attribute (aria-label,
+    // aria-describedby, aria-invalid) und haengt seine Beschreibungsknoten neben das
+    // Bedienelement. Das Double fuehrt beides wirklich mit — sonst liefe genau die
+    // gepruefte Logik daran vorbei.
+    this.attrs = {}; this.parentNode = null; this.isConnected = true;
   }
   addEventListener(e, f) { (this.listeners[e] || (this.listeners[e] = [])).push(f); }
   dispatch(e) { (this.listeners[e] || []).forEach(f => f({ target: this })); }
-  setAttribute() {} click() {}
-  appendChild(c) { this.kinder.push(c); return c; }
+  setAttribute(n, v) { this.attrs[n] = String(v); if (n === "id") { this.id = String(v); _e[String(v)] = this; } }
+  getAttribute(n) { return Object.prototype.hasOwnProperty.call(this.attrs, n) ? this.attrs[n] : null; }
+  removeAttribute(n) { delete this.attrs[n]; }
+  insertBefore(k) { if (k) { k.parentNode = this; this.kinder.push(k); } return k; }
+  click() {}
+  appendChild(c) { if (c) { c.parentNode = this; this.kinder.push(c); } return c; }
   get innerHTML() { return this._h; }
   set innerHTML(v) { this._h = v; this.kinder = []; }         // Markup ersetzt Kindknoten
   /** Wie im Browser: liest den Text aller Nachfahren, Zuweisung ersetzt sie. */
@@ -62,6 +71,9 @@ const document = {
   getElementById: id => _e[id] || (_e[id] = new El("div", id)),
   createElement: tag => new El(tag, "_"),
 };
+// Ein echtes Body-Element: dort landen die Beschreibungsknoten, wenn ein Bedienelement
+// im Double keinen Elternknoten hat.
+document.body = new El("body", "body");
 globalThis.document = document;
 // Fensterereignisse (nur `resize` wird genutzt: Bildschirmfaktor nachziehen, #61).
 const _fenster = {};
@@ -88,6 +100,8 @@ const ENG7 = await import("../../docs/shared/sembla-engine.js");
 // #97: die GETEILTE Symbolquelle — verglichen wird gegen sie, damit das Blatt keine eigene
 // Geometrie fuehrt ([D-4]); `wirksameZwischenpunkte` ist die eine Ableitung der Punkte.
 const MONT = await import("../../docs/shared/sembla-montage.js");
+// #144/#145: der EINE Accessibility-Baustein — im Browser genauso ueber window.SEMBLA gebunden.
+const AX = await import("../../docs/shared/sembla-ax.js");
 const { wirksameZwischenpunkte } = await import("../../docs/shared/sembla-core.js");
 
 const html = readFileSync(new URL("../../docs/zeichnung.html", import.meta.url), "utf8");
@@ -136,7 +150,7 @@ const idW = stelleAktiv(W, { zeichnung: { format: "a3", masse: true, steintypen:
 
 globalThis.window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
   wandelementAktualisiert: WA.wandelementAktualisiert, STAND_GRUND: WA.STAND_GRUND,
-  ENG: { autoAuslegung: ENG7.autoAuslegung, nachweisPruefen: ENG7.nachweisPruefen } };
+  ENG: { autoAuslegung: ENG7.autoAuslegung, nachweisPruefen: ENG7.nachweisPruefen }, AX };
 
 // App-Logik evaluieren und wie im Browser initialisieren.
 new Function(script)();
@@ -575,8 +589,11 @@ store.setzeAktiv(idW);
   ok("[#68] die Felder zeigen die gespeicherten Kopfdaten des Projekts der aktiven Wand",
     $("kd-planverfasser").value === "Polycare" && $("kd-phase").value === "Ausführungsplanung"
     && $("kd-plannr").value === "A-12" && $("kd-index").value === "2" && $("kd-gez").value === "TB");
-  ok("[#68] die Statuszeile benennt das Projekt, an dem gepflegt wird",
-    /Rettungswache/.test($("kd-status").textContent) && $("kd-plannr").disabled === false);
+  ok("[#68] die Statuszeile benennt das Projekt, an dem gepflegt wird — und mit Schreibweg "
+    + "sind die Felder ganz normal pflegbar",
+    /Rettungswache/.test($("kd-status").textContent)
+    && $("kd-plannr").readOnly === false && !$("kd-plannr").getAttribute("aria-disabled")
+    && !$("kd-plannr").getAttribute("aria-invalid"));
   ok("[#68] Projektname und Bauherrenschaft sind hier NICHT bearbeitbar",
     !/<input[^>]*id="kd-(name|bauherr|projekt)"/.test(html));
 
@@ -635,8 +652,18 @@ store.setzeAktiv(idW);
   store.setzeAktiv(idFrei);
   const kopfVorFrei = JSON.stringify(kopfIst());
   const prjVorFrei = localStorage.getItem("sembla:projekte");
-  ok("[#68] ohne Projektzuordnung sind die Felder gesperrt und der Grund steht benannt da",
-    $("kd-plannr").disabled === true && $("kd-planverfasser").disabled === true
+  // #144/#145: „deaktivierte und schreibgeschuetzte Felder bleiben korrekt erkennbar" — der
+  // gesperrte Zustand bleibt also erhalten, wird aber ANSAGBAR. Statt `disabled` (nicht
+  // fokussierbar, Name und Grund werden nie vorgelesen) tragen die Felder `readonly` +
+  // `aria-disabled`: die Tastatur springt sie an, Name, Zustand und Grund werden genannt,
+  // und eintippen laesst sich nichts, was danach verworfen wuerde.
+  ok("[#68] ohne Projektzuordnung sind die Felder erreichbar, aber schreibgeschuetzt und als "
+    + "deaktiviert ausgezeichnet — mit dem Grund als Beschreibung am Feld",
+    ["kd-plannr", "kd-planverfasser", "kd-phase", "kd-index", "kd-gez"].every(i => {
+      const el = $(i);
+      return !el.disabled && el.readOnly === true
+        && el.getAttribute("aria-disabled") === "true"
+        && String(el.getAttribute("aria-describedby") || "").split(/\s+/).includes("kd-status"); })
     && /keinem Projekt zugeordnet/.test($("kd-status").textContent));
   $("kd-plannr").value = "X-1"; $("kd-plannr").dispatch("change");
   ok("[#68] eine Eingabe an einer projektlosen Wand speichert nichts und wird gemeldet",
@@ -937,6 +964,151 @@ ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.te
 
   store.setzeAktiv(idW);
 }
+
+// ---- #144/#145: Namen, Beschreibungen, Zustaende und benannter Fehlzustand (Modul 7) ------
+//
+// Gefahren wird der REALE Nutzerpfad dieser Seite: der echte Speicherstand (Projekt ->
+// Geschoss -> Wand mit Kopfdaten am Projekt), die echten Bedienelemente und das
+// TATSAECHLICH erzeugte DOM. Benannt wird ausschliesslich ueber den gemeinsamen Baustein
+// `sembla-ax.js`; die Kopfdaten laufen unveraendert ueber `store.setzeKopfdaten` ([L-11]).
+{
+  store.setzeAktiv(idW);
+  globalThis.window.__zInit();
+
+  /** Name, Beschreibung(en) und Zustand EINES festen Bedienelements. */
+  const ax = (id) => {
+    const el = document.getElementById(id);
+    const ids = String(el.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+    return { el, name: el.getAttribute("aria-label"), beschreibungIds: ids,
+      beschreibungId: ids[0] || null,
+      beschreibung: ids.map(i => String(document.getElementById(i).textContent || "")).join(" ").trim(),
+      tip: el.getAttribute("data-ax-tip"), invalid: el.getAttribute("aria-invalid") };
+  };
+
+  // (a) Akzeptanztest 1: jedes feste Bedienelement hat Name UND eigene Beschreibung.
+  const tabelle = (html.match(/const AX_TEXTE = \{[\s\S]*?\n\};/) || [""])[0];
+  const axIds = [...tabelle.matchAll(/\n  '([\w-]+)':/g)].map(m => m[1]);
+  const PFLICHT = ["fmt", "planinhalt", "masse", "steintypen", "wm",
+    "kd-planverfasser", "kd-phase", "kd-plannr", "kd-index", "kd-gez", "print"];
+  const HAEKCHEN = ["masse", "steintypen", "wm"];
+  ok("[#144] die Namenstabelle deckt alle festen Bedienelemente von Modul 7 ab",
+    PFLICHT.every(i => axIds.includes(i)) && axIds.length === PFLICHT.length);
+  ok("[#144] jedes feste Bedienelement traegt Name und eigene Beschreibung — das Haekchen "
+    + "seinen Namen aus der sichtbaren Beschriftung",
+    axIds.length > 0 && axIds.every(i => { const a = ax(i);
+      const name = HAEKCHEN.includes(i) ? a.name === null : (!!a.name && a.name.length <= 45);
+      return name && a.beschreibung.length > 15 && a.tip === a.beschreibungId; }));
+  ok("[#145] die Haekchen tragen keinen zweiten Namen, ihr Label loest denselben Tooltip aus",
+    HAEKCHEN.every(i => ax(i).name === null && !!ax(i).tip
+      && document.getElementById("lbl-" + i).getAttribute("data-ax-tip") === ax(i).tip));
+  ok("[#144] kein Bedienelement haengt noch an einem blossen `title`", !/\stitle=/.test(html));
+
+  // (b) Muss 4: Regel- und Issue-Nummern stehen in keinem Bedienhinweis mehr — weder in der
+  //     Namenstabelle noch in den sichtbaren Texten des Bedienfeldes.
+  // Nur die SICHTBAREN Texte des Bedienfeldes — Quellkommentare duerfen ihre Regelbezuege
+  // behalten, sie stehen niemandem im Weg.
+  const bedienfeld = html.slice(html.indexOf('<div class="panel controls">'),
+    html.indexOf('<div class="panel stage">')).replace(/<!--[\s\S]*?-->/g, "");
+  ok("[#144] in den Bedienhinweisen stehen keine Regel- oder Issue-Nummern mehr",
+    !/\[[A-Z]-\d+\]|#\d\d/.test(tabelle) && !/\[[A-Z]-\d+\]/.test(bedienfeld)
+    && axIds.every(i => !/\[[A-Z]-\d+\]|#\d\d/.test(ax(i).beschreibung))
+    && !/\[[A-Z]-\d+\]/.test($("kd-status").textContent));
+
+  // (c) Akzeptanztest 2: Planverfasser und Phase sagen ausdruecklich, dass sie gespeichert
+  //     werden, aber auf KEINEM Blatt erscheinen ([D-8], Option A); die drei anderen nennen
+  //     das Schriftfeld.
+  ok("[#145] die Beschreibung von Planverfasser und Phase nennt Speicherung UND dass die "
+    + "Angabe auf keinem Blatt erscheint",
+    ["kd-planverfasser", "kd-phase"].every(i => {
+      const b = ax(i).beschreibung;
+      return /gespeichert/i.test(b) && /keinem Blatt/i.test(b); }));
+  ok("[#145] die Beschreibung von Plan-Nr., Index und Gez. nennt das Schriftfeld",
+    ["kd-plannr", "kd-index", "kd-gez"].every(i => /Schriftfeld/i.test(ax(i).beschreibung))
+    && !["kd-plannr", "kd-index", "kd-gez"].some(i => /keinem Blatt/i.test(ax(i).beschreibung)));
+
+  // (d) Muss 4: Blattwahl und Darstellungsoptionen melden ihren Zustand semantisch — die
+  //     Blattwahl zusaetzlich ueber die sichtbare Blattgroessenzeile der Uebersicht.
+  ok("[#145] die Blattwahl traegt einen eigenen Namen und meldet ihren Zustand ueber die "
+    + "sichtbare Blattgroesse",
+    /^Blattformat/.test(ax("fmt").name || "")
+    && ax("fmt").beschreibungIds.length === 2 && ax("fmt").beschreibungIds[1] === "ovSheet"
+    && /A\d quer/.test($("ovSheet").textContent));
+  ok("[#145] die Darstellungsoptionen sind echte Haekchen und melden ihren Zustand selbst",
+    HAEKCHEN.every(i => new RegExp('<input type="checkbox" id="' + i + '"').test(html)));
+  ok("[#145] die fuenf Plankopffelder melden den Pflegezustand ueber die sichtbare Statuszeile",
+    ["kd-planverfasser", "kd-phase", "kd-plannr", "kd-index", "kd-gez"]
+      .every(i => ax(i).beschreibungIds.length === 2 && ax(i).beschreibungIds[1] === "kd-status"));
+
+  // (e) Akzeptanztest 3 / Muss 3: ein benannt abgewiesener Speicherversuch macht GENAU das
+  //     bediente Feld ungueltig, verweist auf den sichtbaren Grund und schreibt nichts.
+  //
+  //     Gefahren wird das Tor, das die Oberflaeche real offen laesst: der Wurf aus
+  //     `store.setzeKopfdaten`. Der Schreibweg kann scheitern, NACHDEM die Seite gezeichnet
+  //     wurde — etwa wenn sich das aktive Projekt zwischen Rendern und Speichern aendert.
+  //     (Der Fall „gar kein Schreibweg" fuehrt seit #144/#145 zu einem schreibgeschuetzten
+  //     Feld, loest also gar keine Aenderung mehr aus — er ist oben im #68-Block geprueft.)
+  {
+    const echterStore7 = globalThis.window.SEMBLA.store;
+    const kopfVorAx = JSON.stringify(kopfIst());
+    const prjVorAx = localStorage.getItem("sembla:projekte");
+    const elVorAx = localStorage.getItem("sembla:elemente");
+    globalThis.window.SEMBLA.store = { ...echterStore7,
+      setzeKopfdaten() { throw new Error("Kein aktives Projekt — Kopfdaten gehören zum Projekt."); } };
+    globalThis.window.__zInit();
+    ok("[#145] Pruefaufbau: die Wand ist pflegbar, das Feld also nicht schreibgeschuetzt",
+      $("kd-plannr").readOnly === false && !$("kd-plannr").getAttribute("aria-disabled"));
+    $("kd-plannr").value = "Z-9"; $("kd-plannr").dispatch("change");
+    ok("[#145] der abgewiesene Speicherversuch macht genau dieses Feld ungueltig und verweist "
+      + "auf den sichtbaren Grund",
+      ax("kd-plannr").invalid === "true"
+      && ax("kd-plannr").beschreibungIds.includes("kd-msg")
+      && $("kd-msg").textContent.length > 15
+      && ["kd-planverfasser", "kd-phase", "kd-index", "kd-gez"]
+        .every(i => ax(i).invalid === null));
+    ok("[#145] und es wird dabei nichts gespeichert ([L-10]/[P-9])",
+      JSON.stringify(kopfIst()) === kopfVorAx
+      && localStorage.getItem("sembla:projekte") === prjVorAx
+      && localStorage.getItem("sembla:elemente") === elVorAx
+      && $("kd-plannr").value !== "Z-9");
+    globalThis.window.SEMBLA.store = echterStore7;
+    globalThis.window.__zInit();
+  }
+
+  // Ein wieder gueltiger Pflegezustand nimmt Kennzeichnung und Fehlerverweis zurueck — die
+  // dauerhafte Zustandsbeschreibung bleibt dabei stehen.
+  ok("[#145] ein wieder pflegbares Feld nimmt Kennzeichnung und Fehlerverweis zurueck",
+    ax("kd-plannr").invalid === null
+    && !ax("kd-plannr").beschreibungIds.includes("kd-msg")
+    && ax("kd-plannr").beschreibungIds[1] === "kd-status");
+  $("kd-gez").value = "TB"; $("kd-gez").dispatch("change");
+  ok("[#145] ein angenommener Speicherversuch kennzeichnet nichts und schreibt ueber den "
+    + "EINEN Weg",
+    kopfIst().gez === "TB" && ax("kd-gez").invalid === null);
+
+  // (f) must-not: der Baustein wird benutzt, nicht nachgebaut — und legt kein Feld an.
+  ok("[#145] (must-not) Modul 7 baut den Baustein nicht nach — es benutzt ihn",
+    /import \* as AX from '\.\/shared\/sembla-ax\.js'/.test(html) && /AX=S\.AX;/.test(html)
+    && !/function (benennung|modalDialog|tooltips|ungueltig)\(/.test(html));
+  ok("[#145] (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt",
+    store.SCHEMA_VERSION === 6 && store.PROJEKT_VERSION === 2
+    && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem("sembla:elemente") || "")
+    && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem("sembla:projekte") || ""));
+
+  // (g) Akzeptanztest 4: die erzeugte Zeichnung ist zeichenkettengleich zum Stand OHNE
+  //     Benennung — das Blatt kommt unveraendert aus dem gemeinsamen Baustein ([D-6]).
+  const mitAx = $("blattwrap").innerHTML;
+  globalThis.window.SEMBLA.AX = undefined;
+  globalThis.window.__zInit();
+  const ohneAx = $("blattwrap").innerHTML;
+  globalThis.window.SEMBLA.AX = AX;
+  globalThis.window.__zInit();
+  ok("[#144] die erzeugte Zeichnung ist zeichenkettengleich zum Stand ohne Benennung",
+    mitAx === ohneAx && mitAx === blattHtml(Z.wall, eingIst(), Z.opt).html
+    // Das Blatt traegt keine Spur des Bausteins — die eigenen `aria-label` der Zeichnung
+    // (aus sembla-zeichnung.js) bleiben davon unberuehrt.
+    && !/ax-b-|data-ax-tip|aria-describedby|aria-invalid/.test(mitAx));
+}
+
 
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
