@@ -91,18 +91,41 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // und Wertfelder des Sammel-Editors und tastaturfeste Bedienblaetter im Geschosseditor. NICHT
 // versprochen werden numerische Alternativen zum Zeichnen, die uebrigen Module, eine
 // Fachregelaenderung oder ein neues gespeichertes Feld.
-const AX_145 = EINTRAEGE[0];
-ok("[#145] die zugaengliche Bedienung des Geschosseditors ist der neueste Eintrag",
+// Der NEUESTE Eintrag ist die ZUGAENGLICHKEIT VON MODUL 1 (#145) — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+//
+// Aussagewahr heisst hier: geliefert sind benannte Bedienelemente MIT EINHEIT, Erklaerungen
+// als getrennte Beschreibung, gemeldete Werkzeugzustaende und ein tastaturfester
+// Reparaturdialog in Modul 1. NICHT versprochen werden eine geaenderte Auslegung, eine
+// Fachregelaenderung oder ein neues gespeichertes Feld.
+const AX_M1 = EINTRAEGE[0];
+ok("[#145] die zugaengliche Bedienung von Modul 1 ist der neueste Eintrag",
+  AX_M1?.id === "chg-20260923-01" && AX_M1?.issue === 145
+  && AX_M1?.typ === "feature" && AX_M1?.datum === "2026-09-23"
+  && /Modul 1/.test(AX_M1?.titel || ""));
+ok("[#145] der Eintrag benennt beide Seiten: Benennung UND Dialogbedienung",
+  /[Bb]enannte Bedienelemente/.test(AX_M1?.titel || "")
+  && /Einheit/.test(AX_M1?.titel || "")
+  && /[Bb]eschreibung/.test(AX_M1?.titel || "")
+  && /Reparaturdialog/.test(AX_M1?.titel || ""));
+ok("[#145] der Eintrag verspricht keine Fachaenderung",
+  !/Regel|Rechenlogik|Stückliste|Vorspannung|Format/i.test(AX_M1?.titel || ""));
+ok("[#145] die Testbitte nennt den Tastaturweg und das Fokusverhalten",
+  /Tastatur/.test(AX_M1?.testbitte || "") && /Fokus/.test(AX_M1?.testbitte || "")
+  && /Einheit/.test(AX_M1?.testbitte || ""));
+const AX_145 = EINTRAEGE.find(e => e.id === "chg-20260922-03");
+ok("[#145] die zugaengliche Bedienung des Geschosseditors steht in der Reihe",
   AX_145?.id === "chg-20260922-03" && AX_145?.issue === 145
   && AX_145?.typ === "feature" && AX_145?.datum === "2026-09-22"
   && /Geschosseditor/.test(AX_145?.titel || ""));
-ok("[#145] der Eintrag benennt beide Seiten: Benennung UND Bedienblaetter",
+ok("[#145] der Geschosseditor-Eintrag benennt Benennung UND Bedienblaetter",
   /[Bb]enannte Bedienelemente/.test(AX_145?.titel || "")
   && /beschriftete/.test(AX_145?.titel || "")
   && /Bedienblätter/.test(AX_145?.titel || ""));
-ok("[#145] der Eintrag verspricht keine Fachaenderung",
+ok("[#145] der Geschosseditor-Eintrag verspricht keine Fachaenderung",
   !/Regel|Rechenlogik|Stückliste|Vorspannung|Format/i.test(AX_145?.titel || ""));
-ok("[#145] die Testbitte nennt den Tastaturweg und die Abbruchsemantik",
+ok("[#145] die Geschosseditor-Testbitte nennt Tastaturweg und Abbruchsemantik",
   /Tastatur/.test(AX_145?.testbitte || "") && /Fokus/.test(AX_145?.testbitte || "")
   && /Escape/.test(AX_145?.testbitte || ""));
 const AX_144 = EINTRAEGE.find(e => e.id === "chg-20260922-02");

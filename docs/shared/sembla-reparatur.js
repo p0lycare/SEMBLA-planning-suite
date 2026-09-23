@@ -37,6 +37,11 @@
 
 import * as store from "./storage.js";
 import * as KAT from "./sembla-katalog.js";
+// #145 Der EINE Accessibility-Baustein der Suite: Rolle, Name, Fokus in den Dialog,
+// Fokusfalle, gesperrter Hintergrund und Fokusrueckgabe. Hier wird davon nichts nachgebaut —
+// und es entsteht kein zweiter Abbruchweg: Escape ruft genau die Abbruchfunktion, die auch
+// die Schaltflaeche „Abbrechen" ruft, und die speichert nichts.
+import * as AX from "./sembla-ax.js";
 
 /** Einmalig eingehaengte Formatvorlage (die Seiten bringen nur ihre eigene mit). */
 let _stilDa = false;
@@ -108,7 +113,9 @@ export function wandBefund(modul, elementId, katalog) {
  * (Ersatzprodukt oder ausdruecklich „ersatzlos entfernen“).
  *
  * @param {{modul:number, elementId?:string, aufFertig?:()=>void,
- *          aufMeldung?:(text:string, ok:boolean)=>void}} opts
+ *          aufMeldung?:(text:string, ok:boolean)=>void,
+ *          ersatzFokus?:()=>any}} opts `ersatzFokus` nennt das Fokusziel fuer den Fall,
+ *   dass der ausloesende Knopf nach dem Uebernehmen neu gerendert wurde.
  */
 export function oeffneReparatur(opts) {
   const modul = Number(opts && opts.modul);
@@ -122,7 +129,7 @@ export function oeffneReparatur(opts) {
   const kat = st.katalog;
   if (!kat) {
     melde("Kein wirksamer Bauteilkatalog — ohne Katalog gibt es keine Ersatzprodukte "
-      + "zur Auswahl. Zuordnung in Modul 0 ([L-12]).", false);
+      + "zur Auswahl. Zugeordnet wird ein Katalog in Modul 0.", false);
     return;
   }
 
@@ -134,6 +141,7 @@ export function oeffneReparatur(opts) {
   }
 
   stilEinhaengen();
+  AX.stilEinhaengen();
 
   // Eine Zeile je (Rolle, fehlende Kennung): dieselbe Kennung kann an mehreren
   // Verwendungsstellen haengen, und dort gehoert sie zu unterschiedlichen Kandidaten.
@@ -142,9 +150,6 @@ export function oeffneReparatur(opts) {
 
   const ovl = document.createElement("div");
   ovl.className = "sbr-ovl";
-  ovl.setAttribute("role", "dialog");
-  ovl.setAttribute("aria-modal", "true");
-  ovl.setAttribute("aria-label", "Bauteile ohne Produkt im Katalog");
 
   const el = store.holeElement(elementId);
   const wandName = (el && el.name) || elementId;
@@ -192,7 +197,20 @@ export function oeffneReparatur(opts) {
 
   const wahl = new Array(zeilen.length).fill("");
   const btnOk = /** @type {HTMLButtonElement} */ (ovl.querySelector("#sbr-ok"));
-  const schliesse = () => { ovl.remove(); };
+
+  // #145 Rolle, Name, Fokusfuehrung und Hintergrundsperre kommen aus dem gemeinsamen
+  // Baustein. Der Abbruch bleibt die Funktion dieser Seite — Escape und Hintergrundklick
+  // laufen also durch denselben Weg wie „Abbrechen" und speichern nie.
+  const abbrechen = () => {
+    schliesse();
+    melde("Reparatur abgebrochen — die Produktauswahl der Wand ist unverändert.", true);
+  };
+  const dlg = AX.modalDialog({
+    overlay: ovl, name: "Bauteile ohne Produkt im Katalog", abbruch: abbrechen,
+    erstFokus: () => ovl.querySelector("select"),
+    ersatzFokus: (opts && opts.ersatzFokus) || null,
+  });
+  const schliesse = () => { ovl.remove(); dlg.schliesse(); };
 
   ovl.addEventListener("change", (ev) => {
     const t = /** @type {any} */ (ev.target);
@@ -201,17 +219,7 @@ export function oeffneReparatur(opts) {
     btnOk.disabled = wahl.some((w) => !w);
   });
 
-  ovl.querySelector("#sbr-ab").addEventListener("click", () => {
-    schliesse();
-    melde("Reparatur abgebrochen — die Produktauswahl der Wand ist unverändert.", true);
-  });
-
-  ovl.addEventListener("keydown", (ev) => {
-    if (ev && /** @type {any} */ (ev).key === "Escape") {
-      schliesse();
-      melde("Reparatur abgebrochen — die Produktauswahl der Wand ist unverändert.", true);
-    }
-  });
+  ovl.querySelector("#sbr-ab").addEventListener("click", abbrechen);
 
   ovl.querySelector("#sbr-ok").addEventListener("click", () => {
     if (wahl.some((w) => !w)) return;
@@ -238,7 +246,7 @@ export function oeffneReparatur(opts) {
       return;
     }
 
-    schliesse();
+    ovl.remove();
     const ersetzt = wahl.filter((w) => w !== "__weg__").length;
     const entfernt = wahl.length - ersetzt;
     melde("Reparatur übernommen: " + ersetzt + " Kennung(en) ersetzt"
@@ -246,8 +254,14 @@ export function oeffneReparatur(opts) {
     // Die Neurechnung nach [Z-1] gehoert der aufrufenden Seite — sie besitzt den
     // Auslegungspfad; hier wird sie nur ausgeloest.
     fertig();
+    // #145 Der Fokus geht ERST danach zurueck: die Neurechnung rendert die Rollenzeilen
+    // frisch, der ausloesende Knopf ist dann ein anderer Knoten. Steht er nicht mehr im
+    // Dokument, greift das von der Seite genannte Ersatzziel.
+    dlg.schliesse();
   });
 
-  const erstes = ovl.querySelector("select");
-  if (erstes) /** @type {any} */ (erstes).focus();
+  // Der Fokus geht in den Dialog (erste Auswahlzeile) und beim Schliessen an den
+  // ausloesenden Knopf zurueck — oder an den genannten Ersatz, wenn dieser inzwischen
+  // neu gerendert wurde.
+  dlg.oeffne();
 }

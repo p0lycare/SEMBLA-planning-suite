@@ -26,25 +26,61 @@ globalThis.localStorage = new MemStorage();
 
 const html=readFileSync(new URL("../../docs/wandplanung.html", import.meta.url),"utf8");
 const script=html.match(/<script>([\s\S]*?)<\/script>/)[1];   // das klassische (attributlose) Skript
-class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={setProperty(k,v){this[k]=v;}};this.listeners={};this._tb=null;this.checked=false;this.dataset={};}
+class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={setProperty(k,v){this[k]=v;}};this.listeners={};this._tb=null;this.checked=false;this.dataset={};
+  // #144/#145: der Accessibility-Baustein arbeitet ueber Attribute (aria-label,
+  // aria-describedby, aria-invalid, aria-pressed, role, inert). Das Double fuehrt sie
+  // deshalb wirklich mit — sonst liefe die gepruefte Logik an der echten Seite vorbei.
+  this.attrs={}; this.parentNode=null; this.isConnected=true; this._kinder=[]; this._qs={};
+  this.disabled=false; this.hidden=false;}
   addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);}
   // Ereignisobjekt darf vom Test gestellt werden (delegierte Hoerer auf gerenderten Elementen).
   dispatch(e,ev){(this.listeners[e]||[]).forEach(f=>f(ev||{target:this}));}
-  setAttribute(){}
+  setAttribute(n,v){ this.attrs[n]=String(v); if(n==='id'){ this.id=String(v); document._e[String(v)]=this; } }
+  getAttribute(n){ return Object.prototype.hasOwnProperty.call(this.attrs,n)?this.attrs[n]:null; }
+  removeAttribute(n){ delete this.attrs[n]; }
+  hasAttribute(n){ return Object.prototype.hasOwnProperty.call(this.attrs,n); }
+  insertBefore(k){ k.parentNode=this; this._kinder.push(k); return k; }
+  removeChild(k){ const i=this._kinder.indexOf(k); if(i>=0){ this._kinder.splice(i,1); k.parentNode=null; k.isConnected=false; } return k; }
+  remove(){ if(this.parentNode) this.parentNode.removeChild(this); this.isConnected=false; }
+  focus(){ document.activeElement=this; }
   // Anzeigerechteck: standardmaessig deckungsgleich mit dem viewBox (1000 breit, Hoehe offen ->
   // die Abbildung faellt auf die viewBox-Hoehe zurueck). Der #106-Abschnitt setzt `_rect`
   // ausdruecklich auf ein Rechteck mit Rand, Zoom und abweichendem Seitenverhaeltnis.
   getBoundingClientRect(){ return this._rect || {left:0,width:1000}; } get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
-  querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;} return new El('x'); }
-  querySelectorAll(){return [];} appendChild(){} }
+  // Der Reparaturdialog baut seinen Inhalt per innerHTML und greift danach ueber
+  // Selektoren darauf zu. Das Double kann kein HTML parsen — es liefert je Selektor
+  // DASSELBE Ersatzelement zurueck, damit Behandler und Fokus auf demselben Knoten
+  // landen wie im Browser.
+  querySelector(s){ if(s==='tbody'){ if(!this._tb)this._tb=new El('tb'); return this._tb;}
+    if(!this._qs[s]){ const e=new El('x'); e.parentNode=this; this._qs[s]=e; } return this._qs[s]; }
+  querySelectorAll(){return [];} appendChild(k){ if(k){ k.parentNode=this; this._kinder.push(k); } return k; } }
 const dv={len:'2.00',hgt:'2600',sideVorne:'fassade',sideHinten:'innenausbau',qk:'1.00',gammaQ:'1.50',modus:'auto',spacing:'3',force:'60',fcd:'20',cfd:'0.60',rho:'14',blechCm:'100',topConn:'blech',abdichtung:'nicht_abgedichtet',brandklasse:'F0'};
-const document={_e:{},getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement(){return new El('_');}};
-globalThis.document=document; globalThis.window={print:()=>{globalThis.__p=true;},
+const document={_e:{},activeElement:null,
+  getElementById(id){let e=this._e[id];if(!e){e=this._e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},
+  createElement(){return new El('_');},
+  querySelector(){return null;},
+  // Der Baustein sperrt den Hintergrund ueber `[data-ax-hintergrund]`; im Double stehen
+  // die Bereiche als angelegte Elemente bereit.
+  querySelectorAll(sel){ if(!/data-ax-hintergrund/.test(String(sel))) return [];
+    return Object.values(this._e).filter(e=>e.hasAttribute&&e.hasAttribute('data-ax-hintergrund')); },
+  head:{appendChild(){}}};
+// Ein echtes Body-Element: der Reparaturdialog haengt sich dort ein, und die
+// Beschreibungsknoten des Bausteins landen dort, wo eine Zeile keinen Elternknoten hat.
+document.body=new El('body');
+globalThis.document=document;
+// #145 Die Hintergrundbereiche stehen im Markup als `data-ax-hintergrund`; das Double liest
+// kein HTML und bekommt sie deshalb hier — gegen das Markup geprueft wird unten.
+document.getElementById('app').setAttribute('data-ax-hintergrund','');
+globalThis.window={print:()=>{globalThis.__p=true;},
   _h:{}, addEventListener(e,f){(this._h[e]||(this._h[e]=[])).push(f);},
   dispatch(e,ev){(this._h[e]||[]).forEach(f=>f(ev||{}));}}; globalThis.alert=()=>{};
 
 const store = await import("../../docs/shared/storage.js");
 const KAT = await import("../../docs/shared/sembla-katalog.js");
+// #144/#145 Der gemeinsame Accessibility-Baustein und der gemeinsame Reparaturdialog —
+// beide gebunden wie im Browser, damit die ECHTE Namens- und Dialoglogik geprueft wird.
+const AX = await import("../../docs/shared/sembla-ax.js");
+const REP = await import("../../docs/shared/sembla-reparatur.js");
 // Farbschluessel des Zuschnitts ([D-4]): Modul 1 fuehrt keine eigenen Hex-Werte, sondern
 // bezieht ihn — wie Modul 5/7 — aus sembla-montage.js.
 const MONT = await import("../../docs/shared/sembla-montage.js");
@@ -62,6 +98,7 @@ const ZEICH = await import("../../docs/shared/sembla-zeichnung.js");
 const startWand=Object.assign(buildWall('Wand A',2000,2600,[]),{wandtyp:'ohne_wind'});
 const idA=store.speichere('Wand A', startWand); store.setzeAktiv(idA);
 globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+  AX, oeffneReparatur: REP.oeffneReparatur,
   ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
   STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL,
   stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke,
@@ -1873,9 +1910,11 @@ ok('#56 Laengenfeld ist nur noch Anzeige (readonly im Markup)',
 ok('#56 kein indirekter Schreibweg: `len` haengt an keinem Ereignishoerer mehr',
   /\['hgt','qk','gammaQ'/.test(html) && !/\['len','hgt'/.test(html));
 // Seit #69 traegt den Verweis nicht mehr ein dauerhaft sichtbarer Absatz, sondern ein knapper
-// Tooltip AM Bedienelement — der Fundort der Laenge bleibt damit benannt (Absicht von #56).
+// Hinweis AM Bedienelement — der Fundort der Laenge bleibt damit benannt (Absicht von #56).
+// Seit #144/#145 steht er nicht mehr in einem `title` (das erschien nie bei Tastaturfokus),
+// sondern als eigene, verknuepfte Beschreibung in der Namenstabelle der Seite.
 ok('#56 die Oberflaeche verweist fuer die Laenge auf den Geschosseditor',
-  /<input type="number" id="len"[^>]*title="[^"]*Geschosseditor[^"]*"/.test(html));
+  /'len': \['Länge in Metern',\s*\n\s*'Nur Anzeige\. Geführt wird die Länge im Geschosseditor/.test(html));
 // Muss 7: andere fachliche Aenderungen rechnen weiter — mit der GESPEICHERTEN Laenge.
 const vorLaenge=store.aktivesWandelement().length_mm;
 document.getElementById('qk').value='2.0'; document.getElementById('qk').dispatch('input');
@@ -1959,9 +1998,15 @@ ok('[#69] Spannachsen-Werkzeug bedienbar: Achsgriffe erscheinen und verschwinden
   WP.setAxisEdit(true); const an=/cursor:grab/.test(document.getElementById('plan').innerHTML);
   WP.setAxisEdit(false);
   return an && !/cursor:grab/.test(document.getElementById('plan').innerHTML); })());
-ok('[#69] lange Bedienhilfen haengen als Tooltip am Bedienelement',
-  /id="axisTool"[^>]*title="[^"]+"/.test(LINKS) && /id="addStep"[^>]*title="[^"]+"/.test(LINKS)
-  && /id="topConn"[^>]*title="[^"]+"/.test(LINKS));
+// Seit #144/#145 haengen die langen Bedienhilfen nicht mehr an einem `title`, sondern als
+// eigene Beschreibung am Bedienelement — sichtbar als Tooltip bei Hover UND Tastaturfokus.
+ok('[#69] lange Bedienhilfen stehen als eigene Beschreibung am Bedienelement',
+  !/\stitle=/.test(LINKS)
+  && ['axisTool','addStep','topConn'].every(id=>{
+       const el=document.getElementById(id);
+       const bid=el.getAttribute('aria-describedby');
+       return !!bid && String(document.getElementById(bid).textContent||'').length>30
+         && el.getAttribute('data-ax-tip')===bid; }));
 WP.setManualCols(null);   // Achsen-Editor hinterlaesst keinen Zustand fuer die naechsten Abschnitte
 // Ebenfalls ausdruecklich Kopfblech (#92): die nachfolgenden Abschnitte messen
 // Kopfblech-Module am aktiven Wandelement.
@@ -4181,6 +4226,185 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     && !/c\.lage\*COURSE/.test(html) && !/\(c\.lage\+1\)\*COURSE/.test(html)
     && !/op\.l1\*COURSE/.test(html) && !/\(r\+0\.5\)\*COURSE/.test(html)
     && !/\(r\+1\)\*COURSE/.test(html));
+  store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
+// ---- #144/#145: Namen, Beschreibungen, Zustaende, ungueltige Felder, Dialog ----------
+//
+// Geprueft wird die ECHTE Seitenlogik: die Namensvergabe laeuft ueber den gemeinsamen
+// Baustein `sembla-ax.js`, der Reparaturdialog ueber dessen Dialogverwaltung. Bedient wird
+// ueber die realen Behandler der Seite, nicht ueber nachgebaute Zustaende.
+{
+  store.setzeAktiv(idA); store.setzeKatalog(KATALOG); globalThis.window.__wpInit();
+  /** Name, Beschreibung(en) und Zustand EINES Bedienelements. */
+  const ax=(id)=>{
+    const el=document.getElementById(id);
+    const ids=String(el.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean);
+    return { name: el.getAttribute('aria-label'), beschreibungIds: ids,
+      beschreibungId: ids[0]||null,
+      beschreibung: ids.map(i=>String(document.getElementById(i).textContent||'')).join(' ').trim(),
+      tip: el.getAttribute('data-ax-tip'), gedrueckt: el.getAttribute('aria-pressed'),
+      ungueltig: el.getAttribute('aria-invalid') };
+  };
+
+  // (a) Die Namenstabelle deckt die ganze feste Bedienoberflaeche ab.
+  const tabelle=(html.match(/const AX_TEXTE = \{[\s\S]*?\n\};/)||[''])[0];
+  const axIds=[...tabelle.matchAll(/\n  '([\w-]+)':/g)].map(m=>m[1]);
+  ok('#144 die Namenstabelle deckt Wand, Werkzeuge, Auslegung, Material und Ansicht ab',
+    axIds.length>=45
+    && ['len','hgt','ausgleich','addTuer','addFenster','durchTool','durchClear','axisTool',
+        'axisDel','axisAuto','zpTool','zpDel','zpAuto','agTool','agDel','agAuto','asTool',
+        'asClear','dcTool','dcDel','dcAuto','addStep','addInterlock','sideVorne','sideHinten',
+        'abdichtung','brandklasse','qk','gammaQ','modus','spacing','force','blechCm','topConn',
+        'rodUeber','fcd','cfd','rho','run','showDim','showRaster','viewToggle','zoomIn',
+        'zoomOut','zoomFit'].every(i=>axIds.includes(i)));
+  const HAEKCHEN=['showDim','showRaster'];
+  ok('#144 jedes davon traegt am Element wirklich Name und verknuepfte Beschreibung — '
+    +'Haekchen bekommen ihren Namen von ihrer sichtbaren Beschriftung',
+    axIds.every(i=>{ const a=ax(i);
+      const name=HAEKCHEN.includes(i) ? a.name===null : (!!a.name && a.name.length<60);
+      return name && a.beschreibung.length>15 && a.tip===a.beschreibungId; }));
+  ok('#144 die Erklaerung steht NIE im Namen',
+    axIds.every(i=>{ const a=ax(i); return !a.name || a.name.length<=45; }));
+  ok('#144 in den Bedienhinweisen stehen keine Regel- oder Issue-Nummern mehr',
+    !/\[[A-Z]-\d+\]|#\d\d/.test(tabelle)
+    && axIds.every(i=>!/\[[A-Z]-\d+\]|#\d\d/.test(ax(i).beschreibung)));
+  ok('#144 kein Bedienelement des Markups haengt noch an einem blossen `title`',
+    !/\stitle=/.test(html));
+  ok('#145 jedes Wertfeld nennt seine EINHEIT im Namen',
+    ax('len').name==='Länge in Metern' && /in Millimetern$/.test(ax('hgt').name)
+    && /in Zentimetern$/.test(ax('blechCm').name) && /in Millimetern$/.test(ax('rodUeber').name)
+    && /Kilonewton je Quadratmeter$/.test(ax('qk').name)
+    && /Kilonewton je Strang$/.test(ax('force').name));
+
+  // (b) Die Laengenanzeige bleibt schreibgeschuetzt und sagt das auch.
+  ok('#145 die Laengenanzeige bleibt readonly und ist als „nur Anzeige" erkennbar',
+    /<input type="number" id="len"[^>]*\breadonly\b/.test(html)
+    && /Nur Anzeige/.test(ax('len').beschreibung)
+    && /Geschosseditor/.test(ax('len').beschreibung));
+
+  // (c) Aktivier-Haekchen und Zustandszeilen.
+  ok('#145 das Haekchen traegt keinen zweiten Namen, sein Label loest denselben Tooltip aus',
+    ax('showDim').name===null
+    && document.getElementById('showDim-lab').getAttribute('data-ax-tip')===ax('showDim').tip);
+  ok('#145 eine Zustandszeile wird ERGAENZEND verknuepft, die Erklaerung bleibt daneben',
+    ax('ausgleich').beschreibungIds.length===2
+    && ax('ausgleich').beschreibungIds[1]==='zerlegung'
+    && ax('abdichtung').beschreibungIds[1]==='abdichtHinweis'
+    && ax('asTool').beschreibungIds[1]==='asHinweis');
+
+  // (d) Zustaende der Umschaltwerkzeuge stehen nicht nur in der Farbe.
+  document.getElementById('durchTool').dispatch('click');
+  const durchAn=ax('durchTool').gedrueckt;
+  document.getElementById('durchTool').dispatch('click');
+  ok('#144 der Durchbruch-Modus meldet seinen Zustand in `aria-pressed`',
+    durchAn==='true' && ax('durchTool').gedrueckt==='false');
+  WP.setAxisEdit(true);
+  const achsAn=ax('axisTool').gedrueckt;
+  WP.setZpEdit(true);          // schaltet die Achsenbearbeitung ab
+  ok('#144 auch das abgeschaltete Nachbarwerkzeug meldet seinen Zustand',
+    achsAn==='true' && ax('axisTool').gedrueckt==='false' && ax('zpTool').gedrueckt==='true');
+  WP.setZpEdit(false);
+  ok('#144 nach dem Abschalten ist kein Werkzeug mehr gedrueckt',
+    ax('zpTool').gedrueckt==='false');
+
+  // (e) Ungueltige Werte: die BENANNTE Abweisung der Hoehe macht das Feld ungueltig, und
+  //     der Grund ist genau der sichtbare Konflikttext — keine zweite Fehlermeldung.
+  const H=document.getElementById('hgt'), AGS=document.getElementById('ausgleich');
+  H.value='2570'; AGS.value='aus'; WP.run();
+  const invalidStand=ax('hgt');
+  ok('#145 die abgewiesene Hoehe macht das Feld ungueltig und nennt den sichtbaren Grund',
+    invalidStand.ungueltig==='true'
+    && invalidStand.beschreibungIds.includes('ausgleichHinweis')
+    && /Höhe nicht im Lagenraster/.test(document.getElementById('ausgleichHinweis').innerHTML));
+  ok('#145 die dauerhafte Erklaerung des Feldes bleibt daneben stehen',
+    invalidStand.beschreibungIds[0]===invalidStand.tip);
+  AGS.value='an'; WP.run();
+  ok('#145 wieder gueltig: Kennzeichnung und Fehlerverweis sind weg',
+    ax('hgt').ungueltig===null && !ax('hgt').beschreibungIds.includes('ausgleichHinweis'));
+  H.value='2600'; AGS.value='aus'; WP.run();
+
+  // (f) Wiederholte Zeilen nennen ihr Objekt — keine technische Kennung als Erklaerung.
+  // Die Zeilen werden als eigene Elemente angehaengt (appendChild), ihr Markup steht also
+  // im Kind — nicht im innerHTML des Kastens.
+  const zeilenHtml=(id)=>document.getElementById(id)._kinder.map(k=>k.innerHTML||'').join('');
+  WP.addOpening('tuer');
+  const opsHtml=zeilenHtml('ops');
+  ok('#144 jede Oeffnungszeile nennt ihr Objekt in Aktion und Feldern',
+    /aria-label="Tür 1 entfernen"/.test(opsHtml)
+    && /aria-label="Tür 1, Breite in Metern"/.test(opsHtml)
+    && /aria-label="Tür 1, Position \(links\) in Metern"/.test(opsHtml)
+    && /<span class="ax-sr" id="ax-b-\d+">/.test(opsHtml) && !/title=/.test(opsHtml));
+  WP.addStep();
+  ok('#144 auch die Staffelung nennt ihre Stufe',
+    /aria-label="Stufe 1 entfernen"/.test(zeilenHtml('stepsList'))
+    && /aria-label="Stufe 1, Höhe in Metern"/.test(zeilenHtml('stepsList')));
+  WP.addInterlock();
+  const ilHtml=zeilenHtml('interlockList');
+  ok('#144 auch die Verzahnung nennt ihren Bereich — samt Einheit und Startlage',
+    /aria-label="Verzahnung 1 entfernen"/.test(ilHtml)
+    && /aria-label="Verzahnung 1, Breite \(Raster\) in Rastereinheiten"/.test(ilHtml)
+    && /aria-label="Verzahnung 1, Startlage"/.test(ilHtml));
+  // Eine abgewiesene Verzahnung wird mit ihrer NUMMER gemeldet, nicht nur mit Rasterwerten.
+  WP.interlocks[0].g0=0; WP.interlocks[0].breite=999; WP.renderInterlocks(); WP.run();
+  ok('#144 eine abgewiesene Verzahnung nennt ihre Nummer',
+    /Verzahnung 1 abgewiesen/.test(document.getElementById('interlockWarns').innerHTML));
+  WP.interlocks.length=0; WP.renderInterlocks(); WP.run();
+
+  // (g) Produktauswahl: eigener Name je Verwendungsstelle, Konflikt benannt und verknuepft.
+  const prodHtml=()=>document.getElementById('prodRollen').innerHTML;
+  ok('#144 jede Verwendungsstelle traegt einen verstaendlichen Namen statt des Rollenschluessels',
+    /aria-label="Stein i3 \(375 mm\), Produkte wählen"/.test(prodHtml())
+      || /aria-label="[^"]+, Produkte wählen"/.test(prodHtml()));
+  ok('#144 die Produktauswahl haengt an keinem `title` mehr', !/title=/.test(prodHtml()));
+
+  store.setzeProduktrolle('i3',['gibts-nicht']);
+  WP.renderProdukte();
+  ok('#145 eine nicht auflösbare Referenz macht die Auswahl ungueltig und verknuepft die Meldung',
+    /aria-invalid="true"/.test(prodHtml())
+    && /aria-describedby="ax-b-\d+ wp-w-\d+"/.test(prodHtml())
+    && /<div class="pwarn" id="wp-w-\d+">/.test(prodHtml())
+    && /aria-label="Ersatz für [^"]+ festlegen"/.test(prodHtml()));
+
+  // (h) Der Reparaturdialog: realer Oeffnen-Handler, Rolle, Name, Fokus, Escape.
+  // Das Double vergisst beim „Reload" (__wpInit) keine Hoerer — im Browser ist nach einem
+  // Seitenaufruf genau EINER gebunden. Benutzt wird deshalb der zuletzt gebundene, echte
+  // Behandler der Seite; sonst oeffneten sich so viele Dialoge wie Init-Laeufe.
+  const PR=document.getElementById('prodRollen');
+  const oeffnen=PR.listeners.click[PR.listeners.click.length-1];
+  const standVor=JSON.stringify(store.holeProdukte(1));
+  document.getElementById('run').focus();
+  oeffnen({ target:{ dataset:{ prep:'1' } } });
+  const ovl=document.body._kinder.filter(k=>k.className==='sbr-ovl').pop();
+  ok('#145 der Reparaturdialog ist ein modaler Dialog mit Rolle und Namen',
+    !!ovl && ovl.getAttribute('role')==='dialog' && ovl.getAttribute('aria-modal')==='true'
+    && ovl.getAttribute('aria-label')==='Bauteile ohne Produkt im Katalog');
+  ok('#145 das Oeffnen setzt den Fokus in den Dialog (erste Auswahlzeile)',
+    document.activeElement===ovl.querySelector('select'));
+  ok('#145 der Hintergrund ist waehrenddessen nicht bedienbar',
+    document.getElementById('app').getAttribute('inert')===''
+    && document.getElementById('app').getAttribute('aria-hidden')==='true');
+  ok('#145 der Hintergrundbereich ist im MARKUP ausgezeichnet, nicht erst im Test',
+    /<div id="app" class="wrap" data-ax-hintergrund>/.test(html));
+
+  ovl.dispatch('keydown',{ key:'Escape', preventDefault(){} });
+  ok('#145 Escape schliesst den Dialog und speichert nichts',
+    JSON.stringify(store.holeProdukte(1))===standVor
+    && /Reparatur abgebrochen/.test(document.getElementById('prodInfo').innerHTML));
+  ok('#145 das Schliessen gibt den Fokus an den ausloesenden Knopf zurueck',
+    document.activeElement===document.getElementById('run'));
+  ok('#145 danach ist der Hintergrund wieder bedienbar',
+    document.getElementById('app').getAttribute('inert')===null
+    && document.getElementById('app').getAttribute('aria-hidden')===null);
+
+  // (i) Must-not: kein gespeichertes Feld, kein zweiter Baustein, kein zweiter Schreibweg.
+  ok('#145 (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt',
+    store.SCHEMA_VERSION===6 && store.PROJEKT_VERSION===2
+    && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem('sembla:elemente')||''));
+  ok('#145 (must-not) Modul 1 baut den Baustein nicht nach — es benutzt ihn',
+    /import \* as AX from '\.\/shared\/sembla-ax\.js'/.test(html) && /AX=S\.AX;/.test(html)
+    && !/function (benennung|modalDialog|tooltips|ungueltig)\(/.test(html));
+  store.setzeProduktrolle('i3',[]);
   store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 

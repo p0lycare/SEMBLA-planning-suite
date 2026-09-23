@@ -44,6 +44,11 @@ class El {
     this._reihe();
     return k;
   }
+  removeChild(k) {
+    const i = this.kinder.indexOf(k);
+    if (i >= 0) { this.kinder.splice(i, 1); k.parentNode = null; k.isConnected = false; this._reihe(); }
+    return k;
+  }
   _reihe() { this.kinder.forEach((k, i) => { k.nextSibling = this.kinder[i + 1] || null; }); }
   /** Alle Nachfahren in Dokumentreihenfolge. */
   _flach() { return this.kinder.flatMap((k) => [k, ...k._flach()]); }
@@ -373,6 +378,62 @@ const AX = await import('../../docs/shared/sembla-ax.js');
   const leer = dok.createElement('span');
   AX.tippZiel(leer, null);
   ok('tippZiel ohne Kennung setzt nichts', leer.getAttribute('data-ax-tip') === null);
+}
+
+// --- (a3) Zweite Beschreibung und ungueltige Felder (#145) ----------------
+//
+// Ein Wertfeld hat oft ZWEI Aussagen: die dauerhafte Erklaerung und den aktuellen
+// Fehlergrund. `aria-describedby` nimmt beide; die Erklaerung darf dabei nie verloren
+// gehen, und ein wieder gueltiges Feld darf keinen Fehlertext behalten.
+{
+  const feld = dok.createElement('input');
+  dok.body.appendChild(feld);
+  const bid = AX.beschreibe(feld, 'Ziel-Wandhöhe, millimetergenau.', dok);
+  const sichtbar = dok.createElement('div');
+  sichtbar.textContent = 'Höhe nicht im Lagenraster.';
+  dok.body.appendChild(sichtbar);
+
+  ok('vor der Kennzeichnung ist das Feld gueltig', feld.getAttribute('aria-invalid') === null);
+  const fid = AX.ungueltig(feld, sichtbar);
+  ok('ungueltig kennzeichnet das Feld', feld.getAttribute('aria-invalid') === 'true');
+  ok('der SICHTBARE Fehlertext wird verknuepft — es entsteht kein zweiter Text',
+    fid === sichtbar.getAttribute('id') && dok.getElementById(fid) === sichtbar);
+  ok('die dauerhafte Erklaerung bleibt daneben stehen',
+    feld.getAttribute('aria-describedby') === bid + ' ' + fid);
+  ok('der Tooltip zeigt weiterhin die Erklaerung (kein zweiter Tooltip am selben Element)',
+    feld.getAttribute('data-ax-tip') === bid);
+
+  AX.ungueltig(feld, sichtbar);
+  ok('zweimal dasselbe kennzeichnen haengt den Text nicht doppelt an',
+    feld.getAttribute('aria-describedby') === bid + ' ' + fid);
+
+  AX.ungueltig(feld, null);
+  ok('wieder gueltig: Kennzeichnung und Fehlertext sind weg',
+    feld.getAttribute('aria-invalid') === null
+    && feld.getAttribute('aria-describedby') === bid);
+  ok('ein FREMDER Fehlertext wird dabei nicht aus dem Dokument entfernt',
+    sichtbar.parentNode === dok.body);
+
+  // Es gibt bewusst KEINE Zeichenketten-Fassung: eine benannte Abweisung steht in dieser
+  // Suite immer schon sichtbar auf der Seite, ein zweiter Wortlaut waere Drift.
+  const quelleAx = (await import('node:fs')).readFileSync(
+    new URL('../../docs/shared/sembla-ax.js', import.meta.url), 'utf8');
+  ok('ungueltig kennt nur den sichtbaren Fehlertext (keine zweite Textquelle)',
+    /export function ungueltig\(el, fehlerEl\)/.test(quelleAx));
+
+  // `ergaenzeBeschreibung` fuer sich: sie ERSETZT nie.
+  const knopf = dok.createElement('button');
+  dok.body.appendChild(knopf);
+  const b1 = AX.beschreibe(knopf, 'Rechnet die Wand neu.', dok);
+  const zusatz = dok.createElement('div');
+  zusatz.textContent = 'Zurzeit ist keine Wand aktiv.';
+  dok.body.appendChild(zusatz);
+  const b2 = AX.ergaenzeBeschreibung(knopf, zusatz);
+  ok('ergaenzeBeschreibung haengt an, statt zu ersetzen',
+    knopf.getAttribute('aria-describedby') === b1 + ' ' + b2 && b1 !== b2);
+  ok('ergaenzeBeschreibung ohne Text tut nichts',
+    AX.ergaenzeBeschreibung(knopf, null) === null
+    && knopf.getAttribute('aria-describedby') === b1 + ' ' + b2);
 }
 
 // --- Reinheit -------------------------------------------------------------

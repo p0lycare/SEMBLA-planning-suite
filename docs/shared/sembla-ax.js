@@ -222,6 +222,83 @@ export function beschreibe(el, text, dok) {
   return id;
 }
 
+/** Die Kennungen aus `aria-describedby` als Liste — leer, wenn nichts verknuepft ist. */
+function _beschreibungsListe(el) {
+  const roh = typeof el.getAttribute === 'function' ? el.getAttribute('aria-describedby') : null;
+  return String(roh || '').split(/\s+/).filter(Boolean);
+}
+
+/** Kennung eines Textelements holen bzw. vergeben. */
+function _idVon(textEl) {
+  if (!textEl) return null;
+  let id = (typeof textEl.getAttribute === 'function' && textEl.getAttribute('id')) || textEl.id || '';
+  if (!id) {
+    id = neueId('ax-b');
+    if (typeof textEl.setAttribute === 'function') textEl.setAttribute('id', id);
+    else textEl.id = id;
+  }
+  return String(id);
+}
+
+/**
+ * Eine ZWEITE Beschreibung an ein Element haengen, ohne die erste zu verdraengen.
+ *
+ * `aria-describedby` nimmt mehrere Kennungen — genau dafuer ist es gemacht. Gebraucht wird
+ * das, wo ein Bedienelement eine dauerhafte Erklaerung UND eine wechselnde Zustandszeile
+ * hat (in Modul 1 etwa die Ausgleichslage: die Erklaerung steht fest, der aktuelle Stand
+ * steht sichtbar daneben). `verknuepfe` ersetzt in diesem Fall die Erklaerung — hier wird
+ * ergaenzt. Der Tooltip-Ausloeser bleibt unberuehrt: sichtbar gezeigt wird weiterhin die
+ * ERSTE Beschreibung, sonst haette ein Element zwei konkurrierende Tooltips.
+ * @param {any} el @param {any} textEl
+ * @returns {string|null} Kennung des ergaenzten Textes
+ */
+export function ergaenzeBeschreibung(el, textEl) {
+  if (!el || !textEl || typeof el.setAttribute !== 'function') return null;
+  const id = _idVon(textEl);
+  if (!id) return null;
+  const liste = _beschreibungsListe(el);
+  if (!liste.includes(id)) liste.push(id);
+  el.setAttribute('aria-describedby', liste.join(' '));
+  return id;
+}
+
+/**
+ * Ein Bedienelement als UNGUELTIG kennzeichnen — und den GRUND als Beschreibung fuehren.
+ *
+ * `aria-invalid` allein sagt nur „stimmt nicht"; erst der verknuepfte Grund sagt, was
+ * stimmen muesste. Beides gehoert zusammen, und beides wird hier in einem Schritt gesetzt
+ * bzw. gemeinsam wieder weggeraeumt — ein Feld, das wieder gueltig ist, darf keinen
+ * Fehlertext behalten.
+ *
+ * `fehlerEl` ist das vorhandene TEXTELEMENT mit der Fehlermeldung. Absichtlich gibt es
+ * keine Zeichenketten-Fassung: eine benannte Abweisung steht in dieser Suite immer schon
+ * sichtbar auf der Seite, und ein zweiter, nur vorgelesener Wortlaut waere genau der
+ * Drift, den der Baustein verhindern soll. Die dauerhafte Erklaerung des Elements bleibt
+ * daneben stehen.
+ *
+ * @param {any} el @param {any|null|false} fehlerEl @param {any} [dok]
+ * @returns {string|null} Kennung des Fehlertextes (null, wenn gueltig)
+ */
+export function ungueltig(el, fehlerEl) {
+  if (!el || typeof el.setAttribute !== 'function') return null;
+  const alt = typeof el.getAttribute === 'function' ? el.getAttribute('data-ax-fehler') : null;
+  if (alt) {
+    const liste = _beschreibungsListe(el).filter((x) => x !== alt);
+    if (liste.length) el.setAttribute('aria-describedby', liste.join(' '));
+    else if (typeof el.removeAttribute === 'function') el.removeAttribute('aria-describedby');
+    if (typeof el.removeAttribute === 'function') el.removeAttribute('data-ax-fehler');
+  }
+  if (!fehlerEl) {
+    if (typeof el.removeAttribute === 'function') el.removeAttribute('aria-invalid');
+    return null;
+  }
+  const id = ergaenzeBeschreibung(el, fehlerEl);
+  if (!id) return null;
+  el.setAttribute('data-ax-fehler', id);
+  el.setAttribute('aria-invalid', 'true');
+  return id;
+}
+
 /**
  * Das Stylesheet des Bausteins EINMAL je Dokument einhaengen.
  * @param {any} [dok]

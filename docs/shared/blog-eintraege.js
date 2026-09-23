@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260923-01",
+    datum: "2026-09-23",
+    typ: "feature",
+    issue: 145,
+    titel: "Modul 1: benannte Bedienelemente mit Einheit, Erklärungen als Beschreibung und "
+      + "tastaturfester Reparaturdialog",
+    testbitte: "Modul 1 nur mit der Tastatur bedienen: jedes Feld nennt Wert und Einheit, "
+      + "Werkzeuge melden ihren gedrückten Zustand, Öffnungs- und Stufenzeilen nennen ihr "
+      + "Objekt; im Reparaturdialog bleibt der Fokus drin und kehrt beim Schließen zurück",
+  },
+  {
     id: "chg-20260922-03",
     datum: "2026-09-22",
     typ: "feature",

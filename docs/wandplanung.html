@@ -129,7 +129,7 @@
 </style>
 </head>
 <body>
-<div id="app" class="wrap">
+<div id="app" class="wrap" data-ax-hintergrund>
   <div class="controls panel">
     <h2>1 · Wand</h2>
     <div class="grp">
@@ -137,13 +137,12 @@
            Geschosseditor an der Lage der Wand, und von dort wird das Wandelement damit
            neu gerechnet. Ein zweites Eingabefeld wäre ein konkurrierender Schreibweg. -->
       <label><span>Länge</span><input type="number" id="len" value="2.00" step="0.125" readonly
-        title="Nur Anzeige — die Länge wird im Geschosseditor geführt (Endgriff oder Längenmaß)."><small>m · nur Anzeige</small></label>
+        ><small>m · nur Anzeige</small></label>
       <!-- #136: Die Ziel-Wandhöhe wird MILLIMETERGENAU eingegeben und NICHT ins 200-mm-Raster
            gezwungen. Zerlegt wird sie allein im Rechenkern (`hoehenZerlegung`); hier wird nichts
            gerundet und nichts still korrigiert ([P-9]). Passt die Höhe nicht ins Lagenraster und
            ist die Ausgleichslage NICHT aktiviert, steht der benannte Konflikt sichtbar da. -->
-      <label><span>Höhe</span><input type="number" id="hgt" value="2600" step="10" min="200"
-        title="Ziel-Wandhöhe in mm — frei, ohne 200er-Rasterzwang. Eine Resthöhe braucht die aktivierte Ausgleichslage (#136)."><small>mm · frei</small></label>
+      <label><span>Höhe</span><input type="number" id="hgt" value="2600" step="10" min="200"><small>mm · frei</small></label>
     </div>
     <!-- #136 Ausgleichslage: genau EINE oberste Lage mit der Resthöhe, je Wand ausdrücklich zu
          aktivieren. Das Flag lebt am Wandelement (`ausgleichslage_aktiv`) und ist EINGANG des
@@ -151,25 +150,22 @@
          Maß. Die Zerlegung darunter kommt AUS DEM CORE-ERGEBNIS (Lagen/Kantenfelder) und wird
          hier nie selbst gerechnet. -->
     <div class="grp"><h3>Ausgleichslage (oberste Lage)</h3>
-      <label><span>Ausgleichslage</span><select id="ausgleich"
-        title="Aktiviert: eine krumme Zielhöhe erhält oben GENAU EINE Ausgleichslage mit der Resthöhe ([G-14]). Deaktiviert: die Höhe muss ein Vielfaches von 200 mm sein, sonst benannter Konflikt."><option value="aus" selected>nicht aktiviert (Standard)</option><option value="an">aktiviert</option></select></label>
+      <label><span>Ausgleichslage</span><select id="ausgleich"><option value="aus" selected>nicht aktiviert (Standard)</option><option value="an">aktiviert</option></select></label>
       <div class="lockhint" id="zerlegung"></div>
       <div class="lockhint" id="ausgleichHinweis"></div>
     </div>
     <div class="grp"><h3>Öffnungen</h3>
       <div id="ops"></div>
       <div class="btnrow"><button class="mini" id="addTuer">+ Tür</button><button class="mini" id="addFenster">+ Fenster</button></div>
-      <div class="btnrow"><button class="mini" id="durchTool">Durchbruch-Modus</button><button class="mini" id="durchClear">Durchbrüche leeren</button></div>
-      <div class="btnrow" style="margin-top:6px"><button class="mini" id="axisTool"
-        title="Sonderkonstruktion: manuell gesetzte Achsen sperren die Auto-Verteilung, bis „Zurück zu Auto“.">Spannachsen bearbeiten</button><button class="mini" id="axisDel">Achse löschen</button><button class="mini" id="axisAuto">Zurück zu Auto</button></div>
+      <div class="btnrow"><button class="mini" id="durchTool" aria-pressed="false">Durchbruch-Modus</button><button class="mini" id="durchClear">Durchbrüche leeren</button></div>
+      <div class="btnrow" style="margin-top:6px"><button class="mini" id="axisTool" aria-pressed="false">Spannachsen bearbeiten</button><button class="mini" id="axisDel">Achse löschen</button><button class="mini" id="axisAuto">Zurück zu Auto</button></div>
     </div>
     <div class="grp"><h3>Zwischenspannpunkte (Einlegeblech)</h3>
       <!-- [A-14]…[A-17]/#93: lagengenaue Punkte auf Steinlagen-Oberkanten. Ohne eigene Auswahl
            leitet der Rechenkern je Spannachsensegment einen Punkt nahe der halben Segmenthöhe ab
            ([A-15]); dieses Auto-Ergebnis wird NICHT gespeichert. Erst eine hier getroffene Wahl
            ist ein gespeicherter Override — „Zurück zu Auto“ nimmt ihn wieder zurück. -->
-      <div class="btnrow"><button class="mini" id="zpTool"
-        title="Punkte auf Lagen-Oberkanten setzen, verschieben (ziehen) und löschen (Doppelklick). Manuelle Punkte sperren die Auto-Ableitung, bis „Zurück zu Auto“.">Zwischenspannpunkte bearbeiten</button><button class="mini" id="zpDel">Punkt löschen</button><button class="mini" id="zpAuto">Zurück zu Auto</button></div>
+      <div class="btnrow"><button class="mini" id="zpTool" aria-pressed="false">Zwischenspannpunkte bearbeiten</button><button class="mini" id="zpDel">Punkt löschen</button><button class="mini" id="zpAuto">Zurück zu Auto</button></div>
       <div id="zpHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
     </div>
     <div class="grp"><h3>Ausgleichspunkte (unter dem Bodenblech)</h3>
@@ -179,8 +175,7 @@
            Wahl ist ein gespeicherter Override — sie SPERRT die Verteilung vollständig (nichts
            wird aufgefüllt, kein Pflichtpunkt nachgeschoben), bis „Zurück zu Auto“ sie
            zurücknimmt ([A-24]). -->
-      <div class="btnrow"><button class="mini" id="agTool"
-        title="Punkte am Wandfuß setzen, verschieben (ziehen) und löschen (Doppelklick). Manuelle Punkte sperren die automatische Verteilung, bis „Zurück zu Auto“.">Ausgleichspunkte bearbeiten</button><button class="mini" id="agDel">Punkt löschen</button><button class="mini" id="agAuto">Zurück zu Auto</button></div>
+      <div class="btnrow"><button class="mini" id="agTool" aria-pressed="false">Ausgleichspunkte bearbeiten</button><button class="mini" id="agDel">Punkt löschen</button><button class="mini" id="agAuto">Zurück zu Auto</button></div>
       <div id="agHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
     </div>
     <div class="grp"><h3>Bodenblech-Aussparungen (125-mm-Raster)</h3>
@@ -190,8 +185,7 @@
            Aus der Wahl rechnet er die belegten Bereiche und zerlegt jeden UNABHÄNGIG ([A-29]);
            ein zu kurzer Rest wird benannt statt überbrückt. „Alle zurücksetzen“ nimmt die Wahl
            vollständig zurück — danach trägt das Wandelement wieder kein Feld. -->
-      <div class="btnrow"><button class="mini" id="asTool"
-        title="Rasterfelder am Wandfuß anklicken: ein Klick spart das Feld aus, ein zweiter nimmt es zurück. Benachbarte Felder fasst der Rechenkern zu einer Lücke zusammen ([A-28]).">Bodenblech aussparen</button><button class="mini" id="asClear">Alle zurücksetzen</button></div>
+      <div class="btnrow"><button class="mini" id="asTool" aria-pressed="false">Bodenblech aussparen</button><button class="mini" id="asClear">Alle zurücksetzen</button></div>
       <div id="asHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
     </div>
     <div class="grp"><h3>Deckenanschluss (obere Spannachse)</h3>
@@ -202,33 +196,28 @@
            Wahl ist ein gespeicherter Override — sie SPERRT die Verteilung vollständig, bis
            „Zurück zu Auto“ sie zurücknimmt ([A-27]). Ausdrücklich KEINE Statik: die Kraftübergabe
            an den Stahlbau in Modul 3 bleibt unberührt. -->
-      <div class="btnrow"><button class="mini" id="dcTool"
-        title="Punkte auf Spannachsen setzen, verschieben (ziehen, fängt auf die nächste Achse) und löschen (Doppelklick). Manuelle Punkte sperren die automatische Verteilung, bis „Zurück zu Auto“.">Deckenanschluss bearbeiten</button><button class="mini" id="dcDel">Punkt löschen</button><button class="mini" id="dcAuto">Zurück zu Auto</button></div>
+      <div class="btnrow"><button class="mini" id="dcTool" aria-pressed="false">Deckenanschluss bearbeiten</button><button class="mini" id="dcDel">Punkt löschen</button><button class="mini" id="dcAuto">Zurück zu Auto</button></div>
       <div id="dcHinweis" style="color:var(--sb-muted);font-size:12.5px;margin-top:6px"></div>
     </div>
     <div class="grp"><h3>Staffelung (getreppter Aufbau)</h3>
       <div id="stepsList"></div>
-      <div class="btnrow"><button class="mini" id="addStep"
-        title="Je Stufe: Längsbereich (von–bis) und reduzierte Höhe.">+ Stufe</button></div>
+      <div class="btnrow"><button class="mini" id="addStep">+ Stufe</button></div>
     </div>
     <div class="grp"><h3>Verzahnung (Mauerwerksanschluss)</h3>
       <div id="interlockList"></div>
-      <div class="btnrow"><button class="mini" id="addInterlock"
-        title="Verzahnungsbereich: Wandabschnitt mit alternierend ausgesparten Steinen für den Anschluss an eine Querwand.">+ Verzahnung</button></div>
-      <div class="warns" id="interlockWarns" style="margin-top:6px"></div>
+      <div class="btnrow"><button class="mini" id="addInterlock">+ Verzahnung</button></div>
+      <div class="warns" id="interlockWarns" role="status" style="margin-top:6px"></div>
     </div>
     <div class="grp"><h3>Seiten (Funktion)</h3>
       <label><span>Vorderseite</span><select id="sideVorne"><option value="fassade">Fassade</option><option value="innenausbau">Innenausbau</option><option value="sicht">Sichtfläche / roh</option><option value="installation">Installationsebene</option></select></label>
       <label><span>Rückseite</span><select id="sideHinten"><option value="fassade">Fassade</option><option value="innenausbau" selected>Innenausbau</option><option value="sicht">Sichtfläche / roh</option><option value="installation">Installationsebene</option></select></label>
     </div>
     <div class="grp"><h3>Stoßfugen (Abdichtung)</h3>
-      <label><span>Abdichtung</span><select id="abdichtung"
-        title="Je Wand: werden die Stoßfugen mit Dichtstreifen abgedichtet? Nur bei „abgedichtet“ führt die Stückliste Dichtstreifen ([A-6])."><option value="nicht_abgedichtet" selected>nicht abgedichtet (Standard)</option><option value="abgedichtet">abgedichtet</option></select></label>
+      <label><span>Abdichtung</span><select id="abdichtung"><option value="nicht_abgedichtet" selected>nicht abgedichtet (Standard)</option><option value="abgedichtet">abgedichtet</option></select></label>
       <div class="lockhint" id="abdichtHinweis"></div>
     </div>
     <div class="grp"><h3>Brandschutz</h3>
-      <label><span>Klassifikation</span><select id="brandklasse"
-        title="Planungskennzeichnung je Wand (Issue #79). Aus ihr wird kein Nachweis und keine Freigabe abgeleitet."><option value="F0" selected>F0 (Standard)</option><option value="F30">F30</option></select></label>
+      <label><span>Klassifikation</span><select id="brandklasse"><option value="F0" selected>F0 (Standard)</option><option value="F30">F30</option></select></label>
       <div class="lockhint" id="brandHinweis"></div>
     </div>
 
@@ -245,15 +234,12 @@
       </div>
     </div>
     <div class="grp"><h3>Vorspann-Hardware</h3>
-      <div class="lockhint" id="rodQuelle"></div>
-      <label><span>Kopfblech-Modullänge</span><input type="number" id="blechCm" value="100" step="10" min="20"
-        title="Modullänge des KOPFBLECHS an der Wandoberkante. Das Bodenblech hängt nicht daran: es wird aus den im Katalog gewählten Standardlängen zusammengesetzt ([A-10]) — Rolle „Bodenblech“ unten."><small>cm</small></label>
-      <label><span>Oberer Anschluss</span><select id="topConn"
-        title="Fuß immer Bodenblech (Dicke aus dem Bauteilkatalog). Kopf wahlweise Spannplatten auf der Steinkante (Standard) oder Kopfblech-Module."><option value="blech">Kopfblech</option><option value="spannplatte" selected>Spannplatte (Standard)</option></select></label>
-      <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"
-        title="Überstand des Reststücks über die OBERKANTE SPANNPLATTE (Platz für die Spannmutter). Die Plattendicke selbst kommt aus dem Katalog und wird zusätzlich bestückt (#92)."><small>mm</small></label>
-      <div class="lockhint" id="rodRestQuelle"></div>
-      <div class="lockhint" id="einbauQuelle"></div>
+      <div class="lockhint" id="rodQuelle" role="status"></div>
+      <label><span>Kopfblech-Modullänge</span><input type="number" id="blechCm" value="100" step="10" min="20"><small>cm</small></label>
+      <label><span>Oberer Anschluss</span><select id="topConn"><option value="blech">Kopfblech</option><option value="spannplatte" selected>Spannplatte (Standard)</option></select></label>
+      <label><span>Überstand Reststück</span><input type="number" id="rodUeber" value="10" step="1" min="0"><small>mm</small></label>
+      <div class="lockhint" id="rodRestQuelle" role="status"></div>
+      <div class="lockhint" id="einbauQuelle" role="status"></div>
     </div>
     <div class="grp"><h3>Materialannahmen</h3>
       <label><span>f<sub>cd</sub></span><input type="number" id="fcd" value="20" step="1"><small>N/mm²</small></label>
@@ -262,34 +248,34 @@
     </div>
     <h2 style="margin-top:6px">3 · Produkte (Bauteilkatalog)</h2>
     <div class="grp">
-      <div class="prodinfo" id="prodInfo"></div>
+      <div class="prodinfo" id="prodInfo" role="status"></div>
       <div id="prodRollen"></div>
     </div>
 
     <button class="primary" id="run">Auslegen</button>
-    <div class="savehint" id="saveHint"></div>
+    <div class="savehint" id="saveHint" role="status"></div>
   </div>
 
   <div class="stage panel">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
       <span class="badge" id="statusBadge">–</span>
       <span class="k" id="dims" style="color:var(--sb-muted);font-size:13px"></span>
-      <label class="mini" style="margin-left:auto;display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="showDim" checked> Maße</label>
-      <label class="mini" style="display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" id="showRaster"> Raster</label>
+      <label class="mini" style="margin-left:auto;display:flex;align-items:center;gap:5px;cursor:pointer" id="showDim-lab"><input type="checkbox" id="showDim" checked> Maße</label>
+      <label class="mini" style="display:flex;align-items:center;gap:5px;cursor:pointer" id="showRaster-lab"><input type="checkbox" id="showRaster"> Raster</label>
       <button id="viewToggle" class="mini">Ansicht: Vorderseite</button>
       <span class="badge" id="sideBadge" style="background:#eef2f7;color:#1c2430">–</span>
       <span class="zoombar" role="group" aria-label="Darstellungsgröße der Wandansicht">
-        <button type="button" id="zoomOut" class="mini" title="Wandansicht verkleinern">− Kleiner</button>
+        <button type="button" id="zoomOut" class="mini">− Kleiner</button>
         <span class="zwert" id="zoomWert" aria-live="polite">100 %</span>
-        <button type="button" id="zoomIn" class="mini" title="Wandansicht vergrößern">+ Größer</button>
-        <button type="button" id="zoomFit" class="mini" title="Wandansicht wieder ins Fenster einpassen">Einpassen</button>
+        <button type="button" id="zoomIn" class="mini">+ Größer</button>
+        <button type="button" id="zoomFit" class="mini">Einpassen</button>
       </span>
     </div>
     <div class="planbox" id="planBox">
       <svg id="plan" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
     <div class="zlegende" id="zLegende"></div>
-    <div class="warns" id="warns"></div>
+    <div class="warns" id="warns" role="status"></div>
 
     <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:14px">
       <div style="flex:1 1 200px">
@@ -329,6 +315,10 @@ let ROLLE_RECHNUNG;
 let AUSGLEICH_KONFLIKT, AUSGLEICH_HOEHEN;
 // #115 Reparaturdialog (shared/sembla-reparatur.js) — wie alles hier ueber window.SEMBLA.
 let oeffneReparatur;
+// #144/#145: der EINE Accessibility-Baustein der Suite (shared/sembla-ax.js). Modul 1 baut
+// davon nichts nach — Namen, Beschreibungen, Tooltips und die Kennzeichnung ungueltiger
+// Felder kommen ausschliesslich von dort.
+let AX;
 // #140: die KANONISCHEN Lagenkanten des Wandelements (sembla-core.js) und die eine erlaubte
 // Umrechnung Reihenzahl -> Hoehe (sembla-montage.js). Modul 1 rechnet daraus NICHTS nach und
 // bildet insbesondere keine zweite Berechnung variabler Lagenhoehen ([D-4]/[P-6]) — es sind
@@ -634,6 +624,9 @@ function zerlegungText(w){
  */
 function zeigeZerlegung(w, err){
   const zeile=$('zerlegung'), hin=$('ausgleichHinweis');
+  // #145 Die BENANNTE Abweisung macht das Höhenfeld ungültig; der Grund ist genau der
+  // sichtbare Konflikttext daneben — nie eine zweite, eigene Fehlermeldung.
+  axHoeheStand(err);
   if(err){
     zeile.innerHTML='';
     hin.innerHTML = (err.grund===AUSGLEICH_KONFLIKT)
@@ -646,7 +639,7 @@ function zeigeZerlegung(w, err){
   zeile.innerHTML = w ? 'Zerlegung: <b>'+escP(zerlegungText(w))+'</b>' : '';
   hin.innerHTML = leseAusgleich()
     ? (((w&&w.courses)||[]).some(c=>c.ausgleich===true)
-        ? 'Ausgleichslage aktiviert — genau eine oberste Lage mit der Resthöhe ([G-14]).'
+        ? 'Ausgleichslage aktiviert — genau eine oberste Lage mit der Resthöhe.'
         : 'Ausgleichslage aktiviert — die Höhe geht im Lagenraster auf, es entsteht keine Ausgleichslage.')
     : 'Ausgleichslage nicht aktiviert — die Zielhöhe muss ein Vielfaches von '+COURSE+' mm sein.';
 }
@@ -671,8 +664,8 @@ function run(){
   // entscheidet allein, ob die Stueckliste Dichtstreifen fuehrt (sembla-bom.js).
   RESULT.wandelement.abdichtung=leseAbdichtung();
   $('abdichtHinweis').textContent = leseAbdichtung()==='abgedichtet'
-    ? 'Stoßfugen abgedichtet — die Stückliste führt Dichtstreifen ([A-6]).'
-    : 'Nicht abgedichtet — die Stückliste führt keine Dichtstreifen ([A-6]).';
+    ? 'Stoßfugen abgedichtet — die Stückliste führt Dichtstreifen.'
+    : 'Nicht abgedichtet — die Stückliste führt keine Dichtstreifen.';
   // #79: Die Brandschutzklassifikation ist eine Planungskennzeichnung DIESER Wand und wird
   // hier gewaehlt. Wie Wandtyp und Abdichtung haengt sie nicht am Core und wird nach dem
   // Neuaufbau durch buildWall() wieder angehaengt. Abgeleitet wird aus ihr NICHTS — kein
@@ -1273,20 +1266,27 @@ function renderZLegende(w){
 // ---------- Öffnungs-UI ----------
 function renderOps(){ const c=$('ops'); c.innerHTML=''; if(!openings.length) c.innerHTML='<div style="color:var(--sb-muted);font-size:12.5px">Keine Öffnungen.</div>';
   openings.forEach((o,i)=>{ const isF=o.art==='fenster'; const d=document.createElement('div'); d.className='op';
-    d.innerHTML=`<div class="head"><b>${isF?'Fenster':'Tür'} ${i+1}</b><button class="mini" data-rm="${i}">entfernen</button></div>`+
-      lab('Position (links)','x',i,o.x,0.125)+lab('Breite','w',i,o.w,0.125)+(isF?lab('Brüstung','sill',i,o.sill,0.20):'')+lab('Höhe','h',i,o.h,0.20);
+    // #144 Wiederholte Aktionen und Felder nennen ihr Objekt: „Tür 1 entfernen", „Tür 1,
+    // Breite in Metern". Ohne das hießen alle Zeilen gleich und die Zuordnung hinge an der
+    // Vorlesereihenfolge.
+    const bez=`${isF?'Fenster':'Tür'} ${i+1}`;
+    const br=axB(axAktion('entfernen',bez),`Entfernt ${bez} aus dieser Wand. Die übrigen Öffnungen bleiben unverändert.`);
+    d.innerHTML=`<div class="head"><b>${escP(bez)}</b><button class="mini" data-rm="${i}" ${br.attrs}>entfernen</button>${br.html}</div>`+
+      lab('Position (links)','x',i,o.x,0.125,bez)+lab('Breite','w',i,o.w,0.125,bez)+(isF?lab('Brüstung','sill',i,o.sill,0.20,bez):'')+lab('Höhe','h',i,o.h,0.20,bez);
     c.appendChild(d); });
   c.querySelectorAll('input[data-f]').forEach(inp=>inp.addEventListener('input',e=>{ openings[+e.target.dataset.i][e.target.dataset.f]=+e.target.value; run(); }));
   c.querySelectorAll('button[data-rm]').forEach(b=>b.addEventListener('click',e=>{ openings.splice(+e.target.dataset.rm,1); renderOps(); run(); }));
 }
-const lab=(name,f,i,val,step)=>`<label><span>${name}</span><input type="number" data-f="${f}" data-i="${i}" value="${val}" step="${step}"><small>m</small></label>`;
+const lab=(name,f,i,val,step,obj)=>`<label><span>${escP(name)}</span><input type="number" data-f="${f}" data-i="${i}" value="${val}" step="${step}" aria-label="${escP(obj?obj+', '+name+' in Metern':name+' in Metern')}"><small>m</small></label>`;
 function addOpening(art){ openings.push(art==='fenster'?{art:'fenster',x:0.75,w:1.00,sill:0.80,h:1.20}:{art:'tuer',x:0.625,w:0.75,sill:0,h:2.00}); renderOps(); run(); }
 
-const slab=(name,f,i,val,step)=>`<label><span>${name}</span><input type="number" data-sf="${f}" data-si="${i}" value="${val}" step="${step}"><small>m</small></label>`;
+const slab=(name,f,i,val,step,obj)=>`<label><span>${escP(name)}</span><input type="number" data-sf="${f}" data-si="${i}" value="${val}" step="${step}" aria-label="${escP(obj?obj+', '+name+' in Metern':name+' in Metern')}"><small>m</small></label>`;
 function renderSteps(){ const c=$('stepsList'); c.innerHTML=''; if(!stepsArr.length) c.innerHTML='<div style="color:var(--sb-muted);font-size:12.5px">Keine Staffelung (Rechteck).</div>';
   stepsArr.forEach((s,i)=>{ const d=document.createElement('div'); d.className='op';
-    d.innerHTML=`<div class="head"><b>Stufe ${i+1}</b><button class="mini" data-srm="${i}">entfernen</button></div>`+
-      slab('von x','x0',i,s.x0,0.125)+slab('bis x','x1',i,s.x1,0.125)+slab('Höhe','h',i,s.h,0.20);
+    const bez=`Stufe ${i+1}`;
+    const br=axB(axAktion('entfernen',bez),`Entfernt ${bez} aus der Staffelung. Die übrigen Stufen bleiben unverändert.`);
+    d.innerHTML=`<div class="head"><b>${escP(bez)}</b><button class="mini" data-srm="${i}" ${br.attrs}>entfernen</button>${br.html}</div>`+
+      slab('von x','x0',i,s.x0,0.125,bez)+slab('bis x','x1',i,s.x1,0.125,bez)+slab('Höhe','h',i,s.h,0.20,bez);
     c.appendChild(d); });
   c.querySelectorAll('input[data-sf]').forEach(inp=>inp.addEventListener('input',e=>{ stepsArr[+e.target.dataset.si][e.target.dataset.sf]=+e.target.value; run(); }));
   c.querySelectorAll('button[data-srm]').forEach(b=>b.addEventListener('click',e=>{ stepsArr.splice(+e.target.dataset.srm,1); renderSteps(); run(); }));
@@ -1294,14 +1294,17 @@ function renderSteps(){ const c=$('stepsList'); c.innerHTML=''; if(!stepsArr.len
 function addStep(){ const {L}=dims(); const Bm=L/1000; stepsArr.push({x0:+(Bm/2).toFixed(3), x1:+Bm.toFixed(3), h:1.00}); renderSteps(); run(); }
 
 // ---------- Verzahnungs-UI (Mauerwerksanschluss) ----------
-const ilab=(name,f,i,val,step,unit='Raster')=>`<label><span>${name}</span><input type="number" data-if="${f}" data-ii="${i}" value="${val}" step="${step}" min="0"><small>${unit}</small></label>`;
+const ilab=(name,f,i,val,step,obj,unit='Raster')=>`<label><span>${escP(name)}</span><input type="number" data-if="${f}" data-ii="${i}" value="${val}" step="${step}" min="0" aria-label="${escP(obj?obj+', '+name+' in Rastereinheiten':name+' in Rastereinheiten')}"><small>${unit}</small></label>`;
 function renderInterlocks(){ const c=$('interlockList'); c.innerHTML='';
   if(!interlocksArr.length) c.innerHTML='<div style="color:var(--sb-muted);font-size:12.5px">Keine Verzahnung.</div>';
   interlocksArr.forEach((il,i)=>{ const d=document.createElement('div'); d.className='op';
-    d.innerHTML=`<div class="head"><b>Verzahnung ${i+1}</b><button class="mini" data-ilrm="${i}">entfernen</button></div>`
-      +ilab('Position (Raster)','g0',i,il.g0,1)
-      +ilab('Breite (Raster)','breite',i,il.breite,1)
-      +`<label><span>Startlage</span><select data-isp="${i}"><option value="0"${il.start_parity===0?' selected':''}>unterste Lage ausgespart</option><option value="1"${il.start_parity===1?' selected':''}>zweite Lage ausgespart</option></select></label>`;
+    const bez=`Verzahnung ${i+1}`;
+    const br=axB(axAktion('entfernen',bez),`Entfernt ${bez} aus dieser Wand. Die übrigen Verzahnungsbereiche bleiben unverändert.`);
+    const bs=axB(`${bez}, Startlage`,'In welcher Lage die Aussparung beginnt; darüber wechselt sie Lage für Lage.');
+    d.innerHTML=`<div class="head"><b>${escP(bez)}</b><button class="mini" data-ilrm="${i}" ${br.attrs}>entfernen</button>${br.html}</div>`
+      +ilab('Position (Raster)','g0',i,il.g0,1,bez)
+      +ilab('Breite (Raster)','breite',i,il.breite,1,bez)
+      +`<label><span>Startlage</span><select data-isp="${i}" ${bs.attrs}><option value="0"${il.start_parity===0?' selected':''}>unterste Lage ausgespart</option><option value="1"${il.start_parity===1?' selected':''}>zweite Lage ausgespart</option></select>${bs.html}</label>`;
     c.appendChild(d); });
   c.querySelectorAll('input[data-if]').forEach(inp=>inp.addEventListener('input',e=>{
     const idx=+e.target.dataset.ii, f=e.target.dataset.if;
@@ -1350,6 +1353,19 @@ const INTERLOCK_GRUND={
   ueberlappt_oeffnung:'überlappt eine Öffnung',
   ueberlappt_verzahnung:'überlappt eine andere Verzahnung'
 };
+/**
+ * #144 Welche EINGETRAGENE Verzahnung ein abgewiesener Bereich ist — die Meldung nennt sie
+ * mit derselben Nummer, unter der sie in der Liste steht. Verglichen wird gegen genau die
+ * Bereiche, die `buildInterlocks()` an den Rechenkern gegeben hat; erfunden wird nichts, und
+ * ohne eindeutige Zuordnung bleibt die Meldung ohne Nummer.
+ */
+function interlockNr(bereich){
+  if(!bereich) return null;
+  const bereiche=buildInterlocks(dims().N);
+  const treffer=bereiche.map((b,i)=>({b,i}))
+    .filter(x=>x.b.g0===Number(bereich.g0) && x.b.g1===Number(bereich.g1));
+  return treffer.length===1 ? treffer[0].i+1 : null;
+}
 function renderInterlockWarns(vv){
   const box=$('interlockWarns'); if(!box) return;
   const warns=[];
@@ -1357,7 +1373,8 @@ function renderInterlockWarns(vv){
   for(const f of feh){
     const txt=INTERLOCK_GRUND[f.grund]||f.grund;
     const pos=f.bereich?` (Raster ${f.bereich.g0}–${f.bereich.g1})`:'';
-    warns.push('⚠ Verzahnung abgewiesen: '+txt+pos);
+    const nr=interlockNr(f.bereich);
+    warns.push('⚠ '+(nr?'Verzahnung '+nr:'Verzahnung')+' abgewiesen: '+txt+pos);
   }
   const inv=vv.interlock_invalid_segments||[];
   for(const s of inv) warns.push('⚠ Restbreite nicht baubar: Lage '+(s.lage+1)+', Raster '+s.start_grid+', '+s.breite_grid+' Raster');
@@ -1464,6 +1481,13 @@ function applyWand(w){
 // Anschluss (Boden-/Kopfblech getrennt, [A-1]) und Fugen und schreibt AUSSCHLIESSLICH
 // eingaben.planung.produkte — nur Produkt-IDs, nie Preise/Maße, nie ins Wandelement.
 const escP=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// #144 Kurzhelfer für die per innerHTML gerenderten Zeilen: Name plus eigene Beschreibung
+// (die Attribute für das Bedienelement und das Markup des Beschreibungstextes) sowie der
+// Objektbezug einer wiederholten Aktion. Beides kommt aus dem gemeinsamen Baustein; ohne
+// ihn bleibt die Zeile unverändert bedienbar, es wird nur nichts benannt.
+const axB=(name,besch)=>AX?AX.benennung(name,besch):{id:null,attrs:'',html:''};
+const axAktion=(aktion,objekt)=>AX?AX.objektAktion(aktion,objekt):`${objekt} ${aktion}`;
+const axId=praefix=>AX?AX.neueId(praefix):'';
 const PILL={ok:'ok',mehrdeutig:'no',fehlt:'no',kategorie_abweichend:'no',einheit_unpassend:'no',
   mass_abweichend:'no',keine_auswahl:'warn',kein_katalog:'warn',nachrichtlich:'mute',ohne_position:'mute',
   nicht_erforderlich:'mute',kombiniert:'komb',beschaffung:'mute'};
@@ -1748,14 +1772,27 @@ function renderProdukte(){
 // Kompakte Rollenzeile mit Mehrfachauswahl-Dropdown ([P-17]). Angeboten werden ausschließlich
 // katalogseitig zur Rolle passende Produkte; jede Option zeigt Produktnamen PLUS
 // unterscheidende Merkmale (Maße, Preisbasis, Kennung) — nie erneut nur die Rollenbezeichnung.
+// Platzhalter, an dem die Kennungen der Konfliktmeldungen in `aria-describedby` nachgetragen
+// werden. Er steht genau einmal je Rollenzeile und ist nach dem Rendern immer ersetzt.
+const AX_MARKE='\u0000ax\u0000';
 function rolleZeile(r, st, kat){
   const opts=KAT.rollenOptionen(kat, r.id, st.ids);
   const summ=KAT.auswahlZusammenfassung(opts);
   let h=`<div class="prol" data-prol="${escP(r.id)}"><div class="ptop"><b>${escP(KAT.rollenLabel(r.id))}</b>`
     +`<span class="pill ${PILL[st.status]||'mute'}">${escP(st.text)}</span></div>`;
+  // #144 Je Verwendungsstelle ein eigener, verständlicher Name statt des Rollenschlüssels;
+  // die Erklärung steht daneben als eigene Beschreibung. Die Kennungen der Konfliktmeldungen
+  // entstehen weiter unten und werden an der Marke nachgetragen — sie gehören in DIESELBE
+  // gerenderte Zeichenkette, sonst blieben Beschreibung und Verweis nicht zusammen.
+  const warnIds=[];
+  const konflikt=!!(st.fehlend.length || st.status==='mehrdeutig' || st.status==='mass_abweichend');
+  const bdd=axB(`${KAT.rollenLabel(r.id)}, Produkte wählen`,
+    `Klappt die Produkte auf, die im zugeordneten Bauteilkatalog zu dieser Verwendungsstelle `
+    +`passen. Mehrere sind erlaubt; angekreuzt wird, was diese Wand verwenden darf.`);
   h+=`<details class="pdd" data-pdd="${escP(r.id)}">`
-    +`<summary aria-haspopup="listbox" title="${escP(KAT.rollenLabel(r.id))} — Produkte wählen">`
-    +`<span class="psum">${escP(summ)}</span></summary>`
+    +`<summary aria-haspopup="listbox" ${bdd.id?`aria-describedby="${bdd.id}${AX_MARKE}" data-ax-tip="${bdd.id}" `:''}`
+    +`aria-label="${escP(KAT.rollenLabel(r.id))}, Produkte wählen"${konflikt?' aria-invalid="true"':''}>`
+    +`<span class="psum">${escP(summ)}</span>${bdd.html}</summary>`
     +`<div class="pmenu" role="group" aria-label="${escP(KAT.rollenLabel(r.id))}">`
     +(opts.length
       ? opts.map(o=>`<label><input type="checkbox" data-prolle="${escP(r.id)}" data-pid="${escP(o.id)}"`
@@ -1769,10 +1806,31 @@ function rolleZeile(r, st, kat){
   // #115 Die Meldung benennt die Luecke wie bisher und bietet sie zugleich zum Aufloesen an.
   // Der Knopf oeffnet den GEMEINSAMEN Reparaturdialog; geschrieben wird dort ueber
   // `setzeProduktrolle` — derselbe Weg wie beim Ankreuzen, kein zweiter Schreibweg.
-  for(const id of st.fehlend) h+=`<div class="pwarn">Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — nicht bepreist. <button type="button" class="plink" data-prep="1">Ersatz festlegen</button></div>`;
-  if(st.status==='mehrdeutig') h+=`<div class="pwarn">Mehrdeutig – gleiches maßgebendes Maß: ${st.kandidaten.map(p=>escP(p.id)).join(', ')}.</div>`;
-  if(st.status==='mass_abweichend') h+=`<div class="pwarn">Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand.</div>`;
-  if(st.vorgemerkt.length) h+=`<div class="pwarn">Nicht bepreist (maßfremd), für den Zuschnitt vorgemerkt: ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
+  //
+  // #145 Die Meldungen bekommen je eine Kennung und hängen als ZUSÄTZLICHE Beschreibung an
+  // der Auswahl — ein Fehlzustand, den man nur sieht, ist für die Tastaturbedienung keiner.
+  // Bei einem echten Konflikt trägt die Auswahl außerdem `aria-invalid`.
+  let hw='';
+  for(const id of st.fehlend){
+    const wid=axId('wp-w'); if(wid) warnIds.push(wid);
+    const bp=axB(`Ersatz für ${KAT.rollenLabel(r.id)} festlegen`,
+      `Öffnet den Reparaturdialog für diese Wand: dort wird festgelegt, welches Produkt an `
+      +`die Stelle der nicht auffindbaren Kennung tritt — oder dass sie ersatzlos entfällt.`);
+    hw+=`<div class="pwarn"${wid?` id="${wid}"`:''}>Referenz „${escP(id)}“ ist im geladenen Katalog nicht auflösbar — nicht bepreist. <button type="button" class="plink" data-prep="1" ${bp.attrs}>Ersatz festlegen</button>${bp.html}</div>`;
+  }
+  if(st.status==='mehrdeutig'){
+    const wid=axId('wp-w'); if(wid) warnIds.push(wid);
+    hw+=`<div class="pwarn"${wid?` id="${wid}"`:''}>Mehrdeutig – gleiches maßgebendes Maß: ${st.kandidaten.map(p=>escP(p.id)).join(', ')}.</div>`;
+  }
+  if(st.status==='mass_abweichend'){
+    const wid=axId('wp-w'); if(wid) warnIds.push(wid);
+    hw+=`<div class="pwarn"${wid?` id="${wid}"`:''}>Kein gewähltes Produkt passt zum maßgebenden Maß dieser Wand.</div>`;
+  }
+  if(st.vorgemerkt.length){
+    const wid=axId('wp-w'); if(wid) warnIds.push(wid);
+    hw+=`<div class="pwarn"${wid?` id="${wid}"`:''}>Nicht bepreist (maßfremd), für den Zuschnitt vorgemerkt: ${st.vorgemerkt.map(p=>escP(p.id)).join(', ')}.</div>`;
+  }
+  h=h.replace(AX_MARKE, warnIds.length?' '+warnIds.join(' '):'')+hw;
   return h+'</div>';
 }
 function bindProdukte(){
@@ -1781,8 +1839,12 @@ function bindProdukte(){
   $('prodRollen').addEventListener('click',ev=>{
     const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prep) return;
     if(!oeffneReparatur) return;
+    // #145 Nach dem Übernehmen rendert `run()` die Rollenzeilen neu — der auslösende Knopf
+    // ist dann ein anderer Knoten. Das benannte Ersatzziel ist die nächste stabile
+    // Schaltfläche darunter, damit der Fokus nicht am Seitenanfang landet.
     oeffneReparatur({ modul:1, aufMeldung:(txt,ok)=>{ $('prodInfo').innerHTML=escP(txt);
-      if(!ok) $('prodInfo').style.color='var(--sb-warn)'; }, aufFertig:()=>run() });
+      if(!ok) $('prodInfo').style.color='var(--sb-warn)'; }, aufFertig:()=>run(),
+      ersatzFokus:()=>$('run') });
   });
   $('prodRollen').addEventListener('change',ev=>{
     const t=ev&&ev.target; if(!t||!t.dataset||!t.dataset.prolle) return;
@@ -1927,8 +1989,8 @@ function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelemen
 function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
 function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
 function setManualCols(arr){ manualCols=(arr&&arr.length)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAxis=null; run(); }
-function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; asEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); syncAsTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManual(); }
-  $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; if(RESULT) draw(RESULT.wandelement); }
+function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; asEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); syncAsTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManual(); }
+  $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; axGedrueckt('axisTool',axisEdit); if(RESULT) draw(RESULT.wandelement); }
 
 // ---- Zwischenspannpunkte ([A-14]…[A-17], #93) ----------------------------------------------
 // Bedienung nach demselben Muster wie der Spannachsen-Editor: Punkt setzen, auswählen, ziehen,
@@ -1956,11 +2018,11 @@ function ensureManualZp(){ if(!manualZp) manualZp = RESULT
 function addZpAt(z){ ensureManualZp(); if(!manualZp.includes(z)){ manualZp.push(z); manualZp.sort((a,b)=>a-b); } }
 function delZp(z){ ensureManualZp(); const i=manualZp.indexOf(z); if(i>=0) manualZp.splice(i,1); if(selZp===z) selZp=null; }
 function setManualZp(arr){ manualZp=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selZp=null; run(); }
-function syncZpTool(){ $('zpTool').style.background=zpEdit?'#1f6feb':''; $('zpTool').style.color=zpEdit?'#fff':''; }
+function syncZpTool(){ $('zpTool').style.background=zpEdit?'#1f6feb':''; $('zpTool').style.color=zpEdit?'#fff':''; axGedrueckt('zpTool',zpEdit); }
 function setZpEdit(v){ zpEdit=!!v; if(zpEdit){ editMode=false; axisEdit=false; agEdit=false; dcEdit=false; asEdit=false;
-    $('axisTool').style.background=''; $('axisTool').style.color='';
+    $('axisTool').style.background=''; $('axisTool').style.color=''; axGedrueckt('axisTool',false);
     syncAgTool(); syncDcTool(); syncAsTool();
-    $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualZp(); }
+    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManualZp(); }
   syncZpTool(); if(RESULT) draw(RESULT.wandelement); renderZpHinweis(); }
 /** Zustand benennen: abgeleitet oder ausdrücklich gewählt — nie beides behaupten. */
 function renderZpHinweis(){
@@ -1970,7 +2032,7 @@ function renderZpHinweis(){
   el.textContent = manualZp
     ? 'Eigene Auswahl: '+manualZp.length+' Höhe(n) '+(manualZp.length?'('+manualZp.map(z=>fmt(z/10,1)).join(' · ')+' cm)':'')
       +' — gespeichert am Wandelement; '+n+' wirksame(r) Punkt(e).'
-    : 'Automatisch abgeleitet ([A-15]): '+n+' wirksame(r) Punkt(e) nahe der halben Segmenthöhe — nicht gespeichert.';
+    : 'Automatisch abgeleitet: '+n+' wirksame(r) Punkt(e) nahe der halben Segmenthöhe — nicht gespeichert.';
 }
 
 // ---- Ausgleichspunkte ([A-20]…[A-24], #96) ------------------------------------------------
@@ -1998,11 +2060,11 @@ function ensureManualAg(){ if(!manualAg) manualAg = RESULT
 function addAgAt(x){ ensureManualAg(); if(!manualAg.includes(x)){ manualAg.push(x); manualAg.sort((a,b)=>a-b); } }
 function delAg(x){ ensureManualAg(); const i=manualAg.indexOf(x); if(i>=0) manualAg.splice(i,1); if(selAg===x) selAg=null; }
 function setManualAg(arr){ manualAg=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAg=null; run(); }
-function syncAgTool(){ $('agTool').style.background=agEdit?'#1f6feb':''; $('agTool').style.color=agEdit?'#fff':''; }
+function syncAgTool(){ $('agTool').style.background=agEdit?'#1f6feb':''; $('agTool').style.color=agEdit?'#fff':''; axGedrueckt('agTool',agEdit); }
 function setAgEdit(v){ agEdit=!!v; if(agEdit){ editMode=false; axisEdit=false; zpEdit=false; dcEdit=false; asEdit=false;
-    $('axisTool').style.background=''; $('axisTool').style.color='';
+    $('axisTool').style.background=''; $('axisTool').style.color=''; axGedrueckt('axisTool',false);
     syncZpTool(); syncDcTool(); syncAsTool();
-    $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualAg(); }
+    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManualAg(); }
   syncAgTool(); if(RESULT) draw(RESULT.wandelement); renderAgHinweis(); }
 /** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
 function renderAgHinweis(){
@@ -2011,8 +2073,8 @@ function renderAgHinweis(){
   const n=(RESULT.wandelement.ausgleichspunkte||[]).length;
   el.textContent = manualAg
     ? 'Eigene Auswahl: '+n+' Punkt(e) — gespeichert am Wandelement; die automatische Verteilung '
-      +'([A-20]…[A-23]/[A-31]) ist gesperrt, es wird nichts aufgefüllt.'
-    : 'Automatisch verteilt ([A-20]…[A-23]/[A-31]): '+n+' Punkt(e) — je real belegtem '
+      +'ist gesperrt, es wird nichts aufgefüllt.'
+    : 'Automatisch verteilt: '+n+' Punkt(e) — je real belegtem '
       +'Bodenblechbereich aus dessen Länge, den Bereichsenden, den Bodenblech-Stößen darin und '
       +'den Spannachsen; nicht gespeichert.';
 }
@@ -2045,11 +2107,11 @@ function ensureManualDc(){ if(!manualDc) manualDc = RESULT
 function addDcAt(k){ ensureManualDc(); if(k!=null && !manualDc.includes(k)){ manualDc.push(k); manualDc.sort((a,b)=>a-b); } }
 function delDc(k){ ensureManualDc(); const i=manualDc.indexOf(k); if(i>=0) manualDc.splice(i,1); if(selDc===k) selDc=null; }
 function setManualDc(arr){ manualDc=Array.isArray(arr)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selDc=null; run(); }
-function syncDcTool(){ $('dcTool').style.background=dcEdit?'#1f6feb':''; $('dcTool').style.color=dcEdit?'#fff':''; }
+function syncDcTool(){ $('dcTool').style.background=dcEdit?'#1f6feb':''; $('dcTool').style.color=dcEdit?'#fff':''; axGedrueckt('dcTool',dcEdit); }
 function setDcEdit(v){ dcEdit=!!v; if(dcEdit){ editMode=false; axisEdit=false; zpEdit=false; agEdit=false; asEdit=false;
-    $('axisTool').style.background=''; $('axisTool').style.color='';
+    $('axisTool').style.background=''; $('axisTool').style.color=''; axGedrueckt('axisTool',false);
     syncZpTool(); syncAgTool(); syncAsTool();
-    $('durchTool').style.background=''; $('durchTool').style.color=''; ensureManualDc(); }
+    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManualDc(); }
   syncDcTool(); if(RESULT) draw(RESULT.wandelement); renderDcHinweis(); }
 /** Zustand benennen: verteilt oder ausdrücklich gewählt — nie beides behaupten. */
 function renderDcHinweis(){
@@ -2059,8 +2121,8 @@ function renderDcHinweis(){
   const anz=RESULT.wandelement.tension_columns.length;
   el.textContent = manualDc
     ? 'Eigene Auswahl: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — gespeichert am '
-      +'Wandelement; die automatische Verteilung ([A-26]) ist gesperrt, es wird nichts aufgefüllt.'
-    : 'Automatisch verteilt ([A-26]): '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — erste und '
+      +'Wandelement; die automatische Verteilung ist gesperrt, es wird nichts aufgefüllt.'
+    : 'Automatisch verteilt: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — erste und '
       +'letzte Achse immer, dazwischen höchstens 1125 mm Abstand, nicht gespeichert.';
 }
 
@@ -2071,11 +2133,11 @@ function renderDcHinweis(){
 // keine aus und korrigiert keine ([A-28]/[P-9]). Geschrieben wird allein die kanonische Eingabe
 // `prestress.base_plate_aussparungen_grid` (über vorgaben() -> Rechenkern -> persistAktiv); die
 // Wandansicht zeigt danach, was der Kern daraus gerechnet hat — nicht, was angeklickt wurde.
-function syncAsTool(){ $('asTool').style.background=asEdit?'#1f6feb':''; $('asTool').style.color=asEdit?'#fff':''; }
+function syncAsTool(){ $('asTool').style.background=asEdit?'#1f6feb':''; $('asTool').style.color=asEdit?'#fff':''; axGedrueckt('asTool',asEdit); }
 function setAsEdit(v){ asEdit=!!v; if(asEdit){ editMode=false; axisEdit=false; zpEdit=false; agEdit=false; dcEdit=false;
-    $('axisTool').style.background=''; $('axisTool').style.color='';
+    $('axisTool').style.background=''; $('axisTool').style.color=''; axGedrueckt('axisTool',false);
     syncZpTool(); syncAgTool(); syncDcTool();
-    $('durchTool').style.background=''; $('durchTool').style.color=''; }
+    $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); }
   syncAsTool(); if(RESULT) draw(RESULT.wandelement); renderAsHinweis(); }
 /**
  * EIN Rasterfeld an- oder abwählen — der einzige Bedienweg, und er schreibt unmittelbar die
@@ -2107,9 +2169,185 @@ function renderAsHinweis(){
   el.textContent = luecken.length
     ? 'Eigene Auswahl: '+felder.length+' Rasterfeld(er) in '+luecken.length+' Lücke(n) — '
       +'gespeichert am Wandelement; das Bodenblech wird je verbleibendem Bereich unabhängig '
-      +'zerlegt ([A-29]), ausgesparte Länge erzeugt keine Teile.'
+      +'zerlegt, ausgesparte Länge erzeugt keine Teile.'
     : 'Keine Aussparungen — das Bodenblech läuft über die volle Wandlänge. Gewählt wird '
-      +'ausschließlich von Hand ([A-28]); es wird nichts abgeleitet.';
+      +'ausschließlich von Hand; es wird nichts abgeleitet.';
+}
+
+// ---------- Zugänglichkeit: Namen, Beschreibungen, Zustände (#144/#145) ----------
+/**
+ * Name und Beschreibung JEDES festen Bedienelements dieser Seite.
+ *
+ * Der NAME ist kurz und sagt, was das Element tut oder welchen Wert es trägt — bei einem
+ * Wertfeld einschließlich EINHEIT, weil „Höhe“ allein nicht sagt, ob Millimeter oder Meter
+ * einzutragen sind. Die ERKLÄRUNG steht daneben als eigene Beschreibung und landet über
+ * `aria-describedby` auf einem realen Textknoten; sichtbar wird sie als Tooltip bei Hover
+ * UND bei Tastaturfokus. Die früheren `title`-Attribute sind ersatzlos weg: ein `title` ist
+ * weder ein Name noch erscheint es bei Tastaturbedienung.
+ *
+ * Regel- und Issue-Nummern stehen hier bewusst NICHT drin — das sind Bedienhinweise, keine
+ * Quellenangaben.
+ */
+const AX_TEXTE = {
+  'len': ['Länge in Metern',
+    'Nur Anzeige. Geführt wird die Länge im Geschosseditor an der Lage der Wand — dort über '
+    + 'den Endgriff oder ein Längenmaß ändern.'],
+  'hgt': ['Höhe in Millimetern',
+    'Ziel-Wandhöhe, millimetergenau und ohne Rasterzwang. Eine Resthöhe braucht die '
+    + 'aktivierte Ausgleichslage; gerundet wird nie.'],
+  'ausgleich': ['Ausgleichslage',
+    'Aktiviert bekommt eine krumme Zielhöhe oben genau eine Ausgleichslage mit der '
+    + 'Resthöhe. Nicht aktiviert muss die Höhe ein Vielfaches von 200 Millimetern sein.'],
+  'addTuer': ['Tür hinzufügen',
+    'Legt eine Türöffnung mit Standardmaßen an. Position, Breite und Höhe werden danach in '
+    + 'der Zeile der Öffnung eingetragen.'],
+  'addFenster': ['Fenster hinzufügen',
+    'Legt eine Fensteröffnung mit Standardmaßen an. Position, Breite, Brüstung und Höhe '
+    + 'werden danach in der Zeile der Öffnung eingetragen.'],
+  'durchTool': ['Durchbruch-Modus',
+    'Legt ein Zellraster über die Wandansicht: ein Klick auf ein Feld setzt einen '
+    + 'Durchbruch, ein zweiter nimmt ihn zurück.'],
+  'durchClear': ['Durchbrüche leeren',
+    'Nimmt alle gesetzten Durchbrüche dieser Wand zurück.'],
+  'axisTool': ['Spannachsen bearbeiten',
+    'Sonderkonstruktion: Achsen in der Wandansicht setzen, ziehen und mit Doppelklick '
+    + 'löschen. Eigene Achsen sperren die automatische Verteilung, bis „Zurück zu Auto“.'],
+  'axisDel': ['Ausgewählte Spannachse löschen',
+    'Entfernt die zuletzt angefasste Achse. Ohne angefasste Achse passiert nichts.'],
+  'axisAuto': ['Spannachsen zurück zu Auto',
+    'Verwirft die eigenen Achsen; verteilt wird danach wieder automatisch.'],
+  'zpTool': ['Zwischenspannpunkte bearbeiten',
+    'Punkte auf den Lagen-Oberkanten setzen, ziehen und mit Doppelklick löschen. Eigene '
+    + 'Punkte sperren die automatische Ableitung, bis „Zurück zu Auto“.'],
+  'zpDel': ['Ausgewählten Zwischenspannpunkt löschen',
+    'Entfernt den zuletzt angefassten Punkt. Ohne angefassten Punkt passiert nichts.'],
+  'zpAuto': ['Zwischenspannpunkte zurück zu Auto',
+    'Verwirft die eigenen Punkte; abgeleitet wird danach wieder automatisch.'],
+  'agTool': ['Ausgleichspunkte bearbeiten',
+    'Punkte am Wandfuß setzen, ziehen und mit Doppelklick löschen. Eigene Punkte sperren '
+    + 'die automatische Verteilung vollständig, bis „Zurück zu Auto“.'],
+  'agDel': ['Ausgewählten Ausgleichspunkt löschen',
+    'Entfernt den zuletzt angefassten Punkt. Ohne angefassten Punkt passiert nichts.'],
+  'agAuto': ['Ausgleichspunkte zurück zu Auto',
+    'Verwirft die eigenen Punkte; verteilt wird danach wieder automatisch.'],
+  'asTool': ['Bodenblech aussparen',
+    'Rasterfelder am Wandfuß anklicken: ein Klick spart das Feld aus, ein zweiter nimmt es '
+    + 'zurück. Benachbarte Felder werden zu einer Lücke zusammengefasst.'],
+  'asClear': ['Alle Aussparungen zurücksetzen',
+    'Nimmt jede gewählte Aussparung zurück; das Bodenblech läuft danach wieder über die '
+    + 'volle Wandlänge.'],
+  'dcTool': ['Deckenanschluss bearbeiten',
+    'Punkte auf den Spannachsen setzen, ziehen und mit Doppelklick löschen. Eigene Punkte '
+    + 'sperren die automatische Verteilung vollständig, bis „Zurück zu Auto“.'],
+  'dcDel': ['Ausgewählten Anschlusspunkt löschen',
+    'Entfernt den zuletzt angefassten Punkt. Ohne angefassten Punkt passiert nichts.'],
+  'dcAuto': ['Deckenanschluss zurück zu Auto',
+    'Verwirft die eigenen Punkte; verteilt wird danach wieder automatisch.'],
+  'addStep': ['Stufe hinzufügen',
+    'Legt eine Stufe der Staffelung an: Längsbereich von–bis und die dort reduzierte Höhe.'],
+  'addInterlock': ['Verzahnung hinzufügen',
+    'Legt einen Verzahnungsbereich an: ein Wandabschnitt mit lagenweise ausgesparten '
+    + 'Steinen für den Anschluss einer Querwand.'],
+  'sideVorne': ['Funktion der Vorderseite',
+    'Wofür die Vorderseite dieser Wand gebaut wird. Der Wandaufbau in Modul 2 rechnet damit.'],
+  'sideHinten': ['Funktion der Rückseite',
+    'Wofür die Rückseite dieser Wand gebaut wird. Der Wandaufbau in Modul 2 rechnet damit.'],
+  'abdichtung': ['Abdichtung der Stoßfugen',
+    'Nur bei „abgedichtet“ führt die Stückliste Dichtstreifen. Geometrie und Vorspannung '
+    + 'bleiben unverändert.'],
+  'brandklasse': ['Brandschutzklassifikation',
+    'Planungskennzeichnung dieser Wand. Aus ihr wird kein Nachweis, keine Freigabe und '
+    + 'keine Materialregel abgeleitet.'],
+  'qk': ['qk in Kilonewton je Quadratmeter',
+    'Charakteristische horizontale Flächenlast, mit der ausgelegt wird.'],
+  'gammaQ': ['γQ, Teilsicherheitsbeiwert der Last',
+    'Faktor, mit dem die charakteristische Last zum Bemessungswert wird.'],
+  'modus': ['Vorgehen der Auslegung',
+    'Auto-Auslegung sucht Strangabstand und Vorspannkraft selbst. Feste Auslegung rechnet '
+    + 'die darunter eingetragenen Werte nach.'],
+  'spacing': ['Strangabstand in Rastereinheiten',
+    'Abstand der Vorspannstränge. Wirksam nur bei fester Auslegung.'],
+  'force': ['Vorspannkraft N in Kilonewton je Strang',
+    'Kraft je Vorspannstrang. Wirksam nur bei fester Auslegung.'],
+  'blechCm': ['Kopfblech-Modullänge in Zentimetern',
+    'Modullänge des Kopfblechs an der Wandoberkante. Das Bodenblech hängt nicht daran — es '
+    + 'wird aus den im Katalog gewählten Standardlängen zusammengesetzt.'],
+  'topConn': ['Oberer Anschluss',
+    'Am Fuß liegt immer ein Bodenblech. Oben wahlweise Spannplatten auf der Steinkante oder '
+    + 'Kopfblech-Module.'],
+  'rodUeber': ['Überstand Reststück in Millimetern',
+    'Überstand des Reststücks über die Oberkante der Spannplatte — Platz für die '
+    + 'Spannmutter. Die Plattendicke selbst kommt aus dem Bauteilkatalog.'],
+  'fcd': ['fcd in Newton je Quadratmillimeter',
+    'Bemessungswert der Druckfestigkeit. Materialannahme, vom Statiker zu bestätigen.'],
+  'cfd': ['Cf,d, Reibbeiwert der Lagerfuge',
+    'Materialannahme, vom Statiker zu bestätigen.'],
+  'rho': ['ρ in Kilonewton je Kubikmeter',
+    'Wichte des Mauerwerks. Materialannahme, vom Statiker zu bestätigen.'],
+  'run': ['Auslegen',
+    'Rechnet die Wand mit den eingetragenen Werten neu und speichert das Ergebnis am '
+    + 'aktiven Wandelement.'],
+  'showDim': ['Maße',
+    'Blendet die Bemaßung der Wandansicht ein oder aus. Reine Darstellung — am Wandelement '
+    + 'ändert sich nichts.'],
+  'showRaster': ['Raster',
+    'Blendet das Rastergitter der Wandansicht ein oder aus. Reine Darstellung — am '
+    + 'Wandelement ändert sich nichts.'],
+  'viewToggle': ['Ansicht wechseln',
+    'Zeigt wahlweise die Vorder- oder die Rückseite der Wand. Welche gerade zu sehen ist, '
+    + 'steht auf der Schaltfläche und daneben.'],
+  'zoomOut': ['Wandansicht verkleinern',
+    'Verkleinert die Darstellung um einen Schritt. Die Wand selbst ändert sich nicht.'],
+  'zoomIn': ['Wandansicht vergrößern',
+    'Vergrößert die Darstellung um einen Schritt. Die Wand selbst ändert sich nicht.'],
+  'zoomFit': ['Wandansicht einpassen',
+    'Passt die Darstellung wieder vollständig in den Rahmen ein, höchstens bis zum echten '
+    + 'Maßstab.'],
+};
+/**
+ * Die Häkchen der Ansichtsleiste bekommen ihren Namen von ihrer SICHTBAREN Beschriftung;
+ * ein zweiter Name am Element widerspräche dem Text, der daneben steht. Der Tooltip wird
+ * zusätzlich am umgebenden Label ausgelöst — beide zeigen auf denselben Textknoten.
+ */
+const AX_HAEKCHEN = { 'showDim': 'showDim-lab', 'showRaster': 'showRaster-lab' };
+/**
+ * Zustandszeilen, die den aktuellen Stand EINES Bedienelements beschreiben. Sie stehen
+ * ohnehin sichtbar auf der Seite und werden deshalb ERGÄNZEND verknüpft — die dauerhafte
+ * Erklärung aus `AX_TEXTE` bleibt daneben stehen, und es entsteht kein zweiter Text.
+ */
+const AX_ZUSTAND = { 'ausgleich': 'zerlegung', 'abdichtung': 'abdichtHinweis',
+  'brandklasse': 'brandHinweis', 'zpTool': 'zpHinweis', 'agTool': 'agHinweis',
+  'dcTool': 'dcHinweis', 'asTool': 'asHinweis' };
+function axBenennen(){
+  if (!AX) return;
+  for (const id of Object.keys(AX_TEXTE)) {
+    const el = $(id); if (!el) continue;
+    const [name, besch] = AX_TEXTE[id];
+    if (!AX_HAEKCHEN[id]) AX.benenne(el, name);
+    const bid = AX.beschreibe(el, besch);
+    if (AX_HAEKCHEN[id]) AX.tippZiel($(AX_HAEKCHEN[id]), bid);
+    const zus = AX_ZUSTAND[id] ? $(AX_ZUSTAND[id]) : null;
+    if (zus) AX.ergaenzeBeschreibung(el, zus);
+  }
+  // Die Kopfleiste liegt außerhalb dieser Seite (sie wird von `navbar.js` eingehängt); für
+  // die Hintergrundsperre eines modalen Dialogs zählt sie trotzdem dazu.
+  const nav = typeof document.querySelector === 'function' ? document.querySelector('.sb-nav') : null;
+  if (nav && typeof nav.setAttribute === 'function') nav.setAttribute('data-ax-hintergrund', '');
+}
+/** Den gedrückten Zustand eines Umschaltwerkzeugs benennen — nicht nur einfärben. */
+function axGedrueckt(id, an){
+  const el = $(id);
+  if (el && typeof el.setAttribute === 'function') el.setAttribute('aria-pressed', an ? 'true' : 'false');
+}
+/**
+ * Das Höhenfeld als ungültig kennzeichnen, wenn der Rechenkern die Zielhöhe BENANNT
+ * abgewiesen hat. Verknüpft wird der sichtbare Konflikttext — es entsteht keine zweite
+ * Fehlermeldung, und die Eingabe bleibt unverändert stehen.
+ */
+function axHoeheStand(err){
+  if (!AX) return;
+  const konflikt = !!(err && err.grund === AUSGLEICH_KONFLIKT);
+  AX.ungueltig($('hgt'), konflikt ? $('ausgleichHinweis') : null);
 }
 
 // ---------- Ereignis-Bindung + Start ----------
@@ -2122,7 +2360,7 @@ function bindEvents(){
    // #136 Die Ausgleichslage ist ein Core-Eingang: jede Umschaltung rechnet die Wand über
    // denselben einen Auslegungspfad neu — es gibt keinen zweiten Schreibweg.
    'ausgleich'].forEach(id=>$(id).addEventListener('change',run));
-  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; if(editMode){ agEdit=false; dcEdit=false; asEdit=false; syncAgTool(); syncDcTool(); syncAsTool(); } $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; if(RESULT) draw(RESULT.wandelement); });
+  $('durchTool').addEventListener('click',()=>{ editMode=!editMode; if(editMode){ agEdit=false; dcEdit=false; asEdit=false; syncAgTool(); syncDcTool(); syncAsTool(); } $('durchTool').className='mini'+(editMode?' ':''); $('durchTool').style.background=editMode?'#1f6feb':''; $('durchTool').style.color=editMode?'#fff':''; axGedrueckt('durchTool',editMode); if(RESULT) draw(RESULT.wandelement); });
   $('durchClear').addEventListener('click',()=>{ voids.clear(); run(); });
   $('plan').addEventListener('click',e=>{ if(!editMode)return; const t=e.target; const a=t&&t.getAttribute&&t.getAttribute('data-r'); if(a!==null&&a!==undefined&&a!=='') toggleVoid(+a,+t.getAttribute('data-c')); });
   $('axisTool').addEventListener('click',()=>setAxisEdit(!axisEdit));
@@ -2242,6 +2480,7 @@ window.__wpInit=function(){
   ROLLE_RECHNUNG=S.ROLLE_RECHNUNG;
   AUSGLEICH_KONFLIKT=S.AUSGLEICH_KONFLIKT; AUSGLEICH_HOEHEN=S.ausgleichSteinHoehen;
   oeffneReparatur=S.oeffneReparatur;
+  AX=S.AX;
   wandLagenKanten=S.wandLagenKanten; lagenOberkanteMm=S.lagenOberkanteMm;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
   stangenStuecke=S.stangenStuecke;
@@ -2261,6 +2500,9 @@ window.__wpInit=function(){
   schraubeSvg=S.schraubeSvg;
   bindEvents();
   bindProdukte();
+  // #144/#145 Namen und Beschreibungen der festen Bedienelemente stehen VOR dem ersten
+  // Rendern — die gerenderten Zeilen bringen ihre eigenen mit.
+  axBenennen();
   applyZoom();     // Standardstellung: eingepasst
   setupStoreSync();
   // [P-18]/[Z-1]: Die Vorbelegung MUSS vor der ersten Berechnung stehen — sie liefert die
@@ -2302,11 +2544,15 @@ window.__wpInit=function(){
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { oeffneReparatur } from './shared/sembla-reparatur.js';
+  // Der EINE Accessibility-Baustein der Suite (#144/#145): Namen, Beschreibungen, Tooltips,
+  // Dialogsemantik. Stil und Tooltip-Schicht hängt bereits `mountNavbar` ein; beide
+  // Funktionen sind ausdrücklich mehrfach aufrufbar und tun dann nichts.
+  import * as AX from './shared/sembla-ax.js';
   // #136 `ausgleichSteinHoehen` ist der gemeinsame Baustein der Ausgleichsstein-Kataloghöhen
   // ([G-16]) — dieselbe Ableitung, die der Read-only-Frischpfad und der Sammel-Editor nutzen.
   import { ROLLE_RECHNUNG, ausgleichSteinHoehen } from './shared/sembla-wandanlage.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT,
+  window.SEMBLA = { buildWall, Opening, GRID, COURSE, autoAuslegung, nachweisPruefen, store, KAT, AX,
                     wandLagenKanten, lagenOberkanteMm,
                     ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
                     oeffneReparatur,
@@ -2319,6 +2565,8 @@ window.__wpInit=function(){
                     SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser,
                     mutterSvg, kopplungsmutterSvg,
                     spannplatteSvg, schraubeSvg };
+  AX.stilEinhaengen();
+  AX.tooltips();
   mountNavbar(1);
   window.__wpInit();
 </script>
