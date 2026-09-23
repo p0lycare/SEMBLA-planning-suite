@@ -20,6 +20,9 @@ import { standardEingaben, mengenKennung } from "../../docs/shared/storage.js";
 // dieser Datei. Sie wird dort gegen einen In-Memory-localStorage betrieben; alle uebrigen
 // Pruefungen laufen unveraendert gegen den leichtgewichtigen Storage-Mock.
 import * as echterStore from "../../docs/shared/storage.js";
+// #144/#145: der EINE Accessibility-Baustein der Suite — gebunden wie im Browser, damit die
+// ECHTE Namens-, Beschreibungs- und Ungueltig-Logik geprueft wird (nicht eine nachgebaute).
+import * as AX from "../../docs/shared/sembla-ax.js";
 
 /** Deutsche Zahlformatierung wie im Modul (fuer Erwartungswerte der Oberflaechen-Pruefung). */
 const fmtDe = n => n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -33,16 +36,28 @@ const STD_KATALOG_PFAD = new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.jso
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 const script = scripts[scripts.length - 1][1];   // klassische App-Logik
 
-class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={};this.files=[];this.listeners={};this.dataset={};this.hidden=false;}
+class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={};this.files=[];this.listeners={};this.dataset={};this.hidden=false;
+  // #144/#145: der Accessibility-Baustein arbeitet ueber Attribute (aria-label,
+  // aria-describedby, aria-invalid) und haengt seine Beschreibungsknoten in den Elternknoten.
+  // Das Double fuehrt beides wirklich mit — sonst liefe die gepruefte Logik daran vorbei.
+  this.attrs={}; this.parentNode=null; this.isConnected=true; this._kinder=[];}
+  setAttribute(n,v){ this.attrs[n]=String(v); if(n==='id'){ this.id=String(v); _e[String(v)]=this; } }
+  getAttribute(n){ return Object.prototype.hasOwnProperty.call(this.attrs,n)?this.attrs[n]:null; }
+  removeAttribute(n){ delete this.attrs[n]; }
+  hasAttribute(n){ return Object.prototype.hasOwnProperty.call(this.attrs,n); }
+  insertBefore(k){ if(k){ k.parentNode=this; this._kinder.push(k); } return k; }
   // `ziel` bildet die Ereignis-DELEGATION nach: im Browser meldet sich der Behandler an der
   // Tabelle an und bekommt im `target` das tatsaechlich bediente Feld. Ohne diesen Parameter
   // verhaelt sich `dispatch` unveraendert (Ziel = das Element selbst).
   addEventListener(e,f){(this.listeners[e]||(this.listeners[e]=[])).push(f);}
   dispatch(e,ziel){(this.listeners[e]||[]).forEach(f=>f({target:ziel||this,preventDefault(){}}));}
   get innerHTML(){return this._h;} set innerHTML(v){this._h=v;}
-  querySelectorAll(){return [];} appendChild(){} click(){}}
+  querySelectorAll(){return [];} appendChild(k){ if(k){ k.parentNode=this; this._kinder.push(k); } return k; } click(){}}
 const dv={cur:'EUR'};   // #70: kein `proj` mehr — Modul 4 hat kein Projekt-Eingabefeld
 const _e={}; const document={getElementById:id=>{let e=_e[id];if(!e){e=_e[id]=new El(id);if(id in dv)e.value=dv[id];}return e;},createElement:()=>new El('a')};
+// Ein echtes Body-Element: dort landen die Beschreibungsknoten, wenn eine Zeile keinen
+// Elternknoten hat.
+document.body=new El('body');
 globalThis.document=document; globalThis.window={}; globalThis.alert=m=>{globalThis.__alert=m;};
 globalThis.URL={createObjectURL:()=>'blob:x',revokeObjectURL(){}}; globalThis.Blob=class{constructor(){}};
 globalThis.FileReader=class{readAsText(){}};
@@ -149,7 +164,7 @@ const storeMock={ aktivId:()=>_aktiv, aktivesWandelement:()=>_we, aktiveEingaben
 // [P-23]/#94: `semblaBomSets` ist die EINE Leseansicht der Baugruppen-Aufloesung. Sie kommt hier
 // wie im Browser aus sembla-bom.js; das Modul zeigt ihr Ergebnis an und rechnet es nicht nach.
 globalThis.window.SEMBLA={ stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store:storeMock,
-  umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets };
+  umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets, AX };
 
 eval(script);
 globalThis.window.__slInit();
@@ -2180,6 +2195,177 @@ ok('#70 im gesamten Lauf kein einziger Schreibzugriff auf eingaben.projekt',
       JSON.stringify(echterStore.holeElement(id1).wandelement)===JSON.stringify(W1)
       && JSON.stringify(echterStore.holeElement(id2).wandelement)===JSON.stringify(W2));
   }
+}
+
+
+// ---- #144/#145: Namen, Beschreibungen, Objektbezug und ungueltige Felder (Modul 4) --------
+//
+// Gefahren wird der REALE Nutzerpfad: die echte Speicherschicht des vorstehenden Blocks
+// (Projekt -> Geschoss -> Wand, zugeordneter Standardkatalog), eine gesetzte
+// Mengenuebersteuerung und ein gesetzter Kommentar — und danach das TATSAECHLICH erzeugte
+// DOM. Benannt wird ausschliesslich ueber den gemeinsamen Baustein `sembla-ax.js`; Mengen
+// und Kommentare laufen unveraendert ueber `storage.setzeMengenUebersteuerung`/
+// `setzeKommentar`.
+{
+  const WID = echterStore.aktivId();
+  const SL5 = globalThis.window.__sl;
+  const tbody = () => document.getElementById('tbody').innerHTML;
+  /** Name, Beschreibung(en) und Zustand EINES festen Bedienelements. */
+  const ax = (id) => {
+    const el = document.getElementById(id);
+    const ids = String(el.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean);
+    return { name: el.getAttribute('aria-label'), beschreibungIds: ids,
+      beschreibungId: ids[0]||null,
+      beschreibung: ids.map(i=>String(document.getElementById(i).textContent||'')).join(' ').trim(),
+      tip: el.getAttribute('data-ax-tip') };
+  };
+
+  globalThis.window.__slInit();
+  SL5.setzeEbene('wand');
+
+  // (a) Die feste Bedienzeile: je ein kurzer Name und eine getrennte Beschreibung.
+  const tabelle = (html.match(/const AX_TEXTE = \{[\s\S]*?\n\};/)||[''])[0];
+  const axIds = [...tabelle.matchAll(/\n  '([\w-]+)':/g)].map(m=>m[1]);
+  ok('#144 die Namenstabelle deckt die feste Bedienzeile vollstaendig ab',
+    axIds.length>=4 && ['ebene','preise','cur','print'].every(i=>axIds.includes(i)));
+  const HAEKCHEN=['preise'];
+  ok('#144 jedes feste Bedienelement traegt Name und eigene Beschreibung — das Haekchen '
+    +'seinen Namen aus der sichtbaren Beschriftung',
+    axIds.length>0 && axIds.every(i=>{ const a=ax(i);
+      const name = HAEKCHEN.includes(i) ? a.name===null : (!!a.name && a.name.length<=45);
+      return name && a.beschreibung.length>15 && a.tip===a.beschreibungId; }));
+  ok('#145 das Haekchen traegt keinen zweiten Namen, sein Label loest denselben Tooltip aus',
+    ax('preise').name===null
+    && document.getElementById('lbl-preise').getAttribute('data-ax-tip')===ax('preise').tip);
+  ok('#144 kein Bedienelement haengt noch an einem blossen `title`', !/\stitle=/.test(html));
+  ok('#144 in den Bedienhinweisen stehen keine Regel- oder Issue-Nummern mehr',
+    !/\[[A-Z]-\d+\]|#\d\d/.test(tabelle)
+    && axIds.every(i=>!/\[[A-Z]-\d+\]|#\d\d/.test(ax(i).beschreibung)));
+
+  // (b) Muss 5: Waehrung und Ebenenumschaltung tragen eigene Namen und melden ihren Zustand.
+  ok('#145 die Ebenenumschaltung traegt einen eigenen Namen und meldet ihren Zustand ueber '
+    +'den sichtbaren Blattbezug',
+    /^Ebene/.test(ax('ebene').name||'')
+    && ax('ebene').beschreibungIds.length===2 && ax('ebene').beschreibungIds[1]==='printkopf');
+  ok('#145 das Waehrungsfeld traegt einen eigenen Namen und steht nur auf der Wandebene',
+    /^Währung/.test(ax('cur').name||'')
+    && document.getElementById('cur').value==='EUR'
+    && document.getElementById('lbl-cur').style.display===''
+    && (()=>{ SL5.setzeEbene('geschoss');
+        const weg = document.getElementById('lbl-cur').style.display==='none';
+        SL5.setzeEbene('wand'); return weg; })());
+
+  // (c) Objektbezug je Positionszeile — Einbauteil, Fertigmass und Einheit im Namen.
+  const posW = () => stuecklistePositionen(echterStore.holeElement(WID).wandelement,
+    echterStore.holeEingaben(WID), echterStore.holeKatalog());
+  const mengenNamen = () => [...tbody().matchAll(/aria-label="([^"]*manuelle Menge[^"]*)"/g)].map(m=>m[1]);
+  ok('#144 jedes Mengenfeld nennt sein Objekt und die Einheit im Namen', (()=>{
+    const namen = mengenNamen();
+    const felder = (tbody().match(/data-menge="/g)||[]).length;
+    return namen.length===felder && felder>0
+      && namen.every(n=>/, manuelle Menge in Stk$/.test(n))
+      && new Set(namen).size===namen.length; })());
+  ok('#144 jedes Kommentarfeld nennt sein Objekt', (()=>{
+    const namen=[...tbody().matchAll(/aria-label="([^"]*, Kommentar)"/g)].map(m=>m[1]);
+    const felder=(tbody().match(/data-kommentar="/g)||[]).length;
+    return namen.length===felder && felder>0 && new Set(namen).size===namen.length; })());
+  // Akzeptanztest 2: gleiches Einbauteil, verschiedenes Fertigmass -> verschiedene Feldnamen.
+  ok('#144 zwei Zeilen desselben Einbauteils mit verschiedenem Fertigmass heissen verschieden', (()=>{
+    const gruppen={};
+    for(const p of posW()) (gruppen[p.key]||(gruppen[p.key]=[])).push(p);
+    const mehrfach=Object.values(gruppen).filter(g=>g.length>1
+      && new Set(g.map(p=>p.fertigmass_mm)).size===g.length);
+    if(!mehrfach.length) return false;
+    return mehrfach.every(g=>g.every(p=>{
+      const mass=(p.fertigmass_mm/10).toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1})+' cm';
+      return tbody().includes(esc0(p.label)+' ('+mass+'), manuelle Menge in '+p.unit); })); })());
+  // Die Erklaerung der WIEDERHOLTEN Felder steht EINMAL im Markup und wird von jeder Zeile
+  // verknuepft — ein Erklaertext je Zeile waere derselbe Satz vervielfacht.
+  ok('#144 jedes gerenderte Feld verweist auf seine Beschreibung', (()=>{
+    const feste=['ax-h-menge','ax-h-menge-reset','ax-h-komm','ax-h-komm-reset'];
+    if(!feste.every(i=>new RegExp('<span class="ax-sr" id="'+i+'">[^<]{15,}').test(html))) return false;
+    const mf=(tbody().match(/data-menge="/g)||[]).length;
+    const kf=(tbody().match(/data-kommentar="/g)||[]).length;
+    return mf>0 && kf>0
+      && (tbody().match(/aria-describedby="ax-h-menge[ "]/g)||[]).length===mf
+      && (tbody().match(/aria-describedby="ax-h-komm[ "]/g)||[]).length===kf; })());
+
+  // (d) Gesetzte Uebersteuerung und gesetzter Kommentar — ueber den EINEN Schreibweg.
+  const KEN = mengenKennung(posW().find(p=>p.key==='i3'));
+  const RX = (t)=>String(t).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  echterStore.setzeMengenUebersteuerung(KEN, 99, WID);
+  echterStore.setzeKommentar(KEN, 'zwei Steine gebrochen', WID);
+  globalThis.window.__slInit(); SL5.setzeEbene('wand');
+  const zeile = () => (tbody().split('<tr').slice(1).find(z=>z.includes('data-menge="'+KEN+'"'))||'');
+  ok('#145 die gesetzte Uebersteuerung bleibt semantisch korrekt: die berechnete Menge haengt '
+    +'als zusaetzliche Beschreibung am Feld', (()=>{
+      const z=zeile(); const oid='sl-mo-'+KEN;
+      return z.includes('class="menge ueber"')
+        && z.includes('<div id="'+oid+'" class="orig">')
+        && new RegExp('aria-describedby="ax-h-menge '+RX(oid)+'"').test(z); })());
+  ok('#145 der gesetzte Kommentar steht als Text und sein Feld nennt dieselbe Position',
+    zeile().includes('zwei Steine gebrochen')
+    && /aria-label="[^"]+, Kommentar"/.test(zeile())
+    && /aria-label="[^"]+, Kommentar entfernen"/.test(zeile())
+    && /aria-label="[^"]+, manuelle Menge zurücksetzen"/.test(zeile()));
+
+  // (e) Akzeptanztest 3: eine benannt abgewiesene Eingabe macht GENAU DIESES Feld ungueltig
+  //     und verweist auf den sichtbaren Grund.
+  const tb5 = document.getElementById('tbody');
+  const wechsle = (ziel) => tb5.dispatch('change', ziel);
+  wechsle({ dataset:{ menge:KEN }, value:'-1' });
+  ok('#145 die abgewiesene Menge macht genau dieses Feld ungueltig und verweist auf den '
+    +'sichtbaren Grund', (()=>{
+      const z=zeile(); const fid='sl-mf-'+KEN;
+      const txt=(z.match(new RegExp('<div id="'+RX(fid)+'" class="mfehler">([^<]*)<'))||[])[1];
+      return !!txt && txt.length>5
+        && new RegExp('aria-describedby="[^"]*'+RX(fid)+'"[^>]*aria-invalid="true"').test(z)
+        && (tbody().match(/aria-invalid="true"/g)||[]).length===1
+        && echterStore.holeMengen(WID)[KEN]===99; })());
+  wechsle({ dataset:{ menge:KEN }, value:'99' });
+  ok('#145 eine wieder gueltige Menge nimmt Kennzeichnung und Fehlerverweis zurueck',
+    !/aria-invalid="true"/.test(tbody()) && !/class="mfehler"/.test(zeile()));
+  wechsle({ dataset:{ kommentar:KEN }, value:'x'.repeat(250) });
+  ok('#145 ein zu langer Kommentar macht genau das Kommentarfeld ungueltig', (()=>{
+      const z=zeile(); const fid='sl-kf-'+KEN;
+      const txt=(z.match(new RegExp('<div id="'+RX(fid)+'" class="kfehler">([^<]*)<'))||[])[1];
+      return !!txt && txt.length>5
+        && new RegExp('data-kommentar="[^"]*"[^>]*'+RX(fid)+'[^>]*aria-invalid="true"').test(z)
+        && (tbody().match(/aria-invalid="true"/g)||[]).length===1
+        && echterStore.holeKommentare(WID)[KEN]==='zwei Steine gebrochen'; })());
+  wechsle({ dataset:{ kommentar:KEN }, value:'zwei Steine gebrochen' });
+  ok('#145 ein wieder gueltiger Kommentar nimmt die Kennzeichnung zurueck',
+    !/aria-invalid="true"/.test(tbody()));
+
+  // (f) Muss 4 / Akzeptanztest 4: keine Regelnummern in den sichtbaren Hinweisen, und Mengen,
+  //     Einzelpreise und Summen sind wertgleich zum Stand OHNE Benennung.
+  ok('#144 die sichtbaren Hinweise nennen keine Regel- oder Issue-Nummern',
+    !/\(\[[A-Z]-\d+\]\)/.test(document.getElementById('mhinweis').innerHTML
+      + document.getElementById('sets').innerHTML + tbody()));
+  {
+    const putz = h => h
+      .replace(/<span class="ax-sr" id="ax-b-\d+">[^<]*<\/span>/g,'')
+      .replace(/\s*aria-(label|describedby|invalid)="[^"]*"/g,'')
+      .replace(/\s*data-ax-tip="[^"]*"/g,'')
+      .replace(/\s*id="sl-(mf|kf|mo)-[^"]*"/g,'')
+      .replace(/\s+/g,' ');
+    const mitAx = putz(tbody());
+    globalThis.window.SEMBLA.AX = undefined;
+    globalThis.window.__slInit(); SL5.setzeEbene('wand');
+    const ohneAx = putz(tbody());
+    globalThis.window.SEMBLA.AX = AX;
+    globalThis.window.__slInit(); SL5.setzeEbene('wand');
+    ok('#144 Mengen, Einzelpreise und Summen sind wertgleich zum Stand ohne Benennung',
+      mitAx===ohneAx && mitAx.includes('99 Stk'));
+  }
+  ok('#145 (must-not) Modul 4 baut den Baustein nicht nach — es benutzt ihn',
+    /import \* as AX from '\.\/shared\/sembla-ax\.js'/.test(html) && /AX=S\.AX;/.test(html)
+    && !/function (benennung|modalDialog|tooltips|ungueltig)\(/.test(html));
+  ok('#145 (must-not) die Zugaenglichkeit hat kein gespeichertes Feld angelegt',
+    echterStore.SCHEMA_VERSION===6 && echterStore.PROJEKT_VERSION===2
+    && !/aria|ax-b-|ax-tip/i.test(localStorage.getItem('sembla:elemente')||''));
+  echterStore.setzeMengenUebersteuerung(KEN, null, WID);
+  echterStore.setzeKommentar(KEN, null, WID);
 }
 
 let fail=0; for(const [n,c] of checks){ console.log((c?'  ok  ':'FAIL  ')+n); if(!c) fail++; }

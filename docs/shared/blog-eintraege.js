@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260923-02",
+    datum: "2026-09-23",
+    typ: "feature",
+    issue: 144,
+    titel: "Modul 4: benannte Bedienelemente und Positionsfelder, die ihr Einbauteil samt "
+      + "Fertigmaß nennen",
+    testbitte: "Modul 4 nur mit der Tastatur bedienen: Mengen- und Kommentarfeld nennen je "
+      + "Zeile Einbauteil, Fertigmaß und Einheit, zwei Zeilen desselben Teils heißen "
+      + "verschieden; eine abgewiesene Menge macht genau dieses Feld ungültig",
+  },
+  {
     id: "chg-20260923-01",
     datum: "2026-09-23",
     typ: "feature",

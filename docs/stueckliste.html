@@ -170,6 +170,22 @@
     <div class="sets" id="sets" hidden></div>
     <div class="kennz" id="kennz"></div>
   </div>
+  <!-- Beschreibungen der WIEDERHOLTEN Zeilenfelder (#144/#145). Sie stehen EINMAL je Feldart
+       statt einmal je Zeile: der NAME nennt die Position (Einbauteil, Fertigmaß, Einheit),
+       die Erklärung ist für alle Zeilen dieselbe. Nur für Hilfsmittel sichtbar (`ax-sr`) —
+       bewusst nicht `hidden`, das nähme den Text auch aus dem Accessibility Tree. -->
+  <div>
+    <span class="ax-sr" id="ax-h-menge">Ganze Zahl ab 0. Leer bedeutet: es gilt die berechnete
+      Menge, die unverändert daneben stehen bleibt. Ein unzulässiger Wert wird abgewiesen und
+      nie gerundet.</span>
+    <span class="ax-sr" id="ax-h-menge-reset">Nimmt die manuelle Menge dieser Position zurück;
+      danach gilt wieder die berechnete Menge.</span>
+    <span class="ax-sr" id="ax-h-komm">Kurzer, einzeiliger Hinweis zu dieser Position,
+      höchstens 200 Zeichen. Leeren entfernt ihn. Er ändert keine Menge, keinen Preis und
+      keine Summe.</span>
+    <span class="ax-sr" id="ax-h-komm-reset">Entfernt den Kommentar dieser Position; die Zeile
+      bleibt sonst unverändert.</span>
+  </div>
 </div>
 
 <script>
@@ -309,6 +325,10 @@ let stuecklistePositionen, stuecklisteSumme, wandflaeche, store, einbauteile, um
     standText, wirksameMengen, semblaBomSets;
 // #98 (Nachtrag zu #120): die eine lesende Neurechnung und die Engine dahinter.
 let wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, ENG;
+// #144/#145: der EINE Accessibility-Baustein der Suite (shared/sembla-ax.js). Modul 4 baut
+// davon nichts nach — Namen, Beschreibungen, Tooltips und die Kennzeichnung ungueltiger
+// Felder kommen ausschliesslich von dort.
+let AX;
 // Benannte Gründe, aus denen NICHT frisch gerechnet wurde — Wandebene und Gesamtebenen
 // getrennt; beides reine Anzeige, gespeichert wird nichts.
 let STANDTEXT='', GES_HINWEISE=[];
@@ -417,6 +437,91 @@ function daten(){
    Stücklistendatei des zentralen Exports füllt. Damit gibt es genau EINE Fassung dieser Regel;
    eine zweite hier wäre der Drift, den [P-6] ausschliesst. Die Oberfläche liest nur die
    Übersteuerungen der aktiven Wand und reicht sie hinein. */
+/* ---- Zugänglichkeit: Namen, Beschreibungen, Zustände (#144/#145) ---------------------------
+ * Der NAME ist kurz und sagt, was das Element tut oder welchen Wert es trägt — bei einem
+ * Wertfeld einschließlich EINHEIT. Die ERKLÄRUNG steht daneben als eigene Beschreibung und
+ * landet über `aria-describedby` auf einem realen Textknoten; sichtbar wird sie als Tooltip
+ * bei Hover UND bei Tastaturfokus. Die früheren `title`-Attribute sind ersatzlos weg: ein
+ * `title` ist weder ein Name noch erscheint es bei Tastaturbedienung.
+ *
+ * Regel- und Issue-Nummern stehen hier bewusst NICHT drin — das sind Bedienhinweise, keine
+ * Quellenangaben.
+ */
+const AX_TEXTE = {
+  'ebene': ['Ebene der Stückliste',
+    'Wählt, ob die Liste die aktive Wand, das aktive Geschoss, das Gebäude oder das ganze '
+    + 'Projekt zusammenfasst. Reine Ansicht — es wird nichts gespeichert.'],
+  'preise': ['Preise anzeigen',
+    'Blendet Einzelpreis, Gesamtpreis und Summenbetrag gemeinsam aus oder ein. Mengen und '
+    + 'Vollständigkeitsstand bleiben dabei unverändert.'],
+  'cur': ['Währung (Kürzel)',
+    'Währungskürzel dieser Wand, etwa EUR. Es wird am aktiven Wandelement gespeichert und '
+    + 'rechnet keine Beträge um.'],
+  'print': ['Drucken',
+    'Öffnet den Druckdialog für dieses Blatt. Bedienzeile und Eingabefelder entfallen dabei; '
+    + 'Mengen und Kommentare bleiben als Text stehen.'],
+};
+/**
+ * Das Häkchen bekommt seinen Namen von seiner SICHTBAREN Beschriftung; ein zweiter Name am
+ * Element widerspräche dem Text, der daneben steht. Seinen Zustand meldet es von Haus aus
+ * (gesetzt/nicht gesetzt). Der Tooltip wird zusätzlich am umgebenden Label ausgelöst — beide
+ * zeigen auf denselben Textknoten.
+ */
+const AX_HAEKCHEN = { 'preise': 'lbl-preise' };
+/**
+ * Zustandszeilen, die den aktuellen Stand EINES Bedienelements beschreiben. Der Blattkopf
+ * nennt sichtbar, auf welche Ebene und welchen Bezug die gezeigte Liste geht — genau der
+ * Zustand der Ebenenumschaltung. Er wird deshalb ERGÄNZEND verknüpft; die dauerhafte
+ * Erklärung bleibt daneben stehen, und es entsteht kein zweiter Text.
+ */
+const AX_ZUSTAND = { 'ebene': 'printkopf' };
+function axBenennen(){
+  if(!AX) return;
+  for(const id of Object.keys(AX_TEXTE)){
+    const el=$(id); if(!el) continue;
+    const [name,besch]=AX_TEXTE[id];
+    if(!AX_HAEKCHEN[id]) AX.benenne(el,name);
+    const bid=AX.beschreibe(el,besch);
+    if(AX_HAEKCHEN[id]) AX.tippZiel($(AX_HAEKCHEN[id]),bid);
+    const zus=AX_ZUSTAND[id]?$(AX_ZUSTAND[id]):null;
+    if(zus) AX.ergaenzeBeschreibung(el,zus);
+  }
+}
+/* Kurzhelfer für die per `innerHTML` gerenderten Zeilen: Name plus eigene Beschreibung (die
+   Attribute für das Bedienelement und das Markup des Beschreibungstextes), der Objektbezug
+   einer wiederholten Aktion und eine Kennung für einen sichtbaren Zustands- oder Fehlertext.
+   Ohne den Baustein bleibt die Zeile unverändert bedienbar, es wird nur nichts benannt. */
+const axB=(name,besch)=>AX?AX.benennung(name,besch):{id:null,attrs:'',html:''};
+const axAktion=(aktion,objekt)=>AX?AX.objektAktion(aktion,objekt):`${objekt} ${aktion}`;
+/**
+ * Die Attribute EINES gerenderten Zeilenfeldes: kurzer Name (nennt die Position), feste
+ * Beschreibung der Feldart und — falls vorhanden — Zustands- und Fehlertext derselben Zeile.
+ *
+ * `AX.ungueltig()`/`AX.beschreibe()` arbeiten auf VORHANDENEN Elementen; die Zeilen hier
+ * entstehen als Zeichenkette, deshalb werden dieselben Attribute hier zusammengesetzt. Ein
+ * zweiter Fehlertext entsteht dabei nicht: verwiesen wird auf den SICHTBAREN Textknoten der
+ * Zeile. Alle Kennungen sind DETERMINISTISCH aus der Positionskennung gebildet — ein
+ * laufender Zähler ließe dieselbe Tabelle bei jedem Zeichnen anders aussehen.
+ */
+function axFeld(name, hilfeId, extraIds, ungueltig){
+  if(!AX) return '';
+  const ids=[hilfeId, ...(extraIds||[])].filter(Boolean);
+  const b=axB(name);
+  return (b.attrs?b.attrs+' ':'')
+    + (ids.length?`aria-describedby="${ids.join(' ')}" data-ax-tip="${ids[0]}" `:'')
+    + (ungueltig?'aria-invalid="true" ':'');
+}
+/** Deterministische Kennung eines sichtbaren Zustands-/Fehlertextes einer Positionszeile. */
+const axZeilenId=(art,kennung)=>AX?`sl-${art}-${kennung}`:null;
+/**
+ * Wie eine Positionszeile in einem Feldnamen heißt: Einbauteil UND Fertigmaß. Mehrere Zeilen
+ * tragen denselben Stücklistenschlüssel und unterscheiden sich nur im Fertigmaß — ein Name
+ * ohne Maß wäre in genau diesem Fall mehrdeutig. Gelesen wird ausschließlich, was die Zeile
+ * ohnehin zeigt; gerechnet wird nichts.
+ */
+function posBezug(r){
+  return r.fertigmass_mm!=null ? `${r.label} (${fmt(r.fertigmass_mm/10,1)} cm)` : String(r.label||'');
+}
 function mengenMap(){
   const m=(eg().kosten||{}).mengen;
   return (m && typeof m==='object' && !Array.isArray(m)) ? m : {};
@@ -462,16 +567,27 @@ function mengeZelle(r, nk){
   const wirksam = fmt(r.menge,nk)+' '+einheit;
   const b = mengenBezug(r);
   const k = b.kennung;
-  const fehler = (MFEHLER && k && MFEHLER.kennung===k)
-    ? `<div class="mfehler">${esc(MFEHLER.text)}</div>` : '';
+  const bezug = posBezug(r);
   // Eine mehrdeutige Kennung bekommt KEIN Feld: die Übersteuerung wirkt dort nach #81 auf
   // keine der Zeilen, und ein Feld, dessen Eingabe nichts tut, wäre eine falsche Zusage.
-  const feld = (k && !b.mehrdeutig)
+  const hatFeld = !!(k && !b.mehrdeutig);
+  // #145 Der sichtbare Grund einer abgewiesenen Eingabe bekommt eine Kennung, damit GENAU
+  // DIESES Feld darauf verweisen kann. Ein zweiter, nur vorgelesener Wortlaut entsteht nicht.
+  const fid = (MFEHLER && k && MFEHLER.kennung===k && hatFeld) ? axZeilenId('mf',k) : null;
+  const fehler = (MFEHLER && k && MFEHLER.kennung===k)
+    ? `<div${fid?` id="${esc(fid)}"`:''} class="mfehler">${esc(MFEHLER.text)}</div>` : '';
+  // Dasselbe für den Zustand „übersteuert": die berechnete Menge steht sichtbar daneben und
+  // hängt als ZUSÄTZLICHE Beschreibung am Feld — sonst wäre der Zustand nur eine Farbe.
+  const oid = (hatFeld && b.ueber!=null) ? axZeilenId('mo',k) : null;
+  const feld = hatFeld
     ? `<div class="mfeld"><input type="number" step="1" min="0" data-menge="${esc(k)}"`
-      + ` value="${b.ueber!=null?esc(b.ueber):''}" placeholder="${esc(b.berechnet)}"`
-      + ` aria-label="Menge manuell übersteuern" title="Manuelle Menge (ganze Zahl ab 0); leer = berechnete Menge">`
+      + ` value="${b.ueber!=null?esc(b.ueber):''}" placeholder="${esc(b.berechnet)}" `
+      + axFeld(`${bezug}, manuelle Menge in ${r.unit}`, 'ax-h-menge', [oid,fid], !!fid)
+      + `>`
       + (b.ueber!=null
-          ? `<button type="button" data-menge-reset="${esc(k)}" title="Übersteuerung zurücksetzen">zurücksetzen</button>`
+          ? `<button type="button" data-menge-reset="${esc(k)}" `
+            + axFeld(axAktion('zurücksetzen', `${bezug}, manuelle Menge`), 'ax-h-menge-reset')
+            + `>zurücksetzen</button>`
           : '')
       + `</div>` : '';
   const doppelt = b.mehrdeutig
@@ -480,7 +596,7 @@ function mengeZelle(r, nk){
     : '';
   if(b.ueber==null) return `<td class="menge">${wirksam}${feld}${doppelt}${fehler}</td>`;
   return `<td class="menge ueber"><span class="wirk">${wirksam}</span><span class="chip">manuell</span>`
-    + `<div class="orig">berechnet ${fmt(b.berechnet,nk)} ${einheit}</div>${feld}${fehler}</td>`;
+    + `<div${oid?` id="${esc(oid)}"`:''} class="orig">berechnet ${fmt(b.berechnet,nk)} ${einheit}</div>${feld}${fehler}</td>`;
 }
 /* ---- Kommentar je Position ([P-20]) -------------------------------------------------------
    Reine ZUSATZANGABE: hier wird nichts gerechnet und nichts ausgewählt. Zugeordnet wird über
@@ -522,17 +638,24 @@ function kommentarTeil(r, kstand){
   const k=r.__kennung;
   if(!k) return '';
   const txt=kstand.text[k];
+  const bezug=posBezug(r);
   const anzeige = txt
     ? `<div class="kommtext"><span class="kmark">Kommentar</span>${esc(txt)}</div>` : '';
+  // #145 Wie bei der Menge: der sichtbare Grund bekommt eine Kennung, auf die GENAU DIESES
+  // Feld verweist — die Menge derselben Zeile bleibt davon unberührt.
+  const fid = (KFEHLER && KFEHLER.kennung===k) ? axZeilenId('kf',k) : null;
   const fehler = (KFEHLER && KFEHLER.kennung===k)
-    ? `<div class="kfehler">${esc(KFEHLER.text)}</div>` : '';
+    ? `<div${fid?` id="${esc(fid)}"`:''} class="kfehler">${esc(KFEHLER.text)}</div>` : '';
   // Bewusst OHNE `maxlength`: ein Attribut, das die Eingabe stillschweigend abschneidet,
   // wäre genau das Zurechtbiegen, das [P-9] ausschliesst. Zu lang wird BENANNT abgewiesen.
   const feld = `<div class="kfeld"><input type="text" data-kommentar="${esc(k)}"`
     + ` value="${txt?esc(txt):''}"`
-    + ` aria-label="Kommentar zu dieser Position"`
-    + ` placeholder="Kommentar (optional)" title="Kurzer Kommentar zu dieser Position; leer = kein Kommentar">`
-    + (txt ? `<button type="button" data-kommentar-reset="${esc(k)}" title="Kommentar entfernen">entfernen</button>` : '')
+    + ` placeholder="Kommentar (optional)" `
+    + axFeld(`${bezug}, Kommentar`, 'ax-h-komm', [fid], !!fid)
+    + `>`
+    + (txt ? `<button type="button" data-kommentar-reset="${esc(k)}" `
+        + axFeld(axAktion('entfernen', `${bezug}, Kommentar`), 'ax-h-komm-reset')
+        + `>entfernen</button>` : '')
     + `</div>`;
   return anzeige+feld+fehler;
 }
@@ -799,7 +922,7 @@ function renderMengenHinweis(m, k, d){
         + 'Modul 0 ist ausdrücklich wählbar, ob die Baustellenstückliste die <b>berechneten</b> '
         + 'oder die <b>angepassten</b> Mengen enthält; ohne Wahl gilt „berechnet“, und die Datei '
         + 'nennt die Fassung in ihrem Kopf. Die Einzelteilliste der Gewindestangen bleibt in '
-        + 'beiden Fällen abgeleitet ([P-19]).');
+        + 'beiden Fällen abgeleitet.');
     }
     if(kom.anzahl){
       teile.push('<b>'+kom.anzahl+' Position(en) mit Kommentar.</b> '
@@ -888,7 +1011,7 @@ function renderSets(rs){
   const stelle=p=>`<code>${esc(p.key)}</code>`
     + (label[p.key] ? ' '+esc(label[p.key]) : '')
     + ` — ${esc(p.je_instanz)} je Baugruppe, ${esc(p.stueck)}× gesamt`;
-  let h='<b>Baugruppen.</b> Die Stückliste bleibt flach ([P-19]); hier steht nur, welche '
+  let h='<b>Baugruppen.</b> Die Stückliste bleibt flach; hier steht nur, welche '
       + 'Baugruppen des Bauteilkatalogs mit welcher Instanzzahl gegriffen haben. Mengen, '
       + 'Einzelpreise und Summen ändern sich dadurch nicht.';
   if(gegriffen.length){
@@ -1019,7 +1142,11 @@ window.__slInit=function(){
   wirksameMengen=S.wirksameMengen; semblaBomSets=S.semblaBomSets;
   wandelementAktualisiert=S.wandelementAktualisiert; aktualisierteLeser=S.aktualisierteLeser;
   STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
+  AX=S.AX;
   bindEvents();
+  // #144/#145 Namen und Beschreibungen der festen Bedienelemente stehen VOR dem ersten
+  // Rendern — die gerenderten Zeilen bringen ihre eigenen mit.
+  axBenennen();
   setupStoreSync();
   loadModel();
 };
@@ -1034,11 +1161,17 @@ window.__slInit=function(){
   // (sembla-wandanlage.js) und der Rechenkern dahinter (sembla-engine.js).
   import { wandelementAktualisiert, aktualisierteLeser, STAND_GRUND } from './shared/sembla-wandanlage.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
+  // Der EINE Accessibility-Baustein der Suite (#144/#145): Namen, Beschreibungen, Tooltips.
+  // Stil und Tooltip-Schicht hängt bereits `mountNavbar` ein; beide Funktionen sind
+  // ausdrücklich mehrfach aufrufbar und tun dann nichts.
+  import * as AX from './shared/sembla-ax.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { stuecklistePositionen, stuecklisteSumme, wandflaeche, einbauteile, store,
                     umfang, gesamtDaten, standText, wirksameMengen, semblaBomSets,
-                    wandelementAktualisiert, aktualisierteLeser, STAND_GRUND,
+                    wandelementAktualisiert, aktualisierteLeser, STAND_GRUND, AX,
                     ENG: { autoAuslegung, nachweisPruefen } };
+  AX.stilEinhaengen();
+  AX.tooltips();
   mountNavbar(4);
   window.__slInit();
 </script>

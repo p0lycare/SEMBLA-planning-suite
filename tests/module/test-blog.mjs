@@ -99,19 +99,41 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // als getrennte Beschreibung, gemeldete Werkzeugzustaende und ein tastaturfester
 // Reparaturdialog in Modul 1. NICHT versprochen werden eine geaenderte Auslegung, eine
 // Fachregelaenderung oder ein neues gespeichertes Feld.
-const AX_M1 = EINTRAEGE[0];
-ok("[#145] die zugaengliche Bedienung von Modul 1 ist der neueste Eintrag",
+// Der NEUESTE Eintrag ist die ZUGAENGLICHKEIT VON MODUL 4 (#144) — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
+// Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
+//
+// Aussagewahr heisst hier: geliefert sind benannte Bedienelemente und Positionsfelder, die
+// ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
+// verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
+// versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
+const AX_M4 = EINTRAEGE[0];
+ok("[#144] die zugaengliche Bedienung von Modul 4 ist der neueste Eintrag",
+  AX_M4?.id === "chg-20260923-02" && AX_M4?.issue === 144
+  && AX_M4?.typ === "feature" && AX_M4?.datum === "2026-09-23"
+  && /Modul 4/.test(AX_M4?.titel || ""));
+ok("[#144] der Eintrag benennt den Objektbezug der Positionszeile",
+  /[Bb]enannte Bedienelemente/.test(AX_M4?.titel || "")
+  && /Einbauteil/.test(AX_M4?.titel || "")
+  && /Fertigmaß/.test(AX_M4?.titel || ""));
+ok("[#144] der Eintrag verspricht keine Fachaenderung",
+  !/Regel|Rechenlogik|Preis|Summe|Format/i.test(AX_M4?.titel || ""));
+ok("[#144] die Testbitte nennt Tastaturweg, Einheit und den Ungueltig-Fall",
+  /Tastatur/.test(AX_M4?.testbitte || "") && /Einheit/.test(AX_M4?.testbitte || "")
+  && /ungültig/.test(AX_M4?.testbitte || ""));
+const AX_M1 = EINTRAEGE.find(e => e.id === "chg-20260923-01");
+ok("[#145] die zugaengliche Bedienung von Modul 1 steht in der Reihe",
   AX_M1?.id === "chg-20260923-01" && AX_M1?.issue === 145
   && AX_M1?.typ === "feature" && AX_M1?.datum === "2026-09-23"
   && /Modul 1/.test(AX_M1?.titel || ""));
-ok("[#145] der Eintrag benennt beide Seiten: Benennung UND Dialogbedienung",
+ok("[#145] der Modul-1-Eintrag benennt Benennung UND Dialogbedienung",
   /[Bb]enannte Bedienelemente/.test(AX_M1?.titel || "")
   && /Einheit/.test(AX_M1?.titel || "")
   && /[Bb]eschreibung/.test(AX_M1?.titel || "")
   && /Reparaturdialog/.test(AX_M1?.titel || ""));
 ok("[#145] der Eintrag verspricht keine Fachaenderung",
   !/Regel|Rechenlogik|Stückliste|Vorspannung|Format/i.test(AX_M1?.titel || ""));
-ok("[#145] die Testbitte nennt den Tastaturweg und das Fokusverhalten",
+ok("[#145] die Modul-1-Testbitte nennt Tastaturweg und Fokusverhalten",
   /Tastatur/.test(AX_M1?.testbitte || "") && /Fokus/.test(AX_M1?.testbitte || "")
   && /Einheit/.test(AX_M1?.testbitte || ""));
 const AX_145 = EINTRAEGE.find(e => e.id === "chg-20260922-03");
