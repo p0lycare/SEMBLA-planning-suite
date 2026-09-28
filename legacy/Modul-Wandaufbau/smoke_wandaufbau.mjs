@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { buildWall } from "../docs/shared/sembla-core.js";
-const html = readFileSync("./SEMBLA_Wandaufbau.html","utf8");
+import { buildWall } from "../../docs/shared/sembla-core.js";
+const html = readFileSync(new URL("./SEMBLA_Wandaufbau.html", import.meta.url),"utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
 class El{constructor(id){this.id=id;this.value=undefined;this.textContent='';this._h='';this.style={};this.files=[];this.checked=true;this.listeners={};}

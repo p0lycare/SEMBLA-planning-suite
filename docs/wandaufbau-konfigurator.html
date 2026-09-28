@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEMBLA · Wandaufbau-Konfigurator (Beta)</title>
+<style>
+  /* Wiederbelebter Wandaufbau-Konfigurator aus dem SEMBLA Builder Beta
+     (legacy/Modul-Wandaufbau/SEMBLA_Wandaufbau.html). Bedienung und Ausgaben wie damals,
+     gerechnet wird mit dem EINEN Aufbau-Rechenweg der Suite (shared/sembla-aufbau.js). */
+  :root{ --sb-warn:#c9461c; }
+  .beta{margin:10px 20px 0;padding:8px 12px;border:1px solid #f0c48a;background:#fff7ea;border-radius:8px;font-size:12.5px;color:#6b4a12;line-height:1.5}
+  .bar{display:flex;gap:10px 14px;align-items:center;padding:11px 20px;flex-wrap:wrap}
+  button{padding:8px 12px;border:1px solid var(--sb-line);background:#fff;border-radius:7px;font-size:13px;cursor:pointer;font-weight:550}
+  button.primary{background:var(--sb-accent);color:#fff;border-color:var(--sb-accent)}
+  button.active{background:var(--sb-warn);color:#fff;border-color:var(--sb-warn)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .wrap{display:grid;grid-template-columns:280px 1fr 300px;gap:14px;padding:6px 20px 14px}
+  .card{background:var(--sb-panel);border:1px solid var(--sb-line);border-radius:10px;padding:14px}
+  .grp{margin-bottom:12px} .grp h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--sb-muted)}
+  label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;margin:5px 0}
+  label input,label select{width:110px;padding:5px 7px;border:1px solid var(--sb-line);border-radius:6px;background:#fff}
+  label small{color:var(--sb-muted)}
+  .bar label{width:auto}
+  .bar select#quelle{width:auto;max-width:360px}
+  svg{width:100%;height:auto;background:#fbfcfd;border:1px solid var(--sb-line);border-radius:8px;-webkit-user-select:none;user-select:none;touch-action:none}
+  .ov{font-size:13px} .ov .r{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #e7eaee}
+  .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600}
+  .badge.ok{background:#e6f5ec;color:#1f7a3d} .badge.no{background:#fdece4;color:#b8460f}
+  .bar-fill{height:8px;border-radius:5px;background:#e7eaee;overflow:hidden;margin-top:3px}
+  .bar-fill > i{display:block;height:100%;background:var(--sb-ok)}
+  .pnote{font-size:11px;color:var(--sb-muted);margin-top:4px;line-height:1.45}
+  .ph{display:inline-block;padding:0 5px;border-radius:4px;background:#fff1d6;color:#8a5300;font-size:10.5px;font-weight:700}
+  table.t{width:100%;border-collapse:collapse;font-size:12px}
+  table.t th,table.t td{padding:3px 5px;border-bottom:1px solid #eceff2;text-align:right;white-space:nowrap}
+  table.t th:first-child,table.t td:first-child{text-align:left}
+  table.t th{color:var(--sb-muted);font-weight:600}
+  table.t tr.sel td{background:#eef4ff;font-weight:600}
+  .warn{color:var(--sb-warn)} .muted{color:var(--sb-muted)}
+  ul.meld{margin:4px 0 0;padding-left:18px;font-size:12px;line-height:1.45}
+  .unten{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 20px 20px}
+  .lat{display:flex;align-items:center;gap:6px;font-size:12px;margin:3px 0;justify-content:flex-start}
+  .lat input{width:auto}
+  @media (max-width:1100px){ .wrap,.unten{grid-template-columns:1fr} }
+  @media print{ .sb-nav,.bar,.beta,button{display:none!important} .wrap,.unten{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="beta"><b>Wandaufbau-Konfigurator (Beta).</b> Das frühere Werkzeug aus dem SEMBLA Builder Beta,
+  angebunden an den aktuellen Stand der Suite: Wände aus diesem Browser oder als Datei (Wandelement-JSON,
+  Projektdatei, Projektarchiv-ZIP). Planungshilfe, fachlich zu prüfen. <b>Der Konfigurator schreibt nichts
+  in die Suite</b> — alle Einstellungen hier sind flüchtig. Mit <span class="ph">Platzhalter</span> markierte
+  Werte sind nicht fachlich bestätigt.</div>
+<div class="bar">
+  <label>Wand&nbsp;<select id="quelle"></select></label>
+  <input type="file" id="file" accept="application/json,.json,application/zip,.zip" style="display:none">
+  <button class="primary" id="load">Datei laden…</button>
+  <label>Seite&nbsp;<select id="side"><option value="vorne">Vorderseite</option><option value="hinten">Rückseite</option></select></label>
+  <label>Aufbau (aus Modul 1)&nbsp;<b id="aufbau" style="font-weight:600">–</b></label>
+  <button id="fieldMode">Beplankungsfeld aufziehen</button>
+  <button id="fieldClear">ganze Wand</button>
+  <label><input type="checkbox" id="showNut" checked style="width:auto"> Nutenraster</label>
+  <label><input type="checkbox" id="showStones" checked style="width:auto"> Steine i2/i3</label>
+  <label><input type="checkbox" id="showMasse" checked style="width:auto"> Maße</label>
+  <button id="expCut">Zuschnittliste (CSV)</button>
+  <button id="expMat">Materialliste (CSV)</button>
+  <button id="expLayout">Verbinder-Layout (JSON)</button>
+  <button id="drucken">Drucken</button>
+  <span id="info" style="font-size:12.5px;color:var(--sb-muted)">–</span>
+</div>
+<div class="wrap">
+  <div class="card">
+    <div class="grp"><h3>Panel / Platte</h3>
+      <label>Breite <span><input type="number" id="pB" value="62.5" step="0.5" min="10"><small>cm</small></span></label>
+      <label>Höhe <span><input type="number" id="pH" value="150" step="5" min="10"><small>cm</small></span></label>
+      <label>Versatz X <span><input type="number" id="oX" value="0" step="0.5"><small>cm</small></span></label>
+      <label>Versatz Y <span><input type="number" id="oY" value="0" step="0.5"><small>cm</small></span></label>
+    </div>
+    <div class="grp"><h3>Verbinderachsen</h3>
+      <label>max. Abstand X <span><input type="number" id="maxX" value="62.5" step="0.5"><small>cm</small></span></label>
+      <label>max. Abstand Y <span><input type="number" id="maxY" value="75" step="5"><small>cm</small></span></label>
+      <label>max. Randüberstand <span><input type="number" id="ohang" value="12.5" step="0.25"><small>cm</small></span></label>
+    </div>
+    <div class="grp"><h3>Verbinder &amp; Traglast</h3>
+      <label>Typ <select id="vtyp"></select></label>
+      <label>R<sub>k</sub> <span><input type="number" id="Rk" value="0.5" step="0.05"><small>kN</small></span></label>
+      <label>γ<sub>M</sub> <span><input type="number" id="gM" value="2.0" step="0.1"></span></label>
+      <label>Windlast w<sub>k</sub> <span><input type="number" id="wk" value="0.8" step="0.05"><small>kN/m²</small></span></label>
+      <label>γ<sub>Q</sub> <span><input type="number" id="gQ" value="1.5" step="0.1"></span></label>
+      <button id="auslegen" style="width:100%;margin-top:4px">Raster für diese Traglast auslegen</button>
+      <div class="pnote" id="auslegenInfo"></div>
+      <div class="pnote"><span class="ph">Platzhalter</span> R<sub>k</sub>/γ<sub>M</sub> der Verbindertypen stammen
+        aus dem Beta-Stand und sind keine bestätigten Produktwerte. Der Typ wird aus der Seitenfunktion
+        (Modul 1) vorgeschlagen ([U-9]); eine andere Wahl hier ist nur ein Variantenvergleich.</div>
+    </div>
+    <div class="grp"><h3>Latten (Unterkonstruktion)</h3>
+      <label>Lattenbreite <span><input type="number" id="lw" value="4" step="0.5"><small>cm</small></span></label>
+      <div id="latKatalog"></div>
+      <label>Standardlängen <span><input type="text" id="stock" value="150" style="width:80px"><small>cm</small></span></label>
+      <div class="pnote" id="latQuelle"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <svg id="plan" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+    <div style="font-size:12px;color:var(--sb-muted);margin-top:6px" id="cap">–</div>
+    <div id="meldungen"></div>
+  </div>
+
+  <div class="card ov">
+    <div class="grp"><h3>Verbinder</h3>
+      <div class="r"><span>Achsen (X × Y)</span><b id="ovGrid">–</b></div>
+      <div class="r"><span>Verbinder gesamt</span><b id="ovCount">–</b></div>
+      <div class="r"><span>Dichte</span><b id="ovDens">–</b></div>
+      <div class="r"><span>Fläche je Verbinder</span><b id="ovAt">–</b></div>
+      <div class="r"><span>erforderlich für die Traglast</span><b id="ovErf">–</b></div>
+      <div style="margin-top:8px">Auslastung <b id="ovUtil">–</b> <span class="badge" id="ovBadge">–</span>
+        <div class="bar-fill"><i id="ovBar" style="width:0%"></i></div></div>
+    </div>
+    <div class="grp"><h3>Verbinder je Traglast</h3>
+      <div id="tragTab"></div>
+      <div class="pnote">Einwirkung je Verbinder = γ<sub>Q</sub> · w<sub>k</sub> · Fläche je Verbinder, Widerstand
+        R<sub>d</sub> = R<sub>k</sub>/γ<sub>M</sub>; erforderlich = ⌈γ<sub>Q</sub> · w<sub>k</sub> · Fläche / R<sub>d</sub>⌉.
+        Vereinfachtes Beta-Modell (nur Windlast auf die beplankte Fläche) — kein Nachweis.</div>
+    </div>
+    <div class="grp"><h3>Latten (UK)</h3>
+      <div class="r"><span>Achsen mit Latten</span><b id="ovAxes">–</b></div>
+      <div class="r"><span>Einbaustücke</span><b id="ovPieces">–</b></div>
+      <div class="r"><span>davon Standardmaß / Sonderzuschnitt</span><b id="ovStdSonder">–</b></div>
+      <div class="r"><span>Gesamtlänge (Einbau)</span><b id="ovLen">–</b></div>
+      <div id="ovAusgang"></div>
+      <div class="r"><span>nachrichtlich: Stangen bei Reststückverwertung</span><b id="ovRest">–</b></div>
+      <div class="pnote">Fertigmaße folgen der Geometrie ([U-8]/[U-12]); je Stück ist die kleinste passende
+        Standardlänge das Ausgangsprodukt ([Z-4]). Die Zeile „Reststückverwertung“ ist das Beta-Verfahren
+        (Bin-Packing auf die größte Länge) und nach [U-8] <b>nicht</b> regelkonform — nur zur Orientierung.</div>
+    </div>
+  </div>
+</div>
+<div class="unten">
+  <div class="card ov">
+    <div class="grp"><h3>Zuschnittliste Latten</h3><div id="zuschnitt"></div></div>
+  </div>
+  <div class="card ov">
+    <div class="grp"><h3>Alle geladenen Wände (gleiche Einstellungen)</h3><div id="alle"></div>
+      <div class="pnote">Je Wand und Seite mit den Einstellungen links; Beplankungsfeld und Typwahl gelten nur
+        für die gezeigte Wand, in dieser Übersicht immer ganze Wand und Typ aus der Seitenfunktion.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* App-Logik (klassisches Skript). Rechenkern, Aufbau-Rechenweg, Speicher (nur lesend) und Entpacker
+   kommen vom Modul-Skript unten als window.SEMBLA und werden in __kfInit() gebunden — so bleibt die
+   Logik im Node-Smoke-Test ohne Modulaufloesung auswertbar (Muster wie in den Modulen). */
+const $=id=>document.getElementById(id);
+const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let store, buildWall, Opening, berechneAufbau, VERBINDER_KATALOG, wandLagenKanten, entpacke;
+// QUELLEN: alle waehlbaren Waende {key, name, herkunft, wand, hinweise[]} — aus der Suite (lesend)
+// und aus geladenen Dateien. Nichts davon wird gespeichert.
+let QUELLEN=[], AKT=null, SIDE='vorne', FELD=null, LASTDRAW=null, fieldArm=false, LAST=null;
+let TYP_MANUELL=false;          // Typ von Hand gewaehlt (Variantenvergleich) -> nicht bei Seitenwechsel ueberschreiben
+let DATEI_KATALOG=null;         // optional per Datei geladener Bauteilkatalog (nur Lattenprodukte werden gelesen)
+
+const FUNKTION_LABEL={fassade:'Fassadenaufbau',innenausbau:'Innenausbau',alle:'Universal',sicht:'Sichtfläche',installation:'Installationsebene'};
+const SIDE_LABEL={vorne:'Vorderseite',hinten:'Rückseite'};
+
+// ---------- Wandquellen ----------
+function aktWand(){ const q=QUELLEN.find(x=>x.key===AKT); return q?q.wand:null; }
+function aktQuelle(){ return QUELLEN.find(x=>x.key===AKT)||null; }
+function istWand(o){ return !!o && typeof o==='object' && 'length_mm' in o && Array.isArray(o.courses); }
+/**
+ * Wandelement fuer den Konfigurator bereitstellen. Ein aktuelles Wandelement (mit Lagengeometrie)
+ * wird UNVERAENDERT verwendet. Einer Alt-Datei ohne `courses` (Beta-Stand) fehlt die Lagengeometrie,
+ * ohne die nach [U-11] kein Verbinder gesetzt werden darf — sie wird mit dem aktuellen Rechenkern neu
+ * aufgebaut und das SICHTBAR vermerkt (nie still).
+ */
+function wandBereit(obj){
+  if(istWand(obj)) return { wand:obj, hinweise:[] };
+  if(!obj || typeof obj!=='object' || !(+obj.length_mm>0) || !(+obj.height_mm>0))
+    throw new Error('Kein Wandelement erkannt (length_mm/height_mm fehlen).');
+  const ops=(obj.openings||[]).map(o=>new Opening(o.g0,o.g1,o.l0,o.l1,o.art||'tuer'));
+  const w=buildWall(obj.name||'Wand', +obj.length_mm, +obj.height_mm, ops, obj.sides||null, obj.prestress||null,
+    obj.steps||[], obj.interlocks||null, obj.ausgleichslage_aktiv===true);
+  return { wand:w, hinweise:['Die Datei enthielt keine Lagengeometrie (Beta-Stand). Der Steinaufbau wurde mit dem '
+    +'aktuellen Rechenkern neu erzeugt — bitte in Modul 1 prüfen, bevor die Zahlen verwendet werden.'] };
+}
+function sucheSuite(){
+  const out=[];
+  let liste=[]; try{ liste=(store&&store.listeElemente)?store.listeElemente():[]; }catch{ liste=[]; }
+  for(const e of liste){ if(!e||!e.wandelement) continue;
+    let ort=null; try{ ort=store.wandVerortung?store.wandVerortung(e.id):null; }catch{ ort=null; }
+    const pfad=ort?`${ort.mappe.projekt.name} › ${ort.geschoss.name} › `:'';
+    try{ const b=wandBereit(e.wandelement); out.push({ key:'s:'+e.id, name:pfad+(e.name||'Wand'), herkunft:'suite', wand:b.wand, hinweise:b.hinweise }); }
+    catch{ /* unbrauchbarer Eintrag: nicht anbieten */ } }
+  // natuerliche Reihenfolge wie in der Kopfleiste (Wand 2 vor Wand 10)
+  return out.sort((a,b)=>a.name.localeCompare(b.name,'de',{numeric:true}));
+}
+function ladeSuite(){
+  const neu=sucheSuite();
+  QUELLEN=QUELLEN.filter(q=>q.herkunft!=='suite').concat(neu);
+  if(!AKT || !QUELLEN.some(q=>q.key===AKT)){
+    let a=null; try{ a=store&&store.aktivId?store.aktivId():null; }catch{ a=null; }
+    AKT=(a&&QUELLEN.some(q=>q.key==='s:'+a))?'s:'+a:(QUELLEN[0]?QUELLEN[0].key:null);
+  }
+}
+/** Eine JSON-Datei deuten: Wandelement, Projektdatei (v2), Alt-Bundle, Wrapper — oder Bauteilkatalog. */
+function deuteJson(text, dateiname){
+  let obj; try{ obj=JSON.parse(text); }catch{ throw new Error('Datei ist kein gültiges JSON.'); }
+  if(obj && obj.format==='SEMBLA-Bauteilkatalog'){ return { katalog:obj, waende:[] }; }
+  if(obj && obj.format==='SEMBLA-Projektmappe')
+    throw new Error('Das ist eine Projektmappe ohne Wandelemente — bitte das Projektarchiv (ZIP) laden.');
+  let name=null, we=null;
+  try{ const p=store.parseImport(text); we=p.wandelement; name=p.name; }
+  catch(e){ // Beta-Dateien ohne Lagengeometrie liest parseImport nicht — hier gezielt zulassen
+    const kand=(obj&&obj.format==='SEMBLA-Projekt'&&obj.wandelement)?obj.wandelement:(obj&&obj.wandelement)?obj.wandelement:obj;
+    if(kand && +kand.length_mm>0 && +kand.height_mm>0){ we=kand; name=(obj&&obj.name)||kand.name; }
+    else throw e; }
+  const b=wandBereit(we);
+  return { waende:[{ name:String(we.name||name||(dateiname||'Wand').replace(/\.json$/i,'')), wand:b.wand, hinweise:b.hinweise }] };
+}
+async function ladeDatei(name, bytesOderText){
+  const istZip=/\.zip$/i.test(name) || (bytesOderText instanceof Uint8Array && bytesOderText[0]===0x50 && bytesOderText[1]===0x4b);
+  let gefunden=[], meld=[];
+  if(istZip){
+    const eintr=await entpacke(bytesOderText instanceof Uint8Array?bytesOderText:new TextEncoder().encode(bytesOderText));
+    for(const e of eintr){ if(!/\.json$/i.test(e.name)) continue;
+      const text=typeof e.data==='string'?e.data:new TextDecoder('utf-8').decode(e.data);
+      try{ const r=deuteJson(text, e.name.split('/').pop()); if(r.katalog) DATEI_KATALOG=r.katalog; gefunden.push(...r.waende); }
+      catch{ /* projekt.json, Kataloge o. Ae. sind keine Wand — still uebergehen ist hier korrekt */ } }
+    if(!gefunden.length) throw new Error('Im ZIP wurde kein Wandelement gefunden.');
+  } else {
+    const text=typeof bytesOderText==='string'?bytesOderText:new TextDecoder('utf-8').decode(bytesOderText);
+    const r=deuteJson(text, name);
+    if(r.katalog){ DATEI_KATALOG=r.katalog; meld.push('Bauteilkatalog „'+(r.katalog.name||name)+'“ geladen (Lattenprodukte).'); }
+    gefunden=r.waende;
+  }
+  let erster=null;
+  gefunden.forEach((g,i)=>{ const key='d:'+name+':'+i+':'+QUELLEN.length; if(!erster) erster=key;
+    QUELLEN.push({ key, name:g.name+' (Datei '+name+')', herkunft:'datei', wand:g.wand, hinweise:g.hinweise }); });
+  if(erster){ AKT=erster; FELD=null; TYP_MANUELL=false; }
+  meld.unshift(gefunden.length+' Wand/Wände aus „'+name+'“ geladen.');
+  $('info').textContent=meld.join(' ');
+  waehleWand(AKT);
+  return gefunden.length;
+}
+
+// ---------- Seiten + Verbindertyp ----------
+function curFunktion(){ const w=aktWand(); return (w&&w.sides&&w.sides[SIDE]&&w.sides[SIDE].funktion)||'fassade'; }
+function typFuer(fn){ return VERBINDER_KATALOG.find(x=>x.fuer===fn)||VERBINDER_KATALOG.find(x=>x.fuer==='alle')||VERBINDER_KATALOG[VERBINDER_KATALOG.length-1]; }
+function applyFunktion(fn){ const t=typFuer(fn); $('vtyp').value=t.id; $('Rk').value=t.Rk; $('gM').value=t.gM; }
+function syncSideUI(){ const w=aktWand();
+  const keys=(w&&w.sides&&Object.keys(w.sides).length)?Object.keys(w.sides):['vorne','hinten'];
+  if(!keys.includes(SIDE)) SIDE=keys[0];
+  $('side').innerHTML=keys.map(v=>{ const fn=w&&w.sides&&w.sides[v]&&w.sides[v].funktion;
+    return `<option value="${v}"${v===SIDE?' selected':''}>${SIDE_LABEL[v]||v}${fn?' – '+(FUNKTION_LABEL[fn]||fn):''}</option>`; }).join('');
+  $('side').value=SIDE; const fn=curFunktion(); $('aufbau').textContent=FUNKTION_LABEL[fn]||fn; }
+function syncQuelleUI(){
+  const sel=$('quelle');
+  if(!QUELLEN.length){ sel.innerHTML='<option value="">– keine Wand: Datei laden oder in der Suite anlegen –</option>'; return; }
+  const grp=(h,t)=>{ const qs=QUELLEN.filter(q=>q.herkunft===h); return qs.length?`<optgroup label="${t}">`+qs.map(q=>`<option value="${esc(q.key)}"${q.key===AKT?' selected':''}>${esc(q.name)}</option>`).join('')+'</optgroup>':''; };
+  sel.innerHTML=grp('suite','Aus der Suite (dieser Browser)')+grp('datei','Aus Datei');
+  sel.value=AKT||''; }
+function waehleWand(key){ AKT=key; FELD=null; TYP_MANUELL=false; syncQuelleUI(); syncSideUI(); applyFunktion(curFunktion()); run(); }
+
+// ---------- Latten: Standardlaengen aus Katalog oder frei ----------
+function lattenKatalog(){ let k=null; try{ k=store&&store.holeKatalog?store.holeKatalog():null; }catch{ k=null; }
+  return DATEI_KATALOG||k; }
+function lattenProdukte(){ const k=lattenKatalog(); return ((k&&k.produkte)||[]).filter(p=>p&&p.kategorie==='latte'&&+p.laenge_mm>0); }
+let LAT_WAHL=null;   // Set gewaehlter Produkt-IDs (fluechtig); null = noch nicht angefasst
+function syncLattenUI(){
+  const ps=lattenProdukte(), host=$('latKatalog');
+  if(!ps.length){ host.innerHTML=''; LAT_WAHL=null; return; }
+  if(LAT_WAHL===null) LAT_WAHL=new Set(ps.filter(p=>Array.isArray(p.rollen)&&p.rollen.includes('latte')).map(p=>p.id));
+  host.innerHTML='<div class="pnote" style="margin:0 0 2px">Lattenprodukte aus dem Katalog:</div>'+ps.map(p=>
+    `<label class="lat"><input type="checkbox" data-lat="${esc(p.id)}"${LAT_WAHL.has(p.id)?' checked':''}> ${esc(p.name||p.id)} <span class="muted">(${fmt(p.laenge_mm/10,0)} cm${p.breite_mm?', '+fmt(p.breite_mm,0)+'×'+fmt(p.dicke_mm||0,0)+' mm':''})</span></label>`).join('');
+}
+/** Latten-Spezifikation: gewaehlte Katalogprodukte schlagen die freien Felder ([Z-1]-Muster). */
+function lattenSpez(){
+  const ps=lattenProdukte().filter(p=>LAT_WAHL&&LAT_WAHL.has(p.id));
+  if(ps.length){
+    const br=[...new Set(ps.map(p=>+p.breite_mm).filter(x=>x>0))];
+    return { quelle:'katalog', laengen_mm:[...new Set(ps.map(p=>+p.laenge_mm))].sort((a,b)=>b-a),
+      breite_mm: br.length===1?br[0]:null, produkte:ps, breitenKonflikt: br.length>1 };
+  }
+  const frei=String($('stock').value||'').split(/[;\s]+/).map(s=>+s.replace(',','.')).filter(x=>x>0);
+  return { quelle:'frei', laengen_mm:(frei.length?frei:[150]).map(cm=>Math.round(cm*10)).sort((a,b)=>b-a),
+    breite_mm: (+$('lw').value>0)?+$('lw').value*10:null, produkte:[] };
+}
+function produktFuerLaenge(sp, mm){ return (sp.produkte||[]).find(p=>+p.laenge_mm===mm)||null; }
+
+// ---------- Rechnen: der EINE Aufbau-Rechenweg (sembla-aufbau.js) ----------
+function num(id, d){ const v=+$(id).value; return isFinite(v)&&v>0?v:d; }
+function eingaben(seite, typ){
+  const t=typ||{ id:$('vtyp').value, Rk:num('Rk',0.5), gM:num('gM',2.0) };
+  return { seite: seite||SIDE,
+    panel:{ b_cm:num('pB',62.5), h_cm:num('pH',150), off_x_cm:+$('oX').value||0, off_y_cm:+$('oY').value||0 },
+    achsen:{ max_x_cm:num('maxX',62.5), max_y_cm:num('maxY',75), ohang_cm:num('ohang',12.5) },
+    verbinder:{ typ:t.id, Rk:t.Rk, gM:t.gM, wk:+$('wk').value||0, gQ:num('gQ',1.5) },
+    latten:{ breite_cm:+$('lw').value||null, stange_cm:null } };
+}
+/** Traglast-Kennwerte zu einem Ergebnis (vereinfachtes Beta-Modell, s. Hinweis in der Oberflaeche). */
+function traglast(R, Rk, gM, wk, gQ){
+  const n=R.pts.length, A=R.atReal*Math.max(1,n), Rd=Rk/gM, E=gQ*wk;
+  const erf=(E>0&&Rd>0)?Math.ceil(E*A/Rd-1e-9):0;
+  const util=(Rd>0)?E*R.atReal/Rd:0;
+  return { flaeche_m2:A, Rd, erf, n, util, ok: E<=0 || (n>0 && util<=1+1e-9) };
+}
+/** Beta-Verfahren: Bin-Packing mit Reststueckverwertung auf EINE Stangenlaenge (nur nachrichtlich). */
+function reststueckBedarf(stueckeCm, stockCm){
+  const sorted=[...stueckeCm].sort((a,b)=>b-a), remn=[]; let sc=0;
+  for(const p of sorted){ if(p>stockCm+1e-6) return null;
+    let bi=-1,bv=Infinity; for(let i=0;i<remn.length;i++) if(remn[i]>=p-1e-6&&remn[i]<bv){bv=remn[i];bi=i;}
+    if(bi>=0) remn[bi]=+(remn[bi]-p).toFixed(3); else { sc++; remn.push(+(stockCm-p).toFixed(3)); } }
+  const used=stueckeCm.reduce((a,b)=>a+b,0), total=sc*stockCm;
+  return { stangen:sc, stange_cm:stockCm, verschnitt_m:+((total-used)/100).toFixed(2), verschnitt_pct: total?+(100*(total-used)/total).toFixed(1):0 };
+}
+function berechne(w, seite, feld, typ){
+  const a=eingaben(seite, typ); a.feld_cm=feld||null;
+  const sp=lattenSpez();
+  const R=berechneAufbau(w, a, { laengen_mm:sp.laengen_mm, breite_mm:sp.breite_mm });
+  R.eingaben=a; R.spez=sp;
+  R.trag=traglast(R, a.verbinder.Rk, a.verbinder.gM, a.verbinder.wk, a.verbinder.gQ);
+  const stuecke=[]; R.batt.axes.forEach(ax=>ax.segments.forEach(s=>stuecke.push(s.len_cm)));
+  R.rest=reststueckBedarf(stuecke, sp.laengen_mm[0]/10);
+  return R;
+}
+function compute(){ const w=aktWand(); return w?berechne(w, SIDE, FELD, null):null; }
+
+/** Raster-Vorschlag: die Variante mit den WENIGSTEN Verbindern, die die Traglast traegt. */
+const AUSLEGUNG_X=[62.5,50,37.5,25], AUSLEGUNG_Y=[75,60,40,20];
+function auslegung(){
+  const w=aktWand(); if(!w) return null;
+  const sx=$('maxX').value, sy=$('maxY').value, var_=[];
+  try{
+    for(const mx of AUSLEGUNG_X) for(const my of AUSLEGUNG_Y){ $('maxX').value=mx; $('maxY').value=my;
+      const R=berechne(w, SIDE, FELD, null); var_.push({ maxX:mx, maxY:my, n:R.pts.length, util:R.trag.util, ok:R.trag.ok }); }
+  } finally { $('maxX').value=sx; $('maxY').value=sy; }
+  const gut=var_.filter(v=>v.ok).sort((a,b)=>a.n-b.n||b.maxX-a.maxX||b.maxY-a.maxY);
+  return { varianten:var_, beste:gut[0]||null };
+}
+
+// ---------- Zeichnung ----------
+function draw(R){
+  const {B,H,xs,ys,pts,layout}=R, w=R.w; const pad=44, sc=Math.min((1000-2*pad)/(B*10),(600-2*pad)/(H*10))*10;
+  const mass=$('showMasse').checked, dimH=mass?34:0;
+  const wPx=B*sc,hPx=H*sc, vbH=Math.round(hPx+2*pad+dimH); $('plan').setAttribute('viewBox',`0 0 1000 ${vbH}`);
+  const X=x=>pad+x*sc, Y=y=>pad+(hPx-y*sc); let s='';
+  LASTDRAW={pad,sc,B,H,hPx,vbH};
+  const gcm=12.5, N2=Math.max(1,Math.round(B/gcm));
+  const th=k=>{ const xc=(k+0.5)*gcm; for(const st of (w.steps||[])){ const a=st.x0_mm/10,b=st.x1_mm/10; if(xc>=a&&xc<b) return st.height_mm/10; } return H; };
+  { const cp=[[0,0],[0,th(0)]];
+    for(let k=0;k<N2;k++){ cp.push([(k+1)*gcm, th(k)]); if(k<N2-1 && th(k+1)!==th(k)) cp.push([(k+1)*gcm, th(k+1)]); }
+    cp.push([B,0]); s+=`<polygon points="${cp.map(p=>X(p[0])+','+Y(p[1])).join(' ')}" fill="#eef1f4" stroke="#13202e" stroke-width="1.5"/>`; }
+  // Steine je Lage auf den REALEN Lagenkanten (Ausgleichslage mit eigener Hoehe, #136)
+  if($('showStones').checked && w.courses){ const K=wandLagenKanten(w);
+    for(const c of w.courses){ const k=K.find(x=>x.lage===c.lage); if(!k) continue; const y0=k.unterkante_mm/10, y1=k.oberkante_mm/10;
+      for(const st of (c.stones||[])){ const x0=st.x0/10, x1=st.x1/10, i3=st.type==='i3';
+        s+=`<rect x="${X(x0)}" y="${Y(y1)}" width="${(x1-x0)*sc}" height="${(y1-y0)*sc}" fill="${c.ausgleich?'#f3e7d3':(i3?'#e4e8ed':'#d3dae1')}" stroke="#b6bec7" stroke-width="0.5"/>`;
+        if((x1-x0)*sc>18 && (y1-y0)*sc>11) s+=`<text x="${X((x0+x1)/2)}" y="${Y((y0+y1)/2)+3}" font-size="8" fill="#9aa2ac" text-anchor="middle">${esc(st.type)}</text>`; } } }
+  const pBv=R.eingaben.panel.b_cm, pHv=R.eingaben.panel.h_cm, offXv=R.eingaben.panel.off_x_cm, offYv=R.eingaben.panel.off_y_cm;
+  const topX=x=>{ for(const st of (w.steps||[])){ const a=st.x0_mm/10,b=st.x1_mm/10; if(x>=a-1e-6&&x<b-1e-6) return st.height_mm/10; } return H; };
+  for(let k=1; offXv+k*pBv<B; k++){ const x=offXv+k*pBv; s+=`<line x1="${X(x)}" y1="${Y(0)}" x2="${X(x)}" y2="${Y(topX(x))}" stroke="#c2ccd6" stroke-width="0.8" stroke-dasharray="4 3"/>`; }
+  for(let m=1; offYv+m*pHv<H; m++){ const y=offYv+m*pHv;
+    for(let k=0;k<N2;k++) if(th(k)>=y-1e-6) s+=`<line x1="${X(k*gcm)}" y1="${Y(y)}" x2="${X((k+1)*gcm)}" y2="${Y(y)}" stroke="#c2ccd6" stroke-width="0.8" stroke-dasharray="4 3"/>`; }
+  if($('showNut').checked) for(const n of (R.nutRaster||[])){ const cont=n.status==='cont';
+    s+=`<line x1="${X(n.x_cm)}" y1="${Y(0)}" x2="${X(n.x_cm)}" y2="${Y(topX(n.x_cm))}" stroke="${cont?'#1f6feb':'#e8702a'}" stroke-width="${cont?1.1:0.9}" stroke-opacity="${cont?0.45:0.5}"${cont?'':' stroke-dasharray="3 3"'}/>`; }
+  for(const o of layout.openings_cm){ s+=`<rect x="${X(o.x0)}" y="${Y(o.y1)}" width="${(o.x1-o.x0)*sc}" height="${(o.y1-o.y0)*sc}" fill="#fff" stroke="#c9461c" stroke-width="1.2" stroke-dasharray="5 4"/>`;
+    s+=`<text x="${X((o.x0+o.x1)/2)}" y="${Y((o.y0+o.y1)/2)+4}" font-size="11" fill="#c9461c" text-anchor="middle">${o.art==='fenster'?'Fenster':(o.art==='durchbruch'?'Durchbruch':'Tür')}</text>`; }
+  // Latten: Standardmass durchgezogen, Sonderzuschnitt gestrichelt
+  for(const ax of R.batt.axes) for(const sg of ax.segments) s+=`<line x1="${X(ax.x_cm)}" y1="${Y(sg.y0_cm)}" x2="${X(ax.x_cm)}" y2="${Y(sg.y1_cm)}" stroke="#8a5a2b" stroke-width="3" stroke-opacity="0.55"${sg.art==='standard'?'':' stroke-dasharray="6 2"'}/>`;
+  for(const p of pts) s+=`<circle cx="${X(p.x_cm)}" cy="${Y(p.y_cm)}" r="3.4" fill="${p.type==='C'?'#1f6feb':'#e8702a'}"/>`;
+  if(FELD){ s+=`<rect x="${X(0)}" y="${Y(H)}" width="${wPx}" height="${hPx}" fill="#13202e" fill-opacity="0.06"/>`;
+    s+=`<rect x="${X(R.fx0)}" y="${Y(R.fy1)}" width="${(R.fx1-R.fx0)*sc}" height="${(R.fy1-R.fy0)*sc}" fill="#1f9d55" fill-opacity="0.10" stroke="#1f9d55" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+    s+=`<text x="${X((R.fx0+R.fx1)/2)}" y="${Y(R.fy1)-4}" font-size="11" fill="#1f7a3d" text-anchor="middle">Beplankungsfeld</text>`;
+    const hx=(R.fx0+R.fx1)/2, hy=(R.fy0+R.fy1)/2;
+    for(const [gx,gy] of [[R.fx0,R.fy0],[hx,R.fy0],[R.fx1,R.fy0],[R.fx1,hy],[R.fx1,R.fy1],[hx,R.fy1],[R.fx0,R.fy1],[R.fx0,hy]])
+      s+=`<rect x="${X(gx)-4}" y="${Y(gy)-4}" width="8" height="8" fill="#fff" stroke="#1f7a3d" stroke-width="1.5" style="cursor:pointer"/>`; }
+  if(mass && xs.length){ const yB=Y(0)+16, C='#46505e';
+    s+=`<line x1="${X(xs[0])}" y1="${yB}" x2="${X(xs[xs.length-1])}" y2="${yB}" stroke="${C}" stroke-width="0.6"/>`;
+    for(const x of xs){ s+=`<line x1="${X(x)}" y1="${Y(0)+4}" x2="${X(x)}" y2="${yB+3}" stroke="${C}" stroke-width="0.4"/>`;
+      s+=`<text x="${X(x)}" y="${yB+12}" font-size="7.5" fill="${C}" text-anchor="middle">${fmt(x,1)}</text>`; }
+    for(let i=1;i<xs.length;i++){ const mx=(X(xs[i-1])+X(xs[i]))/2; s+=`<text x="${mx}" y="${yB-3}" font-size="7" fill="#8a939d" text-anchor="middle">${fmt(xs[i]-xs[i-1],1)}</text>`; } }
+  if(mass && ys.length){ const xL=X(0)-10, C='#46505e';
+    s+=`<line x1="${xL}" y1="${Y(ys[0])}" x2="${xL}" y2="${Y(ys[ys.length-1])}" stroke="${C}" stroke-width="0.6"/>`;
+    for(const y of ys){ s+=`<line x1="${xL-3}" y1="${Y(y)}" x2="${X(0)+4}" y2="${Y(y)}" stroke="${C}" stroke-width="0.4"/>`;
+      s+=`<text x="${xL-5}" y="${Y(y)+2.6}" font-size="7.5" fill="${C}" text-anchor="end">${fmt(y,1)}</text>`; } }
+  s+=`<g font-size="10" fill="#5a6470">`
+    +`<circle cx="${X(0)+4}" cy="${vbH-8}" r="3.4" fill="#1f6feb"/><text x="${X(0)+12}" y="${vbH-5}">durchgehende Nut</text>`
+    +`<circle cx="${X(0)+150}" cy="${vbH-8}" r="3.4" fill="#e8702a"/><text x="${X(0)+158}" y="${vbH-5}">versetzte Nut (lagenweise)</text>`
+    +`<line x1="${X(0)+310}" y1="${vbH-8}" x2="${X(0)+330}" y2="${vbH-8}" stroke="#8a5a2b" stroke-width="3" stroke-opacity="0.55" stroke-dasharray="6 2"/><text x="${X(0)+336}" y="${vbH-5}">Latte Sonderzuschnitt</text>`
+    +`</g>`;
+  if(fieldArm) s+=`<text x="${X(0)}" y="16" font-size="12" fill="#c9461c">Feld aufziehen: klicken und ziehen …</text>`;
+  $('plan').innerHTML=s;
+  const ohTxt=(R.ohL!=null)?` · Randüberstand li/re ${fmt(R.ohL,1)}/${fmt(R.ohR,1)} cm${R.ohWarn?' ⚠ > '+fmt(R.maxOh,1)+' cm':''}`:'';
+  $('cap').innerHTML=`Wand ${fmt(B/100,2)} × ${fmt(H/100,2)} m · Panel ${fmt(pBv,1)} × ${fmt(pHv,0)} cm · ${xs.length} × ${ys.length} Achsen · ${pts.length} Verbinder · ${SIDE_LABEL[SIDE]||SIDE} (${esc(FUNKTION_LABEL[curFunktion()]||curFunktion())})<span style="color:${R.ohWarn?'#c9461c':'#5a6470'}">${ohTxt}</span>`;
+}
+
+/** Alle Befunde des Ergebnisses als Klartext — nie still (Muster [P-9]). */
+function meldungen(R){
+  const m=[], q=aktQuelle(); (q&&q.hinweise||[]).forEach(h=>m.push(h));
+  const cm=v=>fmt(v,1)+' cm';
+  if(R.nutGeoWarn) m.push('Das Wandelement hat keine Lagengeometrie — ohne sie wird kein Verbinder gesetzt ([U-11]).');
+  if(R.nutThinAxes.length) m.push(`${R.nutBlocked} Verbinderposition(en) liegen auf einer Stoßfuge oder Steinkante und entfallen ([U-11]); betroffene Achsen ${R.nutThinAxes.map(cm).join(', ')}.`);
+  if(R.nutLeerAchsen.length) m.push(`Achse(n) ohne jeden Verbinder: ${R.nutLeerAchsen.map(cm).join(', ')}.`);
+  if(R.nutEndLeerSegmente.length) m.push(`${R.nutEndLeerSegmente.length} Lattensegment(e) ohne zulässige Verbinderlage bleiben ungeplant ([U-12]).`);
+  if(R.ausgleichMeldung) m.push('Ausgleichslage: '+R.ausgleichMeldung+' ([U-13]).');
+  if(R.ohWarn) m.push(`Randüberstand ${cm(R.ohL)} / ${cm(R.ohR)} größer als ${cm(R.maxOh)} ([U-6]).`);
+  if(R.xGapWarn && R.xs.length) m.push(`Größter Achsabstand ${cm(R.xGapMax)} überschreitet ${cm(R.maxX)} ([U-10]).`);
+  if(!R.xs.length) m.push('Keine zulässige Verbinderachse im Feld.');
+  const su=R.batt.summary;
+  if(su.kurz_stuecke.length) m.push(`${su.kurz_stuecke.length} Lattenstück(e) kürzer als das Mindest-Fertigmaß ([Z-5]).`);
+  if(su.ohne_quelle.length) m.push(`${su.ohne_quelle.length} Lattenstück(e) ohne passende Standardlänge.`);
+  if(R.spez.breitenKonflikt) m.push('Die gewählten Lattenprodukte haben verschiedene Breiten — Querschnitt offen.');
+  if(R.trag.n>0 && !R.trag.ok) m.push(`Traglast: ${R.trag.n} Verbinder vorhanden, ${R.trag.erf} erforderlich — Raster verdichten oder stärkeren Verbinder wählen.`);
+  return m;
+}
+
+function render(){
+  syncLattenUI();
+  const R=compute(); LAST=R;
+  const sp=lattenSpez();
+  $('latQuelle').innerHTML=sp.quelle==='katalog'
+    ? 'Standardlängen aus dem Katalog: '+sp.laengen_mm.map(x=>fmt(x/10,0)+' cm').join(' · ')+' — das freie Feld ist dann unwirksam.'
+    : 'Freie Standardlängen (mehrere mit „;“ trennen). Größte Länge = Obergrenze eines Stücks ([U-8]/[Z-4]).';
+  $('stock').disabled = sp.quelle==='katalog';
+  const ids=['ovGrid','ovCount','ovDens','ovAt','ovErf','ovUtil','ovAxes','ovPieces','ovStdSonder','ovLen','ovRest'];
+  if(!R){ ids.forEach(i=>$(i).textContent='–'); $('ovBadge').className='badge'; $('ovBadge').textContent='–';
+    $('ovAusgang').innerHTML=''; $('tragTab').innerHTML=''; $('zuschnitt').innerHTML=''; $('meldungen').innerHTML='';
+    $('plan').innerHTML='<text x="500" y="300" font-size="16" fill="#6b7682" text-anchor="middle">Keine Wand gewählt — Datei laden oder in der Suite eine Wand anlegen.</text>';
+    $('cap').textContent='–'; renderAlle(); return; }
+  const T=R.trag;
+  $('ovGrid').textContent=R.xs.length+' × '+R.ys.length;
+  $('ovCount').textContent=R.pts.length;
+  $('ovDens').textContent=fmt(R.pts.length/(T.flaeche_m2||1),2)+' /m²';
+  $('ovAt').textContent=fmt(R.atReal,3)+' m²';
+  $('ovErf').textContent=T.erf+(T.erf>R.pts.length?' ⚠':'');
+  const u=Math.round(T.util*100); $('ovUtil').textContent=u+' %';
+  $('ovBar').style.width=Math.min(u,100)+'%'; $('ovBar').style.background=T.ok?'var(--sb-ok)':'var(--sb-warn)';
+  const b=$('ovBadge'); if(!(R.eingaben.verbinder.wk>0)){ b.className='badge'; b.textContent='Last = 0'; }
+  else if(T.ok){ b.className='badge ok'; b.textContent='trägt'; } else { b.className='badge no'; b.textContent='Auslastung > 100 %'; }
+  // Verbinder je Traglast: alle Typen am GLEICHEN Raster (ausgewaehlter Typ mit den Feldwerten)
+  const g=R.eingaben.verbinder;
+  $('tragTab').innerHTML='<table class="t"><tr><th>Typ</th><th>R<sub>d</sub> kN</th><th>Ausl.</th><th>erf.</th><th></th></tr>'
+    +VERBINDER_KATALOG.map(t=>{ const sel=t.id===g.typ, Rk=sel?g.Rk:t.Rk, gM=sel?g.gM:t.gM, x=traglast(R,Rk,gM,g.wk,g.gQ);
+      return `<tr${sel?' class="sel"':''}><td>${esc(t.name)}</td><td>${fmt(x.Rd,3)}</td><td>${Math.round(x.util*100)} %</td><td>${x.erf}</td><td>${x.ok?'✓':'<span class="warn">✗</span>'}</td></tr>`; }).join('')
+    +'</table>';
+  const su=R.batt.summary;
+  $('ovAxes').textContent=su.achsen; $('ovPieces').textContent=su.latten_stuecke;
+  $('ovStdSonder').textContent=su.standard_stuecke+' / '+su.sonder_stuecke;
+  $('ovLen').textContent=fmt(su.gesamtlaenge_m,2)+' m';
+  $('ovAusgang').innerHTML=su.ausgang.map(a=>{ const p=produktFuerLaenge(sp, Math.round(a.laenge_cm*10));
+    return `<div class="r"><span>Ausgangsprodukt ${esc(p?(p.name||p.id):'Stange')} ${fmt(a.laenge_cm,0)} cm</span><b>${a.anzahl} Stk</b></div>`; }).join('');
+  $('ovRest').textContent=R.rest?`${R.rest.stangen} à ${fmt(R.rest.stange_cm,0)} cm (Verschnitt ${fmt(R.rest.verschnitt_m,2)} m)`:'–';
+  // Zuschnittliste
+  const zeilen=[]; R.batt.axes.forEach(ax=>ax.segments.forEach((sg,i)=>zeilen.push({x:ax.x_cm,i:i+1,sg})));
+  $('zuschnitt').innerHTML=zeilen.length?'<table class="t"><tr><th>Achse x</th><th>Stück</th><th>von</th><th>bis</th><th>Länge</th><th>aus</th><th>Art</th></tr>'
+    +zeilen.map(z=>`<tr><td>${fmt(z.x,1)} cm</td><td>${z.i}</td><td>${fmt(z.sg.y0_cm,1)}</td><td>${fmt(z.sg.y1_cm,1)}</td><td>${fmt(z.sg.len_cm,1)} cm</td><td>${z.sg.quelle_cm!=null?fmt(z.sg.quelle_cm,0)+' cm':'–'}</td><td>${z.sg.art==='standard'?'Standard':(z.sg.art==='sonder'?'Sonderzuschnitt':'<span class="warn">keine Länge</span>')}</td></tr>`).join('')+'</table>'
+    :'<div class="muted">keine Latten</div>';
+  const m=meldungen(R);
+  $('meldungen').innerHTML=m.length?'<ul class="meld">'+m.map(x=>`<li class="warn">${esc(x)}</li>`).join('')+'</ul>':'';
+  draw(R); renderAlle();
+}
+/** Uebersicht ueber alle geladenen Waende und Seiten (wie im Builder Beta „Alle Wände durchplanen“). */
+function alleErgebnisse(){
+  const out=[];
+  for(const q of QUELLEN){ const w=q.wand; const keys=(w.sides&&Object.keys(w.sides).length)?Object.keys(w.sides):['vorne','hinten'];
+    for(const s of keys){ const fn=(w.sides&&w.sides[s]&&w.sides[s].funktion)||'fassade';
+      try{ const R=berechne(w, s, null, typFuer(fn));
+        out.push({ name:q.name, seite:s, funktion:fn, typ:R.eingaben.verbinder.typ, n:R.pts.length, erf:R.trag.erf, ok:R.trag.ok,
+          stuecke:R.batt.summary.latten_stuecke, laenge_m:R.batt.summary.gesamtlaenge_m, ausgang:R.batt.summary.ausgang }); }
+      catch(e){ out.push({ name:q.name, seite:s, fehler:String(e&&e.message||e) }); } } }
+  return out;
+}
+function renderAlle(){
+  if(!QUELLEN.length){ $('alle').innerHTML='<div class="muted">keine Wände geladen</div>'; return; }
+  const E=alleErgebnisse(); const sum={n:0,stuecke:0,m:0,typ:{},ausgang:{}};
+  E.forEach(e=>{ if(e.fehler) return; sum.n+=e.n; sum.stuecke+=e.stuecke; sum.m+=e.laenge_m; sum.typ[e.typ]=(sum.typ[e.typ]||0)+e.n;
+    e.ausgang.forEach(a=>{ sum.ausgang[a.laenge_cm]=(sum.ausgang[a.laenge_cm]||0)+a.anzahl; }); });
+  $('alle').innerHTML='<table class="t"><tr><th>Wand · Seite</th><th>Typ</th><th>Verb.</th><th>erf.</th><th>Latten</th><th>m</th></tr>'
+    +E.map(e=>e.fehler?`<tr><td>${esc(e.name)} · ${SIDE_LABEL[e.seite]||e.seite}</td><td colspan="5" class="warn">${esc(e.fehler)}</td></tr>`
+      :`<tr><td>${esc(e.name)} · ${SIDE_LABEL[e.seite]||e.seite}</td><td>${esc(e.typ)}</td><td>${e.n}</td><td>${e.ok?e.erf:'<span class="warn">'+e.erf+'</span>'}</td><td>${e.stuecke}</td><td>${fmt(e.laenge_m,2)}</td></tr>`).join('')
+    +`<tr class="sel"><td>Summe</td><td></td><td>${sum.n}</td><td></td><td>${sum.stuecke}</td><td>${fmt(sum.m,2)}</td></tr></table>`
+    +'<div class="pnote">Verbinder je Typ: '+(Object.entries(sum.typ).map(([t,n])=>esc(t)+' '+n).join(' · ')||'–')
+    +'<br>Ausgangsprodukte Latten: '+(Object.entries(sum.ausgang).sort((a,b)=>b[0]-a[0]).map(([l,n])=>fmt(+l,0)+' cm × '+n).join(' · ')||'–')+'</div>';
+}
+function run(){ render(); }
+
+// ---------- Export ----------
+function download(name,text,typ){ const b=new Blob([text],{type:typ||'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+const dz=v=>String(v).replace('.',',');
+const csv=rows=>'﻿'+rows.map(r=>r.map(c=>{ const s=String(c==null?'':c); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(';')).join('\n')+'\n';
+function stamm(){ const q=aktQuelle(); return ((q&&q.wand&&q.wand.name)||'Wand').replace(/[^\wäöüÄÖÜß.-]+/g,'_')+'_'+SIDE; }
+function zuschnittRows(R){ const rows=[['achse_x_cm','stueck','y0_cm','y1_cm','laenge_cm','ausgangsprodukt_cm','art']];
+  R.batt.axes.forEach(a=>a.segments.forEach((sg,i)=>rows.push([dz(a.x_cm),i+1,dz(sg.y0_cm),dz(sg.y1_cm),dz(sg.len_cm),sg.quelle_cm!=null?dz(sg.quelle_cm):'',sg.art]))); return rows; }
+function materialRows(R){
+  const g=R.eingaben.verbinder, rows=[['Abschnitt','Position','Menge','Einheit','Hinweis']];
+  const t=VERBINDER_KATALOG.find(x=>x.id===g.typ);
+  rows.push(['Verbinder', t?t.name:g.typ, R.pts.length, 'Stk', `erforderlich ${R.trag.erf} bei wk ${dz(g.wk)} kN/m², Rk ${dz(g.Rk)} kN (Platzhalter), Auslastung ${Math.round(R.trag.util*100)} %`]);
+  R.batt.summary.ausgang.forEach(a=>{ const p=produktFuerLaenge(R.spez, Math.round(a.laenge_cm*10));
+    rows.push(['Latten', (p?(p.name||p.id):'Lattenstange')+' '+dz(a.laenge_cm)+' cm', a.anzahl, 'Stk', 'Ausgangsprodukt je Einbaustück ([Z-4])']); });
+  rows.push(['Latten', 'Einbaustücke gesamt', R.batt.summary.latten_stuecke, 'Stk', `davon ${R.batt.summary.sonder_stuecke} Sonderzuschnitt`]);
+  rows.push(['Latten', 'Einbaulänge gesamt', dz(R.batt.summary.gesamtlaenge_m), 'm', '']);
+  if(R.rest) rows.push(['nachrichtlich', 'Stangen bei Reststückverwertung '+dz(R.rest.stange_cm)+' cm', R.rest.stangen, 'Stk', 'Beta-Verfahren, nicht regelkonform nach [U-8]']);
+  meldungen(R).forEach(m=>rows.push(['Meldung','','','',m]));
+  return rows; }
+function cutCsv(){ const R=compute(); if(!R) return; download('Zuschnittliste_Latten_'+stamm()+'.csv', csv(zuschnittRows(R)), 'text/csv'); }
+function matCsv(){ const R=compute(); if(!R) return; download('Materialliste_'+stamm()+'.csv', csv(materialRows(R)), 'text/csv'); }
+function layoutJson(){ const R=compute(); if(!R) return; download('Verbinderlayout_'+stamm()+'.json', JSON.stringify(R.layout,null,2), 'application/json'); }
+
+// ---------- Beplankungsfeld: mit Maus aufziehen und an Anfassern aendern (Beta-Bedienung) ----------
+function wallDims(){ const w=aktWand(); return w?{ B:w.length_mm/10, H:w.height_mm/10 }:{B:0,H:0}; }
+function snapArr(len, panel, off){ const a=[0,len]; for(let k=0;;k++){ const v=off+k*panel; if(v>len+1e-6) break; if(v>0&&v<len) a.push(+v.toFixed(2)); } return [...new Set(a)].sort((x,y)=>x-y); }
+function snap(v, arr){ let best=arr[0],bd=1e9; for(const a of arr){ const d=Math.abs(a-v); if(d<bd){bd=d;best=a;} } return best; }
+function grids(){ const {B,H}=wallDims(); return { gx:snapArr(B,num('pB',62.5),+$('oX').value||0), gy:snapArr(H,num('pH',150),+$('oY').value||0), B, H }; }
+function evToCm(e){ if(!LASTDRAW) return {x:0,y:0}; const r=$('plan').getBoundingClientRect();
+  const sx=(e.clientX-r.left)/r.width*1000, sy=(e.clientY-r.top)/r.height*LASTDRAW.vbH;
+  const {pad,sc,hPx}=LASTDRAW; return { x:(sx-pad)/sc, y:(hPx-(sy-pad))/sc }; }
+function setFeld(x0,x1,y0,y1){ const {B,H}=wallDims(); x0=Math.max(0,Math.min(B,x0));x1=Math.max(0,Math.min(B,x1));y0=Math.max(0,Math.min(H,y0));y1=Math.max(0,Math.min(H,y1));
+  FELD=(Math.abs(x1-x0)<5||Math.abs(y1-y0)<5)?null:{x0:Math.min(x0,x1),x1:Math.max(x0,x1),y0:Math.min(y0,y1),y1:Math.max(y0,y1)}; run(); }
+function armFeld(an){ fieldArm=an; $('fieldMode').className=an?'active':''; }
+function clearFeld(){ FELD=null; armFeld(false); run(); }
+const MINFELD=12.5;
+function resizeFeld(edge, cm){ if(!FELD) return; const g=grids(); const f={...FELD};
+  if(edge==='x0') f.x0=Math.min(Math.max(0,snap(cm,g.gx)), f.x1-MINFELD);
+  else if(edge==='x1') f.x1=Math.max(Math.min(g.B,snap(cm,g.gx)), f.x0+MINFELD);
+  else if(edge==='y0') f.y0=Math.min(Math.max(0,snap(cm,g.gy)), f.y1-MINFELD);
+  else if(edge==='y1') f.y1=Math.max(Math.min(g.H,snap(cm,g.gy)), f.y0+MINFELD);
+  FELD=f; run(); }
+function handleAt(p){ if(!FELD||!LASTDRAW) return null; const tol=9/LASTDRAW.sc; const {x0,x1,y0,y1}=FELD; const mx=(x0+x1)/2,my=(y0+y1)/2;
+  const HH=[['x0','y0',x0,y0],['','y0',mx,y0],['x1','y0',x1,y0],['x1','',x1,my],['x1','y1',x1,y1],['','y1',mx,y1],['x0','y1',x0,y1],['x0','',x0,my]];
+  for(const [ex,ey,hx,hy] of HH) if(Math.abs(p.x-hx)<tol && Math.abs(p.y-hy)<tol) return {ex,ey}; return null; }
+let fdrag=null, fedit=null;
+
+window.__kfInit=function(){
+  const S=window.SEMBLA||{};
+  ({ store, buildWall, Opening, berechneAufbau, VERBINDER_KATALOG, wandLagenKanten, entpacke }=S);
+  $('vtyp').innerHTML=VERBINDER_KATALOG.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  $('quelle').addEventListener('change',e=>{ if(e.target.value) waehleWand(e.target.value); });
+  $('load').addEventListener('click',()=>$('file').click());
+  $('file').addEventListener('change',async ev=>{ const f=ev.target.files&&ev.target.files[0]; if(!f) return;
+    try{ const buf=new Uint8Array(await f.arrayBuffer()); await ladeDatei(f.name, buf); }
+    catch(e){ $('info').textContent='Nicht geladen: '+(e&&e.message||e); }
+    ev.target.value=''; });
+  $('side').addEventListener('change',e=>{ SIDE=e.target.value; syncSideUI(); if(!TYP_MANUELL) applyFunktion(curFunktion()); run(); });
+  $('vtyp').addEventListener('change',()=>{ const t=VERBINDER_KATALOG.find(x=>x.id===$('vtyp').value); if(t){ $('Rk').value=t.Rk; $('gM').value=t.gM; }
+    TYP_MANUELL=(t&&t.id!==typFuer(curFunktion()).id); run(); });
+  ['pB','pH','oX','oY','maxX','maxY','ohang','Rk','gM','wk','gQ','lw','stock'].forEach(id=>$(id).addEventListener('input',run));
+  ['showNut','showStones','showMasse'].forEach(id=>$(id).addEventListener('change',run));
+  $('latKatalog').addEventListener('change',e=>{ const id=e.target&&e.target.getAttribute&&e.target.getAttribute('data-lat'); if(!id) return;
+    if(LAT_WAHL===null) LAT_WAHL=new Set(); if(e.target.checked) LAT_WAHL.add(id); else LAT_WAHL.delete(id); run(); });
+  $('auslegen').addEventListener('click',()=>{ const A=auslegung(); if(!A) return;
+    if(A.beste){ $('maxX').value=A.beste.maxX; $('maxY').value=A.beste.maxY;
+      $('auslegenInfo').textContent=`Vorschlag: max. Abstand X ${fmt(A.beste.maxX,1)} cm, Y ${fmt(A.beste.maxY,0)} cm → ${A.beste.n} Verbinder, Auslastung ${Math.round(A.beste.util*100)} %. Geprüft wurden ${A.varianten.length} Rastervarianten.`; }
+    else $('auslegenInfo').textContent=`Keine der ${A.varianten.length} Rastervarianten trägt diese Last mit dem gewählten Verbinder — stärkeren Typ wählen oder Last prüfen.`;
+    run(); });
+  $('expCut').addEventListener('click',cutCsv);
+  $('expMat').addEventListener('click',matCsv);
+  $('expLayout').addEventListener('click',layoutJson);
+  $('drucken').addEventListener('click',()=>{ if(typeof window.print==='function') window.print(); });
+  $('fieldMode').addEventListener('click',()=>{ armFeld(!fieldArm); run(); });
+  $('fieldClear').addEventListener('click',clearFeld);
+  $('plan').addEventListener('pointerdown',e=>{ if(!aktWand()) return; const p=evToCm(e); const g=grids();
+    if(fieldArm){ fdrag={x0:snap(p.x,g.gx),y0:snap(p.y,g.gy),gx:g.gx,gy:g.gy}; return; }
+    if(!FELD) return; const h=handleAt(p);
+    if(h) fedit={mode:'resize',ex:h.ex,ey:h.ey};
+    else if(p.x>FELD.x0&&p.x<FELD.x1&&p.y>FELD.y0&&p.y<FELD.y1) fedit={mode:'move',gx:g.gx,gy:g.gy,B:g.B,H:g.H,grabX:p.x,grabY:p.y,start:{...FELD}}; });
+  $('plan').addEventListener('pointermove',e=>{ if(!fedit) return; const p=evToCm(e);
+    if(fedit.mode==='resize'){ if(fedit.ex) resizeFeld(fedit.ex,p.x); if(fedit.ey) resizeFeld(fedit.ey,p.y); }
+    else { const s0=fedit.start, w0=s0.x1-s0.x0, h0=s0.y1-s0.y0;
+      let nx0=snap(s0.x0+(p.x-fedit.grabX),fedit.gx); nx0=Math.max(0,Math.min(fedit.B-w0,nx0));
+      let ny0=snap(s0.y0+(p.y-fedit.grabY),fedit.gy); ny0=Math.max(0,Math.min(fedit.H-h0,ny0));
+      FELD={x0:nx0,x1:nx0+w0,y0:ny0,y1:ny0+h0}; run(); } });
+  window.addEventListener('pointerup',e=>{ fedit=null; if(!fieldArm||!fdrag) return; const p=evToCm(e);
+    const x1=snap(p.x,fdrag.gx), y1=snap(p.y,fdrag.gy), d=fdrag; fdrag=null; armFeld(false); setFeld(d.x0,x1,d.y0,y1); });
+  // Suite im selben Browser: nur LESEN. Aenderungen in einem anderen Reiter werden nachgezogen.
+  ladeSuite();
+  if(store && store.abonniere) store.abonniere(()=>{ const alt=AKT; ladeSuite(); syncQuelleUI(); if(AKT!==alt) waehleWand(AKT); else run(); });
+  syncQuelleUI(); syncSideUI(); applyFunktion(curFunktion());
+  $('info').textContent=QUELLEN.length?QUELLEN.filter(q=>q.herkunft==='suite').length+' Wand/Wände aus der Suite gefunden.':'Keine Wand in diesem Browser — Datei laden.';
+  run();
+  window.__kf={ get quellen(){return QUELLEN;}, get akt(){return AKT;}, get side(){return SIDE;}, get feld(){return FELD;},
+    compute, berechne, traglast, reststueckBedarf, auslegung, ladeDatei, deuteJson, waehleWand, setFeld, resizeFeld, clearFeld,
+    lattenSpez, materialRows, zuschnittRows, meldungen, alleErgebnisse, ladeSuite };
+};
+</script>
+<script type="module">
+  import { buildWall, Opening, wandLagenKanten } from './shared/sembla-core.js';
+  import { berechneAufbau, VERBINDER_KATALOG } from './shared/sembla-aufbau.js';
+  import * as store from './shared/storage.js';
+  import { entpacke } from './shared/zip.js';
+  import { mountNavbar } from './shared/navbar.js';
+  window.SEMBLA = { buildWall, Opening, wandLagenKanten, berechneAufbau, VERBINDER_KATALOG, store, entpacke };
+  mountNavbar('konfigurator');
+  window.__kfInit();
+</script>
+</body>
+</html>

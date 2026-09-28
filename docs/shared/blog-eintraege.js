@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260928-01",
+    datum: "2026-09-28",
+    typ: "feature",
+    issue: 20,
+    titel: "Wandaufbau-Konfigurator aus dem Builder Beta wieder da: Verbinder je Traglast, "
+      + "Latten und Zuschnitte",
+    testbitte: "Reiter K öffnen, eine Wand wählen oder ein Projektarchiv laden, Windlast ändern und "
+      + "„Raster für diese Traglast auslegen“ drücken; Verbinderzahl, Latten und Zuschnittliste prüfen",
+  },
+  {
     id: "chg-20260923-03",
     datum: "2026-09-23",
     typ: "feature",

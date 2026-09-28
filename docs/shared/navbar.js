@@ -75,8 +75,9 @@ let _unsub = null;
 
 /**
  * Kopfleiste in die Seite einhaengen.
- * @param {number} activeIndex Modul-Nummer der aktuellen Seite (0-10;
- *   0.5 = Geschossplaner, der Reiter zwischen Start und Wand, Issue #43)
+ * @param {number|string} activeIndex Modul-Nummer der aktuellen Seite (0-10;
+ *   0.5 = Geschossplaner, der Reiter zwischen Start und Wand, Issue #43;
+ *   "konfigurator" = Wandaufbau-Konfigurator, Reiter hinter Modul 1)
  */
 export function mountNavbar(activeIndex = 0) {
   store.migrieren();
@@ -126,6 +127,19 @@ export function mountNavbar(activeIndex = 0) {
     `<a class="sb-tab${gpAktiv ? " active" : ""}" href="geschossplan.html" ${gpB.attrs}`
     + (gpAktiv ? ` aria-current="page"` : "")
     + `><span class="n">0,5</span> Geschossplan</a>`);
+
+  // Reiter „Konfigurator" — der wiederbelebte Wandaufbau-Konfigurator aus dem Builder Beta
+  // (Branch wandaufbau-konfigurator). Wie der Geschossplan BEWUSST kein MODULE-Eintrag: er ist
+  // kein nummeriertes Modul, schreibt nichts und steht hinter Modul 1 (Wandplanung).
+  const kfAktiv = activeIndex === "konfigurator";
+  const kfB = AX.benennung("Wandaufbau-Konfigurator",
+    "Beta-Werkzeug: Verbinder je Traglast, Latten und Zuschnitte für eine Wand — schreibt nichts in die Suite.");
+  beschreibungen.push(kfB.html);
+  const nachWand = tabs.findIndex((t) => t.includes('href="wandplanung.html"'));
+  tabs.splice(nachWand >= 0 ? nachWand + 1 : tabs.length, 0,
+    `<a class="sb-tab${kfAktiv ? " active" : ""}" href="wandaufbau-konfigurator.html" ${kfB.attrs}`
+    + (kfAktiv ? ` aria-current="page"` : "")
+    + `><span class="n">K</span> Konfigurator</a>`);
 
   // Landmarke benennen. Defensiv, weil die Smoke-Tests die Kopfleiste unter einem
   // minimalen DOM-Double mounten — fehlt `setAttribute`, bleibt alles Uebrige gueltig.

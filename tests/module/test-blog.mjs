@@ -107,6 +107,16 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
+// Der NEUESTE Eintrag ist der WANDAUFBAU-KONFIGURATOR (Branch wandaufbau-konfigurator) — er
+// wird als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: der alte
+// Konfigurator ist wieder erreichbar und liefert Verbinder je Traglast, Latten und Zuschnitte.
+// NICHT versprochen werden ein Nachweis, bestaetigte Verbinderwerte oder ein Schreibweg.
+const KONF = EINTRAEGE[0];
+ok("[Konfigurator] der Wandaufbau-Konfigurator ist der neueste Eintrag",
+  KONF?.id === "chg-20260928-01" && KONF?.typ === "feature" && /Konfigurator/.test(KONF?.titel || ""));
+ok("[Konfigurator] Titel nennt Verbinder je Traglast, Latten und Zuschnitte, aber keinen Nachweis",
+  /Traglast/.test(KONF?.titel || "") && /Latten/.test(KONF?.titel || "") && /Zuschnitt/.test(KONF?.titel || "")
+  && !/Nachweis/.test(KONF?.titel || ""));
 // Der NEUESTE Eintrag ist die ZUGAENGLICHKEIT VON MODUL 7 (#145) — er wird als einziger
 // direkt ueber `EINTRAEGE[0]` geprueft; die bisherige Reihe wird ueber die KENNUNG ihres
 // Eintrags gesucht und rueckt deshalb geraeuschlos nach hinten.
@@ -115,8 +125,8 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ohne Schreibweg ERREICHBAR, aber schreibgeschuetzt ist und seinen Grund ansagt. NICHT
 // versprochen werden ein geaenderter Blattinhalt, ein geaendertes Schriftfeld oder dass
 // Planverfasser und Phase neuerdings auf einem Blatt erschienen.
-const AX_M7 = EINTRAEGE[0];
-ok("[#145] die zugaengliche Bedienung von Modul 7 ist der neueste Eintrag",
+const AX_M7 = EINTRAEGE.find(e => e.id === "chg-20260923-03");
+ok("[#145] die zugaengliche Bedienung von Modul 7 ist eingetragen",
   AX_M7?.id === "chg-20260923-03" && AX_M7?.issue === 145
   && AX_M7?.typ === "feature" && AX_M7?.datum === "2026-09-23"
   && /Modul 7/.test(AX_M7?.titel || ""));

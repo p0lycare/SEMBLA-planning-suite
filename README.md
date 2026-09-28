@@ -23,6 +23,7 @@ Die Daten werden automatisch im `localStorage` des verwendeten Browsers gespeich
 - **0 · Start:** Wandelemente anlegen und verwalten, Projekt-Kopfdaten, zentraler Import und Export
 - **1 · Wandplanung:** Wandgeometrie, Öffnungen, Steinanordnung und Vorspannung
 - **2 · Wandaufbau:** Verbinderachsen und Latten-Zuschnitt
+- **K · Wandaufbau-Konfigurator (Beta):** Verbinder je Traglast, Latten und Zuschnitte für Wände aus der Suite oder aus einer Datei (schreibt nichts in die Suite)
 - **3 · Statik:** statischer Nachweis auf Basis des aktiven Wandelements
 - **4 · Stückliste:** Materialmengen, Preise und Kosten
 - **5 · Montage:** lagenweise Montageanleitung und Vorspannschritte

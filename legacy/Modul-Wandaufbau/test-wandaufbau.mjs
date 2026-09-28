@@ -1,11 +1,11 @@
 // Paritätstest: das extrahierte Core-Modul planWandaufbau() muss identische Ergebnisse
 // liefern wie compute() im geprüften Tool SEMBLA_Wandaufbau.html (Referenz).
 import { readFileSync } from "node:fs";
-import { buildWall, Opening } from "../docs/shared/sembla-core.js";
+import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { planWandaufbau } from "./sembla-wandaufbau.mjs";
 
 // --- Tool-Skript mit DOM-Stub evaluieren (Referenz) ---
-const html = readFileSync("./SEMBLA_Wandaufbau.html", "utf8");
+const html = readFileSync(new URL("./SEMBLA_Wandaufbau.html", import.meta.url), "utf8");
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 class El { constructor(id){ this.id=id; this.value=undefined; this.textContent=""; this._h=""; this.style={}; this.checked=true; this.listeners={}; }
   addEventListener(e,f){ (this.listeners[e]||(this.listeners[e]=[])).push(f);} dispatch(e){ (this.listeners[e]||[]).forEach(f=>f({target:this})); }
