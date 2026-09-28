@@ -37,13 +37,23 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20260928-02",
+    datum: "2026-09-28",
+    typ: "feature",
+    issue: 20,
+    titel: "Modul 2 Beta: der Wandaufbau-Konfigurator als eigener Reiter 2β, ohne Bauteilkatalog "
+      + "und mit eigenem Download",
+    testbitte: "Reiter 2β öffnen, eine Wand wählen, Lattenlängen eintragen und „Alle Dokumente (ZIP)“ "
+      + "laden; das ausgeblendete Modul 2 und der Export in Modul 0 bleiben unverändert",
+  },
+  {
     id: "chg-20260928-01",
     datum: "2026-09-28",
     typ: "feature",
     issue: 20,
     titel: "Wandaufbau-Konfigurator aus dem Builder Beta wieder da: Verbinder je Traglast, "
       + "Latten und Zuschnitte",
-    testbitte: "Reiter K öffnen, eine Wand wählen oder ein Projektarchiv laden, Windlast ändern und "
+    testbitte: "Den Konfigurator öffnen, eine Wand wählen oder ein Projektarchiv laden, Windlast ändern und "
       + "„Raster für diese Traglast auslegen“ drücken; Verbinderzahl, Latten und Zuschnittliste prüfen",
   },
   {

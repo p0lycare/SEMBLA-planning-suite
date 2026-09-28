@@ -107,12 +107,20 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
-// Der NEUESTE Eintrag ist der WANDAUFBAU-KONFIGURATOR (Branch wandaufbau-konfigurator) — er
+// Der NEUESTE Eintrag ist MODUL 2 BETA — der Konfigurator als eigener Reiter 2β, isoliert vom
+// Katalog und mit eigenem Download. Er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft.
+// NICHT versprochen werden eine neue Modulnummer oder eine Aenderung am ausgeblendeten Modul 2.
+const M2B = EINTRAEGE[0];
+ok("[Modul 2 Beta] ist der neueste Eintrag",
+  M2B?.id === "chg-20260928-02" && M2B?.typ === "feature" && /Modul 2 Beta/.test(M2B?.titel || ""));
+ok("[Modul 2 Beta] Titel nennt Katalogfreiheit und eigenen Download",
+  /ohne Bauteilkatalog/.test(M2B?.titel || "") && /Download/.test(M2B?.titel || ""));
+// Davor kam der WANDAUFBAU-KONFIGURATOR (Branch wandaufbau-konfigurator) — er
 // wird als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: der alte
 // Konfigurator ist wieder erreichbar und liefert Verbinder je Traglast, Latten und Zuschnitte.
 // NICHT versprochen werden ein Nachweis, bestaetigte Verbinderwerte oder ein Schreibweg.
-const KONF = EINTRAEGE[0];
-ok("[Konfigurator] der Wandaufbau-Konfigurator ist der neueste Eintrag",
+const KONF = EINTRAEGE.find(e => e.id === "chg-20260928-01");
+ok("[Konfigurator] der Wandaufbau-Konfigurator ist eingetragen",
   KONF?.id === "chg-20260928-01" && KONF?.typ === "feature" && /Konfigurator/.test(KONF?.titel || ""));
 ok("[Konfigurator] Titel nennt Verbinder je Traglast, Latten und Zuschnitte, aber keinen Nachweis",
   /Traglast/.test(KONF?.titel || "") && /Latten/.test(KONF?.titel || "") && /Zuschnitt/.test(KONF?.titel || "")

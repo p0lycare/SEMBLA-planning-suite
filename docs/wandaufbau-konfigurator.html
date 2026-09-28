@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SEMBLA · Wandaufbau-Konfigurator (Beta)</title>
+<title>SEMBLA · Modul 2 Beta – Wandaufbau-Konfigurator</title>
 <style>
   /* Wiederbelebter Wandaufbau-Konfigurator aus dem SEMBLA Builder Beta
      (legacy/Modul-Wandaufbau/SEMBLA_Wandaufbau.html). Bedienung und Ausgaben wie damals,
@@ -39,17 +39,15 @@
   .warn{color:var(--sb-warn)} .muted{color:var(--sb-muted)}
   ul.meld{margin:4px 0 0;padding-left:18px;font-size:12px;line-height:1.45}
   .unten{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 20px 20px}
-  .lat{display:flex;align-items:center;gap:6px;font-size:12px;margin:3px 0;justify-content:flex-start}
-  .lat input{width:auto}
   @media (max-width:1100px){ .wrap,.unten{grid-template-columns:1fr} }
   @media print{ .sb-nav,.bar,.beta,button{display:none!important} .wrap,.unten{grid-template-columns:1fr} }
 </style>
 </head>
 <body>
-<div class="beta"><b>Wandaufbau-Konfigurator (Beta).</b> Das frühere Werkzeug aus dem SEMBLA Builder Beta,
+<div class="beta"><b>Modul 2 Beta · Wandaufbau-Konfigurator.</b> Das frühere Werkzeug aus dem SEMBLA Builder Beta,
   angebunden an den aktuellen Stand der Suite: Wände aus diesem Browser oder als Datei (Wandelement-JSON,
-  Projektdatei, Projektarchiv-ZIP). Planungshilfe, fachlich zu prüfen. <b>Der Konfigurator schreibt nichts
-  in die Suite</b> — alle Einstellungen hier sind flüchtig. Mit <span class="ph">Platzhalter</span> markierte
+  Projektdatei, Projektarchiv-ZIP). Planungshilfe, fachlich zu prüfen. <b>Eigenständig:</b> kein
+  Bauteilkatalog, eigener Download, <b>schreibt nichts in die Suite</b> — alle Einstellungen hier sind flüchtig. Mit <span class="ph">Platzhalter</span> markierte
   Werte sind nicht fachlich bestätigt.</div>
 <div class="bar">
   <label>Wand&nbsp;<select id="quelle"></select></label>
@@ -62,6 +60,7 @@
   <label><input type="checkbox" id="showNut" checked style="width:auto"> Nutenraster</label>
   <label><input type="checkbox" id="showStones" checked style="width:auto"> Steine i2/i3</label>
   <label><input type="checkbox" id="showMasse" checked style="width:auto"> Maße</label>
+  <button id="expZip" class="primary">Alle Dokumente (ZIP)</button>
   <button id="expCut">Zuschnittliste (CSV)</button>
   <button id="expMat">Materialliste (CSV)</button>
   <button id="expLayout">Verbinder-Layout (JSON)</button>
@@ -95,7 +94,6 @@
     </div>
     <div class="grp"><h3>Latten (Unterkonstruktion)</h3>
       <label>Lattenbreite <span><input type="number" id="lw" value="4" step="0.5"><small>cm</small></span></label>
-      <div id="latKatalog"></div>
       <label>Standardlängen <span><input type="text" id="stock" value="150" style="width:80px"><small>cm</small></span></label>
       <div class="pnote" id="latQuelle"></div>
     </div>
@@ -155,12 +153,11 @@
 const $=id=>document.getElementById(id);
 const fmt=(n,d=2)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let store, buildWall, Opening, berechneAufbau, VERBINDER_KATALOG, wandLagenKanten, entpacke;
+let store, buildWall, Opening, berechneAufbau, VERBINDER_KATALOG, wandLagenKanten, entpacke, zipSync;
 // QUELLEN: alle waehlbaren Waende {key, name, herkunft, wand, hinweise[]} — aus der Suite (lesend)
 // und aus geladenen Dateien. Nichts davon wird gespeichert.
 let QUELLEN=[], AKT=null, SIDE='vorne', FELD=null, LASTDRAW=null, fieldArm=false, LAST=null;
 let TYP_MANUELL=false;          // Typ von Hand gewaehlt (Variantenvergleich) -> nicht bei Seitenwechsel ueberschreiben
-let DATEI_KATALOG=null;         // optional per Datei geladener Bauteilkatalog (nur Lattenprodukte werden gelesen)
 
 const FUNKTION_LABEL={fassade:'Fassadenaufbau',innenausbau:'Innenausbau',alle:'Universal',sicht:'Sichtfläche',installation:'Installationsebene'};
 const SIDE_LABEL={vorne:'Vorderseite',hinten:'Rückseite'};
@@ -204,10 +201,12 @@ function ladeSuite(){
     AKT=(a&&QUELLEN.some(q=>q.key==='s:'+a))?'s:'+a:(QUELLEN[0]?QUELLEN[0].key:null);
   }
 }
-/** Eine JSON-Datei deuten: Wandelement, Projektdatei (v2), Alt-Bundle, Wrapper — oder Bauteilkatalog. */
+/** Eine JSON-Datei deuten: Wandelement, Projektdatei (v2), Alt-Bundle, Wrapper. Modul 2 Beta ist
+ *  bewusst ohne Bauteilkatalog — eine Katalogdatei wird benannt abgewiesen. */
 function deuteJson(text, dateiname){
   let obj; try{ obj=JSON.parse(text); }catch{ throw new Error('Datei ist kein gültiges JSON.'); }
-  if(obj && obj.format==='SEMBLA-Bauteilkatalog'){ return { katalog:obj, waende:[] }; }
+  if(obj && obj.format==='SEMBLA-Bauteilkatalog')
+    throw new Error('Das ist ein Bauteilkatalog — Modul 2 Beta arbeitet ohne Katalog; Lattenlängen links eingeben.');
   if(obj && obj.format==='SEMBLA-Projektmappe')
     throw new Error('Das ist eine Projektmappe ohne Wandelemente — bitte das Projektarchiv (ZIP) laden.');
   let name=null, we=null;
@@ -226,14 +225,12 @@ async function ladeDatei(name, bytesOderText){
     const eintr=await entpacke(bytesOderText instanceof Uint8Array?bytesOderText:new TextEncoder().encode(bytesOderText));
     for(const e of eintr){ if(!/\.json$/i.test(e.name)) continue;
       const text=typeof e.data==='string'?e.data:new TextDecoder('utf-8').decode(e.data);
-      try{ const r=deuteJson(text, e.name.split('/').pop()); if(r.katalog) DATEI_KATALOG=r.katalog; gefunden.push(...r.waende); }
+      try{ gefunden.push(...deuteJson(text, e.name.split('/').pop()).waende); }
       catch{ /* projekt.json, Kataloge o. Ae. sind keine Wand — still uebergehen ist hier korrekt */ } }
     if(!gefunden.length) throw new Error('Im ZIP wurde kein Wandelement gefunden.');
   } else {
     const text=typeof bytesOderText==='string'?bytesOderText:new TextDecoder('utf-8').decode(bytesOderText);
-    const r=deuteJson(text, name);
-    if(r.katalog){ DATEI_KATALOG=r.katalog; meld.push('Bauteilkatalog „'+(r.katalog.name||name)+'“ geladen (Lattenprodukte).'); }
-    gefunden=r.waende;
+    gefunden=deuteJson(text, name).waende;
   }
   let erster=null;
   gefunden.forEach((g,i)=>{ const key='d:'+name+':'+i+':'+QUELLEN.length; if(!erster) erster=key;
@@ -263,31 +260,12 @@ function syncQuelleUI(){
   sel.value=AKT||''; }
 function waehleWand(key){ AKT=key; FELD=null; TYP_MANUELL=false; syncQuelleUI(); syncSideUI(); applyFunktion(curFunktion()); run(); }
 
-// ---------- Latten: Standardlaengen aus Katalog oder frei ----------
-function lattenKatalog(){ let k=null; try{ k=store&&store.holeKatalog?store.holeKatalog():null; }catch{ k=null; }
-  return DATEI_KATALOG||k; }
-function lattenProdukte(){ const k=lattenKatalog(); return ((k&&k.produkte)||[]).filter(p=>p&&p.kategorie==='latte'&&+p.laenge_mm>0); }
-let LAT_WAHL=null;   // Set gewaehlter Produkt-IDs (fluechtig); null = noch nicht angefasst
-function syncLattenUI(){
-  const ps=lattenProdukte(), host=$('latKatalog');
-  if(!ps.length){ host.innerHTML=''; LAT_WAHL=null; return; }
-  if(LAT_WAHL===null) LAT_WAHL=new Set(ps.filter(p=>Array.isArray(p.rollen)&&p.rollen.includes('latte')).map(p=>p.id));
-  host.innerHTML='<div class="pnote" style="margin:0 0 2px">Lattenprodukte aus dem Katalog:</div>'+ps.map(p=>
-    `<label class="lat"><input type="checkbox" data-lat="${esc(p.id)}"${LAT_WAHL.has(p.id)?' checked':''}> ${esc(p.name||p.id)} <span class="muted">(${fmt(p.laenge_mm/10,0)} cm${p.breite_mm?', '+fmt(p.breite_mm,0)+'×'+fmt(p.dicke_mm||0,0)+' mm':''})</span></label>`).join('');
-}
-/** Latten-Spezifikation: gewaehlte Katalogprodukte schlagen die freien Felder ([Z-1]-Muster). */
+// ---------- Latten: Standardlaengen frei eingegeben (Modul 2 Beta: kein Bauteilkatalog) ----------
 function lattenSpez(){
-  const ps=lattenProdukte().filter(p=>LAT_WAHL&&LAT_WAHL.has(p.id));
-  if(ps.length){
-    const br=[...new Set(ps.map(p=>+p.breite_mm).filter(x=>x>0))];
-    return { quelle:'katalog', laengen_mm:[...new Set(ps.map(p=>+p.laenge_mm))].sort((a,b)=>b-a),
-      breite_mm: br.length===1?br[0]:null, produkte:ps, breitenKonflikt: br.length>1 };
-  }
   const frei=String($('stock').value||'').split(/[;\s]+/).map(s=>+s.replace(',','.')).filter(x=>x>0);
   return { quelle:'frei', laengen_mm:(frei.length?frei:[150]).map(cm=>Math.round(cm*10)).sort((a,b)=>b-a),
-    breite_mm: (+$('lw').value>0)?+$('lw').value*10:null, produkte:[] };
+    breite_mm: (+$('lw').value>0)?+$('lw').value*10:null };
 }
-function produktFuerLaenge(sp, mm){ return (sp.produkte||[]).find(p=>+p.laenge_mm===mm)||null; }
 
 // ---------- Rechnen: der EINE Aufbau-Rechenweg (sembla-aufbau.js) ----------
 function num(id, d){ const v=+$(id).value; return isFinite(v)&&v>0?v:d; }
@@ -411,19 +389,14 @@ function meldungen(R){
   const su=R.batt.summary;
   if(su.kurz_stuecke.length) m.push(`${su.kurz_stuecke.length} Lattenstück(e) kürzer als das Mindest-Fertigmaß ([Z-5]).`);
   if(su.ohne_quelle.length) m.push(`${su.ohne_quelle.length} Lattenstück(e) ohne passende Standardlänge.`);
-  if(R.spez.breitenKonflikt) m.push('Die gewählten Lattenprodukte haben verschiedene Breiten — Querschnitt offen.');
   if(R.trag.n>0 && !R.trag.ok) m.push(`Traglast: ${R.trag.n} Verbinder vorhanden, ${R.trag.erf} erforderlich — Raster verdichten oder stärkeren Verbinder wählen.`);
   return m;
 }
 
 function render(){
-  syncLattenUI();
   const R=compute(); LAST=R;
-  const sp=lattenSpez();
-  $('latQuelle').innerHTML=sp.quelle==='katalog'
-    ? 'Standardlängen aus dem Katalog: '+sp.laengen_mm.map(x=>fmt(x/10,0)+' cm').join(' · ')+' — das freie Feld ist dann unwirksam.'
-    : 'Freie Standardlängen (mehrere mit „;“ trennen). Größte Länge = Obergrenze eines Stücks ([U-8]/[Z-4]).';
-  $('stock').disabled = sp.quelle==='katalog';
+  $('latQuelle').innerHTML='Standardlängen frei eingeben (mehrere mit „;“ trennen, z. B. 300;150). '
+    +'Größte Länge = Obergrenze eines Stücks ([U-8]/[Z-4]). Kein Bauteilkatalog in Modul 2 Beta.';
   const ids=['ovGrid','ovCount','ovDens','ovAt','ovErf','ovUtil','ovAxes','ovPieces','ovStdSonder','ovLen','ovRest'];
   if(!R){ ids.forEach(i=>$(i).textContent='–'); $('ovBadge').className='badge'; $('ovBadge').textContent='–';
     $('ovAusgang').innerHTML=''; $('tragTab').innerHTML=''; $('zuschnitt').innerHTML=''; $('meldungen').innerHTML='';
@@ -449,8 +422,7 @@ function render(){
   $('ovAxes').textContent=su.achsen; $('ovPieces').textContent=su.latten_stuecke;
   $('ovStdSonder').textContent=su.standard_stuecke+' / '+su.sonder_stuecke;
   $('ovLen').textContent=fmt(su.gesamtlaenge_m,2)+' m';
-  $('ovAusgang').innerHTML=su.ausgang.map(a=>{ const p=produktFuerLaenge(sp, Math.round(a.laenge_cm*10));
-    return `<div class="r"><span>Ausgangsprodukt ${esc(p?(p.name||p.id):'Stange')} ${fmt(a.laenge_cm,0)} cm</span><b>${a.anzahl} Stk</b></div>`; }).join('');
+  $('ovAusgang').innerHTML=su.ausgang.map(a=>`<div class="r"><span>Ausgangsprodukt Lattenstange ${fmt(a.laenge_cm,0)} cm</span><b>${a.anzahl} Stk</b></div>`).join('');
   $('ovRest').textContent=R.rest?`${R.rest.stangen} à ${fmt(R.rest.stange_cm,0)} cm (Verschnitt ${fmt(R.rest.verschnitt_m,2)} m)`:'–';
   // Zuschnittliste
   const zeilen=[]; R.batt.axes.forEach(ax=>ax.segments.forEach((sg,i)=>zeilen.push({x:ax.x_cm,i:i+1,sg})));
@@ -497,8 +469,7 @@ function materialRows(R){
   const g=R.eingaben.verbinder, rows=[['Abschnitt','Position','Menge','Einheit','Hinweis']];
   const t=VERBINDER_KATALOG.find(x=>x.id===g.typ);
   rows.push(['Verbinder', t?t.name:g.typ, R.pts.length, 'Stk', `erforderlich ${R.trag.erf} bei wk ${dz(g.wk)} kN/m², Rk ${dz(g.Rk)} kN (Platzhalter), Auslastung ${Math.round(R.trag.util*100)} %`]);
-  R.batt.summary.ausgang.forEach(a=>{ const p=produktFuerLaenge(R.spez, Math.round(a.laenge_cm*10));
-    rows.push(['Latten', (p?(p.name||p.id):'Lattenstange')+' '+dz(a.laenge_cm)+' cm', a.anzahl, 'Stk', 'Ausgangsprodukt je Einbaustück ([Z-4])']); });
+  R.batt.summary.ausgang.forEach(a=>rows.push(['Latten', 'Lattenstange '+dz(a.laenge_cm)+' cm', a.anzahl, 'Stk', 'Ausgangsprodukt je Einbaustück ([Z-4])']));
   rows.push(['Latten', 'Einbaustücke gesamt', R.batt.summary.latten_stuecke, 'Stk', `davon ${R.batt.summary.sonder_stuecke} Sonderzuschnitt`]);
   rows.push(['Latten', 'Einbaulänge gesamt', dz(R.batt.summary.gesamtlaenge_m), 'm', '']);
   if(R.rest) rows.push(['nachrichtlich', 'Stangen bei Reststückverwertung '+dz(R.rest.stange_cm)+' cm', R.rest.stangen, 'Stk', 'Beta-Verfahren, nicht regelkonform nach [U-8]']);
@@ -506,6 +477,18 @@ function materialRows(R){
   return rows; }
 function cutCsv(){ const R=compute(); if(!R) return; download('Zuschnittliste_Latten_'+stamm()+'.csv', csv(zuschnittRows(R)), 'text/csv'); }
 function matCsv(){ const R=compute(); if(!R) return; download('Materialliste_'+stamm()+'.csv', csv(materialRows(R)), 'text/csv'); }
+function alleRows(){ const rows=[['wand','seite','verbindertyp','verbinder','erforderlich','traegt','latten_stuecke','latten_m']];
+  alleErgebnisse().forEach(e=>rows.push(e.fehler?[e.name,e.seite,'','','','','',e.fehler]:[e.name,e.seite,e.typ,e.n,e.erf,e.ok?'ja':'nein',e.stuecke,dz(e.laenge_m)])); return rows; }
+/** Eigener Download von Modul 2 Beta (nicht der zentrale Export aus Modul 0): alle Dokumente als ZIP. */
+function dokumente(){ const R=compute(); if(!R) return [];
+  const st=stamm(), eing={ format:'SEMBLA-Modul2Beta-Einstellungen', wand:(R.w&&R.w.name)||null, seite:SIDE, feld_cm:FELD, eingaben:R.eingaben, latten_laengen_mm:R.spez.laengen_mm };
+  return [ { name:'Zuschnittliste_Latten_'+st+'.csv', data:csv(zuschnittRows(R)) },
+    { name:'Materialliste_'+st+'.csv', data:csv(materialRows(R)) },
+    { name:'Verbinderlayout_'+st+'.json', data:JSON.stringify(R.layout,null,2) },
+    { name:'Einstellungen_'+st+'.json', data:JSON.stringify(eing,null,2) },
+    { name:'Uebersicht_alle_Waende.csv', data:csv(alleRows()) },
+    { name:'Wandansicht_'+st+'.svg', data:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+esc($('plan').getAttribute('viewBox')||'0 0 1000 600')+'">'+$('plan').innerHTML+'</svg>' } ]; }
+function zipDownload(){ const d=dokumente(); if(!d.length) return; download('Modul2Beta_'+stamm()+'.zip', zipSync(d), 'application/zip'); }
 function layoutJson(){ const R=compute(); if(!R) return; download('Verbinderlayout_'+stamm()+'.json', JSON.stringify(R.layout,null,2), 'application/json'); }
 
 // ---------- Beplankungsfeld: mit Maus aufziehen und an Anfassern aendern (Beta-Bedienung) ----------
@@ -534,7 +517,7 @@ let fdrag=null, fedit=null;
 
 window.__kfInit=function(){
   const S=window.SEMBLA||{};
-  ({ store, buildWall, Opening, berechneAufbau, VERBINDER_KATALOG, wandLagenKanten, entpacke }=S);
+  ({ store, buildWall, Opening, berechneAufbau, VERBINDER_KATALOG, wandLagenKanten, entpacke, zipSync }=S);
   $('vtyp').innerHTML=VERBINDER_KATALOG.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('');
   $('quelle').addEventListener('change',e=>{ if(e.target.value) waehleWand(e.target.value); });
   $('load').addEventListener('click',()=>$('file').click());
@@ -547,13 +530,12 @@ window.__kfInit=function(){
     TYP_MANUELL=(t&&t.id!==typFuer(curFunktion()).id); run(); });
   ['pB','pH','oX','oY','maxX','maxY','ohang','Rk','gM','wk','gQ','lw','stock'].forEach(id=>$(id).addEventListener('input',run));
   ['showNut','showStones','showMasse'].forEach(id=>$(id).addEventListener('change',run));
-  $('latKatalog').addEventListener('change',e=>{ const id=e.target&&e.target.getAttribute&&e.target.getAttribute('data-lat'); if(!id) return;
-    if(LAT_WAHL===null) LAT_WAHL=new Set(); if(e.target.checked) LAT_WAHL.add(id); else LAT_WAHL.delete(id); run(); });
   $('auslegen').addEventListener('click',()=>{ const A=auslegung(); if(!A) return;
     if(A.beste){ $('maxX').value=A.beste.maxX; $('maxY').value=A.beste.maxY;
       $('auslegenInfo').textContent=`Vorschlag: max. Abstand X ${fmt(A.beste.maxX,1)} cm, Y ${fmt(A.beste.maxY,0)} cm → ${A.beste.n} Verbinder, Auslastung ${Math.round(A.beste.util*100)} %. Geprüft wurden ${A.varianten.length} Rastervarianten.`; }
     else $('auslegenInfo').textContent=`Keine der ${A.varianten.length} Rastervarianten trägt diese Last mit dem gewählten Verbinder — stärkeren Typ wählen oder Last prüfen.`;
     run(); });
+  $('expZip').addEventListener('click',zipDownload);
   $('expCut').addEventListener('click',cutCsv);
   $('expMat').addEventListener('click',matCsv);
   $('expLayout').addEventListener('click',layoutJson);
@@ -581,16 +563,16 @@ window.__kfInit=function(){
   run();
   window.__kf={ get quellen(){return QUELLEN;}, get akt(){return AKT;}, get side(){return SIDE;}, get feld(){return FELD;},
     compute, berechne, traglast, reststueckBedarf, auslegung, ladeDatei, deuteJson, waehleWand, setFeld, resizeFeld, clearFeld,
-    lattenSpez, materialRows, zuschnittRows, meldungen, alleErgebnisse, ladeSuite };
+    lattenSpez, materialRows, zuschnittRows, dokumente, meldungen, alleErgebnisse, ladeSuite };
 };
 </script>
 <script type="module">
   import { buildWall, Opening, wandLagenKanten } from './shared/sembla-core.js';
   import { berechneAufbau, VERBINDER_KATALOG } from './shared/sembla-aufbau.js';
   import * as store from './shared/storage.js';
-  import { entpacke } from './shared/zip.js';
+  import { entpacke, zipSync } from './shared/zip.js';
   import { mountNavbar } from './shared/navbar.js';
-  window.SEMBLA = { buildWall, Opening, wandLagenKanten, berechneAufbau, VERBINDER_KATALOG, store, entpacke };
+  window.SEMBLA = { buildWall, Opening, wandLagenKanten, berechneAufbau, VERBINDER_KATALOG, store, entpacke, zipSync };
   mountNavbar('konfigurator');
   window.__kfInit();
 </script>

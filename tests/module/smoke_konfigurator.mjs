@@ -1,4 +1,4 @@
-// Smoke-Test Wandaufbau-Konfigurator (docs/wandaufbau-konfigurator.html) — der wiederbelebte
+// Smoke-Test Modul 2 Beta (docs/wandaufbau-konfigurator.html) — der wiederbelebte
 // Konfigurator aus dem SEMBLA Builder Beta. Evaluiert das klassische App-Skript unter einem
 // DOM-Mock; Rechenkern, Aufbau-Rechenweg, Entpacker und parseImport kommen echt aus docs/shared/,
 // der Speicher der Suite als LESENDER Mock (der Konfigurator schreibt nichts).
@@ -25,20 +25,22 @@ const downloads=[];
 globalThis.document={getElementById:$,createElement:()=>new El('a')};
 const _wl={}; globalThis.window={addEventListener:(e,f)=>{(_wl[e]||(_wl[e]=[])).push(f);}};
 URL.createObjectURL=()=>'blob:x'; URL.revokeObjectURL=()=>{};
-globalThis.Blob=class{constructor(parts,opt){downloads.push({text:parts.join(''),typ:opt&&opt.type});}};
+globalThis.Blob=class{constructor(parts,opt){downloads.push({text:typeof parts[0]==='string'?parts.join(''):'',bytes:parts[0] instanceof Uint8Array?parts[0]:null,typ:opt&&opt.type});}};
 
 // Suite im selben Browser: zwei Waende, eine davon mit oberer Ausgleichslage (#136).
 const wTuer=buildWall('Wand 1',3000,2600,[new Opening(4,8,0,9,'tuer')]);
 const wAusgl=buildWall('Wand 2',3000,2750,[],null,null,[],null,true);
-let schreibversuch=0;
+let schreibversuch=0, katalogzugriff=0;
 const storeMock={
   listeElemente:()=>[{id:'a1',name:'Wand 1',wandelement:wTuer},{id:'a2',name:'Wand 2',wandelement:wAusgl}],
   wandVerortung:(id)=>id==='a1'?{mappe:{projekt:{name:'Mockup'}},geschoss:{name:'EG'}}:null,
-  aktivId:()=>'a1', holeKatalog:()=>null, abonniere:()=>()=>{}, parseImport,
+  aktivId:()=>'a1', abonniere:()=>()=>{}, parseImport,
+  // Modul 2 Beta ist katalogfrei: jeder Katalogzugriff wird gezaehlt
+  holeKatalog:()=>{katalogzugriff++; return null;},
   // jeder Schreibweg ist verboten — faellt er doch, zaehlt der Test ihn
   speichere:()=>{schreibversuch++;}, mergeEingaben:()=>{schreibversuch++;}, setzeAktiv:()=>{schreibversuch++;},
 };
-globalThis.window.SEMBLA={ buildWall, Opening, wandLagenKanten, berechneAufbau, VERBINDER_KATALOG, store:storeMock, entpacke };
+globalThis.window.SEMBLA={ buildWall, Opening, wandLagenKanten, berechneAufbau, VERBINDER_KATALOG, store:storeMock, entpacke, zipSync };
 
 eval(script);
 globalThis.window.__kfInit();
@@ -141,17 +143,24 @@ const n=await KF.ladeDatei('archiv.zip', zip);
 ok('Projektarchiv-ZIP: beide Wände übernommen, Mappe/Bild übergangen', n===2);
 let fehler=null; try{ KF.deuteJson(JSON.stringify({format:'SEMBLA-Projektmappe',version:2})); }catch(e){ fehler=e.message; }
 ok('Projektmappe allein wird benannt abgewiesen', /Projektarchiv/.test(fehler||''));
-const kat=JSON.parse(readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url),"utf8"));
-await KF.ladeDatei('katalog.json', JSON.stringify(kat)).catch(()=>{});
+const kat=readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog.json", import.meta.url),"utf8");
+let katFehler=null; try{ KF.deuteJson(kat, 'katalog.json'); }catch(e){ katFehler=e.message; }
+ok('Katalogdatei wird benannt abgewiesen (Modul 2 Beta ist katalogfrei)', /ohne Katalog/.test(katFehler||''));
 KF.waehleWand('s:a1');
-const S=KF.lattenSpez();
-ok('Katalog: Lattenprodukte mit Rolle „latte“ vorgewählt, Längen aus dem Katalog', S.quelle==='katalog' && S.laengen_mm.includes(1500) && S.breite_mm===40);
-ok('Katalog: Auswahl als Häkchen angezeigt', /data-lat="latte-40-60-1500"/.test($('latKatalog').innerHTML));
+ok('Latten nur aus freier/eingebauter Länge', KF.lattenSpez().quelle==='frei' && KF.lattenSpez().laengen_mm[0]===1500);
+ok('keine Katalogauswahl auf der Seite, kein Katalogimport', !/latKatalog|data-lat=/.test(html) && !/sembla-katalog\.js/.test(html));
+ok('kein Zugriff auf den Katalog der Suite', katalogzugriff===0);
 
 // --- Alle Wände + Export
 const E=KF.alleErgebnisse();
 ok('Übersicht aller Wände je Seite', E.length===KF.quellen.length*2 && E.every(e=>!e.fehler));
 ok('Übersicht mit Summenzeile', /Summe/.test($('alle').innerHTML));
+downloads.length=0; await $('expZip').dispatch('click');
+const zipE=await entpacke(downloads[0].bytes);
+ok('eigener Download: ZIP mit Zuschnitt-, Materialliste, Layout, Einstellungen, Übersicht, Ansicht',
+  downloads[0].typ==='application/zip' && ['Zuschnittliste_','Materialliste_','Verbinderlayout_','Einstellungen_','Uebersicht_alle_Waende','Wandansicht_'].every(n=>zipE.some(e=>e.name.startsWith(n))));
+ok('ZIP-Inhalt stimmt mit dem Einzel-Download überein', new TextDecoder('utf-8',{ignoreBOM:true}).decode(zipE.find(e=>e.name.startsWith('Zuschnittliste_')).data)===KF.dokumente()[0].data);
+ok('Seite hängt sich nicht in den zentralen Export von Modul 0', !/sembla-export\.js|sembla-archiv\.js|hierarchieExport/.test(html));
 downloads.length=0; await $('expCut').dispatch('click'); await $('expMat').dispatch('click'); await $('expLayout').dispatch('click');
 ok('Zuschnittliste CSV mit Kopf und Zeilen', /^﻿achse_x_cm;stueck;/.test(downloads[0].text) && downloads[0].text.split('\n').length>3);
 ok('Materialliste CSV mit Verbinder und Latten', /Verbinder;/.test(downloads[1].text) && /Latten;/.test(downloads[1].text));
@@ -166,7 +175,9 @@ globalThis.document={ getElementById:(id)=>id==='sb-nav-css'?{}:null, querySelec
 globalThis.localStorage={ _m:{}, getItem(k){return this._m[k]??null;}, setItem(k,v){this._m[k]=String(v);}, removeItem(k){delete this._m[k];} };
 try{ mountNavbar('konfigurator'); }catch(e){ /* DOM-Double reicht fuer die Reiterleiste */ }
 const t=nav.innerHTML;
-ok('Kopfleiste: Reiter „K Konfigurator“ aktiv', /class="sb-tab active" href="wandaufbau-konfigurator\.html"[^>]*><span class="n">K<\/span> Konfigurator/.test(t));
+ok('Kopfleiste: Reiter „2β Aufbau Beta“ aktiv', /class="sb-tab active" href="wandaufbau-konfigurator\.html"[^>]*><span class="n">2β<\/span> Aufbau Beta/.test(t));
+ok('das ausgeblendete Modul 2 bleibt ausgeblendet und unverändert registriert', MODULE.find(m=>m.nr===2).versteckt===true && MODULE.find(m=>m.nr===2).datei==='wandaufbau.html');
+ok('kein anderes Modul verweist auf Modul 2 Beta', ['index.html','wandplanung.html','wandaufbau.html','stueckliste.html','zeichnung.html','katalog.html'].every(f=>!readFileSync(new URL('../../docs/'+f, import.meta.url),'utf8').includes('wandaufbau-konfigurator')));
 ok('Kopfleiste: Reiter steht hinter Modul 1', t.indexOf('wandplanung.html')>=0 && t.indexOf('wandplanung.html')<t.indexOf('wandaufbau-konfigurator.html'));
 globalThis.document=docAlt;
 

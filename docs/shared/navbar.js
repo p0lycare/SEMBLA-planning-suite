@@ -77,7 +77,7 @@ let _unsub = null;
  * Kopfleiste in die Seite einhaengen.
  * @param {number|string} activeIndex Modul-Nummer der aktuellen Seite (0-10;
  *   0.5 = Geschossplaner, der Reiter zwischen Start und Wand, Issue #43;
- *   "konfigurator" = Wandaufbau-Konfigurator, Reiter hinter Modul 1)
+ *   "konfigurator" = Modul 2 Beta (Wandaufbau-Konfigurator), Reiter „2β" hinter Modul 1)
  */
 export function mountNavbar(activeIndex = 0) {
   store.migrieren();
@@ -128,18 +128,20 @@ export function mountNavbar(activeIndex = 0) {
     + (gpAktiv ? ` aria-current="page"` : "")
     + `><span class="n">0,5</span> Geschossplan</a>`);
 
-  // Reiter „Konfigurator" — der wiederbelebte Wandaufbau-Konfigurator aus dem Builder Beta
-  // (Branch wandaufbau-konfigurator). Wie der Geschossplan BEWUSST kein MODULE-Eintrag: er ist
-  // kein nummeriertes Modul, schreibt nichts und steht hinter Modul 1 (Wandplanung).
+  // Reiter „2β" — Modul 2 Beta, der wiederbelebte Wandaufbau-Konfigurator aus dem Builder Beta
+  // (`wandaufbau-konfigurator.html`). BEWUSST kein MODULE-Eintrag und keine neue Modulnummer: das
+  // ausgeblendete Modul 2 (`wandaufbau.html`) bleibt unveraendert, die Beta ist ein eigenstaendiges
+  // Werkzeug neben ihm (kein Katalog, eigener Download, schreibt nichts). Platz: wo Modul 2 stuende.
   const kfAktiv = activeIndex === "konfigurator";
-  const kfB = AX.benennung("Wandaufbau-Konfigurator",
-    "Beta-Werkzeug: Verbinder je Traglast, Latten und Zuschnitte für eine Wand — schreibt nichts in die Suite.");
+  const kfB = AX.benennung("Modul 2 Beta Aufbau",
+    "Wandaufbau-Konfigurator (Beta): Verbinder je Traglast, Latten und Zuschnitte für eine Wand — "
+    + "eigenständig, ohne Bauteilkatalog, schreibt nichts in die Suite.");
   beschreibungen.push(kfB.html);
   const nachWand = tabs.findIndex((t) => t.includes('href="wandplanung.html"'));
   tabs.splice(nachWand >= 0 ? nachWand + 1 : tabs.length, 0,
     `<a class="sb-tab${kfAktiv ? " active" : ""}" href="wandaufbau-konfigurator.html" ${kfB.attrs}`
     + (kfAktiv ? ` aria-current="page"` : "")
-    + `><span class="n">K</span> Konfigurator</a>`);
+    + `><span class="n">2β</span> Aufbau Beta</a>`);
 
   // Landmarke benennen. Defensiv, weil die Smoke-Tests die Kopfleiste unter einem
   // minimalen DOM-Double mounten — fehlt `setAttribute`, bleibt alles Uebrige gueltig.
