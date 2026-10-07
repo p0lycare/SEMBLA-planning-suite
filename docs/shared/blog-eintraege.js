@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-08",
+    datum: "2026-10-07",
+    typ: "fix",
+    issue: 97,
+    titel: "Einlegeblech feiner gezeichnet: kürzere Schenkel und halbe Strichstärke in Modul 1 und Modul 7",
+    testbitte: "Wand mit Einlegeblechen in Modul 1 und Modul 7 öffnen: das Blech ist ein schmaler Balken "
+      + "mit kurzen Schenkeln; Breite, Lage und Mutter obenauf bleiben wie bisher",
+  },
+  {
     id: "chg-20261007-07",
     datum: "2026-10-07",
     typ: "feature",

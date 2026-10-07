@@ -1491,7 +1491,7 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       const q = /points="([^"]+)"/.exec(a)[1].split(" ").map(s => s.split(",").map(Number));
       return a === b && Math.abs((q[2][0] - q[1][0]) - SPANN_MM.blech_b) < 1e-9
         && Math.abs(q[0][1] - SPANN_MM.blech_schenkel) < 1e-9
-        && new RegExp('stroke-width="' + SPANN_MM.strich + '"').test(a); })());
+        && new RegExp('stroke-width="' + SPANN_MM.blech_strich + '"').test(a); })());
 
   // --- Deckenanschluss: Lage des roten Z ([P-24]/[D-4], #97) ------------------------------
   // Gemeldet war (#97): der senkrechte Zug lag GENAU auf der Spannachse und wurde von der

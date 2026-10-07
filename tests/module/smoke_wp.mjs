@@ -3352,7 +3352,7 @@ store.setzeKatalog(KATALOG);
       const t=svg(); let n=0;
       for(const zp of wirksameZwischenpunkte(wd)){
         if(!t.includes(MONT.zwischenpunktSvg(X(zp.x_mm),Y(zp.z_mm),
-          {klasse:'zsp',strich:2,farbe:MONT.ZWISCHENPUNKT.farbe,e:E,
+          {klasse:'zsp',strich:1,farbe:MONT.ZWISCHENPUNKT.farbe,e:E,
            mutter_h_mm:h,mutter_sw_mm:sw,sc}))) return 0;
         n++;
       }
@@ -3507,7 +3507,7 @@ store.setzeKatalog(KATALOG);
     const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
     const mh=(wd.prestress.zp_mutter_h_mm)||0, ms=(wd.prestress.zp_mutter_sw_mm)||0;
     return wirksameZwischenpunkte(wd).every(zp=>svg().includes(MONT.zwischenpunktSvg(
-      X(zp.x_mm),Y(zp.z_mm),{klasse:'zsp',strich:2,farbe:MONT.ZWISCHENPUNKT.farbe,e:E,
+      X(zp.x_mm),Y(zp.z_mm),{klasse:'zsp',strich:1,farbe:MONT.ZWISCHENPUNKT.farbe,e:E,
       breite_mm:30,mutter_h_mm:mh,mutter_sw_mm:ms,sc}))); })());
   ok('Einlegeblech: die Rechnung bleibt unveraendert (reines Ausweisungsmass)', fpEb()===fp0);
   ok('Einlegeblech: ausser den Einlegeblechen bleibt die Ansicht bytegleich',
@@ -4332,8 +4332,11 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     // 200-mm-Wand unbemerkt verschiebt.
     // Neu eingefroren am 2026-10-07: einzige Aenderung sind die weissen Haarlinien am
     // Stangenstoss, die seit dem AGW-Termin vom 2026-09-28 stangenbreit sind.
+    // Erneut eingefroren am 2026-10-07 (gegen den Stand davor Zeile fuer Zeile verglichen):
+    // nur die Einlegebleche (Schenkel 1,6 -> 0,5, Strich 2 -> 1, Kosmetik aus 9658e68) und die
+    // Farben von Fussschraube und Kopplungsmutter (#97, e9e364d); Lage und Masse unveraendert.
     ok('[#140] (Nicht-Ziel) die 200-mm-Referenzansicht bleibt zeichenkettengleich (eingefroren)',
-      hash140(svg140())==='587b3ac250a6353d');
+      hash140(svg140())==='f0c1f3ae5bc4f6b2');
   }
   // Gegenprobe: das Zeichnen hat KEINE Rechenwirkung — das gespeicherte Wandelement und die
   // Stueckliste bleiben unberuehrt.

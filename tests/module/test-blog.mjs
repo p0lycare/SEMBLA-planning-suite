@@ -117,9 +117,23 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // heisst hier: geliefert sind Schaft-, Kopfbreite und Kopfhoehe der Schraube im Massstab sowie
 // eigene Farben fuer Schraube und Kopplungsmutter. NICHT versprochen werden eine geaenderte
 // Menge, Stueckliste, Statik oder eine geaenderte Gewindestange.
-const FUSS = EINTRAEGE[0];
-ok("[Wandfuß-Schraube] ist der neueste Eintrag",
-  FUSS?.id === "chg-20261007-07" && FUSS?.typ === "feature" && FUSS?.issue === 97
+// Der NEUESTE Eintrag ist die nachgezogene EINLEGEBLECH-KOSMETIK (#97, 9658e68) — er wird
+// als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert sind
+// kuerzere Schenkel und eine halbe Strichstaerke. NICHT versprochen werden eine geaenderte
+// Blechbreite, Lage, Menge oder Stueckliste.
+const EBK = EINTRAEGE[0];
+ok("[Einlegeblech-Kosmetik] ist der neueste Eintrag",
+  EBK?.id === "chg-20261007-08" && EBK?.typ === "fix" && EBK?.issue === 97
+  && /Einlegeblech/.test(EBK?.titel || "") && /Schenkel/.test(EBK?.titel || "")
+  && /Strichstärke/.test(EBK?.titel || "")
+  && !/maßstäblich|Menge|Stückliste|Katalog/i.test(EBK?.titel || ""));
+ok("[Einlegeblech-Kosmetik] die Testbitte fuehrt Modul 1 und Modul 7",
+  /Modul 1/.test(EBK?.testbitte || "") && /Modul 7/.test(EBK?.testbitte || ""));
+
+// Davor kam die WANDFUSS-SCHRAUBE — seither ueber ihre KENNUNG gesucht.
+const FUSS = EINTRAEGE.find(e => e.id === "chg-20261007-07");
+ok("[Wandfuß-Schraube] steht unmittelbar hinter der Einlegeblech-Kosmetik",
+  EINTRAEGE[1] === FUSS && FUSS?.id === "chg-20261007-07" && FUSS?.typ === "feature" && FUSS?.issue === 97
   && /Sechskantschraube/.test(FUSS?.titel || "") && /maßstäblich/.test(FUSS?.titel || "")
   && /Kopplungsmutter/.test(FUSS?.titel || "") && /pink/.test(FUSS?.titel || "")
   && !/Menge|Stückliste|Statik|Gewindestange/i.test(FUSS?.titel || ""));
@@ -130,7 +144,7 @@ ok("[Wandfuß-Schraube] die Testbitte fuehrt Modul 1 und Modul 7 samt Legende",
 // Davor kam die STOSSFUGEN-ABDICHTUNG — seither ueber ihre KENNUNG gesucht.
 const FUGE = EINTRAEGE.find(e => e.id === "chg-20261007-06");
 ok("[Stoßfugen-Abdichtung] steht unmittelbar hinter der Wandfuß-Schraube",
-  EINTRAEGE[1] === FUGE && FUGE?.id === "chg-20261007-06" && FUGE?.typ === "feature" && FUGE?.issue === 71
+  EINTRAEGE[2] === FUGE && FUGE?.id === "chg-20261007-06" && FUGE?.typ === "feature" && FUGE?.issue === 71
   && /Gipsfaserstreifen/.test(FUGE?.titel || "") && /Dichtstreifen/.test(FUGE?.titel || "")
   && /Stückliste/.test(FUGE?.titel || "") && !/Preis|eigene Zeile/i.test(FUGE?.titel || ""));
 ok("[Stoßfugen-Abdichtung] die Testbitte fuehrt Fassung v6, Produktwahl und Modul 4",
@@ -143,7 +157,7 @@ ok("[Stoßfugen-Abdichtung] die Testbitte fuehrt Fassung v6, Produktwahl und Mod
 // NICHT versprochen werden eine geaenderte Zerlegung, Menge oder Stueckliste.
 const STANGENFARBEN = EINTRAEGE.find(e => e.id === "chg-20261007-05");
 ok("[Stangenfarben] steht unmittelbar hinter der Stoßfugen-Abdichtung",
-  EINTRAEGE[2] === STANGENFARBEN && STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
+  EINTRAEGE[3] === STANGENFARBEN && STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
   && /Standardlänge/.test(STANGENFARBEN?.titel || "") && /Farbe/.test(STANGENFARBEN?.titel || "")
   && /Legende/.test(STANGENFARBEN?.titel || "")
   && !/Menge|Preis|Zerlegung|Stückliste/i.test(STANGENFARBEN?.titel || ""));
@@ -158,7 +172,7 @@ ok("[Stangenfarben] die Testbitte fuehrt Modul 1 und 7 mit zwei Laengen und der 
 // geaenderte Zeichnung.
 const KUPPL = EINTRAEGE.find(e => e.id === "chg-20261007-04");
 ok("[Kopplungsmutter Fuß] steht unmittelbar hinter den Stangenfarben",
-  EINTRAEGE[3] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
+  EINTRAEGE[4] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
   && /Stückliste/.test(KUPPL?.titel || "") && /Bodenblech/.test(KUPPL?.titel || "")
   && /Stangenstoß/.test(KUPPL?.titel || "")
   && !/Preis|Zeichnung|Produkt/i.test(KUPPL?.titel || ""));
