@@ -5722,11 +5722,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   const titelSpm = (r) => zeilenHinweis('gp-sammel-rollen', ridSpm(r));
   ok('#97/spm (Muss 7) das Popup weist die Spannmutter als rechenwirksame '
     + 'Verwendungsstelle aus — dieselbe Bahn wie die uebrigen Rollen mit Rollenrechnung, '
-    + 'und anders als eine Rolle ohne Rollenrechnung (Einlegeblech) daneben',
+    + 'und anders als eine Rolle ohne Rollenrechnung (Ausgleichsblech) daneben',
     /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelSpm('spannmutter'))
     && /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelSpm('kupplung'))
-    && !/den Auslegungspfad von Modul 1 neu gerechnet/.test(titelSpm('einlegeblech'))
-    && titelSpm('einlegeblech') !== '');
+    && !/den Auslegungspfad von Modul 1 neu gerechnet/.test(titelSpm('ausgleichsblech'))
+    && titelSpm('ausgleichsblech') !== '');
   $('gp-sammel-zu').dispatch('click');
   await warte();
 
@@ -6383,11 +6383,14 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   /** Der Hinweistext EINER Rollenzeile im Popup — `wirkt` liest genau `ROLLE_RECHNUNG`. */
   const titelZpm = (r) => zeilenHinweis('gp-sammel-rollen', ridZpm(r));
   ok('#97/zpm (Muss 7) das Popup weist beide Stellen als rechenwirksame '
-    + 'Verwendungsstellen aus — anders als eine Rolle ohne Rollenrechnung (Einlegeblech)',
+    + 'Verwendungsstellen aus — anders als eine Rolle ohne Rollenrechnung (Ausgleichsblech)',
     /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('zp_mutter'))
     && /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('senkkopf'))
-    && !/den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('einlegeblech'))
-    && titelZpm('einlegeblech') !== '');
+    // Seit Fassung v5 traegt auch das Einlegeblech eine Rollenrechnung (Breite in
+    // Wandrichtung, `einlegeblech_b_mm`) und ist damit rechenwirksam ausgewiesen.
+    && /den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('einlegeblech'))
+    && !/den Auslegungspfad von Modul 1 neu gerechnet/.test(titelZpm('ausgleichsblech'))
+    && titelZpm('ausgleichsblech') !== '');
   $('gp-sammel-zu').dispatch('click');
   await warte();
 

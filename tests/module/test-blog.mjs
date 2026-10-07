@@ -107,11 +107,27 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
-// Der NEUESTE Eintrag ist MODUL 2 BETA — der Konfigurator als eigener Reiter 2β, isoliert vom
-// Katalog und mit eigenem Download. Er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft.
+// Der NEUESTE Eintrag ist das MASSSTAEBLICHE EINLEGEBLECH (Standardkatalog v5) — er wird als
+// einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert ist die
+// Balkenbreite aus dem Katalog in Modul 1 UND Modul 7 und eine neue Fassung v5 mit 30 mm in
+// Wandrichtung. NICHT versprochen werden eine Umstellung vorhandener Projekte oder eine
+// geaenderte Menge/Rechnung.
+const EB_V5 = EINTRAEGE[0];
+ok("[Einlegeblech v5] ist der neueste Eintrag",
+  EB_V5?.id === "chg-20261007-01" && EB_V5?.issue === 97 && EB_V5?.typ === "fix"
+  && /Einlegeblech/.test(EB_V5?.titel || "") && /Modul 1/.test(EB_V5?.titel || "")
+  && /Modul 7/.test(EB_V5?.titel || "") && /v5/.test(EB_V5?.titel || "")
+  && /30 mm/.test(EB_V5?.titel || "")
+  && !/migriert|umgestellt|Menge|Preis/i.test(EB_V5?.titel || ""));
+ok("[Einlegeblech v5] die Testbitte fuehrt den Fassungswechsel und beide Ansichten",
+  /v5/.test(EB_V5?.testbitte || "") && /Modul 1/.test(EB_V5?.testbitte || "")
+  && /Modul 7/.test(EB_V5?.testbitte || ""));
+
+// Davor kam MODUL 2 BETA — der Konfigurator als eigener Reiter 2β, isoliert vom
+// Katalog und mit eigenem Download.
 // NICHT versprochen werden eine neue Modulnummer oder eine Aenderung am ausgeblendeten Modul 2.
-const M2B = EINTRAEGE[0];
-ok("[Modul 2 Beta] ist der neueste Eintrag",
+const M2B = EINTRAEGE.find(e => e.id === "chg-20260928-02");
+ok("[Modul 2 Beta] folgt darauf",
   M2B?.id === "chg-20260928-02" && M2B?.typ === "feature" && /Modul 2 Beta/.test(M2B?.titel || ""));
 ok("[Modul 2 Beta] Titel nennt Katalogfreiheit und eigenen Download",
   /ohne Bauteilkatalog/.test(M2B?.titel || "") && /Download/.test(M2B?.titel || ""));

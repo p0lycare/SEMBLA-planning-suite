@@ -1149,6 +1149,13 @@ def _norm_prestress(p):
     _sksw = p.get("senkkopf_sw_mm")
     if _sksw is not None and float(_sksw) > 0:
         out["senkkopf_sw_mm"] = int(_sksw) if float(_sksw) == int(float(_sksw)) else float(_sksw)
+    # BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]) — reales Bauteilmass aus dem Katalog
+    # (`breite_mm` der Rolle „Einlegeblech"), nur DURCHGEREICHT, damit die Ausgaben das Blech
+    # masstaeblich zeichnen koennen ([D-1]). OPTIONAL: fehlend/ungueltig -> der Schluessel
+    # entsteht gar nicht, das Ergebnis ist bit-genau das bisherige ([P-9]).
+    _ebb = p.get("einlegeblech_b_mm")
+    if _ebb is not None and float(_ebb) > 0:
+        out["einlegeblech_b_mm"] = int(_ebb) if float(_ebb) == int(float(_ebb)) else float(_ebb)
     # Manuelle Zwischenspannpunkte ([A-17]) sind ein OVERRIDE: der Schluessel entsteht nur, wenn
     # er ausdruecklich gesetzt ist. Fehlt er, gilt die Auto-Ableitung ([A-15]) — und weil sie
     # nirgends gespeichert wird, entsteht im Wandelement auch kein Feld dafuer. `build_wall`

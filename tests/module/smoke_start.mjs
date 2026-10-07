@@ -1168,7 +1168,13 @@ ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
                 'verbrauch-senkkopfschraube-fuss'];
   ok('#97 die vorbelegte Fassung ist die aus VORLAGE_KATALOG_PFAD',
     kat().id === KAT.vorlageKatalogId(KAT.VORLAGE_KATALOG_PFAD)
-    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v4/.test(kat().name));
+    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v5/.test(kat().name));
+  // Fassung v5: das Einlegeblech fuehrt sein Mass in Wandrichtung als `breite_mm` (30 mm) und
+  // das Mass quer zur Wand als `hoehe_mm` (110 mm) — in v4 waren beide vertauscht.
+  ok('v5 die vorbelegte Fassung fuehrt das Einlegeblech mit 30 mm in Wandrichtung',
+    (() => { const eb = KAT.produkt(kat(), 'blech-einlegeblech-110');
+      return eb.breite_mm === 30 && eb.hoehe_mm === 110 && eb.dicke_mm === 2
+        && KAT.produktrollenVorschlag(kat()).einlegeblech.join() === 'blech-einlegeblech-110'; })());
   ok('#97 Spannmutter, Mutter Einlegeblech und Sechskantschraube Fuß fuehren SW 17 mm',
     SW97.every(id => KAT.produkt(kat(), id).sw_mm === 17));
   ok('#97 die Herleitung aus dem Gewinde M10 steht am Produkt, nicht im Testtext',

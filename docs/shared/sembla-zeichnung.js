@@ -626,6 +626,11 @@ export function zeichnungSvg(w, opts = {}) {
   const zpH = (w.prestress && w.prestress.zp_mutter_h_mm) || 0;
   const zpSw = (w.prestress && w.prestress.zp_mutter_sw_mm) || 0;
   const skSw = (w.prestress && w.prestress.senkkopf_sw_mm) || 0;
+  // [D-4] BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]): `einlegeblech_b_mm` am Wandelement
+  // (Modul 1 leitet es aus `breite_mm` des gewaehlten Katalogprodukts ab). NUR GELESEN und an
+  // `zwischenpunktSvg()` durchgereicht — dieselbe Zahl wie in Modul 1. Fehlt es, bleibt die
+  // Balkenbreite das feste Symbolmass `SPANN_MM.blech_b`.
+  const ebB = (w.prestress && w.prestress.einlegeblech_b_mm) || 0;
   s += bodenblechSvg(w, X, Y, sc, bth, { n: _n, rand: SW * 0.5 });
   // Ausgleichspunkte als Marken UNTER dem Bodenblech ([A-20]…[A-24], #96/#97) — eigene Gruppe
   // unmittelbar nach dem Blech, an dessen Unterkante sie haengen, und VOR Deckenanschluss-,
@@ -815,14 +820,14 @@ export function zeichnungSvg(w, opts = {}) {
     if (zp.length) {
       s += `<g class="zsp">`;
       for (const p of zp)
-        // Formgleich zur Wandansicht: Balkenbreite, Schenkel und Strichstaerke sind FESTE
-        // Symbolmasse aus `SPANN_MM` (#106) und werden hier nicht mehr aus der Lagenhoehe
-        // gerechnet — dasselbe Blech war so je Blattmasstab verschieden gross.
+        // Formgleich zur Wandansicht: Schenkel und Strichstaerke sind FESTE Symbolmasse aus
+        // `SPANN_MM` (#106). Die BALKENBREITE ist das reale Blechmass in Wandrichtung
+        // (`breite_mm`, × sc, ohne Untergrenze) — ohne Katalogmass Symbolmass.
         // Die aufsitzende Mutter ([A-16]) bekommt seit #97 ihre realen Masse ueber
         // `mutter_h_mm`/`mutter_sw_mm` und denselben `sc` wie alle anderen Bauteilmasse des
-        // Blattes; Balken, Schenkel und Strichstaerke des Blechs bleiben Symbolmass.
+        // Blattes.
         s += zwischenpunktSvg(X(p.x_mm), Y(p.z_mm),
-          { n: _n, e: SYM, mutter_h_mm: zpH, mutter_sw_mm: zpSw, sc });
+          { n: _n, e: SYM, breite_mm: ebB, mutter_h_mm: zpH, mutter_sw_mm: zpSw, sc });
       s += `</g>`;
     }
   }

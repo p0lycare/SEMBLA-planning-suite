@@ -1313,6 +1313,14 @@ function normPrestress(p) {
   if (zpSw > 0) out.zp_mutter_sw_mm = zpSw;
   const skSw = (p && p.senkkopf_sw_mm != null && +p.senkkopf_sw_mm > 0) ? +p.senkkopf_sw_mm : 0;
   if (skSw > 0) out.senkkopf_sw_mm = skSw;
+  // BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]) — das reale Bauteilmass, von Modul 1 aus
+  // dem gewaehlten Katalogprodukt (`breite_mm` der Rolle „Einlegeblech") abgeleitet. Es geht in
+  // KEINE Rechnung ein und wird hier nur DURCHGEREICHT, damit die Ausgaben das Blech
+  // masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]) — dieselbe reine
+  // Ausweisungsbahn wie die Spannplattenbreite. OPTIONAL: fehlt das Mass oder ist es ungueltig,
+  // entsteht der Schluessel gar nicht erst und das Ergebnis ist bit-genau das bisherige ([P-9]).
+  const ebB = (p && p.einlegeblech_b_mm != null && +p.einlegeblech_b_mm > 0) ? +p.einlegeblech_b_mm : 0;
+  if (ebB > 0) out.einlegeblech_b_mm = ebB;
   return out;
 }
 

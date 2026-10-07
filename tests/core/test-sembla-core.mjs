@@ -1312,6 +1312,47 @@ t("#97 Alle drei Masse reisen durch psOf() (Auslegung und Nachweis)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// BREITE DES EINLEGEBLECHS ([A-14], Katalogfassung v5) — reine DURCHREICHE
+// ---------------------------------------------------------------------------
+// Modul 1 leitet `einlegeblech_b_mm` aus `breite_mm` der Rolle „Einlegeblech" ab (Mass in
+// Wandrichtung); der Kern reicht es unveraendert durch, damit die Ausgaben das Blech
+// masstaeblich zeichnen koennen ([D-1]). Gerechnet wird damit nichts.
+const PSEB = { rod_lengths_mm: [1000, 500], rod_rest_mm: 210, rod_overhang_mm: 10,
+  top_connection: "spannplatte", einlegeblech_b_mm: 30 };
+const WANDEB = { name: "einlegeblech", length_mm: 6 * GRID, height_mm: 2000 };
+const bauEb = (ps) => buildWall(WANDEB.name, WANDEB.length_mm, WANDEB.height_mm, [], null, ps);
+
+t("Einlegeblech: Breite reist durch den Kern, py/mjs bit-gleich, sonst Altstand", () => {
+  const js = bauEb(PSEB);
+  assert(js.prestress.einlegeblech_b_mm === 30, "Breite: " + js.prestress.einlegeblech_b_mm);
+  deepEqual(js, orakel({ ...WANDEB, prestress: PSEB }));
+  const js2 = bauEb({ ...PSEB, einlegeblech_b_mm: 32.5 });
+  deepEqual(js2, orakel({ ...WANDEB, prestress: { ...PSEB, einlegeblech_b_mm: 32.5 } }));
+  const { einlegeblech_b_mm, ...ohne } = PSEB;                 // eslint-disable-line no-unused-vars
+  const a = bauEb(ohne);
+  deepEqual(bauEb({ ...ohne, einlegeblech_b_mm: 0 }), a);
+  deepEqual(bauEb({ ...ohne, einlegeblech_b_mm: null }), a);
+  assert(!("einlegeblech_b_mm" in a.prestress), "kein Schluessel ohne Angabe");
+  deepEqual(a, orakel({ ...WANDEB, prestress: ohne }));
+  delete js.prestress.einlegeblech_b_mm;
+  deepEqual(js, a);
+});
+
+t("Einlegeblech: Breite reist durch psOf() (Auslegung und Nachweis)", () => {
+  const last = { qk_area: 0.5, gammaQ: 1.5 };
+  const auto = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: PSEB, load: last });
+  assert(auto.wandelement.prestress.einlegeblech_b_mm === 30,
+    "nach der Auslegung: " + auto.wandelement.prestress.einlegeblech_b_mm);
+  const nw = nachweisPruefen({ ...ENGINE_BASE, height_mm: 2000, load: { qk_area: 1.0, gammaQ: 1.5 },
+    prestress: { ...PSEB, max_span_grid: 3, force_kN: 60 } }).wandelement;
+  assert(nw.prestress.einlegeblech_b_mm === 30, "im Nachweis-Modus: " + nw.prestress.einlegeblech_b_mm);
+  const { einlegeblech_b_mm, ...ohne } = PSEB;                 // eslint-disable-line no-unused-vars
+  const b = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ohne, load: last });
+  delete auto.wandelement.prestress.einlegeblech_b_mm;
+  deepEqual(auto.wandelement, b.wandelement);
+});
+
+// ---------------------------------------------------------------------------
 // RANDVERBAENDE [V-3]/[V-11] (Paritaetsvertrag mit dem Python-Orakel, Issue #104)
 // ---------------------------------------------------------------------------
 // Akzeptanztest 1+3 des Pakets: die vier i2-/i3-Randkombinationen werden als REALE Waende

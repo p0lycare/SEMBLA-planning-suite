@@ -611,5 +611,37 @@ const v3Text = readFileSync(
     ps2.spannmutter_sw_mm === 17);
 }
 
+// ===========================================================================
+// Einlegeblech ([A-14], Katalogfassung v5): die Breite in Wandrichtung reist ueber
+// `ROLLE_RECHNUNG.einlegeblech` (`breite_mm` -> `einlegeblech_b_mm`) in den Frischpfad —
+// damit zeichnen Modul 7 und der zentrale Export das Blech masstaeblich aus dem Katalog.
+// Gegenprobe v4: dort standen die Felder vertauscht (breite_mm 110).
+// ===========================================================================
+{
+  const lies = (n) => readFileSync(new URL("../../docs/vorlagen/" + n, import.meta.url), "utf8");
+  globalThis.localStorage = new MemStorage();
+  store.setzeKatalog(KAT.parseKatalog(lies("SEMBLA_Standardkatalog-v5.json")));
+  const p = WA.legeWandAn(store, { name: 'EB-Wand', laenge_mm: 3000, hoehe_mm: 2600,
+                                   wandtyp: 'mit_wind' });
+  const pp = WA.vorspannEingaenge(store.holeEingaben(p.id), store.holeKatalog(), 'spannplatte');
+  ok('v5 ROLLE_RECHNUNG.einlegeblech liefert 30 mm (Mass in Wandrichtung)',
+    pp.einlegeblech_b_mm === 30);
+  const alt = buildWall('EB-Wand', 3000, 2600, [], null, { top_connection: 'spannplatte' });
+  alt.wandtyp = 'mit_wind';
+  store.speichere('EB-Wand', alt, p.id);
+  const vorher = roh();
+  const erg = WA.wandelementAktualisiert(store.holeElement(p.id).wandelement,
+    store.holeEingaben(p.id), store.holeKatalog(), ENG);
+  ok('v5 der Frischpfad leitet einlegeblech_b_mm = 30 nach, ohne zu schreiben',
+    erg.aktualisiert && erg.wandelement.prestress.einlegeblech_b_mm === 30 && roh() === vorher);
+  ok('v5 ohne gewaehltes Einlegeblech entsteht kein Feld (nichts erfunden)',
+    (() => { store.setzeProduktrolle('einlegeblech', [], p.id);
+      const q = WA.vorspannEingaenge(store.holeEingaben(p.id), store.holeKatalog(), 'spannplatte');
+      return !('einlegeblech_b_mm' in q); })());
+  ok('v4 (vertauschte Felder) haette 110 mm geliefert — deshalb die neue Fassung',
+    WA.vorspannEingaenge(WA.produktrollenPatch(KAT.parseKatalog(lies("SEMBLA_Standardkatalog-v4.json"))).patch,
+      KAT.parseKatalog(lies("SEMBLA_Standardkatalog-v4.json")), 'spannplatte').einlegeblech_b_mm === 110);
+}
+
 let fail = 0; for (const [n, c2] of checks){ console.log((c2 ? '  ok  ' : 'FAIL  ') + n); if (!c2) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`); process.exit(fail ? 1 : 0);

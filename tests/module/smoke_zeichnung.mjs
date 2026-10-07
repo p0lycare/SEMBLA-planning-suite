@@ -885,6 +885,50 @@ store.setzeAktiv(idW);
   void idM; void idO;
 }
 
+// --- 7d) Einlegeblech masstaeblich ([A-14], Katalogfassung v5) --------------------------
+// Die Balkenbreite des Einlegeblechs ist das reale Blechmass in Wandrichtung
+// (`prestress.einlegeblech_b_mm`, abgeleitet aus `breite_mm` der Rolle „Einlegeblech") mal
+// Blattmasstab — ohne Untergrenze. Ohne das Feld bleibt es beim Symbolmass. Modul 1 und
+// Modul 7 zeigen dasselbe Bauteilmass in mm ([D-4]).
+{
+  const E1 = MONT.SPANN_EINHEIT.ansicht;
+  const WEO = buildWall("IW-EB", 3000, 2600, [], null, { top_connection: "blech" });
+  const WEM = buildWall("IW-EB", 3000, 2600, [], null,
+    { top_connection: "blech", einlegeblech_b_mm: 30 });
+  const opt = { zeichnung: { format: "a3", masse: true, steintypen: true,
+    planinhalt: "Wandabwicklung", wasserzeichen: false } };
+  const zspGruppe = t => (/<g class="zsp">([\s\S]*?)<\/g>/.exec(t) || [, ""])[1];
+  const balken = t => [...zspGruppe(t).matchAll(/points="([^"]+)"/g)].map(m => {
+    const p = m[1].split(" ").map(q => q.split(",").map(Number));
+    return p[2][0] - p[1][0]; });
+
+  const idM = stelleAktiv(WEM, opt);
+  const blattMit = $("blattwrap").innerHTML, mst = Z.masstab;
+  ok("Einlegeblech: Voraussetzung — das Blatt zeigt die Einlegebleche",
+    wirksameZwischenpunkte(WEM).length > 0
+    && balken(blattMit).length === wirksameZwischenpunkte(WEM).length);
+  ok("Einlegeblech: im Blatt ist der Balken 30 mm breit im Blattmasstab (kein Symbolmass)",
+    balken(blattMit).every(b => Math.abs(b * mst - 30) < 1e-2));
+  ok("Einlegeblech: Modul 1 zeigt dasselbe Bauteilmass in mm ([D-4])",
+    (() => {
+      const scM1 = (1000 - 2 * 46) / WEM.length_mm;
+      const a = MONT.zwischenpunktSvg(0, 0, { e: E1, breite_mm: 30, sc: scM1 });
+      const p = a.match(/points="([^"]+)"/)[1].split(" ").map(q => q.split(",").map(Number));
+      return Math.abs((p[2][0] - p[1][0]) / scM1 - 30) < 1e-9
+        && Math.abs(balken(blattMit)[0] * mst - 30) < 1e-2; })());
+  const idO = stelleAktiv(WEO, opt);
+  const blattOhne = $("blattwrap").innerHTML;
+  ok("Einlegeblech: ohne Katalogmass bleibt der Balken beim Symbolmass `SPANN_MM.blech_b`",
+    balken(blattOhne).length === balken(blattMit).length
+    && balken(blattOhne).every(b =>
+      Math.abs(b - MONT.SPANN_MM.blech_b * MONT.SPANN_EINHEIT.blatt) < 1e-2));
+  ok("Einlegeblech: ausser der Einlegeblech-Gruppe bleibt das Blatt bytegleich",
+    blattMit.replace(/<g class="zsp">[\s\S]*?<\/g>/g, "")
+      === blattOhne.replace(/<g class="zsp">[\s\S]*?<\/g>/g, "") && blattMit !== blattOhne);
+  store.setzeAktiv(idW);
+  void idM; void idO;
+}
+
 // --- 8) Modul-Oberflaeche: keine dezentrale Dateifunktion ---------------
 ok("kein Datei-Download / kein Datei-Upload im Modul",
   !/downloadZip|createObjectURL|type="file"|FileReader/.test(html));

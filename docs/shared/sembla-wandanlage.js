@@ -185,7 +185,7 @@ export function vorspannText(vorgaben) {
 // (#92). Reine AUSWEISUNGSMASSE ohne Rechenbeitrag sind daneben die Blechdicken ([A-1])
 // sowie die Schluesselweite der Kopplungsmutter, Einbauhoehe samt Schluesselweite von
 // Spannmutter und Einlegeblech-Mutter, die Breite der Spannplatte und die
-// Schluesselweite der Sechskantschraube Fuss (#97) — sie stehen in derselben Tabelle,
+// Schluesselweite der Sechskantschraube Fuss (#97) sowie die Breite des Einlegeblechs — sie stehen in derselben Tabelle,
 // weil sie dieselbe Bahn nehmen: aus der Produktauswahl der Wand ins Wandelement, damit
 // die Ausgaben sie zeichnen koennen, ohne den Katalog zu lesen ([D-1]).
 //
@@ -266,6 +266,14 @@ export const ROLLE_RECHNUNG = {
     const sw = rollenMass(eing, kat, "zp_mutter", "sw_mm");
     return { ...(h != null ? { zp_mutter_h_mm: h } : {}),
              ...(sw != null ? { zp_mutter_sw_mm: sw } : {}) };
+  },
+  // BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]) — reines Ausweisungsmass ohne
+  // Rechenbeitrag, damit die Ausgaben das Blech masstaeblich zeichnen ([D-1]). Gelesen wird
+  // `breite_mm` (Mass in Wandrichtung, dieselbe Konvention wie beim Ausgleichsblech); ohne
+  // eindeutiges Mass entsteht das Feld nicht und die Zeichnung bleibt beim Symbolmass.
+  einlegeblech: (eing, kat) => {
+    const b = rollenMass(eing, kat, "einlegeblech", "breite_mm");
+    return b != null ? { einlegeblech_b_mm: b } : {};
   },
   // #97 Schluesselweite der SECHSKANTSCHRAUBE FUSS ([A-19]) — eine KOPFHOEHE gibt es hier
   // nicht: dafuer ist keine Norm genannt, und geraten wird sie nicht.

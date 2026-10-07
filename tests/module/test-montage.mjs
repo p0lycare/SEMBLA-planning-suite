@@ -1076,6 +1076,36 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         === zwischenpunktSvg(100, 200, {}));
   }
 
+  // --- Masstabsgetreue BALKENBREITE DES EINLEGEBLECHS ([A-14], Katalogfassung v5) -----------
+  // Die Balkenbreite ist das reale Blechmass in Wandrichtung (`breite_mm` aus dem Katalog,
+  // beim Aufrufer `prestress.einlegeblech_b_mm`) mal `sc` — ohne Untergrenze. Ohne Mass bleibt
+  // es beim Symbolmass `SPANN_MM.blech_b`. Schenkel, Strich und Mutter bleiben unberuehrt.
+  {
+    const pts = t => t.match(/points="([^"]+)"/)[1].split(" ").map(q => q.split(",").map(Number));
+    const bb = t => { const p = pts(t); return p[2][0] - p[1][0]; };   // Balken: x(+b) - x(-b)
+    const ohne = zwischenpunktSvg(100, 200, { e: E1, mutter_h_mm: 8, mutter_sw_mm: 17, sc: scM1 });
+    const mit = zwischenpunktSvg(100, 200,
+      { e: E1, breite_mm: 30, mutter_h_mm: 8, mutter_sw_mm: 17, sc: scM1 });
+    ok("Einlegeblech: Balken ist `breite_mm * sc` breit (Modul 1)",
+      Math.abs(bb(mit) - 30 * scM1) < 1e-9);
+    ok("Einlegeblech: im Blatt (1:50) ebenso masstabsgetreu, KEINE Untergrenze",
+      (() => { const t = zwischenpunktSvg(0, 0, { e: E7, breite_mm: 30, sc: 1 / 50 });
+        return Math.abs(bb(t) - 30 / 50) < 1e-9 && bb(t) < SPANN_MM.blech_b * E7; })());
+    ok("Einlegeblech: ohne Mass Symbolmass `SPANN_MM.blech_b` (bit-gleich zum Stand davor)",
+      Math.abs(bb(ohne) - SPANN_MM.blech_b * E1) < 1e-9
+      && [0, null, undefined, "", "krumm", -30].every(v => zwischenpunktSvg(100, 200,
+        { e: E1, breite_mm: v, mutter_h_mm: 8, mutter_sw_mm: 17, sc: scM1 }) === ohne)
+      && zwischenpunktSvg(100, 200, { e: E1, breite_mm: 30, mutter_h_mm: 8, mutter_sw_mm: 17 })
+        === zwischenpunktSvg(100, 200, { e: E1, mutter_h_mm: 8, mutter_sw_mm: 17 }));
+    ok("Einlegeblech: Schenkel, Strich und aufsitzende Mutter bleiben unveraendert",
+      (() => { const a = pts(ohne), b = pts(mit);
+        return Math.abs((a[0][1] - a[1][1]) - (b[0][1] - b[1][1])) < 1e-9
+          && ohne.match(/stroke-width="[^"]+"/)[0] === mit.match(/stroke-width="[^"]+"/)[0]
+          && ohne.slice(ohne.indexOf("<rect")) === mit.slice(mit.indexOf("<rect")); })());
+    ok("Einlegeblech: `breite` (Zeichenkoordinaten) schlaegt das Katalogmass",
+      Math.abs(bb(zwischenpunktSvg(0, 0, { e: E1, breite: 7, breite_mm: 30, sc: scM1 })) - 7) < 1e-9);
+  }
+
   // --- Masstabsgetreue BREITE DER SECHSKANTSCHRAUBE FUSS (#97) ------------------------------
   // Gefuehrt ist genau EINE Schluesselweite (`prestress.senkkopf_sw_mm`), und sie gilt nach dem
   // Paketentscheid fuer Kopf UND Schaft: ein Schaft-/Gewindedurchmesser liegt nicht vor und

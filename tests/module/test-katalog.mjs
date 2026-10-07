@@ -1087,12 +1087,12 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Fassung von selbst eine eigene, unveraenderliche Identitaet und tritt neben die
   // anderen statt sie zu ersetzen.
   ok("#118 der Vorlagenpfad zeigt auf eine VERSIONIERTE Repo-Datei",
-    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v4.json");
+    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v5.json");
   const id = KAT.vorlageKatalogId(PFAD);
   ok("#102 die Kennung ist deterministisch und pfadabgeleitet",
-    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v4"
+    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v5"
     && KAT.vorlageKatalogId(PFAD) === id
-    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v4.json") === id);
+    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v5.json") === id);
   ok("#118 jede Fassung ergibt eine EIGENE Kennung — keine ersetzt eine andere",
     KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v1.json") !== id);
   ok("#102 ein anderer Pfad ergibt eine andere Kennung",
@@ -1206,12 +1206,12 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Das Verzeichnis (#118) ist der EINE Ort, an dem eine Fassung bekanntgegeben wird.
   const man = KAT.parseVorlagenManifest(lies("kataloge.json"));
   // #130: v3 tritt neben v2 und v1 (inhaltsgleich mit v2, s. Manifest-Notiz).
-  // #103: v4 tritt daneben und ist die aktuell empfohlene Fassung; v1/v2/v3 bleiben
-  // unveraendert erhalten (Freeze-Test).
-  ok("#97/#130/#103 das Verzeichnis fuehrt ALLE Fassungen und weist aktuell auf v4",
-    man.fassungen.length === 4
-    && man.fassungen.map((f) => f.version).join() === "v4,v3,v2,v1"
-    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v4.json"
+  // #103: v4 tritt daneben; v5 (Einlegeblech-Orientierung) ist die aktuell empfohlene
+  // Fassung; v1…v4 bleiben unveraendert erhalten (Freeze-Test).
+  ok("#97/#130/#103 das Verzeichnis fuehrt ALLE Fassungen und weist aktuell auf v5",
+    man.fassungen.length === 5
+    && man.fassungen.map((f) => f.version).join() === "v5,v4,v3,v2,v1"
+    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v5.json"
     && man.aktuell === KAT.VORLAGE_KATALOG_PFAD);
   ok("#130 v3 ist inhaltsgleich mit v2 (gleiche Produkte, Baugruppen und Kennungen)",
     (() => {
@@ -1299,6 +1299,52 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     && KAT.produkt(v3, "gewindestange-m10-850").laenge_mm === 920
     && KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v3.json")
        !== KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v4.json"));
+}
+
+// --- 12c) Herausgegebene Fassung v5: Einlegeblech richtig orientiert ([A-14]) ---
+// In v4 standen beim Einlegeblech `breite_mm` (Mass in Wandrichtung, Konvention wie beim
+// Ausgleichsblech) und `hoehe_mm` vertauscht: 110 statt 30 mm in Wandrichtung. Seit die
+// Zeichnung den Balken masstaeblich aus `breite_mm` zeichnet, waere das sichtbar falsch.
+// v5 tauscht genau diese beiden Felder (und den Hinweistext) — sonst nichts.
+{
+  const lies = (n) => readFileSync(new URL("../../docs/vorlagen/" + n, import.meta.url), "utf8");
+  const rohV4 = lies("SEMBLA_Standardkatalog-v4.json");
+  const rohV5 = lies("SEMBLA_Standardkatalog-v5.json");
+  const v4 = KAT.parseKatalog(rohV4), v5 = KAT.parseKatalog(rohV5);
+  const EB = "blech-einlegeblech-110";
+
+  ok("v5 die Fassung ist gegen den echten Parser gueltig",
+    v5.produkte.length > 0 && v5.produkte.every((p) => KAT.validiereProdukt(p).length === 0));
+  ok("v5 Einlegeblech: 30 mm in Wandrichtung (breite_mm), 110 mm quer (hoehe_mm), 2 mm dick",
+    (() => { const p = KAT.produkt(v5, EB);
+      return p.breite_mm === 30 && p.hoehe_mm === 110 && p.dicke_mm === 2
+        && /30 mm in Wandrichtung/.test(p.hinweis) && /110 mm quer zur Wand/.test(p.hinweis); })());
+  ok("v5 Kennung, Bezeichnung, Preis, Rolle und Kategorie des Einlegeblechs bleiben",
+    (() => { const a = KAT.produkt(v4, EB), b = KAT.produkt(v5, EB);
+      return a.bezeichnung === b.bezeichnung && a.preis === b.preis
+        && a.kategorie === b.kategorie && a.rollen.join() === b.rollen.join(); })());
+  ok("v5 unterscheidet sich von v4 NUR im Fassungsnamen und in der Einlegeblech-Zeile",
+    (() => {
+      const o4 = JSON.parse(rohV4), o5 = JSON.parse(rohV5);
+      const felder = [...new Set([...Object.keys(o4), ...Object.keys(o5)])]
+        .filter((k) => JSON.stringify(o4[k]) !== JSON.stringify(o5[k]));
+      if (felder.join() !== "name,produkte") return false;
+      if (o4.name.replace(" v4 ", " v5 ") !== o5.name) return false;
+      if (o4.produkte.length !== o5.produkte.length) return false;
+      return o4.produkte.every((p, i) => {
+        const q = o5.produkte[i];
+        if (p.id !== EB) return JSON.stringify(p) === JSON.stringify(q);
+        const ohne = ({ breite_mm, hoehe_mm, hinweis, ...r }) => JSON.stringify(r); // eslint-disable-line no-unused-vars
+        return ohne(p) === ohne(q) && p.breite_mm === q.hoehe_mm && p.hoehe_mm === q.breite_mm;
+      });
+    })());
+  ok("v5 Baugruppen und Startklarheit ([P-18]) wertgleich zu v4",
+    JSON.stringify(v5.sets) === JSON.stringify(v4.sets)
+    && KAT.rollenOhneVorschlag(v5).join() === KAT.rollenOhneVorschlag(v4).join());
+  ok("v5 v4 bleibt eigenstaendig ladbar und behaelt seinen historischen Stand",
+    KAT.produkt(v4, EB).breite_mm === 110 && KAT.produkt(v4, EB).hoehe_mm === 30
+    && KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v4.json")
+       !== KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v5.json"));
 }
 
 // --- Deckenanschluss: Verwendungsstellen und Default-Set ([P-24], #95/#94) -

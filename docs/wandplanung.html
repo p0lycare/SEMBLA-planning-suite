@@ -556,6 +556,10 @@ function vorgaben(){
   const zpH=zpMutterHoeheMm(); if(zpH!=null) hw.zp_mutter_h_mm=zpH;
   const zpSw=zpMutterSwMm(); if(zpSw!=null) hw.zp_mutter_sw_mm=zpSw;
   const skSw=senkkopfSwMm(); if(skSw!=null) hw.senkkopf_sw_mm=skSw;
+  // Breite des EINLEGEBLECHS ([A-14]): dieselbe Bedingung und dieselbe reine Ausweisungsbahn —
+  // nur bei eindeutigem Katalogmaß, sonst bleibt das Feld ganz weg. ⚠ Auch sie steht in der
+  // FELDLISTE `psOf()` in `sembla-engine.js`.
+  const ebB=einlegeblechBreiteMm(); if(ebB!=null) hw.einlegeblech_b_mm=ebB;
   // [A-1] Blechdicken: reine BAUTEILMASSE aus dem Katalog. Sie gehen in keine Rechnung ein und
   // werden nur ausgewiesen; fehlt oder widerspricht ein Maß, bleibt das Feld weg und die Lücke
   // steht in `einbauMeldungen()` — es gibt dafür weder ein Eingabefeld noch einen Default.
@@ -886,6 +890,10 @@ function draw(w){
   const zpH=(w.prestress&&w.prestress.zp_mutter_h_mm)||0;
   const zpSw=(w.prestress&&w.prestress.zp_mutter_sw_mm)||0;
   const skSw=(w.prestress&&w.prestress.senkkopf_sw_mm)||0;
+  // [D-4] BREITE des EINLEGEBLECHS ([A-14]): reales Bauteilmaß aus `einlegeblech_b_mm` am
+  // Wandelement (abgeleitet aus `breite_mm` des gewählten Katalogprodukts), gelesen wie in
+  // Modul 7 — nie noch einmal aus dem Katalog. Fehlt es, bleibt die Balkenbreite Symbolmaß.
+  const ebB=(w.prestress&&w.prestress.einlegeblech_b_mm)||0;
   // Bezugsmaß aller Spannkomponenten-Symbole (#106): FESTE viewBox-Einheiten je Papier-mm
   // aus SPANN_EINHEIT. Vorher stand hier `COURSE*sc`, also die Lagenhöhe in
   // Zeichenkoordinaten — und weil `sc=(1000-2*pad)/L` allein an der WANDLÄNGE hängt, war
@@ -1079,9 +1087,10 @@ function draw(w){
     const on=(zpEdit && selZp===zp.z_mm);
     // Die aufsitzende Mutter ([A-16]) bekommt seit #97 ihre realen Maße über
     // `mutter_h_mm`/`mutter_sw_mm` und denselben `sc` wie alle anderen Bauteilmaße dieser
-    // Ansicht; Balken, Schenkel und Strichstärke des Blechs bleiben Symbolmaß.
+    // Ansicht. Die BALKENBREITE ist das reale Blechmaß in Wandrichtung (`breite_mm`, × sc,
+    // ohne Untergrenze); Schenkel und Strichstärke des Blechs bleiben Symbolmaß.
     s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,
-      e:SYM,mutter_h_mm:zpH,mutter_sw_mm:zpSw,sc});
+      e:SYM,breite_mm:ebB,mutter_h_mm:zpH,mutter_sw_mm:zpSw,sc});
   }
   // Vordergrund der BAUTEILE (#106): die gesammelten Kopplungsmuttern — nach Strängen, Ankern,
   // Blechen und Einlegeblechen, damit keines davon sie überdeckt. Seit #112 (Rückmeldung
@@ -1611,6 +1620,12 @@ function spannplatteBreiteMm(){ return einbauMass('spannplatte','breite_mm').wer
 function zpMutterHoeheMm(){ return einbauMass('zp_mutter','hoehe_mm').wert; }
 function zpMutterSwMm(){ return einbauMass('zp_mutter','sw_mm').wert; }
 function senkkopfSwMm(){ return einbauMass('senkkopf','sw_mm').wert; }
+// BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]) — Katalogfeld `breite_mm` der Rolle
+// „Einlegeblech" (Maß in Wandrichtung, dieselbe Konvention wie beim Ausgleichsblech), gelesen
+// über dasselbe `einbauMass()`. KEIN Rechenwert: allein AUSGEWIESEN, damit beide Ausgaben das
+// Blech maßstäblich zeichnen ([D-1]/[D-4]). Ohne eindeutiges Maß bleibt der Wert `null`, das
+// Feld entsteht nicht, und die Zeichnung bleibt beim Symbolmaß — erfunden wird nichts ([P-9]).
+function einlegeblechBreiteMm(){ return einbauMass('einlegeblech','breite_mm').wert; }
 // [A-1] Bodenblechdicke: Bauteilmaß der Rolle „Bodenblech". Alle Standardlängen einer Wand sind
 // gleich dick — mehrere gewählte Größen sind der Regelfall ([A-10]) und ergeben genau EINEN
 // Dickenwert. Tragen sie verschiedene, bleibt die Dicke offen; es wird keine bevorzugt.
@@ -2466,6 +2481,7 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   get spannmutterHoehe(){return spannmutterHoeheMm();}, get spannmutterSw(){return spannmutterSwMm();},
   get spannplatteBreite(){return spannplatteBreiteMm();},
   get zpMutterHoehe(){return zpMutterHoeheMm();}, get zpMutterSw(){return zpMutterSwMm();},
+  get einlegeblechBreite(){return einlegeblechBreiteMm();},
   get senkkopfSw(){return senkkopfSwMm();},
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,

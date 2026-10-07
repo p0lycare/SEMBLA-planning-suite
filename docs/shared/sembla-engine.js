@@ -160,6 +160,10 @@ function ausgleichHoehenOf(vorg) { return vorg.ausgleich_stein_hoehen_mm || null
 // traege das Element nach der Auslegung keine Masse mehr, obwohl Modul 1 sie aus dem Katalog
 // abgeleitet hat. Eine KOPFHOEHE der Schraube gibt es bewusst nicht — dafuer ist keine Norm
 // genannt, und sie liesse sich nur erfinden.
+// Und aus demselben Grund `einlegeblech_b_mm`: die BREITE des gewaehlten Einlegeblechs in
+// Wandrichtung ([A-14]). Reines Ausweisungsmass ohne Rechenbeitrag — fiele es hier weg, traege
+// das Element nach der Auslegung keine Breite mehr, und die Ausgaben zeichneten wieder das
+// feste Symbolmass statt des Bauteils.
 // Und aus demselben Grund `base_plate_aussparungen_grid` ([A-28]/#138): die in Modul 1 manuell
 // gewaehlten Rasterfelder OHNE Bodenblech bestimmen, in welche Bereiche der Core das Bodenblech
 // zerlegt ([A-29]) und welche Laenge und Teilezahl die Stueckliste fuehrt. Fiele das Feld in der
@@ -182,6 +186,7 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            spannplatte_b_mm: p.spannplatte_b_mm,
            zp_mutter_h_mm: p.zp_mutter_h_mm, zp_mutter_sw_mm: p.zp_mutter_sw_mm,
            senkkopf_sw_mm: p.senkkopf_sw_mm,
+           einlegeblech_b_mm: p.einlegeblech_b_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
            ausgleich_override_mm: p.ausgleich_override_mm,
            deckenanschluss_grid: p.deckenanschluss_grid,

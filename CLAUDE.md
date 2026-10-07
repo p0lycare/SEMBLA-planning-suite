@@ -708,6 +708,24 @@ Konstante: eine neue Fassung ist eine Datei plus ein Eintrag, ohne Codeänderung
 `VORLAGE_KATALOG_PFAD` bleibt der **eine** Vorgabewert (Autoload beim Anlegen einer Wand,
 [P-18]); Modul 10 lässt bei mehreren Fassungen wählen und rät nie.
 
+**Einlegeblech maßstäblich, Fassung v5 (2026-10-07).** Aktuell ist
+`SEMBLA_Standardkatalog-v5.json`: wie v4, nur beim Einlegeblech (`blech-einlegeblech-110`)
+sind die in v4 **vertauschten** Felder richtig orientiert — `breite_mm` = **30 mm in
+Wandrichtung**, `hoehe_mm` = **110 mm quer zur Wand** (Konvention wie beim Ausgleichsblech),
+`dicke_mm` 2. Daraus zeichnen **Modul 1 und Modul 7** (samt zentralem Export) den Balken des
+Einlegeblechs **maßstabsgetreu** (`breite_mm × sc`, **ohne** Untergrenze, [D-9]) statt mit dem
+festen Symbolmaß `SPANN_MM.blech_b`. Das Maß nimmt dieselbe Ausweisungsbahn wie die
+Spannplattenbreite: Modul 1 `einlegeblechBreiteMm()` bzw. `ROLLE_RECHNUNG.einlegeblech`
+(`sembla-wandanlage.js`, damit auch Sammel-Editor und Read-only-Frischpfad) →
+`prestress.einlegeblech_b_mm` (Core + Python-Orakel reichen nur durch, Engine-`psOf()`) →
+`zwischenpunktSvg(…, {breite_mm, sc})` (Entscheidung in `_blechBreite`, `sembla-montage.js`).
+Kein Wert im Code; ohne eindeutiges Katalogmaß bleibt es beim Symbolmaß (bit-gleich zum Stand
+davor). Schenkel, Strichstärke und Mutter sind unverändert. Das unversionierte
+`SEMBLA_Standardkatalog.json` ist eingefroren (Freeze-Test) und trägt weiterhin die
+**alte, vertauschte** Orientierung — es wird von keinem Betriebspfad geladen, nur von Tests.
+Bestandsprojekte auf v1–v4 werden **nicht** umgestellt; dort zeichnet das Blech nach dem
+nächsten Auslegen mit 110 mm, bis die Zuordnung bewusst auf v5 wechselt.
+
 **Reparatur unauflösbarer Produktreferenzen (#118, löst #115/#116).** Die Wand hält nur
 Produkt-Kennungen ([P-13]); verschwindet ein Produkt aus dem Katalog — korrigiertes Maß,
 gelöscht, andere Fassung —, zeigt sie weiter auf eine Kennung, die es nicht mehr gibt.

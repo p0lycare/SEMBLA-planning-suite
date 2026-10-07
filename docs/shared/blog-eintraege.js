@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-01",
+    datum: "2026-10-07",
+    typ: "fix",
+    issue: 97,
+    titel: "Einlegeblech maßstäblich: Modul 1 und Modul 7 zeichnen es mit der Breite aus dem Katalog "
+      + "(Standardkatalog v5: 30 mm)",
+    testbitte: "Projekt auf Standardkatalog v5 umstellen, in Modul 1 auslegen und die Einlegebleche in "
+      + "Wandansicht und Modul 7 nachmessen: 30 mm breit in Wandrichtung, in beiden gleich",
+  },
+  {
     id: "chg-20260928-02",
     datum: "2026-09-28",
     typ: "feature",

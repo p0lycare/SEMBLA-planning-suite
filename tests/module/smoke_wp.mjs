@@ -2079,6 +2079,10 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'sk-sw17', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M10×25 SW17', einheit:'Stk', preis:0.45, laenge_mm:25, sw_mm:17 },
   { id:'sk-sw13', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M8×25 SW13', einheit:'Stk', preis:0.4, laenge_mm:25, sw_mm:13 },
   { id:'sk-ohne', kategorie:'verbrauch', bezeichnung:'Sechskantschraube ohne Maßangabe', einheit:'Stk', preis:0.45, laenge_mm:25 },
+  // Einlegeblech (Rolle `einlegeblech`, [A-14]): `breite_mm` ist das Mass in Wandrichtung
+  // (Katalogfassung v5). Ausgewaehlt nur im Einlegeblech-Block.
+  { id:'eb-b30', kategorie:'blech_platte', bezeichnung:'Einlegeblech 110×30', einheit:'Stk', preis:0.35, breite_mm:30, hoehe_mm:110, dicke_mm:2 },
+  { id:'eb-b40', kategorie:'blech_platte', bezeichnung:'Einlegeblech 110×40', einheit:'Stk', preis:0.4, breite_mm:40, hoehe_mm:110, dicke_mm:2 },
   { id:'rod-rest-210', kategorie:'gewindestange', bezeichnung:'Reststück 210', einheit:'Stk', preis:1.2, gewinde:'M10', laenge_mm:210 },
   { id:'latte-1500', kategorie:'latte', bezeichnung:'Latte 1500', einheit:'Stk', preis:3.5, breite_mm:40, dicke_mm:60, laenge_mm:1500 },
 ]};
@@ -3404,6 +3408,55 @@ store.setzeKatalog(KATALOG);
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
   document.getElementById('topConn').value='spannplatte';
+  WP.applyWand(vorherW);
+}
+
+// ---- Einlegeblech masstaeblich ([A-14], Katalogfassung v5) ------------------------------
+// Echter Modul-1-Pfad: Produkt der Rolle „Einlegeblech" waehlen -> `vorgaben()` leitet
+// `einlegeblech_b_mm` aus `breite_mm` ab -> die Engine reicht es durch -> GESPEICHERT und in
+// der Wandansicht als Balkenbreite `breite_mm * sc` gezeichnet (geteilter Baustein, [D-4]).
+// Ohne eindeutiges Mass entsteht kein Feld, und die Ansicht bleibt beim Symbolmass.
+{
+  const svg=()=>document.getElementById('plan').innerHTML;
+  const E=MONT.SPANN_EINHEIT.ansicht;
+  const vorherEb=((store.holeProdukte(1).rollen||{}).einlegeblech||[]).slice();
+  const vorherW=WP.RESULT.wandelement;
+  vorherEb.forEach(id=>setzen('einlegeblech',id,false));
+  document.getElementById('hgt').value='2000'; setzeLaenge(2000); WP.run();
+  const psG=()=>store.aktivesWandelement().prestress;
+  const balken=()=>[...svg().matchAll(/<polyline class="zsp" points="([^"]+)"/g)].map(m=>{
+    const p=m[1].split(' ').map(q=>q.split(',').map(Number)); return p[2][0]-p[1][0]; });
+  const fpEb=()=>{ const w=WP.RESULT.wandelement; return JSON.stringify({
+    achsen:w.tension_columns.map(c=>c.x_mm), bom:BOM.semblaBomItems(w),
+    seg:w.tension_columns.map(c=>c.segments.map(g=>[g.z0_mm,g.z1_mm,g.bedarf_mm])) }); };
+  const fp0=fpEb(), ohne=svg();
+  ok('Einlegeblech: ohne Auswahl kein Feld, Balken im Symbolmass',
+    WP.einlegeblechBreite===null && WP.vorgaben().prestress.einlegeblech_b_mm===undefined
+    && psG().einlegeblech_b_mm===undefined && balken().length>0
+    && balken().every(b=>Math.abs(b-MONT.SPANN_MM.blech_b*E)<1e-9));
+  setzen('einlegeblech','eb-b30',true); WP.run();
+  const sc=WP.ansichtSc();
+  ok('Einlegeblech: Modul 1 leitet 30 mm aus breite_mm ab und speichert sie',
+    WP.einlegeblechBreite===30 && WP.vorgaben().prestress.einlegeblech_b_mm===30
+    && WP.RESULT.wandelement.prestress.einlegeblech_b_mm===30 && psG().einlegeblech_b_mm===30);
+  ok('Einlegeblech: die Wandansicht zeichnet den Balken 30 mm breit (× sc, keine Untergrenze)',
+    balken().length>0 && balken().every(b=>Math.abs(b-30*sc)<1e-9));
+  ok('Einlegeblech: gezeichnet ueber den geteilten Baustein (bytegleich)', (()=>{
+    const wd=WP.RESULT.wandelement, hPx=wd.height_mm*sc;
+    const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+    const mh=(wd.prestress.zp_mutter_h_mm)||0, ms=(wd.prestress.zp_mutter_sw_mm)||0;
+    return wirksameZwischenpunkte(wd).every(zp=>svg().includes(MONT.zwischenpunktSvg(
+      X(zp.x_mm),Y(zp.z_mm),{klasse:'zsp',strich:2,farbe:MONT.ZWISCHENPUNKT.farbe,e:E,
+      breite_mm:30,mutter_h_mm:mh,mutter_sw_mm:ms,sc}))); })());
+  ok('Einlegeblech: die Rechnung bleibt unveraendert (reines Ausweisungsmass)', fpEb()===fp0);
+  ok('Einlegeblech: ausser den Einlegeblechen bleibt die Ansicht bytegleich',
+    svg().replace(/<polyline class="zsp"[^>]*\/>/g,'')===ohne.replace(/<polyline class="zsp"[^>]*\/>/g,''));
+  setzen('einlegeblech','eb-b40',true); WP.run();
+  ok('Einlegeblech: zwei verschiedene Breiten -> mehrdeutig, kein Feld, Symbolmass',
+    WP.einlegeblechBreite===null && psG().einlegeblech_b_mm===undefined
+    && balken().every(b=>Math.abs(b-MONT.SPANN_MM.blech_b*E)<1e-9));
+  setzen('einlegeblech','eb-b30',false); setzen('einlegeblech','eb-b40',false);
+  vorherEb.forEach(id=>setzen('einlegeblech',id,true));
   WP.applyWand(vorherW);
 }
 

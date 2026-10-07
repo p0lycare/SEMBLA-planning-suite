@@ -182,7 +182,7 @@ export const SPANN_MM = {
   platte_b_min: 3.2,   // Sichtbarkeitsuntergrenze der Plattenbreite (Symbolmass)
   rod_d_mm: 10,        // Durchmesser der Gewindestange in mm — REALES Bauteilmass (#121)
   rod_d_min: 0.13,     // Sichtbarkeitsuntergrenze der Stangenbreite (Symbolmass, #121)
-  blech_b: 4.4,        // Balkenbreite des Einlegeblechs ([A-14])
+  blech_b: 4.4,        // Balkenbreite des Einlegeblechs ([A-14]), wenn das Katalogmass fehlt
   blech_schenkel: 1.6, // Schenkellaenge des Einlegeblechs
   dc_schenkel: 3.6,    // Schenkellaenge je Winkel des Deckenanschlusses ([P-24])
   dc_h: 4.0,           // Hoehe des Z ueber der Wandoberkante (Winkelstoss bis Decke)
@@ -617,6 +617,23 @@ export function spannplatteSvg(x, y, e, sc, opts = {}) {
 }
 
 /**
+ * BALKENBREITE des Einlegeblechs in Zeichenkoordinaten — die EINE Stelle, an der das reale
+ * Bauteilmass (`breite_mm` aus dem Katalog) gegen das Symbolmass `SPANN_MM.blech_b` entschieden
+ * wird ([D-4]). Dasselbe Verfahren wie `_plattenBreite`: nur ein zeichenbares Ergebnis > 0
+ * traegt, sonst Symbolmass. KEINE Untergrenze.
+ *
+ * @param {number} bez Zeichenkoordinaten je Papier-mm (`e`, ohne `e` 1)
+ * @param {any} sc Zeichenkoordinaten je mm
+ * @param {any} breiteMm reale Blechbreite in Wandrichtung in mm oder fehlend
+ * @returns {number} Breite in Zeichenkoordinaten
+ */
+function _blechBreite(bez, sc, breiteMm) {
+  const bMm = +breiteMm, s = +sc;
+  const bMass = (isFinite(bMm) && bMm > 0 && isFinite(s) && s > 0) ? bMm * s : 0;
+  return bMass > 0 ? bMass : SPANN_MM.blech_b * bez;
+}
+
+/**
  * Darstellungsschluessel des Zwischenspannpunkts ([A-14], #93) — Kennfarbe und Klartext.
  *
  * Er liegt hier und nicht im Modul, weil die Zeichengeometrie desselben Bauteils in mehreren
@@ -631,12 +648,20 @@ export const ZWISCHENPUNKT = { farbe: "#0a7d6b", label: "Einlegeblech (Zwischens
  * Symbol eines Zwischenspannpunkts: nach unten geoeffnetes eckiges C-Profil auf der
  * Lagen-Oberkante ([A-14]).
  *
- * Balkenbreite, Schenkel und Strichstaerke des BLECHS sind FESTE SYMBOLMASSE aus `SPANN_MM`
- * (#106) und bewusst KEINE Bauteilmasse: fuer das Einlegeblech selbst gibt es noch keine
- * bestaetigten Abmessungen (das C-Profil ist eine ausdruecklich offene Frage zu #97), und ein
- * hier gesetztes mm-Mass laese sich als solche lesen. Aus dem Symbol wird nichts abgeleitet.
- * Bis #106 gaben die Aufrufer die Masse als Vielfache der Lagenhoehe herein — dasselbe Blech
- * war damit je Wandgroesse verschieden gross.
+ * Schenkel und Strichstaerke des BLECHS sind FESTE SYMBOLMASSE aus `SPANN_MM` (#106) und
+ * bewusst KEINE Bauteilmasse (das C-Profil ist eine ausdruecklich offene Frage zu #97). Aus dem
+ * Symbol wird nichts abgeleitet. Bis #106 gaben die Aufrufer die Masse als Vielfache der
+ * Lagenhoehe herein — dasselbe Blech war damit je Wandgroesse verschieden gross.
+ *
+ * Die BALKENBREITE ist dagegen das REALE Blechmass in Wandrichtung, sobald der Aufrufer es als
+ * `opts.breite_mm` samt `opts.sc` hereingibt: der Balken ist dann `breite_mm * sc` breit und
+ * laesst sich im Blatt abmessen ([D-9]: abgemessene Masse bleiben masstabstreu). Das Mass ist
+ * KEIN Wert im Code — es steht als `prestress.einlegeblech_b_mm` am Wandelement, abgeleitet aus
+ * `breite_mm` des gewaehlten Katalogprodukts der Rolle „Einlegeblech". Es gibt bewusst KEINE
+ * Untergrenze: ein 30-mm-Blech IST in kleinem Masstab schmal, und eine Untergrenze waere ein
+ * zweites, verstecktes Mass. OHNE Mass (oder nicht zeichenbar) bleibt es beim bisherigen festen
+ * Symbolmass `SPANN_MM.blech_b`, und das Ergebnis ist bit-gleich zum Stand davor.
+ * `opts.breite` (Zeichenkoordinaten) schlaegt beides und bleibt fuer Aufrufer mit eigenem Mass.
  *
  * Auf dem Querbalken sitzt real GENAU EINE Mutter von oben ([A-16]). Sie wird gezeichnet,
  * sobald `opts.e` (Zeichenkoordinaten je Papier-mm) vorliegt — als eigener kurzer Zylinder
@@ -662,9 +687,11 @@ export const ZWISCHENPUNKT = { farbe: "#0a7d6b", label: "Einlegeblech (Zwischens
  *
  * @param {number} x Zeichenkoordinate der Spannachse
  * @param {number} y Zeichenkoordinate der Lagen-Oberkante
- * @param {{breite?:number,schenkel?:number,strich?:number,farbe?:string,klasse?:string,
- *          e?:number,n?:(v:number)=>any,mutter_farbe?:string,mutter_h_mm?:number,
- *          mutter_sw_mm?:number,sc?:number}} [opts]
+ * @param {{breite?:number,breite_mm?:number,schenkel?:number,strich?:number,farbe?:string,
+ *          klasse?:string,e?:number,n?:(v:number)=>any,mutter_farbe?:string,
+ *          mutter_h_mm?:number,mutter_sw_mm?:number,sc?:number}} [opts]
+ *        `breite_mm`: reale Blechbreite in Wandrichtung in mm — masstabsgetreu (× `sc`) statt
+ *        Symbolmass, ohne Untergrenze.
  *        `mutter_h_mm`/`mutter_sw_mm`/`sc`: reale Einbauhoehe und Schluesselweite der
  *        aufsitzenden Mutter in mm samt Zeichenkoordinaten je mm (#97) — masstabsgetreu statt
  *        Symbolmass, je Achse mit eigenem Rueckfall.
@@ -673,7 +700,8 @@ export const ZWISCHENPUNKT = { farbe: "#0a7d6b", label: "Einlegeblech (Zwischens
 export function zwischenpunktSvg(x, y, opts = {}) {
   const e = opts.e > 0 ? opts.e : 0;
   const bez = e > 0 ? e : 1;   // ohne `e` bleiben die Zeichenmasse in Zeichenkoordinaten
-  const b = (opts.breite != null ? opts.breite : SPANN_MM.blech_b * bez) / 2;
+  const b = (opts.breite != null ? opts.breite
+    : _blechBreite(bez, opts.sc, opts.breite_mm)) / 2;
   const h = opts.schenkel != null ? opts.schenkel : SPANN_MM.blech_schenkel * bez;
   const sw = opts.strich != null ? opts.strich : SPANN_MM.strich * bez;
   const farbe = opts.farbe || ZWISCHENPUNKT.farbe;
