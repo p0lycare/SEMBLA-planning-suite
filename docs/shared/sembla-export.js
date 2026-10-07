@@ -15,7 +15,8 @@
  */
 
 import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems } from "./sembla-bom.js";
-import { BESCHAFFUNGSFELDER, EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation } from "./sembla-katalog.js";
+import { BESCHAFFUNGSFELDER, EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation,
+         stangenKatalogLaengen } from "./sembla-katalog.js";
 import { berechneAufbau } from "./sembla-aufbau.js";
 import { montageDokument } from "./sembla-montage.js";
 import { optionenAusEingaben, zeichnungDokument, zeichnungSvgDatei } from "./sembla-zeichnung.js";
@@ -1154,8 +1155,18 @@ export function ifcText(w, opts) { return wandelementToIfc(w, opts); }
  * Vollstaendige, selbsttragende Montageanleitung als HTML-Dokument (A4, druckbar).
  * @param {object} w Wandelement (Single Source of Truth)
  * @param {object} [eingaben] Eingaben-Modell (genutzt: `projekt` fuer den Projektbezug)
+ * @param {object|null} [katalog] zugeordneter Katalog — nur fuer die Rangfolge der
+ *   Stangenfarben ([D-4], `stangenKatalogLaengen`); ohne ihn gilt die Auswahl der Wand
  */
-export function montageHtml(w, eingaben = {}) { return montageDokument(w, eingaben); }
+export function montageHtml(w, eingaben = {}, katalog = null) {
+  return montageDokument(w, eingaben, _stangenOpts(katalog));
+}
+
+/** Katalog-Standardlaengen als Laufzeitangabe fuer Montage/Zeichnung ([D-4]); leer -> keine. */
+function _stangenOpts(katalog) {
+  const l = katalog ? stangenKatalogLaengen(katalog) : [];
+  return l.length ? { stangen_laengen_mm: l } : {};
+}
 
 // ---------- Technische Zeichnung (SVG + druckbares HTML) ----------
 // Reine Delegation an sembla-zeichnung.js: dieselbe Zeichen-/Blattableitung nutzt die
@@ -1166,18 +1177,20 @@ export function montageHtml(w, eingaben = {}) { return montageDokument(w, eingab
 /**
  * Wandabwicklung als eigenstaendige, masstabsgetreue SVG-Datei (mm-Masse, 1:x).
  * @param {object} w Wandelement (Single Source of Truth) @param {object} [eingaben]
+ * @param {object|null} [katalog] nur fuer die Rangfolge der Stangenfarben ([D-4])
  */
-export function zeichnungSvgText(w, eingaben = {}) {
-  return zeichnungSvgDatei(w, eingaben, optionenAusEingaben(eingaben));
+export function zeichnungSvgText(w, eingaben = {}, katalog = null) {
+  return zeichnungSvgDatei(w, eingaben, { ...optionenAusEingaben(eingaben), ..._stangenOpts(katalog) });
 }
 
 /**
  * Komplettes Zeichnungsblatt (Zeichnung, Tabellen, Legende, Planungshinweise,
  * Schriftfeld) als selbsttragendes, druckbares HTML-Dokument.
  * @param {object} w Wandelement @param {object} [eingaben]
+ * @param {object|null} [katalog] nur fuer die Rangfolge der Stangenfarben ([D-4])
  */
-export function zeichnungHtml(w, eingaben = {}) {
-  return zeichnungDokument(w, eingaben, optionenAusEingaben(eingaben));
+export function zeichnungHtml(w, eingaben = {}, katalog = null) {
+  return zeichnungDokument(w, eingaben, { ...optionenAusEingaben(eingaben), ..._stangenOpts(katalog) });
 }
 
 // ---------- Statischer Nachweis (selbsttragendes HTML) ----------
@@ -1464,11 +1477,11 @@ export function baueDateien(projekt, auswahl, katalog = null, opts = {}) {
     }
   }
   if (set.has("zuschnitt")) files.push({ name: "Zuschnittliste_Latten_" + base + ".csv", data: zuschnittCsv(w, eingaben, katalog) });
-  if (set.has("montage")) files.push({ name: "Montageanleitung_" + base + ".html", data: montageHtml(w, eingaben) });
+  if (set.has("montage")) files.push({ name: "Montageanleitung_" + base + ".html", data: montageHtml(w, eingaben, katalog) });
   if (set.has("zeichnung")) {
     // Zwei Dateien aus EINER Ableitung: masstabsgetreues SVG + druckbares Blatt ([D-6]).
-    files.push({ name: "Zeichnung_" + base + ".svg", data: zeichnungSvgText(w, eingaben) });
-    files.push({ name: "Zeichnung_" + base + ".html", data: zeichnungHtml(w, eingaben) });
+    files.push({ name: "Zeichnung_" + base + ".svg", data: zeichnungSvgText(w, eingaben, katalog) });
+    files.push({ name: "Zeichnung_" + base + ".html", data: zeichnungHtml(w, eingaben, katalog) });
   }
   if (set.has("nachweis")) files.push({ name: "Statischer_Nachweis_" + base + ".html", data: nachweisHtml(w, eingaben) });
   if (set.has("ifc")) files.push({ name: base + ".ifc", data: ifcText(w) });

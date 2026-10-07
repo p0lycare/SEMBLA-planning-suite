@@ -96,7 +96,7 @@ import {
   einbauteilZeilen, EINBAUTEIL_TITEL, FARBE as FARBE_Z, konfliktZeilen, MANGEL_TITEL,
   normOptionen as normOptionenZ, optionenAusEingaben, verzahnungZeilen,
   VERZAHNUNG as VERZAHNUNG_Z, VERZAHNUNG_TITEL, vorspannZeilen, zeichnungSvg,
-  zeichnungTitel,
+  zeichnungTitel, stangenLegendeZ,
 } from "./sembla-zeichnung.js";
 
 // --------------------------------------------------------------- Konstanten
@@ -644,13 +644,14 @@ export function legendeLageplan() {
  * dieselben Eintraege, dieselbe Reihenfolge und derselbe Wortlaut wie `legendeHtml(w)`
  * in `sembla-zeichnung.js`. Die bedingten Eintraege haengen an genau denselben
  * Abfragen: ein Alt-Wandelement ohne reale Blechteile bekommt sie nicht ([D-4]).
+ * Die Stangeneintraege kommen aus `stangenLegendeZ()` — derselben Ableitung wie im HTML
+ * (je vorkommende Standardlaenge eine eigene Farbe, nur Gezeichnetes).
+ * @param {any} w @param {{stangen_laengen_mm?:number[]}} [opts]
  */
-export function legendeWand(w) {
+export function legendeWand(w, opts = {}) {
   const el = w || {};
   return [
-    { form: "bar", marke_farbe: FARBE_Z.stange, text: `Gewindestange (${STUECK_LABEL.standard})` },
-    { form: "bar", marke_farbe: FARBE_Z.stange_sonder, text: `${STUECK_LABEL.sonder} / abgelängt` },
-    { form: "bar", marke_farbe: FARBE_Z.stange_rest, text: `${STUECK_LABEL.rest} ([Z-6])` },
+    ...stangenLegendeZ(w, opts).map((e) => ({ form: "bar", marke_farbe: e.farbe, text: e.text })),
     // #110: stehender Zylinder statt Punkt — dieselbe Markenform wie im HTML-Spiegel.
     { form: "zyl", marke_farbe: FARBE_Z.mutter, text: "Kopplung / Verankerung" },
     { form: "plate", marke_farbe: FARBE_Z.platte, text: "Spannplatte" },
@@ -848,7 +849,7 @@ export function wandBlattInhalt(w, eingaben = {}, opts = {}) {
         { art: "text", fs: FS_FUSS, farbe: GRAU, text: VERZAHNUNG_FUSS },
       ] } : null,
       { titel: "Darstellung", zeilen: [
-        { art: "punkte", fs: FS_KLEIN, eintraege: legendeWand(w) },
+        { art: "punkte", fs: FS_KLEIN, eintraege: legendeWand(w, o) },
         { art: "text", fs: FS_FUSS, farbe: GRAU, text: EINBAUTEIL_FUSS },
       ] },
     ])
@@ -942,7 +943,9 @@ export function zipName(mappe) {
  * Formatwahl, Standard A3); das Wandblatt folgt `eingaben.zeichnung` ([D-7]).
  *
  * @param {{mappe:any, geschossId:string, elemente:any[],
- *   leseEingaben:(id:string)=>any, hintergrund?:any, format?:string}} p
+ *   leseEingaben:(id:string)=>any, hintergrund?:any, format?:string,
+ *   stangen_laengen_mm?:number[]}} p  `stangen_laengen_mm`: Standardlaengen des Katalogs
+ *   fuer die Stangenfarben ([D-4]); ohne Angabe gilt die Auswahl der jeweiligen Wand.
  * @returns {{seiten:Array<object>, luecken:string[]}}
  */
 export function blaetterFuerGeschoss(p) {
@@ -1007,7 +1010,12 @@ export function blaetterFuerGeschoss(p) {
     // A4-Seiten in einer Datei stehen (PDF bemasst jede Seite fuer sich).
     let blatt;
     try {
-      blatt = wandBlattInhalt(el.wandelement, eingaben, optionenAusEingaben(eingaben));
+      // Die Katalog-Standardlaengen ([D-4]) reisen als Laufzeitangabe mit — sie sind keine
+      // Darstellungswahl der Wand und stehen deshalb nicht in `eingaben.zeichnung`.
+      blatt = wandBlattInhalt(el.wandelement, eingaben, {
+        ...optionenAusEingaben(eingaben),
+        ...(Array.isArray(p.stangen_laengen_mm) ? { stangen_laengen_mm: p.stangen_laengen_mm } : {}),
+      });
     } catch (e) {
       luecken.push(`${ort} · „${w.name || w.id}“: das Wandblatt ist nicht ableitbar `
         + `(${e && e.message ? e.message : String(e)}); kein Wandblatt in der PDF.`);
@@ -1035,7 +1043,7 @@ export function blaetterFuerGeschoss(p) {
  * wird ([P-9]) — erst danach wird gerastert.
  *
  * @param {{mappe:any, elemente:any[], leseEingaben:(id:string)=>any,
- *   hintergruende?:Map<string,any>, format?:string}} p
+ *   hintergruende?:Map<string,any>, format?:string, stangen_laengen_mm?:number[]}} p
  * @returns {{geschosse:Array<{id:string,name:string,datei:string,seiten:Array<object>}>,
  *   luecken:string[], zipName:string}}
  */
@@ -1055,7 +1063,7 @@ export function blaetterProjekt(p) {
     try {
       erg = blaetterFuerGeschoss({
         mappe: m, geschossId: o.geschoss.id, elemente: p.elemente,
-        leseEingaben: p.leseEingaben, format: p.format,
+        leseEingaben: p.leseEingaben, format: p.format, stangen_laengen_mm: p.stangen_laengen_mm,
         hintergrund: p.hintergruende ? p.hintergruende.get(o.geschoss.id) : undefined,
       });
     } catch (e) {

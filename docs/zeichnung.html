@@ -168,7 +168,7 @@ let WALL=null, EING={}, OPT=null, currentId=null, MASSSTAB=null;
 let _selfSave=false;
 // aus window.SEMBLA (in __zInit gebunden):
 let store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen;
-let wandelementAktualisiert, STAND_GRUND, ENG, AX;
+let wandelementAktualisiert, STAND_GRUND, ENG, AX, stangenKatalogLaengen;
 /* CSS-Millimeter sind fest definiert (1 px = 1/96 Zoll) — das ist die Umrechnung des
    Bildschirmmassstabs, KEIN Papiermass. Die Papiermasse kommen ausschliesslich aus BLATT. */
 const PX_JE_MM = 96/25.4;
@@ -300,7 +300,11 @@ function setzeVorschauMassstab(){
 /** Blatt neu zeichnen — Vorschau UND Druck sind dasselbe Blatt (kein zweites Rendering). */
 function render(){
   if(!WALL){ $('blattwrap').innerHTML=''; setzeVorschauMassstab(); return; }
-  const b=blattHtml(WALL,EING,OPT);
+  // Rangfolge der Stangenfarben ([D-4]): die Standardlängen des zugeordneten Katalogs als
+  // Laufzeitangabe — sie gehört nicht zu den gespeicherten Darstellungsoptionen (OPT).
+  const kat=(store&&store.holeKatalog)?store.holeKatalog():null;
+  const sl=(kat&&stangenKatalogLaengen)?stangenKatalogLaengen(kat):[];
+  const b=blattHtml(WALL,EING,sl.length?{...OPT,stangen_laengen_mm:sl}:OPT);
   MASSSTAB=b.masstab;
   $('blattwrap').innerHTML=b.html;
   $('pagestyle').textContent=druckCss(OPT.format);
@@ -589,7 +593,7 @@ window.__zInit=function(){
   standardOptionen=S.standardOptionen; druckCss=S.druckCss;
   ZEICHNUNG_CSS=S.ZEICHNUNG_CSS; BLATT=S.BLATT; blattInnen=S.blattInnen;
   wandelementAktualisiert=S.wandelementAktualisiert; STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
-  AX=S.AX;
+  AX=S.AX; stangenKatalogLaengen=S.stangenKatalogLaengen;
   $('zcss').textContent=ZEICHNUNG_CSS;      // Blatt-CSS aus dem gemeinsamen Baustein
   axBenennen();
   bindEvents();
@@ -606,11 +610,12 @@ window.__zInit=function(){
   // (sembla-engine.js) — dieselbe Engine, die Modul 1 und der Geschosseditor fahren.
   import { wandelementAktualisiert, STAND_GRUND } from './shared/sembla-wandanlage.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
+  import { stangenKatalogLaengen } from './shared/sembla-katalog.js';
   import { mountNavbar } from './shared/navbar.js';
   // #144/#145: der EINE Accessibility-Baustein der Suite — nichts davon wird hier nachgebaut.
   import * as AX from './shared/sembla-ax.js';
   window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
-    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen }, AX };
+    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen }, AX, stangenKatalogLaengen };
   AX.stilEinhaengen();
   AX.tooltips();
   mountNavbar(7);

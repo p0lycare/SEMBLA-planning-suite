@@ -45,6 +45,7 @@
 
 import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
 import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
+         stangenFarbFolge, stangenLegende, wandStangenStuecke,
          bodenblechSvg, bodenblechTeile, bodenblechStoesse,
          // #91: Kennfarbe und Klartext der Blechstossmarke — dieselbe Quelle, aus der das
          // Blatt-SVG die Marke zeichnet; eine zweite Werteliste hier waere Drift ([D-4]).
@@ -165,6 +166,10 @@ export function normOptionen(o) {
     steintypen: z.steintypen === undefined ? s.steintypen : !!z.steintypen,
     planinhalt: (z.planinhalt === undefined || z.planinhalt === null || z.planinhalt === "") ? s.planinhalt : String(z.planinhalt),
     wasserzeichen: !!z.wasserzeichen,
+    // Standardlaengen des Katalogs fuer die Stangenfarben ([D-4], `stangenFarbFolge`) — eine
+    // LAUFZEITANGABE des Aufrufers (Modul 7, Export, PDF), keine Darstellungsoption: sie
+    // reist nur mit, wenn sie gesetzt ist, und wird nirgends gespeichert.
+    ...(Array.isArray(z.stangen_laengen_mm) ? { stangen_laengen_mm: z.stangen_laengen_mm.slice() } : {}),
   };
 }
 
@@ -776,6 +781,9 @@ export function zeichnungSvg(w, opts = {}) {
   // Stange ist ueberall gleich dick): unterschieden werden die Arten weiter ueber `stueckFarbe()`
   // und die weisse Stueckelungs-Haarlinie (#112) — beide unveraendert.
   const STANGE_SW = Math.max(SPANN_MM.rod_d_min * SYM, SPANN_MM.rod_d_mm * sc);
+  // Farbrang der Standardlaengen ([D-4]): aus den Katalog-Standardlaengen, sonst aus der
+  // Auswahl der Wand — dieselbe Folge wie in Legende, Modul 1 und Modul 5.
+  const FOLGE = stangenFarbFolge(w, o.stangen_laengen_mm);
   // Weisse HAARLINIE am Stangenstoss (#112): sie macht die Stueckelung ablesbar, wo zwei
   // Stuecke DERSELBEN Art aneinanderstossen — die Kopplungsmutter sagt nur, DASS gekoppelt
   // wird, nicht wo die Grenze liegt. Seit der Rueckmeldung vom 2026-09-09 liegt sie zusammen
@@ -813,7 +821,7 @@ export function zeichnungSvg(w, opts = {}) {
       for (let i = 0; i < stuecke.length; i++) {
         const st = stuecke[i], letzter = i === stuecke.length - 1;
         stangen += `<line x1="${_n(x)}" y1="${_n(Y(st.z0_mm))}" x2="${_n(x)}" y2="${_n(Y(st.z1_mm))}" `
-          + `stroke="${stueckFarbe(st.art)}" stroke-width="${_n(STANGE_SW)}"/>`;
+          + `stroke="${stueckFarbe(st.art, st.len_mm, FOLGE)}" stroke-width="${_n(STANGE_SW)}"/>`;
         // Der Stoss traegt die KOPPLUNGSMUTTER — als langer Zylinder in Seitenansicht (#110),
         // aus derselben Funktion wie die Wandansicht von Modul 1. Kreis und Sechseck entfallen.
         // Dazu seit #112 die weisse HAARLINIE quer zur Stange, genau auf `z1_mm` des UNTEREN
@@ -1238,23 +1246,42 @@ export function schriftfeldHtml(w, eingaben = {}, masstab = 25, opts = {}) {
 }
 
 /**
+ * Stangeneintraege der Blattlegende ([D-4]) — EINE Ableitung fuer das HTML-Blatt
+ * (`legendeHtml`) und das Zeichnungs-PDF (`legendeWand` in `sembla-zeichnungspdf.js`).
+ * Eintraege und Farben kommen aus `stangenLegende` (`sembla-montage.js`), also aus
+ * derselben Quelle wie Modul 1 und Modul 5; das Blatt haengt nur an den Sonderzuschnitt
+ * „/ abgelängt" an.
+ * @param {any} [w] @param {{stangen_laengen_mm?:number[]}} [opts]
+ * @returns {Array<{art:string,len_mm:number|null,farbe:string,text:string}>}
+ */
+export function stangenLegendeZ(w, opts = {}) {
+  if (!w) return [];
+  const folge = stangenFarbFolge(w, opts && opts.stangen_laengen_mm);
+  return stangenLegende(wandStangenStuecke(w), folge).map(e => ({ art: e.art, len_mm: e.len_mm,
+    farbe: e.farbe, text: e.art === "sonder" ? `${e.label} / abgelängt` : e.label }));
+}
+
+/**
  * Legende des Darstellungsschluessels ([D-4]).
  *
  * Das Wandelement ist OPTIONAL und wird nur fuer die Eintraege gebraucht, die es nicht
  * immer gibt: der Verzahnungseintrag (#82) erscheint ausschliesslich, wenn die Wand
  * wirklich einen Verzahnungsbereich fuehrt — ein Schluessel fuer eine nicht gezeichnete
  * Kennzeichnung waere derselbe leere Kasten, den [D-4] schon fuer die Legende ausschliesst.
- * Ohne Argument bleibt die Legende zeichengleich zum bisherigen Stand.
+ *
+ * Die STANGEN stehen seit 2026-10-07 ebenfalls nur, wenn sie gezeichnet wurden
+ * (`stangenLegende`): jede vorkommende Standardlaenge mit ihrer Laenge und eigenen Farbe,
+ * der Sonderzuschnitt, das Reststueck mit Laenge. Ohne Wandelement steht keine Stange da.
+ * @param {any} [w] Wandelement
+ * @param {{stangen_laengen_mm?:number[]}} [opts] Standardlaengen des Katalogs ([D-4])
  */
-export function legendeHtml(w) {
+export function legendeHtml(w, opts = {}) {
   const i = (c, cls) => `<i class="${cls || ""}" style="background:${c}"></i>`;
   // #110: das Einlegeblech ist ein offenes Profil, kein Farbblock — sein Legendenfeld traegt
   // deshalb die Kontur (Rand statt Fuellung) und damit dieselbe Form wie im Blatt.
   const ip = c => `<i class="zsp" style="border-color:${c}"></i>`;
   return `<div class="zlegende">`
-    + `<span>${i(FARBE.stange)}Gewindestange (${STUECK_LABEL.standard})</span>`
-    + `<span>${i(FARBE.stange_sonder)}${STUECK_LABEL.sonder} / abgelängt</span>`
-    + `<span>${i(FARBE.stange_rest)}${STUECK_LABEL.rest} ([Z-6])</span>`
+    + stangenLegendeZ(w, opts).map(e => `<span>${i(e.farbe)}${_esc(e.text)}</span>`).join("")
     // #110: Legendenfeld ist der stehende Zylinder, nicht mehr der Punkt — die Formen im
     // Blatt und in der Legende muessen dasselbe Bauteil zeigen ([D-4]). Wortlaut unveraendert.
     + `<span>${i(FARBE.mutter, "zyl")}Kopplung / Verankerung</span>`
@@ -1364,7 +1391,7 @@ export function blattHtml(w, eingaben = {}, opts = {}) {
     // Der Darstellungsschluessel bleibt — ohne ihn sind Stueckart und Einbauteil-ID am
     // Blatt nicht lesbar ([D-4]/[P-19]). Regellisten stehen hier NICHT mehr (#61, s. o.);
     // die frei werdende Flaeche bleibt der Zeichnung und wird nicht neu belegt.
-    + `<div class="zbox"><h4>Darstellung</h4>${legendeHtml(w)}</div>`
+    + `<div class="zbox"><h4>Darstellung</h4>${legendeHtml(w, o)}</div>`
     + `</aside>`
     + schriftfeldHtml(w, eingaben, z.masstab, o)
     + `</div>`;

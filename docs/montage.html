@@ -113,7 +113,7 @@ const $ = id => document.getElementById(id);
 const fmt = (n,d=0)=>(isFinite(n)?n:0).toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 let WALL=null, ABS=[], CUR=0, currentId=null, EING={};
 // #98 (dasselbe Muster wie Modul 7 seit #120): die eine lesende Neurechnung samt Engine.
-let wandelementAktualisiert, STAND_GRUND, ENG;
+let wandelementAktualisiert, STAND_GRUND, ENG, stangenKatalogLaengen;
 
 /* Der gezeigte Stand (#98/#120) — READ-ONLY neu gerechnet, nie gespeichert: die Stangenstücke
    der Abschnitte stehen im gespeicherten Wandelement so, wie sie der LETZTE Schreibvorgang
@@ -134,6 +134,14 @@ function frischerStand(we){
   }
   if(!erg.aktualisiert) standMelde((STAND_GRUND&&STAND_GRUND[erg.grund])||'');
   return erg.wandelement;
+}
+/* Rangfolge der Stangenfarben ([D-4]): die Standardlängen des zugeordneten Katalogs, damit
+   dieselbe Länge hier dieselbe Farbe hat wie in Modul 1/7. Ohne Katalog gilt die Auswahl der
+   Wand (`stangenFarbFolge` in sembla-montage.js). */
+function stangenOpts(){
+  const kat=(store&&store.holeKatalog)?store.holeKatalog():null;
+  const l=(kat&&stangenKatalogLaengen)?stangenKatalogLaengen(kat):[];
+  return l.length?{stangen_laengen_mm:l}:{};
 }
 function standMelde(t){ const el=$('standmsg'); if(el) el.textContent=t||''; }
 let showDim=true, showRaster=false;
@@ -176,7 +184,7 @@ function showAbschnitt(i){
       +' · '+ab.straenge.length+' Stränge in diesem Abschnitt';
   $('ereignisse').innerHTML=ab.ereignisse.map(e=>
     '<li><span class="art">'+(ART_LABEL[e.art]||e.art)+' · '+posCm(e.z_mm)+'</span>'+e.text+'</li>').join('');
-  $('absSvg').innerHTML=abschnittSvg(WALL,ab,900,430);
+  $('absSvg').innerHTML=abschnittSvg(WALL,ab,900,430,stangenOpts());
   drawMap();
 }
 // Schnitt 0 hat keine Steinreihen -> im Wandüberblick nichts hervorheben.
@@ -186,7 +194,7 @@ function drawMap(){ if(!WALL || !ABS.length) return;
 
 // Druckdokument = exakt die Seiten des zentralen Exports (gleiche Ableitung, gleiche Bausteine).
 function buildPrintDoc(w){
-  $('printdoc').innerHTML='<style>'+MONTAGE_CSS+'</style>'+montageSeitenHtml(w,EING);
+  $('printdoc').innerHTML='<style>'+MONTAGE_CSS+'</style>'+montageSeitenHtml(w,EING,stangenOpts());
 }
 
 // ---- Aktives Wandelement (localStorage) ----
@@ -243,6 +251,7 @@ window.__mInit=function(){
   montageSeitenHtml=S.montageSeitenHtml; MONTAGE_CSS=S.MONTAGE_CSS; ART_LABEL=S.ART_LABEL||{};
   posCm=S.posCm;
   wandelementAktualisiert=S.wandelementAktualisiert; STAND_GRUND=S.STAND_GRUND; ENG=S.ENG;
+  stangenKatalogLaengen=S.stangenKatalogLaengen;
   bindEvents();
   setupStoreSync();
   loadInitial();
@@ -257,10 +266,11 @@ window.__mInit=function(){
   // (sembla-wandanlage.js) und der Rechenkern dahinter (sembla-engine.js).
   import { wandelementAktualisiert, STAND_GRUND } from './shared/sembla-wandanlage.js';
   import { autoAuslegung, nachweisPruefen } from './shared/sembla-engine.js';
+  import { stangenKatalogLaengen } from './shared/sembla-katalog.js';
   import { mountNavbar } from './shared/navbar.js';
   window.SEMBLA = { semblaBom, semblaBomItems, semblaBomMenge, store,
     montageAbschnitte, abschnittSvg, konturSvg, montageSeitenHtml, MONTAGE_CSS, ART_LABEL, posCm,
-    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen } };
+    wandelementAktualisiert, STAND_GRUND, ENG: { autoAuslegung, nachweisPruefen }, stangenKatalogLaengen };
   mountNavbar(5);
   window.__mInit();
 </script>

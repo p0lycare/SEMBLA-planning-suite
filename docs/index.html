@@ -2198,7 +2198,7 @@
       let plan = null;
       if (mitZeichnungen) {
         trZeige(`Zeichnungen für „${k.mappe.projekt.name}“ werden abgeleitet …`, true);
-        plan = await zpdfPlan(k.mappe, frisch);
+        plan = await zpdfPlan(k.mappe, frisch, katalog);
         for (const l of plan.luecken) luecken.push(l);
         if (!plan.geschosse.length) {
           luecken.push('Keine PDF erzeugt: ' + (plan.luecken.join(' ') || 'Das Projekt hat kein Geschoss.'));
@@ -2293,7 +2293,7 @@
    * Der Planhintergrund kommt aus der Bilddatenbank und damit asynchron; das Blattbauen
    * selbst bleibt synchron und deterministisch.
    */
-  async function zpdfPlan(m, frisch){
+  async function zpdfPlan(m, frisch, katalog){
     const hintergruende = new Map();
     const ids = new Set();
     for (const o of MAPPE.alleGeschosse(m)) {
@@ -2314,6 +2314,9 @@
       // Kopfdaten nach [L-11] aus dem Projekt der Wand (Rückfall: Altbestand).
       leseEingaben: (id) => store.eingabenMitKopfdaten(id),
       hintergruende,
+      // Rangfolge der Stangenfarben ([D-4]): die Standardlängen des Projektkatalogs —
+      // dieselbe Laenge hat damit in jedem Wandblatt dieselbe Farbe.
+      stangen_laengen_mm: katalog ? KAT.stangenKatalogLaengen(katalog) : undefined,
     });
   }
 

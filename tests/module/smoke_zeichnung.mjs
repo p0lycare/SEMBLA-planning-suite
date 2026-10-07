@@ -150,7 +150,8 @@ const idW = stelleAktiv(W, { zeichnung: { format: "a3", masse: true, steintypen:
 
 globalThis.window.SEMBLA = { store, blattHtml, normOptionen, standardOptionen, druckCss, ZEICHNUNG_CSS, BLATT, blattInnen,
   wandelementAktualisiert: WA.wandelementAktualisiert, STAND_GRUND: WA.STAND_GRUND,
-  ENG: { autoAuslegung: ENG7.autoAuslegung, nachweisPruefen: ENG7.nachweisPruefen }, AX };
+  ENG: { autoAuslegung: ENG7.autoAuslegung, nachweisPruefen: ENG7.nachweisPruefen }, AX,
+  stangenKatalogLaengen: KAT7.stangenKatalogLaengen };
 
 // App-Logik evaluieren und wie im Browser initialisieren.
 new Function(script)();
@@ -251,7 +252,10 @@ const pflicht = (t) => /<svg/.test(t) && /<rect/.test(t)                       /
   && /Baustellenstückliste/.test(t) && /Stein i/.test(t)                       // Stueckliste
   && /Einbauteile Gewindestangen/.test(t) && /GS-k\d+\.\d+\.\d+/.test(t)       // IDs [P-19]
   && /Spannachsen/.test(t) && /Sonderlängen/.test(t)                           // Kennzahlen
-  && /Gewindestange \(Standardlänge\)/.test(t) && /Reststück oben/.test(t)     // kompakte Legende
+  // kompakte Legende: seit 2026-10-07 je gezeichneter Standardlaenge ein Eintrag mit Laenge
+  // ([D-4]); diese Wand hat kein Reststueck und bekommt deshalb auch keinen Legendeneintrag.
+  && /Gewindestange \d+ mm/.test(t)
+  && !/<div class="zlegende">(?:(?!<\/div>).)*Reststück oben/.test(t)
   && /Einbauteil-ID GS-k/.test(t);
 /** Genau die entfernten Textbloecke — Regelkunde und Verwaltungsballast. */
 const entfernt = (t) => !/nicht automatisch geprüft/.test(t) && !/Zielregel/.test(t)
@@ -1147,7 +1151,9 @@ ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.te
   globalThis.window.SEMBLA.AX = AX;
   globalThis.window.__zInit();
   ok("[#144] die erzeugte Zeichnung ist zeichenkettengleich zum Stand ohne Benennung",
-    mitAx === ohneAx && mitAx === blattHtml(Z.wall, eingIst(), Z.opt).html
+    // Die Katalog-Standardlaengen ([D-4]) reisen als Laufzeitangabe mit — genau wie im Modul.
+    mitAx === ohneAx && mitAx === blattHtml(Z.wall, eingIst(), store.holeKatalog()
+      ? { ...Z.opt, stangen_laengen_mm: KAT7.stangenKatalogLaengen(store.holeKatalog()) } : Z.opt).html
     // Das Blatt traegt keine Spur des Bausteins — die eigenen `aria-label` der Zeichnung
     // (aus sembla-zeichnung.js) bleiben davon unberuehrt.
     && !/ax-b-|data-ax-tip|aria-describedby|aria-invalid/.test(mitAx));

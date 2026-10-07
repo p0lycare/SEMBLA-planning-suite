@@ -1238,6 +1238,25 @@ export function standardLaengen(eingaben, katalog, rolleId) {
 }
 
 /**
+ * Standardlaengen der Gewindestangen DES KATALOGS (absteigend, ohne Doppelte) — die
+ * Rangfolge der Stangenfarben ([D-4], `stangenFarbFolge` in `sembla-montage.js`).
+ *
+ * Bewusst KATALOGWEIT und nicht aus der Auswahl einer Wand: dieselbe Laenge bekommt so in
+ * jeder Wand des Projekts dieselbe Farbe, und eine neue Standardlaenge im Katalog waechst
+ * ohne Codeaenderung mit. Gezaehlt werden die Produkte der Kategorie der Rolle `rod_std`
+ * mit gueltiger `laenge_mm`, AUSSER solchen, die ausdruecklich nur eine andere Rolle
+ * benennen (z. B. das Reststueck mit `rollen: ["rod_rest"]`, [P-18]).
+ * @param {any} katalog @returns {number[]}
+ */
+export function stangenKatalogLaengen(katalog) {
+  const r = rolle("rod_std");
+  if (!r || !katalog || !Array.isArray(katalog.produkte)) return [];
+  const p = katalog.produkte.filter((x) => x && x.kategorie === r.kategorie
+    && (!Array.isArray(x.rollen) || x.rollen.map(String).includes("rod_std")));
+  return _masse(p, "laenge_mm");
+}
+
+/**
  * Vollstaendige Produktspezifikation der aktiven Wand ([Z-1]) — die einzige Abbildung
  * Auswahl -> maßgebende Produktmaße. `konflikte` benennt widersprüchliche Angaben
  * (z. B. zwei Lattenprodukte mit unterschiedlicher Breite); es wird nichts geraten.

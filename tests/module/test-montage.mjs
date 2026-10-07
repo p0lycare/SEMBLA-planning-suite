@@ -40,7 +40,12 @@ import {
   AUSGLEICHSPUNKT, ausgleichspunktSvg,
   // #136: die EINE erlaubte Umrechnung Reihenzahl -> Hoehe (Pruefmassstab, kein Nachbau).
   lagenOberkanteMm, lagenKantenVonWand,
+  // [D-4] Farbrang der Standardlaengen (2026-10-07): Palette, Folge, Legende.
+  STANGEN_PALETTE, STANGEN_ABSTAND_MIN, stangenFarbe, stangenFarbFolge, stangenLegende,
+  wandStangenStuecke, belegteKennfarben, farbAbstand,
 } from "../../docs/shared/sembla-montage.js";
+import { stangenKatalogLaengen } from "../../docs/shared/sembla-katalog.js";
+import { BRANDKLASSE as Z_BRAND } from "../../docs/shared/sembla-zeichnung.js";
 // #136: die kanonischen Lagenkanten des Rechenkerns — der Test vergleicht die Darstellung
 // GEGEN sie und rechnet keine zweite Geometrie nach.
 import { wandLagenKanten } from "../../docs/shared/sembla-core.js";
@@ -467,10 +472,12 @@ const sollJeArt = a => abZ.straenge.reduce((n, st) => n + st.stuecke_sicht.filte
 ok("Baugruppenbild zeichnet je Stueck einen Strich in der Farbe seiner Art",
   ["standard", "sonder", "rest"].every(a => sollJeArt(a) > 0 && striche(STUECK_FARBE[a]) === sollJeArt(a)));
 ok("Baugruppenbild traegt die Zuschnitt-Legende mit den gezeichneten Arten",
-  /Zuschnitt:/.test(svgZ) && ["standard", "sonder", "rest"].every(a => svgZ.includes(STUECK_LABEL[a])));
+  /Zuschnitt:/.test(svgZ) && /Gewindestange 1000 mm/.test(svgZ)
+  && svgZ.includes(STUECK_LABEL.sonder) && svgZ.includes(STUECK_LABEL.rest + " (300 mm)"));
 ok("die Legende nennt nur Arten, die auch gezeichnet wurden",
   (() => { const s0 = abschnittSvg(WZ, alleZ[0], 900, 430);   // Schnitt 0: nur die erste Stange
-    return !s0.includes(STUECK_LABEL.rest) && s0.includes(STUECK_LABEL.standard); })());
+    return !s0.includes(STUECK_LABEL.rest) && /Gewindestange 1000 mm/.test(s0)
+      && !/Gewindestange 500 mm/.test(s0); })());
 ok("Vorschau == Export: die Legende steckt im geteilten SVG, nicht im Modul",
   montageSeitenHtml(WZ, eingaben).includes(svgZ) && montageDokument(WZ, eingaben).includes("Zuschnitt:"));
 
@@ -489,8 +496,101 @@ ok("Alt-Bundle faellt auf die Einzellinie je Strang zurueck (kein Zeichenfehler)
 // keine STUECKART des Stangenzuschnitts darin stehen. Der Sonderzuschnitt wird als exakter
 // Textknoten geprueft, damit der Bodenblech-Eintrag nicht mit ihm verwechselt wird.
 ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfinden)",
-  !svgAlt.includes(STUECK_LABEL.rest) && !svgAlt.includes(STUECK_LABEL.standard)
+  !svgAlt.includes(STUECK_LABEL.rest) && !/>Gewindestange \d/.test(svgAlt)
   && !new RegExp(`>${STUECK_LABEL.sonder}<`).test(svgAlt));
+
+// --- Farbrang der Standardlaengen ([D-4], 2026-10-07) -------------------------
+// Jede Standardlaenge hat ihre eigene Farbe; maßgebend ist der Rang der Laenge in den
+// Standardlaengen DES KATALOGS (absteigend), nicht in den Stuecken einer Wand. Keine Laenge
+// ist im Code verdrahtet — die Tests benutzen bewusst Katalogwerte und eine erfundene Fassung.
+{
+  const KAT5 = JSON.parse(readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog-v5.json", import.meta.url), "utf8"));
+  const KL = stangenKatalogLaengen(KAT5);
+  ok("[D-4] Katalog-Standardlaengen: v5 liefert 1050/820, das Reststueck (rod_rest) zaehlt nicht",
+    JSON.stringify(KL) === "[1050,820]" && stangenKatalogLaengen(null).length === 0);
+  const KAT6 = JSON.parse(JSON.stringify(KAT5));
+  const vorlage = KAT6.produkte.find(p => p.id === "gewindestange-m10-1050");
+  KAT6.produkte.push({ ...vorlage, id: "gewindestange-m10-1200", laenge_mm: 1200 },
+    { ...vorlage, id: "gewindestange-m10-600", laenge_mm: 600 });
+  const KL6 = stangenKatalogLaengen(KAT6);
+  ok("[D-4] neue Standardlaenge im Katalog -> waechst ohne Codeaenderung mit (absteigend)",
+    JSON.stringify(KL6) === "[1200,1050,820,600]");
+
+  const PSV = { rod_lengths_mm: [1050, 820], rod_rest_mm: 100, rod_overhang_mm: 10 };
+  // Hohe Wand (2200 mm): je ein 1050er und 820er Stueck + Sonderzuschnitt + Reststueck;
+  // niedrige Wand (1000 mm): NUR ein 820er Stueck (+ Sonderzuschnitt + Reststueck, [Z-2]).
+  const WH = buildWall("Hoch", 3000, 2200, [], null, PSV);
+  const WN = buildWall("Niedrig", 3000, 1000, [], null, PSV);
+  const stdL = w => [...new Set(wandStangenStuecke(w).filter(p => p.art === "standard").map(p => p.len_mm))].sort((a, b) => b - a);
+  ok("[D-4] Voraussetzung: hohe Wand nutzt 1050 und 820, niedrige nur 820",
+    JSON.stringify(stdL(WH)) === "[1050,820]" && JSON.stringify(stdL(WN)) === "[820]");
+  const f820 = w => stueckFarbe("standard", 820, stangenFarbFolge(w, KL));
+  ok("[D-4] 820 mm hat in jeder Wand dieselbe Farbe (Rang im Katalog, nicht in der Wand)",
+    f820(WH) === f820(WN) && f820(WN) === STANGEN_PALETTE[1]
+    && stueckFarbe("standard", 1050, stangenFarbFolge(WH, KL)) === STANGEN_PALETTE[0]);
+  ok("[D-4] ohne Katalogliste gilt die Auswahl der Wand (rod_lengths_mm) — dieselbe Zuordnung",
+    stueckFarbe("standard", 820, stangenFarbFolge(WN)) === STANGEN_PALETTE[1]
+    && JSON.stringify(stangenFarbFolge(WN)) === "[1050,820]");
+  ok("[D-4] Alt-Bundle ohne Laengenliste: deterministisch aus den vorhandenen Laengen",
+    (() => { const alt = JSON.parse(JSON.stringify(WH)); delete alt.prestress.rod_lengths_mm;
+      return JSON.stringify(stangenFarbFolge(alt)) === "[1050,820]"; })());
+  ok("[D-4] Wandlaengen ausserhalb des Katalogs werden HINTEN angehaengt (Katalograng bleibt)",
+    JSON.stringify(stangenFarbFolge(WH, [1200, 820])) === "[1200,820,1050]");
+  const F6 = stangenFarbFolge(WH, KL6);
+  ok("[D-4] neue laengere Katalogfassung: jede Laenge eine eigene Farbe, ueber Waende gleich",
+    new Set(KL6.map(x => stueckFarbe("standard", x, F6))).size === 4
+    && stueckFarbe("standard", 820, F6) === stueckFarbe("standard", 820, stangenFarbFolge(WN, KL6))
+    && stueckFarbe("standard", 820, F6) === stangenFarbe(2));
+
+  // Palette und Erzeugung
+  const zehn = Array.from({ length: 12 }, (_, i) => stangenFarbe(i));
+  const belegt = belegteKennfarben();
+  ok("[D-4] Palette beginnt mit Blau (laengste) und Gruen (zweite)",
+    STANGEN_PALETTE[0] === "#1f6feb" && STANGEN_PALETTE[1] === "#3a9d23"
+    && STUECK_FARBE.standard === STANGEN_PALETTE[0]);
+  ok("[D-4] erzeugte Farben: alle verschieden, keine ist Sonder-Orange oder Reststueckfarbe",
+    new Set(zehn).size === zehn.length && !zehn.includes(STUECK_FARBE.sonder)
+    && !zehn.includes(STUECK_FARBE.rest) && zehn.every(c => /^#[0-9a-f]{6}$/.test(c)));
+  ok("[D-4] die ersten erzeugten Farben halten den Mindestabstand zu allen Kennfarben und Stangen",
+    zehn.slice(0, 6).every((c, i) => [...belegt, ...zehn.slice(0, i)]
+      .every(x => farbAbstand(c, x) >= STANGEN_ABSTAND_MIN)));
+  ok("[D-4] Erzeugung ist deterministisch (gleicher Rang -> gleiche Farbe)",
+    stangenFarbe(7) === zehn[7] && stangenFarbe(2) === zehn[2]);
+  ok("[D-4] Reststueck ist nicht mehr mit dem Verzahnungs-Violett verwechselbar",
+    farbAbstand(STUECK_FARBE.rest, Z_FARBE.verzahnung) >= STANGEN_ABSTAND_MIN
+    && farbAbstand(STUECK_FARBE.rest, STUECK_FARBE.sonder) >= STANGEN_ABSTAND_MIN
+    && farbAbstand(STANGEN_PALETTE[1], ZWISCHENPUNKT.farbe) >= STANGEN_ABSTAND_MIN);
+  ok("[D-4] Driftschutz: jede Kennfarbe der Zeichnung steht in der Abstandspruefung",
+    Object.entries(Z_FARBE).filter(([k]) => !k.startsWith("stange"))
+      .every(([, v]) => belegt.includes(v))
+    && Object.values(Z_BRAND).every(b => belegt.includes(b.farbe)));
+
+  // Legende: nur Gezeichnetes, jede Laenge mit ihrer Farbe
+  const LN = stangenLegende(wandStangenStuecke(WN), stangenFarbFolge(WN, KL));
+  const LH = stangenLegende(wandStangenStuecke(WH), stangenFarbFolge(WH, KL));
+  ok("[D-4] Legende der niedrigen Wand: nur 820 mm, Sonderzuschnitt, Reststueck mit Laenge",
+    JSON.stringify(LN.map(e => e.label)) === JSON.stringify(
+      ["Gewindestange 820 mm", STUECK_LABEL.sonder, STUECK_LABEL.rest + " (100 mm)"])
+    && LN[0].farbe === STANGEN_PALETTE[1] && LN[2].farbe === STUECK_FARBE.rest);
+  ok("[D-4] Legende der hohen Wand: beide Laengen in Katalogreihenfolge",
+    LH.filter(e => e.art === "standard").map(e => e.label).join("|")
+      === "Gewindestange 1050 mm|Gewindestange 820 mm");
+  ok("[D-4] Kopplungsmuttern bekommen keine eigene Stangenfarbe",
+    !LH.some(e => /Kopplung/.test(e.label)) && !zehn.includes(SPANN_FARBE.mutter));
+
+  // Baugruppenbild: Striche in der Farbe ihrer Laenge, ueber den Katalog durchgereicht
+  const abN = montageAbschnitte(WN);
+  const bild = abN.map(a => abschnittSvg(WN, a, 900, 430, { stangen_laengen_mm: KL })).join("");
+  ok("[D-4] Modul 5: das 820er Stueck der niedrigen Wand ist gruen, kein Blau-Strich",
+    bild.includes(`stroke="${STANGEN_PALETTE[1]}" stroke-width="2.4"`)
+    && !bild.includes(`stroke="${STANGEN_PALETTE[0]}" stroke-width="2.4"`)
+    && /Gewindestange 820 mm/.test(bild) && !/Gewindestange 1050 mm/.test(bild));
+  ok("[D-4] Modul 5: Seiten und Dokument reichen die Katalogliste an jedes Bild durch",
+    montageSeitenHtml(WN, eingaben, { stangen_laengen_mm: KL }).includes(bild.slice(0, 200))
+    && montageDokument(WN, eingaben, { stangen_laengen_mm: KL }).includes(`stroke="${STANGEN_PALETTE[1]}"`));
+  ok("[D-4] zentraler Export: Montageanleitung faerbt nach dem Katalog",
+    montageHtml(WN, eingaben, KAT6).includes(`stroke="${stangenFarbe(2)}" stroke-width="2.4"`));
+}
 
 // --- Abschnitte der lokalen Wandoberkante (Issue #24, [A-1]/[D-4]) ---------
 // `oberkantenAbschnitte()` ist die KANONISCHE Ableitung der horizontalen Abschnitte der
@@ -1530,7 +1630,9 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       && !kontur.includes(AUSGLEICHSPUNKT.farbe) && !bilder.includes(AUSGLEICHSPUNKT.farbe)
       && dreiecke(kontur).length === 0 && dreiecke(bilder).length === 0);
     ok("[#97] Nicht-Ziel: konturSvg und die Baugruppenbilder bleiben zeichengleich (eingefroren)",
-      kurz(kontur) === "bd04f6aa967bfdb1" && kurz(bilder) === "412df6416ad80f09");
+      // 2026-10-07 ([D-4]) neu eingefroren: allein der Legendentext der Stangen hat sich
+      // geaendert („Standardlänge" -> „Gewindestange <Länge> mm"); Geometrie gleich.
+      kurz(kontur) === "bd04f6aa967bfdb1" && kurz(bilder) === "8ab5d246726b5b79");
   }
   // Die Marke ist DARSTELLUNG: aus ihr wird nichts abgeleitet, und die Punktliste bleibt die
   // eine Quelle der Menge ([A-18]).
@@ -1639,8 +1741,11 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   const bilder200 = montageAbschnitte(W200).map(a => abschnittSvg(W200, a, 900, 430)).join("");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
     kurz(konturSvg(W200, null, 900, 250)) === "0070c1b668325f95"
-    && kurz(bilder200) === "134d44631bacf1ff"
-    && kurz(JSON.stringify(montageSeiten(W200))) === "77530cada2e885f0");
+    // 2026-10-07 ([D-4]) neu eingefroren: nur der Stangen-Legendentext der Bilder hat sich
+    // geaendert („Gewindestange <Länge> mm"), und die Sichtstuecke der Abschnitte tragen
+    // zusaetzlich ihre reale `len_mm`; Reihen, Kanten und Geometrie sind gleich.
+    && kurz(bilder200) === "c22ff973aad2876d"
+    && kurz(JSON.stringify(montageSeiten(W200))) === "e716aec4e268901a");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand nennt keine Ausgleichslage",
     !/Ausgleichslage/.test(montageSeiten(W200).map(s => s.html).join("")));
 }

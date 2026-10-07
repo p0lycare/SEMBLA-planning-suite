@@ -37,6 +37,17 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-05",
+    datum: "2026-10-07",
+    typ: "feature",
+    issue: 112,
+    titel: "Gewindestangen: jede Standardlänge in eigener Farbe nach dem Katalog, Reststück pink, "
+      + "Legende mit Längen",
+    testbitte: "Modul 1 und Modul 7 mit einer Wand öffnen, die 1050- und 820-mm-Stangen nutzt: "
+      + "1050 blau, 820 grün, Reststück pink, Legende „Gewindestange 1050 mm“ usw.; eine niedrige "
+      + "Wand mit nur 820 mm zeigt es ebenfalls grün",
+  },
+  {
     id: "chg-20261007-04",
     datum: "2026-10-07",
     typ: "feature",

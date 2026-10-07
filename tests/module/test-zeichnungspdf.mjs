@@ -307,6 +307,30 @@ ok("die bedingten Legendeneintraege haengen an denselben Abfragen ([D-4])",
   PDF.legendeWand({}).length === spanZahl(Z.legendeHtml({}))
   && !PDF.legendeWand({}).some((e) => /Blechsto\u00df/.test(e.text))
   && PDF.legendeWand(ELEMENTE[1].wandelement).some((e) => /Blechsto\u00df/.test(e.text)));
+// [D-4] seit 2026-10-07: die Stangeneintraege (je Standardlaenge eine Farbe) kommen in
+// beiden Legenden aus `stangenLegendeZ` — mit derselben Katalogliste dieselben Eintraege.
+{
+  const PSV = { rod_lengths_mm: [1050, 820], rod_rest_mm: 100, rod_overhang_mm: 10 };
+  const WH = buildWall("IW-H", 3000, 2200, [], null, PSV);
+  const o = { stangen_laengen_mm: [1050, 820] };
+  const leg = PDF.legendeWand(WH, o).filter((e) => /Gewindestange|Sonderzuschnitt|Reststück/.test(e.text));
+  ok("[D-4] PDF-Legende: je Standardlaenge ein Eintrag mit Laenge, gleiche Farben wie im HTML",
+    leg.map((e) => e.text).join("|") === "Gewindestange 1050 mm|Gewindestange 820 mm|"
+      + "Sonderzuschnitt / abgelängt|Reststück oben (100 mm)"
+    && leg[0].marke_farbe === MONT.STANGEN_PALETTE[0] && leg[1].marke_farbe === MONT.STANGEN_PALETTE[1]
+    && leg.every((e) => Z.legendeHtml(WH, o).includes(`background:${e.marke_farbe}"></i>${e.text}`)));
+  const mit = PDF.blaetterFuerGeschoss({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE,
+    leseEingaben, stangen_laengen_mm: [1200, 1100] });
+  const ohne = PDF.blaetterFuerGeschoss({ mappe: m, geschossId: gsA_EG, elemente: ELEMENTE, leseEingaben });
+  ok("[D-4] Zeichnungs-PDF: die Katalogliste bestimmt die Stangenfarbe des Wandblatts",
+    mit.seiten[1].inhalt.includes(`stroke="${MONT.STANGEN_PALETTE[1]}"`)
+    && !ohne.seiten[1].inhalt.includes(`stroke="${MONT.STANGEN_PALETTE[1]}"`)
+    && ohne.seiten[1].inhalt.includes(`stroke="${MONT.STANGEN_PALETTE[0]}"`));
+  const prj = PDF.blaetterProjekt({ mappe: m, elemente: ELEMENTE, leseEingaben, stangen_laengen_mm: [1200, 1100] });
+  ok("[D-4] blaetterProjekt reicht die Katalogliste an jedes Geschoss durch",
+    prj.geschosse.flatMap((g) => g.seiten).filter((x) => x.art === "wand")
+      .every((x) => x.inhalt.includes(`stroke="${MONT.STANGEN_PALETTE[1]}"`)));
+}
 // #110: derselbe Nachweis fuer das Einlegeblech — der Eintrag haengt an den WIRKSAMEN
 // Zwischenspannpunkten des Rechenkerns, in beiden Legenden an derselben Abfrage. Eine Wand
 // ohne wirksamen Punkt bekommt ihn in KEINER der beiden.

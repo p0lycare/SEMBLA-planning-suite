@@ -102,6 +102,8 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
   STUECK_FARBE: MONT.STUECK_FARBE, STUECK_LABEL: MONT.STUECK_LABEL,
   stueckFarbe: MONT.stueckFarbe, stangenStuecke: MONT.stangenStuecke,
+  // [D-4] Farbrang der Standardlaengen und Stangenlegende — dieselbe Quelle wie Modul 5/7.
+  stangenFarbFolge: MONT.stangenFarbFolge, stangenLegende: MONT.stangenLegende,
   // #91: der EINE Zeichenweg des Bodenblechs — Modul 1 zeigt damit dieselbe reale
   // Teilfolge und dieselben Stossmarken wie Modul 5 und Modul 7 ([A-10]/[D-4]).
   bodenblechSvg: MONT.bodenblechSvg,
@@ -197,11 +199,11 @@ const zleg=()=>document.getElementById('zLegende').innerHTML;
 ok('[#63] Legendenbereich liegt ausserhalb des Plan-SVG (eigenes Element im Markup)',
   /id="zLegende"/.test(html) && /<svg id="plan"[\s\S]*?id="zLegende"/.test(html));
 ok('[#63] Legende benennt den Zuschnitt im eigenen Bereich',
-  /Zuschnitt:/.test(zleg()) && /Standardlänge/.test(zleg()));
+  /Zuschnitt:/.test(zleg()) && /Gewindestange \d+ mm/.test(zleg()));
 ok('[#63] kein Legendentext mehr innerhalb von plan.innerHTML', (()=>{
   const svg=document.getElementById('plan').innerHTML;
   return !/Zuschnitt:/.test(svg) && !/Kopplung/.test(svg)
-    && !svg.includes(MONT.STUECK_LABEL.standard); })());
+    && !svg.includes(MONT.STUECK_LABEL.standard) && !/Gewindestange \d+ mm/.test(svg); })());
 // [D-4]: EIN Farbschluessel fuer Modul 1/5/7 — Modul 1 fuehrt keine eigenen Hex-Werte
 // und keine eigenen Klartexte der Stueckarten mehr.
 ok('Zuschnitt-Farben/-Texte kommen aus sembla-montage.js (keine lokalen Werte)',
@@ -210,18 +212,27 @@ ok('Zuschnitt-Farben/-Texte kommen aus sembla-montage.js (keine lokalen Werte)',
   && !new RegExp(MONT.STUECK_FARBE.sonder+'|'+MONT.STUECK_FARBE.rest).test(html));
 ok('Legende nutzt genau die geteilten Farben/Texte aus sembla-montage.js', (()=>{
   const L=zleg();
-  return L.includes(MONT.STUECK_FARBE.standard) && L.includes(MONT.STUECK_LABEL.standard); })());
+  return L.includes(MONT.STUECK_FARBE.standard) && /Gewindestange \d+ mm/.test(L); })());
 // Nur TATSAECHLICH vorhandene Stueckarten — und die Kopplung sichtbar gekennzeichnet.
 // Gleichheit in BEIDE Richtungen und fuer ALLE DREI Arten — auch die Standardlaenge wird nur
 // genannt, wenn sie wirklich vorkommt (kein Sonderfall „Standard immer“).
+/** Vorkommende Standardlaengen einer Wand (absteigend). */
+const wandStd=w=>[...new Set(w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[])
+  .filter(p=>p.art==='standard').map(p=>p.len_mm))].sort((a,b)=>b-a);
 const legendeStimmt=()=>{
   const L=zleg(), w=WP.RESULT.wandelement;
   const alle=w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]);
   const hat=a=>alle.some(p=>p.art===a);
-  for(const a of ['standard','sonder','rest']){
+  for(const a of ['sonder','rest']){
     if(L.includes(MONT.STUECK_LABEL[a])!==hat(a)) return false;          // Text genau bei Vorkommen
     if(L.includes(MONT.STUECK_FARBE[a])!==hat(a)) return false;          // Farbe genau bei Vorkommen
   }
+  // [D-4] seit 2026-10-07: je vorkommende Standardlaenge GENAU ein Eintrag mit ihrer Laenge —
+  // keine zusaetzliche, keine fehlende.
+  const std=[...new Set(alle.filter(p=>p.art==='standard').map(p=>p.len_mm))].sort((a,b)=>b-a);
+  const genannt=[...L.matchAll(/Gewindestange (\d+(?:,\d+)?) mm/g)].map(m=>+m[1].replace(',','.'))
+    .sort((a,b)=>b-a);
+  if(JSON.stringify(std)!==JSON.stringify(genannt)) return false;
   return alle.length>0 && /Kopplung/.test(L);
 };
 ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legendeStimmt());
@@ -2524,10 +2535,13 @@ store.setzeKatalog(KATALOG);
   // Strich an seiner Stelle, je Stoss eine Haarlinie, und die Stueckliste bleibt die des Cores.
   ok('[#97] Stangenzuschnitt und Stueckliste bleiben die des Wandelements', (()=>{
     const hPx=w30.height_mm*sc, X=v=>46+v*sc, Y=v=>46+(hPx-v*sc); let n=0;
+    // [D-4] Farbe je Standardlaenge: Rang in den Standardlaengen des zugeordneten Katalogs.
+    const kat=store.holeKatalog();
+    const folge=MONT.stangenFarbFolge(w30, kat?KAT.stangenKatalogLaengen(kat):[]);
     for(const col of w30.tension_columns) for(const g of col.segments)
       for(const st of MONT.stangenStuecke(w30,g)){
         const l='<line x1="'+X(col.x_mm)+'" y1="'+Y(st.z0_mm)+'" x2="'+X(col.x_mm)
-          +'" y2="'+Y(st.z1_mm)+'" stroke="'+MONT.stueckFarbe(st.art)+'"';
+          +'" y2="'+Y(st.z1_mm)+'" stroke="'+MONT.stueckFarbe(st.art,st.len_mm,folge)+'"';
         if(!svg30.includes(l)) return false;
         n++;
       }
@@ -3970,7 +3984,7 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
       && !zleg().includes(TXT_STOSS) && !zleg().includes(TXT_SONDER)
       && !zleg().includes('class="bpl'); })());
   ok('[#97] … und die uebrige Zuschnittlegende steht unveraendert',
-    /Zuschnitt:/.test(zleg()) && zleg().includes(MONT.STUECK_LABEL.standard));
+    /Zuschnitt:/.test(zleg()) && /Gewindestange \d+ mm/.test(zleg()));
 
   setzen('blech_boden','blech-boden-1250',false);   // Auswahl wieder zuruecknehmen
   WP.applyWand(vorher);   // Ausgangsstand fuer die folgenden Pruefungen
@@ -4465,6 +4479,42 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     && !/function (benennung|modalDialog|tooltips|ungueltig)\(/.test(html));
   store.setzeProduktrolle('i3',[]);
   store.setzeAktiv(idA); globalThis.window.__wpInit();
+}
+
+// [D-4] (2026-10-07) Stangenfarben je Standardlaenge am ECHTEN Pfad: Katalog mit zwei
+// Standardlaengen + Reststueck, Vorbelegung nach [P-18], Neurechnung nach [Z-1]. Die Farbe
+// folgt dem Rang der Laenge im KATALOG — eine niedrige Wand, die nur 820 mm braucht, zeigt
+// sie trotzdem in der Farbe von Rang 2. Keine Laenge steht im Seitencode.
+{
+  const stange=(id,l,rollen)=>({ id, kategorie:'gewindestange', bezeichnung:'M10 '+l, einheit:'Stk',
+    preis:1, gewinde:'M10', laenge_mm:l, rollen });
+  const katD4={ ...KATALOG, produkte:KATALOG.produkte.filter(p=>p.kategorie!=='gewindestange')
+    .concat([stange('gs-1050',1050,['rod_std']), stange('gs-820',820,['rod_std']),
+             stange('gs-rest-100',100,['rod_rest'])]) };
+  store.setzeKatalog(katD4);
+  const P0=MONT.STANGEN_PALETTE[0], P1=MONT.STANGEN_PALETTE[1];
+  const strich=(f)=>new RegExp('<line [^>]*stroke="'+f+'" stroke-width=').test(document.getElementById('plan').innerHTML);
+  const idH=store.speichere('D4-Hoch', buildWall('D4-Hoch',3000,2200,[]));
+  store.setzeAktiv(idH); globalThis.window.__wpInit();
+  const wH=store.aktivesWandelement();
+  ok('[D-4] Modul 1: Voraussetzung — die hohe Wand nutzt 1050 und 820 aus dem Katalog',
+    JSON.stringify(wH.prestress.rod_lengths_mm)==='[1050,820]'
+    && [1050,820].every(l=>wandStd(wH).includes(l)));
+  ok('[D-4] Modul 1: 1050 mm blau, 820 mm gruen in der Wandansicht', strich(P0) && strich(P1));
+  ok('[D-4] Modul 1: Legende nennt beide Laengen mit ihrer Farbe',
+    zleg().includes('<i style="color:'+P0+'"></i>Gewindestange 1050 mm')
+    && zleg().includes('<i style="color:'+P1+'"></i>Gewindestange 820 mm') && legendeStimmt());
+  const idN=store.speichere('D4-Niedrig', buildWall('D4-Niedrig',3000,1000,[]));
+  store.setzeAktiv(idN); globalThis.window.__wpInit();
+  const wN=store.aktivesWandelement();
+  ok('[D-4] Modul 1: niedrige Wand braucht nur 820 mm — und zeigt es GRUEN, nicht blau',
+    JSON.stringify(wandStd(wN))==='[820]' && strich(P1) && !strich(P0)
+    && zleg().includes('<i style="color:'+P1+'"></i>Gewindestange 820 mm')
+    && !/Gewindestange 1050 mm/.test(zleg()) && legendeStimmt());
+  ok('[D-4] Modul 1: Reststueck mit Laenge in eigener Farbe',
+    zleg().includes('<i style="color:'+MONT.STUECK_FARBE.rest+'"></i>'+MONT.STUECK_LABEL.rest+' (100 mm)'));
+  ok('[D-4] Modul 1 fuehrt keine Stangenlaenge im Seitencode', !/\b(1050|820)\b/.test(html));
+  store.setzeKatalog(KATALOG); store.setzeAktiv(idA); globalThis.window.__wpInit();
 }
 
 // Issue #6 (M1): ohne aktives Wandelement legt Modul 1 KEINS an, sondern verweist auf Modul 0.

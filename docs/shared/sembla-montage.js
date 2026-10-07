@@ -50,17 +50,186 @@ export const UEBERSTAND_MM = 80;
 /**
  * Farbschluessel der Stangenstuecke ([D-4]) — EINE Quelle fuer alle Ausgaben, die den
  * Zuschnitt zeigen: Modul 1 (Wandansicht), Modul 5 (Baugruppenbilder) und Modul 7
- * (technische Zeichnung). Er liegt hier, weil dieselbe Datei schon die Stueckableitung
- * (`stangenEnden`/`stueckArt`) haelt — ein zweiter Farbschluessel waere Drift.
+ * (technische Zeichnung samt Zeichnungs-PDF). Er liegt hier, weil dieselbe Datei schon die
+ * Stueckableitung (`stangenEnden`/`stueckArt`) haelt — ein zweiter Farbschluessel waere Drift.
+ *
+ * `standard` ist die Farbe der LAENGSTEN Standardlaenge (Rang 0 der Palette, s.
+ * `STANGEN_PALETTE`); jede weitere Standardlaenge hat ihre eigene Farbe ([D-4]).
+ * `sonder` (Orange) bleibt allein dem Sonderzuschnitt vorbehalten. `rest` ist seit dem
+ * 2026-10-07 PINK statt Violett: das fruehere `#7a3fd6` lag mit ΔE ≈ 10 unmittelbar neben dem
+ * Verzahnungs-Violett `#8b5cf6` (`FARBE.verzahnung`, gestrichelte senkrechte Grenzen) und war
+ * davon im Blatt nicht zu unterscheiden.
  */
-export const STUECK_FARBE = { standard: "#1f6feb", sonder: "#e8702a", rest: "#7a3fd6" };
+export const STUECK_FARBE = { standard: "#1f6feb", sonder: "#e8702a", rest: "#e64980" };
 
 /** Klartext der Stueckarten — identisch in Wandansicht, Baugruppenbild und Zeichnungslegende. */
 export const STUECK_LABEL = { standard: "Standardlänge", sonder: "Sonderzuschnitt", rest: "Reststück oben" };
 
-/** Farbe einer Stueckart; unbekannt/fehlend gilt als Standardlaenge (nie eine erfundene Farbe). */
-export function stueckFarbe(art) {
-  return Object.prototype.hasOwnProperty.call(STUECK_FARBE, art) ? STUECK_FARBE[art] : STUECK_FARBE.standard;
+/**
+ * Geordnete Palette der STANDARDLAENGEN ([D-4]): Rang 0 = laengste Standardlaenge (Blau),
+ * Rang 1 = zweitlaengste (Gruen). Reicht sie nicht, erzeugt `stangenFarbe()` weitere Farben
+ * deterministisch. Hier stehen bewusst KEINE Laengen — welche Laenge welchen Rang hat, folgt
+ * allein aus dem Katalog (`stangenFarbFolge`).
+ */
+export const STANGEN_PALETTE = Object.freeze(["#1f6feb", "#3a9d23"]);
+
+/**
+ * Kennfarben, die NICHT in dieser Datei definiert sind, aber im selben Blatt neben den
+ * Stangen stehen (`FARBE`/`BRANDKLASSE` in `sembla-zeichnung.js`, Steinfarben). Sie gehen
+ * nur in die Abstandspruefung der erzeugten Stangenfarben ein; dass die Liste vollstaendig
+ * ist, sichert der Test gegen `FARBE` (Drift faellt dort auf).
+ */
+const _FREMDE_KENNFARBEN = [
+  "#8b5cf6", "#c9461c", "#0a7f8c", "#0b7285", "#5b6673", "#3a4350", "#13202e", "#46505e",
+  "#e3e6ea", "#cbd0d6", "#9aa1a9", "#7c838c", "#8f96a0", "#cfd3d8", "#bcc2c9", "#7d848c",
+  "#e9ebee", "#c3c8cf", "#8a93a0", "#6b7682", "#ffffff",
+];
+
+/** Alle belegten Kennfarben, gegen die eine erzeugte Stangenfarbe geprueft wird. */
+export function belegteKennfarben() {
+  return [STUECK_FARBE.sonder, STUECK_FARBE.rest, BLECHSTOSS.farbe, AUSSPARUNG.farbe,
+    AUSGLEICHSPUNKT.farbe, SPANN_FARBE.platte, SPANN_FARBE.mutter, ZWISCHENPUNKT.farbe,
+    DECKENANSCHLUSS.farbe, ..._FREMDE_KENNFARBEN];
+}
+
+/** Mindestabstand (CIE76, ΔE) einer erzeugten Stangenfarbe zu allen belegten Farben. */
+export const STANGEN_ABSTAND_MIN = 30;
+
+function _lab(hex) {
+  let h = String(hex).replace("#", "");
+  if (h.length === 3) h = [...h].map((c) => c + c).join("");
+  const [r, g, b] = [0, 2, 4].map((i) => {
+    const c = parseInt(h.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
+  const fx = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
+  const fy = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
+  const fz = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+/** Farbabstand ΔE (CIE76) zweier Hex-Farben. */
+export function farbAbstand(a, b) {
+  const A = _lab(a), B = _lab(b);
+  return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+}
+
+function _hsl(h, s, l) {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return "#" + [f(0), f(8), f(4)].map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Zustand des Farberzeugers. Die Folge ist rein deterministisch und wird deshalb fortlaufend
+ * zwischengespeichert — MIT Zaehler und Schwelle, damit dasselbe Rang-Ergebnis entsteht,
+ * gleich in welcher Reihenfolge die Raenge abgefragt werden.
+ * @type {{farben:string[], k:number, schwelle:number, ohne:number}|null}
+ */
+let _gen = null;
+
+/**
+ * Farbe des Rangs `rang` (0 = laengste Standardlaenge). Jenseits von `STANGEN_PALETTE` wird
+ * deterministisch weitergezaehlt: Farbton im goldenen Winkel (137,5°) rotiert, drei
+ * Helligkeitsstufen im Wechsel, und angenommen wird nur ein Kandidat mit mindestens
+ * `STANGEN_ABSTAND_MIN` zu allen belegten Kennfarben UND allen frueheren Stangenfarben.
+ * Findet sich lange keiner mehr, sinkt die Schwelle stufenweise — so endet die Folge immer,
+ * und sie haengt an nichts als an ihrem Rang (keine Wand, kein Zufall).
+ * @param {number} rang
+ */
+export function stangenFarbe(rang) {
+  const n = Number.isInteger(rang) && rang >= 0 ? rang : 0;
+  if (!_gen) _gen = { farben: STANGEN_PALETTE.slice(), k: 0, schwelle: STANGEN_ABSTAND_MIN, ohne: 0 };
+  const g = _gen;
+  if (n < g.farben.length) return g.farben[n];
+  const belegt = [...belegteKennfarben(), ...g.farben];
+  while (g.farben.length <= n) {
+    const c = _hsl((g.k * 137.508) % 360, 0.75, [0.4, 0.3, 0.5][Math.floor(g.k / 40) % 3]);
+    g.k++;
+    if (Math.min(...belegt.map((x) => farbAbstand(c, x))) >= g.schwelle) {
+      g.farben.push(c); belegt.push(c); g.ohne = 0;
+    } else if (++g.ohne >= 120) { g.schwelle = Math.max(0, g.schwelle - 5); g.ohne = 0; }
+  }
+  return g.farben[n];
+}
+
+/** Laengenschluessel (0,1 mm) — Kommastellen aus Fliesskomma duerfen keine Farbe wechseln. */
+const _lk = (x) => Math.round(+x * 10) / 10;
+const _laengen = (arr) => [...new Set((Array.isArray(arr) ? arr : [])
+  .map(Number).filter((x) => Number.isFinite(x) && x > 0).map(_lk))].sort((a, b) => b - a);
+
+/** Alle gezeichneten Stangenstuecke der Wand (alle Straenge, alle Segmente). */
+export function wandStangenStuecke(w) {
+  const out = [];
+  for (const col of ((w && w.tension_columns) || []))
+    for (const sg of _segmente(w, col)) out.push(...stangenStuecke(w, sg));
+  return out;
+}
+
+/**
+ * Rangfolge der Standardlaengen fuer die Farbe ([D-4]) — absteigend, laengste zuerst.
+ *
+ * Maßgebend sind die STANDARDLAENGEN DES KATALOGS (`katalogLaengen`, aus
+ * `stangenKatalogLaengen()` in `sembla-katalog.js`), NICHT die Stuecke der einzelnen Wand:
+ * sonst bekaeme dieselbe Laenge je Wand eine andere Farbe. Kommt eine Laenge in den Katalog,
+ * waechst die Folge von selbst mit.
+ *
+ * Fehlt die Katalogliste (Alt-Bundle, Aufruf ohne Katalog), gilt die im Wandelement
+ * gefuehrte Auswahl `prestress.rod_lengths_mm`. Laengen der Wand, die in der Basis nicht
+ * vorkommen (Auswahl oder reale Standardstuecke), werden HINTEN angehaengt — sie verschieben
+ * die Katalograenge also nie. Es wird keine Laenge erfunden.
+ * @param {any} w Wandelement @param {number[]} [katalogLaengen]
+ * @returns {number[]}
+ */
+export function stangenFarbFolge(w, katalogLaengen) {
+  const kat = _laengen(katalogLaengen);
+  const wand = _laengen(w && w.prestress && w.prestress.rod_lengths_mm);
+  const basis = kat.length ? kat : wand;
+  const stuecke = wandStangenStuecke(w).filter((p) => p.art === "standard").map((p) => p.len_mm);
+  const extra = _laengen([...wand, ...stuecke]).filter((x) => !basis.includes(x));
+  return [...basis, ...extra];
+}
+
+/**
+ * Farbe eines Stangenstuecks ([D-4]). `sonder` und `rest` haben je eine feste Farbe; eine
+ * Standardlaenge die Farbe ihres Rangs in `folge` (`stangenFarbFolge`). Unbekannte Art,
+ * fehlende Laenge oder fehlende Folge gelten als Rang 0 — der bisherige Standard, nie eine
+ * erfundene Farbe.
+ * @param {string} art @param {number} [lenMm] @param {number[]} [folge]
+ */
+export function stueckFarbe(art, lenMm, folge) {
+  if (art === "sonder") return STUECK_FARBE.sonder;
+  if (art === "rest") return STUECK_FARBE.rest;
+  const i = (Array.isArray(folge) && lenMm != null) ? folge.indexOf(_lk(lenMm)) : -1;
+  return stangenFarbe(i >= 0 ? i : 0);
+}
+
+/** Laenge fuer die Legende: ganze mm ohne, sonst mit Dezimalkomma. */
+const _mmText = (x) => String(_lk(x)).replace(".", ",") + " mm";
+
+/**
+ * Legendeneintraege der Stangen ([D-4]) — NUR was in `stuecke` wirklich vorkommt: jede
+ * Standardlaenge mit ihrer Laenge (in Rangfolge), dann der Sonderzuschnitt, dann das
+ * Reststueck mit seiner Laenge. Kein Eintrag fuer eine nicht gezeichnete Laenge.
+ * @param {Array<{art:string,len_mm:number}>} stuecke @param {number[]} folge
+ * @returns {Array<{art:string,len_mm:number|null,farbe:string,label:string}>}
+ */
+export function stangenLegende(stuecke, folge) {
+  const st = Array.isArray(stuecke) ? stuecke : [];
+  const std = _laengen(st.filter((p) => p.art !== "sonder" && p.art !== "rest").map((p) => p.len_mm));
+  const rang = (x) => { const i = (folge || []).indexOf(x); return i >= 0 ? i : Infinity; };
+  std.sort((a, b) => rang(a) - rang(b) || b - a);
+  const out = std.map((x) => ({ art: "standard", len_mm: x, farbe: stueckFarbe("standard", x, folge),
+    label: `Gewindestange ${_mmText(x)}` }));
+  if (st.some((p) => p.art === "sonder"))
+    out.push({ art: "sonder", len_mm: null, farbe: STUECK_FARBE.sonder, label: STUECK_LABEL.sonder });
+  for (const x of _laengen(st.filter((p) => p.art === "rest").map((p) => p.len_mm)))
+    out.push({ art: "rest", len_mm: x, farbe: STUECK_FARBE.rest, label: `${STUECK_LABEL.rest} (${_mmText(x)})` });
+  return out;
 }
 
 /**
@@ -104,7 +273,8 @@ export const AUSSPARUNG = { farbe: "#8a6a00", label: "Bodenblech-Aussparung" };
  * unmittelbar in der Zeichenzeile waere genau die Drift, die [D-4] ausschliesst.
  *
  * Die Farbe ist bewusst KEINE der Zuschnittfarben (`STUECK_FARBE` — insbesondere nicht das
- * Reststueck-Violett `#7a3fd6`), keine der Anschlussfarben (`SPANN_FARBE`), nicht die des
+ * Reststueck, bis 2026-10-07 Violett `#7a3fd6`, seither Pink), keine der Anschlussfarben
+ * (`SPANN_FARBE`), nicht die des
  * Einlegeblechs (`ZWISCHENPUNKT`), nicht die des Deckenanschlusses (`DECKENANSCHLUSS`) und nicht
  * die des Blechs selbst (`FARBE.stahl`/`stahl_rand`): das Ausgleichsblech ist ein eigenes Bauteil
  * und darf mit keinem davon verwechselbar sein. Bis #97 war das Violett `#8a5cf6` nur die Farbe
@@ -1098,7 +1268,7 @@ function _stueckeSicht(w, sg, echtMm, obenMm) {
   for (let i = 0; i < sg.stuecke.length; i++) {
     const art = stueckArt(w, sg, i, i === sg.stuecke.length - 1);
     const z1 = z + sg.stuecke[i].len_mm;
-    out.push({ z0_mm: z, z1_mm: Math.min(z1, echtMm), art });
+    out.push({ z0_mm: z, z1_mm: Math.min(z1, echtMm), len_mm: sg.stuecke[i].len_mm, art });
     z = z1; material = z1;
     if (z >= echtMm - 1e-9) break;
   }
@@ -1602,9 +1772,12 @@ function _konturPunkte(w) {
  * Positionsangabe und die Ereignishoehen.
  * @param {any} w @param {any} ab Abschnitt aus montageAbschnitte()
  * @param {number} [vbW] @param {number} [vbH]
+ * @param {{stangen_laengen_mm?:number[]}} [opts] Standardlaengen des Katalogs fuer die
+ *   Stangenfarbe ([D-4], `stangenFarbFolge`); ohne Angabe gilt die Auswahl der Wand.
  */
-export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
+export function abschnittSvg(w, ab, vbW = 900, vbH = 430, opts = {}) {
   const C = _course(w), G = _grid(w), L = w.length_mm;
+  const folge = stangenFarbFolge(w, opts && opts.stangen_laengen_mm);
   // #136 Jede Reihenhoehe und jede Reihenkante kommt aus der kanonischen Kantenliste. Die
   // obere Ausgleichslage erscheint dadurch als GENAU EINE eigene, real niedrigere oberste
   // Reihe mit fortlaufender Nummer — es gibt keine 200-mm-Ersatzgeometrie mehr.
@@ -1685,7 +1858,7 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
     if (st.stuecke_sicht && st.stuecke_sicht.length) {
       for (const p of st.stuecke_sicht)
         s += `<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" `
-          + `stroke="${stueckFarbe(p.art)}" stroke-width="2.4"/>`;
+          + `stroke="${stueckFarbe(p.art, p.len_mm, folge)}" stroke-width="2.4"/>`;
     } else {
       s += `<line x1="${x}" y1="${Y(st.z_unten_mm)}" x2="${x}" y2="${Y(st.zeichen_oben_mm)}" `
         + `stroke="${FARBE.stange}" stroke-width="2.4"/>`;
@@ -1731,7 +1904,7 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
   // Zuschnitt-Legende — Teil des SVG, damit Vorschau (Modul 5) und Export garantiert
   // dasselbe Bild zeigen. Nur die Arten, die in DIESEM Abschnitt gezeichnet wurden;
   // ohne `stuecke` (Alt-Bundle) entfaellt sie ersatzlos ([D-4]).
-  s += _zuschnittLegende(w, ab, padL, vbH - 6);
+  s += _zuschnittLegende(w, ab, padL, vbH - 6, folge, vbW - padR);
 
   // Kopfzeile
   if (ab.art === "schnitt0") {
@@ -1751,61 +1924,76 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430) {
 }
 
 /**
- * Legende des Zuschnitts (Stueckarten) fuer ein Baugruppenbild — dieselbe Reihenfolge
- * und dieselben Texte wie in Modul 1 und Modul 7 ([D-4]). Leer, wenn nichts stueckweise
- * gezeichnet wurde.
+ * Legende des Zuschnitts fuer ein Baugruppenbild — dieselben Eintraege und Texte wie in
+ * Modul 1 und Modul 7 ([D-4], `stangenLegende`): jede vorkommende Standardlaenge mit ihrer
+ * Laenge und Farbe, der Sonderzuschnitt, das Reststueck mit Laenge. Leer, wenn nichts
+ * stueckweise gezeichnet wurde.
  *
  * Seit der realen Bodenblechzerlegung fuehrt sie zusaetzlich den Blechstoss und — nur
  * bei tatsaechlich vorhandenem Teil — den Sonderzuschnitt des Bodenblechs samt seinem
  * NICHT FARBLICHEN Merkmal in Worten. Beides steht ausdruecklich nur dann da, wenn es
  * auch gezeichnet wurde: eine Kennzeichnung ohne Gegenstand waere derselbe leere
  * Kasten, den [D-4] schon fuer die Stueckarten ausschliesst.
+ *
+ * Passt die Zeile nicht bis `xMax`, bricht sie in eine zweite Zeile UEBER der ersten um
+ * (der untere Rand des Bildes reicht fuer zwei Zeilen); sonst bleibt sie einzeilig.
  */
-function _zuschnittLegende(w, ab, x0, y) {
-  const arten = ["standard", "sonder", "rest"]
-    .filter(a => (ab.straenge || []).some(st => (st.stuecke_sicht || []).some(p => p.art === a)));
+function _zuschnittLegende(w, ab, x0, y, folge, xMax = Infinity) {
+  const stuecke = (ab.straenge || []).flatMap(st => st.stuecke_sicht || []);
+  const stangen = stangenLegende(stuecke, folge);
   const stoss = bodenblechStoesse(w).length > 0;
   const sonderBlech = bodenblechTeile(w).some(t => t.art === "sonder");
   // #138 Die Aussparung steht nur da, wenn es wirklich eine gibt — dieselbe Regel wie beim
   // Blechstoss und beim Sonderzuschnitt.
   const ausgespart = bodenblechAussparungen(w).length > 0;
-  if (!arten.length && !stoss && !sonderBlech && !ausgespart) return "";
-  let lx = x0;
-  let s = `<text x="${lx}" y="${y}" font-size="9" fill="${FARBE.text}">Zuschnitt:</text>`;
-  lx += 52;
-  for (const a of arten) {
-    s += `<line x1="${lx}" y1="${y - 3}" x2="${lx + 14}" y2="${y - 3}" stroke="${stueckFarbe(a)}" stroke-width="2.6"/>`
-      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${STUECK_LABEL[a]}</text>`;
-    lx += 26 + STUECK_LABEL[a].length * 5;
-  }
+  if (!stangen.length && !stoss && !sonderBlech && !ausgespart) return "";
+  const txt = (lx, yy, t) => `<text x="${lx + 18}" y="${yy}" font-size="9" fill="${FARBE.text}">${t}</text>`;
+  /** @type {Array<{t:string, svg:(lx:number, yy:number)=>string}>} */
+  const teile = [];
+  for (const e of stangen)
+    teile.push({ t: e.label, svg: (lx, yy) =>
+      `<line x1="${lx}" y1="${yy - 3}" x2="${lx + 14}" y2="${yy - 3}" stroke="${e.farbe}" stroke-width="2.6"/>`
+      + txt(lx, yy, e.label) });
   if (stoss) {
     const t = BLECHSTOSS.label;
     // Das Feld zeigt die Marke SO, WIE SIE IM BLATT STEHT (#91): eine weisse Linie IN
     // einem stahlfarbenen Blechfeld. Eine weisse Linie auf dem hellen Blattgrund allein
     // waere unsichtbar, eine schwarze zeigte eine Farbe, die es im Blatt nicht mehr gibt.
-    s += `<rect x="${lx}" y="${y - 7}" width="14" height="6" fill="${FARBE.stahl}" `
+    teile.push({ t, svg: (lx, yy) =>
+      `<rect x="${lx}" y="${yy - 7}" width="14" height="6" fill="${FARBE.stahl}" `
       + `stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
-      + `<line x1="${lx + 7}" y1="${y - 7}" x2="${lx + 7}" y2="${y - 1}" stroke="${BLECHSTOSS.farbe}" stroke-width="1.6"/>`
-      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
-    lx += 26 + t.length * 5;
+      + `<line x1="${lx + 7}" y1="${yy - 7}" x2="${lx + 7}" y2="${yy - 1}" stroke="${BLECHSTOSS.farbe}" stroke-width="1.6"/>`
+      + txt(lx, yy, t) });
   }
   if (sonderBlech) {
     const t = `Bodenblech ${STUECK_LABEL.sonder}`;
-    s += `<rect x="${lx}" y="${y - 7}" width="14" height="6" fill="${STUECK_FARBE.sonder}" `
-      + `stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
-      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
-    lx += 26 + t.length * 5;
+    teile.push({ t, svg: (lx, yy) =>
+      `<rect x="${lx}" y="${yy - 7}" width="14" height="6" fill="${STUECK_FARBE.sonder}" `
+      + `stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>` + txt(lx, yy, t) });
   }
   if (ausgespart) {
     // Das Feld zeigt die Marke SO, WIE SIE IM BLATT STEHT: ein leerer, gestrichelter Umriss mit
     // Kreuz — ausdruecklich KEIN stahlfarbenes Feld, denn dort liegt gar kein Blech.
     const t = AUSSPARUNG.label;
-    s += `<rect x="${lx}" y="${y - 7}" width="14" height="6" fill="none" `
+    teile.push({ t, svg: (lx, yy) =>
+      `<rect x="${lx}" y="${yy - 7}" width="14" height="6" fill="none" `
       + `stroke="${AUSSPARUNG.farbe}" stroke-width="0.9" stroke-dasharray="2 2"/>`
-      + `<line x1="${lx}" y1="${y - 7}" x2="${lx + 14}" y2="${y - 1}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
-      + `<line x1="${lx}" y1="${y - 1}" x2="${lx + 14}" y2="${y - 7}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
-      + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
+      + `<line x1="${lx}" y1="${yy - 7}" x2="${lx + 14}" y2="${yy - 1}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
+      + `<line x1="${lx}" y1="${yy - 1}" x2="${lx + 14}" y2="${yy - 7}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
+      + txt(lx, yy, t) });
   }
+  // Zeilen bilden: erste Zeile hinter „Zuschnitt:", Umbruch, sobald `xMax` ueberschritten wuerde.
+  const zeilen = [[]];
+  let lx = x0 + 52;
+  for (const e of teile) {
+    const breite = 26 + e.t.length * 5;
+    if (lx + breite > xMax && zeilen[zeilen.length - 1].length) { zeilen.push([]); lx = x0 + 52; }
+    zeilen[zeilen.length - 1].push({ e, lx });
+    lx += breite;
+  }
+  const y0 = y - 11 * (zeilen.length - 1);
+  let s = `<text x="${x0}" y="${y0}" font-size="9" fill="${FARBE.text}">Zuschnitt:</text>`;
+  zeilen.forEach((z, zi) => { for (const { e, lx: x } of z) s += e.svg(x, y0 + 11 * zi); });
   return s;
 }
 
@@ -1958,9 +2146,11 @@ function _bomRows(w) {
  * Seiten der Montageanleitung: Übersichtsseite + je Baugruppenabschnitt eine Seite.
  * Dieselbe Ableitung/Zeichnung nutzen die Vorschau in Modul 5 und der zentrale Export.
  * @param {any} w Wandelement @param {any} [eingaben] Eingaben-Modell (genutzt: `projekt`)
+ * @param {{stangen_laengen_mm?:number[]}} [opts] Standardlaengen des Katalogs fuer die
+ *   Stangenfarben ([D-4]) — durchgereicht an `abschnittSvg`
  * @returns {Array<{art:string,titel:string,html:string,abschnitt:any}>}
  */
-export function montageSeiten(w, eingaben = {}) {
+export function montageSeiten(w, eingaben = {}, opts = {}) {
   const projekt = (eingaben && eingaben.projekt) || {};
   const abschnitte = montageAbschnitte(w);
   const anzahl = abschnitte.length + 1;
@@ -2018,7 +2208,7 @@ export function montageSeiten(w, eingaben = {}) {
       + ab.ereignisse.map(e => `<li><span class="art">${ART_LABEL[e.art]} · ${posCm(e.z_mm)}</span>${e.text}</li>`).join("")
       + "</ol>";
     b += s0 ? "<h3>Fuß-Baugruppe ohne Steinreihen</h3>" : `<h3>Danach montieren: ${ab.reihen_text}</h3>`;
-    b += `<div class="mbild"><svg viewBox="0 0 900 430" preserveAspectRatio="xMidYMid meet">${abschnittSvg(w, ab, 900, 430)}</svg></div>`;
+    b += `<div class="mbild"><svg viewBox="0 0 900 430" preserveAspectRatio="xMidYMid meet">${abschnittSvg(w, ab, 900, 430, opts)}</svg></div>`;
     if (!s0) b += `<div class="mbild"><svg viewBox="0 0 900 210" preserveAspectRatio="xMidYMid meet">${konturSvg(w, ab, 900, 210)}</svg></div>`;
     b += `<h3>Bauteilpositionen ${s0 ? "in Schnitt 0" : "dieses Abschnitts"}</h3><table class="mtab">`
       + "<tr><th>Strang x (ab links)</th><th>Stange von–bis</th><th>Anschluss oben</th></tr>"
@@ -2032,14 +2222,14 @@ export function montageSeiten(w, eingaben = {}) {
 }
 
 /** Seiten-HTML (ohne Dokumenthülle) — identisch in Vorschau-Druck und Export. */
-export function montageSeitenHtml(w, eingaben) {
-  return `<div class="mdoc">${montageSeiten(w, eingaben).map(s => s.html).join("")}</div>`;
+export function montageSeitenHtml(w, eingaben, opts = {}) {
+  return `<div class="mdoc">${montageSeiten(w, eingaben, opts).map(s => s.html).join("")}</div>`;
 }
 
 /** Vollstaendiges, selbsttragendes Dokument (A4, druckbar). */
-export function montageDokument(w, eingaben) {
+export function montageDokument(w, eingaben, opts = {}) {
   const titel = "SEMBLA Montageanleitung — " + (w.name || "Wandelement");
   return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>${_esc(titel)}</title>`
     + `<style>body{margin:0 auto;max-width:190mm;padding:10mm}${MONTAGE_CSS}</style></head>`
-    + `<body>${montageSeitenHtml(w, eingaben)}</body></html>`;
+    + `<body>${montageSeitenHtml(w, eingaben, opts)}</body></html>`;
 }

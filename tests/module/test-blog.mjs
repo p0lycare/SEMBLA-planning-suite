@@ -107,14 +107,28 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
-// Der NEUESTE Eintrag ist die GETRENNTE KOPPLUNGSMUTTER (Stangenstoss / Fuss, [P-18]) — er wird
-// als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert ist eine
+// Der NEUESTE Eintrag sind die STANGENFARBEN JE STANDARDLAENGE ([D-4]) — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert sind eigene Farben je
+// Standardlaenge nach dem Katalog, eine neue Reststueckfarbe und eine Legende mit Laengen.
+// NICHT versprochen werden eine geaenderte Zerlegung, Menge oder Stueckliste.
+const STANGENFARBEN = EINTRAEGE[0];
+ok("[Stangenfarben] ist der neueste Eintrag",
+  STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
+  && /Standardlänge/.test(STANGENFARBEN?.titel || "") && /Farbe/.test(STANGENFARBEN?.titel || "")
+  && /Legende/.test(STANGENFARBEN?.titel || "")
+  && !/Menge|Preis|Zerlegung|Stückliste/i.test(STANGENFARBEN?.titel || ""));
+ok("[Stangenfarben] die Testbitte fuehrt Modul 1 und 7 mit zwei Laengen und der niedrigen Wand",
+  /Modul 1/.test(STANGENFARBEN?.testbitte || "") && /Modul 7/.test(STANGENFARBEN?.testbitte || "")
+  && /820/.test(STANGENFARBEN?.testbitte || "") && /niedrige/.test(STANGENFARBEN?.testbitte || ""));
+
+// Davor kam die GETRENNTE KOPPLUNGSMUTTER (Stangenstoss / Fuss, [P-18]) — seither ueber ihre
+// KENNUNG gesucht. Aussagewahr heisst hier: geliefert ist eine
 // eigene Stuecklistenzeile fuer die Mutter am Bodenblech neben den vorkonfektionierten Muttern am
 // Stangenstoss. NICHT versprochen werden ein neues Produkt, ein anderer Preis oder eine
 // geaenderte Zeichnung.
-const KUPPL = EINTRAEGE[0];
-ok("[Kopplungsmutter Fuß] ist der neueste Eintrag",
-  KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
+const KUPPL = EINTRAEGE.find(e => e.id === "chg-20261007-04");
+ok("[Kopplungsmutter Fuß] steht unmittelbar hinter den Stangenfarben",
+  EINTRAEGE[1] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
   && /Stückliste/.test(KUPPL?.titel || "") && /Bodenblech/.test(KUPPL?.titel || "")
   && /Stangenstoß/.test(KUPPL?.titel || "")
   && !/Preis|Zeichnung|Produkt/i.test(KUPPL?.titel || ""));

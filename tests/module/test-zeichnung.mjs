@@ -1040,11 +1040,61 @@ ok("Testwand enthaelt alle drei Stueckarten (Voraussetzung des Tests)",
   ["standard", "sonder", "rest"].every(a => sollArt(a) > 0));
 ok("Reststueck, Sonderzuschnitt und Standardlaenge sind getrennt eingefaerbt",
   ["standard", "sonder", "rest"].every(a => zaehl(svgR6, STUECK_FARBE[a]) === sollArt(a)));
-ok("Legende erklaert auch das Reststueck am oberen Abschluss",
-  Z.legendeHtml().includes(STUECK_LABEL.rest) && /\[Z-6\]/.test(Z.legendeHtml())
-  && Z.blattHtml(WR6, eingaben, {}).html.includes(STUECK_LABEL.rest));
+ok("Legende erklaert auch das Reststueck am oberen Abschluss (mit seiner Laenge)",
+  Z.legendeHtml(WR6).includes(STUECK_LABEL.rest + " (300 mm)")
+  && Z.blattHtml(WR6, eingaben, {}).html.includes(STUECK_LABEL.rest + " (300 mm)"));
+// [D-4] seit 2026-10-07: die Stangen stehen nur in der Legende, wenn sie gezeichnet wurden.
+ok("[D-4] ohne Wandelement steht keine Stange in der Legende (keine leeren Felder)",
+  !Z.legendeHtml().includes(STUECK_LABEL.rest) && !/Gewindestange \d/.test(Z.legendeHtml()));
 ok("ohne Reststueck steht die Reststueck-Farbe nicht im Blatt-SVG (nichts erfinden)",
   !Z.zeichnungSvg(W, {}).svg.includes(STUECK_FARBE.rest));
+
+// --- [D-4] Stangenfarben je Standardlaenge (2026-10-07) ----------------------
+// Jede Standardlaenge bekommt die Farbe ihres Rangs in den Standardlaengen DES KATALOGS;
+// Modul 7 bekommt die Liste als Laufzeitangabe (`stangen_laengen_mm`), die Legende nennt
+// jede gezeichnete Laenge. Keine Laenge ist im Code verdrahtet.
+{
+  const { STANGEN_PALETTE, stangenFarbe } = await import("../../docs/shared/sembla-montage.js");
+  const { stangenKatalogLaengen } = await import("../../docs/shared/sembla-katalog.js");
+  const KAT5 = JSON.parse(readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog-v5.json", import.meta.url), "utf8"));
+  const KL = stangenKatalogLaengen(KAT5);
+  const PSV = { rod_lengths_mm: [1050, 820], rod_rest_mm: 100, rod_overhang_mm: 10 };
+  const WN = buildWall("IW-N", 3000, 1000, [], null, PSV);       // nur 820 + Sonder + Rest
+  const WH = buildWall("IW-H", 3000, 2200, [], null, PSV);       // 1050 + 820 + Sonder + Rest
+  const stroke = f => new RegExp(`stroke="${f}" stroke-width="[\\d.]+"`);
+  const svgN = Z.zeichnungSvg(WN, { stangen_laengen_mm: KL }).svg;
+  ok("[D-4] Modul 7: das 820er Stueck ist gruen (Katalograng 2), kein Blau-Strich",
+    stroke(STANGEN_PALETTE[1]).test(svgN) && !stroke(STANGEN_PALETTE[0]).test(svgN));
+  const svgH = Z.zeichnungSvg(WH, { stangen_laengen_mm: KL }).svg;
+  ok("[D-4] Modul 7: hohe Wand zeigt 1050 blau und 820 gruen",
+    stroke(STANGEN_PALETTE[0]).test(svgH) && stroke(STANGEN_PALETTE[1]).test(svgH));
+  const legN = Z.legendeHtml(WN, { stangen_laengen_mm: KL });
+  ok("[D-4] Modul-7-Legende nennt nur die gezeichnete Laenge mit ihrer Farbe",
+    legN.includes(`background:${STANGEN_PALETTE[1]}"></i>Gewindestange 820 mm`)
+    && !/Gewindestange 1050 mm/.test(legN)
+    && legN.includes(`${STUECK_LABEL.sonder} / abgelängt`)
+    && legN.includes(`background:${STUECK_FARBE.rest}"></i>${STUECK_LABEL.rest} (100 mm)`));
+  ok("[D-4] Blatt reicht die Laufzeitangabe an Zeichnung und Legende durch",
+    (() => { const b = Z.blattHtml(WN, eingaben, { stangen_laengen_mm: KL }).html;
+      return b.includes(`background:${STANGEN_PALETTE[1]}"></i>Gewindestange 820 mm`)
+        && stroke(STANGEN_PALETTE[1]).test(b); })());
+  ok("[D-4] die Laufzeitangabe ist keine gespeicherte Darstellungsoption",
+    !("stangen_laengen_mm" in Z.normOptionen({})) && !("stangen_laengen_mm" in Z.optionenAusEingaben(eingaben)));
+  // Neue, laengere Standardlaenge im Katalog: Farben wachsen ohne Codeaenderung mit.
+  const KAT6 = JSON.parse(JSON.stringify(KAT5));
+  KAT6.produkte.push({ ...KAT6.produkte.find(p => p.id === "gewindestange-m10-1050"),
+    id: "gewindestange-m10-1200", laenge_mm: 1200 });
+  const legN6 = Z.legendeHtml(WN, { stangen_laengen_mm: stangenKatalogLaengen(KAT6) });
+  ok("[D-4] neue Katalogfassung: 820 mm bekommt Rang 3 — dieselbe Farbe in allen Waenden",
+    legN6.includes(`background:${stangenFarbe(2)}"></i>Gewindestange 820 mm`)
+    && Z.legendeHtml(WH, { stangen_laengen_mm: stangenKatalogLaengen(KAT6) })
+      .includes(`background:${stangenFarbe(2)}"></i>Gewindestange 820 mm`));
+  // Zentraler Export: der zugeordnete Katalog bestimmt die Farben auch in SVG und HTML-Blatt.
+  ok("[D-4] zentraler Export (SVG + Blatt) faerbt nach dem Katalog",
+    zeichnungSvgText(WN, eingaben, KAT6).includes(`stroke="${stangenFarbe(2)}"`)
+    && zeichnungHtml(WN, eingaben, KAT6).includes(`stroke="${stangenFarbe(2)}"`)
+    && zeichnungHtml(WN, eingaben).includes(`stroke="${STANGEN_PALETTE[1]}"`));
+}
 
 // --- 4) [D-3] Bemassung: reine Millimeterwerte ohne Suffix (#64) -----------
 // Geprueft wird an den gezeichneten MASSTEXTKNOTEN, nicht an einem globalen
@@ -1148,7 +1198,7 @@ ok("Strangzeilen je Spannachse", Z.strangZeilen(W).length === W.tension_columns.
     teile.every(t => zeichnungHtml(W, eingaben).includes(t.id)));
 }
 ok("Legende erklaert den Darstellungsschluessel",
-  /Gewindestange \(Standardlänge\)/.test(blatt.html) && /Sonderlänge/.test(blatt.html)
+  /Gewindestange \d+ mm/.test(blatt.html) && /Sonderlänge/.test(blatt.html)
   && /Boden-\/Kopfblech/.test(blatt.html));
 
 // [D-4]/[Z-6] Das Reststueck am oberen Wandabschluss ist ein EIGENES Bauteil und muss auf dem
@@ -1163,7 +1213,7 @@ ok("Legende erklaert den Darstellungsschluessel",
   ok("[D-4] Reststueck wird in eigener Farbe gezeichnet",
     svg.includes(Z.FARBE.stange_rest) && Z.FARBE.stange_rest !== Z.FARBE.stange
     && Z.FARBE.stange_rest !== Z.FARBE.stange_sonder);
-  ok("[D-4] Legende benennt das Reststueck", /Reststück oben/.test(Z.legendeHtml()));
+  ok("[D-4] Legende benennt das Reststueck", /Reststück oben \(100 mm\)/.test(Z.legendeHtml(WR)));
   const zr = Z.vorspannZeilen(WR).find(r => r.label === "Reststück oben");
   ok("[Z-6] Reststueck als eigene Kennzahl mit Laenge und Anzahl",
     !!zr && /10,0 cm/.test(zr.wert) && zr.wert.includes(stuecke.filter(s => s.art === "rest").length + "×"));
@@ -2161,9 +2211,12 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   const ohneKette = t => String(t).replace(/<g class="bbkette">.*?<\/g>/g, "");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
     kurz(ohneKette(Z.zeichnungSvg(W136r, {}).svg)) === "2ed0ad9c3fa45236"
-    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "fd61ac6375484bd5"
+    // 2026-10-07 ([D-4], Stangenfarben je Laenge): das Blatt-HTML neu eingefroren — geaendert
+    // ist allein die Legende („Gewindestange 1100 mm" statt „Gewindestange (Standardlänge)",
+    // kein Reststueck-Eintrag mehr, weil diese Wand keines hat). Das SVG ist unveraendert.
+    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "07879583f609eca8"
     && kurz(Z.zeichnungSvg(W136r, {}).svg) === "e2cb3a0f3434fadc"
-    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "f91c4912d24aaad0");
+    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "c794b8eff81d4140");
   ok("[#136] Nicht-Ziel: ohne Ausgleichslage entsteht keine Ausgleichs-Massangabe",
     !Z.zeichnungSvg(W136r, {}).svg.includes("ausgleichslage"));
 

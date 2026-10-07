@@ -223,7 +223,13 @@ Standardlänge — das folgt aus [Z-2] und ist nicht wählbar. Ohne Auswahl gibt
 (der Core nutzt seinen Altstand-Fallback) und meldet die fehlende Auswahl sichtbar. Der **Zuschnitt
 ist Feedback in der Wandansicht**: gezeichnet werden die realen `stuecke` je Segment (Standard /
 Sonderzuschnitt / Reststück farblich getrennt, Kopplungsmarke `class="kop"` an jedem Stoß, Legende),
-nicht ein Strich je Strang.
+nicht ein Strich je Strang. **Jede Standardlänge hat ihre eigene Farbe ([D-4], 2026-10-07)**: Rang der
+Länge in den Standardlängen **des Katalogs** (`stangenKatalogLaengen` in `sembla-katalog.js`,
+absteigend; Palette `STANGEN_PALETTE` + deterministische Fortsetzung `stangenFarbe` in
+`sembla-montage.js`), nie der Rang in den Stücken der Wand und nie eine Länge im Code. Die Liste reist
+als Laufzeitangabe `stangen_laengen_mm` (nicht gespeichert) in Modul 1/5/7, Export und PDF; ohne sie
+gilt `prestress.rod_lengths_mm`. Sonderzuschnitt Orange, Reststück Pink, Legende je gezeichneter Länge
+(`stangenLegende`).
 
 **Reststück am oberen Wandabschluss (Regel [Z-6]).** Die Wände werden **im Innenraum** montiert —
 unter der Decke lässt sich keine lange Gewindestange mehr einfädeln. Jedes Vorspannsegment, das an

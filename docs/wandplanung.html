@@ -325,7 +325,7 @@ let AX;
 // dieselben Funktionen, aus denen das Blatt von Modul 7 seine z-Koordinaten bezieht.
 let wandLagenKanten, lagenOberkanteMm;
 // Darstellungsschlüssel des Zuschnitts ([D-4]) — aus sembla-montage.js, nicht lokal:
-let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke;
+let STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, stangenFarbFolge, stangenLegende;
 // Darstellungsschlüssel und Symbol des Zwischenspannpunkts ([A-14]) — ebenfalls aus
 // sembla-montage.js; die wirksamen Punkte liefert die eine Ableitung des Rechenkerns.
 let ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte;
@@ -989,11 +989,14 @@ function draw(w){
   // rutschen damit HINTER die Stange. Die weißen Haarlinien laufen im selben Akkumulator mit
   // und liegen damit ebenfalls vor der Mutter — genau das verlangt die Rückmeldung.
   let vorn='', stangen='';
+  // Farbrang der Standardlängen ([D-4]): aus dem Katalog, nicht aus den Stücken dieser Wand —
+  // dieselbe Länge hat damit in jeder Wand und in Modul 5/7 dieselbe Farbe.
+  const FOLGE=stangenFolge(w);
   for(const col of w.tension_columns){ const x=X(col.x_mm);
     for(const g of col.segments){
       const st=stangenStuecke(w,g);
       st.forEach((p,i)=>{
-        stangen+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art)}" stroke-width="${STANGE_SW}"/>`;
+        stangen+=`<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" stroke="${stueckFarbe(p.art,p.len_mm,FOLGE)}" stroke-width="${STANGE_SW}"/>`;
         // Kopplung an jedem inneren Stoß (Stücke − 1): die KOPPLUNGSMUTTER als langer Zylinder
         // in Seitenansicht (#110) — dieselbe Funktion wie in Modul 7, deutlich länger als eine
         // normale Mutter. Die Klasse `kop` bleibt, sie trennt das Bauteil vom Legendenmuster.
@@ -1211,6 +1214,11 @@ function draw(w){
 // weder Wandkontur noch obere Anschlüsse, Reststück-Überstand oder Bemaßung überdeckt. Genannt
 // werden nur TATSÄCHLICH vorhandene Stückarten ([Z-2]/[Z-6]) plus die Kopplung; Farbschlüssel und
 // Klartexte kommen unverändert aus sembla-montage.js ([D-4]) — hier wird nichts erfunden.
+/** Rangfolge der Stangenfarben ([D-4]): Standardlängen des Katalogs, sonst die der Wand. */
+function stangenFolge(w){
+  const k=prodKatalog();
+  return stangenFarbFolge(w, (k&&KAT&&KAT.stangenKatalogLaengen)?KAT.stangenKatalogLaengen(k):[]);
+}
 function renderZLegende(w){
   const box=$('zLegende'); if(!box) return;
   // [A-14] Der Zwischenspannpunkt steht als eigener Eintrag daneben — genannt nur, wenn es
@@ -1256,10 +1264,13 @@ function renderZLegende(w){
   // Auch die Standardlänge wird nur genannt, wenn sie wirklich vorkommt: ein Stand aus reinem
   // Sonderzuschnitt plus Reststück ([Z-2]/[Z-6]) hat keine Standardlänge, und die Legende darf
   // keine behaupten. Reihenfolge bleibt standard · sonder · rest.
-  const hat=a=>alle.some(p=>p.art===a);
-  const teile=['standard','sonder','rest'].filter(hat);
+  // Je vorkommende Standardlänge ein eigener Eintrag mit Länge und Farbe, dann Sonderzuschnitt
+  // und Reststück — Einträge und Wortlaut aus stangenLegende() (sembla-montage.js), derselben
+  // Quelle wie Modul 5 und Modul 7. Reihenfolge bleibt standard · sonder · rest.
+  const teile=stangenLegende(w.tension_columns.flatMap(c=>c.segments).flatMap(g=>stangenStuecke(w,g)),
+    stangenFolge(w));
   box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
-    + teile.map(a=>`<span><i style="color:${stueckFarbe(a)}"></i>${STUECK_LABEL[a]}</span>`).join('')
+    + teile.map(e=>`<span><i style="color:${e.farbe}"></i>${e.label}</span>`).join('')
     + `<span><i class="kop" style="color:${SPANN_FARBE.mutter}"></i>Kopplung</span>`
     // Reihenfolge wie in legendeHtml() (Modul 7): erst die Bleche, dann die Punkte.
     + blechEintraege + zpEintrag + dcEintrag + agEintrag;
@@ -2492,7 +2503,7 @@ window.__wpInit=function(){
   AX=S.AX;
   wandLagenKanten=S.wandLagenKanten; lagenOberkanteMm=S.lagenOberkanteMm;
   STUECK_FARBE=S.STUECK_FARBE; STUECK_LABEL=S.STUECK_LABEL; stueckFarbe=S.stueckFarbe;
-  stangenStuecke=S.stangenStuecke;
+  stangenStuecke=S.stangenStuecke; stangenFarbFolge=S.stangenFarbFolge; stangenLegende=S.stangenLegende;
   ZWISCHENPUNKT=S.ZWISCHENPUNKT; zwischenpunktSvg=S.zwischenpunktSvg;
   bodenblechSvg=S.bodenblechSvg;
   bodenblechTeile=S.bodenblechTeile; bodenblechStoesse=S.bodenblechStoesse;
@@ -2534,6 +2545,9 @@ window.__wpInit=function(){
   import * as store from './shared/storage.js';
   import * as KAT from './shared/sembla-katalog.js';
   import { STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke,
+           // [D-4] Farbrang der Standardlängen und die Stangenlegende — dieselbe Quelle wie
+           // Modul 5 und Modul 7.
+           stangenFarbFolge, stangenLegende,
            ZWISCHENPUNKT, zwischenpunktSvg, DECKENANSCHLUSS, deckenanschlussSvg,
            // [A-20]…[A-24]/#97: Marke, Kennfarbe und Klartext des Ausgleichspunkts — dieselbe
            // Funktion, die das Blatt von Modul 7 benutzt ([D-4]).
@@ -2565,6 +2579,7 @@ window.__wpInit=function(){
                     ROLLE_RECHNUNG, AUSGLEICH_KONFLIKT, ausgleichSteinHoehen,
                     oeffneReparatur,
                     STUECK_FARBE, STUECK_LABEL, stueckFarbe, stangenStuecke, bodenblechSvg,
+                    stangenFarbFolge, stangenLegende,
                     bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
                     bodenblechAussparungen, AUSSPARUNG,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
