@@ -903,8 +903,23 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   const hoehe = s => num(s, "height")[0];
   const breite = s => num(s, "width")[0];
 
-  ok("[#110] Kennfarben der Spannkomponenten sind die bisherigen Werte (keine neue Farbe)",
+  ok("[#110] Kennfarben von Spannplatte und Mutter sind die bisherigen Werte",
     SPANN_FARBE.platte === "#14559c" && SPANN_FARBE.mutter === "#0b3a73");
+  // 2026-10-07: Schraube und Kopplungsmutter tragen eigene Kennfarben. Die Kopplungsmutter ist
+  // ein kraeftiges Pink, das weder mit dem Reststueck noch mit dem Ausgleichspunkt verwechselbar
+  // ist (Abstand mindestens wie bei den erzeugten Stangenfarben), und beide sind belegt.
+  ok("[2026-10-07] Schraube und Kopplungsmutter haben eigene, unterscheidbare Kennfarben",
+    Object.keys(SPANN_FARBE).sort().join() === "kupplung,mutter,platte,schraube"
+    && new Set(Object.values(SPANN_FARBE)).size === 4
+    && farbAbstand(SPANN_FARBE.kupplung, STUECK_FARBE.rest) >= STANGEN_ABSTAND_MIN
+    && farbAbstand(SPANN_FARBE.kupplung, AUSGLEICHSPUNKT.farbe) >= STANGEN_ABSTAND_MIN
+    && [...STANGEN_PALETTE, STUECK_FARBE.standard].every(c =>
+      farbAbstand(SPANN_FARBE.kupplung, c) >= STANGEN_ABSTAND_MIN
+      && farbAbstand(SPANN_FARBE.schraube, c) >= STANGEN_ABSTAND_MIN)
+    && belegteKennfarben().includes(SPANN_FARBE.kupplung)
+    && belegteKennfarben().includes(SPANN_FARBE.schraube)
+    && belegteKennfarben().filter(c => c !== SPANN_FARBE.schraube)
+      .every(c => farbAbstand(SPANN_FARBE.schraube, c) >= STANGEN_ABSTAND_MIN));
   ok("[#110] die Zeichnung (Modul 7) verdrahtet genau diesen Schluessel, kein zweiter Farbsatz",
     Z_FARBE.platte === SPANN_FARBE.platte && Z_FARBE.mutter === SPANN_FARBE.mutter);
 
@@ -915,8 +930,9 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     /^<rect /.test(mu) && !/<line /.test(mu) && (mu.match(/<rect /g) || []).length === 1
     && !/<circle/.test(mu) && !/<polygon/.test(mu)
     && /^<rect /.test(ku) && !/<line /.test(ku) && !/<circle/.test(ku) && !/<polygon/.test(ku));
-  ok("[#110] beide tragen die Mutterfarbe",
-    mu.includes(SPANN_FARBE.mutter) && ku.includes(SPANN_FARBE.mutter));
+  ok("[2026-10-07] die Mutter traegt die Mutterfarbe, die Kopplungsmutter ihre eigene (Pink)",
+    mu.includes(SPANN_FARBE.mutter) && ku.includes(SPANN_FARBE.kupplung)
+    && !ku.includes(SPANN_FARBE.mutter));
   // Das Akzeptanzkriterium aus #110 gilt weiter: MESSBAR laenger, nicht nur "etwas groesser".
   ok("[#110] die Kopplungsmutter ist messbar laenger als die normale Mutter (Faktor 2,5)",
     hoehe(ku) > hoehe(mu) && Math.abs(hoehe(ku) / hoehe(mu) - 2.5) < 1e-9);
@@ -961,10 +977,9 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     const ys = num(sr, "y"), hs = num(sr, "height"), bs = num(sr, "width");
     ok("[#97] die Schraube sind ZWEI Zylinder: Schaft und Kopf",
       (sr.match(/<rect /g) || []).length === 2 && !/<circle/.test(sr) && !/<polygon/.test(sr)
-      && sr.includes(SPANN_FARBE.mutter));
-    // Diese Aussage ist die des SYMBOLZWEIGS (Aufruf ohne Schluesselweite) und bleibt genau so
-    // erhalten. Auf dem masstabsgetreuen Zweig gilt sie seit dem Folgepaket zu #97 NICHT mehr:
-    // dort tragen Kopf und Schaft dieselbe gefuehrte Schluesselweite (s. eigener Block unten).
+      && sr.includes(SPANN_FARBE.schraube) && !sr.includes(SPANN_FARBE.mutter));
+    // Aussage des SYMBOLZWEIGS (Aufruf ohne Masse). Seit 2026-10-07 gilt sie auch auf dem
+    // masstabsgetreuen Zweig wieder: Kopf = SW, Schaft = Gewinde (s. eigener Block unten).
     ok("[#97] ohne Schluesselweite ist der Kopf dicker als der Schaft (Symbolzweig)",
       bs[1] > bs[0] && Math.abs(bs[0] - SPANN_MM.schaft_d * E1) < 1e-9
       && Math.abs(bs[1] - SPANN_MM.kopf_d * E1) < 1e-9);
@@ -1026,6 +1041,8 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         const kop = kopplungsmutterSvg(100, yb, E1, { ...opt, auf: true });
         const yS = num(sr, "y")[0], hK = hoehe(kop);
         return Math.abs(yS - (yb - hK / 2)) < 1e-9 && yS > num(kop, "y")[0]; })());
+    // Die Mutternhoehe beruehrt die eigenen Masse der Schraube nicht. Ohne SW bleibt der Kopf
+    // (seit 2026-10-07: ganz, Breite UND Hoehe) Symbolmass, ohne Gewinde der Schaft.
     ok("[#97] ohne Mass bleibt die Schraube bit-gleich, und ihre Symbolmasse aendern sich nie",
       schraubeSvg(100, 300, E1, 6, { hoehe_mm: 0, sc: scM1 }) === schraubeSvg(100, 300, E1, 6)
       && num(schraubeSvg(0, 0, E1, 0, { hoehe_mm: 30, sc: scM1 }), "width")
@@ -1207,49 +1224,57 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       Math.abs(bb(zwischenpunktSvg(0, 0, { e: E1, breite: 7, breite_mm: 30, sc: scM1 })) - 7) < 1e-9);
   }
 
-  // --- Masstabsgetreue BREITE DER SECHSKANTSCHRAUBE FUSS (#97) ------------------------------
-  // Gefuehrt ist genau EINE Schluesselweite (`prestress.senkkopf_sw_mm`), und sie gilt nach dem
-  // Paketentscheid fuer Kopf UND Schaft: ein Schaft-/Gewindedurchmesser liegt nicht vor und
-  // wuerde erfunden. Der Kopf ist damit auf diesem Zweig nicht mehr breiter als der Schaft — er
-  // ragt weiterhin unter dem Bodenblech heraus. Die KOPFHOEHE bleibt Symbolmass (N1).
+  // --- Masstaebliche SECHSKANTSCHRAUBE FUSS (#97, Auftrag 2026-10-07) ---------------------
+  // Der Paketentscheid aus #97 (Kopf = Schaft = SW) ist aufgehoben: der SCHAFT ist der
+  // Gewinde-Nenndurchmesser (`d_mm`, M10 -> 10 mm), der KOPF so breit wie die Schluesselweite
+  // (`sw_mm`, 17 mm) und mit `sc` so hoch wie das Normmass DIN 933 M10 (`kopf_h_mm`, 7 mm).
+  // Jede Achse faellt fuer sich auf ihr Symbolmass zurueck; erfunden wird keines.
   {
     const blech = 6, yb = 300;
     const srU = schraubeSvg(100, yb, E1, blech);                       // ohne Mass = Symbolmass
-    const sr = schraubeSvg(100, yb, E1, blech, { sw_mm: 17, sc: scM1 });
+    const sr = schraubeSvg(100, yb, E1, blech, { sw_mm: 17, d_mm: 10, sc: scM1 });
     const bs = num(sr, "width"), hs = num(sr, "height"), ys = num(sr, "y");
-    ok("[#97] Kopf UND Schaft sind `sw_mm * sc` breit",
-      Math.abs(bs[0] - 17 * scM1) < 1e-9 && Math.abs(bs[1] - 17 * scM1) < 1e-9);
-    ok("[#97] zwei Schluesselweiten ergeben sichtbar verschieden breite Schrauben",
-      (() => { const b13 = num(schraubeSvg(0, 0, E1, 0, { sw_mm: 13, sc: scM1 }), "width");
-        return Math.abs(b13[0] - 13 * scM1) < 1e-9 && b13[0] < bs[0]
-          && Math.abs(bs[0] / b13[0] - 17 / 13) < 1e-9; })());
-    ok("[#97] die KOPFHOEHE bleibt unveraendert Symbolmass (keine Norm genannt, N1)",
-      Math.abs(hs[1] - SPANN_MM.kopf_h * E1) < 1e-9
-      && Math.abs(hs[1] - num(srU, "height")[1]) < 1e-9);
-    ok("[#97] der Kopf ragt weiterhin UNTER dem Bodenblech heraus, der Schaft bleibt zentriert",
+    ok("[2026-10-07] Schaft = Gewinde `d_mm * sc`, Kopf = `sw_mm * sc` — der Kopf ist breiter",
+      Math.abs(bs[0] - 10 * scM1) < 1e-9 && Math.abs(bs[1] - 17 * scM1) < 1e-9 && bs[1] > bs[0]);
+    ok("[2026-10-07] die KOPFHOEHE ist das Normmass DIN 933 M10 (7 mm) mal Masstab",
+      SPANN_MM.kopf_h_mm === 7 && Math.abs(hs[1] - 7 * scM1) < 1e-9);
+    ok("[2026-10-07] Schaft und Kopf haengen je an IHREM Mass",
+      (() => { const b13 = num(schraubeSvg(0, 0, E1, 0, { sw_mm: 13, d_mm: 10, sc: scM1 }), "width");
+        const d8 = num(schraubeSvg(0, 0, E1, 0, { sw_mm: 17, d_mm: 8, sc: scM1 }), "width");
+        return Math.abs(b13[1] - 13 * scM1) < 1e-9 && Math.abs(b13[0] - bs[0]) < 1e-9
+          && Math.abs(d8[0] - 8 * scM1) < 1e-9 && Math.abs(d8[1] - bs[1]) < 1e-9; })());
+    ok("[#97] der Kopf ragt weiterhin UNTER dem Bodenblech heraus, beide bleiben zentriert",
       Math.abs(ys[1] - (yb + blech)) < 1e-9 && ys[1] + hs[1] > yb + blech
       && Math.abs((num(sr, "x")[0] + bs[0] / 2) - 100) < 1e-9
       && Math.abs((num(sr, "x")[1] + bs[1] / 2) - 100) < 1e-9);
-    ok("[#97] der Schaftbeginn haengt allein an der Kopplungsmutter, nicht an der eigenen SW",
+    ok("[#97] der Schaftbeginn haengt allein an der Kopplungsmutter, nicht an den eigenen Massen",
       (() => { const a = num(schraubeSvg(100, yb, E1, blech,
-        { hoehe_mm: 30, sw_mm: 17, sc: scM1 }), "y")[0];
+        { hoehe_mm: 30, sw_mm: 17, d_mm: 10, sc: scM1 }), "y")[0];
         return Math.abs(a - (yb - 30 * scM1 / 2)) < 1e-9
           && Math.abs(num(sr, "y")[0] - (yb - SPANN_MM.kupplung_h * E1 / 2)) < 1e-9; })());
-    ok("[#97] eine schmale Schraube in kleinem Masstab bekommt KEINE Untergrenze",
-      (() => { const b = num(schraubeSvg(0, 0, E7, 0, { sw_mm: 17, sc: 1 / 100 }), "width");
-        return Math.abs(b[0] - 17 / 100) < 1e-9 && Math.abs(b[1] - 17 / 100) < 1e-9
-          && b[0] > 0 && b[1] < SPANN_MM.kopf_d * E7; })());
-    ok("[#97] ohne brauchbares Mass ist die Schraube BIT-GLEICH zum Stand davor",
-      schraubeSvg(100, yb, E1, blech, { sw_mm: 0, sc: scM1 }) === srU
-      && schraubeSvg(100, yb, E1, blech, { sw_mm: null, sc: scM1 }) === srU
-      && schraubeSvg(100, yb, E1, blech, { sw_mm: undefined, sc: scM1 }) === srU
-      && schraubeSvg(100, yb, E1, blech, { sw_mm: "", sc: scM1 }) === srU
-      && schraubeSvg(100, yb, E1, blech, { sw_mm: "krumm", sc: scM1 }) === srU
-      && schraubeSvg(100, yb, E1, blech, { sw_mm: -17, sc: scM1 }) === srU
-      && schraubeSvg(100, yb, E1, blech, { sw_mm: 17 }) === srU            // ohne `sc`
-      && schraubeSvg(100, yb, E1, blech, { sw_mm: 17, sc: 0 }) === srU);
-    ok("[#97] es bleiben ZWEI Rechtecke — kein Bauteil entfaellt",
-      (sr.match(/<rect /g) || []).length === 2 && sr.includes(SPANN_FARBE.mutter));
+    ok("[#97] eine Schraube in kleinem Masstab bekommt KEINE Untergrenze",
+      (() => { const q = schraubeSvg(0, 0, E7, 0, { sw_mm: 17, d_mm: 10, sc: 1 / 100 });
+        const b = num(q, "width"), h = num(q, "height");
+        return Math.abs(b[0] - 10 / 100) < 1e-9 && Math.abs(b[1] - 17 / 100) < 1e-9
+          && Math.abs(h[1] - 7 / 100) < 1e-9 && b[1] < SPANN_MM.kopf_d * E7; })());
+    ok("[2026-10-07] ohne brauchbares Mass ist die Schraube BIT-GLEICH zum Stand davor",
+      [0, null, undefined, "", "krumm", -17].every(v =>
+        schraubeSvg(100, yb, E1, blech, { sw_mm: v, d_mm: v, sc: scM1 }) === srU)
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: 17, d_mm: 10 }) === srU    // ohne `sc`
+      && schraubeSvg(100, yb, E1, blech, { sw_mm: 17, d_mm: 10, sc: 0 }) === srU
+      && Math.abs(num(srU, "height")[1] - SPANN_MM.kopf_h * E1) < 1e-9);
+    ok("[2026-10-07] Kopf und Schaft fallen GETRENNT zurueck — der Kopf aber immer ganz",
+      (() => { const nurD = schraubeSvg(0, 0, E1, 0, { d_mm: 10, sc: scM1 });
+        const nurSw = schraubeSvg(0, 0, E1, 0, { sw_mm: 17, sc: scM1 });
+        const bD = num(nurD, "width"), hD = num(nurD, "height");
+        const bS = num(nurSw, "width"), hS = num(nurSw, "height");
+        return Math.abs(bD[0] - 10 * scM1) < 1e-9 && Math.abs(bD[1] - SPANN_MM.kopf_d * E1) < 1e-9
+          && Math.abs(hD[1] - SPANN_MM.kopf_h * E1) < 1e-9
+          && Math.abs(bS[0] - SPANN_MM.schaft_d * E1) < 1e-9
+          && Math.abs(bS[1] - 17 * scM1) < 1e-9 && Math.abs(hS[1] - 7 * scM1) < 1e-9; })());
+    ok("[#97] es bleiben ZWEI Rechtecke in der Schraubenfarbe — kein Bauteil entfaellt",
+      (sr.match(/<rect /g) || []).length === 2
+      && (sr.match(new RegExp('fill="' + SPANN_FARBE.schraube + '"', "g")) || []).length === 2);
   }
 
   // --- Spannplatte: liegt AUF der Kante, Breite bleibt Bauteilmass -------------------------

@@ -1302,8 +1302,8 @@ function normPrestress(p) {
   // uebrigen Schluesselweiten und die Blechdicken ([A-1]). Kein Produktmass darueber hinaus,
   // keine Produkt-ID und kein Preis wandert dadurch ins Wandelement.
   //
-  // Eine KOPFHOEHE der Schraube gibt es bewusst NICHT: dafuer ist keine Norm genannt, und sie
-  // liesse sich nur erfinden ([P-9]).
+  // Eine KOPFHOEHE der Schraube gibt es hier bewusst NICHT: sie ist ein festes Normmass der
+  // Zeichnung (`SPANN_MM.kopf_h_mm`, DIN 933 M10, seit 2026-10-07) und kein Wandelementfeld.
   //
   // Alle drei OPTIONAL und voneinander UNABHAENGIG: fehlt eines oder ist es ungueltig, entsteht
   // genau dieser Schluessel gar nicht erst und das Ergebnis ist bit-genau das bisherige.
@@ -1313,6 +1313,10 @@ function normPrestress(p) {
   if (zpSw > 0) out.zp_mutter_sw_mm = zpSw;
   const skSw = (p && p.senkkopf_sw_mm != null && +p.senkkopf_sw_mm > 0) ? +p.senkkopf_sw_mm : 0;
   if (skSw > 0) out.senkkopf_sw_mm = skSw;
+  // Schaftdurchmesser derselben Schraube (2026-10-07, [D-4]) — Nenndurchmesser des Gewindes,
+  // dieselbe reine Ausweisungsbahn, OPTIONAL und unabhaengig.
+  const skD = (p && p.senkkopf_d_mm != null && +p.senkkopf_d_mm > 0) ? +p.senkkopf_d_mm : 0;
+  if (skD > 0) out.senkkopf_d_mm = skD;
   // BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]) — das reale Bauteilmass, von Modul 1 aus
   // dem gewaehlten Katalogprodukt (`breite_mm` der Rolle „Einlegeblech") abgeleitet. Es geht in
   // KEINE Rechnung ein und wird hier nur DURCHGEREICHT, damit die Ausgaben das Blech

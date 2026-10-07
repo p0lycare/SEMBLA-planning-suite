@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-07",
+    datum: "2026-10-07",
+    typ: "feature",
+    issue: 97,
+    titel: "Wandfuß: Sechskantschraube maßstäblich (Schaft M10, Kopf 17 × 7 mm), Kopplungsmutter pink",
+    testbitte: "Wand mit Standardkatalog in Modul 1 auslegen und in Modul 7 öffnen: unter dem Bodenblech "
+      + "ein brauner Schraubenkopf, breiter als der Schaft; Kopplungsmuttern pink, Legende in beiden gleich",
+  },
+  {
     id: "chg-20261007-06",
     datum: "2026-10-07",
     typ: "feature",

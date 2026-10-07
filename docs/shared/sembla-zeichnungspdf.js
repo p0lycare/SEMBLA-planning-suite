@@ -653,7 +653,11 @@ export function legendeWand(w, opts = {}) {
   return [
     ...stangenLegendeZ(w, opts).map((e) => ({ form: "bar", marke_farbe: e.farbe, text: e.text })),
     // #110: stehender Zylinder statt Punkt — dieselbe Markenform wie im HTML-Spiegel.
-    { form: "zyl", marke_farbe: FARBE_Z.mutter, text: "Kopplung / Verankerung" },
+    // 2026-10-07: Kopplungsmutter und Fussschraube mit eigenen Kennfarben — dieselben drei
+    // Eintraege wie im HTML-Spiegel (`legendeHtml`).
+    { form: "zyl", marke_farbe: FARBE_Z.kupplung, text: "Kopplungsmutter" },
+    { form: "zyl", marke_farbe: FARBE_Z.mutter, text: "Verankerung (Mutter)" },
+    { form: "zyl", marke_farbe: FARBE_Z.schraube, text: "Sechskantschraube Fuß" },
     { form: "plate", marke_farbe: FARBE_Z.platte, text: "Spannplatte" },
     { form: "plate", marke_farbe: FARBE_Z.stahl, text: "Boden-/Kopfblech" },
     ...(bodenblechStoesse(el).length

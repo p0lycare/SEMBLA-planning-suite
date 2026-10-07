@@ -252,6 +252,10 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
   const RE_MUT=new RegExp('<rect x="[-\\d.]+" y="([-\\d.]+)" width="([-\\d.]+)" height="([-\\d.]+)"'
     +' fill="'+MONT.SPANN_FARBE.mutter+'"','g');
   const mutRects=()=>[...svg().matchAll(RE_MUT)].map(m=>({y:+m[1],b:+m[2],h:+m[3]}));
+  // Seit 2026-10-07 trägt die Schraube ihre EIGENE Kennfarbe (`SPANN_FARBE.schraube`).
+  const RE_SCHR=new RegExp('<rect x="[-\\d.]+" y="([-\\d.]+)" width="([-\\d.]+)" height="([-\\d.]+)"'
+    +' fill="'+MONT.SPANN_FARBE.schraube+'"','g');
+  const schrRects=()=>[...svg().matchAll(RE_SCHR)].map(m=>({y:+m[1],b:+m[2],h:+m[3]}));
   ok('[#110] keine Kreisdarstellung der Spannkomponenten mehr in der Wandansicht', (()=>{
     // Kreise gibt es nur noch als BEDIENGRIFFE (#106) — die tragen `cursor:grab/copy`.
     const s=svg(); const kreise=[...s.matchAll(/<circle[^>]*>/g)].map(m=>m[0]);
@@ -307,14 +311,14 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
       .map(m=>({y:+m[1],h:+m[2]})).filter(r=>Math.abs(r.y+r.h-y0)<1e-6);
     return fuss.length>0 && fuss.every(r=>r.y<y0); })());
   ok('[#97] die Schraube ist gezeichnet: zwei Zylinder, Kopf dicker als Schaft', (()=>{
-    const r=mutRects();
+    const r=schrRects();
     const schaft=r.filter(q=>Math.abs(q.b-MM.schaft_d*E)<1e-6);
     const kopf=r.filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
     return schaft.length>0 && kopf.length===schaft.length && MM.kopf_d>MM.schaft_d; })());
   ok('[#97] der Schraubenkopf ragt UNTER dem Bodenblech heraus', (()=>{
     const wd=w(), sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
     const y0=46+hPx, bth=Math.max(4,10*sc);
-    const kopf=mutRects().filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
+    const kopf=schrRects().filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-6);
     // Der Kopf beginnt an der Blechunterkante und endet darunter — er ist frei sichtbar.
     return kopf.length>0 && kopf.every(q=>Math.abs(q.y-(y0+bth))<1e-6 && q.h>0); })());
   // ---- Vordergrund: die Kopplungsmuttern stehen NACH den uebrigen Bauteilen (#106) ----
@@ -350,8 +354,10 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     && !/<circle cx="\$\{x\}" cy="\$\{Y\(g\.z0_mm\)\}"/.test(html));
   ok('[#106] Modul 1 leitet kein Symbolmass mehr aus der Lagenhoehe ab',
     !/const lage=COURSE\*sc/.test(html) && /SPANN_EINHEIT\.ansicht/.test(html));
+  // 2026-10-07: Kopplungsmutter (Pink) und Fußschraube mit eigenen Einträgen und Farben.
   ok('[#110] die Legende bezieht die Kopplungsfarbe aus der geteilten Quelle',
-    zleg().includes(MONT.SPANN_FARBE.mutter));
+    zleg().includes(MONT.SPANN_FARBE.kupplung) && zleg().includes(MONT.SPANN_FARBE.schraube)
+    && /Kopplungsmutter/.test(zleg()) && /Sechskantschraube Fuß/.test(zleg()));
 }
 // ---- Issue #112: Gewindestangen im Vordergrund + weisse Haarlinie am Stoss -----------
 // Gemeldet war: andere Bauteile legten sich ueber die Stangenlinie, und die Stueckelung war
@@ -2092,6 +2098,8 @@ const KATALOG={ format:'SEMBLA-Bauteilkatalog', version:1, name:'Testkatalog M1'
   { id:'sk-sw17', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M10×25 SW17', einheit:'Stk', preis:0.45, laenge_mm:25, sw_mm:17 },
   { id:'sk-sw13', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M8×25 SW13', einheit:'Stk', preis:0.4, laenge_mm:25, sw_mm:13 },
   { id:'sk-ohne', kategorie:'verbrauch', bezeichnung:'Sechskantschraube ohne Maßangabe', einheit:'Stk', preis:0.45, laenge_mm:25 },
+  // 2026-10-07: mit gepflegtem Gewinde — daraus der Schaftdurchmesser (`senkkopf_d_mm`).
+  { id:'sk-m10', kategorie:'verbrauch', bezeichnung:'Sechskantschraube M10×25 SW17 (Gewinde)', einheit:'Stk', preis:0.45, laenge_mm:25, sw_mm:17, gewinde:'M10' },
   // Einlegeblech (Rolle `einlegeblech`, [A-14]): `breite_mm` ist das Mass in Wandrichtung
   // (Katalogfassung v5). Ausgewaehlt nur im Einlegeblech-Block.
   { id:'eb-b30', kategorie:'blech_platte', bezeichnung:'Einlegeblech 110×30', einheit:'Stk', preis:0.35, breite_mm:30, hoehe_mm:110, dicke_mm:2 },
@@ -2525,7 +2533,7 @@ store.setzeKatalog(KATALOG);
   ok('[#97] der Schraubenschaft steckt zur HAELFTE in der realen Kopplungsmutter', (()=>{
     const hPx=w30.height_mm*sc, y0=46+hPx;
     const RE=new RegExp('<rect x="[-\\d.]+" y="([-\\d.]+)" width="([-\\d.]+)" height="[-\\d.]+"'
-      +' fill="'+MONT.SPANN_FARBE.mutter+'"','g');
+      +' fill="'+MONT.SPANN_FARBE.schraube+'"','g');
     const alle=[...svg30.matchAll(RE)].map(m=>({y:+m[1],b:+m[2]}));
     const schaft=alle.filter(q=>Math.abs(q.b-MM.schaft_d*E)<1e-9);
     const kopf=alle.filter(q=>Math.abs(q.b-MM.kopf_d*E)<1e-9);
@@ -3363,14 +3371,16 @@ store.setzeKatalog(KATALOG);
       const Y=v=>46+(hPx-v*sc17), pk=wirksameZwischenpunkte(wd);
       // Unterkante der Mutter == Lagen-Oberkante ihres Punktes; sie waechst nach OBEN.
       return m17.every(m=>pk.some(q=>Math.abs((m.y+m.h)-Y(q.z_mm))<1e-9) && m.h>0); })());
-    // Akzeptanz 2: Kopf UND Schaft in der Schluesselweite, Kopfhoehe unveraendert Symbolmass.
-    ok('[#97] Kopf und Schaft der Schraube sind 17 mm breit, die Kopfhoehe bleibt Symbolmass',
+    // Akzeptanz 2 (seit 2026-10-07): der KOPF ist 17 mm breit und 7 mm hoch (DIN 933 M10);
+    // der Schaft bleibt ohne gepflegtes Gewinde Symbolmass (das Produkt hier hat keins).
+    ok('[#97] der Schraubenkopf ist 17 mm breit und 7 mm hoch, der Schaft ohne Gewinde Symbolmass',
       (()=>{ const sr=MONT.schraubeSvg(0,0,E,4,{sw_mm:17,sc:sc17});
         const b=[...sr.matchAll(/width="([-\d.]+)"/g)].map(m=>+m[1]);
         const h=[...sr.matchAll(/height="([-\d.]+)"/g)].map(m=>+m[1]);
         return svg().includes('width="'+(17*sc17)+'"')
-          && b.every(v=>Math.abs(v-17*sc17)<1e-9)
-          && Math.abs(h[1]-MONT.SPANN_MM.kopf_h*E)<1e-9; })());
+          && Math.abs(b[1]-17*sc17)<1e-9
+          && Math.abs(b[0]-MONT.SPANN_MM.schaft_d*E)<1e-9
+          && Math.abs(h[1]-7*sc17)<1e-9; })());
 
     // Zweites Produkt: dieselbe Einbauhoehe, kleinere Schluesselweite — die Achsen wirken
     // getrennt, und die Ansicht zeigt genau das.
@@ -3420,6 +3430,41 @@ store.setzeKatalog(KATALOG);
       return a===b && a.length>0 && !a.includes('class="zsp" x'); })());
     ok('[#97] und die Rechnung ist in beiden Faellen unveraendert', fp()===fp0);
   }
+
+  // ---- 2026-10-07: SCHAFTDURCHMESSER aus dem Gewinde ([D-4]) ---------------------------
+  // Echter Planerweg: Produkt mit `gewinde: M10` waehlen -> `vorgaben()` leitet
+  // `senkkopf_d_mm` = 10 ab -> gespeichert -> die Ansicht zeichnet den Schaft 10 mm breit, den
+  // Kopf 17 mm breit und 7 mm hoch. Die Rechnung bleibt unberuehrt.
+  setzen('senkkopf','sk-m10',true); WP.run();
+  ok('[2026-10-07] Modul 1 leitet den Schaftdurchmesser aus dem Gewinde ab (M10 -> 10 mm)',
+    WP.senkkopfD===10 && WP.senkkopfSw===17
+    && WP.vorgaben().prestress.senkkopf_d_mm===10
+    && WP.RESULT.wandelement.prestress.senkkopf_d_mm===10
+    && psGespeichert().senkkopf_d_mm===10 && psGespeichert().senkkopf_sw_mm===17
+    && fp()===fp0);
+  ok('[2026-10-07] die Ansicht zeichnet die Schraube masstaeblich: Schaft 10, Kopf 17 x 7 mm',
+    (()=>{
+      const E=MONT.SPANN_EINHEIT.ansicht, t=document.getElementById('plan').innerHTML;
+      const wd=WP.RESULT.wandelement, sc=WP.ansichtSc(), hPx=wd.height_mm*sc;
+      const X=v=>46+v*sc, Y=v=>46+(hPx-v*sc);
+      const kuH=2*((wd.prestress&&wd.prestress.rod_fuss_offset_mm)||0);
+      const bth=Math.max(4,((wd.base_plate&&wd.base_plate.dicke_mm)||10)*sc);
+      let n=0;
+      for(const col of wd.tension_columns) for(const g of col.segments){
+        const au=g.anker_unten||(g.z0_mm===0?'bodenblech':'spannplatte');
+        if(au!=='bodenblech') continue;
+        const sr=MONT.schraubeSvg(X(col.x_mm),Y(g.z0_mm),E,bth,{hoehe_mm:kuH,sw_mm:17,d_mm:10,sc});
+        if(!t.includes(sr)) return false;
+        const b=[...sr.matchAll(/width="([-\d.]+)"/g)].map(m=>+m[1]);
+        const h=[...sr.matchAll(/height="([-\d.]+)"/g)].map(m=>+m[1]);
+        if(Math.abs(b[0]-10*sc)>1e-9 || Math.abs(b[1]-17*sc)>1e-9 || Math.abs(h[1]-7*sc)>1e-9)
+          return false;
+        n++;
+      }
+      return n>0; })());
+  setzen('senkkopf','sk-m10',false); WP.run();
+  ok('[2026-10-07] ohne Gewinde entsteht kein Schaftdurchmesser (nichts geraten)',
+    WP.senkkopfD===null && psGespeichert().senkkopf_d_mm===undefined && fp()===fp0);
 
   // Ausgangszustand wiederherstellen.
   for(const r of ROLLEN){ leere(r); (vorherR[r]||[]).forEach(id=>setzen(r,id,true)); }
@@ -3744,6 +3789,8 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   const RE_KOP=/<rect class="kop" x="[-\d.]+" y="[-\d.]+" width="([-\d.]+)" height="([-\d.]+)"/g;
   const RE_MUT=new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="([-\\d.]+)" height="([-\\d.]+)"'
     +' fill="'+MONT.SPANN_FARBE.mutter+'"','g');
+  const RE_SCHR=new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="([-\\d.]+)" height="([-\\d.]+)"'
+    +' fill="'+MONT.SPANN_FARBE.schraube+'"','g');
   const E=MONT.SPANN_EINHEIT.ansicht, MM=MONT.SPANN_MM;
   const masse=mm=>{
     WP.applyWand(Object.assign(buildWall('Mass '+mm, mm, 2600, [], null,
@@ -3751,10 +3798,12 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     const s=svg();
     const paare=re=>[...new Set([...s.matchAll(re)].map(m=>m[1]+'x'+m[2]))].sort();
     const alle=[...s.matchAll(RE_MUT)].map(m=>({b:+m[1],h:+m[2]}));
+    // Die Schraube traegt seit 2026-10-07 ihre eigene Kennfarbe.
+    const schr=[...s.matchAll(RE_SCHR)].map(m=>({b:+m[1],h:+m[2]}));
     return { kop:paare(RE_KOP),
       mutter:[...new Set(alle.filter(r=>Math.abs(r.b-MM.d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort(),
-      kopf:[...new Set(alle.filter(r=>Math.abs(r.b-MM.kopf_d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort(),
-      schaft:[...new Set(alle.filter(r=>Math.abs(r.b-MM.schaft_d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort() };
+      kopf:[...new Set(schr.filter(r=>Math.abs(r.b-MM.kopf_d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort(),
+      schaft:[...new Set(schr.filter(r=>Math.abs(r.b-MM.schaft_d*E)<1e-6).map(r=>r.b+'x'+r.h))].sort() };
   };
   const kurz=masse(2000), lang=masse(8000);
   ok('[#106] beide Vergleichswaende zeichnen ueberhaupt Kopplung, Mutter, Kopf und Schaft',

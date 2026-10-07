@@ -6475,15 +6475,19 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && /rollenMass\(eing, kat, "zp_mutter", "sw_mm"\)/.test(waSrc)
     && (waSrc.match(/"zp_mutter",/g) || []).length === 2
     && /rollenMass\(eing, kat, "senkkopf", "sw_mm"\)/.test(waSrc)
-    && (waSrc.match(/"senkkopf",/g) || []).length === 1
+    // 2026-10-07: dazu der Schaftdurchmesser aus dem Gewinde — derselbe `rollenMass`-Weg.
+    && /rollenMass\(eing, kat, "senkkopf", "gewinde_d_mm"\)/.test(waSrc)
+    && (waSrc.match(/"senkkopf",/g) || []).length === 2
     // … und je genau EINE Stelle setzt das Feld, und zwar nur bei eindeutigem Mass:
     // ein bedingungsloser Wert wuerde einen gespeicherten Stand ueberschreiben.
     && (waSrc.match(/zp_mutter_h_mm:/g) || []).length === 1
     && (waSrc.match(/zp_mutter_sw_mm:/g) || []).length === 1
     && (waSrc.match(/senkkopf_sw_mm:/g) || []).length === 1
+    && (waSrc.match(/senkkopf_d_mm:/g) || []).length === 1
     && /h != null \? \{ zp_mutter_h_mm: h \} : \{\}/.test(waSrc)
     && /sw != null \? \{ zp_mutter_sw_mm: sw \} : \{\}/.test(waSrc)
-    && /sw != null \? \{ senkkopf_sw_mm: sw \} : \{\}/.test(waSrc));
+    && /sw != null \? \{ senkkopf_sw_mm: sw \} : \{\}/.test(waSrc)
+    && /d != null \? \{ senkkopf_d_mm: d \} : \{\}/.test(waSrc));
   ok('#97/zpm (Muss 3) beide Rollen-Bausteine nehmen KEINEN oberen Anschluss entgegen — '
     + 'anders als Spannplatte und Kopfblech, und satzgleich zu Modul 1',
     /\n  zp_mutter: \(eing, kat\) => \{/.test(waSrc)

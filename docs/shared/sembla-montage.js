@@ -88,7 +88,8 @@ const _FREMDE_KENNFARBEN = [
 /** Alle belegten Kennfarben, gegen die eine erzeugte Stangenfarbe geprueft wird. */
 export function belegteKennfarben() {
   return [STUECK_FARBE.sonder, STUECK_FARBE.rest, BLECHSTOSS.farbe, AUSSPARUNG.farbe,
-    AUSGLEICHSPUNKT.farbe, SPANN_FARBE.platte, SPANN_FARBE.mutter, ZWISCHENPUNKT.farbe,
+    AUSGLEICHSPUNKT.farbe, SPANN_FARBE.platte, SPANN_FARBE.mutter, SPANN_FARBE.schraube,
+    SPANN_FARBE.kupplung, ZWISCHENPUNKT.farbe,
     DECKENANSCHLUSS.farbe, ..._FREMDE_KENNFARBEN];
 }
 
@@ -291,9 +292,17 @@ export const AUSGLEICHSPUNKT = { farbe: "#b5179e", label: "Ausgleichsblech (Ausg
  * Zwischenpunkt (`ZWISCHENPUNKT`) und das Bodenblech (`bodenblechSvg`) fuehrt: die
  * Zeichengeometrie desselben Bauteils muss in Wandansicht (Modul 1) und technischer Zeichnung
  * (Modul 7) gleich aussehen, ein modul-eigener Schluessel waere genau die Drift, die [D-4]
- * ausschliesst. Die WERTE der Farben sind unveraendert die bisherigen.
+ * ausschliesst.
+ *
+ * Seit dem 2026-10-07 tragen SCHRAUBE und KOPPLUNGSMUTTER eigene Farben (vorher beide die
+ * Mutterfarbe). `kupplung` ist ein kraeftiges Pink/Fuchsia, damit sich der Stoss klar von den
+ * Gewindestangen abhebt — bewusst NICHT das Reststueck-Pink (`STUECK_FARBE.rest`, ΔE ≈ 73) und
+ * NICHT das Magenta des Ausgleichspunkts (`AUSGLEICHSPUNKT.farbe`, ΔE ≈ 43); der Pinkraum
+ * zwischen beiden ist eng, der Wert ist der mit dem groessten Abstand zu allen belegten Farben.
+ * `schraube` ist ein dunkles Braun (ΔE ≥ 34 zu allen belegten Farben). `platte`/`mutter`
+ * (Spannplatte, Spannmutter, Mutter des Einlegeblechs) bleiben unveraendert.
  */
-export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73" };
+export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73", schraube: "#5c3d1e", kupplung: "#ff00ff" };
 
 /**
  * Symbolmasse der Spannkomponenten in PAPIER-MM — FEST, unabhaengig von Wandgroesse,
@@ -345,9 +354,10 @@ export const SPANN_MM = {
   mutter_h: 1.8,       // Hoehe der normalen Mutter / Spannmutter
   kupplung_h: 4.5,     // Symbolhoehe der Kopplungsmutter, wenn das reale Mass fehlt (#97)
   d: 2.4,              // Durchmesser der Mutter; Rueckfall der Kopplungsmutter ohne SW (#97)
-  kopf_h: 1.6,         // Hoehe des Schraubenkopfs
-  kopf_d: 3.4,         // Durchmesser des Schraubenkopfs (groesser als der Schaft)
-  schaft_d: 1.4,       // Durchmesser des Schraubenschafts
+  kopf_h: 1.6,         // Hoehe des Schraubenkopfs, wenn kein Massstab (`sc`) vorliegt
+  kopf_h_mm: 7,        // Kopfhoehe der Sechskantschraube in mm — REALES Normmass DIN 933 M10
+  kopf_d: 3.4,         // Durchmesser des Schraubenkopfs ohne SW (groesser als der Schaft)
+  schaft_d: 1.4,       // Durchmesser des Schraubenschafts ohne Gewindemass
   platte_h: 1.2,       // Dicke der Spannplatte
   platte_b_mm: 110,    // Breite der Spannplatte in mm, wenn das reale Mass fehlt (#97)
   platte_b_min: 3.2,   // Sichtbarkeitsuntergrenze der Plattenbreite (Symbolmass)
@@ -512,7 +522,9 @@ export function mutterSvg(x, y, e, opts = {}) {
  * @returns {string} SVG-Fragment
  */
 export function kopplungsmutterSvg(x, y, e, opts = {}) {
-  return _zylinderSvgZ(x, y, kupplungHoehe(e, opts), kupplungDurchmesser(e, opts), opts);
+  // Eigene Kennfarbe seit 2026-10-07 (`SPANN_FARBE.kupplung`), vorher die Mutterfarbe.
+  return _zylinderSvgZ(x, y, kupplungHoehe(e, opts), kupplungDurchmesser(e, opts),
+    { ...opts, farbe: opts.farbe || SPANN_FARBE.kupplung });
 }
 
 /**
@@ -584,56 +596,57 @@ export function kupplungHoehe(e, opts = {}) {
  * Die Blechdicke ist ein ZEICHENMASS des Aufrufers (beide Module skalieren die 10 mm mit
  * ihrer eigenen Sichtbarkeitsuntergrenze) — sie wird hier nicht nachgerechnet.
  *
- * Seit dem Folgepaket zu #97 ist die BREITE von Kopf UND Schaft masstabsgetreu, sobald der
- * Aufrufer die reale Schluesselweite als `opts.sw_mm` samt `opts.sc` hereingibt: beide sind dann
- * `sw_mm * sc` breit und lassen sich im Blatt abmessen. Das Mass ist KEIN neues Feld — es steht
- * als `prestress.senkkopf_sw_mm` am Wandelement, abgeleitet beim Auslegen aus dem gewaehlten
- * Katalogprodukt der Rolle „Sechskantschraube Fuss"; hier wird es nur gezeichnet und nichts
- * daraus abgeleitet. Bis dahin war die Schraube IMMER symbolisch: dieselbe Marke fuer eine
- * SW-13- wie fuer eine SW-24-Schraube, und `opts.sw_mm` wurde stillschweigend geschluckt.
+ * MASSTAEBLICH seit dem 2026-10-07 (Auftrag Tibor; hebt den Paketentscheid aus #97 auf, Kopf
+ * und Schaft gleich breit zu zeichnen) — sobald der Aufrufer `opts.sc` hereingibt:
+ * - SCHAFT: `d_mm * sc` — der Nenndurchmesser des gepflegten Gewindes (M10 → 10 mm), am
+ *   Wandelement als `prestress.senkkopf_d_mm`, abgeleitet beim Auslegen aus dem Katalogprodukt
+ *   der Rolle „Sechskantschraube Fuss" (`gewindeDurchmesserMm`, `sembla-katalog.js`).
+ * - KOPFBREITE: `sw_mm * sc` — die Schluesselweite (`prestress.senkkopf_sw_mm`, 17 mm).
+ * - KOPFHOEHE: `SPANN_MM.kopf_h_mm * sc` — das Normmass DIN 933 M10 (7 mm). Bewusst KEIN
+ *   Katalogfeld (einfachste Loesung, Auftrag 2026-10-07); ⚠ es gilt fuer M10 — wird je eine
+ *   andere Fussschraube gewaehlt, braucht die Kopfhoehe ein Katalogfeld.
+ * Der Kopf ist damit wieder BREITER als der Schaft. Schaft und Kopf fallen je fuer sich auf
+ * ihr Symbolmass zurueck (`schaft_d` bzw. `kopf_d`/`kopf_h`), wenn ihr Mass oder `sc` fehlt;
+ * der Kopf dabei GANZ (Breite und Hoehe), damit er nie halb symbolisch, halb real ist. Ohne
+ * Masse ist das Ergebnis bit-gleich zum Stand davor; erfunden wird keines. Ausdruecklich KEINE
+ * Untergrenze auf dem masstabsgetreuen Zweig (Entscheid zu #97, wie bei Plattendicke und
+ * Mutternmassen); die Schraube entfaellt nie.
  *
- * Kopf und Schaft bekommen dabei AUSDRUECKLICH DASSELBE Mass (Paketentscheid zu #97): gefuehrt
- * ist genau eine Schluesselweite, und ein Schaft-/Gewindedurchmesser liegt nicht vor — er wuerde
- * also erfunden. Der Kopf ist damit auf dem masstabsgetreuen Zweig nicht mehr BREITER als der
- * Schaft; er ragt weiterhin unter der Blechunterkante heraus und ist daran zu erkennen. Auf dem
- * Symbolzweig bleibt `kopf_d` > `schaft_d` unveraendert.
- *
- * Die KOPFHOEHE bleibt Symbolmass (`SPANN_MM.kopf_h`), solange keine Norm genannt ist — es gibt
- * dafuer kein Feld, und es wird keines angelegt.
- *
- * Ausdruecklich KEINE Untergrenze auf dem masstabsgetreuen Zweig (Entscheid zu #97, wie bei
- * Plattendicke und Mutternmassen); nur ein nicht zeichenbares Ergebnis faellt auf das Symbolmass
- * zurueck, die Schraube entfaellt nie. OHNE das Mass ist das Ergebnis bit-gleich zum Stand davor.
+ * Kennfarbe ist seit dem 2026-10-07 `SPANN_FARBE.schraube` (vorher die Mutterfarbe).
  *
  * @param {number} x Zeichenkoordinate der Spannachse
  * @param {number} y Zeichenkoordinate der OBERKANTE Bodenblech (= Steinunterkante, z = 0)
  * @param {number} e Zeichenkoordinaten je Papier-mm (`SPANN_EINHEIT`)
  * @param {number} blech Blechdicke in Zeichenkoordinaten
  * @param {{n?:(v:number)=>any,farbe?:string,klasse?:string,hoehe_mm?:number,sw_mm?:number,
- *          sc?:number}} [opts]
+ *          d_mm?:number,sc?:number}} [opts]
  *        `hoehe_mm`/`sc`: reale Kopplungsmutterhoehe (#97) — das FREMDE Mass des Nachbarteils,
  *        es bestimmt allein den Schaftbeginn ([A-19]).
- *        `sw_mm`: reale Schluesselweite der Schraube selbst (#97) — Breite von Kopf und Schaft.
+ *        `sw_mm`: reale Schluesselweite der Schraube selbst — Breite des Kopfs.
+ *        `d_mm`: Gewinde-Nenndurchmesser der Schraube — Breite des Schafts.
  * @returns {string} SVG-Fragment (Schaft, dann Kopf)
  */
 export function schraubeSvg(x, y, e, blech, opts = {}) {
   const n = opts.n || (v => v);
-  const farbe = opts.farbe || SPANN_FARBE.mutter;
+  const farbe = opts.farbe || SPANN_FARBE.schraube;
   const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
-  // HOEHE des Kopfs bleibt Symbolmass; die BREITEN kommen aus derselben einen Entscheidung wie
-  // alle anderen Bauteilmasse (`_zylinderMass`) — je Rechteck mit EIGENEM Rueckfall, damit der
-  // Symbolzweig bit-gleich bleibt und der Kopf dort weiterhin breiter ist als der Schaft.
-  const kh = SPANN_MM.kopf_h * e,
-    kd = _zylinderMass(e, opts.sw_mm, opts.sc, SPANN_MM.kopf_d),
-    sd = _zylinderMass(e, opts.sw_mm, opts.sc, SPANN_MM.schaft_d);
+  // Alle Masse aus derselben einen Entscheidung wie jedes andere Bauteilmass
+  // (`_zylinderMass`): Kopfbreite = Schluesselweite, Schaft = Gewinde-Nenndurchmesser, je mit
+  // EIGENEM Rueckfall. Der KOPF ist entweder ganz masstaeblich oder ganz Symbol: seine Hoehe
+  // (Normmass DIN 933 M10) gilt nur zusammen mit der realen Breite — sonst laege ein
+  // symbolbreiter, aber real flacher Strich unter dem Blech.
+  const kdReal = _zylinderMass(e, opts.sw_mm, opts.sc, 0);
+  const kd = kdReal > 0 ? kdReal : SPANN_MM.kopf_d * e,
+    kh = kdReal > 0 ? _zylinderMass(e, SPANN_MM.kopf_h_mm, opts.sc, SPANN_MM.kopf_h)
+      : SPANN_MM.kopf_h * e,
+    sd = _zylinderMass(e, opts.d_mm, opts.sc, SPANN_MM.schaft_d);
   // Schaft: von der Mitte der aufsitzenden Kopplungsmutter ([A-19]: je zur Haelfte) durch das
   // Bodenblech bis an dessen Unterkante. Kopf: unmittelbar darunter, ragt frei heraus.
   //
   // #97: Der Schaftbeginn ist ein aus der Mutternhoehe ABGELEITETER Wert und kein eigenes
   // Bauteilmass der Schraube — er folgt deshalb derselben Entscheidung wie die Mutter und wird
   // ueber `kupplungHoehe()` aus derselben Quelle geholt. Ohne reales Mass bleibt er bit-gleich.
-  // Von der Mutternhoehe unberuehrt bleiben die eigenen Masse der Schraube: `kopf_h` ist
-  // durchgehend Symbolmass, die BREITEN haengen allein an ihrer eigenen `sw_mm` (s. o.).
+  // Von der Mutternhoehe unberuehrt bleiben die eigenen Masse der Schraube (s. o.).
   const y0 = y - kupplungHoehe(e, opts) / 2, y1 = y + blech;
   return `<rect${kl} x="${n(x - sd / 2)}" y="${n(y0)}" width="${n(sd)}" `
     + `height="${n(y1 - y0)}" fill="${farbe}"/>`

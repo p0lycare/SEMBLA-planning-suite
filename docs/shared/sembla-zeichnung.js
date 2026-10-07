@@ -208,6 +208,7 @@ export const FARBE = {
   // #110: Kennfarben der Spannkomponenten kommen — wie die Stangenfarben — aus
   // sembla-montage.js; die WERTE sind unveraendert.
   platte: SPANN_FARBE.platte, mutter: SPANN_FARBE.mutter,
+  schraube: SPANN_FARBE.schraube, kupplung: SPANN_FARBE.kupplung,
   mass: "#46505e", staffel: "#0a7f8c", reihe: "#8f96a0",
   // Verzahnung (#82): bewusst NICHT die Oeffnungsfarbe — ein Verzahnungsbereich ist
   // keine Oeffnung und kein Durchbruch ([G-10]) und darf mit ihnen nicht verwechselt
@@ -719,6 +720,9 @@ export function zeichnungSvg(w, opts = {}) {
   const zpH = (w.prestress && w.prestress.zp_mutter_h_mm) || 0;
   const zpSw = (w.prestress && w.prestress.zp_mutter_sw_mm) || 0;
   const skSw = (w.prestress && w.prestress.senkkopf_sw_mm) || 0;
+  // Schaftdurchmesser der Schraube (2026-10-07): `senkkopf_d_mm` am Wandelement (Nenndurchmesser
+  // des Gewindes), gelesen wie in Modul 1. Fehlt es, bleibt der Schaft Symbolmass.
+  const skD = (w.prestress && w.prestress.senkkopf_d_mm) || 0;
   // [D-4] BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]): `einlegeblech_b_mm` am Wandelement
   // (Modul 1 leitet es aus `breite_mm` des gewaehlten Katalogprodukts ab). NUR GELESEN und an
   // `zwischenpunktSvg()` durchgereicht — dieselbe Zahl wie in Modul 1. Fehlt es, bleibt die
@@ -851,9 +855,9 @@ export function zeichnungSvg(w, opts = {}) {
         // dem Bodenblech heraus), darauf das Blech, darauf AUFLIEGEND die Kopplungsmutter.
         // Bis #97 stand hier eine normale Mutter, zur Haelfte im Blech, ohne Schraube.
         // `hoehe_mm` ist das FREMDE Mass der Kopplungsmutter (Schaftbeginn nach [A-19]);
-        // `sw_mm` ist das eigene Mass der Schraube und gibt seit #97 die Breite von Kopf UND
-        // Schaft. Die Kopfhoehe bleibt Symbolmass — dafuer gibt es kein Feld.
-        s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n, hoehe_mm: kuH, sw_mm: skSw, sc });
+        // Die eigenen Masse der Schraube (2026-10-07): `sw_mm` = Kopfbreite, `d_mm` = Schaft
+        // (Gewinde-Nenndurchmesser), Kopfhoehe = Normmass DIN 933 M10 aus `SPANN_MM.kopf_h_mm`.
+        s += schraubeSvg(x, Y(sg.z0_mm), SYM, bth, { n: _n, hoehe_mm: kuH, sw_mm: skSw, d_mm: skD, sc });
         vorn += kopplungsmutterSvg(x, Y(sg.z0_mm), SYM,
           { n: _n, auf: true, hoehe_mm: kuH, sw_mm: kuSw, sc });
       } else s += spannplatteSvg(x, Y(sg.z0_mm), SYM, sc,
@@ -1284,7 +1288,12 @@ export function legendeHtml(w, opts = {}) {
     + stangenLegendeZ(w, opts).map(e => `<span>${i(e.farbe)}${_esc(e.text)}</span>`).join("")
     // #110: Legendenfeld ist der stehende Zylinder, nicht mehr der Punkt — die Formen im
     // Blatt und in der Legende muessen dasselbe Bauteil zeigen ([D-4]). Wortlaut unveraendert.
-    + `<span>${i(FARBE.mutter, "zyl")}Kopplung / Verankerung</span>`
+    // Seit 2026-10-07 drei Eintraege statt „Kopplung / Verankerung": Kopplungsmutter und
+    // Fussschraube tragen eigene Kennfarben, die Mutterfarbe bleibt Spannmutter und Mutter des
+    // Einlegeblechs. Dieselben Farben wie in der Zuschnittlegende von Modul 1 ([D-4]).
+    + `<span>${i(FARBE.kupplung, "zyl")}Kopplungsmutter</span>`
+    + `<span>${i(FARBE.mutter, "zyl")}Verankerung (Mutter)</span>`
+    + `<span>${i(FARBE.schraube, "zyl")}Sechskantschraube Fuß</span>`
     + `<span>${i(FARBE.platte, "plate")}Spannplatte</span>`
     + `<span>${i(FARBE.stahl, "plate")}Boden-/Kopfblech</span>`
     // Reale Bodenblechteile ([A-10]/[A-11]/[A-12]): Stoss und Sonderzuschnitt stehen

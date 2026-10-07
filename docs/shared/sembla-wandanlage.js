@@ -28,7 +28,7 @@
  */
 
 import { buildWall, Opening, ROD_OVERHANG } from "./sembla-core.js";
-import { produktSpezifikation, produktrollenVorschlag, produkteZuRolle, rollenVonModul, rolle } from "./sembla-katalog.js";
+import { produktSpezifikation, produktrollenVorschlag, produkteZuRolle, rollenVonModul, rolle, produktMassWert } from "./sembla-katalog.js";
 
 /** Verwendungsrollen gehoeren Modul 1 (`planung`) oder Modul 2 (`aufbau`) — sonst nichts. */
 const TEIL = { 1: "planung", 2: "aufbau" };
@@ -275,11 +275,15 @@ export const ROLLE_RECHNUNG = {
     const b = rollenMass(eing, kat, "einlegeblech", "breite_mm");
     return b != null ? { einlegeblech_b_mm: b } : {};
   },
-  // #97 Schluesselweite der SECHSKANTSCHRAUBE FUSS ([A-19]) — eine KOPFHOEHE gibt es hier
-  // nicht: dafuer ist keine Norm genannt, und geraten wird sie nicht.
+  // #97 Schluesselweite der SECHSKANTSCHRAUBE FUSS ([A-19]) und — seit dem 2026-10-07 — ihr
+  // SCHAFTDURCHMESSER als Nenndurchmesser des gepflegten Gewindes (Pseudofeld `gewinde_d_mm`,
+  // „M10" → 10). Beide reine Ausweisungsmasse fuer die masstaebliche Zeichnung ([D-4]), beide
+  // fuer sich. Die KOPFHOEHE reist nicht mit: sie ist das feste Normmass `SPANN_MM.kopf_h_mm`.
   senkkopf: (eing, kat) => {
     const sw = rollenMass(eing, kat, "senkkopf", "sw_mm");
-    return sw != null ? { senkkopf_sw_mm: sw } : {};
+    const d = rollenMass(eing, kat, "senkkopf", "gewinde_d_mm");
+    return { ...(sw != null ? { senkkopf_sw_mm: sw } : {}),
+             ...(d != null ? { senkkopf_d_mm: d } : {}) };
   },
 };
 
@@ -341,7 +345,7 @@ export function vorspannEingaenge(eing, kat, topConn) {
 function rollenMass(eing, kat, rolleId, feld) {
   if (!kat) return null;
   const auf = produkteZuRolle(eing, kat, rolleId);
-  const v = [...new Set(auf.produkte.map((p) => +p[feld]).filter((n) => Number.isFinite(n) && n > 0))];
+  const v = [...new Set(auf.produkte.map((p) => produktMassWert(p, feld)).filter((n) => Number.isFinite(n) && n > 0))];
   return v.length === 1 ? v[0] : null;
 }
 

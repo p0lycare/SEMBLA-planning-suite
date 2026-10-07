@@ -548,14 +548,15 @@ function vorgaben(){
   // und gehen in KEINE Rechnung ein; sie reisen allein deshalb mit, damit die Ausgaben beide
   // Teile später maßstäblich zeichnen können, ohne den Katalog anzufassen ([D-1]).
   //
-  // Eine KOPFHÖHE der Schraube entsteht hier ausdrücklich nicht: dafür gibt es weder ein
-  // Katalogfeld noch eine genannte Norm, und sie ließe sich nur erfinden ([P-9]).
+  // Eine KOPFHÖHE der Schraube entsteht hier ausdrücklich nicht: sie ist seit 2026-10-07 das
+  // feste Normmaß DIN 933 M10 in `SPANN_MM.kopf_h_mm` (sembla-montage.js), kein Feld.
   //
   // ⚠ Auch ihr Weg führt über die FELDLISTE `psOf()` in `sembla-engine.js` — ohne Eintrag dort
   // wären sie nach der ersten Iteration der Auslegung wieder weg.
   const zpH=zpMutterHoeheMm(); if(zpH!=null) hw.zp_mutter_h_mm=zpH;
   const zpSw=zpMutterSwMm(); if(zpSw!=null) hw.zp_mutter_sw_mm=zpSw;
   const skSw=senkkopfSwMm(); if(skSw!=null) hw.senkkopf_sw_mm=skSw;
+  const skD=senkkopfDMm(); if(skD!=null) hw.senkkopf_d_mm=skD;
   // Breite des EINLEGEBLECHS ([A-14]): dieselbe Bedingung und dieselbe reine Ausweisungsbahn —
   // nur bei eindeutigem Katalogmaß, sonst bleibt das Feld ganz weg. ⚠ Auch sie steht in der
   // FELDLISTE `psOf()` in `sembla-engine.js`.
@@ -892,6 +893,9 @@ function draw(w){
   const zpH=(w.prestress&&w.prestress.zp_mutter_h_mm)||0;
   const zpSw=(w.prestress&&w.prestress.zp_mutter_sw_mm)||0;
   const skSw=(w.prestress&&w.prestress.senkkopf_sw_mm)||0;
+  // Schaftdurchmesser der Schraube (2026-10-07): `senkkopf_d_mm` am Wandelement (Nenndurchmesser
+  // des Gewindes), gelesen wie in Modul 7. Fehlt es, bleibt der Schaft Symbolmaß.
+  const skD=(w.prestress&&w.prestress.senkkopf_d_mm)||0;
   // [D-4] BREITE des EINLEGEBLECHS ([A-14]): reales Bauteilmaß aus `einlegeblech_b_mm` am
   // Wandelement (abgeleitet aus `breite_mm` des gewählten Katalogprodukts), gelesen wie in
   // Modul 7 — nie noch einmal aus dem Katalog. Fehlt es, bleibt die Balkenbreite Symbolmaß.
@@ -1028,9 +1032,9 @@ function draw(w){
         // dem Bodenblech heraus —, darauf das Blech, darauf AUFLIEGEND die KOPPLUNGSMUTTER.
         // Bis #97 stand hier eine normale Mutter, zur Hälfte im Blech, und die Schraube fehlte.
         // `hoehe_mm` ist das FREMDE Maß der Kopplungsmutter (Schaftbeginn nach [A-19]);
-        // `sw_mm` ist das eigene Maß der Schraube und gibt seit #97 die Breite von Kopf UND
-        // Schaft. Die Kopfhöhe bleibt Symbolmaß — dafür gibt es kein Feld.
-        s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth,{hoehe_mm:kuH,sw_mm:skSw,sc});
+        // Die eigenen Maße der Schraube (2026-10-07): `sw_mm` = Kopfbreite, `d_mm` = Schaft
+        // (Gewinde-Nenndurchmesser), Kopfhöhe = Normmaß DIN 933 M10 aus `SPANN_MM.kopf_h_mm`.
+        s+=schraubeSvg(x,Y(g.z0_mm),SYM,bth,{hoehe_mm:kuH,sw_mm:skSw,d_mm:skD,sc});
         vorn+=kopplungsmutterSvg(x,Y(g.z0_mm),SYM,
           {klasse:'kop',auf:true,hoehe_mm:kuH,sw_mm:kuSw,sc});
       }
@@ -1273,7 +1277,10 @@ function renderZLegende(w){
     stangenFolge(w));
   box.innerHTML='<span class="zl-t">Zuschnitt:</span>'
     + teile.map(e=>`<span><i style="color:${e.farbe}"></i>${e.label}</span>`).join('')
-    + `<span><i class="kop" style="color:${SPANN_FARBE.mutter}"></i>Kopplung</span>`
+    // Kopplungsmutter und Fußschraube mit ihren eigenen Kennfarben (2026-10-07) — dieselben
+    // Einträge und Farben wie in legendeHtml() von Modul 7 ([D-4]).
+    + `<span><i class="kop" style="color:${SPANN_FARBE.kupplung}"></i>Kopplungsmutter</span>`
+    + `<span><i class="kop" style="color:${SPANN_FARBE.schraube}"></i>Sechskantschraube Fuß</span>`
     // Reihenfolge wie in legendeHtml() (Modul 7): erst die Bleche, dann die Punkte.
     + blechEintraege + zpEintrag + dcEintrag + agEintrag;
 }
@@ -1529,7 +1536,7 @@ function einbauMass(rolleId, feld){
   const k=prodKatalog(); if(!k) return { wert:null, grund:'kein_katalog' };
   const auf=KAT.produkteZuRolle(prodEingaben(), k, rolleId);
   if(!auf.ids.length) return { wert:null, grund:'keine_auswahl' };
-  const v=[...new Set(auf.produkte.map(p=>+p[feld]).filter(n=>Number.isFinite(n)&&n>0))];
+  const v=[...new Set(auf.produkte.map(p=>KAT.produktMassWert(p,feld)).filter(n=>Number.isFinite(n)&&n>0))];
   if(v.length===1) return { wert:v[0], grund:null };
   // Mehrere verschiedene Maße heißen: das Einbaumaß bleibt offen. Es wird keines bevorzugt
   // und keines gemittelt ([P-9]).
@@ -1621,11 +1628,16 @@ function spannplatteBreiteMm(){ return einbauMass('spannplatte','breite_mm').wer
 // Die drei Maße stehen für sich: ein Produkt mit gepflegter Höhe, aber ohne Schlüsselweite
 // liefert genau ein Feld. Fehlt ein Maß oder widersprechen sich die gewählten Produkte, bleibt
 // der Wert `null` und das Feld entsteht gar nicht — es wird NIE eines erfunden ([P-9]),
-// insbesondere nicht aus Gewinde oder Norm des Produkts. Eine KOPFHÖHE der Schraube gibt es
-// hier nicht: dafür ist keine Norm genannt, und geraten wird sie nicht.
+// insbesondere nicht aus der Norm des Produkts. Eine KOPFHÖHE der Schraube gibt es hier nicht:
+// sie ist das feste Normmaß DIN 933 M10 in `SPANN_MM.kopf_h_mm` (seit 2026-10-07).
 function zpMutterHoeheMm(){ return einbauMass('zp_mutter','hoehe_mm').wert; }
 function zpMutterSwMm(){ return einbauMass('zp_mutter','sw_mm').wert; }
 function senkkopfSwMm(){ return einbauMass('senkkopf','sw_mm').wert; }
+// SCHAFTDURCHMESSER der Sechskantschraube Fuß (2026-10-07, [D-4]): der Nenndurchmesser des
+// gepflegten Gewindes („M10" → 10) über das Pseudofeld `gewinde_d_mm` — derselbe `einbauMass()`-
+// Weg, keine zweite Ableitung. Reines Ausweisungsmaß für die maßstäbliche Zeichnung; ohne
+// eindeutiges Gewinde bleibt der Wert `null`, das Feld entsteht nicht, der Schaft bleibt Symbolmaß.
+function senkkopfDMm(){ return einbauMass('senkkopf','gewinde_d_mm').wert; }
 // BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]) — Katalogfeld `breite_mm` der Rolle
 // „Einlegeblech" (Maß in Wandrichtung, dieselbe Konvention wie beim Ausgleichsblech), gelesen
 // über dasselbe `einbauMass()`. KEIN Rechenwert: allein AUSGEWIESEN, damit beide Ausgaben das
@@ -2490,7 +2502,7 @@ window.__wp={ run, get RESULT(){return RESULT;}, addOpening, addStep, applyWand,
   get spannplatteBreite(){return spannplatteBreiteMm();},
   get zpMutterHoehe(){return zpMutterHoeheMm();}, get zpMutterSw(){return zpMutterSwMm();},
   get einlegeblechBreite(){return einlegeblechBreiteMm();},
-  get senkkopfSw(){return senkkopfSwMm();},
+  get senkkopfSw(){return senkkopfSwMm();}, get senkkopfD(){return senkkopfDMm();},
   get einbauMeldungen(){return einbauMeldungen();},
   addInterlock, get interlocks(){return interlocksArr;}, renderInterlocks,
   setzeZoom, zoomSchritt, zoomEinpassen, applyZoom, get zoomPct(){return zoomPct;},

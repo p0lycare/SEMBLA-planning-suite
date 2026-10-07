@@ -787,7 +787,8 @@ store.setzeAktiv(idW);
   const geo = () => [3000, 2600];
   const WZO = buildWall("IW-97", ...geo(), [], null, { top_connection: "blech" });
   const WZM = buildWall("IW-97", ...geo(), [], null,
-    { top_connection: "blech", zp_mutter_h_mm: 8, zp_mutter_sw_mm: 17, senkkopf_sw_mm: 17 });
+    { top_connection: "blech", zp_mutter_h_mm: 8, zp_mutter_sw_mm: 17, senkkopf_sw_mm: 17,
+      senkkopf_d_mm: 10 });
   const opt = { zeichnung: { format: "a3", masse: true, steintypen: true,
     planinhalt: "Wandabwicklung", wasserzeichen: false } };
 
@@ -815,16 +816,23 @@ store.setzeAktiv(idW);
       const rct = soll.slice(soll.indexOf("<rect"));
       const w = /width="([-\d.]+)"/.exec(rct)[1], h = /height="([-\d.]+)"/.exec(rct)[1];
       return blattMit.includes('width="' + w + '" height="' + h + '"'); })());
-  // Akzeptanz 2: Kopf UND Schaft der Schraube in dieser Breite, Kopfhoehe bleibt Symbolmass.
-  ok("[#97] Kopf und Schaft der Schraube sind 17 mm breit im Blattmasstab",
-    (() => { const b = rund(17 * sc7);
-      return (blattMit.split('width="' + b + '"').length - 1) >= 2; })());
-  ok("[#97] die KOPFHOEHE der Schraube bleibt unveraendert Symbolmass (keine Norm genannt)",
+  // Akzeptanz 2 (seit 2026-10-07): Kopf 17 mm breit (SW) und 7 mm hoch (DIN 933 M10), Schaft
+  // 10 mm (Gewinde M10) — alles im Blattmasstab, in der eigenen Kennfarbe der Schraube.
+  const schrB = t => [...t.matchAll(new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" '
+    + 'width="([-\\d.]+)" height="([-\\d.]+)" fill="' + MONT.SPANN_FARBE.schraube + '"', "g"))]
+    .map(m => ({ b: +m[1], h: +m[2] }));
+  ok("[2026-10-07] Schraube im Blatt: Schaft 10 mm, Kopf 17 mm breit (Blattmasstab)",
+    (() => { const r = schrB(blattMit);
+      return r.length > 0 && r.length % 2 === 0
+        && r.filter(q => Math.abs(q.b - +rund(10 * sc7)) < 1e-9).length === r.length / 2
+        && r.filter(q => Math.abs(q.b - +rund(17 * sc7)) < 1e-9).length === r.length / 2; })());
+  ok("[2026-10-07] die KOPFHOEHE der Schraube ist das Normmass DIN 933 M10 (7 mm)",
     (() => { const sr = MONT.schraubeSvg(0, 0, MONT.SPANN_EINHEIT.blatt, 0,
-      { n: rund, sw_mm: 17, sc: sc7 });
+      { n: rund, sw_mm: 17, d_mm: 10, sc: sc7 });
       const h = [...sr.matchAll(/height="([-\d.]+)"/g)].map(m => +m[1]);
-      return Math.abs(h[1] - MONT.SPANN_MM.kopf_h * MONT.SPANN_EINHEIT.blatt) < 1e-9
-        && blattMit.includes('height="' + rund(h[1]) + '"'); })());
+      return Math.abs(h[1] - +rund(7 * sc7)) < 1e-9
+        && schrB(blattMit).filter(q => Math.abs(q.b - +rund(17 * sc7)) < 1e-9)
+          .every(q => Math.abs(q.h - h[1]) < 1e-9); })());
 
   // M3: Modul 1 und Modul 7 messen fuer DIESELBE Wand dasselbe Bauteilmass in mm. Verglichen
   // wird — wie bei Plattendicke, Plattenbreite und Kopplungsmutter — das ZURUECKGERECHNETE
@@ -841,10 +849,14 @@ store.setzeAktiv(idW);
   ok("[#97] und dasselbe fuer die Sechskantschraube Fuss",
     (() => {
       const scM1 = (1000 - 2 * 46) / WZM.length_mm;
-      const a = MONT.schraubeSvg(0, 0, E1, 0, { sw_mm: 17, sc: scM1 });
+      const a = MONT.schraubeSvg(0, 0, E1, 0, { sw_mm: 17, d_mm: 10, sc: scM1 });
       const b1 = [...a.matchAll(/width="([-\d.]+)"/g)].map(m => +m[1]);
-      return b1.every(v => Math.abs(v / scM1 - 17) < 1e-9)
-        && blattMit.includes('width="' + rund(17 * sc7) + '"'); })());
+      const h1 = [...a.matchAll(/height="([-\d.]+)"/g)].map(m => +m[1]);
+      const r7 = schrB(blattMit);
+      return Math.abs(b1[0] / scM1 - 10) < 1e-9 && Math.abs(b1[1] / scM1 - 17) < 1e-9
+        && Math.abs(h1[1] / scM1 - 7) < 1e-9
+        && r7.some(q => Math.abs(q.b * mst - 10) < 1e-2)
+        && r7.some(q => Math.abs(q.b * mst - 17) < 1e-2 && Math.abs(q.h * mst - 7) < 1e-2); })());
 
   // Akzeptanz 3 / M4: dieselbe Wand OHNE die drei Felder — das Blatt faellt zeichenweise auf
   // das Symbolmass zurueck, und ausser den drei Bauteilen ist alles bytegleich.
@@ -873,12 +885,12 @@ store.setzeAktiv(idW);
         for (const b of breiten(o)) {
           const re = new RegExp('<rect x="[-\\d.]+" y="[-\\d.]+" width="'
             + b.replace(/\./g, "\\.") + '" height="[-\\d.]+" fill="'
-            + MONT.SPANN_FARBE.mutter + '"\\/>', "g");
+            + MONT.SPANN_FARBE.schraube + '"\\/>', "g");
           weg += (out.match(re) || []).length;
           out = out.replace(re, "");
         }
         return { out, weg }; };
-      const a = strip(blattMit, { sw_mm: 17, sc: sc7 }), b = strip(blattOhne, {});
+      const a = strip(blattMit, { sw_mm: 17, d_mm: 10, sc: sc7 }), b = strip(blattOhne, {});
       return fuesse > 0 && a.weg === 2 * fuesse && b.weg === 2 * fuesse
         && a.out === b.out && a.out.length > 0 && Z.masstab === mst; })());
   ok("[#97] das Blatt greift dafuer NICHT auf den Katalog zu ([D-1])",

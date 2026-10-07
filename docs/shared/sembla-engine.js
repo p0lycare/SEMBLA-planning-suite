@@ -158,8 +158,8 @@ function ausgleichHoehenOf(vorg) { return vorg.ausgleich_stein_hoehen_mm || null
 // in KEINE Rechnung ein und werden allein AUSGEWIESEN, damit die Ausgaben beide Teile spaeter
 // masstaeblich zeichnen koennen, ohne den Katalog zu lesen ([D-1]). Fielen sie hier weg,
 // traege das Element nach der Auslegung keine Masse mehr, obwohl Modul 1 sie aus dem Katalog
-// abgeleitet hat. Eine KOPFHOEHE der Schraube gibt es bewusst nicht — dafuer ist keine Norm
-// genannt, und sie liesse sich nur erfinden.
+// abgeleitet hat. Seit 2026-10-07 ebenso `senkkopf_d_mm` (Schaft = Gewinde-Nenndurchmesser);
+// die KOPFHOEHE ist kein Feld, sondern das feste Normmass `SPANN_MM.kopf_h_mm`.
 // Und aus demselben Grund `einlegeblech_b_mm`: die BREITE des gewaehlten Einlegeblechs in
 // Wandrichtung ([A-14]). Reines Ausweisungsmass ohne Rechenbeitrag — fiele es hier weg, traege
 // das Element nach der Auslegung keine Breite mehr, und die Ausgaben zeichneten wieder das
@@ -185,7 +185,7 @@ function psOf(vorg, extra) { const p = vorg.prestress || {};
            spannmutter_h_mm: p.spannmutter_h_mm, spannmutter_sw_mm: p.spannmutter_sw_mm,
            spannplatte_b_mm: p.spannplatte_b_mm,
            zp_mutter_h_mm: p.zp_mutter_h_mm, zp_mutter_sw_mm: p.zp_mutter_sw_mm,
-           senkkopf_sw_mm: p.senkkopf_sw_mm,
+           senkkopf_sw_mm: p.senkkopf_sw_mm, senkkopf_d_mm: p.senkkopf_d_mm,
            einlegeblech_b_mm: p.einlegeblech_b_mm,
            zwischenpunkte_mm: p.zwischenpunkte_mm,
            ausgleich_override_mm: p.ausgleich_override_mm,

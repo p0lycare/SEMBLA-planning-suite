@@ -435,6 +435,33 @@ export function vorschlagBezeichnung(p) {
   }
 }
 
+/**
+ * Nenndurchmesser eines metrischen Gewindes in mm — „M10" → 10, „M10×1,25" → 10.
+ *
+ * Gelesen wird ausschliesslich das gepflegte Feld `gewinde`; der Durchmesser IST die Zahl nach
+ * dem „M" (ISO-Bezeichnung), es wird nichts nachgeschlagen und nichts geraten. Alles, was nicht
+ * so beginnt, ergibt `null` — dann gibt es kein Mass ([P-9]). Genutzt als Ableitung des
+ * Schaftdurchmessers der Sechskantschraube am Fuss (`senkkopf_d_mm`, [D-4]).
+ * @param {any} gewinde @returns {number|null}
+ */
+export function gewindeDurchmesserMm(gewinde) {
+  const m = /^\s*M\s*(\d+(?:[.,]\d+)?)/i.exec(String(gewinde == null ? "" : gewinde));
+  const d = m ? Number(m[1].replace(",", ".")) : NaN;
+  return Number.isFinite(d) && d > 0 ? d : null;
+}
+
+/**
+ * Zahlenwert eines Massfelds eines Produkts. Das Pseudofeld `gewinde_d_mm` ist der
+ * Nenndurchmesser aus `gewinde` (`gewindeDurchmesserMm`) — so lesen Modul 1 (`einbauMass`) und
+ * der gemeinsame Baustein (`rollenMass`, `sembla-wandanlage.js`) ihn ueber DENSELBEN Weg wie
+ * jedes andere Einbaumass, ohne zweite Ableitung. Alle anderen Felder: `+p[feld]`.
+ * @param {any} p @param {string} feld @returns {number}
+ */
+export function produktMassWert(p, feld) {
+  if (feld === "gewinde_d_mm") { const d = gewindeDurchmesserMm(p && p.gewinde); return d == null ? NaN : d; }
+  return p ? +p[feld] : NaN;
+}
+
 /** Maßangabe einer Zeile als Klartext (UI/Tabelle). @param {any} p */
 export function massText(p) {
   if (!p) return "";

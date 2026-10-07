@@ -1312,6 +1312,31 @@ t("#97 Alle drei Masse reisen durch psOf() (Auslegung und Nachweis)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// SCHAFTDURCHMESSER DER SECHSKANTSCHRAUBE FUSS (2026-10-07, [D-4]) — reine DURCHREICHE
+// ---------------------------------------------------------------------------
+// Modul 1 / `sembla-wandanlage.js` leiten `senkkopf_d_mm` aus dem Gewinde der Rolle
+// „Sechskantschraube Fuss" ab (M10 -> 10). Der Kern reicht es nur durch — py/mjs bit-gleich,
+// ohne Angabe kein Schluessel, und auch durch `psOf()` der Auslegung.
+t("2026-10-07 senkkopf_d_mm reist durch Kern und Auslegung, py/mjs bit-gleich", () => {
+  const ps = { ...PS97ZP, senkkopf_d_mm: 10 };
+  const js = bau97zp(ps);
+  assert(js.prestress.senkkopf_d_mm === 10, "Schaft: " + js.prestress.senkkopf_d_mm);
+  deepEqual(js, orakel({ ...WAND97ZP, prestress: ps }));
+  deepEqual(bau97zp({ ...PS97ZP, senkkopf_d_mm: 8.5 }),
+    orakel({ ...WAND97ZP, prestress: { ...PS97ZP, senkkopf_d_mm: 8.5 } }));
+  const a = bau97zp(PS97ZP);
+  deepEqual(bau97zp({ ...PS97ZP, senkkopf_d_mm: 0 }), a);
+  deepEqual(bau97zp({ ...PS97ZP, senkkopf_d_mm: null }), a);
+  assert(!("senkkopf_d_mm" in a.prestress), "kein Schluessel ohne Angabe");
+  delete js.prestress.senkkopf_d_mm;
+  deepEqual(js, a);
+  const auto = autoAuslegung({ ...ENGINE_BASE, height_mm: 2000, prestress: ps,
+    load: { qk_area: 0.5, gammaQ: 1.5 } });
+  assert(auto.wandelement.prestress.senkkopf_d_mm === 10,
+    "nach der Auslegung: " + auto.wandelement.prestress.senkkopf_d_mm);
+});
+
+// ---------------------------------------------------------------------------
 // BREITE DES EINLEGEBLECHS ([A-14], Katalogfassung v5) — reine DURCHREICHE
 // ---------------------------------------------------------------------------
 // Modul 1 leitet `einlegeblech_b_mm` aus `breite_mm` der Rolle „Einlegeblech" ab (Mass in

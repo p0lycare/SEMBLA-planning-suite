@@ -1862,6 +1862,22 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   })());
 }
 
+// 2026-10-07 [D-4]: Schaftdurchmesser der Fussschraube = Nenndurchmesser des Gewindes. Nur die
+// Zahl nach dem „M" wird gelesen; alles andere ergibt kein Mass (nichts geraten).
+ok("2026-10-07 gewindeDurchmesserMm liest den Nenndurchmesser, sonst kein Mass", (() =>
+  KAT.gewindeDurchmesserMm("M10") === 10 && KAT.gewindeDurchmesserMm(" m8 ") === 8
+  && KAT.gewindeDurchmesserMm("M10×1,25") === 10 && KAT.gewindeDurchmesserMm("M12x1.5") === 12
+  && [null, undefined, "", "Tr12", "10", "M", "M0"].every((g) => KAT.gewindeDurchmesserMm(g) === null)
+  && KAT.produktMassWert({ gewinde: "M10" }, "gewinde_d_mm") === 10
+  && Number.isNaN(KAT.produktMassWert({}, "gewinde_d_mm"))
+  && KAT.produktMassWert({ sw_mm: 17 }, "sw_mm") === 17)());
+ok("2026-10-07 der Standardkatalog liefert fuer die Fussschraube M10 -> 10 mm", (() => {
+  const v6 = KAT.parseKatalog(readFileSync(new URL(
+    "../../docs/vorlagen/SEMBLA_Standardkatalog-v6.json", import.meta.url), "utf8"));
+  const p = KAT.produkt(v6, "verbrauch-senkkopfschraube-fuss");
+  return KAT.produktMassWert(p, "gewinde_d_mm") === 10 && p.sw_mm === 17;
+})());
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

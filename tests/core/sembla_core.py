@@ -1136,8 +1136,9 @@ def _norm_prestress(p):
     # der SECHSKANTSCHRAUBE FUSS ([A-19]) (#97) — die realen Masse beider Bauteile, von Modul 1
     # aus den gewaehlten Katalogprodukten abgeleitet. Auch sie gehen in KEINE Rechnung ein und
     # werden nur DURCHGEREICHT, damit die Ausgaben beide Teile masstaeblich zeichnen koennen,
-    # ohne den Katalog zu lesen ([D-1]). Eine KOPFHOEHE der Schraube gibt es bewusst nicht:
-    # dafuer ist keine Norm genannt, und sie liesse sich nur erfinden.
+    # ohne den Katalog zu lesen ([D-1]).
+    # Eine KOPFHOEHE der Schraube gibt es hier bewusst NICHT: sie ist ein festes Normmass der
+    # Zeichnung (SPANN_MM.kopf_h_mm, DIN 933 M10, seit 2026-10-07), kein Wandelementfeld.
     # Alle drei OPTIONAL und voneinander UNABHAENGIG: fehlend/ungueltig -> der Schluessel
     # entsteht gar nicht, das Ergebnis ist bit-genau das bisherige ([P-9]).
     _zph = p.get("zp_mutter_h_mm")
@@ -1149,6 +1150,11 @@ def _norm_prestress(p):
     _sksw = p.get("senkkopf_sw_mm")
     if _sksw is not None and float(_sksw) > 0:
         out["senkkopf_sw_mm"] = int(_sksw) if float(_sksw) == int(float(_sksw)) else float(_sksw)
+    # Schaftdurchmesser derselben Schraube (2026-10-07, [D-4]) — Nenndurchmesser des Gewindes,
+    # nur DURCHGEREICHT, OPTIONAL und unabhaengig.
+    _skd = p.get("senkkopf_d_mm")
+    if _skd is not None and float(_skd) > 0:
+        out["senkkopf_d_mm"] = int(_skd) if float(_skd) == int(float(_skd)) else float(_skd)
     # BREITE des EINLEGEBLECHS in Wandrichtung ([A-14]) — reales Bauteilmass aus dem Katalog
     # (`breite_mm` der Rolle „Einlegeblech"), nur DURCHGEREICHT, damit die Ausgaben das Blech
     # masstaeblich zeichnen koennen ([D-1]). OPTIONAL: fehlend/ungueltig -> der Schluessel

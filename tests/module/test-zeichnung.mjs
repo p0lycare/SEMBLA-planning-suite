@@ -198,6 +198,12 @@ ok("Sonderlaengen sind eigens gekennzeichnet", sonderSoll > 0 && sonderLinien ==
 const RE_MUTTER = new RegExp(`<rect x="[-\\d.]+" y="[-\\d.]+" width="[-\\d.]+" `
   + `height="([-\\d.]+)" fill="${Z.FARBE.mutter}"/>`, "g");
 const mutterHoehen = svg => [...svg.matchAll(RE_MUTTER)].map(m => +m[1]);
+// Seit 2026-10-07 tragen Kopplungsmutter (Pink) und Fussschraube eigene Kennfarben.
+const RE_KUPPL = new RegExp(`<rect x="[-\\d.]+" y="[-\\d.]+" width="[-\\d.]+" `
+  + `height="([-\\d.]+)" fill="${Z.FARBE.kupplung}"/>`, "g");
+const RE_SCHR = new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" width="([-\\d.]+)" `
+  + `height="([-\\d.]+)" fill="${Z.FARBE.schraube}"/>`, "g");
+const schrRects = svg => [...svg.matchAll(RE_SCHR)].map(m => ({ y: +m[1], b: +m[2], h: +m[3] }));
 ok("Kopplungen/Verankerungen sind markiert",
   svg.includes(Z.FARBE.mutter) && mutterHoehen(svg).length > 0);
 // #97: `<polygon>` ist seither nicht mehr pauschal verboten — die Ausgleichspunktmarke IST ein
@@ -233,16 +239,18 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
     /<g class="kop">/.test(svg)
     && svg.indexOf('<g class="kop">') > svg.indexOf('<g class="zsp">'));
   const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(svg);
-  const kopH = kop ? [...kop[1].matchAll(RE_MUTTER)].map(m => +m[1]) : [];
+  const kopH = kop ? [...kop[1].matchAll(RE_KUPPL)].map(m => +m[1]) : [];
   ok("[#106] die Vordergrundgruppe traegt genau die Kopplungen und die Fussanschluesse",
     stoesse > 0 && fuesse > 0 && kopH.length === stoesse + fuesse
     && kopH.every(h => Math.abs(h - hK) < 1e-9));
   ok("[#110] die Kopplungsmutter ist im Blatt messbar laenger als die normale Mutter",
     hK > hM && Math.abs(hK / hM - 2.5) < 1e-6);
-  // #97: die Schraube am Fuss — Kopf und Schaft, je Fussanschluss einmal.
+  // #97: die Schraube am Fuss — Kopf und Schaft, je Fussanschluss einmal. Seit 2026-10-07 in
+  // eigener Kennfarbe, der Kopf masstaeblich 7 mm hoch (DIN 933 M10).
   const alleH = mutterHoehen(svg);
   ok("[#97] je Fussanschluss steht eine Schraube mit Kopf im Blatt",
-    alleH.filter(h => Math.abs(h - hKopf) < 1e-9).length === fuesse);
+    schrRects(svg).length === 2 * fuesse
+    && schrRects(svg).filter(r => Math.abs(r.h - hKopf) < 1e-9).length === fuesse);
   // Kurze Muttern im Blatt: je Kopfblech-Anschluss eine Spannmutter, je Einlegeblech eine
   // Mutter ([A-16]) — und seit #97 je SPANNPLATTE eine Spannmutter, oben wie unten. Der
   // Rechenkern zaehlt genau so (`segSpannmutter` faellt mit `segSpannplatten` zusammen).
@@ -273,11 +281,15 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
     // Vollstaendig: die vorkommenden Hoehen sind GENAU die vier festen Symbolmasse. Der
     // Schraubenschaft ist dabei das einzige Mass, das eine Blechdicke mitnimmt (er reicht von
     // der Mutternmitte bis an die Blechunterkante) — auch die ist ein Zeichenmass des Blattes.
+    // Seit 2026-10-07 in drei Kennfarben (Mutter, Kopplungsmutter, Schraube) gelesen; ohne
+    // Katalogmasse bleiben alle Hoehen die festen Symbolmasse.
     const schaft = z => rnd(SPANN_MM.kupplung_h / 2 + Math.max(1.2, 15 / z.masstab));
     const soll = z => new Set([hKopf, hM, schaft(z), hK].map(v => rnd(v)));
+    const h3 = z => [...h(z), ...[...z.svg.matchAll(RE_KUPPL)].map(m => +m[1]),
+      ...schrRects(z.svg).map(r => r.h)];
     ok("[#106] die Symbolhoehen sind genau die festen Papier-mm aus SPANN_MM",
       [klein, gross].every(z => {
-        const ist = new Set(h(z).map(v => rnd(v)));
+        const ist = new Set(h3(z).map(v => rnd(v)));
         return ist.size === soll(z).size && [...ist].every(v => soll(z).has(v)); }));
   }
 
@@ -415,7 +427,7 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
   delete WKUo.prestress.rod_fuss_offset_mm;
   const zKo = Z.zeichnungSvg(WKUo, {});
   const kopGruppe = t => { const m = /<g class="kop">([\s\S]*?)<\/g>/.exec(t);
-    return m ? [...m[1].matchAll(RE_MUTTER)].map(q => +q[1]) : []; };
+    return m ? [...m[1].matchAll(RE_KUPPL)].map(q => +q[1]) : []; };
 
   ok("[#97] das Wandelement fuehrt die halbe Mutternhoehe als Fussoffset (kein neues Feld)",
     WKU30.prestress.rod_fuss_offset_mm === 15 && WKU45.prestress.rod_fuss_offset_mm === 22.5
@@ -443,7 +455,7 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
       const unten = Z.PAD_MM + WKU30.height_mm / zK30.masstab;
       const kop = /<g class="kop">([\s\S]*?)<\/g>/.exec(zK30.svg);
       const rects = [...kop[1].matchAll(new RegExp(`<rect x="[-\\d.]+" y="([-\\d.]+)" `
-        + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.mutter}"/>`, "g"))]
+        + `width="[-\\d.]+" height="([-\\d.]+)" fill="${Z.FARBE.kupplung}"/>`, "g"))]
         .map(m => ({ y: +m[1], h: +m[2] }));
       const auf = rects.filter(r => Math.abs((r.y + r.h) - unten) < 1e-3);
       return fuss > 0 && auf.length === fuss && auf.every(r => r.y < unten); })());
@@ -460,7 +472,8 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
   // darf seit #128 NICHT mehr gleich sein: die Stange beginnt mit Mass eine halbe
   // Mutternhoehe hoeher ([A-19]).
   ok("[#97]/[#128] Steine, Bleche, Bemassung und Masstab bleiben wertgleich", (() => {
-    const strip = t => t.replace(new RegExp(`<rect[^>]*fill="${Z.FARBE.mutter}"/>`, "g"), "")
+    const strip = t => t.replace(new RegExp(`<rect[^>]*fill="(?:${Z.FARBE.mutter}|`
+        + `${Z.FARBE.kupplung}|${Z.FARBE.schraube})"/>`, "g"), "")
       .replace(/<g class="kop">[\s\S]*?<\/g>/, "")
       .replace(/<g class="stg">[\s\S]*?<\/g>/, "");
     const stg = t => /<g class="stg">([\s\S]*?)<\/g>/.exec(t)[1];
@@ -519,7 +532,7 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
   const kopBreiten = t => { const m = /<g class="kop">([\s\S]*?)<\/g>/.exec(t);
     return m ? [...m[1].matchAll(/width="([-\d.]+)"/g)].map(q => +q[1]) : []; };
   const kopHoehen = t => { const m = /<g class="kop">([\s\S]*?)<\/g>/.exec(t);
-    return m ? [...m[1].matchAll(RE_MUTTER)].map(q => +q[1]) : []; };
+    return m ? [...m[1].matchAll(RE_KUPPL)].map(q => +q[1]) : []; };
   // Waagerechte weisse Linien = die Haarlinien am Stangenstoss (#112); die senkrechte
   // Blechstossmarke aus #91 wird an der Geometrie ausgeschlossen, nicht an der Farbe.
   const haarB = t => [...t.matchAll(
@@ -2209,14 +2222,19 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   // Stuecklistentabelle, in der die Kopplungsmutter nach [P-18] in Stangenstoss und Fuss
   // getrennt steht. Die Zeichnung (SVG) ist unveraendert.
   const ohneKette = t => String(t).replace(/<g class="bbkette">.*?<\/g>/g, "");
+  // Erneut eingefroren am 2026-10-07 (Schraube/Kopplungsmutter): geaendert sind allein die
+  // Kennfarben von Kopplungsmutter (Pink) und Fussschraube (Braun) — Lage und Masse aller
+  // Rechtecke unveraendert, weil diese Wand keine Katalogmasse fuehrt — und im Blatt-HTML die
+  // Legende („Kopplungsmutter", „Verankerung (Mutter)", „Sechskantschraube Fuß" statt
+  // „Kopplung / Verankerung").
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
-    kurz(ohneKette(Z.zeichnungSvg(W136r, {}).svg)) === "2ed0ad9c3fa45236"
+    kurz(ohneKette(Z.zeichnungSvg(W136r, {}).svg)) === "e1ce97f93947b12c"
     // 2026-10-07 ([D-4], Stangenfarben je Laenge): das Blatt-HTML neu eingefroren — geaendert
     // ist allein die Legende („Gewindestange 1100 mm" statt „Gewindestange (Standardlänge)",
     // kein Reststueck-Eintrag mehr, weil diese Wand keines hat). Das SVG ist unveraendert.
-    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "07879583f609eca8"
-    && kurz(Z.zeichnungSvg(W136r, {}).svg) === "e2cb3a0f3434fadc"
-    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "c794b8eff81d4140");
+    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "1d080e8f4d5da8d2"
+    && kurz(Z.zeichnungSvg(W136r, {}).svg) === "95ead608f6ec14fd"
+    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "bd47713dfaa3428c");
   ok("[#136] Nicht-Ziel: ohne Ausgleichslage entsteht keine Ausgleichs-Massangabe",
     !Z.zeichnungSvg(W136r, {}).svg.includes("ausgleichslage"));
 
