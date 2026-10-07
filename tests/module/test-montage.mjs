@@ -696,18 +696,18 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   ok("Sonderzuschnitt steht an seiner Position und ist farblich gekennzeichnet",
     rS.length === 2 && !rS[0].sonder && rS[1].sonder
     && Math.abs(rS[1].x - (rS[0].x + rS[0].w)) < 1e-9);
-  // Die Schraffur besteht aus senkrechten Strichen INNERHALB des Sonderteils. Sie ist das
-  // Merkmal, das den Sonderzuschnitt auch im Schwarz-Weiss-Ausdruck traegt — geprueft wird
-  // deshalb ausdruecklich Geometrie, nicht Farbe: senkrecht (x1 == x2), im Teil liegend,
-  // und im Standardteil daneben darf sie NICHT vorkommen.
+  // Seit dem AGW-Termin vom 2026-09-28 ist der Sonderzuschnitt NUR orange gefuellt: die
+  // frueheren senkrechten Schraffurstriche INNERHALB des Teils duerfen nicht mehr vorkommen
+  // (im Schwarz-Weiss-Ausdruck bewusst nicht mehr unterscheidbar).
   const schraffur = (svg, r) =>
     [...svg.matchAll(/<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)" stroke="#3a4350"/g)]
       .map(m => ({ x1: +m[1], y0: +m[2], x2: +m[3], y1: +m[4] }))
       .filter(t => t.x1 === t.x2 && t.y1 > t.y0 && t.x1 > r.x && t.x1 < r.x + r.w);
-  ok("[#91] Sonderzuschnitt traegt zusaetzlich ein NICHT FARBLICHES Merkmal (Schraffur)",
-    schraffur(bildS, rS[1]).length >= 2 && schraffur(bildS, rS[0]).length === 0);
+  ok("[#91] Sonderzuschnitt ist nur orange gefuellt, ohne Schraffur (2026-09-28)",
+    schraffur(bildS, rS[1]).length === 0 && schraffur(bildS, rS[0]).length === 0);
   ok("[D-4] die Legende benennt Blechstoss und Bodenblech-Sonderzuschnitt in Worten",
-    /Blechstoß/.test(bildS) && /Bodenblech Sonderzuschnitt \(schraffiert\)/.test(bildS));
+    /Blechstoß/.test(bildS) && /Bodenblech Sonderzuschnitt</.test(bildS)
+    && !/schraffiert/.test(bildS));
 
   // (c) Alt-Wandelement ohne `teile`: EIN durchgehendes Blech, nichts erfunden
   const WA = JSON.parse(JSON.stringify(WM));
@@ -1004,8 +1004,9 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
         !== schraubeSvg(100, 300, E1, 6)
       && schraubeSvg(100, 300, E1, 6, { hoehe_mm: 30, sc: scM1 })
         === schraubeSvg(100, 300, E1, 6, { hoehe_mm: 30, sc: scM1, sw_mm: 0 }));
-    // `kupplungDurchmesser()` ist die EINE Entscheidung — die Haarlinie nach #112 leitet ihre
-    // Breite in beiden Ausgaben daraus ab und darf sie nicht selbst nachrechnen ([D-4]).
+    // `kupplungDurchmesser()` ist die EINE Entscheidung ueber die Mutternbreite ([D-4]). Die
+    // Haarlinie nach #112 leitet ihre Breite seit 2026-09-28 NICHT mehr daraus ab — sie ist
+    // stangenbreit (geprueft in test-zeichnung.mjs und smoke_wp.mjs).
     ok("[#97] `kupplungDurchmesser()` ist genau die Breite der gezeichneten Mutter",
       (() => {
         const f = (o) => Math.abs(breite(kopplungsmutterSvg(0, 0, E1, o))

@@ -660,7 +660,7 @@ export function legendeWand(w) {
         text: `${BLECHSTOSS.label} (Bodenblech)` }] : []),
     ...(bodenblechTeile(el).some((t) => t.art === "sonder")
       ? [{ form: "plate", marke_farbe: FARBE_Z.stange_sonder,
-        text: `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)` }] : []),
+        text: `Bodenblech ${STUECK_LABEL.sonder}` }] : []),
     // #110: Einlegeblech der Zwischenspannpunkte — an GENAU DERSELBEN Abfrage wie im
     // HTML (`wirksameZwischenpunkte`), an derselben Stelle der Reihe, mit demselben
     // Wortlaut und derselben Kennfarbe. Eine Wand ohne wirksamen Punkt bekommt ihn nicht.

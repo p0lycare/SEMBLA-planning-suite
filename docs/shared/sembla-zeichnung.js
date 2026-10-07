@@ -54,10 +54,9 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          bodenblechAussparungen, AUSSPARUNG,
          // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
          // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
-         // #112: `SPANN_MM` kommt hinzu, weil die weisse Haarlinie am Stangenstoss aus dem
-         // Durchmesser der Kopplungsmutter ABGELEITET wird — sie muss breiter sein als das
-         // Bauteil, das ueber ihr liegt. Kein neues Symbolmass, nur eine Ableitung.
-         SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser,
+         // `SPANN_MM` liefert seit #121 den realen Stangendurchmesser, aus dem Stange und
+         // (seit 2026-09-28) die weisse Haarlinie am Stangenstoss ihre Breite beziehen.
+         SPANN_FARBE, SPANN_EINHEIT, SPANN_MM,
          mutterSvg, kopplungsmutterSvg, spannplatteSvg,
          schraubeSvg,
          // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs.
@@ -671,27 +670,6 @@ export function zeichnungSvg(w, opts = {}) {
   // hier gefuehrte Untergrenze der Plattenbreite (`pw = 2.2`) ist entfallen: sie liegt jetzt
   // als `SPANN_MM.platte_b_min` beim Symbol selbst, also fuer beide Ausgaben gleich ([D-4]).
   const SYM = SPANN_EINHEIT.blatt;
-  // Weisse HAARLINIE am Stangenstoss (#112): sie macht die Stueckelung ablesbar, wo zwei
-  // Stuecke DERSELBEN Art aneinanderstossen — die Kopplungsmutter sagt nur, DASS gekoppelt
-  // wird, nicht wo die Grenze liegt. Die Breite ist aus dem Durchmesser der Kopplungsmutter
-  // ABGELEITET und nicht frei gewaehlt: sie markiert die Grenze GENAU dort, wo die Mutter
-  // sitzt, und muss deshalb an deren Breite gemessen werden. Mit Faktor 1,5 schaut sie
-  // beidseits ueber die Mutter hinaus und ist als Stossmarke auch dann eindeutig der Stange
-  // zugeordnet, wenn zwei Stuecke derselben Art aneinanderstossen. Seit der Rueckmeldung vom
-  // 2026-09-09 liegt sie zusammen mit der Stange VOR der Mutter (s. u.).
-  //
-  // Seit #97 kommt der Durchmesser aus `kupplungDurchmesser()` und damit aus dem WIRKSAMEN
-  // Mass der Mutter — masstabstreu, sobald die Schluesselweite gefuehrt ist, sonst unveraendert
-  // `SPANN_MM.d * SYM`. Nur so bleibt sie in jedem Fall breiter als die Mutter, die sie
-  // markiert; aus dem Symbolmass abgeleitet waere sie bei einer schmalen Mutter viel zu breit.
-  //
-  // ⚠ Nachziehpunkt [P-6]/[D-4]: der FAKTOR 1,5 steht weiterhin ein zweites Mal in der
-  // Wandansicht von Modul 1 (`docs/wandplanung.html`); nur der WERT kommt seit #97 aus der
-  // einen Quelle in sembla-montage.js. Dasselbe Muster wie beim
-  // Brandschutz-Darstellungsschluessel (#79): lokal gefuehrt, Gleichheit beider Ansichten im
-  // Test gesichert.
-  const HAAR_B = kupplungDurchmesser(SYM, { sw_mm: kuSw, sc }) * 1.5,
-    HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
   // STRICHSTAERKE DER GEWINDESTANGE (#121): der reale Durchmesser mal dem Blattmasstab, also
   // `SPANN_MM.rod_d_mm * sc` — dieselbe Rechnung, mit der Kopplungsmutter und Spannplatte seit
   // #97 masstabsgetreu sind. Vorher stand hier eine FESTE Papier-mm-Staerke (`SW * 2.6`, fuer das
@@ -702,13 +680,25 @@ export function zeichnungSvg(w, opts = {}) {
   // masstabsgetreue Mass und gilt damit fuer jeden Masstab gleich; sie bleibt in jedem Fall
   // unter dem Mutterndurchmesser. ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe `Math.max`-Zeile steht
   // ein zweites Mal in der Wandansicht von Modul 1 (`docs/wandplanung.html`) — nur die WERTE
-  // kommen aus der einen Quelle in `sembla-montage.js`. Dasselbe Muster wie beim Faktor 1,5 der
-  // Haarlinie; die Gleichheit beider Ansichten sichert der Test.
+  // kommen aus der einen Quelle in `sembla-montage.js`. Die Gleichheit beider Ansichten sichert
+  // der Test.
   //
   // Das RESTSTUECK traegt dadurch KEINE groessere Staerke mehr als das Standardstueck (eine
   // Stange ist ueberall gleich dick): unterschieden werden die Arten weiter ueber `stueckFarbe()`
   // und die weisse Stueckelungs-Haarlinie (#112) — beide unveraendert.
   const STANGE_SW = Math.max(SPANN_MM.rod_d_min * SYM, SPANN_MM.rod_d_mm * sc);
+  // Weisse HAARLINIE am Stangenstoss (#112): sie macht die Stueckelung ablesbar, wo zwei
+  // Stuecke DERSELBEN Art aneinanderstossen — die Kopplungsmutter sagt nur, DASS gekoppelt
+  // wird, nicht wo die Grenze liegt. Seit der Rueckmeldung vom 2026-09-09 liegt sie zusammen
+  // mit der Stange VOR der Mutter (s. u.).
+  //
+  // Breite (AGW-Termin 2026-09-28): GENAU die gezeichnete Strichbreite der Gewindestange,
+  // also `STANGE_SW` — buendig, ohne Ueberstand. Bis dahin war sie aus dem Durchmesser der
+  // Kopplungsmutter mit Faktor 1,5 abgeleitet und ragte beidseits ueber Mutter und Stange
+  // hinaus. ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe Zuweisung steht ein zweites Mal in der
+  // Wandansicht von Modul 1 (`docs/wandplanung.html`); die Gleichheit beider Ansichten sichert
+  // der Test.
+  const HAAR_B = STANGE_SW, HAAR_SW = SW * 0.6, HAAR_FARBE = "#fff";
   // Alle KOPPLUNGSMUTTERN kommen in den VORDERGRUND (#106): gesammelt in `vorn` und als eigene
   // Gruppe NACH Einlegeblechen, Deckenanschluss-Symbolen, Platten und Blechen gesetzt, damit
   // keines davon sie ueberdeckt.
@@ -1180,9 +1170,9 @@ export function legendeHtml(w) {
     // Reale Bodenblechteile ([A-10]/[A-11]/[A-12]): Stoss und Sonderzuschnitt stehen
     // NUR dann in der Legende, wenn sie im Blatt auch gezeichnet wurden — ein
     // Alt-Wandelement ohne `base_plate.teile` zeigt eine durchgehende Platte und
-    // bekommt deshalb keinen dieser Eintraege ([D-4]). Der Sonderzuschnitt traegt sein
-    // NICHT FARBLICHES Merkmal (die Schraffur) ausdruecklich in Worten, damit er im
-    // Schwarz-Weiss-Ausdruck aufloesbar bleibt.
+    // bekommt deshalb keinen dieser Eintraege ([D-4]). Der Sonderzuschnitt ist seit dem
+    // AGW-Termin vom 2026-09-28 NUR orange gefuellt (keine Schraffur mehr) — im
+    // Schwarz-Weiss-Ausdruck bewusst nicht mehr unterscheidbar, die Plaene gehen in Farbe raus.
     // #91: Das Legendenfeld zeigt die Marke SO, WIE SIE IM BLATT STEHT — eine weisse Linie
     // IN einem stahlfarbenen Blechfeld. Ein weisses Feld allein waere auf dem hellen
     // Blattgrund unsichtbar, ein dunkles zeigte eine Farbe, die es im Blatt nicht gibt.
@@ -1190,7 +1180,7 @@ export function legendeHtml(w) {
         ? `<span>${i(`linear-gradient(90deg,${FARBE.stahl} 0 40%,${BLECHSTOSS.farbe} 40% 60%,`
             + `${FARBE.stahl} 60% 100%)`, "plate")}${BLECHSTOSS.label} (Bodenblech)</span>` : "")
     + (bodenblechTeile(w).some(t => t.art === "sonder")
-        ? `<span>${i(FARBE.stange_sonder, "plate")}Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : "")
+        ? `<span>${i(FARBE.stange_sonder, "plate")}Bodenblech ${STUECK_LABEL.sonder}</span>` : "")
     // Bodenblech-Aussparung ([A-28]/#138): genannt GENAU DANN, wenn die Wand wirklich eine
     // Luecke fuehrt. Das Feld traegt — wie im Blatt — einen LEEREN, gestrichelten Umriss statt
     // eines Blechfeldes: dort liegt kein Blech, und die Aussparung darf mit der weissen

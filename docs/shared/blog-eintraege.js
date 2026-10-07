@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-02",
+    datum: "2026-10-07",
+    typ: "fix",
+    issue: 112,
+    titel: "Zeichnung: Bodenblech-Sonderzuschnitt nur noch orange ohne Schraffur, weiße Stoßlinie "
+      + "stangenbreit",
+    testbitte: "Modul 1 und Modul 7 mit einer Wand mit Bodenblech-Sonderzuschnitt und Stangenstößen öffnen: "
+      + "Sonderteil ohne Striche, Legende ohne „schraffiert“, weiße Linie bündig mit der Stange",
+  },
+  {
     id: "chg-20261007-01",
     datum: "2026-10-07",
     typ: "fix",

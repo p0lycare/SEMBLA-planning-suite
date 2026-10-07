@@ -556,16 +556,13 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
       .replace(/<line [^>]*stroke="#fff"[^>]*\/>/g, "");
     return z17.masstab === zo.masstab && strip(z17.svg) === strip(zo.svg)
       && strip(z17.svg).length > 0; })());
-  // [#112] Die Haarlinie folgt dem WIRKSAMEN Durchmesser und bleibt in allen drei Faellen
-  // breiter als die Mutter, die sie markiert — auch bei einer schmalen Mutter.
-  ok("[#112] die Haarlinie ist auch mit Schluesselweite breiter als die Mutter", (() => {
-    const paare = [[z17, 17], [z24, 24], [zo, null]];
-    return paare.every(([z, sw]) => {
-      const hb = haarB(z.svg), kb = kopBreiten(z.svg);
-      const soll = sw == null ? SPANN_MM.d * E : sw / z.masstab;
-      return hb.length > 0 && kb.length > 0
-        && hb.every(v => Math.abs(v - rnd(soll * 1.5)) < 1e-3)
-        && hb.every(v => v > Math.max(...kb) - 1e-9); }); })());
+  // [#112] Die Haarlinie ist seit dem AGW-Termin vom 2026-09-28 GENAU so breit wie die
+  // gezeichnete Gewindestange (buendig, kein Ueberstand) — unabhaengig von der Mutternbreite.
+  ok("[#112] die Haarlinie ist mit und ohne Schluesselweite genau stangenbreit", (() => {
+    return [z17, z24, zo].every(z => {
+      const hb = haarB(z.svg);
+      const soll = Math.max(SPANN_MM.rod_d_min * E, SPANN_MM.rod_d_mm / z.masstab);
+      return hb.length > 0 && hb.every(v => Math.abs(v - rnd(soll)) < 1e-3); }); })());
   // [D-4]/#97 Muss: Modul 1 und Modul 7 messen dieselbe Schluesselweite. Verglichen wird das
   // ZURUECKGERECHNETE Bauteilmass in mm, und das muss beidseits 17 mm sein.
   ok("[#97] Modul 1 und Modul 7 zeigen dieselbe masstaebliche Mutternbreite", (() => {
@@ -915,16 +912,17 @@ ok("[#110] keine Kreis- oder Sechseckdarstellung der Spannkomponenten im Blatt",
     return soll.length === ist.length && soll.every(q => ist.some(h =>
       Math.abs((h.x1 + h.x2) / 2 - q.x) < 1e-3 && Math.abs(h.y - q.y) < 1e-3
       && h.x2 > h.x1)); })());
-  // Breite: ABGELEITET aus dem Durchmesser der Kopplungsmutter und messbar BREITER als sie —
-  // sonst verschwaende die Linie vollstaendig unter dem Bauteil, das ueber ihr liegt.
-  // RUECKFALL-Gegenprobe: `W` fuehrt keine Schluesselweite — dann ist der wirksame Durchmesser
-  // das Symbolmass, und die Haarlinie bleibt bit-gleich zum Stand vor #97. Die Gegenprobe MIT
-  // Schluesselweite steht im Blattbreiten-Block weiter unten.
-  ok("[#112] ohne Schluesselweite ist sie breiter als die Mutter (aus SPANN_MM.d)", (() => {
-    const b = SPANN_MM.d * 1.5 * SPANN_EINHEIT.blatt;
+  // Breite (AGW-Termin 2026-09-28): GENAU die gezeichnete Strichbreite der Gewindestange —
+  // buendig, kein Ueberstand ueber die Stange. Gemessen gegen die Stangenlinien desselben
+  // Blattes, nicht gegen eine nachgerechnete Zahl. Die Gegenprobe MIT Schluesselweite steht im
+  // Blattbreiten-Block weiter unten.
+  ok("[#112] die Haarlinie ist genau so breit wie die gezeichnete Stange", (() => {
+    const grpS = /<g class="stg">([\s\S]*?)<\/g>/.exec(svg);
+    const sw = grpS ? [...grpS[1].matchAll(/<line [^>]*stroke="(?!#fff)[^"]*" stroke-width="([-\d.]+)"\/>/g)]
+      .map(m => +m[1]) : [];
     const ist = haare(svg);
-    return ist.length > 0 && ist.every(h => Math.abs((h.x2 - h.x1) - b) < 1e-3)
-      && b > SPANN_MM.d * SPANN_EINHEIT.blatt; })());
+    return ist.length > 0 && sw.length > 0 && new Set(sw).size === 1
+      && ist.every(h => Math.abs((h.x2 - h.x1) - sw[0]) < 1e-3); })());
   ok("[#112] sie ist eine Haarlinie — duenner als jede Stangenlinie", (() => {
     const ist = haare(svg);
     return ist.length > 0 && ist.every(h => h.sw < 0.22 * 2.6); })());
@@ -1699,7 +1697,8 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
     && r5.every((r, i) => r.sonder === rM[i].sonder)
     && rel(r5, stossX(svg5)).every((v, i) => Math.abs(v - rel(rM, stossX(svgM))[i]) < 1e-6));
 
-  // (c) Erzwungener Sonderzuschnitt: eigene Position, Farbe UND Schraffur
+  // (c) Erzwungener Sonderzuschnitt: eigene Position und Farbe — seit dem AGW-Termin vom
+  // 2026-09-28 OHNE Schraffur (nur orange gefuellt).
   const WBS = buildWall("Blech-sonder", 2000, 2600, [], null, { blech_lengths_mm: [1250] });
   const tS = bodenblechTeile(WBS);
   ok("[A-10] erzwungener Sonderzuschnitt am Wandende (Voraussetzung)",
@@ -1709,17 +1708,17 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   ok("Sonderzuschnitt steht an seiner Position und ist farblich gekennzeichnet",
     rS.length === 2 && !rS[0].sonder && rS[1].sonder
     && Math.abs(rS[1].x - (rS[0].x + rS[0].w)) < 5e-3);
-  // Nicht farbliches Merkmal: senkrechte Schraffurstriche INNERHALB des Sonderteils —
-  // geprueft wird Geometrie, nicht Farbe, und im Standardteil darf sie nicht vorkommen.
+  // Keine senkrechten Schraffurstriche mehr — weder im Sonderteil noch im Standardteil.
   const schraffur = (svg, r) =>
     [...svg.matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#3a4350"/g)]
       .map(m => ({ x1: +m[1], y0: +m[2], x2: +m[3], y1: +m[4] }))
       .filter(t => t.x1 === t.x2 && t.y1 > t.y0 && t.x1 > r.x && t.x1 < r.x + r.w);
-  ok("[#91] Sonderzuschnitt traegt zusaetzlich ein NICHT FARBLICHES Merkmal (Schraffur)",
-    schraffur(svgS, rS[1]).length >= 2 && schraffur(svgS, rS[0]).length === 0);
+  ok("[#91] Sonderzuschnitt ist nur orange gefuellt, ohne Schraffur (2026-09-28)",
+    schraffur(svgS, rS[1]).length === 0 && schraffur(svgS, rS[0]).length === 0);
   ok("[D-4] die Legende benennt Blechstoss und Bodenblech-Sonderzuschnitt in Worten",
     /Blechstoß \(Bodenblech\)/.test(Z.legendeHtml(WBS))
-    && Z.legendeHtml(WBS).includes(`Bodenblech ${STUECK_LABEL.sonder} (schraffiert)`));
+    && Z.legendeHtml(WBS).includes(`Bodenblech ${STUECK_LABEL.sonder}</span>`)
+    && !Z.legendeHtml(WBS).includes("schraffiert"));
 
   // (d) EIN Zeichenpfad: Vorschau, Druck-HTML und eigenstaendige SVG-Datei sind gleich
   const blechGruppe = svgS.slice(svgS.indexOf(`fill="${STUECK_FARBE.sonder}"`) - 120,
@@ -2050,11 +2049,13 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
       && /lagenOberkanteMm,/.test(q); })());
 
   // (f) MUSS 6: eine reine 200-mm-Wand bleibt zeichenkettengleich — eingefroren.
+  // Neu eingefroren am 2026-10-07: einzige Aenderung sind die weissen Haarlinien am
+  // Stangenstoss, die seit dem AGW-Termin vom 2026-09-28 stangenbreit sind.
   const W136r = buildWall("IW-200", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null,
     { top_connection: "blech" }, [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
-    kurz(Z.zeichnungSvg(W136r, {}).svg) === "93b0deb1bd6d5fc8"
-    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "34a07b5c84f617e0");
+    kurz(Z.zeichnungSvg(W136r, {}).svg) === "357a34a08ab83f67"
+    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "920f8df14776d4a4");
   ok("[#136] Nicht-Ziel: ohne Ausgleichslage entsteht keine Ausgleichs-Massangabe",
     !Z.zeichnungSvg(W136r, {}).svg.includes("ausgleichslage"));
 

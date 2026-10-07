@@ -91,7 +91,7 @@ const BOM = await import("../../docs/shared/sembla-bom.js");
 const { ROLLE_RECHNUNG, ausgleichSteinHoehen } = await import("../../docs/shared/sembla-wandanlage.js");
 // #112: das Blatt von Modul 7 — nur zum QUERVERGLEICH. Modul 1 zieht daraus nichts; geprueft
 // wird, dass beide Ansichten derselben Wand dieselbe Zahl weisser Haarlinien zeigen und
-// dieselbe abgeleitete Breite benutzen (das lokale Doppelmass, [P-6]/[D-4]).
+// dieselbe Breite benutzen (stangenbreit, das lokale Doppelmass, [P-6]/[D-4]).
 const ZEICH = await import("../../docs/shared/sembla-zeichnung.js");
 // Aktives Element ist in Modul 0 angelegt worden (inkl. Wandtyp) — Modul 1 legt selbst KEINS an.
 // Der Leerfall wird am Ende separat geprüft.
@@ -126,12 +126,9 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // eigene Geometrie und keine lokalen Hex-Werte mehr.
   // #106: die Symbolmasse stehen fest in Papier-mm; `SPANN_EINHEIT.ansicht` ist der Faktor
   // auf viewBox-Einheiten. `schraubeSvg` ist die Schraube am Wandfuss ([A-19]/#97).
-  // #112: `SPANN_MM` kommt hinzu — die weisse Haarlinie am Stangenstoss wird aus dem
-  // Durchmesser der Kopplungsmutter abgeleitet, damit sie breiter ist als das Bauteil ueber ihr.
-  // #97: `kupplungDurchmesser` kommt hinzu — der WIRKSAME Durchmesser der Kopplungsmutter
-  // (Schluesselweite mal Masstab, sonst Symbolmass). Aus ihm leitet Modul 1 die Haarlinie ab.
+  // `SPANN_MM` liefert den realen Stangendurchmesser (#121), aus dem Stange und — seit dem
+  // AGW-Termin vom 2026-09-28 — die weisse Haarlinie am Stangenstoss ihre Breite beziehen.
   SPANN_FARBE: MONT.SPANN_FARBE, SPANN_EINHEIT: MONT.SPANN_EINHEIT, SPANN_MM: MONT.SPANN_MM,
-  kupplungDurchmesser: MONT.kupplungDurchmesser,
   mutterSvg: MONT.mutterSvg,
   kopplungsmutterSvg: MONT.kopplungsmutterSvg, spannplatteSvg: MONT.spannplatteSvg,
   schraubeSvg: MONT.schraubeSvg,
@@ -406,14 +403,17 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
     return soll.length>0 && soll.length===ist.length && soll.every(q=>ist.some(h=>
       Math.abs((h.x1+h.x2)/2-q.x)<1e-9 && h.y1===h.y2 && Math.abs(h.y1-q.y)<1e-9
       && h.x2>h.x1)); })());
-  ok('[#112] sie ist breiter als die Kopplungsmutter (aus SPANN_MM.d abgeleitet)', (()=>{
-    const b=MM.d*1.5*E, ist=haare(svg());
-    return ist.length>0 && ist.every(h=>Math.abs((h.x2-h.x1)-b)<1e-9) && b>MM.d*E; })());
+  // Seit dem AGW-Termin vom 2026-09-28 genau so breit wie die gezeichnete Stange (buendig).
+  ok('[#112] sie ist genau so breit wie die gezeichnete Stange', (()=>{
+    const b=Math.max(MM.rod_d_min*E, MM.rod_d_mm*WP.ansichtSc()), ist=haare(svg());
+    return ist.length>0 && ist.every(h=>Math.abs((h.x2-h.x1)-b)<1e-9); })());
   ok('[#112] sie ist eine Haarlinie — duenner als jede Stangenlinie',
     haare(svg()).every(h=>h.sw<2.4));
-  // Das lokale Doppelmass ([P-6]/[D-4]): Modul 1 und Modul 7 fuehren die Ableitung getrennt,
-  // ohne gemeinsames Symbolmass in sembla-montage.js (Praezedenz #79). Genau deshalb wird die
-  // Gleichheit hier GEPRUEFT statt verdrahtet — am gezeichneten Ergebnis beider Ansichten.
+  // Das lokale Doppelmass ([P-6]/[D-4]): Modul 1 und Modul 7 fuehren die Zuweisung getrennt.
+  // Genau deshalb wird die Gleichheit hier GEPRUEFT statt verdrahtet — am gezeichneten Ergebnis
+  // beider Ansichten. Seit dem AGW-Termin vom 2026-09-28 lautet die gemeinsame Regel: die
+  // Haarlinie ist in JEDER Ansicht genau so breit wie deren gezeichnete Stange. Die beiden
+  // Ansichten haben verschiedene Masstaebe, verglichen wird deshalb je Ansicht gegen ihre Stange.
   ok('[#112] beide Ansichten leiten dieselbe Breite ab (kein Drift des Doppelmasses)', (()=>{
     const wd=w();
     const bl=ZEICH.zeichnungSvg(wd,{}).svg;
@@ -424,10 +424,13 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
       .filter(m=>+m[2]===+m[4]).map(m=>+m[3]-+m[1]);
     const ha=haare(svg()).map(h=>h.x2-h.x1);
     if(!hb.length||!ha.length) return false;
-    // Je Ansicht ein einheitliches Mass, und nach Umrechnung auf Papier-mm dasselbe.
+    // Je Ansicht ein einheitliches Mass, und es ist die Strichstaerke der Stange DIESER Ansicht.
     const eins=a=>new Set(a.map(v=>Math.round(v*1e6))).size===1;
-    return eins(hb) && eins(ha)
-      && Math.abs(ha[0]/E - hb[0]/MONT.SPANN_EINHEIT.blatt)<1e-9; })());
+    const stg=/<g class="stg">([\s\S]*?)<\/g>/.exec(bl);
+    const sb=stg?[...stg[1].matchAll(/<line [^>]*stroke="(?!#fff)[^"]*" stroke-width="([-\d.]+)"\/>/g)].map(m=>+m[1]):[];
+    const sa=Math.max(MM.rod_d_min*E, MM.rod_d_mm*WP.ansichtSc());
+    return eins(hb) && eins(ha) && sb.length>0 && eins(sb)
+      && Math.abs(hb[0]-sb[0])<1e-3 && Math.abs(ha[0]-sa)<1e-9; })());
   ok('[#112] beide Ansichten derselben Wand zeigen gleich viele Haarlinien', (()=>{
     const wd=w();
     const bl=ZEICH.zeichnungSvg(wd,{}).svg;
@@ -447,12 +450,11 @@ ok('[#63] Legende nennt genau die vorhandenen Stueckarten plus Kopplung', legend
         n++;
       }
     return n>0; })());
-  // Seit #97 kommt der WERT aus `kupplungDurchmesser()` (sembla-montage.js) — dieselbe
-  // Entscheidung, die die Mutter selbst zeichnet. Lokal bleibt nur der Faktor 1,5; ein eigenes
-  // Symbolmass fuer die Breite gibt es in Modul 1 weiterhin nicht ([D-4]).
-  ok('[#112]/[#97] Modul 1 fuehrt fuer die Haarlinienbreite kein eigenes Mass',
-    /kupplungDurchmesser\(SYM,\{sw_mm:kuSw,sc\}\)\*1\.5/.test(html)
-    && /kupplungDurchmesser=S\.kupplungDurchmesser/.test(html)
+  // Seit dem AGW-Termin vom 2026-09-28 IST die Haarlinienbreite die Stangenstaerke — ein
+  // eigenes Mass oder der fruehere Faktor 1,5 auf die Mutternbreite gibt es nicht mehr ([D-4]).
+  ok('[#112] Modul 1 fuehrt fuer die Haarlinienbreite kein eigenes Mass',
+    /const HAAR_B=STANGE_SW,/.test(html)
+    && !/\*1\.5, HAAR_SW/.test(html)
     && !/SPANN_MM\.d\s*\*\s*1\.5/.test(html));
   // Ein Strang aus EINEM Stueck hat keinen Stoss — dann darf auch keine Haarlinie entstehen.
   ok('[#112] ein einstueckiger Strang bekommt keine Haarlinie', (()=>{
@@ -2706,10 +2708,11 @@ store.setzeKatalog(KATALOG);
     ok('[#97] die Wandansicht zeichnet die Mutter mit ihrer realen Schluesselweite',
       b17.length>0 && b17.every(v=>Math.abs(v-17*sc17)<1e-9));
     ok('[#97] jede Kopplungsmarke ist bytegleich die des geteilten Bausteins', marken(17)>0);
-    ok('[#97] die Haarlinie am Stangenstoss ist breiter als die Mutter', (()=>{
+    // Seit 2026-09-28 haengt die Haarlinie NICHT mehr an der Mutternbreite: stangenbreit.
+    const stangeB=()=>Math.max(MONT.SPANN_MM.rod_d_min*E, MONT.SPANN_MM.rod_d_mm*WP.ansichtSc());
+    ok('[#97] die Haarlinie am Stangenstoss ist stangenbreit, unabhaengig von der Mutter', (()=>{
       const hb=haarB(svg());
-      return hb.length>0 && hb.every(v=>Math.abs(v-17*sc17*1.5)<1e-9)
-        && hb.every(v=>v>Math.max(...b17)); })());
+      return hb.length>0 && hb.every(v=>Math.abs(v-stangeB())<1e-9); })());
 
     // Zweite Schluesselweite: sichtbar breiter, gleiche Hoehe.
     setzen('kupplung','kuppl-sw-17',false); setzen('kupplung','kuppl-sw-24',true); WP.run();
@@ -2730,10 +2733,9 @@ store.setzeKatalog(KATALOG);
       const b=kopB(ohne);
       return b.length>0 && b.every(v=>Math.abs(v-MONT.SPANN_MM.d*E)<1e-9)
         && ohne!==mit && marken(undefined)>0; })());
-    ok('[#97] und auch die Haarlinie faellt auf das Symbolmass zurueck', (()=>{
+    ok('[#97] die Haarlinie bleibt auch ohne Schluesselweite stangenbreit', (()=>{
       const hb=haarB(ohne);
-      return hb.length>0 && hb.every(v=>Math.abs(v-MONT.SPANN_MM.d*1.5*E)<1e-9)
-        && hb.every(v=>v>MONT.SPANN_MM.d*E); })());
+      return hb.length>0 && hb.every(v=>Math.abs(v-stangeB())<1e-9); })());
     // Nur GEZEICHNET: alles ausser den Kopplungsmarken und den Haarlinien ist bytegleich.
     ok('[#97] Steine, Stangen, Bleche und Bemassung bleiben dabei bytegleich', (()=>{
       const strip=t=>t.replace(/<rect class="kop"[^>]*\/>/g,'')
@@ -3882,12 +3884,14 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     return m.length>0 && m.every(l=>l.y0===oben && l.y1>l.y0 && l.y1<=unten+1e-9); })());
   ok('[#91] die alte schwarze Trennmarke kommt in der Wandansicht nicht mehr vor',
     !new RegExp('<line x1="[-\\d.]+" y1="'+r91[0].y+'" [^>]*stroke="#13202e"').test(svg()));
-  ok('[#91] der Sonderzuschnitt traegt seine nicht farbliche Schraffur (senkrechte Striche)', (()=>{
+  // Seit dem AGW-Termin vom 2026-09-28 ist der Sonderzuschnitt NUR orange gefuellt — keine
+  // senkrechten Schraffurstriche mehr, weder im Sonder- noch im Standardteil.
+  ok('[#91] der Sonderzuschnitt ist nur orange gefuellt, ohne Schraffur', (()=>{
     const son=r91.filter(r=>r.sonder), std=r91.filter(r=>!r.sonder);
     if(son.length!==1||!std.length) return false;
     const str=r=>[...svg().matchAll(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)" stroke="#3a4350"/g)]
       .filter(m=>+m[1]===+m[3] && +m[2]===r.y && +m[1]>r.x && +m[1]<r.x+r.w).length;
-    return str(son[0])>=2 && std.every(r=>str(r)===0); })());
+    return str(son[0])===0 && std.every(r=>str(r)===0); })());
   ok('[#91] Modul 1 zeigt dieselben relativen Teilgrenzen wie das Blatt von Modul 7', (()=>{
     const bl=ZEICH.zeichnungSvg(W91,{}).svg;
     const rb=[...bl.matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="[-\d.]+"[^>]*fill="(#5b6673|#e8702a)"/g)]
@@ -3931,15 +3935,15 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
         && marken(t).length===0; })());
 
   // ---- Issue #97: die Zuschnittlegende erklaert die beiden Bodenblechmarken ----------
-  // Gemeldet war: Modul 1 ZEICHNET Stossmarke und Schraffur seit #91, BENENNT sie aber nicht;
+  // Gemeldet war: Modul 1 ZEICHNET Stossmarke und Sonderzuschnitt seit #91, BENENNT sie aber nicht;
   // das Blatt von Modul 7 tut es in `legendeHtml()`. Geprueft wird der echte Pfad: dieselbe
   // ueber die Produktauswahl gerechnete Wand W91 und ihre Legende im eigenen DOM-Bereich.
   const TXT_STOSS=`${MONT.BLECHSTOSS.label} (Bodenblech)`;
-  const TXT_SONDER=`Bodenblech ${MONT.STUECK_LABEL.sonder} (schraffiert)`;
+  const TXT_SONDER=`Bodenblech ${MONT.STUECK_LABEL.sonder}</span>`;
   ok('[#97] Legende nennt die Stossmarke mit dem Klartext aus sembla-montage.js',
     zleg().includes(TXT_STOSS));
-  ok('[#97] Legende nennt den Bodenblech-Sonderzuschnitt samt Schraffur in Worten',
-    zleg().includes(TXT_SONDER));
+  ok('[#97] Legende nennt den Bodenblech-Sonderzuschnitt in Worten (ohne „schraffiert")',
+    zleg().includes(TXT_SONDER) && !zleg().includes('schraffiert'));
   ok('[#97] Wortlaut satzgleich zum Blatt von Modul 7 (legendeHtml)', (()=>{
     const l7=ZEICH.legendeHtml(W91);
     return l7.includes(TXT_STOSS) && l7.includes(TXT_SONDER); })());
@@ -4263,8 +4267,10 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
         return alles; })());
     // Und die ganze Ansicht als Zeichenkette: eingefroren, damit kein spaeterer Eingriff die
     // 200-mm-Wand unbemerkt verschiebt.
+    // Neu eingefroren am 2026-10-07: einzige Aenderung sind die weissen Haarlinien am
+    // Stangenstoss, die seit dem AGW-Termin vom 2026-09-28 stangenbreit sind.
     ok('[#140] (Nicht-Ziel) die 200-mm-Referenzansicht bleibt zeichenkettengleich (eingefroren)',
-      hash140(svg140())==='8d677911b003331b');
+      hash140(svg140())==='587b3ac250a6353d');
   }
   // Gegenprobe: das Zeichnen hat KEINE Rechenwirkung — das gespeicherte Wandelement und die
   // Stueckliste bleiben unberuehrt.

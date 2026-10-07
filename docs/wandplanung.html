@@ -341,7 +341,7 @@ let bodenblechTeile, bodenblechStoesse, BLECHSTOSS;
 // sie kommen aus sembla-montage.js, damit Modul 1, 5 und 7 dieselbe Marke zeigen ([D-4]).
 let bodenblechAussparungen, AUSSPARUNG;
 // Kennfarbe des Boden-/Kopfblechs. Sie gehoert nicht zu den Spannkomponenten und ist in
-// sembla-montage.js nicht ausgefuehrt; wie beim Haarlinien-Faktor (#112) steht sie lokal und
+// sembla-montage.js nicht ausgefuehrt; sie steht deshalb lokal, und
 // ihre Gleichheit mit `FARBE.stahl` von Modul 7 ist im Test gesichert ([P-6]/[D-4]).
 // Seit #97 braucht sie neben der Wandansicht auch das Legendenfeld der Stossmarke.
 const STEEL='#5b6673';
@@ -350,10 +350,10 @@ let DECKENANSCHLUSS, deckenanschlussSvg;
 // der Marke unter dem Bodenblech — dieselbe Quelle und dieselbe Form wie im Blatt von Modul 7
 // ([D-4]). Die Punkte selbst kommen aus dem Rechenkern; hier wird nichts nachgerechnet.
 let AUSGLEICHSPUNKT, ausgleichspunktSvg;
-// #112: `SPANN_MM` kommt hinzu — die weisse Haarlinie am Stangenstoss wird aus dem
-// Durchmesser der Kopplungsmutter ABGELEITET (sie muss breiter sein als das Bauteil,
-// das ueber ihr liegt); ein eigenes Mass hier waere Drift.
-let SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser,
+// `SPANN_MM` liefert seit #121 den realen Stangendurchmesser, aus dem Stange und (seit
+// 2026-09-28) die weisse Haarlinie am Stangenstoss ihre Breite beziehen; ein eigenes Mass
+// hier waere Drift.
+let SPANN_FARBE, SPANN_EINHEIT, SPANN_MM,
   mutterSvg, kopplungsmutterSvg, spannplatteSvg, schraubeSvg;
 // Storage-Anbindung (aktives Wandelement):
 let currentId=null, aktName='Wand', saveEnabled=true, _selfSave=false;
@@ -901,23 +901,6 @@ function draw(w){
   // Symbolmaße gehören zur Darstellung, nicht zum Bauteil, und stehen deshalb fest — genau
   // wie die `font-size`- und `stroke-width`-Werte dieser Ansicht.
   const SYM=SPANN_EINHEIT.ansicht;
-  // Weiße HAARLINIE am Stangenstoß (#112): sie macht die Stückelung ablesbar, wo zwei Stücke
-  // DERSELBEN Art aneinanderstoßen — die Kopplungsmutter sagt nur, DASS gekoppelt wird, nicht
-  // wo die Grenze liegt. Die Breite ist aus dem Durchmesser der Kopplungsmutter ABGELEITET und
-  // nicht frei gewählt: sie markiert die Grenze GENAU dort, wo die Mutter sitzt, und muss
-  // deshalb an deren Breite gemessen werden. Mit Faktor 1,5 schaut sie beidseits über die Mutter
-  // hinaus. Seit der Rückmeldung vom 2026-09-09 liegt sie zusammen mit der Stange VOR der Mutter
-  // (s. u.).
-  //
-  // Seit #97 kommt der Durchmesser aus `kupplungDurchmesser()` und damit aus dem WIRKSAMEN Maß
-  // der Mutter — maßstabsgetreu, sobald die Schlüsselweite geführt ist, sonst unverändert
-  // `SPANN_MM.d*SYM`. Nur so bleibt sie in jedem Fall breiter als die Mutter, die sie markiert.
-  //
-  // ⚠ Nachziehpunkt [P-6]/[D-4]: der FAKTOR 1,5 steht weiterhin ein zweites Mal in
-  // `docs/shared/sembla-zeichnung.js` (Modul 7); nur der WERT kommt seit #97 aus der einen
-  // Quelle in sembla-montage.js. Dasselbe Muster wie beim Brandschutz-Darstellungsschlüssel
-  // (#79): lokal geführt, Gleichheit beider Ansichten im Test gesichert.
-  const HAAR_B=kupplungDurchmesser(SYM,{sw_mm:kuSw,sc})*1.5, HAAR_SW=0.8, HAAR_FARBE='#fff';
   // STRICHSTÄRKE DER GEWINDESTANGE (#121): der reale Durchmesser mal dem Maßstab dieser Ansicht,
   // also `SPANN_MM.rod_d_mm * sc` — dieselbe Rechnung, mit der Kopplungsmutter und Spannplatte
   // seit #97 maßstabsgetreu sind. Vorher stand hier eine FESTE Strichstärke (2,4 Einheiten, für
@@ -927,13 +910,23 @@ function draw(w){
   // Die Sichtbarkeitsuntergrenze liegt — wie bei der Plattenbreite ([D-4]/#97) — AUSSEN um das
   // maßstabsgetreue Maß. ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe `Math.max`-Zeile steht ein
   // zweites Mal in `sembla-zeichnung.js` (Modul 7) — nur die WERTE kommen aus der einen Quelle
-  // in `sembla-montage.js`. Dasselbe Muster wie beim Faktor 1,5 der Haarlinie; die Gleichheit
-  // beider Ansichten sichert der Test.
+  // in `sembla-montage.js`. Die Gleichheit beider Ansichten sichert der Test.
   //
   // Das RESTSTÜCK trägt dadurch KEINE größere Stärke mehr als das Standardstück (eine Stange ist
   // überall gleich dick): unterschieden werden die Arten weiter über `stueckFarbe()` und die
   // weiße Stückelungs-Haarlinie (#112) — beide unverändert.
   const STANGE_SW=Math.max(SPANN_MM.rod_d_min*SYM, SPANN_MM.rod_d_mm*sc);
+  // Weiße HAARLINIE am Stangenstoß (#112): sie macht die Stückelung ablesbar, wo zwei Stücke
+  // DERSELBEN Art aneinanderstoßen — die Kopplungsmutter sagt nur, DASS gekoppelt wird, nicht
+  // wo die Grenze liegt. Seit der Rückmeldung vom 2026-09-09 liegt sie zusammen mit der Stange
+  // VOR der Mutter (s. u.).
+  //
+  // Breite (AGW-Termin 2026-09-28): GENAU die gezeichnete Strichbreite der Gewindestange, also
+  // `STANGE_SW` — bündig, ohne Überstand. Bis dahin war sie aus dem Durchmesser der
+  // Kopplungsmutter mit Faktor 1,5 abgeleitet und ragte beidseits über Mutter und Stange hinaus.
+  // ⚠ Nachziehpunkt [P-6]/[D-4]: dieselbe Zuweisung steht ein zweites Mal in
+  // `docs/shared/sembla-zeichnung.js` (Modul 7); die Gleichheit beider Ansichten sichert der Test.
+  const HAAR_B=STANGE_SW, HAAR_SW=0.8, HAAR_FARBE='#fff';
   // Kennfarben der Spannkomponenten kommen aus SPANN_FARBE (sembla-montage.js, [D-4]/#110) —
   // dieselbe Quelle wie Modul 7, keine lokalen Hex-Werte mehr. STEEL ist das Boden-/Kopfblech
   // und gehoert nicht zu den Spannkomponenten; es steht seit #97 auf Dateiebene, weil auch das
@@ -1243,11 +1236,11 @@ function renderZLegende(w){
   const bstEintrag = (w && bodenblechStoesse(w).length)
     ? `<span><i class="bpl bst" style="color:${STEEL};--bst-marke:${BLECHSTOSS.farbe}"></i>`
       + `${BLECHSTOSS.label} (Bodenblech)</span>` : '';
-  // Der Sonderzuschnitt traegt sein NICHT FARBLICHES Merkmal — die Schraffur — ausdruecklich
-  // in Worten, damit er im Schwarz-Weiss-Ausdruck aufloesbar bleibt.
+  // Der Sonderzuschnitt ist seit dem AGW-Termin vom 2026-09-28 NUR orange gefuellt (keine
+  // Schraffur mehr) — im Schwarz-Weiss-Ausdruck bewusst nicht mehr unterscheidbar.
   const bsoEintrag = (w && bodenblechTeile(w).some(t=>t.art==='sonder'))
     ? `<span><i class="bpl" style="color:${stueckFarbe('sonder')}"></i>`
-      + `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)</span>` : '';
+      + `Bodenblech ${STUECK_LABEL.sonder}</span>` : '';
   // #138 Ebenso die Aussparung — genannt GENAU DANN, wenn die Wand wirklich eine Lücke führt.
   // Das Legendenfeld zeigt sie SO, WIE SIE IM BILD STEHT: ein leerer, gestrichelter Umriss mit
   // Kreuz, ausdrücklich OHNE Blechfeld — dort liegt kein Blech. Damit ist sie auch in der
@@ -2510,7 +2503,6 @@ window.__wpInit=function(){
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
   // #110: Symbolgeometrie und Kennfarben der Spannkomponenten — eine Quelle für Modul 1 und 7.
   SPANN_FARBE=S.SPANN_FARBE; SPANN_EINHEIT=S.SPANN_EINHEIT; SPANN_MM=S.SPANN_MM;
-  kupplungDurchmesser=S.kupplungDurchmesser;
   mutterSvg=S.mutterSvg;
   kopplungsmutterSvg=S.kopplungsmutterSvg; spannplatteSvg=S.spannplatteSvg;
   schraubeSvg=S.schraubeSvg;
@@ -2557,7 +2549,7 @@ window.__wpInit=function(){
            bodenblechAussparungen, AUSSPARUNG,
            // #140 die EINE erlaubte Umrechnung Reihenzahl -> Hoehe ([D-4]).
            lagenOberkanteMm,
-           SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser, mutterSvg,
+           SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg,
            kopplungsmutterSvg, spannplatteSvg, schraubeSvg } from './shared/sembla-montage.js';
   import { oeffneReparatur } from './shared/sembla-reparatur.js';
   // Der EINE Accessibility-Baustein der Suite (#144/#145): Namen, Beschreibungen, Tooltips,
@@ -2578,7 +2570,7 @@ window.__wpInit=function(){
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
                     AUSGLEICHSPUNKT, ausgleichspunktSvg,
-                    SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, kupplungDurchmesser,
+                    SPANN_FARBE, SPANN_EINHEIT, SPANN_MM,
                     mutterSvg, kopplungsmutterSvg,
                     spannplatteSvg, schraubeSvg };
   AX.stilEinhaengen();

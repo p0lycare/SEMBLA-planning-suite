@@ -107,13 +107,23 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
-// Der NEUESTE Eintrag ist das MASSSTAEBLICHE EINLEGEBLECH (Standardkatalog v5) — er wird als
-// einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert ist die
+// Der NEUESTE Eintrag ist die ZEICHNUNGSKORREKTUR aus dem AGW-Termin vom 2026-09-28 — er wird
+// als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: der
+// Bodenblech-Sonderzuschnitt ist nur noch orange gefuellt (keine Schraffur), und die weisse
+// Haarlinie am Stangenstoss ist genau stangenbreit. NICHT versprochen wird eine
+// Schwarz-Weiss-Unterscheidbarkeit des Sonderzuschnitts.
+const ZK = EINTRAEGE[0];
+ok("[Zeichnungskorrektur] ist der neueste Eintrag",
+  ZK?.id === "chg-20261007-02" && ZK?.typ === "fix" && ZK?.issue === 112
+  && /ohne Schraffur/.test(ZK?.titel || "") && /stangenbreit/.test(ZK?.titel || ""));
+
+// Davor kam das MASSSTAEBLICHE EINLEGEBLECH (Standardkatalog v5) — es wird ueber seine
+// KENNUNG gesucht. Aussagewahr heisst hier: geliefert ist die
 // Balkenbreite aus dem Katalog in Modul 1 UND Modul 7 und eine neue Fassung v5 mit 30 mm in
 // Wandrichtung. NICHT versprochen werden eine Umstellung vorhandener Projekte oder eine
 // geaenderte Menge/Rechnung.
-const EB_V5 = EINTRAEGE[0];
-ok("[Einlegeblech v5] ist der neueste Eintrag",
+const EB_V5 = EINTRAEGE.find(e => e.id === "chg-20261007-01");
+ok("[Einlegeblech v5] Eintrag vorhanden",
   EB_V5?.id === "chg-20261007-01" && EB_V5?.issue === 97 && EB_V5?.typ === "fix"
   && /Einlegeblech/.test(EB_V5?.titel || "") && /Modul 1/.test(EB_V5?.titel || "")
   && /Modul 7/.test(EB_V5?.titel || "") && /v5/.test(EB_V5?.titel || "")

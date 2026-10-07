@@ -165,9 +165,10 @@ export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73" };
  * die Stange, die durch sie laeuft.
  *
  * Verrechnet wird beides in den beiden Ansichten selbst (`sembla-zeichnung.js`,
- * `docs/wandplanung.html`); hier stehen NUR die Werte. Das ist dasselbe Muster wie beim Faktor
- * 1,5 der Haarlinie (#112): ⚠ Nachziehpunkt [P-6]/[D-4] — die `Math.max`-Zeile steht zweimal,
- * die Gleichheit beider Ansichten sichert der Test. Die Baugruppenbilder von Modul 5 und die
+ * `docs/wandplanung.html`); hier stehen NUR die Werte. ⚠ Nachziehpunkt [P-6]/[D-4] — die
+ * `Math.max`-Zeile steht zweimal, die Gleichheit beider Ansichten sichert der Test. Seit dem
+ * AGW-Termin vom 2026-09-28 hat die weisse Haarlinie am Stangenstoss (#112) GENAU diese
+ * Breite (buendig mit der Stange, kein Ueberstand). Die Baugruppenbilder von Modul 5 und die
  * Kontur (`abschnittSvg`/`konturSvg`) sind davon ausdruecklich UNBERUEHRT.
  */
 export const SPANN_MM = {
@@ -347,10 +348,10 @@ export function kopplungsmutterSvg(x, y, e, opts = {}) {
  * Zeichenbreite der Kopplungsmutter — die EINE Stelle, an der ueber reale Schluesselweite und
  * Symbolmass entschieden wird ([D-4], #97).
  *
- * Sie liegt hier und nicht bei den Aufrufern, weil zwei Zeichnungen davon abhaengen: die Mutter
- * selbst und die weisse Stoss-Haarlinie nach #112, die ihre Breite mit einem festen Faktor aus
- * genau diesem Durchmesser ableitet. Zwei getrennte Rechnungen waeren die Drift, die [D-4]
- * ausschliesst.
+ * Sie liegt hier und nicht bei den Aufrufern, damit Mutter und Pruefungen dieselbe Breite
+ * sehen; zwei getrennte Rechnungen waeren die Drift, die [D-4] ausschliesst. Die weisse
+ * Stoss-Haarlinie nach #112 leitet ihre Breite seit dem AGW-Termin vom 2026-09-28 NICHT mehr
+ * hieraus ab, sondern ist genau so breit wie die gezeichnete Gewindestange.
  *
  * Die Schluesselweite ist KEIN neues Feld — sie steht als `prestress.kupplung_sw_mm` am
  * Wandelement, abgeleitet beim Auslegen aus dem gewaehlten Katalogprodukt; hier wird sie nur
@@ -1440,12 +1441,13 @@ const FARBE = {
  * zwischen den Modulen nicht auseinanderlaufen; eine modul-eigene Blechzeichnung waere
  * genau die zweite Wahrheit, die [A-1]/[D-4] ausschliessen.
  *
- * Getragen wird die Unterscheidung Standardteil/Sonderzuschnitt von ZWEI Merkmalen:
- * der Kennfarbe aus `STUECK_FARBE` (derselbe Schluessel wie beim Stangenzuschnitt) UND
- * einer Schraffur quer ueber das Teil — sie haelt den Sonderzuschnitt im
- * Schwarz-Weiss-Ausdruck lesbar. Anders als bei der Brandschutzkennzeichnung liegt sie
- * NICHT ueber der Wandflaeche, sondern nur im 15-mm-Blechstreifen unter der Wand: sie
- * verdeckt also nichts vom Ausfuehrungsnoetigen, sie IST die Ausfuehrungsangabe.
+ * Getragen wird die Unterscheidung Standardteil/Sonderzuschnitt allein von der
+ * Kennfarbe aus `STUECK_FARBE` (derselbe Schluessel wie beim Stangenzuschnitt): der
+ * Sonderzuschnitt ist orange GEFUELLT, OHNE Schraffur. Die frueher zusaetzlich gezeichneten
+ * senkrechten Schraffurstriche sind nach dem AGW-Termin vom 2026-09-28 entfallen (von Tibor
+ * freigegeben). Bewusst in Kauf genommen: im Schwarz-Weiss-Ausdruck ist
+ * der Sonderzuschnitt damit nicht mehr vom Standardteil zu unterscheiden; die Plaene gehen
+ * in Farbe heraus. Die weisse Stossmarke zwischen den Teilen bleibt unveraendert.
  *
  * Das 2-mm-Spiel zwischen den realen Bauteilen wird BEWUSST NICHT gezeichnet — bei
  * 1:50 waeren das 0,04 mm Papier: als Luecke unsichtbar, als Mass irrefuehrend. Der
@@ -1456,15 +1458,14 @@ const FARBE = {
  * @param {(z:number)=>number} Y Weltkoordinate z (mm) -> Zeichenkoordinate
  * @param {number} sc Massstabsfaktor (Zeichenkoordinaten je mm)
  * @param {number} bth Blechdicke in Zeichenkoordinaten
- * @param {{n?:(v:number)=>any,rand?:number,stoss?:number,schraffur?:number}} [opts]
+ * @param {{n?:(v:number)=>any,rand?:number,stoss?:number}} [opts]
  *        `n` = Zahlenformatierer des aufrufenden Moduls (Modul 7 rundet auf Papier-mm),
- *        `rand`/`stoss`/`schraffur` = Strichstaerken in Zeichenkoordinaten.
+ *        `rand`/`stoss` = Strichstaerken in Zeichenkoordinaten.
  */
 export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
   const n = opts.n || (v => v);
   const rand = opts.rand != null ? opts.rand : 0.6;
   const sStoss = opts.stoss != null ? opts.stoss : Math.max(0.8, rand * 2.2);
-  const sSchr = opts.schraffur != null ? opts.schraffur : Math.max(0.4, rand * 0.9);
   const y0 = Y(0);
   let s = "";
   for (const t of bodenblechTeile(w)) {
@@ -1476,16 +1477,6 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
     s += `<rect x="${n(x)}" y="${n(y0)}" width="${n(bw)}" height="${n(bth)}" `
       + `fill="${t.art === "sonder" ? STUECK_FARBE.sonder : FARBE.stahl}" `
       + `stroke="${FARBE.stahl_rand}" stroke-width="${n(rand)}"/>`;
-    // Nicht farbliches Merkmal des Sonderzuschnitts: Schraffur quer im Streifen.
-    if (t.art === "sonder") {
-      // Abstand am Streifen ausgerichtet, nach unten aber so gekappt, dass auch ein
-      // kurzes Teil bei kleinem Masstab noch mindestens zwei Striche traegt — ein
-      // einzelner Strich waere als Muster nicht erkennbar.
-      const step = Math.min(Math.max(3, bth * 2.5), bw / 3);
-      for (let hx = x + step; hx < x + bw - step * 0.4; hx += step)
-        s += `<line x1="${n(hx)}" y1="${n(y0)}" x2="${n(hx)}" y2="${n(y0 + bth)}" `
-          + `stroke="${FARBE.stahl_rand}" stroke-width="${n(sSchr)}"/>`;
-    }
   }
   // Stossfugen an den KUMULIERTEN Rastermassen — WEISS und genau blechhoch (#91).
   // Sie liegen vollstaendig IM Blechstreifen (Oberkante `y0` bis Unterkante `y0 + bth`):
@@ -1534,8 +1525,8 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
  *
  * FORM: gefuelltes Dreieck mit der Spitze nach OBEN an der Blechunterkante (`Y(0) + bth`), der
  * Koerper vollstaendig DARUNTER — die klassische Auflagermarke. Das ist das NICHT FARBLICHE
- * Merkmal (#15): Blechstoss (weisse senkrechte Linie) und Sonderzuschnitt (Schraffur) liegen beide
- * IM Blechstreifen, das Einlegeblech ist ein OFFENES Profil auf einer Lagen-Oberkante. Diese Marke
+ * Merkmal (#15): Blechstoss (weisse senkrechte Linie) und Sonderzuschnitt (orange Fuellung) liegen
+ * beide IM Blechstreifen, das Einlegeblech ist ein OFFENES Profil auf einer Lagen-Oberkante. Diese Marke
  * ist als einzige gefuellt UND liegt als einzige ausserhalb und unterhalb des Blechs; sie bleibt
  * damit im Schwarz-Weiss-Ausdruck aufloesbar, Farbe kommt nur additiv dazu.
  *
@@ -1791,11 +1782,9 @@ function _zuschnittLegende(w, ab, x0, y) {
     lx += 26 + t.length * 5;
   }
   if (sonderBlech) {
-    const t = `Bodenblech ${STUECK_LABEL.sonder} (schraffiert)`;
+    const t = `Bodenblech ${STUECK_LABEL.sonder}`;
     s += `<rect x="${lx}" y="${y - 7}" width="14" height="6" fill="${STUECK_FARBE.sonder}" `
       + `stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
-      + `<line x1="${lx + 5}" y1="${y - 7}" x2="${lx + 5}" y2="${y - 1}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
-      + `<line x1="${lx + 10}" y1="${y - 7}" x2="${lx + 10}" y2="${y - 1}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`
       + `<text x="${lx + 18}" y="${y}" font-size="9" fill="${FARBE.text}">${t}</text>`;
     lx += 26 + t.length * 5;
   }
