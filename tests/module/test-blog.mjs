@@ -107,13 +107,26 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
-// Der NEUESTE Eintrag ist die ZEICHNUNGSKORREKTUR aus dem AGW-Termin vom 2026-09-28 — er wird
-// als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: der
+// Der NEUESTE Eintrag ist die BODENBLECH-MASSKETTE der Wandzeichnung — er wird als einziger
+// direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert ist eine Masskette
+// in Modul 7 und im Zeichnungs-PDF, die je Bodenblechteil sagt, welches Blech wo liegt.
+// NICHT versprochen werden eine geaenderte Blechzerlegung, Menge oder Stueckliste.
+const BB_KETTE = EINTRAEGE[0];
+ok("[Bodenblech-Masskette] ist der neueste Eintrag",
+  BB_KETTE?.id === "chg-20261007-03" && BB_KETTE?.typ === "feature"
+  && /Maßkette/.test(BB_KETTE?.titel || "") && /Bodenblech/.test(BB_KETTE?.titel || "")
+  && /Modul 7/.test(BB_KETTE?.titel || "") && /PDF/.test(BB_KETTE?.titel || "")
+  && !/Menge|Preis|Zerlegung/i.test(BB_KETTE?.titel || ""));
+ok("[Bodenblech-Masskette] die Testbitte fuehrt den Abgleich mit der Stueckliste",
+  /Modul 7/.test(BB_KETTE?.testbitte || "") && /stückliste/i.test(BB_KETTE?.testbitte || ""));
+
+// Davor kam die ZEICHNUNGSKORREKTUR aus dem AGW-Termin vom 2026-09-28 — sie wird
+// ueber ihre KENNUNG gesucht. Aussagewahr heisst hier: der
 // Bodenblech-Sonderzuschnitt ist nur noch orange gefuellt (keine Schraffur), und die weisse
 // Haarlinie am Stangenstoss ist genau stangenbreit. NICHT versprochen wird eine
 // Schwarz-Weiss-Unterscheidbarkeit des Sonderzuschnitts.
-const ZK = EINTRAEGE[0];
-ok("[Zeichnungskorrektur] ist der neueste Eintrag",
+const ZK = EINTRAEGE.find(e => e.id === "chg-20261007-02");
+ok("[Zeichnungskorrektur] Eintrag vorhanden",
   ZK?.id === "chg-20261007-02" && ZK?.typ === "fix" && ZK?.issue === 112
   && /ohne Schraffur/.test(ZK?.titel || "") && /stangenbreit/.test(ZK?.titel || ""));
 

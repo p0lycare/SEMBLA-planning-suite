@@ -369,6 +369,22 @@ const AG_TEXT = `${MONT.AUSGLEICHSPUNKT.label} — unter dem Bodenblech`;
     return svg.includes(MONT.ZWISCHENPUNKT.farbe)
       && /<polyline points="[^"]+" fill="none" stroke="/.test(svg); })());
 }
+// Bodenblech-Masskette (Entscheid 2026-10-07): das PDF bettet das Blatt-SVG ein und traegt
+// damit DIESELBE Kette — gleiche Zeichenkette, gleicher (unverkleinerter) Massstab.
+{
+  const wk = buildWall("PDF-Blechkette", 2000, 2600, [], null, { blech_lengths_mm: [1250] });
+  for (const format of ["a3", "a4"]) {
+    const z = Z.zeichnungSvg(wk, { format });
+    const g = /<g class="bbkette">.*?<\/g>/.exec(z.svg);
+    const inhalt = PDF.wandBlattInhalt(wk, EINGABEN, { format }).inhalt;
+    ok(`[Masskette] Zeichnungs-PDF (${format}) traegt dieselbe Bodenblech-Masskette wie die Zeichnung`,
+      !!g && g[0].includes("◆ 748") && g[0].includes(">1250<") && inhalt.includes(g[0])
+      && (() => { const m = /<svg x="[-\d.]+" y="[-\d.]+" width="([-\d.]+)" height="([-\d.]+)" viewBox="0 0 ([-\d.]+) ([-\d.]+)"/.exec(inhalt);
+        // unverkleinert eingebettet: Feldgroesse == viewBox == Papier-mm des Blatt-SVG ([D-2])
+        return !!m && Math.abs(+m[1] - z.breite_mm) < 1e-3 && Math.abs(+m[2] - z.hoehe_mm) < 1e-3
+          && +m[1] === +m[3] && +m[2] === +m[4]; })());
+  }
+}
 ok("der Kennzeichnungsschluessel der Einbauteile ist derselbe ([P-19])",
   kompakt(wLegHtml).includes(kompakt(PDF.EINBAUTEIL_FUSS)));
 

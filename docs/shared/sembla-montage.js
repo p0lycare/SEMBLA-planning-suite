@@ -833,15 +833,22 @@ export function deckenanschlussSvg(x, y, e, opts = {}) {
  * Teil ueber die volle Wandlaenge — die bisherige durchgehende Darstellung, ohne eine
  * Teilung zu erfinden.
  *
+ * `bauteil_mm` (das Fertigmass aus dem Rechenkern) wird seit der Bodenblech-Masskette
+ * (Modul 7) unveraendert MITGELESEN, nie nachgerechnet: die Kette nennt beim
+ * Sonderzuschnitt das Mass, unter dem er in der Stueckliste steht. Fehlt es (Alt-Fallback),
+ * fehlt es auch hier — es wird kein Mass erfunden.
+ *
  * @param {any} w Wandelement
- * @returns {Array<{x0_mm:number,raster_mm:number,art:"standard"|"sonder"}>}
+ * @returns {Array<{x0_mm:number,raster_mm:number,art:"standard"|"sonder",bauteil_mm?:number}>}
  */
 export function bodenblechTeile(w) {
   const L = (w && +w.length_mm) || 0;
   const t = (w && w.base_plate && Array.isArray(w.base_plate.teile)) ? w.base_plate.teile : null;
   if (!t || !t.length) return [{ x0_mm: 0, raster_mm: L, art: "standard" }];
   return t.map(p => ({ x0_mm: +p.x0_mm, raster_mm: +p.raster_mm,
-                       art: p.art === "sonder" ? "sonder" : "standard" }));
+                       art: p.art === "sonder" ? "sonder" : "standard",
+                       ...(isFinite(+p.bauteil_mm) && p.bauteil_mm != null
+                         ? { bauteil_mm: +p.bauteil_mm } : {}) }));
 }
 
 /**

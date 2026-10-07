@@ -481,6 +481,95 @@ function _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, openings, kanten = null) {
   return s;
 }
 
+/**
+ * Bodenblech-MASSKETTE als Daten (Modul 7, Entscheid 2026-10-07: Masskette statt Blasen).
+ *
+ * Je realem Bodenblechteil ein Glied — GELESEN aus `bodenblechTeile()` (`sembla-montage.js`),
+ * also aus derselben Quelle, aus der `bodenblechSvg()` die Bleche zeichnet; eine zweite
+ * Blechzerlegung gibt es nicht ([A-1]/[D-4]).
+ *
+ *  - LAGE (`x0_mm`/`x1_mm`) ist das Rastermass: die Teilstriche stehen genau auf den
+ *    gezeichneten Blechgrenzen bzw. Stossmarken.
+ *  - ANGESCHRIEBEN wird das Mass, unter dem das Teil in der Stueckliste steht
+ *    (`sembla-bom.js`): beim Standardblech das Rastermass („Bodenblech 1000 mm"), beim
+ *    Sonderzuschnitt sein Fertigmass `bauteil_mm` („Bodenblech Sonderzuschnitt 498 mm"),
+ *    dort mit dem Teileart-Symbol ◆ ([P-19]) voran, damit die Abweichung um das Blechspiel
+ *    ([A-12]) als Sonderzuschnitt lesbar ist und nicht als Rechenfehler.
+ *  - Eine AUSSPARUNG ([A-28]) hat kein Teil und damit kein Glied: sie bleibt eine Luecke in
+ *    der Kette.
+ *
+ * Damit geht die Kette GEOMETRISCH immer mit der Wandlaenge auf (Σ Raster + Σ Aussparungen =
+ * Wandlaenge, [A-29]); die angeschriebenen Zahlen weichen davon um die Aussparungen und um
+ * 2 mm je Sonderzuschnitt ab — gewollt, denn die Kette beantwortet „welches Blech liegt wo",
+ * nicht ein zweites Mal die Wandlaenge (die steht unveraendert als Gesamtmass darueber).
+ *
+ * Ein Alt-Wandelement ohne `base_plate.teile` liefert die LEERE Liste: dort gibt es keine
+ * reale Teilung und kein Stuecklistenmass je Teil — eine Kette waere erfunden.
+ *
+ * @param {any} w Wandelement
+ * @returns {Array<{x0_mm:number,x1_mm:number,art:"standard"|"sonder",mass_mm:number|null,text:string}>}
+ */
+export function bodenblechKette(w) {
+  const real = w && w.base_plate && Array.isArray(w.base_plate.teile) && w.base_plate.teile.length;
+  if (!real) return [];
+  return bodenblechTeile(w).map(t => {
+    const sonder = t.art === "sonder";
+    const mass = sonder ? (t.bauteil_mm != null ? t.bauteil_mm : null) : t.raster_mm;
+    return { x0_mm: t.x0_mm, x1_mm: t.x0_mm + t.raster_mm, art: t.art, mass_mm: mass,
+             text: (sonder ? ART_SYMBOL.sonder + (mass != null ? " " : "") : "")
+               + (mass != null ? _mm(mass) : "") };
+  });
+}
+
+/**
+ * Lage der Bodenblech-Masskette unter der Wand (Papier-mm ab Wandunterkante). Sie liegt
+ * UNTER dem Gesamtmass (+7, Beschriftungskasten bis +7,4, Teilstriche bis +8,3; die Zahlen der
+ * Kette beginnen bei +8,3) — der Raum zwischen Blech und Gesamtmass gehoert den
+ * Ausgleichspunktmarken — und bleibt mit ihren Ausweichzeilen (bis +17,9) im vorhandenen
+ * unteren Zeichnungsrand (`PAD_MM` + 4 = 18):
+ * Blattmasstab, viewBox und Gesamtmass bleiben bit-gleich.
+ */
+export const BLECHKETTE_Y_MM = 11;
+
+/**
+ * Bodenblech-Masskette als SVG (Papier-mm) — Masslinie je Teil, Teilstriche an den Teilgrenzen,
+ * Zahl mittig. Passt die Zahl nicht zwischen ihre Teilstriche (kurzes Blech, grober Masstab),
+ * weicht sie deterministisch in eine von ZWEI Zeilen UNTER der Linie aus — die erste, in der sie
+ * keine schon gesetzte Zahl beruehrt. Die Kette verdeckt so weder das Gesamtmass noch die
+ * Ausgleichspunktmarken, und kurze Bleche bleiben lesbar.
+ */
+function _bodenblechKetteSvg(w, X, bot0) {
+  const glieder = bodenblechKette(w);
+  if (!glieder.length) return "";
+  const C = FARBE.mass, T = 1.3, F = 2.4, LW = 0.3, yk = bot0 + BLECHKETTE_Y_MM;
+  const breite = t => t.length * 1.44 + 1.6;               // wie die Beschriftung in `_bemassung`
+  const lab = (x, y, t) => `<rect x="${_n(x - breite(t) / 2)}" y="${_n(y - 2.7)}" width="${_n(breite(t))}" `
+    + `height="3.1" rx="0.5" fill="#fff" fill-opacity="0.85"/>`
+    + `<text x="${_n(x)}" y="${_n(y - 0.4)}" font-size="${F}" fill="${C}" text-anchor="middle">${t}</text>`;
+  const strich = x => `<line x1="${_n(x - T)}" y1="${_n(yk + T)}" x2="${_n(x + T)}" y2="${_n(yk - T)}" `
+    + `stroke="${C}" stroke-width="${LW}"/>`;
+  // Zeile 0 = ueber der Linie (nur wenn die Zahl zwischen die eigenen Teilstriche passt),
+  // Zeilen 1/2 = darunter. Je Ausweichzeile das rechte Ende der zuletzt gesetzten Zahl.
+  const ZEILE_Y = [yk, yk + 3.4, yk + 6.5], frei = [-Infinity, -Infinity];
+  let s = `<g class="bbkette">`;
+  for (const g of glieder) {
+    const a = Math.min(X(g.x0_mm), X(g.x1_mm)), b = Math.max(X(g.x0_mm), X(g.x1_mm));
+    const m = (a + b) / 2, bw = breite(g.text);
+    s += `<line class="bbk" data-art="${g.art}" data-mass="${g.mass_mm == null ? "" : _n(g.mass_mm)}" `
+      + `x1="${_n(a)}" y1="${_n(yk)}" x2="${_n(b)}" y2="${_n(yk)}" stroke="${C}" stroke-width="${LW}"/>`
+      + strich(a) + strich(b);
+    if (!g.text) continue;
+    let z = 0;
+    if (bw > b - a - 1) {
+      const l = m - bw / 2, ab = 0.6;
+      z = frei[0] + ab <= l ? 1 : (frei[1] + ab <= l ? 2 : (frei[0] <= frei[1] ? 1 : 2));
+      frei[z - 1] = m + bw / 2;
+    }
+    s += lab(m, ZEILE_Y[z], g.text);
+  }
+  return s + `</g>`;
+}
+
 /** Bildunterschrift/Kopfzeile der Zeichnung (Wand, Masse, Masstab). */
 export function zeichnungTitel(w, masstab, planinhalt = "Wandabwicklung") {
   // Direkt aus `length_mm`/`height_mm` — keine Meter-Schattenumrechnung (#64).
@@ -847,6 +936,10 @@ export function zeichnungSvg(w, opts = {}) {
   if (o.masse) {
     const ops = (w.openings || []).map(op => ({ x0: op.g0 * G, x1: op.g1 * G, y0: OK(op.l0), y1: OK(op.l1) }));
     s += _bemassung(w, X, Y, pad, wPx, hPx, sc, L, H, ops, KANTEN);
+    // Bodenblech-Masskette (Entscheid 2026-10-07): welches Stuecklistenblech wo liegt. Sie
+    // gehoert zur Bemassung und folgt deshalb derselben Option; Vorschau, Druck-HTML,
+    // SVG-Datei und das Zeichnungs-PDF (bettet dieses SVG ein) tragen dieselbe Zeichenkette.
+    s += _bodenblechKetteSvg(w, X, Y(0));
   }
   // Steinreihen-Nummerierung: je Reihe an ihrer REALEN Mitte — die Ausgleichslage bekommt
   // damit ihre eigene fortlaufende Nummer an ihrer tatsaechlichen Hoehe (#136).

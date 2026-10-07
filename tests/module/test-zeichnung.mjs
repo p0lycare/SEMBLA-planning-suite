@@ -1782,6 +1782,101 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
       !/<rect class="bbaus"/.test(svgM) && !Z.legendeHtml(WBM).includes(AUSSPARUNG.label));
   }
 
+  // (d3) Bodenblech-MASSKETTE (Entscheid 2026-10-07: Masskette statt Blasen). Je Teil ein
+  // Glied aus `bodenblechTeile()`; angeschrieben das Stuecklistenmass, Aussparung = Luecke.
+  {
+    const kette = (svg) => {
+      const g = /<g class="bbkette">(.*?)<\/g>/.exec(svg);
+      if (!g) return null;
+      const glieder = [...g[1].matchAll(/<line class="bbk" data-art="(\w+)" data-mass="([-\d.]*)" x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)"/g)]
+        .map(m => ({ art: m[1], mass: m[2], x1: +m[3], y: +m[4], x2: +m[5] }));
+      const texte = [...g[1].matchAll(/<text x="([-\d.]+)" y="([-\d.]+)"[^>]*>([^<]*)<\/text>/g)]
+        .map(m => ({ x: +m[1], y: +m[2], t: m[3] }));
+      const kaesten = [...g[1].matchAll(/<rect x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/g)]
+        .map(m => ({ x: +m[1], y: +m[2], w: +m[3], h: +m[4] }));
+      return { glieder, texte, kaesten };
+    };
+    // (i) dieselbe Teilfolge wie die Blechzeichnung, Teilstriche auf den gezeichneten Grenzen
+    const kM = kette(svgM), dM = Z.bodenblechKette(WBM);
+    ok("[Masskette] je Bodenblechteil genau ein Glied, aus bodenblechTeile() gelesen",
+      kM && kM.glieder.length === tM.length && dM.length === tM.length
+      && dM.every((g, i) => g.x0_mm === tM[i].x0_mm && g.x1_mm === tM[i].x0_mm + tM[i].raster_mm));
+    ok("[Masskette] die Glieder liegen genau auf den gezeichneten Blechrechtecken",
+      kM.glieder.every((g, i) => Math.abs(g.x1 - rM[i].x) < 5e-3
+        && Math.abs(g.x2 - (rM[i].x + rM[i].w)) < 5e-3));
+    ok("[Masskette] geht geometrisch mit der Wandlaenge auf (ohne Aussparung lueckenlos 0…L)",
+      dM[0].x0_mm === 0 && dM[dM.length - 1].x1_mm === WBM.length_mm
+      && dM.every((g, i) => i === 0 || g.x0_mm === dM[i - 1].x1_mm)
+      && dM.reduce((a, g) => a + (g.x1_mm - g.x0_mm), 0) === WBM.length_mm);
+    ok("[Masskette] Standardblech traegt sein Rastermass = Stuecklistenmass („Bodenblech 1125 mm\")",
+      dM.every((g, i) => g.art === "standard" && g.mass_mm === tM[i].raster_mm && g.text === String(tM[i].raster_mm))
+      && dM.every(g => (() => { const p = semblaBomItems(WBM)
+        .find(q => q.key === "blech_boden" && q.mass_mm === g.mass_mm);
+        return !!p && p.label.startsWith("Bodenblech ") && !p.label.includes("Sonderzuschnitt"); })())
+      && kM.texte.map(t => t.t).join("|") === dM.map(g => g.text).join("|"));
+    // (ii) Sonderzuschnitt: Fertigmass aus dem Rechenkern, mit ◆ — wie in der Stueckliste
+    const svgSk = Z.zeichnungSvg(WBS, { format: "a3" }).svg, kS = kette(svgSk), dS = Z.bodenblechKette(WBS);
+    const posS = semblaBomItems(WBS).find(q => q.key === "blech_boden_sonder");
+    ok("[Masskette] Sonderzuschnitt traegt sein Fertigmass (= Stueckliste) mit Symbol ◆",
+      dS.length === 2 && dS[1].art === "sonder" && dS[1].mass_mm === WBS.base_plate.teile[1].bauteil_mm
+      && dS[1].mass_mm === 748 && dS[1].text === "◆ 748"
+      && !!posS && posS.fertigmass_mm === 748 && posS.label.startsWith("Bodenblech Sonderzuschnitt 748 mm")
+      && kS.glieder[1].art === "sonder" && kS.glieder[1].mass === "748");
+    ok("[Masskette] Lage bleibt Rastermass: der Sonderzuschnitt schliesst exakt an der Wandkante",
+      dS[1].x1_mm === WBS.length_mm && Math.abs(kS.glieder[1].x2 - (rS[1].x + rS[1].w)) < 5e-3);
+    // (iii) Aussparungen sind eine Luecke in der Kette — kein Glied, keine Zahl darueber
+    const WBLk = buildWall("Blech-luecke-k", 4000, 2600, [], null,
+      { blech_lengths_mm: [1250, 1125, 1000, 875, 750, 625, 500, 375, 250],
+        base_plate_aussparungen_grid: [0, 16, 17] });
+    const dL = Z.bodenblechKette(WBLk), lL = bodenblechAussparungen(WBLk);
+    ok("[Masskette] [A-28] jede Aussparung ist eine Luecke der Kette (kein Glied ueberdeckt sie)",
+      dL.length === bodenblechTeile(WBLk).length
+      && lL.every(l => !dL.some(g => g.x0_mm < l.x1_mm && g.x1_mm > l.x0_mm))
+      && dL[0].x0_mm === lL[0].x1_mm && dL.some((g, i) => i > 0 && g.x0_mm > dL[i - 1].x1_mm));
+    ok("[Masskette] [A-29] Σ Glieder + Σ Aussparungen = Wandlaenge",
+      dL.reduce((a, g) => a + g.x1_mm - g.x0_mm, 0) + lL.reduce((a, l) => a + l.laenge_mm, 0)
+        === WBLk.length_mm);
+    // (iv) Ueberdeckungsfreiheit: unter dem Gesamtmass, unter den Ausgleichspunkten, im Blatt
+    const zB = Z.zeichnungSvg(WBM, { format: "a3" });
+    const bot = rM[0].y;                               // Wandunterkante = Blechoberkante
+    const gesamt = /<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="\2" stroke="#46505e"/.exec(zB.svg);
+    const agpMax = Math.max(...[...zB.svg.matchAll(/<polygon points="([^"]+)" fill="#b5179e"/g)]
+      .flatMap(m => m[1].split(" ").map(p => +p.split(",")[1])));
+    ok("[Masskette] liegt unter Gesamtmass und Ausgleichspunktmarken, innerhalb der viewBox",
+      !!gesamt && Math.abs(+gesamt[2] - (bot + 7)) < 5e-3
+      && kM.glieder.every(g => Math.abs(g.y - (bot + Z.BLECHKETTE_Y_MM)) < 5e-3)
+      && (WBM.ausgleichspunkte || []).length > 0 && agpMax < +gesamt[2]
+      && kM.kaesten.every(k => k.y >= +gesamt[2] + 1.3 - 5e-3 && k.y + k.h <= zB.hoehe_mm));
+    const WBAk = JSON.parse(JSON.stringify(WBM));
+    delete WBAk.base_plate.teile;                      // Alt-Fall: ohne Kette
+    ok("[Masskette] Nicht-Ziel: Masstab und viewBox bleiben unberuehrt",
+      zB.masstab === Z.zeichnungSvg(WBAk, { format: "a3" }).masstab
+      && zB.hoehe_mm === Z.zeichnungSvg(WBAk, { format: "a3" }).hoehe_mm
+      && zB.breite_mm === Z.zeichnungSvg(WBAk, { format: "a3" }).breite_mm);
+    // (v) kurze Bleche bei grobem Masstab: Zahlen weichen aus und ueberlappen sich nie
+    const WK = buildWall("Blech-kurz", 12000, 2600, [], null, { blech_lengths_mm: [250] });
+    const zK = Z.zeichnungSvg(WK, { format: "a4" }), kK = kette(zK.svg);
+    const ueberlapp = (ks) => ks.some((a, i) => ks.some((b, j) => j > i
+      && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h));
+    ok("[Masskette] kurze Bleche (250 mm, A4 1:" + zK.masstab + "): jede Zahl lesbar, keine Ueberdeckung",
+      zK.masstab >= 50 && kK.glieder.length === 48 && kK.texte.length === 48
+      && kK.texte.every(t => t.t === "250") && !ueberlapp(kK.kaesten)
+      && kK.kaesten.every(k => k.x >= 0 && k.x + k.w <= zK.breite_mm && k.y + k.h <= zK.hoehe_mm)
+      && new Set(kK.texte.map(t => t.y)).size >= 2);
+    ok("[Masskette] passende Zahlen stehen ueber der Linie zwischen den eigenen Teilstrichen",
+      kM.texte.every((t, i) => t.y < kM.glieder[i].y
+        && kM.kaesten[i].x >= kM.glieder[i].x1 && kM.kaesten[i].x + kM.kaesten[i].w <= kM.glieder[i].x2));
+    // (vi) gehoert zur Bemassung: Option „masse" aus ⇒ keine Kette; Alt-Wandelement ⇒ keine Kette
+    ok("[Masskette] folgt der Option Bemassung (masse:false ⇒ keine Kette)",
+      !Z.zeichnungSvg(WBM, { format: "a3", masse: false }).svg.includes("bbkette"));
+    // (vii) EIN Zeichenpfad: Vorschau, Druck-HTML, SVG-Datei tragen dieselbe Kette
+    const gM = /<g class="bbkette">.*?<\/g>/.exec(svgM)[0];
+    ok("[Masskette] [D-6] Vorschau, Druck-HTML und SVG-Datei tragen dieselbe Kette",
+      Z.blattHtml(WBM, eingaben, { format: "a3" }).html.includes(gM)
+      && Z.zeichnungDokument(WBM, eingaben, { format: "a3" }).includes(gM)
+      && Z.zeichnungSvgDatei(WBM, eingaben, { format: "a3" }).includes(gM));
+  }
+
   // (e) Alt-Wandelement ohne `teile`: EIN durchgehendes Blech, nichts erfunden
   const WBA = JSON.parse(JSON.stringify(WBM));
   delete WBA.base_plate.teile;
@@ -1789,6 +1884,8 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   ok("Alt-Fall: Blatt zeigt EIN durchgehendes Bodenblech ohne Stosslinie",
     rA.length === 1 && !rA[0].sonder && stossX(svgA).length === 0
     && Math.abs(rA[0].w - WBA.length_mm * scM) < 5e-3);
+  ok("[Masskette] Alt-Fall: keine Kette (keine reale Teilung, kein Stuecklistenmass je Teil)",
+    Z.bodenblechKette(WBA).length === 0 && !svgA.includes("bbkette"));
   ok("Alt-Fall: keine erfundene Blech-Legende (weder Stoss noch Sonderzuschnitt)",
     !/Blechstoß/.test(Z.legendeHtml(WBA)) && !/Bodenblech Sonderzuschnitt/.test(Z.legendeHtml(WBA)));
   ok("Alt-Fall: die Legende ohne Argument bleibt zeichengleich zum bisherigen Stand",
@@ -2053,9 +2150,17 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   // Stangenstoss, die seit dem AGW-Termin vom 2026-09-28 stangenbreit sind.
   const W136r = buildWall("IW-200", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null,
     { top_connection: "blech" }, [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
+  // Seit der Bodenblech-Masskette (2026-10-07) traegt das Blatt eine zusaetzliche Gruppe
+  // `bbkette`. OHNE sie ist das Blatt weiterhin bit-gleich zum eingefrorenen Stand — die Kette
+  // ist rein additiv; der neue Gesamtstand ist daneben eingefroren. Der Stand OHNE Kette ist
+  // zugleich neu eingefroren, weil die Einlegeblech-Kosmetik (9658e68, Strich halbiert) ihn
+  // veraendert hatte, ohne den Freeze nachzuziehen — er ist bit-gleich zu jenem Commit.
+  const ohneKette = t => String(t).replace(/<g class="bbkette">.*?<\/g>/g, "");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
-    kurz(Z.zeichnungSvg(W136r, {}).svg) === "357a34a08ab83f67"
-    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "920f8df14776d4a4");
+    kurz(ohneKette(Z.zeichnungSvg(W136r, {}).svg)) === "2ed0ad9c3fa45236"
+    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "97e6d079c275e25b"
+    && kurz(Z.zeichnungSvg(W136r, {}).svg) === "e2cb3a0f3434fadc"
+    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "d604f67ff8418c97");
   ok("[#136] Nicht-Ziel: ohne Ausgleichslage entsteht keine Ausgleichs-Massangabe",
     !Z.zeichnungSvg(W136r, {}).svg.includes("ausgleichslage"));
 

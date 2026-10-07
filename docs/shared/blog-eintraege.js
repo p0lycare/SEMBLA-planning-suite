@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-03",
+    datum: "2026-10-07",
+    typ: "feature",
+    issue: 97,
+    titel: "Modul 7: Maßkette unter der Wand zeigt, welches Bodenblech wo liegt – auch im "
+      + "Zeichnungs-PDF",
+    testbitte: "Wand mit mehreren Bodenblechen (gern mit Sonderzuschnitt und Aussparung) in Modul 7 "
+      + "öffnen: Kette unter dem Gesamtmaß lesen und mit der Baustellenstückliste vergleichen",
+  },
+  {
     id: "chg-20261007-02",
     datum: "2026-10-07",
     typ: "fix",
