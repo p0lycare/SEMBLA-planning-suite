@@ -1121,7 +1121,12 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      Höhe gefaltet, mit `Σ Abschnittslängen === top_plate.laenge_mm`. Jede Ansicht, die Kontur oder
      **Anschlussbleche** zeigt, leitet daraus ab (Modul 7 und die 3D-Vorschau in Modul 6); eine
      modul-eigene zweite Konturrechnung ist nach **[A-1]**/**[D-4]** unzulässig. Nullhöhen-Spalten
-     liefern **keinen** Abschnitt — echte Lücke statt schwebendem Blech.
+     liefern **keinen** Abschnitt — echte Lücke statt schwebendem Blech. Seit 2026-10-07 zeichnet
+     das Baugruppenbild Schraube, Kopplungsmutter, Spannplatte samt Spannmutter, Spannmutter unter
+     dem Kopfblech und Einlegeblech samt Mutter mit **denselben** Bausteinen wie Modul 1/7
+     (`schraubeSvg`/`kopplungsmutterSvg`/`spannplatteSvg`/`mutterSvg`/`zwischenpunktSvg`), die Maße
+     aus `bauteilMasse(w)` (liest nur `w.prestress`), den Bildmaßstab aus `abschnittMasstab()` und
+     die Gewindestange maßstäblich; Deckenanschluss und Ausgleichspunkt fehlen dort weiter ([P-6]).
    - `sembla-zeichnung.js` — **technische Zeichnung** (Modul 7): maßstabsgetreue Wandabwicklung
      (`zeichnungSvg`), Blatt mit Tabellen/Legende/Schriftfeld (`blattHtml`), `ZEICHNUNG_CSS`,
      `druckCss`, `zeichnungDokument`/`zeichnungSvgDatei`, Optionen (`normOptionen`/`standardOptionen`);
@@ -1411,6 +1416,7 @@ Es gibt **keinen** Build-/Publish-Schritt für die App — `docs/` wird direkt e
 ```bash
 npm run test:core                 # Core-Parität (py + mjs) + BOM-Drift (test-shared.mjs) — die wichtigsten
 npm run test:modul0               # … bis test:modul10: Logik-/Smoke-Tests je Modul (tests/module/)
+npm run test:bauteile             # Vergleichstest Bauteildarstellung Modul 1/5/7 — Pflicht vor jedem Darstellungs-Push
 npm run test:all                  # Core + alle Modultests + Storage-Smoke in einem Rutsch
 npm run test:interop              # tests/interop/: Python-DXF/IFC-Referenz + web-ifc-Validierung (Orakel Modul 6)
 ```
@@ -1422,6 +1428,22 @@ npm run test:interop              # tests/interop/: Python-DXF/IFC-Referenz + we
 
 Nach Core-Änderungen mindestens `npm run test:core` fahren; vor jedem Push, der Rechenlogik berührt,
 zusätzlich die betroffenen Modultests.
+
+**Feste Regel: Bauteildarstellung immer in Modul 1, 5 und 7 gleichzeitig (seit 2026-10-07).**
+Jede Änderung an der **Darstellung eines Bauteils** (Sechskantschraube, Kopplungsmutter,
+Spannmutter, Spannplatte, Einlegeblech samt Mutter, Gewindestange — Form, Maß, Rückfall,
+Untergrenze, Farbe, Reihenfolge) wird in **Modul 1** (`docs/wandplanung.html`), **Modul 5**
+(`abschnittSvg` in `sembla-montage.js`) und **Modul 7** (`sembla-zeichnung.js`) **im selben Commit**
+umgesetzt und geprüft — nie in einem Modul allein. Ebenso jede Änderung an dem, **woher** die
+Maße kommen (`ROLLE_RECHNUNG`/`ausweisungsMasse`/`wandelementAktualisiert` in
+`sembla-wandanlage.js`, `einbauMass()` in Modul 1, Engine-`psOf()`). **Pflicht vor dem Push** ist
+der Vergleichstest `npm run test:bauteile` (`tests/module/test-bauteilgleichheit.mjs`, läuft auch
+in `test:modul1/5/7`): er zeichnet dieselbe Wand über die echten Lesepfade aller drei Module und
+vergleicht die Bauteilmaße in Wand-mm — mit Katalogmaßen, mit Kopfblech, im Rückfall „Produkt
+fehlt" und ohne Katalog. Wird er rot, ist das ein Fehler der Änderung, nicht des Tests; der Test
+wird nur angepasst, wenn sich die **Regel** ([D-9]) ändert. Bekannt und im Test festgehalten:
+ohne Katalogmaß (und für Schenkel/Strich des Einlegeblechs immer) gilt [D-9] — gleich in
+Papier-mm, in Wand-mm je Blattmaßstab verschieden (offene Entscheidung, s. Handbuch [D-9]).
 
 ## Wichtige Randbedingungen
 

@@ -5352,11 +5352,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
 
   const KUP17 = KAT.rollenIds(store.holeProdukte(1, a97), 'kupplung');
   ok('#97 Pruefaufbau: [P-18] hat GENAU EINE Kopplungsmutter mit gepflegter '
-    + 'Schluesselweite (17 mm) vorbelegt — im Wandelement steht sie noch nicht',
+    + 'Schluesselweite (17 mm) vorbelegt — im Wandelement steht sie seit der Neuanlage '
+    + '(Ausweisungsmasse, 2026-10-07)',
     KUP17.length === 1 && KAT.produkt(store.holeKatalog(), KUP17[0]).sw_mm === 17
     && KAT.produkt(store.holeKatalog(), KUP17[0]).hoehe_mm === 30
     && ids97.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'kupplung').join() === KUP17[0]
-      && !('kupplung_sw_mm' in ps97(id))));
+      && ps97(id).kupplung_sw_mm === 17));
 
   const confirmEcht97 = globalThis.confirm;
   globalThis.confirm = () => true;
@@ -5586,11 +5587,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
 
   const SPM0 = KAT.rollenIds(store.holeProdukte(1, aSpm), 'spannmutter');
   ok('#97/spm Pruefaufbau: [P-18] hat GENAU EINE Spannmutter vorbelegt — mit gepflegter '
-    + 'Hoehe (10 mm) und OHNE Schluesselweite; im Wandelement steht noch keines der Masse',
+    + 'Hoehe (10 mm) und OHNE Schluesselweite; im Wandelement steht seit der Neuanlage '
+    + 'genau die Hoehe (Ausweisungsmasse, 2026-10-07)',
     SPM0.length === 1 && KAT.produkt(store.holeKatalog(), SPM0[0]).hoehe_mm === 10
     && KAT.produkt(store.holeKatalog(), SPM0[0]).sw_mm === undefined
     && idsSpm.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannmutter').join() === SPM0[0]
-      && !('spannmutter_h_mm' in psSpm(id)) && !('spannmutter_sw_mm' in psSpm(id))));
+      && psSpm(id).spannmutter_h_mm === 10 && !('spannmutter_sw_mm' in psSpm(id))));
 
   const confirmEchtSpm = globalThis.confirm;
   globalThis.confirm = () => true;
@@ -5869,11 +5871,11 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
 
   const SPB0 = KAT.rollenIds(store.holeProdukte(1, aSpb), 'spannplatte');
   ok('#97/spb Pruefaufbau: [P-18] hat GENAU EINE Spannplatte vorbelegt (120 mm breit, '
-    + '10 mm dick); im Wandelement steht die Breite noch nicht',
+    + '10 mm dick); im Wandelement steht die Breite seit der Neuanlage (2026-10-07)',
     SPB0.length === 1 && KAT.produkt(store.holeKatalog(), SPB0[0]).breite_mm === 120
     && KAT.produkt(store.holeKatalog(), SPB0[0]).dicke_mm === 10
     && idsSpb.every(id => KAT.rollenIds(store.holeProdukte(1, id), 'spannplatte').join() === SPB0[0]
-      && !('spannplatte_b_mm' in psSpb(id))));
+      && psSpb(id).spannplatte_b_mm === 120));
 
   const confirmEchtSpb = globalThis.confirm;
   globalThis.confirm = () => true;
@@ -6184,12 +6186,12 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   const SK0 = KAT.rollenIds(store.holeProdukte(1, aZpm), 'senkkopf');
   ok('#97/zpm Pruefaufbau: [P-18] hat je GENAU EIN Produkt vorbelegt — die Mutter mit '
     + 'gepflegter Hoehe (8 mm) und ohne Schluesselweite, die Schraube ohne beides; im '
-    + 'Wandelement steht noch keines der drei Masse',
+    + 'Wandelement steht seit der Neuanlage genau die Mutternhoehe (2026-10-07)',
     ZPM0.length === 1 && SK0.length === 1
     && KAT.produkt(store.holeKatalog(), ZPM0[0]).hoehe_mm === 8
     && KAT.produkt(store.holeKatalog(), ZPM0[0]).sw_mm === undefined
     && KAT.produkt(store.holeKatalog(), SK0[0]).sw_mm === undefined
-    && idsZpm.every(id => !('zp_mutter_h_mm' in psZpm(id))
+    && idsZpm.every(id => psZpm(id).zp_mutter_h_mm === 8
       && !('zp_mutter_sw_mm' in psZpm(id)) && !('senkkopf_sw_mm' in psZpm(id))));
 
   const confirmEchtZpm = globalThis.confirm;

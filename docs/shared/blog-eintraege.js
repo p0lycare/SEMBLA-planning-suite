@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-09",
+    datum: "2026-10-07",
+    typ: "fix",
+    issue: 97,
+    titel: "Schraube, Muttern, Spannplatte und Einlegeblech in Modul 1, 5 und 7 gleich groß",
+    testbitte: "Dieselbe Wand in Modul 1, Modul 5 und Modul 7 öffnen: Schraubenkopf unter dem "
+      + "Bodenblech, Kopplungsmutter, Spannmutter und Einlegeblech sind überall gleich groß "
+      + "im Verhältnis zur Wand – auch wenn Modul 1 einen Reparaturhinweis zeigt",
+  },
+  {
     id: "chg-20261007-08",
     datum: "2026-10-07",
     typ: "fix",

@@ -27,6 +27,8 @@ import { buildWall, Opening } from "../../docs/shared/sembla-core.js";
 import { standardEingaben } from "../../docs/shared/storage.js";
 import {
   montageEreignisse, montageAbschnitte, abschnittSvg, konturSvg,
+  // 2026-10-07: Bildmassstab und Bauteilmasse des Baugruppenbilds (Vergleich Modul 1/5/7).
+  abschnittMasstab, bauteilMasse,
   montageSeiten, montageSeitenHtml, montageDokument, posCm, UEBERSTAND_MM,
   STUECK_FARBE, STUECK_LABEL, stueckFarbe, stueckArt, stangenEnden, stangenStuecke,
   topLagen, oberkantenAbschnitte, bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
@@ -44,6 +46,11 @@ import {
   STANGEN_PALETTE, STANGEN_ABSTAND_MIN, stangenFarbe, stangenFarbFolge, stangenLegende,
   wandStangenStuecke, belegteKennfarben, farbAbstand,
 } from "../../docs/shared/sembla-montage.js";
+// 2026-10-07: die Gewindestange im Baugruppenbild ist — wie in Modul 1/7 (#121) — Durchmesser
+// mal Bildmassstab (statt fester 2,4 Einheiten); gepruefte Strichstaerke also aus der Quelle.
+const stangeSw = (w) => String(Math.max(SPANN_MM.rod_d_min * SPANN_EINHEIT.montage,
+  SPANN_MM.rod_d_mm * abschnittMasstab(w, montageAbschnitte(w)[0])));
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 import { stangenKatalogLaengen } from "../../docs/shared/sembla-katalog.js";
 import { BRANDKLASSE as Z_BRAND } from "../../docs/shared/sembla-zeichnung.js";
 // #136: die kanonischen Lagenkanten des Rechenkerns — der Test vergleicht die Darstellung
@@ -338,7 +345,7 @@ for (const [name, w, alle, abs] of [["Rechteck", WR, alleR, absR], ["AWG", WAWG,
   // Bild: Bodenblech + Stangen, aber KEINE Steine, KEINE Reihennummern, KEINE Kontur/Oeffnung
   const svg0 = abschnittSvg(w, s0, 900, 430);
   ok(`${name}: Schnitt-0-Bild zeigt Bodenblech und Gewindestangen`,
-    svg0.includes(`fill="#5b6673"`) && /stroke="#1f6feb" stroke-width="2.4"/.test(svg0)
+    svg0.includes(`fill="#5b6673"`) && svg0.includes(`stroke="#1f6feb" stroke-width="${stangeSw(w)}"`)
     && /Bodenblech und erste Gewindestangen/.test(svg0));
   ok(`${name}: Schnitt-0-Bild zeigt KEINE Steine, Reihennummern, Kontur oder Oeffnungen`,
     !/stroke="#7d848c"/.test(svg0)              // Steinreihen dieses Abschnitts
@@ -467,7 +474,7 @@ ok("abgeschlossene Straenge schliessen mit dem Reststueck ab ([Z-6])", restZuObe
 // Bild: ein Strich je Stueck in der Farbe seiner Art (kein Strich je Strang)
 const abZ = alleZ[alleZ.length - 1];
 const svgZ = abschnittSvg(WZ, abZ, 900, 430);
-const striche = f => (svgZ.match(new RegExp(`<line x1="([\\d.]+)" y1="[\\d.]+" x2="\\1" y2="[\\d.]+" stroke="${f}" stroke-width="2.4"`, "g")) || []).length;
+const striche = f => (svgZ.match(new RegExp(`<line x1="([\\d.]+)" y1="[\\d.]+" x2="\\1" y2="[\\d.]+" stroke="${f}" stroke-width="${reEsc(stangeSw(WZ))}"`, "g")) || []).length;
 const sollJeArt = a => abZ.straenge.reduce((n, st) => n + st.stuecke_sicht.filter(p => p.art === a).length, 0);
 ok("Baugruppenbild zeichnet je Stueck einen Strich in der Farbe seiner Art",
   ["standard", "sonder", "rest"].every(a => sollJeArt(a) > 0 && striche(STUECK_FARBE[a]) === sollJeArt(a)));
@@ -489,7 +496,7 @@ const svgAlt = abschnittSvg(wAlt, alleAlt[alleAlt.length - 1], 900, 430);
 ok("Alt-Bundle ohne `stuecke`: stuecke_sicht bleibt leer",
   alleAlt.every(a => a.straenge.every(st => Array.isArray(st.stuecke_sicht) && st.stuecke_sicht.length === 0)));
 ok("Alt-Bundle faellt auf die Einzellinie je Strang zurueck (kein Zeichenfehler)",
-  (svgAlt.match(new RegExp(`stroke="${STUECK_FARBE.standard}" stroke-width="2.4"`, "g")) || []).length
+  (svgAlt.match(new RegExp(`stroke="${STUECK_FARBE.standard}" stroke-width="${reEsc(stangeSw(wAlt))}"`, "g")) || []).length
     === alleAlt[alleAlt.length - 1].straenge.length);
 // Der Legendenkasten selbst kann durch die realen Bodenblechstoesse belegt sein (die
 // WERDEN gezeichnet und muessen nach [D-4] aufloesbar bleiben); ohne `stuecke` darf aber
@@ -582,14 +589,14 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   const abN = montageAbschnitte(WN);
   const bild = abN.map(a => abschnittSvg(WN, a, 900, 430, { stangen_laengen_mm: KL })).join("");
   ok("[D-4] Modul 5: das 820er Stueck der niedrigen Wand ist gruen, kein Blau-Strich",
-    bild.includes(`stroke="${STANGEN_PALETTE[1]}" stroke-width="2.4"`)
-    && !bild.includes(`stroke="${STANGEN_PALETTE[0]}" stroke-width="2.4"`)
+    bild.includes(`stroke="${STANGEN_PALETTE[1]}" stroke-width="${stangeSw(WN)}"`)
+    && !bild.includes(`stroke="${STANGEN_PALETTE[0]}" stroke-width="${stangeSw(WN)}"`)
     && /Gewindestange 820 mm/.test(bild) && !/Gewindestange 1050 mm/.test(bild));
   ok("[D-4] Modul 5: Seiten und Dokument reichen die Katalogliste an jedes Bild durch",
     montageSeitenHtml(WN, eingaben, { stangen_laengen_mm: KL }).includes(bild.slice(0, 200))
     && montageDokument(WN, eingaben, { stangen_laengen_mm: KL }).includes(`stroke="${STANGEN_PALETTE[1]}"`));
   ok("[D-4] zentraler Export: Montageanleitung faerbt nach dem Katalog",
-    montageHtml(WN, eingaben, KAT6).includes(`stroke="${stangenFarbe(2)}" stroke-width="2.4"`));
+    montageHtml(WN, eingaben, KAT6).includes(`stroke="${stangenFarbe(2)}" stroke-width="${stangeSw(WN)}"`));
 }
 
 // --- Abschnitte der lokalen Wandoberkante (Issue #24, [A-1]/[D-4]) ---------
@@ -1561,11 +1568,15 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
   }
 
   // Die Symbolmasse sind ZEICHENMASSE: sie duerfen nirgends als Bauteilmass auftauchen.
-  ok("[#106] Symbolmasse sind Zeichenmasse — Modul 5 bleibt bit-gleich (Nachziehpunkt [P-6])",
+  // 2026-10-07: der Nachziehpunkt [P-6] aus #106/#110 ist geschlossen — Modul 5 zeichnet die
+  // Spannkomponenten mit DENSELBEN Bausteinen wie Modul 1/7; die Altformen sind entfallen.
+  ok("[#106] Modul 5 zeichnet mit den gemeinsamen Bausteinen, keine Altformen mehr",
     (() => { const q = readFileSync(new URL("../../docs/shared/sembla-montage.js",
       import.meta.url), "utf8");
-      return /NACHZIEHPUNKT \[P-6\] \(#110\/#106\)/.test(q)
-        && /r="2\.8" fill="\$\{FARBE\.mutter\}"/.test(q); })());
+      return !/NACHZIEHPUNKT \[P-6\] \(#110\/#106\)/.test(q)
+        && !/r="2\.8" fill="\$\{FARBE\.mutter\}"/.test(q)
+        && !/width="9" height="6" rx="1\.5"/.test(q)
+        && /anker \+= schraubeSvg\(/.test(q) && /vorn \+= kopplungsmutterSvg\(/.test(q); })());
 }
 
 // ---- Issue #97: Ausgleichspunkte als dauerhafte Marke unter dem Bodenblech ---------------
@@ -1657,7 +1668,10 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     ok("[#97] Nicht-Ziel: konturSvg und die Baugruppenbilder bleiben zeichengleich (eingefroren)",
       // 2026-10-07 ([D-4]) neu eingefroren: allein der Legendentext der Stangen hat sich
       // geaendert („Standardlänge" -> „Gewindestange <Länge> mm"); Geometrie gleich.
-      kurz(kontur) === "bd04f6aa967bfdb1" && kurz(bilder) === "8ab5d246726b5b79");
+      // 2026-10-07 (Bauteile Modul 1/5/7 gleich) neu eingefroren: die Baugruppenbilder
+      // zeichnen Schraube, Muttern und Spannplatte mit den gemeinsamen Bausteinen und die
+      // Stange masstaeblich; Kontur, Reihen und Ausgleichspunkte (keine) unveraendert.
+      kurz(kontur) === "bd04f6aa967bfdb1" && kurz(bilder) === "7e5f4266f6a16e03");
   }
   // Die Marke ist DARSTELLUNG: aus ihr wird nichts abgeleitet, und die Punktliste bleibt die
   // eine Quelle der Menge ([A-18]).
@@ -1755,7 +1769,7 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     const q = readFileSync(new URL("../../docs/shared/sembla-montage.js", import.meta.url), "utf8");
     return !/\(c\.lage \+ 1\) \* C/.test(q) && !/tl\[k\] \* C/.test(q)
       && !/Math\.floor\(r\.z_mm \/ C\)/.test(q) && !/Math\.round\(h \/ C\)/.test(q)
-      && /import \{ wandLagenKanten \} from "\.\/sembla-core\.js"/.test(q); })());
+      && /import \{ wandLagenKanten, wirksameZwischenpunkte \} from "\.\/sembla-core\.js"/.test(q); })());
 
   // (g) MUSS-NICHT: eine reine 200-mm-Wand bleibt zeichenkettengleich — eingefroren.
   // `montageSeiten` neu eingefroren am 2026-10-07: einzige Aenderung ist die Stueckliste, in
@@ -1769,8 +1783,10 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     // 2026-10-07 ([D-4]) neu eingefroren: nur der Stangen-Legendentext der Bilder hat sich
     // geaendert („Gewindestange <Länge> mm"), und die Sichtstuecke der Abschnitte tragen
     // zusaetzlich ihre reale `len_mm`; Reihen, Kanten und Geometrie sind gleich.
-    && kurz(bilder200) === "c22ff973aad2876d"
-    && kurz(JSON.stringify(montageSeiten(W200))) === "e716aec4e268901a");
+    // 2026-10-07 erneut: Spannkomponenten der Bilder aus den gemeinsamen Bausteinen, Stange
+    // masstaeblich (Bauteile Modul 1/5/7 gleich); Reihen, Kanten und Kontur unveraendert.
+    && kurz(bilder200) === "4c0ab7de18b77232"
+    && kurz(JSON.stringify(montageSeiten(W200))) === "e3c0018b0733acd6");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand nennt keine Ausgleichslage",
     !/Ausgleichslage/.test(montageSeiten(W200).map(s => s.html).join("")));
 }

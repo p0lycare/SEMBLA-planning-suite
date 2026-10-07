@@ -38,7 +38,7 @@ import { semblaBomItems, semblaBomMenge } from "./sembla-bom.js";
 // je Lage `unterkante_mm`/`oberkante_mm`/`hoehe_mm` aus `courses[]` des Rechenkerns (mit dessen
 // eigenem Rueckfall fuer Altbestand). Eine Lagenhoehe darf in diesem Modul deshalb NIE mehr aus
 // `Lagenindex x course_mm` entstehen — sonst zeichnete die obere Ausgleichslage als 200-mm-Lage.
-import { wandLagenKanten } from "./sembla-core.js";
+import { wandLagenKanten, wirksameZwischenpunkte } from "./sembla-core.js";
 
 const COURSE_FALLBACK = 200;
 const GRID_FALLBACK = 125;
@@ -343,12 +343,21 @@ export const SPANN_FARBE = { platte: "#14559c", mutter: "#0b3a73", schraube: "#5
  * liegt in jedem Fall unter jedem Mutterndurchmesser — die Mutter bleibt also immer breiter als
  * die Stange, die durch sie laeuft.
  *
- * Verrechnet wird beides in den beiden Ansichten selbst (`sembla-zeichnung.js`,
- * `docs/wandplanung.html`); hier stehen NUR die Werte. ⚠ Nachziehpunkt [P-6]/[D-4] — die
- * `Math.max`-Zeile steht zweimal, die Gleichheit beider Ansichten sichert der Test. Seit dem
+ * Verrechnet wird beides in den Ansichten selbst (`sembla-zeichnung.js`,
+ * `docs/wandplanung.html` und seit 2026-10-07 auch `abschnittSvg` fuer Modul 5); hier stehen
+ * NUR die Werte. ⚠ Nachziehpunkt [P-6]/[D-4] — die `Math.max`-Zeile steht dreimal, die
+ * Gleichheit der Ansichten sichert der Test (`test-bauteilgleichheit.mjs`). Seit dem
  * AGW-Termin vom 2026-09-28 hat die weisse Haarlinie am Stangenstoss (#112) GENAU diese
- * Breite (buendig mit der Stange, kein Ueberstand). Die Baugruppenbilder von Modul 5 und die
- * Kontur (`abschnittSvg`/`konturSvg`) sind davon ausdruecklich UNBERUEHRT.
+ * Breite (buendig mit der Stange, kein Ueberstand); das Baugruppenbild fuehrt keine Haarlinie,
+ * und die Kontur (`konturSvg`) bleibt unberuehrt.
+ *
+ * WARUM die Symbolmasse in DARSTELLUNGSEINHEITEN stehen und nicht in Wand-mm (offene Frage,
+ * 2026-10-07): Modul 1 zeichnet mit festem Ansichtsmassstab, Modul 7 im Norm-Massstab nach
+ * Wandgroesse ([D-2]). Ein Symbol, das in beiden RELATIV ZUR WAND gleich gross waere, haette
+ * im Blatt je Massstab eine andere Papiergroesse — genau das schliesst [D-9] aus („auf einem
+ * 1:25-Blatt genauso gross wie auf einem 1:100-Blatt"). Ohne Katalogmass sind Schraube,
+ * Muttern und Einlegeblech deshalb in Wand-mm je Modul verschieden gross; Schenkel und Strich
+ * des Einlegeblechs immer. Mit Katalogmass ist jedes andere Teil in allen drei Modulen gleich.
  */
 export const SPANN_MM = {
   mutter_h: 1.8,       // Hoehe der normalen Mutter / Spannmutter
@@ -386,8 +395,13 @@ export const SPANN_MM = {
  * dort GLEICHBEDEUTEND mit einem konstanten Verhaeltnis zum Stein; die Symbole brauchen dafuer
  * keine eigene Rechnung. (Vor #106 hing der Ansichtsmasstab an der Wandlaenge — dann war
  * genau das nicht gleichbedeutend, und keine Wahl am Symbol konnte beides erfuellen.)
+ *
+ * `montage`: das Baugruppenbild von Modul 5 (`abschnittSvg`, viewBox 900 Einheiten breit,
+ * gedruckt rund 180 mm) — 5 Einheiten je Papier-mm wie die Wandansicht. Seit 2026-10-07 zeichnet
+ * es Schraube, Muttern, Spannplatte und Einlegeblech mit denselben Bausteinen wie Modul 1/7;
+ * die Einheit traegt dort nur noch die Symbolmasse OHNE Katalogmass ([D-9]).
  */
-export const SPANN_EINHEIT = { blatt: 1, ansicht: 5 };
+export const SPANN_EINHEIT = { blatt: 1, ansicht: 5, montage: 5 };
 
 /**
  * Vereinfachte Seitenansicht eines Zylinders (Mutter/Kopplungsmutter) mit Hoehe und
@@ -1778,6 +1792,49 @@ function _konturPunkte(w) {
   return pts;
 }
 
+/** Raender des Baugruppenbilds (viewBox-Einheiten) — `abschnittSvg`/`abschnittMasstab`. */
+const AB_PAD = { l: 52, r: 34, t: 34, b: 26 };
+
+/**
+ * Massstab eines Baugruppenbilds (viewBox-Einheiten je mm) — die EINE Stelle, an der er
+ * entsteht; `abschnittSvg()` rechnet damit, und Pruefungen lesen ihn hier statt ihn
+ * nachzubauen (Vergleich der Bauteilmasse Modul 1/5/7, 2026-10-07).
+ * @param {any} w @param {any} ab Abschnitt aus montageAbschnitte()
+ * @param {number} [vbW] @param {number} [vbH]
+ * @returns {number}
+ */
+export function abschnittMasstab(w, ab, vbW = 900, vbH = 430) {
+  const C = _course(w), L = w.length_mm;
+  // Massstab: global konstant ueber alle Baugruppenbilder ([A-9]); `z_top_mm` setzt
+  // montageAbschnitte(). Fallback nur fuer direkt gebaute Abschnitte ohne dieses Feld.
+  const zTop = ab.z_top_mm != null ? ab.z_top_mm : Math.max(ab.stange_oberkante_mm, ab.z_bis_mm, C);
+  return Math.min((vbW - AB_PAD.l - AB_PAD.r) / L, (vbH - AB_PAD.t - AB_PAD.b) / zTop);
+}
+
+/**
+ * Die realen Bauteilmasse der Spannkomponenten einer Wand, so wie sie die Zeichenbausteine
+ * (`schraubeSvg`, `kopplungsmutterSvg`, `spannplatteSvg`, `mutterSvg`, `zwischenpunktSvg`)
+ * erwarten — gelesen AUSSCHLIESSLICH aus `w.prestress` (dieselben Felder, die Modul 1 und
+ * Modul 7 lesen). Fehlt ein Mass, steht dort 0 und der Baustein faellt auf sein Symbolmass
+ * zurueck; erfunden wird keines.
+ * @param {any} w Wandelement
+ */
+export function bauteilMasse(w) {
+  const p = (w && w.prestress) || {};
+  const v = (/** @type {string} */ f) => (p[f] > 0 ? +p[f] : 0);
+  const kuH = 2 * v("rod_fuss_offset_mm"), kuSw = v("kupplung_sw_mm");
+  const smH = v("spannmutter_h_mm"), smSw = v("spannmutter_sw_mm");
+  return {
+    kupplung: { hoehe_mm: kuH, sw_mm: kuSw },
+    schraube: { hoehe_mm: kuH, sw_mm: v("senkkopf_sw_mm"), d_mm: v("senkkopf_d_mm") },
+    spannplatte: { dicke_mm: v("rod_kopf_zuschlag_mm"), breite_mm: v("spannplatte_b_mm"),
+      mutter_h_mm: smH, mutter_sw_mm: smSw },
+    spannmutter: { hoehe_mm: smH, sw_mm: smSw },
+    einlegeblech: { breite_mm: v("einlegeblech_b_mm"), mutter_h_mm: v("zp_mutter_h_mm"),
+      mutter_sw_mm: v("zp_mutter_sw_mm") },
+  };
+}
+
 /**
  * Baugruppenbild eines Abschnitts (reines SVG-Innere, mm-basiert).
  * Zeigt: bereits montierte Reihen (blass), die Reihen dieses Abschnitts mit
@@ -1797,11 +1854,9 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430, opts = {}) {
   const K = wandLagenKanten(w);
   const ok = n => lagenOberkanteMm(w, n, K);
   const kante = li => K[li] || { unterkante_mm: 0, oberkante_mm: 0, hoehe_mm: 0 };
-  const padL = 52, padR = 34, padT = 34, padB = 26;
-  // Massstab: global konstant ueber alle Baugruppenbilder ([A-9]); `z_top_mm` setzt
-  // montageAbschnitte(). Fallback nur fuer direkt gebaute Abschnitte ohne dieses Feld.
+  const padL = AB_PAD.l, padR = AB_PAD.r, padT = AB_PAD.t;
   const zTop = ab.z_top_mm != null ? ab.z_top_mm : Math.max(ab.stange_oberkante_mm, ab.z_bis_mm, C);
-  const sc = Math.min((vbW - padL - padR) / L, (vbH - padT - padB) / zTop);
+  const sc = abschnittMasstab(w, ab, vbW, vbH);
   const yBase = padT + zTop * sc;
   const X = x => padL + x * sc, Y = z => yBase - z * sc;
   const li0 = ab.reihen.von - 1, li1 = ab.reihen.bis - 1;
@@ -1861,8 +1916,27 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430, opts = {}) {
       + `fill="${FARBE.stahl}" stroke="${FARBE.stahl_rand}" stroke-width="0.5"/>`;
   }
 
-  // Gewindestangen
-  const pw = Math.max(6, 110 * sc);
+  // Spannkomponenten und Gewindestangen — seit 2026-10-07 mit DENSELBEN Bausteinen und
+  // DENSELBEN Bauteilmassen wie die Wandansicht (Modul 1) und das Blatt (Modul 7): Schraube
+  // am Fuss mit aufliegender Kopplungsmutter ([A-19]), Kopplungsmutter am Stoss, Spannplatte
+  // samt Spannmutter ([A-3]), Spannmutter unter dem Kopfblech, Einlegeblech samt Mutter
+  // ([A-14]/[A-16]). Bis dahin standen hier eigene Altformen (Kreis, 9 x 6-Rechteck, flacher
+  // Balken) in festen Bildeinheiten — dasselbe Bauteil sah in Modul 5 anders aus als in
+  // Modul 1/7 ([D-4]/[D-9], benannter Nachziehpunkt [P-6] aus #106/#110).
+  // Masstaeblich (× `sc`) ist jedes Teil, dessen Katalogmass am Wandelement steht; fehlt es,
+  // gilt das Symbolmass der Bausteine in `SPANN_EINHEIT.montage`.
+  // Reihenfolge wie in Modul 1/7 (#106/#112): Anker hinten, dann Einlegebleche, dann
+  // Kopplungsmuttern, die Gewindestangen ganz vorn; Positionsmarken zuletzt.
+  const E = SPANN_EINHEIT.montage, M = bauteilMasse(w);
+  // Sichtbarkeitsuntergrenze der Plattenbreite ([D-9]): ihr Zweck ist, dass die Platte nie
+  // schmaler gezeichnet wird als die Mutter, die auf ihr sitzt. Das Baugruppenbild hat keinen
+  // Papiermassstab, an dem die feste Symbol-Untergrenze haengen koennte — sie griffe hier schon
+  // bei der realen 120-mm-Platte und machte sie breiter als in Modul 1/7. Untergrenze ist
+  // deshalb die gezeichnete Breite der Spannmutter selbst (dieselbe Entscheidung wie dort).
+  const plMin = _zylinderMass(E, M.spannmutter.sw_mm, sc, SPANN_MM.d);
+  const PL = { ...M.spannplatte, min: plMin };
+  const STANGE_SW = Math.max(SPANN_MM.rod_d_min * E, SPANN_MM.rod_d_mm * sc);
+  let anker = "", vorn = "", stangen = "", marken = "";
   ab.straenge.forEach((st, i) => {
     const x = X(st.x_mm);
     // Stueckweise nach dem gemeinsamen Farbschluessel ([D-4]): Standardlaenge,
@@ -1870,39 +1944,43 @@ export function abschnittSvg(w, ab, vbW = 900, vbH = 430, opts = {}) {
     // Alt-Bundles ohne `stuecke` fallen auf die Einzellinie zurueck.
     if (st.stuecke_sicht && st.stuecke_sicht.length) {
       for (const p of st.stuecke_sicht)
-        s += `<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" `
-          + `stroke="${stueckFarbe(p.art, p.len_mm, folge)}" stroke-width="2.4"/>`;
+        stangen += `<line x1="${x}" y1="${Y(p.z0_mm)}" x2="${x}" y2="${Y(p.z1_mm)}" `
+          + `stroke="${stueckFarbe(p.art, p.len_mm, folge)}" stroke-width="${STANGE_SW}"/>`;
     } else {
-      s += `<line x1="${x}" y1="${Y(st.z_unten_mm)}" x2="${x}" y2="${Y(st.zeichen_oben_mm)}" `
-        + `stroke="${FARBE.stange}" stroke-width="2.4"/>`;
+      stangen += `<line x1="${x}" y1="${Y(st.z_unten_mm)}" x2="${x}" y2="${Y(st.zeichen_oben_mm)}" `
+        + `stroke="${FARBE.stange}" stroke-width="${STANGE_SW}"/>`;
     }
-    // NACHZIEHPUNKT [P-6] (#110/#106): die folgenden Anker-, Kopplungs- und Plattenformen sind
-    // die ALTEN (Kreis/flacher Balken) und laufen damit gegen die vereinfachte Seitenansicht,
-    // die `mutterSvg`/`kopplungsmutterSvg`/`spannplatteSvg`/`schraubeSvg` fuer Modul 1 und
-    // Modul 7 fuehren. Das Baugruppenbild von Modul 5 stand ausdruecklich NICHT im Umfang von
-    // #110 und #106 und bleibt deshalb hier bit-gleich; umgestellt wird es in einem eigenen
-    // Paket. Kennfarben sind schon gemeinsam (`FARBE.mutter`/`FARBE.platte` aus `SPANN_FARBE`).
-    // Es fehlen hier deshalb weiterhin: die feste Symbolgroesse (#106), die Schraube am Fuss
-    // und die aufsitzende statt zentrierte Mutter ([A-19]/#97).
     // Fussanschluss
-    if (st.anker_unten === "bodenblech") s += `<circle cx="${x}" cy="${Y(st.z_unten_mm)}" r="2.8" fill="${FARBE.mutter}"/>`;
-    else s += `<rect x="${x - pw / 2}" y="${Y(st.z_unten_mm) - 3}" width="${pw}" height="3" fill="${FARBE.platte}"/>`;
+    if (st.anker_unten === "bodenblech") {
+      anker += schraubeSvg(x, Y(st.z_unten_mm), E, bth, { ...M.schraube, sc });
+      vorn += kopplungsmutterSvg(x, Y(st.z_unten_mm), E, { ...M.kupplung, auf: true, sc });
+    } else anker += spannplatteSvg(x, Y(st.z_unten_mm), E, sc, PL);
     // Kopplungen in diesem Abschnitt
     for (const zk of st.kopplungen_mm)
-      s += `<rect x="${x - 4.5}" y="${Y(zk) - 3}" width="9" height="6" rx="1.5" fill="${FARBE.mutter}"/>`;
+      vorn += kopplungsmutterSvg(x, Y(zk), E, { ...M.kupplung, sc });
     // Kopf: abgeschlossen -> Platte/Mutter, sonst offenes Stangenende (ueberstehend)
     if (st.abgeschlossen) {
-      if (st.anker_oben === "kopfblech") s += `<circle cx="${x}" cy="${Y(st.seg_z1_mm)}" r="2.6" fill="${FARBE.mutter}"/>`;
-      else s += `<rect x="${x - pw / 2}" y="${Y(st.seg_z1_mm)}" width="${pw}" height="3" fill="${FARBE.platte}"/>`;
+      if (st.anker_oben === "kopfblech")
+        anker += mutterSvg(x, Y(st.seg_z1_mm), E, { ...M.spannmutter, auf: true, sc });
+      else anker += spannplatteSvg(x, Y(st.seg_z1_mm), E, sc, PL);
     } else {
-      s += `<circle cx="${x}" cy="${Y(st.zeichen_oben_mm)}" r="2.2" fill="#fff" stroke="${FARBE.stange}" stroke-width="1.4"/>`;
+      marken += `<circle cx="${x}" cy="${Y(st.zeichen_oben_mm)}" r="2.2" fill="#fff" stroke="${FARBE.stange}" stroke-width="1.4"/>`;
     }
     // Positions-Chip (gestaffelt gegen Überlappung)
     const cy = Y(st.zeichen_oben_mm) - ((i % 2) ? 8 : 19);
     const lbl = posCm(st.x_mm).replace(" cm", "");
-    s += `<rect x="${x - 17}" y="${cy - 9}" width="34" height="11" rx="2" fill="${FARBE.stange}"/>`
+    marken += `<rect x="${x - 17}" y="${cy - 9}" width="34" height="11" rx="2" fill="${FARBE.stange}"/>`
       + `<text x="${x}" y="${cy - 0.8}" font-size="8" fill="#fff" text-anchor="middle">${lbl}</text>`;
   });
+  // Einlegebleche ([A-14]): die WIRKSAMEN Punkte des Rechenkerns, soweit sie bis zur
+  // Oberkante dieses Abschnitts montiert sind — an Straengen, die das Bild zeigt.
+  const xs = new Set(ab.straenge.map(st => st.x_mm));
+  const zp = (ab.art === "schnitt0" ? [] : wirksameZwischenpunkte(w))
+    .filter(p => p.z_mm <= ab.z_bis_mm && xs.has(p.x_mm));
+  let zsp = "";
+  for (const p of zp)
+    zsp += zwischenpunktSvg(X(p.x_mm), Y(p.z_mm), { e: E, ...M.einlegeblech, sc });
+  s += anker + (zsp ? `<g class="zsp">${zsp}</g>` : "") + vorn + stangen + marken;
 
   // Ereignishoehen als gestrichelte Linie mit Beschriftung
   for (const e of ab.ereignisse) {

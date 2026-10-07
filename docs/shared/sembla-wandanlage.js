@@ -98,7 +98,11 @@ export function vorspannVorgaben(eingaben, katalog, ueberstandMm = ROD_OVERHANG)
  */
 export function wandelementNeu(v, eingaben, katalog) {
   const vorgaben = vorspannVorgaben(eingaben, katalog);
-  const we = buildWall(v.name, v.laenge_mm, v.hoehe_mm, [], null, vorgaben);
+  // Dazu die reinen Ausweisungsmasse (2026-10-07): ohne sie stand die neue Wand ohne
+  // Schrauben-, Mutter- und Blechmasse im Speicher, und jede Ausgabe, die den gespeicherten
+  // Stand zeigt, zeichnete Symbole, wo Modul 1 masstaeblich zeichnet. Keine Rechenwirkung.
+  const we = buildWall(v.name, v.laenge_mm, v.hoehe_mm, [], null,
+    { ...ausweisungsMasse(eingaben, katalog, "spannplatte"), ...vorgaben });
   // Der Wandtyp haengt nicht am Core und wird ausschliesslich bei der Anlage gewaehlt.
   we.wandtyp = v.wandtyp;
   return { wandelement: we, vorgaben };
@@ -338,6 +342,45 @@ export function vorspannEingaenge(eing, kat, topConn) {
 }
 
 /**
+ * Die REINEN AUSWEISUNGSMASSE des Vorspann-Eingangssatzes — Felder ohne jeden Rechenbeitrag,
+ * die der Core nur durchreicht, damit die Ausgaben die Bauteile masstaeblich zeichnen
+ * ([D-1]/[D-9]). Bewusst NICHT dabei sind die Rechenwerte (Standardlaengen, Reststueck,
+ * Bodenblech-Vorratssatz, `rod_fuss_offset_mm`, `rod_kopf_zuschlag_mm`): sie veraendern die
+ * Zerlegung und duerfen nur zusammen mit einer Neurechnung gesetzt werden.
+ */
+export const AUSWEISUNGS_FELDER = Object.freeze([
+  "blech_dicke_mm", "kopfblech_dicke_mm", "kupplung_sw_mm",
+  "spannmutter_h_mm", "spannmutter_sw_mm", "spannplatte_b_mm",
+  "zp_mutter_h_mm", "zp_mutter_sw_mm", "senkkopf_sw_mm", "senkkopf_d_mm",
+  "einlegeblech_b_mm",
+]);
+
+/**
+ * Die Ausweisungsmasse einer Wand aus ihrer Produktauswahl — der Teil von
+ * `vorspannEingaenge()`, der OHNE Neurechnung ueber ein Wandelement gelegt werden darf.
+ *
+ * Gebraucht an zwei Stellen, an denen bis dahin ein Wandelement OHNE diese Masse gezeichnet
+ * wurde, waehrend Modul 1 sie fuer dieselbe Wand hatte (Auftrag 2026-10-07, Schraube und
+ * Muttern in Modul 7 als Symbol, in Modul 1 masstaeblich):
+ *  - `wandelementNeu()`: die im Geschosseditor gezeichnete Wand wurde ohne sie gespeichert;
+ *  - `wandelementAktualisiert()` im Rueckfall „Produkt fehlt": gezeigt wird der gespeicherte
+ *    Stand — Modul 1 dagegen leitet jedes Mass aus den AUFLOESBAREN Produkten ab.
+ * Ein Mass, das sich nicht eindeutig ergibt, fehlt im Ergebnis ([P-9]).
+ *
+ * @param {any} eing `eingaben` der Wand
+ * @param {any} kat zugeordneter Bauteilkatalog oder null
+ * @param {string} [topConn] oberer Anschluss ('blech'|'spannplatte')
+ * @returns {Record<string, number>}
+ */
+export function ausweisungsMasse(eing, kat, topConn) {
+  const alle = vorspannEingaenge(eing || {}, kat, topConn);
+  /** @type {Record<string, number>} */ const out = {};
+  if (!alle) return out;
+  for (const f of AUSWEISUNGS_FELDER) if (alle[f] != null) out[f] = alle[f];
+  return out;
+}
+
+/**
  * Ein Massfeld der gewaehlten Produkte einer Rolle: GENAU EIN Wert, sonst `null`.
  * Mehrere verschiedene Masse heissen „bleibt offen" — es wird keines bevorzugt und
  * keines gemittelt ([P-9]).
@@ -443,7 +486,20 @@ export function wandelementAktualisiert(wandelement, eingaben, katalog, engine) 
   // benannt daneben — es wird keine Laenge und kein Mass erfunden ([Z-1]/[P-9]).
   if (!katalog) return unveraendert("kein_katalog");
   const fehlend = fehlendeProdukte(eingaben, katalog);
-  if (fehlend.length) return unveraendert("produkt_fehlt", fehlend);
+  if (fehlend.length) {
+    // Gezeigt wird der GESPEICHERTE Stand (#120) — aber mit den Ausweisungsmassen der
+    // aufloesbaren Produkte (2026-10-07). Modul 1 zeichnet dieselbe Wand in genau dieser Lage
+    // mit ihnen (`einbauMass()` je Rolle); ohne diese Zeilen zeichneten Modul 5/7 Schraube,
+    // Muttern und Einlegeblech als Symbol, wenn das gespeicherte Element sie nicht fuehrte
+    // (z. B. im Geschosseditor gezeichnet). Rechenwerte bleiben unberuehrt, die Zerlegung ist
+    // weiter die gespeicherte; geschrieben wird nichts.
+    const top = we.prestress && we.prestress.top_connection === "blech" ? "blech" : "spannplatte";
+    const masse = ausweisungsMasse(eingaben, katalog, top);
+    const r = unveraendert("produkt_fehlt", fehlend);
+    if (Object.keys(masse).length)
+      r.wandelement = { ...we, prestress: { ...(we.prestress || {}), ...masse } };
+    return r;
+  }
 
   const ps = { ...(we.prestress || {}) };
   // #130: ZUERST der volle abgeleitete Eingangssatz aus der aktuellen Produktauswahl —

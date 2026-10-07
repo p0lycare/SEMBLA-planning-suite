@@ -121,9 +121,25 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert sind
 // kuerzere Schenkel und eine halbe Strichstaerke. NICHT versprochen werden eine geaenderte
 // Blechbreite, Lage, Menge oder Stueckliste.
-const EBK = EINTRAEGE[0];
-ok("[Einlegeblech-Kosmetik] ist der neueste Eintrag",
-  EBK?.id === "chg-20261007-08" && EBK?.typ === "fix" && EBK?.issue === 97
+// Der NEUESTE Eintrag ist die GLEICHE BAUTEILDARSTELLUNG IN MODUL 1, 5 UND 7 (#97, Auftrag
+// 2026-10-07) — er wird als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst
+// hier: geliefert ist dieselbe Groesse von Schraube, Muttern, Spannplatte und Einlegeblech
+// relativ zur Wand in allen drei Modulen (auch im Rueckfall „Produkt fehlt"). NICHT versprochen
+// werden eine geaenderte Menge, Stueckliste, Statik oder eine neue Fachregel.
+const GLEICH = EINTRAEGE[0];
+ok("[Bauteile gleich] ist der neueste Eintrag",
+  GLEICH?.id === "chg-20261007-09" && GLEICH?.typ === "fix" && GLEICH?.issue === 97
+  && /Schraube/.test(GLEICH?.titel || "") && /Muttern/.test(GLEICH?.titel || "")
+  && /Einlegeblech/.test(GLEICH?.titel || "") && /Modul 1, 5 und 7/.test(GLEICH?.titel || "")
+  && !/Menge|Stückliste|Statik|Regel/i.test(GLEICH?.titel || ""));
+ok("[Bauteile gleich] die Testbitte fuehrt Modul 1, Modul 5 und Modul 7",
+  /Modul 1/.test(GLEICH?.testbitte || "") && /Modul 5/.test(GLEICH?.testbitte || "")
+  && /Modul 7/.test(GLEICH?.testbitte || ""));
+
+// Davor kam die EINLEGEBLECH-KOSMETIK — seither ueber ihre KENNUNG gesucht.
+const EBK = EINTRAEGE.find(e => e.id === "chg-20261007-08");
+ok("[Einlegeblech-Kosmetik] steht unmittelbar hinter der gleichen Bauteildarstellung",
+  EINTRAEGE[1] === EBK && EBK?.id === "chg-20261007-08" && EBK?.typ === "fix" && EBK?.issue === 97
   && /Einlegeblech/.test(EBK?.titel || "") && /Schenkel/.test(EBK?.titel || "")
   && /Strichstärke/.test(EBK?.titel || "")
   && !/maßstäblich|Menge|Stückliste|Katalog/i.test(EBK?.titel || ""));
@@ -133,7 +149,7 @@ ok("[Einlegeblech-Kosmetik] die Testbitte fuehrt Modul 1 und Modul 7",
 // Davor kam die WANDFUSS-SCHRAUBE — seither ueber ihre KENNUNG gesucht.
 const FUSS = EINTRAEGE.find(e => e.id === "chg-20261007-07");
 ok("[Wandfuß-Schraube] steht unmittelbar hinter der Einlegeblech-Kosmetik",
-  EINTRAEGE[1] === FUSS && FUSS?.id === "chg-20261007-07" && FUSS?.typ === "feature" && FUSS?.issue === 97
+  EINTRAEGE[2] === FUSS && FUSS?.id === "chg-20261007-07" && FUSS?.typ === "feature" && FUSS?.issue === 97
   && /Sechskantschraube/.test(FUSS?.titel || "") && /maßstäblich/.test(FUSS?.titel || "")
   && /Kopplungsmutter/.test(FUSS?.titel || "") && /pink/.test(FUSS?.titel || "")
   && !/Menge|Stückliste|Statik|Gewindestange/i.test(FUSS?.titel || ""));
@@ -144,7 +160,7 @@ ok("[Wandfuß-Schraube] die Testbitte fuehrt Modul 1 und Modul 7 samt Legende",
 // Davor kam die STOSSFUGEN-ABDICHTUNG — seither ueber ihre KENNUNG gesucht.
 const FUGE = EINTRAEGE.find(e => e.id === "chg-20261007-06");
 ok("[Stoßfugen-Abdichtung] steht unmittelbar hinter der Wandfuß-Schraube",
-  EINTRAEGE[2] === FUGE && FUGE?.id === "chg-20261007-06" && FUGE?.typ === "feature" && FUGE?.issue === 71
+  EINTRAEGE[3] === FUGE && FUGE?.id === "chg-20261007-06" && FUGE?.typ === "feature" && FUGE?.issue === 71
   && /Gipsfaserstreifen/.test(FUGE?.titel || "") && /Dichtstreifen/.test(FUGE?.titel || "")
   && /Stückliste/.test(FUGE?.titel || "") && !/Preis|eigene Zeile/i.test(FUGE?.titel || ""));
 ok("[Stoßfugen-Abdichtung] die Testbitte fuehrt Fassung v6, Produktwahl und Modul 4",
@@ -157,7 +173,7 @@ ok("[Stoßfugen-Abdichtung] die Testbitte fuehrt Fassung v6, Produktwahl und Mod
 // NICHT versprochen werden eine geaenderte Zerlegung, Menge oder Stueckliste.
 const STANGENFARBEN = EINTRAEGE.find(e => e.id === "chg-20261007-05");
 ok("[Stangenfarben] steht unmittelbar hinter der Stoßfugen-Abdichtung",
-  EINTRAEGE[3] === STANGENFARBEN && STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
+  EINTRAEGE[4] === STANGENFARBEN && STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
   && /Standardlänge/.test(STANGENFARBEN?.titel || "") && /Farbe/.test(STANGENFARBEN?.titel || "")
   && /Legende/.test(STANGENFARBEN?.titel || "")
   && !/Menge|Preis|Zerlegung|Stückliste/i.test(STANGENFARBEN?.titel || ""));
@@ -172,7 +188,7 @@ ok("[Stangenfarben] die Testbitte fuehrt Modul 1 und 7 mit zwei Laengen und der 
 // geaenderte Zeichnung.
 const KUPPL = EINTRAEGE.find(e => e.id === "chg-20261007-04");
 ok("[Kopplungsmutter Fuß] steht unmittelbar hinter den Stangenfarben",
-  EINTRAEGE[4] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
+  EINTRAEGE[5] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
   && /Stückliste/.test(KUPPL?.titel || "") && /Bodenblech/.test(KUPPL?.titel || "")
   && /Stangenstoß/.test(KUPPL?.titel || "")
   && !/Preis|Zeichnung|Produkt/i.test(KUPPL?.titel || ""));
