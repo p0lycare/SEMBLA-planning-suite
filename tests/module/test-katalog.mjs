@@ -1087,12 +1087,12 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Fassung von selbst eine eigene, unveraenderliche Identitaet und tritt neben die
   // anderen statt sie zu ersetzen.
   ok("#118 der Vorlagenpfad zeigt auf eine VERSIONIERTE Repo-Datei",
-    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v5.json");
+    PFAD === "./vorlagen/SEMBLA_Standardkatalog-v6.json");
   const id = KAT.vorlageKatalogId(PFAD);
   ok("#102 die Kennung ist deterministisch und pfadabgeleitet",
-    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v5"
+    id === "kat-vorlage-vorlagen-sembla-standardkatalog-v6"
     && KAT.vorlageKatalogId(PFAD) === id
-    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v5.json") === id);
+    && KAT.vorlageKatalogId("vorlagen/SEMBLA_Standardkatalog-v6.json") === id);
   ok("#118 jede Fassung ergibt eine EIGENE Kennung — keine ersetzt eine andere",
     KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v1.json") !== id);
   ok("#102 ein anderer Pfad ergibt eine andere Kennung",
@@ -1206,12 +1206,13 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
   // Das Verzeichnis (#118) ist der EINE Ort, an dem eine Fassung bekanntgegeben wird.
   const man = KAT.parseVorlagenManifest(lies("kataloge.json"));
   // #130: v3 tritt neben v2 und v1 (inhaltsgleich mit v2, s. Manifest-Notiz).
-  // #103: v4 tritt daneben; v5 (Einlegeblech-Orientierung) ist die aktuell empfohlene
-  // Fassung; v1…v4 bleiben unveraendert erhalten (Freeze-Test).
-  ok("#97/#130/#103 das Verzeichnis fuehrt ALLE Fassungen und weist aktuell auf v5",
-    man.fassungen.length === 5
-    && man.fassungen.map((f) => f.version).join() === "v5,v4,v3,v2,v1"
-    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v5.json"
+  // #103: v4 tritt daneben; v5 (Einlegeblech-Orientierung) folgt; v6 (Gipsfaserstreifen als
+  // zweites Produkt der Stossfugen-Abdichtung, [A-6]) ist die aktuell empfohlene Fassung;
+  // v1…v5 bleiben unveraendert erhalten (Freeze-Test).
+  ok("#97/#130/#103 das Verzeichnis fuehrt ALLE Fassungen und weist aktuell auf v6",
+    man.fassungen.length === 6
+    && man.fassungen.map((f) => f.version).join() === "v6,v5,v4,v3,v2,v1"
+    && man.aktuell === "./vorlagen/SEMBLA_Standardkatalog-v6.json"
     && man.aktuell === KAT.VORLAGE_KATALOG_PFAD);
   ok("#130 v3 ist inhaltsgleich mit v2 (gleiche Produkte, Baugruppen und Kennungen)",
     (() => {
@@ -1345,6 +1346,49 @@ ok("rollenOhneVorschlag benennt genau die Rollen ohne Standardauswahl", (() => {
     KAT.produkt(v4, EB).breite_mm === 110 && KAT.produkt(v4, EB).hoehe_mm === 30
     && KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v4.json")
        !== KAT.vorlageKatalogId("./vorlagen/SEMBLA_Standardkatalog-v5.json"));
+}
+
+// --- 12d) Herausgegebene Fassung v6: Gipsfaserstreifen fuer die Stossfugen ([A-6]) ---
+// Tibor-Entscheid: KEINE eigene Stuecklistenzeile je Material, sondern Auswahl ueber das Produkt
+// der Rolle `dicht_stk`. v6 fuehrt dafuer den Gipsfaserstreifen als ZWEITES Produkt — waehlbar,
+// aber bewusst NICHT vorbelegt (sonst waere die Vorbelegung mehrdeutig und jede neue Wand
+// unbepreist). Sonst ist v6 inhaltsgleich mit v5.
+{
+  const lies = (n) => readFileSync(new URL("../../docs/vorlagen/" + n, import.meta.url), "utf8");
+  const rohV5 = lies("SEMBLA_Standardkatalog-v5.json");
+  const rohV6 = lies("SEMBLA_Standardkatalog-v6.json");
+  const v5 = KAT.parseKatalog(rohV5), v6 = KAT.parseKatalog(rohV6);
+  const GF = "verbrauch-gipsfaserstreifen-200";
+
+  ok("v6 die Fassung ist gegen den echten Parser gueltig",
+    v6.produkte.length === v5.produkte.length + 1
+    && v6.produkte.every((p) => KAT.validiereProdukt(p).length === 0)
+    && KAT.validiereKatalog(v6).length === 0);
+  ok("v6 Gipsfaserstreifen: Verbrauch, Stk, 200 mm Einbauhoehe, Masse in der Bezeichnung",
+    (() => { const p = KAT.produkt(v6, GF);
+      return !!p && p.kategorie === "verbrauch" && p.einheit === "Stk" && p.hoehe_mm === 200
+        && p.bezeichnung === "Gipsfaserstreifen 200 × 20 × 10 mm"
+        && /20 mm in Wandlängsrichtung/.test(p.hinweis) && /10 mm dick/.test(p.hinweis); })());
+  ok("v6 der Preis ist ausdruecklich offen (Platzhalter, im Hinweis benannt)",
+    (() => { const p = KAT.produkt(v6, GF);
+      return p.preis === 0 && /Preis offen/.test(p.hinweis) && /Platzhalter/.test(p.hinweis); })());
+  ok("v6 er ist fuer dicht_stk waehlbar, die Vorbelegung bleibt allein der Dichtstreifen",
+    KAT.rollenOptionen(v6, "dicht_stk").some((o) => o.id === GF)
+    && KAT.produktrollenVorschlag(v6).dicht_stk.join() === "verbrauch-dichtstreifen-200"
+    && !(KAT.produkt(v6, GF).rollen || []).length);
+  ok("v6 unterscheidet sich von v5 NUR im Fassungsnamen und in der neuen Produktzeile",
+    (() => {
+      const o5 = JSON.parse(rohV5), o6 = JSON.parse(rohV6);
+      const felder = [...new Set([...Object.keys(o5), ...Object.keys(o6)])]
+        .filter((k) => JSON.stringify(o5[k]) !== JSON.stringify(o6[k]));
+      if (felder.join() !== "name,produkte") return false;
+      if (o5.name.replace(" v5 ", " v6 ") !== o6.name) return false;
+      return JSON.stringify(o6.produkte.filter((p) => p.id !== GF)) === JSON.stringify(o5.produkte);
+    })());
+  ok("v6 Baugruppen und Startklarheit ([P-18]) wertgleich zu v5",
+    JSON.stringify(v6.sets) === JSON.stringify(v5.sets)
+    && KAT.rollenOhneVorschlag(v6).join() === KAT.rollenOhneVorschlag(v5).join()
+    && JSON.stringify(KAT.produktrollenVorschlag(v6)) === JSON.stringify(KAT.produktrollenVorschlag(v5)));
 }
 
 // --- Deckenanschluss: Verwendungsstellen und Default-Set ([P-24], #95/#94) -

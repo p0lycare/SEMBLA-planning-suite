@@ -1168,13 +1168,18 @@ ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
                 'verbrauch-senkkopfschraube-fuss'];
   ok('#97 die vorbelegte Fassung ist die aus VORLAGE_KATALOG_PFAD',
     kat().id === KAT.vorlageKatalogId(KAT.VORLAGE_KATALOG_PFAD)
-    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v5/.test(kat().name));
-  // Fassung v5: das Einlegeblech fuehrt sein Mass in Wandrichtung als `breite_mm` (30 mm) und
-  // das Mass quer zur Wand als `hoehe_mm` (110 mm) — in v4 waren beide vertauscht.
-  ok('v5 die vorbelegte Fassung fuehrt das Einlegeblech mit 30 mm in Wandrichtung',
+    && KAT.istVorlagenKatalog(kat()) && /Standardkatalog v6/.test(kat().name));
+  // Seit Fassung v5 fuehrt das Einlegeblech sein Mass in Wandrichtung als `breite_mm` (30 mm)
+  // und das Mass quer zur Wand als `hoehe_mm` (110 mm) — in v4 waren beide vertauscht.
+  ok('v5/v6 die vorbelegte Fassung fuehrt das Einlegeblech mit 30 mm in Wandrichtung',
     (() => { const eb = KAT.produkt(kat(), 'blech-einlegeblech-110');
       return eb.breite_mm === 30 && eb.hoehe_mm === 110 && eb.dicke_mm === 2
         && KAT.produktrollenVorschlag(kat()).einlegeblech.join() === 'blech-einlegeblech-110'; })());
+  // v6 ([A-6]): der Gipsfaserstreifen ist als zweites Produkt der Stossfugen-Abdichtung
+  // WAEHLBAR, aber nicht vorbelegt — Standard bleibt der Dichtstreifen (genau ein Vorschlag).
+  ok('v6 Gipsfaserstreifen waehlbar fuer dicht_stk, Vorbelegung bleibt der Dichtstreifen',
+    KAT.rollenOptionen(kat(), 'dicht_stk').some(o => o.id === 'verbrauch-gipsfaserstreifen-200')
+    && KAT.produktrollenVorschlag(kat()).dicht_stk.join() === 'verbrauch-dichtstreifen-200');
   ok('#97 Spannmutter, Mutter Einlegeblech und Sechskantschraube Fuß fuehren SW 17 mm',
     SW97.every(id => KAT.produkt(kat(), id).sw_mm === 17));
   ok('#97 die Herleitung aus dem Gewinde M10 steht am Produkt, nicht im Testtext',
@@ -1193,7 +1198,7 @@ ok('Laden schreibt NICHT ins Wandelement und nicht in die Projektauswahl',
   ok('#97 die Fassung v1 laedt unveraendert und mit EIGENER Kennung',
     v1.id === KAT.vorlageKatalogId(P_V1) && v1.id !== v2Id
     && KAT.istVorlagenKatalog(v1) && /Standardkatalog v1/.test(v1.name)
-    && v1.produkte.length === V_KAT_ANZ
+    && v1.produkte.length === KAT.parseKatalog(rohV1).produkte.length
     && JSON.stringify(KAT.katalogObjekt(v1).produkte)
        === JSON.stringify(KAT.parseKatalog(rohV1).produkte));
   ok('#97 in v1 ist keine der drei Schluesselweiten gesetzt — nichts wurde umgestellt',

@@ -714,8 +714,8 @@ Konstante: eine neue Fassung ist eine Datei plus ein Eintrag, ohne Codeänderung
 `VORLAGE_KATALOG_PFAD` bleibt der **eine** Vorgabewert (Autoload beim Anlegen einer Wand,
 [P-18]); Modul 10 lässt bei mehreren Fassungen wählen und rät nie.
 
-**Einlegeblech maßstäblich, Fassung v5 (2026-10-07).** Aktuell ist
-`SEMBLA_Standardkatalog-v5.json`: wie v4, nur beim Einlegeblech (`blech-einlegeblech-110`)
+**Einlegeblech maßstäblich, Fassung v5 (2026-10-07).**
+`SEMBLA_Standardkatalog-v5.json` ist wie v4, nur beim Einlegeblech (`blech-einlegeblech-110`)
 sind die in v4 **vertauschten** Felder richtig orientiert — `breite_mm` = **30 mm in
 Wandrichtung**, `hoehe_mm` = **110 mm quer zur Wand** (Konvention wie beim Ausgleichsblech),
 `dicke_mm` 2. Daraus zeichnen **Modul 1 und Modul 7** (samt zentralem Export) den Balken des
@@ -731,6 +731,28 @@ davor). Schenkel, Strichstärke und Mutter sind unverändert. Das unversionierte
 **alte, vertauschte** Orientierung — es wird von keinem Betriebspfad geladen, nur von Tests.
 Bestandsprojekte auf v1–v4 werden **nicht** umgestellt; dort zeichnet das Blech nach dem
 nächsten Auslegen mit 110 mm, bis die Zuordnung bewusst auf v5 wechselt.
+
+**Stoßfugen-Abdichtung über das Produkt, Fassung v6 (2026-10-07, [A-6]).** Aktuell ist
+`SEMBLA_Standardkatalog-v6.json`: wie v5, zusätzlich der **Gipsfaserstreifen 200 × 20 × 10 mm**
+(`verbrauch-gipsfaserstreifen-200`, Verbrauch, Stk, `hoehe_mm` 200 = Fugenhöhe; 20 mm in
+Wandlängsrichtung und 10 mm Dicke stehen in Bezeichnung/Hinweis, weil `verbrauch` dafür kein
+Feld hat). Entscheid Tibor: **keine eigene Zeile je Material**, sondern **Auswahl über das
+Produkt** der Rolle `dicht_stk` („Stoßfugen-Abdichtung – Einbauposition") — je Wand in Modul 1
+oder gemeinsam im Sammel-Editor; beide bieten über `rollenOptionen` ohnehin alle
+`verbrauch`-Produkte an, es brauchte **keinen** Zusatzcode. Der Gipsfaserstreifen trägt bewusst
+**kein** `rollen`-Feld: vorbelegt bleibt allein der Dichtstreifen ([P-18]), sonst wäre jede neue
+Wand mehrdeutig und unbepreist; Bestandsprojekte ändern sich nicht. Die BOM
+(`semblaBomItems`) kennt keine Produktwahl und führt **neutrale** Bezeichnungen
+(`DICHT_STK_LABEL` = „Stoßfugen-Abdichtung 20 cm", „Stoßfugen-Abdichtung – Gesamtlänge");
+`stuecklistePositionen()` benennt die Einbauposition über `positionsLabel()` nach dem nach
+[P-14] **eindeutig aufgelösten** Produkt („Stoßfugen: <Bezeichnung>") — damit tragen Modul 4,
+Gesamt-/Matrixstückliste, CSV/XLSX und Einkaufsliste denselben Namen. Ohne eindeutiges Produkt
+bleibt es neutral, geraten wird nichts. Menge (= `bom.stossfugen`, nur innere Fugen), Stelle,
+Positionskennung ([P-20]) und die nachrichtliche Gesamtlänge bleiben unverändert; die
+Gesamtstückliste faltet verschiedene Produkte ohnehin getrennt (`produktId` im Faltschlüssel).
+Modul 7/5 lesen `semblaBomItems` ohne Produktwahl und zeigen die neutrale Bezeichnung.
+**Preis offen:** das Katalogformat verlangt einen Preis; der Gipsfaserstreifen trägt den
+**Platzhalter 0** mit „vorläufig — Preis offen" im Hinweis — er ist kein Preis.
 
 **Reparatur unauflösbarer Produktreferenzen (#118, löst #115/#116).** Die Wand hält nur
 Produkt-Kennungen ([P-13]); verschwindet ein Produkt aus dem Katalog — korrigiertes Maß,
@@ -1080,8 +1102,10 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      Kopfblech sind **getrennte Positionen** (`blech_boden`/`blech_kopf`, Regel **[A-1]**), abgeleitet aus
      den realen `base_plate`/`top_plate` des Wandelements — der Core bleibt unverändert und die Summe
      beider Positionen bleibt exakt `bom.stahlblech_module` (`test-shared.mjs` sichert das ab). Die
-     Dichtstreifen-Gesamtlänge in m ist `nachrichtlich: true` (Regel **[A-6]**) und wird **nie** bepreist,
-     damit dieselbe Ware nicht doppelt in einer Summe steht.
+     Gesamtlänge der Stoßfugen-Abdichtung in m ist `nachrichtlich: true` (Regel **[A-6]**) und wird **nie** bepreist,
+     damit dieselbe Ware nicht doppelt in einer Summe steht. Die Einbauposition `dicht_stk` heißt hier
+     neutral; den Namen des gewählten Produkts (Dichtstreifen, Gipsfaserstreifen …) setzt
+     `stuecklistePositionen()` (`positionsLabel`, sembla-export.js).
    - `sembla-aufbau.js` — horizontaler Wandaufbau (`berechneAufbau`, Verbinderachsen/Latten; Modul 2, DOM-frei).
    - `sembla-montage.js` — **ereignis-/baugruppenbasierte Montageableitung** (`montageEreignisse`,
      `montageAbschnitte`, `abschnittSvg`/`konturSvg`, `montageSeiten`/`montageDokument`; DOM-frei).

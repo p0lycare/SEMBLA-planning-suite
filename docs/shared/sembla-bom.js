@@ -377,6 +377,15 @@ export function semblaBom(w) {
 function _abgedichtet(w) { return !!w && w.abdichtung === "abgedichtet"; }
 
 /**
+ * Neutrale Bezeichnung der Einbauposition je Stossfuge ([A-6]) — gilt, solange kein Produkt
+ * der Rolle `dicht_stk` eindeutig aufgeloest ist (kein Katalog, keine oder mehrdeutige Wahl).
+ */
+export const DICHT_STK_LABEL = "Stoßfugen-Abdichtung 20 cm";
+
+/** Praefix der Einbauposition mit aufgeloestem Produkt: „Stoßfugen: <Bezeichnung>“ ([A-6]). */
+export const DICHT_STK_PRAEFIX = "Stoßfugen: ";
+
+/**
  * Einzelteile EINES Deckenanschlusspunkts ([P-24], Fachvorgabe vom 2026-09-08) — Reihenfolge,
  * Klartext und Stueckzahl je Punkt.
  *
@@ -621,9 +630,14 @@ function _flachePositionen(w, b) {
     // die BODENblechdicke (`bom.stahlblech_dicke_mm`), also das Mass eines anderen Bauteils.
     { key: "blech_kopf",  label: "Kopfblech-Modul (" + kbdTxt + ")",   unit: "Stk", menge: b.stahlblech_module_kopf },
     // Nur bei abgedichteter Wand — an unveraenderter Stelle in der Liste ([A-6]/#71).
+    // Die Bezeichnungen sind NEUTRAL: WAS in die Stossfuge kommt (Dichtstreifen,
+    // Gipsfaserstreifen …), entscheidet das in Modul 1 gewaehlte Produkt der Rolle
+    // `dicht_stk`. Diese Liste kennt keine Produktwahl; `stuecklistePositionen()`
+    // (sembla-export.js) benennt die Einbauposition nach dem eindeutig aufgeloesten Produkt
+    // (`positionsLabel`). Ohne Katalog/Wahl bleibt es bei dieser neutralen Bezeichnung.
     ...(_abgedichtet(w) ? [
-    { key: "dicht_stk",   label: "Dichtstreifen 20 cm (Schallschutz)", unit: "Stk", menge: b.stossfugen },
-    { key: "dicht",       label: "Dichtstreifen – Gesamtlänge",       unit: "m",   menge: +((b.dichtstreifen_mm / 1000).toFixed(2)),
+    { key: "dicht_stk",   label: DICHT_STK_LABEL,                     unit: "Stk", menge: b.stossfugen },
+    { key: "dicht",       label: "Stoßfugen-Abdichtung – Gesamtlänge", unit: "m",   menge: +((b.dichtstreifen_mm / 1000).toFixed(2)),
       nachrichtlich: true },
     ] : []),
   ]);

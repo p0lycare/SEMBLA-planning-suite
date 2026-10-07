@@ -67,7 +67,7 @@ export const KATALOG_FORMAT = "SEMBLA-Bauteilkatalog";
  * Diese Konstante bleibt der EINE Vorgabewert (Autoload beim Anlegen einer Wand,
  * [P-18]); WELCHE Fassungen es gibt, steht im Manifest (VORLAGEN_MANIFEST_PFAD).
  */
-export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog-v5.json";
+export const VORLAGE_KATALOG_PFAD = "./vorlagen/SEMBLA_Standardkatalog-v6.json";
 
 /** Pfad des Vorlagenverzeichnisses (relativ zu `docs/`). */
 export const VORLAGEN_MANIFEST_PFAD = "./vorlagen/kataloge.json";
@@ -1017,12 +1017,16 @@ export const ROLLEN = [
   { id: "blech_kopf", label: "Kopfblech", kategorie: "blech_platte", modul: 1,
     gruppe: "Anschluss", einheit: "Stk", mass: { felder: ["breite_mm", "hoehe_mm", "laenge_mm"], kontext: "blech_mm" },
     bepreist: true },
-  { id: "dicht_stk", label: "Dichtstreifen Einbauposition", kategorie: "verbrauch", modul: 1,
+  // [A-6] WAS in die inneren Stossfugen kommt, ist allein die Produktwahl dieser Rolle — je
+  // Wand ein Produkt (z. B. Dichtstreifen ODER Gipsfaserstreifen), keine eigene Zeile je
+  // Material. Die Stueckliste benennt die Position nach dem gewaehlten Produkt
+  // (`positionsLabel`, sembla-export.js); Menge bleibt die Zahl der inneren Stossfugen.
+  { id: "dicht_stk", label: "Stoßfugen-Abdichtung – Einbauposition", kategorie: "verbrauch", modul: 1,
     gruppe: "Fugen", einheit: "Stk", mass: null, bepreist: true },
-  { id: "dicht", label: "Dichtstreifen Gesamtlänge", kategorie: "verbrauch", modul: 1,
+  { id: "dicht", label: "Stoßfugen-Abdichtung – Gesamtlänge", kategorie: "verbrauch", modul: 1,
     gruppe: "Fugen", einheit: "m", mass: null, bepreist: false,
     hinweis: "Nachrichtliche Menge derselben Ware wie die Einbauposition ([A-6]) — bewusst nicht "
-      + "bepreist, damit die Dichtstreifen nicht doppelt in der Summe stehen." },
+      + "bepreist, damit die Stoßfugen-Abdichtung nicht doppelt in der Summe steht." },
   // --- Modul 2 ---
   { id: "latte", label: "Lattenstange", kategorie: "latte", modul: 2, gruppe: "Latten", einheit: "Stk",
     mass: { felder: ["laenge_mm"], kontext: "stange_mm" }, bepreist: true, kombinierbar: true },

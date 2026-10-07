@@ -1259,6 +1259,22 @@ const WE=buildWall('Einbauteilwand', 3000, 3000, [new Opening(6,10,4,10,'fenster
     const zurueck=/Dichtstreifen/.test(document.getElementById('tbody').innerHTML);
     _aktiv=vorherId; _we=vorherWe; _eg=vorherEg; _subs.forEach(cb=>cb());
     return treffer && zurueck; })());
+  // [A-6] Material ueber das Produkt: mit Gipsfaserstreifen fuer `dicht_stk` heisst die Zeile
+  // in Modul 4 nach ihm — keine zweite Zeile, keine eigene Ableitung im Modul.
+  ok('[A-6] Modul 4 benennt die Stoßfugen-Zeile nach dem gewaehlten Produkt', (()=>{
+    const vorherWe=_we, vorherId=_aktiv, vorherEg=_eg, vorherKat=_kat;
+    _kat={...KATALOG, produkte:[...KATALOG.produkte,
+      { id:'gips-stk', kategorie:'verbrauch', bezeichnung:'Gipsfaserstreifen 200 × 20 × 10 mm', einheit:'Stk', preis:0.5 }]};
+    const eg=egVoll(); eg.planung.produkte.rollen.dicht_stk=['gips-stk'];
+    _aktiv='w-abgedichtet'; _we=W; _eg=eg; _subs.forEach(cb=>cb());
+    const tb=document.getElementById('tbody').innerHTML;
+    const gips=SL.rows().find(r=>r.key==='dicht_stk');
+    const ok1=/Stoßfugen: Gipsfaserstreifen 200 × 20 × 10 mm/.test(tb)
+      && !/Dichtstreifen 20 cm/.test(tb)
+      && gips.menge===W.bom.stossfugen && gips.ep===0.5
+      && SL.rows().filter(r=>r.key==='dicht_stk').length===1;
+    _aktiv=vorherId; _we=vorherWe; _eg=vorherEg; _kat=vorherKat; _subs.forEach(cb=>cb());
+    return ok1; })());
 }
 
 // ---- [P-20]/#81 Mengenuebersteuerung am REALEN Pfad ---------------------------------------

@@ -2699,7 +2699,9 @@ const SAMMEL_FELDER = [
     // #145 Einheit und Hinweis benennen das WERTFELD; das Häkchen daneben heißt
     // „<Merkmal> ändern“ — beide bekommen ihren eigenen Namen (`axSammelBenennen`).
     einheit: null,
-    hinweis: 'Abdichtung der Stoßfugen. Die Dichtstreifenlänge der Stückliste ist nachrichtlich und wird nie bepreist.',
+    hinweis: 'Abdichtung der Stoßfugen. Bei „abgedichtet“ führt die Stückliste je innerer Stoßfuge ein Stück des '
+      + 'gewählten Produkts der Rolle „Stoßfugen-Abdichtung – Einbauposition“ (z. B. Dichtstreifen oder '
+      + 'Gipsfaserstreifen, wählbar unter „Produktauswahl aus Modul 1“); die Gesamtlänge ist nachrichtlich und wird nie bepreist.',
     lies: we => store.normAbdichtung(we.abdichtung),
     text: v => ABDICHT_TEXT[v] || v,
     pruefe: wahlPruefung([], 'eine Abdichtung'),         // Werte s. `sammelPruefungen()`

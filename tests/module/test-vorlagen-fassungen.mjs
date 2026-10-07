@@ -29,6 +29,8 @@ const lies = (pfad) => readFileSync(new URL("../../docs/vorlagen/" + pfad.replac
 // --- 1) Eingefrorene Fassungen ---------------------------------------------
 // Schluessel = Manifestpfad. NUR ERGAENZEN, NIE AENDERN (s. Kopfkommentar).
 const FREEZE = {
+  "./vorlagen/SEMBLA_Standardkatalog-v6.json":
+    "a4c63f1257745c16da2501a3cc0516eb580ca8d735c2367f49ac50b6a5890c57",
   "./vorlagen/SEMBLA_Standardkatalog-v5.json":
     "d59ae032ee55fcc535c68393b1179e54e3b125593ca5edb9c6a7ef2d8cf76855",
   "./vorlagen/SEMBLA_Standardkatalog-v4.json":

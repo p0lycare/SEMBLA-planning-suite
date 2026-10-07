@@ -1670,5 +1670,36 @@ const P = (ueber = {}) => ({
   }
 }
 
+// --- [A-6] Stossfugen-Abdichtung: Material ueber das Produkt, keine eigene Zeile je Material ---
+// Zwei abgedichtete Waende desselben Geschosses, eine mit Dichtstreifen, eine mit
+// Gipsfaserstreifen: die Gesamtstueckliste faltet sie NICHT zusammen (verschiedene Produkte),
+// und jede Zeile heisst nach IHREM Produkt. Wand- und Gesamtdatei tragen dieselbe Bezeichnung.
+{
+  const KG = { ...KATALOG, name: "Testkatalog Gipsfaser", produkte: [...KATALOG.produkte,
+    { id: "gips-stk", kategorie: "verbrauch", bezeichnung: "Gipsfaserstreifen 200 × 20 × 10 mm",
+      einheit: "Stk", preis: 0.5 }] };
+  const wand = (id) => ({ ...ELEMENTE[id], wandelement: { ...ELEMENTE[id].wandelement, abdichtung: "abgedichtet" } });
+  const EL = { "w-a": wand("w-a"), "w-b": wand("w-b") };
+  const egFuer = (id) => { const e = eingabenFuer();
+    if (id === "w-b") e.planung.produkte.rollen.dicht_stk = ["gips-stk"]; return e; };
+  const les = { holeElement: (id) => EL[id] || null, holeEingaben: egFuer, katalog: KG };
+  const d = gesamtDaten(umfang(M, "geschoss", Z), les);
+  const dz = d.positionen.filter((p) => p.key === "dicht_stk");
+  const fugen = (id) => EL[id].wandelement.bom.stossfugen;
+  ok("[A-6] Gesamtstueckliste: je Produkt eine Stoßfugen-Zeile, benannt nach dem Produkt",
+    dz.length === 2
+    && dz.some((p) => p.label === "Stoßfugen: Dichtstreifen 20 cm" && p.menge === fugen("w-a"))
+    && dz.some((p) => p.label === "Stoßfugen: Gipsfaserstreifen 200 × 20 × 10 mm" && p.menge === fugen("w-b")));
+  ok("[A-6] Gesamtlaenge bleibt EINE neutrale, nachrichtliche Zeile",
+    d.positionen.filter((p) => p.key === "dicht").length === 1
+    && d.positionen.find((p) => p.key === "dicht").label === "Stoßfugen-Abdichtung – Gesamtlänge");
+  ok("[A-6] Gesamt- und Matrixausgabe tragen die Produktbezeichnung",
+    JSON.stringify(gesamtstuecklisteAoa(d)).includes("Stoßfugen: Gipsfaserstreifen 200 × 20 × 10 mm")
+    && matrixSpaltenTitel(dz).every((t) => /^Stoßfugen: /.test(t)));
+  ok("[A-6] Wanddatei (Baustellenstueckliste) traegt dieselbe Bezeichnung",
+    JSON.stringify(stuecklisteAoa(EL["w-b"].wandelement, egFuer("w-b"), {}, KG))
+      .includes("Stoßfugen: Gipsfaserstreifen 200 × 20 × 10 mm"));
+}
+
 let fail = 0; for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`); process.exit(fail ? 1 : 0);

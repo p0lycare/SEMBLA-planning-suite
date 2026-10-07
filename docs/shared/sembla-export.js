@@ -14,7 +14,7 @@
  * ES-Modul: laeuft im Browser und in Node-Tests per import.
  */
 
-import { ART_LABEL, ART_SYMBOL, einbauteile, semblaBomItems } from "./sembla-bom.js";
+import { ART_LABEL, ART_SYMBOL, DICHT_STK_PRAEFIX, einbauteile, semblaBomItems } from "./sembla-bom.js";
 import { BESCHAFFUNGSFELDER, EINHEIT_LABEL, loesePreis, preisKontext, produktRollen, produktSpezifikation,
          stangenKatalogLaengen } from "./sembla-katalog.js";
 import { berechneAufbau } from "./sembla-aufbau.js";
@@ -104,6 +104,26 @@ export function teileart(it, produkt) {
   return it && it.art ? "standard" : null;
 }
 
+/**
+ * BEZEICHNUNG einer Stuecklistenposition. Fuer fast alle Positionen ist das die Bezeichnung der
+ * BOM. Einzige Ausnahme ist die Einbauposition der Stossfugen-Abdichtung ([A-6]): WAS in die
+ * Fuge kommt (Dichtstreifen, Gipsfaserstreifen …), ist allein die Produktwahl der Rolle
+ * `dicht_stk` in Modul 1 — eine eigene Zeile je Material gibt es nicht. Ist das Produkt nach
+ * [P-14] EINDEUTIG aufgeloest, heisst die Zeile „Stoßfugen: <Bezeichnung>“; sonst (kein
+ * Katalog, keine, mehrdeutige oder unaufloesbare Wahl) bleibt die neutrale Bezeichnung der BOM
+ * stehen — geraten wird nie. Menge, Stelle in der Liste und Positionskennung ([P-20]) bleiben
+ * unberuehrt.
+ * @param {any} it BOM-Position @param {any} produkt nach [P-14] aufgeloest oder null
+ * @returns {string}
+ */
+export function positionsLabel(it, produkt) {
+  if (it && it.key === "dicht_stk" && produkt) {
+    const bez = String(produkt.bezeichnung == null ? "" : produkt.bezeichnung).trim();
+    if (bez) return DICHT_STK_PRAEFIX + bez;
+  }
+  return it ? it.label : "";
+}
+
 export function stuecklistePositionen(w, eingaben, katalog = null) {
   const rollenIdsMap = produktRollen(eingaben);
   const kontext = preisKontext(w, eingaben, katalog);
@@ -117,7 +137,7 @@ export function stuecklistePositionen(w, eingaben, katalog = null) {
     const p = r.produkt;
     const art = teileart(it, p);
     return {
-      key: it.key, label: it.label, unit: it.unit, menge: it.menge,
+      key: it.key, label: positionsLabel(it, p), unit: it.unit, menge: it.menge,
       wand: it.wand || null,
       art, art_label: art ? ART_LABEL[art] : null, art_symbol: art ? ART_SYMBOL[art] : null,
       fertigmass_mm: it.fertigmass_mm != null ? it.fertigmass_mm : null,

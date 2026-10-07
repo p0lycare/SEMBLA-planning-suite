@@ -354,6 +354,38 @@ for(const [name,l,h,ops] of cases){
       && ges.unit==='m' && ges.menge===+((roh.bom.dichtstreifen_mm/1000).toFixed(2))
       && ges.nachrichtlich===true; })());
   t("A-6 · Positionszahl unterscheidet sich um genau zwei", iMit.length===iOhne.length+2);
+  // Ohne Produktwahl kennt die BOM nur NEUTRALE Bezeichnungen — welches Material in die Fuge
+  // kommt, entscheidet allein das Produkt der Rolle `dicht_stk` (s. Block darunter).
+  t("A-6 · neutrale Bezeichnungen ohne Produktwahl",
+    iMit.find(it=>it.key==='dicht_stk').label==='Stoßfugen-Abdichtung 20 cm'
+    && iMit.find(it=>it.key==='dicht').label==='Stoßfugen-Abdichtung – Gesamtlänge');
+}
+// ---- [A-6] Stossfugen-Abdichtung: die Zeile heisst nach dem GEWAEHLTEN Produkt -----------
+// Echter Pfad: Repo-Fassung v6 -> parseKatalog -> stuecklistePositionen. Gipsfaserstreifen
+// und Dichtstreifen sind zwei Produkte DERSELBEN Rolle — keine eigene Zeile je Material.
+{
+  const kat=parseKatalog(readFileSync(new URL("./docs/vorlagen/SEMBLA_Standardkatalog-v6.json", import.meta.url),"utf8"));
+  const w=abgedichtet(buildWall("abdicht-produkt",2000,2600,[new Opening(5,11,0,10,"tuer")]));
+  const eg=ids=>({ planung:{ produkte:{ quelle:null, rollen:{ dicht_stk:ids, dicht:["verbrauch-dichtstreifen-rolle"] } } } });
+  const pos=ids=>stuecklistePositionen(w,eg(ids),kat);
+  const stk=ps=>ps.find(p=>p.key==="dicht_stk"), ges=ps=>ps.find(p=>p.key==="dicht");
+  const pD=pos(["verbrauch-dichtstreifen-200"]), pG=pos(["verbrauch-gipsfaserstreifen-200"]);
+  t("A-6 · Dichtstreifen gewaehlt: „Stoßfugen: <Bezeichnung>“",
+    stk(pD).label==="Stoßfugen: Dichtstreifen 20 cm (Schallschutz)" && stk(pD).ep===0.3);
+  t("A-6 · Gipsfaserstreifen gewaehlt: Zeile heisst nach ihm, Menge = Fugenzahl",
+    stk(pG).label==="Stoßfugen: Gipsfaserstreifen 200 × 20 × 10 mm"
+    && stk(pG).menge===w.bom.stossfugen && stk(pG).produktId==="verbrauch-gipsfaserstreifen-200");
+  t("A-6 · Produktwahl aendert weder Stelle noch Menge noch Gesamtlaenge",
+    pG.map(p=>p.key).join()===pD.map(p=>p.key).join()
+    && stk(pG).menge===stk(pD).menge && JSON.stringify(ges(pG))===JSON.stringify(ges(pD))
+    && ges(pG).label==="Stoßfugen-Abdichtung – Gesamtlänge" && ges(pG).ep===null);
+  t("A-6 · ohne Wahl / mehrdeutig / ohne Katalog: neutrale Bezeichnung, nichts geraten",
+    stk(pos([])).label==="Stoßfugen-Abdichtung 20 cm"
+    && stk(pos(["verbrauch-dichtstreifen-200","verbrauch-gipsfaserstreifen-200"])).label==="Stoßfugen-Abdichtung 20 cm"
+    && stk(pos(["verbrauch-dichtstreifen-200","verbrauch-gipsfaserstreifen-200"])).status==="mehrdeutig"
+    && stk(stuecklistePositionen(w,eg(["verbrauch-gipsfaserstreifen-200"]),null)).label==="Stoßfugen-Abdichtung 20 cm");
+  t("A-6 · alle uebrigen Positionen bleiben von der Produktwahl unberuehrt",
+    JSON.stringify(pG.filter(p=>p.key!=="dicht_stk"))===JSON.stringify(pD.filter(p=>p.key!=="dicht_stk")));
 }
 // ---- [P-23]/#94 Baugruppen-Aufloesung am ECHTEN Pfad ------------------------------------
 // Gefahren wird der reale Weg: Repo-Vorlage einlesen -> `parseKatalog` -> `buildWall` ->

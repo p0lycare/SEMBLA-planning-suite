@@ -665,11 +665,13 @@ function run(){
   // [A-6]/#71: Die Abdichtung ist ein Fachmerkmal DIESER Wand und wird hier gewaehlt. Sie
   // haengt — wie der Wandtyp — nicht am Core, wird also nach dem Neuaufbau durch buildWall()
   // wieder angehaengt. Auf Geometrie, Vorspannung und die Core-Mengen wirkt sie nicht; sie
-  // entscheidet allein, ob die Stueckliste Dichtstreifen fuehrt (sembla-bom.js).
+  // entscheidet allein, ob die Stueckliste die Stossfugen-Abdichtung fuehrt (sembla-bom.js);
+  // WELCHES Material (Dichtstreifen, Gipsfaserstreifen …), sagt die Produktwahl der Rolle
+  // `dicht_stk` in der Gruppe „Fugen“ — die Stueckliste benennt die Zeile danach.
   RESULT.wandelement.abdichtung=leseAbdichtung();
   $('abdichtHinweis').textContent = leseAbdichtung()==='abgedichtet'
-    ? 'Stoßfugen abgedichtet — die Stückliste führt Dichtstreifen.'
-    : 'Nicht abgedichtet — die Stückliste führt keine Dichtstreifen.';
+    ? 'Stoßfugen abgedichtet — die Stückliste führt je innerer Stoßfuge das unter „Fugen“ gewählte Produkt (z. B. Dichtstreifen oder Gipsfaserstreifen).'
+    : 'Nicht abgedichtet — die Stückliste führt keine Stoßfugen-Abdichtung.';
   // #79: Die Brandschutzklassifikation ist eine Planungskennzeichnung DIESER Wand und wird
   // hier gewaehlt. Wie Wandtyp und Abdichtung haengt sie nicht am Core und wird nach dem
   // Neuaufbau durch buildWall() wieder angehaengt. Abgeleitet wird aus ihr NICHTS — kein
@@ -2272,7 +2274,9 @@ const AX_TEXTE = {
   'sideHinten': ['Funktion der Rückseite',
     'Wofür die Rückseite dieser Wand gebaut wird. Der Wandaufbau in Modul 2 rechnet damit.'],
   'abdichtung': ['Abdichtung der Stoßfugen',
-    'Nur bei „abgedichtet“ führt die Stückliste Dichtstreifen. Geometrie und Vorspannung '
+    'Nur bei „abgedichtet“ führt die Stückliste die Stoßfugen-Abdichtung: je innerer Stoßfuge '
+    + 'ein Stück des unter „Fugen“ gewählten Produkts (z. B. Dichtstreifen oder '
+    + 'Gipsfaserstreifen), die Zeile heißt nach diesem Produkt. Geometrie und Vorspannung '
     + 'bleiben unverändert.'],
   'brandklasse': ['Brandschutzklassifikation',
     'Planungskennzeichnung dieser Wand. Aus ihr wird kein Nachweis, keine Freigabe und '

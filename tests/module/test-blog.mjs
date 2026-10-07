@@ -107,13 +107,27 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
-// Der NEUESTE Eintrag sind die STANGENFARBEN JE STANDARDLAENGE ([D-4]) — er wird als einziger
-// direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert sind eigene Farben je
+// Der NEUESTE Eintrag ist die STOSSFUGEN-ABDICHTUNG UEBER DAS PRODUKT ([A-6], #71) — er wird
+// als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert ist ein
+// zweites waehlbares Produkt (Gipsfaserstreifen, Standardkatalog v6) und eine Stuecklistenzeile,
+// die das gewaehlte Produkt nennt. NICHT versprochen werden eine eigene Zeile je Material, eine
+// geaenderte Fugenzahl oder ein Preis (der ist offen).
+const FUGE = EINTRAEGE[0];
+ok("[Stoßfugen-Abdichtung] ist der neueste Eintrag",
+  FUGE?.id === "chg-20261007-06" && FUGE?.typ === "feature" && FUGE?.issue === 71
+  && /Gipsfaserstreifen/.test(FUGE?.titel || "") && /Dichtstreifen/.test(FUGE?.titel || "")
+  && /Stückliste/.test(FUGE?.titel || "") && !/Preis|eigene Zeile/i.test(FUGE?.titel || ""));
+ok("[Stoßfugen-Abdichtung] die Testbitte fuehrt Fassung v6, Produktwahl und Modul 4",
+  /v6/.test(FUGE?.testbitte || "") && /Gipsfaserstreifen/.test(FUGE?.testbitte || "")
+  && /Modul 4/.test(FUGE?.testbitte || ""));
+
+// Davor kamen die STANGENFARBEN JE STANDARDLAENGE ([D-4]) — sie werden ueber ihre KENNUNG
+// gesucht. Aussagewahr heisst hier: geliefert sind eigene Farben je
 // Standardlaenge nach dem Katalog, eine neue Reststueckfarbe und eine Legende mit Laengen.
 // NICHT versprochen werden eine geaenderte Zerlegung, Menge oder Stueckliste.
-const STANGENFARBEN = EINTRAEGE[0];
-ok("[Stangenfarben] ist der neueste Eintrag",
-  STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
+const STANGENFARBEN = EINTRAEGE.find(e => e.id === "chg-20261007-05");
+ok("[Stangenfarben] steht unmittelbar hinter der Stoßfugen-Abdichtung",
+  EINTRAEGE[1] === STANGENFARBEN && STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
   && /Standardlänge/.test(STANGENFARBEN?.titel || "") && /Farbe/.test(STANGENFARBEN?.titel || "")
   && /Legende/.test(STANGENFARBEN?.titel || "")
   && !/Menge|Preis|Zerlegung|Stückliste/i.test(STANGENFARBEN?.titel || ""));
@@ -128,7 +142,7 @@ ok("[Stangenfarben] die Testbitte fuehrt Modul 1 und 7 mit zwei Laengen und der 
 // geaenderte Zeichnung.
 const KUPPL = EINTRAEGE.find(e => e.id === "chg-20261007-04");
 ok("[Kopplungsmutter Fuß] steht unmittelbar hinter den Stangenfarben",
-  EINTRAEGE[1] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
+  EINTRAEGE[2] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
   && /Stückliste/.test(KUPPL?.titel || "") && /Bodenblech/.test(KUPPL?.titel || "")
   && /Stangenstoß/.test(KUPPL?.titel || "")
   && !/Preis|Zeichnung|Produkt/i.test(KUPPL?.titel || ""));

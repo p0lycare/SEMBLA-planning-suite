@@ -2,8 +2,14 @@
   "format": "SEMBLA-Katalogvorlagen",
   "version": 1,
   "hinweis": "Herausgegebene Fassungen des mitgelieferten Standardkatalogs. Eine geaenderte Fassung ERSETZT keine bestehende, sondern tritt als eigene Datei daneben — die Vorlagenidentitaet der Browserressource leitet sich allein aus dem PFAD ab (vorlageKatalogId, #102). Alte Fassungen bleiben deshalb dauerhaft im Repo: ein Projekt, das ihnen zugeordnet ist, muss seinen Katalog auch in einem frischen Browser laden koennen. Neueste Fassung zuerst.",
-  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v5.json",
+  "aktuell": "./vorlagen/SEMBLA_Standardkatalog-v6.json",
   "fassungen": [
+    {
+      "pfad": "./vorlagen/SEMBLA_Standardkatalog-v6.json",
+      "version": "v6",
+      "datum": "2026-10-07",
+      "notiz": "Wie v5, zusaetzlich der Gipsfaserstreifen 200 x 20 x 10 mm (verbrauch-gipsfaserstreifen-200) als zweites waehlbares Produkt der Stossfugen-Abdichtung ([A-6]). Er ist bewusst NICHT vorbelegt — Standard bleibt der Dichtstreifen; je Wand wird in Modul 1 (oder im Sammel-Editor) gewaehlt, und die Stueckliste benennt die Position nach dem gewaehlten Produkt. Preis offen (Platzhalter 0, im Hinweis benannt). Sonst inhaltsgleich mit v5."
+    },
     {
       "pfad": "./vorlagen/SEMBLA_Standardkatalog-v5.json",
       "version": "v5",

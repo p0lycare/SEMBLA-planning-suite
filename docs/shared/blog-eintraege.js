@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-06",
+    datum: "2026-10-07",
+    typ: "feature",
+    issue: 71,
+    titel: "Stoßfugen-Abdichtung je Wand: Dichtstreifen oder Gipsfaserstreifen wählbar, Stückliste "
+      + "nennt das Produkt",
+    testbitte: "Projekt auf Standardkatalog v6 umstellen, Wand abdichten, unter Fugen den Gipsfaserstreifen "
+      + "wählen: Modul 4 zeigt „Stoßfugen: Gipsfaserstreifen…“ mit der Fugenzahl als Menge",
+  },
+  {
     id: "chg-20261007-05",
     datum: "2026-10-07",
     typ: "feature",
