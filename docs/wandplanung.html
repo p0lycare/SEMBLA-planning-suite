@@ -1082,7 +1082,7 @@ function draw(w){
     // `mutter_h_mm`/`mutter_sw_mm` und denselben `sc` wie alle anderen Bauteilmaße dieser
     // Ansicht. Die BALKENBREITE ist das reale Blechmaß in Wandrichtung (`breite_mm`, × sc,
     // ohne Untergrenze); Schenkel und Strichstärke des Blechs bleiben Symbolmaß.
-    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?3:2,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,
+    s+=zwischenpunktSvg(zx,zy,{klasse:'zsp',strich:on?1.5:1,farbe:on?'#c9461c':ZWISCHENPUNKT.farbe,
       e:SYM,breite_mm:ebB,mutter_h_mm:zpH,mutter_sw_mm:zpSw,sc});
   }
   // Vordergrund der BAUTEILE (#106): die gesammelten Kopplungsmuttern — nach Strängen, Ankern,

@@ -184,13 +184,14 @@ export const SPANN_MM = {
   rod_d_mm: 10,        // Durchmesser der Gewindestange in mm — REALES Bauteilmass (#121)
   rod_d_min: 0.13,     // Sichtbarkeitsuntergrenze der Stangenbreite (Symbolmass, #121)
   blech_b: 4.4,        // Balkenbreite des Einlegeblechs ([A-14]), wenn das Katalogmass fehlt
-  blech_schenkel: 1.6, // Schenkellaenge des Einlegeblechs
+  blech_schenkel: 0.5, // Schenkellaenge des Einlegeblechs
   dc_schenkel: 3.6,    // Schenkellaenge je Winkel des Deckenanschlusses ([P-24])
   dc_h: 4.0,           // Hoehe des Z ueber der Wandoberkante (Winkelstoss bis Decke)
   dc_versatz: 1.6,     // Versatz des senkrechten Z-Zuges nach LINKS neben die Spannachse (#97)
   ag_b: 3.2,           // Basisbreite der Ausgleichspunktmarke ([A-20]/#97)
   ag_h: 2.0,           // Hoehe der Ausgleichspunktmarke unter der Blechunterkante (#97)
   strich: 0.40,        // Strichstaerke offener Profile
+  blech_strich: 0.20,  // Strichstaerke des Einlegeblechs
 };
 
 /**
@@ -704,7 +705,7 @@ export function zwischenpunktSvg(x, y, opts = {}) {
   const b = (opts.breite != null ? opts.breite
     : _blechBreite(bez, opts.sc, opts.breite_mm)) / 2;
   const h = opts.schenkel != null ? opts.schenkel : SPANN_MM.blech_schenkel * bez;
-  const sw = opts.strich != null ? opts.strich : SPANN_MM.strich * bez;
+  const sw = opts.strich != null ? opts.strich : SPANN_MM.blech_strich * bez;
   const farbe = opts.farbe || ZWISCHENPUNKT.farbe;
   const kl = opts.klasse ? ` class="${opts.klasse}"` : "";
   const n = opts.n || (v => v);
