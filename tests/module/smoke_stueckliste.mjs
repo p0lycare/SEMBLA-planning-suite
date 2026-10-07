@@ -308,10 +308,17 @@ ok('[P-18] Sonderzuschnitte nennen nur das Fertigmaß, keine Herkunft',
   && rs.filter(r=>r.key==='rod_sonder').every(r=>/Sonderzuschnitt \d/.test(r.label) && !/\(aus /.test(r.label)));
 ok('[P-18] Sonderzuschnitte sind nicht bepreisbar und melden Beschaffung',
   rs.filter(r=>r.key==='rod_sonder').every(r=>r.bepreisbar===false && r.ep===null && r.status==='beschaffung'));
-ok('[P-18] Kopplungsmuttern sind EINE Position mit der Gesamtmenge',
+// [P-18] (2026-10): dasselbe Produkt, aber ZWEI Positionen nach Einbaustelle — Stangenstoß
+// (vorkonfektioniert) und Fuß (Bodenblech); beide über die Rolle `kupplung` bepreist.
+ok('[P-18] Kopplungsmuttern: Stangenstoß und Fuß als zwei bepreiste Positionen, Summe unverändert',
   !byKey('kuppl_basis')
-  && byKey('kupplung').menge===W.bom.verbindungsmuttern+W.bom.kopplungsmuttern_basis
-  && byKey('kupplung').ep===0.65);
+  && byKey('kupplung').menge===W.bom.verbindungsmuttern
+  && byKey('kupplung_fuss').menge===W.bom.kopplungsmuttern_basis
+  && byKey('kupplung').menge>0 && byKey('kupplung_fuss').menge>0
+  && byKey('kupplung').ep===0.65 && byKey('kupplung_fuss').ep===0.65
+  && byKey('kupplung').gp+byKey('kupplung_fuss').gp
+     ===(W.bom.verbindungsmuttern+W.bom.kopplungsmuttern_basis)*0.65
+  && rs.filter(r=>r.key==='kupplung'||r.key==='kupplung_fuss').length===2);
 ok('Spannplatten = bom', byKey('spannplatte').menge===W.bom.spannplatten);
 // Die Unterlegscheibe am Wandabschluss ist ENTFALLEN (Fachauskunft 2026-09-08, hebt #92 auf):
 // am normalen oberen Wandabschluss gibt es sie am Spannglied nicht, die Spannmutter sitzt
@@ -391,12 +398,13 @@ ok('[P-19] Gewindestangen-Kopplung bleibt enthalten', !!byKey('kupplung') && byK
 // Reststück-Fertigmaß eine Position. Nichts aus dem Wandaufbau.
 const nRod=rs.filter(r=>r.key==='rod_std').length, nSonder=rs.filter(r=>r.key==='rod_sonder').length;
 const nRest=rs.filter(r=>r.key==='rod_rest').length;
-// [P-18]: eine Kopplungsmutter-Position weniger als vorher (Fuß-Sonderausfuehrung entfaellt).
+// [P-18]: die Kopplungsmutter steht je Einbaustelle (Stangenstoß / Fuß) als eigene Position —
+// dieselbe Rolle, kein Fuß-Sonderprodukt. Die Testwand fuehrt beide (13 Wandpositionen).
 const nBoden=rs.filter(r=>r.key==='blech_boden'||r.key==='blech_boden_sonder').length;
 // [P-24]/#95: dazu die SIEBEN Verwendungsstellen des Deckenanschlusses — die Testwand fuehrt
 // Anschlusspunkte, also stehen sie in der Liste.
-ok('Positionen = 12 Wand + 7 Deckenanschluss + Stangen- und Bodenblechgruppen (ohne Aufbau)',
-  rs.length===12+7+nRod+nSonder+nRest+nBoden && rs.length>=14
+ok('Positionen = 13 Wand + 7 Deckenanschluss + Stangen- und Bodenblechgruppen (ohne Aufbau)',
+  rs.length===13+7+nRod+nSonder+nRest+nBoden && rs.length>=15
   && W.deckenanschlusspunkte.length>0);
 ok('[Z-4] jede Stangengruppe traegt ihr maßgebendes Maß',
   rs.filter(r=>r.key==='rod_std').every(r=>r.menge===0 || r.produktId!==null || r.status!=='ok'));

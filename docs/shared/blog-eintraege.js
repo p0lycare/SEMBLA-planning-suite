@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261007-04",
+    datum: "2026-10-07",
+    typ: "feature",
+    issue: 77,
+    titel: "Stückliste: Kopplungsmutter am Bodenblech steht als eigene Zeile neben den "
+      + "vorkonfektionierten Muttern am Stangenstoß",
+    testbitte: "Modul 4 mit einer Wand mit Stangenstößen öffnen: zwei Kopplungsmutter-Zeilen "
+      + "(Stangenstoß / Fuß), beide bepreist, zusammen so viele wie bisher in einer Zeile",
+  },
+  {
     id: "chg-20261007-03",
     datum: "2026-10-07",
     typ: "feature",

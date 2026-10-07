@@ -876,8 +876,10 @@ export const ROLLEN = [
   { id: "kupplung", label: "Kopplungsmutter", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true,
     hinweis: "Kopplungsmuttern sind bauteilgleich: Stangenstoß und Fußanschluss verwenden DASSELBE "
-      + "Produkt. Es gibt bewusst keine gesonderte Fuß-Kopplungsmutter mehr, und in der Stückliste "
-      + "stehen beide Einbaustellen als eine Position mit einer Menge ([P-18])." },
+      + "Produkt, gewählt wird es hier genau einmal. In der Stückliste stehen die beiden "
+      + "Einbaustellen aber als zwei Positionen: die Muttern am Stangenstoß werden "
+      + "vorkonfektioniert (an die Gewindestange geklebt), auf der Baustelle wird nur die unterste "
+      + "Mutter am Bodenblech gesetzt ([P-18])." },
   { id: "spannmutter", label: "Spannmutter M10,8 ISO 4033", kategorie: "verbrauch", modul: 1,
     gruppe: "Vorspannung", einheit: "Stk", mass: null, bepreist: true },
   // #93/#109 Zwischenspannpunkt: Zwischen den Ankern eines Vorspannsegments sitzt ein
@@ -1357,7 +1359,8 @@ export const STATUS_TEXT = {
  * Mittelwert, ein Ersatzprodukt oder ein Nullpreis gewaehlt; bleibt etwas offen, gibt es
  * keinen Preis, sondern einen benannten Status.
  *
- * @param {{key:string,unit:string,menge:number,nachrichtlich?:boolean}} item Stücklistenposition
+ * @param {{key:string,rolle?:string,unit:string,menge:number,nachrichtlich?:boolean}} item
+ *   Stücklistenposition; `rolle` nur, wenn sie vom `key` abweicht ([P-18])
  * @param {Record<string,string[]>} rollenIdsMap Rolle -> gewaehlte Produkt-IDs
  * @param {any} katalog geladener Katalog oder null
  * @param {Record<string,number>} kontext maßgebende Wandwerte (rod_mm, blech_mm, stange_mm, …)
@@ -1365,7 +1368,10 @@ export const STATUS_TEXT = {
  *            fehlend:string[],vorgemerkt:any[],hinweis:string|null,bepreisbar:boolean}}
  */
 export function loesePreis(item, rollenIdsMap, katalog, kontext = {}) {
-  const r = rolle(item.key);
+  // Verwendungsrolle = Positionsschluessel ([P-13]); eine Position, die dasselbe Produkt an
+  // einer zweiten Einbaustelle fuehrt (Kopplungsmutter Fuß, [P-18]), nennt sie in `rolle`.
+  const rk = item.rolle || item.key;
+  const r = rolle(rk);
   const res = { status: "ok", text: "", ep: null, produkt: null, kandidaten: [], fehlend: [],
                 vorgemerkt: [], hinweis: (r && r.hinweis) || null, bepreisbar: true };
   const fertig = (status) => { res.status = status; res.text = STATUS_TEXT[status] || status; return res; };
@@ -1380,7 +1386,7 @@ export function loesePreis(item, rollenIdsMap, katalog, kontext = {}) {
   // 2) Menge 0 braucht kein Produkt (z. B. Kopfblech bei oberem Anschluss „Spannplatte")
   if (!(+item.menge > 0)) { res.bepreisbar = false; return fertig("nicht_erforderlich"); }
 
-  const ids = (rollenIdsMap && rollenIdsMap[item.key]) || [];
+  const ids = (rollenIdsMap && rollenIdsMap[rk]) || [];
   if (!katalog || !Array.isArray(katalog.produkte)) return fertig("kein_katalog");
   if (!ids.length) return fertig("keine_auswahl");
 

@@ -506,11 +506,19 @@ function _flachePositionen(w, b) {
     ...rodSonderItems,
     ...rodRestItems,
     // Kopplungsmuttern sind bauteilgleich ([P-18]): Stangenstoß und Fußanschluss verwenden
-    // dasselbe Produkt, also EINE Position mit der Gesamtmenge. Die beiden Einbaustellen
-    // bleiben in `semblaBom()` getrennt nachvollziehbar (verbindungsmuttern /
-    // kopplungsmuttern_basis) — nur die Bestellzeile ist eine.
-    { key: "kupplung",    label: "Kopplungsmutter (Stangenstöße und Fuß)", unit: "Stk",
-      menge: b.verbindungsmuttern + b.kopplungsmuttern_basis },
+    // DASSELBE Produkt (eine Katalogrolle `kupplung`), stehen aber nach EINBAUSTELLE als zwei
+    // Positionen: die Muttern am Stangenstoß werden vorkonfektioniert (an die Gewindestange
+    // geklebt), auf der Baustelle wird nur die unterste Mutter am Bodenblech gesetzt
+    // (Entscheid 2026-10). `rolle` benennt die Verwendungsrolle der Fußzeile ausdrücklich —
+    // ihr Schlüssel `kupplung_fuss` ist KEINE eigene Rolle; Produkt- und Preisauflösung
+    // ([P-14]) sowie die Baugruppenauflösung lesen `rolle` vor `key`. Menge 0 ⇒ keine Zeile
+    // (ohne Stangenstoß gibt es keine vorkonfektionierte Mutter, ohne Fuß keine Fußmutter).
+    ...[
+      { key: "kupplung",      rolle: "kupplung", label: "Kopplungsmutter Stangenstoß (vorkonfektioniert)",
+        unit: "Stk", menge: b.verbindungsmuttern },
+      { key: "kupplung_fuss", rolle: "kupplung", label: "Kopplungsmutter Fuß (Bodenblech)",
+        unit: "Stk", menge: b.kopplungsmuttern_basis },
+    ].filter((k) => k.menge > 0),
     { key: "senkkopf",    label: "Sechskantschraube M10×25 (Fuß)",     unit: "Stk", menge: b.senkkopfschrauben },
     { key: "spannmutter", label: "Spannmutter M10,8 ISO 4033",        unit: "Stk", menge: b.spannmuttern },
     { key: "spannplatte", label: "Spannplatte",                       unit: "Stk", menge: b.spannplatten },
@@ -683,9 +691,11 @@ function _ref(pos, feld) {
  * keine von beiden).
  *
  * Weil der Rollenschluessel ZUGLEICH der Stuecklistenschluessel ist ([P-13]), braucht die
- * Zuordnung Rolle -> Position keine zweite Achse und keine Rollentabelle. Eine Verwendungsstelle
- * ohne Position in dieser Wand und eine mehrfach belegte (mehrere Standardlaengen je Fertigmass,
- * [Z-2]) sind deshalb nicht eindeutig zuordenbar und werden GEMELDET, nicht geraten.
+ * Zuordnung Rolle -> Position keine zweite Achse und keine Rollentabelle — einzige Ausnahme ist
+ * eine Position mit ausdruecklichem `rolle`-Feld (Kopplungsmutter Fuß, [P-18]), gelesen ueber
+ * `positionsRolle()`. Eine Verwendungsstelle ohne Position in dieser Wand und eine mehrfach
+ * belegte (mehrere Standardlaengen je Fertigmass, [Z-2], oder mehrere Einbaustellen derselben
+ * Rolle, [P-18]) sind deshalb nicht eindeutig zuordenbar und werden GEMELDET, nicht geraten.
  *
  * @param {Array<any>} items flache Positionen dieser Wand
  * @param {any} b Mengen aus `semblaBom(w)`
@@ -700,9 +710,9 @@ function _setAufloesung(items, b, katalog) {
   const produkte = (katalog && Array.isArray(katalog.produkte)) ? katalog.produkte : [];
 
   const jeKey = new Map();
-  for (const it of items) jeKey.set(it.key, (jeKey.get(it.key) || 0) + 1);
+  for (const it of items) jeKey.set(positionsRolle(it), (jeKey.get(positionsRolle(it)) || 0) + 1);
   const basisJeKey = new Map();
-  for (const it of items) if (jeKey.get(it.key) === 1) basisJeKey.set(it.key, it.menge);
+  for (const it of items) if (jeKey.get(positionsRolle(it)) === 1) basisJeKey.set(positionsRolle(it), it.menge);
 
   const meldungen = [], instanzen = [], positionen = [], beitrag = new Map();
 
@@ -763,7 +773,7 @@ function _setAufloesung(items, b, katalog) {
       }
       if (jeKey.get(key) > 1) {
         meldungen.push(nr + "Verwendungsstelle „" + key + "“ trägt mehrere "
-          + "Positionen (je Fertigmaß eine) — die Zuordnung ist nicht eindeutig und "
+          + "Positionen (je Fertigmaß oder Einbaustelle eine) — die Zuordnung ist nicht eindeutig und "
           + "wird nicht geraten.");
         continue;
       }
@@ -809,8 +819,8 @@ export function semblaBomItems(w, katalog = null) {
   const items = _flachePositionen(w, b);
   const auf = _setAufloesung(items, b, katalog);
   if (!auf || !auf.mengen.size) return items;
-  return items.map(it => (auf.mengen.has(it.key)
-    ? { ...it, menge: auf.mengen.get(it.key) } : it));
+  return items.map(it => (auf.mengen.has(positionsRolle(it))
+    ? { ...it, menge: auf.mengen.get(positionsRolle(it)) } : it));
 }
 
 /**
@@ -834,6 +844,15 @@ export function semblaBomSets(w, katalog = null) {
     ? { instanzen: auf.instanzen, positionen: auf.positionen, meldungen: auf.meldungen }
     : { instanzen: [], positionen: [], meldungen: [] };
 }
+
+/**
+ * Verwendungsrolle des Bauteilkatalogs einer Stuecklistenposition ([P-13]): im Regelfall ihr
+ * `key`. Nur wo dasselbe Produkt an zwei Einbaustellen als zwei Positionen steht (Kopplungsmutter
+ * Stangenstoß / Fuß, [P-18]), nennt die Position ihre Rolle ausdruecklich in `rolle` — dieselbe
+ * Regel wie `loesePreis()` in `sembla-katalog.js`.
+ * @param {{key:string, rolle?:string}} it
+ */
+export function positionsRolle(it) { return (it && it.rolle) || (it && it.key); }
 
 /** Wandreferenz an jede Position schreiben ([P-19]) — ohne die Positionsreihenfolge zu ändern. */
 function _mitWand(wand, items) { return items.map(it => ({ wand, ...it })); }

@@ -2155,12 +2155,15 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   // ist rein additiv; der neue Gesamtstand ist daneben eingefroren. Der Stand OHNE Kette ist
   // zugleich neu eingefroren, weil die Einlegeblech-Kosmetik (9658e68, Strich halbiert) ihn
   // veraendert hatte, ohne den Freeze nachzuziehen — er ist bit-gleich zu jenem Commit.
+  // Das Blatt-HTML ist am 2026-10-07 erneut eingefroren: einzige Aenderung ist die
+  // Stuecklistentabelle, in der die Kopplungsmutter nach [P-18] in Stangenstoss und Fuss
+  // getrennt steht. Die Zeichnung (SVG) ist unveraendert.
   const ohneKette = t => String(t).replace(/<g class="bbkette">.*?<\/g>/g, "");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
     kurz(ohneKette(Z.zeichnungSvg(W136r, {}).svg)) === "2ed0ad9c3fa45236"
-    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "97e6d079c275e25b"
+    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "fd61ac6375484bd5"
     && kurz(Z.zeichnungSvg(W136r, {}).svg) === "e2cb3a0f3434fadc"
-    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "d604f67ff8418c97");
+    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "f91c4912d24aaad0");
   ok("[#136] Nicht-Ziel: ohne Ausgleichslage entsteht keine Ausgleichs-Massangabe",
     !Z.zeichnungSvg(W136r, {}).svg.includes("ausgleichslage"));
 

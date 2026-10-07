@@ -107,12 +107,26 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // ihr Einbauteil SAMT FERTIGMASS nennen — zwei Zeilen desselben Teils heissen damit
 // verschieden — sowie ein erkennbar ungueltiges Feld bei abgewiesener Eingabe. NICHT
 // versprochen werden eine geaenderte Menge, Preisaufloesung oder Summe.
-// Der NEUESTE Eintrag ist die BODENBLECH-MASSKETTE der Wandzeichnung — er wird als einziger
-// direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert ist eine Masskette
+// Der NEUESTE Eintrag ist die GETRENNTE KOPPLUNGSMUTTER (Stangenstoss / Fuss, [P-18]) — er wird
+// als einziger direkt ueber `EINTRAEGE[0]` geprueft. Aussagewahr heisst hier: geliefert ist eine
+// eigene Stuecklistenzeile fuer die Mutter am Bodenblech neben den vorkonfektionierten Muttern am
+// Stangenstoss. NICHT versprochen werden ein neues Produkt, ein anderer Preis oder eine
+// geaenderte Zeichnung.
+const KUPPL = EINTRAEGE[0];
+ok("[Kopplungsmutter Fuß] ist der neueste Eintrag",
+  KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
+  && /Stückliste/.test(KUPPL?.titel || "") && /Bodenblech/.test(KUPPL?.titel || "")
+  && /Stangenstoß/.test(KUPPL?.titel || "")
+  && !/Preis|Zeichnung|Produkt/i.test(KUPPL?.titel || ""));
+ok("[Kopplungsmutter Fuß] die Testbitte nennt Modul 4 und die unveränderte Gesamtzahl",
+  /Modul 4/.test(KUPPL?.testbitte || "") && /bepreist/.test(KUPPL?.testbitte || ""));
+
+// Davor kam die BODENBLECH-MASSKETTE der Wandzeichnung — sie wird ueber ihre KENNUNG gesucht.
+// Aussagewahr heisst hier: geliefert ist eine Masskette
 // in Modul 7 und im Zeichnungs-PDF, die je Bodenblechteil sagt, welches Blech wo liegt.
 // NICHT versprochen werden eine geaenderte Blechzerlegung, Menge oder Stueckliste.
-const BB_KETTE = EINTRAEGE[0];
-ok("[Bodenblech-Masskette] ist der neueste Eintrag",
+const BB_KETTE = EINTRAEGE.find(e => e.id === "chg-20261007-03");
+ok("[Bodenblech-Masskette] Eintrag vorhanden",
   BB_KETTE?.id === "chg-20261007-03" && BB_KETTE?.typ === "feature"
   && /Maßkette/.test(BB_KETTE?.titel || "") && /Bodenblech/.test(BB_KETTE?.titel || "")
   && /Modul 7/.test(BB_KETTE?.titel || "") && /PDF/.test(BB_KETTE?.titel || "")

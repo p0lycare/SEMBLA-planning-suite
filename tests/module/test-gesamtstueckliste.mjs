@@ -219,8 +219,22 @@ const Z = { wandId: "w-a", geschossId: EG, gebaeudeId: GEB1 };
     return alle.length === je[0] + je[1];
   })());
   ok("keine erfundene ID, wo der Rechenkern keine kennt",
-    d.positionen.filter(p => ["i3", "i2", "kupplung", "blech_boden", "dicht"].includes(p.key))
+    d.positionen.filter(p => ["i3", "i2", "kupplung", "kupplung_fuss", "blech_boden", "dicht"].includes(p.key))
       .every(p => p.ids.length === 0));
+  // [P-18] Kopplungsmutter Stangenstoß / Fuß: auch auf der Gesamtebene je Einbaustelle EINE
+  // Zeile, beide über die Rolle `kupplung` bepreist, Summe = Sammelmenge beider Wände.
+  ok("[P-18] Gesamtebene: Stoß- und Fußmutter als zwei bepreiste Zeilen, Summe unverändert", (() => {
+    const st = d.positionen.filter(p => p.key === "kupplung");
+    const fu = d.positionen.filter(p => p.key === "kupplung_fuss");
+    const soll = ["w-a", "w-b"].reduce((a, id) => a + ELEMENTE[id].wandelement.bom.verbindungsmuttern
+      + ELEMENTE[id].wandelement.bom.kopplungsmuttern_basis, 0);
+    return st.length === 1 && fu.length === 1 && st[0].menge > 0 && fu[0].menge > 0
+      && st[0].menge + fu[0].menge === soll
+      && st[0].produktId === "kuppl" && fu[0].produktId === "kuppl"
+      && st[0].ep != null && st[0].ep === fu[0].ep && st[0].gp != null && fu[0].gp != null
+      && st[0].label === "Kopplungsmutter Stangenstoß (vorkonfektioniert)"
+      && fu[0].label === "Kopplungsmutter Fuß (Bodenblech)";
+  })());
   ok("Herkunftstext nennt Wand und Teilmenge", /Wand A: \d+ · Wand B: \d+/.test(herkunftText(rodStd[0])));
 }
 
@@ -1118,9 +1132,14 @@ const P = (ueber = {}) => ({
 
   // (b) Akzeptanztest 2: gleiches Produkt, gleiche Einheit -> EINE Zeile, beide Einbaustellen.
   const posKuppl = d.positionen.filter((p) => p.produktId === "kuppl");
-  ok("#113 Testvoraussetzung: zwei Einbaustellen tragen dasselbe Katalogprodukt",
-    posKuppl.length === 2 && new Set(posKuppl.map((p) => p.unit)).size === 1
-    && posKuppl[0].label !== posKuppl[1].label);
+  // Seit [P-18] (2026-10) stehen Stoss- und Fussmutter ohnehin als zwei Positionen derselben
+  // Rolle — zusammen mit der umgehaengten Sechskantschraube sind es drei Einbaustellen.
+  ok("#113 Testvoraussetzung: mehrere Einbaustellen tragen dasselbe Katalogprodukt",
+    posKuppl.length === 3 && new Set(posKuppl.map((p) => p.unit)).size === 1
+    && new Set(posKuppl.map((p) => p.label)).size === 3);
+  ok("[P-18] Stoß- und Fußmutter stehen in der Einkaufsliste in der einen Produktzeile",
+    ["kupplung", "kupplung_fuss"].every((k) => posKuppl.some((p) => p.key === k && p.menge > 0))
+    && artikel.filter((z) => z[0] === "kuppl").length === 1);
   ok("#113 sie stehen als EINE Zeile mit der Summe beider Mengen",
     artikel.filter((z) => z[0] === "kuppl").length === 1
     && zelle("kuppl", "Menge") === posKuppl.reduce((a, p) => a + p.menge, 0)

@@ -802,8 +802,12 @@ Auswahlpfad. Fachfremde oder nicht wählbare Rollenangaben sind ein **Katalogfeh
 (`validiereProdukt`), keine Heuristik. Ohne geladenen Katalog lädt **das Anlegen einer Wand** in Modul 0
 den mitgelieferten Standardkatalog nach (ein vorhandener wird nie ersetzt).
 Weiter gilt: **Kopplungsmuttern sind bauteilgleich** — Rolle `kuppl_basis` ist entfallen, Stangenstoß
-und Fuß nutzen `kupplung` und stehen als **eine** Stücklistenposition mit der Gesamtmenge (die getrennte
-Herkunft bleibt in `semblaBom()` lesbar). Und **es gibt keine Zuschnittplanung**: die Stückliste ist die
+und Fuß nutzen dasselbe Produkt über die **eine** Rolle `kupplung`. In der Stückliste stehen sie aber
+nach **Einbaustelle** als zwei Positionen (Stoßmuttern werden vorkonfektioniert, auf der Baustelle wird
+nur die Fußmutter am Bodenblech gesetzt): `kupplung` (Stangenstoß, `verbindungsmuttern`) und
+`kupplung_fuss` (Fuß, `kopplungsmuttern_basis`) — Letztere ist **keine** eigene Rolle, sondern trägt
+`rolle: "kupplung"`, das `loesePreis` und die Baugruppenauflösung (`positionsRolle()`) vor dem `key`
+lesen. Menge 0 ⇒ keine Zeile. Und **es gibt keine Zuschnittplanung**: die Stückliste ist die
 **Baustellenliste**, Sonderzuschnitte nennen nur **Fertigmaß + Stückzahl** (`mass_mm` = Fertigmaß). Die
 Rolle `rod_sonder` ist deshalb `waehlbar: false` und `bepreist: false` (Status `beschaffung`) — kein
 Ausgangsprodukt, keine Auswahlzeile, kein Preis, keine Verschnitt-/Einkaufsrechnung. `[Z-1]`/`[Z-2]`/
@@ -1065,8 +1069,8 @@ werden — in beide Richtungen —, aufzuzählen ist aber nichts, und das Weglas
      zentrale, DOM-freie Abbildung Wandelement + `eingaben.statik` → Nachweis-Parameter. Modul 3
      (`readP`) **und** der zentrale Nachweis-Export nutzen sie, damit beide dasselbe rechnen.
    - `sembla-bom.js` — Stücklisten-Baustein (kanonische Mengen/Positionen, Modul 4/5) — die
-     **Baustellenliste** nach **[P-18]**: bauteilgleiche Einbaustellen stehen als **eine** Position
-     (Kopplungsmutter für Stoß **und** Fuß), Sonderzuschnitte nur mit Fertigmaß (kein Ausgangsprodukt). Boden- und
+     **Baustellenliste** nach **[P-18]**: die bauteilgleiche Kopplungsmutter steht nach Einbaustelle
+     als **zwei** Positionen (Stoß vorkonfektioniert / Fuß am Bodenblech, eine Rolle), Sonderzuschnitte nur mit Fertigmaß (kein Ausgangsprodukt). Boden- und
      Kopfblech sind **getrennte Positionen** (`blech_boden`/`blech_kopf`, Regel **[A-1]**), abgeleitet aus
      den realen `base_plate`/`top_plate` des Wandelements — der Core bleibt unverändert und die Summe
      beider Positionen bleibt exakt `bom.stahlblech_module` (`test-shared.mjs` sichert das ab). Die

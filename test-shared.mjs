@@ -1,7 +1,7 @@
 // Drift-Schutz: die gemeinsame semblaBom() muss mit der Core-BOM übereinstimmen.
 import { readFileSync } from "node:fs";
 import { buildWall, Opening, wirksameZwischenpunkte } from "./docs/shared/sembla-core.js";
-import { einbauteile, semblaBom, semblaBomItems, semblaBomSets,
+import { einbauteile, positionsRolle, semblaBom, semblaBomItems, semblaBomSets,
          DECKENANSCHLUSS_TEILE } from "./docs/shared/sembla-bom.js";
 import { parseKatalog } from "./docs/shared/sembla-katalog.js";
 import { stuecklistePositionen } from "./docs/shared/sembla-export.js";
@@ -34,7 +34,8 @@ for(const [name,l,h,ops] of cases){
   t(name+" · Dichtstreifen mm",b.dichtstreifen_mm===w.bom.dichtstreifen_mm);
   // Positionsliste: 10 feste Positionen + je verwendeter Gewindestangen-Standardlänge und je
   // Sonderzuschnitt-Fertigmaß eine eigene Position ([Z-2]/[Z-4]). Kopplungsmuttern sind
-  // bauteilgleich und stehen als EINE Position ([P-18]).
+  // bauteilgleich, stehen aber je Einbaustelle mit Menge > 0 als eigene Position ([P-18]):
+  // Stangenstoß (vorkonfektioniert) und Fuß (Bodenblech).
   // 13 feste Positionen (Bodenblech steht nicht mehr darunter; die Unterlegscheibe aus #92 ist
   // das Ausgleichsblech aus #96 die zehnte, Einlegeblech und Mutter aus [A-25]/#93 die elfte
   // und zwoelfte; die Unterlegscheibe aus #92 ist mit der Fachauskunft 2026-09-08 wieder
@@ -42,7 +43,8 @@ for(const [name,l,h,ops] of cases){
   // ([A-10]: je Standardlänge bzw. je Sonder-Fertigmaß) + die SIEBEN Verwendungsstellen des
   // Deckenanschlusses ([P-24]/#95), die es nur bei wirklich vorhandenem Anschlusspunkt gibt.
   t(name+" · Positionen = 12 + Deckenanschluss + Stangen- und Bodenblechgruppen",
-    semblaBomItems(w).length === 12 + (b.deckenanschlusspunkte > 0 ? 7 : 0)
+    semblaBomItems(w).length === 11 + (b.verbindungsmuttern > 0 ? 1 : 0)
+      + (b.kopplungsmuttern_basis > 0 ? 1 : 0) + (b.deckenanschlusspunkte > 0 ? 7 : 0)
       + Math.max(1,b.stangenStd.length) + Math.max(1,b.stangenSonder.length)
       + b.blech_boden_teile.length);
   // [A-25]/#93 Einlegeblech und Mutter: je GENAU EINE Position, Menge = Zahl der wirksamen
@@ -123,11 +125,21 @@ for(const [name,l,h,ops] of cases){
     const s=semblaBomItems(w).filter(it=>it.key==='spannmutter');
     return s.length===1 && s[0].menge===w.bom.spannmuttern
       && s[0].menge>=w.bom.spannplatten; })());
-  // [P-18] Kopplungsmutter: eine Position, Menge = Stangenstöße + Fußkopplungen.
-  t(name+" · Kopplungsmutter als EINE Position mit Gesamtmenge", (()=>{
-    const its=semblaBomItems(w), k=its.filter(it=>it.key==='kupplung');
-    return k.length===1 && !its.find(it=>it.key==='kuppl_basis')
-      && k[0].menge===b.verbindungsmuttern+b.kopplungsmuttern_basis; })());
+  // [P-18] Kopplungsmutter: dasselbe Produkt (Rolle `kupplung`), aber ZWEI Positionen nach
+  // Einbaustelle — Stangenstoß (vorkonfektioniert) und Fuß (Bodenblech). Die Summe beider ist
+  // die bisherige Gesamtmenge; eine eigene Rolle für den Fuß gibt es nicht.
+  t(name+" · Kopplungsmutter Stangenstoß und Fuß als zwei Positionen, Summe unverändert", (()=>{
+    const its=semblaBomItems(w);
+    const st=its.filter(it=>it.key==='kupplung'), fu=its.filter(it=>it.key==='kupplung_fuss');
+    return st.length===1 && fu.length===1 && !its.find(it=>it.key==='kuppl_basis')
+      && st[0].menge===b.verbindungsmuttern && fu[0].menge===b.kopplungsmuttern_basis
+      && st[0].menge>0 && fu[0].menge>0
+      && st[0].menge+fu[0].menge===w.bom.verbindungsmuttern+w.bom.kopplungsmuttern_basis
+      && st[0].label==='Kopplungsmutter Stangenstoß (vorkonfektioniert)'
+      && fu[0].label==='Kopplungsmutter Fuß (Bodenblech)'
+      && st[0].rolle==='kupplung' && fu[0].rolle==='kupplung'
+      && positionsRolle(fu[0])==='kupplung' && positionsRolle({key:'i3'})==='i3'
+      && its.indexOf(fu[0])===its.indexOf(st[0])+1; })());
   // Die Einbaumenge bleibt unverändert: Summe aller Stangenpositionen = Core-Gesamtzahl.
   t(name+" · Stangenpositionen summieren zur Core-Zahl",
     semblaBomItems(w).filter(it=>it.key==='rod_std'||it.key==='rod_sonder')
@@ -497,5 +509,42 @@ for(const [name,l,h,ops] of cases){
         && /gerechnete/.test(st2.meldungen[0]); })());
   }
 }
+
+// [P-18] Kopplungsmutter Stangenstoß / Fuß (Entscheid 2026-10, Fachgespräch 2026-09-28): zwei
+// Positionen, EINE Rolle — beide werden über die Auswahl der Rolle `kupplung` bepreist, die
+// Summe aus Menge und Gesamtpreis bleibt die der früheren Sammelzeile. Gefahren über den realen
+// Weg (Repo-Vorlage -> parseKatalog -> stuecklistePositionen), den Modul 4 und Export nutzen.
+{
+  const KAT = parseKatalog(readFileSync(new URL("./docs/vorlagen/SEMBLA_Standardkatalog-v5.json",
+    import.meta.url), "utf8"));
+  const EING = { planung: { produkte: { rollen: { kupplung: ["verbrauch-kopplungsmutter"] } } } };
+  const w = buildWall("kuppl", 2000, 2600, []);
+  const ps = stuecklistePositionen(w, EING, KAT);
+  const st = ps.filter(p => p.key === "kupplung"), fu = ps.filter(p => p.key === "kupplung_fuss");
+  t("P-18 · Stoß- und Fußmutter: je eine Zeile mit getrennter Menge",
+    st.length === 1 && fu.length === 1
+    && st[0].menge === w.bom.verbindungsmuttern && fu[0].menge === w.bom.kopplungsmuttern_basis
+    && st[0].menge > 0 && fu[0].menge > 0);
+  t("P-18 · beide Zeilen über die Rolle `kupplung` bepreist (dasselbe Produkt)",
+    st[0].status === "ok" && fu[0].status === "ok" && st[0].ep === 0.65 && fu[0].ep === 0.65
+    && st[0].produktId === "verbrauch-kopplungsmutter" && fu[0].produktId === "verbrauch-kopplungsmutter"
+    && st[0].bepreisbar && fu[0].bepreisbar);
+  t("P-18 · Summe aus Menge und Preis unverändert gegenüber der Sammelzeile",
+    st[0].menge + fu[0].menge === w.bom.verbindungsmuttern + w.bom.kopplungsmuttern_basis
+    && Math.abs(st[0].gp + fu[0].gp
+      - (w.bom.verbindungsmuttern + w.bom.kopplungsmuttern_basis) * 0.65) < 1e-9);
+  t("P-18 · `kupplung_fuss` ist keine eigene Katalogrolle",
+    !KAT.produkte.some(p => (p.rollen || []).includes("kupplung_fuss")));
+  // Ohne Stangenstoß (Wand nicht höher als eine Stange) gibt es keine vorkonfektionierte
+  // Mutter: die Zeile entfällt ganz, statt mit Menge 0 eine Einbaustelle zu behaupten.
+  const kurz = buildWall("kurz", 1000, 800, []);
+  const pk = stuecklistePositionen(kurz, EING, KAT);
+  t("P-18 · Menge 0 am Stangenstoß ⇒ keine Zeile, Fußmutter bleibt",
+    kurz.bom.verbindungsmuttern === 0 && !pk.some(p => p.key === "kupplung")
+    && pk.filter(p => p.key === "kupplung_fuss").length === 1
+    && pk.find(p => p.key === "kupplung_fuss").menge === kurz.bom.kopplungsmuttern_basis
+    && pk.find(p => p.key === "kupplung_fuss").status === "ok");
+}
+
 console.log(`\n${pass} ok, ${fail} fail`);
 process.exit(fail?1:0);

@@ -1631,13 +1631,16 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       && /import \{ wandLagenKanten \} from "\.\/sembla-core\.js"/.test(q); })());
 
   // (g) MUSS-NICHT: eine reine 200-mm-Wand bleibt zeichenkettengleich — eingefroren.
+  // `montageSeiten` neu eingefroren am 2026-10-07: einzige Aenderung ist die Stueckliste, in
+  // der die Kopplungsmutter nach [P-18] in Stangenstoss und Fuss getrennt steht; Kontur und
+  // Baugruppenbilder sind unveraendert.
   const W200 = buildWall("IW-200", 3000, 2600, [new Opening(6, 12, 0, 10, "tuer")], null,
     { top_connection: "blech" }, [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
   const bilder200 = montageAbschnitte(W200).map(a => abschnittSvg(W200, a, 900, 430)).join("");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
     kurz(konturSvg(W200, null, 900, 250)) === "0070c1b668325f95"
     && kurz(bilder200) === "134d44631bacf1ff"
-    && kurz(JSON.stringify(montageSeiten(W200))) === "729be715a788b2b3");
+    && kurz(JSON.stringify(montageSeiten(W200))) === "77530cada2e885f0");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand nennt keine Ausgleichslage",
     !/Ausgleichslage/.test(montageSeiten(W200).map(s => s.html).join("")));
 }
