@@ -1673,7 +1673,10 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
       // 2026-10-07 (Bauteile Modul 1/5/7 gleich) neu eingefroren: die Baugruppenbilder
       // zeichnen Schraube, Muttern und Spannplatte mit den gemeinsamen Bausteinen und die
       // Stange masstaeblich; Kontur, Reihen und Ausgleichspunkte (keine) unveraendert.
-      kurz(kontur) === "bd04f6aa967bfdb1" && kurz(bilder) === "7e5f4266f6a16e03");
+      // 2026-10-29 ([V-3]/[V-11]/[V-12], Miro R01) neu eingefroren: allein die Achslage hat sich
+      // geaendert — der alte Kern mit den neuen Achsen als manuelle Achsen ([V-9]) zeichnet
+      // zeichengleich.
+      kurz(kontur) === "0226203d9a4c456e" && kurz(bilder) === "dcf5635a16a113af");
   }
   // Die Marke ist DARSTELLUNG: aus ihr wird nichts abgeleitet, und die Punktliste bleibt die
   // eine Quelle der Menge ([A-18]).
@@ -1781,14 +1784,17 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
     { top_connection: "blech" }, [{ x0_mm: 1500, x1_mm: 2250, height_mm: 2000 }]);
   const bilder200 = montageAbschnitte(W200).map(a => abschnittSvg(W200, a, 900, 430)).join("");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
-    kurz(konturSvg(W200, null, 900, 250)) === "0070c1b668325f95"
+    kurz(konturSvg(W200, null, 900, 250)) === "e031846e9e813739"
     // 2026-10-07 ([D-4]) neu eingefroren: nur der Stangen-Legendentext der Bilder hat sich
     // geaendert („Gewindestange <Länge> mm"), und die Sichtstuecke der Abschnitte tragen
     // zusaetzlich ihre reale `len_mm`; Reihen, Kanten und Geometrie sind gleich.
     // 2026-10-07 erneut: Spannkomponenten der Bilder aus den gemeinsamen Bausteinen, Stange
     // masstaeblich (Bauteile Modul 1/5/7 gleich); Reihen, Kanten und Kontur unveraendert.
-    && kurz(bilder200) === "4c0ab7de18b77232"
-    && kurz(JSON.stringify(montageSeiten(W200))) === "e3c0018b0733acd6");
+    && kurz(bilder200) === "d881358e58db60b1"
+    // 2026-10-29 ([V-3]/[V-11]/[V-12], Miro R01) neu eingefroren: allein die Achslage hat sich
+    // geaendert — der alte Kern mit den neuen Achsen als manuelle Achsen ([V-9]) liefert
+    // Kontur, Baugruppenbilder und Zeichnung zeichengleich.
+    && kurz(JSON.stringify(montageSeiten(W200))) === "cc354344f6cd8d91");
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand nennt keine Ausgleichslage",
     !/Ausgleichslage/.test(montageSeiten(W200).map(s => s.html).join("")));
 }

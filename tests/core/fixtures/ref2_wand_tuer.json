@@ -122,8 +122,8 @@
       "art": "auto"
     },
     {
-      "k": 14,
-      "x_mm": 1812.5,
+      "k": 13,
+      "x_mm": 1687.5,
       "art": "auto"
     }
   ],
@@ -438,8 +438,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 14,
-      "x_mm": 1812.5,
+      "k": 15,
+      "x_mm": 1937.5,
       "durchgehend": true,
       "segments": [
         {
@@ -559,7 +559,7 @@
         "fertigmass_mm": 400
       },
       {
-        "k": 14,
+        "k": 15,
         "z0_mm": 0,
         "z1_mm": 2600,
         "grund": "kein_reststueck",

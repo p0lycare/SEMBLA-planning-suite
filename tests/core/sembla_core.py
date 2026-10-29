@@ -1028,21 +1028,56 @@ def _balanced_fill(a: int, b: int, maxstep: int) -> list[int]:
 
 
 # ---- Eingabe-Validierung ----
-def _grundachsen(steine, N: int) -> set[int]:
-    """[V-3]/[V-11] Grundachsen der Auto-Verteilung aus dem Verband der UNTERSTEN Lage.
+def _kopfsteine(courses, occ, L: int) -> list[tuple[int, int]]:
+    """[V-3]/[V-11] Bezugslage der Grundachsen: die KOPFSTEINE der Wand (Fassung 29.10.2026,
+    Miro R01 SA 2 / Felix Bauroth).
 
-    `steine` sind die Rasterintervalle [a,b) der Lage 0 aus dem VOLLSTAENDIGEN Verband
-    ([G-11], vor dem Aussparen der Verzahnungsbereiche), aufsteigend nach a sortiert.
+    Kopfstein ist jeder Stein, ueber dessen Rasterzellen KEIN weiterer Stein liegt. Ohne Staffelung
+    und ohne Oeffnung bis zur Oberkante ist das genau die OBERSTE Lage — mit Ausgleichslage
+    ([G-13]) also diese. Mit Staffelung ist es die lokale Oberkante; ein an einer Stufe teilweise
+    ueberbauter Stein ist kein Kopfstein. Gelesen wird der VOLLSTAENDIGE Verband ([G-11]).
+    Ergebnis: Rasterintervalle [a,b), aufsteigend nach a.
+    """
+    out = []
+    for c in courses:
+        for st in c["stones"]:
+            a, b = st["x0"] // GRID, st["x1"] // GRID
+            if not any(occ[r][k] for k in range(a, b) for r in range(c["lage"] + 1, L)):
+                out.append((a, b))
+    out.sort(key=lambda p: p[0])
+    return out
 
-      [V-3]  i3 `[a,a+3)`  -> `a+1` (Rastermitte des Steins), an JEDER Stelle der Lage.
-      [V-11] i2 als ERSTER Stein  -> `a+1`  (2. Rasterachse, nicht das aeussere Randfeld).
-      [V-11] i2 als LETZTER Stein -> `a`    (2. Rasterachse von rechts, s. o.).
-      [V-11] i2 im Inneren -> KEINE Grundachse. Ein i2 hat keine Rastermitte (zwei Zellen);
-             es wird keine erfunden — die Abdeckung uebernimmt danach [V-2].
 
-    Ist ein einzelner i2 zugleich erster UND letzter Stein, gilt die Anfangsregel: genau EINE
-    Grundachse auf der 2. Rasterachse. Ohne diesen Vorrang stuenden `a+1` und `a` gegeneinander
-    (bei N=2 also 1 gegen 0), und die kuerzeste Wand haette zwei Achsen statt einer.
+def _stapel_breite(stein_iv, N: int) -> int:
+    """[V-11] Stapelwand (Felix Bauroth, 29.10.2026): nur i2 (bzw. nur i3), direkt und OHNE
+    Versatz uebereinander. Jede Rasterzelle wird in allen Lagen von demselben Steinintervall
+    belegt, alle Steine haben dieselbe Breite. Liefert 2 (i2-Stapel), 3 (i3-Stapel) oder 0."""
+    if not stein_iv:
+        return 0
+    w = stein_iv[0][1] - stein_iv[0][0]
+    zelle = [-1] * N
+    for a, b in stein_iv:
+        if b - a != w:
+            return 0
+        for k in range(a, b):
+            if zelle[k] >= 0 and zelle[k] != a:
+                return 0
+            zelle[k] = a
+    return w if w in (2, 3) else 0
+
+
+def _grundachsen(steine, N: int, stapel: int = 0) -> set[int]:
+    """[V-3]/[V-11] Grundachsen der Auto-Verteilung aus den KOPFSTEINEN (s. `_kopfsteine`).
+
+      [V-3]  i3 `[a,a+3)`  -> `a+1` (Mitte = Feld 2), an JEDER Stelle; auch im i3-Stapel genau
+             EINE Achse mittig (SA 3b, KKI 5).
+      [V-11] i2-Stapel -> BEIDE Kammern `a` und `a+1` (SA 3a, Issue #122).
+      [V-11] sonst i2 als ERSTER Stein  -> `a+1`  (2. Rasterachse, nicht das aeussere Randfeld).
+      [V-11] sonst i2 als LETZTER Stein -> `a`    (2. Rasterachse von rechts, s. o.).
+      [V-11] i2 im Inneren -> KEINE Grundachse; die Abdeckung uebernimmt danach [V-2].
+
+    Ist ein einzelner i2 zugleich erster UND letzter Kopfstein, ohne dass die Wand ein i2-Stapel
+    ist, gilt die Anfangsregel: genau EINE Grundachse auf der 2. Rasterachse.
     """
     def klemm(k: int) -> int:
         return max(0, min(N - 1, k))
@@ -1052,6 +1087,9 @@ def _grundachsen(steine, N: int) -> set[int]:
             out.add(klemm(a + 1))
             continue
         if b - a != 2:
+            continue
+        if stapel == 2:
+            out.add(klemm(a)); out.add(klemm(a + 1))
             continue
         if i == 0:
             out.add(klemm(a + 1))
@@ -1467,21 +1505,20 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         courses.append(_c)
         prev = joints
 
-    # `occ`, `stein_iv_voll` und `wunsch_voll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
+    # `occ`, `stein_iv_voll` und `kopf_voll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
     occ = [[False] * N for _ in range(L)]
     stein_iv_voll = []
-    # [V-3]/[V-11] Der Verband der UNTERSTEN Lage traegt die Grundachsen — VOR dem Aussparen!
-    lage0_voll = []
     for c in courses:
         for st in c["stones"]:
             a, b = st["x0"] // GRID, st["x1"] // GRID
             for cc in range(a, b):
                 occ[c["lage"]][cc] = True
             stein_iv_voll.append((a, b))
-            if c["lage"] == 0:
-                lage0_voll.append((a, b))
-    # Erster/letzter Stein der untersten Lage muessen eindeutig sein ([V-11]).
-    lage0_voll.sort(key=lambda p: p[0])
+    # [V-3]/[V-11]/[V-12] Die KOPFSTEINE (oberste Lage bzw. lokale Oberkante) tragen die
+    # Grundachsen — VOR dem Aussparen! Aufsteigend sortiert: erster/letzter Kopfstein ([V-11]).
+    kopf_voll = _kopfsteine(courses, occ, L)
+    # [V-11] i2-Stapel (beide Kammern) bzw. i3-Stapel (eine Achse mittig) — am Vollverband.
+    stapel = _stapel_breite(stein_iv_voll, N)
 
     # ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
     # Bei gueltigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
@@ -1493,7 +1530,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         # [G-5] Der REALE Verband wird LAGENUEBERGREIFEND neu gelegt — auch die nicht ausgesparten
         # Lagen. Sonst blieben sie aus dem Vollverband stehen und ihre Fugen fluchteten mit der
         # darunter neu gelegten, verkuerzten Lage (#143).
-        # [G-11] bleibt unberuehrt: occ/stein_iv_voll/lage0_voll stehen oben bereits aus dem
+        # [G-11] bleibt unberuehrt: occ/stein_iv_voll/kopf_voll stehen oben bereits aus dem
         # VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
         prev_il = set()
         for li in range(L):
@@ -1574,18 +1611,23 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                                      "text": ausgleich_pruefhinweis(typ, c["hoehe_mm"])})
 
     # ---- Spannachsen ---------------------------------------------------------------
-    # Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11] Grundachsen aus dem
-    # Verband der untersten Lage > [V-2] Steinabdeckung (MUSS, additiv) > [V-7]/[V-8] Zusatzachsen
-    # an Stufen-/Oeffnungskanten > [V-4] Maximalabstand als OBERGRENZE.
+    # Hierarchie (Fassung 29.10.2026): [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11]
+    # Grundachsen aus den KOPFSTEINEN (oberste Lage) > [V-2] Steinabdeckung (MUSS, additiv) >
+    # [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-4] Maximalabstand als OBERGRENZE >
+    # [V-12] Symmetrie der i3-Kopfsteine (MUSS, schliesst ab).
     #
-    # [V-3] ist seit Issue #104 eine GRUNDACHSE und keine blosse Wunschposition mehr: die Mitte
-    # jedes i3 der untersten Lage wird gesetzt, auch wenn der Stein ohnehin schon gehalten waere.
-    # [V-11] ergaenzt die Randlage aus demselben Verband. [V-5] (Startachse) ist damit ABGELOEST.
+    # [V-3] ist eine GRUNDACHSE: die Mitte jedes i3-Kopfsteins wird gesetzt, auch wenn der Stein
+    # ohnehin schon gehalten waere. Bezugslage ist seit 29.10.2026 (Miro R01, SA 2) die OBERSTE
+    # statt der untersten Lage. [V-11] ergaenzt die Randlage und spannt den i2-Stapel in beiden
+    # Kammern. [V-5] (Startachse) ist ABGELOEST.
     #
-    # [V-4] ist bewusst die LETZTE Stufe und nicht mehr die Verteilungsregel: die Steinabdeckung
-    # [V-2] impliziert den Abstand NICHT (sonst entstehen Luecken bis 5 Raster = 625 mm, obwohl
-    # jeder Stein gehalten ist), und umgekehrt beweist ein eingehaltenes Maximalraster die
-    # Abdeckung nicht. Beide Regeln sind unabhaengig und beide gelten.
+    # [V-4] ist bewusst nicht die Verteilungsregel: die Steinabdeckung [V-2] impliziert den Abstand
+    # NICHT (sonst entstehen Luecken bis 5 Raster = 625 mm, obwohl jeder Stein gehalten ist), und
+    # umgekehrt beweist ein eingehaltenes Maximalraster die Abdeckung nicht.
+    #
+    # [V-12] (SA 2/KKI 2) haelt jeden i3-Kopfstein SYMMETRISCH: nur mittig (Feld 2) oder Feld 1
+    # UND Feld 3. Die Mitte wird nur entfernt, wenn sie keine Zusatzachse [V-7]/[V-8] ist und [V-4]
+    # mindestens 2 Raster erlaubt — ohne Verletzung von [V-2] oder [V-4] (s. Betriebskopie).
     # [G-11] Steinabdeckung basiert auf dem VOLLSTAENDIGEN Verband (stein_iv_voll, vor dem Aussparen).
     # Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
     stein_iv_voll.sort(key=lambda p: (p[1], p[0]))
@@ -1596,37 +1638,48 @@ def build_wall(name: str, length_mm: int, height_mm: int,
 
     if _PS["columns_grid"]:
         # [V-9] Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden. Sie werden NICHT
-        # ergaenzt (auch nicht um [V-2]/[V-4]) — der Anwender uebernimmt die Verteilung ganz.
+        # ergaenzt (auch nicht um [V-2]/[V-4]/[V-12]) — der Anwender uebernimmt die Verteilung ganz.
         # Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
         col_ks = sorted(k for k in _PS["columns_grid"] if 0 <= k < N)
     else:
-        # [V-3]/[V-11] Grundachsen: allein aus dem Verband der untersten Lage (vollstaendiger
-        # Verband, [G-11]). Mitte jedes i3; bei einem i2 am Wandanfang die 2. Rasterachse, bei
-        # einem i2 am Wandende die 2. Rasterachse von rechts.
-        #
-        # [V-5] ist damit abgeloest: `_PS["start_axis_grid"]` wird hier NICHT mehr gelesen. Das
-        # Feld bleibt im Datenmodell erhalten (_norm_prestress fuehrt es unveraendert weiter),
-        # damit gespeicherte Projekte lesbar bleiben — es ist unwirksamer Altbestand.
-        # Ebenfalls entfallen ist die frueher UNBEDINGTE Endachse N-1: sie lag im aeusseren
-        # Randfeld. Beide Wandenden landen jetzt auf 1 bzw. N-2 — bei i3 als Steinmitte, bei i2
-        # ueber [V-11]; die Randlage folgt also durchgehend dem Verband.
-        colset = _grundachsen(lage0_voll, N)
+        # [V-3]/[V-11] Grundachsen: allein aus den Kopfsteinen (vollstaendiger Verband, [G-11]).
+        # [V-5] ist abgeloest: `_PS["start_axis_grid"]` wird hier NICHT gelesen (Altbestand).
+        colset = _grundachsen(kopf_voll, N, stapel)
+        # Zusatzachsen [V-7]/[V-8] sind GESCHUETZT: [V-12] entfernt nie eine von ihnen.
+        schutz: set[int] = set()
         # [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
         for op in openings:
-            if op.g0 - 1 >= 0: colset.add(op.g0 - 1)
-            if op.g1 <= N - 1: colset.add(op.g1)
+            if op.g0 - 1 >= 0: schutz.add(op.g0 - 1)
+            if op.g1 <= N - 1: schutz.add(op.g1)
         # [V-7] Stufenkanten: an jeder Hoehenstufe ein Strang beidseitig der Kante.
         for k in range(N - 1):
             if _top_lage[k] != _top_lage[k + 1]:
-                colset.add(k); colset.add(k + 1)
+                schutz.add(k); schutz.add(k + 1)
+        colset |= schutz
+        # [V-12] Zelle -> Anfang des i3-Kopfsteins, der sie enthaelt (-1: kein i3-Kopfstein).
+        kopf_i3 = [-1] * N
+        for a, b in kopf_voll:
+            if b - a == 3:
+                for k in range(a, b):
+                    kopf_i3[k] = a
         # [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
-        # Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
-        # die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Rein additiv — die
-        # Grundachsen aus [V-3]/[V-11] werden dabei nie verschoben oder ersetzt.
+        # Gesetzt wird die RECHTESTE Zelle des Steins, die in KEINEM i3-Kopfstein liegt; liegen
+        # alle Zellen in i3-Kopfsteinen, wird der dem WANDENDE naechste (Gleichstand: der linke)
+        # in Feld 1 UND Feld 3 gespannt (KKI 2). Rein additiv; die Mitte raeumt erst [V-12] ab.
         for a, b in stein_iv_voll:
             if _gehalten(colset, a, b):
                 continue
-            colset.add(b - 1)
+            frei = next((k for k in range(b - 1, a - 1, -1) if kopf_i3[k] < 0), -1)
+            if frei >= 0:
+                colset.add(frei)
+                continue
+            ziel, ziel_d = -1, None
+            for k in range(a, b):
+                s0 = kopf_i3[k]
+                d = min(s0, N - (s0 + 3))
+                if ziel_d is None or d < ziel_d or (d == ziel_d and s0 < ziel):
+                    ziel, ziel_d = s0, d
+            colset.add(ziel); colset.add(ziel + 2)
         # [V-4] Obergrenze: verbleibende Luecken > max_span_grid balanciert auffuellen (rein
         # additiv, die Abdeckung aus [V-2] bleibt dabei zwingend erhalten).
         roh = sorted(k for k in colset if 0 <= k < N)
@@ -1635,6 +1688,15 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             if roh[i + 1] - roh[i] > _maxspan:
                 for c in _balanced_fill(roh[i], roh[i + 1], _maxspan):
                     fin.add(c)
+        # [V-12] MUSS: jeder i3-Kopfstein symmetrisch — nur mittig, oder Feld 1 UND Feld 3.
+        for a, b in kopf_voll:
+            if b - a != 3:
+                continue
+            if a not in fin and (a + 2) not in fin:
+                continue
+            fin.add(a); fin.add(a + 2)
+            if (a + 1) in fin and (a + 1) not in schutz and _maxspan >= 2:
+                fin.discard(a + 1)
         col_ks = sorted(k for k in fin if 0 <= k < N)
     # [V-2] Nachweis der Steinabdeckung. Im Auto-Pfad ist die Liste konstruktionsbedingt leer und
     # dient als Selbstkontrolle; bei manuellen Achsen ([V-9]) ist sie der geforderte Abgleich gegen

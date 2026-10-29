@@ -500,9 +500,11 @@ ok('Einbaumenge unveraendert: Stangenpositionen summieren zur Core-Zahl',
       return b.length===1 && m.length===1 && n>0 && b[0].menge===n && m[0].menge===n; }))());
   // Zwei Punkte AUSDRUECKLICH gesetzt ([A-17]): der Abnahmefall des Pakets. Genommen wird eine
   // Wand mit GENAU EINER Spannachse, damit die Punktzahl gleich der Hoehenzahl ist — sonst
-  // zaehlt `wirksameZwischenpunkte` je (Spannachse, Hoehe) und liefert ein Vielfaches.
+  // zaehlt `wirksameZwischenpunkte` je (Spannachse, Hoehe) und liefert ein Vielfaches. Seit
+  // 29.10.2026 ist das der i3-Stapel (375 mm, eine Achse mittig); der i2-Stapel (250 mm) hat
+  // nach [V-11] zwei Achsen.
   ok('#93 Abnahmefall: zwei wirksame Zwischenspannpunkte -> je Position die Menge 2', (()=>{
-    const w=buildWall('zwei Punkte', 250, 2600, [], null,
+    const w=buildWall('zwei Punkte', 375, 2600, [], null,
       { zwischenpunkte_mm:[800,1600] });
     if(wirksameZwischenpunkte(w).length!==2) return false;
     const r=stuecklistePositionen(w, egVoll(), KATALOG);

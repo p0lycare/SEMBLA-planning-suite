@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261029-03",
+    datum: "2026-10-29",
+    typ: "feature",
+    issue: 122,
+    titel: "Spannachsen nach der obersten Lage: i3 dort symmetrisch, am Wandende Feld 1 und 3, i2-Stapel zweifach",
+    testbitte: "In Modul 1 eine Wand 3,75 × 3,0 m ansehen: im ersten i3 oben stehen zwei Achsen (Feld 1 und 3), "
+      + "sonst je i3 oben eine mittig. Eine 25-cm-Wand hat zwei Achsen, eine 37,5-cm-Wand eine",
+  },
+  {
     id: "chg-20261029-02",
     datum: "2026-10-29",
     typ: "feature",

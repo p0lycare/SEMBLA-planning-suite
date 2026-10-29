@@ -267,10 +267,16 @@ Grundsatzfrage ist an das Refactoring verwiesen.
 **Spannachsen-Verteilung (`wandelement.prestress`).** Maßgebend ist die **Steinabdeckung**, nicht
 mehr der Abstand: **jeder Stein jeder Lage** wird von mindestens einer Spannachse durchgangen
 (**[V-2]**, Muss). Gerechnet wird das im Core (`sembla-core.js`/Python-Orakel) als Stabbing-Verfahren
-über alle Steine; die Engine reicht die Felder nur durch. Rangfolge: **[V-1]** Kammerraster →
-**[V-9]** manuelle Achsen → **[V-5]** Start-/Endachse → **[V-2]** Steinabdeckung → **[V-7]/[V-8]**
-Zusatzachsen an Stufen-/Öffnungskanten (additiv) → **[V-3]** Mitte der i3-Steine der untersten Lage
-→ **[V-4]** `max_span_grid` als **Obergrenze**.
+über alle Steine; die Engine reicht die Felder nur durch. Rangfolge (Fassung 29.10.2026, Miro R01
+SA 2/SA 3a/SA 3b/KKI 2): **[V-1]** Kammerraster → **[V-9]** manuelle Achsen → **[V-3]/[V-11]**
+Grundachsen aus der **obersten** Lage (Kopfsteine = Steine ohne Stein darüber; mit Ausgleichslage
+ist **sie** die oberste Lage, mit Staffelung die lokale Oberkante): Mitte jedes i3, i2-Rand auf der
+2. Rasterachse, **i2-Stapel in beiden Kammern** (#122), i3-Stapel eine Achse mittig → **[V-2]**
+Steinabdeckung (Zusatzachse bevorzugt außerhalb der i3-Kopfsteine) → **[V-7]/[V-8]** Zusatzachsen
+(additiv, geschützt) → **[V-4]** `max_span_grid` als **Obergrenze** → **[V-12]** jeder i3 der
+obersten Lage **symmetrisch**: nur mittig oder **Feld 1 + Feld 3** (Mitte entfällt; KKI 2 „im
+ersten i3 doppelt") — verletzt [V-2]/[V-4] nachweislich nicht. „Bei Bedarf" und die Wahl des
+randnächsten i3 sind eine **vorläufige Annahme** bis zur Bestätigung durch Felix.
 
 `start_axis_grid` ist seit #104 **unwirksamer Altbestand**: [V-5] ist durch [V-3]/[V-11] abgelöst,
 der Core liest das Feld nicht mehr, und das Bedienelement in Modul 1 ist **ersatzlos
@@ -1080,9 +1086,9 @@ nichts gespeichert ([K-3]), und das Werkzeug wechselt nicht.
 Der Doppelklick auf die Maßzahl überlebt das, weil der Treffer **geometrisch in Weltkoordinaten**
 entschieden wird und nicht über DOM-Knoten.
 
-**Vorspann-Grundregeln [V-2]/[V-3] sind umgesetzt und regressionsgetestet** (Core + Python-Orakel,
-`tests/core/`): Steinabdeckung als Muss, i3-Mitte der untersten Lage als Soll, `max_span_grid` nur
-noch als Obergrenze (s. „Spannachsen-Verteilung"). **Noch offen** sind zwei bestätigte Zielregeln
+**Vorspann-Grundregeln [V-2]/[V-3]/[V-11]/[V-12] sind umgesetzt und regressionsgetestet** (Core +
+Python-Orakel, `tests/core/`): Steinabdeckung als Muss, i3-Mitte der **obersten** Lage als
+Grundachse, Symmetrie der obersten i3, `max_span_grid` nur noch als Obergrenze (s. „Spannachsen-Verteilung"). **Noch offen** sind zwei bestätigte Zielregeln
 ohne eigene Regel-ID: bei Öffnungen über 750 mm beidseitig **zwei** Achsen, und jedes Blech von
 mindestens **zwei** Achsen gehalten. Sie stehen **nur im Handbuch** (Kapitel 16.8) — seit #61 trägt
 das Zeichnungsblatt **keine** Regellisten mehr, weder die eingehaltenen noch die offenen

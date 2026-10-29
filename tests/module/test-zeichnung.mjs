@@ -2227,14 +2227,17 @@ ok("Modul 7 skaliert nur den Bildschirm (ein Faktor auf das ganze Blatt)",
   // Rechtecke unveraendert, weil diese Wand keine Katalogmasse fuehrt — und im Blatt-HTML die
   // Legende („Kopplungsmutter", „Verankerung (Mutter)", „Sechskantschraube Fuß" statt
   // „Kopplung / Verankerung").
+  // 2026-10-29 ([V-3]/[V-11]/[V-12], Miro R01) alle vier neu eingefroren: allein die Achslage
+  // hat sich geaendert — der alte Kern mit den neuen Achsen als manuelle Achsen ([V-9])
+  // zeichnet das SVG zeichengleich.
   ok("[#136] Nicht-Ziel: die 200-mm-Referenzwand bleibt zeichenkettengleich (eingefroren)",
-    kurz(ohneKette(Z.zeichnungSvg(W136r, {}).svg)) === "e1ce97f93947b12c"
+    kurz(ohneKette(Z.zeichnungSvg(W136r, {}).svg)) === "cde2c46ccd48e51b"
     // 2026-10-07 ([D-4], Stangenfarben je Laenge): das Blatt-HTML neu eingefroren — geaendert
     // ist allein die Legende („Gewindestange 1100 mm" statt „Gewindestange (Standardlänge)",
     // kein Reststueck-Eintrag mehr, weil diese Wand keines hat). Das SVG ist unveraendert.
-    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "1d080e8f4d5da8d2"
-    && kurz(Z.zeichnungSvg(W136r, {}).svg) === "95ead608f6ec14fd"
-    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "bd47713dfaa3428c");
+    && kurz(ohneKette(Z.blattHtml(W136r, standardEingaben(), {}).html)) === "a32d137c418fd21c"
+    && kurz(Z.zeichnungSvg(W136r, {}).svg) === "afbda36fb9232cbd"
+    && kurz(Z.blattHtml(W136r, standardEingaben(), {}).html) === "a04fc4054cf15853");
   ok("[#136] Nicht-Ziel: ohne Ausgleichslage entsteht keine Ausgleichs-Massangabe",
     !Z.zeichnungSvg(W136r, {}).svg.includes("ausgleichslage"));
 

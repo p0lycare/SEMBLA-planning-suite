@@ -96,13 +96,13 @@ t("Saeulen auf Kammer-Lattice", () => {
   for (const c of buildReference("ref3_wand_fenster").tension_columns)
     assert(c.x_mm === CHAMBER_OFFSET + GRID * c.k, `k=${c.k}`);
 });
-t("beide Wandenden auf der 2. Rasterachse + neben Tuer haben Saeulen", () => {
-  // [V-3]/[V-11] (#104): links 1, rechts N-2 — nie im aeusseren Randfeld (0 bzw. N-1).
+t("beide Wandenden spaetestens in Feld 3 gespannt + neben Tuer haben Saeulen", () => {
+  // [V-3]/[V-11]/[V-12] (29.10.2026): Steinmitte (1 bzw. N-2), [V-11] am i2-Rand oder nach
+  // KKI 2 Feld 1 UND Feld 3 des ersten/letzten i3 (dann liegt eine Achse im Randfeld).
   for (const key of Object.keys(REFERENCE_WALLS)) {
     const w = buildReference(key);
-    const ks = new Set(w.tension_columns.map(c => c.k));
-    assert(ks.has(1) && ks.has(w.N_grid - 2), `${key}: Enden auf 1 / N-2`);
-    assert(!ks.has(0) && !ks.has(w.N_grid - 1), `${key}: Randfeld bleibt frei`);
+    const ks = w.tension_columns.map(c => c.k).sort((x, y) => x - y);
+    assert(ks[0] <= 2 && ks.at(-1) >= w.N_grid - 3, `${key}: Wandenden ${JSON.stringify(ks)}`);
   }
   const w = buildReference("ref2_wand_tuer");
   const ks = new Set(w.tension_columns.map(c => c.k));
@@ -121,72 +121,89 @@ t("kein Segment in der Oeffnung; über/unter Öffnung vorhanden; Abstand<=375 ok
   assert(span.some(c => c.segments.some(g => g.lage0 >= op.l1)), "keine Vorspannung über Fenster");
   assert(w.validation.tension_span_ok);
 });
-// ---- [V-3]/[V-11] Grundachsen aus dem Verband der untersten Lage (Issue #104) ----
-// Die vier geforderten Randverbaende getrennt. Die Achslisten sind eingefroren, weil genau ihre
-// Lage die Fachregel ist — nicht nur ihre Anzahl. Der Abgleich mit dem echten Python-Orakel
-// steht weiter unten (die Orakel-Hilfe ist erst dort definiert).
-const ksOf = (ps, L = 2000, ops = []) =>
-  buildWall("sa", L, 2600, ops, null, ps).tension_columns.map(c => c.k);
-const lage0Of = (L, ops = []) =>
-  buildWall("l0", L, 2600, ops).courses[0].stones.map(s => (s.x1 - s.x0) / GRID);
+// ---- [V-3]/[V-11]/[V-12] Grundachsen aus den KOPFSTEINEN (Fassung 29.10.2026) ----
+// Miro R01 (Felix Bauroth, 28./29.10.2026): SA 2, KKI 2, SA 3a (#122), SA 3b/KKI 5. DIESELBEN
+// Faelle stehen in test_sembla_core.py; die Achslisten sind eingefroren, weil genau ihre Lage die
+// Fachregel ist. Der Abgleich mit dem echten Python-Orakel steht weiter unten.
+const ksOf = (ps, L = 2000, ops = [], H = 2600, steps = [], aus = false) =>
+  buildWall("sa", L, H, ops, null, ps, steps, null, aus).tension_columns.map(c => c.k);
+const obenOf = (L, H = 2600, ops = [], aus = false) =>
+  buildWall("ob", L, H, ops, null, null, [], null, aus).courses.at(-1).stones.map(s => (s.x1 - s.x0) / GRID);
 
-t("[V-3] i3 an beiden Raendern: Grundachsen sind die Steinmitten", () => {
-  deepEqual(lage0Of(6 * GRID), [3, 3]);
-  const ks = ksOf({ max_span_grid: 3 }, 6 * GRID);
-  deepEqual(ks, [1, 3, 4]);
-  assert(!ks.includes(0) && !ks.includes(5), "Randfeld bleibt frei");
+t("[V-12] KKI-2-Skizze: erster i3 in Feld 1 und Feld 3 statt Mitte + Zusatzachse", () => {
+  deepEqual(obenOf(3750, 3000), Array(10).fill(3));
+  deepEqual(ksOf({ max_span_grid: 3 }, 3750, [], 3000), [0, 2, 4, 7, 10, 13, 16, 19, 22, 25, 28]);
 });
-t("[V-11] i2 nur am Anfang: linke Achse auf der 2. Rasterachse", () => {
-  deepEqual(lage0Of(5 * GRID), [2, 3]);
-  const ks = ksOf({ max_span_grid: 3 }, 5 * GRID);
-  deepEqual(ks, [1, 3]);
-  assert(!ks.includes(0) && !ks.includes(4), "Randfeld bleibt frei");
+t("[V-12] spiegelbildlich am Wandende; unter einem i2-Kopfstein genuegt eine Achse", () => {
+  deepEqual(obenOf(2000), [2, 2, 3, 3, 3, 3]);
+  deepEqual(ksOf({ max_span_grid: 3 }, 2000), [1, 3, 5, 8, 11, 13, 15]);
 });
-t("[V-11] i2 nur am Ende: rechte Achse auf der 2. Rasterachse von rechts", () => {
-  // Eine bis zum Boden reichende Tuer erzwingt den i2-Abschluss rechts.
-  const ops = [new Opening(3, 7, 0, 8, "tuer")];
-  deepEqual(lage0Of(9 * GRID, ops), [3, 2]);
-  const ks = ksOf({ max_span_grid: 3 }, 9 * GRID, ops);
-  assert(ks.includes(1) && ks.includes(7), "1 und N-2 gesetzt");
-  assert(!ks.includes(0) && !ks.includes(8), "Randfeld bleibt frei");
-  deepEqual(ks, [1, 2, 5, 7]);
+t("[V-3] Bezugslage ist die OBERSTE Lage, nicht die unterste", () => {
+  deepEqual(obenOf(2000, 2400), [3, 3, 3, 3, 2, 2]);
+  const ks = ksOf({ max_span_grid: 3 }, 2000, [], 2400);
+  deepEqual(ks, [0, 2, 4, 7, 10, 13, 14]);
+  for (const m of [4, 7, 10]) assert(ks.includes(m), `i3-Mitte ${m} fehlt`);
 });
-t("[V-11] i2 an beiden Raendern", () => {
-  deepEqual(lage0Of(4 * GRID), [2, 2]);
-  const ks = ksOf({ max_span_grid: 3 }, 4 * GRID);
-  deepEqual(ks, [1, 2]);
-  assert(!ks.includes(0) && !ks.includes(3), "Randfeld bleibt frei");
+t("[V-3] die Ausgleichslage ist die oberste Lage (Entscheid 29.10.2026)", () => {
+  deepEqual(obenOf(2000, 2500, [], true), obenOf(2000, 2600));
+  deepEqual(ksOf({ max_span_grid: 3 }, 2000, [], 2500, [], true), ksOf({ max_span_grid: 3 }, 2000));
 });
-t("[V-11] einzelner i2: genau EINE Achse auf der 2. Rasterachse", () => {
-  // Kuerzestmoegliche Wand — der einzige i2 ist erster UND letzter Stein, es gilt die
-  // Anfangsregel. Ohne diesen Vorrang staenden 1 (a+1) und 0 (N-2) gegeneinander.
-  deepEqual(lage0Of(2 * GRID), [2]);
-  deepEqual(ksOf({ max_span_grid: 3 }, 2 * GRID), [1]);
+t("[V-11] i2-Stapel: beide Kammern (SA 3a, #122)", () => {
+  deepEqual(obenOf(2 * GRID), [2]);
+  deepEqual(ksOf({ max_span_grid: 3 }, 2 * GRID), [0, 1]);
 });
-t("[V-11] ein i2 im Inneren erzeugt KEINE Grundachse", () => {
-  // [N3] Ein i2 hat keine Rastermitte — es wird keine erfunden; die Abdeckung macht [V-2].
-  const ops = [new Opening(6, 10, 0, 8, "tuer")];
-  deepEqual(lage0Of(14 * GRID, ops), [3, 3, 2, 2]);
-  const ks = ksOf({ max_span_grid: 3 }, 14 * GRID, ops);
-  for (const k of [1, 4, 12]) assert(ks.includes(k), `Grundachse ${k} fehlt`);
-  assert(!ks.includes(0) && !ks.includes(13), "Randfeld bleibt frei");
-  deepEqual(ks, [1, 3, 4, 5, 8, 10, 12]);
+t("[V-3] i3-Stapel: eine Achse mittig (SA 3b, KKI 5)", () => {
+  deepEqual(obenOf(3 * GRID), [3]);
+  deepEqual(ksOf({ max_span_grid: 3 }, 3 * GRID), [1]);
 });
-t("[V-3] JEDE i3-Mitte der untersten Lage ist eine Grundachse (MUSS statt SOLL)", () => {
+t("[V-11] i2 am Anfang der obersten Lage: 2. Rasterachse", () => {
+  deepEqual(obenOf(5 * GRID), [2, 3]);
+  deepEqual(ksOf({ max_span_grid: 3 }, 5 * GRID), [1, 3]);
+});
+t("[V-11] ein i2 im Inneren der obersten Lage erzeugt KEINE Grundachse", () => {
+  const ks = ksOf({ max_span_grid: 3 }, 2000, [], 2400);
+  assert(ks.includes(14), "letzter i2 -> 2. Rasterachse von rechts");
+  assert(ks.includes(13) && !ks.includes(12), "[V-2] im inneren i2-Kopfstein [12,14)");
+});
+t("[V-12] jeder i3 der obersten Lage symmetrisch; [V-2]/[V-4] bleiben erfuellt", () => {
+  for (let N = 2; N <= 40; N++) for (const H of [2200, 2400, 2600]) for (const sp of [1, 2, 3]) {
+    const w = buildWall("sym", N * GRID, H, [], null, { max_span_grid: sp });
+    const ks = new Set(w.tension_columns.map(c => c.k));
+    assert(w.validation.ungehaltene_steine.length === 0 && w.validation.tension_span_ok, `N=${N} H=${H} sp=${sp}`);
+    for (const st of w.courses.at(-1).stones) {
+      const a = st.x0 / GRID;
+      if ((st.x1 - st.x0) / GRID !== 3) continue;
+      assert(ks.has(a) === ks.has(a + 2) && (ks.has(a + 1) || ks.has(a)), `N=${N} H=${H} sp=${sp}: i3 [${a},${a + 3})`);
+    }
+  }
+});
+t("[V-12] Mitte entfaellt nur, wenn [V-4] 2 Raster erlaubt", () => {
+  deepEqual(ksOf({ max_span_grid: 2 }, 2000), [1, 3, 4, 6, 8, 10, 12, 13, 15]);
+  deepEqual(ksOf({ max_span_grid: 1 }, 2000), Array.from({ length: 15 }, (_, i) => i + 1));
+});
+t("[V-12] Zusatzachse an einer Oeffnung bleibt, die Gegenseite wird ergaenzt", () => {
+  deepEqual(ksOf({ max_span_grid: 3 }, 2000, [new Opening(5, 11, 0, 10, "tuer")]), [1, 3, 4, 6, 8, 11, 13, 15]);
+});
+t("[V-12] Staffelung: Kopfsteine an der lokalen Oberkante", () => {
+  deepEqual(ksOf({ max_span_grid: 3 }, 3000, [], 2600, [{ x0_mm: 1500, x1_mm: 3000, height_mm: 1600 }]),
+    [0, 2, 4, 7, 9, 11, 12, 14, 17, 20, 22]);
+});
+t("[V-3] JEDE i3-Mitte der obersten Lage ist Grundachse — oder Feld 1 und 3 ([V-12])", () => {
   for (const L of [2000, 5000, 3000]) {
     const w = buildWall("v3", L, 2600, [], null, { max_span_grid: 3 });
     const ks = new Set(w.tension_columns.map(c => c.k));
-    const mitten = w.courses[0].stones
-      .filter(s => (s.x1 - s.x0) / GRID === 3).map(s => s.x0 / GRID + 1);
-    assert(mitten.length > 0, `Testwand L=${L} ohne i3 in der untersten Lage`);
-    for (const m of mitten) assert(ks.has(m), `L=${L}: i3-Mitte ${m} fehlt`);
+    const i3 = w.courses.at(-1).stones.filter(s => (s.x1 - s.x0) / GRID === 3).map(s => s.x0 / GRID);
+    assert(i3.length > 0, `Testwand L=${L} ohne i3 in der obersten Lage`);
+    for (const a of i3) assert(ks.has(a + 1) || (ks.has(a) && ks.has(a + 2)), `L=${L}: i3 [${a},${a + 3})`);
   }
   for (const key of Object.keys(REFERENCE_WALLS)) {
     const w = buildReference(key);
     const ks = new Set(w.tension_columns.map(c => c.k));
-    for (const s of w.courses[0].stones)
+    for (const s of w.courses.at(-1).stones) {
+      const a = s.x0 / GRID;
       if ((s.x1 - s.x0) / GRID === 3)
-        assert(ks.has(s.x0 / GRID + 1), `${key}: i3-Mitte ${s.x0 / GRID + 1} fehlt`);
+        assert(ks.has(a + 1) || (ks.has(a) && ks.has(a + 2)), `${key}: i3 [${a},${a + 3})`);
+    }
   }
 });
 t("[V-5] abgeloest: die gespeicherte Startachse wirkt nicht mehr (M5)", () => {
@@ -199,7 +216,7 @@ t("[V-5] abgeloest: die gespeicherte Startachse wirkt nicht mehr (M5)", () => {
       `L=${L}: Feld muss unveraendert mitreisen`);
   }
   const ohne = buildWall("ohne", 2000, 2600, [], null, { max_span_grid: 3 });
-  deepEqual(ohne.tension_columns.map(c => c.k), [1, 3, 5, 8, 11, 13, 14]);
+  deepEqual(ohne.tension_columns.map(c => c.k), [1, 3, 5, 8, 11, 13, 15]);
 });
 t("Zusatzachsen bleiben additiv, columns_grid hat Vorrang", () => {
   // [M6] Oeffnungskanten ([V-8]) ergaenzen die Grundachsen weiterhin.
@@ -207,8 +224,7 @@ t("Zusatzachsen bleiben additiv, columns_grid hat Vorrang", () => {
   const w = buildWall("sa", 2000, 2600, op, null, { max_span_grid: 3 });
   const ks = new Set(w.tension_columns.map(c => c.k));
   assert(ks.has(4) && ks.has(11), "Oeffnungskanten");
-  assert(!ks.has(0) && !ks.has(15), "aeusseres Randfeld bleibt frei");
-  assert(ks.has(14), "N-2 traegt das rechte Wandende");
+  assert(ks.has(13) && ks.has(15) && !ks.has(14), "letzter i3 in Feld 1 und 3 (KKI 2)");
   // [N1]/[V-9] Manuelle Achsen werden weder ergaenzt noch verschoben.
   const m = buildWall("sa", 2000, 2600, [], null,
     { max_span_grid: 3, start_axis_grid: 1, columns_grid: [0, 8, 15] });
@@ -250,16 +266,6 @@ t("[V-9] manuelle Achsen: [V-2]-Verletzung wird gemeldet, nicht still korrigiert
   assert(JSON.stringify(w.tension_columns.map(c => c.k)) === "[0,15]", "Vorrang der manuellen Achsen");
   assert(w.validation.ungehaltene_steine.length > 0, "Verletzung muss gemeldet werden");
   assert(w.validation.buildable, "kein Baubarkeitsausschluss");
-});
-// [V-3] SOLL: automatisch gesetzte Achsen moeglichst mittig in den i3 der untersten Lage.
-t("[V-3] Achsen liegen ueberwiegend mittig in den i3 der untersten Lage", () => {
-  for (const L of [2000, 5000]) {
-    const w = buildWall("v3", L, 2600, [], null, { max_span_grid: 3 });
-    const ks = new Set(w.tension_columns.map(c => c.k));
-    const mitten = w.courses[0].stones.filter(s => (s.x1 - s.x0) / 125 === 3).map(s => s.x0 / 125 + 1);
-    const treffer = mitten.filter(m => ks.has(m)).length;
-    assert(treffer * 4 >= mitten.length * 3, `L=${L}: nur ${treffer}/${mitten.length} mittig`);
-  }
 });
 t("Ablaengen: 2600mm -> 3 Stangen (durchgehendes Segment)", () => {
   const c = buildWall("t", 1000, 2600, []).tension_columns[0];
@@ -1419,49 +1425,61 @@ t("Einlegeblech: Breite reist durch psOf() (Auslegung und Nachweis)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// RANDVERBAENDE [V-3]/[V-11] (Paritaetsvertrag mit dem Python-Orakel, Issue #104)
+// SPANNACHSEN [V-3]/[V-11]/[V-12] (Paritaetsvertrag mit dem Python-Orakel, Fassung 29.10.2026)
 // ---------------------------------------------------------------------------
-// Akzeptanztest 1+3 des Pakets: die vier i2-/i3-Randkombinationen werden als REALE Waende
-// ueber buildWall gebaut und ihre tension_columns gegen das ECHTE Python-Orakel gestellt —
-// zusaetzlich zu den oben schon gepruesten, neu eingefrorenen Fixtures. Das Orakel bekommt
-// hier auch Oeffnungen, weil der i2-Abschluss rechts eine bis zum Boden reichende Tuer
-// braucht (das rechteckige Tiling setzt den i2 immer nach vorne).
-console.log("RANDVERBAENDE [V-3]/[V-11] (Paritaetsvertrag mit dem Python-Orakel):");
+// Die Rand-, Stapel- und Symmetriefaelle werden als REALE Waende ueber buildWall gebaut und ihre
+// tension_columns gegen das ECHTE Python-Orakel gestellt — zusaetzlich zu den eingefrorenen
+// Fixtures. Das Orakel bekommt Oeffnungen, Staffelung und die Ausgleichslage, weil genau diese
+// die Bezugslage (Kopfsteine) verschieben.
+console.log("SPANNACHSEN [V-3]/[V-11]/[V-12] (Paritaetsvertrag mit dem Python-Orakel):");
 const PY_RAND = `
 import json, sys
 sys.path.insert(0, ${JSON.stringify(PYDIR)})
 from sembla_core import build_wall, Opening
 a = json.loads(sys.argv[1])
 ops = [Opening(*o) for o in a["openings"]]
-print(json.dumps(build_wall(a["name"], a["length_mm"], a["height_mm"], ops, None, a["prestress"])))
+print(json.dumps(build_wall(a["name"], a["length_mm"], a["height_mm"], ops, None, a["prestress"],
+                            a.get("steps"), None, a.get("ausgleich", False))))
 `;
 const orakelRand = (arg) =>
   JSON.parse(execFileSync("python3", ["-c", PY_RAND, JSON.stringify(arg)], { encoding: "utf8" }));
 
 for (const [titel, arg, sollK] of [
-  ["i3 an beiden Raendern", { name: "i3i3", length_mm: 6 * GRID, height_mm: 2600,
-    openings: [], prestress: { max_span_grid: 3 } }, [1, 3, 4]],
-  ["i2 nur am Anfang", { name: "i2A", length_mm: 5 * GRID, height_mm: 2600,
+  ["KKI-2-Skizze (erster i3 Feld 1+3)", { name: "kki2", length_mm: 3750, height_mm: 3000,
+    openings: [], prestress: { max_span_grid: 3 } }, [0, 2, 4, 7, 10, 13, 16, 19, 22, 25, 28]],
+  ["i3 an beiden Raendern (Gleichstand -> links)", { name: "i3i3", length_mm: 6 * GRID, height_mm: 2600,
+    openings: [], prestress: { max_span_grid: 3 } }, [0, 2, 4]],
+  ["i2 am Anfang der obersten Lage", { name: "i2A", length_mm: 5 * GRID, height_mm: 2600,
     openings: [], prestress: { max_span_grid: 3 } }, [1, 3]],
-  ["i2 nur am Ende", { name: "i2Z", length_mm: 9 * GRID, height_mm: 2600,
-    openings: [[3, 7, 0, 8, "tuer"]], prestress: { max_span_grid: 3 } }, [1, 2, 5, 7]],
-  ["i2 an beiden Raendern", { name: "i2B", length_mm: 4 * GRID, height_mm: 2600,
-    openings: [], prestress: { max_span_grid: 3 } }, [1, 2]],
-  ["einzelner i2 (M4)", { name: "i2E", length_mm: 2 * GRID, height_mm: 2600,
+  ["Tuer bis zur Oberkante", { name: "tuerO", length_mm: 9 * GRID, height_mm: 2600,
+    openings: [[3, 7, 0, 13, "tuer"]], prestress: { max_span_grid: 3 } }, [0, 2, 7]],
+  ["i2-Stapel (SA 3a, #122)", { name: "i2S", length_mm: 2 * GRID, height_mm: 2600,
+    openings: [], prestress: { max_span_grid: 3 } }, [0, 1]],
+  ["i3-Stapel (SA 3b)", { name: "i3S", length_mm: 3 * GRID, height_mm: 2600,
     openings: [], prestress: { max_span_grid: 3 } }, [1]],
+  ["oberste statt unterste Lage", { name: "ob", length_mm: 2000, height_mm: 2400,
+    openings: [], prestress: { max_span_grid: 3 } }, [0, 2, 4, 7, 10, 13, 14]],
+  ["Ausgleichslage ist Bezugslage", { name: "ag", length_mm: 2000, height_mm: 2500,
+    openings: [], prestress: { max_span_grid: 3 }, ausgleich: true }, [1, 3, 5, 8, 11, 13, 15]],
+  ["Staffelung (lokale Oberkante)", { name: "st", length_mm: 3000, height_mm: 2600,
+    openings: [], prestress: { max_span_grid: 3 },
+    steps: [{ x0_mm: 1500, x1_mm: 3000, height_mm: 1600 }] }, [0, 2, 4, 7, 9, 11, 12, 14, 17, 20, 22]],
+  ["Max.-Abstand 2 Raster", { name: "sp2", length_mm: 2000, height_mm: 2600,
+    openings: [], prestress: { max_span_grid: 2 } }, [1, 3, 4, 6, 8, 10, 12, 13, 15]],
   // M5 am realen Pfad: dieselbe Wand mit gespeicherter Startachse 1 — Orakel und Core muessen
   // beide die Startachse ignorieren und dieselben Achsen liefern.
   ["Altstand mit start_axis_grid 1", { name: "sa1", length_mm: 2000, height_mm: 2600,
     openings: [], prestress: { max_span_grid: 3, start_axis_grid: 1 } },
-    [1, 3, 5, 8, 11, 13, 14]],
+    [1, 3, 5, 8, 11, 13, 15]],
 ]) {
   t(`${titel}: Core == Python-Orakel`, () => {
     const ops = arg.openings.map((o) => new Opening(...o));
-    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, ops, null, arg.prestress);
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, ops, null, arg.prestress,
+      arg.steps || [], null, arg.ausgleich || false);
     const py = orakelRand(arg);
     deepEqual(js.tension_columns, py.tension_columns);
     deepEqual(js.tension_columns.map((c) => c.k), sollK);
-    // Die Randregel darf die Steinaufteilung nicht anfassen ([N4]).
+    // Die Achsregel darf die Steinaufteilung nicht anfassen ([N4]).
     deepEqual(js.courses, py.courses);
     assert(js.validation.ungehaltene_steine.length === 0, "[V-2] bleibt erfuellt");
   });
@@ -2041,12 +2059,15 @@ t("#136 ohne aktivierte Ausgleichslage bleibt die Wandhoehe ein Vielfaches der L
 // Bleche, Punkte, Validierung) — ist an den Stand VOR #136 genagelt. Die Hashes sind aus genau
 // diesem Stand genommen; jede strukturelle Abweichung faellt hier auf, auch eine, die die
 // goldenen Fixtures nicht abdecken (Staffelung, Zuschnitt aus mehreren Standardlaengen).
+// Fortgeschrieben am 29.10.2026 fuer [V-3]/[V-11]/[V-12] (Miro R01): Spannachsen und alles, was
+// aus ihnen folgt, haben sich GEWOLLT geaendert; dass der Verband unberuehrt blieb, haelt
+// test_sembla_core.py (VERBAND_VOR_V12) mit den unveraenderten Hashes von davor fest.
 const STRUKTUR_VOR_136 = {
-  ref1_glatte_wand: "23f1e7a19cf32713dbea9c25eab6a6b9b14c857d36e8cdbbcc4a76634d7ddac3",
-  ref2_wand_tuer: "adb38779fb0420d201f3f395222c93c37f74609ee3a62dd30f84067717b7a324",
-  ref3_wand_fenster: "dc47928634afbb1530f80cefddb1e5227424dddfde0b30977d4484676e45f92c",
-  staffel: "0cadf836fb8619c6ae24daadac22ba8742bbc3a764c6eaa04b227262609fa27a",
-  zuschnitt: "14d349925bc3045562802f4ee15d13bd1a7e17e70e231e3a11478660eff3062e",
+  ref1_glatte_wand: "b883f857816bae2fb53e9cd89f32bf1a8b266450e573916c4ebe3cf91306da99",
+  ref2_wand_tuer: "cdcea41a8f7ca65ef9df2462d8a692afc853cc9e66934dc207650ff48e4fd9db",
+  ref3_wand_fenster: "df5a71291ef8ef36b3f97783b7a5ebc288b6f07b08e2362b0980f77eadbe645e",
+  staffel: "b6c0b6fa2d2dc4b2f73dcffe10b1e6b78acbcdb814666f5419120ef88661e4f9",
+  zuschnitt: "bc9babe38b621b09e2087c87b7710cd24d10ba60991724d697567fe48b09394e",
 };
 const VERGLEICHSWAENDE = {
   ref1_glatte_wand: () => buildReference("ref1_glatte_wand"),

@@ -577,7 +577,7 @@ function vorgaben(){
   // [A-2]/#92: Standard ist die SPANNPLATTE — Kopfblech nur, wenn es ausdruecklich gewaehlt ist.
   const top_connection=($('topConn').value==='blech')?'blech':'spannplatte';
   // #104: Die Startachse ist ersatzlos zurueckgebaut. [V-5] ist durch [V-3]/[V-11] abgeloest —
-  // die Randlage der Spannachsen folgt allein dem Verband der untersten Lage. Modul 1 leitet
+  // die Randlage der Spannachsen folgt allein dem Verband der obersten Lage ([V-12]). Modul 1 leitet
   // dafuer KEINEN Wert mehr ab und gibt dem Core keinen vor; `prestress.start_axis_grid` ist
   // nur noch ein Ausgabefeld des unveraenderten Rechenkerns.
   if($('modus').value==='nachweis') v.prestress={ max_span_grid:+$('spacing').value, force_kN:+$('force').value, ...hw, blech_mm, top_connection };

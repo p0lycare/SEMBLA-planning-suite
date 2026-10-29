@@ -1194,28 +1194,73 @@ function balancedFill(a, b, maxstep) {
 }
 
 /**
- * [V-3]/[V-11] Grundachsen der Auto-Verteilung aus dem Verband der UNTERSTEN Lage.
+ * [V-3]/[V-11] Bezugslage der Grundachsen: die KOPFSTEINE der Wand (Fassung 29.10.2026,
+ * Miro R01 SA 2 / Felix Bauroth).
  *
- * `steine` sind die Rasterintervalle [a,b) der Lage 0 aus dem VOLLSTAENDIGEN Verband
- * ([G-11], vor dem Aussparen der Verzahnungsbereiche), aufsteigend nach a sortiert.
+ * Kopfstein ist jeder Stein, ueber dessen Rasterzellen KEIN weiterer Stein liegt. Ohne Staffelung
+ * und ohne Oeffnung bis zur Oberkante ist das genau die OBERSTE Lage — mit Ausgleichslage
+ * ([G-13]) also diese, denn sie ist die oberste gebaute Lage unter dem oberen Anschluss. Mit
+ * Staffelung ist es die lokale Oberkante; ein Stein, der an einer Stufe teilweise ueberbaut ist,
+ * ist kein Kopfstein. Gelesen wird der VOLLSTAENDIGE Verband ([G-11], vor dem Aussparen der
+ * Verzahnungsbereiche). Kopfsteine ueberlappen sich nie (ein Stein unter einem anderen waere
+ * ueberbaut). Ergebnis: Rasterintervalle [a,b), aufsteigend nach a.
+ */
+function kopfsteine(courses, occ, L) {
+  const out = [];
+  for (const c of courses) for (const st of c.stones) {
+    const a = st.x0 / GRID, b = st.x1 / GRID;
+    let frei = true;
+    for (let k = a; k < b && frei; k++)
+      for (let r = c.lage + 1; r < L; r++) if (occ[r][k]) { frei = false; break; }
+    if (frei) out.push([a, b]);
+  }
+  out.sort((p, q) => p[0] - q[0]);
+  return out;
+}
+
+/**
+ * [V-11] Stapelwand (Felix Bauroth, 29.10.2026): eine Wand NUR aus i2 (bzw. nur aus i3), deren
+ * Steine direkt und OHNE Versatz uebereinander stehen. Geprueft am VOLLSTAENDIGEN Verband: jede
+ * Rasterzelle wird in allen Lagen von demselben Steinintervall belegt, und alle Steine haben
+ * dieselbe Breite. Liefert 2 (i2-Stapel), 3 (i3-Stapel) oder 0 (kein Stapel).
+ */
+function stapelBreite(steinIv, N) {
+  if (!steinIv.length) return 0;
+  const w = steinIv[0][1] - steinIv[0][0];
+  const zelle = new Array(N).fill(-1);
+  for (const [a, b] of steinIv) {
+    if (b - a !== w) return 0;
+    for (let k = a; k < b; k++) {
+      if (zelle[k] >= 0 && zelle[k] !== a) return 0;
+      zelle[k] = a;
+    }
+  }
+  return (w === 2 || w === 3) ? w : 0;
+}
+
+/**
+ * [V-3]/[V-11] Grundachsen der Auto-Verteilung aus den KOPFSTEINEN (s. `kopfsteine`).
  *
- *   [V-3]  i3 `[a,a+3)`  -> `a+1` (Rastermitte des Steins), an JEDER Stelle der Lage.
- *   [V-11] i2 als ERSTER Stein  -> `a+1`  (2. Rasterachse, nicht das aeussere Randfeld).
- *   [V-11] i2 als LETZTER Stein -> `a`    (2. Rasterachse von rechts, s. o.).
+ *   [V-3]  i3 `[a,a+3)`  -> `a+1` (Mitte = Feld 2 des Steins), an JEDER Stelle der Lage. Das gilt
+ *          auch fuer den i3-Stapel: genau EINE Achse mittig (SA 3b; KKI 5 „nach aktuellem Stand
+ *          nicht" zwei).
+ *   [V-11] i2-Stapel -> BEIDE Kammern `a` und `a+1` (SA 3a, Issue #122).
+ *   [V-11] sonst i2 als ERSTER Stein  -> `a+1`  (2. Rasterachse, nicht das aeussere Randfeld).
+ *   [V-11] sonst i2 als LETZTER Stein -> `a`    (2. Rasterachse von rechts, s. o.).
  *   [V-11] i2 im Inneren -> KEINE Grundachse. Ein i2 hat keine Rastermitte (zwei Zellen);
  *          es wird keine erfunden — die Abdeckung uebernimmt danach [V-2].
  *
- * Ist ein einzelner i2 zugleich erster UND letzter Stein, gilt die Anfangsregel: genau EINE
- * Grundachse auf der 2. Rasterachse. Ohne diesen Vorrang stuenden `a+1` und `a` gegeneinander
- * (bei N=2 also 1 gegen 0), und die kuerzeste Wand haette zwei Achsen statt einer.
+ * Ist ein einzelner i2 zugleich erster UND letzter Kopfstein, ohne dass die Wand ein i2-Stapel
+ * ist, gilt die Anfangsregel: genau EINE Grundachse auf der 2. Rasterachse.
  */
-function grundachsen(steine, N) {
+function grundachsen(steine, N, stapel = 0) {
   const klemm = (k) => Math.max(0, Math.min(N - 1, k));
   const out = new Set();
   for (let i = 0; i < steine.length; i++) {
     const [a, b] = steine[i];
     if (b - a === 3) { out.add(klemm(a + 1)); continue; }
     if (b - a !== 2) continue;
+    if (stapel === 2) { out.add(klemm(a)); out.add(klemm(a + 1)); continue; }
     if (i === 0) out.add(klemm(a + 1));
     else if (i === steine.length - 1) out.add(klemm(a));
   }
@@ -1605,19 +1650,19 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     prev = joints;
   }
 
-  // `occ`, `steinIvVoll` und `wunschVoll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
+  // `occ`, `steinIvVoll` und `kopfVoll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
   const occ = []; for (let r = 0; r < L; r++) occ.push(new Array(N).fill(false));
   const steinIvVoll = [];
-  // [V-3]/[V-11] Der Verband der UNTERSTEN Lage traegt die Grundachsen — VOR dem Aussparen!
-  const lage0Voll = [];
   for (const c of courses) for (const st of c.stones) {
     const a = st.x0 / GRID, b = st.x1 / GRID;
     for (let cc = a; cc < b; cc++) occ[c.lage][cc] = true;
     steinIvVoll.push([a, b]);
-    if (c.lage === 0) lage0Voll.push([a, b]);
   }
-  // Erster/letzter Stein der untersten Lage muessen eindeutig sein ([V-11]).
-  lage0Voll.sort((p, q) => p[0] - q[0]);
+  // [V-3]/[V-11]/[V-12] Die KOPFSTEINE (oberste Lage bzw. lokale Oberkante) tragen die
+  // Grundachsen — VOR dem Aussparen! Aufsteigend sortiert: erster/letzter Kopfstein ([V-11]).
+  const kopfVoll = kopfsteine(courses, occ, L);
+  // [V-11] i2-Stapel (beide Kammern) bzw. i3-Stapel (eine Achse mittig) — am Vollverband.
+  const stapel = stapelBreite(steinIvVoll, N);
 
   // ---- Zweiter Durchgang: Aussparung fuer Verzahnungsbereiche ([G-10]) ----
   // Bei gültigen Verzahnungsbereichen wird das Tiling DETERMINISTISCH NEU GERECHNET: die
@@ -1629,7 +1674,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     // [G-5] Der REALE Verband wird LAGENUEBERGREIFEND neu gelegt — auch die nicht ausgesparten
     // Lagen. Sonst blieben sie aus dem Vollverband stehen und ihre Fugen fluchteten mit der
     // darunter neu gelegten, verkuerzten Lage (#143).
-    // [G-11] bleibt unberuehrt: `occ`, `steinIvVoll` und `lage0Voll` stehen oben bereits aus dem
+    // [G-11] bleibt unberuehrt: `occ`, `steinIvVoll` und `kopfVoll` stehen oben bereits aus dem
     // VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
     let prevIl = new Set();
     for (let li = 0; li < L; li++) {
@@ -1719,18 +1764,26 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   }
 
   // ---- Spannachsen ----------------------------------------------------------------
-  // Hierarchie: [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11] Grundachsen aus dem
-  // Verband der untersten Lage > [V-2] Steinabdeckung (MUSS, additiv) > [V-7]/[V-8] Zusatzachsen
-  // an Stufen-/Oeffnungskanten > [V-4] Maximalabstand als OBERGRENZE.
+  // Hierarchie (Fassung 29.10.2026): [V-1] Kammerraster > [V-9] manuelle Achsen > [V-3]/[V-11]
+  // Grundachsen aus den KOPFSTEINEN (oberste Lage) > [V-2] Steinabdeckung (MUSS, additiv) >
+  // [V-7]/[V-8] Zusatzachsen an Stufen-/Oeffnungskanten > [V-4] Maximalabstand als OBERGRENZE >
+  // [V-12] Symmetrie der i3-Kopfsteine (MUSS, schliesst ab).
   //
-  // [V-3] ist seit Issue #104 eine GRUNDACHSE und keine blosse Wunschposition mehr: die Mitte
-  // jedes i3 der untersten Lage wird gesetzt, auch wenn der Stein ohnehin schon gehalten waere.
-  // [V-11] ergaenzt die Randlage aus demselben Verband. [V-5] (Startachse) ist damit ABGELOEST.
+  // [V-3] ist eine GRUNDACHSE: die Mitte jedes i3-Kopfsteins wird gesetzt, auch wenn der Stein
+  // ohnehin schon gehalten waere. Bezugslage ist seit 29.10.2026 (Miro R01, SA 2) die OBERSTE
+  // statt der untersten Lage. [V-11] ergaenzt die Randlage aus demselben Verband und spannt den
+  // i2-Stapel in beiden Kammern. [V-5] (Startachse) ist ABGELOEST.
   //
-  // [V-4] ist bewusst die LETZTE Stufe und nicht mehr die Verteilungsregel: die Steinabdeckung
-  // [V-2] impliziert den Abstand NICHT (nachweisbar entstehen sonst Luecken bis 5 Raster =
-  // 625 mm, obwohl jeder Stein gehalten ist), und umgekehrt beweist ein eingehaltenes
-  // Maximalraster die Abdeckung nicht. Beide Regeln sind unabhaengig und beide gelten.
+  // [V-4] ist bewusst nicht die Verteilungsregel: die Steinabdeckung [V-2] impliziert den Abstand
+  // NICHT (nachweisbar entstehen sonst Luecken bis 5 Raster = 625 mm, obwohl jeder Stein gehalten
+  // ist), und umgekehrt beweist ein eingehaltenes Maximalraster die Abdeckung nicht. Beide Regeln
+  // sind unabhaengig und beide gelten.
+  //
+  // [V-12] (SA 2/KKI 2) haelt jeden i3-Kopfstein SYMMETRISCH: entweder nur mittig (Feld 2) oder in
+  // Feld 1 UND Feld 3. Die Mitte wird dabei nur entfernt, wenn sie keine Zusatzachse [V-7]/[V-8]
+  // ist und [V-4] mindestens 2 Raster erlaubt. Das verletzt weder [V-2] (jeder Stein, der die Mitte
+  // enthaelt, enthaelt auch Feld 1 oder Feld 3 — kein Stein ist schmaler als 2 Raster) noch [V-4]
+  // (der Abstand Feld 1 -> Feld 3 ist 2, die Abstaende nach aussen werden nur kleiner).
   // [G-11] Steinabdeckung basiert auf dem VOLLSTAENDIGEN Verband (steinIvVoll, vor dem Aussparen).
   // Deterministische Reihenfolge fuer den Stabbing-Greedy: nach rechtem, dann linkem Rand.
   steinIvVoll.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
@@ -1740,32 +1793,45 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   let colArr;
   if (PS.columns_grid) {
     // [V-9] Sonderkonstruktion: exakt die manuell gesetzten Achsen verwenden. Sie werden NICHT
-    // ergaenzt (auch nicht um [V-2]/[V-4]) — der Anwender uebernimmt die Verteilung ganz.
+    // ergaenzt (auch nicht um [V-2]/[V-4]/[V-12]) — der Anwender uebernimmt die Verteilung ganz.
     // Verletzungen der Muss-Regel [V-2] werden unten sichtbar gemeldet.
     colArr = PS.columns_grid.filter(k => k >= 0 && k < N).sort((a, b) => a - b);
   } else {
-    // [V-3]/[V-11] Grundachsen: allein aus dem Verband der untersten Lage (vollstaendiger
-    // Verband, [G-11]). Mitte jedes i3; bei einem i2 am Wandanfang die 2. Rasterachse, bei
-    // einem i2 am Wandende die 2. Rasterachse von rechts.
+    // [V-3]/[V-11] Grundachsen: allein aus den Kopfsteinen (vollstaendiger Verband, [G-11]).
+    // Mitte jedes i3; bei einem i2 am Wandanfang die 2. Rasterachse, bei einem i2 am Wandende
+    // die 2. Rasterachse von rechts; im i2-Stapel beide Kammern.
     //
-    // [V-5] ist damit abgeloest: `PS.start_axis_grid` wird hier NICHT mehr gelesen. Das Feld
-    // bleibt im Datenmodell erhalten (normPrestress fuehrt es unveraendert weiter), damit
-    // gespeicherte Projekte lesbar bleiben — es ist unwirksamer Altbestand.
-    // Ebenfalls entfallen ist die frueher UNBEDINGTE Endachse N-1: sie lag im aeusseren
-    // Randfeld. Beide Wandenden landen jetzt auf 1 bzw. N-2 — bei i3 als Steinmitte, bei i2
-    // ueber [V-11]; die Randlage folgt also durchgehend dem Verband.
-    const colSet = grundachsen(lage0Voll, N);
+    // [V-5] ist abgeloest: `PS.start_axis_grid` wird hier NICHT gelesen. Das Feld bleibt im
+    // Datenmodell erhalten (normPrestress fuehrt es unveraendert weiter), damit gespeicherte
+    // Projekte lesbar bleiben — es ist unwirksamer Altbestand.
+    const colSet = grundachsen(kopfVoll, N, stapel);
+    // Zusatzachsen [V-7]/[V-8] sind GESCHUETZT: [V-12] entfernt nie eine von ihnen.
+    const schutz = new Set();
     // [V-8] Oeffnungen: beidseitig eine Achse (die Steine daneben tragen den Sturz ab).
-    for (const op of openings) { if (op.g0 - 1 >= 0) colSet.add(op.g0 - 1); if (op.g1 <= N - 1) colSet.add(op.g1); }
+    for (const op of openings) { if (op.g0 - 1 >= 0) schutz.add(op.g0 - 1); if (op.g1 <= N - 1) schutz.add(op.g1); }
     // [V-7] Stufenkanten: an jeder Höhenstufe ein Strang beidseitig der Kante.
-    for (let k = 0; k < N - 1; k++) { if (topLage[k] !== topLage[k + 1]) { colSet.add(k); colSet.add(k + 1); } }
+    for (let k = 0; k < N - 1; k++) { if (topLage[k] !== topLage[k + 1]) { schutz.add(k); schutz.add(k + 1); } }
+    for (const k of schutz) colSet.add(k);
+    // [V-12] Zelle -> Anfang des i3-Kopfsteins, der sie enthaelt (-1: kein i3-Kopfstein).
+    const kopfI3 = new Array(N).fill(-1);
+    for (const [a, b] of kopfVoll) if (b - a === 3) for (let k = a; k < b; k++) kopfI3[k] = a;
     // [V-2] MUSS: jeder Stein jeder Lage wird von mindestens einer Achse durchgangen.
-    // Stabbing-Greedy ueber alle Steine; gesetzt wird die RECHTESTE Zelle des Steins, weil sie
-    // die meisten folgenden Steine miterschlaegt (minimale Achsenzahl). Rein additiv — die
-    // Grundachsen aus [V-3]/[V-11] werden dabei nie verschoben oder ersetzt.
+    // Stabbing-Greedy ueber alle Steine. Gesetzt wird die RECHTESTE Zelle des Steins, die in
+    // KEINEM i3-Kopfstein liegt (sie laesst die i3 der obersten Lage mittig, [V-12] „bevorzugt
+    // in der Mitte"). Liegen alle Zellen in i3-Kopfsteinen, wird der Kopfstein, der dem WANDENDE
+    // am naechsten liegt (Gleichstand: der linke), in Feld 1 UND Feld 3 gespannt — KKI 2 „im
+    // ersten i3 doppelt in Feld 1 und Feld 3". Rein additiv; die Mitte raeumt erst [V-12] ab.
     for (const [a, b] of steinIvVoll) {
       if (gehalten(colSet, a, b)) continue;
-      colSet.add(b - 1);
+      let frei = -1;
+      for (let k = b - 1; k >= a; k--) if (kopfI3[k] < 0) { frei = k; break; }
+      if (frei >= 0) { colSet.add(frei); continue; }
+      let ziel = -1, zielD = Infinity;
+      for (let k = a; k < b; k++) {
+        const s0 = kopfI3[k], d = Math.min(s0, N - (s0 + 3));
+        if (d < zielD || (d === zielD && s0 < ziel)) { zielD = d; ziel = s0; }
+      }
+      colSet.add(ziel); colSet.add(ziel + 2);
     }
     // [V-4] Obergrenze: verbleibende Luecken > max_span_grid balanciert auffuellen (rein additiv,
     // die Abdeckung aus [V-2] bleibt dabei zwingend erhalten).
@@ -1773,6 +1839,16 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     const fin = new Set(roh);
     for (let i = 0; i + 1 < roh.length; i++) {
       if (roh[i + 1] - roh[i] > maxSpan) for (const c of balancedFill(roh[i], roh[i + 1], maxSpan)) fin.add(c);
+    }
+    // [V-12] MUSS: jeder i3-Kopfstein symmetrisch — nur mittig, oder Feld 1 UND Feld 3. Traegt
+    // er eine Achse in Feld 1 oder Feld 3, wird die Gegenseite ergaenzt und die Mitte entfernt,
+    // sofern sie nicht geschuetzt ist und [V-4] mindestens 2 Raster erlaubt (sonst bleiben alle
+    // drei Felder belegt — auch das ist symmetrisch).
+    for (const [a, b] of kopfVoll) {
+      if (b - a !== 3) continue;
+      if (!fin.has(a) && !fin.has(a + 2)) continue;
+      fin.add(a); fin.add(a + 2);
+      if (fin.has(a + 1) && !schutz.has(a + 1) && maxSpan >= 2) fin.delete(a + 1);
     }
     colArr = [...fin].filter(k => k >= 0 && k < N).sort((a, b) => a - b);
   }

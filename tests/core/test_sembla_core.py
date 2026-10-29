@@ -102,17 +102,15 @@ class ChamberLattice(unittest.TestCase):
 
 class TensionRules(unittest.TestCase):
     def test_both_ends_have_columns(self):
-        # [V-3]/[V-11] (#104): beide Wandenden liegen auf der ZWEITEN Rasterachse — links 1,
-        # rechts N-2 — und nie im aeusseren Randfeld (0 bzw. N-1). Bei einem i3 folgt das aus
-        # der Steinmitte, bei einem i2 aus [V-11]; die frueher unbedingte Endachse N-1 ist weg.
+        # [V-3]/[V-11]/[V-12] (29.10.2026): jedes Wandende ist spaetestens in Feld 3 gespannt —
+        # als Steinmitte (Achse 1 bzw. N-2), ueber [V-11] am i2-Rand oder nach KKI 2 in Feld 1
+        # UND Feld 3 des ersten/letzten i3 (dann liegt eine Achse im aeusseren Randfeld).
         for key in REFERENCE_WALLS:
             w = build_reference(key)
-            ks = {c["k"] for c in w["tension_columns"]}
+            ks = sorted(c["k"] for c in w["tension_columns"])
             with self.subTest(wall=key):
-                self.assertIn(1, ks)
-                self.assertIn(w["N_grid"] - 2, ks)
-                self.assertNotIn(0, ks)
-                self.assertNotIn(w["N_grid"] - 1, ks)
+                self.assertLessEqual(ks[0], 2)
+                self.assertGreaterEqual(ks[-1], w["N_grid"] - 3)
 
     def test_columns_beside_openings(self):
         w = build_reference("ref2_wand_tuer")
@@ -121,73 +119,118 @@ class TensionRules(unittest.TestCase):
         self.assertIn(op["g0"] - 1, ks)   # links der Tuer
         self.assertIn(op["g1"], ks)       # rechts der Tuer
 
-    # ---- [V-3]/[V-11] Grundachsen aus dem Verband der untersten Lage (Issue #104) ----
-    # Die vier geforderten Randverbaende getrennt. N=16 (2,00 m) ist bewusst NICHT glatt durch
-    # den Strangabstand teilbar. Die Achslisten sind eingefroren, weil genau ihre Lage die
-    # Fachregel ist — nicht nur ihre Anzahl.
+    # ---- [V-3]/[V-11]/[V-12] Grundachsen aus den KOPFSTEINEN (Fassung 29.10.2026) ----
+    # Miro R01 (Felix Bauroth, 28./29.10.2026): SA 2 (i3 der OBERSTEN Lage symmetrisch, bevorzugt
+    # mittig, sonst Feld 1 und 3), KKI 2 (im ersten i3 doppelt in Feld 1 und 3), SA 3a (i2-Stapel
+    # mit 2 Achsen, #122), SA 3b/KKI 5 (i3-Stapel eine Achse mittig). Die Achslisten sind
+    # eingefroren, weil genau ihre Lage die Fachregel ist — nicht nur ihre Anzahl.
     @staticmethod
-    def _ks(L=2000, H=2600, openings=(), **ps):
+    def _ks(L=2000, H=2600, openings=(), steps=None, ausgleich=False, **ps):
         return [c["k"] for c in
-                build_wall("gr", L, H, list(openings), prestress=ps)["tension_columns"]]
+                build_wall("gr", L, H, list(openings), prestress=ps, steps=steps,
+                           ausgleichslage_aktiv=ausgleich)["tension_columns"]]
 
     @staticmethod
-    def _lage0(L, H=2600, openings=()):
-        w = build_wall("gr", L, H, list(openings))
-        return [(st["x1"] - st["x0"]) // GRID for st in w["courses"][0]["stones"]]
+    def _oben(L, H=2600, openings=(), ausgleich=False):
+        w = build_wall("gr", L, H, list(openings), ausgleichslage_aktiv=ausgleich)
+        return [(st["x1"] - st["x0"]) // GRID for st in w["courses"][-1]["stones"]]
 
-    def test_v3_i3_an_beiden_raendern(self):
-        # Unterste Lage [i3, i3]: beide Grundachsen sind Steinmitten (1 und N-2 = 4).
-        self.assertEqual(self._lage0(6 * GRID), [3, 3])
-        ks = self._ks(6 * GRID, max_span_grid=3)
-        self.assertEqual(ks, [1, 3, 4])
-        self.assertNotIn(0, ks)
-        self.assertNotIn(5, ks)
+    def test_kki2_skizze_erster_i3_in_feld_1_und_3(self):
+        # Die Skizze zu KKI 2 (Miro): 3,75 m x 3,00 m, oberste Lage zehn i3, die Laeuferlagen
+        # [i2, i2, i3 ..., i2]. Die Mitte des ersten i3 (Achse 1) haelt den zweiten i2 [2,4)
+        # nicht; statt einer unsymmetrischen Zusatzachse 3 wird der erste i3 in Feld 1 (0) und
+        # Feld 3 (2) gespannt, die Mitte entfaellt. Alle uebrigen i3 bleiben mittig.
+        self.assertEqual(self._oben(3750, 3000), [3] * 10)
+        self.assertEqual(self._ks(3750, 3000, max_span_grid=3),
+                         [0, 2, 4, 7, 10, 13, 16, 19, 22, 25, 28])
 
-    def test_v11_i2_nur_am_anfang(self):
-        # Unterste Lage [i2, i3]: links [V-11] -> 1, rechts [V-3] Steinmitte -> 3 = N-2.
-        self.assertEqual(self._lage0(5 * GRID), [2, 3])
-        ks = self._ks(5 * GRID, max_span_grid=3)
-        self.assertEqual(ks, [1, 3])
-        self.assertNotIn(0, ks)
-        self.assertNotIn(4, ks)
+    def test_kki2_spiegelbildlich_am_wandende(self):
+        # 2,00 m x 2,60 m: oberste Lage [i2, i2, i3, i3, i3, i3]. Rechts haelt die Mitte 14 des
+        # letzten i3 den i2 [12,14) der Laeuferlage nicht -> letzter i3 in Feld 1 und 3 (13, 15).
+        # Links liegt [2,4) unter einem i2-Kopfstein: dort genuegt eine Achse (3), kein i3 wird
+        # angefasst.
+        self.assertEqual(self._oben(2000, 2600), [2, 2, 3, 3, 3, 3])
+        self.assertEqual(self._ks(2000, 2600, max_span_grid=3), [1, 3, 5, 8, 11, 13, 15])
 
-    def test_v11_i2_nur_am_ende(self):
-        # Unterste Lage [i3, i2] (Tuer bis zum Boden erzwingt den i2-Abschluss rechts):
-        # links [V-3] Steinmitte -> 1, rechts [V-11] -> 7 = N-2.
-        op = [Opening(3, 7, 0, 8, "tuer")]
-        self.assertEqual(self._lage0(9 * GRID, openings=op), [3, 2])
-        ks = self._ks(9 * GRID, openings=op, max_span_grid=3)
-        self.assertIn(1, ks)
-        self.assertIn(7, ks)          # N-2, nicht das Randfeld
-        self.assertNotIn(0, ks)
-        self.assertNotIn(8, ks)       # N-1 ist keine Achse mehr
-        self.assertEqual(ks, [1, 2, 5, 7])
+    def test_v3_bezugslage_ist_die_oberste_lage(self):
+        # Gleiche unterste Lage wie bei 2,60 m, aber 12 statt 13 Lagen: die OBERSTE Lage ist jetzt
+        # [i3, i3, i3, i3, i2, i2] — und sie bestimmt die Grundachsen, nicht die unterste.
+        self.assertEqual(self._oben(2000, 2400), [3, 3, 3, 3, 2, 2])
+        ks = self._ks(2000, 2400, max_span_grid=3)
+        self.assertEqual(ks, [0, 2, 4, 7, 10, 13, 14])
+        for m in (4, 7, 10):
+            self.assertIn(m, ks)                 # i3-Mitten der obersten Lage
 
-    def test_v11_i2_an_beiden_raendern(self):
-        # Unterste Lage [i2, i2]: links [V-11] -> 1, rechts [V-11] -> 2 = N-2.
-        self.assertEqual(self._lage0(4 * GRID), [2, 2])
-        ks = self._ks(4 * GRID, max_span_grid=3)
-        self.assertEqual(ks, [1, 2])
-        self.assertNotIn(0, ks)
-        self.assertNotIn(3, ks)
+    def test_v3_ausgleichslage_ist_die_oberste_lage(self):
+        # Entscheid 29.10.2026: die Ausgleichslage ([G-13]) ist die oberste gebaute Lage unter dem
+        # oberen Anschluss und damit Bezugslage. 2,50 m mit Ausgleichslage hat 13 Lagen wie 2,60 m
+        # — dieselbe oberste Lage, dieselben Achsen; ohne sie (2,40 m) ist es die 12. Lage.
+        self.assertEqual(self._oben(2000, 2500, ausgleich=True), self._oben(2000, 2600))
+        self.assertEqual(self._ks(2000, 2500, ausgleich=True, max_span_grid=3),
+                         self._ks(2000, 2600, max_span_grid=3))
 
-    def test_v11_einzelner_i2_genau_eine_achse(self):
-        # Kuerzestmoegliche Wand: der einzige i2 ist erster UND letzter Stein. Dann gilt die
-        # Anfangsregel — genau EINE Grundachse auf der 2. Rasterachse, nicht zwei.
-        self.assertEqual(self._lage0(2 * GRID), [2])
-        self.assertEqual(self._ks(2 * GRID, max_span_grid=3), [1])
+    def test_v11_i2_stapel_beide_kammern(self):
+        # SA 3a / #122: eine Wand nur aus i2, direkt ohne Versatz uebereinander, wird in BEIDEN
+        # Kammern gespannt — vorher genau eine Achse.
+        self.assertEqual(self._oben(2 * GRID), [2])
+        self.assertEqual(self._ks(2 * GRID, max_span_grid=3), [0, 1])
+
+    def test_v3_i3_stapel_eine_achse_mittig(self):
+        # SA 3b / KKI 5: der i3-Stapel bleibt bei EINER Achse in Feld 2.
+        self.assertEqual(self._oben(3 * GRID), [3])
+        self.assertEqual(self._ks(3 * GRID, max_span_grid=3), [1])
+
+    def test_v11_i2_am_anfang_der_obersten_lage(self):
+        # Oberste Lage [i2, i3]: links [V-11] -> 1, rechts [V-3] Steinmitte -> 3.
+        self.assertEqual(self._oben(5 * GRID), [2, 3])
+        self.assertEqual(self._ks(5 * GRID, max_span_grid=3), [1, 3])
 
     def test_v11_innerer_i2_erzeugt_keine_grundachse(self):
-        # [N3] Ein i2 im Inneren hat keine Rastermitte — es wird keine erfunden. Die Lage
-        # [i3, i3, i2, i2] traegt Grundachsen nur auf 1, 4 (Steinmitten) und 12 (= N-2).
-        op = [Opening(6, 10, 0, 8, "tuer")]
-        self.assertEqual(self._lage0(14 * GRID, openings=op), [3, 3, 2, 2])
-        ks = self._ks(14 * GRID, openings=op, max_span_grid=3)
-        for k in (1, 4, 12):
-            self.assertIn(k, ks)
-        self.assertNotIn(0, ks)
-        self.assertNotIn(13, ks)
-        self.assertEqual(ks, [1, 3, 4, 5, 8, 10, 12])
+        # Ein i2 im Inneren der obersten Lage hat keine Rastermitte — es wird keine erfunden.
+        # Muss [V-2] unter ihm eine Achse setzen, liegt sie dort (3) und kein i3 wird angefasst.
+        self.assertEqual(self._oben(2000, 2400)[4:], [2, 2])
+        ks = self._ks(2000, 2400, max_span_grid=3)
+        self.assertIn(14, ks)                    # letzter i2 -> 2. Rasterachse von rechts
+        self.assertIn(13, ks)                    # [V-2] im inneren i2-Kopfstein [12,14)
+        self.assertNotIn(12, ks)
+
+    def test_v12_symmetrie_der_obersten_i3(self):
+        # [V-12] MUSS: jeder i3 der obersten Lage traegt seine Achsen symmetrisch — nur mittig,
+        # Feld 1 und 3, oder alle drei Felder. [V-2] und [V-4] bleiben dabei erfuellt.
+        for N in range(2, 41):
+            for H in (2200, 2400, 2600):
+                for sp in (1, 2, 3):
+                    w = build_wall("sym", N * GRID, H, [], prestress={"max_span_grid": sp})
+                    ks = {c["k"] for c in w["tension_columns"]}
+                    with self.subTest(N=N, H=H, sp=sp):
+                        self.assertEqual(w["validation"]["ungehaltene_steine"], [])
+                        self.assertTrue(w["validation"]["tension_span_ok"])
+                        for st in w["courses"][-1]["stones"]:
+                            a = st["x0"] // GRID
+                            if (st["x1"] - st["x0"]) // GRID != 3:
+                                continue
+                            self.assertEqual(a in ks, a + 2 in ks, f"i3 [{a},{a + 3})")
+                            self.assertTrue(a + 1 in ks or a in ks, f"i3 [{a},{a + 3}) frei")
+
+    def test_v12_mitte_nur_wenn_max_span_es_erlaubt(self):
+        # Bei [V-4] = 2 Raster genuegt Feld 1 + Feld 3 (Abstand 2); bei 1 Raster bleiben alle drei
+        # Felder belegt — auch das ist symmetrisch.
+        self.assertEqual(self._ks(2000, 2600, max_span_grid=2), [1, 3, 4, 6, 8, 10, 12, 13, 15])
+        self.assertEqual(self._ks(2000, 2600, max_span_grid=1), list(range(1, 16)))
+
+    def test_v12_zusatzachse_an_oeffnung_bleibt(self):
+        # [V-8] Tuer [5,11): Achse 4 links liegt in Feld 1 des i3-Kopfsteins [4,7) -> Gegenseite 6,
+        # die Mitte 5 entfaellt. Achse 11 rechts ist Mitte von [10,13) und bleibt einzeln.
+        op = [Opening(5, 11, 0, 10, "tuer")]
+        self.assertEqual(self._ks(2000, 2600, openings=op, max_span_grid=3),
+                         [1, 3, 4, 6, 8, 11, 13, 15])
+
+    def test_v12_staffelung_lokale_oberkante(self):
+        # Rechts gestaffelt (8 Lagen): die Kopfsteine dort liegen in der 8. Lage. Die
+        # Stufenkantenachsen [V-7] 11/12 sind geschuetzt und werden symmetrisch ergaenzt.
+        steps = [{"x0_mm": 1500, "x1_mm": 3000, "height_mm": 1600}]
+        self.assertEqual(self._ks(3000, 2600, steps=steps, max_span_grid=3),
+                         [0, 2, 4, 7, 9, 11, 12, 14, 17, 20, 22])
 
     # ---- [V-5] abgeloest: die gespeicherte Startachse wirkt nicht mehr (M5) ----
     def test_v5_startachse_ohne_wirkung(self):
@@ -204,7 +247,7 @@ class TensionRules(unittest.TestCase):
         ohne = build_wall("ohne", 2000, 2600, [], prestress={"max_span_grid": 3})
         mit = build_wall("mit", 2000, 2600, [], prestress={"max_span_grid": 3, "start_axis_grid": 1})
         self.assertEqual(ohne["tension_columns"], mit["tension_columns"])
-        self.assertEqual([c["k"] for c in ohne["tension_columns"]], [1, 3, 5, 8, 11, 13, 14])
+        self.assertEqual([c["k"] for c in ohne["tension_columns"]], [1, 3, 5, 8, 11, 13, 15])
 
     # ---- [V-2] MUSS: jeder Stein wird von mindestens einer Spannachse durchgangen ----
     @staticmethod
@@ -247,26 +290,26 @@ class TensionRules(unittest.TestCase):
             self.assertIn(e["typ"], ("i2", "i3"))
             self.assertIn("lage", e); self.assertIn("start_grid", e); self.assertIn("breite_grid", e)
 
-    # ---- [V-3] MUSS (#104): JEDE i3-Mitte der untersten Lage ist eine Grundachse ----
-    def test_v3_achsen_mittig_in_i3_der_untersten_lage(self):
-        # Frueher eine Soll-Regel ("deutliche Mehrheit"), seit #104 vollstaendig: es gibt keine
-        # Start-/Endachse mehr, die eine Steinmitte verdraengen koennte.
+    # ---- [V-3] MUSS: JEDE i3-Mitte der OBERSTEN Lage ist Grundachse — oder Feld 1+3 ([V-12]) ----
+    def test_v3_achsen_mittig_in_i3_der_obersten_lage(self):
         for L in (2000, 5000):
             w = build_wall("v3", L, 2600, [], prestress={"max_span_grid": 3})
             ks = {c["k"] for c in w["tension_columns"]}
-            mitten = {st["x0"] // GRID + 1 for st in w["courses"][0]["stones"]
-                      if (st["x1"] - st["x0"]) // GRID == 3}
-            self.assertTrue(mitten, f"Testwand L={L} enthaelt keinen i3 in der untersten Lage")
-            self.assertEqual(mitten - ks, set(), f"L={L}")
+            i3 = [st["x0"] // GRID for st in w["courses"][-1]["stones"]
+                  if (st["x1"] - st["x0"]) // GRID == 3]
+            self.assertTrue(i3, f"Testwand L={L} enthaelt keinen i3 in der obersten Lage")
+            for a in i3:
+                self.assertTrue(a + 1 in ks or {a, a + 2} <= ks, f"L={L}: i3 [{a},{a + 3})")
 
     def test_v3_gilt_auch_fuer_die_referenzwaende(self):
         for key in REFERENCE_WALLS:
             w = build_reference(key)
             ks = {c["k"] for c in w["tension_columns"]}
-            mitten = {st["x0"] // GRID + 1 for st in w["courses"][0]["stones"]
-                      if (st["x1"] - st["x0"]) // GRID == 3}
             with self.subTest(wall=key):
-                self.assertEqual(mitten - ks, set())
+                for st in w["courses"][-1]["stones"]:
+                    a = st["x0"] // GRID
+                    if (st["x1"] - st["x0"]) // GRID == 3:
+                        self.assertTrue(a + 1 in ks or {a, a + 2} <= ks, f"i3 [{a},{a + 3})")
 
     def test_v3_erzwingt_keine_achse_im_i2(self):
         # i2 hat keine Rastermitte -> es darf keine Wunschposition erfunden werden.
@@ -276,14 +319,13 @@ class TensionRules(unittest.TestCase):
         self.assertTrue(all(0 <= k < 16 for k in ks))
 
     def test_zusatzachsen_additiv_und_manuelle_haben_vorrang(self):
-        # [M6] Oeffnungskanten ([V-8]) ergaenzen die Grundachsen weiterhin additiv; das aeussere
-        # Randfeld bleibt dabei frei (weder 0 noch N-1).
+        # [M6] Oeffnungskanten ([V-8]) ergaenzen die Grundachsen weiterhin additiv.
         op = [Opening(5, 11, 0, 10, "tuer")]
         ks = {c["k"] for c in build_wall("sa", 2000, 2600, op,
                                          prestress={"max_span_grid": 3})["tension_columns"]}
         self.assertIn(4, ks); self.assertIn(11, ks)      # Oeffnungskanten additiv
-        self.assertNotIn(0, ks); self.assertNotIn(15, ks)
-        self.assertIn(14, ks)                            # N-2 traegt das rechte Wandende
+        self.assertIn(15, ks); self.assertIn(13, ks)     # letzter i3 in Feld 1 und 3 (KKI 2)
+        self.assertNotIn(14, ks)
         # [N1]/[V-9] Manuelle Achsen werden weder ergaenzt noch verschoben — auch nicht um die
         # neuen Grundachsen. Eine gespeicherte Startachse aendert daran nichts.
         m = build_wall("sa", 2000, 2600, [], prestress={"max_span_grid": 3, "start_axis_grid": 1,
@@ -995,12 +1037,16 @@ class TestLagenkanten(unittest.TestCase):
     # genau diesem Stand; sie decken auch Faelle ab, die die goldenen Fixtures nicht tragen
     # (Staffelung, Zuschnitt aus mehreren Standardlaengen). Die neuen Lagenkantenfelder stehen
     # bewusst NICHT im Digest — geprueft wird die Strukturgleichheit, nicht die Zusatzangabe.
+    # Fortgeschrieben am 29.10.2026 fuer [V-3]/[V-11]/[V-12] (Miro R01): die Spannachsen und alles,
+    # was aus ihnen folgt (Segmente, Mengen, Ausgleichs-/Deckenanschlusspunkte), haben sich
+    # GEWOLLT geaendert. Dass der Verband dabei unberuehrt blieb, haelt VERBAND_VOR_V12 fest —
+    # dessen Hashes stammen unveraendert aus dem Stand davor.
     STRUKTUR_VOR_136 = {
-        "ref1_glatte_wand": "713ac098903a19c7a1ffef2084b10df2f4f095a4cfa1e6d0410089e5e31f8870",
-        "ref2_wand_tuer": "80a9808f1aa5563a946944f8f5d4478ebd3a1e68ac10ffa5ba41484c47f4852e",
-        "ref3_wand_fenster": "42e1c346a9bcadc96f1c00dc99de2f596a9ab38659beadd1cd5e24548ba7ad68",
-        "staffel": "f0496b283ada1a52e2f52ce58036d11e19eccb597f180ebd0d664e51b4419bc1",
-        "zuschnitt": "50c79ae882346edfc2698d0dce87cc1e08b23f9b9d1747f086f6c4c1cfca179c",
+        "ref1_glatte_wand": "150ebbdca713ef5306a9feafbedf42b147c1217cc433bfe78d1eae2b10f340ed",
+        "ref2_wand_tuer": "d572a3255f3dfe6c16568d7680a6cbe828e191af92b4a080c25adb8b3d2cd52e",
+        "ref3_wand_fenster": "79cf4101c90e6a0f774526c5f92347afe5eda7e8791b8ab8bf2932ad18fb069b",
+        "staffel": "b53ff403291129cfcae8fb558fae9fe6bedc390a7cd5e08eeb107b864fc87667",
+        "zuschnitt": "7af6dc01c397e0721a70001f7c6e31547973e89640647a7e6fbdde90e6d6014b",
     }
 
     @staticmethod
@@ -1044,6 +1090,22 @@ class TestLagenkanten(unittest.TestCase):
             "deckenanschlusspunkte": w["deckenanschlusspunkte"],
             "validation": w["validation"],
         }
+
+    VERBAND_VOR_V12 = {
+        "ref1_glatte_wand": "f7f818575d39fcfb",
+        "ref2_wand_tuer": "7c7aa74be8c4f4e3",
+        "ref3_wand_fenster": "141f178e1a5869bd",
+        "staffel": "ab37f21abb59f611",
+        "zuschnitt": "7c7aa74be8c4f4e3",
+    }
+
+    def test_achsregel_v12_laesst_den_verband_unberuehrt(self):
+        for key, w in self._vergleichswaende().items():
+            with self.subTest(wand=key):
+                roh = json.dumps(self._struktur_digest(w)["courses"], sort_keys=True,
+                                 separators=(",", ":"))
+                self.assertEqual(hashlib.sha256(roh.encode()).hexdigest()[:16],
+                                 self.VERBAND_VOR_V12[key])
 
     def test_referenzwaende_strukturidentisch_zum_stand_vor_dem_umbau(self):
         for key, w in self._vergleichswaende().items():

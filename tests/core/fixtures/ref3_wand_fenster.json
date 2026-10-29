@@ -102,7 +102,7 @@
       "art": "blechstoss"
     },
     {
-      "x_mm": 1562,
+      "x_mm": 1542.5,
       "art": "auffuellung"
     },
     {
@@ -122,8 +122,8 @@
       "art": "auto"
     },
     {
-      "k": 14,
-      "x_mm": 1812.5,
+      "k": 13,
+      "x_mm": 1687.5,
       "art": "auto"
     }
   ],
@@ -379,8 +379,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 11,
-      "x_mm": 1437.5,
+      "k": 12,
+      "x_mm": 1562.5,
       "durchgehend": true,
       "segments": [
         {
@@ -473,8 +473,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 14,
-      "x_mm": 1812.5,
+      "k": 15,
+      "x_mm": 1937.5,
       "durchgehend": true,
       "segments": [
         {
@@ -580,7 +580,7 @@
         "fertigmass_mm": 400
       },
       {
-        "k": 11,
+        "k": 12,
         "z0_mm": 0,
         "z1_mm": 2600,
         "grund": "kein_reststueck",
@@ -594,7 +594,7 @@
         "fertigmass_mm": 400
       },
       {
-        "k": 14,
+        "k": 15,
         "z0_mm": 0,
         "z1_mm": 2600,
         "grund": "kein_reststueck",

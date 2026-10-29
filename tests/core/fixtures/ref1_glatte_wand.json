@@ -140,8 +140,8 @@
       "spannmuttern": 1
     },
     {
-      "k": 3,
-      "x_mm": 437.5,
+      "k": 4,
+      "x_mm": 562.5,
       "durchgehend": true,
       "segments": [
         {
@@ -256,7 +256,7 @@
         "fertigmass_mm": 900
       },
       {
-        "k": 3,
+        "k": 4,
         "z0_mm": 0,
         "z1_mm": 2000,
         "grund": "kein_reststueck",

@@ -1076,20 +1076,20 @@ ok('AWG-Vorspannvorgaben unveraendert (Standardlaenge nach #103: 1050 mm)',
 ok('AWG-Staffelung (3 Stufen) unveraendert',
   wv.steps.length === 3 && wv.steps[0].height_mm === 2200 && wv.steps[1].height_mm === 1800
   && wv.steps[2].height_mm === 1400 && wv.openings.length === 0);
-// Die Spannachsen folgen seit Issue #104 dem Verband der untersten Lage ([V-3]/[V-11]) statt
-// einer waehlbaren Startachse: aus 12 Achsen des AWG-Anhangs werden 13. Die AWG-EINGABEN
+// Die Spannachsen folgen seit Issue #104 dem Verband statt einer waehlbaren Startachse, seit
+// 29.10.2026 dem der OBERSTEN Lage ([V-3]/[V-11]/[V-12], Miro R01 SA 2/KKI 2). Die AWG-EINGABEN
 // (Geometrie, Staffelung, Vorspannvorgaben) sind unveraendert — nur die abgeleitete Achsenlage
-// folgt dem neuen Regelstand. Die unterste Lage ist durchgehend i3, beide Wandenden liegen
-// deshalb auf der Steinmitte: links k=1, rechts k=22 = N-2. Das aeussere Randfeld (0 und 23)
-// ist frei — genau die Forderung aus #104.
-ok('AWG-Spannachsen nach [V-3]/[V-11] (13 Achsen, jeder Stein gehalten)',
+// folgt dem Regelstand. Die oberste Lage beginnt links mit [i3, i3]; die Mitte des ersten i3
+// haelt den i2 [2,4) der Lage darunter nicht, deshalb wird der erste i3 in Feld 1 und Feld 3
+// gespannt (k=0 und k=2, KKI 2). Rechts endet die Wand auf der Steinmitte k=22 = N-2.
+ok('AWG-Spannachsen nach [V-3]/[V-11]/[V-12] (13 Achsen, jeder Stein gehalten)',
   wv.tension_columns.map(c => c.x_mm).join(',')
-  === '187.5,437.5,562.5,937.5,1187.5,1312.5,1562.5,1687.5,2062.5,2187.5,2312.5,2437.5,2812.5'
-  && wv.tension_columns.map(c => c.k).join(',') === '1,3,4,7,9,10,12,13,16,17,18,19,22');
-ok('#104 AWG: kein Strang im aeusseren Randfeld',
+  === '62.5,312.5,562.5,937.5,1187.5,1312.5,1562.5,1687.5,1937.5,2187.5,2312.5,2562.5,2812.5'
+  && wv.tension_columns.map(c => c.k).join(',') === '0,2,4,7,9,10,12,13,15,17,18,20,22');
+ok('[V-12] AWG: erster i3 der obersten Lage in Feld 1 und 3, rechtes Ende auf N-2',
   (() => { const ks = wv.tension_columns.map(c => c.k);
-           return !ks.includes(0) && !ks.includes(wv.N_grid - 1)
-             && ks.includes(1) && ks.includes(wv.N_grid - 2); })());
+           return ks.includes(0) && ks.includes(2) && !ks.includes(1)
+             && !ks.includes(wv.N_grid - 1) && ks.includes(wv.N_grid - 2); })());
 ok('AWG-Tiling unveraendert (Kernmengen des Anhangs)',
   wv.bom.i2 === 20 && wv.bom.i3 === 70);
 // Stangenzahl und Verbindungsmuttern folgen den 13 Achsen und sind von der Standardlaenge

@@ -110,8 +110,8 @@
     ],
     "deckenanschlusspunkte": [
       {
-        "k": 1,
-        "x_mm": 187.5,
+        "k": 2,
+        "x_mm": 312.5,
         "art": "auto"
       },
       {
@@ -120,8 +120,8 @@
         "art": "auto"
       },
       {
-        "k": 19,
-        "x_mm": 2437.5,
+        "k": 18,
+        "x_mm": 2312.5,
         "art": "auto"
       },
       {
@@ -132,8 +132,8 @@
     ],
     "tension_columns": [
       {
-        "k": 1,
-        "x_mm": 187.5,
+        "k": 0,
+        "x_mm": 62.5,
         "durchgehend": true,
         "segments": [
           {
@@ -179,8 +179,8 @@
         "spannmuttern": 1
       },
       {
-        "k": 3,
-        "x_mm": 437.5,
+        "k": 2,
+        "x_mm": 312.5,
         "durchgehend": true,
         "segments": [
           {
@@ -503,8 +503,8 @@
         "spannmuttern": 1
       },
       {
-        "k": 16,
-        "x_mm": 2062.5,
+        "k": 15,
+        "x_mm": 1937.5,
         "durchgehend": true,
         "segments": [
           {
@@ -629,8 +629,8 @@
         "spannmuttern": 1
       },
       {
-        "k": 19,
-        "x_mm": 2437.5,
+        "k": 20,
+        "x_mm": 2562.5,
         "durchgehend": true,
         "segments": [
           {
@@ -738,14 +738,14 @@
       "invalid_segments": [],
       "zuschnitt_konflikte": [
         {
-          "k": 1,
+          "k": 0,
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
           "fertigmass_mm": 500
         },
         {
-          "k": 3,
+          "k": 2,
           "z0_mm": 0,
           "z1_mm": 2600,
           "grund": "kein_reststueck",
@@ -794,7 +794,7 @@
           "fertigmass_mm": 750
         },
         {
-          "k": 16,
+          "k": 15,
           "z0_mm": 0,
           "z1_mm": 1800,
           "grund": "kein_reststueck",
@@ -815,7 +815,7 @@
           "fertigmass_mm": 350
         },
         {
-          "k": 19,
+          "k": 20,
           "z0_mm": 0,
           "z1_mm": 1400,
           "grund": "kein_reststueck",

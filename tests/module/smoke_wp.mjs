@@ -1217,7 +1217,8 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
     nG-aL>3
     && JSON.stringify(WP.RESULT.wandelement.validation.deckenanschluss_rand)
       ===JSON.stringify([{ende:'rechts',grund:'fehlt_feld_2_3',k:aL,feld:nG-aL}])
-    && /Deckenanschluss \[A-26\]: rechtes Wandende: kein Anschluss in Feld 2–3 \(nächster in Feld 12\)/
+    // Das Feld folgt der letzten Achse (seit [V-12] vom 29.10.2026 k=15, also Feld 11).
+    && new RegExp('Deckenanschluss \\[A-26\\]: rechtes Wandende: kein Anschluss in Feld 2–3 \\(nächster in Feld '+(nG-aL)+'\\)')
       .test(document.getElementById('warns').textContent));
   ok('[A-26] der Hinweis nennt die Randfelder',
     /Feld 2 oder 3 \(nie Feld 1\)/.test(document.getElementById('dcHinweis').textContent));
@@ -1888,7 +1889,8 @@ setzeLaenge(2000); document.getElementById('hgt').value='2600'; WP.run();
 document.getElementById('hgt').value='2600'; WP.run();
 
 // Issue #104: Die Startachse ist ERSATZLOS zurueckgebaut. Der Rechenkern leitet die
-// Grundachsen seit a70e169 allein aus dem Verband der untersten Lage ab ([V-3]/[V-11]);
+// Grundachsen allein aus dem Verband ab — seit 29.10.2026 aus dem der OBERSTEN Lage
+// ([V-3]/[V-11]/[V-12]);
 // [V-5] ist abgeloest. Geprueft wird deshalb dreierlei: dass das Bedienelement in der
 // ECHTEN HTML-Quelle nicht mehr existiert, dass Modul 1 ohne dieses Feld unveraendert
 // rechnet, und dass ein Altbestand MIT gespeichertem Wert weiterhin ladbar und gueltig
@@ -1905,21 +1907,27 @@ ok('#104 Auswahlfeld der ersten Vorspannachse ersatzlos entfernt',
 ok('#104 Modul 1 leitet keinen Startachsenwert mehr ab (kein Schreibweg im Skript)',
    !/start_axis_grid\s*[:=]/.test(html));
 const ks0=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
-// [V-3]/[V-11]: unterste Lage [i2,i2,i3,i3,i3,i3] -> Grundachsen 1 (i2 am Anfang) und die
-// i3-Mitten 5/8/11/14; 14 = N-2 traegt das rechte Wandende. 3 und 13 ergaenzt [V-2]/[V-4].
-ok('#104 Grundachsen aus dem Verband, kein Randfeld — ohne das Bedienfeld unveraendert',
-   JSON.stringify(ks0)==='[1,3,5,8,11,13,14]');
-ok('#104 weder 1. Rasterachse noch Endachse N-1 belegt', !ks0.includes(0) && !ks0.includes(15));
+// [V-3]/[V-11]/[V-12] (Fassung 29.10.2026): oberste Lage [i2,i2,i3,i3,i3,i3] -> Grundachsen 1
+// (i2 am Anfang) und die i3-Mitten 5/8/11/14. Die Mitte 14 des letzten i3 haelt den i2 [12,14)
+// der Laeuferlage nicht -> der letzte i3 wird in Feld 1 und 3 gespannt (13, 15; KKI 2).
+// 3 ergaenzt [V-2] im i2-Kopfstein [2,4).
+ok('#104/[V-12] Grundachsen aus dem Verband der obersten Lage — ohne das Bedienfeld unveraendert',
+   JSON.stringify(ks0)==='[1,3,5,8,11,13,15]');
+ok('[V-12] letzter i3 in Feld 1 und 3, nicht 1. Rasterachse', !ks0.includes(0) && !ks0.includes(14) && ks0.includes(15));
 const x0=WP.RESULT.wandelement.prestress.max_span_grid;
 ok('alle Abstände <= Strangabstand x', x0===3 && ks0.every((k,i)=>i===0||k-ks0[i-1]<=x0));
 ok('[V-2] Steinabdeckung dabei lückenlos',
    WP.RESULT.wandelement.validation.ungehaltene_steine.length===0);
+// [V-12] jeder i3 der obersten Lage symmetrisch: nur mittig oder Feld 1 UND Feld 3.
+const symOben=(w)=>{ const S=new Set(w.tension_columns.map(c=>c.k));
+  return w.courses[w.courses.length-1].stones.filter(s=>s.x1-s.x0===375).every(s=>{
+    const a=s.x0/125; return S.has(a)===S.has(a+2) && (S.has(a+1)||S.has(a)); }); };
 // auch im Auto-Modus (Strangabstand von der Engine optimiert) — die Iteration gibt dem
 // Rechenkern keine Startachse mehr vor (`psOf` in sembla-engine.js).
 document.getElementById('modus').value='auto'; WP.run();
 const wA=WP.RESULT.wandelement, ksA=wA.tension_columns.map(c=>c.k);
-ok('#104 Auto-Modus: Wandenden auf 1 und N-2, Abstände <= optimiertem x',
-   ksA[0]===1 && ksA.includes(wA.N_grid-2) && !ksA.includes(0) && !ksA.includes(wA.N_grid-1)
+ok('#104/[V-12] Auto-Modus: Wandenden spaetestens in Feld 3, oberste i3 symmetrisch, Abstände <= optimiertem x',
+   ksA[0]<=2 && ksA[ksA.length-1]>=wA.N_grid-3 && symOben(wA)
    && ksA.every((k,i)=>i===0||k-ksA[i-1]<=wA.prestress.max_span_grid));
 document.getElementById('modus').value='nachweis'; WP.run();
 // Altbestand: ein gespeichertes Wandelement MIT `start_axis_grid: 1` bleibt ladbar, gueltig
@@ -1928,11 +1936,11 @@ document.getElementById('modus').value='nachweis'; WP.run();
 WP.applyWand(Object.assign(buildWall('Gespeichert',2000,2600,[],null,{start_axis_grid:1}),{wandtyp:'mit_wind'}));
 ok('#104 Altbestand mit gespeicherter Startachse 1 bleibt ladbar und gueltig',
    !!WP.RESULT && WP.RESULT.wandelement.validation.buildable
-   && JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,14]');
+   && JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,15]');
 const alt=buildWall('Alt',2000,2600,[]); delete alt.prestress.start_axis_grid;   // Altstand ohne Feld
 WP.applyWand(Object.assign(alt,{wandtyp:'mit_wind'}));
 ok('#104 Altstand ohne Feld liefert bit-genau dieselben Achsen',
-   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,14]');
+   JSON.stringify(WP.RESULT.wandelement.tension_columns.map(c=>c.k))==='[1,3,5,8,11,13,15]');
 
 // Auto-Speichern (kein Button mehr): jede echte Änderung legt/aktualisiert das aktive Element.
 // Gefahren wird das ueber die HOEHE — die Laenge ist seit #56 kein Bedienweg mehr (s. u.).
@@ -4354,8 +4362,10 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
     // Erneut eingefroren am 2026-10-07 (gegen den Stand davor Zeile fuer Zeile verglichen):
     // nur die Einlegebleche (Schenkel 1,6 -> 0,5, Strich 2 -> 1, Kosmetik aus 9658e68) und die
     // Farben von Fussschraube und Kopplungsmutter (#97, e9e364d); Lage und Masse unveraendert.
+    // Erneut eingefroren am 2026-10-29 ([V-3]/[V-11]/[V-12], Miro R01): allein die Lage der
+    // Spannachsen hat sich geaendert (oberste Lage als Bezug, Feld 1+3); Lagen und Masse gleich.
     ok('[#140] (Nicht-Ziel) die 200-mm-Referenzansicht bleibt zeichenkettengleich (eingefroren)',
-      hash140(svg140())==='f0c1f3ae5bc4f6b2');
+      hash140(svg140())==='8c324b5bcd51c766');
   }
   // Gegenprobe: das Zeichnen hat KEINE Rechenwirkung — das gespeicherte Wandelement und die
   // Stueckliste bleiben unberuehrt.
