@@ -126,8 +126,27 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // hier: geliefert ist dieselbe Groesse von Schraube, Muttern, Spannplatte und Einlegeblech
 // relativ zur Wand in allen drei Modulen (auch im Rueckfall „Produkt fehlt"). NICHT versprochen
 // werden eine geaenderte Menge, Stueckliste, Statik oder eine neue Fachregel.
-const GLEICH = EINTRAEGE[0];
-ok("[Bauteile gleich] ist der neueste Eintrag",
+// Seit 2026-10-29 kommen mehrere Eintraege parallel hinzu (drei Arbeitspakete aus Miro R01):
+// die Reihenfolge wird deshalb RELATIV geprueft (unmittelbarer Nachbar ueber die Kennung),
+// nicht mehr ueber feste Positionen — sonst bricht jeder neue Eintrag alle aelteren Pruefungen.
+const nach = (e) => EINTRAEGE[EINTRAEGE.indexOf(e) + 1];
+
+// DECKENANSCHLUSS AN DEN WANDENDEN ([A-26]/[A-27], Miro R01 DA 2/DA 3). Aussagewahr heisst
+// hier: geliefert ist je Wandende ein Anschluss in Feld 2 oder 3, nie in Feld 1, und eine
+// Meldung in Modul 1 fuer eigene Punkte in Feld 1. NICHT versprochen werden eine geaenderte
+// Spannachsenverteilung, Statik oder Stueckliste.
+const DECKE_RAND = EINTRAEGE.find(e => e.id === "chg-20261029-01");
+ok("[Deckenanschluss Rand] steht vor der gleichen Bauteildarstellung",
+  DECKE_RAND && EINTRAEGE.indexOf(DECKE_RAND) < EINTRAEGE.findIndex(e => e.id === "chg-20261007-09")
+  && DECKE_RAND.datum === "2026-10-29" && DECKE_RAND.typ === "feature" && DECKE_RAND.issue === 124
+  && /Deckenanschluss/.test(DECKE_RAND.titel) && /Feld 2 oder 3/.test(DECKE_RAND.titel)
+  && /ersten Feld/.test(DECKE_RAND.titel)
+  && !/Statik|Stückliste|Spannachse/i.test(DECKE_RAND.titel));
+ok("[Deckenanschluss Rand] die Testbitte fuehrt Modul 1 und die Meldung fuer Feld 1",
+  /Modul 1/.test(DECKE_RAND?.testbitte || "") && /Feld 1/.test(DECKE_RAND?.testbitte || ""));
+
+const GLEICH = EINTRAEGE.find(e => e.id === "chg-20261007-09");
+ok("[Bauteile gleich] ist vorhanden",
   GLEICH?.id === "chg-20261007-09" && GLEICH?.typ === "fix" && GLEICH?.issue === 97
   && /Schraube/.test(GLEICH?.titel || "") && /Muttern/.test(GLEICH?.titel || "")
   && /Einlegeblech/.test(GLEICH?.titel || "") && /Modul 1, 5 und 7/.test(GLEICH?.titel || "")
@@ -139,7 +158,7 @@ ok("[Bauteile gleich] die Testbitte fuehrt Modul 1, Modul 5 und Modul 7",
 // Davor kam die EINLEGEBLECH-KOSMETIK — seither ueber ihre KENNUNG gesucht.
 const EBK = EINTRAEGE.find(e => e.id === "chg-20261007-08");
 ok("[Einlegeblech-Kosmetik] steht unmittelbar hinter der gleichen Bauteildarstellung",
-  EINTRAEGE[1] === EBK && EBK?.id === "chg-20261007-08" && EBK?.typ === "fix" && EBK?.issue === 97
+  nach(GLEICH) === EBK && EBK?.id === "chg-20261007-08" && EBK?.typ === "fix" && EBK?.issue === 97
   && /Einlegeblech/.test(EBK?.titel || "") && /Schenkel/.test(EBK?.titel || "")
   && /Strichstärke/.test(EBK?.titel || "")
   && !/maßstäblich|Menge|Stückliste|Katalog/i.test(EBK?.titel || ""));
@@ -149,7 +168,7 @@ ok("[Einlegeblech-Kosmetik] die Testbitte fuehrt Modul 1 und Modul 7",
 // Davor kam die WANDFUSS-SCHRAUBE — seither ueber ihre KENNUNG gesucht.
 const FUSS = EINTRAEGE.find(e => e.id === "chg-20261007-07");
 ok("[Wandfuß-Schraube] steht unmittelbar hinter der Einlegeblech-Kosmetik",
-  EINTRAEGE[2] === FUSS && FUSS?.id === "chg-20261007-07" && FUSS?.typ === "feature" && FUSS?.issue === 97
+  nach(EBK) === FUSS && FUSS?.id === "chg-20261007-07" && FUSS?.typ === "feature" && FUSS?.issue === 97
   && /Sechskantschraube/.test(FUSS?.titel || "") && /maßstäblich/.test(FUSS?.titel || "")
   && /Kopplungsmutter/.test(FUSS?.titel || "") && /pink/.test(FUSS?.titel || "")
   && !/Menge|Stückliste|Statik|Gewindestange/i.test(FUSS?.titel || ""));
@@ -160,7 +179,7 @@ ok("[Wandfuß-Schraube] die Testbitte fuehrt Modul 1 und Modul 7 samt Legende",
 // Davor kam die STOSSFUGEN-ABDICHTUNG — seither ueber ihre KENNUNG gesucht.
 const FUGE = EINTRAEGE.find(e => e.id === "chg-20261007-06");
 ok("[Stoßfugen-Abdichtung] steht unmittelbar hinter der Wandfuß-Schraube",
-  EINTRAEGE[3] === FUGE && FUGE?.id === "chg-20261007-06" && FUGE?.typ === "feature" && FUGE?.issue === 71
+  nach(FUSS) === FUGE && FUGE?.id === "chg-20261007-06" && FUGE?.typ === "feature" && FUGE?.issue === 71
   && /Gipsfaserstreifen/.test(FUGE?.titel || "") && /Dichtstreifen/.test(FUGE?.titel || "")
   && /Stückliste/.test(FUGE?.titel || "") && !/Preis|eigene Zeile/i.test(FUGE?.titel || ""));
 ok("[Stoßfugen-Abdichtung] die Testbitte fuehrt Fassung v6, Produktwahl und Modul 4",
@@ -173,7 +192,7 @@ ok("[Stoßfugen-Abdichtung] die Testbitte fuehrt Fassung v6, Produktwahl und Mod
 // NICHT versprochen werden eine geaenderte Zerlegung, Menge oder Stueckliste.
 const STANGENFARBEN = EINTRAEGE.find(e => e.id === "chg-20261007-05");
 ok("[Stangenfarben] steht unmittelbar hinter der Stoßfugen-Abdichtung",
-  EINTRAEGE[4] === STANGENFARBEN && STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
+  nach(FUGE) === STANGENFARBEN && STANGENFARBEN?.id === "chg-20261007-05" && STANGENFARBEN?.typ === "feature"
   && /Standardlänge/.test(STANGENFARBEN?.titel || "") && /Farbe/.test(STANGENFARBEN?.titel || "")
   && /Legende/.test(STANGENFARBEN?.titel || "")
   && !/Menge|Preis|Zerlegung|Stückliste/i.test(STANGENFARBEN?.titel || ""));
@@ -188,7 +207,7 @@ ok("[Stangenfarben] die Testbitte fuehrt Modul 1 und 7 mit zwei Laengen und der 
 // geaenderte Zeichnung.
 const KUPPL = EINTRAEGE.find(e => e.id === "chg-20261007-04");
 ok("[Kopplungsmutter Fuß] steht unmittelbar hinter den Stangenfarben",
-  EINTRAEGE[5] === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
+  nach(STANGENFARBEN) === KUPPL && KUPPL?.id === "chg-20261007-04" && KUPPL?.typ === "feature" && KUPPL?.issue === 77
   && /Stückliste/.test(KUPPL?.titel || "") && /Bodenblech/.test(KUPPL?.titel || "")
   && /Stangenstoß/.test(KUPPL?.titel || "")
   && !/Preis|Zeichnung|Produkt/i.test(KUPPL?.titel || ""));

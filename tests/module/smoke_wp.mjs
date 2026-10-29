@@ -1203,11 +1203,24 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
   const ks=()=>WP.deckenanschlusspunkte.map(p=>p.k);
   const achsen=()=>WP.RESULT.wandelement.tension_columns.map(c=>c.k);
   const auto=ks();
-  // Ausgangslage: verteilt nach [A-26] (Fassung #124) — erste und letzte Achse immer,
-  // dazwischen hoechstens 1125 mm (9 Raster) Abstand —, nichts davon gespeichert.
-  ok('[#95] Auto: erste/letzte Achse gesetzt, kein Abstand ueber 1125 mm ([A-26]/#124)',
-    auto.length>=2 && auto[0]===achsen()[0] && auto[auto.length-1]===achsen()[achsen().length-1]
+  // Ausgangslage: verteilt nach [A-26] (Fassung 2026-10-29, DA 2/DA 3) — je Wandende in
+  // Feld 2 oder 3, nie in Feld 1, dazwischen hoechstens 1125 mm (9 Raster) —, nichts gespeichert.
+  // Die Wand traegt hier noch die manuellen Achsen ([V-9]) aus dem Abschnitt davor; sie enden
+  // bei k=14 einer 26-Raster-Wand. Rechts steht damit KEINE Achse in Feld 2–3: genommen wird
+  // die naechste vorhandene Achse, und der Befund steht benannt in Modul 1 — nichts erfunden.
+  const nG=WP.RESULT.wandelement.N_grid, aL=achsen()[achsen().length-1];
+  ok('[A-26] Auto: links Feld 2–3, nie Feld 1, kein Abstand ueber 1125 mm',
+    auto.length>=2 && auto[0]>=1 && auto[0]<=2 && auto[auto.length-1]===aL
+    && auto.every(k=>k>=1 && nG-k>=2)
     && auto.every((k,i)=>i===0 || k-auto[i-1]<=9));
+  ok('[A-26] rechts ohne Achse in Feld 2–3: naechste Achse genommen und in Modul 1 benannt',
+    nG-aL>3
+    && JSON.stringify(WP.RESULT.wandelement.validation.deckenanschluss_rand)
+      ===JSON.stringify([{ende:'rechts',grund:'fehlt_feld_2_3',k:aL,feld:nG-aL}])
+    && /Deckenanschluss \[A-26\]: rechtes Wandende: kein Anschluss in Feld 2–3 \(nächster in Feld 12\)/
+      .test(document.getElementById('warns').textContent));
+  ok('[A-26] der Hinweis nennt die Randfelder',
+    /Feld 2 oder 3 \(nie Feld 1\)/.test(document.getElementById('dcHinweis').textContent));
   ok('[#95] jeder Punkt liegt auf einer wirklichen Spannachse',
     auto.every(k=>achsen().includes(k)));
   ok('[#95] Auto wird NICHT gespeichert (kein Feld im Wandelement)',
@@ -1343,6 +1356,12 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.run();
   ok('[#95] geloeschte Randachse wird nicht nachgeschoben',
     !ks().includes(auto[0]) && ks().length===auto.length-1
     && JSON.stringify(ks())===JSON.stringify(ps().deckenanschluss_grid));
+  // [A-27] … aber benannt: links steht jetzt bis Feld 3 kein Anschluss mehr (DA 2).
+  ok('[A-27] fehlender Anschluss bis Feld 3 wird in Modul 1 benannt',
+    (WP.RESULT.wandelement.validation.deckenanschluss_rand||[])
+      .some(b=>b.ende==='links' && b.grund==='fehlt_feld_2_3')
+    && /Deckenanschluss \[A-26\]: linkes Wandende: kein Anschluss in Feld 2–3/
+      .test(document.getElementById('warns').textContent));
   // [A-27] Ausdrueckliche LEERE Auswahl ist „kein Deckenanschluss" und faellt NICHT auf Auto zurueck.
   WP.setManualDc([]);
   ok('[#95] leere Auswahl: keine Punkte, kein Rueckfall auf die Verteilung',

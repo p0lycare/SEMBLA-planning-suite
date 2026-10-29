@@ -37,6 +37,16 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261029-01",
+    datum: "2026-10-29",
+    typ: "feature",
+    issue: 124,
+    titel: "Deckenanschluss an den Wandenden: je Ende in Feld 2 oder 3, nie im ersten Feld",
+    testbitte: "In Modul 1 eine Wand ohne eigene Anschluss-Auswahl ansehen: das rote Z sitzt an "
+      + "beiden Enden im 2. oder 3. Rasterfeld, nie ganz außen. Einen eigenen Punkt in Feld 1 "
+      + "setzen: Modul 1 meldet es.",
+  },
+  {
     id: "chg-20261007-09",
     datum: "2026-10-07",
     typ: "fix",

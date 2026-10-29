@@ -32,6 +32,7 @@ export const ROD_OVERHANG = 10;         // Ueberstand des Reststuecks ueber die 
 export const AUSGLEICH_DICHTE_JE_M = 3;   // Zielpunktzahl je Meter Wandlaenge ([A-20])
 export const AUSGLEICH_ACHSVERSATZ = 20;  // Abstand einer Auffuellung zur Spannachse ([A-23])
 export const DECKENANSCHLUSS_MAX_MM = 1125;  // groesster Abstand benachbarter Deckenanschluesse ([A-26])
+export const DECKENANSCHLUSS_RANDFELD = 3;   // spaetestens in diesem Feld vom Wandende, nie in Feld 1 ([A-26])
 
 export class SemblaError extends Error {}
 export class InvalidDimensionError extends SemblaError {}
@@ -947,14 +948,18 @@ export function normAusgleichspunkte(arr, lengthMm) {
 // sitzt, ist hier gerechnet — deterministisch aus den Spannachsen, ohne Zufall und ohne
 // Startwert.
 //
-// [A-26] (Fassung vom 2026-09-14, #124) Die Verteilung ist bewusst SIMPEL und ausdruecklich
-// KEINE Statik: ERSTE und LETZTE Spannachse tragen immer einen Deckenanschluss, und zwischen
-// zwei benachbarten Deckenanschluessen liegen hoechstens DECKENANSCHLUSS_MAX_MM (1125 mm =
-// 9 Raster). Kandidat ist JEDE Spannachse (Festlegung vom 2026-09-08); es wird keine Achse
-// erfunden und keine Zwischenlage gewaehlt. Liegen schon die Spannachsen selbst weiter als
-// 1125 mm auseinander, ist die Vorgabe dort UNERFUELLBAR: die naechste Achse wird trotzdem
-// genommen und die Luecke sichtbar gemeldet (`deckenanschlussLuecken`) — nie eine Achse
-// erfunden ([P-9]).
+// [A-26] (Fassung vom 2026-10-29, Miro R01 DA 2/DA 3) Die Verteilung ist bewusst SIMPEL und
+// ausdruecklich KEINE Statik. Gezaehlt wird in 125-mm-Rasterfeldern VOM JEWEILIGEN WANDENDE
+// (Feld 1 = aeusserstes Feld; die Achse auf Rasterindex k liegt links in Feld k+1, rechts in
+// Feld N-k). An JEDEM Wandende steht ein Deckenanschluss spaetestens in Feld 3
+// (DECKENANSCHLUSS_RANDFELD) und NIE in Feld 1; gewaehlt wird je Ende die AEUSSERSTE Spannachse
+// in Feld 2 oder 3. Zwischen den beiden Randpunkten liegen zwischen benachbarten Anschluessen
+// hoechstens DECKENANSCHLUSS_MAX_MM (1125 mm = 9 Raster). Kandidat ist JEDE Spannachse
+// ausserhalb von Feld 1 (Festlegung vom 2026-09-08); es wird keine Achse erfunden und keine
+// Zwischenlage gewaehlt. Steht in Feld 2–3 keine Spannachse, wird die NAECHSTE zulaessige Achse
+// genommen und das sichtbar gemeldet (`deckenanschlussRand`); liegen die Spannachsen selbst
+// weiter als 1125 mm auseinander, ebenso (`deckenanschlussLuecken`) — nie eine Achse erfunden
+// ([P-9]). Die Achsverteilung selbst wird hier weder gelesen noch beeinflusst — nur ihr Ergebnis.
 //
 // Gerechnet wird bei JEDER Rechnung frisch. Das Ergebnis der Verteilung wird NICHT gespeichert
 // und NICHT als manueller Wert ausgegeben: gespeichert ist ausschliesslich ein ausdruecklich
@@ -964,19 +969,43 @@ export function normAusgleichspunkte(arr, lengthMm) {
  * Deckenanschlusspunkte deterministisch auf die Spannachsen verteilen ([A-26]).
  * Reine Funktion — gleiche Eingabe, gleiche Ausgabe, kein Zustand.
  *
- * Erste und letzte Achse sind immer gesetzt. Dazwischen wird von links nach rechts jeweils die
- * ENTFERNTESTE Achse gewaehlt, die von der zuletzt gesetzten aus noch innerhalb von
- * DECKENANSCHLUSS_MAX_MM liegt — das ist die kleinstmoegliche Punktzahl, mit der kein Abstand
- * die Vorgabe ueberschreitet, und dabei vollstaendig deterministisch. Traegt kein Nachbar die
- * Reichweite (die Spannachsen selbst liegen weiter als 1125 mm auseinander), wird die naechste
- * Achse trotzdem gesetzt; die Ueberschreitung meldet `deckenanschlussLuecken`, hier wird nichts
- * verschwiegen und nichts erfunden.
+ * Achsen in Feld 1 eines Wandendes (k = 0, k = nGrid-1) scheiden aus. An jedem Ende wird eine
+ * Achse in Feld 2–3 gesetzt; fehlt dort eine, die naechste zulaessige Achse (gemeldet von
+ * `deckenanschlussRand`). Stehen dort zwei, entscheidet zuerst die kleinere Gesamtpunktzahl,
+ * dann die AEUSSERE Achse (links vor rechts). Dazwischen wird von links nach rechts
+ * jeweils die ENTFERNTESTE Achse gewaehlt, die von der zuletzt gesetzten aus noch innerhalb von
+ * DECKENANSCHLUSS_MAX_MM liegt — die kleinstmoegliche Punktzahl, vollstaendig deterministisch.
+ * Traegt kein Nachbar die Reichweite, wird die naechste Achse trotzdem gesetzt; die
+ * Ueberschreitung meldet `deckenanschlussLuecken`. Ohne zulaessige Achse (Wand unter drei
+ * Feldern, oder Achsen nur in Feld 1) entsteht KEIN Punkt — gemeldet, nicht erfunden.
  * @param {number[]} [achsenK] Rasterindizes der Spannachsen (aufsteigend)
+ * @param {number} [nGrid] Rasterbreite der Wand
  * @returns {number[]} gewaehlte Rasterindizes, aufsteigend
  */
-export function verteileDeckenanschluss(achsenK = []) {
-  const A = [...new Set(achsenK)].sort((a, b) => a - b);
-  if (!A.length) return [];
+export function verteileDeckenanschluss(achsenK = [], nGrid = 0) {
+  const Z = [...new Set(achsenK)].sort((a, b) => a - b).filter((k) => k >= 1 && k <= nGrid - 2);
+  if (!Z.length) return [];
+  const R = DECKENANSCHLUSS_RANDFELD;
+  // Randkandidaten je Ende, das AEUSSERSTE zuerst; ohne Achse in Feld 2–3 die naechste
+  // zulaessige Achse (der Befund dazu entsteht in `deckenanschlussRand`).
+  const links = Z.filter((k) => k + 1 <= R);
+  const rechts = Z.filter((k) => nGrid - k <= R).reverse();
+  if (!links.length) links.push(Z[0]);
+  if (!rechts.length) rechts.push(Z[Z.length - 1]);
+  // Rangfolge: kleinstmoegliche Punktzahl, bei Gleichstand die aeusserste Achse (links vor
+  // rechts). Hoechstens 2 x 2 Paare — keine Suche, keine Iteration ueber die Wand.
+  let best = null;
+  for (const k0 of links) for (const k1 of rechts) {
+    if (k0 > k1) continue;
+    const kette = deckenanschlussKette(Z.filter((k) => k >= k0 && k <= k1));
+    if (!best || kette.length < best.length) best = kette;
+  }
+  return best;
+}
+
+/** Greedy-Kette zwischen erster und letzter Achse der Liste: jeweils die ENTFERNTESTE Achse
+ *  innerhalb von DECKENANSCHLUSS_MAX_MM; ohne erreichbare Achse die naechste (Luecke). */
+function deckenanschlussKette(A) {
   const maxK = DECKENANSCHLUSS_MAX_MM / GRID;   // 1125 mm = exakt 9 Rasterfelder
   const out = [A[0]];
   let i = 0;
@@ -988,6 +1017,32 @@ export function verteileDeckenanschluss(achsenK = []) {
     i = j;
   }
   return out;
+}
+
+/**
+ * Randfeld-Befunde einer Deckenanschluss-Punktliste benennen ([A-26]/[A-27], DA 2/DA 3).
+ * Reine Funktion fuer BEIDE Pfade (Verteilung und Override): je Wandende wird gemeldet, wenn
+ * ein Punkt in Feld 1 liegt (`feld_1`) oder kein Punkt in Feld 2–3 steht (`fehlt_feld_2_3`,
+ * dazu der dem Ende naechste Punkt ausserhalb von Feld 1 oder `null`). Die Punktliste wird
+ * dadurch NICHT veraendert — nichts wird verschoben.
+ * @param {number[]} [punkteK] Rasterindizes der Deckenanschlusspunkte
+ * @param {number} [nGrid] Rasterbreite der Wand
+ * @returns {Array<{ende:"links"|"rechts",grund:string,k:number|null,feld:number|null}>}
+ */
+export function deckenanschlussRand(punkteK = [], nGrid = 0) {
+  const P = [...new Set(punkteK)].sort((a, b) => a - b);
+  const R = DECKENANSCHLUSS_RANDFELD;
+  const befunde = [];
+  for (const ende of ["links", "rechts"]) {
+    const feld = (k) => (ende === "links" ? k + 1 : nGrid - k);
+    for (const k of P) if (feld(k) === 1) befunde.push({ ende, grund: "feld_1", k, feld: 1 });
+    if (!P.some((k) => feld(k) >= 2 && feld(k) <= R)) {
+      const rest = P.filter((k) => feld(k) >= 2);
+      const k = rest.length ? (ende === "links" ? rest[0] : rest[rest.length - 1]) : null;
+      befunde.push({ ende, grund: "fehlt_feld_2_3", k, feld: k === null ? null : feld(k) });
+    }
+  }
+  return befunde;
 }
 
 /**
@@ -1838,12 +1893,17 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   const achsenK = columns.map((c) => c.k);
   const DC = normDeckenanschluss(PS.deckenanschluss_grid, achsenK, N);
   if (DC.punkte) PS.deckenanschluss_grid = DC.punkte;
-  const dcK = DC.punkte ? DC.punkte : verteileDeckenanschluss(achsenK);
+  const dcK = DC.punkte ? DC.punkte : verteileDeckenanschluss(achsenK, N);
   const deckenanschlusspunkte = dcK.map((k) => ({
     k, x_mm: CHAMBER_OFFSET + GRID * k, art: DC.punkte ? "manuell" : "auto" }));
   // [A-26] Nur der Auto-Pfad wird gegen die 1125-mm-Vorgabe gehalten: ein Override sperrt die
   // Verteilung vollstaendig ([A-27]) und ist die ausdrueckliche Entscheidung des Planers.
   const dcLuecken = DC.punkte ? [] : deckenanschlussLuecken(dcK);
+  // [A-26]/[A-27] Randfelder (DA 2/DA 3) gelten fuer BEIDE Pfade: ein gesetzter Punkt in Feld 1
+  // oder ein fehlender Anschluss bis Feld 3 wird benannt, nie verschoben. Eine ausdruecklich
+  // LEERE Override-Liste ist die Aussage „kein Deckenanschluss an dieser Wand" und erzeugt
+  // keinen Randbefund.
+  const dcRand = (DC.punkte && !DC.punkte.length) ? [] : deckenanschlussRand(dcK, N);
 
   const bom = { i2: 0, i3: 0 };
   for (const c of courses) for (const s of c.stones) bom[s.type] += 1;
@@ -1926,6 +1986,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // [A-26] Unerfuellbare 1125-mm-Vorgabe im Auto-Pfad — die Spannachsen selbst liegen dort
       // weiter auseinander. Benannt statt kaschiert; der Schluessel entsteht NUR im Fehlerfall.
       ...(dcLuecken.length ? { deckenanschluss_luecken: dcLuecken } : {}),
+      // [A-26]/[A-27] Randfeld-Befunde (Feld 1 belegt / kein Anschluss in Feld 2–3) — in beiden
+      // Pfaden, benannt statt verschoben. Der Schluessel entsteht NUR im Befundfall.
+      ...(dcRand.length ? { deckenanschluss_rand: dcRand } : {}),
       // [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
       interlock_invalid_segments: interlockInvalidSegments,
       // [G-18] Sonderzuschnitte der Ausgleichslage — je Steintyp ein Eintrag mit dem REALEN

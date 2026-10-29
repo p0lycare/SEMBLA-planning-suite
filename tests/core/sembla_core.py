@@ -32,7 +32,7 @@ __all__ = [
     "AUSGLEICH_DICHTE_JE_M", "AUSGLEICH_ACHSVERSATZ", "verteile_ausgleichspunkte",
     "norm_ausgleichspunkte",
     "DECKENANSCHLUSS_MAX_MM", "verteile_deckenanschluss", "norm_deckenanschluss",
-    "deckenanschluss_luecken",
+    "deckenanschluss_luecken", "deckenanschluss_rand", "DECKENANSCHLUSS_RANDFELD",
 ]
 
 # ---- Konstanten (bestaetigte Parameter) ----
@@ -58,6 +58,7 @@ ROD_OVERHANG  = 10     # mm Ueberstand des Reststuecks ueber die Wandoberkante (
 AUSGLEICH_DICHTE_JE_M = 3   # Zielpunktzahl je Meter Wandlaenge ([A-20])
 AUSGLEICH_ACHSVERSATZ = 20  # mm Abstand einer Auffuellung zur Spannachse ([A-23])
 DECKENANSCHLUSS_MAX_MM = 1125  # groesster Abstand benachbarter Deckenanschluesse ([A-26])
+DECKENANSCHLUSS_RANDFELD = 3   # spaetestens in diesem Feld vom Wandende, nie in Feld 1 ([A-26])
 
 
 # ---- Zuschnitt aus ausgewaehlten Standardlaengen ([Z-2]/[Z-5]) ----
@@ -655,23 +656,44 @@ def norm_ausgleichspunkte(arr, length_mm):
 #
 # Der Deckenanschluss ist die ZWEITE moegliche Ausfuehrung der oberen Spannachse ([P-24]): an
 # einer Achse steht entweder der Wandabschluss ODER der Deckenanschluss, nie beides. [A-26]
-# (Fassung vom 2026-09-14, #124): ERSTE und LETZTE Spannachse tragen immer einen
-# Deckenanschluss, dazwischen liegen hoechstens DECKENANSCHLUSS_MAX_MM zwischen zwei
-# benachbarten Punkten; Kandidat ist JEDE Spannachse, erfunden wird keine.
+# (Fassung vom 2026-10-29, Miro R01 DA 2/DA 3): gezaehlt in Rasterfeldern vom jeweiligen
+# Wandende (Feld 1 = aeusserstes). An jedem Ende ein Deckenanschluss spaetestens in Feld 3 und
+# nie in Feld 1 (aeusserste Achse in Feld 2–3), dazwischen hoechstens DECKENANSCHLUSS_MAX_MM
+# zwischen zwei benachbarten Punkten; Kandidat ist JEDE Spannachse ausserhalb von Feld 1,
+# erfunden wird keine.
 
 
-def verteile_deckenanschluss(achsen_k=()):
+def verteile_deckenanschluss(achsen_k=(), n_grid=0):
     """Deckenanschlusspunkte deterministisch auf die Spannachsen verteilen ([A-26]).
 
-    Erste und letzte Achse sind immer gesetzt. Dazwischen wird von links nach rechts jeweils
-    die ENTFERNTESTE Achse gewaehlt, die von der zuletzt gesetzten aus noch innerhalb von
-    DECKENANSCHLUSS_MAX_MM liegt — kleinstmoegliche Punktzahl, vollstaendig deterministisch.
-    Traegt kein Nachbar die Reichweite, wird die naechste Achse trotzdem gesetzt; die
-    Ueberschreitung meldet deckenanschluss_luecken().
+    Achsen in Feld 1 eines Wandendes scheiden aus. An jedem Ende eine Achse in Feld 2–3 (bei
+    zweien zuerst die kleinere Gesamtpunktzahl, dann die aeussere, links vor rechts); fehlt dort
+    eine, die naechste zulaessige Achse (gemeldet von deckenanschluss_rand()). Dazwischen von links nach rechts jeweils die ENTFERNTESTE Achse
+    innerhalb von DECKENANSCHLUSS_MAX_MM — kleinstmoegliche Punktzahl, deterministisch. Traegt
+    kein Nachbar die Reichweite, wird die naechste Achse trotzdem gesetzt; die Ueberschreitung
+    meldet deckenanschluss_luecken(). Ohne zulaessige Achse entsteht kein Punkt.
     """
-    A = sorted(set(achsen_k or ()))
-    if not A:
+    Z = [k for k in sorted(set(achsen_k or ())) if 1 <= k <= n_grid - 2]
+    if not Z:
         return []
+    R = DECKENANSCHLUSS_RANDFELD
+    links = [k for k in Z if k + 1 <= R] or [Z[0]]
+    rechts = [k for k in reversed(Z) if n_grid - k <= R] or [Z[-1]]
+    # Rangfolge: kleinstmoegliche Punktzahl, bei Gleichstand die aeusserste Achse (links vor
+    # rechts). Hoechstens 2 x 2 Paare.
+    best = None
+    for k0 in links:
+        for k1 in rechts:
+            if k0 > k1:
+                continue
+            kette = _deckenanschluss_kette([k for k in Z if k0 <= k <= k1])
+            if best is None or len(kette) < len(best):
+                best = kette
+    return best
+
+
+def _deckenanschluss_kette(A):
+    """Greedy-Kette: jeweils die ENTFERNTESTE Achse innerhalb von DECKENANSCHLUSS_MAX_MM."""
     max_k = DECKENANSCHLUSS_MAX_MM // GRID   # 1125 mm = exakt 9 Rasterfelder
     out = [A[0]]
     i = 0
@@ -684,6 +706,29 @@ def verteile_deckenanschluss(achsen_k=()):
         out.append(A[j])
         i = j
     return out
+
+
+def deckenanschluss_rand(punkte_k=(), n_grid=0):
+    """Randfeld-Befunde einer Deckenanschluss-Punktliste benennen ([A-26]/[A-27], DA 2/DA 3).
+
+    Je Wandende: Punkt in Feld 1 (`feld_1`) oder kein Punkt in Feld 2–3 (`fehlt_feld_2_3`, mit
+    dem dem Ende naechsten Punkt ausserhalb von Feld 1 oder None). Nichts wird verschoben.
+    """
+    P = sorted(set(punkte_k or ()))
+    R = DECKENANSCHLUSS_RANDFELD
+    befunde = []
+    for ende in ("links", "rechts"):
+        def feld(k, ende=ende):
+            return k + 1 if ende == "links" else n_grid - k
+        for k in P:
+            if feld(k) == 1:
+                befunde.append({"ende": ende, "grund": "feld_1", "k": k, "feld": 1})
+        if not any(2 <= feld(k) <= R for k in P):
+            rest = [k for k in P if feld(k) >= 2]
+            k = (rest[0] if ende == "links" else rest[-1]) if rest else None
+            befunde.append({"ende": ende, "grund": "fehlt_feld_2_3", "k": k,
+                            "feld": None if k is None else feld(k)})
+    return befunde
 
 
 def deckenanschluss_luecken(punkte_k=()):
@@ -1738,12 +1783,15 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     _DC, _DC_fehler = norm_deckenanschluss(_PS.get("deckenanschluss_grid"), _achsen_k, N)
     if _DC is not None:
         _PS["deckenanschluss_grid"] = _DC
-    _dc_k = _DC if _DC is not None else verteile_deckenanschluss(_achsen_k)
+    _dc_k = _DC if _DC is not None else verteile_deckenanschluss(_achsen_k, N)
     deckenanschlusspunkte = [{"k": k, "x_mm": CHAMBER_OFFSET + GRID * k,
                               "art": "manuell" if _DC is not None else "auto"} for k in _dc_k]
     # [A-26] Nur der Auto-Pfad wird gegen die 1125-mm-Vorgabe gehalten: ein Override sperrt
     # die Verteilung vollstaendig ([A-27]) und ist die ausdrueckliche Entscheidung des Planers.
     _dc_luecken = [] if _DC is not None else deckenanschluss_luecken(_dc_k)
+    # [A-26]/[A-27] Randfelder (DA 2/DA 3) fuer BEIDE Pfade; eine ausdruecklich leere
+    # Override-Liste („kein Deckenanschluss") erzeugt keinen Randbefund.
+    _dc_rand = [] if (_DC is not None and not _DC) else deckenanschluss_rand(_dc_k, N)
 
     bom = {"i2": 0, "i3": 0}
     for c in courses:
@@ -1821,6 +1869,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        # [A-26] Unerfuellbare 1125-mm-Vorgabe im Auto-Pfad — die Spannachsen
                        # selbst liegen dort weiter auseinander. Nur im Fehlerfall.
                        **({"deckenanschluss_luecken": _dc_luecken} if _dc_luecken else {}),
+                       # [A-26]/[A-27] Randfeld-Befunde — beide Pfade, nur im Befundfall.
+                       **({"deckenanschluss_rand": _dc_rand} if _dc_rand else {}),
                        # [G-10] Nicht baubare Restbreiten durch Verzahnungsaussparung (z.B. 1 oder 4 Raster)
                        "interlock_invalid_segments": interlock_invalid_segments,
                        # [G-18] Sonderzuschnitte der Ausgleichslage — sichtbare Meldung mit dem

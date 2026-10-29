@@ -191,8 +191,8 @@
     <div class="grp"><h3>Deckenanschluss (obere Spannachse)</h3>
       <!-- [A-26]/[A-27]/#95: Anschlusspunkte liegen IMMER auf einer Spannachse; nicht jede
            Spannachse ist ein Anschlusspunkt. Ohne eigene Auswahl verteilt der Rechenkern sie
-           deterministisch — erste und letzte Achse immer, dazwischen höchstens 1125 mm Abstand
-           ([A-26], Fassung vom 2026-09-14/#124); dieses Ergebnis wird NICHT gespeichert. Erst eine hier getroffene
+           deterministisch — je Wandende in Feld 2 oder 3, nie in Feld 1, dazwischen höchstens
+           1125 mm Abstand ([A-26], Fassung vom 2026-10-29); dieses Ergebnis wird NICHT gespeichert. Erst eine hier getroffene
            Wahl ist ein gespeicherter Override — sie SPERRT die Verteilung vollständig, bis
            „Zurück zu Auto“ sie zurücknimmt ([A-27]). Ausdrücklich KEINE Statik: die Kraftübergabe
            an den Stahlbau in Modul 3 bleibt unberührt. -->
@@ -735,6 +735,14 @@ function run(){
   const dcf=vv.deckenanschluss_fehler||[];
   if(dcf.length) warns.push('⚠ Deckenanschluss [A-27]: '+dcf.length+' Wert(e) abgewiesen ('
     +DC_GRUND[dcf[0].grund]+', z. B. Rasterachse '+dcf[0].wert+') — nicht angewandt, nichts verschoben.');
+  // [A-26]/[A-27] Randfelder (DA 2/DA 3): je Wandende ein Anschluss in Feld 2–3, nie in Feld 1.
+  // Befund aus dem Rechenkern (beide Pfade) — benannt, nichts verschoben, keine Achse erfunden.
+  const dcr=vv.deckenanschluss_rand||[];
+  if(dcr.length) warns.push('⚠ Deckenanschluss [A-26]: '+dcr.map(dcRandText).join('; ')+'.');
+  // [A-26] Unerfüllbare 1125-mm-Vorgabe im Auto-Pfad: die Spannachsen selbst stehen zu weit.
+  const dcl=vv.deckenanschluss_luecken||[];
+  if(dcl.length) warns.push('⚠ Deckenanschluss [A-26]: '+dcl.length+' Abstand/Abstände über '
+    +'1125 mm (z. B. '+fmt(dcl[0].abstand_mm/10,1)+' cm) — dort steht keine Spannachse näher.');
   // [A-29] Ein durch eine Aussparung entstandener Bereich unter der kleinsten zulässigen
   // Bodenblechlänge ist NICHT baubar. Benannt statt kaschiert: die Ansicht überbrückt ihn
   // ausdrücklich nicht — dort steht kein Blech, und es wird auch keines dargestellt.
@@ -1361,6 +1369,14 @@ const DC_GRUND={
   ausserhalb_wand:'außerhalb der Wand',
   keine_spannachse:'keine Spannachse an dieser Rasterstelle'
 };
+// [A-26]/[A-27] Randfeld-Befund des Deckenanschlusses in Klartext (Feld = Rasterfeld vom
+// jeweiligen Wandende, Feld 1 = äußerstes).
+function dcRandText(b){
+  const ende=b.ende==='links'?'linkes Wandende':'rechtes Wandende';
+  if(b.grund==='feld_1') return ende+': Anschluss in Feld 1 (unzulässig)';
+  return ende+': kein Anschluss in Feld 2–3'
+    +(b.k==null?' (keine zulässige Spannachse)':' (nächster in Feld '+b.feld+')');
+}
 // [A-30] Abgewiesene manuelle Bodenblech-Aussparungen. Der Grund kommt BENANNT aus dem
 // Rechenkern (`validation.aussparung_fehler`) und wird hier nur in Klartext übersetzt.
 const AS_GRUND={
@@ -2155,8 +2171,8 @@ function renderDcHinweis(){
   el.textContent = manualDc
     ? 'Eigene Auswahl: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — gespeichert am '
       +'Wandelement; die automatische Verteilung ist gesperrt, es wird nichts aufgefüllt.'
-    : 'Automatisch verteilt: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — erste und '
-      +'letzte Achse immer, dazwischen höchstens 1125 mm Abstand, nicht gespeichert.';
+    : 'Automatisch verteilt: '+n+' Anschlusspunkt(e) auf '+anz+' Spannachse(n) — je Wandende '
+      +'in Feld 2 oder 3 (nie Feld 1), dazwischen höchstens 1125 mm Abstand, nicht gespeichert.';
 }
 
 // ---- Bodenblech-Aussparungen ([A-28]…[A-30], #138) ------------------------------------------

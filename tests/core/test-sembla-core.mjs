@@ -15,6 +15,7 @@ import {
   lagenKanten, wandLagenKanten, hoehenZerlegung, AUSGLEICH_KONFLIKT,
   AUSGLEICH_ACHSVERSATZ, AUSGLEICH_DICHTE_JE_M, verteileAusgleichspunkte, normAusgleichspunkte,
   DECKENANSCHLUSS_MAX_MM, verteileDeckenanschluss, deckenanschlussLuecken, normDeckenanschluss,
+  DECKENANSCHLUSS_RANDFELD, deckenanschlussRand,
 } from "../../docs/shared/sembla-core.js";
 // Der Auslegungsadapter gehoert zum Paritaetsvertrag: `psOf()` ist eine WHITELIST, und ein
 // dort fehlendes Feld faellt in jeder Iteration still weg. Deshalb wird der ECHTE Adapter
@@ -1608,17 +1609,24 @@ t("[A-24] die ausdruecklich leere Liste faellt nicht auf die Verteilung zurueck 
 // DECKENANSCHLUSSPUNKTE [A-26] und ihr Override [A-27] (Issue #95 Paket 2, Fassung #124)
 // ---------------------------------------------------------------------------
 // Gefahren wird derselbe `orakelRand()`-Weg wie bei den Ausgleichspunkten — das ECHTE
-// Python-Orakel als Unterprozess. Die Verteilung ist ausdruecklich KEINE Statik: erste und
-// letzte Achse immer, dazwischen hoechstens 1125 mm Abstand (Fassung vom 2026-09-14, #124);
-// Kandidat ist jede Spannachse (Festlegung vom 2026-09-08).
+// Python-Orakel als Unterprozess. Die Verteilung ist ausdruecklich KEINE Statik. Fassung vom
+// 2026-10-29 (Miro R01 DA 2/DA 3): an JEDEM Wandende ein Anschluss in Feld 2 oder 3 (Feld =
+// 125-mm-Rasterfeld vom jeweiligen Ende, Feld 1 = aeusserstes), nie in Feld 1, dazwischen
+// hoechstens 1125 mm; Kandidat ist jede Spannachse ausserhalb von Feld 1.
 console.log("\nDECKENANSCHLUSSPUNKTE [A-26] (Paritaetsvertrag mit dem Python-Orakel):");
 
-t("[A-26] erste/letzte Achse immer, dazwischen hoechstens 1125 mm (Core == Orakel)", () => {
-  for (const n of [2, 5, 8, 13, 26, 33, 40]) {
+/** Feld einer Achse vom linken bzw. rechten Wandende (1 = aeusserstes Rasterfeld). */
+const feldL = (k) => k + 1, feldR = (k, n) => n - k;
+
+t("[A-26] je Wandende Feld 2–3, nie Feld 1, dazwischen hoechstens 1125 mm (Core == Orakel)", () => {
+  assert(DECKENANSCHLUSS_RANDFELD === 3, "Randfeld");
+  for (const n of [3, 5, 6, 8, 13, 26, 33, 40]) {
     const arg = { name: "dc" + n, length_mm: n * GRID, height_mm: 2600, openings: [],
       prestress: { max_span_grid: 3 } };
     const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
-    deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
+    const py = orakelRand(arg);
+    deepEqual(js.deckenanschlusspunkte, py.deckenanschlusspunkte);
+    assert(!("deckenanschluss_rand" in py.validation), "Orakel meldet Randbefund");
     const achsen = js.tension_columns.map((c) => c.k);
     const pk = js.deckenanschlusspunkte.map((p) => p.k);
     // Jeder Punkt liegt auf einer WIRKLICH vorhandenen Spannachse — nie zwischen zweien.
@@ -1628,62 +1636,117 @@ t("[A-26] erste/letzte Achse immer, dazwischen hoechstens 1125 mm (Core == Orake
       assert(p.x_mm === col.x_mm, "x_mm weicht von der Achse ab");
       assert(p.art === "auto", "art");
     }
-    // Aufsteigend und ohne Doppelte.
     for (let i = 1; i < pk.length; i++) assert(pk[i] > pk[i - 1], "nicht aufsteigend");
-    // Erste und letzte Achse sind IMMER gesetzt.
-    assert(pk[0] === achsen[0], `L=${n * GRID}: erste Achse fehlt`);
-    assert(pk[pk.length - 1] === achsen[achsen.length - 1], `L=${n * GRID}: letzte Achse fehlt`);
-    // Kein Abstand zwischen benachbarten Punkten ueberschreitet 1125 mm (die Achsen stehen
-    // hier dicht genug — max_span_grid 3), und der Kern meldet folgerichtig keine Luecke.
+    // DA 3: kein Punkt in Feld 1 — an keinem der beiden Enden.
+    assert(pk.every((k) => feldL(k) >= 2 && feldR(k, n) >= 2), `L=${n * GRID}: Punkt in Feld 1`);
+    // DA 2: an beiden Enden ein Punkt spaetestens in Feld 3.
+    assert(feldL(pk[0]) <= 3, `L=${n * GRID}: links erst in Feld ${feldL(pk[0])}`);
+    assert(feldR(pk[pk.length - 1], n) <= 3, `L=${n * GRID}: rechts erst in Feld ${feldR(pk[pk.length - 1], n)}`);
+    // DA 1: kein Abstand ueber 1125 mm, keine Luecken- und keine Randmeldung.
     for (let i = 1; i < pk.length; i++)
       assert((pk[i] - pk[i - 1]) * GRID <= DECKENANSCHLUSS_MAX_MM,
         `L=${n * GRID}: Abstand ${(pk[i] - pk[i - 1]) * GRID} mm > 1125 mm`);
     assert(!("deckenanschluss_luecken" in js.validation), "unerwartete Lueckenmeldung");
-    // KLEINSTMOEGLICHE Punktzahl: jeder innere Punkt ist noetig — ohne ihn entstuende eine
-    // Luecke ueber 1125 mm zwischen seinen Nachbarn.
+    assert(!("deckenanschluss_rand" in js.validation), "unerwarteter Randbefund");
+    // KLEINSTMOEGLICHE Punktzahl: jeder innere Punkt ist noetig.
     for (let i = 1; i < pk.length - 1; i++)
       assert((pk[i + 1] - pk[i - 1]) * GRID > DECKENANSCHLUSS_MAX_MM,
         `L=${n * GRID}: Punkt k=${pk[i]} ist ueberfluessig`);
-    // Zweimal rechnen ergibt dieselbe Liste (reine Funktion, kein Zustand).
     deepEqual(js.deckenanschlusspunkte,
       buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress).deckenanschlusspunkte);
   }
 });
 
-t("[A-26] die kurze Wand traegt ihre Randachsen (Core == Orakel)", () => {
-  // Zwei Raster ist die kuerzeste baubare Wand. Auch sie traegt erste UND letzte Achse; hat
-  // sie nur eine Achse, ist das genau ein Punkt.
+t("[A-26] Achse in Feld 1 wird uebergangen, die in Feld 3 genommen (beliebige Achslagen)", () => {
+  // Doppelte Spannung im ersten i3 in Feld 1 UND 3 (AP 3): der Anschluss sitzt in Feld 3.
+  // Reine Funktion mit willkuerlichen Achslagen — die Achsverteilung wird nicht beruehrt.
+  deepEqual(verteileDeckenanschluss([0, 2, 5, 8, 11, 13, 15], 16), [2, 11, 13]);
+  // Gleiche Punktzahl: die AEUSSERE Achse (Feld 2) schlaegt Feld 3, an beiden Enden.
+  deepEqual(verteileDeckenanschluss([1, 2, 6, 9, 10], 11), [1, 9]);
+  deepEqual(verteileDeckenanschluss([1, 2, 5, 8, 9], 11), [1, 9]);
+  // … aber nie auf Kosten eines zusaetzlichen Punktes: 1→11 (1250 mm) braeuchte einen
+  // Zwischenpunkt, 1→10 nicht. Feld 3 rechts genuegt (N = 13: k=10 ist Feld 3).
+  deepEqual(verteileDeckenanschluss([1, 3, 5, 8, 10, 11], 13), [1, 10]);
+  // Endachsen in Feld 1 sind nie Kandidat — auch nicht, wenn sonst nichts da ist.
+  deepEqual(verteileDeckenanschluss([0, 12], 13), []);
+  deepEqual(verteileDeckenanschluss([], 13), []);
+  // Greedy dazwischen unveraendert: 1→10 (1125 mm), 10→15.
+  deepEqual(verteileDeckenanschluss([1, 4, 10, 12, 15], 17), [1, 10, 15]);
+  // Am realen Pfad mit manuellen Achsen ([V-9]): Feld 1 links und rechts besetzt.
+  const arg = { name: "dcF1", length_mm: 16 * GRID, height_mm: 2600, openings: [],
+    prestress: { columns_grid: [0, 2, 5, 8, 11, 13, 15] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  const py = orakelRand(arg);
+  deepEqual(js.deckenanschlusspunkte, py.deckenanschlusspunkte);
+  deepEqual(js.deckenanschlusspunkte.map((p) => p.k), [2, 11, 13]);
+  assert(!("deckenanschluss_rand" in js.validation), "unerwarteter Randbefund");
+});
+
+t("[A-26] keine Achse in Feld 2–3: naechste zulaessige Achse, sichtbar gemeldet (Core == Orakel)", () => {
+  // Links steht die erste Achse ausser Feld 1 erst in Feld 5 (k=4), rechts in Feld 4 (k=15
+  // bei N=19). Genommen wird die naechste vorhandene Achse — erfunden wird keine.
+  const arg = { name: "dcRand", length_mm: 19 * GRID, height_mm: 2600, openings: [],
+    prestress: { columns_grid: [0, 4, 7, 10, 13, 15, 18] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  const py = orakelRand(arg);
+  deepEqual(js.deckenanschlusspunkte, py.deckenanschlusspunkte);
+  deepEqual(js.deckenanschlusspunkte.map((p) => p.k), [4, 13, 15]);
+  deepEqual(js.validation.deckenanschluss_rand, [
+    { ende: "links", grund: "fehlt_feld_2_3", k: 4, feld: 5 },
+    { ende: "rechts", grund: "fehlt_feld_2_3", k: 15, feld: 4 }]);
+  deepEqual(py.validation.deckenanschluss_rand, js.validation.deckenanschluss_rand);
+});
+
+t("[A-26] kurze Waende: ein Punkt kann beide Enden tragen, unter 3 Feldern keiner (Core == Orakel)", () => {
+  // N = 3: k=1 ist von beiden Enden Feld 2 — genau ein Punkt.
+  deepEqual(verteileDeckenanschluss([1], 3), [1]);
+  // N = 4 und 5: Feld 2–3 der beiden Enden ueberlappen; eine Achse im Ueberlapp genuegt.
+  deepEqual(verteileDeckenanschluss([1, 2], 4), [1]);
+  deepEqual(verteileDeckenanschluss([2], 5), [2]);
+  // N = 5 mit Achsen nur in Feld 2 von links bzw. rechts: zwei Punkte.
+  deepEqual(verteileDeckenanschluss([1, 3], 5), [1, 3]);
+  // N = 2 (einzelner i2): jedes Feld ist von einem Ende aus Feld 1 — KEIN Punkt, beide Enden
+  // werden gemeldet; nie eine Achse in Feld 1 gesetzt.
   const arg = { name: "dckurz", length_mm: 2 * GRID, height_mm: 2600, openings: [],
     prestress: { max_span_grid: 3 } };
   const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
-  deepEqual(js.deckenanschlusspunkte, orakelRand(arg).deckenanschlusspunkte);
-  const achsen = js.tension_columns.map((c) => c.k);
-  const pk = js.deckenanschlusspunkte.map((p) => p.k);
-  deepEqual(pk, achsen.length === 1 ? [achsen[0]] : [achsen[0], achsen[achsen.length - 1]]);
-  // Reine Funktion, direkt geprueft: dicht stehende Zwischenachsen werden NICHT gesetzt —
-  // 1..7 sind 750 mm, erste und letzte Achse genuegen.
-  deepEqual(verteileDeckenanschluss([1, 4, 7]), [1, 7]);
-  deepEqual(verteileDeckenanschluss([]), []);
-  deepEqual(verteileDeckenanschluss([5]), [5]);
-  // Greedy waehlt die ENTFERNTESTE erreichbare Achse: 0→9 (genau 1125 mm), dann 9→12.
-  deepEqual(verteileDeckenanschluss([0, 3, 9, 12]), [0, 9, 12]);
+  const py = orakelRand(arg);
+  deepEqual(js.deckenanschlusspunkte, py.deckenanschlusspunkte);
+  deepEqual(js.deckenanschlusspunkte, []);
+  deepEqual(js.validation.deckenanschluss_rand, [
+    { ende: "links", grund: "fehlt_feld_2_3", k: null, feld: null },
+    { ende: "rechts", grund: "fehlt_feld_2_3", k: null, feld: null }]);
+  deepEqual(py.validation.deckenanschluss_rand, js.validation.deckenanschluss_rand);
 });
 
 t("[A-26] eine Achsluecke ueber 1125 mm wird benannt, nie eine Achse erfunden", () => {
   // Die Spannachsen selbst liegen weiter als 1125 mm auseinander (10 Raster = 1250 mm): die
   // Vorgabe ist dort UNERFUELLBAR. Gesetzt wird die naechste vorhandene Achse, gemeldet wird
   // die Luecke — reine Funktionen, bit-gleich in beiden Cores gebaut.
-  deepEqual(verteileDeckenanschluss([0, 10]), [0, 10]);
-  deepEqual(deckenanschlussLuecken([0, 10]),
-    [{ von_k: 0, bis_k: 10, abstand_mm: 1250 }]);
-  // Innerhalb der Vorgabe meldet niemand etwas.
+  deepEqual(verteileDeckenanschluss([1, 11], 13), [1, 11]);
+  deepEqual(deckenanschlussLuecken([1, 11]),
+    [{ von_k: 1, bis_k: 11, abstand_mm: 1250 }]);
   deepEqual(deckenanschlussLuecken([0, 9, 12]), []);
   deepEqual(deckenanschlussLuecken([]), []);
-  // Gemischte Wand: 0→9 erreichbar (1125 mm), 9→20 nicht (11 Raster) — die naechste Achse
+  // Gemischte Wand: 1→10 erreichbar (1125 mm), 10→21 nicht (11 Raster) — die naechste Achse
   // wird trotzdem gesetzt und genau diese eine Luecke benannt.
-  deepEqual(verteileDeckenanschluss([0, 5, 9, 20, 24]), [0, 9, 20, 24]);
-  deepEqual(deckenanschlussLuecken([0, 9, 20, 24]),
-    [{ von_k: 9, bis_k: 20, abstand_mm: 1375 }]);
+  deepEqual(verteileDeckenanschluss([1, 5, 10, 21, 25], 27), [1, 10, 21, 25]);
+  deepEqual(deckenanschlussLuecken([1, 10, 21, 25]),
+    [{ von_k: 10, bis_k: 21, abstand_mm: 1375 }]);
+});
+
+t("[A-26]/[A-27] Randbefund ist eine reine Pruefung — beide Grundtypen, nichts verschoben", () => {
+  deepEqual(deckenanschlussRand([1, 9, 18, 24], 26), []);
+  deepEqual(deckenanschlussRand([0, 9, 25], 26), [
+    { ende: "links", grund: "feld_1", k: 0, feld: 1 },
+    { ende: "links", grund: "fehlt_feld_2_3", k: 9, feld: 10 },
+    { ende: "rechts", grund: "feld_1", k: 25, feld: 1 },
+    { ende: "rechts", grund: "fehlt_feld_2_3", k: 9, feld: 17 }]);
+  // Feld 1 UND Feld 2 belegt: nur der Feld-1-Punkt ist ein Befund.
+  deepEqual(deckenanschlussRand([0, 1, 24], 26), [{ ende: "links", grund: "feld_1", k: 0, feld: 1 }]);
+  deepEqual(deckenanschlussRand([], 26), [
+    { ende: "links", grund: "fehlt_feld_2_3", k: null, feld: null },
+    { ende: "rechts", grund: "fehlt_feld_2_3", k: null, feld: null }]);
 });
 
 console.log("\nDECKENANSCHLUSS-OVERRIDE [A-27] (Paritaetsvertrag mit dem Python-Orakel):");
@@ -1745,6 +1808,36 @@ t("[A-27] die ausdruecklich leere Liste faellt nicht auf die Verteilung zurueck 
   deepEqual(normDeckenanschluss(undefined, [1, 3], 26), { punkte: null, fehler: [] });
 });
 
+t("[A-27] Override in Feld 1 oder ohne Anschluss bis Feld 3 wird benannt, nicht verschoben (Core == Orakel)", () => {
+  // Manuelle Achsen ([V-9]) mit Achsen in Feld 1 an beiden Enden; der Override setzt links
+  // Feld 1 und laesst rechts bis Feld 3 nichts. Die Liste gilt GENAU so — nichts wird
+  // verschoben oder ergaenzt —, die Befunde stehen in validation.deckenanschluss_rand.
+  const arg = { name: "dcovR", length_mm: 16 * GRID, height_mm: 2600, openings: [],
+    prestress: { columns_grid: [0, 2, 5, 8, 11, 13, 15], deckenanschluss_grid: [0, 8] } };
+  const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
+  const py = orakelRand(arg);
+  deepEqual(js.deckenanschlusspunkte, py.deckenanschlusspunkte);
+  deepEqual(js.deckenanschlusspunkte.map((p) => p.k), [0, 8]);
+  assert(js.deckenanschlusspunkte.every((p) => p.art === "manuell"), "art");
+  deepEqual(js.validation.deckenanschluss_rand, [
+    { ende: "links", grund: "feld_1", k: 0, feld: 1 },
+    { ende: "links", grund: "fehlt_feld_2_3", k: 8, feld: 9 },
+    { ende: "rechts", grund: "fehlt_feld_2_3", k: 8, feld: 8 }]);
+  deepEqual(py.validation.deckenanschluss_rand, js.validation.deckenanschluss_rand);
+  // Die 1125-mm-Meldung bleibt dem Auto-Pfad vorbehalten.
+  assert(!("deckenanschluss_luecken" in js.validation), "Luecken im Override-Pfad");
+  // Regelkonformer Override: kein Befund.
+  const ok = buildWall("dcovOK", 16 * GRID, 2600, [], null,
+    { columns_grid: [0, 2, 5, 8, 11, 13, 15], deckenanschluss_grid: [2, 8, 13] });
+  assert(!("deckenanschluss_rand" in ok.validation), "Befund trotz Feld 3 an beiden Enden");
+  // Die ausdruecklich leere Liste („kein Deckenanschluss") ist kein Randbefund.
+  const leer = { name: "dcovL", length_mm: 3250, height_mm: 2600, openings: [],
+    prestress: { max_span_grid: 3, deckenanschluss_grid: [] } };
+  const jsL = buildWall(leer.name, leer.length_mm, leer.height_mm, [], null, leer.prestress);
+  assert(!("deckenanschluss_rand" in jsL.validation), "Randbefund bei leerer Liste");
+  assert(!("deckenanschluss_rand" in orakelRand(leer).validation), "Orakel: Randbefund bei leerer Liste");
+});
+
 t("[A-27] der Override reist durch psOf() (Auto- und Nachweis-Modus)", () => {
   // `psOf()` ist eine WHITELIST: fiele der Override in der Iteration weg, rechnete der Core
   // mit seiner Verteilung weiter und die in Modul 1 gesetzten Punkte waeren unwirksam.
@@ -1767,7 +1860,7 @@ t("[A-26]/[A-27] Modul 3 bleibt unberuehrt: keine Vorspann- oder Mengenwirkung",
   // Stueckliste noch Validierung duerfen sich durch einen Override bewegen ([A-26]).
   const basis = buildWall("dcw", 3250, 2600, [], null, { max_span_grid: 3 });
   const mit = buildWall("dcw", 3250, 2600, [], null,
-    { max_span_grid: 3, deckenanschluss_grid: [basis.tension_columns[0].k] });
+    { max_span_grid: 3, deckenanschluss_grid: basis.deckenanschlusspunkte.map((p) => p.k) });
   deepEqual(mit.bom, basis.bom);
   deepEqual(mit.tension_columns, basis.tension_columns);
   deepEqual(mit.ausgleichspunkte, basis.ausgleichspunkte);
