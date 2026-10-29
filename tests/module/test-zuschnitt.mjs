@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import {
   buildWall, Opening, kombiniereLaengen, kombiniereSegment, quelleFuerMass, normLaengen,
-  MIN_FERTIGMASS_MM,
+  MIN_FERTIGMASS_MM, kombiniereStangenschema,
 } from "../../docs/shared/sembla-core.js";
 import { semblaBom, semblaBomItems } from "../../docs/shared/sembla-bom.js";
 import { berechneAufbau } from "../../docs/shared/sembla-aufbau.js";
@@ -294,8 +294,10 @@ console.log("\n[Z-6] Reststueck am oberen Wandabschluss:");
   ok("Bedarf = h + Ueberstand", a.bedarf_mm === 1710);
   ok("oberstes Stueck ist das Reststueck", a.stuecke[a.stuecke.length - 1].art === "rest"
     && a.stuecke[a.stuecke.length - 1].len_mm === 100);
-  ok("darunter groesste Standardlaenge zuerst, dann genau ein Sonderzuschnitt",
-    kurz(a) === "1000+500+110S/500+100");
+  // [Z-9] feste Folge: groesste Standardlaenge so oft wie noetig (hier einmal), darueber EIN
+  // variables Stueck (610 mm aus 1000) — vorher entstand nach [Z-2] ein 110-mm-Kurzstueck.
+  ok("darunter feste Folge [Z-9]: groesste Standardlaenge, dann genau ein variables Stueck",
+    kurz(a) === "1000+610S/1000+100" && a.konflikt === null && a.schema === "fest");
   ok("Summe der Stuecke = h + Ueberstand",
     a.stuecke.reduce((s, x) => s + x.len_mm, 0) === 1710);
   ok("genau EIN Sonderzuschnitt", a.stuecke.filter(s => s.art === "sonder").length === 1);
@@ -417,6 +419,112 @@ console.log("\n[Z-6] Standardkatalog:");
   ok("enthaelt die Standardlaengen 1000 und 920 mm (#103)",
     gs.some(p => +p.laenge_mm === 1000) && gs.some(p => +p.laenge_mm === 920)
     && !gs.some(p => +p.laenge_mm === 850));
+}
+
+// ------------------------------------------ [Z-9] Feste Stangenfolge (Miro R01, 28.10.2026)
+// Von unten die groesste gewaehlte Standardlaenge so oft wie noetig, darueber EIN variables
+// Stueck, ganz oben das Spannstueck ([Z-6]). [Z-5]/[Z-7] stehen darueber: verletzt die feste
+// Folge eine davon, gilt [Z-2] als Rueckfall — sichtbar benannt.
+console.log("\n[Z-9] Feste Stangenfolge:");
+{
+  const L = [1050, 820];
+  // Einbaulagen wie im Standardkatalog: Fussoffset 15 (halbe Kopplungsmutter), Spannplatte 10.
+  const seg = (h, sperren = null) => kombiniereSegment(h, L, true, 100, 10, sperren, MIN_FERTIGMASS_MM, 15, 10);
+  const k3 = (r) => r.stuecke.map(s => s.len_mm + (s.art === "sonder" ? "S/" + s.quelle_mm : s.art === "rest" ? "R" : "")).join("+");
+
+  const w30 = seg(3000);
+  ok("3,0 m: 1050 + 1050 + variabel (805 aus 820) + Spannstueck 100",
+    k3(w30) === "1050+1050+805S/820+100R" && w30.schema === "fest" && w30.konflikt === null);
+  const w28 = seg(2800);
+  ok("2,8 m: variables Stueck 605 mm aus der 820er Stange (kleinstes geeignetes Ausgangsprodukt)",
+    k3(w28) === "1050+1050+605S/820+100R" && w28.schema === "fest");
+  const w40 = seg(4000);
+  ok("4,0 m: so viele 1050 wie noetig (drei), dann variabel",
+    k3(w40) === "1050+1050+1050+755S/820+100R" && w40.schema === "fest");
+  const w32 = seg(3200);
+  ok("3,2 m: das variable Stueck darf laenger als 820 sein (1005 aus 1050), nie laenger als 1050",
+    k3(w32) === "1050+1050+1005S/1050+100R" && w32.schema === "fest");
+  const w10 = seg(1000);
+  ok("1,0 m: ohne festes Stueck nur das variable (905 aus 1050) — kein Kurzstueck mehr",
+    k3(w10) === "905S/1050+100R" && w10.schema === "fest" && w10.konflikt === null);
+  // Variables Stueck exakt eine Standardlaenge -> Standardteil, kein Zuschnitt.
+  const ex = kombiniereStangenschema(1050 + 820, L);
+  ok("variables Stueck exakt 820 -> Standardteil",
+    ex.stuecke.map(s => s.len_mm + s.art[0]).join("+") === "1050s+820s" && ex.grund === null);
+  ok("jede Stueckfolge summiert auf den Bedarf",
+    [w30, w28, w40, w32, w10].every(r => r.stuecke.reduce((a, s) => a + s.len_mm, 0) === r.bedarf_mm));
+  ok("hoechstens ein Sonderzuschnitt, und der sitzt direkt unter dem Spannstueck",
+    [w30, w28, w40, w32, w10].every(r => r.stuecke.filter(s => s.art === "sonder").length <= 1
+      && (r.stuecke.findIndex(s => s.art === "sonder") === -1
+        || r.stuecke.findIndex(s => s.art === "sonder") === r.stuecke.length - 2)));
+
+  // -- Rueckfall [Z-5]: RWA-Wand 2,2 m — fuer das variable Stueck bliebe ein Rest unter 200 mm.
+  const w22 = seg(2200);
+  ok("2,2 m (RWA): feste Folge passt nicht -> Rueckfall [Z-2] mit Grund mindestmass",
+    w22.schema === "rueckfall" && w22.schema_grund === "mindestmass");
+  ok("2,2 m: Rueckfall-Zerlegung ist die bisherige [Z-2]-Kombination, ohne Zuschnittkonflikt",
+    k3(w22) === "1050+820+235S/820+100R" && w22.konflikt === null);
+  ok("Rueckfall ist KEIN Zuschnittkonflikt (eigener Kanal)", w22.konflikt === null);
+
+  // -- Rueckfall [Z-7]: Stoss der festen Folge auf einem Zwischenspannpunkt.
+  const zp = seg(3000, [1050]);
+  ok("Stoss der festen Folge auf Zwischenspannpunkt -> Rueckfall mit Grund stoss_auf_zwischenpunkt",
+    zp.schema === "rueckfall" && zp.schema_grund === "stoss_auf_zwischenpunkt");
+  ok("Rueckfall [Z-7]: kein Stoss liegt auf der Sperrhoehe",
+    (() => { let z = 0; for (const s of zp.stuecke.slice(0, -1)) { z += s.len_mm; if (z === 1050) return false; } return true; })());
+  const zpEnde = kombiniereStangenschema(2000, L, MIN_FERTIGMASS_MM, [2000]);
+  ok("auch die Kopplung zum Spannstueck ist ein Stoss ([Z-7])", zpEnde.stuecke === null
+    && zpEnde.grund === "stoss_auf_zwischenpunkt");
+
+  // -- nicht zustaendig: ohne Oberkantenbezug, ohne Spannstueck, ohne Standardlaenge
+  const ohneOk = kombiniereSegment(3000, L, false, 100, 10);
+  ok("ohne Oberkantenbezug: kein Schema, bit-genau [Z-2]",
+    !("schema" in ohneOk) && JSON.stringify(ohneOk.stuecke) === JSON.stringify(kombiniereLaengen(3000, L).stuecke));
+  const ohneRest = kombiniereSegment(2800, L, true, 0, 10);
+  ok("ohne Spannstueck: kein Schema, Konflikt kein_reststueck bleibt", !("schema" in ohneRest)
+    && ohneRest.konflikt === "kein_reststueck");
+  const ohneL = kombiniereSegment(3000, [], true, 100, 10);
+  ok("ohne Standardlaenge: kein Schema, Konflikt keine_standardlaenge (nichts erfunden)",
+    !("schema" in ohneL) && ohneL.konflikt === "keine_standardlaenge");
+
+  // -- im Wandelement: Segmentfeld, Validierungsliste, Stueckliste, Kopplungsmuttern
+  const PSZ = { rod_lengths_mm: L, rod_rest_mm: 100, rod_overhang_mm: 10, rod_fuss_offset_mm: 15,
+    rod_kopf_zuschlag_mm: 10, top_connection: "spannplatte" };
+  const W30 = buildWall("Z9-30", 3000, 3000, [], null, PSZ);
+  ok("Wand 3,0 m: jede Spannachse traegt stangenschema = fest",
+    W30.tension_columns.every(c => c.segments.every(s => s.stangenschema === "fest")));
+  ok("Wand 3,0 m: keine Rueckfall-Liste in der Validierung",
+    !("stangenschema_rueckfall" in W30.validation) && W30.validation.zuschnitt_konflikte.length === 0);
+  const items = semblaBomItems(W30), nK = W30.tension_columns.length;
+  const menge = (key, mass) => items.filter(i => i.key === key && (mass == null || i.mass_mm === mass))
+    .reduce((a, i) => a + i.menge, 0);
+  ok("Stueckliste 3,0 m: 2 x 1050 je Strang, 1 Sonderzuschnitt, 1 Spannstueck",
+    menge("rod_std", 1050) === 2 * nK && menge("rod_sonder") === nK && menge("rod_rest", 100) === nK);
+  ok("Stueckliste 3,0 m: Kopplungsmuttern Stoss = 3 je Strang (4 Stuecke − 1), Fuss = 1 je Strang ([P-18])",
+    menge("kupplung") === 3 * nK && menge("kupplung_fuss") === nK);
+  const W22 = buildWall("Z9-22", 3000, 2200, [], null, PSZ);
+  const rf = W22.validation.stangenschema_rueckfall || [];
+  ok("Wand 2,2 m: jede Spannachse steht benannt in validation.stangenschema_rueckfall",
+    rf.length === W22.tension_columns.length && rf.every(r => r.grund === "mindestmass")
+    && rf.every(r => typeof r.k === "number" && r.z0_mm === 0 && r.z1_mm === 2200));
+  ok("Wand 2,2 m: Rueckfall ist kein Baubarkeitsausschluss",
+    W22.validation.buildable === true && W22.validation.zuschnitt_konflikte.length === 0);
+  // Bruestung unter einem Fenster: kein Oberkantenbezug -> kein Schemafeld.
+  const WF = buildWall("Z9-F", 2000, 3000, [new Opening(6, 10, 4, 10, "fenster")], null, PSZ);
+  const bru = WF.tension_columns.flatMap(c => c.segments).filter(s => s.z1_mm < 3000);
+  ok("Bruestung/Sturz ohne Oberkantenbezug tragen kein Schemafeld",
+    bru.length > 0 && bru.every(s => !("stangenschema" in s)));
+}
+
+// ------------------------------------------ [Z-9] Standardkatalog: Spannstueck vorhanden
+{
+  const roh = readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog-v6.json", import.meta.url), "utf8");
+  const kat = parseKatalog(roh);
+  const gs = kat.produkte.filter(p => p.kategorie === "gewindestange");
+  ok("[Z-9] Standardkatalog v6 fuehrt 1050 und 820 als rod_std und das 100-mm-Spannstueck als rod_rest",
+    gs.some(p => +p.laenge_mm === 1050 && (p.rollen || []).includes("rod_std"))
+    && gs.some(p => +p.laenge_mm === 820 && (p.rollen || []).includes("rod_std"))
+    && gs.some(p => +p.laenge_mm === 100 && (p.rollen || []).includes("rod_rest")));
 }
 
 console.log(`\n${pass} ok, ${fail} fail`);

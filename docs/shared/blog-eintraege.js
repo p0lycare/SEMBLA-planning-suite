@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261029-02",
+    datum: "2026-10-29",
+    typ: "feature",
+    issue: 77,
+    titel: "Feste Gewindestangenfolge: 1050 unten und Mitte, oben ein variables Stück, Spannstück 100",
+    testbitte: "Wand 3,0 m mit Standardkatalog in Modul 1 auslegen: je Strang 1050 + 1050 + Zuschnitt + 100. "
+      + "Bei 2,2 m erscheint eine Warnung „Stangenfolge“ mit Spannachsen – dort von Hand prüfen",
+  },
+  {
     id: "chg-20261029-01",
     datum: "2026-10-29",
     typ: "feature",

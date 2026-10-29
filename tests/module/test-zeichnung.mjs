@@ -1072,7 +1072,7 @@ ok("ohne Reststueck steht die Reststueck-Farbe nicht im Blatt-SVG (nichts erfind
   const KAT5 = JSON.parse(readFileSync(new URL("../../docs/vorlagen/SEMBLA_Standardkatalog-v5.json", import.meta.url), "utf8"));
   const KL = stangenKatalogLaengen(KAT5);
   const PSV = { rod_lengths_mm: [1050, 820], rod_rest_mm: 100, rod_overhang_mm: 10 };
-  const WN = buildWall("IW-N", 3000, 1000, [], null, PSV);       // nur 820 + Sonder + Rest
+  const WN = buildWall("IW-N", 3000, 1200, [], null, PSV);       // nur 820 + Sonder + Rest ([Z-9]-Rueckfall)
   const WH = buildWall("IW-H", 3000, 2200, [], null, PSV);       // 1050 + 820 + Sonder + Rest
   const stroke = f => new RegExp(`stroke="${f}" stroke-width="[\\d.]+"`);
   const svgN = Z.zeichnungSvg(WN, { stangen_laengen_mm: KL }).svg;

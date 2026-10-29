@@ -722,6 +722,16 @@ function run(){
   if(zs.length) warns.push('⚠ Zuschnitt [Z-7]: '+zs.length+' Segment(e) ohne stoßfreie '
     +'Kombination — eine Kopplung liegt auf der Höhe eines Zwischenspannpunkts (Einlegeblech). '
     +'Weitere Standardlänge wählen oder den Punkt auf eine andere Lage setzen.');
+  // [Z-9] Feste Stangenfolge passt nicht: der Rechenkern kombiniert dort nach [Z-2]. Benannt,
+  // damit diese Stränge von Hand geprüft werden können — nie still.
+  const sr=vv.stangenschema_rueckfall||[];
+  if(sr.length){
+    const SR_GRUND={mindestmass:'Zuschnitt unter 20 cm [Z-5]',stoss_auf_zwischenpunkt:'Stoß auf Zwischenspannpunkt [Z-7]'};
+    warns.push('⚠ Stangenfolge [Z-9]: in '+sr.length+' Segment(en) (Spannachse '
+      +[...new Set(sr.map(x=>'k'+x.k))].join(', ')+') passt die feste Folge (größte Standardlänge, '
+      +'variables Stück, Spannstück) nicht — '+[...new Set(sr.map(x=>SR_GRUND[x.grund]||x.grund))].join(', ')
+      +'. Dort aus den Standardlängen kombiniert [Z-2]; bitte von Hand prüfen.');
+  }
   // [A-17] Abgewiesene manuelle Punkte: benannt, nicht angewandt, nie auf eine andere Lage gerundet.
   const zpf=vv.zwischenpunkt_fehler||[];
   if(zpf.length) warns.push('⚠ Zwischenspannpunkte [A-17]: '+zpf.length+' Wert(e) abgewiesen ('

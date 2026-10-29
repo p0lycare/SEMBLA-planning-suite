@@ -1172,6 +1172,24 @@ ok("Modul verweist fuer Dateien auf den zentralen Export", /zentralen Export/.te
 }
 
 
+// [Z-9] Feste Stangenfolge: die Uebersicht benennt Straenge, an denen sie nicht passt (RWA-Fall
+// 2,2 m), und meldet die feste Folge, wo sie gilt. Nur Anzeige — gerechnet im Rechenkern.
+// Uebergeben wird das gerechnete Wandelement direkt (`applyWand`), weil der Lesepfad der Seite
+// mit dem Testkatalog ohne Spannstueck neu rechnen wuerde.
+{
+  const PSZ9 = { rod_lengths_mm: [1050, 820], rod_rest_mm: 100, rod_overhang_mm: 10 };
+  Z.applyWand(buildWall("IW-Z9-22", 3000, 2200, [], null, PSZ9));
+  const t22 = $("ovStangen").textContent;
+  ok("[Z-9] Modul 7: 2,2-m-Wand benennt den Rueckfall je Spannachse mit Grund",
+    /feste Folge passt nicht in Spannachse k\d/.test(t22) && /Zuschnitt unter 200 mm/.test(t22)
+    && /von Hand prüfen/.test(t22));
+  Z.applyWand(buildWall("IW-Z9-30", 3000, 3000, [], null, PSZ9));
+  ok("[Z-9] Modul 7: 3,0-m-Wand zeigt die feste Folge",
+    /^feste Folge \(/.test($("ovStangen").textContent));
+  Z.applyWand(buildWall("IW-Z9-0", 3000, 3000, []));
+  ok("[Z-9] Modul 7: ohne Spannstueck keine Aussage zur festen Folge", $("ovStangen").textContent === "–");
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? "  ok  " : "FAIL  ") + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

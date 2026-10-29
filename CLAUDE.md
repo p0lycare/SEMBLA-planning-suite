@@ -238,14 +238,31 @@ Länge kommt **allein** aus dem Katalog (eigene Verwendungsrolle `rod_rest`, **g
 mehrere ⇒ Länge bleibt offen, Konflikt benannt); konfigurierbar ist nur der **Überstand** über die
 Oberkante (`prestress.rod_overhang_mm`, Default `ROD_OVERHANG` = 10 mm, Feld in Modul 1). Zu
 bestücken ist also `h + Überstand`; der Überstand ist eingebautes Material und **kein** Verschnitt
-(`segment.bedarf_mm`/`ueberstand_mm`). Darunter gilt [Z-2] unverändert: von unten die größte noch
-passende Standardlänge, dann kleinere, zuletzt **ein** Sonderzuschnitt direkt unter dem Reststück.
+(`segment.bedarf_mm`/`ueberstand_mm`). Darunter gilt seit 29.10.2026 vorrangig [Z-9] (s. u.), als
+Rückfall [Z-2]: von unten die größte noch passende Standardlänge, dann kleinere, zuletzt **ein**
+Sonderzuschnitt direkt unter dem Reststück.
 Segmente **ohne** Oberkantenbezug (Brüstung/Sturz an einer Öffnung) sind ausgenommen und bleiben
 bit-genau wie zuvor. Gerechnet wird das in `kombiniereSegment()` (Core + Python-Orakel); fehlendes
 oder zu langes Reststück ⇒ `validation.zuschnitt_konflikte` (`kein_reststueck` /
 `reststueck_zu_lang`) — sichtbar gemeldet, **kein** Baubarkeitsausschluss, nie eine erfundene Länge.
 In der Stückliste ist das Reststück eine **eigene Position** mit eigenem `mass_mm` (`art:"rest"` in
 `stuecke`), damit [P-14] eindeutig bleibt; der Stoß dorthin ist eine reguläre Kopplung.
+
+**Feste Stangenfolge (Regel [Z-9], Miro R01 / Felix Bauroth, 28.10.2026).** Unter dem Reststück
+(dem **Spannstück**) liegt je Segment mit Oberkantenbezug eine **feste** Folge: die **größte gewählte
+Standardlänge** so oft wie nötig (Standardkatalog: 1050 unten und in der Mitte), darüber **genau ein
+variables Stück** (Standardteil, wenn es exakt passt, sonst Sonderzuschnitt — nie länger als die
+größte Standardlänge), ganz oben das Spannstück (Standardkatalog: 100 mm). Längen nur aus dem
+Katalog ([Z-1]), keine im Code. [Z-5] und [Z-7] stehen **darüber**: verletzt die feste Folge eine
+davon, gilt [Z-2] als **Rückfall**, und das Segment trägt `stangenschema: "rueckfall"` samt
+`stangenschema_grund` (`mindestmass`/`stoss_auf_zwischenpunkt`); gesammelt in
+`validation.stangenschema_rueckfall` (Schlüssel nur im Befundfall), angezeigt als Warnung in
+Modul 1 und in der Übersicht von Modul 7 (nicht auf dem Blatt). Das ist **kein** Zuschnittkonflikt
+und **kein** Baubarkeitsausschluss. Wo die Regel gilt, trägt das Segment `stangenschema: "fest"`;
+Segmente ohne Oberkantenbezug oder ohne Spannstück bekommen kein Feld und bleiben bit-genau.
+Gerechnet in `kombiniereStangenschema()`/`kombiniereSegment()` (Core + Python-Orakel). Bekannter
+Rückfall: RWA-Wände mit 2,2 m Höhe (Rest unter 200 mm) — Felix passt sie von Hand an, die
+Grundsatzfrage ist an das Refactoring verwiesen.
 
 **Spannachsen-Verteilung (`wandelement.prestress`).** Maßgebend ist die **Steinabdeckung**, nicht
 mehr der Abstand: **jeder Stein jeder Lage** wird von mindestens einer Spannachse durchgangen

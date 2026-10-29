@@ -236,6 +236,49 @@ export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM
   return { stuecke, konflikt };
 }
 
+// ---------- Feste Stangenfolge unter dem Spannstueck ([Z-9]) ----------
+// Fachvorgabe (Miro R01 / Felix Bauroth, 28.10.2026): je Strang von unten die GROESSTE gewaehlte
+// Standardlaenge (Standardkatalog: 1050 mm) so oft wie noetig — unten, in der Mitte —, darueber
+// genau EIN variables Stueck (Standardlaenge, wenn es exakt eine ist, sonst ein Sonderzuschnitt
+// passend zur Wandhoehe), ganz oben das Spannstueck ([Z-6], Standardkatalog: 100 mm). Die Zahl
+// der grossen Stuecke ist die groesste, bei der noch ein Rest > 0 fuer das variable Stueck
+// bleibt; das variable Stueck ist damit nie laenger als die groesste Standardlaenge.
+//
+// [Z-5] und [Z-7] stehen als Baubarkeitsregeln UEBER [Z-9]: verletzt die feste Folge eine
+// davon, gilt unveraendert [Z-2] als Rueckfall, und der Grund wird SICHTBAR benannt — nie wird
+// die feste Folge still verbogen und nie ein Mass erfunden ([P-9]).
+
+/**
+ * Feste Stangenfolge fuer die Strecke UNTER dem Spannstueck ([Z-9]).
+ * @param {number} untenMm zu bestueckende Strecke unter dem Spannstueck
+ * @param {number[]} laengenMm ausgewaehlte Standardlaengen
+ * @param {number} [minMm] Mindest-Fertigmass ([Z-5])
+ * @param {number[]|null} [sperrenMm] Hoehen ueber dem Stangenfuss ohne Stoss ([Z-7])
+ * @returns {{stuecke:Array<{len_mm:number,art:"standard"|"sonder",quelle_mm:number}>|null,
+ *            grund:string|null}} `stuecke` null = Schema nicht anwendbar; `grund` benennt
+ *          warum (null nur, wenn gar keine Standardlaenge gewaehlt ist)
+ */
+export function kombiniereStangenschema(untenMm, laengenMm, minMm = MIN_FERTIGMASS_MM,
+                                        sperrenMm = null) {
+  const L = normLaengen(laengenMm);
+  if (!L.length) return { stuecke: null, grund: null };
+  const G = L[0], u = _mm(untenMm);
+  let n = 0;
+  while (_mm(u - (n + 1) * G) > 1e-9) n++;
+  const r = _mm(u - n * G);
+  const stuecke = [];
+  for (let i = 0; i < n; i++) stuecke.push({ len_mm: G, art: "standard", quelle_mm: G });
+  if (L.some((l) => Math.abs(l - r) < 1e-9)) stuecke.push({ len_mm: r, art: "standard", quelle_mm: r });
+  else {
+    if (r < minMm - 1e-9) return { stuecke: null, grund: "mindestmass" };
+    stuecke.push({ len_mm: r, art: "sonder", quelle_mm: quelleFuerMass(r, L) });
+  }
+  // Jedes Stueckende ist ein Stoss — auch das oberste: dort sitzt die Kopplung zum Spannstueck.
+  const SP = normSperren(sperrenMm, u, true);
+  if (_stossTrifft(stuecke, SP, u, true)) return { stuecke: null, grund: "stoss_auf_zwischenpunkt" };
+  return { stuecke, grund: null };
+}
+
 // ---------- Reststueck am oberen Wandabschluss ([Z-6]) ----------
 // Die Waende werden im Innenraum montiert: unter der Decke ist kein Platz mehr, um eine lange
 // Gewindestange einzufaedeln. Das OBERSTE Stueck eines Stranges, der an der Wandoberkante endet,
@@ -263,7 +306,9 @@ export function kombiniereLaengen(bedarfMm, laengenMm, minMm = MIN_FERTIGMASS_MM
  *        der Segmentfuss (halbe Kopplungsmutterhoehe)
  * @param {number} [kopfZuschlagMm] Spannplattendicke ueber der Steinoberkante (#92)
  * @returns {{stuecke:Array<{len_mm:number,art:"standard"|"sonder"|"rest",quelle_mm:number}>,
- *            konflikt:string|null, bedarf_mm:number}}
+ *            konflikt:string|null, bedarf_mm:number,
+ *            schema?:"fest"|"rueckfall", schema_grund?:string}} `schema` nur an Segmenten mit
+ *          Oberkantenbezug und gewaehltem Reststueck ([Z-9])
  */
 export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm,
                                   sperrenMm = null, minMm = MIN_FERTIGMASS_MM,
@@ -301,11 +346,17 @@ export function kombiniereSegment(hMm, laengenMm, obenAnOk, restMm, ueberstandMm
   if (unten < -1e-9) return { stuecke: [], konflikt: "reststueck_zu_lang", bedarf_mm: bedarf };
   const restStueck = { len_mm: R, art: "rest", quelle_mm: R };
   if (unten <= 1e-9) return { stuecke: [restStueck], konflikt: null, bedarf_mm: bedarf };
+  // [Z-9] Zuerst die feste Stangenfolge (groesste Standardlaenge, so oft wie noetig, darueber
+  // ein variables Stueck). Nur wenn sie [Z-5]/[Z-7] verletzt, gilt [Z-2] als Rueckfall — mit
+  // benanntem Grund (`schema: "rueckfall"`), nie still.
+  const s = kombiniereStangenschema(unten, laengenMm, minMm, sperrenMm);
+  if (s.stuecke) return { stuecke: [...s.stuecke, restStueck], konflikt: null, bedarf_mm: bedarf, schema: "fest" };
+  const schema = s.grund ? { schema: "rueckfall", schema_grund: s.grund } : {};
   // Unterhalb des Reststuecks ist AUCH das obere Ende ein Stoss: die Kopplung zum Reststueck
   // ([Z-6]). Sie unterliegt der Sperre nach [Z-7] wie jede andere Kopplung.
   const k = kombiniereLaengen(unten, laengenMm, minMm, sperrenMm, true);
-  if (!k.stuecke.length) return { stuecke: [], konflikt: k.konflikt || "kein_ausgangsprodukt", bedarf_mm: bedarf };
-  return { stuecke: [...k.stuecke, restStueck], konflikt: k.konflikt, bedarf_mm: bedarf };
+  if (!k.stuecke.length) return { stuecke: [], konflikt: k.konflikt || "kein_ausgangsprodukt", bedarf_mm: bedarf, ...schema };
+  return { stuecke: [...k.stuecke, restStueck], konflikt: k.konflikt, bedarf_mm: bedarf, ...schema };
 }
 
 // ---------- Zwischenspannpunkte ([A-14]/[A-15]/[A-17], #93) ----------
@@ -1796,7 +1847,11 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         // je Segment lief bisher in jede Summe und damit in die Stueckliste).
         verschnitt_mm: stueck ? quelleSumme - kombi.bedarf_mm : 0,
         verbindungsmuttern: Math.max(0, stueck - 1), anker_unten: ankerUnten, anker_oben: ankerOben,
-        senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter });
+        senkkopfschrauben: segSenkkopf, spannplatten: segSpannplatten, spannmuttern: segSpannmutter,
+        // [Z-9] Feste Stangenfolge angewandt oder Rueckfall auf [Z-2] (mit Grund). Das Feld gibt
+        // es NUR an Segmenten, fuer die die Regel zustaendig ist (Oberkante + Reststueck).
+        ...(kombi.schema ? { stangenschema: kombi.schema } : {}),
+        ...(kombi.schema_grund ? { stangenschema_grund: kombi.schema_grund } : {}) });
       // `z0_mm` bleibt STEINGEOMETRIE (daran haengen Lagen, Belegung und die Zwischenpunkte).
       // Der reale Stangenbeginn liegt um `fussOffset` hoeher, bekommt hier aber BEWUSST KEIN
       // eigenes Feld: die zeichnenden Leser leiten ihn seit #128 selbst aus `anker_unten` +
@@ -1937,6 +1992,15 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     }
   }
 
+  // [Z-9] Segmente, an denen die feste Stangenfolge nicht passt und [Z-2] als Rueckfall gilt —
+  // sichtbar benannt (zum haendischen Nachpruefen), KEIN Baubarkeitsausschluss.
+  const schemaRueckfall = [];
+  for (const col of columns) for (const sg of col.segments) {
+    if (sg.stangenschema === "rueckfall") {
+      schemaRueckfall.push({ k: col.k, z0_mm: sg.z0_mm, z1_mm: sg.z1_mm, grund: sg.stangenschema_grund });
+    }
+  }
+
   const buildable = invalidSegments.length === 0;  // strukturell; Versatz separat
   return {
     name, length_mm: lengthMm, height_mm: heightMm,
@@ -1977,6 +2041,8 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // Der Schluessel entsteht NUR im Fehlerfall: eine Wand ohne Override soll kein Feld
       // bekommen, das es vorher nicht gab (das gilt fuer die Auto-Ableitung ebenso).
       ...(ZP.fehler.length ? { zwischenpunkt_fehler: ZP.fehler } : {}),
+      // [Z-9] Rueckfall der festen Stangenfolge — der Schluessel entsteht NUR im Befundfall.
+      ...(schemaRueckfall.length ? { stangenschema_rueckfall: schemaRueckfall } : {}),
       // [A-24] Abgewiesene manuelle Ausgleichspunkte — benannt, nicht angewandt, nie gerundet.
       // Der Schluessel entsteht auch hier NUR im Fehlerfall.
       ...(AG.fehler.length ? { ausgleich_fehler: AG.fehler } : {}),

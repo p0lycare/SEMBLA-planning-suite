@@ -131,6 +131,20 @@ ok("genau ein Eintrag fuer Issue 22 (Baustellenstueckliste)", neu22.length === 1
 // nicht mehr ueber feste Positionen — sonst bricht jeder neue Eintrag alle aelteren Pruefungen.
 const nach = (e) => EINTRAEGE[EINTRAEGE.indexOf(e) + 1];
 
+// FESTE GEWINDESTANGENFOLGE ([Z-9], Miro R01 GS/R02). Aussagewahr heisst hier: geliefert ist die
+// feste Folge 1050/1050/variabel/Spannstueck 100 samt sichtbarer Meldung, wo sie nicht passt.
+// NICHT versprochen werden ein neuer Katalog oder ein Preis.
+const Z9 = EINTRAEGE.find(e => e.id === "chg-20261029-02");
+ok("[Z-9 Stangenfolge] Eintrag vorhanden, feature zu Issue 77, vor dem Deckenanschluss am Rand",
+  Z9?.typ === "feature" && Z9?.issue === 77 && Z9?.datum === "2026-10-29"
+  && EINTRAEGE.indexOf(Z9) < EINTRAEGE.findIndex(e => e.id === "chg-20261029-01")
+  && /1050/.test(Z9?.titel || "")
+  && /variables Stück/.test(Z9?.titel || "") && /Spannstück 100/.test(Z9?.titel || "")
+  && !/Preis|Katalog/i.test(Z9?.titel || ""));
+ok("[Z-9 Stangenfolge] die Testbitte fuehrt Modul 1, den Regelfall und die 2,2-m-Warnung",
+  /Modul 1/.test(Z9?.testbitte || "") && /3,0 m/.test(Z9?.testbitte || "")
+  && /2,2 m/.test(Z9?.testbitte || "") && /Stangenfolge/.test(Z9?.testbitte || ""));
+
 // DECKENANSCHLUSS AN DEN WANDENDEN ([A-26]/[A-27], Miro R01 DA 2/DA 3). Aussagewahr heisst
 // hier: geliefert ist je Wandende ein Anschluss in Feld 2 oder 3, nie in Feld 1, und eine
 // Meldung in Modul 1 fuer eigene Punkte in Feld 1. NICHT versprochen werden eine geaenderte

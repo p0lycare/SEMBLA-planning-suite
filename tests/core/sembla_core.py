@@ -218,6 +218,37 @@ def kombiniere_laengen(bedarf_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM,
     return {"stuecke": stuecke, "konflikt": konflikt}
 
 
+# ---- Feste Stangenfolge unter dem Spannstueck ([Z-9]) ----
+# Bit-genaues Gegenstueck zu kombiniereStangenschema() in docs/shared/sembla-core.js.
+# Fachvorgabe (Miro R01 / Felix Bauroth, 28.10.2026): von unten die groesste gewaehlte
+# Standardlaenge so oft wie noetig, darueber genau EIN variables Stueck (Standardlaenge, wenn
+# exakt, sonst Sonderzuschnitt), ganz oben das Spannstueck ([Z-6]). [Z-5]/[Z-7] stehen darueber:
+# verletzt die feste Folge eine davon, gilt [Z-2] als Rueckfall mit benanntem Grund.
+def kombiniere_stangenschema(unten_mm, laengen_mm, min_mm=MIN_FERTIGMASS_MM, sperren_mm=None):
+    """Feste Stangenfolge fuer die Strecke unter dem Spannstueck ([Z-9])."""
+    L = norm_laengen(laengen_mm)
+    if not L:
+        return {"stuecke": None, "grund": None}
+    G = L[0]
+    u = _mm(unten_mm)
+    n = 0
+    while _mm(u - (n + 1) * G) > 1e-9:
+        n += 1
+    r = _mm(u - n * G)
+    stuecke = [{"len_mm": G, "art": "standard", "quelle_mm": G} for _ in range(n)]
+    if any(abs(l - r) < 1e-9 for l in L):
+        stuecke.append({"len_mm": r, "art": "standard", "quelle_mm": r})
+    else:
+        if r < min_mm - 1e-9:
+            return {"stuecke": None, "grund": "mindestmass"}
+        stuecke.append({"len_mm": r, "art": "sonder", "quelle_mm": quelle_fuer_mass(r, L)})
+    # Jedes Stueckende ist ein Stoss — auch das oberste (Kopplung zum Spannstueck).
+    SP = norm_sperren(sperren_mm, u, True)
+    if _stoss_trifft(stuecke, SP, u, True):
+        return {"stuecke": None, "grund": "stoss_auf_zwischenpunkt"}
+    return {"stuecke": stuecke, "grund": None}
+
+
 # ---- Reststueck am oberen Wandabschluss ([Z-6]) ----
 # Bit-genaues Gegenstueck zu kombiniereSegment() in docs/shared/sembla-core.js.
 # Waende werden im Innenraum montiert: unter der Decke ist kein Platz, eine lange Gewindestange
@@ -261,13 +292,20 @@ def kombiniere_segment(h_mm, laengen_mm, oben_an_ok, rest_mm, ueberstand_mm,
     rest_stueck = {"len_mm": R, "art": "rest", "quelle_mm": R}
     if unten <= 1e-9:
         return {"stuecke": [rest_stueck], "konflikt": None, "bedarf_mm": bedarf}
+    # [Z-9] Zuerst die feste Stangenfolge; nur wenn sie [Z-5]/[Z-7] verletzt, gilt [Z-2] als
+    # Rueckfall — mit benanntem Grund, nie still.
+    s = kombiniere_stangenschema(unten, laengen_mm, min_mm, sperren_mm)
+    if s["stuecke"] is not None:
+        return {"stuecke": s["stuecke"] + [rest_stueck], "konflikt": None, "bedarf_mm": bedarf,
+                "schema": "fest"}
+    schema = {"schema": "rueckfall", "schema_grund": s["grund"]} if s["grund"] else {}
     # Unterhalb des Reststuecks ist auch das obere Ende ein Stoss (Kopplung zum Reststueck).
     k = kombiniere_laengen(unten, laengen_mm, min_mm, sperren_mm, True)
     if not k["stuecke"]:
         return {"stuecke": [], "konflikt": k["konflikt"] or "kein_ausgangsprodukt",
-                "bedarf_mm": bedarf}
+                "bedarf_mm": bedarf, **schema}
     return {"stuecke": k["stuecke"] + [rest_stueck], "konflikt": k["konflikt"],
-            "bedarf_mm": bedarf}
+            "bedarf_mm": bedarf, **schema}
 
 
 # ---- Zwischenspannpunkte ([A-14]/[A-15]/[A-17], #93) ----
@@ -1678,7 +1716,12 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                          # Zaehlung darf nicht ins Negative laufen.
                          "verschnitt_mm": (_quelle_summe - _kombi["bedarf_mm"] if stueck else 0),
                          "verbindungsmuttern": max(0, stueck - 1), "anker_unten": anker_unten, "anker_oben": anker_oben,
-                         "senkkopfschrauben": seg_senkkopf, "spannplatten": seg_spannplatten, "spannmuttern": seg_spannmutter})
+                         "senkkopfschrauben": seg_senkkopf, "spannplatten": seg_spannplatten, "spannmuttern": seg_spannmutter,
+                         # [Z-9] Feste Stangenfolge oder Rueckfall auf [Z-2] — nur an Segmenten,
+                         # fuer die die Regel zustaendig ist (Oberkante + Reststueck).
+                         **({"stangenschema": _kombi["schema"]} if _kombi.get("schema") else {}),
+                         **({"stangenschema_grund": _kombi["schema_grund"]}
+                            if _kombi.get("schema_grund") else {})})
             # `z0_mm` bleibt STEINGEOMETRIE (daran haengen Lagen, Belegung und die
             # Zwischenpunkte). Der reale Stangenbeginn liegt um `_fuss_offset` hoeher, bekommt
             # hier aber BEWUSST KEIN eigenes Feld: kein Leser im Umfang dieses Pakets wertet
@@ -1820,6 +1863,12 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         for c in columns for g in c["segments"] if g["zuschnitt_konflikt"]
     ]
 
+    # [Z-9] Rueckfall der festen Stangenfolge — sichtbar, kein Baubarkeitsausschluss.
+    stangenschema_rueckfall = [
+        {"k": c["k"], "z0_mm": g["z0_mm"], "z1_mm": g["z1_mm"], "grund": g["stangenschema_grund"]}
+        for c in columns for g in c["segments"] if g.get("stangenschema") == "rueckfall"
+    ]
+
     buildable = not invalid_segments  # strukturell; Versatz separat in 'validation'
     # #136 Das Aktivierungs-Flag der Ausgleichslage reist am Wandelement mit — aber NUR, wenn es
     # ausdruecklich gesetzt ist. Eine Wand ohne Ausgleichslage bekommt kein Feld, das es vorher
@@ -1860,6 +1909,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        # [A-17] Abgewiesene manuelle Zwischenspannpunkte — benannt, nicht
                        # angewandt, nie gerundet. Der Schluessel entsteht NUR im Fehlerfall.
                        **({"zwischenpunkt_fehler": _ZP_fehler} if _ZP_fehler else {}),
+                       # [Z-9] Rueckfall der festen Stangenfolge — Schluessel nur im Befundfall.
+                       **({"stangenschema_rueckfall": stangenschema_rueckfall}
+                          if stangenschema_rueckfall else {}),
                        # [A-24] Abgewiesene manuelle Ausgleichspunkte — benannt, nie gerundet;
                        # der Schluessel entsteht auch hier nur im Fehlerfall.
                        **({"ausgleich_fehler": _AG_fehler} if _AG_fehler else {}),

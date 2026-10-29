@@ -4575,13 +4575,19 @@ ok('Produktauswahl ist wandbezogen (neues Element = leere Auswahl)',
   ok('[D-4] Modul 1: Legende nennt beide Laengen mit ihrer Farbe',
     zleg().includes('<i style="color:'+P0+'"></i>Gewindestange 1050 mm')
     && zleg().includes('<i style="color:'+P1+'"></i>Gewindestange 820 mm') && legendeStimmt());
-  const idN=store.speichere('D4-Niedrig', buildWall('D4-Niedrig',3000,1000,[]));
+  // 1200 mm: die feste Folge [Z-9] laesst einen Rest unter 200 mm, der Rueckfall [Z-2] nimmt
+  // 820 + Sonderzuschnitt (bei 1000 mm waere es nach [Z-9] ein Zuschnitt aus 1050).
+  const idN=store.speichere('D4-Niedrig', buildWall('D4-Niedrig',3000,1200,[]));
   store.setzeAktiv(idN); globalThis.window.__wpInit();
   const wN=store.aktivesWandelement();
   ok('[D-4] Modul 1: niedrige Wand braucht nur 820 mm — und zeigt es GRUEN, nicht blau',
     JSON.stringify(wandStd(wN))==='[820]' && strich(P1) && !strich(P0)
     && zleg().includes('<i style="color:'+P1+'"></i>Gewindestange 820 mm')
     && !/Gewindestange 1050 mm/.test(zleg()) && legendeStimmt());
+  // [Z-9] Dieselbe 1200-mm-Wand ist ein Rueckfall der festen Stangenfolge: Modul 1 benennt ihn.
+  ok('[Z-9] Modul 1: Rueckfall der festen Stangenfolge steht als Warnung mit Spannachse und Grund',
+    /Stangenfolge \[Z-9\]: in \d+ Segment\(en\) \(Spannachse k\d/.test(document.getElementById('warns').textContent)
+    && /Zuschnitt unter 20 cm \[Z-5\]/.test(document.getElementById('warns').textContent));
   ok('[D-4] Modul 1: Reststueck mit Laenge in eigener Farbe',
     zleg().includes('<i style="color:'+MONT.STUECK_FARBE.rest+'"></i>'+MONT.STUECK_LABEL.rest+' (100 mm)'));
   ok('[D-4] Modul 1 fuehrt keine Stangenlaenge im Seitencode', !/\b(1050|820)\b/.test(html));

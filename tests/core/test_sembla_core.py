@@ -395,6 +395,29 @@ class ZuschnittKombination(unittest.TestCase):
                 self.assertEqual(sg["verschnitt_mm"], st * ROD - h)
 
 
+class FesteStangenfolge(unittest.TestCase):
+    """[Z-9] Feste Stangenfolge unter dem Spannstueck (Miro R01 / Felix Bauroth, 28.10.2026)."""
+
+    def _k(self, r):
+        return [(s["len_mm"], s["art"]) for s in r["stuecke"]]
+
+    def test_feste_folge(self):
+        r = sc.kombiniere_segment(3000, [1050, 820], True, 100, 10, None, 200, 15, 10)
+        self.assertEqual(self._k(r), [(1050, "standard"), (1050, "standard"), (805, "sonder"), (100, "rest")])
+        self.assertEqual(r["schema"], "fest")
+        self.assertIsNone(r["konflikt"])
+
+    def test_rueckfall_rwa_2200(self):
+        r = sc.kombiniere_segment(2200, [1050, 820], True, 100, 10, None, 200, 15, 10)
+        self.assertEqual(r["schema"], "rueckfall")
+        self.assertEqual(r["schema_grund"], "mindestmass")
+        self.assertEqual(self._k(r), [(1050, "standard"), (820, "standard"), (235, "sonder"), (100, "rest")])
+
+    def test_nicht_zustaendig(self):
+        self.assertNotIn("schema", sc.kombiniere_segment(3000, [1050, 820], False, 100, 10))
+        self.assertNotIn("schema", sc.kombiniere_segment(2800, [1050, 820], True, 0, 10))
+
+
 class Bodenblech(unittest.TestCase):
     """Bodenblech aus Standardlaengen ([A-10]/[A-11]/[A-12]).
 

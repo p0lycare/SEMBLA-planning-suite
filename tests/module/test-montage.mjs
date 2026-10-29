@@ -525,9 +525,11 @@ ok("Alt-Bundle zeigt KEINE Stueckart-Legende des Stangenzuschnitts (nichts erfin
 
   const PSV = { rod_lengths_mm: [1050, 820], rod_rest_mm: 100, rod_overhang_mm: 10 };
   // Hohe Wand (2200 mm): je ein 1050er und 820er Stueck + Sonderzuschnitt + Reststueck;
-  // niedrige Wand (1000 mm): NUR ein 820er Stueck (+ Sonderzuschnitt + Reststueck, [Z-2]).
+  // niedrige Wand (1200 mm): NUR ein 820er Stueck (+ Sonderzuschnitt + Reststueck). Beide
+  // Hoehen sind Rueckfaelle der festen Folge [Z-9] (Rest unter 200 mm), es gilt [Z-2]; bei
+  // 1000 mm entstuende nach [Z-9] ein Zuschnitt aus 1050 und gar kein 820er Stueck.
   const WH = buildWall("Hoch", 3000, 2200, [], null, PSV);
-  const WN = buildWall("Niedrig", 3000, 1000, [], null, PSV);
+  const WN = buildWall("Niedrig", 3000, 1200, [], null, PSV);
   const stdL = w => [...new Set(wandStangenStuecke(w).filter(p => p.art === "standard").map(p => p.len_mm))].sort((a, b) => b - a);
   ok("[D-4] Voraussetzung: hohe Wand nutzt 1050 und 820, niedrige nur 820",
     JSON.stringify(stdL(WH)) === "[1050,820]" && JSON.stringify(stdL(WN)) === "[820]");

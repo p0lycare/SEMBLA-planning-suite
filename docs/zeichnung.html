@@ -114,6 +114,7 @@
         <div class="k">Blattgröße</div><div class="v" id="ovSheet">–</div>
         <div class="k">Brandschutz</div><div class="v" id="ovBrand">–</div>
         <div class="k">Verzahnung</div><div class="v" id="ovVerzahnung">–</div>
+        <div class="k">Gewindestangen</div><div class="v" id="ovStangen">–</div>
         <div class="k">Status</div><div class="v"><span class="badge" id="ovBadge">–</span></div>
       </div>
       <div class="hint" id="standmsg"></div>
@@ -335,6 +336,23 @@ function verzahnungText(w){
   return n ? (n===1 ? '1 Bereich' : n+' Bereiche') : 'keine';
 }
 
+/* Feste Stangenfolge ([Z-9]) — NUR ANZEIGE aus `stangenschema` der Segmente; gerechnet wird
+   im Rechenkern. Passt die feste Folge an einem Strang nicht, steht er hier benannt, damit er
+   von Hand geprüft werden kann — die Zeichnung zeigt dort die Kombination aus den
+   Standardlängen. */
+const STANGEN_GRUND={ mindestmass:'Zuschnitt unter 200 mm',
+  stoss_auf_zwischenpunkt:'Stoß auf einem Zwischenspannpunkt' };
+function stangenText(w){
+  const segs=((w&&w.tension_columns)||[]).flatMap(c=>c.segments.map(s=>({k:c.k,s})))
+    .filter(e=>e.s.stangenschema);
+  if(!segs.length) return '–';
+  const rf=segs.filter(e=>e.s.stangenschema==='rueckfall');
+  if(!rf.length) return 'feste Folge (größte Standardlänge, variables Stück, Spannstück)';
+  const gruende=[...new Set(rf.map(e=>STANGEN_GRUND[e.s.stangenschema_grund]||e.s.stangenschema_grund))];
+  return 'feste Folge passt nicht in Spannachse '+[...new Set(rf.map(e=>'k'+e.k))].join(', ')
+    +' ('+gruende.join(', ')+') — dort aus den Standardlängen kombiniert, bitte von Hand prüfen';
+}
+
 function applyWand(w){
   WALL=w;
   $('leer').style.display='none';
@@ -343,6 +361,7 @@ function applyWand(w){
   $('ovCols').textContent=String((w.tension_columns||[]).length);
   $('ovBrand').textContent=brandklasse(w);
   $('ovVerzahnung').textContent=verzahnungText(w);
+  $('ovStangen').textContent=stangenText(w);
   const b=$('ovBadge');
   if(w.validation && w.validation.buildable===false){ b.className='badge no'; b.textContent='Nicht baubar'; }
   else { b.className='badge ok'; b.textContent='Baubar'; }
@@ -537,7 +556,7 @@ function clearWall(){
   $('blattwrap').innerHTML=''; setzeVorschauMassstab(); $('leer').style.display='';
   $('ovDim').textContent='—'; $('ovGrid').textContent='—'; $('ovCols').textContent='—';
   $('ovScale').textContent='—'; $('ovSheet').textContent='—'; $('ovBrand').textContent='—';
-  $('ovVerzahnung').textContent='—';
+  $('ovVerzahnung').textContent='—'; $('ovStangen').textContent='—';
   $('ovBadge').className='badge'; $('ovBadge').textContent='—';
   $('wandinfo').textContent='Kein aktives Wandelement — in „Start“ anlegen oder wählen.';
   uiAusKopfdaten({}); kopfdatenUiStand(); kdMelde(''); standMelde('');

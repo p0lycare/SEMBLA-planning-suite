@@ -8,7 +8,7 @@ import {
   buildWall, buildReference, Opening, isBuildable, REFERENCE_WALLS,
   GRID, ROD, CHAMBER_OFFSET, MAX_SPAN_GRID, FORBIDDEN_N,
   InvalidDimensionError, InvalidOpeningError,
-  kombiniereLaengen, quelleFuerMass, kombiniereSegment,
+  kombiniereLaengen, quelleFuerMass, kombiniereSegment, kombiniereStangenschema,
   zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
@@ -862,17 +862,21 @@ t("#92 [A-19] Fussoffset verkuerzt den Bedarf und verschiebt die Stueckzerlegung
   assert(sg.bedarf_mm === 1997, "Bedarf: " + sg.bedarf_mm);
   assert(sg.ueberstand_mm === 22, "Ueberstand ueber der Steinkante: " + sg.ueberstand_mm);
   // Die Zerlegung verschiebt sich mit — und zwar sichtbar bis in die Reihenfolge: mit Offset
-  // liegt die erste Kopplung auf 1025 mm und ist frei, es gilt also die Groessenpraeferenz
-  // [Z-2]. Ohne Offset laege sie auf dem Zwischenspannpunkt 1000 mm, und [Z-7] tauschte die
-  // beiden Standardlaengen. Der Sonderzuschnitt wird zugleich um den Offset kuerzer.
+  // liegt die erste Kopplung auf 1025 mm und ist frei, es gilt also die feste Stangenfolge
+  // [Z-9] (groesste Standardlaenge + ein variables Stueck). Ohne Offset laege sie auf dem
+  // Zwischenspannpunkt 1000 mm: [Z-7] steht ueber [Z-9], es gilt der Rueckfall [Z-2], der die
+  // beiden Standardlaengen tauscht — benannt am Segment.
   deepEqual(sg.stuecke.map(x => x.len_mm + ":" + x.art),
-    ["1000:standard", "500:standard", "287:sonder", "210:rest"]);
+    ["1000:standard", "787:sonder", "210:rest"]);
+  assert(sg.stangenschema === "fest", "feste Folge: " + sg.stangenschema);
   const ohne = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null,
     { ...PS92, rod_fuss_offset_mm: 0 });
   const sg0 = ohne.tension_columns[0].segments[0];
   assert(sg0.bedarf_mm === 2022, "ohne Fussoffset: " + sg0.bedarf_mm);
   deepEqual(sg0.stuecke.map(x => x.len_mm + ":" + x.art),
     ["500:standard", "1000:standard", "312:sonder", "210:rest"]);
+  assert(sg0.stangenschema === "rueckfall" && sg0.stangenschema_grund === "stoss_auf_zwischenpunkt",
+    "Rueckfall benannt: " + sg0.stangenschema + "/" + sg0.stangenschema_grund);
   // Ohne Katalogmass entsteht KEIN Prestress-Schluessel — der Altstand bleibt bit-genau.
   assert(!("rod_fuss_offset_mm" in ohne.prestress),
     "kein erfundenes Feld: " + Object.keys(ohne.prestress).join(","));
@@ -906,6 +910,42 @@ t("#92 [A-19]/[Z-8] Fussoffset, oberer Bedarf, Stueckzerlegung und Konflikte sin
     const js = buildWall(WAND92.name, WAND92.length_mm, WAND92.height_mm, [], null, ps);
     deepEqual(js, orakel({ ...WAND92, prestress: ps }));
   }
+});
+
+t("[Z-9] Feste Stangenfolge und Rueckfall sind py/mjs bit-gleich (echtes Python-Orakel)", () => {
+  // Standardkatalog-Einbaulagen: 1050/820, Spannstueck 100, Fuss 15, Spannplatte 10.
+  const ps = { rod_lengths_mm: [1050, 820], rod_rest_mm: 100, rod_overhang_mm: 10,
+    top_connection: "spannplatte", rod_fuss_offset_mm: 15, rod_kopf_zuschlag_mm: 10 };
+  const faelle = [
+    { h: 3000, ps, erw: "fest" },                               // 1050+1050+variabel+100
+    { h: 2200, ps, erw: "rueckfall" },                          // RWA: Rest < 200 mm ([Z-5])
+    { h: 1000, ps, erw: "fest" },                               // nur das variable Stueck
+    { h: 2000, ps: { ...PS92, rod_fuss_offset_mm: 0 }, erw: "rueckfall" },  // [Z-7]: Stoss auf ZP 1000
+  ];
+  for (const f of faelle) {
+    const arg = { name: "z9", length_mm: 6 * GRID, height_mm: f.h, prestress: f.ps };
+    const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, f.ps);
+    deepEqual(js, orakel(arg));
+    if (f.erw) assert(js.tension_columns.every(c => c.segments.every(sg => sg.stangenschema === f.erw)),
+      f.h + ": " + js.tension_columns.map(c => c.segments.map(sg => sg.stangenschema)).join("|"));
+  }
+  const z7 = buildWall("z9", 6 * GRID, 2000, [], null, { ...PS92, rod_fuss_offset_mm: 0 });
+  assert(z7.validation.stangenschema_rueckfall.every(r => r.grund === "stoss_auf_zwischenpunkt"),
+    "[Z-7]-Grund: " + JSON.stringify(z7.validation.stangenschema_rueckfall));
+  const rwa = buildWall("z9", 6 * GRID, 2200, [], null, ps);
+  assert(rwa.validation.stangenschema_rueckfall.length === rwa.tension_columns.length,
+    "Rueckfall je Strang benannt: " + JSON.stringify(rwa.validation.stangenschema_rueckfall));
+  // Direkt die reine Funktion — der Python-Zwilling wird im Unterprozess gerufen.
+  const py = JSON.parse(execFileSync("python3", ["-c", `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import kombiniere_stangenschema
+print(json.dumps([kombiniere_stangenschema(u, [1050, 820], 200, sp) for u, sp in json.loads(sys.argv[1])]))
+`, JSON.stringify([[2905, null], [2105, null], [1870, null], [2905, [1050]], [2000, [2000]], [905, null]])],
+    { encoding: "utf8" }));
+  const js = [[2905, null], [2105, null], [1870, null], [2905, [1050]], [2000, [2000]], [905, null]]
+    .map(([u, sp]) => kombiniereStangenschema(u, [1050, 820], 200, sp));
+  deepEqual(js, py);
 });
 
 t("#92 [Z-8] Kopfblech bekommt keinen Plattenzuschlag (kein Ersatzmass, [A-2])", () => {
