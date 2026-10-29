@@ -903,6 +903,46 @@ WP.setAxisEdit(true); ok('Achsen-Editor an + Griffe gezeichnet', WP.axisEdit===t
 WP.setManualCols(null); ok('Zurück zu Auto (columns_grid null)', WP.RESULT.wandelement.prestress.columns_grid===null && WP.manualCols===null);
 WP.setAxisEdit(false);
 
+// [V-9] Sichtbarer Hinweis „Spannachsen manuell gesetzt" (Felix Bauroth, 29.10.2026): Badge im
+// Ansichtskopf + Hinweiszeile an den Achsen-Knoepfen, Quelle allein `prestress.columns_grid`;
+// die [V-2]-Befunde (`ungehaltene_steine`) stehen benannt in den Warnungen.
+{
+  const badge=()=>document.getElementById('achsBadge'), hin=()=>document.getElementById('achsHinweis');
+  const warnT=()=>document.getElementById('warns').textContent;
+  ok('[V-9] Auto-Pfad: kein Hinweis, kein Badge, keine [V-9]-Warnung',
+    badge().hidden===true && hin().hidden===true && badge().textContent===''
+    && !/Spannachsen \[V-9\]/.test(warnT()));
+  // Felix' Fall: zu den Auto-Achsen kommt eine Achse dazu, der Rest bleibt wie vom Tool erstellt.
+  const autoK=WP.RESULT.wandelement.tension_columns.map(c=>c.k);
+  const frei=[...Array(WP.RESULT.wandelement.N_grid).keys()].find(k=>!autoK.includes(k));
+  WP.setManualCols([...autoK, frei]);
+  const n=autoK.length+1;
+  ok('[V-9] manuelle Achsen: Badge sichtbar mit Achszahl',
+    badge().hidden===false && badge().textContent==='Spannachsen manuell ('+n+')');
+  ok('[V-9] manuelle Achsen: Hinweis nennt Zahl, abgeschaltete Auto-Verteilung und „Zurück zu Auto"',
+    hin().hidden===false && hin().textContent.includes(n+' Achse(n)')
+    && /automatische Verteilung ist aus/.test(hin().textContent) && /Zurück zu Auto/.test(hin().textContent)
+    && !/ohne Spannachse/.test(hin().textContent));
+  ok('[V-9] Hinweis folgt dem gespeicherten Element (columns_grid), nicht dem Editorzustand',
+    JSON.stringify(store.aktivesWandelement().prestress.columns_grid)===JSON.stringify([...autoK,frei].sort((a,b)=>a-b)));
+  // Zu wenige Achsen: [V-2] verletzt — Befund benannt in Warnung und Hinweis, nichts korrigiert.
+  WP.setManualCols([0]);
+  const ug=WP.RESULT.wandelement.validation.ungehaltene_steine;
+  ok('[V-9]/[V-2] ungehaltene Steine stehen benannt in den Warnungen (Zahl, Lage, Raster)',
+    ug.length>0 && warnT().includes('⚠ Spannachsen [V-9]: '+ug.length+' Stein(e)')
+    && /Lage \d+ ab Raster \d+ \(i[23]\)/.test(warnT()));
+  ok('[V-9]/[V-2] … und der Hinweis verweist darauf, ohne zu korrigieren',
+    hin().textContent.includes(ug.length+' Stein(e) ohne Spannachse [V-2]')
+    && JSON.stringify(WP.RESULT.wandelement.prestress.columns_grid)==='[0]');
+  WP.setManualCols(null);
+  ok('[V-9] Zurück zu Auto: Hinweis, Badge und Warnung verschwinden',
+    badge().hidden===true && hin().hidden===true && !/Spannachsen \[V-9\]/.test(warnT()));
+  ok('[V-9] `hidden` wirkt trotz `.badge{display}` — eigene Regel im CSS',
+    /\.badge\[hidden\],\.achshinweis\[hidden\]\{display:none\}/.test(html));
+  ok('[V-9] Hinweis steht nicht auf dem Zeichnungsblatt (Modul 7 unberuehrt)',
+    !/manuell gesetzt|Spannachsen manuell/.test(readFileSync(new URL('../../docs/shared/sembla-zeichnung.js', import.meta.url),'utf8')));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Issue #93: Zwischenspannpunkte (Einlegeblech) lagengenau planen — Auto-Anzeige, Hinzufuegen,
 // Verschieben, Loeschen, „Zurueck zu Auto" bis zum GESPEICHERTEN Wandelement, plus das

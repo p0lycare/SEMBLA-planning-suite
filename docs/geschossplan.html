@@ -208,6 +208,9 @@
   .gp-zeile .pkt{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;
                  vertical-align:middle}
   .gp-zeile .warn{color:#c0392b}
+  /* [V-9] Kennzeichnung „Spannachsen manuell" — gleiche Kennfarbe wie der Hinweis in Modul 1. */
+  .gp-zeile .det.man{display:inline-block;margin-top:2px;padding:0 6px;border-radius:9px;
+                     background:#fff1d6;color:#8a5a00;border:1px solid #e0b25c;font-weight:600}
   /* Umschaltaktion „Alle auswaehlen“/„Auswahl aufheben“ (#125): sie steht OBERHALB
      der Zeilen und gehoert damit sichtbar zur Liste, deren Menge sie trifft. */
   .gp-liste-alle{display:flex;align-items:center;gap:7px;margin:0 0 7px}
@@ -929,6 +932,19 @@ function elementeMap(){
  */
 function brandklasse(el){
   return el && el.wandelement ? store.normBrandklasse(el.wandelement.brandklasse) : null;
+}
+
+/**
+ * Zahl der manuell gesetzten Spannachsen einer Wand ([V-9]), 0 im Auto-Pfad.
+ * Gelesen wird allein `prestress.columns_grid` des WANDELEMENTS — dasselbe Feld,
+ * das Modul 1 schreibt und das die automatische Verteilung sperrt. Reine Anzeige
+ * (Felix Bauroth, 29.10.2026): dieser Editor setzt das Feld nie.
+ * @returns {number}
+ */
+function manuelleAchsen(el){
+  const cg = el && el.wandelement && el.wandelement.prestress
+    && el.wandelement.prestress.columns_grid;
+  return Array.isArray(cg) && cg.length ? cg.length : 0;
 }
 
 /**
@@ -2316,8 +2332,12 @@ function listeSync(erg, koll, els){
     // eigene BESCHREIBUNG daneben, nie im Namen; Beschreibungsknoten und Knopf liegen in
     // derselben gerenderten Zeichenkette und werden mit ihr ersetzt.
     const bez = w.name || w.id;
+    // [V-9] Manuell gesetzte Spannachsen sichtbar kennzeichnen — gelesen, nie geschrieben.
+    const man = manuelleAchsen(el);
+    const manText = man ? `Spannachsen manuell (${man})` : '';
     const bz = AX.benennung(AX.objektAktion('auswählen', bez),
-      `${det.join(' · ')}.${we ? '' : ' Verwaister Eintrag ohne Wandelement.'} Klick wählt aus, `
+      `${det.join(' · ')}.${we ? '' : ' Verwaister Eintrag ohne Wandelement.'}`
+      + `${man ? ` ${manText} — automatische Verteilung aus.` : ''} Klick wählt aus, `
       + 'Umschalt oder Strg wählt mehrere.');
     const bp = el ? AX.benennung(AX.objektAktion('planen', bez),
       'Setzt diese Wand aktiv und öffnet sie in Modul 1 (Wandplanung).') : null;
@@ -2330,6 +2350,7 @@ function listeSync(erg, koll, els){
       + `<span class="nam">${esc(w.name || w.id)}</span>`
       + `<span class="det">${esc(det.join(' · '))}</span>`
       + (we ? '' : '<span class="det warn">verwaister Eintrag ohne Wandelement ([L-4])</span>')
+      + (man ? `<span class="det man" data-achsen-manuell="${man}">${esc(manText)}</span>` : '')
       + '</button>' + bz.html
       + (bp ? `<button type="button" class="gp-plan" ${bp.attrs} `
         + `data-planen="${esc(w.id)}">Planen</button>${bp.html}` : '')

@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261029-04",
+    datum: "2026-10-29",
+    typ: "feature",
+    issue: 122,
+    titel: "Manuell gesetzte Spannachsen sind sichtbar gekennzeichnet: in Modul 1 und in der Wandliste des Geschosseditors",
+    testbitte: "In Modul 1 „Spannachsen bearbeiten“ und eine Achse ergänzen: oben steht „Spannachsen manuell (n)“, "
+      + "an den Knöpfen ein Hinweis. „Zurück zu Auto“ nimmt beides weg. Im Geschosseditor trägt die Wand dieselbe Kennzeichnung",
+  },
+  {
     id: "chg-20261029-03",
     datum: "2026-10-29",
     typ: "feature",

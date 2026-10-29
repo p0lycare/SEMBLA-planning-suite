@@ -7368,6 +7368,37 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
     && !/function (benennung|modalDialog|tooltips)\(/.test(html));
 }
 
+// --- [V-9]: Kennzeichnung „Spannachsen manuell" in der Wandliste ------------
+// Felix Bauroth, 29.10.2026: eine Wand mit manuell gesetzten Spannachsen soll im
+// Planungstool gut sichtbar so gekennzeichnet sein. Gesetzt werden die Achsen
+// allein in Modul 1 (`prestress.columns_grid`); hier wird nur GELESEN.
+{
+  const prjV9 = store.fuegeProjektHinzu('#V9-Pruefprojekt', { geschoss: 'EGV9', hoehe_mm: 2600 });
+  store.setzeAktivesGeschoss(MAPPE.alleGeschosse(prjV9)[0].geschoss.id);
+  await warte();
+  const neuesteV9 = () => store.listeElemente()[0];
+  GP.werkzeug('wand'); GP.zeichne({ x: 0, y: 0 }, { x: 2000, y: 60 });     const idManV9 = neuesteV9().id;
+  GP.werkzeug('wand'); GP.zeichne({ x: 0, y: 2000 }, { x: 2000, y: 2060 }); const idAutoV9 = neuesteV9().id;
+  // So, wie Modul 1 die Achsen speichert: `columns_grid` im Wandelement.
+  const el = store.holeElement(idManV9);
+  store.speichere(el.name, { ...el.wandelement,
+    prestress: { ...el.wandelement.prestress, columns_grid: [0, 5, 9, 15] } }, idManV9);
+  await warte();
+  const vorM = localStorage.getItem('sembla:projekte'), vorE = localStorage.getItem('sembla:elemente');
+  GP.render();
+  const zeileV9 = (id) => (liste().split('<div class="gp-eintrag">')
+    .find(s => s.includes(`data-wand="${id}"`)) || '');
+  ok('[V-9] Wandliste: Wand mit manuellen Achsen traegt die Kennzeichnung samt Achszahl',
+    /<span class="det man" data-achsen-manuell="4">Spannachsen manuell \(4\)<\/span>/.test(zeileV9(idManV9))
+    && /Spannachsen manuell \(4\) — automatische Verteilung aus\./.test(zeileV9(idManV9)));
+  ok('[V-9] Wandliste: Wand im Auto-Pfad bleibt ohne Kennzeichnung',
+    zeileV9(idAutoV9) !== '' && !/Spannachsen manuell|data-achsen-manuell/.test(zeileV9(idAutoV9)));
+  ok('[V-9] (must-not) die Kennzeichnung schreibt nichts — Mappe und Wandspeicher unveraendert',
+    localStorage.getItem('sembla:projekte') === vorM && localStorage.getItem('sembla:elemente') === vorE);
+  ok('[V-9] (must-not) der Editor setzt `columns_grid` nirgends',
+    !/columns_grid\s*[:=](?!=)/.test(html.replace(/const cg = \(we\.prestress && we\.prestress\.columns_grid\)/, '')));
+}
+
 let fail = 0;
 for (const [n, c] of checks) { console.log((c ? '  ok  ' : 'FAIL  ') + n); if (!c) fail++; }
 console.log(`\n${checks.length - fail}/${checks.length} ok`);

@@ -24,6 +24,12 @@
   .btnrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
   .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
   .badge.ok{background:#e3f5ea;color:var(--sb-ok)} .badge.no{background:#fbe6dd;color:var(--sb-warn)}
+  /* [V-9] Hinweis „Spannachsen manuell gesetzt": eigene Kennfarbe, damit er neben dem
+     Verbandsstatus (ok/no) nicht als Befund gelesen wird — er ist eine Zustandsangabe. */
+  .badge.man{background:#fff1d6;color:#8a5a00;border:1px solid #e0b25c}
+  .badge[hidden],.achshinweis[hidden]{display:none}   /* .badge setzt display und schlüge sonst `hidden` */
+  .achshinweis{font-size:12px;margin-top:6px;padding:6px 8px;border-radius:7px;line-height:1.4;
+               background:#fff1d6;color:#5c3d00;border:1px solid #e0b25c}
   .res{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:13px}
   .res .k{color:var(--sb-muted)} .res .v{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
   table.tb{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
@@ -159,6 +165,9 @@
       <div class="btnrow"><button class="mini" id="addTuer">+ Tür</button><button class="mini" id="addFenster">+ Fenster</button></div>
       <div class="btnrow"><button class="mini" id="durchTool" aria-pressed="false">Durchbruch-Modus</button><button class="mini" id="durchClear">Durchbrüche leeren</button></div>
       <div class="btnrow" style="margin-top:6px"><button class="mini" id="axisTool" aria-pressed="false">Spannachsen bearbeiten</button><button class="mini" id="axisDel">Achse löschen</button><button class="mini" id="axisAuto">Zurück zu Auto</button></div>
+      <!-- [V-9] Gut sichtbarer Hinweis, sobald die Spannachsen manuell gesetzt sind (Felix Bauroth,
+           29.10.2026): Quelle ist allein `prestress.columns_grid` des gerechneten Wandelements. -->
+      <div class="achshinweis" id="achsHinweis" role="status" hidden></div>
     </div>
     <div class="grp"><h3>Zwischenspannpunkte (Einlegeblech)</h3>
       <!-- [A-14]…[A-17]/#93: lagengenaue Punkte auf Steinlagen-Oberkanten. Ohne eigene Auswahl
@@ -259,6 +268,7 @@
   <div class="stage panel">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
       <span class="badge" id="statusBadge">–</span>
+      <span class="badge man" id="achsBadge" hidden></span>
       <span class="k" id="dims" style="color:var(--sb-muted);font-size:13px"></span>
       <label class="mini" style="margin-left:auto;display:flex;align-items:center;gap:5px;cursor:pointer" id="showDim-lab"><input type="checkbox" id="showDim" checked> Maße</label>
       <label class="mini" style="display:flex;align-items:center;gap:5px;cursor:pointer" id="showRaster-lab"><input type="checkbox" id="showRaster"> Raster</label>
@@ -657,6 +667,7 @@ function run(){
   try{ RESULT = auto ? autoAuslegung(vorgaben()) : nachweisPruefen(vorgaben()); }
   catch(e){ err=e; }
   if(err){ $('statusBadge').className='badge no'; $('statusBadge').textContent='Eingabe ungültig';
+    renderAchsHinweis(null);
     $('warns').textContent=err.message;
     // #136 Der Höhenkonflikt ist BENANNT (`grund`), nicht aus dem Meldungstext geraten: die
     // eingegebene Zielhöhe bleibt unverändert stehen und wird NIE ins Raster gerundet ([P-9]).
@@ -771,7 +782,15 @@ function run(){
   const ags=vv.ausgleich_sonderzuschnitte||[];
   if(ags.length) warns.push('⚠ Ausgleichslage [G-17]: '+ags.length+' Sonderzuschnitt(e) — '
     +ags.map(s=>s.text+' ('+s.anzahl+' Stück)').join(' · ')+'.');
+  // [V-9]/[V-2] Bei manuell gesetzten Spannachsen ist die Steinabdeckung NICHT mehr garantiert:
+  // der Rechenkern ergaenzt nichts und meldet jeden nicht durchgangenen Stein. Benannt mit Lage
+  // und Rasterlage — kein Baubarkeitsausschluss, nie eine stille Korrektur.
+  const ug=vv.ungehaltene_steine||[];
+  if(ug.length) warns.push('⚠ Spannachsen [V-9]: '+ug.length+' Stein(e) von keiner Achse '
+    +'durchgangen [V-2] — z. B. '+ug.slice(0,3).map(x=>'Lage '+(x.lage+1)+' ab Raster '+x.start_grid
+      +' ('+x.typ+')').join(', ')+'. Achse ergänzen oder „Zurück zu Auto".');
   $('warns').textContent=warns.join('   ');
+  renderAchsHinweis(w);
   // Verzahnungs-Validierung anzeigen ([G-10]/[G-11]/[G-12])
   renderInterlockWarns(vv);
   draw(w);
@@ -791,6 +810,7 @@ function renderLeer(){
   RESULT=null;
   $('statusBadge').className='badge'; $('statusBadge').textContent='Neu';
   $('warns').textContent='';
+  renderAchsHinweis(null);
   $('zerlegung').innerHTML=''; $('ausgleichHinweis').innerHTML='';   // #136 kein Ergebnis, keine Zerlegung
   ['dims','rSp','rStrands','rN','rGrid','rSteine'].forEach(id=>$(id).textContent='—');
   $('itTable').querySelector('tbody').innerHTML='';
@@ -2047,6 +2067,25 @@ function achseImFang(e){ ensureManual();
 function ensureManual(){ if(!manualCols) manualCols = RESULT ? RESULT.wandelement.tension_columns.map(c=>c.k) : []; }
 function addAxisAt(k){ ensureManual(); if(!manualCols.includes(k)){ manualCols.push(k); manualCols.sort((a,b)=>a-b); } }
 function delAxis(k){ ensureManual(); const i=manualCols.indexOf(k); if(i>=0) manualCols.splice(i,1); if(selAxis===k) selAxis=null; }
+// [V-9] Sichtbarer Hinweis „Spannachsen manuell gesetzt" (Felix Bauroth, 29.10.2026). Gelesen wird
+// allein `prestress.columns_grid` des GERECHNETEN Wandelements — dasselbe Feld, das gespeichert
+// wird und die Auto-Verteilung sperrt; der Editorzustand `manualCols` ist nicht die Quelle.
+// Reine Anzeige im Planungstool: kein Feld, keine Rechnung, nichts auf dem Zeichnungsblatt.
+function achsenManuell(w){
+  const cg=w&&w.prestress&&w.prestress.columns_grid;
+  return Array.isArray(cg)&&cg.length ? cg.length : 0;
+}
+function renderAchsHinweis(w){
+  const b=$('achsBadge'), h=$('achsHinweis'); if(!b||!h) return;
+  const n=achsenManuell(w);
+  b.hidden=!n; h.hidden=!n;
+  if(!n){ b.textContent=''; h.textContent=''; return; }
+  const ug=((w.validation&&w.validation.ungehaltene_steine)||[]).length;
+  b.textContent='Spannachsen manuell ('+n+')';
+  h.textContent='Spannachsen manuell gesetzt: '+n+' Achse(n) — die automatische Verteilung ist aus '
+    +'und das Tool ändert sie nicht mehr. „Zurück zu Auto“ setzt zurück.'
+    +(ug ? ' ⚠ '+ug+' Stein(e) ohne Spannachse [V-2], siehe Warnung.' : '');
+}
 function setManualCols(arr){ manualCols=(arr&&arr.length)?[...new Set(arr.map(Number))].sort((a,b)=>a-b):null; selAxis=null; run(); }
 function setAxisEdit(v){ axisEdit=!!v; if(axisEdit){ editMode=false; zpEdit=false; agEdit=false; dcEdit=false; asEdit=false; syncZpTool(); syncAgTool(); syncDcTool(); syncAsTool(); $('durchTool').style.background=''; $('durchTool').style.color=''; axGedrueckt('durchTool',false); ensureManual(); }
   $('axisTool').style.background=axisEdit?'#1f6feb':''; $('axisTool').style.color=axisEdit?'#fff':''; axGedrueckt('axisTool',axisEdit); if(RESULT) draw(RESULT.wandelement); }
