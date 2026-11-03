@@ -4433,9 +4433,17 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   // (a) Muss 1/2 — keine Kollisionsmeldung, keine Fehlerfarbe.
   ok('#83 (Muss 1) die passende Verzahnung wird NICHT als Kollision gemeldet',
     GP.loesen().kollisionen.length === 0 && GP.loesen().verzahnungen.length === 1);
+  // Seit [A-32] (R03) steht hier zusaetzlich GENAU EINE Fehlerfarbe: die Pruefwand kreuzt mittig,
+  // und B belegt dort die unterste Lage — beide behalten ihr Bodenblech, die Bleche ueberlagern
+  // sich. Das ist eine Bodenblech-Warnung, keine Kollision.
   ok('#83 (Muss 1) und die Statuszeile fuehrt keine Kollision mehr auf',
     !/Kollision\(en\)/.test($('gp-status').innerHTML)
-    && !/class="err"/.test($('gp-status').innerHTML));
+    && ($('gp-status').innerHTML.match(/class="err"/g) || []).length
+      === ($('gp-status').innerHTML.match(/class="err">⚠ \d+ Verzahnung\(en\) mit überlagerten Bodenblechen/g) || []).length);
+  ok('[A-32] die mittige Kreuzung mit belegter unterster Lage nennt die Bodenblech-Ueberlagerung samt Empfehlung',
+    /Verzahnung\(en\) mit überlagerten Bodenblechen/.test($('gp-status').innerHTML)
+    && /durchlaufend mit belegter unterster Lage: [^,)]+\)/.test($('gp-status').innerHTML)
+    && /unterste Lage ausgespart/.test($('gp-status').innerHTML));
   ok('#83 keine der beiden Waende ist rot ([K-8])',
     !rot83(idA83) && !rot83(idB83) && gruppe83(idA83) !== '' && gruppe83(idB83) !== '');
 
@@ -4448,7 +4456,7 @@ const planVon = () => store.geschossPlan(store.aktivesGeschossId());
   ok('#83 (Muss 6) die Statuszeile benennt sie samt Rasterfeldern — ohne Fehlerfarbe',
     /zulässige Verzahnung/.test($('gp-status').innerHTML)
     && /Rasterfeld (?:4 bzw\. 8|8 bzw\. 4)/.test($('gp-status').innerHTML)
-    && !/class="err"[^>]*>[^<]*Verzahnung/.test($('gp-status').innerHTML));
+    && !/class="err"[^>]*>[^<]*zulässige Verzahnung/.test($('gp-status').innerHTML));
 
   // (c) Muss 2/3/5 — falsche Paritaet, einseitige Markierung und die gewoehnliche
   //     Ueberlagerung bleiben unveraendert streng.

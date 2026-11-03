@@ -9,7 +9,7 @@ import {
   GRID, ROD, CHAMBER_OFFSET, MAX_SPAN_GRID, FORBIDDEN_N,
   InvalidDimensionError, InvalidOpeningError,
   kombiniereLaengen, quelleFuerMass, kombiniereSegment, kombiniereStangenschema,
-  zerlegeBodenblech, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
+  zerlegeBodenblech, verzahnungsKuerzungen, normBlechLaengen, BLECH_LAENGEN, BLECH_SPIEL,
   lagenOberkantenInnen, autoZwischenpunkt, normZwischenpunkte, zwischenpunkteSegment,
   wirksameZwischenpunkte, COURSE,
   lagenKanten, wandLagenKanten, hoehenZerlegung, AUSGLEICH_KONFLIKT,
@@ -2723,6 +2723,74 @@ t("[G-5] Paritaet JS <-> Python fuer den gemeinsam gelegten Verband", () => {
     deepEqual({ courses: w.courses, v: w.validation.versatz_violations, u: w.validation.ungehaltene_steine,
       bom: w.bom, bp: w.base_plate }, py[i], `fall${i}`);
   });
+});
+
+// ---------------------------------------------------------------------------
+// BODENBLECH IM VERBAND [A-32] (Miro R03): abgeleitete Kuerzung unter einer Verzahnung am
+// Wandende, die unterste Lage belegt (start_parity 1). Paritaet des GANZEN Wandelements mit dem
+// Python-Orakel (Unterprozess), dazu die Kernaussagen der Regel.
+// ---------------------------------------------------------------------------
+console.log("\nBODENBLECH IM VERBAND [A-32] (Paritaetsvertrag mit dem Python-Orakel):");
+const PY_ORAKEL_A32 = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import build_wall
+out = []
+for a in json.loads(sys.stdin.read()):
+    out.append(build_wall("a32", a["l"], a["h"], [], None, a.get("ps"), [], a["il"]))
+print(json.dumps(out))
+`;
+const A32 = [
+  { l: 2500, h: 2400, il: [{ g0: 0, g1: 1, start_parity: 1 }] },
+  { l: 2500, h: 2400, il: [{ g0: 19, g1: 20, start_parity: 1 }] },
+  { l: 2500, h: 2400, il: [{ g0: 0, g1: 1, start_parity: 0 }] },
+  { l: 4000, h: 2400, il: [{ g0: 12, g1: 13, start_parity: 1 }] },
+  { l: 4000, h: 2400, il: [{ g0: 12, g1: 13, start_parity: 0 }] },
+  { l: 3000, h: 2000, il: [{ g0: 0, g1: 1, start_parity: 1 }, { g0: 23, g1: 24, start_parity: 1 }],
+    ps: { base_plate_aussparungen_grid: [1, 10] } },
+  { l: 3000, h: 2000, il: [{ g0: 0, g1: 1, start_parity: 1 }], ps: { blech_lengths_mm: [1000] } },
+  { l: 2000, h: 2000, il: [{ g0: 0, g1: 3, start_parity: 1 }] },
+  { l: 1500, h: 2000, il: [{ g0: 0, g1: 2, start_parity: 1 }] },
+  { l: 375, h: 1000, il: [{ g0: 0, g1: 3, start_parity: 1 }] },
+  { l: 3000, h: 2000, il: [{ g0: 0, g1: 1, start_parity: 1 }],
+    ps: { ausgleich_override_mm: [0, 1500, 3000], top_connection: "blech" } },
+];
+const pyA32 = JSON.parse(execFileSync("python3", ["-c", PY_ORAKEL_A32],
+  { input: JSON.stringify(A32), encoding: "utf8" }));
+t("[A-32] Paritaet JS <-> Python: ganzes Wandelement mit Kuerzung, Warnungen und Ausgleichspunkten", () => {
+  A32.forEach((f, i) => deepEqual(buildWall("a32", f.l, f.h, [], null, f.ps || null, [], f.il),
+    pyA32[i], `a32fall${i}`));
+});
+t("[A-32] Ecke: Kuerzung nur bei belegter unterster Lage und nie gespeichert", () => {
+  const w1 = buildWall("a", 2500, 2400, [], null, null, [], [{ g0: 0, g1: 1, start_parity: 1 }]);
+  const w0 = buildWall("a", 2500, 2400, [], null, null, [], [{ g0: 0, g1: 1, start_parity: 0 }]);
+  assert(w1.base_plate.teile[0].x0_mm === 125 && w1.base_plate.laenge_mm === 2375, "nicht gekuerzt");
+  assert(!("base_plate_aussparungen_grid" in w1.prestress), "Kuerzung gespeichert");
+  assert(!("verzahnung_kuerzungen" in w0.base_plate) && w0.base_plate.laenge_mm === 2500,
+    "Partnerwand gekuerzt");
+  assert(w1.bom.stahlblech_mm === w1.base_plate.laenge_mm + 0, "Menge enthaelt die Kuerzung");
+});
+t("[A-32] T: ein Bereich mitten in der Wand wird nie gekuerzt", () => {
+  for (const p of [0, 1]) {
+    const w = buildWall("t", 4000, 2400, [], null, null, [], [{ g0: 12, g1: 13, start_parity: p }]);
+    assert(!("verzahnung_kuerzungen" in w.base_plate) && w.base_plate.laenge_mm === 4000,
+      "durchlaufende Wand gekuerzt (p=" + p + ")");
+    assert(("verzahnung_bodenblech" in w.validation) === (p === 1), "Warnung falsch (p=" + p + ")");
+  }
+});
+t("[A-32] Bestand: ohne Verzahnung bit-gleich (goldene Referenzwaende)", () => {
+  for (const key of Object.keys(REFERENCE_WALLS)) {
+    const golden = JSON.parse(readFileSync(join(FIX, `${key}.json`), "utf8"));
+    deepEqual(buildReference(key), golden);
+  }
+});
+t("[A-32] verzahnungsKuerzungen ist rein und benennt die Kuerzungsgrenze", () => {
+  const r = verzahnungsKuerzungen([{ g0: 0, g1: 3, start_parity: 1 }, { g0: 7, g1: 8, start_parity: 1 },
+    { g0: 9, g1: 10, start_parity: 0 }], 10, [3, 5]);
+  deepEqual(r, { kuerzungen: [{ g0: 0, g1: 3, x0_mm: 0, x1_mm: 375, laenge_mm: 375, ende: "anfang" }],
+    felder: [0, 1, 2],
+    hinweise: [{ grund: "fuge_an_kuerzung", g0: 0, g1: 3, grid: 3, x_mm: 375 },
+      { grund: "durchlaufend_lage1_belegt", g0: 7, g1: 8, start_parity: 1 }] });
 });
 
 console.log(`\n${pass} ok, ${fail} fail`);

@@ -216,6 +216,27 @@ Core → Archivexport → ZIP → Import in einen leeren Speicher → Lageplanbl
 unzulässige Überlagerung denselben Weg als Kollision übersteht. **Kein** neues Feld, **kein**
 Schema-/Format-Sprung.
 
+**Bodenblech im Verband ([A-32], Miro R03, bestätigt Felix Bauroth 03.11.2026).** An Ecke und
+T-Anschluss liegt unter der Verzahnung **nur ein** Bodenblech. Liegt ein Verzahnungsbereich am
+**Wandende** (`g0 == 0` oder `g1 == N`) und **belegt** die Wand dort die unterste Lage
+(`start_parity 1`), entfällt unter dem Bereich ihr Bodenblech; die Partnerwand (`start_parity 0`)
+behält ihres bis zum Wandende, der Lage-1-Stein der gekürzten Wand überbrückt die Fuge ([A-11]).
+Ein Bereich **mitten** in der Wand (durchlaufende Wand eines T) wird **nie** gekürzt. Die Kürzung
+ist **abgeleitet** (`verzahnungsKuerzungen()` in Core + Orakel) und steht **nie** in
+`base_plate_aussparungen_grid`: ihre Felder werden mit den manuellen [A-28] vereinigt und laufen
+durch dieselbe Bereichszerlegung [A-29]/[A-31]; ausgewiesen als `base_plate.verzahnung_kuerzungen`
+(nur wenn vorhanden). Gezeichnet wird das Feld im gemeinsamen `bodenblechSvg()` (Modul 1/5/7) als
+**Bodenblech der Partnerwand** (`PARTNERBLECH`, `class="bbpartner"`, ohne Kreuz) statt als leere
+Aussparung (`bodenblechLeereLuecken()`); die Masskette lässt eine Lücke, die Stückliste zählt nur
+reale Teile. Fälle zur manuellen Prüfung stehen in `validation.verzahnung_bodenblech` (nur im
+Befundfall): `durchlaufend_lage1_belegt` (Empfehlung „unterste Lage ausgespart"),
+`fuge_an_kuerzung`, `sonderzuschnitt` (Restbereich nicht aus dem Vorratssatz zerlegbar — keine
+stille Sonderlösung), `kein_bodenblech`, `achse_auf_partnerblech` (Fußschraube auf dem Blech der
+Partnerwand). Im Geschossplan trägt eine Verzahnungsstelle mit überlagerten Blechen
+`bodenblech_hinweis`/`bodenblech_durchlaufend`, eine Kollision bei gleicher Startlage
+`bodenbleche` samt Zusatz in der Meldung (`sembla-constraints.js`). Kein Schalter, keine
+Migration, kein Schema-/Formatsprung; Wände ohne solche Verzahnung bleiben bit-gleich.
+
 **Stangenlänge nur aus dem Katalog — kein Eingabefeld ([Z-1]).** Modul 1 hat **kein** Feld für die
 Gewindestangenlänge mehr (ersatzlos entfernt, nicht nur gesperrt): es gibt keinen zweiten Weg, die
 Vorspann-Geometrie zu setzen. Die **unterste** Stange ist immer die **größte** gewählte

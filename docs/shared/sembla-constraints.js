@@ -848,7 +848,7 @@ function _bereichAn(bereiche, g) {
  *            bereich_b:{g0:number,g1:number,start_parity:number},
  *            meldung:string}|null}
  */
-function _passendeVerzahnung(A, B, ux, uy, tabelle) {
+function _verzahnungsOrt(A, B, ux, uy, tabelle) {
   if (!A.lage || !B.lage) return null;
   if (A.lage.richtung === B.lage.richtung) return null;               // 1.
   if (ux !== BREITE_MM || uy !== BREITE_MM) return null;              // 2.
@@ -858,12 +858,43 @@ function _passendeVerzahnung(A, B, ux, uy, tabelle) {
     const g = (ort[a] - (a === "x" ? W.r.x_min : W.r.y_min)) / GRID_MM;
     if (!_istGanzzahl(g) || g < 0 || g >= Number(W.lage.laenge_grid)) return null;
     const b = _bereichAn(_verzahnungVon(tabelle, W.id), g);           // 3.
-    return b ? { g, bereich: b } : null;
+    return b ? { g, bereich: b, n: Number(W.lage.laenge_grid) } : null;
   };
   const sa = stelle(A), sb = stelle(B);
   if (!sa || !sb) return null;
+  return { ort, sa, sb };
+}
+
+/**
+ * [A-32] Behaelt eine Wand an der Verzahnungsstelle ihr Bodenblech? Gekuerzt wird nur ein
+ * Bereich am WANDENDE, der die unterste Lage belegt (start_parity 1); ein Bereich mitten in
+ * der Wand (die durchlaufende Wand eines T-Anschlusses) wird nie gekuerzt. Dieselbe Regel, die
+ * der Rechenkern fuer die einzelne Wand anwendet (`verzahnungsKuerzungen`).
+ */
+function _behaeltBlech(st) {
+  const amEnde = st.bereich.g0 === 0 || st.bereich.g1 === st.n;
+  return !amEnde || st.bereich.start_parity !== 1;
+}
+
+/**
+ * [A-32] Bodenblech-Befund einer Verzahnungsstelle, an der beide Waende bekannt sind.
+ * `ueberlagern` = beide behalten ihr Blech, `fehlen` = keine der beiden, `ok` = genau eine.
+ */
+function _blechBefund(o) {
+  const a = _behaeltBlech(o.sa), b = _behaeltBlech(o.sb);
+  return a && b ? "ueberlagern" : (!a && !b ? "fehlen" : "ok");
+}
+
+/**
+ * Die Bedingungen 1.–3. (Doku oben) prueft `_verzahnungsOrt`, hier folgt 4. — und seit R03 der
+ * Bodenblech-Befund der Stelle ([A-32]).
+ */
+function _passendeVerzahnung(A, B, ux, uy, tabelle) {
+  const o = _verzahnungsOrt(A, B, ux, uy, tabelle);
+  if (!o) return null;
+  const { ort, sa, sb } = o;
   if (sa.bereich.start_parity === sb.bereich.start_parity) return null;   // 4.
-  return {
+  const v = {
     a: A.id, b: B.id,
     ort_mm: ort,
     raster: { a: sa.g, b: sb.g },
@@ -872,6 +903,19 @@ function _passendeVerzahnung(A, B, ux, uy, tabelle) {
       + `(Rasterfeld ${sa.g} bzw. ${sb.g}, Lagen wechselseitig ausgespart) — zulässige `
       + "Verzahnung, keine Kollision ([K-13]/[G-10]).",
   };
+  // [A-32] Bei ungleicher Startlage behaelt immer mindestens eine Wand ihr Blech. Behalten es
+  // BEIDE, liegt eine durchlaufende Wand (Bereich mitten in der Wand) mit belegter unterster
+  // Lage vor: nicht sauber loesbar — benannt zur manuellen Pruefung. Nur dann entsteht das Feld.
+  if (_blechBefund(o) === "ueberlagern") {
+    const durch = [[A.id, sa], [B.id, sb]]
+      .filter(([, st]) => st.bereich.start_parity === 1).map(([id]) => id);
+    v.bodenblech_durchlaufend = durch;
+    v.bodenblech_hinweis = `Bodenbleche überlagern sich an der Verzahnung „${A.id}“ ↔ „${B.id}“ `
+      + `(Rasterfeld ${sa.g} bzw. ${sb.g}): die durchlaufende Wand ${durch.map((id) => `„${id}“`).join(" und ")} `
+      + "belegt dort die unterste Lage und behält ihr Bodenblech — manuell prüfen. Empfehlung: "
+      + "bei der durchlaufenden Wand „unterste Lage ausgespart“ wählen ([A-32]).";
+  }
+  return v;
 }
 
 // --- Kollisionen ([K-13]) -------------------------------------------------
@@ -904,11 +948,25 @@ function _paare(waende, positionen, verzahnungen) {
         // Ergebnis ist dann bit-genau das von vor #83.
         const v = _passendeVerzahnung(A, B, ux, uy, verzahnungen);
         if (v) { stellen.push(v); continue; }
-        out.push({
+        const k = {
           a: A.id, b: B.id,
           ueberlappung_mm: { x: ux, y: uy },
           meldung: `Wände „${A.id}“ und „${B.id}“ überlappen sich um ${ux} × ${uy} mm — [K-13].`,
-        });
+        };
+        // [A-32] Gleiche Startlage an beiderseits markierten Verzahnungsbereichen bleibt eine
+        // Kollision; benannt wird zusaetzlich, was das fuer die Bodenbleche heisst. Nur dann
+        // entsteht das Feld — jede andere Kollision bleibt bit-genau.
+        const o = _verzahnungsOrt(A, B, ux, uy, verzahnungen);
+        if (o) {
+          const bb = _blechBefund(o);
+          if (bb !== "ok") {
+            k.bodenbleche = bb;
+            k.meldung += bb === "ueberlagern"
+              ? " Gleiche Startlage beider Verzahnungsbereiche — Bodenbleche überlagern sich ([A-32])."
+              : " Gleiche Startlage beider Verzahnungsbereiche — unter der Verzahnung liegt kein Bodenblech ([A-32]).";
+          }
+        }
+        out.push(k);
       }
     }
   }

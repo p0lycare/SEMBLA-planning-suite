@@ -707,6 +707,63 @@ export function normBodenblechAussparungen(arr, N) {
   return { felder, bereiche, fehler };
 }
 
+// ---------- Bodenblech im Verband: Kuerzung unter der Verzahnung ([A-32], Miro R03) ----------
+// An einer Ecke oder einem T-Anschluss greifen zwei Waende mit ihren Verzahnungsbereichen
+// ineinander ([G-10]). Laegen dort BEIDE Bodenbleche, ueberlagerten sie sich. Darum gilt:
+// Liegt ein Verzahnungsbereich am WANDENDE (g0 == 0 oder g1 == N) und belegt die Wand dort die
+// UNTERSTE Lage (start_parity 1 = erst die zweite Lage ausgespart), entfaellt unter dem Bereich
+// das Bodenblech dieser Wand. Die Partnerwand (start_parity 0, Luecke in der untersten Lage)
+// behaelt ihr Blech bis zum Wandende, und der Stein der untersten Lage der gekuerzten Wand
+// ueberbrueckt die Blechfuge ([A-11]). Ein Bereich MITTEN in der Wand (T-Anschluss, die
+// durchlaufende Wand) wird NIE gekuerzt — die durchlaufende Wand hat Vorrang.
+//
+// Die Kuerzung ist ABGELEITET: sie wird bei jeder Rechnung frisch aus den Verzahnungsbereichen
+// gebildet und NIE in `base_plate_aussparungen_grid` gespeichert. Gerechnet wird sie mit genau
+// dem Mechanismus der manuellen Aussparungen ([A-28]/[A-29]/[A-31]): die Felder werden mit den
+// manuellen vereinigt, und jeder verbleibende Bereich wird unabhaengig zerlegt. Ganze
+// Rasterfelder, kein Sondermass. Was sich so nicht sauber loesen laesst, wird BENANNT
+// (Warnung zur manuellen Pruefung) — nie still eine Sonderloesung.
+
+/**
+ * Abgeleitete Bodenblech-Kuerzungen unter Verzahnungsbereichen am Wandende ([A-32]).
+ * Reine Funktion.
+ * @param {Array<{g0:number,g1:number,start_parity:number}>} interlocks normalisierte,
+ *        gueltige Verzahnungsbereiche (aufsteigend)
+ * @param {number} N Wandlaenge in Rastern
+ * @param {number[]} [lage1Fugen] reale Stossfugen der untersten Lage (Rasterpositionen)
+ * @returns {{kuerzungen:Array<{g0:number,g1:number,x0_mm:number,x1_mm:number,laenge_mm:number,
+ *            ende:"anfang"|"ende"|"beide"}>, felder:number[],
+ *            hinweise:Array<{grund:string,[k:string]:any}>}}
+ */
+export function verzahnungsKuerzungen(interlocks, N, lage1Fugen = []) {
+  const fugen = new Set((lage1Fugen || []).map(Number));
+  const kuerzungen = [], felder = [], hinweise = [];
+  for (const il of (Array.isArray(interlocks) ? interlocks : [])) {
+    const amAnfang = il.g0 === 0, amEnde = il.g1 === N;
+    if (!amAnfang && !amEnde) {
+      // [A-32] T-Anschluss: die durchlaufende Wand behaelt ihr Blech immer. Belegt sie dort
+      // die unterste Lage, ueberlagern sich die Bleche bzw. bleibt die Fuge unueberbrueckt —
+      // nicht sauber loesbar, also benannt (Empfehlung: unterste Lage aussparen).
+      if (il.start_parity === 1)
+        hinweise.push({ grund: "durchlaufend_lage1_belegt", g0: il.g0, g1: il.g1,
+          start_parity: il.start_parity });
+      continue;
+    }
+    if (il.start_parity !== 1) continue;      // Luecke in der untersten Lage: Blech bleibt
+    kuerzungen.push({ g0: il.g0, g1: il.g1, x0_mm: il.g0 * GRID, x1_mm: il.g1 * GRID,
+      laenge_mm: (il.g1 - il.g0) * GRID,
+      ende: amAnfang && amEnde ? "beide" : amAnfang ? "anfang" : "ende" });
+    for (let k = il.g0; k < il.g1; k++) felder.push(k);
+    // [A-32]/[A-11] Die Kuerzungsgrenze ist die Fuge zum Blech der Partnerwand. Liegt dort in
+    // der untersten Lage eine Steinfuge, ueberbrueckt kein Stein die Blechfuge.
+    const grenze = amAnfang && amEnde ? null : amAnfang ? il.g1 : il.g0;
+    if (grenze !== null && fugen.has(grenze))
+      hinweise.push({ grund: "fuge_an_kuerzung", g0: il.g0, g1: il.g1, grid: grenze,
+        x_mm: grenze * GRID });
+  }
+  return { kuerzungen, felder, hinweise };
+}
+
 /**
  * [A-29] EINEN zusammenhaengenden Bodenblechbereich [x0, x1) zerlegen — mit genau den Regeln
  * aus [A-10]/[A-11]/[A-12]. Der Bereich wird UNABHAENGIG von jedem anderen gerechnet: seine
@@ -2065,8 +2122,17 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // validiert; abgewiesene Eintraege werden benannt und nicht angewandt.
   const AS = normBodenblechAussparungen(PS.base_plate_aussparungen_grid, N);
   if (AS.felder) PS.base_plate_aussparungen_grid = AS.felder;
+  // [A-32] Abgeleitete Kuerzung unter Verzahnungsbereichen am Wandende — frisch gerechnet, NIE
+  // gespeichert (das Feld oben bleibt allein die manuelle Wahl). Vereinigt mit den manuellen
+  // Feldern und dann ueber denselben Weg normalisiert ([A-28]): ohne Kuerzung ist `aussparBereiche`
+  // genau `AS.bereiche`, das Ergebnis also bit-gleich.
+  const lage1Fugen = courses.length ? courses[0].joints_grid : [];
+  const VK = verzahnungsKuerzungen(IL.interlocks, N, lage1Fugen);
+  const aussparBereiche = VK.felder.length
+    ? normBodenblechAussparungen([...(AS.felder || []), ...VK.felder], N).bereiche
+    : AS.bereiche;
   const bodenZerlegung = zerlegeBodenblech(lengthMm, PS.blech_lengths_mm,
-    courses.length ? courses[0].joints_grid : [], AS.bereiche);
+    lage1Fugen, aussparBereiche);
   const bodenTeile = bodenZerlegung.teile;
   const bodenModule = bodenTeile.length;      // Anzahl REALER Bodenblechteile
   const kopfModule = (TOP === "blech") ? Math.ceil(topEdgeLen / PS.blech_mm) : 0;
@@ -2076,7 +2142,34 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   const bodenLaenge = lengthMm - ausgespartMm;
   const basePlate = { rolle: "bodenblech", laenge_mm: bodenLaenge, breite_mm: THICK, dicke_mm: PS.blech_dicke_mm, modul_mm: PS.blech_mm, module: bodenModule, teile: bodenTeile,
     // [A-28] Die kanonischen Luecken — nur wenn es welche gibt.
-    ...(bodenZerlegung.luecken.length ? { aussparungen: bodenZerlegung.luecken } : {}) };
+    ...(bodenZerlegung.luecken.length ? { aussparungen: bodenZerlegung.luecken } : {}),
+    // [A-32] Die abgeleiteten Kuerzungen unter der Verzahnung — nur wenn es welche gibt. Sie
+    // sind in `aussparungen` bereits enthalten; hier stehen sie, damit jede Ausgabe sie als
+    // „Blech der Partnerwand" statt als leere Aussparung zeigen kann.
+    ...(VK.kuerzungen.length ? { verzahnung_kuerzungen: VK.kuerzungen } : {}) };
+  // [A-32] Benannte Faelle zur manuellen Pruefung (keine stille Sonderloesung):
+  //  - durchlaufend_lage1_belegt / fuge_an_kuerzung aus `verzahnungsKuerzungen()`;
+  //  - sonderzuschnitt: ein an eine Kuerzung grenzender Bereich laesst sich nicht allein aus
+  //    den gewaehlten Standardlaengen ([A-10]) zerlegen — die Zerlegung bleibt die bestehende,
+  //    der Sonderzuschnitt wird aber nicht still hingenommen;
+  //  - achse_auf_partnerblech: eine Spannachse steht im gekuerzten Feld, ihre Fussschraube also
+  //    auf dem Bodenblech der Partnerwand.
+  const vzHinweise = VK.hinweise.slice();
+  if (VK.kuerzungen.length) {
+    const kFeld = new Set(VK.felder);
+    const anKuerzung = (x) => bodenZerlegung.luecken.some((lu) =>
+      (lu.x0_mm === x || lu.x1_mm === x) && VK.kuerzungen.some((k) => k.g0 < lu.g1 && lu.g0 < k.g1));
+    for (const b of bodenZerlegung.bereiche) {
+      if (!anKuerzung(b.x0_mm) && !anKuerzung(b.x1_mm)) continue;
+      for (const tl of bodenTeile)
+        if (tl.art === "sonder" && tl.x0_mm >= b.x0_mm && tl.x0_mm < b.x1_mm)
+          vzHinweise.push({ grund: "sonderzuschnitt", x0_mm: b.x0_mm, x1_mm: b.x1_mm,
+            laenge_mm: b.laenge_mm, fertigmass_mm: tl.bauteil_mm });
+    }
+    if (!bodenZerlegung.bereiche.length) vzHinweise.push({ grund: "kein_bodenblech" });
+    for (const col of columns)
+      if (kFeld.has(col.k)) vzHinweise.push({ grund: "achse_auf_partnerblech", k: col.k, x_mm: col.x_mm });
+  }
   const topPlate = (TOP === "blech")
     ? { rolle: "kopfblech", laenge_mm: topEdgeLen, breite_mm: THICK, dicke_mm: PS.kopfblech_dicke_mm, modul_mm: PS.blech_mm, module: kopfModule }
     : null;
@@ -2205,6 +2298,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // [A-30] Abgewiesene manuelle Aussparungsfelder — benannt, verworfen, nie verschoben.
       // Der Schluessel entsteht NUR im Fehlerfall.
       ...(AS.fehler.length ? { aussparung_fehler: AS.fehler } : {}),
+      // [A-32] Bodenblech im Verband: Faelle zur manuellen Pruefung — benannt, KEIN
+      // Baubarkeitsausschluss. Der Schluessel entsteht NUR im Befundfall.
+      ...(vzHinweise.length ? { verzahnung_bodenblech: vzHinweise } : {}),
       // [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuelle Achsen: echter Befund.
       ungehaltene_steine: ungehalteneSteine,
       // [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)

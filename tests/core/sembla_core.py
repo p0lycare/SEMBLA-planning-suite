@@ -863,6 +863,43 @@ def norm_bodenblech_aussparungen(arr, n_grid):
     return felder, bereiche, fehler
 
 
+# ---- Bodenblech im Verband: Kuerzung unter der Verzahnung ([A-32], Miro R03) ----
+# Liegt ein Verzahnungsbereich am WANDENDE (g0 == 0 oder g1 == N) und belegt die Wand dort die
+# UNTERSTE Lage (start_parity 1), entfaellt unter dem Bereich das Bodenblech dieser Wand; die
+# Partnerwand (start_parity 0) behaelt ihr Blech bis zum Wandende. Ein Bereich MITTEN in der
+# Wand (T-Anschluss, durchlaufende Wand) wird NIE gekuerzt. Die Kuerzung ist ABGELEITET — frisch
+# gerechnet, nie gespeichert — und laeuft ueber denselben Mechanismus wie [A-28]/[A-29]/[A-31].
+# Bit-genaues Gegenstueck zu verzahnungsKuerzungen() im JS-Core.
+
+def verzahnungs_kuerzungen(interlocks, N, lage1_fugen=()):
+    """Abgeleitete Bodenblech-Kuerzungen unter Verzahnungsbereichen am Wandende ([A-32]).
+
+    Gibt {"kuerzungen", "felder", "hinweise"} zurueck."""
+    fugen = {int(g) for g in (lage1_fugen or ())}
+    kuerzungen, felder, hinweise = [], [], []
+    for il in (interlocks or ()):
+        am_anfang, am_ende = il["g0"] == 0, il["g1"] == N
+        if not am_anfang and not am_ende:
+            # [A-32] T-Anschluss: die durchlaufende Wand behaelt ihr Blech immer.
+            if il["start_parity"] == 1:
+                hinweise.append({"grund": "durchlaufend_lage1_belegt", "g0": il["g0"],
+                                 "g1": il["g1"], "start_parity": il["start_parity"]})
+            continue
+        if il["start_parity"] != 1:          # Luecke in der untersten Lage: Blech bleibt
+            continue
+        kuerzungen.append({"g0": il["g0"], "g1": il["g1"], "x0_mm": il["g0"] * GRID,
+                           "x1_mm": il["g1"] * GRID, "laenge_mm": (il["g1"] - il["g0"]) * GRID,
+                           "ende": ("beide" if am_anfang and am_ende
+                                    else "anfang" if am_anfang else "ende")})
+        felder.extend(range(il["g0"], il["g1"]))
+        # [A-32]/[A-11] Steinfuge der untersten Lage genau an der Kuerzungsgrenze.
+        grenze = None if (am_anfang and am_ende) else (il["g1"] if am_anfang else il["g0"])
+        if grenze is not None and grenze in fugen:
+            hinweise.append({"grund": "fuge_an_kuerzung", "g0": il["g0"], "g1": il["g1"],
+                             "grid": grenze, "x_mm": grenze * GRID})
+    return {"kuerzungen": kuerzungen, "felder": felder, "hinweise": hinweise}
+
+
 def _zerlege_blechbereich(x0_mm, x1_mm, L, stoss):
     """[A-29] EINEN zusammenhaengenden Bodenblechbereich [x0, x1) zerlegen — mit genau den
     Regeln aus [A-10]/[A-11]/[A-12]. Seine Enden sind freie Blechenden und keine Stoesse."""
@@ -1929,9 +1966,14 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         _PS.get("base_plate_aussparungen_grid"), N)
     if _AS is not None:
         _PS["base_plate_aussparungen_grid"] = _AS
+    # [A-32] Abgeleitete Kuerzung unter Verzahnungsbereichen am Wandende — frisch gerechnet,
+    # NIE gespeichert. Vereinigt mit den manuellen Feldern und ueber denselben Weg normalisiert.
+    _lage1_fugen = courses[0]["joints_grid"] if courses else []
+    _VK = verzahnungs_kuerzungen(_IL_interlocks, N, _lage1_fugen)
+    _auspar_bereiche = (norm_bodenblech_aussparungen(list(_AS or []) + _VK["felder"], N)[1]
+                        if _VK["felder"] else _AS_bereiche)
     boden_zerlegung = zerlege_bodenblech(length_mm, _PS["blech_lengths_mm"],
-                                         courses[0]["joints_grid"] if courses else [],
-                                         _AS_bereiche)
+                                         _lage1_fugen, _auspar_bereiche)
     boden_teile = boden_zerlegung["teile"]
     boden_module = len(boden_teile)          # Anzahl REALER Bodenblechteile
     kopf_module = math.ceil(top_edge_len / _PS["blech_mm"]) if _top == "blech" else 0
@@ -1944,7 +1986,33 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                   "module": boden_module, "teile": boden_teile,
                   # [A-28] Die kanonischen Luecken — nur wenn es welche gibt.
                   **({"aussparungen": boden_zerlegung["luecken"]}
-                     if boden_zerlegung["luecken"] else {})}
+                     if boden_zerlegung["luecken"] else {}),
+                  # [A-32] Die abgeleiteten Kuerzungen — nur wenn es welche gibt.
+                  **({"verzahnung_kuerzungen": _VK["kuerzungen"]}
+                     if _VK["kuerzungen"] else {})}
+    # [A-32] Benannte Faelle zur manuellen Pruefung (Reihenfolge wie im JS-Core).
+    _vz_hinweise = list(_VK["hinweise"])
+    if _VK["kuerzungen"]:
+        _k_feld = set(_VK["felder"])
+
+        def _an_kuerzung(x):
+            return any((lu["x0_mm"] == x or lu["x1_mm"] == x)
+                       and any(k["g0"] < lu["g1"] and lu["g0"] < k["g1"] for k in _VK["kuerzungen"])
+                       for lu in boden_zerlegung["luecken"])
+        for b in boden_zerlegung["bereiche"]:
+            if not _an_kuerzung(b["x0_mm"]) and not _an_kuerzung(b["x1_mm"]):
+                continue
+            for tl in boden_teile:
+                if tl["art"] == "sonder" and b["x0_mm"] <= tl["x0_mm"] < b["x1_mm"]:
+                    _vz_hinweise.append({"grund": "sonderzuschnitt", "x0_mm": b["x0_mm"],
+                                         "x1_mm": b["x1_mm"], "laenge_mm": b["laenge_mm"],
+                                         "fertigmass_mm": tl["bauteil_mm"]})
+        if not boden_zerlegung["bereiche"]:
+            _vz_hinweise.append({"grund": "kein_bodenblech"})
+        for col in columns:
+            if col["k"] in _k_feld:
+                _vz_hinweise.append({"grund": "achse_auf_partnerblech", "k": col["k"],
+                                     "x_mm": col["x_mm"]})
     top_plate = ({"rolle": "kopfblech", "laenge_mm": top_edge_len, "breite_mm": THICK,
                   "dicke_mm": _PS["kopfblech_dicke_mm"], "modul_mm": _PS["blech_mm"],
                   "module": kopf_module}
@@ -2059,6 +2127,9 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                        # [A-30] Abgewiesene manuelle Aussparungsfelder — benannt, verworfen,
                        # nie verschoben. Der Schluessel entsteht NUR im Fehlerfall.
                        **({"aussparung_fehler": _AS_fehler} if _AS_fehler else {}),
+                       # [A-32] Bodenblech im Verband: Faelle zur manuellen Pruefung —
+                       # benannt, KEIN Baubarkeitsausschluss; Schluessel nur im Befundfall.
+                       **({"verzahnung_bodenblech": _vz_hinweise} if _vz_hinweise else {}),
                        # [V-2] Steine ohne Spannachse. Auto-Pfad: immer leer. Manuell: echter Befund.
                        "ungehaltene_steine": ungehaltene_steine,
                        # [G-12] Ungueltige/fehlerhafte Verzahnungsbereiche (sichtbare Warnung, kein Baubarkeitsausschluss)

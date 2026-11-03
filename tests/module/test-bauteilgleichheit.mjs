@@ -87,6 +87,8 @@ window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung: ENG.autoAuslegu
   bodenblechTeile: MONT.bodenblechTeile, bodenblechStoesse: MONT.bodenblechStoesse,
   BLECHSTOSS: MONT.BLECHSTOSS, bodenblechAussparungen: MONT.bodenblechAussparungen,
   AUSSPARUNG: MONT.AUSSPARUNG, ZWISCHENPUNKT: MONT.ZWISCHENPUNKT,
+  bodenblechLeereLuecken: MONT.bodenblechLeereLuecken, bodenblechVerzahnung: MONT.bodenblechVerzahnung,
+  PARTNERBLECH: MONT.PARTNERBLECH,
   zwischenpunktSvg: MONT.zwischenpunktSvg, wirksameZwischenpunkte,
   DECKENANSCHLUSS: MONT.DECKENANSCHLUSS, deckenanschlussSvg: MONT.deckenanschlussSvg,
   AUSGLEICHSPUNKT: MONT.AUSGLEICHSPUNKT, ausgleichspunktSvg: MONT.ausgleichspunktSvg,

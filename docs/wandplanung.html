@@ -104,6 +104,9 @@
   .zlegende i.bas::after{content:"";position:absolute;left:-1px;top:-1px;right:-1px;bottom:-1px;
                   background:linear-gradient(to bottom right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%),
                              linear-gradient(to top right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%)}
+  /* Blech der Partnerwand ([A-32]/R03): blass stahlfarben, gestrichelter Rand, OHNE Kreuz. */
+  .zlegende i.bpp{width:14px;height:9px;border:1px dashed currentColor;
+                  background:rgba(91,102,115,.35)}
   .note{font-size:11.5px;color:var(--sb-muted);margin-top:12px;border-top:1px solid var(--sb-line);padding-top:10px;line-height:1.55}
   .savehint{font-size:12px;color:var(--sb-muted);margin-top:6px;min-height:15px}
   .savehint.ok{color:var(--sb-ok)}
@@ -350,6 +353,9 @@ let bodenblechTeile, bodenblechStoesse, BLECHSTOSS;
 // #138: die kanonischen Bodenblech-Aussparungen ([A-28]) und ihr Darstellungsschluessel — auch
 // sie kommen aus sembla-montage.js, damit Modul 1, 5 und 7 dieselbe Marke zeigen ([D-4]).
 let bodenblechAussparungen, AUSSPARUNG;
+// [A-32]/R03: das Blech der Partnerwand unter einer Verzahnung am Wandende und die Teile der
+// Aussparungen ohne jedes Blech — gelesen aus dem Rechenkern, nicht nachgerechnet.
+let bodenblechLeereLuecken, bodenblechVerzahnung, PARTNERBLECH;
 // Kennfarbe des Boden-/Kopfblechs. Sie gehoert nicht zu den Spannkomponenten und ist in
 // sembla-montage.js nicht ausgefuehrt; sie steht deshalb lokal, und
 // ihre Gleichheit mit `FARBE.stahl` von Modul 7 ist im Test gesichert ([P-6]/[D-4]).
@@ -1211,7 +1217,12 @@ function draw(w){
   // `bodenblechSvg()` — sie steht auch ohne geöffneten Auswahlmodus im Bild.
   if(asEdit){ const gew=new Set(manualAs||[]);
     const y0=Y(0), asf=AUSSPARUNG.farbe;
+    // [A-32] Abgeleitet gekürzte Felder (Verzahnung am Wandende) sind keine Planerwahl: sie
+    // bekommen kein Trefferfeld — das gemeinsame `bodenblechSvg()` zeigt dort schon das Blech
+    // der Partnerwand.
+    const vkFeld=new Set(bodenblechVerzahnung(w).flatMap(v=>{ const a=[]; for(let k=v.g0;k<v.g1;k++) a.push(k); return a; }));
     for(let k=0;k<w.N_grid;k++){ const on=gew.has(k);
+      if(vkFeld.has(k) && !on) continue;
       const lx=Math.min(X(k*GRID),X((k+1)*GRID));
       s+=`<rect class="${on?'asz asx':'asz'}" data-as="${k}" x="${lx}" y="${y0}" `
         +`width="${GRID*sc}" height="${bth}" fill="${asf}" fill-opacity="${on?0.45:0}" `
@@ -1297,10 +1308,14 @@ function renderZLegende(w){
   // Das Legendenfeld zeigt sie SO, WIE SIE IM BILD STEHT: ein leerer, gestrichelter Umriss mit
   // Kreuz, ausdrücklich OHNE Blechfeld — dort liegt kein Blech. Damit ist sie auch in der
   // Legende nicht mit der weißen Stoßmarke zu verwechseln ([D-4]).
-  const basEintrag = (w && bodenblechAussparungen(w).length)
+  // [A-32] Seit R03 nur, wo WIRKLICH kein Blech liegt — unter einer Verzahnung am Wandende
+  // liegt das Blech der Partnerwand und hat einen eigenen Eintrag (wie Modul 7).
+  const basEintrag = (w && bodenblechLeereLuecken(w).length)
     ? `<span><i class="bas" style="color:${AUSSPARUNG.farbe}"></i>`
       + `${AUSSPARUNG.label} (kein Bodenblech)</span>` : '';
-  const blechEintraege = bstEintrag+bsoEintrag+basEintrag;
+  const bppEintrag = (w && bodenblechVerzahnung(w).length)
+    ? `<span><i class="bpp" style="color:${PARTNERBLECH.farbe}"></i>${PARTNERBLECH.label}</span>` : '';
+  const blechEintraege = bstEintrag+bsoEintrag+basEintrag+bppEintrag;
   const alle=w?w.tension_columns.flatMap(c=>c.segments).flatMap(g=>g.stuecke||[]):[];
   // Ohne bestimmten Zuschnitt gibt es KEINE Zuschnittlegende — die Blecheintraege haengen
   // aber nicht an der Stangenzerlegung und laufen deshalb hier mit.
@@ -1434,6 +1449,29 @@ function interlockNr(bereich){
     .filter(x=>x.b.g0===Number(bereich.g0) && x.b.g1===Number(bereich.g1));
   return treffer.length===1 ? treffer[0].i+1 : null;
 }
+/** [A-32] Wortlaut je Befund der Bodenblech-Kürzung unter Verzahnungen. */
+function vzBlechText(h){
+  const nr=(h.g0!=null)?interlockNr(h):null, vz=nr?'Verzahnung '+nr:'Verzahnung';
+  if(h.grund==='durchlaufend_lage1_belegt')
+    return '⚠ '+vz+' (Raster '+h.g0+'–'+h.g1+') liegt mitten in der Wand und belegt die unterste '
+      +'Lage: die durchlaufende Wand behält ihr Bodenblech, darunter überlagern sich die Bleche '
+      +'bzw. bleibt die Fuge unüberbrückt — manuell prüfen. Empfehlung: bei der durchlaufenden '
+      +'Wand „unterste Lage ausgespart" wählen. [A-32]';
+  if(h.grund==='fuge_an_kuerzung')
+    return '⚠ '+vz+': genau an der Bodenblech-Kürzung (Raster '+h.grid+') liegt in Lage 1 eine '
+      +'Steinfuge — die Blechfuge zur Partnerwand ist nicht überbrückt; manuell prüfen. [A-32]/[A-11]';
+  if(h.grund==='sonderzuschnitt')
+    return '⚠ Bodenblech neben der Verzahnungs-Kürzung ('+fmt(h.x0_mm/10,1)+'–'+fmt(h.x1_mm/10,1)
+      +' cm) lässt sich nicht aus den gewählten Standardlängen zerlegen — Sonderzuschnitt ◆ '
+      +h.fertigmass_mm+' mm; manuell prüfen oder Standardlänge ergänzen. [A-32]/[A-10]';
+  if(h.grund==='kein_bodenblech')
+    return '⚠ Die Verzahnung kürzt das Bodenblech vollständig — die Wand hat kein eigenes '
+      +'Bodenblech; manuell prüfen. [A-32]';
+  if(h.grund==='achse_auf_partnerblech')
+    return 'ℹ Spannachse '+fmt(h.x_mm/10,2)+' cm (Raster '+h.k+') steht im gekürzten Feld — ihre '
+      +'Fußschraube sitzt auf dem Bodenblech der Partnerwand; Bohrung dort prüfen. [A-32]';
+  return '⚠ Bodenblech im Verband: '+h.grund+' [A-32]';
+}
 function renderInterlockWarns(vv){
   const box=$('interlockWarns'); if(!box) return;
   const warns=[];
@@ -1446,6 +1484,16 @@ function renderInterlockWarns(vv){
   }
   const inv=vv.interlock_invalid_segments||[];
   for(const s of inv) warns.push('⚠ Restbreite nicht baubar: Lage '+(s.lage+1)+', Raster '+s.start_grid+', '+s.breite_grid+' Raster');
+  // [A-32] Bodenblech im Verband: die abgeleitete Kürzung wird benannt (Hinweis), die nicht
+  // sauber lösbaren Fälle als Warnung zur manuellen Prüfung — im Wortlaut je Grund.
+  const bp=(RESULT&&RESULT.wandelement&&RESULT.wandelement.base_plate)||{};
+  for(const k of (bp.verzahnung_kuerzungen||[])){
+    const nr=interlockNr(k);
+    warns.push('ℹ Bodenblech unter '+(nr?'Verzahnung '+nr:'der Verzahnung')+' (Raster '+k.g0+'–'+k.g1
+      +') entfällt — dort liegt das Bodenblech der Partnerwand; der Stein der untersten Lage '
+      +'überbrückt die Blechfuge. Abgeleitet, nicht gespeichert.');
+  }
+  for(const h of (vv.verzahnung_bodenblech||[])) warns.push(vzBlechText(h));
   box.innerHTML=warns.map(w=>'<div>'+w+'</div>').join('');
 }
 
@@ -2265,6 +2313,15 @@ function setAsEdit(v){ asEdit=!!v; if(asEdit){ editMode=false; axisEdit=false; z
 function toggleAs(k){
   if(!Number.isInteger(k)) return;
   const felder=new Set(manualAs||[]);
+  // [A-32] Ein unter einer Verzahnung abgeleitet gekürztes Feld ist keine Planerwahl: es lässt
+  // sich hier weder setzen noch zurücknehmen (die Kürzung folgt allein der Verzahnung).
+  const vk=RESULT?bodenblechVerzahnung(RESULT.wandelement):[];
+  if(!felder.has(k) && vk.some(v=>v.g0<=k && k<v.g1)){
+    const el=$('asHinweis');
+    if(el) el.textContent='Rasterfeld '+k+' ist unter der Verzahnung abgeleitet gekürzt — dort liegt '
+      +'das Blech der Partnerwand. Ändern über die Startlage der Verzahnung.';
+    return;
+  }
   if(felder.has(k)) felder.delete(k); else felder.add(k);
   // Leer heißt hier „keine Aussparungen" — dann verschwindet das Feld wieder vollständig.
   manualAs = felder.size ? [...felder].sort((a,b)=>a-b) : null;
@@ -2285,12 +2342,18 @@ function renderAsHinweis(){
   const bp=RESULT.wandelement.base_plate||{};
   const luecken=bp.aussparungen||[];
   const felder=(RESULT.wandelement.prestress&&RESULT.wandelement.prestress.base_plate_aussparungen_grid)||[];
-  el.textContent = luecken.length
+  // [A-32] Abgeleitete Kürzungen unter Verzahnungen am Wandende stehen getrennt daneben.
+  const vk=bp.verzahnung_kuerzungen||[];
+  const vkText = vk.length
+    ? ' Zusätzlich abgeleitet: '+vk.length+' Kürzung(en) unter Verzahnungen am Wandende ('
+      +vk.map(v=>'Raster '+v.g0+'–'+v.g1).join(', ')+') — dort liegt das Blech der Partnerwand, '
+      +'nicht gespeichert.' : '';
+  el.textContent = (felder.length
     ? 'Eigene Auswahl: '+felder.length+' Rasterfeld(er) in '+luecken.length+' Lücke(n) — '
       +'gespeichert am Wandelement; das Bodenblech wird je verbleibendem Bereich unabhängig '
       +'zerlegt, ausgesparte Länge erzeugt keine Teile.'
-    : 'Keine Aussparungen — das Bodenblech läuft über die volle Wandlänge. Gewählt wird '
-      +'ausschließlich von Hand; es wird nichts abgeleitet.';
+    : 'Keine eigenen Aussparungen — gewählt wird ausschließlich von Hand.'
+      +(vk.length ? '' : ' Das Bodenblech läuft über die volle Wandlänge.'))+vkText;
 }
 
 // ---------- Zugänglichkeit: Namen, Beschreibungen, Zustände (#144/#145) ----------
@@ -2614,6 +2677,8 @@ window.__wpInit=function(){
   bodenblechTeile=S.bodenblechTeile; bodenblechStoesse=S.bodenblechStoesse;
   BLECHSTOSS=S.BLECHSTOSS;
   bodenblechAussparungen=S.bodenblechAussparungen; AUSSPARUNG=S.AUSSPARUNG;
+  bodenblechLeereLuecken=S.bodenblechLeereLuecken; bodenblechVerzahnung=S.bodenblechVerzahnung;
+  PARTNERBLECH=S.PARTNERBLECH;
   DECKENANSCHLUSS=S.DECKENANSCHLUSS; deckenanschlussSvg=S.deckenanschlussSvg;
   AUSGLEICHSPUNKT=S.AUSGLEICHSPUNKT; ausgleichspunktSvg=S.ausgleichspunktSvg;
   wirksameZwischenpunkte=S.wirksameZwischenpunkte;
@@ -2666,6 +2731,8 @@ window.__wpInit=function(){
            // #138: die kanonischen Luecken und ihr Darstellungsschluessel — dieselbe Quelle,
            // aus der Modul 5 und Modul 7 sie zeichnen ([A-28]/[D-4]).
            bodenblechAussparungen, AUSSPARUNG,
+           // [A-32]/R03: Blech der Partnerwand unter einer Verzahnung am Wandende.
+           bodenblechLeereLuecken, bodenblechVerzahnung, PARTNERBLECH,
            // #140 die EINE erlaubte Umrechnung Reihenzahl -> Hoehe ([D-4]).
            lagenOberkanteMm,
            SPANN_FARBE, SPANN_EINHEIT, SPANN_MM, mutterSvg,
@@ -2687,6 +2754,7 @@ window.__wpInit=function(){
                     stangenFarbFolge, stangenLegende,
                     bodenblechTeile, bodenblechStoesse, BLECHSTOSS,
                     bodenblechAussparungen, AUSSPARUNG,
+                    bodenblechLeereLuecken, bodenblechVerzahnung, PARTNERBLECH,
                     ZWISCHENPUNKT, zwischenpunktSvg, wirksameZwischenpunkte,
                     DECKENANSCHLUSS, deckenanschlussSvg,
                     AUSGLEICHSPUNKT, ausgleichspunktSvg,

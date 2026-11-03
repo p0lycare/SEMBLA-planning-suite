@@ -265,6 +265,19 @@ export const BLECHSTOSS = { farbe: "#fff", label: "Blechstoß" };
 export const AUSSPARUNG = { farbe: "#8a6a00", label: "Bodenblech-Aussparung" };
 
 /**
+ * Darstellungsschluessel des PARTNERBLECHS ([D-4], [A-32], Miro R03) — Kennfarbe und Klartext
+ * der Marke unter einem Verzahnungsbereich am Wandende, unter dem das eigene Bodenblech
+ * entfaellt, weil dort das Bodenblech der PARTNERWAND durchlaeuft.
+ *
+ * Bewusst NICHT das Aussparungssymbol: unter dem Feld liegt sehr wohl ein Blech — nur gehoert es
+ * nicht zu dieser Wand (keine Stuecklistenposition hier). Eine Spannachse im Feld steht darauf.
+ * Gezeichnet wird ein blass stahlfarbenes Feld mit gestricheltem Umriss OHNE Kreuz; die
+ * Unterscheidung zur Aussparung (Kreuz) und zum eigenen Blech (voll, durchgezogen) traegt damit
+ * auch im Schwarz-Weiss-Ausdruck.
+ */
+export const PARTNERBLECH = { farbe: "#4a6a8a", label: "Bodenblech der Partnerwand (Verzahnung)" };
+
+/**
  * Darstellungsschluessel des AUSGLEICHSPUNKTS ([D-4], [A-20]…[A-24]/#96/#97) — Kennfarbe und
  * Klartext der Marke, die ein Ausgleichsblech UNTER dem Bodenblech ausweist.
  *
@@ -1087,6 +1100,47 @@ export function bodenblechAussparungen(w) {
                        laenge_mm: +l.laenge_mm }));
 }
 
+/**
+ * Abgeleitete Bodenblech-KUERZUNGEN unter Verzahnungsbereichen am Wandende ([A-32]) — gelesen
+ * aus `base_plate.verzahnung_kuerzungen`, nie nachgerechnet. Sie sind in den Aussparungen
+ * enthalten; ohne Verzahnung am Wandende (und fuer jedes Alt-Wandelement) leer.
+ * @param {any} w Wandelement
+ * @returns {Array<{g0:number,g1:number,x0_mm:number,x1_mm:number,laenge_mm:number,ende:string}>}
+ */
+export function bodenblechVerzahnung(w) {
+  const a = (w && w.base_plate && Array.isArray(w.base_plate.verzahnung_kuerzungen))
+    ? w.base_plate.verzahnung_kuerzungen : [];
+  return a.map(k => ({ g0: +k.g0, g1: +k.g1, x0_mm: +k.x0_mm, x1_mm: +k.x1_mm,
+                       laenge_mm: +k.laenge_mm, ende: String(k.ende) }));
+}
+
+/**
+ * Die Teile der Aussparungen, unter denen WIRKLICH kein Blech liegt — also ohne die Felder, an
+ * denen nach [A-32] das Blech der Partnerwand durchlaeuft. Reine Mengenrechnung ueber die zwei
+ * gelesenen Listen; ohne Kuerzungen ist das Ergebnis bit-genau `bodenblechAussparungen(w)`.
+ * @param {any} w Wandelement
+ * @returns {Array<{g0:number,g1:number,x0_mm:number,x1_mm:number,laenge_mm:number}>}
+ */
+export function bodenblechLeereLuecken(w) {
+  const lu = bodenblechAussparungen(w);
+  const vk = bodenblechVerzahnung(w);
+  if (!vk.length) return lu;
+  const g = _grid(w);
+  const out = [];
+  for (const l of lu) {
+    let s = null;
+    for (let k = l.g0; k <= l.g1; k++) {
+      const frei = k < l.g1 && !vk.some(v => v.g0 <= k && k < v.g1);
+      if (frei && s === null) s = k;
+      if (!frei && s !== null) {
+        out.push({ g0: s, g1: k, x0_mm: s * g, x1_mm: k * g, laenge_mm: (k - s) * g });
+        s = null;
+      }
+    }
+  }
+  return out;
+}
+
 /** Reihenfolge mehrerer Ereignisse auf derselben Hoehe: erst schliessen, dann koppeln, dann neu ansetzen. */
 const ART_RANG = { abschluss: 0, kopplung: 1, fuss: 2, neustart: 3 };
 
@@ -1697,7 +1751,9 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
   // Linie zwischen zwei Blechen; hier steht kein Blech, das man teilen koennte. Gezeichnet wird
   // allein `base_plate.aussparungen` aus dem Rechenkern — ohne Aussparungen entsteht nichts,
   // und die Ausgabe bleibt bit-genau die bisherige.
-  for (const lu of bodenblechAussparungen(w)) {
+  // [A-32] Seit R03 nur noch die Teile ohne jedes Blech — unter einer Verzahnungskuerzung liegt
+  // das Blech der Partnerwand und steht unten mit eigenem Symbol.
+  for (const lu of bodenblechLeereLuecken(w)) {
     const bw = (lu.x1_mm - lu.x0_mm) * sc;
     const x = Math.min(X(lu.x0_mm), X(lu.x1_mm));
     const d = Math.max(1.2, bth * 0.45);
@@ -1708,6 +1764,17 @@ export function bodenblechSvg(w, X, Y, sc, bth, opts = {}) {
       + `stroke="${AUSSPARUNG.farbe}" stroke-width="${n(rand * 1.2)}"/>`;
     s += `<line x1="${n(x)}" y1="${n(y0 + bth)}" x2="${n(x + bw)}" y2="${n(y0)}" `
       + `stroke="${AUSSPARUNG.farbe}" stroke-width="${n(rand * 1.2)}"/>`;
+  }
+  // [A-32] Unter einer Verzahnung am Wandende liegt das Bodenblech der PARTNERWAND: blass
+  // stahlfarben mit gestricheltem Umriss, ohne Kreuz — keine Teilgrenze, keine eigene Position.
+  // Ohne Kuerzung entsteht nichts; die Ausgabe bleibt bit-genau die bisherige.
+  for (const vk of bodenblechVerzahnung(w)) {
+    const bw = (vk.x1_mm - vk.x0_mm) * sc;
+    const x = Math.min(X(vk.x0_mm), X(vk.x1_mm));
+    const d = Math.max(1.2, bth * 0.45);
+    s += `<rect class="bbpartner" x="${n(x)}" y="${n(y0)}" width="${n(bw)}" height="${n(bth)}" `
+      + `fill="${FARBE.stahl}" fill-opacity="0.35" stroke="${PARTNERBLECH.farbe}" `
+      + `stroke-width="${n(rand * 1.6)}" stroke-dasharray="${n(d)} ${n(d)}"/>`;
   }
   return s;
 }
@@ -2036,8 +2103,10 @@ function _zuschnittLegende(w, ab, x0, y, folge, xMax = Infinity) {
   const sonderBlech = bodenblechTeile(w).some(t => t.art === "sonder");
   // #138 Die Aussparung steht nur da, wenn es wirklich eine gibt — dieselbe Regel wie beim
   // Blechstoss und beim Sonderzuschnitt.
-  const ausgespart = bodenblechAussparungen(w).length > 0;
-  if (!stangen.length && !stoss && !sonderBlech && !ausgespart) return "";
+  const ausgespart = bodenblechLeereLuecken(w).length > 0;
+  // [A-32] Ebenso das Blech der Partnerwand unter einer Verzahnung am Wandende.
+  const partner = bodenblechVerzahnung(w).length > 0;
+  if (!stangen.length && !stoss && !sonderBlech && !ausgespart && !partner) return "";
   const txt = (lx, yy, t) => `<text x="${lx + 18}" y="${yy}" font-size="9" fill="${FARBE.text}">${t}</text>`;
   /** @type {Array<{t:string, svg:(lx:number, yy:number)=>string}>} */
   const teile = [];
@@ -2071,6 +2140,13 @@ function _zuschnittLegende(w, ab, x0, y, folge, xMax = Infinity) {
       + `stroke="${AUSSPARUNG.farbe}" stroke-width="0.9" stroke-dasharray="2 2"/>`
       + `<line x1="${lx}" y1="${yy - 7}" x2="${lx + 14}" y2="${yy - 1}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
       + `<line x1="${lx}" y1="${yy - 1}" x2="${lx + 14}" y2="${yy - 7}" stroke="${AUSSPARUNG.farbe}" stroke-width="0.7"/>`
+      + txt(lx, yy, t) });
+  }
+  if (partner) {
+    const t = PARTNERBLECH.label;
+    teile.push({ t, svg: (lx, yy) =>
+      `<rect x="${lx}" y="${yy - 7}" width="14" height="6" fill="${FARBE.stahl}" fill-opacity="0.35" `
+      + `stroke="${PARTNERBLECH.farbe}" stroke-width="0.9" stroke-dasharray="2 2"/>`
       + txt(lx, yy, t) });
   }
   // Zeilen bilden: erste Zeile hinter „Zuschnitt:", Umbruch, sobald `xMax` ueberschritten wuerde.

@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261103-04",
+    datum: "2026-11-03",
+    typ: "feature",
+    issue: 138,
+    titel: "Bodenblech im Verband: an Ecke und T-Anschluss liegt unter der Verzahnung nur noch ein Bodenblech",
+    testbitte: "In Modul 1 eine Verzahnung am Wandende mit „zweite Lage ausgespart“ setzen: das Bodenblech endet davor, "
+      + "dort steht „Bodenblech der Partnerwand“; mitten in der Wand mit dieser Startlage erscheint eine Warnung",
+  },
+  {
     id: "chg-20261103-03",
     datum: "2026-11-03",
     typ: "feature",

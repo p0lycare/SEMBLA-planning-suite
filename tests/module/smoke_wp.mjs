@@ -114,6 +114,9 @@ globalThis.window.SEMBLA={ buildWall, Opening, GRID, COURSE, autoAuslegung, nach
   // #138: die kanonischen Bodenblech-Aussparungen und ihr Darstellungsschluessel — dieselbe
   // Quelle, aus der Modul 5 und Modul 7 die Luecken zeichnen ([A-28]/[D-4]).
   bodenblechAussparungen: MONT.bodenblechAussparungen, AUSSPARUNG: MONT.AUSSPARUNG,
+  // [A-32]/R03: Blech der Partnerwand unter einer Verzahnung am Wandende.
+  bodenblechLeereLuecken: MONT.bodenblechLeereLuecken, bodenblechVerzahnung: MONT.bodenblechVerzahnung,
+  PARTNERBLECH: MONT.PARTNERBLECH,
   // [A-14]/#93: Symbol, Kennfarbe und Klartext des Einlegeblechs kommen — wie der
   // Zuschnittschluessel — aus sembla-montage.js; die wirksamen Punkte aus dem Rechenkern.
   ZWISCHENPUNKT: MONT.ZWISCHENPUNKT, zwischenpunktSvg: MONT.zwischenpunktSvg,
@@ -1668,6 +1671,67 @@ WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.setDcEdit(fa
   ok('[#138] blosses Laden schreibt keine Aussparung ins Element',
     JSON.stringify(ps())===vorherAs && !('base_plate_aussparungen_grid' in ps())
     && WP.manualAs===null);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Miro R03 / [A-32]: Bodenblech im Verband — Kuerzung unter einer Verzahnung am Wandende.
+// Gefahren wird der ECHTE Pfad: Verzahnung ueber die Zeilenliste setzen, run(), und dann das
+// GESPEICHERTE Wandelement, die Wandansicht, den Aussparungsmodus und die Warnzeilen pruefen.
+// Die Kuerzung ist abgeleitet: sie steht NIE in `base_plate_aussparungen_grid`.
+// ---------------------------------------------------------------------------------------------
+setzeLaenge(2500); document.getElementById('hgt').value='2400';
+document.getElementById('modus').value='auto';
+WP.setZpEdit(false); WP.setAxisEdit(false); WP.setAgEdit(false); WP.setDcEdit(false);
+WP.asClear(); WP.interlocks.length=0; WP.renderInterlocks(); WP.run();
+{
+  const planEl=document.getElementById('plan');
+  const svg=()=>planEl.innerHTML;
+  const we=()=>store.aktivesWandelement();
+  const ilw=()=>document.getElementById('interlockWarns').innerHTML;
+  const ohne=JSON.stringify(we().base_plate);
+  // Ecke: Verzahnung am Wandanfang, unterste Lage belegt (start_parity 1).
+  WP.interlocks.push({ g0:0, breite:1, start_parity:1 }); WP.renderInterlocks(); WP.run();
+  ok('[A-32] Ecke: das gespeicherte Wandelement traegt die abgeleitete Kuerzung — und nur dort',
+    JSON.stringify(we().base_plate.verzahnung_kuerzungen.map(k=>[k.g0,k.g1,k.ende]))==='[[0,1,"anfang"]]'
+    && we().base_plate.teile[0].x0_mm===125
+    && !('base_plate_aussparungen_grid' in we().prestress) && WP.manualAs===null);
+  ok('[A-32] Modul 1 benennt die Kuerzung an der Verzahnung',
+    /Bodenblech unter Verzahnung 1 \(Raster 0–1\) entfällt/.test(ilw()));
+  ok('[A-32] die Wandansicht zeigt dort das Blech der Partnerwand statt einer leeren Aussparung',
+    /<rect class="bbpartner"/.test(svg()) && !/<rect class="bbaus"/.test(svg())
+    && /Bodenblech der Partnerwand \(Verzahnung\)/.test(document.getElementById('zLegende').innerHTML));
+  // Im Aussparungsmodus ist das abgeleitete Feld keine Planerwahl: kein Trefferfeld, und ein
+  // Klick darauf schreibt nichts.
+  WP.setAsEdit(true);
+  ok('[A-32] Aussparungsmodus: das gekuerzte Feld hat kein Trefferfeld',
+    !/data-as="0"/.test(svg()) && /data-as="1"/.test(svg()));
+  planEl.dispatch('click', { target:{ getAttribute:(n)=>(n==='data-as'?'0':null) } });
+  ok('[A-32] ein Klick auf das gekuerzte Feld speichert keine Aussparung',
+    WP.manualAs===null && !('base_plate_aussparungen_grid' in we().prestress));
+  // Manuelle Aussparungen bleiben zusaetzlich moeglich (Vereinigung).
+  planEl.dispatch('click', { target:{ getAttribute:(n)=>(n==='data-as'?'10':null) } });
+  ok('[A-32] eine manuelle Aussparung tritt hinzu, die Kuerzung bleibt abgeleitet',
+    JSON.stringify(we().prestress.base_plate_aussparungen_grid)==='[10]'
+    && we().base_plate.aussparungen.length===2 && we().base_plate.verzahnung_kuerzungen.length===1);
+  WP.asClear(); WP.setAsEdit(false);
+  // T-Anschluss: durchlaufende Wand mit belegter unterster Lage — nicht gekuerzt, aber gewarnt.
+  WP.interlocks.length=0; WP.interlocks.push({ g0:8, breite:1, start_parity:1 });
+  WP.renderInterlocks(); WP.run();
+  ok('[A-32] T: die durchlaufende Wand behaelt ihr Blech und wird gewarnt (mit Empfehlung)',
+    !('verzahnung_kuerzungen' in we().base_plate)
+    && /mitten in der Wand und belegt die unterste Lage/.test(ilw())
+    && /„unterste Lage ausgespart" wählen/.test(ilw()));
+  // Partnerwand der Ecke (start_parity 0): keine Kuerzung, keine Warnung — das Blech laeuft
+  // lueckenlos bis zum Wandende (die Zerlegung selbst folgt wie bisher den Fugen der Lage 1).
+  WP.interlocks.length=0; WP.interlocks.push({ g0:19, breite:1, start_parity:0 });
+  WP.renderInterlocks(); WP.run();
+  const tP=we().base_plate.teile;
+  ok('[A-32] Partnerwand (unterste Lage ausgespart) behaelt ihr Blech bis zum Wandende',
+    !('verzahnung_kuerzungen' in we().base_plate) && !('aussparungen' in we().base_plate)
+    && tP[tP.length-1].x0_mm+tP[tP.length-1].raster_mm===2500 && !/Bodenblech|A-32/.test(ilw()));
+  WP.interlocks.length=0; WP.renderInterlocks(); WP.run();
+  ok('[A-32] ohne Verzahnung ist das Bodenblech wieder bit-genau das alte',
+    JSON.stringify(we().base_plate)===ohne);
 }
 
 // ---------------------------------------------------------------------------------------------

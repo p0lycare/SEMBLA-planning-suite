@@ -53,6 +53,9 @@ import { stangenStuecke, topLagen, stueckFarbe, STUECK_FARBE, STUECK_LABEL,
          // #138: die kanonischen Bodenblech-Aussparungen und ihr Darstellungsschluessel —
          // dieselbe Quelle, aus der `bodenblechSvg()` die Luecken zeichnet ([A-28]/[D-4]).
          bodenblechAussparungen, AUSSPARUNG,
+         // [A-32]/R03: Blech der Partnerwand unter einer Verzahnung am Wandende — dieselbe
+         // Quelle, aus der `bodenblechSvg()` das Feld zeichnet ([D-4]).
+         bodenblechLeereLuecken, bodenblechVerzahnung, PARTNERBLECH,
          // #110: EINE Symbolquelle der Spannkomponenten fuer Wandansicht und Zeichnung ([D-4]).
          // #106: die Symbolmasse sind fest in Papier-mm, `SPANN_EINHEIT.blatt` ist der Faktor 1.
          // `SPANN_MM` liefert seit #121 den realen Stangendurchmesser, aus dem Stange und
@@ -1314,9 +1317,14 @@ export function legendeHtml(w, opts = {}) {
     // Luecke fuehrt. Das Feld traegt — wie im Blatt — einen LEEREN, gestrichelten Umriss statt
     // eines Blechfeldes: dort liegt kein Blech, und die Aussparung darf mit der weissen
     // Stossmarke weder farblich noch in der Form verwechselbar sein ([D-4]).
-    + ((w && bodenblechAussparungen(w).length)
+    // [A-32] Seit R03 nur, wo WIRKLICH kein Blech liegt; unter einer Verzahnung am Wandende
+    // liegt das Blech der Partnerwand und hat einen eigenen Eintrag.
+    + ((w && bodenblechLeereLuecken(w).length)
         ? `<span><i class="bas" style="color:${AUSSPARUNG.farbe}"></i>`
           + `${AUSSPARUNG.label} (kein Bodenblech)</span>` : "")
+    + ((w && bodenblechVerzahnung(w).length)
+        ? `<span><i class="bpp" style="color:${PARTNERBLECH.farbe}"></i>`
+          + `${PARTNERBLECH.label}</span>` : "")
     // Einlegeblech der Zwischenspannpunkte ([A-14]/#110): genannt nur, wenn die Wand
     // wirklich einen wirksamen Punkt fuehrt, und mit dem Klartext aus sembla-montage.js.
     + ((w && wirksameZwischenpunkte(w).length)
@@ -1481,6 +1489,10 @@ ${FORMATE.map(f => `  .zsheet.fmt-${f}{width:${blattInnen(f).w}mm;height:${blatt
   .zlegende i.bas::after{content:"";position:absolute;left:-1px;top:-1px;right:-1px;bottom:-1px;
                   background:linear-gradient(to bottom right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%),
                              linear-gradient(to top right,transparent 45%,currentColor 45%,currentColor 55%,transparent 55%)}
+  /* Blech der Partnerwand ([A-32]/R03): blass stahlfarbenes Feld, gestrichelter Rand, OHNE
+     Kreuz — dort liegt ein Blech, nur nicht das dieser Wand. */
+  .zlegende i.bpp{height:9px;width:13px;border-radius:0;border:1px dashed currentColor;
+                  background:rgba(91,102,115,.35)}
   .ztitleblock{grid-column:1 / span 2;grid-row:2;display:grid;
                grid-template-columns:2.2fr 1.2fr 1.1fr;border:1.5px solid #13202e;
                border-radius:3px;overflow:hidden;font-size:11px}

@@ -1421,5 +1421,65 @@ class TestAusgleichspunkteJeBereich(unittest.TestCase):
                           {"x_mm": 5000, "art": "manuell"}])
 
 
+
+class TestBodenblechImVerband(unittest.TestCase):
+    """Bodenblech unter Verzahnungsbereichen am Wandende ([A-32], Miro R03)."""
+
+    @staticmethod
+    def _w(l, il, ps=None, h=2400):
+        return build_wall("a32", l, h, [], None, ps, [], il)
+
+    def test_ecke_kuerzung_nur_bei_belegter_unterster_lage(self):
+        w1 = self._w(2500, [{"g0": 0, "g1": 1, "start_parity": 1}])
+        w0 = self._w(2500, [{"g0": 0, "g1": 1, "start_parity": 0}])
+        self.assertEqual(w1["base_plate"]["verzahnung_kuerzungen"],
+                         [{"g0": 0, "g1": 1, "x0_mm": 0, "x1_mm": 125, "laenge_mm": 125,
+                           "ende": "anfang"}])
+        self.assertEqual(w1["base_plate"]["teile"][0]["x0_mm"], 125)
+        self.assertEqual(w1["base_plate"]["laenge_mm"], 2375)
+        self.assertNotIn("base_plate_aussparungen_grid", w1["prestress"])
+        self.assertNotIn("verzahnung_kuerzungen", w0["base_plate"])
+        self.assertEqual(w0["base_plate"]["laenge_mm"], 2500)
+
+    def test_fuge_unter_stein_der_untersten_lage(self):
+        w = self._w(2500, [{"g0": 0, "g1": 1, "start_parity": 1}])
+        self.assertTrue(any(s["x0"] < 125 < s["x1"] for s in w["courses"][0]["stones"]))
+        self.assertNotIn("verzahnung_bodenblech", w["validation"])
+
+    def test_t_durchlaufende_wand_wird_nie_gekuerzt(self):
+        for p in (0, 1):
+            with self.subTest(p=p):
+                w = self._w(4000, [{"g0": 12, "g1": 13, "start_parity": p}])
+                self.assertNotIn("verzahnung_kuerzungen", w["base_plate"])
+                self.assertEqual(w["base_plate"]["laenge_mm"], 4000)
+                self.assertEqual("verzahnung_bodenblech" in w["validation"], p == 1)
+
+    def test_warnung_sonderzuschnitt_und_achse(self):
+        s = self._w(3000, [{"g0": 0, "g1": 1, "start_parity": 1}], {"blech_lengths_mm": [1000]}, 2000)
+        self.assertIn({"grund": "sonderzuschnitt", "x0_mm": 125, "x1_mm": 3000, "laenge_mm": 2875,
+                       "fertigmass_mm": 873}, s["validation"]["verzahnung_bodenblech"])
+        b = self._w(2000, [{"g0": 0, "g1": 3, "start_parity": 1}], None, 2000)
+        ks = [c["k"] for c in b["tension_columns"] if c["k"] < 3]
+        self.assertTrue(ks)
+        self.assertEqual([h["k"] for h in b["validation"]["verzahnung_bodenblech"]
+                          if h["grund"] == "achse_auf_partnerblech"], ks)
+
+    def test_vereinigung_mit_manuellen_aussparungen(self):
+        w = self._w(3000, [{"g0": 0, "g1": 1, "start_parity": 1},
+                           {"g0": 23, "g1": 24, "start_parity": 1}],
+                    {"base_plate_aussparungen_grid": [1, 10]}, 2000)
+        self.assertEqual(w["prestress"]["base_plate_aussparungen_grid"], [1, 10])
+        self.assertEqual([(l["g0"], l["g1"]) for l in w["base_plate"]["aussparungen"]],
+                         [(0, 2), (10, 11), (23, 24)])
+
+    def test_reine_funktion(self):
+        r = sc.verzahnungs_kuerzungen([{"g0": 0, "g1": 3, "start_parity": 1},
+                                       {"g0": 7, "g1": 8, "start_parity": 1},
+                                       {"g0": 9, "g1": 10, "start_parity": 0}], 10, [3, 5])
+        self.assertEqual(r["felder"], [0, 1, 2])
+        self.assertEqual([h["grund"] for h in r["hinweise"]],
+                         ["fuge_an_kuerzung", "durchlaufend_lage1_belegt"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
