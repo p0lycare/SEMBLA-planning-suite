@@ -1185,6 +1185,86 @@ function pickTiling(startGrid, n, prev) {
   return best.comp;
 }
 
+/** Hoechstzahl der Suchschritte in `legeVerband` (Schutz gegen exponentielle Faelle). */
+const LEGE_SCHRITTE = 5000;
+
+/**
+ * [G-5] Legt mehrere Lagen so, dass ueber ALLE Lagen keine Kreuzfuge entsteht.
+ *
+ * `pickTiling` schaut nur nach unten; die unterste Lage hat keinen Bezug und nimmt bei
+ * Gleichstand die erste Variante — die Lage darueber kann dann ohne Ausweg kreuzen.
+ * Hier wird deshalb deterministisch zurueckverfolgt: je Lage werden nur kreuzfugenfreie
+ * Varianten versucht, in GENAU der Vorzugsreihenfolge von `pickTiling` (i3-Zahl, Abstand,
+ * dann Kandidatenreihenfolge). Der erste Pfad ist damit die bisherige Gierwahl — wo sie
+ * kreuzfugenfrei ist, bleibt das Ergebnis bit-gleich. Gibt es keine kreuzfugenfreie
+ * Kombination, bleibt es bei der Gierwahl samt Meldung (`versatz_violations`).
+ * @param {Array<Array<[number,number]>>} cutsJeLage je Lage die zusammenhaengenden Abschnitte
+ * @returns {Array<Array<number[]>>} je Lage je Abschnitt die Steinfolge
+ */
+function legeVerband(cutsJeLage) {
+  const L = cutsJeLage.length;
+  const fugen = (cuts, comps) => {
+    const js = new Set();
+    cuts.forEach(([s], i) => { for (const j of segJoints(s, comps[i])) js.add(j); });
+    return js;
+  };
+  /** Kreuzfugenfreie Varianten je Abschnitt, geordnet wie `pickTiling` sie bevorzugt. */
+  const varianten = (s, n, prev) => {
+    const out = [], gesehen = new Set();
+    for (const comp of candidates(n)) {
+      const k = comp.join(",");
+      if (gesehen.has(k)) continue;
+      gesehen.add(k);
+      const js = segJoints(s, comp);
+      if ([...js].some(j => prev.has(j))) continue;
+      const i3 = comp.filter(b => b === 3).length;
+      let dist = 99;
+      if (js.size && prev.size) dist = Math.min(...[...js].flatMap(j => [...prev].map(f => Math.abs(j - f))));
+      out.push({ comp, i3, dist });
+    }
+    // stabil: bei Gleichstand gilt die Kandidatenreihenfolge (wie das strikte `>` in pickTiling)
+    out.sort((a, b) => (b.i3 - a.i3) || (b.dist - a.dist));
+    return out.map(v => v.comp);
+  };
+  const sackgasse = new Set();
+  const loesung = new Array(L);
+  let schritte = 0;
+  const suche = (li, prev) => {
+    // Feste Schrittgrenze statt Laufzeitgrenze: deterministisch und in beiden Cores gleich.
+    if (++schritte > LEGE_SCHRITTE) return false;
+    if (li === L) return true;
+    const memo = li + "|" + [...prev].sort((a, b) => a - b).join(",");
+    if (sackgasse.has(memo)) return false;
+    const cuts = cutsJeLage[li];
+    const je = cuts.map(([s, e]) => varianten(s, e - s, prev));
+    if (je.every(v => v.length)) {
+      // Kombinationen lexikographisch in Vorzugsreihenfolge (erster Abschnitt aussen)
+      const idx = new Array(cuts.length).fill(0);
+      for (;;) {
+        const comps = idx.map((k, i) => je[i][k]);
+        if (suche(li + 1, fugen(cuts, comps))) { loesung[li] = comps; return true; }
+        if (schritte > LEGE_SCHRITTE) return false;   // abgebrochen ist keine Sackgasse
+        let i = cuts.length - 1;
+        while (i >= 0 && idx[i] === je[i].length - 1) { idx[i] = 0; i--; }
+        if (i < 0) break;
+        idx[i]++;
+      }
+    }
+    sackgasse.add(memo);
+    return false;
+  };
+  if (suche(0, new Set())) return loesung;
+  // Keine kreuzfugenfreie Kombination (oder Schrittgrenze erreicht): bisherige Gierwahl, die
+  // Kreuzfugen werden gemeldet.
+  const gier = []; let prev = new Set();
+  for (const cuts of cutsJeLage) {
+    const comps = cuts.map(([s, e]) => pickTiling(s, e - s, prev));
+    gier.push(comps);
+    prev = fugen(cuts, comps);
+  }
+  return gier;
+}
+
 function balancedFill(a, b, maxstep) {
   if (b <= a) return [a];
   const k = Math.ceil((b - a) / maxstep);
@@ -1607,8 +1687,9 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
   // ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ und Vorspannung) ----
   // [G-11] Die Spannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
   // Verzahnungsaussparungen. Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen.
-  const courses = []; let prev = new Set();
+  const courses = [];
   const rigidLagen = []; const invalidSegments = [];
+  const cutsVoll = [];
   for (let li = 0; li < L; li++) {
     let cuts = runsAt(li);
     for (const op of openings) {
@@ -1622,7 +1703,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         cuts = nc;
       }
     }
-    const stones = []; let joints = new Set(); let rig = false;
+    let rig = false;
     for (const [s, e] of cuts) {
       const w = e - s;
       if (FORBIDDEN_N.has(w)) {
@@ -1631,15 +1712,25 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         if (!invalidSegments.some(x => x.lage === li && x.start_grid === s && x.breite_grid === w))
           invalidSegments.push(seg);
       }
-      const comp = pickTiling(s, w, prev);
+    }
+    if (rig) rigidLagen.push(li);
+    cutsVoll.push(cuts);
+  }
+  // [G-5] Tiling ueber ALLE Lagen gemeinsam (`legeVerband`): eine Lage darf der Lage darueber
+  // nicht den kreuzfugenfreien Ausweg verbauen. Wo die bisherige Gierwahl kreuzfugenfrei ist,
+  // ist das Ergebnis bit-gleich.
+  const verbandVoll = legeVerband(cutsVoll);
+  for (let li = 0; li < L; li++) {
+    const stones = []; const joints = new Set();
+    cutsVoll[li].forEach(([s], i) => {
+      const comp = verbandVoll[li][i];
       for (const j of segJoints(s, comp)) joints.add(j);
       let g = s;
       for (const b of comp) {
         stones.push({ type: b === 2 ? "i2" : "i3", x0: g * GRID, x1: (g + b) * GRID });
         g += b;
       }
-    }
-    if (rig) rigidLagen.push(li);
+    });
     // #136 Jede Lage traegt ihre Geometrie selbst — Unterkante, Oberkante und Hoehe in mm.
     courses.push({ lage: li, unterkante_mm: KANTEN[li].unterkante_mm,
       oberkante_mm: KANTEN[li].oberkante_mm, hoehe_mm: KANTEN[li].hoehe_mm,
@@ -1647,7 +1738,6 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
       // das sie vorher nicht hatte (die goldenen 200-mm-Fixtures bleiben unveraendert).
       ...(KANTEN[li].ausgleich ? { ausgleich: true } : {}),
       stones, joints_grid: [...joints].sort((a, b) => a - b) });
-    prev = joints;
   }
 
   // `occ`, `steinIvVoll` und `kopfVoll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
@@ -1676,7 +1766,7 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
     // darunter neu gelegten, verkuerzten Lage (#143).
     // [G-11] bleibt unberuehrt: `occ`, `steinIvVoll` und `kopfVoll` stehen oben bereits aus dem
     // VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
-    let prevIl = new Set();
+    const cutsJeLage = [];
     for (let li = 0; li < L; li++) {
       // cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
       let cuts = runsAt(li);
@@ -1702,31 +1792,37 @@ export function buildWall(name, lengthMm, heightMm, openings = [], sides = null,
         }
         cuts = nc;
       }
-      // Neues Tiling gegen die REALEN Fugen der Lage darunter
-      const stones = []; const joints = new Set();
+      // Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den strukturellen);
+      // ohne Aussparung in dieser Lage ist die Restbreite strukturell und steht schon oben.
       for (const [s, e] of cuts) {
         const w = e - s;
-        // Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den strukturellen);
-        // ohne Aussparung in dieser Lage ist die Restbreite strukturell und steht schon oben.
         if (relevantIls.length && FORBIDDEN_N.has(w)) {
           const seg = { lage: li, start_grid: s, breite_grid: w };
           if (!interlockInvalidSegments.some(x => x.lage === li && x.start_grid === s && x.breite_grid === w))
             interlockInvalidSegments.push(seg);
         }
-        const comp = pickTiling(s, w, prevIl);
+      }
+      cutsJeLage.push(cuts);
+    }
+    // [G-5] Neues Tiling ueber ALLE Lagen gemeinsam — auch die unterste Lage muss der Lage
+    // darueber einen kreuzfugenfreien Ausweg lassen (`legeVerband`).
+    const verband = legeVerband(cutsJeLage);
+    for (let li = 0; li < L; li++) {
+      const stones = []; const joints = new Set();
+      cutsJeLage[li].forEach(([s], i) => {
+        const comp = verband[li][i];
         for (const j of segJoints(s, comp)) joints.add(j);
         let g = s;
         for (const b of comp) {
           stones.push({ type: b === 2 ? "i2" : "i3", x0: g * GRID, x1: (g + b) * GRID });
           g += b;
         }
-      }
+      });
       courses[li].stones = stones;
       // [G-5] Die Fugen der Lage sind die REALEN Steinberuehrungen des ausgesparten Verbands —
       // Aussen- und Lueckenkanten zaehlen nicht (`segJoints` liefert nur Fugen INNERHALB eines
       // zusammenhaengenden Abschnitts).
       courses[li].joints_grid = [...joints].sort((a, b) => a - b);
-      prevIl = joints;
     }
   }
 

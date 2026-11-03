@@ -705,12 +705,26 @@ class Verzahnung(unittest.TestCase):
             self._pruefe_verband(build_wall("vz", l, h, ops, interlocks=il, ausgleichslage_aktiv=ag), was)
 
     def test_g5_unaufloesbarer_verband_wird_gemeldet(self):
-        w = build_wall("vzKonflikt", 1000, 1000, [], interlocks=[{"g0": 0, "g1": 1, "start_parity": 0}])
+        # 17 Raster, Verzahnung [7,10) in den geraden Lagen: jede Kombination kreuzt.
+        w = build_wall("vzKonflikt", 2125, 1000, [], interlocks=[{"g0": 7, "g1": 10, "start_parity": 0}])
         self.assertFalse(w["validation"]["versatz_ok"])
         self.assertTrue(w["validation"]["versatz_violations"])
         self._pruefe_verband(w, "unaufloesbar")
         # [G-5] ist eine Warnung, kein Baubarkeitsausschluss
         self.assertTrue(w["validation"]["buildable"])
+
+    def test_g5_wand76_unterste_lage_ohne_kreuzfugen(self):
+        # Bugfix: die unterste Lage wird nicht mehr ohne Blick nach oben gelegt.
+        w = build_wall("W", 1375, 3000, [], interlocks=[{"g0": 0, "g1": 1, "start_parity": 0}])
+        self._pruefe_verband(w, "Wand 76")
+        self.assertTrue(w["validation"]["versatz_ok"])
+        for c in w["courses"]:
+            soll = "i2 i3 i3 i3" if c["lage"] % 2 else "i3 i3 i2 i2"
+            self.assertEqual(" ".join(st["type"] for st in c["stones"]), soll, f"Lage {c['lage'] + 1}")
+        # frueher als unaufloesbar gefuehrt, tatsaechlich loesbar
+        w2 = build_wall("vz", 1000, 1000, [], interlocks=[{"g0": 0, "g1": 1, "start_parity": 0}])
+        self._pruefe_verband(w2, "1000x1000")
+        self.assertTrue(w2["validation"]["versatz_ok"])
 
     def test_ungueltige_verzahnung_gemeldet(self):
         # Bereich ausserhalb der Wand

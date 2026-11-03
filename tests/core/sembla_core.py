@@ -1020,6 +1020,89 @@ def _pick_tiling(start_grid: int, n: int, prev: set[int]) -> list[int]:
             best = (key, comp)
     return best[1]
 
+# Hoechstzahl der Suchschritte in `_lege_verband` (Schutz gegen exponentielle Faelle).
+LEGE_SCHRITTE = 5000
+
+def _lege_verband(cuts_je_lage: list) -> list:
+    """[G-5] Legt mehrere Lagen so, dass ueber ALLE Lagen keine Kreuzfuge entsteht.
+
+    Bit-genaues Gegenstueck zu `legeVerband` in sembla-core.js: deterministische
+    Rueckverfolgung ueber die Lagen, je Lage nur kreuzfugenfreie Varianten in der
+    Vorzugsreihenfolge von `_pick_tiling` (i3-Zahl, Abstand, Kandidatenreihenfolge). Der erste
+    Pfad ist die bisherige Gierwahl; ohne kreuzfugenfreie Kombination (oder bei erreichter
+    Schrittgrenze) bleibt es bei der Gierwahl samt Meldung."""
+    L = len(cuts_je_lage)
+
+    def fugen(cuts, comps):
+        js = set()
+        for i, (s, _e) in enumerate(cuts):
+            js |= _seg_joints(s, comps[i])
+        return js
+
+    def varianten(s, n, prev):
+        out, gesehen = [], set()
+        for comp in _candidates(n):
+            k = tuple(comp)
+            if k in gesehen:
+                continue
+            gesehen.add(k)
+            js = _seg_joints(s, comp)
+            if js & prev:
+                continue
+            i3 = sum(1 for b in comp if b == 3)
+            dist = min((abs(j - f) for j in js for f in prev), default=99) if (js and prev) else 99
+            out.append((comp, i3, dist))
+        # stabil: bei Gleichstand gilt die Kandidatenreihenfolge (wie das strikte `>` in _pick_tiling)
+        out.sort(key=lambda v: (-v[1], -v[2]))
+        return [v[0] for v in out]
+
+    sackgasse = set()
+    loesung = [None] * L
+    schritte = 0
+
+    def suche(li, prev):
+        nonlocal schritte
+        # Feste Schrittgrenze statt Laufzeitgrenze: deterministisch und in beiden Cores gleich.
+        schritte += 1
+        if schritte > LEGE_SCHRITTE:
+            return False
+        if li == L:
+            return True
+        memo = (li, tuple(sorted(prev)))
+        if memo in sackgasse:
+            return False
+        cuts = cuts_je_lage[li]
+        je = [varianten(s, e - s, prev) for (s, e) in cuts]
+        if all(je):
+            # Kombinationen lexikographisch in Vorzugsreihenfolge (erster Abschnitt aussen)
+            idx = [0] * len(cuts)
+            while True:
+                comps = [je[i][k] for i, k in enumerate(idx)]
+                if suche(li + 1, fugen(cuts, comps)):
+                    loesung[li] = comps
+                    return True
+                if schritte > LEGE_SCHRITTE:
+                    return False   # abgebrochen ist keine Sackgasse
+                i = len(cuts) - 1
+                while i >= 0 and idx[i] == len(je[i]) - 1:
+                    idx[i] = 0
+                    i -= 1
+                if i < 0:
+                    break
+                idx[i] += 1
+        sackgasse.add(memo)
+        return False
+
+    if suche(0, set()):
+        return loesung
+    # Keine kreuzfugenfreie Kombination (oder Schrittgrenze erreicht): bisherige Gierwahl.
+    gier, prev = [], set()
+    for cuts in cuts_je_lage:
+        comps = [_pick_tiling(s, e - s, prev) for (s, e) in cuts]
+        gier.append(comps)
+        prev = fugen(cuts, comps)
+    return gier
+
 def _balanced_fill(a: int, b: int, maxstep: int) -> list[int]:
     if b <= a:
         return [a]
@@ -1464,7 +1547,8 @@ def build_wall(name: str, length_mm: int, height_mm: int,
     # ---- Erster Durchgang: VOLLSTAENDIGER Steinverband (Basis fuer occ und Vorspannung) ----
     # [G-11] Die Spannachsen werden aus dem VOLLSTAENDIGEN Steinverband berechnet, OHNE die
     # Verzahnungsaussparungen. Dieser erste Durchgang laeuft IMMER — auch bei Verzahnungsbereichen.
-    courses, prev, rigid_lagen, invalid_segments = [], set(), [], []
+    courses, rigid_lagen, invalid_segments = [], [], []
+    cuts_voll = []
     for li in range(L):
         cuts = _runs_at(li)
         for op in openings:
@@ -1476,7 +1560,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                     if op.g0 > s: nc.append((s, op.g0))
                     if op.g1 < e: nc.append((op.g1, e))
                 cuts = nc
-        stones, joints, rig = [], set(), False
+        rig = False
         for (s, e) in cuts:
             w = e - s
             if w in FORBIDDEN_N:
@@ -1484,14 +1568,22 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                 seg = {"lage": li, "start_grid": s, "breite_grid": w}
                 if seg not in invalid_segments:
                     invalid_segments.append(seg)
-            comp = _pick_tiling(s, w, prev)
+        if rig:
+            rigid_lagen.append(li)
+        cuts_voll.append(cuts)
+    # [G-5] Tiling ueber ALLE Lagen gemeinsam (`_lege_verband`): eine Lage darf der Lage darueber
+    # nicht den kreuzfugenfreien Ausweg verbauen. Wo die bisherige Gierwahl kreuzfugenfrei ist,
+    # ist das Ergebnis bit-gleich.
+    verband_voll = _lege_verband(cuts_voll)
+    for li in range(L):
+        stones, joints = [], set()
+        for i, (s, _e) in enumerate(cuts_voll[li]):
+            comp = verband_voll[li][i]
             joints |= _seg_joints(s, comp)
             g = s
             for b in comp:
                 stones.append({"type": "i2" if b == 2 else "i3", "x0": g * GRID, "x1": (g + b) * GRID})
                 g += b
-        if rig:
-            rigid_lagen.append(li)
         # #136 Jede Lage traegt ihre Geometrie selbst — Unterkante, Oberkante und Hoehe in mm.
         _c = {"lage": li, "unterkante_mm": _KANTEN[li]["unterkante_mm"],
               "oberkante_mm": _KANTEN[li]["oberkante_mm"],
@@ -1503,7 +1595,6 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         _c["stones"] = stones
         _c["joints_grid"] = sorted(joints)
         courses.append(_c)
-        prev = joints
 
     # `occ`, `stein_iv_voll` und `kopf_voll` basieren auf dem VOLLSTAENDIGEN Verband (vor dem Aussparen) — [G-11].
     occ = [[False] * N for _ in range(L)]
@@ -1532,7 +1623,7 @@ def build_wall(name: str, length_mm: int, height_mm: int,
         # darunter neu gelegten, verkuerzten Lage (#143).
         # [G-11] bleibt unberuehrt: occ/stein_iv_voll/kopf_voll stehen oben bereits aus dem
         # VOLLSTAENDIGEN Verband fest und werden hier nicht mehr angefasst.
-        prev_il = set()
+        cuts_je_lage = []
         for li in range(L):
             # cuts aus dem vollstaendigen Verband holen (gleicher Weg wie oben)
             cuts = _runs_at(li)
@@ -1555,17 +1646,22 @@ def build_wall(name: str, length_mm: int, height_mm: int,
                     if il["g0"] > s: nc.append((s, il["g0"]))
                     if il["g1"] < e: nc.append((il["g1"], e))
                 cuts = nc
-            # Neues Tiling gegen die REALEN Fugen der Lage darunter
-            stones, joints = [], set()
+            # Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den
+            # strukturellen); ohne Aussparung in dieser Lage steht die Restbreite schon oben.
             for (s, e) in cuts:
                 w = e - s
-                # Nicht baubare Restbreiten durch Verzahnung melden (getrennt von den
-                # strukturellen); ohne Aussparung in dieser Lage steht die Restbreite schon oben.
                 if relevant_ils and w in FORBIDDEN_N:
                     seg = {"lage": li, "start_grid": s, "breite_grid": w}
                     if seg not in interlock_invalid_segments:
                         interlock_invalid_segments.append(seg)
-                comp = _pick_tiling(s, w, prev_il)
+            cuts_je_lage.append(cuts)
+        # [G-5] Neues Tiling ueber ALLE Lagen gemeinsam — auch die unterste Lage muss der Lage
+        # darueber einen kreuzfugenfreien Ausweg lassen (`_lege_verband`).
+        verband = _lege_verband(cuts_je_lage)
+        for li in range(L):
+            stones, joints = [], set()
+            for i, (s, _e) in enumerate(cuts_je_lage[li]):
+                comp = verband[li][i]
                 joints |= _seg_joints(s, comp)
                 g = s
                 for b in comp:
@@ -1575,7 +1671,6 @@ def build_wall(name: str, length_mm: int, height_mm: int,
             # [G-5] Die Fugen der Lage sind die REALEN Steinberuehrungen des ausgesparten
             # Verbands — Aussen- und Lueckenkanten zaehlen nicht.
             courses[li]["joints_grid"] = sorted(joints)
-            prev_il = joints
 
     # [G-5] Fugenversatz benachbarter Lagen — geprueft auf dem REALEN Verband, also NACH der
     # Verzahnungsaussparung. Ohne Verzahnungsbereiche bitgleich zur Pruefung am Vollverband.

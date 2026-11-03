@@ -37,6 +37,15 @@ export const BLOG_VERSION = 1;
 /** @type {BlogEintrag[]} */
 export const EINTRAEGE = [
   {
+    id: "chg-20261103-02",
+    datum: "2026-11-03",
+    typ: "fix",
+    issue: 143,
+    titel: "Keine Kreuzfugen mehr in der untersten Lage: der Steinverband wird über alle Lagen gemeinsam gelegt",
+    testbitte: "Eine Wand 1375 × 3000 mm mit Verzahnung links (erstes Rasterfeld, unterste Lage ausgespart) "
+      + "in Modul 1 öffnen: Lage 1 ist i3 i3 i2 i2 wie alle ungeraden Lagen, keine Kreuzfugen-Warnung",
+  },
+  {
     id: "chg-20261103-01",
     datum: "2026-11-03",
     typ: "fix",

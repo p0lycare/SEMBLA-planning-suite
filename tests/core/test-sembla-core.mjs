@@ -573,9 +573,12 @@ t("[G-5]/#143 Verband und Pruefung bleiben konsistent (Hoehen, Paritaeten, Lage 
   }
 });
 t("[G-5]/#143 unaufloesbarer Verband wird gemeldet statt still hingenommen", () => {
-  // 8 Raster, Verzahnung [0,1) in den geraden Lagen: fuer die verbleibenden 7 Raster gibt es nur
-  // Belegungen, deren Fugen mit der vollen Nachbarlage fluchten — das MUSS sichtbar werden.
-  const w = buildWall("vzKonflikt", 1000, 1000, [], null, null, [], [{ g0: 0, g1: 1, start_parity: 0 }]);
+  // 17 Raster, Verzahnung [7,10) in den geraden Lagen: die beiden 7er-Abschnitte haben je nur
+  // die Fugen {2,4}/{3,5} bzw. {12,14}/{13,15}, die volle Nachbarlage nur {2,5,8,11,14} oder
+  // {3,6,9,12,15} — jede Kombination kreuzt. Das MUSS sichtbar werden.
+  // (Der fruehere Fall 1000x1000 mit Verzahnung [0,1) war loesbar und ist seit dem
+  // Kreuzfugen-Bugfix kreuzfugenfrei, s. u.)
+  const w = buildWall("vzKonflikt", 2125, 1000, [], null, null, [], [{ g0: 7, g1: 10, start_parity: 0 }]);
   assert(w.validation.versatz_ok === false, "unaufloesbarer Verband muss versatz_ok=false liefern");
   assert(w.validation.versatz_violations.length > 0, "Verletzung muss benannt sein");
   pruefeVerband(w, "unaufloesbar");
@@ -2527,6 +2530,199 @@ t("[A-31] Paritaet JS <-> Python fuer die Ausgleichspunkte mit Aussparungen", ()
     const js = buildWall(arg.name, arg.length_mm, arg.height_mm, [], null, arg.prestress);
     deepEqual(js.ausgleichspunkte, orakelRand(arg).ausgleichspunkte);
   }
+});
+
+// ---- [G-5] Kreuzfugen in der untersten Lage bei Verzahnung (Bugfix, Wand 76) ----------------
+// Die Lagen werden ueber ALLE Lagen gemeinsam gelegt (`legeVerband`): die unterste Lage darf der
+// Lage darueber den kreuzfugenfreien Ausweg nicht verbauen. Wo die fruehere Gierwahl
+// kreuzfugenfrei war, bleibt das Ergebnis bit-gleich; ohne Loesung bleibt es bei der Gierwahl.
+/** Unabhaengiger Nachbau: Abschnitte je Lage (ohne Staffelung). */
+function abschnitte(N, L, ops, il) {
+  const out = [];
+  for (let li = 0; li < L; li++) {
+    let cuts = [[0, N]];
+    const luecken = [...ops.filter(o => o.l0 <= li && li < o.l1),
+      ...il.filter(b => li % 2 === b.start_parity)];
+    for (const o of luecken) {
+      const nc = [];
+      for (const [s, e] of cuts) {
+        if (o.g1 <= s || o.g0 >= e) { nc.push([s, e]); continue; }
+        if (o.g0 > s) nc.push([s, o.g0]);
+        if (o.g1 < e) nc.push([o.g1, e]);
+      }
+      cuts = nc;
+    }
+    out.push(cuts);
+  }
+  return out;
+}
+function kandidatenRef(n) {
+  if (n < 2) return [[]];
+  const r = n % 3;
+  if (r === 2) { const f = Array((n - 2) / 3).fill(3); return [[2, ...f], [...f, 2]]; }
+  if (r === 1) { const f = Array((n - 4) / 3).fill(3); return [[2, 2, ...f], [...f, 2, 2]]; }
+  const m = n / 3; if (m === 1) return [[3]];
+  const f = Array(m - 2).fill(3);
+  return [Array(m).fill(3), [2, 2, ...f, 2], [2, ...f, 2, 2]];
+}
+const fugenRef = (s, c) => { const o = []; let x = s; for (let i = 0; i < c.length - 1; i++) { x += c[i]; o.push(x); } return o; };
+/** Die fruehere Gierwahl (nur gegen die Lage darunter) als Referenz. */
+function gierRef(cutsL) {
+  const lagen = []; let prev = new Set();
+  for (const cuts of cutsL) {
+    const steine = []; const js = new Set();
+    for (const [s, e] of cuts) {
+      let best = null;
+      for (const c of kandidatenRef(e - s)) {
+        const f = fugenRef(s, c);
+        const key = [!f.some(j => prev.has(j)) ? 1 : 0, c.filter(b => b === 3).length,
+          f.length && prev.size ? Math.min(...f.flatMap(j => [...prev].map(p => Math.abs(j - p)))) : 99];
+        if (!best || key[0] > best.key[0] || (key[0] === best.key[0] && (key[1] > best.key[1] ||
+          (key[1] === best.key[1] && key[2] > best.key[2])))) best = { key, c };
+      }
+      let g = s; for (const b of best.c) { steine.push([g, g + b]); g += b; }
+      for (const j of fugenRef(s, best.c)) js.add(j);
+    }
+    lagen.push(steine); prev = js;
+  }
+  return lagen;
+}
+/** Gibt es ueberhaupt eine kreuzfugenfreie Belegung? (vollstaendige Aufzaehlung je Lage) */
+function loesbarRef(cutsL) {
+  let zust = [new Set()];
+  for (const cuts of cutsL) {
+    const next = new Map();
+    for (const prev of zust) {
+      let komb = [[]];
+      for (const [s, e] of cuts) {
+        const nk = [];
+        for (const c of kandidatenRef(e - s)) {
+          const f = fugenRef(s, c);
+          if (f.some(j => prev.has(j))) continue;
+          for (const k of komb) nk.push([...k, ...f]);
+        }
+        komb = nk;
+      }
+      for (const k of komb) next.set(k.slice().sort((a, b) => a - b).join(","), new Set(k));
+    }
+    zust = [...next.values()];
+    if (!zust.length) return false;
+  }
+  return true;
+}
+const steineVon = w => w.courses.map(c => c.stones.map(s => [s.x0 / GRID, s.x1 / GRID]));
+const kreuzfrei = lagen => lagen.every((l, i) => {
+  if (!i) return true;
+  const fu = new Set(); for (let k = 1; k < lagen[i - 1].length; k++) if (lagen[i - 1][k - 1][1] === lagen[i - 1][k][0]) fu.add(lagen[i - 1][k][0]);
+  for (let k = 1; k < l.length; k++) if (l[k - 1][1] === l[k][0] && fu.has(l[k][0])) return false;
+  return true;
+});
+
+t("[G-5] Wand 76: 1375x3000, Verzahnung [0,1) Paritaet 0 — Lage 1 ohne Kreuzfugen", () => {
+  const w = buildWall("W", 1375, 3000, [], null, null, [], [{ g0: 0, g1: 1, start_parity: 0 }]);
+  pruefeVerband(w, "Wand 76");
+  assert(w.validation.versatz_ok === true && w.validation.versatz_violations.length === 0,
+    "Kreuzfugen: " + JSON.stringify(w.validation.versatz_violations));
+  const typen = c => c.stones.map(s => s.type).join(" ");
+  assert(typen(w.courses[0]) === "i3 i3 i2 i2", "Lage 1: " + typen(w.courses[0]));
+  for (const c of w.courses) {
+    const soll = c.lage % 2 ? "i2 i3 i3 i3" : "i3 i3 i2 i2";
+    assert(typen(c) === soll, `Lage ${c.lage + 1}: ${typen(c)} statt ${soll}`);
+  }
+});
+t("[G-5] frueherer Fall 1000x1000 mit Verzahnung [0,1) ist kreuzfugenfrei", () => {
+  const w = buildWall("vz", 1000, 1000, [], null, null, [], [{ g0: 0, g1: 1, start_parity: 0 }]);
+  pruefeVerband(w, "1000x1000");
+  assert(w.validation.versatz_ok === true, JSON.stringify(w.validation.versatz_violations));
+});
+t("[G-5] Sweep: kreuzfugenfrei wo loesbar, sonst bisherige Gierwahl; frei Gelegtes bit-gleich", () => {
+  const faelle = [];
+  for (let N = 4; N <= 40; N++) for (const L of [2, 3, 5, 8, 15]) {
+    faelle.push([N, L, [], []]);
+    for (const b of [1, 2, 3]) for (const p of [0, 1]) {
+      if (b >= N) continue;
+      for (const g0 of new Set([0, N - b, Math.floor((N - b) / 2)])) faelle.push([N, L, [], [{ g0, g1: g0 + b, start_parity: p }]]);
+    }
+    if (N >= 6) for (const p of [0, 1]) for (const q of [0, 1])
+      faelle.push([N, L, [], [{ g0: 0, g1: 1, start_parity: p }, { g0: N - 1, g1: N, start_parity: q }]]);
+    if (L >= 8) for (let g0 = 1; g0 + 5 <= N - 1; g0 += 4) for (const bw of [4, 7]) {
+      if (g0 + bw > N - 1) continue;
+      faelle.push([N, L, [new Opening(g0, g0 + bw, 0, L - 2, "tuer")], []]);
+      faelle.push([N, L, [new Opening(g0, g0 + bw, 3, L - 2, "fenster")], []]);
+    }
+  }
+  let gierKreuz = 0, rest = 0, n = 0;
+  for (const [N, L, ops, il] of faelle) {
+    const w = buildWall("sw", N * GRID, L * 200, ops, null, null, [], il);
+    const was = `${N}x${L} ops=${JSON.stringify(ops)} il=${JSON.stringify(il)}`;
+    pruefeVerband(w, was);
+    const cutsL = abschnitte(N, L, ops, il);
+    const gier = gierRef(cutsL);
+    const ist = steineVon(w);
+    n++;
+    if (kreuzfrei(gier)) {
+      assert(JSON.stringify(ist) === JSON.stringify(gier), "nicht bit-gleich zur Gierwahl: " + was);
+      continue;
+    }
+    gierKreuz++;
+    if (loesbarRef(cutsL)) assert(w.validation.versatz_ok === true, "loesbar, aber Kreuzfugen: " + was);
+    else { rest++; assert(JSON.stringify(ist) === JSON.stringify(gier), "unloesbar, aber nicht Gierwahl: " + was); }
+  }
+  console.log(`        Sweep: ${n} Waende, Gierwahl mit Kreuzfugen ${gierKreuz}, davon unloesbar ${rest}`);
+  assert(gierKreuz > rest, "der Sweep muss reparierte Faelle enthalten");
+});
+t("[G-5] Schrittgrenze: extremer Fall faellt deterministisch auf die Gierwahl zurueck", () => {
+  // 134 Raster, 11 Fenster ueber 13 Lagen, oben eine Aussparung, die jede Kombination sperrt:
+  // die Suche bricht an der festen Schrittgrenze ab statt exponentiell zu laufen.
+  const ops = []; let x = 11;
+  for (let i = 0; i < 11; i++) { ops.push(new Opening(x, x + 2, 1, 14, "fenster")); x += 11; }
+  ops.push(new Opening(1, 4, 14, 15, "fenster"));
+  const t0 = Date.now();
+  const w = buildWall("grenze", 134 * GRID, 3000, ops);
+  const ms = Date.now() - t0;
+  pruefeVerband(w, "Schrittgrenze");
+  assert(w.validation.versatz_ok === false, "Fall muss Kreuzfugen melden");
+  assert(JSON.stringify(steineVon(w)) === JSON.stringify(gierRef(abschnitte(134, 15, ops, []))),
+    "Rueckfall muss die Gierwahl sein");
+  assert(ms < 5000, "Schrittgrenze greift nicht: " + ms + " ms");
+});
+const PY_ORAKEL_VZ = `
+import json, sys
+sys.path.insert(0, ${JSON.stringify(PYDIR)})
+from sembla_core import build_wall, Opening
+out = []
+for a in json.loads(sys.stdin.read()):
+    ops = [Opening(*o) for o in a["ops"]]
+    w = build_wall("vz", a["l"], a["h"], ops, None, None, [], a["il"])
+    out.append({"courses": w["courses"], "v": w["validation"]["versatz_violations"],
+                "u": w["validation"]["ungehaltene_steine"], "bom": w["bom"],
+                "bp": w["base_plate"]})
+print(json.dumps(out))
+`;
+t("[G-5] Paritaet JS <-> Python fuer den gemeinsam gelegten Verband", () => {
+  const faelle = [
+    { l: 1375, h: 3000, ops: [], il: [{ g0: 0, g1: 1, start_parity: 0 }] },
+    { l: 1000, h: 1000, ops: [], il: [{ g0: 0, g1: 1, start_parity: 0 }] },
+    { l: 2125, h: 1000, ops: [], il: [{ g0: 7, g1: 10, start_parity: 0 }] },
+    { l: 3125, h: 3000, ops: [], il: [{ g0: 24, g1: 25, start_parity: 1 }] },
+    { l: 1500, h: 1600, ops: [[1, 5, 4, 7, "fenster"]], il: [] },
+    { l: 1750, h: 1600, ops: [[1, 7, 0, 7, "tuer"]], il: [] },
+    { l: 3000, h: 2600, ops: [[5, 12, 3, 10, "fenster"]], il: [{ g0: 23, g1: 24, start_parity: 0 }] },
+  ];
+  const ops = []; let x = 11;
+  for (let i = 0; i < 11; i++) { ops.push([x, x + 2, 1, 14, "fenster"]); x += 11; }
+  ops.push([1, 4, 14, 15, "fenster"]);
+  faelle.push({ l: 134 * GRID, h: 3000, ops, il: [] });
+  for (let N = 5; N <= 23; N += 3) for (const p of [0, 1])
+    faelle.push({ l: N * GRID, h: 1600, ops: [], il: [{ g0: 0, g1: 1, start_parity: p }] },
+      { l: N * GRID, h: 1600, ops: [], il: [{ g0: N - 2, g1: N, start_parity: p }] });
+  const py = JSON.parse(execFileSync("python3", ["-c", PY_ORAKEL_VZ],
+    { input: JSON.stringify(faelle), encoding: "utf8" }));
+  faelle.forEach((f, i) => {
+    const w = buildWall("vz", f.l, f.h, f.ops.map(o => new Opening(...o)), null, null, [], f.il);
+    deepEqual({ courses: w.courses, v: w.validation.versatz_violations, u: w.validation.ungehaltene_steine,
+      bom: w.bom, bp: w.base_plate }, py[i], `fall${i}`);
+  });
 });
 
 console.log(`\n${pass} ok, ${fail} fail`);
